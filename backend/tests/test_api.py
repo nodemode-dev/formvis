@@ -85,18 +85,18 @@ def test_projects_save_as_fmv_and_older_files_still_work(client):   # the former
     body = {"name": "Old", "manifest": json.dumps(manifest(layers=layers))}
     img = [("files", ("L1.png", png_bytes(), "image/png"))]
     r = client.post("/api/projects/save", data=body, files=img)
-    assert r.status_code == 200 and r.json()["path"].endswith("Old.fmv"), r.text
+    assert r.status_code == 200 and r.json()["path"].endswith("Old.fvd"), r.text
     lib = config.projects_dir()
     # an older project, as saved before 0.90.0
-    shutil.move(str(lib / "Old.fmv"), str(lib / f"Old{legacy.PROJECT_EXTENSIONS[-1]}"))
+    shutil.move(str(lib / "Old.fvd"), str(lib / f"Old{legacy.PROJECT_EXTENSIONS[-1]}"))
     assert [p["name"] for p in client.get("/api/projects").json()] == ["Old"]
     assert client.get("/api/projects/library/Old").status_code == 200
-    # saving it again writes .fmv and leaves one entry
+    # saving it again writes .fvd and leaves one entry
     assert client.post("/api/projects/save", data=body, files=img).status_code == 200
-    assert sorted(p.name for p in lib.iterdir() if p.stem == "Old") == ["Old.fmv"]
+    assert sorted(p.name for p in lib.iterdir() if p.stem == "Old") == ["Old.fvd"]
     assert [p["name"] for p in client.get("/api/projects").json()] == ["Old"]
     # delete removes either
-    shutil.copy(str(lib / "Old.fmv"), str(lib / f"Old{legacy.PROJECT_EXTENSIONS[-1]}"))
+    shutil.copy(str(lib / "Old.fvd"), str(lib / f"Old{legacy.PROJECT_EXTENSIONS[-1]}"))
     assert client.delete("/api/projects/library/Old").status_code == 200
     assert client.get("/api/projects").json() == []
     assert client.post("/api/io/export", files={"file": ("f", b"1", "application/zip")}, data={"name": "x.fmv"}).status_code == 200

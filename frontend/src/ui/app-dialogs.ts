@@ -265,6 +265,8 @@ export interface OpenActions {
   openLibrary(name: string): Promise<boolean>;
   openFiles(files: File[]): Promise<void>;
   openFolder(files: File[], paths: string[]): Promise<void>;
+  /** The desktop app's open panel (1.87.0): false when it could not be shown, so the file picker is used. */
+  openFromPanel: (() => Promise<boolean>) | null;
 }
 
 export class OpenDialog extends Dialog {
@@ -282,9 +284,14 @@ export class OpenDialog extends Dialog {
     super('Open Project', 500);
     this.folderInput.webkitdirectory = true;
     this.body.append(this.status, this.list, this.empty);
-    const row = el(`<div class="cv-welcome-actions"><button class="cv-btn" type="button" data-from="file">${icon('upload', 14)}From disk</button><button class="cv-btn" type="button" data-from="folder">${icon('folderOpen', 14)}Project folder</button></div>`);
+    const row = el(`<div class="cv-welcome-actions"><button class="cv-btn" type="button" data-from="file" title="Any project (.fvd, .fmv, PSD, OpenRaster and more) or picture on this computer">${icon('upload', 14)}Browse...</button><button class="cv-btn" type="button" data-from="folder" title="An unpacked project folder, or every project and picture in a folder">${icon('folderOpen', 14)}Folder...</button></div>`);
     this.body.append(row, this.fileInput, this.folderInput);
-    q(row, '[data-from="file"]').addEventListener('click', () => this.fileInput.click());
+    q(row, '[data-from="file"]').addEventListener('click', () => {
+      const panel = actions.openFromPanel;
+      if (!panel) { this.fileInput.click(); return; }
+      this.close();
+      void panel().then((shown) => { if (!shown) { this.open(this.openBtn); this.fileInput.click(); } });
+    });
     q(row, '[data-from="folder"]').addEventListener('click', () => this.folderInput.click());
     this.deleteBtn = this.button('Delete', 'danger', () => void this.deleteSelected());
     this.button('Cancel', 'ghost', () => this.close());

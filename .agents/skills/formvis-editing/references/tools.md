@@ -161,15 +161,15 @@ Removes the active layer's background on this computer, keeping the subject (a m
 
 ## open_file
 
-Opens a picture (PNG, JPEG, WebP, AVIF, GIF, TIFF, HEIC, QOI, TGA, ICO (its largest size), PBM, PGM, PPM, PAM, camera raw) or a project (.fmv, .psd, .psb, .ora) from an absolute path as a new document. Use when the person gives a path to a picture or project to work on.
+Opens a picture (PNG, JPEG, WebP, AVIF, GIF, TIFF, HEIC, QOI, TGA, ICO (its largest size), PBM, PGM, PPM, PAM, camera raw) or a project (.fvd, .fmv, .psd, .psb, .ora) from an absolute path as a new document. Use when the person gives a path to a picture or project to work on.
 
 - `path`: string; required; Absolute path, e.g. /Users/me/Pictures/beach.jpg
 
 ## save_project
 
-Saves the document as a formvis project (.fmv: layers, masks, adjustments and text stay editable) at an absolute path, replacing a file there. Use when the work should be kept with layers still editable.
+Saves the document as a formvis project (.fvd: layers, masks, adjustments and text stay editable) at an absolute path, replacing a file there. Use when the work should be kept with layers still editable.
 
-- `path`: string; required; Absolute path ending .fmv
+- `path`: string; required; Absolute path ending .fvd
 
 Note: replaces or removes.
 

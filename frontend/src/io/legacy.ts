@@ -5,7 +5,7 @@
  *  Nothing is lost and nothing is duplicated. To make a clean break, delete both files and their few call sites. */
 const FORMER = 'sonny';
 
-/** Project extensions from before the rename: still opened, and saved again as .fmv. */
+/** Project extensions from before the rename: still opened, and saved again as .fvd. */
 export const FORMER_PROJECT_EXTENSIONS: readonly string[] = ['.sny', `.${FORMER}`];
 /** The settings prefix before the rename (the tests read it from here rather than spelling it). */
 export const FORMER_PREFIX = `${FORMER}.`;

@@ -4,7 +4,7 @@ import re
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
@@ -14,9 +14,9 @@ from app.services import sessions
 
 router = APIRouter(tags=["projects"])
 NAME = re.compile(r'[^/\\:*?"<>|\x00-\x1f\x7f]{1,120}')
-#: The library writes .fmv; projects with the extensions from before the rename (core/legacy.py) are still read, listed,
-#: opened and deleted, and saving one again writes .fmv in its place.
-EXT, OLD_EXTS = ".fmv", legacy.PROJECT_EXTENSIONS
+#: The library writes .fvd (1.87.0); .fmv projects and those with the extensions from before the rename (core/legacy.py)
+#: are still read, listed, opened and deleted, and saving one again writes .fvd in its place.
+EXT, OLD_EXTS = ".fvd", (".fmv", *legacy.PROJECT_EXTENSIONS)
 SUFFIXES = (EXT, *OLD_EXTS, ".canvasor", ".comp", ".zip")
 
 
@@ -96,8 +96,101 @@ def _version(path: Path) -> str:
     return f"{st.st_mtime_ns}-{st.st_size}"
 
 
+def _thumb(upload: UploadFile | None) -> bytes:
+    """The thumbnail sent with a save (1.87.0), or nothing when none came or it is too large to keep."""
+    if upload is None:
+        return b""
+    blob = upload.file.read(pf.MAX_THUMBNAIL + 1)
+    return blob if len(blob) <= pf.MAX_THUMBNAIL else b""
+
+
+def _local(request: Request) -> None:
+    """Files by path are read and written only for formvis's own window (1.87.0): a page from anywhere else cannot send
+    this header, because the browser asks the engine first and the engine's CORS answer names only formvis's origins."""
+    if request.headers.get("x-formvis") != "1":
+        raise HTTPException(403, "Only the formvis window can open or save files by path.")
+
+
+def _disk_path(raw: str, kinds: tuple[str, ...], reading: bool) -> Path:
+    """An absolute path on this computer with one of `kinds` as its extension; a file to read must exist, a folder to
+    write in must exist."""
+    path = Path(os.path.expanduser((raw or "").strip()))
+    if not (raw or "").strip() or not path.is_absolute():
+        raise HTTPException(400, "Give the file's full path.")
+    if not path.name.lower().endswith(kinds):
+        raise HTTPException(400, f"{path.name}: formvis takes {', '.join(kinds)} here.")
+    if reading and not path.is_file():
+        raise HTTPException(404, f"There is no file at {path}. It may have been moved, renamed or deleted.")
+    if not reading and not path.parent.is_dir():
+        raise HTTPException(400, f"The folder {path.parent} does not exist.")
+    return path
+
+
+def _write_atomic(target: Path, blob: bytes) -> None:
+    """Written beside the target first, then renamed over it, so a failed save never leaves half a file."""
+    fd, tmp_name = tempfile.mkstemp(dir=target.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(blob)
+        os.replace(tmp_name, target)
+    except BaseException:
+        Path(tmp_name).unlink(missing_ok=True)
+        raise
+
+
+@router.post("/save-to")
+def save_to(request: Request, path: str = Form(...), manifest: str = Form(...), files: list[UploadFile] = File(default=[]), thumbnail: UploadFile | None = File(default=None)) -> dict:
+    """Save or Save As to a file the person chose in the desktop app's save panel (1.87.0): a .fvd anywhere on this
+    computer, written atomically. A .fvd in the library folder is listed in the library as well."""
+    _local(request)
+    target = _disk_path(path, (EXT,), False)
+    data = _manifest(manifest)
+    assets = _assets(files)
+    _validated(data, assets)
+    blob = pf.write_zip(data, assets, thumbnail=_thumb(thumbnail))
+    try:
+        _write_atomic(target, blob)
+    except OSError as exc:
+        raise HTTPException(400, f"formvis could not write {target.name}: {exc.strerror or exc}.") from exc
+    return {"name": target.stem, "path": str(target), "size": len(blob), "version": _version(target)}
+
+
+class PathBody(BaseModel):
+    path: str = ""
+
+
+@router.post("/open-path")
+def open_path(request: Request, body: PathBody) -> dict:
+    """A project file at a path on this computer (1.87.0), from the desktop app's open panel, Open Recent or Home."""
+    _local(request)
+    path = _disk_path(body.path, SUFFIXES, True)
+    try:
+        manifest, assets = pf.read_zip(path.read_bytes())
+    except pf.ProjectError as exc:
+        raise HTTPException(422, f"{path.name}: {exc}") from exc
+    _validated(manifest, assets)
+    return {**sessions.payload(sessions.create(assets), manifest, assets, _project_name(path.name)), "version": _version(path), "path": str(path)}
+
+
+@router.get("/thumbnail")
+def thumbnail(request: Request, name: str = "", path: str = "") -> Response:
+    """The thumbnail a saved project carries (1.87.0): a library project by `name`, or a file by `path`; 404 for one
+    saved before thumbnails."""
+    if path:
+        _local(request)
+        target = _disk_path(path, SUFFIXES, True)
+    else:
+        target = _existing(name)
+        if not target.is_file():
+            raise HTTPException(404, "Project not found.")
+    blob = pf.read_thumbnail(target.read_bytes())
+    if blob is None:
+        raise HTTPException(404, "This project has no thumbnail.")
+    return Response(blob, media_type="image/png", headers={"Cache-Control": "no-cache"})
+
+
 @router.post("/save")
-def save(name: str = Form(...), manifest: str = Form(...), files: list[UploadFile] = File(default=[]), base: str = Form("")) -> dict:
+def save(name: str = Form(...), manifest: str = Form(...), files: list[UploadFile] = File(default=[]), base: str = Form(""), thumbnail: UploadFile | None = File(default=None)) -> dict:
     """Saved atomically (a temporary file in the same folder, then renamed), and conflict-safe (1.58.8, L13): a save
     that names the version it was based on overwrites only a file still at that version; when the file changed since
     (another device's copy synced in, or another window saved), the save goes beside it as "name (conflict date time)"
@@ -110,15 +203,8 @@ def save(name: str = Form(...), manifest: str = Form(...), files: list[UploadFil
     if conflict:
         from datetime import datetime
         target = _library_path(f"{target.stem[:80]} (conflict {datetime.now().strftime('%Y-%m-%d %H.%M.%S')})")
-    blob = pf.write_zip(data, assets)
-    fd, tmp_name = tempfile.mkstemp(dir=target.parent, suffix=".tmp")
-    try:
-        with os.fdopen(fd, "wb") as handle:
-            handle.write(blob)
-        os.replace(tmp_name, target)
-    except BaseException:
-        Path(tmp_name).unlink(missing_ok=True)
-        raise
+    blob = pf.write_zip(data, assets, thumbnail=_thumb(thumbnail))
+    _write_atomic(target, blob)
     if not conflict:
         for x in OLD_EXTS:
             target.with_suffix(x).unlink(missing_ok=True)
@@ -195,14 +281,14 @@ def set_folder(body: FolderBody) -> dict:
 
 
 @router.post("/package")
-def package(manifest: str = Form(...), files: list[UploadFile] = File(default=[]), root: str = Form("")) -> Response:
-    """The project as a downloadable zip, optionally inside one named folder."""
+def package(manifest: str = Form(...), files: list[UploadFile] = File(default=[]), root: str = Form(""), thumbnail: UploadFile | None = File(default=None)) -> Response:
+    """The project as a downloadable zip, optionally inside one named folder, with its thumbnail when one is sent."""
     data = _manifest(manifest)
     assets = _assets(files)
     _validated(data, assets)
     if root and (not NAME.fullmatch(root) or root.startswith(".")):
         raise HTTPException(400, "Invalid package folder name.")
-    return Response(pf.write_zip(data, assets, root), media_type="application/zip")
+    return Response(pf.write_zip(data, assets, root, _thumb(thumbnail)), media_type="application/zip")
 
 
 @router.get("/library/{name}")

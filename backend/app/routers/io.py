@@ -4,14 +4,16 @@ import re
 from pathlib import Path
 
 import numpy as np
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from urllib.parse import quote
+
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 
 from app.core import config
 from app.services import camera_profiles, dpx, fits, imaging, pnm
 
 router = APIRouter(tags=["io"])
-EXPORT_NAME = re.compile(r"^[^/\\:*?\"<>|\x00-\x1f]{1,160}\.(png|jpg|jpeg|fmv|formvis|webp|tif|tiff|pdf|avif|dpx|psd|qoi|pbm|pgm|ppm|pam|tga|ico)$", re.IGNORECASE)
+EXPORT_NAME = re.compile(r"^[^/\\:*?\"<>|\x00-\x1f]{1,160}\.(png|jpg|jpeg|fvd|fmv|formvis|webp|tif|tiff|pdf|avif|dpx|psd|qoi|pbm|pgm|ppm|pam|tga|ico)$", re.IGNORECASE)
 EXPORT_FOLDER = re.compile(r"^[^/\\:*?\"<>|\x00-\x1f. ][^/\\:*?\"<>|\x00-\x1f]{0,99}$")
 
 
@@ -593,3 +595,49 @@ def export(file: UploadFile = File(...), name: str = Form(...), folder: str = Fo
         number += 1
     target.write_bytes(file.file.read())
     return {"path": str(target)}
+
+
+#: What a file chosen in the desktop app's panels may be (1.87.0): projects, and every picture formvis reads or writes.
+DISK_KINDS = (".fvd", ".fmv", ".formvis", ".canvasor", ".comp", ".zip", ".psd", ".psb", ".ora", ".kra", ".pdn", ".png", ".jpg", ".jpeg",
+              ".webp", ".avif", ".gif", ".bmp", ".tif", ".tiff", ".heic", ".heif", ".qoi", ".tga", ".ico", ".pbm", ".pgm", ".ppm",
+              ".pnm", ".pam", ".exr", ".hdr", ".dpx", ".fits", ".fit", ".fts", ".svg", ".pdf", ".dng", ".cr2", ".cr3", ".nef",
+              ".arw", ".raf", ".orf", ".rw2")
+OUTPUT_KINDS = (".png", ".jpg", ".jpeg", ".webp", ".avif", ".tif", ".tiff", ".pdf", ".psd", ".psb", ".fvd", ".fmv", ".gif", ".qoi", ".tga",
+                ".ico", ".dpx", ".pbm", ".pgm", ".ppm", ".pam", ".exr", ".mp4", ".zip", ".svg")
+
+
+@router.post("/read-path")
+def read_path(request: Request, path: str = Form(...)) -> Response:
+    """A file chosen in the desktop app's open panel, Open Recent or Home (1.87.0), sent back to the window to open."""
+    from app.routers.projects import _disk_path, _local
+    _local(request)
+    target = _disk_path(path, DISK_KINDS, True)
+    if target.stat().st_size > 2 * 1024 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail=f"{target.name} is larger than 2 GB.")
+    return Response(target.read_bytes(), media_type="application/octet-stream", headers={"X-Name": quote(target.name)})
+
+
+@router.post("/write-path")
+def write_path(request: Request, file: UploadFile = File(...), path: str = Form(...)) -> dict:
+    """An export written where the person chose in the desktop app's save panel (1.87.0), replacing a file there (the
+    panel has already asked)."""
+    from app.routers.projects import _disk_path, _local, _write_atomic
+    _local(request)
+    target = _disk_path(path, OUTPUT_KINDS, False)
+    try:
+        _write_atomic(target, file.file.read())
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail=f"formvis could not write {target.name}: {exc.strerror or exc}.") from exc
+    return {"path": str(target), "size": target.stat().st_size}
+
+
+@router.get("/outputs")
+def outputs() -> list[dict]:
+    """The exports folder's files, newest first (1.87.0), for Home's Outputs; one folder level down (Layers to Files)."""
+    root = config.exports_dir()
+    found = []
+    for path in [*root.glob("*"), *root.glob("*/*")]:
+        if path.is_file() and path.suffix.lower() in OUTPUT_KINDS and not path.name.startswith("."):
+            st = path.stat()
+            found.append({"name": path.name, "path": str(path), "modified": st.st_mtime, "size": st.st_size, "kind": path.suffix[1:].upper()})
+    return sorted(found, key=lambda f: f["modified"], reverse=True)[:200]

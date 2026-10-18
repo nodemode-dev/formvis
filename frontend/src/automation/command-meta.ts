@@ -42,7 +42,7 @@ const ROWS: Record<string, Row> = {
   'save-as': ['File', 'Saves the document under a new name in the library.', 'Use when you want a separate project file beside the current one.', 'r'],
   'save-copy': ['File', 'Saves a copy without changing which file the document belongs to.', 'Use when you want a snapshot on disk and to keep working on the original.', 'r'],
   'revert': ['File', 'Throws away changes and reopens the last saved version.', 'Use when you want to discard every unsaved change; Undo cannot bring them back.', 'mr'],
-  'download-project': ['File', 'Downloads the project file through the browser.', 'Use when you want the .fmv file on your computer.', 'r'],
+  'download-project': ['File', 'Downloads the project file through the browser.', 'Use when you want the .fvd file on your computer.', 'r'],
   'export-png': ['File', 'Exports the flattened picture as a PNG.', 'Use when you want a lossless image file of how the document looks.', 'r'],
   'export-jpg': ['File', 'Opens the JPEG quality dialog, then exports a JPEG.', 'Use when you want a small photo file and can accept lossy compression.', 'r'],
   'export-as': ['File', 'Opens Export As with format, size and quality.', 'Use when you want to preview a delivery file before writing it.', 'r'],

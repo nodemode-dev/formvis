@@ -42,7 +42,7 @@ STRATEGY = """How to edit a picture in formvis with these tools.
 6. Colour and looks: add_adjustment (curves, levels, hsv, exposure, splitToning, halation, glow and more) keeps the picture editable; set_adjustment changes it later. color_match fits a pasted element to its background. add_film_layer adds a light leak or a frame. apply_filter blurs, sharpens or adds noise, on pixels only (rasterize_layer first for text and shapes).
 7. Cut-outs: remove_background keeps the subject of the active layer as a mask; select_subject then fill or generative_fill works on the selection instead.
 8. Size for a destination: resize_image scales the whole picture (keep the proportions); resize_canvas adds or removes space; crop keeps a rectangle; generative_expand grows the canvas and paints the new border; upscale enlarges 2 or 4 times into a new document.
-9. Keep and deliver: save_project writes a .fmv that keeps every layer editable; export_image writes a PNG, JPEG or WebP of how it looks. Both take absolute paths; the folder must exist.
+9. Keep and deliver: save_project writes a .fvd that keeps every layer editable; export_image writes a PNG, JPEG or WebP of how it looks. Both take absolute paths; the folder must exist.
 10. Mistakes: undo steps back one change at a time. If a tool fails, its message says what to do next: follow it and retry.
 """
 PROMPTS = [{"name": "edit_strategy", "title": "How to edit in formvis", "description": "The decision tree for formvis's tools: looking, choosing layers, removing and adding, text, colour, cut-outs, sizes, saving and exporting.", "arguments": []}]
@@ -89,10 +89,10 @@ TOOLS = [
           {"scale": {"type": "integer", "enum": [2, 4], "default": 2}, "model": {"type": "string", "enum": ["auto", "local", "fal"], "default": "auto"}}, open=True),
     _tool("remove_background", "Removes the active layer's background on this computer, keeping the subject (a mask on the layer; undoable).", {}),
     # Files, read and written by the engine at absolute paths (~ is expanded).
-    _tool("open_file", "Opens a picture (PNG, JPEG, WebP, AVIF, GIF, TIFF, HEIC, QOI, TGA, ICO (its largest size), PBM, PGM, PPM, PAM, camera raw) or a project (.fmv, .psd, .psb, .ora) from an absolute path as a new document.",
+    _tool("open_file", "Opens a picture (PNG, JPEG, WebP, AVIF, GIF, TIFF, HEIC, QOI, TGA, ICO (its largest size), PBM, PGM, PPM, PAM, camera raw) or a project (.fvd, .fmv, .psd, .psb, .ora) from an absolute path as a new document.",
           {"path": {"type": "string", "description": "Absolute path, e.g. /Users/me/Pictures/beach.jpg"}}, ["path"]),
-    _tool("save_project", "Saves the document as a formvis project (.fmv: layers, masks, adjustments and text stay editable) at an absolute path, replacing a file there.",
-          {"path": {"type": "string", "description": "Absolute path ending .fmv"}}, ["path"], destructive=True),
+    _tool("save_project", "Saves the document as a formvis project (.fvd: layers, masks, adjustments and text stay editable) at an absolute path, replacing a file there.",
+          {"path": {"type": "string", "description": "Absolute path ending .fvd"}}, ["path"], destructive=True),
     _tool("export_image", "Writes the document as it looks to an absolute path as PNG, JPEG or WebP (by the path's extension), replacing a file there.",
           {"path": {"type": "string", "description": "Absolute path ending .png, .jpg or .webp"}, "quality": {"type": "number", "minimum": 0.1, "maximum": 1, "default": 0.92}}, ["path"], destructive=True),
     _tool("switch_document", "Makes an open document the one tools act on, by its id from get_document's documents.", {"id": _ID}, ["id"], idempotent=True),
@@ -326,7 +326,7 @@ async def _ask(name: str, args: dict, timeout: float) -> dict | None:
 
 # Files at absolute paths (1.53.3): read and written here, the window doing the picture's part.
 _PICTURES = {".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif", ".tif", ".tiff", ".heic", ".heif", ".bmp", ".qoi", ".tga", ".ico", ".pbm", ".pgm", ".ppm", ".pnm", ".pam", ".dng", ".cr2", ".cr3", ".nef", ".arw", ".raf", ".orf", ".rw2"}
-_PROJECTS = {".fmv", ".psd", ".psb", ".ora"}
+_PROJECTS = {".fvd", ".fmv", ".psd", ".psb", ".ora"}
 _EXPORTS = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
 _MAX_OPEN = 512 * 1024 * 1024
 
@@ -372,7 +372,7 @@ async def _run(name: str, args: dict) -> dict:
             await asyncio.to_thread(path.write_bytes, blob)
             return {"content": [{"type": "text", "text": f"Wrote {path} ({len(blob):,} bytes)."}], "structuredContent": {"path": str(path), "bytes": len(blob)}}
         if name in ("save_project", "export_image"):
-            path = _path(args.get("path"), {".fmv"} if name == "save_project" else set(_EXPORTS), False)
+            path = _path(args.get("path"), {".fvd"} if name == "save_project" else set(_EXPORTS), False)
             out = await _call("__project" if name == "save_project" else "__export", {} if name == "save_project" else {"type": _EXPORTS[path.suffix.lower()], "quality": args.get("quality", 0.92)})
             data = (out.get("structuredContent") or {}).get("data") if not out.get("isError") else None
             if not data:

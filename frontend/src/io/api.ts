@@ -7,11 +7,15 @@ export interface Capabilities { pixelBudget?: number; memory?: number;
   dataDir: string;
 }
 export interface LibraryItem { name: string; modified: number; size: number }
-export interface OpenedProject { session: string; name: string; manifest: Record<string, unknown>; images: Record<string, string>; version?: string }
+export interface OpenedProject { session: string; name: string; manifest: Record<string, unknown>; images: Record<string, string>; version?: string; path?: string }
 /** The library's folder (1.58.8, L13): where it is, the default, whether it is fixed by the engine's environment, and
  *  the synced folders found on this computer with a Formvis folder suggested in each. */
 export interface LibraryFolder { folder: string; default: string; custom: boolean; fixed: boolean; synced: Array<{ label: string; base: string; suggested: string }> }
 export interface FilePart { name: string; blob: Blob }
+/** A file in the exports folder (1.87.0), for Home's Outputs. */
+export interface OutputItem { name: string; path: string; modified: number; size: number; kind: string }
+/** Marks the calls that read or write files by path (1.87.0): the engine answers them only for formvis's own window. */
+const LOCAL = { 'X-Formvis': '1' };
 export interface GenerativeStatus { configured: boolean; source: 'environment' | 'settings' | null; fillModel: string; eraseModel: string; upscaleModel: string }
 /** A generation provider beside fal (1.58.4, L7): OpenAI, Google, Black Forest Labs or Ideogram. */
 export interface ProviderStatus { id: string; name: string; model: string; fill: boolean; configured: boolean; source: 'environment' | 'settings' | null }
@@ -514,8 +518,39 @@ export const api = {
   },
   /** A save to the library; `base` (1.58.8) is the version the project was opened or last saved at, so a file changed
    *  since (another device's copy synced in) is kept and this save goes beside it as a conflict copy. */
-  async save(name: string, manifest: object, files: FilePart[], base = ''): Promise<{ name: string; path: string; version?: string; conflict?: boolean; kept?: string }> {
-    return (await (await request('/projects/save', { method: 'POST', body: form({ name, manifest: JSON.stringify(manifest), base }, files) })).json()) as { name: string; path: string; version?: string; conflict?: boolean; kept?: string };
+  async save(name: string, manifest: object, files: FilePart[], base = '', thumb: Blob | null = null): Promise<{ name: string; path: string; version?: string; conflict?: boolean; kept?: string }> {
+    const body = form({ name, manifest: JSON.stringify(manifest), base }, files);
+    if (thumb) body.append('thumbnail', thumb, 'thumbnail.png');
+    return (await (await request('/projects/save', { method: 'POST', body })).json()) as { name: string; path: string; version?: string; conflict?: boolean; kept?: string };
+  },
+  /** Save or Save As to a .fvd the person chose in the desktop app's save panel (1.87.0). */
+  async saveTo(path: string, manifest: object, files: FilePart[], thumb: Blob | null): Promise<{ name: string; path: string; version?: string }> {
+    const body = form({ path, manifest: JSON.stringify(manifest) }, files);
+    if (thumb) body.append('thumbnail', thumb, 'thumbnail.png');
+    return (await (await request('/projects/save-to', { method: 'POST', headers: LOCAL, body })).json()) as { name: string; path: string; version?: string };
+  },
+  /** A project file at a path on this computer (1.87.0). */
+  async openPath(path: string): Promise<OpenedProject> {
+    return (await (await request('/projects/open-path', { method: 'POST', headers: { ...LOCAL, 'Content-Type': 'application/json' }, body: JSON.stringify({ path }) })).json()) as OpenedProject;
+  },
+  /** Any file at a path on this computer as a File, to open like one dropped on the window (1.87.0). */
+  async readPath(path: string): Promise<File> {
+    const blob = await (await request('/io/read-path', { method: 'POST', headers: LOCAL, body: form({ path }) })).blob();
+    return new File([blob], path.split(/[\\/]/).pop() || 'file');
+  },
+  /** An export written at a path the person chose in the desktop app's save panel (1.87.0). */
+  async writePath(path: string, blob: Blob): Promise<string> {
+    const r = await request('/io/write-path', { method: 'POST', headers: LOCAL, body: form({ path }, [{ name: 'file', blob }], 'file') });
+    return ((await r.json()) as { path: string }).path;
+  },
+  /** The exports folder's files, newest first (1.87.0). */
+  async outputs(): Promise<OutputItem[]> {
+    try { return (await (await request('/io/outputs')).json()) as OutputItem[]; } catch { return []; }
+  },
+  /** A saved project's thumbnail PNG (1.87.0), or null for one saved before thumbnails. */
+  async thumbnail(by: { name?: string; path?: string }): Promise<Blob | null> {
+    const q = by.path ? `path=${encodeURIComponent(by.path)}` : `name=${encodeURIComponent(by.name ?? '')}`;
+    try { return await (await request(`/projects/thumbnail?${q}`, { headers: LOCAL })).blob(); } catch { return null; }
   },
   /** Where the library is (1.58.8, L13), the default, and the synced folders found on this computer. */
   async libraryFolder(): Promise<LibraryFolder | null> {
@@ -525,10 +560,12 @@ export const api = {
   async setLibraryFolder(folder: string, move: boolean): Promise<LibraryFolder & { moved: number }> {
     return (await (await request('/projects/folder', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ folder, move }) })).json()) as LibraryFolder & { moved: number };
   },
-  async package(manifest: object, files: FilePart[], root = ''): Promise<Blob> {
+  async package(manifest: object, files: FilePart[], root = '', thumb: Blob | null = null): Promise<Blob> {
     const fields: Record<string, string> = { manifest: JSON.stringify(manifest) };
     if (root) fields.root = root;
-    return (await request('/projects/package', { method: 'POST', body: form(fields, files) })).blob();
+    const body = form(fields, files);
+    if (thumb) body.append('thumbnail', thumb, 'thumbnail.png');
+    return (await request('/projects/package', { method: 'POST', body })).blob();
   },
   async openLibrary(name: string): Promise<OpenedProject> {
     return (await (await request(`/projects/library/${encodeURIComponent(name)}`)).json()) as OpenedProject;

@@ -38,7 +38,7 @@
       "entitlements": "entitlements.plist"
     },
     "fileAssociations": [
-      { "ext": ["fmv", "formvis"], "name": "formvis Project", "description": "formvis layered image project", "role": "Editor", "mimeType": "application/x-formvis" }
+      { "ext": ["fvd", "fmv", "formvis"], "name": "formvis Project", "description": "formvis layered image project", "role": "Editor", "mimeType": "application/x-formvis" }
     ],
     "createUpdaterArtifacts": false
   },

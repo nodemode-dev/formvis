@@ -16,11 +16,11 @@ def test_a_project_saved_under_a_former_extension_lists_opens_and_is_replaced_by
     assert r.status_code == 200
     lib = config.projects_dir()
     for ext in legacy.PROJECT_EXTENSIONS:
-        (lib / "Trip.fmv").rename(lib / f"Trip{ext}")                                    # as saved before the rename
+        (lib / "Trip.fvd").rename(lib / f"Trip{ext}")                                    # as saved before the rename
         assert [p["name"] for p in client.get("/api/projects").json()] == ["Trip"]
         assert client.get("/api/projects/library/Trip").json()["manifest"]["layers"][0]["id"] == "L1"
         client.post("/api/projects/save", data={"name": "Trip", "manifest": json.dumps(manifest(layers=_layers()))}, files=[("files", ("L1.png", png_bytes(), "image/png"))])
-        assert (lib / "Trip.fmv").is_file() and not (lib / f"Trip{ext}").exists()        # saved as .fmv in its place
+        assert (lib / "Trip.fvd").is_file() and not (lib / f"Trip{ext}").exists()        # saved as .fvd in its place
     client.delete("/api/projects/library/Trip")
 
 

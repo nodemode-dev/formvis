@@ -12,6 +12,7 @@ FORMVIS = "com.nodemode.formvis"
 CANVASOR = "com.nodemode.canvasor"
 SUPPORTED = {FORMVIS: range(1, 2), legacy.FORMAT: range(1, 2), CANVASOR: range(1, 2)}   # the former identifier is read (core/legacy.py)
 SAFE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}")
+THUMBNAIL, MAX_THUMBNAIL = "thumbnail.png", 4 * 1024 * 1024
 # .comp projects, opened so their owners can move their work to formvis (the owner's decision of 2026-09-25; export stays
 # out). They share formvis's manifest and images/ layout and name themselves with a reverse-DNS id ending in ".project"
 # at versions 1 to 7. They are recognised by that shape and then held to the full validation below, not by matching a
@@ -145,17 +146,34 @@ def read_zip(data: bytes) -> tuple[dict, dict[str, bytes]]:
     return manifest, assets
 
 
+def read_thumbnail(data: bytes) -> bytes | None:
+    """The thumbnail a project carries (1.87.0), or None for one saved before thumbnails or not a project at all."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            for info in archive.infolist():
+                parts = info.filename.replace("\\", "/").split("/")
+                if parts[-1] == THUMBNAIL and len(parts) <= 2 and "__MACOSX" not in parts and info.file_size <= MAX_THUMBNAIL:
+                    return archive.read(info)
+    except (zipfile.BadZipFile, OSError):
+        return None
+    return None
+
+
 def read_folder(files: list[tuple[str, bytes]]) -> tuple[dict, dict[str, bytes], str]:
     """Read a project from a dropped folder's files (path and bytes); the root folder's name comes last."""
     return _collect([(path, len(blob), lambda blob=blob: blob) for path, blob in files])
 
 
-def write_zip(manifest: dict, assets: dict[str, bytes], root: str = "") -> bytes:
-    """The project as a zip: manifest.json and images/. With `root`, everything sits inside that one folder."""
+def write_zip(manifest: dict, assets: dict[str, bytes], root: str = "", thumbnail: bytes = b"") -> bytes:
+    """The project as a zip: manifest.json and images/. With `root`, everything sits inside that one folder. A
+    `thumbnail` (a small PNG of the whole picture, 1.87.0) goes beside the manifest for Home and the file lists; readers
+    that do not know it skip it."""
     prefix = f"{root}/" if root else ""
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:
         archive.writestr(f"{prefix}manifest.json", json.dumps(manifest, indent=2), compress_type=zipfile.ZIP_DEFLATED)
+        if thumbnail[:8] == b"\x89PNG\r\n\x1a\n":
+            archive.writestr(f"{prefix}{THUMBNAIL}", thumbnail, compress_type=zipfile.ZIP_STORED)
         for name, blob in assets.items():
             archive.writestr(f"{prefix}images/{name}", blob, compress_type=zipfile.ZIP_STORED)
     return buffer.getvalue()

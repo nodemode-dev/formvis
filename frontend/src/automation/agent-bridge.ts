@@ -216,7 +216,7 @@ export class AgentBridge {
         // Files (1.53.3): the engine writes what these return.
         case '__project': {
           const blob = await this.deps.projectBlob?.();
-          return blob ? text('The project, as a .fmv file.', { data: await b64(blob) }) : fail('formvis could not pack the project.');
+          return blob ? text('The project, as a .fvd file.', { data: await b64(blob) }) : fail('formvis could not pack the project.');
         }
         // The video timeline (1.59.7, DEV_PLAN 25.5), as Photon Studio's timeline operations; each edit one undoable step.
         case 'timeline_get': {

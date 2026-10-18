@@ -10,6 +10,8 @@ export class Project {
   libraryName: string | null = null;
   /** The library file's version when opened or last saved (1.58.8), so a save does not overwrite a newer copy. */
   libraryVersion: string | null = null;
+  /** The .fvd on this computer it was opened from or last saved to (1.87.0, desktop app), which Save writes back to. */
+  filePath: string | null = null;
   /** Where this document sits in a larger picture opened as tiles (1.52.7), for Assemble Tiles. */
   tile: { source: string; width: number; height: number; x: number; y: number; row: number; col: number } | null = null;
   selection: SelectionMask | null = null;

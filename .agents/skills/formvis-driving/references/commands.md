@@ -91,10 +91,10 @@ Generated from the window's command catalogue (961 commands) by `./formvis agent
 | `assemble-tiles` | Assemble Tiles... |  | Opens the dialog that assembles tile images into one large picture. (changes the picture) |
 | `batch` | Batch... |  | Opens Batch to run an action over many files. (changes the picture) (asks first) |
 | `clear-recent` | Clear Recent |  | Empties the Open Recent list. (asks first) |
-| `close-all` | Close All |  | Closes every open document. (asks first) |
+| `close-all` | Close All | Alt+Mod+W | Closes every open document. (asks first) |
 | `close-document` | Close Document |  | Closes the current document without asking about unsaved changes. (asks first) |
 | `close-others` | Close Others | Alt+Mod+P | Closes every document but the current one. (asks first) |
-| `close-tab` | Close Tab | Alt+Mod+W | Closes the current document, asking about unsaved changes. (asks first) |
+| `close-tab` | Close Tab | Mod+W | Closes the current document, asking about unsaved changes. (asks first) |
 | `comfyui-run` | Run ComfyUI Workflow... |  | Opens the dialog that runs a ComfyUI workflow and brings the result back. (changes the picture) (asks first) |
 | `conditional-mode-change` | Conditional Mode Change... |  | Changes the document to a target mode only when its current mode is one of the ticked source modes. (changes the picture) |
 | `contact-sheet` | Contact Sheet II... |  | Opens Contact Sheet II to lay chosen images out as thumbnails on new documents. (changes the picture) |
@@ -149,7 +149,7 @@ Generated from the window's command catalogue (961 commands) by `./formvis agent
 | `print` | Print... | Mod+P | Opens the Print dialog: paper size, orientation, position, scaled print size and a preview, then prints the flattened document through the system print dialog. |
 | `print-one-copy` | Print One Copy | Alt+Shift+Mod+P | Prints the flattened document at once with the settings Print last used, through the system print dialog. |
 | `render-video` | Render Video... |  | Opens the Render Video dialog for the video timeline. (asks first) |
-| `revert` | Revert |  | Throws away changes and reopens the last saved version. (changes the picture) (asks first) |
+| `revert` | Revert | F12 | Throws away changes and reopens the last saved version. (changes the picture) (asks first) |
 | `save` | Save | Mod+S | Saves the document to the library, or asks for a name the first time. (asks first) |
 | `save-as` | Save As... | Shift+Mod+S | Saves the document under a new name in the library. (asks first) |
 | `save-copy` | Save a Copy... | Alt+Mod+S | Saves a copy without changing which file the document belongs to. (asks first) |

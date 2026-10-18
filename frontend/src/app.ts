@@ -97,6 +97,7 @@ import { toolForKey, toolsForKey } from './extensions/registry';
 import { registerBuiltinTools } from './extensions/tools';
 import { HostLink } from './host';
 import { api, onServiceChange, serviceDown, type Capabilities, type CmykPsd, type OpenedProject } from './io/api';
+import { PROJECT_FILTER, baseName, chooseOpenPaths, chooseSavePath, folderOf, hasPanels, isDiskPath } from './io/disk';
 import { findToRemove, localInpaint, modelReady, skyMask, skyReady } from './io/local-gen';
 import { FocusAreaDialog } from './ui/panels/focus-area-dialog';
 import { MergeDialog } from './ui/panels/merge-dialog';
@@ -116,7 +117,7 @@ import { VanishingPointDialog } from './ui/panels/vanishing-dialog';
 import { VideoImportDialog } from './ui/panels/video-dialog';
 import { VideoTimelinePanel } from './ui/video-timeline';
 import { RenderVideoDialog, type RenderChoice } from './ui/panels/render-video-dialog';
-import { LargePictureError, IMAGE_ACCEPT, RAW_FILE, decodeImage, isImageFile, isProjectFile } from './io/images';
+import { LargePictureError, IMAGE_ACCEPT, PROJECT_ACCEPT, RAW_FILE, decodeImage, isImageFile, isProjectFile } from './io/images';
 import { loadSystemFonts } from './ui/fonts';
 import { deserialize, giantTiles, serialize } from './io/project-io';
 import { AboutDialog, BenchmarkDialog, NewCanvasDialog, OpenDialog, SettingsDialog, ShortcutsDialog } from './ui/app-dialogs';
@@ -483,8 +484,29 @@ export function startApp(): void {
   const hostLink = new HostLink(() => undefined, () => undefined);
   let caps: Capabilities | null = null;
 
+  /** Outputs written through the save panel (1.87.0), newest first, for Home beside the exports folder's own files. */
+  const OUTPUTS_KEY = 'formvis.outputs';
+  function noteOutput(path: string): void {
+    try {
+      const stored: unknown = JSON.parse(localStorage.getItem(OUTPUTS_KEY) ?? '[]');
+      const list = Array.isArray(stored) ? stored.filter((n): n is string => typeof n === 'string' && n !== path) : [];
+      localStorage.setItem(OUTPUTS_KEY, JSON.stringify([path, ...list].slice(0, 50)));
+    } catch { /* storage unavailable: Home lists the exports folder only */ }
+  }
+
   async function deliver(blob: Blob, name: string): Promise<void> {
-    if (caps?.desktop) { toast(`Saved to ${await api.exportFile(blob, name)}`); fireEvent('export'); return; }
+    if (caps?.desktop && hasPanels()) {
+      // The desktop app asks where an export goes (1.87.0, CLOSE_GAPS P01); Cancel writes nothing.
+      const ext = (/\.([A-Za-z0-9]+)$/.exec(name)?.[1] ?? '').toLowerCase();
+      let path: string | null = null, panel = true;
+      try { path = await chooseSavePath('Export', name, ext ? [{ name: ext.toUpperCase(), extensions: [ext] }] : []); } catch { panel = false; }
+      if (panel) {
+        if (!path) return;
+        try { const written = await api.writePath(path, blob); noteOutput(written); toast(`Saved ${written}`); fireEvent('export'); } catch (err) { toast(message(err), 'error'); }
+        return;
+      }
+    }
+    if (caps?.desktop) { const written = await api.exportFile(blob, name); noteOutput(written); toast(`Saved to ${written}`); fireEvent('export'); return; }
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -514,6 +536,50 @@ export function startApp(): void {
     if (timeline) engine.setTimelineFor(p, timeline);
     engine.markSaved(p, p.name, libraryName);
     p.libraryVersion = libraryName ? o.version ?? null : null;   // 1.58.8: conflict-safe saves
+    p.filePath = o.path ?? null;   // 1.87.0: opened from a file, Save writes back to it
+  }
+
+  /** A small PNG of the whole picture (1.87.0) kept inside the project for Home and the file lists; null when it
+   *  cannot be drawn (the save goes ahead without it). */
+  async function thumbnailOf(p: NonNullable<typeof engine.current>): Promise<Blob | null> {
+    try {
+      const flat = engine.flattenedOf(p);
+      if (!flat) return null;
+      const k = Math.min(1, 512 / Math.max(flat.width, flat.height));
+      const t = createSurface(Math.max(1, Math.round(flat.width * k)), Math.max(1, Math.round(flat.height * k)));
+      const c = ctxOf(t);
+      c.imageSmoothingQuality = 'high';
+      c.drawImage(flat, 0, 0, t.width, t.height);
+      return await toBlob(t, 'image/png');
+    } catch { return null; }
+  }
+
+  /** Files chosen in the desktop app's open panel, Open Recent or Home (1.87.0): projects open from their file, so Save
+   *  writes back to it; pictures and other formats open as if dropped on the window. */
+  async function openPaths(paths: string[]): Promise<void> {
+    const others: File[] = [];
+    for (const path of paths) {
+      const open = engine.projects.find((p) => p.filePath === path && !p.modified);
+      if (open) { engine.switchTo(open.id); noteRecent(path); continue; }
+      try {
+        if (/\.(fvd|fmv|formvis|sny|sonny|canvasor|comp|zip)$/i.test(path)) {
+          await engine.task(async () => { await openOpened(await api.openPath(path), null); });
+        } else others.push(await api.readPath(path));
+        noteRecent(path);
+      } catch (err) {
+        if (/no file at/i.test(message(err))) keepRecent(recent.filter((n) => n !== path));
+        toast(message(err), 'error');
+      }
+    }
+    if (others.length) await importFiles(others);
+  }
+
+  /** File > Open in the desktop app (1.87.0): the system's open panel for any project or picture formvis reads. */
+  async function openFromPanel(): Promise<boolean> {
+    let paths: string[];
+    try { paths = await chooseOpenPaths('Open', [{ name: 'Projects and pictures', extensions: [...PROJECT_ACCEPT.split(','), ...IMAGE_ACCEPT.split(',')].filter((x) => x.startsWith('.')).map((x) => x.slice(1)) }]); } catch { return false; }
+    if (paths.length) await openPaths(paths);
+    return true;
   }
 
   /** the Open Recent (the system's recent documents, noted on every save and open): the ten library projects
@@ -531,6 +597,7 @@ export function startApp(): void {
   const noteRecent = (name: string): void => keepRecent([name, ...recent.filter((n) => n !== name)]);
 
   async function openLibrary(name: string): Promise<boolean> {
+    if (isDiskPath(name)) { await openPaths([name]); return true; }   // a recent file on disk (1.87.0)
     const existing = engine.projects.find((p) => p.libraryName === name && !p.modified);
     if (existing) { engine.switchTo(existing.id); return true; }
     return engine.task(async () => {
@@ -651,6 +718,15 @@ export function startApp(): void {
   }
 
   async function openFolder(files: File[], paths: string[]): Promise<void> {
+    // A folder that is not an unpacked project (no manifest.json at its top or one level in) opens its pictures and
+    // project files instead (1.87.0, D15): a folder of photos, or the folder projects are saved in.
+    const isProject = paths.some((p) => /^([^/\\]+[/\\])?manifest\.json$/i.test(p.replace(/^[/\\]+/, '')));
+    if (!isProject) {
+      const usable = files.filter((f) => isProjectFile(f) || isImageFile(f));
+      if (!usable.length) { toast('That folder holds no projects or pictures formvis can open.', 'info'); return; }
+      await importFiles(usable);
+      return;
+    }
     await engine.task(async () => {
       try { await openOpened(await api.importProject(files, paths), null); } catch (err) { toast(message(err), 'error'); }
     });
@@ -788,6 +864,12 @@ export function startApp(): void {
       if (ok) toast(`Updated the smart object in ${into}.`);
       return ok;
     }
+    // The desktop app saves to files (1.87.0, CLOSE_GAPS P01): Save writes back to the document's file, Save As and the
+    // first Save choose one in the save panel (the library folder first). A document opened from the library saves there.
+    if (hasPanels() && (saveAs || !!p.filePath || !p.libraryName)) {
+      const done = await saveToDisk(p, saveAs);
+      if (done !== null) return done;
+    }
     let name = saveAs ? null : p.libraryName;
     if (!name) {
       name = await promptName(saveAs ? 'Save As' : 'Save to Library', p.libraryName ?? p.name, 'Save');
@@ -803,7 +885,7 @@ export function startApp(): void {
       try {
         const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p));
         // Based on the version it was opened or last saved at (1.58.8), when saving over that same library item.
-        const res = await api.save(target, manifest, files, target === p.libraryName ? p.libraryVersion ?? '' : '');
+        const res = await api.save(target, manifest, files, target === p.libraryName ? p.libraryVersion ?? '' : '', await thumbnailOf(p));
         if (p.history.revision === revision) engine.markSaved(p, res.name, res.name);
         else { p.name = res.name; p.libraryName = res.name; engine.emit('projects', null); }
         p.libraryVersion = res.version ?? null;
@@ -818,7 +900,38 @@ export function startApp(): void {
     });
   }
 
-  /** File > Save a Copy (Alt+Mod+S; 1.65.8, as Photoshop's): the document saved to the library as `name`, whole or
+  /** The desktop app's Save and Save As (1.87.0): true when saved, false when cancelled or failed, null when the save
+   *  panel is not available (the library prompt is used instead). */
+  async function saveToDisk(p: NonNullable<typeof engine.current>, saveAs: boolean): Promise<boolean | null> {
+    let path = saveAs ? null : p.filePath;
+    if (!path) {
+      const folder = p.filePath ? folderOf(p.filePath) : (await api.libraryFolder())?.folder ?? '';
+      const file = `${stripExt(p.name).replace(/[/\\:*?"<>|]/g, '-') || 'Untitled'}.fvd`;
+      try { path = await chooseSavePath(saveAs ? 'Save As' : 'Save', folder ? `${folder}/${file}` : file, [PROJECT_FILTER]); } catch { return null; }
+      if (!path) return false;
+      if (!/\.fvd$/i.test(path)) path = `${path}.fvd`;
+    }
+    const target = path;
+    return engine.task(async () => {
+      const revision = p.history.revision;
+      try {
+        const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p));
+        const res = await api.saveTo(target, manifest, files, await thumbnailOf(p));
+        p.filePath = res.path;
+        p.libraryVersion = null;
+        if (p.history.revision === revision) engine.markSaved(p, res.name, null);
+        else { p.name = res.name; p.libraryName = null; engine.emit('projects', null); }
+        toast(`Saved ${baseName(res.path)} in ${folderOf(res.path)}.`);
+        noteRecent(res.path);
+        return true;
+      } catch (err) {
+        toast(message(err), 'error');
+        return false;
+      }
+    });
+  }
+
+  /** File > Save a Copy (Alt+Mod+S; 1.65.8): the document saved to the library as `name`, whole or
    *  without `layers` flattened, while the one in its tab keeps its name, its library file and its unsaved state. */
   async function saveCopy(name: string, layers: boolean): Promise<void> {
     const p = engine.current;
@@ -831,7 +944,7 @@ export function startApp(): void {
     await engine.task(async () => {
       try {
         const { manifest, files } = await serialize(doc, layers ? p.activeId : doc.layers[0]?.id ?? null, engine.pathsOf(p), layers ? engine.timelineFor(p) : null);
-        const res = await api.save(name, manifest, files, name === p.libraryName ? p.libraryVersion ?? '' : '');
+        const res = await api.save(name, manifest, files, name === p.libraryName ? p.libraryVersion ?? '' : '', await thumbnailOf(p));
         if (name === p.libraryName && !res.conflict) p.libraryVersion = res.version ?? null;
         if (res.conflict) toast(`${res.kept ?? name} changed elsewhere since you opened it (another device or window), so it was kept as it is; the copy was saved beside it as ${res.name}.`, 'info');
         else toast(`Saved a copy as ${res.name}.`);
@@ -843,15 +956,15 @@ export function startApp(): void {
   /** File > Revert (F12 in the desktop app; 1.65.8, as Photoshop's): the library's copy of the document read back into
    *  its tab as one step that Undo takes back (engine.revertTo). */
   async function revert(): Promise<void> {
-    const p = engine.current, name = p?.libraryName;
-    if (!p || !name || !p.modified) return;
+    const p = engine.current, name = p?.libraryName, file = p?.filePath;
+    if (!p || !(name || file) || !p.modified) return;
     engine.settle();
     await engine.task(async () => {
       try {
-        const o = await api.openLibrary(name), { doc, activeId, paths, timeline } = await readOpened(o);
+        const o = file ? await api.openPath(file) : await api.openLibrary(name ?? ''), { doc, activeId, paths, timeline } = await readOpened(o);
         if (!engine.projects.includes(p)) return;
         if (engine.current !== p) engine.switchTo(p.id);
-        if (engine.revertTo(doc, activeId, paths, timeline)) p.libraryVersion = o.version ?? null;
+        if (engine.revertTo(doc, activeId, paths, timeline)) p.libraryVersion = file ? null : o.version ?? null;
       } catch (err) { toast(message(err), 'error'); }
     });
   }
@@ -864,7 +977,7 @@ export function startApp(): void {
       try {
         const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p));
         const fmv = await api.package(manifest, files), linked = await linkedFiles(engine);
-        await deliver(await zipFiles([{ name: `${p.name}.fmv`, blob: fmv }, ...linked.files]), `${p.name} Package.zip`);
+        await deliver(await zipFiles([{ name: `${p.name}.fvd`, blob: fmv }, ...linked.files]), `${p.name} Package.zip`);
         const n = linked.files.length;
         toast(`Packaged ${n} linked file${n === 1 ? '' : 's'}.${linked.missing.length ? ` Not reachable and left out: ${linked.missing.join(', ')}.` : ''}`, linked.missing.length ? 'info' : undefined);
       } catch (err) { toast(message(err), 'error'); }
@@ -878,7 +991,7 @@ export function startApp(): void {
     await engine.task(async () => {
       try {
         const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p));
-        await deliver(await api.package(manifest, files), `${p.name}.fmv`);
+        await deliver(await api.package(manifest, files, '', await thumbnailOf(p)), `${p.name}.fvd`);
       } catch (err) { toast(message(err), 'error'); }
     });
   }
@@ -2112,7 +2225,7 @@ export function startApp(): void {
     background: new BackgroundPanel(engine),
     color: new ColorPickerDialog(engine),
     liveMask: new LiveMaskDialog(),
-    open: new OpenDialog({ openLibrary, openFiles, openFolder }),
+    open: new OpenDialog({ openLibrary, openFiles, openFolder, openFromPanel: hasPanels() ? openFromPanel : null }),
     settings: new SettingsDialog((pr) => { applyPrefs(engine, pr); applyUiPrefs(pr); recoveryDelay = pr.recoverySeconds * 1000; home.sync(); syncGpu(); syncEngineDevice(); }),
     shortcuts: new ShortcutsDialog(commands),
     about: new AboutDialog(),
@@ -2337,7 +2450,7 @@ export function startApp(): void {
     { id: 'new', label: 'New Canvas...', keys: ['Alt+Mod+N', 'Mod+N'], run: () => dialogs.newCanvas.show() },
     { id: 'open', label: 'Open Project...', keys: ['Mod+O'], run: () => void dialogs.open.show() },
     { id: 'recent-heading', label: 'Open Recent', enabled: () => false, run: () => undefined },
-    ...Array.from({ length: 10 }, (_, i) => ({ id: `recent-${i}`, label: () => recent[i] ?? '', enabled: () => i < recent.length, run: () => { const n = recent[i]; if (n) void openLibrary(n); } })),
+    ...Array.from({ length: 10 }, (_, i) => ({ id: `recent-${i}`, label: () => (isDiskPath(recent[i] ?? '') ? baseName(recent[i]) : recent[i] ?? ''), enabled: () => i < recent.length, run: () => { const n = recent[i]; if (n) void openLibrary(n); } })),
     { id: 'clear-recent', label: 'Clear Recent', enabled: () => recent.length > 0, run: () => keepRecent([]) },
     { id: 'import', label: 'Import Images...', keys: ['Shift+Mod+O'], run: () => imageInput.click() },
     { id: 'import-video', label: 'Video Frames to Layers...', run: () => videoDialog.show() },   // 1.58.9, L1
@@ -2357,7 +2470,7 @@ export function startApp(): void {
     { id: 'save', label: 'Save', keys: ['Mod+S'], enabled: has, run: () => void save(false) },
     { id: 'save-as', label: 'Save As...', keys: ['Shift+Mod+S'], enabled: has, run: () => void save(true) },
     { id: 'save-copy', label: 'Save a Copy...', keys: ['Alt+Mod+S'], enabled: has, run: () => { engine.settle(); dialogs.saveCopy.show(); } },
-    { id: 'revert', label: 'Revert', keys: '__TAURI_INTERNALS__' in window ? ['F12'] : [], enabled: () => !!engine.current?.libraryName && !!engine.current?.modified, run: () => void revert() },
+    { id: 'revert', label: 'Revert', keys: '__TAURI_INTERNALS__' in window ? ['F12'] : [], enabled: () => !!(engine.current?.libraryName || engine.current?.filePath) && !!engine.current?.modified, run: () => void revert() },
     { id: 'download-project', label: 'Download Project File', enabled: has, run: () => void downloadProject() },
     { id: 'package', label: 'Package...', enabled: has, run: () => void packageDocument() },
     { id: 'export-png', label: 'Export PNG', keys: ['Shift+Mod+E'], enabled: has, run: () => void exportImage('png') },

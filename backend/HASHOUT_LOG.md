@@ -2,6 +2,38 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## .fvd projects, thumbnails, files by path · _v1.87.0 (app/routers/projects.py, app/routers/io.py, app/routers/mcp.py, app/services/project_format.py, tests/test_api.py, tests/test_legacy.py)
+
+CLOSE_GAPS P01. The owner's saved project (`2CD3A33C-....fmv`, 4 layers, a Relight layer) opens through `/projects/library`, `/projects/import` and the new `/projects/open-path`; the failure he saw was the window sending a whole folder to `/projects/import`.
+
+- `projects.py`: `EXT` is `.fvd`, `OLD_EXTS` is `(".fmv", *legacy.PROJECT_EXTENSIONS)`. Replaced:
+
+```python
+#: The library writes .fmv; projects with the extensions from before the rename (core/legacy.py) are still read, listed,
+#: opened and deleted, and saving one again writes .fmv in its place.
+EXT, OLD_EXTS = ".fmv", legacy.PROJECT_EXTENSIONS
+```
+
+- `projects.py` new: `_thumb`, `_local` (403 unless `X-Formvis: 1`; a foreign page cannot send the header past the CORS preflight), `_disk_path`, `_write_atomic`, `POST /projects/save-to`, `POST /projects/open-path`, `GET /projects/thumbnail`. `save` and `package` take a `thumbnail` upload. `save`'s write moved into `_write_atomic`; removed from `save`:
+
+```python
+    blob = pf.write_zip(data, assets)
+    fd, tmp_name = tempfile.mkstemp(dir=target.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(blob)
+        os.replace(tmp_name, target)
+    except BaseException:
+        Path(tmp_name).unlink(missing_ok=True)
+        raise
+```
+
+  and from `package`: `return Response(pf.write_zip(data, assets, root), media_type="application/zip")`.
+- `project_format.py`: `THUMBNAIL`, `MAX_THUMBNAIL` (4 MiB); `write_zip(..., thumbnail=b"")` writes `thumbnail.png` beside the manifest when it is a PNG; `read_thumbnail(data)`. Readers before 1.87.0 skip the entry (`_collect` reads only `manifest.json` and `images/`).
+- `io.py`: `EXPORT_NAME` takes `fvd`; new `DISK_KINDS`, `OUTPUT_KINDS`, `POST /io/read-path`, `POST /io/write-path`, `GET /io/outputs` (the exports folder and one level down, newest 200).
+- `mcp.py`: `save_project` writes `.fvd`; `open_file` takes `.fvd` and `.fmv`; `agents sync` regenerated the tool reference.
+- Tests: the two library tests now expect `.fvd` where they expected `.fmv` (the contract changed on purpose); 111 of 115 pass, the 2 real-model tests need models not installed here, the README count was stale before this change (14,600 against about 15,000) and is now 15,150.
+
 ## Stale unpack folders swept at start · _v1.86.3 (formvis_engine.py)
 
 - The owner's Mac after the 1.86.2 checks: no `formvis-engine` process running, 31 `_MEI` folders in `$TMPDIR`, about 5.3 GB (116, 337, 338, 406 and 916 MB ones, one size per build of the day, and 12 empty). The servers had not outlived the app, but nearly every launch left its folder. The 1.86.0 launcher's name template is `%s_MEI%08xXXXXXX` (from its strings): the launcher's pid in hex, then six random characters.

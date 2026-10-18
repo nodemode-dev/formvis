@@ -2,6 +2,33 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Projects as .fvd files; desktop open and save panels; folders that are not projects · _v1.87.0 (io/disk.ts new, io/api.ts, io/images.ts, io/legacy.ts, engine/project.ts, app.ts, ui/app-dialogs.ts, automation/agent-bridge.ts, automation/command-meta.ts)
+
+CLOSE_GAPS P01, the owner's first issue: a saved project could not be opened again ("manifest.json was not found"). The engine opens the owner's file by every route (library, import, path); the error came from the Open dialog's Project folder button, which sent the whole Projects folder as one unpacked project. Saving only ever went to the library under a typed name, and exports went to a hidden Exports folder.
+
+- `io/disk.ts` (new): `hasPanels`, `chooseSavePath` and `chooseOpenPaths` through the shell's dialog plugin (`plugin:dialog|save` and `plugin:dialog|open` with `{ options }`, as `@tauri-apps/plugin-dialog` 2.8.3 calls them), `PROJECT_FILTER`, `baseName`, `folderOf`, `isDiskPath`.
+- `io/api.ts`: `save` and `package` take a thumbnail PNG; new `saveTo`, `openPath`, `readPath`, `writePath`, `outputs`, `thumbnail`; `LOCAL` header (`X-Formvis: 1`) on every call by path; `OutputItem`; `OpenedProject.path`.
+- `engine/project.ts`: `Project.filePath`.
+- `app.ts`: `thumbnailOf(p)` (512 px PNG of `flattenedOf`), `openPaths`, `openFromPanel`, `saveToDisk`, `noteOutput` (`formvis.outputs`); `saveCore` routes desktop Save and Save As through `saveToDisk`; `openOpened` keeps `o.path`; `openLibrary` opens a recent path; `openFolder` opens the pictures and projects of a folder with no `manifest.json` at its top or one level in; `revert` and its command read the file when there is one; Open Recent labels show a path's file name; `deliver` asks in the save panel on the desktop. Replaced in `deliver`:
+
+```ts
+    if (caps?.desktop) { toast(`Saved to ${await api.exportFile(blob, name)}`); fireEvent('export'); return; }
+```
+
+  Replaced in `revert`:
+
+```ts
+    const p = engine.current, name = p?.libraryName;
+    if (!p || !name || !p.modified) return;
+        const o = await api.openLibrary(name), { doc, activeId, paths, timeline } = await readOpened(o);
+        if (engine.revertTo(doc, activeId, paths, timeline)) p.libraryVersion = o.version ?? null;
+```
+
+  and the `revert` command's `enabled: () => !!engine.current?.libraryName && !!engine.current?.modified`. Package and Download Project File name the file `.fvd` (were `${p.name}.fmv`).
+- `ui/app-dialogs.ts` `OpenDialog`: `OpenActions.openFromPanel`; Browse... (was From disk) uses the panel when there is one; Folder... (was Project folder); both buttons carry a title saying what they open.
+- `io/images.ts`: `PROJECT_ACCEPT` starts `.fvd`, `.fmv`; the RAW comment no longer names another product.
+- Checked in Chromium at 1800 x 1110, scale 2, against the engine with the owner's two files: the folder the projects are saved in opens the project (was the manifest error); Browse with the .fmv opens it; with the shell's panels stubbed, Open opens it with its path, Save As writes a .fvd with `thumbnail.png`, Save writes back without asking (5 layers in the file), Revert reads the file, Open Recent reopens it. Not run in the desktop app or WebKit here.
+
 ## Move and Transform freeze in the desktop app · _v1.86.5 (ui/properties.ts)
 
 The owner: only Move and Transform are slow and glitchy in the app. In WebKit 26 at scale 2 (Playwright's), a 60-step Move drag: the stage drew twice, then a 3.5 to 3.7 s frame gap after release (0.4 s at scale 1, 0.65 s after a brush stroke). No JavaScript over 30 ms (rAF, timers, promises, every engine method, encodes, uploads, layout forced at 0 ms, no ResizeObserver callbacks); the overlay recordings showed 7,744 `createRadialGradient` and 7,936 `fill` calls per drag: the Brushes panel's stroke preview, 121 dabs, queued on each of 64 'options', 'doc', 'history' and 'active' events (Move sends 'options' per pointer move), all rasterised by WebKit at the next frame.
