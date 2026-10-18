@@ -34,6 +34,7 @@ Longer reference material that the sub-skills point to sits in `references/`:
 | `references/engine-service.md` | The FastAPI routers and services, status codes, adding an endpoint |
 | `references/desktop-and-embedding.md` | The Tauri sidecar flow, NodeMode portal protocol and theme bridge |
 | `references/verification.md` | The throttled browser verification every UI change passes |
+| `references/relight.md` | Relight layers: the light model, the GPU twin, the session UI and the rules that keep CPU and GPU in step |
 
 ## Subsystem map
 
