@@ -42,7 +42,7 @@ cv_rust_env() {
   fi
 }
 cv_rust_fresh() {
-  local target="$FORMVIS_ROOT/src-tauri/target" now
+  local target="${CARGO_TARGET_DIR:-$FORMVIS_ROOT/src-tauri/target}" now
   now="$(rustc -vV 2>/dev/null | tr '\n' ' ')"
   if [ -d "$target/release" ] && [ "$(cat "$target/.formvis-rustc" 2>/dev/null)" != "$now" ]; then
     cv_say "the Rust compiler differs from the one that built src-tauri/target; cleaning it"

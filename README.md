@@ -2,7 +2,7 @@
 <h1 align="center">formvis</h1>
 <p align="center"><b>Layered image compositing for the web and the desktop, in the NodeMode design system.</b></p>
 <p align="center">
-<img src="https://img.shields.io/badge/version-1.85.0-f97316" alt="version 1.85.0">
+<img src="https://img.shields.io/badge/version-1.85.1-f97316" alt="version 1.85.1">
 <img src="https://img.shields.io/badge/node-22-339933" alt="node 22">
 <img src="https://img.shields.io/badge/python-3.12-3776AB" alt="python 3.12">
 <img src="https://img.shields.io/badge/tauri-2-24C8DB" alt="tauri 2">
@@ -78,7 +78,7 @@ formvis.bat install
 formvis.bat boot
 ```
 
-`./formvis install` installs formvis with ONNX Runtime, so Object Selection (SAM 2.1), Select Subject and Remove Background (U²-Net), LaMa and Real-ESRGAN need nothing else: each fetches its model on first use, pinned to its checksum, or from Preferences > Plugins > Local models. The optional extras (rembg, and torch for SAM 2.1 on a GPU) come with `./formvis install-ml`; `./formvis install --lite` skips them. For the desktop app in one step, run `./build_app` (macOS and Linux): it installs whatever is missing, freezes the engine, compiles the Tauri shell and leaves `formvis.app` in Applications (macOS, with a `.dmg`) or a `.deb` (Linux), logging to `build_app.log`; `./build_app --help` lists its options. Step by step it is `./formvis install-desktop`, then `./formvis desktop dev` or `./formvis desktop build`. `./formvis help` lists every command.
+`./formvis install` installs formvis with ONNX Runtime, so Object Selection (SAM 2.1), Select Subject and Remove Background (U²-Net), LaMa and Real-ESRGAN need nothing else: each fetches its model on first use, pinned to its checksum, or from Preferences > Plugins > Local models. The optional extras (rembg, and torch for SAM 2.1 on a GPU) come with `./formvis install-ml`; `./formvis install --lite` skips them. For the desktop app in one step, run `./build_app` (macOS and Linux): it installs whatever is missing, freezes the engine, compiles the Tauri shell and leaves `formvis.app` in Applications (macOS, with a `.dmg`) or a `.deb` (Linux), logging to `build_app.log`; Rust builds in a local cache (`~/Library/Caches/formvis/tauri-target` on macOS, `~/.cache/formvis/tauri-target` on Linux, `FORMVIS_CARGO_TARGET` to move it); `./build_app --help` lists its options. Step by step it is `./formvis install-desktop`, then `./formvis desktop dev` or `./formvis desktop build`. `./formvis help` lists every command.
 
 | Service | URL | Notes |
 | --- | --- | --- |

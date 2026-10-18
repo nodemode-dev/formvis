@@ -65,6 +65,26 @@ step "installing the engine and the window"
 step "installing the desktop packages (PyInstaller, the Tauri command line)"
 setup/install_desktop
 
+# The Rust build goes to a local cache outside this folder (1.85.1): a project folder that a sync or file-provider app
+# watches can hold back or move freshly built files, which shows up as "can't find crate" for a just-built derive
+# crate. FORMVIS_CARGO_TARGET overrides the place.
+if [ "$os" = macos ]; then cache_root="$HOME/Library/Caches/formvis"; else cache_root="${XDG_CACHE_HOME:-$HOME/.cache}/formvis"; fi
+export CARGO_TARGET_DIR="${FORMVIS_CARGO_TARGET:-$cache_root/tauri-target}"
+mkdir -p "$CARGO_TARGET_DIR"
+cv_say "Rust build folder: $CARGO_TARGET_DIR"
+
+rust_diagnose() {
+  cv_say "diagnosis for the log:"
+  printf '  rustc: %s\n  cargo: %s\n' "$(command -v rustc)" "$(command -v cargo)"
+  printf '  build folder: %s (%s free)\n' "$CARGO_TARGET_DIR" "$(df -h "$CARGO_TARGET_DIR" 2>/dev/null | awk 'NR==2 {print $4}')"
+  printf '  derive crates built: %s\n' "$(ls "$CARGO_TARGET_DIR"/release/deps/ 2>/dev/null | grep -c -- '_derive-.*\.\(dylib\|so\)$' || true)"
+  ls -l "$CARGO_TARGET_DIR"/release/deps/libzerofrom_derive-* 2>/dev/null | sed 's/^/  /' || true
+  for c in "$HOME/.cargo/config.toml" "$HOME/.cargo/config" "$FORMVIS_ROOT/.cargo/config.toml" "$FORMVIS_ROOT/src-tauri/.cargo/config.toml"; do
+    [ -f "$c" ] && { printf '  %s:\n' "$c"; sed 's/^/    /' "$c"; }
+  done
+  return 0
+}
+
 if [ "$clean" = 1 ]; then
   step "cleaning earlier builds"
   ( cd src-tauri && cargo clean )
@@ -91,14 +111,16 @@ step "building the desktop app (the first build compiles several hundred Rust cr
 tlog="$(mktemp)"
 if ! frontend/node_modules/.bin/tauri "${tauri_args[@]}" 2>&1 | tee "$tlog"; then
   grep -Eq 'error\[E|could not compile' "$tlog" || cv_die "tauri build failed outside the Rust compile; see the lines above"
-  cv_say "the Rust compile failed; cleaning src-tauri/target and trying once more"
+  rust_diagnose
+  # Once more from nothing, one compile at a time, so a crate is never read while another job is still writing it.
+  cv_say "the Rust compile failed; cleaning the build folder and trying once more, one crate at a time"
   ( cd src-tauri && cargo clean )
   cv_rust_fresh
-  frontend/node_modules/.bin/tauri "${tauri_args[@]}" || cv_die "tauri build failed twice; send build_app.log"
+  CARGO_BUILD_JOBS=1 frontend/node_modules/.bin/tauri "${tauri_args[@]}" || { rust_diagnose; cv_die "tauri build failed twice; send build_app.log"; }
 fi
 rm -f "$tlog"
 
-bundle="$FORMVIS_ROOT/src-tauri/target/release/bundle"
+bundle="$CARGO_TARGET_DIR/release/bundle"
 version="$("$py" -c 'import json, sys; print(json.load(open(sys.argv[1]))["version"])' src-tauri/tauri.conf.json)"
 
 if [ "$os" = macos ]; then
@@ -140,6 +162,6 @@ else
   elif [ -n "$deb" ]; then
     cv_say "install it with: sudo apt install $deb   (or run ./build_app --install)"
   fi
-  if [ "$open_app" = 1 ]; then "$FORMVIS_ROOT/src-tauri/target/release/formvis" >/dev/null 2>&1 & fi
+  if [ "$open_app" = 1 ]; then "$CARGO_TARGET_DIR/release/formvis" >/dev/null 2>&1 & fi
 fi
 cv_say "done in ${SECONDS}s"

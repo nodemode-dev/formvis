@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.85.1 · 2026-10-18
+
+### Fixed
+
+- `./build_app` on macOS stopped twice at `error[E0463]: can't find crate for zerofrom_derive`: the derive crate had just been built, but the next crate could not read it from `src-tauri/target`. The Rust build now goes to a local cache outside the project folder (`~/Library/Caches/formvis/tauri-target` on macOS, `~/.cache/formvis/tauri-target` on Linux; `FORMVIS_CARGO_TARGET` picks another place), so a folder watched by a sync or file-provider app cannot hold back freshly built files. A failed compile now writes a diagnosis to the log (the compiler, the build folder and its free space, the derive crates built, any Cargo config files) and retries once from a clean folder one crate at a time. The built app and disk image are under that folder's `release/bundle`; the app is still copied to Applications.
+
 ## 1.85.0 · 2026-10-18
 
 ### Changed

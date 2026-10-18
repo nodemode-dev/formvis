@@ -17,7 +17,7 @@ Rules:
 - The page uses no Tauri IPC except the font list, the native GPU canvas commands (`src-tauri/src/native.rs`) and the macOS menu; adding any needs a capability review in `src-tauri/capabilities/default.json`.
 - Nothing GPL goes into the frozen engine; rembg only with `FORMVIS_FREEZE_ML=1`.
 - Versions in `Cargo.toml`, `Cargo.lock` and `tauri.conf.json` move with the rest (see `release-keeper`).
-- `src-tauri/binaries/*` is git-ignored except `.gitkeep`; `src-tauri/target/` and `src-tauri/gen/` are build output.
+- `src-tauri/binaries/*` is git-ignored except `.gitkeep`; `src-tauri/target/` and `src-tauri/gen/` are build output. `./build_app` builds Rust in a local cache instead (from 1.85.1: `~/Library/Caches/formvis/tauri-target` on macOS, `~/.cache/formvis/tauri-target` on Linux, `FORMVIS_CARGO_TARGET` overrides), because a synced project folder can hold back freshly built derive crates (E0463 "can't find crate for `zerofrom_derive`"); the bundle is under that folder's `release/bundle`. A failed compile prints a diagnosis and retries once with one job.
 
 Open items: signing identities (Apple Developer ID, Windows) and the updater key are not set up unless the secrets in `.docs/wiki/Releasing.md` exist; unsigned bundles warn on first run.
 
