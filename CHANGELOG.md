@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.86.5 · 2026-10-18
+
+### Fixed
+
+- Desktop app: the Move and Transform tools froze the window for seconds after a drag. Both send an options change on every pointer move, and each change repainted the Brushes panel's stroke preview (121 soft dabs); WebKit keeps every queued fill and drew about 7,700 of them at once. The preview now repaints only when the brush or theme changes, and the Properties column refreshes once a frame. Measured in WebKit at screen scale 2: the freeze after a move went from 3.5 to 3.7 s to about 0.45 s (what a brush stroke costs on the same machine), and frames from 19.8 to 53.5 a second; Free Transform runs at 55.
+
 ## 1.86.4 · 2026-10-18
 
 ### Fixed

@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Move and Transform freeze in the desktop app · _v1.86.5 (ui/properties.ts)
+
+The owner: only Move and Transform are slow and glitchy in the app. In WebKit 26 at scale 2 (Playwright's), a 60-step Move drag: the stage drew twice, then a 3.5 to 3.7 s frame gap after release (0.4 s at scale 1, 0.65 s after a brush stroke). No JavaScript over 30 ms (rAF, timers, promises, every engine method, encodes, uploads, layout forced at 0 ms, no ResizeObserver callbacks); the overlay recordings showed 7,744 `createRadialGradient` and 7,936 `fill` calls per drag: the Brushes panel's stroke preview, 121 dabs, queued on each of 64 'options', 'doc', 'history' and 'active' events (Move sends 'options' per pointer move), all rasterised by WebKit at the next frame.
+
+- `brushes` section: `paint` returns early unless `[dpr, tip and stroke client sizes, hardness, diameter, angle, roundness, ink]` changed; `paintSoon` keeps at most one frame queued. Replaced `this.refreshers.push(() => { for (const s of setters) s(); fill(); requestAnimationFrame(paint); });` with `... fill(); paintSoon(); });`.
+- Constructor: the engine events call `soon`, which runs `refresh` once in the next animation frame (replaced `engine.on(ev, refresh)`); the first `refresh()` and the DOM events stay direct.
+- After, same test: frame gap after a move 0.42 to 0.51 s, 53.5 frames a second (was 19.8); Free Transform move and corner drag 55 a second, worst 0.42 to 0.47 s. The preview still follows the brush (526 x 112 at scale 2: 28,748 inked pixels, 4,980 at diameter 6).
+
 ## Relight's panel over a minimised group; Record Performance; Web Inspector · _v1.86.4 (ui/panel-group.ts, ui/properties.ts, ui/relight-session.ts, app.ts, ui/perf-recorder.ts new, automation/command-meta.ts, src-tauri/Cargo.toml)
 
 The owner's 1.86.3 screenshot: a Relight session running, the Properties group showing only its header. `formvis.groups` held `properties: { min: true }`; `reveal()` opened the column but not the group, and every earlier check started from clean storage. Reproduced in WebKit 26 (Playwright's) with that state: the group 41 px, `.cv-relight` 0 px.
