@@ -56,8 +56,9 @@ def moge_ready() -> bool:
         return False
 
 
-def _moge_normals(rgb: np.ndarray) -> np.ndarray | None:
-    """MoGe-2 small's normals at the grid, in Relight's frame (x right, y down, z toward the viewer)."""
+def _moge_scene(rgb: np.ndarray) -> tuple | None:
+    """MoGe-2 small in one pass at the grid: normals in Relight's frame (x right, y down, z toward the viewer), metric
+    depth (inf where it is unsure, such as sky) and the focal length as a fraction of the image width."""
     global _moge
     if not moge_ready():
         return None
@@ -75,7 +76,14 @@ def _moge_normals(rgb: np.ndarray) -> np.ndarray | None:
         n = out["normal"].cpu().numpy().astype(np.float32)
         n = np.stack([n[..., 0], n[..., 1], -n[..., 2]], -1)
         n = cv2.resize(n, (w, h), interpolation=cv2.INTER_LINEAR)
-        return n / np.maximum(np.linalg.norm(n, axis=-1, keepdims=True), 1e-6)
+        n = n / np.maximum(np.linalg.norm(n, axis=-1, keepdims=True), 1e-6)
+        z = out["depth"].cpu().numpy().astype(np.float32)
+        ok = np.isfinite(z) & (z > 0)
+        z = np.where(ok, z, 0).astype(np.float32)
+        z = cv2.resize(z, (w, h), interpolation=cv2.INTER_LINEAR)
+        ok = cv2.resize(ok.astype(np.float32), (w, h), interpolation=cv2.INTER_LINEAR) > 0.99
+        fx = float(out["intrinsics"].cpu().numpy()[0, 0])
+        return n, z, ok.astype(np.float32), fx
     except Exception:
         return None
 
@@ -100,9 +108,11 @@ def _subject(rgb: np.ndarray) -> np.ndarray | None:
         return None
 
 
-def _slope_normals(d: np.ndarray, size: int, relief: float = 0.7) -> np.ndarray:
-    gy, gx = np.gradient(_blur(d, 1.2) * relief * size)
-    n = np.stack([-gx, -gy, np.ones_like(gx)], -1)
+def _slope_z_normals(z: np.ndarray, fpx: float) -> np.ndarray:
+    """Normals of a camera-space depth map: the depth's slope per pixel over the size of a pixel at that depth."""
+    gy, gx = np.gradient(_blur(z, 1.2))
+    k = fpx / np.maximum(z, 1e-3)
+    n = np.stack([gx * k, gy * k, np.ones_like(gx)], -1)
     return n / np.linalg.norm(n, axis=-1, keepdims=True)
 
 
@@ -118,33 +128,47 @@ def solve(rgb: np.ndarray) -> dict:
     h, w = g.shape[:2]
     size = max(h, w)
     lin = _lin(g)
-    d = _depth(g)
     mask = _subject(g)
-    if d is None:
-        d = np.full((h, w), 0.5, np.float32)
     if mask is None:
         mask = np.zeros((h, w), np.float32)
     core = (mask > 0.5).astype(np.float32)
-    # Unreliable depth: stray pixels along outlines (a big jump against the local median) are refilled from around them.
-    med = cv2.medianBlur((d * 255).astype(np.uint8), 5).astype(np.float32) / 255
-    sure = (np.abs(d - med) < 0.08).astype(np.float32)
-    d = _fill(d, sure, size)
-    # Two layers: the subject's depth extended past its outline, the background filled in behind it and smoothed.
-    subj = _fill(d, core * sure, size) if core.sum() > 64 else d
+    # Geometry in camera space: MoGe-2 gives metric depth, normals and the focal length in one pass; else Depth
+    # Anything's relative depth turned into distance, with a 45 degree lens assumed.
+    mg = _moge_scene(g)
+    if mg is not None:
+        n_sub, z, zok, fx = mg
+        engine, focal = "moge", fx * w / size
+    else:
+        d = _depth(g)
+        if d is None:
+            d = np.full((h, w), 0.5, np.float32)
+        n_sub, z, zok, engine, focal = None, 1 / (0.3 + 0.7 * np.clip(d, 0, 1)), np.ones((h, w), np.float32), "slope", 1.2
+    # Unreliable areas (sky, stray depth along outlines, a big jump against the local median) are filled from around them.
+    lz = np.log(np.maximum(z, 1e-3)).astype(np.float32)
+    med = cv2.medianBlur(lz, 5)
+    sure = zok * (np.abs(lz - med) < 0.08).astype(np.float32)
+    lz = _fill(lz, sure, size) if sure.sum() > 64 else lz
+    lz = lz - float(np.median(lz[core > 0] if core.sum() > 64 else lz))
+    # Two layers: the subject's depth extended past its outline, the background filled in behind it and smoothed. The
+    # subject is about as deep as it is wide, and the background always sits behind that.
+    subj = _fill(lz, core * sure, size) if core.sum() > 64 else lz
     bg_w = (1 - np.clip(mask * 1.5, 0, 1)) * sure
-    bg = _fill(d, bg_w, size) if bg_w.sum() > 64 else d
+    bg = _fill(lz, bg_w, size) if bg_w.sum() > 64 else lz
     bg = _blur(bg, size / 30)
+    zs, zb = np.exp(subj).astype(np.float32), np.exp(bg).astype(np.float32)
+    thickness = 0.3
     if core.sum() > 64:
-        bg = np.minimum(bg, subj - 0.03)
-    depth = (mask * subj + (1 - mask) * bg).astype(np.float32)
+        cols = np.where(core.max(0) > 0)[0]
+        thickness = float(np.clip((cols.max() - cols.min() + 1) / size / focal, 0.08, 0.8))
+        zb = np.maximum(zb, _blur(zs, size / 60) + thickness)
+    depth = (mask * zs + (1 - mask) * zb).astype(np.float32)
     # Normals: MoGe-2 for the subject when installed, else the slope of its own layer; the background from its layer.
-    n_sub = _moge_normals(g)
-    engine = "moge" if n_sub is not None else "slope"
+    fpx = focal * size
     if n_sub is None:
-        n_sub = _slope_normals(subj, size)
+        n_sub = _slope_z_normals(zs, fpx)
         r = size / 130
         n_sub = np.stack([_blur(n_sub[..., c], r) for c in range(3)], -1)
-    n_bg = _slope_normals(bg, size)
+    n_bg = _slope_z_normals(_blur(zb, size / 60), fpx)
     m3 = mask[..., None]
     normals = n_sub * m3 + n_bg * (1 - m3)
     normals = normals / np.maximum(np.linalg.norm(normals, axis=-1, keepdims=True), 1e-6)
@@ -171,4 +195,5 @@ def solve(rgb: np.ndarray) -> dict:
     fine = _blur(fine, 0.8)
     texture = np.clip(fine / max(1e-4, float(np.percentile(fine[core > 0] if core.sum() > 64 else fine, 95))), 0, 1) * np.clip(mask * 1.5, 0, 1)
     return {"depth": depth, "mask": mask.astype(np.float32), "normals": normals.astype(np.float32), "shading": shading,
-            "level": level, "geometry": engine, "size": (w, h), "texture": texture.astype(np.float32)}
+            "level": level, "geometry": engine, "size": (w, h), "texture": texture.astype(np.float32),
+            "focal": float(focal), "thickness": thickness, "bg_depth": zb.astype(np.float32), "bg_normals": n_bg.astype(np.float32)}

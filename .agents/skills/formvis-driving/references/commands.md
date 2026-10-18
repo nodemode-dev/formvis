@@ -567,7 +567,7 @@ Generated from the window's command catalogue (953 commands) by `./formvis agent
 ### relight.apply parameters
 
 - `look`: string; A ready-made Look; its lights are used unless lights is given
-- `lights`: array; Up to 8 lights: [{type: point/spot/sun/area/strip/ring, kelvin (1000 to 12000) or color {r,g,b}, intensity, softness, diffusion, distance (0 close to 100 far), pos {x,y} and aim {x,y} as fractions of the canvas, near and far (0 to 100, the depth band lit), pattern {kind: none/blinds/strip/window/leaves, scale, width, slats, opening, length, feather, rotation, invert, center {x,y} where the pattern sits, the aim when omitted}}]
+- `lights`: array; Up to 8 lights: [{type: point/spot/sun/area/strip/ring, kelvin (1000 to 12000) or color {r,g,b}, intensity, softness, diffusion, distance (0 close to 100 far), pos {x,y} and aim {x,y} as fractions of the canvas, near and far (0 to 100, the depth band lit), pattern {kind: none/blinds/strip/window/leaves/caustics/lattice/arch/dapple/circle, scale, width, slats, opening, length, feather, rotation, invert, center {x,y} where the pattern sits, the aim when omitted}}]
 - `original`: number 0 to 100; Percent of the original lighting kept
 - `shine`: number 0 to 100; Highlights on glossy forms
 - `delight`: number 0 to 100; Percent of the original light and shade flattened before the new lights

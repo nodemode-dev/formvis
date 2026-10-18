@@ -2,6 +2,22 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The scene in camera space · _v1.84.0 (app/localgen/relight_scene.py, relight_split.py)
+
+- `relight_scene.py`: `_moge_scene` (replaces `_moge_normals`) returns MoGe-2's normals, metric depth (0 and unsure where MoGe masks it, such as sky), that mask and the focal length as a fraction of the width. `solve` works in log distance: unsure and stray pixels (more than 0.08 from a 5-pixel median) refilled with `_fill`, the subject's median at 1; without MoGe, Depth Anything's relative depth becomes `1 / (0.3 + 0.7 d)` with a focal of 1.2. Two layers as before, now `zs` and `zb`; the subject's `thickness` is its width over the focal (0.08 to 0.8) and the background is kept at least that far behind it. Normals from depth slope come from `_slope_z_normals(z, fpx)` (`n = (gx f / z, gy f / z, 1)`). The result gains `focal`, `thickness`, `bg_depth`, `bg_normals`; `depth` is now distance, not nearness. Removed:
+
+```python
+def _slope_normals(d: np.ndarray, size: int, relief: float = 0.7) -> np.ndarray:
+    gy, gx = np.gradient(_blur(d, 1.2) * relief * size)
+    n = np.stack([-gx, -gy, np.ones_like(gx)], -1)
+    return n / np.linalg.norm(n, axis=-1, keepdims=True)
+```
+
+and in `solve` the nearness pipeline (`d = _depth(g)`, `med = cv2.medianBlur((d * 255).astype(np.uint8), 5)...`, `bg = np.minimum(bg, subj - 0.03)`, `n_sub = _moge_normals(g)`, `n_bg = _slope_normals(bg, size)`), as at tag v1.83.0.
+- `relight_split.py`: `extra` and `pack` carry `bg_depth` (f16) and `bg_normals` (f16 x 3) after the texture, `focal` and `thickness` in the header.
+
+Verified on the benchmark portrait: MoGe-2 focal 1.74 of the long side, subject 0.87 to 1.05, background median 2.32, thickness 0.26.
+
 ## Texture for glints · _v1.83.0 (app/localgen/relight_scene.py, relight_split.py)
 
 - `relight_scene.py`: `texture`, the photo's fine detail (`|g - blur 1.5| + 0.5 |g - blur 4|` on the square root of luminance, blurred 0.8, over its 95th percentile, times the subject mask x 1.5), in the result dict; the shading clamp is 0.4 to 1.3 on the grid (replaced `np.clip(S, 0.15, 1.3)`).

@@ -307,7 +307,8 @@ are not touched.
   Softness (softer edges, shadows and highlights), Diffusion (how far the light wraps round forms) and Close to Far
   (near light falls off quickly; far light, like the sun, falls evenly).
 - Pattern casts the light through a gobo: Blinds (Scale, Width, Slats, Opening), Light Strip (Length, Width), Window
-  or Leaves, each with Feather, Rotation and Invert.
+  or Leaves, each with Feather, Rotation and Invert. The nine patterns are Blinds, Light Strip, Window, Leaves,
+  Caustics, Lattice, Arch, Dapple and Circle.
 - Scene sets how much of the photo's Original lighting is kept and how much Shine the lights add on glossy forms.
 - On the canvas, drag a light's round handle to move it and its small target to aim it (Alt-drag also aims); with a pattern, Shift-drag places the pattern's centre (the
   ringed reticle, then draggable itself) apart from the aim, as the strip across her face while the light aims at her
@@ -344,7 +345,11 @@ are not touched.
   Take out with Marigold repaints the surfaces from a learned model and can change a face; it is an option only,
   downloaded from its own button, which names its licence (CreativeML Open RAIL++-M) and size (about 5.2 GB); the
   engine also needs `pip install -r backend/requirements_relight.txt`.
-- Lights sit above the surface they aim at: aim a light at the face and Close to Far sets how high above it it is.
+- A light sits where its marker is, at the depth of the point it aims at; Close to Far brings it out toward the camera.
+  Close is a side light that falls off fast across the subject, far is frontal and even. A Sun is always well up.
+- The scene is solved in 3D (1.84.0): shadows are traced from several points on each light, so the subject casts a
+  soft shadow onto the background that widens the farther the background is behind her, and patterns curve over the
+  subject and stay straight on a flat wall.
 - Relight works on 8-bit RGB documents. In PSD files and older builds a Relight layer is an ordinary pixel layer.
 
 ## Generating images

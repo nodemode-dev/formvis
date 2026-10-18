@@ -2,6 +2,125 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Relight in camera space · _v1.84.0 (engine/relight.ts, gpu/relight-gl.ts, io/local-gen.ts, ui/relight-session.ts; patterns also automation/catalogue.ts)
+
+The owner on 1.83.0: "you need to actually re-think about this and stop doing the same thing over and over again.... I literally gave you the road map". The screen-space renderer (pixels in x and y, a fudged `relief` in z, a `reach` falloff behind the aim, a tanh-bent pattern plane) is replaced by a camera-space one built on the engine's metric scene.
+
+- `RelightGeometry` gains `bg`, `focal`, `thickness`, `zNear`, `zFar`; `.data[3]` is now distance along the camera axis (subject at 1), not 0 to 1 nearness. `relightGeometry` turns relative depth into distance (`1 / (0.3 + 0.7 d)`, the middle at 1, focal 1.2). New `sceneGeometry` (engine scene), `zSpan`. `withNormals` keeps the extra fields (replaced `return { width: geo.width, height: geo.height, data };`).
+- New: `Camera`, `rayAt`, `toPx`, `sphereLambert`, `lightLift`, `goboPx`, `visibility` (eight light samples, 3D march, thickness), `shadeLayer`; `shadeRelight` rewritten as the shader's twin (two layers blended by the cut-out, dark-pixel chroma floor, dark-background cap `photo x 6 + 0.02`, spec roll-off `s / (1 + s)`). Intensity `1.4 x i^2` (was `0.95 x i^2`).
+- `relight-gl.ts`: uniforms `uBg`, `uFocal`, `uThick`, `uZRange`; texture unit 5 for the background layer; `rayAt`, `toPx`, `texAt`, `zAtPx`, `sphereLambert`, `lightPos`, `goboPx`, `visibility`, `shadeLayer` and a new `main`; compile errors are logged. Removed the GLSL `zAt`, `sunTo`, `goboPlaneUV`, `goboUV` and the old `main` body, the GLSL twins of the TypeScript quoted below, as at tag v1.83.0 (`frontend/src/gpu/relight-gl.ts` lines 46 to 78 and 141 to 244).
+- `local-gen.ts`: `LightSplit` gains `bgDepth`, `bgNormals`, `focal`, `thickness`, read after the texture when the header has `focal`. `relight-session.ts`: `splitGeometry` at the three split sites (replaced the `relightGeometry(sp.depth, ...)` plus `withNormals` pairs).
+- Patterns 5 to 9 (caustics, lattice, arch, dapple, circle) in both `patternAt` twins, `RELIGHT_PATTERNS`, `PATTERN_CODE`, the sub-slider `shown` record and the catalogue's `kind` list.
+
+Removed constants: `export const SHADOW_TAPS: readonly number[] = [-1, -0.33, 0.33, 1];`, `export const ALBEDO_FLOOR = 0.006;`, `export const GLINT = 0.06;`, `export const SCENE_DEPTH = 1.2;`.
+
+Removed (TypeScript), the screen-space light:
+
+```ts
+export function sunTo(dx: number, dy: number, distance: number): [number, number, number] {
+  const k = Math.hypot(dx, dy) || 1, e = (20 + 40 * distance) * Math.PI / 180, c = Math.cos(e), sn = Math.sin(e);
+  const x = dx / k * c, y = dy / k * c - 0.35 * sn, z = 0.9 * sn + 0.6, n = Math.hypot(x, y, z);
+  return [x / n, y / n, z / n];
+}
+export interface Gobo { to: [number, number, number]; f: [number, number, number]; r: [number, number, number]; d: [number, number, number]; sun: boolean }
+export function goboBasis(type: number, pos: readonly number[], aim: readonly number[], distance: number, s: number): Gobo {
+  const sun = type === 2, dx = pos[0] - aim[0], dy = pos[1] - aim[1];
+  let to: [number, number, number];
+  if (sun) to = sunTo(dx, dy, distance);
+  else to = [dx, dy, (0.12 + 0.9 * distance) * 0.5 * s];
+  const tl = Math.hypot(to[0], to[1], to[2]) || 1, f: [number, number, number] = [-to[0] / tl, -to[1] / tl, -to[2] / tl];
+  const rl = Math.hypot(f[2], f[0]), r: [number, number, number] = rl < 1e-4 ? [1, 0, 0] : [-f[2] / rl, 0, f[0] / rl];
+  return { to, f, r, d: [r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1]], sun };
+}
+export function goboUV(G: Gobo, x: number, y: number, z: number): [number, number] | null {
+  if (G.sun) return [x * G.r[0] + y * G.r[1] + z * G.r[2], x * G.d[0] + y * G.d[1] + z * G.d[2]];
+  const ax = x - G.to[0], ay = y - G.to[1], az = z - G.to[2], t = ax * G.f[0] + ay * G.f[1] + az * G.f[2];
+  if (t < 1e-3) return null;
+  const k = Math.hypot(G.to[0], G.to[1], G.to[2]) / t;
+  return [(ax * G.r[0] + ay * G.r[1] + az * G.r[2]) * k, (ax * G.d[0] + ay * G.d[1] + az * G.d[2]) * k];
+}
+export function goboPlaneUV(G: Gobo, x: number, y: number, z: number): [number, number] | null {
+  if (G.sun) { const k = z / Math.max(0.15, G.to[2]); return [x - G.to[0] * k, y - G.to[1] * k]; }
+  const dz = G.to[2] - z;
+  if (dz < 1e-3) return null;
+  const t = G.to[2] / dz;
+  return [G.to[0] + (x - G.to[0]) * t, G.to[1] + (y - G.to[1]) * t];
+}
+export function goboPoint(G: Gobo, u: number, v: number): [number, number] | null {
+  const gx = u * G.r[0] + v * G.d[0], gy = u * G.r[1] + v * G.d[1], gz = u * G.r[2] + v * G.d[2];
+  if (G.sun) { if (Math.abs(G.f[2]) < 1e-4) return null; const t = -gz / G.f[2]; return [gx + t * G.f[0], gy + t * G.f[1]]; }
+  const dz = gz - G.to[2];
+  if (Math.abs(dz) < 1e-4) return null;
+  const k = -G.to[2] / dz;
+  return k > 0 ? [G.to[0] + (gx - G.to[0]) * k, G.to[1] + (gy - G.to[1]) * k] : null;
+}
+export function lightAt(L: PackedLight, px: number, py: number, pz: number, nx: number, ny: number, nz: number, s: number, relief: number, steps: number, zAt: (x: number, y: number) => number, shadowAmt = 1, subj = -1): { diffuse: number; spec: number; sss: number; glint: number } {
+  const zAim = zAt(L.aim[0], L.aim[1]), hL = zAim + (0.12 + 0.9 * L.distance) * 0.5 * s;
+  let lx: number, ly: number, lz: number, atten = 1, maxRun = 0.45 * s;
+  if (L.type === 2) {
+    [lx, ly, lz] = sunTo(L.pos[0] - L.aim[0], L.pos[1] - L.aim[1], L.distance);
+  } else {
+    let qx = L.pos[0], qy = L.pos[1];
+    if (L.type === 4) {
+      const dx = L.aim[0] - L.pos[0], dy = L.aim[1] - L.pos[1], d = Math.hypot(dx, dy) || 1, tx = -dy / d, ty = dx / d, half = 0.25 * s;
+      const t = clamp((px - L.pos[0]) * tx + (py - L.pos[1]) * ty, -half, half);
+      qx += tx * t; qy += ty * t;
+    }
+    const vx = qx - px, vy = qy - py, vz = (L.type === 5 ? relief + 0.6 * s : hL) - pz, dist = Math.hypot(vx, vy, vz);
+    lx = vx / dist; ly = vy / dist; lz = vz / dist;
+    const R = (0.25 + L.distance) * s, dA = Math.hypot(L.aim[0] - L.pos[0], L.aim[1] - L.pos[1], hL - zAim), g = (q: number): number => 1 / (1 + (q / R) ** 1.6);
+    atten = 2.2 * Math.min(2.5, g(dist) / g(dA));
+    maxRun = Math.min(maxRun, Math.hypot(vx, vy));
+    if (L.type === 1) {
+      const ax = L.aim[0] - L.pos[0], ay = L.aim[1] - L.pos[1], az = zAim - hL, ad = Math.hypot(ax, ay, az) || 1;
+      const cosA = -(lx * ax + ly * ay + lz * az) / ad, cone = Math.cos((18 + 22 * L.softness) * Math.PI / 180), edge = Math.cos((30 + 30 * L.softness) * Math.PI / 180);
+      atten *= smooth(edge, cone, cosA);
+    }
+  }
+  const dzA = zAim - pz, sun = L.type === 2, behind = subj < 0 ? dzA : dzA * (1 - subj) + Math.min(0, dzA) * subj, reach = (sun ? 0.06 + 0.6 * L.distance : 0.05 + 0.4 * L.distance) * relief, rr = behind > 0 ? behind / reach : -behind / (reach * 2.5);
+  atten = atten / (sun ? 1 + rr * rr : (1 + rr * rr) ** 3) * (sun ? 2.7 : 1);
+  const wrapExtra = L.type === 3 ? 0.35 : L.type === 5 ? 0.5 : 0.3, wr = clamp(L.diffusion + wrapExtra + 1.2 * L.softness, 0, 1.5);
+  const ndl = nx * lx + ny * ly + nz * lz, lam = clamp((ndl + wr) / (1 + wr), 0, 1);
+  if (ndl < -0.6 || atten <= 1e-4) return { diffuse: 0, spec: 0, sss: 0, glint: 0 };
+  let shadow = 1;
+  if (L.type !== 5 && steps > 0 && lz < 0.999) {
+    const flat = Math.hypot(lx, ly) || 1e-6, k = (1.5 + 4.5 * (1 - L.softness)) * (L.type === 3 ? 0.5 : 1), run = Math.max(4, maxRun), bias = relief * 0.004;
+    const spread = (0.04 + 0.22 * L.softness) * (L.type === 3 ? 1.6 : 1), dx = lx / flat, dy = ly / flat, ox = -dy, oy = dx;
+    let total = 0;
+    for (const o of SHADOW_TAPS) {
+      let sh = 1;
+      const sx = dx + ox * o * spread, sy = dy + oy * o * spread, sl = Math.hypot(sx, sy) || 1, ux = sx / sl, uy = sy / sl, uz = lz / flat * (1 + Math.abs(o) * spread * 0.5);
+      for (let j = 1; j <= steps; j++) {
+        const t = (j / steps) * (j / steps) * run, occ = zAt(px + ux * t, py + uy * t) - (pz + uz * t) - bias;
+        if (occ > 0) sh = Math.min(sh, clamp(1 - k * occ / Math.max(1, t), 0, 1));
+        if (sh <= 0) break;
+      }
+      total += sh;
+    }
+    shadow = total / SHADOW_TAPS.length;
+  }
+  shadow = 1 - (1 - shadow) * shadowAmt;
+  let pattern = 1, frame = 1;
+  if (L.pattern !== 0) {
+    const C = L.center, zC = zAim, band = 0.06 * relief;
+    const uv = goboPlaneUV(goboBasis(L.type, L.pos, L.type === 2 ? L.aim : C, L.distance, s), px - C[0], py - C[1], subj >= 0 ? (pz - zC) * (1 - subj) + 0.3 * band * Math.tanh((pz - zC) / (0.3 * band)) * subj : band * Math.tanh((pz - zC) / band));
+    const spread = L.softness + (Math.abs(L.pattern) === 2 ? 0 : 4 * Math.max(0, behind) / relief);
+    pattern = uv ? patternAt(L.pattern, uv[0], uv[1], s, L.pat, L.pat2, spread) : 0;
+    frame = uv ? patternAt(L.pattern, uv[0], uv[1], s, L.pat, L.pat2, spread, true) : 0;
+  }
+  const amount = L.intensity * 3.2 * atten * shadow * pattern, hx = lx, hy = ly, hz = lz + 1, hl = Math.hypot(hx, hy, hz) || 1;
+  const nh = Math.max(0, (nx * hx + ny * hy + nz * hz) / hl), gloss = 8 + 56 * (1 - L.softness);
+  const nxy = Math.max(1e-3, Math.hypot(nx, ny)), lxy = Math.max(1e-3, Math.hypot(lx, ly));
+  const rim = subj > 0 ? RIM * subj * clamp(1 - nz, 0, 1) ** 2 * Math.max(0, (nx * lx + ny * ly) / (nxy * lxy)) : 0;
+  return { diffuse: amount * (lam + rim) * (1 - L.diffusion) + L.intensity * 3.2 * atten * L.diffusion * 0.3 * frame * clamp(0.5 + 0.5 * ndl, 0, 1), spec: ndl > 0 ? Math.pow(nh, gloss) * amount * 0.15 : 0,
+    sss: amount * (1 - L.diffusion) * SSS * Math.max(0, clamp((ndl + 0.6) / 1.6, 0, 1) - lam), glint: amount * clamp((ndl + 0.3) / 1.3, 0, 1) };
+}
+```
+
+The old `shadeRelight` loop called `lightAt` per light with `relief = SCENE_DEPTH * s`, added `c.diffuse * ALBEDO_FLOOR` and `c.glint * GLINT` lifts, and multiplied by `pow(S0, 1 - takeOut)`; it is at tag v1.83.0 lines 374 to 405 of `engine/relight.ts`.
+
+Verified: the shader and the CPU twin agree within one level on a sphere for point, sun with blinds, spot and strip; tsc clean; 194 tests pass.
+
 ## Subject layer, rim, texture glints · _v1.83.0 (engine/relight.ts, gpu/relight-gl.ts, io/local-gen.ts, ui/relight-session.ts)
 
 The owner on 1.82.0: "the light strips and the blinds and the neon lighting are the 3 that are awful and the process/steps I layed out need to be used".

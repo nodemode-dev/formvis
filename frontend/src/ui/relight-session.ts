@@ -1,10 +1,10 @@
 import type { Engine, ID, ToolId } from '../engine';
 import {
-  MAX_RELIGHT_LIGHTS, RELIGHT_LOOKS, TAKE_OUT, levelGain, RELIGHT_PATTERNS, RELIGHT_TYPES, defaultRelight, estimateDepth, kelvinToRgb, newLight, relightFrom, relightGeometry, resampleDepth, shadeRelight, shadingField, withNormals,
+  MAX_RELIGHT_LIGHTS, RELIGHT_LOOKS, TAKE_OUT, levelGain, RELIGHT_PATTERNS, RELIGHT_TYPES, defaultRelight, estimateDepth, kelvinToRgb, newLight, relightFrom, relightGeometry, resampleDepth, sceneGeometry, shadeRelight, shadingField, withNormals,
   type RelightContent, type RelightGeometry, type RelightLight, type RelightPatternKind, type RelightType, type SplitMaps,
 } from '../engine/relight';
 import { renderRelight } from '../gpu/relight-gl';
-import { depthReady, installModel, localDepthValues, relightEngines, relightSplit, type RelightEngines } from '../io/local-gen';
+import { depthReady, installModel, localDepthValues, relightEngines, relightSplit, type LightSplit, type RelightEngines } from '../io/local-gen';
 import { setRelightHost } from '../extensions/tools/relight';
 import { el, q, setClass, setHidden, setText } from './dom';
 import { icon } from './icons';
@@ -38,6 +38,13 @@ function sphereGeometry(n: number): { base: Uint8ClampedArray; geo: RelightGeome
     base.set(r2 < 0.8 ? [196, 192, 186, 255] : [60, 60, 64, 255], i * 4);
   }
   return { base, geo: relightGeometry(depth, n, n) };
+}
+
+/** The split's geometry: the engine's camera-space scene when it sent one (1.84.0), else its depth and normals. */
+function splitGeometry(sp: LightSplit, w: number, h: number, fallback: RelightGeometry): RelightGeometry {
+  if (sp.focal && sp.depth && sp.normals) return sceneGeometry(sp.depth, sp.normals, sp.bgDepth, sp.bgNormals, w, h, sp.focal, sp.thickness ?? 0.3);
+  const geo = sp.depth ? relightGeometry(sp.depth, w, h) : fallback;
+  return sp.normals ? withNormals(geo, sp.normals) : geo;
 }
 
 export class RelightSession {
@@ -147,8 +154,7 @@ export class RelightSession {
       const sp = await relightSplit(await this.sourceBlob(below), pw, ph, engine);
       if (this.layerId !== id || !this.proxy) return;
       for (let i = 3; i < sp.albedo.length; i += 4) sp.albedo[i] = this.proxy.base[i];
-      const geo0 = sp.depth ? relightGeometry(sp.depth, pw, ph) : this.proxy.geo;
-      this.proxy = { ...this.proxy, albedo: sp.albedo, split: { shading: sp.shading, residual: sp.residual, gain: levelGain(sp.level), subject: sp.subject, texture: sp.texture }, normals: sp.normals, scene: !!sp.depth, geo: sp.normals ? withNormals(geo0, sp.normals) : geo0 };
+      this.proxy = { ...this.proxy, albedo: sp.albedo, split: { shading: sp.shading, residual: sp.residual, gain: levelGain(sp.level), subject: sp.subject, texture: sp.texture }, normals: sp.normals, scene: !!sp.depth, geo: splitGeometry(sp, pw, ph, this.proxy.geo) };
       this.splitUsed = sp.engine;
       setText(note, sp.engine === 'marigold' ? t('Old light removed with Marigold: Original lighting now sets how much of it stays.') : t(this.engines.regions === 'parts' ? 'Old light removed per material (skin, hair, clothes, scene) with the subject\'s own detail kept: Original lighting sets how much of it stays.' : 'Old light removed by colour regions with the subject\'s own detail kept: Original lighting sets how much of it stays.'));
       this.schedule();
@@ -205,8 +211,8 @@ export class RelightSession {
         const sp = await relightSplit(await c.convertToBlob({ type: 'image/png' }), W, H, content.split === 'marigold' || content.split === 'classic' ? content.split : 'auto');
         for (let i = 3; i < sp.albedo.length; i += 4) sp.albedo[i] = below.data[i];
         base = sp.albedo; split = { shading: sp.shading, residual: sp.residual, gain: levelGain(sp.level), subject: sp.subject, texture: sp.texture }; splitBy = sp.engine;
-        if (sp.depth) { geo = relightGeometry(sp.depth, W, H); depth = sp.depth; }
-        if (sp.normals) geo = withNormals(geo, sp.normals);
+        geo = splitGeometry(sp, W, H, geo);
+        if (sp.depth && !sp.focal) depth = sp.depth;
       } catch { split = null; }
     }
     const px = renderRelight(base, geo, made, kind === 'model' ? 24 : 0, shadingField(below.data, W, H), split);
@@ -277,8 +283,7 @@ export class RelightSession {
           const sp = await relightSplit(this.source, f.w, f.h, this.splitUsed);
           for (let i = 3; i < sp.albedo.length; i += 4) sp.albedo[i] = f.data[i];
           base = sp.albedo; split = { shading: sp.shading, residual: sp.residual, gain: levelGain(sp.level), subject: sp.subject, texture: sp.texture };
-          if (sp.depth) geo = relightGeometry(sp.depth, f.w, f.h);
-          if (sp.normals) geo = withNormals(geo, sp.normals);
+          geo = splitGeometry(sp, f.w, f.h, geo);
         } catch { split = null; }
       }
       const px = renderRelight(base, geo, this.content, this.depthFull ? 24 : 0, shadingField(f.data, f.w, f.h), split);
@@ -590,7 +595,7 @@ export class RelightSession {
       (this.rows.pattern as Row<string>).set(l.pattern.kind);
       const pk = l.pattern.kind;
       setHidden(q(this.panel, '.cv-relight-sub'), pk === 'none');
-      const shown: Record<string, boolean> = { scale: true, width: pk === 'blinds' || pk === 'strip', length: pk === 'strip', slats: pk === 'blinds', opening: pk === 'blinds' || pk === 'leaves', feather: true, rotation: true };
+      const shown: Record<string, boolean> = { scale: true, width: pk === 'blinds' || pk === 'strip' || pk === 'arch' || pk === 'circle', length: pk === 'strip', slats: pk === 'blinds' || pk === 'lattice' || pk === 'caustics', opening: pk === 'blinds' || pk === 'leaves' || pk === 'dapple' || pk === 'caustics' || pk === 'lattice', feather: true, rotation: true };
       for (const k of ['scale', 'width', 'length', 'slats', 'opening', 'feather', 'rotation'] as const) {
         const r = this.rows[`p.${k}`] as Row<number>;
         r.set(l.pattern[k]);

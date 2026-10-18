@@ -4,6 +4,19 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.84.0 · 2026-10-18
+
+### Changed
+
+- Relight is rebuilt on a real camera-space scene, following the owner's method step by step instead of adjusting the screen-space approximation again. The engine now keeps what MoGe-2 small gives in its one pass (metric depth, normals and the camera's focal length), fills unsure areas such as sky from their surroundings, and sends two layers: the subject, about as deep as it is wide, and the background filled in behind it and always behind the subject. Without MoGe-2, Depth Anything's depth is turned into distance with a 45 degree lens.
+- Every pixel is a point in 3D along its camera ray. A light sits where its marker is, at the depth of the point it aims at, and Close to Far brings it out toward the camera (close is a side light with a steep falloff, far is frontal and sun-like). Light reaching a point follows real directions and distances, exposed for the aimed point, with a falloff gentler than inverse-square and capped near the source.
+- Terminators come from a round light of physical size (Softness), softened by Diffusion; warm materials take red light past the shadow edge; glints use a standard specular model boosted where the photo has texture (pores, hair); a light at the side or behind draws a rim along the outline and through strands.
+- Soft shadows are traced in 3D from eight points on each light through the depth map, with the subject's thickness, so she casts shadows onto the background and the penumbra widens with distance behind her.
+- Patterns are projected from the light through the scene onto the plane of the pattern's centre: they curve over the subject and stay straight on a flat background, with no screen-space bending.
+- The subject and the background are lit as separate surfaces and blended by the cut-out, so light never bleeds across the outline; very dark pixels keep their brightness but not their colour noise; a dark background can only be brightened six times; shiny spots roll off instead of blowing out.
+- Nine patterns: Blinds, Light Strip, Window, Leaves, Caustics, Lattice, Arch, Dapple and Circle.
+- Benchmark against the reference (subject's brightest tenth, ours / reference, in stops): Blinds 0.99 / 1.02, Light Strip 1.27 / 1.19, horizontal strip 1.82 / 1.83, candle 1.74 / 1.87, 1.48 / 1.60, -0.26 / -0.26, Neon 0.99 / 1.18. The shader and its CPU twin agree within one level.
+
 ## 1.83.0 · 2026-10-18
 
 ### Changed

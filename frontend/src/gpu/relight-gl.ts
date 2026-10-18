@@ -1,4 +1,4 @@
-import { ALBEDO_FLOOR, GLINT, RIM, SSS, MAX_RELIGHT_LIGHTS, SCENE_DEPTH, packLights, sceneTerms, shadeRelight, type RelightContent, type RelightGeometry, type SplitMaps } from '../engine/relight';
+import { RIM, SSS, MAX_RELIGHT_LIGHTS, packLights, sceneTerms, shadeRelight, type RelightContent, type RelightGeometry, type SplitMaps } from '../engine/relight';
 
 const VERT = `#version 300 es
 in vec2 aPos;
@@ -32,6 +32,10 @@ uniform sampler2D uRes;
 uniform float uSplit;
 uniform float uTakeOut;
 uniform float uGain;
+uniform sampler2D uBg;
+uniform float uFocal;
+uniform float uThick;
+uniform vec2 uZRange;
 
 float toLin(float v) { return v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4); }
 float toSrgb(float v) { return v <= 0.0031308 ? v * 12.92 : 1.055 * pow(v, 1.0 / 2.4) - 0.055; }
@@ -43,42 +47,58 @@ float vnoise(vec2 p) {
   float a = hash(i), b = hash(i + vec2(1.0, 0.0)), c = hash(i + vec2(0.0, 1.0)), d = hash(i + vec2(1.0, 1.0));
   return a + (b - a) * u.x + (c - a) * u.y + (a - b - c + d) * u.x * u.y;
 }
-float zAt(vec2 p, float relief) {
-  vec2 uv = clamp((floor(p) + 0.5) / uSize, vec2(0.0), vec2(1.0));
-  return texture(uGeo, uv).a * relief;
+// Camera space (1.84.0): x right, y down, z away from the camera, in units of the subject's distance. A pixel's point
+// is its depth along its camera ray; the focal length is a fraction of the picture's long side.
+vec3 rayAt(vec2 p) { return vec3((p - 0.5 * uSize) / (uFocal * max(uSize.x, uSize.y)), 1.0); }
+vec2 toPx(vec3 q) { return 0.5 * uSize + q.xy / max(q.z, 1e-4) * uFocal * max(uSize.x, uSize.y); }
+vec2 texAt(vec2 p) { return clamp((floor(p) + 0.5) / uSize, vec2(0.0), vec2(1.0)); }
+float zAtPx(vec2 p) { return texture(uGeo, texAt(p)).a; }
+// A round light of angular radius asin(sa): the terminator is the cosine smoothed over the source's size.
+float sphereLambert(float x, float sa) { return x >= sa ? x : (x <= -sa ? 0.0 : (x + sa) * (x + sa) / (4.0 * sa)); }
+// The light sits where its marker is, at the depth of the point it aims at, and Close to Far brings it out toward the
+// camera: close is beside the subject (side light, steep falloff), far is well in front of it (frontal, sun-like).
+// A sun is always well up: daylight reaches the front of the subject, Close to Far raises it further.
+vec3 lightPos(vec2 pos, vec2 aim, float d, bool sun) { float za = zAtPx(aim); return rayAt(pos) * za - vec3(0.0, 0.0, za * (sun ? 0.25 + 0.75 * d : 0.03 + 0.97 * pow(d, 1.5))); }
+// Where the line from a point toward the light meets the plane at the pattern centre's depth, in pixels.
+vec2 goboPx(vec3 P, vec3 L, vec3 dir, bool sun, float zc) {
+  vec3 X;
+  if (sun) { float dz = abs(dir.z) < 0.02 ? (dir.z < 0.0 ? -0.02 : 0.02) : dir.z; X = P + dir * ((zc - P.z) / dz); }
+  else { float den = P.z - L.z; den = abs(den) < 1e-3 ? (den < 0.0 ? -1e-3 : 1e-3) : den; X = L + (P - L) * ((zc - L.z) / den); }
+  return toPx(vec3(X.xy, zc));
 }
-vec3 sunTo(vec2 dd, float dist) {
-  float k = length(dd), e = radians(20.0 + 40.0 * dist), c = cos(e), sn = sin(e);
-  vec2 h = k < 1e-6 ? vec2(0.0) : dd / k;
-  return normalize(vec3(h.x * c, h.y * c - 0.35 * sn, 0.9 * sn + 0.6));
-}
-bool goboPlaneUV(float type, vec2 pos, vec2 aim, float dist, float s, vec3 rel, out vec2 uv) {
-  vec2 dd = pos - aim;
-  if (abs(type - 2.0) < 0.5) { vec3 to = sunTo(dd, dist); uv = rel.xy - to.xy * (rel.z / max(0.15, to.z)); return true; }
-  vec3 to = vec3(dd, (0.12 + 0.9 * dist) * 0.5 * s);
-  float dz = to.z - rel.z;
-  if (dz < 1e-3) { uv = vec2(0.0); return false; }
-  uv = to.xy + (rel.xy - to.xy) * (to.z / dz);
-  return true;
-}
-bool goboUV(float type, vec2 pos, vec2 aim, float dist, float s, vec3 rel, out vec2 uv) {
-  vec2 dd = pos - aim;
-  bool sun = abs(type - 2.0) < 0.5;
-  vec3 to = sun ? sunTo(dd, dist) : vec3(dd, (0.12 + 0.9 * dist) * 0.5 * s);
-  vec3 f = -normalize(to);
-  float rl = length(vec2(f.z, f.x));
-  vec3 r = rl < 1e-4 ? vec3(1.0, 0.0, 0.0) : vec3(-f.z / rl, 0.0, f.x / rl);
-  vec3 dn = vec3(r.z * f.y, r.z * f.x - r.x * f.z, r.x * f.y);
-  if (sun) { uv = vec2(dot(rel, r), dot(rel, dn)); return true; }
-  vec3 a = rel - to;
-  float t = dot(a, f);
-  if (t < 1e-3) { uv = vec2(0.0); return false; }
-  uv = vec2(dot(a, r), dot(a, dn)) * length(to) / t;
-  return true;
+// Soft shadow: rays from the point toward several points on the light, marched through the depth map. A sample hides
+// the light when it passes behind the visible surface and within the surface's thickness: the subject is about as deep
+// as it is wide, the background is solid.
+float visibility(vec3 P, vec3 Lc, vec3 toL, bool sun, float rad, float steps) {
+  vec3 ax = sun ? toL : normalize(Lc - P);
+  vec3 u = normalize(cross(ax, abs(ax.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0))), v = cross(ax, u);
+  float total = 0.0;
+  for (int k = 0; k < 8; k++) {
+    float a = 6.2831853 * (float(k) + 0.5) / 8.0, rr = (k % 2 == 0) ? 1.0 : 0.45;
+    vec3 d; float T;
+    if (sun) { d = normalize(ax + (u * cos(a) + v * sin(a)) * rr * rad); T = 2.5 * P.z; }
+    else { vec3 q = Lc + (u * cos(a) + v * sin(a)) * rr * rad; d = normalize(q - P); T = min(length(q - P), 2.5 * P.z); }
+    float vis = 1.0;
+    for (int j = 1; j <= 32; j++) {
+      if (float(j) > steps) break;
+      float f = float(j) / steps, t = f * f * T + 0.006 * P.z;
+      vec3 Q = P + d * t;
+      if (Q.z < 0.05) break;
+      vec2 qp = toPx(Q);
+      if (qp.x < 0.0 || qp.y < 0.0 || qp.x >= uSize.x || qp.y >= uSize.y) break;
+      vec2 tq = texAt(qp);
+      float zs = texture(uGeo, tq).a, m = texture(uRes, tq).a, dz = Q.z - zs;
+      float th = m > 0.5 || m < -0.5 ? uThick : 1e4;
+      if (dz > 0.0 && dz < th) vis = min(vis, 1.0 - sstep(0.004 * Q.z, 0.03 * Q.z, dz));
+      if (vis <= 0.0) break;
+    }
+    total += vis;
+  }
+  return total / 8.0;
 }
 float patternAt(float kind, vec2 q, float s, vec4 d, vec4 e, float soft, bool frameOnly) {
   float k = abs(kind);
-  if (k < 0.5 || (frameOnly && (kind < 0.0 || k > 3.5))) return 1.0;
+  if (k < 0.5 || (frameOnly && (kind < 0.0 || (k > 3.5 && k < 5.5) || (k > 7.5 && k < 8.5)))) return 1.0;
   float rot = e.w, cr = cos(rot), sr = sin(rot);
   float x = (q.x * cr + q.y * sr) / s, y = (-q.x * sr + q.y * cr) / s;
   float feather = max(0.002, e.z * 0.25 + soft * 0.08);
@@ -97,119 +117,142 @@ float patternAt(float kind, vec2 q, float s, vec4 d, vec4 e, float soft, bool fr
     float half_ = 0.32 * d.y, bar = 0.02 * d.y;
     float frame = sstep(half_, half_ - feather, abs(x)) * sstep(half_ * 1.3, half_ * 1.3 - feather, abs(y));
     m = frameOnly ? frame : frame * sstep(bar, bar + feather, abs(x)) * sstep(bar, bar + feather, abs(y));
-  } else {
+  } else if (k < 4.5) {
     float sc = 6.0 / max(0.1, d.y);
     float n = vnoise(vec2(x, y) * sc) * 0.65 + vnoise(vec2(x, y) * sc * 2.3 + vec2(7.0, 3.0)) * 0.35;
     m = sstep(1.0 - e.x - feather, 1.0 - e.x + feather, n);
+  } else if (k < 5.5) {
+    float sc = (2.0 + 0.3 * d.w) / max(0.1, d.y);
+    vec2 pp = vec2(x, y) * sc;
+    vec2 qq = pp + vec2(vnoise(pp + vec2(3.1, 1.7)) - 0.5, vnoise(pp + vec2(8.3, 2.8)) - 0.5) * 1.6;
+    vec2 ww = vec2(vnoise(qq * 2.1 + vec2(1.9, 6.1)) - 0.5, vnoise(qq * 2.1 + vec2(4.4, 9.7)) - 0.5);
+    float n = vnoise(qq) * 0.55 + vnoise(qq * 2.03 + vec2(5.2, 1.3) + ww * 0.8) * 0.3 + vnoise(qq * 4.1 + vec2(9.1, 4.7)) * 0.15;
+    float ridge = max(0.0, 1.0 - abs(2.0 * n - 1.0)), pw = (2.0 + 14.0 * (1.0 - e.x)) / (1.0 + 8.0 * feather);
+    m = 0.25 + 0.75 * pow(ridge, pw);
+  } else if (k < 6.5) {
+    float hx = 0.32 * d.y, hy = hx * 1.3;
+    float frame = sstep(hx, hx - feather, abs(x)) * sstep(hy, hy - feather, abs(y));
+    float per = (2.0 * hx) / max(2.0, d.w), bw = (1.0 - e.x) * 0.3 * per, fl = min(feather, per * 0.3);
+    float da = abs(fract((x + y) / per + 0.5) - 0.5) * per * 0.70710678118654752, db = abs(fract((x - y) / per + 0.5) - 0.5) * per * 0.70710678118654752;
+    m = frameOnly ? frame : frame * sstep(bw, bw + fl, da) * sstep(bw, bw + fl, db);
+  } else if (k < 7.5) {
+    float hh = 0.4 * d.y, hw = min(0.22 * d.z, 0.4) * d.y, yc = hw - hh, bar = 0.018 * d.y, y2 = (yc + hh) * 0.5;
+    float dd = y < yc ? length(vec2(x, y - yc)) - hw : max(abs(x) - hw, y - hh);
+    float frame = sstep(0.0, -feather, dd);
+    m = frameOnly ? frame : frame * sstep(bar, bar + feather, abs(x)) * sstep(bar, bar + feather, abs(y - yc)) * sstep(bar, bar + feather, abs(y - y2));
+  } else if (k < 8.5) {
+    float cs = 0.1 * d.y, ix = floor(x / cs), iy = floor(y / cs), miss = 1.0;
+    for (int j = -1; j <= 1; j++) {
+      for (int i = -1; i <= 1; i++) {
+        float cx = ix + float(i), cy = iy + float(j);
+        if (hash(vec2(cx + 17.3, cy + 5.1)) >= e.x) continue;
+        float dx = x - (cx + 0.1 + 0.8 * hash(vec2(cx + 3.7, cy + 11.9))) * cs, dy = y - (cy + 0.1 + 0.8 * hash(vec2(cx + 29.1, cy + 7.3))) * cs;
+        float r = 0.5 * cs * (0.5 + 0.8 * hash(vec2(cx + 41.7, cy + 23.9)));
+        miss *= 1.0 - sstep(r, max(0.0, 0.55 * r - feather), length(vec2(dx, dy)));
+      }
+    }
+    m = 1.0 - miss;
+  } else if (k < 9.5) {
+    float rad = 0.3 * d.y;
+    m = sstep(rad, rad - feather, length(vec2(x / max(0.05, d.z), y)));
   }
   return kind < 0.0 ? 1.0 - m : m;
 }
-void main() {
-  vec2 uv = vUv;
-  vec4 base = texture(uBase, uv);
-  vec4 g = texture(uGeo, uv);
-  float s = max(uSize.x, uSize.y), relief = ${SCENE_DEPTH.toFixed(3)} * s;
-  vec2 p = uv * uSize;
-  vec3 n = g.rgb;
-  float pz = g.a * relief;
-  vec4 s0t = uSplit > 0.5 ? texture(uS0, uv) : vec4(1.0, 1.0, 1.0, 0.0);
-  vec3 s0 = max(s0t.rgb, vec3(1e-4));
-  vec4 resid = texture(uRes, uv);
-  float subj = uSplit > 0.5 ? resid.a : -1.0;
-  vec3 E = uAmbient * pow(s0, vec3(uTakeOut)), S = uSplit > 0.5 ? resid.rgb * uOrig : vec3(0.0);
+// One surface layer lit by every light (1.84.0): E gathers light that multiplies the surface colour, Sp gathers
+// glints that sit on top. P is the point in camera space, nV its normal (z toward the viewer).
+void shadeLayer(vec2 p, vec3 P, vec3 nV, float subj, float tex, float warm, inout vec3 E, inout vec3 Sp) {
+  vec3 nW = normalize(vec3(nV.xy, -nV.z)), V = normalize(-P);
+  float near = clamp((uZRange.y - P.z) / max(1e-4, uZRange.y - uZRange.x), 0.0, 1.0);
   for (int i = 0; i < ${MAX_RELIGHT_LIGHTS}; i++) {
     if (i >= uCount) break;
     vec4 A = uA[i], B = uB[i], C = uC[i], D = uD[i], Ee = uE[i], F = uF[i];
-    float win = (F.x <= 0.0 ? 1.0 : sstep(F.x - 0.04, F.x + 0.04, g.a)) * (F.y >= 1.0 ? 1.0 : sstep(F.y + 0.04, F.y - 0.04, g.a));
+    float win = (F.x <= 0.0 ? 1.0 : sstep(F.x - 0.04, F.x + 0.04, near)) * (F.y >= 1.0 ? 1.0 : sstep(F.y + 0.04, F.y - 0.04, near));
     if (win <= 0.0) continue;
-    float type = A.x, intensity = A.y, softness = A.z, diffusion = A.w, distance_ = B.w;
+    float type = A.x, intensity = A.y, softness = A.z, diffusion = A.w, d = B.w;
+    bool sun = abs(type - 2.0) < 0.5, ring = abs(type - 5.0) < 0.5;
     vec2 pos = C.xy, aim = C.zw;
-    float zAim = zAt(aim, relief), hL = zAim + (0.12 + 0.9 * distance_) * 0.5 * s;
-    vec3 l; float atten = 1.0; float maxRun = 0.45 * s;
-    if (abs(type - 2.0) < 0.5) {
-      l = sunTo(pos - aim, distance_);
+    vec3 PA = rayAt(aim) * zAtPx(aim), L = ring ? rayAt(pos) * zAtPx(aim) * 0.12 : lightPos(pos, aim, d, sun);
+    float dA = max(0.05, length(L - PA)), rad, sa, atten = 1.0;
+    vec3 Lc = L, toL;
+    if (sun) {
+      toL = normalize(L - PA);
+      rad = tan(radians(0.6 + 24.0 * softness));
+      sa = sin(atan(rad));
     } else {
-      vec2 q = pos;
-      if (abs(type - 4.0) < 0.5) {
-        vec2 dd = aim - pos; float dl = max(1e-6, length(dd)); vec2 t = vec2(-dd.y, dd.x) / dl;
-        q += t * clamp(dot(p - pos, t), -0.25 * s, 0.25 * s);
-      }
-      vec3 v = vec3(q - p, (abs(type - 5.0) < 0.5 ? relief + 0.6 * s : hL) - pz);
-      float dist = length(v);
-      l = v / dist;
-      float R = (0.25 + distance_) * s, dA = length(vec3(aim - pos, hL - zAim));
-      atten = 2.2 * min(2.5, (1.0 + pow(dA / R, 1.6)) / (1.0 + pow(dist / R, 1.6)));
-      maxRun = min(maxRun, length(v.xy));
+      if (abs(type - 4.0) < 0.5) { vec3 tg = normalize(cross(normalize(PA - L), vec3(0.0, 0.0, 1.0))); Lc = L + tg * clamp(dot(P - L, tg), -0.35 * dA, 0.35 * dA); }
+      vec3 v = Lc - P;
+      float dist = max(1e-3, length(v));
+      toL = v / dist;
+      rad = (0.03 + 0.35 * softness + (abs(type - 3.0) < 0.5 ? 0.25 : 0.0) + (ring ? 0.3 : 0.0)) * dA;
+      sa = min(0.95, rad / dist);
+      atten = min(4.0, pow((dA + rad) / (dist + rad), 1.6));
       if (abs(type - 1.0) < 0.5) {
-        vec3 ax = vec3(aim - pos, zAim - hL);
-        float cosA = -dot(l, ax) / max(1e-6, length(ax));
+        float cosA = dot(-toL, normalize(PA - L));
         atten *= sstep(cos(radians(30.0 + 30.0 * softness)), cos(radians(18.0 + 22.0 * softness)), cosA);
       }
     }
-    bool sun = abs(type - 2.0) < 0.5;
-    float dzA = zAim - pz, behind = subj < 0.0 ? dzA : dzA * (1.0 - subj) + min(0.0, dzA) * subj, reach = (sun ? 0.06 + 0.6 * distance_ : 0.05 + 0.4 * distance_) * relief, rr = behind > 0.0 ? behind / reach : -behind / (reach * 2.5);
-    atten = atten / (sun ? 1.0 + rr * rr : pow(1.0 + rr * rr, 3.0)) * (sun ? 2.7 : 1.0);
-    float wrapExtra = abs(type - 3.0) < 0.5 ? 0.35 : (abs(type - 5.0) < 0.5 ? 0.5 : 0.3);
-    float wr = clamp(diffusion + wrapExtra + 1.2 * softness, 0.0, 1.5);
-    float ndl = dot(n, l), lam = clamp((ndl + wr) / (1.0 + wr), 0.0, 1.0);
-    if (ndl < -0.6 || atten <= 1e-4) continue;
+    float ndl = dot(nW, toL), wrap = diffusion * 0.6;
+    float lam = sphereLambert((ndl + wrap) / (1.0 + wrap), max(sa, 0.02));
+    float back = clamp(toL.z + 0.5, 0.0, 1.0);
+    vec2 nxy = nW.xy / max(1e-3, length(nW.xy)), lxy = toL.xy / max(1e-3, length(toL.xy));
+    float rim = subj > 0.0 ? ${RIM.toFixed(3)} * subj * back * pow(clamp(1.0 - abs(nV.z), 0.0, 1.0), 2.0) * max(0.0, dot(nxy, lxy)) * (0.6 + 0.8 * tex) : 0.0;
+    float spill = sphereLambert((ndl + 0.45) / 1.45, 0.3);
+    if (lam <= 0.0 && rim <= 0.0 && spill <= 0.0) continue;
     float shadow = 1.0;
-    if (abs(type - 5.0) >= 0.5 && uSteps > 0 && l.z < 0.999) {
-      float flat_ = max(1e-6, length(l.xy));
-      float k = (1.5 + 4.5 * (1.0 - softness)) * (abs(type - 3.0) < 0.5 ? 0.5 : 1.0);
-      float run = max(4.0, maxRun), bias = relief * 0.004;
-      float spread = (0.04 + 0.22 * softness) * (abs(type - 3.0) < 0.5 ? 1.6 : 1.0);
-      vec2 dd = l.xy / flat_, oo = vec2(-dd.y, dd.x);
-      float total = 0.0;
-      for (int q = 0; q < 4; q++) {
-        float o = q == 0 ? -1.0 : (q == 1 ? -0.33 : (q == 2 ? 0.33 : 1.0));
-        vec2 sxy = dd + oo * o * spread;
-        vec2 u = sxy / max(1e-6, length(sxy));
-        float uz = l.z / flat_ * (1.0 + abs(o) * spread * 0.5), sh = 1.0;
-        for (int j = 1; j <= 32; j++) {
-          if (j > uSteps) break;
-          float fj = float(j) / float(uSteps), t = fj * fj * run;
-          float occ = zAt(p + u * t, relief) - (pz + uz * t) - bias;
-          if (occ > 0.0) sh = min(sh, clamp(1.0 - k * occ / max(1.0, t), 0.0, 1.0));
-          if (sh <= 0.0) break;
-        }
-        total += sh;
-      }
-      shadow = total * 0.25;
-    }
-    shadow = 1.0 - (1.0 - shadow) * uShadows;
+    if (!ring && uSteps > 0) shadow = 1.0 - (1.0 - visibility(P + nW * 0.004 * P.z, Lc, toL, sun, rad, float(uSteps))) * uShadows;
     float pattern = 1.0, frame = 1.0;
     if (abs(D.x) > 0.5) {
-      vec2 guv;
-      float band = 0.06 * relief, zC = zAim;
-      bool hit = goboPlaneUV(type, pos, abs(type - 2.0) < 0.5 ? aim : F.zw, distance_, s, vec3(p - F.zw, subj >= 0.0 ? (pz - zC) * (1.0 - subj) + 0.3 * band * tanh((pz - zC) / (0.3 * band)) * subj : band * tanh((pz - zC) / band)), guv);
-      float spread = softness + (abs(abs(D.x) - 2.0) < 0.5 ? 0.0 : 4.0 * max(0.0, behind) / relief);
-      pattern = hit ? patternAt(D.x, guv, s, D, Ee, spread, false) : 0.0;
-      frame = hit ? patternAt(D.x, guv, s, D, Ee, spread, true) : 0.0;
+      float zc = zAtPx(F.zw);
+      vec2 q = goboPx(P, Lc, toL, sun, zc) - F.zw;
+      float spread = softness + (abs(abs(D.x) - 2.0) < 0.5 ? 0.0 : 0.8 * max(0.0, P.z - zc));
+      pattern = patternAt(D.x, q, max(uSize.x, uSize.y), D, Ee, spread, false);
+      frame = patternAt(D.x, q, max(uSize.x, uSize.y), D, Ee, spread, true);
     }
-    float amount = intensity * 3.2 * atten * shadow * pattern;
-    vec3 hv = normalize(l + vec3(0.0, 0.0, 1.0));
-    float gloss = 8.0 + 56.0 * (1.0 - softness);
-    float nxy = max(1e-3, length(n.xy)), lxy = max(1e-3, length(l.xy));
-    float rim = subj > 0.0 ? ${RIM.toFixed(3)} * subj * pow(clamp(1.0 - n.z, 0.0, 1.0), 2.0) * max(0.0, dot(n.xy, l.xy) / (nxy * lxy)) : 0.0;
-    vec3 add = B.rgb * (amount * (lam + rim) * (1.0 - diffusion) + intensity * 3.2 * atten * diffusion * 0.3 * frame * clamp(0.5 + 0.5 * ndl, 0.0, 1.0)) * win * uGain;
-    float br = toLin(base.r), warm = clamp((br - toLin(base.b)) / (br + 1e-3) * 1.6, 0.0, 1.0);
-    float sss = amount * (1.0 - diffusion) * ${SSS.toFixed(3)} * max(0.0, clamp((ndl + 0.6) / 1.6, 0.0, 1.0) - lam) * warm * win * uGain;
-    E += add + B.rgb * vec3(sss, sss * 0.35, 0.0);
-    S += add * ${ALBEDO_FLOOR.toFixed(3)};
-    if (ndl > 0.0) S += B.rgb * pow(max(0.0, dot(n, hv)), gloss) * amount * 0.15 * uShine * win;
-    S += B.rgb * amount * clamp((ndl + 0.3) / 1.3, 0.0, 1.0) * ${GLINT.toFixed(3)} * (0.35 + uShine) * max(0.0, s0t.a) * uGain * win;
+    float level = intensity * 3.2 * (sun ? 2.7 : 2.2) * atten, amount = level * shadow * pattern;
+    E += B.rgb * (amount * (lam + rim) * (1.0 - diffusion) + level * diffusion * 0.3 * frame * clamp(0.5 + 0.5 * ndl, 0.0, 1.0)) * win * uGain;
+    E += B.rgb * vec3(1.0, 0.35, 0.0) * amount * (1.0 - diffusion) * ${SSS.toFixed(3)} * max(0.0, spill - lam) * warm * win * uGain;
+    vec3 H = normalize(toL + V);
+    float g = 8.0 + 120.0 * (1.0 - softness) * (1.0 - softness);
+    Sp += B.rgb * pow(max(0.0, dot(nW, H)), g) * (g + 8.0) / 25.13 * max(0.0, ndl) * 0.04 * (0.4 + 1.6 * tex) * amount * win * uGain;
   }
+}
+
+void main() {
+  vec2 uv = vUv;
+  vec2 p = uv * uSize;
+  vec4 base = texture(uBase, uv);
+  vec4 g = texture(uGeo, uv);
+  vec4 s0t = uSplit > 0.5 ? texture(uS0, uv) : vec4(1.0, 1.0, 1.0, 0.0);
+  vec3 s0 = max(s0t.rgb, vec3(1e-4));
+  vec4 resid = texture(uRes, uv);
+  float subj = uSplit > 0.5 ? resid.a : -1.0, tex = max(0.0, s0t.a);
+  vec3 alb = vec3(toLin(base.r), toLin(base.g), toLin(base.b));
+  vec3 photo = uSplit > 0.5 ? alb * s0 + resid.rgb : alb;
+  // Very dark pixels keep their brightness but not their colour, so added light does not lift colour noise.
+  float yp = dot(photo, vec3(0.2126, 0.7152, 0.0722)), ya = dot(alb, vec3(0.2126, 0.7152, 0.0722));
+  alb = mix(vec3(ya), alb, sstep(0.0015, 0.012, yp));
+  float warm = clamp((alb.r - alb.b) / (alb.r + 1e-3) * 1.6, 0.0, 1.0);
+  vec3 Es = vec3(0.0), Eb = vec3(0.0), Ss = vec3(0.0), Sb = vec3(0.0);
+  vec2 pc = floor(p) + 0.5;
+  float m = subj < 0.0 ? 0.0 : clamp(subj, 0.0, 1.0);
+  vec4 bg = texture(uBg, uv);
+  // Two layers blended by the cut-out: the subject on its own surface, the background on the one filled in behind it.
+  if (subj < 0.0 || m < 0.98) shadeLayer(pc, rayAt(pc) * (subj < 0.0 ? g.a : bg.a), subj < 0.0 ? g.rgb : bg.rgb, 0.0, 0.0, warm, Eb, Sb);
+  if (m > 0.02) { float zs = m > 0.98 ? g.a : max(0.05, (g.a - (1.0 - m) * bg.a) / m); shadeLayer(pc, rayAt(pc) * zs, g.rgb, m, tex, warm, Es, Ss); }
+  vec3 Ea = mix(Eb, Es, m), Sa = mix(Sb, Ss, m) * uShine * 2.0;
+  Sa = Sa / (1.0 + Sa);
   float kd = 1.0 / (1.0 + (texture(uShade, uv).r - 1.0) * uDelight);
-  vec3 lin = vec3(toLin(base.r), toLin(base.g), toLin(base.b)) * kd * pow(s0, vec3(1.0 - uTakeOut));
-  vec3 o = lin * E + S;
+  vec3 kept = uAmbient * pow(s0, vec3(uTakeOut));
+  vec3 o = alb * kd * pow(s0, vec3(1.0 - uTakeOut)) * (kept + Ea) + (uSplit > 0.5 ? resid.rgb * uOrig : vec3(0.0)) + Sa;
   o = max(o, vec3(0.0));
+  // A dark background can only be brightened so far.
+  if (uSplit > 0.5) o = mix(min(o, photo * 6.0 + 0.02), o, m);
   float peak = max(max(o.r, o.g), max(o.b, 1e-6));
   o *= tone(peak) / peak;
   outColor = vec4(toSrgb(o.r), toSrgb(o.g), toSrgb(o.b), base.a);
 }`;
 
-interface GlState { gl: WebGL2RenderingContext; canvas: HTMLCanvasElement | OffscreenCanvas; prog: WebGLProgram; base: WebGLTexture; geo: WebGLTexture; shade: WebGLTexture; s0: WebGLTexture; res: WebGLTexture; loc: Record<string, WebGLUniformLocation | null> }
+interface GlState { gl: WebGL2RenderingContext; canvas: HTMLCanvasElement | OffscreenCanvas; prog: WebGLProgram; base: WebGLTexture; geo: WebGLTexture; shade: WebGLTexture; s0: WebGLTexture; res: WebGLTexture; bg: WebGLTexture; loc: Record<string, WebGLUniformLocation | null> }
 
 let state: GlState | null | undefined;
 
@@ -228,7 +271,9 @@ function init(): GlState | null {
     const o = gl.createShader(type);
     if (!o) return null;
     gl.shaderSource(o, src); gl.compileShader(o);
-    return gl.getShaderParameter(o, gl.COMPILE_STATUS) ? o : null;
+    if (gl.getShaderParameter(o, gl.COMPILE_STATUS)) return o;
+    console.warn('[relight] shader:', gl.getShaderInfoLog(o));
+    return null;
   };
   const vs = sh(gl.VERTEX_SHADER, VERT), fs = sh(gl.FRAGMENT_SHADER, FRAG), prog = gl.createProgram();
   if (!vs || !fs || !prog) return null;
@@ -244,11 +289,11 @@ function init(): GlState | null {
     for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]] as const) gl.texParameteri(gl.TEXTURE_2D, k, v);
     return t;
   };
-  const base = tex(), geo = tex(), shade = tex(), s0 = tex(), res = tex();
-  if (!base || !geo || !shade || !s0 || !res) return null;
+  const base = tex(), geo = tex(), shade = tex(), s0 = tex(), res = tex(), bg = tex();
+  if (!base || !geo || !shade || !s0 || !res || !bg) return null;
   const loc: Record<string, WebGLUniformLocation | null> = {};
-  for (const k of ['uBase', 'uGeo', 'uSize', 'uCount', 'uOrig', 'uShine', 'uSteps', 'uA', 'uB', 'uC', 'uD', 'uE', 'uF', 'uShade', 'uDelight', 'uShadows', 'uAmbient', 'uS0', 'uRes', 'uSplit', 'uTakeOut', 'uGain']) loc[k] = gl.getUniformLocation(prog, k);
-  state = { gl, canvas, prog, base, geo, shade, s0, res, loc };
+  for (const k of ['uBase', 'uGeo', 'uSize', 'uCount', 'uOrig', 'uShine', 'uSteps', 'uA', 'uB', 'uC', 'uD', 'uE', 'uF', 'uShade', 'uDelight', 'uShadows', 'uAmbient', 'uS0', 'uRes', 'uSplit', 'uTakeOut', 'uGain', 'uBg', 'uFocal', 'uThick', 'uZRange']) loc[k] = gl.getUniformLocation(prog, k);
+  state = { gl, canvas, prog, base, geo, shade, s0, res, bg, loc };
   return state;
 }
 
@@ -277,7 +322,16 @@ export function renderRelight(base: Uint8ClampedArray, geo: RelightGeometry, con
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, st.base);
   if (uploaded.base !== base) { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, base); uploaded.base = base; }
   gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, st.geo);
-  if (uploaded.geo !== geo.data) { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, w, h, 0, gl.RGBA, gl.FLOAT, geo.data); uploaded.geo = geo.data; }
+  if (uploaded.geo !== geo.data) {
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, w, h, 0, gl.RGBA, gl.FLOAT, geo.data);
+    gl.activeTexture(gl.TEXTURE5); gl.bindTexture(gl.TEXTURE_2D, st.bg);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, w, h, 0, gl.RGBA, gl.FLOAT, geo.bg ?? geo.data);
+    uploaded.geo = geo.data;
+  }
+  gl.activeTexture(gl.TEXTURE5); gl.bindTexture(gl.TEXTURE_2D, st.bg);
+  gl.uniform1i(loc.uBg, 5);
+  gl.uniform1f(loc.uFocal, geo.focal ?? 1.2); gl.uniform1f(loc.uThick, geo.thickness ?? 0.3);
+  gl.uniform2f(loc.uZRange, geo.zNear ?? 0.8, geo.zFar ?? 2.5);
   gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, st.shade);
   if (uploaded.shade !== shade) {
     if (shade) gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, w, h, 0, gl.RED, gl.FLOAT, shade);
