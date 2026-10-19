@@ -1,6 +1,6 @@
 import type { Engine } from '../engine';
 import { getTool } from '../extensions/registry';
-import { pendingClass, q, setText, setTitle, type Disposer } from './dom';
+import { pendingClass, q, setClass, setStyleVar, setText, setTitle, type Disposer } from './dom';
 import { onLanguage, t } from './i18n';
 import { icon } from './icons';
 
@@ -45,6 +45,18 @@ export class StatusBar {
     this.busy = q(root, '.cv-st-busy');
     this.busyText = document.createTextNode(t('Working'));
     this.busy.appendChild(this.busyText);
+    this.bar = document.createElement('span');
+    this.bar.className = 'cv-st-bar';
+    this.bar.setAttribute('role', 'progressbar');
+    this.bar.setAttribute('aria-valuemin', '0');
+    this.bar.setAttribute('aria-valuemax', '100');
+    this.bar.innerHTML = '<i></i>';
+    this.steps = document.createElement('span');
+    this.steps.className = 'cv-st-steps';
+    this.steps.appendChild(this.stepsText);
+    this.busy.append(this.bar, this.steps);
+    engine.on('progress', () => this.syncProgress());
+    engine.on('notice', (n) => { if (n.kind === 'error') this.flashError(n.text); });
     this.engineState = q(root, '.cv-st-engine');
     this.gpu = q(root, '.cv-st-gpu');
     this.hint = q(root, '.cv-st-hint');
@@ -68,6 +80,33 @@ export class StatusBar {
   }
 
   private readonly busyText: Text;
+  private readonly bar: HTMLElement;
+  private readonly steps: HTMLElement;
+  private readonly stepsText = document.createTextNode('');
+  private errText = '';
+  private errTimer = 0;
+
+  /** The bar and the counts, in the nodes that are already there: bands of the running job, else tasks finished of tasks started. */
+  private syncProgress(): void {
+    const p = this.engine.taskProgress, inner = p.total > 0, many = p.steps > 1;
+    const frac = inner ? (p.finished + p.done / p.total) / Math.max(1, p.steps) : p.steps > 0 ? p.finished / p.steps : 0;
+    const pct = Math.round(Math.min(1, Math.max(0, frac)) * 100);
+    setStyleVar(this.bar, '--p', `${pct}%`);
+    this.bar.setAttribute('aria-valuenow', String(pct));
+    const part = many ? `${Math.min(p.finished + 1, p.steps)} ${t('of')} ${p.steps}` : '';
+    const pc = inner ? `${Math.round((p.done / p.total) * 100)}%` : '';
+    const label = [part, pc].filter(Boolean).join(' · ');
+    if (this.stepsText.data !== label) this.stepsText.data = label;
+  }
+
+  /** An error sits in the hint slot in the danger colour for six seconds, then the tool's hint comes back; nothing blinks. */
+  private flashError(text: string): void {
+    this.errText = text;
+    this.syncHint();
+    window.clearTimeout(this.errTimer);
+    this.errTimer = window.setTimeout(() => { this.errText = ''; this.syncHint(); }, 6000);
+  }
+
   private engineRaw = '';
   private gpuRaw = '';
   private gpuWhy = '';
@@ -113,6 +152,9 @@ export class StatusBar {
 
   /** The tool's hint, translated segment by segment: each ' · ' part is its own key, joined again with ' · '. */
   private syncHint(): void {
+    setClass(this.hint, 'is-error', !!this.errText);
+    if (this.errText) { setText(this.hint, this.errText); setTitle(this.hint, this.errText); return; }
+    setTitle(this.hint, '');
     const raw = getTool(this.engine.tool)?.hint(this.engine) ?? '';
     // The Shape tool's first segment is assembled from a noun and a mode: "Drag to draw a star (as a path)".
     const seg = (s: string): string => {

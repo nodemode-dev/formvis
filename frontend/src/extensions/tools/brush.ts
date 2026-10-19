@@ -15,6 +15,8 @@ const curveKey = (e: Engine): string => Object.keys(CURVES).find((k) => JSON.str
 export function symmetryOptions(e: Engine): OptionSpec[] {
   return [
     { kind: 'select', label: 'Symmetry', priority: 35, choices: [['off', 'Off'], ['vertical', 'Vertical'], ['horizontal', 'Horizontal'], ['both', 'Both axes'], ['r3', 'Radial 3'], ['r4', 'Radial 4'], ['r6', 'Radial 6'], ['r8', 'Radial 8']].map(([id, label]) => ({ id, label })), get: () => symKey(e), set: (v: string) => { e.brushSymmetry = v.startsWith('r') ? { ...e.brushSymmetry, mode: 'radial', count: Number(v.slice(1)) } : { ...e.brushSymmetry, mode: v as SymmetryMode }; e.emit('options', null); } },
+    { kind: 'range', label: 'Symmetry X', priority: 11, min: 0, max: 100, unit: '%', when: () => e.brushSymmetry.mode !== 'off', get: () => Math.round(e.symmetryAt.x * 100), set: (v: number) => { e.symmetryAt = { ...e.symmetryAt, x: Math.max(0, Math.min(100, Math.round(v))) / 100 }; e.emit('options', null); } },
+    { kind: 'range', label: 'Symmetry Y', priority: 11, min: 0, max: 100, unit: '%', when: () => e.brushSymmetry.mode !== 'off', get: () => Math.round(e.symmetryAt.y * 100), set: (v: number) => { e.symmetryAt = { ...e.symmetryAt, y: Math.max(0, Math.min(100, Math.round(v))) / 100 }; e.emit('options', null); } },
     { kind: 'select', label: 'Pressure curve', priority: 12, choices: [['linear', 'Linear'], ['soft', 'Soft'], ['firm', 'Firm'], ['s', 'S curve']].map(([id, label]) => ({ id, label })), get: () => curveKey(e), set: (v: string) => { e.pressureCurve = CURVES[v] ?? null; e.emit('options', null); } },
   ];
 }
@@ -53,6 +55,8 @@ function shapeOptions(e: Engine): OptionSpec[] {
   return [
     slide('Roundness', 1, 100, '%', () => e.brushShape.roundness, (v) => put({ roundness: v })),
     slide('Spacing', 0, 1000, '%', () => e.brushShape.spacing ?? 0, (v) => put({ spacing: v > 0 ? v : null })),
+    { kind: 'toggle', label: 'Flip X', priority: 8, get: () => !!e.brushShape.flipX, set: (v) => put({ flipX: v }) },
+    { kind: 'toggle', label: 'Flip Y', priority: 8, get: () => !!e.brushShape.flipY, set: (v) => put({ flipY: v }) },
     slide('Size jitter', 0, 100, '%', () => e.brushShape.sizeJitter, (v) => put({ sizeJitter: v })),
     slide('Angle jitter', 0, 100, '%', () => e.brushShape.angleJitter, (v) => put({ angleJitter: v })),
     slide('Scatter', 0, 1000, '%', () => e.brushShape.scatter, (v) => put({ scatter: v })),
@@ -156,11 +160,11 @@ export const brushTool: Tool = {
     { kind: 'range', label: 'Size', priority: 90, min: 1, max: 1000, unit: 'px', get: () => e.brush.diameter, set: (v) => e.setBrush({ diameter: v }) },
     { kind: 'range', label: 'Hardness', priority: 80, min: 0, max: 100, unit: '%', get: () => Math.round(e.brush.hardness * 100), set: (v) => e.setBrush({ hardness: v / 100 }) },
     { kind: 'range', label: 'Opacity', priority: 95, min: 1, max: 100, unit: '%', get: () => Math.round(e.brush.opacity * 100), set: (v) => e.setBrush({ opacity: v / 100 }) },
-    { kind: 'toggle', label: 'Pressure: opacity', priority: 20, get: () => !!e.brushDynamics.opacity?.enabled, set: (v) => { e.brushDynamics.opacity = v ? pressureOption(0.2) : identityOption(); e.brushPresetId = null; e.emit('options', null); } },
+    { kind: 'toggle', label: 'Pressure: opacity', priority: 20, get: () => !!e.brushDynamics.opacity?.enabled, set: (v) => { e.alwaysPressure.opacity = v; e.brushDynamics.opacity = v ? pressureOption(0.2) : identityOption(); e.brushPresetId = null; e.emit('options', null); } },
     { kind: 'range', label: 'Flow', priority: 85, min: 1, max: 100, unit: '%', get: () => Math.round(e.brushFlow * 100), set: (v: number) => { e.brushFlow = Math.max(0.01, Math.min(1, v / 100)); e.emit('options', null); } },
     { kind: 'select', label: 'Preset', priority: 45, choices: [{ id: '', label: 'Custom' }, ...allBrushPresets().map((b) => ({ id: b.id, label: b.name }))], live: () => [{ id: '', label: 'Custom' }, ...allBrushPresets().map((b) => ({ id: b.id, label: b.name }))], get: () => e.brushPresetId ?? '', set: (id) => { const b = allBrushPresets().find((x) => x.id === id); if (b) e.applyBrushPreset(b); else { e.brushPresetId = null; e.setBrush({ tip: null }); } } },
     { kind: 'button', label: 'Import Brushes', priority: 10, icon: 'upload', run: () => e.uiHooks.importBrushes?.() },
-    { kind: 'toggle', label: 'Pressure: size', priority: 20, get: () => e.brushDynamics.size.enabled, set: (v) => { e.brushDynamics.size = v ? pressureOption(e.brushDynamics.size.enabled ? e.brushDynamics.size.min : 0.2) : identityOption(); e.brushPresetId = null; e.emit('options', null); } },
+    { kind: 'toggle', label: 'Pressure: size', priority: 20, get: () => e.brushDynamics.size.enabled, set: (v) => { e.alwaysPressure.size = v; e.brushDynamics.size = v ? pressureOption(e.brushDynamics.size.enabled ? e.brushDynamics.size.min : 0.2) : identityOption(); e.brushPresetId = null; e.emit('options', null); } },
     { kind: 'range', label: 'Min size', priority: 15, min: 0, max: 100, unit: '%', get: () => Math.round((e.brushDynamics.size.enabled ? e.brushDynamics.size.min : 0.2) * 100), set: (v) => { if (e.brushDynamics.size.enabled) e.brushDynamics.size = pressureOption(v / 100); e.brushPresetId = null; e.emit('options', null); } },
     { kind: 'toggle', label: 'Pressure: flow', priority: 20, get: () => e.brushDynamics.flow.enabled, set: (v) => { e.brushDynamics.flow = v ? pressureOption(e.brushDynamics.flow.enabled ? e.brushDynamics.flow.min : 0.2) : identityOption(); e.brushPresetId = null; e.emit('options', null); } },
     { kind: 'range', label: 'Min flow', priority: 15, min: 0, max: 100, unit: '%', get: () => Math.round((e.brushDynamics.flow.enabled ? e.brushDynamics.flow.min : 0.2) * 100), set: (v) => { if (e.brushDynamics.flow.enabled) e.brushDynamics.flow = pressureOption(v / 100); e.brushPresetId = null; e.emit('options', null); } },

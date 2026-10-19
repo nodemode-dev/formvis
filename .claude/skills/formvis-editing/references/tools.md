@@ -14,7 +14,7 @@ Generated from the engine's catalogue by `./formvis agents sync`; do not edit by
 - Painting and generating: `fill`, `generative_fill`, `generate_image`, `remove_background`
 - Colour, filters and looks: `add_adjustment`, `apply_filter`, `set_adjustment`, `color_match`, `add_film_layer`
 - History: `undo`, `redo`
-- Other: `close_document`, `ping`, `list_plugins`, `select_feather`, `select_grow`, `select_point`, `timeline_get`, `timeline_create`, `timeline_delete`, `timeline_set`, `timeline_go_to`, `timeline_clip`, `timeline_split`, `timeline_keyframe`, `timeline_transition`, `timeline_frame_image`, `timeline_render`, `select_mask`, `list_settings`, `set_settings`, `ui_inspect`
+- Other: `close_document`, `ping`, `list_plugins`, `select_feather`, `select_grow`, `select_point`, `timeline_get`, `timeline_create`, `timeline_delete`, `timeline_set`, `timeline_go_to`, `timeline_clip`, `timeline_split`, `timeline_keyframe`, `timeline_transition`, `timeline_frame_image`, `timeline_render`, `select_mask`, `list_settings`, `set_settings`, `ui_inspect`, `boxes_list`, `boxes_add`, `boxes_set`, `boxes_remove`, `boxes_from_selection`, `boxes_clear`, `sample_box`, `frequency_separation`, `sample_depth`, `depth_edit`, `set_crop`, `export_mask`
 
 ## get_document
 
@@ -575,3 +575,122 @@ Describes parts of the formvis window: for each element matching a CSS selector,
 - `limit`: integer; default 10
 
 Note: read-only.
+
+## boxes_list
+
+The layout boxes on the document (rectangles that say where new, kept, moved or removed things go, which Generate writes into its prompt): id, kind, name, description and rectangle in document pixels, with warnings about empty descriptions, tiny or overlapping boxes. Use when you need to see the layout boxes before changing them or generating.
+
+- no parameters
+
+Note: read-only.
+
+## boxes_add
+
+Adds a layout box: a rectangle in document pixels with a kind (new, keep, move, remove, reference, text) and a description of what belongs there. At most 24 boxes; the rectangle is kept on the canvas. Use when you want to say where a new, kept, moved or removed thing goes before generating.
+
+- `x`: number; required
+- `y`: number; required
+- `width`: number; required
+- `height`: number; required
+- `kind`: string (new | keep | move | remove | reference | text); default "new"
+- `text`: string; default ""
+
+## boxes_set
+
+Changes a layout box: its kind, description, name or rectangle (only what you give). The id is from boxes_list. Use when a layout box needs another kind, description, name or place.
+
+- `id`: string; required; A box id from boxes_list.
+- `kind`: string (new | keep | move | remove | reference | text)
+- `text`: string
+- `name`: string
+- `x`: number
+- `y`: number
+- `width`: number
+- `height`: number
+
+## boxes_remove
+
+Deletes one layout box by its id from boxes_list (undoable). Use when one layout box is wrong and should go.
+
+- `id`: string; required; A box id from boxes_list.
+
+Note: replaces or removes.
+
+## boxes_from_selection
+
+Makes a layout box over the bounds of the current selection, as one step. Use when a selection already marks the place a described thing should go.
+
+- `kind`: string (new | keep | move | remove | reference | text); default "new"
+- `text`: string; default ""
+
+## boxes_clear
+
+Deletes every layout box in one undoable step. Use when the layout boxes are finished with or should start over.
+
+- no parameters
+
+Note: replaces or removes.
+
+## sample_box
+
+The average colour (opacity weighted, of the flattened picture) inside a layout box, or inside a rectangle in document pixels. Returns #rrggbb, its red, green and blue, and how opaque the area is. Use when you need the colour of an area or a layout box, for example to match a fill or a text colour.
+
+- `id`: string; A box id from boxes_list; leave out to give a rectangle.
+- `x`: number
+- `y`: number
+- `width`: number
+- `height`: number
+
+Note: read-only.
+
+## frequency_separation
+
+Splits what the picture shows at a radius into two layers above the active one: Low Frequency (the blurred colour and tone) and High Frequency (the detail, in Linear Light), which together look as the picture did. Retouch skin tone on the first and texture on the second. Use when colour and tone should be retouched apart from texture, as in skin retouching.
+
+- `radius`: number; default 8; Blur radius in pixels: larger keeps more in the detail layer.
+
+## sample_depth
+
+Reads the Depth Map layer at a point: 0 to 255 (and 0 to 1), near is bright, far is dark. size averages a square of that many pixels. The document needs a Depth Map layer (a grey layer named Depth Map). Use when you need how near or far the Depth Map says a point is.
+
+- `x`: integer; required
+- `y`: integer; required
+- `size`: integer; default 1
+
+Note: read-only.
+
+## depth_edit
+
+Corrects the Depth Map layer, inside the selection when there is one: flatten (pull amount percent toward mid grey), nearer or farther (shift amount percent of the range), or smooth (blur by radius pixels; edges true keeps depth sharp at the picture's own edges, radius up to 9). Use when the Depth Map layer needs flattening, shifting or smoothing before it is used.
+
+- `kind`: string (flatten | nearer | farther | smooth); required
+- `amount`: number; Percent for flatten (50 when left out), nearer and farther (10).
+- `radius`: number; default 4; For smooth.
+- `edges`: boolean; default false; For smooth: keep the picture's edges sharp.
+
+## set_crop
+
+Crops to a frame given in document pixels, with a turn: angle straightens the picture (degrees, -45 to 45) about the frame's centre, and output_width with output_height resample the result to exactly that size at resolution ppi. A frame past the picture's edge adds canvas; content_aware fills it from the picture. crop is the plain rectangle. Use when the crop needs a turn to straighten the horizon, or a fixed output size, or a frame that reaches past the edge.
+
+- `x`: number; required
+- `y`: number; required
+- `width`: number; required
+- `height`: number; required
+- `angle`: number; default 0
+- `output_width`: integer
+- `output_height`: integer
+- `resolution`: number; Pixels per inch; the document's own when left out.
+- `content_aware`: boolean; default false
+
+Note: replaces or removes.
+
+## export_mask
+
+Writes a mask as a grey PNG the size of the document (white shows, black hides, greys are partial) to an absolute path: the selection, a layer's mask, or what a layer's pixels cover. A file already there is kept unless overwrite is true. Use when a selection or a layer's mask should be written as a PNG for another program.
+
+- `path`: string; required; Absolute path ending .png
+- `source`: string (selection | layer_mask | layer_pixels); default "selection"
+- `id`: string; A layer id from get_document; for layer_mask and layer_pixels.
+- `overwrite`: boolean; default false; Replace a file already at the path. Without it an existing file is not touched.
+
+Note: replaces or removes.

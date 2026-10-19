@@ -1,24 +1,24 @@
 # formvis commands
 
-Generated from the window's command catalogue (1190 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1236 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
-- Edit: 70
+- Edit: 72
 - File: 83
 - Filter: 86
 - Generate: 6
 - Help: 3
-- Image: 96
+- Image: 97
 - Layer: 240
 - Paint: 1
 - Paths: 9
 - Select: 35
-- Tool options: 299
+- Tool options: 339
 - Tools: 52
 - Type: 30
-- View: 84
-- Window: 96
+- View: 86
+- Window: 97
 
 ## Edit
 
@@ -44,8 +44,10 @@ Generated from the window's command catalogue (1190 commands) by `./formvis agen
 | `edit-note` | Edit Note... |  | Opens the selected note for editing. |
 | `fade` | Fade... | Shift+Mod+F | Opens Fade to soften the last filter or adjustment. (changes the picture) |
 | `fill-bg` | Fill with Background | Mod+Backspace Mod+Delete | Fills the selection or layer with the background colour. (changes the picture) |
+| `fill-bg-keep` | Fill with Background, Keep Transparency | Shift+Mod+Backspace Shift+Mod+Delete | Fills the selection or layer with the background colour but only where the layer already has pixels. (changes the picture) |
 | `fill-dialog` | Fill... | Shift+F5 | Opens the Fill dialog with its contents and blend options. (changes the picture) |
 | `fill-fg` | Fill with Foreground | Alt+Backspace Alt+Delete | Fills the selection or layer with the foreground colour. (changes the picture) |
+| `fill-fg-keep` | Fill with Foreground, Keep Transparency | Alt+Shift+Backspace Alt+Shift+Delete | Fills the selection or layer with the foreground colour but only where the layer already has pixels. (changes the picture) |
 | `fill-history` | Fill with History | Alt+Mod+Backspace Alt+Mod+Delete | Fills the selection or layer with its pixels from the history source, at full opacity. (changes the picture) |
 | `free-helper-models` | Free Helper Models |  | Frees the ONNX helper models formvis holds in memory (depth, segmentation, background removal and the like) and names what it freed; the next use loads its model again. (changes the picture) |
 | `generative-fill` | Generative Fill... |  | Opens Generative Fill for the selection. (changes the picture) |
@@ -383,7 +385,8 @@ Generated from the window's command catalogue (1190 commands) by `./formvis agen
 | `par-d1-ntsc-wide` | D1/DV NTSC Widescreen (1.21) |  | Sets the pixel aspect ratio to D1/DV NTSC Widescreen (1.21). (changes the picture) |
 | `par-d1-pal` | D1/DV PAL (1.09) |  | Sets the pixel aspect ratio to D1/DV PAL (1.09). (changes the picture) |
 | `par-d1-pal-wide` | D1/DV PAL Widescreen (1.46) |  | Sets the pixel aspect ratio to D1/DV PAL Widescreen (1.46). (changes the picture) |
-| `par-hdv` | DVCPRO HD 1080 / HDV 1080 (1.33) |  | Sets the pixel aspect ratio to DVCPRO HD 1080 / HDV 1080 (1.33). (changes the picture) |
+| `par-dvcpro-hd` | DVCPRO HD 1080 (1.5) |  | Sets the pixel aspect ratio to DVCPRO HD 1080 (1.5). (changes the picture) |
+| `par-hdv` | HDV 1080 (1.33) |  | Sets the pixel aspect ratio to HDV 1080 (1.33). (changes the picture) |
 | `par-square` | Square (1) |  | Sets the pixel aspect ratio to square (1). (changes the picture) |
 | `remove-bg` | Remove Background |  | Removes the background of the active layer with the neural model. (changes the picture) |
 | `remove-bg-lite` | Remove Background (Lightweight) |  | Removes the background with the lightweight model. (changes the picture) |
@@ -771,6 +774,8 @@ Generated from the window's command catalogue (1190 commands) by `./formvis agen
 | `tool.options.artHistory.size` | Art History Brush: Size |  | Sets Size for the Art History Brush tool. |
 | `tool.options.artHistory.style` | Art History Brush: Style |  | Sets Style for the Art History Brush tool. |
 | `tool.options.artHistory.symmetry` | Art History Brush: Symmetry |  | Sets Symmetry for the Art History Brush tool. |
+| `tool.options.artHistory.symmetryX` | Art History Brush: Symmetry X |  | Sets Symmetry X for the Art History Brush tool. |
+| `tool.options.artHistory.symmetryY` | Art History Brush: Symmetry Y |  | Sets Symmetry Y for the Art History Brush tool. |
 | `tool.options.artHistory.tolerance` | Art History Brush: Tolerance |  | Sets Tolerance for the Art History Brush tool. |
 | `tool.options.artboard.height` | Artboard: Height |  | Sets Height for the Artboard tool. |
 | `tool.options.artboard.size` | Artboard: Size |  | Sets Size for the Artboard tool. |
@@ -782,6 +787,8 @@ Generated from the window's command catalogue (1190 commands) by `./formvis agen
 | `tool.options.backgroundEraser.sampling` | Background Eraser: Sampling |  | Sets Sampling for the Background Eraser tool. |
 | `tool.options.backgroundEraser.size` | Background Eraser: Size |  | Sets Size for the Background Eraser tool. |
 | `tool.options.backgroundEraser.symmetry` | Background Eraser: Symmetry |  | Sets Symmetry for the Background Eraser tool. |
+| `tool.options.backgroundEraser.symmetryX` | Background Eraser: Symmetry X |  | Sets Symmetry X for the Background Eraser tool. |
+| `tool.options.backgroundEraser.symmetryY` | Background Eraser: Symmetry Y |  | Sets Symmetry Y for the Background Eraser tool. |
 | `tool.options.backgroundEraser.tolerance` | Background Eraser: Tolerance |  | Sets Tolerance for the Background Eraser tool. |
 | `tool.options.boxes.kind` | Boxes: Kind |  | Sets Kind for the Boxes tool. |
 | `tool.options.brush.adjustForZoom` | Brush: Adjust for zoom |  | Sets Adjust for zoom for the Brush tool. |
@@ -790,6 +797,8 @@ Generated from the window's command catalogue (1190 commands) by `./formvis agen
 | `tool.options.brush.angleJitter` | Brush: Angle jitter |  | Sets Angle jitter for the Brush tool. |
 | `tool.options.brush.catchUpOnStrokeEnd` | Brush: Catch-up on stroke end |  | Sets Catch-up on stroke end for the Brush tool. |
 | `tool.options.brush.count` | Brush: Count |  | Sets Count for the Brush tool. |
+| `tool.options.brush.flipX` | Brush: Flip X |  | Sets Flip X for the Brush tool. |
+| `tool.options.brush.flipY` | Brush: Flip Y |  | Sets Flip Y for the Brush tool. |
 | `tool.options.brush.flow` | Brush: Flow |  | Sets Flow for the Brush tool. |
 | `tool.options.brush.hardness` | Brush: Hardness |  | Sets Hardness for the Brush tool. |
 | `tool.options.brush.minFlow` | Brush: Min flow |  | Sets Min flow for the Brush tool. |
@@ -811,12 +820,16 @@ Generated from the window's command catalogue (1190 commands) by `./formvis agen
 | `tool.options.brush.smoothingMode` | Brush: Smoothing mode |  | Sets Smoothing mode for the Brush tool. |
 | `tool.options.brush.spacing` | Brush: Spacing |  | Sets Spacing for the Brush tool. |
 | `tool.options.brush.symmetry` | Brush: Symmetry |  | Sets Symmetry for the Brush tool. |
+| `tool.options.brush.symmetryX` | Brush: Symmetry X |  | Sets Symmetry X for the Brush tool. |
+| `tool.options.brush.symmetryY` | Brush: Symmetry Y |  | Sets Symmetry Y for the Brush tool. |
 | `tool.options.brush.wetEdges` | Brush: Wet edges |  | Sets Wet edges for the Brush tool. |
 | `tool.options.bucket.antiAlias` | Paint Bucket: Anti-alias |  | Sets Anti-alias for the Paint Bucket tool. |
 | `tool.options.bucket.contiguous` | Paint Bucket: Contiguous |  | Sets Contiguous for the Paint Bucket tool. |
 | `tool.options.bucket.mode` | Paint Bucket: Mode |  | Sets Mode for the Paint Bucket tool. |
 | `tool.options.bucket.opacity` | Paint Bucket: Opacity |  | Sets Opacity for the Paint Bucket tool. |
 | `tool.options.bucket.pattern` | Paint Bucket: Pattern |  | Sets Pattern for the Paint Bucket tool. |
+| `tool.options.bucket.patternAngle` | Paint Bucket: Pattern angle |  | Sets Pattern angle for the Paint Bucket tool. |
+| `tool.options.bucket.patternScale` | Paint Bucket: Pattern scale |  | Sets Pattern scale for the Paint Bucket tool. |
 | `tool.options.bucket.sampleAllLayers` | Paint Bucket: Sample all layers |  | Sets Sample all layers for the Paint Bucket tool. |
 | `tool.options.bucket.source` | Paint Bucket: Source |  | Sets Source for the Paint Bucket tool. |
 | `tool.options.bucket.tolerance` | Paint Bucket: Tolerance |  | Sets Tolerance for the Paint Bucket tool. |
@@ -828,6 +841,8 @@ Generated from the window's command catalogue (1190 commands) by `./formvis agen
 | `tool.options.burn.size` | Burn: Size |  | Sets Size for the Burn tool. |
 | `tool.options.burn.strength` | Burn: Strength |  | Sets Strength for the Burn tool. |
 | `tool.options.burn.symmetry` | Burn: Symmetry |  | Sets Symmetry for the Burn tool. |
+| `tool.options.burn.symmetryX` | Burn: Symmetry X |  | Sets Symmetry X for the Burn tool. |
+| `tool.options.burn.symmetryY` | Burn: Symmetry Y |  | Sets Symmetry Y for the Burn tool. |
 | `tool.options.cloneStamp.aligned` | Clone Stamp: Aligned |  | Sets Aligned for the Clone Stamp tool. |
 | `tool.options.cloneStamp.autoHide` | Clone Stamp: Auto Hide |  | Sets Auto Hide for the Clone Stamp tool. |
 | `tool.options.cloneStamp.clipped` | Clone Stamp: Clipped |  | Sets Clipped for the Clone Stamp tool. |
@@ -847,6 +862,8 @@ Generated from the window's command catalogue (1190 commands) by `./formvis agen
 | `tool.options.cloneStamp.sourceAngle` | Clone Stamp: Source angle |  | Sets Source angle for the Clone Stamp tool. |
 | `tool.options.cloneStamp.sourceScale` | Clone Stamp: Source scale |  | Sets Source scale for the Clone Stamp tool. |
 | `tool.options.cloneStamp.symmetry` | Clone Stamp: Symmetry |  | Sets Symmetry for the Clone Stamp tool. |
+| `tool.options.cloneStamp.symmetryX` | Clone Stamp: Symmetry X |  | Sets Symmetry X for the Clone Stamp tool. |
+| `tool.options.cloneStamp.symmetryY` | Clone Stamp: Symmetry Y |  | Sets Symmetry Y for the Clone Stamp tool. |
 | `tool.options.contentAwareMove.mode` | Content-Aware Move: Mode |  | Sets Mode for the Content-Aware Move tool. |
 | `tool.options.crop.contentAware` | Crop: Content-Aware |  | Sets Content-Aware for the Crop tool. |
 | `tool.options.crop.deleteCroppedPixels` | Crop: Delete Cropped Pixels |  | Sets Delete Cropped Pixels for the Crop tool. |
@@ -871,6 +888,8 @@ Generated from the window's command catalogue (1190 commands) by `./formvis agen
 | `tool.options.dodge.size` | Dodge: Size |  | Sets Size for the Dodge tool. |
 | `tool.options.dodge.strength` | Dodge: Strength |  | Sets Strength for the Dodge tool. |
 | `tool.options.dodge.symmetry` | Dodge: Symmetry |  | Sets Symmetry for the Dodge tool. |
+| `tool.options.dodge.symmetryX` | Dodge: Symmetry X |  | Sets Symmetry X for the Dodge tool. |
+| `tool.options.dodge.symmetryY` | Dodge: Symmetry Y |  | Sets Symmetry Y for the Dodge tool. |
 | `tool.options.eraser.eraseToHistory` | Eraser: Erase to History |  | Sets Erase to History for the Eraser tool. |
 | `tool.options.eraser.flow` | Eraser: Flow |  | Sets Flow for the Eraser tool. |
 | `tool.options.eraser.hardness` | Eraser: Hardness |  | Sets Hardness for the Eraser tool. |
@@ -880,6 +899,8 @@ Generated from the window's command catalogue (1190 commands) by `./formvis agen
 | `tool.options.eraser.quickShape` | Eraser: Quick Shape |  | Sets Quick Shape for the Eraser tool. |
 | `tool.options.eraser.size` | Eraser: Size |  | Sets Size for the Eraser tool. |
 | `tool.options.eraser.symmetry` | Eraser: Symmetry |  | Sets Symmetry for the Eraser tool. |
+| `tool.options.eraser.symmetryX` | Eraser: Symmetry X |  | Sets Symmetry X for the Eraser tool. |
+| `tool.options.eraser.symmetryY` | Eraser: Symmetry Y |  | Sets Symmetry Y for the Eraser tool. |
 | `tool.options.eyedropper.sample` | Eyedropper: Sample |  | Sets Sample for the Eyedropper tool. |
 | `tool.options.eyedropper.sampleRing` | Eyedropper: Sample Ring |  | Sets Sample Ring for the Eyedropper tool. |
 | `tool.options.eyedropper.sampleSize` | Eyedropper: Sample Size |  | Sets Sample Size for the Eyedropper tool. |
@@ -904,16 +925,22 @@ Generated from the window's command catalogue (1190 commands) by `./formvis agen
 | `tool.options.healingBrush.size` | Healing Brush: Size |  | Sets Size for the Healing Brush tool. |
 | `tool.options.healingBrush.source` | Healing Brush: Source |  | Sets Source for the Healing Brush tool. |
 | `tool.options.healingBrush.symmetry` | Healing Brush: Symmetry |  | Sets Symmetry for the Healing Brush tool. |
+| `tool.options.healingBrush.symmetryX` | Healing Brush: Symmetry X |  | Sets Symmetry X for the Healing Brush tool. |
+| `tool.options.healingBrush.symmetryY` | Healing Brush: Symmetry Y |  | Sets Symmetry Y for the Healing Brush tool. |
 | `tool.options.historyBrush.hardness` | History Brush: Hardness |  | Sets Hardness for the History Brush tool. |
 | `tool.options.historyBrush.opacity` | History Brush: Opacity |  | Sets Opacity for the History Brush tool. |
 | `tool.options.historyBrush.pressureCurve` | History Brush: Pressure curve |  | Sets Pressure curve for the History Brush tool. |
 | `tool.options.historyBrush.size` | History Brush: Size |  | Sets Size for the History Brush tool. |
 | `tool.options.historyBrush.symmetry` | History Brush: Symmetry |  | Sets Symmetry for the History Brush tool. |
+| `tool.options.historyBrush.symmetryX` | History Brush: Symmetry X |  | Sets Symmetry X for the History Brush tool. |
+| `tool.options.historyBrush.symmetryY` | History Brush: Symmetry Y |  | Sets Symmetry Y for the History Brush tool. |
 | `tool.options.lasso.antiAlias` | Lasso: Anti-alias |  | Sets Anti-alias for the Lasso tool. |
 | `tool.options.lasso.feather` | Lasso: Feather |  | Sets Feather for the Lasso tool. |
 | `tool.options.lasso.kind` | Lasso: Kind |  | Sets Kind for the Lasso tool. |
 | `tool.options.lasso.mode` | Lasso: Mode |  | Sets Mode for the Lasso tool. |
+| `tool.options.magicEraser.antiAlias` | Magic Eraser: Anti-alias |  | Sets Anti-alias for the Magic Eraser tool. |
 | `tool.options.magicEraser.contiguous` | Magic Eraser: Contiguous |  | Sets Contiguous for the Magic Eraser tool. |
+| `tool.options.magicEraser.opacity` | Magic Eraser: Opacity |  | Sets Opacity for the Magic Eraser tool. |
 | `tool.options.magicEraser.sampleAllLayers` | Magic Eraser: Sample All Layers |  | Sets Sample All Layers for the Magic Eraser tool. |
 | `tool.options.magicEraser.tolerance` | Magic Eraser: Tolerance |  | Sets Tolerance for the Magic Eraser tool. |
 | `tool.options.markup.color` | Markup: Color |  | Sets Color for the Markup tool. |
@@ -939,6 +966,8 @@ Generated from the window's command catalogue (1190 commands) by `./formvis agen
 | `tool.options.mixer.sampleAllLayers` | Mixer Brush: Sample All Layers |  | Sets Sample All Layers for the Mixer Brush tool. |
 | `tool.options.mixer.size` | Mixer Brush: Size |  | Sets Size for the Mixer Brush tool. |
 | `tool.options.mixer.symmetry` | Mixer Brush: Symmetry |  | Sets Symmetry for the Mixer Brush tool. |
+| `tool.options.mixer.symmetryX` | Mixer Brush: Symmetry X |  | Sets Symmetry X for the Mixer Brush tool. |
+| `tool.options.mixer.symmetryY` | Mixer Brush: Symmetry Y |  | Sets Symmetry Y for the Mixer Brush tool. |
 | `tool.options.mixer.wet` | Mixer Brush: Wet |  | Sets Wet for the Mixer Brush tool. |
 | `tool.options.move.alignTo` | Move: Align To |  | Sets Align To for the Move tool. |
 | `tool.options.move.angle` | Move: Angle |  | Sets Angle for the Move tool. |
@@ -976,6 +1005,8 @@ Generated from the window's command catalogue (1190 commands) by `./formvis agen
 | `tool.options.patternStamp.scale` | Pattern Stamp: Scale |  | Sets Scale for the Pattern Stamp tool. |
 | `tool.options.patternStamp.size` | Pattern Stamp: Size |  | Sets Size for the Pattern Stamp tool. |
 | `tool.options.patternStamp.symmetry` | Pattern Stamp: Symmetry |  | Sets Symmetry for the Pattern Stamp tool. |
+| `tool.options.patternStamp.symmetryX` | Pattern Stamp: Symmetry X |  | Sets Symmetry X for the Pattern Stamp tool. |
+| `tool.options.patternStamp.symmetryY` | Pattern Stamp: Symmetry Y |  | Sets Symmetry Y for the Pattern Stamp tool. |
 | `tool.options.pen.autoAddDelete` | Pen: Auto Add/Delete |  | Sets Auto Add/Delete for the Pen tool. |
 | `tool.options.pen.mode` | Pen: Mode |  | Sets Mode for the Pen tool. |
 | `tool.options.pencil.adjustForZoom` | Pencil: Adjust for zoom |  | Sets Adjust for zoom for the Pencil tool. |
@@ -989,6 +1020,8 @@ Generated from the window's command catalogue (1190 commands) by `./formvis agen
 | `tool.options.pencil.smoothing` | Pencil: Smoothing |  | Sets Smoothing for the Pencil tool. |
 | `tool.options.pencil.smoothingMode` | Pencil: Smoothing mode |  | Sets Smoothing mode for the Pencil tool. |
 | `tool.options.pencil.symmetry` | Pencil: Symmetry |  | Sets Symmetry for the Pencil tool. |
+| `tool.options.pencil.symmetryX` | Pencil: Symmetry X |  | Sets Symmetry X for the Pencil tool. |
+| `tool.options.pencil.symmetryY` | Pencil: Symmetry Y |  | Sets Symmetry Y for the Pencil tool. |
 | `tool.options.quickSelect.sampleAllLayers` | Quick Selection: Sample all layers |  | Sets Sample all layers for the Quick Selection tool. |
 | `tool.options.quickSelect.selection` | Quick Selection: Selection |  | Sets Selection for the Quick Selection tool. |
 | `tool.options.quickSelect.size` | Quick Selection: Size |  | Sets Size for the Quick Selection tool. |
@@ -999,11 +1032,15 @@ Generated from the window's command catalogue (1190 commands) by `./formvis agen
 | `tool.options.remove.pressureCurve` | Remove: Pressure curve |  | Sets Pressure curve for the Remove tool. |
 | `tool.options.remove.size` | Remove: Size |  | Sets Size for the Remove tool. |
 | `tool.options.remove.symmetry` | Remove: Symmetry |  | Sets Symmetry for the Remove tool. |
+| `tool.options.remove.symmetryX` | Remove: Symmetry X |  | Sets Symmetry X for the Remove tool. |
+| `tool.options.remove.symmetryY` | Remove: Symmetry Y |  | Sets Symmetry Y for the Remove tool. |
 | `tool.options.rotateView.rotationAngle` | Rotate View: Rotation Angle |  | Sets Rotation Angle for the Rotate View tool. |
 | `tool.options.selectionBrush.hardness` | Selection Brush: Hardness |  | Sets Hardness for the Selection Brush tool. |
 | `tool.options.selectionBrush.pressureCurve` | Selection Brush: Pressure curve |  | Sets Pressure curve for the Selection Brush tool. |
 | `tool.options.selectionBrush.size` | Selection Brush: Size |  | Sets Size for the Selection Brush tool. |
 | `tool.options.selectionBrush.symmetry` | Selection Brush: Symmetry |  | Sets Symmetry for the Selection Brush tool. |
+| `tool.options.selectionBrush.symmetryX` | Selection Brush: Symmetry X |  | Sets Symmetry X for the Selection Brush tool. |
+| `tool.options.selectionBrush.symmetryY` | Selection Brush: Symmetry Y |  | Sets Symmetry Y for the Selection Brush tool. |
 | `tool.options.shape.align` | Shape: Align |  | Sets Align for the Shape tool. |
 | `tool.options.shape.cornerRadius` | Shape: Corner radius |  | Sets Corner radius for the Shape tool. |
 | `tool.options.shape.customShape` | Shape: Custom shape |  | Sets Custom shape for the Shape tool. |
@@ -1028,6 +1065,8 @@ Generated from the window's command catalogue (1190 commands) by `./formvis agen
 | `tool.options.smear.size` | Smear: Size |  | Sets Size for the Smear tool. |
 | `tool.options.smear.strength` | Smear: Strength |  | Sets Strength for the Smear tool. |
 | `tool.options.smear.symmetry` | Smear: Symmetry |  | Sets Symmetry for the Smear tool. |
+| `tool.options.smear.symmetryX` | Smear: Symmetry X |  | Sets Symmetry X for the Smear tool. |
+| `tool.options.smear.symmetryY` | Smear: Symmetry Y |  | Sets Symmetry Y for the Smear tool. |
 | `tool.options.smear.tool` | Smear: Tool |  | Sets Tool for the Smear tool. |
 | `tool.options.sponge.flow` | Sponge: Flow |  | Sets Flow for the Sponge tool. |
 | `tool.options.sponge.hardness` | Sponge: Hardness |  | Sets Hardness for the Sponge tool. |
@@ -1036,6 +1075,8 @@ Generated from the window's command catalogue (1190 commands) by `./formvis agen
 | `tool.options.sponge.size` | Sponge: Size |  | Sets Size for the Sponge tool. |
 | `tool.options.sponge.strength` | Sponge: Strength |  | Sets Strength for the Sponge tool. |
 | `tool.options.sponge.symmetry` | Sponge: Symmetry |  | Sets Symmetry for the Sponge tool. |
+| `tool.options.sponge.symmetryX` | Sponge: Symmetry X |  | Sets Symmetry X for the Sponge tool. |
+| `tool.options.sponge.symmetryY` | Sponge: Symmetry Y |  | Sets Symmetry Y for the Sponge tool. |
 | `tool.options.sponge.vibrance` | Sponge: Vibrance |  | Sets Vibrance for the Sponge tool. |
 | `tool.options.spotHealing.hardness` | Spot Healing: Hardness |  | Sets Hardness for the Spot Healing tool. |
 | `tool.options.spotHealing.mode` | Spot Healing: Mode |  | Sets Mode for the Spot Healing tool. |
@@ -1044,6 +1085,8 @@ Generated from the window's command catalogue (1190 commands) by `./formvis agen
 | `tool.options.spotHealing.sampleAllLayers` | Spot Healing: Sample All Layers |  | Sets Sample All Layers for the Spot Healing tool. |
 | `tool.options.spotHealing.size` | Spot Healing: Size |  | Sets Size for the Spot Healing tool. |
 | `tool.options.spotHealing.symmetry` | Spot Healing: Symmetry |  | Sets Symmetry for the Spot Healing tool. |
+| `tool.options.spotHealing.symmetryX` | Spot Healing: Symmetry X |  | Sets Symmetry X for the Spot Healing tool. |
+| `tool.options.spotHealing.symmetryY` | Spot Healing: Symmetry Y |  | Sets Symmetry Y for the Spot Healing tool. |
 | `tool.options.spotHealing.type` | Spot Healing: Type |  | Sets Type for the Spot Healing tool. |
 | `tool.options.type.align` | Type: Align |  | Sets Align for the Type tool. |
 | `tool.options.type.antiAliasing` | Type: Anti-aliasing |  | Sets Anti-aliasing for the Type tool. |
@@ -1205,11 +1248,13 @@ Generated from the window's command catalogue (1190 commands) by `./formvis agen
 | `screen-next` | Change Screen Mode | F | Steps through standard, menu and full screen modes. |
 | `screen-standard` | Standard Screen Mode |  | Shows the normal window with its title bar. |
 | `show-all-extras` | Show All |  | Shows every canvas helper: guides, grid, slices, notes, counts, selection edges and layer edges. |
+| `show-comfy-dot` | ComfyUI Connection |  | Shows or hides the ComfyUI connection dot on the title bar icon; it asks your own ComfyUI address every 30 seconds. |
 | `show-counts` | Show Count |  | Shows or hides the count numbers on the canvas. |
 | `show-layer-edges` | Show Layer Edges |  | Shows or hides a box around the active layer's bounds. |
 | `show-no-extras` | Show None |  | Hides every canvas helper: guides, grid, slices, notes, counts, selection edges and layer edges. |
 | `show-notes` | Show Notes |  | Shows or hides the note markers on the canvas. |
 | `show-selection-edges` | Show Selection Edges |  | Shows or hides the marching outline of the selection. |
+| `show-smart-guides` | Smart Guides |  | Turns the alignment lines drawn while moving or transforming on or off; snapping itself is kept. |
 | `slice-options` | Slice Options... |  | Opens the active slice's name, URL, alt text and exact position and size for editing. (changes the picture) |
 | `snap` | Snap | Shift+Mod+; | Turns snapping on or off for moving and transforming; the Snap To choices are kept. |
 | `snap-all` | Snap To All |  | Turns every Snap To target on, or all off when they are all on. |
@@ -1273,6 +1318,7 @@ Generated from the window's command catalogue (1190 commands) by `./formvis agen
 | `brush-size-up` | Increase Brush Size |  | Makes the paint brush one step larger, the step growing with the size. |
 | `brush-softer` | Decrease Brush Hardness |  | Makes the paint brush 25 percent softer. |
 | `check-for-updates` | Check for Updates... |  | Asks the update server whether a newer formvis is available and offers to install it and restart; says so when this build has no update key. |
+| `console-log` | Console... |  | Opens the Console, a viewer of this window’s errors and the end of the engine log with a level filter, a text filter, copy, clear and the log path. |
 | `copy-engine-log` | Copy Engine Log |  | Copies the end of the engine's log file (Logs/formvis-engine.log in the data folder) to the clipboard. |
 | `copy-error-log` | Copy Error Log |  | Copies the error log to the clipboard. |
 | `delete-frame` | Delete Frame |  | Deletes the current animation frame. (changes the picture) |

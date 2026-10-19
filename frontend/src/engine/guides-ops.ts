@@ -18,7 +18,7 @@ export interface GuideHost {
 export function setGuides(host: GuideHost, name: string, next: (g: Guide[]) => Guide[]): void {
   host.edit(name, (p) => {
     const before = p.doc.guides ?? [], after = next([...before]);
-    if (after.length === before.length && after.every((g, i) => g.axis === before[i].axis && g.at === before[i].at)) return false;
+    if (after.length === before.length && after.every((g, i) => g.axis === before[i].axis && g.at === before[i].at && g.color === before[i].color)) return false;
     p.doc = { ...p.doc, guides: after };
     return true;
   });
@@ -26,17 +26,18 @@ export function setGuides(host: GuideHost, name: string, next: (g: Guide[]) => G
 }
 
 /** View > New Guide, or a guide dropped from a ruler: at a whole or half pixel, kept within the canvas. */
-export function addGuide(host: GuideHost, axis: 'x' | 'y', at: number): void {
+export function addGuide(host: GuideHost, axis: 'x' | 'y', at: number, color?: string): void {
   const d = host.current?.doc;
   if (!d || !Number.isFinite(at)) return;
   const v = Math.min(axis === 'x' ? d.width : d.height, Math.max(0, Math.round(at * 2) / 2));
-  setGuides(host, 'New Guide', (g) => [...g, { axis, at: v }]);
+  const c = color && /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : undefined;
+  setGuides(host, 'New Guide', (g) => [...g, c ? { axis, at: v, color: c } : { axis, at: v }]);
 }
 
 export function moveGuide(host: GuideHost, index: number, at: number): void {
   const d = host.current?.doc;
   if (!d || !Number.isFinite(at)) return;
-  setGuides(host, 'Move Guide', (g) => g.map((x, i) => (i === index ? { axis: x.axis, at: Math.min(x.axis === 'x' ? d.width : d.height, Math.max(0, Math.round(at * 2) / 2)) } : x)));
+  setGuides(host, 'Move Guide', (g) => g.map((x, i) => (i === index ? { ...x, at: Math.min(x.axis === 'x' ? d.width : d.height, Math.max(0, Math.round(at * 2) / 2)) } : x)));
 }
 
 export function removeGuide(host: GuideHost, index: number): void { setGuides(host, 'Delete Guide', (g) => g.filter((_, i) => i !== index)); }
@@ -44,13 +45,25 @@ export function removeGuide(host: GuideHost, index: number): void { setGuides(ho
 /** View > New Guide Layout (27.11): `columns` and `rows` with gutters inside margins:
  *  guides at the margins and at both edges of every gutter (a gutter of 0 puts one guide between cells). `clear`
  *  replaces the existing guides. One undo step. */
-export function guideLayout(host: GuideHost, o: { columns: number; rows: number; gutterX: number; gutterY: number; margin: { top: number; left: number; bottom: number; right: number }; clear: boolean }): void {
+export function guideLayout(host: GuideHost, o: { columns: number; rows: number; gutterX: number; gutterY: number; margin: { top: number; left: number; bottom: number; right: number }; clear: boolean; columnWidth?: number; rowHeight?: number; centre?: boolean }): void {
   const d = host.current?.doc;
   if (!d) return;
   const half = (v: number): number => Math.round(v * 2) / 2, out: Guide[] = [];
-  const lay = (axis: 'x' | 'y', n: number, gutter: number, a: number, b: number): void => {
+  // A fixed cell size (column width, row height) lays the block from the margin, or centred in the space between margins.
+  const lay = (axis: 'x' | 'y', n: number, gutter: number, a: number, b: number, fixed = 0, centre = false): void => {
     const span = b - a, cells = Math.max(1, Math.floor(n));
     if (span <= 0) return;
+    if (fixed > 0) {
+      const total = cells * fixed + (cells - 1) * gutter, start = centre ? a + (span - total) / 2 : a;
+      if (total > span + 1e-6) return;
+      out.push({ axis, at: half(start) }, { axis, at: half(start + total) });
+      for (let i = 1; i < cells; i += 1) {
+        const end = start + i * fixed + (i - 1) * gutter;
+        out.push({ axis, at: half(end) });
+        if (gutter > 0) out.push({ axis, at: half(end + gutter) });
+      }
+      return;
+    }
     const cell = (span - gutter * (cells - 1)) / cells;
     if (a > 0) out.push({ axis, at: half(a) });
     if (b < (axis === 'x' ? d.width : d.height)) out.push({ axis, at: half(b) });
@@ -60,8 +73,8 @@ export function guideLayout(host: GuideHost, o: { columns: number; rows: number;
       if (gutter > 0) out.push({ axis, at: half(end + gutter) });
     }
   };
-  if (o.columns >= 1) lay('x', o.columns, Math.max(0, o.gutterX), Math.max(0, o.margin.left), d.width - Math.max(0, o.margin.right));
-  if (o.rows >= 1) lay('y', o.rows, Math.max(0, o.gutterY), Math.max(0, o.margin.top), d.height - Math.max(0, o.margin.bottom));
+  if (o.columns >= 1) lay('x', o.columns, Math.max(0, o.gutterX), Math.max(0, o.margin.left), d.width - Math.max(0, o.margin.right), Math.max(0, o.columnWidth ?? 0), !!o.centre);
+  if (o.rows >= 1) lay('y', o.rows, Math.max(0, o.gutterY), Math.max(0, o.margin.top), d.height - Math.max(0, o.margin.bottom), Math.max(0, o.rowHeight ?? 0), !!o.centre);
   setGuides(host, 'New Guide Layout', (g) => [...(o.clear ? [] : g), ...out]);
 }
 

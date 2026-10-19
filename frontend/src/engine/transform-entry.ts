@@ -425,8 +425,8 @@ export function beginWarp(host: EntryHost, mode: 'smudge' | 'liquify', pt: Pt): 
   return drag;
 }
 
-export function warpTo(host: EntryHost, w: WarpDrag, pt: Pt): void {
-  const r = w.stroke.append(pt);
+export function warpTo(host: EntryHost, w: WarpDrag, pt: Pt, pressure = 1): void {
+  const r = w.stroke.append(pt, pressure);
   if (r) syncRect(w, r);
   host.emit('render');
 }

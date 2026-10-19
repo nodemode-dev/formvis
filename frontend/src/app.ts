@@ -134,7 +134,7 @@ import { deserialize, giantTiles, serialize } from './io/project-io';
 import { AboutDialog, BenchmarkDialog, NewCanvasDialog, OpenDialog, SettingsDialog, ShortcutsDialog, SystemInfoDialog, UpdateDialog } from './ui/app-dialogs';
 import { HistoryLog } from './ui/history-log';
 import { extraOn, extrasOn, setAllExtras, setExtra, setExtras } from './ui/view-extras';
-import { CHECKER_CELL, FONT_PREVIEWS, applyPrefs, applyUiFontSize, checkerPair, loadPrefs, savePrefs, updatePrefs, type Prefs } from './ui/prefs';
+import { CHECKER_CELL, FONT_PREVIEWS, applyPrefs, applyUiFontSize, checkerPair, DEFAULT_PREFS, loadPrefs, savePrefs, updatePrefs, type Prefs } from './ui/prefs';
 import { THEMES, readChoice, setTheme } from './ui/themes';
 import { installOptionMemory } from './ui/option-memory';
 import { chooseRenderer, detectedName, gpuStartFailedLastTime, markGpuStarted, markGpuStarting, probeGpu, type GpuProbe } from './gpu/probe';
@@ -151,6 +151,8 @@ import { PRESET_ACCEPT, PresetManagerDialog, presetKindOf } from './ui/panels/pr
 import { PropertiesColumn } from './ui/properties';
 import { RelightSession } from './ui/relight-session';
 import { TitleTools } from './ui/titlebar-tools';
+import { ComfyDot } from './ui/comfy-dot';
+import { ConsoleLogDialog } from './ui/panels/console-log-dialog';
 import { InfoPanel } from './ui/info';
 import { NoteDialog } from './ui/panels/note-dialog';
 import { ModeDialog } from './ui/app-dialogs';
@@ -553,6 +555,7 @@ export function startApp(): void {
     setLocked: (on) => { dock.locked = on; },
   });
   dock.locked = dock.locked;
+  const comfyDot = new ComfyDot(q(root, '.cv-brand'), () => loadPrefs().comfyuiUrl, () => (stored('formvis.comfyDot') ?? (loadPrefs().comfyuiUrl !== DEFAULT_PREFS.comfyuiUrl ? '1' : '0')) === '1');
   new Rail(q(root, '.cv-rail'), engine);
   const optionMemory = installOptionMemory(engine);   // every tool option sticks (DEV_PLAN 35.1), before the bar and the catalogue read the options
   new OptionsBar(q(root, '.cv-options'), engine);
@@ -2710,6 +2713,11 @@ export function startApp(): void {
   const pluginHost = new PluginHost(engine, agents, commands, (t, kind) => toast(t, kind ?? 'info'));
   // Window > Script Console (DEV_PLAN 36.7): the plugin API under the identity 'console', no wider than a plugin's.
   const scriptConsole = new ScriptConsoleDialog({ api: () => pluginHost.apiFor('console'), agentBusy: () => agents.agentBusy });
+  const consoleLog = new ConsoleLogDialog({
+    entries: () => [...errorLog.entries, ...engine.failures],
+    clearEntries: () => { errorLog.entries.length = 0; engine.failures.length = 0; },
+    copy: (text) => { void navigator.clipboard?.writeText(text).then(() => toast('Copied the log.'), () => toast('The clipboard is not available here.', 'error')); },
+  });
   const pluginsDialog = new PluginsDialog(pluginHost, (title, text, ok) => confirmAction(title, text, ok));
   const largePicture = new LargePictureDialog(engine);
   const tiffPages = new TiffPagesDialog(engine);
@@ -2847,6 +2855,8 @@ export function startApp(): void {
     { id: 'snap-grid', label: 'Snap To Grid', checked: () => snapOptions.grid, run: () => snapSet('grid', !snapOptions.grid) },
     { id: 'snap-layers', label: 'Snap To Layers', checked: () => snapOptions.layers, run: () => snapSet('layers', !snapOptions.layers) },
     { id: 'snap-bounds', label: 'Snap To Document Bounds', checked: () => snapOptions.bounds, run: () => snapSet('bounds', !snapOptions.bounds) },
+    { id: 'show-smart-guides', label: 'Smart Guides', checked: () => snapOptions.smart, run: () => snapSet('smart', !snapOptions.smart) },
+    { id: 'show-comfy-dot', label: 'ComfyUI Connection', checked: () => comfyDot.active, run: () => { store('formvis.comfyDot', comfyDot.active ? '0' : '1'); comfyDot.sync(); } },
     { id: 'snap-all', label: 'Snap To All', checked: () => snapOptions.guides && snapOptions.grid && snapOptions.layers && snapOptions.bounds, run: () => { const all = !(snapOptions.guides && snapOptions.grid && snapOptions.layers && snapOptions.bounds); for (const k of ['guides', 'grid', 'layers', 'bounds'] as const) snapOptions[k] = all; snapSave(); } },
     { id: 'toggle-grid', label: () => (engine.view.grid ? 'Hide Grid' : 'Show Grid'), keys: ["Mod+'"], enabled: has, run: () => engine.setView({ grid: !engine.view.grid }) },
     { id: 'lock-guides', label: () => (engine.view.guidesLocked ? 'Unlock Guides' : 'Lock Guides'), keys: ['Alt+Mod+;'], enabled: has, run: () => engine.setView({ guidesLocked: !engine.view.guidesLocked }) },
@@ -2924,6 +2934,7 @@ export function startApp(): void {
     },
     { id: 'actions', label: 'Actions...', run: () => dialogs.actions.show() },
     { id: 'script-console', label: 'Script Console...', run: () => scriptConsole.show() },
+    { id: 'console-log', label: 'Console...', run: () => consoleLog.show() },
     { id: 'action-stop', label: 'Stop Recording', enabled: () => !!actions.recording, run: () => { const x = actions.recording; actions.stop(); if (x) toast(`Recorded "${x.name}", ${x.steps.length} step${x.steps.length === 1 ? '' : 's'}.`); } },
     { id: 'batch', label: 'Batch...', enabled: () => actions.list.some((x) => x.steps.length > 0), run: () => dialogs.batch.show() },
     {
@@ -3175,6 +3186,8 @@ export function startApp(): void {
     { id: 'fade', label: () => { const n = engine.fadeName; return n ? `Fade ${n}...` : 'Fade...'; }, keys: ['Shift+Mod+F'], enabled: () => !!engine.fadeName, run: () => dialogs.fade.show() },
     { id: 'fill-fg', label: 'Fill with Foreground', keys: ['Alt+Backspace', 'Alt+Delete'], enabled: pixel, run: () => engine.fill('fg') },
     { id: 'fill-bg', label: 'Fill with Background', keys: ['Mod+Backspace', 'Mod+Delete'], enabled: pixel, run: () => engine.fill('bg') },
+    { id: 'fill-fg-keep', label: 'Fill with Foreground, Keep Transparency', keys: ['Alt+Shift+Backspace', 'Alt+Shift+Delete'], enabled: pixel, run: () => engine.fillWith({ color: { ...engine.fg } }, 'normal', 1, true) },
+    { id: 'fill-bg-keep', label: 'Fill with Background, Keep Transparency', keys: ['Shift+Mod+Backspace', 'Shift+Mod+Delete'], enabled: pixel, run: () => engine.fillWith({ color: { ...engine.bg } }, 'normal', 1, true) },
     { id: 'fill-history', label: 'Fill with History', keys: ['Alt+Mod+Backspace', 'Alt+Mod+Delete'], enabled: pixel, run: () => engine.fillWith({ history: true }, 'normal', 1, false) },
     { id: 'fill-dialog', label: 'Fill...', keys: ['Shift+F5'], enabled: pixel, run: () => dialogs.fill.show() },
     { id: 'content-fill-workspace', label: 'Content-Aware Fill...', enabled: () => pixel() && selected(), run: () => dialogs.contentFill.show() },
@@ -3318,7 +3331,7 @@ export function startApp(): void {
       run: (a) => { if (typeof a?.pixels === 'number' && typeof a?.length === 'number') engine.setMeasureScale(a.pixels, a.length, typeof a.units === 'string' ? a.units : 'px'); else dialogs.measureScale.show(); },
     },
     // Pixel Aspect Ratio presets (35.4 part b): each is checked while the document's ratio matches.
-    ...([['par-square', 'Square (1)', 1], ['par-d1-ntsc', 'D1/DV NTSC (0.91)', 0.91], ['par-d1-pal', 'D1/DV PAL (1.09)', 1.09], ['par-d1-ntsc-wide', 'D1/DV NTSC Widescreen (1.21)', 1.21], ['par-d1-pal-wide', 'D1/DV PAL Widescreen (1.46)', 1.46], ['par-anamorphic', 'Anamorphic 2:1 (2)', 2], ['par-hdv', 'DVCPRO HD 1080 / HDV 1080 (1.33)', 1.33]] as const).map(([id, label, r]) => ({
+    ...([['par-square', 'Square (1)', 1], ['par-d1-ntsc', 'D1/DV NTSC (0.91)', 0.91], ['par-d1-pal', 'D1/DV PAL (1.09)', 1.09], ['par-d1-ntsc-wide', 'D1/DV NTSC Widescreen (1.21)', 1.21], ['par-d1-pal-wide', 'D1/DV PAL Widescreen (1.46)', 1.46], ['par-anamorphic', 'Anamorphic 2:1 (2)', 2], ['par-hdv', 'HDV 1080 (1.33)', 1.33], ['par-dvcpro-hd', 'DVCPRO HD 1080 (1.5)', 1.5]] as const).map(([id, label, r]) => ({
       id, label, enabled: has, checked: () => Math.abs((engine.current?.doc.pixelAspect ?? 1) - r) < 0.005, run: () => engine.setPixelAspect(r),
     })),
     {
@@ -3981,13 +3994,13 @@ export function startApp(): void {
       { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'image-processor', 'script-events', 'load-files-stack', 'stack-statistics', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'reopen-closed-tab', 'close-all', 'close-others'] },
     { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', '-', 'fade', 'compare-documents', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', 'pick-screen-colour', '-',
       { label: 'Purge', items: ['purge-clipboard', 'purge-undo', 'purge-histories', 'clean-working-files', 'free-helper-models', 'purge-all'] }, { label: 'History Log', items: ['save-history-log', 'clear-history-log'] }, 'reset-tool', 'reset-all-tools', '-',
-      { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg', 'fill-history'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-', 'auto-align-layers', 'auto-blend-layers', '-',
+      { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg', 'fill-fg-keep', 'fill-bg-keep', 'fill-history'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-', 'auto-align-layers', 'auto-blend-layers', '-',
       'fill-path-dialog', 'stroke-path-dialog', '-', 'transform', 'transform-copy', { label: 'Transform', items: ['transform-again', '-', 'transform-scale', 'transform-rotate', 'transform-skew', 'transform-distort', 'transform-perspective', 'transform-warp', 'warp-split-h', 'warp-split-v', 'warp-split-cross', 'warp-remove-split', '-', 'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw', '-', 'flip-layer-h', 'flip-layer-v'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', 'define-brush', 'define-custom-shape', { label: 'Presets', items: ['preset-manager', '-', 'swatches-load', 'swatches-save'] }, '-', 'assign-profile', 'convert-profile', 'colour.settings', '-', 'customize-toolbar', 'shortcuts', 'settings'] },
     { label: 'Image', items: [
       'apply-image', 'calculations', { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'desaturate', 'replace-color', 'equalize'] }, '-',
       'auto-tone', 'auto-contrast', 'auto-color', '-',
       { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-duotone', 'mode-indexed', 'mode-multichannel', 'color-table', 'mode-rgb', 'mode-cmyk', 'mode-lab', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
-      'image-size', 'canvas-size', { label: 'Pixel Aspect Ratio', items: ['par-square', 'par-d1-ntsc', 'par-d1-pal', 'par-d1-ntsc-wide', 'par-d1-pal-wide', 'par-anamorphic', 'par-hdv', '-', 'par-custom'] }, { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'trim', 'reveal-all', 'trap', '-', 'frequency-separation', 'duplicate-image', '-', { label: 'Variables', items: ['variables-define', 'data-sets-import', 'data-set-apply'] }, '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }, '-', { label: 'Analysis', items: ['measure-scale', 'measure-record', 'measure-data-points', 'measure-scale-marker', 'measure-log'] }] },
+      'image-size', 'canvas-size', { label: 'Pixel Aspect Ratio', items: ['par-square', 'par-d1-ntsc', 'par-d1-pal', 'par-d1-ntsc-wide', 'par-d1-pal-wide', 'par-anamorphic', 'par-hdv', 'par-dvcpro-hd', '-', 'par-custom'] }, { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'trim', 'reveal-all', 'trap', '-', 'frequency-separation', 'duplicate-image', '-', { label: 'Variables', items: ['variables-define', 'data-sets-import', 'data-set-apply'] }, '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }, '-', { label: 'Analysis', items: ['measure-scale', 'measure-record', 'measure-data-points', 'measure-scale-marker', 'measure-log'] }] },
     { label: 'Layer', items: [
       { label: 'New', items: ['new-layer-dialog', 'new-dodge-burn-layer', 'layer-from-background', 'background-from-layer', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard-dialog', 'artboard-from-group', 'artboard-from-layers-dialog', 'frame-from-layers', '-', 'duplicate', 'layer-via-cut', '-', 'new-relight-layer'] }, 'artboard-options', '-',
       { label: 'New Fill Layer', items: ['new-fill-solid', 'new-fill-gradient', 'new-fill-pattern'] }, { label: 'Video Layers', items: ['video-layer-from-file', 'video-layer-blank', '-', 'video-insert-blank-frame', 'video-duplicate-frame', 'video-delete-frame', '-', 'video-restore-frame', 'video-restore-all', 'video-replace-footage', 'video-interpret-footage', 'video-rasterize'] },{ label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'edit-relight', 'layer-content-options', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, '-',
@@ -4026,11 +4039,11 @@ export function startApp(): void {
     // Generate: the generative commands in one place (the Generate panel, models, fill, repair, size, relight, and the ComfyUI and NodeMode links).
     { label: 'Generate', items: ['generate-panel', '-', 'generate-image', 'new-canvas-model-preset', 'generative-fill', 'generative-expand', '-', 'boxes-tool', 'boxes-from-selection', 'boxes-copy', 'boxes-clear', '-', 'generate-remove', 'content-fill-workspace', 'content-fill', 'remove-wires', '-', 'remove-bg', 'remove-bg-lite', '-', 'upscale-2x', 'upscale-4x', 'compute-depth-map', { label: 'Depth Map', items: ['depth-map-from-layer', 'depth-map-recompute', 'depth-map-show', '-', 'depth-map-flatten', 'depth-map-nearer', 'depth-map-farther', 'depth-map-smooth', 'depth-map-snap'] }, 'new-relight-layer', '-', 'comfyui-run', 'send-comfyui', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode'])] },
     { label: 'View', items: [{ label: 'Proof Setup', items: ['proof-setup', '-', 'proof-preset-monitor', 'proof-preset-cmyk', 'proof-preset-cyan', 'proof-preset-magenta', 'proof-preset-yellow', 'proof-preset-black', 'proof-preset-cmy', '-', 'proof-preset-protanopia', 'proof-preset-deuteranopia'] }, 'proof-colors', 'gamut-warning', 'preview-32', '-', 'zoom-in', 'zoom-out', 'fit', 'fit-layers', 'fit-artboard', 'actual', 'print-size', '-', 'toggle-extras', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'pattern-preview', 'pixel-art-preview', 'par-correction', 'transform-controls', 'toggle-task-bar', '-',
-      { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'guide-layout', 'guides-from-shape', 'clear-guides'] }, 'snap', { label: 'Snap To', items: ['snap-all', '-', 'snap-guides', 'snap-grid', 'snap-layers', 'snap-bounds'] }, { label: 'Show', items: ['show-all-extras', 'show-no-extras', '-', 'show-selection-edges', 'show-layer-edges', 'show-notes', 'show-counts', 'toggle-show-slices', 'layer-based-slice', 'slice-options', 'delete-slice', 'clear-slices'] }, '-',
+      { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'guide-layout', 'guides-from-shape', 'clear-guides'] }, 'snap', { label: 'Snap To', items: ['snap-all', '-', 'snap-guides', 'snap-grid', 'snap-layers', 'snap-bounds'] }, { label: 'Show', items: ['show-all-extras', 'show-no-extras', '-', 'show-selection-edges', 'show-layer-edges', 'show-smart-guides', 'show-comfy-dot', 'show-notes', 'show-counts', 'toggle-show-slices', 'layer-based-slice', 'slice-options', 'delete-slice', 'clear-slices'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'os-full-screen', 'toggle-panels', 'rail-columns', 'interface-rtl', { label: 'Pasteboard', items: ['pasteboard-default', 'pasteboard-black', 'pasteboard-dark', 'pasteboard-mid', 'pasteboard-light'] }, { label: 'Theme', items: Object.keys(THEMES).map((tid) => `theme-${tid}`) }] },
     { label: 'Plugins', items: () => { const ids = pluginHost.commandIds(); return ['manage-plugins', ...(ids.length ? ['-', ...ids] : [])]; } },
     { label: 'Window', items: [{ label: 'Arrange', items: ['new-window', 'float-window', 'float-all-windows', 'arrange-cascade', '-', 'arrange-tabs','arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-4up', 'arrange-6up', 'arrange-tile', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.connect.open', 'agent.connect.copy-claude-code', 'agent.connect.copy-claude-desktop', 'terminal.toggle', 'terminal.new', 'script-console', 'brush-settings', { label: 'Brush Size', items: ['brush-size-up', 'brush-size-down', 'brush-harder', 'brush-softer'] }, 'paragraph-styles', 'character-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-channels', 'panel-color', 'panel-tools', 'panel-properties-col', 'merge-columns', 'toggle-dock-panels', '-', { label: 'Workspace', items: ['workspace-pixelart', '-', 'new-workspace', 'delete-workspace'] }, 'reset-panels', '-', 'next-document', 'previous-document', '-', 'theme-sync-system', 'next-appearance', 'interface-darken', 'interface-lighten', '-', 'reload-window'] },
-    { label: 'Help', items: ['help', 'whats-new', '-', 'shortcuts', 'copy-error-log', 'copy-engine-log', 'benchmark', 'record-performance', 'simulate-gpu-loss', '-', 'help-github', 'report-issue', '-', 'check-for-updates', 'system-info', 'about'] },
+    { label: 'Help', items: ['help', 'whats-new', '-', 'shortcuts', 'console-log', 'copy-error-log', 'copy-engine-log', 'benchmark', 'record-performance', 'simulate-gpu-loss', '-', 'help-github', 'report-issue', '-', 'check-for-updates', 'system-info', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);
   // The desktop app on macOS puts these menus in the system menu bar, as the target's (Phase 21); the in-window bar then hides.
@@ -4420,7 +4433,7 @@ export function startApp(): void {
     engine.emit('projects', null);
     await recovery.clear();
   }
-  if (import.meta.env.DEV) Object.assign((window as unknown as { formvis: object }).formvis, { errorLog, keepModified, offerRecovery, setRecoveryDelay: (ms: number) => { recoveryDelay = ms; } });
+  if (import.meta.env.DEV) Object.assign((window as unknown as { formvis: object }).formvis, { errorLog, comfyDot, keepModified, offerRecovery, setRecoveryDelay: (ms: number) => { recoveryDelay = ms; } });
 
   // The desktop shell hands the page the files the system opened formvis with (double-clicked, or a second launch) and
   // the window's close and quit requests; the app exits only after every unsaved document is saved or discarded.

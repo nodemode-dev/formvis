@@ -105,7 +105,7 @@ import { DEFAULT_GLOBAL_LIGHT, scaledEffects, type GlobalLight } from './style-e
 export { CONTOURS, DEFAULT_GLOBAL_LIGHT, withGlobalLight, type ContourId, type GlobalLight } from './style-extras';
 import { mergeMeta, type DocMeta, type MetaPatch } from './doc-meta';
 export { COPYRIGHT_STATUSES, META_TEXT, cleanMeta, customLines, metaWritable, mergeMeta, parseCustom, parseKeywords, sameMeta, tabName, type CameraData, type CopyrightStatus, type DocMeta } from './doc-meta';
-import { UPRIGHT, allBrushPresets, defaultShape, noDynamics, noSymmetry, pressureOption, shapeActive, type BrushSymmetry, type BrushDynamics, type BrushPreset, type BrushShape, type PenPose } from './brush-dynamics';
+import { UPRIGHT, allBrushPresets, computeOption, defaultShape, noDynamics, noSymmetry, pressureOption, shapeActive, type BrushSymmetry, type BrushDynamics, type BrushPreset, type BrushShape, type PenPose } from './brush-dynamics';
 import { DEFAULT_PATH_SHAPE, boxedShapePath, linePath, type PathShapeKind, type PathShapeOptions } from './shape-paths';
 import { markupPath, type MarkupKind } from './markup';
 import { allCustomShapes } from './custom-shapes';
@@ -146,7 +146,7 @@ export type { Kernel, KernelContext } from './kernels';
 export interface Notice { kind: 'info' | 'error'; text: string }
 export interface EngineEvents {
   projects: null; doc: null; selection: null; active: null; viewport: null; tool: null; options: null;
-  history: null; colors: null; render: Rect | null; overlay: null; busy: boolean; notice: Notice; paths: null; timeline: null;
+  history: null; colors: null; render: Rect | null; overlay: null; busy: boolean; notice: Notice; paths: null; timeline: null; progress: null;
 }
 export interface BrushSettings { diameter: number; hardness: number; opacity: number; tip?: SampledTip | null }
 /** `deep`: linear-light floats of an OpenEXR or Radiance HDR, of which `source` is the 8-bit rendition; a layer placed
@@ -232,14 +232,20 @@ export class Engine {
   brushShape: BrushShape = defaultShape();
   /** Painting symmetry for the Brush, Pencil and Eraser; the centre follows the document unless set. */
   brushSymmetry: BrushSymmetry = noSymmetry();
+  /** Where the symmetry axes cross, as fractions of the document's width and height (0.5 is the centre). */
+  symmetryAt = { x: 0.5, y: 0.5 };
   /** The pen pressure response: sampled output at even input steps, null for a straight line. */
   pressureCurve: number[] | null = null;
   /** The preset last applied, for the options bar; cleared by nothing, since changing a value keeps the preset named. */
   brushPresetId: string | null = null;
 
   /** Size, hardness, opacity and dynamics from a preset. */
+  /** Set by the Brush's Pressure toggles: a preset picked afterwards keeps pen pressure on size or opacity even when its own dynamics lack it. */
+  alwaysPressure = { size: false, opacity: false };
   applyBrushPreset(preset: BrushPreset): void {
     this.brushDynamics = structuredClone(preset.dynamics);
+    if (this.alwaysPressure.size && !this.brushDynamics.size.enabled) this.brushDynamics.size = pressureOption(0.2);
+    if (this.alwaysPressure.opacity && !this.brushDynamics.opacity?.enabled) this.brushDynamics.opacity = pressureOption(0.2);
     const hadSpacing = this.brushPresetId !== null && allBrushPresets().find((p) => p.id === this.brushPresetId)?.spacing !== undefined;
     this.brushPresetId = preset.id;
     // The preset's tip shape, or a round tip: another preset's angle never lingers. Its spacing too; a preset with none
@@ -475,14 +481,36 @@ export class Engine {
   get stroking(): boolean { return this.stroke !== null; }
   get busy(): boolean { return this.busyCount > 0; }
 
+  /** The status line's progress: tasks started and finished since the engine went busy, and the inner count (bands) of the running one. */
+  readonly taskProgress = { steps: 0, finished: 0, done: 0, total: 0 };
+
+  /** A running job reports its own count (bands written of bands planned); 0 of 0 clears it. */
+  reportProgress(done: number, total: number): void {
+    const t = this.taskProgress;
+    if (t.done === done && t.total === total) return;
+    t.done = done;
+    t.total = total;
+    this.emit('progress', null);
+  }
+
   async task<T>(fn: () => Promise<T>): Promise<T> {
     this.busyCount++;
+    this.taskProgress.steps++;
     if (this.busyCount === 1) this.emit('busy', true);
+    this.emit('progress', null);
     try {
       return await fn();
     } finally {
       this.busyCount--;
-      if (this.busyCount === 0) this.emit('busy', false);
+      this.taskProgress.finished++;
+      this.taskProgress.done = 0;
+      this.taskProgress.total = 0;
+      if (this.busyCount === 0) {
+        this.emit('busy', false);
+        this.taskProgress.steps = 0;
+        this.taskProgress.finished = 0;
+      }
+      this.emit('progress', null);
     }
   }
 
@@ -1428,8 +1456,8 @@ export class Engine {
   /** Paint Bucket: fills the area of similar colour clicked with the foreground colour. */
   /** The Paint Bucket's settings; source and pattern and mode (1.49.10, the owner's tool list): the foreground or a
    *  pattern (tiled from the layer's corner, as Edit > Fill's), in a blend mode. */
-  bucket: { tolerance: number; contiguous: boolean; sampleAll: boolean; opacity: number; antiAlias: boolean; source: 'fg' | 'pattern'; pattern: ID | null; mode: BlendMode } =
-    { tolerance: 32, contiguous: true, sampleAll: false, opacity: 1, antiAlias: true, source: 'fg', pattern: null, mode: 'normal' };
+  bucket: { tolerance: number; contiguous: boolean; sampleAll: boolean; opacity: number; antiAlias: boolean; source: 'fg' | 'pattern'; pattern: ID | null; mode: BlendMode; scale: number; angle: number } =
+    { tolerance: 32, contiguous: true, sampleAll: false, opacity: 1, antiAlias: true, source: 'fg', pattern: null, mode: 'normal', scale: 100, angle: 0 };
   setBucket(patch: Partial<Engine['bucket']>): void { this.bucket = { ...this.bucket, ...patch }; this.emit('options', null); }
   /** Dodge and Burn lighten and darken, weighted to a tonal range by Exposure; Sponge moves colour away from or toward
    *  its own grey by Flow. */
@@ -1438,7 +1466,7 @@ export class Engine {
    *  saturated most, so nothing clips. */
   tone: { range: 'shadows' | 'midtones' | 'highlights'; exposure: number; spongeMode: 'desaturate' | 'saturate'; flow: number; protectTones: boolean; vibrance: boolean } = { range: 'midtones', exposure: 0.5, spongeMode: 'desaturate', flow: 0.5, protectTones: true, vibrance: true };
   /** The Eyedropper's Sample (1.50.7): the active layer, it and those below, or everything shown. */
-  eyedropperSample: HealSample = 'all';
+  eyedropperSample: HealSample | 'below-flat' | 'all-flat' = 'all';
   setTone(patch: Partial<Engine['tone']>): void { this.tone = { ...this.tone, ...patch }; this.emit('options', null); }
   setColors(fg?: RGB, bg?: RGB): void {
     if (fg) this.fg = fg;
@@ -4183,7 +4211,7 @@ export class Engine {
     const s = new PixelStroke(pick.raster, pick.local, { ...this.brush, color, bg: { ...this.bg }, flow: this.brushFlow, aliased: !!opts.aliased || !!opts.square, square: !!opts.square, dabColor: this.tool === 'mixer' && pick.target !== 'mask' && this.brushMode !== 'erase' ? this.mixerSourceFor(p, pick.raster as Raster, pick.local) : null }, op, p.selection);
     s.dynamics = structuredClone(this.brushDynamics);
     if (this.pressureCurve) for (const o of [s.dynamics.size, s.dynamics.flow, s.dynamics.opacity]) for (const sn of o.sensors) if (sn.id === 'pressure' && !sn.curve) sn.curve = this.pressureCurve;
-    if (this.brushSymmetry.mode !== 'off') s.symmetry = { ...this.brushSymmetry, cx: p.doc.width / 2, cy: p.doc.height / 2 };
+    if (this.brushSymmetry.mode !== 'off') s.symmetry = { ...this.brushSymmetry, cx: p.doc.width * this.symmetryAt.x, cy: p.doc.height * this.symmetryAt.y };
     // Brush Settings (tip shape, shape dynamics, scattering, texture, dual brush); inactive, the stroke is as before.
     if (!opts.aliased) s.setShape(this.brushShape, this.brushShape.texture.on ? (patternById(this.brushShape.texture.pattern) ?? allPatterns()[0])?.surface ?? null : null);
     this.stroke = { project: p, layerId: pick.layer.id, target: pick.target, s };
@@ -4309,9 +4337,9 @@ export class Engine {
   private regionEdit(name: string, apply: (a: { raster: Raster; target: Target; rect: Rect; cover: Surface | null }) => void, region?: SelectionMask | null): void { IE.regionEdit(this.editHost, name, apply, region); }
 
   /** A pattern tiled from the raster's corner over `rect`, kept to `cover` (the Paint Bucket's Pattern source). */
-  private patternTint(rect: Rect, tile: Surface, cover: Surface | null): Surface {
+  private patternTint(rect: Rect, tile: Surface, cover: Surface | null, scale = 100, angle = 0): Surface {
     const s = createSurface(rect.w, rect.h), c = ctxOf(s), fill = c.createPattern(tile as CanvasImageSource, 'repeat');
-    if (fill) { c.translate(-rect.x, -rect.y); c.fillStyle = fill; c.fillRect(rect.x, rect.y, rect.w, rect.h); c.setTransform(1, 0, 0, 1, 0, 0); }
+    if (fill) { fill.setTransform(new DOMMatrix().rotate(angle).scale(Math.max(1, Math.min(1000, scale)) / 100)); c.translate(-rect.x, -rect.y); c.fillStyle = fill; c.fillRect(rect.x, rect.y, rect.w, rect.h); c.setTransform(1, 0, 0, 1, 0, 0); }
     if (cover) { c.globalCompositeOperation = 'destination-in'; c.drawImage(cover, 0, 0); }
     return s;
   }
@@ -4337,7 +4365,7 @@ export class Engine {
     return doc;
   }
 
-  fillWith(contents: { color: RGB } | { patternId: ID } | { history: true }, blend: BlendMode, opacity: number, preserveTransparency: boolean, opts: { name?: string; region?: SelectionMask | null } = {}): void {
+  fillWith(contents: { color: RGB } | { patternId: ID } | { history: true }, blend: BlendMode, opacity: number, preserveTransparency: boolean, opts: { name?: string; region?: SelectionMask | null; patternScale?: number; patternAngle?: number } = {}): void {
     const hist = 'history' in contents && this.current ? this.historySource(this.current) : null;
     if ('history' in contents && !hist) { this.notice('This layer did not exist at the oldest history step, so there is nothing to fill from.'); return; }
     const pat = 'patternId' in contents ? patternById(contents.patternId) : null;
@@ -4365,7 +4393,7 @@ export class Engine {
         sc.drawImage(hist, 0, 0);
         sc.setTransform(1, 0, 0, 1, 0, 0);
       } else {
-        if (pat) { const cp = sc.createPattern(pat.surface, 'repeat'); if (cp) { cp.setTransform(new DOMMatrix().translate(-rect.x, -rect.y)); sc.fillStyle = cp; } }
+        if (pat) { const cp = sc.createPattern(pat.surface, 'repeat'); if (cp) { const k = Math.max(1, Math.min(1000, opts.patternScale ?? 100)) / 100; cp.setTransform(new DOMMatrix().translate(-rect.x, -rect.y).rotate(opts.patternAngle ?? 0).scale(k)); sc.fillStyle = cp; } }
         else if ('color' in contents) { sc.fillStyle = rgbCss(contents.color); rec.f = { color: contents.color, blend, opacity, preserve: preserveTransparency, w: rect.w, h: rect.h, cover }; }
         sc.fillRect(0, 0, rect.w, rect.h);
       }
@@ -4450,7 +4478,7 @@ export class Engine {
   /** Fill Path with its dialog's settings: the path's inside (its operations applied),
    *  anti-aliased or not and feathered by `feather` pixels, within any selection, filled as Edit > Fill fills
    *  (contents, mode, opacity, Preserve Transparency), as one Fill Path step. */
-  fillPathWith(contents: { color: RGB } | { patternId: ID } | { history: true }, blend: BlendMode, opacity: number, preserve: boolean, feather: number, antialias: boolean): void {
+  fillPathWith(contents: { color: RGB } | { patternId: ID } | { history: true }, blend: BlendMode, opacity: number, preserve: boolean, feather: number, antialias: boolean, tile: { patternScale?: number; patternAngle?: number } = {}): void {
     const p = this.current, vp = this.workPath, b = vp ? pathBounds(vp) : null;
     if (!p || !vp || !b) { this.notice('Draw a path with the Pen tool first.'); return; }
     const W = p.doc.width, H = p.doc.height, f = Math.max(0, Math.min(250, feather));
@@ -4458,7 +4486,7 @@ export class Engine {
     if (mask && f > 0) mask = this.featherMask(mask, f);
     if (mask && p.selection) mask = mask.combine(p.selection, 'intersect');
     if (!mask) { this.notice('The path lies outside the canvas or the selection.'); return; }
-    this.fillWith(contents, blend, opacity, preserve, { name: 'Fill Path', region: mask });
+    this.fillWith(contents, blend, opacity, preserve, { name: 'Fill Path', region: mask, ...tile });
   }
 
   /** Filter > Liquify's OK: the active layer's pixels resampled through `field` (built over this layer's raster by
@@ -4564,14 +4592,17 @@ export class Engine {
   /** The Magic Eraser (E; 1.49.5, the owner's tool list): the area the Magic Wand would select at a
    *  point (with the eraser's own Tolerance, Contiguous and Sample All Layers) made transparent on the active layer, the
    *  selection left as it was; one step. */
-  magicErase(pt: Pt, settings: { tolerance: number; contiguous: boolean; sampleAll: boolean }): void {
+  magicErase(pt: Pt, settings: { tolerance: number; contiguous: boolean; sampleAll: boolean; antialias?: boolean; opacity?: number }): void {
     const p = this.current;
     if (!p || !this.paintable(p.activeLayer)) { this.notice('Select a pixel layer to erase.'); return; }
     const before = p.selection, wand = this.wand;
     p.history.begin('Magic Eraser', p.snapshot());
-    this.wand = { ...wand, ...settings };
+    const { opacity = 1, ...found } = settings;
+    this.wand = { ...wand, ...found };
     try {
       this.magicWand(pt, 'replace');
+      const got = p.selection;
+      if (got && got !== before && opacity < 1) p.selection = new SelectionMask(got.x, got.y, got.w, got.h, got.data.map((v) => Math.round(v * Math.max(0, opacity))));
       if (p.selection && p.selection !== before) this.clearPixels();
     } finally {
       this.wand = wand;
@@ -4746,6 +4777,12 @@ export class Engine {
     setMat(c, mul(translation(-b.x, -b.y), placement(t, r.width, r.height)));
     c.drawImage(r.canvas, 0, 0);
     return SelectionMask.fromAlpha(b.x, b.y, b.w, b.h, c.getImageData(0, 0, b.w, b.h).data);
+  }
+
+  /** What layer `id`'s mask (or its pixels' transparency) shows, over the document; null when it shows nothing. */
+  coverageOf(id: ID, mask: boolean): SelectionMask | null {
+    const p = this.current, l = p?.layer(id);
+    return p && l ? this.coverage(p, l, mask) : null;
   }
 
   /** The Channels panel's delete and rename of alpha channel `id`, each one step. */
@@ -5017,7 +5054,7 @@ export class Engine {
       } else {
         const pat = this.bucket.source === 'pattern' ? patternById(this.bucket.pattern) ?? allPatterns()[0] ?? null : null;
         c.globalCompositeOperation = compositeOp(this.bucket.mode);
-        c.drawImage(pat ? this.patternTint(rect, pat.surface, cover) : this.tint(rect, rgbCss(color), cover), rect.x, rect.y);
+        c.drawImage(pat ? this.patternTint(rect, pat.surface, cover, this.bucket.scale, this.bucket.angle) : this.tint(rect, rgbCss(color), cover), rect.x, rect.y);
       }
       c.restore();
     }, region);
@@ -5982,7 +6019,12 @@ export class Engine {
     const s = createSurface(n, n);
     const view = translation(-(Math.floor(pt.x) - half), -(Math.floor(pt.y) - half)), l = p.activeLayer, sample = l ? this.eyedropperSample : 'all';
     if (sample === 'current' && l) { if (l.raster) { const c = ctxOf(s); setMat(c, mul(view, placement(l.transform, l.raster.width, l.raster.height))); c.drawImage(l.raster.canvas, 0, 0); } }
-    else this.work.render({ doc: p.doc, target: s, view, ...(sample === 'below' && l ? { overrides: this.belowOverrides(p, l) } : {}) });
+    else {
+      // The "flat" choices leave the adjustment layers out, so the colour is the pixels' own.
+      const overrides = (sample === 'below' || sample === 'below-flat') && l ? this.belowOverrides(p, l) : new Map<ID, LayerOverride>();
+      if (sample === 'below-flat' || sample === 'all-flat') for (const x of p.doc.layers) if (x.adjustment) overrides.set(x.id, { hidden: true });
+      this.work.render({ doc: p.doc, target: s, view, ...(overrides.size ? { overrides } : {}) });
+    }
     const d = ctxOf(s).getImageData(0, 0, n, n).data;
     let r = 0, g = 0, b = 0, a = 0;
     for (let i = 0; i < n * n; i++) {
@@ -6116,7 +6158,7 @@ export class Engine {
   }
 
   /** View > New Guide, or a guide dropped from a ruler: at a whole or half pixel, kept within the canvas. */
-  addGuide(axis: 'x' | 'y', at: number): void { GD.addGuide(this.guideHost, axis, at); }
+  addGuide(axis: 'x' | 'y', at: number, color?: string): void { GD.addGuide(this.guideHost, axis, at, color); }
 
   moveGuide(index: number, at: number): void { GD.moveGuide(this.guideHost, index, at); }
 
@@ -6125,7 +6167,7 @@ export class Engine {
   /** View > New Guide Layout (27.11): `columns` and `rows` with gutters inside margins, laid out:
    *  guides at the margins and at both edges of every gutter (a gutter of 0 puts one guide between cells). `clear`
    *  replaces the existing guides. One undo step. */
-  guideLayout(o: { columns: number; rows: number; gutterX: number; gutterY: number; margin: { top: number; left: number; bottom: number; right: number }; clear: boolean }): void { GD.guideLayout(this.guideHost, o); }
+  guideLayout(o: { columns: number; rows: number; gutterX: number; gutterY: number; margin: { top: number; left: number; bottom: number; right: number }; clear: boolean; columnWidth?: number; rowHeight?: number; centre?: boolean }): void { GD.guideLayout(this.guideHost, o); }
 
   /** View > New Guides From Shape (27.11): guides on the four edges of the active shape layer's path, else of the selection. */
   guidesFromShape(): boolean { return GD.guidesFromShape(this.guideHost); }
@@ -6341,12 +6383,16 @@ export class Engine {
     p.history.begin(name, p.snapshot());
     try {
       const queue: { y0: number; y1: number; a0: number; src: ImageData; out: Promise<ImageData | null> }[] = [];
-      for (const b of bandPlan(H, A, B)) {
+      const plan = bandPlan(H, A, B);
+      let written = 0;
+      this.reportProgress(0, plan.length);
+      for (const b of plan) {
         const src = r.ctx.getImageData(0, b.a0, W, b.a1 - b.a0);
         queue.push({ y0: b.y0, y1: b.y1, a0: b.a0, src, out: runBandOnPool(job.kind, job.settings, job.seed, src, this.bandFrame(f0, b.a0)) });
-        while (queue.length > N) await write(queue.shift()!);   // band j is written once band j + 1 is sent
+        while (queue.length > N) { await write(queue.shift()!); this.reportProgress(++written, plan.length); }   // band j is written once band j + 1 is sent
       }
-      while (queue.length) await write(queue.shift()!);
+      while (queue.length) { await write(queue.shift()!); this.reportProgress(++written, plan.length); }
+      this.reportProgress(0, 0);
       r.touch();
       if (l.shape) p.updateLayer(l.id, { shape: null });
     } finally {
@@ -8353,7 +8399,7 @@ export class Engine {
     return !!w;
   }
 
-  warpTo(pt: Pt): void { if (this.warpState) TE.warpTo(this.entryHost, this.warpState, pt); }
+  warpTo(pt: Pt, pressure = 1): void { if (this.warpState) TE.warpTo(this.entryHost, this.warpState, pt, computeOption(pressureOption(0.05, 1, this.pressureCurve ?? undefined), { pressure })); }
 
   endWarp(): void {
     const w = this.warpState;

@@ -25,6 +25,10 @@ export class FillDialog extends Dialog {
   private readonly modeRow: Row<string>;
   private readonly opacityRow: Row<number>;
   private readonly preserveRow: Row<boolean>;
+  private patternScale = 100;
+  private patternAngle = 0;
+  private readonly scaleRow: Row<number>;
+  private readonly angleRow: Row<number>;
   /** Fill Path: the same dialog with the Rendering settings (Feather Radius, Anti-aliased) shown. */
   private mode: 'fill' | 'path' = 'fill';
   private feather = 0;
@@ -37,12 +41,14 @@ export class FillDialog extends Dialog {
     this.contentsRow = selectRow('Contents', CONTENTS, (v) => { this.contents = v as Contents; this.sync(); });
     this.colorRowEl = colorRow('Color', (hex) => { this.color = { r: parseInt(hex.slice(1, 3), 16), g: parseInt(hex.slice(3, 5), 16), b: parseInt(hex.slice(5, 7), 16) }; });
     this.patternRow = selectRow('Pattern', allPatterns().map((p) => [p.id, p.name] as const), (v) => { this.patternId = v; });
+    this.scaleRow = sliderRow('Pattern scale (%)', 10, 500, 5, (v) => { this.patternScale = v; });
+    this.angleRow = sliderRow('Pattern angle', -180, 180, 1, (v) => { this.patternAngle = v; });
     this.modeRow = selectRow('Mode', BLEND_MODES.filter((m) => canvasBlend(m.id)).map((m) => [m.id, m.label] as const), (v) => { this.blend = v as BlendMode; });
     this.opacityRow = sliderRow('Opacity (%)', 1, 100, 1, (v) => { this.opacity = v; });
     this.preserveRow = checkRow('Preserve Transparency', (v) => { this.preserve = v; });
     this.featherRow = sliderRow('Feather Radius (px)', 0, 250, 0.5, (v) => { this.feather = v; });
     this.antialiasRow = checkRow('Anti-aliased', (v) => { this.antialias = v; });
-    this.body.append(this.contentsRow.el, this.colorRowEl.el, this.patternRow.el, this.modeRow.el, this.opacityRow.el, this.preserveRow.el, this.featherRow.el, this.antialiasRow.el);
+    this.body.append(this.contentsRow.el, this.colorRowEl.el, this.patternRow.el, this.scaleRow.el, this.angleRow.el, this.modeRow.el, this.opacityRow.el, this.preserveRow.el, this.featherRow.el, this.antialiasRow.el);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     this.remember();
@@ -60,6 +66,8 @@ export class FillDialog extends Dialog {
     if (!this.patternId) this.patternId = allPatterns()[0]?.id ?? '';
     this.contentsRow.set(this.contents);
     this.patternRow.set(this.patternId);
+    this.scaleRow.set(this.patternScale);
+    this.angleRow.set(this.patternAngle);
     this.modeRow.set(this.blend);
     this.opacityRow.set(this.opacity);
     this.preserveRow.set(this.preserve);
@@ -74,6 +82,8 @@ export class FillDialog extends Dialog {
     const ca = this.contents === 'contentAware', path = this.mode === 'path';
     off(this.colorRowEl as Row<unknown>, this.contents !== 'color');
     off(this.patternRow as Row<unknown>, this.contents !== 'pattern');
+    off(this.scaleRow as Row<unknown>, this.contents !== 'pattern');
+    off(this.angleRow as Row<unknown>, this.contents !== 'pattern');
     off(this.modeRow as Row<unknown>, ca);
     off(this.opacityRow as Row<unknown>, ca);
     off(this.preserveRow as Row<unknown>, ca);
@@ -89,7 +99,8 @@ export class FillDialog extends Dialog {
     if (k === 'contentAware') { this.contentAware(); return; }
     const color: RGB | null = k === 'fg' ? e.fg : k === 'bg' ? e.bg : k === 'color' ? this.color : k === 'black' ? { r: 0, g: 0, b: 0 } : k === 'gray' ? { r: 128, g: 128, b: 128 } : k === 'white' ? { r: 255, g: 255, b: 255 } : null;
     const contents = k === 'history' ? { history: true as const } : color ? { color: { ...color } } : { patternId: this.patternId };
-    if (this.mode === 'path') e.fillPathWith(contents, this.blend, this.opacity / 100, this.preserve, this.feather, this.antialias);
-    else e.fillWith(contents, this.blend, this.opacity / 100, this.preserve);
+    const tile = { patternScale: this.patternScale, patternAngle: this.patternAngle };
+    if (this.mode === 'path') e.fillPathWith(contents, this.blend, this.opacity / 100, this.preserve, this.feather, this.antialias, tile);
+    else e.fillWith(contents, this.blend, this.opacity / 100, this.preserve, tile);
   }
 }

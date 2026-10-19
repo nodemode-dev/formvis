@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.88.8 · 2026-10-19
+
+### Added
+
+- Brushes and fills: pen pressure drives Liquify and Smudge strength; brush names come in from .abr files; the brush cursor follows a sampled tip's shape and angle; pattern scale and angle in Fill and the Paint Bucket; Edit > Fill with the foreground or background keeping transparency; the Eyedropper can sample without adjustment layers; the symmetry axis moves; brush tips flip; texture brightness and contrast; Always use pressure; Magic Eraser opacity and anti-alias.
+- Workspace: a progress bar with step counts in the status bar; Help > Console shows the engine log with filters; a ComfyUI status dot for your own server; the DVCPRO HD 1080 pixel aspect; View > Show > Smart Guides; guides with units and colours; column and row sizes in New Guide Layout.
+- Agents: twelve more MCP tools (78 in all) for layout boxes, sampling a box's colour, frequency separation, sampling and editing the depth map, cropping, and exporting a mask or the selection as PNG.
+
 ## 1.88.7 · 2026-10-19
 
 ### Added

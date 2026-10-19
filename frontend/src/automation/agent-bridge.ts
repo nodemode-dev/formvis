@@ -1,7 +1,8 @@
 import { Raster, SelectionMask, createSurface, ctxOf, toBlob, type BlendMode, type Engine, type Surface } from '../engine';
 import { api, whenServiceUp } from '../io/api';
 import { PARAM_KINDS } from '../engine/adjust-params';
-import { LIMITS } from '../engine/types';
+import { BOX_KINDS, MAX_BOXES, boxWarnings, boxesText } from '../engine/boxes';
+import { LIMITS, type BoxKind } from '../engine/types';
 import { decodeImage } from '../io/images';
 import { VIDEO_PROPS, type VideoProp, type VideoTimeline } from '../engine/video-timeline';
 import { localFill, localInpaint, localModels, localUpscale, modelReady, runLocal } from '../io/local-gen';
@@ -563,6 +564,125 @@ export class AgentBridge {
           e.loadSelection({ channel: src as 'transparency' }, a.invert === true, mode as 'replace');
           const s = e.current?.selection;
           return s ? text(`Selected from ${l.name}'s ${src}: ${s.w} by ${s.h} at ${s.x}, ${s.y}.`, { x: s.x, y: s.y, width: s.w, height: s.h }) : fail(`${l.name}'s ${src} selects nothing.`);
+        }
+        // Layout boxes, depth, crop, sampling and mask files (1.88.8).
+        case 'boxes_list': {
+          const list = p.doc.boxes ?? [], boxes = list.map((b) => ({ id: b.id, kind: b.kind, name: b.name, text: b.text, x: b.x, y: b.y, width: b.w, height: b.h })), warnings = boxWarnings(list, p.doc.width, p.doc.height);
+          return text(list.length ? `${boxesText(list, p.doc)}${warnings.length ? `\nWarnings: ${warnings.join(' ')}` : ''}` : 'The document has no layout boxes: boxes_add draws one.', { boxes, warnings, max: MAX_BOXES });
+        }
+        case 'boxes_add': case 'boxes_from_selection': {
+          if (a.kind !== undefined && !BOX_KINDS.some((k) => k.id === a.kind)) return fail(`kind is ${BOX_KINDS.map((k) => k.id).join(', ')}.`);
+          const kind = (str('kind') || 'new') as BoxKind;
+          if ((p.doc.boxes?.length ?? 0) >= MAX_BOXES) return fail(`A picture holds at most ${MAX_BOXES} boxes: boxes_remove or boxes_clear first.`);
+          let id: string | null;
+          if (name === 'boxes_from_selection') {
+            if (!p.selection) return fail('There is no selection: call select, select_subject or select_color_range first.');
+            id = e.addBox(p.selection.rect, kind, str('text'));
+          } else {
+            if (typeof a.width !== 'number' || typeof a.height !== 'number' || !(a.width > 0) || !(a.height > 0)) return fail('Give x, y, width and height in document pixels.');
+            id = e.addBox({ x: num('x', 0), y: num('y', 0), w: a.width, h: a.height }, kind, str('text'));
+          }
+          const b = id ? p.doc.boxes?.find((x) => x.id === id) : undefined;
+          return b ? text(`Added ${b.name} (id ${b.id}): ${b.w} by ${b.h} at ${b.x}, ${b.y}.`, { id: b.id, name: b.name, kind: b.kind, x: b.x, y: b.y, width: b.w, height: b.h }) : fail('The box could not be added.');
+        }
+        case 'boxes_set': {
+          const b = p.doc.boxes?.find((x) => x.id === str('id'));
+          if (!b) return fail(`No box has the id ${str('id')}: call boxes_list for the ids.`);
+          if (a.kind !== undefined && !BOX_KINDS.some((k) => k.id === a.kind)) return fail(`kind is ${BOX_KINDS.map((k) => k.id).join(', ')}.`);
+          const patch: Record<string, unknown> = {};
+          if (a.kind !== undefined) patch.kind = a.kind;
+          if (typeof a.text === 'string') patch.text = a.text;
+          if (typeof a.name === 'string' && a.name.trim()) patch.name = a.name.trim();
+          for (const [k, to] of [['x', 'x'], ['y', 'y'], ['width', 'w'], ['height', 'h']] as const) if (typeof a[k] === 'number') patch[to] = a[k];
+          if (!Object.keys(patch).length) return fail('Give at least one of kind, text, name, x, y, width, height.');
+          e.setBox(b.id, patch as Parameters<Engine['setBox']>[1]);
+          const n = p.doc.boxes?.find((x) => x.id === b.id) ?? b;
+          return text(`${n.name} is ${n.kind}, ${n.w} by ${n.h} at ${n.x}, ${n.y}.`, { id: n.id, name: n.name, kind: n.kind, text: n.text, x: n.x, y: n.y, width: n.w, height: n.h });
+        }
+        case 'boxes_remove': {
+          const b = p.doc.boxes?.find((x) => x.id === str('id'));
+          if (!b) return fail(`No box has the id ${str('id')}: call boxes_list for the ids.`);
+          e.removeBox(b.id);
+          return text(`Removed ${b.name}; ${p.doc.boxes?.length ?? 0} left.`);
+        }
+        case 'boxes_clear': {
+          const n = p.doc.boxes?.length ?? 0;
+          if (!n) return text('The document has no layout boxes.');
+          e.clearBoxes();
+          return text(`Removed all ${n} box${n === 1 ? '' : 'es'}.`);
+        }
+        case 'sample_box': {
+          const b = str('id') ? p.doc.boxes?.find((x) => x.id === str('id')) : undefined;
+          if (str('id') && !b) return fail(`No box has the id ${str('id')}: call boxes_list for the ids.`);
+          const flat = e.flattened();
+          if (!flat) return fail('Nothing to sample.');
+          const x0 = Math.max(0, Math.round(b ? b.x : num('x', 0))), y0 = Math.max(0, Math.round(b ? b.y : num('y', 0)));
+          const x1 = Math.min(flat.width, Math.round((b ? b.x + b.w : num('x', 0) + num('width', 0)))), y1 = Math.min(flat.height, Math.round((b ? b.y + b.h : num('y', 0) + num('height', 0))));
+          if (x1 <= x0 || y1 <= y0) return fail('Give a box id from boxes_list, or x, y, width and height in document pixels inside the picture.');
+          const d = ctxOf(flat).getImageData(x0, y0, x1 - x0, y1 - y0).data;
+          let r = 0, g = 0, bl = 0, w = 0;
+          for (let i = 0; i < d.length; i += 4) { const al = d[i + 3]; r += d[i] * al; g += d[i + 1] * al; bl += d[i + 2] * al; w += al; }
+          if (!w) return fail('That area is fully transparent.');
+          const c = { r: Math.round(r / w), g: Math.round(g / w), b: Math.round(bl / w) }, code = `#${[c.r, c.g, c.b].map((v) => v.toString(16).padStart(2, '0')).join('')}`, opaque = Math.round(w / (255 * d.length / 4) * 1000) / 1000;
+          return text(`The average colour of ${x1 - x0} by ${y1 - y0} at ${x0}, ${y0} is ${code} (${c.r}, ${c.g}, ${c.b}), ${Math.round(opaque * 100)} percent opaque.`, { hex: code, ...c, opaque, x: x0, y: y0, width: x1 - x0, height: y1 - y0 });
+        }
+        case 'frequency_separation': {
+          const radius = num('radius', 8);
+          if (!(radius >= 0.5 && radius <= 100)) return fail('radius is 0.5 to 100 pixels.');
+          if (!e.frequencySeparation(radius)) return fail('There is nothing to separate.');
+          const named = (n: string) => [...p.doc.layers].reverse().find((l) => l.name === n), lo = named('Low Frequency'), hi = named('High Frequency');
+          return text(`Split at ${radius} pixels: Low Frequency (id ${lo?.id}) holds colour and tone, High Frequency (id ${hi?.id}, Linear Light) holds the detail. Retouch each alone; together they look as the picture did.`, { low: lo?.id, high: hi?.id, radius });
+        }
+        case 'sample_depth': {
+          const l = e.depthLayer(p);
+          if (!l) return fail('This document has no Depth Map layer: compute one first (run_command depth-map-from-layer or compute-depth-map), or name a grey layer Depth Map.');
+          const x = Math.floor(num('x', -1)), y = Math.floor(num('y', -1)), n = Math.max(1, Math.min(101, Math.round(num('size', 1))));
+          if (x < 0 || y < 0 || x >= p.doc.width || y >= p.doc.height) return fail(`x and y must lie inside the picture (0 to ${p.doc.width - 1}, 0 to ${p.doc.height - 1}).`);
+          const s = e.renderLayerAlone(l.id), half = Math.floor(n / 2), x0 = Math.max(0, x - half), y0 = Math.max(0, y - half), x1 = Math.min(s.width, x - half + n), y1 = Math.min(s.height, y - half + n);
+          const d = ctxOf(s).getImageData(x0, y0, x1 - x0, y1 - y0).data;
+          let sum = 0, w = 0;
+          for (let i = 0; i < d.length; i += 4) { sum += d[i] * d[i + 3]; w += d[i + 3]; }
+          if (!w) return fail(`${l.name} is transparent at ${x}, ${y}.`);
+          const v = Math.round(sum / w), norm = Math.round(v / 255 * 1000) / 1000;
+          return text(`Depth at ${x}, ${y}: ${v} of 255 (${norm}); near is bright, far is dark.`, { x, y, value: v, normalized: norm, size: n, layer: l.id });
+        }
+        case 'depth_edit': {
+          const kind = str('kind') as Parameters<Engine['correctDepthMap']>[0];
+          if (!['flatten', 'nearer', 'farther', 'smooth'].includes(kind)) return fail('kind is flatten, nearer, farther or smooth.');
+          const smooth = kind === 'smooth', edges = smooth && a.edges === true, amount = smooth ? num('radius', 4) : num('amount', kind === 'flatten' ? 50 : 10);
+          if (smooth ? !(amount >= 1 && amount <= (edges ? 9 : 32)) : !(amount >= 1 && amount <= 100)) return fail(smooth ? `radius is 1 to ${edges ? 9 : 32} pixels${edges ? ' with edges' : ''}.` : 'amount is 1 to 100 percent.');
+          let said = '';
+          const off = e.on('notice', (n) => { said = (n as { text?: string } | null)?.text ?? said; });
+          let ok: boolean;
+          try { ok = e.correctDepthMap(kind, smooth ? amount : amount / 100, edges); } finally { off?.(); }
+          return ok ? text(`${{ flatten: 'Flattened', nearer: 'Brought nearer', farther: 'Pushed farther', smooth: edges ? 'Smoothed to the picture\'s edges' : 'Smoothed' }[kind]} the depth map${smooth ? ` (radius ${amount})` : ` by ${amount} percent`}${p.selection ? ', inside the selection' : ''}.`) : fail(said || 'The depth map could not be changed.');
+        }
+        case 'set_crop': {
+          if (typeof a.width !== 'number' || typeof a.height !== 'number' || !(a.width >= 1) || !(a.height >= 1)) return fail('Give x, y, width and height of the frame in document pixels.');
+          const rect = { x: num('x', 0), y: num('y', 0), w: a.width, h: a.height }, angle = num('angle', 0), ca = a.content_aware === true;
+          if (!(angle >= -45 && angle <= 45)) return fail('angle is -45 to 45 degrees.');
+          const ow = a.output_width, oh = a.output_height;
+          if ((ow === undefined) !== (oh === undefined)) return fail('Give both output_width and output_height, or neither.');
+          if (ow !== undefined && (typeof ow !== 'number' || typeof oh !== 'number' || !(ow >= 1) || !(oh >= 1))) return fail('output_width and output_height are pixel counts of at least 1.');
+          const ok = ow !== undefined ? e.cropToSize(rect, angle, ca, ow as number, oh as number, num('resolution', p.doc.resolution ?? 72)) : e.straightenCrop(rect, angle, ca);
+          const q = e.current?.doc;
+          return ok ? text(`Cropped to ${q?.width} by ${q?.height}${angle ? `, straightened ${angle} degrees` : ''}${ow !== undefined ? ` at ${q?.resolution} ppi` : ''}.`, { width: q?.width, height: q?.height }) : fail('That frame is empty or larger than formvis allows.');
+        }
+        case '__mask': {
+          const src = str('source') || 'selection', W = p.doc.width, H = p.doc.height;
+          if (!['selection', 'layer_mask', 'layer_pixels'].includes(src)) return fail('source is selection, layer_mask or layer_pixels.');
+          let m: SelectionMask | null;
+          if (src === 'selection') m = p.selection;
+          else { const l = layerOf(); if (src === 'layer_mask' && !l.mask) return fail(`${l.name} has no layer mask.`); m = e.coverageOf(l.id, src === 'layer_mask'); }
+          if (!m) return fail(src === 'selection' ? 'Nothing is selected: call select first.' : 'That layer shows nothing, so there is no mask to write.');
+          const s = createSurface(W, H), c = ctxOf(s), img = c.createImageData(W, H), px = img.data;
+          for (let i = 3; i < px.length; i += 4) px[i] = 255;
+          for (let j = Math.max(0, -m.y); j < m.h && m.y + j < H; j++) for (let i = Math.max(0, -m.x); i < m.w && m.x + i < W; i++) {
+            const v = m.data[j * m.w + i], o = ((m.y + j) * W + m.x + i) * 4;
+            px[o] = v; px[o + 1] = v; px[o + 2] = v;
+          }
+          c.putImageData(img, 0, 0);
+          return text('The mask.', { data: await b64(await toBlob(s, 'image/png')), width: W, height: H });
         }
         case 'list_settings': {
           const values = settingsOf(loadPrefs());

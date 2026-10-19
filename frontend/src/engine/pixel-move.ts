@@ -380,7 +380,7 @@ export function cancelSelectionTransform(host: MoveHost, fs: FloatingSelection):
 }
 
 /** View > Snap and Snap To: the master switch and the four targets, each on its own (the app keeps them). */
-export const snapOptions = { on: true, guides: true, grid: true, layers: true, bounds: true };
+export const snapOptions = { on: true, guides: true, grid: true, layers: true, bounds: true, smart: true };
 
 export function snapMove(host: MoveHost, p: Project, id: ID, t: Transform, moving?: ReadonlySet<ID>): Transform {
   const layer = p.layer(id);
@@ -438,7 +438,7 @@ export function snapMove(host: MoveHost, p: Project, id: ID, t: Transform, movin
     host.setSnapGuides(null);
     return t;
   }
-  host.setSnapGuides({ xs: sx ? sx.lines : [], ys: sy ? sy.lines : [] });
+  host.setSnapGuides(snapOptions.smart ? { xs: sx ? sx.lines : [], ys: sy ? sy.lines : [] } : null);
   return { ...t, x: t.x + (sx ? sx.shift : 0), y: t.y + (sy ? sy.shift : 0) };
 }
 

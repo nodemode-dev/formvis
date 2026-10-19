@@ -80,8 +80,10 @@ export interface BrushShape {
   angle: number; roundness: number; spacing: number | null;
   sizeJitter: number; angleJitter: number; roundnessJitter: number; minRoundness: number;
   angleControl: 'off' | 'direction' | 'tilt' | 'rotation'; roundnessControl: 'off' | 'tilt';
+  /** The tip mirrored across its own axes, before the angle turns it; it shows on a tip that is not symmetric. */
+  flipX?: boolean; flipY?: boolean;
   scatter: number; bothAxes: boolean; count: number; countJitter: number;
-  texture: { on: boolean; pattern: string; scale: number; depth: number };
+  texture: { on: boolean; pattern: string; scale: number; depth: number; invert?: boolean; brightness?: number; contrast?: number };
   /** The dual brush's marks are laid with the main dabs, scattered by its own Scatter and Count (no separate spacing). */
   dual: { on: boolean; diameter: number; scatter: number; count: number };
   /** Color Dynamics (1.50.1, the owner's list): each dab's colour from the foreground towards the
@@ -103,7 +105,7 @@ export function shapeActive(s: BrushShape | null | undefined): boolean {
   if (!s) return false;
   const d = defaultShape();
   return s.angle !== d.angle || s.roundness !== d.roundness || s.spacing !== null || s.sizeJitter > 0 || s.angleJitter > 0 || s.roundnessJitter > 0
-    || s.angleControl !== 'off' || s.roundnessControl !== 'off' || s.scatter > 0 || s.count > 1 || s.countJitter > 0 || s.texture.on || s.dual.on;
+    || s.angleControl !== 'off' || s.roundnessControl !== 'off' || s.scatter > 0 || s.count > 1 || s.countJitter > 0 || s.texture.on || s.dual.on || !!s.flipX || !!s.flipY;
 }
 
 /** A preset's tip shape (angle in degrees, roundness in percent) is optional: absent is a round tip (0, 100). `spacing`

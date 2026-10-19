@@ -3,8 +3,8 @@
  *  brushes (type 2) carry spacing, a name (version 2), bounds, depth and pixels, raw or PackBits-compressed by row.
  *  Versions 6 to 10: a subversion, then 8BIM sections; 'samp' holds the sampled tips, each a length, a key and header
  *  (47 bytes to skip for subversion 1, 301 for subversion 2), bounds, depth, a compression flag and pixels. Computed
- *  (round, parametric) brushes and the 'desc' section's names and other settings are not read; tips are named from the
- *  file. The 'desc' section is walked for each sampled brush's Spcn (spacing in percent), matched to its tip by the
+ *  (round, parametric) brushes and the 'desc' section's other settings are not read; a tip takes the name its descriptor entry gives, else
+ *  one made from the file. The 'desc' section is walked for each sampled brush's Spcn (spacing in percent), matched to its tip by the
  *  tip's key (the text at the start of its record); a tip with none keeps 25 percent.
  *  A tip's grey is the paint: 255 paints fully, 0 not at all. */
 
@@ -86,8 +86,8 @@ function readOld(r: Reader, version: number, base: string): AbrBrush[] {
 
 /** Each sampled brush's spacing (a fraction of its diameter) in a 'desc' section, by its sampledData key. The
  *  descriptor tree is walked for objects holding both; a value of a type not known ends the walk, keeping what was found. */
-function readDescSpacing(r: Reader): Map<string, number> {
-  const found = new Map<string, number>();
+function readDescSpacing(r: Reader): { spacing: Map<string, number>; names: Map<string, string> } {
+  const found = new Map<string, number>(), names = new Map<string, string>();
   const id = (): string => { const n = r.u32(); let s = ''; for (let i = 0; i < (n || 4); i++) s += String.fromCharCode(r.u8()); return s; };
   const text = (): string => { const n = r.u32(); let s = ''; for (let i = 0; i < n; i++) { const c = r.u16(); if (c) s += String.fromCharCode(c); } return s; };
   const double = (): number => { const x = r.v.getFloat64(r.pos); r.skip(8); return x; };
@@ -98,6 +98,8 @@ function readDescSpacing(r: Reader): Map<string, number> {
         const vals: Record<string, unknown> = {};
         for (let n = r.u32(); n > 0; n--) { const key = id(); vals[key] = value(String.fromCharCode(r.u8(), r.u8(), r.u8(), r.u8())); }
         if (typeof vals.sampledData === 'string' && typeof vals.Spcn === 'number') found.set(vals.sampledData.trim(), Math.min(10, Math.max(0.01, vals.Spcn / 100)));
+        const inner = vals.Brsh as Record<string, unknown> | undefined;
+        if (typeof vals['Nm  '] === 'string' && inner && typeof inner.sampledData === 'string' && vals['Nm  '].trim()) names.set(inner.sampledData.trim(), vals['Nm  '].trim().slice(0, 60));
         return vals;
       }
       case 'VlLs': { const items: unknown[] = []; for (let n = r.u32(); n > 0; n--) items.push(value(String.fromCharCode(r.u8(), r.u8(), r.u8(), r.u8()))); return items; }
@@ -116,12 +118,12 @@ function readDescSpacing(r: Reader): Map<string, number> {
   try {
     if (r.u32() === 16) value('Objc');
   } catch { /* the rest keeps the default spacing */ }
-  return found;
+  return { spacing: found, names };
 }
 
 function readSections(r: Reader, sub: number, base: string): AbrBrush[] {
   const out: AbrBrush[] = [], keys: string[] = [];
-  let spacings = new Map<string, number>();
+  let spacings = new Map<string, number>(), called = new Map<string, string>();
   while (r.left >= 12) {
     const sig = String.fromCharCode(r.u8(), r.u8(), r.u8(), r.u8()), key = String.fromCharCode(r.u8(), r.u8(), r.u8(), r.u8()), len = r.u32();
     if (sig !== '8BIM') break;
@@ -138,10 +140,10 @@ function readSections(r: Reader, sub: number, base: string): AbrBrush[] {
         if (data) { out.push({ name: `${base} ${out.length + 1}`, tip: { w: right - left, h: bottom - top, data }, spacing: 0.25 }); keys.push(tipKey.trim()); }
         r.pos = next;
       }
-    } else if (key === 'desc') spacings = readDescSpacing(r);
+    } else if (key === 'desc') ({ spacing: spacings, names: called } = readDescSpacing(r));
     r.pos = end;
   }
-  out.forEach((b, i) => { b.spacing = spacings.get(keys[i]) ?? b.spacing; });
+  out.forEach((b, i) => { b.spacing = spacings.get(keys[i]) ?? b.spacing; b.name = called.get(keys[i]) ?? b.name; });
   return out;
 }
 

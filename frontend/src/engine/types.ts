@@ -147,7 +147,7 @@ export function artboardFromData(raw: unknown): Artboard | null {
   return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h), background: b && typeof b === 'object' ? { r: c(b.r), g: c(b.g), b: c(b.b) } : null };
 }
 
-export interface Guide { axis: 'x' | 'y'; at: number }
+export interface Guide { axis: 'x' | 'y'; at: number; color?: string }
 /** A note pinned to the document (the Note tool, 1.49.6), and the Count tool's marks: saved with it. */
 export interface DocNote { id: ID; x: number; y: number; text: string }
 /** A document's colour mode (1.50.2, the owner's walkthrough): RGB, Grayscale (8-bit grey), Bitmap (1-bit

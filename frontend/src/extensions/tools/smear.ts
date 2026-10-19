@@ -30,7 +30,7 @@ export const smearTool: Tool = {
   },
   move(ctx, p) {
     hover = p.doc;
-    if (ctx.engine.warping) ctx.engine.warpTo(p.doc);
+    if (ctx.engine.warping) ctx.engine.warpTo(p.doc, p.pressure);
     else ctx.engine.strokeTo(p.doc);
     ctx.engine.emit('overlay', null);
   },

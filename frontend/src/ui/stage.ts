@@ -380,13 +380,17 @@ export class Stage {
     }
     const draft = this.engine.guideDraft, guides = (p.doc.guides ?? []).map((x, i) => (draft && draft.index === i ? null : x));
     if (vw.guides || draft) {
-      g.strokeStyle = Stage.prefs.guideColor || pal.accent;
-      g.beginPath();
-      for (const x of [...guides, draft].filter((q): q is NonNullable<typeof q> => !!q && (vw.guides || q === draft))) {
-        if (x.axis === 'x') { const sx = Math.round(v.panX + x.at * v.zoom) + 0.5; g.moveTo(sx, -this.offY); g.lineTo(sx, this.cssH + this.offY); }
-        else { const sy = Math.round(v.panY + x.at * v.zoom) + 0.5; g.moveTo(-this.offX, sy); g.lineTo(this.cssW + this.offX, sy); }
+      const shown = [...guides, draft].filter((q): q is NonNullable<typeof q> => !!q && (vw.guides || q === draft)).map((x) => ({ axis: x.axis, at: x.at, color: 'color' in x ? x.color : undefined }));
+      for (const colour of new Set(shown.map((x) => x.color ?? ''))) {
+        g.strokeStyle = colour || Stage.prefs.guideColor || pal.accent;
+        g.beginPath();
+        for (const x of shown) {
+          if ((x.color ?? '') !== colour) continue;
+          if (x.axis === 'x') { const sx = Math.round(v.panX + x.at * v.zoom) + 0.5; g.moveTo(sx, -this.offY); g.lineTo(sx, this.cssH + this.offY); }
+          else { const sy = Math.round(v.panY + x.at * v.zoom) + 0.5; g.moveTo(-this.offX, sy); g.lineTo(this.cssW + this.offX, sy); }
+        }
+        g.stroke();
       }
-      g.stroke();
     }
     g.restore();
   }

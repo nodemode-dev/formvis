@@ -308,7 +308,12 @@ export class PixelStroke {
     if (shape.dual.on) { this.dualPaint = takeSurface(this.raster.width, this.raster.height); this.dualTip = brushTip(shape.dual.diameter * k, 1, { r: 255, g: 255, b: 255 }); }
     if (shape.texture.on && pattern) {
       const w = pattern.width, h = pattern.height, t = createSurface(w, h), c = ctxOf(t), src = ctxOf(pattern).getImageData(0, 0, w, h), out = c.createImageData(w, h), depth = shape.texture.depth / 100;
-      for (let i = 0; i < src.data.length; i += 4) out.data[i + 3] = Math.round(255 * depth * (1 - (0.299 * src.data[i] + 0.587 * src.data[i + 1] + 0.114 * src.data[i + 2]) / 255));
+      const tx = shape.texture, gain = (tx.contrast ?? 0) >= 0 ? 1 / (1 - 0.99 * ((tx.contrast ?? 0) / 100)) : 1 + (tx.contrast ?? 0) / 100, lift = (tx.brightness ?? 0) / 100;
+      for (let i = 0; i < src.data.length; i += 4) {
+        let lum = (0.299 * src.data[i] + 0.587 * src.data[i + 1] + 0.114 * src.data[i + 2]) / 255;
+        lum = Math.min(1, Math.max(0, (lum - 0.5) * gain + 0.5 + lift));
+        out.data[i + 3] = Math.round(255 * depth * (tx.invert ? lum : 1 - lum));
+      }
       c.putImageData(out, 0, 0);
       this.textureTile = t;
     }
@@ -529,7 +534,7 @@ export class PixelStroke {
         else { const t = (rnd() * 2 - 1) * spread; x += Math.cos(across) * t; y += Math.sin(across) * t; }
       }
       const a = (angle * Math.PI) / 180, ca = Math.cos(a), sa = Math.sin(a), place = mul(this.toLocal, [ca, sa, -sa, ca, x, y]);
-      const at = mul(place, [1, 0, 0, round, 0, 0]), rx = r * this.tipAspect.x, ry = r * this.tipAspect.y;
+      const at = mul(place, [sh.flipX ? -1 : 1, 0, 0, sh.flipY ? -round : round, 0, 0]), rx = r * this.tipAspect.x, ry = r * this.tipAspect.y;
       this.buf.lay(tip, mul(at, [(2 * rx) / tip.w, 0, 0, (2 * ry) / tip.h, -rx, -ry]), alpha, reached);
       if (this.varied) {
         const c = this.inkCtx();

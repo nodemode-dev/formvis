@@ -199,6 +199,34 @@ TOOLS = [
           {"values": {"type": "object", "description": "Setting names and their new values."}}, ["values"], idempotent=True),
     _tool("ui_inspect", "Describes parts of the formvis window: for each element matching a CSS selector, its tag, id, text, whether it is visible, disabled or pressed, and its box in window pixels.",
           {"selector": {"type": "string", "maxLength": 200}, "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10}}, ["selector"], read=True, idempotent=True),
+    # Layout boxes, depth, crop, sampling and mask files (1.88.8).
+    _tool("boxes_list", "The layout boxes on the document (rectangles that say where new, kept, moved or removed things go, which Generate writes into its prompt): id, kind, name, description and rectangle in document pixels, with warnings about empty descriptions, tiny or overlapping boxes.", {}, read=True, idempotent=True),
+    _tool("boxes_add", "Adds a layout box: a rectangle in document pixels with a kind (new, keep, move, remove, reference, text) and a description of what belongs there. At most 24 boxes; the rectangle is kept on the canvas.",
+          {"x": {"type": "number"}, "y": {"type": "number"}, "width": {"type": "number", "minimum": 1}, "height": {"type": "number", "minimum": 1},
+           "kind": {"type": "string", "enum": ["new", "keep", "move", "remove", "reference", "text"], "default": "new"}, "text": {"type": "string", "maxLength": 500, "default": ""}}, ["x", "y", "width", "height"]),
+    _tool("boxes_set", "Changes a layout box: its kind, description, name or rectangle (only what you give). The id is from boxes_list.",
+          {"id": {"type": "string", "description": "A box id from boxes_list."}, "kind": {"type": "string", "enum": ["new", "keep", "move", "remove", "reference", "text"]}, "text": {"type": "string", "maxLength": 500},
+           "name": {"type": "string", "maxLength": 60}, "x": {"type": "number"}, "y": {"type": "number"}, "width": {"type": "number", "minimum": 1}, "height": {"type": "number", "minimum": 1}}, ["id"], idempotent=True),
+    _tool("boxes_remove", "Deletes one layout box by its id from boxes_list (undoable).", {"id": {"type": "string", "description": "A box id from boxes_list."}}, ["id"], destructive=True),
+    _tool("boxes_from_selection", "Makes a layout box over the bounds of the current selection, as one step.",
+          {"kind": {"type": "string", "enum": ["new", "keep", "move", "remove", "reference", "text"], "default": "new"}, "text": {"type": "string", "maxLength": 500, "default": ""}}),
+    _tool("boxes_clear", "Deletes every layout box in one undoable step.", {}, destructive=True, idempotent=True),
+    _tool("sample_box", "The average colour (opacity weighted, of the flattened picture) inside a layout box, or inside a rectangle in document pixels. Returns #rrggbb, its red, green and blue, and how opaque the area is.",
+          {"id": {"type": "string", "description": "A box id from boxes_list; leave out to give a rectangle."}, "x": {"type": "number"}, "y": {"type": "number"}, "width": {"type": "number", "minimum": 1}, "height": {"type": "number", "minimum": 1}}, read=True, idempotent=True),
+    _tool("frequency_separation", "Splits what the picture shows at a radius into two layers above the active one: Low Frequency (the blurred colour and tone) and High Frequency (the detail, in Linear Light), which together look as the picture did. Retouch skin tone on the first and texture on the second.",
+          {"radius": {"type": "number", "minimum": 0.5, "maximum": 100, "default": 8, "description": "Blur radius in pixels: larger keeps more in the detail layer."}}),
+    _tool("sample_depth", "Reads the Depth Map layer at a point: 0 to 255 (and 0 to 1), near is bright, far is dark. size averages a square of that many pixels. The document needs a Depth Map layer (a grey layer named Depth Map).",
+          {"x": {"type": "integer", "minimum": 0}, "y": {"type": "integer", "minimum": 0}, "size": {"type": "integer", "minimum": 1, "maximum": 101, "default": 1}}, ["x", "y"], read=True, idempotent=True),
+    _tool("depth_edit", "Corrects the Depth Map layer, inside the selection when there is one: flatten (pull amount percent toward mid grey), nearer or farther (shift amount percent of the range), or smooth (blur by radius pixels; edges true keeps depth sharp at the picture's own edges, radius up to 9).",
+          {"kind": {"type": "string", "enum": ["flatten", "nearer", "farther", "smooth"]}, "amount": {"type": "number", "minimum": 1, "maximum": 100, "description": "Percent for flatten (50 when left out), nearer and farther (10)."},
+           "radius": {"type": "number", "minimum": 1, "maximum": 32, "default": 4, "description": "For smooth."}, "edges": {"type": "boolean", "default": False, "description": "For smooth: keep the picture's edges sharp."}}, ["kind"]),
+    _tool("set_crop", "Crops to a frame given in document pixels, with a turn: angle straightens the picture (degrees, -45 to 45) about the frame's centre, and output_width with output_height resample the result to exactly that size at resolution ppi. A frame past the picture's edge adds canvas; content_aware fills it from the picture. crop is the plain rectangle.",
+          {"x": {"type": "number"}, "y": {"type": "number"}, "width": {"type": "number", "minimum": 1}, "height": {"type": "number", "minimum": 1}, "angle": {"type": "number", "minimum": -45, "maximum": 45, "default": 0},
+           "output_width": {"type": "integer", "minimum": 1, "maximum": 30000}, "output_height": {"type": "integer", "minimum": 1, "maximum": 30000}, "resolution": {"type": "number", "minimum": 1, "maximum": 9600, "description": "Pixels per inch; the document's own when left out."},
+           "content_aware": {"type": "boolean", "default": False}}, ["x", "y", "width", "height"], destructive=True),
+    _tool("export_mask", "Writes a mask as a grey PNG the size of the document (white shows, black hides, greys are partial) to an absolute path: the selection, a layer's mask, or what a layer's pixels cover. A file already there is kept unless overwrite is true.",
+          {"path": {"type": "string", "description": "Absolute path ending .png"}, "source": {"type": "string", "enum": ["selection", "layer_mask", "layer_pixels"], "default": "selection"},
+           "id": {"type": "string", "description": "A layer id from get_document; for layer_mask and layer_pixels."}, "overwrite": _OVERWRITE}, ["path"], destructive=True),
 ]
 USE_WHEN = {
     "get_document": "you need the document's size, mode, layer ids or documents before any edit.",
@@ -267,6 +295,18 @@ USE_WHEN = {
     "list_settings": "you need to know how the window is set up before changing it.",
     "set_settings": "a simple setting in Preferences should change.",
     "ui_inspect": "you need to know what a button, panel or dialog in the window shows or whether it is enabled.",
+    "boxes_list": "you need to see the layout boxes before changing them or generating.",
+    "boxes_add": "you want to say where a new, kept, moved or removed thing goes before generating.",
+    "boxes_set": "a layout box needs another kind, description, name or place.",
+    "boxes_remove": "one layout box is wrong and should go.",
+    "boxes_from_selection": "a selection already marks the place a described thing should go.",
+    "boxes_clear": "the layout boxes are finished with or should start over.",
+    "sample_box": "you need the colour of an area or a layout box, for example to match a fill or a text colour.",
+    "frequency_separation": "colour and tone should be retouched apart from texture, as in skin retouching.",
+    "sample_depth": "you need how near or far the Depth Map says a point is.",
+    "depth_edit": "the Depth Map layer needs flattening, shifting or smoothing before it is used.",
+    "set_crop": "the crop needs a turn to straighten the horizon, or a fixed output size, or a frame that reaches past the edge.",
+    "export_mask": "a selection or a layer's mask should be written as a PNG for another program.",
 }
 for _t in TOOLS:
     _t["description"] += f" Use when {USE_WHEN[_t['name']]}"
@@ -432,7 +472,7 @@ _PROJECTS = {".fvd", ".fmv", ".psd", ".psb", ".ora"}
 _EXPORTS = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
 _MAX_OPEN = 512 * 1024 * 1024
 _FILES = {"open_file": (_PICTURES | _PROJECTS, True), "place_image": ({".png", ".jpg", ".jpeg", ".webp"}, True), "timeline_render": ({".mp4", ".gif", ".zip"}, False),
-          "save_project": ({".fvd"}, False), "export_image": (set(_EXPORTS), False)}   # tool: the suffixes it takes, whether it reads
+          "save_project": ({".fvd"}, False), "export_image": (set(_EXPORTS), False), "export_mask": ({".png"}, False)}   # tool: the suffixes it takes, whether it reads
 
 
 def _system_roots() -> list[str]:
@@ -527,6 +567,15 @@ async def _run(name: str, args: dict) -> dict:
             data = (out.get("structuredContent") or {}).get("data") if not out.get("isError") else None
             if not data:
                 return out if out.get("isError") else _fail("formvis rendered nothing.")
+            blob = base64.b64decode(data)
+            await asyncio.to_thread(path.write_bytes, blob)
+            return {"content": [{"type": "text", "text": f"Wrote {path} ({len(blob):,} bytes)."}], "structuredContent": {"path": str(path), "bytes": len(blob)}}
+        if name == "export_mask":
+            path = _path(args.get("path"), _FILES[name][0], False, args.get("overwrite"))
+            out = await _call("__mask", {k: args[k] for k in ("source", "id") if k in args})
+            data = (out.get("structuredContent") or {}).get("data") if not out.get("isError") else None
+            if not data:
+                return out if out.get("isError") else _fail("formvis gave nothing to write.")
             blob = base64.b64decode(data)
             await asyncio.to_thread(path.write_bytes, blob)
             return {"content": [{"type": "text", "text": f"Wrote {path} ({len(blob):,} bytes)."}], "structuredContent": {"path": str(path), "bytes": len(blob)}}

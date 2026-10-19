@@ -53,6 +53,8 @@ export class BrushSettingsDialog extends Dialog {
     heading('Brush Tip Shape');
     slide('Angle (\u00b0)', -180, 180, 1, () => s().angle, (v) => put({ angle: v }));
     slide('Roundness (%)', 1, 100, 1, () => s().roundness, (v) => put({ roundness: v }));
+    check('Flip X', () => !!s().flipX, (on) => put({ flipX: on }));
+    check('Flip Y', () => !!s().flipY, (on) => put({ flipY: on }));
     check('Spacing', () => s().spacing !== null, (on) => put({ spacing: on ? 25 : null }));
     slide('Spacing (% of diameter)', 1, 1000, 1, () => s().spacing ?? 25, (v) => put({ spacing: v }));
 
@@ -76,6 +78,9 @@ export class BrushSettingsDialog extends Dialog {
     if (patterns.length) pick('Pattern', patterns, () => s().texture.pattern || patterns[0][0], (v) => put({ texture: { ...s().texture, pattern: v } }));
     slide('Scale (%)', 1, 1000, 1, () => s().texture.scale, (v) => put({ texture: { ...s().texture, scale: v } }));
     slide('Depth (%)', 0, 100, 1, () => s().texture.depth, (v) => put({ texture: { ...s().texture, depth: v } }));
+    slide('Brightness', -100, 100, 1, () => s().texture.brightness ?? 0, (v) => put({ texture: { ...s().texture, brightness: v } }));
+    slide('Contrast', -100, 100, 1, () => s().texture.contrast ?? 0, (v) => put({ texture: { ...s().texture, contrast: v } }));
+    check('Invert Texture', () => !!s().texture.invert, (v) => put({ texture: { ...s().texture, invert: v } }));
 
     heading('Dual Brush');
     check('Dual Brush', () => s().dual.on, (v) => put({ dual: { ...s().dual, on: v } }));

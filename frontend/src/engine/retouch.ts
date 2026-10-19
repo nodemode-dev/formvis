@@ -697,6 +697,8 @@ export class WarpStroke {
   private readonly diameter: number;
   private readonly hardness: number;
   private readonly strength: number;
+  /** The pen's pressure (already through its curve) scaling the strength of the dabs laid by the current move. */
+  private pressure = 1;
   private readonly gap: number;
   private pointer: Pt | null = null;
   private lastDab: Pt | null = null;
@@ -721,7 +723,8 @@ export class WarpStroke {
   }
 
   /** Moves the stroke to `point`; returns the pixel rectangle that changed, or null. */
-  append(point: Pt): Rect | null {
+  append(point: Pt, pressure = 1): Rect | null {
+    this.pressure = clamp(pressure, 0, 1);
     if (!this.pointer) {
       this.pointer = { x: point.x, y: point.y };
       this.lastDab = { x: point.x, y: point.y };
@@ -769,7 +772,7 @@ export class WarpStroke {
   private deposit(at: Pt): void {
     const paint = this.paint;
     if (!paint) return;
-    const r = this.radius, side = 2 * r + 1, cx = Math.round(at.x), cy = Math.round(at.y), half = this.diameter / 2, lay = this.strength, take = 1 - this.strength;
+    const r = this.radius, side = 2 * r + 1, cx = Math.round(at.x), cy = Math.round(at.y), half = this.diameter / 2, lay = this.strength * this.pressure, take = 1 - lay;
     for (let oy = -r; oy <= r; oy++) {
       const y = cy + oy;
       if (y < 0 || y >= this.height) continue;
@@ -803,7 +806,7 @@ export class WarpStroke {
     const half = this.diameter / 2;
     for (let y = Math.max(0, cy - r); y <= Math.min(this.height - 1, cy + r); y++) {
       for (let x = Math.max(0, cx - r); x <= Math.min(this.width - 1, cx + r); x++) {
-        const push = this.weight(Math.hypot(x + 0.5 - to.x, y + 0.5 - to.y) / half) * this.strength;
+        const push = this.weight(Math.hypot(x + 0.5 - to.x, y + 0.5 - to.y) / half) * this.strength * this.pressure;
         if (push <= 0) continue;
         const fx = x - mx * push, fy = y - my * push, ix = Math.floor(fx), iy = Math.floor(fy), tx = fx - ix, ty = fy - iy;
         const i = (y * this.width + x) * 4;

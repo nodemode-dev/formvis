@@ -1,6 +1,6 @@
 import type { OptionSpec, Tool } from '../registry';
 
-const settings = { tolerance: 32, contiguous: true, sampleAll: false };
+const settings = { tolerance: 32, contiguous: true, sampleAll: false, antialias: true, opacity: 1 };
 
 /** The Magic Eraser (E, the owner's tool list): a click makes the area of similar colour transparent
  *  on the active layer, by its own Tolerance, Contiguous and Sample All Layers (the Magic Wand's are left alone). */
@@ -13,6 +13,8 @@ export const magicEraserTool: Tool = {
   options: (e): OptionSpec[] => [
     { kind: 'title', text: 'Magic Eraser' },
     { kind: 'range', label: 'Tolerance', priority: 90, min: 0, max: 255, get: () => settings.tolerance, set: (v: number) => { settings.tolerance = Math.max(0, Math.min(255, Math.round(v))); e.emit('options', null); } },
+    { kind: 'range', label: 'Opacity', priority: 80, min: 1, max: 100, unit: '%', get: () => Math.round(settings.opacity * 100), set: (v: number) => { settings.opacity = Math.max(1, Math.min(100, Math.round(v))) / 100; e.emit('options', null); } },
+    { kind: 'toggle', label: 'Anti-alias', priority: 65, get: () => settings.antialias, set: (v) => { settings.antialias = v; e.emit('options', null); } },
     { kind: 'toggle', label: 'Contiguous', priority: 60, get: () => settings.contiguous, set: (v) => { settings.contiguous = v; e.emit('options', null); } },
     { kind: 'toggle', label: 'Sample All Layers', priority: 40, get: () => settings.sampleAll, set: (v) => { settings.sampleAll = v; e.emit('options', null); } },
   ],
