@@ -5,7 +5,7 @@ export interface Row<T> { el: HTMLElement; set(v: T): void }
 
 export const fmt = (v: number): string => String(Number(v.toFixed(3)));
 
-export function sliderRow(label: string, min: number, max: number, step: number, onInput: (v: number) => void, limits: { min?: number; max?: number } = {}): Row<number> {
+export function sliderRow(label: string, min: number, max: number, step: number, onInput: (v: number) => void, limits: { min?: number; max?: number; def?: number } = {}): Row<number> {
   const lo = limits.min ?? min, hi = limits.max ?? max;
   const root = el(`<div class="cv-field cv-slider"><span></span><div class="cv-slider-ctl"><input type="range" min="${min}" max="${max}" step="${step}"><input class="cv-num" type="number" min="${lo}" max="${hi}" step="${step}"></div></div>`);
   setText(q(root, 'span'), label);
@@ -26,6 +26,11 @@ export function sliderRow(label: string, min: number, max: number, step: number,
     onInput(v);
   });
   box.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); box.blur(); } });
+  if (limits.def !== undefined) {
+    const def = limits.def;
+    q(root, 'span').addEventListener('dblclick', () => { range.value = String(def); box.value = fmt(def); onInput(def); });
+    q(root, 'span').title = 'Double-click to reset';
+  }
   return { el: root, set(v) { range.value = String(v); setValue(box, fmt(v)); } };
 }
 

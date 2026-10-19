@@ -2,6 +2,56 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Adjustments: Curves histogram and Reset, Preview and Reset in the panel, double-click a slider label to reset, gradient map presets with stops, Photo Filter named filters · _v1.88.4 (ui/panels/adjust-panel.ts, ui/panels/controls.ts, engine/kernels.ts, styles/dialogs.css)
+
+- Curves draws the histogram behind the curve and has Reset (Shift resets every channel): y at x=100 went 155, 69.7 after a point, 155 after Reset. The panel footer has Reset and a Preview box (a Curves layer pixel read 65,100,50 off and 150,199,117 on); `sliderRow` takes `def`, so double-clicking a label resets it (Levels input black 40 to 0). Gradient Map gains multi-stop presets (Cyberpunk, Sunset, Teal and Orange, Sepia, Infrared, Black and White Contrast; Sunset took (0,5) from 25,0,0 to 35,11,62); Photo Filter gains 20 named filters (Deep Blue took 78,128,64 to 78,115,131).
+- Replaced, quoted exactly:
+  - `kernels.ts` `gradientMapKernel`:
+    ```
+      for (let level = 0; level < 256; level++) {
+        for (let c = 0; c < 3; c++) ramp[level * 3 + c] = Math.round(255 * clamp(from[c] + ((to[c] - from[c]) * level) / 255, 0, 1));
+      }
+    ```
+    now sits under `else` after a `stops.length >= 2` branch.
+  - `adjust-panel.ts` `prepare()`: `highlights: g.highlights ?? { red: 1, green: 1, blue: 1 }, reversed: g.reversed === true }; }` gained the stops and preset spread; `this.bins = this.kind === 'levels' ? this.computeHistogram() : null;` became `... === 'levels' || this.kind === 'curves' ? ...`.
+  - The gradient map section's `const shadows = colorRow('Shadows', (hex) => { gm().shadows = hexToUnit(hex); this.changed(); });`, `const highlights = colorRow('Highlights', (hex) => { gm().highlights = hexToUnit(hex); this.changed(); });` and `node.append(shadows.el, highlights.el, reversed.el);` now clear a preset and add a Preset row; `buildParams` `put` gained `if (key === spec.groupBy) this.sections.get(kind)?.sync();`; the `sliderRow` calls in Levels, Exposure, Hue/Saturation and params carry `{ def }`.
+- Open: handles on the histogram, scrubbable labels, a non-modal panel, a gradient stop editor and dither, saved adjustment presets, the Develop HSL and wheels rows, the Mode dialogs and Proof Setup rows.
+
+## Transform and shapes: Align and Distribute to the selection or canvas, Flip about the combined centre with folders, smooth corners and rounded triangles, polygons and stars, Liquify stroke undo, pen pressure and Alt for every tool · _v1.88.4 (engine/index.ts, engine/paint-ops.ts, engine/shape-paths.ts, extensions/tools/move.ts, extensions/tools/shape.ts, ui/panels/create-shape-dialog.ts, ui/panels/liquify-dialog.ts, app.ts)
+
+- `Engine.alignTo` (`auto`, `selection`, `canvas`) with `alignRef()`; the Move bar has Align To; Distribute needs two layers when aligning to the selection or canvas. Measured with 3 layers on 400 px: left gives x 0,0,0; distribute to the canvas gives first x 0, last end 400, gaps 140 and 140; to a missing selection leaves them and says so.
+- `flipLayers` mirrors positions about the union box and takes the layers inside selected folders: x 10, 120, 300 flip to 280, 150, 10; twice restores them.
+- `roundedPolygonPath`: triangle, polygon and star take the corner radius (a triangle at radius 10 has 6 anchors), and Smooth corners draws a continuous-curvature corner (tangent at 1.5 times the radius: 30 against 20).
+- Liquify: each stroke is an undo step (Undo and Redo Stroke, Mod+Z and Shift+Mod+Z; Restore All, mask buttons and Load Mesh too; 30 steps or 160 MB); Stylus pressure scales the strength (pressure 0.15 changed 938 pixels, 1.0 changed 3906); Alt reverses every tool.
+- Replaced, quoted exactly:
+  - `paint-ops.ts`: `const targets = p.doc.layers.filter((l) => p.selectedIds.has(l.id) && !l.isGroup && l.raster !== null);`; the literal `{ ...t, flipX: ..., flipY: ..., rotation: -t.rotation }` gained `x: horizontal ? mx - t.x - t.w : t.x, y: horizontal ? t.y : my - t.y - t.h,`.
+  - `index.ts` `alignLayers`: `const sel = p.selection, ref = items.length > 1 ? items.slice(1).reduce((a, it) => unionRect(a, it.box), items[0].box) : sel ? { x: sel.x, y: sel.y, w: sel.w, h: sel.h } : { x: 0, y: 0, w: p.doc.width, h: p.doc.height };`; `distributeLayers`: `const items = this.alignItems(p);` and `if (items.length < 3) { this.notice('Select three or more layers with visible pixels to distribute.'); return; }`.
+  - `shape-paths.ts` `boxedShapePath`: `return closed([{ x: box.x + box.w / 2, y: box.y }, { x: box.x + box.w, y: box.y + box.h }, { x: box.x, y: box.y + box.h }]);`, `return kind === 'ellipse' ? ellipsePath(box) : roundRectPath(box, Math.max(0, Math.min(o.cornerRadius ?? 0, box.w / 2, box.h / 2)));` and `return closed(fit(pts, box));`.
+  - `liquify-dialog.ts`: the old `dab()` body (`const s = this.pressure / 100;` and the four-branch tool chain, Alt only on Push Left) and the Restore All, Mask None and Invert Mask handlers without a snapshot.
+  - `shape.ts`: `when: () => s.kind === 'rectangle'` on Corner radius became `when: () => rounds(s.kind)`; the overlay test `s.kind !== 'rectangle' && s.kind !== 'ellipse'` gained `|| (s.kind === 'rectangle' && s.smoothCorners && s.cornerRadius > 0)`.
+- Open: Puppet Warp options, a path target for Free Transform and the Transform submenu, warp presets, corner widgets on the canvas, the Paths panel rows, Vanishing Point and Adaptive Wide Angle.
+
+## Export: PSD vector masks on any layer, layer ids always, thumbnail and Maximize Compatibility, file name, prompt and recipe in the PNG, Quick Export, Export Preferences, Layer > Quick Export as PNG, canvas anchor and margin, transparency matte · _v1.88.4 (io/psd.ts, io/png-text.ts, io/export-prefs.ts, ui/panels/export-prefs-dialog.ts, io/export-presets.ts, io/layer-export.ts, ui/panels/export-dialog.ts, app.ts, automation/command-meta.ts)
+
+- `psd.ts`: `psdOutlines` and `fromPsdOutlines` carry vector masks both ways for any layer (invert, unlinked and disabled flags kept; psd-tools and the app's reader both read them back); layer ids are written always; `writePsdFile(..., maximize = true)` writes the composite and the thumbnail (resource 1036, 160x80 for a 200x100 file) unless Maximize Compatibility is off in Export Preferences (10544 bytes on, 9592 off). Group blend and opacity were already written when a group is isolated (0.502 multiply read back).
+- `png-text.ts`: `withGenerationText` writes iTXt `parameters` (`a red fox\nSteps: 20, Sampler: euler, Seed: 77`) and `formvis-recipe` (JSON) from the topmost visible layer with generation info, when "Prompt and recipe in the PNG" is on (Export As or Export Preferences).
+- Export As gains File name (`my fox/render.png` saved as `my fox_render.png`), a 9-position canvas anchor with a transparent, white or black margin, and a Transparency matte. File > Export > Quick Export (`quick-export`) and Export Preferences (`export-preferences`); Layer > Quick Export as PNG (`layer-quick-export-png`, several layers as one zip).
+- Replaced, quoted exactly:
+  - `psd.ts` shape mask:
+    ```
+            const live = v.path.subpaths.filter((sp) => sp.anchors.length), areas = live.map((sp) => (sp.closed ? windingArea(sp.anchors) : 0));
+            const main = areas.reduce((m, a) => (Math.abs(a) > Math.abs(m) ? a : m), 0);
+            out.vectorMask = { paths: live.map((sp, i) => ({
+              open: !sp.closed, operation: sp.op && sp.op !== 'combine' ? sp.op : sp.closed && main && Math.sign(areas[i]) === -Math.sign(main) ? 'subtract' as const : 'combine' as const, fillRule: 'non-zero' as const,
+              knots: sp.anchors.map((a) => ({ linked: Math.abs((a.outX - a.x) * (a.inY - a.y) - (a.outY - a.y) * (a.inX - a.x)) < 1e-6 && (a.outX !== a.x || a.outY !== a.y), points: [a.inX + dx, a.inY + dy, a.x + dx, a.y + dy, a.outX + dx, a.outY + dy] })),
+            })) };
+    ```
+    became `out.vectorMask = { paths: psdOutlines(v.path.subpaths, dx, dy) };`. The reader's block from `const path = { subpaths: vm.paths.map(` through the winding loop, and the trailing `path.subpaths.forEach((sp, i) => { const op = ops[i]; ... (sp as SubPath).op = op; });`, became `const path = fromPsdOutlines(vm.paths);`.
+  - `if (comps.length || sliceList.some((s) => s.layer)) { let layerNo = 0; for (const o of built.values()) o.id = ++layerNo; }` became `{ let layerNo = 0; for (const o of built.values()) o.id = ++layerNo; }`; `children: build(null), canvas: flat };` became `children: build(null), ...(maximize ? { canvas: flat } : {}) };`; `writePsd(psd, { generateThumbnail: false, psb })` became `{ generateThumbnail: maximize, psb }`.
+  - `app.ts`: `if (s.format === 'jpg') { x.fillStyle = '#ffffff'; x.fillRect(0, 0, z.w, z.h); }` now also fills for the matte and the margin; the final `deliver(metaWritable(meta) ? ... : blob, exportName(...))` is split into `labelled` and a `withGenerationText` step.
+  - `export-presets.ts`: the centring `dx: L.dx + Math.floor((CW - L.w) / 2)` became anchor maths; `exportName` returns `${fileNameOf(s.fileName) || docName}${suffix}.${ext}`.
+- Open: colour labels in PSD (not in the layer model), Export As live preview and size estimate, a save dialog, Layer > Export As, Artboards, Layers and Comps to Files, Package, slices, print; the desktop folder write of Quick Export was not run.
+
 ## Boxes for region prompting: a Boxes tool, kinds, names, keys, descriptions on the canvas, selection to box, copy and clear, warnings and the crop preview, boxes follow canvas changes and save with the project · _v1.88.3 (engine/boxes.ts, extensions/tools/boxes.ts, ui/boxes-panel.ts, styles/boxes.css, engine/types.ts, engine/index.ts, engine/guides-ops.ts, io/project-io.ts, extensions/tools/index.ts, ui/icons.ts, ui/panels/generate-panel.ts, ui/panels/generate-image.ts, app.ts, automation/command-meta.ts, automation/catalogue.ts, index.html)
 
 - `engine/types.ts` gains `BoxKind` (New, Keep, Move, Remove, From reference, Text), `DocBox`, `Doc.boxes` and the tool id `boxes`; `engine/index.ts` gains `activeBox`, `addBox`, `setBox`, `removeBox`, `duplicateBox`, `clearBoxes`, `boxFromSelection`, `selectBox` (each one undo step). `engine/boxes.ts` holds the box text (`box 1 | New | x=100 y=100 w=300 h=200 | a red car`, one plain line each, no model-specific format), the warnings, the crop rect and the geometry carry (canvas size, rotations, crop).

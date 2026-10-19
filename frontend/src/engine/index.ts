@@ -5754,15 +5754,32 @@ export class Engine {
     });
   }
 
+  /** Align and Distribute To: auto (one layer to the selection or canvas, several to their own bounds), the selection or the canvas. */
+  alignTo: 'auto' | 'selection' | 'canvas' = 'auto';
+
+  /** The box Align and Distribute measure against, or null (with a notice) when the chosen target is the selection and there is none. */
+  private alignRef(p: Project, items: Array<{ box: Rect }>): Rect | null {
+    const sel = p.selection, canvas = { x: 0, y: 0, w: p.doc.width, h: p.doc.height };
+    if (this.alignTo === 'canvas') return canvas;
+    if (this.alignTo === 'selection') {
+      if (!sel) { this.notice('Make a selection to align to it.'); return null; }
+      return { x: sel.x, y: sel.y, w: sel.w, h: sel.h };
+    }
+    if (items.length > 1) return items.slice(1).reduce((a, it) => unionRect(a, it.box), items[0].box);
+    return sel ? { x: sel.x, y: sel.y, w: sel.w, h: sel.h } : canvas;
+  }
+
   /** Layer > Align: several layers or folders align to the bounds of them all; one aligns to the selection, or to
-   *  the canvas when nothing is selected. Visible pixels decide each one's edges. */
+   *  the canvas when nothing is selected; Align To (alignTo) picks the selection or the canvas for any number.
+   *  Visible pixels decide each one's edges. */
   alignLayers(edge: 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom'): void {
     const p = this.current;
     if (!p || this.stroke) return;
     this.settle();
     const items = this.alignItems(p);
     if (!items.length) { this.notice('Select layers with visible pixels to align.'); return; }
-    const sel = p.selection, ref = items.length > 1 ? items.slice(1).reduce((a, it) => unionRect(a, it.box), items[0].box) : sel ? { x: sel.x, y: sel.y, w: sel.w, h: sel.h } : { x: 0, y: 0, w: p.doc.width, h: p.doc.height };
+    const ref = this.alignRef(p, items);
+    if (!ref) return;
     const names = { left: 'Left Edges', hcenter: 'Horizontal Centers', right: 'Right Edges', top: 'Top Edges', vcenter: 'Vertical Centers', bottom: 'Bottom Edges' };
     this.shiftItems(`Align ${names[edge]}`, items.map(({ ids, box: b }) => ({
       ids,
@@ -5772,13 +5789,16 @@ export class Engine {
   }
 
   /** Layer > Distribute: three or more layers or folders, the outermost two staying put, spaced so the chosen edges
-   *  or centres fall at equal steps, or so the gaps between them are equal. */
+   *  or centres fall at equal steps, or so the gaps between them are equal. With Align To set to the selection or
+   *  the canvas, two or more are spread across that box instead, the first flush with its start and the last with its end. */
   distributeLayers(kind: 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom' | 'hspace' | 'vspace'): void {
     const p = this.current;
     if (!p || this.stroke) return;
     this.settle();
-    const items = this.alignItems(p);
-    if (items.length < 3) { this.notice('Select three or more layers with visible pixels to distribute.'); return; }
+    const items = this.alignItems(p), within = this.alignTo !== 'auto';
+    if (items.length < (within ? 2 : 3)) { this.notice(within ? 'Select two or more layers with visible pixels to distribute.' : 'Select three or more layers with visible pixels to distribute.'); return; }
+    const ref = within ? this.alignRef(p, items) : null;
+    if (within && !ref) return;
     const horizontal = kind === 'left' || kind === 'hcenter' || kind === 'right' || kind === 'hspace';
     const lo = (b: Rect): number => (horizontal ? b.x : b.y), size = (b: Rect): number => (horizontal ? b.w : b.h);
     const at = (b: Rect): number => (kind === 'left' || kind === 'top' || kind.endsWith('space') ? lo(b) : kind === 'right' || kind === 'bottom' ? lo(b) + size(b) : lo(b) + size(b) / 2);
@@ -5791,6 +5811,19 @@ export class Engine {
     } else {
       const a = at(sorted[0].box), b = at(sorted[n - 1].box);
       for (let i = 0; i < n; i++) want.push(a + ((b - a) * i) / (n - 1));
+    }
+    if (ref) {
+      const rlo = horizontal ? ref.x : ref.y, rhi = rlo + (horizontal ? ref.w : ref.h), first = sorted[0].box, last = sorted[n - 1].box;
+      const a = rlo + (at(first) - lo(first)), b = rhi - (lo(last) + size(last) - at(last));
+      if (kind.endsWith('space')) {
+        const gap = (rhi - rlo - sorted.reduce((s, it) => s + size(it.box), 0)) / (n - 1);
+        let cur = rlo;
+        want.length = 0;
+        for (const it of sorted) { want.push(cur); cur += size(it.box) + gap; }
+      } else {
+        want.length = 0;
+        for (let i = 0; i < n; i++) want.push(a + ((b - a) * i) / (n - 1));
+      }
     }
     const label = { left: 'Left Edges', hcenter: 'Horizontal Centers', right: 'Right Edges', top: 'Top Edges', vcenter: 'Vertical Centers', bottom: 'Bottom Edges', hspace: 'Horizontal Spacing', vspace: 'Vertical Spacing' }[kind];
     this.shiftItems(`Distribute ${label}`, sorted.map((it, i) => {
@@ -5916,8 +5949,8 @@ export class Engine {
   uiHooks: { gradientEditor?: () => void; importBrushes?: () => void } = {};
   /** The shape tools' settings. mode (1.49.8, the owner's tool list): a shape layer, the work path, or
    *  pixels on the active layer; fill and stroke each the foreground, the background or none, and the stroke's width. */
-  shapeSettings: { kind: 'rectangle' | 'ellipse' | PathShapeKind; cornerRadius: number; mode: 'shape' | 'path' | 'pixels'; fill: 'fg' | 'bg' | 'none'; stroke: 'fg' | 'bg' | 'none'; strokeWidth: number; strokeDash: 'solid' | 'dashed' | 'dotted'; strokeAlign: 'inside' | 'center' | 'outside' } & PathShapeOptions =
-    { kind: 'rectangle', cornerRadius: 0, mode: 'shape', fill: 'fg', stroke: 'none', strokeWidth: 3, strokeDash: 'solid', strokeAlign: 'center', ...DEFAULT_PATH_SHAPE };
+  shapeSettings: { kind: 'rectangle' | 'ellipse' | PathShapeKind; cornerRadius: number; smoothCorners: boolean; mode: 'shape' | 'path' | 'pixels'; fill: 'fg' | 'bg' | 'none'; stroke: 'fg' | 'bg' | 'none'; strokeWidth: number; strokeDash: 'solid' | 'dashed' | 'dotted'; strokeAlign: 'inside' | 'center' | 'outside' } & PathShapeOptions =
+    { kind: 'rectangle', cornerRadius: 0, smoothCorners: false, mode: 'shape', fill: 'fg', stroke: 'none', strokeWidth: 3, strokeDash: 'solid', strokeAlign: 'center', ...DEFAULT_PATH_SHAPE };
   /** The Pen's Mode and Auto Add/Delete (1.52.8, the tool audit): a path, or a shape layer made from
    *  each path closed; clicking a path adds a point and clicking a point deletes it, unless turned off. */
   penSettings = { mode: 'path' as 'path' | 'shape', autoAddDelete: true };
@@ -5958,7 +5991,7 @@ export class Engine {
       }, path);
       return;
     }
-    if ((kind === 'rectangle' || kind === 'ellipse') && look.fill && !look.stroke) { this.createShape(rect, look.fill); return; }
+    if ((kind === 'rectangle' || kind === 'ellipse') && look.fill && !look.stroke && !(kind === 'rectangle' && st.smoothCorners && st.cornerRadius > 0)) { this.createShape(rect, look.fill); return; }
     this.createVectorShape(path, look, name);
   }
 

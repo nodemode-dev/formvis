@@ -33,7 +33,16 @@ export interface ExportSettings { format: ExportFormat; quality: number; scale: 
   /** DEV_PLAN 36.29: a canvas the scaled picture is centred in (transparent margins, white in JPEG; smaller than the
    *  picture crops); metadata: the document's File Info as before (left out), none, or only the Copyright and Contact
    *  texts below; sizes: one file per entry, `x` times the size above, named with `suffix`. */
-  canvas?: boolean; canvasW?: number; canvasH?: number; metadata?: 'none' | 'copyright'; copyrightText?: string; contactText?: string; sizes?: ExportSize[] }
+  canvas?: boolean; canvasW?: number; canvasH?: number; metadata?: 'none' | 'copyright'; copyrightText?: string; contactText?: string; sizes?: ExportSize[];
+  /** A file name (without the extension) used instead of the document's, and the prompt, seed and recipe of a generated picture written into a PNG as text. */
+  fileName?: string; promptMeta?: boolean;
+  /** Canvas size: where the picture sits on the canvas (0 top left to 8 bottom right, 4 the centre) and what colour the margin is. */
+  canvasAnchor?: number; canvasFill?: 'white' | 'black';
+  /** Transparency: the picture's see-through areas (and the margins) laid on white or black instead of kept; JPEG is always on white. */
+  matte?: 'white' | 'black' }
+export const MATTES: ReadonlyArray<readonly [string, string]> = [['keep', 'Keep transparency'], ['white', 'Matte on white'], ['black', 'Matte on black']];
+export const CANVAS_ANCHORS: ReadonlyArray<readonly [string, string]> = [['0', 'Top left'], ['1', 'Top'], ['2', 'Top right'], ['3', 'Left'], ['4', 'Centre'], ['5', 'Right'], ['6', 'Bottom left'], ['7', 'Bottom'], ['8', 'Bottom right']];
+export const CANVAS_FILLS: ReadonlyArray<readonly [string, string]> = [['transparent', 'Transparent (white in JPEG)'], ['white', 'White'], ['black', 'Black']];
 export interface ExportSize { x: number; suffix: string }
 export const MAX_EXPORT_SIZES = 8;
 export interface ExportPreset extends ExportSettings { id: string; name: string; builtin: boolean }
@@ -68,11 +77,18 @@ export const clampSettings = (s: ExportSettings): ExportSettings => ({
   ...(FORMAT_OPTIONS[s.format] && !((s.format === 'png' || s.format === 'jpg') && !FORMAT_OPTIONS[s.format]?.some(([v], i) => i > 0 && v === s.option)) ? { option: FORMAT_OPTIONS[s.format]?.find(([v]) => v === s.option)?.[0] ?? FORMAT_OPTIONS[s.format]?.[0][0] } : {}),
   ...(s.format === 'ico' ? { icoSizes: icoSizesOf(s.icoSizes) } : {}),
   ...(s.canvas ? { canvas: true, canvasW: box(s.canvasW), canvasH: box(s.canvasH) } : {}),
+  ...(s.canvas && Number.isInteger(s.canvasAnchor) && (s.canvasAnchor as number) >= 0 && (s.canvasAnchor as number) <= 8 && s.canvasAnchor !== 4 ? { canvasAnchor: s.canvasAnchor } : {}),
+  ...(s.canvas && (s.canvasFill === 'white' || s.canvasFill === 'black') ? { canvasFill: s.canvasFill } : {}),
+  ...(s.matte === 'white' || s.matte === 'black' ? { matte: s.matte } : {}),
   ...(s.metadata === 'none' || s.metadata === 'copyright' ? { metadata: s.metadata } : {}),
   ...(text(s.copyrightText) ? { copyrightText: text(s.copyrightText) } : {}),
   ...(text(s.contactText) ? { contactText: text(s.contactText) } : {}),
   ...(Array.isArray(s.sizes) && s.sizes.length ? { sizes: s.sizes.slice(0, MAX_EXPORT_SIZES).map(sizeOf) } : {}),
+  ...(fileNameOf(s.fileName) ? { fileName: fileNameOf(s.fileName) } : {}),
+  ...(s.promptMeta === true ? { promptMeta: true } : {}),
 });
+/** A file name to export under: no folders, no characters a file system refuses, no extension, at most 120 characters. */
+export const fileNameOf = (v: unknown): string => (typeof v === 'string' ? v.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '_').replace(/\.(png|jpe?g|webp|avif|tiff?|pdf|dpx|qoi|p[bgpna]m|tga|ico|bmp|fits|wbmp)$/i, '').trim().slice(0, 120) : '');
 const text = (v: unknown): string => (typeof v === 'string' ? v.replace(/[\u0000-\u001f]/g, ' ').slice(0, 300) : '');
 const sizeOf = (v: ExportSize): ExportSize => {
   const x = Math.round(Math.min(10, Math.max(0.1, Number.isFinite(Number(v?.x)) && Number(v.x) > 0 ? Number(v.x) : 1)) * 100) / 100;
@@ -136,7 +152,8 @@ export function exportLayout(w: number, h: number, s: ExportSettings): { w: numb
   const L = sizeLayout(w, h, s);
   if (!s.canvas) return L;
   const CW = box(s.canvasW), CH = box(s.canvasH);
-  return { w: CW, h: CH, dx: L.dx + Math.floor((CW - L.w) / 2), dy: L.dy + Math.floor((CH - L.h) / 2), dw: L.dw, dh: L.dh };
+  const a = Number.isInteger(s.canvasAnchor) ? (s.canvasAnchor as number) : 4, col = a % 3, row = Math.floor(a / 3);
+  return { w: CW, h: CH, dx: L.dx + Math.floor(((CW - L.w) * col) / 2), dy: L.dy + Math.floor(((CH - L.h) * row) / 2), dw: L.dw, dh: L.dh };
 }
 function sizeLayout(w: number, h: number, s: ExportSettings): { w: number; h: number; dx: number; dy: number; dw: number; dh: number } {
   if (s.size !== 'fit' && s.size !== 'frame') { const z = exportSize(w, h, s.scale); return { ...z, dx: 0, dy: 0, dw: z.w, dh: z.h }; }
@@ -161,7 +178,7 @@ export function presetsFromStorage(raw: string | null): ExportPreset[] {
 export function exportName(docName: string, s: ExportSettings, sizeSuffix?: string): string {
   const ext = s.format === 'tiff' ? 'tif' : s.format === 'pnm' ? (FORMAT_OPTIONS.pnm?.find(([v]) => v === s.option)?.[0] ?? 'ppm') : s.format;
   const suffix = sizeSuffix !== undefined ? sizeSuffix : s.scale === 100 ? '' : `@${Number((s.scale / 100).toFixed(2))}x`;
-  return `${docName}${suffix}.${ext}`;
+  return `${fileNameOf(s.fileName) || docName}${suffix}.${ext}`;
 }
 
 /** The exported pixel size for a document size and a scale, at least 1 pixel a side. */

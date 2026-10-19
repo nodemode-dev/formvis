@@ -9,7 +9,9 @@ import { ExportDialog } from './ui/panels/export-dialog';
 import { LayerExportDialog } from './ui/panels/layer-export-dialog';
 import { DataSetsDialog, DefineVariablesDialog } from './ui/panels/variables-dialog';
 import { ArtboardPdfDialog, type ArtboardPdfSettings } from './ui/panels/artboard-pdf-dialog';
-import { DEFAULT_LAYER_EXPORT, dataSetFiles, layerCompFiles, layerFiles, type LayerExportSettings } from './io/layer-export';
+import { DEFAULT_LAYER_EXPORT, dataSetFiles, layerCompFiles, layerFiles, selectedLayerFiles, type LayerExportSettings } from './io/layer-export';
+import { loadExportPrefs } from './io/export-prefs';
+import { ExportPrefsDialog } from './ui/panels/export-prefs-dialog';
 import { GuideDialog } from './ui/panels/guide-dialog';
 import { ArtboardDialog, NewArtboardDialog } from './ui/panels/artboard-dialog';
 import { CornersDialog } from './ui/panels/corners-dialog';
@@ -79,6 +81,7 @@ import { isAfFile, readAf } from './io/af-preview';
 import { readLayeredTiff, writeLayeredTiff } from './io/layered-tiff';
 import { isOraFile, readOraFile, writeOra } from './io/ora';
 import { withAiLabel } from './io/ai-label';
+import { withGenerationText } from './io/png-text';
 import { pathsToAi } from './io/ai-paths';
 import { svgToShapes } from './io/svg-layers';
 import { withXmp } from './io/xmp';
@@ -562,9 +565,13 @@ export function startApp(): void {
   }
 
   /** Hands a file over (save panel in the desktop app, a download in the browser); false when nothing was written. */
-  async function deliver(blob: Blob, name: string): Promise<void> { await deliverFile(blob, name); }
+  async function deliver(blob: Blob, name: string, folder = ''): Promise<void> { await deliverFile(blob, name, folder); }
 
-  async function deliverFile(blob: Blob, name: string): Promise<boolean> {
+  async function deliverFile(blob: Blob, name: string, folder = ''): Promise<boolean> {
+    if (folder && caps?.desktop) {
+      // Export Preferences names a folder inside the exports folder: written there without asking.
+      try { const written = await api.exportFile(blob, name, folder); noteOutput(written); toast(`Saved to ${written}`); fireEvent('export'); return true; } catch (err) { toast(message(err), 'error'); return false; }
+    }
     if (caps?.desktop && hasPanels()) {
       // The desktop app asks where an export goes (1.87.0, CLOSE_GAPS P01); Cancel writes nothing.
       const ext = (/\.([A-Za-z0-9]+)$/.exec(name)?.[1] ?? '').toLowerCase();
@@ -1111,7 +1118,29 @@ export function startApp(): void {
     // Several sizes (36.29): one file for each, named with the entry's suffix.
     for (const one of sizedSettings(all)) await exportAsOne(one.s, one.suffix);
   }
-  async function exportAsOne(s: ExportSettings, suffix?: string): Promise<void> {
+  /** File > Export > Quick Export: the picture in the format, quality and folder of Export Preferences, with no dialog. */
+  async function quickExport(): Promise<void> {
+    const pr = loadExportPrefs();
+    await exportAsOne({ format: pr.format, quality: pr.quality, scale: 100, ...(pr.promptMeta ? { promptMeta: true } : {}) }, undefined, pr.folder);
+  }
+  /** Layer > Quick Export as PNG: each selected layer (the active one when none is) drawn alone, as a PNG or the format
+   *  Export Preferences names; several layers go as one zip in the browser. */
+  async function quickExportLayers(): Promise<void> {
+    const p = engine.current, pr = loadExportPrefs();
+    if (!p) return;
+    engine.settle();
+    await engine.task(async () => {
+      try {
+        const { files, skipped } = await selectedLayerFiles(engine, 'png', pr.quality, !!caps);
+        if (!files.length) { toast(skipped ? 'The selected layers have nothing visible to export.' : 'Select a pixel layer to export.', 'info'); return; }
+        const out = pr.promptMeta ? await Promise.all(files.map(async (f) => ({ ...f, blob: await withGenerationText(f.blob, p.doc.layers.filter((l) => l.id === f.id)) }))) : files;
+        if (out.length === 1) { await deliver(out[0].blob, out[0].name, pr.folder); return; }
+        if (caps?.desktop && pr.folder) { for (const f of out) await deliver(f.blob, f.name, pr.folder); return; }
+        await deliver(await zipFiles(out), `${stripExt(p.name)} layers.zip`, pr.folder);
+      } catch (err) { toast(message(err), 'error'); }
+    });
+  }
+  async function exportAsOne(s: ExportSettings, suffix?: string, folder = ''): Promise<void> {
     const p = engine.current;
     if (!p) return;
     engine.settle();
@@ -1130,7 +1159,7 @@ export function startApp(): void {
         if (!base) return;
         // By Scale, Fit Within or a Frame (1.51.8): a frame's margins are transparent, or white in JPEG.
         const bmp = await createImageBitmap(base), L = exportLayout(bmp.width, bmp.height, s), z = { w: L.w, h: L.h }, c = createSurface(z.w, z.h), x = ctxOf(c);
-        if (s.format === 'jpg') { x.fillStyle = '#ffffff'; x.fillRect(0, 0, z.w, z.h); }
+        if (s.format === 'jpg' || s.matte || (s.canvas && s.canvasFill)) { x.fillStyle = (s.matte ?? (s.canvas ? s.canvasFill : undefined)) === 'black' ? '#000000' : '#ffffff'; x.fillRect(0, 0, z.w, z.h); }
         x.imageSmoothingQuality = 'high';
         x.drawImage(bmp, L.dx, L.dy, L.dw, L.dh);
         bmp.close();
@@ -1161,7 +1190,8 @@ export function startApp(): void {
         const ai = s.aiLabel && s.aiLabel !== 'none' ? s.aiLabel : undefined;
         // Metadata (36.29): the document's File Info, none, or only the Copyright and Contact texts.
         const meta = exportMeta(s, p.doc.meta);
-        await deliver(metaWritable(meta) ? await withXmp(blob, s.format, meta, new Date(), ai) : ai ? await withAiLabel(blob, s.format, ai) : blob, exportName(p.name, s, suffix));
+        const labelled = metaWritable(meta) ? await withXmp(blob, s.format, meta, new Date(), ai) : ai ? await withAiLabel(blob, s.format, ai) : blob;
+        await deliver(s.promptMeta && s.format === 'png' ? await withGenerationText(labelled, p.doc.layers) : labelled, exportName(p.name, s, suffix), folder);
       } catch (err) { toast(message(err), 'error'); }
     });
   }
@@ -1686,7 +1716,7 @@ export function startApp(): void {
     if (o.psd.on) jobs.push({ dir: 'PSD', ext: 'psd', fit: o.psd, make: async () => {
       const flat = engine.flattened();
       if (!flat) return null;
-      const { bytes } = await writePsdFile(here().doc, flat, false, engine.pathsOf(here()));
+      const { bytes } = await writePsdFile(here().doc, flat, false, engine.pathsOf(here()), loadExportPrefs().maximizePsd);
       return new Blob([bytes], { type: 'image/vnd.adobe.photoshop' });
     } });
     if (o.tiff.on) jobs.push({ dir: 'TIFF', ext: 'tif', fit: o.tiff, make: async () => {
@@ -2119,7 +2149,7 @@ export function startApp(): void {
       try {
         const flat = engine.flattened();
         if (!flat) return;
-        const { bytes, notes } = await writePsdFile(p.doc, flat, psb, engine.pathsOf(p));
+        const { bytes, notes } = await writePsdFile(p.doc, flat, psb, engine.pathsOf(p), loadExportPrefs().maximizePsd);
         await deliver(new Blob([bytes], { type: 'image/vnd.adobe.photoshop' }), `${p.name}.${psb ? 'psb' : 'psd'}`);
         if (notes.length) toast(notes.join(' '), 'info');
       } catch (err) { toast(message(err), 'error'); }
@@ -2534,6 +2564,7 @@ export function startApp(): void {
     scaleEffects: new ScaleEffectsDialog(engine),
     fill: new FillDialog(engine, () => commands.run('content-fill')),
     exportAs: new ExportDialog(engine, (s) => void exportAs(s)),
+    exportPrefs: new ExportPrefsDialog(() => !!caps?.desktop),
     print: new PrintDialog(engine, (s) => { printDocument(engine, s); fireEvent('print'); }, (pdf, name) => { void deliver(pdf, name); }),
     layerExport: new LayerExportDialog(engine, () => !!caps?.desktop, (s) => void exportLayerFiles(s)),
     artboardPdf: new ArtboardPdfDialog(engine, (s) => void exportArtboardsPdf(s)),
@@ -2760,6 +2791,9 @@ export function startApp(): void {
     { id: 'export-png', label: 'Export PNG', keys: ['Shift+Mod+E'], enabled: has, run: () => void exportImage('png') },
     { id: 'export-jpg', label: 'Export JPEG...', keys: ['Alt+Shift+Mod+S'], enabled: has, run: () => { engine.settle(); dialogs.jpeg.show((q) => void exportImage('jpg', q)); } },
     { id: 'export-as', label: 'Export As...', keys: ['Alt+Shift+Mod+W'], enabled: has, run: () => dialogs.exportAs.show() },
+    { id: 'quick-export', label: 'Quick Export', enabled: has, run: () => void quickExport() },
+    { id: 'export-preferences', label: 'Export Preferences...', run: () => dialogs.exportPrefs.show() },
+    { id: 'layer-quick-export-png', label: 'Quick Export as PNG', enabled: () => !!engine.current?.activeId, run: () => void quickExportLayers() },
     { id: 'save-for-web', label: 'Save for Web (Legacy)...', enabled: has, run: () => { engine.settle(); dialogs.saveForWeb.show(); } },
     { id: 'script-events', label: 'Script Events Manager...', run: () => dialogs.scriptEvents.show() },
     { id: 'print', label: 'Print...', keys: ['Mod+P'], enabled: has, run: () => dialogs.print.show() },
@@ -3728,7 +3762,7 @@ export function startApp(): void {
     { id: 'border', label: 'Border...', enabled: selected, run: () => dialogs.amount.show(false, 'border') },
     { id: 'smooth', label: 'Smooth...', enabled: selected, run: () => dialogs.amount.show(false, 'smooth') },
     ...(['left', 'hcenter', 'right', 'top', 'vcenter', 'bottom'] as const).map((k) => ({ id: `align-${k}`, label: `Align ${{ left: 'Left Edges', hcenter: 'Horizontal Centers', right: 'Right Edges', top: 'Top Edges', vcenter: 'Vertical Centers', bottom: 'Bottom Edges' }[k]}`, enabled: () => !!layer(), run: () => engine.alignLayers(k) })),
-    ...(['left', 'hcenter', 'right', 'top', 'vcenter', 'bottom', 'hspace', 'vspace'] as const).map((k) => ({ id: `distribute-${k}`, label: `Distribute ${{ left: 'Left Edges', hcenter: 'Horizontal Centers', right: 'Right Edges', top: 'Top Edges', vcenter: 'Vertical Centers', bottom: 'Bottom Edges', hspace: 'Horizontal Spacing', vspace: 'Vertical Spacing' }[k]}`, enabled: () => (engine.current?.selectedIds.size ?? 0) > 2, run: () => engine.distributeLayers(k) })),
+    ...(['left', 'hcenter', 'right', 'top', 'vcenter', 'bottom', 'hspace', 'vspace'] as const).map((k) => ({ id: `distribute-${k}`, label: `Distribute ${{ left: 'Left Edges', hcenter: 'Horizontal Centers', right: 'Right Edges', top: 'Top Edges', vcenter: 'Vertical Centers', bottom: 'Bottom Edges', hspace: 'Horizontal Spacing', vspace: 'Vertical Spacing' }[k]}`, enabled: () => (engine.current?.selectedIds.size ?? 0) > (engine.alignTo === 'auto' ? 2 : 1), run: () => engine.distributeLayers(k) })),
     ...ADJUSTMENT_KINDS.map((kind) => ({ id: `adj-${kind}`, label: `${ADJUSTMENT_LABELS[kind]}...`, keys: ADJUST_KEYS[kind], enabled: hasTargetPixels, run: () => dialogs.adjust.openForImage(kind) })),
     ...ADJUSTMENT_KINDS.map((kind) => ({ id: `new-adj-${kind}`, label: `New ${ADJUSTMENT_LABELS[kind]} Layer...`, enabled: has, run: () => { const id = engine.addAdjustmentLayer(kind); if (id) dialogs.adjust.openForLayer(id, true); } })),
     { id: 'edit-adjustment', label: 'Edit Adjustment...', enabled: () => !!layer()?.adjustment, run: () => { const l = layer(); if (l?.adjustment) dialogs.adjust.openForLayer(l.id); } },
@@ -3828,7 +3862,7 @@ export function startApp(): void {
   const drawnFirst = ['filter-flame', 'filter-pictureFrame', 'filter-tree'];
   const menus: MenuDef[] = [
     { label: 'File', items: () => ['new', 'open', 'open-as', 'import', 'import-notes', 'import-video', 'create-video-timeline', 'place-embedded', 'place-linked', 'place-3d', 'open-svg-layers', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.slice(0, 10).map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'save-copy', 'revert', 'download-project', 'package', '-',
-      { label: 'Export', items: ['export-as', 'save-for-web', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-tiff-layers', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'export-paths-ai', 'assemble-tiles', '-', 'export-layers', 'export-layer-comps', 'export-selection-mask', 'generate-image-assets', 'image-assets-on-save', 'export-luts', 'export-artboards-files', 'export-data-sets', 'export-artboards'] },
+      { label: 'Export', items: ['quick-export', 'export-as', 'export-preferences', 'save-for-web', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-tiff-layers', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'export-paths-ai', 'assemble-tiles', '-', 'export-layers', 'export-layer-comps', 'export-selection-mask', 'generate-image-assets', 'image-assets-on-save', 'export-luts', 'export-artboards-files', 'export-data-sets', 'export-artboards'] },
       { label: 'Automate', items: ['actions', 'action-stop', 'batch', 'create-droplet', '-', 'fit-image', 'conditional-mode-change', 'contact-sheet', 'crop-straighten-photos', 'photomerge', 'merge-hdr'] },
       { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'image-processor', 'script-events', 'load-files-stack', 'stack-statistics', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'reopen-closed-tab', 'close-all', 'close-others'] },
     { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', '-', 'fade', 'compare-documents', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', 'pick-screen-colour', '-',
@@ -3843,7 +3877,7 @@ export function startApp(): void {
     { label: 'Layer', items: [
       { label: 'New', items: ['new-layer-dialog', 'layer-from-background', 'background-from-layer', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard-dialog', 'artboard-from-group', 'artboard-from-layers', 'frame-from-layers', '-', 'duplicate', 'layer-via-cut', '-', 'new-relight-layer'] }, 'artboard-options', '-',
       { label: 'New Fill Layer', items: ['new-fill-solid', 'new-fill-gradient', 'new-fill-pattern'] }, { label: 'Video Layers', items: ['video-layer-from-file', 'video-layer-blank', '-', 'video-insert-blank-frame', 'video-duplicate-frame', 'video-delete-frame', '-', 'video-restore-frame', 'video-restore-all', 'video-replace-footage', 'video-interpret-footage', 'video-rasterize'] },{ label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'edit-relight', 'layer-content-options', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, '-',
-      'duplicate-dialog', { label: 'Delete', items: ['delete-layer', 'delete-hidden'] }, 'rename', '-',
+      'duplicate-dialog', { label: 'Delete', items: ['delete-layer', 'delete-hidden'] }, 'rename', 'layer-quick-export-png', '-',
       { label: 'Layer Style', items: ['style-blending', 'style-bevel', 'style-stroke', 'style-inner-shadow', 'style-inner-glow', 'style-satin', 'style-color-overlay', 'style-gradient-overlay', 'style-pattern-overlay', 'style-outer-glow', 'style-drop-shadow', '-',
         'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'global-light', 'create-layers', 'hide-all-effects', 'toggle-layer-effects', 'scale-effects'] },
       { label: '3D', items: ['extrude-3d', 'place-3d', '-', 'panorama-view', 'panorama-apply-view'] },

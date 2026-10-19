@@ -1,20 +1,20 @@
 # formvis commands
 
-Generated from the window's command catalogue (1149 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1154 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
 - Edit: 69
-- File: 80
+- File: 82
 - Filter: 86
 - Generate: 6
 - Help: 3
 - Image: 88
-- Layer: 237
+- Layer: 238
 - Paint: 1
 - Paths: 9
 - Select: 35
-- Tool options: 293
+- Tool options: 295
 - Tools: 52
 - Type: 30
 - View: 68
@@ -130,6 +130,7 @@ Generated from the window's command catalogue (1149 commands) by `./formvis agen
 | `export-paths-ai` | Paths to AI File... |  | Writes the document paths to an .ai file. (asks first) |
 | `export-pdf` | Export PDF |  | Exports the picture as a PDF. (asks first) |
 | `export-png` | Export PNG | Shift+Mod+E | Exports the flattened picture as a PNG. (asks first) |
+| `export-preferences` | Export Preferences... |  | Opens Export Preferences: the Quick Export format, quality, prompt and recipe in PNG files, and the folder. |
 | `export-psb` | Export PSB (Large Document)... |  | Exports a large document (PSB). (asks first) |
 | `export-psd` | Export PSD... |  | Exports the document as a layered PSD. (asks first) |
 | `export-selection-mask` | Selection as Mask PNG |  | Writes the selection as a grey PNG the size of the document, white where selected, black elsewhere, with feathered edges kept. (asks first) |
@@ -163,6 +164,7 @@ Generated from the window's command catalogue (1149 commands) by `./formvis agen
 | `play-action` | Play Action |  | Plays a named action on the current document, from the first step or from the step given in from. (changes the picture) |
 | `print` | Print... | Mod+P | Opens the Print dialog: paper size, orientation, position, scaled print size and a preview, then prints the flattened document through the system print dialog. |
 | `print-one-copy` | Print One Copy | Alt+Shift+Mod+P | Prints the flattened document with the settings Print last used, skipping formvis's Print dialog; the system print dialog still opens to confirm the printer. |
+| `quick-export` | Quick Export |  | Exports the flattened picture at once in the format, quality and folder set in Export Preferences. (asks first) |
 | `render-video` | Render Video... |  | Opens the Render Video dialog for the video timeline. (asks first) |
 | `reopen-closed-tab` | Reopen Closed Tab | Alt+Shift+Mod+T | Brings back the document closed last, with its layers, history-free state and unsaved changes as they were; the last five closed are kept until the window reloads. (changes the picture) |
 | `revert` | Revert |  | Throws away changes and reopens the last saved version. (changes the picture) (asks first) |
@@ -471,6 +473,7 @@ Generated from the window's command catalogue (1149 commands) by `./formvis agen
 | `layer-label-red` | Red |  | Labels the selected layers red in the Layers panel. (changes the picture) |
 | `layer-label-violet` | Violet |  | Labels the selected layers violet in the Layers panel. (changes the picture) |
 | `layer-label-yellow` | Yellow |  | Labels the selected layers yellow in the Layers panel. (changes the picture) |
+| `layer-quick-export-png` | Quick Export as PNG |  | Exports each selected layer (the active one when none is selected) alone, with its effects and mask, as a PNG file named after the layer. (asks first) |
 | `layer-style` | Layer Style... |  | Opens Layer Style. (changes the picture) |
 | `layer-via-cut` | Layer via Cut | Shift+Mod+J | Moves the selected pixels to a new layer. (changes the picture) |
 | `layer.set` | Set Layer |  | Changes a layer name, visibility, opacity or blend mode; the active layer when id is omitted. (changes the picture) |
@@ -921,6 +924,7 @@ Generated from the window's command catalogue (1149 commands) by `./formvis agen
 | `tool.options.mixer.size` | Mixer Brush: Size |  | Sets Size for the Mixer Brush tool. |
 | `tool.options.mixer.symmetry` | Mixer Brush: Symmetry |  | Sets Symmetry for the Mixer Brush tool. |
 | `tool.options.mixer.wet` | Mixer Brush: Wet |  | Sets Wet for the Mixer Brush tool. |
+| `tool.options.move.alignTo` | Move: Align To |  | Sets Align To for the Move tool. |
 | `tool.options.move.angle` | Move: Angle |  | Sets Angle for the Move tool. |
 | `tool.options.move.autoSelect` | Move: Auto-Select |  | Sets Auto-Select for the Move tool. |
 | `tool.options.move.autoSelectTarget` | Move: Auto-Select Target |  | Sets Auto-Select Target for the Move tool. |
@@ -995,6 +999,7 @@ Generated from the window's command catalogue (1149 commands) by `./formvis agen
 | `tool.options.shape.points` | Shape: Points |  | Sets Points for the Shape tool. |
 | `tool.options.shape.shape` | Shape: Shape |  | Sets Shape for the Shape tool. |
 | `tool.options.shape.sides` | Shape: Sides |  | Sets Sides for the Shape tool. |
+| `tool.options.shape.smoothCorners` | Shape: Smooth corners |  | Sets Smooth corners for the Shape tool. |
 | `tool.options.shape.stroke` | Shape: Stroke |  | Sets Stroke for the Shape tool. |
 | `tool.options.shape.strokeType` | Shape: Stroke Type |  | Sets Stroke Type for the Shape tool. |
 | `tool.options.shape.weight` | Shape: Weight |  | Sets Weight for the Shape tool. |

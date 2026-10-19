@@ -1,12 +1,12 @@
 import type { BlendMode, ID, Layer, Pt, Rect, RGB } from './types';
 import { compositeOp, LIMITS } from './types';
 import type { Mat } from './geometry';
-import { applyMat, integral, invert, isAxisAligned, placement, setMat, unionRect, contains } from './geometry';
+import { applyMat, boundsOf, integral, invert, isAxisAligned, placement, setMat, unionRect, unitPoint, contains } from './geometry';
 import type { Surface } from './surface';
 import { createSurface, ctxOf, Raster } from './surface';
 import { SelectionMask } from './selection';
 import type { Project } from './project';
-import { hierarchy } from './tree';
+import { byId, hierarchy, isDescendant } from './tree';
 import { diamondFill, reflectStops } from './gradients';
 import { fromGray, resizeMask, toGray } from './filters';
 
@@ -255,8 +255,15 @@ export function fill(host: PaintHost, which: 'fg' | 'bg'): void {
 export function flipLayers(host: PaintHost, horizontal: boolean): void {
   const p = host.current;
   if (!p) return;
-  const targets = p.doc.layers.filter((l) => p.selectedIds.has(l.id) && !l.isGroup && l.raster !== null);
+  const map = byId(p.doc), roots = p.doc.layers.filter((l) => p.selectedIds.has(l.id) && l.isGroup);
+  const targets = p.doc.layers.filter((l) => !l.isGroup && l.raster !== null && (p.selectedIds.has(l.id) || roots.some((g) => isDescendant(map, l.id, g.id))));
   if (targets.length === 0) return;
+  let box: Rect | null = null;
+  for (const l of targets) {
+    const b = boundsOf([[0, 0], [1, 0], [1, 1], [0, 1]].map(([u, v]) => unitPoint(l.transform, u, v)));
+    box = box ? unionRect(box, b) : b;
+  }
+  const mx = box ? 2 * box.x + box.w : 0, my = box ? 2 * box.y + box.h : 0;
   host.edit(horizontal ? 'Flip Layer Horizontal' : 'Flip Layer Vertical', (proj) => {
     for (const l of targets) {
       const cur = proj.layer(l.id);
@@ -264,6 +271,8 @@ export function flipLayers(host: PaintHost, horizontal: boolean): void {
       const t = cur.transform;
       const nt = {
         ...t,
+        x: horizontal ? mx - t.x - t.w : t.x,
+        y: horizontal ? t.y : my - t.y - t.h,
         flipX: horizontal ? !t.flipX : t.flipX,
         flipY: horizontal ? t.flipY : !t.flipY,
         rotation: -t.rotation,

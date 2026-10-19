@@ -165,6 +165,7 @@
 .cv-save-q strong { font-weight: 700; }
 .cv-savechanges .cv-note { margin: 0; padding-bottom: 14px; border-bottom: 1px solid var(--line-2); color: var(--text-secondary); font-size: 14px; }
 .cv-dialog-foot .cv-btn-apart { margin-right: auto; }
+.cv-adjust-preview { display: inline-flex; align-items: center; gap: var(--space-2); height: 34px; color: var(--text-secondary); font-size: 14px; cursor: pointer; }
 
 /* New Document's previews fit their cards; a hidden select stays hidden whatever else applies (the stray line). */
 .cv-nd-thumb { overflow: hidden; padding: 4px; }

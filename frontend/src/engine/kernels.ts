@@ -111,7 +111,17 @@ export function gradientMapKernel(settings: unknown): Kernel {
   const shadows = rgb(r.shadows, 0), highlights = rgb(r.highlights, 1);
   const [from, to] = r.reversed === true ? [highlights, shadows] : [shadows, highlights];
   const ramp = new Uint8Array(256 * 3);
-  for (let level = 0; level < 256; level++) {
+  const stops = Array.isArray(r.stops) ? r.stops.map((s) => ({ at: clamp(finite(record(s).at, 0), 0, 1), c: rgb(s, 0) })).sort((a, b) => a.at - b.at) : [];
+  if (stops.length >= 2) {
+    const list = r.reversed === true ? stops.map((s) => ({ at: 1 - s.at, c: s.c })).reverse() : stops;
+    for (let level = 0; level < 256; level++) {
+      const t = level / 255;
+      let k = 1;
+      while (k < list.length - 1 && list[k].at < t) k++;
+      const a = list[k - 1], b = list[k], f = b.at > a.at ? clamp((t - a.at) / (b.at - a.at), 0, 1) : 1;
+      for (let c = 0; c < 3; c++) ramp[level * 3 + c] = Math.round(255 * clamp(a.c[c] + (b.c[c] - a.c[c]) * f, 0, 1));
+    }
+  } else for (let level = 0; level < 256; level++) {
     for (let c = 0; c < 3; c++) ramp[level * 3 + c] = Math.round(255 * clamp(from[c] + ((to[c] - from[c]) * level) / 255, 0, 1));
   }
   return (px) => {

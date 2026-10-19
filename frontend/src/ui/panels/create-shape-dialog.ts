@@ -29,7 +29,7 @@ export class CreateShapeDialog extends Dialog {
     this.radius.set(s.cornerRadius);
     this.sides.set(s.sides);
     this.height.el.hidden = line;
-    this.radius.el.hidden = s.kind !== 'rectangle';
+    this.radius.el.hidden = !(s.kind === 'rectangle' || s.kind === 'triangle' || s.kind === 'polygon' || s.kind === 'star');
     this.sides.el.hidden = s.kind !== 'polygon' && s.kind !== 'star';
     this.open(this.width.input);
   }

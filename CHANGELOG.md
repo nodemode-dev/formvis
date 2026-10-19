@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.88.4 · 2026-10-19
+
+### Added
+
+- Adjustments: Curves shows the histogram and has Reset (Shift resets every channel); the panel has Preview and Reset, and double-clicking a slider label resets it; Gradient Map presets with several stops; Photo Filter offers 20 named filters.
+- Transform and shapes: Align and Distribute to the selection or the canvas; Flip mirrors selected layers about their combined centre and includes folders; triangles, polygons and stars take a corner radius, and Smooth corners rounds with continuous curvature; Liquify strokes undo one at a time, follow pen pressure, and Alt reverses every tool.
+- Export: PSD files keep vector masks on any layer, always carry layer ids, and include a thumbnail and composite unless Maximize Compatibility is off (Export Preferences); Export As has a file name, a canvas anchor with a coloured margin and a transparency matte; the prompt and recipe can be written into PNG files; File > Export > Quick Export and Export Preferences; Layer > Quick Export as PNG.
+
 ## 1.88.3 · 2026-10-19
 
 ### Added

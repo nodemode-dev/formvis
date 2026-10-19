@@ -111,6 +111,25 @@ export async function layerFiles(engine: Engine, set: LayerExportSettings, engin
   return { files, skipped };
 }
 
+/** Layer > Quick Export as PNG (and the quick format of Export Preferences): the selected layers, or the active one,
+ *  each drawn alone with its effects and mask applied and written as `<layer name>.<ext>`; folders and layers with
+ *  nothing visible are skipped and counted. */
+export async function selectedLayerFiles(engine: Engine, format: LayerFileFormat, quality: number, engineUp: boolean): Promise<{ files: Array<{ name: string; blob: Blob; id: ID }>; skipped: number }> {
+  const p = engine.current, files: Array<{ name: string; blob: Blob; id: ID }> = [], taken = new Set<string>();
+  if (!p) return { files, skipped: 0 };
+  const ids = p.selectedIds.size ? [...p.selectedIds] : p.activeId ? [p.activeId] : [], set: LayerExportSettings = { ...DEFAULT_LAYER_EXPORT, format, quality };
+  let skipped = 0;
+  for (const l of p.doc.layers.filter((x) => ids.includes(x.id) && !x.isGroup)) {
+    const img = engine.renderLayerAlone(l.id);
+    if (!img) { skipped++; continue; }
+    let name = safeName(l.name), n = 1;
+    while (taken.has(name.toLowerCase())) name = `${safeName(l.name)} ${++n}`;
+    taken.add(name.toLowerCase());
+    files.push({ name: `${name}.${format === 'tiff' ? 'tif' : format}`, blob: await encodeOne(engine, img, l.name, set, engineUp), id: l.id });
+  }
+  return { files, skipped };
+}
+
 /** File > Export > Layer Comps to Files (DEV_PLAN 33.3 part c): each comp (only `ids` when given, else all) applied in
  *  turn, the flattened document encoded as `<prefix>_NNNN_<comp>.<ext>`. Every applied comp is undone afterwards, so
  *  the document ends exactly as it started, as dataSetFiles does. */

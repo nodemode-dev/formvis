@@ -51,16 +51,45 @@ function fit(pts: Pt[], box: Rect): Pt[] {
 export const closed = (pts: Pt[]): VectorPath => ({ subpaths: [{ anchors: pts.map(cornerAt), closed: true }] });   // exported 1.60.3 (Markup)
 
 /** The closed path for a boxed shape (polygon, star, heart, or a custom shape from the library) fitted to `box`. */
-export function boxedShapePath(kind: 'polygon' | 'star' | 'heart' | 'custom' | 'triangle' | 'rectangle' | 'ellipse', box: Rect, o: PathShapeOptions & { cornerRadius?: number }): VectorPath {
+export function boxedShapePath(kind: 'polygon' | 'star' | 'heart' | 'custom' | 'triangle' | 'rectangle' | 'ellipse', box: Rect, o: PathShapeOptions & { cornerRadius?: number; smoothCorners?: boolean }): VectorPath {
   if (kind === 'custom') return customShapePath(o.custom, box);
+  const r = Math.max(0, o.cornerRadius ?? 0), smooth = !!o.smoothCorners;
   // The Triangle (1.49.8, the owner's tool list): its apex at the top centre, its base along the bottom.
-  if (kind === 'triangle') return closed([{ x: box.x + box.w / 2, y: box.y }, { x: box.x + box.w, y: box.y + box.h }, { x: box.x, y: box.y + box.h }]);
+  if (kind === 'triangle') {
+    const tri = [{ x: box.x + box.w / 2, y: box.y }, { x: box.x + box.w, y: box.y + box.h }, { x: box.x, y: box.y + box.h }];
+    return r > 0 ? roundedPolygonPath(tri, r, smooth) : closed(tri);
+  }
   // Rectangles and ellipses as paths (Path and Pixels modes, or a stroke): a rounded rectangle when it has a radius;
   // an ellipse as four arcs.
-  if (kind === 'rectangle' || kind === 'ellipse') return kind === 'ellipse' ? ellipsePath(box) : roundRectPath(box, Math.max(0, Math.min(o.cornerRadius ?? 0, box.w / 2, box.h / 2)));
+  if (kind === 'rectangle' || kind === 'ellipse') {
+    if (kind === 'ellipse') return ellipsePath(box);
+    const rr = Math.min(r, box.w / 2, box.h / 2);
+    return smooth && rr > 0 ? roundedPolygonPath([{ x: box.x, y: box.y }, { x: box.x + box.w, y: box.y }, { x: box.x + box.w, y: box.y + box.h }, { x: box.x, y: box.y + box.h }], rr, true) : roundRectPath(box, rr);
+  }
   const n = Math.max(3, Math.min(100, Math.round(o.sides)));
   const pts = kind === 'polygon' ? ngonPoints(0, 0, 1, n) : kind === 'star' ? starPoints(0, 0, 1, Math.max(0.01, 1 - Math.min(99, Math.max(1, o.starInset)) / 100), n) : heartPoints(0, 0, 1);
-  return closed(fit(pts, box));
+  const fitted = fit(pts, box);
+  return r > 0 && kind !== 'heart' ? roundedPolygonPath(fitted, r, smooth) : closed(fitted);
+}
+
+/** A closed polygon with every corner rounded to radius `r`; with `smooth` the corner runs half as long again and
+ *  leaves the edges with a flatter handle, so it meets them without a visible join. Each corner is held to half
+ *  of the shorter edge beside it. */
+export function roundedPolygonPath(pts: Pt[], r: number, smooth = false): VectorPath {
+  const n = pts.length, anchors: VectorPath['subpaths'][number]['anchors'] = [];
+  for (let i = 0; i < n; i++) {
+    const v = pts[i], p = pts[(i + n - 1) % n], q = pts[(i + 1) % n], lp = Math.hypot(p.x - v.x, p.y - v.y), lq = Math.hypot(q.x - v.x, q.y - v.y);
+    if (!lp || !lq) { anchors.push(cornerAt(v)); continue; }
+    const ux = (p.x - v.x) / lp, uy = (p.y - v.y) / lp, wx = (q.x - v.x) / lq, wy = (q.y - v.y) / lq;
+    const theta = Math.acos(Math.max(-1, Math.min(1, ux * wx + uy * wy)));
+    if (theta > Math.PI - 1e-3 || theta < 1e-3) { anchors.push(cornerAt(v)); continue; }
+    const phi = Math.PI - theta, d = Math.min((r / Math.tan(theta / 2)) * (smooth ? 1.5 : 1), lp / 2, lq / 2);
+    const f = smooth ? 0.75 : ((4 / 3) * Math.tan(phi / 4)) / Math.tan(phi / 2);
+    const ax = v.x + ux * d, ay = v.y + uy * d, bx = v.x + wx * d, by = v.y + wy * d;
+    anchors.push(anchor(ax, ay, ax, ay, ax + (v.x - ax) * f, ay + (v.y - ay) * f));
+    anchors.push(anchor(bx, by, bx + (v.x - bx) * f, by + (v.y - by) * f, bx, by));
+  }
+  return { subpaths: [{ anchors, closed: true }] };
 }
 
 /** The closed path for a line or arrow from `a` to `b`. */

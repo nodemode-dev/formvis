@@ -11,6 +11,7 @@ const KINDS = ['rectangle', 'ellipse', 'triangle', 'polygon', 'star', 'line', 'a
 const SHAPE_ICONS: Record<string, string> = { triangle: 'tTriangle', rectangle: 'tRect', ellipse: 'tEllipseShape', polygon: 'tPolygon', star: 'tStar', line: 'tLine', arrow: 'tArrow', heart: 'tHeart', custom: 'tCustomShape' };
 const SHAPE_NAMES: Record<(typeof KINDS)[number], string> = { triangle: 'Triangle', rectangle: 'Rectangle', ellipse: 'Ellipse', polygon: 'Polygon', star: 'Star', line: 'Line', arrow: 'Arrow', heart: 'Heart', custom: 'Custom Shape' };
 const lineLike = (k: string): boolean => k === 'line' || k === 'arrow';
+const rounds = (k: string): boolean => k === 'rectangle' || k === 'triangle' || k === 'polygon' || k === 'star';
 
 export const shapeTool: Tool = {
   id: 'shape', label: 'Shape', key: 'U', order: 75,
@@ -54,8 +55,8 @@ export const shapeTool: Tool = {
   overlay(ctx, g) {
     if (!draft) return;
     const r = dragRect(draft.anchor, draft.point, draft.square, draft.center), v = ctx.view(), s = ctx.engine.shapeSettings;
-    if (s.kind !== 'rectangle' && s.kind !== 'ellipse') {
-      const path = lineLike(s.kind) ? linePath(s.kind as 'line' | 'arrow', draft.anchor, snapped(draft), s) : boxedShapePath(s.kind as 'polygon' | 'star' | 'heart' | 'custom', r, s);
+    if ((s.kind !== 'rectangle' && s.kind !== 'ellipse') || (s.kind === 'rectangle' && s.smoothCorners && s.cornerRadius > 0)) {
+      const path = lineLike(s.kind) ? linePath(s.kind as 'line' | 'arrow', draft.anchor, snapped(draft), s) : boxedShapePath(s.kind as 'polygon' | 'star' | 'heart' | 'custom' | 'rectangle', r, s);
       // Every outline, with its curves, so custom shapes' holes and rounded parts preview as they will be drawn.
       dashed(ctx, g, () => {
         for (const sp of path.subpaths) {
@@ -96,7 +97,8 @@ export const shapeTool: Tool = {
       { kind: 'select', label: 'Align', priority: 40, choices: [{ id: 'inside', label: 'Inside' }, { id: 'center', label: 'Center' }, { id: 'outside', label: 'Outside' }], get: () => s.strokeAlign, set: (v: string) => set({ strokeAlign: v as typeof s.strokeAlign }), when: () => s.mode !== 'path' && s.stroke !== 'none' },
       { kind: 'segment', label: 'Shape', priority: 95, choices: KINDS.map((k) => ({ id: k, label: k[0].toUpperCase() + k.slice(1) })), get: () => s.kind, set: (v) => { s.kind = v as typeof s.kind; e.emit('options', null); e.emit('tool', null); } },
       // Each kind's own settings: built once with the bar, shown while that kind is chosen.
-      { kind: 'range', label: 'Corner radius', priority: 75, min: 0, max: 500, unit: 'px', get: () => s.cornerRadius, set: (v: number) => set({ cornerRadius: v }), when: () => s.kind === 'rectangle' },
+      { kind: 'range', label: 'Corner radius', priority: 75, min: 0, max: 500, unit: 'px', get: () => s.cornerRadius, set: (v: number) => set({ cornerRadius: v }), when: () => rounds(s.kind) },
+      { kind: 'toggle', label: 'Smooth corners', priority: 65, get: () => s.smoothCorners, set: (v: boolean) => set({ smoothCorners: v }), when: () => rounds(s.kind) },
       { kind: 'select', label: 'Custom shape', priority: 75, choices: allCustomShapes().map((c) => ({ id: c.id, label: c.label })), get: () => s.custom, set: (v: string) => set({ custom: v }), when: () => s.kind === 'custom' },
       { kind: 'range', label: 'Sides', priority: 75, min: 3, max: 100, get: () => s.sides, set: (v: number) => set({ sides: Math.round(v) }), when: () => s.kind === 'polygon' },
       { kind: 'range', label: 'Points', priority: 75, min: 3, max: 100, get: () => s.sides, set: (v: number) => set({ sides: Math.round(v) }), when: () => s.kind === 'star' },

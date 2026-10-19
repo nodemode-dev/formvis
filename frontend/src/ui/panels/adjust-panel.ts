@@ -12,7 +12,7 @@ import { checkRow, colorRow, selectRow, sliderRow } from './controls';
 
 type Json = Record<string, unknown>;
 type Pt = { x: number; y: number };
-interface Section { node: HTMLElement; sync: () => void }
+interface Section { node: HTMLElement; sync: () => void; reset?: (all: boolean) => void }
 const obj = (v: unknown): Json => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Json) : {});
 const num = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 const CHANNELS = ['RGB', 'Red', 'Green', 'Blue'];
@@ -26,6 +26,24 @@ const showChannels = (row: { el: HTMLElement }, names: string[]): void => { for 
 const cssVar = (name: string): string => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const hexToUnit = (hex: string): Json => ({ red: parseInt(hex.slice(1, 3), 16) / 255, green: parseInt(hex.slice(3, 5), 16) / 255, blue: parseInt(hex.slice(5, 7), 16) / 255 });
 const unitToHex = (c: unknown): string => { const o = obj(c); return hexOf({ r: Math.round(num(o.red, 0) * 255), g: Math.round(num(o.green, 0) * 255), b: Math.round(num(o.blue, 0) * 255) }); };
+
+const GRADIENT_PRESETS: ReadonlyArray<{ id: string; label: string; stops: ReadonlyArray<readonly [number, string]> }> = [
+  { id: 'cyberpunk', label: 'Cyberpunk', stops: [[0, '#0b0630'], [0.4, '#7a1fa2'], [0.7, '#ff2a9d'], [1, '#19f0ff']] },
+  { id: 'sunset', label: 'Sunset', stops: [[0, '#1b0a3c'], [0.35, '#a3195b'], [0.7, '#ff7a2f'], [1, '#ffe29a']] },
+  { id: 'tealorange', label: 'Teal and Orange', stops: [[0, '#062a35'], [0.45, '#1f7a8c'], [0.75, '#e8a15a'], [1, '#ffe7c2']] },
+  { id: 'sepia', label: 'Sepia', stops: [[0, '#2b1a0e'], [0.6, '#a9825a'], [1, '#fff4dc']] },
+  { id: 'infrared', label: 'Infrared', stops: [[0, '#000000'], [0.3, '#2a0a6b'], [0.6, '#e0103a'], [0.85, '#ffd000'], [1, '#ffffff']] },
+  { id: 'bwcontrast', label: 'Black and White Contrast', stops: [[0, '#000000'], [0.2, '#000000'], [0.8, '#ffffff'], [1, '#ffffff']] },
+];
+
+const PHOTO_FILTERS: ReadonlyArray<readonly [string, string, number, number, number]> = [
+  ['warm85', 'Warming Filter (85)', 236, 138, 0], ['warmlba', 'Warming Filter (LBA)', 250, 150, 0], ['warm81', 'Warming Filter (81)', 235, 177, 19],
+  ['cool80', 'Cooling Filter (80)', 0, 109, 255], ['coollbb', 'Cooling Filter (LBB)', 0, 93, 255], ['cool82', 'Cooling Filter (82)', 0, 181, 255],
+  ['red', 'Red', 234, 26, 26], ['orange', 'Orange', 243, 132, 0], ['yellow', 'Yellow', 249, 227, 28], ['green', 'Green', 25, 201, 25],
+  ['cyan', 'Cyan', 29, 203, 234], ['blue', 'Blue', 29, 53, 234], ['violet', 'Violet', 155, 29, 234], ['magenta', 'Magenta', 227, 24, 226],
+  ['sepia', 'Sepia', 172, 122, 51], ['deepred', 'Deep Red', 255, 0, 0], ['deepblue', 'Deep Blue', 0, 0, 255], ['deepemerald', 'Deep Emerald', 0, 139, 0],
+  ['deepyellow', 'Deep Yellow', 255, 222, 0], ['underwater', 'Underwater', 0, 194, 177],
+];
 
 function curveTable(ch: number, points: Pt[]): Uint8ClampedArray {
   const ident = [{ x: 0, y: 0 }, { x: 255, y: 255 }];
@@ -53,6 +71,9 @@ export class AdjustPanel extends Dialog {
   private histo: HTMLCanvasElement | null = null;
   private readonly sections = new Map<AdjustmentKind, Section>();
   private readonly okBtn: HTMLButtonElement;
+  private readonly previewBox: HTMLInputElement;
+  private previewOn = true;
+  private original: Json = {};
 
   constructor(private readonly engine: Engine) {
     super('Adjustment', 480);
@@ -64,6 +85,14 @@ export class AdjustPanel extends Dialog {
     this.sections.set('grain', this.buildGrain());
     for (const k of PARAM_KINDS) this.sections.set(k, this.buildParams(k));
     for (const s of this.sections.values()) { s.node.hidden = true; this.body.appendChild(s.node); }
+    const resetBtn = this.button('Reset', 'ghost', () => undefined);
+    resetBtn.title = 'Reset the current channel or range; hold Shift to reset all';
+    resetBtn.classList.add('cv-btn-apart');
+    resetBtn.addEventListener('click', (e) => this.reset(e.shiftKey));
+    const previewRow = el<HTMLLabelElement>('<label class="cv-adjust-preview"><input type="checkbox" checked><span>Preview</span></label>');
+    this.previewBox = previewRow.querySelector('input') as HTMLInputElement;
+    this.previewBox.addEventListener('change', () => this.setPreview(this.previewBox.checked));
+    this.foot.appendChild(previewRow);
     this.button('Cancel', 'ghost', () => this.close());
     this.okBtn = this.button('OK', 'primary', () => this.commit());
     this.onClose = () => this.abandon();
@@ -104,14 +133,44 @@ export class AdjustPanel extends Dialog {
     const pts = (c: unknown): Pt[] => { const a = Array.isArray(c) ? c.map(obj).map((p) => ({ x: num(p.x, 0), y: num(p.y, 0) })) : []; return a.length >= 2 ? a.sort((m, n) => m.x - n.x) : [{ x: 0, y: 0 }, { x: 255, y: 255 }]; };
     d.curves = { channel: typeof cv.channel === 'string' ? cv.channel : 'RGB', channels: [0, 1, 2, 3].map((i) => pts(chans[i])) };
     if (this.kind === 'exposure') { const e = obj(d.exposureSettings); d.exposureSettings = { exposure: num(e.exposure, 0), offset: num(e.offset, 0), gamma: num(e.gamma, 1) }; }
-    if (this.kind === 'gradientMap') { const g = obj(d.gradientMapSettings); d.gradientMapSettings = { shadows: g.shadows ?? { red: 0, green: 0, blue: 0 }, highlights: g.highlights ?? { red: 1, green: 1, blue: 1 }, reversed: g.reversed === true }; }
+    if (this.kind === 'gradientMap') { const g = obj(d.gradientMapSettings); d.gradientMapSettings = { shadows: g.shadows ?? { red: 0, green: 0, blue: 0 }, highlights: g.highlights ?? { red: 1, green: 1, blue: 1 }, reversed: g.reversed === true, ...(Array.isArray(g.stops) && g.stops.length >= 2 ? { stops: g.stops, preset: typeof g.preset === 'string' ? g.preset : '' } : {}) }; }
     if (this.kind === 'grain') { const g = grainFromData(d); d.grainSettings = { amount: g.amount, size: g.size, roughness: g.roughness, seed: g.seed }; }
     if (isParamKind(this.kind)) d.params = paramValues(this.kind, d.params);
     this.hsv = hsvFromData(d);
     this.setTitle(this.mode === 'layer' ? `${ADJUSTMENT_LABELS[this.kind]} Layer` : ADJUSTMENT_LABELS[this.kind]);
     for (const [k, s] of this.sections) setHidden(s.node, k !== this.kind);
-    this.bins = this.kind === 'levels' ? this.computeHistogram() : null;
+    this.bins = this.kind === 'levels' || this.kind === 'curves' ? this.computeHistogram() : null;
+    this.original = structuredClone(this.data);
+    this.previewOn = true;
+    this.previewBox.checked = true;
     this.sections.get(this.kind)?.sync();
+  }
+
+  /** Reset puts the current channel or range back to its defaults, or everything with Shift; the section decides
+   *  what "current" means, any other kind goes wholly back to its defaults. */
+  private reset(all: boolean): void {
+    const s = this.sections.get(this.kind);
+    if (s?.reset) s.reset(all);
+    else {
+      const orig = this.original;
+      this.data = structuredClone(defaultAdjustmentData(this.kind));
+      this.prepare();
+      this.original = orig;
+    }
+    this.previewOn = true;
+    this.previewBox.checked = true;
+    this.sections.get(this.kind)?.sync();
+    this.changed();
+  }
+
+  /** Switches the live preview on or off: off shows the values the dialog opened with. */
+  private setPreview(on: boolean): void {
+    this.previewOn = on;
+    if (this.mode === 'layer') {
+      const id = this.layerId, kind = this.kind, data = structuredClone(on ? this.data : this.original);
+      if (id) this.engine.updateLive((p) => p.updateLayer(id, { adjustment: { kind, data } }));
+    } else if (on) this.schedule();
+    else this.engine.setPreview(null);
   }
 
   private sampleMode: string | null = null;
@@ -252,6 +311,7 @@ export class AdjustPanel extends Dialog {
 
   private changed(): void {
     if (this.kind === 'hsv') this.data.hsvSettings = hsvToData(this.hsv);
+    if (!this.previewOn) { this.previewOn = true; this.previewBox.checked = true; }
     if (this.mode === 'layer') {
       const id = this.layerId, kind = this.kind, data = structuredClone(this.data);
       if (id) this.engine.updateLive((p) => p.updateLayer(id, { adjustment: { kind, data } }));
@@ -304,6 +364,7 @@ export class AdjustPanel extends Dialog {
   private commit(): void {
     if (this.asking) { const done = this.asking; this.asking = null; this.done = true; this.engine.setPreview(null); const data = structuredClone(this.data); this.close(); done(data); return; }
     this.done = true;
+    if (!this.previewOn) this.setPreview(true);
     const kind = this.kind, data = structuredClone(this.data), layer = this.mode === 'layer';
     if (layer) this.engine.commitLive();
     else this.engine.applyImageEdit(ADJUSTMENT_LABELS[this.kind], (src, scale) => this.run(src, scale));
@@ -363,11 +424,11 @@ export class AdjustPanel extends Dialog {
     const names = (): string[] => channelsOf(this.engine.current?.doc.mode);
     const channel = selectRow('Channel', ALL_CHANNELS.map((c) => [c, c] as const), (v) => { ch = Math.max(0, names().indexOf(v)); lv().channel = v; values(); this.drawHisto(ch); this.changed(); });
     const canvas = el<HTMLCanvasElement>('<canvas class="cv-histo" width="256" height="96"></canvas>');
-    const black = sliderRow('Input black', 0, 253, 1, (v) => set('black', Math.min(v, r().white - 2)));
-    const gamma = sliderRow('Midtones', 0.1, 9.99, 0.01, (v) => set('gamma', v));
-    const white = sliderRow('Input white', 2, 255, 1, (v) => set('white', Math.max(v, r().black + 2)));
-    const outB = sliderRow('Output black', 0, 255, 1, (v) => set('outputBlack', v));
-    const outW = sliderRow('Output white', 0, 255, 1, (v) => set('outputWhite', v));
+    const black = sliderRow('Input black', 0, 253, 1, (v) => set('black', Math.min(v, r().white - 2)), { def: 0 });
+    const gamma = sliderRow('Midtones', 0.1, 9.99, 0.01, (v) => set('gamma', v), { def: 1 });
+    const white = sliderRow('Input white', 2, 255, 1, (v) => set('white', Math.max(v, r().black + 2)), { def: 255 });
+    const outB = sliderRow('Output black', 0, 255, 1, (v) => set('outputBlack', v), { def: 0 });
+    const outW = sliderRow('Output white', 0, 255, 1, (v) => set('outputWhite', v), { def: 255 });
     const auto = selectRow('Auto', [['', 'Choose'], ['contrast', 'Contrast'], ['color', 'Color'], ['neutral', 'Color + neutral midtones']], (v) => {
       auto.set('');
       if (!v || !this.bins) return;
@@ -381,7 +442,12 @@ export class AdjustPanel extends Dialog {
     node.append(channel.el, canvas, auto.el, sample.el, black.el, gamma.el, white.el, outB.el, outW.el);
     this.histo = canvas;
     const values = (): void => { const x = r(); black.set(x.black); gamma.set(x.gamma); white.set(x.white); outB.set(x.outputBlack); outW.set(x.outputWhite); };
-    return { node, sync: () => { const n = names(); showChannels(channel, n); ch = Math.max(n[0] === 'Lab' ? 1 : 0, n.indexOf(lv().channel)); while (lv().ranges.length < 5) lv().ranges.push({ black: 0, gamma: 1, white: 255, outputBlack: 0, outputWhite: 255 }); channel.set(n[ch]); values(); this.drawHisto(ch); } };
+    const reset = (all: boolean): void => {
+      const flat = (): Record<string, number> => ({ black: 0, gamma: 1, white: 255, outputBlack: 0, outputWhite: 255 });
+      if (all) lv().ranges = lv().ranges.map(flat);
+      else lv().ranges[ch] = flat();
+    };
+    return { node, reset, sync: () => { const n = names(); showChannels(channel, n); ch = Math.max(n[0] === 'Lab' ? 1 : 0, n.indexOf(lv().channel)); while (lv().ranges.length < 5) lv().ranges.push({ black: 0, gamma: 1, white: 255, outputBlack: 0, outputWhite: 255 }); channel.set(n[ch]); values(); this.drawHisto(ch); } };
   }
 
   private buildCurves(): Section {
@@ -395,6 +461,17 @@ export class AdjustPanel extends Dialog {
       if (!c) return;
       const grid = cssVar('--border-light'), accent = cssVar('--accent-color'), ink = cssVar('--text-primary');
       c.clearRect(0, 0, 256, 256);
+      const bins = this.bins;
+      if (bins && ch <= 3) {
+        let max = 0;
+        for (let i = 1; i < 255; i++) max = Math.max(max, bins[ch * 256 + i]);
+        if (max > 0) {
+          c.fillStyle = cssVar('--text-muted');
+          c.globalAlpha = 0.35;
+          for (let i = 0; i < 256; i++) { const h = Math.min(256, (bins[ch * 256 + i] / max) * 256); c.fillRect(i, 256 - h, 1, h); }
+          c.globalAlpha = 1;
+        }
+      }
       c.strokeStyle = grid;
       c.lineWidth = 1;
       c.beginPath();
@@ -451,7 +528,12 @@ export class AdjustPanel extends Dialog {
     const names = (): string[] => channelsOf(this.engine.current?.doc.mode);
     const channel = selectRow('Channel', ALL_CHANNELS.map((c) => [c, c] as const), (v) => { ch = Math.max(0, names().indexOf(v)); cv().channel = v; draw(); this.changed(); });
     node.append(channel.el, canvas, el('<p class="cv-note">Click to add a point, drag to shape the curve, drag a point off the graph to remove it.</p>'));
-    return { node, sync: () => { const n = names(); showChannels(channel, n); ch = Math.max(n[0] === 'Lab' ? 1 : 0, n.indexOf(cv().channel)); while (cv().channels.length < 5) cv().channels.push([{ x: 0, y: 0 }, { x: 255, y: 255 }]); channel.set(n[ch]); draw(); } };
+    const reset = (all: boolean): void => {
+      const flat = (): Pt[] => [{ x: 0, y: 0 }, { x: 255, y: 255 }];
+      if (all) cv().channels = cv().channels.map(flat);
+      else cv().channels[ch] = flat();
+    };
+    return { node, reset, sync: () => { const n = names(); showChannels(channel, n); ch = Math.max(n[0] === 'Lab' ? 1 : 0, n.indexOf(cv().channel)); while (cv().channels.length < 5) cv().channels.push([{ x: 0, y: 0 }, { x: 255, y: 255 }]); channel.set(n[ch]); draw(); } };
   }
 
   private buildHsv(): Section {
@@ -503,11 +585,11 @@ export class AdjustPanel extends Dialog {
     const sample = selectRow('Sample', [['', 'Off'], ['replace', 'Sample'], ['add', 'Add'], ['remove', 'Remove']], (v) => { if (v) this.startSampling(`hue-${v}`); else this.stopSampling(); });
     const target = checkRow('Targeted adjustment', (v) => { if (v) this.startSampling('target'); else this.stopSampling(); });
     this.sampleResets.push((m) => { sample.set(m?.startsWith('hue-') ? m.slice(4) : ''); target.set(m === 'target'); });
-    const hue = sliderRow('Hue', -180, 180, 1, (v) => { cur().hue = v; changed(); });
-    const hueC = sliderRow('Hue', 0, 360, 1, (v) => { cur().hue = v; changed(); });
-    const sat = sliderRow('Saturation', -100, 100, 1, (v) => { cur().saturation = v; changed(); });
-    const satC = sliderRow('Saturation', 0, 100, 1, (v) => { cur().saturation = v; changed(); });
-    const light = sliderRow('Lightness', -100, 100, 1, (v) => { cur().lightness = v; changed(); });
+    const hue = sliderRow('Hue', -180, 180, 1, (v) => { cur().hue = v; changed(); }, { def: 0 });
+    const hueC = sliderRow('Hue', 0, 360, 1, (v) => { cur().hue = v; changed(); }, { def: 0 });
+    const sat = sliderRow('Saturation', -100, 100, 1, (v) => { cur().saturation = v; changed(); }, { def: 0 });
+    const satC = sliderRow('Saturation', 0, 100, 1, (v) => { cur().saturation = v; changed(); }, { def: 0 });
+    const light = sliderRow('Lightness', -100, 100, 1, (v) => { cur().lightness = v; changed(); }, { def: 0 });
     const colorize = checkRow('Colorize', (v) => {
       this.hsv.colorize = v;
       if (v) { this.hsv.range = 'Master'; const a = cur(); if (!a.hue && !a.saturation && !a.lightness) a.saturation = 25; }
@@ -532,15 +614,19 @@ export class AdjustPanel extends Dialog {
       setHidden(target.el, s.colorize);
       drawSpectrum();
     };
-    return { node, sync };
+    const reset = (all: boolean): void => {
+      if (all) this.hsv = hsvFromData({});
+      else this.hsv.adjustments[this.hsv.range] = { hue: 0, saturation: 0, lightness: 0 };
+    };
+    return { node, sync, reset };
   }
 
   private buildExposure(): Section {
     const node = el('<div class="cv-panel-section"></div>');
     const ex = (): Record<string, number> => this.data.exposureSettings as Record<string, number>;
-    const e = sliderRow('Exposure', -5, 5, 0.01, (v) => { ex().exposure = v; this.changed(); }, { min: -20, max: 20 });
-    const o = sliderRow('Offset', -0.5, 0.5, 0.0001, (v) => { ex().offset = v; this.changed(); });
-    const g = sliderRow('Gamma', 0.01, 9.99, 0.01, (v) => { ex().gamma = v; this.changed(); });
+    const e = sliderRow('Exposure', -5, 5, 0.01, (v) => { ex().exposure = v; this.changed(); }, { min: -20, max: 20, def: 0 });
+    const o = sliderRow('Offset', -0.5, 0.5, 0.0001, (v) => { ex().offset = v; this.changed(); }, { def: 0 });
+    const g = sliderRow('Gamma', 0.01, 9.99, 0.01, (v) => { ex().gamma = v; this.changed(); }, { def: 1 });
     node.append(e.el, o.el, g.el);
     return { node, sync: () => { e.set(ex().exposure); o.set(ex().offset); g.set(ex().gamma); } };
   }
@@ -548,11 +634,23 @@ export class AdjustPanel extends Dialog {
   private buildGradientMap(): Section {
     const node = el('<div class="cv-panel-section"></div>');
     const gm = (): Json => this.data.gradientMapSettings as Json;
-    const shadows = colorRow('Shadows', (hex) => { gm().shadows = hexToUnit(hex); this.changed(); });
-    const highlights = colorRow('Highlights', (hex) => { gm().highlights = hexToUnit(hex); this.changed(); });
+    const custom = (): void => { delete gm().stops; delete gm().preset; preset.set('custom'); };
+    const shadows = colorRow('Shadows', (hex) => { gm().shadows = hexToUnit(hex); custom(); this.changed(); });
+    const highlights = colorRow('Highlights', (hex) => { gm().highlights = hexToUnit(hex); custom(); this.changed(); });
     const reversed = checkRow('Reverse', (v) => { gm().reversed = v; this.changed(); });
-    node.append(shadows.el, highlights.el, reversed.el);
-    return { node, sync: () => { shadows.set(unitToHex(gm().shadows)); highlights.set(unitToHex(gm().highlights)); reversed.set(gm().reversed === true); } };
+    const preset = selectRow('Preset', [['custom', 'Custom'], ...GRADIENT_PRESETS.map((p) => [p.id, p.label] as const)], (v) => {
+      const p = GRADIENT_PRESETS.find((x) => x.id === v);
+      if (!p) { delete gm().stops; delete gm().preset; this.changed(); return; }
+      gm().stops = p.stops.map(([at, hex]) => ({ at, ...hexToUnit(hex) }));
+      gm().preset = p.id;
+      gm().shadows = hexToUnit(p.stops[0][1]);
+      gm().highlights = hexToUnit(p.stops[p.stops.length - 1][1]);
+      this.sections.get('gradientMap')?.sync();
+      this.changed();
+    });
+    node.append(preset.el, shadows.el, highlights.el, reversed.el);
+    const reset = (): void => { this.data.gradientMapSettings = { shadows: { red: 0, green: 0, blue: 0 }, highlights: { red: 1, green: 1, blue: 1 }, reversed: false }; };
+    return { node, reset, sync: () => { shadows.set(unitToHex(gm().shadows)); highlights.set(unitToHex(gm().highlights)); reversed.set(gm().reversed === true); preset.set(Array.isArray(gm().stops) && typeof gm().preset === 'string' && gm().preset ? String(gm().preset) : 'custom'); } };
   }
 
   private buildGrain(): Section {
@@ -579,10 +677,13 @@ export class AdjustPanel extends Dialog {
   private buildParams(kind: ParamKind): Section {
     const node = el('<div class="cv-panel-section"></div>'), spec = PARAM_ADJUSTMENTS[kind];
     const pv = (): Json => obj(this.data.params);
-    const put = (key: string, v: unknown): void => { this.data.params = { ...pv(), [key]: v }; this.changed(); if (key === spec.groupBy) this.sections.get(kind)?.sync(); };
+    const put = (key: string, v: unknown): void => { this.data.params = { ...pv(), [key]: v }; this.changed(); if (key === spec.groupBy || (kind === 'photoFilter' && key === 'color')) this.sections.get(kind)?.sync(); };
+    const named = kind === 'photoFilter'
+      ? selectRow('Filter', [['custom', 'Custom'], ...PHOTO_FILTERS.map((f) => [f[0], f[1]] as const)], (v) => { const f = PHOTO_FILTERS.find((x) => x[0] === v); if (f) put('color', { r: f[2], g: f[3], b: f[4] }); })
+      : null;
     const toHex = (c: unknown): string => { const o = obj(c); return hexOf({ r: num(o.r, 0), g: num(o.g, 0), b: num(o.b, 0) }); };
     const rows = spec.params.map((s) => {
-      if (s.kind === 'range') { const r = sliderRow(s.label, s.min, s.max, s.step, (v) => put(s.key, v)); return { s, el: r.el, set: () => r.set(num(pv()[s.key], s.def)) }; }
+      if (s.kind === 'range') { const r = sliderRow(s.label, s.min, s.max, s.step, (v) => put(s.key, v), { def: s.def }); return { s, el: r.el, set: () => r.set(num(pv()[s.key], s.def)) }; }
       if (s.kind === 'check') { const r = checkRow(s.label, (v) => put(s.key, v)); return { s, el: r.el, set: () => r.set(pv()[s.key] === true) }; }
       if (s.kind === 'select') {
         const r = selectRow(s.label, s.options, (v) => put(s.key, v));
@@ -626,7 +727,10 @@ export class AdjustPanel extends Dialog {
       return { s, el: r.el, set: () => r.set(toHex(pv()[s.key])) };
     });
     if (!rows.length) node.appendChild(el('<p class="cv-note">No settings: the layer inverts the colours beneath it.</p>'));
+    if (named) node.appendChild(named.el);
     for (const r of rows) node.appendChild(r.el);
-    return { node, sync: () => { const g = spec.groupBy ? String(pv()[spec.groupBy]) : null; for (const r of rows) { r.set(); setHidden(r.el, !!r.s.group && r.s.group !== g); } } };
+    return { node, sync: () => {
+      if (named) { const c = obj(pv().color); named.set(PHOTO_FILTERS.find((f) => f[2] === c.r && f[3] === c.g && f[4] === c.b)?.[0] ?? 'custom'); }
+      const g = spec.groupBy ? String(pv()[spec.groupBy]) : null; for (const r of rows) { r.set(); setHidden(r.el, !!r.s.group && r.s.group !== g); } } };
   }
 }

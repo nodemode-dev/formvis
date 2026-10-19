@@ -1,5 +1,5 @@
 import type { Engine } from '../../engine';
-import { exportLayout, BUILTIN_EXPORT_PRESETS, DPX_BITS, DPX_TRANSFERS, EXPORT_FORMATS, EXPORT_INTENTS, FORMAT_OPTIONS, ICO_SIZES, LOSSY, MAX_EXPORT_SIZES, PROFILELESS, XMP_FORMATS, clampSettings, defaultSuffix, sizedSettings, exportName, exportSize, presetsFromStorage, type DpxBits, type DpxTransfer, type ExportFormat, type ExportIntent, type ExportPreset, type ExportSettings } from '../../io/export-presets';
+import { exportLayout, CANVAS_ANCHORS, CANVAS_FILLS, MATTES, BUILTIN_EXPORT_PRESETS, DPX_BITS, DPX_TRANSFERS, EXPORT_FORMATS, EXPORT_INTENTS, FORMAT_OPTIONS, ICO_SIZES, LOSSY, MAX_EXPORT_SIZES, PROFILELESS, XMP_FORMATS, clampSettings, defaultSuffix, sizedSettings, exportName, exportSize, presetsFromStorage, type DpxBits, type DpxTransfer, type ExportFormat, type ExportIntent, type ExportPreset, type ExportSettings } from '../../io/export-presets';
 import { api } from '../../io/api';
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
@@ -29,6 +29,12 @@ export class ExportDialog extends Dialog {
   private readonly embedRow: Row<boolean>;
   private readonly sizeRow: Row<string>;
   private readonly labelRow: Row<string>;
+  private readonly promptRow: Row<boolean>;
+  private readonly anchorRow: Row<string>;
+  private readonly fillRow: Row<string>;
+  private readonly matteRow: Row<string>;
+  private readonly fileInput = el('<input class="cv-input" type="text" maxlength="120" aria-label="File name">') as HTMLInputElement;
+  private readonly fileField = el('<label class="cv-field"><span>File name</span></label>');
   private readonly dpxBitsRow: Row<string>;
   private readonly dpxTransferRow: Row<string>;
   private readonly optionRow: Row<string>;
@@ -84,6 +90,12 @@ export class ExportDialog extends Dialog {
       this.s = clampSettings({ ...this.s, sizes: [...have, { x, suffix: defaultSuffix(x) }] }); this.custom();
     });
     this.labelRow = selectRow('AI label', [['none', 'None'], ['generated', 'Made with AI'], ['edited', 'Edited with AI']], (v) => { this.s = clampSettings({ ...this.s, aiLabel: v === 'none' ? undefined : v as 'generated' | 'edited' }); this.custom(); });
+    this.anchorRow = selectRow('Canvas anchor', CANVAS_ANCHORS, (v) => { this.s = clampSettings({ ...this.s, canvasAnchor: Number(v) }); this.custom(); });
+    this.fillRow = selectRow('Canvas margin', CANVAS_FILLS, (v) => { this.s = clampSettings({ ...this.s, canvasFill: v === 'transparent' ? undefined : v as 'white' | 'black' }); this.custom(); });
+    this.matteRow = selectRow('Transparency', MATTES, (v) => { this.s = clampSettings({ ...this.s, matte: v === 'keep' ? undefined : v as 'white' | 'black' }); this.custom(); });
+    this.promptRow = checkRow('Prompt and recipe in the PNG', (v) => { this.s = clampSettings({ ...this.s, promptMeta: v }); this.custom(); });
+    this.fileField.append(this.fileInput);
+    this.fileInput.addEventListener('input', () => { this.s = clampSettings({ ...this.s, fileName: this.fileInput.value }); this.custom(); });
     this.dpxBitsRow = selectRow('DPX bit depth', DPX_BITS, (v) => { this.s = clampSettings({ ...this.s, dpxBits: Number(v) as DpxBits }); this.custom(); });
     this.dpxTransferRow = selectRow('DPX transfer', DPX_TRANSFERS, (v) => { this.s = clampSettings({ ...this.s, dpxTransfer: v as DpxTransfer }); this.custom(); });
     this.optionRow = selectRow('Format options', [['', 'None']], (v) => { this.s = clampSettings({ ...this.s, option: v }); this.custom(); });
@@ -100,7 +112,7 @@ export class ExportDialog extends Dialog {
     this.deleteBtn.addEventListener('click', () => this.deletePreset());
     const manage = el('<div class="cv-field"><span></span><div class="cv-row-actions"></div></div>');
     (manage.lastElementChild as HTMLElement).append(this.nameInput, save, this.deleteBtn);
-    this.body.append(this.presetRow.el, this.formatRow.el, this.qualityRow.el, this.sizeRow.el, this.scaleRow.el, this.boxRow, this.canvasRow.el, this.canvasBox, this.profileRow.el, this.intentRow.el, this.bpcRow.el, this.embedRow.el, this.dpxBitsRow.el, this.dpxTransferRow.el, this.optionRow.el, this.icoRow, this.labelRow.el, this.metaRow.el, this.copyrightField, this.contactField, this.metaNote, this.sizesHead, this.sizesList, this.sizeNote, manage);
+    this.body.append(this.presetRow.el, this.fileField, this.formatRow.el, this.qualityRow.el, this.sizeRow.el, this.scaleRow.el, this.boxRow, this.canvasRow.el, this.canvasBox, this.anchorRow.el, this.fillRow.el, this.matteRow.el, this.profileRow.el, this.intentRow.el, this.bpcRow.el, this.embedRow.el, this.dpxBitsRow.el, this.dpxTransferRow.el, this.optionRow.el, this.icoRow, this.labelRow.el, this.promptRow.el, this.metaRow.el, this.copyrightField, this.contactField, this.metaNote, this.sizesHead, this.sizesList, this.sizeNote, manage);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('Export', 'primary', () => { this.close(); this.run({ ...this.s }); });
     // The settings in use (not only the saved presets) and the preset chosen are kept across sessions.
@@ -196,6 +208,11 @@ export class ExportDialog extends Dialog {
     this.scaleRow.set(s.scale);
     this.sizeRow.set(s.size ?? 'scale');
     this.labelRow.set(s.aiLabel ?? 'none');
+    this.promptRow.set(s.promptMeta === true);
+    this.promptRow.el.classList.toggle('is-off', s.format !== 'png');
+    for (const i of this.promptRow.el.querySelectorAll('input')) i.disabled = s.format !== 'png';
+    if (document.activeElement !== this.fileInput) this.fileInput.value = s.fileName ?? '';
+    this.fileInput.placeholder = this.engine.current?.name ?? 'Untitled';
     this.scaleRow.el.hidden = (s.size ?? 'scale') !== 'scale';
     this.boxRow.hidden = (s.size ?? 'scale') === 'scale';
     if (document.activeElement !== this.boxW) this.boxW.value = String(s.boxW ?? 1920);
@@ -230,6 +247,12 @@ export class ExportDialog extends Dialog {
     this.canvasRow.set(cv);
     this.canvasBox.classList.toggle('is-off', !cv);
     this.canvasW.disabled = !cv; this.canvasH.disabled = !cv;
+    this.matteRow.set(s.matte ?? 'keep');
+    const noAlpha = s.format === 'jpg' || s.format === 'pdf';
+    this.matteRow.el.classList.toggle('is-off', noAlpha);
+    for (const i of this.matteRow.el.querySelectorAll('select')) i.disabled = noAlpha;
+    this.anchorRow.set(String(s.canvasAnchor ?? 4)); this.fillRow.set(s.canvasFill ?? 'transparent');
+    for (const r of [this.anchorRow, this.fillRow]) { r.el.classList.toggle('is-off', !cv); for (const i of r.el.querySelectorAll('select')) i.disabled = !cv; }
     if (document.activeElement !== this.canvasW) this.canvasW.value = String(s.canvasW ?? doc?.width ?? 1920);
     if (document.activeElement !== this.canvasH) this.canvasH.value = String(s.canvasH ?? doc?.height ?? 1080);
     // Metadata: the two texts are used only for Copyright and Contact Info; the note says where the file can carry them.
@@ -256,7 +279,7 @@ export class ExportDialog extends Dialog {
     this.deleteBtn.disabled = !this.saved.some((x) => x.id === this.presetId);
     if (doc) { const z = exportLayout(doc.width, doc.height, sizedSettings(s)[0].s), many = sizes.length > 1; setText(this.sizeNote, `${many ? `${sizes.length} files, first ` : ''}${z.w} x ${z.h} px · ${exportName(this.engine.current?.name ?? 'Untitled', s, sizes[0]?.suffix)}${s.format === 'pdf' && s.profile ? ' · converted; PDF carries no profile' : ''}`); }
     if (doc && s.aiLabel && ['avif', 'tiff', 'pdf'].includes(s.format)) setText(this.sizeNote, `${this.sizeNote.textContent ?? ''} · AVIF, TIFF and PDF do not carry the AI label yet.`);
-    remembered('Export As', 'settings', JSON.stringify(s));
+    remembered('Export As', 'settings', JSON.stringify({ ...s, fileName: undefined }));
     remembered('Export As', 'preset', this.presetId);
   }
 }

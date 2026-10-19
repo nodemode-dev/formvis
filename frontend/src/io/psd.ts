@@ -466,20 +466,15 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
           if (typeof o.fr === 'number') return { r: Math.round(o.fr * 255), g: Math.round(o.fg * 255), b: Math.round(o.fb * 255) };
           return null;
         };
-        const path = { subpaths: vm.paths.map((bp) => ({ closed: !bp.open, anchors: bp.knots.map((k) => ({ inX: k.points[0], inY: k.points[1], x: k.points[2], y: k.points[3], outX: k.points[4], outY: k.points[5] })) })).filter((sp) => sp.anchors.length) };
-        // A subtract outline cuts a hole: wound against the combined ones, as the nonzero rule formvis fills by needs.
-        const ops = vm.paths.filter((bp) => bp.knots.length).map((bp) => bp.operation ?? 'combine');
-        const mainArea = path.subpaths.reduce((m, sp, i) => (ops[i] !== 'subtract' && sp.closed && Math.abs(windingArea(sp.anchors)) > Math.abs(m) ? windingArea(sp.anchors) : m), 0);
-        path.subpaths.forEach((sp, i) => {
-          if (ops[i] !== 'subtract' || !sp.closed || !mainArea || Math.sign(windingArea(sp.anchors)) !== Math.sign(mainArea)) return;
-          sp.anchors = sp.anchors.slice().reverse().map((a) => ({ x: a.x, y: a.y, inX: a.outX, inY: a.outY, outX: a.inX, outY: a.inY }));
-        });
+        const path = fromPsdOutlines(vm.paths);
         const fill = vs?.fillEnabled === false || vf?.type !== 'color' ? null : col(vf.color);
         const sc = vs?.strokeEnabled && vs.content?.type === 'color' ? col(vs.content.color) : null;
         const stroke = sc ? { color: sc, width: vs?.lineWidth?.value ?? 1 } : null;
         if (path.subpaths.length && (fill || stroke)) layer.vector = { path, fill, stroke, origin: { x: pl.left ?? 0, y: pl.top ?? 0 } };
-        // The file's path operations kept as formvis's (subtract outlines were also wound against the rest above).
-        path.subpaths.forEach((sp, i) => { const op = ops[i]; if (op === 'subtract' || op === 'intersect' || op === 'exclude') (sp as SubPath).op = op; });
+      } else if (vm?.paths?.length) {
+        // A vector mask on a pixel layer (Layer > Vector Mask): kept as formvis's own, with its invert, link and disable flags.
+        const path = fromPsdOutlines(vm.paths);
+        if (path.subpaths.length) layer.vectorMask = { path, enabled: !vm.disable, linked: !vm.notLink, inverted: !!vm.invert };
       }
       const plc = pl.placedLayer;
       if (plc) {
@@ -571,8 +566,33 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
   return { doc: { ...doc, layers }, notes, activeId: layers.at(-1)?.id ?? null, paths };
 }
 
+/** A PSD vector mask's bezier paths as formvis outlines. A subtract outline cuts a hole, so it is wound against the
+ *  combined ones, as the nonzero rule formvis fills by needs; the file's other operations are kept on the outline. */
+function fromPsdOutlines(paths: NonNullable<PsdLayer['vectorMask']>['paths']): { subpaths: SubPath[] } {
+  const path = { subpaths: paths.map((bp) => ({ closed: !bp.open, anchors: bp.knots.map((k) => ({ inX: k.points[0], inY: k.points[1], x: k.points[2], y: k.points[3], outX: k.points[4], outY: k.points[5] })) })).filter((sp) => sp.anchors.length) as SubPath[] };
+  const ops = paths.filter((bp) => bp.knots.length).map((bp) => bp.operation ?? 'combine');
+  const mainArea = path.subpaths.reduce((m, sp, i) => (ops[i] !== 'subtract' && sp.closed && Math.abs(windingArea(sp.anchors)) > Math.abs(m) ? windingArea(sp.anchors) : m), 0);
+  path.subpaths.forEach((sp, i) => {
+    if (ops[i] !== 'subtract' || !sp.closed || !mainArea || Math.sign(windingArea(sp.anchors)) !== Math.sign(mainArea)) return;
+    sp.anchors = sp.anchors.slice().reverse().map((a) => ({ x: a.x, y: a.y, inX: a.outX, inY: a.outY, outX: a.inX, outY: a.inY }));
+  });
+  path.subpaths.forEach((sp, i) => { const op = ops[i]; if (op === 'subtract' || op === 'intersect' || op === 'exclude') sp.op = op; });
+  return path;
+}
+
+/** A layer's outlines as PSD bezier paths moved by (dx, dy). formvis fills by the nonzero rule, so an outline wound
+ *  against the largest one is a hole; the PSD says so with the subtract operation. */
+function psdOutlines(subpaths: SubPath[], dx: number, dy: number): NonNullable<PsdLayer['vectorMask']>['paths'] {
+  const live = subpaths.filter((sp) => sp.anchors.length), areas = live.map((sp) => (sp.closed ? windingArea(sp.anchors) : 0));
+  const main = areas.reduce((m, a) => (Math.abs(a) > Math.abs(m) ? a : m), 0);
+  return live.map((sp, i) => ({
+    open: !sp.closed, operation: sp.op && sp.op !== 'combine' ? sp.op : sp.closed && main && Math.sign(areas[i]) === -Math.sign(main) ? 'subtract' as const : 'combine' as const, fillRule: 'non-zero' as const,
+    knots: sp.anchors.map((a) => ({ linked: Math.abs((a.outX - a.x) * (a.inY - a.y) - (a.outY - a.y) * (a.inX - a.x)) < 1e-6 && (a.outX !== a.x || a.outY !== a.y), points: [a.inX + dx, a.inY + dy, a.x + dx, a.y + dy, a.outX + dx, a.outY + dy] })),
+  }));
+}
+
 /** The document as a layered PSD, with notes on what it could not carry. */
-export async function writePsdFile(doc: Doc, composite: Surface, psb = false, paths: PathSet | null = null): Promise<{ bytes: ArrayBuffer; notes: string[] }> {
+export async function writePsdFile(doc: Doc, composite: Surface, psb = false, paths: PathSet | null = null, maximize = true): Promise<{ bytes: ArrayBuffer; notes: string[] }> {
   const { writePsd } = await import('ag-psd');
   const notes: string[] = [], linked: LinkedFile[] = [], sources = new Map<ID, Uint8Array>(), psdPatterns: PatternInfo[] = [];
   for (const l of doc.layers) if (l.smart) sources.set(l.id, new Uint8Array(await (await toBlob(l.smart.source.canvas)).arrayBuffer()));
@@ -647,16 +667,18 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
         const dx = t.x - v.origin.x, dy = t.y - v.origin.y, rgb = (c: { r: number; g: number; b: number }) => ({ r: c.r, g: c.g, b: c.b });
         // formvis fills by the nonzero rule, so an outline wound against the largest one is a hole; the PSD says so with
         // the subtract operation.
-        const live = v.path.subpaths.filter((sp) => sp.anchors.length), areas = live.map((sp) => (sp.closed ? windingArea(sp.anchors) : 0));
-        const main = areas.reduce((m, a) => (Math.abs(a) > Math.abs(m) ? a : m), 0);
-        out.vectorMask = { paths: live.map((sp, i) => ({
-          open: !sp.closed, operation: sp.op && sp.op !== 'combine' ? sp.op : sp.closed && main && Math.sign(areas[i]) === -Math.sign(main) ? 'subtract' as const : 'combine' as const, fillRule: 'non-zero' as const,
-          knots: sp.anchors.map((a) => ({ linked: Math.abs((a.outX - a.x) * (a.inY - a.y) - (a.outY - a.y) * (a.inX - a.x)) < 1e-6 && (a.outX !== a.x || a.outY !== a.y), points: [a.inX + dx, a.inY + dy, a.x + dx, a.y + dy, a.outX + dx, a.outY + dy] })),
-        })) };
+        out.vectorMask = { paths: psdOutlines(v.path.subpaths, dx, dy) };
         out.vectorFill = { type: 'color', color: rgb(v.fill ?? v.stroke?.color ?? { r: 0, g: 0, b: 0 }) };
         out.vectorStroke = { strokeEnabled: !!v.stroke, fillEnabled: !!v.fill, lineWidth: { units: 'Pixels', value: v.stroke?.width ?? 1 }, lineCapType: 'round', lineJoinType: 'round', lineAlignment: 'center', content: { type: 'color', color: rgb(v.stroke?.color ?? v.fill ?? { r: 0, g: 0, b: 0 }) } };
       } else notes.push(`"${l.name}" goes as pixels; after a scale, rotation or flip the PSD cannot keep it as a shape.`);
     }
+    const vm = l.vectorMask;
+    if (vm && !v && !l.fillContent) {
+      // Layer > Vector Mask on a pixel, type or smart layer: the outlines as the PSD's vector mask beside the pixels.
+      const paths = psdOutlines(vm.path.subpaths, 0, 0);
+      if (paths.length) out.vectorMask = { paths, ...(vm.inverted ? { invert: true } : {}), ...(vm.linked ? {} : { notLink: true }), ...(vm.enabled ? {} : { disable: true }) };
+      else notes.push(`"${l.name}"'s vector mask holds no outline, so it is left out of the PSD.`);
+    } else if (vm && (v || l.fillContent)) notes.push(`"${l.name}" is a shape or fill layer, whose vector mask the PSD keeps as its own outline; the separate vector mask is left out.`);
     if (l.fillContent) {
       // A fill layer goes as a PSD one (1.66.0): its content beside its pixels, drawn again from it on reading.
       const vf = toPsdFill(l.fillContent, psdPatterns, l.name, notes);
@@ -672,11 +694,11 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
   const build = (parentId: ID | null): PsdLayer[] => doc.layers.filter((l) => l.parentId === parentId).map((l) => { const o = toPsd(l); if (o) built.set(l.id, o); if (o && l.link && linkNo.has(l.link)) o.linkGroup = linkNo.get(l.link); return o; }).filter((x): x is PsdLayer => x !== null);
   const flat = canvas(doc.width, doc.height);
   (flat.getContext('2d') as CanvasRenderingContext2D).drawImage(composite as CanvasImageSource, 0, 0);
-  const psd: Psd = { width: doc.width, height: doc.height, children: build(null), canvas: flat };
+  const psd: Psd = { width: doc.width, height: doc.height, children: build(null), ...(maximize ? { canvas: flat } : {}) };   // Maximize Compatibility: the flattened composite beside the layers, for readers that ignore layers
   const boards = doc.layers.filter((l) => l.isGroup && !l.parentId && l.artboard).length;
   if (boards) psd.artboards = { count: boards };   // 'artd', the document-wide artboard record a reader looks for beside each group's 'artb'
   const comps = doc.comps ?? [], sliceList = doc.slices ?? [];
-  if (comps.length || sliceList.some((s) => s.layer)) { let layerNo = 0; for (const o of built.values()) o.id = ++layerNo; }   // ag-psd needs a numeric id on every layer once comps or layer slices are written
+  { let layerNo = 0; for (const o of built.values()) o.id = ++layerNo; }   // a numeric id on every layer, which comps and layer slices need and other readers expect
   if (sliceList.length) {   // Slices (29.5 part d): one group named after the document
     const resources = psd.imageResources ?? (psd.imageResources = {});
     resources.slices = [{
@@ -716,5 +738,5 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
   if (doc.pixelAspect && doc.pixelAspect !== 1) psd.imageResources = { ...(psd.imageResources ?? {}), pixelAspectRatio: { aspect: doc.pixelAspect } };   // Pixel Aspect Ratio (35.4 part b)
   const ppi = doc.resolution && doc.resolution >= 1 && doc.resolution <= 65535 ? doc.resolution : 72;   // image resource 1005
   psd.imageResources = { ...(psd.imageResources ?? {}), resolutionInfo: { horizontalResolution: ppi, horizontalResolutionUnit: 'PPI', widthUnit: 'Inches', verticalResolution: ppi, verticalResolutionUnit: 'PPI', heightUnit: 'Inches' } };
-  return { bytes: addPathResources(writePsd(psd, { generateThumbnail: false, psb }), paths, doc.width, doc.height), notes };
+  return { bytes: addPathResources(writePsd(psd, { generateThumbnail: maximize, psb }), paths, doc.width, doc.height), notes };
 }

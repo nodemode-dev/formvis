@@ -6,7 +6,7 @@ import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
 import { paint } from '../palette';
 import { toast } from '../toast';
-import { sliderRow, type Row } from './controls';
+import { checkRow, sliderRow, type Row } from './controls';
 
 const PW = 640, PH = 440;
 const TOOLS: ReadonlyArray<readonly [LiquifyTool, string]> = [['warp', 'Forward Warp'], ['pushLeft', 'Push Left'], ['reconstruct', 'Reconstruct'], ['twirlCW', 'Twirl Clockwise'], ['twirlCCW', 'Twirl Counterclockwise'], ['pucker', 'Pucker'], ['bloat', 'Bloat'], ['freeze', 'Freeze Mask'], ['thaw', 'Thaw Mask']];
@@ -36,6 +36,14 @@ export class LiquifyDialog extends Dialog {
   private held: ReturnType<typeof setInterval> | 0 = 0;
   private last: { x: number; y: number } | null = null;
   private hover: { x: number; y: number } | null = null;
+  /** One entry per stroke or button that changed the field, so Undo Stroke and Redo Stroke step through them. */
+  private undoStack: Array<{ d: Float32Array; freeze?: Float32Array }> = [];
+  private redoStack: Array<{ d: Float32Array; freeze?: Float32Array }> = [];
+  /** Stylus pressure scales the brush pressure while a pen is down; a mouse counts as full pressure. */
+  private usePen = true;
+  private penNow = 1;
+  private readonly undoBtn = el<HTMLButtonElement>('<button class="cv-btn cv-btn-ghost" type="button" disabled>Undo Stroke</button>');
+  private readonly redoBtn = el<HTMLButtonElement>('<button class="cv-btn cv-btn-ghost" type="button" disabled>Redo Stroke</button>');
   private readonly canvas = el(`<canvas class="cv-liquify-canvas" width="${PW}" height="${PH}"></canvas>`) as HTMLCanvasElement;
   private readonly toolButtons: HTMLButtonElement[] = [];
   private readonly sizeRow: Row<number>;
@@ -54,17 +62,26 @@ export class LiquifyDialog extends Dialog {
     this.sizeRow = sliderRow('Brush size (px)', 1, 600, 1, (v) => { this.size = v; this.draw(); });
     this.pressureRow = sliderRow('Brush pressure (%)', 1, 100, 1, (v) => { this.pressure = v; });
     const restore = el('<button class="cv-btn" type="button">Restore All</button>') as HTMLButtonElement;
-    restore.addEventListener('click', () => { if (this.liq) { resetField(this.liq); this.render(); } });
+    restore.addEventListener('click', () => { if (this.liq) { this.snap(); resetField(this.liq); this.render(); } });
     const maskNone = el('<button class="cv-btn cv-btn-ghost" type="button">Mask None</button>') as HTMLButtonElement;
-    maskNone.addEventListener('click', () => { if (this.liq) { clearFreeze(this.liq); this.render(); } });
+    maskNone.addEventListener('click', () => { if (this.liq) { this.snap(); clearFreeze(this.liq); this.render(); } });
     const maskInvert = el('<button class="cv-btn cv-btn-ghost" type="button">Invert Mask</button>') as HTMLButtonElement;
-    maskInvert.addEventListener('click', () => { if (this.liq) { invertFreeze(this.liq); this.render(); } });
+    maskInvert.addEventListener('click', () => { if (this.liq) { this.snap(); invertFreeze(this.liq); this.render(); } });
+    this.undoBtn.addEventListener('click', () => this.stepStroke(false));
+    this.redoBtn.addEventListener('click', () => this.stepStroke(true));
+    const penRow = checkRow('Stylus pressure', (v) => { this.usePen = v; });
+    penRow.set(true);
+    this.scrim.addEventListener('keydown', (e) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z') return;
+      e.preventDefault();
+      this.stepStroke(e.shiftKey);
+    });
     const saveMesh = el<HTMLButtonElement>('<button class="cv-btn cv-btn-ghost" type="button">Save Mesh...</button>');
     saveMesh.addEventListener('click', () => this.saveMesh());
     const loadMesh = el<HTMLButtonElement>('<button class="cv-btn cv-btn-ghost" type="button">Load Mesh...</button>');
     loadMesh.addEventListener('click', () => this.loadMesh());
     const actions = el('<div class="cv-row-actions"></div>');
-    actions.append(restore, maskNone, maskInvert, saveMesh, loadMesh);
+    actions.append(this.undoBtn, this.redoBtn, restore, maskNone, maskInvert, saveMesh, loadMesh);
     const findFaces = el('<button class="cv-btn" type="button">Find faces</button>') as HTMLButtonElement;
     findFaces.addEventListener('click', () => void this.findFaces());
     const resetFace = el('<button class="cv-btn cv-btn-ghost" type="button">Reset face</button>') as HTMLButtonElement;
@@ -73,7 +90,7 @@ export class LiquifyDialog extends Dialog {
     faceBar.append(findFaces, resetFace);
     const grid = el('<div style="display: grid; grid-template-columns: 1fr 1fr; column-gap: 16px"></div>');
     for (const [k, label] of FACE_SLIDERS) { const r = sliderRow(label, -100, 100, 1, (v) => { this.faceSet[k] = v; this.render(); }); this.faceRows.set(k, r); grid.appendChild(r.el); }
-    this.body.append(bar, this.canvas, this.sizeRow.el, this.pressureRow.el, actions, faceBar, this.faceNote, grid);
+    this.body.append(bar, this.canvas, this.sizeRow.el, this.pressureRow.el, penRow.el, actions, faceBar, this.faceNote, grid);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     this.onClose = () => this.release();
@@ -95,6 +112,7 @@ export class LiquifyDialog extends Dialog {
     this.src = l.raster.read();
     this.layerId = l.id;
     this.liq = makeField(this.src.width, this.src.height);
+    this.undoStack = []; this.redoStack = []; this.syncUndo();
     this.faces = []; this.faceSet = noFaceChange(); for (const r of this.faceRows.values()) r.set(0); setText(this.faceNote, 'Find faces to shape them with the sliders.');
     this.scale = Math.min(1, PW / this.src.width, PH / this.src.height);
     this.ox = Math.floor((PW - this.src.width * this.scale) / 2);
@@ -124,7 +142,7 @@ export class LiquifyDialog extends Dialog {
     input.addEventListener('change', () => {
       const file = input.files?.[0];
       if (!file || !this.liq) return;
-      void file.text().then((t) => { if (this.liq && meshFromJson(this.liq, t)) this.render(); else toast('That mesh was saved for a layer of another size, or is not a liquify mesh.'); });
+      void file.text().then((t) => { if (this.liq) this.snap(); if (this.liq && meshFromJson(this.liq, t)) this.render(); else toast('That mesh was saved for a layer of another size, or is not a liquify mesh.'); });
     });
     input.click();
   }
@@ -137,14 +155,43 @@ export class LiquifyDialog extends Dialog {
     return { x: (cx - this.ox) / this.scale, y: (cy - this.oy) / this.scale };
   }
 
+  /** Records the field before a stroke or a button changes it, keeping the last 30 and at most 160 MB. */
+  private snap(): void {
+    const f = this.liq;
+    if (!f) return;
+    this.undoStack.push({ d: f.d.slice(), freeze: f.freeze?.slice() });
+    this.redoStack = [];
+    const bytes = (): number => this.undoStack.reduce((n, s) => n + s.d.byteLength + (s.freeze?.byteLength ?? 0), 0);
+    while (this.undoStack.length > 30 || (this.undoStack.length > 1 && bytes() > 160 * 1024 * 1024)) this.undoStack.shift();
+    this.syncUndo();
+  }
+
+  /** Undo Stroke (redo false) or Redo Stroke: swaps the field with the step on the other stack. */
+  private stepStroke(redo: boolean): void {
+    const f = this.liq, from = redo ? this.redoStack : this.undoStack, to = redo ? this.undoStack : this.redoStack, s = from.pop();
+    if (!f || !s) return;
+    to.push({ d: f.d.slice(), freeze: f.freeze?.slice() });
+    f.d.set(s.d);
+    f.freeze = s.freeze?.slice();
+    this.syncUndo();
+    this.render();
+  }
+
+  private syncUndo(): void {
+    this.undoBtn.disabled = this.undoStack.length === 0;
+    this.redoBtn.disabled = this.redoStack.length === 0;
+  }
+
+  /** Alt held reverses the brush: Forward Warp pushes back, Push Left pushes right, twirl turns the other way, Pucker and Bloat swap, Freeze and Thaw swap. */
   private dab(pt: { x: number; y: number }): void {
     const f = this.liq;
     if (!f) return;
-    const s = this.pressure / 100;
-    if (this.tool === 'warp') { if (this.last) pushField(f, this.last.x, this.last.y, pt.x, pt.y, this.size / 2, s); }
-    else if (this.tool === 'pushLeft') { if (this.last) pushLeftField(f, this.last.x, this.last.y, pt.x, pt.y, this.size / 2, s, this.altDown); }
-    else if (this.tool === 'freeze' || this.tool === 'thaw') paintFreeze(f, pt.x, pt.y, this.size / 2, s, this.tool === 'thaw');
-    else dabField(f, this.tool, pt.x, pt.y, this.size / 2, s);
+    const s = Math.min(1, (this.pressure / 100) * (this.usePen ? this.penNow : 1)), alt = this.altDown, r = this.size / 2;
+    const flip: Partial<Record<LiquifyTool, LiquifyTool>> = { twirlCW: 'twirlCCW', twirlCCW: 'twirlCW', pucker: 'bloat', bloat: 'pucker' };
+    if (this.tool === 'warp') { if (this.last) pushField(f, this.last.x, this.last.y, alt ? 2 * this.last.x - pt.x : pt.x, alt ? 2 * this.last.y - pt.y : pt.y, r, s); }
+    else if (this.tool === 'pushLeft') { if (this.last) pushLeftField(f, this.last.x, this.last.y, pt.x, pt.y, r, s, alt); }
+    else if (this.tool === 'freeze' || this.tool === 'thaw') paintFreeze(f, pt.x, pt.y, r, s, (this.tool === 'thaw') !== alt);
+    else dabField(f, ((alt ? flip[this.tool] : undefined) ?? this.tool) as Exclude<LiquifyTool, 'warp' | 'freeze' | 'thaw'>, pt.x, pt.y, r, s);
     this.last = pt;
     this.render();
   }
@@ -154,11 +201,15 @@ export class LiquifyDialog extends Dialog {
     c.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 || !this.liq) return;
       c.setPointerCapture(e.pointerId);
+      this.altDown = e.altKey;
+      this.penNow = e.pointerType === 'pen' ? Math.max(0.05, e.pressure) : 1;
+      this.snap();
       this.last = this.at(e);
       if (this.tool !== 'warp' && this.tool !== 'pushLeft') { this.dab(this.last); this.held = setInterval(() => { if (this.last) this.dab(this.last); }, 50); }
     });
     c.addEventListener('pointermove', (e) => {
       this.altDown = e.altKey;
+      if (e.pointerType === 'pen') this.penNow = Math.max(0.05, e.pressure);
       this.hover = this.at(e);
       if (c.hasPointerCapture(e.pointerId)) this.dab(this.hover);
       else this.draw();
@@ -244,6 +295,7 @@ export class LiquifyDialog extends Dialog {
     if (this.frame) cancelAnimationFrame(this.frame);
     this.frame = 0;
     this.liq = null;
+    this.undoStack = []; this.redoStack = [];
     this.src = null;
     this.shown = null;
     this.hover = null;
