@@ -2,7 +2,7 @@ import type { OptionSpec, Tool } from '../registry';
 
 const opts = { pupil: 50, darken: 50 };
 
-/** Red Eye (J), as Photoshop's (the owner's tool list): click the red of a pupil to darken it to a neutral; Pupil Size
+/** Red Eye (J, the owner's tool list): click the red of a pupil to darken it to a neutral; Pupil Size
  *  bounds how far the red is followed, Darken Amount how dark it goes. One step per click. */
 export const redEyeTool: Tool = {
   id: 'redEye', label: 'Red Eye', key: 'J', order: 57.8,

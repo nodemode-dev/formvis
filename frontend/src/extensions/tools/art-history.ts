@@ -5,7 +5,7 @@ import { brushKeys, brushOptions, drawBrushCursor } from './brush-common';
 
 let hover: Pt | null = null;
 
-/** The Art History Brush (Y, with the History Brush; 1.56.3, the parity plan's L4), as Photoshop's: paints stylised
+/** The Art History Brush (Y, with the History Brush; 1.56.3, the parity plan's L4): paints stylised
  *  strokes in the colours of the History Brush's source snapshot (engine/art-history.ts). Style and Tolerance in the
  *  options bar, with the Brush's size, hardness and opacity; the strokes are a quarter of the brush wide. */
 export const artHistoryTool: Tool = {

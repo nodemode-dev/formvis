@@ -2,7 +2,7 @@
 
 Photomerge stitches overlapping photos with OpenCV's Stitcher: Auto is its panorama mode (features matched, cameras
 estimated, a spherical projection, seams found, multi-band blending), Reposition its flat-scan mode (each photo moved
-and turned, not bent), the two layouts this OpenCV's bindings reach (Photoshop's Perspective, Cylindrical and
+and turned, not bent), the two layouts this OpenCV's bindings reach (the usual Perspective, Cylindrical and
 Collage need a warper they do not expose). The answer is RGBA: transparent where no photo reaches (the pure black
 the stitcher leaves there, joined to the edge), or cropped to the largest rectangle the photos fill.
 

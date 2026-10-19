@@ -9,7 +9,7 @@ const rectOf = (a: Pt, b: Pt, sq: boolean): { x: number; y: number; w: number; h
   return { x: Math.min(a.x, a.x + w), y: Math.min(a.y, a.y + h), w: Math.abs(w), h: Math.abs(h) };
 };
 
-/** The Frame tool (K), as Photoshop's (the owner's walkthrough: the target's toolbar has it): drag a rectangular or
+/** The Frame tool (K, the owner's walkthrough): drag a rectangular or
  *  elliptical frame, Shift for a square or circle; it becomes a folder whose mask is its shape, selected, so an image
  *  imported next goes into it and covers it. An empty frame shows its placeholder cross on screen only. */
 export const frameTool: Tool = {

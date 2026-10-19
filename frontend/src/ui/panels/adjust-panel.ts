@@ -20,7 +20,7 @@ const INKS = ['CMYK', 'Cyan', 'Magenta', 'Yellow', 'Black'];
 const LABS = ['Lab', 'Lightness', 'a', 'b'];
 const ALL_CHANNELS = [...CHANNELS, ...INKS, ...LABS];
 /** The mode's channel names (1.54.4; Lab 1.56.6): Levels and Curves index their ranges by position within this list.
- *  Lab's first position (a composite) is never offered, as Photoshop's Levels and Curves in Lab offer none. */
+ *  Lab's first position (a composite) is never offered; Levels and Curves in Lab have none. */
 const channelsOf = (mode: string | undefined): string[] => (mode === 'cmyk' ? INKS : mode === 'lab' ? LABS : CHANNELS);
 const showChannels = (row: { el: HTMLElement }, names: string[]): void => { for (const o of row.el.querySelectorAll('option')) o.hidden = !names.includes(o.value) || o.value === 'Lab'; };
 const cssVar = (name: string): string => getComputedStyle(document.documentElement).getPropertyValue(name).trim();

@@ -5,7 +5,7 @@ import { brushKeys, brushOptions, drawBrushCursor } from './brush-common';
 let hover: Pt | null = null;
 const opts: BgEraseOpts = { tolerance: 50, sampling: 'continuous', contiguous: true, protectForeground: false };
 
-/** The Background Eraser (E), as Photoshop's (the owner's tool list): erases the colour under the brush's centre,
+/** The Background Eraser (E, the owner's tool list): erases the colour under the brush's centre,
  *  within Tolerance, leaving other colours; Sampling continuous or once, Limits contiguous or not, Protect Foreground
  *  Color; the brush's size and hardness. The stroke is one step. */
 export const backgroundEraserTool: Tool = {

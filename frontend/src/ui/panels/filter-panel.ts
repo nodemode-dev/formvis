@@ -472,7 +472,7 @@ export class FilterPanel extends Dialog {
     const e = estimateShake(t.image);
     this.s.shake.angle = e.angle;
     this.s.shake.length = e.length;
-    this.shakeNote.textContent = `Estimated a straight ${e.length} px trace at ${e.angle}\u00b0${e.confidence < 0.15 ? ' (weak: the image may not be shaken)' : ''}. Photoshop also finds curved traces; this estimate is straight.`;
+    this.shakeNote.textContent = `Estimated a straight ${e.length} px trace at ${e.angle}\u00b0${e.confidence < 0.15 ? ' (weak: the image may not be shaken)' : ''}. The estimate is a straight trace; curved shake is not found.`;
     if (refresh) { this.sections.get('shakeReduction')?.sync(); this.schedule(0); }
   }
 

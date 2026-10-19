@@ -1,5 +1,4 @@
-/** Graphics processor detection and the choice of renderer (Phase 18.1). As Photoshop's Preferences > Performance
- *  (Adobe, "Optimize performance" and the Photoshop GPU FAQ): the detected processor is named, Use Graphics Processor
+/** Graphics processor detection and the choice of renderer (Phase 18.1), for Preferences > Performance: the detected processor is named, Use Graphics Processor
  *  is on when one is usable, a failed start turns it off, and the mode in use is shown. WebGPU maps to Metal on macOS
  *  and Direct3D 12 on Windows; WebGL2 is the path on Linux, whose desktop webview has no WebGPU. The GPU is asked for
  *  with the high-performance preference, so a machine with integrated and discrete (NVIDIA) GPUs reports the discrete
@@ -72,7 +71,7 @@ export function detectedName(p: GpuProbe): string | null {
 }
 
 /** A start that never finished: set before the GPU is touched, cleared once it answers. Found set at the next launch,
- *  it means the last start crashed or hung, and Use Graphics Processor is turned off, as Photoshop does. */
+ *  it means the last start crashed or hung, and Use Graphics Processor is turned off. */
 const STARTING = 'formvis.gpu.starting';
 export function gpuStartFailedLastTime(): boolean { try { return localStorage.getItem(STARTING) === '1'; } catch { return false; } }
 export function markGpuStarting(): void { try { localStorage.setItem(STARTING, '1'); } catch { /* no storage, no marker */ } }

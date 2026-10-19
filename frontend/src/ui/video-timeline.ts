@@ -4,7 +4,7 @@ import { el, setText } from './dom';
 
 const HEAD_W = 180, ROW_H = 30, RULER_H = 24;
 
-/** The video timeline's panel (1.59.3, DEV_PLAN 25.2), under the canvas as Photoshop's and Photon Studio's: a bar
+/** The video timeline's panel (1.59.3, DEV_PLAN 25.2), under the canvas: a bar
  *  (first frame, previous, play, next, Split at Playhead; the timecode; the frame rate and length; Convert to Frame
  *  Animation; Delete Timeline), a ruler of seconds with frame ticks where a click or a drag moves the playhead (the
  *  canvas shows that frame), a track per layer with its clip (drag it to move it, drag an end to trim it), the
@@ -46,7 +46,7 @@ export class VideoTimelinePanel {
     const pick = (label: string, run: () => void): HTMLButtonElement => { const b = el<HTMLButtonElement>(`<button class="cv-btn cv-btn-ghost" type="button" role="menuitem">${label}</button>`); b.addEventListener('click', () => { pop.hidden = true; run(); }); return b; };
     const len = (): number => { const vt = engine.video; return vt ? Math.max(1, Math.round((Number(secs.value) || 1) * vt.fps)) : 1; };
     const lenRow = el('<label class="cv-vtl-pop-row"><span>Length (seconds)</span></label>'); lenRow.append(secs);
-    // Fade to (1.60.1): transparent as before, or Photoshop's Fade With Black and Fade With White.
+    // Fade to (1.60.1): transparent as before, or Fade With Black and Fade With White.
     const to = el<HTMLSelectElement>('<select class="cv-vtl-lane-val cv-vtl-fade-to" aria-label="Fade to"><option value="">Transparent</option><option value="black">Black</option><option value="white">White</option></select>');
     const toRow = el('<label class="cv-vtl-pop-row"><span>Fade to</span></label>'); toRow.append(to);
     const col = (): FadeColor | null => (to.value === 'black' || to.value === 'white' ? to.value : null);
@@ -101,7 +101,7 @@ export class VideoTimelinePanel {
     this.engine.editVideo((v) => { const d = Math.max(1, Math.round(f * s)); v.fps = f; v.duration = d; v.workOut = Math.min(Math.max(v.workOut, 1), d); v.workIn = Math.min(v.workIn, v.workOut - 1); v.current = Math.min(v.current, d - 1); }, 'Set Timeline Frame Rate');
   }
 
-  /** Split at Playhead, as Photoshop's: the active layer's clip ends at the playhead, and a copy of the layer carries
+  /** Split at Playhead: the active layer's clip ends at the playhead, and a copy of the layer carries
    *  on from it with the rest of the clip and the same keyframes. */
   private split(): void {
     const e = this.engine, vt = e.video, id = e.current?.activeId;   // the engine's since 1.59.7
@@ -304,7 +304,7 @@ export class VideoTimelinePanel {
     if (!id || !this.engine.fadeClip(id, frames, inn, out, color)) this.engine.notice('Select a layer with a clip in the timeline.');
   }
 
-  /** Cross Fade, as Photoshop's: with the clip overlapping the selected one most, over their overlap. Only the upper of
+  /** Cross Fade: with the clip overlapping the selected one most, over their overlap. Only the upper of
    *  the two fades (in when it starts later, out when it ends first), so the lower shows through and the picture never
    *  dips. */
   private crossFade(): void {

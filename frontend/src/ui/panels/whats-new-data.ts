@@ -7,7 +7,7 @@ export const RELEASES: readonly Release[] = [
   {
     version: '1.67.9', name: 'File Info, new file formats and a calmer workspace',
     additions: [
-      { title: 'File Info', text: 'The document\'s title, author, description, keywords, rating and copyright, as Photoshop\'s File Info keeps them with the file.', command: 'file-info' },
+      { title: 'File Info', text: 'The document\'s title, author, description, keywords, rating and copyright, kept with the file.', command: 'file-info' },
       { title: 'QOI, PNM, TGA and ICO', text: 'Four more image formats: QOI, the PNM family, Targa (TGA) and Windows icons (ICO).', command: 'open' },
       { title: 'A workspace that stays out of the way', text: 'The Home screen is optional at launch and when the last document closes, nothing floats over the picture, every tool option and dialog setting is kept across sessions, and this list.', command: 'settings' },
     ],

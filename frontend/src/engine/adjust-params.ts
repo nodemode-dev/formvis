@@ -5,7 +5,7 @@ import type { RGB } from './types';
 
 /** Adjustments described by their controls, each baked into a kernel from its settings. Values live in an
  *  adjustment's `data.params`; a missing or unreadable value takes its default. Formulas are standard published ones:
- *  Black and White weights each pixel's grey by the hue of its two largest channels, as Photoshop documents it;
+ *  Black and White weights each pixel's grey by the hue of its two largest channels, as the standard Black and White adjustment does;
  *  Colour Balance weights shadows, midtones and highlights by lightness with the usual overlapping ramps; Selective
  *  Colour weights each pixel by how much it belongs to a colour family and moves its ink, relative or absolute. */
 
@@ -102,7 +102,7 @@ const LOOKS: Record<string, (r: number, g: number, b: number) => [number, number
   night: (r, g, b) => { const l = lum(r, g, b); return [l * 0.55 + r * 0.1, l * 0.7 + g * 0.1, l * 0.9 + b * 0.25]; },
 };
 
-/** A 3D table read from Adobe's .cube text (LUT_3D_SIZE, then N^3 lines of r g b with red changing fastest), or null
+/** A 3D table read from .cube text (LUT_3D_SIZE, then N^3 lines of r g b with red changing fastest), or null
  *  if it is not one. DOMAIN_MIN and DOMAIN_MAX are honoured; 1D tables are refused. */
 export function parseCube(text: string): { size: number; data: Float32Array; min: number[]; max: number[] } | null {
   let size = 0, min = [0, 0, 0], max = [1, 1, 1];
@@ -241,7 +241,7 @@ export const PARAM_ADJUSTMENTS: Record<ParamKind, ParamAdjustment> = {
     params: [
       { key: 'output', label: 'Output channel', kind: 'select', options: [['red', 'Red'], ['green', 'Green'], ['blue', 'Blue'], ['cyan', 'Cyan'], ['magenta', 'Magenta'], ['yellow', 'Yellow'], ['black', 'Black']], def: 'red' },
       ...(['red', 'green', 'blue'] as const).flatMap((o) => [range(`${o}R`, 'Red', -200, 200, o === 'red' ? 100 : 0, 1, o), range(`${o}G`, 'Green', -200, 200, o === 'green' ? 100 : 0, 1, o), range(`${o}B`, 'Blue', -200, 200, o === 'blue' ? 100 : 0, 1, o), range(`${o}K`, 'Constant', -200, 200, 0, 1, o)]),
-      // The inks (1.57.9, CMYK documents): each output ink mixes the four inks and a constant, as Photoshop's in CMYK.
+      // The inks (1.57.9, CMYK documents): each output ink mixes the four inks and a constant.
       ...(['cyan', 'magenta', 'yellow', 'black'] as const).flatMap((o) => [range(`${o}Cy`, 'Cyan', -200, 200, o === 'cyan' ? 100 : 0, 1, o), range(`${o}Ma`, 'Magenta', -200, 200, o === 'magenta' ? 100 : 0, 1, o), range(`${o}Ye`, 'Yellow', -200, 200, o === 'yellow' ? 100 : 0, 1, o), range(`${o}Bk`, 'Black', -200, 200, o === 'black' ? 100 : 0, 1, o), range(`${o}Co`, 'Constant', -200, 200, 0, 1, o)]),
       { key: 'monochrome', label: 'Monochrome', kind: 'check', def: false },
     ],

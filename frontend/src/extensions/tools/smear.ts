@@ -3,7 +3,7 @@ import type { Pt } from '../../engine';
 import type { Tool } from '../registry';
 import { brushKeys, brushOptions, drawBrushCursor } from './brush-common';
 
-/** The modes as Photoshop names them, each with its own icon in the toolbar and its flyout. */
+/** The modes by their usual names, each with its own icon in the toolbar and its flyout. */
 const SMEAR_ICONS: Record<string, string> = { blur: 'tBlur', sharpen: 'tSharpen', smudge: 'tSmudge', liquify: 'tLiquify' };
 const SMEAR_NAMES = { blur: 'Blur', sharpen: 'Sharpen', smudge: 'Smudge', liquify: 'Liquify Brush' } as const;
 
@@ -16,7 +16,7 @@ const HINTS: Record<string, string> = {
 };
 
 export const smearTool: Tool = {
-  id: 'smear', label: 'Smear', key: '', order: 65,   // no shortcut, as Photoshop's Blur, Sharpen and Smudge; R is Rotate View's
+  id: 'smear', label: 'Smear', key: '', order: 65,   // no shortcut for Blur, Sharpen and Smudge; R is Rotate View's
   icon: (e) => SMEAR_ICONS[e.retouch.smearMode] ?? 'tSmudge',
   variants: (e) => (['blur', 'sharpen', 'smudge', 'liquify'] as const).map((m) => ({ id: m, label: SMEAR_NAMES[m], icon: SMEAR_ICONS[m], active: () => e.retouch.smearMode === m, pick: () => { e.retouch.smearMode = m; e.emit('options', null); } })),
   hint: (e) => (HINTS[e.retouch.smearMode] ?? '') + ' · [ ] size',
@@ -45,9 +45,9 @@ export const smearTool: Tool = {
   options: (e) => [
     { kind: 'title', text: 'Smear' },
     { kind: 'segment', label: 'Tool', priority: 80, choices: [{ id: 'liquify', label: 'Liquify' }, { id: 'blur', label: 'Blur' }, { id: 'sharpen', label: 'Sharpen' }, { id: 'smudge', label: 'Smudge' }], get: () => e.retouch.smearMode, set: (v) => { e.retouch.smearMode = v as 'blur' | 'sharpen' | 'smudge' | 'liquify'; e.emit('options', null); e.emit('tool', null); } },
-    // Photoshop's options for each (1.51.4, the tool audit): Blur and Sharpen's Mode (the blend of what they paint) and
+    // The options for each (1.51.4, the tool audit): Blur and Sharpen's Mode (the blend of what they paint) and
     // Sample All Layers; Sharpen's Protect Detail; Smudge's Sample All Layers and Finger Painting. (The tool choice was
-    // labelled Mode; Photoshop's Mode is the blend.)
+    // labelled Mode; Mode is the blend.)
     ...(e.retouch.smearMode === 'blur' || e.retouch.smearMode === 'sharpen'
       ? [{ kind: 'select' as const, label: 'Mode', priority: 70, choices: (['normal', 'darken', 'lighten', 'hue', 'saturation', 'color', 'luminosity'] as const).map((id) => ({ id, label: BLEND_MODES.find((m) => m.id === id)?.label ?? id })), get: () => e.retouch.smearBlend, set: (v: string) => { e.retouch.smearBlend = v as typeof e.retouch.smearBlend; e.emit('options', null); } }]
       : []),

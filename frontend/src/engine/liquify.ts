@@ -2,7 +2,7 @@
  *  a coarse displacement field over the image, and the image always resampled from its original pixels through the
  *  accumulated field, shown(q) = original(q - D(q)), so strokes never compound resampling blur and cancelling is
  *  exact. The field lives on a cell grid (4 px by default) and is read bilinearly. NodeMode has the push; the other
- *  tools of Photoshop's Liquify workspace are written here on the same field: Reconstruct eases the field back to
+ *  tools of a full Liquify workspace are written here on the same field: Reconstruct eases the field back to
  *  zero, Twirl rotates what lies under the brush, Pucker draws it in and Bloat swells it out, each weighted by a
  *  smoothstep falloff from the brush centre. */
 
@@ -26,7 +26,7 @@ export function fieldAt(f: LiquifyField, x: number, y: number, out: [number, num
 }
 
 /** Visits every grid node within `radius` of (cx, cy) with its falloff weight, less its freeze (1.56.5, the parity
- *  plan's M3: Freeze Mask, as Photoshop's, holds what it covers still under every tool, Reconstruct included). */
+ *  plan's M3: Freeze Mask holds what it covers still under every tool, Reconstruct included). */
 function eachNode(f: LiquifyField, cx: number, cy: number, radius: number, visit: (i: number, px: number, py: number, w: number) => void, ignoreFreeze = false): void {
   const r = Math.max(2, radius);
   const x0 = Math.max(0, Math.floor((cx - r) / f.cell)), y0 = Math.max(0, Math.floor((cy - r) / f.cell));
@@ -45,7 +45,7 @@ export function paintFreeze(f: LiquifyField, cx: number, cy: number, radius: num
   eachNode(f, cx, cy, radius, (i, _x, _y, w) => { const n = i / 2; m[n] = Math.min(1, Math.max(0, m[n] + (thaw ? -1 : 1) * w * s)); }, true);
 }
 
-/** The freeze mask cleared, or inverted (Photoshop's Mask Options: None, Invert All). */
+/** The freeze mask cleared, or inverted (Mask Options: None, Invert All). */
 export function clearFreeze(f: LiquifyField): void { f.freeze = undefined; }
 export function invertFreeze(f: LiquifyField): void { const m = f.freeze ?? new Float32Array(f.gw * f.gh); for (let i = 0; i < m.length; i++) m[i] = 1 - m[i]; f.freeze = m; }
 
@@ -64,14 +64,14 @@ export function pushField(f: LiquifyField, ax: number, ay: number, bx: number, b
   eachNode(f, ax, ay, radius, (i, _x, _y, w) => { f.d[i] += dx * w * s; f.d[i + 1] += dy * w * s; });
 }
 
-/** Push Left (36.4), as Photoshop's: pixels move to the left of the drag (dragging up pushes them left), or to its
+/** Push Left (36.4): pixels move to the left of the drag (dragging up pushes them left), or to its
  *  right with `right` (Alt). The drag turned a quarter turn, then added as Forward Warp adds it. */
 export function pushLeftField(f: LiquifyField, ax: number, ay: number, bx: number, by: number, radius: number, strength: number, right = false): void {
   const dx = bx - ax, dy = by - ay, k = right ? -1 : 1;
   pushField(f, ax, ay, ax + dy * k, ay - dx * k, radius, strength);
 }
 
-/** A liquify mesh as JSON (36.4), Photoshop's Save Mesh and Load Mesh: the grid, its displacements and the freeze. */
+/** A liquify mesh as JSON (36.4), for Save Mesh and Load Mesh: the grid, its displacements and the freeze. */
 export function meshToJson(f: LiquifyField): string {
   return JSON.stringify({ formvis: 'liquify-mesh', version: 1, gw: f.gw, gh: f.gh, cell: f.cell, d: Array.from(f.d, (v) => Math.round(v * 1000) / 1000), freeze: f.freeze ? Array.from(f.freeze, (v) => Math.round(v * 1000) / 1000) : null });
 }

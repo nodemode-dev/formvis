@@ -5,9 +5,8 @@ import { checkRow, selectRow, sliderRow } from './controls';
 
 const enterTo = (input: HTMLInputElement, run: () => void): void => input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); run(); } });
 
-/** Layer > New > Layer (Shift+Ctrl+N): Name, Mode and Opacity, as Photoshop's New Layer dialog has them (sourced in
- *  WORKSPACE_RESEARCH.md). Photoshop's Color row labels the layer in the panel; formvis's layers have no colour labels
- *  yet, so it is not shown. The Layers panel's New Layer button still makes a layer at once. */
+/** Layer > New > Layer (Shift+Ctrl+N): Name, Mode and Opacity (sourced in WORKSPACE_RESEARCH.md). Colour labels are set
+ *  from Layer > Color Label (1.87.3). The Layers panel's New Layer button still makes a layer at once. */
 export class NewLayerDialog extends Dialog {
   private readonly name = el<HTMLInputElement>('<input class="cv-input" type="text" maxlength="200" spellcheck="false">');
   private blend: BlendMode = 'normal';
@@ -20,7 +19,7 @@ export class NewLayerDialog extends Dialog {
   constructor(private readonly engine: Engine) {
     super('New Layer', 380);
     this.field('Name', this.name);
-    this.body.append(this.clipRow.el, this.modeRow.el, this.opacityRow.el, el('<p class="cv-note">Photoshop\'s Color label and Fill With Mode-Neutral Color are not in formvis yet.</p>'));
+    this.body.append(this.clipRow.el, this.modeRow.el, this.opacityRow.el, el('<p class="cv-note">Set a colour label from Layer > Color Label. Fill With Mode-Neutral Color is not in formvis yet.</p>'));
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     enterTo(this.name, () => this.apply());
@@ -56,16 +55,15 @@ export class NewLayerDialog extends Dialog {
   }
 }
 
-/** Layer > New > Group: a name for the group, as Photoshop's dialog asks (Adobe's "Create layers and groups"; sourced
- *  in WORKSPACE_RESEARCH.md from Adobe alone). Photoshop's dialog also sets a group's Color, Mode and Opacity; formvis's
- *  folders do not render a blend mode or opacity yet, so the dialog says so rather than offer settings that do nothing. */
+/** Layer > New > Group: a name for the group (sourced in WORKSPACE_RESEARCH.md). A folder's blend mode and opacity
+ *  (1.87.3) and colour label are set afterwards in the Layers panel and Layer > Color Label; the dialog says so. */
 export class NewGroupDialog extends Dialog {
   private readonly name = el<HTMLInputElement>('<input class="cv-input" type="text" maxlength="200" spellcheck="false">');
 
   constructor(private readonly engine: Engine) {
     super('New Group', 360);
     this.field('Name', this.name);
-    this.body.append(el('<p class="cv-note">Photoshop also sets a group\'s Color, Mode and Opacity; formvis\'s folders do not have these yet.</p>'));
+    this.body.append(el('<p class="cv-note">A group\'s colour label, blend mode and opacity are set in the Layers panel and Layer > Color Label after it is made.</p>'));
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     enterTo(this.name, () => this.apply());
@@ -94,8 +92,8 @@ export class NewGroupDialog extends Dialog {
   }
 }
 
-/** Layer > Duplicate Layer: a name for the duplicate, as Photoshop's dialog asks (sourced in WORKSPACE_RESEARCH.md).
- *  Photoshop also offers a destination document; copying layers between open documents is not built yet, so the
+/** Layer > Duplicate Layer: a name for the duplicate (sourced in WORKSPACE_RESEARCH.md). A destination document is
+ *  not offered; copying layers between open documents is not built yet, so the
  *  duplicate goes in this one. With several layers chosen, each keeps its own "copy" name. */
 export class DuplicateLayerDialog extends Dialog {
   private readonly name = el<HTMLInputElement>('<input class="cv-input" type="text" maxlength="200" spellcheck="false">');
@@ -154,7 +152,7 @@ export class FindLayersDialog extends Dialog {
 
 const LOCK_ROWS = [['transparency', 'Transparency'], ['pixels', 'Image'], ['position', 'Position'], ['all', 'All']] as const;
 
-/** Layer > Lock Layers (1.65.3), or Lock All Layers in Group with a folder selected: Photoshop's four locks for the
+/** Layer > Lock Layers (1.65.3), or Lock All Layers in Group with a folder selected: the four locks for the
  *  selected layers (and, for a folder, the layers in it), each ticked when every selected layer has it. */
 export class LockLayersDialog extends Dialog {
   private readonly state: Required<LayerLocks> = { transparency: false, pixels: false, position: false, all: false };

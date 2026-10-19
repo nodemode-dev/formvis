@@ -11,7 +11,7 @@ const BUILT_IN_PROFILES: ReadonlyArray<readonly [string, string]> = [['srgb', 's
 
 const KEY = 'formvis.exportPresets';
 
-/** File > Export As (Alt+Shift+Mod+W, as in Photoshop): format, quality, scale and the resulting size and file
+/** File > Export As (Alt+Shift+Mod+W): format, quality, scale and the resulting size and file
  *  name, with presets. Built-in presets cover common cases; Save Preset keeps the current settings under a name in
  *  this browser, and Delete removes a saved one. Every row exists from the start and keeps its place; Quality is
  *  disabled for lossless formats rather than hidden. */

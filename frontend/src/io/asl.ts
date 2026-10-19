@@ -4,7 +4,7 @@ import { Reader, readDescriptor } from './atn';
 import { Sink } from './grd';
 import type { Desc, Val } from './atn';
 
-/** Photoshop .asl layer style files (DEV_PLAN 32.4 part d). Big-endian: u16 version, '8BSL', u16 subversion, a patterns
+/** .asl layer style files (DEV_PLAN 32.4 part d). Big-endian: u16 version, '8BSL', u16 subversion, a patterns
  *  section (u32 length, skipped), u32 style count; each style is a u32 block length and a block of two versioned
  *  descriptors (identity: 'Nm  ' and 'Idnt'; then the style, with its effects under 'Lefx' or at top level). */
 
@@ -177,7 +177,7 @@ function writeEffects(s: Sink, e: LayerEffects): void {
   putColour(s, 'sdwC', b.shadow); putPct(s, 'sdwO', b.shadowOpacity); putBlend(s, 'sdwM', b.shadowBlend);
 }
 
-/** Writes a Photoshop .asl (version 2, subversion 3): '8BSL', an empty patterns section, the style count, then per style a
+/** Writes an .asl (version 2, subversion 3): '8BSL', an empty patterns section, the style count, then per style a
  *  block length and two versioned (16) descriptors, padded to 4 bytes: identity ('null': 'Nm  ', 'Idnt') and the style
  *  ('Styl' holding 'Lefx': 'Scl ' 100 percent and the nine effects). readAsl reads it back field for field. */
 export function writeAsl(styles: { name: string; effects: LayerEffects }[]): Uint8Array {
@@ -204,7 +204,7 @@ export function readAsl(buf: ArrayBuffer): { styles: { name: string; effects: La
   const styles: { name: string; effects: LayerEffects }[] = [];
   let skipped = 0;
   r.u16();
-  if (r.ascii(4) !== '8BSL') throw new Error('not a Photoshop styles file');
+  if (r.ascii(4) !== '8BSL') throw new Error('not an .asl styles file');
   r.u16();
   r.skip(r.u32());
   const count = r.u32();

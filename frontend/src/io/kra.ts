@@ -1,7 +1,7 @@
 import { Raster, docTransform, newLayer, uid, type BlendMode, type Doc, type ID, type Layer } from '../engine';
 import { unzip } from './zip';
 
-/** Krita (.kra, DEV_PLAN 34.5 part a): a ZIP holding maindoc.xml (the layer tree, topmost first), a tiled pixel file per
+/** .kra files (DEV_PLAN 34.5 part a): a ZIP holding maindoc.xml (the layer tree, topmost first), a tiled pixel file per
  *  paint layer and mergedimage.png. Read in TypeScript from the format's public layout; only 8-bit RGBA is decoded, and
  *  anything else opens as the merged image. */
 export const isKraFile = (f: File): boolean => /\.kra$/i.test(f.name) || f.type === 'application/x-krita';
@@ -17,7 +17,7 @@ const FROM_KRITA = new Map<string, BlendMode>([
 
 const TILE_BYTES = 64 * 64 * 4;
 
-/** Krita's LZF: a control byte under 32 copies that many plus one literals; otherwise a back reference. */
+/** The format's LZF: a control byte under 32 copies that many plus one literals; otherwise a back reference. */
 function lzfDecompress(src: Uint8Array, expected: number): Uint8Array {
   const out = new Uint8Array(expected);
   let i = 0, o = 0;
@@ -42,7 +42,7 @@ function lzfDecompress(src: Uint8Array, expected: number): Uint8Array {
 
 interface Tile { x: number; y: number; px: Uint8Array }
 
-/** The tiles of one Krita paint-layer file, each as 64 by 64 planar B, G, R, A bytes. */
+/** The tiles of one .kra paint-layer file, each as 64 by 64 planar B, G, R, A bytes. */
 function readTiles(data: Uint8Array): { tiles: Tile[]; tw: number; th: number } | null {
   let pos = 0;
   const line = (): string => {
@@ -95,7 +95,7 @@ export async function readKra(file: File): Promise<{ doc: Doc; notes: string[]; 
   let notRgba8 = (image.getAttribute('colorspacename') ?? 'RGBA') !== 'RGBA';
 
   const walk = (list: Element[], parentId: ID | null): void => {
-    for (const e of [...list].reverse()) {   // Krita lists the top first; formvis keeps the bottom first
+    for (const e of [...list].reverse()) {   // the file lists the top first; formvis keeps the bottom first
       const kind = e.getAttribute('nodetype') ?? '', name = e.getAttribute('name') || (kind === 'grouplayer' ? 'Group' : 'Layer');
       const opacity = Math.min(1, Math.max(0, num(e, 'opacity', 255) / 255)), visible = e.getAttribute('visible') !== '0';
       if (kind === 'grouplayer') {
@@ -104,7 +104,7 @@ export async function readKra(file: File): Promise<{ doc: Doc; notes: string[]; 
         layers.push(group);   // after its children
         continue;
       }
-      if (kind !== 'paintlayer') { const k = kind.replace(/layer$/, '') || 'unknown'; notes.add(`"${name}" is ${/^[aeiou]/.test(k) ? 'an' : 'a'} ${k} layer, which formvis does not read from Krita; it was left out.`); continue; }
+      if (kind !== 'paintlayer') { const k = kind.replace(/layer$/, '') || 'unknown'; notes.add(`"${name}" is ${/^[aeiou]/.test(k) ? 'an' : 'a'} ${k} layer, which formvis does not read from .kra files; it was left out.`); continue; }
       if ((e.getAttribute('colorspacename') ?? 'RGBA') !== 'RGBA') { notRgba8 = true; continue; }
       const data = parts.get(`${docName}/layers/${e.getAttribute('filename') ?? ''}`);
       if (!data) { notes.add('Some layers named pixel files the file does not hold, and were left out.'); continue; }
@@ -141,7 +141,7 @@ export async function readKra(file: File): Promise<{ doc: Doc; notes: string[]; 
     raster.ctx.drawImage(merged, 0, 0); merged.close(); raster.touch();
     layers.length = 0;
     layers.push(newLayer('Background', doc, { raster }));
-    notes.add(notRgba8 ? 'This Krita file is not 8-bit RGBA; it opened as its merged image, one layer.' : 'This Krita file has no pixel layers; it opened as its merged image.');
+    notes.add(notRgba8 ? 'This .kra file is not 8-bit RGBA; it opened as its merged image, one layer.' : 'This .kra file has no pixel layers; it opened as its merged image.');
   }
   doc.layers = layers;
   return { doc, notes: [...notes], activeId: layers.at(-1)?.id ?? null, paths: null };

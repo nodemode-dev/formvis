@@ -1,5 +1,5 @@
-/** Photoshop brush files (.abr), read for their sampled tips, written for formvis with GIMP's and Krita's readers as the
- *  reference for the layout. Two families exist. Versions 1 and 2: a count, then each brush's type and size; sampled
+/** Brush files (.abr), read for their sampled tips, written for formvis with two open-source readers as the reference
+ *  for the layout. Two families exist. Versions 1 and 2: a count, then each brush's type and size; sampled
  *  brushes (type 2) carry spacing, a name (version 2), bounds, depth and pixels, raw or PackBits-compressed by row.
  *  Versions 6 to 10: a subversion, then 8BIM sections; 'samp' holds the sampled tips, each a length, a key and header
  *  (47 bytes to skip for subversion 1, 301 for subversion 2), bounds, depth, a compression flag and pixels. Computed
@@ -152,5 +152,5 @@ export function parseAbr(buf: ArrayBuffer, base = 'Brush'): AbrBrush[] {
   const version = r.u16();
   if (version === 1 || version === 2) return readOld(r, version, base);
   if (version >= 6 && version <= 10) { const sub = r.u16(); return readSections(r, sub, base); }
-  throw new Error(`This is not a Photoshop brush file this reader knows (version ${version}).`);
+  throw new Error(`This is not an .abr brush file this reader knows (version ${version}).`);
 }

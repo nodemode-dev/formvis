@@ -1,6 +1,6 @@
 import type { NamedPath, PathOp, PathSet, VectorPath } from '../engine/paths';
 
-/** The Paths panel in PSD files, which ag-psd does not handle. Photoshop keeps saved paths as image resources 2000 to
+/** The Paths panel in PSD files, which ag-psd does not handle. PSD files keep saved paths as image resources 2000 to
  *  2997 (named) and 1025 (the Work Path), each a run of 26-byte path records: a fill rule record, then for each
  *  subpath a length record followed by its knots, every point as y then x in 8.24 fixed point, a fraction of the
  *  document's height or width. The records are the ones ag-psd reads for shape outlines (`vmsk`), so a knot's three
@@ -8,7 +8,7 @@ import type { NamedPath, PathOp, PathSet, VectorPath } from '../engine/paths';
  *  reading picks them out of a file before ag-psd parses it. */
 
 const WORK_ID = 1025, FIRST = 2000, LAST = 2997;
-/** Photoshop's path operations by number, as ag-psd lists them. */
+/** PSD path operations by number, as ag-psd lists them. */
 const OPS: readonly PathOp[] = ['exclude', 'combine', 'subtract', 'intersect'];
 
 function fixed(v: number): number[] {
@@ -17,12 +17,12 @@ function fixed(v: number): number[] {
 }
 const u16 = (v: number): number[] => [(v >> 8) & 255, v & 255], u32 = (v: number): number[] => [(v >>> 24) & 255, (v >>> 16) & 255, (v >>> 8) & 255, v & 255];
 
-/** A path as Photoshop path records, coordinates as fractions of `w` and `h`. */
+/** A path as PSD path records, coordinates as fractions of `w` and `h`. */
 export function pathRecords(vp: VectorPath, w: number, h: number): Uint8Array {
   const out: number[] = [...u16(6), ...new Array(24).fill(0), ...u16(8), ...new Array(24).fill(0)];
   for (const sp of vp.subpaths) {
     if (!sp.anchors.length) continue;
-    // length record: kind, knot count, the operation (Photoshop numbers exclude 0, combine 1, subtract 2, intersect 3),
+    // length record: kind, knot count, the operation (PSD numbers exclude 0, combine 1, subtract 2, intersect 3),
     // non-zero fill (2), then padding
     out.push(...u16(sp.closed ? 0 : 3), ...u16(sp.anchors.length), ...u16(OPS.indexOf(sp.op ?? 'combine')), ...u16(2), ...new Array(18).fill(0));
     for (const a of sp.anchors) {
@@ -66,7 +66,7 @@ function block(id: number, name: string, data: Uint8Array): number[] {
 /** Where the image resources section's length sits in a PSD or PSB (after the header and colour mode data). */
 function resourcesAt(b: Uint8Array): number {
   const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
-  if (dv.getUint32(0) !== 0x38425053) throw new Error('Not a Photoshop file.');
+  if (dv.getUint32(0) !== 0x38425053) throw new Error('Not a PSD file.');
   return 26 + 4 + dv.getUint32(26);
 }
 

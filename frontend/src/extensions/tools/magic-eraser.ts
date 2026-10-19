@@ -2,7 +2,7 @@ import type { OptionSpec, Tool } from '../registry';
 
 const settings = { tolerance: 32, contiguous: true, sampleAll: false };
 
-/** The Magic Eraser (E), as Photoshop's (the owner's tool list): a click makes the area of similar colour transparent
+/** The Magic Eraser (E, the owner's tool list): a click makes the area of similar colour transparent
  *  on the active layer, by its own Tolerance, Contiguous and Sample All Layers (the Magic Wand's are left alone). */
 export const magicEraserTool: Tool = {
   id: 'magicEraser', label: 'Magic Eraser', key: 'E', order: 62.2,

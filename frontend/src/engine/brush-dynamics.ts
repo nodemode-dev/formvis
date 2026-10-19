@@ -3,7 +3,7 @@ import type { SampledTip } from './abr';
 /** Brush dynamics and presets, ported from NodeMode's formvis studio (`studio/paint/dynamics.ts` and `preset.ts`,
  *  nodemode_dev v8.73.1, the owner's build, MIT). A brush parameter is modulated by sensors, each mapped through a
  *  sampled response curve, combined, then scaled into the option's range by its strength; a disabled option is 1.
- *  formvis's strokes carry pen pressure and count their dabs, so pressure and fade (Photoshop's Fade: full at the first
+ *  formvis's strokes carry pen pressure and count their dabs, so pressure and fade (Fade: full at the first
  *  dab, the option's minimum after `steps` dabs) are the sensors wired here; the others in the source (speed,
  *  distance, time, fuzzy) keep their place in the model for later. Presets are data, as there, trimmed to what
  *  formvis's brush has: size, hardness, opacity, and pressure driving size, flow and opacity. */
@@ -54,7 +54,7 @@ export const noDynamics = (): BrushDynamics => ({ size: identityOption(), flow: 
 export interface PenPose { tiltX: number; tiltY: number; twist: number }
 export const UPRIGHT: PenPose = { tiltX: 0, tiltY: 0, twist: 0 };
 
-/** Photoshop's Brush Settings beyond size, hardness and pressure (the comparison's "Brush and eraser" row): Brush Tip
+/** Brush Settings beyond size, hardness and pressure (the comparison's "Brush and eraser" row): Brush Tip
  *  Shape's angle, roundness and spacing; Shape Dynamics' jitters and their controls (the stroke's direction, the pen's
  *  tilt or its rotation); Scattering; Texture (a pattern cutting into each dab's paint); and Dual Brush (a second round
  *  tip, the main stroke's paint kept only where its marks fall). Percentages are 0 to 100; angles in degrees. */
@@ -66,7 +66,7 @@ export interface BrushShape {
   texture: { on: boolean; pattern: string; scale: number; depth: number };
   /** The dual brush's marks are laid with the main dabs, scattered by its own Scatter and Count (no separate spacing). */
   dual: { on: boolean; diameter: number; scatter: number; count: number };
-  /** Color Dynamics (1.50.1, the owner's list), as Photoshop's: each dab's colour from the foreground towards the
+  /** Color Dynamics (1.50.1, the owner's list): each dab's colour from the foreground towards the
    *  background, and its hue, saturation and brightness varied (jitters, 0-100). */
   color: { on: boolean; fgBg: number; hue: number; saturation: number; brightness: number };
   /** Transfer: each dab's opacity and flow varied (jitters, 0-100), or following pen pressure. */

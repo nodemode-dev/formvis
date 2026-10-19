@@ -7,7 +7,7 @@ const hex = (c: RGB): string => `#${[c.r, c.g, c.b].map((v) => v.toString(16).pa
 const fromHex = (h: string): RGB => ({ r: parseInt(h.slice(1, 3), 16), g: parseInt(h.slice(3, 5), 16), b: parseInt(h.slice(5, 7), 16) });
 
 /** Layer > Artboard Options: the active artboard's position, size and background (White, Black, Transparent or a
- *  colour), as in Photoshop's Artboard properties. OK applies them as one step. */
+ *  colour), the artboard's properties. OK applies them as one step. */
 export class ArtboardDialog extends Dialog {
   private id: string | null = null;
   private readonly x = numberRow('X (px)', -30000, 30000, 1, () => undefined);
@@ -51,7 +51,7 @@ export class ArtboardDialog extends Dialog {
   }
 }
 
-/** Layer > New > Artboard and Artboard from Group (1.65.4), as Photoshop's New Artboard dialogs: a name and a size,
+/** Layer > New > Artboard and Artboard from Group (1.65.4): a name and a size,
  *  and for a new artboard its background; it goes where Layer > New > Artboard puts the next one, and a folder's
  *  over its contents. */
 export class NewArtboardDialog extends Dialog {

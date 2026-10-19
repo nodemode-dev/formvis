@@ -91,7 +91,7 @@ export function exportMeta(s: ExportSettings, doc: DocMeta | undefined): DocMeta
   const notice = s.copyrightText?.trim(), author = s.contactText?.trim();
   return cleanMeta({ ...(notice ? { notice, copyright: 'copyrighted' } : {}), ...(author ? { author } : {}) }) ?? undefined;
 }
-/** DEV_PLAN 36.14, Save for Web (Legacy): Photoshop's Metadata choices. */
+/** DEV_PLAN 36.14, Save for Web (Legacy): the Metadata choices. */
 export type SfwMetadata = 'none' | 'copyright' | 'contact' | 'noCamera' | 'all';
 export const SFW_METADATA: ReadonlyArray<readonly [SfwMetadata, string]> = [['none', 'None'], ['copyright', 'Copyright'], ['contact', 'Copyright and Contact Info'], ['noCamera', 'All Except Camera Info'], ['all', 'All']];
 /** The File Info a Save for Web file carries: Copyright is the status, notice and web statement; Contact adds the creator
@@ -147,7 +147,7 @@ export function presetsFromStorage(raw: string | null): ExportPreset[] {
   });
 }
 
-/** Photoshop's naming: the document name, a scale suffix like @2x or @0.5x when not 100 percent, the extension. */
+/** The usual naming: the document name, a scale suffix like @2x or @0.5x when not 100 percent, the extension. */
 export function exportName(docName: string, s: ExportSettings, sizeSuffix?: string): string {
   const ext = s.format === 'tiff' ? 'tif' : s.format === 'pnm' ? (FORMAT_OPTIONS.pnm?.find(([v]) => v === s.option)?.[0] ?? 'ppm') : s.format;
   const suffix = sizeSuffix !== undefined ? sizeSuffix : s.scale === 100 ? '' : `@${Number((s.scale / 100).toFixed(2))}x`;

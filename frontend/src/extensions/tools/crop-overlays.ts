@@ -1,6 +1,6 @@
 import type { Pt } from '../../engine';
 
-/** The Crop tool's composition overlays, as Photoshop's options bar offers them (O cycles them, Shift+O flips the
+/** The Crop tool's composition overlays, offered in its options bar (O cycles them, Shift+O flips the
  *  Triangle and Golden Spiral): Rule of Thirds, Grid, Diagonal, Triangle, Golden Ratio, Golden Spiral. */
 export type CropOverlay = 'thirds' | 'grid' | 'diagonal' | 'triangle' | 'golden' | 'spiral';
 export const CROP_OVERLAYS: ReadonlyArray<{ id: CropOverlay; label: string }> = [

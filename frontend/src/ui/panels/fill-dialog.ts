@@ -9,7 +9,7 @@ const CONTENTS: ReadonlyArray<readonly [Contents, string]> = [
   ['fg', 'Foreground Color'], ['bg', 'Background Color'], ['color', 'Color...'], ['contentAware', 'Content-Aware'], ['pattern', 'Pattern'], ['history', 'History'], ['black', 'Black'], ['gray', '50% Gray'], ['white', 'White'],
 ];
 
-/** Edit > Fill (Shift+F5), as Photoshop lays it out: Contents, then Mode, Opacity and Preserve Transparency. Every
+/** Edit > Fill (Shift+F5): Contents, then Mode, Opacity and Preserve Transparency. Every
  *  row exists from the start; the colour and pattern rows are disabled, not hidden, when the contents do not use
  *  them, so the dialog keeps one size. Content-Aware hands over to Content-Aware Fill, which has no blending. */
 export class FillDialog extends Dialog {
@@ -25,7 +25,7 @@ export class FillDialog extends Dialog {
   private readonly modeRow: Row<string>;
   private readonly opacityRow: Row<number>;
   private readonly preserveRow: Row<boolean>;
-  /** Fill Path: the same dialog with Photoshop's Rendering settings (Feather Radius, Anti-aliased) shown. */
+  /** Fill Path: the same dialog with the Rendering settings (Feather Radius, Anti-aliased) shown. */
   private mode: 'fill' | 'path' = 'fill';
   private feather = 0;
   private antialias = true;

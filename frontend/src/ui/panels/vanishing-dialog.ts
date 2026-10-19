@@ -8,7 +8,7 @@ import { selectRow, sliderRow } from './controls';
 const PW = 720, PH = 480;
 type Tool = 'create' | 'edit' | 'paste' | 'stamp';
 
-/** Filter > Vanishing Point (1.58.3, the parity plan's L6), as Photoshop's: Create Plane by clicking its four corners
+/** Filter > Vanishing Point (1.58.3, the parity plan's L6): Create Plane by clicking its four corners
  *  (top left, top right, bottom right, bottom left), Edit Plane by dragging them, a grid showing its perspective;
  *  Paste places another layer on the plane in perspective (drag it along the plane, Size sets how much of the plane it
  *  covers); Stamp clones in perspective (Alt-click a source on the plane, then paint). The layer is worked on a copy;

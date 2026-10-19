@@ -7,7 +7,7 @@ import { toast } from './toast';
 
 export type Intent = 'perceptual' | 'relative' | 'saturation' | 'absolute';
 /** The device to simulate. `paper` shows the paper's own white (absolute colorimetric) and `ink` the press's own black
- *  (no black point compensation), as Photoshop's Simulate Paper Color and Simulate Black Ink. */
+ *  (no black point compensation), for Simulate Paper Color and Simulate Black Ink. */
 export interface ProofSetup { id: string; name: string; intent: Intent; bpc: boolean; paper?: boolean; ink?: boolean }
 export interface ProofPreset { id: string; name: string; setup: ProofSetup }
 const KEY = 'formvis.proof';
@@ -17,7 +17,7 @@ const PRESETS = 'formvis.proof-presets';
  *  press's black needs the compensation off. */
 export const proofTerms = (s: ProofSetup): { intent: Intent; bpc: boolean } => ({ intent: s.paper ? 'absolute' : s.intent, bpc: s.paper || s.ink ? false : s.bpc });
 
-/** Photoshop's built-in proof presets (DEV_PLAN 31.7), beside Custom. The working CMYK ones simulate the working CMYK
+/** The standard built-in proof presets (DEV_PLAN 31.7), beside Custom. The working CMYK ones simulate the working CMYK
  *  profile and show only some inks (a plate is a grey image of that ink's coverage, CMY leaves K out); the two colour
  *  blindness ones are Vienot 1999 (Brettel 1997 for the dichromat's confusion lines) in linear RGB. */
 export type ProofKind = 'cmyk' | 'cyan' | 'magenta' | 'yellow' | 'black' | 'cmy' | 'protanopia' | 'deuteranopia';

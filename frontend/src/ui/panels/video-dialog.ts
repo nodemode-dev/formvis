@@ -3,7 +3,7 @@ import { api } from '../../io/api';
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
 
-/** File > Import > Video Frames to Layers (1.58.9, the parity plan's L1), as Photoshop's: choose a clip, trim it to a
+/** File > Import > Video Frames to Layers (1.58.9, the parity plan's L1): choose a clip, trim it to a
  *  range (From and To, in seconds) and keep every Nth frame if wished; the engine's ffmpeg decodes the frames (300 at
  *  most), each becomes a layer of a new document, and Make Frame Animation sets the Timeline to show them in turn at
  *  the clip's own speed. Rows are built once. */

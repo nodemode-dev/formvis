@@ -11,7 +11,7 @@ export function defaultText(): TextSpec {
   return { content: '', family: 'Inter', size: 48, color: { r: 0, g: 0, b: 0 }, align: 'left', bold: false, italic: false, lineHeight: 1.2, tracking: 0, kerning: 'metrics' };
 }
 
-/** Tracking in pixels at the spec's size: Photoshop's thousandths of an em. */
+/** Tracking in pixels at the spec's size: tracking is in thousandths of an em. */
 export const trackingPx = (t: TextSpec): number => (t.tracking / 1000) * t.size;
 
 /** Whether this browser's canvas spaces letters itself (letterSpacing); where not, text with tracking is set character by
@@ -94,7 +94,7 @@ export function renderPlain(t: TextSpec): TextRender {
   c.textAlign = 'left';
   lines.forEach((line, i) => {
     const y = pad + ascent + i * advance;
-    if (box && y + descent > height) return;                       // past the box: clipped, as Photoshop's
+    if (box && y + descent > height) return;                       // past the box: clipped
     const inner = width - pad * 2;
     const words = line.text.split(' ');
     if (t.align === 'justify' && box && !line.last && words.length > 1) {
@@ -156,7 +156,7 @@ function renderVertical(t: TextSpec): TextRender {
   return { raster, baseline: pad + ascent, pad };
 }
 
-/** Warp Text's styles, in Photoshop's order, with their names. */
+/** Warp Text's styles, in the usual order, with their names. */
 export const WARP_STYLES: ReadonlyArray<readonly [WarpStyle, string]> = [['arc', 'Arc'], ['arcLower', 'Arc Lower'], ['arcUpper', 'Arc Upper'], ['arch', 'Arch'],
   ['bulge', 'Bulge'], ['shellLower', 'Shell Lower'], ['shellUpper', 'Shell Upper'], ['flag', 'Flag'], ['wave', 'Wave'], ['fish', 'Fish'], ['rise', 'Rise'],
   ['fisheye', 'Fisheye'], ['inflate', 'Inflate'], ['squeeze', 'Squeeze'], ['twist', 'Twist']];
@@ -164,7 +164,7 @@ export const WARP_STYLES: ReadonlyArray<readonly [WarpStyle, string]> = [['arc',
 const warpActive = (w: TextWarp | null | undefined): w is TextWarp => !!w && (w.bend !== 0 || w.horizontal !== 0 || w.vertical !== 0);
 
 /** Where a point of the text's box goes, in coordinates from -1 to 1 across and down it. The shapes are this build's
- *  own formulas for each of Photoshop's styles (the arc and shell bends, flag and wave ripples, fisheye, inflate and
+ *  own formulas for each of the styles (the arc and shell bends, flag and wave ripples, fisheye, inflate and
  *  squeeze swells, twist); Horizontal and Vertical Distortion then taper the box like a perspective. */
 function warpPoint(w: TextWarp, u0: number, v0: number): [number, number] {
   const vert = w.orientation === 'vertical', u = vert ? v0 : u0, v = vert ? u0 : v0, b = w.bend / 100;
@@ -241,7 +241,7 @@ function warpRender(r: TextRender, w: TextWarp): TextRender {
 
 /** Type on a path: one line (line breaks read as spaces) set character by character along the path's polyline, each at
  *  the point its centre falls on, turned to the path's direction there, sitting on it, from Start Offset; characters
- *  that would run past the path's end are not drawn, as in Photoshop. Set one by one, pairs are not kerned. */
+ *  that would run past the path's end are not drawn. Set one by one, pairs are not kerned. */
 function renderPathText(t: TextSpec, tp: TextPath): TextRender {
   const raster = new Raster(Math.max(1, Math.round(tp.frame.w)), Math.max(1, Math.round(tp.frame.h))), c = raster.ctx, pts = tp.points;
   const cum = [0];

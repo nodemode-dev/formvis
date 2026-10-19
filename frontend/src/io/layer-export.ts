@@ -38,7 +38,7 @@ export function safeName(text: string, max = 60, fallback = 'layer'): string {
   return s || fallback;
 }
 
-/** Photoshop's naming: the prefix, a four digit number counted from the top of the stack, the layer's name. */
+/** The usual naming: the prefix, a four digit number counted from the top of the stack, the layer's name. */
 export function layerFileName(prefix: string, n: number, name: string, format: LayerFileFormat): string {
   return `${safeName(prefix, 60, 'Untitled')}_${String(n).padStart(4, '0')}_${safeName(name)}.${format === 'tiff' ? 'tif' : format}`;
 }

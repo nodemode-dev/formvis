@@ -4,7 +4,7 @@ import type { OptionSpec, Tool } from '../registry';
 let drag: number | null = null;
 const MAX = 10, NEAR = 8;
 
-/** The Color Sampler (I), as Photoshop's (the owner's tool list): click to place a sampler (ten at most), drag one to
+/** The Color Sampler (I, the owner's tool list): click to place a sampler (ten at most), drag one to
  *  move it, Alt-click one to remove it; each sampler's colour shows in the Info panel. */
 export const colorSamplerTool: Tool = {
   id: 'colorSampler', label: 'Color Sampler', key: 'I', order: 80.5,

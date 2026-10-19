@@ -2,10 +2,10 @@ import type { AdjustmentLayer as PsdAdjustment } from 'ag-psd';
 import { COLOR_RANGES, defaultAdjustmentData, defaultHsv, hsvFromData, hsvToData, type Adjustment, type AdjustmentKind } from '../engine';
 import { DEFAULT_BANDS, type ColorRange } from '../engine/adjust';
 
-/** formvis's adjustment layers and Photoshop's, both ways, so a PSD keeps them live instead of dropping them. The
+/** formvis's adjustment layers and PSD's, both ways, so a PSD keeps them live instead of dropping them. The
  *  parametric kinds map field for field; Levels and Curves by channel (the composite first, then red, green, blue);
- *  Hue/Saturation by range with each range's band as Photoshop's four band values; Gradient Map as a two-stop gradient.
- *  Grain and Develop have no Photoshop adjustment layer, and Hue/Saturation's Colorize is not carried. */
+ *  Hue/Saturation by range with each range's band as PSD's four band values; Gradient Map as a two-stop gradient.
+ *  Grain and Develop have no PSD adjustment layer, and Hue/Saturation's Colorize is not carried. */
 
 type J = Record<string, unknown>;
 const num = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d);
@@ -16,7 +16,7 @@ const SELECT = ['reds', 'yellows', 'greens', 'cyans', 'blues', 'magentas', 'whit
 const CHANNELS = ['rgb', 'red', 'green', 'blue'] as const;
 const PS_RANGE: Record<ColorRange, string> = { Master: 'master', Reds: 'reds', Yellows: 'yellows', Greens: 'greens', Cyans: 'cyans', Blues: 'blues', Magentas: 'magentas' };
 
-/** A Photoshop adjustment for a formvis one, or null when Photoshop has no such layer (Grain, Develop). */
+/** A PSD adjustment for a formvis one, or null when PSD has no such layer (Grain, Develop). */
 export function toPsdAdjustment(a: Adjustment): PsdAdjustment | null {
   const d = { ...(defaultAdjustmentData(a.kind) as J), ...(a.data as J) };
   switch (a.kind) {
@@ -68,7 +68,7 @@ export function toPsdAdjustment(a: Adjustment): PsdAdjustment | null {
   }
 }
 
-/** A formvis adjustment for a Photoshop one, or null when formvis has no such adjustment (Color Lookup and others). */
+/** A formvis adjustment for a PSD one, or null when formvis has no such adjustment (Color Lookup and others). */
 export function fromPsdAdjustment(p: PsdAdjustment): Adjustment | null {
   const o = p as unknown as J, mk = (kind: AdjustmentKind, data: J): Adjustment => ({ kind, data: { ...(defaultAdjustmentData(kind) as J), ...data } });
   switch (p.type) {

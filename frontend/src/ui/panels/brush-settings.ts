@@ -7,7 +7,7 @@ import { checkRow, selectRow, sliderRow } from './controls';
 
 type Row = { el: HTMLElement; sync: () => void };
 
-/** Window > Brush Settings (F5), Photoshop's panel for the Brush's tip and its dynamics: Brush Tip Shape, Shape
+/** Window > Brush Settings (F5), the panel for the Brush's tip and its dynamics: Brush Tip Shape, Shape
  *  Dynamics, Scattering, Texture, Dual Brush, Color Dynamics, Transfer, Noise and Wet Edges. It edits the engine's brush shape live, so the next stroke uses it;
  *  each change replaces the shape, so a stroke already under way keeps what it started with. Reset puts every setting
  *  back to the plain round brush. */
@@ -83,7 +83,7 @@ export class BrushSettingsDialog extends Dialog {
     slide('Scatter (%)', 0, 1000, 1, () => s().dual.scatter, (v) => put({ dual: { ...s().dual, scatter: v } }));
     slide('Count', 1, 16, 1, () => s().dual.count, (v) => put({ dual: { ...s().dual, count: v } }));
 
-    // Color Dynamics, Transfer, Noise and Wet Edges (1.50.1, the owner's list), in Photoshop's order; a shape saved
+    // Color Dynamics, Transfer, Noise and Wet Edges (1.50.1, the owner's list), in the usual order; a shape saved
     // before them reads their defaults.
     const cd = (): BrushShape['color'] => s().color ?? defaultShape().color, tr = (): BrushShape['transfer'] => s().transfer ?? defaultShape().transfer;
     heading('Color Dynamics');

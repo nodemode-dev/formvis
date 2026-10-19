@@ -6,7 +6,7 @@ import { pick } from './direct-select';
 
 let grab: { anchor: Anchor; part: 'anchor' | 'in' | 'out'; from: Pt; start: Anchor; moved: boolean } | null = null;
 
-/** Convert Point (in the Pen group), as Photoshop's (the owner's tool list): click a smooth point to make it a corner,
+/** Convert Point (in the Pen group, the owner's tool list): click a smooth point to make it a corner,
  *  its handles retracted; drag from a point to pull out smooth handles; drag a handle to move it alone, breaking the
  *  pair. Each change is one step. */
 export const convertPointTool: Tool = {

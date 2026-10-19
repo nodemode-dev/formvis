@@ -1,7 +1,7 @@
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
 
-/** Leaving 32 bits (1.53.9, the parity plan's H1): Photoshop's HDR Toning, method Exposure and Gamma. */
+/** Leaving 32 bits (1.53.9, the parity plan's H1): HDR Toning, method Exposure and Gamma. */
 export class HdrToningDialog extends Dialog {
   private readonly exposure = el<HTMLInputElement>('<input class="cv-input" type="number" min="-20" max="20" step="0.1" value="0" aria-label="Exposure">');
   private readonly gamma = el<HTMLInputElement>('<input class="cv-input" type="number" min="0.1" max="9.99" step="0.05" value="1" aria-label="Gamma">');

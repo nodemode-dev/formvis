@@ -5,7 +5,7 @@ let drag: { start: number; from: number } | null = null, lastDown: { t: number; 
 const angleAt = (x: number, y: number, w: number, h: number): number => (Math.atan2(y - h / 2, x - w / 2) * 180) / Math.PI;
 const stageSize = (): { w: number; h: number } => { const r = document.querySelector('.cv-stage')?.getBoundingClientRect(); return { w: r?.width ?? 1, h: r?.height ?? 1 }; };
 
-/** Rotate View (R), as Photoshop's (the owner's tool list; it sits with the Hand): drag to turn the view about the
+/** Rotate View (R) (the owner's tool list; it sits with the Hand): drag to turn the view about the
  *  canvas's centre, Shift for 15-degree steps; double-click, Escape or Reset View straightens it. Only the view turns,
  *  never the image. */
 export const rotateViewTool: Tool = {
@@ -38,7 +38,7 @@ export const rotateViewTool: Tool = {
   overlay(ctx, g) {
     const v = ctx.engine.current?.viewport;
     if (!drag || !v) return;
-    // A compass needle pointing to the canvas's top, as Photoshop's shows while turning.
+    // A compass needle pointing to the canvas's top while turning.
     const { w, h } = stageSize(), pal = ctx.paint(), a = -Math.PI / 2, L = Math.min(w, h) * 0.18;   // up the canvas: the overlay turns with it
     g.save();
     g.translate(w / 2, h / 2);

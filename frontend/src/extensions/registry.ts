@@ -26,13 +26,13 @@ export type OptionSpec = (
   priority?: number;
 };
 
-/** A mode of one tool listed as its own entry in the toolbar's flyout, as Photoshop lists its sub-tools (the Elliptical
+/** A mode of one tool listed as its own entry in the toolbar's flyout, as sub-tools are listed (the Elliptical
  *  Marquee, the Polygonal Lasso): its name and icon, whether it is the one in use, and how to pick it. */
 export interface ToolVariant { id: string; label: string; icon: string; active(): boolean; pick(): void }
 
 export interface Tool {
   id: ToolId;
-  /** The slot it shares, when not its key's (Rotate View, R, sits with the Hand, as Photoshop's). */
+  /** The slot it shares, when not its key's (Rotate View, R, sits with the Hand). */
   group?: string;
   /** The tool's modes as flyout entries (the owner's walkthrough: the marquee's ellipse, the lasso's kinds...). */
   variants?(engine: Engine): readonly ToolVariant[];

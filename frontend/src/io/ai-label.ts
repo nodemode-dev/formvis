@@ -30,7 +30,7 @@ export function labelPng(png: Uint8Array, kind: AiLabel): Uint8Array {
   return cat(png.subarray(0, afterIhdr), chunk, png.subarray(afterIhdr));
 }
 
-/** JPEG: an APP1 segment with Adobe's XMP namespace, right after SOI. */
+/** JPEG: an APP1 segment with the XMP namespace, right after SOI. */
 export function labelJpeg(jpg: Uint8Array, kind: AiLabel): Uint8Array {
   if (jpg[0] !== 0xff || jpg[1] !== 0xd8) throw new Error('not a JPEG');
   const body = cat(enc.encode('http://ns.adobe.com/xap/1.0/\0'), enc.encode(xmpPacket(kind))), seg = new Uint8Array(4 + body.length);

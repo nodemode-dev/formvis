@@ -1,4 +1,4 @@
-/** Photoshop swatch files: .aco (Color Swatches) and .ase (Adobe Swatch Exchange). Both are big-endian binary.
+/** Swatch files: .aco (Color Swatches) and .ase (Swatch Exchange). Both are big-endian binary.
  *  Colours come back as '#rrggbb'; non-RGB spaces are converted plainly (CMYK naively, Lab through D50 XYZ). */
 
 const clamp = (v: number, lo = 0, hi = 255): number => Math.min(hi, Math.max(lo, v));
@@ -62,7 +62,7 @@ export function readAco(bytes: Uint8Array): string[] {
     return { version, colours };
   };
   const first = section();
-  if (!first) throw new Error('This is not a Photoshop swatch (.aco) file.');
+  if (!first) throw new Error('This is not an .aco swatch file.');
   const second = section();
   return second && second.colours.length ? second.colours : first.colours;
 }
@@ -89,7 +89,7 @@ export function writeAco(list: string[]): Uint8Array {
 
 export function readAse(bytes: Uint8Array): string[] {
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  if (bytes.byteLength < 12 || String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]) !== 'ASEF') throw new Error('This is not an Adobe Swatch Exchange (.ase) file.');
+  if (bytes.byteLength < 12 || String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]) !== 'ASEF') throw new Error('This is not an .ase swatch file.');
   const blocks = dv.getUint32(8);
   let p = 12;
   const out: string[] = [];

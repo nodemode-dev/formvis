@@ -6,7 +6,7 @@ import { cameraFromTiff, exposureText, isoOfExifDate, rationalOf, roundText } fr
 
 /** File Info as standard XMP (DEV_PLAN 29.2). The packet carries Dublin Core (dc:title, dc:creator, dc:description,
  *  dc:subject, dc:rights), xmp:Rating, xmp:CreateDate and ModifyDate, xmpRights:Marked and WebStatement,
- *  photoshop:AuthorsPosition and CaptionWriter, and the camera's record as tiff, exif and aux properties. It is written
+ *  the AuthorsPosition and CaptionWriter properties, and the camera's record as tiff, exif and aux properties. It is written
  *  into the files formvis encodes (a PNG iTXt chunk, a JPEG APP1 segment, a WebP XMP chunk, a TIFF tag 700) and read back
  *  from the same places, so a round trip keeps the fields. */
 

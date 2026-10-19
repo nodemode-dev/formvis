@@ -4,7 +4,7 @@ import { brushKeys, brushOptions, drawBrushCursor } from './brush-common';
 
 let hover: Pt | null = null;
 
-/** The Pattern Stamp (S), as Photoshop's (the owner's tool list): paints the chosen pattern, tiled across the document
+/** The Pattern Stamp (S, the owner's tool list): paints the chosen pattern, tiled across the document
  *  so strokes line up, with the brush's size, hardness and opacity; each stroke is one step. */
 export const patternStampTool: Tool = {
   id: 'patternStamp', label: 'Pattern Stamp', key: 'S', order: 60.5,

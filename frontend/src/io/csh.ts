@@ -1,9 +1,9 @@
 import type { VectorPath } from '../engine/paths';
 import { pathFromRecords, pathRecords } from './psd-paths';
 
-/** Photoshop custom shape files (.csh), read only: '8BCS', u32 version, u32 count, then per shape a u32 name length in
+/** Custom shape files (.csh), read only: '8BCS', u32 version, u32 count, then per shape a u32 name length in
  *  UTF-16 units and the UTF-16BE name (padded to 4 bytes or not, both are tried), u32 zero, u32 data length, and the data:
- *  a 37-byte id, the bounds (top, left, bottom, right as u32), then 26-byte Photoshop path records (the vector mask
+ *  a 37-byte id, the bounds (top, left, bottom, right as u32), then 26-byte PSD path records (the vector mask
  *  records psd-paths reads). Anything inconsistent skips that shape. */
 
 export interface CshShape { name: string; path: VectorPath }
@@ -72,7 +72,7 @@ export function writeCsh(shapes: ReadonlyArray<CshShape>): Uint8Array {
 /** Reads a .csh. `skipped` counts shapes that could not be read; a broken shape header ends the file, since the rest cannot be located. */
 export function readCsh(buf: ArrayBuffer): { shapes: CshShape[]; skipped: number } {
   const bytes = new Uint8Array(buf), dv = new DataView(buf);
-  if (bytes.byteLength < 12 || String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]) !== '8BCS') throw new Error('Not a Photoshop custom shape (.csh) file.');
+  if (bytes.byteLength < 12 || String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]) !== '8BCS') throw new Error('Not a .csh custom shape file.');
   const count = Math.min(dv.getUint32(8), 100000);
   const shapes: CshShape[] = [];
   let skipped = 0, at = 12;

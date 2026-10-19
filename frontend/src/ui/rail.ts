@@ -87,7 +87,7 @@ export class Rail {
       if (!this.suppressClick && slot.group.tools.length) { const t = slotTool(slot.group, engine.tool); engine.setTool(t.id); if (t.id === 'brush') engine.setBrushMode('paint'); }
       this.suppressClick = false;
     });
-    // Press and hold, or right-click, shows the group, as Photoshop's toolbar does.
+    // Press and hold, or right-click, shows the group.
     let hold = 0;
     node.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 || entries(slot.group) < 2) return;
@@ -102,7 +102,7 @@ export class Rail {
 
   /** Puts the saved layout on the rail in place: the slots (kept, never rebuilt) take the groups in order, surplus slots are
    *  hidden, and a short dash sits between tool families (selection and crop, painting and retouching, vector and type, then
-   *  eyedropper and navigation, by the tools' order) as Photoshop's column has. */
+   *  eyedropper and navigation, by the tools' order). */
   private applyLayout(): void {
     const layout = resolveLayout(loadPrefs().toolbar);
     this.extra = layout.hidden;
@@ -165,7 +165,7 @@ export class Rail {
   /** The group's tools beside its slot, each with its key; the one chosen becomes the slot's tool. */
   private openFlyout(group: ToolGroup, slot: HTMLElement): void {
     // One entry per tool, or per mode for a tool that lists its modes (the Elliptical Marquee, the Polygonal Lasso...),
-    // as Photoshop's flyouts; rebuilt as it opens, so it always shows what is in use.
+    // as a flyout; rebuilt as it opens, so it always shows what is in use.
     this.flyout.textContent = '';
     const add = (iconName: string, label: string, active: boolean, pick: () => void): void => {
       const row = el<HTMLButtonElement>(`<button class="cv-flyout-item" role="menuitem" type="button">${icon(iconName, 18)}<span class="cv-flyout-label"></span><span class="cv-flyout-key"></span></button>`);

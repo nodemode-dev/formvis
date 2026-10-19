@@ -23,7 +23,7 @@ except Exception:
 
 HEIF_SUFFIXES = {".heic", ".heif", ".hif"}
 
-# Camera RAW (Photoshop opens these into Camera Raw): decoded by LibRaw through rawpy. DNG is a TIFF container whose
+# Camera RAW (opened into Camera Raw): decoded by LibRaw through rawpy. DNG is a TIFF container whose
 # embedded preview Pillow would open instead of the sensor data, so RAW suffixes never reach Pillow.
 try:
     import rawpy
@@ -164,7 +164,7 @@ def _raw_args(wb: str, temperature: float, tint: float, bits: int) -> tuple[str,
 def _raw(data: bytes, filename: str, camera_profile: str = "auto", wb: str = "as_shot", temperature: float = 0.0, tint: float = 0.0, half: bool = False) -> tuple[bytes, int, int]:
     """A camera RAW developed as Camera Raw opens it by default: the camera's own white balance (as shot), sRGB, 8 bits,
     turned upright by the camera's orientation flag. Develop (Filter > Develop) then works on it. `camera_profile` is
-    "none" for LibRaw's own colour, "auto" for the profile in the profile folders that is named like Adobe's defaults and
+    "none" for LibRaw's own colour, "auto" for the profile in the profile folders that is named like the common defaults and
     made for this camera (else LibRaw's), or the id of a listed profile, which must apply. `wb`, `temperature` and `tint`
     set the white balance at the RAW stage (_wb_kwargs); a camera profile applies only with the as-shot white balance.
     `half` decodes at half size, a fast preview (Camera Raw's panel)."""

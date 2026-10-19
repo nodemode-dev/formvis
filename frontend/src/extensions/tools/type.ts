@@ -7,7 +7,7 @@ import { dashed, toolHost, type Tool } from '../registry';
 const SYSTEM_FONTS = '__system-fonts';
 let draft: { from: Pt; to: Pt } | null = null;
 
-/** The font menu: this machine's families (the current one kept if it came from elsewhere, as a Photoshop file), and
+/** The font menu: this machine's families (the current one kept if it came from elsewhere, as a PSD file), and
  *  "Load system fonts..." where the browser can list them. */
 function fontChoices(current: string): Array<{ id: string; label: string }> {
   const list = fontFamilies();
@@ -35,7 +35,7 @@ export function setType(e: Engine, patch: Partial<TextSpec>): void {
   e.textSettings = { ...e.textSettings, ...patch };
   e.emit('options', null);
   document.dispatchEvent(new CustomEvent('cv:type-settings'));
-  // As Photoshop's bar (1.50.4, the tool audit): the selected type layer takes the style too, when the Type tool is in
+  // (1.50.4, the tool audit): the selected type layer takes the style too, when the Type tool is in
   // use and no text is being typed (the editor restyles what is being typed); orientation and mask never pass over.
   const l = e.activeLayer, typing = !!document.querySelector('.cv-type-editor:not([hidden])');
   const style = Object.fromEntries(Object.entries(patch).filter(([k]) => (STYLE_KEYS as readonly string[]).includes(k)));
@@ -47,7 +47,7 @@ export function setType(e: Engine, patch: Partial<TextSpec>): void {
 export const typeTool: Tool = {
   id: 'type', label: 'Type', key: 'T', order: 78,
   icon: (e) => (e.typeMask ? (e.textSettings.direction === 'vertical' ? 'tTypeMaskV' : 'tTypeMask') : e.textSettings.direction === 'vertical' ? 'tTypeV' : 'tType'),
-  // Photoshop's four: Horizontal and Vertical Type, and their masks (which make a selection instead of a layer).
+  // The four: Horizontal and Vertical Type, and their masks (which make a selection instead of a layer).
   variants: (e) => ([['h', 'Horizontal Type', 'tType', false, 'horizontal'], ['v', 'Vertical Type', 'tTypeV', false, 'vertical'], ['hm', 'Horizontal Type Mask', 'tTypeMask', true, 'horizontal'], ['vm', 'Vertical Type Mask', 'tTypeMaskV', true, 'vertical']] as const).map(([id, label, icon, mask, dir]) => ({
     id, label, icon, active: () => e.typeMask === mask && (e.textSettings.direction ?? 'horizontal') === dir, pick: () => { e.typeMask = mask; setType(e, { direction: dir }); },
   })),
@@ -62,15 +62,15 @@ export const typeTool: Tool = {
     } },
     { kind: 'number', label: 'Size', priority: 95, min: 1, max: 2000, unit: 'px', get: () => e.textSettings.size, set: (v) => setType(e, { size: Math.min(2000, Math.max(1, v)) }) },
     { kind: 'segment', label: 'Align', priority: 80, choices: [{ id: 'left', label: 'Left' }, { id: 'center', label: 'Centre' }, { id: 'right', label: 'Right' }, { id: 'justify', label: 'Justify' }], get: () => e.textSettings.align, set: (v) => setType(e, { align: v === 'justify' ? 'justify' : v === 'center' || v === 'right' ? v : 'left' }) },
-    // Font Style and Warp Text as Photoshop's bar (1.50.3, the tool audit; Bold and Italic were two toggles).
+    // Font Style and Warp Text (1.50.3, the tool audit; Bold and Italic were two toggles).
     { kind: 'select', label: 'Font Style', priority: 85, choices: [{ id: 'regular', label: 'Regular' }, { id: 'italic', label: 'Italic' }, { id: 'bold', label: 'Bold' }, { id: 'bold-italic', label: 'Bold Italic' }],
       get: () => (e.textSettings.bold ? (e.textSettings.italic ? 'bold-italic' : 'bold') : e.textSettings.italic ? 'italic' : 'regular'),
       set: (v: string) => setType(e, { bold: v.startsWith('bold'), italic: v.endsWith('italic') }) },
     { kind: 'number', label: 'Leading', priority: 50, min: 0.5, max: 4, step: 0.05, unit: 'x', get: () => e.textSettings.lineHeight, set: (v) => setType(e, { lineHeight: Math.min(4, Math.max(0.5, v)) }) },
-    // Photoshop's units: tracking in thousandths of an em; kerning the font's own (Metrics) or none (0).
+    // The usual units: tracking in thousandths of an em; kerning the font's own (Metrics) or none (0).
     { kind: 'number', label: 'Tracking', priority: 45, min: -1000, max: 10000, step: 10, unit: '', get: () => e.textSettings.tracking, set: (v) => setType(e, { tracking: Math.round(Math.min(10000, Math.max(-1000, v))) }) },
     { kind: 'select', label: 'Kerning', priority: 35, choices: [{ id: 'metrics', label: 'Metrics' }, { id: 'none', label: '0' }], get: () => e.textSettings.kerning, set: (v) => setType(e, { kerning: v === 'none' ? 'none' : 'metrics' }) },
-    // Anti-aliasing and the Color swatch (1.50.4, the tool audit), as Photoshop's bar; the swatch recolours the selected
+    // Anti-aliasing and the Color swatch (1.50.4, the tool audit); the swatch recolours the selected
     // type layer as well as setting the colour new text takes.
     { kind: 'select', label: 'OpenType', priority: 30, choices: featureChoices(e), live: () => featureChoices(e), get: () => '',
       set: (v: string) => {

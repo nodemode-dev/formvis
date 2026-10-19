@@ -3,7 +3,7 @@ import type { RGB } from '../engine/types';
 import { Reader, readDescriptor } from './atn';
 import type { Desc, Val } from './atn';
 
-/** Gradient files: Photoshop .grd (version 5, an ActionDescriptor holding a list of gradients) and GIMP .ggr (text).
+/** Gradient files: .grd (version 5, an ActionDescriptor holding a list of gradients) and .ggr (text).
  *  Noise gradients have no stop form, so they are counted and skipped. Midpoints are ignored. */
 
 const newId = (): string => `grd-${Math.random().toString(36).slice(2, 10)}`;
@@ -86,12 +86,12 @@ function gradientFrom(g: Desc): GradientPreset | null {
   return { id: newId(), label: typeof name === 'string' && name ? name : 'Gradient', stops };
 }
 
-/** Reads a Photoshop .grd (version 5). `skipped` counts the noise gradients, which have no stop form. */
+/** Reads a .grd (version 5). `skipped` counts the noise gradients, which have no stop form. */
 export function readGrd(buf: ArrayBuffer): { gradients: GradientPreset[]; skipped: number } {
   const r = new Reader(buf);
-  if (buf.byteLength < 12 || r.ascii(4) !== '8BGR') throw new Error('Not a Photoshop gradient file.');
+  if (buf.byteLength < 12 || r.ascii(4) !== '8BGR') throw new Error('Not a .grd gradient file.');
   const version = r.u16();
-  if (version !== 5) throw new Error(`Gradient file version ${version} is not supported (only version 5, Photoshop CS and later).`);
+  if (version !== 5) throw new Error(`Gradient file version ${version} is not supported (only version 5).`);
   r.u32();
   const root = readDescriptor(r);
   const gradients: GradientPreset[] = [];
@@ -124,7 +124,7 @@ export class Sink {
   enum(key: string, type: string, value: string): void { this.key(key, 'enum'); this.id(type); this.id(value); }
 }
 
-/** Writes a Photoshop .grd (version 5): '8BGR', u16 5, u32 16, then a 'null' descriptor holding the 'GrdL' list. Each
+/** Writes a .grd (version 5): '8BGR', u16 5, u32 16, then a 'null' descriptor holding the 'GrdL' list. Each
  *  gradient is an 'Objc' of class 'Grdn' whose 'Grad' item is a custom-stops gradient ('CstS', interval 4096) with
  *  'Clrs' (RGB or foreground / background colour stops) and 'Trns' (opacity stops), locations 0 to 4096, midpoint 50. */
 export function writeGrd(list: GradientPreset[]): Uint8Array {
@@ -164,10 +164,10 @@ export function writeGrd(list: GradientPreset[]): Uint8Array {
   return new Uint8Array(s.bytes);
 }
 
-/** Reads a GIMP .ggr: each segment gives a stop at its left and its right edge. */
+/** Reads a .ggr: each segment gives a stop at its left and its right edge. */
 export function readGgr(text: string): GradientPreset[] {
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.length > 0);
-  if (lines[0] !== 'GIMP Gradient') throw new Error('Not a GIMP gradient file.');
+  if (lines[0] !== 'GIMP Gradient') throw new Error('Not a .ggr gradient file.');
   let i = 1;
   let label = 'Gradient';
   const nm = lines[i];

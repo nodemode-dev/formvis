@@ -3,7 +3,7 @@ import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
 import { checkRow, selectRow, type Row } from './controls';
 
-/** The source modes Conditional Mode Change can name, in Photoshop's order. */
+/** The source modes Conditional Mode Change can name, in the usual order. */
 export const SOURCE_MODES: ReadonlyArray<readonly [DocMode, string]> = [
   ['bitmap', 'Bitmap'], ['grayscale', 'Grayscale'], ['duotone', 'Duotone'], ['indexed', 'Indexed Color'],
   ['rgb', 'RGB Color'], ['cmyk', 'CMYK Color'], ['lab', 'Lab Color'], ['multichannel', 'Multichannel'],
@@ -14,7 +14,7 @@ export const TARGET_MODES: ReadonlyArray<readonly [DocMode, string]> = [
   ['rgb', 'RGB Color'], ['cmyk', 'CMYK Color'], ['lab', 'Lab Color'], ['grayscale', 'Grayscale'], ['bitmap', 'Bitmap'], ['indexed', 'Indexed Color'],
 ];
 
-/** File > Automate > Conditional Mode Change (DEV_PLAN 30.5a), as Photoshop's: tick the source modes, pick the target;
+/** File > Automate > Conditional Mode Change (DEV_PLAN 30.5a): tick the source modes, pick the target;
  *  a document whose mode is ticked is changed, any other is left alone. Built once; later only values change. */
 export class ConditionalModeDialog extends Dialog {
   onApply: (from: DocMode[], to: DocMode) => void = () => undefined;

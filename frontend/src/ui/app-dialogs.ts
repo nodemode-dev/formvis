@@ -46,8 +46,7 @@ const PRESET_GROUPS: ReadonlyArray<{ id: string; label: string; presets: DocPres
 type Unit = 'px' | 'in' | 'cm' | 'mm';
 const PER_INCH: Record<Unit, number> = { px: 0, in: 1, cm: 2.54, mm: 25.4 };
 
-/** The color modes New Document offers, each with its label, its channels and the bit depths it allows, as Photoshop's
- *  lists: Bitmap one bit; Grayscale and RGB 8, 16 or 32; CMYK and Lab 8 or 16 (the engine keeps 32 bits for RGB and
+/** The color modes New Document offers, each with its label, its channels and the bit depths it allows: Bitmap one bit; Grayscale and RGB 8, 16 or 32; CMYK and Lab 8 or 16 (the engine keeps 32 bits for RGB and
  *  Grayscale: Image > Mode > 32 Bits/Channel brings CMYK and Lab to RGB first). */
 export type NewMode = 'bitmap' | 'grayscale' | 'rgb' | 'cmyk' | 'lab';
 export type NewDepth = 1 | 8 | 16 | 32;
@@ -65,7 +64,7 @@ export type NewDocumentPrepare = (mode: NewMode, depth: NewDepth) => Promise<(()
  *  the presets as cards, each preview shaped as its document; at the right Name (pre-selected), Width, a link, Height and
  *  Unit, Resolution, Orientation, Color Mode (Bitmap, Grayscale, RGB, CMYK, Lab) with its Bit depth (8, 16 or 32 as the
  *  mode allows), Background Contents and Artboards; a live summary of the size and its memory (a mode's bytes a pixel
- *  at its depth, as Photoshop counts them); Cancel at the left, Create at the right. Every value is what the document
+ *  at its depth); Cancel at the left, Create at the right. Every value is what the document
  *  is made with: Create makes it, then `prepare`'s conversion (the app's Image > Mode) sets its mode and depth. */
 export class NewCanvasDialog extends Dialog {
   private readonly name = el<HTMLInputElement>('<input class="cv-nd-input" type="text" value="Untitled-1" spellcheck="false" aria-label="Name">');
@@ -110,7 +109,7 @@ export class NewCanvasDialog extends Dialog {
     const seg = el('<div class="cv-nd-seg"></div>');
     seg.append(...this.orient);
     // What formvis's documents are, as dropdowns that open like any other (disabled, they looked broken: the owner's walkthrough).
-    // Color Mode and Bit depth as Photoshop's New Document offers them: every mode the engine makes (Bitmap, Grayscale, RGB,
+    // Color Mode and Bit depth: every mode the engine makes (Bitmap, Grayscale, RGB,
     // CMYK, Lab), and the depths each allows. Create converts the new document as Image > Mode does (`prepare`, set by the app).
     const mode = el<HTMLSelectElement>('<select class="cv-nd-input" aria-label="Color Mode"></select>');
     for (const m of NEW_MODES) { const o = document.createElement('option'); o.value = m.id; o.textContent = t(m.label); mode.appendChild(o); }
@@ -399,7 +398,7 @@ export class SettingsDialog extends Dialog {
   private readonly homeRow = checkRow('Show Home screen at launch', (v) => this.change({ autoShowHome: v }));
   private readonly homeCloseRow = checkRow('Show Home screen when the last document closes', (v) => this.change({ homeOnLastClose: v }));
   private readonly whatsNewRow = checkRow('Show What\'s New once after an update', (v) => this.change({ whatsNewAuto: v }));
-  /* Photoshop's other sections (the owner's walkthrough), each acting on something real. */
+  /* The other sections (the owner's walkthrough), each acting on something real. */
   private readonly wheelRow = checkRow('Zoom with Scroll Wheel', (v) => this.change({ zoomWheel: v }));
   private readonly firstSnapRow = checkRow('Automatically Create First Snapshot', (v) => this.change({ autoFirstSnapshot: v }));
   private readonly snapMemRow = sliderRow('Snapshot memory (MB)', 64, 8192, 64, (v) => this.change({ snapshotMB: v }));
@@ -436,7 +435,7 @@ export class SettingsDialog extends Dialog {
   private readonly engineRow = selectRow('Engine processor', ENGINE_CHOICES, (v) => this.change({ engineDevice: v as EngineDevice }));
   private readonly engineMode = el('<p class="cv-note cv-engine-mode">Engine: not reached yet.</p>');
 
-  /** Edit > Preferences (Ctrl+,), laid out as Photoshop's: sections on the left, each section's settings on the right,
+  /** Edit > Preferences (Ctrl+,): sections on the left, each section's settings on the right,
    *  kept on this device. `onPrefs` puts a change into effect. */
   constructor(private readonly onPrefs: (p: Prefs) => void) {
     super('Preferences', 620);
@@ -472,7 +471,7 @@ export class SettingsDialog extends Dialog {
       el('<p class="cv-note">Where the engine runs its models (Remove Background, and the local models that follow). Automatic uses CUDA on an NVIDIA graphics processor, Core ML (Metal) on a Mac, and the CPU otherwise; a choice this machine cannot run falls back to the CPU, and the line above says why.</p>'));
     add('Workspace', this.lockRow.el, this.narrowRow.el, el('<p class="cv-note">Locked, panels are neither dragged nor resized. In a window too narrow for the canvas beside the open side column, it shows as its icons until there is room (your choice is kept).</p>'));
     add('Tools', this.wheelRow.el, el('<p class="cv-note">On, the wheel zooms about the pointer and Ctrl or Cmd with the wheel scrolls; off, the other way round.</p>'));
-    add('History & Cache', this.statesRow.el, this.memoryRow.el, this.memoryAutoRow.el, el('<p class="cv-note">History States is how many steps undo keeps (Photoshop keeps 50 by default, up to 1000); history memory caps what those steps may hold, and the oldest steps go first when either is reached. A browser app cannot reserve system memory as Photoshop\'s Memory Usage does, so this is the part formvis controls. Turning off region redraws repaints the whole canvas on each stroke, slower but useful if painting ever draws out of place.</p>'),
+    add('History & Cache', this.statesRow.el, this.memoryRow.el, this.memoryAutoRow.el, el('<p class="cv-note">History States is how many steps undo keeps (50 is a common default; up to 1000); history memory caps what those steps may hold, and the oldest steps go first when either is reached. A browser app cannot reserve system memory as Photoshop\'s Memory Usage does, so this is the part formvis controls. Turning off region redraws repaints the whole canvas on each stroke, slower but useful if painting ever draws out of place.</p>'),
       this.firstSnapRow.el, this.snapMemRow.el, el('<p class="cv-note">Each document keeps itself as opened, the History Brush\'s first source; snapshots, that one included, share this memory.</p>'));
     this.restoreBox.addEventListener('change', () => this.change({ restoreSession: this.restoreBox.checked }));
     this.mismatchSel.addEventListener('change', () => this.change({ profileMismatch: this.mismatchSel.value as 'convert' | 'keep' | 'ask' }));
@@ -493,7 +492,7 @@ export class SettingsDialog extends Dialog {
     add('Language', this.languageRow.el, el('<p class="cv-note">The language of the whole interface. Names you give layers and documents stay as you wrote them.</p>'));
     add('Units & Rulers', this.rulerRow.el, el('<p class="cv-note">The rulers\' unit; inches, centimetres and millimetres follow the document\'s resolution, percent its width and height.</p>'));
     add('Guides & Grid', this.colorRow('Guides', this.guideColor, 'guideColor'), this.colorRow('Grid', this.gridColor, 'gridColor'), this.gridEveryRow.el, this.subdivRow.el);
-    // Plugins (1.50.8): the other apps formvis sends to, as Photoshop's Plugins section; NodeMode first.
+    // Plugins (1.50.8): the other apps formvis sends to; NodeMode first.
     this.nodemodeCheck.addEventListener('click', () => void this.checkNodeMode());
     this.nodemodeUrl.addEventListener('change', () => { const v = this.nodemodeUrl.value.trim(); if (/^https?:\/\/./.test(v)) { this.change({ nodemodeUrl: v }); void this.checkNodeMode(); } else setText(this.nodemodeNote, 'An address starts with http:// or https://, such as http://localhost:8000.'); });
     const nm = el('<label class="cv-dialog-row"><span>NodeMode address</span></label>');
@@ -610,7 +609,7 @@ export class SettingsDialog extends Dialog {
     return row;
   }
 
-  /** The probe's result: the processor's name, or none (Use Graphics Processor then greyed, as Photoshop greys it),
+  /** The probe's result: the processor's name, or none (Use Graphics Processor then greyed),
    *  and the mode in use with its reason. */
   setGpu(name: string | null, mode: string, reason: string): void {
     setText(this.gpuName, name ?? 'None found');
@@ -879,7 +878,7 @@ export class AboutDialog extends Dialog {
   }
 }
 
-/** Image > Mode > Bitmap... and Indexed Color... (1.50.2): Photoshop's choices for the conversion. */
+/** Image > Mode > Bitmap... and Indexed Color... (1.50.2): the choices for the conversion. */
 export class ModeDialog extends Dialog {
   private readonly method = el<HTMLSelectElement>('<select class="cv-input" aria-label="Method"><option value="threshold">50% Threshold</option><option value="dither">Diffusion Dither</option></select>');
   private readonly colors = el<HTMLInputElement>('<input class="cv-input" type="number" min="2" max="256" value="256" aria-label="Colors">');

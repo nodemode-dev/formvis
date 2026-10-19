@@ -8,7 +8,7 @@ import { UPRIGHT, computeOption, shapeActive, type BrushDynamics, type BrushShap
 import type { SampledTip } from './abr';
 import { StrokeBuffer, TipAlpha, levelOf } from './dab-buffer';
 
-/** Painting strokes for formvis, on Photoshop's model. Dabs of a round brush tip are laid along the pointer's path,
+/** Painting strokes for formvis, on the standard dab model. Dabs of a round brush tip are laid along the pointer's path,
  *  evenly spaced and carried over between moves, into a deep buffer of coverage (floats, over the stroke's window);
  *  composing draws the paint layer from it over the area that changed and lays that onto a working copy of the pixels.
  *  A pixel shows the lesser of its coverage and the highest opacity any dab has reached there, so paint builds with
@@ -16,7 +16,7 @@ import { StrokeBuffer, TipAlpha, levelOf } from './dab-buffer';
  *  stand in for the brush colour, and on an alpha-coded mask the value under the brush moves toward the paint rather
  *  than only gaining coverage. */
 
-/** `flow` (0 to 1, default 1) is Photoshop's Flow: how much paint a quarter of the diameter of travel lays down, whatever
+/** `flow` (0 to 1, default 1) is Flow: how much paint a quarter of the diameter of travel lays down, whatever
  *  the spacing, so paint builds within a stroke as dabs overlap, up to `opacity`, which caps the stroke as a whole. */
 /** aliased (the Pencil): dabs are pixel-exact circles, every pixel painted fully or not at all. */
 export interface StrokeStyle { square?: boolean; bg?: RGB; aliased?: boolean; diameter: number; hardness: number; opacity: number; color: RGB; tip?: SampledTip | null; flow?: number; dabColor?: ((x: number, y: number) => RGB | null) | null }
@@ -755,7 +755,7 @@ export function sameBytes(a: Uint8ClampedArray, b: Uint8ClampedArray): boolean {
   return true;
 }
 
-/** The tip with Noise (its soft edge roughened) and Wet Edges (its centre lighter than its rim), as Photoshop's. */
+/** The tip with Noise (its soft edge roughened) and Wet Edges (its centre lighter than its rim). */
 function shapedTip(tip: Surface, noise: boolean, wet: boolean): Surface {
   const w = tip.width, h = tip.height, out = createSurface(w, h), c = ctxOf(out);
   c.drawImage(tip as CanvasImageSource, 0, 0);

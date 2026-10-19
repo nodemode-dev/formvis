@@ -1,4 +1,4 @@
-// Layered TIFF (DEV_PLAN 34.2): Photoshop's layers carried in a TIFF's ImageSourceData tag (37724), read and written here.
+// Layered TIFF (DEV_PLAN 34.2): PSD layers carried in a TIFF's ImageSourceData tag (37724), read and written here.
 import { readPsdFile, writePsdFile } from './psd';
 import { ctxOf, type Doc, type Surface } from '../engine';
 import type { PathSet } from '../engine/paths';
@@ -109,7 +109,7 @@ export async function readLayeredTiff(file: File): Promise<PsdRead | null> {
   }
 }
 
-/** The document as a little-endian TIFF with the composite and its Photoshop layers in tag 37724. */
+/** The document as a little-endian TIFF with the composite and its PSD layers in tag 37724. */
 export async function writeLayeredTiff(doc: Doc, composite: Surface, paths: PathSet | null = null): Promise<{ blob: Blob; notes: string[] }> {
   const { bytes, notes } = await writePsdFile(doc, composite, false, paths);
   const psd = new Uint8Array(bytes), pv = new DataView(bytes);

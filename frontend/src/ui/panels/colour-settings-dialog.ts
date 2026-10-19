@@ -208,7 +208,7 @@ export class ColorSettingsDialog extends Dialog {
   }
 }
 
-/** Registers Edit > Color Settings as the command `colour.settings` (Shift+Mod+K, Photoshop's key) and returns the
+/** Registers Edit > Color Settings as the command `colour.settings` (Shift+Mod+K) and returns the
  *  dialogs, so the opening path can show the missing-profile prompt when the settings ask for it. */
 export function installColorSettings(commands: Commands, engine: Engine, view: () => ColourView | null = () => null): { settings: ColorSettingsDialog; missing: MissingProfileDialog } {
   const settings = new ColorSettingsDialog(engine, view), missing = new MissingProfileDialog();

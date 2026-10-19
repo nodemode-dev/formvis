@@ -27,9 +27,9 @@ describe('paths in PSD', () => {
     expect(Array.from(new Uint8Array(out).slice(-2))).toEqual([9, 9]);
   });
 
-  it('leaves a file with no paths as it was, and refuses what is not a Photoshop file', () => {
+  it('leaves a file with no paths as it was, and refuses what is not a PSD file', () => {
     const b = minimal();
     expect(addPathResources(b, { list: [], active: null }, 200, 100)).toBe(b);
-    expect(() => readPathResources(new Uint8Array(40).buffer, 1, 1)).toThrow(/Photoshop/);
+    expect(() => readPathResources(new Uint8Array(40).buffer, 1, 1)).toThrow(/PSD/);
   });
 });

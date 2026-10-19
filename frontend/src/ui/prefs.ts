@@ -3,12 +3,12 @@ import { isLang, type Lang } from './i18n/langs';
 import type { GpuRenderer } from '../gpu/probe';
 import { DEFAULT_COLOUR, cleanColour, cleanPresets, type ColourPreset, type ColourSettings, type MismatchPref } from './colour-settings';
 
-/** Preferences that change how formvis works, kept on this device, as Photoshop's Preferences are. Every one acts on
+/** Preferences that change how formvis works, kept on this device. Every one acts on
  *  something real: History States and history memory are the undo limits every project uses; region redraws decide
  *  whether a brush stroke repaints only what it changed; the recovery delay is how soon after a change unsaved work is
  *  kept for crash recovery. The graphics processor settings choose the renderer (Phase 18). */
 export interface Prefs { language: Lang; profileMismatch: MismatchPref; colour: ColourSettings; colourPresets: ColourPreset[]; shortcuts: Record<string, string[]>; restoreSession: boolean; agentsAllowed: boolean; comfyuiUrl: string; nodemodeUrl: string; historyStates: number; historyMB: number; historyAuto: boolean; regionRedraws: boolean; recoverySeconds: number; autoShowHome: boolean; useGpu: boolean; gpuFilters: boolean; renderer: GpuRenderer; gpuMemoryMB: number; engineDevice: EngineDevice;
-  /* Photoshop's sections (the owner's walkthrough): Tools, History & Cache, Workspace, Cursors, Transparency & Gamut,
+  /* The sections (the owner's walkthrough): Tools, History & Cache, Workspace, Cursors, Transparency & Gamut,
      Units & Rulers, Guides & Grid; every one acts on something real. */
   zoomWheel: boolean; autoFirstSnapshot: boolean; snapshotMB: number; narrowCollapse: boolean;
   paintCursor: PaintCursor; cursorCrosshair: boolean; checkerSize: CheckerSize; checkerColors: CheckerColors; checkerTheme: boolean;
@@ -41,7 +41,7 @@ export const PAINT_CURSORS: ReadonlyArray<readonly [PaintCursor, string]> = [['t
 export const CHECKER_SIZES: ReadonlyArray<readonly [CheckerSize, string]> = [['none', 'None'], ['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']];
 export const CHECKER_COLORS: ReadonlyArray<readonly [CheckerColors, string]> = [['auto', 'Match Theme'], ['light', 'Light'], ['medium', 'Medium'], ['dark', 'Dark']];
 export const RULER_UNITS: ReadonlyArray<readonly [RulerUnits, string]> = [['px', 'Pixels'], ['in', 'Inches'], ['cm', 'Centimeters'], ['mm', 'Millimeters'], ['%', 'Percent']];
-/** The checkerboard's cell in screen pixels, and its two colours, as Photoshop's Transparency settings. */
+/** The checkerboard's cell in screen pixels, and its two colours (the Transparency settings). */
 export const CHECKER_CELL: Record<CheckerSize, number> = { none: 8, small: 4, medium: 8, large: 16 };
 export const CHECKER_PAIR: Record<Exclude<CheckerColors, 'auto'>, readonly [string, string]> = { light: ['#ffffff', '#cccccc'], medium: ['#cccccc', '#999999'], dark: ['#666666', '#999999'] };
 /** The checkerboard's two colours for a choice; Match Theme takes the light pair in a light theme and the dark pair in a dark one. */

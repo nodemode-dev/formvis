@@ -1,6 +1,6 @@
 import { Raster, newLayer, uid, type Doc, type ID } from '../engine';
 
-/** Affinity (.af, .afphoto, .afdesign, .afpub; DEV_PLAN 34.6): a proprietary, undocumented container that starts with the
+/** .af, .afphoto, .afdesign and .afpub files (DEV_PLAN 34.6): a proprietary, undocumented container that starts with the
  *  bytes 00 FF 4B 41. Its layers sit in a compressed file system formvis does not read; what it can read is the preview
  *  image (a PNG, in some versions a JPEG) embedded in the file, which opens as one layer. */
 export const isAffinityFile = (f: File): boolean => /\.(af|afphoto|afdesign|afpub)$/i.test(f.name);
@@ -48,20 +48,20 @@ function findImages(b: Uint8Array): { blob: Blob }[] {
 
 export async function readAffinity(file: File): Promise<{ doc: Doc; notes: string[]; activeId: ID | null; paths: null }> {
   const bytes = new Uint8Array(await file.arrayBuffer());
-  if (!matchesAt(bytes, 0, [0x00, 0xff, 0x4b, 0x41])) throw new Error('That is not an Affinity file.');
+  if (!matchesAt(bytes, 0, [0x00, 0xff, 0x4b, 0x41])) throw new Error('That is not an .af, .afphoto, .afdesign or .afpub file.');
   let best: ImageBitmap | null = null;
   for (const c of findImages(bytes)) {
     let bmp: ImageBitmap;
     try { bmp = await createImageBitmap(c.blob); } catch { continue; }   // a stray signature inside other data
     if (!best || bmp.width * bmp.height > best.width * best.height) { best?.close(); best = bmp; } else bmp.close();
   }
-  if (!best) throw new Error('This Affinity file carries no preview formvis can read.');
+  if (!best) throw new Error('This file carries no preview formvis can read.');
   const W = best.width, H = best.height;
   const doc: Doc = { id: uid(), width: W, height: H, resolution: 72, layers: [] };
   const raster = new Raster(W, H);
   raster.ctx.drawImage(best, 0, 0); best.close(); raster.touch();
-  const name = file.name.replace(/\.(af|afphoto|afdesign|afpub)$/i, '') || 'Affinity';
+  const name = file.name.replace(/\.(af|afphoto|afdesign|afpub)$/i, '') || 'Untitled';
   const layer = newLayer(name, doc, { raster });
   doc.layers = [layer];
-  return { doc, notes: [`Affinity files cannot be read layer by layer; this is the preview the file carries, ${W} by ${H}.`], activeId: layer.id, paths: null };
+  return { doc, notes: [`These files cannot be read layer by layer; this is the preview the file carries, ${W} by ${H}.`], activeId: layer.id, paths: null };
 }

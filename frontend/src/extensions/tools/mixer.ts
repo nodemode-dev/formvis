@@ -4,7 +4,7 @@ import { brushKeys, brushOptions, drawBrushCursor } from './brush-common';
 
 let hover: Pt | null = null;
 
-/** The Mixer Brush (B, with the Brush and Pencil; 1.56.2, the parity plan's L4), as Photoshop's: a wet brush that
+/** The Mixer Brush (B, with the Brush and Pencil; 1.56.2, the parity plan's L4): a wet brush that
  *  picks up the paint under it and mixes it with what it carries (engine/mixer.ts). Wet, Load and Mix in the options
  *  bar, with the two after-each-stroke refills and Sample All Layers; the Brush's size, hardness, opacity and flow. */
 export const mixerTool: Tool = {

@@ -4,7 +4,7 @@ import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
 import { checkRow, selectRow } from './controls';
 
-/** File > Automate > Photomerge and Merge to HDR (1.58.2, the parity plan's L6), as Photoshop's: choose the photos,
+/** File > Automate > Photomerge and Merge to HDR (1.58.2, the parity plan's L6): choose the photos,
  *  and the engine stitches a panorama (Auto or Reposition, transparent edges or cropped) or merges exposures into a
  *  32-bit picture; either opens as a new document. Rows are built once. */
 export class MergeDialog extends Dialog {
@@ -24,7 +24,7 @@ export class MergeDialog extends Dialog {
     const layout = selectRow('Layout', [['auto', 'Auto'], ['reposition', 'Reposition']], (v) => { this.layout = v as 'auto' | 'reposition'; });
     const crop = checkRow('Crop to the picture', (v) => { this.crop = v; });
     this.panoRows = el('<div></div>');
-    this.panoRows.append(layout.el, crop.el, el('<p class="cv-dialog-note">Auto finds where the photos meet and projects them onto a sphere; Reposition only moves and turns them. Photoshop\'s Perspective, Cylindrical and Collage are not offered here.</p>'));
+    this.panoRows.append(layout.el, crop.el, el('<p class="cv-dialog-note">Auto finds where the photos meet and projects them onto a sphere; Reposition only moves and turns them. Perspective, Cylindrical and Collage layouts are not offered here.</p>'));
     this.panoRows.hidden = mode !== 'panorama';
     const intro = mode === 'panorama' ? 'Choose two or more overlapping photos.' : 'Choose two or more exposures of the same scene; their exposure times come from the photos\' EXIF, or are worked out from the photos.';
     this.body.append(el(`<p class="cv-dialog-note">${intro}</p>`), choose, this.input, this.picked, this.panoRows, this.note);

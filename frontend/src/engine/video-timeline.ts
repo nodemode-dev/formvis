@@ -1,7 +1,7 @@
 import type { Frame, FrameLayer } from './timeline';
 import { defaultEffects, uid, type Doc, type ID, type LayerEffects } from './types';
 
-/** The video timeline (1.59.2, DEV_PLAN 25.1), as Photoshop's and Photon Studio's: time counted in frames at a frame
+/** The video timeline (1.59.2, DEV_PLAN 25.1): time counted in frames at a frame
  *  rate, a work area, and per layer a track: its clip (where it starts on the timeline and how long it lasts; outside
  *  it the layer does not show), keyframes of Position X and Y, Opacity, Fill Opacity and Style (each linear or hold),
  *  and fades at the clip's ends. The picture at any frame is the layers in the state `stateAt` gives them, rendered
@@ -20,7 +20,7 @@ export interface VideoTimeline { fps: number; duration: number; current: number;
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
 
 /** A new video timeline for `doc`: `fps` frames a second for `seconds`, a track per layer across the whole of it,
- *  the work area the whole length (30 frames a second and 5 seconds, as Photoshop and Photon start). */
+ *  the work area the whole length (30 frames a second and 5 seconds). */
 export function newVideoTimeline(doc: Doc, fps = 30, seconds = 5): VideoTimeline {
   const duration = Math.max(1, Math.round(fps * seconds)), tracks: Record<ID, Track> = {};
   for (const l of doc.layers) tracks[l.id] = { start: 0, length: duration, keys: {} };
@@ -49,8 +49,7 @@ export function stateAt(doc: Doc, vt: VideoTimeline, f: number): Record<ID, Fram
     if (!tr) continue;
     const inside = f >= tr.start && f < tr.start + tr.length, k = tr.keys;
     let opacity = clamp(valueAt(k.opacity, f, l.opacity), 0, 1);
-    // A fade without a colour fades the layer out of sight; with one (1.60.1, Photoshop's Fade With Black and Fade With
-    // White) the layer turns to that colour at the clip's edge instead, through a colour overlay on top of its style.
+    // A fade without a colour fades the layer out of sight; with one (1.60.1, Fade With Black and Fade With White) the layer turns to that colour at the clip's edge instead, through a colour overlay on top of its style.
     let tint: { color: FadeColor; amount: number } | null = null;
     const ease = (fade: Fade | null | undefined, m: number): void => {
       if (!inside || !fade || fade.frames <= 0) return;

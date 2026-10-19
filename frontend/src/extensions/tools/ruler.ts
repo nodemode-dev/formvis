@@ -4,13 +4,13 @@ import type { OptionSpec, Tool } from '../registry';
 let drag: 'a' | 'b' | 'new' | null = null;
 const NEAR = 8;
 
-/** The line's angle as Photoshop reports it (counter-clockwise positive), its length and extent. */
+/** The line's angle (counter-clockwise positive), its length and extent. */
 function measures(r: { a: Pt; b: Pt }): { angle: number; length: number; w: number; h: number } {
   const dx = r.b.x - r.a.x, dy = r.b.y - r.a.y;
   return { angle: (-Math.atan2(dy, dx) * 180) / Math.PI, length: Math.hypot(dx, dy), w: dx, h: dy };
 }
 
-/** The Ruler (I), as Photoshop's (the owner's tool list): drag to measure, drag an end to adjust; the bar and the Info
+/** The Ruler (I, the owner's tool list): drag to measure, drag an end to adjust; the bar and the Info
  *  panel give its angle and length; Straighten Layer turns the layer so the line lies level; Clear removes it. */
 export const rulerTool: Tool = {
   id: 'ruler', label: 'Ruler', key: 'I', order: 80.6,

@@ -40,7 +40,7 @@ function systemWindows(): RGB[] {
 }
 const TABLES: Record<string, () => RGB[]> = { black: blackBody, gray: grayscale, spectrum, mac: systemMac, windows: systemWindows };
 
-/** Reads an Adobe Color Table: 768 bytes of RGB, optionally a 16-bit count and a 16-bit transparent index (772 bytes). */
+/** Reads a .act colour table: 768 bytes of RGB, optionally a 16-bit count and a 16-bit transparent index (772 bytes). */
 export function parseAct(buf: ArrayBuffer): RGB[] | null {
   const b = new Uint8Array(buf);
   if (b.length !== 768 && b.length !== 772) return null;
@@ -48,7 +48,7 @@ export function parseAct(buf: ArrayBuffer): RGB[] | null {
   if (b.length === 772) { n = (b[768] << 8) | b[769]; if (n < 1 || n > 256) n = 256; }
   return Array.from({ length: n }, (_, i) => ({ r: b[i * 3], g: b[i * 3 + 1], b: b[i * 3 + 2] }));
 }
-/** Writes an Adobe Color Table of 772 bytes: the palette padded with black to 256, then the count and no transparent index. */
+/** Writes a .act colour table of 772 bytes: the palette padded with black to 256, then the count and no transparent index. */
 export function writeAct(pal: readonly RGB[]): Uint8Array {
   const b = new Uint8Array(772);
   pal.slice(0, 256).forEach((c, i) => { b[i * 3] = c.r; b[i * 3 + 1] = c.g; b[i * 3 + 2] = c.b; });
@@ -121,7 +121,7 @@ export class ColorTableDialog extends Dialog {
   }
   private async load(f: File): Promise<void> {
     const pal = parseAct(await f.arrayBuffer());
-    if (!pal) { this.note.textContent = 'Not an Adobe Color Table (.act) file.'; return; }
+    if (!pal) { this.note.textContent = 'Not a colour table (.act) file.'; return; }
     this.pal = pal; this.tableRow.set('custom'); this.draw();
   }
   private save(): void {

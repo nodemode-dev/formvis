@@ -7,7 +7,7 @@ let draft: { anchor: Pt; point: Pt; shiftAtPress: boolean; altAtPress: boolean; 
 
 const NOUN: Record<string, string> = { triangle: 'a triangle', rectangle: 'a rectangle', ellipse: 'an ellipse', polygon: 'a polygon', star: 'a star', heart: 'a heart', line: 'a line', arrow: 'an arrow', custom: 'a custom shape' };
 const KINDS = ['rectangle', 'ellipse', 'triangle', 'polygon', 'star', 'line', 'arrow', 'heart', 'custom'] as const;
-/** Each kind as a flyout entry with its own icon, named as Photoshop's shape tools. */
+/** Each kind as a flyout entry with its own icon and the usual shape tool names. */
 const SHAPE_ICONS: Record<string, string> = { triangle: 'tTriangle', rectangle: 'tRect', ellipse: 'tEllipseShape', polygon: 'tPolygon', star: 'tStar', line: 'tLine', arrow: 'tArrow', heart: 'tHeart', custom: 'tCustomShape' };
 const SHAPE_NAMES: Record<(typeof KINDS)[number], string> = { triangle: 'Triangle', rectangle: 'Rectangle', ellipse: 'Ellipse', polygon: 'Polygon', star: 'Star', line: 'Line', arrow: 'Arrow', heart: 'Heart', custom: 'Custom Shape' };
 const lineLike = (k: string): boolean => k === 'line' || k === 'arrow';
@@ -83,13 +83,13 @@ export const shapeTool: Tool = {
     const s = e.shapeSettings, set = (patch: Partial<typeof s>): void => { Object.assign(s, patch); e.emit('options', null); };
     return [
       { kind: 'title', text: 'Shape' },
-      // Photoshop's Mode, Fill and Stroke (the owner's tool list): a shape layer, a path, or pixels; each colour the
+      // Mode, Fill and Stroke (the owner's tool list): a shape layer, a path, or pixels; each colour the
       // foreground, the background or none; the stroke's width.
       { kind: 'segment', label: 'Mode', priority: 70, choices: [{ id: 'shape', label: 'Shape' }, { id: 'path', label: 'Path' }, { id: 'pixels', label: 'Pixels' }], get: () => s.mode, set: (v) => set({ mode: v as 'shape' | 'path' | 'pixels' }) },
       { kind: 'segment', label: 'Fill', priority: 90, choices: [{ id: 'fg', label: 'Foreground' }, { id: 'bg', label: 'Background' }, { id: 'none', label: 'None' }], get: () => s.fill, set: (v) => set({ fill: v as 'fg' | 'bg' | 'none' }), when: () => s.mode !== 'path' },
       { kind: 'segment', label: 'Stroke', priority: 85, choices: [{ id: 'none', label: 'None' }, { id: 'fg', label: 'Foreground' }, { id: 'bg', label: 'Background' }], get: () => s.stroke, set: (v) => set({ stroke: v as 'fg' | 'bg' | 'none' }), when: () => s.mode !== 'path' },
       { kind: 'range', label: 'Width', priority: 80, min: 0.5, max: 200, unit: 'px', get: () => s.strokeWidth, set: (v: number) => set({ strokeWidth: Math.max(0.5, Math.min(200, v)) }), when: () => s.mode !== 'path' && s.stroke !== 'none' },
-      // Stroke Type and Align (1.52.8, the tool audit), as Photoshop's stroke options.
+      // Stroke Type and Align (1.52.8, the tool audit).
       { kind: 'select', label: 'Stroke Type', priority: 50, choices: [{ id: 'solid', label: 'Solid' }, { id: 'dashed', label: 'Dashed' }, { id: 'dotted', label: 'Dotted' }], get: () => s.strokeDash, set: (v: string) => set({ strokeDash: v as typeof s.strokeDash }), when: () => s.mode !== 'path' && s.stroke !== 'none' },
       { kind: 'select', label: 'Align', priority: 40, choices: [{ id: 'inside', label: 'Inside' }, { id: 'center', label: 'Center' }, { id: 'outside', label: 'Outside' }], get: () => s.strokeAlign, set: (v: string) => set({ strokeAlign: v as typeof s.strokeAlign }), when: () => s.mode !== 'path' && s.stroke !== 'none' },
       { kind: 'segment', label: 'Shape', priority: 95, choices: KINDS.map((k) => ({ id: k, label: k[0].toUpperCase() + k.slice(1) })), get: () => s.kind, set: (v) => { s.kind = v as typeof s.kind; e.emit('options', null); e.emit('tool', null); } },

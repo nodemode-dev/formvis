@@ -143,7 +143,7 @@ function stepFor(it: Item): ActionStep | null {
 export function parseAtn(buf: ArrayBuffer): { actions: Action[]; unsupported: string[] } {
   const r = new Reader(buf);
   const actions: Action[] = [], unsupported: string[] = [];
-  if (r.u32() !== 16) throw new Error('not a Photoshop actions file');
+  if (r.u32() !== 16) throw new Error('not an .atn actions file');
   r.unicode();
   r.u8();
   const count = r.u32();

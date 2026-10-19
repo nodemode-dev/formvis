@@ -12,7 +12,7 @@ import { checkRow, selectRow, sliderRow } from './controls';
 const BOX_W = 280, BOX_H = 200;
 type View = 'original' | 'optimized' | '2up' | '4up';
 const VIEWS: ReadonlyArray<readonly [View, string]> = [['original', 'Original'], ['optimized', 'Optimized'], ['2up', '2-Up'], ['4up', '4-Up']];
-/** Download speeds in kilobits a second, as Photoshop lists them. */
+/** Download speeds in kilobits a second. */
 const SPEEDS: ReadonlyArray<readonly [string, string]> = [['28.8', '28.8 Kbps Modem'], ['56.6', '56.6 Kbps Dial-up'], ['128', '128 Kbps Dual ISDN'], ['256', '256 Kbps Cable'], ['512', '512 Kbps Cable'], ['1500', '1.5 Mbps T1'], ['10000', '10 Mbps Broadband']];
 /** The settings one optimized pane encodes with. */
 interface Cfg { fmt: Fmt; quality: number; colors: number; dither: 'none' | 'diffusion'; transparency: boolean }
@@ -119,7 +119,7 @@ export class SaveForWebDialog extends Dialog {
   }
 
   /** The current settings and two cheaper ones: lower quality for JPEG and WebP, fewer colours for GIF and PNG-8, and for
-   *  PNG-24 (lossless) 256 and 64 colour PNG-8, as Photoshop's 4-Up does. */
+   *  PNG-24 (lossless) 256 and 64 colour PNG-8, as a 4-Up view shows. */
   private variants(): Cfg[] {
     const c = this.cfg;
     if (c.fmt === 'jpeg' || c.fmt === 'webp') return [c, { ...c, quality: Math.max(1, Math.round(c.quality * 0.6)) }, { ...c, quality: Math.max(1, Math.round(c.quality * 0.3)) }];

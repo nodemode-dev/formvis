@@ -9,7 +9,7 @@ export const bucketTool: Tool = {
   down(ctx, p) { if (p.button === 0) ctx.engine.paintBucket(p.doc); },
   options: (e) => [
     { kind: 'title', text: 'Paint Bucket' },
-    // Source, Pattern and Mode (1.49.10, the owner's tool list), as Photoshop's bar.
+    // Source, Pattern and Mode (1.49.10, the owner's tool list).
     { kind: 'segment', label: 'Source', priority: 70, choices: [{ id: 'fg', label: 'Foreground' }, { id: 'pattern', label: 'Pattern' }], get: () => e.bucket.source, set: (v) => e.setBucket({ source: v === 'pattern' ? 'pattern' : 'fg' }) },
     { kind: 'select', label: 'Pattern', priority: 65, choices: allPatterns().map((x) => ({ id: x.id, label: x.name })), get: () => e.bucket.pattern ?? allPatterns()[0]?.id ?? '', set: (v: string) => e.setBucket({ pattern: v }), when: () => e.bucket.source === 'pattern' },
     { kind: 'select', label: 'Mode', priority: 75, choices: BLEND_MODES.filter((m) => canvasBlend(m.id)).map((m) => ({ id: m.id, label: m.label })), get: () => e.bucket.mode, set: (v: string) => e.setBucket({ mode: v as typeof e.bucket.mode }) },

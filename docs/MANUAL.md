@@ -7,7 +7,7 @@ ask it questions.
 ## Getting started
 
 - New document: File > New sets the size, resolution, colour mode (RGB, Grayscale or Bitmap) and background.
-- Open: File > Open Project opens formvis projects (.fmv), Photoshop files (.psd, .psb), OpenRaster files (.ora) and
+- Open: File > Open Project opens formvis projects (.fvd, and .fmv from before 1.87.0), PSD and PSB files, OpenRaster files (.ora) and
   images (PNG, JPEG, WebP, AVIF, GIF, TIFF, HEIC, QOI, TGA, ICO, PBM, PGM, PPM, PAM, camera raw and more). Dropping files on the window opens them too.
 - Opening one camera RAW (DNG, CR2, CR3, NEF, ARW and the rest) shows Camera Raw first: a half-size preview,
   White Balance (As Shot, Auto or Daylight), Temperature and Tint, applied in the RAW decode, and 8 or 16 bits per
@@ -18,8 +18,11 @@ ask it questions.
   side) opens as a reduced copy that fits, a region at full size, or tiles at full size, each tile its own document.
   File > Export > Assemble Tiles puts the edited tiles back together as one full-size PNG, written by the engine a
   strip at a time. Opening needs memory for the whole picture once, about 4 bytes a pixel; the dialog says how much.
-- Save: File > Save keeps everything editable in a .fmv project: layers, masks, adjustments, text, paths and history
-  snapshots.
+- Save: File > Save keeps everything editable in a .fvd project: layers, masks, adjustments, text, paths and history
+  snapshots, with a thumbnail for Home. In the app for Mac, Windows and Linux, Save writes back to the document's file; Save As, the first
+  Save of a new document and every export ask where in the system's save panel. In a browser, projects go to the
+  library and exports download. Open > Browse... opens any project or picture; Folder... opens an unpacked project
+  folder, or every project and picture in an ordinary folder.
 - File > Save a Copy (Alt+Ctrl+S) puts a copy of the document in the library under another name, in one layer with
   Layers off, and leaves the document in its tab as it was. File > Revert goes back to the document as last saved, as
   one step that Undo takes back (F12 in the desktop app). File > Close All and Close Others close every document, or
@@ -53,8 +56,11 @@ ask it questions.
   zooms and rotates but takes no tool input (paint in the main view); Float keeps the document's tab; extra views and
   tile sizes are not saved with the project. Cascade and Tile are not built.
 - Workspaces arrange the panels for a kind of work, and the lock keeps an arrangement from being changed by accident.
-- Preferences (Edit > Preferences, Ctrl+comma) has Photoshop's sections: General, Interface, Performance, Workspace, Tools, History
+- Preferences (Edit > Preferences, Ctrl+comma) has these sections: General, Interface, Performance, Workspace, Tools, History
   & Cache, File Handling, Cursors, Transparency & Gamut, Units & Rulers, Guides & Grid, and Plugins.
+- Home has a navigation column (Start, Recent, Projects, Outputs, Create, Preferences, Help). Start offers Open, New
+  document, a drop zone, your recent files and new document sizes; Recent, Projects and Outputs list files as
+  thumbnails or a list with filter and sort. The brand mark at the top left opens Home at any time.
 - The Home screen is optional. Preferences > General has Show Home screen at launch (on) and Show Home screen when
   the last document closes (off): with it off, closing the last document leaves the empty workspace with its panels
   where they were. Both are commands too (pref-home-launch, pref-home-last-close).
@@ -93,15 +99,15 @@ ask it questions.
 
 - Kinds: pixel layers, text, shapes, smart objects (their original kept, with filters that stay editable), fill
   layers, adjustment layers and groups (folders, which pass their contents through to what is below).
-- Each layer has a blend mode (all 27 of Photoshop's), opacity and fill, a layer mask, and layer styles (Drop Shadow,
+- Each layer has a blend mode (27 of them), opacity and fill, a layer mask, and layer styles (Drop Shadow,
   Outer and Inner Glow, Stroke, Inner Shadow, Satin, Bevel and Emboss, overlays).
 - A clipping mask shows a layer only where the layer below it has pixels.
-- File > Scripts holds Photoshop's housekeeping scripts, each one undoable step: Delete All Empty Layers (pixel layers
+- File > Scripts holds housekeeping scripts, each one undoable step: Delete All Empty Layers (pixel layers
   with nothing visible and empty groups; the Background and adjustment, fill, type, shape and smart object layers, and
   artboards, stay; it says how many went), Flatten All Layer Effects (every layer style drawn into its layer's pixels;
   a type, shape or fill layer that has one is rasterized) and Flatten All Masks (every layer mask and vector mask
   applied into the pixels and removed). Layers to Files and Artboards to Files are in the same menu.
-- The Layer menu arranges layers as Photoshop's does: Arrange > Bring to Front and Send to Back (Shift+Ctrl+] and
+- The Layer menu arranges layers: Arrange > Bring to Front and Send to Back (Shift+Ctrl+] and
   Shift+Ctrl+[) and Reverse, Group from Layers and Ungroup Layers, Hide Layers, Delete > Delete Hidden Layers, Merge
   Down, Merge Visible (hidden layers stay) and Flatten Image; Layer > New > Layer via Copy and Layer via Cut (Ctrl+J,
   Shift+Ctrl+J) lift the selection to a new layer, and Layer from Background makes the Background an ordinary layer.
@@ -112,7 +118,7 @@ ask it questions.
   Group); a lock in the Layers panel marks each locked layer.
 - Edit > Transform Layer (Alt+Ctrl+T) shows the Move tool's handles. Edit > Transform's Scale and Rotate make every
   handle scale, or every handle and the space outside the box turn, until Enter or Escape; Skew, Distort and
-  Perspective pull the corners and the middles of the sides as Photoshop's do (a side slides along itself in Skew, a
+  Perspective pull the corners and the middles of the sides (a side slides along itself in Skew, a
   corner and its partner move apart in Perspective), applied with Enter. Rotate 180° and the 90° turns turn the
   selected layers about their centre, and Again (Shift+Ctrl+T in the desktop app) repeats the last transform, on a
   copy with Alt+Shift+Ctrl+T.
@@ -130,7 +136,7 @@ ask it questions.
   Emboss); with a Contour shaping its profile and a Texture pressing a pattern into it. Global Light sets the light
   that effects using it share; Create Layers turns a style into layers of their own that look the same; Hide All
   Effects hides every style until Show All Effects; Scale Effects scales a style's sizes and distances.
-- Tools and commands work where Photoshop's do: painting an adjustment layer paints its mask, as does painting a fill
+- Tools and commands work on every kind of layer they can: painting an adjustment layer paints its mask, as does painting a fill
   layer while its mask is the target; a text or shape layer, or a fill layer's own content, asks to be rasterized
   first.
 - The Artboard tool (V cycles it with Move) makes artboards, folders that clip their contents to a size. Drag on
@@ -176,8 +182,8 @@ ask it questions.
   cables, people other than the subject, and distractions (other salient objects as well as people), filling them so
   the scene continues, as one step. These use the face finder, Segment Anything 2 and LaMa from Preferences > Plugins
   > Local models.
-- Brush, Pencil and Eraser (including Background and Magic Eraser), with Photoshop's brush settings: shape dynamics,
-  scattering, colour dynamics, transfer, noise and wet edges. Brushes from Photoshop .abr files can be imported.
+- Brush, Pencil and Eraser (including Background and Magic Eraser), with full brush settings: shape dynamics,
+  scattering, colour dynamics, transfer, noise and wet edges. Brushes from .abr files can be imported, with their spacing.
 - On very large pictures a stroke uses memory only around where it paints. The status bar shows how much memory
   formvis holds of what this computer allows it; work that would not fit is refused with a message, not lost.
 - Clone Stamp (Sample: Current Layer, Current & Below or All Layers; Mode; Flow), Healing Brush, Spot Healing, Patch,
@@ -204,7 +210,7 @@ ask it questions.
   along; Paste size sets how much of the plane it covers); Stamp clones in perspective (Alt-click a source, then
   paint). OK applies it as one step.
 - The Gradient Editor (click the gradient in the Gradient tool's options) has opacity stops above the bar and colour
-  stops below it, each with a draggable midpoint between neighbours. Photoshop `.grd` files keep the midpoints and the
+  stops below it, each with a draggable midpoint between neighbours. `.grd` files keep the midpoints and the
   opacity stops both ways. Limit: a Gradient Fill layer and the stops read from a PSD fill layer keep their dense list
   of stops, without editable midpoints.
 - Quick Shape (on by default for the Brush, Pencil and Eraser): end a stroke by holding still with the button down
@@ -225,7 +231,7 @@ ask it questions.
   Dynamics (size, angle and roundness varied by pen pressure, tilt, rotation or at random), Scattering, Texture,
   Dual Brush, Color Dynamics, Transfer, Noise and Wet Edges. A setting that is off leaves the stroke exactly as a plain
   round brush paints it.
-- The Brushes panel lists presets and imports Photoshop `.abr` files, whose sampled tips become brushes you can size
+- The Brushes panel lists presets and imports `.abr` files, whose sampled tips become brushes you can size
   and rotate like any other.
 - A pen's pressure (and tilt and twist where the pen reports them) drives size and flow. A touch screen's force does
   the same, and so does a Force Touch trackpad's press on a Mac; a plain mouse paints at full pressure.
@@ -260,7 +266,7 @@ ask it questions.
   faded film, or a .cube file), Develop (tone, colour and detail, with a vignette), Clarity (midtone local contrast),
   Dehaze, Texture (fine detail), Light (Brightness, Contrast, Highlights, Shadows, Whites and Blacks), Grain, Split
   Toning, Halation and Glow. Clarity, Dehaze, Texture and Light are small, maskable slices of Develop; Clarity and
-  Texture scale their radius with the picture, so they look the same at any zoom. Photoshop has no matching layers, so
+  Texture scale their radius with the picture, so they look the same at any zoom. PSD has no matching layers, so
   a PSD export drops them as it does Develop.
 - Grain has presets by film speed, ISO 100 to ISO 3200.
 - Layer > New Film Layer adds a Light Leak (warm light from an edge or corner, in Screen blend) or a Frame (a film
@@ -469,7 +475,7 @@ other modes and depths its menu items are off, with the reason as their tooltip.
 
 ## Lab documents
 
-- Image > Mode > Lab Color turns an 8-bit RGB document into CIE Lab (with the D50 white Photoshop's Lab uses); RGB
+- Image > Mode > Lab Color turns an 8-bit RGB document into CIE Lab (with the D50 white that PSD's Lab uses); RGB
   Color turns it back exactly. Painting, text, shapes, fills and filters work in it; the pixels they leave alone keep
   their Lab values. The Channels panel shows Lab, Lightness, a and b (a and b mid-grey where neutral), and Info reads
   L, a and b. Levels and Curves work on Lightness, a and b; the colour adjustments (Hue/Saturation, Black and White and
@@ -496,7 +502,7 @@ other modes and depths its menu items are off, with the reason as their tooltip.
 - Painting, the retouching tools and the other filters work at 32 bits too: what they leave alone keeps its light
   exactly, above white included, and what they change takes the new colour. Painting white over a highlight already
   brighter than white leaves it as it was. Groups, masks, clipping masks and layer styles work at 32 bits, and so does
-  every blend mode: Photoshop's 32-bit modes keep light above white, and the others blend in the visible range, light
+  every blend mode: the 32-bit modes keep light above white, and the others blend in the visible range, light
   above white kept wherever one layer alone covers a pixel. Unsharp Mask and Add Noise keep light above white too.
   Convert to Profile converts linear light exactly between RGB profiles; proofing works as in other documents. Indexed
   Color, Bitmap, CMYK and Lab bring the document down first (HDR Toning asks how); Grayscale keeps 32 bits, taking
@@ -547,8 +553,8 @@ other modes and depths its menu items are off, with the reason as their tooltip.
   document, or every size as a layer); exporting an ICO resamples the document into each size you tick (16, 24, 32, 48,
   64, 128, 256), fitted in a square with transparent margins, as PNG for 256 and BMP for the smaller sizes or as PNG
   for all. QOI, TGA and ICO hold 8 bits, so a deeper document is written at 8 bits, said so.
-- File > Export also writes Photoshop files (layers, masks, groups and more) and OpenRaster files for Krita, GIMP and
-  MyPaint. Adjustment layers have no OpenRaster form and are left out, said so.
+- File > Export also writes PSD files (layers, masks, groups and more) and OpenRaster files for other painting
+  programs. Adjustment layers have no OpenRaster form and are left out, said so.
 - File > Export > Layers to Files writes every layer as its own image, at the document's size (or cut to its pixels
   with Trim Layers), with its layer style and mask applied, named prefix_NNNN_layername (the number counts from the top
   of the stack; characters a file name should not have become underscores). Choose the file name prefix, Visible Layers
@@ -566,7 +572,7 @@ other modes and depths its menu items are off, with the reason as their tooltip.
   record (make, model, lens, exposure, aperture, ISO, focal length, date taken) read only, and the Created and Modified
   dates. OK is one step in History called File Info. The fields are saved in the project, and Copyrighted puts the
   copyright symbol before the title in the document tab. They are written as standard XMP into PNG, JPEG, TIFF, WebP and
-  PSD files (Export As, the Export menu and Export > Photoshop), and read back when such a file is opened. Agents set
+  PSD files (Export As and the Export menu), and read back when such a file is opened. Agents set
   them with the `file-info` command and parameters (title, author, author_title, description, rating,
   description_writer, keywords, copyright_status, copyright_notice, copyright_url), no dialog needed.
 
@@ -590,7 +596,7 @@ other modes and depths its menu items are off, with the reason as their tooltip.
 ## Terminal
 
 - Window > Terminal opens a terminal dock along the foot of the window (Ctrl+J, Cmd+J on a Mac, when no layer is open
-  or the dock has focus; with a layer open, Ctrl+J is Layer via Copy, as in Photoshop); the same key in the dock or the
+  or the dock has focus; with a layer open, Ctrl+J is Layer via Copy); the same key in the dock or the
   hide button closes it, and the shells keep running while it is hidden. Drag the grip above it to resize; its
   height and whether it is open are remembered, and the window opens as you left it without moving.
 - Each tab is a shell started in the formvis folder by the engine on this computer, with formvis's own command
@@ -668,7 +674,7 @@ other modes and depths its menu items are off, with the reason as their tooltip.
 
 ## Keyboard shortcuts
 
-- Help > Keyboard Shortcuts lists every shortcut. Most follow Photoshop's: tools by their letters, and Ctrl (Cmd on a
+- Help > Keyboard Shortcuts lists every shortcut. Most are the industry-standard ones: tools by their letters, and Ctrl (Cmd on a
   Mac) with Z to undo, with S to save, with J for Layer via Copy, and with a comma for Preferences. Edit > Toggle
   Last State (Alt+Ctrl+Z) undoes the last step, or brings back the one just undone.
 - Edit > Search (Ctrl+K) finds a command or a tool from a few letters of its name, in order (gblur for Gaussian

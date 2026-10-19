@@ -1,6 +1,6 @@
 import type { RGB } from './types';
 
-/** Gradients as Photoshop has them: five types (Linear, Radial, Angle, Reflected, Diamond) and presets of colour
+/** Gradients: five types (Linear, Radial, Angle, Reflected, Diamond) and presets of colour
  *  stops, where a stop's colour may be the current foreground or background. Canvas draws the first four through its
  *  own gradients (Angle as a conic gradient, Reflected as a linear one mirrored about the start); Diamond has no
  *  canvas form and is computed here per pixel. */
@@ -12,13 +12,13 @@ export const GRADIENT_TYPES: ReadonlyArray<{ id: GradientType; label: string }> 
 
 /** `mid` is the midpoint between this stop and the next, as a fraction of the gap (0.05 to 0.95, default 0.5). */
 export interface GradientStop { at: number; color: RGB | 'fg' | 'bg'; alpha: number; mid?: number }
-/** Photoshop's separate opacity stops (with their own midpoints). When a preset has them, `stops` are its colour stops
+/** Separate opacity stops (with their own midpoints), as .grd files carry them. When a preset has them, `stops` are its colour stops
  *  (their `alpha` kept only as the opacity at that spot, for readers that know nothing of opacity stops). */
 export interface OpacityStop { at: number; alpha: number; mid?: number }
 export interface GradientPreset { id: string; label: string; stops: GradientStop[]; opacityStops?: OpacityStop[] }
 
 export const clampMid = (m: number | undefined): number => (typeof m === 'number' && Number.isFinite(m) ? Math.min(0.95, Math.max(0.05, m)) : 0.5);
-/** Photoshop's midpoint curve: t' = t ^ (log 0.5 / log m), so t' is 0.5 at t = m. */
+/** The midpoint curve: t' = t ^ (log 0.5 / log m), so t' is 0.5 at t = m. */
 export const midCurve = (t: number, m: number | undefined): number => { const k = clampMid(m); return k === 0.5 ? t : Math.pow(t, Math.log(0.5) / Math.log(k)); };
 
 const rgb = (r: number, g: number, b: number): RGB => ({ r, g, b });
@@ -60,7 +60,7 @@ export function gradientsFromJson(raw: unknown): GradientPreset[] {
   });
 }
 
-/** Photoshop's Noise gradient: colours that wander at random between stops, more wildly with roughness (0 to 100),
+/** The Noise gradient: colours that wander at random between stops, more wildly with roughness (0 to 100),
  *  the same for the same seed. Returned as ordinary stops so it draws, saves and reverses like any gradient. */
 export function noiseStops(seed: number, roughness: number): GradientStop[] {
   let s = (seed >>> 0) || 1;

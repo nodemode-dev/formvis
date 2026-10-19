@@ -1,10 +1,9 @@
 import { el, setHidden } from './dom';
 import { icon } from './icons';
 
-/** The side dock's panels, arranged as Photoshop's: drag a panel by its header to move it up or down the dock (a line
+/** The side dock's panels: drag a panel by its header to move it up or down the dock (a line
  *  shows where it will land), show or hide panels from the Window menu, and have the arrangement remembered on this
- *  device. Sourced in the planning notes' workspace research (Adobe's "Arrange and group panels" and "Dock or undock
- *  panels"; TeachUcomp). Every panel in the side dock moves, the Layers panel included; floating panels and grouping into
+ *  device. Sourced in the planning notes' workspace research. Every panel in the side dock moves, the Layers panel included; floating panels and grouping into
  *  tabs come later. */
 export interface DockPanel { id: string; label: string; selector: string }
 export const DOCK_PANELS: readonly DockPanel[] = [
@@ -44,7 +43,7 @@ const DEFAULT_SIDE = SIDE_PANELS.map((p) => p.id);
 interface DockState { order: string[]; hidden: string[]; side: string[] }
 const KEY = 'formvis.dock';
 const HEIGHTS_KEY = 'formvis.dock.heights';
-/** As the target's Essentials (and Photoshop's): Navigator, Swatches and Layers shown; Timeline and History in Window. */
+/** The Essentials default: Navigator, Swatches and Layers shown; Timeline and History in Window. */
 const DEFAULT: DockState = { order: DOCK_PANELS.map((p) => p.id), hidden: ['generate', 'timeline', 'history', 'info', 'layer-comps', 'styles', 'gradients', 'patterns', 'shapes', 'measurement-log', 'modifier-keys', 'adjustments', 'notes', 'histogram', 'clone-source', 'reference'], side: [...DEFAULT_SIDE] };
 
 function load(): DockState {

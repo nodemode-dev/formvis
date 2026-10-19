@@ -5,7 +5,7 @@ import { holdEnd, holdMove, holdStart, quickShapeOption, quickShapeSnapped } fro
 
 let hover: Pt | null = null, autoErase = false;
 
-/** The Pencil (B), as Photoshop's (the owner's tool list): hard pixel-exact strokes, every pixel painted fully or not
+/** The Pencil (B, the owner's tool list): hard pixel-exact strokes, every pixel painted fully or not
  *  at all, at the brush's size and opacity; Auto Erase paints the background colour when a stroke starts on the
  *  foreground colour. */
 export const pencilTool: Tool = {

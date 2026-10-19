@@ -2,7 +2,7 @@ import { cornerRadiiOf, type Engine } from '../../engine';
 import { Dialog } from '../dialogs';
 import { checkRow, numberRow } from './controls';
 
-/** Layer > Corner Radii: a rectangle shape's live corners, as Photoshop's Properties panel sets them. With Link
+/** Layer > Corner Radii: a rectangle shape's live corners, as the Properties panel sets them. With Link
  *  Corners on, changing one changes all four; OK redraws the shape from its parameters as one step. */
 export class CornersDialog extends Dialog {
   private id: string | null = null;

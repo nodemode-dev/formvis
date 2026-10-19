@@ -5,7 +5,7 @@ import { composeFloat } from '../engine/compose-float';
 import { decodeLab } from '../engine/lab';
 import { PanelGroup } from './panel-group';
 
-/** The Info panel (1.49.6, the owner's tool list), as Photoshop's: the colour and position under the pointer, the
+/** The Info panel (1.49.6, the owner's tool list): the colour and position under the pointer, the
  *  selection's size, the Ruler's measurements and each Color Sampler's colour. It reads the image only while shown,
  *  and only again after a change. */
 export class InfoPanel {

@@ -4,7 +4,7 @@ import { toolHost, type OptionSpec, type Tool } from '../registry';
 let drag: { id: string; from: Pt; start: Pt; moved: boolean } | null = null;
 const NEAR = 10;
 
-/** The Note (I), as Photoshop's (the owner's tool list): click the canvas to pin a note and write it; click a note to
+/** The Note (I, the owner's tool list): click the canvas to pin a note and write it; click a note to
  *  edit it, drag it to move it, Alt-click it to delete it. Notes are saved with the document and shown whatever the
  *  tool. */
 export const noteTool: Tool = {

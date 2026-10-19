@@ -1,5 +1,5 @@
 """Camera profiles for Camera Raw import and Develop (DEV_PLAN 28.2): the `.dcp` files found in formvis's own
-CameraProfiles folder and in the folder Adobe's converters keep theirs in, matched to the camera a RAW file came from.
+CameraProfiles folder and in the shared system folder other raw converters keep theirs in, matched to the camera a RAW file came from.
 The matching is by the profile's UniqueCameraModel against the file's make and model (spaces, case, punctuation and
 a repeated make ignored); a profile's tables are read only when it is used."""
 
@@ -23,7 +23,7 @@ _cache: dict[str, tuple[float, int, dict]] = {}
 
 def folders() -> list[Path]:
     """Where profiles are looked for: formvis's own folder first, any named in FORMVIS_CAMERA_PROFILE_DIRS, then the
-    folder Adobe's converters use on this system."""
+    shared folder other raw converters use on this system."""
     out = [config.data_dir() / "CameraProfiles"]
     extra = os.environ.get("FORMVIS_CAMERA_PROFILE_DIRS")
     if extra:
@@ -135,7 +135,7 @@ def for_camera(camera: dict) -> list[dict]:
 
 
 def automatic(camera: dict) -> dict | None:
-    """The profile a RAW file opens with when none is chosen: the first matching profile named like Adobe's defaults,
+    """The profile a RAW file opens with when none is chosen: the first matching profile named like the common defaults,
     or none (the engine's own development stays)."""
     for e in for_camera(camera):
         if e["name"].lower() in PREFERRED:

@@ -1,5 +1,5 @@
 """DNG Camera Profiles (DEV_PLAN 28.2): the `.dcp` files Camera Raw and other converters read, written from the published
-DNG specification (Adobe, version 1.6): a TIFF-structured file whose byte order mark is followed by the magic number
+DNG specification (version 1.6): a TIFF-structured file whose byte order mark is followed by the magic number
 0x4352 ("RC") instead of 42, holding the ColorMatrix, ForwardMatrix, calibration illuminants, hue/saturation/value
 map, look table and tone curve tags of chapter 6. `parse` reads one; `render` turns white-balanced linear camera values
 into sRGB through it: camera to XYZ D50 (the forward matrix, or the colour matrix inverted and adapted), to linear

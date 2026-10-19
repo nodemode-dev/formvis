@@ -2,7 +2,7 @@ import type { OptionSpec, Tool } from '../registry';
 
 const NEAR = 10;
 
-/** Count (I), as Photoshop's (the owner's tool list): click to count, each mark numbered on the canvas; Alt-click a
+/** Count (I, the owner's tool list): click to count, each mark numbered on the canvas; Alt-click a
  *  mark to remove it; the total in the bar, and Clear. Saved with the document; each change one step. */
 export const countTool: Tool = {
   id: 'count', label: 'Count', key: 'I', order: 80.8,

@@ -106,8 +106,8 @@ export class PresetManagerDialog extends Dialog {
     }));
     setText(this.note, this.kind === 'swatches'
       ? 'Swatches have no names, so they cannot be renamed. Load takes .aco or .ase; Save Set writes .aco and Export writes .ase.'
-      : this.kind === 'gradients' ? 'Load takes .json, .grd or .ggr; Save Set writes .json and Export writes a Photoshop .grd. Built-in presets cannot be renamed or deleted.'
-      : this.kind === 'shapes' ? 'Load takes .json or a Photoshop .csh; Save Set writes .json and Export writes a Photoshop .csh. Built-in presets cannot be renamed or deleted.'
+      : this.kind === 'gradients' ? 'Load takes .json, .grd or .ggr; Save Set writes .json and Export writes a .grd. Built-in presets cannot be renamed or deleted.'
+      : this.kind === 'shapes' ? 'Load takes .json or a .csh; Save Set writes .json and Export writes a .csh. Built-in presets cannot be renamed or deleted.'
       : 'Built-in presets are listed but cannot be renamed or deleted.');
     setHidden(this.renameBtn, this.kind === 'swatches');
     setHidden(this.aseBtn, this.kind !== 'swatches');

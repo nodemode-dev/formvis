@@ -5,7 +5,7 @@ import { checkRow, numberRow, selectRow } from './controls';
 
 const enterTo = (input: HTMLInputElement, run: () => void): void => input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); run(); } });
 
-/** Image > Image Rotation > Arbitrary (1.65.5), Photoshop's Rotate Canvas dialog: an angle and a direction; OK turns
+/** Image > Image Rotation > Arbitrary (1.65.5), the Rotate Canvas dialog: an angle and a direction; OK turns
  *  the canvas by it as one step. The last angle and direction are offered again. */
 export class ArbitraryRotationDialog extends Dialog {
   private last = { angle: 0, dir: 'cw' };
@@ -38,7 +38,7 @@ export class ArbitraryRotationDialog extends Dialog {
   }
 }
 
-/** Image > Duplicate (1.65.5), Photoshop's Duplicate Image dialog: the copy's name, and Duplicate Merged Layers Only
+/** Image > Duplicate (1.65.5), the Duplicate Image dialog: the copy's name, and Duplicate Merged Layers Only
  *  (the picture in one layer), offered when the document has more than one layer. OK opens the copy. */
 export class DuplicateImageDialog extends Dialog {
   private readonly note = el('<p class="cv-note"></p>');

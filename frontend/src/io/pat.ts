@@ -1,4 +1,4 @@
-/** Photoshop pattern files (.pat, "8BPT"), after Adobe's published Photoshop file format specification. No DOM.
+/** Pattern files (.pat, "8BPT"), after the published PSD file format specification. No DOM.
  *
  *  Layout (all numbers big-endian): signature "8BPT", u16 version 1, u32 pattern count; then per pattern: u32 version 1,
  *  u32 image mode (1 grayscale, 2 indexed, 3 RGB), u16 height, u16 width, a Unicode name (u32 length in UTF-16 code
@@ -55,7 +55,7 @@ export function readPat(bytes: Uint8Array): PatImage[] {
   const u8 = (): number => { need(1); return dv.getUint8(p++); };
   const u16 = (): number => { need(2); const v = dv.getUint16(p); p += 2; return v; };
   const u32 = (): number => { need(4); const v = dv.getUint32(p); p += 4; return v; };
-  if (len < 10 || String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]) !== '8BPT') throw new Error('This is not a Photoshop pattern file (8BPT).');
+  if (len < 10 || String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]) !== '8BPT') throw new Error('This is not a .pat pattern file (8BPT).');
   p = 4;
   if (u16() !== 1) throw new Error('This version of the pattern file is not supported.');
   const count = u32(), out: PatImage[] = [];
@@ -78,7 +78,7 @@ export function readPat(bytes: Uint8Array): PatImage[] {
       need(768);
       palette = bytes.subarray(p, p + 768);
       p += 768;
-      // Photoshop follows the table with four more bytes; accept files that do not.
+      // Most writers follow the table with four more bytes; accept files that do not.
       if (!(p + 4 <= len && dv.getUint32(p) === 3) && p + 8 <= len && dv.getUint32(p + 4) === 3) p += 4;
     }
     if (u32() !== 3) throw new Error('A pattern in this file has an unsupported memory array version.');

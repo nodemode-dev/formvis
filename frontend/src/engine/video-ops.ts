@@ -39,7 +39,7 @@ export interface VideoHost {
 export function video(host: VideoHost): VideoTimeline | null { const p = host.current; return p ? host.timelineOf(p).video ?? null : null; }
 
 /** Timeline > Create Video Timeline: `fps` frames a second for `seconds`, a track per layer; refused while the
- *  document has a frame animation or a video timeline already (Photoshop's two modes are one or the other). */
+ *  document has a frame animation or a video timeline already (a document is one or the other). */
 export function createVideoTimeline(host: VideoHost, fps = 30, seconds = 5): boolean {
   const p = host.current;
   if (!p) return false;
@@ -96,7 +96,7 @@ export function fadeClip(host: VideoHost, id: ID, frames: number, inn: boolean, 
   }, frames > 0 ? 'Add Transition' : 'Remove Transition');
 }
 
-/** Cross Fade, as Photoshop's: layer `id`'s clip with the clip that starts or ends within it and overlaps it most
+/** Cross Fade: layer `id`'s clip with the clip that starts or ends within it and overlaps it most
  *  (one covering it whole, a background, is no partner), over their overlap, fading only the upper of the two (in
  *  when it starts later, out when it ends first) so the picture never dips. Null when done, else why not. */
 export function crossFade(host: VideoHost, id: ID): string | null {
@@ -119,7 +119,7 @@ export function crossFade(host: VideoHost, id: ID): string | null {
   return null;
 }
 
-/** Split at a frame, as Photoshop's Split at Playhead: layer `id`'s clip ends at `frame`, and a copy of the layer
+/** Split at a frame (Split at Playhead): layer `id`'s clip ends at `frame`, and a copy of the layer
  *  carries on from it with the rest of the clip and the same keyframes. The copy's id, or null when `frame` is not
  *  inside the clip. */
 export function splitClip(host: VideoHost, id: ID, frame: number): ID | null {

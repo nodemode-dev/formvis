@@ -55,7 +55,7 @@ export class ToolPresetsDialog extends Dialog {
     super('Tool Presets', 600);
     this.only = checkRow('Current Tool Only', (v) => { this.currentOnly = v; this.paint(); });
     this.only.set(true);
-    this.body.append(this.only.el, this.list, this.empty, el('<p class="cv-dialog-note">Export writes every preset to a .json file; Import merges one by name. Photoshop .tpl files are not read.</p>'));
+    this.body.append(this.only.el, this.list, this.empty, el('<p class="cv-dialog-note">Export writes every preset to a .json file; Import merges one by name. .tpl tool preset files are not read.</p>'));
     this.button('New Preset...', 'ghost', () => void this.create());
     this.button('Apply', 'primary', () => this.applySelected());
     this.button('Export...', 'ghost', () => this.exportFile());

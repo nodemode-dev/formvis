@@ -1,4 +1,4 @@
-"""Video (1.58.9, the parity plan's L1), as Photoshop's File > Import > Video Frames to Layers and its video export:
+"""Video (1.58.9, the parity plan's L1): File > Import > Video Frames to Layers and video export:
 a clip's frames decoded by ffmpeg, trimmed to a start and an end, every Nth kept, scaled to fit `max_side` and capped
 at `max_frames`; and a frame animation encoded to an H.264 MP4, each frame lasting its own delay.
 
