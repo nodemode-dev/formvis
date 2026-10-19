@@ -1,6 +1,6 @@
 # formvis commands
 
-Generated from the window's command catalogue (961 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (990 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
@@ -9,14 +9,14 @@ Generated from the window's command catalogue (961 commands) by `./formvis agent
 - Filter: 81
 - Generate: 2
 - Image: 89
-- Layer: 198
+- Layer: 226
 - Paint: 1
 - Paths: 8
 - Select: 28
 - Tool options: 232
 - Tools: 51
 - Type: 22
-- View: 43
+- View: 44
 - Window: 72
 
 ## Edit
@@ -91,10 +91,10 @@ Generated from the window's command catalogue (961 commands) by `./formvis agent
 | `assemble-tiles` | Assemble Tiles... |  | Opens the dialog that assembles tile images into one large picture. (changes the picture) |
 | `batch` | Batch... |  | Opens Batch to run an action over many files. (changes the picture) (asks first) |
 | `clear-recent` | Clear Recent |  | Empties the Open Recent list. (asks first) |
-| `close-all` | Close All | Alt+Mod+W | Closes every open document. (asks first) |
+| `close-all` | Close All |  | Closes every open document. (asks first) |
 | `close-document` | Close Document |  | Closes the current document without asking about unsaved changes. (asks first) |
 | `close-others` | Close Others | Alt+Mod+P | Closes every document but the current one. (asks first) |
-| `close-tab` | Close Tab | Mod+W | Closes the current document, asking about unsaved changes. (asks first) |
+| `close-tab` | Close Tab | Alt+Mod+W | Closes the current document, asking about unsaved changes. (asks first) |
 | `comfyui-run` | Run ComfyUI Workflow... |  | Opens the dialog that runs a ComfyUI workflow and brings the result back. (changes the picture) (asks first) |
 | `conditional-mode-change` | Conditional Mode Change... |  | Changes the document to a target mode only when its current mode is one of the ticked source modes. (changes the picture) |
 | `contact-sheet` | Contact Sheet II... |  | Opens Contact Sheet II to lay chosen images out as thumbnails on new documents. (changes the picture) |
@@ -147,9 +147,9 @@ Generated from the window's command catalogue (961 commands) by `./formvis agent
 | `place-linked` | Place Linked... |  | Places an image file as a linked smart object. (changes the picture) |
 | `play-action` | Play Action |  | Plays a named action on the current document. (changes the picture) |
 | `print` | Print... | Mod+P | Opens the Print dialog: paper size, orientation, position, scaled print size and a preview, then prints the flattened document through the system print dialog. |
-| `print-one-copy` | Print One Copy | Alt+Shift+Mod+P | Prints the flattened document at once with the settings Print last used, through the system print dialog. |
+| `print-one-copy` | Print One Copy | Alt+Shift+Mod+P | Prints the flattened document with the settings Print last used, skipping formvis's Print dialog; the system print dialog still opens to confirm the printer. |
 | `render-video` | Render Video... |  | Opens the Render Video dialog for the video timeline. (asks first) |
-| `revert` | Revert | F12 | Throws away changes and reopens the last saved version. (changes the picture) (asks first) |
+| `revert` | Revert |  | Throws away changes and reopens the last saved version. (changes the picture) (asks first) |
 | `save` | Save | Mod+S | Saves the document to the library, or asks for a name the first time. (asks first) |
 | `save-as` | Save As... | Shift+Mod+S | Saves the document under a new name in the library. (asks first) |
 | `save-copy` | Save a Copy... | Alt+Mod+S | Saves a copy without changing which file the document belongs to. (asks first) |
@@ -378,6 +378,7 @@ Generated from the window's command catalogue (961 commands) by `./formvis agent
 | `artboard-from-group` | Artboard from Group... |  | Opens the dialog that turns a folder into an artboard. (changes the picture) |
 | `artboard-from-layers` | Artboard from Layers |  | Makes an artboard from the selected layers. (changes the picture) |
 | `artboard-options` | Artboard Options... |  | Opens the options of the selected artboard. (changes the picture) |
+| `background-from-layer` | Background from Layer |  | Turns the active pixel layer into the Background: it moves to the bottom, fills the canvas and has the background colour behind its transparent parts. (changes the picture) |
 | `backward` | Send Backward | Mod+[ | Moves the layer down one place. (changes the picture) |
 | `blend-next` | Next Blend Mode | Shift+= | Moves to the next blend mode. (changes the picture) |
 | `blend-prev` | Previous Blend Mode | Shift+- | Moves to the previous blend mode. (changes the picture) |
@@ -390,6 +391,7 @@ Generated from the window's command catalogue (961 commands) by `./formvis agent
 | `delete-filter-mask` | Delete Smart Filter Mask |  | Deletes the smart filter mask. (changes the picture) |
 | `delete-hidden` | Delete Hidden Layers |  | Deletes every hidden layer. (changes the picture) (asks first) |
 | `delete-layer` | Delete Layer |  | Deletes the selected layers. (changes the picture) (asks first) |
+| `delete-layer-ask` | Delete Layer... |  | Asks, then deletes the selected layers (the Layers panel trash button). (changes the picture) (asks first) |
 | `delete-mask` | Delete Layer Mask |  | Removes the layer mask. (changes the picture) |
 | `deselect-layers` | Deselect Layers |  | Deselects all layers. |
 | `distribute-bottom` | Distribute Bottom Edges |  | Spaces layers evenly by their bottom edges. (changes the picture) |
@@ -428,6 +430,14 @@ Generated from the window's command catalogue (961 commands) by `./formvis agent
 | `layer-comp-update` | Update Layer Comp |  | Re-records the active layer comp from the layers now. (changes the picture) |
 | `layer-content-options` | Layer Content Options... |  | Opens the content options of a fill layer. (changes the picture) |
 | `layer-from-background` | Layer from Background... |  | Opens the dialog that turns the Background into a normal layer. (changes the picture) |
+| `layer-label-blue` | Blue |  | Labels the selected layers blue in the Layers panel. (changes the picture) |
+| `layer-label-gray` | Gray |  | Labels the selected layers gray in the Layers panel. (changes the picture) |
+| `layer-label-green` | Green |  | Labels the selected layers green in the Layers panel. (changes the picture) |
+| `layer-label-none` | No Color |  | Removes the colour label from the selected layers. (changes the picture) |
+| `layer-label-orange` | Orange |  | Labels the selected layers orange in the Layers panel. (changes the picture) |
+| `layer-label-red` | Red |  | Labels the selected layers red in the Layers panel. (changes the picture) |
+| `layer-label-violet` | Violet |  | Labels the selected layers violet in the Layers panel. (changes the picture) |
+| `layer-label-yellow` | Yellow |  | Labels the selected layers yellow in the Layers panel. (changes the picture) |
 | `layer-style` | Layer Style... |  | Opens Layer Style. (changes the picture) |
 | `layer-via-cut` | Layer via Cut | Shift+Mod+J | Moves the selected pixels to a new layer. (changes the picture) |
 | `layer.set` | Set Layer |  | Changes a layer name, visibility, opacity or blend mode; the active layer when id is omitted. (changes the picture) |
@@ -487,6 +497,16 @@ Generated from the window's command catalogue (961 commands) by `./formvis agent
 | `panorama-apply-view` | Apply View to Panorama |  | Projects the current panorama edit view back onto its source panorama as a new layer named Panorama edit, one undo step. (changes the picture) |
 | `panorama-view` | Spherical Panorama... |  | Opens the active document, taken as an equirectangular picture, as a sphere you turn by dragging, with yaw, pitch and field of view; Edit View makes the current view a new document. (changes the picture) |
 | `paste-layer-style` | Paste Layer Style |  | Pastes the copied layer style. (changes the picture) |
+| `pick-layer-0` |  |  | Selects the layer in this slot from the layers under the pointer (right-click the canvas with the Move tool). |
+| `pick-layer-1` |  |  | Selects the layer in this slot from the layers under the pointer (right-click the canvas with the Move tool). |
+| `pick-layer-2` |  |  | Selects the layer in this slot from the layers under the pointer (right-click the canvas with the Move tool). |
+| `pick-layer-3` |  |  | Selects the layer in this slot from the layers under the pointer (right-click the canvas with the Move tool). |
+| `pick-layer-4` |  |  | Selects the layer in this slot from the layers under the pointer (right-click the canvas with the Move tool). |
+| `pick-layer-5` |  |  | Selects the layer in this slot from the layers under the pointer (right-click the canvas with the Move tool). |
+| `pick-layer-6` |  |  | Selects the layer in this slot from the layers under the pointer (right-click the canvas with the Move tool). |
+| `pick-layer-7` |  |  | Selects the layer in this slot from the layers under the pointer (right-click the canvas with the Move tool). |
+| `pick-layer-8` |  |  | Selects the layer in this slot from the layers under the pointer (right-click the canvas with the Move tool). |
+| `pick-layer-9` |  |  | Selects the layer in this slot from the layers under the pointer (right-click the canvas with the Move tool). |
 | `rasterize` | Rasterize Layer |  | Rasterizes the active layer. (changes the picture) |
 | `rasterize-all` | Rasterize All Layers |  | Rasterizes every vector, text and smart layer. (changes the picture) |
 | `rasterize-fill` | Rasterize Fill Content |  | Turns a fill layer into pixels. (changes the picture) |
@@ -501,6 +521,12 @@ Generated from the window's command catalogue (961 commands) by `./formvis agent
 | `reverse-layers` | Reverse |  | Reverses the order of the selected layers. (changes the picture) |
 | `scale-effects` | Scale Effects... |  | Opens the dialog that scales layer effects. (changes the picture) |
 | `select-all-layers` | All Layers | Alt+Mod+A | Selects every layer. |
+| `select-layer-bottom` | Bottom Layer | Alt+, | Makes the bottom layer active. (changes the picture) |
+| `select-layer-down` | Backward Layer | Alt+[ | Makes the layer below the active one active, among the layers the Layers panel shows. (changes the picture) |
+| `select-layer-down-add` | Add Backward Layer to Selection | Alt+Shift+[ | Adds the layer below the active one to the layer selection and makes it active. (changes the picture) |
+| `select-layer-top` | Top Layer | Alt+. | Makes the top layer active. (changes the picture) |
+| `select-layer-up` | Forward Layer | Alt+] | Makes the layer above the active one active, among the layers the Layers panel shows. (changes the picture) |
+| `select-layer-up-add` | Add Forward Layer to Selection | Alt+Shift+] | Adds the layer above the active one to the layer selection and makes it active. (changes the picture) |
 | `select-linked` | Select Linked Layers |  | Selects the layers linked to the active one. |
 | `send-back` | Send to Back | Shift+Mod+[ | Moves the layer to the bottom. (changes the picture) |
 | `shape-color` | Shape Color from Foreground |  | Sets the shape fill from the foreground colour. (changes the picture) |
@@ -511,6 +537,7 @@ Generated from the window's command catalogue (961 commands) by `./formvis agent
 | `shapes-merge` | Merge Shape Components |  | Merges shape components into one path. (changes the picture) |
 | `shapes-subtract` | Subtract Front Shape |  | Cuts the front shape out of the one behind. (changes the picture) |
 | `shapes-unite` | Unite Shapes |  | Unites the selected shape layers into one shape. (changes the picture) |
+| `show-only-layer` | Show Only This Layer |  | Hides every other layer so only the active one (and the folders holding it) shows; run it again on the same layer to bring the others back. Alt-click an eye does the same. (changes the picture) |
 | `smart-convert-to-layers` | Convert to Layers |  | Replaces the active smart object with a pixel layer holding its source at its current placement, without the smart filters. (changes the picture) |
 | `smart-convert-to-linked` | Convert to Linked... |  | Saves an embedded smart object as a PNG file and links the layer to it. (changes the picture) |
 | `smart-export-contents` | Export Contents... |  | Saves the active smart object source as a PNG file named after the layer. (changes the picture) |
@@ -532,6 +559,7 @@ Generated from the window's command catalogue (961 commands) by `./formvis agent
 | `stack-mode-stddev` | Standard Deviation |  | Set the stack mode of a stacked smart object to Standard Deviation (changes the picture) |
 | `stack-mode-summation` | Summation |  | Set the stack mode of a stacked smart object to Summation (changes the picture) |
 | `stack-mode-variance` | Variance |  | Set the stack mode of a stacked smart object to Variance (changes the picture) |
+| `stamp-visible` | Stamp Visible | Alt+Shift+Mod+E | Adds a new layer holding everything visible merged, above the active layer; the other layers stay as they are. (changes the picture) |
 | `style-bevel` | Bevel & Emboss... |  | Opens Layer Style at Bevel and Emboss. (changes the picture) |
 | `style-blending` | Blending Options... |  | Opens Layer Style at Blending Options. (changes the picture) |
 | `style-color-overlay` | Color Overlay... |  | Opens Layer Style at Color Overlay. (changes the picture) |
@@ -994,6 +1022,7 @@ Generated from the window's command catalogue (961 commands) by `./formvis agent
 | `actual` | Actual Pixels | Mod+1 | Zooms to 100 percent. |
 | `clear-guides` | Clear Guides |  | Removes every guide. (changes the picture) |
 | `clear-slices` | Clear Slices |  | Removes every user slice. (changes the picture) |
+| `delete-slice` | Delete Slice |  | Removes the selected user slice and keeps the others. (changes the picture) |
 | `fit` | Fit on Screen | Mod+0 | Zooms so the picture fits the window. |
 | `fit-artboard` | Fit Artboard on Screen |  | Zooms so the artboard holding the active layer fills the window. |
 | `fit-layers` | Fit Layer(s) on Screen |  | Zooms so the selected layers' content fills the window. |

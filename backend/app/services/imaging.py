@@ -280,7 +280,7 @@ def decode_to_png(data: bytes, filename: str, page: int = 0, camera_profile: str
         raise DecodeError(f"Could not decode {label}: {exc}") from exc
 
 
-ENCODINGS = {"tiff": "image/tiff", "pdf": "application/pdf", "webp": "image/webp", "avif": "image/avif", "dpx": "image/x-dpx",
+ENCODINGS = {"tiff": "image/tiff", "pdf": "application/pdf", "webp": "image/webp", "avif": "image/avif", "dpx": "image/x-dpx", "png8": "image/png",
              "qoi": "image/x-qoi", "pnm": "image/x-portable-anymap", "tga": "image/x-tga", "ico": "image/vnd.microsoft.icon"}
 
 
@@ -335,7 +335,10 @@ def encode(png: bytes, fmt: str, quality: int = 90, dpi: int = 72, icc: bytes | 
             return dpx.write(wide, 10, "log", True)
         except dpx.DpxError as exc:
             raise DecodeError(str(exc)) from exc
-    if fmt == "tiff":
+    if fmt == "png8":
+        # An 8-bit palette PNG (1.87.3, D23): at most 256 colours with transparency kept in the palette (tRNS).
+        rgba.quantize(colors=256, method=Image.Quantize.FASTOCTREE, dither=Image.Dither.FLOYDSTEINBERG).save(out, "PNG", optimize=True, dpi=(dpi, dpi))
+    elif fmt == "tiff":
         rgba.save(out, "TIFF", compression="tiff_lzw", dpi=(dpi, dpi), **extra)
     elif fmt == "pdf":
         flat = Image.new("RGB", rgba.size, (255, 255, 255))

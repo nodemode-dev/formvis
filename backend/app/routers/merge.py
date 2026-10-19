@@ -162,12 +162,99 @@ def _translation(src: np.ndarray, dst: np.ndarray) -> list[float]:
     return [1.0, 0.0, float(t[0]), 0.0, 1.0, float(t[1]), 0.0, 0.0, 1.0]
 
 
+_LUT = 64
+_MAX_GAIN = 2.5
+
+
+def _vignette_gains(layers: list[tuple[np.ndarray, np.ndarray]], matrices: list[list[float]]) -> list[dict | None]:
+    """The lens's radial falloff, from how the aligned layers disagree where they overlap. One scene point is seen at
+    two distances from the centre in two layers, so log(layer) - log(reference) = f(r_layer) - f(r_reference) + a
+    constant for exposure, with f = a r^2 + b r^4 + c r^6 (r: 0 at a layer's centre, 1 at its corners), the same lens
+    for every layer. Blurred, flat, unclipped overlap pixels feed a robust (Huber) least squares; the gain is exp(-f),
+    never below 1 or falling with r, capped at 2.5, as a 64-step table over r with each layer's centre and radius in
+    its pixels. All None when the overlaps do not show a falloff worth removing (a corner gain under 4 percent, or no
+    better a fit than exposure offsets alone)."""
+    import cv2
+    nothing: list[dict | None] = [None] * len(layers)
+    h0, w0 = layers[0][0].shape[:2]
+    k = min(1.0, 1024 / max(h0, w0))
+    w, h = max(8, round(w0 * k)), max(8, round(h0 * k))
+    scale = np.diag([w / w0, h / h0, 1.0])
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    frames = []
+    for bgr, valid in layers:
+        ys, xs = np.nonzero(valid)
+        if len(xs) < 2500:
+            frames.append(None)
+            continue
+        x0, x1, y0, y1 = int(xs.min()), int(xs.max()) + 1, int(ys.min()), int(ys.max()) + 1
+        cx, cy, radius = (x0 + x1) / 2, (y0 + y1) / 2, float(np.hypot(x1 - x0, y1 - y0)) / 2
+        gray = bgr[..., 0] * 0.114 + bgr[..., 1] * 0.587 + bgr[..., 2] * 0.299
+        lum = cv2.GaussianBlur(cv2.resize(gray.astype(np.float32), (w, h), interpolation=cv2.INTER_AREA), (0, 0), 2)
+        inside = cv2.erode((cv2.resize(valid.astype(np.uint8) * 255, (w, h), interpolation=cv2.INTER_AREA) >= 250).astype(np.uint8), np.ones((7, 7), np.uint8))
+        rad = np.hypot(xx + 0.5 - cx * w / w0, yy + 0.5 - cy * h / h0) / (radius * w / w0)
+        frames.append((lum, rad.astype(np.float32), inside.astype(np.float32), (cx, cy, radius)))
+    if frames[0] is None:
+        return nothing
+    lum0, rad0, in0, _ = frames[0]
+    gx, gy = cv2.Sobel(lum0, cv2.CV_32F, 1, 0), cv2.Sobel(lum0, cv2.CV_32F, 0, 1)
+    flat = np.hypot(gx, gy)
+    rows, target, owner, reach = [], [], [], 0.2
+    for n in range(1, len(layers)):
+        if frames[n] is None:
+            continue
+        m = scale @ np.array(matrices[n], np.float64).reshape(3, 3) @ np.linalg.inv(scale)
+        lum, rad, inside = (cv2.warpPerspective(a, m, (w, h), flags=cv2.INTER_LINEAR) for a in frames[n][:3])
+        ok = (in0 > 0.5) & (inside > 0.99) & (lum0 > 8) & (lum0 < 245) & (lum > 8) & (lum < 245)
+        if ok.sum() < 500:
+            continue
+        ok &= flat <= np.percentile(flat[ok], 60)
+        idx = np.flatnonzero(ok)
+        idx = idx[:: max(1, len(idx) // 20000)]
+        r0, rn = rad0.ravel()[idx].astype(np.float64), rad.ravel()[idx].astype(np.float64)
+        rows.append(np.stack([rn ** 2 - r0 ** 2, rn ** 4 - r0 ** 4, rn ** 6 - r0 ** 6], axis=1))
+        target.append(np.log(lum.ravel()[idx].astype(np.float64)) - np.log(lum0.ravel()[idx].astype(np.float64)))
+        owner.append(np.full(len(idx), n - 1))
+        reach = max(reach, float(np.percentile(np.maximum(r0, rn), 99)))
+    if not rows:
+        return nothing
+    basis, y, who = np.concatenate(rows), np.concatenate(target), np.concatenate(owner)
+    offsets = np.zeros((len(y), len(layers) - 1))
+    offsets[np.arange(len(y)), who] = 1.0
+    used = np.flatnonzero(offsets.any(axis=0))
+    full = np.hstack([basis, offsets[:, used]])
+    ridge = np.hstack([np.sqrt(1e-4 * len(y)) * np.eye(3), np.zeros((3, len(used)))])
+    wts = np.ones(len(y))
+
+    def fit(cols: np.ndarray, pad: np.ndarray) -> np.ndarray:
+        return np.linalg.lstsq(np.vstack([cols * wts[:, None], pad]), np.concatenate([y * wts, np.zeros(len(pad))]), rcond=None)[0]
+
+    for _ in range(10):
+        beta = fit(full, ridge)
+        res = y - full @ beta
+        spread = 1.4826 * float(np.median(np.abs(res))) + 1e-4
+        wts = np.sqrt(np.minimum(1.0, 1.5 * spread / np.maximum(np.abs(res), 1e-9)))
+    plain = fit(full[:, 3:], np.zeros((0, len(used))))
+    if np.median(np.abs(res)) > 0.9 * np.median(np.abs(y - full[:, 3:] @ plain)):
+        return nothing
+    grid = np.linspace(0.0, 1.0, _LUT)
+    on = np.minimum(grid, reach)
+    f = np.stack([on ** 2, on ** 4, on ** 6], axis=1) @ beta[:3]
+    lut = np.maximum.accumulate(np.clip(np.exp(-f), 1.0, _MAX_GAIN))
+    if lut[-1] < 1.04:
+        return nothing
+    table = [round(float(v), 4) for v in lut]
+    return [None if fr is None else {"cx": fr[3][0], "cy": fr[3][1], "radius": fr[3][2], "lut": table} for fr in frames]
+
+
 def align(images: list[bytes], projection: str, vignette: bool) -> dict:
     """Per-layer 3x3 matrices (row-major, layer pixels to the reference's) with SIFT (ORB if absent) features and a
-    RANSAC homography; Reposition keeps only a translation. Cylindrical is treated as Perspective; vignette removal is
-    not done."""
+    RANSAC homography; Reposition keeps only a translation. Cylindrical is treated as Perspective. With vignette, the
+    lens's radial falloff is estimated from the aligned overlaps (_vignette_gains) and its gain tables come back as
+    `gains` (None for a layer with none) for the window to apply to the layers before they are moved and blended."""
     import cv2
     layers = [_decode(d) for d in images]
+    gains: list[dict | None] = [None] * len(layers)
     try:
         det, norm = cv2.SIFT_create(5000), cv2.NORM_L2
     except (AttributeError, cv2.error):
@@ -197,7 +284,11 @@ def align(images: list[bytes], projection: str, vignette: bool) -> dict:
                 kind, mat, inl = "homography", (h / h[2, 2]).ravel().tolist(), int(mask.sum())
         out.append(mat if mat is not None else _translation(src, dst))
         info.append({"inliers": inl, "kind": kind})
-    return {"matrices": out, "layers": info, "vignette": "not applied" if vignette else "off"}
+    if vignette:
+        gains = _vignette_gains(layers, out)
+    for g, entry in zip(gains, info):
+        entry["gain"] = g["lut"][-1] if g else None   # the corner gain removed, None when none was
+    return {"matrices": out, "layers": info, "vignette": ("applied" if any(gains) else "no vignetting found") if vignette else "off", "gains": gains}
 
 
 def blend(images: list[bytes], method: str, seamless: bool) -> dict:

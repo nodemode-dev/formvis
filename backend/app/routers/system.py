@@ -83,7 +83,11 @@ def _select_object() -> dict:
         return {"available": False, "model": "SAM 2.1 tiny"}
     if segment.backend() == "onnx":   # 1.53.4: nothing to install; the model is fetched on first use
         from app.localgen import model_manager
-        return {"available": True, "model": "SAM 2.1 tiny", "device": "onnx", "reason": "ONNX Runtime" if model_manager.ready("sam2-onnx") else "ONNX Runtime; the model (about 155 MB) downloads on first use"}
+        from app.localgen.paths import providers
+        first = providers()[0]
+        device = {"CUDAExecutionProvider": "cuda", "CoreMLExecutionProvider": "mps"}.get(first, "cpu")
+        how = f"ONNX Runtime ({first.removesuffix('ExecutionProvider')})"
+        return {"available": True, "model": "SAM 2.1 tiny", "device": device, "reason": how if model_manager.ready("sam2-onnx") else f"{how}; the model (about 155 MB) downloads on first use"}
     device, reason = segment.torch_device()
     return {"available": True, "model": "SAM 2.1 tiny", "device": device, "reason": reason}
 

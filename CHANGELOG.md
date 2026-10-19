@@ -20,6 +20,10 @@ The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries 
 
 ### Fixed
 
+- Agents: MCP tools refuse unknown or misspelled arguments and values (flip_canvas 'verticle' no longer flips horizontally) and honour cancel; file paths are kept out of system folders and an existing file is replaced only with `overwrite: true`.
+- Auto-Align's Vignette Removal works: a radial falloff is fitted from the overlapping layers and corrected before blending.
+- Imported .abr brushes keep their spacing, so stamp tips no longer smear into lines.
+- /api/capabilities reports the device Select Subject runs on.
 - EXR and HDR pictures can be placed into an open document (they failed with "cannot identify image file"); in a 16 or 32-bit document they keep their high dynamic range.
 - Pictures open at their own resolution (a 300 ppi JPEG, PNG or TIFF opens at 300 ppi, not 72), and Export As writes the document's ppi into PNG and JPEG files.
 - Folders (groups) have their own blend mode and opacity: a folder set to Multiply at 50% composites its contents first, then blends, on the canvas and in every export; PSD groups open and save with their mode and opacity; the Layers panel's Blend and Opacity work on a selected folder.

@@ -61,7 +61,7 @@ export async function renameImportedBrush(id: string, name: string): Promise<boo
 
 /** Adds one sampled tip (from Define Brush Preset) to the kept presets and selects it. */
 export async function addSampledBrush(engine: Engine, name: string, tip: SampledTip, spacing = 25): Promise<{ kept: boolean }> {
-  const preset = presetFromTip(`user-${Date.now().toString(36)}`, name, tip);
+  const preset = presetFromTip(`user-${Date.now().toString(36)}`, name, tip, spacing);
   const made: BrushPreset = { ...preset, description: `Defined from the image, ${tip.w} x ${tip.h} px, spacing ${spacing}%.` };
   const list = [...importedBrushPresets, made];
   setImportedBrushPresets(list);
@@ -74,7 +74,7 @@ export async function addSampledBrush(engine: Engine, name: string, tip: Sampled
 export async function importAbr(engine: Engine, file: File): Promise<{ added: number; kept: boolean }> {
   const base = file.name.replace(/\.abr$/i, ''), brushes = parseAbr(await file.arrayBuffer(), base);
   if (!brushes.length) return { added: 0, kept: true };
-  const stamp = Date.now().toString(36), made = brushes.map((b, i) => presetFromTip(`abr-${stamp}-${i}`, b.name, b.tip));
+  const stamp = Date.now().toString(36), made = brushes.map((b, i) => presetFromTip(`abr-${stamp}-${i}`, b.name, b.tip, b.spacing * 100));
   const list = [...importedBrushPresets, ...made];
   setImportedBrushPresets(list);
   const kept = await save(list);

@@ -167,18 +167,20 @@ Opens a picture (PNG, JPEG, WebP, AVIF, GIF, TIFF, HEIC, QOI, TGA, ICO (its larg
 
 ## save_project
 
-Saves the document as a formvis project (.fvd: layers, masks, adjustments and text stay editable) at an absolute path, replacing a file there. Use when the work should be kept with layers still editable.
+Saves the document as a formvis project (.fvd: layers, masks, adjustments and text stay editable) at an absolute path. A file already there is kept unless overwrite is true. Use when the work should be kept with layers still editable.
 
 - `path`: string; required; Absolute path ending .fvd
+- `overwrite`: boolean; default false; Replace a file already at the path. Without it an existing file is not touched.
 
 Note: replaces or removes.
 
 ## export_image
 
-Writes the document as it looks to an absolute path as PNG, JPEG or WebP (by the path's extension), replacing a file there. Use when a flat PNG, JPEG or WebP is the deliverable.
+Writes the document as it looks to an absolute path as PNG, JPEG or WebP (by the path's extension). A file already there is kept unless overwrite is true. Use when a flat PNG, JPEG or WebP is the deliverable.
 
 - `path`: string; required; Absolute path ending .png, .jpg or .webp
 - `quality`: number; default 0.92
+- `overwrite`: boolean; default false; Replace a file already at the path. Without it an existing file is not touched.
 
 Note: replaces or removes.
 
@@ -425,12 +427,13 @@ Note: read-only.
 
 ## timeline_render
 
-Renders the video timeline to an absolute path: .mp4 (H.264), .gif, or .zip (numbered PNG frames); every frame, or from to to (frames, to excluded); scale 1, 0.5 or 0.25. Replaces a file there. Use when the video should be written to an mp4, gif or frame zip.
+Renders the video timeline to an absolute path: .mp4 (H.264), .gif, or .zip (numbered PNG frames); every frame, or from to to (frames, to excluded); scale 1, 0.5 or 0.25. A file already there is kept unless overwrite is true. Use when the video should be written to an mp4, gif or frame zip.
 
 - `path`: string; required; Absolute path ending .mp4, .gif or .zip
 - `from`: integer
 - `to`: integer
 - `scale`: number (1 | 0.5 | 0.25); default 1
+- `overwrite`: boolean; default false; Replace a file already at the path. Without it an existing file is not touched.
 
 Note: replaces or removes.
 

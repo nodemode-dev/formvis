@@ -42,7 +42,7 @@ STRATEGY = """How to edit a picture in formvis with these tools.
 6. Colour and looks: add_adjustment (curves, levels, hsv, exposure, splitToning, halation, glow and more) keeps the picture editable; set_adjustment changes it later. color_match fits a pasted element to its background. add_film_layer adds a light leak or a frame. apply_filter blurs, sharpens or adds noise, on pixels only (rasterize_layer first for text and shapes).
 7. Cut-outs: remove_background keeps the subject of the active layer as a mask; select_subject then fill or generative_fill works on the selection instead.
 8. Size for a destination: resize_image scales the whole picture (keep the proportions); resize_canvas adds or removes space; crop keeps a rectangle; generative_expand grows the canvas and paints the new border; upscale enlarges 2 or 4 times into a new document.
-9. Keep and deliver: save_project writes a .fvd that keeps every layer editable; export_image writes a PNG, JPEG or WebP of how it looks. Both take absolute paths; the folder must exist.
+9. Keep and deliver: save_project writes a .fvd that keeps every layer editable; export_image writes a PNG, JPEG or WebP of how it looks. Both take absolute paths; the folder must exist, and a file already there is kept unless overwrite is true.
 10. Mistakes: undo steps back one change at a time. If a tool fails, its message says what to do next: follow it and retry.
 """
 PROMPTS = [{"name": "edit_strategy", "title": "How to edit in formvis", "description": "The decision tree for formvis's tools: looking, choosing layers, removing and adding, text, colour, cut-outs, sizes, saving and exporting.", "arguments": []}]
@@ -54,6 +54,7 @@ def _tool(name: str, description: str, props: dict, required: list[str] | None =
 
 
 _ID = {"type": "string", "description": "A layer id from get_document."}
+_OVERWRITE = {"type": "boolean", "default": False, "description": "Replace a file already at the path. Without it an existing file is not touched."}
 TOOLS = [
     _tool("get_document", "The open document: name, size, resolution, colour mode (rgb, cmyk, grayscale...), bit depth, colour profile, the layers bottom to top (id, name, kind, visible, opacity, blend, parent group), the active layer and the selection's bounds.", {}, read=True, idempotent=True),
     _tool("get_image", "The document as it looks, as a PNG image, its longer side at most max_size pixels.", {"max_size": {"type": "integer", "minimum": 64, "maximum": 2048, "default": 1024}}, read=True, idempotent=True),
@@ -91,10 +92,10 @@ TOOLS = [
     # Files, read and written by the engine at absolute paths (~ is expanded).
     _tool("open_file", "Opens a picture (PNG, JPEG, WebP, AVIF, GIF, TIFF, HEIC, QOI, TGA, ICO (its largest size), PBM, PGM, PPM, PAM, camera raw) or a project (.fvd, .fmv, .psd, .psb, .ora) from an absolute path as a new document.",
           {"path": {"type": "string", "description": "Absolute path, e.g. /Users/me/Pictures/beach.jpg"}}, ["path"]),
-    _tool("save_project", "Saves the document as a formvis project (.fvd: layers, masks, adjustments and text stay editable) at an absolute path, replacing a file there.",
-          {"path": {"type": "string", "description": "Absolute path ending .fvd"}}, ["path"], destructive=True),
-    _tool("export_image", "Writes the document as it looks to an absolute path as PNG, JPEG or WebP (by the path's extension), replacing a file there.",
-          {"path": {"type": "string", "description": "Absolute path ending .png, .jpg or .webp"}, "quality": {"type": "number", "minimum": 0.1, "maximum": 1, "default": 0.92}}, ["path"], destructive=True),
+    _tool("save_project", "Saves the document as a formvis project (.fvd: layers, masks, adjustments and text stay editable) at an absolute path. A file already there is kept unless overwrite is true.",
+          {"path": {"type": "string", "description": "Absolute path ending .fvd"}, "overwrite": _OVERWRITE}, ["path"], destructive=True),
+    _tool("export_image", "Writes the document as it looks to an absolute path as PNG, JPEG or WebP (by the path's extension). A file already there is kept unless overwrite is true.",
+          {"path": {"type": "string", "description": "Absolute path ending .png, .jpg or .webp"}, "quality": {"type": "number", "minimum": 0.1, "maximum": 1, "default": 0.92}, "overwrite": _OVERWRITE}, ["path"], destructive=True),
     _tool("switch_document", "Makes an open document the one tools act on, by its id from get_document's documents.", {"id": _ID}, ["id"], idempotent=True),
     # The document's size and shape.
     _tool("resize_image", "Resamples the whole document to width x height pixels (keep the shape by scaling both by one factor).",
@@ -160,9 +161,9 @@ TOOLS = [
            "color": {"type": "string", "enum": ["transparent", "black", "white"], "default": "transparent"}}, ["id", "kind"]),
     _tool("timeline_frame_image", "One frame of the video timeline as a PNG image, its longer side at most max_size pixels.",
           {"frame": {"type": "integer", "minimum": 0}, "max_size": {"type": "integer", "minimum": 64, "maximum": 2048, "default": 1024}}, ["frame"], read=True, idempotent=True),
-    _tool("timeline_render", "Renders the video timeline to an absolute path: .mp4 (H.264), .gif, or .zip (numbered PNG frames); every frame, or from to to (frames, to excluded); scale 1, 0.5 or 0.25. Replaces a file there.",
+    _tool("timeline_render", "Renders the video timeline to an absolute path: .mp4 (H.264), .gif, or .zip (numbered PNG frames); every frame, or from to to (frames, to excluded); scale 1, 0.5 or 0.25. A file already there is kept unless overwrite is true.",
           {"path": {"type": "string", "description": "Absolute path ending .mp4, .gif or .zip"}, "from": {"type": "integer", "minimum": 0}, "to": {"type": "integer", "minimum": 1},
-           "scale": {"type": "number", "enum": [1, 0.5, 0.25], "default": 1}}, ["path"], destructive=True),
+           "scale": {"type": "number", "enum": [1, 0.5, 0.25], "default": 1}, "overwrite": _OVERWRITE}, ["path"], destructive=True),
     _tool("list_commands", "Lists formvis's commands: every menu and palette action, each as id, label, when (what it is for) and params (what it takes). Narrow it with group (a menu or family such as Filter or Layer) or text (words from the label, id or description); an unfiltered list is capped, so filter first.",
           {"group": {"type": "string", "maxLength": 80}, "text": {"type": "string", "maxLength": 120}}, read=True, idempotent=True),
     _tool("describe_command", "One command in full: its label, group, description, when to use it, params with types and defaults, and whether it changes the document or is risky (cannot be undone).",
@@ -238,6 +239,66 @@ CORE = {"get_document", "get_image", "get_selection", "get_layer_tree", "new_doc
         "delete_layer", "fill", "place_image", "undo", "redo", "generative_fill", "remove_background", "resize_image", "crop", "transform_layer", "add_text", "draw_shape",
         "select_subject", "apply_filter", "add_adjustment", "set_adjustment", "list_commands", "describe_command", "run_command", "run_commands"}
 NAMES = {t["name"] for t in TOOLS}
+SCHEMAS = {t["name"]: t["inputSchema"] for t in TOOLS}
+
+
+def _shown(value) -> str:
+    text = json.dumps(value) if not isinstance(value, str) else repr(value)
+    return text if len(text) <= 60 else text[:57] + "..."
+
+
+def _typed(value, kind: str | None) -> bool:
+    if kind == "string":
+        return isinstance(value, str)
+    if kind == "boolean":
+        return isinstance(value, bool)
+    if kind == "integer":
+        return (isinstance(value, int) and not isinstance(value, bool)) or (isinstance(value, float) and value.is_integer())
+    if kind == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if kind == "object":
+        return isinstance(value, dict)
+    if kind == "array":
+        return isinstance(value, list)
+    return True
+
+
+def _invalid(value, schema: dict, where: str) -> str | None:
+    """Why `value` does not fit `schema` (the part of a tool's inputSchema this server uses), naming the argument; None when it fits."""
+    import re
+    kind = schema.get("type")
+    if not _typed(value, kind):
+        return f"Argument {where} must be {'an' if kind in ('integer', 'object', 'array') else 'a'} {kind}, not {_shown(value)}."
+    if "enum" in schema and value not in schema["enum"]:
+        return f"Argument {where} is {_shown(value)}, which is not allowed; use one of: {', '.join(str(v) for v in schema['enum'])}."
+    if isinstance(value, str):
+        if len(value) > schema.get("maxLength", len(value)):
+            return f"Argument {where} is {len(value)} characters; the most allowed is {schema['maxLength']}."
+        if "pattern" in schema and not re.search(schema["pattern"], value):
+            return f"Argument {where} is {_shown(value)}, which does not match the form {schema.get('description') or schema['pattern']}."
+    if kind in ("integer", "number"):
+        if "minimum" in schema and value < schema["minimum"]:
+            return f"Argument {where} is {_shown(value)}; the least allowed is {schema['minimum']}."
+        if "maximum" in schema and value > schema["maximum"]:
+            return f"Argument {where} is {_shown(value)}; the most allowed is {schema['maximum']}."
+    if kind == "array":
+        if len(value) < schema.get("minItems", 0) or len(value) > schema.get("maxItems", len(value)):
+            return f"Argument {where} has {len(value)} items; it takes {schema.get('minItems', 0)} to {schema.get('maxItems', 'any number')}."
+        for i, item in enumerate(value):
+            if "items" in schema and (why := _invalid(item, schema["items"], f"{where}[{i}]")):
+                return why
+    if kind == "object" and "properties" in schema:
+        props = schema["properties"]
+        for key in value:
+            if key not in props and schema.get("additionalProperties") is False:
+                return f"Unknown argument {where + '.' if where else ''}{key}; allowed: {', '.join(props) or 'none'}."
+        for key in schema.get("required", []):
+            if key not in value:
+                return f"Missing required argument {where + '.' if where else ''}{key}."
+        for key, item in value.items():
+            if key in props and (why := _invalid(item, props[key], f"{where + '.' if where else ''}{key}")):
+                return why
+    return None
 
 # The bridge to the window: requests queued here, collected by the window, answered back.
 _pending: collections.deque = collections.deque()
@@ -252,6 +313,9 @@ _taken: dict[str, float] = {}   # requests the window took and has not answered 
 _allowed = False
 _declined_until = 0.0
 _opened_at = 0.0
+# Calls waiting on the window, by (client, JSON-RPC request id), so notifications/cancelled can stop one.
+_inflight: dict[tuple[str, str], asyncio.Task] = {}
+_cancelled: set[tuple[str, str]] = set()
 
 
 def _event() -> asyncio.Event:
@@ -314,7 +378,8 @@ async def _ask(name: str, args: dict, timeout: float) -> dict | None:
     rid = str(next(_ids))
     fut = asyncio.get_running_loop().create_future()
     _waiting[rid] = fut
-    _put({"id": rid, "name": name, "arguments": args})
+    item = {"id": rid, "name": name, "arguments": args}
+    _put(item)
     try:
         return await asyncio.wait_for(fut, timeout=timeout)
     except asyncio.TimeoutError:
@@ -322,6 +387,8 @@ async def _ask(name: str, args: dict, timeout: float) -> dict | None:
     finally:
         _waiting.pop(rid, None)
         _taken.pop(rid, None)
+        if item in _pending:   # timed out or cancelled before the window took it: it must not run later
+            _pending.remove(item)
 
 
 # Files at absolute paths (1.53.3): read and written here, the window doing the picture's part.
@@ -329,32 +396,80 @@ _PICTURES = {".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif", ".tif", ".tiff",
 _PROJECTS = {".fvd", ".fmv", ".psd", ".psb", ".ora"}
 _EXPORTS = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
 _MAX_OPEN = 512 * 1024 * 1024
+_FILES = {"open_file": (_PICTURES | _PROJECTS, True), "place_image": ({".png", ".jpg", ".jpeg", ".webp"}, True), "timeline_render": ({".mp4", ".gif", ".zip"}, False),
+          "save_project": ({".fvd"}, False), "export_image": (set(_EXPORTS), False)}   # tool: the suffixes it takes, whether it reads
 
 
-def _path(raw, kinds: set, reading: bool) -> Path:
+def _system_roots() -> list[str]:
+    """The folders agents may not read or write: the operating system's own, outside the user's home and the temp folder."""
+    if os.name == "nt":
+        return [os.environ.get("SystemRoot", "C:\\Windows"), os.environ.get("ProgramFiles", "C:\\Program Files"), os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)")]
+    return ["/etc", "/bin", "/sbin", "/usr", "/System", "/Library", "/private/etc", "/private/var", "/var", "/boot", "/dev", "/proc", "/sys"]
+
+
+def _inside(path: Path, root) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def _confined(path: Path) -> None:
+    """Refuses a system location. `path` is already resolved, so a link into one is caught."""
+    import tempfile
+    key = (lambda p: Path(os.path.normcase(str(p)))) if os.name == "nt" else Path
+    here = key(path)
+    exempt = [key(Path.home().resolve()), key(Path(tempfile.gettempdir()).resolve())] + ([key(Path("/var/tmp").resolve()), key(Path("/private/var/tmp").resolve())] if os.name != "nt" else [])
+    for root in _system_roots():
+        base = key(Path(root).resolve())
+        if _inside(here, base) and not any(_inside(here, ok) and not _inside(base, ok) for ok in exempt):
+            raise ValueError(f"{path} is in a system location ({root}); formvis does not read or write there. Choose a folder of your own, such as your Pictures or Documents folder.")
+
+
+def _path(raw, kinds: set, reading: bool, overwrite: bool = False) -> Path:
     path = Path(os.path.expanduser(str(raw or "").strip()))
     if not str(raw or "").strip() or not path.is_absolute():
         raise ValueError("Give an absolute path, for example /Users/you/Pictures/photo.png (~ works too).")
     if path.suffix.lower() not in kinds:
         raise ValueError(f"{path.name}: formvis takes {', '.join(sorted(kinds))} here.")
+    path = path.resolve()
+    _confined(path)
+    if path.suffix.lower() not in kinds:
+        raise ValueError(f"{path.name}: the link leads to a file formvis does not take here ({', '.join(sorted(kinds))}).")
     if reading and not path.is_file():
         raise ValueError(f"There is no file at {path}.")
     if not reading and not path.parent.is_dir():
         raise ValueError(f"The folder {path.parent} does not exist: create it first, or choose another.")
+    if not reading and os.path.lexists(path) and overwrite is not True:
+        raise ValueError(f"{path} already exists, and formvis does not replace a file unless overwrite is true. Choose another name, or call again with overwrite true if the person wants it replaced.")
     return path
+
+
+def _refused(name: str, args: dict) -> str | None:
+    """Why a call's file path is refused (system location, existing file without overwrite, wrong kind), checked before the
+    person is asked to approve anything; None when the path is fine or the tool has none."""
+    if name not in _FILES or (name == "place_image" and not args.get("path")):
+        return None
+    kinds, reading = _FILES[name]
+    try:
+        _path(args.get("path"), kinds, reading, args.get("overwrite"))
+    except (ValueError, OSError) as exc:
+        return str(exc)
+    return None
 
 
 async def _run(name: str, args: dict) -> dict:
     """A tool call: files at paths handled here, around the window's part; everything else in the window."""
     try:
         if name == "open_file":
-            path = _path(args.get("path"), _PICTURES | _PROJECTS, True)
+            path = _path(args.get("path"), _FILES[name][0], True)
             if path.stat().st_size > _MAX_OPEN:
                 return _fail(f"{path.name} is larger than 512 MB.")
             data = base64.b64encode(await asyncio.to_thread(path.read_bytes)).decode()
             return await _call("__open", {"name": path.name, "data": data})
         if name == "place_image" and args.get("path"):
-            path = _path(args.get("path"), {".png", ".jpg", ".jpeg", ".webp"}, True)
+            path = _path(args.get("path"), _FILES[name][0], True)
             if path.stat().st_size > _MAX_OPEN:
                 return _fail(f"{path.name} is larger than 512 MB.")
             data = base64.b64encode(await asyncio.to_thread(path.read_bytes)).decode()
@@ -362,7 +477,7 @@ async def _run(name: str, args: dict) -> dict:
         elif name == "place_image" and not args.get("data"):
             return _fail("Give place_image a path (an absolute path to the image file) or data (base64).")
         if name == "timeline_render":   # 1.59.7, DEV_PLAN 25.5: the window renders, this writes
-            path = _path(args.get("path"), {".mp4", ".gif", ".zip"}, False)
+            path = _path(args.get("path"), _FILES[name][0], False, args.get("overwrite"))
             out = await _call("__render", {"format": {".mp4": "mp4", ".gif": "gif", ".zip": "png"}[path.suffix.lower()],
                                            **{k: args[k] for k in ("from", "to", "scale") if k in args}})
             data = (out.get("structuredContent") or {}).get("data") if not out.get("isError") else None
@@ -372,7 +487,7 @@ async def _run(name: str, args: dict) -> dict:
             await asyncio.to_thread(path.write_bytes, blob)
             return {"content": [{"type": "text", "text": f"Wrote {path} ({len(blob):,} bytes)."}], "structuredContent": {"path": str(path), "bytes": len(blob)}}
         if name in ("save_project", "export_image"):
-            path = _path(args.get("path"), {".fvd"} if name == "save_project" else set(_EXPORTS), False)
+            path = _path(args.get("path"), _FILES[name][0], False, args.get("overwrite"))
             out = await _call("__project" if name == "save_project" else "__export", {} if name == "save_project" else {"type": _EXPORTS[path.suffix.lower()], "quality": args.get("quality", 0.92)})
             data = (out.get("structuredContent") or {}).get("data") if not out.get("isError") else None
             if not data:
@@ -438,16 +553,36 @@ async def _agent_call(client: str, name: str, args: dict) -> dict:
     if refusal:
         agents.end(entry, "denied", refusal)
         return _fail(refusal)
-    if agents.policy_of(client) == "ask":
-        why = await _risk(name, args)
-        if why:
-            refusal = await agents.approval(entry, why)
-            if refusal:
-                return _fail(refusal)
-    out = await _run(name, args)
+    try:
+        refusal = _refused(name, args)
+        if refusal:
+            agents.end(entry, "error", refusal)
+            return _fail(refusal)
+        if agents.policy_of(client) == "ask":
+            why = await _risk(name, args)
+            if why:
+                refusal = await agents.approval(entry, why)
+                if refusal:
+                    return _fail(refusal)
+        out = await _run(name, args)
+    except asyncio.CancelledError:
+        agents.end(entry, "error", "cancelled by the agent")
+        raise
     first = next((c.get("text", "") for c in out.get("content", []) if c.get("type") == "text"), "")
     agents.end(entry, "error" if out.get("isError") else "ok", first)
     return out
+
+
+def _cancel(client: str, request_id) -> bool:
+    """Cancels the pending call a client asked to cancel: its own by id, else the one call with that id; False when none is known."""
+    key = json.dumps(request_id)
+    hits = [k for k in _inflight if k[1] == key]
+    pick = (client, key) if (client, key) in _inflight else hits[0] if len(hits) == 1 else None
+    if pick is None or _inflight[pick].done():
+        return False
+    _cancelled.add(pick)
+    _inflight[pick].cancel()
+    return True
 
 
 def _client_of(request: Request, params: dict, sid: str | None) -> tuple[str, str]:
@@ -479,8 +614,10 @@ async def mcp(request: Request) -> Response:
     if isinstance(msg, list):
         return Response(content=json.dumps(_err(None, -32600, "Batches are not supported")), media_type="application/json", status_code=400)
     req_id, method, params = msg.get("id"), msg.get("method"), msg.get("params") or {}
-    if req_id is None:
-        return Response(status_code=202)   # a notification
+    if req_id is None:   # a notification
+        if method == "notifications/cancelled" and isinstance(params, dict) and params.get("requestId") is not None:
+            _cancel(_client_of(request, params, request.headers.get("mcp-session-id"))[0], params["requestId"])
+        return Response(status_code=202)
     headers: dict[str, str] = {}
     sid = request.headers.get("mcp-session-id")
     meta = params.get("_meta") or {}
@@ -508,7 +645,25 @@ async def mcp(request: Request) -> Response:
     elif method == "tools/call":
         name, args = params.get("name"), params.get("arguments") or {}
         if name in NAMES and isinstance(args, dict):
-            out = _ok(req_id, await _agent_call(_client_of(request, params, sid)[0], name, args), modern)
+            args = {k: v for k, v in args.items() if v is not None}   # null reads as left out
+            why = _invalid(args, SCHEMAS[name], "")
+            if why:
+                out = _ok(req_id, _fail(f"{name} was not run: {why}"), modern)
+            else:
+                client = _client_of(request, params, sid)[0]
+                key = (client, json.dumps(req_id))
+                task = asyncio.ensure_future(_agent_call(client, name, args))
+                _inflight[key] = task
+                try:
+                    out = _ok(req_id, await task, modern)
+                except asyncio.CancelledError:
+                    if key not in _cancelled:
+                        task.cancel()
+                        raise
+                    out = _err(req_id, -32800, "Request cancelled by the client.")
+                finally:
+                    _inflight.pop(key, None)
+                    _cancelled.discard(key)
         else:
             out = _err(req_id, -32602, f"No tool named {name}: call tools/list for the names.")
     else:

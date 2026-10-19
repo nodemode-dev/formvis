@@ -2,6 +2,32 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## MCP arguments checked, paths confined, cancel honoured; SAM device; vignette removal · _v1.87.3 (app/routers/mcp.py, app/routers/system.py, app/routers/merge.py)
+
+CLOSE_GAPS P05 (D31, D32, D33, D22). Window side: `ui/panels/align-blend-dialog.ts` `removeVignette`, `VignetteGain`.
+
+- D31 `mcp.py`: `SCHEMAS`, `_typed`, `_invalid` validate every call against the tool's input schema (unknown keys, missing required, types, ranges, enums, patterns, nested items) and answer a tool error naming the argument and the allowed values; `notifications/cancelled` cancels a pending call (`_cancel`, `_inflight`, `_cancelled`; error -32800). The POST handler's `return Response(status_code=202)   # a notification` became a branch for cancels, and `out = _ok(req_id, await _agent_call(_client_of(request, params, sid)[0], name, args), modern)` became validate then run as a task kept in `_inflight`.
+- D32: `_OVERWRITE`, `_FILES`, `_system_roots`, `_inside`, `_confined`, `_refused`; `_path(raw, kinds, reading, overwrite=False)` resolves symlinks, refuses system folders and an existing file unless `overwrite: true` (added to the save_project, export_image and timeline_render schemas). Replaced head of `_path`:
+
+```python
+    path = Path(os.path.expanduser(str(raw or "").strip()))
+    if not str(raw or "").strip() or not path.is_absolute():
+        raise ValueError("Give an absolute path, for example /Users/you/Pictures/photo.png (~ works too).")
+    if path.suffix.lower() not in kinds:
+        raise ValueError(f"{path.name}: formvis takes {', '.join(sorted(kinds))} here.")
+    if reading and not path.is_file():
+```
+
+  and the four call sites' literal suffix sets (`_PICTURES | _PROJECTS`, `{".png", ".jpg", ".jpeg", ".webp"}`, `{".mp4", ".gif", ".zip"}`, `{".fvd"} if name == "save_project" else set(_EXPORTS)`), now `_FILES[name][0]`; the three "replacing a file there" texts.
+- D33 `system.py` `_select_object`: the ONNX branch reports cpu, cuda or mps from the first provider. Replaced: `return {"available": True, "model": "SAM 2.1 tiny", "device": "onnx", "reason": "ONNX Runtime" if model_manager.ready("sam2-onnx") else "ONNX Runtime; the model (about 155 MB) downloads on first use"}`.
+- D22 `merge.py` `align`: `_vignette_gains`, `_LUT`, `_MAX_GAIN` fit one radial falloff from the aligned overlaps and return `gains`; the window applies them. Replaced the docstring's "vignette removal is not done." and `return {"matrices": out, "layers": info, "vignette": "not applied" if vignette else "off"}`.
+- D16 (window): `engine/abr.ts` `readDescSpacing` (spacing from the brush descriptor, was a fixed `spacing: 0.25` for version 6 and later), `io/brush-library.ts` passes it, `engine/brush-dynamics.ts` `BrushPreset.spacing`, `engine/index.ts` `applyBrushPreset` sets it (was `this.brushShape = { ...this.brushShape, angle: preset.angle ?? 0, roundness: preset.roundness ?? 100 };`).
+- Measured: 'verticle' answers "use one of: horizontal, vertical."; /etc, /usr, symlinks to /etc refused, /tmp and home allowed, an existing file refused without `overwrite`; vignette pairs: mean error 21.8 to 2.7 and 17.3 to 3.0; ABR spacing 60 kept, v6 descriptor 80 and 10 read as 0.8 and 0.1. Backend suite: 111 passed, the two real-model tests fail for missing models. Not tested: Windows paths, a real version 6 ABR file.
+
+## Palette PNG for Image Assets · _v1.87.3 (app/services/imaging.py)
+
+- D23: `ENCODINGS` gains `png8`; `encode` quantises RGBA to 256 colours (fast octree, Floyd-Steinberg) and writes a palette PNG with transparency in its palette and the given ppi. The branch `if fmt == "tiff":` became `elif`. Checked: a 64 x 64 noisy RGBA with a transparent band came back mode P with `transparency`, 4,790 bytes against 16,405 for the full-colour PNG.
+
 ## Home's file details and stand-in thumbnails · _v1.87.1 (app/routers/io.py, app/routers/projects.py, app/services/project_format.py)
 
 - `io.py`: `POST /io/stat` (`{paths}`, at most 200, behind `_local`): size, modification time and whether each file exists.
