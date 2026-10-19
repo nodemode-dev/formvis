@@ -60,6 +60,13 @@ export class MissingFontsDialog extends Dialog {
     return true;
   }
 
+  /** Type > Replace All Missing Fonts: every missing family set to the default font in one undo step; returns the layers changed. */
+  async replaceAll(): Promise<number> {
+    const have = fontFamilies(), map = new Map<string, string>(), to = have.includes('Inter') ? 'Inter' : have[0] ?? 'Inter';
+    for (const l of this.engine.textLayerInfo()) if (l.family && !GENERIC.has(l.family) && !have.includes(l.family) && !installed(l.family)) map.set(l.family, to);
+    return map.size ? this.engine.replaceFontFamilies(map, 'Replace All Missing Fonts') : 0;
+  }
+
   private async apply(): Promise<void> {
     const map = new Map<string, string>();
     for (const [family, sel] of this.choices) map.set(family, sel.value);

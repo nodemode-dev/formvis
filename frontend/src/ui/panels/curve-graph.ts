@@ -32,7 +32,7 @@ export function curveGraph(opts: { points: () => CurvePt[]; table: (pts: CurvePt
     c.stroke();
     opts.points().forEach((q, i) => { c.fillStyle = i === drag && removing ? grid : ink; c.fillRect(q.x - 3.5, 255 - q.y - 3.5, 7, 7); });
   };
-  const local = (e: PointerEvent): CurvePt & { outside: boolean } => {
+  const local = (e: MouseEvent):CurvePt & { outside: boolean } => {
     const b = canvas.getBoundingClientRect();
     return { x: ((e.clientX - b.left) / b.width) * 255, y: (1 - (e.clientY - b.top) / b.height) * 255,
       outside: e.clientX < b.left - 16 || e.clientX > b.right + 16 || e.clientY < b.top - 16 || e.clientY > b.bottom + 16 };
@@ -70,6 +70,13 @@ export function curveGraph(opts: { points: () => CurvePt[]; table: (pts: CurvePt
     if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
     draw();
   };
+  canvas.addEventListener('dblclick', (e) => {
+    const p = local(e), list = opts.points(), hit = list.findIndex((q) => Math.hypot(q.x - p.x, q.y - p.y) <= 8);
+    if (hit <= 0 || hit >= list.length - 1) return;
+    list.splice(hit, 1);
+    opts.changed();
+    draw();
+  });
   canvas.addEventListener('pointerup', end);
   canvas.addEventListener('pointercancel', end);
   return { el: canvas, draw };

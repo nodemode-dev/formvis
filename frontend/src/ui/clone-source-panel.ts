@@ -35,7 +35,8 @@ export function createCloneSourcePanel(root: HTMLElement, engine: Engine): void 
   const opacity = numberRow('Opacity (%)', 0, 100, 1, (v) => engine.setCloneOverlay({ opacity: clamp(v, 0, 100) / 100 }));
   const clipped = checkRow('Clipped', (v) => engine.setCloneOverlay({ clipped: v }));
   const autoHide = checkRow('Auto Hide', (v) => engine.setCloneOverlay({ autoHide: v }));
-  over.append(show.el, opacity.el, clipped.el, autoHide.el);
+  const invert = checkRow('Invert', (v) => engine.setCloneOverlay({ invert: v }));
+  over.append(show.el, opacity.el, clipped.el, invert.el, autoHide.el);
 
   const sync = (): void => {
     const rt = engine.retouch, ov = engine.cloneOverlay, src = engine.cloneSource;
@@ -52,9 +53,9 @@ export function createCloneSourcePanel(root: HTMLElement, engine: Engine): void 
     scale.set(rt.cloneScale); angle.set(rt.cloneAngle);
     flipH.set(rt.cloneFlipH); flipV.set(rt.cloneFlipV);
     show.set(ov.show); opacity.set(Math.round(ov.opacity * 100));
-    clipped.set(ov.clipped); autoHide.set(ov.autoHide);
+    clipped.set(ov.clipped); autoHide.set(ov.autoHide); invert.set(ov.invert);
     const off = !ov.show;
-    for (const row of [opacity, clipped, autoHide]) {
+    for (const row of [opacity, clipped, invert, autoHide]) {
       const inp = row.el.querySelector('input');
       if (inp && inp.disabled !== off) inp.disabled = off;
     }

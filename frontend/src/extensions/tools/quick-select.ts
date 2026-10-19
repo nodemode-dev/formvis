@@ -34,6 +34,7 @@ export const quickSelectTool: Tool = {
     { kind: 'segment', label: 'Selection', priority: 80, choices: [{ id: 'new', label: 'New' }, { id: 'add', label: 'Add' }, { id: 'subtract', label: 'Subtract' }], get: () => qsMode, set: (v) => { qsMode = v as 'new' | 'add' | 'subtract'; e.emit('options', null); } },
     { kind: 'range', label: 'Size', priority: 90, min: 1, max: 500, get: () => Math.round(e.brush.diameter), set: (v) => e.setBrush({ diameter: v }) },
     { kind: 'toggle', label: 'Sample all layers', priority: 45, get: () => e.quick.sampleAll, set: (v) => e.setQuick({ sampleAll: v }) },
+    { kind: 'button', label: 'Feather Selection...', priority: 28, run: () => toolHost.run('feather'), when: () => !!e.current?.selection },
     { kind: 'button', label: 'Select and Mask...', priority: 25, run: () => toolHost.run('select-and-mask') }
   ],
 };

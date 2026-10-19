@@ -23,6 +23,9 @@ export const patternStampTool: Tool = {
     return [
       { kind: 'title', text: 'Pattern Stamp' },
       { kind: 'select', label: 'Pattern', priority: 70, choices: pats.map((x) => ({ id: x.id, label: x.name })), get: () => e.patternStampPattern ?? pats[0]?.id ?? '', set: (v: string) => { e.patternStampPattern = v; e.emit('options', null); } },
+      { kind: 'toggle', label: 'Aligned', priority: 60, get: () => e.patternStampLook.aligned, set: (v: boolean) => { e.patternStampLook.aligned = v; e.emit('options', null); } },
+      { kind: 'number', label: 'Scale', priority: 50, min: 10, max: 1000, step: 10, get: () => e.patternStampLook.scale, set: (v: number) => { e.patternStampLook.scale = Math.round(Math.min(1000, Math.max(10, v))); e.emit('options', null); } },
+      { kind: 'number', label: 'Angle', priority: 45, min: -180, max: 180, step: 5, get: () => e.patternStampLook.angle, set: (v: number) => { e.patternStampLook.angle = Math.round(Math.min(180, Math.max(-180, v))); e.emit('options', null); } },
       ...brushOptions(e, 'Opacity'),
     ];
   },

@@ -11,7 +11,7 @@ import { lensBlur, lensBlurMargin, shakeMargin, shakeReduce, smartSharpen, smart
 import { estimateShake } from '../../engine/shake';
 import { runGallery, type GallerySettings } from '../../engine/blur-gallery';
 import { LIBRARY, isLibKind, libAllDefaults, libApron, libFilter, libImageParams, libMargin, libPathParams, libValues, runLib, type LibColors, type LibFrame, type LibImage, type LibKind, type LibParam, type LibPath, type LibValue, type LibValues } from '../../engine/filter-library';
-import { HSL_BANDS, buildCurveLut, defaultCalibration, defaultGeometry, defaultGrading, defaultOptics, defaultParametric, defaultPointColor, type CalibrationState, type CurveChannel, type DevelopState, type GeometryState, type GradingState, type HslBand, type HslBandState, type OpticsState, type ParametricState, type PointColorState } from '../../engine/develop';
+import { HSL_BANDS, buildCurveLut, defaultCalibration, defaultGeometry, defaultGrading, defaultOptics, defaultParametric, defaultPointColor, type CalibrationState, type CurveChannel, type CurvePoint,type DevelopState, type GeometryState, type GradingState, type HslBand, type HslBandState, type OpticsState, type ParametricState, type PointColorState } from '../../engine/develop';
 import { curveGraph } from './curve-graph';
 import { GalleryView } from './gallery-view';
 
@@ -234,8 +234,21 @@ export class FilterPanel extends Dialog {
     let curveCh: CurveChannel = 'rgb';
     const graph = curveGraph({ points: () => D().curves[curveCh], table: (p) => buildCurveLut(p), changed: () => this.schedule() });
     const curveSel = selectRow('Channel', [['rgb', 'RGB'], ['r', 'Red'], ['g', 'Green'], ['b', 'Blue']], (v) => { curveCh = v as CurveChannel; graph.draw(); });
-    devNodes.push(el('<p class="cv-note">Point Curve</p>'), curveSel.el, graph.el);
-    devSync.push(() => { curveSel.set(curveCh); graph.draw(); });
+    const CURVE_PRESETS: Record<string, CurvePoint[]> = {
+      linear: [{ x: 0, y: 0 }, { x: 255, y: 255 }],
+      medium: [{ x: 0, y: 0 }, { x: 64, y: 54 }, { x: 192, y: 202 }, { x: 255, y: 255 }],
+      strong: [{ x: 0, y: 0 }, { x: 64, y: 42 }, { x: 192, y: 214 }, { x: 255, y: 255 }],
+    };
+    const presetSel = selectRow('Preset', [['', 'Custom'], ['linear', 'Linear'], ['medium', 'Medium Contrast'], ['strong', 'Strong Contrast']], (v) => {
+      const pts = CURVE_PRESETS[v];
+      if (!pts) return;
+      D().curves[curveCh] = pts.map((q) => ({ ...q }));
+      presetSel.set('');
+      graph.draw();
+      this.schedule();
+    });
+    devNodes.push(el('<p class="cv-note">Point Curve</p>'), curveSel.el, presetSel.el, graph.el);
+    devSync.push(() => { curveSel.set(curveCh); presetSel.set(''); graph.draw(); });
     const para = (): ParametricState => (D().parametric ??= defaultParametric());
     devNodes.push(el('<p class="cv-note">Parametric Curve</p>'));
     for (const [label, key] of [['Highlights', 'highlights'], ['Lights', 'lights'], ['Darks', 'darks'], ['Shadows', 'shadows']] as const) slide(`Curve ${label}`, -100, 100, 1, () => para()[key], (v) => { para()[key] = v; });

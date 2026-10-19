@@ -1,12 +1,12 @@
 import { toolHost } from '../registry';
 import type { Tool } from '../registry';
-import { modeFor, modeSegment, nudgeSelectionKey } from './select-common';
+import { modeCursor, modeFor, modeSegment, nudgeSelectionKey } from './select-common';
 
 export const wandTool: Tool = {
   id: 'wand', label: 'Magic Wand', key: 'W', order: 40,
   icon: () => 'tWand',
   hint: () => 'Click to select similar colours · Shift adds · Alt subtracts · Tolerance sets how alike · Arrows nudge the outline',
-  cursor: () => 'crosshair',
+  cursor: (ctx, p) => modeCursor(ctx.engine, p),
   down(ctx, p) { if (p.button === 0) ctx.engine.magicWand(p.doc, modeFor(ctx.engine, p)); },
   keydown: (ctx, e) => nudgeSelectionKey(ctx, e),
   options: (e) => [
@@ -19,6 +19,7 @@ export const wandTool: Tool = {
     { kind: 'toggle', label: 'Sample all layers', priority: 45, get: () => e.wand.sampleAll, set: (v) => e.setWand({ sampleAll: v }) },
     modeSegment(e),
     { kind: 'button', label: 'Select Subject', priority: 35, run: () => toolHost.run('select-subject') },
+    { kind: 'button', label: 'Feather Selection...', priority: 28, run: () => toolHost.run('feather'), when: () => !!e.current?.selection },
     { kind: 'button', label: 'Select and Mask...', priority: 25, run: () => toolHost.run('select-and-mask') }
   ]
 };

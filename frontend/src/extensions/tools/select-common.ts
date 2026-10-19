@@ -9,6 +9,23 @@ export function modeFor(e: Engine, p: ToolPointer): SelectionMode {
   return e.selectionMode;
 }
 
+const badgeCursors = new Map<string, string>();
+
+/** The crosshair with a + (add), - (subtract) or x (intersect) badge for the mode the next press selects with; a plain crosshair for New. */
+export function modeCursor(e: Engine, p: ToolPointer | null): string {
+  const m: SelectionMode = p ? modeFor(e, p) : e.selectionMode;
+  if (m === 'replace') return 'crosshair';
+  let url = badgeCursors.get(m);
+  if (!url) {
+    const mark = m === 'add' ? 'M19 22h6M22 19v6' : m === 'subtract' ? 'M19 22h6' : 'M19.500 19.500l5 5M24.500 19.500l-5 5';
+    const cross = 'M14 4v20M4 14h20';
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"><path d="${cross}" stroke="#fff" stroke-width="3" fill="none"/><path d="${cross}" stroke="#000" stroke-width="1" fill="none"/><path d="${mark}" stroke="#fff" stroke-width="3.500" fill="none"/><path d="${mark}" stroke="#000" stroke-width="1.500" fill="none"/></svg>`;
+    url = `url("data:image/svg+xml,${encodeURIComponent(svg)}") 14 14, crosshair`;
+    badgeCursors.set(m, url);
+  }
+  return url;
+}
+
 /** Arrow keys nudge the selection outline (1 pixel, 10 with Shift); false for anything else so other commands see it. */
 export function nudgeSelectionKey(ctx: ToolContext, e: KeyboardEvent): boolean {
   if (e.metaKey || e.ctrlKey || e.altKey) return false;

@@ -65,6 +65,13 @@ export const typeTool: Tool = {
     } },
     { kind: 'number', label: 'Size', priority: 95, min: 1, max: 2000, unit: 'px', get: () => e.textSettings.size, set: (v) => setType(e, { size: Math.min(2000, Math.max(1, v)) }) },
     { kind: 'segment', label: 'Align', priority: 80, choices: [{ id: 'left', label: 'Left' }, { id: 'center', label: 'Centre' }, { id: 'right', label: 'Right' }, { id: 'justify', label: 'Justify' }], get: () => e.textSettings.align, set: (v) => setType(e, { align: v === 'justify' ? 'justify' : v === 'center' || v === 'right' ? v : 'left' }) },
+    // Orientation: new text takes it, and so does the selected type layer when none is being typed.
+    { kind: 'segment', label: 'Orientation', priority: 60, choices: [{ id: 'horizontal', label: 'Horizontal' }, { id: 'vertical', label: 'Vertical' }], get: () => e.textSettings.direction ?? 'horizontal',
+      set: (v: string) => {
+        const direction = v === 'vertical' ? 'vertical' : 'horizontal', l = e.activeLayer, typing = !!document.querySelector('.cv-type-editor:not([hidden])');
+        setType(e, { direction });
+        if (e.tool === 'type' && !typing && l?.text && e.liveText(l) && (l.text.direction ?? 'horizontal') !== direction) void e.updateTextLayer(l.id, { ...l.text, direction, ...(direction === 'vertical' ? { box: null } : {}) });
+      } },
     // Font Style and Warp Text (1.50.3, the tool audit; Bold and Italic were two toggles).
     { kind: 'select', label: 'Font Style', priority: 85, choices: [{ id: 'regular', label: 'Regular' }, { id: 'italic', label: 'Italic' }, { id: 'bold', label: 'Bold' }, { id: 'bold-italic', label: 'Bold Italic' }],
       get: () => (e.textSettings.bold ? (e.textSettings.italic ? 'bold-italic' : 'bold') : e.textSettings.italic ? 'italic' : 'regular'),

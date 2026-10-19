@@ -33,6 +33,7 @@ export const cloneTool: Tool = {
           const c = v.toScreen(hover), size = e.brush.diameter * v.zoom;
           g.save();
           g.globalAlpha = e.brush.opacity * ov.opacity;
+          if (ov.invert) g.filter = 'invert(1)';
           g.drawImage(pv, c.x - size / 2, c.y - size / 2, size, size);
           g.restore();
         }
@@ -42,6 +43,7 @@ export const cloneTool: Tool = {
           const o = v.toScreen({ x: 0, y: 0 }), ex = v.toScreen({ x: 1, y: 0 }), ey = v.toScreen({ x: 0, y: 1 }), t = g.getTransform();
           g.save();
           g.globalAlpha = ov.opacity;
+          if (ov.invert) g.filter = 'invert(1)';
           setMat(g, mul(mul([t.a, t.b, t.c, t.d, t.e, t.f], [ex.x - o.x, ex.y - o.y, ey.x - o.x, ey.y - o.y, o.x, o.y]), full.m));
           g.drawImage(full.image, 0, 0);
           g.restore();
@@ -76,6 +78,7 @@ export const cloneTool: Tool = {
     { kind: 'toggle', label: 'Show Overlay', priority: 30, get: () => e.cloneOverlay.show, set: (v) => { e.cloneOverlay.show = v; e.emit('options', null); e.emit('overlay', null); } },
     { kind: 'toggle', label: 'Clipped', priority: 20, get: () => e.cloneOverlay.clipped, set: (v) => { e.cloneOverlay.clipped = v; e.emit('options', null); e.emit('overlay', null); }, when: () => e.cloneOverlay.show },
     { kind: 'range', label: 'Overlay opacity', priority: 22, min: 0, max: 100, unit: '%', get: () => Math.round(e.cloneOverlay.opacity * 100), set: (v) => { e.cloneOverlay.opacity = v / 100; e.emit('options', null); e.emit('overlay', null); }, when: () => e.cloneOverlay.show },
+    { kind: 'toggle', label: 'Invert Overlay', priority: 16, get: () => e.cloneOverlay.invert, set: (v) => { e.cloneOverlay.invert = v; e.emit('options', null); e.emit('overlay', null); }, when: () => e.cloneOverlay.show },
     { kind: 'toggle', label: 'Auto Hide', priority: 18, get: () => e.cloneOverlay.autoHide, set: (v) => { e.cloneOverlay.autoHide = v; e.emit('options', null); e.emit('overlay', null); }, when: () => e.cloneOverlay.show },
     ...brushOptions(e)
   ]

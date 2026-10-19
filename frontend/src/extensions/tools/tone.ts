@@ -12,7 +12,13 @@ function toneTool(id: 'dodge' | 'burn' | 'sponge', label: string, order: number,
     icon: () => ({ dodge: 'tDodge', burn: 'tBurn', sponge: 'tSponge' } as Record<string, string>)[id] ?? id,   // the tool line icons (Phase 21)
     hint: () => `${hint} \u00b7 [ ] size`,
     cursor: () => 'none',
-    down(ctx, p) { if (p.button !== 0) return; hover = p.doc; ctx.engine.beginRetouchStroke(id, p.doc, p.shift); },
+    down(ctx, p) {
+      if (p.button !== 0) return;
+      hover = p.doc;
+      // Alt works the other tool for the stroke: Dodge burns, Burn dodges.
+      const kind = p.alt && id !== 'sponge' ? (id === 'dodge' ? 'burn' : 'dodge') : id;
+      ctx.engine.beginRetouchStroke(kind, p.doc, p.shift);
+    },
     move(ctx, p) { hover = p.doc; ctx.engine.strokeTo(p.doc); ctx.engine.emit('overlay', null); },
     up(ctx) { ctx.engine.endStroke(); },
     hover(ctx, p) { hover = p ? p.doc : null; ctx.engine.emit('overlay', null); },

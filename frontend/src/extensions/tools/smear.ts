@@ -10,7 +10,7 @@ const SMEAR_NAMES = { blur: 'Blur', sharpen: 'Sharpen', smudge: 'Smudge', liquif
 let hover: Pt | null = null;
 const HINTS: Record<string, string> = {
   liquify: 'Drag to push pixels along with the brush, most at its centre · Strength sets how far they move',
-  blur: 'Paint to soften; another stroke over the same place softens more · The blur follows the brush size',
+  blur: 'Paint to soften; another stroke over the same place softens more · Radius 0 makes the blur follow the brush size',
   sharpen: 'Paint to crisp up edges; a new stroke over the same area sharpens it further · Lower Strength for subtle work',
   smudge: 'Drag to smear colour along the stroke · Strength sets how far the colour carries',
 };
@@ -54,6 +54,7 @@ export const smearTool: Tool = {
     ...(e.retouch.smearMode !== 'liquify'
       ? [{ kind: 'toggle' as const, label: 'Sample All Layers', priority: 20, get: () => e.retouch.smearSampleAll, set: (v: boolean) => { e.retouch.smearSampleAll = v; e.emit('options', null); } }]
       : []),
+    ...(e.retouch.smearMode === 'blur' ? [{ kind: 'number' as const, label: 'Radius', priority: 45, min: 0, max: 60, step: 1, get: () => e.retouch.blurRadius, set: (v: number) => { e.retouch.blurRadius = Math.round(Math.min(60, Math.max(0, v))); e.emit('options', null); } }] : []),
     ...(e.retouch.smearMode === 'sharpen' ? [{ kind: 'toggle' as const, label: 'Protect Detail', priority: 40, get: () => e.retouch.protectDetail, set: (v: boolean) => { e.retouch.protectDetail = v; e.emit('options', null); } }] : []),
     ...(e.retouch.smearMode === 'smudge' ? [{ kind: 'toggle' as const, label: 'Finger Painting', priority: 40, get: () => e.retouch.fingerPainting, set: (v: boolean) => { e.retouch.fingerPainting = v; e.emit('options', null); } }] : []),
     ...brushOptions(e, 'Strength')

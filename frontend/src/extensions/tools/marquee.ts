@@ -1,7 +1,7 @@
 import { SelectionMask, type Engine, type Pt, type Rect, type SelectionMode } from '../../engine';
 import { toolHost } from '../registry';
 import { dashed, type Tool, type ToolContext, type ToolPointer } from '../registry';
-import { modeFor, modeSegment, nudgeSelectionKey } from './select-common';
+import { modeCursor, modeFor, modeSegment, nudgeSelectionKey } from './select-common';
 
 interface Draft { anchor: Pt; point: Pt; mode: SelectionMode; shiftAtPress: boolean; altAtPress: boolean; square: boolean; center: boolean }
 let draft: Draft | null = null;
@@ -90,7 +90,7 @@ export const marqueeTool: Tool = {
     { id: 'column', label: 'Single Column Marquee', icon: 'tColMarquee', active: () => e.marqueeKind === 'column', pick: () => e.update({ marqueeKind: 'column' }) },
   ],
   hint: (e) => (e.marqueeKind === 'ellipse' ? 'Drag an ellipse' : 'Drag a rectangle') + ' · Shift adds · Alt subtracts · Shift after starting constrains · Alt after starting grows from the centre · Drag inside to move the outline · Shift+M switches shape · A click, Escape or Cmd or Ctrl+D deselects',
-  cursor: (ctx, p) => (p && !p.shift && !p.alt && ctx.engine.selectionMode === 'replace' && inside(ctx, p) ? 'move' : 'crosshair'),
+  cursor: (ctx, p) => (p && !p.shift && !p.alt && ctx.engine.selectionMode === 'replace' && inside(ctx, p) ? 'move' : modeCursor(ctx.engine, p)),
   down(ctx, p) {
     const e = ctx.engine;
     if (!e.current || p.button !== 0) return;
@@ -166,6 +166,7 @@ export const marqueeTool: Tool = {
     { kind: 'button', label: 'Swap Width and Height', priority: 75, compact: true, icon: 'swap', run: () => { if (e.marqueeStyle === 'size') e.marqueeSize = { w: e.marqueeSize.h, h: e.marqueeSize.w }; else e.marqueeRatio = { w: e.marqueeRatio.h, h: e.marqueeRatio.w }; e.emit('options', null); }, when: () => e.marqueeStyle !== 'normal' },
     modeSegment(e),
     { kind: 'button', label: 'Deselect', priority: 30, run: () => toolHost.run('deselect'), when: () => !!e.current?.selection },
+    { kind: 'button', label: 'Feather Selection...', priority: 28, run: () => toolHost.run('feather'), when: () => !!e.current?.selection },
     { kind: 'button', label: 'Select and Mask...', priority: 25, run: () => toolHost.run('select-and-mask') }
   ],
 };

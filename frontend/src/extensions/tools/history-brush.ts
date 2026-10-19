@@ -10,7 +10,7 @@ let hover: Pt | null = null;
 export const historyBrushTool: Tool = {
   id: 'historyBrush', label: 'History Brush', key: 'Y', order: 61,
   icon: () => 'tHistoryBrush',
-  hint: () => 'Paint to bring back the layer as it was in the source snapshot (History panel) \u00b7 [ ] size',
+  hint: () => 'Paint to bring back the layer as it was in the source snapshot or history state (History panel) \u00b7 [ ] size',
   cursor: () => 'none',
   down(ctx, p) { if (p.button !== 0) return; hover = p.doc; ctx.engine.beginRetouchStroke('historyBrush', p.doc, p.shift); },
   move(ctx, p) { hover = p.doc; ctx.engine.strokeTo(p.doc); ctx.engine.emit('overlay', null); },
@@ -21,7 +21,7 @@ export const historyBrushTool: Tool = {
   overlay(ctx, g) { drawBrushCursor(ctx, g, hover); },
   options: (e: Engine): OptionSpec[] => [
     { kind: 'title', text: 'History Brush' },
-    { kind: 'readout', label: 'Source', priority: 45, get: () => e.snapshots.find((s) => s.id === e.historyBrushSourceId)?.name ?? 'none (take a snapshot)' },
+    { kind: 'readout', label: 'Source', priority: 45, get: () => (e.historyBrushFromState && e.historySourceIndex !== null ? `State ${e.historySourceIndex}: ${e.historySteps.names[e.historySourceIndex - 1] ?? ''}` : e.snapshots.find((s) => s.id === e.historyBrushSourceId)?.name ?? 'none (take a snapshot)') },
     ...brushOptions(e, 'Opacity'),
   ],
 };

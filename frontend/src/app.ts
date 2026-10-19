@@ -124,7 +124,7 @@ import { VideoImportDialog } from './ui/panels/video-dialog';
 import { VideoTimelinePanel } from './ui/video-timeline';
 import { RenderVideoDialog, type RenderChoice } from './ui/panels/render-video-dialog';
 import { LargePictureError, IMAGE_ACCEPT, PROJECT_ACCEPT, RAW_FILE, decodeFrames, decodeHdr, decodeImage, isImageFile, isProjectFile } from './io/images';
-import { addFontFace, familyOfFile, loadSystemFonts } from './ui/fonts';
+import { addFontFace, familyOfFile, fontFamilies, loadSystemFonts } from './ui/fonts';
 import { deserialize, giantTiles, serialize } from './io/project-io';
 import { AboutDialog, BenchmarkDialog, NewCanvasDialog, OpenDialog, SettingsDialog, ShortcutsDialog } from './ui/app-dialogs';
 import { HistoryLog } from './ui/history-log';
@@ -3099,6 +3099,7 @@ export function startApp(): void {
     { id: 'fade', label: () => { const n = engine.fadeName; return n ? `Fade ${n}...` : 'Fade...'; }, keys: ['Shift+Mod+F'], enabled: () => !!engine.fadeName, run: () => dialogs.fade.show() },
     { id: 'fill-fg', label: 'Fill with Foreground', keys: ['Alt+Backspace', 'Alt+Delete'], enabled: pixel, run: () => engine.fill('fg') },
     { id: 'fill-bg', label: 'Fill with Background', keys: ['Mod+Backspace', 'Mod+Delete'], enabled: pixel, run: () => engine.fill('bg') },
+    { id: 'fill-history', label: 'Fill with History', keys: ['Alt+Mod+Backspace', 'Alt+Mod+Delete'], enabled: pixel, run: () => engine.fillWith({ history: true }, 'normal', 1, false) },
     { id: 'fill-dialog', label: 'Fill...', keys: ['Shift+F5'], enabled: pixel, run: () => dialogs.fill.show() },
     { id: 'content-fill-workspace', label: 'Content-Aware Fill...', enabled: () => pixel() && selected(), run: () => dialogs.contentFill.show() },
     { id: 'remove-wires', label: 'Remove Wires and Cables', enabled: pixel, run: () => { void engine.task(async () => { await new Promise((r) => requestAnimationFrame(() => window.setTimeout(r, 0))); engine.removeWires(); }); } },
@@ -3462,14 +3463,21 @@ export function startApp(): void {
       },
     },
     {
-      id: 'paste-lorem-ipsum', label: 'Paste Lorem Ipsum', enabled: () => engine.liveText(engine.current?.activeLayer),
+      id: 'paste-lorem-ipsum', label: 'Paste Lorem Ipsum', enabled: has,
       run: async () => {
-        const l = engine.current?.activeLayer;
-        if (!l?.text || !liveText(l)) return;
+        const l = engine.current?.activeLayer, p = engine.current;
         const lorem = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.';
-        await engine.updateTextLayer(l.id, { ...l.text, content: l.text.content.trim() ? `${l.text.content}\n${lorem}` : lorem });
+        if (l?.text && liveText(l)) { await engine.updateTextLayer(l.id, { ...l.text, content: l.text.content.trim() ? `${l.text.content}\n${lorem}` : lorem }); return; }
+        // No type layer active: a new paragraph layer, in a box a third of the canvas wide, near its top left.
+        if (!p) return;
+        const w = Math.max(120, Math.round(p.doc.width / 3)), x = Math.round(p.doc.width / 12);
+        await engine.createTextLayer({ x, y: x }, { ...engine.textSettings, content: lorem, color: { ...engine.fg }, box: { w, h: Math.round(p.doc.height / 2) }, warp: null, onPath: null, rendered: undefined });
       },
     },
+    { id: 'type-horizontal', label: 'Horizontal', enabled: () => engine.liveText(engine.current?.activeLayer), run: async () => { const l = engine.current?.activeLayer; if (l?.text && liveText(l) && l.text.direction === 'vertical') await engine.updateTextLayer(l.id, { ...l.text, direction: 'horizontal' }); } },
+    { id: 'type-vertical', label: 'Vertical', enabled: () => engine.liveText(engine.current?.activeLayer), run: async () => { const l = engine.current?.activeLayer; if (l?.text && liveText(l) && l.text.direction !== 'vertical') await engine.updateTextLayer(l.id, { ...l.text, direction: 'vertical', box: null }); } },
+    { id: 'list-fonts', label: 'List Fonts', run: () => ({ families: fontFamilies(), faces: ['Regular', 'Italic', 'Bold', 'Bold Italic'], current: engine.textSettings.family }) },
+    { id: 'replace-missing-fonts', label: 'Replace All Missing Fonts', enabled: has, run: async () => { const n = await dialogs.missingFonts.replaceAll(); toast(n ? `${n} type layer${n === 1 ? '' : 's'} set to the default font.` : 'No missing fonts in the type layers.', 'info'); } },
     { id: 'convert-point-text', label: 'Convert to Point Text', enabled: () => { const l = engine.current?.activeLayer; return engine.liveText(l) && !!l?.text?.box; }, run: async () => { await engine.convertTextKind('point'); } },
     { id: 'convert-paragraph-text', label: 'Convert to Paragraph Text', enabled: () => { const l = engine.current?.activeLayer; return engine.liveText(l) && !l?.text?.box; }, run: async () => { await engine.convertTextKind('paragraph'); } },
     { id: 'check-spelling', label: 'Check Spelling...', enabled: has, run: async () => { if (!(await dialogs.spelling.show())) toast('No misspelled words found in the type layers.', 'info'); } },
@@ -3598,6 +3606,7 @@ export function startApp(): void {
     { id: 'purge-clipboard', label: 'Clipboard', enabled: () => !!engine.clipboard, run: () => { if (engine.purgeClipboard()) toast('Cleared the clipboard.'); } },
     { id: 'save-history-log', label: 'Save History Log...', enabled: () => historyLog.count > 0, run: () => void deliverFile(new Blob([historyLog.text()], { type: 'text/plain' }), 'formvis-history-log.txt') },
     { id: 'clear-history-log', label: 'Clear History Log', enabled: () => historyLog.count > 0, run: () => { const n = historyLog.count; historyLog.clear(); toast(`Cleared ${n} history log entries.`); } },
+    { id: 'purge-undo', label: 'Undo', enabled: () => !!engine.current?.history.canRedo, run: () => { const n = engine.purgeUndo(); if (n) toast(`Purged ${n} undone ${n === 1 ? 'step' : 'steps'}.`); } },
     { id: 'purge-histories', label: 'Histories', enabled: () => !!engine.current && engine.historySteps.names.length > 0, run: () => { void confirmAction('Purge histories?', 'This clears the undo and redo history of this document, keeping its current state and snapshots. It cannot be undone.', 'Purge', true).then((ok) => { if (ok) toast(`Purged ${engine.purgeHistories(false)} history steps.`); }); } },
     {
       id: 'clean-working-files', label: 'Working Files', enabled: () => true,
@@ -3815,8 +3824,8 @@ export function startApp(): void {
       { label: 'Automate', items: ['actions', 'action-stop', 'batch', 'create-droplet', '-', 'fit-image', 'conditional-mode-change', 'contact-sheet', 'crop-straighten-photos', 'photomerge', 'merge-hdr'] },
       { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'image-processor', 'script-events', 'load-files-stack', 'stack-statistics', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'reopen-closed-tab', 'close-all', 'close-others'] },
     { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', '-', 'fade', 'compare-documents', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', 'pick-screen-colour', '-',
-      { label: 'Purge', items: ['purge-clipboard', 'purge-histories', 'clean-working-files', 'purge-all'] }, { label: 'History Log', items: ['save-history-log', 'clear-history-log'] }, 'reset-tool', 'reset-all-tools', '-',
-      { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-', 'auto-align-layers', 'auto-blend-layers', '-',
+      { label: 'Purge', items: ['purge-clipboard', 'purge-undo', 'purge-histories', 'clean-working-files', 'purge-all'] }, { label: 'History Log', items: ['save-history-log', 'clear-history-log'] }, 'reset-tool', 'reset-all-tools', '-',
+      { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg', 'fill-history'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-', 'auto-align-layers', 'auto-blend-layers', '-',
       'fill-path-dialog', 'stroke-path-dialog', '-', 'transform', 'transform-copy', { label: 'Transform', items: ['transform-again', '-', 'transform-scale', 'transform-rotate', 'transform-skew', 'transform-distort', 'transform-perspective', 'transform-warp', 'warp-split-h', 'warp-split-v', 'warp-split-cross', 'warp-remove-split', '-', 'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw', '-', 'flip-layer-h', 'flip-layer-v'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', 'define-brush', 'define-custom-shape', { label: 'Presets', items: ['preset-manager', '-', 'swatches-load', 'swatches-save'] }, '-', 'assign-profile', 'convert-profile', 'colour.settings', '-', 'customize-toolbar', 'shortcuts', 'settings'] },
     { label: 'Image', items: [
       'apply-image', 'calculations', { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'desaturate', 'replace-color', 'equalize'] }, '-',
@@ -3832,7 +3841,7 @@ export function startApp(): void {
       { label: '3D', items: ['extrude-3d', 'place-3d', '-', 'panorama-view', 'panorama-apply-view'] },
       { label: 'Smart Objects', items: ['convert-smart', 'smart-new-via-copy', 'smart-convert-to-layers', 'edit-contents', 'replace-contents', 'smart-export-contents', { label: 'Stack Mode', items: STACK_MODES.map((m) => `stack-mode-${m.id}`) }, '-', 'smart-convert-to-linked', 'update-linked', 'relink', 'embed-linked', 'smart-reveal-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
       { label: 'Smart Filter', items: ['smart-filters-disable', 'smart-filters-clear'] },
-      { label: 'Rasterize', items: ['rasterize-type', 'rasterize-shape', 'rasterize-fill', 'rasterize-smart', 'rasterize-vmask', 'rasterize-style', '-', 'rasterize', 'rasterize-all'] }, { label: 'Type', items: ['check-spelling', 'find-replace-text', 'paste-lorem-ipsum', '-', 'convert-point-text', 'convert-paragraph-text', '-', 'type-work-path', 'type-to-shape', '-', 'update-all-text', 'resolve-missing-fonts', 'load-default-type-styles', 'add-font-files', 'add-web-font', '-', { label: 'Font Preview Size', items: FONT_PREVIEWS.map((v) => `font-preview-${v}`) }, '-', 'type-on-arc', 'type-on-circle'] }, 'edit-text', 'warp-text', 'type-on-path', { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-style-copy', 'shape-style-paste', 'shape-corners', '-', 'apply-redactions'] }, '-',
+      { label: 'Rasterize', items: ['rasterize-type', 'rasterize-shape', 'rasterize-fill', 'rasterize-smart', 'rasterize-vmask', 'rasterize-style', '-', 'rasterize', 'rasterize-all'] }, { label: 'Type', items: ['check-spelling', 'find-replace-text', 'paste-lorem-ipsum', '-', { label: 'Orientation', items: ['type-horizontal', 'type-vertical'] }, 'convert-point-text', 'convert-paragraph-text', '-', 'type-work-path', 'type-to-shape', '-', 'update-all-text', 'resolve-missing-fonts', 'replace-missing-fonts', 'load-default-type-styles', 'add-font-files', 'add-web-font', '-', { label: 'Font Preview Size', items: FONT_PREVIEWS.map((v) => `font-preview-${v}`) }, '-', 'type-on-arc', 'type-on-circle'] }, 'edit-text', 'warp-text', 'type-on-path', { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-style-copy', 'shape-style-paste', 'shape-corners', '-', 'apply-redactions'] }, '-',
       { label: 'Layer Mask', items: ['mask-reveal-all', 'mask-hide-all', 'mask-reveal-selection', 'mask-hide-selection', 'mask-from-transparency', '-', 'delete-mask', 'apply-mask', '-', 'toggle-mask', 'link-mask', '-', 'mask-view-alone', 'mask-view-red'] },
       { label: 'Vector Mask', items: ['vmask-reveal-all', 'vmask-hide-all', 'vmask-current-path', 'vmask-delete', '-', 'vmask-enable', 'vmask-link', 'vmask-invert'] }, 'clip', 'mask-all-objects', '-',
       'group', 'ungroup', 'move-out', 'hide-layers', '-',

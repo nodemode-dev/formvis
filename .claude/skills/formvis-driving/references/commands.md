@@ -1,10 +1,10 @@
 # formvis commands
 
-Generated from the window's command catalogue (1130 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1142 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
-- Edit: 67
+- Edit: 69
 - File: 79
 - Filter: 86
 - Generate: 2
@@ -14,9 +14,9 @@ Generated from the window's command catalogue (1130 commands) by `./formvis agen
 - Paint: 1
 - Paths: 9
 - Select: 35
-- Tool options: 286
+- Tool options: 292
 - Tools: 51
-- Type: 26
+- Type: 30
 - View: 68
 - Window: 92
 
@@ -46,6 +46,7 @@ Generated from the window's command catalogue (1130 commands) by `./formvis agen
 | `fill-bg` | Fill with Background | Mod+Backspace Mod+Delete | Fills the selection or layer with the background colour. (changes the picture) |
 | `fill-dialog` | Fill... | Shift+F5 | Opens the Fill dialog with its contents and blend options. (changes the picture) |
 | `fill-fg` | Fill with Foreground | Alt+Backspace Alt+Delete | Fills the selection or layer with the foreground colour. (changes the picture) |
+| `fill-history` | Fill with History | Alt+Mod+Backspace Alt+Mod+Delete | Fills the selection or layer with its pixels from the history source, at full opacity. (changes the picture) |
 | `generative-fill` | Generative Fill... |  | Opens Generative Fill for the selection. (changes the picture) |
 | `layer-rotate-180` | Rotate 180° |  | Turns the layer 180 degrees. (changes the picture) |
 | `layer-rotate-90-ccw` | Rotate 90° Counter Clockwise |  | Turns the layer 90 degrees counter clockwise. (changes the picture) |
@@ -65,6 +66,7 @@ Generated from the window's command catalogue (1130 commands) by `./formvis agen
 | `purge-all` | All |  | Clears the clipboard and the history of every open document after asking. (changes the picture) |
 | `purge-clipboard` | Clipboard |  | Clears formvis's internal clipboard. (changes the picture) |
 | `purge-histories` | Histories |  | Clears the undo and redo history of the current document after asking. (changes the picture) |
+| `purge-undo` | Undo |  | Forgets the undone steps that Redo would make again, in the current document. (changes the picture) |
 | `redo` | Redo | Shift+Mod+Z Mod+Y | Steps forward one history step. (changes the picture) |
 | `remove-wires` | Remove Wires and Cables |  | Finds wires and cables and removes them. (changes the picture) |
 | `reset-all-tools` | Reset All Tools |  | Puts the options of every tool back to their defaults and forgets all the kept values. |
@@ -812,6 +814,7 @@ Generated from the window's command catalogue (1130 commands) by `./formvis agen
 | `tool.options.cloneStamp.flipVertical` | Clone Stamp: Flip vertical |  | Sets Flip vertical for the Clone Stamp tool. |
 | `tool.options.cloneStamp.flow` | Clone Stamp: Flow |  | Sets Flow for the Clone Stamp tool. |
 | `tool.options.cloneStamp.hardness` | Clone Stamp: Hardness |  | Sets Hardness for the Clone Stamp tool. |
+| `tool.options.cloneStamp.invertOverlay` | Clone Stamp: Invert Overlay |  | Sets Invert Overlay for the Clone Stamp tool. |
 | `tool.options.cloneStamp.mode` | Clone Stamp: Mode |  | Sets Mode for the Clone Stamp tool. |
 | `tool.options.cloneStamp.opacity` | Clone Stamp: Opacity |  | Sets Opacity for the Clone Stamp tool. |
 | `tool.options.cloneStamp.overlayOpacity` | Clone Stamp: Overlay opacity |  | Sets Overlay opacity for the Clone Stamp tool. |
@@ -938,10 +941,13 @@ Generated from the window's command catalogue (1130 commands) by `./formvis agen
 | `tool.options.patch.structure` | Patch: Structure |  | Sets Structure for the Patch tool. |
 | `tool.options.patch.transparent` | Patch: Transparent |  | Sets Transparent for the Patch tool. |
 | `tool.options.pathSelect.operation` | Path Selection: Operation |  | Sets Operation for the Path Selection tool. |
+| `tool.options.patternStamp.aligned` | Pattern Stamp: Aligned |  | Sets Aligned for the Pattern Stamp tool. |
+| `tool.options.patternStamp.angle` | Pattern Stamp: Angle |  | Sets Angle for the Pattern Stamp tool. |
 | `tool.options.patternStamp.hardness` | Pattern Stamp: Hardness |  | Sets Hardness for the Pattern Stamp tool. |
 | `tool.options.patternStamp.opacity` | Pattern Stamp: Opacity |  | Sets Opacity for the Pattern Stamp tool. |
 | `tool.options.patternStamp.pattern` | Pattern Stamp: Pattern |  | Sets Pattern for the Pattern Stamp tool. |
 | `tool.options.patternStamp.pressureCurve` | Pattern Stamp: Pressure curve |  | Sets Pressure curve for the Pattern Stamp tool. |
+| `tool.options.patternStamp.scale` | Pattern Stamp: Scale |  | Sets Scale for the Pattern Stamp tool. |
 | `tool.options.patternStamp.size` | Pattern Stamp: Size |  | Sets Size for the Pattern Stamp tool. |
 | `tool.options.patternStamp.symmetry` | Pattern Stamp: Symmetry |  | Sets Symmetry for the Pattern Stamp tool. |
 | `tool.options.pen.autoAddDelete` | Pen: Auto Add/Delete |  | Sets Auto Add/Delete for the Pen tool. |
@@ -990,6 +996,7 @@ Generated from the window's command catalogue (1130 commands) by `./formvis agen
 | `tool.options.smear.hardness` | Smear: Hardness |  | Sets Hardness for the Smear tool. |
 | `tool.options.smear.mode` | Smear: Mode |  | Sets Mode for the Smear tool. |
 | `tool.options.smear.pressureCurve` | Smear: Pressure curve |  | Sets Pressure curve for the Smear tool. |
+| `tool.options.smear.radius` | Smear: Radius |  | Sets Radius for the Smear tool. |
 | `tool.options.smear.sampleAllLayers` | Smear: Sample All Layers |  | Sets Sample All Layers for the Smear tool. |
 | `tool.options.smear.size` | Smear: Size |  | Sets Size for the Smear tool. |
 | `tool.options.smear.strength` | Smear: Strength |  | Sets Strength for the Smear tool. |
@@ -1021,6 +1028,7 @@ Generated from the window's command catalogue (1130 commands) by `./formvis agen
 | `tool.options.type.language` | Type: Language |  | Sets Language for the Type tool. |
 | `tool.options.type.leading` | Type: Leading |  | Sets Leading for the Type tool. |
 | `tool.options.type.opentype` | Type: OpenType |  | Sets OpenType for the Type tool. |
+| `tool.options.type.orientation` | Type: Orientation |  | Sets Orientation for the Type tool. |
 | `tool.options.type.size` | Type: Size |  | Sets Size for the Type tool. |
 | `tool.options.type.tracking` | Type: Tracking |  | Sets Tracking for the Type tool. |
 | `tool.options.wand.antiAlias` | Magic Wand: Anti-alias |  | Sets Anti-alias for the Magic Wand tool. |
@@ -1056,8 +1064,8 @@ Generated from the window's command catalogue (1130 commands) by `./formvis agen
 | `tool.select.gradient` | Gradient Tool |  | Makes the Gradient tool the active tool (key G). Drag to draw a gradient · Drag either end to adjust it · Shift snaps to 45 degrees · Enter applies · Escape cancels · Switching tools applies |
 | `tool.select.hand` | Hand Tool |  | Makes the Hand tool the active tool (key H). Drag to pan · Scroll pans · Cmd/Ctrl + scroll zooms · Hold Space to pan with any tool |
 | `tool.select.healingBrush` | Healing Brush Tool |  | Makes the Healing Brush tool the active tool (key J). Alt-click to set the source, then paint; on release the copied texture blends into its surroundings · Aligned keeps the offset between strokes · Shift+J cycles the healing tools · [ ] size |
-| `tool.select.historyBrush` | History Brush Tool |  | Makes the History Brush tool the active tool (key Y). Paint to bring back the layer as it was in the source snapshot (History panel) · [ ] size |
-| `tool.select.lasso` | Lasso Tool |  | Makes the Lasso tool the active tool (key L). Drag around an area · Shift adds · Alt subtracts · A click deselects · Shift+L switches to polygonal |
+| `tool.select.historyBrush` | History Brush Tool |  | Makes the History Brush tool the active tool (key Y). Paint to bring back the layer as it was in the source snapshot or history state (History panel) · [ ] size |
+| `tool.select.lasso` | Lasso Tool |  | Makes the Lasso tool the active tool (key L). Drag around an area · Shift adds · Alt subtracts · Release the mouse with Alt held to click straight segments · A click deselects · Shift+L switches to polygonal |
 | `tool.select.magicEraser` | Magic Eraser Tool |  | Makes the Magic Eraser tool the active tool (key E). Click an area to erase it and the colours like it · Tolerance widens the match · Contiguous keeps to the connected area |
 | `tool.select.markup` | Markup Tool |  | Makes the Markup tool the active tool (key I). Drag from the tail of the arrow to its tip |
 | `tool.select.marquee` | Marquee Tool |  | Makes the Marquee tool the active tool (key M). Drag a rectangle · Shift adds · Alt subtracts · Shift after starting constrains · Alt after starting grows from the centre · Drag inside to move the outline · Shift+M switches shape · A click, Escape or Cmd or Ctrl+D deselects |
@@ -1079,7 +1087,7 @@ Generated from the window's command catalogue (1130 commands) by `./formvis agen
 | `tool.select.selectionBrush` | Selection Brush Tool |  | Makes the Selection Brush tool the active tool (key W). Paint to add to the selection · Alt-paint to take away · Shift+Alt-paint to keep only what is painted over the selection · [ ] size · Shift+[ ] hardness |
 | `tool.select.shape` | Shape Tool |  | Makes the Shape tool the active tool (key U). Drag to draw a rectangle (on a new shape layer) · Shift after starting keeps it square · Alt after starting grows from the center · Shift+U switches shape |
 | `tool.select.slice` | Slice Tool |  | Makes the Slice tool the active tool (key C). Drag a rectangle to add a slice · Shift makes it square · Slices are numbered in reading order |
-| `tool.select.smear` | Smear Tool |  | Makes the Smear tool the active tool. Paint to soften; another stroke over the same place softens more · The blur follows the brush size · [ ] size |
+| `tool.select.smear` | Smear Tool |  | Makes the Smear tool the active tool. Paint to soften; another stroke over the same place softens more · Radius 0 makes the blur follow the brush size · [ ] size |
 | `tool.select.sponge` | Sponge Tool |  | Makes the Sponge tool the active tool (key O). Paint to take color out, or with Saturate, to strengthen it · [ ] size |
 | `tool.select.spotHealing` | Spot Healing Tool |  | Makes the Spot Healing tool the active tool (key J). Paint over a spot and it heals on release · Content-Aware copies a matching patch nearby · Create Texture fills smoothly with matching grain · Proximity Match prefers the nearest patch · [ ] size |
 | `tool.select.type` | Type Tool |  | Makes the Type tool the active tool (key T). Click to add point text · Drag a box for paragraph text · Click a type layer to edit its text |
@@ -1104,15 +1112,19 @@ Generated from the window's command catalogue (1130 commands) by `./formvis agen
 | `font-preview-medium` | Medium |  | Draws each family in the font menus in its own face, medium (the default). |
 | `font-preview-none` | None |  | Shows the font menus plainly, each family in the interface font. |
 | `font-preview-small` | Small |  | Draws each family in the font menus in its own face, small. |
+| `list-fonts` | List Fonts |  | Returns the font families the type menus offer, the four faces each has and the family new text uses. (changes the picture) |
 | `load-default-type-styles` | Load Default Type Styles |  | Adds the default Heading 1, Heading 2, Body and Caption paragraph styles to the document. |
 | `paragraph-styles` | Paragraph Styles... |  | Opens Paragraph Styles. |
-| `paste-lorem-ipsum` | Paste Lorem Ipsum |  | Appends a Lorem Ipsum paragraph to the active type layer. (changes the picture) |
+| `paste-lorem-ipsum` | Paste Lorem Ipsum |  | Appends a Lorem Ipsum paragraph to the active type layer, or starts a new paragraph type layer when none is active. (changes the picture) |
+| `replace-missing-fonts` | Replace All Missing Fonts |  | Sets every type layer whose font is not installed to the default font in one undo step. (changes the picture) |
 | `resolve-missing-fonts` | Resolve Missing Fonts... |  | Lists the fonts type layers use that are not installed and replaces each with an installed family. (changes the picture) |
 | `type-features` | OpenType Features |  | Turns OpenType features (ligatures, small caps, oldstyle figures, swash and more) on or off for the active type layer. (changes the picture) |
+| `type-horizontal` | Horizontal |  | Sets the active type layer to horizontal lines of type. (changes the picture) |
 | `type-on-arc` | Type on Arc... |  | Sets text on an arc, live and editable. (changes the picture) |
 | `type-on-circle` | Type on Circle... |  | Sets text round a full circle, live and editable. (changes the picture) |
 | `type-on-path` | Type on Path... |  | Opens Type on Path. (changes the picture) |
 | `type-to-shape` | Convert to Shape |  | Turns the active type layer into a shape layer in the text colour and hides the type layer. (changes the picture) |
+| `type-vertical` | Vertical |  | Sets the active type layer to vertical columns of type, running right to left. (changes the picture) |
 | `type-work-path` | Create Work Path |  | Traces the active type layer's outlines from its rendered pixels into the Work Path. (changes the picture) |
 | `update-all-text` | Update All Text Layers |  | Re-renders every type layer from its own settings. (changes the picture) |
 | `warp-text` | Warp Text... |  | Opens Warp Text. (changes the picture) |

@@ -202,6 +202,38 @@ export async function replaceText(host: TextHost, find: string, replace: string,
   return (await updateTextLayers(host, changes, 'Find and Replace Text')) ? count : 0;
 }
 
+export interface TextMatch { id: ID; start: number; end: number }
+type FindOpts = { caseSensitive: boolean; wholeWord: boolean; all: boolean };
+
+/** Every match of `find` in the live type layers (or the active one), in layer order and then text order. */
+function textMatches(host: TextHost, find: string, opts: FindOpts): TextMatch[] {
+  const p = host.current, out: TextMatch[] = [];
+  if (!p || !find) return out;
+  const esc = find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), re = new RegExp(opts.wholeWord ? `\\b${esc}\\b` : esc, opts.caseSensitive ? 'g' : 'gi');
+  const layers = opts.all ? p.doc.layers.filter((l) => liveText(l)) : p.activeLayer && liveText(p.activeLayer) ? [p.activeLayer] : [];
+  for (const l of layers) for (const m of (l.text?.content ?? '').matchAll(re)) out.push({ id: l.id, start: m.index ?? 0, end: (m.index ?? 0) + m[0].length });
+  return out;
+}
+
+/** Find Next / Find Previous: the match after (or before) `from`, wrapping round the document; null when there is none. */
+export function findTextMatch(host: TextHost, find: string, opts: FindOpts, from: TextMatch | null, forward: boolean): TextMatch | null {
+  const all = textMatches(host, find, opts);
+  if (!all.length) return null;
+  const p = host.current as Project, order = (id: ID): number => p.doc.layers.findIndex((l) => l.id === id);
+  const after = (m: TextMatch): boolean => !from || order(m.id) > order(from.id) || (m.id === from.id && m.start >= from.end);
+  const before = (m: TextMatch): boolean => !from || order(m.id) < order(from.id) || (m.id === from.id && m.end <= from.start);
+  return forward ? all.find(after) ?? all[0] : [...all].reverse().find(before) ?? all[all.length - 1];
+}
+
+/** Change: the one match replaced by `replace`, as one undo step; false when the layer no longer holds it. */
+export async function replaceTextMatch(host: TextHost, m: TextMatch, replace: string): Promise<boolean> {
+  const l = host.current?.layer(m.id);
+  if (!l?.text || !liveText(l)) return false;
+  const c = l.text.content, content = c.slice(0, m.start) + replace + c.slice(m.end);
+  if (content === c) return false;
+  return (await updateTextLayers(host, [{ id: m.id, spec: { ...l.text, content } }], 'Change Text')) > 0;
+}
+
 /** Converts the active type layer between point text (no box) and paragraph text (a box around its current size). */
 export async function convertTextKind(host: TextHost, to: 'point' | 'paragraph'): Promise<boolean> {
   const p = host.current, l = p?.activeLayer;

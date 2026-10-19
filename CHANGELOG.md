@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.88.2 · 2026-10-19
+
+### Added
+
+- Selection and history: Edit > Purge > Undo; Edit > Fill > From History (Alt+Mod+Backspace); clicking the selected object again with Object Selection deselects it; selection cursors show add, subtract or intersect; in the Lasso, release the mouse with Alt held to click straight segments; the History Brush paints from the history state marked in the History panel; Feather Selection... in the selection tools' bars.
+- Retouch: the Healing Brush follows the Clone Source scale, angle and flips; Alt swaps Dodge and Burn; the Blur tool has a Radius; point curve presets and double-click to remove a point; the Pattern Stamp has Aligned, Scale and Angle; scopes show shadow and highlight clipping; the clone overlay can be inverted.
+- Type: Type > Orientation (horizontal or vertical); Paste Lorem Ipsum makes a new paragraph layer when none is active; Replace All Missing Fonts; Find and Replace Text has Find Previous, Find Next, Change and Change/Find; Alt+arrows change tracking and leading while typing.
+
 ## 1.88.1 · 2026-10-19
 
 ### Added

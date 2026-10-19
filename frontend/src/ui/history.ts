@@ -124,7 +124,7 @@ export class HistoryPanel {
     row.title = r.snap ? `${r.name}: keeps ${Math.ceil((r.bytes ?? 0) / 1048576)} MB` : '';
     row.classList.toggle('is-snapshot', !!r.snap);
     row.classList.toggle('is-picked', !!r.snap && r.snap === this.picked);
-    row.querySelector('.cv-hb-source:not(.cv-hs-source)')?.classList.toggle('is-on', !!r.snap && r.snap === this.engine.historyBrushSourceId);
+    row.querySelector('.cv-hb-source:not(.cv-hs-source)')?.classList.toggle('is-on', !!r.snap && r.snap === this.engine.historyBrushSourceId && !this.engine.historyBrushFromState);
     row.querySelector('.cv-hs-source')?.classList.toggle('is-on', !r.snap && r.index === (this.engine.historySourceIndex ?? 0));
     setText(q(row, '.cv-history-name'), r.name);
     row.classList.toggle('is-current', !r.snap && r.index === current);

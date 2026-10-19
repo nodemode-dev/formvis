@@ -2,7 +2,7 @@ import { SelectionMask, createSurface, ctxOf, toBlob, type Engine, type Pt, type
 import { api } from '../../io/api';
 import { toolHost } from '../registry';
 import { dashed, type Tool } from '../registry';
-import { modeFor, modeSegment, nudgeSelectionKey } from './select-common';
+import { modeCursor, modeFor, modeSegment, nudgeSelectionKey } from './select-common';
 
 /** The Object Selection tool (W): click an object to select it, Shift-click to add another, Alt-click to
  *  take one away. The engine's SAM 2.1 encodes the image once and answers each click in about a tenth of a second; the
@@ -52,6 +52,20 @@ async function request(engine: Engine, points: Array<[number, number, 0 | 1]>, b
   return data;
 }
 
+/** True when a click found the object that is already the selection (nine tenths overlap), so a new-selection click toggles it off. */
+function isSelected(engine: Engine, data: Uint8Array): boolean {
+  const p = engine.current, s = p?.selection;
+  if (!p || !s) return false;
+  const W = p.doc.width;
+  let both = 0, either = 0;
+  for (let i = 0; i < data.length; i++) {
+    const a = data[i] >= 128, b = s.valueAt(i % W, Math.floor(i / W)) >= 128;
+    if (a || b) either++;
+    if (a && b) both++;
+  }
+  return either > 0 && both / either >= 0.9;
+}
+
 async function selectWith(engine: Engine, points: Array<[number, number, 0 | 1]>, box: [number, number, number, number] | null, mode: SelectionMode): Promise<void> {
   const p = engine.current;
   if (!p) return;
@@ -60,6 +74,7 @@ async function selectWith(engine: Engine, points: Array<[number, number, 0 | 1]>
     try {
       const data = await request(engine, points, box);
       if (!data) { engine.notice(box ? 'No object was found in the box.' : 'No object was found there.'); return; }
+      if (!box && mode === 'replace' && isSelected(engine, data)) { engine.deselect(); return; }
       engine.applySelection(SelectionMask.cropped(0, 0, p.doc.width, p.doc.height, data), mode, 'Object Selection');
     } catch (err) {
       engine.notice(err instanceof Error ? err.message : String(err));
@@ -122,6 +137,7 @@ async function selectAt(engine: Engine, pt: Pt, mode: SelectionMode, found: Uint
   if (!p) return;
   const x = Math.floor(pt.x), y = Math.floor(pt.y);
   if (x < 0 || y < 0 || x >= p.doc.width || y >= p.doc.height) return;
+  if (found && mode === 'replace' && isSelected(engine, found)) { engine.deselect(); return; }
   if (found) { engine.applySelection(SelectionMask.cropped(0, 0, p.doc.width, p.doc.height, found), mode, 'Object Selection'); return; }
   await selectWith(engine, [[x, y, 1]], null, mode);
 }
@@ -130,7 +146,7 @@ export const objectSelectTool: Tool = {
   id: 'objectSelect', label: 'Object Selection', key: 'W', order: 35,
   icon: () => 'tObjectSelect',
   hint: () => 'Click an object, or drag a box round it · Shift adds · Alt subtracts · Rest the pointer to see the object it finds · The first use on an image takes a few seconds',
-  cursor: () => 'crosshair',
+  cursor: (ctx, p) => modeCursor(ctx.engine, p),
   down(ctx, p) {
     if (p.button !== 0) return;
     clearTimeout(hoverTimer); hoverSeq++;
@@ -170,6 +186,7 @@ export const objectSelectTool: Tool = {
     { kind: 'toggle', label: 'Sample All Layers', priority: 45, get: () => sampleAll, set: (v) => { sampleAll = v; } },
     { kind: 'toggle', label: 'Object Finder', priority: 40, get: () => hoverOn, set: (v) => { hoverOn = v; hoverDownUntil = 0; if (!v) { highlight = null; hoverSeq++; clearTimeout(hoverTimer); e.emit('overlay', null); } } },
     modeSegment(e),
+    { kind: 'button', label: 'Feather Selection...', priority: 28, run: () => toolHost.run('feather'), when: () => !!e.current?.selection },
     { kind: 'button', label: 'Select and Mask...', priority: 25, run: () => toolHost.run('select-and-mask') }
   ],
 };

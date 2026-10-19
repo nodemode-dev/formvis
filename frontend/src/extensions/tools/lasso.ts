@@ -1,7 +1,7 @@
 import { SelectionMask, boundsOf, type Pt, type SelectionMode } from '../../engine';
 import { toolHost } from '../registry';
 import { dashed, type Tool, type ToolContext } from '../registry';
-import { modeFor, modeSegment, nudgeSelectionKey } from './select-common';
+import { modeCursor, modeFor, modeSegment, nudgeSelectionKey } from './select-common';
 import { EdgeMap, liveWire, snapToEdge } from '../../engine/livewire';
 
 /* The Magnetic Lasso (1.49.4, the owner's tool list): the segment from the last fastening point to the
@@ -33,9 +33,11 @@ function traceSoon(ctx: ToolContext, at: Pt): void {
 let pts: Pt[] = [];
 let mode: SelectionMode = 'replace';
 let active = false;
+/** Freehand outline switched to straight segments by releasing the mouse with Alt held (Alt was not held at the press). */
+let poly = false, pressAlt = false;
 let hover: Pt | null = null;
 
-function reset(ctx: ToolContext): void { pts = []; live = []; fasteners = []; edges = null; active = false; ctx.engine.emit('overlay', null); }
+function reset(ctx: ToolContext): void { pts = []; live = []; fasteners = []; edges = null; active = false; poly = false; ctx.engine.emit('overlay', null); }
 
 /** Turns the finished outline into a selection in the mode chosen at its start. */
 function commit(ctx: ToolContext): void {
@@ -65,8 +67,8 @@ export const lassoTool: Tool = {
     ? 'Click an edge, then move along it: points fasten themselves · Click to fasten one · Click the start, double-click or press Enter to close · Backspace removes the last point · Escape cancels'
     : e.lassoKind === 'polygonal'
     ? 'Click the corners · Click the start, double-click or press Enter to close · Backspace removes the last corner · Escape cancels · Shift+L switches mode'
-    : 'Drag around an area · Shift adds · Alt subtracts · A click deselects · Shift+L switches to polygonal'),
-  cursor: () => 'crosshair',
+    : 'Drag around an area · Shift adds · Alt subtracts · Release the mouse with Alt held to click straight segments · A click deselects · Shift+L switches to polygonal'),
+  cursor: (ctx, p) => modeCursor(ctx.engine, p),
   down(ctx, p) {
     const e = ctx.engine;
     if (!e.current || p.button !== 0) return;
@@ -74,7 +76,8 @@ export const lassoTool: Tool = {
       mode = modeFor(e, p); edges = edgeMapOf(ctx);
       pts = [edges ? snapToEdge(edges, p.doc, mag.width) : p.doc]; fasteners = [0]; live = []; active = true; e.emit('overlay', null); return;
     }
-    if (e.lassoKind === 'freehand' || !active) { mode = modeFor(e, p); pts = [p.doc]; active = true; e.emit('overlay', null); return; }
+    if (e.lassoKind === 'freehand' && active && poly) { pts.push(p.doc); poly = p.alt; e.emit('overlay', null); return; }
+    if (e.lassoKind === 'freehand' || !active) { mode = modeFor(e, p); pressAlt = p.alt; pts = [p.doc]; active = true; e.emit('overlay', null); return; }
     const first = ctx.view().toScreen(pts[0]);
     // Closing: a double-click, a click on the start, or (Magnetic) a click that snaps to the start (the start itself was
     // snapped onto the edge, so it need not be where the first click landed).
@@ -88,14 +91,15 @@ export const lassoTool: Tool = {
   move(ctx, p) {
     hover = p.doc;
     if (ctx.engine.lassoKind === 'magnetic' && active) { traceSoon(ctx, p.doc); return; }
-    if (!active || ctx.engine.lassoKind !== 'freehand') return;
+    if (!active || ctx.engine.lassoKind !== 'freehand' || poly) return;
     const last = ctx.view().toScreen(pts[pts.length - 1]);
     if (Math.hypot(last.x - p.screen.x, last.y - p.screen.y) < 2) return;
     pts.push(p.doc);
     ctx.engine.emit('overlay', null);
   },
-  up(ctx) {
+  up(ctx, p) {
     if (!active || ctx.engine.lassoKind !== 'freehand') return;
+    if (p.alt && (poly || (!pressAlt && pts.length >= 2))) { poly = true; ctx.engine.emit('overlay', null); return; }
     if (pts.length < 3 && mode === 'replace') { reset(ctx); ctx.engine.deselect(); return; }
     commit(ctx);
   },
@@ -122,7 +126,7 @@ export const lassoTool: Tool = {
     if (!active || !pts.length) return;
     const v = ctx.view();
     const screen = pts.map((q) => v.toScreen(q));
-    if (ctx.engine.lassoKind === 'polygonal' && hover) screen.push(v.toScreen(hover));
+    if ((ctx.engine.lassoKind === 'polygonal' || poly) && hover) screen.push(v.toScreen(hover));
     if (ctx.engine.lassoKind === 'magnetic') for (const q of live.slice(1)) screen.push(v.toScreen(q));
     dashed(ctx, g, () => {
       screen.forEach((q, i) => (i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y)));
@@ -146,6 +150,7 @@ export const lassoTool: Tool = {
     { kind: 'toggle', label: 'Anti-alias', priority: 40, get: () => e.selectionAntialiased, set: (v) => { e.selectionAntialiased = v; e.emit('options', null); } },
     modeSegment(e),
     { kind: 'button', label: 'Deselect', priority: 30, run: () => toolHost.run('deselect'), when: () => !!e.current?.selection },
+    { kind: 'button', label: 'Feather Selection...', priority: 28, run: () => toolHost.run('feather'), when: () => !!e.current?.selection },
     { kind: 'button', label: 'Select and Mask...', priority: 25, run: () => toolHost.run('select-and-mask') }
   ],
 };

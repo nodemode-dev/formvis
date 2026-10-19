@@ -2,6 +2,44 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Selection and history: Purge Undo, Fill from History, click a selected object to deselect, mode cursors, Alt straight segments in the Lasso, History Brush from a state, Feather in the tool bars · _v1.88.2 (engine/index.ts, extensions/tools/select-common.ts, marquee.ts, lasso.ts, wand.ts, object-select.ts, quick-select.ts, history-brush.ts, ui/history.ts, app.ts, automation/command-meta.ts)
+
+CLOSE_GAPS P08 (PC-EN-0504, PC-EN-0503, SC-ED-0009, PC-UI-0782, PC-UI-0706, PC-UI-0746, PC-EN-0502 closed; CO-0073 advanced; PC-UI-0412 to 0415, SC-ED-0015, PC-EN-0132 found done).
+
+- `index.ts` `purgeUndo()`; `historyBrushFromState`: the state marked in the History panel's source column paints with the History Brush (replaced `setHistorySourceIndex(i: number | null): void { if (this.historySourceIndex === i) return; this.historySourceIndex = i; this.emit('history', null); }` and `setHistoryBrushSource(id: ID): void { this.historyBrushSource = id; this.emit('history', null); }`; the snapshot branch starting `if (!snap) { this.notice('The History Brush paints from a snapshot: take one in the History panel (New Snapshot).'); return false; }` now sits in an `else` after the state branch). `history-brush.ts` readout and hint, `ui/history.ts` mark (was `r.snap === this.engine.historyBrushSourceId);`).
+- `select-common.ts` `modeCursor` (crosshair with an add, subtract or intersect badge) in marquee, lasso, wand and object selection (each was `cursor: () => 'crosshair',`, the marquee's `inside(ctx, p) ? 'move' : 'crosshair'),`). `object-select.ts` `isSelected`: clicking the selected object again deselects. `lasso.ts` `poly`, `pressAlt`: releasing the mouse with Alt switches to straight segments (replaced `function reset(ctx: ToolContext): void { pts = []; live = []; fasteners = []; edges = null; active = false; ctx.engine.emit('overlay', null); }`, `if (e.lassoKind === 'freehand' || !active) { mode = modeFor(e, p); pts = [p.doc]; active = true; e.emit('overlay', null); return; }`, `if (!active || ctx.engine.lassoKind !== 'freehand') return;`, `up(ctx) {` and `if (ctx.engine.lassoKind === 'polygonal' && hover) screen.push(`). Feather Selection... in the selection tools' bars. `app.ts` `purge-undo` (Purge menu; was `items: ['purge-clipboard', 'purge-histories',`), `fill-history` (Alt+Mod+Backspace; the Fill menu was `items: ['fill-dialog', 'fill-fg', 'fill-bg']`).
+- Measured in Chromium: Purge Undo dropped the undone step (redo true to false); Fill from History brought (150,150) back to white; object clicks gave 10,000, 0, 10,000 px; a drag and 2 Alt corners selected exactly the 10,000 px square; the History Brush from a blue state turned a black pixel to (0,0,255), a snapshot back to white.
+
+## Healing source transforms, Alt swaps Dodge and Burn, Blur radius, curve presets, Pattern Stamp aligned, scale and angle, scope clipping, clone overlay invert · _v1.88.2 (engine/index.ts, extensions/tools/tone.ts, smear.ts, pattern-stamp.ts, clone.ts, ui/panels/filter-panel.ts, ui/panels/curve-graph.ts, ui/panels/scopes-view.ts, ui/panels/clone-source-panel.ts)
+
+CLOSE_GAPS P10 (SC-ED-0091, CO-0102 closed; SC-ED-0100, CO-0161, PC-EN-0195, CO-0152, PC-UI-0810, PC-EN-0188 advanced).
+
+- `index.ts`: the Healing Brush uses the Clone Source scale, angle and flips (was `const m = kind === 'clone' && this.cloneSource ? this.cloneTransform(this.cloneSource) : null;`; `healFromPatch` heals from the turned sample, the `patRaw` line now ending `: turned;`); `retouch.blurRadius` (was `const sigma = clamp(this.brush.diameter / 10, 1.5, 30), all = this.retouch.smearSampleAll && !onMask;`); `patternStampLook` (aligned, scale, angle; the fill `if (fill) { c.fillStyle = fill; c.fillRect(0, 0, W, H); }` now transforms first); `cloneOverlay.invert` (was `cloneOverlay = { show: true, clipped: true, opacity: 1, autoHide: false };`).
+- `tone.ts` Alt swaps Dodge and Burn (was `down(ctx, p) { if (p.button !== 0) return; hover = p.doc; ctx.engine.beginRetouchStroke(id, p.doc, p.shift); },`); `smear.ts` a Radius option (the hint ended `The blur follows the brush size',`); `pattern-stamp.ts` Aligned, Scale, Angle; `filter-panel.ts` a point curve Preset (Linear, Medium Contrast, Strong Contrast) and `curve-graph.ts` double-click removes a point (`local` takes a MouseEvent); `scopes-view.ts` shadow and highlight clipping toggles with a clipped percentage; `clone-source-panel.ts` Invert (was `over.append(show.el, opacity.el, clipped.el, autoHide.el);`, the sync and the row list gained it).
+- Measured in Chromium: a source bump at x 57 healed at x 157 plain and x 143 flipped or turned 180 degrees; Alt on mid-grey burned to 64..128 instead of dodging to 128..191; blur radius 2 kept edge contrast 5, Auto and 20 gave 1; curve height at 100: linear 100, medium 93, strong 85; aligned stamps matched in 10 of 10 columns (unaligned 7), a 200% scale doubled the stripe period to 32 px; 25% black and white read "Shadows clipped 25.0%, highlights clipped 25.0%". Not done: the 8-band Color Mixer, Smudge Length, patch and move previews, the Content-Aware Fill workspace, raw pipeline rows.
+
+## Type: Orientation, Paste Lorem Ipsum makes a layer, Replace All Missing Fonts, Find Next and Change, Alt+arrows for tracking and leading, list fonts · _v1.88.2 (extensions/tools/type.ts, engine/text-ops.ts, engine/index.ts, ui/text-editor.ts, ui/panels/find-replace-text-dialog.ts, ui/panels/missing-fonts-dialog.ts, app.ts, automation/command-meta.ts)
+
+CLOSE_GAPS P14 (PC-UI-0364, PC-UI-0365, PC-EN-0391, PC-EN-0416, PC-UI-0392, PC-UI-0067, PC-EN-0414, CO-0187 closed; PC-UI-0731, PC-UI-0394, CO-0188, PC-EN-0422 advanced).
+
+- `app.ts` commands `type-horizontal`, `type-vertical` (Type > Orientation; vertical drops a paragraph box), `replace-missing-fonts`, `list-fonts`; Paste Lorem Ipsum makes a paragraph layer when no type layer is active (its `enabled` was `() => engine.liveText(engine.current?.activeLayer)` and its `run` began `const l = engine.current?.activeLayer; if (!l?.text || !liveText(l)) return;`). `type.ts` an Orientation segment. `text-ops.ts` `TextMatch`, `findTextMatch`, `replaceTextMatch` with wrappers in `index.ts`. `find-replace-text-dialog.ts` Find Previous, Find Next, Change, Change/Find (replaced:
+
+```ts
+    this.button('Done', 'ghost', () => this.close());
+    this.button('Change All', 'primary', () => void this.apply());
+  }
+
+  show(): void {
+    setValue(this.findInput, '');
+    setValue(this.replInput, '');
+    setText(this.note, '');
+    this.open();
+  }
+```
+
+  ). `missing-fonts-dialog.ts` `replaceAll()`. `text-editor.ts` `nudgeSpacing`: Alt+Left and Right change tracking by 20 (Shift 100), Alt+Up and Down leading by 0.05 (Shift 0.25).
+- Measured in Chromium: point text "Hello world" 271 x 73 became vertical 72 x 542 and back; Lorem Ipsum with no type layer added a 267 x 300 paragraph layer; a missing family became Inter in one step; "cat dog cat bird cat" found [0,3], [8,11], [17,20] and wrapped, backward wrapped to [17,20], Change/Find gave "fox dog cat", Change "fox dog fox"; tracking 0, 20, 40, -60 and leading 1.2, 1.25, 1.30, 1.05. Known: a vertical layer with a box renders badly, so switching drops the box.
+
 ## Brush keys and smoothing: two-digit opacity, Shift+digits flow, Shift snaps to 45 degrees, Caps Lock precise cursor, pulled-string smoothing with catch-up, Mixer flow, Pencil mode, size and hardness commands, more tip options · _v1.88.1 (extensions/tools/brush.ts, brush-common.ts, pencil.ts, mixer.ts, app.ts, automation/command-meta.ts)
 
 CLOSE_GAPS P09 (CO-0087, PC-UI-0778, PC-AU-0175, PC-UI-0724, PC-UI-0723, PC-UI-0770, PC-EN-0158, PC-EN-0166 closed; PC-UI-0775, PC-EN-0155, PC-EN-0167, SC-ED-0089, CO-0090 advanced; SC-ED-0071 found present).

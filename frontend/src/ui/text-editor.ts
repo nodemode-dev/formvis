@@ -18,6 +18,8 @@ export class TextEditor {
       if (e.key === 'Escape') { e.preventDefault(); this.cancel(); }
       else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void this.commit(); }
       else if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.code === 'Period' || e.code === 'Comma')) { e.preventDefault(); this.nudgeSize(e.code === 'Period' ? 1 : -1, e.altKey ? 10 : 2); }
+      else if (e.altKey && !e.metaKey && !e.ctrlKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { e.preventDefault(); this.nudgeSpacing('tracking', e.key === 'ArrowRight' ? 1 : -1, e.shiftKey ? 100 : 20); }
+      else if (e.altKey && !e.metaKey && !e.ctrlKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); this.nudgeSpacing('lineHeight', e.key === 'ArrowUp' ? 1 : -1, e.shiftKey ? 0.25 : 0.05); }
     });
     engine.on('viewport', () => this.place());
     engine.on('tool', () => { if (engine.tool !== 'type') void this.commit(); });
@@ -79,6 +81,16 @@ export class TextEditor {
   private nudgeSize(dir: 1 | -1, step: number): void {
     const e = this.engine;
     e.textSettings = { ...e.textSettings, size: Math.min(2000, Math.max(1, Math.round(e.textSettings.size) + dir * step)) };
+    e.emit('options', null);
+    document.dispatchEvent(new CustomEvent('cv:type-settings'));
+  }
+
+  /** Alt with Left or Right changes the tracking by 20 thousandths of an em (Shift: 100); Alt with Up or Down the leading by 0.05 of the size (Shift: 0.25). */
+  private nudgeSpacing(key: 'tracking' | 'lineHeight', dir: 1 | -1, step: number): void {
+    const e = this.engine, t = e.textSettings;
+    e.textSettings = key === 'tracking'
+      ? { ...t, tracking: Math.min(10000, Math.max(-1000, Math.round(t.tracking + dir * step))) }
+      : { ...t, lineHeight: Math.min(4, Math.max(0.5, Math.round((t.lineHeight + dir * step) * 100) / 100)) };
     e.emit('options', null);
     document.dispatchEvent(new CustomEvent('cv:type-settings'));
   }

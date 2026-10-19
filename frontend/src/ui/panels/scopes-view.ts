@@ -7,10 +7,29 @@ export class ScopesView {
   private readonly which = el<HTMLSelectElement>('<select class="cv-input" aria-label="Scope"><option value="histogram">Histogram</option><option value="waveform">Waveform</option><option value="vectorscope">Vectorscope</option></select>');
   readonly canvas = el<HTMLCanvasElement>('<canvas class="cv-scopes-canvas" width="256" height="128" aria-label="Scope"></canvas>');
   private last: ImageData | null = null;
+  private readonly shadowClip = el<HTMLLabelElement>('<label class="cv-field cv-check"><span>Shadow clipping</span><input type="checkbox" aria-label="Show shadow clipping"></label>');
+  private readonly highlightClip = el<HTMLLabelElement>('<label class="cv-field cv-check"><span>Highlight clipping</span><input type="checkbox" aria-label="Show highlight clipping"></label>');
+  /** What share of the pixels is pure black or pure white in some channel, shown beside the toggles. */
+  readonly clipNote = el('<p class="cv-note" aria-live="polite"></p>');
 
   constructor() {
-    this.el.append(this.which, this.canvas);
+    this.el.append(this.which, this.canvas, this.shadowClip, this.highlightClip, this.clipNote);
     this.which.addEventListener('change', () => { if (this.last) this.draw(this.last); });
+    for (const t of [this.shadowClip, this.highlightClip]) t.querySelector('input')?.addEventListener('change', () => { if (this.last) this.draw(this.last); });
+  }
+
+  /** Share of opaque pixels with a channel at 0 (shadows) and at 255 (highlights). */
+  static clipped(img: ImageData): { shadows: number; highlights: number } {
+    const d = img.data;
+    let n = 0, lo = 0, hi = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] === 0) continue;
+      n++;
+      const mn = Math.min(d[i], d[i + 1], d[i + 2]), mx = Math.max(d[i], d[i + 1], d[i + 2]);
+      if (mn === 0) lo++;
+      if (mx === 255) hi++;
+    }
+    return { shadows: n ? lo / n : 0, highlights: n ? hi / n : 0 };
   }
 
   draw(img: ImageData): void {
@@ -34,5 +53,9 @@ export class ScopesView {
       for (let r = 0; r < S / 2; r++) { const x = Math.round(ox + S / 2 + Math.cos(rad) * r), y = Math.round(S / 2 - Math.sin(rad) * r); if (x >= 0 && x < W && y >= 0 && y < H) put(x, y, 180, 140, 90, 255); }
     }
     c.putImageData(out, 0, 0);
+    const clip = ScopesView.clipped(img), wantLo = !!this.shadowClip.querySelector('input')?.checked, wantHi = !!this.highlightClip.querySelector('input')?.checked;
+    if (wantLo && clip.shadows > 0) { c.fillStyle = 'rgb(70,110,220)'; c.fillRect(0, 0, 6, 12); }
+    if (wantHi && clip.highlights > 0) { c.fillStyle = 'rgb(220,70,70)'; c.fillRect(W - 6, 0, 6, 12); }
+    this.clipNote.textContent = `Shadows clipped ${(clip.shadows * 100).toFixed(1)}%, highlights clipped ${(clip.highlights * 100).toFixed(1)}%`;
   }
 }

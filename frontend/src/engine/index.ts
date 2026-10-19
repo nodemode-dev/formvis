@@ -928,6 +928,8 @@ export class Engine {
   }
   /** The Pattern Stamp's pattern (null: the first). */
   patternStampPattern: ID | null = null;
+  /** The Pattern Stamp's Aligned (tiled from the document origin; off: from where each stroke starts), Scale in percent and Angle in degrees. */
+  patternStampLook = { aligned: true, scale: 100, angle: 0 };
   /** Preferences > Cursors: how painting tools show where they will paint (drawn by brush-common's drawBrushCursor). */
   cursorPrefs: { paint: 'tip' | 'precise' | 'standard'; crosshair: boolean } = { paint: 'tip', crosshair: false };
   private openingSnapshot(p: Project): void { SN.openingSnapshot(this.snapshotHost, p); }
@@ -958,9 +960,11 @@ export class Engine {
   /** The History panel's source column for Edit > Fill with History: a history row index (0 the starting point, k the
    *  state after k steps), or null for the oldest kept step. The History Brush keeps its snapshot source below. */
   historySourceIndex: number | null = null;
-  setHistorySourceIndex(i: number | null): void { if (this.historySourceIndex === i) return; this.historySourceIndex = i; this.emit('history', null); }
+  setHistorySourceIndex(i: number | null): void { if (this.historySourceIndex === i && this.historyBrushFromState === (i !== null)) return; this.historySourceIndex = i; this.historyBrushFromState = i !== null; this.emit('history', null); }
   historyBrushSource: ID | null = null;
-  setHistoryBrushSource(id: ID): void { this.historyBrushSource = id; this.emit('history', null); }
+  /** True while a history state (not a snapshot) is the History Brush's source: the state marked in the History panel's source column. */
+  historyBrushFromState = false;
+  setHistoryBrushSource(id: ID): void { this.historyBrushSource = id; this.historyBrushFromState = false; this.emit('history', null); }
   get historyBrushSourceId(): ID | null { return SN.historyBrushSourceId(this.snapshotHost); }
 
   switchTo(id: string): void {
@@ -1955,6 +1959,8 @@ export class Engine {
   /** Find and Replace Text: replaces matches in the content of every live type layer (or only the active one) and
    *  returns the number of replacements, all as one undo step. */
   async replaceText(find: string, replace: string, opts: { caseSensitive: boolean; wholeWord: boolean; all: boolean }): Promise<number> { return TX.replaceText(this.textHost, find, replace, opts); }
+  findTextMatch(find: string, opts: { caseSensitive: boolean; wholeWord: boolean; all: boolean }, from: TX.TextMatch | null, forward: boolean): TX.TextMatch | null { return TX.findTextMatch(this.textHost, find, opts, from, forward); }
+  async replaceTextMatch(m: TX.TextMatch, replace: string): Promise<boolean> { return TX.replaceTextMatch(this.textHost, m, replace); }
 
   /** Converts the active type layer between point text (no box) and paragraph text (a box around its current size). */
   async convertTextKind(to: 'point' | 'paragraph'): Promise<boolean> { return TX.convertTextKind(this.textHost, to); }
@@ -2079,6 +2085,15 @@ export class Engine {
     }
     this.historyOps.length = 0;
     this.emit('history', null);
+    return n;
+  }
+  /** Edit > Purge > Undo: the steps taken back (what Redo would make again) are forgotten and their stored pixels go; the
+   *  undo steps and the current state stay. Gives back how many went. */
+  purgeUndo(): number {
+    const p = this.current;
+    if (!p || this.stroke) return 0;
+    const n = p.history.discardRedo();
+    if (n) this.emit('history', null);
     return n;
   }
   /** A document just made and then set to its mode and bit depth (New Document, which converts it as Image > Mode does):
@@ -7625,7 +7640,7 @@ export class Engine {
     this.insertRasterLayer(this.shapeRaster(style, r.w, r.h), kind, r.x, r.y, { shape: style }, kind);
   }
 
-  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSample: HealSample; cloneBlend: BlendMode; cloneFlow: number; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify'; smearBlend: BlendMode; smearSampleAll: boolean; protectDetail: boolean; fingerPainting: boolean; cloneScale: number; cloneAngle: number; cloneFlipH: boolean; cloneFlipV: boolean; patchMode: 'normal' | 'contentAware'; patchFrom: 'source' | 'destination'; patchTransparent: boolean; patchDiffusion: number; patchStructure: number; patchColor: number; healDiffusion: number; healBlendMode: HealBlend; spotBlendMode: HealBlend; healSample: HealSample; spotSampleAll: boolean; patchSampleAll: boolean; healSource: 'sampled' | 'pattern'; healPattern: ID | null; patchPattern: ID | null } = { healMode: 'contentAware', cloneAligned: true, cloneSample: 'current', cloneBlend: 'normal', cloneFlow: 1, smearMode: 'blur', smearBlend: 'normal', smearSampleAll: false, protectDetail: true, fingerPainting: false, cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false, patchMode: 'normal', patchFrom: 'source', patchTransparent: false, patchDiffusion: 7, patchStructure: 5, patchColor: 10, healDiffusion: 7, healBlendMode: 'normal', spotBlendMode: 'normal', healSample: 'current', spotSampleAll: false, patchSampleAll: false, healSource: 'sampled', healPattern: null, patchPattern: null };
+  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSample: HealSample; cloneBlend: BlendMode; cloneFlow: number; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify'; smearBlend: BlendMode; smearSampleAll: boolean; blurRadius: number; protectDetail: boolean; fingerPainting: boolean; cloneScale: number; cloneAngle: number; cloneFlipH: boolean; cloneFlipV: boolean; patchMode: 'normal' | 'contentAware'; patchFrom: 'source' | 'destination'; patchTransparent: boolean; patchDiffusion: number; patchStructure: number; patchColor: number; healDiffusion: number; healBlendMode: HealBlend; spotBlendMode: HealBlend; healSample: HealSample; spotSampleAll: boolean; patchSampleAll: boolean; healSource: 'sampled' | 'pattern'; healPattern: ID | null; patchPattern: ID | null } = { healMode: 'contentAware', cloneAligned: true, cloneSample: 'current', cloneBlend: 'normal', cloneFlow: 1, smearMode: 'blur', smearBlend: 'normal', smearSampleAll: false, blurRadius: 0, protectDetail: true, fingerPainting: false, cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false, patchMode: 'normal', patchFrom: 'source', patchTransparent: false, patchDiffusion: 7, patchStructure: 5, patchColor: 10, healDiffusion: 7, healBlendMode: 'normal', spotBlendMode: 'normal', healSample: 'current', spotSampleAll: false, patchSampleAll: false, healSource: 'sampled', healPattern: null, patchPattern: null };
 
   /** Clone Source: where a document point's source moves once scaled, rotated and flipped about `pivot` (the sample
    *  point), as a matrix taking source pixels to where they are painted from; null when all are neutral. Painting at
@@ -7644,7 +7659,7 @@ export class Engine {
   cloneSlot = 0;
   /** The overlay: Show Overlay; Clipped (on by default) keeps it to the brush, off shows the whole source as a stroke
    *  would copy it; its opacity; Auto Hide hides it while painting. */
-  cloneOverlay = { show: true, clipped: true, opacity: 1, autoHide: false };
+  cloneOverlay = { show: true, clipped: true, opacity: 1, autoHide: false, invert: false };
   private cloneFullCache: { key: string; image: Surface } | null = null;
   private warpState: TE.WarpDrag | null = null;
 
@@ -7676,7 +7691,7 @@ export class Engine {
   }
 
   /** The Clone Source panel's overlay settings: assigns the given fields and redraws the overlay. */
-  setCloneOverlay(patch: Partial<{ show: boolean; clipped: boolean; opacity: number; autoHide: boolean }>): void {
+  setCloneOverlay(patch: Partial<{ show: boolean; clipped: boolean; opacity: number; autoHide: boolean; invert: boolean }>): void {
     Object.assign(this.cloneOverlay, patch);
     this.emit('overlay', null);
     this.emit('options', null);
@@ -7798,7 +7813,7 @@ export class Engine {
       if (!off) { this.notice(`Alt-click to set where ${kind === 'clone' ? 'Clone Stamp' : 'the Healing Brush'} copies from.`); return false; }
       if (!pattern) this.cloneOffset = off;
       texture = { surface: pattern ?? (kind === 'healBrush' ? this.healSampleSurface(p, l0, this.retouch.healSample) : this.healSampleSurface(p, l0, this.retouch.cloneSample)), dx: off.x, dy: off.y };
-      const m = kind === 'clone' && this.cloneSource ? this.cloneTransform(this.cloneSource) : null;
+      const m = !pattern && this.cloneSource ? this.cloneTransform(this.cloneSource) : null;
       if (m) {
         const t = createSurface(texture.surface.width, texture.surface.height), tc = ctxOf(t);
         setMat(tc, m);
@@ -7808,7 +7823,7 @@ export class Engine {
       }
     } else if (kind === 'blur') {
       // Sample All Layers (1.51.4, the tool audit): the composite blurred, painted into the active layer.
-      const sigma = clamp(this.brush.diameter / 10, 1.5, 30), all = this.retouch.smearSampleAll && !onMask;
+      const sigma = this.retouch.blurRadius > 0 ? clamp(this.retouch.blurRadius, 0.5, 60) : clamp(this.brush.diameter / 10, 1.5, 30), all = this.retouch.smearSampleAll && !onMask;
       texture = { surface: onMask ? this.maskBlurSample(p, l0, sigma) : all ? blurred(renderDoc(this.work, p.doc), sigma) : this.layerSample(p, l0, sigma), dx: 0, dy: 0 };
     } else if (kind === 'sharpen') {
       const src = this.retouch.smearSampleAll ? renderDoc(this.work, p.doc) : this.layerSample(p, l0), W = src.width, H = src.height, out = createSurface(W, H);
@@ -7822,7 +7837,15 @@ export class Engine {
       const pat = patternById(this.patternStampPattern) ?? allPatterns()[0];
       if (!pat) { this.notice('No pattern to paint with.'); return false; }
       const W = p.doc.width, H = p.doc.height, tile = createSurface(W, H), c = ctxOf(tile), fill = c.createPattern(pat.surface as CanvasImageSource, 'repeat');
-      if (fill) { c.fillStyle = fill; c.fillRect(0, 0, W, H); }
+      if (fill) {
+        const look = this.patternStampLook, k = clamp(look.scale, 10, 1000) / 100, reach = Math.hypot(W, H) * 2 / k;
+        c.translate(look.aligned ? 0 : Math.round(pt.x), look.aligned ? 0 : Math.round(pt.y));
+        c.rotate((look.angle * Math.PI) / 180);
+        c.scale(k, k);
+        c.fillStyle = fill;
+        c.fillRect(-reach, -reach, reach * 2, reach * 2);
+        c.setTransform(1, 0, 0, 1, 0, 0);
+      }
       texture = { surface: tile, dx: 0, dy: 0 };
     }
     else if (kind === 'historyBrush' || kind === 'artHistory') {
@@ -7830,10 +7853,16 @@ export class Engine {
       // History Brush (1.56.3) paints a stylised version of that copy (engine/art-history.ts).
       const id = this.historyBrushSourceId, snap = id ? this.historySnapshots.get(p)?.find((x) => x.id === id) : undefined;
       const src = snap?.state.doc.layers.find((l) => l.id === l0.id);
-      if (!snap) { this.notice('The History Brush paints from a snapshot: take one in the History panel (New Snapshot).'); return false; }
-      if (!src?.raster) { this.notice(`${snap.name} has no layer matching this one, so the History Brush cannot paint it back; choose another source in the History panel.`); return false; }
-      const sample = this.layerSample(p, src);
-      texture = { surface: kind === 'artHistory' ? this.artHistoryTexture(p, l0, sample) : sample, dx: 0, dy: 0 };
+      if (this.historyBrushFromState && this.historySourceIndex !== null) {
+        const state = this.historySource(p);
+        if (!state) { this.notice('This layer did not exist at the history state chosen as the source.'); return false; }
+        texture = { surface: kind === 'artHistory' ? this.artHistoryTexture(p, l0, state) : state, dx: 0, dy: 0 };
+      } else {
+        if (!snap) { this.notice('The History Brush paints from a snapshot or a history state: take a snapshot in the History panel (New Snapshot) or mark a state in its source column.'); return false; }
+        if (!src?.raster) { this.notice(`${snap.name} has no layer matching this one, so the History Brush cannot paint it back; choose another source in the History panel.`); return false; }
+        const sample = this.layerSample(p, src);
+        texture = { surface: kind === 'artHistory' ? this.artHistoryTexture(p, l0, sample) : sample, dx: 0, dy: 0 };
+      }
     }
     p.history.begin({ heal: 'Spot Healing', remove: 'Remove', clone: 'Clone Stamp', healBrush: 'Healing Brush', blur: 'Blur', sharpen: 'Sharpen', dodge: 'Dodge', burn: 'Burn', sponge: 'Sponge', historyBrush: 'History Brush', artHistory: 'Art History Brush', patternStamp: 'Pattern Stamp' }[kind], p.snapshot());
     const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
@@ -7951,7 +7980,17 @@ export class Engine {
     const before = r.read();
     const sample = this.retouch.healSample, p = this.current, l = p?.doc.layers.find((x) => x.raster === r);
     // Source: Pattern: the pattern in the layer's pixel space, healed from in place (the offset is 0).
-    const patRaw = this.retouch.healSource === 'pattern' && p && l ? this.rasterSpace(this.patternSurface(this.retouch.healPattern, p), l, r.width, r.height) : null;
+    // Clone Source scale, angle and flips: the sampled image is turned about the source point before it is healed from.
+    const tm = this.retouch.healSource !== 'pattern' && this.cloneSource ? this.cloneTransform(this.cloneSource) : null;
+    let turned: ImageData | null = null;
+    if (tm && p && l) {
+      const raw = this.healSampleSurface(p, l, sample), t = createSurface(raw.width, raw.height), tc = ctxOf(t);
+      setMat(tc, tm);
+      tc.drawImage(raw, 0, 0);
+      tc.setTransform(1, 0, 0, 1, 0, 0);
+      turned = this.rasterSpace(t, l, r.width, r.height);
+    }
+    const patRaw = this.retouch.healSource === 'pattern' && p && l ? this.rasterSpace(this.patternSurface(this.retouch.healPattern, p), l, r.width, r.height) : turned;
     const patPm = patRaw ? premultiply(patRaw.data) : undefined;
     if (sample !== 'current' && p && l) {
       // Healed at full strength over the stroke's whole footprint on the sampled image, then laid on at the brush's
