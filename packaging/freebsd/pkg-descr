@@ -1,0 +1,7 @@
+formvis is a layered image editor: layers, folders, masks, clipping, blend
+modes, selections, painting, filters, colour management, and PSD, TIFF, EXR
+and OpenRaster files.
+
+This port installs the engine (a local web service in Python) with the built
+web page. Run "formvis", then open http://127.0.0.1:8190/ in a browser. Edits
+stay on this computer.

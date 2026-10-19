@@ -9,8 +9,9 @@ cd "$FORMVIS_ROOT/backend"
 sep=":"
 [ "$(cv_os)" = windows ] && sep=";"
 ext="$(cv_exe)"
-extra=()
-if [ "${FORMVIS_FREEZE_ML:-0}" = 1 ]; then extra+=(--collect-all rembg --hidden-import onnxruntime --collect-binaries onnxruntime --collect-data onnxruntime --copy-metadata onnxruntime --hidden-import rembg); fi
+extra=(--additional-hooks-dir "$FORMVIS_ROOT/setup/pyi_hooks")
+[ -z "${FORMVIS_PYI_ARCH:-}" ] || extra+=(--target-arch "$FORMVIS_PYI_ARCH")
+if [ "${FORMVIS_FREEZE_ML:-0}" = 1 ]; then extra+=(--collect-all rembg --hidden-import onnxruntime --hidden-import rembg); fi
 rm -rf build/pyinstaller dist-engine
 pyinstaller --noconfirm --clean --onefile --name formvis-engine \
   --distpath dist-engine --workpath build/pyinstaller --specpath build/pyinstaller \

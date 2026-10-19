@@ -124,7 +124,7 @@ import { stepBrush } from './extensions/tools/brush';
 import { selectByPoints } from './extensions/tools/object-select';
 import { commitPendingCrop, cropPending, startPerspectiveCrop } from './extensions/tools/crop';
 import { HostLink } from './host';
-import { api, onServiceChange, serviceDown, type Capabilities, type CmykPsd, type OpenedProject } from './io/api';
+import { api, onServiceChange, serviceDown, serviceReady, type Capabilities, type CmykPsd, type OpenedProject } from './io/api';
 import { PROJECT_FILTER, baseName, checkForUpdate, chooseOpenPaths, chooseSavePath, confirmExit, folderOf, hasPanels, installUpdate, isDiskPath, listenShell } from './io/disk';
 import { depthReady, findToRemove, installModel, localDepth, localInpaint, modelReady, skyMask, skyReady, warmLama } from './io/local-gen';
 import { FocusAreaDialog } from './ui/panels/focus-area-dialog';
@@ -147,14 +147,14 @@ import { VideoTimelinePanel } from './ui/video-timeline';
 import { RenderVideoDialog, type RenderChoice } from './ui/panels/render-video-dialog';
 import { TiffOptionsDialog } from './ui/panels/tiff-options-dialog';
 import { LargePictureError, IMAGE_ACCEPT, PROJECT_ACCEPT, RAW_FILE, decodeDeepLayer, decodeFrames, decodeTgaSplit, decodeHdr, decodeImage, heifBits, isImageFile, isProjectFile, nameRawByContent, apngFrames, rasteriseSvg, svgSize } from './io/images';
-import { addFontFace, familyOfFile, fontFamilies, loadSystemFonts } from './ui/fonts';
+import { addFontFace, familyOfFile, fontFamilies, loadSystemFonts, loadUserFonts } from './ui/fonts';
 import { deserialize, giantTiles, serialize } from './io/project-io';
 import { templateContext } from './io/prompt-templates';
 import { AboutDialog, BenchmarkDialog, NewCanvasDialog, OpenDialog, ReportIssueDialog, SettingsDialog, ShortcutsDialog, SystemInfoDialog, UpdateDialog } from './ui/app-dialogs';
 import { HistoryLog } from './ui/history-log';
 import { extraOn, extrasOn, selectionTintOn, setAllExtras, setExtra, setExtras, setSelectionTint } from './ui/view-extras';
 import { installNumberFields } from './ui/number-fields';
-import { CHECKER_CELL, FONT_PREVIEWS, applyPrefs, applyUiFontSize, checkerPair, DEFAULT_PREFS, loadPrefs, resendScratch, savePrefs, updateAtStart, updatePrefs, type Prefs } from './ui/prefs';
+import { CHECKER_CELL, FONT_PREVIEWS, applyPrefs, applyUiFontSize, autoUiScale, checkerPair, DEFAULT_PREFS, loadPrefs, resendScratch, savePrefs, updateAtStart, updatePrefs, type Prefs } from './ui/prefs';
 import { THEMES, readChoice, setTheme } from './ui/themes';
 import { installOptionMemory } from './ui/option-memory';
 import { chooseRenderer, detectedName, gpuStartFailedLastTime, markGpuStarted, markGpuStarting, probeGpu, type GpuProbe } from './gpu/probe';
@@ -163,6 +163,7 @@ import { benchText, runBenchmark } from './gpu/bench';
 import { GlDisplay } from './gpu/gl-display';
 import { GlFilters } from './gpu/filters';
 import { frameTrace } from './gpu/frame-trace';
+import { perfHud } from './ui/perf-hud';
 import { setGpuFilters } from './engine/gpu-filters';
 import { NativeDisplay } from './gpu/native-display';
 import { PerfDialog, recordPerformance } from './ui/perf-recorder';
@@ -272,12 +273,13 @@ import { MenusDialog } from './ui/panels/menus-dialog';
 import { slotTool, toolGroups } from './ui/tool-groups';
 import { Stage } from './ui/stage';
 import { StatusBar, SERVICE_NOTE } from './ui/status';
-import { t, tn } from './ui/i18n';
+import { t, tn, onLanguage } from './ui/i18n';
 import { Tabs } from './ui/tabs';
 import { ViewTiles, type ArrangeLayout } from './ui/view-tiles';
 import { FloatViews } from './ui/float-views';
 import { TaskBar } from './ui/task-bar';
 import { toast } from './ui/toast';
+import { chooseKys } from './ui/kys-import';
 
 /** Each tab's own group, where Reset Panels returns it. */
 /** Edit > Preferences: a command for each page of the Preferences dialog, as [command suffix, menu label, page]. */
@@ -452,7 +454,7 @@ export function startApp(): void {
   const applyRtl = (): void => { if (document.documentElement.dir !== (rtl() ? 'rtl' : 'ltr')) { document.documentElement.dir = rtl() ? 'rtl' : 'ltr'; window.dispatchEvent(new Event('resize')); } };
   // Interface zoom: the whole window scaled by CSS zoom on the root, kept between runs; the stage measures itself again.
   const UI_ZOOMS = [0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
-  const uiZoom = (): number => { const n = parseFloat(stored('formvis.uiZoom') ?? '1'); return UI_ZOOMS.includes(n) ? n : 1; };
+  const uiZoom = (): number => { const raw = stored('formvis.uiZoom'); if (raw === 'auto') return autoUiScale(); const n = parseFloat(raw ?? '1'); return UI_ZOOMS.includes(n) ? n : 1; };
   const applyUiZoom = (): void => { const z = uiZoom() === 1 ? '' : String(uiZoom()); if (document.documentElement.style.zoom !== z) { document.documentElement.style.zoom = z; window.dispatchEvent(new Event('resize')); } };
   const stepUiZoom = (by: number): void => { store('formvis.uiZoom', String(UI_ZOOMS[Math.max(0, Math.min(UI_ZOOMS.length - 1, UI_ZOOMS.indexOf(uiZoom()) + by))])); applyUiZoom(); };
   // The pasteboard around the picture: the theme's own, or a fixed grey (View > Pasteboard).
@@ -500,6 +502,9 @@ export function startApp(): void {
   applyRtl();
   applyUiZoom();
   window.addEventListener('formvis:ui-zoom', applyUiZoom);   // Preferences > Interface > Interface Scale
+  // Auto follows the display: a window moved to a screen with another pixel ratio is sized again at once.
+  const watchRatio = (): void => { matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`).addEventListener('change', () => { if (stored('formvis.uiZoom') === 'auto') applyUiZoom(); watchRatio(); }, { once: true }); };
+  watchRatio();
   applyPrefs(engine, loadPrefs());
   const stage = new Stage(q(root, '.cv-stage'), engine);
   q(root, '.cv-stage').addEventListener('contextmenu', (e) => {
@@ -886,8 +891,10 @@ export function startApp(): void {
     stage.setGpu(live, pr.gpuMemoryMB * 1024 * 1024, live ? (reason) => status.setGpu(reason ? 'GPU: CPU' : `GPU: ${api}`, reason ? `${api} is on, but ${reason}, so it draws on the CPU` : `${name}: ${ch.reason}`) : null);
     if (!live) status.setGpu('GPU: CPU', cpuWhy);
     else status.setGpu(`GPU: ${api}`, `${name}: ${ch.reason}`);
-    dialogs.settings.setGpu(detectedName(gpuProbe), live ? api : 'CPU', live ? ch.reason : cpuWhy);
+    perfHud.setApi(live ? api : 'CPU');
+    dialogs.settings.setGpu(detectedName(gpuProbe), live ? api : 'CPU', live ? ch.reason : cpuWhy, live ? name : '', live && ch.adapter ? ch.adapter.maxTexture : 0);
   }
+  perfHud.start();
   void (async () => {
     if (gpuStartFailedLastTime()) {
       savePrefs({ ...loadPrefs(), useGpu: false });
@@ -1997,10 +2004,11 @@ export function startApp(): void {
         const prof = p.doc.profile && p.doc.depth !== 32 ? { bytes: fromBase64(p.doc.profile.icc), name: p.doc.profile.name } : null;
         // A very large 8-bit picture's PNG (1.61.2, DEV_PLAN 26.4): rendered a band at a time and written by the engine
         // as it comes, so no full-size copy is made here or there.
-        if (!deep && kind === 'png' && engine.bandedExportable()) {
-          const key = await api.bandsBegin(p.doc.width, p.doc.height, p.doc.resolution ?? 72, prof);
-          await engine.renderBands((rows) => api.bandsPut(key, rows));
-          await deliver(await api.bandsEnd(key), `${stem}.png`);
+        if (!deep && (kind === 'png' || kind === 'tiff') && engine.bandedExportable()) {
+          const format = kind === 'tiff' ? 'tiff' : 'png';
+          const key = await api.bandsBegin(p.doc.width, p.doc.height, p.doc.resolution ?? 72, prof, format);
+          await engine.renderBands((rows) => api.bandsPut(key, rows, format));
+          await deliver(await api.bandsEnd(key, format), `${stem}.${kind === 'tiff' ? 'tif' : 'png'}`);
           return;
         }
         // From 32 bits (1.53.9): TIFF stays 32-bit float; PNG is 16-bit, sRGB-encoded, brighter than white clipped.
@@ -3487,7 +3495,7 @@ export function startApp(): void {
       let n = 0;
       for (const r of set.records) if (await reopen(r, `${r.name} (earlier)`)) n++;
       engine.emit('projects', null);
-      if (n) toast(`Opened ${n === 1 ? 'the document' : `${n} documents`} from ${set.kind === 'crash' ? 'a crash set' : 'an earlier session'}.`, 'info');
+      if (n) toast(tn(n, 'Opened the document from {where}.', 'Opened {n} documents from {where}.').replace('{where}', t(set.kind === 'crash' ? 'a crash set' : 'an earlier session')), 'info');
       return n;
     },
   });
@@ -5239,6 +5247,7 @@ export function startApp(): void {
     { id: 'check-for-updates', label: 'Check for Updates...', enabled: hasPanels, run: () => void checkUpdates() },
     { id: 'reset-tool', label: 'Reset Tool', run: () => { const n = optionMemory.reset(engine.tool); toast(n ? `Reset ${n} ${n === 1 ? 'option' : 'options'} of the ${getTool(engine.tool)?.label ?? 'current'} tool.` : 'This tool already has its default options.', 'info'); } },
     { id: 'reset-all-tools', label: 'Reset All Tools', run: () => { const n = optionMemory.reset(); toast(n ? `Reset ${n} tool ${n === 1 ? 'option' : 'options'} to their defaults.` : 'Every tool already has its default options.', 'info'); } },
+    { id: 'performance-hud', label: 'Performance HUD', checked: () => perfHud.on, run: () => perfHud.toggle() },
     { id: 'frame-trace', label: 'Frame Trace', checked: () => frameTrace.on, run: () => { if (frameTrace.on) { frameTrace.stop(); toast(frameTrace.summary(), 'info'); } else { frameTrace.start(); toast('Tracing frames; run Frame Trace again to stop, and Copy Frame Trace for the table.', 'info'); } engine.setView({}); } },
     { id: 'copy-frame-trace', label: 'Copy Frame Trace', enabled: () => frameTrace.samples.length > 0, run: () => { void navigator.clipboard?.writeText(frameTrace.csv()).then(() => toast(`Copied ${frameTrace.samples.length} traced frames as CSV.`), () => toast('The clipboard is not available here.', 'error')); } },
     { id: 'tile-grid', label: 'Tile Grid', checked: () => engine.view.tileGrid, enabled: has, run: () => engine.setView({ tileGrid: !engine.view.tileGrid }) },
@@ -5787,7 +5796,7 @@ export function startApp(): void {
       { label: 'Plug-ins (WebAssembly)', get items() { const ids = [...wasmIds].map((i) => `wasm-run-${i}`); return [...ids, ...(ids.length ? ['-'] : []), 'wasm-plugins', 'wasm-plugin-install', 'wasm-plugin-example']; } }, '-', 'remove-bg', 'remove-bg-lite'] },
     // Generate: the generative commands in one place (the Generate panel, models, fill, repair, size, relight, and the ComfyUI and NodeMode links).
     { label: 'Generate', items: ['generate-panel', '-', 'generate-image', 'new-canvas-model-preset', 'generative-fill', 'generative-expand', '-', 'boxes-tool', 'boxes-from-selection', 'boxes-copy', 'boxes-clear', '-', 'generate-remove', 'content-fill-workspace', 'content-fill', 'remove-wires', '-', 'remove-bg', 'remove-bg-lite', '-', 'upscale-2x', 'upscale-4x', 'compute-depth-map', { label: 'Depth Map', items: ['depth-map-from-layer', 'depth-map-recompute', 'depth-map-show', '-', 'depth-map-flatten', 'depth-map-nearer', 'depth-map-farther', 'depth-map-smooth', 'depth-map-snap', 'depth-map-detail'] }, 'new-relight-layer', '-', 'comfyui-run', 'send-comfyui', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode'])] },
-    { label: 'View', items: [{ label: 'Proof Setup', items: ['proof-setup', '-', 'proof-preset-monitor', 'proof-preset-macrgb', 'proof-preset-internet', 'proof-preset-cmyk', 'proof-preset-cyan', 'proof-preset-magenta', 'proof-preset-yellow', 'proof-preset-black', 'proof-preset-cmy', '-', 'proof-preset-protanopia', 'proof-preset-deuteranopia'] }, 'proof-colors', 'gamut-warning', 'preview-32', '-', 'zoom-in', 'zoom-out', 'fit', 'fit-layers', 'fit-artboard', 'actual', 'print-size', 'flip-view-h', 'canvas-scrollbars', 'no-tool', '-', 'toggle-extras', 'toggle-rulers', 'toggle-grid', 'grid-settings', 'pixel-grid', 'pattern-preview', 'pixel-art-preview', 'par-correction', 'transform-controls', 'toggle-task-bar', '-',
+    { label: 'View', items: [{ label: 'Proof Setup', items: ['proof-setup', '-', 'proof-preset-monitor', 'proof-preset-macrgb', 'proof-preset-internet', 'proof-preset-cmyk', 'proof-preset-cyan', 'proof-preset-magenta', 'proof-preset-yellow', 'proof-preset-black', 'proof-preset-cmy', '-', 'proof-preset-protanopia', 'proof-preset-deuteranopia'] }, 'proof-colors', 'gamut-warning', 'preview-32', '-', 'zoom-in', 'zoom-out', 'fit', 'fit-layers', 'fit-artboard', 'actual', 'print-size', 'flip-view-h', 'canvas-scrollbars', 'no-tool', '-', 'toggle-extras', 'toggle-rulers', 'toggle-grid', 'grid-settings', 'pixel-grid', 'pattern-preview', 'pixel-art-preview', 'par-correction', 'transform-controls', 'toggle-task-bar', 'performance-hud', '-',
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'guide-layout', 'guides-from-shape', 'guides-from-shape-centre', 'edit-selected-guides', 'clear-guides', 'clear-artboard-guides'] }, 'snap', { label: 'Snap To', items: ['snap-all', '-', 'snap-guides', 'snap-grid', 'snap-layers', 'snap-bounds', 'snap-slices', 'snap-selection'] }, { label: 'Show', items: ['show-all-extras', 'show-no-extras', '-', 'show-selection-edges', 'selection-display-tint', 'show-layer-edges', 'show-artboard-guides', 'show-target-path','show-smart-guides', 'show-comfy-dot', 'show-notes', 'show-counts', 'show-brush-preview', 'show-mesh', 'show-edit-pins', '-', 'show-extras-options', '-', 'toggle-show-slices', 'toggle-auto-slices', 'lock-slices', 'layer-based-slice', 'slices-from-guides', 'slice-options', 'divide-slice', 'delete-slice', 'clear-slices'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'os-full-screen', 'toggle-panels', 'rail-columns', 'interface-rtl', 'next-favourite-theme', 'interface-zoom-in', 'interface-zoom-out', 'interface-zoom-reset', 'custom-title-bar', 'menus-in-window', { label: 'Pasteboard', items: ['pasteboard-default', 'pasteboard-black', 'pasteboard-dark', 'pasteboard-mid', 'pasteboard-light'] }] },
     { label: 'Plugins', items: () => { const ids = [...pluginHost.commandIds(), ...folderPlugins.commandIds()]; return ['manage-plugins', 'reload-plugins', 'open-plugins-folder', ...(ids.length && loadPrefs().showExtPanels ? ['-', ...ids] : [])]; } },
@@ -5801,6 +5810,7 @@ export function startApp(): void {
     void native.build().catch(() => undefined);
     for (const ev of ['active', 'doc', 'selection', 'history', 'tool'] as const) engine.on(ev, () => native.refresh());
     engine.on('projects', () => { void native.build().catch(() => undefined); });   // Open Recent and what is enabled
+    onLanguage(() => { void native.build().catch(() => undefined); });
   }
   contextMenu.setItems(['duplicate-dialog', 'delete-layer', 'rename', 'edit-text', 'warp-text', '-',
     { label: 'Smart Objects', items: ['convert-smart', 'smart-new-via-copy', 'smart-convert-to-layers', 'smart-export-contents', { label: 'Stack Mode', items: STACK_MODES.map((m) => `stack-mode-${m.id}`) }, 'rasterize', 'edit-contents', 'replace-contents', '-', 'smart-convert-to-linked', 'update-linked', 'relink', 'embed-linked', 'smart-reveal-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
@@ -6138,6 +6148,7 @@ export function startApp(): void {
   // The desktop app lists the installed fonts from the shell at once (no permission is asked there);
   // a browser keeps "Load system fonts..." in the Type tool, since Local Font Access asks the user first.
   if ('__TAURI_INTERNALS__' in window) void loadSystemFonts().then((f) => { if (f) engine.emit('options', null); });
+  void serviceReady().then((up) => (up ? loadUserFonts() : null)).then((f) => { if (f?.length) engine.emit('options', null); });
 
   const passes = (c: { id: string }): boolean => /^(zoom-|panel-|screen-|recent-|toggle-)/.test(c.id);
   // 1.55.9 (DEV_PLAN 22.7): at 16 bits and in CMYK every command runs, the ones not on the float model through derive
@@ -6282,5 +6293,14 @@ export function startApp(): void {
     updatePrefs({ whatsNewSeen: VERSION });
     whatsNew.show();
   }
-  void Promise.race([faces, new Promise((r) => window.setTimeout(r, 2500))]).then(() => requestAnimationFrame(() => { revealApp(); void offerRecovery().then(offerWhatsNew); }));
+  // A first start with no saved preferences offers the keyboard shortcuts once: a .kys file, or formvis's classic set; answering either ends it.
+  function offerShortcutSet(): void {
+    const KEY = 'formvis.shortcutNotice';
+    if (!freshProfile || stored(KEY) || navigator.webdriver || anyDialogOpen()) return;
+    toast('Keyboard shortcuts: import a shortcut set from a .kys file, or keep the built-in classic set.', 'info', { ms: 0, actions: [
+      { label: 'Import a shortcut set (.kys)', run: () => { store(KEY, '1'); chooseKys(commands); } },
+      { label: 'Use the classic set', run: () => { store(KEY, '1'); } },
+    ] });
+  }
+  void Promise.race([faces, new Promise((r) => window.setTimeout(r, 2500))]).then(() => requestAnimationFrame(() => { revealApp(); void offerRecovery().then(() => { offerWhatsNew(); offerShortcutSet(); }); }));
 }

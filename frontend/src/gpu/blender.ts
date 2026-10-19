@@ -51,10 +51,11 @@ export class GpuBlender {
       const tex = d.createTexture({ size: [l.width, l.height], format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT });
       d.queue.copyExternalImageToTexture({ source: l.image }, { texture: tex, premultipliedAlpha: true }, [l.width, l.height]);
       const [ia, ib, ic, id, ie, iff] = invert(l.matrix);
-      const raw = new ArrayBuffer(128), f = new Float32Array(raw), u = new Uint32Array(raw);
+      const raw = new ArrayBuffer(224), f = new Float32Array(raw), u = new Uint32Array(raw);
       f.set([ia, ib, 0, 0, ic, id, 0, 0, ie, iff, 1, 0, l.width, l.height, Math.min(1, Math.max(0, l.opacity))]);
+      f.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0], 32);
       u[15] = blendIndex(l.blend);
-      const ub = d.createBuffer({ size: 128, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+      const ub = d.createBuffer({ size: 224, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
       d.queue.writeBuffer(ub, 0, raw);
       const bind = d.createBindGroup({ layout: this.pipeline.getBindGroupLayout(0), entries: [
         { binding: 0, resource: a.createView() }, { binding: 1, resource: tex.createView() },

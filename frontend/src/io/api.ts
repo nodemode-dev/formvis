@@ -38,10 +38,10 @@ export interface ModelsFolder { active: string; saved: string; env: string; rest
 export interface OutputItem { name: string; path: string; modified: number; size: number; kind: string }
 /** Marks the calls that read or write files by path (1.87.0): the engine answers them only for formvis's own window. */
 const LOCAL = { 'X-Formvis': '1' };
-export interface GenerativeStatus { configured: boolean; source: 'environment' | 'settings' | null; last4?: string; refused?: boolean; fillModel: string; eraseModel: string; upscaleModel: string }
+export interface GenerativeStatus { configured: boolean; source: 'environment' | 'settings' | null; last4?: string; refused?: boolean; /** Seconds since 1970 when the service refused the key, 0 when it has not. */ refusedAt?: number; fillModel: string; eraseModel: string; upscaleModel: string }
 /** A generation provider beside fal (1.58.4, L7): OpenAI, Google, Black Forest Labs or Ideogram. */
-export interface ProviderStatus { id: string; name: string; model: string; fill: boolean; configured: boolean; source: 'environment' | 'settings' | null; last4?: string; refused?: boolean }
-export interface LlmRow { id: string; name: string; baseUrl: string; model: string; vision: boolean; hasKey: boolean }
+export interface ProviderStatus { id: string; name: string; model: string; fill: boolean; configured: boolean; source: 'environment' | 'settings' | null; last4?: string; refused?: boolean; refusedAt?: number }
+export interface LlmRow { id: string; name: string; baseUrl: string; model: string; vision: boolean; hasKey: boolean; last4?: string; refusedAt?: number }
 export interface LlmStatus { configured: boolean; baseUrl: string; model: string; vision: boolean; active: string; hasKey: boolean; rows: LlmRow[]; store: 'system' | 'file' }
 export interface HfToken { hasKey: boolean; last4: string; store: 'system' | 'file' }
 export interface ModelsScan { scanned: number; linked: string[]; ready: string[] }
@@ -84,7 +84,7 @@ async function probe(): Promise<Capabilities | null> {
   return null;
   function set(next: 'up' | 'down'): void { const was = serviceState; serviceState = next; if (was !== next) for (const fn of [...serviceWatchers]) fn(next === 'up'); }
 }
-window.addEventListener('focus', () => { if (serviceState === 'down') caps = probe(); });
+if (typeof window !== 'undefined') window.addEventListener('focus', () => { if (serviceState === 'down') caps = probe(); });
 
 const NOT_RUNNING = 'The formvis engine service is not running. Start it with ./formvis boot.';
 
@@ -533,18 +533,18 @@ export const api = {
     const frames = head.sizes.map((s) => { const blob = new Blob([b.slice(at, at + s)], { type: 'image/png' }); at += s; return blob; });
     return { width: head.width, height: head.height, fps: head.fps, delayMs: head.delayMs, frames };
   },
-  /** A PNG written by the engine a band of rows at a time (1.61.2, DEV_PLAN 26.4): opened, fed rows top first, closed. */
-  async bandsBegin(width: number, height: number, ppi: number, icc: { bytes: Uint8Array; name: string } | null = null): Promise<string> {
+  /** A PNG written by the engine a band of rows at a time (1.61.2, DEV_PLAN 26.4): opened, fed rows top first, closed. `format` tiff (Deflate strips) and psd (merged picture, channel by channel) since 1.90.7. */
+  async bandsBegin(width: number, height: number, ppi: number, icc: { bytes: Uint8Array; name: string } | null = null, format: 'png' | 'tiff' | 'psd' = 'png'): Promise<string> {
     const init: RequestInit = icc ? { method: 'POST', body: new Blob([icc.bytes as Uint8Array<ArrayBuffer>]), headers: { 'Content-Type': 'application/octet-stream' } } : { method: 'POST' };
-    return ((await (await request(`/bands/png?width=${width}&height=${height}&ppi=${ppi}${icc ? `&name=${encodeURIComponent(icc.name)}` : ''}`, init)).json()) as { key: string }).key;
+    return ((await (await request(`/bands/${format}?width=${width}&height=${height}&ppi=${ppi}${icc ? `&name=${encodeURIComponent(icc.name)}` : ''}`, init)).json()) as { key: string }).key;
   },
-  async bandsPut(key: string, rows: Uint8ClampedArray<ArrayBuffer>): Promise<void> {
+  async bandsPut(key: string, rows: Uint8ClampedArray<ArrayBuffer>, format: 'png' | 'tiff' | 'psd' = 'png'): Promise<void> {
     // As a Blob (1.63.0): a typed-array body stayed in the page after the upload, past garbage collection (30 uploads
     // of 16 MB kept about 190 MB); a Blob is handed to the browser and leaves nothing.
-    await request(`/bands/png/${key}`, { method: 'POST', body: new Blob([rows]), headers: { 'Content-Type': 'application/octet-stream' } });
+    await request(`/bands/${format}/${key}`, { method: 'POST', body: new Blob([rows]), headers: { 'Content-Type': 'application/octet-stream' } });
   },
-  async bandsEnd(key: string): Promise<Blob> {
-    return (await request(`/bands/png/${key}/end`, { method: 'POST' })).blob();
+  async bandsEnd(key: string, format: 'png' | 'tiff' | 'psd' = 'png'): Promise<Blob> {
+    return (await request(`/bands/${format}/${key}/end`, { method: 'POST' })).blob();
   },
   /** An opened project's PNG read by the engine a band of rows at a time (1.62.8): a giant layer's, past what a browser
    *  can decode. */

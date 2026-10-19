@@ -104,12 +104,28 @@ def _key() -> str | None:
     return _row_key(row["id"]) if row else None
 
 
+#: Keys a service refused, as (row, digest of the key) to the time it did; a different key is not in it, so a new key lifts the flag.
+_refused: dict[str, float] = {}
+
+
+def _print(row_id: str, key: str | None) -> str | None:
+    import hashlib
+    return f"{row_id}:{hashlib.sha256(key.encode()).hexdigest()}" if key else None
+
+
+def _row_public(r: dict) -> dict:
+    key = _row_key(r["id"])
+    mark = _print(r["id"], key)
+    return {"id": r["id"], "name": r.get("name") or r["model"], "baseUrl": r["baseUrl"], "model": r["model"], "vision": bool(r.get("vision")), "hasKey": bool(key),
+            "last4": key[-4:] if key and len(key) >= 8 else "", "refusedAt": _refused.get(mark, 0) if mark else 0}
+
+
 def status() -> dict:
     s = _settings()
     rows = _rows(s)
     act = _active(s)
     return {"configured": bool(act), "baseUrl": act.get("baseUrl", ""), "model": act.get("model", ""), "vision": bool(act.get("vision")), "active": act.get("id", ""), "hasKey": bool(act and _row_key(act["id"])),
-            "rows": [{"id": r["id"], "name": r.get("name") or r["model"], "baseUrl": r["baseUrl"], "model": r["model"], "vision": bool(r.get("vision")), "hasKey": bool(_row_key(r["id"]))} for r in rows],
+            "rows": [_row_public(r) for r in rows],
             "store": secrets.where()["store"]}
 
 
@@ -191,6 +207,8 @@ def delete_row(row_id: str) -> dict:
     secrets.delete(_secret_name(row_id), clear)
     s = _settings()
     s["rows"] = [r for r in rows if r["id"] != row_id]
+    if not s["rows"]:
+        s["baseUrl"], s["model"] = "", ""
     if s.get("active") == row_id:
         s["active"] = s["rows"][0]["id"] if s["rows"] else ""
     act = _active(s)
@@ -206,13 +224,18 @@ def _call(path: str, body: dict | None = None, timeout: float = 120) -> dict:
     if not s.get("baseUrl") or not s.get("model"):
         raise LlmError("Set a language model first, in Preferences > Plugins.", 428)
     key = _key()
+    mark = _print(s.get("id", ""), key)
     headers = {"Content-Type": "application/json", **({"Authorization": f"Bearer {key}"} if key else {})}
     req = urllib.request.Request(s["baseUrl"] + path, data=json.dumps(body).encode() if body is not None else None, headers=headers, method="POST" if body is not None else "GET")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
+            if mark:
+                _refused.pop(mark, None)
             return json.loads(r.read() or b"{}")
     except urllib.error.HTTPError as exc:
         if exc.code in (401, 403):
+            if mark:
+                _refused[mark] = time.time()
             raise LlmError("The model's service refused the key.", 502)
         if exc.code == 404:
             raise LlmError(f"The service at {s['baseUrl']} has no such model or path.", 502)

@@ -1,11 +1,12 @@
 import type { Engine } from '../engine';
-import type { Layer, TextSpec } from '../engine/types';
+import type { Layer, ParaAttrs, TextSpec } from '../engine/types';
+import { baseDirection, paraOf } from '../engine/text';
 import { TYPE_LANGUAGES, setType } from '../extensions/tools/type';
 import { axesOf, featuresFromText, featuresToText, variationsFromText, variationsToText } from '../engine/opentype';
 import { el, setHidden, setText } from './dom';
-import { onLanguage, t } from './i18n';
-import { fontFamilies, previewFont } from './fonts';
-import { typedAttrs, typedStyle } from './text-editor';
+import { onLanguage, t, t as tr } from './i18n';
+import { fontGroups, previewFont } from './fonts';
+import { typedAttrs, typedParaSet, typedParas, typedStyle, type ParaPatch } from './text-editor';
 import { icon } from './icons';
 import { PanelGroup } from './panel-group';
 import { allBrushPresets, brushGroupOf, importedBrushPresets, type BrushPreset } from '../engine/brush-dynamics';
@@ -604,26 +605,36 @@ export class PropertiesColumn {
     const e = this.engine;
     const body = el(`<div class="cv-para cv-char"><div class="cv-seg" role="group" aria-label="Alignment">${(['left', 'center', 'right', 'justify'] as const).map((a) => `<button type="button" data-align="${a}" title="${a === 'justify' ? 'Justify' : `Align ${a}`}" aria-label="${a === 'justify' ? 'Justify' : `Align ${a}`}">${icon(a === 'left' ? 'alignLeft' : a === 'center' ? 'alignCenter' : a === 'right' ? 'alignRight' : 'alignJustify', 16)}</button>`).join('')}</div></div>`);
     const btns = Array.from(body.querySelectorAll<HTMLButtonElement>('[data-align]'));
-    for (const b of btns) b.addEventListener('click', () => setType(e, { align: b.dataset.align as TextSpec['align'] }));
+    // While two paragraphs or more are being typed a change goes to the paragraphs under the caret or selection; otherwise to the layer.
+    const put = (patch: Partial<TextSpec>): void => { if (!typedParaSet(patch as ParaPatch)) setType(e, patch); };
+    const side = (): ParaAttrs => typedParas() ?? e.textSettings;
+    for (const b of btns) b.addEventListener('click', () => put({ align: b.dataset.align as TextSpec['align'], edge: undefined }));
     const row = (label: string, control: HTMLElement): void => { const r = el(`<label class="cv-char-row"><span>${label}</span></label>`); r.appendChild(control); body.appendChild(r); };
     const last = el<HTMLSelectElement>('<select class="cv-select" aria-label="Justify last line"><option value="left">Last line left</option><option value="center">Last line centre</option><option value="right">Last line right</option><option value="all">Justify all</option></select>');
-    last.addEventListener('change', () => setType(e, { lastLine: last.value === 'left' ? undefined : last.value as TextSpec['lastLine'] }));
+    last.addEventListener('change', () => put({ lastLine: last.value === 'left' ? undefined : last.value as TextSpec['lastLine'] }));
     const fields = ([['Left indent', 'indentLeft', 0], ['Right indent', 'indentRight', 0], ['First line', 'indentFirst', -2000], ['Space before', 'spaceBefore', 0], ['Space after', 'spaceAfter', 0]] as const).map(([label, key, min]) => {
-      const f = numField('px', label, min, 5000, 1, (v) => setType(e, { [key]: v || undefined }));
+      const f = numField('px', label, min, 5000, 1, (v) => put({ [key]: v || undefined }));
       row(label, f.root);
       return { key, f };
     });
     const hyph = el<HTMLInputElement>('<input type="checkbox" aria-label="Hyphenate">');
     hyph.addEventListener('change', () => setType(e, { hyphenate: hyph.checked }));
     const dir = el<HTMLSelectElement>('<select class="cv-select" aria-label="Text direction"><option value="auto">Follow Language Options</option><option value="ltr">Left to right</option><option value="rtl">Right to left</option></select>');
-    dir.addEventListener('change', () => setType(e, { bidi: dir.value === 'ltr' || dir.value === 'rtl' ? dir.value : undefined }));
-    row('Justify', last); row('Hyphenate', hyph); row('Direction', dir);
+    dir.addEventListener('change', () => {
+      const v = dir.value === 'ltr' || dir.value === 'rtl' ? dir.value : undefined, cur = side(), was = baseDirection({ shaping: e.textSettings.shaping, bidi: cur.bidi });
+      // A paragraph aligned left or right keeps its side of the line (start or end) when its direction turns, as in a word processor.
+      put({ bidi: v, ...(!cur.edge && (cur.align === 'left' || cur.align === 'right') ? { edge: (cur.align === 'left') === (was === 'ltr') ? 'start' as const : 'end' as const } : {}) });
+    });
+    const edge = el<HTMLSelectElement>('<select class="cv-select" aria-label="Align to"><option value="">Left or right</option><option value="start">Start of line</option><option value="end">End of line</option></select>');
+    edge.addEventListener('change', () => put({ edge: edge.value === 'start' || edge.value === 'end' ? edge.value : undefined, ...(edge.value && side().align !== 'left' && side().align !== 'right' ? { align: 'left' as const } : {}) }));
+    row('Justify', last); row('Hyphenate', hyph); row('Direction', dir); row('Align to', edge);
     new PanelGroup(this.root, 'paragraph', [{ id: 'paragraph', label: 'Paragraph', body }], 'Paragraph');
     this.refreshers.push(() => {
-      const t = e.textSettings;
-      for (const b of btns) { const on = b.dataset.align === t.align; b.classList.toggle('is-on', on); b.setAttribute('aria-pressed', String(on)); }
+      const own = typedParas(), t = own ? ({ ...e.textSettings, ...own, paras: undefined } as TextSpec) : e.textSettings, shown = paraOf(t, 0).align;
+      for (const b of btns) { const on = b.dataset.align === shown; b.classList.toggle('is-on', on); b.setAttribute('aria-pressed', String(on)); }
       if (document.activeElement !== last) last.value = t.lastLine ?? 'left';
       if (document.activeElement !== dir) dir.value = t.bidi ?? 'auto';
+      if (document.activeElement !== edge) edge.value = t.edge ?? '';
       for (const { key, f } of fields) f.set(t[key] ?? 0);
       hyph.checked = !!t.hyphenate;
     });
@@ -672,11 +683,14 @@ export class PropertiesColumn {
     let axesFace = '';
     let fonts = '';
     this.refreshers.push(() => {
-      const t = e.textSettings, list = fontFamilies(), key = list.join('|');
-      if (key !== fonts || !list.includes(t.family)) {
+      const t = e.textSettings, groups = fontGroups(), extra = groups.some((g) => g.families.includes(t.family)) ? '' : t.family;
+      const key = `${extra}\n${groups.map((g) => `${g.label}:${g.families.join('|')}`).join('\n')}`;
+      if (key !== fonts) {
         fonts = key;
         font.textContent = '';
-        for (const f of list.includes(t.family) ? list : [t.family, ...list]) { const o = document.createElement('option'); o.value = f; o.textContent = f; font.appendChild(o); }
+        const add = (parent: HTMLElement, f: string): void => { const o = document.createElement('option'); o.value = f; o.textContent = f; parent.appendChild(o); };
+        if (extra) add(font, extra);
+        for (const g of groups) { const og = document.createElement('optgroup'); og.label = tr(g.label); for (const f of g.families) add(og, f); font.appendChild(og); }
       }
       for (const o of Array.from(font.options)) previewFont(o, o.value);   // Font Preview Size (36.31), a style compare when unchanged
       if (document.activeElement !== font) font.value = t.family;

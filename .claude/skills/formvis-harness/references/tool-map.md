@@ -2,6 +2,12 @@
 
 Generated from the MCP catalogue (134 tools, `TOOLS` in `backend/app/routers/mcp.py`) and the `formvis-driving` sub-skills by `./formvis agents sync`; do not edit by hand. A tool no sub-skill names reads `none` and needs a line in the sub-skill that covers its family.
 
+## Contents
+
+- Tools: each MCP tool, whether it reads or changes, and the driving sub-skills that name it
+
+## Tools
+
 | Tool | Reads or changes | Driving sub-skills that name it |
 | --- | --- | --- |
 | `get_document` | reads only | `adjustments-and-filters`, `colour-and-modes`, `documents-and-files`, `export`, `generation-and-ai`, `layers-and-masks`, `selections`, `terminal`, `transform-and-warp`, `type-and-shapes` |

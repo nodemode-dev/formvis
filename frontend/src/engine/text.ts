@@ -1,11 +1,12 @@
 import { Raster, createSurface, ctxOf } from './surface';
 import { RUN_KEYS, cleanFeatures, cleanRuns, ensureVariant, runsStyled, styleSegments, variantFamily, type RunPatch } from './opentype';
 import { SMALL_CAP_SCALE, opticalKern, smallCapPieces } from './text-attrs';
-import { clamp, type CharacterStyle, type ID, type Layer, type ParagraphStyle, type Pt, type RunAttrs, type TextExtras, type TextPath, type TextSpec, type TextWarp, type WarpStyle } from './types';
+import { BUNDLED_FAMILIES, ensureBundledFont } from './bundled-fonts';
+import { clamp, type CharacterStyle, type ID, type Layer, type ParaAttrs, type ParagraphStyle, type Pt, type RunAttrs, type TextExtras, type TextPath, type TextSpec, type TextWarp, type WarpStyle } from './types';
 
 /** Type layers: text set in a font, drawn into a layer's pixels and kept editable while those pixels are untouched. */
 
-export const TEXT_FONTS = ['Inter', 'JetBrains Mono', 'Arial', 'Helvetica', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana', 'Trebuchet MS', 'Impact', 'serif', 'sans-serif', 'monospace'];
+export const TEXT_FONTS = [...BUNDLED_FAMILIES.map((b) => b.family), 'Arial', 'Helvetica', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana', 'Trebuchet MS', 'Impact', 'serif', 'sans-serif', 'monospace'];
 const GENERIC = new Set(['serif', 'sans-serif', 'monospace', 'system-ui', 'cursive', 'fantasy']);
 
 export function defaultText(): TextSpec {
@@ -24,6 +25,28 @@ export const shapingLang = (t: Pick<TextSpec, 'shaping'>): string => (t.shaping 
 
 /** The paragraph's base direction: the layer's own setting, else right-to-left for Middle Eastern features. */
 export const baseDirection = (t: Pick<TextSpec, 'shaping' | 'bidi'>): 'ltr' | 'rtl' => t.bidi ?? (t.shaping === 'middleEastern' ? 'rtl' : 'ltr');
+
+export interface ParaLook { align: 'left' | 'center' | 'right' | 'justify'; dir: 'ltr' | 'rtl'; iL: number; iR: number; iF: number; before: number; after: number; lastLine: TextSpec['lastLine'] }
+
+/** Paragraph `i` as it is set: its own settings over the layer's. A start or end edge (its own, or the layer's when the
+ *  paragraph names no alignment of its own) puts left and right aligned text on the side the paragraph's direction means. */
+export function paraOf(t: TextSpec, i: number): ParaLook {
+  const p = t.paras?.[i], dir = p?.bidi ?? baseDirection(t), base = p?.align ?? t.align, edge = p?.edge ?? (p?.align ? undefined : t.edge);
+  return {
+    align: edge && (base === 'left' || base === 'right') ? ((edge === 'start') === (dir === 'ltr') ? 'left' : 'right') : base, dir,
+    iL: Math.max(0, p?.indentLeft ?? t.indentLeft ?? 0), iR: Math.max(0, p?.indentRight ?? t.indentRight ?? 0), iF: p?.indentFirst ?? t.indentFirst ?? 0,
+    before: Math.max(0, p?.spaceBefore ?? t.spaceBefore ?? 0), after: Math.max(0, p?.spaceAfter ?? t.spaceAfter ?? 0), lastLine: p?.lastLine ?? t.lastLine,
+  };
+}
+
+/** Whether any paragraph names settings of its own. */
+export const hasParas = (t: Pick<TextSpec, 'paras'>): boolean => !!t.paras?.some((p) => p && Object.keys(p).length);
+
+/** A context's text direction, set only when it changes. */
+function dirOn(c: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, d: 'ltr' | 'rtl'): void {
+  const k = c as unknown as { direction?: string };
+  if ('direction' in c && k.direction !== d) k.direction = d;
+}
 
 /** Sets a context's font, kerning and, where the canvas can, tracking, as `renderText` draws with them. */
 export function setType(c: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, t: TextSpec): void {
@@ -114,7 +137,9 @@ export function specWith(t: TextSpec, a: RunAttrs, features: string[] = cleanFea
 }
 
 /** Fonts tried, in order, for a script the family has no glyph for: the system faces that cover it on each platform, with
- *  the Noto families where installed. The browser's own fallback still follows the list. */
+ *  the Noto families where installed, and the bundled Inter for Cyrillic and Greek. The chain runs the layer's language
+ *  first (for Han text with none, the app's locale), then each script the text holds in this table's order; the browser's
+ *  own fallback still follows the list. */
 export const SCRIPT_FALLBACKS: ReadonlyArray<{ id: string; test: RegExp; langs: RegExp; fonts: string[] }> = [
   { id: 'ja', test: /[\u3040-\u30ff\u31f0-\u31ff]/, langs: /^ja/i, fonts: ['Hiragino Sans', 'Yu Gothic', 'Meiryo', 'Noto Sans CJK JP', 'Noto Sans JP'] },
   { id: 'ko', test: /[\uac00-\ud7af\u1100-\u11ff]/, langs: /^ko/i, fonts: ['Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans CJK KR', 'Noto Sans KR'] },
@@ -124,7 +149,15 @@ export const SCRIPT_FALLBACKS: ReadonlyArray<{ id: string; test: RegExp; langs: 
   { id: 'he', test: /[\u0590-\u05ff]/, langs: /^he/i, fonts: ['Arial Hebrew', 'Segoe UI', 'Noto Sans Hebrew'] },
   { id: 'th', test: /[\u0e00-\u0e7f]/, langs: /^th/i, fonts: ['Thonburi', 'Leelawadee UI', 'Noto Sans Thai'] },
   { id: 'hi', test: /[\u0900-\u097f]/, langs: /^(hi|mr|ne|sa)/i, fonts: ['Kohinoor Devanagari', 'Nirmala UI', 'Noto Sans Devanagari'] },
+  { id: 'cyr', test: /[\u0400-\u052f]/, langs: /^(ru|uk|bg|sr|be|mk|kk)/i, fonts: ['Inter', 'Segoe UI', 'Helvetica Neue', 'Arial', 'Noto Sans', 'Liberation Sans'] },
+  { id: 'el', test: /[\u0370-\u03ff\u1f00-\u1fff]/, langs: /^el/i, fonts: ['Inter', 'Segoe UI', 'Helvetica Neue', 'Arial', 'Noto Sans', 'Liberation Sans'] },
 ];
+
+const HAN = /[\u3400-\u4dbf\u4e00-\u9fff]/;
+const HAN_FACES = new Set(['ja', 'ko', 'zh-hant', 'zh']);
+
+/** Preferences > Type > Enable Missing Glyph Protection: a character the family lacks is tried in the script's own faces; off, only the browser's default is left to find one. */
+export const typePrefs = { glyphProtection: true };
 
 const chains = new Map<string, string>();
 let lastChain: { content: string; language: string; css: string } | null = null;
@@ -132,9 +165,12 @@ let lastChain: { content: string; language: string; css: string } | null = null;
 /** The fallback fonts for a spec as CSS, ordered for its language (a tag, else the scripts its text holds), then the
  *  colour emoji faces; always ends in the generic sans-serif. */
 export function fallbackCss(t: Pick<TextSpec, 'content' | 'language' | 'shaping'>): string {
+  if (!typePrefs.glyphProtection) return 'sans-serif';
   const language = t.language || shapingLang(t), content = t.content ?? '';
   if (lastChain && lastChain.content === content && lastChain.language === language) return lastChain.css;
-  const ids: string[] = [], byLang = SCRIPT_FALLBACKS.find((s) => language && s.langs.test(language));
+  const locale = typeof navigator === 'undefined' ? '' : navigator.language || '';
+  const ids: string[] = [], byLang = SCRIPT_FALLBACKS.find((s) => language && s.langs.test(language))
+    ?? (!language && HAN.test(content) ? SCRIPT_FALLBACKS.find((s) => HAN_FACES.has(s.id) && s.langs.test(locale)) : undefined);
   if (byLang) ids.push(byLang.id);
   for (const s of SCRIPT_FALLBACKS) if (!ids.includes(s.id) && content && s.test.test(content)) ids.push(s.id);
   const emoji = /\p{Extended_Pictographic}/u.test(content), key = `${ids.join('|')}${emoji ? '+e' : ''}`;
@@ -157,10 +193,12 @@ export function fontCss(t: TextSpec): string {
 
 /** Waits for the spec's font, and the fonts its runs name, to load where the browser can, so the first rendering uses them. */
 export async function loadTextFont(t: TextSpec): Promise<void> {
+  await ensureBundledFont(t.family, (t.weight ?? (t.bold ? 700 : 400)) >= 600);
   if ((t.features?.length || (t.variations && Object.keys(t.variations).length)) && !GENERIC.has(t.family)) await ensureVariant(t.family, t.bold, t.italic, t.features ?? [], t.variations);
   const pieces = t.runs?.length ? styleSegments(t.features, t.runs, 0, t.content.length) : [];
   for (const s of pieces) {
     const st = specWith(t, s.attrs, s.features);
+    await ensureBundledFont(st.family, (st.weight ?? (st.bold ? 700 : 400)) >= 600);
     if ((s.features.length || (st.variations && Object.keys(st.variations).length)) && !GENERIC.has(st.family)) await ensureVariant(st.family, st.bold, st.italic, s.features, st.variations);
     if (Object.keys(s.attrs).length) { try { await document.fonts?.load(fontCss(st), t.content.slice(s.from, s.to) || 'Ag'); } catch { /* the canvas falls back */ } }
   }
@@ -197,28 +235,34 @@ export function renderPlain(t: TextSpec): TextRender {
   // line breaks. `last` marks a paragraph's last line, which Justify leaves as it is.
   // Indents, space before and after, scale, baseline shift and caps (all optional, none by default).
   const text = t.caps === 'all' ? t.content.toUpperCase() : t.content;
-  const iL = Math.max(0, t.indentLeft ?? 0), iR = Math.max(0, t.indentRight ?? 0), iF = t.indentFirst ?? 0, gapPara = Math.max(0, t.spaceBefore ?? 0) + Math.max(0, t.spaceAfter ?? 0);
+  const own = hasParas(t), look = (p: number): ParaLook => paraOf(t, p), head = look(0), gapPara = head.before + head.after;
   const ky = (t.scaleY ?? 100) / 100, shift = t.baselineShift ?? 0, kx = hScale(t);
-  const room = box ? Math.max(1, box.w - pad * 2 - iL - iR) : 0;
-  const lines: Array<{ text: string; last: boolean }> = box ? wrapLines(probe, t, text, room, Math.max(1, room - iF)) : text.split('\n').map((s) => ({ text: s, last: true }));
+  const room = (p: number): number => (box ? Math.max(1, box.w - pad * 2 - look(p).iL - look(p).iR) : 0);
+  const lines: Array<{ text: string; last: boolean }> = box ? wrapLines(probe, t, text, room(0), Math.max(1, room(0) - head.iF), own ? (p) => ({ wide: room(p), first: Math.max(1, room(p) - look(p).iF) }) : undefined) : text.split('\n').map((s) => ({ text: s, last: true }));
   // Each line's paragraph, and whether it opens it (it takes the first-line indent).
   const para: number[] = [], opens: boolean[] = [];
   lines.forEach((_, i) => { para.push(i && lines[i - 1].last ? para[i - 1] + 1 : i ? para[i - 1] : 0); opens.push(i === 0 || lines[i - 1].last); });
-  const lead = (i: number): number => iL + (opens[i] ? iF : 0);
+  const lead = (i: number): number => look(para[i]).iL + (opens[i] ? look(para[i]).iF : 0);
+  // What each paragraph adds above it: the space after those before it and its own space before (none above the first).
+  const gaps: number[] = [0];
+  for (let p = 1; p <= (para[para.length - 1] ?? 0); p++) gaps.push(gaps[p - 1] + look(p - 1).after + look(p).before);
+  const gapAt = (p: number): number => (own ? gaps[p] : p * gapPara);
+  // A paragraph set in its own direction is measured and drawn with a spec that says so.
+  const specs: TextSpec[] = [], specFor = (p: number): TextSpec => specs[p] || (specs[p] = look(p).dir === baseDirection(t) ? t : { ...t, bidi: look(p).dir });
   const starts = t.runs?.length ? lineStarts(text, lines) : [];   // where each line begins in the text, for feature runs
   const styled = runsStyled(t.runs);   // runs with sizes or shifts change a line's height: it takes its largest size
   const segsOf = (i: number): ReturnType<typeof styleSegments> => styleSegments(t.features, t.runs, starts[i], starts[i] + lines[i].text.length);
   const lineK = lines.map((_, i) => (styled ? Math.max(...segsOf(i).map((s) => (s.attrs.size ?? t.size) * (s.attrs.scaleY ? s.attrs.scaleY / (t.scaleY ?? 100) : 1))) / t.size : 1));
   const shifts = styled ? lines.flatMap((_, i) => segsOf(i).map((s) => s.attrs.baselineShift ?? shift)) : [shift];
-  const metrics = lines.map((line) => probe.measureText(line.text || ' '));
-  const widths = lines.map((line, i) => lineWidth(probe, t, line.text || ' ', starts[i]));
+  const metrics = lines.map((line, i) => { if (own) dirOn(probe, look(para[i]).dir); return probe.measureText(line.text || ' '); });
+  const widths = lines.map((line, i) => { if (own) dirOn(probe, look(para[i]).dir); return lineWidth(probe, specFor(para[i]), line.text || ' ', starts[i]); });
   const ascent = (metrics[0].fontBoundingBoxAscent || t.size * 0.8) * ky * lineK[0], descent = (metrics[0].fontBoundingBoxDescent || t.size * 0.25) * ky * lineK[lines.length - 1];
   const advance = t.size * t.lineHeight, up = Math.max(0, ...shifts), down = Math.max(0, ...shifts.map((s) => -s));
   const offs: number[] = [];
   lines.forEach((_, i) => offs.push(styled ? (i ? offs[i - 1] + advance * lineK[i] : 0) : i * advance));
-  const widest = Math.max(1, ...metrics.map((m, i) => Math.max(widths[i], ((m.actualBoundingBoxLeft || 0) + (m.actualBoundingBoxRight || 0)) * kx) + lead(i) + iR));
+  const widest = Math.max(1, ...metrics.map((m, i) => Math.max(widths[i], ((m.actualBoundingBoxLeft || 0) + (m.actualBoundingBoxRight || 0)) * kx) + lead(i) + look(para[i]).iR));
   const width = box ? Math.max(1, Math.round(box.w)) : Math.ceil(widest) + pad * 2;
-  const height = box ? Math.max(1, Math.round(box.h)) : Math.ceil(ascent + descent + offs[lines.length - 1] + para[lines.length - 1] * gapPara + up + down) + pad * 2;
+  const height = box ? Math.max(1, Math.round(box.h)) : Math.ceil(ascent + descent + offs[lines.length - 1] + gapAt(para[lines.length - 1]) + up + down) + pad * 2;
   // A type angle turns the drawing itself, so the glyphs are rasterized at the angle and stay sharp: the raster is the turned
   // box's bounds, the first baseline's start (by alignment; a box's corner) the turn's centre, and pad and baseline say where it lies.
   const rad = ((t.angle ?? 0) * Math.PI) / 180, turned = rad !== 0, cs = Math.cos(rad), sn = Math.sin(rad), side = t.align === 'center' || t.align === 'right' ? t.align : 'left';
@@ -232,11 +276,11 @@ export function renderPlain(t: TextSpec): TextRender {
   if (turned) { c.translate(rax, ray); c.rotate(rad); c.translate(-ax, -ay); }
   c.fillStyle = `rgb(${t.color.r},${t.color.g},${t.color.b})`;
   c.textBaseline = 'alphabetic';
-  const run = (s: string, x: number, y: number, at?: number): void => {   // a run of text from x, scaled, spaced as it will measure
+  const run = (s: string, x: number, y: number, at: number | undefined, ts: TextSpec): void => {   // a run of text from x, scaled, spaced as it will measure
     c.save();
     c.translate(x, y);
     if (kx !== 1 || ky !== 1) c.scale(kx, ky);
-    walk(c, t, s, 0, 0, true, at);
+    walk(c, ts, s, 0, 0, true, at);
     c.restore();
   };
   const rule = (x: number, y: number, w: number): void => {   // underline and strikethrough
@@ -247,22 +291,24 @@ export function renderPlain(t: TextSpec): TextRender {
   c.textAlign = 'left';
   const base = pad + up + ascent;
   lines.forEach((line, i) => {
-    const y = base + offs[i] + para[i] * gapPara;
+    const q = look(para[i]), ts = specFor(para[i]), y = base + offs[i] + gapAt(para[i]);
     if (box && y + descent > height) return;                       // past the box: clipped
-    const left = pad + lead(i), right = width - pad - iR, words = line.text.split(' '), ty = y - shift;
-    let al: 'left' | 'center' | 'right' | 'justify' = t.align === 'justify' ? (!line.last || t.lastLine === 'all' ? 'justify' : t.lastLine ?? 'left') : t.align;
-    if (al === 'justify' && !(box && words.length > 1)) al = 'left';
+    const left = pad + lead(i), right = width - pad - q.iR, words = line.text.split(' '), ty = y - shift;
+    if (own) dirOn(c, q.dir);
+    const rtl = (own || !!t.edge) && q.dir === 'rtl', rest = rtl ? 'right' : 'left';
+    let al: 'left' | 'center' | 'right' | 'justify' = q.align === 'justify' ? (!line.last || q.lastLine === 'all' ? 'justify' : q.lastLine ?? rest) : q.align;
+    if (al === 'justify' && !(box && words.length > 1)) al = rest;
     if (al === 'justify') {
       const ats: number[] = [];
       words.reduce((o, w) => { ats.push(o); return o + w.length + 1; }, starts[i] ?? 0);
-      const ws = words.map((w, k) => lineWidth(c, t, w, starts.length ? ats[k] : undefined)), gap = (right - left - ws.reduce((a, b) => a + b, 0)) / (words.length - 1);
-      let x = left;
-      words.forEach((w, k) => { run(w, x, ty, starts.length ? ats[k] : undefined); x += ws[k] + gap; });
+      const ws = words.map((w, k) => lineWidth(c, ts, w, starts.length ? ats[k] : undefined)), gap = (right - left - ws.reduce((a, b) => a + b, 0)) / (words.length - 1);
+      let x = rtl ? right : left;
+      words.forEach((w, k) => { if (rtl) x -= ws[k]; run(w, x, ty, starts.length ? ats[k] : undefined, ts); x += rtl ? -gap : ws[k] + gap; });
       rule(left, ty, right - left);
       return;
     }
     const lw = widths[i], x = al === 'center' ? left + (right - left - lw) / 2 : al === 'right' ? right - lw : left;
-    run(line.text, x, ty, starts[i]);
+    run(line.text, x, ty, starts[i], ts);
     rule(x, ty, lw);
   });
   raster.touch();
@@ -297,29 +343,71 @@ function hyphenAt(c: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2
   return any;
 }
 
-/** Words to lines no wider than `max`, each paragraph (a line break) on its own, its last line marked. */
-export function wrapLines(c: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, t: TextSpec, content: string, wide: number, wideFirst = wide): Array<{ text: string; last: boolean }> {
-  const out: Array<{ text: string; last: boolean }> = [];
-  let origin = 0;   // where the paragraph begins in `content`, so a run's size and tracking count in the measure
+const SPACELESS = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]/u;
+const NO_LINE_START = /^[\p{Pe}\p{Pf}\p{Po}・ー]/u, NO_LINE_END = /[\p{Ps}\p{Pi}]$/u;
+type WordSegmenter = { segment(s: string): Iterable<{ segment: string }> };
+const SegmenterClass = (typeof Intl !== 'undefined' ? (Intl as unknown as { Segmenter?: new (l?: string, o?: { granularity: string }) => WordSegmenter }).Segmenter : undefined);
+const segmenters = new Map<string, WordSegmenter | null>();
+
+/** The pieces of a word a line may break between. Chinese, Japanese, Thai and the like are written without spaces, so a
+ *  word set in them is cut at the word boundaries Intl.Segmenter finds (a closing mark stays with the word before it, an
+ *  opening one with the word after); where the browser has no Segmenter, or the word holds no such script, it is whole. */
+function wordParts(word: string, lang: string): string[] {
+  if (!SegmenterClass || !SPACELESS.test(word)) return [word];
+  let seg = segmenters.get(lang);
+  if (seg === undefined) {
+    try { seg = new SegmenterClass(lang || undefined, { granularity: 'word' }); } catch { seg = null; }
+    segmenters.set(lang, seg);
+  }
+  if (!seg) return [word];
+  const parts: string[] = [];
+  let cur = '';
+  for (const { segment } of seg.segment(word)) {
+    const last = [...cur].pop() ?? '', first = String.fromCodePoint(segment.codePointAt(0) ?? 32);
+    if (cur && (SPACELESS.test(last) || SPACELESS.test(first)) && !NO_LINE_START.test(first) && !NO_LINE_END.test(last)) { parts.push(cur); cur = ''; }
+    cur += segment;
+  }
+  if (cur) parts.push(cur);
+  return parts;
+}
+
+/** A paragraph as the pieces its lines are built from, each with what lies before it: a space between words, nothing
+ *  between the pieces of one word. */
+function breakUnits(para: string, lang: string): Array<{ w: string; join: string }> {
+  const out: Array<{ w: string; join: string }> = [];
+  para.split(' ').forEach((word, i) => wordParts(word, lang).forEach((w, k) => out.push({ w, join: k || !i ? '' : ' ' })));
+  return out;
+}
+
+/** Words to lines no wider than `max`, each paragraph (a line break) on its own, its last line marked. `limits` gives a
+ *  paragraph's own widths (its lines, and its first line when indented) where the paragraphs differ. */
+export function wrapLines(c: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, t: TextSpec, content: string, wide: number, wideFirst = wide, limits?: (para: number) => { wide: number; first: number }): Array<{ text: string; last: boolean }> {
+  const out: Array<{ text: string; last: boolean }> = [], lang = t.language || shapingLang(t);
+  let origin = 0, index = 0;   // where the paragraph begins in `content`, so a run's size and tracking count in the measure
   for (const para of content.split('\n')) {
     let cur = '', curAt = origin, pos = origin;
-    const from = out.length;
-    for (let w of para.split(' ')) {
-      let wAt = pos, max = out.length === from ? wideFirst : wide;   // a paragraph's first line may be indented
-      pos += w.length + 1;
-      const trial = cur ? `${cur} ${w}` : w;
+    const from = out.length, lim = limits ? limits(index) : { wide, first: wideFirst };
+    index += 1;
+    for (const unit of breakUnits(para, lang)) {
+      let w = unit.w;
+      const join = unit.join;
+      pos += join.length;
+      let wAt = pos, max = out.length === from ? lim.first : lim.wide;   // a paragraph's first line may be indented
+      pos += w.length;
+      const trial = cur ? `${cur}${join}${w}` : w;
       if (lineWidth(c, t, trial, cur ? curAt : wAt) <= max) { if (!cur) curAt = wAt; cur = trial; continue; }
-      const cut = t.hyphenate ? hyphenAt(c, t, cur ? `${cur} ` : '', w, max) : 0;
-      if (cut) { out.push({ text: `${cur ? `${cur} ` : ''}${w.slice(0, cut)}-`, last: false }); w = w.slice(cut); wAt += cut; cur = ''; }
+      const cut = t.hyphenate && !SPACELESS.test(w) ? hyphenAt(c, t, cur ? `${cur}${join}` : '', w, max) : 0;
+      if (cut) { out.push({ text: `${cur ? `${cur}${join}` : ''}${w.slice(0, cut)}-`, last: false }); w = w.slice(cut); wAt += cut; cur = ''; }
       if (cur) { out.push({ text: cur, last: false }); cur = ''; }
-      max = out.length === from ? wideFirst : wide;
+      max = out.length === from ? lim.first : lim.wide;
       while (w.length > 1 && lineWidth(c, t, w, wAt) > max) {
+        const dash = t.hyphenate && !SPACELESS.test(w) ? '-' : '';
         let k = w.length - 1;
-        while (k > 1 && lineWidth(c, t, w.slice(0, k) + (t.hyphenate ? '-' : ''), wAt) > max) k -= 1;
-        out.push({ text: w.slice(0, k) + (t.hyphenate ? '-' : ''), last: false });
+        while (k > 1 && lineWidth(c, t, w.slice(0, k) + dash, wAt) > max) k -= 1;
+        out.push({ text: w.slice(0, k) + dash, last: false });
         w = w.slice(k);
         wAt += k;
-        max = wide;
+        max = lim.wide;
       }
       cur = w;
       curAt = wAt;
@@ -550,7 +638,7 @@ export function withStyle(t: TextSpec, s: ParagraphStyle): TextSpec {
   return { ...own, family: s.family, size: s.size, color: { ...s.color }, align: s.align, bold: s.bold, italic: s.italic, lineHeight: s.lineHeight, tracking: s.tracking, kerning: s.kerning, ...pick(s, PARA_KEYS), style: s.id, rendered: undefined };
 }
 
-const PARA_KEYS = ['indentFirst', 'indentLeft', 'indentRight', 'spaceBefore', 'spaceAfter', 'lastLine', 'bidi'] as const;
+const PARA_KEYS = ['indentFirst', 'indentLeft', 'indentRight', 'spaceBefore', 'spaceAfter', 'lastLine', 'bidi', 'edge'] as const;
 const CHAR_KEYS = ['caps', 'scaleX', 'scaleY', 'baselineShift', 'underline', 'strike', 'variations'] as const;
 
 /** The listed keys of `o` that are set (not undefined), copied. */
@@ -582,7 +670,60 @@ export function extrasFrom(o: Record<string, unknown>): TextExtras {
   if (fin(o.spaceAfter) && o.spaceAfter > 0) out.spaceAfter = clamp(o.spaceAfter, 0, 5000);
   if (o.lastLine === 'center' || o.lastLine === 'right' || o.lastLine === 'all') out.lastLine = o.lastLine;
   if (o.bidi === 'ltr' || o.bidi === 'rtl') out.bidi = o.bidi;
+  if (o.edge === 'start' || o.edge === 'end') out.edge = o.edge;
   return out;
+}
+
+const PARA_OWN = ['indentFirst', 'indentLeft', 'indentRight', 'spaceBefore', 'spaceAfter', 'lastLine', 'bidi', 'edge', 'align'] as const;
+
+/** Saved per-paragraph settings read back: a list by paragraph, each field kept only when valid, entries past the last
+ *  paragraph and empty ones at the end dropped. */
+export function parasFrom(raw: unknown, count: number): ParaAttrs[] {
+  if (!Array.isArray(raw)) return [];
+  const out = raw.slice(0, count).map((r): ParaAttrs => {
+    if (!r || typeof r !== 'object') return {};
+    const o = r as Record<string, unknown>, p: ParaAttrs = pick(extrasFrom(o), PARA_KEYS);
+    if (o.align === 'left' || o.align === 'center' || o.align === 'right' || o.align === 'justify') p.align = o.align;
+    return p;
+  });
+  while (out.length && !Object.keys(out[out.length - 1]).length) out.pop();
+  return out;
+}
+
+/** Paragraph settings with `patch` laid over them: a value sets the field, undefined clears it. */
+export function withParaAttrs(p: ParaAttrs | undefined, patch: Partial<Record<keyof ParaAttrs, unknown>>): ParaAttrs {
+  const out: Record<string, unknown> = { ...p };
+  for (const k of PARA_OWN) {
+    if (!(k in patch)) continue;
+    if (patch[k] === undefined) delete out[k];
+    else out[k] = patch[k];
+  }
+  return out as ParaAttrs;
+}
+
+/** A layer's paragraph settings with the named fields cleared from every paragraph, for a change made to the whole layer. */
+export function dropParaKeys(paras: ParaAttrs[] | undefined, keys: readonly string[]): ParaAttrs[] | undefined {
+  if (!paras?.length) return paras;
+  const out = paras.map((p) => withParaAttrs(p, Object.fromEntries(keys.map((k) => [k, undefined]))));
+  while (out.length && !Object.keys(out[out.length - 1]).length) out.pop();
+  return out.length ? out : undefined;
+}
+
+/** Paragraph settings following an edit of the text from `was` to `now`: a paragraph split by a line break gives its
+ *  settings to the new one, and joined paragraphs keep the first one's. */
+export function shiftParas(paras: ParaAttrs[] | undefined, was: string, now: string): ParaAttrs[] | undefined {
+  if (!paras?.length || was === now) return paras;
+  const lines = (s: string): number => { let n = 0; for (let i = 0; i < s.length; i++) if (s.charCodeAt(i) === 10) n++; return n; };
+  const max = Math.min(was.length, now.length);
+  let head = 0, tail = 0;
+  while (head < max && was[head] === now[head]) head++;
+  while (tail < max - head && was[was.length - 1 - tail] === now[now.length - 1 - tail]) tail++;
+  const at = lines(was.slice(0, head)), gone = lines(was.slice(head, was.length - tail)), added = lines(now.slice(head, now.length - tail));
+  if (gone === added) return paras;
+  const all: ParaAttrs[] = Array.from({ length: lines(was) + 1 }, (_, i) => paras[i] ?? {});
+  const next = [...all.slice(0, at + 1), ...Array.from({ length: added }, () => ({ ...all[at] })), ...all.slice(at + 1 + gone)];
+  while (next.length && !Object.keys(next[next.length - 1]).length) next.pop();
+  return next.length ? next : undefined;
 }
 
 /** A spec's character style, if any, applied: the style's set fields over the spec's own (the effective spec to render). */
@@ -717,6 +858,7 @@ export function textFromData(raw: unknown, raster: Raster | null): TextSpec | nu
     ...(TEXT_ANTIALIAS.some((m) => m === o.antialias) && o.antialias !== 'smooth' ? { antialias: o.antialias as TextSpec['antialias'] } : {}),
     ...(cleanFeatures(o.features).length ? { features: cleanFeatures(o.features) } : {}),
     ...(cleanRuns(o.runs, o.content.length).length ? { runs: cleanRuns(o.runs, o.content.length) } : {}),
+    ...(() => { const paras = parasFrom(o.paras, (o.content as string).split('\n').length); return paras.length ? { paras } : {}; })(),
     ...(o.hyphenate === true ? { hyphenate: true } : {}),
     ...(o.shaping === 'eastAsian' || o.shaping === 'middleEastern' || o.shaping === 'southAsian' ? { shaping: o.shaping } : {}),
     ...(typeof o.language === 'string' && /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(o.language) ? { language: o.language } : {}),

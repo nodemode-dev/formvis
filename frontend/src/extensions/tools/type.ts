@@ -1,7 +1,7 @@
-import { HANDLES, TEXT_ANTIALIAS, type Engine, type Layer, type Rect, type TextSpec } from '../../engine';
+import { HANDLES, TEXT_ANTIALIAS, dropParaKeys, type Engine, type Layer, type Rect, type TextSpec } from '../../engine';
 import { OT_FEATURES, featureOn, featuresKnown, featuresOf, withFeature } from '../../engine/opentype';
 import { typedAttrs, typedFeatureOn, typedFeatureToggle, typedRange, typedStyle } from '../../ui/text-editor';
-import { canListSystemFonts, fontFamilies, loadSystemFonts, rememberFont, resolveFontName } from '../../ui/fonts';
+import { canListSystemFonts, fontGroups, loadSystemFonts, rememberFont, resolveFontName } from '../../ui/fonts';
 import type { Pt } from '../../engine';
 import { dashed, toolHost, type Tool, type ToolContext, type ToolPointer } from '../registry';
 
@@ -38,14 +38,17 @@ function dragRect(d: NonNullable<typeof boxDrag>): Rect {
 
 /** The font menu: this machine's families (the current one kept if it came from elsewhere, as a PSD file), and
  *  "Load system fonts..." where the browser can list them. */
-function fontChoices(current: string): Array<{ id: string; label: string }> {
-  const list = fontFamilies();
-  if (current && !list.includes(current)) list.push(current);
-  return [...list.map((f) => ({ id: f, label: f })), ...(canListSystemFonts() ? [{ id: SYSTEM_FONTS, label: 'Load system fonts...' }] : [])];
+function fontChoices(current: string): Array<{ id: string; label: string; group?: string }> {
+  const groups = fontGroups();
+  return [
+    ...(current && !groups.some((g) => g.families.includes(current)) ? [{ id: current, label: current }] : []),
+    ...groups.flatMap((g) => g.families.map((f) => ({ id: f, label: f, group: g.label }))),
+    ...(canListSystemFonts() ? [{ id: SYSTEM_FONTS, label: 'Load system fonts...' }] : []),
+  ];
 }
 
 /** Changes the Type settings, shows them in the options bar, and restyles text being typed. */
-const STYLE_KEYS = ['family', 'size', 'bold', 'italic', 'align', 'antialias', 'lineHeight', 'tracking', 'kerning', 'features', 'hyphenate', 'language', 'shaping', 'weight', 'caps', 'scaleX', 'scaleY', 'baselineShift', 'underline', 'strike', 'variations', 'indentFirst', 'indentLeft', 'indentRight', 'spaceBefore', 'spaceAfter', 'lastLine', 'bidi', 'angle'] as const;
+const STYLE_KEYS = ['family', 'size', 'bold', 'italic', 'align', 'antialias', 'lineHeight', 'tracking', 'kerning', 'features', 'hyphenate', 'language', 'shaping', 'weight', 'caps', 'scaleX', 'scaleY', 'baselineShift', 'underline', 'strike', 'variations', 'indentFirst', 'indentLeft', 'indentRight', 'spaceBefore', 'spaceAfter', 'lastLine', 'bidi', 'edge', 'angle'] as const;
 
 export const TYPE_LANGUAGES: Array<[string, string]> = [['', 'Default'], ['en-US', 'English'], ['de', 'German'], ['fr', 'French'], ['es', 'Spanish'], ['ja', 'Japanese'], ['zh-CN', 'Chinese (Simplified)'], ['zh-TW', 'Chinese (Traditional)'], ['ko', 'Korean'], ['ar', 'Arabic'], ['he', 'Hebrew']];
 
@@ -83,7 +86,7 @@ export function setType(e: Engine, patch: Partial<TextSpec>): void {
   // use and no text is being typed (the editor restyles what is being typed); orientation and mask never pass over.
   const l = e.activeLayer, typing = !!document.querySelector('.cv-type-editor:not([hidden])');
   const style = Object.fromEntries(Object.entries(patch).filter(([k]) => (STYLE_KEYS as readonly string[]).includes(k)));
-  if (e.tool === 'type' && !typing && l?.text && Object.keys(style).length) void e.updateTextLayer(l.id, { ...l.text, ...style });
+  if (e.tool === 'type' && !typing && l?.text && Object.keys(style).length) void e.updateTextLayer(l.id, { ...l.text, ...style, ...(l.text.paras ? { paras: dropParaKeys(l.text.paras, Object.keys(style)) } : {}) });
 }
 
 /** Type (T): click a type layer to edit its text on the canvas, or anywhere else to start new text whose first

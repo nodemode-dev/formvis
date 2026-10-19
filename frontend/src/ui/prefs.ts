@@ -7,10 +7,14 @@ import { framePacing } from '../gpu/frame-trace';
 import { api } from '../io/api';
 import { gamutWarning } from '../engine/colour-lut';
 import { placePrefs } from '../engine/smart-object-ops';
+import { transformPrefs } from '../engine/transform';
+import { typePrefs } from '../engine/text';
+import { samplingDefault } from '../engine/types';
+import { hasPanels, setDisplayServer } from '../io/disk';
 import { THEMES, readChoice, setTheme } from './themes';
 import { slicePrefs } from '../extensions/tools/slice';
 import type { RawSharpen, RawSharpenAmount } from '../io/raw-sharpen';
-import { isLang, type Lang } from './i18n/langs';
+import { isLang, LANG_CODES, type Lang } from './i18n/langs';
 import type { GpuPower, GpuRenderer } from '../gpu/probe';
 import { DEFAULT_COLOUR, cleanColour, cleanPresets, type ColourPreset, type ColourSettings, type MismatchPref } from './colour-settings';
 
@@ -110,14 +114,20 @@ export interface PagePrefs {
   /** Preferences > File Handling: an exported JPEG, PNG, WebP or TIFF carries the EXIF ColorSpace tag (sRGB, or uncalibrated for another space). */
   exifColourTag: boolean;
   /** Preferences > Workspace: Open Documents as Tabs; off, a document that opens (or is made) starts in a floating window. */
-  openAsTabs: boolean }
+  openAsTabs: boolean;
+  /** Preferences > General: Free Transform scales freely and Shift holds the proportions. Preferences > Performance: filter previews run on a small copy, and the Linux display server the desktop shell starts with. */
+  legacyTransform: boolean; lowResPreviews: boolean; displayServer: DisplayServer;
+  /** Preferences > Type: a character the font lacks is drawn in a fallback face, and font menus list the English names. */
+  glyphProtection: boolean; fontNamesEnglish: boolean }
+export type DisplayServer = 'auto' | 'x11' | 'wayland';
+export const DISPLAY_SERVERS: ReadonlyArray<readonly [DisplayServer, string]> = [['auto', 'Automatic'], ['x11', 'X11'], ['wayland', 'Wayland']];
 export type CanvasBorder = 'none' | 'line' | 'shadow';
 export const CANVAS_BORDERS: ReadonlyArray<readonly [CanvasBorder, string]> = [['none', 'None'], ['line', 'Line'], ['shadow', 'Drop Shadow']];
 export type TypeUnits = 'px' | 'pt';
 export const PAGE_DEFAULTS: PagePrefs = { scratchFolder: '', cursorOnlyCross: false, cursorOther: 'standard', brushPreviewColor: '#ff0000', checkerA: '#ffffff', checkerB: '#cccccc',
   printRes: 300, screenRes: 72, colWidth: 15, gutter: 4.2,
   showExtPanels: true, smartQuotes: false, escCommit: false, placeholderText: false, pinchZoom: true, trackpadRotate: false, scrubAccel: 0, touchGestures: true,
-  tipHardness: true, snapVectorPx: false, transformReadout: true, rolloverHighlight: true, flickPan: true, channelsColour: false, canvasBorder: 'line', dynamicSliders: true, askLayeredTiff: true, typeUnits: 'px', favouriteThemes: [], exportClipboard: true, exifColourTag: false, openAsTabs: true };
+  tipHardness: true, snapVectorPx: false, transformReadout: true, rolloverHighlight: true, flickPan: true, channelsColour: false, canvasBorder: 'line', dynamicSliders: true, askLayeredTiff: true, typeUnits: 'px', favouriteThemes: [], exportClipboard: true, exifColourTag: false, openAsTabs: true, legacyTransform: false, lowResPreviews: false, displayServer: 'auto', glyphProtection: true, fontNamesEnglish: false };
 const hex = (v: unknown, d: string, blank = false): string => (typeof v === 'string' && (blank ? /^(#[0-9a-f]{6})?$/i : /^#[0-9a-f]{6}$/i).test(v) ? v : d);
 const flag = (v: unknown, d: boolean): boolean => (typeof v === 'boolean' ? v : d);
 const pageOf = (r: Partial<Record<keyof PagePrefs, unknown>>): PagePrefs => {
@@ -132,6 +142,8 @@ const pageOf = (r: Partial<Record<keyof PagePrefs, unknown>>): PagePrefs => {
     channelsColour: flag(r.channelsColour, d.channelsColour), dynamicSliders: flag(r.dynamicSliders, d.dynamicSliders), canvasBorder: r.canvasBorder === 'none' || r.canvasBorder === 'shadow' ? r.canvasBorder : 'line',
     askLayeredTiff: flag(r.askLayeredTiff, d.askLayeredTiff), typeUnits: r.typeUnits === 'pt' ? 'pt' : 'px',
     exportClipboard: flag(r.exportClipboard, d.exportClipboard), exifColourTag: flag(r.exifColourTag, d.exifColourTag), openAsTabs: flag(r.openAsTabs, d.openAsTabs),
+    legacyTransform: flag(r.legacyTransform, d.legacyTransform), lowResPreviews: flag(r.lowResPreviews, d.lowResPreviews), displayServer: r.displayServer === 'x11' || r.displayServer === 'wayland' ? r.displayServer : 'auto',
+    glyphProtection: flag(r.glyphProtection, d.glyphProtection), fontNamesEnglish: flag(r.fontNamesEnglish, d.fontNamesEnglish),
     favouriteThemes: Array.isArray(r.favouriteThemes) ? Array.from(new Set(r.favouriteThemes.filter((x): x is string => typeof x === 'string' && !!THEMES[x]))).slice(0, 30) : [],
   };
 };
@@ -142,13 +154,16 @@ export type UiFontSize = 'small' | 'default' | 'large' | 'larger';
 export const UI_FONT_SIZES: ReadonlyArray<readonly [UiFontSize, string]> = [['small', 'Small'], ['default', 'Default'], ['large', 'Large'], ['larger', 'Larger']];
 export const UI_FONT_SCALE: Record<UiFontSize, number> = { small: 0.9, default: 1, large: 1.15, larger: 1.3 };
 /** The interface language for a first launch: the system's first language formvis has, else English. */
+const LANG_ALIASES: Record<string, Lang> = { 'zh-hant': 'zh-TW', 'zh-hk': 'zh-TW', 'zh-mo': 'zh-TW', zh: 'zh-CN', pt: 'pt-BR', no: 'nb', nn: 'nb', sr: 'sr-Latn', 'es-419': 'es-MX', 'es-us': 'es-MX' };
 export function systemLang(): Lang {
   try {
-    for (const raw of navigator.languages ?? [navigator.language]) {
-      const l = raw.replace('_', '-'), base = l.split('-')[0].toLowerCase();
-      if (isLang(l)) return l;
-      const hit = ({ pt: 'pt-BR', zh: 'zh-CN', no: 'nb' } as Record<string, Lang>)[base] ?? (isLang(base) ? base : null);
-      if (hit) return hit;
+    for (const raw of navigator.languages?.length ? navigator.languages : [navigator.language]) {
+      const parts = raw.replace(/_/g, '-').toLowerCase().split('-');
+      for (let n = parts.length; n > 0; n--) {
+        const tag = parts.slice(0, n).join('-');
+        const hit = LANG_ALIASES[tag] ?? LANG_CODES.find((c) => c.toLowerCase() === tag);
+        if (hit) return hit;
+      }
     }
   } catch { /* English */ }
   return 'en';
@@ -256,7 +271,7 @@ export function loadPrefs(): Prefs {
   try {
     const r = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<Record<keyof Prefs, unknown>>;
     return {
-      language: isLang(r.language) ? r.language : systemLang(),   // any of the 26 (36.32); at the first launch, the system's
+      language: isLang(r.language) ? r.language : systemLang(),   // any of the 30 (36.32); at the first launch, the system's
       historyStates: Math.round(num(r.historyStates, 1, 1000, DEFAULT_PREFS.historyStates)),
       historyMB: Math.round(num(r.historyMB, 16, 4096, DEFAULT_PREFS.historyMB)),
       historyAuto: typeof r.historyAuto === 'boolean' ? r.historyAuto : DEFAULT_PREFS.historyAuto,   // 1.61.3
@@ -379,6 +394,13 @@ export function updatePrefs(patch: Partial<Prefs>): Prefs {
 }
 
 let appliedCurve: PressureCurve | null = null;
+let keptServer: DisplayServer | null = null;
+/** Linux desktop app: the display server choice is handed to the shell once per change, for its next launch; a browser has none. */
+function keepDisplayServer(choice: DisplayServer): void {
+  if (choice === keptServer || !hasPanels() || !/Linux/.test(navigator.platform)) return;
+  keptServer = choice;
+  setDisplayServer(choice).catch(() => { keptServer = null; });
+}
 
 /** Scales the interface's font-size tokens (--fs-9 to --fs-18) to the chosen size, and the rules that still write a size in
  *  pixels with them. */
@@ -419,9 +441,15 @@ function scalePxFonts(k: number): void {
 
 /** Interface scale: the whole window under CSS zoom on the root, kept on this device (the View > Interface Zoom commands
  *  use the same key). */
-export const UI_SCALES: ReadonlyArray<readonly [string, string]> = [['0.8', '80%'], ['0.9', '90%'], ['1', '100%'], ['1.1', '110%'], ['1.25', '125%'], ['1.5', '150%'], ['1.75', '175%'], ['2', '200%']];
+export const UI_SCALES: ReadonlyArray<readonly [string, string]> = [['auto', 'Auto (follow the display)'], ['0.8', '80%'], ['0.9', '90%'], ['1', '100%'], ['1.1', '110%'], ['1.25', '125%'], ['1.5', '150%'], ['1.75', '175%'], ['2', '200%']];
 export function uiScaleChoice(): string {
   try { const v = localStorage.getItem('formvis.uiZoom') ?? '1'; return UI_SCALES.some(([k]) => k === v) ? v : '1'; } catch { return '1'; }
+}
+/** What Auto means: a display the system already scales (devicePixelRatio above 1) is left at 100%; one reported at 1 that is 3000 pixels wide or more gets 150%, and from 3800 pixels 200%. */
+export function autoUiScale(): number {
+  const ratio = window.devicePixelRatio || 1, wide = screen.width || 0;
+  if (ratio > 1.01) return 1;
+  return wide >= 3800 ? 2 : wide >= 3000 ? 1.5 : 1;
 }
 export function setUiScale(v: string): void {
   try { localStorage.setItem('formvis.uiZoom', v); } catch { /* kept for this session only */ }
@@ -478,7 +506,11 @@ export function applyPrefs(engine: Engine, p: Prefs): void {
   engine.memoryReserveBytes = p.memoryReserveMB * 1048576;
   engine.setHistoryLimits(p.historyStates, p.historyAuto ? null : p.historyMB * 1024 * 1024);   // automatic: from the memory budget (1.61.3)
   engine.dirtyRendering = p.regionRedraws;
-  previewMode.full = p.fullPreviews;
+  previewMode.full = p.fullPreviews; previewMode.low = p.lowResPreviews;
+  transformPrefs.legacy = p.legacyTransform;
+  samplingDefault.value = p.interpolation === 'nearest' ? 'nearest' : p.interpolation === 'smooth' || p.interpolation === 'bilinear' ? 'smooth' : 'high';
+  if (typePrefs.glyphProtection !== p.glyphProtection) { typePrefs.glyphProtection = p.glyphProtection; engine.emit('render', null); }
+  keepDisplayServer(p.displayServer);
   if (p.pressureCurve !== appliedCurve) { appliedCurve = p.pressureCurve; engine.pressureCurve = PRESSURE_POINTS[p.pressureCurve]; }   // only when the choice changes, so a tool's own pick is not undone by another setting
   placePrefs.fit = p.placeFit; placePrefs.smart = p.placeSmart;
   followSystemTheme(p);

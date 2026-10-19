@@ -1,0 +1,23 @@
+[package]
+name = "formvis-kernels"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "formvis's dependency-free pixel kernels, built to WebAssembly with SIMD; one module per feature (mask, tone, blur)"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+default = []
+mask = []
+tone = []
+blur = []
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

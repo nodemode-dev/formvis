@@ -77,8 +77,23 @@ def portable_dir() -> Path | None:
     return None
 
 
+def platform_data_dir() -> Path:
+    """Where a new install keeps its data by the platform's convention, in a folder named formvis: Application Support on
+    macOS, %APPDATA% on Windows, $XDG_DATA_HOME (an absolute path, else ~/.local/share) elsewhere."""
+    import sys
+    home = Path.home()
+    if sys.platform == "darwin":
+        return home / "Library" / "Application Support" / "formvis"
+    if sys.platform.startswith("win"):
+        return Path(os.environ.get("APPDATA") or home / "AppData" / "Roaming") / "formvis"
+    base = Path(os.environ.get("XDG_DATA_HOME") or ".")
+    return (base if base.is_absolute() else home / ".local" / "share") / "formvis"
+
+
 def data_dir() -> Path:
-    """Order: --user-data-dir or FORMVIS_DATA_DIR, then the portable folder, then ~/Formvis."""
+    """Order: --user-data-dir or FORMVIS_DATA_DIR, then the portable folder (FORMVIS_PORTABLE=1 or a portable marker file
+    beside the engine), then ~/Formvis where an install already has it (its data stays there; nothing is moved), and for
+    a new install the platform's own folder."""
     raw = os.environ.get("FORMVIS_DATA_DIR")
     if raw:
         return _ensure(Path(raw).expanduser())
@@ -86,8 +101,10 @@ def data_dir() -> Path:
     if portable:
         return _ensure(portable)
     path = Path.home() / "Formvis"
-    legacy.carry_over_library(path)   # the library saved before the rename moves here (core/legacy.py)
-    return _ensure(path)
+    if path.exists() or path.with_name(legacy.FORMER.capitalize()).is_dir():
+        legacy.carry_over_library(path)   # the library saved before the rename moves here (core/legacy.py)
+        return _ensure(path)
+    return _ensure(platform_data_dir())
 
 
 def data_dir_source() -> str:

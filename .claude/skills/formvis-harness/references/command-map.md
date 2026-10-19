@@ -1,6 +1,6 @@
 # Command map
 
-Generated from the window's command catalogue (1598 commands: 8 action, 1070 command, 467 option, 53 tool) by `./formvis agents sync`; do not edit by hand.
+Generated from the window's command catalogue (1599 commands: 8 action, 1071 command, 467 option, 53 tool) by `./formvis agents sync`; do not edit by hand.
 
 Every command is registered in `frontend/src/app.ts` (hand-written), `frontend/src/automation/catalogue.ts` (`tool.select.*`, `tool.options.*` and the seven actions) or by a plug-in; its words are in `frontend/src/automation/command-meta.ts`. A command with no words is reported missing and `./formvis counts --commands --check` fails.
 
@@ -19,7 +19,7 @@ Every command is registered in `frontend/src/app.ts` (hand-written), `frontend/s
 | Tool options | 467 | `tool-builder` | `tool.options.artHistory.hardness`, `tool.options.artHistory.maskPaint`, `tool.options.artHistory.opacity`, `tool.options.artHistory.pressureCurve` |
 | Tools | 53 | `tool-builder` | `tool.select.artHistory`, `tool.select.artboard`, `tool.select.backgroundEraser`, `tool.select.boxes` |
 | Type | 66 | `tool-builder` | `add-font-files`, `add-web-font`, `character-styles`, `check-spelling` |
-| View | 101 | `ui-builder` | `actual`, `canvas-scrollbars`, `clear-artboard-guides`, `clear-guides` |
+| View | 102 | `ui-builder` | `actual`, `canvas-scrollbars`, `clear-artboard-guides`, `clear-guides` |
 | Window | 148 | `ui-builder` | `about`, `action-stop`, `actions`, `agent.claude.open` |
 
 ## Id families

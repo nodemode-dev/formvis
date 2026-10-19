@@ -905,7 +905,7 @@ export class PixelStroke {
         if (!sameBytes(before.data, after.data)) out.push({ raster: this.raster, x, y, before, after });
       }
     }
-    this.raster.touch();
+    this.raster.touch(area);
     return out;
   }
 
@@ -923,7 +923,7 @@ export class PixelStroke {
     c.clearRect(area.x, area.y, area.w, area.h);
     c.drawImage(this.working, area.x - this.ox, area.y - this.oy, area.w, area.h, area.x, area.y, area.w, area.h);   // from the window (1.60.6)
     c.restore();
-    (this.raster as Raster).touch();
+    (this.raster as Raster).touch(area);
     return { raster: this.raster, x: area.x, y: area.y, before, after: this.raster.read(area.x, area.y, area.w, area.h) };
   }
 }

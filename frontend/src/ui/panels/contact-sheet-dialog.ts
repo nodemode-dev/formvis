@@ -1,4 +1,4 @@
-import type { Engine, ImportedImage } from '../../engine';
+import { ensureBundledFont, type Engine, type ImportedImage } from '../../engine';
 import { fitInCell, fromPixels, sheetCells, sheetName, sheetPages, toPixels, type SheetSettings, type SheetUnit } from '../../engine/contact-sheet';
 import { decodeImage, IMAGE_ACCEPT, isImageFile } from '../../io/images';
 import { Dialog } from '../dialogs';
@@ -201,7 +201,7 @@ export class ContactSheetDialog extends Dialog {
           else this.engine.insertImages([{ source: c, width: pl.w, height: pl.h, name: f.name }], { x: pl.x + pl.w / 2, y: pl.y + pl.h / 2 });
           if (!this.captions) continue;
           const mid = cell.x + cell.w / 2, top = cell.y + cell.h;
-          if (pc) { pc.fillStyle = '#000000'; pc.font = `${size}px "${this.family}", sans-serif`; pc.textAlign = 'center'; pc.textBaseline = 'alphabetic'; pc.fillText(label, mid, top + size * 1.2, cell.w); }
+          if (pc) { await ensureBundledFont(this.family); pc.fillStyle = '#000000'; pc.font =`${size}px "${this.family}", sans-serif`; pc.textAlign = 'center'; pc.textBaseline = 'alphabetic'; pc.fillText(label, mid, top + size * 1.2, cell.w); }
           else await this.engine.createTextLayer({ x: mid, y: top + size * 1.2 }, { content: label, family: this.family, size, color: { r: 0, g: 0, b: 0 }, align: 'center', bold: false, italic: false, lineHeight: 1.2, tracking: 0, kerning: 'metrics', antialias: 'smooth', box: null, direction: 'horizontal' });
         }
         if (page_canvas) this.engine.insertImages([{ source: page_canvas, width: s.width, height: s.height, name }], { x: s.width / 2, y: s.height / 2 });

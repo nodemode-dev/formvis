@@ -1,4 +1,4 @@
-import { baseDirection, fontCss, liveText, shapingLang, textMetrics, type Engine, type ID, type Pt, type TextSpec } from '../engine';
+import { baseDirection, fontCss, liveText, shapingLang, shiftParas, textMetrics, withParaAttrs, type Engine, type ID, type ParaAttrs, type Pt, type TextSpec } from '../engine';
 import type { Project } from '../engine/project';
 import { runAttrsOver, runFeatureOn, shiftRuns, withRunAttrs, withRunFeature, type RunPatch } from '../engine/opentype';
 import type { RGB } from '../engine/types';
@@ -14,6 +14,10 @@ export const typedFeatureOn = (tag: string): boolean | null => live?.featureOn(t
 export const typedFeatureToggle = (tag: string): boolean => live?.toggleFeature(tag) ?? false;
 export const typedStyle = (patch: RunPatch): boolean => live?.styleRange(patch) ?? false;
 export const typedAttrs = (): { color: RGB; family: string; bold: boolean; italic: boolean; underline: boolean; strike: boolean; caps?: 'all' | 'small'; scaleX: number; scaleY: number } | null => live?.rangeAttrs() ?? null;
+/** The settings of the paragraph under the caret, and a change to those under the caret or selection; both are for text of two paragraphs or more being typed (a single paragraph takes the layer's own). */
+export type ParaPatch = Partial<Record<keyof ParaAttrs, unknown>>;
+export const typedParas = (): ParaAttrs | null => live?.paragraphAttrs() ?? null;
+export const typedParaSet = (patch: ParaPatch): boolean => live?.styleParagraphs(patch) ?? false;
 
 /** Typing on the canvas: one kept text box over the stage, set in the text's own font, size, colour and line spacing
  *  at the current zoom, with its first baseline on the click (or on an existing layer's first baseline, the layer
@@ -24,6 +28,7 @@ export class TextEditor {
   private session: { project: Project; at: Pt; layerId: ID | null; spec: TextSpec; scale: number; mask?: boolean; shift?: Pt } | null = null;
 
   private typed = '';
+  private lastPara = -1;
 
   constructor(host: HTMLElement, private readonly engine: Engine) {
     live = this;
@@ -35,6 +40,11 @@ export class TextEditor {
       e.stopPropagation();
       if (e.key === 'Escape') { e.preventDefault(); if (loadPrefs().escCommit) void this.commit(); else this.cancel(); }
       else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void this.commit(); }
+      else if ((e.metaKey || e.ctrlKey) && e.altKey && /^Arrow(Left|Right|Up|Down)$/.test(e.key)) {   // moves the text being typed, by a pixel (Shift: ten)
+        e.preventDefault();
+        const n = e.shiftKey ? 10 : 1;
+        this.moveBy(e.key === 'ArrowLeft' ? -n : e.key === 'ArrowRight' ? n : 0, e.key === 'ArrowUp' ? -n : e.key === 'ArrowDown' ? n : 0);
+      }
       else if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.code === 'Period' || e.code === 'Comma')) { e.preventDefault(); this.nudgeSize(e.code === 'Period' ? 1 : -1, e.altKey ? 10 : 2); }
       else if (e.altKey && !e.metaKey && !e.ctrlKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { e.preventDefault(); this.nudgeSpacing('tracking', e.key === 'ArrowRight' ? 1 : -1, e.shiftKey ? 100 : 20); }
       else if (e.altKey && !e.metaKey && !e.ctrlKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); this.nudgeSpacing('lineHeight', e.key === 'ArrowUp' ? 1 : -1, e.shiftKey ? 0.25 : 0.05); }
@@ -44,6 +54,24 @@ export class TextEditor {
     engine.on('active', () => { if (this.session && this.session.project !== engine.current) this.cancel(); });
     document.addEventListener('cv:type-settings', () => this.restyle());
     document.addEventListener('cv:type-move', (e) => { const d = (e as CustomEvent<Pt>).detail; if (d) this.moveBy(d.x, d.y); });
+    // Ctrl or Cmd with a drag on the text itself moves it as well (the Type tool does so for a drag outside it).
+    this.box.addEventListener('pointerdown', (e) => {
+      if (!this.session || e.button !== 0 || !(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+      const box = this.box;
+      let lx = e.clientX, ly = e.clientY;
+      box.setPointerCapture(e.pointerId);
+      const move = (m: PointerEvent): void => {
+        const v = this.engine.current?.viewport, r = -((v?.rotation ?? 0) * Math.PI) / 180, k = v?.zoom || 1, dx = m.clientX - lx, dy = m.clientY - ly;
+        lx = m.clientX; ly = m.clientY;
+        this.moveBy((dx * Math.cos(r) - dy * Math.sin(r)) / k, (dx * Math.sin(r) + dy * Math.cos(r)) / k);
+      };
+      const up = (): void => { box.removeEventListener('pointermove', move); box.removeEventListener('pointerup', up); box.removeEventListener('pointercancel', up); };
+      box.addEventListener('pointermove', move);
+      box.addEventListener('pointerup', up);
+      box.addEventListener('pointercancel', up);
+    });
+    for (const ev of ['keyup', 'pointerup', 'select'] as const) this.box.addEventListener(ev, () => this.syncPara());
   }
 
   get editing(): boolean { return this.session !== null; }
@@ -52,7 +80,61 @@ export class TextEditor {
   private follow(): void {
     const s = this.session, now = this.box.value;
     if (s?.spec.runs?.length) s.spec = { ...s.spec, runs: shiftRuns(s.spec.runs, this.typed, now) };
+    if (s?.spec.paras?.length) s.spec = { ...s.spec, paras: shiftParas(s.spec.paras, this.typed, now) };
     this.typed = now;
+    this.syncPara();
+  }
+
+  /** The paragraph the caret is in (paragraphs are set apart by line breaks). */
+  private caretPara(): number {
+    const b = this.box;
+    let n = 0;
+    for (let i = b.value.indexOf('\n'); i !== -1 && i < b.selectionStart; i = b.value.indexOf('\n', i + 1)) n += 1;
+    return n;
+  }
+
+  /** The paragraphs the selection touches (a selection that ends at a paragraph's start does not take that paragraph). */
+  private paraSpan(): { from: number; to: number } {
+    const b = this.box, end = b.selectionEnd > b.selectionStart && b.value[b.selectionEnd - 1] === '\n' ? b.selectionEnd - 1 : b.selectionEnd;
+    let from = 0, to = 0;
+    for (let i = b.value.indexOf('\n'); i !== -1; i = b.value.indexOf('\n', i + 1)) {
+      if (i < b.selectionStart) from += 1;
+      if (i < end) to += 1;
+    }
+    return { from, to: Math.max(from, to) };
+  }
+
+  /** Tells the Paragraph panel when the caret moves to another paragraph, so it shows that paragraph's settings. */
+  private syncPara(): void {
+    if (!this.session) return;
+    const at = this.caretPara();
+    if (at === this.lastPara) return;
+    this.lastPara = at;
+    this.engine.emit('options', null);
+  }
+
+  /** The caret paragraph's settings, its own over the layer's; null unless the text has two paragraphs or more. */
+  paragraphAttrs(): ParaAttrs | null {
+    const s = this.session;
+    if (!s || (!s.spec.paras?.length && !this.box.value.includes('\n'))) return null;
+    const t = s.spec, p = t.paras?.[this.caretPara()] ?? {};
+    const out: ParaAttrs = { align: t.align, edge: t.edge, indentFirst: t.indentFirst, indentLeft: t.indentLeft, indentRight: t.indentRight, spaceBefore: t.spaceBefore, spaceAfter: t.spaceAfter, lastLine: t.lastLine, bidi: t.bidi, ...p };
+    if (p.align && p.edge === undefined) delete out.edge;
+    return out;
+  }
+
+  /** Sets paragraph settings (a value sets, undefined clears) over the paragraphs the caret or selection touches; false for text of one paragraph, which the layer's own settings cover. */
+  styleParagraphs(patch: ParaPatch): boolean {
+    const s = this.session;
+    if (!s || (!s.spec.paras?.length && !this.box.value.includes('\n'))) return false;
+    const { from, to } = this.paraSpan(), count = this.box.value.split('\n').length;
+    const list: ParaAttrs[] = Array.from({ length: count }, (_, i) => ({ ...(s.spec.paras?.[i] ?? {}) }));
+    for (let i = from; i <= to; i++) list[i] = withParaAttrs(list[i], patch);
+    while (list.length && !Object.keys(list[list.length - 1]).length) list.pop();
+    s.spec = { ...s.spec, paras: list.length ? list : undefined };
+    this.place();
+    this.engine.emit('options', null);
+    return true;
   }
 
   /** The selected range of the typed text (none when only a caret). */
@@ -105,7 +187,7 @@ export class TextEditor {
       const t = l.transform, scale = t.w / l.raster.width, m = textMetrics(l.text);
       const x = l.text.align === 'center' ? t.x + t.w / 2 : l.text.align === 'right' ? t.x + t.w - m.pad * scale : t.x + m.pad * scale;
       this.session = { project: p, at: { x, y: t.y + (m.pad + m.ascent) * (t.h / l.raster.height) }, layerId: l.id, spec: { ...l.text }, scale };
-      e.textSettings = { ...l.text, content: '', rendered: undefined, runs: undefined };
+      e.textSettings = { ...l.text, content: '', rendered: undefined, runs: undefined, paras: undefined };
       e.emit('options', null);
       e.setTextEditing(l.id);
       this.box.value = l.text.content;
@@ -115,6 +197,7 @@ export class TextEditor {
       this.box.value = loadPrefs().placeholderText ? PLACEHOLDER : '';
     }
     this.typed = this.box.value;
+    this.lastPara = -1;
     queueMicrotask(() => e.emit('options', null));
     setHidden(this.box, false);
     this.place();
@@ -195,7 +278,7 @@ export class TextEditor {
   private restyle(): void {
     const s = this.session, t = this.engine.textSettings;
     if (!s) return;
-    s.spec = { ...s.spec, antialias: t.antialias, hyphenate: t.hyphenate, language: t.language, shaping: t.shaping, family: t.family, size: t.size, align: t.align, bold: t.bold, italic: t.italic, lineHeight: t.lineHeight, tracking: t.tracking, kerning: t.kerning, features: t.features, weight: t.weight, angle: t.angle, caps: t.caps, scaleX: t.scaleX, scaleY: t.scaleY, baselineShift: t.baselineShift, underline: t.underline, strike: t.strike, variations: t.variations, indentFirst: t.indentFirst, indentLeft: t.indentLeft, indentRight: t.indentRight, spaceBefore: t.spaceBefore, spaceAfter: t.spaceAfter, lastLine: t.lastLine, bidi: t.bidi };
+    s.spec = { ...s.spec, antialias: t.antialias, hyphenate: t.hyphenate, language: t.language, shaping: t.shaping, family: t.family, size: t.size, align: t.align, bold: t.bold, italic: t.italic, lineHeight: t.lineHeight, tracking: t.tracking, kerning: t.kerning, features: t.features, weight: t.weight, angle: t.angle, caps: t.caps, scaleX: t.scaleX, scaleY: t.scaleY, baselineShift: t.baselineShift, underline: t.underline, strike: t.strike, variations: t.variations, indentFirst: t.indentFirst, indentLeft: t.indentLeft, indentRight: t.indentRight, spaceBefore: t.spaceBefore, spaceAfter: t.spaceAfter, lastLine: t.lastLine, bidi: t.bidi, edge: t.edge };
     this.place();
   }
 
@@ -218,7 +301,7 @@ export class TextEditor {
     setStyleVar(box, '--font', fontCss(screen));
     setStyleVar(box, '--lh', `${line}px`);
     setStyleVar(box, '--ink', `rgb(${c.r},${c.g},${c.b})`);
-    setStyleVar(box, '--align', s.spec.align);
+    setStyleVar(box, '--align', s.spec.edge && (s.spec.align === 'left' || s.spec.align === 'right') ? (s.spec.edge === 'start' ? 'start' : 'end') : s.spec.align);
     // Tracking at the on-screen size, and kerning, so typed text is spaced as it will render.
     setStyleVar(box, '--ls', `${(s.spec.tracking / 1000) * size}px`);
     setStyleVar(box, '--kern', s.spec.kerning === 'none' ? 'none' : 'normal');
@@ -226,6 +309,7 @@ export class TextEditor {
     box.classList.toggle('is-box', !!area);
     box.classList.toggle('is-vertical', vertical);
     box.classList.toggle('is-mask', !!s.mask);
+    box.classList.toggle('is-bidi', !!s.spec.paras?.some((p) => p?.bidi));   // paragraphs of their own directions: each one's base follows its own text
     const dir = baseDirection(s.spec);
     if (box.dir !== dir) box.dir = dir;
     const lang = s.spec.language || shapingLang(s.spec);

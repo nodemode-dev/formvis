@@ -13,7 +13,7 @@ export const BLEND_IDS: readonly BlendMode[] = [
 export const blendIndex = (m: BlendMode): number => Math.max(0, BLEND_IDS.indexOf(m));
 
 export const COMPOSITE_WGSL = /* wgsl */ `
-struct Layer { inv: mat3x3<f32>, size: vec2<f32>, opacity: f32, mode: u32, minv: mat3x3<f32>, msize: vec2<f32>, hasMask: u32, hasClip: u32 };
+struct Layer { inv: mat3x3<f32>, size: vec2<f32>, opacity: f32, mode: u32, minv: mat3x3<f32>, msize: vec2<f32>, hasMask: u32, hasClip: u32, vinv: mat3x3<f32>, biT: vec4<f32>, biU: vec4<f32>, biCh: u32, chOff: u32 };
 @group(0) @binding(0) var backdrop: texture_2d<f32>;
 @group(0) @binding(1) var source: texture_2d<f32>;
 @group(0) @binding(2) var smp: sampler;
@@ -98,6 +98,30 @@ fn dissolveNoise(x: i32, y: i32) -> f32 {
   h = (h ^ (h >> 13u)) * 1274126177u;
   return f32(h ^ (h >> 16u)) / 4294967296.0;
 }
+/** The renderer's Blend If range factor of a value 0 to 255 in a four-point range, each split feathered. */
+fn biFactor(v: f32, r: vec4<f32>) -> f32 {
+  var lo = 1.0;
+  if (v < r.x) { lo = 0.0; } else if (v < r.y) { lo = (v - r.x) / max(1.0, r.y - r.x); }
+  var hi = 1.0;
+  if (v > r.w) { hi = 0.0; } else if (v > r.z) { hi = (r.w - v) / max(1.0, r.w - r.z); }
+  return lo * hi;
+}
+/** The value Blend If tests: one channel, or the grey (Rec. 601) of the 8-bit colour. */
+fn biValue(c: vec3<f32>, ch: u32) -> f32 {
+  let p = round(c * 255.0);
+  if (ch == 2u) { return p.r; }
+  if (ch == 3u) { return p.g; }
+  if (ch == 4u) { return p.b; }
+  return 0.299 * p.r + 0.587 * p.g + 0.114 * p.b;
+}
+/** Channels the layer's Advanced Blending turned off keep the backdrop's value. */
+fn keep(o: vec4<f32>, b: vec4<f32>) -> vec4<f32> {
+  var c = o.rgb;
+  if ((layer.chOff & 1u) != 0u) { c.r = b.r; }
+  if ((layer.chOff & 2u) != 0u) { c.g = b.g; }
+  if ((layer.chOff & 4u) != 0u) { c.b = b.b; }
+  return vec4<f32>(c, o.a);
+}
 
 @fragment fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
   let px = vec2<i32>(floor(pos.xy));
@@ -153,23 +177,29 @@ fn dissolveNoise(x: i32, y: i32) -> f32 {
   if (m == 1u || m == 5u || m == 6u || m == 11u || (m >= 15u && m <= 18u) || m == 21u || m == 22u) {
     sc = vec4<f32>(round(sc.rgb * 255.0) / 255.0, sc.a);
   }
-  let sa = sc.a * layer.opacity * cov;
+  var bif = 1.0;
+  if (layer.biCh != 0u) {
+    bif = biFactor(biValue(sc.rgb, layer.biCh), layer.biT);
+    if (bd.a <= 0.0) { bif = bif * biFactor(255.0, layer.biU); } else { bif = bif * biFactor(biValue(bd.rgb, layer.biCh), layer.biU); }
+  }
+  let sa = sc.a * layer.opacity * cov * bif;
   if (sa <= 0.0) { return bd; }
   let ab = bd.a;
   if (layer.mode == 1u) {
-    if (dissolveNoise(px.x, px.y) >= sa) { return bd; }
-    return vec4<f32>(sc.rgb, 1.0);
+    let dp = layer.vinv * vec3<f32>(pos.xy, 1.0);
+    if (dissolveNoise(i32(floor(dp.x)), i32(floor(dp.y))) >= sa) { return bd; }
+    return keep(vec4<f32>(sc.rgb, 1.0), bd);
   }
   if (layer.mode == 10u) {
     let lo = min(1.0, sa + ab);
     let lc = min(vec3<f32>(1.0), sc.rgb * sa + bd.rgb * ab);
-    return vec4<f32>(lc / max(lo, 1e-6), lo);
+    return keep(vec4<f32>(lc / max(lo, 1e-6), lo), bd);
   }
   let ao = sa + ab * (1.0 - sa);
   if (ao <= 0.0) { return vec4<f32>(0.0); }
   var r = sc.rgb;
   if (layer.mode != 0u) { r = blend(layer.mode, bd.rgb, sc.rgb); }
   let co = (sa * (1.0 - ab) * sc.rgb + sa * ab * r + (1.0 - sa) * ab * bd.rgb) / ao;
-  return vec4<f32>(co, ao);
+  return keep(vec4<f32>(co, ao), bd);
 }
 `;

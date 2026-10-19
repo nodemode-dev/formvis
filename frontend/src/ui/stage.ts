@@ -11,6 +11,7 @@ import { paint, type StagePaint } from './palette';
 import type { DisplayLayer, ScreenDisplay } from '../gpu/display';
 import { documentFallback } from '../gpu/fallback';
 import { frameTrace, framePacing } from '../gpu/frame-trace';
+import { perfHud } from './perf-hud';
 import { LINE_DASH, loadPrefs, type LineStyle } from './prefs';
 
 const REDUCED = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -62,6 +63,8 @@ export class Stage {
   private pixelDrag: Pt | null = null;
   private cursor = '';
   private hover: ToolPointer | null = null;
+  private readonly predict = loadPrefs().lowLatency;
+  private predicted = false;
   private checker: { key: string; pattern: CanvasPattern } | null = null;
   /** The GPU display (Phase 18.2b) when the chosen renderer is WebGPU; the scene canvas then draws only the edge and
    *  pixel grid, and a document the GPU path cannot draw yet falls back here, its reason reported through `gpuState`. */
@@ -312,10 +315,12 @@ export class Stage {
       this.frame = 0;
       const region = this.pending ?? null;
       this.pending = undefined;
-      const traced = frameTrace.on, t0 = traced ? performance.now() : 0, scene = this.wantScene;
+      const traced = frameTrace.on, hud = perfHud.on, t0 = traced || hud ? performance.now() : 0, scene = this.wantScene;
       if (this.wantScene) this.renderScene(region);
       if (this.wantOverlay) this.renderOverlay();
-      if (traced && asked) frameTrace.record(asked, t0, performance.now(), scene ? (this.gpu && !this.gpuReason ? 'gpu' : 'cpu') : 'overlay');
+      const path = scene ? (this.gpu && !this.gpuReason ? 'gpu' : 'cpu') : 'overlay';
+      if (traced && asked) frameTrace.record(asked, t0, performance.now(), path);
+      if (hud) perfHud.note(performance.now() - t0, path);
     };
     this.frame = requestAnimationFrame(tick);
   }
@@ -327,6 +332,7 @@ export class Stage {
   setGpu(display: ScreenDisplay | null, limitBytes: number, onState: ((reason: string | null) => void) | null): void {
     this.gpu = display;
     this.gpuLimit = limitBytes;
+    if (display) display.budgetBytes = limitBytes;
     this.gpuState = onState;
     this.gpuReason = undefined;
     this.showGpu(false);
@@ -1219,6 +1225,10 @@ export class Stage {
         if (!t?.move) return;
         const events = typeof e.getCoalescedEvents === 'function' ? e.getCoalescedEvents() : [];
         for (const ev of events.length ? events : [e]) t.move(this.ctx, this.pointer(ev));
+        if (this.predict && this.cursor === 'none' && t.hover && typeof e.getPredictedEvents === 'function') {
+          const ahead = e.getPredictedEvents();
+          if (ahead.length) { this.predicted = true; t.hover(this.ctx, this.pointer(ahead[ahead.length - 1])); }
+        }
         this.edgeScroll(e);
         return;
       }
@@ -1263,6 +1273,7 @@ export class Stage {
       const t = this.tool();
       if (cancel) t?.cancel?.(this.ctx);
       else t?.up?.(this.ctx, p);
+      if (this.predicted) { this.predicted = false; t?.hover?.(this.ctx, p); }
       if (this.penBack) { const back = this.penBack; this.penBack = null; this.engine.setTool(back); }
       this.updateCursor(p);
     };

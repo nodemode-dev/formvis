@@ -58,6 +58,7 @@ export class PresetManagerDialog extends Dialog {
   private readonly upBtn: HTMLButtonElement;
   private readonly downBtn: HTMLButtonElement;
   private items: Item[] = [];
+  private readonly bundleKinds = el('<div class="cv-row" role="group" aria-label="Kinds written by Export All" title="The kinds of preset Export All writes to the file" style="display: flex; gap: 10px; flex-wrap: wrap"></div>');
 
   constructor(
     private readonly engine: Engine,
@@ -77,9 +78,19 @@ export class PresetManagerDialog extends Dialog {
       setText(b, label); b.addEventListener('click', run); bundle.append(b);
     }
     const builtinRow = checkRow('Include built-in gradients, shapes and patterns in Export All', (v) => { this.includeBuiltins = v; });
-    this.body.append(row, this.list, this.note, bundle, builtinRow.el);
+    for (const k of KINDS) {
+      const l = el(`<label style="display: flex; gap: 4px; align-items: center"><input type="checkbox" checked data-kind="${k.id}"><span></span></label>`);
+      setText(l.querySelector('span'), k.label);
+      this.bundleKinds.append(l);
+    }
+    this.body.append(row, this.list, this.note, bundle, this.bundleKinds, builtinRow.el);
     this.type.addEventListener('change', () => this.refresh());
     this.list.addEventListener('change', () => this.sync());
+    this.list.addEventListener('keydown', (e) => {
+      if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+      e.preventDefault();
+      void this.step(e.key === 'ArrowUp' ? -1 : 1);
+    });
     this.renameBtn = this.button('Rename', 'ghost', () => this.rename());
     this.upBtn = this.button('Move Up', 'ghost', () => void this.step(-1));
     this.downBtn = this.button('Move Down', 'ghost', () => void this.step(1));
@@ -393,8 +404,12 @@ export class PresetManagerDialog extends Dialog {
         toolPresets: loadToolPresets(),
         settings: { shortcuts: p.shortcuts, shortcutSets: p.shortcutSets, menuHidden: p.menuHidden, menuColors: p.menuColors },
       };
-      await this.deliver(new Blob([JSON.stringify(bundle)], { type: 'application/json' }), 'formvis-presets.json');
-      toast(`Exported ${bundle.brushes.length} brushes, ${bundle.swatches.length} swatches, ${bundle.gradients.length} gradients, ${bundle.shapes.length} shapes, ${bundle.patterns.length} patterns, ${bundle.styles.length} layer styles and ${bundle.toolPresets.length} tool presets.`);
+      const key: Record<Kind, 'brushes' | 'swatches' | 'gradients' | 'shapes' | 'patterns' | 'styles' | 'toolPresets'> = { brushes: 'brushes', swatches: 'swatches', gradients: 'gradients', shapes: 'shapes', patterns: 'patterns', styles: 'styles', tools: 'toolPresets' };
+      const chosen = KINDS.filter((k) => (this.bundleKinds.querySelector(`[data-kind="${k.id}"]`) as HTMLInputElement | null)?.checked !== false), out: Record<string, unknown> = { ...bundle };
+      for (const k of KINDS) if (!chosen.includes(k)) delete out[key[k.id]];
+      if (!chosen.length) { toast('Choose at least one kind of preset for Export All.', 'info'); return; }
+      await this.deliver(new Blob([JSON.stringify(out)], { type: 'application/json' }), 'formvis-presets.json');
+      toast(`Exported ${chosen.map((k) => `${bundle[key[k.id]].length} ${k.label.toLowerCase()}`).join(', ')}.`);
     } catch (err) { toast(message(err), 'error'); }
   }
 

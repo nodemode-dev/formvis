@@ -148,6 +148,7 @@ def tool_map() -> str:
     sub = {p.parent.name: p.read_text(encoding="utf-8") for p in sorted((SKILLS / "formvis-driving" / "sub-skills").glob("*/SUB-SKILL.md"))}
     out = ["# Tool map", "",
            f"Generated from the MCP catalogue ({len(TOOLS)} tools, `TOOLS` in `backend/app/routers/mcp.py`) and the `formvis-driving` sub-skills by `./formvis agents sync`; do not edit by hand. A tool no sub-skill names reads `none` and needs a line in the sub-skill that covers its family.", "",
+           "## Contents", "", "- Tools: each MCP tool, whether it reads or changes, and the driving sub-skills that name it", "", "## Tools", "",
            "| Tool | Reads or changes | Driving sub-skills that name it |", "| --- | --- | --- |"]
     for t in TOOLS:
         a = t["annotations"]
@@ -177,6 +178,8 @@ def skill_problems() -> list[str]:
             bad.append(f"{rel}: contains U+2014")
         if EMOJI.search(text):
             bad.append(f"{rel}: contains an emoji")
+        if p.suffix == ".md" and re.search(r"</?[A-Za-z][A-Za-z0-9_.:-]*>", text):
+            bad.append(f"{rel}: tag-shaped text in markdown (write [name], not angle brackets)")
         if p.name in ("SKILL.md", "SUB-SKILL.md"):
             head = re.match(r"---\n(.*?)\n---\n", text, re.S)
             fields = dict(re.findall(r"^(name|description): *(.*)$", head.group(1), re.M)) if head else {}
@@ -189,6 +192,8 @@ def skill_problems() -> list[str]:
                 bad.append(f"{rel}: description over 1024 characters")
             if re.search(r"</?[A-Za-z][^>]*>", fields["name"] + fields["description"]):
                 bad.append(f"{rel}: an XML tag in the front matter")
+            if ": " in fields["description"] and fields["description"][:1] not in ("'", '"'):
+                bad.append(f"{rel}: a colon and space in an unquoted description is not valid YAML")
     return bad
 
 

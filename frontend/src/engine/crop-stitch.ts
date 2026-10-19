@@ -2,17 +2,17 @@
  *  padding, scaled to a target size in multiples of a number; the result is scaled back and laid in with a feathered
  *  edge. No canvas here: the callers read and write the pixels. */
 
-export interface CropStitch { enabled: boolean; padding: number; target: number; multiple: number; feather: number }
+export interface CropStitch { enabled: boolean; padding: number; target: number; multiple: number; feather: number; /** The context around the mask as a factor of its box (1 is the box alone). */ expand: number; /** Pixels the mask is grown by before the run. */ grow: number }
 export interface Rect { x: number; y: number; w: number; h: number }
 
-export const CROP_DEFAULT: CropStitch = { enabled: false, padding: 64, target: 1024, multiple: 8, feather: 16 };
+export const CROP_DEFAULT: CropStitch = { enabled: false, padding: 64, target: 1024, multiple: 8, feather: 16, expand: 1, grow: 0 };
 
 /** Settings presets that ship with formvis; the person's own are kept beside them. */
 export const CROP_PRESETS: ReadonlyArray<{ name: string; settings: Omit<CropStitch, 'enabled'> }> = [
-  { name: 'Small fix', settings: { padding: 32, target: 512, multiple: 8, feather: 8 } },
-  { name: 'Balanced', settings: { padding: 64, target: 1024, multiple: 8, feather: 16 } },
-  { name: 'Wide context', settings: { padding: 256, target: 1024, multiple: 16, feather: 32 } },
-  { name: 'Highres fix', settings: { padding: 96, target: 1536, multiple: 16, feather: 24 } },
+  { name: 'Small fix', settings: { padding: 32, target: 512, multiple: 8, feather: 8, expand: 1, grow: 0 } },
+  { name: 'Balanced', settings: { padding: 64, target: 1024, multiple: 8, feather: 16, expand: 1, grow: 0 } },
+  { name: 'Wide context', settings: { padding: 256, target: 1024, multiple: 16, feather: 32, expand: 1, grow: 0 } },
+  { name: 'Highres fix', settings: { padding: 96, target: 1536, multiple: 16, feather: 24, expand: 1, grow: 0 } },
 ];
 
 const int = (v: unknown, lo: number, hi: number, fallback: number): number => {
@@ -29,6 +29,8 @@ export function cleanCropStitch(raw: unknown): CropStitch {
     target: int(r.target, 64, 4096, CROP_DEFAULT.target),
     multiple: int(r.multiple, 1, 256, CROP_DEFAULT.multiple),
     feather: int(r.feather, 0, 256, CROP_DEFAULT.feather),
+    expand: typeof r.expand === 'number' && Number.isFinite(r.expand) ? Math.max(1, Math.min(4, Math.round(r.expand * 100) / 100)) : CROP_DEFAULT.expand,
+    grow: int(r.grow, 0, 256, CROP_DEFAULT.grow),
   };
 }
 
@@ -50,6 +52,29 @@ export function cropRect(b: Rect, W: number, H: number, padding: number): Rect {
   const x0 = Math.max(0, b.x - padding), y0 = Math.max(0, b.y - padding);
   const x1 = Math.min(W, b.x + b.w + padding), y1 = Math.min(H, b.y + b.h + padding);
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+/** `b` scaled about its centre by `factor` (1 keeps it); may reach outside the picture, which `cropRect` then keeps in. */
+export function expandRect(b: Rect, factor: number): Rect {
+  const dw = Math.round((b.w * (factor - 1)) / 2), dh = Math.round((b.h * (factor - 1)) / 2);
+  return { x: b.x - dw, y: b.y - dh, w: b.w + 2 * dw, h: b.h + 2 * dh };
+}
+
+/** A one-channel mask with every pixel at or above 128 spread `r` pixels each way (a square), as 0 or 255. */
+export function growMask(mask: ArrayLike<number>, w: number, h: number, r: number): Uint8Array {
+  const spread = (src: ArrayLike<number>, dst: Uint8Array, n: number, lines: number, step: number, lineStep: number): void => {
+    for (let l = 0; l < lines; l++) {
+      const base = l * lineStep;
+      let last = -Infinity;
+      for (let i = 0; i < n; i++) { if (src[base + i * step] >= 128) last = i; if (i - last <= r) dst[base + i * step] = 255; }
+      last = Infinity;
+      for (let i = n - 1; i >= 0; i--) { if (src[base + i * step] >= 128) last = i; if (last - i <= r) dst[base + i * step] = 255; }
+    }
+  };
+  const across = new Uint8Array(w * h), out = new Uint8Array(w * h);
+  spread(mask, across, w, h, 1, w);
+  spread(across, out, h, w, w, 1);
+  return out;
 }
 
 /** The size to run a w by h crop at: the longer side scaled to `target`, each side rounded to a multiple (never below one). */

@@ -1,6 +1,7 @@
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
 import type { PsdReport } from '../../io/psd';
+import { tn } from '../i18n';
 
 /** The conversion report of a PSD opened by hand: what came in as it was, what was approximated and what was left out,
  *  with Cancel and Import. Agents and batches never see it; they get the report as a toast. */
@@ -29,7 +30,7 @@ export class PsdReportDialog extends Dialog {
 
   ask(name: string, report: PsdReport): Promise<boolean> {
     this.settle(false);   // an earlier report left open is cancelled
-    setText(this.head, `${name}: ${report.layers} layer${report.layers === 1 ? '' : 's'} read.`);
+    setText(this.head, `${name}: ${tn(report.layers, '{n} layer read.', '{n} layers read.')}`);
     for (const key of ['kept', 'approximated', 'dropped'] as const) {
       const s = this.lists[key], items = report[key];
       s.root.hidden = !items.length;

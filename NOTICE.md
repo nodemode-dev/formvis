@@ -16,6 +16,8 @@ formvis is licensed under the Apache License 2.0 (see `LICENSE`). It includes or
 | Package | License | Notes |
 | --- | --- | --- |
 | Inter, JetBrains Mono (via @fontsource) | SIL OFL 1.1 fonts, MIT packaging | bundled font files |
+| Lato 1.104, Montserrat 9.000, Open Sans 3.003, Roboto 3.015, Lora 3.008, Merriweather 2.100, Playfair Display 1.203, Anton 2.116, Bebas Neue 2.000, Oswald 4.103, Caveat 2.000, Dancing Script 2.001, Pacifico 3.001, IBM Plex Mono 2.3, Source Code Pro 1.026 (via @fontsource 5.3.0 and 5.3.1) | SIL OFL 1.1 fonts, MIT packaging | latin woff2 text fonts in `frontend/public/fonts/[family]/`, each with its licence text, registered on first use (1.90.7) |
+| Rust core and alloc inside `frontend/src/engine/kernels-wasm/*.wasm` | MIT OR Apache-2.0 | the WebAssembly pixel kernels built from `native/formvis-kernels` (no other crates), loaded on first use (1.90.7) |
 | ag-psd, with pako and base64-js | MIT (pako: MIT and Zlib) | layered PSD open and export, loaded on first use |
 | three.js | MIT | Place 3D Model (.glb and .gltf), loaded on first use |
 | opentype.js (2.0.0) | MIT | reading glyph outlines from font files for Create Work Path, Convert to Shape and the Glyphs panel (`frontend/src/engine/glyph-outlines.ts`), loaded on first use |

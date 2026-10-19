@@ -1,0 +1,3 @@
+TIMESTAMP = 0
+SHA256 (formvis-1.90.7/formvis-web.tar.gz) = REPLACE_WITH_THE_LINE_OF_formvis-web.tar.gz_IN_THE_RELEASE_SHA256SUMS
+SIZE (formvis-1.90.7/formvis-web.tar.gz) = 0

@@ -46,6 +46,9 @@ export async function listenShell(on: { open: (paths: string[]) => void; exitReq
   if (Array.isArray(waiting) && waiting.length) on.open(waiting);
 }
 
+/** Linux: keeps the display server chosen in Preferences > Performance (auto, x11 or wayland) for the shell to apply at the next launch. */
+export const setDisplayServer = (server: string): Promise<void> => invoke<void>('set_display_server', { server });
+
 /** Lets the app exit: every unsaved document was saved or discarded. `cancel` instead says the person called the quit
  *  off, so an update waiting to restart the app does not. */
 export const confirmExit = (cancel = false): Promise<void> => invoke<void>('confirm_exit', cancel ? { cancel: true } : {});

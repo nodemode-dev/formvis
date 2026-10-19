@@ -1,6 +1,6 @@
 ---
 name: terminal-operator
-description: Terminals, pseudo-terminals, the Claude Code panel, Agent Connect and child processes in formvis. Use when changing the terminal dock (xterm in the window, PTYs in the engine), the Claude Code panel and its stream, the Agent Connect panel and its approvals, or code that already starts processes: the model runner's terminal echo, process waiting in processes.py, the contained EXR child, the Tauri sidecar spawn, or the engine auto-start of ./formvis mcp. Lists the real files and the rules a process feature must follow.
+description: Terminals, pseudo-terminals, the Claude Code panel, Agent Connect and child processes in formvis. Use when changing the terminal dock (xterm in the window, PTYs in the engine), the Claude Code panel and its stream, the Agent Connect panel and its approvals, or code that already starts processes (the model runner's terminal echo, process waiting in processes.py, the contained EXR child, the Tauri sidecar spawn, or the engine auto-start of ./formvis mcp). Lists the real files and the rules a process feature must follow.
 ---
 
 # terminal-operator

@@ -707,10 +707,12 @@ other modes and depths its menu items are off, with the reason as their tooltip.
 
 ## Interface languages
 
-- Preferences > Language chooses the interface language from 26: English (the default), Spanish, Mexican Spanish,
+- Preferences > Language chooses the interface language from 30: English (the default), Spanish, Mexican Spanish,
   Brazilian Portuguese, French, Canadian French, German, Italian, Dutch, Danish, Finnish, Norwegian Bokmål, Swedish,
-  Russian, Polish, Czech, Hungarian, Ukrainian, Turkish, Simplified and Traditional Chinese, Japanese, Korean,
-  Indonesian, Thai and Vietnamese. Each is named in its own language in the list.
+  Russian, Polish, Czech, Hungarian, Ukrainian, Turkish, Greek, Serbian (Latin script), Simplified and Traditional
+  Chinese, Japanese, Korean, Indonesian, Thai, Vietnamese, Arabic and Hindi (the last two are drafts awaiting a
+  native review). Each is named in its own language in the list. Until you choose, the first start follows the
+  system's preferred languages, with a region falling back to its language.
 - The interface switches in place, with no restart, and the saved choice is used from the next start before anything
   shows. Menus, panel names, dialog titles, buttons and fields, tool names, options bar labels, tooltips, the status
   bar, filter and adjustment names and Preferences sections are translated.

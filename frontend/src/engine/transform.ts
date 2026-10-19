@@ -13,6 +13,9 @@ export const HANDLES: ReadonlyArray<Pt> = [
 
 export type DragMode = { kind: 'move' } | { kind: 'resize'; handle: number } | { kind: 'rotate' };
 
+/** Preferences > General > Use Legacy Free Transform: a handle scales freely and Shift holds the proportions, whatever Keep proportions says. */
+export const transformPrefs = { legacy: false };
+
 /** A box every renderer can draw: finite numbers, 1 to 300,000 units a side, within a million units of the origin. */
 export function validTransform(t: Transform): boolean {
   const finite = Number.isFinite(t.x) && Number.isFinite(t.y) && Number.isFinite(t.w) && Number.isFinite(t.h) && Number.isFinite(t.rotation);
@@ -47,7 +50,7 @@ export function dragged(o: Transform, start: Pt, p: Pt, mode: DragMode, lockRati
   const sideX = handle.x * 2 - 1, sideY = handle.y * 2 - 1;
   let w = sideX ? Math.max(1, along * sideX) : o.w;
   let h = sideY ? Math.max(1, across * sideY) : o.h;
-  if (lockRatio !== shift) {
+  if ((transformPrefs.legacy ? false : lockRatio) !== shift) {
     // Proportional: an edge handle scales by its own axis; a corner by the least-squares fit of the dragged corner to
     // the original diagonal, never below one unit on the shorter side.
     const scale = !sideX ? h / o.h : !sideY ? w / o.w

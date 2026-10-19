@@ -33,6 +33,8 @@
     "allow-take-pending-opens",
     "allow-confirm-exit",
     "allow-check-for-update",
-    "allow-install-update"
+    "allow-install-update",
+    "allow-set-display-server",
+    "allow-system-fonts-english"
   ]
 }

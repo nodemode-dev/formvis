@@ -1,7 +1,7 @@
 import { loadPrefs } from './prefs';
 import { LANG_NAMES, LANG_PARENT, RTL_LANGS, isLang as isLangCode, type Lang } from './i18n/langs';
 
-/** The interface languages (DEV_PLAN 35.5 and 36.32): 26, English the source text and the default. Each other
+/** The interface languages (DEV_PLAN 35.5 and 36.32): 30, English the source text and the default. Each other
  *  language's table is its own module, loaded when chosen (and at start for the saved choice) so the app carries only
  *  the one it shows; a regional variant falls back to its parent's table, then to English. */
 export type { Lang } from './i18n/langs';
@@ -21,6 +21,8 @@ const LOADERS: Record<Exclude<Lang, 'en'>, () => Promise<Table>> = {
   ja: () => import('./i18n/ja').then((m) => m.ja), ko: () => import('./i18n/ko').then((m) => m.ko),
   id: () => import('./i18n/id').then((m) => m.id), th: () => import('./i18n/th').then((m) => m.th),
   vi: () => import('./i18n/vi').then((m) => m.vi), ar: () => import('./i18n/ar').then((m) => m.ar), hi: () => import('./i18n/hi').then((m) => m.hi),
+  el: () => import('./i18n/el').then((m) => m.el),
+  'sr-Latn': () => import('./i18n/sr-Latn').then((m) => m.srLatn),
 };
 /** Part b of each table (36.32b): filters, adjustments, dialog fields, tooltips, notes and messages, kept apart so the
  *  first part stays readable; merged over it when the language loads. Regional variants have none of their own. */
@@ -37,6 +39,9 @@ const MORE: Partial<Record<Exclude<Lang, 'en'>, () => Promise<Table>>> = {
   ja: () => import('./i18n/more/ja').then((m) => m.ja), ko: () => import('./i18n/more/ko').then((m) => m.ko),
   id: () => import('./i18n/more/id').then((m) => m.id), th: () => import('./i18n/more/th').then((m) => m.th),
   vi: () => import('./i18n/more/vi').then((m) => m.vi),
+  el: () => import('./i18n/more/el').then((m) => m.el),
+  ar: () => import('./i18n/more/ar').then((m) => m.ar),
+  'sr-Latn': () => import('./i18n/more/sr-Latn').then((m) => m.srLatn),
 };
 /** Part c (36.32c): strings the app assembles at run time (tool hint segments, status readouts, Preferences sections). */
 const EXTRA: Partial<Record<Exclude<Lang, 'en'>, () => Promise<Table>>> = {
@@ -52,6 +57,9 @@ const EXTRA: Partial<Record<Exclude<Lang, 'en'>, () => Promise<Table>>> = {
   ja: () => import('./i18n/extra/ja').then((m) => m.ja), ko: () => import('./i18n/extra/ko').then((m) => m.ko),
   id: () => import('./i18n/extra/id').then((m) => m.id), th: () => import('./i18n/extra/th').then((m) => m.th),
   vi: () => import('./i18n/extra/vi').then((m) => m.vi), ar: () => import('./i18n/extra/ar').then((m) => m.ar),
+  el: () => import('./i18n/extra/el').then((m) => m.el),
+  hi: () => import('./i18n/extra/hi').then((m) => m.hi),
+  'sr-Latn': () => import('./i18n/extra/sr-Latn').then((m) => m.srLatn),
 };
 const tables = new Map<Lang, Table>([['en', {}]]);
 

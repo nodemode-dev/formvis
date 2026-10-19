@@ -1,6 +1,6 @@
 import type { BlendMode as PsdBlend, EffectContour, Layer as PsdLayer, LayerEffectsInfo, LinkedFile, PatternInfo, Psd, TextStyle, TextStyleRun, UnitsValue, VectorContent } from 'ag-psd';
 import {
-  Raster, boundsOf, docTransform, effectsPresent, integral, liveText, newLayer, placement, applyMat, uid, type BlendMode, type Doc, type ID, type Layer, type SmartLink, type Surface, invert, mul, toBlob, type Pt, defaultEffects, patternById, addPattern, projectPatterns, createSurface, ctxOf, type LayerEffects, CONTOURS, contourCurve, customContourId, customContourPoints, instances, type ContourId, renderText, textKey, TEXT_FONTS, type TextSpec, ADJUSTMENT_LABELS, hsvFromData, type WarpStyle,
+  Raster, boundsOf, docTransform, effectsPresent, integral, liveText, newLayer, placement, applyMat, uid, type BlendMode, type Doc, type ID, type Layer, type SmartLink, type Surface, invert, mul, toBlob, type Pt, defaultEffects, patternById, addPattern, projectPatterns, createSurface, ctxOf, type LayerEffects, CONTOURS, contourCurve, customContourId, customContourPoints, instances, type ContourId, renderText, textKey, TEXT_FONTS, resolveFace, type TextSpec, ADJUSTMENT_LABELS, hsvFromData, type WarpStyle,
 } from '../engine';
 import { fromPsdAdjustment, keepPsdAdjustment, restorePsdAdjustment, toPsdAdjustment } from './psd-adjust';
 import { fromPsdSmartFilters, toPsdFilter } from './psd-filters';
@@ -371,7 +371,7 @@ function fromPsdEffects(info: LayerEffectsInfo, patterns: PatternInfo[] | undefi
 }
 
 /** PostScript names for formvis's type families in PSD files; bold and italic travel as the format's faux styles. */
-const PS_FONT: Record<string, string> = { Inter: 'Inter-Regular', Arial: 'ArialMT', Helvetica: 'Helvetica', Georgia: 'Georgia', 'Times New Roman': 'TimesNewRomanPSMT', 'Courier New': 'CourierNewPSMT', Verdana: 'Verdana', 'Trebuchet MS': 'TrebuchetMS', Impact: 'Impact', serif: 'TimesNewRomanPSMT', 'sans-serif': 'ArialMT', monospace: 'CourierNewPSMT' };
+const PS_FONT: Record<string, string> = { Inter: 'Inter-Regular', Arial: 'ArialMT', Helvetica: 'Helvetica', Georgia: 'Georgia', 'Times New Roman': 'TimesNewRomanPSMT', 'Courier New': 'CourierNewPSMT', Verdana: 'Verdana', 'Trebuchet MS': 'TrebuchetMS', Impact: 'Impact', 'JetBrains Mono': 'JetBrainsMono-Regular', Lato: 'Lato-Regular', Montserrat: 'Montserrat-Regular', 'Open Sans': 'OpenSans-Regular', Roboto: 'Roboto-Regular', Lora: 'Lora-Regular', Merriweather: 'Merriweather-Regular', 'Playfair Display': 'PlayfairDisplay-Regular', Anton: 'Anton-Regular', 'Bebas Neue': 'BebasNeue-Regular', Oswald: 'Oswald-Regular', Caveat: 'Caveat-Regular', 'Dancing Script': 'DancingScript-Regular', Pacifico: 'Pacifico-Regular', 'IBM Plex Mono': 'IBMPlexMono-Regular', 'Source Code Pro': 'SourceCodePro-Regular', serif: 'TimesNewRomanPSMT', 'sans-serif': 'ArialMT', monospace: 'CourierNewPSMT' };
 
 /** The formvis family a PSD font name belongs to, by its PostScript name or its family part. */
 /** A group's 'artb' artboard data (36.27): its rectangle in document pixels and its background, as a formvis artboard. */
@@ -394,9 +394,8 @@ export function toPsdArtboard(l: Layer): Pick<PsdLayer, 'artboard'> | Record<str
 
 function familyOf(psName: string): { family: string; bold: boolean; italic: boolean } {
   const known = Object.entries(PS_FONT).find(([fam, ps]) => ps === psName && fam !== 'serif' && fam !== 'sans-serif' && fam !== 'monospace');
-  const bare = psName.replace(/-(Bold|Italic|BoldItalic|Regular|Oblique|BoldOblique)?(MT|PSMT)?$/i, '').replace(/(PSMT|MT)$/, '');
-  const guess = TEXT_FONTS.find((f) => f.replace(/\s+/g, '').toLowerCase() === bare.replace(/\s+/g, '').toLowerCase());
-  return { family: known?.[0] ?? guess ?? psName, bold: /bold/i.test(psName), italic: /italic|oblique/i.test(psName) };
+  const hit = resolveFace(psName, TEXT_FONTS);
+  return { family: known?.[0] ?? hit?.family ?? psName, bold: /bold/i.test(psName) || !!hit?.bold, italic: /italic|oblique/i.test(psName) || !!hit?.italic };
 }
 
 /** Per-range type attributes as the PSD's style runs: each piece of the text carries a whole style, the layer's own with

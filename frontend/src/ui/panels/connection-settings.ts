@@ -1,7 +1,8 @@
 import { api, type ComfyAuth, type LlmRow, type LlmStatus, type ModelsFolder } from '../../io/api';
-import { addRecipe, apiWorkflow, RECIPE_FAMILIES, recipeFamily, recipes, removeRecipe, syncRecipeFolder, type RecipeFamily } from '../../io/comfy';
+import { addRecipe, apiWorkflow, hiddenBuiltins, hideBuiltin, RECIPE_FAMILIES, recipeFamily, recipes, removeRecipe, syncRecipeFolder, type Recipe, type RecipeFamily } from '../../io/comfy';
 import { folderTemplateCount, saveTemplates, syncTemplates, templateFromMarkdown, templateToMarkdown, templates } from '../../io/prompt-templates';
 import { el, patchList, setHidden, setText, setValue } from '../dom';
+import { confirmAction } from '../dialogs';
 import { loadPrefs, setUpdateAtStart, updateAtStart } from '../prefs';
 import { DEFAULT_THEME, THEMES, applyTheme, readChoice, registerSkins, setTheme } from '../themes';
 
@@ -159,6 +160,9 @@ export class RecipesSection {
   private readonly input = el<HTMLInputElement>('<input type="file" accept=".json,application/json" multiple hidden aria-label="Add workflows">');
   private readonly replace = el<HTMLInputElement>('<input type="file" accept=".json,application/json" hidden aria-label="Update a workflow">');
   private updating = '';
+  private readonly removed: Recipe[] = [];
+  private readonly undoBtn = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost" title="Brings back the recipes removed since the window opened, the last one first" disabled>Undo remove</button>');
+  private readonly restoreBtn = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost" title="Shows the built-in recipes that were hidden" disabled>Restore built-in recipes</button>');
 
   constructor() {
     this.el.append(this.empty, this.replace);
@@ -171,12 +175,15 @@ export class RecipesSection {
     }
     const add = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Add workflow</button>'), bar = el('<div class="cv-improve"></div>');
     const open = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost" title="Workflow files in this folder are kept as recipes">Open folder</button>');
-    bar.append(add, open, this.input);
+    bar.append(add, open, this.undoBtn, this.restoreBtn, this.input);
     this.el.append(bar, this.note);
+    this.undoBtn.addEventListener('click', () => this.undo());
+    this.restoreBtn.addEventListener('click', () => { hideBuiltin(null); this.refresh(); setText(this.note, 'The built-in recipes are shown again.'); });
     add.addEventListener('click', () => this.input.click());
     open.addEventListener('click', () => void syncRecipeFolder().then((r) => {
       if (!r) { setText(this.note, 'The formvis engine is offline: the recipes folder needs it.'); return; }
       this.refresh();
+      setText(this.note, `Recipes folder: ${r.folder}`);
       return api.revealPath(r.folder);
     }).catch((err) => setText(this.note, failure(err, 'Could not open the folder.'))));
     this.input.addEventListener('change', () => void this.read());
@@ -187,6 +194,8 @@ export class RecipesSection {
   refresh(): void {
     const all = recipes().map((r) => ({ ...r, ...recipeFamily(r.json) }));
     setHidden(this.empty, all.length > 0);
+    this.undoBtn.disabled = this.removed.length === 0;
+    this.restoreBtn.disabled = hiddenBuiltins().length === 0;
     for (const [family, label] of RECIPE_FAMILIES) {
       const g = this.groups.get(family) as { box: HTMLDetailsElement; title: HTMLElement; list: HTMLElement }, items = all.filter((r) => r.family === family);
       setHidden(g.box, items.length === 0);
@@ -196,14 +205,36 @@ export class RecipesSection {
         create: (r) => {
           const line = el('<div class="cv-plugins-row"><span></span><button type="button" class="cv-btn cv-btn-ghost" data-act="edit" title="Copies the workflow and opens ComfyUI; paste it on the canvas">Edit in ComfyUI</button><button type="button" class="cv-btn cv-btn-ghost" data-act="update" title="Replace this recipe with a workflow saved from ComfyUI">Update...</button><button type="button" class="cv-btn cv-btn-ghost" data-act="remove">Remove</button></div>');
           const act = (name: string): HTMLButtonElement => line.querySelector(`[data-act="${name}"]`) as HTMLButtonElement;
-          act('remove').addEventListener('click', () => { removeRecipe(r.name); this.refresh(); setText(this.note, `${r.name} removed.`); });
+          act('remove').addEventListener('click', () => void this.drop(r.name, line.dataset.builtin === 'true'));
           act('update').addEventListener('click', () => { this.updating = r.name; this.replace.click(); });
           act('edit').addEventListener('click', () => void this.edit(r.name));
           return line;
         },
-        update: (node, r) => setText(node.querySelector('span'), `${r.name} · ${r.nodes} nodes`),
+        update: (node, r) => {
+          node.dataset.builtin = r.builtin ? 'true' : 'false';
+          setText(node.querySelector('span'), r.builtin ? `${r.name} · built in` : `${r.name} · ${r.nodes} nodes`);
+          setText(node.querySelector('[data-act="remove"]'), r.builtin ? 'Hide' : 'Remove');
+        },
       });
     }
+  }
+
+  /** Remove asks once and keeps what it removed for Undo remove until the window closes; a built-in recipe is only hidden. */
+  private async drop(name: string, builtin: boolean): Promise<void> {
+    if (builtin) { hideBuiltin(name); this.refresh(); setText(this.note, `${name} hidden. Restore built-in recipes shows it again.`); return; }
+    if (!(await confirmAction('Remove recipe?', `${name} will be removed from the recipes and from the recipes folder. Undo remove brings it back until the window closes.`, 'Remove', true))) return;
+    const was = removeRecipe(name);
+    if (was) this.removed.push(was);
+    this.refresh();
+    setText(this.note, `${name} removed.`);
+  }
+
+  private undo(): void {
+    const r = this.removed.pop();
+    if (!r) return;
+    const problem = addRecipe(r.name, r.json);
+    this.refresh();
+    setText(this.note, problem ?? `${r.name} is back.`);
   }
 
   /** Edit in ComfyUI: the kept graph goes to the clipboard and ComfyUI opens in a new tab, ready for a paste on its canvas. */
@@ -259,7 +290,7 @@ export class TemplateFiles {
     const open = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost" title="Markdown files in this folder add templates, and one named like a kept template replaces it">Open folder</button>');
     this.el.append(imp, exp, open, this.input);
     open.addEventListener('click', () => void syncTemplates().then((folder) => {
-      setText(this.note, folder ? `${folderTemplateCount()} template file${folderTemplateCount() === 1 ? '' : 's'} in the folder. Front matter: name, use: improve, for: model names.` : 'The formvis engine is offline: the folder needs it.');
+      setText(this.note, folder ? `${folderTemplateCount()} template file${folderTemplateCount() === 1 ? '' : 's'} in ${folder}. Front matter: name, use: improve, assistant or generate, for: models or routes. Placeholders: {prompt} {width} {height} {size} {model}.` : 'The formvis engine is offline: the folder needs it.');
       if (folder) return api.revealPath(folder);
     }).catch((err) => setText(this.note, failure(err, 'Could not open the folder.'))));
     imp.addEventListener('click', () => this.input.click());
@@ -280,7 +311,7 @@ export class TemplateFiles {
       added++; last = t.name;
     }
     if (added) { saveTemplates(list); this.changed(last); }
-    setText(this.note, `${added} template${added === 1 ? '' : 's'} imported${skipped ? `, ${skipped} skipped (empty, or not for Improve Prompt)` : ''}.`);
+    setText(this.note, `${added} template${added === 1 ? '' : 's'} imported${skipped ? `, ${skipped} skipped (empty, or with a use other than improve, assistant or generate)` : ''}.`);
   }
 
   private write(): void {
@@ -531,7 +562,7 @@ export class ApiKeysSection {
   readonly el = el('<details class="cv-panel-section cv-api-keys" open><summary class="cv-refs-title">API keys</summary></details>');
   private readonly list = el('<div class="cv-api-keys-list"></div>');
   private readonly note = el('<p class="cv-note" role="status">Keys are kept in your system\'s password store; only the last four characters are shown here.</p>');
-  private rows: Array<{ id: string; name: string; configured: boolean; source: string | null; last4: string; refused: boolean }> = [];
+  private rows: Array<{ id: string; name: string; configured: boolean; source: string | null; last4: string; refusedAt: number }> = [];
   private llm = new Map<string, LlmRow>();
 
   constructor() {
@@ -541,8 +572,8 @@ export class ApiKeysSection {
   async refresh(): Promise<void> {
     const [fal, others, lm] = await Promise.all([api.generativeStatus(), api.providers(), api.llmStatus()]);
     this.llm = new Map((lm?.rows ?? []).map((r) => [`llm:${r.id}`, r]));
-    this.rows = [...(fal ? [{ id: 'fal', name: 'fal', configured: fal.configured, source: fal.source, last4: fal.last4 ?? '', refused: !!fal.refused }] : []), ...others.map((p) => ({ id: p.id, name: p.name, configured: p.configured, source: p.source, last4: p.last4 ?? '', refused: !!p.refused })),
-      ...(lm?.rows ?? []).map((r) => ({ id: `llm:${r.id}`, name: r.name, configured: r.hasKey, source: 'settings', last4: '', refused: false }))];
+    this.rows = [...(fal ? [{ id: 'fal', name: 'fal', configured: fal.configured, source: fal.source, last4: fal.last4 ?? '', refusedAt: fal.refused ? fal.refusedAt || -1 : 0 }] : []), ...others.map((p) => ({ id: p.id, name: p.name, configured: p.configured, source: p.source, last4: p.last4 ?? '', refusedAt: p.refused ? p.refusedAt || -1 : 0 })),
+      ...(lm?.rows ?? []).map((r) => ({ id: `llm:${r.id}`, name: r.name, configured: r.hasKey, source: 'settings', last4: r.last4 ?? '', refusedAt: r.refusedAt ?? 0 }))];
     patch(this.list, this.rows, {
       key: (r) => r.id,
       create: (r) => {
@@ -553,7 +584,8 @@ export class ApiKeysSection {
         return line;
       },
       update: (node, r) => {
-        setText(node.querySelector('span'), `${r.name}: ${r.configured ? `key kept${r.last4 ? `, ends ${r.last4}` : ''}${r.source === 'environment' ? ' (set in the environment)' : ''}${r.refused ? ', refused by the service: replace it' : ''}` : 'no key'}`);
+        setText(node.querySelector('span'), `${r.name}: ${r.configured ? `key kept${r.last4 ? `, ends ${r.last4}` : ''}${r.source === 'environment' ? ' (set in the environment)' : ''}${r.refusedAt ? `, refused by the service${r.refusedAt > 0 ? ` on ${new Date(r.refusedAt * 1000).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}` : ''}: replace it` : ''}` : 'no key'}`);
+        node.dataset.stale = r.refusedAt ? 'true' : 'false';
         const b = node.querySelector('button') as HTMLButtonElement;
         b.disabled = !r.configured || r.source === 'environment';
       },

@@ -1,4 +1,4 @@
-import type { Engine } from '../../engine';
+import { ensureBundledFont, type Engine } from '../../engine';
 import { Dialog } from '../dialogs';
 import { el, q, setText } from '../dom';
 import { toast } from '../toast';
@@ -71,7 +71,7 @@ export class GlyphsDialog extends Dialog {
     super('Glyphs', 560);
     setText(q(this.font, 'span'), 'Font');
     this.fontInput = q(this.font, 'select') as HTMLSelectElement;
-    this.fontInput.addEventListener('change', () => { this.family = this.fontInput.value; this.fill(); this.detectAlternates(); void this.loadChars(); });
+    this.fontInput.addEventListener('change', () => { this.family = this.fontInput.value; void ensureBundledFont(this.family); this.fill(); this.detectAlternates(); void this.loadChars(); });
     const show = selectRow('Show', BLOCKS.map((b) => [b.id, b.label] as const), (v) => { this.block = BLOCKS.find((b) => b.id === v) ?? BLOCKS[0]; this.fill(); });
     show.set(this.block.id);
     for (let i = 0; i < 256; i++) {

@@ -105,4 +105,4 @@ This is CIE76 and 8 bit precise, so quote it to about one decimal.
 
 ## Working on the code
 
-For changes to the service, use `formvis-harness` sub-skill `colour-keeper`, which covers where the window calls these routes. This skill is for answering questions with the engine's real output.
+For changes to the service, use `formvis-harness` sub-skill `colour-keeper`, which covers where the window calls these routes. This skill is for answering questions with the engine's real output. Its evaluations are in `EVALS.json`.

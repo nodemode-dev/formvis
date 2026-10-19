@@ -3,7 +3,7 @@ import { toolList, type OptionSpec, type Tool } from '../extensions/registry';
 import { el, q, setChecked, setClass, setHidden, setText, setValue } from './dom';
 import { icon } from './icons';
 import { onLanguage, t as tr } from './i18n';
-import { previewFont } from './fonts';
+import { previewFont, warmFonts } from './fonts';
 
 /** An options-bar label in the current language, its English kept in data-en for language changes (35.5d). */
 const labelEn = (s: HTMLElement, en: string): void => { s.dataset.en = en; setText(s, tr(en)); };
@@ -14,7 +14,7 @@ const labelEn = (s: HTMLElement, en: string): void => { s.dataset.en = en; setTe
 function facePicker(box: HTMLSelectElement, spec: Extract<OptionSpec, { kind: 'select' }>): void {
   const pop = el<HTMLDivElement>('<div class="cv-face-list" role="listbox" hidden></div>');
   let open = false, at = -1;
-  const rows = (): HTMLElement[] => Array.from(pop.children) as HTMLElement[];
+  const rows = (): HTMLElement[] => (Array.from(pop.children) as HTMLElement[]).filter((r) => r.classList.contains('cv-face-row'));
   const mark = (i: number): void => { at = i; rows().forEach((r, k) => setClass(r, 'is-on', k === i)); const r = rows()[i]; if (r) { r.scrollIntoView({ block: 'nearest' }); spec.preview?.(r.dataset.id ?? null); } };
   const close = (keep: boolean): void => {
     if (!open) return;
@@ -35,10 +35,21 @@ function facePicker(box: HTMLSelectElement, spec: Extract<OptionSpec, { kind: 's
   box.addEventListener('mousedown', (e) => {
     e.preventDefault();
     if (open) { close(false); return; }
+    if (spec.label === 'Font') warmFonts();
     const list = (spec.live ? spec.live() : spec.choices).filter((c) => c.id);
-    while (pop.children.length > list.length) pop.lastElementChild?.remove();
-    list.forEach((c, i) => {
-      const r = (pop.children[i] as HTMLElement | undefined) ?? pop.appendChild(el('<div class="cv-face-row" role="option"></div>'));
+    const items: Array<{ head?: string; c?: (typeof list)[number] }> = [];
+    list.forEach((c, i) => { if (c.group && c.group !== list[i - 1]?.group) items.push({ head: c.group }); items.push({ c }); });
+    while (pop.children.length > items.length) pop.lastElementChild?.remove();
+    const made = (i: number, cls: string): HTMLElement => {
+      const have = pop.children[i] as HTMLElement | undefined;
+      if (have?.classList.contains(cls)) return have;
+      const n = el<HTMLElement>(`<div class="${cls}"${cls === 'cv-face-row' ? ' role="option"' : ''}></div>`);
+      if (have) have.replaceWith(n); else pop.appendChild(n);
+      return n;
+    };
+    items.forEach((it, i) => {
+      if (!it.c) { const h = made(i, 'cv-face-head'), text = tr(it.head ?? ''); if (h.textContent !== text) h.textContent = text; return; }
+      const c = it.c, r = made(i, 'cv-face-row');
       if (r.dataset.id !== c.id) r.dataset.id = c.id;
       const label = c.label.replace(/^\[[ x]\] /, '');
       if (r.textContent !== label) r.textContent = label;

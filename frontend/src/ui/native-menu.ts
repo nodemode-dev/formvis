@@ -1,5 +1,6 @@
 import type { Commands } from './commands';
 import type { MenuDef, MenuItem as MenuSpec } from './menu';
+import { t } from './i18n';
 
 /** formvis's menus in the macOS menu bar when it runs as the desktop app (Phase 21, UI_SPEC.md section 2: the target's
  *  menus are the system's). Built from the same MenuDef list and command registry as the in-window menu bar, so the two
@@ -49,10 +50,10 @@ export class NativeMenus {
       const items: typeof this.items = [];
       const make = async (spec: MenuSpec): Promise<unknown> => {
         if (spec === '-') return api.PredefinedMenuItem.new({ item: 'Separator' });
-        if (typeof spec === 'object') return api.Submenu.new({ text: spec.label, items: (await Promise.all(spec.items.map(make))) as never[] });
+        if (typeof spec === 'object') return api.Submenu.new({ text: t(spec.label), items: (await Promise.all(spec.items.map(make))) as never[] });
         const cmd = this.commands.get(spec);
         if (!cmd) return null;
-        const text = this.commands.label(cmd), acc = accelerator(cmd.keys?.[0]);
+        const text = t(this.commands.label(cmd)), acc = accelerator(cmd.keys?.[0]);
         const opts = { text, enabled: this.commands.enabled(cmd), action: () => { this.commands.run(spec); } };
         let item;
         try { item = await api.MenuItem.new(acc ? { ...opts, accelerator: acc } : opts); } catch { item = await api.MenuItem.new(opts); }
@@ -61,7 +62,7 @@ export class NativeMenus {
       };
       const top = [];
       top.push(await api.Submenu.new({ text: 'formvis', items: [
-        await api.PredefinedMenuItem.new({ item: { About: { name: 'formvis' } } }),
+        await api.PredefinedMenuItem.new({ item: { About: { name: 'formvis' } }, text: t('About formvis') }),
         await api.PredefinedMenuItem.new({ item: 'Separator' }),
         ...(this.commands.get('settings') ? [await make('settings')] : []),
         await api.PredefinedMenuItem.new({ item: 'Separator' }),
@@ -70,7 +71,7 @@ export class NativeMenus {
       ] as never[] }));
       for (const def of this.menus()) {
         const list = typeof def.items === 'function' ? def.items() : def.items;
-        top.push(await api.Submenu.new({ text: def.label, items: (await Promise.all(list.map(make))).filter(Boolean) as never[] }));
+        top.push(await api.Submenu.new({ text: t(def.label), items: (await Promise.all(list.map(make))).filter(Boolean) as never[] }));
       }
       const menu = await api.Menu.new({ items: top as never[] });
       await menu.setAsAppMenu();

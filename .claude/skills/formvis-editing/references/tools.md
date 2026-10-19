@@ -241,7 +241,7 @@ Note: read-only.
 
 ## list_plugins
 
-Lists the plugins in the plugins folder: file name, size, whether it is on, whether it is running, its name and the commands it registered (run one with run_command id plugin:<file>:<command>). Use when you need to know which plugins are installed and what commands they add.
+Lists the plugins in the plugins folder: file name, size, whether it is on, whether it is running, its name and the commands it registered (run one with run_command id plugin:[file]:[command]). Use when you need to know which plugins are installed and what commands they add.
 
 - no parameters
 

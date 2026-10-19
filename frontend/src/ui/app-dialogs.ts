@@ -15,6 +15,7 @@ import type { BitmapMethod, DitherKind, ForcedKind, HalftoneShape, PaletteKind }
 import { parseAct } from './panels/color-table-dialog';
 import { Dialog, confirmAction, promptName } from './dialogs';
 import { cleanBindings } from './prefs';
+import { chooseKys } from './kys-import';
 import { el, patchList, q, setClass, setDisabled, setHidden, setText, setValue } from './dom';
 import { languages, onLanguage, setLanguage, t, type Lang } from './i18n';
 import { icon } from './icons';
@@ -588,7 +589,8 @@ export class SettingsDialog extends Dialog {
   private readonly gpuUseRow = checkRow('Use Graphics Processor', (v) => this.change({ useGpu: v }));
   private readonly gpuFiltersRow = checkRow('Use the GPU for filters', (v) => this.change({ gpuFilters: v }));
   private readonly rendererRow = selectRow('Renderer', RENDERER_CHOICES, (v) => this.change({ renderer: v as GpuRenderer }));
-  private readonly gpuMemoryRow = sliderRow('GPU memory (MB)', 128, 16384, 128, (v) => this.change({ gpuMemoryMB: v }));
+  private readonly gpuMemoryRow = sliderRow('GPU memory (MB)', 128, 16384, 128, (v) => { this.change({ gpuMemoryMB: v }); this.showGpuMode(); });
+  private gpuNow = { mode: '', reason: '', adapter: '', maxTexture: 0 };
   private readonly memoryLimitRow = sliderRow('Memory limit (MB, 0 is automatic)', 0, 65536, 512, (v) => this.change({ memoryLimitMB: v }));
   private readonly effectCacheRow = sliderRow('Layer effect cache (MB)', 16, 4096, 16, (v) => this.change({ effectCacheMB: v }));
   private readonly cacheLevelsRow = sliderRow('Cache levels (reduced copies for display, 0 is off)', 0, 8, 1, (v) => this.change({ cacheLevels: v }));
@@ -630,7 +632,7 @@ export class SettingsDialog extends Dialog {
     add('General', this.homeRow.el, this.homeCloseRow.el, this.whatsNewRow.el, this.animZoomRow.el, this.zoomResizesRow.el, this.systemPickerRow.el, this.beepRow.el, this.interpolationRow.el, this.placeFitRow.el, this.placeSmartRow.el, ...this.pageRows.generalRows, reset, el('<p class="cv-note">Image Interpolation is the resampling the Image Size dialog starts with. Resize Image During Place scales a picture larger than the canvas down to fit it when it is placed; off, it keeps its own size. Always Create Smart Objects When Placing makes each picture dropped on an open document a smart object. Beep When Done sounds a short tone when a job that ran longer than two seconds ends. Zoom Resizes Windows sizes a floating document window to the picture when its zoom changes. Animated Zoom eases Zoom In, Zoom Out and the Zoom tool\'s clicks over a fraction of a second. Use the system color picker opens the computer\'s own picker for the foreground and background swatches instead of formvis\'s. The Home screen covers the canvas area. At launch it shows while no document is open; closing the last document leaves the empty workspace with its panels unless the second choice is on. The brand mark at the top left opens it at any time; Esc leaves it. What\'s New (Help menu) lists the recent additions, each with a Show Me button; with the third choice on it opens once after an update.</p>'));
     this.intensityRow.set(Math.round((readChoice().intensity ?? 1) * 100));
     add('Interface', row, this.themeAutoRow.el, this.themeLightRow.el, this.themeDarkRow.el, accentRow, this.intensityRow.el, this.fontSizeRow.el, this.scaleRow.el, this.animationsRow.el, this.noticeSecondsRow.el, this.canvasColourRow.el, ...this.pageRows.interfaceRows,el('<p class="cv-note">Canvas Color is the pasteboard around the picture (the same as View > Pasteboard). Theme and accent are shared with NodeMode on this device. Match System Appearance switches between the light and dark theme chosen here when the appearance of the computer changes; a theme picked by hand stays until the next change of a preference or of the appearance. Intensity sets how strongly the accent tints what it marks; 100% is the design\'s. Text size scales the interface\'s text.</p>'));
-    add('Performance', this.budgetNote, this.memoryLimitRow.el, this.effectCacheRow.el, this.releaseRow.el, this.releaseSizeRow.el, this.reserveRow.el, this.cacheLevelsRow.el, this.redrawRow.el, this.reuseRow.el, this.previewRow.el,
+    add('Performance', this.budgetNote, this.memoryLimitRow.el, this.effectCacheRow.el, this.releaseRow.el, this.releaseSizeRow.el, this.reserveRow.el, this.cacheLevelsRow.el, this.redrawRow.el, this.reuseRow.el, this.previewRow.el, ...this.pageRows.performance,
       el('<h3 class="cv-prefs-sub">Graphics Processor Settings</h3>'), this.gpuNameRow(), this.gpuUseRow.el, this.gpuFiltersRow.el, this.rendererRow.el, this.gpuMemoryRow.el, this.gpuPowerRow.el, this.lowLatencyRow.el, this.pacingRow.el, this.tileRow.el, this.threadsRow.el, this.gpuMode,
       el('<p class="cv-note">Automatic uses WebGPU (Metal on macOS, Direct3D 12 on Windows), then WebGL2 (as on Linux), on a hardware graphics processor, and the CPU otherwise; a software GPU is slower than the CPU renderer, so Automatic does not use one. If the graphics processor fails to start, formvis turns this off and says so. The canvas draws on the graphics processor; a document using something it does not draw yet draws on the CPU, and the status bar says why.</p>'),
       el('<h3 class="cv-prefs-sub">Engine</h3>'), this.engineRow.el, this.engineMode,
@@ -847,11 +849,19 @@ export class SettingsDialog extends Dialog {
 
   /** The probe's result: the processor's name, or none (Use Graphics Processor then greyed),
    *  and the mode in use with its reason. */
-  setGpu(name: string | null, mode: string, reason: string): void {
+  setGpu(name: string | null, mode: string, reason: string, adapter = '', maxTexture = 0): void {
     setText(this.gpuName, name ?? 'None found');
     const box = this.gpuUseRow.el.querySelector('input');
     if (box) setDisabled(box, !name);
-    setText(this.gpuMode, `In use: ${mode} (${reason}).`);
+    this.gpuNow = { mode, reason, adapter, maxTexture };
+    this.showGpuMode();
+  }
+
+  /** The renderer in use and the adapter behind it, the display budget (Preferences' GPU memory, over which a document draws on the CPU) and the adapter's largest texture. */
+  private showGpuMode(): void {
+    const g = this.gpuNow;
+    if (!g.mode) return;
+    setText(this.gpuMode, `In use: ${g.mode}${g.adapter ? ` on ${g.adapter}` : ''} (${g.reason}). Display budget: ${this.prefs.gpuMemoryMB.toLocaleString('en-US')} MB for the open document${g.maxTexture ? `; largest texture ${g.maxTexture.toLocaleString('en-US')} px` : ''}.`);
   }
 
   /** The engine's report on its compute device (or that it is offline). */
@@ -949,14 +959,14 @@ export class SettingsDialog extends Dialog {
 
   private fillTemplates(choose?: string): void {
     const list = templates(), was = choose ?? this.tplPick.value;
-    this.tplPick.replaceChildren(...list.map((t) => { const o = document.createElement('option'); o.value = t.name; o.textContent = t.name; return o; }));
+    this.tplPick.replaceChildren(...list.map((t) => { const o = document.createElement('option'); o.value = t.name; o.textContent = t.use && t.use !== 'improve' ? `${t.name} (${t.use})` : t.name; return o; }));
     this.tplPick.value = list.some((t) => t.name === was) ? was : list[0]?.name ?? '';
     this.showTemplate();
   }
 
   private showTemplate(): void {
     const t = templates().find((x) => x.name === this.tplPick.value);
-    this.tplName.value = t?.name ?? ''; this.tplText.value = t?.text ?? ''; setText(this.tplNote, '');
+    this.tplName.value = t?.name ?? ''; this.tplText.value = t?.text ?? ''; setText(this.tplNote, t ? `Use: ${t.use ?? 'improve'}${t.for ? `, for: ${t.for}` : ''}.` : '');
   }
 
   private async checkComfyUI(): Promise<void> {
@@ -1045,7 +1055,7 @@ export class ShortcutsDialog extends Dialog {
     super('Keyboard Shortcuts', 660);
     const bar = el('<div class="cv-row" style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap"></div>');
     const mk = (label: string, run: () => void): HTMLButtonElement => { const b = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost"></button>'); setText(b, label); b.addEventListener('click', run); return b; };
-    bar.append(this.sets, mk('Use Set', () => this.useSet()), mk('Save Set...', () => void this.saveSet()), mk('Delete Set', () => this.deleteSet()), mk('Export...', () => this.exportSet()), mk('Import...', () => this.file.click()), this.file);
+    bar.append(this.sets, mk('Use Set', () => this.useSet()), mk('Save Set...', () => void this.saveSet()), mk('Delete Set', () => this.deleteSet()), mk('Export...', () => this.exportSet()), mk('Import...', () => this.file.click()), mk('Import KYS...', () => chooseKys(this.commands, (set, say) => { if (set) this.fillSets(set); this.render(); this.say(say); })), this.file);
     this.body.append(bar, this.search, this.note, this.list);
     this.file.addEventListener('change', () => { const f = this.file.files?.[0]; this.file.value = ''; if (f) void this.importSet(f); });
     this.search.addEventListener('input', () => this.render());

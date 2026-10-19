@@ -1,15 +1,19 @@
 import { invert, mul, type BlendMode, type GrainParams, type Mat } from '../engine';
 import { COMPOSITE_WGSL, blendIndex } from './blend-wgsl';
+import { WgpuFrameTimer } from './gpu-timing';
 import type { DisplayOptions } from './probe';
+import { dirtyBox, trimResident, type UploadStats } from './residency';
 
 /** The WebGPU flag values fixed by the specification (the project's type definitions carry the interfaces only). */
 const TEX = { COPY_SRC: 0x01, COPY_DST: 0x02, TEXTURE_BINDING: 0x04, RENDER_ATTACHMENT: 0x10 } as const;
 const BUF = { MAP_READ: 0x0001, COPY_DST: 0x0008, UNIFORM: 0x0040 } as const;
 
 export interface DisplayMask { image: HTMLCanvasElement | OffscreenCanvas; version: number; width: number; height: number; matrix: Mat }
-/** A clipping base: its coverage (alpha x opacity x its mask) clips every layer that carries this same object. */
-export interface DisplayClip { image: HTMLCanvasElement | OffscreenCanvas; version: number; width: number; height: number; matrix: Mat; opacity: number; mask?: DisplayMask }
-export interface DisplayLayer { image: HTMLCanvasElement | OffscreenCanvas | null; lut?: Uint8Array; lut3?: boolean; grain?: GrainParams; mask?: DisplayMask; clip?: DisplayClip; folders?: DisplayMask[]; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
+/** A clipping base: its coverage (alpha x opacity x its mask) clips every layer that carries this same object; a base that is itself clipped has the base it is clipped to as `parent`, whose coverage limits its own. */
+export interface DisplayClip { image: HTMLCanvasElement | OffscreenCanvas; version: number; width: number; height: number; matrix: Mat; opacity: number; mask?: DisplayMask; parent?: DisplayClip }
+/** A layer's Blend If: the channel tested (1 grey, 2 red, 3 green, 4 blue) and the four-point ranges of the layer and of what is under it. */
+export interface DisplayBlendIf { channel: 1 | 2 | 3 | 4; thisLayer: readonly [number, number, number, number]; underlying: readonly [number, number, number, number] }
+export interface DisplayLayer { image: HTMLCanvasElement | OffscreenCanvas | null; lut?: Uint8Array; lut3?: boolean; grain?: GrainParams; mask?: DisplayMask; clip?: DisplayClip; folders?: DisplayMask[]; blendIf?: DisplayBlendIf; chOff?: number; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
 /** The shader mode that renders a clipping base's coverage, and a folder mask's coverage (no source image). */
 export const CLIP_MODE = 102;
 export const FOLDER_MODE = 103;
@@ -24,6 +28,10 @@ export interface ScreenDisplay {
   readonly canvas: HTMLCanvasElement;
   readonly maxTexture: number;
   onLost: (() => void) | null;
+  /** Bytes of idle layer textures kept warm beyond a frame's own, the least recently drawn freed first; 0 frees them at once. */
+  budgetBytes?: number;
+  /** Texture uploads so far: calls, the tile-sized ones among them, and bytes sent. */
+  readonly stats?: UploadStats;
   render(layers: readonly DisplayLayer[], view: Mat, zoom: number, rect: [number, number, number, number], checker: Checker): void;
   /** The document's size in its pixels, told before render; the native display needs it, the others do not have it. */
   document?(width: number, height: number): void;
@@ -58,13 +66,18 @@ struct Present { rect: vec4<f32>, a: vec4<f32>, b: vec4<f32>, originCell: vec4<f
  *  kept while their raster's version is unchanged (a live preview, version -1, uploads every frame) and released when
  *  a frame no longer uses them. `create` returns null where WebGPU cannot start; `onLost` fires if the device is lost. */
 export class GpuDisplay {
-  private readonly cache = new Map<object, { tex: GPUTexture; version: number; w: number; h: number }>();
+  private readonly cache = new Map<object, { tex: GPUTexture; version: number; w: number; h: number; bytes: number; seen: number; at: number }>();
   private acc: [GPUTexture, GPUTexture] | null = null;
   onLost: (() => void) | null = null;
+  budgetBytes = 0;
+  readonly stats: UploadStats = { uploads: 0, tiled: 0, bytes: 0 };
+  private frameNo = 0;
+  private readonly timer: WgpuFrameTimer;
 
   private constructor(readonly canvas: HTMLCanvasElement, private readonly device: GPUDevice, private readonly ctx: GPUCanvasContext,
     private readonly composite: GPURenderPipeline, private readonly present: GPURenderPipeline, private readonly presentOff: GPURenderPipeline,
     private readonly linear: GPUSampler, private readonly nearest: GPUSampler) {
+    this.timer = new WgpuFrameTimer(device);
     void device.lost.then((info) => {
       // destroy() also resolves this promise, with reason 'destroyed': switching renderers, not a failure.
       if (info.reason === 'destroyed') return;
@@ -78,7 +91,8 @@ export class GpuDisplay {
       const gpu = (navigator as unknown as { gpu?: GPU }).gpu;
       const adapter = gpu ? await gpu.requestAdapter(options.power === 'default' ? {} : { powerPreference: options.power }) : null;
       if (!gpu || !adapter) { console.warn('formvis: WebGPU has no adapter here'); return null; }
-      const device = await adapter.requestDevice();
+      const timed = (adapter as unknown as { features: { has(name: string): boolean } }).features.has('timestamp-query');
+      const device = await adapter.requestDevice((timed ? { requiredFeatures: ['timestamp-query'] } : undefined) as never);
       const ctx = canvas.getContext('webgpu') as GPUCanvasContext | null;
       if (!ctx) { console.warn('formvis: the display canvas gives no WebGPU context'); return null; }
       const format = gpu.getPreferredCanvasFormat();
@@ -106,6 +120,7 @@ export class GpuDisplay {
   render(layers: readonly DisplayLayer[], view: Mat, zoom: number, rect: [number, number, number, number], checker: Checker, out?: GPUTexture): void {
     const d = this.device, W = out ? out.width : this.canvas.width, H = out ? out.height : this.canvas.height;
     if (W < 1 || H < 1) return;
+    this.frameNo++;
     if (!this.acc || this.acc[0].width !== W || this.acc[0].height !== H) {
       this.acc?.forEach((t) => t.destroy());
       const make = (): GPUTexture => d.createTexture({ size: [W, H], format: 'rgba8unorm', usage: TEX.TEXTURE_BINDING | TEX.RENDER_ATTACHMENT });
@@ -113,15 +128,19 @@ export class GpuDisplay {
     }
     let [a, b] = this.acc;
     const enc = d.createCommandEncoder(), used = new Set<object>(), buffers: GPUBuffer[] = [], sampler = zoom >= 2 ? this.nearest : this.linear;
-    enc.beginRenderPass({ colorAttachments: [{ view: a.createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }] }).end();
+    this.timer.arm(!out);
+    enc.beginRenderPass({ colorAttachments: [{ view: a.createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }], ...this.timer.first() }).end();
     // Each clipping base's coverage, once per frame, into its own screen-sized texture (mode 102).
     const clipTex = new Map<DisplayClip, GPUTexture>();
-    for (const l of layers) {
-      if (!l.clip || clipTex.has(l.clip)) continue;
-      const t = this.clipTarget(clipTex.size, W, H), c = l.clip;
-      this.layerPass(enc, this.blank(), t, { image: c.image, version: c.version, width: c.width, height: c.height, matrix: c.matrix, opacity: c.opacity, blend: 'normal', mask: c.mask }, CLIP_MODE, null, sampler, view, used, buffers);
+    const clipCover = (c: DisplayClip): GPUTexture => {
+      const have = clipTex.get(c);
+      if (have) return have;
+      const up = c.parent ? clipCover(c.parent) : null, t = this.clipTarget(clipTex.size, W, H);
+      this.layerPass(enc, this.blank(), t, { image: c.image, version: c.version, width: c.width, height: c.height, matrix: c.matrix, opacity: c.opacity, blend: 'normal', mask: c.mask }, CLIP_MODE, up, sampler, view, used, buffers);
       clipTex.set(c, t);
-    }
+      return t;
+    };
+    for (const l of layers) if (l.clip) clipCover(l.clip);
     // Each folder chain's coverage (one pass per folder mask, each times the chain so far), into the same pool.
     const folderTex = new Map<DisplayMask[], GPUTexture>();
     let slot = clipTex.size;
@@ -146,14 +165,16 @@ export class GpuDisplay {
     buffers.push(pu);
     const pipe = out ? this.presentOff : this.present;
     const pbind = d.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: a.createView() }, { binding: 1, resource: { buffer: pu } }] });
-    const pass = enc.beginRenderPass({ colorAttachments: [{ view: (out ?? this.ctx.getCurrentTexture()).createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
+    const pass = enc.beginRenderPass({ colorAttachments: [{ view: (out ?? this.ctx.getCurrentTexture()).createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }], ...this.timer.last() });
     pass.setPipeline(pipe);
     pass.setBindGroup(0, pbind);
     pass.draw(3);
     pass.end();
+    this.timer.finish(enc);
     d.queue.submit([enc.finish()]);
+    this.timer.read();
     for (const u of buffers) u.destroy();
-    for (const [k, e] of this.cache) if (!used.has(k)) { e.tex.destroy(); this.cache.delete(k); }
+    trimResident(this.cache, this.frameNo, this.budgetBytes, performance.now(), (e) => e.tex.destroy());
   }
 
   /** One frame into an offscreen target, resolved only when the GPU has finished it: the performance benchmark's unit
@@ -192,11 +213,15 @@ export class GpuDisplay {
     if (mode !== FOLDER_MODE) used.add(l.lut ?? (l.image as object));
     const tex = mode === FOLDER_MODE ? this.blank() : this.texture(l);
     const [ia, ib, ic, id, ie, iff] = invert(mul(view, l.matrix));
-    // 128 bytes, WGSL's layout: inv (0), size (48), opacity (56), mode (60), the mask's inverse placement (64), its
-    // size (112), whether there is one (120), whether the layer is clipped (124).
-    const raw = new ArrayBuffer(128), f = new Float32Array(raw), u32 = new Uint32Array(raw);
+    // 224 bytes, WGSL's layout: inv (0), size (48), opacity (56), mode (60), the mask's inverse placement (64), its
+    // size (112), whether there is one (120), whether the layer is clipped (124), the view's inverse (128), Blend If's
+    // ranges (176, 192) and channel (208), the channels switched off (212).
+    const raw = new ArrayBuffer(224), f = new Float32Array(raw), u32 = new Uint32Array(raw), [va, vb, vc, vd, ve, vf] = invert(view);
     f.set([ia, ib, 0, 0, ic, id, 0, 0, ie, iff, 1, 0, l.width, l.height, Math.min(1, Math.max(0, l.opacity))]);
+    f.set([va, vb, 0, 0, vc, vd, 0, 0, ve, vf, 1, 0], 32);
     u32[15] = mode;
+    if (l.blendIf) { f.set(l.blendIf.thisLayer, 44); f.set(l.blendIf.underlying, 48); u32[52] = l.blendIf.channel; }
+    u32[53] = l.chOff ?? 0;
     let maskTex = this.blank();
     if (l.mask) {
       const mk = l.mask, [ma, mb, mc, md, me, mf] = invert(mul(view, mk.matrix));
@@ -206,7 +231,7 @@ export class GpuDisplay {
       maskTex = this.texture({ image: mk.image, version: mk.version, width: mk.width, height: mk.height, matrix: mk.matrix, opacity: 1, blend: 'normal' });
     }
     if (clip) u32[31] = 1;
-    const ub = d.createBuffer({ size: 128, usage: BUF.UNIFORM | BUF.COPY_DST });
+    const ub = d.createBuffer({ size: 224, usage: BUF.UNIFORM | BUF.COPY_DST });
     d.queue.writeBuffer(ub, 0, raw);
     buffers.push(ub);
     const bind = d.createBindGroup({ layout: this.composite.getBindGroupLayout(0), entries: [
@@ -242,14 +267,26 @@ export class GpuDisplay {
     let e = this.cache.get(key);
     if (e && (e.w !== l.width || e.h !== l.height)) { e.tex.destroy(); e = undefined; }
     if (!e) {
-      e = { tex: this.device.createTexture({ size: [l.width, l.height], format: 'rgba8unorm', usage: TEX.TEXTURE_BINDING | TEX.COPY_DST | TEX.RENDER_ATTACHMENT }), version: NaN, w: l.width, h: l.height };
+      e = { tex: this.device.createTexture({ size: [l.width, l.height], format: 'rgba8unorm', usage: TEX.TEXTURE_BINDING | TEX.COPY_DST | TEX.RENDER_ATTACHMENT }), version: NaN, w: l.width, h: l.height, bytes: l.width * l.height * 4, seen: 0, at: 0 };
       this.cache.set(key, e);
     }
+    e.seen = this.frameNo;
+    e.at = performance.now();
     if (l.lut) {
       // A table is fixed for its settings (a new table comes with new settings), so it is written once, at its own size.
-      if (Number.isNaN(e.version)) { this.device.queue.writeTexture({ texture: e.tex }, l.lut, { bytesPerRow: l.width * 4 }, [l.width, l.height]); e.version = 0; }
+      if (Number.isNaN(e.version)) { this.device.queue.writeTexture({ texture: e.tex }, l.lut, { bytesPerRow: l.width * 4 }, [l.width, l.height]); e.version = 0; this.stats.uploads++; this.stats.bytes += e.bytes; }
     } else if (l.image && (l.version < 0 || e.version !== l.version)) {
-      this.device.queue.copyExternalImageToTexture({ source: l.image }, { texture: e.tex, premultipliedAlpha: true }, [l.width, l.height]);
+      // A changed layer sends only the 256 px tiles its raster says changed since this texture was written.
+      const box = l.version < 0 ? null : dirtyBox(l.image, e.version, l.version, l.width, l.height);
+      if (box) {
+        this.device.queue.copyExternalImageToTexture({ source: l.image, origin: [box.x, box.y] }, { texture: e.tex, origin: [box.x, box.y], premultipliedAlpha: true }, [box.w, box.h]);
+        this.stats.tiled++;
+        this.stats.bytes += box.w * box.h * 4;
+      } else {
+        this.device.queue.copyExternalImageToTexture({ source: l.image }, { texture: e.tex, premultipliedAlpha: true }, [l.width, l.height]);
+        this.stats.bytes += e.bytes;
+      }
+      this.stats.uploads++;
       e.version = l.version;
     }
     return e.tex;

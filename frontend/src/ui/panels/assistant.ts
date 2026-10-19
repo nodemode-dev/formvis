@@ -4,6 +4,7 @@ import type { AgentBridge, McpResult } from '../../automation/agent-bridge';
 import { describeCommand, runCommand } from '../../automation/catalogue';
 import { el, setDisabled, setHidden, setText, setTitle } from '../dom';
 import { confirmAction } from '../dialogs';
+import { assistantInstructions } from '../../io/prompt-templates';
 
 const SYSTEM = 'You are the assistant inside formvis, a layered image editor. Act on the open document with the tools: call get_document first '
   + 'to learn its layers and their ids. Each change is one undoable step. Generative tools cost the user money and they are asked first. '
@@ -444,8 +445,9 @@ export class AssistantPanel {
     this.busy = true; this.stopped = false;
     this.send.disabled = true; this.stop.disabled = false; this.undoTurn.disabled = true;
     try {
+      const extra = await assistantInstructions();
       if (planOnly) {
-        const plan = await this.step([{ role: 'system', content: SYSTEM + PLAN }, ...this.history], false);
+        const plan = await this.step([{ role: 'system', content: SYSTEM + extra + PLAN }, ...this.history], false);
         if (!plan.content.trim()) { this.history.pop(); this.line('note', 'The model gave no plan. Try again.'); return; }
         this.history.push({ role: 'assistant', content: plan.content });
         this.line('assistant', plan.content);
@@ -455,7 +457,7 @@ export class AssistantPanel {
       const maxCalls = this.settings.maxCalls;
       let calls = 0;
       for (let step = 0; step <= maxCalls && !this.stopped; step++) {
-        const reply = await this.step([{ role: 'system', content: SYSTEM }, ...this.history]);
+        const reply = await this.step([{ role: 'system', content: SYSTEM + extra }, ...this.history]);
         this.history.push({ role: 'assistant', content: reply.content || null, ...(reply.tool_calls.length ? { tool_calls: reply.tool_calls.map((c) => ({ id: c.id, type: 'function', function: { name: c.name, arguments: c.arguments } })) } : {}) });
         if (reply.content) this.line('assistant', reply.content);
         if (!reply.tool_calls.length) { if (/\?\s*$/.test(reply.content)) this.attention(); break; }

@@ -45,7 +45,7 @@ function plain(t: TextSpec): boolean {
   const one = (v: number | undefined): boolean => v === undefined || v === 100 || v === 1;
   return !t.warp && !t.onPath && !t.features?.length && !t.runs?.length && t.direction !== 'vertical' && !(t.align === 'justify') && (!t.shaping || t.shaping === 'default')
     && !t.weight && !t.angle && !t.caps && !t.underline && !t.strike && !t.baselineShift && !t.variations && one(t.scaleX) && one(t.scaleY)
-    && !t.indentFirst && !t.indentLeft && !t.indentRight && !t.spaceBefore && !t.spaceAfter;
+    && !t.indentFirst && !t.indentLeft && !t.indentRight && !t.spaceBefore && !t.spaceAfter && !t.paras?.length && !t.edge;
 }
 
 function subpaths(cmds: readonly PathCommand[], tf: (x: number, y: number) => { x: number; y: number }): SubPath[] {

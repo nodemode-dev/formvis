@@ -52,6 +52,9 @@ export class NativeDisplay implements ScreenDisplay {
       if (l.folders?.length) return 'a layer is in a folder with a mask, which the native renderer does not draw yet';
       if (l.mask && !isIdentity(l.mask.matrix)) return 'a mask is placed apart from the document, which the native renderer does not draw yet';
       if (l.clip?.mask && !isIdentity(l.clip.mask.matrix)) return 'a clipping base has a mask placed apart from the document, which the native renderer does not draw yet';
+      if (l.blendIf || l.chOff) return 'a layer has Blend If or channel restrictions, which the native renderer does not draw yet';
+      if (l.clip?.parent) return 'a clipping base is itself clipped, which the native renderer does not draw yet';
+      if (l.blend === 'dissolve') return 'a layer is in Dissolve mode, which the native renderer does not draw yet';
     }
     return null;
   }

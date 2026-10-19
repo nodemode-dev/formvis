@@ -1,5 +1,6 @@
 import { clamp, type Adjustment } from './types';
 import { isParamKind, paramKernel } from './adjust-params';
+import { wasmAntialias, wasmEnhanceEdge, wasmInvert, wasmLut, wasmSensitivity, wasmWand } from './wasm-kernels';
 
 /** Pixel kernels for adjustment layers and the Magic Wand, written for formvis from standard methods: Levels as a
  *  clipped power curve between black and white points, Curves as monotone piecewise-cubic interpolation (Fritsch
@@ -25,7 +26,10 @@ function tableKernel(transfer: (channel: number, level: number) => number): Kern
     tables.push(t);
   }
   const [tr, tg, tb] = tables;
+  const lut = new Uint8Array(768);
+  lut.set(tr, 0); lut.set(tg, 256); lut.set(tb, 512);
   const kernel: Kernel & { transfer?: (channel: number, level: number) => number } = (px) => {
+    if (wasmLut(px, lut)) return;
     for (let i = 0; i < px.length; i += 4) {
       if (px[i + 3] === 0) continue;
       px[i] = tr[px[i]];
@@ -148,6 +152,7 @@ export function gradientMapKernel(settings: unknown): Kernel {
 
 export function invertKernel(): Kernel {
   return (px) => {
+    if (wasmInvert(px)) return;
     for (let i = 0; i < px.length; i += 4) {
       px[i] = 255 - px[i];
       px[i + 1] = 255 - px[i + 1];
@@ -197,6 +202,8 @@ export function adjustmentKernel(adj: Adjustment | null): Kernel | null {
 export function wandMask(rgba: Uint8ClampedArray, width: number, height: number, seedX: number, seedY: number, tolerance: number, contiguous: boolean, sampleRadius = 0): Uint8Array {
   const out = new Uint8Array(width * height);
   if (seedX < 0 || seedY < 0 || seedX >= width || seedY >= height) return out;
+  const fast = wasmWand(rgba, width, height, seedX, seedY, tolerance, contiguous, sampleRadius);
+  if (fast) return fast;
   const xa = Math.max(0, seedX - sampleRadius), xb = Math.min(width - 1, seedX + sampleRadius);
   const ya = Math.max(0, seedY - sampleRadius), yb = Math.min(height - 1, seedY + sampleRadius);
   const sum = [0, 0, 0, 0];
@@ -251,6 +258,8 @@ export function wandMask(rgba: Uint8ClampedArray, width: number, height: number,
  *  a 4-neighbour, takes the mean of its 3 by 3 neighbourhood, so edges step through partial values while the inside
  *  stays fully selected and the outside empty. A new mask; the input is untouched. */
 export function antialiasMask(mask: Uint8Array, width: number, height: number): Uint8Array {
+  const fast = wasmAntialias(mask, width, height);
+  if (fast) return fast;
   const out = mask.slice();
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -272,6 +281,8 @@ export function antialiasMask(mask: Uint8Array, width: number, height: number): 
 /** Quick Selection's Enhance Edge: two passes of a 3 by 3 majority vote (a pixel is kept when five of its nine
  *  neighbours are half selected or more) to even out ragged edges and drop specks, then the boundary anti-aliased. A new mask. */
 export function enhanceEdge(mask: Uint8Array, width: number, height: number): Uint8Array {
+  const fast = wasmEnhanceEdge(mask, width, height);
+  if (fast) return fast;
   let cur = Uint8Array.from(mask, (v) => (v >= 128 ? 255 : 0));
   for (let pass = 0; pass < 2; pass++) {
     const next = new Uint8Array(cur.length);
@@ -291,7 +302,9 @@ export function enhanceEdge(mask: Uint8Array, width: number, height: number): Ui
 /** Select > Sky's Sensitivity on a soft mask: 50 returns it unchanged; above 50 lets fainter values count as fully
  *  selected (the sky grows), below 50 lifts the floor so only stronger values count (the sky shrinks). A new mask. */
 export function sensitivityMask(mask: Uint8Array, sensitivity: number): Uint8Array {
-  const s = Math.max(0, Math.min(100, sensitivity)), out = mask.slice();
+  const fast = wasmSensitivity(mask, sensitivity);
+  if (fast) return fast;
+  const s =Math.max(0, Math.min(100, sensitivity)), out = mask.slice();
   if (s === 50) return out;
   const cut = Math.max(1, 255 * (1 - s / 100));
   if (s > 50) { const k = 127.5 / cut; for (let i = 0; i < out.length; i++) out[i] = Math.min(255, Math.round(mask[i] * k)); }

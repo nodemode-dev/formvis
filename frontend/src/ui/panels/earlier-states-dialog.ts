@@ -1,6 +1,7 @@
 import type { EarlierSet } from '../../io/recovery';
 import { Dialog } from '../dialogs';
 import { el, patchList, setHidden, setText } from '../dom';
+import { tn } from '../i18n';
 
 export interface EarlierStatesDeps {
   list(): Promise<EarlierSet[]>;
@@ -57,7 +58,7 @@ export class EarlierStatesDialog extends Dialog {
     const names = s.records.map((x) => x.name).join(', ');
     setText(r.querySelector<HTMLElement>('.cv-earlier-kind') as HTMLElement, s.kind === 'crash' ? 'Crash' : 'Session');
     const what = r.querySelector<HTMLElement>('.cv-earlier-what') as HTMLElement;
-    setText(what, `${when(s.savedAt)} · ${s.records.length === 1 ? '1 document' : `${s.records.length} documents`}: ${names}`);
+    setText(what, `${when(s.savedAt)} · ${tn(s.records.length, '{n} document', '{n} documents')}: ${names}`);
     what.title = names;
   }
 

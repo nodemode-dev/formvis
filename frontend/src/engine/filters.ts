@@ -1,4 +1,5 @@
 import { clamp } from './types';
+import { wasmGaussian } from './wasm-kernels';
 
 /** Image filters, written for formvis from standard methods: a Gaussian blur approximated by three successive box
  *  blurs (widths from Kovesi's formula), a motion blur as a bilinear line integral, seeded noise, a radial lens
@@ -90,11 +91,14 @@ export function boxBlur(src: Float32Array, dst: Float32Array, w: number, h: numb
 export function gaussianBlur(img: ImageData, sigma: number): ImageData {
   const { width: w, height: h } = img;
   if (!(sigma >= 0.1)) return new ImageData(new Uint8ClampedArray(img.data), w, h);
-  const a = premultiply(img.data), b = new Float32Array(a.length);
-  for (const width of threeBoxWidths(sigma)) {
-    const r = (width - 1) / 2;
-    boxBlur(a, b, w, h, r, true);
-    boxBlur(b, a, w, h, r, false);
+  const a = premultiply(img.data);
+  const radii = threeBoxWidths(sigma).map((width) => (width - 1) / 2);
+  if (!wasmGaussian(a, w, h, radii)) {
+    const b = new Float32Array(a.length);
+    for (const r of radii) {
+      boxBlur(a, b, w, h, r, true);
+      boxBlur(b, a, w, h, r, false);
+    }
   }
   return unpremultiply(a, w, h);
 }

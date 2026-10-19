@@ -49,6 +49,8 @@ export function blendLabel(mode: BlendMode): string { return LAYER_BLEND_MODES.f
 export type Sampling = 'nearest' | 'smooth' | 'high';
 export const SAMPLING_LABELS: Record<Sampling, string> = { nearest: 'Nearest', smooth: 'Smooth', high: 'High quality' };
 export function samplingFromLabel(label: unknown): Sampling { return (Object.keys(SAMPLING_LABELS) as Sampling[]).find((k) => SAMPLING_LABELS[k] === label) ?? 'high'; }
+/** Preferences > General > Image Interpolation: the sampling a new layer's transform, and a group's Free Transform box, starts with. */
+export const samplingDefault: { value: Sampling } = { value: 'high' };
 
 export interface Transform { x: number; y: number; w: number; h: number; rotation: number; flipX: boolean; flipY: boolean; sampling: Sampling }
 export interface Mask { raster: Raster | null; enabled: boolean; linked: boolean; placement: Transform | null; /** Density in percent (100 or absent: the mask as painted) and feather in pixels (0 or absent), applied when drawn, never to the painted pixels. */ density?: number; feather?: number }
@@ -236,7 +238,7 @@ export function uid(): ID {
 export function clamp(v: number, lo: number, hi: number): number { return Math.min(hi, Math.max(lo, v)); }
 
 export function docTransform(w: number, h: number): Transform {
-  return { x: 0, y: 0, w, h, rotation: 0, flipX: false, flipY: false, sampling: 'high' };
+  return { x: 0, y: 0, w, h, rotation: 0, flipX: false, flipY: false, sampling: samplingDefault.value };
 }
 
 export function newLayer(name: string, size: { width: number; height: number }, patch: Partial<Layer> = {}): Layer {
@@ -445,7 +447,11 @@ export interface TextExtras {
   indentFirst?: number; indentLeft?: number; indentRight?: number; spaceBefore?: number; spaceAfter?: number; lastLine?: 'left' | 'center' | 'right' | 'all';
   /** bidi: the paragraph's base direction (right-to-left sets Arabic and Hebrew runs and punctuation from the right); unset follows Language Options. */
   bidi?: 'ltr' | 'rtl';
+  /** edge: left or right alignment by the paragraph's direction, not the page: start is the left for left to right text and the right for right to left. */
+  edge?: 'start' | 'end';
 }
+/** One paragraph's own settings inside a type layer (a paragraph is the text between line breaks), over the layer's: a field left out inherits the layer's. */
+export interface ParaAttrs extends Pick<TextExtras, 'indentFirst' | 'indentLeft' | 'indentRight' | 'spaceBefore' | 'spaceAfter' | 'lastLine' | 'bidi' | 'edge'> { align?: 'left' | 'center' | 'right' | 'justify' }
 /** OpenType features set on one character range (UTF-16 offsets into `content`, end exclusive): `on` and `off` are tags the
  *  range turns on or off over the layer's own `features`. */
 export interface FeatureRun extends RunAttrs { start: number; end: number; on: string[]; off: string[] }
@@ -453,7 +459,7 @@ export interface FeatureRun extends RunAttrs { start: number; end: number; on: s
  *  layer's; `tracking` is in thousandths of an em, `baselineShift` in pixels (up positive), `size` in pixels, `language`
  *  a BCP 47 tag. Runs are kept sorted and apart; opentype.ts cleanRuns, withRunAttrs and styleSegments are the only readers. */
 export interface RunAttrs { family?: string; size?: number; color?: RGB; weight?: number; bold?: boolean; italic?: boolean; baselineShift?: number; tracking?: number; language?: string; underline?: boolean; strike?: boolean; caps?: 'all' | 'small'; scaleX?: number; scaleY?: number }
-export interface TextSpec extends TextExtras { runs?: FeatureRun[]; shaping?: TextShaping; hyphenate?: boolean; language?: string; features?: string[] | null; antialias?: 'none' | 'sharp' | 'crisp' | 'strong' | 'smooth' | 'windows-lcd' | 'windows'; box?: { w: number; h: number } | null; direction?: 'horizontal' | 'vertical'; content: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right' | 'justify'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning; warp?: TextWarp | null; onPath?: TextPath | null; style?: ID | null; charStyle?: ID | null; rendered?: string }
+export interface TextSpec extends TextExtras { runs?: FeatureRun[]; paras?: ParaAttrs[]; shaping?: TextShaping; hyphenate?: boolean; language?: string; features?: string[] | null; antialias?: 'none' | 'sharp' | 'crisp' | 'strong' | 'smooth' | 'windows-lcd' | 'windows'; box?: { w: number; h: number } | null; direction?: 'horizontal' | 'vertical'; content: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right' | 'justify'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning; warp?: TextWarp | null; onPath?: TextPath | null; style?: ID | null; charStyle?: ID | null; rendered?: string }
 /** A character style (DEV_PLAN 32.6c): only the fields it sets override the type layer's own; the layer links it by `TextSpec.charStyle`. */
 export interface CharacterStyle extends Pick<TextExtras, 'caps' | 'scaleX' | 'scaleY' | 'baselineShift' | 'underline' | 'strike' | 'variations'> { id: ID; name: string; family?: string; size?: number; color?: RGB; bold?: boolean; italic?: boolean; tracking?: number; features?: string[] }
 /** A paragraph style (Window > Paragraph Styles): a named set of type settings kept in the document; type layers linked

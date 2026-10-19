@@ -4,6 +4,35 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.90.7 · 2026-10-19
+
+### Added
+
+- Type: paragraphs in one type layer keep their own alignment, indents, spacing and direction, set from the Paragraph panel for the paragraph under the caret or selection; start and end alignment follow each paragraph's direction; Chinese, Japanese and Thai wrap at word boundaries.
+- Type: the text can be moved while it is edited (Ctrl or Cmd drag, Ctrl+Alt+arrow keys), kept as one undo step with the edit.
+- Seventeen bundled open-licensed text fonts in five categories (Sans Serif, Serif, Display, Handwriting, Monospace), loaded only when used; the font menus group them under headings.
+- Fonts: an ordered fallback by script and interface language, one PostScript-name lookup for PSD type and the font menus, and fonts placed in the data folder's fonts folder listed and served by the engine for the browser build.
+- Greek and Serbian (Latin script) interface languages; with no saved choice the first start follows the system's preferred languages; counted messages use each language's plural forms; the macOS app menu follows the interface language; Arabic completed and Hindi's main tables filled as drafts for review.
+- Keyboard Shortcuts: Import KYS reads a shortcut set file into a new named set and lists what it could not map; the first start offers it.
+- Preferences: Use Legacy Free Transform, an interpolation default for transforms, Low-Resolution Previews, a memory readout, the Linux display server (desktop), Missing Glyph Protection, font names in English (desktop), Auto interface scale, and a GPU readout with the adapter and display budget.
+- Prompt templates: `use` (improve, assistant, generate) and `for` (a model or route) in front matter and a {model} placeholder; generate templates shape the prompt per route.
+- Recipes: removing asks once and can be undone for the session, built-in recipes can be hidden and restored, Open folder shows the path. Crop and stitch gains a context factor and mask grow.
+- API keys show when a key was refused, and language model rows show their last four characters. Preset Manager: Alt+Up and Alt+Down reorder, and Export All writes only the kinds you tick.
+- GPU: Dissolve, Blend If, channel restrictions and nested clipping masks composite on the GPU; a changed layer re-uploads only its changed 256 px tiles, and idle layer textures stay resident within the GPU memory setting.
+- WebAssembly SIMD pixel kernels for the Magic Wand, selection smoothing, Enhance Edge, Sky sensitivity, Levels, Curves, Exposure, Invert and Gaussian Blur, each module loaded on first use, with the TypeScript kernels as the fallback.
+- View > Performance HUD: frame time, GPU pass time from timer queries, the render path and the kernel route. The brush cursor uses pointer prediction under Low-latency drawing.
+- Very large TIFF exports are written by the engine strip by strip, with strips compressed in parallel; the engine can also write a flat PSD or PSB in parts.
+- Releases: notes from this changelog, the .mcpb bundle, a macOS portable zip, checksums and zsync files; a lint job; the browser tests start the engine; experimental macOS universal, Windows x86 and riscv64 builds; App Paths in the MSI; a notarized and stapled DMG; ONNX Runtime providers trimmed per platform; Flatpak for aarch64; a FreeBSD port skeleton.
+
+### Changed
+
+- New installs keep the engine's data in the platform's application data folder; an existing ~/Formvis stays where it is.
+- `./formvis agents sync --check` also fails on angle-bracket placeholders in skill markdown and on unquoted colons in skill descriptions; the skills were brought within those gates.
+
+### Fixed
+
+- Removing the last language model row no longer brings it back as the default.
+
 ## 1.90.6 · 2026-10-19
 
 ### Added

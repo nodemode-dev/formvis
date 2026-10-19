@@ -1,4 +1,4 @@
-import { uid } from './types';
+import { uid, type Rect } from './types';
 
 export type Surface = OffscreenCanvas | HTMLCanvasElement;
 export type Ctx2D = OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
@@ -92,7 +92,25 @@ export class Raster {
     return r;
   }
   read(x = 0, y = 0, w = this.width, h = this.height): ImageData { return this.ctx.getImageData(x, y, w, h); }
-  write(data: ImageData, x = 0, y = 0): void { this.ctx.putImageData(data, x, y); this.version++; }
-  touch(): void { this.version++; }
+  write(data: ImageData, x = 0, y = 0): void { this.ctx.putImageData(data, x, y); this.version++; this.note({ x, y, w: data.width, h: data.height }); }
+  /** Marks the pixels changed; with `r` the change is known to lie inside it, so a GPU texture re-uploads only that part. */
+  touch(r?: Rect): void { this.version++; this.note(r ?? null); }
+  private damage: Array<{ v: number; r: Rect | null }> = [];
+  private note(r: Rect | null): void {
+    this.damage.push({ v: this.version, r });
+    if (this.damage.length > 32) this.damage.shift();
+  }
+  /** The rectangle that changed after version `from` up to `to`, or null when any of those changes has no rectangle or has left the log. */
+  damageSince(from: number, to: number = this.version): Rect | null {
+    if (!(to > from)) return null;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, n = 0;
+    for (const d of this.damage) {
+      if (d.v <= from || d.v > to) continue;
+      if (!d.r) return null;
+      n++;
+      x0 = Math.min(x0, d.r.x); y0 = Math.min(y0, d.r.y); x1 = Math.max(x1, d.r.x + d.r.w); y1 = Math.max(y1, d.r.y + d.r.h);
+    }
+    return n === to - from ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null;
+  }
   get bytes(): number { return this.width * this.height * 4; }
 }

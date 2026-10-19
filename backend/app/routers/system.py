@@ -2,10 +2,14 @@ import json
 import platform
 import re
 import shutil
+import struct
 import subprocess
+import zlib
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Response
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app.core import config, runtime
@@ -181,6 +185,119 @@ def engine_log(lines: int = 200) -> dict:
 _FONT_TYPES = {".ttf": "font/ttf", ".otf": "font/otf", ".ttc": "font/collection", ".woff": "font/woff", ".woff2": "font/woff2"}
 
 
+def _user_font_folder() -> Path:
+    """The fonts subfolder of the data folder, made on first ask: fonts placed there are listed and served."""
+    folder = config.data_dir() / "fonts"
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
+
+
+def _read_at(handle, offset: int, size: int) -> bytes:
+    handle.seek(offset)
+    return handle.read(size)
+
+
+def _name_table(handle) -> bytes | None:
+    """The name table of a TrueType, OpenType, collection (first font) or WOFF file, read without loading the whole file;
+    None for WOFF2, which is compressed as one block, and for anything unreadable."""
+    kind, base = _read_at(handle, 0, 4), 0
+    if kind == b"ttcf":
+        base = struct.unpack(">I", _read_at(handle, 12, 4))[0]
+        kind = _read_at(handle, base, 4)
+    if kind == b"wOFF":
+        for i in range(min(struct.unpack(">H", _read_at(handle, 12, 2))[0], 64)):
+            tag, offset, packed, size, _ = struct.unpack(">4sIIII", _read_at(handle, 44 + 20 * i, 20))
+            if tag == b"name" and packed <= 1_000_000:
+                raw = _read_at(handle, offset, packed)
+                return zlib.decompressobj().decompress(raw, 4_000_000) if packed < size else raw
+        return None
+    if kind in (b"\x00\x01\x00\x00", b"OTTO", b"true"):
+        for i in range(min(struct.unpack(">H", _read_at(handle, base + 4, 2))[0], 64)):
+            tag, _sum, offset, size = struct.unpack(">4sIII", _read_at(handle, base + 12 + 16 * i, 16))
+            if tag == b"name" and size <= 1_000_000:
+                return _read_at(handle, offset, size)
+    return None
+
+
+def _names(table: bytes) -> dict[int, str]:
+    """A name table's strings by name id, the English Windows record preferred, else the first record of the id."""
+    found: dict[int, tuple[bool, str]] = {}
+    _format, count, strings = struct.unpack(">HHH", table[:6])
+    for i in range(min(count, 512)):
+        platform_id, _encoding, language, name_id, size, offset = struct.unpack(">6H", table[6 + 12 * i:18 + 12 * i])
+        english = platform_id == 3 and language == 0x409
+        if name_id in found and (found[name_id][0] or not english):
+            continue
+        found[name_id] = (english, table[strings + offset:strings + offset + size].decode("utf-16-be" if platform_id in (0, 3) else "mac_roman", "ignore"))
+    return {key: value[1] for key, value in found.items()}
+
+
+_USER_FONTS: dict[str, tuple[tuple[int, int], dict]] = {}
+
+
+def _user_font_entry(path: Path, folder: Path) -> dict:
+    """One user font as the window lists it: family, style and PostScript name from the file's name table (the file name
+    stands in where the table cannot be read, as for WOFF2), the style flags and the route that serves the file."""
+    stat = path.stat()
+    stamp, cached = (stat.st_mtime_ns, stat.st_size), _USER_FONTS.get(str(path))
+    if cached and cached[0] == stamp:
+        return cached[1]
+    try:
+        with path.open("rb") as handle:
+            table = _name_table(handle)
+        names = _names(table) if table else {}
+    except (OSError, struct.error, zlib.error, ValueError):
+        names = {}
+    family = (names.get(16) or names.get(1) or re.sub(r"[-_]+", " ", path.stem)).strip()
+    style = (names.get(17) or names.get(2) or "Regular").strip()
+    rel = path.relative_to(folder).as_posix()
+    entry = {"file": rel, "family": family, "style": style, "postscript": (names.get(6) or path.stem).strip(),
+             "bold": bool(re.search(r"bold|black|heavy", style, re.I)), "italic": bool(re.search(r"italic|oblique", style, re.I)),
+             "size": stat.st_size, "url": "/api/fonts/user/" + quote(rel)}
+    _USER_FONTS[str(path)] = (stamp, entry)
+    return entry
+
+
+def _user_fonts() -> list[dict]:
+    """The font files under the data folder's fonts subfolder (up to 1000), links out of the folder skipped."""
+    folder = _user_font_folder()
+    root, found = folder.resolve(), []
+    for path in sorted(folder.rglob("*")):
+        if len(found) >= 1000:
+            break
+        if path.suffix.lower() in _FONT_TYPES and path.is_file() and root in path.resolve().parents:
+            found.append(_user_font_entry(path, folder))
+    return found
+
+
+def _user_font(family: str, bold: bool, italic: bool) -> Path | None:
+    """The user font file for a family (or PostScript name) and style, the closest style when there is no exact one."""
+    key = family.casefold()
+    own = [e for e in _user_fonts() if e["family"].casefold() == key or e["postscript"].casefold() == key]
+    if not own:
+        return None
+    best = min(own, key=lambda e: (e["bold"] != bold) + (e["italic"] != italic))
+    return _user_font_folder() / best["file"]
+
+
+@router.get("/fonts/user")
+def user_fonts() -> dict:
+    """The fonts in the data folder's fonts subfolder: each file's family, style and PostScript name, and the route that
+    serves it, so the window lists them, joins them to its font set and resolves a PSD's PostScript name to one."""
+    return {"folder": str(_user_font_folder()), "fonts": _user_fonts()}
+
+
+@router.get("/fonts/user/{rel:path}")
+def user_font_file(rel: str) -> Response:
+    """One font file from the data folder's fonts subfolder, so the browser build can load it with FontFace. Only a font
+    extension inside that folder is served."""
+    root = _user_font_folder().resolve()
+    target = (root / rel).resolve() if "\0" not in rel else root
+    if root not in target.parents or target.suffix.lower() not in _FONT_TYPES or not target.is_file():
+        raise HTTPException(status_code=404, detail="No such font.")
+    return FileResponse(target, media_type=_FONT_TYPES[target.suffix.lower()], headers={"Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff"})
+
+
 def _font_folders() -> list[Path]:
     home = Path.home()
     return [Path(p) for p in ("/usr/share/fonts", "/usr/local/share/fonts", "/Library/Fonts", "C:\\Windows\\Fonts")] + [home / ".fonts", home / ".local/share/fonts", home / "Library/Fonts"]
@@ -224,6 +341,9 @@ def font_file(family: str, bold: int = 0, italic: int = 0) -> Response:
     name = family.strip()
     if not name or len(name) > 120 or any(ch in name for ch in "\n\r\0"):
         raise HTTPException(status_code=400, detail="A font family is needed.")
+    mine = _user_font(name, bool(bold), bool(italic))
+    if mine is not None and mine.is_file():
+        return Response(content=mine.read_bytes(), media_type=_FONT_TYPES[mine.suffix.lower()])
     path = _fc_match(name, bool(bold), bool(italic))
     if path is not None:
         # fc-match always answers with its fallback font; keep the answer only when it is this family's file.

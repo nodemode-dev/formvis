@@ -1,5 +1,6 @@
-import { el, setHidden } from '../dom';
-import { CANVAS_BORDERS, type Prefs } from '../prefs';
+import { el, setHidden, setText } from '../dom';
+import { api } from '../../io/api';
+import { CANVAS_BORDERS, DISPLAY_SERVERS, type Prefs } from '../prefs';
 import { loadExportPrefs, saveExportPrefs } from '../../io/export-prefs';
 import { checkRow, selectRow, sliderRow, numberRow } from './controls';
 import { ScratchSection } from './scratch-section';
@@ -53,11 +54,18 @@ export class PagePrefsRows {
   private readonly exifTag = checkRow('Write EXIF Color Space Tag', (v) => this.change({ exifColourTag: v }));
   private readonly askTiff = checkRow('Ask Before Saving Layered TIFF Files', (v) => this.change({ askLayeredTiff: v }));
   private readonly typeUnits = selectRow('Type Size Units', [['px', 'Pixels'], ['pt', 'Points']], (v) => this.change({ typeUnits: v === 'pt' ? 'pt' : 'px' }));
+  private readonly legacyTransform = checkRow('Use Legacy Free Transform', (v) => this.change({ legacyTransform: v }));
+  private readonly lowRes = checkRow('Low-Resolution Previews', (v) => this.change({ lowResPreviews: v }));
+  private readonly displayServer = selectRow('Linux Display Server (desktop app, next launch)', DISPLAY_SERVERS, (v) => this.change({ displayServer: v === 'x11' || v === 'wayland' ? v : 'auto' }));
+  private readonly glyphProtection = checkRow('Enable Missing Glyph Protection', (v) => this.change({ glyphProtection: v }));
+  private readonly fontNamesEnglish = checkRow('Show Font Names in English (next launch)', (v) => this.change({ fontNamesEnglish: v }));
+  private readonly memoryLine = el('<p class="cv-note" role="status" style="min-height: 2.8em"></p>');
   private readonly custom: HTMLElement[];
 
   constructor(private readonly change: (patch: Patch) => void) {
     this.scratch = new ScratchSection((folder) => this.change({ scratchFolder: folder }));
     this.custom = [this.checkerA.el, this.checkerB.el];
+    setHidden(this.displayServer.el, !/Linux/.test(navigator.platform));
   }
 
   get cursors(): HTMLElement[] {
@@ -70,7 +78,10 @@ export class PagePrefsRows {
     return [this.channelsColour.el, this.dynamicSliders.el, this.border.el, note('Dynamic Color Sliders draw the hue, saturation and brightness sliders of the Color panel as the colors they would give. Show Channels in Color shows a single channel in the Channels panel and on the canvas in its own color instead of grey. Canvas Border draws a line or a drop shadow round the picture.')];
   }
   get generalRows(): HTMLElement[] {
-    return [this.exportClip.el, note('Export Clipboard to the System puts what you copy on the system clipboard too, so other programs can paste it; off keeps it inside formvis.')];
+    return [this.exportClip.el, this.legacyTransform.el, note('Export Clipboard to the System puts what you copy on the system clipboard too, so other programs can paste it; off keeps it inside formvis. Use Legacy Free Transform makes a handle scale freely and Shift hold the proportions; off, Free Transform keeps the proportions (as Keep proportions says) and Shift gives them up.')];
+  }
+  get performance(): HTMLElement[] {
+    return [this.memoryLine, this.lowRes.el, this.displayServer.el, note('Memory in use is read when this page opens: the window\'s share where the browser reports it, and the engine\'s own as the system counts it. Low-Resolution Previews run a filter\'s live preview on a copy of about half a megapixel instead of two, so large pictures preview faster; Full Resolution Previews wins when both are on. The Linux display server is read by the desktop app as it starts: Automatic leaves the choice to the system, X11 also turns off the web view\'s DMA-BUF renderer, and a GDK_BACKEND set in the environment is never replaced.')];
   }
   get fileRows(): HTMLElement[] {
     return [this.maximize.el, this.askTiff.el, this.exifTag.el, note('Maximize PSD and PSB File Compatibility writes the flattened picture and a preview beside the layers, so readers that ignore layers still show it; off makes smaller files. With Ask Before Saving Layered TIFF Files off, Export > TIFF keeps the layers without asking. Write EXIF Color Space Tag adds the ColorSpace tag to exported JPEG, PNG, WebP and TIFF files: sRGB, or uncalibrated when the file is in another space (the profile itself is embedded as before). Metadata set to None writes no tag.')];
@@ -82,7 +93,7 @@ export class PagePrefsRows {
     return [this.printRes.el, this.screenRes.el, this.colWidth.el, this.gutter.el, note('Print and screen resolution are what New Document gives a print preset (300 ppi in the Photo and Print sets) and a screen preset. Column width and gutter size the Columns ruler unit and the Columns unit in New Document: n columns are n widths and n minus 1 gutters.')];
   }
   get type(): HTMLElement[] {
-    return [this.typeUnits.el, this.smartQuotes.el, this.escCommit.el, this.placeholder.el, note('Smart quotes turn straight quotes into curly ones as you type. With Escape commits, Esc keeps a text edit; off, Esc discards it. A new type layer starts with placeholder text, selected so typing replaces it.')];
+    return [this.typeUnits.el, this.smartQuotes.el, this.escCommit.el, this.placeholder.el, this.glyphProtection.el, this.fontNamesEnglish.el, note('Smart quotes turn straight quotes into curly ones as you type. With Escape commits, Esc keeps a text edit; off, Esc discards it. A new type layer starts with placeholder text, selected so typing replaces it. Missing Glyph Protection draws a character the font lacks in a face that has it, chosen for the text\'s script, instead of leaving it to the system\'s default; Show Font Names in English lists each installed font under its English family name in the desktop app, the next time the font list is read.')];
   }
   get enhanced(): HTMLElement[] {
     return [this.pinch.el, this.rotate.el, this.accel.el, this.touch.el, note('Pinch zoom and rotation are a trackpad\'s two-finger gestures; touch gestures are the two-finger pan, zoom and turn on a touch screen. Scrubby slider acceleration makes a drag on the Opacity and Fill labels cover more the faster it moves; 0 keeps it steady.')];
@@ -100,7 +111,24 @@ export class PagePrefsRows {
     this.tipHardness.set(p.tipHardness); this.snapPx.set(p.snapVectorPx); this.readout.set(p.transformReadout); this.rollover.set(p.rolloverHighlight); this.flick.set(p.flickPan);
     this.channelsColour.set(p.channelsColour); this.dynamicSliders.set(p.dynamicSliders); this.exportClip.set(p.exportClipboard); this.border.set(p.canvasBorder); this.askTiff.set(p.askLayeredTiff); this.exifTag.set(p.exifColourTag); this.typeUnits.set(p.typeUnits);
     this.maximize.set(loadExportPrefs().maximizePsd);
+    this.legacyTransform.set(p.legacyTransform); this.lowRes.set(p.lowResPreviews); this.displayServer.set(p.displayServer);
+    this.glyphProtection.set(p.glyphProtection); this.fontNamesEnglish.set(p.fontNamesEnglish);
     void this.scratch.refresh();
+    void this.refreshMemory();
+  }
+
+  /** The memory line: this window's heap where the browser says (Chromium's performance.memory, or the whole-page measure on a cross-origin isolated page), and the engine process's resident size. */
+  private async refreshMemory(): Promise<void> {
+    const mb = (n: number): string => `${Math.round(n / 1048576).toLocaleString()} MB`;
+    const perf = performance as Performance & { memory?: { usedJSHeapSize: number; jsHeapSizeLimit: number }; measureUserAgentSpecificMemory?: () => Promise<{ bytes: number }> };
+    const parts: string[] = [];
+    try {
+      if (perf.memory) parts.push(`window ${mb(perf.memory.usedJSHeapSize)} of ${mb(perf.memory.jsHeapSizeLimit)}`);
+      else if (typeof perf.measureUserAgentSpecificMemory === 'function' && self.crossOriginIsolated) parts.push(`window ${mb((await perf.measureUserAgentSpecificMemory()).bytes)}`);
+    } catch { /* the engine's figure may still be there */ }
+    const m = await api.metrics();
+    if (m?.rss) parts.push(`engine ${mb(m.rss)}`);
+    setText(this.memoryLine, parts.length ? `Memory in use: ${parts.join(' · ')}.` : 'Memory in use: neither this window nor the engine reports it here.');
   }
 
   /** Shows the custom grid colours only while Custom is chosen. */

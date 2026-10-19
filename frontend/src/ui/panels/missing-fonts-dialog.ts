@@ -2,6 +2,7 @@ import type { Engine } from '../../engine';
 import { Dialog } from '../dialogs';
 import { el, q, setText } from '../dom';
 import { fontFamilies, installed } from '../fonts';
+import { tn } from '../i18n';
 
 const GENERIC = new Set(['serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui']);
 const norm = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -47,7 +48,7 @@ export class MissingFontsDialog extends Dialog {
     const rows: HTMLElement[] = [];
     for (const [family, n] of counts) {
       const row = el('<label class="cv-dialog-row"><span></span></label>');
-      setText(q(row, 'span'), `${family} (${n} layer${n === 1 ? '' : 's'})`);
+      setText(q(row, 'span'), `${family} (${tn(n, '{n} layer', '{n} layers')})`);
       const sel = el<HTMLSelectElement>('<select class="cv-input"></select>');
       sel.append(...have.map((f) => new Option(f, f)));
       sel.value = closest(family, have);

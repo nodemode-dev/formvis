@@ -3,6 +3,7 @@ import type { GenerationInfo } from '../../engine/types';
 import { withBoxes } from '../../engine/boxes';
 import { api, ApiError, type GenerativeStatus, type ProviderStatus } from '../../io/api';
 import { recipes, runToResults } from '../../io/comfy';
+import { generatePrompt } from '../../io/prompt-templates';
 import { localModels, runLocal } from '../../io/local-gen';
 import { Dialog } from '../dialogs';
 import { el, patchList, setHidden, setText } from '../dom';
@@ -222,7 +223,7 @@ async function generateOnce(engine: Engine, req: GenerationRequest): Promise<boo
   if (fresh) engine.newDocument(req.size?.width ?? 1024, req.size?.height ?? 1024, 'Generated', 'white');
   const p = engine.current;
   if (!p) return false;
-  const W = p.doc.width, H = p.doc.height, w = req.size?.width ?? W, h = req.size?.height ?? H, { choice } = req, prompt = withBoxes(req.prompt, p.doc);   // the layout boxes follow the words, one line each
+  const W = p.doc.width, H = p.doc.height, w = req.size?.width ?? W, h = req.size?.height ?? H, { choice } = req, prompt = await generatePrompt(withBoxes(req.prompt, p.doc), choice === 'fal' ? 'fal' : /^(local|provider):/.test(choice) ? choice.replace(/^[a-z]+:/, '') : 'comfyui');   // the layout boxes follow the words, one line each
   const hint = req.keyHint ?? { fal: t('Add a fal API key first, in Edit > Generative Fill.'), provider: (name: string) => t(`Add a ${name} API key first, above.`) };
   let blob: Blob;
   let generation: GenerationInfo | undefined;

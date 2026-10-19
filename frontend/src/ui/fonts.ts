@@ -1,4 +1,4 @@
-import { TEXT_FONTS } from '../engine';
+import { BUNDLED_FAMILIES, FONT_CATEGORIES, TEXT_FONTS, ensureBundledFont, isLazyFont, noteFamilies, notePostscript, resolveFace } from '../engine';
 import { loadPrefs, updatePrefs, type FontPreview } from './prefs';
 
 /** Keeps `family` as the newest recently used font (Preferences > Type); nothing is written when it is already first. */
@@ -18,7 +18,15 @@ export function previewFont(o: HTMLOptionElement, family: string): void {
   const ff = px ? `"${family.replace(/"/g, '')}", sans-serif` : '', fs = px ? `${px}px` : '';
   if (o.style.fontFamily !== ff) o.style.fontFamily = ff;
   if (o.style.fontSize !== fs) o.style.fontSize = fs;
+  const box = px && isLazyFont(family) ? o.closest('select') : null;
+  if (box && !armed.has(box)) { armed.add(box); for (const ev of ['pointerenter', 'focus', 'pointerdown']) box.addEventListener(ev, warmFonts, { once: true }); }
 }
+
+const armed = new WeakSet<HTMLSelectElement>();
+
+/** Joins the bundled families to the font set and loads their regular faces. Nothing calls it at start: a font menu does when
+ *  the pointer or focus reaches it, so its entries show in their own faces and no file is fetched before then. */
+export function warmFonts(): void { for (const b of BUNDLED_FAMILIES) void ensureBundledFont(b.family); }
 
 /** Fonts for the Type tool (Phase 19.1). Two sources: a broad list of common families across macOS, Windows and Linux,
  *  each kept if this machine has it (text measured in it differs from each generic fallback), and, where the browser has
@@ -49,21 +57,39 @@ export function installed(family: string): boolean {
 }
 
 const added: string[] = [];
-const postscript = new Map<string, { family: string; style: string }>();
 
-/** A font name as typed or read from a file, matched to a family: a listed family in its own spelling, else a PostScript name
- *  (as Local Font Access reports them, or the family part of a name such as Family-BoldItalic). Null when nothing matches. */
+/** A font name as typed or read from a file, matched to a family: a listed family in its own spelling, else a PostScript
+ *  name (Local Font Access, the engine's user fonts, the bundled families) or a name such as Family-BoldItalic, through the
+ *  one lookup that opening PSD type uses. Null when nothing matches. */
 export function resolveFontName(name: string): { family: string; bold: boolean; italic: boolean } | null {
   const raw = name.trim(), key = raw.toLowerCase();
   if (!raw) return null;
-  const listed = fontFamilies().find((f) => f.toLowerCase() === key);
-  if (listed) return { family: listed, bold: false, italic: false };
-  const ps = postscript.get(key);
-  if (ps) return { family: ps.family, bold: /bold|black|heavy/i.test(ps.style), italic: /italic|oblique/i.test(ps.style) };
-  const m = /^(.+?)[-_ ]?(BoldItalic|BoldOblique|Bold|Italic|Oblique|Regular|Roman|Book)?(MT|PSMT)?$/.exec(raw.replace(/\s+/g, ''));
-  const bare = (m?.[1] ?? raw).toLowerCase(), style = m?.[2] ?? '';
-  const hit = fontFamilies().find((f) => f.replace(/\s+/g, '').toLowerCase() === bare);
-  return hit ? { family: hit, bold: /bold/i.test(style), italic: /italic|oblique/i.test(style) } : null;
+  const all = fontFamilies(), listed = all.find((f) => f.toLowerCase() === key);
+  return listed ? { family: listed, bold: false, italic: false } : resolveFace(raw, all);
+}
+
+const userUrls = new Set<string>();
+interface UserFont { family: string; style: string; postscript: string; bold: boolean; italic: boolean; url: string }
+
+/** Fonts in the engine's data folder (its fonts subfolder): listed by the engine, joined to the font set from the engine's
+ *  font route so the browser build can set type in them (a face loads when text first uses it), and noted with their
+ *  PostScript names. The families are returned; null where there is no engine. */
+export async function loadUserFonts(): Promise<string[] | null> {
+  try {
+    const res = await fetch('/api/fonts/user');
+    if (!res.ok) return null;
+    const list = ((await res.json()) as { fonts?: UserFont[] }).fonts ?? [];
+    for (const f of list) {
+      if (!f.family || !f.url || userUrls.has(f.url)) continue;
+      userUrls.add(f.url);
+      document.fonts.add(new FontFace(f.family, `url("${f.url}")`, { weight: f.bold ? '700' : '400', style: f.italic ? 'italic' : 'normal' }));
+      if (!added.includes(f.family)) added.push(f.family);
+    }
+    notePostscript(list);
+    return list.map((f) => f.family);
+  } catch {
+    return null;
+  }
 }
 
 /** Registers a font the person brings (SC-ED-0179, PC-AU-0143) under `family` from a font file's bytes or a web address
@@ -87,7 +113,23 @@ export function fontFamilies(): string[] {
   const all = [...new Set([...detected, ...system, ...added])].filter((f) => !TEXT_FONTS.includes(f));
   const p = loadPrefs(), recent = p.recentFonts.filter((f) => all.includes(f) || TEXT_FONTS.includes(f)).slice(0, p.recentFontCount);
   const rest = all.filter((f) => !recent.includes(f)).sort((a, b) => a.localeCompare(b));
-  return [...new Set([...recent, ...TEXT_FONTS, ...rest])];
+  const out = [...new Set([...recent, ...TEXT_FONTS, ...rest])];
+  noteFamilies(out);
+  return out;
+}
+
+export interface FontGroup { label: string; families: string[] }
+
+/** The font menu in sections: the recent families, the bundled ones under their category headings, then the common faces and
+ *  the machine's other families. A recent family shows again in its own section, so the categories stay whole. */
+export function fontGroups(): FontGroup[] {
+  const flat = fontFamilies(), bundled = new Set(BUNDLED_FAMILIES.map((b) => b.family)), p = loadPrefs();
+  const recent = p.recentFonts.filter((f) => flat.includes(f)).slice(0, p.recentFontCount), rest = flat.filter((f) => !bundled.has(f) && !TEXT_FONTS.includes(f)).sort((a, b) => a.localeCompare(b));
+  const out: FontGroup[] = recent.length ? [{ label: 'Recent', families: recent }] : [];
+  for (const c of FONT_CATEGORIES) out.push({ label: c, families: BUNDLED_FAMILIES.filter((b) => b.category === c).map((b) => b.family) });
+  out.push({ label: 'Common', families: TEXT_FONTS.filter((f) => !bundled.has(f)) });
+  if (rest.length) out.push({ label: 'System', families: rest });
+  return out;
 }
 
 /** Whether formvis runs as the desktop app (the Tauri shell's web view). */
@@ -104,7 +146,7 @@ export async function loadSystemFonts(): Promise<string[] | null> {
   if (inDesktopApp()) {
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      const families = await invoke<string[]>('system_fonts');
+      const families = await invoke<string[]>(loadPrefs().fontNamesEnglish ? 'system_fonts_english' : 'system_fonts');
       system = [...new Set(families.filter((f) => typeof f === 'string' && f.trim()))];
       return system;
     } catch {
@@ -115,7 +157,7 @@ export async function loadSystemFonts(): Promise<string[] | null> {
   if (!query) return null;
   try {
     const fonts = await query() as Array<{ family: string; postscriptName?: string; style?: string }>;
-    for (const f of fonts) if (f.postscriptName) postscript.set(f.postscriptName.toLowerCase(), { family: f.family, style: f.style ?? '' });
+    notePostscript(fonts.map((f) => ({ postscript: f.postscriptName ?? '', family: f.family, style: f.style })));
     system = [...new Set(fonts.map((f) => f.family).filter((f) => typeof f === 'string' && f.trim()))];
     return system;
   } catch {

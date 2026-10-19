@@ -142,9 +142,11 @@ export interface CalcOptions { source1: CalcSource; source2: CalcSource; mode?: 
 
 /** One entry of the GPU display's layer list (gpuLayers): a pixel layer's image, or an adjustment's lookup table applied
  *  to what is below it (per channel, 256 x 1; or 3D, 52 x 52 x 52 packed into 2704 x 52, with lut3 set). */
-export interface GpuLayerSpec { image: Surface | null; lut?: Uint8Array; lut3?: boolean; grain?: GrainParams; mask?: GpuMaskSpec; clip?: GpuClipSpec; folders?: GpuMaskSpec[]; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
+export interface GpuLayerSpec { image: Surface | null; lut?: Uint8Array; lut3?: boolean; grain?: GrainParams; mask?: GpuMaskSpec; clip?: GpuClipSpec; folders?: GpuMaskSpec[]; blendIf?: GpuBlendIf; chOff?: number; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
 /** A clipping base for the GPU: its pixels, placement and opacity, and its own mask; its coverage clips the layer. */
-export interface GpuClipSpec { image: Surface; version: number; width: number; height: number; matrix: Mat; opacity: number; mask?: GpuMaskSpec }
+export interface GpuClipSpec { image: Surface; version: number; width: number; height: number; matrix: Mat; opacity: number; mask?: GpuMaskSpec; parent?: GpuClipSpec }
+/** A layer's Blend If for the GPU: the channel tested (1 grey, 2 red, 3 green, 4 blue) and the four-point ranges of the layer and of what lies under it. */
+export interface GpuBlendIf { channel: 1 | 2 | 3 | 4; thisLayer: readonly [number, number, number, number]; underlying: readonly [number, number, number, number] }
 /** A layer's mask for the GPU: its pixels (alpha is coverage), their version, size and placement. */
 export interface GpuMaskSpec { image: Surface; version: number; width: number; height: number; matrix: Mat }
 export type { HealMode } from './retouch';
@@ -155,7 +157,10 @@ export type { ColorRange, GrainParams, GrainSettings, HsvSettings } from './adju
 export { addNoise, defaultLensFix, gaussianBlur, gaussianMargin, histogram, lensCorrect, lensDistort, motionBlur, motionMargin, unsharpMask } from './filters';
 export type { LensFix } from './filters';
 export { defaultDevelopState, developImage, type DevelopState } from './develop';
+export { BUNDLED_FAMILIES, FONT_CATEGORIES, ensureBundledFont, isLazyFont, type FontCategory } from './bundled-fonts';
+export { noteFamilies, notePostscript, resolveFace, type NamedFace } from './font-names';
 export { TEXT_ANTIALIAS, TEXT_FONTS, baseDirection, shapingLang, defaultText, fontCss, liveText, paragraphStylesFrom, characterStylesFrom, charStyleOf, withCharStyle, styleOf, textFromData, textKey, textMetrics, renderText, withStyle } from './text';
+export { dropParaKeys, hasParas, paraOf, shiftParas, withParaAttrs, type ParaLook } from './text';
 export { addPattern, allPatterns, patternById, projectPatterns, type Pattern } from './patterns';
 export { FRAME_DELAYS, captureFrame, frameLayers, timelineData, timelineFrom, type Frame, type FrameLayer, type Timeline } from './timeline';
 export { anchorNear, cornerAt, nearestSegment, pathBounds, pathData, pathFrom, pathSetData, pathSetFrom, splitSegment, tracePath, type Anchor, type NamedPath, type PathSet, type SubPath, type VectorPath } from './paths';
@@ -1907,13 +1912,23 @@ export class Engine {
     };
     // A clipping base, as the CPU renderer's clipCoverage reads it: its pixels at its opacity through its own mask (its
     // visibility and folder masks do not enter); null where it cannot clip (a folder, no pixels), which hides the
-    // clipped layer; a base that is itself clipped stays on the CPU.
-    const clipOf = (id: ID): GpuClipSpec | null | 'nested' => {
+    // clipped layer; a base that is itself clipped carries the base it is clipped to as `parent`, whose coverage limits
+    // its own as the renderer's destination-in does (up to 8 deep, and none with a vector mask, which stay on the CPU).
+    const clipOf = (id: ID, depth = 0): GpuClipSpec | null | 'nested' => {
       const b = map.get(id);
       if (!b || b.isGroup || !b.raster) return null;
-      if (b.clipId) return 'nested';
+      let parent: GpuClipSpec | undefined;
+      const up = b.clipId ? map.get(b.clipId) : undefined;
+      if (up) {
+        if (depth >= 8 || vecFor(up).length) return 'nested';
+        if (!clips.has(up.id)) clips.set(up.id, clipOf(up.id, depth + 1));
+        const pc = clips.get(up.id);
+        if (pc === 'nested') return 'nested';
+        if (!pc) return null;
+        parent = pc;
+      }
       const bo = ov?.get(b.id), src = bo?.source ?? b.raster.canvas, t = bo?.transform ?? b.transform;
-      return { image: src, version: bo?.source ? -1 : b.raster.version, width: src.width, height: src.height, matrix: placement(t, src.width, src.height), opacity: bo?.opacity ?? b.opacity, mask: maskFor(b, bo) };
+      return { image: src, version: bo?.source ? -1 : b.raster.version, width: src.width, height: src.height, matrix: placement(t, src.width, src.height), opacity: bo?.opacity ?? b.opacity, mask: maskFor(b, bo), parent };
     };
     for (const { layer: l, visible } of hierarchy(p.doc)) {
       // A pass-through folder is its layers in order, hidden with the folder; one with its own opacity or blend mode is
@@ -1931,14 +1946,17 @@ export class Engine {
       // A layer's own vector mask (1.66.1) joins its folders' masks, one array of its own.
       const own = vecFor(l, o?.transform), folders = own.length ? [...(fchains.get(l.parentId ?? null) ?? []), ...own] : fchains.get(l.parentId ?? null);
       if (folders && l.clipId) return { reason: 'a clipped layer with a vector mask or inside a masked folder' };
-      if (visible && (blendIfActive(l.blendIf) || (l.knockout && l.knockout !== 'none') || l.blendChannels?.some((on) => !on))) return { reason: 'Blend If, Knockout or channel restrictions' };
+      if (visible && l.knockout && l.knockout !== 'none') return { reason: 'a layer with Knockout' };
+      const bif = blendIfActive(l.blendIf) ? l.blendIf as BlendIf : null;
+      const blendIf: GpuBlendIf | undefined = bif ? { channel: bif.channel === 'r' ? 2 : bif.channel === 'g' ? 3 : bif.channel === 'b' ? 4 : 1, thisLayer: bif.thisLayer, underlying: bif.underlying } : undefined;
+      const chOff = l.blendChannels ? l.blendChannels.reduce((s, on, i) => (on ? s : s | (1 << i)), 0) : 0;
       if (visible && (l.blendClipped || l.transparencyShapes === false)) return { reason: 'Blend Clipped Layers as Group or Transparency Shapes Layer off' };
       const mask = maskFor(l, o);
       let clip: GpuClipSpec | undefined;
       if (l.clipId) {
         if (!clips.has(l.clipId)) clips.set(l.clipId, clipOf(l.clipId));
         const c = clips.get(l.clipId), cb = map.get(l.clipId);
-        if (c === 'nested') return { reason: 'nested clipping masks' };
+        if (c === 'nested') return { reason: 'a clipping chain more than 8 deep or with a vector mask' };
         if (cb && vecFor(cb).length) return { reason: 'a clipping base with a vector mask' };
         if (!c) continue;
         clip = c;
@@ -1971,8 +1989,6 @@ export class Engine {
         fxParts = this.display.gpuEffectParts(l, o, p.doc);
         if (!fxParts) return { reason: 'layer styles on a layer being edited' };
       }
-      // Dissolve's pattern is fixed to document pixels; the display composites in screen pixels, so it stays on the CPU.
-      if ((o?.blend ?? l.blend) === 'dissolve') return { reason: 'a layer in Dissolve mode' };
       if (EXTRA_BLENDS.has(o?.blend ?? l.blend)) return { reason: 'a layer in Negation, Reflect, Glow or Xor mode' };
       if (l.tiled && view) {   // a giant layer: its tiles in view, each its own texture (1.62.9)
         if (mask || clip || fxParts.length) return { reason: 'a mask, clipping mask or style on a layer kept in tiles' };
@@ -1984,7 +2000,7 @@ export class Engine {
       const lop = o?.opacity ?? l.opacity;
       const part = (q: NonNullable<typeof fxParts>[number]): GpuLayerSpec => ({ image: q.image, version: 0, width: q.image.width, height: q.image.height, matrix: q.matrix, opacity: q.alpha * lop, blend: q.blend });
       for (const q of fxParts) if (!q.above) layers.push(part(q));
-      layers.push({ image: img, version: o?.source ? -1 : l.raster.version, width: img.width, height: img.height, matrix: placement(o?.transform ?? l.transform, img.width, img.height), opacity: (o?.opacity ?? l.opacity) * (l.fill ?? 1), blend: o?.blend ?? l.blend, mask, clip, folders });
+      layers.push({ image: img, version: o?.source ? -1 : l.raster.version, width: img.width, height: img.height, matrix: placement(o?.transform ?? l.transform, img.width, img.height), opacity: (o?.opacity ?? l.opacity) * (l.fill ?? 1), blend: o?.blend ?? l.blend, mask, clip, folders, blendIf, chOff: chOff || undefined });
       for (const q of fxParts) if (q.above) layers.push(part(q));
     }
     return { layers };
@@ -2219,7 +2235,7 @@ export class Engine {
       for (const k of kind === 'character' ? CHARACTER_RESET : PARAGRAPH_RESET) delete (o as unknown as Record<string, unknown>)[k];
       return kind === 'character'
         ? { ...o, family: d.family, size: d.size, bold: false, italic: false, tracking: 0, kerning: 'metrics', lineHeight: d.lineHeight, features: null, runs: undefined, language: undefined, rendered: undefined }
-        : { ...o, align: 'left', hyphenate: false, rendered: undefined };
+        : { ...o, align: 'left', hyphenate: false, paras: undefined, rendered: undefined };
     };
     this.textSettings = drop(this.textSettings);
     if (live && l?.text) await this.updateTextLayer(l.id, drop(l.text));

@@ -1,6 +1,6 @@
 # Languages
 
-The interface comes in 26 languages: English, the source text and the default, and 25 others. This page covers how the translation works and how to add a string. The person's view of it is the manual's "Interface languages" section.
+The interface comes in 30 languages: English, the source text and the default, and 29 others. This page covers how the translation works and how to add a string. The person's view of it is the manual's "Interface languages" section.
 
 | Source path | What lives there |
 | --- | --- |

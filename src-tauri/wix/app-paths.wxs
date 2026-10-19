@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <DirectoryRef Id="TARGETDIR">
+      <Component Id="AppPathsRegistration" Guid="{ABFE12A3-2527-4986-8B17-2650CA80BFD3}">
+        <RegistryKey Root="HKMU" Key="Software\Microsoft\Windows\CurrentVersion\App Paths\formvis.exe">
+          <RegistryValue Type="string" Value="[INSTALLDIR]formvis.exe" KeyPath="yes"/>
+          <RegistryValue Name="Path" Type="string" Value="[INSTALLDIR]"/>
+        </RegistryKey>
+        <RegistryKey Root="HKMU" Key="Software\Microsoft\Windows\CurrentVersion\App Paths\formvis-engine.exe">
+          <RegistryValue Type="string" Value="[INSTALLDIR]formvis-engine.exe"/>
+          <RegistryValue Name="Path" Type="string" Value="[INSTALLDIR]"/>
+        </RegistryKey>
+      </Component>
+    </DirectoryRef>
+  </Fragment>
+</Wix>

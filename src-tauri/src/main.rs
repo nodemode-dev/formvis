@@ -243,11 +243,36 @@ async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
 /// the system's font folders with fontdb (pure Rust, MIT) and the page asks for them with invoke('system_fonts').
 #[tauri::command]
 fn system_fonts() -> Vec<String> {
+    font_names(false)
+}
+
+/// The same list under each font's English family name (Preferences > Type > Show Font Names in English); a font with no
+/// English name keeps its first one.
+#[tauri::command]
+fn system_fonts_english() -> Vec<String> {
+    font_names(true)
+}
+
+fn font_names(english: bool) -> Vec<String> {
     let mut db = fontdb::Database::new();
     db.load_system_fonts();
     let mut names: Vec<String> = db
         .faces()
-        .flat_map(|face| face.families.iter().map(|(name, _)| name.trim().to_string()))
+        .flat_map(|face| {
+            let en: Vec<String> = face
+                .families
+                .iter()
+                .filter(|(_, lang)| *lang == fontdb::Language::English_UnitedStates)
+                .map(|(name, _)| name.trim().to_string())
+                .collect();
+            if english && !en.is_empty() {
+                en
+            } else if english {
+                face.families.iter().take(1).map(|(name, _)| name.trim().to_string()).collect::<Vec<String>>()
+            } else {
+                face.families.iter().map(|(name, _)| name.trim().to_string()).collect::<Vec<String>>()
+            }
+        })
         .filter(|name| !name.is_empty() && !name.starts_with('.'))
         .collect();
     names.sort_by_key(|name| name.to_lowercase());
@@ -296,9 +321,63 @@ fn portable_web_view_data() {
     }
 }
 
+/// Linux: the file that keeps the display server chosen in Preferences > Performance (auto, x11 or wayland). GTK picks its
+/// backend as it starts, so the choice is read here, before any window exists, and takes effect at the next launch.
+#[cfg(target_os = "linux")]
+fn display_server_file() -> Option<std::path::PathBuf> {
+    let base = std::env::var_os("XDG_CONFIG_HOME")
+        .filter(|v| !v.is_empty())
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config")))?;
+    Some(base.join("formvis").join("display-server"))
+}
+
+/// Sets GDK_BACKEND for an explicit choice, and turns off the web view's DMA-BUF renderer under X11, where it can leave the
+/// window blank. A variable the person already set in the environment is never replaced.
+#[cfg(target_os = "linux")]
+fn apply_display_server() {
+    let Some(file) = display_server_file() else { return };
+    let choice = std::fs::read_to_string(file).unwrap_or_default();
+    let (backend, dmabuf_off) = match choice.trim() {
+        "x11" => (Some("x11"), true),
+        "wayland" => (Some("wayland"), false),
+        _ => (None, false),
+    };
+    if let Some(b) = backend {
+        if std::env::var_os("GDK_BACKEND").is_none() {
+            std::env::set_var("GDK_BACKEND", b);
+        }
+    }
+    if dmabuf_off && std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+}
+
+/// Keeps the display server choice for the next launch; other systems have nothing to set and accept it.
+#[tauri::command]
+fn set_display_server(server: String) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        let choice = match server.as_str() {
+            "x11" | "wayland" => server.as_str(),
+            _ => "auto",
+        };
+        let file = display_server_file().ok_or_else(|| "no home folder to keep the choice in".to_string())?;
+        if let Some(dir) = file.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        }
+        std::fs::write(file, choice).map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(target_os = "linux"))]
+    let _ = server;
+    Ok(())
+}
+
 fn main() {
     #[cfg(windows)]
     portable_web_view_data();
+    #[cfg(target_os = "linux")]
+    apply_display_server();
     let app = tauri::Builder::default()
         // First, as the plugin asks: a second launch (a project double-clicked while formvis runs) sends its arguments
         // here and exits; the files go to the running window.
@@ -324,7 +403,9 @@ fn main() {
             confirm_exit,
             check_for_update,
             install_update,
+            set_display_server,
             system_fonts,
+            system_fonts_english,
             pick_image_path,
             display::display_profile,
             native::native_start,

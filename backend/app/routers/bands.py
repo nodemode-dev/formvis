@@ -16,7 +16,8 @@ from pathlib import Path
 
 import numpy as np
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response
+from starlette.background import BackgroundTask
 
 from app.core import config
 from app.services import sessions
@@ -232,3 +233,194 @@ async def end(key: str) -> Response:
     data = await asyncio.to_thread(s["path"].read_bytes)
     s["path"].unlink(missing_ok=True)
     return Response(data, media_type="image/png")
+
+
+STRIP = 1 << 18   # bytes a TIFF strip holds before it is deflated, about
+_tiffs: dict[str, dict] = {}
+_psds: dict[str, dict] = {}
+
+
+def _workers() -> ThreadPoolExecutor:
+    global _pool
+    if _pool is None:
+        _pool = ThreadPoolExecutor(max_workers=max(1, min(4, os.cpu_count() or 1)))
+    return _pool
+
+
+def _gone(path: Path) -> BackgroundTask:
+    return BackgroundTask(lambda: path.unlink(missing_ok=True))
+
+
+def _rows_in(s: dict, body: bytes) -> int:
+    row = s["w"] * 4
+    if len(body) % row:
+        raise HTTPException(400, "Not a whole number of rows.")
+    n = len(body) // row
+    if s["rows"] + n > s["h"]:
+        raise HTTPException(400, "More rows than the picture has.")
+    return n
+
+
+@router.post("/tiff")
+async def begin_tiff(request: Request, width: int, height: int, ppi: float = 72.0) -> dict[str, str]:
+    """Opens a TIFF of `width` by `height` RGBA pixels, 8 bits, alpha kept, Deflate: every strip is deflated on its own, so
+    the strips of a band go to the thread pool together and are written in order as they finish; the directory comes last.
+    A body of ICC profile bytes, when sent, is embedded (tag 34675). Rows follow as for the PNG."""
+    if not (1 <= width <= 65535 and 1 <= height <= 65535):
+        raise HTTPException(400, "Sides must be 1 to 65,535 pixels.")
+    icc = await request.body()
+    if len(icc) > 1_000_000:
+        raise HTTPException(400, "The colour profile is too large.")
+    key = uuid.uuid4().hex
+    path = _dir() / f"{key}.tif"
+    f = open(path, "wb")
+    f.write(b"II" + struct.pack("<HI", 42, 0))
+    _tiffs[key] = {"f": f, "w": width, "h": height, "rows": 0, "path": path, "ppi": ppi, "icc": icc, "rps": max(1, STRIP // (width * 4)), "carry": b"", "offsets": [], "counts": []}
+    return {"key": key}
+
+
+def _strips(s: dict, strips: list[bytes]) -> None:
+    f = s["f"]
+    for packed in _workers().map(lambda b: zlib.compress(b, 6), strips):
+        s["offsets"].append(f.tell())
+        s["counts"].append(len(packed))
+        f.write(packed)
+    if f.tell() > 0xFFFFFFFF - (1 << 20):
+        raise HTTPException(413, "This TIFF passes the 4 GB a classic TIFF holds; save it as PNG or PSB.")
+
+
+def _tiff_put(s: dict, body: bytes) -> None:
+    n = _rows_in(s, body)
+    s["rows"] += n
+    buf = s["carry"] + body
+    step = s["rps"] * s["w"] * 4
+    cut = len(buf) // step * step
+    _strips(s, [buf[i:i + step] for i in range(0, cut, step)])
+    s["carry"] = buf[cut:]
+
+
+def _tiff_ifd(entries: list[tuple[int, int, int, bytes]], base: int) -> tuple[bytes, int]:
+    """The directory with the values that do not fit its entries placed ahead of it from `base`, and where it starts."""
+    extra, slots = bytearray(), []
+    for tag, kind, count, data in sorted(entries):
+        if len(data) <= 4:
+            slots.append(struct.pack("<HHI", tag, kind, count) + data.ljust(4, b"\0"))
+            continue
+        slots.append(struct.pack("<HHII", tag, kind, count, base + len(extra)))
+        extra += data + (b"\0" if len(data) % 2 else b"")
+    return bytes(extra) + struct.pack("<H", len(slots)) + b"".join(slots) + struct.pack("<I", 0), base + len(extra)
+
+
+def _tiff_finish(s: dict) -> None:
+    if s["carry"]:
+        _strips(s, [s["carry"]])
+        s["carry"] = b""
+    f, n = s["f"], len(s["offsets"])
+    if f.tell() % 2:
+        f.write(b"\0")
+    dpi = struct.pack("<II", max(1, round(s["ppi"] * 1000)), 1000)
+    entries = [(256, 4, 1, struct.pack("<I", s["w"])), (257, 4, 1, struct.pack("<I", s["h"])), (258, 3, 4, struct.pack("<4H", 8, 8, 8, 8)),
+               (259, 3, 1, struct.pack("<H", 8)), (262, 3, 1, struct.pack("<H", 2)), (273, 4, n, struct.pack(f"<{n}I", *s["offsets"])),
+               (277, 3, 1, struct.pack("<H", 4)), (278, 4, 1, struct.pack("<I", s["rps"])), (279, 4, n, struct.pack(f"<{n}I", *s["counts"])),
+               (282, 5, 1, dpi), (283, 5, 1, dpi), (284, 3, 1, struct.pack("<H", 1)), (296, 3, 1, struct.pack("<H", 2)), (338, 3, 1, struct.pack("<H", 2))]
+    if s["icc"]:
+        entries.append((34675, 7, len(s["icc"]), s["icc"]))
+    tail, at = _tiff_ifd(entries, f.tell())
+    if at + len(tail) > 0xFFFFFFFF:
+        raise HTTPException(413, "This TIFF passes the 4 GB a classic TIFF holds; save it as PNG or PSB.")
+    f.write(tail)
+    f.seek(4)
+    f.write(struct.pack("<I", at))
+
+
+@router.post("/tiff/{key}")
+async def put_tiff(key: str, request: Request) -> dict[str, int]:
+    """The next rows (RGBA, top first, a whole number of rows)."""
+    s = _tiffs.get(key)
+    if s is None:
+        raise HTTPException(404, "No picture is being written under that key.")
+    await asyncio.to_thread(_tiff_put, s, await request.body())
+    return {"rows": s["rows"]}
+
+
+@router.post("/tiff/{key}/end")
+async def end_tiff(key: str) -> FileResponse:
+    """Closes the TIFF and sends it from disk; refused if rows are missing."""
+    s = _tiffs.get(key)
+    if s is None:
+        raise HTTPException(404, "No picture is being written under that key.")
+    if s["rows"] != s["h"]:
+        raise HTTPException(400, f"{s['rows']} of {s['h']} rows were sent.")
+    _tiffs.pop(key, None)
+    await asyncio.to_thread(_tiff_finish, s)
+    s["f"].close()
+    return FileResponse(s["path"], media_type="image/tiff", background=_gone(s["path"]))
+
+
+def _psd_resource(rid: int, data: bytes) -> bytes:
+    return b"8BIM" + struct.pack(">H", rid) + b"\0\0" + struct.pack(">I", len(data)) + data + (b"\0" if len(data) % 2 else b"")
+
+
+def _psd_head(s: dict) -> bytes:
+    fix = round(max(1.0, s["ppi"]) * 65536)
+    res = _psd_resource(1005, struct.pack(">IHHIHH", fix, 1, 1, fix, 1, 1)) + (_psd_resource(1039, s["icc"]) if s["icc"] else b"")
+    return (b"8BPS" + struct.pack(">H", 2 if s["psb"] else 1) + bytes(6) + struct.pack(">HIIHH", 4, s["h"], s["w"], 8, 3) + struct.pack(">I", 0)
+            + struct.pack(">I", len(res)) + res + struct.pack(">Q" if s["psb"] else ">I", 0) + struct.pack(">H", 0))
+
+
+@router.post("/psd")
+async def begin_psd(request: Request, width: int, height: int, ppi: float = 72.0, psb: bool = False) -> dict[str, str]:
+    """Opens a flat PSD (PSB with `psb`) of `width` by `height` RGBA pixels, 8 bits, merged picture only: the file keeps its
+    channels one after another, so each is spooled to a file of its own as rows arrive (split on the thread pool) and the
+    four are joined behind the header at the end; neither side holds the picture. A body of ICC profile bytes is embedded."""
+    if not (1 <= width <= 65535 and 1 <= height <= 65535) or (not psb and max(width, height) > 30000):
+        raise HTTPException(400, "Sides must be 1 to 30,000 pixels for a PSD, 65,535 for a PSB.")
+    icc = await request.body()
+    if len(icc) > 1_000_000:
+        raise HTTPException(400, "The colour profile is too large.")
+    key = uuid.uuid4().hex
+    path = _dir() / f"{key}.psd"
+    _psds[key] = {"w": width, "h": height, "rows": 0, "path": path, "ppi": ppi, "icc": icc, "psb": psb, "spools": [open(path.with_suffix("." + c), "wb") for c in "rgba"]}
+    return {"key": key}
+
+
+def _psd_put(s: dict, body: bytes) -> None:
+    n = _rows_in(s, body)
+    px = np.frombuffer(body, np.uint8).reshape(n, s["w"], 4)
+    list(_workers().map(lambda c: s["spools"][c].write(px[:, :, c].tobytes()), range(4)))
+    s["rows"] += n
+
+
+def _psd_finish(s: dict) -> None:
+    for f in s["spools"]:
+        f.close()
+    with open(s["path"], "wb") as out:
+        out.write(_psd_head(s))
+        for c in "rgba":
+            part = s["path"].with_suffix("." + c)
+            with open(part, "rb") as src:
+                shutil.copyfileobj(src, out, 1 << 22)
+            part.unlink(missing_ok=True)
+
+
+@router.post("/psd/{key}")
+async def put_psd(key: str, request: Request) -> dict[str, int]:
+    """The next rows (RGBA, top first, a whole number of rows)."""
+    s = _psds.get(key)
+    if s is None:
+        raise HTTPException(404, "No picture is being written under that key.")
+    await asyncio.to_thread(_psd_put, s, await request.body())
+    return {"rows": s["rows"]}
+
+
+@router.post("/psd/{key}/end")
+async def end_psd(key: str) -> FileResponse:
+    """Joins the channels behind the header and sends the file from disk; refused if rows are missing."""
+    s = _psds.get(key)
+    if s is None:
+        raise HTTPException(404, "No picture is being written under that key.")
+    if s["rows"] != s["h"]:
+        raise HTTPException(400, f"{s['rows']} of {s['h']} rows were sent.")
+    _psds.pop(key, None)
+    await asyncio.to_thread(_psd_finish, s)
+    return FileResponse(s["path"], media_type="image/vnd.adobe.photoshop", background=_gone(s["path"]))

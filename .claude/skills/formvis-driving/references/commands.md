@@ -1,6 +1,6 @@
 # formvis commands
 
-Generated from the window's command catalogue (1598 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1599 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
@@ -17,7 +17,7 @@ Generated from the window's command catalogue (1598 commands) by `./formvis agen
 - Tool options: 467
 - Tools: 53
 - Type: 66
-- View: 101
+- View: 102
 - Window: 148
 
 ## Edit
@@ -161,7 +161,7 @@ Generated from the window's command catalogue (1598 commands) by `./formvis agen
 | `export-artboards-pdf` | Artboards to PDF... |  | Exports every artboard as one page of a single PDF, in the Layers order, each page at its artboard size from the document resolution; takes name, jpeg, quality and icc. (asks first) |
 | `export-as` | Export As... | Alt+Shift+Mod+W | Opens Export As with format, size and quality. (asks first) |
 | `export-avif` | Export AVIF |  | Exports the flattened picture as AVIF. (asks first) |
-| `export-data-sets` | Data Sets as Files... |  | Applies each data set in turn and exports the flattened document as <doc>_<dataset>.png (or jpg, tiff, webp, psd by the format param; the template param names the files with {document}, {name} and {index}, repeated names are numbered), all in one zip; the document ends as it started. (asks first) |
+| `export-data-sets` | Data Sets as Files... |  | Applies each data set in turn and exports the flattened document as [doc]_[dataset].png (or jpg, tiff, webp, psd by the format param; the template param names the files with {document}, {name} and {index}, repeated names are numbered), all in one zip; the document ends as it started. (asks first) |
 | `export-exr` | OpenEXR... |  | Exports an OpenEXR file. (asks first) |
 | `export-exr-half` | OpenEXR Half Float... |  | Exports an OpenEXR file with 16-bit half float channels and ZIP compression. (asks first) |
 | `export-exr-none` | OpenEXR Uncompressed... |  | Exports an OpenEXR file with no compression. (asks first) |
@@ -189,7 +189,7 @@ Generated from the window's command catalogue (1598 commands) by `./formvis agen
 | `file-info` | File Info... | Alt+Shift+Mod+I | Opens File Info (title, author, description, rating, keywords, copyright), or sets the fields given as title, author, author_title, description, rating, description_writer, keywords, copyright_status, copyright_notice and copyright_url at once as one step; the fields travel in the project and are written as XMP into PNG, JPEG, TIFF, WebP and PSD exports. (changes the picture) |
 | `fit-image` | Fit Image... |  | Scales the picture to fit within a width and height with its proportions kept (resample high, smooth or nearest, optionally never enlarging); without parameters it opens the dialog. (changes the picture) |
 | `generate-image` | Generate Image... |  | Opens Generate Image. (changes the picture) |
-| `generate-image-assets` | Generate Image Assets |  | Writes a zip holding a <document>-assets folder of image files for every layer or folder whose name holds an asset name such as hero.png, or a list like 200% big.png, small.jpg60%, 64x? icon.png, each trimmed and scaled to its size. (asks first) |
+| `generate-image-assets` | Generate Image Assets |  | Writes a zip holding a [document]-assets folder of image files for every layer or folder whose name holds an asset name such as hero.png, or a list like 200% big.png, small.jpg60%, 64x? icon.png, each trimmed and scaled to its size. (asks first) |
 | `generate-image-assets-folder` | Generate Image Assets to Folder... |  | Writes the image files for every layer or folder named like hero.png straight into a folder the person chooses, instead of a zip; needs a browser that can write to a folder. (asks first) |
 | `image-asset-variants` | Image Asset Default Variants... |  | Sets the default variants for Generate Image Assets: a list of scales such as 100, 200@2x, 3x; every asset name without a size of its own is written once per variant, with the suffix after its name. (changes the picture) |
 | `image-assets-on-save` | Image Assets on Save |  | Turns Image Assets on or off for this document; while on, File > Save also regenerates the image files for every layer named like hero.png and delivers them as a zip. (changes the picture) |
@@ -1539,6 +1539,7 @@ Generated from the window's command catalogue (1598 commands) by `./formvis agen
 | `pasteboard-light` | Pasteboard: Light Grey |  | Makes the pasteboard around the picture light grey. |
 | `pasteboard-mid` | Pasteboard: Medium Grey |  | Makes the pasteboard around the picture medium grey. |
 | `pattern-preview` | Pattern Preview |  | Shows or hides eight copies of the document around it, to check that a tile repeats. |
+| `performance-hud` | Performance HUD |  | Shows or hides a small panel over the canvas with the canvas frame time (median and worst of the last frames), the graphics processor pass time from a timer query where the browser offers one, and the render path in use (WebGPU, WebGL2, native or CPU). |
 | `pixel-art-preview` | Pixel Art Preview |  | Shows or hides a crisp, nearest-neighbour view of the document at every zoom. |
 | `pixel-grid` | Pixel Grid |  | Shows or hides the pixel grid at high zoom. |
 | `preview-32` | 32-bit Preview Options... |  | Opens 32-bit Preview Options, exposure and gamma for how a 32-bit picture is shown. |

@@ -10,6 +10,8 @@ export class CropStitchSettings {
     <summary>Crop and stitch</summary>
     <label class="cv-dialog-row"><span>Use crop and stitch</span><input type="checkbox" data-f="enabled" aria-label="Use crop and stitch"></label>
     <label class="cv-dialog-row"><span>Padding (px)</span><input class="cv-input" type="number" min="0" max="2048" step="1" data-f="padding" aria-label="Crop padding"></label>
+    <label class="cv-dialog-row"><span>Context factor</span><input class="cv-input" type="number" min="1" max="4" step="0.05" data-f="expand" aria-label="Crop context factor" title="1 crops the selection's box; 1.5 takes half as much again around it"></label>
+    <label class="cv-dialog-row"><span>Mask grow (px)</span><input class="cv-input" type="number" min="0" max="256" step="1" data-f="grow" aria-label="Mask grow" title="Spreads the selection outwards before the run, so the fill reaches past its edge"></label>
     <label class="cv-dialog-row"><span>Target size (px)</span><input class="cv-input" type="number" min="64" max="4096" step="1" data-f="target" aria-label="Crop target size"></label>
     <label class="cv-dialog-row"><span>Multiple of</span><input class="cv-input" type="number" min="1" max="256" step="1" data-f="multiple" aria-label="Crop multiple of"></label>
     <label class="cv-dialog-row"><span>Feather (px)</span><input class="cv-input" type="number" min="0" max="256" step="1" data-f="feather" aria-label="Stitch feather"></label>
@@ -17,7 +19,7 @@ export class CropStitchSettings {
     <div class="cv-dialog-row"><input class="cv-input" type="text" maxlength="40" placeholder="Name for a new preset" aria-label="Preset name"><button type="button" class="cv-btn cv-btn-ghost" data-act="save">Save preset</button><button type="button" class="cv-btn cv-btn-ghost" data-act="delete">Delete</button></div>
     <p class="cv-note cv-cs-note" role="status"></p>
   </details>`);
-  private readonly fields: Record<'enabled' | 'padding' | 'target' | 'multiple' | 'feather', HTMLInputElement>;
+  private readonly fields: Record<'enabled' | 'padding' | 'target' | 'multiple' | 'feather' | 'expand' | 'grow', HTMLInputElement>;
   private readonly preset = this.el.querySelector('select') as HTMLSelectElement;
   private readonly name = this.el.querySelector('input[type=text]') as HTMLInputElement;
   private readonly del = this.el.querySelector('[data-act=delete]') as HTMLButtonElement;
@@ -25,7 +27,7 @@ export class CropStitchSettings {
 
   constructor() {
     const f = (k: string): HTMLInputElement => this.el.querySelector(`[data-f=${k}]`) as HTMLInputElement;
-    this.fields = { enabled: f('enabled'), padding: f('padding'), target: f('target'), multiple: f('multiple'), feather: f('feather') };
+    this.fields = { enabled: f('enabled'), padding: f('padding'), target: f('target'), multiple: f('multiple'), feather: f('feather'), expand: f('expand'), grow: f('grow') };
     this.paintPresets();
     this.load();
     this.el.addEventListener('input', (e) => { if (e.target instanceof HTMLInputElement && e.target.dataset.f) this.changed(); });
@@ -40,15 +42,15 @@ export class CropStitchSettings {
 
   /** The settings as the fields hold them, each kept inside its range. */
   value(): CropStitch {
-    const n = (k: 'padding' | 'target' | 'multiple' | 'feather'): number => Number(this.fields[k].value);
-    return cleanCropStitch({ enabled: this.fields.enabled.checked, padding: n('padding'), target: n('target'), multiple: n('multiple'), feather: n('feather') });
+    const n = (k: 'padding' | 'target' | 'multiple' | 'feather' | 'expand' | 'grow'): number => Number(this.fields[k].value);
+    return cleanCropStitch({ enabled: this.fields.enabled.checked, padding: n('padding'), target: n('target'), multiple: n('multiple'), feather: n('feather'), expand: n('expand'), grow: n('grow') });
   }
 
   /** Puts the kept settings in the fields. */
   load(): void {
     const s = loadCropStitch();
     this.fields.enabled.checked = s.enabled;
-    for (const k of ['padding', 'target', 'multiple', 'feather'] as const) this.fields[k].value = String(s[k]);
+    for (const k of ['padding', 'target', 'multiple', 'feather', 'expand', 'grow'] as const) this.fields[k].value = String(s[k]);
     this.matchPreset();
   }
 
@@ -69,7 +71,7 @@ export class CropStitchSettings {
   /** Shows the preset the fields match, or Custom. */
   private matchPreset(): void {
     const v = this.value();
-    const hit = cropPresets().find((p) => p.settings.padding === v.padding && p.settings.target === v.target && p.settings.multiple === v.multiple && p.settings.feather === v.feather);
+    const hit = cropPresets().find((p) => p.settings.padding === v.padding && p.settings.target === v.target && p.settings.multiple === v.multiple && p.settings.feather === v.feather && p.settings.expand === v.expand && p.settings.grow === v.grow);
     if (this.preset.value !== (hit?.name ?? '')) this.preset.value = hit?.name ?? '';
     this.del.disabled = !hit || hit.shipped;
   }
@@ -77,7 +79,7 @@ export class CropStitchSettings {
   private applyPreset(): void {
     const p = cropPresets().find((x) => x.name === this.preset.value);
     if (!p) return;
-    for (const k of ['padding', 'target', 'multiple', 'feather'] as const) this.fields[k].value = String(p.settings[k]);
+    for (const k of ['padding', 'target', 'multiple', 'feather', 'expand', 'grow'] as const) this.fields[k].value = String(p.settings[k]);
     this.changed();
     setText(this.note, `${p.name}: applied.`);
   }

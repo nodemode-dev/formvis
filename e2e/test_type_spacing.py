@@ -29,7 +29,7 @@ def test_the_font_menu_offers_this_machines_fonts_and_the_system_list(page):
       window.queryLocalFonts = async () => [{ family: 'Zz Test Grotesk' }, { family: 'Zz Test Grotesk' }, { family: 'Zz Test Serif' }];
       const got = await F.loadSystemFonts();
       return { defaults: before.slice(0, 3), more: before.length > 12, got, after: F.fontFamilies() }; }""")
-    assert r["defaults"] == ["Inter", "Arial", "Helvetica"] and r["more"], r
+    assert r["defaults"] == ["Inter", "Lato", "Montserrat"] and r["more"], r
     assert r["got"] == ["Zz Test Grotesk", "Zz Test Serif"], r             # families once each
     assert "Zz Test Grotesk" in r["after"] and "Zz Test Serif" in r["after"], r
 

@@ -1,4 +1,4 @@
-import { CROP_PRESETS, cleanCropStitch, cropRect, featherWeights, maskBounds, targetDims, type CropStitch, type Rect } from '../engine/crop-stitch';
+import { CROP_PRESETS, cleanCropStitch, cropRect, expandRect, featherWeights, growMask, maskBounds, targetDims, type CropStitch, type Rect } from '../engine/crop-stitch';
 
 /** Crop and stitch settings (kept on this device) and the generator that applies them: a fill or inpaint run is made on
  *  the crop around the mask, scaled to the target size, then scaled back and stitched in with a feathered edge. */
@@ -65,18 +65,25 @@ export function withCropStitch(generate: (image: Blob, mask: Blob) => Promise<Bl
     const md = m.ctx.getImageData(0, 0, W, H).data;
     const b = maskBounds(md, W, H, 4, 0);
     if (!b) { img.close(); msk.close(); return generate(image, mask); }
-    const crop = cropRect(b, W, H, cfg.padding), size = targetDims(crop.w, crop.h, cfg.target, cfg.multiple);
+    const crop = cropRect(expandRect(cfg.grow > 0 ? cropRect(b, W, H, cfg.grow) : b, cfg.expand), W, H, cfg.padding), size = targetDims(crop.w, crop.h, cfg.target, cfg.multiple);
+    const cm = new Uint8Array(crop.w * crop.h);
+    for (let y = 0; y < crop.h; y++) for (let x = 0; x < crop.w; x++) cm[y * crop.w + x] = md[((crop.y + y) * W + crop.x + x) * 4];
+    const solid = cfg.grow > 0 ? growMask(cm, crop.w, crop.h, cfg.grow) : cm;
     const sendImg = surface(size.width, size.height), sendMask = surface(size.width, size.height);
     sendImg.ctx.drawImage(img, crop.x, crop.y, crop.w, crop.h, 0, 0, size.width, size.height);
-    sendMask.ctx.drawImage(m.canvas, crop.x, crop.y, crop.w, crop.h, 0, 0, size.width, size.height);
+    if (cfg.grow > 0) {
+      const grown = surface(crop.w, crop.h), gd = grown.ctx.createImageData(crop.w, crop.h);
+      for (let i = 0; i < solid.length; i++) gd.data[i * 4] = gd.data[i * 4 + 1] = gd.data[i * 4 + 2] = gd.data[i * 4 + 3] = solid[i];
+      grown.ctx.putImageData(gd, 0, 0);
+      sendMask.ctx.drawImage(grown.canvas, 0, 0, crop.w, crop.h, 0, 0, size.width, size.height);
+    } else sendMask.ctx.drawImage(m.canvas, crop.x, crop.y, crop.w, crop.h, 0, 0, size.width, size.height);
     const made = await generate(await png(sendImg), await png(sendMask));
     const res = await createImageBitmap(made);
     const piece = surface(crop.w, crop.h);
     piece.ctx.drawImage(res, 0, 0, crop.w, crop.h);
     res.close();
-    const pd = piece.ctx.getImageData(0, 0, crop.w, crop.h), cm = new Uint8Array(crop.w * crop.h);
-    for (let y = 0; y < crop.h; y++) for (let x = 0; x < crop.w; x++) cm[y * crop.w + x] = md[((crop.y + y) * W + crop.x + x) * 4];
-    const weight = featherWeights(cm, crop.w, crop.h, cfg.feather);
+    const pd = piece.ctx.getImageData(0, 0, crop.w, crop.h);
+    const weight = featherWeights(solid, crop.w, crop.h, cfg.feather);
     let stitched = 0;
     for (let i = 0; i < weight.length; i++) {
       const a = Math.round(pd.data[i * 4 + 3] * weight[i]);

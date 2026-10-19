@@ -241,8 +241,9 @@ function grown(t: Transform, g: number, rw: number, rh: number): Transform {
   return { ...t, x: t.x - dx, y: t.y - dy, w: t.w + 2 * dx, h: t.h + 2 * dy };
 }
 
-/** Preferences > Performance > Full Resolution Previews: previews run on the whole layer, not a copy of about 2 MP. */
-export const previewMode = { full: false };
+/** Preferences > Performance > Full Resolution Previews: previews run on the whole layer, not a copy of about 2 MP. Low-Resolution Previews
+ *  run on a copy of about half a megapixel instead; Full Resolution wins when both are on. */
+export const previewMode = { full: false, low: false };
 
 export function previewImageEdit(
   host: EditHost,
@@ -251,6 +252,7 @@ export function previewImageEdit(
   maxPixels = 2_000_000,
 ): void {
   if (previewMode.full) maxPixels = Number.POSITIVE_INFINITY;
+  else if (previewMode.low) maxPixels = Math.min(maxPixels, 500_000);
   const mine = ++previewSeq;
   const p = host.current;
   const l = p ? p.activeLayer : null;

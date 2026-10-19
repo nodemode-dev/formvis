@@ -3,11 +3,36 @@ import { api } from './api';
 /** ComfyUI workflows in formvis (1.51.2): the ones kept as choices (Generative Fill, Generate Image), the check that a
  *  workflow is in API format, running one through to its result images, and the generator Generative Fill and Expand
  *  call, so a workflow stands where the fal model does. */
-export interface Recipe { name: string; json: string }
-const KEY = 'formvis.comfyui.recipes';
+export interface Recipe { name: string; json: string; builtin?: boolean }
+const KEY = 'formvis.comfyui.recipes', HIDDEN_KEY = 'formvis.comfyui.recipesHidden';
 
-export function recipes(): Recipe[] {
+const graph = (nodes: Array<[string, Record<string, unknown>]>): string => JSON.stringify(Object.fromEntries(nodes.map(([type, inputs], i) => [String(i + 1), { class_type: type, inputs }])));
+
+/** Workflows that ship with formvis: ComfyUI's own nodes only and no model file, so they run on any ComfyUI. A kept workflow
+ *  of the same name takes their place, and Hide takes one out of the lists until Restore. */
+export const BUILTIN_RECIPES: readonly Recipe[] = [
+  { name: 'Sharpen', builtin: true, json: graph([['LoadImage', { image: 'image.png' }], ['ImageSharpen', { image: ['1', 0], sharpen_radius: 2, sigma: 1, alpha: 1 }], ['SaveImage', { filename_prefix: 'formvis', images: ['2', 0] }]]) },
+  { name: 'Soften', builtin: true, json: graph([['LoadImage', { image: 'image.png' }], ['ImageBlur', { image: ['1', 0], blur_radius: 3, sigma: 1 }], ['SaveImage', { filename_prefix: 'formvis', images: ['2', 0] }]]) },
+];
+
+/** The workflows kept on this device (and mirrored in the recipes folder). */
+export function keptRecipes(): Recipe[] {
   try { const r = JSON.parse(localStorage.getItem(KEY) ?? '[]') as unknown; return Array.isArray(r) ? r.filter((x): x is Recipe => typeof x?.name === 'string' && typeof x?.json === 'string') : []; } catch { return []; }
+}
+
+export function hiddenBuiltins(): string[] {
+  try { const r = JSON.parse(localStorage.getItem(HIDDEN_KEY) ?? '[]') as unknown; return Array.isArray(r) ? r.filter((x): x is string => typeof x === 'string') : []; } catch { return []; }
+}
+
+/** Hides the built-in recipe of this name; null brings every hidden one back. */
+export function hideBuiltin(name: string | null): void {
+  try { localStorage.setItem(HIDDEN_KEY, JSON.stringify(name === null ? [] : [...new Set([...hiddenBuiltins(), name])])); } catch { /* shown again next time */ }
+}
+
+/** The built-in recipes not hidden, then the kept ones; a kept one of a built-in's name replaces it. */
+export function recipes(): Recipe[] {
+  const kept = keptRecipes(), hidden = new Set(hiddenBuiltins());
+  return [...BUILTIN_RECIPES.filter((b) => !hidden.has(b.name) && !kept.some((k) => k.name === b.name)), ...kept];
 }
 
 /** Why `json` cannot run as a workflow, or null when it can (saved with Export (API)). */
@@ -35,15 +60,17 @@ export function addRecipe(name: string, json: string, mirror = true): string | n
   if (problem) return problem;
   if (json.length > 500_000) return `${name} is too large to keep (500 KB at most).`;
   const kept = name.replace(/\.json$/i, '');
-  const list = recipes().filter((r) => r.name !== kept).concat([{ name: kept, json }]);
+  const list = keptRecipes().filter((r) => r.name !== kept).concat([{ name: kept, json }]);
   try { localStorage.setItem(KEY, JSON.stringify(list.slice(-40))); } catch { return 'There is no room left to keep it.'; }
   if (mirror) void api.recipeFileSave(kept, json).catch(() => { /* the copy in the browser is kept */ });
   return null;
 }
 
-export function removeRecipe(name: string): void {
-  try { localStorage.setItem(KEY, JSON.stringify(recipes().filter((r) => r.name !== name))); } catch { /* nothing kept */ }
+export function removeRecipe(name: string): Recipe | null {
+  const was = keptRecipes().find((r) => r.name === name) ?? null;
+  try { localStorage.setItem(KEY, JSON.stringify(keptRecipes().filter((r) => r.name !== name))); } catch { /* nothing kept */ }
   void api.recipeFileDelete(name).catch(() => { /* it was not a file */ });
+  return was;
 }
 
 /** Reads the data folder's recipes folder: workflows there that are not kept yet are added (the folder is where recipes live, the
@@ -51,8 +78,8 @@ export function removeRecipe(name: string): void {
 export async function syncRecipeFolder(): Promise<{ folder: string; added: number } | null> {
   const r = await api.recipeFiles();
   if (!r) return null;
-  const have = new Set(recipes().map((x) => x.name)), inFolder = new Set(r.files.map((f) => f.name));
-  for (const x of recipes()) if (!inFolder.has(x.name)) void api.recipeFileSave(x.name, x.json).catch(() => { /* kept in the browser only */ });
+  const have = new Set(keptRecipes().map((x) => x.name)), inFolder = new Set(r.files.map((f) => f.name));
+  for (const x of keptRecipes()) if (!inFolder.has(x.name)) void api.recipeFileSave(x.name, x.json).catch(() => { /* kept in the browser only */ });
   let added = 0;
   for (const f of r.files) if (!have.has(f.name) && addRecipe(f.name, f.text, false) === null) added++;
   return { folder: r.folder, added };

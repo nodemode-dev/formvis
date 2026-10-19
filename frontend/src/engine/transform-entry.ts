@@ -1,4 +1,5 @@
 import type { ID, Pt, Rect, Transform, Layer, Mask } from './types';
+import { samplingDefault } from './types';
 import { placement, invert, mul, transformBounds, integral, unitPoint } from './geometry';
 import type { Mat } from './geometry';
 import { createSurface, ctxOf } from './surface';
@@ -123,7 +124,7 @@ export function groupBox(host: EntryHost): Transform | null {
     x1 = Math.max(x1, b.x + b.w);
     y1 = Math.max(y1, b.y + b.h);
   }
-  return { x: x0, y: y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0), rotation: 0, flipX: false, flipY: false, sampling: 'high' };
+  return { x: x0, y: y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0), rotation: 0, flipX: false, flipY: false, sampling: samplingDefault.value };
 }
 
 export function beginTransform(host: EntryHost, mode: DragMode, start: Pt): TransformEditState | null {

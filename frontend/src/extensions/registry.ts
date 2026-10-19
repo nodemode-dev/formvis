@@ -12,7 +12,7 @@ export type OptionSpec = (
   | { kind: 'segment'; label?: string; choices: ReadonlyArray<{ id: string; label: string }>; get: () => string; set: (id: string) => void }
   | { kind: 'range'; label: string; min: number; max: number; step?: number; unit?: string; get: () => number; set: (v: number) => void }
   | { kind: 'toggle'; label: string; get: () => boolean; set: (v: boolean) => void }
-  | { kind: 'select'; label: string; choices: ReadonlyArray<{ id: string; label: string }>; get: () => string; set: (id: string) => void; live?: () => ReadonlyArray<{ id: string; label: string }>; preview?: (id: string | null) => void }
+  | { kind: 'select'; label: string; choices: ReadonlyArray<{ id: string; label: string; group?: string }>; get: () => string; set: (id: string) => void; live?: () => ReadonlyArray<{ id: string; label: string; group?: string }>; preview?: (id: string | null) => void }
   | { kind: 'readout'; label: string; get: () => string }
   /** A colour (Type's swatch, 1.50.4): the system picker, as a swatch in the bar. */
   | { kind: 'color'; label: string; get: () => RGB; set: (c: RGB) => void }

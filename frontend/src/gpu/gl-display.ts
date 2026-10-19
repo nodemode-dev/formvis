@@ -1,7 +1,9 @@
 import { invert, mul, type Mat } from '../engine';
 import { blendIndex } from './blend-wgsl';
 import { CLIP_MODE, FOLDER_MODE, GRAIN_MODE, LUT3_MODE, LUT_MODE, type Checker, type DisplayClip, type DisplayLayer, type DisplayMask } from './display';
+import { GlFrameTimer } from './gpu-timing';
 import type { DisplayOptions } from './probe';
+import { dirtyBox, trimResident, type UploadStats } from './residency';
 
 /** The display on WebGL2 (Phase 18.4): the GPU path where WebGPU is missing, as in the Linux desktop shell, whose
  *  webview has none. The same passes as the WebGPU display and the same maths as blend-wgsl.ts, in GLSL ES 3.00: layers
@@ -19,7 +21,15 @@ uniform sampler2D backdrop; uniform sampler2D source;
 uniform mat3 inv; uniform vec2 size; uniform float opacity; uniform int mode; uniform float H;
 uniform sampler2D maskTex; uniform mat3 minv; uniform vec2 msize; uniform int hasMask;
 uniform sampler2D clipTex; uniform int hasClip;
+uniform mat3 vinv; uniform vec4 biT; uniform vec4 biU; uniform int biCh; uniform int chOff;
 out vec4 outColor;
+float biFactor(float v, vec4 r) {
+  float lo = v < r.x ? 0.0 : v < r.y ? (v - r.x) / max(1.0, r.y - r.x) : 1.0;
+  float hi = v > r.w ? 0.0 : v > r.z ? (r.w - v) / max(1.0, r.w - r.z) : 1.0;
+  return lo * hi;
+}
+float biValue(vec3 c, int ch) { vec3 p = floor(c * 255.0 + 0.5); return ch == 2 ? p.r : ch == 3 ? p.g : ch == 4 ? p.b : 0.299 * p.r + 0.587 * p.g + 0.114 * p.b; }
+vec4 keep(vec4 o, vec4 b) { vec3 c = o.rgb; if ((chOff & 1) != 0) c.r = b.r; if ((chOff & 2) != 0) c.g = b.g; if ((chOff & 4) != 0) c.b = b.b; return vec4(c, o.a); }
 float coverage(vec2 p) {
   if (hasMask == 0) return 1.0;
   vec3 qm = minv * vec3(p, 1.0);
@@ -118,13 +128,15 @@ void main() {
   vec4 s0 = texture(source, q.xy / size);
   vec4 sc = s0.a > 0.0 ? vec4(s0.rgb / s0.a, s0.a) : s0;
   if (mode == 1 || mode == 5 || mode == 6 || mode == 11 || (mode >= 15 && mode <= 18) || mode == 21 || mode == 22) sc = vec4(floor(sc.rgb * 255.0 + 0.5) / 255.0, sc.a);
-  float sa = sc.a * opacity * cov; if (sa <= 0.0) { outColor = bd; return; }
+  float bif = 1.0;
+  if (biCh != 0) bif = biFactor(biValue(sc.rgb, biCh), biT) * (bd.a <= 0.0 ? biFactor(255.0, biU) : biFactor(biValue(bd.rgb, biCh), biU));
+  float sa = sc.a * opacity * cov * bif; if (sa <= 0.0) { outColor = bd; return; }
   float ab = bd.a;
-  if (mode == 1) { outColor = dissolveNoise(int(floor(p.x)), int(floor(p.y))) >= sa ? bd : vec4(sc.rgb, 1.0); return; }
-  if (mode == 10) { float lo = min(1.0, sa + ab); vec3 lc = min(vec3(1.0), sc.rgb * sa + bd.rgb * ab); outColor = vec4(lc / max(lo, 1e-6), lo); return; }
+  if (mode == 1) { vec3 dp = vinv * vec3(p, 1.0); outColor = dissolveNoise(int(floor(dp.x)), int(floor(dp.y))) >= sa ? bd : keep(vec4(sc.rgb, 1.0), bd); return; }
+  if (mode == 10) { float lo = min(1.0, sa + ab); vec3 lc = min(vec3(1.0), sc.rgb * sa + bd.rgb * ab); outColor = keep(vec4(lc / max(lo, 1e-6), lo), bd); return; }
   float ao = sa + ab * (1.0 - sa); if (ao <= 0.0) { outColor = vec4(0.0); return; }
   vec3 r = mode == 0 ? sc.rgb : blend(mode, bd.rgb, sc.rgb);
-  outColor = vec4((sa * (1.0 - ab) * sc.rgb + sa * ab * r + (1.0 - sa) * ab * bd.rgb) / ao, ao);
+  outColor = keep(vec4((sa * (1.0 - ab) * sc.rgb + sa * ab * r + (1.0 - sa) * ab * bd.rgb) / ao, ao), bd);
 }`;
 
 const PRESENT_FS = `#version 300 es
@@ -159,13 +171,19 @@ function program(gl: GL, fs: string): WebGLProgram {
 }
 
 export class GlDisplay {
-  private readonly cache = new Map<object, { tex: WebGLTexture; version: number; w: number; h: number }>();
+  private readonly cache = new Map<object, { tex: WebGLTexture; version: number; w: number; h: number; bytes: number; seen: number; at: number }>();
   private acc: { tex: WebGLTexture; fb: WebGLFramebuffer }[] = [];
   private accW = 0;
   private accH = 0;
   onLost: (() => void) | null = null;
+  budgetBytes = 0;
+  readonly stats: UploadStats = { uploads: 0, tiled: 0, bytes: 0 };
+  private frameNo = 0;
+  private scratch: HTMLCanvasElement | null = null;
+  private readonly timer: GlFrameTimer;
 
   private constructor(readonly canvas: HTMLCanvasElement, private readonly gl: GL, private readonly comp: WebGLProgram, private readonly pres: WebGLProgram) {
+    this.timer = new GlFrameTimer(gl);
     canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); console.warn('formvis: the WebGL2 context was lost'); this.onLost?.(); });
   }
 
@@ -197,12 +215,14 @@ export class GlDisplay {
   render(layers: readonly DisplayLayer[], view: Mat, zoom: number, rect: [number, number, number, number], checker: Checker, out?: { fb: WebGLFramebuffer; W: number; H: number }): void {
     const gl = this.gl, W = out ? out.W : this.canvas.width, H = out ? out.H : this.canvas.height;
     if (W < 1 || H < 1 || gl.isContextLost()) return;
+    this.frameNo++;
     if (!this.acc.length || this.accW !== W || this.accH !== H) {
       for (const a of this.acc) { gl.deleteTexture(a.tex); gl.deleteFramebuffer(a.fb); }
       this.acc = [this.target(W, H), this.target(W, H)];
       this.accW = W; this.accH = H;
     }
     let [a, b] = this.acc;
+    if (!out) this.timer.begin();
     gl.viewport(0, 0, W, H);
     gl.disable(gl.BLEND);
     gl.bindFramebuffer(gl.FRAMEBUFFER, a.fb);
@@ -218,12 +238,15 @@ export class GlDisplay {
     gl.uniform1i(u('clipTex'), 3);
     // Each clipping base's coverage, once per frame, into its own screen-sized target (mode 102).
     const clipOut = new Map<DisplayClip, WebGLTexture>();
-    for (const l of layers) {
-      if (!l.clip || clipOut.has(l.clip)) continue;
-      const t = this.clipTarget(clipOut.size, W, H), c = l.clip;
-      this.drawLayer({ image: c.image, version: c.version, width: c.width, height: c.height, matrix: c.matrix, opacity: c.opacity, blend: 'normal', mask: c.mask }, CLIP_MODE, null, this.blank(), t.fb, view, filter, used, u);
+    const clipCover = (c: DisplayClip): WebGLTexture => {
+      const have = clipOut.get(c);
+      if (have) return have;
+      const up = c.parent ? clipCover(c.parent) : null, t = this.clipTarget(clipOut.size, W, H);
+      this.drawLayer({ image: c.image, version: c.version, width: c.width, height: c.height, matrix: c.matrix, opacity: c.opacity, blend: 'normal', mask: c.mask }, CLIP_MODE, up, this.blank(), t.fb, view, filter, used, u);
       clipOut.set(c, t.tex);
-    }
+      return t.tex;
+    };
+    for (const l of layers) if (l.clip) clipCover(l.clip);
     const folderOut = new Map<DisplayMask[], WebGLTexture>();
     let slot = clipOut.size;
     for (const l of layers) {
@@ -256,7 +279,8 @@ export class GlDisplay {
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
-    for (const [k, e] of this.cache) if (!used.has(k)) { gl.deleteTexture(e.tex); this.cache.delete(k); }
+    this.timer.end();
+    trimResident(this.cache, this.frameNo, this.budgetBytes, performance.now(), (e) => gl.deleteTexture(e.tex));
   }
 
   /** One frame into an offscreen framebuffer, returned only when the GPU has finished it (a one-pixel read waits for the
@@ -305,6 +329,12 @@ export class GlDisplay {
     gl.uniform2f(u('size'), l.width, l.height);
     gl.uniform1f(u('opacity'), Math.min(1, Math.max(0, l.opacity)));
     gl.uniform1i(u('mode'), mode);
+    const [va, vb, vc, vd, ve, vf] = invert(view);
+    gl.uniformMatrix3fv(u('vinv'), false, [va, vb, 0, vc, vd, 0, ve, vf, 1]);
+    gl.uniform4f(u('biT'), ...(l.blendIf?.thisLayer ?? [0, 0, 255, 255]));
+    gl.uniform4f(u('biU'), ...(l.blendIf?.underlying ?? [0, 0, 255, 255]));
+    gl.uniform1i(u('biCh'), l.blendIf?.channel ?? 0);
+    gl.uniform1i(u('chOff'), l.chOff ?? 0);
     gl.activeTexture(gl.TEXTURE2);
     if (l.mask) {
       const mk = l.mask, [ma, mb, mc, md, me, mf] = invert(mul(view, mk.matrix));
@@ -353,7 +383,9 @@ export class GlDisplay {
     const gl = this.gl, key = l.lut ?? (l.image as object);
     let e = this.cache.get(key);
     if (e && (e.w !== l.width || e.h !== l.height)) { gl.deleteTexture(e.tex); e = undefined; }
-    if (!e) { e = { tex: gl.createTexture() as WebGLTexture, version: NaN, w: l.width, h: l.height }; this.cache.set(key, e); }
+    if (!e) { e = { tex: gl.createTexture() as WebGLTexture, version: NaN, w: l.width, h: l.height, bytes: l.width * l.height * 4, seen: 0, at: 0 }; this.cache.set(key, e); }
+    e.seen = this.frameNo;
+    e.at = performance.now();
     gl.bindTexture(gl.TEXTURE_2D, e.tex);
     if (l.lut) {
       // A table is data, not an image: uploaded as it is (no premultiplying), once for its settings.
@@ -361,11 +393,28 @@ export class GlDisplay {
         gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, l.width, l.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, l.lut);
         e.version = 0;
+        this.stats.uploads++;
+        this.stats.bytes += e.bytes;
       }
     } else if (l.image && (l.version < 0 || e.version !== l.version)) {
       gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, l.image as TexImageSource);
+      // A changed layer sends only the 256 px tiles its raster says changed since this texture was written.
+      const box = l.version < 0 ? null : dirtyBox(l.image, e.version, l.version, l.width, l.height);
+      if (box) {
+        const sc = this.scratch ??= document.createElement('canvas');
+        if (sc.width !== box.w || sc.height !== box.h) { sc.width = box.w; sc.height = box.h; }
+        const g = sc.getContext('2d') as CanvasRenderingContext2D;
+        g.globalCompositeOperation = 'copy';
+        g.drawImage(l.image as CanvasImageSource, box.x, box.y, box.w, box.h, 0, 0, box.w, box.h);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, box.x, box.y, gl.RGBA, gl.UNSIGNED_BYTE, sc);
+        this.stats.tiled++;
+        this.stats.bytes += box.w * box.h * 4;
+      } else {
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, l.image as TexImageSource);
+        this.stats.bytes += e.bytes;
+      }
+      this.stats.uploads++;
       for (const k of [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T]) gl.texParameteri(gl.TEXTURE_2D, k, gl.CLAMP_TO_EDGE);
       e.version = l.version;
     }

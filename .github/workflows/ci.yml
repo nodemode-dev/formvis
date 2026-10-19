@@ -39,10 +39,51 @@ jobs:
           python-version: '3.12'
       - run: npm ci
         working-directory: frontend
-      - run: pip install pytest playwright psd-tools
+      - run: pip install -r backend/requirements.txt pytest playwright psd-tools
       - run: python -m playwright install --with-deps chromium
+      - name: Start the engine on 8190 (the dev build proxies /api to it)
+        working-directory: backend
+        env:
+          FORMVIS_DATA_DIR: ${{ runner.temp }}/formvis-data
+        run: |
+          nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8190 > "$RUNNER_TEMP/engine.log" 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:8190/api/health; then exit 0; fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/engine.log"
+          exit 1
       - name: Browser tests against the dev build
         run: python -m pytest -q e2e
+      - name: Engine log
+        if: failure()
+        run: cat "$RUNNER_TEMP/engine.log"
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+        working-directory: frontend
+      - name: Type check the frontend
+        run: npx tsc --noEmit -p .
+        working-directory: frontend
+      - name: Byte-compile the engine, the setup scripts and the browser tests
+        run: python -m compileall -q backend/app backend/formvis_engine.py setup e2e
+      - name: Workflow files parse
+        run: |
+          pip install pyyaml
+          python -c "import glob, yaml; [yaml.safe_load(open(f, encoding='utf-8')) for f in sorted(glob.glob('.github/workflows/*.yml'))]; print('workflows parse')"
+      - name: Release notes script reads the changelog
+        run: python setup/release_notes.py "v$(sed -n 's/^## \([0-9][0-9.]*\) .*/\1/p' CHANGELOG.md | head -1)" | head -5
 
   backend:
     runs-on: ubuntu-latest
@@ -74,7 +115,9 @@ jobs:
       - name: Shell syntax
         run: |
           for f in formvis formvis_oc_install backend/oc_install backend/boot_backend frontend/oc_install frontend/boot_frontend setup/*; do
-            case "$f" in *.bat) continue ;; esac
+            [ -f "$f" ] || continue
+            case "$f" in *.bat|*.py) continue ;; esac
+            head -n 1 "$f" | grep -q 'sh' || continue
             bash -n "$f"
           done
       - name: No em dash or emoji in tracked text
