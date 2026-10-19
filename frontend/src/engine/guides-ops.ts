@@ -2,12 +2,12 @@
 // GuideHost, the few Engine members they use, so this file never imports the Engine class.
 import type { Project } from './project';
 import { carryBoxes } from './boxes';
-import type { Doc, DocBox, DocNote, DocSlice, Guide, ID, Pt, Rect } from './types';
+import type { Doc, DocBox, DocNote, DocSlice, Guide, ID, Layer, Pt, Rect } from './types';
 
 /** What the guide and slice methods need of the Engine. */
 export interface GuideHost {
   current: Project | null;
-  view: { guides: boolean; guidesLocked: boolean };
+  view: { guides: boolean; guidesLocked: boolean; artboardGuides: boolean };
   edit(name: string, fn: (p: Project) => boolean | void): boolean;
   /** Redraws the overlay (rulers, guides, slices). */
   overlay(): void;
@@ -18,7 +18,7 @@ export interface GuideHost {
 export function setGuides(host: GuideHost, name: string, next: (g: Guide[]) => Guide[]): void {
   host.edit(name, (p) => {
     const before = p.doc.guides ?? [], after = next([...before]);
-    if (after.length === before.length && after.every((g, i) => g.axis === before[i].axis && g.at === before[i].at && g.color === before[i].color)) return false;
+    if (after.length === before.length && after.every((g, i) => g.axis === before[i].axis && g.at === before[i].at && g.color === before[i].color && g.board === before[i].board)) return false;
     p.doc = { ...p.doc, guides: after };
     return true;
   });
@@ -45,10 +45,23 @@ export function removeGuide(host: GuideHost, index: number): void { setGuides(ho
 /** View > New Guide Layout (27.11): `columns` and `rows` with gutters inside margins:
  *  guides at the margins and at both edges of every gutter (a gutter of 0 puts one guide between cells). `clear`
  *  replaces the existing guides. One undo step. */
-export function guideLayout(host: GuideHost, o: { columns: number; rows: number; gutterX: number; gutterY: number; margin: { top: number; left: number; bottom: number; right: number }; clear: boolean; columnWidth?: number; rowHeight?: number; centre?: boolean }): void {
-  const d = host.current?.doc;
-  if (!d) return;
+export interface GuideLayoutOptions { columns: number; rows: number; gutterX: number; gutterY: number; margin: { top: number; left: number; bottom: number; right: number }; clear: boolean; columnWidth?: number; rowHeight?: number; centre?: boolean; color?: string; artboard?: boolean }
+
+/** The artboard (a top-level folder with an artboard frame) holding the active layer, else the first artboard; null without one. */
+export function activeBoard(p: Project): Layer | null {
+  let l = p.activeLayer ?? null;
+  while (l && !l.artboard && l.parentId) l = p.layer(l.parentId) ?? null;
+  return l?.artboard ? l : p.doc.layers.find((x) => x.artboard) ?? null;
+}
+
+export function guideLayout(host: GuideHost, o: GuideLayoutOptions): void {
+  const d0 = host.current?.doc, board = o.artboard && host.current ? activeBoard(host.current) : null;
+  if (!d0 || (o.artboard && !board?.artboard)) return;
+  const frame = board?.artboard, ox = frame?.x ?? 0, oy = frame?.y ?? 0;
+  const d = { width: frame?.w ?? d0.width, height: frame?.h ?? d0.height };
+  const colour = o.color && /^#[0-9a-f]{6}$/i.test(o.color) ? o.color.toLowerCase() : undefined;
   const half = (v: number): number => Math.round(v * 2) / 2, out: Guide[] = [];
+  const mark = (axis: 'x' | 'y', at: number): Guide => ({ axis, at: half(at + (axis === 'x' ? ox : oy)), ...(colour ? { color: colour } : {}), ...(board ? { board: board.id } : {}) });
   // A fixed cell size (column width, row height) lays the block from the margin, or centred in the space between margins.
   const lay = (axis: 'x' | 'y', n: number, gutter: number, a: number, b: number, fixed = 0, centre = false): void => {
     const span = b - a, cells = Math.max(1, Math.floor(n));
@@ -56,38 +69,68 @@ export function guideLayout(host: GuideHost, o: { columns: number; rows: number;
     if (fixed > 0) {
       const total = cells * fixed + (cells - 1) * gutter, start = centre ? a + (span - total) / 2 : a;
       if (total > span + 1e-6) return;
-      out.push({ axis, at: half(start) }, { axis, at: half(start + total) });
+      out.push(mark(axis, start), mark(axis, start + total));
       for (let i = 1; i < cells; i += 1) {
         const end = start + i * fixed + (i - 1) * gutter;
-        out.push({ axis, at: half(end) });
-        if (gutter > 0) out.push({ axis, at: half(end + gutter) });
+        out.push(mark(axis, end));
+        if (gutter > 0) out.push(mark(axis, end + gutter));
       }
       return;
     }
     const cell = (span - gutter * (cells - 1)) / cells;
-    if (a > 0) out.push({ axis, at: half(a) });
-    if (b < (axis === 'x' ? d.width : d.height)) out.push({ axis, at: half(b) });
+    if (a > 0 || board) out.push(mark(axis, a));
+    if (b < (axis === 'x' ? d.width : d.height) || board) out.push(mark(axis, b));
     for (let i = 1; i < cells; i += 1) {
       const end = a + i * cell + (i - 1) * gutter;
-      out.push({ axis, at: half(end) });
-      if (gutter > 0) out.push({ axis, at: half(end + gutter) });
+      out.push(mark(axis, end));
+      if (gutter > 0) out.push(mark(axis, end + gutter));
     }
   };
   if (o.columns >= 1) lay('x', o.columns, Math.max(0, o.gutterX), Math.max(0, o.margin.left), d.width - Math.max(0, o.margin.right), Math.max(0, o.columnWidth ?? 0), !!o.centre);
   if (o.rows >= 1) lay('y', o.rows, Math.max(0, o.gutterY), Math.max(0, o.margin.top), d.height - Math.max(0, o.margin.bottom), Math.max(0, o.rowHeight ?? 0), !!o.centre);
-  setGuides(host, 'New Guide Layout', (g) => [...(o.clear ? [] : g), ...out]);
+  setGuides(host, 'New Guide Layout', (g) => [...(o.clear ? (board ? g.filter((x) => x.board !== board.id) : []) : g), ...out]);
 }
 
 /** View > New Guides From Shape (27.11): guides on the four edges of the active shape layer's path, else of the selection. */
-export function guidesFromShape(host: GuideHost): boolean {
+export function guidesFromShape(host: GuideHost, o: { source?: 'auto' | 'layer' | 'selection'; edges?: boolean; centre?: boolean } = {}): boolean {
   const p = host.current;
   if (!p) return false;
-  const l = p.activeLayer, sel = p.selection;
-  let r: Rect | null = l?.vector ? host.contentBounds(l.id, p) : null;
-  if (!r && sel) r = { x: sel.x, y: sel.y, w: sel.w, h: sel.h };
-  if (!r) return false;
-  const b = r;
-  setGuides(host, 'New Guides From Shape', (g) => [...g, { axis: 'x', at: b.x }, { axis: 'x', at: b.x + b.w }, { axis: 'y', at: b.y }, { axis: 'y', at: b.y + b.h }]);
+  const l = p.activeLayer, sel = p.selection, src = o.source ?? 'auto';
+  let r: Rect | null = src !== 'selection' && l?.vector ? host.contentBounds(l.id, p) : null;
+  if (!r && src !== 'layer' && sel) r = { x: sel.x, y: sel.y, w: sel.w, h: sel.h };
+  const edges = o.edges !== false, centre = !!o.centre;
+  if (!r || (!edges && !centre)) return false;
+  const b = r, add: Guide[] = [];
+  if (edges) add.push({ axis: 'x', at: b.x }, { axis: 'x', at: b.x + b.w }, { axis: 'y', at: b.y }, { axis: 'y', at: b.y + b.h });
+  if (centre) add.push({ axis: 'x', at: Math.round((b.x + b.w / 2) * 2) / 2 }, { axis: 'y', at: Math.round((b.y + b.h / 2) * 2) / 2 });
+  setGuides(host, 'New Guides From Shape', (g) => [...g, ...add]);
+  return true;
+}
+
+/** Guides `indices` as one undo step: a new orientation, position (kept within the canvas) or colour ('' returns to the default). */
+export function editGuides(host: GuideHost, indices: readonly number[], patch: { axis?: 'x' | 'y'; at?: number; color?: string }): void {
+  const d = host.current?.doc;
+  if (!d || !indices.length) return;
+  const set = new Set(indices), c = patch.color === undefined ? undefined : /^#[0-9a-f]{6}$/i.test(patch.color) ? patch.color.toLowerCase() : '';
+  setGuides(host, 'Edit Guides', (g) => g.map((x, i) => {
+    if (!set.has(i)) return x;
+    const axis = patch.axis ?? x.axis, raw = patch.at ?? x.at, at = Math.min(axis === 'x' ? d.width : d.height, Math.max(0, Math.round(raw * 2) / 2));
+    const { color: _old, ...rest } = x;
+    const color = c === undefined ? x.color : c || undefined;
+    return { ...rest, axis, at, ...(color ? { color } : {}) };
+  }));
+}
+
+export function removeGuides(host: GuideHost, indices: readonly number[]): void {
+  const set = new Set(indices);
+  if (set.size) setGuides(host, 'Delete Guides', (g) => g.filter((_, i) => !set.has(i)));
+}
+
+/** View > Clear Selected Artboard Guides: the guides that belong to the active artboard; false when there is none. */
+export function clearArtboardGuides(host: GuideHost): boolean {
+  const p = host.current, b = p ? activeBoard(p) : null;
+  if (!b || !p?.doc.guides?.some((g) => g.board === b.id)) return false;
+  setGuides(host, 'Clear Artboard Guides', (g) => g.filter((x) => x.board !== b.id));
   return true;
 }
 export function clearGuides(host: GuideHost): void { setGuides(host, 'Clear Guides', () => []); }
@@ -173,12 +216,17 @@ export function addLayerSlice(host: GuideHost): boolean {
 }
 
 /** The guide within `tol` screen pixels of a screen point, nearest first; null when guides are hidden or locked. */
-export function guideAt(host: GuideHost, screen: Pt, tol = 4): number | null {
+export function guideAt(host: GuideHost, screen: Pt, tol = 4, ignoreLock = false): number | null {
   const p = host.current, g = p?.doc.guides;
-  if (!p || !g?.length || !host.view.guides || host.view.guidesLocked) return null;
+  if (!p || !g?.length || !host.view.guides || (host.view.guidesLocked && !ignoreLock)) return null;
   const v = p.viewport;
   let best: number | null = null, bestD = tol + 1;
-  g.forEach((x, i) => { const d = Math.abs(x.axis === 'x' ? v.panX + x.at * v.zoom - screen.x : v.panY + x.at * v.zoom - screen.y); if (d <= tol && d < bestD) { best = i; bestD = d; } });
+  g.forEach((x, i) => {
+    if (x.board) {
+      const b = p.layer(x.board)?.artboard, along = x.axis === 'x' ? (screen.y - v.panY) / v.zoom : (screen.x - v.panX) / v.zoom;
+      if (!host.view.artboardGuides || !b || along < (x.axis === 'x' ? b.y : b.x) || along > (x.axis === 'x' ? b.y + b.h : b.x + b.w)) return;
+    }
+    const d = Math.abs(x.axis === 'x' ? v.panX + x.at * v.zoom - screen.x : v.panY + x.at * v.zoom - screen.y); if (d <= tol && d < bestD) { best = i; bestD = d; } });
   return best;
 }
 
@@ -196,7 +244,7 @@ export function carryMarks(doc: Doc, c: Carry): Partial<Doc> {
     out.guides = c.upright === false ? [] : doc.guides.flatMap((g) => {
       const q = c.map(g.axis === 'x' ? g.at : 0, g.axis === 'y' ? g.at : 0);
       const axis: 'x' | 'y' = c.swap ? (g.axis === 'x' ? 'y' : 'x') : g.axis, at = Math.round((axis === 'x' ? q.x : q.y) * 2) / 2;
-      return at >= 0 && at <= (axis === 'x' ? c.width : c.height) ? [{ axis, at }] : [];
+      return at >= 0 && at <= (axis === 'x' ? c.width : c.height) ? [{ ...g, axis, at }] : [];
     });
   }
   if (doc.slices?.length) {

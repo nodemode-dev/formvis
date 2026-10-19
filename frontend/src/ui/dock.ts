@@ -26,6 +26,7 @@ export const DOCK_PANELS: readonly DockPanel[] = [
   { id: 'histogram', label: 'Histogram', selector: 'section.cv-histogram-panel' },
   { id: 'clone-source', label: 'Clone Source', selector: 'section.cv-clone-source' },
   { id: 'reference', label: 'Reference', selector: 'section.cv-reference' },
+  { id: 'comfyui', label: 'ComfyUI', selector: 'section.cv-comfyui' },
 ];
 /** The side column's panel groups (Phase 21), movable like the dock's: any panel may live in either column. */
 export const SIDE_PANELS: readonly DockPanel[] = [
@@ -43,8 +44,9 @@ const DEFAULT_SIDE = SIDE_PANELS.map((p) => p.id);
 interface DockState { order: string[]; hidden: string[]; side: string[] }
 const KEY = 'formvis.dock';
 const HEIGHTS_KEY = 'formvis.dock.heights';
+const FLOATS_KEY = 'formvis.dock.floats';
 /** The Essentials default: Navigator, Swatches and Layers shown; Timeline and History in Window. */
-const DEFAULT: DockState = { order: DOCK_PANELS.map((p) => p.id), hidden: ['generate', 'timeline', 'history', 'info', 'layer-comps', 'styles', 'gradients', 'patterns', 'shapes', 'measurement-log', 'modifier-keys', 'adjustments', 'notes', 'histogram', 'clone-source', 'reference'], side: [...DEFAULT_SIDE] };
+const DEFAULT: DockState = { order: DOCK_PANELS.map((p) => p.id), hidden: ['generate', 'timeline', 'history', 'info', 'layer-comps', 'styles', 'gradients', 'patterns', 'shapes', 'measurement-log', 'modifier-keys', 'adjustments', 'notes', 'histogram', 'clone-source', 'reference', 'comfyui'], side: [...DEFAULT_SIDE] };
 
 function load(): DockState {
   try {
@@ -67,6 +69,8 @@ function load(): DockState {
 }
 
 export class Dock {
+  /** Preferences > Workspace > Remember panel layout changes: off, the arrangement, sizes and floating places are not written. */
+  static remember = true;
   private state = load();
   private readonly marker = el('<div class="cv-dock-marker" hidden></div>');
   private drag: { id: string; startY: number; moving: boolean; target: number; col: 'dock' | 'side' } | null = null;
@@ -87,6 +91,7 @@ export class Dock {
         if (e.button !== 0 || this.locked || (e.target as HTMLElement).closest('[data-cmd]')) return;
         // A tab in a panel group of several drags itself (PanelGroup); the Layers group's tabs cannot yet, so it moves whole.
         if (section?.classList.contains('cv-group') && (e.target as HTMLElement).closest('.cv-group-tab') && section.querySelectorAll('.cv-group-tab').length > 1) return;
+        if (this.floats[p.id]) return;   // a floating panel moves by its own bar
         // The pointer is captured only once the drag moves (move), so a plain click still reaches a tab in the header.
         this.drag = { id: p.id, startY: e.clientY, moving: false, target: -1, col: 'dock' };
         // Movement is followed on the whole document until release: a quick flick leaves the header at once.
@@ -107,7 +112,9 @@ export class Dock {
   /** The arrangement as it stands, for Window > Workspace > New Workspace. */
   get layout(): { order: string[]; hidden: string[] } { return { order: [...this.state.order], hidden: [...this.state.hidden] }; }
   /** Shown and holding a tab (a group whose tabs all moved away is absent). */
-  private present(id: string): boolean { return this.isShown(id) && !this.section(id)?.classList.contains('is-empty'); }
+  private visible(id: string): boolean { return this.isShown(id) && !this.section(id)?.classList.contains('is-empty'); }
+  /** Visible and in a column (a floating panel has its own window). */
+  private present(id: string): boolean { return this.visible(id) && !this.floats[id]; }
   /** Re-lays out the columns (tabs moved between groups). */
   refresh(): void { this.apply(); this.onChange?.(); }
 
@@ -117,10 +124,82 @@ export class Dock {
   }
 
   /** Window > Reset Panels: the default order, every panel shown. */
-  reset(): void { this.state = { order: [...DEFAULT.order], hidden: [...DEFAULT.hidden], side: [...DEFAULT_SIDE] }; this.heights = {}; this.saveHeights(); this.save(); }
+  reset(): void { this.state = { order: [...DEFAULT.order], hidden: [...DEFAULT.hidden], side: [...DEFAULT_SIDE] }; this.heights = {}; this.saveHeights(); this.floats = {}; this.saveFloats(); this.save(); }
 
-  /** The panels living in the dock, in order (everything not in the side column). */
-  private dockIds(): string[] { return this.state.order.filter((id) => !this.state.side.includes(id)); }
+  /** The panels living in the dock, in order (everything not in the side column or floating). */
+  private dockIds(): string[] { return this.state.order.filter((id) => !this.state.side.includes(id) && !this.floats[id]); }
+
+  /** Floating panels (Window > Float Panel): each panel's own window, kept where it was left and remembered. The
+   *  panel's element moves into its frame and back, never rebuilt. */
+  private floats: Record<string, { x: number; y: number; w: number; h: number }> = (() => { try { const f = JSON.parse(localStorage.getItem(FLOATS_KEY) ?? '{}') as Record<string, Record<string, unknown>>; const out: Record<string, { x: number; y: number; w: number; h: number }> = {}; for (const [id, r] of Object.entries(f)) if (r && [r.x, r.y, r.w, r.h].every((v) => typeof v === 'number' && Number.isFinite(v))) out[id] = { x: r.x as number, y: r.y as number, w: r.w as number, h: r.h as number }; return out; } catch { return {}; } })();
+  private readonly frames = new Map<string, HTMLElement>();
+  private saveFloats(): void { if (Dock.remember) try { localStorage.setItem(FLOATS_KEY, JSON.stringify(this.floats)); } catch { /* this session only */ } }
+  isFloating(id: string): boolean { return !!this.floats[id]; }
+  floatingIds(): string[] { return Object.keys(this.floats); }
+  /** The panel in a window of its own, at a place and size or where it last stood (a new one steps down the screen). */
+  float(id: string, at: { x?: number; y?: number; w?: number; h?: number } = {}): boolean {
+    if (!ALL_PANELS.some((p) => p.id === id)) return false;
+    const n = Object.keys(this.floats).length, prev = this.floats[id];
+    this.floats[id] = { x: at.x ?? prev?.x ?? 160 + 28 * n, y: at.y ?? prev?.y ?? 110 + 28 * n, w: at.w ?? prev?.w ?? 300, h: at.h ?? prev?.h ?? 380 };
+    this.state.hidden = this.state.hidden.filter((h) => h !== id);
+    this.saveFloats();
+    this.save();
+    return true;
+  }
+  /** A floating panel back in its column. */
+  dockBack(id: string): boolean {
+    if (!this.floats[id]) return false;
+    delete this.floats[id];
+    this.saveFloats();
+    this.save();
+    return true;
+  }
+  /** Shows the panel if hidden, opens the collapsed column for a docked one, and raises a floating one. */
+  activate(id: string): boolean {
+    if (!ALL_PANELS.some((p) => p.id === id)) return false;
+    if (!this.isShown(id)) this.state.hidden = this.state.hidden.filter((h) => h !== id);
+    if (!this.floats[id] && this.collapsed) this.setCollapsed(false);
+    this.save();
+    const f = this.frames.get(id);
+    if (f && f.parentElement && f.parentElement.lastElementChild !== f) f.parentElement.appendChild(f);
+    return true;
+  }
+  private makeFrame(p: DockPanel): HTMLElement {
+    const f = el(`<div class="cv-float-panel" data-panel="${p.id}"><div class="cv-float-bar"><span class="cv-float-title"></span><button class="cv-float-dock" type="button" title="Dock back" aria-label="Dock back">${icon('collapseRight', 14)}</button></div></div>`);
+    const bar = f.querySelector('.cv-float-bar') as HTMLElement;
+    f.querySelector('.cv-float-dock')?.addEventListener('click', () => this.dockBack(p.id));
+    f.addEventListener('pointerdown', () => { if (f.parentElement && f.parentElement.lastElementChild !== f) f.parentElement.appendChild(f); }, true);
+    bar.addEventListener('pointerdown', (e) => {
+      const r = this.floats[p.id];
+      if (e.button !== 0 || !r || this.locked || (e.target as HTMLElement).closest('button')) return;
+      e.preventDefault();
+      const x0 = e.clientX, y0 = e.clientY, ox = r.x, oy = r.y;
+      const move = (m: PointerEvent): void => { r.x = Math.max(0, Math.min(window.innerWidth - 80, ox + m.clientX - x0)); r.y = Math.max(0, Math.min(window.innerHeight - 40, oy + m.clientY - y0)); f.style.left = `${Math.round(r.x)}px`; f.style.top = `${Math.round(r.y)}px`; };
+      const up = (): void => { document.removeEventListener('pointermove', move, true); document.removeEventListener('pointerup', up, true); this.saveFloats(); };
+      document.addEventListener('pointermove', move, true);
+      document.addEventListener('pointerup', up, true);
+    });
+    // The frame's own resize corner: the new size is remembered when the pointer is let go.
+    f.addEventListener('pointerup', () => { const r = this.floats[p.id]; if (r && (Math.abs(f.offsetWidth - r.w) > 1 || Math.abs(f.offsetHeight - r.h) > 1)) { r.w = f.offsetWidth; r.h = f.offsetHeight; this.saveFloats(); } });
+    (document.getElementById('overlay-root') ?? document.body).appendChild(f);
+    return f;
+  }
+  /** Each floating panel's frame shown at its place with the panel in it; other frames hidden. */
+  private syncFloats(): void {
+    for (const p of ALL_PANELS) {
+      const r = this.floats[p.id], s = this.section(p.id), on = !!r && !!s && this.visible(p.id);
+      let f = this.frames.get(p.id);
+      if (on && !f) { f = this.makeFrame(p); this.frames.set(p.id, f); }
+      if (!f) continue;
+      setHidden(f, !on);
+      if (!on || !r || !s) continue;
+      if (s.parentElement !== f) { f.appendChild(s); s.classList.remove('is-sized'); s.style.height = ''; }
+      const title = f.querySelector('.cv-float-title') as HTMLElement;
+      if (title.textContent !== p.label) title.textContent = p.label;
+      const css: Array<[string, string]> = [['left', `${Math.round(Math.max(0, Math.min(window.innerWidth - 80, r.x)))}px`], ['top', `${Math.round(Math.max(0, Math.min(window.innerHeight - 40, r.y)))}px`], ['width', `${Math.round(r.w)}px`], ['height', `${Math.round(r.h)}px`]];
+      for (const [k, v] of css) if (f.style.getPropertyValue(k) !== v) f.style.setProperty(k, v);
+    }
+  }
   /** The side column's panels, in order. */
   sideIds(): string[] { return [...this.state.side]; }
   /** How many panels the side column shows (none: the app hides the column). */
@@ -133,7 +212,7 @@ export class Dock {
 
   /** Group heights set by dragging a splitter (Phase 21, the target's resizable groups); Layers takes what is left. */
   private heights: Record<string, number> = (() => { try { const h = JSON.parse(localStorage.getItem(HEIGHTS_KEY) ?? '{}') as Record<string, unknown>; return Object.fromEntries(Object.entries(h).filter(([, v]) => typeof v === 'number' && Number.isFinite(v))) as Record<string, number>; } catch { return {}; } })();
-  private saveHeights(): void { try { localStorage.setItem(HEIGHTS_KEY, JSON.stringify(this.heights)); } catch { /* this session only */ } }
+  private saveHeights(): void { if (Dock.remember) try { localStorage.setItem(HEIGHTS_KEY, JSON.stringify(this.heights)); } catch { /* this session only */ } }
 
 
   /** A workspace's arrangement (Phase 21): the panels in this order, these hidden; ids not in the dock are ignored. */
@@ -235,12 +314,13 @@ export class Dock {
     const current = Array.from(this.dock.children).filter((c) => want.includes(c as HTMLElement));
     if (want.some((s, i) => current[i] !== s)) for (const s of want) this.dock.insertBefore(s, this.marker);
     if (this.side) {
-      const sideWant = this.state.side.map((id) => this.section(id)).filter((s): s is HTMLElement => !!s);
+      const sideWant = this.state.side.filter((id) => !this.floats[id]).map((id) => this.section(id)).filter((s): s is HTMLElement => !!s);
       const sideNow = Array.from(this.side.children).filter((c) => sideWant.includes(c as HTMLElement));
       if (sideWant.some((s, i) => sideNow[i] !== s)) for (const s of sideWant) this.side.appendChild(s);
       for (const s of sideWant) { s.classList.remove('is-sized'); s.style.height = ''; }   // sizes are the dock's
     }
-    for (const p of ALL_PANELS) { const s = this.section(p.id); if (s) setHidden(s, !this.present(p.id)); }
+    for (const p of ALL_PANELS) { const s = this.section(p.id); if (s) setHidden(s, !this.visible(p.id)); }
+    this.syncFloats();
     this.splitters();
     this.placeCollapse();
     this.dock.classList.toggle('is-collapsed', this.collapsed);
@@ -288,7 +368,7 @@ export class Dock {
   }
 
   private save(): void {
-    try { localStorage.setItem(KEY, JSON.stringify(this.state)); } catch { /* this session only */ }
+    if (Dock.remember) try { localStorage.setItem(KEY, JSON.stringify(this.state)); } catch { /* this session only */ }
     this.apply();
     this.onChange?.();
   }
@@ -350,7 +430,7 @@ export class Dock {
     this.state = { ...this.state, side, order };
     this.save();
   }
-  removePanel(id: string): void { this.state = { ...this.state, side: this.state.side.filter((x) => x !== id), order: this.state.order.filter((x) => x !== id), hidden: this.state.hidden.filter((x) => x !== id) }; this.save(); }
+  removePanel(id: string): void { if (this.floats[id]) { delete this.floats[id]; this.saveFloats(); } this.state = { ...this.state, side: this.state.side.filter((x) => x !== id), order: this.state.order.filter((x) => x !== id), hidden: this.state.hidden.filter((x) => x !== id) }; this.save(); }
 
   private readonly docMove = (e: PointerEvent): void => { if (this.drag) this.move(e); else document.removeEventListener('pointermove', this.docMove, true); };
 

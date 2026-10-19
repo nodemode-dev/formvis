@@ -1,16 +1,16 @@
 import type { DocView, Engine, Project } from '../engine';
 import { bindDocView, drawDocView, fitCanvas } from './view-canvas';
 
-export type ArrangeLayout = 'tabs' | '2up-v' | '2up-h' | '3up' | '4up' | '6up';
+export type ArrangeLayout = 'tabs' | '2up-v' | '2up-h' | '3up' | '4up' | '6up' | 'tile-v' | 'tile-h' | '3up-v' | '3up-h';
 
 const KEY = 'formvis.arrange';
-const COUNT: Record<ArrangeLayout, number> = { tabs: 0, '2up-v': 1, '2up-h': 1, '3up': 2, '4up': 3, '6up': 5 };
+const COUNT: Record<ArrangeLayout, number> = { tabs: 0, '2up-v': 1, '2up-h': 1, '3up': 2, '4up': 3, '6up': 5, 'tile-v': Infinity, 'tile-h': Infinity, '3up-v': 2, '3up-h': 2 };
 const LAYOUTS = Object.keys(COUNT) as ArrangeLayout[];
 /** Editable tiles (36.16): the smallest a tile may be dragged to, in pixels. */
 const MIN_TILE = 120;
 /** Columns of each grid layout, how many column gutters it has for `k` shown tiles, and whether a second row exists. */
-const COLS: Record<ArrangeLayout, number> = { tabs: 0, '2up-v': 2, '2up-h': 1, '3up': 2, '4up': 2, '6up': 3 };
-const colGutters = (l: ArrangeLayout, k: number): number => (l === '2up-v' || l === '3up' || l === '4up' ? 1 : l === '6up' ? (k >= 2 ? 2 : 1) : 0);
+const COLS: Record<ArrangeLayout, number> = { tabs: 0, '2up-v': 2, '2up-h': 1, '3up': 2, '4up': 2, '6up': 3, 'tile-v': 0, 'tile-h': 1, '3up-v': 3, '3up-h': 1 };
+const colGutters = (l: ArrangeLayout, k: number): number => (l === '2up-v' || l === '3up' || l === '4up' ? 1 : l === '6up' || l === '3up-v' ? (k >= 2 ? 2 : 1) : 0);
 const hasRow2 = (l: ArrangeLayout, k: number): boolean => (l === '2up-h' ? k >= 1 : l === '3up' || l === '4up' ? k >= 2 : l === '6up' ? k >= 3 : false);
 type GutterId = 'v1' | 'v2' | 'h';
 interface TileSizes { c1?: number; c2?: number; r1?: number }
@@ -141,6 +141,8 @@ export class ViewTiles {
     });
     const count = String(want.length);
     if (this.col.dataset.tiles !== count) this.col.dataset.tiles = count;
+    const across = String(want.length + 1);
+    if (this.col.style.getPropertyValue('--cv-n') !== across) this.col.style.setProperty('--cv-n', across);
     this.queue();
     this.queuePlace();
   }

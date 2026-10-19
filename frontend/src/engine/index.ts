@@ -36,7 +36,7 @@ import { PREVIEW, TiledRaster } from './tiled';
 import { SelectionMask, traceOutline, type SelectionMode } from './selection';
 import { CANVAS_PIXELS, CANVAS_SIDE, Raster, createSurface, ctxOf, toBlob, type Surface, type Ctx2D } from './surface';
 import { projectBack, type PanoramaLink } from './panorama';
-import { applyMat, boundsOf, contains, integral, intersectRect, invert, isAxisAligned, mul, placement, rotation, sameTransform, scaling, setMat, transformBounds, translation, unionRect, type Mat } from './geometry';
+import { applyMat, boundsOf, contains, integral, intersectRect, invert, isAxisAligned, mul, placement, rotation, sameTransform, scaling, setMat, transformBounds, translation, unionRect, unitPoint, type Mat } from './geometry';
 import { ancestors, byId, descendantIds, groupIsolated, hierarchy, isDescendant } from './tree';
 import { dragged, following, rounded, type DragMode } from './transform';
 import { againQuad, carried, cornersOf, cropWarp, distortDragged, distortUsable, maskEdgeTone, visibleBounds, warpRaster, type DistortMode, type Warped, imageCorners, homography, project, inverse3 } from './distort';
@@ -960,7 +960,7 @@ export class Engine {
   /** Notes (the Note tool; 1.49.6, the owner's tool list): pinned to the document, saved with it; each change one step. */
   activeNote: ID | null = null;
   addNote(pt: Pt): ID | null { return NT.addNote(this.noteHost, pt); }
-  setNote(id: ID, patch: { text?: string; x?: number; y?: number }, name = 'Edit Note'): void { NT.setNote(this.noteHost, id, patch, name); }
+  setNote(id: ID, patch: { text?: string; x?: number; y?: number; author?: string; color?: string }, name = 'Edit Note'): void { NT.setNote(this.noteHost, id, patch, name); }
   removeNote(id: ID): void { NT.removeNote(this.noteHost, id); }
   /** Notes panel > Delete All (36.17): every note goes in one undo step. */
   clearNotes(): void { NT.clearNotes(this.noteHost); }
@@ -1052,6 +1052,7 @@ export class Engine {
         if (bw > 0 && bh > 0) {
           const px = ctxOf(flat).getImageData(x0, y0, bw, bh).data;
           let sum = 0, wt = 0, mn = 255, mx = 0, sx = 0, sy = 0, cw = 0;
+          const bins = new Array<number>(16).fill(0);
           for (let j = 0; j < bh; j++) {
             for (let i = 0; i < bw; i++) {
               const m = data[(y0 + j) * w + x0 + i];
@@ -1062,12 +1063,13 @@ export class Engine {
               if (px[o + 3] === 0) continue;
               const y = 0.299 * px[o] + 0.587 * px[o + 1] + 0.114 * px[o + 2];
               sum += y * wgt; wt += wgt;
+              bins[Math.min(15, y >> 4)] += wgt;
               if (y < mn) mn = y;
               if (y > mx) mx = y;
             }
           }
           if (cw > 0) { rec.cx = (sx / cw) * k; rec.cy = (sy / cw) * k; }
-          if (wt > 0 && rec.area !== undefined) { rec.gray = sum / wt; rec.grayMin = mn; rec.grayMax = mx; rec.intDen = rec.area * rec.gray; }
+          if (wt > 0 && rec.area !== undefined) { rec.gray = sum / wt; rec.grayMin = mn; rec.grayMax = mx; rec.intDen = rec.area * rec.gray; rec.hist = bins.map((b) => b * k * k); }
         }
       }
     }
@@ -1662,7 +1664,14 @@ export class Engine {
   }
   zoomStep(inward: boolean, at?: Pt): void {
     const z = this.zoomGoal?.z ?? this.current?.viewport.zoom ?? 1;
-    this.zoomSmooth(inward ? z * 1.25 : z / 1.25, at);
+    this.zoomSmooth(ViewLimits.ladderStep(z, inward), at);
+  }
+  /** View > Flip Horizontal: mirrors the view, not the pixels. */
+  setViewFlip(on: boolean): void {
+    const v = this.current?.viewport;
+    if (!v || v.flipped === on) return;
+    v.flipped = on;
+    this.emit('viewport', null);
   }
   /** Preferences > General and Tools: whether a zoom step eases to its size, and whether a click with the Zoom tool brings the clicked point to the centre. */
   zoomPrefs = { animate: false, centreClick: false };
@@ -1700,6 +1709,25 @@ export class Engine {
     this.emit('viewport', null);
     this.emit('render', null);
   }
+  /** Flick panning: the view coasts on at `vx`, `vy` (pixels per millisecond, in the drawing surfaces' space) and slows to a stop. */
+  private flickFrame = 0;
+  flick(vx: number, vy: number): void {
+    cancelAnimationFrame(this.flickFrame);
+    let last = performance.now();
+    const tick = (now: number): void => {
+      const dt = Math.min(50, now - last);
+      last = now;
+      this.pan(vx * dt, vy * dt);
+      const k = Math.exp(-dt / 325);
+      vx *= k; vy *= k;
+      this.flickFrame = Math.hypot(vx, vy) > 0.02 ? requestAnimationFrame(tick) : 0;
+    };
+    this.flickFrame = requestAnimationFrame(tick);
+  }
+  stopFlick(): void { cancelAnimationFrame(this.flickFrame); this.flickFrame = 0; }
+  /** View > Canvas Scrollbars: thin scroll indicators over the canvas that also drag the view; off unless asked for. */
+  canvasScrollbars = false;
+  setCanvasScrollbars(on: boolean): void { this.canvasScrollbars = on; this.emit('viewport', null); this.emit('options', null); }
 
   /** Multichannel (31.3b): the channels overprinted on white, drawn once per channel set. */
   private mcCache: { key: object; s: Surface } | null = null;
@@ -1978,6 +2006,10 @@ export class Engine {
     this.emit('render', null);
   }
 
+  /** The Hand tool's Scroll All Windows: while on, panning with it moves every open document to the same place. */
+  handScrollAll = false;
+  syncOtherViews(): void { this.matchViews({ location: true }); }
+
   /** Window > Paragraph Styles: the document's styles. */
   get paragraphStyles(): readonly ParagraphStyle[] {
     const own = this.current?.doc.paragraphStyles ?? [];
@@ -2055,7 +2087,7 @@ export class Engine {
       const o: TextSpec = { ...t };
       for (const k of kind === 'character' ? CHARACTER_RESET : PARAGRAPH_RESET) delete (o as unknown as Record<string, unknown>)[k];
       return kind === 'character'
-        ? { ...o, family: d.family, size: d.size, bold: false, italic: false, tracking: 0, kerning: 'metrics', lineHeight: d.lineHeight, features: null, language: undefined, rendered: undefined }
+        ? { ...o, family: d.family, size: d.size, bold: false, italic: false, tracking: 0, kerning: 'metrics', lineHeight: d.lineHeight, features: null, runs: undefined, language: undefined, rendered: undefined }
         : { ...o, align: 'left', hyphenate: false, rendered: undefined };
     };
     this.textSettings = drop(this.textSettings);
@@ -2258,6 +2290,8 @@ export class Engine {
 
   /** Re-renders every live type layer with its own spec; returns how many it handled. */
   async updateAllTextLayers(): Promise<number> { return TX.updateAllTextLayers(this.textHost); }
+  /** Several type layers set to new specs in one undo step named `step`; the number changed. */
+  async updateTextLayers(changes: ReadonlyArray<{ id: ID; spec: TextSpec }>, step: string): Promise<number> { return TX.updateTextLayers(this.textHost, changes, step); }
 
   /** The live type layers' id, name, content and font family, for Check Spelling and Resolve Missing Fonts. */
   textLayerInfo(): Array<{ id: ID; name: string; content: string; family: string }> { return TX.textLayerInfo(this.textHost); }
@@ -5972,6 +6006,62 @@ export class Engine {
 
   get transformPending(): boolean { return this.pendingTransform && !!this.transformEdit; }
 
+  /** The Free Transform bar's reference point (0 to 1 across the box, the middle by default): X and Y read and move it,
+   *  and size, scale, angle and skew edits hold it still. */
+  transformRef = { x: 0.5, y: 0.5 };
+
+  setTransformRef(x: number, y: number): void {
+    this.transformRef = { x, y };
+    this.emit('options', null);
+    this.emit('overlay', null);
+  }
+
+  private barBox(): Transform | null {
+    const pt = this.pathTransform, te = this.transformEdit, l = this.activeLayer;
+    return pt ? pt.draft : te ? te.draft : l && l.raster ? l.transform : null;
+  }
+
+  transformRefPoint(): Pt | null {
+    const t = this.barBox();
+    return t ? unitPoint(t, this.transformRef.x, this.transformRef.y) : null;
+  }
+
+  setTransformRefPoint(axis: 'x' | 'y', v: number): void {
+    const t = this.barBox(), r = this.transformRefPoint();
+    if (!t || !r || !Number.isFinite(v)) return;
+    this.setLayerTransform(axis === 'x' ? { x: t.x + v - r.x } : { y: t.y + v - r.y }, 'Move Layer');
+  }
+
+  /** A size or angle edit of the box with the reference point held where it is. */
+  setLayerTransformAbout(patch: Partial<Transform>, name = 'Transform Layer'): void {
+    const t = this.barBox();
+    if (!t) return;
+    const next: Transform = { ...t, ...patch }, a = unitPoint(t, this.transformRef.x, this.transformRef.y), b = unitPoint(next, this.transformRef.x, this.transformRef.y);
+    this.setLayerTransform({ ...patch, x: next.x + a.x - b.x, y: next.y + a.y - b.y }, name);
+  }
+
+  /** The bar's H and V skew angles: the pending box is applied and becomes a Skew distortion whose corners are the box's
+   *  sheared about the reference point; a later angle is taken from the same box. */
+  skewBox(axis: 'h' | 'v', deg: number): boolean {
+    if (!Number.isFinite(deg) || Math.abs(deg) >= 89) return false;
+    if (this.pathTransform) { this.notice('Apply the path transform first, then skew it from Edit > Transform.'); return false; }
+    if (!this.distortEdit && !this.beginDistortMode('skew')) return false;
+    const d = this.distortEdit;
+    if (!d) return false;
+    const s = { h: d.skew?.h ?? 0, v: d.skew?.v ?? 0 };
+    s[axis] = deg;
+    const r = unitPoint(d.box, this.transformRef.x, this.transformRef.y), th = Math.tan((s.h * Math.PI) / 180), tv = Math.tan((s.v * Math.PI) / 180);
+    const next = cornersOf(d.box).map((c) => ({ x: c.x + th * (c.y - r.y), y: c.y + tv * (c.x - r.x) }));
+    if (!distortUsable(next)) return false;
+    d.skew = s;
+    d.corners = next;
+    this.entryHost.requestFrame(() => TE.previewDistort(this.entryHost, d));
+    this.emit('render', null);
+    this.emit('options', null);
+    this.emit('overlay', null);
+    return true;
+  }
+
   beginPendingTransform(): boolean {
     if (!this.beginTransform({ kind: 'resize', handle: 0 }, { x: 0, y: 0 })) return false;
     this.pendingTransform = true;
@@ -7068,7 +7158,7 @@ export class Engine {
    *  the colours blended in sRGB (Classic, as before), linear light (Linear) or OKLab (Perceptual). */
   gradientSettings: { shape: GradientType; style: string; reversed: boolean; opacity: number; blend: BlendMode; dither: boolean; transparency: boolean; method: 'classic' | 'linear' | 'perceptual' } = { shape: 'linear', style: 'transparent', reversed: false, opacity: 1, blend: 'normal', dither: false, transparency: true, method: 'classic' };
   /** Dialogs a tool's options can open; the app fills these in, since tools only see the engine. */
-  uiHooks: { gradientEditor?: () => void; importBrushes?: () => void; brushPicker?: (x: number, y: number) => void } = {};
+  uiHooks: { gradientEditor?: () => void; importBrushes?: () => void; brushPicker?: (x: number, y: number) => void; guideMenu?: (x: number, y: number) => void } = {};
   /** What a plain right-click does on a painting tool: a right-drag always sizes the tip; a click opens the Brush Preset picker when this is 'picker'. */
   brushRightClick: 'resize' | 'picker' = 'resize';
   /** The shape tools' settings. mode (1.49.8, the owner's tool list): a shape layer, the work path, or
@@ -7144,7 +7234,7 @@ export class Engine {
   selectionAtBounds = false;
 
   /** View > Rulers, Guides, Grid and Lock Guides; the grid's spacing and subdivisions in document pixels. */
-  view = { rulers: false, guides: true, slices: false, slicesLocked: false, autoSlices: true, grid: false, guidesLocked: false, gridSpacing: 100, gridSubdivisions: 4, patternPreview: false, pixelArt: false, parCorrection: false, tileGrid: false };
+  view = { rulers: false, guides: true, slices: false, slicesLocked: false, autoSlices: true, grid: false, guidesLocked: false, artboardGuides: true, gridSpacing: 100, gridSubdivisions: 4, patternPreview: false, pixelArt: false, parCorrection: false, tileGrid: false };
   /** A guide being dragged out of a ruler or across the canvas, drawn but not yet in the document. */
   guideDraft: { axis: 'x' | 'y'; at: number; index: number | null } | null = null;
 
@@ -7165,10 +7255,10 @@ export class Engine {
   /** View > New Guide Layout (27.11): `columns` and `rows` with gutters inside margins, laid out:
    *  guides at the margins and at both edges of every gutter (a gutter of 0 puts one guide between cells). `clear`
    *  replaces the existing guides. One undo step. */
-  guideLayout(o: { columns: number; rows: number; gutterX: number; gutterY: number; margin: { top: number; left: number; bottom: number; right: number }; clear: boolean; columnWidth?: number; rowHeight?: number; centre?: boolean }): void { GD.guideLayout(this.guideHost, o); }
+  guideLayout(o: GD.GuideLayoutOptions): void { GD.guideLayout(this.guideHost, o); }
 
   /** View > New Guides From Shape (27.11): guides on the four edges of the active shape layer's path, else of the selection. */
-  guidesFromShape(): boolean { return GD.guidesFromShape(this.guideHost); }
+  guidesFromShape(o: { source?: 'auto' | 'layer' | 'selection'; edges?: boolean; centre?: boolean } = {}): boolean { return GD.guidesFromShape(this.guideHost, o); }
   clearGuides(): void { GD.clearGuides(this.guideHost); }
 
   /** Slice tool: a user slice on whole pixels, kept within the canvas; returns false when it has no area. */
@@ -7200,7 +7290,37 @@ export class Engine {
   addLayerSlice(): boolean { return GD.addLayerSlice(this.guideHost); }
 
   /** The guide within `tol` screen pixels of a screen point, nearest first; null when guides are hidden or locked. */
-  guideAt(screen: Pt, tol = 4): number | null { return GD.guideAt(this.guideHost, screen, tol); }
+  guideAt(screen: Pt, tol = 4, ignoreLock = false): number | null { return GD.guideAt(this.guideHost, screen, tol, ignoreLock); }
+
+  /** The guides picked with the Move tool (indexes into the document's guides); not saved with the document. */
+  guideSel: number[] = [];
+  get selectedGuides(): number[] { const n = this.current?.doc.guides?.length ?? 0; return this.guideSel.filter((i) => i < n); }
+  /** Picks guide `index`; `add` toggles it in the picked set instead of replacing the set. */
+  selectGuide(index: number, add = false): void {
+    const was = this.guideSel.join();
+    this.guideSel = add ? (this.guideSel.includes(index) ? this.guideSel.filter((i) => i !== index) : [...this.guideSel, index]) : [index];
+    if (this.guideSel.join() !== was) { this.emit('overlay', null); this.emit('options', null); }
+  }
+  clearGuideSelection(): void { if (!this.guideSel.length) return; this.guideSel = []; this.emit('overlay', null); this.emit('options', null); }
+  /** Delete on picked guides: one step; false when none is picked. */
+  deleteSelectedGuides(): boolean {
+    const sel = this.selectedGuides;
+    if (!sel.length) return false;
+    this.guideSel = [];
+    GD.removeGuides(this.guideHost, sel);
+    return true;
+  }
+  /** Edit Selected Guides: orientation, position or colour of the picked guides, one step; false when none is picked. */
+  editSelectedGuides(patch: { axis?: 'x' | 'y'; at?: number; color?: string }): boolean {
+    const sel = this.selectedGuides;
+    if (!sel.length) return false;
+    GD.editGuides(this.guideHost, sel, patch);
+    return true;
+  }
+  /** View > Clear Selected Artboard Guides: the active artboard's guides go; false when it has none. */
+  clearArtboardGuides(): boolean { this.guideSel = []; return GD.clearArtboardGuides(this.guideHost); }
+  /** The artboard New Guide Layout and Clear Selected Artboard Guides act on. */
+  get guideArtboard(): Layer | null { return this.current ? GD.activeBoard(this.current) : null; }
 
   beginLive(name: string): boolean {
     const p = this.current;
@@ -9155,7 +9275,7 @@ export class Engine {
     return artHistoryTexture(src, this.artHistory.style, Math.max(2, this.brush.diameter / 4), Math.floor(Math.random() * 2 ** 31), current, tol);
   }
 
-  beginRetouchStroke(kind: 'heal' | 'remove' | 'clone' | 'blur' | 'sharpen' | 'healBrush' | 'dodge' | 'burn' | 'sponge' | 'historyBrush' | 'artHistory' | 'patternStamp' | 'colorReplace', pt: Pt, shift: boolean): boolean {
+  beginRetouchStroke(kind: 'heal' | 'remove' | 'clone' | 'blur' | 'sharpen' | 'healBrush' | 'dodge' | 'burn' | 'sponge' | 'historyBrush' | 'artHistory' | 'patternStamp' | 'colorReplace', pt: Pt, shift: boolean, pressure = 1): boolean {
     if (!this.deepPaintOk()) return false;
     const p = this.current;
     if (!p || this.stroke || this.warpState) return false;
@@ -9243,6 +9363,10 @@ export class Engine {
     const op: GlobalCompositeOperation = pick.target !== 'mask' && l0.locks?.transparency ? 'source-atop' : pick.target === 'mask' ? 'source-over'
       : kind === 'clone' ? compositeOp(this.retouch.cloneBlend) : kind === 'blur' || kind === 'sharpen' ? compositeOp(this.retouch.smearBlend) : 'source-over';
     const s = new PixelStroke(pick.raster, pick.local, style, op, p.selection, texture, pick.target === 'mask');
+    if (kind !== 'heal' && kind !== 'remove') {
+      s.dynamics = structuredClone(this.brushDynamics);
+      if (this.pressureCurve) for (const o of [s.dynamics.size, s.dynamics.flow, s.dynamics.opacity]) for (const sn of o.sensors) if (sn.id === 'pressure' && !sn.curve) sn.curve = this.pressureCurve;
+    }
     // The Healing Brush heals from the same offset at release, in the layer's own pixels.
     let healFrom: Pt | undefined;
     if (kind === 'healBrush' && texture) {
@@ -9252,8 +9376,8 @@ export class Engine {
     this.stroke = { project: p, layerId: pick.layer.id, target: pick.target, s, heal: kind === 'heal' ? this.retouch.healMode : kind === 'remove' ? 'remove' : undefined, healFrom };
     s.canGrow = (b) => !this.memoryBudget || this.memoryUse() + b <= this.memoryBudget;   // its window, within the budget (1.60.6)
     const last = this.lastBrush;
-    if (shift && last && last.layerId === pick.layer.id && last.target === pick.target) s.to(last.p);
-    s.to(pt);
+    if (shift && last && last.layerId === pick.layer.id && last.target === pick.target) s.to(last.p, pressure);
+    s.to(pt, pressure);
     s.compose();
     this.emit('render', null);
     return true;
@@ -10222,6 +10346,12 @@ export class Engine {
       this.setPathDraft({ x: t.x + t.w / 2 - w / 2, y: t.y + t.h / 2 - h / 2, w, h });
       return;
     }
+    const t = this.transformRef.x !== 0.5 || this.transformRef.y !== 0.5 ? this.barBox() : null, al = this.activeLayer;
+    if (t && al && al.raster && !al.isGroup && !al.adjustment) {
+      if (!(value > 0) || !Number.isFinite(value)) return;
+      this.setLayerTransformAbout({ w: width ? value : this.lockRatio ? (t.w * value) / t.h : t.w, h: width ? (this.lockRatio ? (t.h * value) / t.w : t.h) : value }, 'Resize Layer');
+      return;
+    }
     TE.resizeLayerTo(this.entryHost, value, width);
   }
 
@@ -10235,8 +10365,7 @@ export class Engine {
     }
     if (te && this.pendingTransform) {
       if (!(percent > 0) || !Number.isFinite(percent)) return;
-      const w = (te.original.w * percent) / 100, h = (te.original.h * percent) / 100, c = { x: te.draft.x + te.draft.w / 2, y: te.draft.y + te.draft.h / 2 };
-      this.setLayerTransform({ x: c.x - w / 2, y: c.y - h / 2, w, h });
+      this.setLayerTransformAbout({ w: (te.original.w * percent) / 100, h: (te.original.h * percent) / 100 });
       return;
     }
     TE.scaleLayerTo(this.entryHost, percent);

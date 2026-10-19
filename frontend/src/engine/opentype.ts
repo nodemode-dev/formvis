@@ -2,6 +2,7 @@
  *  with the `featureSettings` descriptor applies them to that face, so a spec with features draws with a variant of its
  *  family registered from the font file's bytes. `TextSpec.features` lists the tags turned on ('smcp'), and '-liga' or
  *  '-calt' for a default-on feature turned off. */
+import type { FeatureRun } from './types';
 
 export const OT_FEATURES: ReadonlyArray<{ tag: string; label: string }> = [
   { tag: 'liga', label: 'Standard Ligatures' }, { tag: 'dlig', label: 'Discretionary Ligatures' }, { tag: 'calt', label: 'Contextual Alternates' },
@@ -65,6 +66,96 @@ export function withFeature(features: readonly string[] | null | undefined, tag:
   const rest = (features ?? []).filter((f) => f !== tag && f !== `-${tag}`);
   if (OT_DEFAULT_ON.has(tag)) return cleanFeatures(on ? rest : [...rest, `-${tag}`]);
   return cleanFeatures(on ? [...rest, tag] : rest);
+}
+
+const TAG = /^[A-Za-z0-9]{4}$/;
+const runKey = (r: { on: readonly string[]; off: readonly string[] }): string => `${r.on.join(',')}|${r.off.join(',')}`;
+
+/** Feature runs read back from saved data: valid tags only, ranges clamped to `length`, sorted, none overlapping, empty
+ *  ones dropped, neighbours with the same settings joined. */
+export function cleanRuns(raw: unknown, length: number): FeatureRun[] {
+  if (!Array.isArray(raw)) return [];
+  const tags = (v: unknown): string[] => (Array.isArray(v) ? [...new Set(v.filter((t): t is string => typeof t === 'string' && TAG.test(t)))].slice(0, 40) : []);
+  const list: FeatureRun[] = [];
+  for (const r of raw.slice(0, 2000)) {
+    if (!r || typeof r !== 'object') continue;
+    const o = r as Record<string, unknown>, s = Number(o.start), e = Number(o.end);
+    if (!Number.isFinite(s) || !Number.isFinite(e)) continue;
+    const start = Math.max(0, Math.floor(s)), end = Math.min(length, Math.floor(e)), off = tags(o.off), on = tags(o.on).filter((t) => !off.includes(t));
+    if (end > start && (on.length || off.length)) list.push({ start, end, on, off });
+  }
+  list.sort((a, b) => a.start - b.start);
+  const out: FeatureRun[] = [];
+  for (const r of list) {
+    const last = out[out.length - 1], start = last ? Math.max(r.start, last.end) : r.start;
+    if (r.end <= start) continue;
+    if (last && last.end === start && runKey(last) === runKey(r)) last.end = r.end;
+    else out.push({ ...r, start });
+  }
+  return out;
+}
+
+/** The runs with `tag` set on or off over [start, end): runs are split at the range's edges, the range's pieces updated,
+ *  empty pieces dropped and equal neighbours joined. */
+export function withRunFeature(runs: readonly FeatureRun[] | null | undefined, start: number, end: number, tag: string, on: boolean): FeatureRun[] {
+  const list = runs ?? [];
+  if (!TAG.test(tag) || end <= start) return list.map((r) => ({ ...r, on: [...r.on], off: [...r.off] }));
+  const cuts = [...new Set([start, end, ...list.flatMap((r) => [r.start, r.end])])].sort((a, b) => a - b);
+  const out: FeatureRun[] = [];
+  for (let k = 0; k + 1 < cuts.length; k++) {
+    const a = cuts[k], b = cuts[k + 1], have = list.find((r) => r.start <= a && r.end >= b);
+    let onTags = have ? [...have.on] : [], offTags = have ? [...have.off] : [];
+    if (a >= start && b <= end) {
+      onTags = onTags.filter((t) => t !== tag); offTags = offTags.filter((t) => t !== tag);
+      (on ? onTags : offTags).push(tag);
+    }
+    if (!onTags.length && !offTags.length) continue;
+    const last = out[out.length - 1], piece = { start: a, end: b, on: onTags, off: offTags };
+    if (last && last.end === a && runKey(last) === runKey(piece)) last.end = b;
+    else out.push(piece);
+  }
+  return out;
+}
+
+/** The features in force at character `i`: the layer's list with the run that covers it applied. */
+export function featuresAt(base: readonly string[] | null | undefined, runs: readonly FeatureRun[] | null | undefined, i: number): string[] {
+  const run = runs?.find((r) => r.start <= i && i < r.end);
+  if (!run) return cleanFeatures(base ?? []);
+  let list = cleanFeatures(base ?? []);
+  for (const t of run.on) list = withFeature(list, t, true);
+  for (const t of run.off) list = withFeature(list, t, false);
+  return list;
+}
+
+/** Whether `tag` is on for every character of [start, end) (for the first character when the range is empty). */
+export function runFeatureOn(base: readonly string[] | null | undefined, runs: readonly FeatureRun[] | null | undefined, start: number, end: number, tag: string): boolean {
+  if (end <= start) return featureOn(featuresAt(base, runs, start), tag);
+  const cuts = [...new Set([start, ...(runs ?? []).flatMap((r) => [r.start, r.end]).filter((p) => p > start && p < end)])];
+  return cuts.every((c) => featureOn(featuresAt(base, runs, c), tag));
+}
+
+/** [from, to) of a line cut where the features change: each piece with the list in force over it. */
+export function featureSegments(base: readonly string[] | null | undefined, runs: readonly FeatureRun[] | null | undefined, from: number, to: number): Array<{ from: number; to: number; features: string[] }> {
+  const cuts = [...new Set([from, ...(runs ?? []).flatMap((r) => [r.start, r.end]).filter((p) => p > from && p < to)])].sort((a, b) => a - b);
+  const out: Array<{ from: number; to: number; features: string[] }> = [];
+  cuts.forEach((c, k) => {
+    const end = k + 1 < cuts.length ? cuts[k + 1] : to, features = featuresAt(base, runs, c), last = out[out.length - 1];
+    if (last && last.features.join(',') === features.join(',')) last.to = end;
+    else out.push({ from: c, to: end, features });
+  });
+  return out;
+}
+
+/** The runs after the text changed from `before` to `after`: the common start and end stay put, the changed middle is
+ *  replaced, so positions after it move by the change in length and positions inside it fall to its start. */
+export function shiftRuns(runs: readonly FeatureRun[] | null | undefined, before: string, after: string): FeatureRun[] {
+  if (!runs?.length || before === after) return runs ? runs.map((r) => ({ ...r, on: [...r.on], off: [...r.off] })) : [];
+  let p = 0;
+  while (p < before.length && p < after.length && before[p] === after[p]) p++;
+  let s = 0;
+  while (s < before.length - p && s < after.length - p && before[before.length - 1 - s] === after[after.length - 1 - s]) s++;
+  const delta = after.length - before.length, map = (x: number): number => (x <= p ? x : x >= before.length - s ? x + delta : p);
+  return cleanRuns(runs.map((r) => ({ ...r, start: map(r.start), end: map(r.end) })), after.length);
 }
 
 /** The CSS font-feature-settings for a list. */

@@ -1,7 +1,8 @@
 import type { Engine, Pt } from '../../engine';
 import type { SampledTip } from '../../engine/abr';
 import type { OptionSpec, ToolContext } from '../registry';
-import { brushTool, symmetryOptions } from './brush';
+import { brushTool, pressureOpacityOption, pressureSizeOption, symmetryOptions } from './brush';
+import { extraShown } from '../../ui/view-extras';
 
 /** Caps Lock turns the precise crosshair on and off over the Preferences > Cursors choice. */
 export const cursorState = { caps: false, hardAt: -1e9 };
@@ -62,7 +63,7 @@ export function drawBrushCursor(ctx: ToolContext, g: CanvasRenderingContext2D, p
   else if (how.paint === 'standard') { ring(5); g.fillStyle = pal.antsA; g.fillRect(c.x - 0.5, c.y - 0.5, 1.5, 1.5); }
   else {
     // While the tip is resized or its hardness changes, the tip is tinted with the Brush Preview Color
-    if (resizing) { g.globalAlpha = 0.4; g.fillStyle = how.previewColor; g.beginPath(); g.ellipse(c.x, c.y, r, r * flat, turn, 0, Math.PI * 2); g.fill(); g.globalAlpha = 1; }
+    if (resizing && extraShown('brushPreview')) { g.globalAlpha = 0.4; g.fillStyle = how.previewColor; g.beginPath(); g.ellipse(c.x, c.y, r, r * flat, turn, 0, Math.PI * 2); g.fill(); g.globalAlpha = 1; }
     ring(r, true);
     if (how.crosshair || r < 6) cross(Math.min(8, Math.max(3, r / 3)));
     // Just after a hardness change the ring where the edge starts to fade shows inside the outline
@@ -78,6 +79,8 @@ export function brushOptions(e: Engine, strength = 'Opacity'): OptionSpec[] {
     { kind: 'range', label: 'Size', priority: 90, min: 1, max: 1000, unit: 'px', get: () => e.brush.diameter, set: (v) => e.setBrush({ diameter: v }) },
     { kind: 'range', label: 'Hardness', priority: 80, min: 0, max: 100, unit: '%', get: () => Math.round(e.brush.hardness * 100), set: (v) => e.setBrush({ hardness: v / 100 }) },
     { kind: 'range', label: strength, priority: 95, min: 1, max: 100, unit: '%', get: () => Math.round(e.brush.opacity * 100), set: (v) => e.setBrush({ opacity: v / 100 }) },
+    pressureSizeOption(e),
+    pressureOpacityOption(e),
     ...symmetryOptions(e)
   ];
 }

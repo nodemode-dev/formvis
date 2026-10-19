@@ -37,6 +37,18 @@ export function nudgeSelectionKey(ctx: ToolContext, e: KeyboardEvent): boolean {
   return false;
 }
 
+let growBy = 1;
+
+/** Expand and Contract in a selection tool's options bar: the amount, then one button for each direction. */
+export function growOptions(e: Engine): OptionSpec[] {
+  const has = (): boolean => !!e.current?.selection;
+  return [
+    { kind: 'number', label: 'Grow by', priority: 27, min: 1, max: 500, step: 1, unit: 'px', get: () => growBy, set: (v) => { growBy = Math.max(1, Math.min(500, Math.round(v) || 1)); e.emit('options', null); } },
+    { kind: 'button', label: 'Expand', priority: 26, run: () => e.resizeSelection(growBy, e.selectionAtBounds), when: has },
+    { kind: 'button', label: 'Contract', priority: 26, run: () => e.resizeSelection(-growBy, e.selectionAtBounds), when: has },
+  ];
+}
+
 export function modeSegment(e: Engine): OptionSpec {
   return {
     kind: 'segment', label: 'Mode', priority: 95,

@@ -1,5 +1,6 @@
 import { HANDLES, TEXT_ANTIALIAS, type Engine, type Layer, type Rect, type TextSpec } from '../../engine';
 import { OT_FEATURES, featureOn, featuresKnown, featuresOf, withFeature } from '../../engine/opentype';
+import { typedFeatureOn, typedFeatureToggle, typedRange } from '../../ui/text-editor';
 import { canListSystemFonts, fontFamilies, loadSystemFonts, rememberFont } from '../../ui/fonts';
 import type { Pt } from '../../engine';
 import { dashed, toolHost, type Tool, type ToolContext, type ToolPointer } from '../registry';
@@ -52,7 +53,7 @@ const LANGUAGES: Array<[string, string]> = [['', 'Default'], ['en-US', 'English'
 function featureChoices(e: Engine): Array<{ id: string; label: string }> {
   const s = featureSource(e), { family, bold, italic } = s, known = featuresKnown(family, !!bold, !!italic);
   if (known === undefined) void featuresOf(family, !!bold, !!italic).then(() => e.emit('options', null));
-  return [{ id: '', label: 'OpenType' }, ...OT_FEATURES.map((f) => ({ id: f.tag, label: `${featureOn(s.features, f.tag) ? '[x]' : '[ ]'} ${f.label}${known && !known.has(f.tag) ? ' (not in font)' : ''}` }))];
+  return [{ id: '', label: typedRange() ? 'OpenType (selection)' : 'OpenType' }, ...OT_FEATURES.map((f) => ({ id: f.tag, label: `${(typedFeatureOn(f.tag) ?? featureOn(s.features, f.tag)) ? '[x]' : '[ ]'} ${f.label}${known && !known.has(f.tag) ? ' (not in font)' : ''}` }))];
 }
 
 /** The spec the OpenType menu reads: the selected live type layer's, else the settings for new text. */
@@ -118,6 +119,7 @@ export const typeTool: Tool = {
     { kind: 'select', label: 'OpenType', priority: 30, choices: featureChoices(e), live: () => featureChoices(e), get: () => '',
       set: (v: string) => {
         if (!v) return;
+        if (typedFeatureToggle(v)) { e.emit('options', null); return; }   // text is selected in the editor: only that range
         const l = e.current?.activeLayer, typing = !!document.querySelector('.cv-type-editor:not([hidden])');
         if (l?.text && e.liveText(l) && !typing) {
           // One undo step on the selected layer; the settings for new text follow it.
@@ -135,6 +137,8 @@ export const typeTool: Tool = {
     { kind: 'select', label: 'Language Options', priority: 21, choices: [{ id: 'default', label: 'Default Features' }, { id: 'eastAsian', label: 'East Asian Features' }, { id: 'middleEastern', label: 'Middle Eastern Features' }], get: () => e.textSettings.shaping ?? 'default', set: (v: string) => setType(e, { shaping: v === 'eastAsian' || v === 'middleEastern' ? v : undefined }) },
     { kind: 'color', label: 'Color', priority: 88, get: () => e.fg, set: (c) => { e.fg = c; e.emit('options', null); const l = e.activeLayer; if (l?.text) void e.updateTextLayer(l.id, { ...l.text, color: e.fg }); } },
     { kind: 'button', label: 'Warp Text...', priority: 30, run: () => toolHost.run('warp-text') },
+    { kind: 'button', label: 'Commit', icon: 'check', priority: 91, when: typingNow, run: () => { document.dispatchEvent(new CustomEvent('cv:type-commit')); } },
+    { kind: 'button', label: 'Cancel', icon: 'close', priority: 91, when: typingNow, run: () => { document.dispatchEvent(new CustomEvent('cv:type-cancel')); } },
   ],
   // A click starts point text (or edits the type layer under it); a drag draws a box for paragraph text (1.49.7).
   down(ctx, p) {

@@ -1,7 +1,7 @@
 import { SelectionMask, boundsOf, type Pt, type SelectionMode } from '../../engine';
 import { toolHost } from '../registry';
 import { dashed, type Tool, type ToolContext } from '../registry';
-import { modeCursor, modeFor, modeSegment, nudgeSelectionKey } from './select-common';
+import { growOptions, modeCursor, modeFor, modeSegment, nudgeSelectionKey } from './select-common';
 import { EdgeMap, liveWire, snapToEdge } from '../../engine/livewire';
 
 /* The Magnetic Lasso (1.49.4, the owner's tool list): the segment from the last fastening point to the
@@ -155,6 +155,7 @@ export const lassoTool: Tool = {
     modeSegment(e),
     { kind: 'button', label: 'Deselect', priority: 30, run: () => toolHost.run('deselect'), when: () => !!e.current?.selection },
     { kind: 'button', label: 'Feather Selection...', priority: 28, run: () => toolHost.run('feather'), when: () => !!e.current?.selection },
+    ...growOptions(e),
     { kind: 'button', label: 'Select and Mask...', priority: 25, run: () => toolHost.run('select-and-mask') }
   ],
 };

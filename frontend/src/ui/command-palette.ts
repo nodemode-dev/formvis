@@ -46,7 +46,7 @@ function pathsOf(menus: MenuDef[]): Map<string, string> {
   return out;
 }
 
-interface Hit { key: string; label: string; meta: string; icon: string; enabled: boolean; why?: string; score: number; run: () => void }
+interface Hit { key: string; label: string; meta: string; icon: string; enabled: boolean; why?: string; score: number; on?: boolean; run: () => void }
 
 const SHOWN = 12;
 
@@ -112,12 +112,20 @@ export class CommandPalette extends Dialog {
       const own = fuzzyScore(query, label), wide = own === null ? fuzzyScore(query, `${label} ${path}`) : null;
       if (own === null && wide === null) continue;
       const score = own ?? (wide as number) - 10;
-      hits.push({ key: c.id, label, meta: [path, this.commands.keyLabel(c)].filter(Boolean).join(' · '), icon: c.icon ?? '', enabled: this.commands.enabled(c), why: t(this.commands.why(c)), score: score + first(c.id), run: () => { this.commands.run(c.id); } });
+      const on = c.checked ? c.checked() : undefined;
+      hits.push({ key: c.id, label, meta: [on === undefined ? '' : on ? 'On' : 'Off', path, this.commands.keyLabel(c)].filter(Boolean).join(' · '), icon: c.icon ?? '', enabled: this.commands.enabled(c), why: t(this.commands.why(c)), score: score + first(c.id), on, run: () => { this.commands.run(c.id); } });
     }
     for (const t of toolList()) {
-      const key = `tool:${t.id}`, score = t.hidden ? null : fuzzyScore(query, `${t.label} tool`);
-      if (score === null) continue;
-      hits.push({ key, label: `${t.label} Tool`, meta: `Tool · ${t.key}`, icon: t.icon(this.engine), enabled: true, score: score + (query ? 2 : 0) + first(key), run: () => this.engine.setTool(t.id) });
+      if (t.hidden) continue;
+      const key = `tool:${t.id}`, score = fuzzyScore(query, `${t.label} tool`);
+      if (score !== null) hits.push({ key, label: `${t.label} Tool`, meta: `${this.engine.tool === t.id ? 'On · ' : ''}Tool · ${t.key}`, icon: t.icon(this.engine), enabled: true, score: score + (query ? 2 : 0) + first(key), on: this.engine.tool === t.id, run: () => this.engine.setTool(t.id) });
+      for (const v of t.variants?.(this.engine) ?? []) {
+        if (v.label === t.label) continue;
+        const vkey = `tool:${t.id}:${v.id}`, vscore = fuzzyScore(query, `${v.label} tool`);
+        if (vscore === null) continue;
+        const live = this.engine.tool === t.id && v.active();
+        hits.push({ key: vkey, label: `${v.label} Tool`, meta: `${live ? 'On · ' : ''}Tool mode · ${t.label}`, icon: v.icon, enabled: true, score: vscore + (query ? 1 : 0) + first(vkey), on: live, run: () => { this.engine.setTool(t.id); v.pick(); } });
+      }
     }
     hits.sort((a, b) => b.score - a.score || a.label.localeCompare(b.label));
     this.hits = hits.slice(0, SHOWN);
@@ -135,6 +143,7 @@ export class CommandPalette extends Dialog {
     setText(q(n, '.cv-list-name'), h.label);
     setText(q(n, '.cv-list-meta'), h.meta);
     setClass(n, 'is-off', !h.enabled);
+    setClass(n, 'is-on', !!h.on);
     if (h.why || n.title) setTitle(n, h.why ?? '');
     if (n.getAttribute('aria-disabled') !== String(!h.enabled)) n.setAttribute('aria-disabled', String(!h.enabled));
     setHtml(q(n, '.cv-palette-icon'), h.icon ? icon(h.icon, 16) : '', h.icon);

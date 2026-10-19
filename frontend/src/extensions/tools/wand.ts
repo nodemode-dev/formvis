@@ -1,6 +1,6 @@
 import { toolHost } from '../registry';
 import type { Tool } from '../registry';
-import { modeCursor, modeFor, modeSegment, nudgeSelectionKey } from './select-common';
+import { growOptions, modeCursor, modeFor, modeSegment, nudgeSelectionKey } from './select-common';
 
 export const wandTool: Tool = {
   id: 'wand', label: 'Magic Wand', key: 'W', order: 40,
@@ -20,6 +20,7 @@ export const wandTool: Tool = {
     modeSegment(e),
     { kind: 'button', label: 'Select Subject', priority: 35, run: () => toolHost.run('select-subject') },
     { kind: 'button', label: 'Feather Selection...', priority: 28, run: () => toolHost.run('feather'), when: () => !!e.current?.selection },
+    ...growOptions(e),
     { kind: 'button', label: 'Select and Mask...', priority: 25, run: () => toolHost.run('select-and-mask') }
   ]
 };

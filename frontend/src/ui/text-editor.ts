@@ -1,9 +1,16 @@
 import { fontCss, liveText, textMetrics, type Engine, type ID, type Pt, type TextSpec } from '../engine';
 import type { Project } from '../engine/project';
+import { runFeatureOn, shiftRuns, withRunFeature } from '../engine/opentype';
 import { el, setHidden, setStyleVar } from './dom';
 import { loadPrefs } from './prefs';
 
 const PLACEHOLDER = 'Lorem ipsum dolor sit amet';
+let live: TextEditor | null = null;
+
+/** The text being typed, if any: the selected range, and the features in force over it (for the Type menu and options bar). */
+export const typedRange = (): { start: number; end: number } | null => live?.selection() ?? null;
+export const typedFeatureOn = (tag: string): boolean | null => live?.featureOn(tag) ?? null;
+export const typedFeatureToggle = (tag: string): boolean => live?.toggleFeature(tag) ?? false;
 
 /** Typing on the canvas: one kept text box over the stage, set in the text's own font, size, colour and line spacing
  *  at the current zoom, with its first baseline on the click (or on an existing layer's first baseline, the layer
@@ -13,9 +20,14 @@ export class TextEditor {
   private readonly box = el<HTMLTextAreaElement>('<textarea class="cv-type-editor" wrap="off" spellcheck="true" aria-label="Text" hidden></textarea>');
   private session: { project: Project; at: Pt; layerId: ID | null; spec: TextSpec; scale: number; mask?: boolean; shift?: Pt } | null = null;
 
+  private typed = '';
+
   constructor(host: HTMLElement, private readonly engine: Engine) {
+    live = this;
     host.appendChild(this.box);
-    this.box.addEventListener('input', (e) => { this.curl(e as InputEvent); this.place(); });
+    this.box.addEventListener('input', (e) => { this.curl(e as InputEvent); this.follow(); this.place(); });
+    document.addEventListener('cv:type-commit', () => { void this.commit(); });
+    document.addEventListener('cv:type-cancel', () => this.cancel());
     this.box.addEventListener('keydown', (e) => {
       e.stopPropagation();
       if (e.key === 'Escape') { e.preventDefault(); if (loadPrefs().escCommit) void this.commit(); else this.cancel(); }
@@ -33,6 +45,34 @@ export class TextEditor {
 
   get editing(): boolean { return this.session !== null; }
 
+  /** The runs follow an edit of the typed text: what is before and after the change keeps its features. */
+  private follow(): void {
+    const s = this.session, now = this.box.value;
+    if (s?.spec.runs?.length) s.spec = { ...s.spec, runs: shiftRuns(s.spec.runs, this.typed, now) };
+    this.typed = now;
+  }
+
+  /** The selected range of the typed text (none when only a caret). */
+  selection(): { start: number; end: number } | null {
+    const b = this.box;
+    return this.session && b.selectionEnd > b.selectionStart ? { start: b.selectionStart, end: b.selectionEnd } : null;
+  }
+
+  /** Whether `tag` is on over the selection; null with no selection. */
+  featureOn(tag: string): boolean | null {
+    const r = this.selection(), s = this.session;
+    return r && s ? runFeatureOn(s.spec.features, s.spec.runs, r.start, r.end, tag) : null;
+  }
+
+  /** Turns `tag` on or off over the selection (a range of the text); false when nothing is selected. */
+  toggleFeature(tag: string): boolean {
+    const r = this.selection(), s = this.session;
+    if (!r || !s) return false;
+    s.spec = { ...s.spec, runs: withRunFeature(s.spec.runs, r.start, r.end, tag, !runFeatureOn(s.spec.features, s.spec.runs, r.start, r.end, tag)) };
+    this.place();
+    return true;
+  }
+
   /** Starts typing new text whose first baseline begins at (x, y), or edits type layer `layerId`; a session already
    *  open is committed first. */
   begin(target: { x: number; y: number; box?: { w: number; h: number } } | { layerId: ID }): void {
@@ -45,15 +85,17 @@ export class TextEditor {
       const t = l.transform, scale = t.w / l.raster.width, m = textMetrics(l.text);
       const x = l.text.align === 'center' ? t.x + t.w / 2 : l.text.align === 'right' ? t.x + t.w - m.pad * scale : t.x + m.pad * scale;
       this.session = { project: p, at: { x, y: t.y + (m.pad + m.ascent) * (t.h / l.raster.height) }, layerId: l.id, spec: { ...l.text }, scale };
-      e.textSettings = { ...l.text, content: '', rendered: undefined };
+      e.textSettings = { ...l.text, content: '', rendered: undefined, runs: undefined };
       e.emit('options', null);
       e.setTextEditing(l.id);
       this.box.value = l.text.content;
     } else {
       // A dragged box makes paragraph text; the tool's kind makes it vertical, or a mask (a selection, not a layer).
-      this.session = { project: p, at: { x: target.x, y: target.y }, layerId: null, spec: { ...e.textSettings, content: '', color: e.fg, rendered: undefined, box: target.box ?? null }, scale: 1, mask: e.typeMask };
+      this.session = { project: p, at: { x: target.x, y: target.y }, layerId: null, spec: { ...e.textSettings, content: '', color: e.fg, rendered: undefined, runs: undefined, box: target.box ?? null }, scale: 1, mask: e.typeMask };
       this.box.value = loadPrefs().placeholderText ? PLACEHOLDER : '';
     }
+    this.typed = this.box.value;
+    queueMicrotask(() => e.emit('options', null));
     setHidden(this.box, false);
     this.place();
     this.box.focus();
@@ -109,6 +151,7 @@ export class TextEditor {
     this.engine.setTextEditing(null);
     setHidden(this.box, true);
     this.box.blur();
+    this.engine.emit('options', null);
   }
 
   /** Type size shortcuts: Ctrl or Cmd with Shift and . or , grows or shrinks the size by 2 (Alt: 10), for the text being typed. */

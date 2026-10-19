@@ -7,7 +7,13 @@ import type { MenuDef, MenuItem as MenuSpec } from './menu';
  *  as macOS expects (About, Preferences, Quit). Enabled states follow the app; the menu is rebuilt when documents open or
  *  close (File > Open Recent). Only on macOS: there the menu bar owns the shortcuts, so a key never runs twice; elsewhere
  *  the in-window menu bar stays. A shortcut Tauri cannot express is left off its item rather than failing the menu. */
-export const wantsNativeMenus = (): boolean => '__TAURI_INTERNALS__' in window && /Mac/.test(navigator.platform);
+export const wantsNativeMenus = (): boolean => '__TAURI_INTERNALS__' in window && /Mac/.test(navigator.platform) && !menusInWindow();
+
+/** The person's choice to keep the menus in the window on macOS (View > Menus in Window); it applies at the next start. */
+export const MENUS_IN_WINDOW_KEY = 'formvis.menusInWindow';
+export function menusInWindow(): boolean {
+  try { return localStorage.getItem(MENUS_IN_WINDOW_KEY) === '1'; } catch { return false; }
+}
 
 /** formvis's key combo ('Mod+Shift+S') as a Tauri accelerator ('CmdOrCtrl+Shift+S'); null for what Tauri has no name for. */
 export function accelerator(combo: string | undefined): string | null {

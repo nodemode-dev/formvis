@@ -1,10 +1,10 @@
 /** View > Extras and View > Show: which of the canvas's helpers draw (notes, counts, selection edges, layer edges).
  *  Kept on this device; the stage reads `extraShown` while it draws and redraws when `onExtras` fires. */
-export type ExtraKey = 'notes' | 'counts' | 'selectionEdges' | 'layerEdges';
-export const EXTRA_KEYS: readonly ExtraKey[] = ['notes', 'counts', 'selectionEdges', 'layerEdges'];
+export type ExtraKey = 'notes' | 'counts' | 'selectionEdges' | 'layerEdges' | 'targetPath' | 'brushPreview' | 'mesh' | 'pins';
+export const EXTRA_KEYS: readonly ExtraKey[] = ['notes', 'counts', 'selectionEdges', 'layerEdges', 'targetPath', 'brushPreview', 'mesh', 'pins'];
 
 const STORE = 'formvis.viewExtras';
-const state: Record<ExtraKey | 'master' | 'selectionTint', boolean> = { master: true, notes: true, counts: true, selectionEdges: true, layerEdges: false, selectionTint: false };
+const state: Record<ExtraKey | 'master' | 'selectionTint', boolean> = { master: true, notes: true, counts: true, selectionEdges: true, layerEdges: false, targetPath: false, brushPreview: true, mesh: true, pins: true, selectionTint: false };
 const listeners = new Set<() => void>();
 
 try {
@@ -34,3 +34,5 @@ export function setAllExtras(on: boolean): void {
   if (any) changed();
 }
 export function onExtras(f: () => void): void { listeners.add(f); }
+/** Show Extras Options: the helpers View > Extras shows, with the names the dialog gives them. */
+export const EXTRA_LABELS: ReadonlyArray<readonly [ExtraKey, string]> = [['notes', 'Notes'], ['counts', 'Count'], ['selectionEdges', 'Selection Edges'], ['layerEdges', 'Layer Edges'], ['targetPath', 'Target Path'], ['brushPreview', 'Brush Preview'], ['mesh', 'Mesh'], ['pins', 'Edit Pins']];

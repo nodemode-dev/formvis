@@ -1,10 +1,10 @@
 # formvis commands
 
-Generated from the window's command catalogue (1442 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1531 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
-- Edit: 101
+- Edit: 102
 - File: 99
 - Filter: 92
 - Generate: 6
@@ -13,13 +13,12 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 - Layer: 265
 - Paint: 1
 - Paths: 11
-- Plugins: 1
 - Select: 43
-- Tool options: 401
+- Tool options: 438
 - Tools: 53
-- Type: 49
-- View: 96
-- Window: 106
+- Type: 59
+- View: 98
+- Window: 146
 
 ## Edit
 
@@ -45,6 +44,7 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `copy-merged` | Copy Merged | Shift+Mod+C | Copies the selection from all visible layers. |
 | `customize-toolbar` | Toolbar... |  | Opens the Toolbar dialog to choose which tools the tool rail shows, how they are grouped and in what order. |
 | `cut` | Cut | Mod+X | Cuts the selection to the clipboard. (changes the picture) |
+| `cycle-tool-mode` | Cycle Tool Mode | Alt+Shift+M | Moves the current tool to the next choice of its first mode list in the options bar, such as the marquee shape or the selection mode. |
 | `define-brush` | Define Brush Preset... |  | Saves the selection, or the whole image, as a sampled brush tip. (changes the picture) |
 | `define-custom-shape` | Define Custom Shape... |  | Saves the current path as a custom shape for the Shape tool. (changes the picture) |
 | `define-pattern` | Define Pattern... |  | Saves the selection as a pattern. |
@@ -799,12 +799,6 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `stroke-path` | Stroke Path |  | Strokes the path with the current brush. (changes the picture) |
 | `stroke-path-dialog` | Stroke Path... |  | Opens Stroke Path. (changes the picture) |
 
-## Plugins
-
-| Id | Name | Keys | Does |
-| --- | --- | --- | --- |
-| `plugin:throws-late:cmd:boom` | Boom |  | Runs the plugin command Boom. (changes the picture) |
-
 ## Select
 
 | Id | Name | Keys | Does |
@@ -882,6 +876,8 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `tool.options.artHistory.hardness` | Art History Brush: Hardness |  | Sets Hardness for the Art History Brush tool. |
 | `tool.options.artHistory.opacity` | Art History Brush: Opacity |  | Sets Opacity for the Art History Brush tool. |
 | `tool.options.artHistory.pressureCurve` | Art History Brush: Pressure curve |  | Sets Pressure curve for the Art History Brush tool. |
+| `tool.options.artHistory.pressureOpacity` | Art History Brush: Pressure: opacity |  | Sets Pressure: opacity for the Art History Brush tool. |
+| `tool.options.artHistory.pressureSize` | Art History Brush: Pressure: size |  | Sets Pressure: size for the Art History Brush tool. |
 | `tool.options.artHistory.size` | Art History Brush: Size |  | Sets Size for the Art History Brush tool. |
 | `tool.options.artHistory.style` | Art History Brush: Style |  | Sets Style for the Art History Brush tool. |
 | `tool.options.artHistory.symmetry` | Art History Brush: Symmetry |  | Sets Symmetry for the Art History Brush tool. |
@@ -889,11 +885,11 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `tool.options.artHistory.symmetryY` | Art History Brush: Symmetry Y |  | Sets Symmetry Y for the Art History Brush tool. |
 | `tool.options.artHistory.tolerance` | Art History Brush: Tolerance |  | Sets Tolerance for the Art History Brush tool. |
 | `tool.options.artboard.height` | Artboard: Height |  | Sets Height for the Artboard tool. |
+| `tool.options.artboard.orientation` | Artboard: Orientation |  | Sets Orientation for the Artboard tool. |
 | `tool.options.artboard.size` | Artboard: Size |  | Sets Size for the Artboard tool. |
 | `tool.options.artboard.width` | Artboard: Width |  | Sets Width for the Artboard tool. |
 | `tool.options.backgroundEraser.hardness` | Background Eraser: Hardness |  | Sets Hardness for the Background Eraser tool. |
 | `tool.options.backgroundEraser.limits` | Background Eraser: Limits |  | Sets Limits for the Background Eraser tool. |
-| `tool.options.backgroundEraser.pressureCurve` | Background Eraser: Pressure curve |  | Sets Pressure curve for the Background Eraser tool. |
 | `tool.options.backgroundEraser.protectForegroundColor` | Background Eraser: Protect Foreground Color |  | Sets Protect Foreground Color for the Background Eraser tool. |
 | `tool.options.backgroundEraser.sampling` | Background Eraser: Sampling |  | Sets Sampling for the Background Eraser tool. |
 | `tool.options.backgroundEraser.size` | Background Eraser: Size |  | Sets Size for the Background Eraser tool. |
@@ -906,6 +902,7 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `tool.options.brush.airbrush` | Brush: Airbrush |  | Sets Airbrush for the Brush tool. |
 | `tool.options.brush.angle` | Brush: Angle |  | Sets Angle for the Brush tool. |
 | `tool.options.brush.angleJitter` | Brush: Angle jitter |  | Sets Angle jitter for the Brush tool. |
+| `tool.options.brush.buildUpInterval` | Brush: Build-up interval |  | Sets Build-up interval for the Brush tool. |
 | `tool.options.brush.catchUpOnStrokeEnd` | Brush: Catch-up on stroke end |  | Sets Catch-up on stroke end for the Brush tool. |
 | `tool.options.brush.count` | Brush: Count |  | Sets Count for the Brush tool. |
 | `tool.options.brush.flipX` | Brush: Flip X |  | Sets Flip X for the Brush tool. |
@@ -948,6 +945,8 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `tool.options.burn.exposure` | Burn: Exposure |  | Sets Exposure for the Burn tool. |
 | `tool.options.burn.hardness` | Burn: Hardness |  | Sets Hardness for the Burn tool. |
 | `tool.options.burn.pressureCurve` | Burn: Pressure curve |  | Sets Pressure curve for the Burn tool. |
+| `tool.options.burn.pressureOpacity` | Burn: Pressure: opacity |  | Sets Pressure: opacity for the Burn tool. |
+| `tool.options.burn.pressureSize` | Burn: Pressure: size |  | Sets Pressure: size for the Burn tool. |
 | `tool.options.burn.protectTones` | Burn: Protect Tones |  | Sets Protect Tones for the Burn tool. |
 | `tool.options.burn.range` | Burn: Range |  | Sets Range for the Burn tool. |
 | `tool.options.burn.sample` | Burn: Sample |  | Sets Sample for the Burn tool. |
@@ -968,6 +967,8 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `tool.options.cloneStamp.opacity` | Clone Stamp: Opacity |  | Sets Opacity for the Clone Stamp tool. |
 | `tool.options.cloneStamp.overlayOpacity` | Clone Stamp: Overlay opacity |  | Sets Overlay opacity for the Clone Stamp tool. |
 | `tool.options.cloneStamp.pressureCurve` | Clone Stamp: Pressure curve |  | Sets Pressure curve for the Clone Stamp tool. |
+| `tool.options.cloneStamp.pressureOpacity` | Clone Stamp: Pressure: opacity |  | Sets Pressure: opacity for the Clone Stamp tool. |
+| `tool.options.cloneStamp.pressureSize` | Clone Stamp: Pressure: size |  | Sets Pressure: size for the Clone Stamp tool. |
 | `tool.options.cloneStamp.sample` | Clone Stamp: Sample |  | Sets Sample for the Clone Stamp tool. |
 | `tool.options.cloneStamp.showOverlay` | Clone Stamp: Show Overlay |  | Sets Show Overlay for the Clone Stamp tool. |
 | `tool.options.cloneStamp.size` | Clone Stamp: Size |  | Sets Size for the Clone Stamp tool. |
@@ -981,6 +982,8 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `tool.options.colorReplace.mode` | Color Replacement: Mode |  | Sets Mode for the Color Replacement tool. |
 | `tool.options.colorReplace.opacity` | Color Replacement: Opacity |  | Sets Opacity for the Color Replacement tool. |
 | `tool.options.colorReplace.pressureCurve` | Color Replacement: Pressure curve |  | Sets Pressure curve for the Color Replacement tool. |
+| `tool.options.colorReplace.pressureOpacity` | Color Replacement: Pressure: opacity |  | Sets Pressure: opacity for the Color Replacement tool. |
+| `tool.options.colorReplace.pressureSize` | Color Replacement: Pressure: size |  | Sets Pressure: size for the Color Replacement tool. |
 | `tool.options.colorReplace.sampling` | Color Replacement: Sampling |  | Sets Sampling for the Color Replacement tool. |
 | `tool.options.colorReplace.size` | Color Replacement: Size |  | Sets Size for the Color Replacement tool. |
 | `tool.options.colorReplace.symmetry` | Color Replacement: Symmetry |  | Sets Symmetry for the Color Replacement tool. |
@@ -1026,6 +1029,8 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `tool.options.dodge.exposure` | Dodge: Exposure |  | Sets Exposure for the Dodge tool. |
 | `tool.options.dodge.hardness` | Dodge: Hardness |  | Sets Hardness for the Dodge tool. |
 | `tool.options.dodge.pressureCurve` | Dodge: Pressure curve |  | Sets Pressure curve for the Dodge tool. |
+| `tool.options.dodge.pressureOpacity` | Dodge: Pressure: opacity |  | Sets Pressure: opacity for the Dodge tool. |
+| `tool.options.dodge.pressureSize` | Dodge: Pressure: size |  | Sets Pressure: size for the Dodge tool. |
 | `tool.options.dodge.protectTones` | Dodge: Protect Tones |  | Sets Protect Tones for the Dodge tool. |
 | `tool.options.dodge.range` | Dodge: Range |  | Sets Range for the Dodge tool. |
 | `tool.options.dodge.sample` | Dodge: Sample |  | Sets Sample for the Dodge tool. |
@@ -1040,6 +1045,8 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `tool.options.eraser.mode` | Eraser: Mode |  | Sets Mode for the Eraser tool. |
 | `tool.options.eraser.opacity` | Eraser: Opacity |  | Sets Opacity for the Eraser tool. |
 | `tool.options.eraser.pressureCurve` | Eraser: Pressure curve |  | Sets Pressure curve for the Eraser tool. |
+| `tool.options.eraser.pressureOpacity` | Eraser: Pressure: opacity |  | Sets Pressure: opacity for the Eraser tool. |
+| `tool.options.eraser.pressureSize` | Eraser: Pressure: size |  | Sets Pressure: size for the Eraser tool. |
 | `tool.options.eraser.quickShape` | Eraser: Quick Shape |  | Sets Quick Shape for the Eraser tool. |
 | `tool.options.eraser.size` | Eraser: Size |  | Sets Size for the Eraser tool. |
 | `tool.options.eraser.symmetry` | Eraser: Symmetry |  | Sets Symmetry for the Eraser tool. |
@@ -1058,6 +1065,7 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `tool.options.gradient.reverse` | Gradient: Reverse |  | Sets Reverse for the Gradient tool. |
 | `tool.options.gradient.shape` | Gradient: Shape |  | Sets Shape for the Gradient tool. |
 | `tool.options.gradient.transparency` | Gradient: Transparency |  | Sets Transparency for the Gradient tool. |
+| `tool.options.hand.scrollAllWindows` | Hand: Scroll All Windows |  | Sets Scroll All Windows for the Hand tool. |
 | `tool.options.healingBrush.aligned` | Healing Brush: Aligned |  | Sets Aligned for the Healing Brush tool. |
 | `tool.options.healingBrush.diffusion` | Healing Brush: Diffusion |  | Sets Diffusion for the Healing Brush tool. |
 | `tool.options.healingBrush.hardness` | Healing Brush: Hardness |  | Sets Hardness for the Healing Brush tool. |
@@ -1065,6 +1073,8 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `tool.options.healingBrush.opacity` | Healing Brush: Opacity |  | Sets Opacity for the Healing Brush tool. |
 | `tool.options.healingBrush.pattern` | Healing Brush: Pattern |  | Sets Pattern for the Healing Brush tool. |
 | `tool.options.healingBrush.pressureCurve` | Healing Brush: Pressure curve |  | Sets Pressure curve for the Healing Brush tool. |
+| `tool.options.healingBrush.pressureOpacity` | Healing Brush: Pressure: opacity |  | Sets Pressure: opacity for the Healing Brush tool. |
+| `tool.options.healingBrush.pressureSize` | Healing Brush: Pressure: size |  | Sets Pressure: size for the Healing Brush tool. |
 | `tool.options.healingBrush.sample` | Healing Brush: Sample |  | Sets Sample for the Healing Brush tool. |
 | `tool.options.healingBrush.size` | Healing Brush: Size |  | Sets Size for the Healing Brush tool. |
 | `tool.options.healingBrush.source` | Healing Brush: Source |  | Sets Source for the Healing Brush tool. |
@@ -1074,12 +1084,15 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `tool.options.historyBrush.hardness` | History Brush: Hardness |  | Sets Hardness for the History Brush tool. |
 | `tool.options.historyBrush.opacity` | History Brush: Opacity |  | Sets Opacity for the History Brush tool. |
 | `tool.options.historyBrush.pressureCurve` | History Brush: Pressure curve |  | Sets Pressure curve for the History Brush tool. |
+| `tool.options.historyBrush.pressureOpacity` | History Brush: Pressure: opacity |  | Sets Pressure: opacity for the History Brush tool. |
+| `tool.options.historyBrush.pressureSize` | History Brush: Pressure: size |  | Sets Pressure: size for the History Brush tool. |
 | `tool.options.historyBrush.size` | History Brush: Size |  | Sets Size for the History Brush tool. |
 | `tool.options.historyBrush.symmetry` | History Brush: Symmetry |  | Sets Symmetry for the History Brush tool. |
 | `tool.options.historyBrush.symmetryX` | History Brush: Symmetry X |  | Sets Symmetry X for the History Brush tool. |
 | `tool.options.historyBrush.symmetryY` | History Brush: Symmetry Y |  | Sets Symmetry Y for the History Brush tool. |
 | `tool.options.lasso.antiAlias` | Lasso: Anti-alias |  | Sets Anti-alias for the Lasso tool. |
 | `tool.options.lasso.feather` | Lasso: Feather |  | Sets Feather for the Lasso tool. |
+| `tool.options.lasso.growBy` | Lasso: Grow by |  | Sets Grow by for the Lasso tool. |
 | `tool.options.lasso.kind` | Lasso: Kind |  | Sets Kind for the Lasso tool. |
 | `tool.options.lasso.mode` | Lasso: Mode |  | Sets Mode for the Lasso tool. |
 | `tool.options.magicEraser.antiAlias` | Magic Eraser: Anti-alias |  | Sets Anti-alias for the Magic Eraser tool. |
@@ -1092,6 +1105,7 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `tool.options.markup.width` | Markup: Width |  | Sets Width for the Markup tool. |
 | `tool.options.marquee.antiAlias` | Marquee: Anti-alias |  | Sets Anti-alias for the Marquee tool. |
 | `tool.options.marquee.feather` | Marquee: Feather |  | Sets Feather for the Marquee tool. |
+| `tool.options.marquee.growBy` | Marquee: Grow by |  | Sets Grow by for the Marquee tool. |
 | `tool.options.marquee.height` | Marquee: Height |  | Sets Height for the Marquee tool. |
 | `tool.options.marquee.height2` | Marquee: Height |  | Sets Height for the Marquee tool. |
 | `tool.options.marquee.mode` | Marquee: Mode |  | Sets Mode for the Marquee tool. |
@@ -1107,6 +1121,8 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `tool.options.mixer.mix` | Mixer Brush: Mix |  | Sets Mix for the Mixer Brush tool. |
 | `tool.options.mixer.opacity` | Mixer Brush: Opacity |  | Sets Opacity for the Mixer Brush tool. |
 | `tool.options.mixer.pressureCurve` | Mixer Brush: Pressure curve |  | Sets Pressure curve for the Mixer Brush tool. |
+| `tool.options.mixer.pressureOpacity` | Mixer Brush: Pressure: opacity |  | Sets Pressure: opacity for the Mixer Brush tool. |
+| `tool.options.mixer.pressureSize` | Mixer Brush: Pressure: size |  | Sets Pressure: size for the Mixer Brush tool. |
 | `tool.options.mixer.sampleAllLayers` | Mixer Brush: Sample All Layers |  | Sets Sample All Layers for the Mixer Brush tool. |
 | `tool.options.mixer.size` | Mixer Brush: Size |  | Sets Size for the Mixer Brush tool. |
 | `tool.options.mixer.symmetry` | Mixer Brush: Symmetry |  | Sets Symmetry for the Mixer Brush tool. |
@@ -1121,16 +1137,19 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `tool.options.move.expansion` | Move: Expansion |  | Sets Expansion for the Move tool. |
 | `tool.options.move.h` | Move: H |  | Sets H for the Move tool. |
 | `tool.options.move.horizontalDistortion` | Move: Horizontal distortion |  | Sets Horizontal distortion for the Move tool. |
+| `tool.options.move.interpolation` | Move: Interpolation |  | Sets Interpolation for the Move tool. |
 | `tool.options.move.keepProportions` | Move: Keep proportions |  | Sets Keep proportions for the Move tool. |
 | `tool.options.move.perspectiveWarp` | Move: Perspective Warp |  | Sets Perspective Warp for the Move tool. |
 | `tool.options.move.pinDepth` | Move: Pin depth |  | Sets Pin depth for the Move tool. |
 | `tool.options.move.pinRotation` | Move: Pin rotation |  | Sets Pin rotation for the Move tool. |
 | `tool.options.move.puppetDensity` | Move: Puppet density |  | Sets Puppet density for the Move tool. |
 | `tool.options.move.puppetMode` | Move: Puppet mode |  | Sets Puppet mode for the Move tool. |
-| `tool.options.move.sampling` | Move: Sampling |  | Sets Sampling for the Move tool. |
+| `tool.options.move.referencePoint` | Move: Reference point |  | Sets Reference point for the Move tool. |
 | `tool.options.move.scale` | Move: Scale |  | Sets Scale for the Move tool. |
 | `tool.options.move.showMesh` | Move: Show mesh |  | Sets Show mesh for the Move tool. |
 | `tool.options.move.showTransformControls` | Move: Show Transform Controls |  | Sets Show Transform Controls for the Move tool. |
+| `tool.options.move.skewH` | Move: Skew H |  | Sets Skew H for the Move tool. |
+| `tool.options.move.skewV` | Move: Skew V |  | Sets Skew V for the Move tool. |
 | `tool.options.move.snap` | Move: Snap |  | Sets Snap for the Move tool. |
 | `tool.options.move.verticalDistortion` | Move: Vertical distortion |  | Sets Vertical distortion for the Move tool. |
 | `tool.options.move.w` | Move: W |  | Sets W for the Move tool. |
@@ -1141,6 +1160,7 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `tool.options.move.y` | Move: Y |  | Sets Y for the Move tool. |
 | `tool.options.objectSelect.antiAlias` | Object Selection: Anti-alias |  | Sets Anti-alias for the Object Selection tool. |
 | `tool.options.objectSelect.edgeOffset` | Object Selection: Edge Offset |  | Sets Edge Offset for the Object Selection tool. |
+| `tool.options.objectSelect.growBy` | Object Selection: Grow by |  | Sets Grow by for the Object Selection tool. |
 | `tool.options.objectSelect.mode` | Object Selection: Mode |  | Sets Mode for the Object Selection tool. |
 | `tool.options.objectSelect.objectFinder` | Object Selection: Object Finder |  | Sets Object Finder for the Object Selection tool. |
 | `tool.options.objectSelect.sampleAllLayers` | Object Selection: Sample All Layers |  | Sets Sample All Layers for the Object Selection tool. |
@@ -1159,6 +1179,8 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `tool.options.patternStamp.opacity` | Pattern Stamp: Opacity |  | Sets Opacity for the Pattern Stamp tool. |
 | `tool.options.patternStamp.pattern` | Pattern Stamp: Pattern |  | Sets Pattern for the Pattern Stamp tool. |
 | `tool.options.patternStamp.pressureCurve` | Pattern Stamp: Pressure curve |  | Sets Pressure curve for the Pattern Stamp tool. |
+| `tool.options.patternStamp.pressureOpacity` | Pattern Stamp: Pressure: opacity |  | Sets Pressure: opacity for the Pattern Stamp tool. |
+| `tool.options.patternStamp.pressureSize` | Pattern Stamp: Pressure: size |  | Sets Pressure: size for the Pattern Stamp tool. |
 | `tool.options.patternStamp.scale` | Pattern Stamp: Scale |  | Sets Scale for the Pattern Stamp tool. |
 | `tool.options.patternStamp.size` | Pattern Stamp: Size |  | Sets Size for the Pattern Stamp tool. |
 | `tool.options.patternStamp.symmetry` | Pattern Stamp: Symmetry |  | Sets Symmetry for the Pattern Stamp tool. |
@@ -1172,6 +1194,8 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `tool.options.pencil.mode` | Pencil: Mode |  | Sets Mode for the Pencil tool. |
 | `tool.options.pencil.opacity` | Pencil: Opacity |  | Sets Opacity for the Pencil tool. |
 | `tool.options.pencil.pressureCurve` | Pencil: Pressure curve |  | Sets Pressure curve for the Pencil tool. |
+| `tool.options.pencil.pressureOpacity` | Pencil: Pressure: opacity |  | Sets Pressure: opacity for the Pencil tool. |
+| `tool.options.pencil.pressureSize` | Pencil: Pressure: size |  | Sets Pressure: size for the Pencil tool. |
 | `tool.options.pencil.quickShape` | Pencil: Quick Shape |  | Sets Quick Shape for the Pencil tool. |
 | `tool.options.pencil.size` | Pencil: Size |  | Sets Size for the Pencil tool. |
 | `tool.options.pencil.smoothing` | Pencil: Smoothing |  | Sets Smoothing for the Pencil tool. |
@@ -1180,6 +1204,7 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `tool.options.pencil.symmetryX` | Pencil: Symmetry X |  | Sets Symmetry X for the Pencil tool. |
 | `tool.options.pencil.symmetryY` | Pencil: Symmetry Y |  | Sets Symmetry Y for the Pencil tool. |
 | `tool.options.quickSelect.enhanceEdge` | Quick Selection: Enhance Edge |  | Sets Enhance Edge for the Quick Selection tool. |
+| `tool.options.quickSelect.growBy` | Quick Selection: Grow by |  | Sets Grow by for the Quick Selection tool. |
 | `tool.options.quickSelect.sampleAllLayers` | Quick Selection: Sample all layers |  | Sets Sample all layers for the Quick Selection tool. |
 | `tool.options.quickSelect.selection` | Quick Selection: Selection |  | Sets Selection for the Quick Selection tool. |
 | `tool.options.quickSelect.size` | Quick Selection: Size |  | Sets Size for the Quick Selection tool. |
@@ -1188,7 +1213,6 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `tool.options.remove.hardness` | Remove: Hardness |  | Sets Hardness for the Remove tool. |
 | `tool.options.remove.lamaNewLayer` | Remove: LaMa (new layer) |  | Sets LaMa (new layer) for the Remove tool. |
 | `tool.options.remove.opacity` | Remove: Opacity |  | Sets Opacity for the Remove tool. |
-| `tool.options.remove.pressureCurve` | Remove: Pressure curve |  | Sets Pressure curve for the Remove tool. |
 | `tool.options.remove.sample` | Remove: Sample |  | Sets Sample for the Remove tool. |
 | `tool.options.remove.size` | Remove: Size |  | Sets Size for the Remove tool. |
 | `tool.options.remove.symmetry` | Remove: Symmetry |  | Sets Symmetry for the Remove tool. |
@@ -1198,6 +1222,8 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `tool.options.ruler.useMeasurementScale` | Ruler: Use Measurement Scale |  | Sets Use Measurement Scale for the Ruler tool. |
 | `tool.options.selectionBrush.hardness` | Selection Brush: Hardness |  | Sets Hardness for the Selection Brush tool. |
 | `tool.options.selectionBrush.pressureCurve` | Selection Brush: Pressure curve |  | Sets Pressure curve for the Selection Brush tool. |
+| `tool.options.selectionBrush.pressureOpacity` | Selection Brush: Pressure: opacity |  | Sets Pressure: opacity for the Selection Brush tool. |
+| `tool.options.selectionBrush.pressureSize` | Selection Brush: Pressure: size |  | Sets Pressure: size for the Selection Brush tool. |
 | `tool.options.selectionBrush.size` | Selection Brush: Size |  | Sets Size for the Selection Brush tool. |
 | `tool.options.selectionBrush.symmetry` | Selection Brush: Symmetry |  | Sets Symmetry for the Selection Brush tool. |
 | `tool.options.selectionBrush.symmetryX` | Selection Brush: Symmetry X |  | Sets Symmetry X for the Selection Brush tool. |
@@ -1231,6 +1257,8 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `tool.options.smear.hardness` | Smear: Hardness |  | Sets Hardness for the Smear tool. |
 | `tool.options.smear.mode` | Smear: Mode |  | Sets Mode for the Smear tool. |
 | `tool.options.smear.pressureCurve` | Smear: Pressure curve |  | Sets Pressure curve for the Smear tool. |
+| `tool.options.smear.pressureOpacity` | Smear: Pressure: opacity |  | Sets Pressure: opacity for the Smear tool. |
+| `tool.options.smear.pressureSize` | Smear: Pressure: size |  | Sets Pressure: size for the Smear tool. |
 | `tool.options.smear.radius` | Smear: Radius |  | Sets Radius for the Smear tool. |
 | `tool.options.smear.sampleAllLayers` | Smear: Sample All Layers |  | Sets Sample All Layers for the Smear tool. |
 | `tool.options.smear.size` | Smear: Size |  | Sets Size for the Smear tool. |
@@ -1243,6 +1271,8 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `tool.options.sponge.hardness` | Sponge: Hardness |  | Sets Hardness for the Sponge tool. |
 | `tool.options.sponge.mode` | Sponge: Mode |  | Sets Mode for the Sponge tool. |
 | `tool.options.sponge.pressureCurve` | Sponge: Pressure curve |  | Sets Pressure curve for the Sponge tool. |
+| `tool.options.sponge.pressureOpacity` | Sponge: Pressure: opacity |  | Sets Pressure: opacity for the Sponge tool. |
+| `tool.options.sponge.pressureSize` | Sponge: Pressure: size |  | Sets Pressure: size for the Sponge tool. |
 | `tool.options.sponge.sample` | Sponge: Sample |  | Sets Sample for the Sponge tool. |
 | `tool.options.sponge.size` | Sponge: Size |  | Sets Size for the Sponge tool. |
 | `tool.options.sponge.strength` | Sponge: Strength |  | Sets Strength for the Sponge tool. |
@@ -1253,7 +1283,6 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `tool.options.spotHealing.hardness` | Spot Healing: Hardness |  | Sets Hardness for the Spot Healing tool. |
 | `tool.options.spotHealing.mode` | Spot Healing: Mode |  | Sets Mode for the Spot Healing tool. |
 | `tool.options.spotHealing.opacity` | Spot Healing: Opacity |  | Sets Opacity for the Spot Healing tool. |
-| `tool.options.spotHealing.pressureCurve` | Spot Healing: Pressure curve |  | Sets Pressure curve for the Spot Healing tool. |
 | `tool.options.spotHealing.sampleAllLayers` | Spot Healing: Sample All Layers |  | Sets Sample All Layers for the Spot Healing tool. |
 | `tool.options.spotHealing.size` | Spot Healing: Size |  | Sets Size for the Spot Healing tool. |
 | `tool.options.spotHealing.symmetry` | Spot Healing: Symmetry |  | Sets Symmetry for the Spot Healing tool. |
@@ -1276,17 +1305,19 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `tool.options.type.tracking` | Type: Tracking |  | Sets Tracking for the Type tool. |
 | `tool.options.wand.antiAlias` | Magic Wand: Anti-alias |  | Sets Anti-alias for the Magic Wand tool. |
 | `tool.options.wand.contiguous` | Magic Wand: Contiguous |  | Sets Contiguous for the Magic Wand tool. |
+| `tool.options.wand.growBy` | Magic Wand: Grow by |  | Sets Grow by for the Magic Wand tool. |
 | `tool.options.wand.mode` | Magic Wand: Mode |  | Sets Mode for the Magic Wand tool. |
 | `tool.options.wand.sampleAllLayers` | Magic Wand: Sample all layers |  | Sets Sample all layers for the Magic Wand tool. |
 | `tool.options.wand.sampleSize` | Magic Wand: Sample Size |  | Sets Sample Size for the Magic Wand tool. |
 | `tool.options.wand.tolerance` | Magic Wand: Tolerance |  | Sets Tolerance for the Magic Wand tool. |
+| `tool.options.zoom.scrubbyZoom` | Zoom: Scrubby Zoom |  | Sets Scrubby Zoom for the Zoom tool. |
 
 ## Tools
 
 | Id | Name | Keys | Does |
 | --- | --- | --- | --- |
 | `tool.select.artHistory` | Art History Brush Tool |  | Makes the Art History Brush tool the active tool (key Y). Paint stylised strokes in the colours of the source snapshot (History panel) · [ ] size |
-| `tool.select.artboard` | Artboard Tool |  | Makes the Artboard tool the active tool (key V). Drag on empty canvas to make an artboard · Click its name to select it · Drag inside to move it with its contents · Handles resize · "+" adds one beside it |
+| `tool.select.artboard` | Artboard Tool |  | Makes the Artboard tool the active tool (key V). Drag on empty canvas to make an artboard · Click its name to select it · Drag inside to move it with its contents · Handles resize · "+" adds one beside it, Alt-click it to copy the contents too |
 | `tool.select.backgroundEraser` | Background Eraser Tool |  | Makes the Background Eraser tool the active tool (key E). Drag with the centre over the colour to erase · Tolerance widens it · Protect Foreground keeps the foreground colour |
 | `tool.select.boxes` | Boxes Tool |  | Makes the Boxes tool the active tool (key I). Drag to draw a box · Click one to select it, drag to move, drag a handle to resize · Double-click or Enter to describe it · Delete, Mod+D, arrows, Tab |
 | `tool.select.brush` | Brush Tool |  | Makes the Brush tool the active tool (key B). Drag to paint · Shift-click draws a line from the last point · [ ] size · Shift+[ ] hardness · 1-0 opacity · E eraser · B brush · Space pans |
@@ -1382,6 +1413,16 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `type-on-arc` | Type on Arc... |  | Sets text on an arc, live and editable. (changes the picture) |
 | `type-on-circle` | Type on Circle... |  | Sets text round a full circle, live and editable. (changes the picture) |
 | `type-on-path` | Type on Path... |  | Opens Type on Path. (changes the picture) |
+| `type-ot-calt` | Contextual Alternates |  | Turns the OpenType contextual alternates on or off for the characters selected while typing, else a start to end range of the selected type layers, else the whole layers, else new type. (changes the picture) |
+| `type-ot-dlig` | Discretionary Ligatures |  | Turns the OpenType discretionary ligatures on or off for the characters selected while typing, else a start to end range of the selected type layers, else the whole layers, else new type. (changes the picture) |
+| `type-ot-frac` | Fractions |  | Turns the OpenType fractions on or off for the characters selected while typing, else a start to end range of the selected type layers, else the whole layers, else new type. (changes the picture) |
+| `type-ot-liga` | Standard Ligatures |  | Turns the OpenType standard ligatures (fi, fl and the like) on or off for the characters selected while typing, else a start to end range of the selected type layers, else the whole layers, else new type. (changes the picture) |
+| `type-ot-onum` | Oldstyle |  | Turns the OpenType oldstyle figures on or off for the characters selected while typing, else a start to end range of the selected type layers, else the whole layers, else new type. (changes the picture) |
+| `type-ot-ordn` | Ordinals |  | Turns the OpenType ordinals on or off for the characters selected while typing, else a start to end range of the selected type layers, else the whole layers, else new type. (changes the picture) |
+| `type-ot-ornm` | Ornaments |  | Turns the OpenType ornaments on or off for the characters selected while typing, else a start to end range of the selected type layers, else the whole layers, else new type. (changes the picture) |
+| `type-ot-salt` | Stylistic Alternates |  | Turns the OpenType stylistic alternates on or off for the characters selected while typing, else a start to end range of the selected type layers, else the whole layers, else new type. (changes the picture) |
+| `type-ot-swsh` | Swash |  | Turns the OpenType swash forms on or off for the characters selected while typing, else a start to end range of the selected type layers, else the whole layers, else new type. (changes the picture) |
+| `type-ot-titl` | Titling Alternates |  | Turns the OpenType titling alternates on or off for the characters selected while typing, else a start to end range of the selected type layers, else the whole layers, else new type. (changes the picture) |
 | `type-path-flip` | Flip Type on Path |  | Moves type set on a path to the other side of the path. (changes the picture) |
 | `type-path-release` | Release Type from Path |  | Releases type from its path: the same words become straight point text. (changes the picture) |
 | `type-small-caps` | Small Caps |  | Sets the active type layer, and new type, in small capitals, or back to as typed. (changes the picture) |
@@ -1398,22 +1439,34 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | Id | Name | Keys | Does |
 | --- | --- | --- | --- |
 | `actual` | Actual Pixels | Mod+1 | Zooms to 100 percent. |
+| `canvas-scrollbars` | Canvas Scrollbars |  | Shows or hides thin scroll indicators over the canvas that also drag the view; they cover the picture plus half a view of room on each side. |
+| `clear-artboard-guides` | Clear Selected Artboard Guides |  | Removes the guides that belong to the selected artboard and keeps the others. (changes the picture) |
 | `clear-guides` | Clear Guides |  | Removes every guide. (changes the picture) |
 | `clear-slices` | Clear Slices |  | Removes every user slice. (changes the picture) |
+| `custom-title-bar` | Custom Title Bar |  | Draws formvis's own title bar with Minimize, Maximize or Restore and Close buttons at its right end in place of the system frame (desktop app on Windows and Linux). The choice is kept. |
+| `delete-selected-guides` | Delete Selected Guides |  | Deletes the guides picked with the Move tool. (changes the picture) |
 | `delete-slice` | Delete Slice |  | Removes the selected user slice and keeps the others. (changes the picture) |
 | `depth-map-show` | Show Depth Map |  | Shows the Depth Map layer alone on the canvas, or the picture again. |
 | `divide-slice` | Divide Slice... |  | Cuts the selected slice into equal slices across and down. (changes the picture) |
+| `edit-selected-guides` | Edit Selected Guides... |  | Opens a dialog for the picked guides: orientation and position in any unit for one guide, and a colour for any number. |
 | `fit` | Fit on Screen | Mod+0 | Zooms so the picture fits the window. |
 | `fit-artboard` | Fit Artboard on Screen |  | Zooms so the artboard holding the active layer fills the window. |
 | `fit-layers` | Fit Layer(s) on Screen |  | Zooms so the selected layers' content fills the window. |
+| `flip-view-h` | Flip Horizontal |  | Mirrors the view of the document left to right, for this document only; the pixels are not changed and the pointer still lands on the right pixel. |
 | `gamut-warning` | Gamut Warning | Shift+Mod+Y | Turns the gamut warning on or off. |
 | `guide-layout` | New Guide Layout... |  | Opens New Guide Layout: columns and rows with gutters inside margins, placed as guides in one step. (changes the picture) |
-| `guides-from-shape` | New Guides From Shape |  | Places guides on the four edges of the active shape layer, or of the selection. |
+| `guides-from-shape` | New Guides From Shape |  | Places guides on the edges, the centre or both of the active shape layer or of the selection; the source, edges and centre can be chosen. |
+| `guides-from-shape-centre` | New Guides From Shape Centre |  | Places one vertical and one horizontal guide through the centre of the active shape layer, or of the selection. |
 | `interface-rtl` | Right-to-Left Layout |  | Mirrors the window for right-to-left reading: the toolbar, the panels and the menu bar swap sides. The choice is kept. |
+| `interface-zoom-in` | Interface Zoom In | Alt+Mod+= | Makes the whole window larger by one step (80, 90, 100, 110, 125, 150, 175, 200 percent); the choice is kept. |
+| `interface-zoom-out` | Interface Zoom Out | Alt+Mod+- | Makes the whole window smaller by one step; the choice is kept. |
+| `interface-zoom-reset` | Reset Interface Zoom | Alt+Mod+0 | Returns the window to 100 percent interface zoom. |
 | `layer-based-slice` | New Layer Based Slice |  | Adds a slice over the visible pixels of the active layer, tied to that layer. (changes the picture) |
 | `lock-guides` | Lock Guides | Alt+Mod+; | Locks or unlocks guides so they cannot be dragged. |
 | `lock-slices` | Lock Slices |  | Locks or unlocks the slices so the Slice and Slice Select tools cannot add, move, resize or delete them. |
+| `menus-in-window` | Menus in Window |  | Keeps the menus in the window instead of the macOS menu bar (desktop app on macOS). The choice is kept and applies at the next start. |
 | `new-guide` | New Guide... |  | Opens the New Guide dialog to place a guide at a position. (changes the picture) |
+| `no-tool` | No Tool |  | Switches to no tool at all, so a click or drag on the canvas does nothing. |
 | `os-full-screen` | Full Screen | F11 | Puts the whole window into the operating system full screen, or leaves it. |
 | `par-correction` | Pixel Aspect Ratio Correction |  | Shows or hides the pixel aspect correction, which stretches the canvas and the Navigator preview by the pixel shape; tools and the pointer keep working in document pixels. |
 | `pasteboard-black` | Pasteboard: Black |  | Makes the pasteboard around the picture black. |
@@ -1446,13 +1499,19 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `screen-standard` | Standard Screen Mode |  | Shows the normal window with its title bar. |
 | `selection-display-tint` | Selection Display: Tint |  | Switches the selection display between marching ants and a red tint over what is not selected, outside Quick Mask; the choice is remembered on this device. |
 | `show-all-extras` | Show All |  | Shows every canvas helper: guides, grid, slices, notes, counts, selection edges and layer edges. |
+| `show-artboard-guides` | Artboard Guides |  | Shows or hides the guides that belong to an artboard. |
+| `show-brush-preview` | Brush Preview |  | Shows or hides the tint that fills the brush tip while its size or hardness is dragged. |
 | `show-comfy-dot` | ComfyUI Connection |  | Shows or hides the ComfyUI connection dot on the title bar icon; it asks your own ComfyUI address every 30 seconds. |
 | `show-counts` | Show Count |  | Shows or hides the count numbers on the canvas. |
+| `show-edit-pins` | Edit Pins |  | Shows or hides the pins placed on a layer during Puppet Warp. |
+| `show-extras-options` | Show Extras Options... |  | Opens a dialog with a check box for each canvas helper that View > Extras shows: notes, count, selection edges, layer edges, target path, brush preview, mesh and edit pins. |
 | `show-layer-edges` | Show Layer Edges |  | Shows or hides a box around the active layer's bounds. |
+| `show-mesh` | Mesh |  | Shows or hides the mesh lines drawn over a layer during Puppet Warp and Warp. |
 | `show-no-extras` | Show None |  | Hides every canvas helper: guides, grid, slices, notes, counts, selection edges and layer edges. |
 | `show-notes` | Show Notes |  | Shows or hides the note markers on the canvas. |
 | `show-selection-edges` | Show Selection Edges |  | Shows or hides the marching outline of the selection. |
 | `show-smart-guides` | Smart Guides |  | Turns the alignment lines drawn while moving or transforming on or off; snapping itself is kept. |
+| `show-target-path` | Target Path |  | Shows or hides the outline of the current work path while a tool other than the pen tools is active. |
 | `slice-options` | Slice Options... |  | Opens the active slice's name, URL, alt text and exact position and size for editing. (changes the picture) |
 | `slices-from-guides` | Slices From Guides |  | Replaces the user slices with one slice per cell between the guides. (changes the picture) |
 | `snap` | Snap | Shift+Mod+; | Turns snapping on or off for moving and transforming; the Snap To choices are kept. |
@@ -1461,25 +1520,9 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `snap-grid` | Snap To Grid |  | Turns snapping to the visible grid on or off. |
 | `snap-guides` | Snap To Guides |  | Turns snapping to visible guides on or off. |
 | `snap-layers` | Snap To Layers |  | Turns snapping to the edges and centres of other visible layers on or off. |
+| `snap-slices` | Snap To Slices |  | Turns snapping to the edges of shown slices on or off. |
 | `task-bar-pin` | Pin Task Bar |  | Pins the Contextual Task Bar where it stands, or lets it follow the selection again. |
 | `task-bar-reset` | Reset Task Bar Position |  | Puts the Contextual Task Bar back at the bottom centre of the canvas. |
-| `theme-contrast` | Theme: High Contrast |  | Switches the window to the High Contrast theme; nothing in the window is rebuilt. |
-| `theme-duck` | Theme: Duck |  | Switches the window to the Duck theme; nothing in the window is rebuilt. |
-| `theme-ember` | Theme: Ember |  | Switches the window to the Ember theme; nothing in the window is rebuilt. |
-| `theme-forest` | Theme: Forest |  | Switches the window to the Forest theme; nothing in the window is rebuilt. |
-| `theme-github-dark` | Theme: GitHub Dark |  | Switches the window to the GitHub Dark theme; nothing in the window is rebuilt. |
-| `theme-light` | Theme: Light |  | Switches the window to the Light theme; nothing in the window is rebuilt. |
-| `theme-midnight` | Theme: Midnight Blue |  | Switches the window to the Midnight Blue theme; nothing in the window is rebuilt. |
-| `theme-mono` | Theme: Mono Ink |  | Switches the window to the Mono Ink theme; nothing in the window is rebuilt. |
-| `theme-nineties` | Theme: 90s |  | Switches the window to the 90s theme; nothing in the window is rebuilt. |
-| `theme-nodemode-dark` | Theme: NodeMode Dark |  | Switches the window to the NodeMode Dark theme; nothing in the window is rebuilt. |
-| `theme-ocean` | Theme: Deep Ocean |  | Switches the window to the Deep Ocean theme; nothing in the window is rebuilt. |
-| `theme-rose` | Theme: Rose Noir |  | Switches the window to the Rose Noir theme; nothing in the window is rebuilt. |
-| `theme-sand` | Theme: Sand (light) |  | Switches the window to the Sand (light) theme; nothing in the window is rebuilt. |
-| `theme-slate` | Theme: Slate |  | Switches the window to the Slate theme; nothing in the window is rebuilt. |
-| `theme-studio` | Theme: Studio Dark |  | Switches the window to the Studio Dark theme; nothing in the window is rebuilt. |
-| `theme-terminal` | Theme: Terminal Green |  | Switches the window to the Terminal Green theme; nothing in the window is rebuilt. |
-| `theme-violet` | Theme: Violet Haze |  | Switches the window to the Violet Haze theme; nothing in the window is rebuilt. |
 | `tile-grid` | Tile Grid |  | Shows or hides a dashed grid of the 256 pixel tiles the GPU and giant layers work in. |
 | `toggle-auto-slices` | Toggle Auto Slices |  | Shows or hides the dashed auto slices that fill the space between user slices. |
 | `toggle-dock-panels` | Toggle Dock Panels | Shift+Tab | Shows or hides the panel column and the properties column, and keeps the toolbar and the options bar. |
@@ -1508,11 +1551,15 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `arrange-2up-h` | 2-up Horizontal |  | Shows the active document and one other stacked top and bottom; the other is a read-only view tile. |
 | `arrange-2up-v` | 2-up Vertical |  | Shows the active document and one other side by side; the other is a read-only view tile. |
 | `arrange-3up` | 3-up |  | Shows the active document with two others as read-only view tiles. |
+| `arrange-3up-h` | 3-up Horizontal |  | Shows the active document with two others in three rows; the others are read-only view tiles. |
+| `arrange-3up-v` | 3-up Vertical |  | Shows the active document with two others in three columns; the others are read-only view tiles. |
 | `arrange-4up` | 4-up |  | Shows the active document with three others as read-only view tiles. |
 | `arrange-6up` | 6-up |  | Shows the active document with five others as read-only view tiles. |
 | `arrange-cascade` | Cascade |  | Puts every floating window back in a stepped stack from the top left, all one size, so none is lost off screen. |
 | `arrange-tabs` | Consolidate All to Tabs |  | Returns every open document to the tab strip, one at a time on the Stage; closes the floating windows and extra views. |
 | `arrange-tile` | Tile |  | Picks the layout that fits the number of open documents: two side by side, 3-up for three, 4-up for four and 6-up for five or more. |
+| `arrange-tile-h` | Tile All Horizontally |  | Tiles every open document stacked in rows of equal height, however many are open; the active one is the live Stage and the rest are read-only view tiles. |
+| `arrange-tile-v` | Tile All Vertically |  | Tiles every open document side by side in columns of equal width, however many are open; the active one is the live Stage and the rest are read-only view tiles. |
 | `assistant` | Assistant |  | Shows or hides the Assistant panel. |
 | `benchmark` | Performance Benchmark... |  | Opens the performance benchmark. |
 | `brush-harder` | Increase Brush Hardness |  | Makes the paint brush 25 percent harder. |
@@ -1527,6 +1574,7 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `delete-brush-preset` | Delete Brush Preset |  | Deletes a saved or imported brush preset by id; the built-in presets stay. |
 | `delete-frame` | Delete Frame |  | Deletes the current animation frame. (changes the picture) |
 | `delete-workspace` | Delete Workspace |  | Deletes the saved workspace chosen in the title bar and returns to Essentials; the built-in workspaces cannot be deleted. |
+| `developer-tools` | Developer Tools |  | Opens the web inspector of the desktop window; in a browser tab it says to use the browser's own developer tools. |
 | `float-all-windows` | Float All in Windows |  | Gives every open document a floating window of its own. |
 | `float-window` | Float in Window |  | Detaches a view of the current document into a floating window inside the app, with its own zoom, pan and rotation; drag its title to move it and its edges to resize it. |
 | `get-brush` | Get Brush Settings |  | Returns the brush: size, hardness, opacity, flow, mode, preset, tip shape, jitters, scatter, texture, dual brush, colour dynamics and transfer. |
@@ -1546,15 +1594,21 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `new-workspace` | New Workspace... |  | Asks for a name and saves the panel arrangement as it is now, which of them show and in what order, as a workspace in the title bar list. |
 | `next-appearance` | Next Appearance Mode |  | Cycles the appearance between Dark, Light and Auto, where Auto follows the system scheme. |
 | `next-document` | Next Document | Mod+Tab | Switches to the next open document in the tab strip, wrapping from the last to the first. |
+| `notices` | Notices... |  | Opens the list of the notices shown so far, newest first, with the time and a count for repeats; Clear empties it. |
 | `open-plugins-folder` | Open Plugins Folder |  | Shows the plugins folder in the system file manager. |
+| `panel-activate` | Activate Panel |  | Shows a panel if it is hidden, opens it if folded, brings a floating one to the front and, given a tab id, puts that tab in front of its group; params panel. |
 | `panel-adjustments` | Adjustments |  | Shows or hides the Adjustments panel. |
 | `panel-brushes` | Brushes |  | Shows or hides the Brushes panel. |
 | `panel-channels` | Channels |  | Shows the Channels tab, opening the layers panel group if it is hidden. |
 | `panel-character` | Character |  | Shows or hides the Character panel. |
 | `panel-clone-source` | Clone Source |  | Shows or hides the Clone Source panel. |
 | `panel-color` | Color | F6 | Shows the Color picker, opening its panel group if it is hidden. |
+| `panel-comfyui` | ComfyUI |  | Shows or hides the ComfyUI panel, ComfyUI's own page inside the window. |
+| `panel-dock` | Dock Panel |  | Returns a floating panel to its place in its column; params panel. |
+| `panel-float` | Float Panel |  | Lifts a panel out of its column into a window of its own that can be moved and resized; params panel (group id or tab id), x, y, w, h. Where it stands is remembered. |
 | `panel-generate` | Generate |  | Shows or hides the Generate panel. |
 | `panel-gradients` | Gradients |  | Shows or hides the Gradients panel. |
+| `panel-group` | Change Panel Group |  | Moves a tab into another panel group; params tab and group; a group holds seven tabs at most. |
 | `panel-histogram` | Histogram |  | Shows or hides the Histogram panel. |
 | `panel-history` | History |  | Shows or hides the History panel. |
 | `panel-info` | Info |  | Shows or hides the Info panel. |
@@ -1564,6 +1618,7 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `panel-modifier-keys` | Modifier Keys |  | Shows or hides the Modifier Keys panel. |
 | `panel-navigator` | Navigator |  | Shows or hides the Navigator panel. |
 | `panel-notes` | Notes |  | Shows or hides the Notes panel. |
+| `panel-options` | Options |  | Shows or hides the options bar on its own, leaving the tool rail and the panels; the choice is remembered. |
 | `panel-paragraph` | Paragraph |  | Shows or hides the Paragraph panel. |
 | `panel-paths` | Paths |  | Shows or hides the Paths panel. |
 | `panel-patterns` | Patterns |  | Shows or hides the Patterns panel. |
@@ -1588,7 +1643,7 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `reset-panels` | Reset Panels |  | Restores the default panel layout. |
 | `save-brush-preset` | Save Brush Preset |  | Saves the current brush as a preset in a folder (My Brushes unless group is given) and selects it. |
 | `script-console` | Script Console... |  | Opens the Script Console, a log with a one-line input that runs JavaScript with formvis.run to run any catalogue command, formvis.commands to list them and formvis.api, the plugin API. |
-| `search` | Search... | Mod+K | Opens the command palette. |
+| `search` | Search... | Mod+K | Opens the command palette; tool modes such as Polygonal Lasso are listed on their own and a switch shows On or Off. |
 | `set-brush` | Set Brush Settings |  | Sets any of the brush values by name (size, hardness, opacity, flow, mode, preset, angle, roundness, spacing, jitters, scatter, count, flips, noise, wet edges, texture, dual brush, colour dynamics, transfer) and returns the brush as it is after. |
 | `settings` | Preferences... | Mod+, | Opens Preferences. |
 | `sheet-panels` | Panels Sheet |  | Opens the Panels sheet on narrow screens. |
@@ -1598,7 +1653,35 @@ Generated from the window's command catalogue (1442 commands) by `./formvis agen
 | `system-info` | System Info... |  | Shows the version, system, graphics adapter, monitor, the engine's memory use as the operating system counts it, the data folder, the engine log and the start switches, with a Copy button. |
 | `terminal.new` | New Terminal |  | Opens a new terminal tab. |
 | `terminal.toggle` | Terminal | Mod+J | Shows or hides the terminal dock. |
+| `theme-adwaita-dark` | Theme: Adwaita Dark |  | Switches the window to the Adwaita Dark theme; nothing in the window is rebuilt. |
+| `theme-adwaita-light` | Theme: Adwaita Light |  | Switches the window to the Adwaita Light theme; nothing in the window is rebuilt. |
+| `theme-breeze-dark` | Theme: Breeze Dark |  | Switches the window to the Breeze Dark theme; nothing in the window is rebuilt. |
+| `theme-classic` | Theme: Classic |  | Switches the window to the Classic theme; nothing in the window is rebuilt. |
+| `theme-contrast` | Theme: High Contrast |  | Switches the window to the High Contrast theme; nothing in the window is rebuilt. |
+| `theme-duck` | Theme: Duck |  | Switches the window to the Duck theme; nothing in the window is rebuilt. |
+| `theme-ember` | Theme: Ember |  | Switches the window to the Ember theme; nothing in the window is rebuilt. |
+| `theme-forest` | Theme: Forest |  | Switches the window to the Forest theme; nothing in the window is rebuilt. |
+| `theme-github-dark` | Theme: GitHub Dark |  | Switches the window to the GitHub Dark theme; nothing in the window is rebuilt. |
+| `theme-light` | Theme: Light |  | Switches the window to the Light theme; nothing in the window is rebuilt. |
+| `theme-midnight` | Theme: Midnight Blue |  | Switches the window to the Midnight Blue theme; nothing in the window is rebuilt. |
+| `theme-mono` | Theme: Mono Ink |  | Switches the window to the Mono Ink theme; nothing in the window is rebuilt. |
+| `theme-nineties` | Theme: 90s |  | Switches the window to the 90s theme; nothing in the window is rebuilt. |
+| `theme-nodemode-dark` | Theme: NodeMode Dark |  | Switches the window to the NodeMode Dark theme; nothing in the window is rebuilt. |
+| `theme-ocean` | Theme: Deep Ocean |  | Switches the window to the Deep Ocean theme; nothing in the window is rebuilt. |
+| `theme-pro-dark` | Theme: Pro Dark |  | Switches the window to the Pro Dark theme; nothing in the window is rebuilt. |
+| `theme-pro-light` | Theme: Pro Light |  | Switches the window to the Pro Light theme; nothing in the window is rebuilt. |
+| `theme-pro-light-grey` | Theme: Pro Light Grey |  | Switches the window to the Pro Light Grey theme; nothing in the window is rebuilt. |
+| `theme-pro-medium-grey` | Theme: Pro Medium Grey |  | Switches the window to the Pro Medium Grey theme; nothing in the window is rebuilt. |
+| `theme-rose` | Theme: Rose Noir |  | Switches the window to the Rose Noir theme; nothing in the window is rebuilt. |
+| `theme-sand` | Theme: Sand (light) |  | Switches the window to the Sand (light) theme; nothing in the window is rebuilt. |
+| `theme-slate` | Theme: Slate |  | Switches the window to the Slate theme; nothing in the window is rebuilt. |
+| `theme-soft-dark` | Theme: Soft Dark |  | Switches the window to the Soft Dark theme; nothing in the window is rebuilt. |
+| `theme-soft-light` | Theme: Soft Light |  | Switches the window to the Soft Light theme; nothing in the window is rebuilt. |
+| `theme-solarized-dark` | Theme: Solarized Dark |  | Switches the window to the Solarized Dark theme; nothing in the window is rebuilt. |
+| `theme-studio` | Theme: Studio Dark |  | Switches the window to the Studio Dark theme; nothing in the window is rebuilt. |
 | `theme-sync-system` | Sync Theme with System |  | Follows the system light or dark scheme: the theme becomes Light when the system is light and Studio Dark when it is dark, and changes live with the system. |
+| `theme-terminal` | Theme: Terminal Green |  | Switches the window to the Terminal Green theme; nothing in the window is rebuilt. |
+| `theme-violet` | Theme: Violet Haze |  | Switches the window to the Violet Haze theme; nothing in the window is rebuilt. |
 | `tool-preset-apply` | Apply Tool Preset |  | Applies a saved tool preset by name: switches to its tool and sets its options. |
 | `tool-presets` | Tool Presets |  | Opens Tool Presets, saved sets of a tool's options. |
 | `tween-frames` | Tween... |  | Opens the Tween dialog to add in-between frames. (changes the picture) |

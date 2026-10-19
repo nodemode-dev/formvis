@@ -19,7 +19,7 @@ export const eraserTool: Tool = {
     if (p.button !== 0) return;
     hover = p.doc;
     const e = ctx.engine;
-    if (toHistory) { history = e.beginRetouchStroke('historyBrush', p.doc, p.shift); return; }
+    if (toHistory) { history = e.beginRetouchStroke('historyBrush', p.doc, p.shift, p.pressure); return; }
     before = e.brushMode;
     e.setBrushMode('erase');
     if (mode === 'block') { kept = { diameter: e.brush.diameter, opacity: e.brush.opacity }; e.setBrush({ diameter: 16 / ctx.view().zoom, opacity: 1 }); }

@@ -4,8 +4,8 @@ import { numberRow, selectRow } from './controls';
 
 const enterTo = (input: HTMLInputElement, run: () => void): void => input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); run(); } });
 
-const UNITS: ReadonlyArray<readonly [string, string]> = [['px', 'Pixels'], ['in', 'Inches'], ['cm', 'Centimeters'], ['mm', 'Millimeters'], ['pt', 'Points'], ['pc', 'Picas'], ['%', 'Percent']];
-const COLOURS: ReadonlyArray<readonly [string, string]> = [['', 'Default'], ['#00d1ff', 'Cyan'], ['#ff3fb4', 'Magenta'], ['#3ddc84', 'Green'], ['#ffd400', 'Yellow'], ['#ff8a00', 'Orange'], ['#ff4d4f', 'Red']];
+export const UNITS: ReadonlyArray<readonly [string, string]> = [['px', 'Pixels'], ['in', 'Inches'], ['cm', 'Centimeters'], ['mm', 'Millimeters'], ['pt', 'Points'], ['pc', 'Picas'], ['%', 'Percent']];
+export const COLOURS: ReadonlyArray<readonly [string, string]> = [['', 'Default'], ['#00d1ff', 'Cyan'], ['#ff3fb4', 'Magenta'], ['#3ddc84', 'Green'], ['#ffd400', 'Yellow'], ['#ff8a00', 'Orange'], ['#ff4d4f', 'Red']];
 
 /** Pixels in one `unit` of the document, along `axis` (percent is of the document's width or height). */
 export function pixelsPer(unit: string, resolution: number, length: number): number {

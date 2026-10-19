@@ -4,6 +4,19 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.89.6 · 2026-10-19
+
+### Added
+
+- Look and notices: eleven more themes in Window > Theme; notices with actions, a close button and a history; a busy line on the working tab; tool variants and on or off states in the command palette.
+- Windows and panels: four more arrangements for any number of documents; panels float, dock, move between groups and come to the front by command; double-click a group header to fold it; Window > Options.
+- Guides: select, edit, colour, delete and lock guides from a context menu; Guide Layout column widths, centring, units, colour and artboard targets; guides from a shape's centre; Snap To Slices; artboard guides and the target path shown or hidden.
+- View: Flip Horizontal for the view only; zoom up to 12,800%; auto-scroll at the edges for every drag tool; flick panning; zoom to a dragged rectangle; optional canvas scrollbars; a no-tool mode; canvas status pills; canvas context menus; interface zoom.
+- Fields and dialogs: arithmetic in number fields; Tab between fields; undo inside dialogs; Alt turns Cancel into Reset; label scrubbing and pop-up sliders; keyboard menu navigation; Show Extras Options.
+- Type and languages: OpenType features on selected characters with a Type > OpenType menu; Commit and Cancel on the Type bar; Arabic and Hindi (drafts awaiting native review) and a right-to-left layout.
+- Tools: the current tool and view switches remembered; pen pressure on every painting tool; Build-up; more Shape Dynamics; Expand and Contract in the selection bars; Select Subject on Object Selection; tool presets with colours.
+- Transform and files: Free Transform reference point, skew and interpolation; Artboard orientation and new artboards; note authors and colours; Save a Copy keeps the document's path; a ComfyUI panel; on the desktop, menus in the window on macOS and a custom title bar on Windows and Linux.
+
 ## 1.89.5 · 2026-10-19
 
 ### Added

@@ -4,8 +4,19 @@ import { clamp, type Pt } from './types';
 export class Viewport {
   /** Zoom limits. */
   static readonly MIN = 0.01;
-  static readonly MAX = 64;
+  static readonly MAX = 128;
+  /** The fixed zoom ladder, in percent, from 1% to 12800%. */
+  static readonly LADDER = [1, 2, 3, 4, 5, 6.25, 8.33, 12.5, 16.67, 25, 33.33, 50, 66.67, 100, 150, 200, 300, 400, 500, 600, 800, 1200, 1600, 2400, 3200, 4800, 6400, 9600, 12800];
+  /** The next rung of the ladder above or below `z`, or `z` itself when it already sits on the end. */
+  static ladderStep(z: number, up: boolean): number {
+    const pct = z * 100, eps = 1e-6 * Math.max(1, pct), L = Viewport.LADDER;
+    if (up) return (L.find((r) => r > pct + eps) ?? L[L.length - 1]) / 100;
+    for (let i = L.length - 1; i >= 0; i--) if (L[i] < pct - eps) return L[i] / 100;
+    return L[0] / 100;
+  }
   zoom = 1;
+  /** View > Flip Horizontal: the view mirrored left to right; the pixels are not. */
+  flipped = false;
   /** Where the document origin sits on screen. */
   panX = 0;
   panY = 0;

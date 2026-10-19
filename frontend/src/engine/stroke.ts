@@ -545,9 +545,15 @@ export class PixelStroke {
     if (d?.opacity?.enabled) this.buf.useCeil();
     const tip = this.tipAlphaOf(), alpha = this.dabAlpha(flow), reached = this.opacityOf(info);
     const tilt = Math.min(90, Math.hypot(pose.tiltX, pose.tiltY)), count = Math.max(1, Math.round(sh.count * (1 - (sh.countJitter / 100) * rnd())));
-    const across = ((this.dir + 90) * Math.PI) / 180, varied = sh.roundnessJitter > 0 || sh.roundnessControl !== 'off';
+    const across = ((this.dir + 90) * Math.PI) / 180, varied = sh.roundnessJitter > 0 || sh.roundnessControl !== 'off' || !!sh.projection;
     for (let k = 0; k < count; k++) {
-      const r = base * (1 - (sh.sizeJitter / 100) * rnd());
+      let sizeK = 1 - (sh.sizeJitter / 100) * rnd();
+      const sctl = sh.sizeControl ?? 'off';
+      if (sctl === 'pressure') sizeK *= Math.max(0, Math.min(1, pressure));
+      else if (sctl === 'fade') sizeK *= 1 - Math.min(1, this.steps / this.fadeLen);
+      else if (sctl === 'tilt') sizeK *= 1 - Math.min(1, (tilt * (sh.tiltScale ?? 100)) / 9000);
+      else if (sctl === 'rotation') sizeK *= 1 - (((pose.twist % 360) + 360) % 360) / 360;
+      const r = base * Math.max((sh.minDiameter ?? 0) / 100, sizeK);
       let angle = sh.angle;
       if (sh.angleControl === 'direction') angle += this.dir;
       else if (sh.angleControl === 'tilt') angle += (Math.atan2(pose.tiltY, pose.tiltX) * 180) / Math.PI;
@@ -560,6 +566,7 @@ export class PixelStroke {
       else if (sh.roundnessControl === 'rotation') round *= 1 - (((pose.twist % 360) + 360) % 360) / 360;
       else if (sh.roundnessControl === 'fade') round *= 1 - Math.min(1, this.steps / this.fadeLen);
       round *= 1 - (sh.roundnessJitter / 100) * rnd();
+      if (sh.projection && tilt > 0) { angle += (Math.atan2(pose.tiltY, pose.tiltX) * 180) / Math.PI; round *= 1 - 0.75 * (tilt / 90); }
       if (varied) round = Math.max(sh.minRoundness / 100, round);
       round = Math.max(0.01, Math.min(1, round));
       const sc = sh.scatterControl ?? 'off', spread = (sh.scatter / 100) * base * 2 * (sc === 'pressure' ? Math.max(0, Math.min(1, pressure)) : sc === 'fade' ? 1 - Math.min(1, this.steps / this.fadeLen) : 1);
@@ -569,7 +576,8 @@ export class PixelStroke {
         else { const t = (rnd() * 2 - 1) * spread; x += Math.cos(across) * t; y += Math.sin(across) * t; }
       }
       const a = (angle * Math.PI) / 180, ca = Math.cos(a), sa = Math.sin(a), place = mul(this.toLocal, [ca, sa, -sa, ca, x, y]);
-      const at = mul(place, [sh.flipX ? -1 : 1, 0, 0, sh.flipY ? -round : round, 0, 0]), rx = r * this.tipAspect.x, ry = r * this.tipAspect.y;
+      const fx = (sh.flipX ? -1 : 1) * (sh.flipXJitter && rnd() < 0.5 ? -1 : 1), fy = (sh.flipY ? -1 : 1) * (sh.flipYJitter && rnd() < 0.5 ? -1 : 1);
+      const at = mul(place, [fx, 0, 0, fy * round, 0, 0]), rx = r * this.tipAspect.x, ry = r * this.tipAspect.y;
       this.buf.lay(tip, mul(at, [(2 * rx) / tip.w, 0, 0, (2 * ry) / tip.h, -rx, -ry]), alpha, reached);
       if (this.varied) {
         const c = this.inkCtx();

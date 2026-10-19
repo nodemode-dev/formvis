@@ -55,7 +55,7 @@ export interface MoveHost {
   growLayer(p: Project, l: Layer, rect: Rect): Raster;
   flattened(): Surface | null;
   snapBox(l: Layer, t: Transform): Rect;
-  view: { guides: boolean; grid: boolean; gridSpacing: number; gridSubdivisions: number };
+  view: { guides: boolean; grid: boolean; slices: boolean; artboardGuides: boolean; gridSpacing: number; gridSubdivisions: number };
   setSnapGuides(g: { xs: number[]; ys: number[] } | null): void;
 }
 
@@ -380,7 +380,7 @@ export function cancelSelectionTransform(host: MoveHost, fs: FloatingSelection):
 }
 
 /** View > Snap and Snap To: the master switch and the four targets, each on its own (the app keeps them). */
-export const snapOptions = { on: true, guides: true, grid: true, layers: true, bounds: true, smart: true };
+export const snapOptions = { on: true, guides: true, grid: true, layers: true, bounds: true, smart: true, slices: true };
 
 export function snapMove(host: MoveHost, p: Project, id: ID, t: Transform, moving?: ReadonlySet<ID>): Transform {
   const layer = p.layer(id);
@@ -407,7 +407,10 @@ export function snapDelta(host: MoveHost, p: Project, box: Rect, skip: (l: Layer
     yc.push(b.y, b.y + b.h / 2, b.y + b.h);
   }
   if (snapOptions.guides && host.view.guides && p.doc.guides) {
-    for (const g of p.doc.guides) (g.axis === 'x' ? xc : yc).push(g.at);
+    for (const g of p.doc.guides) if (!g.board || host.view.artboardGuides) (g.axis === 'x' ? xc : yc).push(g.at);
+  }
+  if (snapOptions.slices && host.view.slices && p.doc.slices) {
+    for (const s of p.doc.slices) { xc.push(s.x, s.x + s.w); yc.push(s.y, s.y + s.h); }
   }
   const ex = [box.x, box.x + box.w / 2, box.x + box.w];
   const ey = [box.y, box.y + box.h / 2, box.y + box.h];

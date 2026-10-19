@@ -1,14 +1,14 @@
 import { SelectionMask, type Engine, type Pt, type Rect, type SelectionMode } from '../../engine';
 import { toolHost } from '../registry';
 import { dashed, type Tool, type ToolContext, type ToolPointer } from '../registry';
-import { modeCursor, modeFor, modeSegment, nudgeSelectionKey } from './select-common';
+import { growOptions, modeCursor, modeFor, modeSegment, nudgeSelectionKey } from './select-common';
 
 interface Draft { anchor: Pt; point: Pt; mode: SelectionMode; shiftAtPress: boolean; altAtPress: boolean; square: boolean; center: boolean }
 let draft: Draft | null = null;
 let moving: Pt | null = null;
 let shifted = false;
 
-/** One drag step to a document point; pointer moves and autoscroll ticks both come through here. */
+/** One drag step to a document point; the stage's edge scrolling reaches it through `move` too. */
 function follow(ctx: ToolContext, doc: Pt, shift: boolean, alt: boolean): void {
   if (moving) {
     if (Math.hypot(doc.x - moving.x, doc.y - moving.y) >= 1) shifted = true;
@@ -23,38 +23,6 @@ function follow(ctx: ToolContext, doc: Pt, shift: boolean, alt: boolean): void {
   draft.square = shift && !draft.shiftAtPress;
   draft.center = alt && !draft.altAtPress;
   ctx.engine.emit('overlay', null);
-}
-
-/**
- * Dragging near the view's edge scrolls it: past a 12-point margin inside the view, every 60 Hz tick pans toward the
- * pointer by 2 plus 0.4 times the distance past the margin (at most 40), and the drag follows the document point now under it.
- */
-let scroll: { at: Pt; shift: boolean; alt: boolean; timer: number } | null = null;
-
-function scrollDelta(ctx: ToolContext, at: Pt): Pt {
-  const v = ctx.view(), margin = 12;
-  const speed = (past: number): number => Math.min(40, 2 + 0.4 * past);
-  const axis = (pos: number, size: number): number => (pos < margin ? speed(margin - pos) : pos > size - margin ? -speed(pos - (size - margin)) : 0);
-  return { x: axis(at.x, v.width), y: axis(at.y, v.height) };
-}
-
-function stopScroll(): void {
-  if (scroll) window.clearInterval(scroll.timer);
-  scroll = null;
-}
-
-function autoscroll(ctx: ToolContext, p: ToolPointer): void {
-  const d = scrollDelta(ctx, p.screen);
-  if (!d.x && !d.y) { stopScroll(); return; }
-  if (scroll) { scroll.at = p.screen; scroll.shift = p.shift; scroll.alt = p.alt; return; }
-  const st = { at: p.screen, shift: p.shift, alt: p.alt, timer: 0 };
-  st.timer = window.setInterval(() => {
-    const dd = scrollDelta(ctx, st.at);
-    if ((!dd.x && !dd.y) || (!draft && !moving)) { stopScroll(); return; }
-    ctx.engine.pan(dd.x, dd.y);
-    follow(ctx, ctx.view().toDoc(st.at), st.shift, st.alt);
-  }, 1000 / 60);
-  scroll = st;
 }
 
 /** The box from anchor a to point b: square makes both sides the longer one, centred puts a in the middle; whole pixels. */
@@ -112,11 +80,9 @@ export const marqueeTool: Tool = {
   move(ctx, p) {
     if (!moving && !draft) return;
     follow(ctx, p.doc, p.shift, p.alt);
-    autoscroll(ctx, p);
   },
   keydown: (ctx, e) => nudgeSelectionKey(ctx, e),
   up(ctx) {
-    stopScroll();
     const e = ctx.engine;
     if (moving) { moving = null; if (shifted) e.endSelectionShift(); else { e.updateSelectionShift(0, 0); e.endSelectionShift(); e.deselect(); } return; }
     const d = draft;
@@ -140,7 +106,6 @@ export const marqueeTool: Tool = {
     e.applySelection(mask, d.mode, ellipse ? 'Elliptical Marquee' : 'Rectangular Marquee');
   },
   cancel(ctx) {
-    stopScroll();
     if (moving) { ctx.engine.updateSelectionShift(0, 0); ctx.engine.endSelectionShift(); moving = null; }
     draft = null;
     ctx.engine.snapPoint({ x: 0, y: 0 }, true);
@@ -170,6 +135,7 @@ export const marqueeTool: Tool = {
     modeSegment(e),
     { kind: 'button', label: 'Deselect', priority: 30, run: () => toolHost.run('deselect'), when: () => !!e.current?.selection },
     { kind: 'button', label: 'Feather Selection...', priority: 28, run: () => toolHost.run('feather'), when: () => !!e.current?.selection },
+    ...growOptions(e),
     { kind: 'button', label: 'Select and Mask...', priority: 25, run: () => toolHost.run('select-and-mask') }
   ],
 };

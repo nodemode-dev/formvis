@@ -3,6 +3,7 @@ import { meshSurfacePoint, type P2 } from '../../engine/mesh-warp';
 import { WARP_STYLES } from '../../engine/text';
 import type { WarpStyle } from '../../engine/types';
 import { digitOf, type OptionSpec, type Tool, type ToolContext, type ToolPointer } from '../registry';
+import { extraShown } from '../../ui/view-extras';
 
 const HANDLE_PX = 7; // screen points within which a handle is hit
 const ROTATE_PX = 24; // how far outside a corner a drag still rotates
@@ -113,6 +114,8 @@ let altCopy = false;
 let lastDigit: { d: number; at: number } | null = null;
 /** The marquee that selects layers: pressed where Auto-Select (or Cmd or Ctrl) finds no layer. */
 let marquee: { a: { x: number; y: number }; b: { x: number; y: number }; sa: { x: number; y: number }; add: boolean } | null = null;
+
+const REFERENCE_POINTS: ReadonlyArray<readonly [number, number, string]> = [[0, 0, 'Top left'], [0.5, 0, 'Top'], [1, 0, 'Top right'], [0, 0.5, 'Left'], [0.5, 0.5, 'Center'], [1, 0.5, 'Right'], [0, 1, 'Bottom left'], [0.5, 1, 'Bottom'], [1, 1, 'Bottom right']];
 
 const ALIGN_NAMES = { left: 'Left Edges', hcenter: 'Horizontal Centers', right: 'Right Edges', top: 'Top Edges', vcenter: 'Vertical Centers', bottom: 'Bottom Edges' } as const;
 
@@ -248,6 +251,8 @@ export const moveTool: Tool = {
     const eng = ctx.engine;
     if (e.metaKey || e.ctrlKey) return false;
     const step = e.shiftKey ? 10 : 1;
+    if ((e.key === 'Delete' || e.key === 'Backspace') && eng.deleteSelectedGuides()) return true;
+    if (e.key === 'Escape' && eng.selectedGuides.length && !eng.anyTransformPending) { eng.clearGuideSelection(); return true; }
     if (eng.anyTransformPending) {
       if (e.key === 'Enter') { eng.applyPendingTransform(); eng.endTransformMode(); return true; }
       if (e.key === 'Escape') { eng.cancelPendingTransform(); eng.endTransformMode(); return true; }
@@ -345,7 +350,7 @@ export const moveTool: Tool = {
       g.save();
       g.lineWidth = 1;
       g.strokeStyle = pal.accent;
-      const mesh = e.puppetMesh();
+      const mesh = extraShown('mesh') ? e.puppetMesh() : null;
       if (mesh) {
         g.globalAlpha = 0.55;
         g.beginPath();
@@ -358,7 +363,7 @@ export const moveTool: Tool = {
         g.stroke();
         g.globalAlpha = 1;
       }
-      pe.to.forEach(([x, y], i) => {
+      if (extraShown('pins')) pe.to.forEach(([x, y], i) => {
         const s = v.toScreen({ x, y }), f = v.toScreen({ x: pe.from[i][0], y: pe.from[i][1] });
         g.setLineDash([3, 3]); g.beginPath(); g.moveTo(f.x, f.y); g.lineTo(s.x, s.y); g.stroke(); g.setLineDash([]);
         g.fillStyle = pal.handle; g.beginPath(); g.arc(s.x, s.y, i === pe.sel ? 6.5 : 5, 0, Math.PI * 2); g.fill(); g.stroke();
@@ -373,7 +378,7 @@ export const moveTool: Tool = {
       g.lineWidth = 1;
       g.strokeStyle = pal.accent;
       g.beginPath();
-      for (let line = 0; line < mw.gw + mw.gh; line++) {
+      for (let line = 0; extraShown('mesh') && line < mw.gw + mw.gh; line++) {
         const alongU = line < mw.gh, fixed = alongU ? line : line - mw.gh;
         for (let k = 0; k <= 24; k++) {
           const t = (k / 24) * ((alongU ? mw.gw : mw.gh) - 1);
@@ -438,15 +443,18 @@ export const moveTool: Tool = {
       ...(['left', 'hcenter', 'right', 'top', 'vcenter', 'bottom'] as const).map((k): OptionSpec => ({ kind: 'button', label: `Align ${ALIGN_NAMES[k]}`, icon: `align${k[0].toUpperCase()}${k.slice(1)}Edge`, run: () => e.alignLayers(k), when: () => !e.transformEdit, compact: true })),
       ...(['hspace', 'vspace'] as const).map((k): OptionSpec => ({ kind: 'button', label: k === 'hspace' ? 'Distribute Horizontal Spacing' : 'Distribute Vertical Spacing', icon: k === 'hspace' ? 'distributeH' : 'distributeV', run: () => e.distributeLayers(k), when: () => !e.transformEdit, compact: true })),
       { kind: 'toggle', label: 'Keep proportions', priority: 60, get: () => e.lockRatio, set: (v) => e.update({ lockRatio: v }), when: editing },
-      { kind: 'number', label: 'X', priority: 80, get: () => t()?.x ?? null, set: (v) => e.setLayerTransform({ x: v }, 'Move Layer'), when: editing },
-      { kind: 'number', label: 'Y', priority: 80, get: () => t()?.y ?? null, set: (v) => e.setLayerTransform({ y: v }, 'Move Layer'), when: editing },
+      { kind: 'select', label: 'Reference point', priority: 78, choices: REFERENCE_POINTS.map(([x, y, label]) => ({ id: `${x}:${y}`, label })), get: () => `${e.transformRef.x}:${e.transformRef.y}`, set: (v: string) => { const [x, y] = v.split(':').map(Number); e.setTransformRef(x, y); }, when: () => editing() || !!e.distortEdit },
+      { kind: 'number', label: 'X', priority: 80, get: () => e.transformRefPoint()?.x ?? null, set: (v) => e.setTransformRefPoint('x', v), when: editing },
+      { kind: 'number', label: 'Y', priority: 80, get: () => e.transformRefPoint()?.y ?? null, set: (v) => e.setTransformRefPoint('y', v), when: editing },
       { kind: 'number', label: 'W', priority: 80, min: 1, get: () => t()?.w ?? null, set: (v) => e.resizeLayerTo(v, true), when: editing },
       { kind: 'number', label: 'H', priority: 80, min: 1, get: () => t()?.h ?? null, set: (v) => e.resizeLayerTo(v, false), when: editing },
       { kind: 'number', label: 'Scale', priority: 75, unit: '%', min: 1, get: () => { const l = e.activeLayer, tt = t(); return e.anyTransformPending ? e.pendingScalePercent : l?.raster && tt ? (tt.w / l.raster.width) * 100 : null; }, set: (v) => e.scaleLayerTo(v), when: editing },
       { kind: 'button', label: 'Apply transform', priority: 95, run: () => e.applyPendingTransform(), when: () => e.anyTransformPending },
       { kind: 'button', label: 'Cancel transform', priority: 92, run: () => e.cancelPendingTransform(), when: () => e.anyTransformPending },
-      { kind: 'number', label: 'Angle', priority: 75, unit: '\u00b0', get: () => t()?.rotation ?? null, set: (v) => e.setLayerTransform({ rotation: v }, 'Rotate Layer'), when: editing },
-      { kind: 'segment', label: 'Sampling', priority: 50, choices: [{ id: 'nearest', label: 'Nearest' }, { id: 'smooth', label: 'Smooth' }, { id: 'high', label: 'High quality' }], get: () => t()?.sampling ?? 'high', set: (v) => e.setLayerTransform({ sampling: v as Transform['sampling'] }), when: editing },
+      { kind: 'number', label: 'Angle', priority: 75, unit: '\u00b0', get: () => t()?.rotation ?? null, set: (v) => e.setLayerTransformAbout({ rotation: v }, 'Rotate Layer'), when: editing },
+      { kind: 'number', label: 'Skew H', priority: 60, unit: '\u00b0', min: -88, max: 88, get: () => e.distortEdit?.skew?.h ?? 0, set: (v) => { e.skewBox('h', v); }, when: () => (editing() && !e.pathTransform) || !!e.distortEdit },
+      { kind: 'number', label: 'Skew V', priority: 60, unit: '\u00b0', min: -88, max: 88, get: () => e.distortEdit?.skew?.v ?? 0, set: (v) => { e.skewBox('v', v); }, when: () => (editing() && !e.pathTransform) || !!e.distortEdit },
+      { kind: 'segment', label: 'Interpolation', priority: 50, choices: [{ id: 'nearest', label: 'Nearest neighbor' }, { id: 'smooth', label: 'Bilinear' }, { id: 'high', label: 'Bicubic' }], get: () => t()?.sampling ?? 'high', set: (v) => e.setLayerTransform({ sampling: v as Transform['sampling'] }), when: editing },
       { kind: 'select', label: 'Warp grid', priority: 30, choices: [3, 4, 5, 6].map((n) => ({ id: String(n), label: `${n} x ${n}` })), get: () => String(e.meshWarpGrid), set: (v: string) => { e.meshWarpGrid = Number(v) || 4; e.emit('options', null); }, when: editing },
       { kind: 'select', label: 'Warp style', priority: 70, choices: [{ id: 'custom', label: 'Custom' }, ...WARP_STYLES.map(([id, label]) => ({ id, label }))], get: () => e.meshWarpPreset.style, set: (v: string) => { e.setMeshWarpPreset({ style: v as WarpStyle | 'custom' }); }, when: () => !!e.meshWarpEdit },
       { kind: 'segment', label: 'Warp direction', priority: 40, choices: [{ id: 'horizontal', label: 'Horizontal' }, { id: 'vertical', label: 'Vertical' }], get: () => e.meshWarpPreset.orientation, set: (v: string) => { e.setMeshWarpPreset({ orientation: v === 'vertical' ? 'vertical' : 'horizontal' }); }, when: () => !!e.meshWarpEdit && e.meshWarpPreset.style !== 'custom' },

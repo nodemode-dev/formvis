@@ -50,12 +50,16 @@ export class ToolPresetsDialog extends Dialog {
   private readonly list = el<HTMLSelectElement>('<select class="cv-input" size="10" style="width: 100%; height: 220px" aria-label="Tool presets"></select>');
   private readonly empty = el('<p class="cv-dialog-note" role="status"></p>');
   private readonly only: { el: HTMLElement; set(v: boolean): void };
+  private readonly colour: { el: HTMLElement; set(v: boolean): void };
+  private withColour = false;
 
   constructor(private readonly engine: Engine) {
     super('Tool Presets', 600);
     this.only = checkRow('Current Tool Only', (v) => { this.currentOnly = v; this.paint(); });
     this.only.set(true);
-    this.body.append(this.only.el, this.list, this.empty, el('<p class="cv-dialog-note">Export writes every preset to a .json file; Import merges one by name. .tpl tool preset files are not read.</p>'));
+    this.colour = checkRow('Include Colour (the foreground and background colours)', (v) => { this.withColour = v; });
+    this.colour.set(false);
+    this.body.append(this.only.el, this.colour.el, this.list, this.empty, el('<p class="cv-dialog-note">Export writes every preset to a .json file; Import merges one by name. .tpl tool preset files are not read.</p>'));
     this.button('New Preset...', 'ghost', () => void this.create());
     this.button('Apply', 'primary', () => this.applySelected());
     this.button('Rename...', 'ghost', () => void this.rename());
@@ -100,6 +104,7 @@ export class ToolPresetsDialog extends Dialog {
       if (spec.kind === 'color') { if (v && typeof v === 'object') values[key] = hex(v as RGB); }
       else if (v !== null && v !== undefined) values[key] = v;
     }
+    if (this.withColour) { values['$fg'] = hex(this.engine.fg); values['$bg'] = hex(this.engine.bg); }
     return values;
   }
 
@@ -121,6 +126,9 @@ export class ToolPresetsDialog extends Dialog {
     const tool = this.toolOf(p.tool);
     if (!tool?.options) return false;
     if (this.engine.tool !== tool.id) this.engine.setTool(tool.id);
+    const rgb = (v: unknown): RGB | undefined => (typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v) ? { r: parseInt(v.slice(1, 3), 16), g: parseInt(v.slice(3, 5), 16), b: parseInt(v.slice(5, 7), 16) } : undefined);
+    const fg = rgb(p.values['$fg']), bg = rgb(p.values['$bg']);
+    if (fg || bg) this.engine.setColors(fg, bg);
     for (const { spec, key } of keyed(tool, tool.options(this.engine))) {
       if (!(key in p.values)) continue;
       const v = p.values[key];

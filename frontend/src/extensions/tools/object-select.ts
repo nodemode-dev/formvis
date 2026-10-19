@@ -4,7 +4,7 @@ import { resizeMask } from '../../engine/filters';
 import { api } from '../../io/api';
 import { toolHost } from '../registry';
 import { dashed, type Tool } from '../registry';
-import { modeCursor, modeFor, modeSegment, nudgeSelectionKey } from './select-common';
+import { growOptions, modeCursor, modeFor, modeSegment, nudgeSelectionKey } from './select-common';
 
 /** The Object Selection tool (W): click an object to select it, Shift-click to add another, Alt-click to
  *  take one away. The engine's SAM 2.1 encodes the image once and answers each click in about a tenth of a second; the
@@ -208,7 +208,9 @@ export const objectSelectTool: Tool = {
     { kind: 'toggle', label: 'Anti-alias', priority: 42, get: () => e.selectionAntialiased, set: (v) => { e.selectionAntialiased = v; e.emit('options', null); } },
     { kind: 'toggle', label: 'Object Finder', priority: 40, get: () => hoverOn, set: (v) => { hoverOn = v; hoverDownUntil = 0; if (!v) { highlight = null; hoverSeq++; clearTimeout(hoverTimer); e.emit('overlay', null); } } },
     modeSegment(e),
+    { kind: 'button', label: 'Select Subject', priority: 35, run: () => toolHost.run('select-subject') },
     { kind: 'button', label: 'Feather Selection...', priority: 28, run: () => toolHost.run('feather'), when: () => !!e.current?.selection },
+    ...growOptions(e),
     { kind: 'button', label: 'Select and Mask...', priority: 25, run: () => toolHost.run('select-and-mask') }
   ],
 };

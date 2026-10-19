@@ -1,6 +1,6 @@
 import type { Engine, RGB } from '../engine';
-import { toolList, type OptionSpec, type Tool } from '../extensions/registry';
-import { loadPrefs, updatePrefs, type ToolOptionValue } from './prefs';
+import { toolHost, toolList, type OptionSpec, type Tool } from '../extensions/registry';
+import { loadPrefs, recalled, remembered, updatePrefs, type ToolOptionValue } from './prefs';
 
 /** DEV_PLAN 35.1: every tool option sticks. The tools keep their options in the engine or in their own module state and
  *  start each session at the defaults; this wraps each tool's `options` so a change made anywhere (the options bar, the
@@ -9,9 +9,13 @@ import { loadPrefs, updatePrefs, type ToolOptionValue } from './prefs';
  *  everyone who never moved it. Values are put back oldest change first, so where two tools share one setting (the
  *  brush size) the latest change wins. */
 
+const VIEW_SWITCHES = ['rulers', 'guides', 'grid', 'guidesLocked', 'artboardGuides', 'slices', 'slicesLocked'] as const;
+/** Tools that need a gesture or a document to make sense at start-up: never resumed. */
+const RESUME_NEVER: readonly string[] = ['crop', 'type', 'relight', 'rotateView', 'idle'];
+
 /** Options that describe the open document or the current gesture, not a setting: never kept. */
 const NEVER: Record<string, readonly string[] | '*'> = {
-  move: ['X', 'Y', 'W', 'H', 'Scale', 'Angle', 'Sampling', 'Perspective Warp'],
+  move: ['X', 'Y', 'W', 'H', 'Scale', 'Angle', 'Skew H', 'Skew V', 'Reference point', 'Interpolation', 'Sampling', 'Perspective Warp'],
   rotateView: '*',
   crop: ['Straighten', 'Perspective'],
   cloneStamp: ['Source'],
@@ -74,11 +78,13 @@ export function installOptionMemory(engine: Engine): OptionMemory {
   const store = (key: string, v: ToolOptionValue | undefined): void => {
     if (restoring || v === undefined) return;
     const cur = loadPrefs().toolOptions, had = cur[key], isDefault = same(defaults.get(key), v);
-    if (isDefault && had === undefined) return;
-    if (!isDefault && same(had, v)) return;
+    // A setting several tools share (the brush's pressure, size) keeps a default value too while another tool holds a different one.
+    const tail = key.slice(key.indexOf('.') + 1), keep = !isDefault || Object.keys(cur).some((k) => k !== key && k.slice(k.indexOf('.') + 1) === tail);
+    if (!keep && had === undefined) return;
+    if (keep && same(had, v)) return;
     const next = { ...cur };
     delete next[key];   // a changed value goes to the end, so the latest change is the last put back
-    if (!isDefault) next[key] = v;
+    if (keep) next[key] = v;
     updatePrefs({ toolOptions: next });
   };
 
@@ -107,7 +113,7 @@ export function installOptionMemory(engine: Engine): OptionMemory {
         const set = spec.set as (v: unknown) => void;
         (spec as { set: (v: unknown) => void }).set = (v) => { set(v); store(key, valueOf(spec)); };
       }
-      return specs;
+      return [...specs, { kind: 'button', label: 'Tool Presets...', priority: 2, compact: true, icon: 'sliders', run: () => toolHost.run('tool-presets') }];
     };
   }
 
@@ -127,10 +133,33 @@ export function installOptionMemory(engine: Engine): OptionMemory {
     }
   } finally { restoring = false; }
   if (engine.tool !== before) engine.setTool(before);
+
+  // The tool in use and the View switches come back too (rulers, guides, grid, slices).
+  try {
+    const view = recalled('Workspace', 'view');
+    if (typeof view === 'string') {
+      const got = JSON.parse(view) as Record<string, unknown>, patch: Record<string, boolean> = {};
+      for (const k of VIEW_SWITCHES) if (typeof got[k] === 'boolean') patch[k] = got[k] as boolean;
+      engine.view = { ...engine.view, ...patch };
+    }
+    const last = recalled('Workspace', 'tool');
+    if (typeof last === 'string' && !RESUME_NEVER.includes(last) && toolList().some((t) => t.id === last) && engine.tool !== last) engine.setTool(last as Engine['tool']);
+  } catch { /* the defaults stand */ }
   engine.emit('options', null);
 
-  engine.on('options', capture);
-  engine.on('tool', capture);
+  let kept = 0;
+  const keepWorkspace = (): void => {
+    if (kept) return;
+    kept = requestAnimationFrame(() => {
+      kept = 0;
+      const view: Record<string, boolean> = {};
+      for (const k of VIEW_SWITCHES) view[k] = !!engine.view[k];
+      remembered('Workspace', 'view', JSON.stringify(view));
+      remembered('Workspace', 'tool', engine.tool);
+    });
+  };
+  engine.on('options', () => { capture(); keepWorkspace(); });
+  engine.on('tool', () => { capture(); keepWorkspace(); });
 
   /** Put the options of one tool (or all) back to the values they had at start-up and forget the kept ones. */
   const reset = (toolId?: string): number => {

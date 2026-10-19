@@ -1,10 +1,10 @@
 import { applyLut } from '../engine/colour-lut';
 import { LUT3_N, viewLut3 } from '../engine/lut';
 import { applyDuotoneLut, duotoneLut } from '../engine/duotone';
-import { corners, createSurface, integral, intersectRect, sizeSurface, translation, unionRect, type AlphaChannel, type Engine, type Pt, type Rect, type Surface } from '../engine';
+import { corners, createSurface, integral, intersectRect, sizeSurface, tracePath, translation, unionRect, type AlphaChannel, type Engine, type Pt, type Rect, type Surface } from '../engine';
 import type { Project } from '../engine/project';
 import { getTool, type Tool, type ToolContext, type ToolPointer, type ViewInfo } from '../extensions/registry';
-import { isMac, q, setHidden } from './dom';
+import { isMac, q, setHidden, setText } from './dom';
 import { stickyModifiers } from './modifier-keys';
 import { paint, type StagePaint } from './palette';
 import type { DisplayLayer, ScreenDisplay } from '../gpu/display';
@@ -16,6 +16,8 @@ const REDUCED = typeof matchMedia === 'function' && matchMedia('(prefers-reduced
 /** Ruler thickness in CSS pixels; the rulers lie over the stage's top and left edges, so showing them moves nothing. */
 const RULER = 18;
 const TILE_PX = 256;
+/** Tools that draw the work path themselves; View > Show > Target Path draws it for the others. */
+const PATH_TOOLS = new Set(['pen', 'curvaturePen', 'freeformPen', 'pathSelect', 'directSelect', 'convertPoint', 'path']);
 
 import { drawSlices } from '../extensions/tools/slice';
 import { extraShown, onExtras, selectionTintOn } from './view-extras';
@@ -43,6 +45,12 @@ export class Stage {
   private panLast: Pt | null = null;
   private zoomDrag: { at: Pt; y: number; z0: number } | null = null;
   private space = false;
+  private readonly bars: { h: HTMLElement; v: HTMLElement; ht: HTMLElement; vt: HTMLElement };
+  private readonly pills: { zoom: HTMLElement; flip: HTMLElement; turn: HTMLElement; view: HTMLElement };
+  /** Shared by every drag-based tool: near the stage's edge the view scrolls and the tool is told the new document point. */
+  private edge: { ev: PointerEvent; timer: number } | null = null;
+  private static readonly noEdgeTools = new Set(['hand', 'zoom']);
+  private flickTrail: { t: number; x: number; y: number }[] = [];
   /** right-drag with these resizes the brush tip. */
   private static readonly brushTools = new Set(['brush', 'pencil', 'eraser', 'spotHealing', 'remove', 'cloneStamp', 'smear']);
   private tipDragging = false;
@@ -71,6 +79,21 @@ export class Stage {
     this.rulerV = q<HTMLCanvasElement>(host, '.cv-ruler-v');
     for (const [r, axis] of [[this.rulerH, 'y'], [this.rulerV, 'x']] as const) this.bindRuler(r, axis);
     this.welcome = q(host, '.cv-welcome');
+    const mk = (cls: string, text = ''): HTMLElement => { const n = document.createElement('div'); n.className = cls; if (text) n.textContent = text; n.hidden = true; host.appendChild(n); return n; };
+    const bar = (axis: 'h' | 'v'): { track: HTMLElement; thumb: HTMLElement } => {
+      const track = mk(`cv-sb cv-sb-${axis}`), thumb = document.createElement('div');
+      thumb.className = 'cv-sb-thumb';
+      track.appendChild(thumb);
+      return { track, thumb };
+    };
+    const bh = bar('h'), bv = bar('v');
+    this.bars = { h: bh.track, v: bv.track, ht: bh.thumb, vt: bv.thumb };
+    this.bindBar(bh.track, bh.thumb, 'x');
+    this.bindBar(bv.track, bv.thumb, 'y');
+    const pillBox = mk('cv-pills');
+    pillBox.hidden = false;
+    const pill = (): HTMLElement => { const n = document.createElement('span'); n.className = 'cv-pill'; n.hidden = true; pillBox.appendChild(n); return n; };
+    this.pills = { zoom: pill(), flip: pill(), turn: pill(), view: pill() };
     const s = this.scene.getContext('2d');
     const o = this.overlay.getContext('2d');
     if (!s || !o) throw new Error('2D canvas is unavailable');
@@ -90,10 +113,116 @@ export class Stage {
     engine.on('projects', () => { this.queue(true, true); this.syncAnts(); this.syncWelcome(); this.updateCursor(); });
     engine.on('selection', () => { this.queue(false, true); this.syncAnts(); });
     engine.on('tool', () => { this.queue(false, true); this.updateCursor(); });
+    for (const k of ['viewport', 'active', 'projects', 'doc', 'options'] as const) engine.on(k, () => this.syncChrome());
     this.bindTouch();   // 1.58.6: before the tools' handling, so a gesture's fingers never reach them
     this.bindPointer();
     this.syncWelcome();
     this.resize();
+  }
+
+  /** A canvas scrollbar's thumb as fractions of the track: the document plus half a view of overscroll each side is the scroll range. */
+  static barSpan(pan: number, size: number, docPx: number, flip: boolean): { a: number; len: number } {
+    const content = Math.max(1, docPx + size), len = Math.min(1, size / content);
+    const a = (-pan + size / 2) / content;
+    return { a: Math.min(1 - len, Math.max(0, flip ? 1 - a - len : a)), len };
+  }
+
+  /** Scrollbars (when turned on), and the status pills over the canvas: patched in place. */
+  private syncChrome(): void {
+    const p = this.engine.current, v = p?.viewport;
+    const on = !!p && !!v && this.engine.canvasScrollbars && !v.rotation;
+    setHidden(this.bars.h, !on);
+    setHidden(this.bars.v, !on);
+    if (p && v && on) {
+      const h = Stage.barSpan(v.panX, this.cssW, p.doc.width * v.zoom, v.flipped), w = Stage.barSpan(v.panY, this.cssH, p.doc.height * v.zoom, false);
+      const hw = `${Math.round(h.len * this.cssW)}px`, hx = `translateX(${Math.round(h.a * this.cssW)}px)`, vh = `${Math.round(w.len * this.cssH)}px`, vy = `translateY(${Math.round(w.a * this.cssH)}px)`;
+      if (this.bars.ht.style.width !== hw) this.bars.ht.style.width = hw;
+      if (this.bars.ht.style.transform !== hx) this.bars.ht.style.transform = hx;
+      if (this.bars.vt.style.height !== vh) this.bars.vt.style.height = vh;
+      if (this.bars.vt.style.transform !== vy) this.bars.vt.style.transform = vy;
+    }
+    const pl = this.pills, e = this.engine;
+    setHidden(pl.zoom, !p);
+    if (p && v) setText(pl.zoom, `${Math.round(v.zoom * 10000) / 100}%`);
+    setHidden(pl.flip, !v?.flipped);
+    if (v?.flipped) setText(pl.flip, 'Flipped');
+    setHidden(pl.turn, !v?.rotation);
+    if (v?.rotation) setText(pl.turn, `${Math.round(v.rotation * 10) / 10} deg`);
+    const modes = [e.viewTransform ? 'Proof' : '', e.view.patternPreview ? 'Pattern' : '', e.view.pixelArt ? 'Pixel Art' : ''].filter(Boolean).join(' ');
+    setHidden(pl.view, !modes);
+    if (modes) setText(pl.view, modes);
+  }
+
+  /** A scrollbar thumb drags the view; a press on the track pages it. */
+  private bindBar(track: HTMLElement, thumb: HTMLElement, axis: 'x' | 'y'): void {
+    let drag: { id: number; at: number } | null = null;
+    const geometry = (): { size: number; content: number; sign: number } | null => {
+      const p = this.engine.current;
+      if (!p) return null;
+      const size = axis === 'x' ? this.cssW : this.cssH, content = (axis === 'x' ? p.doc.width : p.doc.height) * p.viewport.zoom + size;
+      return { size, content, sign: axis === 'x' && p.viewport.flipped ? -1 : 1 };
+    };
+    const move = (d: number): void => this.engine.pan(axis === 'x' ? d : 0, axis === 'y' ? d : 0);
+    track.addEventListener('pointerdown', (e) => {
+      const g = geometry();
+      if (!g || e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      this.engine.stopFlick();
+      if (e.target === thumb) { thumb.setPointerCapture(e.pointerId); drag = { id: e.pointerId, at: axis === 'x' ? e.clientX : e.clientY }; return; }
+      const t = thumb.getBoundingClientRect(), before = axis === 'x' ? e.clientX < t.left : e.clientY < t.top;
+      move((before ? 1 : -1) * g.sign * g.size * 0.9);
+    });
+    thumb.addEventListener('pointermove', (e) => {
+      const g = geometry();
+      if (!drag || drag.id !== e.pointerId || !g) return;
+      const at = axis === 'x' ? e.clientX : e.clientY;
+      move(-((at - drag.at) / g.size) * g.content * g.sign);
+      drag.at = at;
+    });
+    const end = (e: PointerEvent): void => { if (drag?.id === e.pointerId) drag = null; };
+    thumb.addEventListener('pointerup', end);
+    thumb.addEventListener('pointercancel', end);
+  }
+
+  /** The view's pan for a movement on screen, in the drawing surfaces' space (the view's turn and flip taken off). */
+  private surfaceDelta(dx: number, dy: number): Pt {
+    const v = this.engine.current?.viewport, a = (-(v?.rotation ?? 0) * Math.PI) / 180;
+    return { x: (dx * Math.cos(a) - dy * Math.sin(a)) * (v?.flipped ? -1 : 1), y: dx * Math.sin(a) + dy * Math.cos(a) };
+  }
+
+  /** Auto-scroll for every drag-based tool: within 12 px of the stage's edge, every 60 Hz tick pans by 2 plus 0.4 times
+   *  the distance past the margin (at most 40) and the tool gets a move at the same pointer, now over a new document point. */
+  private edgeDelta(ev: PointerEvent): Pt {
+    const r = this.rect ?? this.host.getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top, m = 12;
+    const speed = (past: number): number => Math.min(40, 2 + 0.4 * past);
+    const axis = (pos: number, size: number): number => (pos < m ? speed(m - pos) : pos > size - m ? -speed(pos - (size - m)) : 0);
+    return { x: axis(x, r.width), y: axis(y, r.height) };
+  }
+
+  private flickBy(vx: number, vy: number): void {
+    if (!REDUCED && Math.hypot(vx, vy) >= 0.3) this.engine.flick(vx, vy);
+  }
+
+  private stopEdge(): void {
+    if (this.edge) window.clearInterval(this.edge.timer);
+    this.edge = null;
+  }
+
+  private edgeScroll(ev: PointerEvent): void {
+    if (Stage.noEdgeTools.has(this.engine.tool)) return;
+    const d = this.edgeDelta(ev);
+    if (!d.x && !d.y) { this.stopEdge(); return; }
+    if (this.edge) { this.edge.ev = ev; return; }
+    const st = { ev, timer: 0 };
+    st.timer = window.setInterval(() => {
+      const dd = this.edgeDelta(st.ev), t = this.tool();
+      if ((!dd.x && !dd.y) || this.dragId === null || !t?.move) { this.stopEdge(); return; }
+      const s = this.surfaceDelta(dd.x, dd.y);
+      this.engine.pan(s.x, s.y);
+      t.move(this.ctx, this.pointer(st.ev));
+    }, 1000 / 60);
+    this.edge = st;
   }
 
   private tool(): Tool | undefined { return getTool(this.engine.tool); }
@@ -141,6 +270,7 @@ export class Stage {
     this.rulerH.width = Math.round(w * dpr); this.rulerH.height = Math.round(RULER * dpr);
     this.rulerV.width = Math.round(RULER * dpr); this.rulerV.height = Math.round(h * dpr);
     this.engine.setViewSize(w, h);
+    this.syncChrome();
     this.renderScene();
     this.renderOverlay();
   }
@@ -412,16 +542,29 @@ export class Stage {
     }
     const draft = this.engine.guideDraft, guides = (p.doc.guides ?? []).map((x, i) => (draft && draft.index === i ? null : x));
     if (vw.guides || draft) {
-      const shown = [...guides, draft].filter((q): q is NonNullable<typeof q> => !!q && (vw.guides || q === draft)).map((x) => ({ axis: x.axis, at: x.at, color: 'color' in x ? x.color : undefined }));
+      const picked = new Set(this.engine.selectedGuides);
+      const shown = [...guides, draft].map((q, i) => (!q || (!vw.guides && q !== draft) || ('board' in q && q.board && !vw.artboardGuides) ? null : { axis: q.axis, at: q.at, color: 'color' in q ? q.color : undefined, board: 'board' in q && q.board ? p.layer(q.board)?.artboard ?? null : null, sel: picked.has(i) })).filter((q): q is NonNullable<typeof q> => !!q);
+      const line = (x: (typeof shown)[number]): void => {
+        const b = x.board;
+        if (x.axis === 'x') { const sx = Math.round(v.panX + x.at * v.zoom) + 0.5; g.moveTo(sx, b ? v.panY + b.y * v.zoom : -this.offY); g.lineTo(sx, b ? v.panY + (b.y + b.h) * v.zoom : this.cssH + this.offY); }
+        else { const sy = Math.round(v.panY + x.at * v.zoom) + 0.5; g.moveTo(b ? v.panX + b.x * v.zoom : -this.offX, sy); g.lineTo(b ? v.panX + (b.x + b.w) * v.zoom : this.cssW + this.offX, sy); }
+      };
+      if (shown.some((x) => x.sel)) {
+        g.save();
+        g.strokeStyle = pal.accent;
+        g.globalAlpha = 0.35;
+        g.lineWidth = 5;
+        g.setLineDash([]);
+        g.beginPath();
+        for (const x of shown) if (x.sel) line(x);
+        g.stroke();
+        g.restore();
+      }
       for (const colour of new Set(shown.map((x) => x.color ?? ''))) {
         g.strokeStyle = colour || Stage.prefs.guideColor || pal.accent;
         g.setLineDash(LINE_DASH[Stage.prefs.guideStyle]);
         g.beginPath();
-        for (const x of shown) {
-          if ((x.color ?? '') !== colour) continue;
-          if (x.axis === 'x') { const sx = Math.round(v.panX + x.at * v.zoom) + 0.5; g.moveTo(sx, -this.offY); g.lineTo(sx, this.cssH + this.offY); }
-          else { const sy = Math.round(v.panY + x.at * v.zoom) + 0.5; g.moveTo(-this.offX, sy); g.lineTo(this.cssW + this.offX, sy); }
-        }
+        for (const x of shown) if ((x.color ?? '') === colour) line(x);
         g.stroke();
       }
     }
@@ -440,13 +583,14 @@ export class Stage {
 
   /** A stage point back to the unturned, unstretched drawing surfaces: the view's rotation taken off about the centre,
    *  then the pixel aspect stretch `par` (35.4c) taken off horizontally about the centre. */
-  static unturn(x: number, y: number, w: number, h: number, deg: number, par = 1): { x: number; y: number } {
+  static unturn(x: number, y: number, w: number, h: number, deg: number, par = 1, flip = false): { x: number; y: number } {
     let p = { x, y };
     if (deg) {
       const a = (-deg * Math.PI) / 180, cx = w / 2, cy = h / 2, dx = x - cx, dy = y - cy;
       p = { x: cx + dx * Math.cos(a) - dy * Math.sin(a), y: cy + dx * Math.sin(a) + dy * Math.cos(a) };
     }
-    return par !== 1 && par > 0 ? { x: w / 2 + (p.x - w / 2) / par, y: p.y } : p;
+    if (par !== 1 && par > 0) p = { x: w / 2 + (p.x - w / 2) / par, y: p.y };
+    return flip ? { x: w - p.x, y: p.y } : p;
   }
 
   /** The pixel aspect stretch the canvas shows with (View > Pixel Aspect Ratio Correction on a non-square document). */
@@ -460,7 +604,7 @@ export class Stage {
    *  renderer, overlay and tool keeps drawing in square pixels and the pointer is mapped back by `unturn`. */
   private turn(): void {
     const deg = this.engine.current?.viewport.rotation ?? 0, par = Stage.parOf(this.engine);
-    const t = [deg ? `rotate(${deg}deg)` : '', par !== 1 ? `scaleX(${par})` : ''].filter(Boolean).join(' ');
+    const t = [deg ? `rotate(${deg}deg)` : '', par !== 1 ? `scaleX(${par})` : '', this.engine.current?.viewport.flipped ? 'scaleX(-1)' : ''].filter(Boolean).join(' ');
     this.resize();   // the surfaces grow to cover the stage at this angle (1.85.2); the rulers stay put
     for (const c of Array.from(this.host.querySelectorAll<HTMLElement>(':scope > canvas.cv-canvas'))) if (c.style.transform !== t) c.style.transform = t;
     this.host.classList.toggle('is-turned', !!deg);
@@ -572,7 +716,7 @@ export class Stage {
       g.save(); g.setTransform(d, 0, 0, d, this.offX * d, this.offY * d);
       for (const n of extraShown('notes') ? p.doc.notes ?? [] : []) {
         const q = v.toScreen(n.x, n.y), on = n.id === this.engine.activeNote;
-        g.fillStyle = on ? pal.accent : '#f5c542'; g.strokeStyle = pal.antsB; g.lineWidth = 1;
+        g.fillStyle = on ? pal.accent : n.color ?? '#f5c542'; g.strokeStyle = pal.antsB; g.lineWidth = 1;
         g.beginPath(); g.moveTo(q.x, q.y); g.lineTo(q.x + 16, q.y); g.lineTo(q.x + 16, q.y + 11); g.lineTo(q.x + 11, q.y + 16); g.lineTo(q.x, q.y + 16); g.closePath(); g.fill(); g.stroke();
         g.beginPath(); g.moveTo(q.x + 4, q.y + 5); g.lineTo(q.x + 12, q.y + 5); g.moveTo(q.x + 4, q.y + 9); g.lineTo(q.x + 10, q.y + 9); g.strokeStyle = 'rgba(0,0,0,0.55)'; g.stroke();
       }
@@ -631,6 +775,12 @@ export class Stage {
       const c = corners(edged.transform).map((u) => v.toScreen(u.x, u.y));
       g.save(); g.lineWidth = 1; g.strokeStyle = pal.accent;
       g.beginPath(); g.moveTo(c[0].x + 0.5, c[0].y + 0.5); for (let i = 1; i < 4; i++) g.lineTo(c[i].x + 0.5, c[i].y + 0.5); g.closePath(); g.stroke(); g.restore();
+    }
+    const target = extraShown('targetPath') && !PATH_TOOLS.has(this.tool()?.id ?? '') ? this.engine.workPath : null;
+    if (target) {
+      g.save(); g.lineWidth = 1; g.strokeStyle = pal.accent;
+      g.stroke(tracePath(target, (u) => v.toScreen(u.x, u.y)));
+      g.restore();
     }
     if (this.engine.view.slices && this.tool()?.id !== 'slice' && p.doc.slices?.length) drawSlices(g, p.doc.slices, v.panX, v.panY, v.zoom, pal.accent, this.engine.activeSlice, p.doc, this.engine.view.autoSlices);
     this.tool()?.overlay?.(this.ctx, g);
@@ -691,7 +841,7 @@ export class Stage {
     const v = this.engine.current?.viewport;
     // Rotate View turns the drawing surfaces about the stage's centre; a pointer is turned back into their space, so
     // every tool lands where it points at any angle.
-    const screen = Stage.unturn(e.clientX - r.left, e.clientY - r.top, r.width, r.height, v?.rotation ?? 0, Stage.parOf(this.engine));
+    const screen = Stage.unturn(e.clientX - r.left, e.clientY - r.top, r.width, r.height, v?.rotation ?? 0, Stage.parOf(this.engine), !!v?.flipped);
     const pen = 'pointerType' in e && (e as PointerEvent).pointerType === 'pen';
     return { doc: v ? v.toDoc(screen.x, screen.y) : screen, screen, button: e.button, shift: e.shiftKey || stickyModifiers.active('shift'), alt: e.altKey || stickyModifiers.active('alt'), mod: (isMac ? e.metaKey : e.ctrlKey) || stickyModifiers.active('mod'), clicks, pressure: Stage.pressureOf(e, pen),
       pose: pen && Stage.usePressure ? { tiltX: (e as PointerEvent).tiltX || 0, tiltY: (e as PointerEvent).tiltY || 0, twist: (e as PointerEvent).twist || 0 } : undefined };
@@ -703,7 +853,7 @@ export class Stage {
     let id: number | null = null;
     const at = (e: PointerEvent): { doc: Pt; inside: boolean } => {
       const b = this.rect ?? this.host.getBoundingClientRect(), sx = e.clientX - b.left, sy = e.clientY - b.top, v = this.engine.current?.viewport;
-      const s = Stage.unturn(sx, sy, b.width, b.height, v?.rotation ?? 0, Stage.parOf(this.engine));   // the guide under the pointer in a turned or stretched view (35.4c)
+      const s = Stage.unturn(sx, sy, b.width, b.height, v?.rotation ?? 0, Stage.parOf(this.engine), !!v?.flipped);   // the guide under the pointer in a turned or stretched view (35.4c)
       const doc = v ? v.toDoc(s.x, s.y) : { x: sx, y: sy };
       return { doc, inside: sx >= 0 && sy >= 0 && sx <= b.width && sy <= b.height && (axis === 'y' ? sy > RULER : sx > RULER) };
     };
@@ -739,7 +889,7 @@ export class Stage {
     const r = this.rect ?? this.host.getBoundingClientRect();
     const v = this.engine.current?.viewport;
     if (!v || clientX < r.left || clientY < r.top || clientX > r.right || clientY > r.bottom) return null;
-    const s = Stage.unturn(clientX - r.left, clientY - r.top, r.width, r.height, v.rotation ?? 0, Stage.parOf(this.engine));   // turned and stretched views (35.4c)
+    const s = Stage.unturn(clientX - r.left, clientY - r.top, r.width, r.height, v.rotation ?? 0, Stage.parOf(this.engine), v.flipped);   // turned and stretched views (35.4c)
     return v.toDoc(s.x, s.y);
   }
 
@@ -833,9 +983,9 @@ export class Stage {
       // Pan by the midpoint's travel, turned into the view's frame as the wheel and the middle button do.
       const dx = q.mx - g.mx, dy = q.my - g.my, ra = (-v.rotation * Math.PI) / 180;
       g.mx = q.mx; g.my = q.my;
-      this.engine.pan(dx * Math.cos(ra) - dy * Math.sin(ra), dx * Math.sin(ra) + dy * Math.cos(ra));
+      this.engine.pan((dx * Math.cos(ra) - dy * Math.sin(ra)) * (v.flipped ? -1 : 1), dx * Math.sin(ra) + dy * Math.cos(ra));
       // Zoom by the spread about the midpoint, which stays under the fingers.
-      this.engine.zoomTo(g.z0 * (q.d / Math.max(1, g.d0)), Stage.unturn(q.mx, q.my, r.width, r.height, this.engine.current?.viewport.rotation ?? 0, Stage.parOf(this.engine)));
+      this.engine.zoomTo(g.z0 * (q.d / Math.max(1, g.d0)), Stage.unturn(q.mx, q.my, r.width, r.height, this.engine.current?.viewport.rotation ?? 0, Stage.parOf(this.engine), v.flipped));
       // Turn once the fingers have turned past 10 degrees.
       const turn = ((q.ang - g.a0) * 180) / Math.PI, wrapped = ((turn + 540) % 360) - 180;
       if (!g.turning && Math.abs(wrapped) > 10) g.turning = true;
@@ -868,6 +1018,8 @@ export class Stage {
     const o = this.overlay;
     o.addEventListener('pointerdown', (e) => {
       if (this.dragId !== null || !this.engine.current) return;
+      this.engine.stopFlick();
+      this.flickTrail = [];
       const active = document.activeElement;
       if (active instanceof HTMLElement && active !== document.body) active.blur();
       e.preventDefault();
@@ -912,10 +1064,12 @@ export class Stage {
       const gi = this.tool()?.id === 'move' ? this.engine.guideAt(p.screen) : null;
       if (gi !== null) {
         const g = (this.engine.current?.doc.guides ?? [])[gi];
+        this.engine.selectGuide(gi, p.shift);
         this.engine.guideDraft = { axis: g.axis, at: g.at, index: gi };
         this.engine.emit('overlay', null);
         return;
       }
+      if (this.tool()?.id === 'move') this.engine.clearGuideSelection();
       if (p.mod && Stage.pixelMoveTools.has(this.tool()?.id ?? '')) {
         const sel = this.engine.current?.selection;
         if (sel && sel.valueAt(Math.floor(p.doc.x), Math.floor(p.doc.y)) >= 128 && this.engine.beginPixelMove(p.alt)) { this.pixelDrag = { x: p.doc.x, y: p.doc.y }; return; }
@@ -930,6 +1084,8 @@ export class Stage {
           if (this.zoomDrag) { this.engine.zoomTo(this.zoomDrag.z0 * Math.exp((this.zoomDrag.y - p.screen.y) * 0.01), this.zoomDrag.at); return; }
           this.engine.pan(p.screen.x - this.panLast.x, p.screen.y - this.panLast.y);
           this.panLast = p.screen;
+          this.flickTrail.push({ t: performance.now(), x: p.screen.x, y: p.screen.y });
+          if (this.flickTrail.length > 8) this.flickTrail.shift();
           return;
         }
         if (this.tipDragging) { const q = this.pointer(e).screen; this.engine.updateTipDrag(q.x, e.shiftKey, q.y); return; }
@@ -946,6 +1102,7 @@ export class Stage {
         if (!t?.move) return;
         const events = typeof e.getCoalescedEvents === 'function' ? e.getCoalescedEvents() : [];
         for (const ev of events.length ? events : [e]) t.move(this.ctx, this.pointer(ev));
+        this.edgeScroll(e);
         return;
       }
       if (this.dragId !== null) return;
@@ -957,10 +1114,16 @@ export class Stage {
     const finish = (e: PointerEvent, cancel: boolean): void => {
       if (this.dragId !== e.pointerId) return;
       this.dragId = null;
+      this.stopEdge();
       if (o.hasPointerCapture(e.pointerId)) o.releasePointerCapture(e.pointerId);
       const p = this.pointer(e);
       stickyModifiers.endGesture();   // a modifier tapped for the next gesture is spent once it ends
-      if (this.panLast) { this.panLast = null; this.zoomDrag = null; this.updateCursor(p); return; }
+      if (this.panLast) {
+        const trail = this.flickTrail, last = trail[trail.length - 1], first = trail.find((s) => last && last.t - s.t <= 100);
+        if (!this.zoomDrag && last && first && first !== last && performance.now() - last.t < 80) this.flickBy((last.x - first.x) / (last.t - first.t), (last.y - first.y) / (last.t - first.t));
+        this.flickTrail = [];
+        this.panLast = null; this.zoomDrag = null; this.updateCursor(p); return;
+      }
       if (this.tipDragging) {
         this.tipDragging = false;
         const click = !cancel && (this.engine.tipDrag?.moved ?? 99) < 4;
@@ -996,6 +1159,7 @@ export class Stage {
     });
     o.addEventListener('wheel', (e) => {
       e.preventDefault();
+      this.engine.stopFlick();
       const v = this.engine.current?.viewport;
       if (!v) return;
       if (!Stage.controls.pinch && e.ctrlKey && !Number.isInteger(e.deltaY)) return;   // a trackpad pinch arrives as Ctrl+wheel with fractional steps
@@ -1009,7 +1173,7 @@ export class Stage {
       const horizontal = e.shiftKey && !e.deltaX;
       // Scrolling moves the image the way the pointer sees it, the view turned or not.
       const px = -(horizontal ? e.deltaY : e.deltaX) * unit, py = -(horizontal ? 0 : e.deltaY) * unit, ra = (-v.rotation * Math.PI) / 180;
-      this.engine.pan(px * Math.cos(ra) - py * Math.sin(ra), px * Math.sin(ra) + py * Math.cos(ra));
+      this.engine.pan((px * Math.cos(ra) - py * Math.sin(ra)) * (v.flipped ? -1 : 1), px * Math.sin(ra) + py * Math.cos(ra));
     }, { passive: false });
     // WebKit (Safari and the macOS desktop WebView) reports a trackpad pinch as gesture events, not Ctrl+wheel. Like
     // the magnify, it zooms about the pointer, here by the gesture's scale since it began.
@@ -1026,6 +1190,13 @@ export class Stage {
       this.engine.zoomTo(pinch.z0 * g.scale, { x: g.clientX - r.left, y: g.clientY - r.top });
     });
     o.addEventListener('gestureend', (e) => { e.preventDefault(); pinch = null; });
-    o.addEventListener('contextmenu', (e) => e.preventDefault());
+    o.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const gi = this.engine.guideAt(this.pointer(e).screen, 4, true);
+      if (gi === null || !this.engine.uiHooks.guideMenu) return;
+      e.stopPropagation();
+      if (!this.engine.selectedGuides.includes(gi)) this.engine.selectGuide(gi);
+      this.engine.uiHooks.guideMenu(e.clientX, e.clientY);
+    });
   }
 }

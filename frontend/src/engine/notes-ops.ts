@@ -15,7 +15,7 @@ export function addNote(host: NoteHost, pt: Pt): ID | null {
   host.activeNote = id;
   return id;
 }
-export function setNote(host: NoteHost, id: ID, patch: { text?: string; x?: number; y?: number }, name = 'Edit Note'): void {
+export function setNote(host: NoteHost, id: ID, patch: { text?: string; x?: number; y?: number; author?: string; color?: string }, name = 'Edit Note'): void {
   host.edit(name, (p) => { const list = p.doc.notes ?? [], n = list.find((x) => x.id === id); if (!n) return false; p.doc = { ...p.doc, notes: list.map((x) => (x.id === id ? { ...x, ...patch } : x)) }; return true; });
 }
 export function removeNote(host: NoteHost, id: ID): void {

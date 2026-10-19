@@ -15,9 +15,9 @@ export const cloneTool: Tool = {
     if (p.button !== 0) return;
     if (p.alt) { ctx.engine.setCloneSource(p.doc); return; }
     hover = p.doc;
-    ctx.engine.beginRetouchStroke('clone', p.doc, p.shift);
+    ctx.engine.beginRetouchStroke('clone', p.doc, p.shift, p.pressure);
   },
-  move(ctx, p) { hover = p.doc; ctx.engine.strokeTo(p.doc); ctx.engine.emit('overlay', null); },
+  move(ctx, p) { hover = p.doc; ctx.engine.strokeTo(p.doc, p.pressure, p.pose); ctx.engine.emit('overlay', null); },
   up(ctx) { ctx.engine.endStroke(); },
   hover(ctx, p) { hover = p ? p.doc : null; picking = !!p?.alt; ctx.engine.emit('overlay', null); },
   cancel(ctx) { ctx.engine.cancelStroke(); },

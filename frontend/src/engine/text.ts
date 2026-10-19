@@ -1,5 +1,5 @@
 import { Raster, createSurface, ctxOf } from './surface';
-import { cleanFeatures, ensureVariant, variantFamily } from './opentype';
+import { cleanFeatures, cleanRuns, ensureVariant, featureSegments, variantFamily } from './opentype';
 import { SMALL_CAP_SCALE, opticalKern, smallCapPieces } from './text-attrs';
 import { clamp, type CharacterStyle, type ID, type Layer, type ParagraphStyle, type Pt, type TextExtras, type TextPath, type TextSpec, type TextWarp, type WarpStyle } from './types';
 
@@ -33,8 +33,8 @@ export function setType(c: CanvasRenderingContext2D | OffscreenCanvasRenderingCo
 
 /** A line's advance with the spec's tracking: the canvas's own measure where it spaces letters, else each character's
  *  advance plus the tracking after it (kerning between characters is then lost, as each is set alone). */
-function lineWidth(c: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, t: TextSpec, line: string): number {
-  return walk(c, t, line, 0, 0, false) * hScale(t);
+function lineWidth(c: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, t: TextSpec, line: string, at?: number): number {
+  return walk(c, t, line, 0, 0, false, at) * hScale(t);
 }
 
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
@@ -43,7 +43,20 @@ const hScale = (t: TextSpec): number => (t.scaleX ?? 100) / 100;
 /** Sets a line's pieces from (x, y) when `draw` is on, and returns its unscaled advance. Synthetic small capitals are set
  *  as capitals at 80 percent of the size; optical kerning, and tracking where the canvas cannot space letters, set one
  *  character at a time. The common case is the canvas's own measure and fill of the whole line. */
-function walk(c: Ctx, t: TextSpec, line: string, x: number, y: number, draw: boolean): number {
+function walk(c: Ctx, t: TextSpec, line: string, x: number, y: number, draw: boolean, at?: number): number {
+  if (at !== undefined && t.runs?.length) {   // feature runs: the line is set in pieces, each with its own features
+    const segs = featureSegments(t.features, t.runs, at, at + line.length);
+    if (segs.length > 1 || (segs[0] && segs[0].features.join(',') !== cleanFeatures(t.features).join(','))) {
+      let cx = x;
+      for (const s of segs) {
+        const st: TextSpec = { ...t, features: s.features, runs: undefined };
+        setType(c, st);
+        cx += walk(c, st, line.slice(s.from - at, s.to - at), cx, y, draw);
+      }
+      setType(c, t);
+      return cx - x;
+    }
+  }
   const small = t.caps === 'small', optical = t.kerning === 'optical', perChar = optical || (!CANVAS_TRACKING && t.tracking !== 0);
   if (!small && !perChar) {
     if (draw) c.fillText(line, x, y);
@@ -76,6 +89,7 @@ export function fontCss(t: TextSpec): string {
 /** Waits for the spec's font to load where the browser can, so the first rendering uses it. */
 export async function loadTextFont(t: TextSpec): Promise<void> {
   if ((t.features?.length || (t.variations && Object.keys(t.variations).length)) && !GENERIC.has(t.family)) await ensureVariant(t.family, t.bold, t.italic, t.features ?? [], t.variations);
+  if (t.runs?.length && !GENERIC.has(t.family)) for (const s of featureSegments(t.features, t.runs, 0, t.content.length)) if (s.features.length) await ensureVariant(t.family, t.bold, t.italic, s.features, t.variations);
   try { await document.fonts?.load(fontCss(t), t.content || 'Ag'); } catch { /* the canvas falls back to what it has */ }
 }
 
@@ -117,8 +131,9 @@ export function renderPlain(t: TextSpec): TextRender {
   const para: number[] = [], opens: boolean[] = [];
   lines.forEach((_, i) => { para.push(i && lines[i - 1].last ? para[i - 1] + 1 : i ? para[i - 1] : 0); opens.push(i === 0 || lines[i - 1].last); });
   const lead = (i: number): number => iL + (opens[i] ? iF : 0);
+  const starts = t.runs?.length ? lineStarts(text, lines) : [];   // where each line begins in the text, for feature runs
   const metrics = lines.map((line) => probe.measureText(line.text || ' '));
-  const widths = lines.map((line) => lineWidth(probe, t, line.text || ' '));
+  const widths = lines.map((line, i) => lineWidth(probe, t, line.text || ' ', starts[i]));
   const ascent = (metrics[0].fontBoundingBoxAscent || t.size * 0.8) * ky, descent = (metrics[0].fontBoundingBoxDescent || t.size * 0.25) * ky;
   const advance = t.size * t.lineHeight, up = Math.max(0, shift), down = Math.max(0, -shift);
   const widest = Math.max(1, ...metrics.map((m, i) => Math.max(widths[i], ((m.actualBoundingBoxLeft || 0) + (m.actualBoundingBoxRight || 0)) * kx) + lead(i) + iR));
@@ -128,11 +143,11 @@ export function renderPlain(t: TextSpec): TextRender {
   setType(c, t);
   c.fillStyle = `rgb(${t.color.r},${t.color.g},${t.color.b})`;
   c.textBaseline = 'alphabetic';
-  const run = (s: string, x: number, y: number): void => {   // a run of text from x, scaled, spaced as it will measure
+  const run = (s: string, x: number, y: number, at?: number): void => {   // a run of text from x, scaled, spaced as it will measure
     c.save();
     c.translate(x, y);
     if (kx !== 1 || ky !== 1) c.scale(kx, ky);
-    walk(c, t, s, 0, 0, true);
+    walk(c, t, s, 0, 0, true, at);
     c.restore();
   };
   const rule = (x: number, y: number, w: number): void => {   // underline and strikethrough
@@ -149,18 +164,34 @@ export function renderPlain(t: TextSpec): TextRender {
     let al: 'left' | 'center' | 'right' | 'justify' = t.align === 'justify' ? (!line.last || t.lastLine === 'all' ? 'justify' : t.lastLine ?? 'left') : t.align;
     if (al === 'justify' && !(box && words.length > 1)) al = 'left';
     if (al === 'justify') {
-      const ws = words.map((w) => lineWidth(c, t, w)), gap = (right - left - ws.reduce((a, b) => a + b, 0)) / (words.length - 1);
+      const ats: number[] = [];
+      words.reduce((o, w) => { ats.push(o); return o + w.length + 1; }, starts[i] ?? 0);
+      const ws = words.map((w, k) => lineWidth(c, t, w, starts.length ? ats[k] : undefined)), gap = (right - left - ws.reduce((a, b) => a + b, 0)) / (words.length - 1);
       let x = left;
-      words.forEach((w, k) => { run(w, x, ty); x += ws[k] + gap; });
+      words.forEach((w, k) => { run(w, x, ty, starts.length ? ats[k] : undefined); x += ws[k] + gap; });
       rule(left, ty, right - left);
       return;
     }
     const lw = widths[i], x = al === 'center' ? left + (right - left - lw) / 2 : al === 'right' ? right - lw : left;
-    run(line.text, x, ty);
+    run(line.text, x, ty, starts[i]);
     rule(x, ty, lw);
   });
   raster.touch();
   return { raster, baseline: base, pad };
+}
+
+/** Each wrapped line's first character in `text`: lines run in order, a break at a space or line break uses it up, and a
+ *  hyphen a break added is not a character of the text. */
+function lineStarts(text: string, lines: ReadonlyArray<{ text: string; last: boolean }>): number[] {
+  const out: number[] = [];
+  let at = 0;
+  for (const line of lines) {
+    out.push(at);
+    const added = !line.last && line.text.endsWith('-') && text[at + line.text.length - 1] !== '-' ? 1 : 0;
+    at += line.text.length - added;
+    if (text[at] === (line.last ? '\n' : ' ')) at += 1;
+  }
+  return out;
 }
 
 /** Where a word that does not fit after `lead` may break with a hyphen: the largest cut of two to length-2 letters that
@@ -518,6 +549,7 @@ export function textFromData(raw: unknown, raster: Raster | null): TextSpec | nu
     ...(o.direction === 'vertical' ? { direction: 'vertical' as const } : {}),
     ...(TEXT_ANTIALIAS.some((m) => m === o.antialias) && o.antialias !== 'smooth' ? { antialias: o.antialias as TextSpec['antialias'] } : {}),
     ...(cleanFeatures(o.features).length ? { features: cleanFeatures(o.features) } : {}),
+    ...(cleanRuns(o.runs, o.content.length).length ? { runs: cleanRuns(o.runs, o.content.length) } : {}),
     ...(o.hyphenate === true ? { hyphenate: true } : {}),
     ...(o.shaping === 'eastAsian' || o.shaping === 'middleEastern' ? { shaping: o.shaping } : {}),
     ...(typeof o.language === 'string' && /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(o.language) ? { language: o.language } : {}),

@@ -80,6 +80,11 @@ export interface BrushShape {
   angle: number; roundness: number; spacing: number | null;
   sizeJitter: number; angleJitter: number; roundnessJitter: number; minRoundness: number;
   angleControl: 'off' | 'direction' | 'initial' | 'tilt' | 'rotation' | 'fade'; roundnessControl: 'off' | 'tilt' | 'rotation' | 'fade';
+  /** What shrinks the dab: the pen's pressure, the fade over the first dabs, the pen's tilt (scaled by `tiltScale`, percent)
+   *  or its barrel rotation. `minDiameter` (percent of the size) is the least any jitter or control may leave. */
+  sizeControl?: 'off' | 'pressure' | 'fade' | 'tilt' | 'rotation'; minDiameter?: number; tiltScale?: number;
+  /** Each dab mirrored at random across its own axes; Brush Projection turns and flattens the tip with the pen's tilt. */
+  flipXJitter?: boolean; flipYJitter?: boolean; projection?: boolean;
   /** The tip mirrored across its own axes, before the angle turns it; it shows on a tip that is not symmetric. */
   flipX?: boolean; flipY?: boolean;
   scatter: number; bothAxes: boolean; count: number; countJitter: number;
@@ -109,7 +114,7 @@ export interface BrushShape {
 /** The BrushShape fields each Brush Settings section owns, for section locks and for presets that carry a shape. */
 export const SECTION_KEYS: Record<string, ReadonlyArray<keyof BrushShape>> = {
   tip: ['angle', 'roundness', 'spacing', 'flipX', 'flipY'],
-  shapeDynamics: ['sizeJitter', 'angleJitter', 'roundnessJitter', 'minRoundness', 'angleControl', 'roundnessControl'],
+  shapeDynamics: ['sizeJitter', 'angleJitter', 'roundnessJitter', 'minRoundness', 'angleControl', 'roundnessControl', 'sizeControl', 'minDiameter', 'tiltScale', 'flipXJitter', 'flipYJitter', 'projection'],
   scattering: ['scatter', 'scatterControl', 'bothAxes', 'count', 'countJitter'],
   texture: ['texture'], dual: ['dual'], color: ['color'], transfer: ['transfer'], pose: ['pose'], noise: ['noise'], wetEdges: ['wetEdges'],
 };
@@ -131,13 +136,15 @@ export const defaultShape = (): BrushShape => ({
   texture: { on: false, pattern: '', scale: 100, depth: 100 }, dual: { on: false, diameter: 20, scatter: 0, count: 1 },
   color: { on: false, fgBg: 0, hue: 0, saturation: 0, brightness: 0 }, transfer: { on: false, opacity: 0, flow: 0, control: 'off' }, noise: false, wetEdges: false,
   scatterControl: 'off', pose: { on: false, tiltX: 0, tiltY: 0, rotation: 0, pressure: 100, usePressure: false }, locks: [], protectTexture: false,
+  sizeControl: 'off', minDiameter: 0, tiltScale: 100, flipXJitter: false, flipYJitter: false, projection: false,
 });
 /** Whether a shape does anything the plain round brush does not; an inactive one leaves strokes exactly as before. */
 export function shapeActive(s: BrushShape | null | undefined): boolean {
   if (!s) return false;
   const d = defaultShape();
   return s.angle !== d.angle || s.roundness !== d.roundness || s.spacing !== null || s.sizeJitter > 0 || s.angleJitter > 0 || s.roundnessJitter > 0
-    || s.angleControl !== 'off' || s.roundnessControl !== 'off' || s.scatter > 0 || s.count > 1 || s.countJitter > 0 || s.texture.on || s.dual.on || !!s.flipX || !!s.flipY;
+    || s.angleControl !== 'off' || s.roundnessControl !== 'off' || s.scatter > 0 || s.count > 1 || s.countJitter > 0 || s.texture.on || s.dual.on || !!s.flipX || !!s.flipY
+    || (s.sizeControl ?? 'off') !== 'off' || (s.minDiameter ?? 0) > 0 || !!s.flipXJitter || !!s.flipYJitter || !!s.projection;
 }
 
 /** A preset's tip shape (angle in degrees, roundness in percent) is optional: absent is a round tip (0, 100). `spacing`

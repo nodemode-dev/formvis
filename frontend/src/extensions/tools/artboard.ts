@@ -94,7 +94,7 @@ const sizeId = (ctx: ToolContext | null, e: { activeLayer: { isGroup?: boolean; 
 export const artboardTool: Tool = {
   id: 'artboard', label: 'Artboard', key: 'V', order: 10.5,
   icon: () => 'tArtboard',
-  hint: () => 'Drag on empty canvas to make an artboard · Click its name to select it · Drag inside to move it with its contents · Handles resize · "+" adds one beside it',
+  hint: () => 'Drag on empty canvas to make an artboard · Click its name to select it · Drag inside to move it with its contents · Handles resize · "+" adds one beside it, Alt-click it to copy the contents too',
   cursor(ctx, p) {
     if (drag) return drag.mode === 'move' ? 'move' : drag.mode === 'resize' ? HANDLE_CURSOR[drag.handle] : 'crosshair';
     const h = p ? hit(ctx, p) : null;
@@ -108,7 +108,13 @@ export const artboardTool: Tool = {
     if (!h) { const s = clampPt(p.doc); drag = { mode: 'new', from: s, rect: { x: s.x, y: s.y, w: 0, h: 0 } }; }
     else if (h.kind === 'plus') {
       const sel = selected(ctx), r = sel && besideRect(sel.r, h.side);
-      if (r) { const id = e.newArtboard(r); if (id) e.emit('options', null); }
+      if (r && p.alt && sel) {
+        // Alt on the "+" copies the board with its contents into the new place.
+        e.duplicateLayers();
+        const copy = e.activeLayer;
+        if (copy?.artboard && copy.id !== sel.id) e.moveArtboard(copy.id, r.x - copy.artboard.x, r.y - copy.artboard.y);
+        e.emit('options', null);
+      } else if (r) { const id = e.newArtboard(r); if (id) e.emit('options', null); }
       down = null;
     } else if (h.kind === 'handle') {
       const sel = selected(ctx);
@@ -211,6 +217,8 @@ export const artboardTool: Tool = {
       { kind: 'select', label: 'Size', choices: [...PRESETS.map((s) => ({ id: s.id, label: s.label })), { id: 'custom', label: 'Custom' }], get: () => sizeId(null, e), set: (id) => { const s = PRESETS.find((x) => x.id === id); if (s) apply(s.w, s.h); } },
       { kind: 'number', label: 'Width', min: MIN_SIZE, max: 30000, unit: 'px', get: () => cur()?.w ?? null, set: (v) => { const a = cur(); if (a) apply(Math.round(v), a.h); } },
       { kind: 'number', label: 'Height', min: MIN_SIZE, max: 30000, unit: 'px', get: () => cur()?.h ?? null, set: (v) => { const a = cur(); if (a) apply(a.w, Math.round(v)); } },
+      { kind: 'segment', label: 'Orientation', choices: [{ id: 'portrait', label: 'Portrait' }, { id: 'landscape', label: 'Landscape' }], get: () => { const a = cur(); return a && a.w > a.h ? 'landscape' : 'portrait'; }, set: (id) => { const a = cur(); if (a && (id === 'landscape') !== a.w > a.h) apply(a.h, a.w); }, when: () => !!cur() },
+      { kind: 'button', label: 'Add New Artboard', run: () => { const a = cur(), r = e.nextArtboardRect(a ? { w: a.w, h: a.h } : undefined); if (r) e.newArtboard(r); e.emit('options', null); } },
       { kind: 'button', label: 'Make Artboard from Selected Layers', run: () => { e.artboardFromLayers(); e.emit('options', null); } },
     ];
   },

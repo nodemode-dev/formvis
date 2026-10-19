@@ -25,13 +25,13 @@ export const smearTool: Tool = {
     if (p.button !== 0) return;
     hover = p.doc;
     const m = ctx.engine.retouch.smearMode;
-    if (m === 'blur' || m === 'sharpen') ctx.engine.beginRetouchStroke(m, p.doc, p.shift);
+    if (m === 'blur' || m === 'sharpen') ctx.engine.beginRetouchStroke(m, p.doc, p.shift, p.pressure);
     else ctx.engine.beginWarp(m, p.doc);
   },
   move(ctx, p) {
     hover = p.doc;
     if (ctx.engine.warping) ctx.engine.warpTo(p.doc, p.pressure);
-    else ctx.engine.strokeTo(p.doc);
+    else ctx.engine.strokeTo(p.doc, p.pressure, p.pose);
     ctx.engine.emit('overlay', null);
   },
   up(ctx) { if (ctx.engine.warping) ctx.engine.endWarp(); else ctx.engine.endStroke(); },

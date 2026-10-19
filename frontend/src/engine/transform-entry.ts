@@ -16,7 +16,7 @@ export type DistortMode = 'distort' | 'skew' | 'perspective';
 export interface DistortedMask { warped: Warped | null; placement: Transform | null }
 
 export interface TransformEditState { project: Project; layerId: ID; original: Transform; draft: Transform; mode: DragMode; start: Pt; mask: boolean; group: { box: Transform; originals: Map<ID, Transform> } | null; base?: Transform }
-export interface DistortEditState { project: Project; layerId: ID; box: Transform; members: ID[] | null; corners: Pt[]; mode: DistortMode; smart?: { R: Raster; t: Transform; margin: number; start: Pt[] }; previews: Map<ID, { pixels: Warped | null; mask: DistortedMask | null }> }
+export interface DistortEditState { project: Project; layerId: ID; box: Transform; members: ID[] | null; corners: Pt[]; mode: DistortMode; skew?: { h: number; v: number }; smart?: { R: Raster; t: Transform; margin: number; start: Pt[] }; previews: Map<ID, { pixels: Warped | null; mask: DistortedMask | null }> }
 export interface WarpDrag { project: Project; layerId: ID; stroke: WarpStroke; surface: Surface; image: ImageData }
 export interface SelectionShift { project: Project; dx: number; dy: number }
 

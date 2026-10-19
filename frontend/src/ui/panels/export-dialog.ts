@@ -73,7 +73,17 @@ export class ExportDialog extends Dialog {
 
   constructor(private readonly engine: Engine, private readonly run: (s: ExportSettings) => void, private readonly runLayers: (s: ExportSettings) => void, private readonly preview: (s: ExportSettings, layerId?: string) => Promise<{ blob: Blob; name: string; view?: CanvasImageSource } | null>) {
     super('Export As', 420);
-    this.zoomRow = selectRow('Preview', [['fit', 'Fit'], ['100', 'Actual pixels (centre)']], (v) => { this.zoom = v; this.queue(); });
+    const ZOOMS = ['fit', '25', '50', '100', '200', '400', '800'];
+    this.zoomRow = selectRow('Preview', [['fit', 'Fit'], ['25', '25%'], ['50', '50%'], ['100', '100% (actual pixels)'], ['200', '200%'], ['400', '400%'], ['800', '800%']], (v) => { this.zoom = v; this.queue(); });
+    this.previewBox.addEventListener('wheel', (e) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const next = ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, ZOOMS.indexOf(this.zoom) + (e.deltaY < 0 ? 1 : -1)))];
+      if (next === this.zoom) return;
+      this.zoom = next;
+      this.zoomRow.set(next);
+      this.queue();
+    }, { passive: false });
     this.presetRow = selectRow('Preset', [], (v) => this.pick(v));
     this.formatRow = selectRow('Format', EXPORT_FORMATS, (v) => { this.s = clampSettings({ ...this.s, format: v as ExportFormat }); this.custom(); });
     this.qualityRow = sliderRow('Quality (%)', 1, 100, 1, (v) => { this.s = clampSettings({ ...this.s, quality: v }); this.custom(); });
@@ -176,7 +186,11 @@ export class ExportDialog extends Dialog {
     x.clearRect(0, 0, bw, bh);
     x.imageSmoothingQuality = 'high';
     if (fit) { const k = Math.min(1, bw / w, bh / h), dw = Math.max(1, Math.round(w * k)), dh = Math.max(1, Math.round(h * k)); x.drawImage(src, Math.floor((bw - dw) / 2), Math.floor((bh - dh) / 2), dw, dh); }
-    else { const cw = Math.min(w, bw), ch = Math.min(h, bh); x.drawImage(src, Math.floor((w - cw) / 2), Math.floor((h - ch) / 2), cw, ch, Math.floor((bw - cw) / 2), Math.floor((bh - ch) / 2), cw, ch); }
+    else {
+      const k = (Number(this.zoom) || 100) / 100, dw = Math.min(Math.round(w * k), bw), dh = Math.min(Math.round(h * k), bh), cw = Math.min(w, dw / k), ch = Math.min(h, dh / k);
+      x.imageSmoothingEnabled = k < 2;
+      x.drawImage(src, (w - cw) / 2, (h - ch) / 2, cw, ch, Math.floor((bw - dw) / 2), Math.floor((bh - dh) / 2), dw, dh);
+    }
     if (src instanceof ImageBitmap) src.close();
   }
 

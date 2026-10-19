@@ -486,6 +486,7 @@ export class SettingsDialog extends Dialog {
   private readonly firstSnapRow = checkRow('Automatically Create First Snapshot', (v) => this.change({ autoFirstSnapshot: v }));
   private readonly snapMemRow = sliderRow('Snapshot memory (MB)', 64, 8192, 64, (v) => this.change({ snapshotMB: v }));
   private readonly narrowRow = checkRow('Show the side column as icons in a narrow window', (v) => this.change({ narrowCollapse: v }));
+  private readonly rememberLayoutRow = checkRow('Remember panel layout changes', (v) => this.change({ rememberLayout: v }));
   private readonly lockRow = checkRow('Lock Workspace', (v) => this.workspaceLock?.set(v));
   private readonly cursorRow = selectRow('Painting Cursors', PAINT_CURSORS, (v) => this.change({ paintCursor: v as PaintCursor }));
   private readonly crossRow = checkRow('Show Crosshair in Brush Tip', (v) => this.change({ cursorCrosshair: v }));
@@ -583,7 +584,7 @@ export class SettingsDialog extends Dialog {
       el('<p class="cv-note">Automatic uses WebGPU (Metal on macOS, Direct3D 12 on Windows), then WebGL2 (as on Linux), on a hardware graphics processor, and the CPU otherwise; a software GPU is slower than the CPU renderer, so Automatic does not use one. If the graphics processor fails to start, formvis turns this off and says so. The canvas draws on the graphics processor; a document using something it does not draw yet draws on the CPU, and the status bar says why.</p>'),
       el('<h3 class="cv-prefs-sub">Engine</h3>'), this.engineRow.el, this.engineMode,
       el('<p class="cv-note">Where the engine runs its models (Remove Background, and the local models that follow). Automatic uses CUDA on an NVIDIA graphics processor, Core ML (Metal) on a Mac, and the CPU otherwise; a choice this machine cannot run falls back to the CPU, and the line above says why.</p>'));
-    add('Workspace', this.lockRow.el, this.narrowRow.el, this.floatDockingRow.el, el('<p class="cv-note">With Enable Floating Document Window Docking, dragging a floating window by its title bar onto the tab bar docks it back to its tab; off, windows only return by their close button or Consolidate All to Tabs. Locked, panels are neither dragged nor resized. In a window too narrow for the canvas beside the open side column, it shows as its icons until there is room (your choice is kept).</p>'));
+    add('Workspace', this.lockRow.el, this.narrowRow.el, this.rememberLayoutRow.el, this.floatDockingRow.el, el('<p class="cv-note">With Enable Floating Document Window Docking, dragging a floating window by its title bar onto the tab bar docks it back to its tab; off, windows only return by their close button or Consolidate All to Tabs. Locked, panels are neither dragged nor resized. In a window too narrow for the canvas beside the open side column, it shows as its icons until there is room (your choice is kept).</p>'));
     add('Tools', this.wheelRow.el, this.curveRow.el, this.pressureRow.el, this.tooltipsRow.el, this.shiftToolRow.el, this.zoomCentreRow.el, el('<p class="cv-note">Show Tool Tips off hides the hover hints on buttons and tools. With Use Shift Key for Tool Switch off, pressing a tool\'s letter again cycles its group instead of Shift with the letter. Zoom Clicked Point to Center moves the point you click with the Zoom tool to the middle of the view. On, the wheel zooms about the pointer and Ctrl or Cmd with the wheel scrolls; off, the other way round. The pressure curve is how a pen\'s pressure maps to size, flow and opacity in every brush; a brush\'s own options can change it for the session.</p>'));
     add('History & Cache', this.statesRow.el, this.memoryRow.el, this.memoryAutoRow.el, el('<p class="cv-note">History States is how many steps undo keeps (50 is a common default; up to 1000); history memory caps what those steps may hold, and the oldest steps go first when either is reached. A browser app cannot reserve system memory as a desktop app can, so this is the part formvis controls. Turning off region redraws repaints the whole canvas on each stroke, slower but useful if painting ever draws out of place.</p>'),
       this.firstSnapRow.el, this.snapMemRow.el, el('<p class="cv-note">Each document keeps itself as opened, the History Brush\'s first source; snapshots, that one included, share this memory.</p>'));
@@ -730,6 +731,7 @@ export class SettingsDialog extends Dialog {
     this.firstSnapRow.set(this.prefs.autoFirstSnapshot);
     this.snapMemRow.set(this.prefs.snapshotMB);
     this.narrowRow.set(this.prefs.narrowCollapse);
+    this.rememberLayoutRow.set(this.prefs.rememberLayout);
     this.lockRow.set(this.workspaceLock?.get() ?? false);
     this.cursorRow.set(this.prefs.paintCursor);
     this.crossRow.set(this.prefs.cursorCrosshair);

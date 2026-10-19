@@ -63,8 +63,8 @@ export async function createTextLayer(host: TextHost, at: Pt, spec: TextSpec): P
   // click, its first character just below it; point text keeps its first baseline at the click, by its alignment.
   const colW = spec.size * spec.lineHeight;
   const x = spec.box ? at.x : spec.direction === 'vertical' ? at.x - (w - r.pad - colW / 2) : at.x - (spec.align === 'center' ? w / 2 : spec.align === 'right' ? w - r.pad : r.pad);
-  host.textSettings = { ...spec, content: '', rendered: undefined };
-  const name = spec.content.split('\n')[0].trim().slice(0, 40) || 'Type';
+  host.textSettings = { ...spec, content: '', rendered: undefined, runs: undefined };
+  const name =spec.content.split('\n')[0].trim().slice(0, 40) || 'Type';
   const y = spec.box ? at.y : spec.direction === 'vertical' ? at.y - r.pad : at.y - r.baseline;
   host.insertRasterLayer(r.raster, name, Math.round(x), Math.round(y), { text: { ...spec, rendered: textKey(r.raster) } }, 'Type');
 }
@@ -156,7 +156,7 @@ export async function typeToShape(host: TextHost): Promise<boolean> {
 export async function updateTextLayer(host: TextHost, id: ID, spec: TextSpec, move?: Pt): Promise<void> {
   const p = host.current, patch = p ? await textPatch(host, p, id, spec) : null;
   if (!p || !patch || host.current !== p) return;
-  host.textSettings = { ...spec, content: '', rendered: undefined };
+  host.textSettings = { ...spec, content: '', rendered: undefined, runs: undefined };
   const t = patch.transform, out = move && t ? { ...patch, transform: { ...t, x: t.x + move.x, y: t.y + move.y } } : patch;
   host.edit('Edit Type', (pp) => { pp.updateLayer(id, out); });
 }
@@ -168,7 +168,7 @@ export async function resizeTextBox(host: TextHost, id: ID, box: { w: number; h:
   const spec: TextSpec = { ...l.text, box: { w: Math.max(8, Math.round(box.w)), h: Math.max(8, Math.round(box.h)) } };
   const patch = await textPatch(host, p, id, spec);
   if (!patch || host.current !== p || !patch.transform) return false;
-  host.textSettings = { ...spec, content: '', rendered: undefined };
+  host.textSettings = { ...spec, content: '', rendered: undefined, runs: undefined };
   return host.edit('Resize Text Box', (pp) => { pp.updateLayer(id, { ...patch, transform: { ...patch.transform as Layer['transform'], x: to.x, y: to.y } }); });
 }
 

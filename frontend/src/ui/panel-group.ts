@@ -31,6 +31,9 @@ export class PanelGroup {
   /** While a tab is dragged over a column's gap: where a new group would go (null: nowhere). */
   static onGapHint: ((x: number | null, y: number) => void) | null = null;
   get size(): number { return this.tabs.size; }
+  hasTab(tid: string): boolean { return this.tabs.has(tid); }
+  /** The group holding a tab. */
+  static ofTab(tid: string): PanelGroup | undefined { return [...PanelGroup.all.values()].find((g) => g.tabs.has(tid)); }
   /** The tab's English name (the key); what is shown comes from t() at render time. */
   labelOf(tid: string): string { return this.tabs.get(tid)?.label ?? tid; }
   /** Re-labels every tab in place after a language change; only text changes, no node is rebuilt. */
@@ -63,6 +66,8 @@ export class PanelGroup {
     else this.root.classList.add('is-empty');   // a group made by detaching a tab, until its tab arrives
     this.setMinimised(!!saved.min, false);
     (this.root.querySelector('.cv-group-min') as HTMLElement).addEventListener('click', () => this.setMinimised(!this.root.classList.contains('is-min')));
+    // A double-click on the header's bare part folds the group to its header or opens it again.
+    (this.root.querySelector('.cv-group-head') as HTMLElement).addEventListener('dblclick', (e) => { if (!(e.target as HTMLElement).closest('button, .cv-group-tab')) this.setMinimised(!this.root.classList.contains('is-min')); });
     host.appendChild(this.root);
     // Tabs fit in steps (1.49.6, the owner's walkthrough: tabs were shortened to Chann..., Pa...): normal, then compact,
     // then tight lettering, and only then are inactive tabs shortened; again whenever the width or the tabs change.

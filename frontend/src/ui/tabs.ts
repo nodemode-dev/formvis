@@ -5,6 +5,8 @@ import { icon } from './icons';
 export class Tabs {
   private frame = 0;                       // a pending animation frame
   private activeId: string | null = null;
+  /** The document that was current when the engine went busy: its tab shows a progress line under it. */
+  private busyId: string | null = null;
   /** Pinned documents sit first in the strip, show a pin where the close button is, and are kept by Close All and Close Others. */
   private readonly pinnedIds = new Set<string>();
 
@@ -24,6 +26,8 @@ export class Tabs {
   constructor(private readonly strip: HTMLElement, private readonly engine: Engine, private readonly requestClose: (id: string) => void, onMenu?: (id: string, x: number, y: number) => void) {
     engine.on('projects', () => this.queue());
     engine.on('history', () => this.queue());
+    engine.on('busy', (on) => { this.busyId = on ? engine.current?.id ?? null : null; this.queue(); });
+    engine.on('progress', () => this.queue());
     const tabOf = (e: Event): HTMLElement | null => (e.target as HTMLElement).closest<HTMLElement>('.cv-tab[data-key]');
     strip.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
@@ -121,7 +125,10 @@ export class Tabs {
     }
     // The window's title follows the document: its name, a dot while unsaved, then the app's name.
     const title = current ? `${current.modified ? '• ' : ''}${tabName(current.name, current.doc.meta)} - formvis` : 'formvis';
-    if (document.title !== title) document.title = title;
+    if (document.title !== title) {
+      document.title = title;
+      if ('__TAURI_INTERNALS__' in window) void import('@tauri-apps/api/window').then((m) => m.getCurrentWindow().setTitle(title)).catch(() => undefined);
+    }
     // Keep the tab of the current document in view when it changes.
     if ((current?.id ?? null) !== this.activeId) {
       this.activeId = current?.id ?? null;
@@ -142,6 +149,9 @@ export class Tabs {
     setClass(n, 'is-active', active);
     setClass(n, 'is-dirty', !!p.modified);
     setClass(n, 'is-pinned', this.pinnedIds.has(p.id));
+    const busy = this.busyId === p.id && this.engine.busy, tp = this.engine.taskProgress;
+    setClass(n, 'is-busy', busy);
+    setStyleVar(n, '--tab-progress', busy && tp.total > 0 ? `${Math.round((tp.done / tp.total) * 100)}%` : '');
     const sel = active ? 'true' : 'false';
     if (n.getAttribute('aria-selected') !== sel) n.setAttribute('aria-selected', sel);
     setTitle(n, p.libraryName ? `${p.name} · saved in the library` : `${p.name} · not saved yet`);

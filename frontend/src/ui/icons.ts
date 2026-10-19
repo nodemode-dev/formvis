@@ -212,6 +212,9 @@ export const ICONS: Record<string, string> = {
   // The Generate panel (Replace, the ComfyUI and NodeMode connections, an API key).
   genReplace: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h13"/><path d="M14 5l3 3-3 3"/><path d="M20 16H7"/><path d="M10 13l-3 3 3 3"/></svg>`,
   genPlug: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v4M15 3v4"/><path d="M6.5 7h11v4a5.5 5.5 0 0 1-11 0z"/><path d="M12 16.5V21"/></svg>`,
+  capMin: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 12h12"/></svg>`,
+  capMax: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="6" y="6" width="12" height="12"/></svg>`,
+  capRestore: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="9" width="10" height="10"/><path d="M9 9V5h10v10h-4"/></svg>`,
   genNodes: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="6.5" height="5" rx="1.2"/><rect x="14.5" y="9.5" width="6.5" height="5" rx="1.2"/><rect x="3" y="15" width="6.5" height="5" rx="1.2"/><path d="M9.5 6.5h2.5a2.5 2.5 0 0 1 2.5 2.5v.5M9.5 17.5h2.5a2.5 2.5 0 0 0 2.5-2.5v-.5"/></svg>`,
   genKey: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="3.8"/><path d="M10.8 12.2 20 3"/><path d="M16 7l2.5 2.5"/><path d="M13.5 9.5l2 2"/></svg>`,
 };

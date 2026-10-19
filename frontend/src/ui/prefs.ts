@@ -15,7 +15,7 @@ import { DEFAULT_COLOUR, cleanColour, cleanPresets, type ColourPreset, type Colo
 export interface Prefs extends PagePrefs { language: Lang; profileMismatch: MismatchPref; colour: ColourSettings; colourPresets: ColourPreset[]; shortcuts: Record<string, string[]>; restoreSession: boolean; agentsAllowed: boolean; comfyuiUrl: string; nodemodeUrl: string; historyStates: number; historyMB: number; historyAuto: boolean; memoryLimitMB: number; effectCacheMB: number; cacheLevels: number; regionRedraws: boolean; fullPreviews: boolean; recoverySeconds: number; autoShowHome: boolean; useGpu: boolean; gpuFilters: boolean; renderer: GpuRenderer; gpuMemoryMB: number; gpuPower: GpuPower; lowLatency: boolean; engineDevice: EngineDevice;
   /* The sections (the owner's walkthrough): Tools, History & Cache, Workspace, Cursors, Transparency & Gamut,
      Units & Rulers, Guides & Grid; every one acts on something real. */
-  zoomWheel: boolean; autoFirstSnapshot: boolean; snapshotMB: number; narrowCollapse: boolean;
+  zoomWheel: boolean; autoFirstSnapshot: boolean; snapshotMB: number; narrowCollapse: boolean; rememberLayout: boolean;
   paintCursor: PaintCursor; cursorCrosshair: boolean; checkerSize: CheckerSize; checkerColors: CheckerColors; checkerTheme: boolean;
   rulerUnits: RulerUnits; guideColor: string; gridColor: string; gridSpacing: number; gridSubdivisions: number;
   /* The workspace charter (DEV_PLAN 35.1): the Home screen when the last document closes, What's New after an update,
@@ -112,7 +112,7 @@ export interface ToolbarPref { groups: string[][]; hidden: string[] }
 export type FontPreview = 'none' | 'small' | 'medium' | 'large' | 'extra' | 'huge';
 export const FONT_PREVIEWS: readonly FontPreview[] = ['none', 'small', 'medium', 'large', 'extra', 'huge'];
 /** Every data point Record Measurements can show, in log order, and the ones on by default. */
-export const MEASURE_POINTS: readonly string[] = ['Label', 'Scale', 'Area', 'Perimeter', 'Length', 'Angle', 'Count', 'W', 'H', 'Gray Value', 'Min Gray', 'Max Gray', 'Integrated Density', 'Centroid X', 'Centroid Y', 'Circularity'];
+export const MEASURE_POINTS: readonly string[] = ['Label', 'Scale', 'Area', 'Perimeter', 'Length', 'Angle', 'Count', 'W', 'H', 'Gray Value', 'Min Gray', 'Max Gray', 'Integrated Density', 'Centroid X', 'Centroid Y', 'Circularity', 'Histogram'];
 export const DEFAULT_MEASURE_POINTS: readonly string[] = ['Label', 'Scale', 'Area', 'Perimeter', 'Length', 'Angle', 'Count', 'W', 'H'];
 export type ToolOptionValue = string | number | boolean;
 export type DialogValue = string | boolean;
@@ -140,7 +140,7 @@ export type EngineDevice = 'auto' | 'metal' | 'cuda' | 'dml' | 'cpu';
 export const ENGINE_CHOICES: ReadonlyArray<readonly [EngineDevice, string]> = [['auto', 'Automatic'], ['metal', 'Metal (Core ML)'], ['cuda', 'CUDA'], ['dml', 'DirectML (Windows GPU)'], ['cpu', 'CPU']];
 
 export const DEFAULT_PREFS: Prefs = { language: 'en', profileMismatch: 'convert', colour: DEFAULT_COLOUR, colourPresets: [], shortcuts: {}, restoreSession: true, agentsAllowed: false, comfyuiUrl: 'http://127.0.0.1:8188', nodemodeUrl: 'http://localhost:8000', historyStates: 100, historyMB: 256, historyAuto: true, memoryLimitMB: 0, effectCacheMB: 256, cacheLevels: 6, regionRedraws: true, fullPreviews: false, recoverySeconds: 20, autoShowHome: true, useGpu: true, gpuFilters: true, renderer: 'auto', gpuMemoryMB: 1024, gpuPower: 'high-performance', lowLatency: false, engineDevice: 'auto',
-  zoomWheel: false, autoFirstSnapshot: true, snapshotMB: 768, narrowCollapse: true, paintCursor: 'tip', cursorCrosshair: false,
+  zoomWheel: false, autoFirstSnapshot: true, snapshotMB: 768, narrowCollapse: true, rememberLayout: true, paintCursor: 'tip', cursorCrosshair: false,
   checkerSize: 'medium', checkerColors: 'auto', checkerTheme: true, rulerUnits: 'px', guideColor: '', gridColor: '', gridSpacing: 100, gridSubdivisions: 4,
   homeOnLastClose: false, whatsNewAuto: true, whatsNewSeen: '', toolOptions: {}, dialogValues: {}, spellWords: [], measureDataPoints: [...DEFAULT_MEASURE_POINTS], fontPreview: 'medium', toolbar: null, pressureCurve: 'linear', uiFontSize: 'default', recentFontCount: 5, recentFonts: [], rawWb: 'as_shot', rawBits: 8, rawAutoTone: false, rawSmart: false, rawAsk: true, rawPpi: 0, historyLog: false, placeTransform: true, animatedZoom: true, systemPicker: false, zoomResizes: false, beepWhenDone: false, interpolation: 'high', floatDocking: true, showTooltips: true, shiftToolSwitch: true, zoomClickCentre: false, lowerExtension: true, recentFileCount: 20, gamutColor: '#808080', gamutOpacity: 100, guideStyle: 'solid', gridStyle: 'solid', sliceColor: '', sliceNumbers: true, shortcutSets: {}, menuHidden: [], menuColors: {}, animations: true, usePressure: true, ...PAGE_DEFAULTS };
 export const RECOVERY_CHOICES: ReadonlyArray<readonly [string, string]> = [['10', '10 seconds'], ['20', '20 seconds'], ['60', '1 minute'], ['300', '5 minutes'], ['600', '10 minutes']];
@@ -238,6 +238,7 @@ export function loadPrefs(): Prefs {
       autoFirstSnapshot: typeof r.autoFirstSnapshot === 'boolean' ? r.autoFirstSnapshot : DEFAULT_PREFS.autoFirstSnapshot,
       snapshotMB: Math.round(num(r.snapshotMB, 64, 8192, DEFAULT_PREFS.snapshotMB)),
       narrowCollapse: typeof r.narrowCollapse === 'boolean' ? r.narrowCollapse : DEFAULT_PREFS.narrowCollapse,
+      rememberLayout: typeof r.rememberLayout === 'boolean' ? r.rememberLayout : DEFAULT_PREFS.rememberLayout,
       paintCursor: PAINT_CURSORS.some(([k]) => k === r.paintCursor) ? r.paintCursor as PaintCursor : DEFAULT_PREFS.paintCursor,
       cursorCrosshair: typeof r.cursorCrosshair === 'boolean' ? r.cursorCrosshair : DEFAULT_PREFS.cursorCrosshair,
       checkerSize: CHECKER_SIZES.some(([k]) => k === r.checkerSize) ? r.checkerSize as CheckerSize : DEFAULT_PREFS.checkerSize,

@@ -2,16 +2,21 @@ import { el, q, setText } from './dom';
 import { icon } from './icons';
 import { t } from './i18n';
 import { loadPrefs, updatePrefs, type DialogValue } from './prefs';
+import { DialogHistory, REMEMBERED } from './dialog-history';
 
 /** A value a remembered dialog holds outside its form controls. */
 export interface RememberedExtra { read(): Record<string, DialogValue>; write(values: Record<string, DialogValue>): void; onChange(notify: () => void): void }
-
-const REMEMBERED ='input[type="range"], input[type="number"], input[type="checkbox"], input[type="color"], select';
 
 /** How many dialogs are showing right now. */
 let openCount = 0;
 /** True while at least one dialog is showing; global shortcuts consult this. */
 export const anyDialogOpen = (): boolean => openCount > 0;
+/** The field histories of the dialogs showing, the newest last; the Alt key relabels Cancel as Reset on the newest. */
+const openStack: DialogHistory[] = [];
+const altKeys = (e: KeyboardEvent): void => { if (e.key === 'Alt') openStack[openStack.length - 1]?.alt(e.type === 'keydown'); };
+window.addEventListener('keydown', altKeys, true);
+window.addEventListener('keyup', altKeys, true);
+window.addEventListener('blur', () => { for (const d of openStack) d.alt(false); });
 
 /** Modal dialog shell: a backdrop, a titled frame, a content area and a row of buttons. */
 export class Dialog {
@@ -43,6 +48,8 @@ export class Dialog {
     this.scrim.addEventListener('keydown', (e) => {
       e.stopPropagation();
       if (e.key === 'Escape') { e.preventDefault(); this.close(); }
+      if (e.key === 'Tab' && !e.altKey && !e.ctrlKey && !e.metaKey) this.fieldHistory.tab(e);
+      if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey) && !e.altKey) this.fieldHistory.undo(e);
       const step = e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : 0;
       if (!step || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || !(document.activeElement instanceof HTMLButtonElement) || document.activeElement.parentElement !== this.foot) return;
       const row = Array.from(this.foot.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')), at = row.indexOf(document.activeElement);
@@ -50,7 +57,11 @@ export class Dialog {
       if (at >= 0 && next) { e.preventDefault(); next.focus(); }
     });
     document.getElementById('overlay-root')?.appendChild(this.scrim);
+    this.fieldHistory = new DialogHistory(this.scrim, this.body, this.foot, () => this.isOpen);
   }
+
+  /** Undo of settled field values, Tab through the fields and Alt+Cancel as Reset, once for every dialog. */
+  private readonly fieldHistory: DialogHistory;
 
   get isOpen(): boolean { return !this.scrim.hidden; }
   setTitle(title: string): void { this.english = title; setText(this.title, t(title)); }
@@ -111,7 +122,7 @@ export class Dialog {
     Array.from(this.body.querySelectorAll<HTMLInputElement | HTMLSelectElement>(REMEMBERED)).forEach((c, i) => {
       if (skip?.has(c) || c.closest('[data-forget]')) return;
       const host = c.closest('label, .cv-field, .cv-dialog-row'), span = host?.querySelector<HTMLElement>('span'), text = (c.getAttribute('aria-label') || span?.dataset.en || span?.textContent || host?.textContent || '').trim().slice(0, 60);   // the English label (35.5d), so remembered values keep their keys in every language
-      const base = `${c instanceof HTMLSelectElement ? 'select' : c.type}:${text || `#${i}`}`, n = (seen.get(base) ?? 0) + 1;
+      const base = `${c instanceof HTMLSelectElement ? 'select' : c.hasAttribute('data-numtext') ? 'number' : c.type}:${text || `#${i}`}`, n = (seen.get(base) ?? 0) + 1;
       seen.set(base, n);
       out.push([n === 1 ? base : `${base}#${n}`, c]);
     });
@@ -161,6 +172,8 @@ export class Dialog {
     document.getElementById('overlay-root')?.appendChild(this.scrim);
     this.scrim.hidden = false;
     openCount++;
+    openStack.push(this.fieldHistory);
+    this.fieldHistory.start();
     const target = focus ?? this.scrim.querySelector<HTMLElement>('input, select, .cv-btn-primary:not(:disabled)');
     target?.focus();
     if (!this.scrim.contains(document.activeElement)) q<HTMLElement>(this.scrim, '.cv-dialog').focus();
@@ -171,6 +184,9 @@ export class Dialog {
     if (!this.isOpen) return;
     this.scrim.hidden = true;
     openCount--;
+    this.fieldHistory.alt(false);
+    const at = openStack.indexOf(this.fieldHistory);
+    if (at >= 0) openStack.splice(at, 1);
     this.onClose?.();
     // Focus left inside the hidden dialog kept shortcuts from reaching formvis until the browser moved it at a later frame
     // (1.53.6: a rebound key did nothing after Keyboard Shortcuts closed); it is released here, then returned.
@@ -233,15 +249,21 @@ class SaveChanges extends Dialog {
 let saveChangesDialog: SaveChanges | null = null;
 /** Asks whether to save a document's changes before it closes: 'save', 'discard' or 'cancel'. */
 export function askSaveChanges(name: string): Promise<'save' | 'discard' | 'cancel'> {
-  saveChangesDialog ??= new SaveChanges();
-  return saveChangesDialog.ask(name, false).then((a) => a.choice);
+  return askSaveChangesAll(name, false).then((a) => a.choice);
 }
 
 /** The same with Apply to All (Close All and Close Others, 1.65.8): `all` when it was ticked, so the
  *  answer stands for the documents after this one. */
-export function askSaveChangesAll(name: string): Promise<{ choice: 'save' | 'discard' | 'cancel'; all: boolean }> {
-  saveChangesDialog ??= new SaveChanges();
-  return saveChangesDialog.ask(name, true);
+export function askSaveChangesAll(name: string, many = true): Promise<{ choice: 'save' | 'discard' | 'cancel'; all: boolean }> {
+  try {
+    if (!windowDialogs()) throw new Error('no overlay root');
+    saveChangesDialog ??= new SaveChanges();
+    return saveChangesDialog.ask(name, many);
+  } catch {
+    const save = window.confirm(`Save changes to ${name}?`);
+    const choice = save ? 'save' : window.confirm(`Discard the changes to ${name}? Cancel keeps the document open.`) ? 'discard' : 'cancel';
+    return Promise.resolve({ choice, all: false });
+  }
 }
 
 /** Yes-or-no alert; resolves true on OK and false on Cancel or any other way of closing. */
@@ -315,12 +337,25 @@ class Prompt extends Dialog {
 let confirmDlg: Confirm | null = null;
 let promptDlg: Prompt | null = null;
 
+/** The window's own question cannot be shown when its mount point is missing or building it throws; the question then goes to the system's message box so it is never lost. */
+const windowDialogs = (): boolean => !!document.getElementById('overlay-root');
+
 export function confirmAction(title: string, text: string, okLabel = 'OK', danger = false, cancelLabel = 'Cancel'): Promise<boolean> {
-  confirmDlg ??= new Confirm();
-  return confirmDlg.ask(title, text, okLabel, danger, cancelLabel);
+  try {
+    if (!windowDialogs()) throw new Error('no overlay root');
+    confirmDlg ??= new Confirm();
+    return confirmDlg.ask(title, text, okLabel, danger, cancelLabel);
+  } catch {
+    return Promise.resolve(window.confirm(`${title}\n\n${text}`));
+  }
 }
 
 export function promptName(title: string, value: string, okLabel = 'OK'): Promise<string | null> {
-  promptDlg ??= new Prompt();
-  return promptDlg.ask(title, value, okLabel);
+  try {
+    if (!windowDialogs()) throw new Error('no overlay root');
+    promptDlg ??= new Prompt();
+    return promptDlg.ask(title, value, okLabel);
+  } catch {
+    return Promise.resolve(window.prompt(title, value)?.trim() || null);
+  }
 }

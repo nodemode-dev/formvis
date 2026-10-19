@@ -125,6 +125,7 @@ export const MEASURE_COLS:ReadonlyArray<readonly [string, (m: Rec) => string]> =
   ['Centroid X', (m) => opt(m.cx)],
   ['Centroid Y', (m) => opt(m.cy)],
   ['Circularity', (m) => (m.area === undefined || !m.perimeter ? '' : num((4 * Math.PI * m.area) / (m.perimeter * m.perimeter)))],
+  ['Histogram', (m) => (m.hist ? m.hist.map((b) => String(Math.round(b))).join(';') : '')],
 ];
 /** The columns Select Data Points keeps, in log order; Label is always shown. */
 export function visibleMeasureCols(): ReadonlyArray<readonly [string, (m: Rec) => string]> {

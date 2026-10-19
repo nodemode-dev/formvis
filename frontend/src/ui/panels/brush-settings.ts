@@ -1,5 +1,6 @@
 import { allPatterns, type Engine } from '../../engine';
 import { defaultShape, mergeShape, type BrushShape } from '../../engine/brush-dynamics';
+import { airbrushState } from '../../extensions/tools/brush';
 import { Dialog } from '../dialogs';
 import { el } from '../dom';
 import { recalled, remembered } from '../prefs';
@@ -67,6 +68,12 @@ export class BrushSettingsDialog extends Dialog {
 
     heading('Shape Dynamics', 'shapeDynamics');
     slide('Size Jitter (%)', 0, 100, 1, () => s().sizeJitter, (v) => put({ sizeJitter: v }));
+    pick('Size Control', [['off', 'Off'], ['pressure', 'Pen Pressure'], ['fade', 'Fade'], ['tilt', 'Pen Tilt'], ['rotation', 'Rotation']], () => s().sizeControl ?? 'off', (v) => put({ sizeControl: v as NonNullable<BrushShape['sizeControl']> }));
+    slide('Minimum Diameter (%)', 0, 100, 1, () => s().minDiameter ?? 0, (v) => put({ minDiameter: v }));
+    slide('Tilt Scale (%)', 0, 400, 1, () => s().tiltScale ?? 100, (v) => put({ tiltScale: v }));
+    check('Flip X Jitter', () => !!s().flipXJitter, (v) => put({ flipXJitter: v }));
+    check('Flip Y Jitter', () => !!s().flipYJitter, (v) => put({ flipYJitter: v }));
+    check('Brush Projection (turn and flatten the tip with the pen tilt)', () => !!s().projection, (v) => put({ projection: v }));
     slide('Angle Jitter (%)', 0, 100, 1, () => s().angleJitter, (v) => put({ angleJitter: v }));
     pick('Angle Control', [['off', 'Off'], ['fade', 'Fade'], ['direction', 'Direction'], ['initial', 'Initial Direction'], ['tilt', 'Pen Tilt'], ['rotation', 'Rotation']], () => s().angleControl, (v) => put({ angleControl: v as BrushShape['angleControl'] }));
     slide('Roundness Jitter (%)', 0, 100, 1, () => s().roundnessJitter, (v) => put({ roundnessJitter: v }));
@@ -135,6 +142,10 @@ export class BrushSettingsDialog extends Dialog {
     slide('Rotation (°)', 0, 359, 1, () => po().rotation, (v) => putPose({ rotation: v }));
     check('Override Pressure', () => po().usePressure, (v) => putPose({ usePressure: v }));
     slide('Pressure (%)', 0, 100, 1, () => po().pressure, (v) => putPose({ pressure: v }));
+
+    heading('Build-up');
+    check('Airbrush (paint builds up while the pointer rests)', () => airbrushState.on, (v) => { airbrushState.on = v; this.engine.emit('options', null); });
+    slide('Build-up Interval (ms between dabs)', 10, 500, 1, () => airbrushState.interval, (v) => { airbrushState.interval = v; this.engine.emit('options', null); });
 
     heading('Noise and Wet Edges', 'noise');
     check('Noise', () => !!s().noise, (v) => put({ noise: v }));

@@ -12,6 +12,17 @@ function sample(ctx: ToolContext, p: ToolPointer): void {
   if (original) e.setSampleRing({ at: p.doc, sampled: c, original });
 }
 
+let bgCursor = '';
+/** The crosshair with a small square badge: the next click samples the background colour (Alt held). */
+function backgroundCursor(): string {
+  if (!bgCursor) {
+    const cross = 'M14 4v20M4 14h20';
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"><path d="${cross}" stroke="#fff" stroke-width="3" fill="none"/><path d="${cross}" stroke="#000" stroke-width="1" fill="none"/><rect x="18.500" y="18.500" width="6" height="6" fill="#fff" stroke="#000" stroke-width="1.500"/></svg>`;
+    bgCursor = `url("data:image/svg+xml,${encodeURIComponent(svg)}") 14 14, crosshair`;
+  }
+  return bgCursor;
+}
+
 function finish(ctx: ToolContext): void {
   original = null;
   ctx.engine.setSampleRing(null);
@@ -21,7 +32,7 @@ export const eyedropperTool: Tool = {
   id: 'eyedropper', label: 'Eyedropper', key: 'I', order: 80,
   icon: () => 'tEyedropper',
   hint: () => 'Click or drag to sample the foreground colour from the visible image · Alt-click samples the background colour',
-  cursor: () => 'crosshair',
+  cursor: (_ctx, p) => (p?.alt ? backgroundCursor() : 'crosshair'),
   down(ctx, p) {
     if (p.button !== 0) return;
     original = { ...(p.alt ? ctx.engine.bg : ctx.engine.fg) };

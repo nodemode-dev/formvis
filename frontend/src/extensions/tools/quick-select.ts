@@ -1,6 +1,7 @@
 import type { Pt } from '../../engine';
 import { toolHost } from '../registry';
 import type { Tool } from '../registry';
+import { growOptions } from './select-common';
 import { brushKeys, drawBrushCursor } from './brush-common';
 
 let hover: Pt | null = null, trail: Pt[] = [];
@@ -53,6 +54,7 @@ export const quickSelectTool: Tool = {
     { kind: 'toggle', label: 'Sample all layers', priority: 45, get: () => e.quick.sampleAll, set: (v) => e.setQuick({ sampleAll: v }) },
     { kind: 'toggle', label: 'Enhance Edge', priority: 44, get: () => e.quick.enhance, set: (v) => e.setQuick({ enhance: v }) },
     { kind: 'button', label: 'Feather Selection...', priority: 28, run: () => toolHost.run('feather'), when: () => !!e.current?.selection },
+    ...growOptions(e),
     { kind: 'button', label: 'Select and Mask...', priority: 25, run: () => toolHost.run('select-and-mask') }
   ],
 };

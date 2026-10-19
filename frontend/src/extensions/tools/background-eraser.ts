@@ -22,7 +22,7 @@ export const backgroundEraserTool: Tool = {
   overlay(ctx, g) { drawBrushCursor(ctx, g, hover); },
   options: (e): OptionSpec[] => [
     { kind: 'title', text: 'Background Eraser' },
-    ...brushOptions(e, 'Opacity').filter((o) => !('label' in o) || o.label !== 'Opacity'),
+    ...brushOptions(e, 'Opacity').filter((o) => !('label' in o) || (o.label !== 'Opacity' && !(o.label ?? '').startsWith('Pressure'))),
     { kind: 'segment', label: 'Sampling', priority: 70, choices: [{ id: 'continuous', label: 'Continuous' }, { id: 'once', label: 'Once' }, { id: 'background', label: 'Background Swatch' }], get: () => opts.sampling, set: (v) => { opts.sampling = v as BgEraseOpts['sampling']; e.emit('options', null); } },
     { kind: 'segment', label: 'Limits', priority: 65, choices: [{ id: 'contiguous', label: 'Contiguous' }, { id: 'discontiguous', label: 'Discontiguous' }, { id: 'edges', label: 'Find Edges' }], get: () => (opts.findEdges ? 'edges' : opts.contiguous ? 'contiguous' : 'discontiguous'), set: (v) => { opts.findEdges = v === 'edges'; opts.contiguous = v !== 'discontiguous'; e.emit('options', null); } },
     { kind: 'range', label: 'Tolerance', priority: 80, min: 0, max: 255, get: () => opts.tolerance, set: (v: number) => { opts.tolerance = Math.max(0, Math.min(255, Math.round(v))); e.emit('options', null); } },

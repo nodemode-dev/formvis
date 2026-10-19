@@ -1,5 +1,5 @@
 import { loadPrefs } from './prefs';
-import { LANG_NAMES, LANG_PARENT, isLang as isLangCode, type Lang } from './i18n/langs';
+import { LANG_NAMES, LANG_PARENT, RTL_LANGS, isLang as isLangCode, type Lang } from './i18n/langs';
 
 /** The interface languages (DEV_PLAN 35.5 and 36.32): 26, English the source text and the default. Each other
  *  language's table is its own module, loaded when chosen (and at start for the saved choice) so the app carries only
@@ -20,7 +20,7 @@ const LOADERS: Record<Exclude<Lang, 'en'>, () => Promise<Table>> = {
   'zh-CN': () => import('./i18n/zh-CN').then((m) => m.zhCN), 'zh-TW': () => import('./i18n/zh-TW').then((m) => m.zhTW),
   ja: () => import('./i18n/ja').then((m) => m.ja), ko: () => import('./i18n/ko').then((m) => m.ko),
   id: () => import('./i18n/id').then((m) => m.id), th: () => import('./i18n/th').then((m) => m.th),
-  vi: () => import('./i18n/vi').then((m) => m.vi),
+  vi: () => import('./i18n/vi').then((m) => m.vi), ar: () => import('./i18n/ar').then((m) => m.ar), hi: () => import('./i18n/hi').then((m) => m.hi),
 };
 /** Part b of each table (36.32b): filters, adjustments, dialog fields, tooltips, notes and messages, kept apart so the
  *  first part stays readable; merged over it when the language loads. Regional variants have none of their own. */
@@ -51,7 +51,7 @@ const EXTRA: Partial<Record<Exclude<Lang, 'en'>, () => Promise<Table>>> = {
   'zh-CN': () => import('./i18n/extra/zh-CN').then((m) => m.zhCN), 'zh-TW': () => import('./i18n/extra/zh-TW').then((m) => m.zhTW),
   ja: () => import('./i18n/extra/ja').then((m) => m.ja), ko: () => import('./i18n/extra/ko').then((m) => m.ko),
   id: () => import('./i18n/extra/id').then((m) => m.id), th: () => import('./i18n/extra/th').then((m) => m.th),
-  vi: () => import('./i18n/extra/vi').then((m) => m.vi),
+  vi: () => import('./i18n/extra/vi').then((m) => m.vi), ar: () => import('./i18n/extra/ar').then((m) => m.ar),
 };
 const tables = new Map<Lang, Table>([['en', {}]]);
 
@@ -119,6 +119,7 @@ export async function setLanguage(l: Lang): Promise<void> {
   if (wanted !== l || l === current) return;
   current = l;
   document.documentElement.lang = l;
+  document.documentElement.dir = RTL_LANGS.has(l) ? 'rtl' : 'ltr';
   for (const fn of listeners) fn();
   translatePage();
 }
@@ -130,6 +131,7 @@ export async function startLanguage(): Promise<void> {
   if (wanted !== saved) return;
   current = saved;
   document.documentElement.lang = saved;
+  document.documentElement.dir = RTL_LANGS.has(saved) ? 'rtl' : 'ltr';
 }
 
 /** Calls `fn` whenever the language changes; returns the way to stop. */
