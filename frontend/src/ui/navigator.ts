@@ -16,6 +16,7 @@ export class NavigatorPanel {
   readonly group: PanelGroup;
   private readonly canvas: HTMLCanvasElement;
   private readonly slider: HTMLInputElement;
+  private readonly pct: HTMLInputElement;
   private timer = 0;
   /** Where the document sits in the preview, in CSS pixels: the matrix from document to preview (turned with the view,
    *  1.85.2) as [a, b, c, d, e, f]. */
@@ -27,10 +28,18 @@ export class NavigatorPanel {
         <div class="cv-nav-zooms" role="group" aria-label="Zoom presets">
           <button type="button" data-zoom="fit">Fit</button><button type="button" data-zoom="1">100%</button><button type="button" data-zoom="1.5">150%</button><button type="button" data-zoom="2">200%</button>
         </div></div>
-      <label class="cv-nav-zoom"><span>Zoom</span><input class="cv-slider" type="range" min="0" max="1000" step="1" aria-label="Zoom"></label>
+      <label class="cv-nav-zoom"><span>Zoom <input class="cv-nav-pct" type="text" inputmode="decimal" spellcheck="false" autocomplete="off" aria-label="Zoom percent"></span><input class="cv-slider" type="range" min="0" max="1000" step="1" aria-label="Zoom"></label>
     </div>`);
     this.canvas = body.querySelector('.cv-nav-preview') as HTMLCanvasElement;
-    this.slider = body.querySelector('input') as HTMLInputElement;
+    this.slider = body.querySelector('.cv-slider') as HTMLInputElement;
+    this.pct = body.querySelector('.cv-nav-pct') as HTMLInputElement;
+    this.pct.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { const n = parseFloat(this.pct.value.replace(',', '.')); if (Number.isFinite(n) && n > 0 && engine.current) engine.zoomTo(n / 100); this.pct.blur(); }
+      else if (e.key === 'Escape') this.pct.blur();
+      e.stopPropagation();
+    });
+    this.pct.addEventListener('focus', () => this.pct.select());
+    this.pct.addEventListener('blur', () => { const z = engine.current?.viewport.zoom; this.pct.value = z ? `${Number((z * 100).toFixed(1))}%` : ''; });
     this.group = new PanelGroup(host, 'navigator', [{ id: 'navigator', label: 'Navigator', body }], 'Navigator');
     this.group.setMenu(() => ['zoom-in', 'zoom-out', 'fit', 'actual']);
     for (const b of body.querySelectorAll<HTMLButtonElement>('[data-zoom]')) {
@@ -101,5 +110,7 @@ export class NavigatorPanel {
     g.stroke();
     g.restore();
     if (document.activeElement !== this.slider) this.slider.value = String(toSlider(v.zoom));
+    const zt = `${Number((v.zoom * 100).toFixed(1))}%`;
+    if (document.activeElement !== this.pct && this.pct.value !== zt) this.pct.value = zt;
   }
 }

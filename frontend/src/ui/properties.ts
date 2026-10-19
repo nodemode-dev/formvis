@@ -194,6 +194,8 @@ export class PropertiesColumn {
       <button class="cv-props-section" type="button" aria-expanded="true">${icon('chevronDown', 12)}<span>Transform</span></button>
       <div class="cv-props-transform"><button class="cv-link-btn is-on" type="button" title="Keep the aspect" aria-pressed="true">${icon('link', 14)}</button><div class="cv-props-grid"></div></div>
       <p class="cv-props-none">Select a layer with pixels to see its placement.</p>
+      <button class="cv-props-section cv-props-mask-head" type="button" aria-expanded="true" hidden>${icon('chevronDown', 12)}<span>Layer Mask</span></button>
+      <div class="cv-props-transform cv-props-mask" hidden><div class="cv-props-grid"></div></div>
       <button class="cv-props-section cv-props-doc-head" type="button" aria-expanded="true">${icon('chevronDown', 12)}<span>Document</span></button>
       <dl class="cv-props-doc"><dt>Name</dt><dd data-doc="name"></dd><dt>Size</dt><dd data-doc="size"></dd><dt>Resolution</dt><dd data-doc="res"></dd><dt>Mode</dt><dd data-doc="mode"></dd><dt>Profile</dt><dd data-doc="profile"></dd><dt>Layers</dt><dd data-doc="layers"></dd></dl>
     </div>`);
@@ -225,6 +227,15 @@ export class PropertiesColumn {
       row.appendChild(f[k].root);
       grid.appendChild(row);
     }
+    // The active layer's mask: Density lightens its black areas, Feather softens its edge; neither changes the painted mask.
+    const maskHead = body.querySelector('.cv-props-mask-head') as HTMLButtonElement, maskBody = body.querySelector('.cv-props-mask') as HTMLElement;
+    maskHead.addEventListener('click', () => { const open = maskHead.getAttribute('aria-expanded') !== 'true'; maskHead.setAttribute('aria-expanded', String(open)); setHidden(maskBody, !open); });
+    const mf = { density: numField('%', 'Mask Density', 0, 100, 1, (v) => e.setMaskShape({ density: v })), feather: numField('px', 'Mask Feather', 0, 250, 1, (v) => e.setMaskShape({ feather: v })) };
+    for (const [k, lbl] of [['density', 'Density'], ['feather', 'Feather']] as const) {
+      const row = el(`<label class="cv-props-field"><span>${lbl}</span></label>`);
+      row.appendChild(mf[k].root);
+      maskBody.querySelector('.cv-props-grid')?.appendChild(row);
+    }
     const tile = body.querySelector('.cv-props-tile') as HTMLElement, name = body.querySelector('.cv-props-name') as HTMLElement;
     new PanelGroup(this.root, 'properties', [{ id: 'properties', label: 'Properties', body }], 'Properties');
     onLanguage(() => { for (const r of this.refreshers) r(); });   // the heading is set in place, in the new language
@@ -240,6 +251,11 @@ export class PropertiesColumn {
       setHidden(section, false);
       setHidden(none, true);
       for (const k of ['w', 'x', 'h', 'y'] as const) f[k].set(l ? l.transform[k] : null);
+      const mk = a?.mask ?? null;
+      setHidden(maskHead, !mk);
+      setHidden(maskBody, !mk || maskHead.getAttribute('aria-expanded') !== 'true');
+      mf.density.set(mk ? mk.density ?? 100 : null);
+      mf.feather.set(mk ? mk.feather ?? 0 : null);
       const cur = e.current, d = cur?.doc, dash = '-';
       setText(docCell('name'), cur?.name ?? dash);
       setText(docCell('size'), d ? `${d.width} x ${d.height} px` : dash);

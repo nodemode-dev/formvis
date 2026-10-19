@@ -2787,6 +2787,12 @@ export class Engine {
     if (fl && fl.project === p) m.set(fl.layerId, { ...(m.get(fl.layerId) ?? {}), source: fl.preview });
     const fs = this.floatSel;
     if (fs && fs.project === p && !fs.outline) m.set(fs.sourceId, { ...(m.get(fs.sourceId) ?? {}), source: fs.hole });
+    const mva = this.maskViewLayer(p);
+    if (mva && this.maskView?.mode === 'alone' && mva.mask?.raster) {
+      const place = mva.mask.placement ?? mva.transform;
+      for (const l of p.doc.layers) if (l.id !== mva.id && !l.isGroup) m.set(l.id, { hidden: true });
+      m.set(mva.id, { source: LM.maskGrey(mva.mask.raster).canvas, transform: place, maskSource: this.opaqueDot(), maskPlacement: place, opacity: 1, blend: 'normal', effects: null });
+    }
     if (this.channelView !== null && (p.doc.mode === 'cmyk' || p.doc.mode === 'lab')) { for (const l of p.doc.layers) if (l.channels && !m.get(l.id)?.source) m.set(l.id, { ...(m.get(l.id) ?? {}), source: this.channelGrey(l.channels, this.channelView).canvas }); }
     else if (!this.stroke && this.composesFloats(p)) {
       const composed = this.composedRendition(p);
@@ -3579,6 +3585,8 @@ export class Engine {
   toggleMaskEnabled(): void { LM.toggleMaskEnabled(this.maskHost); }
 
   toggleMaskLink(): void { LM.toggleMaskLink(this.maskHost); }
+  /** The active layer's mask density (percent) and feather (pixels); the painted mask is not changed. */
+  setMaskShape(shape: { density?: number; feather?: number }): void { LM.setMaskShape(this.maskHost, shape); }
 
   /** Layer > Vector Mask (1.66.1): Reveal All and Hide All give the active layer an empty vector mask
    *  showing or hiding all of it, Current Path one from the selected path (the layer showing inside it). One step. */
@@ -4630,7 +4638,30 @@ export class Engine {
 
   /** The alpha channels the Channels panel shows over the image in red, per document; the view only. */
   private readonly alphaViews = new WeakMap<Project, Set<ID>>();
-  shownAlphas(p: Project): AlphaChannel[] { const v = this.alphaViews.get(p); return v?.size ? (p.doc.alphas ?? []).filter((a) => v.has(a.id)) : []; }
+  shownAlphas(p: Project): AlphaChannel[] {
+    const v = this.alphaViews.get(p), list = v?.size ? (p.doc.alphas ?? []).filter((a) => v.has(a.id)) : [], mv = this.maskView, l = this.maskViewLayer(p);
+    if (!mv || mv.mode !== 'rubylith' || !l?.mask?.raster) return list;
+    const key = `${l.mask.raster.id}:${l.mask.raster.version}:${p.doc.width}:${p.doc.height}`;
+    if (mv.alphaKey !== key || !mv.alpha) { mv.alphaKey = key; mv.alpha = { id: `mask-view-${l.id}`, name: 'Mask', mask: this.coverage(p, l, true) }; }
+    return [...list, mv.alpha];
+  }
+  /** The mask views of the Layers panel (Option-click the mask thumbnail: the mask alone; Shift-Option: a red overlay on the image). */
+  maskView: { project: Project; id: ID; mode: 'alone' | 'rubylith'; alpha?: AlphaChannel; alphaKey?: string } | null = null;
+  private dot: Raster | null = null;
+  private opaqueDot(): Surface { if (!this.dot) this.dot = Raster.filled(1, 1, '#fff'); return this.dot.canvas; }
+  private maskViewLayer(p: Project): Layer | null {
+    const mv = this.maskView, l = p.activeLayer;
+    return mv && mv.project === p && l && l.id === mv.id && l.mask?.raster ? l : null;
+  }
+  /** Shows the active layer's mask alone or as a red overlay; again with the same mode, or with null, returns to the image. */
+  setMaskView(mode: 'alone' | 'rubylith' | null): void {
+    const p = this.current, l = p?.activeLayer;
+    const next = p && l?.mask?.raster && mode && !(this.maskView?.id === l.id && this.maskView.project === p && this.maskView.mode === mode) ? { project: p, id: l.id, mode } : null;
+    if (!next && !this.maskView) return;
+    this.maskView = next;
+    this.emit('render', null);
+    this.emit('overlay', null);
+  }
   /** The alpha channel a channel command acts on: the one named or identified by `ref`, else the one shown last, else the last in the list. */
   alphaFor(ref?: string): AlphaChannel | undefined {
     const p = this.current, list = p?.doc.alphas ?? [];

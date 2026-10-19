@@ -184,6 +184,8 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
       r.maskEnabled = l.mask.enabled;
       if (l.mask.placement) r.maskPlacement = transformRecord(l.mask.placement);
       if (!l.mask.linked) r.maskLinked = false;
+      if (l.mask.density !== undefined && l.mask.density < 100) r.maskDensity = l.mask.density;
+      if (l.mask.feather) r.maskFeather = l.mask.feather;
     }
     if (l.clipId) r.maskSourceID = l.clipId;
     if (l.adjustment) r.adjustment = { ...l.adjustment.data, kind: KIND_LABELS[l.adjustment.kind] };
@@ -332,7 +334,7 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
     const smart = raster && sourceImage ? { source: Raster.from(sourceImage, sourceImage.width, sourceImage.height), filters: smartFiltersFrom(r.smart), stack: stackFrom(r.smartStack), warp: warpPts, warpAt: warpPts && sw.warpAt ? transformFrom(sw.warpAt, raster.width, raster.height) : null, filterMask: fmOk && fmImage ? Raster.from(fmImage, fmImage.width, fmImage.height) : null, filterMaskEnabled: sw.filterMaskEnabled !== false, link } : null;
     const maskPicture = bitmaps.get(str(r.maskFile) ?? '');
     const mask: Mask | null = maskPicture
-      ? { raster: grayToMask(maskPicture), enabled: r.maskEnabled !== false, linked: r.maskLinked !== false, placement: r.maskPlacement ? transformFrom(r.maskPlacement, maskPicture.width, maskPicture.height) : null }
+      ? { raster: grayToMask(maskPicture), enabled: r.maskEnabled !== false, linked: r.maskLinked !== false, placement: r.maskPlacement ? transformFrom(r.maskPlacement, maskPicture.width, maskPicture.height) : null, ...(typeof r.maskDensity === 'number' ? { density: r.maskDensity } : {}), ...(typeof r.maskFeather === 'number' ? { feather: r.maskFeather } : {}) }
       : null;
     const adj = obj(r.adjustment), kind = KINDS[str(adj.kind) ?? ''] ?? null;
     return {

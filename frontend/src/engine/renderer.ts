@@ -8,6 +8,7 @@ import { createSurface, ctxOf, rasterOf, sizeSurface, type Ctx2D, type Raster, t
 import { translation, IDENTITY, applyMat, invert, matScale, mul, placement, scaling, setMat, boundsOf, integral, intersectRect, sameTransform, type Mat } from './geometry';
 import { ancestors, descendantIds, groupIsolated, hierarchy } from './tree';
 import { boxChange, vectorCoverage } from './vector-mask';
+import { shapedMask } from './layer-masks';
 import { adjustmentKernel, type Kernel } from './kernels';
 import { grainFromData, grainKernel, hsvFromData, hsvKernel } from './adjust';
 import type { Adjustment } from './types';
@@ -364,7 +365,7 @@ export class Renderer {
    *  layer until its pixels, transform, mask or effects change. */
   private effectParts(layer: Layer, fx: LayerEffects, src: Surface, t: Transform, own: MaskInfo | null, maskPlacement: Transform | null, docW: number, docH: number, exact = false): FxPart[] {
     const r = layer.raster, mk = layer.mask, fast = this.fastEffects && !exact;
-    const key = JSON.stringify([r?.id ?? null, r?.version ?? 0, t, mk ? [mk.raster?.id ?? null, mk.raster?.version ?? 0, mk.enabled, maskPlacement ?? mk.placement] : null, fx, docW, docH, fast]);
+    const key = JSON.stringify([r?.id ?? null, r?.version ?? 0, t, mk ? [mk.raster?.id ?? null, mk.raster?.version ?? 0, mk.enabled, maskPlacement ?? mk.placement, mk.density ?? 100, mk.feather ?? 0] : null, fx, docW, docH, fast]);
     const hit = exact ? undefined : this.fxCache.get(layer.id);
     if (hit && hit.key === key) return hit.parts;
     const d = fx.dropShadow, g = fx.outerGlow, k = fx.stroke, is = fx.innerShadow, ig = fx.innerGlow;
@@ -711,7 +712,7 @@ export class Renderer {
   private maskOf(layer: Layer, ov: LayerOverride | undefined, t: Transform): MaskInfo | null {
     const mk = layer.mask;
     if (!mk || !mk.enabled || !mk.raster) return null;
-    const src = ov?.maskSource ?? mk.raster.canvas;
+    const src = ov?.maskSource ?? (shapedMask(mk) ?? mk.raster).canvas;
     const apart = ov?.maskPlacement ?? mk.placement;
     return { src, w: src.width, h: src.height, t: apart ?? t, covers: !apart && !layer.adjustment };
   }
@@ -729,7 +730,7 @@ export class Renderer {
     const out: MaskInfo[] = [];
     for (const g of ancestors(map, layer)) {
       const m = g.mask, vm = this.vectorOf(g, doc);
-      if (m && m.enabled && m.raster) out.push({ src: m.raster.canvas, w: m.raster.width, h: m.raster.height, t: m.placement ?? g.transform, covers: false });
+      if (m && m.enabled && m.raster) out.push({ src: (shapedMask(m) ?? m.raster).canvas, w: m.raster.width, h: m.raster.height, t: m.placement ?? g.transform, covers: false });
       if (vm) out.push(vm);
       // An artboard shows its contents only inside its rectangle: one white pixel stretched over it, sampled nearest so
       // its edges stay crisp.

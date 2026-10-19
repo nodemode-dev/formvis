@@ -19,6 +19,16 @@ export class SmartFiltersDialog extends Dialog {
       if (!id) return;
       if (t.closest('[data-act="remove"]')) this.change((fs) => fs.filter((f) => f.id !== id), 'Remove Smart Filter');
       else if (t.closest('[data-act="edit"]')) this.edit(id);
+      else if (t.closest('[data-act="up"]') || t.closest('[data-act="down"]')) {
+        const by = t.closest('[data-act="up"]') ? -1 : 1;
+        this.change((fs) => {
+          const i = fs.findIndex((f) => f.id === id), j = i + by;
+          if (i < 0 || j < 0 || j >= fs.length) return fs;
+          const out = fs.slice();
+          [out[i], out[j]] = [out[j], out[i]];
+          return out;
+        }, 'Reorder Smart Filters');
+      }
     });
     this.list.addEventListener('change', (e) => {
       const t = e.target as HTMLInputElement, id = t.closest<HTMLElement>('[data-key]')?.dataset.key;
@@ -42,7 +52,7 @@ export class SmartFiltersDialog extends Dialog {
     patchList<SmartFilter>(this.list, shown, {
       key: (f) => f.id,
       create: (f) => {
-        const row = el(`<div class="cv-list-row cv-sf-row"><input type="checkbox" aria-label="Show this filter"><span class="cv-sf-name"></span><button class="cv-btn cv-btn-ghost" type="button" data-act="edit">Edit</button><button class="cv-btn cv-btn-ghost" type="button" data-act="remove">Remove</button></div>`);
+        const row = el(`<div class="cv-list-row cv-sf-row"><input type="checkbox" aria-label="Show this filter"><span class="cv-sf-name"></span><button class="cv-btn cv-btn-ghost" type="button" data-act="up" aria-label="Move up" title="Move up">Up</button><button class="cv-btn cv-btn-ghost" type="button" data-act="down" aria-label="Move down" title="Move down">Down</button><button class="cv-btn cv-btn-ghost" type="button" data-act="edit">Edit</button><button class="cv-btn cv-btn-ghost" type="button" data-act="remove">Remove</button></div>`);
         row.dataset.key = f.id;
         this.fill(row, f);
         return row;

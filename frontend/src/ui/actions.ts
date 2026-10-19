@@ -40,6 +40,14 @@ export const RECORDABLE: ReadonlySet<string> = new Set([
   'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw',
 ]);
 
+/** A Batch output file name from a template: {name} is the source file name without its extension, {serial} counts from
+ *  `serial` in three digits, {date} is the day as yyyy-mm-dd. Characters a file name cannot hold are dropped. */
+export function batchName(template: string, base: string, serial: number, day: Date = new Date()): string {
+  const n = String(Math.max(0, Math.floor(serial))).padStart(3, '0'), d = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+  const out = (template.trim() || '{name}').replace(/\{name\}/g, base).replace(/\{serial\}/g, n).replace(/\{date\}/g, d).replace(/[\\/:*?"<>|\x00-\x1f]/g, '').trim().slice(0, 120);
+  return out || base;
+}
+
 const KEY = 'formvis.actions';
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
@@ -105,10 +113,10 @@ export class Actions {
 
   /** Runs each step through `run`, stopping at the first that cannot run, or that the person stopped (a stop step, or a
    *  dialog cancelled while paused for input); returns how many ran, which step ended it, and whether it was stopped. */
-  async play(a: Action, run: (step: ActionStep) => boolean | 'stopped' | Promise<boolean | 'stopped'>): Promise<{ done: number; failed: string | null; stopped: boolean }> {
+  async play(a: Action, run: (step: ActionStep) => boolean | 'stopped' | Promise<boolean | 'stopped'>, from = 0): Promise<{ done: number; failed: string | null; stopped: boolean }> {
     this.playing = true;
     try {
-      for (let i = 0; i < a.steps.length; i++) {
+      for (let i = Math.max(0, Math.min(a.steps.length, Math.floor(from))); i < a.steps.length; i++) {
         if (a.steps[i].off) continue;
         const r = await run(a.steps[i]);
         if (r !== true) return { done: i, failed: a.steps[i].label, stopped: r === 'stopped' };

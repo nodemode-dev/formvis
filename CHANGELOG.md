@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.88.0 · 2026-10-19
+
+### Added
+
+- Masks: Alt-click a mask thumbnail to see the mask alone, Shift+Alt-click for a red overlay; Mod-click a mask or layer thumbnail to load it as a selection (Shift adds, Alt subtracts, both intersect); Density and Feather for layer masks in Properties; Reveal All and Hide All reset an existing mask; Alt-click the mask button to hide the selection. Smart filters move up and down. Mod+2 and Mod+3 onward pick the composite and channels.
+- Navigation: type a zoom into the status bar or Navigator; Alt+wheel zooms; Ctrl+Space or Ctrl with the middle button drags to zoom; Shift+Tab hides the dock; F11 and Full Screen Mode use the system's full screen; Window > Arrange > Tile and Cascade; View > Snap and Snap To (guides, grid, layers, document bounds); drag tabs to reorder; step the interface darker or lighter; F6 opens Color; Reload Window; the browser title names the document.
+- Actions play from a chosen step; agents can list actions, see each document's size and unsaved state, and close a document by id. Batch names files from a template ({name}, {serial}, {date}). Data sets can be created and their values edited.
+
 ## 1.87.9 · 2026-10-19
 
 ### Added

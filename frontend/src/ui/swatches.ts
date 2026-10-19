@@ -57,6 +57,9 @@ export class SwatchesPanel {
     this.hsv = toHsv(engine.fg);
   }
 
+  /** Brings one of this group's tabs to the front (Window > Color). */
+  showTab(tab: 'swatches' | 'color'): void { this.group.show(tab); }
+
   private save(): void { try { localStorage.setItem(KEY, JSON.stringify(this.list)); } catch { /* this session only */ } }
 
   /** Adds the foreground colour, as the + tile does (the panel menu's Add Foreground Color). */

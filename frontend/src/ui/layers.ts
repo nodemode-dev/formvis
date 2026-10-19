@@ -536,13 +536,21 @@ export class LayersPanel {
         this.engine.toggleClip(id);
         return;
       }
+      // Mod-click on a thumbnail loads it as a selection: Shift adds, Option subtracts, both intersect (1.87.5).
+      const onMask = !!t.closest('.cv-layer-mask'), onThumb = !!t.closest('.cv-layer-thumb');
+      if (mod && (onThumb || (onMask && p.layer(id)?.mask))) {
+        e.preventDefault();
+        this.engine.selectLayer(id);
+        this.engine.loadSelection({ channel: onMask ? 'mask' : 'transparency' }, false, e.shiftKey && e.altKey ? 'intersect' : e.shiftKey ? 'add' : e.altKey ? 'subtract' : 'replace');
+        return;
+      }
       const wasSelected = p.selectedIds.has(id);
       if (mod) this.engine.selectLayer(id, 'toggle');
       else if (e.shiftKey && !t.closest('.cv-layer-mask')) this.engine.selectLayer(id, 'range');
       else if (!wasSelected) this.engine.selectLayer(id);
       else if (p.activeId !== id) { p.activeId = id; this.engine.emit('active', null); }
       if (t.closest('.cv-layer-mask')) {
-        if (e.shiftKey) this.engine.toggleMaskEnabled();
+        if (e.shiftKey && !e.altKey) this.engine.toggleMaskEnabled();
         else this.engine.setMaskTarget(true);
       } else if (t.closest('.cv-layer-thumb')) this.engine.setMaskTarget(false);
       const ids = p.selectedIds.has(id) ? [...p.selectedIds] : [id];
@@ -598,6 +606,7 @@ export class LayersPanel {
         if (d.maskFrom) this.engine.copyMask(d.maskFrom, d.target.id);
         else this.engine.moveLayers(d.ids, d.target.id, d.target.where, e.altKey);
       }
+      else if (!d.started && d.maskFrom && !cancel) this.engine.setMaskView(e.shiftKey ? 'rubylith' : 'alone');
       else if (!d.started && d.wasSelected) this.engine.selectLayer(d.id);
     };
     rows.addEventListener('pointerup', (e) => finish(e, false));

@@ -15,6 +15,7 @@ export class Tabs {
       const t = tabOf(e);
       if (!t || (e.target as HTMLElement).closest('.cv-tab-close')) return;
       this.engine.switchTo(t.dataset.key as string);
+      this.dragTab(e, t);
     });
     strip.addEventListener('auxclick', (e) => {
       if (e.button !== 1) return;
@@ -29,6 +30,32 @@ export class Tabs {
       if (t) this.requestClose(t.dataset.key as string);
     });
     this.render();
+  }
+
+  /** Dragging a tab along the strip moves its document to where the pointer is; the tabs follow in place. */
+  private dragTab(down: PointerEvent, tab: HTMLElement): void {
+    const id = tab.dataset.key as string, x0 = down.clientX;
+    let moving = false;
+    const move = (e: PointerEvent): void => {
+      if (!moving) { if (Math.abs(e.clientX - x0) < 6) return; moving = true; setClass(tab, 'is-dragging', true); }
+      const over = Array.from(this.strip.children).find((c) => { const r = c.getBoundingClientRect(); return e.clientX >= r.left && e.clientX < r.right; }) as HTMLElement | undefined;
+      const to = over?.dataset.key, list = this.engine.projects;
+      if (!to || to === id) return;
+      const from = list.findIndex((p) => p.id === id), at = list.findIndex((p) => p.id === to);
+      if (from < 0 || at < 0) return;
+      list.splice(at, 0, list.splice(from, 1)[0]);
+      this.render();
+    };
+    const up = (): void => {
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', up);
+      document.removeEventListener('pointercancel', up);
+      setClass(tab, 'is-dragging', false);
+      if (moving) this.engine.emit('projects', null);
+    };
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', up);
+    document.addEventListener('pointercancel', up);
   }
 
   private queue(): void {
@@ -69,6 +96,9 @@ export class Tabs {
       }
       if (moved.length) requestAnimationFrame(() => { for (const n of moved) { setClass(n, 'is-settling', true); setStyleVar(n, '--flip-x', '0px'); } });
     }
+    // The window's title follows the document: its name, a dot while unsaved, then the app's name.
+    const title = current ? `${current.modified ? '• ' : ''}${tabName(current.name, current.doc.meta)} - formvis` : 'formvis';
+    if (document.title !== title) document.title = title;
     // Keep the tab of the current document in view when it changes.
     if ((current?.id ?? null) !== this.activeId) {
       this.activeId = current?.id ?? null;

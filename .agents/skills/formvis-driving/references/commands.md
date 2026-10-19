@@ -1,24 +1,24 @@
 # formvis commands
 
-Generated from the window's command catalogue (1086 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1106 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
 - Edit: 67
-- File: 78
+- File: 79
 - Filter: 86
 - Generate: 2
 - Help: 3
 - Image: 88
-- Layer: 232
+- Layer: 234
 - Paint: 1
 - Paths: 9
 - Select: 35
 - Tool options: 269
 - Tools: 51
 - Type: 26
-- View: 60
-- Window: 79
+- View: 68
+- Window: 88
 
 ## Edit
 
@@ -100,7 +100,7 @@ Generated from the window's command catalogue (1086 commands) by `./formvis agen
 | `batch` | Batch... |  | Opens Batch to run an action over many files. (changes the picture) (asks first) |
 | `clear-recent` | Clear Recent |  | Empties the Open Recent list. (asks first) |
 | `close-all` | Close All |  | Closes every open document. (asks first) |
-| `close-document` | Close Document |  | Closes the current document without asking about unsaved changes. (asks first) |
+| `close-document` | Close Document |  | Closes the current document, or the one with the given id, without asking about unsaved changes. (asks first) |
 | `close-others` | Close Others | Alt+Mod+P | Closes every document but the current one. (asks first) |
 | `close-tab` | Close Tab | Alt+Mod+W | Closes the current document, asking about unsaved changes. (asks first) |
 | `comfyui-run` | Run ComfyUI Workflow... |  | Opens the dialog that runs a ComfyUI workflow and brings the result back. (changes the picture) (asks first) |
@@ -144,6 +144,7 @@ Generated from the window's command catalogue (1086 commands) by `./formvis agen
 | `import` | Import Images... | Shift+Mod+O | Opens the file picker to place images as layers. (changes the picture) |
 | `import-notes` | Import Notes... |  | Opens the file picker to add the text notes of a PSD, or the paragraphs of a text file, to the document as notes. (changes the picture) |
 | `import-video` | Video Frames to Layers... |  | Opens the dialog that turns video frames into layers. (changes the picture) |
+| `list-actions` | List Actions |  | Returns the recorded actions with their step counts and which one is recording, or one action's steps with their kind, label and on or off state. |
 | `load-files-stack` | Load Files into Stack... |  | Opens a dialog to load chosen image files as the layers of one new document, optionally as a smart object stack. (changes the picture) |
 | `merge-hdr` | Merge to HDR... |  | Opens Merge to HDR for bracketed exposures. (changes the picture) |
 | `new` | New Canvas... | Alt+Mod+N Mod+N | Opens the New Canvas dialog. |
@@ -156,7 +157,7 @@ Generated from the window's command catalogue (1086 commands) by `./formvis agen
 | `place-3d` | Place 3D Model... |  | Opens a file picker for a glTF or GLB model and places it as a layer. (changes the picture) |
 | `place-embedded` | Place Embedded... |  | Places an image file as an embedded smart object. (changes the picture) |
 | `place-linked` | Place Linked... |  | Places an image file as a linked smart object. (changes the picture) |
-| `play-action` | Play Action |  | Plays a named action on the current document. (changes the picture) |
+| `play-action` | Play Action |  | Plays a named action on the current document, from the first step or from the step given in from. (changes the picture) |
 | `print` | Print... | Mod+P | Opens the Print dialog: paper size, orientation, position, scaled print size and a preview, then prints the flattened document through the system print dialog. |
 | `print-one-copy` | Print One Copy | Alt+Shift+Mod+P | Prints the flattened document with the settings Print last used, skipping formvis's Print dialog; the system print dialog still opens to confirm the printer. |
 | `render-video` | Render Video... |  | Opens the Render Video dialog for the video timeline. (asks first) |
@@ -472,10 +473,12 @@ Generated from the window's command catalogue (1086 commands) by `./formvis agen
 | `lock-transparency` | Lock Transparent Pixels | / | Locks the transparent pixels of the selected layers, or unlocks them when every one is already locked. (changes the picture) |
 | `mask-all-objects` | Mask All Objects |  | Finds every object and gives each its own masked layer. (changes the picture) |
 | `mask-from-transparency` | From Transparency |  | Turns the layer transparency into a mask. (changes the picture) |
-| `mask-hide-all` | Hide All |  | Adds a mask that hides the whole layer. (changes the picture) |
+| `mask-hide-all` | Hide All |  | Adds a mask that hides the whole layer, or resets the existing mask to black. (changes the picture) |
 | `mask-hide-selection` | Hide Selection |  | Adds a mask hiding the selection. (changes the picture) |
-| `mask-reveal-all` | Reveal All |  | Adds a mask that reveals the whole layer. (changes the picture) |
+| `mask-reveal-all` | Reveal All |  | Adds a mask that reveals the whole layer, or resets the existing mask to white. (changes the picture) |
 | `mask-reveal-selection` | Reveal Selection |  | Adds a mask showing only the selection. (changes the picture) |
+| `mask-view-alone` | View Mask Alone |  | Shows the active layer mask alone in black and white; again returns to the image. (changes the picture) |
+| `mask-view-red` | View Mask as Red Overlay |  | Shows the active layer mask as a red overlay on the image; again returns. (changes the picture) |
 | `matting-black` | Remove Black Matte |  | Removes black fringe from a cut-out. (changes the picture) |
 | `matting-decontaminate` | Color Decontaminate... |  | Opens Color Decontaminate to clean edge colour. (changes the picture) |
 | `matting-defringe` | Defringe... |  | Opens Defringe to pull in edge pixels. (changes the picture) |
@@ -1112,6 +1115,7 @@ Generated from the window's command catalogue (1086 commands) by `./formvis agen
 | `layer-based-slice` | New Layer Based Slice |  | Adds a slice over the visible pixels of the active layer, tied to that layer. (changes the picture) |
 | `lock-guides` | Lock Guides | Alt+Mod+; | Locks or unlocks guides so they cannot be dragged. |
 | `new-guide` | New Guide... |  | Opens the New Guide dialog to place a guide at a position. (changes the picture) |
+| `os-full-screen` | Full Screen | F11 | Puts the whole window into the operating system full screen, or leaves it. |
 | `par-correction` | Pixel Aspect Ratio Correction |  | Shows or hides the pixel aspect correction, which stretches the canvas and the Navigator preview by the pixel shape; tools and the pointer keep working in document pixels. |
 | `pasteboard-black` | Pasteboard: Black |  | Makes the pasteboard around the picture black. |
 | `pasteboard-dark` | Pasteboard: Dark Grey |  | Makes the pasteboard around the picture dark grey. |
@@ -1146,12 +1150,19 @@ Generated from the window's command catalogue (1086 commands) by `./formvis agen
 | `show-notes` | Show Notes |  | Shows or hides the note markers on the canvas. |
 | `show-selection-edges` | Show Selection Edges |  | Shows or hides the marching outline of the selection. |
 | `slice-options` | Slice Options... |  | Opens the active slice's name, URL, alt text and exact position and size for editing. (changes the picture) |
+| `snap` | Snap | Shift+Mod+; | Turns snapping on or off for moving and transforming; the Snap To choices are kept. |
+| `snap-all` | Snap To All |  | Turns every Snap To target on, or all off when they are all on. |
+| `snap-bounds` | Snap To Document Bounds |  | Turns snapping to the document edges and centre on or off. |
+| `snap-grid` | Snap To Grid |  | Turns snapping to the visible grid on or off. |
+| `snap-guides` | Snap To Guides |  | Turns snapping to visible guides on or off. |
+| `snap-layers` | Snap To Layers |  | Turns snapping to the edges and centres of other visible layers on or off. |
 | `task-bar-pin` | Pin Task Bar |  | Pins the Contextual Task Bar where it stands, or lets it follow the selection again. |
 | `task-bar-reset` | Reset Task Bar Position |  | Puts the Contextual Task Bar back at the bottom centre of the canvas. |
+| `toggle-dock-panels` | Toggle Dock Panels | Shift+Tab | Shows or hides the panel column and the properties column, and keeps the toolbar and the options bar. |
 | `toggle-extras` | Toggle Extras |  | Turns every canvas helper on or off at once: notes, counts, selection edges and layer edges. |
 | `toggle-grid` | Toggle Grid | Mod+' | Shows or hides the grid. |
 | `toggle-guides` | Toggle Guides | Mod+; | Shows or hides guides. |
-| `toggle-panels` | Toggle Panels | Tab | Shows or hides every panel and the toolbar. |
+| `toggle-panels` | Toggle Panels | Tab | Shows or hides every panel and the toolbar; in Full Screen Mode it returns to the standard screen. |
 | `toggle-rulers` | Toggle Rulers | Mod+R | Shows or hides the rulers. |
 | `toggle-show-slices` | Toggle Show Slices |  | Shows or hides the slice rectangles and their numbers. |
 | `toggle-task-bar` | Toggle Task Bar |  | Shows or hides the Contextual Task Bar, the pill over the canvas with the next likely steps (Generative Fill, Select Subject, Remove Background). |
@@ -1173,7 +1184,9 @@ Generated from the window's command catalogue (1086 commands) by `./formvis agen
 | `arrange-3up` | 3-up |  | Shows the active document with two others as read-only view tiles. |
 | `arrange-4up` | 4-up |  | Shows the active document with three others as read-only view tiles. |
 | `arrange-6up` | 6-up |  | Shows the active document with five others as read-only view tiles. |
+| `arrange-cascade` | Cascade |  | Puts every floating window back in a stepped stack from the top left, all one size, so none is lost off screen. |
 | `arrange-tabs` | Consolidate All to Tabs |  | Returns every open document to the tab strip, one at a time on the Stage; closes the floating windows and extra views. |
+| `arrange-tile` | Tile |  | Picks the layout that fits the number of open documents: two side by side, 3-up for three, 4-up for four and 6-up for five or more. |
 | `assistant` | Assistant |  | Shows or hides the Assistant panel. |
 | `benchmark` | Performance Benchmark... |  | Opens the performance benchmark. |
 | `brush-settings` | Brush Settings... | F5 | Opens Brush Settings. |
@@ -1185,6 +1198,8 @@ Generated from the window's command catalogue (1086 commands) by `./formvis agen
 | `float-window` | Float in Window |  | Detaches a view of the current document into a floating window inside the app, with its own zoom, pan and rotation; drag its title to move it and its edges to resize it. |
 | `glyphs` | Glyphs |  | Opens Glyphs, a grid of Unicode characters to add to a type layer. |
 | `help` | formvis Help | F1 | Opens the formvis manual. |
+| `interface-darken` | Darken Interface | Shift+Mod+F1 | Switches to the next darker interface theme, ordered by the theme background; does nothing at the darkest. |
+| `interface-lighten` | Lighten Interface | Shift+Mod+F2 | Switches to the next lighter interface theme, ordered by the theme background; does nothing at the lightest. |
 | `manage-plugins` | Manage Plugins... |  | Opens the plugins dialog. |
 | `match-all` | Match All |  | Matches zoom, location and rotation across open documents. (changes the picture) |
 | `match-location` | Match Location |  | Centres every open document on the same point as the current one. (changes the picture) |
@@ -1194,11 +1209,14 @@ Generated from the window's command catalogue (1086 commands) by `./formvis agen
 | `new-frame` | New Frame |  | Adds a frame to the frame animation. (changes the picture) |
 | `new-window` | New Window for Document |  | Opens a second view of the current document, titled name (2), as a tile with its own zoom, pan and rotation; edits show in both views. |
 | `new-workspace` | New Workspace... |  | Asks for a name and saves the panel arrangement as it is now, which of them show and in what order, as a workspace in the title bar list. |
+| `next-appearance` | Next Appearance Mode |  | Cycles the appearance between Dark, Light and Auto, where Auto follows the system scheme. |
 | `next-document` | Next Document | Mod+Tab | Switches to the next open document in the tab strip, wrapping from the last to the first. |
 | `panel-adjustments` | Adjustments |  | Shows or hides the Adjustments panel. |
 | `panel-brushes` | Brushes |  | Shows or hides the Brushes panel. |
+| `panel-channels` | Channels |  | Shows the Channels tab, opening the layers panel group if it is hidden. |
 | `panel-character` | Character |  | Shows or hides the Character panel. |
 | `panel-clone-source` | Clone Source |  | Shows or hides the Clone Source panel. |
+| `panel-color` | Color | F6 | Shows the Color picker, opening its panel group if it is hidden. |
 | `panel-generate` | Generate |  | Shows or hides the Generate panel. |
 | `panel-gradients` | Gradients |  | Shows or hides the Gradients panel. |
 | `panel-histogram` | Histogram |  | Shows or hides the Histogram panel. |
@@ -1220,12 +1238,14 @@ Generated from the window's command catalogue (1086 commands) by `./formvis agen
 | `panel-styles` | Styles |  | Shows or hides the Styles panel. |
 | `panel-swatches` | Swatches |  | Shows or hides the Swatches panel. |
 | `panel-timeline` | Timeline |  | Shows or hides the Timeline panel. |
+| `panel-tools` | Tools |  | Shows or hides the tool rail on its own; the choice is remembered. |
 | `play-animation` | Play Animation |  | Plays or stops the frame animation. |
 | `pref-home-last-close` | Show Home Screen When the Last Document Closes |  | Turns the Home screen after the last document closes on or off (Preferences > General); off, closing the last document leaves the empty workspace. |
 | `pref-home-launch` | Show Home Screen at Launch |  | Turns the Home screen at launch on or off (Preferences > General); on shows it while no document is open at start. |
 | `pref-whats-new-auto` | Show What's New Once After an Update |  | Turns on or off opening What's New once after an update (Preferences > General). |
 | `previous-document` | Previous Document | Shift+Mod+Tab | Switches to the previous open document in the tab strip, wrapping from the first to the last. |
 | `record-performance` | Record Performance... |  | Records 10 seconds of real use and reports what took the time: canvas draws, engine events, input handlers, pixel reads and uploads, frame gaps. |
+| `reload-window` | Reload Window |  | Reloads the app window after asking when a document has unsaved changes; open documents return through the Restore Session preference. |
 | `reset-panels` | Reset Panels |  | Restores the default panel layout. |
 | `script-console` | Script Console... |  | Opens the Script Console, a log with a one-line input that runs JavaScript with formvis.run to run any catalogue command, formvis.commands to list them and formvis.api, the plugin API. |
 | `search` | Search... | Mod+K | Opens the command palette. |

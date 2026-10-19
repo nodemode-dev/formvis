@@ -263,6 +263,8 @@ export class BatchDialog extends Dialog {
   private readonly pick = el<HTMLSelectElement>('<select class="cv-input"></select>');
   private readonly format = el<HTMLSelectElement>('<select class="cv-input"><option value="png">PNG</option><option value="jpg">JPEG</option></select>');
   private readonly quality = el<HTMLInputElement>('<input class="cv-input" type="number" min="1" max="100" step="1" value="92">');
+  private readonly template = el<HTMLInputElement>('<input class="cv-input" type="text" value="{name}" maxlength="120" spellcheck="false" aria-label="File name template">');
+  private readonly serial = el<HTMLInputElement>('<input class="cv-input" type="number" min="0" max="999999" step="1" value="1">');
   private readonly file = el<HTMLInputElement>(`<input type="file" multiple accept="${IMAGE_ACCEPT}" hidden>`);
   private readonly chosen = el('<p class="cv-note"></p>');
   private files: File[] = [];
@@ -270,7 +272,7 @@ export class BatchDialog extends Dialog {
   private readonly subfolders = el<HTMLInputElement>('<input type="checkbox">');
   private inFolder: File[] = [];
 
-  constructor(private readonly store: Actions, private readonly run: (a: Action, files: File[], format: 'png' | 'jpg', quality: number) => Promise<void>) {
+  constructor(private readonly store: Actions, private readonly run: (a: Action, files: File[], format: 'png' | 'jpg', quality: number, template: string, serial: number) => Promise<void>) {
     super('Batch', 440);
     this.field('Action', this.pick);
     const row = el('<div class="cv-welcome-actions"></div>'), choose = el<HTMLButtonElement>('<button class="cv-btn" type="button">Choose images...</button>'), chooseDir = el<HTMLButtonElement>('<button class="cv-btn" type="button">Choose folder...</button>');
@@ -283,6 +285,8 @@ export class BatchDialog extends Dialog {
     this.subfolders.addEventListener('change', () => { if (this.inFolder.length) { this.files = folderImages(this.inFolder, this.subfolders.checked); this.sync(); } });
     this.field('Save as', this.format);
     this.field('JPEG quality', this.quality);
+    this.field('File name ({name}, {serial}, {date})', this.template);
+    this.field('Starting serial', this.serial);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('Run', 'primary', () => void this.go());
     this.file.addEventListener('change', () => { this.files = [...(this.file.files ?? [])]; this.inFolder = []; this.file.value = ''; this.sync(); });
@@ -301,6 +305,6 @@ export class BatchDialog extends Dialog {
     if (!a || !this.files.length) { setText(this.chosen, !a ? 'Record an action first.' : 'Choose the images to process.'); return; }
     const files = this.files, format = this.format.value === 'jpg' ? 'jpg' : 'png', q = Math.min(100, Math.max(1, Number(this.quality.value) || 92)) / 100;
     this.close();
-    await this.run(a, files, format, q);
+    await this.run(a, files, format, q, this.template.value, Math.max(0, Math.floor(Number(this.serial.value) || 0)));
   }
 }

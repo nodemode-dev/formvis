@@ -51,6 +51,21 @@ export class FloatViews {
     for (const p of this.engine.projects) if (!had.has(p.id)) this.open(p.id);
   }
 
+  /** Cascade: the floating frames step down and right from the top left, all one size, the last on top. */
+  cascade(): void {
+    const r = this.col.getBoundingClientRect();
+    const w = Math.max(MIN_W, Math.min(440, r.width - 64)), h = Math.max(MIN_H, Math.min(340, r.height - 96));
+    let i = 0;
+    for (const v of this.engine.docViews.list.filter((x) => x.floating)) {
+      v.floating = { x: 32 + (i % 6) * 28, y: 48 + (i % 6) * 28, w, h };
+      const f = this.frames.get(v.id);
+      if (f) { this.place(f); this.raise(f); }
+      i += 1;
+    }
+    this.stale = true;
+    this.queue();
+  }
+
   /** Consolidate back: every floating view closes; the documents stay in their tabs. */
   consolidate(): void {
     for (const v of this.engine.docViews.list.filter((x) => x.floating)) this.engine.closeView(v.id);

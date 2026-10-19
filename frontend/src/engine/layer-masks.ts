@@ -33,6 +33,52 @@ function plainMask(raster: Raster | null): Mask {
   return { raster, enabled: true, linked: true, placement: null };
 }
 
+const greys = new WeakMap<Raster, { v: number; r: Raster }>();
+/** A mask as opaque black and white pixels, white where the layer shows: the Alt-click view of the mask alone. */
+export function maskGrey(mask: Raster): Raster {
+  const hit = greys.get(mask);
+  if (hit && hit.v === mask.version) return hit.r;
+  const r = new Raster(mask.width, mask.height), src = mask.read().data, img = r.read(), d = img.data;
+  for (let o = 0; o < d.length; o += 4) { const a = src[o + 3]; d[o] = d[o + 1] = d[o + 2] = a; d[o + 3] = 255; }
+  r.write(img);
+  greys.set(mask, { v: mask.version, r });
+  return r;
+}
+
+const shaped = new WeakMap<Raster, { key: string; r: Raster }>();
+/** The mask raster as drawn: density lightens its black areas toward white, feather softens its edges; the painted pixels stay. */
+export function shapedMask(mask: Mask): Raster | null {
+  const src = mask.raster, d = Math.min(100, Math.max(0, mask.density ?? 100)), f = Math.max(0, mask.feather ?? 0);
+  if (!src || (d >= 100 && f <= 0)) return src;
+  const key = `${src.version}:${d}:${f}`, hit = shaped.get(src);
+  if (hit && hit.key === key) return hit.r;
+  const out = new Raster(src.width, src.height), g = out.ctx as CanvasRenderingContext2D;
+  g.fillStyle = `rgba(255,255,255,${1 - d / 100})`;
+  g.fillRect(0, 0, src.width, src.height);
+  g.globalCompositeOperation = 'lighter';
+  g.globalAlpha = d / 100;
+  if (f > 0) g.filter = `blur(${f}px)`;
+  g.drawImage(src.canvas as CanvasImageSource, 0, 0);
+  g.filter = 'none';
+  g.globalAlpha = 1;
+  g.globalCompositeOperation = 'source-over';
+  out.touch();
+  shaped.set(src, { key, r: out });
+  return out;
+}
+
+/** Properties panel: the active layer's mask density and feather, one undo step each. */
+export function setMaskShape(host: MaskHost, shape: { density?: number; feather?: number }): void {
+  host.edit('Mask Properties', (p) => {
+    const layer = p.activeLayer, mask = layer?.mask;
+    if (!layer || !mask) return false;
+    const density = shape.density === undefined ? mask.density : Math.min(100, Math.max(0, Math.round(shape.density)));
+    const feather = shape.feather === undefined ? mask.feather : Math.min(250, Math.max(0, Math.round(shape.feather * 10) / 10));
+    if ((density ?? 100) === (mask.density ?? 100) && (feather ?? 0) === (mask.feather ?? 0)) return false;
+    p.updateLayer(layer.id, { mask: { ...mask, density, feather } });
+  });
+}
+
 function layerSize(layer: Layer): { w: number; h: number } {
   if (layer.raster) return { w: layer.raster.width, h: layer.raster.height };
   return { w: Math.max(1, Math.round(layer.transform.w)), h: Math.max(1, Math.round(layer.transform.h)) };
@@ -51,7 +97,7 @@ function selectionOnLayer(sel: SelectionMask, layer: Layer, w: number, h: number
 export function addMask(host: MaskHost, hide = false, fromSelection = true): void {
   host.edit(hide ? 'Add Mask Hiding All' : 'Add Layer Mask', (p) => {
     const layer = p.activeLayer;
-    if (!layer || layer.mask) return false;
+    if (!layer || (layer.mask && fromSelection)) return false;
     const sel = fromSelection ? p.selection : null;
     let mask: Mask;
     if (sel) {
@@ -82,7 +128,7 @@ export function deleteMask(host: MaskHost, apply: boolean): void {
       ctx.save();
       ctx.globalCompositeOperation = 'destination-in';
       setMat(ctx, mul(toLayer, maskPlace));
-      ctx.drawImage(mask.raster.canvas, 0, 0);
+      ctx.drawImage((shapedMask(mask) ?? mask.raster).canvas, 0, 0);
       ctx.restore();
       ctx.setTransform(...IDENTITY);
       p.updateLayer(layer.id, { raster: out, mask: null });

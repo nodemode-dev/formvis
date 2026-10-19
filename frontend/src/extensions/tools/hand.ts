@@ -18,6 +18,7 @@ export const handTool: Tool = {
   options: (e) => [
     { kind: 'title', text: 'Hand' },
     { kind: 'button', label: 'Fit', icon: 'fitView', run: () => e.fit() },
-    { kind: 'button', label: 'Actual pixels', icon: 'maximize', run: () => e.zoomTo(1) }
+    { kind: 'button', label: 'Actual pixels', icon: 'maximize', run: () => e.zoomTo(1) },
+    { kind: 'button', label: 'Fill Screen', run: () => e.fillScreen() }
   ]
 };

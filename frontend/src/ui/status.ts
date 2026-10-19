@@ -8,7 +8,7 @@ import { icon } from './icons';
 export const SERVICE_NOTE = 'The engine service is not running, so editing works but these wait for it: saving to the library, HEIC, RAW, DPX and other camera and film formats, colour conversion, AI tools, video, the terminal and agents. Start it with ./formvis boot.';
 
 export class StatusBar {
-  private readonly zoom: HTMLElement;
+  private readonly zoom: HTMLInputElement;
   private readonly dims: HTMLElement;
   private readonly busy: HTMLElement;
   private readonly par: HTMLElement;
@@ -19,11 +19,23 @@ export class StatusBar {
 
   constructor(root: HTMLElement, private readonly engine: Engine) {
     root.insertAdjacentHTML('beforeend',
-      '<span class="cv-st-zoom"></span><span class="cv-st-dims"></span>' +
+      '<input class="cv-st-zoom" type="text" inputmode="decimal" spellcheck="false" autocomplete="off" aria-label="Zoom percent" title="Zoom: type a percent and press Enter">' +
+      '<span class="cv-st-dims"></span>' +
       `<span class="cv-st-busy">${icon('loading', 12)}</span><span class="cv-st-engine"></span><span class="cv-st-gpu"></span><span class="cv-st-mem" title="Pixels formvis holds, of what this computer allows it"></span><span class="cv-st-hint"></span>`);
     this.mem = q(root, '.cv-st-mem');   // 1.60.2, DEV_PLAN 26.1
     for (const k of ['doc', 'history', 'projects'] as const) engine.on(k, () => this.syncMemory());
     this.zoom = q(root, '.cv-st-zoom');
+    // The zoom is a field: Enter applies the percent typed (1 to 6400), Escape gives the current one back.
+    this.zoom.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const n = parseFloat(this.zoom.value.replace(',', '.'));
+        if (Number.isFinite(n) && n > 0 && this.engine.current) this.engine.zoomTo(n / 100);
+        this.zoom.blur();
+      } else if (e.key === 'Escape') { this.zoom.blur(); }
+      e.stopPropagation();
+    });
+    this.zoom.addEventListener('focus', () => this.zoom.select());
+    this.zoom.addEventListener('blur', () => this.syncView());
     this.dims = q(root, '.cv-st-dims');
     // Pixel Aspect Ratio note (35.4 part b): built once, updated with textContent through setText.
     this.par = document.createElement('span');
@@ -91,7 +103,9 @@ export class StatusBar {
 
   private syncView(): void {
     const p = this.engine.current;
-    setText(this.zoom, p ? `${Number((p.viewport.zoom * 100).toFixed(1))}%` : '');
+    const zt = p ? `${Number((p.viewport.zoom * 100).toFixed(1))}%` : '';
+    if (document.activeElement !== this.zoom && this.zoom.value !== zt) this.zoom.value = zt;
+    if (this.zoom.disabled !== !p) this.zoom.disabled = !p;
     setText(this.dims, p ? `${p.doc.width} \u00d7 ${p.doc.height} px` : '');
     const par = p?.doc.pixelAspect;
     setText(this.par, par && par !== 1 ? t(this.engine.view.parCorrection ? 'PAR {n}, corrected' : 'PAR {n}').replace('{n}', String(Number(par.toFixed(3)))) : '');

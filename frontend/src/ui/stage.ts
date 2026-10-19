@@ -38,6 +38,7 @@ export class Stage {
   private antsTimer = 0;
   private dragId: number | null = null;
   private panLast: Pt | null = null;
+  private zoomDrag: { at: Pt; y: number; z0: number } | null = null;
   private space = false;
   /** right-drag with these resizes the brush tip. */
   private static readonly brushTools = new Set(['brush', 'spotHealing', 'remove', 'cloneStamp', 'smear']);
@@ -801,6 +802,8 @@ export class Stage {
         o.setPointerCapture(e.pointerId);
         this.dragId = e.pointerId;
         this.panLast = p.screen;
+        // Ctrl or Cmd with the middle button, or with Space held, drags to zoom about the first point (up zooms in).
+        this.zoomDrag = (e.ctrlKey || e.metaKey) ? { at: p.screen, y: p.screen.y, z0: this.engine.current?.viewport.zoom ?? 1 } : null;
         this.updateCursor(p);
         return;
       }
@@ -827,6 +830,7 @@ export class Stage {
       if (this.dragId === e.pointerId) {
         if (this.panLast) {
           const p = this.pointer(e);
+          if (this.zoomDrag) { this.engine.zoomTo(this.zoomDrag.z0 * Math.exp((this.zoomDrag.y - p.screen.y) * 0.01), this.zoomDrag.at); return; }
           this.engine.pan(p.screen.x - this.panLast.x, p.screen.y - this.panLast.y);
           this.panLast = p.screen;
           return;
@@ -852,7 +856,7 @@ export class Stage {
       if (o.hasPointerCapture(e.pointerId)) o.releasePointerCapture(e.pointerId);
       const p = this.pointer(e);
       stickyModifiers.endGesture();   // a modifier tapped for the next gesture is spent once it ends
-      if (this.panLast) { this.panLast = null; this.updateCursor(p); return; }
+      if (this.panLast) { this.panLast = null; this.zoomDrag = null; this.updateCursor(p); return; }
       if (this.tipDragging) { this.tipDragging = false; this.engine.endTipDrag(); this.updateCursor(p); return; }
       const gd = this.engine.guideDraft;
       if (gd && gd.index !== null) {
@@ -883,8 +887,9 @@ export class Stage {
       if (!v) return;
       const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? this.cssH : 1;
       // Preferences > Tools > Zoom with Scroll Wheel swaps the two: the wheel zooms and Ctrl or Cmd with it scrolls.
-      if ((e.ctrlKey || e.metaKey) !== Stage.prefs.zoomWheel) {
-        this.engine.zoomTo(v.zoom * Math.exp(-e.deltaY * unit * 0.0025), this.pointer(e).screen);
+      // Alt with the wheel always zooms at the pointer (some systems turn Alt+wheel into a sideways delta).
+      if (e.altKey || (e.ctrlKey || e.metaKey) !== Stage.prefs.zoomWheel) {
+        this.engine.zoomTo(v.zoom * Math.exp(-(e.deltaY || e.deltaX) * unit * 0.0025), this.pointer(e).screen);
         return;
       }
       const horizontal = e.shiftKey && !e.deltaX;

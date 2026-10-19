@@ -379,14 +379,19 @@ export function cancelSelectionTransform(host: MoveHost, fs: FloatingSelection):
   host.refresh();
 }
 
+/** View > Snap and Snap To: the master switch and the four targets, each on its own (the app keeps them). */
+export const snapOptions = { on: true, guides: true, grid: true, layers: true, bounds: true };
+
 export function snapMove(host: MoveHost, p: Project, id: ID, t: Transform, moving?: ReadonlySet<ID>): Transform {
   const layer = p.layer(id);
   if (!layer) return t;
+  if (!snapOptions.on) { host.setSnapGuides(null); return t; }
   const box = host.snapBox(layer, t);
   const tol = 6 / (p.viewport.zoom || 1);
-  const xc: number[] = [0, p.doc.width / 2, p.doc.width];
-  const yc: number[] = [0, p.doc.height / 2, p.doc.height];
+  const xc: number[] = snapOptions.bounds ? [0, p.doc.width / 2, p.doc.width] : [];
+  const yc: number[] = snapOptions.bounds ? [0, p.doc.height / 2, p.doc.height] : [];
   for (const h of hierarchy(p.doc)) {
+    if (!snapOptions.layers) break;
     const l = h.layer;
     if (!h.visible || l.id === id || (moving && moving.has(l.id))) continue;
     if (l.isGroup) continue;
@@ -394,12 +399,12 @@ export function snapMove(host: MoveHost, p: Project, id: ID, t: Transform, movin
     xc.push(b.x, b.x + b.w / 2, b.x + b.w);
     yc.push(b.y, b.y + b.h / 2, b.y + b.h);
   }
-  if (host.view.guides && p.doc.guides) {
+  if (snapOptions.guides && host.view.guides && p.doc.guides) {
     for (const g of p.doc.guides) (g.axis === 'x' ? xc : yc).push(g.at);
   }
   const ex = [box.x, box.x + box.w / 2, box.x + box.w];
   const ey = [box.y, box.y + box.h / 2, box.y + box.h];
-  if (host.view.grid) {
+  if (snapOptions.grid && host.view.grid) {
     const step = host.view.gridSpacing / Math.max(1, host.view.gridSubdivisions);
     if (step > 0) {
       for (const e of ex) xc.push(Math.round(e / step) * step);

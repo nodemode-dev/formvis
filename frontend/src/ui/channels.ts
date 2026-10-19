@@ -1,7 +1,7 @@
 import { SelectionMask, type AlphaChannel, type Engine, type SelectionMode } from '../engine';
 import { composeChannels } from '../engine/channels';
 import { composeFloat } from '../engine/compose-float';
-import { el, patchList, q, setHidden, setText } from './dom';
+import { el, isMac, patchList, q, setHidden, setText } from './dom';
 import { icon } from './icons';
 
 /** Channels, the panel's tab (Phase 21, the owner's walkthrough): RGB, Red, Green and Blue, each
@@ -70,6 +70,18 @@ export class ChannelsPanel {
     for (const ev of ['history', 'doc', 'active', 'projects'] as const) engine.on(ev, () => { this.apply(); this.schedule(); });
     // Thumbnails whenever the tab is shown, in whichever group it is (tabs move between groups).
     new ResizeObserver(() => { if (this.root.clientWidth) this.schedule(); }).observe(this.root);
+    // Mod+2 or Mod+` the composite, Mod+3 to Mod+9 the next channels in the list, the alpha channels after the colours.
+    document.addEventListener('keydown', (e) => {
+      if (!(isMac ? e.metaKey : e.ctrlKey) || e.altKey || e.shiftKey || !this.engine.current) return;
+      const n = e.key === '`' || e.key === '2' ? 0 : /^[3-9]$/.test(e.key) ? Number(e.key) - 2 : -1;
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (n < 0 || tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement | null)?.isContentEditable) return;
+      const rows = [...this.root.querySelectorAll<HTMLElement>('.cv-ch-row:not([hidden])')], composite = rows[0], channels = rows.slice(1);
+      const row = n === 0 ? composite : channels[n - 1];
+      if (!row) return;
+      e.preventDefault();
+      row.click();
+    });
     this.apply();
   }
 

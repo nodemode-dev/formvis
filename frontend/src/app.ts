@@ -27,6 +27,7 @@ import { GradientEditor, loadSavedGradients } from './ui/panels/gradient-editor'
 import { convertToLinked, linkedFiles, pickLinkSource, placeEmbedded, placeLinked, relink, updateLinked } from './io/links';
 import { importAbr, loadImportedBrushes, addSampledBrush } from './io/brush-library';
 import { importedBrushPresets } from './engine/brush-dynamics';
+import { snapOptions } from './engine/pixel-move';
 import { SPACES, convertPixels, iccProfile, type SpaceId } from './engine/icc';
 import { embedJpeg, embedPng } from './io/embed-icc';
 import { withResolution } from './engine/dpi';
@@ -66,7 +67,7 @@ import { ShapeStyleDialog } from './ui/panels/shape-style-dialog';
 import { PathsPanel } from './ui/paths';
 import { SmartFiltersDialog } from './ui/panels/smart-filters-dialog';
 import { STACK_MODES } from './engine/stack-modes';
-import { Actions, RECORDABLE, type Action, type ActionStep } from './ui/actions';
+import { Actions, RECORDABLE, batchName, type Action, type ActionStep } from './ui/actions';
 import { ActionsDialog, BatchDialog } from './ui/panels/actions-dialogs';
 import { ImageProcessorDialog, type ImageProcessorOptions } from './ui/panels/image-processor-dialog';
 import { zipFiles } from './io/zip';
@@ -358,7 +359,26 @@ export function startApp(): void {
     root.classList.toggle('is-panels-hidden', panelsHidden || screen === 'full');
     window.dispatchEvent(new Event('resize'));
   };
-  const setScreen = (s: Screen): void => { screen = s; applyScreen(); };
+  // The OS window's full screen: Full Screen Mode asks for it and leaves it, F11 toggles it on its own; the picture
+  // is refitted to the new size, and leaving by the OS (Esc) leaves the mode too.
+  let dockHidden = false, railHidden = stored('formvis.railHidden') === '1';
+  const osFull = (): boolean => !!document.fullscreenElement;
+  const setOsFull = (on: boolean): void => {
+    if (on === osFull()) return;
+    try { void (on ? document.documentElement.requestFullscreen() : document.exitFullscreen()).catch(() => undefined); } catch { /* not allowed here */ }
+  };
+  const setScreen = (s: Screen): void => {
+    const was = screen;
+    screen = s; applyScreen();
+    if (s === 'full') setOsFull(true); else if (was === 'full') setOsFull(false);
+    if ((s === 'full') !== (was === 'full')) window.setTimeout(() => engine.fit(), 160);
+  };
+  const applyChromeParts = (): void => {
+    root.classList.toggle('is-dock-hidden', dockHidden);
+    root.classList.toggle('is-rail-hidden', railHidden);
+    window.dispatchEvent(new Event('resize'));
+  };
+  document.addEventListener('fullscreenchange', () => { if (!osFull() && screen === 'full') setScreen('standard'); });
   const railDouble = (): boolean => stored('formvis.railDouble') === '1';
   const applyRail = (): void => { q(root, '.cv-rail').classList.toggle('is-double', railDouble()); window.dispatchEvent(new Event('resize')); };
   // Right-to-left layout: the document's direction flips the rail, the dock and the menu bar to the other side.
@@ -375,7 +395,10 @@ export function startApp(): void {
     { id: 'screen-menu', label: 'Full Screen Mode with Menu Bar', checked: () => screen === 'menu', run: () => setScreen('menu') },
     { id: 'screen-full', label: 'Full Screen Mode', checked: () => screen === 'full', run: () => setScreen('full') },
     { id: 'screen-next', label: 'Change Screen Mode', keys: ['F'], run: () => setScreen(screen === 'standard' ? 'menu' : screen === 'menu' ? 'full' : 'standard') },
-    { id: 'toggle-panels', label: 'Show or Hide Panels', keys: ['Tab'], checked: () => !panelsHidden, run: () => { panelsHidden = !panelsHidden; applyScreen(); } },
+    { id: 'toggle-panels', label: 'Show or Hide Panels', keys: ['Tab'], checked: () => !panelsHidden && screen !== 'full', run: () => { if (screen === 'full') { setScreen('standard'); return; } panelsHidden = !panelsHidden; applyScreen(); } },
+    { id: 'toggle-dock-panels', label: 'Show or Hide Side Panels', keys: ['Shift+Tab'], checked: () => !dockHidden, run: () => { dockHidden = !dockHidden; applyChromeParts(); } },
+    { id: 'panel-tools', label: 'Tools', checked: () => !railHidden, run: () => { railHidden = !railHidden; store('formvis.railHidden', railHidden ? '1' : '0'); applyChromeParts(); } },
+    { id: 'os-full-screen', label: 'Full Screen', keys: ['F11'], checked: osFull, run: () => setOsFull(!osFull()) },
     { id: 'rail-columns', label: 'Tools in Two Columns', checked: railDouble, run: () => { store('formvis.railDouble', railDouble() ? '0' : '1'); applyRail(); } },
     { id: 'interface-rtl', label: 'Right-to-Left Layout', checked: rtl, run: () => { store('formvis.rtl', rtl() ? '0' : '1'); applyRtl(); } },
     pasteboardCmd('pasteboard-default', 'Pasteboard: Theme Default', 'default'),
@@ -387,6 +410,7 @@ export function startApp(): void {
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && screen === 'full') { setScreen('standard'); e.preventDefault(); } }, true);
   engine.on('options', () => q(root, '.cv-rail [data-cmd="quick-mask"]').classList.toggle('is-on', engine.quickMask));
   applyRail();
+  applyChromeParts();
   applyPasteboard();
   applyRtl();
   applyPrefs(engine, loadPrefs());
@@ -1596,19 +1620,20 @@ export function startApp(): void {
     return engine.resizeCanvas(w, h, s.dx, s.dy, s.fill);
   }
 
-  async function playAction(x: Action): Promise<void> {
+  async function playAction(x: Action, from = 0): Promise<void> {
     if (!engine.current) { toast('Open a document to play an action on.'); return; }
     engine.settle();
-    const r = await actions.play(x, (s) => runStep(s, !!x.relative));
+    const r = await actions.play(x, (s) => runStep(s, !!x.relative), from);
     if (r.stopped) toast(`"${x.name}" stopped at step ${r.done + 1}.`);
     else if (r.failed) toast(`"${x.name}" stopped at step ${r.done + 1}, ${r.failed}, which could not run here.`, 'error');
     else toast(`Played "${x.name}", ${r.done} step${r.done === 1 ? '' : 's'}.`);
   }
 
   /** Batch: each file opens as a document, plays the action, is exported and closed; the results download as one zip. */
-  async function runBatch(x: Action, files: File[], format: 'png' | 'jpg', quality: number): Promise<void> {
+  async function runBatch(x: Action, files: File[], format: 'png' | 'jpg', quality: number, template = '{name}', serial = 1): Promise<void> {
     await engine.task(async () => {
       const out: Array<{ name: string; blob: Blob }> = [], problems: string[] = [], used = new Set<string>();
+      let count = 0;
       for (const f of files) {
         try {
           const p = engine.openImage(await decodeImage(f, f.name));
@@ -1617,7 +1642,7 @@ export function startApp(): void {
           if (r.failed) problems.push(`${f.name} stopped at ${r.failed}`);
           engine.settle();
           const blob = await engine.exportBlob(format === 'png' ? 'image/png' : 'image/jpeg', quality);
-          const base = f.name.replace(/\.[^.]+$/, '') || 'image';
+          const base = batchName(template, f.name.replace(/\.[^.]+$/, '') || 'image', serial + count++);
           let name = `${base}.${format}`;
           for (let k = 2; used.has(name); k++) name = `${base} ${k}.${format}`;
           used.add(name);
@@ -2267,6 +2292,19 @@ export function startApp(): void {
     if (systemScheme.matches && !isLight) setTheme('light');
     else if (!systemScheme.matches && isLight) setTheme('studio');
   }
+  // View > Snap and Snap To: remembered between sessions.
+  const snapSave = (): void => { store('formvis.snap', JSON.stringify(snapOptions)); };
+  const snapSet = (k: keyof typeof snapOptions, on: boolean): void => { snapOptions[k] = on; snapSave(); };
+  try {
+    const saved = JSON.parse(stored('formvis.snap') ?? 'null') as Partial<typeof snapOptions> | null;
+    if (saved) for (const k of Object.keys(snapOptions) as (keyof typeof snapOptions)[]) if (typeof saved[k] === 'boolean') snapOptions[k] = saved[k] as boolean;
+  } catch { /* the defaults: everything on */ }
+  // The theme one step darker (-1) or lighter (1) by its background, or null at the end of the range.
+  function themeStep(dir: 1 | -1): string | null {
+    const lum = (id: string): number => { const h = (THEMES[id]?.vars['--bg-primary'] ?? '#000000').replace('#', ''); const n = parseInt(h.length === 3 ? h.replace(/./g, '$&$&') : h, 16) || 0; return 0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255); };
+    const ids = Object.keys(THEMES).sort((a, b) => lum(a) - lum(b) || a.localeCompare(b)), at = ids.indexOf(readChoice().theme);
+    return at < 0 ? null : ids[at + dir] ?? null;
+  }
   systemScheme.addEventListener('change', applySystemTheme);
   applySystemTheme();
   async function rememberClosed(p: ReturnType<typeof engine.addProject>): Promise<void> {
@@ -2439,7 +2477,7 @@ export function startApp(): void {
     frequency: new FrequencyDialog(engine),
     colorRange: new ColorRangeDialog(engine),
     actions: new ActionsDialog(actions, { play: (x) => playAction(x), save: (b, n) => deliver(b, n) }),
-    batch: new BatchDialog(actions, (x, f, fmt, q) => runBatch(x, f, fmt, q)),
+    batch: new BatchDialog(actions, (x, f, fmt, q, t, s) => runBatch(x, f, fmt, q, t, s)),
     imageProcessor: new ImageProcessorDialog(actions, (o) => imageProcessor(o)),
     generative: new GenerativeDialog(engine),
     layerStyle: new LayerStyleDialog(engine),
@@ -2728,6 +2766,12 @@ export function startApp(): void {
     { id: 'task-bar-pin', label: 'Pin Task Bar', checked: () => taskBar.pinned, run: () => taskBar.togglePin() },
     { id: 'task-bar-reset', label: 'Reset Task Bar Position', run: () => taskBar.reset() },
     { id: 'toggle-guides', label: () => (engine.view.guides ? 'Hide Guides' : 'Show Guides'), keys: ['Mod+;'], enabled: has, run: () => engine.setView({ guides: !engine.view.guides }) },
+    { id: 'snap', label: 'Snap', keys: ['Shift+Mod+;'], checked: () => snapOptions.on, run: () => snapSet('on', !snapOptions.on) },
+    { id: 'snap-guides', label: 'Snap To Guides', checked: () => snapOptions.guides, run: () => snapSet('guides', !snapOptions.guides) },
+    { id: 'snap-grid', label: 'Snap To Grid', checked: () => snapOptions.grid, run: () => snapSet('grid', !snapOptions.grid) },
+    { id: 'snap-layers', label: 'Snap To Layers', checked: () => snapOptions.layers, run: () => snapSet('layers', !snapOptions.layers) },
+    { id: 'snap-bounds', label: 'Snap To Document Bounds', checked: () => snapOptions.bounds, run: () => snapSet('bounds', !snapOptions.bounds) },
+    { id: 'snap-all', label: 'Snap To All', checked: () => snapOptions.guides && snapOptions.grid && snapOptions.layers && snapOptions.bounds, run: () => { const all = !(snapOptions.guides && snapOptions.grid && snapOptions.layers && snapOptions.bounds); for (const k of ['guides', 'grid', 'layers', 'bounds'] as const) snapOptions[k] = all; snapSave(); } },
     { id: 'toggle-grid', label: () => (engine.view.grid ? 'Hide Grid' : 'Show Grid'), keys: ["Mod+'"], enabled: has, run: () => engine.setView({ grid: !engine.view.grid }) },
     { id: 'lock-guides', label: () => (engine.view.guidesLocked ? 'Unlock Guides' : 'Lock Guides'), keys: ['Alt+Mod+;'], enabled: has, run: () => engine.setView({ guidesLocked: !engine.view.guidesLocked }) },
     { id: 'clear-guides', label: 'Clear Guides', enabled: () => !!engine.current?.doc.guides?.length, run: () => engine.clearGuides() },
@@ -2843,15 +2887,37 @@ export function startApp(): void {
       },
     },
     {
-      id: 'play-action', label: 'Play Action', enabled: () => has() && actions.list.length > 0, params: { name: { type: 'string', description: 'The action to play on the current document; the first action when left out.' } },
+      id: 'play-action', label: 'Play Action', enabled: () => has() && actions.list.length > 0, params: { name: { type: 'string', description: 'The action to play on the current document; the first action when left out.' }, from: { type: 'integer', min: 1, description: 'The step to start from, counting from 1; the first step when left out.' } },
       run: async (a) => {
         const x = a?.name === undefined || a.name === '' ? actions.list[0] : actions.list.find((y) => y.name === String(a.name));
         if (!x) throw new Error(`There is no action named "${String(a?.name ?? '')}".`);
-        await playAction(x);
-        return { played: true };
+        const from = a?.from === undefined ? 1 : Number(a.from);
+        if (!Number.isInteger(from) || from < 1 || from > Math.max(1, x.steps.length)) throw new Error(`from must be a step number from 1 to ${Math.max(1, x.steps.length)}.`);
+        await playAction(x, from - 1);
+        return { played: true, from };
       },
     },
-    { id: 'close-document', label: 'Close Document', enabled: has, run: async () => { const p = engine.current; if (p) await requestClose(p.id, 'discard'); } },
+    {
+      id: 'list-actions', label: 'List Actions', params: { name: { type: 'string', description: 'An action to return the steps of; leave out for every action with its step count.' } },
+      run: async (a) => {
+        const rec = actions.recording?.name ?? null, step = (s: Action['steps'][number], i: number) => ({ n: i + 1, kind: s.kind, label: s.label, on: !s.off, ask: 'ask' in s && s.ask === true });
+        if (a?.name !== undefined && a.name !== '') {
+          const x = actions.list.find((y) => y.name === String(a.name));
+          if (!x) throw new Error(`There is no action named "${String(a.name)}".`);
+          return { name: x.name, relative: x.relative === true, recording: rec === x.name, steps: x.steps.map(step) };
+        }
+        return { recording: rec, actions: actions.list.map((x) => ({ name: x.name, steps: x.steps.length, off: x.steps.filter((s) => s.off).length, relative: x.relative === true })) };
+      },
+    },
+    {
+      id: 'close-document', label: 'Close Document', enabled: has, params: { id: { type: 'string', description: 'The id of the document to close, from get_document; the current document when left out.' } },
+      run: async (a) => {
+        const want = a?.id === undefined || a.id === '' ? engine.current : engine.projects.find((q) => q.id === String(a.id));
+        if (!want) throw new Error(`There is no open document with the id ${String(a?.id ?? '')}: call get_document for the ids.`);
+        await requestClose(want.id, 'discard');
+        return { closed: want.id };
+      },
+    },
     {
       id: 'variables-define', label: 'Define Variable...', enabled: has,
       params: {
@@ -3009,6 +3075,22 @@ export function startApp(): void {
     { id: 'next-document', label: 'Next Document', keys: ['Mod+Tab'], enabled: () => engine.projects.length > 1, run: () => stepDocument(1) },
     { id: 'previous-document', label: 'Previous Document', keys: ['Shift+Mod+Tab'], enabled: () => engine.projects.length > 1, run: () => stepDocument(-1) },
     { id: 'theme-sync-system', label: 'Sync Theme with System', checked: () => stored(THEME_SYNC_KEY) === '1', run: () => { store(THEME_SYNC_KEY, stored(THEME_SYNC_KEY) === '1' ? '0' : '1'); applySystemTheme(); } },
+    { id: 'interface-darken', label: 'Darken Interface', keys: ['Shift+Mod+F1'], enabled: () => themeStep(-1) !== null, run: () => { const id = themeStep(-1); if (id) setTheme(id); } },
+    { id: 'interface-lighten', label: 'Lighten Interface', keys: ['Shift+Mod+F2'], enabled: () => themeStep(1) !== null, run: () => { const id = themeStep(1); if (id) setTheme(id); } },
+    { id: 'next-appearance', label: 'Next Appearance Mode', run: () => {
+      // Dark, then Light, then Auto (follows the system), then Dark again.
+      if (stored(THEME_SYNC_KEY) === '1') { store(THEME_SYNC_KEY, '0'); setTheme('studio'); toast('Appearance: Dark'); }
+      else if (THEMES[readChoice().theme]?.light) { store(THEME_SYNC_KEY, '1'); applySystemTheme(); toast('Appearance: Auto'); }
+      else { setTheme('light'); toast('Appearance: Light'); }
+    } },
+    { id: 'reload-window', label: 'Reload Window', run: async () => {
+      // Documents come back by the Restore Session preference; unsaved work is asked about first.
+      const dirty = engine.projects.filter((p) => p.modified).length;
+      if (dirty && !(await confirmAction('Reload Window', `${dirty === 1 ? 'A document has' : `${dirty} documents have`} unsaved changes that a reload would lose. Reload anyway?`, 'Reload', true))) return;
+      window.location.reload();
+    } },
+    { id: 'panel-color', label: 'Color', keys: ['F6'], run: () => { if (!dock.isShown('swatches')) dock.toggle('swatches'); swatches.showTab('color'); } },
+    { id: 'panel-channels', label: 'Channels', run: () => { if (!dock.isShown('layers')) dock.toggle('layers'); layers.showTab('channels'); } },
     { id: 'undo', label: () => { const h = engine.current?.history; return h?.canUndo ? `Undo ${h.undoName}` : 'Undo'; }, keys: ['Mod+Z'], enabled: () => !!engine.current?.history.canUndo, run: () => engine.undo() },
     { id: 'redo', label: () => { const h = engine.current?.history; return h?.canRedo ? `Redo ${h.redoName}` : 'Redo'; }, keys: ['Shift+Mod+Z', 'Mod+Y'], enabled: () => !!engine.current?.history.canRedo, run: () => engine.redo() },
     { id: 'compare-documents', label: 'Compare with...', enabled: () => !!engine.current && engine.projects.length > 1, run: () => dialogs.compare.show() },
@@ -3256,8 +3338,10 @@ export function startApp(): void {
     { id: 'merge-visible', label: 'Merge Visible', enabled: () => (engine.current?.doc.layers.length ?? 0) > 1, run: () => engine.mergeVisible() },
     { id: 'select-all-layers', label: 'All Layers', keys: ['Alt+Mod+A'], enabled: () => !!engine.current?.doc.layers.length, run: () => engine.selectAllLayers() },
     { id: 'deselect-layers', label: 'Deselect Layers', enabled: () => !!engine.current && (!!engine.current.activeId || engine.current.selectedIds.size > 0), run: () => engine.selectAllLayers(false) },
-    { id: 'mask-reveal-all', label: 'Reveal All', enabled: () => !!layer() && !layer()?.mask, run: () => engine.addMask(false, false) },
-    { id: 'mask-hide-all', label: 'Hide All', enabled: () => !!layer() && !layer()?.mask, run: () => engine.addMask(true, false) },
+    { id: 'mask-reveal-all', label: 'Reveal All', enabled: () => !!layer(), run: () => engine.addMask(false, false) },
+    { id: 'mask-hide-all', label: 'Hide All', enabled: () => !!layer(), run: () => engine.addMask(true, false) },
+    { id: 'mask-view-alone', label: 'View Mask Alone', checked: () => engine.maskView?.mode === 'alone', enabled: () => !!layer()?.mask?.raster, run: () => engine.setMaskView('alone') },
+    { id: 'mask-view-red', label: 'View Mask as Red Overlay', checked: () => engine.maskView?.mode === 'rubylith', enabled: () => !!layer()?.mask?.raster, run: () => engine.setMaskView('rubylith') },
     { id: 'mask-reveal-selection', label: 'Reveal Selection', enabled: () => !!layer() && !layer()?.mask && selected(), run: () => engine.addMask(false) },
     { id: 'mask-hide-selection', label: 'Hide Selection', enabled: () => !!layer() && !layer()?.mask && selected(), run: () => engine.addMask(true) },
     { id: 'mask-from-transparency', label: 'From Transparency', enabled: () => withPixels() && !layer()?.mask, run: () => engine.maskFromTransparency() },
@@ -3425,9 +3509,16 @@ export function startApp(): void {
       id, label, checked: () => viewTiles.layout === layout, enabled: () => layout === 'tabs' || engine.projects.length > 1 || engine.docViews.list.length > 0,
       run: () => { const was = viewTiles.layout; viewTiles.setLayout(layout); if (was !== layout) requestAnimationFrame(() => engine.fit()); if (layout === 'tabs') for (const v of [...engine.docViews.list]) engine.closeView(v.id); },   // Consolidate All to Tabs also brings every further view and floating window back (36.16)
     })),
+    { id: 'arrange-tile', label: 'Tile', enabled: () => engine.projects.length > 1, run: () => {
+      // The layout that fits the number of open documents: two side by side, then 3-up, 4-up, and 6-up for five or more.
+      const n = engine.projects.length, layout: ArrangeLayout = n <= 2 ? '2up-v' : n === 3 ? '3up' : n === 4 ? '4up' : '6up', was = viewTiles.layout;
+      viewTiles.setLayout(layout);
+      if (was !== layout) requestAnimationFrame(() => engine.fit());
+    } },
     { id: 'new-window', label: 'New Window for Document', enabled: has, run: () => { if (engine.openView() && viewTiles.layout === 'tabs') { viewTiles.setLayout('2up-v'); requestAnimationFrame(() => engine.fit()); } } },
     { id: 'float-window', label: 'Float in Window', enabled: has, run: () => floatViews.open() },
     { id: 'float-all-windows', label: 'Float All in Windows', enabled: has, run: () => floatViews.openAll() },
+    { id: 'arrange-cascade', label: 'Cascade', enabled: () => floatViews.count > 0, run: () => floatViews.cascade() },
     { id: 'match-zoom', label: 'Match Zoom', enabled: () => engine.projects.length > 1, run: () => engine.matchViews({ zoom: true }) },
     { id: 'match-location', label: 'Match Location', enabled: () => engine.projects.length > 1, run: () => engine.matchViews({ location: true }) },
     { id: 'match-rotation', label: 'Match Rotation', enabled: () => engine.projects.length > 1, run: () => engine.matchViews({ rotation: true }) },
@@ -3556,7 +3647,10 @@ export function startApp(): void {
     { id: 'smart-export-contents', label: 'Export Contents...', enabled: () => !!engine.current?.activeLayer?.smart, run: async () => {
       const c = engine.smartContents();
       if (!c) return;
-      try { await deliver(await toBlob(c.raster.canvas, 'image/png'), `${c.name.replace(/[\\/:*?"<>|]+/g, '_') || 'Smart Object'}.png`); } catch (err) { toast(message(err), 'error'); }
+      const typed = await promptName('Export Contents (end the name in .png, .jpg or .webp)', `${c.name.replace(/[\\/:*?"<>|]+/g, '_') || 'Smart Object'}.png`, 'Export');
+      if (!typed) return;
+      const ext = /\.(jpe?g|webp|png)$/i.exec(typed)?.[1].toLowerCase() ?? 'png', type = ext === 'webp' ? 'image/webp' : ext === 'png' ? 'image/png' : 'image/jpeg';
+      try { await deliver(await toBlob(c.raster.canvas, type, 0.92), `${typed.replace(/\.(jpe?g|webp|png)$/i, '').replace(/[\\/:*?"<>|]+/g, '_') || 'Smart Object'}.${ext === 'jpeg' ? 'jpg' : ext}`); } catch (err) { toast(message(err), 'error'); }
     } },
     { id: 'smart-convert-to-linked', label: 'Convert to Linked...', enabled: () => { const s = engine.current?.activeLayer?.smart; return !!s && !s.link; }, run: () => { void (async () => { try { await convertToLinked(engine); } catch (err) { linkError(err); } })(); } },
     { id: 'smart-filters-disable', label: () => (engine.smartFiltersOff ? 'Enable Smart Filters' : 'Disable Smart Filters'), enabled: () => !!engine.current?.activeLayer?.smart?.filters.length, run: () => engine.toggleSmartFilters() },
@@ -3619,7 +3713,7 @@ export function startApp(): void {
     { id: 'new-relight-layer', label: 'Relight Layer...', icon: 'relight', enabled: () => has() && !relight.editing, run: () => { void relight.begin(); } },
     { id: 'filter-relight', label: 'Relight...', icon: 'relight', enabled: () => has() && !relight.editing, run: () => { void relight.begin(); } },
     { id: 'edit-relight', label: 'Edit Lighting...', icon: 'relight', enabled: () => !!layer()?.relight && !relight.editing, run: () => { const l = layer(); if (l?.relight) void relight.begin(l.id); } },
-    { id: 'layer-content-options', label: 'Layer Content Options...', enabled: () => !!layer()?.adjustment || !!layer()?.fillContent || !!layer()?.relight, run: () => { const l = layer(); if (l?.fillContent) dialogs.fillLayer.showEdit(l.id); else if (l?.adjustment) dialogs.adjust.openForLayer(l.id); else if (l?.relight) void relight.begin(l.id); } },
+    { id: 'layer-content-options', label: 'Layer Content Options...', enabled: () => !!layer()?.adjustment || !!layer()?.fillContent || !!layer()?.relight || !!layer()?.vector, run: () => { const l = layer(); if (l?.fillContent) dialogs.fillLayer.showEdit(l.id); else if (l?.adjustment) dialogs.adjust.openForLayer(l.id); else if (l?.relight) void relight.begin(l.id); else if (l?.vector) dialogs.shapeStyle.show(); } },
     { id: 'film-leak', label: 'Light Leak...', enabled: () => !!engine.current, run: () => filmLayer.show('leak') },   // 1.51.6
     { id: 'film-frame', label: 'Frame...', enabled: () => !!engine.current, run: () => filmLayer.show('frame') },
     { id: 'color-match', label: 'Color Match...', enabled: () => { const l = engine.activeLayer; return !!l && (!!l.raster && !l.adjustment || (l.name === 'Color Match' && !!l.clipId)); }, run: () => colorMatch.show() },   // 1.51.3
@@ -3731,7 +3825,7 @@ export function startApp(): void {
       { label: 'Smart Objects', items: ['convert-smart', 'smart-new-via-copy', 'smart-convert-to-layers', 'edit-contents', 'replace-contents', 'smart-export-contents', { label: 'Stack Mode', items: STACK_MODES.map((m) => `stack-mode-${m.id}`) }, '-', 'smart-convert-to-linked', 'update-linked', 'relink', 'embed-linked', 'smart-reveal-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
       { label: 'Smart Filter', items: ['smart-filters-disable', 'smart-filters-clear'] },
       { label: 'Rasterize', items: ['rasterize-type', 'rasterize-shape', 'rasterize-fill', 'rasterize-smart', 'rasterize-vmask', '-', 'rasterize', 'rasterize-all'] }, { label: 'Type', items: ['check-spelling', 'find-replace-text', 'paste-lorem-ipsum', '-', 'convert-point-text', 'convert-paragraph-text', '-', 'type-work-path', 'type-to-shape', '-', 'update-all-text', 'resolve-missing-fonts', 'load-default-type-styles', 'add-font-files', 'add-web-font', '-', { label: 'Font Preview Size', items: FONT_PREVIEWS.map((v) => `font-preview-${v}`) }, '-', 'type-on-arc', 'type-on-circle'] }, 'edit-text', 'warp-text', 'type-on-path', { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-style-copy', 'shape-style-paste', 'shape-corners', '-', 'apply-redactions'] }, '-',
-      { label: 'Layer Mask', items: ['mask-reveal-all', 'mask-hide-all', 'mask-reveal-selection', 'mask-hide-selection', 'mask-from-transparency', '-', 'delete-mask', 'apply-mask', '-', 'toggle-mask', 'link-mask'] },
+      { label: 'Layer Mask', items: ['mask-reveal-all', 'mask-hide-all', 'mask-reveal-selection', 'mask-hide-selection', 'mask-from-transparency', '-', 'delete-mask', 'apply-mask', '-', 'toggle-mask', 'link-mask', '-', 'mask-view-alone', 'mask-view-red'] },
       { label: 'Vector Mask', items: ['vmask-reveal-all', 'vmask-hide-all', 'vmask-current-path', 'vmask-delete', '-', 'vmask-enable', 'vmask-link', 'vmask-invert'] }, 'clip', 'mask-all-objects', '-',
       'group', 'ungroup', 'move-out', 'hide-layers', '-',
       { label: 'Arrange', items: ['bring-front', 'forward', 'backward', 'send-back', '-', 'reverse-layers'] },
@@ -3759,10 +3853,10 @@ export function startApp(): void {
     // Generate: the generative commands in one place (the Generate panel, models, fill, repair, size, relight, and the ComfyUI and NodeMode links).
     { label: 'Generate', items: ['generate-panel', '-', 'generate-image', 'generative-fill', 'generative-expand', '-', 'generate-remove', 'content-fill-workspace', 'content-fill', 'remove-wires', '-', 'remove-bg', 'remove-bg-lite', '-', 'upscale-2x', 'upscale-4x', 'new-relight-layer', '-', 'comfyui-run', 'send-comfyui', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode'])] },
     { label: 'View', items: [{ label: 'Proof Setup', items: ['proof-setup', '-', 'proof-preset-monitor', 'proof-preset-cmyk', 'proof-preset-cyan', 'proof-preset-magenta', 'proof-preset-yellow', 'proof-preset-black', 'proof-preset-cmy', '-', 'proof-preset-protanopia', 'proof-preset-deuteranopia'] }, 'proof-colors', 'gamut-warning', 'preview-32', '-', 'zoom-in', 'zoom-out', 'fit', 'fit-layers', 'fit-artboard', 'actual', 'print-size', '-', 'toggle-extras', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'pattern-preview', 'pixel-art-preview', 'par-correction', 'transform-controls', 'toggle-task-bar', '-',
-      { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'guide-layout', 'guides-from-shape', 'clear-guides'] }, { label: 'Show', items: ['show-all-extras', 'show-no-extras', '-', 'show-selection-edges', 'show-layer-edges', 'show-notes', 'show-counts', 'toggle-show-slices', 'layer-based-slice', 'slice-options', 'delete-slice', 'clear-slices'] }, '-',
-      { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'toggle-panels', 'rail-columns', 'interface-rtl', { label: 'Pasteboard', items: ['pasteboard-default', 'pasteboard-black', 'pasteboard-dark', 'pasteboard-mid', 'pasteboard-light'] }] },
+      { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'guide-layout', 'guides-from-shape', 'clear-guides'] }, 'snap', { label: 'Snap To', items: ['snap-all', '-', 'snap-guides', 'snap-grid', 'snap-layers', 'snap-bounds'] }, { label: 'Show', items: ['show-all-extras', 'show-no-extras', '-', 'show-selection-edges', 'show-layer-edges', 'show-notes', 'show-counts', 'toggle-show-slices', 'layer-based-slice', 'slice-options', 'delete-slice', 'clear-slices'] }, '-',
+      { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'os-full-screen', 'toggle-panels', 'rail-columns', 'interface-rtl', { label: 'Pasteboard', items: ['pasteboard-default', 'pasteboard-black', 'pasteboard-dark', 'pasteboard-mid', 'pasteboard-light'] }] },
     { label: 'Plugins', items: () => { const ids = pluginHost.commandIds(); return ['manage-plugins', ...(ids.length ? ['-', ...ids] : [])]; } },
-    { label: 'Window', items: [{ label: 'Arrange', items: ['new-window', 'float-window', 'float-all-windows', '-', 'arrange-tabs','arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-4up', 'arrange-6up', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.connect.open', 'terminal.toggle', 'terminal.new', 'script-console', 'brush-settings', 'paragraph-styles', 'character-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-properties-col', 'merge-columns', '-', { label: 'Workspace', items: ['workspace-pixelart', '-', 'new-workspace', 'delete-workspace'] }, 'reset-panels', '-', 'next-document', 'previous-document', '-', 'theme-sync-system'] },
+    { label: 'Window', items: [{ label: 'Arrange', items: ['new-window', 'float-window', 'float-all-windows', 'arrange-cascade', '-', 'arrange-tabs','arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-4up', 'arrange-6up', 'arrange-tile', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.connect.open', 'terminal.toggle', 'terminal.new', 'script-console', 'brush-settings', 'paragraph-styles', 'character-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-channels', 'panel-color', 'panel-tools', 'panel-properties-col', 'merge-columns', 'toggle-dock-panels', '-', { label: 'Workspace', items: ['workspace-pixelart', '-', 'new-workspace', 'delete-workspace'] }, 'reset-panels', '-', 'next-document', 'previous-document', '-', 'theme-sync-system', 'next-appearance', 'interface-darken', 'interface-lighten', '-', 'reload-window'] },
     { label: 'Help', items: ['help', 'whats-new', '-', 'shortcuts', 'copy-error-log', 'benchmark', 'record-performance', 'simulate-gpu-loss', '-', 'help-github', 'report-issue', '-', 'check-for-updates', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);
@@ -3806,8 +3900,8 @@ export function startApp(): void {
 
   root.addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-cmd]');
-    // Alt-click on a Layers panel footer button asks for the options first (New Layer..., New Group...).
-    const ask: Record<string, string> = { 'new-layer': 'new-layer-dialog', 'new-folder': 'new-folder-dialog' };
+    // Alt-click on a Layers panel footer button asks for the options first (New Layer..., New Group...); on the mask button it hides the selection.
+    const ask: Record<string, string> = { 'new-layer': 'new-layer-dialog', 'new-folder': 'new-folder-dialog', 'add-mask': 'add-mask-hide' };
     if (b && root.contains(b) && !b.disabled) commands.run((e.altKey && ask[b.dataset.cmd ?? '']) || (b.dataset.cmd ?? ''));
   });
   // Recording: commands that change the document, filters with their settings, and size changes.
@@ -3868,6 +3962,12 @@ export function startApp(): void {
     resizer.addEventListener('pointerup', up);
     resizer.addEventListener('pointercancel', up);
   });
+  // A double-click on the edge puts the panel column back to its first width.
+  resizer.addEventListener('dblclick', () => {
+    if (dock.locked || resizer.classList.contains('is-inert')) return;
+    store(LAYERS_W_KEY, ''); setStyleVar(root, '--cv-layers-w', '288px');
+    window.dispatchEvent(new Event('resize'));
+  });
 
   window.addEventListener('keydown', (e) => {
     if (anyDialogOpen() || e.defaultPrevented) return;
@@ -3877,7 +3977,7 @@ export function startApp(): void {
     }
     const target = e.target instanceof Element ? e.target : null;
     if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
-    if (e.code === 'Space' && !e.metaKey && !e.ctrlKey) { e.preventDefault(); if (!e.repeat) stage.setSpace(true); return; }
+    if (e.code === 'Space' && !e.shiftKey) { e.preventDefault(); if (!e.repeat) stage.setSpace(true); return; }   // with Ctrl or Cmd it is the temporary Zoom (a drag)
     if (stage.toolKeydown(e)) { e.preventDefault(); return; }
     const cmd = commands.forEvent(e);
     if (cmd?.id === 'paste') return;
