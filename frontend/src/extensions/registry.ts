@@ -40,6 +40,8 @@ export interface Tool {
   key: string;
   order: number;
   hidden?: boolean;
+  /** The id of the plugin that registered the tool; absent for built-in tools. */
+  plugin?: string;
   icon(engine: Engine): string;
   hint(engine: Engine): string;
   cursor?(ctx: ToolContext, p: ToolPointer | null): string;
@@ -61,6 +63,8 @@ export function registerTool(tool: Tool): void {
   if (registry.has(tool.id)) throw new Error(`Tool "${tool.id}" is already registered`);
   registry.set(tool.id, tool);
 }
+/** Takes a plugin's tool away again; the built-in tools are never removed. */
+export function unregisterTool(id: ToolId): void { if (registry.get(id)?.plugin) registry.delete(id); }
 export const toolList = (): Tool[] => [...registry.values()].sort((a, b) => a.order - b.order);
 export const getTool = (id: ToolId): Tool | undefined => registry.get(id);
 export const toolForKey = (key: string): Tool | undefined => toolList().find((t) => t.key === key.toUpperCase());

@@ -3,6 +3,8 @@ import { Dialog } from '../dialogs';
 import { el, patchList, q, setChecked, setText } from '../dom';
 import { selectRow, sliderRow, type Row } from './controls';
 import { FILTER_LABELS, type FilterKind, type FilterPanel } from './filter-panel';
+import { wasmPlugins } from '../../engine/wasm-plugin-host';
+import { isWasmKind, wasmIdOf } from '../../engine/wasm-plugin';
 
 /** Layer > Smart Filters: the active smart object's filters, top first, each shown or hidden, changed or removed. Every
  *  change re-renders the object from its original pixels as one undo step. */
@@ -14,6 +16,8 @@ export class SmartFiltersDialog extends Dialog {
   private timer = 0;
   private readonly blendRow: Row<string>;
   private readonly opacityRow: Row<number>;
+  /** Opens a WebAssembly plug-in's dialog to change the settings of one of its smart filters. */
+  editWasm: ((id: string, settings: Record<string, unknown>, done: (settings: Record<string, unknown>) => void) => void) | null = null;
 
   constructor(private readonly engine: Engine, private readonly filters: () => FilterPanel) {
     super('Smart Filters', 420);
@@ -86,7 +90,7 @@ export class SmartFiltersDialog extends Dialog {
   }
 
   private fill(row: HTMLElement, f: SmartFilter): void {
-    setText(q(row, '.cv-sf-name'), FILTER_LABELS[f.kind as FilterKind] ?? f.kind);
+    setText(q(row, '.cv-sf-name'), isWasmKind(f.kind) ? wasmPlugins.get(wasmIdOf(f.kind))?.manifest.name ?? wasmIdOf(f.kind) : FILTER_LABELS[f.kind as FilterKind] ?? f.kind);
     setChecked(q<HTMLInputElement>(row, 'input'), f.enabled);
   }
 
@@ -103,9 +107,11 @@ export class SmartFiltersDialog extends Dialog {
     const f = (this.layerId ? this.engine.smartFiltersShown(this.layerId) : null)?.find((x) => x.id === id), layerId = this.layerId;
     if (!f || !layerId) return;
     this.close();
-    this.filters().showFor(f.kind as FilterKind, f.settings, (settings) => {
+    const done = (settings: Record<string, unknown>): void => {
       const now = this.engine.smartFiltersShown(layerId);
       if (now) this.engine.setSmartFilters(layerId, now.map((x) => (x.id === id ? { ...x, settings } : x)), 'Edit Smart Filter');
-    });
+    };
+    if (isWasmKind(f.kind)) this.editWasm?.(wasmIdOf(f.kind), f.settings, done);
+    else this.filters().showFor(f.kind as FilterKind, f.settings, done);
   }
 }

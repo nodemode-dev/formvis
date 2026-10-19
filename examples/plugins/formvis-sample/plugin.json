@@ -1,0 +1,9 @@
+{
+  "id": "formvis-sample",
+  "name": "Sample Plugin",
+  "version": "1.0.0",
+  "main": "main.js",
+  "api": 1,
+  "description": "A developer example: a CPU filter, a WebGL2 filter, a side panel, a canvas tool, a box source, events, storage and dialogs.",
+  "permissions": ["documents", "pixels", "filters", "panels", "tools", "sources", "events", "storage", "ui", "commands"]
+}

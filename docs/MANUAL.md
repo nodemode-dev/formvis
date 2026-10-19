@@ -585,7 +585,7 @@ other modes and depths its menu items are off, with the reason as their tooltip.
 - Outside agents (Claude Code, Codex, Cursor): ask them in plain language to edit what is open in formvis. In the
   formvis folder, `./formvis agents install` sets all three up for your account (the MCP server and the editing skill);
   inside the formvis repository they are already set up. formvis starts itself when an agent asks, opens a window if
-  none is open, and asks you once to allow outside agents. They get 105 tools, from opening, saving and exporting files
+  none is open, and asks you once to allow outside agents. They get 134 tools, from opening, saving and exporting files
   to layers, text, selections, filters, the video timeline and generative fill, which uses the models on this computer
   first.
 - Either way, every change is an undoable step, anything that costs money asks you first, your keys are never shown,
@@ -631,6 +631,34 @@ other modes and depths its menu items are off, with the reason as their tooltip.
 - The same list is what agents read with `list_commands` and `describe_command` and run with `run_command` and
   `run_commands`; a list of commands is a single undo step.
 - `./formvis counts --commands` prints how many commands the catalogue holds and any that lack a description.
+- Commands that take pictures (`contact-sheet`, `load-files-stack`, `stack-statistics`, `photomerge`, `merge-hdr`) take a
+  `files` list or `documents=true` for the open documents; from the command line give paths:
+  `./formvis cli run stack-statistics files=a.jpg,b.jpg,c.jpg mode=median align=true`. `fit-image` takes `width`, `height`,
+  `enlarge` and `resample`.
+- A droplet is a small saved bundle of an action and its output choices. File > Automate > Create Droplet writes a script or a
+  droplet file (`.fvdrop`, JSON: `{"kind":"formvis-droplet","version":1,"action":"Sepia","output":{"format":"jpg","quality":80,
+  "out":"done","suffix":"-s","recursive":true,"inPlace":false}}`); `./formvis cli droplet Sepia.fvdrop a.jpg folder/` runs it
+  (`./formvis cli droplet Sepia --format jpg --data Sepia.fvdrop` writes one from a terminal). The window has to be open to
+  play the action.
+- No window needed: `./formvis cli stack`, `contact`, `fit`, `photomerge` and `hdr` do the same jobs on files directly
+  (stack statistics with `--mode mean|median|minimum|maximum|range|stddev|variance|summation` and `--align`; contact sheets
+  with page units, order, caption font and grayscale; Fit Image with `--resample`; Photomerge and Merge to HDR through the
+  engine, the HDR as a Radiance file or tone-mapped to 16 or 8 bit). Each takes `--help`.
+
+### The JSON-lines session
+
+- `./formvis cli serve [--root DIR]` reads one JSON request per line on standard input and answers one line each on standard
+  output: `{"id":1,"method":"command.run","params":{"id":"filter.apply","params":{"kind":"gaussianBlur","radius":4}}}` gives
+  `{"id":1,"ok":true,"result":{...}}`, or `{"id":1,"ok":false,"error":"..."}`. A line may be 16 MB at most.
+- Methods: `ping`, `version`, `commands.list`, `command.describe`, `command.run`, `batch` (`commands`: a list of `{id, params}`;
+  `stopOnError` true by default, which runs them as one undo step and stops at the first failure; false runs every step and
+  answers each one), `doc.new`, `doc.open`, `doc.place`, `doc.save`, `doc.export`, `doc.inspect`, `doc.close`, `file.info`,
+  `file.convert`, `jobs.list`, `jobs.cancel`, `tool.call` (`name`, `arguments`: any MCP tool) and `shutdown`.
+- `image.stack`, `image.contact`, `image.fit`, `image.photomerge` and `image.hdr` run without a window:
+  `{"id":2,"method":"image.stack","params":{"inputs":["a.jpg","b.jpg"],"mode":"mean","out":"s.png"}}`; the options are the
+  command's flags with underscores for dashes.
+- With `--root DIR` every `path`, `output_path`, `inputs` and `out` outside DIR is refused. The `doc.*` and command methods act
+  on the open window; there is no token, so run the session only where the engine's own address is trusted.
 
 ## Script Console
 

@@ -4,6 +4,18 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.89.5 · 2026-10-19
+
+### Added
+
+- Plugins: plugin folders with a manifest, permissions approved on enable, and an API for documents, pixels, filters (CPU and GLSL), panels, tools, generate sources, events, storage and dialogs, with a sample plugin; WebAssembly filter plug-ins in a sandboxed worker with time and memory limits, generated dialogs, smart filter use and a Rust example.
+- Packs: EU AI label badge and metadata on export; Film Look layers with ten stocks and curve points; Chromatic Shift; more Glass textures; GLB objects placed as layers.
+- Agents: 29 more MCP tools (134 in all), including presets, compare, depth from a layer, a status note, window screenshots, menus, dialogs, pointer and pen input, keys and window control; file roots that confine agents; output budgets; progress and cancel for Render Video.
+- Actions and scripts: nested actions, Button Mode with colours, function-key shortcuts, sets, menu item steps, action file import and export, Script Events with scripts and a log, and running a JavaScript file from File > Scripts > Browse.
+- Automate and command line: droplet data files, Contact Sheet mode and depth, parameters for Fit Image, stacks, Photomerge and HDR, offline stack, contact, fit, Photomerge and HDR commands, and ComfyUI recipe Edit and Update.
+- Retouching: Content-Aware Move Sample All Layers and Transform On Drop; Remove falls back to the patch fill when its model is missing; Clone Source commands; Content-Aware Fill Sample All Layers and a sampling brush.
+- Raw: 16-bit ProPhoto RGB develop; skip the raw dialog; clipping view on Alt-drag; Point Color picking; mixer targeted adjustment; Upright Level, Vertical, Auto and Full.
+
 ## 1.89.4 · 2026-10-19
 
 ### Added

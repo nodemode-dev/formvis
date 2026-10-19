@@ -29,10 +29,12 @@ export interface DocMeta {
   exif?: string;
   /** The XMP packet the picture came with; its properties File Info does not manage travel on in the next export. */
   xmpRaw?: string;
+  /** The EU AI label: the IPTC digital source type every export of this document carries (made with AI, or edited with it). */
+  aiLabel?: 'generated' | 'edited';
 }
 
-/** The fields a change may name; keywords may be one typed line, custom fields lines of `key: value`. */
-export type MetaPatch = Omit<Partial<DocMeta>, 'keywords' | 'custom'> & { keywords?: string | readonly string[]; custom?: string | Readonly<Record<string, string>> };
+/** The fields a change may name; keywords may be one typed line, custom fields lines of `key: value`; aiLabel 'none' removes the label. */
+export type MetaPatch = Omit<Partial<DocMeta>, 'keywords' | 'custom' | 'aiLabel'> & { keywords?: string | readonly string[]; custom?: string | Readonly<Record<string, string>>; aiLabel?: 'generated' | 'edited' | 'none' };
 
 const MAX_CUSTOM = 50, MAX_CUSTOM_KEY = 64, MAX_CUSTOM_VALUE = 1000;
 /** One Exif block fits one JPEG segment (65 KB); the original XMP packet is kept up to 48 K characters. */
@@ -94,6 +96,7 @@ export function cleanMeta(v: unknown): DocMeta | null {
   const keywords = o.keywords === undefined ? [] : parseKeywords(typeof o.keywords === 'string' ? o.keywords : Array.isArray(o.keywords) ? o.keywords.map(String) : []);
   if (keywords.length) out.keywords = keywords;
   if (o.copyright === 'copyrighted' || o.copyright === 'public') out.copyright = o.copyright;
+  if (o.aiLabel === 'generated' || o.aiLabel === 'edited') out.aiLabel = o.aiLabel;
   const cam = o.camera && typeof o.camera === 'object' ? (o.camera as Record<string, unknown>) : null;
   if (cam) {
     const camera: CameraData = {};
@@ -114,7 +117,7 @@ export function cleanMeta(v: unknown): DocMeta | null {
 /** True when `m` has anything worth writing into a file: a field the person fills in, or the camera's record. */
 export function metaWritable(m: DocMeta | null | undefined): m is DocMeta {
   if (!m) return false;
-  return !!(m.title || m.author || m.authorTitle || m.description || m.rating || m.descriptionWriter || m.keywords?.length || (m.copyright && m.copyright !== 'unknown') || m.notice || m.url || m.camera || m.exif || m.xmpRaw || (m.custom && Object.keys(m.custom).length));
+  return !!(m.title || m.author || m.authorTitle || m.description || m.rating || m.descriptionWriter || m.keywords?.length || (m.copyright && m.copyright !== 'unknown') || m.notice || m.url || m.camera || m.exif || m.xmpRaw || m.aiLabel || (m.custom && Object.keys(m.custom).length));
 }
 
 const sameList = (a: readonly string[] | undefined, b: readonly string[] | undefined): boolean => (a?.length ?? 0) === (b?.length ?? 0) && (a ?? []).every((x, i) => x === (b as readonly string[])[i]);
@@ -125,7 +128,7 @@ export function sameMeta(a: DocMeta | null | undefined, b: DocMeta | null | unde
   return (x.title ?? '') === (y.title ?? '') && (x.author ?? '') === (y.author ?? '') && (x.authorTitle ?? '') === (y.authorTitle ?? '') && (x.description ?? '') === (y.description ?? '')
     && (x.rating ?? 0) === (y.rating ?? 0) && (x.descriptionWriter ?? '') === (y.descriptionWriter ?? '') && sameList(x.keywords, y.keywords)
     && (x.copyright ?? 'unknown') === (y.copyright ?? 'unknown') && (x.notice ?? '') === (y.notice ?? '') && (x.url ?? '') === (y.url ?? '')
-    && customLines(x.custom) === customLines(y.custom);
+    && (x.aiLabel ?? '') === (y.aiLabel ?? '') && customLines(x.custom) === customLines(y.custom);
 }
 
 /** The record after `patch` (only the fields it names change; an empty string clears a text field) and a note of when it
@@ -141,6 +144,7 @@ export function mergeMeta(cur: DocMeta | undefined, patch: MetaPatch, now: strin
   if (patch.keywords !== undefined) { const k = parseKeywords(patch.keywords); if (k.length) next.keywords = k; else delete next.keywords; }
   if (patch.copyright !== undefined) { if (patch.copyright === 'copyrighted' || patch.copyright === 'public') next.copyright = patch.copyright; else delete next.copyright; }
   if (patch.custom !== undefined) { const c = parseCustom(patch.custom); if (Object.keys(c).length) next.custom = c; else delete next.custom; }
+  if (patch.aiLabel !== undefined) { if (patch.aiLabel === 'generated' || patch.aiLabel === 'edited') next.aiLabel = patch.aiLabel; else delete next.aiLabel; }
   const merged = next as DocMeta;
   if (sameMeta(cur, merged)) return cur;
   merged.created = cur?.created ?? now;

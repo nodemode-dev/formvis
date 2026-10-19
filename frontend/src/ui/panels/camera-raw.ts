@@ -26,7 +26,7 @@ export class CameraRawDialog extends Dialog {
   private readonly preset = selectRow('White Balance', [['as_shot', 'As Shot'], ['auto', 'Auto'], ['daylight', 'Daylight']], (v) => { this.wb.wb = v as RawWhiteBalance['wb']; this.schedule(); });
   private readonly temperature = sliderRow('Temperature', -100, 100, 1, (v) => { this.wb.temperature = v; this.schedule(); });
   private readonly tint = sliderRow('Tint', -100, 100, 1, (v) => { this.wb.tint = v; this.schedule(); });
-  private readonly depth = selectRow('Depth', [['8', '8 Bits/Channel'], ['16', '16 Bits/Channel']], (v) => { this.bits = v === '16' ? 16 : 8; });
+  private readonly depth = selectRow('Depth', [['8', '8 Bits/Channel'], ['16', '16 Bits/Channel'], ['16w', '16 Bits/Channel, ProPhoto RGB']], (v) => { this.bits = v === '8' ? 8 : 16; this.wb.space = v === '16w' ? 'prophoto' : 'srgb'; });
   private readonly dev: RawDevelop = { ...RAW_DEVELOP_ZERO };
   private readonly devRows: Array<{ key: keyof RawDevelop; row: Row<number> | Row<string> }> = [];
   private readonly info = el('<p class="cv-note" role="status"></p>');
@@ -71,7 +71,7 @@ export class CameraRawDialog extends Dialog {
       this.settle = resolve;
       const d = loadPrefs();   // Preferences > Camera Raw Defaults
       this.reset(d.rawWb);
-      this.bits = d.rawBits; this.depth.set(String(d.rawBits));
+      this.bits = d.rawBits; this.wb.space = 'srgb'; this.depth.set(String(d.rawBits));
       setText(this.note, `${file.name}: preview at half size; Open develops the whole picture.`);
       setText(this.info, '');
       this.open();

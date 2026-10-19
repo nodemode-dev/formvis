@@ -650,10 +650,11 @@ def encode_cmyk(file: UploadFile = File(...), width: int = Form(...), height: in
 
 
 @router.post("/decode")
-def decode(file: UploadFile = File(...), page: int = Form(0), camera_profile: str = Form("auto"), wb: str = Form("as_shot"), temperature: float = Form(0.0), tint: float = Form(0.0), bits: int = Form(8), half: bool = Form(False), develop: str = Form("")) -> Response:
+def decode(file: UploadFile = File(...), page: int = Form(0), camera_profile: str = Form("auto"), wb: str = Form("as_shot"), temperature: float = Form(0.0), tint: float = Form(0.0), bits: int = Form(8), half: bool = Form(False), develop: str = Form(""), space: str = Form("srgb")) -> Response:
     """Any picture to a PNG. For a camera RAW (DEV_PLAN 36.21): `wb` (as_shot, auto or daylight), `temperature` and `tint`
     (-100 to 100) set the white balance at the RAW stage; `half` decodes at half size for Camera Raw's preview; `bits=16`
-    returns RGBA 16-bit little-endian samples instead of a PNG (X-Depth: 16). `develop` is a JSON object of RAW-stage
+    returns RGBA 16-bit little-endian samples instead of a PNG (X-Depth: 16), in ProPhoto RGB when `space` is prophoto
+    (X-Profile: prophoto; the 16-bit route only). `develop` is a JSON object of RAW-stage
     controls (raw_develop.options: exposure, recovery, noise, blackPoint, shadows, highlights, clarity, texture, dehaze).
     A RAW is known by its bytes as well as its suffix. The defaults are the plain as-shot decode."""
     data = file.file.read()
@@ -663,10 +664,10 @@ def decode(file: UploadFile = File(...), page: int = Form(0), camera_profile: st
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if bits == 16 and imaging.is_raw(data, file.filename or ""):
         try:
-            px, width, height = imaging.raw_deep(data, file.filename or "", wb, temperature, tint, half, opts)
+            px, width, height = imaging.raw_deep(data, file.filename or "", wb, temperature, tint, half, opts, space)
         except imaging.DecodeError as exc:
             raise HTTPException(status_code=415, detail=str(exc)) from exc
-        return Response(px, media_type="application/octet-stream", headers={"X-Width": str(width), "X-Height": str(height), "X-Depth": "16"})
+        return Response(px, media_type="application/octet-stream", headers={"X-Width": str(width), "X-Height": str(height), "X-Depth": "16", "X-Profile": space})
     if fits.is_fits(data):   # DEV_PLAN 34.7: the stretched reading, scaled to 8 bits
         import cv2
         try:

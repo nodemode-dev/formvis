@@ -241,6 +241,8 @@ body.nm-home .nm-canvas-surface { display: none !important; }
   --cv-pixel-grid: rgba(128, 128, 140, 0.35);
   --cv-handle-fill: #ffffff;
   --cv-doc-edge: rgba(0, 0, 0, 0.55);
+  --cv-action-blue: #3b82f6;
+  --cv-action-violet: #8b5cf6;
   --z-toast: 3000;
 }
 

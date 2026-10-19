@@ -25,6 +25,10 @@ export class ContactSheetDialog extends Dialog {
   private readonly height = numberRow('Height', 0.01, 30000, 1, () => undefined);
   private readonly place = selectRow('Place', [['across', 'Across first'], ['down', 'Down first']], (v) => { this.order = v === 'down' ? 'down' : 'across'; });
   private readonly fontPick = selectRow('Caption font', [...new Set(['Inter', ...fontFamilies().filter((f) => /^[\w .-]{1,40}$/.test(f))])].map((f) => [f, f] as const), (v) => { this.family = v; });
+  private mode: 'rgb' | 'grayscale' = 'rgb';
+  private depth: 8 | 16 = 8;
+  private readonly modeRow = selectRow('Mode', [['rgb', 'RGB Color'], ['grayscale', 'Grayscale']], (v) => { this.mode = v === 'grayscale' ? 'grayscale' : 'rgb'; });
+  private readonly depthRow = selectRow('Bit depth', [['8', '8 bit'], ['16', '16 bit']], (v) => { this.depth = v === '16' ? 16 : 8; });
   private readonly openImages = checkRow('Use Open Images', (v) => { this.useOpen = v; this.sync(); });
   private readonly ppi = numberRow('Resolution (ppi)', 1, 3000, 1, () => undefined);
   private readonly flat = checkRow('Flatten All Layers', (v) => { this.flatten = v; });
@@ -48,14 +52,14 @@ export class ContactSheetDialog extends Dialog {
     const actions = el<HTMLElement>('<div class="cv-row-actions"></div>');
     actions.append(pick);
     choose.append(actions, this.picker);
-    this.body.append(choose, this.openImages.el, this.source, el('<p class="cv-note">Document</p>'), this.units.el, this.width.el, this.height.el, this.ppi.el, this.flat.el,
+    this.body.append(choose, this.openImages.el, this.source, el('<p class="cv-note">Document</p>'), this.units.el, this.width.el, this.height.el, this.ppi.el, this.modeRow.el, this.depthRow.el, this.flat.el,
       el('<p class="cv-note">Thumbnails</p>'), this.place.el, this.columns.el, this.rows.el, this.spacing.el, this.vertical.el, this.horizontal.el, this.turn.el, this.caption.el, this.fontPick.el, this.font.el);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => { void this.apply(); });
     this.width.set(2480); this.height.set(3508); this.ppi.set(300); this.flat.set(false);
     this.columns.set(5); this.rows.set(6); this.spacing.set(true); this.vertical.set(10); this.horizontal.set(10);
     this.turn.set(false); this.caption.set(true); this.font.set(12);
-    this.units.set('px'); this.place.set('across'); this.fontPick.set('Inter'); this.openImages.set(false);
+    this.units.set('px'); this.place.set('across'); this.fontPick.set('Inter'); this.openImages.set(false); this.modeRow.set('rgb'); this.depthRow.set('8');
     this.remember();
     this.sync();
   }
@@ -78,13 +82,45 @@ export class ContactSheetDialog extends Dialog {
     this.open(this.width.input);
   }
 
+  /** The command's way in: the choices set from `o`, the pictures given (else the open documents when `o.documents`), then the sheet is made. */
+  async drive(files: File[], o: Record<string, unknown>): Promise<void> {
+    const num = (v: unknown, r: { set(v: number): void }): boolean => { const ok = typeof v === 'number' && Number.isFinite(v); if (ok) r.set(v as number); return ok; };
+    const unit = (['px', 'in', 'cm', 'mm'] as const).find((u) => u === o.unit) ?? 'px';
+    this.unit = unit; this.units.set(unit);
+    num(o.ppi, this.ppi);
+    const ppi = Math.max(1, Number(this.ppi.input.value) || 300);
+    if (!num(o.width, this.width)) this.width.set(fromPixels(2480, unit, ppi));
+    if (!num(o.height, this.height)) this.height.set(fromPixels(3508, unit, ppi));
+    num(o.columns, this.columns); num(o.rows, this.rows); num(o.font_size, this.font);
+    const gap = typeof o.spacing === 'number' && Number.isFinite(o.spacing);
+    this.auto = !gap; this.spacing.set(!gap);
+    if (gap) { this.vertical.set(o.spacing as number); this.horizontal.set(o.spacing as number); }
+    this.captions = o.captions !== false; this.caption.set(this.captions);
+    this.rotate = o.rotate === true; this.turn.set(this.rotate);
+    this.flatten = o.flatten === true; this.flat.set(this.flatten);
+    this.place.set(o.order === 'down' ? 'down' : 'across');
+    this.modeRow.set(o.mode === 'grayscale' ? 'grayscale' : 'rgb');
+    this.depthRow.set(o.depth === 16 ? '16' : '8');
+    if (typeof o.font === 'string' && /^[\w .-]{1,40}$/.test(o.font)) {
+      const sel = this.fontPick.el.querySelector('select') as HTMLSelectElement;
+      if (![...sel.options].some((p) => p.value === o.font)) sel.append(new Option(o.font, o.font));
+      this.fontPick.set(o.font);
+    }
+    this.files = files;
+    this.openImages.set(!files.length && o.documents === true);
+    this.sync();
+    try { await this.apply(); } finally { this.files = []; this.openImages.set(false); this.useOpen = false; this.sync(); }
+  }
+
   /** The choices as the controls show them, which remembered values may have set without a change event. */
   private readControls(): void {
     const pick = (r: { el: HTMLElement }): string => (r.el.querySelector('select') as HTMLSelectElement).value;
     this.unit = pick(this.units) as SheetUnit;
     this.order = pick(this.place) === 'down' ? 'down' : 'across';
     this.family = pick(this.fontPick);
-    this.useOpen = (this.openImages.el.querySelector('input') as HTMLInputElement).checked;
+    this.mode = pick(this.modeRow) === 'grayscale' ? 'grayscale' : 'rgb';
+    this.depth = pick(this.depthRow) === '16' ? 16 : 8;
+    this.useOpen =(this.openImages.el.querySelector('input') as HTMLInputElement).checked;
   }
 
   private sync(): void {
@@ -147,6 +183,8 @@ export class ContactSheetDialog extends Dialog {
           else await this.engine.createTextLayer({ x: mid, y: top + size * 1.2 }, { content: label, family: this.family, size, color: { r: 0, g: 0, b: 0 }, align: 'center', bold: false, italic: false, lineHeight: 1.2, tracking: 0, kerning: 'metrics', antialias: 'smooth', box: null, direction: 'horizontal' });
         }
         if (page_canvas) this.engine.insertImages([{ source: page_canvas, width: s.width, height: s.height, name }], { x: s.width / 2, y: s.height / 2 });
+        if (this.mode === 'grayscale' && !this.engine.convertMode('grayscale')) problems.push(`${name} stayed RGB`);
+        if (this.depth === 16 && !this.engine.setDepth(16)) problems.push(`${name} stayed 8 bit`);
       }
       if (problems.length) this.engine.notice(`Contact sheet finished with skips. ${problems.join('. ')}.`, 'error');
     });

@@ -193,16 +193,24 @@ def tone(lin: np.ndarray, o: dict) -> np.ndarray:
     return np.clip(x, 0.0, 1.0)
 
 
-def encode(x: np.ndarray, bits: int) -> np.ndarray:
-    """LibRaw's default curve (power 2.222, toe 4.5) on linear 0..1, as 8 or 16 bit integers."""
-    v = np.where(x < 0.018, 4.5 * x, 1.099 * np.power(np.maximum(x, 1e-9), 0.45) - 0.099)
+SPACES = ("srgb", "prophoto")
+
+
+def encode(x: np.ndarray, bits: int, space: str = "srgb") -> np.ndarray:
+    """LibRaw's default curve (power 2.222, toe 4.5) on linear 0..1, as 8 or 16 bit integers; ProPhoto RGB takes its own power 1.8."""
+    if space == "prophoto":
+        v = np.power(np.clip(x, 0.0, 1.0), 1 / 1.8)
+    else:
+        v = np.where(x < 0.018, 4.5 * x, 1.099 * np.power(np.maximum(x, 1e-9), 0.45) - 0.099)
     top = 255.0 if bits == 8 else 65535.0
     return np.clip(v * top + 0.5, 0, top).astype(np.uint8 if bits == 8 else np.uint16)
 
 
-def develop(raw, wb: dict, o: dict, half: bool, bits: int, rawpy) -> np.ndarray:
-    """The developed RGB array. Without active options this is LibRaw's own sRGB decode."""
+def develop(raw, wb: dict, o: dict, half: bool, bits: int, rawpy, space: str = "srgb") -> np.ndarray:
+    """The developed RGB array. Without active options this is LibRaw's own decode in sRGB, or in ProPhoto RGB (power 1.8) for `space` prophoto."""
+    wide = space == "prophoto"
+    colour = rawpy.ColorSpace.ProPhoto if wide else rawpy.ColorSpace.sRGB
     if not active(o):
-        return raw.postprocess(**wb, output_color=rawpy.ColorSpace.sRGB, output_bps=bits, half_size=half)
-    lin = raw.postprocess(**wb, **libraw_kwargs(o, raw, rawpy), output_color=rawpy.ColorSpace.sRGB, output_bps=16, gamma=(1, 1), half_size=half)
-    return encode(tone(lin.astype(np.float32) / np.float32(65535.0), o), bits)
+        return raw.postprocess(**wb, output_color=colour, output_bps=bits, half_size=half, **({"gamma": (1.8, 0)} if wide else {}))
+    lin = raw.postprocess(**wb, **libraw_kwargs(o, raw, rawpy), output_color=colour, output_bps=16, gamma=(1, 1), half_size=half)
+    return encode(tone(lin.astype(np.float32) / np.float32(65535.0), o), bits, space)

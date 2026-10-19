@@ -268,16 +268,18 @@ def _raw(data: bytes, filename: str, camera_profile: str = "auto", wb: str = "as
     return _png(Image.fromarray(rgb))
 
 
-def raw_deep(data: bytes, filename: str, wb: str = "as_shot", temperature: float = 0.0, tint: float = 0.0, half: bool = False, develop: dict | None = None) -> tuple[bytes, int, int]:
-    """A camera RAW developed at 16 bits per channel (Camera Raw's 16 Bits/Channel workflow option): sRGB, the white
-    balance set at the RAW stage, as RGBA little-endian 16-bit samples (opaque) with the width and height, the way
-    /io/decode-deep returns them. LibRaw's own colour is used: camera profiles render at 8 bits only."""
+def raw_deep(data: bytes, filename: str, wb: str = "as_shot", temperature: float = 0.0, tint: float = 0.0, half: bool = False, develop: dict | None = None, space: str = "srgb") -> tuple[bytes, int, int]:
+    """A camera RAW developed at 16 bits per channel (Camera Raw's 16 Bits/Channel workflow option): sRGB, or ProPhoto
+    RGB for `space` prophoto, the white balance set at the RAW stage, as RGBA little-endian 16-bit samples (opaque) with
+    the width and height, the way /io/decode-deep returns them. LibRaw's own colour is used: camera profiles render at 8 bits only."""
+    if space not in raw_develop.SPACES:
+        raise DecodeError("The colour space must be srgb or prophoto.")
     if not RAW:
         raise DecodeError(f"{filename} is a camera RAW file, and the engine's RAW decoder (rawpy) is not installed.")
     wb, temperature, tint, _ = _raw_args(wb, temperature, tint, 16)
     try:
         with rawpy.imread(io.BytesIO(data)) as raw:
-            rgb = raw_develop.develop(raw, _wb_kwargs(raw, wb, temperature, tint), develop or {}, half, 16, rawpy)
+            rgb = raw_develop.develop(raw, _wb_kwargs(raw, wb, temperature, tint), develop or {}, half, 16, rawpy, space)
     except DecodeError:
         raise
     except Exception as exc:

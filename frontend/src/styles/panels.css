@@ -158,6 +158,19 @@
 .cv-step-tools .cv-input { flex: 1 1 140px; min-width: 0; }
 .cv-step-go { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--text-secondary); font-size: var(--fs-11); }
 .cv-steps-empty[hidden] { display: none; }
+.cv-action-buttons { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: var(--space-2); max-height: 220px; overflow-y: auto; }
+.cv-action-buttons[hidden] { display: none; }
+.cv-action-btn { --cv-btn-tint: var(--bg-tertiary); display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 40px; padding: var(--space-2); border: 1px solid var(--border-color); border-left: 4px solid var(--cv-btn-tint); border-radius: var(--radius-sm); background: var(--bg-secondary); color: var(--text-primary); font-size: var(--fs-12); text-align: left; cursor: pointer; }
+.cv-action-btn:hover { background: var(--bg-tertiary); }
+.cv-action-btn-name { max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.cv-action-btn-sub { color: var(--text-muted); font-size: var(--fs-11); min-height: 1em; }
+.cv-action-btn.is-red { --cv-btn-tint: var(--danger); }
+.cv-action-btn.is-orange { --cv-btn-tint: var(--brand-orange); }
+.cv-action-btn.is-yellow { --cv-btn-tint: var(--warn); }
+.cv-action-btn.is-green { --cv-btn-tint: var(--ok); }
+.cv-action-btn.is-blue { --cv-btn-tint: var(--cv-action-blue); }
+.cv-action-btn.is-violet { --cv-btn-tint: var(--cv-action-violet); }
+.cv-action-btn.is-gray { --cv-btn-tint: var(--text-muted); }
 .cv-stop-message { margin: 0; color: var(--text-primary); line-height: 1.5; }
 .cv-history { border-top: 1px solid var(--border-color); }
 .cv-history-count { color: var(--text-muted); font-size: var(--fs-11); font-variant-numeric: tabular-nums; min-width: 10ch; text-align: right; }

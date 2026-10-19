@@ -12,7 +12,8 @@ import { estimateShake } from '../../engine/shake';
 import { runGallery, type GallerySettings } from '../../engine/blur-gallery';
 import { LIBRARY, isLibKind, libAllDefaults, libApron, libFilter, libImageParams, libMargin, libPathParams, libValues, runLib, type LibColors, type LibFrame, type LibImage, type LibKind, type LibParam, type LibPath, type LibValue, type LibValues } from '../../engine/filter-library';
 import { crsXmp, developFromXmp } from '../../io/crs-xmp';
-import { HSL_BANDS, autoWhiteBalance, bandOf, buildCurveLut, defaultCalibration, defaultGeometry, defaultGrading, defaultNoise, defaultOptics, defaultParametric, defaultPointColor, defaultVignetteShape, hslToRgb, whiteBalanceFor, type CalibrationState, type CurveChannel, type CurvePoint,type DevelopState, type GeometryState, type GradingState, type HslBand, type HslBandState, type OpticsState, type ParametricState, type PointColorState } from '../../engine/develop';
+import { uprightFor, type UprightMode } from '../../engine/upright';
+import { HSL_BANDS, autoWhiteBalance, bandFor,bandOf,buildCurveLut, clippingView,defaultCalibration, defaultGeometry, defaultGrading, defaultNoise, defaultOptics, defaultParametric, defaultPointColor, defaultVignetteShape, hslToRgb, whiteBalanceFor, type CalibrationState, type CurveChannel, type CurvePoint,type DevelopState, type GeometryState, type GradingState, type HslBand, type HslBandState, type OpticsState, type ParametricState, type PointColorState } from '../../engine/develop';
 import { curveGraph } from './curve-graph';
 import { GalleryView } from './gallery-view';
 import { FilterPreview } from './filter-preview';
@@ -111,6 +112,7 @@ export class FilterPanel extends Dialog {
   private savedPreview: boolean | null = null;
   private seed = 0;
   private preview = true;
+  private clipView = false;
   private done = false;
   private timer = 0;
   private readonly sections = new Map<FilterKind, { node: HTMLElement; sync: () => void }>();
@@ -273,6 +275,13 @@ export class FilterPanel extends Dialog {
       const r = sliderRow(label, min, max, step, (v) => { write(v); if (label === 'Temperature' || label === 'Tint') wbCustom(); this.schedule(); });
       devNodes.push(r.el);
       if (label === 'Dehaze') dehazeEl = r.el;
+      if (['Exposure (EV)', 'Contrast', 'Highlights', 'Shadows', 'Whites', 'Blacks'].includes(label)) {
+        r.el.addEventListener('pointerdown', (e) => {
+          if (!e.altKey || e.button !== 0) return;
+          this.clipView = true; this.schedule(0);
+          window.addEventListener('pointerup', () => { this.clipView = false; this.schedule(0); }, { once: true });
+        }, true);
+      }
       if (label === 'Tint') tintEl = r.el;
       devSync.push(() => r.set(read()));
     }
@@ -356,6 +365,10 @@ export class FilterPanel extends Dialog {
     slide('Split Shadows/Darks', 5, 90, 1, () => para().split1, (v) => { para().split1 = v; });
     slide('Split Darks/Lights', 10, 95, 1, () => para().split2, (v) => { para().split2 = v; });
     slide('Split Lights/Highlights', 15, 98, 1, () => para().split3, (v) => { para().split3 = v; });
+    const pickColour = (button: HTMLButtonElement, then: (r: number, g: number, b: number) => void): void => {
+      if (!Eye) { button.disabled = true; button.title = 'This window cannot read a colour from the screen.'; return; }
+      button.addEventListener('click', () => { void new Eye().open().then(({ sRGBHex }) => { const n = parseInt(sRGBHex.slice(1), 16); then((n >> 16) & 255, (n >> 8) & 255, n & 255); }).catch(() => undefined); });
+    };
     let band: 'master' | HslBand = 'master';
     const bandState = (): HslBandState => (band === 'master' ? D().color.master : (D().color.bands[band] ??= bandOf(D().color, band)));
     const mixH = sliderRow('Hue', -180, 180, 1, (v) => { bandState().h = v; this.schedule(); });
@@ -373,7 +386,9 @@ export class FilterPanel extends Dialog {
       swatchRow.append(sw);
     }
     const setBandSwatch = (): void => { for (const [k, sw] of swatches) { sw.setAttribute('aria-pressed', String(k === band)); sw.style.outline = k === band ? '2px solid var(--accent)' : 'none'; sw.style.outlineOffset = '1px'; } };
-    devNodes.push(el('<p class="cv-note">Colour Mixer</p>'), swatchRow, mixH.el, mixS.el, mixL.el);
+    const mixTarget = el<HTMLButtonElement>('<button class="cv-btn" type="button">Targeted adjustment</button>');
+    pickColour(mixTarget, (r, g, b) => { band = bandFor(r, g, b) ?? 'master'; setBandSwatch(); syncMix(); });
+    devNodes.push(el('<p class="cv-note">Colour Mixer</p>'), swatchRow, mixTarget, mixH.el, mixS.el, mixL.el);
     devSync.push(() => { setBandSwatch(); syncMix(); });
     let range: 'shadows' | 'midtones' | 'highlights' | 'global' = 'midtones';
     const grading = (): GradingState => (D().grading ??= defaultGrading());
@@ -429,7 +444,14 @@ export class FilterPanel extends Dialog {
     slide('Vignette feather', 0, 100, 1, () => optics().feather ?? 50, (v) => { optics().feather = v; });
     slide('Vignette roundness', 0, 100, 1, () => optics().roundness ?? 100, (v) => { optics().roundness = v; });
     slide('Defringe', 0, 100, 1, () => optics().defringe ?? 0, (v) => { optics().defringe = v; });
-    devNodes.push(el('<p class="cv-note">Geometry</p>'));
+    const upright = selectRow('Upright', [['off', 'Off'], ['auto', 'Auto'], ['level', 'Level'], ['vertical', 'Vertical'], ['full', 'Full']], (v) => {
+      const img = v === 'off' ? null : this.engine.targetImage();
+      Object.assign(geometry(), v === 'off' ? { rotate: 0, vertical: 0, horizontal: 0 } : img ? uprightFor(img.image, v as UprightMode) : {});
+      for (const f of devSync) f();
+      upright.set(v);
+      this.schedule(0);
+    });
+    devNodes.push(el('<p class="cv-note">Geometry</p>'), upright.el);
     slide('Vertical', -100, 100, 1, () => geometry().vertical, (v) => { geometry().vertical = v; });
     slide('Horizontal', -100, 100, 1, () => geometry().horizontal, (v) => { geometry().horizontal = v; });
     slide('Rotate (\u00b0)', -10, 10, 0.1, () => geometry().rotate, (v) => { geometry().rotate = v; });
@@ -444,7 +466,9 @@ export class FilterPanel extends Dialog {
     }
     const point = (): PointColorState => (D().pointColor ??= defaultPointColor());
     const pointPick = colorRow('Colour', (v) => { point().color = v; this.schedule(); });
-    devNodes.push(el('<p class="cv-note">Point Color</p>'), pointPick.el);
+    const pointEye = el<HTMLButtonElement>('<button class="cv-btn" type="button">Pick from image</button>');
+    pickColour(pointEye, (r, g, b) => { const hex = '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join(''); point().color = hex; pointPick.set(hex); this.schedule(0); });
+    devNodes.push(el('<p class="cv-note">Point Color</p>'), pointPick.el, pointEye);
     devSync.push(() => pointPick.set(/^#[0-9a-f]{6}$/i.test(point().color) ? point().color : '#ff0000'));
     slide('Point Range', 0, 100, 1, () => point().range, (v) => { point().range = v; });
     slide('Point Hue', -100, 100, 1, () => point().h, (v) => { point().h = v; });
@@ -741,7 +765,10 @@ export class FilterPanel extends Dialog {
     this.timer = window.setTimeout(() => {
       if (!this.isOpen) return;
       // Develop's scopes follow the developed preview (1.53.4).
-      const scoped = (out: ImageData | Promise<ImageData>): ImageData | Promise<ImageData> => { if (this.kind === 'develop') void Promise.resolve(out).then((img) => this.scopes.draw(img)).catch(() => undefined); return out; };
+      const scoped = (out: ImageData | Promise<ImageData>): ImageData | Promise<ImageData> => {
+        if (this.kind === 'develop') void Promise.resolve(out).then((img) => this.scopes.draw(img)).catch(() => undefined);
+        return this.kind === 'develop' && this.clipView ? Promise.resolve(out).then(clippingView) : out;
+      };
       if (this.preview && !this.smartTarget() && !(isLibKind(this.kind) && libFilter(this.kind).ownPreview)) this.engine.previewImageEdit((src, scale, frame) => scoped(runFilterOffThread(this.kind, this.s, scale, this.seed, src, frame) ?? this.run(src, scale, frame)), this.grow());
       else this.engine.setPreview(null);
       if (this.shot.visible) this.shot.render((src, scale, frame) => runFilterOffThread(this.kind, this.s, scale, this.seed, src, frame) ?? this.run(src, scale, frame), this.grow());

@@ -1,7 +1,7 @@
 import { IMAGE_ACCEPT } from '../../io/images';
 import { parseAtn } from '../../io/atn';
 import type { Action, Actions } from '../actions';
-import { actionsFrom, CONDITION_TESTS } from '../actions';
+import { ACTION_COLOURS, ACTION_KEYS, actionsFrom, CONDITION_TESTS } from '../actions';
 import { Dialog } from '../dialogs';
 import { el, patchList, q, setChecked, setDisabled, setHidden, setText } from '../dom';
 import type { ActionStep } from '../actions';
@@ -22,7 +22,19 @@ function syncOptions(sel: HTMLSelectElement, labels: string[]): void {
   });
 }
 
-const titled = (a: Action): string => `${a.name} (${a.steps.length} step${a.steps.length === 1 ? '' : 's'})`;
+/** Keeps a select's options (value, label) in step with `pairs`, changing only what differs. */
+function syncPairs(sel: HTMLSelectElement, pairs: Array<[string, string]>): void {
+  while (sel.options.length > pairs.length) sel.remove(sel.options.length - 1);
+  pairs.forEach(([value, label], i) => {
+    let o = sel.options[i];
+    if (!o) { o = document.createElement('option'); sel.appendChild(o); }
+    if (o.value !== value) o.value = value;
+    if (o.textContent !== label) o.textContent = label;
+  });
+}
+
+const titled = (a: Action): string => `${a.set ? `${a.set} / ` : ''}${a.name} (${a.steps.length} step${a.steps.length === 1 ? '' : 's'})`;
+const cap = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** File > Actions: record, play, delete, export and import actions. */
 export class ActionsDialog extends Dialog {
@@ -39,16 +51,25 @@ export class ActionsDialog extends Dialog {
   private readonly cThen = el<HTMLSelectElement>('<select class="cv-input" aria-label="Play when it holds"></select>');
   private readonly cElse = el<HTMLSelectElement>('<select class="cv-input" aria-label="Play when it does not"></select>');
   private readonly follow = el<HTMLInputElement>('<input type="checkbox">');
+  private readonly setBox = el<HTMLInputElement>('<input class="cv-input" type="text" maxlength="80" placeholder="No set" spellcheck="false" aria-label="Set">');
+  private readonly colourSel = el<HTMLSelectElement>(`<select class="cv-input" aria-label="Button colour">${ACTION_COLOURS.map((c) => `<option value="${c}">${cap(c)}</option>`).join('')}</select>`);
+  private readonly keySel = el<HTMLSelectElement>(`<select class="cv-input" aria-label="Function key">${ACTION_KEYS.map((k) => `<option value="${k}">${k || 'None'}</option>`).join('')}</select>`);
+  private readonly buttonMode = el<HTMLInputElement>('<input type="checkbox">');
+  private readonly buttons = el('<div class="cv-action-buttons" role="group" aria-label="Actions" hidden></div>');
+  private readonly nest = el<HTMLSelectElement>('<select class="cv-input" aria-label="Action to play"></select>');
+  private readonly menuSel = el<HTMLSelectElement>('<select class="cv-input" aria-label="Menu item"></select>');
+  private readonly modeParts: HTMLElement[] = [];
   private readonly note = el('<p class="cv-note"></p>');
   private readonly file = el<HTMLInputElement>('<input type="file" accept=".json,.atn,application/json" hidden>');
   private readonly playBtn: HTMLButtonElement;
   private readonly deleteBtn: HTMLButtonElement;
   private readonly exportBtn: HTMLButtonElement;
 
-  constructor(private readonly store: Actions, private readonly hooks: { play(a: Action): Promise<void>; save(blob: Blob, name: string): Promise<void> }) {
+  constructor(private readonly store: Actions, private readonly hooks: { play(a: Action): Promise<void>; save(blob: Blob, name: string): Promise<void>; menu(): Array<{ id: string; label: string }>; run(id: string, params: Record<string, unknown>): unknown; keyTaken(combo: string): string }) {
     super('Actions', 460);
+    this.field('Button Mode', this.buttonMode);
     this.field('Action', this.pick);
-    this.body.append(this.steps, this.stepsEmpty);
+    this.body.append(this.buttons, this.steps, this.stepsEmpty);
     const stops = el('<div class="cv-welcome-actions cv-step-tools"></div>'), insert = el<HTMLButtonElement>('<button class="cv-btn" type="button">Insert Stop</button>');
     this.deleteStepBtn = el<HTMLButtonElement>('<button class="cv-btn cv-btn-ghost" type="button">Delete Step</button>');
     const go = el('<label class="cv-step-go"></label>');
@@ -64,6 +85,25 @@ export class ActionsDialog extends Dialog {
     };
     this.moveBtns = [mover('Step Up', () => this.moveStep(-1)), mover('Step Down', () => this.moveStep(1)), mover('Action Up', () => this.moveAction(-1)), mover('Action Down', () => this.moveAction(1)), mover('Rename', () => this.rename())];
     this.body.append(stops, moves);
+    this.modeParts.push(this.steps, this.stepsEmpty, stops, moves);
+    this.field('Play action', this.nest);
+    this.field('Menu item', this.menuSel);
+    const nested = el('<div class="cv-welcome-actions cv-step-tools"></div>'), addPlay = el<HTMLButtonElement>('<button class="cv-btn" type="button">Insert Play Action</button>'), addMenu = el<HTMLButtonElement>('<button class="cv-btn" type="button">Insert Menu Item</button>');
+    nested.append(addPlay, addMenu);
+    this.body.append(nested);
+    addPlay.addEventListener('click', () => this.insertPlay());
+    addMenu.addEventListener('click', () => this.insertMenu());
+    this.field('Set', this.setBox);
+    this.field('Button colour', this.colourSel);
+    this.field('Function key', this.keySel);
+    this.setBox.addEventListener('change', () => this.applyOptions());
+    this.colourSel.addEventListener('change', () => this.applyOptions());
+    this.keySel.addEventListener('change', () => this.applyOptions());
+    this.buttonMode.addEventListener('change', () => this.sync());
+    this.buttons.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLElement>('.cv-action-btn'), x = b ? this.store.list[Number(b.dataset.key)] : null;
+      if (x) { this.close(); void this.hooks.play(x); }
+    });
     this.field('If', this.cTest);
     this.field('Then play', this.cThen);
     this.field('Otherwise play', this.cElse);
@@ -101,6 +141,7 @@ export class ActionsDialog extends Dialog {
     this.deleteBtn = button('Delete', () => this.remove());
     this.exportBtn = button('Export...', () => void this.exportJson());
     button('Import...', () => this.file.click());
+    button('Save .atn...', () => void this.exportAtn());
     this.body.append(row, this.note, this.file);
     this.button('Close', 'primary', () => this.close());
     this.pick.addEventListener('change', () => { this.picked = -1; this.sync(); });
@@ -114,9 +155,59 @@ export class ActionsDialog extends Dialog {
     this.file.addEventListener('change', () => void this.importJson());
   }
 
-  show(): void { this.sync(); this.open(); }
+  show(): void { syncPairs(this.menuSel, this.hooks.menu().map((m) => [m.id, m.label])); this.sync(); this.open(); }
 
   private selected(): Action | null { return this.store.list[Number(this.pick.value)] ?? null; }
+
+  private fillButton(b: HTMLElement, x: Action): void {
+    b.className = `cv-action-btn${x.colour ? ` is-${x.colour}` : ''}`;
+    setText(q(b, '.cv-action-btn-name'), x.name);
+    setText(q(b, '.cv-action-btn-sub'), [x.set, x.key].filter(Boolean).join(', '));
+    b.title = `${x.name}, ${x.steps.length} step${x.steps.length === 1 ? '' : 's'}`;
+  }
+
+  /** Set, button colour and function key of the chosen action; a key another action or command holds is refused. */
+  private applyOptions(): void {
+    const a = this.selected();
+    if (!a) return;
+    const set = this.setBox.value.trim().slice(0, 80);
+    if (set) a.set = set; else delete a.set;
+    if (this.colourSel.value === 'none') delete a.colour; else a.colour = this.colourSel.value as NonNullable<Action['colour']>;
+    const key = this.keySel.value, taken = key && key !== a.key ? this.hooks.keyTaken(key) : '';
+    this.store.save();
+    if (taken) { this.keySel.value = a.key ?? ''; setText(this.note, `${key} already runs ${taken}.`); return; }
+    this.store.setKey(a, key);
+    this.sync();
+  }
+
+  /** Insert Play Action: a step after the selected one that plays another action inside this one. */
+  private insertPlay(): void {
+    const a = this.selected(), name = this.nest.value;
+    if (!a || !name) return;
+    if (name === a.name) { setText(this.note, 'An action cannot play itself.'); return; }
+    const at = this.picked >= 0 ? this.picked + 1 : a.steps.length;
+    a.steps.splice(at, 0, { kind: 'play', label: `Play ${name}`, name });
+    this.store.save();
+    this.picked = at;
+    this.sync();
+  }
+
+  /** Insert Menu Item: a step after the selected one that runs one menu command when the action plays. */
+  private insertMenu(): void {
+    const a = this.selected(), id = this.menuSel.value, label = this.menuSel.selectedOptions[0]?.textContent ?? id;
+    if (!a || !id) return;
+    const at = this.picked >= 0 ? this.picked + 1 : a.steps.length;
+    a.steps.splice(at, 0, { kind: 'menu', label: `Menu Item: ${label}`, id });
+    this.store.save();
+    this.picked = at;
+    this.sync();
+  }
+
+  /** Save .atn: the chosen action's set, or every action when it has none. */
+  private async exportAtn(): Promise<void> {
+    const a = this.selected();
+    if (a) await this.hooks.run('export-actions-atn', a.set ? { set: a.set } : {});
+  }
 
   private sync(): void {
     syncOptions(this.pick, this.store.list.map(titled));
@@ -144,8 +235,27 @@ export class ActionsDialog extends Dialog {
       },
       update: (row, s) => this.fillStep(row, s, list.indexOf(s)),
     });
+    const bm = this.buttonMode.checked;
+    setHidden(this.buttons, !bm);
+    for (const part of this.modeParts) setHidden(part, bm);
+    patchList<Action>(this.buttons, this.store.list, {
+      key: (x) => String(this.store.list.indexOf(x)),
+      create: (x) => {
+        const b = el<HTMLButtonElement>('<button class="cv-action-btn" type="button"><span class="cv-action-btn-name"></span><span class="cv-action-btn-sub"></span></button>');
+        b.dataset.key = String(this.store.list.indexOf(x));
+        this.fillButton(b, x);
+        return b;
+      },
+      update: (b, x) => this.fillButton(b, x),
+    });
+    syncPairs(this.nest, this.store.list.map((x) => [x.name, x.name]));
     setText(this.stepsEmpty, !a ? 'No actions yet. Name one and press Record.' : 'No steps yet. Press Record to add some.');
-    setHidden(this.stepsEmpty, list.length > 0);
+    setHidden(this.stepsEmpty, bm || list.length > 0);
+    if (document.activeElement !== this.setBox) this.setBox.value = a?.set ?? '';
+    this.colourSel.value = a?.colour ?? 'none';
+    this.keySel.value = a?.key ?? '';
+    for (const c of [this.setBox, this.colourSel, this.keySel]) setDisabled(c, !a);
+    for (const c of [this.nest, this.menuSel]) setDisabled(c, !a);
     setDisabled(this.deleteStepBtn, this.picked < 0);
     const ai = Number(this.pick.value);
     setDisabled(this.moveBtns[0], this.picked < 1);
@@ -164,9 +274,11 @@ export class ActionsDialog extends Dialog {
 
   private fillStep(row: HTMLElement, s: ActionStep, i: number): void {
     setText(q(row, '.cv-step-n'), `${i + 1}.`);
-    setChecked(q<HTMLInputElement>(row, '.cv-step-on'), !s.off);
-    row.classList.toggle('is-off', !!s.off);
-    setText(q(row, '.cv-step-label'), s.kind === 'stop' ? `Stop: ${s.message || 'pause'}${s.allowContinue ? '' : ' (ends here)'}` : s.label);
+    const skipped = s.kind === 'unsupported';
+    setChecked(q<HTMLInputElement>(row, '.cv-step-on'), !s.off && !skipped);
+    setDisabled(q<HTMLInputElement>(row, '.cv-step-on'), skipped);
+    row.classList.toggle('is-off', !!s.off || skipped);
+    setText(q(row, '.cv-step-label'), s.kind === 'stop' ? `Stop: ${s.message || 'pause'}${s.allowContinue ? '' : ' (ends here)'}` : skipped ? `${s.label} (not supported here, kept)` : s.label);
     const can = asks(s), ask = q<HTMLButtonElement>(row, '.cv-step-ask');
     setHidden(ask, !can);
     ask.setAttribute('aria-pressed', String(can && 'ask' in s && !!s.ask));
@@ -279,7 +391,7 @@ export class ActionsDialog extends Dialog {
         this.store.add(actions);
         this.pick.value = String(this.store.list.length - 1);
         this.sync();
-        const skipped = unsupported.length ? `; ${unsupported.length} step${unsupported.length === 1 ? '' : 's'} had no formvis equivalent: ${unsupported.slice(0, 5).join(', ')}` : '';
+        const skipped = unsupported.length ? `; ${unsupported.length} step${unsupported.length === 1 ? '' : 's'} had no formvis equivalent and stay greyed, kept for saving back: ${unsupported.slice(0, 5).join(', ')}` : '';
         setText(this.note, `Imported ${actions.length} action${actions.length === 1 ? '' : 's'}${skipped}`);
         return;
       }
@@ -343,12 +455,15 @@ export class BatchDialog extends Dialog {
   }
 }
 
-export interface DropletOptions { action: string; format: string; quality: number; out: string; recursive: boolean }
+export interface DropletOptions { action: string; format: string; quality: number; out: string; recursive: boolean; kind?: 'script' | 'data'; suffix?: string }
 
 /** File > Automate > Create Droplet: the action, the file type and quality, the output folder (blank: beside each
- *  picture) and whether dropped folders are searched through; it writes the droplet script. */
+ *  picture) and whether dropped folders are searched through; it writes the droplet script, or a droplet data file
+ *  (.fvdrop) that `./formvis cli droplet FILE.fvdrop pictures...` runs. */
 export class DropletDialog extends Dialog {
   private readonly pick = el<HTMLSelectElement>('<select class="cv-input"></select>');
+  private readonly kind = el<HTMLSelectElement>('<select class="cv-input"><option value="script">Script (.sh)</option><option value="data">Droplet file (.fvdrop)</option></select>');
+  private readonly suffix = el<HTMLInputElement>('<input class="cv-input" type="text" placeholder="None" spellcheck="false" maxlength="40" aria-label="File name suffix">');
   private readonly format = el<HTMLSelectElement>('<select class="cv-input"><option value="png">PNG</option><option value="jpg">JPEG</option><option value="webp">WebP</option><option value="tiff">TIFF</option></select>');
   private readonly quality = el<HTMLInputElement>('<input class="cv-input" type="number" min="1" max="100" step="1" value="92">');
   private readonly out = el<HTMLInputElement>('<input class="cv-input" type="text" placeholder="Beside each picture" spellcheck="false" maxlength="400" aria-label="Output folder">');
@@ -357,9 +472,11 @@ export class DropletDialog extends Dialog {
   constructor(private readonly store: Actions, private readonly create: (o: DropletOptions) => Promise<void>) {
     super('Create Droplet', 420);
     this.field('Action', this.pick);
+    this.field('Droplet as', this.kind);
     this.field('Save as', this.format);
     this.field('JPEG and WebP quality', this.quality);
     this.field('Output folder', this.out);
+    this.field('File name suffix', this.suffix);
     this.field('Include All Sub-folders', this.sub);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('Create', 'primary', () => void this.go());
@@ -377,6 +494,6 @@ export class DropletDialog extends Dialog {
     const a = this.store.list[Number(this.pick.value)];
     if (!a) return;
     this.close();
-    await this.create({ action: a.name, format: this.format.value, quality: Math.min(100, Math.max(1, Number(this.quality.value) || 92)), out: this.out.value.trim(), recursive: this.sub.checked });
+    await this.create({ action: a.name, format: this.format.value, quality: Math.min(100, Math.max(1, Number(this.quality.value) || 92)), out: this.out.value.trim(), recursive: this.sub.checked, kind: this.kind.value === 'data' ? 'data' : 'script', suffix: this.suffix.value.trim() });
   }
 }

@@ -2,6 +2,7 @@ import { defaultDevelopState, defaultGrading, developImage } from './develop';
 import type { Kernel } from './kernels';
 import { gpuFilters } from './gpu-filters';
 import type { RGB } from './types';
+import { FILM_STOCK_OPTIONS, chromaticKernel, filmKernel } from './film-stocks';
 
 /** Adjustments described by their controls, each baked into a kernel from its settings. Values live in an
  *  adjustment's `data.params`; a missing or unreadable value takes its default. Formulas are standard published ones:
@@ -9,7 +10,7 @@ import type { RGB } from './types';
  *  Colour Balance weights shadows, midtones and highlights by lightness with the usual overlapping ramps; Selective
  *  Colour weights each pixel by how much it belongs to a colour family and moves its ink, relative or absolute. */
 
-export type ParamKind = 'brightnessContrast' | 'vibrance' | 'colorBalance' | 'blackWhite' | 'photoFilter' | 'channelMixer' | 'invert' | 'posterize' | 'threshold' | 'selectiveColor' | 'shadowsHighlights' | 'hdrToning' | 'colorLookup' | 'develop' | 'clarity' | 'dehaze' | 'texture' | 'light' | 'splitToning' | 'halation' | 'glow' | 'gaussianBlur' | 'motionBlur' | 'addNoise';
+export type ParamKind = 'brightnessContrast' | 'vibrance' | 'colorBalance' | 'blackWhite' | 'photoFilter' | 'channelMixer' | 'invert' | 'posterize' | 'threshold' | 'selectiveColor' | 'shadowsHighlights' | 'hdrToning' | 'colorLookup' | 'develop' | 'clarity' | 'dehaze' | 'texture' | 'light' | 'splitToning' | 'halation' | 'glow' | 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'filmLook' | 'chromaticShift';
 
 export type ParamSpec =
   | { key: string; label: string; kind: 'range'; min: number; max: number; step: number; def: number; group?: string }
@@ -538,7 +539,19 @@ export const PARAM_ADJUSTMENTS: Record<ParamKind, ParamAdjustment> = {
       }
     },
   },
-
+  // Film pack: a film stock as one layer (tone curve with editable points, colour matrix, speed-based grain).
+  filmLook: {
+    label: 'Film Look',
+    params: [{ key: 'stock', label: 'Stock', kind: 'select', options: FILM_STOCK_OPTIONS, def: 'portrait400' }, range('strength', 'Strength', 0, 100, 100), range('grain', 'Grain', 0, 100, 40), range('grainSize', 'Grain size', 1, 8, 1.5, 0.1), range('seed', 'Seed', 0, 9999, 1),
+      { key: 'points', label: 'Curve points', kind: 'text', def: '' }],
+    kernel: (v) => filmKernel(v.stock, n(v, 'strength'), n(v, 'grain'), n(v, 'grainSize'), v.points, n(v, 'seed') * 7 + 3),
+  },
+  // Effects pack: the colour channels displaced against each other, as a live adjustment layer.
+  chromaticShift: {
+    label: 'Chromatic Shift',
+    params: [{ key: 'style', label: 'Style', kind: 'select', options: [['plates', 'Plates'], ['lateral', 'Lateral'], ['linear', 'Linear']], def: 'lateral' }, range('amount', 'Amount', 0, 100, 6, 0.5), range('angle', 'Angle', -180, 180, 0)],
+    kernel: (v) => chromaticKernel(String(v.style), n(v, 'amount'), n(v, 'angle')),
+  },
 };
 
 export const PARAM_KINDS = Object.keys(PARAM_ADJUSTMENTS) as ParamKind[];

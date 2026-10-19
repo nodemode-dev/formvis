@@ -6,6 +6,7 @@ import {
 import { autoLevels, bandCentered, bandExclude, bandHandles, bandInclude, bandSetHandle, bandWeight, hsvAdjust, hueResponse } from '../../engine/adjust';
 import { PARAM_ADJUSTMENTS, PARAM_KINDS, isParamKind, paramKernel, paramValues, parseCube, type ParamKind } from '../../engine/adjust-params';
 import { lutFileToCube } from '../../engine/lut-read';
+import { ADJUST_PRESET_STORE as PRESET_STORE, GRADIENT_PRESETS, GRAIN_PRESETS, PHOTO_FILTERS } from '../../engine/adjust-presets';
 import { Dialog, promptName } from '../dialogs';
 import { el, setHidden, setText } from '../dom';
 import { toast } from '../toast';
@@ -24,30 +25,11 @@ const ALL_CHANNELS = [...CHANNELS, ...INKS, ...LABS];
  *  Lab's first position (a composite) is never offered; Levels and Curves in Lab have none. */
 const channelsOf = (mode: string | undefined): string[] => (mode === 'cmyk' ? INKS : mode === 'lab' ? LABS : CHANNELS);
 const showChannels = (row: { el: HTMLElement }, names: string[]): void => { for (const o of row.el.querySelectorAll('option')) o.hidden = !names.includes(o.value) || o.value === 'Lab'; };
-const PRESET_STORE = 'formvis.adjustPresets';
 const readPresets = (): Record<string, Record<string, Json>> => { try { return obj(JSON.parse(localStorage.getItem(PRESET_STORE) ?? '{}')) as Record<string, Record<string, Json>>; } catch { return {}; } };
 const writePresets = (all: Record<string, Record<string, Json>>): void => { try { localStorage.setItem(PRESET_STORE, JSON.stringify(all)); } catch { /* storage is off; the preset lasts for this session only */ } };
 const cssVar = (name: string): string => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const hexToUnit = (hex: string): Json => ({ red: parseInt(hex.slice(1, 3), 16) / 255, green: parseInt(hex.slice(3, 5), 16) / 255, blue: parseInt(hex.slice(5, 7), 16) / 255 });
 const unitToHex = (c: unknown): string => { const o = obj(c); return hexOf({ r: Math.round(num(o.red, 0) * 255), g: Math.round(num(o.green, 0) * 255), b: Math.round(num(o.blue, 0) * 255) }); };
-
-const GRADIENT_PRESETS: ReadonlyArray<{ id: string; label: string; stops: ReadonlyArray<readonly [number, string]> }> = [
-  { id: 'cyberpunk', label: 'Cyberpunk', stops: [[0, '#0b0630'], [0.4, '#7a1fa2'], [0.7, '#ff2a9d'], [1, '#19f0ff']] },
-  { id: 'sunset', label: 'Sunset', stops: [[0, '#1b0a3c'], [0.35, '#a3195b'], [0.7, '#ff7a2f'], [1, '#ffe29a']] },
-  { id: 'tealorange', label: 'Teal and Orange', stops: [[0, '#062a35'], [0.45, '#1f7a8c'], [0.75, '#e8a15a'], [1, '#ffe7c2']] },
-  { id: 'sepia', label: 'Sepia', stops: [[0, '#2b1a0e'], [0.6, '#a9825a'], [1, '#fff4dc']] },
-  { id: 'infrared', label: 'Infrared', stops: [[0, '#000000'], [0.3, '#2a0a6b'], [0.6, '#e0103a'], [0.85, '#ffd000'], [1, '#ffffff']] },
-  { id: 'bwcontrast', label: 'Black and White Contrast', stops: [[0, '#000000'], [0.2, '#000000'], [0.8, '#ffffff'], [1, '#ffffff']] },
-];
-
-const PHOTO_FILTERS: ReadonlyArray<readonly [string, string, number, number, number]> = [
-  ['warm85', 'Warming Filter (85)', 236, 138, 0], ['warmlba', 'Warming Filter (LBA)', 250, 150, 0], ['warm81', 'Warming Filter (81)', 235, 177, 19],
-  ['cool80', 'Cooling Filter (80)', 0, 109, 255], ['coollbb', 'Cooling Filter (LBB)', 0, 93, 255], ['cool82', 'Cooling Filter (82)', 0, 181, 255],
-  ['red', 'Red', 234, 26, 26], ['orange', 'Orange', 243, 132, 0], ['yellow', 'Yellow', 249, 227, 28], ['green', 'Green', 25, 201, 25],
-  ['cyan', 'Cyan', 29, 203, 234], ['blue', 'Blue', 29, 53, 234], ['violet', 'Violet', 155, 29, 234], ['magenta', 'Magenta', 227, 24, 226],
-  ['sepia', 'Sepia', 172, 122, 51], ['deepred', 'Deep Red', 255, 0, 0], ['deepblue', 'Deep Blue', 0, 0, 255], ['deepemerald', 'Deep Emerald', 0, 139, 0],
-  ['deepyellow', 'Deep Yellow', 255, 222, 0], ['underwater', 'Underwater', 0, 194, 177],
-];
 
 function curveTable(ch: number, points: Pt[]): Uint8ClampedArray {
   const ident = [{ x: 0, y: 0 }, { x: 255, y: 255 }];
@@ -921,8 +903,7 @@ export class AdjustPanel extends Dialog {
     const reseed = el<HTMLButtonElement>('<button class="cv-btn" type="button">New grain pattern</button>');
     reseed.addEventListener('click', () => { gr().seed = randomSeed(); this.changed(); });
     // Presets by film speed (1.51.6, film looks): each sets Amount, Size and Roughness; Custom once a slider moves.
-    const PRESETS: ReadonlyArray<readonly [string, string, number, number, number, number, number]> = [['iso100', 'ISO 100 (fine)', 12, 0.8, 30, 0, 0], ['iso400', 'ISO 400 (classic)', 25, 1.5, 50, 0, 0], ['iso800', 'ISO 800', 35, 2, 60, 0, 0], ['iso1600', 'ISO 1600 (pushed)', 50, 2.8, 70, 0, 0], ['iso3200', 'ISO 3200 (coarse)', 65, 3.6, 80, 0, 0],
-      ['slide', 'Slide film (fine, colour)', 14, 0.9, 25, 40, 0], ['negative', 'Colour negative', 30, 1.6, 55, 60, 5], ['bw400', 'Black and white 400', 32, 1.7, 45, 0, 8], ['bwpush', 'Black and white pushed', 55, 2.6, 65, 0, 30], ['cine', 'Cine night stock', 45, 2.2, 70, 80, 15], ['expired', 'Expired film', 60, 3, 80, 100, 40]];
+    const PRESETS = GRAIN_PRESETS;
     const preset = el<HTMLSelectElement>(`<select class="cv-input" aria-label="Grain preset"><option value="custom">Custom</option>${PRESETS.map(([id, label]) => `<option value="${id}">${label}</option>`).join('')}</select>`);
     const presetRow = el('<label class="cv-dialog-row"><span>Preset</span></label>');
     presetRow.append(preset);

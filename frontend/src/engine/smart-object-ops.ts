@@ -289,7 +289,7 @@ export function restackSoon(host: SmartObjectHost, p: Project, id: ID, source: R
   if (!l?.smart) return false;
   const src = source ?? l.smart.source, stack = structuredClone(filters ?? smartFiltersShown(host, id) ?? l.smart.filters);
   const fm = maskChange ?? { filterMask: l.smart.filterMask ?? null, filterMaskEnabled: l.smart.filterMaskEnabled !== false }, active = fm.filterMaskEnabled ? fm.filterMask : null;
-  if (!host.smartFilterRunnerAsync || src.width * src.height <= 2_000_000 || !stack.some((f) => f.enabled)) {
+  if (!host.smartFilterRunnerAsync || (src.width * src.height <= 2_000_000 && !stack.some((f) => f.enabled && f.kind.startsWith('wasm:'))) || !stack.some((f) => f.enabled)) {
     host.store.pending.delete(id);
     return restack(host, p, id, source, stack, name, null, maskChange, extra);
   }

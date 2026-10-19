@@ -15,7 +15,8 @@ Generated from the engine's catalogue by `./formvis agents sync`; do not edit by
 - Colour, filters and looks: `add_adjustment`, `apply_filter`, `set_adjustment`, `color_match`, `add_film_layer`
 - History: `undo`, `redo`
 - Files without the window, and jobs: `file_info`, `convert_file`, `jobs_list`, `jobs_cancel`
-- Other: `close_document`, `ping`, `list_plugins`, `select_feather`, `select_grow`, `select_point`, `timeline_get`, `timeline_create`, `timeline_delete`, `timeline_set`, `timeline_go_to`, `timeline_clip`, `timeline_split`, `timeline_keyframe`, `timeline_transition`, `timeline_frame_image`, `timeline_render`, `select_mask`, `list_settings`, `list_fonts`, `set_settings`, `ui_inspect`, `boxes_list`, `boxes_add`, `boxes_set`, `boxes_remove`, `boxes_from_selection`, `boxes_clear`, `sample_box`, `frequency_separation`, `sample_depth`, `depth_edit`, `set_crop`, `export_mask`, `list_recipes`, `set_active_layer`, `select_color`, `select_shape`, `select_range`, `sample_mean_color`, `align_layers`, `group_layers`, `set_group`, `set_mask`, `set_text`, `list_history`, `take_snapshot`, `restore_snapshot`, `delete_snapshot`, `extend_canvas`, `export_layer`, `read_log`, `list_brush_tips`, `set_brush`, `add_filter`, `set_filter`
+- The window itself: `ui_inspect`, `ui_state`, `ui_screenshot`, `ui_menu_list`, `ui_menu_invoke`, `ui_set`, `ui_dialog`, `ui_pointer`, `ui_key`, `ui_window`, `control_call`, `file_roots`
+- Other: `close_document`, `ping`, `list_plugins`, `select_feather`, `select_grow`, `select_point`, `timeline_get`, `timeline_create`, `timeline_delete`, `timeline_set`, `timeline_go_to`, `timeline_clip`, `timeline_split`, `timeline_keyframe`, `timeline_transition`, `timeline_frame_image`, `timeline_render`, `command_job`, `select_mask`, `list_settings`, `list_fonts`, `set_settings`, `boxes_list`, `boxes_add`, `boxes_set`, `boxes_remove`, `boxes_from_selection`, `boxes_clear`, `sample_box`, `frequency_separation`, `sample_depth`, `depth_edit`, `set_crop`, `export_mask`, `list_recipes`, `set_active_layer`, `select_color`, `select_shape`, `select_range`, `sample_mean_color`, `align_layers`, `group_layers`, `set_group`, `set_mask`, `set_text`, `list_history`, `take_snapshot`, `restore_snapshot`, `delete_snapshot`, `extend_canvas`, `export_layer`, `read_log`, `list_brush_tips`, `set_brush`, `add_filter`, `set_filter`, `apply_preset`, `depth_from_layer`, `match_edges`, `realism_pass`, `compare`, `set_status`, `ailabel_add`, `ailabel_remove`, `ailabel_info`, `film_looks`, `film_apply_look`, `film_add_point`, `film_copy_points`, `film_paste_points`, `glb_place`, `glb_edit`, `glb_info`
 
 ## get_document
 
@@ -43,14 +44,16 @@ Note: read-only.
 
 ## new_document
 
-Opens a new document of width x height pixels, or of an aspect and size class (a model-friendly size, sides in steps of 16: size_class 1k is about 1024 on the longer side, 2k about 2048, 4k about 4096). Width and height win when given. Use when there is nothing open, or the person wants a blank canvas of a size.
+Opens a new document of width x height pixels, or of an aspect and size class (a model-friendly size, sides in steps of 16: size_class 1k is about 1024 on the longer side, 2k about 2048, 4k about 4096). Width and height win when given; with no size at all the document is 1920 by 1080. mode (rgb, grayscale, lab) and depth (8, 16 or 32 bits a channel) set the colour mode and bit depth; background is white, transparent, black or a colour #rrggbb. CMYK has a dialog: run_command mode-cmyk. Use when there is nothing open, or the person wants a blank canvas of a size.
 
+- `mode`: string (rgb | grayscale | lab); default "rgb"
+- `depth`: integer (8 | 16 | 32); default 8
 - `width`: integer
 - `height`: integer
 - `aspect`: string (1:1 | 4:3 | 3:4 | 3:2 | 2:3 | 16:9 | 9:16 | 21:9 | 5:4 | 4:5)
 - `size_class`: string (1k | 2k | 4k); default "1k"
 - `name`: string
-- `background`: string (white | transparent | black); default "white"
+- `background`: string; default "white"; white, transparent, black or #rrggbb
 
 ## select
 
@@ -104,8 +107,12 @@ Adds an adjustment layer (for example curves, levels, hsv, exposure, splitToning
 
 ## place_image
 
-Places a PNG, JPEG or WebP image as a new layer at x, y, at its own size (transform_layer scales it): from path, an absolute path to a file, or data, base64. Use when another picture file should join the document as a layer.
+Places a PNG, JPEG or WebP image as a new layer at x, y, at its own size unless scale (percent) or fit is given: fit contain or cover sizes it to the document and centres it, center centres it at its size, smart_object makes it a smart object so it can be scaled without loss. From path, an absolute path to a file, or data, base64. Use when another picture file should join the document as a layer.
 
+- `scale`: number; Percent of the image's own size.
+- `fit`: string (none | contain | cover); default "none"
+- `center`: boolean; default false
+- `smart_object`: boolean; default false
 - `path`: string; Absolute path to a .png, .jpg, .jpeg or .webp file; use this for files on disk.
 - `data`: string; Base64 image data, when there is no file.
 - `name`: string
@@ -188,9 +195,9 @@ Note: replaces or removes.
 
 ## export_image
 
-Writes the document as it looks to an absolute path as PNG, JPEG or WebP (by the path's extension). A file already there is kept unless overwrite is true. Use when a flat PNG, JPEG or WebP is the deliverable.
+Writes the document to an absolute path by the path's extension: PNG, JPEG or WebP as it looks (scale applies), or with every layer kept as .psd, .psb (a document past 30000 pixels a side) or .ora (RGB and grayscale documents; scale does not apply). A file already there is kept unless overwrite is true. Use when a flat PNG, JPEG or WebP is the deliverable.
 
-- `path`: string; required; Absolute path ending .png, .jpg or .webp
+- `path`: string; required; Absolute path ending .png, .jpg, .webp, .psd, .psb or .ora
 - `quality`: number; default 0.92
 - `scale`: number; default 1; Writes the picture at this factor of its size; the document is not changed.
 - `overwrite`: boolean; default false; Replace a file already at the path. Without it an existing file is not touched.
@@ -374,14 +381,14 @@ Selects the object at points, as the Object Selection tool does: inside points (
 
 ## apply_filter
 
-Applies a filter to the active layer (inside the selection if there is one). kind and its settings: gaussianBlur {radius}, motionBlur {angle, distance}, addNoise {amount, gaussian, monochromatic}, unsharpMask {usmAmount, usmRadius, threshold}, lensBlur {lensRadius}, surfaceBlur, radialBlur, tiltShift, irisBlur, fieldBlur; with no settings: average (the selection filled with its average colour), blur, blurMore, sharpen, sharpenMore, sharpenEdges, despeckle, ntscColors; boxBlur {radius}, shapeBlur {radius, shape: circle|ring|square|diamond|triangle|hexagon|star|heart|cross}, smartBlur {radius, threshold, quality: high|medium|low, mode: normal|edgeOnly|overlayEdge}, dustAndScratches {radius, threshold}, median {radius}, reduceNoise {strength 0 to 10, preserve, color, sharpen (percent), jpeg}, custom {kernel (25 integers, row by row), scale, offset}, hsbHsl {input, output: rgb|hsb|hsl}, highPass {radius}, maximum and minimum {radius, preserve: squareness|roundness}, offset {horizontal, vertical, undefinedAreas: transparent|repeat|wrap}, deInterlace {eliminate: oddFields|evenFields, createBy: interpolation|duplication}. Distort, centred on the selection's bounds (else the canvas): twirl {angle}, pinch {amount}, spherize {amount, mode: normal|horizontalOnly|verticalOnly}, ripple {amount, size: small|medium|large}, polarCoordinates {mode: rectangularToPolar|polarToRectangular}, wave {generators, wavelengthMin, wavelengthMax, amplitudeMin, amplitudeMax, scaleX, scaleY (percent), type: sine|triangle|square, undefinedAreas: wrap|repeat, seed}, zigZag {amount, ridges, style: pondRipples|outFromCenter|aroundCenter}, shear {top, middle, bottom (percent of half the width), undefinedAreas: wrap|repeat}, displace {horizontal, vertical (percent), fit: stretch|tile, undefinedAreas: repeat|wrap, map (the name of an open document, required)}. Pixelate: facet and fragment with no settings; colorHalftone {maxRadius, channel1 to channel4 (degrees)}, crystallize {cellSize}, mezzotint {type: fineDots|mediumDots|grainyDots|coarseDots|shortLines|mediumLines|longLines|shortStrokes|mediumStrokes|longStrokes}, mosaic {cellSize}, pointillize {cellSize} (dots on the background colour). Stylize: findEdges and solarize with no settings; diffuse {mode: normal|darkenOnly|lightenOnly|anisotropic}, emboss {angle, height, amount}, extrude {type: blocks|pyramids, size, depth, depthMode: random|levelBased, solidFront, maskIncomplete}, oilPaint {stylization, cleanliness, brush (its scale), bristle, lighting, angle, shine}, tiles {count, maxOffset, fill: background|foreground|inverse|unaltered}, traceContour {level, edge: lower|upper}, wind {method: wind|blast|stagger, direction: fromRight|fromLeft}. Render: clouds and differenceClouds with no settings, and fibers {variance, strength, seed}, between the foreground and background colours; lensFlare {brightness, centerX, centerY (percent of the selection's bounds, else the canvas), lens: zoom|prime35|prime105|moviePrime}; lightingEffects {type: spot|point|infinite, color (#rrggbb), intensity, x, y, targetX, targetY (percent of the selection's bounds, else the canvas), z (percent of their shorter side), cone, hotspot, radius, angle, elevation, gloss, metallic, exposure, ambience, texture: none|luminance|red|green|blue|alpha, height, whiteIsHigh}. Drawn over the layer (a new empty layer keeps them apart), each with a seed for its arrangement: flame {path (a path's name; else the selected path; with none, an arc low in the selection or canvas), flameType: oneFlameAlongPath|multipleFlamesAlongPath|multipleFlamesPathDirections|multipleFlamesVariousLength|candleLight|multipleFlamesOneDirection, length, randomizeLength, width, angle, interval (px), adjustIntervalForLoops, quality: draft|low|medium|high|fine, customColor, color (#rrggbb), turbulent, jag, opacity, flameLines, flameBottomAlignment, flameStyle: normal|violent|flat, flameShape: parallel|toCenter|spread|oval|pointed, randomizeShapes, seed}; pictureFrame {frame: vineWithFlowers|vine|leafGarland|flowerBorder|berries|ribbon|waves|zigzag|dots|rope|scallops|lines|stars|hearts|snowflakes|bamboo, margin (percent), size, arrangement, lines, thickness, fade, vineColor, flowerColor, leafColor (#rrggbb), seed}; tree {baseTreeType: oak|maple|autumnMaple|birch|elm|apple|cherryBlossom|olive|willow|pine|fir|spruce|cypress|poplar|palm|coconutPalm|bamboo|shrub|bareWinterTree, lightDirection (1 to 5), leavesAmount, leavesSize, branchesHeight, branchesThickness, defaultLeaves, leavesColor, customBranchColor, branchesColor (#rrggbb), flatShading, x, y, size (percent of the selection's bounds, else the canvas), seed}. Blur Gallery: spinBlur {blurAngle (degrees), x, y (percent of the selection's bounds, else the canvas), radiusX, radiusY (percent of their shorter side), angle}. Filter Gallery: filterGallery {effects: [{filter, values, visible}]}, its effect layers applied in order, the first at the bottom, hidden ones skipped; filter is one of: coloredPencil {pencilWidth 1 to 24, strokePressure 0 to 15, paperBrightness 0 to 50}, cutout {numberOfLevels 2 to 8, edgeSimplicity 0 to 10, edgeFidelity 1 to 3}, dryBrush and fresco {brushSize 0 to 10, brushDetail 0 to 10, texture 1 to 3}, filmGrain {grain 0 to 20, highlightArea 0 to 20, intensity 0 to 10}, neonGlow {glowSize -24 to 24, glowBrightness 0 to 50, glowColor (#rrggbb)}, paintDaubs {brushSize 1 to 50, sharpness 0 to 40, brushType: simple|lightRough|darkRough|wideSharp|wideBlurry|sparkle}, paletteKnife {strokeSize 1 to 50, strokeDetail 1 to 3, softness 0 to 10}, plasticWrap {highlightStrength 0 to 20, detail 1 to 15, smoothness 1 to 15}, posterEdges {edgeThickness 0 to 10, edgeIntensity 0 to 10, posterization 0 to 6}, roughPastels {strokeLength 0 to 40, strokeDetail 1 to 20, texture: canvas|brick|burlap|sandstone, scaling 50 to 200, relief 0 to 50, light: top|topRight|right|bottomRight|bottom|bottomLeft|left|topLeft, invert}, smudgeStick {strokeLength 0 to 10, highlightArea 0 to 20, intensity 0 to 10}, sponge {brushSize 0 to 10, definition 0 to 25, smoothness 1 to 15}, underpainting {brushSize 0 to 40, textureCoverage 0 to 40, and roughPastels' texture, scaling, relief, light, invert}, watercolor {brushDetail 1 to 14, shadowIntensity 0 to 10, texture 1 to 3}, accentedEdges {edgeWidth 1 to 14, edgeBrightness 0 to 50, smoothness 1 to 15}, angledStrokes {directionBalance 0 to 100, strokeLength 3 to 50, sharpness 0 to 10}, crosshatch {strokeLength 3 to 50, sharpness 0 to 20, strength 1 to 3}, darkStrokes {balance 0 to 10, blackIntensity 0 to 10, whiteIntensity 0 to 10}, inkOutlines {strokeLength 1 to 50, darkIntensity 0 to 50, lightIntensity 0 to 50}, spatter {sprayRadius 0 to 25, smoothness 1 to 15}, sprayedStrokes {strokeLength 0 to 20, sprayRadius 0 to 25, strokeDirection: rightDiagonal|horizontal|leftDiagonal|vertical}, sumiE {strokeWidth 3 to 15, strokePressure 0 to 15, contrast 0 to 40}, diffuseGlow {graininess 0 to 10, glowAmount 0 to 20, clearAmount 0 to 20}, glass {distortion 0 to 20, smoothness 1 to 15, texture: frosted|blocks|canvas|tinyLens, scaling 50 to 200, invert}, oceanRipple {rippleSize 1 to 15, rippleMagnitude 0 to 20}, glowingEdges {edgeWidth 1 to 14, edgeBrightness 0 to 20, smoothness 1 to 15}, basRelief {detail 1 to 15, smoothness 1 to 15, light}, chalkCharcoal {charcoalArea 0 to 20, chalkArea 0 to 20, strokePressure 0 to 5}, charcoal {charcoalThickness 1 to 7, detail 0 to 5, lightDarkBalance 0 to 100}, chrome {detail 0 to 10, smoothness 0 to 10}, conteCrayon {foregroundLevel 1 to 15, backgroundLevel 1 to 15, and roughPastels' texture, scaling, relief, light, invert}, graphicPen {strokeLength 1 to 15, lightDarkBalance 0 to 100, strokeDirection}, halftonePattern {size 1 to 12, contrast 0 to 50, patternType: dot|circle|line}, notePaper {imageBalance 0 to 50, graininess 0 to 20, relief 0 to 25}, photocopy {detail 1 to 24, darkness 1 to 50}, plaster {imageBalance 0 to 50, smoothness 1 to 15, light}, reticulation {density 0 to 50, foregroundLevel 0 to 50, backgroundLevel 0 to 50}, stamp {lightDarkBalance 0 to 50, smoothness 1 to 50}, tornEdges {imageBalance 0 to 50, smoothness 1 to 15, contrast 1 to 25}, waterPaper {fiberLength 3 to 50, brightness 0 to 100, contrast 0 to 100}, craquelure {crackSpacing 2 to 100, crackDepth 0 to 10, crackBrightness 0 to 10}, grain {intensity 0 to 100, contrast 0 to 100, grainType: regular|soft|sprinkles|clumped|contrasty|enlarged|stippled|horizontal|vertical|speckle}, mosaicTiles {tileSize 2 to 100, groutWidth 1 to 15, lightenGrout 0 to 10}, patchwork {squareSize 0 to 10, relief 0 to 25}, stainedGlass {cellSize 2 to 50, borderThickness 1 to 20, lightIntensity 0 to 10}, texturizer {roughPastels' texture, scaling, relief, light, invert}; colours come from the foreground and background colours (the Sketch effects' ink and paper). Unnamed settings keep their defaults. Use when a blur, sharpen, noise or other filter should change the active layer.
+Applies a filter to the active layer (inside the selection if there is one). kind and its settings: gaussianBlur {radius}, motionBlur {angle, distance}, addNoise {amount, gaussian, monochromatic}, unsharpMask {usmAmount, usmRadius, threshold}, lensBlur {lensRadius}, surfaceBlur, radialBlur, tiltShift, irisBlur, fieldBlur; with no settings: average (the selection filled with its average colour), blur, blurMore, sharpen, sharpenMore, sharpenEdges, despeckle, ntscColors; boxBlur {radius}, shapeBlur {radius, shape: circle|ring|square|diamond|triangle|hexagon|star|heart|cross}, smartBlur {radius, threshold, quality: high|medium|low, mode: normal|edgeOnly|overlayEdge}, dustAndScratches {radius, threshold}, median {radius}, reduceNoise {strength 0 to 10, preserve, color, sharpen (percent), jpeg}, custom {kernel (25 integers, row by row), scale, offset}, hsbHsl {input, output: rgb|hsb|hsl}, highPass {radius}, maximum and minimum {radius, preserve: squareness|roundness}, offset {horizontal, vertical, undefinedAreas: transparent|repeat|wrap}, deInterlace {eliminate: oddFields|evenFields, createBy: interpolation|duplication}. Distort, centred on the selection's bounds (else the canvas): twirl {angle}, pinch {amount}, spherize {amount, mode: normal|horizontalOnly|verticalOnly}, ripple {amount, size: small|medium|large}, polarCoordinates {mode: rectangularToPolar|polarToRectangular}, wave {generators, wavelengthMin, wavelengthMax, amplitudeMin, amplitudeMax, scaleX, scaleY (percent), type: sine|triangle|square, undefinedAreas: wrap|repeat, seed}, zigZag {amount, ridges, style: pondRipples|outFromCenter|aroundCenter}, shear {top, middle, bottom (percent of half the width), undefinedAreas: wrap|repeat}, displace {horizontal, vertical (percent), fit: stretch|tile, undefinedAreas: repeat|wrap, map (the name of an open document, required)}. Pixelate: facet and fragment with no settings; colorHalftone {maxRadius, channel1 to channel4 (degrees)}, crystallize {cellSize}, mezzotint {type: fineDots|mediumDots|grainyDots|coarseDots|shortLines|mediumLines|longLines|shortStrokes|mediumStrokes|longStrokes}, mosaic {cellSize}, pointillize {cellSize} (dots on the background colour). Stylize: findEdges and solarize with no settings; diffuse {mode: normal|darkenOnly|lightenOnly|anisotropic}, emboss {angle, height, amount}, extrude {type: blocks|pyramids, size, depth, depthMode: random|levelBased, solidFront, maskIncomplete}, oilPaint {stylization, cleanliness, brush (its scale), bristle, lighting, angle, shine}, tiles {count, maxOffset, fill: background|foreground|inverse|unaltered}, traceContour {level, edge: lower|upper}, wind {method: wind|blast|stagger, direction: fromRight|fromLeft}. Render: clouds and differenceClouds with no settings, and fibers {variance, strength, seed}, between the foreground and background colours; lensFlare {brightness, centerX, centerY (percent of the selection's bounds, else the canvas), lens: zoom|prime35|prime105|moviePrime}; lightingEffects {type: spot|point|infinite, color (#rrggbb), intensity, x, y, targetX, targetY (percent of the selection's bounds, else the canvas), z (percent of their shorter side), cone, hotspot, radius, angle, elevation, gloss, metallic, exposure, ambience, texture: none|luminance|red|green|blue|alpha, height, whiteIsHigh}. Drawn over the layer (a new empty layer keeps them apart), each with a seed for its arrangement: flame {path (a path's name; else the selected path; with none, an arc low in the selection or canvas), flameType: oneFlameAlongPath|multipleFlamesAlongPath|multipleFlamesPathDirections|multipleFlamesVariousLength|candleLight|multipleFlamesOneDirection, length, randomizeLength, width, angle, interval (px), adjustIntervalForLoops, quality: draft|low|medium|high|fine, customColor, color (#rrggbb), turbulent, jag, opacity, flameLines, flameBottomAlignment, flameStyle: normal|violent|flat, flameShape: parallel|toCenter|spread|oval|pointed, randomizeShapes, seed}; pictureFrame {frame: vineWithFlowers|vine|leafGarland|flowerBorder|berries|ribbon|waves|zigzag|dots|rope|scallops|lines|stars|hearts|snowflakes|bamboo, margin (percent), size, arrangement, lines, thickness, fade, vineColor, flowerColor, leafColor (#rrggbb), seed}; tree {baseTreeType: oak|maple|autumnMaple|birch|elm|apple|cherryBlossom|olive|willow|pine|fir|spruce|cypress|poplar|palm|coconutPalm|bamboo|shrub|bareWinterTree, lightDirection (1 to 5), leavesAmount, leavesSize, branchesHeight, branchesThickness, defaultLeaves, leavesColor, customBranchColor, branchesColor (#rrggbb), flatShading, x, y, size (percent of the selection's bounds, else the canvas), seed}. Blur Gallery: spinBlur {blurAngle (degrees), x, y (percent of the selection's bounds, else the canvas), radiusX, radiusY (percent of their shorter side), angle}. Filter Gallery: filterGallery {effects: [{filter, values, visible}]}, its effect layers applied in order, the first at the bottom, hidden ones skipped; filter is one of: coloredPencil {pencilWidth 1 to 24, strokePressure 0 to 15, paperBrightness 0 to 50}, cutout {numberOfLevels 2 to 8, edgeSimplicity 0 to 10, edgeFidelity 1 to 3}, dryBrush and fresco {brushSize 0 to 10, brushDetail 0 to 10, texture 1 to 3}, filmGrain {grain 0 to 20, highlightArea 0 to 20, intensity 0 to 10}, neonGlow {glowSize -24 to 24, glowBrightness 0 to 50, glowColor (#rrggbb)}, paintDaubs {brushSize 1 to 50, sharpness 0 to 40, brushType: simple|lightRough|darkRough|wideSharp|wideBlurry|sparkle}, paletteKnife {strokeSize 1 to 50, strokeDetail 1 to 3, softness 0 to 10}, plasticWrap {highlightStrength 0 to 20, detail 1 to 15, smoothness 1 to 15}, posterEdges {edgeThickness 0 to 10, edgeIntensity 0 to 10, posterization 0 to 6}, roughPastels {strokeLength 0 to 40, strokeDetail 1 to 20, texture: canvas|brick|burlap|sandstone, scaling 50 to 200, relief 0 to 50, light: top|topRight|right|bottomRight|bottom|bottomLeft|left|topLeft, invert}, smudgeStick {strokeLength 0 to 10, highlightArea 0 to 20, intensity 0 to 10}, sponge {brushSize 0 to 10, definition 0 to 25, smoothness 1 to 15}, underpainting {brushSize 0 to 40, textureCoverage 0 to 40, and roughPastels' texture, scaling, relief, light, invert}, watercolor {brushDetail 1 to 14, shadowIntensity 0 to 10, texture 1 to 3}, accentedEdges {edgeWidth 1 to 14, edgeBrightness 0 to 50, smoothness 1 to 15}, angledStrokes {directionBalance 0 to 100, strokeLength 3 to 50, sharpness 0 to 10}, crosshatch {strokeLength 3 to 50, sharpness 0 to 20, strength 1 to 3}, darkStrokes {balance 0 to 10, blackIntensity 0 to 10, whiteIntensity 0 to 10}, inkOutlines {strokeLength 1 to 50, darkIntensity 0 to 50, lightIntensity 0 to 50}, spatter {sprayRadius 0 to 25, smoothness 1 to 15}, sprayedStrokes {strokeLength 0 to 20, sprayRadius 0 to 25, strokeDirection: rightDiagonal|horizontal|leftDiagonal|vertical}, sumiE {strokeWidth 3 to 15, strokePressure 0 to 15, contrast 0 to 40}, diffuseGlow {graininess 0 to 10, glowAmount 0 to 20, clearAmount 0 to 20}, glass {distortion 0 to 20, smoothness 1 to 15, texture: frosted|blocks|canvas|tinyLens|ribbed|reeded|wavy|pebbled, scaling 50 to 200, invert}, oceanRipple {rippleSize 1 to 15, rippleMagnitude 0 to 20}, glowingEdges {edgeWidth 1 to 14, edgeBrightness 0 to 20, smoothness 1 to 15}, basRelief {detail 1 to 15, smoothness 1 to 15, light}, chalkCharcoal {charcoalArea 0 to 20, chalkArea 0 to 20, strokePressure 0 to 5}, charcoal {charcoalThickness 1 to 7, detail 0 to 5, lightDarkBalance 0 to 100}, chrome {detail 0 to 10, smoothness 0 to 10}, conteCrayon {foregroundLevel 1 to 15, backgroundLevel 1 to 15, and roughPastels' texture, scaling, relief, light, invert}, graphicPen {strokeLength 1 to 15, lightDarkBalance 0 to 100, strokeDirection}, halftonePattern {size 1 to 12, contrast 0 to 50, patternType: dot|circle|line}, notePaper {imageBalance 0 to 50, graininess 0 to 20, relief 0 to 25}, photocopy {detail 1 to 24, darkness 1 to 50}, plaster {imageBalance 0 to 50, smoothness 1 to 15, light}, reticulation {density 0 to 50, foregroundLevel 0 to 50, backgroundLevel 0 to 50}, stamp {lightDarkBalance 0 to 50, smoothness 1 to 50}, tornEdges {imageBalance 0 to 50, smoothness 1 to 15, contrast 1 to 25}, waterPaper {fiberLength 3 to 50, brightness 0 to 100, contrast 0 to 100}, craquelure {crackSpacing 2 to 100, crackDepth 0 to 10, crackBrightness 0 to 10}, grain {intensity 0 to 100, contrast 0 to 100, grainType: regular|soft|sprinkles|clumped|contrasty|enlarged|stippled|horizontal|vertical|speckle}, mosaicTiles {tileSize 2 to 100, groutWidth 1 to 15, lightenGrout 0 to 10}, patchwork {squareSize 0 to 10, relief 0 to 25}, stainedGlass {cellSize 2 to 50, borderThickness 1 to 20, lightIntensity 0 to 10}, texturizer {roughPastels' texture, scaling, relief, light, invert}; colours come from the foreground and background colours (the Sketch effects' ink and paper). Unnamed settings keep their defaults. Use when a blur, sharpen, noise or other filter should change the active layer.
 
 - `kind`: string (gaussianBlur | motionBlur | addNoise | unsharpMask | lensBlur | smartSharpen | surfaceBlur | radialBlur | tiltShift | irisBlur | fieldBlur | average | blur | blurMore | boxBlur | shapeBlur | smartBlur | sharpen | sharpenMore | sharpenEdges | despeckle | dustAndScratches | median | reduceNoise | custom | hsbHsl | highPass | maximum | minimum | offset | deInterlace | ntscColors | displace | pinch | polarCoordinates | ripple | shear | spherize | twirl | wave | zigZag | colorHalftone | crystallize | facet | fragment | mezzotint | mosaic | pointillize | diffuse | emboss | extrude | findEdges | oilPaint | solarize | tiles | traceContour | wind | clouds | differenceClouds | fibers | lensFlare | lightingEffects | flame | pictureFrame | tree | spinBlur | filterGallery); required
 - `settings`: object; default {}
 
 ## set_adjustment
 
-Changes an adjustment layer's parameters (id from get_document; the same parameters as add_adjustment). Use when an adjustment layer made earlier needs different settings.
+Changes an adjustment layer's parameters (id from get_document; the same parameters as add_adjustment). Takes the parametric adjustments (such as photoFilter, colorBalance, channelMixer, selectiveColor), grain and exposure; apply_preset sets gradientMap, curves and levels from a preset. Use when an adjustment layer made earlier needs different settings.
 
 - `id`: string; required; A layer id from get_document.
 - `params`: object; required
@@ -505,7 +512,7 @@ Lists formvis's commands: every menu and palette action, each as id, label, when
 
 - `group`: string
 - `text`: string
-- `enabled`: boolean; true lists only the commands that can run right now; each row says enabled and its keys.
+- `enabled`: boolean; true lists only the commands that can run right now, false only those that cannot; each row says enabled, mutates, its keys and, when disabled, disabledReason (and needsDocument when no document is open).
 
 Note: read-only.
 
@@ -519,12 +526,21 @@ Note: read-only.
 
 ## run_command
 
-Runs one command by id with params, as one undoable step. A command marked risky waits for the person's approval in the formvis window (Window > Agent Connect) unless they allowed all. Use when a command from list_commands should run once.
+Runs one command by id with params, as one undoable step. A command marked risky waits for the person's approval in the formvis window (Window > Agent Connect) unless they allowed all. With wait false it starts the command and answers at once with a job id; command_job gives its result. Use when a command from list_commands should run once.
 
 - `id`: string; required; A command id from list_commands.
 - `params`: object; The command's params, as describe_command lists them.
+- `wait`: boolean; default true; false: start it in the background and return a job id (a long command such as a model run); do not edit the document until command_job says it is done.
 
 Note: replaces or removes.
+
+## command_job
+
+The state of commands started with run_command wait false: job (an id such as cmd:1) gives that one, none lists the last 50. Each shows running, done or failed, the seconds it has taken, its message and its result. Use when you started a command with wait false and need its result.
+
+- `job`: string; A job id from run_command, such as cmd:1.
+
+Note: read-only.
 
 ## run_commands
 
@@ -627,6 +643,109 @@ Describes parts of the formvis window: for each element matching a CSS selector,
 
 - `selector`: string; required
 - `limit`: integer; default 10
+
+Note: read-only.
+
+## ui_state
+
+The window's state: the active tool, the open document and its view (zoom, rotation, centre in document pixels), the foreground and background colours, window and stage size, whether it has focus or is full screen, the theme, whether panels are shown, the dialogs open, whether a menu is open, what the engine is busy with, and the frames per second measured over a third of a second. Use when you need the active tool, the view, the open dialogs or the window's size before acting on the window.
+
+- no parameters
+
+Note: read-only.
+
+## ui_screenshot
+
+A picture of the formvis window: with no selector the canvas as the person sees it (the picture, selection outline, guides and tool overlays); with a CSS selector (from ui_inspect) that part of the window, such as a panel or a dialog, drawn from a copy of its elements (fonts that are not installed on this computer may differ). Its longer side is at most max_size pixels. Use when you need to see the canvas as the person does, or a panel or dialog of the window.
+
+- `selector`: string
+- `max_size`: integer; default 1024
+- `format`: string (png | jpeg); default "png"
+- `quality`: number; default 0.9
+
+Note: read-only.
+
+## ui_menu_list
+
+The menu bar's tree. With no path the menus; with a path such as Filter > Blur the items under it, each with its command id, label, whether it can run now, whether it is checked and its shortcut. depth (1 to 4) says how many submenu levels to open; deeper ones show only their item count. Use when you need to find a menu item by its place in the menu bar.
+
+- `path`: string; default ""
+- `depth`: integer; default 1
+
+Note: read-only.
+
+## ui_menu_invoke
+
+Runs a menu item by its path from the menu bar, such as Edit > Undo or Filter > Blur > Gaussian Blur, as a person clicking it would (a dialog may open: ui_dialog answers it). params are the command's params as describe_command lists them. A command marked risky waits for the person's approval. Use when a menu item should run by its path and no typed tool or command id is at hand.
+
+- `path`: string; required; Menu labels joined with > ending at the item.
+- `params`: object
+
+Note: replaces or removes.
+
+## ui_set
+
+Sets named parts of the window in one call: tool (a tool id), zoom (1 is 100 percent), centre ({x, y} document pixels to bring to the middle), rotation (degrees of view rotation), theme (a theme name), panels (shown or hidden), foreground and background (#rrggbb) and mask_target (edit the active layer's mask instead of its pixels). A field it does not have is refused by name. Use when the tool, zoom, view centre, rotation, theme, panels, colours or mask target should change.
+
+- `tool`: string
+- `zoom`: number
+- `centre`: object
+- `rotation`: number
+- `theme`: string
+- `panels`: boolean
+- `foreground`: string; #rrggbb
+- `background`: string; #rrggbb
+- `mask_target`: boolean
+
+## ui_dialog
+
+Lists, fills in and answers the dialog that is open in the window. action list shows each open dialog's title, message, fields (name, kind, value, range or options) and buttons; set puts values into fields (a field's name from list, or its number as in Name #2); confirm presses the primary button; cancel closes it; button presses the button of that name. An open dialog blocks edits until it is answered. Use when a dialog is open and blocks edits: read its fields and answer it.
+
+- `action`: string (list | set | confirm | cancel); default "list"
+- `fields`: object; Field names and their new values (text, number, true or false for a checkbox, or an option's name).
+- `button`: string
+
+## ui_pointer
+
+Sends synthetic pointer events to the canvas as a pen, mouse or finger would: down, move, up, cancel, hover and wheel, each at x, y in document pixels (or window pixels with space window) with pressure (0 to 1), tilt_x and tilt_y (degrees), twist, button, and the modifier keys shift, alt, ctrl and meta. The active tool receives them exactly as a person's. A press left down is released at the end unless keep_down is true. Pressure counts only while Preferences > Tools reads pen pressure. Use when a tool should be driven by pointer events a pen would send, with pressure and tilt, or by clicks and drags on the canvas.
+
+- `events`: array; required
+- `delay_ms`: integer; default 4; Pause after each event.
+- `keep_down`: boolean; default false
+
+Note: replaces or removes.
+
+## ui_key
+
+Presses keys in the window as a person would, to whatever has focus: keys are combos such as Mod+Z, Shift+Tab, Escape, Enter or B (Mod is Ctrl, or Cmd on a Mac); text types characters into the focused text field or dialog field. Use when a shortcut should be pressed, or text typed into a focused field.
+
+- `keys`: array
+- `text`: string
+
+Note: replaces or removes.
+
+## ui_window
+
+The formvis window itself: size reports its size and focus, resize sets it (the desktop app's window only; a browser tab refuses), focus asks for focus, fullscreen toggles full screen. Use when the window's size should be read or changed, or it should take focus or full screen.
+
+- `action`: string (size | resize | focus | fullscreen); required
+- `width`: integer
+- `height`: integer
+
+## control_call
+
+Calls a window control by its protocol name with raw params, the same as the typed tool: ui.inspect, ui.state, ui.screenshot, ui.menu.list, ui.menu.invoke, ui.set, ui.dialog, ui.pointer, ui.key, window, app.open (open_file), app.save (save_project), app.export (export_image) and app.roots (file_roots). params are checked against that tool's schema. Use when a client speaks the control protocol's dotted method names instead of tool names.
+
+- `method`: string (ui.inspect | ui.state | ui.screenshot | ui.menu.list | ui.menu.invoke | ui.set | ui.dialog | ui.pointer | ui.key | window | app.open | app.save | app.export | app.roots); required
+- `params`: object; default {}
+
+Note: replaces or removes.
+
+## file_roots
+
+The folders agents may read and write files in (the person sets them), and the caps on one reply: the most characters of text and bytes of one picture a tool returns. With no folders set, any folder outside the system's own is allowed. Use when you need to know which folders you may read and write, or how large a reply may be, before a file call.
+
+- no parameters
 
 Note: read-only.
 
@@ -965,3 +1084,178 @@ Changes a smart filter on a smart object layer: its settings, kind, enabled, opa
 - `remove`: boolean; default false
 
 Note: replaces or removes.
+
+## apply_preset
+
+Applies a named adjustment preset: the built-in grain presets by film speed (iso100 to iso3200, slide, negative, bw400, bwpush, cine, expired), gradientMap looks (cyberpunk, sunset, tealorange, sepia, infrared, bwcontrast), photoFilter colours (warm85, cool80, sepia, underwater and more), or a preset the person saved in the Adjustments panel for any adjustment kind. With id it changes that adjustment layer, else it adds a new adjustment layer of that kind. With no name it lists the presets (for kind, or all). Use when a grain, gradient map or photo filter look should be applied by name, or a saved adjustment preset reused.
+
+- `kind`: string; The adjustment: grain, gradientMap, photoFilter, or the kind a saved preset belongs to.
+- `name`: string; A preset id or name from the list; leave out to list.
+- `id`: string; An adjustment layer id of that kind, to change it instead of adding one.
+
+## depth_from_layer
+
+Reads the depth of one layer alone with the local Depth Anything V2 Small model and adds it as a grey layer named Depth Map (near bright, far dark). Waits until the model has finished and the layer exists, then reports its id; fails with how to download the model when it is missing. Use when the depth should come from one layer alone rather than the whole picture, and you need to know it finished.
+
+- `id`: string; A pixel layer id from get_document; the active layer when left out.
+
+## match_edges
+
+Cleans the edge of a cut-out layer so it sits on a new background: defringes (replaces the edge colours with those just inside) by width pixels, then decontaminates (removes the old background colour bled into the edge) by the given percent. One undo step; the layer needs pixels. Use when a cut-out layer shows a fringe of its old background at its edge.
+
+- `id`: string; required; A layer id from get_document.
+- `width`: integer; default 2; Defringe width in pixels.
+- `decontaminate`: number; default 100; Percent; 0 skips it.
+- `radius`: number; default 6; Decontaminate radius in pixels.
+
+## realism_pass
+
+Makes a pasted or generated layer sit in its picture in one undo step: matches its colours to what is beneath it (a clipped Curves layer), cleans its edge as match_edges does, and adds a grain layer on top so the whole picture shares one grain. Each part can be turned off. Use when a pasted or generated layer looks stuck on and should sit in the picture.
+
+- `id`: string; required; A layer id from get_document.
+- `colour`: boolean; default true
+- `amount`: number; default 0.8; How far the colours move toward the background.
+- `edges`: boolean; default true
+- `grain`: string; default "iso400"; A grain preset id from apply_preset, or none.
+
+## compare
+
+Shows the document before and after its last steps in one picture: steps back through the history (1 to 50), split (before on the left of a white line at position percent, after on the right) or side_by_side. The history ends where it began; nothing changes. Use when you want to see what the last step or steps changed, before beside after.
+
+- `steps`: integer; default 1
+- `layout`: string (split | side_by_side); default "split"
+- `position`: number; default 50; Where the split line sits, percent from the left.
+- `max_size`: integer; default 1024
+
+Note: read-only.
+
+## set_status
+
+Puts a short note in the formvis status bar for the person to read (at most 160 characters), for seconds (1 to 600, default 60), or clears it with empty text. An error still shows first. Changes nothing in the document. Use when the person should be told in the formvis window what you are doing.
+
+- `text`: string; required
+- `seconds`: number; default 60
+
+## ailabel_add
+
+Marks the document as AI content, as the EU AI label does: every PNG, JPEG, WebP and TIFF export then carries the IPTC digital source type in its XMP (trainedAlgorithmicMedia for kind generated, compositeWithTrainedAlgorithmicMedia for kind edited), and by default a visible badge layer named EU AI label is added (anchor, style, size as percent of the shorter side, opacity; text replaces the words). Calling it again replaces the badge. One undoable step. Returns the badge layer id. Use when a picture was made or edited with AI and should be marked so, in its metadata and on the picture.
+
+- `kind`: string (generated | edited); default "generated"; generated: made with AI. edited: a real picture edited with AI.
+- `badge`: boolean; default true; Add the visible badge layer; false writes the metadata mark only.
+- `anchor`: string (top-left | top | top-right | left | center | right | bottom-left | bottom | bottom-right); default "bottom-right"
+- `style`: string (dark | light | outline); default "dark"
+- `size`: number; default 6; Badge height, percent of the shorter side of the document.
+- `opacity`: number; default 1
+- `text`: string; The badge's words; the default follows kind.
+
+## ailabel_remove
+
+Removes the document's AI label: the metadata mark and every badge layer named EU AI label. One undoable step. Use when the AI label was added by mistake or the picture is no longer AI content.
+
+- no parameters
+
+Note: replaces or removes.
+
+## ailabel_info
+
+Whether the document is marked as AI content: the label (generated, edited or none), the IPTC digital source type it writes, the badge layers and the export formats that carry it. Use when you need to know whether the document is marked as AI content before exporting.
+
+- no parameters
+
+Note: read-only.
+
+## film_looks
+
+Lists the film looks (id, name, kind negative|slide|bw|cine, ISO, curve points) and the film layers in the document with their look, strength and curve points. A look is a tone curve with editable points, a colour matrix and grain that grows with its speed. Use when the person wants a film look and you need the ids, or want to see the film layers already there.
+
+- no parameters
+
+Note: read-only.
+
+## film_apply_look
+
+Adds a film layer (an adjustment layer named Film: ...) with a film look from film_looks, or with id changes an existing one. strength 0 to 100 mixes the look with the picture (default 100), grain 0 to 100 (default 40; the look's speed scales it), grain_size in pixels (1 to 8). Changing the look of a layer resets its custom curve points. Returns the layer id. Use when the picture should look shot on a film stock, with its tone curve, colour and grain.
+
+- `look`: string; A film look id from film_looks.
+- `id`: string; An existing film layer to change; leave out to add a new one.
+- `strength`: number
+- `grain`: number
+- `grain_size`: number
+
+## film_add_point
+
+Adds a point to a film layer's tone curve, or moves the point already at that x: x is the input tone and y the curve's output, both 0 to 255 (a layer starts from its look's points; at most 16 points). Use when a film layer's tone curve needs one more point to shape the highlights, shadows or midtones.
+
+- `id`: string; required; A layer id from get_document.
+- `x`: integer; required
+- `y`: integer; required
+
+## film_copy_points
+
+Copies a film layer's curve points into the clipboard (for film_paste_points). Changes nothing in the document. Use when a film layer's curve should be reused on another layer.
+
+- `id`: string; required; A layer id from get_document.
+
+Note: read-only.
+
+## film_paste_points
+
+Puts the copied curve points on a film layer: mode replace (default) makes them its curve, merge adds them to the points it has (a point at the same x is overwritten). Use when curve points copied from another film layer should be put on this one.
+
+- `id`: string; required; A layer id from get_document.
+- `mode`: string (replace | merge); default "replace"
+
+## glb_place
+
+Places a 3D model (.glb, or a .gltf with no outside files) as a new layer the size of the document, posed and lit by turn, tilt, roll, size, x, y, z, fov, sun light, ambient, room light and a ground contact shadow; with depth true also a Depth Map layer. From path (absolute) or data (base64). The layer is pixels; while the window stays open glb_edit poses it again. Returns the layer id and the model's facts. Use when a 3D model file should appear in the picture as a lit, posed layer.
+
+- `path`: string; Absolute path to a .glb or .gltf file.
+- `data`: string; Base64 .glb data, when there is no file.
+- `name`: string
+- `turn`: number; Turn about the vertical axis, degrees (default 30).
+- `tilt`: number; Tilt toward the camera, degrees (default 15).
+- `roll`: number; Roll about the viewing axis, degrees (default 0).
+- `size`: number; Size in percent of the frame (default 100).
+- `x`: number; Position across the frame, percent of half its width (default 0, right is positive).
+- `y`: number; Position up the frame, percent of half its height (default 0, up is positive).
+- `z`: number; Depth: toward the camera is positive (default 0); with a wide fov it changes the perspective.
+- `fov`: number; Camera field of view in degrees, the focal length: small is telephoto (default 30).
+- `light_direction`: number; Direction of the sun light, degrees (default 40).
+- `light_height`: number; Height of the sun light above the horizon, degrees (default 45).
+- `light_strength`: number; Sun light strength, percent (default 150).
+- `light_color`: string; Sun light colour #rrggbb (default white).
+- `ambient`: number; Ambient light, percent (default 40).
+- `room_light`: number; Soft room light from above and below, percent (default 0).
+- `shadow`: number; Strength of the ground contact shadow under the model, percent (default 0: none).
+- `depth`: boolean; default false; Also draw a Depth Map layer (near bright, far dark) of the same pose, for depth-guided generation.
+
+## glb_edit
+
+Poses a 3D layer from glb_place again (give only what changes; the rest stays as it was) and redraws its pixels as one undoable step; depth true adds or refreshes its Depth Map layer. Works for layers placed since the window opened. Use when a placed 3D model needs another pose, size, position, field of view or light.
+
+- `id`: string; required; A layer id from get_document.
+- `turn`: number; Turn about the vertical axis, degrees (default 30).
+- `tilt`: number; Tilt toward the camera, degrees (default 15).
+- `roll`: number; Roll about the viewing axis, degrees (default 0).
+- `size`: number; Size in percent of the frame (default 100).
+- `x`: number; Position across the frame, percent of half its width (default 0, right is positive).
+- `y`: number; Position up the frame, percent of half its height (default 0, up is positive).
+- `z`: number; Depth: toward the camera is positive (default 0); with a wide fov it changes the perspective.
+- `fov`: number; Camera field of view in degrees, the focal length: small is telephoto (default 30).
+- `light_direction`: number; Direction of the sun light, degrees (default 40).
+- `light_height`: number; Height of the sun light above the horizon, degrees (default 45).
+- `light_strength`: number; Sun light strength, percent (default 150).
+- `light_color`: string; Sun light colour #rrggbb (default white).
+- `ambient`: number; Ambient light, percent (default 40).
+- `room_light`: number; Soft room light from above and below, percent (default 0).
+- `shadow`: number; Strength of the ground contact shadow under the model, percent (default 0: none).
+- `depth`: boolean; default false; Also draw a Depth Map layer (near bright, far dark) of the same pose, for depth-guided generation.
+
+## glb_info
+
+Facts about a 3D model: meshes, triangles, vertices, materials, textures, animations, nodes, size in its own units, generator and glTF extensions. Give path (an absolute .glb or .gltf file) or id of a 3D layer, which also returns its current pose. Use when you need the size, triangles or materials of a 3D model before placing it.
+
+- `path`: string; Absolute path to a .glb or .gltf file.
+- `id`: string; A 3D layer id from glb_place.
+
+Note: read-only.

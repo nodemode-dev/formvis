@@ -7,6 +7,7 @@ anything that costs money asks the user there first."""
 
 import asyncio
 import collections
+import contextvars
 import itertools
 import base64
 import json
@@ -17,9 +18,11 @@ import urllib.parse
 
 from app.core import config
 from fastapi import APIRouter, Request, Response
+from fastapi.responses import StreamingResponse
 
 from app import __version__
 from app.services import agents
+from app.routers.mcp_pack import PACK_TOOLS, PACK_USE_WHEN
 
 router = APIRouter()
 VERSIONS = ["2026-07-28", "2025-11-25"]
@@ -53,6 +56,8 @@ def _tool(name: str, description: str, props: dict, required: list[str] | None =
             "annotations": {"readOnlyHint": hints.get("read", False), "destructiveHint": hints.get("destructive", False), "idempotentHint": hints.get("idempotent", False), "openWorldHint": hints.get("open", False)}}
 
 
+CONTROL_METHODS = {"ui.inspect": "ui_inspect", "ui.state": "ui_state", "ui.screenshot": "ui_screenshot", "ui.menu.list": "ui_menu_list", "ui.menu.invoke": "ui_menu_invoke", "ui.set": "ui_set", "ui.dialog": "ui_dialog",
+                   "ui.pointer": "ui_pointer", "ui.key": "ui_key", "window": "ui_window", "app.open": "open_file", "app.save": "save_project", "app.export": "export_image", "app.roots": "file_roots"}
 _ID = {"type": "string", "description": "A layer id from get_document."}
 _OVERWRITE = {"type": "boolean", "default": False, "description": "Replace a file already at the path. Without it an existing file is not touched."}
 TOOLS = [
@@ -61,11 +66,11 @@ TOOLS = [
           {"max_size": {"type": "integer", "minimum": 64, "maximum": 2048, "default": 1024}, "view": {"type": "string", "enum": ["document", "editor", "layer"], "default": "document"},
            "id": {"type": "string", "description": "A layer id from get_document; for view layer."}, "x": {"type": "integer"}, "y": {"type": "integer"}, "width": {"type": "integer", "minimum": 1}, "height": {"type": "integer", "minimum": 1},
            "format": {"type": "string", "enum": ["png", "jpeg"], "default": "png"}, "quality": {"type": "number", "minimum": 0.1, "maximum": 1, "default": 0.9}}, read=True, idempotent=True),
-    _tool("new_document", "Opens a new document of width x height pixels, or of an aspect and size class (a model-friendly size, sides in steps of 16: size_class 1k is about 1024 on the longer side, 2k about 2048, 4k about 4096). Width and height win when given.",
-          {"width": {"type": "integer", "minimum": 1, "maximum": 30000}, "height": {"type": "integer", "minimum": 1, "maximum": 30000},
+    _tool("new_document", "Opens a new document of width x height pixels, or of an aspect and size class (a model-friendly size, sides in steps of 16: size_class 1k is about 1024 on the longer side, 2k about 2048, 4k about 4096). Width and height win when given; with no size at all the document is 1920 by 1080. mode (rgb, grayscale, lab) and depth (8, 16 or 32 bits a channel) set the colour mode and bit depth; background is white, transparent, black or a colour #rrggbb. CMYK has a dialog: run_command mode-cmyk.",
+          {"mode": {"type": "string", "enum": ["rgb", "grayscale", "lab"], "default": "rgb"}, "depth": {"type": "integer", "enum": [8, 16, 32], "default": 8}, "width": {"type": "integer", "minimum": 1, "maximum": 30000}, "height": {"type": "integer", "minimum": 1, "maximum": 30000},
            "aspect": {"type": "string", "enum": ["1:1", "4:3", "3:4", "3:2", "2:3", "16:9", "9:16", "21:9", "5:4", "4:5"]}, "size_class": {"type": "string", "enum": ["1k", "2k", "4k"], "default": "1k"},
-           "name": {"type": "string", "maxLength": 120}, "background": {"type": "string", "enum": ["white", "transparent", "black"], "default": "white"}}),
-    _tool("select", "Changes the selection: a rectangle or ellipse (x, y, width, height in pixels) combined by mode, or all, none, or invert.", {"shape": {"type": "string", "enum": ["rectangle", "ellipse", "all", "none", "invert"]},
+           "name": {"type": "string", "maxLength": 120}, "background": {"type": "string", "pattern": "^(white|transparent|black|#[0-9a-fA-F]{6})$", "default": "white", "description": "white, transparent, black or #rrggbb"}}),
+    _tool("select","Changes the selection: a rectangle or ellipse (x, y, width, height in pixels) combined by mode, or all, none, or invert.", {"shape": {"type": "string", "enum": ["rectangle", "ellipse", "all", "none", "invert"]},
           "x": {"type": "number"}, "y": {"type": "number"}, "width": {"type": "number", "minimum": 1}, "height": {"type": "number", "minimum": 1},
           "mode": {"type": "string", "enum": ["replace", "add", "subtract", "intersect"], "default": "replace"}}, ["shape"]),
     _tool("add_layer", "Adds an empty layer above the active one and makes it active; returns its id.", {"name": {"type": "string", "maxLength": 120}}),
@@ -76,8 +81,9 @@ TOOLS = [
     _tool("fill", "Fills the selection (or the whole active layer when nothing is selected) with a colour.", {"color": {"type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "description": "#rrggbb"}}, ["color"]),
     _tool("add_adjustment", "Adds an adjustment layer (for example curves, levels, hsv, exposure, splitToning, halation, glow) with optional parameters.",
           {"kind": {"type": "string"}, "params": {"type": "object", "description": "The adjustment's parameters, as its Properties show them."}}, ["kind"]),
-    _tool("place_image", "Places a PNG, JPEG or WebP image as a new layer at x, y, at its own size (transform_layer scales it): from path, an absolute path to a file, or data, base64.",
-          {"path": {"type": "string", "description": "Absolute path to a .png, .jpg, .jpeg or .webp file; use this for files on disk."},
+    _tool("place_image", "Places a PNG, JPEG or WebP image as a new layer at x, y, at its own size unless scale (percent) or fit is given: fit contain or cover sizes it to the document and centres it, center centres it at its size, smart_object makes it a smart object so it can be scaled without loss. From path, an absolute path to a file, or data, base64.",
+          {"scale": {"type": "number", "minimum": 1, "maximum": 1000, "description": "Percent of the image's own size."}, "fit": {"type": "string", "enum": ["none", "contain", "cover"], "default": "none"},
+           "center": {"type": "boolean", "default": False}, "smart_object": {"type": "boolean", "default": False}, "path": {"type": "string", "description": "Absolute path to a .png, .jpg, .jpeg or .webp file; use this for files on disk."},
            "data": {"type": "string", "description": "Base64 image data, when there is no file."}, "name": {"type": "string", "maxLength": 120},
            "x": {"type": "number", "default": 0}, "y": {"type": "number", "default": 0}}),
     _tool("undo", "Steps back through the document's history.", {"steps": {"type": "integer", "minimum": 1, "maximum": 100, "default": 1}}),
@@ -100,8 +106,8 @@ TOOLS = [
           {"path": {"type": "string", "description": "Absolute path, e.g. /Users/me/Pictures/beach.jpg"}}, ["path"]),
     _tool("save_project", "Saves the document as a formvis project (.fvd: layers, masks, adjustments and text stay editable) at an absolute path. A file already there is kept unless overwrite is true.",
           {"path": {"type": "string", "description": "Absolute path ending .fvd"}, "overwrite": _OVERWRITE}, ["path"], destructive=True),
-    _tool("export_image", "Writes the document as it looks to an absolute path as PNG, JPEG or WebP (by the path's extension). A file already there is kept unless overwrite is true.",
-          {"path": {"type": "string", "description": "Absolute path ending .png, .jpg or .webp"}, "quality": {"type": "number", "minimum": 0.1, "maximum": 1, "default": 0.92},
+    _tool("export_image", "Writes the document to an absolute path by the path's extension: PNG, JPEG or WebP as it looks (scale applies), or with every layer kept as .psd, .psb (a document past 30000 pixels a side) or .ora (RGB and grayscale documents; scale does not apply). A file already there is kept unless overwrite is true.",
+          {"path": {"type": "string", "description": "Absolute path ending .png, .jpg, .webp, .psd, .psb or .ora"}, "quality": {"type": "number", "minimum": 0.1, "maximum": 1, "default": 0.92},
            "scale": {"type": "number", "minimum": 0.05, "maximum": 4, "default": 1, "description": "Writes the picture at this factor of its size; the document is not changed."}, "overwrite": _OVERWRITE}, ["path"], destructive=True),
     _tool("switch_document", "Makes an open document the one tools act on, by its id from get_document's documents.", {"id": _ID}, ["id"], idempotent=True),
     _tool("close_document", "Closes an open document by its id from get_document's documents (the active one when id is left out) without asking about unsaved changes: they are discarded, so save_project first to keep them. The person can bring the tab back with Reopen Closed Tab.",
@@ -145,7 +151,7 @@ TOOLS = [
            "outside": {"type": "array", "maxItems": 20, "items": {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}}, "required": ["x", "y"], "additionalProperties": False}},
            "mode": {"type": "string", "enum": ["replace", "add", "subtract", "intersect"], "default": "replace"}}, ["inside"]),
     # Filters and looks.
-    _tool("apply_filter", "Applies a filter to the active layer (inside the selection if there is one). kind and its settings: gaussianBlur {radius}, motionBlur {angle, distance}, addNoise {amount, gaussian, monochromatic}, unsharpMask {usmAmount, usmRadius, threshold}, lensBlur {lensRadius}, surfaceBlur, radialBlur, tiltShift, irisBlur, fieldBlur; with no settings: average (the selection filled with its average colour), blur, blurMore, sharpen, sharpenMore, sharpenEdges, despeckle, ntscColors; boxBlur {radius}, shapeBlur {radius, shape: circle|ring|square|diamond|triangle|hexagon|star|heart|cross}, smartBlur {radius, threshold, quality: high|medium|low, mode: normal|edgeOnly|overlayEdge}, dustAndScratches {radius, threshold}, median {radius}, reduceNoise {strength 0 to 10, preserve, color, sharpen (percent), jpeg}, custom {kernel (25 integers, row by row), scale, offset}, hsbHsl {input, output: rgb|hsb|hsl}, highPass {radius}, maximum and minimum {radius, preserve: squareness|roundness}, offset {horizontal, vertical, undefinedAreas: transparent|repeat|wrap}, deInterlace {eliminate: oddFields|evenFields, createBy: interpolation|duplication}. Distort, centred on the selection's bounds (else the canvas): twirl {angle}, pinch {amount}, spherize {amount, mode: normal|horizontalOnly|verticalOnly}, ripple {amount, size: small|medium|large}, polarCoordinates {mode: rectangularToPolar|polarToRectangular}, wave {generators, wavelengthMin, wavelengthMax, amplitudeMin, amplitudeMax, scaleX, scaleY (percent), type: sine|triangle|square, undefinedAreas: wrap|repeat, seed}, zigZag {amount, ridges, style: pondRipples|outFromCenter|aroundCenter}, shear {top, middle, bottom (percent of half the width), undefinedAreas: wrap|repeat}, displace {horizontal, vertical (percent), fit: stretch|tile, undefinedAreas: repeat|wrap, map (the name of an open document, required)}. Pixelate: facet and fragment with no settings; colorHalftone {maxRadius, channel1 to channel4 (degrees)}, crystallize {cellSize}, mezzotint {type: fineDots|mediumDots|grainyDots|coarseDots|shortLines|mediumLines|longLines|shortStrokes|mediumStrokes|longStrokes}, mosaic {cellSize}, pointillize {cellSize} (dots on the background colour). Stylize: findEdges and solarize with no settings; diffuse {mode: normal|darkenOnly|lightenOnly|anisotropic}, emboss {angle, height, amount}, extrude {type: blocks|pyramids, size, depth, depthMode: random|levelBased, solidFront, maskIncomplete}, oilPaint {stylization, cleanliness, brush (its scale), bristle, lighting, angle, shine}, tiles {count, maxOffset, fill: background|foreground|inverse|unaltered}, traceContour {level, edge: lower|upper}, wind {method: wind|blast|stagger, direction: fromRight|fromLeft}. Render: clouds and differenceClouds with no settings, and fibers {variance, strength, seed}, between the foreground and background colours; lensFlare {brightness, centerX, centerY (percent of the selection's bounds, else the canvas), lens: zoom|prime35|prime105|moviePrime}; lightingEffects {type: spot|point|infinite, color (#rrggbb), intensity, x, y, targetX, targetY (percent of the selection's bounds, else the canvas), z (percent of their shorter side), cone, hotspot, radius, angle, elevation, gloss, metallic, exposure, ambience, texture: none|luminance|red|green|blue|alpha, height, whiteIsHigh}. Drawn over the layer (a new empty layer keeps them apart), each with a seed for its arrangement: flame {path (a path's name; else the selected path; with none, an arc low in the selection or canvas), flameType: oneFlameAlongPath|multipleFlamesAlongPath|multipleFlamesPathDirections|multipleFlamesVariousLength|candleLight|multipleFlamesOneDirection, length, randomizeLength, width, angle, interval (px), adjustIntervalForLoops, quality: draft|low|medium|high|fine, customColor, color (#rrggbb), turbulent, jag, opacity, flameLines, flameBottomAlignment, flameStyle: normal|violent|flat, flameShape: parallel|toCenter|spread|oval|pointed, randomizeShapes, seed}; pictureFrame {frame: vineWithFlowers|vine|leafGarland|flowerBorder|berries|ribbon|waves|zigzag|dots|rope|scallops|lines|stars|hearts|snowflakes|bamboo, margin (percent), size, arrangement, lines, thickness, fade, vineColor, flowerColor, leafColor (#rrggbb), seed}; tree {baseTreeType: oak|maple|autumnMaple|birch|elm|apple|cherryBlossom|olive|willow|pine|fir|spruce|cypress|poplar|palm|coconutPalm|bamboo|shrub|bareWinterTree, lightDirection (1 to 5), leavesAmount, leavesSize, branchesHeight, branchesThickness, defaultLeaves, leavesColor, customBranchColor, branchesColor (#rrggbb), flatShading, x, y, size (percent of the selection's bounds, else the canvas), seed}. Blur Gallery: spinBlur {blurAngle (degrees), x, y (percent of the selection's bounds, else the canvas), radiusX, radiusY (percent of their shorter side), angle}. Filter Gallery: filterGallery {effects: [{filter, values, visible}]}, its effect layers applied in order, the first at the bottom, hidden ones skipped; filter is one of: coloredPencil {pencilWidth 1 to 24, strokePressure 0 to 15, paperBrightness 0 to 50}, cutout {numberOfLevels 2 to 8, edgeSimplicity 0 to 10, edgeFidelity 1 to 3}, dryBrush and fresco {brushSize 0 to 10, brushDetail 0 to 10, texture 1 to 3}, filmGrain {grain 0 to 20, highlightArea 0 to 20, intensity 0 to 10}, neonGlow {glowSize -24 to 24, glowBrightness 0 to 50, glowColor (#rrggbb)}, paintDaubs {brushSize 1 to 50, sharpness 0 to 40, brushType: simple|lightRough|darkRough|wideSharp|wideBlurry|sparkle}, paletteKnife {strokeSize 1 to 50, strokeDetail 1 to 3, softness 0 to 10}, plasticWrap {highlightStrength 0 to 20, detail 1 to 15, smoothness 1 to 15}, posterEdges {edgeThickness 0 to 10, edgeIntensity 0 to 10, posterization 0 to 6}, roughPastels {strokeLength 0 to 40, strokeDetail 1 to 20, texture: canvas|brick|burlap|sandstone, scaling 50 to 200, relief 0 to 50, light: top|topRight|right|bottomRight|bottom|bottomLeft|left|topLeft, invert}, smudgeStick {strokeLength 0 to 10, highlightArea 0 to 20, intensity 0 to 10}, sponge {brushSize 0 to 10, definition 0 to 25, smoothness 1 to 15}, underpainting {brushSize 0 to 40, textureCoverage 0 to 40, and roughPastels' texture, scaling, relief, light, invert}, watercolor {brushDetail 1 to 14, shadowIntensity 0 to 10, texture 1 to 3}, accentedEdges {edgeWidth 1 to 14, edgeBrightness 0 to 50, smoothness 1 to 15}, angledStrokes {directionBalance 0 to 100, strokeLength 3 to 50, sharpness 0 to 10}, crosshatch {strokeLength 3 to 50, sharpness 0 to 20, strength 1 to 3}, darkStrokes {balance 0 to 10, blackIntensity 0 to 10, whiteIntensity 0 to 10}, inkOutlines {strokeLength 1 to 50, darkIntensity 0 to 50, lightIntensity 0 to 50}, spatter {sprayRadius 0 to 25, smoothness 1 to 15}, sprayedStrokes {strokeLength 0 to 20, sprayRadius 0 to 25, strokeDirection: rightDiagonal|horizontal|leftDiagonal|vertical}, sumiE {strokeWidth 3 to 15, strokePressure 0 to 15, contrast 0 to 40}, diffuseGlow {graininess 0 to 10, glowAmount 0 to 20, clearAmount 0 to 20}, glass {distortion 0 to 20, smoothness 1 to 15, texture: frosted|blocks|canvas|tinyLens, scaling 50 to 200, invert}, oceanRipple {rippleSize 1 to 15, rippleMagnitude 0 to 20}, glowingEdges {edgeWidth 1 to 14, edgeBrightness 0 to 20, smoothness 1 to 15}, basRelief {detail 1 to 15, smoothness 1 to 15, light}, chalkCharcoal {charcoalArea 0 to 20, chalkArea 0 to 20, strokePressure 0 to 5}, charcoal {charcoalThickness 1 to 7, detail 0 to 5, lightDarkBalance 0 to 100}, chrome {detail 0 to 10, smoothness 0 to 10}, conteCrayon {foregroundLevel 1 to 15, backgroundLevel 1 to 15, and roughPastels' texture, scaling, relief, light, invert}, graphicPen {strokeLength 1 to 15, lightDarkBalance 0 to 100, strokeDirection}, halftonePattern {size 1 to 12, contrast 0 to 50, patternType: dot|circle|line}, notePaper {imageBalance 0 to 50, graininess 0 to 20, relief 0 to 25}, photocopy {detail 1 to 24, darkness 1 to 50}, plaster {imageBalance 0 to 50, smoothness 1 to 15, light}, reticulation {density 0 to 50, foregroundLevel 0 to 50, backgroundLevel 0 to 50}, stamp {lightDarkBalance 0 to 50, smoothness 1 to 50}, tornEdges {imageBalance 0 to 50, smoothness 1 to 15, contrast 1 to 25}, waterPaper {fiberLength 3 to 50, brightness 0 to 100, contrast 0 to 100}, craquelure {crackSpacing 2 to 100, crackDepth 0 to 10, crackBrightness 0 to 10}, grain {intensity 0 to 100, contrast 0 to 100, grainType: regular|soft|sprinkles|clumped|contrasty|enlarged|stippled|horizontal|vertical|speckle}, mosaicTiles {tileSize 2 to 100, groutWidth 1 to 15, lightenGrout 0 to 10}, patchwork {squareSize 0 to 10, relief 0 to 25}, stainedGlass {cellSize 2 to 50, borderThickness 1 to 20, lightIntensity 0 to 10}, texturizer {roughPastels' texture, scaling, relief, light, invert}; colours come from the foreground and background colours (the Sketch effects' ink and paper). Unnamed settings keep their defaults.",
+    _tool("apply_filter", "Applies a filter to the active layer (inside the selection if there is one). kind and its settings: gaussianBlur {radius}, motionBlur {angle, distance}, addNoise {amount, gaussian, monochromatic}, unsharpMask {usmAmount, usmRadius, threshold}, lensBlur {lensRadius}, surfaceBlur, radialBlur, tiltShift, irisBlur, fieldBlur; with no settings: average (the selection filled with its average colour), blur, blurMore, sharpen, sharpenMore, sharpenEdges, despeckle, ntscColors; boxBlur {radius}, shapeBlur {radius, shape: circle|ring|square|diamond|triangle|hexagon|star|heart|cross}, smartBlur {radius, threshold, quality: high|medium|low, mode: normal|edgeOnly|overlayEdge}, dustAndScratches {radius, threshold}, median {radius}, reduceNoise {strength 0 to 10, preserve, color, sharpen (percent), jpeg}, custom {kernel (25 integers, row by row), scale, offset}, hsbHsl {input, output: rgb|hsb|hsl}, highPass {radius}, maximum and minimum {radius, preserve: squareness|roundness}, offset {horizontal, vertical, undefinedAreas: transparent|repeat|wrap}, deInterlace {eliminate: oddFields|evenFields, createBy: interpolation|duplication}. Distort, centred on the selection's bounds (else the canvas): twirl {angle}, pinch {amount}, spherize {amount, mode: normal|horizontalOnly|verticalOnly}, ripple {amount, size: small|medium|large}, polarCoordinates {mode: rectangularToPolar|polarToRectangular}, wave {generators, wavelengthMin, wavelengthMax, amplitudeMin, amplitudeMax, scaleX, scaleY (percent), type: sine|triangle|square, undefinedAreas: wrap|repeat, seed}, zigZag {amount, ridges, style: pondRipples|outFromCenter|aroundCenter}, shear {top, middle, bottom (percent of half the width), undefinedAreas: wrap|repeat}, displace {horizontal, vertical (percent), fit: stretch|tile, undefinedAreas: repeat|wrap, map (the name of an open document, required)}. Pixelate: facet and fragment with no settings; colorHalftone {maxRadius, channel1 to channel4 (degrees)}, crystallize {cellSize}, mezzotint {type: fineDots|mediumDots|grainyDots|coarseDots|shortLines|mediumLines|longLines|shortStrokes|mediumStrokes|longStrokes}, mosaic {cellSize}, pointillize {cellSize} (dots on the background colour). Stylize: findEdges and solarize with no settings; diffuse {mode: normal|darkenOnly|lightenOnly|anisotropic}, emboss {angle, height, amount}, extrude {type: blocks|pyramids, size, depth, depthMode: random|levelBased, solidFront, maskIncomplete}, oilPaint {stylization, cleanliness, brush (its scale), bristle, lighting, angle, shine}, tiles {count, maxOffset, fill: background|foreground|inverse|unaltered}, traceContour {level, edge: lower|upper}, wind {method: wind|blast|stagger, direction: fromRight|fromLeft}. Render: clouds and differenceClouds with no settings, and fibers {variance, strength, seed}, between the foreground and background colours; lensFlare {brightness, centerX, centerY (percent of the selection's bounds, else the canvas), lens: zoom|prime35|prime105|moviePrime}; lightingEffects {type: spot|point|infinite, color (#rrggbb), intensity, x, y, targetX, targetY (percent of the selection's bounds, else the canvas), z (percent of their shorter side), cone, hotspot, radius, angle, elevation, gloss, metallic, exposure, ambience, texture: none|luminance|red|green|blue|alpha, height, whiteIsHigh}. Drawn over the layer (a new empty layer keeps them apart), each with a seed for its arrangement: flame {path (a path's name; else the selected path; with none, an arc low in the selection or canvas), flameType: oneFlameAlongPath|multipleFlamesAlongPath|multipleFlamesPathDirections|multipleFlamesVariousLength|candleLight|multipleFlamesOneDirection, length, randomizeLength, width, angle, interval (px), adjustIntervalForLoops, quality: draft|low|medium|high|fine, customColor, color (#rrggbb), turbulent, jag, opacity, flameLines, flameBottomAlignment, flameStyle: normal|violent|flat, flameShape: parallel|toCenter|spread|oval|pointed, randomizeShapes, seed}; pictureFrame {frame: vineWithFlowers|vine|leafGarland|flowerBorder|berries|ribbon|waves|zigzag|dots|rope|scallops|lines|stars|hearts|snowflakes|bamboo, margin (percent), size, arrangement, lines, thickness, fade, vineColor, flowerColor, leafColor (#rrggbb), seed}; tree {baseTreeType: oak|maple|autumnMaple|birch|elm|apple|cherryBlossom|olive|willow|pine|fir|spruce|cypress|poplar|palm|coconutPalm|bamboo|shrub|bareWinterTree, lightDirection (1 to 5), leavesAmount, leavesSize, branchesHeight, branchesThickness, defaultLeaves, leavesColor, customBranchColor, branchesColor (#rrggbb), flatShading, x, y, size (percent of the selection's bounds, else the canvas), seed}. Blur Gallery: spinBlur {blurAngle (degrees), x, y (percent of the selection's bounds, else the canvas), radiusX, radiusY (percent of their shorter side), angle}. Filter Gallery: filterGallery {effects: [{filter, values, visible}]}, its effect layers applied in order, the first at the bottom, hidden ones skipped; filter is one of: coloredPencil {pencilWidth 1 to 24, strokePressure 0 to 15, paperBrightness 0 to 50}, cutout {numberOfLevels 2 to 8, edgeSimplicity 0 to 10, edgeFidelity 1 to 3}, dryBrush and fresco {brushSize 0 to 10, brushDetail 0 to 10, texture 1 to 3}, filmGrain {grain 0 to 20, highlightArea 0 to 20, intensity 0 to 10}, neonGlow {glowSize -24 to 24, glowBrightness 0 to 50, glowColor (#rrggbb)}, paintDaubs {brushSize 1 to 50, sharpness 0 to 40, brushType: simple|lightRough|darkRough|wideSharp|wideBlurry|sparkle}, paletteKnife {strokeSize 1 to 50, strokeDetail 1 to 3, softness 0 to 10}, plasticWrap {highlightStrength 0 to 20, detail 1 to 15, smoothness 1 to 15}, posterEdges {edgeThickness 0 to 10, edgeIntensity 0 to 10, posterization 0 to 6}, roughPastels {strokeLength 0 to 40, strokeDetail 1 to 20, texture: canvas|brick|burlap|sandstone, scaling 50 to 200, relief 0 to 50, light: top|topRight|right|bottomRight|bottom|bottomLeft|left|topLeft, invert}, smudgeStick {strokeLength 0 to 10, highlightArea 0 to 20, intensity 0 to 10}, sponge {brushSize 0 to 10, definition 0 to 25, smoothness 1 to 15}, underpainting {brushSize 0 to 40, textureCoverage 0 to 40, and roughPastels' texture, scaling, relief, light, invert}, watercolor {brushDetail 1 to 14, shadowIntensity 0 to 10, texture 1 to 3}, accentedEdges {edgeWidth 1 to 14, edgeBrightness 0 to 50, smoothness 1 to 15}, angledStrokes {directionBalance 0 to 100, strokeLength 3 to 50, sharpness 0 to 10}, crosshatch {strokeLength 3 to 50, sharpness 0 to 20, strength 1 to 3}, darkStrokes {balance 0 to 10, blackIntensity 0 to 10, whiteIntensity 0 to 10}, inkOutlines {strokeLength 1 to 50, darkIntensity 0 to 50, lightIntensity 0 to 50}, spatter {sprayRadius 0 to 25, smoothness 1 to 15}, sprayedStrokes {strokeLength 0 to 20, sprayRadius 0 to 25, strokeDirection: rightDiagonal|horizontal|leftDiagonal|vertical}, sumiE {strokeWidth 3 to 15, strokePressure 0 to 15, contrast 0 to 40}, diffuseGlow {graininess 0 to 10, glowAmount 0 to 20, clearAmount 0 to 20}, glass {distortion 0 to 20, smoothness 1 to 15, texture: frosted|blocks|canvas|tinyLens|ribbed|reeded|wavy|pebbled, scaling 50 to 200, invert}, oceanRipple {rippleSize 1 to 15, rippleMagnitude 0 to 20}, glowingEdges {edgeWidth 1 to 14, edgeBrightness 0 to 20, smoothness 1 to 15}, basRelief {detail 1 to 15, smoothness 1 to 15, light}, chalkCharcoal {charcoalArea 0 to 20, chalkArea 0 to 20, strokePressure 0 to 5}, charcoal {charcoalThickness 1 to 7, detail 0 to 5, lightDarkBalance 0 to 100}, chrome {detail 0 to 10, smoothness 0 to 10}, conteCrayon {foregroundLevel 1 to 15, backgroundLevel 1 to 15, and roughPastels' texture, scaling, relief, light, invert}, graphicPen {strokeLength 1 to 15, lightDarkBalance 0 to 100, strokeDirection}, halftonePattern {size 1 to 12, contrast 0 to 50, patternType: dot|circle|line}, notePaper {imageBalance 0 to 50, graininess 0 to 20, relief 0 to 25}, photocopy {detail 1 to 24, darkness 1 to 50}, plaster {imageBalance 0 to 50, smoothness 1 to 15, light}, reticulation {density 0 to 50, foregroundLevel 0 to 50, backgroundLevel 0 to 50}, stamp {lightDarkBalance 0 to 50, smoothness 1 to 50}, tornEdges {imageBalance 0 to 50, smoothness 1 to 15, contrast 1 to 25}, waterPaper {fiberLength 3 to 50, brightness 0 to 100, contrast 0 to 100}, craquelure {crackSpacing 2 to 100, crackDepth 0 to 10, crackBrightness 0 to 10}, grain {intensity 0 to 100, contrast 0 to 100, grainType: regular|soft|sprinkles|clumped|contrasty|enlarged|stippled|horizontal|vertical|speckle}, mosaicTiles {tileSize 2 to 100, groutWidth 1 to 15, lightenGrout 0 to 10}, patchwork {squareSize 0 to 10, relief 0 to 25}, stainedGlass {cellSize 2 to 50, borderThickness 1 to 20, lightIntensity 0 to 10}, texturizer {roughPastels' texture, scaling, relief, light, invert}; colours come from the foreground and background colours (the Sketch effects' ink and paper). Unnamed settings keep their defaults.",
           {"kind": {"type": "string", "enum": ["gaussianBlur", "motionBlur", "addNoise", "unsharpMask", "lensBlur", "smartSharpen", "surfaceBlur", "radialBlur", "tiltShift", "irisBlur", "fieldBlur",
                                                "average", "blur", "blurMore", "boxBlur", "shapeBlur", "smartBlur", "sharpen", "sharpenMore", "sharpenEdges", "despeckle", "dustAndScratches", "median", "reduceNoise",
                                                "custom", "hsbHsl", "highPass", "maximum", "minimum", "offset", "deInterlace", "ntscColors",
@@ -153,7 +159,7 @@ TOOLS = [
                                                "colorHalftone", "crystallize", "facet", "fragment", "mezzotint", "mosaic", "pointillize",
                                                "diffuse", "emboss", "extrude", "findEdges", "oilPaint", "solarize", "tiles", "traceContour", "wind",
                                                "clouds", "differenceClouds", "fibers", "lensFlare", "lightingEffects", "flame", "pictureFrame", "tree", "spinBlur", "filterGallery"]}, "settings": {"type": "object", "default": {}}}, ["kind"]),
-    _tool("set_adjustment", "Changes an adjustment layer's parameters (id from get_document; the same parameters as add_adjustment).", {"id": _ID, "params": {"type": "object"}}, ["id", "params"], idempotent=True),
+    _tool("set_adjustment", "Changes an adjustment layer's parameters (id from get_document; the same parameters as add_adjustment). Takes the parametric adjustments (such as photoFilter, colorBalance, channelMixer, selectiveColor), grain and exposure; apply_preset sets gradientMap, curves and levels from a preset.", {"id": _ID, "params": {"type": "object"}}, ["id", "params"], idempotent=True),
     _tool("color_match", "Matches a layer's colours to what is beneath it or around it, as a Curves layer clipped to it; amount 0 to 1.",
           {"id": _ID, "to": {"type": "string", "enum": ["beneath", "around"], "default": "beneath"}, "amount": {"type": "number", "minimum": 0, "maximum": 1, "default": 1}}, ["id"]),
     _tool("add_film_layer", "Adds a film look as its own layer: a light leak (color amber|red|magenta|gold from left|right|top|bottom|corner) or a frame (style film|white|line).",
@@ -185,11 +191,14 @@ TOOLS = [
           {"path": {"type": "string", "description": "Absolute path ending .mp4, .gif or .zip"}, "from": {"type": "integer", "minimum": 0}, "to": {"type": "integer", "minimum": 1},
            "scale": {"type": "number", "enum": [1, 0.5, 0.25], "default": 1}, "overwrite": _OVERWRITE}, ["path"], destructive=True),
     _tool("list_commands", "Lists formvis's commands: every menu and palette action, each as id, label, when (what it is for) and params (what it takes). Narrow it with group (a menu or family such as Filter or Layer) or text (words from the label, id or description); an unfiltered list is capped, so filter first.",
-          {"group": {"type": "string", "maxLength": 80}, "text": {"type": "string", "maxLength": 120}, "enabled": {"type": "boolean", "description": "true lists only the commands that can run right now; each row says enabled and its keys."}}, read=True, idempotent=True),
+          {"group": {"type": "string", "maxLength": 80}, "text": {"type": "string", "maxLength": 120}, "enabled": {"type": "boolean", "description": "true lists only the commands that can run right now, false only those that cannot; each row says enabled, mutates, its keys and, when disabled, disabledReason (and needsDocument when no document is open)."}}, read=True, idempotent=True),
     _tool("describe_command", "One command in full: its label, group, description, when to use it, params with types and defaults, and whether it changes the document or is risky (cannot be undone).",
           {"id": {"type": "string", "maxLength": 120, "description": "A command id from list_commands."}}, ["id"], read=True, idempotent=True),
-    _tool("run_command", "Runs one command by id with params, as one undoable step. A command marked risky waits for the person's approval in the formvis window (Window > Agent Connect) unless they allowed all.",
-          {"id": {"type": "string", "maxLength": 120, "description": "A command id from list_commands."}, "params": {"type": "object", "description": "The command's params, as describe_command lists them."}}, ["id"], destructive=True),
+    _tool("run_command", "Runs one command by id with params, as one undoable step. A command marked risky waits for the person's approval in the formvis window (Window > Agent Connect) unless they allowed all. With wait false it starts the command and answers at once with a job id; command_job gives its result.",
+          {"id": {"type": "string", "maxLength": 120, "description": "A command id from list_commands."}, "params": {"type": "object", "description": "The command's params, as describe_command lists them."},
+           "wait": {"type": "boolean", "default": True, "description": "false: start it in the background and return a job id (a long command such as a model run); do not edit the document until command_job says it is done."}}, ["id"], destructive=True),
+    _tool("command_job", "The state of commands started with run_command wait false: job (an id such as cmd:1) gives that one, none lists the last 50. Each shows running, done or failed, the seconds it has taken, its message and its result.",
+          {"job": {"type": "string", "maxLength": 40, "description": "A job id from run_command, such as cmd:1."}}, read=True, idempotent=True),
     _tool("run_commands", "Runs several commands in order as one batch and one undo step; it stops at the first failure and says which command failed. A risky command in the batch asks the person first.",
           {"commands": {"type": "array", "minItems": 1, "maxItems": 50, "items": {"type": "object", "properties": {"id": {"type": "string", "maxLength": 120}, "params": {"type": "object"}}, "required": ["id"], "additionalProperties": False}}}, ["commands"], destructive=True),
     _tool("get_selection", "The selection: its bounds in pixels (x, y, width, height), or none when nothing is selected.", {}, read=True, idempotent=True),
@@ -216,6 +225,38 @@ TOOLS = [
           {"values": {"type": "object", "description": "Setting names and their new values."}}, ["values"], idempotent=True),
     _tool("ui_inspect", "Describes parts of the formvis window: for each element matching a CSS selector, its tag, id, text, whether it is visible, disabled or pressed, and its box in window pixels.",
           {"selector": {"type": "string", "maxLength": 200}, "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10}}, ["selector"], read=True, idempotent=True),
+    # The window's own controls (P22): state, pictures of it, menus by path, named settings, dialogs, synthetic input, the window, raw control calls and file roots.
+    _tool("ui_state", "The window's state: the active tool, the open document and its view (zoom, rotation, centre in document pixels), the foreground and background colours, window and stage size, whether it has focus or is full screen, the theme, whether panels are shown, the dialogs open, whether a menu is open, what the engine is busy with, and the frames per second measured over a third of a second.",
+          {}, read=True, idempotent=True),
+    _tool("ui_screenshot", "A picture of the formvis window: with no selector the canvas as the person sees it (the picture, selection outline, guides and tool overlays); with a CSS selector (from ui_inspect) that part of the window, such as a panel or a dialog, drawn from a copy of its elements (fonts that are not installed on this computer may differ). Its longer side is at most max_size pixels.",
+          {"selector": {"type": "string", "maxLength": 200}, "max_size": {"type": "integer", "minimum": 64, "maximum": 2048, "default": 1024}, "format": {"type": "string", "enum": ["png", "jpeg"], "default": "png"},
+           "quality": {"type": "number", "minimum": 0.1, "maximum": 1, "default": 0.9}}, read=True, idempotent=True),
+    _tool("ui_menu_list", "The menu bar's tree. With no path the menus; with a path such as Filter > Blur the items under it, each with its command id, label, whether it can run now, whether it is checked and its shortcut. depth (1 to 4) says how many submenu levels to open; deeper ones show only their item count.",
+          {"path": {"type": "string", "maxLength": 200, "default": ""}, "depth": {"type": "integer", "minimum": 1, "maximum": 4, "default": 1}}, read=True, idempotent=True),
+    _tool("ui_menu_invoke", "Runs a menu item by its path from the menu bar, such as Edit > Undo or Filter > Blur > Gaussian Blur, as a person clicking it would (a dialog may open: ui_dialog answers it). params are the command's params as describe_command lists them. A command marked risky waits for the person's approval.",
+          {"path": {"type": "string", "maxLength": 200, "description": "Menu labels joined with > ending at the item."}, "params": {"type": "object"}}, ["path"], destructive=True),
+    _tool("ui_set", "Sets named parts of the window in one call: tool (a tool id), zoom (1 is 100 percent), centre ({x, y} document pixels to bring to the middle), rotation (degrees of view rotation), theme (a theme name), panels (shown or hidden), foreground and background (#rrggbb) and mask_target (edit the active layer's mask instead of its pixels). A field it does not have is refused by name.",
+          {"tool": {"type": "string", "maxLength": 60}, "zoom": {"type": "number", "minimum": 0.01, "maximum": 64}, "centre": {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}}, "required": ["x", "y"], "additionalProperties": False},
+           "rotation": {"type": "number", "minimum": -360, "maximum": 360}, "theme": {"type": "string", "maxLength": 60}, "panels": {"type": "boolean"}, "foreground": {"type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "description": "#rrggbb"},
+           "background": {"type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "description": "#rrggbb"}, "mask_target": {"type": "boolean"}}, idempotent=True),
+    _tool("ui_dialog", "Lists, fills in and answers the dialog that is open in the window. action list shows each open dialog's title, message, fields (name, kind, value, range or options) and buttons; set puts values into fields (a field's name from list, or its number as in Name #2); confirm presses the primary button; cancel closes it; button presses the button of that name. An open dialog blocks edits until it is answered.",
+          {"action": {"type": "string", "enum": ["list", "set", "confirm", "cancel"], "default": "list"}, "fields": {"type": "object", "description": "Field names and their new values (text, number, true or false for a checkbox, or an option's name)."},
+           "button": {"type": "string", "maxLength": 60}}),
+    _tool("ui_pointer", "Sends synthetic pointer events to the canvas as a pen, mouse or finger would: down, move, up, cancel, hover and wheel, each at x, y in document pixels (or window pixels with space window) with pressure (0 to 1), tilt_x and tilt_y (degrees), twist, button, and the modifier keys shift, alt, ctrl and meta. The active tool receives them exactly as a person's. A press left down is released at the end unless keep_down is true. Pressure counts only while Preferences > Tools reads pen pressure.",
+          {"events": {"type": "array", "minItems": 1, "maxItems": 2000, "items": {"type": "object", "properties": {
+              "type": {"type": "string", "enum": ["down", "move", "up", "cancel", "hover", "wheel"]}, "x": {"type": "number", "minimum": -1000000, "maximum": 1000000}, "y": {"type": "number", "minimum": -1000000, "maximum": 1000000},
+              "space": {"type": "string", "enum": ["document", "window"], "default": "document"}, "pressure": {"type": "number", "minimum": 0, "maximum": 1}, "tilt_x": {"type": "number", "minimum": -90, "maximum": 90}, "tilt_y": {"type": "number", "minimum": -90, "maximum": 90},
+              "twist": {"type": "number", "minimum": 0, "maximum": 359}, "button": {"type": "integer", "minimum": 0, "maximum": 4}, "pointer_type": {"type": "string", "enum": ["pen", "mouse", "touch"], "default": "pen"},
+              "shift": {"type": "boolean"}, "alt": {"type": "boolean"}, "ctrl": {"type": "boolean"}, "meta": {"type": "boolean"}, "delta_x": {"type": "number"}, "delta_y": {"type": "number"}}, "required": ["type"], "additionalProperties": False}},
+           "delay_ms": {"type": "integer", "minimum": 0, "maximum": 100, "default": 4, "description": "Pause after each event."}, "keep_down": {"type": "boolean", "default": False}}, ["events"], destructive=True),
+    _tool("ui_key", "Presses keys in the window as a person would, to whatever has focus: keys are combos such as Mod+Z, Shift+Tab, Escape, Enter or B (Mod is Ctrl, or Cmd on a Mac); text types characters into the focused text field or dialog field.",
+          {"keys": {"type": "array", "minItems": 1, "maxItems": 50, "items": {"type": "string", "maxLength": 40}}, "text": {"type": "string", "maxLength": 2000}}, destructive=True),
+    _tool("ui_window", "The formvis window itself: size reports its size and focus, resize sets it (the desktop app's window only; a browser tab refuses), focus asks for focus, fullscreen toggles full screen.",
+          {"action": {"type": "string", "enum": ["size", "resize", "focus", "fullscreen"]}, "width": {"type": "integer", "minimum": 400, "maximum": 10000}, "height": {"type": "integer", "minimum": 300, "maximum": 10000}}, ["action"]),
+    _tool("control_call", "Calls a window control by its protocol name with raw params, the same as the typed tool: ui.inspect, ui.state, ui.screenshot, ui.menu.list, ui.menu.invoke, ui.set, ui.dialog, ui.pointer, ui.key, window, app.open (open_file), app.save (save_project), app.export (export_image) and app.roots (file_roots). params are checked against that tool's schema.",
+          {"method": {"type": "string", "enum": list(CONTROL_METHODS)}, "params": {"type": "object", "default": {}}}, ["method"], destructive=True),
+    _tool("file_roots", "The folders agents may read and write files in (the person sets them), and the caps on one reply: the most characters of text and bytes of one picture a tool returns. With no folders set, any folder outside the system's own is allowed.",
+          {}, read=True, idempotent=True),
     # Layout boxes, depth, crop, sampling and mask files (1.88.8).
     _tool("boxes_list", "The layout boxes on the document (rectangles that say where new, kept, moved or removed things go, which Generate writes into its prompt): id, kind, name, description and rectangle in document pixels, with warnings about empty descriptions, tiny or overlapping boxes.", {}, read=True, idempotent=True),
     _tool("boxes_add", "Adds a layout box: a rectangle in document pixels with a kind (new, keep, move, remove, reference, text) and a description of what belongs there. At most 24 boxes; the rectangle is kept on the canvas.",
@@ -296,6 +337,23 @@ TOOLS = [
     _tool("set_filter", "Changes a smart filter on a smart object layer: its settings, kind, enabled, opacity (percent), blend mode, or remove it. With only id it lists the layer's filters.",
           {"id": _ID, "filter_id": {"type": "string", "description": "A filter id from add_filter or set_filter's list; the last filter when left out."}, "kind": {"type": "string", "maxLength": 60}, "settings": {"type": "object"},
            "enabled": {"type": "boolean"}, "opacity": {"type": "number", "minimum": 0, "maximum": 100}, "blend": {"type": "string"}, "remove": {"type": "boolean", "default": False}}, ["id"], destructive=True),
+    # Presets, edges, comparing, depth and the status bar (P21, P22).
+    _tool("apply_preset", "Applies a named adjustment preset: the built-in grain presets by film speed (iso100 to iso3200, slide, negative, bw400, bwpush, cine, expired), gradientMap looks (cyberpunk, sunset, tealorange, sepia, infrared, bwcontrast), photoFilter colours (warm85, cool80, sepia, underwater and more), or a preset the person saved in the Adjustments panel for any adjustment kind. With id it changes that adjustment layer, else it adds a new adjustment layer of that kind. With no name it lists the presets (for kind, or all).",
+          {"kind": {"type": "string", "maxLength": 40, "description": "The adjustment: grain, gradientMap, photoFilter, or the kind a saved preset belongs to."}, "name": {"type": "string", "maxLength": 80, "description": "A preset id or name from the list; leave out to list."},
+           "id": {"type": "string", "description": "An adjustment layer id of that kind, to change it instead of adding one."}}),
+    _tool("depth_from_layer", "Reads the depth of one layer alone with the local Depth Anything V2 Small model and adds it as a grey layer named Depth Map (near bright, far dark). Waits until the model has finished and the layer exists, then reports its id; fails with how to download the model when it is missing.",
+          {"id": {"type": "string", "description": "A pixel layer id from get_document; the active layer when left out."}}),
+    _tool("match_edges", "Cleans the edge of a cut-out layer so it sits on a new background: defringes (replaces the edge colours with those just inside) by width pixels, then decontaminates (removes the old background colour bled into the edge) by the given percent. One undo step; the layer needs pixels.",
+          {"id": _ID, "width": {"type": "integer", "minimum": 1, "maximum": 20, "default": 2, "description": "Defringe width in pixels."}, "decontaminate": {"type": "number", "minimum": 0, "maximum": 100, "default": 100, "description": "Percent; 0 skips it."},
+           "radius": {"type": "number", "minimum": 1, "maximum": 100, "default": 6, "description": "Decontaminate radius in pixels."}}, ["id"]),
+    _tool("realism_pass", "Makes a pasted or generated layer sit in its picture in one undo step: matches its colours to what is beneath it (a clipped Curves layer), cleans its edge as match_edges does, and adds a grain layer on top so the whole picture shares one grain. Each part can be turned off.",
+          {"id": _ID, "colour": {"type": "boolean", "default": True}, "amount": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.8, "description": "How far the colours move toward the background."}, "edges": {"type": "boolean", "default": True},
+           "grain": {"type": "string", "maxLength": 20, "default": "iso400", "description": "A grain preset id from apply_preset, or none."}}, ["id"]),
+    _tool("compare", "Shows the document before and after its last steps in one picture: steps back through the history (1 to 50), split (before on the left of a white line at position percent, after on the right) or side_by_side. The history ends where it began; nothing changes.",
+          {"steps": {"type": "integer", "minimum": 1, "maximum": 50, "default": 1}, "layout": {"type": "string", "enum": ["split", "side_by_side"], "default": "split"},
+           "position": {"type": "number", "minimum": 5, "maximum": 95, "default": 50, "description": "Where the split line sits, percent from the left."}, "max_size": {"type": "integer", "minimum": 64, "maximum": 2048, "default": 1024}}, read=True, idempotent=True),
+    _tool("set_status", "Puts a short note in the formvis status bar for the person to read (at most 160 characters), for seconds (1 to 600, default 60), or clears it with empty text. An error still shows first. Changes nothing in the document.",
+          {"text": {"type": "string", "maxLength": 160}, "seconds": {"type": "number", "minimum": 1, "maximum": 600, "default": 60}}, ["text"], idempotent=True),
 ]
 USE_WHEN = {
     "get_document": "you need the document's size, mode, layer ids or documents before any edit.",
@@ -369,6 +427,17 @@ USE_WHEN = {
     "jobs_cancel": "a background job is no longer wanted.",
     "set_settings": "a simple setting in Preferences should change.",
     "ui_inspect": "you need to know what a button, panel or dialog in the window shows or whether it is enabled.",
+    "ui_state": "you need the active tool, the view, the open dialogs or the window's size before acting on the window.",
+    "ui_screenshot": "you need to see the canvas as the person does, or a panel or dialog of the window.",
+    "ui_menu_list": "you need to find a menu item by its place in the menu bar.",
+    "ui_menu_invoke": "a menu item should run by its path and no typed tool or command id is at hand.",
+    "ui_set": "the tool, zoom, view centre, rotation, theme, panels, colours or mask target should change.",
+    "ui_dialog": "a dialog is open and blocks edits: read its fields and answer it.",
+    "ui_pointer": "a tool should be driven by pointer events a pen would send, with pressure and tilt, or by clicks and drags on the canvas.",
+    "ui_key": "a shortcut should be pressed, or text typed into a focused field.",
+    "ui_window": "the window's size should be read or changed, or it should take focus or full screen.",
+    "control_call": "a client speaks the control protocol's dotted method names instead of tool names.",
+    "file_roots": "you need to know which folders you may read and write, or how large a reply may be, before a file call.",
     "boxes_list": "you need to see the layout boxes before changing them or generating.",
     "boxes_add": "you want to say where a new, kept, moved or removed thing goes before generating.",
     "boxes_set": "a layout box needs another kind, description, name or place.",
@@ -403,7 +472,16 @@ USE_WHEN = {
     "set_brush": "the brush size, hardness, opacity, flow, preset or tip should change before painting.",
     "add_filter": "a filter should stay editable on a layer.",
     "set_filter": "a smart filter needs other settings, or should be turned off or removed.",
+    "apply_preset": "a grain, gradient map or photo filter look should be applied by name, or a saved adjustment preset reused.",
+    "depth_from_layer": "the depth should come from one layer alone rather than the whole picture, and you need to know it finished.",
+    "match_edges": "a cut-out layer shows a fringe of its old background at its edge.",
+    "realism_pass": "a pasted or generated layer looks stuck on and should sit in the picture.",
+    "compare": "you want to see what the last step or steps changed, before beside after.",
+    "set_status": "the person should be told in the formvis window what you are doing.",
+    "command_job": "you started a command with wait false and need its result.",
 }
+TOOLS.extend(PACK_TOOLS)
+USE_WHEN.update(PACK_USE_WHEN)
 for _t in TOOLS:
     _t["description"] += f" Use when {USE_WHEN[_t['name']]}"
 CORE = {"get_document", "get_image", "get_selection", "get_layer_tree", "new_document", "open_file", "save_project", "export_image", "select", "add_layer", "set_layer",
@@ -545,10 +623,16 @@ def _open_window() -> bool:
         return False
 
 
+_sink: contextvars.ContextVar = contextvars.ContextVar("progress_sink", default=None)   # the queue of a call whose client asked for progress
+_sinks: dict[str, asyncio.Queue] = {}   # window request id: where that call's progress goes
+
+
 async def _ask(name: str, args: dict, timeout: float) -> dict | None:
     rid = str(next(_ids))
     fut = asyncio.get_running_loop().create_future()
     _waiting[rid] = fut
+    if _sink.get() is not None:
+        _sinks[rid] = _sink.get()
     item = {"id": rid, "name": name, "arguments": args}
     _put(item)
     try:
@@ -557,6 +641,7 @@ async def _ask(name: str, args: dict, timeout: float) -> dict | None:
         return None
     finally:
         _waiting.pop(rid, None)
+        _sinks.pop(rid, None)
         _taken.pop(rid, None)
         if item in _pending:   # timed out or cancelled before the window took it: it must not run later
             _pending.remove(item)
@@ -565,9 +650,9 @@ async def _ask(name: str, args: dict, timeout: float) -> dict | None:
 # Files at absolute paths (1.53.3): read and written here, the window doing the picture's part.
 _PICTURES = {".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif", ".tif", ".tiff", ".heic", ".heif", ".bmp", ".qoi", ".tga", ".ico", ".pbm", ".pgm", ".ppm", ".pnm", ".pam", ".dng", ".cr2", ".cr3", ".nef", ".arw", ".raf", ".orf", ".rw2"}
 _PROJECTS = {".fvd", ".fmv", ".psd", ".psb", ".ora"}
-_EXPORTS = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
+_EXPORTS = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".psd": "psd", ".psb": "psb", ".ora": "ora"}
 _MAX_OPEN = 512 * 1024 * 1024
-_FILES = {"open_file": (_PICTURES | _PROJECTS, True), "place_image": ({".png", ".jpg", ".jpeg", ".webp"}, True), "timeline_render": ({".mp4", ".gif", ".zip"}, False),
+_FILES = {"open_file": (_PICTURES | _PROJECTS, True), "place_image": ({".png", ".jpg", ".jpeg", ".webp"}, True), "glb_place": ({".glb", ".gltf"}, True), "glb_info": ({".glb", ".gltf"}, True), "timeline_render": ({".mp4", ".gif", ".zip"}, False),
           "save_project": ({".fvd"}, False), "export_image": (set(_EXPORTS), False), "export_mask": ({".png"}, False), "export_layer": ({".png"}, False)}   # tool: the suffixes it takes, whether it reads
 
 
@@ -591,9 +676,9 @@ def _confined(path: Path) -> None:
     import tempfile
     key = (lambda p: Path(os.path.normcase(str(p)))) if os.name == "nt" else Path
     here = key(path)
-    roots = [r for r in os.environ.get("FORMVIS_AGENT_ROOTS", "").split(os.pathsep) if r.strip()]   # when set, the only folders agents may read or write
+    roots = [r for r in os.environ.get("FORMVIS_AGENT_ROOTS", "").split(os.pathsep) if r.strip()] or agents.limits()["roots"]   # when set (by the environment, else by the person), the only folders agents may read or write
     if roots and not any(_inside(here, key(Path(os.path.expanduser(r)).resolve())) for r in roots):
-        raise ValueError(f"{path} is outside the folders agents may use here (FORMVIS_AGENT_ROOTS: {', '.join(roots)}). Choose a file inside one of them.")
+        raise ValueError(f"{path} is outside the folders agents may use here ({', '.join(roots)}). Choose a file inside one of them; file_roots lists them; the person sets them with FORMVIS_AGENT_ROOTS or POST /api/agents/limits.")
     exempt =[key(Path.home().resolve()), key(Path(tempfile.gettempdir()).resolve())] + ([key(Path("/var/tmp").resolve()), key(Path("/private/var/tmp").resolve())] if os.name != "nt" else [])
     for root in _system_roots():
         base = key(Path(root).resolve())
@@ -744,7 +829,7 @@ def _refused(name: str, args: dict) -> str | None:
         except (ValueError, OSError) as exc:
             return str(exc)
         return None
-    if name not in _FILES or (name == "place_image" and not args.get("path")):
+    if name not in _FILES or (name in ("place_image", "glb_place", "glb_info") and not args.get("path")):
         return None
     kinds, reading = _FILES[name]
     try:
@@ -766,6 +851,12 @@ async def _run(name: str, args: dict) -> dict:
             state = ("the window is open and agents are allowed" if info["window"] and info["allowed"] else "the window is open but outside agents are not allowed (the first edit asks the person)" if info["window"]
                      else "no window is open (the first edit opens one)")
             return {"content": [{"type": "text", "text": f"formvis {__version__}: {state}; {len(info['documents'])} open document{'' if len(info['documents']) == 1 else 's'}."}], "structuredContent": info}
+        if name == "file_roots":
+            lim = agents.limits()
+            env = [r for r in os.environ.get("FORMVIS_AGENT_ROOTS", "").split(os.pathsep) if r.strip()]
+            data = {"roots": env or lim["roots"], "restricted": bool(env or lim["roots"]), "system_folders_refused": _system_roots(), "text_chars": lim["text_chars"], "image_bytes": lim["image_bytes"], "request_bytes": MAX_BODY, "reply_bytes": MAX_REPLY}
+            said = f"Agents may use files inside {', '.join(data['roots'])} only." if data["restricted"] else "No folders are set, so agents may use any folder except the system's own."
+            return {"content": [{"type": "text", "text": f"{said} A reply carries at most {data['text_chars']:,} characters of text and {data['image_bytes']:,} bytes of one picture."}], "structuredContent": data}
         if name == "file_info":
             info = await asyncio.to_thread(_info, args)
             return {"content": [{"type": "text", "text": json.dumps(info)}], "structuredContent": info}
@@ -796,6 +887,12 @@ async def _run(name: str, args: dict) -> dict:
             args = {**{k: v for k, v in args.items() if k != "path"}, "data": data, "name": args.get("name") or path.stem[:120]}
         elif name == "place_image" and not args.get("data"):
             return _fail("Give place_image a path (an absolute path to the image file) or data (base64).")
+        if name in ("glb_place", "glb_info") and args.get("path"):
+            path = _path(args.get("path"), _FILES[name][0], True)
+            if path.stat().st_size > _MAX_OPEN:
+                return _fail(f"{path.name} is larger than 512 MB.")
+            data = base64.b64encode(await asyncio.to_thread(path.read_bytes)).decode()
+            args = {**{k: v for k, v in args.items() if k != "path"}, "data": data, **({"name": args.get("name") or path.stem[:120]} if name == "glb_place" else {})}
         if name == "timeline_render":   # 1.59.7, DEV_PLAN 25.5: the window renders, this writes
             path = _path(args.get("path"), _FILES[name][0], False, args.get("overwrite"))
             out = await _call("__render", {"format": {".mp4": "mp4", ".gif": "gif", ".zip": "png"}[path.suffix.lower()],
@@ -827,7 +924,7 @@ async def _run(name: str, args: dict) -> dict:
     except ValueError as exc:
         return _fail(str(exc))
     except OSError as exc:
-        return _fail(f"Could not {'read' if name in ('open_file', 'place_image') else 'write'} the file: {exc.strerror or exc}.")
+        return _fail(f"Could not {'read' if name in ('open_file', 'place_image', 'glb_place', 'glb_info') else 'write'} the file: {exc.strerror or exc}.")
     return await _call(name, args)
 
 
@@ -866,6 +963,9 @@ async def _risk(name: str, args: dict) -> str | None:
     if name in agents.RISKY_TOOLS and (name != "convert_file" or args.get("overwrite") is True):   # a new file replaces nothing
         return f"{name} {agents.RISKY_TOOLS[name]} at {args.get('output_path') or args.get('path', 'a path')}, which Undo cannot restore"
     ids = [args.get("id")] if name == "run_command" else [c.get("id") for c in args.get("commands") or [] if isinstance(c, dict)] if name == "run_commands" else []
+    if name == "ui_menu_invoke":   # the menu path names a command; it is judged as run_command would judge it
+        found = await _call("__menu_id", {"path": args.get("path", "")})
+        ids = [(found.get("structuredContent") or {}).get("id")] if not found.get("isError") else []
     for cid in dict.fromkeys(i for i in ids if isinstance(i, str)):
         out = await _call("describe_command", {"id": cid})
         meta = out.get("structuredContent") or {}
@@ -877,6 +977,12 @@ async def _risk(name: str, args: dict) -> str | None:
 async def _agent_call(client: str, name: str, args: dict) -> dict:
     """A tool call as an outside agent's: refused when agents are off or this client is denied, held for the person's
     approval when it is risky under the Ask policy, and noted in the activity feed either way."""
+    if name == "control_call":   # a dotted method name is the typed tool under another name, checked against that tool's schema
+        target = CONTROL_METHODS.get(args.get("method", ""))
+        why = _invalid(args.get("params") or {}, SCHEMAS[target], "params") if target else None
+        if why:
+            return _fail(f"control_call {args.get('method')} was not run: {why}")
+        name, args = target, {k: v for k, v in (args.get("params") or {}).items() if v is not None}
     entry = agents.begin(client, name, args)
     refusal = agents.admit(client)
     if refusal:
@@ -950,8 +1056,80 @@ MAX_INFLIGHT = 32   # calls waiting at once
 MAX_REPLY = 24 * 1024 * 1024   # the most a tool's reply may carry in text and picture data
 
 
+MAX_PER_CLIENT = 8   # calls one agent may have waiting at once
+
+
 def _reply_bytes(result: dict) -> int:
     return sum(len(c.get("data") or "") + len(c.get("text") or "") for c in result.get("content", []) if isinstance(c, dict))
+
+
+def _budgeted(name: str, result: dict) -> dict:
+    """A reply within the agent budgets (agents.limits): text cut at text_chars with a note of how much was left out, structured data
+    over the same size dropped with a note, and a picture over image_bytes refused with how to ask for less."""
+    lim = agents.limits()
+    cap = lim["text_chars"]
+    content = []
+    for c in result.get("content", []):
+        if not isinstance(c, dict):
+            content.append(c)
+        elif c.get("type") == "image" and len(c.get("data") or "") > lim["image_bytes"]:
+            return _fail(f"{name} ran, but its picture is {len(c['data']) // 1024:,} KB, over the {lim['image_bytes'] // 1024:,} KB limit for one picture. Ask for less: a smaller max_size, a crop box, or a JPEG.")
+        elif c.get("type") == "text" and len(c.get("text") or "") > cap:
+            left = len(c["text"]) - cap
+            content.append({**c, "text": c["text"][:cap] + f"\n[Truncated: {left:,} more characters were left out because a reply is capped at {cap:,} characters for agents. Ask for less: filter, a smaller limit or a region.]"})
+        else:
+            content.append(c)
+    out = {**result, "content": content}
+    structured = result.get("structuredContent")
+    if structured is not None and len(json.dumps(structured)) > cap:
+        out.pop("structuredContent", None)
+        out["content"] = content + [{"type": "text", "text": f"[Truncated: the structured data of {len(json.dumps(structured)):,} characters is over the {cap:,} character cap and was left out; the text above is what remains.]"}]
+    return out
+
+
+async def _stream_call(req_id, modern: bool, client: str, name: str, args: dict, token):
+    """One tool call answered as server-sent events: the window's progress as notifications/progress with the client's token,
+    then the result. A client's notifications/cancelled or a dropped connection stops the call, and the window with it."""
+    queue: asyncio.Queue = asyncio.Queue()
+    mark = _sink.set(queue)
+    key = (client, json.dumps(req_id))
+    task = asyncio.ensure_future(_agent_call(client, name, args))   # the task keeps the context it was made in, so its window requests report to the queue
+    _sink.reset(mark)
+    _inflight[key] = task
+    event = lambda msg: f"event: message\ndata: {json.dumps(msg)}\n\n"
+    note = lambda item: event({"jsonrpc": "2.0", "method": "notifications/progress", "params": {"progressToken": token, **item}})
+    try:
+        while not task.done():
+            try:
+                yield note(await asyncio.wait_for(queue.get(), 0.25))
+            except asyncio.TimeoutError:
+                continue
+        while not queue.empty():
+            yield note(queue.get_nowait())
+        if task.cancelled():
+            yield event(_err(req_id, -32800, "Request cancelled by the client."))
+            return
+        result = _budgeted(name, task.result())
+        if _reply_bytes(result) > MAX_REPLY:
+            result = _fail(f"{name} ran, but its reply is {_reply_bytes(result) // 1048576} MB, over the {MAX_REPLY // 1048576} MB limit for agents. Ask for less.")
+        yield event(_ok(req_id, result, modern))
+    finally:
+        if not task.done():
+            task.cancel()
+        _inflight.pop(key, None)
+        _cancelled.discard(key)
+
+
+@router.post("/api/mcp/bridge/progress")
+async def bridge_progress(request: Request) -> dict:
+    """A long call in the window reporting how far it is. The answer says whether to stop: the agent cancelled, or nobody waits for the result any more."""
+    body = await request.json()
+    rid = str(body.get("id"))
+    queue = _sinks.get(rid)
+    if queue is not None:
+        item = {"progress": float(body.get("progress") or 0), **({"total": float(body["total"])} if body.get("total") else {}), **({"message": str(body["message"])[:200]} if body.get("message") else {})}
+        queue.put_nowait(item)
+    return {"cancel": rid not in _waiting}
 
 
 @router.get("/mcp")
@@ -1028,13 +1206,18 @@ async def mcp(request: Request) -> Response:
                 out = _ok(req_id, _fail(f"{name} was not run: {why}"), modern)
             elif len(_inflight) >= MAX_INFLIGHT:
                 out = _ok(req_id, _fail(f"{name} was not run: {len(_inflight)} calls are already waiting. Wait for one to finish, or cancel one, then retry."), modern)
+            elif sum(1 for k in _inflight if k[0] == _client_of(request, params, sid)[0]) >= MAX_PER_CLIENT:
+                out = _ok(req_id, _fail(f"{name} was not run: this agent already has {MAX_PER_CLIENT} calls waiting. Wait for one to finish, or cancel one, then retry."), modern)
             else:
                 client = _client_of(request, params, sid)[0]
                 key = (client, json.dumps(req_id))
+                token = meta.get("progressToken")
+                if token is not None and "text/event-stream" in request.headers.get("accept", ""):   # progress asked for: notifications/progress, then the result, as an event stream
+                    return StreamingResponse(_stream_call(req_id, modern, client, name, args, token), media_type="text/event-stream", headers=headers)
                 task = asyncio.ensure_future(_agent_call(client, name, args))
                 _inflight[key] = task
                 try:
-                    result = await task
+                    result = _budgeted(name, await task)
                     if _reply_bytes(result) > MAX_REPLY:
                         result = _fail(f"{name} ran, but its reply is {_reply_bytes(result) // 1048576} MB, over the {MAX_REPLY // 1048576} MB limit for agents. Ask for less: a smaller max_size, a crop box, or a JPEG.")
                     out = _ok(req_id, result, modern)

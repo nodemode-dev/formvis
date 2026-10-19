@@ -123,9 +123,12 @@ export class RecipesSection {
   private readonly empty = el('<p class="cv-note">No workflows kept yet. Add one saved from ComfyUI with Export (API).</p>');
   private readonly note = el('<p class="cv-note" role="status"></p>');
   private readonly input = el<HTMLInputElement>('<input type="file" accept=".json,application/json" multiple hidden aria-label="Add workflows">');
+  private readonly replace = el<HTMLInputElement>('<input type="file" accept=".json,application/json" hidden aria-label="Update a workflow">');
+  private updating = '';
 
   constructor() {
-    this.el.append(this.empty);
+    this.el.append(this.empty, this.replace);
+    this.replace.addEventListener('change', () => void this.update());
     for (const [family] of RECIPE_FAMILIES) {
       const box = el<HTMLDetailsElement>(`<details class="cv-recipes-group" data-family="${family}" open hidden><summary></summary></details>`), list = el('<div class="cv-recipes-list"></div>');
       box.append(list);
@@ -150,13 +153,42 @@ export class RecipesSection {
       patch(g.list, items, {
         key: (r) => r.name,
         create: (r) => {
-          const line = el('<div class="cv-plugins-row"><span></span><button type="button" class="cv-btn cv-btn-ghost">Remove</button></div>');
-          (line.querySelector('button') as HTMLButtonElement).addEventListener('click', () => { removeRecipe(r.name); this.refresh(); setText(this.note, `${r.name} removed.`); });
+          const line = el('<div class="cv-plugins-row"><span></span><button type="button" class="cv-btn cv-btn-ghost" data-act="edit" title="Copies the workflow and opens ComfyUI; paste it on the canvas">Edit in ComfyUI</button><button type="button" class="cv-btn cv-btn-ghost" data-act="update" title="Replace this recipe with a workflow saved from ComfyUI">Update...</button><button type="button" class="cv-btn cv-btn-ghost" data-act="remove">Remove</button></div>');
+          const act = (name: string): HTMLButtonElement => line.querySelector(`[data-act="${name}"]`) as HTMLButtonElement;
+          act('remove').addEventListener('click', () => { removeRecipe(r.name); this.refresh(); setText(this.note, `${r.name} removed.`); });
+          act('update').addEventListener('click', () => { this.updating = r.name; this.replace.click(); });
+          act('edit').addEventListener('click', () => void this.edit(r.name));
           return line;
         },
         update: (node, r) => setText(node.querySelector('span'), `${r.name} · ${r.nodes} nodes`),
       });
     }
+  }
+
+  /** Edit in ComfyUI: the kept graph goes to the clipboard and ComfyUI opens in a new tab, ready for a paste on its canvas. */
+  private async edit(name: string): Promise<void> {
+    const r = recipes().find((x) => x.name === name), url = loadPrefs().comfyuiUrl;
+    if (!r) return;
+    if (!/^https?:\/\//i.test(url)) { setText(this.note, 'Set the ComfyUI address in Preferences > Plugins first.'); return; }
+    let copied = true;
+    try { await navigator.clipboard.writeText(r.json); } catch { copied = false; }
+    window.open(url, '_blank', 'noopener');
+    setText(this.note, `${copied ? `${name} copied: paste it on the ComfyUI canvas (Ctrl+V)` : `${name} could not be copied: open it from your own file`}, edit it, then Export (API) and choose Update... on ${name}.`);
+  }
+
+  /** Update...: the chosen workflow (API or editor format) replaces the recipe of the same name, then the connected ComfyUI is asked what it still lacks. */
+  private async update(): Promise<void> {
+    const f = this.replace.files?.[0], name = this.updating;
+    this.replace.value = '';
+    if (!f || !name) return;
+    try {
+      const text = await apiWorkflow(await f.text(), loadPrefs().comfyuiUrl, f.name), problem = addRecipe(name, text);
+      this.refresh();
+      if (problem) { setText(this.note, problem); return; }
+      const probe = await api.comfyuiProbe(loadPrefs().comfyuiUrl, [{ name, workflow: text }]).catch(() => null), c = probe?.recipes?.find((x) => x.name === name);
+      const gaps = c ? [c.missing_nodes.length ? `${c.missing_nodes.length} missing node${c.missing_nodes.length === 1 ? '' : 's'} (${c.missing_nodes.join(', ')})` : '', c.missing_models.length ? `${c.missing_models.length} model file${c.missing_models.length === 1 ? '' : 's'} not listed (${c.missing_models.map((m) => m.name).join(', ')})` : ''].filter(Boolean) : [];
+      setText(this.note, `${name} updated${c ? (gaps.length ? `. ComfyUI lacks ${gaps.join(' and ')}.` : '. ComfyUI has every node and model it needs.') : '. ComfyUI did not answer, so its nodes were not checked.'}`);
+    } catch (err) { setText(this.note, err instanceof Error ? err.message : `${f.name} could not be read.`); }
   }
 
   private async read(): Promise<void> {

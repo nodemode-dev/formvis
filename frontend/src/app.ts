@@ -72,7 +72,7 @@ import { ShapeStyleDialog } from './ui/panels/shape-style-dialog';
 import { PathsPanel } from './ui/paths';
 import { SmartFiltersDialog } from './ui/panels/smart-filters-dialog';
 import { STACK_MODES } from './engine/stack-modes';
-import { Actions, CONDITION_TESTS, RECORDABLE, batchName, type Action, type ActionStep, type ConditionTest } from './ui/actions';
+import { ACTION_COLOURS, ACTION_KEYS, Actions, CONDITION_TESTS, RECORDABLE, actionsFrom, batchName, type Action, type ActionStep, type ConditionTest } from './ui/actions';
 import { ActionsDialog, BatchDialog, DropletDialog } from './ui/panels/actions-dialogs';
 import { LensBatchDialog, type LensBatchOptions } from './ui/panels/lens-batch-dialog';
 import { ImageProcessorDialog, type ImageProcessorOptions } from './ui/panels/image-processor-dialog';
@@ -173,12 +173,17 @@ import { boxesText } from './engine/boxes';
 import { GeneratePanel } from './ui/panels/generate-panel';
 import { ColorMatchDialog } from './ui/panels/color-match';
 import { FilmLayerDialog } from './ui/panels/film-layer';
+import { AiLabelDialog } from './ui/panels/ai-label-dialog';
+import { aiLabelInfo, filmClipboard, filmPointsOf, packTool, removeAiLabel, setFilmClipboard, setFilmPoints } from './automation/pack-tools';
 import { Model3DDialog } from './ui/panels/model3d';
 import { Extrude3DDialog } from './ui/panels/extrude3d-dialog';
 import { PanoramaDialog } from './ui/panels/panorama-dialog';
 import { AgentConfirmDialog } from './ui/panels/agent-confirm';
 import { AgentBridge } from './automation/agent-bridge';
+import { UiControl } from './automation/ui-control';
 import { attachCatalogue, catalogue } from './automation/catalogue';
+import { runScript } from './automation/script-sandbox';
+import { parseAtn, writeAtn } from './io/atn';
 import { setPixelBudget } from './engine/types';
 import { AssistantPanel } from './ui/panels/assistant';
 import { AgentPanel } from './ui/panels/agent-panel';
@@ -190,6 +195,7 @@ import { VERSION } from './version';
 import { WhatsNewDialog } from './ui/panels/whats-new';
 import { RELEASES } from './ui/panels/whats-new-data';
 import { PluginHost } from './plugins/host';
+import { FolderPlugins } from './plugins/modules';
 import { PluginsDialog } from './ui/panels/plugins-dialog';
 import { LargePictureDialog } from './ui/panels/large-picture';
 import { TiffPagesDialog } from './ui/panels/tiff-pages';
@@ -221,6 +227,9 @@ import { ALL_PANELS, Dock, registerPanel, unregisterPanel } from './ui/dock';
 import { AdjustPanel } from './ui/panels/adjust-panel';
 import { FILTER_LABELS, FilterPanel, type FilterKind, runFilter, defaultFilterSettings, type FilterPanelSettings, filterMargin } from './ui/panels/filter-panel';
 import { LIBRARY, isLibKind, libDefaults, libHasDialog, libInGroup, type LibGroup } from './engine/filter-library';
+import { WasmFilterDialog, WasmPluginsDialog, applyWasm } from './ui/panels/wasm-plugins-dialog';
+import { wasmPlugins, runWasmFilter } from './engine/wasm-plugin-host';
+import { isWasmKind, wasmIdOf, wasmValues } from './engine/wasm-plugin';
 import { NeuralFiltersDialog } from './ui/panels/neural-dialog';
 import { WideAngleDialog } from './ui/panels/wide-angle-dialog';
 import { AmountDialog, CanvasSizeDialog, FitImageDialog, ImageSizeDialog } from './ui/panels/size-dialogs';
@@ -230,7 +239,7 @@ import { JpegDialog } from './ui/panels/jpeg-dialog';
 import { BackgroundPanel } from './ui/panels/background-panel';
 import { ColorPickerDialog } from './ui/panels/color-picker';
 import { LiveMaskDialog } from './ui/panels/live-mask-dialog';
-import { Commands, type Command, type CommandParam } from './ui/commands';
+import { Commands, comboOf, type Command, type CommandParam } from './ui/commands';
 import { anyDialogOpen, askSaveChanges, askSaveChangesAll, confirmAction, promptName } from './ui/dialogs';
 import { el, mountOnce, q, revealApp, setDisabled, setHidden, setStyleVar, setText, setTitle } from './ui/dom';
 import { icon } from './ui/icons';
@@ -965,10 +974,10 @@ export function startApp(): void {
           if (/\.png$/i.test(f.name)) { const n = await apngFrames(f).catch(() => 0); if (n > 1) toast(`${f.name} is an animated PNG of ${n} frames; only the first frame was opened.`, 'info'); }
           // A single camera RAW opens into Camera Raw first (DEV_PLAN 36.21): Cancel does not open it; 16 Bits/Channel opens a 16-bit document.
           if (RAW_FILE.test(f.name) && images.length === 1) {
-            rawPick = await cameraRaw.ask(f);
+            rawPick = loadPrefs().rawAsk ? await cameraRaw.ask(f) : { wb: { wb: loadPrefs().rawWb, temperature: 0, tint: 0 }, bits: loadPrefs().rawBits };
             if (!rawPick) continue;
             if (rawPick.bits === 16) {
-              try { const d = await api.decodeRaw16(f, f.name, rawPick.wb); engine.openDeep(stripExt(f.name), deepFromU16(d.data, d.width, d.height)); } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
+              try { const d = await api.decodeRaw16(f, f.name, rawPick.wb); engine.openDeep(stripExt(f.name), deepFromU16(d.data, d.width, d.height)); if (d.profile === 'prophoto') engine.assignProfile({ name: 'ProPhoto RGB', icc: toBase64(await api.colourProfileBytes('builtin:prophoto')) }); } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
               rawPick = null;
               continue;
             }
@@ -1405,7 +1414,7 @@ export function startApp(): void {
           : await toBlob(c, 'image/webp', s.quality / 100);
         // The AI label (1.51.8), in PNG, JPEG and WebP.
         // File Info (29.2) goes in as XMP, the AI label inside the same packet; with no File Info the label is written alone.
-        const ai = s.aiLabel && s.aiLabel !== 'none' ? s.aiLabel : undefined;
+        const ai = s.aiLabel && s.aiLabel !== 'none' ? s.aiLabel : p.doc.meta?.aiLabel;
         // Metadata (36.29): the document's File Info, none, or only the Copyright and Contact texts.
         const meta = exportMeta(s, p.doc.meta);
         const labelled = metaWritable(meta) ? await withXmp(blob, s.format, meta, new Date(), ai) : ai ? await withAiLabel(blob, s.format, ai) : blob;
@@ -1838,16 +1847,52 @@ export function startApp(): void {
   }
 
   /** The droplet script (DEV_PLAN 30.5): drop pictures onto it to run the named action over them from the formvis folder. */
-  function dropletScript(action: string, format: string, o: { quality?: number; out?: string; recursive?: boolean } = {}): string {
+  function dropletScript(action: string, format: string, o: { quality?: number; out?: string; recursive?: boolean; suffix?: string } = {}): string {
     const sh = (v: string): string => `'${v.replace(/'/g, `'\\''`)}'`, q = sh(action);
-    const extra = `${o.quality && format !== 'png' && format !== 'tiff' ? ` --quality ${Math.min(100, Math.max(1, Math.round(o.quality)))}` : ''}${o.out?.trim() ? ` --out ${sh(o.out.trim())}` : ''}${o.recursive ? ' --recursive' : ''}`;
+    const extra = `${o.quality && format !== 'png' && format !== 'tiff' ? ` --quality ${Math.min(100, Math.max(1, Math.round(o.quality)))}` : ''}${o.out?.trim() ? ` --out ${sh(o.out.trim())}` : ''}${o.suffix?.trim() ? ` --suffix ${sh(o.suffix.trim())}` : ''}${o.recursive ? ' --recursive' : ''}`;
     return `#!/bin/sh\n# formvis droplet for the action ${action.replace(/[\r\n]+/g, ' ')}. Keep this file in the formvis folder, then drop pictures or folders onto it or run it with their names.\ncd "$(dirname "$0")" || exit 1\nexec ./formvis cli process "$@" --action ${q} --format ${format}${extra}\n`;
   }
 
-  async function makeDroplet(o: { action: string; format: string; quality: number; out: string; recursive: boolean }): Promise<void> {
+  /** The droplet data file (.fvdrop): the action and the output choices as JSON, run by `./formvis cli droplet FILE pictures...`. */
+  function dropletData(o: { action: string; format: string; quality: number; out: string; recursive: boolean; suffix?: string }): string {
+    const jpegLike = o.format === 'jpg' || o.format === 'webp';
+    return `${JSON.stringify({ kind: 'formvis-droplet', version: 1, action: o.action, output: { format: o.format, ...(jpegLike ? { quality: Math.min(100, Math.max(1, Math.round(o.quality))) } : {}), ...(o.out.trim() ? { out: o.out.trim() } : {}), ...(o.suffix?.trim() ? { suffix: o.suffix.trim() } : {}), recursive: o.recursive, inPlace: false } }, null, 2)}\n`;
+  }
+
+  async function makeDroplet(o: { action: string; format: string; quality: number; out: string; recursive: boolean; kind?: 'script' | 'data'; suffix?: string }): Promise<void> {
+    if (o.kind === 'data') {
+      await deliver(new Blob([dropletData(o)], { type: 'application/json' }), `${o.action}.fvdrop`);
+      toast('Run it with ./formvis cli droplet followed by the file and the pictures or folders.');
+      return;
+    }
     await deliver(new Blob([dropletScript(o.action, o.format, o)], { type: 'text/x-shellscript' }), `${o.action}-droplet.sh`);
     toast('Put the droplet in the formvis folder, make it executable, then drop pictures or folders onto it.');
   }
+
+  /** The pictures a command was given: files as [{name, data (base64)}] and, with documents true, every open document as it shows now. */
+  async function sourceFiles(a: Record<string, unknown> | undefined): Promise<File[]> {
+    const out: File[] = [];
+    if (Array.isArray(a?.files)) {
+      for (const f of a.files as Array<{ name?: unknown; data?: unknown }>) {
+        if (typeof f?.data !== 'string') continue;
+        const bin = atob(f.data), bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        out.push(new File([bytes], typeof f.name === 'string' && f.name ? f.name : `image-${out.length + 1}.png`));
+      }
+    }
+    if (a?.documents === true) {
+      for (const p of [...engine.projects]) {
+        const s = engine.flattenedOf(p);
+        if (s) out.push(new File([await toBlob(s)], `${p.name || `Document ${out.length + 1}`}.png`, { type: 'image/png' }));
+      }
+    }
+    return out;
+  }
+
+  const SOURCE_PARAMS = {
+    files: { type: 'array' as const, description: 'Pictures as a list of {name, data} with the file bytes in base64; ./formvis cli run takes plain paths (files=a.jpg,b.jpg) and reads them.' },
+    documents: { type: 'boolean' as const, description: 'Use every open document as it shows now (with or without files).' },
+  };
 
   /** Conditional Mode Change (DEV_PLAN 30.5a): a document whose mode is in `from` goes to `to` by the routes the Mode
    *  commands use (CMYK and Lab through RGB, Bitmap through Grayscale); any other document is left as it is. */
@@ -1904,8 +1949,9 @@ export function startApp(): void {
   /** A conditional step plays the action named for the branch that holds (none named: nothing happens). It fails when that
    *  action is missing, or when conditionals are nested more than eight deep. */
   let conditionalDepth = 0;
-  async function conditionalStep(s: Extract<ActionStep, { kind: 'conditional' }>): Promise<boolean | 'stopped'> {
-    const name = conditionHolds(s.test) ? s.then : s.else;
+  async function conditionalStep(s: Extract<ActionStep, { kind: 'conditional' }>): Promise<boolean | 'stopped'> { return playNamed(conditionHolds(s.test) ? s.then : s.else); }
+  /** Plays the action called `name` inside the one that is playing (a nested Play Action step, or a conditional's branch). */
+  async function playNamed(name: string): Promise<boolean | 'stopped'> {
     if (!name) return true;
     const target = actions.list.find((a) => a.name === name);
     if (!target || conditionalDepth >= 8) return false;
@@ -1941,6 +1987,14 @@ export function startApp(): void {
     if (s.kind === 'fitImage') return engine.fitImage(s.w, s.h, s.enlarge, true);
     if (s.kind === 'conditionalMode') return conditionalMode(s.from, s.to);
     if (s.kind === 'conditional') return conditionalStep(s);
+    if (s.kind === 'play') return playNamed(s.name);
+    if (s.kind === 'menu') {
+      const c = commands.get(s.id);
+      if (!c || s.id === 'play-action' || !commands.enabled(c)) return false;
+      await c.run();
+      return true;
+    }
+    if (s.kind === 'unsupported') return true;
     const doc = engine.current?.doc, follow = relative && !!doc && !!s.fromW && !!s.fromH;
     if (s.kind === 'imageSize') {
       // Following each image: the same proportion of this document as of the one the step was recorded on.
@@ -2131,7 +2185,7 @@ export function startApp(): void {
   }
 
   /** The rendered file itself (1.59.7), which Render Video delivers and the MCP tool timeline_render writes. */
-  async function renderVideoBlob(c: RenderChoice): Promise<Blob | null> {
+  async function renderVideoBlob(c: RenderChoice, step?: (done: number, total: number) => Promise<boolean> | boolean): Promise<Blob | null> {
     const p = engine.current, vt = engine.video;
     if (!p || !vt) return null;
     const w = Math.max(1, Math.round(p.doc.width * c.scale)), h = Math.max(1, Math.round(p.doc.height * c.scale)), delay = Math.round(1000 / vt.fps);
@@ -2147,6 +2201,7 @@ export function startApp(): void {
       else if (c.format === 'jpg' || c.format === 'webp') pngs.push(await toBlob(flat, c.format === 'jpg' ? 'image/jpeg' : 'image/webp', 0.92));
       else pngs.push(await toBlob(flat, 'image/png'));
       await new Promise((r) => window.setTimeout(r, 0));
+      if (step && (await step(f - c.from + 1, c.to - c.from)) === false) return null;
     }
     const base = (p.name || 'Untitled').replace(/\.[^.]+$/, '');
     if (c.format === 'gif') return new Blob([encodeGif(gif, w, h, vt.loops)], { type: 'image/gif' });
@@ -2560,7 +2615,7 @@ export function startApp(): void {
     void warmLama().then((ok) => { if (!ok) lamaWarmAt = 0; });
   };
   engine.removeBrushFill = async (area) => {
-    if (!(await modelReady('lama-inpaint'))) { toast('Remove fills with LaMa: download it in Preferences > Plugins > Local models, or turn LaMa off in the options bar.', 'error'); return; }
+    if (!(await modelReady('lama-inpaint'))) { toast('LaMa is not downloaded (Preferences > Plugins > Local models), so Remove used the patch fill.'); engine.removeFillLocal(area); return; }
     await engine.task(async () => {
       try { await engine.removeArea(area, 'Remove', localInpaint()); } catch (err) { toast(message(err), 'error'); }
     });
@@ -2829,6 +2884,24 @@ export function startApp(): void {
     document.body.appendChild(i);
     i.click();
   });
+  /** One script file through a fresh input; null when cancelled. */
+  const pickScriptFile = (): Promise<File | null> => new Promise((resolve) => {
+    const i = el<HTMLInputElement>('<input type="file" accept=".js,.mjs,.txt,text/javascript,text/plain" data-role="script-file" hidden>');
+    const done = (f: File | null): void => { resolve(f); i.remove(); };
+    i.addEventListener('change', () => done(i.files?.[0] ?? null), { once: true });
+    i.addEventListener('cancel', () => done(null), { once: true });
+    document.body.appendChild(i);
+    i.click();
+  });
+  /** File > Scripts > Browse: the chosen .js file runs in the sandbox with run(id, params) for the command catalogue. */
+  const browseScript = async (): Promise<void> => {
+    const f = await pickScriptFile();
+    if (!f) return;
+    if (f.size > 200000) { toast(`${f.name} is larger than a script may be (200 KB).`, 'error'); return; }
+    const r = await runScriptSource(await f.text());
+    if (r.ok) toast(`Ran ${f.name}${r.log.length ? `: ${r.log[0]}` : ''}.`);
+    else toast(`${f.name} stopped: ${r.error}`, 'error');
+  };
   /** File > Import > Notes: the text notes of a PSD, or the paragraphs of a text file, added to the document as notes. */
   const importNotes = async (): Promise<void> => {
     const f = await pickNotesFile(), p = engine.current;
@@ -2894,11 +2967,25 @@ export function startApp(): void {
 
   const actions = new Actions();
   const scriptEvents = new ScriptEvents();
+  /** A script file's source run in the sandbox against the command catalogue. */
+  async function runScriptSource(source: string): ReturnType<typeof runScript> {
+    return runScript(source, {
+      run: async (id, params) => { const r = await catalogue.runCommand(id, params); if (!r.ok) throw new Error(r.error ?? `${id} did not run.`); return r.result; },
+      list: () => catalogue.listCommands().map((c) => ({ id: c.id, label: c.label })),
+    });
+  }
   function fireEvent(e: ScriptEvent): void {
-    void scriptEvents.fire(e, async (name) => {
-      const x = actions.list.find((a) => a.name === name);
-      if (!x || !engine.current) return;   // actions play on a document; with none open (as at start) the event passes quietly
+    void scriptEvents.fire(e, async (b) => {
+      if (b.script !== undefined) {
+        const r = await runScriptSource(b.script);
+        if (!r.ok) throw new Error(r.error ?? 'The script failed.');
+        return r.log[0] ?? 'ran';
+      }
+      const x = actions.list.find((a) => a.name === b.action);
+      if (!x) throw new Error(`There is no action named "${b.action}".`);
+      if (!engine.current) return 'no document open';   // actions play on a document; with none open (as at start) the event passes quietly
       await playAction(x);
+      return 'played';
     });
   }
   let knownIds = new Set(engine.projects.map((p) => p.id)), knownNew = engine.newCount;
@@ -2934,7 +3021,12 @@ export function startApp(): void {
     trap: new TrapDialog(engine),
     frequency: new FrequencyDialog(engine),
     colorRange: new ColorRangeDialog(engine),
-    actions: new ActionsDialog(actions, { play: (x) => playAction(x), save: (b, n) => deliver(b, n) }),
+    actions: new ActionsDialog(actions, {
+      play: (x) => playAction(x), save: (b, n) => deliver(b, n),
+      menu: () => commands.all().filter((c) => c.id !== 'play-action').map((c) => ({ id: c.id, label: commands.label(c) })).sort((a, b) => a.label.localeCompare(b.label)),
+      run: (id, params) => commands.get(id)?.run(params),
+      keyTaken: (combo) => { const c = commands.forCombo(combo); return c ? commands.label(c) : ''; },
+    }),
     batch: new BatchDialog(actions, (x, f, fmt, q, t, s) => runBatch(x, f, fmt, q, t, s)),
     droplet: new DropletDialog(actions, (o) => makeDroplet(o)),
     lensBatch: new LensBatchDialog((o, f) => runLensBatch(o, f)),
@@ -3090,6 +3182,7 @@ export function startApp(): void {
   dialogs.generative.heard = heard;
   generateImage.heard = heard;
   const filmLayer = new FilmLayerDialog(engine);
+  const aiLabelDialog = new AiLabelDialog(engine);
   const model3d = new Model3DDialog(engine, (t) => toast(t));
   const extrude3d = new Extrude3DDialog(engine, (t) => toast(t));
   const panorama = new PanoramaDialog(engine, (t) => toast(t));
@@ -3101,7 +3194,7 @@ export function startApp(): void {
     allow: () => { savePrefs({ ...loadPrefs(), agentsAllowed: true }); window.dispatchEvent(new CustomEvent('formvis:agents', { detail: true })); },
     // 1.53.3: what agents reach through the app, the same paths as its menus.
     openFile: (f) => openFiles([f]),
-    renderVideo: (c) => renderVideoBlob(c),   // 1.59.7, DEV_PLAN 25.5: timeline_render
+    renderVideo: (c, step) => renderVideoBlob(c, step),   // 1.59.7, DEV_PLAN 25.5: timeline_render
     projectBlob: async () => { const p = engine.current; if (!p) return null; engine.settle(); const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p)); return api.package(manifest, files); },
     applyFilter: (kind, settings) => {
       if (kind === 'average') { engine.averageFill(); return true; }
@@ -3111,9 +3204,11 @@ export function startApp(): void {
     selectSubject: () => selectSubject(false),
     removeBackground: () => removeBackground('auto', true),
     viewCapture: () => stage.capture(),
+    ui: new UiControl({ engine, commands, menus: () => menus, capture: () => stage.capture(), docPoint: (x, y) => stage.docPoint(x, y) }),
     selectPoints: (inside, outside, mode) => selectByPoints(engine, inside, outside, mode),
-    plugins: () => pluginHost.list(),
+    plugins: async () => [...(await pluginHost.list()), ...(await folderPlugins.list()).map((f) => ({ ...f, kind: 'folder' }))],
     log: () => [...errorLog.entries, ...engine.failures],
+    status: (note, seconds) => status.setAgentNote(note, seconds),
   });
   agents.setEnabled(loadPrefs().agentsAllowed);
   window.addEventListener('formvis:agents', (ev) => agents.setEnabled((ev as CustomEvent<boolean>).detail === true));
@@ -3127,6 +3222,29 @@ export function startApp(): void {
   });
   // Plugins (1.52.6): the plugins folder's plugins, each in a sandboxed frame; their commands in the Plugins menu.
   const pluginHost = new PluginHost(engine, agents, commands, (t, kind) => toast(t, kind ?? 'info'));
+  // Plugin folders (plugin.json and an ES module): a side panel is a section in the dock, added and removed in place.
+  const folderPlugins = new FolderPlugins({
+    engine, commands, note: (t, kind) => toast(t, kind ?? 'info'),
+    confirm: (title, text, ok) => confirmAction(title, text, ok), prompt: (title, value, ok) => promptName(title, value, ok),
+    panels: () => ({
+      add: (id, label) => {
+        if (document.querySelector(`section.cv-${id}`)) return null;
+        const sec = el(`<section class="cv-preset-panel cv-${id}" aria-label="${label.replace(/[<>&"]/g, '')}"><div class="cv-panel-head"><span class="cv-comps-title"><span></span></span><span></span></div><div class="cv-plugin-panel-body"></div></section>`);
+        setText(q(sec, '.cv-comps-title span'), label);
+        q(root, '.cv-layers').appendChild(sec);
+        registerPanel({ id, label, selector: `section.cv-${id}` });
+        commands.add({ id: `panel-${id}`, label, checked: () => dock.isShown(id), run: () => dock.toggle(id) });
+        dock.insertPanel(id, 'dock', 99);
+        dock.refresh();
+        return q(sec, '.cv-plugin-panel-body');
+      },
+      remove: (id) => {
+        document.querySelector(`section.cv-${id}`)?.remove();
+        commands.remove(`panel-${id}`);
+        dock.removePanel(id); unregisterPanel(id); dock.refresh();
+      },
+    }),
+  });
   // Window > Script Console (DEV_PLAN 36.7): the plugin API under the identity 'console', no wider than a plugin's.
   const scriptConsole = new ScriptConsoleDialog({ api: () => pluginHost.apiFor('console'), agentBusy: () => agents.agentBusy });
   const consoleLog = new ConsoleLogDialog({
@@ -3145,7 +3263,8 @@ export function startApp(): void {
       return n;
     },
   });
-  const pluginsDialog = new PluginsDialog(pluginHost,(title, text, ok) => confirmAction(title, text, ok));
+  const pluginsDialog = new PluginsDialog(pluginHost, folderPlugins, (title, text, ok) => confirmAction(title, text, ok));
+  pluginsDialog.openFolder = () => { commands.run('open-plugins-folder'); };
   const largePicture = new LargePictureDialog(engine);
   const tiffPages = new TiffPagesDialog(engine);
   const exrChooser = new ExrPartsDialog();
@@ -3195,6 +3314,7 @@ export function startApp(): void {
   const colourDialogs = { assign: new AssignProfileDialog(engine, (pr) => cmykLutFor(pr), () => convertDialog.show()), convert: convertDialog, proof: new ProofSetupDialog(colourView), mismatch: new ProfileMismatchDialog(), info: new ProfileInfoDialog(engine) };
   const preview32 = new Preview32Dialog(colourView);
   void pluginHost.loadAll();
+  void folderPlugins.loadAll();
   document.body.appendChild(assistant.el);
   // The terminal dock and the Claude Code panel (DEV_PLAN 28.5): the dock's grid row sits above the status bar and is
   // reserved by terminal.css from the first frame; the panel is placed by the same attributes.
@@ -3363,7 +3483,7 @@ export function startApp(): void {
     { id: 'pref-home-last-close', label: 'Show Home Screen When the Last Document Closes', checked: () => loadPrefs().homeOnLastClose, run: () => { updatePrefs({ homeOnLastClose: !loadPrefs().homeOnLastClose }); home.sync(); } },
     { id: 'pref-whats-new-auto', label: 'Show What\'s New Once After an Update', checked: () => loadPrefs().whatsNewAuto, run: () => { updatePrefs({ whatsNewAuto: !loadPrefs().whatsNewAuto }); } },
     { id: 'manage-plugins', label: 'Manage Plugins...', run: () => void pluginsDialog.show() },   // 1.52.6
-    { id: 'reload-plugins', label: 'Reload Plugins', run: () => { void pluginHost.reloadAll().then((n) => toast(`Plugins reloaded: ${n} running.`)); } },
+    { id: 'reload-plugins', label: 'Reload Plugins', run: () => { void Promise.all([pluginHost.reloadAll(), folderPlugins.reloadAll()]).then(([a, b]) => toast(`Plugins reloaded: ${a + b} running.`)); } },
     { id: 'open-plugins-folder', label: 'Open Plugins Folder', run: () => {
       void (async () => {
         const dir = (await api.capabilities())?.dataDir;
@@ -3439,6 +3559,87 @@ export function startApp(): void {
         return { action: into.name, steps: into.steps.length };
       },
     },
+    {
+      id: 'insert-action-step', label: 'Insert Action Step...', enabled: () => actions.list.length > 0,
+      params: {
+        action: { type: 'string', description: 'The action that gets the step; the one being recorded, else the last one, when left out.' },
+        kind: { type: 'string', enum: ['play', 'menu'], description: 'play adds a nested Play Action step; menu adds an Insert Menu Item step that runs one command.' },
+        name: { type: 'string', description: 'For play: the name of the action to play inside this one.' },
+        id: { type: 'string', description: 'For menu: the id of the command to run, from list_commands.' },
+      },
+      run: (a) => {
+        if (!a || (a.kind !== 'play' && a.kind !== 'menu')) { dialogs.actions.show(); return undefined; }
+        const into = typeof a.action === 'string' && a.action ? actions.list.find((x) => x.name === a.action) : actions.recording ?? actions.list[actions.list.length - 1];
+        if (!into) throw new Error(`There is no action named "${String(a.action)}".`);
+        if (a.kind === 'play') {
+          const n = String(a.name ?? '');
+          if (!actions.list.some((x) => x.name === n)) throw new Error(`There is no action named "${n}".`);
+          into.steps.push({ kind: 'play', label: `Play ${n}`, name: n });
+        } else {
+          const id = String(a.id ?? ''), c = commands.get(id);
+          if (!c || id === 'play-action') throw new Error(`There is no command that can be a menu item step called "${id}".`);
+          into.steps.push({ kind: 'menu', label: `Menu Item: ${commands.label(c)}`, id });
+        }
+        actions.save();
+        return { action: into.name, steps: into.steps.length };
+      },
+    },
+    {
+      id: 'action-options', label: 'Action Options...', enabled: () => actions.list.length > 0,
+      params: {
+        action: { type: 'string', description: 'The action to change.' },
+        set: { type: 'string', description: 'The set (folder) the action belongs to; an empty string takes it out of its set.' },
+        colour: { type: 'string', enum: [...ACTION_COLOURS], description: 'The colour of its button in Button Mode.' },
+        key: { type: 'string', enum: [...ACTION_KEYS], description: 'A function-key shortcut such as F5 or Shift+F5; an empty string clears it. Another action holding it loses it.' },
+      },
+      run: (a) => {
+        if (!a || typeof a.action !== 'string') { dialogs.actions.show(); return undefined; }
+        const x = actions.list.find((y) => y.name === a.action);
+        if (!x) throw new Error(`There is no action named "${a.action}".`);
+        if (typeof a.set === 'string') { const s = a.set.trim().slice(0, 80); if (s) x.set = s; else delete x.set; }
+        if (typeof a.colour === 'string') { if (!(ACTION_COLOURS as readonly string[]).includes(a.colour)) throw new Error('colour is not one of the listed colours.'); if (a.colour === 'none') delete x.colour; else x.colour = a.colour as typeof ACTION_COLOURS[number]; }
+        if (typeof a.key === 'string') { if (!ACTION_KEYS.includes(a.key)) throw new Error('key is not one of the listed function keys.'); actions.setKey(x, a.key); }
+        actions.save();
+        return { name: x.name, set: x.set ?? '', colour: x.colour ?? 'none', key: x.key ?? '' };
+      },
+    },
+    {
+      id: 'load-actions', label: 'Load Actions...',
+      params: {
+        atn_base64: { type: 'string', description: 'The bytes of an .atn actions file, base64 encoded. Steps with no formvis equivalent are kept greyed and skipped when the action plays.' },
+        json: { type: 'string', description: 'Actions in formvis JSON: an array of actions or one action.' },
+      },
+      run: (a) => {
+        if (typeof a?.atn_base64 !== 'string' && typeof a?.json !== 'string') { dialogs.actions.show(); return undefined; }
+        const more = typeof a.atn_base64 === 'string' ? parseAtn(fromBase64(a.atn_base64).slice().buffer) : { actions: actionsFrom(JSON.parse(String(a.json))), unsupported: [] as string[] };
+        if (!more.actions.length) throw new Error('That holds no actions formvis can read.');
+        actions.add(more.actions);
+        return { loaded: more.actions.map((x) => x.name), kept_unsupported: more.unsupported };
+      },
+    },
+    {
+      id: 'export-actions-atn', label: 'Save Actions...', enabled: () => actions.list.length > 0,
+      params: { set: { type: 'string', description: 'Only the actions in this set; every action when left out.' } },
+      run: async (a) => {
+        const set = typeof a?.set === 'string' ? a.set : '', list = set ? actions.list.filter((x) => x.set === set) : actions.list;
+        if (!list.length) throw new Error(set ? `There are no actions in the set "${set}".` : 'There are no actions to save.');
+        const name = set || 'formvis actions', out = writeAtn(list, name);
+        await deliver(new Blob([out.bytes.slice().buffer], { type: 'application/octet-stream' }), `${name}.atn`);
+        if (out.left.length) toast(`Saved ${list.length} action${list.length === 1 ? '' : 's'}. ${out.left.length} step${out.left.length === 1 ? ' has' : 's have'} no .atn form and ${out.left.length === 1 ? 'was' : 'were'} left out.`, 'info');
+        return { saved: list.map((x) => x.name), left_out: out.left };
+      },
+    },
+    {
+      id: 'script-browse', label: 'Browse...',
+      params: { source: { type: 'string', description: 'JavaScript to run instead of choosing a file: an async function body with run(id, params), commands() and log(...) in scope, and no document, window or network. Returns its result and log lines.' } },
+      run: async (a) => {
+        if (typeof a?.source !== 'string' || !a.source) { await browseScript(); return undefined; }
+        if (a.source.length > 200000) throw new Error('A script may be at most 200 KB.');
+        const r = await runScriptSource(a.source);
+        if (!r.ok) throw new Error(r.error ?? 'The script failed.');
+        return { result: r.result ?? null, log: r.log };
+      },
+    },
     { id: 'batch', label: 'Batch...', enabled: () => actions.list.some((x) => x.steps.length > 0), run: () => dialogs.batch.show() },
     { id: 'lens-correction-batch', label: 'Lens Correction...', run: () => dialogs.lensBatch.show() },
     {
@@ -3449,13 +3650,15 @@ export function startApp(): void {
         quality: { type: 'number', min: 1, max: 100, description: 'Quality for jpg and webp; 92 when left out.' },
         out: { type: 'string', description: 'The folder the results go to; beside each picture when left out.' },
         recursive: { type: 'boolean', description: 'Search dropped folders through their sub-folders.' },
+        suffix: { type: 'string', description: 'Text added to each result file name.' },
+        kind: { type: 'string', enum: ['script', 'data'], description: 'script writes the droplet shell script; data writes a droplet file (.fvdrop) that ./formvis cli droplet FILE pictures runs; script when left out.' },
       },
       run: async (a) => {
         if (typeof a?.action !== 'string' || !a.action) { dialogs.droplet.show(); return undefined; }
         if (!actions.list.some((x) => x.name === a.action)) { toast(`There is no action named "${a.action}".`, 'error'); return undefined; }
         const f = String(a.format ?? 'png').toLowerCase(), format = f === 'jpeg' ? 'jpg' : f === 'tif' ? 'tiff' : f;
         if (format !== 'png' && format !== 'jpg' && format !== 'webp' && format !== 'tiff') throw new Error('format must be png, jpg, webp or tiff.');
-        await makeDroplet({ action: a.action, format, quality: typeof a.quality === 'number' ? a.quality : 92, out: typeof a.out === 'string' ? a.out : '', recursive: a.recursive === true });
+        await makeDroplet({ action: a.action, format, quality: typeof a.quality === 'number' ? a.quality : 92, out: typeof a.out === 'string' ? a.out : '', recursive: a.recursive === true, kind: a.kind === 'data' ? 'data' : 'script', suffix: typeof a.suffix === 'string' ? a.suffix : '' });
         return undefined;
       },
     },
@@ -3592,7 +3795,23 @@ export function startApp(): void {
         return undefined;
       },
     },
-    { id: 'fit-image', label: 'Fit Image...', enabled: has, run: () => dialogs.fitImage.show() },
+    {
+      id: 'fit-image', label: 'Fit Image...', enabled: has,
+      params: {
+        width: { type: 'integer', min: 1, max: 30000, description: 'The widest the picture may be, in pixels; with height.' },
+        height: { type: 'integer', min: 1, max: 30000, description: 'The tallest the picture may be, in pixels; with width.' },
+        enlarge: { type: 'boolean', description: 'Let a smaller picture grow to the box; true when left out (false is Don\'t Enlarge).' },
+        resample: { type: 'string', enum: ['high', 'smooth', 'nearest'], description: 'The resampling method; high when left out.' },
+      },
+      run: (a) => {
+        if (!a || a.width === undefined || a.height === undefined) { dialogs.fitImage.show(); return undefined; }
+        const w = Math.round(Number(a.width)), h = Math.round(Number(a.height)), enlarge = a.enlarge !== false, sampling = a.resample === 'smooth' || a.resample === 'nearest' ? a.resample : 'high';
+        if (!(w >= 1 && w <= 30000 && h >= 1 && h <= 30000)) throw new Error('Give a width and a height from 1 to 30,000 pixels.');
+        if (!engine.fitImage(w, h, enlarge, false, sampling)) return undefined;
+        dialogs.fitImage.onApplied?.({ w, h, enlarge });
+        return { message: `Fitted within ${w} x ${h} px (${sampling}).` };
+      },
+    },
     {
       id: 'conditional-mode-change', label: 'Conditional Mode Change...', enabled: has,
       params: {
@@ -3608,9 +3827,52 @@ export function startApp(): void {
         return conditionalMode(from, target).then((ok) => { if (ok) actions.record({ kind: 'conditionalMode', label: `Conditional Mode Change to ${target}`, from, to: target }); });
       },
     },
-    { id: 'contact-sheet', label: 'Contact Sheet II...', run: () => dialogs.contactSheet.show() },
-    { id: 'load-files-stack', label: 'Load Files into Stack...', run: () => dialogs.loadStack.show() },
-    { id: 'stack-statistics', label: 'Statistics...', run: () => dialogs.stackStatistics.show() },
+    {
+      id: 'contact-sheet', label: 'Contact Sheet II...',
+      params: {
+        ...SOURCE_PARAMS,
+        width: { type: 'number', min: 0.01, max: 30000, description: 'Page width in unit; 2480 px (A4 at 300 ppi) when left out.' },
+        height: { type: 'number', min: 0.01, max: 30000, description: 'Page height in unit; 3508 px when left out.' },
+        unit: { type: 'string', enum: ['px', 'in', 'cm', 'mm'], description: 'Unit of width and height; px when left out.' },
+        ppi: { type: 'number', min: 1, max: 3000, description: 'Resolution; 300 when left out.' },
+        columns: { type: 'integer', min: 1, max: 100, description: 'Columns of thumbnails; 5 when left out.' },
+        rows: { type: 'integer', min: 1, max: 100, description: 'Rows of thumbnails; 6 when left out.' },
+        spacing: { type: 'number', min: 0, max: 1000, description: 'Gap in pixels between thumbnails; automatic when left out.' },
+        order: { type: 'string', enum: ['across', 'down'], description: 'Place across first (row by row) or down first; across when left out.' },
+        rotate: { type: 'boolean', description: 'Rotate For Best Fit.' },
+        captions: { type: 'boolean', description: 'Use the file name as a caption; true when left out.' },
+        font: { type: 'string', description: 'Caption font family; Inter when left out.' },
+        font_size: { type: 'integer', min: 6, max: 400, description: 'Caption size in pixels; 12 when left out.' },
+        flatten: { type: 'boolean', description: 'Flatten All Layers into one layer per page.' },
+        mode: { type: 'string', enum: ['rgb', 'grayscale'], description: 'Document mode of each page; rgb when left out.' },
+        depth: { type: 'integer', enum: [8, 16], description: 'Bit depth of each page; 8 when left out.' },
+      },
+      run: async (a) => {
+        if (!a || !Object.keys(a).length) { dialogs.contactSheet.show(); return undefined; }
+        const files = await sourceFiles(a);
+        if (!files.length && a.documents !== true) throw new Error('Give files (picture bytes) or documents=true.');
+        await dialogs.contactSheet.drive(files, a);
+        return undefined;
+      },
+    },
+    {
+      id: 'load-files-stack', label: 'Load Files into Stack...',
+      params: { ...SOURCE_PARAMS, smart: { type: 'boolean', description: 'Create Smart Object after Loading Layers.' }, align: { type: 'boolean', description: 'Attempt to Automatically Align Source Images.' } },
+      run: async (a) => {
+        if (!a || !Object.keys(a).length) { dialogs.loadStack.show(); return undefined; }
+        await dialogs.loadStack.drive(await sourceFiles(a), a);
+        return undefined;
+      },
+    },
+    {
+      id: 'stack-statistics', label: 'Statistics...',
+      params: { ...SOURCE_PARAMS, mode: { type: 'string', enum: STACK_MODES.filter((m) => m.id !== 'none').map((m) => m.id), description: 'The statistic over the aligned layers; median when left out.' }, align: { type: 'boolean', description: 'Attempt to Automatically Align Source Images.' } },
+      run: async (a) => {
+        if (!a || !Object.keys(a).length) { dialogs.stackStatistics.show(); return undefined; }
+        await dialogs.stackStatistics.drive(await sourceFiles(a), a);
+        return undefined;
+      },
+    },
     { id: 'crop-straighten-photos', label: 'Crop and Straighten Photos', enabled: has, run: async () => {   // DEV_PLAN 30.3 part b
       const p = engine.current, flat = engine.flattened();
       if (!p || !flat) return;
@@ -3628,7 +3890,21 @@ export function startApp(): void {
         engine.notice(`Found ${found.length} photo${found.length === 1 ? '' : 's'}, each opened as its own document.`);
       } catch (err) { toast(message(err), 'error'); }
     } },
-    { id: 'photomerge', label: 'Photomerge...', run: () => photomergeDialog.show() },   // 1.58.2
+    {
+      id: 'photomerge', label: 'Photomerge...',   // 1.58.2
+      params: {
+        ...SOURCE_PARAMS,
+        layout: { type: 'string', enum: ['auto', 'perspective', 'cylindrical', 'collage', 'reposition'], description: 'How the photos are joined; auto when left out.' },
+        crop: { type: 'boolean', description: 'Crop to the largest rectangle the photos fill (else the edges stay transparent).' },
+        vignette: { type: 'boolean', description: 'Vignette Removal; needs photos of one size.' },
+        distortion: { type: 'boolean', description: 'Geometric Distortion Correction.' },
+      },
+      run: async (a) => {
+        if (!a || !Object.keys(a).length) { photomergeDialog.show(); return undefined; }
+        await photomergeDialog.drive(await sourceFiles(a), a);
+        return undefined;
+      },
+    },
     ...(['align', 'blend'] as const).map((mode) => ({   // DEV_PLAN 32.1
       id: mode === 'align' ? 'auto-align-layers' : 'auto-blend-layers', label: mode === 'align' ? 'Auto-Align Layers...' : 'Auto-Blend Layers...',
       enabled: () => { const p = engine.current; return !!p && [...p.selectedIds].filter((id) => { const l = p.layer(id); return !!l?.raster && !l.isGroup && !l.adjustment && !l.text && !l.shape && !l.smart; }).length > 1; },
@@ -3648,7 +3924,20 @@ export function startApp(): void {
         return { message: await m.AlignBlendDialog.execute(engine, mode, { projection: a.projection === undefined ? undefined : String(a.projection), method: a.method === undefined ? undefined : String(a.method), seamless: a.seamless === undefined ? true : !!a.seamless, vignette: !!a.vignette, distortion: !!a.distortion, reference: a.reference === undefined ? undefined : String(a.reference), halo: typeof a.halo === 'number' ? a.halo : undefined, depth: !!a.depth }) };
       }),
     })),
-    { id: 'merge-hdr', label: 'Merge to HDR...', run: () => hdrMergeDialog.show() },
+    {
+      id: 'merge-hdr', label: 'Merge to HDR...',
+      params: {
+        ...SOURCE_PARAMS,
+        align: { type: 'boolean', description: 'Attempt to Automatically Align Source Images; true when left out.' },
+        times: { type: 'string', description: 'Exposure times in seconds, one per photo, comma separated, as numbers or 1/60; from the photos when left out.' },
+        depth: { type: 'integer', enum: [32, 16, 8], description: 'Bit depth of the result; 32 keeps the radiance, 16 or 8 tone it down. 32 when left out.' },
+      },
+      run: async (a) => {
+        if (!a || !Object.keys(a).length) { hdrMergeDialog.show(); return undefined; }
+        await hdrMergeDialog.drive(await sourceFiles(a), a);
+        return undefined;
+      },
+    },
     { id: 'send-host', label: 'Send to NodeMode Canvas', enabled: () => has() && hostLink.embedded, run: () => void sendToHost() },
     // Standalone (1.50.8): the engine sends to the NodeMode at the address in Preferences > Plugins.
     { id: 'send-nodemode', label: 'Send to NodeMode...', enabled: has, run: () => sendNodeMode.show() },
@@ -3724,6 +4013,28 @@ export function startApp(): void {
     { id: 'fill-dialog', label: 'Fill...', keys: ['Shift+F5'], enabled: pixel, run: () => dialogs.fill.show() },
     { id: 'content-fill-workspace', label: 'Content-Aware Fill...', enabled: () => pixel() && selected(), run: () => dialogs.contentFill.show() },
     { id: 'cancel-job', label: 'Cancel Background Job', enabled: () => engine.jobs.some((j) => !j.cancelled), run: () => { const n = engine.cancelJob(); if (n) toast(n === 1 ? 'Stopping the running job.' : `Stopping ${n} running jobs.`); } },
+    { id: 'clone-source-slot', label: 'Clone Source: Choose Slot', params: { slot: { type: 'integer', required: true, min: 1, max: 5, description: 'Which of the five clone sources to use.' } }, run: (a) => { engine.selectCloneSlot(Math.round(Number(a?.slot)) - 1); } },
+    { id: 'clone-source-set', label: 'Clone Source: Set Source', params: { x: { type: 'number', description: 'Document x of the source point; the current point when left out.' }, y: { type: 'number', description: 'Document y of the source point; the current point when left out.' }, width: { type: 'number', min: 1, max: 1000, description: 'Source width in percent.' }, height: { type: 'number', min: 1, max: 1000, description: 'Source height in percent; follows the width when left out and the two are linked.' }, angle: { type: 'number', min: -180, max: 180, description: 'Source angle in degrees.' }, flipH: { type: 'boolean', description: 'Flip the source horizontally.' }, flipV: { type: 'boolean', description: 'Flip the source vertically.' } }, run: (a) => {
+      const r = engine.retouch, num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+      const w = num(a?.width), h = num(a?.height), ang = num(a?.angle);
+      if (w !== null) r.cloneScale = Math.min(1000, Math.max(1, w));
+      if (h !== null) r.cloneScaleY = Math.min(1000, Math.max(1, h));
+      if (ang !== null) r.cloneAngle = Math.min(180, Math.max(-180, ang));
+      if (typeof a?.flipH === 'boolean') r.cloneFlipH = a.flipH;
+      if (typeof a?.flipV === 'boolean') r.cloneFlipV = a.flipV;
+      const cur = engine.cloneSource, x = num(a?.x) ?? cur?.x, y = num(a?.y) ?? cur?.y;
+      if (x !== undefined && y !== undefined) engine.setCloneSource({ x, y }); else { engine.emit('options', null); engine.emit('overlay', null); }
+    } },
+    { id: 'clone-source-overlay', label: 'Clone Source: Overlay', params: { show: { type: 'boolean', description: 'Show the overlay.' }, opacity: { type: 'number', min: 0, max: 100, description: 'Overlay opacity in percent.' }, clipped: { type: 'boolean', description: 'Keep the overlay to the brush.' }, autoHide: { type: 'boolean', description: 'Hide the overlay while painting.' }, invert: { type: 'boolean', description: 'Invert the overlay.' } }, run: (a) => {
+      const patch: Partial<{ show: boolean; clipped: boolean; opacity: number; autoHide: boolean; invert: boolean }> = {};
+      if (typeof a?.show === 'boolean') patch.show = a.show;
+      if (typeof a?.clipped === 'boolean') patch.clipped = a.clipped;
+      if (typeof a?.autoHide === 'boolean') patch.autoHide = a.autoHide;
+      if (typeof a?.invert === 'boolean') patch.invert = a.invert;
+      if (typeof a?.opacity === 'number' && Number.isFinite(a.opacity)) patch.opacity = Math.min(100, Math.max(0, a.opacity)) / 100;
+      engine.setCloneOverlay(patch);
+    } },
+    { id: 'clone-source-reset', label: 'Clone Source: Reset Transform', run: () => engine.resetCloneTransform() },
     { id: 'remove-wires', label: 'Remove Wires and Cables', enabled: pixel, run: () => { void engine.task(async () => { await new Promise((r) => requestAnimationFrame(() => window.setTimeout(r, 0))); engine.removeWires(); }); } },
     { id: 'transform-warp', label: 'Warp', enabled: pixel, run: (a) => { engine.setTool('move'); if (engine.beginMeshWarp(typeof a?.grid === 'number' ? a.grid : engine.meshWarpGrid) && typeof a?.style === 'string') engine.setMeshWarpPreset({ style: a.style as 'custom', ...(typeof a.bend === 'number' ? { bend: a.bend } : {}), ...(typeof a.horizontal === 'number' ? { horizontal: a.horizontal } : {}), ...(typeof a.vertical === 'number' ? { vertical: a.vertical } : {}), ...(a.orientation === 'vertical' ? { orientation: 'vertical' as const } : {}) }); } },
     { id: 'warp-split-h', label: 'Split Warp Horizontally', enabled: () => !!engine.meshWarpEdit, run: (a) => { engine.splitMeshWarp('h', typeof a?.x === 'number' && typeof a?.y === 'number' ? { x: a.x, y: a.y } : engine.meshSplitPoint()); } },
@@ -4757,6 +5068,12 @@ export function startApp(): void {
     { id: 'layer-content-options', label: 'Layer Content Options...', enabled: () => !!layer()?.adjustment || !!layer()?.fillContent || !!layer()?.relight || !!layer()?.vector || !!layer()?.text || !!layer()?.smart, run: () => { const l = layer(); if (l?.fillContent) dialogs.fillLayer.showEdit(l.id); else if (l?.adjustment) dialogs.adjust.openForLayer(l.id); else if (l?.relight) void relight.begin(l.id); else if (l?.vector) dialogs.shapeStyle.show(); else if (l?.text) document.dispatchEvent(new CustomEvent('cv:type', { detail: { layerId: l.id } })); else if (l?.smart) engine.editContents(); } },
     { id: 'film-leak', label: 'Light Leak...', enabled: () => !!engine.current, run: () => filmLayer.show('leak') },   // 1.51.6
     { id: 'film-frame', label: 'Frame...', enabled: () => !!engine.current, run: () => filmLayer.show('frame') },
+    { id: 'film-apply-look', label: 'Apply Film Look', enabled: () => !!engine.current, params: { look: { type: 'string', description: 'A film look id (portrait400, vivid100, slide50, slide200, mono400, monoFine100, monoPush1600, cineTungsten500, cineDaylight250, faded); Portrait Negative 400 when left out.' }, strength: { type: 'number', min: 0, max: 100, description: 'How much of the look is mixed in, percent (100).' }, grain: { type: 'number', min: 0, max: 100, description: 'Grain, percent (40).' } }, run: async (a) => { const r = await packTool(engine, 'film_apply_look', { look: typeof a?.look === 'string' && a.look ? a.look : 'portrait400', ...(typeof a?.strength === 'number' ? { strength: a.strength } : {}), ...(typeof a?.grain === 'number' ? { grain: a.grain } : {}) }); if (r.isError) throw new Error(r.content[0].type === 'text' ? r.content[0].text : 'failed'); return r.structuredContent; } },
+    { id: 'film-copy-points', label: 'Copy Film Curve Points', enabled: () => engine.activeLayer?.adjustment?.kind === 'filmLook', run: () => { const l = engine.activeLayer, pts = l ? filmPointsOf(engine, l.id) : null; if (pts) { setFilmClipboard(pts); toast(`Copied ${pts.length} curve points.`); } return { points: pts }; } },
+    { id: 'film-paste-points', label: 'Paste Film Curve Points', enabled: () => engine.activeLayer?.adjustment?.kind === 'filmLook' && !!filmClipboard(), run: () => { const l = engine.activeLayer, pts = filmClipboard(); return !!l && !!pts && setFilmPoints(engine, l.id, pts, 'Paste Film Curve Points'); } },
+    { id: 'ai-label-add', label: 'Add EU AI Label...', enabled: () => !!engine.current, params: { kind: { type: 'string', enum: ['generated', 'edited'], description: 'generated: made with AI. edited: edited with AI. Without kind the dialog opens.' }, badge: { type: 'boolean', description: 'Add the visible badge layer (true).' }, anchor: { type: 'string', description: 'top-left, top, top-right, left, center, right, bottom-left, bottom or bottom-right (bottom-right).' }, style: { type: 'string', enum: ['dark', 'light', 'outline'], description: 'Badge style (dark).' } }, run: async (a) => { if (!a?.kind) { aiLabelDialog.show(); return undefined; } const r = await packTool(engine, 'ailabel_add', a); if (r.isError) throw new Error(r.content[0].type === 'text' ? r.content[0].text : 'failed'); return r.structuredContent; } },
+    { id: 'ai-label-remove', label: 'Remove EU AI Label', enabled: () => !!engine.current?.doc.meta?.aiLabel || !!engine.current?.doc.layers.some((l) => l.name === 'EU AI label'), run: () => removeAiLabel(engine) },
+    { id: 'ai-label-info', label: 'EU AI Label Info', enabled: () => !!engine.current, run: () => { const i = aiLabelInfo(engine); toast(i?.label ? `Marked as ${i.label === 'edited' ? 'edited with' : 'made with'} AI: ${String(i.digital_source_type)}` : 'This document is not marked as AI content.'); return i; } },
     { id: 'color-match', label: 'Color Match...', enabled: () => { const l = engine.activeLayer; return !!l && (!!l.raster && !l.adjustment || (l.name === 'Color Match' && !!l.clipId)); }, run: () => colorMatch.show() },   // 1.51.3
     { id: 'canvas-size', label: 'Canvas Size...', keys: ['Alt+Mod+C'], enabled: has, run: () => dialogs.canvasSize.show() },
     { id: 'image-size', label: 'Image Size...', keys: ['Alt+Mod+I'], enabled: has, run: () => dialogs.imageSize.show() },
@@ -4846,17 +5163,44 @@ export function startApp(): void {
     { id: 'filter-last', label: () => { const k = dialogs.filter.lastFilter; return k ? FILTER_LABELS[k] : 'Last Filter'; }, keys: ['Mod+F'], enabled: () => !!dialogs.filter.lastFilter && hasTargetPixels(), run: () => { void dialogs.filter.applyLast(); } },
   );
 
-  const filterName = (id: string): string => (id === 'filter-average' ? 'Average' : FILTER_LABELS[id.slice('filter-'.length) as FilterKind] ?? id);
+  // Filter > Plug-ins (WebAssembly): one command per installed plug-in, added and dropped as the list changes.
+  const wasmFilter = new WasmFilterDialog(engine), wasmManager = new WasmPluginsDialog((id) => wasmFilter.show(id)), wasmIds = new Set<string>();
+  commands.add(
+    { id: 'wasm-plugins', label: 'Manage Plug-ins (WebAssembly)...', run: () => wasmManager.show() },
+    { id: 'wasm-plugin-install', label: 'Install Plug-in...', run: () => wasmManager.pick() },
+    { id: 'wasm-plugin-example', label: 'Install Example Plug-in', run: () => void wasmManager.installExample() },
+    { id: 'wasm-plugin-remove', label: 'Remove Plug-in', params: { id: { type: 'string', required: true, description: 'The id of the installed plug-in to remove.' } }, run: (a) => { void wasmPlugins.remove(String(a?.id ?? '')).then((ok) => toast(ok ? 'Plug-in removed.' : 'No plug-in has that id.', ok ? 'info' : 'error')); } },
+    { id: 'wasm-plugin-run', label: 'Run Plug-in', enabled: hasTargetPixels, params: { id: { type: 'string', required: true, description: 'The id of an installed plug-in.' }, values: { type: 'object', description: 'Parameter values by key, as the plug-in\'s schema declares them; left out keys take the defaults.' } }, run: (a) => {
+      const e = wasmPlugins.get(String(a?.id ?? ''));
+      if (!e) { toast('No plug-in has that id.', 'error'); return false; }
+      return applyWasm(engine, e, wasmValues(e.manifest, a?.values));
+    } },
+  );
+  const syncWasm = (): void => {
+    const list = wasmPlugins.list(), now = new Set(list.map((e) => e.manifest.id));
+    for (const id of [...wasmIds]) if (!now.has(id)) { commands.remove(`wasm-run-${id}`); wasmIds.delete(id); }
+    for (const e of list) {
+      const id = e.manifest.id;
+      if (wasmIds.has(id)) continue;
+      wasmIds.add(id);
+      commands.add({ id: `wasm-run-${id}`, label: () => `${wasmPlugins.get(id)?.manifest.name ?? id}...`, enabled: hasTargetPixels, group: 'Filter', description: `Opens the ${e.manifest.name} WebAssembly plug-in's dialog. ${e.manifest.description}`.trim(), when: 'Use when you want to run this installed plug-in; run_command wasm-plugin-run applies it without the dialog.', mutates: true, run: () => wasmFilter.show(id) });
+    }
+  };
+  wasmPlugins.watch(syncWasm);
+  dialogs.smartFilters.editWasm = (id, settings, done) => wasmFilter.showFor(id, settings, done);
+  void wasmPlugins.load();
+
+  const filterName =(id: string): string => (id === 'filter-average' ? 'Average' : FILTER_LABELS[id.slice('filter-'.length) as FilterKind] ?? id);
   const filterGroup = (group: LibGroup, core: string[]): string[] => [...core, ...libInGroup(group).map((f) => `filter-${f.id}`)].sort((a, b) => filterName(a).localeCompare(filterName(b)));
   const drawnFirst = ['filter-flame', 'filter-pictureFrame', 'filter-tree'];
   const menus: MenuDef[] = [
     { label: 'File', items: () => ['new', 'new-from-clipboard', 'open', 'open-as', 'import', 'import-folder', 'import-notes', 'import-video', 'create-video-timeline', 'place-embedded', 'place-linked', 'place-3d', 'open-svg-layers', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.slice(0, loadPrefs().recentFileCount).map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'save-copy', 'revert', 'earlier-states', 'download-project', 'package', '-',
       { label: 'Export', items: ['quick-export', 'export-as', 'export-preferences', 'save-for-web', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-tiff-layers', 'export-hdr', 'export-exr', 'export-exr-half', 'export-exr-piz', 'export-exr-none', 'export-pfm', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'export-paths-ai', 'assemble-tiles', '-', 'export-layers', 'export-layer-comps', 'export-selection-mask', 'generate-image-assets', 'image-assets-on-save', 'export-luts', 'export-artboards-files', 'export-data-sets', 'export-artboards'] },
-      { label: 'Automate', items: ['actions', 'action-stop', 'insert-conditional', 'batch', 'create-droplet', '-', 'lens-correction-batch', 'fit-image', 'conditional-mode-change', 'contact-sheet', 'crop-straighten-photos', 'photomerge', 'merge-hdr'] },
-      { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'image-processor', 'script-events', 'load-files-stack', 'stack-statistics', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'reopen-closed-tab', 'close-all', 'close-others', 'close-tabs-right', 'pin-tab', '-', 'exit'] },
+      { label: 'Automate', items: ['actions', 'action-stop', 'insert-conditional', 'insert-action-step', 'action-options', '-', 'load-actions', 'export-actions-atn', '-', 'batch', 'create-droplet', '-', 'lens-correction-batch', 'fit-image', 'conditional-mode-change', 'contact-sheet', 'crop-straighten-photos', 'photomerge', 'merge-hdr'] },
+      { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'script-browse', 'image-processor', 'script-events', 'load-files-stack', 'stack-statistics', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'reopen-closed-tab', 'close-all', 'close-others', 'close-tabs-right', 'pin-tab', '-', 'exit'] },
     { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', 'cancel-job', { label: 'Snapshot', items: ['new-snapshot', 'new-snapshot-merged', 'new-snapshot-layer'] }, '-', 'fade', 'compare-documents', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', 'pick-screen-colour', '-',
       { label: 'Purge', items: ['purge-clipboard', 'purge-undo', 'purge-histories', 'clean-working-files', 'free-helper-models', 'purge-all'] }, { label: 'History Log', items: ['save-history-log', 'clear-history-log'] }, 'apply-edit', 'cancel-edit', 'reset-tool', 'reset-all-tools', '-',
-      { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg', 'fill-fg-keep', 'fill-bg-keep', 'fill-history'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-', 'auto-align-layers', 'auto-blend-layers', '-',
+      { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg', 'fill-fg-keep', 'fill-bg-keep', 'fill-history'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', { label: 'Clone Source', items: ['clone-source-slot', 'clone-source-set', 'clone-source-overlay', 'clone-source-reset'] }, '-', 'auto-align-layers', 'auto-blend-layers', '-',
       'fill-path-dialog', 'stroke-path-dialog', '-', 'transform', 'transform-copy', { label: 'Transform', items: ['transform-again', '-', 'transform-scale', 'transform-rotate', 'transform-skew', 'transform-distort', 'transform-perspective', 'transform-warp', 'warp-split-h', 'warp-split-v', 'warp-split-cross', 'warp-remove-split', '-', 'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw', '-', 'flip-layer-h', 'flip-layer-v'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', 'define-brush', 'define-custom-shape', { label: 'Presets', items: ['preset-manager', '-', 'presets-export', 'presets-import', 'presets-migrate', '-', 'swatches-load', 'swatches-save'] }, '-', 'assign-profile', 'convert-profile', 'profile-info', 'colour.settings', '-', 'customize-toolbar', 'shortcuts', 'edit-menus', { label: 'Preferences', items: ['settings', '-', ...PREF_PAGES.slice(0, 7).map(([id]) => `prefs-${id}`), 'export-preferences', ...PREF_PAGES.slice(7).map(([id]) => `prefs-${id}`)] }] },
     { label: 'Image', items: [
       'apply-image', 'calculations', { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'desaturate', 'replace-color', 'equalize', 'equalize-layer-from-selection'] }, '-',
@@ -4865,7 +5209,7 @@ export function startApp(): void {
       'image-size', 'canvas-size', { label: 'Pixel Aspect Ratio', items: ['par-square', 'par-d1-ntsc', 'par-d1-pal', 'par-d1-ntsc-wide', 'par-d1-pal-wide', 'par-anamorphic', 'par-hdv', 'par-dvcpro-hd', '-', 'par-custom'] }, { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'trim', 'reveal-all', 'trap', '-', 'frequency-separation', 'duplicate-image', '-', { label: 'Variables', items: ['variables-define', 'data-sets-import', 'data-set-apply'] }, '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }, '-', { label: 'Analysis', items: ['measure-scale', 'measure-ruler', 'measure-color-sampler', 'measure-count', { label: 'Count Groups', items: ['count-new-group', 'count-set-group'] }, 'measure-record', 'measure-data-points', 'measure-scale-marker', 'measure-log'] }] },
     { label: 'Layer', items: [
       { label: 'New', items: ['new-layer-dialog', 'new-type-layer', 'new-shape-layer', 'new-dodge-burn-layer', 'layer-from-background', 'background-from-layer', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard-dialog', 'artboard-from-group', 'artboard-from-layers-dialog', 'frame-from-layers', '-', 'duplicate', 'layer-via-cut', '-', 'new-relight-layer'] }, 'artboard-options', '-',
-      { label: 'New Fill Layer', items: ['new-fill-solid', 'new-fill-gradient', 'new-fill-pattern'] }, { label: 'Video Layers', items: ['video-layer-from-file', 'video-layer-blank', '-', 'video-insert-blank-frame', 'video-duplicate-frame', 'video-delete-frame', '-', 'video-restore-frame', 'video-restore-all', 'video-show-altered', 'video-replace-footage', 'video-interpret-footage', 'video-rasterize'] },{ label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'edit-relight', 'layer-content-options', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, '-',
+      { label: 'New Fill Layer', items: ['new-fill-solid', 'new-fill-gradient', 'new-fill-pattern'] }, { label: 'Video Layers', items: ['video-layer-from-file', 'video-layer-blank', '-', 'video-insert-blank-frame', 'video-duplicate-frame', 'video-delete-frame', '-', 'video-restore-frame', 'video-restore-all', 'video-show-altered', 'video-replace-footage', 'video-interpret-footage', 'video-rasterize'] },{ label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'edit-relight', 'layer-content-options', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, { label: 'Film Pack', items: ['film-apply-look', 'new-adj-filmLook', 'new-adj-chromaticShift', '-', 'film-copy-points', 'film-paste-points'] }, { label: 'EU AI Label', items: ['ai-label-add', 'ai-label-remove', 'ai-label-info'] }, '-',
       'duplicate-dialog', 'copy-layers', 'paste-layers', { label: 'Delete', items: ['delete-layer', 'delete-hidden'] }, 'rename', 'layer-quick-export-png', 'layer-export-as', '-',
       { label: 'Layer Style', items: ['style-blending', 'style-bevel', 'style-stroke', 'style-inner-shadow', 'style-inner-glow', 'style-satin', 'style-color-overlay', 'style-gradient-overlay', 'style-pattern-overlay', 'style-outer-glow', 'style-drop-shadow', '-',
         'copy-layer-style', 'paste-layer-style', 'clear-layer-style', 'copy-style-below', 'move-style-below', '-', 'global-light', 'create-layers', 'hide-all-effects', 'toggle-layer-effects', 'scale-effects'] },
@@ -4897,13 +5241,14 @@ export function startApp(): void {
       { label: 'Stylize', items: filterGroup('Stylize', []) },
       { label: 'Video', items: filterGroup('Video', []) },
       { label: 'Other', items: filterGroup('Other', []) },
-      { label: '3D', items: ['normal-map', 'bump-map', 'height-from-normal'] }, '-', 'remove-bg', 'remove-bg-lite'] },
+      { label: '3D', items: ['normal-map', 'bump-map', 'height-from-normal'] },
+      { label: 'Plug-ins (WebAssembly)', get items() { const ids = [...wasmIds].map((i) => `wasm-run-${i}`); return [...ids, ...(ids.length ? ['-'] : []), 'wasm-plugins', 'wasm-plugin-install', 'wasm-plugin-example']; } }, '-', 'remove-bg', 'remove-bg-lite'] },
     // Generate: the generative commands in one place (the Generate panel, models, fill, repair, size, relight, and the ComfyUI and NodeMode links).
     { label: 'Generate', items: ['generate-panel', '-', 'generate-image', 'new-canvas-model-preset', 'generative-fill', 'generative-expand', '-', 'boxes-tool', 'boxes-from-selection', 'boxes-copy', 'boxes-clear', '-', 'generate-remove', 'content-fill-workspace', 'content-fill', 'remove-wires', '-', 'remove-bg', 'remove-bg-lite', '-', 'upscale-2x', 'upscale-4x', 'compute-depth-map', { label: 'Depth Map', items: ['depth-map-from-layer', 'depth-map-recompute', 'depth-map-show', '-', 'depth-map-flatten', 'depth-map-nearer', 'depth-map-farther', 'depth-map-smooth', 'depth-map-snap'] }, 'new-relight-layer', '-', 'comfyui-run', 'send-comfyui', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode'])] },
     { label: 'View', items: [{ label: 'Proof Setup', items: ['proof-setup', '-', 'proof-preset-monitor', 'proof-preset-macrgb', 'proof-preset-internet', 'proof-preset-cmyk', 'proof-preset-cyan', 'proof-preset-magenta', 'proof-preset-yellow', 'proof-preset-black', 'proof-preset-cmy', '-', 'proof-preset-protanopia', 'proof-preset-deuteranopia'] }, 'proof-colors', 'gamut-warning', 'preview-32', '-', 'zoom-in', 'zoom-out', 'fit', 'fit-layers', 'fit-artboard', 'actual', 'print-size', '-', 'toggle-extras', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'pattern-preview', 'pixel-art-preview', 'par-correction', 'transform-controls', 'toggle-task-bar', '-',
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'guide-layout', 'guides-from-shape', 'clear-guides'] }, 'snap', { label: 'Snap To', items: ['snap-all', '-', 'snap-guides', 'snap-grid', 'snap-layers', 'snap-bounds'] }, { label: 'Show', items: ['show-all-extras', 'show-no-extras', '-', 'show-selection-edges', 'selection-display-tint', 'show-layer-edges', 'show-smart-guides', 'show-comfy-dot', 'show-notes', 'show-counts', 'toggle-show-slices', 'toggle-auto-slices', 'lock-slices', 'layer-based-slice', 'slices-from-guides', 'slice-options', 'divide-slice', 'delete-slice', 'clear-slices'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'os-full-screen', 'toggle-panels', 'rail-columns', 'interface-rtl', { label: 'Pasteboard', items: ['pasteboard-default', 'pasteboard-black', 'pasteboard-dark', 'pasteboard-mid', 'pasteboard-light'] }, { label: 'Theme', items: Object.keys(THEMES).map((tid) => `theme-${tid}`) }] },
-    { label: 'Plugins', items: () => { const ids = pluginHost.commandIds(); return ['manage-plugins', 'reload-plugins', 'open-plugins-folder', ...(ids.length && loadPrefs().showExtPanels ? ['-', ...ids] : [])]; } },
+    { label: 'Plugins', items: () => { const ids = [...pluginHost.commandIds(), ...folderPlugins.commandIds()]; return ['manage-plugins', 'reload-plugins', 'open-plugins-folder', ...(ids.length && loadPrefs().showExtPanels ? ['-', ...ids] : [])]; } },
     { label: 'Window', items: [{ label: 'Arrange', items: ['new-window', 'float-window', 'float-all-windows', 'arrange-cascade', '-', 'arrange-tabs','arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-4up', 'arrange-6up', 'arrange-tile', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.connect.open', 'agent.connect.copy-claude-code', 'agent.connect.copy-claude-desktop', 'terminal.toggle', 'terminal.new', 'script-console', 'brush-settings', { label: 'Brush Size', items: ['brush-size-up', 'brush-size-down', 'brush-harder', 'brush-softer'] }, { label: 'Brush Presets', items: ['save-brush-preset', 'rename-brush-preset', 'delete-brush-preset', 'move-brush-preset', 'rename-brush-group', '-', 'set-brush', 'get-brush'] }, 'paragraph-styles', 'character-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-channels', 'panel-color', 'panel-tools', 'panel-properties-col', 'merge-columns', 'toggle-dock-panels', '-', { label: 'Workspace', items: ['workspace-pixelart', '-', 'new-workspace', 'delete-workspace'] }, 'reset-panels', '-', 'next-document', 'previous-document', '-', 'theme-sync-system', 'next-appearance', 'interface-darken', 'interface-lighten', '-', 'reload-window'] },
     { label: 'Help', items: ['help', 'whats-new', '-', 'shortcuts', 'console-log', 'copy-error-log', 'copy-engine-log', 'benchmark', 'record-performance', 'frame-trace', 'copy-frame-trace', 'tile-grid', 'simulate-gpu-loss', '-', 'help-github', 'report-issue', '-', 'check-for-updates', 'system-info', 'about'] },
   ];
@@ -4972,13 +5317,18 @@ export function startApp(): void {
   root.addEventListener('cv:fill-options', (e) => dialogs.fillLayer.showEdit((e as CustomEvent<string>).detail));
   root.addEventListener('cv:relight-edit', (e) => { void relight.begin((e as CustomEvent<string>).detail); });
   watchLinked(engine, (names) => toast(`Updated from changed file${names.length > 1 ? 's' : ''}: ${names.join(', ')}.`));
-  engine.smartFilterMargin = (kind, settings) => filterMargin(kind as FilterKind, { ...defaultFilterSettings(), ...(settings as Partial<FilterPanelSettings>) });
+  engine.smartFilterMargin = (kind, settings) => isWasmKind(kind) ? wasmPlugins.get(wasmIdOf(kind))?.manifest.reach ?? 0 : filterMargin(kind as FilterKind,{ ...defaultFilterSettings(), ...(settings as Partial<FilterPanelSettings>) });
   void loadPatterns();
   engine.smartFilterRunnerAsync = (kind, settings, src) => {
-    const s = { ...defaultFilterSettings(), ...(settings as Partial<FilterPanelSettings>) }, seed = typeof settings.seed === 'number' ? settings.seed : 0;
+    if (isWasmKind(kind)) {
+      const e = wasmPlugins.get(wasmIdOf(kind));
+      if (!e) { toast(`The plug-in ${wasmIdOf(kind)} is not installed, so its smart filter is skipped.`, 'error'); return Promise.resolve(src); }
+      return runWasmFilter(e, wasmValues(e.manifest, settings.values), src).catch((err: unknown) => { toast(`${e.manifest.name}: ${err instanceof Error ? err.message : 'it failed.'}`, 'error'); return src; });
+    }
+    const s ={ ...defaultFilterSettings(), ...(settings as Partial<FilterPanelSettings>) }, seed = typeof settings.seed === 'number' ? settings.seed : 0;
     return runFilterOffThread(kind as FilterKind, s, 1, seed, src) ?? Promise.resolve(runFilter(kind as FilterKind, s, seed, src, 1));
   };
-  engine.smartFilterRunner = (kind, settings, src) => runFilter(kind as FilterKind, { ...defaultFilterSettings(), ...(settings as Partial<FilterPanelSettings>) }, typeof settings.seed === 'number' ? settings.seed : 0, src, 1);
+  engine.smartFilterRunner = (kind, settings, src) => isWasmKind(kind) ? src : runFilter(kind as FilterKind, { ...defaultFilterSettings(), ...(settings as Partial<FilterPanelSettings>) }, typeof settings.seed === 'number' ? settings.seed : 0, src, 1);
   document.addEventListener('cv:type', (e) => {
     const d = (e as CustomEvent<{ layerId?: string; x?: number; y?: number; box?: { w: number; h: number } }>).detail;
     if (d?.layerId) typing.begin({ layerId: d.layerId });
@@ -5043,6 +5393,8 @@ export function startApp(): void {
     }
     const target = e.target instanceof Element ? e.target : null;
     if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+    const keyed = /^F\d+$/.test(e.key) ? actions.forKey(comboOf(e)) : undefined;
+    if (keyed) { e.preventDefault(); if (!e.repeat) void playAction(keyed); return; }
     if (e.code === 'Space' && !e.shiftKey) { e.preventDefault(); if (!e.repeat) stage.setSpace(true); return; }   // with Ctrl or Cmd it is the temporary Zoom (a drag)
     // Return and Escape reach the tool through the two edit commands, so Keyboard Shortcuts can move them: a key bound to
     // one is passed on as the tool's own Return or Escape, and a plain Return or Escape that was rebound away is not.

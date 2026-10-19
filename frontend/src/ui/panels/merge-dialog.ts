@@ -20,6 +20,7 @@ export class MergeDialog extends Dialog {
   private readonly panoRows: HTMLElement;
   private readonly hdrRows: HTMLElement;
   private align = true;
+  private depth: 32 | 16 | 8 = 32;
   private readonly times = el('<input class="cv-input" type="text" placeholder="Exposure times in seconds, one per photo, comma separated (blank: from the photos)" aria-label="Exposure times">') as HTMLInputElement;
 
   constructor(private readonly engine: Engine, private readonly mode: 'panorama' | 'hdr') {
@@ -52,12 +53,27 @@ export class MergeDialog extends Dialog {
     this.remember([this.input]);   // the layout and the crop; the photos themselves are chosen each time
   }
 
-  show(): void { this.files = []; this.input.value = ''; this.describe(); setText(this.note, ''); this.open(); }
+  show(): void { this.files = []; this.depth = 32; this.input.value = ''; this.describe(); setText(this.note, ''); this.open(); }
 
   private describe(): void { setText(this.picked, this.files.length ? `${this.files.length} photo${this.files.length > 1 ? 's' : ''}: ${this.files.map((f) => f.name).join(', ')}` : 'No photos chosen yet.'); }
 
+  /** The command's way in: the photos given and the choices from `o` (layout, crop, vignette, distortion; align, times); throws what the dialog would say. */
+  async drive(files: File[], o: Record<string, unknown>): Promise<void> {
+    this.files = files;
+    this.layout = (['auto', 'perspective', 'cylindrical', 'collage', 'reposition'] as const).find((l) => l === o.layout) ?? 'auto';
+    this.crop = o.crop === true; this.vignette = o.vignette === true; this.distortion = o.distortion === true;
+    this.align = o.align !== false;
+    this.times.value = typeof o.times === 'string' ? o.times.split(',').map((t) => { const [top, bottom] = t.split('/'); return bottom ? String(Number(top) / Number(bottom)) : t.trim(); }).join(',') : '';
+    this.depth = o.depth === 16 || o.depth === 8 ? o.depth : 32;
+    this.failed = '';
+    await this.apply();
+    if (this.failed) throw new Error(this.failed);
+  }
+
+  private failed = '';
+
   private async apply(): Promise<void> {
-    if (this.files.length < 2) { setText(this.note, 'Choose at least two photos.'); return; }
+    if (this.files.length < 2) { this.failed = 'Choose at least two photos.'; setText(this.note, this.failed); return; }
     const files = this.files;
     setText(this.note, this.mode === 'panorama' ? 'Stitching...' : 'Merging...');
     try {
@@ -73,8 +89,9 @@ export class MergeDialog extends Dialog {
         for (let j = 0; j < n; j++) { data[j * 4] = r.rgb[j * 3]; data[j * 4 + 1] = r.rgb[j * 3 + 1]; data[j * 4 + 2] = r.rgb[j * 3 + 2]; data[j * 4 + 3] = 1; }
         this.close();
         this.engine.openDeep('HDR', { mode: 'rgb', n: 3, width: r.width, height: r.height, data }, 32);
+        if (this.depth !== 32 && !this.engine.setDepth(this.depth)) this.engine.notice('The merge stayed 32 bit: it could not be toned down.', 'error');
         this.engine.notice(`Merged at exposure times ${r.times.map((t) => (t >= 1 ? t.toFixed(2) : `1/${Math.round(1 / t)}`)).join(', ')} (${r.source}).`);
       }
-    } catch (err) { setText(this.note, err instanceof Error ? err.message : 'The engine could not merge these photos.'); }
+    } catch (err) { this.failed = err instanceof Error ? err.message : 'The engine could not merge these photos.'; setText(this.note, this.failed); }
   }
 }

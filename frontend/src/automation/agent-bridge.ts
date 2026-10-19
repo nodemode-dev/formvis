@@ -4,14 +4,19 @@ import { PARAM_KINDS } from '../engine/adjust-params';
 import { BOX_KINDS, MAX_BOXES, boxWarnings, boxesText } from '../engine/boxes';
 import { LIMITS, type BoxKind } from '../engine/types';
 import { decodeImage } from '../io/images';
+import { writePsdFile } from '../io/psd';
+import { writeOra } from '../io/ora';
+import { ADJUST_PRESET_STORE, GRADIENT_PRESETS, GRAIN_PRESETS, PHOTO_FILTERS } from '../engine/adjust-presets';
 import { VIDEO_PROPS, type VideoProp, type VideoTimeline } from '../engine/video-timeline';
-import { localFill, localInpaint, localModels, localUpscale, modelReady, runLocal } from '../io/local-gen';
+import { depthReady, localDepth, localFill, localInpaint, localModels, localUpscale, modelReady, runLocal } from '../io/local-gen';
 import { applyPrefs, loadPrefs, savePrefs, updatePrefs, type Prefs } from '../ui/prefs';
 import { fontFamilies } from '../ui/fonts';
 import { mappedChars } from '../engine/glyph-outlines';
 import { liveText } from '../engine/text';
 import { allBrushPresets } from '../engine/brush-dynamics';
 import { isLibKind } from '../engine/filter-library';
+import { PACK_TOOLS, labelExport, packTool } from './pack-tools';
+import type { UiControl } from './ui-control';
 
 /** Outside agents in the window (1.52.1): while Allow outside agents is on (Preferences > Plugins), the window collects
  *  MCP tool calls from the engine and runs them here, each change an ordinary undoable step. Generative calls cost the
@@ -23,13 +28,17 @@ export interface AgentDeps {
   openFile?(file: File): Promise<void>; projectBlob?(): Promise<Blob | null>; applyFilter?(kind: string, settings: Record<string, unknown>): Promise<boolean> | boolean;
   selectSubject?(): Promise<void>; removeBackground?(): Promise<void>;
   // 1.59.7, DEV_PLAN 25.5: Render Video's file, for timeline_render.
-  renderVideo?(c: { format: 'mp4' | 'gif' | 'png'; from: number; to: number; scale: number }): Promise<Blob | null>;
+  renderVideo?(c: { format: 'mp4' | 'gif' | 'png'; from: number; to: number; scale: number }, step?: (done: number, total: number) => Promise<boolean> | boolean): Promise<Blob | null>;
   // The window's canvas as the person sees it (get_image view editor), Select Object by points (select_point) and the plugins folder (list_plugins).
   viewCapture?(): Surface | null;
   selectPoints?(inside: Array<[number, number]>, outside: Array<[number, number]>, mode: 'replace' | 'add' | 'subtract' | 'intersect'): Promise<string | null>;
   plugins?(): Promise<Array<Record<string, unknown>>>;
   // The window's error log, for read_log.
   log?(): Array<{ at: number; what: string; message: string }>;
+  // The window's own controls: state, screenshots, menus, dialogs, synthetic input (ui_state and the other ui_ tools).
+  ui?: UiControl;
+  // The status bar's hint slot, for set_status.
+  status?(text: string, seconds: number): void;
 }
 
 const settingsOf = (p: Prefs): Record<string, string | number | boolean> => Object.fromEntries(Object.entries(p).filter(([, v]) => typeof v === 'number' || typeof v === 'boolean' || (typeof v === 'string' && v.length <= 60))) as Record<string, string | number | boolean>;
@@ -41,6 +50,38 @@ const modeOf = (v: unknown): 'replace' | 'add' | 'subtract' | 'intersect' => (v 
 const filterSettings = (kind: string, s: Record<string, unknown>): Record<string, unknown> => (isLibKind(kind) && !('lib' in s) ? { lib: { [kind]: s }, seed: typeof s.seed === 'number' ? s.seed : 0 } : s);
 const filterKnown = (kind: string): boolean => isLibKind(kind) || ['gaussianBlur', 'motionBlur', 'addNoise', 'lensCorrection', 'unsharpMask', 'develop', 'lensBlur', 'smartSharpen', 'shakeReduction', 'radialBlur', 'surfaceBlur', 'fieldBlur', 'irisBlur', 'tiltShift', 'pathBlur'].includes(kind);
 const b64 = async (blob: Blob): Promise<string> => { const b = new Uint8Array(await blob.arrayBuffer()); let s = ''; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000)); return btoa(s); };
+
+const unitOf = (h: string): { red: number; green: number; blue: number } => { const c = hex(h) ?? { r: 0, g: 0, b: 0 }; return { red: c.r / 255, green: c.g / 255, blue: c.b / 255 }; };
+const PRESET_KEYS: Record<string, string> = { levels: 'levels', curves: 'curves', exposure: 'exposureSettings', gradientMap: 'gradientMapSettings', hsv: 'hsvSettings', grain: 'grainSettings' };
+const savedPresets = (): Record<string, Record<string, unknown>> => { try { const o = JSON.parse(localStorage.getItem(ADJUST_PRESET_STORE) ?? '{}') as unknown; return o && typeof o === 'object' && !Array.isArray(o) ? o as Record<string, Record<string, unknown>> : {}; } catch { return {}; } };
+/** The data a named preset sets on an adjustment of `kind`: a built-in (grain, gradientMap, photoFilter) or one saved in the Adjustments panel. */
+function presetPatch(kind: string, name: string): { key: string; merge: boolean; value: unknown; label: string } | null {
+  const w = name.trim().toLowerCase(), same = (id: string, label: string): boolean => id.toLowerCase() === w || label.toLowerCase() === w;
+  const g = kind === 'grain' ? GRAIN_PRESETS.find((x) => same(x[0], x[1])) : undefined;
+  if (g) return { key: 'grainSettings', merge: true, label: g[1], value: { amount: g[2], size: g[3], roughness: g[4], colour: g[5], speckle: g[6] } };
+  const m = kind === 'gradientMap' ? GRADIENT_PRESETS.find((x) => same(x.id, x.label)) : undefined;
+  if (m) return { key: 'gradientMapSettings', merge: true, label: m.label, value: { stops: m.stops.map(([at, h]) => ({ at, ...unitOf(h) })), preset: m.id, shadows: unitOf(m.stops[0][1]), highlights: unitOf(m.stops[m.stops.length - 1][1]) } };
+  const f = kind === 'photoFilter' ? PHOTO_FILTERS.find((x) => same(x[0], x[1])) : undefined;
+  if (f) return { key: 'params', merge: true, label: f[1], value: { color: { r: f[2], g: f[3], b: f[4] } } };
+  const s = savedPresets()[kind], hit = s ? Object.keys(s).find((k) => k.toLowerCase() === w) : undefined;
+  return hit && s ? { key: PRESET_KEYS[kind] ?? 'params', merge: false, label: hit, value: s[hit] } : null;
+}
+function presetList(kind?: string): Array<{ kind: string; id: string; label: string; source: 'built-in' | 'saved' }> {
+  const rows: Array<{ kind: string; id: string; label: string; source: 'built-in' | 'saved' }> = [
+    ...GRAIN_PRESETS.map((x) => ({ kind: 'grain', id: x[0], label: x[1], source: 'built-in' as const })),
+    ...GRADIENT_PRESETS.map((x) => ({ kind: 'gradientMap', id: x.id, label: x.label, source: 'built-in' as const })),
+    ...PHOTO_FILTERS.map((x) => ({ kind: 'photoFilter', id: x[0], label: x[1], source: 'built-in' as const })),
+  ];
+  for (const [k, set] of Object.entries(savedPresets())) for (const n of Object.keys(set ?? {})) rows.push({ kind: k, id: n, label: n, source: 'saved' });
+  return kind ? rows.filter((r) => r.kind === kind) : rows;
+}
+/** `fn` as one undo step, however many steps it makes inside. */
+async function inOneStep<T>(e: Engine, name: string, fn: () => Promise<T> | T): Promise<T> {
+  const p = e.current;
+  if (!p) return fn();
+  p.history.begin(name, p.snapshot());
+  try { return await fn(); } finally { p.history.end(p.snapshot()); for (const k of ['doc', 'selection', 'active', 'history', 'render', 'options'] as const) e.emit(k, null); }
+}
 
 /** The command catalogue (window.formvis.catalogue, DEV_PLAN 28.4's contract with the catalogue): list_commands,
  *  describe_command, run_command and run_commands go through it, and say so plainly when it is not there. */
@@ -60,14 +101,25 @@ const catalogueOf = (): CatalogueApi | null => {
 };
 const brief = (v: unknown): string => { let s: string; try { s = JSON.stringify(v) ?? ''; } catch { s = String(v); } return s.length > 4000 ? `${s.slice(0, 4000)}...` : s; };
 
-async function catalogueTool(name: string, a: Record<string, unknown>): Promise<McpResult> {
+interface BackgroundRun { job: string; command: string; status: 'running' | 'done' | 'failed'; started: number; message: string; result?: unknown }
+const background = new Map<string, BackgroundRun>();
+let backgroundCount = 0;
+
+async function catalogueTool(name: string, a: Record<string, unknown>, hasDocument = true): Promise<McpResult> {
+  if (name === 'command_job') {
+    const want = typeof a.job === 'string' ? a.job : '';
+    if (want && !background.has(want)) return fail(`No background command has the job ${want}: call command_job with no job to list them.`);
+    const rows = [...background.values()].filter((j) => !want || j.job === want).map((j) => ({ job: j.job, command: j.command, status: j.status, seconds: Math.round((Date.now() - j.started) / 100) / 10, message: j.message, ...(j.result !== undefined ? { result: j.result } : {}) }));
+    return text(rows.length ? `${rows.length} background command${rows.length === 1 ? '' : 's'}. ${brief(rows)}` : 'No command has been started with wait false.', { jobs: rows });
+  }
   const cat = catalogueOf();
   if (!cat) return fail(NO_CATALOGUE);
   const id = typeof a.id === 'string' ? a.id : '', params = a.params && typeof a.params === 'object' ? a.params as Record<string, unknown> : undefined;
   if (name === 'list_commands') {
     const found = cat.listCommands({ ...(typeof a.group === 'string' && a.group ? { group: a.group } : {}), ...(typeof a.text === 'string' && a.text ? { text: a.text } : {}) });
-    const all = a.enabled === true ? found.filter((c) => c.enabled !== false) : found;
-    const shown = all.slice(0, LIST_CAP).map((c) => ({ id: c.id, label: c.label, ...(c.group ? { group: c.group } : {}), ...(c.when ? { when: c.when } : {}), ...(c.params !== undefined ? { params: c.params } : {}), ...(c.risky ? { risky: true } : {}), ...(c.keys?.length ? { keys: c.keys } : {}), ...(c.enabled !== undefined ? { enabled: c.enabled } : {}) }));
+    const all = a.enabled === true ? found.filter((c) => c.enabled !== false) : a.enabled === false ? found.filter((c) => c.enabled === false) : found;
+    const why = hasDocument ? 'Not available in this state: it may need a selection, a pixel layer or another colour mode (describe_command says what it is for).' : 'Needs an open document: call new_document or open_file first.';
+    const shown = all.slice(0, LIST_CAP).map((c) => ({ id: c.id, label: c.label, ...(c.group ? { group: c.group } : {}), ...(c.when ? { when: c.when } : {}), ...(c.params !== undefined ? { params: c.params } : {}), ...(c.risky ? { risky: true } : {}), ...(c.mutates !== undefined ? { mutates: c.mutates } : {}), ...(c.keys?.length ? { keys: c.keys } : {}), ...(c.enabled !== undefined ? { enabled: c.enabled } : {}), ...(c.enabled === false ? { disabledReason: why, ...(hasDocument ? {} : { needsDocument: true }) } : {}) }));
     const data = { total: all.length, commands: shown };
     return text(`${all.length} command${all.length === 1 ? '' : 's'}${all.length > shown.length ? `, the first ${shown.length} shown: narrow with group or text` : ''}. ${brief(shown)}`, data);
   }
@@ -79,6 +131,14 @@ async function catalogueTool(name: string, a: Record<string, unknown>): Promise<
     return text(brief(d), d as Record<string, unknown>);
   }
   if (name === 'run_command') {
+    if (a.wait === false) {
+      const job = `cmd:${++backgroundCount}`, row: BackgroundRun = { job, command: id, status: 'running', started: Date.now(), message: 'Running.' };
+      background.set(job, row);
+      for (const k of [...background.keys()].slice(0, Math.max(0, background.size - 50))) background.delete(k);
+      void cat.runCommand(id, params).then((r) => { row.status = r.ok ? 'done' : 'failed'; row.message = r.ok ? `Ran ${id}.` : `${id} did not run: ${r.error ?? 'no reason given'}`; if (r.result !== undefined) row.result = r.result; },
+        (err) => { row.status = 'failed'; row.message = `${id} failed: ${err instanceof Error ? err.message : String(err)}`; });
+      return text(`Started ${id} in the background as ${job}; call command_job with job ${job} for its result. Do not edit the document until it is done.`, { job, status: 'running' });
+    }
     const r = await cat.runCommand(id, params);
     return r.ok ? text(`Ran ${id}.${r.result === undefined ? '' : ` ${brief(r.result)}`}`, r.result && typeof r.result === 'object' ? { result: r.result } : undefined)
       : fail(`${id} did not run: ${r.error ?? 'no reason given'}. Check describe_command for its params, or list_commands for the right id.`);
@@ -102,6 +162,7 @@ export class AgentBridge {
   private on = false;
   private looping = false;
   private inflight = 0;
+  private callId = '';
   constructor(private readonly engine: Engine, private readonly deps: AgentDeps) {}
 
   /** True while an outside agent's call is being run here (the Script Console refuses to run then). */
@@ -131,6 +192,7 @@ export class AgentBridge {
             continue;
           }
           this.inflight++;
+          this.callId = item.id;
           let result: McpResult;
           try { result = this.on ? await this.run(item.name, item.arguments ?? {}) : fail('formvis stopped taking requests.'); } finally { this.inflight--; }
           await fetch('/api/mcp/bridge/result', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id, result }) });
@@ -147,15 +209,23 @@ export class AgentBridge {
       if (name === 'new_document') {
         const bg = str('background') || 'white';
         let nw = Math.round(num('width', 0)), nh = Math.round(num('height', 0));
-        if (!nw || !nh) {
+        if (!nw && !nh && !str('aspect')) { nw = 1920; nh = 1080; }
+        else if (!nw || !nh) {
           const ratio = /^(\d+):(\d+)$/.exec(str('aspect')), long = { '1k': 1024, '2k': 2048, '4k': 4096 }[str('size_class') || '1k'];
-          if (!ratio || !long) return fail('Give width and height in pixels, or an aspect such as 16:9 (with size_class 1k, 2k or 4k).');
+          if (!ratio || !long) return fail('Give width and height in pixels, or an aspect such as 16:9 (with size_class 1k, 2k or 4k); with none of them the document is 1920 by 1080.');
           const ra = Number(ratio[1]), rb = Number(ratio[2]), side = (v: number): number => Math.max(16, Math.round(v / 16) * 16);
           [nw, nh] = ra >= rb ? [long, side(long * rb / ra)] : [side(long * ra / rb), long];
         }
-        e.newDocument(nw, nh, str('name') || 'Untitled', bg === 'transparent' ? 'transparent' : 'white');
-        if (bg === 'black') { e.fg = { r: 0, g: 0, b: 0 }; e.fill('fg'); }
-        return text(`Opened a ${e.current?.doc.width} by ${e.current?.doc.height} document.`);
+        const paint = hex(bg), mode = str('mode') || 'rgb', depth = num('depth', 8);
+        if (bg !== 'white' && bg !== 'transparent' && bg !== 'black' && !paint) return fail('background is white, transparent, black or a colour #rrggbb.');
+        const made = e.newDocument(nw, nh, str('name') || 'Untitled', bg === 'transparent' ? 'transparent' : bg === 'white' ? 'white' : bg === 'black' ? { r: 0, g: 0, b: 0 } : paint ?? 'white');
+        if (!made) return fail(`A ${nw} by ${nh} document is outside what formvis allows (30,000 pixels a side, ${Math.round(LIMITS.pixels / 1_000_000)} megapixels on this computer).`);
+        const cat = catalogueOf();
+        if ((mode !== 'rgb' || depth !== 8) && !cat) return fail(`${NO_CATALOGUE} The document was opened as 8-bit RGB.`);
+        if (mode !== 'rgb') { const r = await cat!.runCommand(`mode-${mode}`, {}); if (!r.ok) return fail(`The document was opened, but ${mode} mode failed: ${r.error ?? 'no reason given'}.`); }
+        if (depth !== 8) { const r = await cat!.runCommand(`depth-${depth}`, {}); if (!r.ok) return fail(`The document was opened, but ${depth} bits failed: ${r.error ?? 'no reason given'}.`); }
+        const d = e.current?.doc;
+        return text(`Opened a ${d?.width} by ${d?.height} ${d?.mode ?? 'rgb'} document at ${d?.depth ?? 8} bits.`, { width: d?.width, height: d?.height, mode: d?.mode ?? 'rgb', depth: d?.depth ?? 8 });
       }
       if (name === '__open') {   // open_file: the engine read the file at its path (1.53.3)
         const bytes = Uint8Array.from(atob(str('data')), (c) => c.charCodeAt(0)), file = new File([bytes], str('name'));
@@ -164,7 +234,14 @@ export class AgentBridge {
         const q = e.current;
         return text(q ? `Opened ${file.name}: ${q.doc.width} by ${q.doc.height}, ${q.doc.layers.length} layer${q.doc.layers.length === 1 ? '' : 's'}.` : `Could not open ${file.name}.`, q ? { id: q.id, width: q.doc.width, height: q.doc.height } : undefined);
       }
-      if (name === 'list_commands' || name === 'describe_command' || name === 'run_command' || name === 'run_commands') return await catalogueTool(name, a);
+      if (name === 'list_commands' || name === 'describe_command' || name === 'run_command' || name === 'run_commands' || name === 'command_job') return await catalogueTool(name, a, !!p);
+      if (PACK_TOOLS.has(name)) return await packTool(e, name, a);
+      if (name === 'set_status') {
+        if (!this.deps.status) return fail('The status bar is not available here.');
+        const note = str('text').trim();
+        this.deps.status(note, Math.min(600, Math.max(1, num('seconds', 60))));
+        return text(note ? `The status bar shows "${note.slice(0, 160)}" for ${Math.min(600, Math.max(1, num('seconds', 60)))} seconds.` : 'Cleared the status bar note.');
+      }
       if (name === 'ping') {
         const documents = e.projects.map((q) => ({ id: q.id, name: q.name, active: q === p, width: q.doc.width, height: q.doc.height }));
         return text(`${documents.length} open document${documents.length === 1 ? '' : 's'}.`, { documents, active: p?.id ?? null });
@@ -227,13 +304,30 @@ export class AgentBridge {
         const r = await cat.runCommand('close-document', str('id') ? { id: str('id') } : {});
         return r.ok ? text(`Closed ${str('id') || 'the active document'}; ${e.projects.length} left open${e.current ? `, now working on ${e.current.name}` : ''}.`, { documents: e.projects.map((q) => ({ id: q.id, name: q.name })) }) : fail(`${r.error ?? 'The document could not be closed.'}`);
       }
+      if (name.startsWith('ui_') && name !== 'ui_inspect' || name === '__menu_id') {
+        const ui = this.deps.ui;
+        if (!ui) return fail('The window controls are not available here.');
+        const shown = (k: string): string => { const v = a[k]; return typeof v === 'string' ? v : ''; };
+        if (name === 'ui_state') return await ui.state();
+        if (name === 'ui_screenshot') return await ui.screenshot(shown('selector'), num('max_size', 1024), shown('format') === 'jpeg', num('quality', 0.9));
+        if (name === 'ui_menu_list') return ui.menuList(shown('path'), Math.max(1, Math.min(4, Math.round(num('depth', 1)))));
+        if (name === '__menu_id') { const r = ui.menuId(shown('path')); return r.id ? text(r.id, { id: r.id }) : fail(r.error ?? 'No such menu item.'); }
+        if (name === 'ui_menu_invoke') return await ui.menuInvoke(shown('path'), a.params && typeof a.params === 'object' ? a.params as Record<string, unknown> : undefined);
+        if (name === 'ui_set') return await ui.set(a);
+        if (name === 'ui_dialog') return await ui.dialog(shown('action') || 'list', a.fields && typeof a.fields === 'object' ? a.fields as Record<string, unknown> : undefined, shown('button') || undefined);
+        if (name === 'ui_pointer') return await ui.pointer(Array.isArray(a.events) ? a.events as Array<Record<string, unknown>> : [], num('delay_ms', 4), a.keep_down === true);
+        if (name === 'ui_key') return await ui.key(Array.isArray(a.keys) ? a.keys.filter((k): k is string => typeof k === 'string') : undefined, shown('text') || undefined);
+        if (name === 'ui_window') return await ui.window(shown('action'), typeof a.width === 'number' ? a.width : undefined, typeof a.height === 'number' ? a.height : undefined);
+        return fail(`formvis has no tool named ${name}.`);
+      }
       if (!p) return fail('No document is open: call new_document or open_file first.');
-      const layerOf = (): NonNullable<ReturnType<typeof p.layer>> => { const l = p.layer(str('id')); if (!l) throw new Error(`No layer has the id ${str('id')}: call get_document for the ids.`); return l; };
+      const layerOf =(): NonNullable<ReturnType<typeof p.layer>> => { const l = p.layer(str('id')); if (!l) throw new Error(`No layer has the id ${str('id')}: call get_document for the ids.`); return l; };
       switch (name) {
         case 'get_document': {
           const d = p.doc, s = p.selection;
           const data = { name: p.name, width: d.width, height: d.height, resolution: d.resolution ?? 72, mode: d.mode ?? 'rgb', depth: d.depth ?? 8, profile: d.profile?.name ?? (d.mode === 'cmyk' ? null : 'sRGB'), activeLayerId: p.activeId,
             selection: s ? { x: s.x, y: s.y, width: s.w, height: s.h } : null,
+            history: { steps: e.historySteps.names.length, done: e.historySteps.current, canUndo: p.history.canUndo, canRedo: p.history.canRedo, last: e.historySteps.current ? e.historySteps.names[e.historySteps.current - 1] : null },
             documents: e.projects.map((q) => ({ id: q.id, name: q.name, active: q === p, width: q.doc.width, height: q.doc.height, layers: q.doc.layers.length, modified: q.modified })),
             layers: d.layers.map((l) => ({ id: l.id, name: l.name, kind: l.isGroup ? 'group' : l.adjustment ? `adjustment:${l.adjustment.kind}` : l.fillContent ? `fill:${l.fillContent.kind}` : l.text ? 'text' : l.shape ? 'shape' : l.smart ? 'smart object' : 'pixels',
               visible: l.visible !== false, opacity: l.opacity, blend: l.blend ?? 'normal', parentId: l.parentId ?? null })) };
@@ -307,8 +401,26 @@ export class AgentBridge {
         case 'place_image': {
           const bytes = Uint8Array.from(atob(str('data')), (c) => c.charCodeAt(0)), bmp = await createImageBitmap(new Blob([bytes]));
           const r = new Raster(bmp.width, bmp.height); r.ctx.drawImage(bmp, 0, 0); bmp.close(); r.touch();
-          e.insertRasterLayer(r, str('name') || 'Placed Image', Math.round(num('x', 0)), Math.round(num('y', 0)), {}, 'Place');
-          return text(`Placed a ${r.width} by ${r.height} image as ${e.activeLayer?.name} (id ${e.activeLayer?.id}).`, { id: e.activeLayer?.id });
+          let placed: string | undefined, smartFailed = '';
+          await inOneStep(e, 'Place', async () => {
+            e.insertRasterLayer(r, str('name') || 'Placed Image', Math.round(num('x', 0)), Math.round(num('y', 0)), {}, 'Place');
+            placed = e.activeLayer?.id;
+            if (placed && (typeof a.scale === 'number' || a.fit === 'contain' || a.fit === 'cover')) {
+              const k = typeof a.scale === 'number' ? a.scale : Math.min(1000, Math.max(1, (a.fit === 'cover' ? Math.max : Math.min)(p.doc.width / r.width, p.doc.height / r.height) * 100));
+              e.scaleLayerTo(k);
+            }
+            if (placed && (a.center === true || a.fit === 'contain' || a.fit === 'cover')) {
+              const t = e.current?.layer(placed)?.transform;
+              if (t) e.setLayerTransform({ x: Math.round((p.doc.width - t.w) / 2), y: Math.round((p.doc.height - t.h) / 2) }, 'Place');
+            }
+            if (placed && a.smart_object === true) {
+              const cat = catalogueOf(), r2 = cat ? await cat.runCommand('convert-smart', {}) : null;
+              if (!r2?.ok) smartFailed = r2?.error ?? NO_CATALOGUE;
+            }
+          });
+          if (smartFailed) return fail(`The image was placed as a pixel layer (id ${placed}), but it could not become a smart object: ${smartFailed}`);
+          const t = e.current?.layer(placed ?? '')?.transform;
+          return text(`Placed a ${r.width} by ${r.height} image as ${e.activeLayer?.name} (id ${e.activeLayer?.id})${t ? ` at ${Math.round(t.x)}, ${Math.round(t.y)}, ${Math.round(t.w)} by ${Math.round(t.h)}` : ''}${a.smart_object === true ? ', a smart object' : ''}.`, { id: e.activeLayer?.id });
         }
         case 'undo': case 'redo': {
           const n = Math.min(100, Math.max(1, Math.round(num('steps', 1))));
@@ -363,7 +475,15 @@ export class AgentBridge {
           if (name === '__render') {   // timeline_render: the engine writes the file at its path
             if (!this.deps.renderVideo) return fail('formvis cannot render video for agents here.');
             const from = Math.min(vt.duration - 1, Math.max(0, frame('from', 0))), to = Math.min(vt.duration, Math.max(from + 1, frame('to', vt.duration)));
-            const fmt = str('format'), blob = await this.deps.renderVideo({ format: fmt === 'gif' || fmt === 'png' ? fmt : 'mp4', from, to, scale: [1, 0.5, 0.25].includes(num('scale', 1)) ? num('scale', 1) : 1 });
+            let stopped = false;
+            const fmt = str('format'), blob = await this.deps.renderVideo({ format: fmt === 'gif' || fmt === 'png' ? fmt : 'mp4', from, to, scale: [1, 0.5, 0.25].includes(num('scale', 1)) ? num('scale', 1) : 1 }, async (done, total) => {
+              try {
+                const r = await fetch('/api/mcp/bridge/progress', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: this.callId, progress: done, total, message: `Rendered ${done} of ${total} frames` }) });
+                if (r.ok && (await r.json() as { cancel?: boolean }).cancel) stopped = true;
+              } catch { /* the engine is not answering: the render goes on */ }
+              return !stopped;
+            });
+            if (stopped) return fail(`Render Video stopped after the agent cancelled it; nothing was written.`);
             return blob ? text(`Rendered ${to - from} frames.`, { data: await b64(blob) }) : fail('Nothing was rendered.');
           }
           const l = layerOf(), tr = vt.tracks[l.id];
@@ -405,6 +525,17 @@ export class AgentBridge {
           return text(`Keyed ${l.name}'s ${prop} at frame ${at}: ${value} (${interp}).`);
         }
         case '__export': {
+          if (['psd', 'psb', 'ora'].includes(str('type'))) {
+            const kind = str('type');
+            if (kind !== 'ora' && (p.doc.mode === 'cmyk' || p.doc.mode === 'lab')) return fail(`A ${p.doc.mode} document goes out as a PSD from File > Export; through export_image convert it to RGB first (run_command mode-rgb).`);
+            if (kind === 'psd' && (p.doc.width > 30000 || p.doc.height > 30000)) return fail('A PSD holds 30000 pixels a side: write a .psb instead.');
+            e.settle();
+            const flat = e.flattened();
+            if (!flat) return fail('Nothing to export.');
+            if (kind === 'ora') { const { blob, notes } = await writeOra(p.doc, flat, (l) => e.renderLayerAlone(l.id)); return text(`The layered picture, ${p.doc.layers.length} layers.${notes.length ? ` ${notes.join(' ')}` : ''}`, { data: await b64(blob) }); }
+            const { bytes, notes } = await writePsdFile(p.doc, flat, kind === 'psb', e.pathsOf(p), true);
+            return text(`The layered picture, ${p.doc.layers.length} layers.${notes.length ? ` ${notes.join(' ')}` : ''}`, { data: await b64(new Blob([bytes])) });
+          }
           const t = (['image/png', 'image/jpeg', 'image/webp'].includes(str('type')) ? str('type') : 'image/png') as 'image/png';
           const q = Math.min(1, Math.max(0.1, num('quality', 0.92))), sc = Math.min(4, Math.max(0.05, num('scale', 1)));
           if (sc !== 1) {
@@ -414,10 +545,10 @@ export class AgentBridge {
             if (str('type') === 'image/jpeg') { oc.fillStyle = '#ffffff'; oc.fillRect(0, 0, out.width, out.height); }
             oc.imageSmoothingQuality = 'high';
             oc.drawImage(flat as CanvasImageSource, 0, 0, out.width, out.height);
-            return text(`The picture at ${out.width} by ${out.height}.`, { data: await b64(await toBlob(out, t, str('type') === 'image/png' || !str('type') ? undefined : q)), width: out.width, height: out.height });
+            return text(`The picture at ${out.width} by ${out.height}.`, { data: await b64(await labelExport(e, await toBlob(out, t, str('type') === 'image/png' || !str('type') ? undefined : q), t)), width: out.width, height: out.height });
           }
           const blob = await e.exportBlob(t, q);
-          return blob ? text('The picture.', { data: await b64(blob) }) : fail('Nothing to export.');
+          return blob ? text('The picture.', { data: await b64(await labelExport(e, blob, t)) }) : fail('Nothing to export.');
         }
         case 'switch_document': {
           if (!e.projects.some((q) => q.id === str('id'))) return fail(`No open document has the id ${str('id')}: see documents in get_document.`);
@@ -544,9 +675,79 @@ export class AgentBridge {
         case 'set_adjustment': {
           const l = layerOf();
           if (!l.adjustment) return fail(`${l.name} is not an adjustment layer.`);
-          if (!(PARAM_KINDS as string[]).includes(l.adjustment.kind)) return fail(`${l.name}'s settings are not set by parameters.`);
-          e.edit('Adjustment', (q) => { const x = q.layer(l.id); if (x?.adjustment) q.updateLayer(l.id, { adjustment: { ...x.adjustment, data: { ...x.adjustment.data, params: { ...(x.adjustment.data.params as object ?? {}), ...(a.params as object ?? {}) } } } }); });
+          const own = ({ grain: 'grainSettings', exposure: 'exposureSettings' } as Record<string, string>)[l.adjustment.kind];
+          if (!own && !(PARAM_KINDS as string[]).includes(l.adjustment.kind)) return fail(`${l.name}'s settings are not set by parameters (${l.adjustment.kind}): set_adjustment takes the parametric adjustments, grain and exposure; apply_preset sets gradientMap, curves and levels from a preset.`);
+          if (!a.params || typeof a.params !== 'object' || !Object.keys(a.params).length) return fail('Give params: the values to change, as add_adjustment takes them.');
+          const key = own ?? 'params';
+          e.edit('Adjustment', (q) => { const x = q.layer(l.id); if (x?.adjustment) q.updateLayer(l.id, { adjustment: { ...x.adjustment, data: { ...x.adjustment.data, [key]: { ...(x.adjustment.data[key] as object ?? {}), ...(a.params as object) } } } }); });
           return text(`Updated ${l.name}.`);
+        }
+        case 'apply_preset': {
+          const kind = str('kind'), pick = str('name').trim();
+          if (!pick) { const rows = presetList(kind || undefined); return text(`${rows.length} preset${rows.length === 1 ? '' : 's'}${kind ? ` for ${kind}` : ''}. ${brief(rows)}`, { presets: rows }); }
+          if (!kind) return fail('Give kind: the adjustment the preset belongs to (grain, gradientMap, photoFilter, or the kind a saved preset was made for). Call apply_preset with no name to list them.');
+          const patch = presetPatch(kind, pick);
+          if (!patch) return fail(`No ${kind} preset is named ${pick}: call apply_preset with kind ${kind} and no name to list them.`);
+          const existing = str('id') ? layerOf() : null;
+          if (existing && existing.adjustment?.kind !== kind) return fail(`${existing.name} is ${existing.adjustment ? `a ${existing.adjustment.kind}` : 'not an adjustment'} layer, not ${kind}: leave id out to add a new ${kind} layer.`);
+          const target = await inOneStep(e, `${patch.label} preset`, () => {
+            const lid = existing?.id ?? e.addAdjustmentLayer(kind as Parameters<Engine['addAdjustmentLayer']>[0]);
+            if (!lid) return null;
+            e.edit('Adjustment', (q) => { const x = q.layer(lid); if (x?.adjustment) q.updateLayer(lid, { adjustment: { ...x.adjustment, data: { ...x.adjustment.data, [patch.key]: patch.merge ? { ...(x.adjustment.data[patch.key] as object ?? {}), ...(patch.value as object) } : structuredClone(patch.value) } } }); });
+            return lid;
+          });
+          return target ? text(`Applied the ${patch.label} preset to ${e.current?.layer(target)?.name} (id ${target}).`, { id: target, preset: patch.label }) : fail(`${kind} is not an adjustment formvis has.`);
+        }
+        case 'depth_from_layer': {
+          const l = str('id') ? layerOf() : e.activeLayer;
+          if (!l || l.isGroup) return fail('Give id: a pixel layer from get_document (a group has no pixels of its own).');
+          if (!(await depthReady())) return fail('Depth Anything V2 Small is not downloaded: the person can download it in Preferences > Plugins > Local models (99 MB).');
+          const ok = await e.task(() => e.computeDepthMap(localDepth, { layer: l.id }));
+          const dl = e.depthLayer();
+          return ok && dl ? text(`Added the Depth Map layer (id ${dl.id}) read from ${l.name} alone: near is bright, far is dark.`, { id: dl.id, source: l.id }) : fail(`The depth could not be read from ${l.name}: see the formvis window for the reason.`);
+        }
+        case 'match_edges': {
+          const l = layerOf();
+          if (!l.raster || l.isGroup) return fail(`${l.name} has no pixels to clean: rasterize_layer a text or shape layer first.`);
+          e.selectLayer(l.id);
+          const width = Math.min(20, Math.max(1, Math.round(num('width', 2)))), amount = Math.min(100, Math.max(0, num('decontaminate', 100)));
+          await inOneStep(e, 'Match Edges', () => { e.matting('defringe', width); if (amount > 0) e.matting('decontaminate', 1, amount, Math.min(100, Math.max(1, num('radius', 6)))); });
+          return text(`Cleaned the edge of ${l.name}: defringed ${width} px${amount > 0 ? `, decontaminated ${amount} percent` : ''}.`);
+        }
+        case 'realism_pass': {
+          const l = layerOf(), steps: string[] = [], grain = str('grain') || 'iso400';
+          if (!l.raster || l.isGroup) return fail(`${l.name} has no pixels: rasterize_layer a text or shape layer first.`);
+          e.selectLayer(l.id);
+          await inOneStep(e, 'Realism Pass', () => {
+            if (a.colour !== false && e.colorMatch(l.id, 'beneath', Math.min(1, Math.max(0, num('amount', 0.8))))) steps.push('colours matched to what is beneath');
+            if (a.edges !== false) { e.selectLayer(l.id); e.matting('defringe', 2); e.matting('decontaminate', 1, 100, 6); steps.push('edge defringed and decontaminated'); }
+            const g = grain === 'none' ? null : presetPatch('grain', grain), lid = g ? e.addAdjustmentLayer('grain') : null;
+            if (g && lid) { e.edit('Adjustment', (q) => { const x = q.layer(lid); if (x?.adjustment) q.updateLayer(lid, { adjustment: { ...x.adjustment, data: { ...x.adjustment.data, [g.key]: { ...(x.adjustment.data[g.key] as object ?? {}), ...(g.value as object) } } } }); }); steps.push(`a grain layer (${g.label}) on top`); }
+          });
+          return steps.length ? text(`Realism pass on ${l.name}: ${steps.join('; ')}. One undo step.`) : fail('Nothing was changed: colour, edges and grain were all off or could not run.');
+        }
+        case 'compare': {
+          const n = Math.min(50, Math.max(1, Math.round(num('steps', 1)))), layout = str('layout') || 'split', h = e.historySteps;
+          if (!['split', 'side_by_side'].includes(layout)) return fail('layout is split or side_by_side.');
+          if (h.current < n) return fail(`Only ${h.current} history step${h.current === 1 ? ' is' : 's are'} done, so there is no state ${n} step${n === 1 ? '' : 's'} back: use a smaller steps (list_history shows them).`);
+          const copy = (s: Surface | null): Surface | null => { if (!s) return null; const c = createSurface(s.width, s.height); ctxOf(c).drawImage(s as CanvasImageSource, 0, 0); return c; };
+          const after = copy(e.flattened());
+          for (let i = 0; i < n; i++) e.undo();
+          const before = copy(e.flattened());
+          for (let i = 0; i < n; i++) e.redo();
+          if (!before || !after) return fail('Nothing to compare.');
+          const W = after.width, H = after.height, side = layout === 'side_by_side', pos = Math.min(95, Math.max(5, num('position', 50))) / 100, gap = side ? Math.max(4, Math.round(W / 200)) : 0;
+          const out = createSurface(side ? W * 2 + gap : W, H), c = ctxOf(out);
+          if (side) { c.fillStyle = '#808080'; c.fillRect(0, 0, out.width, out.height); c.drawImage(before as CanvasImageSource, 0, 0); c.drawImage(after as CanvasImageSource, W + gap, 0); }
+          else {
+            const cut = Math.round(W * pos);
+            c.drawImage(after as CanvasImageSource, 0, 0);
+            c.save(); c.beginPath(); c.rect(0, 0, cut, H); c.clip(); c.drawImage(before as CanvasImageSource, 0, 0); c.restore();
+            c.fillStyle = '#ffffff'; c.fillRect(cut - 1, 0, 2, H);
+          }
+          const k = Math.min(1, num('max_size', 1024) / Math.max(out.width, out.height)), shown = createSurface(Math.max(1, Math.round(out.width * k)), Math.max(1, Math.round(out.height * k)));
+          ctxOf(shown).drawImage(out as CanvasImageSource, 0, 0, shown.width, shown.height);
+          return { content: [{ type: 'image', data: await b64(await toBlob(shown, 'image/png')), mimeType: 'image/png' }, { type: 'text', text: `Before (${n} step${n === 1 ? '' : 's'} back, "${h.names[h.current - n]}" undone) on the ${side ? 'left' : 'left of the white line'}, after (now) on the right; the history is back where it was. Shown at ${shown.width} by ${shown.height}.` }] };
         }
         case 'color_match': { const l = layerOf(); return e.colorMatch(l.id, str('to') === 'around' ? 'around' : 'beneath', num('amount', 1)) ? text(`Matched ${l.name}'s colours (a Curves layer clipped to it).`) : fail(`${l.name}'s colours could not be matched.`); }
         case 'add_film_layer': {

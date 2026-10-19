@@ -6,6 +6,7 @@ import asyncio
 import collections
 import itertools
 import json
+import os
 import time
 import uuid
 
@@ -17,6 +18,8 @@ APPROVAL_SECONDS = 120.0
 LOG_LIMIT = 200
 RISKY_TOOLS = {"save_project": "overwrites a project file", "export_image": "overwrites a picture file", "timeline_render": "overwrites a video file", "convert_file": "writes a picture file"}
 
+LIMIT_RANGES = {"text_chars": (1_000, 5_000_000), "image_bytes": (100_000, 64 * 1024 * 1024)}
+_limits: dict = {"roots": [], "text_chars": 200_000, "image_bytes": 12 * 1024 * 1024}
 _enabled = True
 _loaded = False
 _policies: dict[str, str] = {}
@@ -42,15 +45,47 @@ def _load() -> None:
     try:
         data = json.loads(_file().read_text(encoding="utf-8"))
         _policies.update({k: v for k, v in (data.get("policies") or {}).items() if v in POLICIES})
-    except (OSError, ValueError):
+        saved = data.get("limits") or {}
+        _limits["roots"] = [str(r) for r in saved.get("roots", []) if isinstance(r, str) and r.strip()][:32]
+        for key, (low, high) in LIMIT_RANGES.items():
+            if isinstance(saved.get(key), int) and low <= saved[key] <= high:
+                _limits[key] = saved[key]
+    except (OSError, ValueError, AttributeError):
         return
 
 
 def _save() -> None:
     try:
-        _file().write_text(json.dumps({"policies": _policies}), encoding="utf-8")
+        _file().write_text(json.dumps({"policies": _policies, "limits": _limits}), encoding="utf-8")
     except OSError:
         return
+
+
+def limits() -> dict:
+    """What agents may reach and how much a reply may carry: the folders they may read and write (none set: anywhere
+    outside the system folders), the most characters of text and bytes of one picture a tool returns."""
+    _load()
+    return {"roots": list(_limits["roots"]), "text_chars": _limits["text_chars"], "image_bytes": _limits["image_bytes"]}
+
+
+def set_limits(values: dict) -> dict:
+    _load()
+    if "roots" in values:
+        roots = [str(r).strip() for r in values["roots"] or [] if str(r).strip()]
+        if len(roots) > 32:
+            raise ValueError("At most 32 folders.")
+        for r in roots:
+            if not os.path.isabs(os.path.expanduser(r)):
+                raise ValueError(f"{r} is not an absolute folder path.")
+        _limits["roots"] = roots
+    for key, (low, high) in LIMIT_RANGES.items():
+        if values.get(key) is not None:
+            if not isinstance(values[key], int) or isinstance(values[key], bool) or not low <= values[key] <= high:
+                raise ValueError(f"{key} is a whole number from {low} to {high}.")
+            _limits[key] = values[key]
+    _save()
+    _push_state()
+    return limits()
 
 
 def _emit(message: dict) -> None:

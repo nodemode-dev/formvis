@@ -837,6 +837,19 @@ export function autoWhiteBalance(img: ImageData): { temperature: number; tint: n
   return n ? whiteBalanceFor(r / n, g / n, b / n) : { temperature: 0, tint: 0 };
 }
 
+/** The Colour Mixer band a colour (r, g, b; 0 to 255) belongs to: the one whose centre is nearest its hue; null for a grey. */
+export function bandFor(r: number, g: number, b: number): HslBand | null {
+  const [h, s] = rgbToHsl(r, g, b);
+  if (s < 0.05) return null;
+  let best: HslBand = 'reds', gap = 1e9;
+  for (const k of HSL_BANDS) {
+    let d = Math.abs(h - BAND_CENTER[k]);
+    if (d > 180) d = 360 - d;
+    if (d < gap) { gap = d; best = k; }
+  }
+  return best;
+}
+
 /** Sharpening: the unsharp pass at `radius` (px times `scale`, at least 0.9 where the blur has any reach); `detail` (0 to 1,
  *  1 the plain unsharp pass) holds back the big overshoots, the halos, by a soft limit that tightens as it falls; `masking`
  *  (0 to 1) confines it to edges, by a smoothstep on the luminance gradient that needs a steeper edge the higher it is. */
@@ -886,4 +899,19 @@ export function developImage(src: ImageData, state: DevelopState, scale = 1, see
   if (opticsActive(optics)) img = opticsPass(img, optics);
   if (geometryActive(geometry)) img = geometryPass(img, geometry);
   return img;
+}
+
+/** The clipping view the Light sliders show on an Alt-drag: pixels with a channel at white (254 or more) are red, pixels
+ *  with every channel near black (2 or less) are blue, and the rest fall back to half-strength grey so the clipped
+ *  areas stand out. Alpha is kept. */
+export function clippingView(src: ImageData): ImageData {
+  const out = new ImageData(src.width, src.height), s = src.data, d = out.data;
+  for (let i = 0; i < s.length; i += 4) {
+    const hi = Math.max(s[i], s[i + 1], s[i + 2]);
+    if (hi >= 254) { d[i] = 255; d[i + 1] = 0; d[i + 2] = 0; }
+    else if (hi <= 2) { d[i] = 0; d[i + 1] = 0; d[i + 2] = 255; }
+    else { const g = Math.round((0.299 * s[i] + 0.587 * s[i + 1] + 0.114 * s[i + 2]) * 0.5); d[i] = d[i + 1] = d[i + 2] = g; }
+    d[i + 3] = s[i + 3];
+  }
+  return out;
 }

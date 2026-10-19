@@ -18,6 +18,8 @@ export class ContentFillDialog extends Dialog {
   private output: Output = 'current';
   private brush = 40;
   private showResult = false;
+  private sampleAll = false;
+  private subtract = false;
   private opts: FillOptions = { ...FILL_DEFAULTS };
   private scale = 1;
   private ox = 0;
@@ -42,8 +44,11 @@ export class ContentFillDialog extends Dialog {
     const rotRow = selectRow('Rotation Adaptation', [['0', 'None'], ['1', 'Low'], ['2', 'Medium'], ['3', 'High'], ['4', 'Full']], (v) => { this.opts = { ...this.opts, rotation: Number(v) }; this.refresh(); });
     const scaleRow = checkRow('Scale', (v) => { this.opts = { ...this.opts, scale: v }; this.refresh(); });
     const mirrorRow = checkRow('Mirror', (v) => { this.opts = { ...this.opts, mirror: v }; this.refresh(); });
-    this.body.append(this.canvas, samplingRow.el, this.brushRow.el, colorRow.el, rotRow.el, scaleRow.el, mirrorRow.el, resultRow.el, outRow.el);
+    const modeRow = selectRow('Sampling Brush', [['add', 'Add to sampling area'], ['subtract', 'Subtract from sampling area']], (v) => { this.subtract = v === 'subtract'; });
+    const allRow = checkRow('Sample All Layers', (v) => { this.sampleAll = v; });
+    this.body.append(this.canvas, samplingRow.el, modeRow.el, this.brushRow.el, colorRow.el, rotRow.el, scaleRow.el, mirrorRow.el, resultRow.el, allRow.el, outRow.el);
     this.sync = () => {
+      modeRow.set(this.subtract ? 'subtract' : 'add'); allRow.set(this.sampleAll);
       samplingRow.set(this.sampling); outRow.set(this.output); resultRow.set(this.showResult); this.brushRow.set(this.brush); this.syncBrush();
       colorRow.set(String(this.opts.color)); rotRow.set(String(this.opts.rotation)); scaleRow.set(this.opts.scale); mirrorRow.set(this.opts.mirror);
     };
@@ -104,7 +109,7 @@ export class ContentFillDialog extends Dialog {
     const paint = (e: PointerEvent): void => {
       const a = this.allow, hole = this.hole;
       if (!a || !hole || this.sampling !== 'custom') return;
-      const [cx, cy] = at(e), rad = (this.brush * this.scale) / 2, v = e.altKey ? 0 : 1;
+      const [cx, cy] = at(e), rad = (this.brush * this.scale) / 2, v = e.altKey !== this.subtract ? 0 : 1;
       for (let y = Math.max(0, Math.floor(cy - rad)); y <= Math.min(this.ph - 1, Math.ceil(cy + rad)); y++) for (let x = Math.max(0, Math.floor(cx - rad)); x <= Math.min(this.pw - 1, Math.ceil(cx + rad)); x++) {
         if ((x - cx) ** 2 + (y - cy) ** 2 <= rad * rad && !hole[y * this.pw + x]) a[y * this.pw + x] = v;
       }
@@ -144,7 +149,7 @@ export class ContentFillDialog extends Dialog {
 
   private apply(): void {
     const p = this.engine.current, a = this.allow, sampling = this.sampling, output = this.output, s = this.scale, pw = this.pw, ph = this.ph;
-    const opts = { ...this.opts };
+    const opts = { ...this.opts }, all = this.sampleAll;
     this.close();
     if (!p) return;
     let allowDoc: Uint8Array | null = null;
@@ -153,6 +158,6 @@ export class ContentFillDialog extends Dialog {
       allowDoc = new Uint8Array(W * H);
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) allowDoc[y * W + x] = a[Math.min(ph - 1, Math.floor(y * s)) * pw + Math.min(pw - 1, Math.floor(x * s))];
     }
-    this.engine.contentAwareFillWith(allowDoc, output, opts);
+    this.engine.contentAwareFillWith(allowDoc, output, opts, all);
   }
 }

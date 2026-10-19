@@ -1,6 +1,7 @@
 import { Raster, type Engine } from '../../engine';
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
+import { GLB_VIEW, cleanView, loadModel, placedGlb } from '../../io/glb-scene';
 
 type Three = typeof import('three');
 interface View { turn: number; tilt: number; size: number; lightDir: number; lightHeight: number; strength: number; ambient: number; color: string }
@@ -17,6 +18,7 @@ export class Model3DDialog extends Dialog {
   private three: Three | null = null;
   private model: import('three').Object3D | null = null;
   private name = 'Model';
+  private bytes: ArrayBuffer | null = null;
   private preview: import('three').WebGLRenderer | null = null;
   private frame = 0;
 
@@ -44,6 +46,7 @@ export class Model3DDialog extends Dialog {
       const THREE = this.three ?? (this.three = await import('three'));
       const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
       const bytes = await file.arrayBuffer();
+      this.bytes = bytes;
       const gltf = await new Promise<{ scene: import('three').Object3D }>((ok, no) => new GLTFLoader().parse(bytes, '', ok, no));
       const box = new THREE.Box3().setFromObject(gltf.scene), size = box.getSize(new THREE.Vector3()), centre = box.getCenter(new THREE.Vector3()), k = 1 / Math.max(1e-6, size.x, size.y, size.z);
       const pivot = new THREE.Group(), inner = gltf.scene;
@@ -115,6 +118,8 @@ export class Model3DDialog extends Dialog {
       layer.ctx.drawImage(canvas, 0, 0, W, H);
       layer.touch();
       this.engine.insertRasterLayer(layer, `3D: ${this.name}`, 0, 0, {}, 'Place 3D Model');
+      const id = this.engine.activeLayer?.id, bytes = this.bytes, name = this.name, v = this.view;
+      if (id && bytes) void loadModel(bytes.slice(0)).then((m) => placedGlb.set(id, { bytes, name, view: cleanView(GLB_VIEW, v), info: m.info })).catch(() => undefined);
       this.close();
     } finally { r.dispose(); r.forceContextLoss(); }
   }

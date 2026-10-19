@@ -269,7 +269,7 @@ export async function withXmp(blob: Blob, format: string, meta: DocMeta | undefi
   if (!metaWritable(meta)) return blob;
   const f = format === 'jpeg' ? 'jpg' : format === 'tif' ? 'tiff' : format;
   if (f !== 'png' && f !== 'jpg' && f !== 'webp' && f !== 'tiff') return blob;
-  const xmp = new TextEncoder().encode(buildMergedXmp(meta, now, ai)), b = new Uint8Array(await blob.arrayBuffer());
+  const xmp = new TextEncoder().encode(buildMergedXmp(meta, now, ai ?? meta.aiLabel)), b = new Uint8Array(await blob.arrayBuffer());
   const exif = meta.exif ? fromB64(meta.exif) : null;
   const out = f === 'png' ? pngWith(b, xmp, exif) : f === 'jpg' ? jpegWith(b, xmp, exif) : f === 'webp' ? webpWith(b, xmp, exif) : tiffWith(b, xmp);
   return new Blob([out as BlobPart], { type: blob.type });

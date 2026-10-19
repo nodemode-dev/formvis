@@ -14,6 +14,8 @@ export interface Capabilities { pixelBudget?: number; memory?: number;
 /** The engine process's memory in bytes as the operating system counts it; a key is missing when the system does not say. */
 export interface EngineMetrics { pid: number; uptime: number; total: number; rss?: number; peak?: number; private?: number; available?: number; threads?: number }
 export interface LibraryItem { name: string; modified: number; size: number }
+/** A plugin folder's plugin.json as the engine checked it. */
+export interface PluginManifest { id: string; name: string; version: string; main: string; permissions: string[]; description: string; api: number }
 export interface OpenedProject { session: string; name: string; manifest: Record<string, unknown>; images: Record<string, string>; version?: string; path?: string }
 /** The library's folder (1.58.8, L13): where it is, the default, whether it is fixed by the engine's environment, and
  *  the synced folders found on this computer with a Formvis folder suggested in each. */
@@ -105,7 +107,7 @@ export interface CmykPsd { width: number; height: number; icc: Uint8Array | null
 
 /** A camera RAW's white balance at the RAW stage (DEV_PLAN 36.21): the preset, Temperature and Tint (-100 to 100), and
  *  `half` for Camera Raw's fast half-size preview. */
-export type RawWhiteBalance = { wb: 'as_shot' | 'auto' | 'daylight'; temperature: number; tint: number; half?: boolean; develop?: RawDevelop };
+export type RawWhiteBalance = { wb: 'as_shot' | 'auto' | 'daylight'; temperature: number; tint: number; half?: boolean; develop?: RawDevelop; space?: 'srgb' | 'prophoto' };
 
 /** The RAW-stage develop controls the engine applies in linear light: Exposure in stops, Noise Reduction 0 to 100, highlight
  *  recovery, the black point, and Shadows, Highlights, Clarity, Texture and Dehaze from -100 to 100. */
@@ -119,7 +121,7 @@ export type RawInfo = { kind: string; make: string; model: string; rawWidth: num
 function rawFields(raw?: RawWhiteBalance): Record<string, string> {
   if (!raw) return {};
   const d = raw.develop, plain = !d || (Object.keys(RAW_DEVELOP_ZERO) as Array<keyof RawDevelop>).every((k) => d[k] === RAW_DEVELOP_ZERO[k]);
-  return { ...(raw.wb !== 'as_shot' ? { wb: raw.wb } : {}), ...(raw.temperature ? { temperature: String(raw.temperature) } : {}), ...(raw.tint ? { tint: String(raw.tint) } : {}), ...(raw.half ? { half: 'true' } : {}), ...(plain ? {} : { develop: JSON.stringify(d) }) };
+  return { ...(raw.wb !== 'as_shot' ? { wb: raw.wb } : {}), ...(raw.temperature ? { temperature: String(raw.temperature) } : {}), ...(raw.tint ? { tint: String(raw.tint) } : {}), ...(raw.half ? { half: 'true' } : {}), ...(raw.space === 'prophoto' ? { space: 'prophoto' } : {}), ...(plain ? {} : { develop: JSON.stringify(d) }) };
 }
 
 function form(fields: Record<string, string>, files: FilePart[] = [], key = 'files'): FormData {
@@ -190,6 +192,10 @@ export const api = {
   async pluginCode(name: string): Promise<string> { return (await request(`/plugins/${encodeURIComponent(name)}`)).text(); },
   async addPlugin(name: string, code: string): Promise<void> { await request(`/plugins/${encodeURIComponent(name)}`, { method: 'PUT', headers: { 'Content-Type': 'text/javascript' }, body: code }); },
   async removePlugin(name: string): Promise<void> { await request(`/plugins/${encodeURIComponent(name)}`, { method: 'DELETE' }); },
+  /** Plugin folders (plugin.json beside an ES module): the folders with their manifests, a file in one, a folder removed. */
+  async pluginFolders(): Promise<Array<{ id: string; manifest: PluginManifest | null; error: string | null }>> { try { return (await (await request('/plugins/folders')).json()) as Array<{ id: string; manifest: PluginManifest | null; error: string | null }>; } catch { return []; } },
+  async pluginFolderFile(id: string, path: string): Promise<string> { return (await request(`/plugins/folders/${encodeURIComponent(id)}/${path.split('/').map(encodeURIComponent).join('/')}`)).text(); },
+  async removePluginFolder(id: string): Promise<void> { await request(`/plugins/folders/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
 
   /** The assistant (1.52.2): one step of the conversation; the model's text and its tool calls. */
   async assistantStep(messages: unknown[], tools = true): Promise<{ content: string; tool_calls: Array<{ id: string; name: string; arguments: string }> }> {
@@ -351,10 +357,10 @@ export const api = {
     return (await request('/io/decode', { method: 'POST', body: form({ ...(page ? { page: String(page) } : {}), ...(cameraProfile ? { camera_profile: cameraProfile } : {}), ...rawFields(raw) }, [{ name, blob: file }], 'file') })).blob();
   },
   /** A camera RAW at 16 bits per channel (DEV_PLAN 36.21): RGBA little-endian samples, with the white balance set at the RAW stage. */
-  async decodeRaw16(file: Blob, name: string, raw: RawWhiteBalance): Promise<{ width: number; height: number; data: Uint16Array }> {
+  async decodeRaw16(file: Blob, name: string, raw: RawWhiteBalance): Promise<{ width: number; height: number; data: Uint16Array; profile: string }> {
     const r = await request('/io/decode', { method: 'POST', body: form({ bits: '16', ...rawFields(raw) }, [{ name, blob: file }], 'file') });
     const b = await r.arrayBuffer();
-    return { width: Number(r.headers.get('X-Width')), height: Number(r.headers.get('X-Height')), data: new Uint16Array(b) };
+    return { width: Number(r.headers.get('X-Width')), height: Number(r.headers.get('X-Height')), data: new Uint16Array(b), profile: r.headers.get('X-Profile') ?? 'srgb' };
   },
   /** A camera RAW's open summary read from the file's bytes: make, model, sensor sizes, CFA pattern, white balance multipliers, orientation, baseline exposure. Rejects for a file that is not a RAW. */
   async rawInfo(file: Blob, name: string): Promise<RawInfo> {

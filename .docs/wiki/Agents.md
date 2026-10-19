@@ -4,11 +4,11 @@ Outside agents (Claude Code, Codex, Cursor and any MCP client) edit what is open
 
 | Source path | What lives there |
 | --- | --- |
-| `backend/app/routers/mcp.py` | The MCP server (`/mcp`): 105 tools, each description ending in a "Use when" line; `/mcp?tools=core` lists the 31 most used for clients that cap tools |
+| `backend/app/routers/mcp.py` | The MCP server (`/mcp`): 134 tools, each description ending in a "Use when" line; `/mcp?tools=core` lists the 31 most used for clients that cap tools |
 | `frontend/src/automation/agent-bridge.ts` | The window side: polls the engine for tool calls, runs them through the engine and the catalogue, answers |
 | `frontend/src/automation/catalogue.ts`, `command-meta.ts` | The command catalogue: every registered command, `tool.select.*`, `tool.options.*` and seven exact actions (`paint.stroke`, `select.rect`, `select.ellipse`, `select.lasso`, `layer.set`, `adjust.apply`, `filter.apply`); the words for each id live in `command-meta.ts` |
 | `backend/app/routers/commands.py` | `POST /api/commands/catalogue` (the window mirrors its catalogue to `commands-catalogue.json` in the data folder), `GET /api/commands`, `GET /api/commands/{id}`, `POST /api/commands/{id}` |
-| `setup/cli.py` | `./formvis cli list|describe|run`: the same catalogue from a shell; a risky command needs `--yes` |
+| `setup/cli.py`, `setup/cli_offline.py` | `./formvis cli list|describe|run`: the same catalogue from a shell; a risky command needs `--yes`. `droplet FILE.fvdrop pictures` runs a saved droplet; `serve` is the JSON-lines session (see the manual); `stack`, `contact`, `fit`, `photomerge` and `hdr` need no window |
 | `backend/app/services/agents.py`, `routers/agents.py` | Agent Connect: master switch, a policy per client (allow, ask, deny), sessions, approvals that time out after 120 seconds, an activity log of 200 entries, and a WebSocket at `/api/agents/stream` |
 | `frontend/src/ui/panels/agent-connect.ts` | The panel: master switch, a row per agent with its policy, approval sheet, activity feed, Follow Agent, Stop |
 | `setup/agents.py` | `./formvis agents install` sets up the three clients with every skill; `sync` regenerates the references that follow the code and mirrors `.claude/skills` to `.agents/skills`; `sync --check` fails on drift and on a skill file over the upload gates |

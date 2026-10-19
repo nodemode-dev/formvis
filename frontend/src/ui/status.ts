@@ -151,6 +151,16 @@ export class StatusBar {
   private readonly stop: HTMLButtonElement;
   private errText = '';
   private errTimer = 0;
+  private agentText = '';
+  private agentTimer = 0;
+
+  /** An outside agent's note in the hint slot (set_status): shown until cleared with empty text or for `seconds`; an error still takes the slot first. */
+  setAgentNote(text: string, seconds = 60): void {
+    this.agentText = text.slice(0, 160);
+    window.clearTimeout(this.agentTimer);
+    if (this.agentText) this.agentTimer = window.setTimeout(() => { this.agentText = ''; this.syncHint(); }, Math.max(1, seconds) * 1000);
+    this.syncHint();
+  }
 
   /** The bar and the counts, in the nodes that are already there: bands of the running job, else tasks finished of tasks started. */
   private syncProgress(): void {
@@ -231,6 +241,7 @@ export class StatusBar {
   private syncHint(): void {
     setClass(this.hint, 'is-error', !!this.errText);
     if (this.errText) { setText(this.hint, this.errText); setTitle(this.hint, this.errText); return; }
+    if (this.agentText) { setText(this.hint, this.agentText); setTitle(this.hint, this.agentText); return; }
     setTitle(this.hint, '');
     const raw = getTool(this.engine.tool)?.hint(this.engine) ?? '';
     // The Shape tool's first segment is assembled from a noun and a mode: "Drag to draw a star (as a path)".

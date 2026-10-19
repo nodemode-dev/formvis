@@ -1,20 +1,21 @@
 # formvis commands
 
-Generated from the window's command catalogue (1411 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1442 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
-- Edit: 97
-- File: 94
-- Filter: 87
+- Edit: 101
+- File: 99
+- Filter: 92
 - Generate: 6
 - Help: 5
-- Image: 111
-- Layer: 257
+- Image: 113
+- Layer: 265
 - Paint: 1
 - Paths: 11
+- Plugins: 1
 - Select: 43
-- Tool options: 395
+- Tool options: 401
 - Tools: 53
 - Type: 49
 - View: 96
@@ -32,6 +33,10 @@ Generated from the window's command catalogue (1411 commands) by `./formvis agen
 | `clean-working-files` | Working Files |  | Deletes the stored recovery copies of documents that are no longer open and the closed tabs kept for Reopen Closed Tab, and says how much space came back. (changes the picture) |
 | `clear` | Clear Selection Pixels |  | Erases the pixels inside the selection. (changes the picture) |
 | `clear-history-log` | Clear History Log |  | Empties the history log. |
+| `clone-source-overlay` | Clone Source: Overlay |  | Sets the Clone Source overlay: show, opacity, clipped to the brush, auto hide while painting, and invert. |
+| `clone-source-reset` | Clone Source: Reset Transform |  | Resets the Clone Source transform to 100 percent, no angle and no flips. |
+| `clone-source-set` | Clone Source: Set Source |  | Sets the chosen Clone Source slot: the source point in document pixels, the width and height in percent, the angle and the flips; each slot keeps its own. |
+| `clone-source-slot` | Clone Source: Choose Slot |  | Chooses one of the five Clone Source slots; the slot brings back its own point, scale, angle and flips. |
 | `colour.settings` | Color Settings... | Shift+Mod+K | Opens Color Settings: working spaces, colour management policies and conversion options. |
 | `compare-documents` | Compare with... |  | Opens Compare with: picks another open document and makes a new document with both pictures and a Differences layer in Difference blend mode, selecting where they differ. |
 | `content-fill` | Quick Content-Aware Fill | Shift+Backspace | Fills the selection from its surroundings. (changes the picture) |
@@ -126,6 +131,7 @@ Generated from the window's command catalogue (1411 commands) by `./formvis agen
 
 | Id | Name | Keys | Does |
 | --- | --- | --- | --- |
+| `action-options` | Action Options... |  | Sets an action's set (folder), its Button Mode colour and its function-key shortcut such as F5 or Shift+F5. |
 | `assemble-tiles` | Assemble Tiles... |  | Opens the dialog that assembles tile images into one large picture. (changes the picture) |
 | `batch` | Batch... |  | Opens Batch to run an action over many files. (changes the picture) (asks first) |
 | `clear-recent` | Clear Recent |  | Empties the Open Recent list. (asks first) |
@@ -136,13 +142,14 @@ Generated from the window's command catalogue (1411 commands) by `./formvis agen
 | `close-tabs-right` | Close Tabs to the Right |  | Closes the documents whose tabs lie to the right of the current one, skipping pinned tabs; each unsaved one is asked about first. (asks first) |
 | `comfyui-run` | Run ComfyUI Workflow... |  | Opens the dialog that runs a ComfyUI workflow and brings the result back. (changes the picture) (asks first) |
 | `conditional-mode-change` | Conditional Mode Change... |  | Changes the document to a target mode only when its current mode is one of the ticked source modes. (changes the picture) |
-| `contact-sheet` | Contact Sheet II... |  | Opens Contact Sheet II to lay chosen images out as thumbnails on new documents. (changes the picture) |
-| `create-droplet` | Create Droplet... |  | Writes a shell script that runs a chosen action over any pictures or folders dropped onto it, saving them in the chosen type and quality beside each picture or in an output folder; with the action parameter it writes the script without asking. (asks first) |
+| `contact-sheet` | Contact Sheet II... |  | Lays images (files, or documents true) out as captioned thumbnails on new documents, with page units, mode, depth, place order and caption font as parameters; without parameters it opens Contact Sheet II. (changes the picture) |
+| `create-droplet` | Create Droplet... |  | Writes a shell script, or with kind data a droplet file (.fvdrop run by ./formvis cli droplet FILE pictures), that runs a chosen action over any pictures or folders given, saving them in the chosen type, quality and name suffix beside each picture or in an output folder; with the action parameter it writes without asking. (asks first) |
 | `create-video-timeline` | Create Video Timeline |  | Creates a video timeline from the document layers. (changes the picture) |
 | `crop-straighten-photos` | Crop and Straighten Photos |  | Finds each photo on a scanned page, straightens it and opens it as its own document. (changes the picture) |
 | `download-project` | Download Project File |  | Downloads the project file through the browser. (asks first) |
 | `earlier-states` | Earlier States... |  | Opens a list of the last two sessions and the crash sets formvis kept, to reopen as tabs. |
 | `exit` | Exit |  | Quits formvis after asking Save, Don't Save or Cancel for each document with unsaved changes; in a browser it ends by saying the page can be closed. (asks first) |
+| `export-actions-atn` | Save Actions... |  | Saves the actions of one set, or all of them, as an .atn file; steps with no .atn form are left out and listed. |
 | `export-artboards` | Export Artboards to Files |  | Exports every artboard to its own file. (asks first) |
 | `export-artboards-files` | Artboards to Files... |  | Exports each artboard to its own file in a chosen type and quality; opens the dialog, or runs at once when given any of prefix, format, quality, icc or folder. (asks first) |
 | `export-artboards-pdf` | Artboards to PDF... |  | Exports every artboard as one page of a single PDF, in the Layers order, each page at its artboard size from the document resolution; takes name, jpeg, quality and icc. (asks first) |
@@ -174,7 +181,7 @@ Generated from the window's command catalogue (1411 commands) by `./formvis agen
 | `export-to-file` | Export to File |  | Encodes the flattened picture as png, jpg, webp or tiff and writes it to the exports folder. (asks first) |
 | `export-webp` | Export WebP |  | Exports the flattened picture as WebP. (asks first) |
 | `file-info` | File Info... | Alt+Shift+Mod+I | Opens File Info (title, author, description, rating, keywords, copyright), or sets the fields given as title, author, author_title, description, rating, description_writer, keywords, copyright_status, copyright_notice and copyright_url at once as one step; the fields travel in the project and are written as XMP into PNG, JPEG, TIFF, WebP and PSD exports. (changes the picture) |
-| `fit-image` | Fit Image... |  | Opens Fit Image to scale within a width and height. (changes the picture) |
+| `fit-image` | Fit Image... |  | Scales the picture to fit within a width and height with its proportions kept (resample high, smooth or nearest, optionally never enlarging); without parameters it opens the dialog. (changes the picture) |
 | `generate-image` | Generate Image... |  | Opens Generate Image. (changes the picture) |
 | `generate-image-assets` | Generate Image Assets |  | Writes a zip holding a <document>-assets folder of image files for every layer or folder whose name holds an asset name such as hero.png, or a list like 200% big.png, small.jpg60%, 64x? icon.png, each trimmed and scaled to its size. (asks first) |
 | `image-assets-on-save` | Image Assets on Save |  | Turns Image Assets on or off for this document; while on, File > Save also regenerates the image files for every layer named like hero.png and delivers them as a zip. (changes the picture) |
@@ -183,11 +190,13 @@ Generated from the window's command catalogue (1411 commands) by `./formvis agen
 | `import-folder` | Import Images from Folder... |  | Opens the folder picker and places every picture in the chosen folder as a layer, in name order. (changes the picture) |
 | `import-notes` | Import Notes... |  | Opens the file picker to add the text notes of a PSD, or the paragraphs of a text file, to the document as notes. (changes the picture) |
 | `import-video` | Video Frames to Layers... |  | Opens the dialog that turns video frames into layers. (changes the picture) |
+| `insert-action-step` | Insert Action Step... |  | Adds a nested Play Action step (plays another named action) or an Insert Menu Item step (runs one command by id) to a recorded action. |
 | `insert-conditional` | Insert Conditional... |  | Adds a conditional step to a recorded action: when the document is landscape, portrait or square, 8, 16 or 32 bit, has a selection, unsaved changes, several layers, or an active type, smart object or masked layer, it plays one named action, otherwise another. Without parameters it opens the Actions dialog. (changes the picture) |
 | `lens-correction-batch` | Lens Correction... |  | Opens the Lens Correction batch: one set of distortion, fringe, vignette, perspective and edge settings applied to chosen pictures or a folder, saved as the source type, PNG or JPEG in one zip. (asks first) |
 | `list-actions` | List Actions |  | Returns the recorded actions with their step counts and which one is recording, or one action's steps with their kind, label and on or off state. |
-| `load-files-stack` | Load Files into Stack... |  | Opens a dialog to load chosen image files as the layers of one new document, optionally as a smart object stack. (changes the picture) |
-| `merge-hdr` | Merge to HDR... |  | Opens Merge to HDR for bracketed exposures. (changes the picture) |
+| `load-actions` | Load Actions... |  | Loads actions from an .atn file (base64) or formvis JSON; steps with no formvis equivalent stay in the action greyed and are skipped when it plays. |
+| `load-files-stack` | Load Files into Stack... |  | Loads image files (files, or documents true for the open ones) as the layers of one new document, optionally aligned and as a smart object stack; without parameters it opens the dialog. (changes the picture) |
+| `merge-hdr` | Merge to HDR... |  | Merges bracketed exposures (files, or documents true) into a 32-bit picture, or toned to 16 or 8 bit with depth, with optional alignment and exposure times; without parameters it opens the dialog. (changes the picture) |
 | `new` | New Canvas... | Alt+Mod+N Mod+N | Opens the New Canvas dialog. |
 | `new-canvas-model-preset` | New Canvas from Model Preset... |  | Opens New Canvas from Model Preset, which makes a blank document at a size a chosen model family works well at. (changes the picture) |
 | `new-from-clipboard` | New from Clipboard |  | Makes a new document the size of the clipboard picture. (changes the picture) |
@@ -196,7 +205,7 @@ Generated from the window's command catalogue (1411 commands) by `./formvis agen
 | `open-image-data` | Open Image Data |  | Opens base64 picture bytes with a file name as a new document. (changes the picture) |
 | `open-svg-layers` | Open SVG as Layers... |  | Opens an SVG file as a new document with one editable shape layer per drawable element; with the svg parameter it reads that SVG text instead of asking for a file. (changes the picture) |
 | `package` | Package... |  | Saves the document and the files of its linked smart objects together in one zip, the packaged document pointing at the copies under Links. (changes the picture) |
-| `photomerge` | Photomerge... |  | Opens Photomerge to stitch chosen files or the open documents into a panorama (Auto, Perspective, Cylindrical, Collage or Reposition) with optional vignette and lens distortion correction. (changes the picture) |
+| `photomerge` | Photomerge... |  | Stitches files or the open documents (documents true) into a panorama (Auto, Perspective, Cylindrical, Collage or Reposition) with optional crop, vignette and lens distortion correction; without parameters it opens the dialog. (changes the picture) |
 | `pin-tab` | Pin Tab |  | Pins or unpins the current document tab: a pinned tab moves to the front, loses its close button and is kept by Close All and Close Others. |
 | `place-3d` | Place 3D Model... |  | Opens a file picker for a glTF or GLB model and places it as a layer. (changes the picture) |
 | `place-embedded` | Place Embedded... |  | Places an image file as an embedded smart object. (changes the picture) |
@@ -212,6 +221,7 @@ Generated from the window's command catalogue (1411 commands) by `./formvis agen
 | `save-as` | Save As... | Shift+Mod+S | Saves the document under a new name in the library. (asks first) |
 | `save-copy` | Save a Copy... | Alt+Mod+S | Saves a copy without changing which file the document belongs to. (asks first) |
 | `save-for-web` | Save for Web (Legacy)... |  | Opens Save for Web (Legacy): side-by-side original and optimized previews, a format (JPEG, PNG-24, PNG-8, GIF, WebP) and quality, and an export of the whole image or every slice as a zip. (asks first) |
+| `script-browse` | Browse... |  | Runs a JavaScript file in a sandbox with no document or network access: run(id, params) runs a catalogue command, commands() lists the ids and log(...) records a line. Without source it opens a file chooser. (changes the picture) (asks first) |
 | `script-delete-empty-layers` | Delete All Empty Layers |  | Deletes every pixel layer with no visible pixels and every empty group, and says how many; keeps the Background and adjustment, fill, type, shape and smart object layers. (changes the picture) |
 | `script-events` | Script Events Manager... |  | Opens the Script Events Manager, where a saved action is bound to an event: the app starting, or a document being made, opened, saved, closed, exported or printed. |
 | `script-flatten-effects` | Flatten All Layer Effects |  | Draws every layer style into its layer's pixels and clears the style; a type, shape or fill layer that carries one is rasterized. (changes the picture) |
@@ -219,7 +229,7 @@ Generated from the window's command catalogue (1411 commands) by `./formvis agen
 | `send-comfyui` | Send to ComfyUI... |  | Opens the dialog that sends the picture to ComfyUI. (asks first) |
 | `send-host` | Send to NodeMode Canvas |  | Sends the picture to the NodeMode canvas that hosts formvis. (asks first) |
 | `send-nodemode` | Send to NodeMode... |  | Opens the dialog that sends the picture to NodeMode. (asks first) |
-| `stack-statistics` | Statistics... |  | Opens a dialog to load chosen image files as a smart object stack and combine them with a stack mode such as median. (changes the picture) |
+| `stack-statistics` | Statistics... |  | Loads image files (files, or documents true) as a smart object stack, optionally aligned, and combines them with a stack mode (mean, median, minimum, maximum, range, stddev and more); without parameters it opens the dialog. (changes the picture) |
 
 ## Filter
 
@@ -312,6 +322,11 @@ Generated from the window's command catalogue (1411 commands) by `./formvis agen
 | `filter.apply` | Apply Filter |  | Applies a filter with exact settings to the active layer, inside the selection if there is one. (changes the picture) |
 | `height-from-normal` | Height Map from Normal Map |  | Adds a Height Map layer integrated from the active layer, read as a normal map. (changes the picture) |
 | `normal-map` | Generate Normal Map... |  | Adds a Normal Map layer built from the active layer's brightness. (changes the picture) |
+| `wasm-plugin-example` | Install Example Plug-in |  | Installs the example Tint Mix plug-in, built from examples/wasm-filter in Rust. |
+| `wasm-plugin-install` | Install Plug-in... |  | Asks for a .wasm filter plug-in (and its .json schema if the module carries none) and installs it into browser storage, where it is loaded at every start. |
+| `wasm-plugin-remove` | Remove Plug-in |  | Removes one installed WebAssembly plug-in by id; smart filters that used it are skipped until it is installed again. (asks first) |
+| `wasm-plugin-run` | Run Plug-in |  | Runs an installed WebAssembly plug-in on the active layer with the given parameter values, honouring the selection, as one undo step; on a smart object it joins the smart filters. (changes the picture) |
+| `wasm-plugins` | Manage Plug-ins (WebAssembly)... |  | Opens the WebAssembly plug-ins dialog: the installed filter plug-ins with their version and parameters, Install, Remove, the example, and the time and memory limits every run keeps. |
 
 ### filter.apply parameters
 
@@ -347,6 +362,7 @@ Generated from the window's command catalogue (1411 commands) by `./formvis agen
 | `adj-blackWhite` | Black & White... | Alt+Shift+Mod+B | Opens Black & White and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-brightnessContrast` | Brightness/Contrast... |  | Opens Brightness/Contrast and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-channelMixer` | Channel Mixer... |  | Opens Channel Mixer and applies it to the pixels of the active layer. (changes the picture) |
+| `adj-chromaticShift` | Chromatic Shift... |  | Opens Chromatic Shift and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-clarity` | Clarity... |  | Opens Clarity and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-colorBalance` | Color Balance... | Mod+B | Opens Color Balance and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-colorLookup` | Color Lookup... |  | Opens Color Lookup and applies it to the pixels of the active layer. (changes the picture) |
@@ -354,6 +370,7 @@ Generated from the window's command catalogue (1411 commands) by `./formvis agen
 | `adj-dehaze` | Dehaze... |  | Opens Dehaze and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-develop` | Develop... |  | Opens Develop and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-exposure` | Exposure... |  | Opens Exposure and applies it to the pixels of the active layer. (changes the picture) |
+| `adj-filmLook` | Film Look... |  | Opens Film Look and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-gaussianBlur` | Gaussian Blur... |  | Opens Gaussian Blur and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-glow` | Glow... |  | Opens Glow and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-gradientMap` | Gradient Map... |  | Opens Gradient Map and applies it to the pixels of the active layer. (changes the picture) |
@@ -468,6 +485,9 @@ Generated from the window's command catalogue (1411 commands) by `./formvis agen
 | `add-filter-mask` | Add Smart Filter Mask |  | Adds a mask to the smart filters. (changes the picture) |
 | `add-mask` | Add Layer Mask |  | Adds a layer mask that reveals everything. (changes the picture) |
 | `add-mask-hide` | Add Mask Hiding All |  | Adds a layer mask that hides everything. (changes the picture) |
+| `ai-label-add` | Add EU AI Label... |  | Marks the document as AI content: every PNG, JPEG, WebP and TIFF export carries the IPTC digital source type in its XMP, and a visible EU AI label badge layer is added; params kind generated or edited, badge, anchor and style, or a dialog when kind is left out. (changes the picture) |
+| `ai-label-info` | EU AI Label Info |  | Says whether the document is marked as AI content and which digital source type it writes. |
+| `ai-label-remove` | Remove EU AI Label |  | Removes the document's AI label: the metadata mark and every EU AI label badge layer. (changes the picture) |
 | `align-bottom` | Align Bottom Edges |  | Aligns the selected layers to the bottom edge. (changes the picture) |
 | `align-hcenter` | Align Horizontal Centers |  | Aligns the selected layers on a vertical centre line. (changes the picture) |
 | `align-left` | Align Left Edges |  | Aligns the selected layers to the left edge. (changes the picture) |
@@ -512,8 +532,11 @@ Generated from the window's command catalogue (1411 commands) by `./formvis agen
 | `edit-relight` | Edit Lighting... |  | Reopens the lights of the selected Relight layer. (changes the picture) |
 | `embed-linked` | Embed Linked |  | Embeds the linked file in the document. (changes the picture) |
 | `extrude-3d` | New 3D Extrusion from Selected Layer... |  | Extrudes the selected shape, type or pixel layer into 3D with depth, bevel, light and material, rendered to a layer that keeps its settings. (changes the picture) |
+| `film-apply-look` | Apply Film Look |  | Adds a Film Look adjustment layer with a named film look (negative, slide, black and white or cine: tone curve, colour and speed-based grain); params look, strength and grain. (changes the picture) |
+| `film-copy-points` | Copy Film Curve Points |  | Copies the tone curve points of the active Film Look layer. |
 | `film-frame` | Frame... |  | Opens Frame to add a film or white border layer. (changes the picture) |
 | `film-leak` | Light Leak... |  | Opens Light Leak to add a leak layer. (changes the picture) |
+| `film-paste-points` | Paste Film Curve Points |  | Puts the copied curve points on the active Film Look layer. (changes the picture) |
 | `find-layers` | Find Layers... | Alt+Shift+Mod+F | Opens the Layers panel filter. |
 | `flip-layer-h` | Flip Layer Horizontal |  | Flips the layer left to right. (changes the picture) |
 | `flip-layer-v` | Flip Layer Vertical |  | Flips the layer top to bottom. (changes the picture) |
@@ -576,6 +599,7 @@ Generated from the window's command catalogue (1411 commands) by `./formvis agen
 | `new-adj-blackWhite` | New Black & White Layer... |  | Adds a Black & White Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-brightnessContrast` | New Brightness/Contrast Layer... |  | Adds a Brightness/Contrast Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-channelMixer` | New Channel Mixer Layer... |  | Adds a Channel Mixer Layer adjustment layer; its dialog opens for the values. (changes the picture) |
+| `new-adj-chromaticShift` | New Chromatic Shift Layer... |  | Adds a Chromatic Shift Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-clarity` | New Clarity Layer... |  | Adds a Clarity Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-colorBalance` | New Color Balance Layer... |  | Adds a Color Balance Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-colorLookup` | New Color Lookup Layer... |  | Adds a Color Lookup Layer adjustment layer; its dialog opens for the values. (changes the picture) |
@@ -583,6 +607,7 @@ Generated from the window's command catalogue (1411 commands) by `./formvis agen
 | `new-adj-dehaze` | New Dehaze Layer... |  | Adds a Dehaze Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-develop` | New Develop Layer... |  | Adds a Develop Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-exposure` | New Exposure Layer... |  | Adds a Exposure Layer adjustment layer; its dialog opens for the values. (changes the picture) |
+| `new-adj-filmLook` | New Film Look Layer... |  | Adds a Film Look Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-gaussianBlur` | New Gaussian Blur Layer... |  | Adds a Gaussian Blur Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-glow` | New Glow Layer... |  | Adds a Glow Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-gradientMap` | New Gradient Map Layer... |  | Adds a Gradient Map Layer adjustment layer; its dialog opens for the values. (changes the picture) |
@@ -774,6 +799,12 @@ Generated from the window's command catalogue (1411 commands) by `./formvis agen
 | `stroke-path` | Stroke Path |  | Strokes the path with the current brush. (changes the picture) |
 | `stroke-path-dialog` | Stroke Path... |  | Opens Stroke Path. (changes the picture) |
 
+## Plugins
+
+| Id | Name | Keys | Does |
+| --- | --- | --- | --- |
+| `plugin:throws-late:cmd:boom` | Boom |  | Runs the plugin command Boom. (changes the picture) |
+
 ## Select
 
 | Id | Name | Keys | Does |
@@ -957,9 +988,15 @@ Generated from the window's command catalogue (1411 commands) by `./formvis agen
 | `tool.options.colorReplace.symmetryY` | Color Replacement: Symmetry Y |  | Sets Symmetry Y for the Color Replacement tool. |
 | `tool.options.colorReplace.tolerance` | Color Replacement: Tolerance |  | Sets Tolerance for the Color Replacement tool. |
 | `tool.options.colorSampler.sampleSize` | Color Sampler: Sample Size |  | Sets Sample Size for the Color Sampler tool. |
+| `tool.options.contentAwareMove.angle` | Content-Aware Move: Angle |  | Sets Angle for the Content-Aware Move tool. |
 | `tool.options.contentAwareMove.color` | Content-Aware Move: Color |  | Sets Color for the Content-Aware Move tool. |
+| `tool.options.contentAwareMove.flipHorizontal` | Content-Aware Move: Flip horizontal |  | Sets Flip horizontal for the Content-Aware Move tool. |
+| `tool.options.contentAwareMove.flipVertical` | Content-Aware Move: Flip vertical |  | Sets Flip vertical for the Content-Aware Move tool. |
 | `tool.options.contentAwareMove.mode` | Content-Aware Move: Mode |  | Sets Mode for the Content-Aware Move tool. |
+| `tool.options.contentAwareMove.sampleAllLayers` | Content-Aware Move: Sample All Layers |  | Sets Sample All Layers for the Content-Aware Move tool. |
+| `tool.options.contentAwareMove.scale` | Content-Aware Move: Scale |  | Sets Scale for the Content-Aware Move tool. |
 | `tool.options.contentAwareMove.structure` | Content-Aware Move: Structure |  | Sets Structure for the Content-Aware Move tool. |
+| `tool.options.contentAwareMove.transformOnDrop` | Content-Aware Move: Transform On Drop |  | Sets Transform On Drop for the Content-Aware Move tool. |
 | `tool.options.count.group` | Count: Group |  | Sets Group for the Count tool. |
 | `tool.options.count.groupColour` | Count: Group Colour |  | Sets Group Colour for the Count tool. |
 | `tool.options.count.hideGroup` | Count: Hide Group |  | Sets Hide Group for the Count tool. |

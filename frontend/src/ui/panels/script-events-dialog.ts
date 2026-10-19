@@ -22,17 +22,62 @@ export class ScriptEventsDialog extends Dialog {
     add.addEventListener('click', () => this.add());
     remove.addEventListener('click', () => this.remove());
     const row = (label: string, sel: HTMLElement): HTMLElement => { const r = el(`<label class="cv-dialog-row"><span>${label}</span></label>`); r.append(sel); return r; };   // the house dialog row
-    const buttons = el('<div style="display: flex; gap: 8px; margin: 6px 0"></div>');
-    buttons.append(add, remove);
+    const addScript = el('<button class="cv-btn" type="button">Add Script...</button>') as HTMLButtonElement;
+    const toggle = el('<button class="cv-btn" type="button">Switch On or Off</button>') as HTMLButtonElement;
+    const removeAll = el('<button class="cv-btn" type="button">Remove All</button>') as HTMLButtonElement;
+    addScript.addEventListener('click', () => this.file.click());
+    toggle.addEventListener('click', () => this.toggle());
+    removeAll.addEventListener('click', () => this.removeAll());
+    this.file.addEventListener('change', () => void this.addScriptFile());
+    const buttons = el('<div style="display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0"></div>');
+    buttons.append(add, addScript, toggle, remove, removeAll, this.file);
     this.body.append(this.enable.el, row('Event', this.eventSel), row('Action', this.actionSel), buttons, this.list, this.note,
-      el('<p class="cv-dialog-note">Running JavaScript files and Generator are not offered here; only recorded actions.</p>'));
+      el('<p class="cv-dialog-note">A script is a .js file; it runs in a sandbox with run(id, params), commands() and log(...), and no document or network. A pair that is switched off is listed in grey brackets.</p>'), this.results);
+    this.events.onResult = () => this.showResults();
     this.button('Done', 'primary', () => this.close());
+  }
+
+  private readonly file = el('<input type="file" accept=".js,.mjs,.txt,text/javascript,text/plain" hidden>') as HTMLInputElement;
+  private readonly results = el('<p class="cv-dialog-note" role="log" aria-live="polite" style="min-height: 4.2em; white-space: pre-wrap"></p>');
+
+  private showResults(): void {
+    const t = (n: number): string => new Date(n).toLocaleTimeString();
+    setText(this.results, this.events.results.slice(-3).map((r) => `${t(r.at)} ${this.label(r.event)}: ${r.target} ${r.ok ? 'ran' : 'failed'}${r.note ? `, ${r.note}` : ''}`).join('\n'));
+  }
+
+  private async addScriptFile(): Promise<void> {
+    const f = this.file.files?.[0];
+    this.file.value = '';
+    if (!f) return;
+    if (f.size > 200000) { setText(this.note, `${f.name} is larger than a script may be (200 KB).`); return; }
+    const event = this.eventSel.value as ScriptEvent;
+    if (this.events.bindings.some((b) => b.event === event && b.script !== undefined && b.action === f.name)) { setText(this.note, 'That pair is already listed.'); return; }
+    this.events.bindings.push({ event, action: f.name, script: await f.text() });
+    this.events.save();
+    setText(this.note, '');
+    this.refill();
+  }
+
+  private toggle(): void {
+    const b = this.events.bindings[this.list.selectedIndex];
+    if (!b) { setText(this.note, 'Choose a pair in the list first.'); return; }
+    if (b.off) delete b.off; else b.off = true;
+    this.events.save();
+    this.refill();
+  }
+
+  private removeAll(): void {
+    this.events.bindings.length = 0;
+    this.events.save();
+    setText(this.note, '');
+    this.refill();
   }
 
   show(): void {
     this.enable.set(this.events.enabled);
     this.actionSel.replaceChildren(...this.actions.list.map((a) => new Option(a.name, a.name)));
     this.refill();
+    this.showResults();
     setText(this.note, this.actions.list.length ? '' : 'No actions yet; record one in the Actions panel first.');
     this.open();
   }
@@ -40,7 +85,14 @@ export class ScriptEventsDialog extends Dialog {
   private label(e: ScriptEvent): string { return SCRIPT_EVENTS.find(([id]) => id === e)?.[1] ?? e; }
 
   private refill(): void {
-    this.list.replaceChildren(...this.events.bindings.map((b, i) => new Option(`${this.label(b.event)}: ${b.action}`, String(i))));
+    const keep = this.list.selectedIndex, rows = this.events.bindings.map((b) => (b.off ? `[${this.label(b.event)}: ${b.action}]` : `${this.label(b.event)}: ${b.action}`));
+    while (this.list.options.length > rows.length) this.list.remove(this.list.options.length - 1);
+    rows.forEach((text, i) => {
+      let o = this.list.options[i];
+      if (!o) { o = new Option('', String(i)); this.list.add(o); }
+      if (o.textContent !== text) o.textContent = text;
+    });
+    if (keep >= 0 && keep < rows.length) this.list.selectedIndex = keep;
   }
 
   private add(): void {

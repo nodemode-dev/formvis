@@ -7,7 +7,10 @@
   ./formvis cli process <input|folder...> [--in DIR] [--recursive] [--action NAME] [--run id key=value ...] [--steps FILE.json] [--format png|jpg|webp|tiff]
                         [--quality N] [--out DIR] [--suffix TEXT] [--in-place] [--verbose] [--yes]   file in, file out: each picture is
                         opened, edited, exported and closed (batch is the same command)
-  ./formvis cli droplet <action-name> [--format ...] [--out DIR] [--name FILE]   writes a script (and a .cmd twin) that runs the action over dropped files
+  ./formvis cli droplet <action-name> [--format ...] [--quality N] [--to DIR] [--suffix TEXT] [--recursive] [--data FILE.fvdrop] [--out DIR] [--name FILE]
+                        writes a script (and a .cmd twin) that runs the action over dropped files; --data also saves the choices as a droplet file
+  ./formvis cli droplet FILE.fvdrop <pictures|folders...>   runs a saved droplet over those files
+  ./formvis cli stack|contact|fit|photomerge|hdr <files...>   no window needed (see cli_offline.py): image stack statistics, contact sheet, Fit Image, Photomerge, Merge to HDR
   ./formvis cli info <file...> [--json]   size, colour mode, depth, resolution, profile and layers of a file; no window needed
   ./formvis cli convert <in> <out> | <in...> --to FORMAT [--out DIR] [--quality 0.1-1] [--dpi N] [--page N] [--options JSON] [--overwrite]
                         a picture file to another format through the engine; no window needed
@@ -26,7 +29,16 @@ HELP = {
     "process": "process <input|folder...> [--in DIR] [--recursive] [--action NAME] [--run id key=value ...] [--steps FILE.json] [--format png|jpg|webp|tiff]\n"
                "        [--quality N] [--out DIR] [--suffix TEXT] [--in-place] [--verbose] [--yes]\n  Each picture is opened in the window, edited, exported and closed. Folders give the pictures in them (--recursive goes deeper).\n"
                "  --steps takes a JSON list of {\"id\": ..., \"params\": {...}}. A result that would replace its source is refused unless --in-place.",
-    "droplet": "droplet <action-name> [--format ...] [--out DIR] [--name FILE]\n  Writes a script (and a .cmd twin) that runs the action over files dropped on it.",
+    "droplet": "droplet <action-name> [--format png|jpg|webp|tiff] [--quality N] [--to DIR] [--suffix TEXT] [--recursive] [--data FILE.fvdrop] [--out DIR] [--name FILE]\n"
+               "  Writes a script (and a .cmd twin) that runs the action over files dropped on it. --to is the folder the results go to; --out is where the script is written.\n"
+               "  --data FILE.fvdrop saves the action and these choices as a droplet file and makes the script run it.\n"
+               "droplet FILE.fvdrop <pictures|folders...>\n  Runs a saved droplet over the pictures and folders given.",
+    "stack": "stack <files|folder...> --mode mean|median|minimum|maximum|range|stddev|variance|summation [--align] [--out FILE]\n  Same-size pictures combined by a stack mode; needs no window.",
+    "contact": "contact <files|folder...> [--out FILE] [--width N --height N --unit px|in|cm|mm --ppi N] [--columns N --rows N] [--gap N] [--order across|down]\n"
+               "        [--rotate] [--no-captions] [--font NAME_OR_FILE] [--font-size N] [--mode rgb|grayscale]\n  A contact sheet of captioned thumbnails, a page each time the grid fills; needs no window.",
+    "fit": "fit <files|folder...> --width N --height N [--no-enlarge] [--resample nearest|bilinear|bicubic|lanczos] [--out DIR] [--suffix TEXT]\n  Fit Image: proportions kept inside the box; needs no window.",
+    "photomerge": "photomerge <files...> [--layout auto|perspective|cylindrical|collage|reposition] [--crop] [--vignette] [--distortion] [--out FILE]\n  Overlapping photos stitched by the engine; needs no window.",
+    "hdr": "hdr <files...> [--no-align] [--times 1/60,1/15,...] [--depth 32|16|8] [--out FILE]\n  Bracketed exposures merged by the engine into a Radiance .hdr (32) or a tone-mapped PNG (16 or 8); needs no window.",
     "info": "info <file...> [--json]\n  Size, colour mode, depth, resolution, profile and layers of a picture or project (.fvd .fmv .ora .psd .psb). Needs only the engine.",
     "convert": "convert <in> <out>\n  convert <in...> --to FORMAT [--out DIR]\n  [--quality 0.1-1] [--dpi N] [--page N] [--options JSON] [--overwrite]\n"
                "  A picture file to another format through the engine (png jpg webp avif tif bmp qoi tga ico pdf ppm pgm pbm pnm dpx fits wbmp). One flat picture; needs only the engine.",
@@ -34,7 +46,9 @@ HELP = {
     "serve": "serve [--root DIR]\n  A JSON-lines session: one request per line on stdin, one answer per line on stdout. Request {\"id\":1,\"method\":\"...\",\"params\":{}};\n"
              "  answer {\"id\":1,\"ok\":true,\"result\":...} or {\"id\":1,\"ok\":false,\"error\":\"...\"}. Methods: ping, version, commands.list, command.describe,\n"
              "  command.run, batch {commands, stopOnError}, doc.new, doc.open, doc.place, doc.save, doc.export, doc.inspect, doc.close, file.info, file.convert,\n"
-             "  jobs.list, jobs.cancel, tool.call {name, arguments}, shutdown. With --root DIR, paths outside DIR are refused.",
+             "  jobs.list, jobs.cancel, tool.call {name, arguments}, shutdown. With --root DIR, paths outside DIR are refused.\n"
+             "  image.stack, image.contact, image.fit, image.photomerge, image.hdr {inputs: [paths], option: value ...} need no window (options are the command's flags,\n"
+             "  underscores for dashes: {\"inputs\":[\"a.jpg\",\"b.jpg\"],\"mode\":\"mean\",\"out\":\"s.png\"}).",
     "version": "version\n  The version, the build (git commit when there is one), the Python in use and the engine's address and version.",
 }
 PICTURE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif", ".tif", ".tiff", ".heic", ".heif", ".bmp", ".qoi", ".tga", ".ico", ".pbm", ".pgm", ".ppm", ".pnm", ".pam",
@@ -161,6 +175,11 @@ def run_cmd(args: list[str]) -> int:
         print("Give the command id and its parameters, for example: ./formvis cli run filter.apply kind=gaussianBlur radius=4", file=sys.stderr)
         return 2
     cid, params = args[0], pairs(args[1:])
+    try:
+        params = attach_files(params)
+    except RuntimeError as exc:
+        print(exc, file=sys.stderr)
+        return 1
     quoted = urllib.parse.quote(cid, safe=":")
     status, c = call("GET", "/api/commands/" + quoted)
     if status == 200 and c.get("risky") and not yes:
@@ -183,8 +202,26 @@ def run_cmd(args: list[str]) -> int:
     return 0
 
 
+def attach_files(params: dict) -> dict:
+    """A files parameter given as paths (a list, or one comma separated word) becomes [{name, data}] with the bytes in base64, which the window can read."""
+    given = params.get("files")
+    if isinstance(given, str):
+        given = [w for w in given.split(",") if w.strip()]
+    if not isinstance(given, list) or not all(isinstance(g, str) for g in given):
+        return params
+    out = []
+    for path in expand_inputs([os.path.expanduser(g.strip()) for g in given], False):
+        try:
+            with open(path, "rb") as f:
+                out.append({"name": os.path.basename(path), "data": base64.b64encode(f.read()).decode()})
+        except OSError as exc:
+            raise RuntimeError(f"{path} could not be read: {exc.strerror or exc}") from exc
+    return {**params, "files": out}
+
+
 def command_result(cid: str, params: dict, yes: bool) -> dict:
     """Runs one catalogue command and returns what it handed back; raises RuntimeError with the reason on failure."""
+    params = attach_files(params)
     quoted = urllib.parse.quote(cid, safe=":")
     status, c = call("GET", "/api/commands/" + quoted)
     if status == 200 and c.get("risky") and not yes:
@@ -323,24 +360,94 @@ def process_cmd(args: list[str]) -> int:
     return 1 if failed else 0
 
 
+DROPLET_KIND = "formvis-droplet"
+
+
+def droplet_data(path: str) -> dict:
+    """A droplet data file (.fvdrop): JSON {kind, version, action, steps, output: {format, quality, out, suffix, recursive, inPlace}}; RuntimeError says what is wrong."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError) as exc:
+        raise RuntimeError(f"{path} could not be read as a droplet: {exc}") from exc
+    if not isinstance(data, dict) or data.get("kind") != DROPLET_KIND:
+        raise RuntimeError(f"{path} is not a formvis droplet file.")
+    if not isinstance(data.get("output") or {}, dict):
+        raise RuntimeError(f"{path}: output must be an object.")
+    if not data.get("action") and not data.get("steps"):
+        raise RuntimeError(f"{path} names no action and no steps.")
+    if data.get("steps") is not None and not (isinstance(data["steps"], list) and all(isinstance(s, dict) and isinstance(s.get("id"), str) for s in data["steps"])):
+        raise RuntimeError(f"{path}: steps must be a list of {{\"id\": ..., \"params\": {{...}}}}.")
+    return data
+
+
+def droplet_run(path: str, words: list[str]) -> int:
+    """./formvis cli droplet FILE.fvdrop inputs...: the saved action and output choices applied to the files or folders given."""
+    try:
+        data = droplet_data(path)
+    except RuntimeError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    output = data.get("output") or {}
+    files = expand_inputs(words, bool(output.get("recursive")))
+    if not files:
+        print("Give one or more picture files or folders to run the droplet on.", file=sys.stderr)
+        return 2
+    flags: dict = {"format": output.get("format") or "png"}
+    for key in ("quality", "out", "suffix"):
+        if output.get(key) not in (None, ""):
+            flags[key] = str(output[key])
+    if data.get("action"):
+        flags["action"] = str(data["action"])
+    if output.get("inPlace"):
+        flags["in-place"] = True
+    runs = [[s["id"]] + [f"{k}={json.dumps(v)}" for k, v in (s.get("params") or {}).items()] for s in data.get("steps") or []]
+    failed = 0
+    for src in files:
+        try:
+            print(f"{src} -> {process_one(src, flags, runs)}")
+        except (RuntimeError, OSError) as exc:
+            failed += 1
+            print(f"{src}: failed. {exc}", file=sys.stderr)
+    return 1 if failed else 0
+
+
 def droplet_cmd(args: list[str]) -> int:
-    words, flags, _ = split_flags(args, ("--format", "--out", "--name"))
+    words, flags, _ = split_flags(args, ("--format", "--out", "--name", "--quality", "--suffix", "--data", "--to"), ("--recursive", "--in-place"))
+    if words and words[0].lower().endswith(".fvdrop") and os.path.isfile(words[0]):
+        return droplet_run(words[0], words[1:])
     if not words:
-        print("Give the action name, for example: ./formvis cli droplet Sepia --format jpg", file=sys.stderr)
+        print("Give the action name, for example: ./formvis cli droplet Sepia --format jpg, or a droplet file and pictures: ./formvis cli droplet Sepia.fvdrop a.jpg b.jpg", file=sys.stderr)
         return 2
     action, fmt = " ".join(words), flags.get("format", "png")
+    if fmt.lower().lstrip(".") not in ("png", "jpg", "jpeg", "webp", "tif", "tiff"):
+        print("format must be png, jpg, webp or tiff.", file=sys.stderr)
+        return 2
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     quoted = "'" + action.replace("'", "'\\''") + "'"
     out_dir = flags.get("out") or os.getcwd()
     os.makedirs(out_dir, exist_ok=True)
     sh = os.path.join(out_dir, flags.get("name") or f"{action}-droplet.sh")
+    if flags.get("data"):
+        target = os.path.abspath(flags["data"] if flags["data"].lower().endswith(".fvdrop") else flags["data"] + ".fvdrop")
+        output = {"format": fmt, **({"quality": value_of(flags["quality"])} if "quality" in flags else {}), **({"out": flags["to"]} if flags.get("to") else {}),
+                  **({"suffix": flags["suffix"]} if flags.get("suffix") else {}), "recursive": bool(flags.get("recursive")), "inPlace": bool(flags.get("in-place"))}
+        with open(target, "w", encoding="utf-8") as f:
+            json.dump({"kind": DROPLET_KIND, "version": 1, "action": action, "output": output}, f, indent=2)
+            f.write("\n")
+        launcher = f"exec ./formvis cli droplet '{target}' \"$@\"\n"
+        win_line = f"python setup\\cli.py droplet \"{target}\" %*\r\n"
+        print(f"Wrote {target}. Run it with: ./formvis cli droplet {target} <pictures or folders>")
+    else:
+        extra = f"{' --quality ' + flags['quality'] if 'quality' in flags else ''}{' --out ' + chr(39) + flags['to'] + chr(39) if flags.get('to') else ''}{' --suffix ' + chr(39) + flags['suffix'] + chr(39) if flags.get('suffix') else ''}{' --recursive' if flags.get('recursive') else ''}"
+        launcher = f"exec ./formvis cli process \"$@\" --action {quoted} --format {fmt}{extra}\n"
+        win_line = f"python setup\\cli.py process %* --action \"{action.replace(chr(34), chr(39))}\" --format {fmt}{extra.replace(chr(39), chr(34))}\r\n"
     with open(sh, "w") as f:
-        f.write(f"#!/bin/sh\n# formvis droplet for the action {action}: drop pictures onto it, or run it with file names.\ncd '{root}' || exit 1\nexec ./formvis cli process \"$@\" --action {quoted} --format {fmt}\n")
+        f.write(f"#!/bin/sh\n# formvis droplet for the action {action}: drop pictures onto it, or run it with file names.\ncd '{root}' || exit 1\n{launcher}")
     os.chmod(sh, 0o755 | stat.S_IMODE(os.stat(sh).st_mode))
     twin = os.path.splitext(sh)[0] + ".cmd"
-    win_action = action.replace('"', "'")
     with open(twin, "w", newline="") as f:
-        f.write(f"@echo off\r\ncd /d \"{root}\"\r\npython setup\\cli.py process %* --action \"{win_action}\" --format {fmt}\r\n")
+        f.write(f"@echo off\r\ncd /d \"{root}\"\r\n{win_line}")
     print(f"Wrote {sh} and {twin}. Drop pictures onto either, or run it with file names.")
     return 0
 
@@ -488,6 +595,39 @@ def outside_root(root: str | None, params: dict) -> str | None:
     return None
 
 
+OFFLINE_METHODS = {"image.stack": "stack", "image.contact": "contact", "image.fit": "fit", "image.photomerge": "photomerge", "image.hdr": "hdr"}
+
+
+def offline_request(name: str, params: dict, root: str | None) -> dict:
+    """image.stack, image.contact, image.fit, image.photomerge and image.hdr: {inputs: [paths], <option>: value ...} where an option is the command's flag without dashes (font_size for --font-size)."""
+    import contextlib
+    import io
+    import cli_offline
+    inputs = params.get("inputs")
+    if not isinstance(inputs, list) or not inputs or not all(isinstance(i, str) for i in inputs):
+        raise RuntimeError("inputs must be a list of picture paths or folders.")
+    for path in [*inputs, params.get("out")]:
+        refused = outside_root(root, {"path": path}) if isinstance(path, str) else None
+        if refused:
+            raise RuntimeError(refused)
+    argv = [os.path.expanduser(i) for i in inputs]
+    for key, value in params.items():
+        if key == "inputs" or value is False or value is None:
+            continue
+        argv.append("--" + key.replace("_", "-"))
+        if value is not True:
+            argv.append(str(value))
+    out, err = io.StringIO(), io.StringIO()
+    try:
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = cli_offline.COMMANDS[name](argv)
+    except SystemExit as exc:
+        code = exc.code if isinstance(exc.code, int) else 2
+    if code:
+        raise RuntimeError((err.getvalue() or out.getvalue() or f"{name} failed.").strip())
+    return {"output": out.getvalue().strip().splitlines()}
+
+
 def serve_request(method: str, params: dict, root: str | None):
     """One request of the JSON-lines session; the result, or RuntimeError with the reason."""
     if method == "ping":
@@ -524,6 +664,8 @@ def serve_request(method: str, params: dict, root: str | None):
             except RuntimeError as exc:
                 results.append({"id": step.get("id"), "ok": False, "error": str(exc)})
         return {"ran": len(results), "results": results}
+    if method in OFFLINE_METHODS:
+        return offline_request(OFFLINE_METHODS[method], params, root)
     if method == "tool.call":
         name, args = params.get("name"), params.get("arguments") or {}
         if not isinstance(name, str) or not isinstance(args, dict):
@@ -579,8 +721,15 @@ def serve_cmd(args: list[str]) -> int:
     return 0
 
 
+def offline(name: str):
+    def go(rest: list[str]) -> int:
+        import cli_offline
+        return cli_offline.COMMANDS[name](rest)
+    return go
+
+
 COMMANDS = {"list": list_cmd, "describe": describe_cmd, "run": run_cmd, "process": process_cmd, "batch": process_cmd, "droplet": droplet_cmd, "info": info_cmd, "convert": convert_cmd,
-            "jobs": jobs_cmd, "serve": serve_cmd, "version": version_cmd}
+            "jobs": jobs_cmd, "serve": serve_cmd, "version": version_cmd, **{n: offline(n) for n in ("stack", "contact", "fit", "photomerge", "hdr")}}
 
 
 def main(argv: list[str]) -> int:

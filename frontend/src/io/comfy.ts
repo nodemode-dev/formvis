@@ -34,7 +34,8 @@ export function addRecipe(name: string, json: string): string | null {
   const problem = workflowProblem(json, name);
   if (problem) return problem;
   if (json.length > 500_000) return `${name} is too large to keep (500 KB at most).`;
-  const list = recipes().filter((r) => r.name !== name).concat([{ name: name.replace(/\.json$/i, ''), json }]);
+  const kept = name.replace(/\.json$/i, '');
+  const list = recipes().filter((r) => r.name !== kept).concat([{ name: kept, json }]);
   try { localStorage.setItem(KEY, JSON.stringify(list.slice(-40))); } catch { return 'There is no room left to keep it.'; }
   return null;
 }

@@ -32,6 +32,27 @@ class StopBody(BaseModel):
     client: str | None = Field(None, max_length=80)
 
 
+class LimitsBody(BaseModel):
+    roots: list[str] | None = Field(None, max_length=32)
+    text_chars: int | None = None
+    image_bytes: int | None = None
+
+
+@router.get("/limits")
+def read_limits(request: Request) -> dict:
+    require_local(request)
+    return agents.limits()
+
+
+@router.post("/limits")
+async def write_limits(body: LimitsBody, request: Request) -> dict:
+    require_local(request)
+    try:
+        return agents.set_limits(body.model_dump(exclude_unset=True))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
 @router.get("")
 def read(request: Request) -> dict:
     require_local(request)

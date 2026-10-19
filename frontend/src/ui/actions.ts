@@ -20,7 +20,19 @@ type StepKind =
   | { kind: 'fitImage'; label: string; w: number; h: number; enlarge: boolean }
   | { kind: 'conditionalMode'; label: string; from: DocMode[]; to: DocMode }
   | { kind: 'save'; label: string; format: 'png' | 'jpg' | 'webp'; quality: number }
-  | { kind: 'conditional'; label: string; test: ConditionTest; then: string; else: string };
+  | { kind: 'conditional'; label: string; test: ConditionTest; then: string; else: string }
+  | { kind: 'play'; label: string; name: string }
+  | { kind: 'menu'; label: string; id: string }
+  | { kind: 'unsupported'; label: string; event: string; raw: string };
+
+/** Button Mode colours, in the order an .atn file numbers them (none is 0). */
+export const ACTION_COLOURS = ['none', 'red', 'orange', 'yellow', 'green', 'blue', 'violet', 'gray'] as const;
+export type ActionColour = (typeof ACTION_COLOURS)[number];
+const isColour = (v: unknown): v is ActionColour => ACTION_COLOURS.some((c) => c === v);
+
+/** Function-key shortcuts an action can take, written as the key table writes a press. */
+export const ACTION_KEYS: readonly string[] = ['', ...['', 'Shift+', 'Mod+', 'Shift+Mod+'].flatMap((m) => Array.from({ length: 12 }, (_, i) => `${m}F${i + 1}`))];
+const isKey = (v: unknown): v is string => typeof v === 'string' && ACTION_KEYS.includes(v);
 
 /** What a conditional step asks of the document it plays on. */
 export const CONDITION_TESTS = [
@@ -35,7 +47,10 @@ const isTest = (v: unknown): v is ConditionTest => CONDITION_TESTS.some(([t]) =>
 export type ActionStep = StepKind & { off?: boolean };
 /** `relative`: size steps follow each document, Image Size as the same proportion and Canvas Size as the same pixels
  *  added, using the size each step was recorded from. */
-export interface Action { name: string; steps: ActionStep[]; relative?: boolean }
+export interface Action { name: string; steps: ActionStep[]; relative?: boolean; set?: string; colour?: ActionColour; key?: string }
+
+/** The set names in use, in the order they first appear; actions with no set are not counted. */
+export function actionSets(list: readonly Action[]): string[] { return [...new Set(list.flatMap((a) => (a.set ? [a.set] : [])))]; }
 
 /** Commands that change the document straight away, without a dialog or a background task, so they replay exactly. */
 export const RECORDABLE: ReadonlySet<string> = new Set([
@@ -74,6 +89,9 @@ function stepFrom(v: unknown): ActionStep | null {
   if (s.kind === 'adjustment' && typeof s.adj === 'string' && (ADJUSTMENT_KINDS as readonly string[]).includes(s.adj) && s.data && typeof s.data === 'object') return { kind: 'adjustment', adj: s.adj, label: label || s.adj, data: s.data as Record<string, unknown>, layer: s.layer === true, ...(s.layer === true ? {} : ask) };
   if (s.kind === 'filter' && typeof s.filter === 'string' && s.settings && typeof s.settings === 'object') return { kind: 'filter', filter: s.filter, label: label || s.filter, settings: s.settings as Record<string, unknown>, ...ask };
   if (s.kind === 'conditional' && isTest(s.test) && typeof s.then === 'string' && typeof s.else === 'string' && (s.then || s.else)) return { kind: 'conditional', label: label || 'Conditional', test: s.test, then: s.then.slice(0, 80), else: s.else.slice(0, 80) };
+  if (s.kind === 'play' && typeof s.name === 'string' && s.name) return { kind: 'play', label: label || `Play ${s.name.slice(0, 80)}`, name: s.name.slice(0, 80) };
+  if (s.kind === 'menu' && typeof s.id === 'string' && /^[\w.:-]{1,80}$/.test(s.id)) return { kind: 'menu', label: label || s.id, id: s.id };
+  if (s.kind === 'unsupported' && typeof s.event === 'string' && typeof s.raw === 'string' && s.raw.length <= 200000) return { kind: 'unsupported', label: label || s.event, event: s.event.slice(0, 40), raw: s.raw };
   const from = isNum(s.fromW) && isNum(s.fromH) && s.fromW > 0 && s.fromH > 0 ? { fromW: s.fromW, fromH: s.fromH } : {};
   if (s.kind === 'imageSize' && isNum(s.w) && isNum(s.h) && typeof s.sampling === 'string' && isNum(s.res)) return { kind: 'imageSize', label: label || 'Image Size', w: s.w, h: s.h, sampling: s.sampling, res: s.res, ...from };
   if (s.kind === 'fitImage' && isNum(s.w) && isNum(s.h) && s.w >= 1 && s.h >= 1) return { kind: 'fitImage', label: label || 'Fit Image', w: Math.round(s.w), h: Math.round(s.h), enlarge: s.enlarge !== false };
@@ -93,7 +111,8 @@ export function actionsFrom(value: unknown): Action[] {
   return list.flatMap((a) => {
     if (!a || typeof a !== 'object' || typeof (a as Action).name !== 'string' || !Array.isArray((a as Action).steps)) return [];
     const steps = (a as Action).steps.map((x) => { const s = stepFrom(x); if (s && (x as { off?: unknown }).off === true) s.off = true; return s; }).filter((x): x is ActionStep => x !== null);
-    return [{ name: (a as Action).name.slice(0, 80) || 'Action', steps, ...((a as Action).relative === true ? { relative: true } : {}) }];
+    const x = a as Action, set = typeof x.set === 'string' && x.set.trim() ? { set: x.set.trim().slice(0, 80) } : {};
+    return [{ name: x.name.slice(0, 80) || 'Action', steps, ...(x.relative === true ? { relative: true } : {}), ...set, ...(isColour(x.colour) && x.colour !== 'none' ? { colour: x.colour } : {}), ...(isKey(x.key) && x.key ? { key: x.key } : {}) }];
   });
 }
 
@@ -120,7 +139,22 @@ export class Actions {
 
   remove(a: Action): void { this.list = this.list.filter((x) => x !== a); if (this.active === a) this.active = null; this.save(); }
 
-  add(more: Action[]): void { this.list.push(...more); this.save(); }
+  add(more: Action[]): void {
+    this.list.push(...more);
+    for (const a of more) if (a.key && this.list.some((x) => x !== a && x.key === a.key)) delete a.key;
+    this.save();
+  }
+
+  /** Gives `a` the function-key shortcut `key` ('' clears it); another action holding that key loses it. */
+  setKey(a: Action, key: string): void {
+    if (!isKey(key)) return;
+    if (key) for (const x of this.list) if (x !== a && x.key === key) delete x.key;
+    if (key) a.key = key; else delete a.key;
+    this.save();
+  }
+
+  /** The action that runs on this key press, if one has it. */
+  forKey(combo: string): Action | undefined { return combo ? this.list.find((x) => x.key === combo) : undefined; }
 
   /** Adds `step` to the action being recorded, unless an action is playing. */
   record(step: ActionStep): void { if (!this.active || this.playing) return; this.active.steps.push(step); this.save(); }
@@ -132,7 +166,7 @@ export class Actions {
     this.playing = true;
     try {
       for (let i = Math.max(0, Math.min(a.steps.length, Math.floor(from))); i < a.steps.length; i++) {
-        if (a.steps[i].off) continue;
+        if (a.steps[i].off || a.steps[i].kind === 'unsupported') continue;
         const r = await run(a.steps[i]);
         if (r !== true) return { done: i, failed: a.steps[i].label, stopped: r === 'stopped' };
       }

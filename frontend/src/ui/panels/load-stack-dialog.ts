@@ -57,8 +57,22 @@ export class LoadStackDialog extends Dialog {
 
   private describe(): void { setText(this.picked, this.files.length ? `${this.files.length} file${this.files.length > 1 ? 's' : ''}: ${this.files.map((f) => f.name).join(', ')}` : 'No files chosen yet.'); }
 
+  /** The command's way in: the pictures given and the stack mode, smart object and align choices from `o`; throws what the dialog would say. */
+  async drive(files: File[], o: Record<string, unknown>): Promise<void> {
+    this.files = files;
+    this.mode = STACK_MODES.find((m) => m.id === o.mode && m.id !== 'none')?.id ?? 'median';
+    this.modeRow.set(this.mode);
+    this.smart = o.smart === true; this.smartRow.set(this.smart);
+    this.align = o.align === true; this.alignRow.set(this.align);
+    this.failed = '';
+    await this.apply();
+    if (this.failed) throw new Error(this.failed);
+  }
+
+  private failed = '';
+
   private async apply(): Promise<void> {
-    if (this.files.length < 2) { setText(this.note, 'Choose at least two files.'); return; }
+    if (this.files.length < 2) { this.failed = 'Choose at least two files.'; setText(this.note, this.failed); return; }
     const files = this.files;
     setText(this.note, 'Loading...');
     try {
@@ -76,6 +90,6 @@ export class LoadStackDialog extends Dialog {
           if (this.statistics) this.engine.setStackMode(this.mode);
         }
       }
-    } catch (err) { setText(this.note, err instanceof Error ? err.message : 'These files could not be loaded.'); }
+    } catch (err) { this.failed = err instanceof Error ? err.message : 'These files could not be loaded.'; setText(this.note, this.failed); }
   }
 }

@@ -477,6 +477,7 @@ export class SettingsDialog extends Dialog {
   private readonly placeTransformRow = checkRow('Start placed pictures in Free Transform', (v) => this.change({ placeTransform: v }));
   private readonly rawToneRow =checkRow('Apply Auto Tone', (v) => this.change({ rawAutoTone: v }));
   private readonly rawSmartRow = checkRow('Open as a Smart Object', (v) => this.change({ rawSmart: v }));
+  private readonly rawAskRow = checkRow('Show the Camera Raw dialog on open', (v) => this.change({ rawAsk: v }));
   private readonly rawPpiRow = sliderRow('Resolution (ppi, 0 keeps the file\'s)', 0, 600, 1, (v) => this.change({ rawPpi: v }));
   private readonly curveRow = selectRow('Pen Pressure Curve', PRESSURE_CURVES, (v) => this.change({ pressureCurve: v as PressureCurve }));
   private readonly fontSizeRow = selectRow('Interface Text Size', UI_FONT_SIZES, (v) => this.change({ uiFontSize: v as UiFontSize }));
@@ -604,7 +605,7 @@ export class SettingsDialog extends Dialog {
     add('History Log', this.historyLogRow.el, el('<p class="cv-note">On, every new history step is written down with its time and document, on this device. Edit > History Log saves it as a text file or clears it.</p>'));
     add('Cursors', this.cursorRow.el, this.crossRow.el, ...this.pageRows.cursors, el('<p class="cv-note">How painting tools show where they paint: the tip\'s outline at its size, a crosshair alone, or a small ring.</p>'));
     add('Type', this.recentFontsRow.el, ...this.pageRows.type, el('<p class="cv-note">The fonts you used last are listed first in the font menus, newest first; 0 lists none first.</p>'));
-    add('Camera Raw Defaults', this.rawWbRow.el, this.rawBitsRow.el, this.rawPpiRow.el, this.rawToneRow.el, this.rawSmartRow.el, el('<p class="cv-note">What the Camera Raw dialog starts with each time a camera RAW file opens. Resolution, Auto Tone and Smart Object apply to the 8 bits/channel document it opens.</p>'));
+    add('Camera Raw Defaults', this.rawAskRow.el, this.rawWbRow.el, this.rawBitsRow.el, this.rawPpiRow.el, this.rawToneRow.el, this.rawSmartRow.el, el('<p class="cv-note">What the Camera Raw dialog starts with each time a camera RAW file opens. Resolution, Auto Tone and Smart Object apply to the 8 bits/channel document it opens.</p>'));
     const gamutField = el('<label class="cv-field"><span>Gamut Warning</span></label>');
     this.gamutColor.addEventListener('input', () => this.change({ gamutColor: this.gamutColor.value }));
     gamutField.append(this.gamutColor);
@@ -722,7 +723,7 @@ export class SettingsDialog extends Dialog {
     this.rawBitsRow.set(String(this.prefs.rawBits));
     this.historyLogRow.set(this.prefs.historyLog);
     this.placeTransformRow.set(this.prefs.placeTransform);
-    this.rawToneRow.set(this.prefs.rawAutoTone); this.rawSmartRow.set(this.prefs.rawSmart); this.rawPpiRow.set(this.prefs.rawPpi);
+    this.rawAskRow.set(this.prefs.rawAsk); this.rawToneRow.set(this.prefs.rawAutoTone); this.rawSmartRow.set(this.prefs.rawSmart); this.rawPpiRow.set(this.prefs.rawPpi);
     this.fontSizeRow.set(this.prefs.uiFontSize);
     this.animationsRow.set(this.prefs.animations);
     this.pressureRow.set(this.prefs.usePressure);

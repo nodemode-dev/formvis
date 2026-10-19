@@ -1,6 +1,6 @@
 # Tool map
 
-Generated from the MCP catalogue (105 tools, `TOOLS` in `backend/app/routers/mcp.py`) and the `formvis-driving` sub-skills by `./formvis agents sync`; do not edit by hand. A tool no sub-skill names reads `none` and needs a line in the sub-skill that covers its family.
+Generated from the MCP catalogue (134 tools, `TOOLS` in `backend/app/routers/mcp.py`) and the `formvis-driving` sub-skills by `./formvis agents sync`; do not edit by hand. A tool no sub-skill names reads `none` and needs a line in the sub-skill that covers its family.
 
 | Tool | Reads or changes | Driving sub-skills that name it |
 | --- | --- | --- |
@@ -63,6 +63,7 @@ Generated from the MCP catalogue (105 tools, `TOOLS` in `backend/app/routers/mcp
 | `list_commands` | reads only | `painting-and-brushes`, `terminal` |
 | `describe_command` | reads only | `terminal` |
 | `run_command` | replaces or removes | `adjustments-and-filters`, `painting-and-brushes`, `terminal` |
+| `command_job` | reads only | none |
 | `run_commands` | replaces or removes | `terminal` |
 | `get_selection` | reads only | `documents-and-files` |
 | `get_layer_tree` | reads only | `documents-and-files` |
@@ -75,6 +76,17 @@ Generated from the MCP catalogue (105 tools, `TOOLS` in `backend/app/routers/mcp
 | `jobs_cancel` | replaces or removes | none |
 | `set_settings` | adds or changes | none |
 | `ui_inspect` | reads only | none |
+| `ui_state` | reads only | none |
+| `ui_screenshot` | reads only | none |
+| `ui_menu_list` | reads only | none |
+| `ui_menu_invoke` | replaces or removes | none |
+| `ui_set` | adds or changes | none |
+| `ui_dialog` | adds or changes | none |
+| `ui_pointer` | replaces or removes | none |
+| `ui_key` | replaces or removes | none |
+| `ui_window` | adds or changes | none |
+| `control_call` | replaces or removes | none |
+| `file_roots` | reads only | none |
 | `boxes_list` | reads only | none |
 | `boxes_add` | adds or changes | none |
 | `boxes_set` | adds or changes | none |
@@ -109,3 +121,20 @@ Generated from the MCP catalogue (105 tools, `TOOLS` in `backend/app/routers/mcp
 | `set_brush` | adds or changes | none |
 | `add_filter` | adds or changes | none |
 | `set_filter` | replaces or removes | none |
+| `apply_preset` | adds or changes | none |
+| `depth_from_layer` | adds or changes | none |
+| `match_edges` | adds or changes | none |
+| `realism_pass` | adds or changes | none |
+| `compare` | reads only | none |
+| `set_status` | adds or changes | none |
+| `ailabel_add` | adds or changes | none |
+| `ailabel_remove` | replaces or removes | none |
+| `ailabel_info` | reads only | none |
+| `film_looks` | reads only | none |
+| `film_apply_look` | adds or changes | none |
+| `film_add_point` | adds or changes | none |
+| `film_copy_points` | reads only | none |
+| `film_paste_points` | adds or changes | none |
+| `glb_place` | adds or changes | none |
+| `glb_edit` | adds or changes | none |
+| `glb_info` | reads only | none |
