@@ -65,7 +65,7 @@ export class TextEditor {
     if (e.inputType !== 'insertText' || (e.data !== '"' && e.data !== "'") || !loadPrefs().smartQuotes) return;
     const b = this.box, at = b.selectionStart;
     if (at < 1) return;
-    const before = at > 1 ? b.value[at - 2] : '', open = before === '' || /[\s(\[{—–]/.test(before) || before === '“' || before === '‘';
+    const before = at > 1 ? b.value[at - 2] : '', open = before === '' || /[\s(\[{]/.test(before) || [0x2014, 0x2013].includes(before.charCodeAt(0)) || before === '“' || before === '‘';
     b.setRangeText(e.data === '"' ? (open ? '“' : '”') : (open ? '‘' : '’'), at - 1, at, 'end');
   }
 
