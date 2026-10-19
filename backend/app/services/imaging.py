@@ -509,7 +509,7 @@ def encode(png: bytes, fmt: str, quality: int = 90, dpi: int = 72, icc: bytes | 
         flat = _flat_white(rgba)
         if (options or {}).get("gray"):
             flat, extra = flat.convert("L"), {}   # a grey picture carries no RGB profile
-        flat.save(out, "JPEG", quality=q, subsampling=sub, progressive=bool((options or {}).get("progressive")), dpi=(dpi, dpi), **extra)
+        flat.save(out, "JPEG", quality=q, subsampling=sub, progressive=bool((options or {}).get("progressive")), optimize=bool((options or {}).get("optimize")), dpi=(dpi, dpi), **extra)
         return out.getvalue()
     if fmt == "dpx":
         wide = np.asarray(rgba, dtype=np.uint16) * 257

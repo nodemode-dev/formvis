@@ -6,10 +6,12 @@ export type SfwFormat = 'jpeg' | 'png24' | 'png8' | 'gif' | 'webp' | 'wbmp';
 export interface SfwCfg {
   fmt: SfwFormat; quality: number; colors: number; palette: PaletteKind; dither: DitherKind; ditherAmount: number; transparency: boolean;
   matte: string; progressive: boolean; embedProfile: boolean; interlace: boolean;
+  /** Web Snap percent, Optimized JPEG, Convert to sRGB, and the colour table's locked colours and edits. */
+  webSnap: number; optimized: boolean; srgb: boolean; locked: string[]; edits: Record<string, string>;
 }
 export interface SfwPreset { id: string; name: string; builtin: boolean; cfg: SfwCfg }
 
-export const SFW_DEFAULT: SfwCfg = { fmt: 'jpeg', quality: 80, colors: 256, palette: 'adaptive', dither: 'diffusion', ditherAmount: 88, transparency: true, matte: '#ffffff', progressive: false, embedProfile: false, interlace: false };
+export const SFW_DEFAULT: SfwCfg = { fmt: 'jpeg', quality: 80, colors: 256, palette: 'adaptive', dither: 'diffusion', ditherAmount: 88, transparency: true, matte: '#ffffff', progressive: false, embedProfile: false, interlace: false, webSnap: 0, optimized: false, srgb: false, locked: [], edits: {} };
 
 const make = (id: string, name: string, over: Partial<SfwCfg>): SfwPreset => ({ id, name, builtin: true, cfg: { ...SFW_DEFAULT, ...over } });
 export const SFW_BUILTIN: SfwPreset[] = [
@@ -26,6 +28,7 @@ export const SFW_BUILTIN: SfwPreset[] = [
   make('webpHigh', 'WebP High', { fmt: 'webp', quality: 75 }),
 ];
 
+const HEX = /^#[0-9a-f]{6}$/i;
 const FORMATS: readonly SfwFormat[] = ['jpeg', 'png24', 'png8', 'gif', 'webp', 'wbmp'];
 const num = (v: unknown, lo: number, hi: number, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : d);
 
@@ -41,6 +44,9 @@ export function cfgFrom(raw: unknown): SfwCfg {
     transparency: typeof o.transparency === 'boolean' ? o.transparency : d.transparency,
     matte: typeof o.matte === 'string' && /^#[0-9a-f]{6}$/i.test(o.matte) ? o.matte.toLowerCase() : d.matte,
     progressive: o.progressive === true, embedProfile: o.embedProfile === true, interlace: o.interlace === true,
+    webSnap: num(o.webSnap, 0, 100, d.webSnap), optimized: o.optimized === true, srgb: o.srgb === true,
+    locked: Array.isArray(o.locked) ? [...new Set(o.locked.filter((h): h is string => typeof h === 'string' && HEX.test(h)).map((h) => h.toLowerCase()))].slice(0, 255) : [],
+    edits: Object.fromEntries(Object.entries(o.edits && typeof o.edits === 'object' ? (o.edits as Record<string, unknown>) : {}).filter(([k, v]) => HEX.test(k) && typeof v === 'string' && HEX.test(v)).slice(0, 256)) as Record<string, string>,
   };
 }
 

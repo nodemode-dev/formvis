@@ -22,6 +22,15 @@ export interface ColourSettings {
   dither: boolean;
   /** Draw the canvas through the monitor's own profile (the desktop app reads it from the system). */
   useDisplay: boolean;
+  /** Which profile the canvas is drawn for: 'system' (the one the desktop reads), a built-in space, or 'id:' and a listed RGB profile. */
+  monitor: string;
+  /** Ask which way to bring a pasted picture in when its profile differs from the document's. */
+  askPaste: boolean;
+  /** Ask for the destination profile, intent and black point whenever Image > Mode converts to RGB, Grayscale or Lab. */
+  askMode: boolean;
+  /** Gamma that type edges are blended with: 1 blends the coverage linearly in the document's numbers, higher values
+   *  blend in linear light and thin dark type on light and fatten light type on dark (2.2 is true linear light). */
+  textGamma: number;
   /** An OpenEXR opens read as ACEScg (AP1 primaries, linear) and is moved to the working linear space. */
   exrAcescg: boolean;
 }
@@ -32,7 +41,7 @@ export const INTENT_CHOICES: ReadonlyArray<readonly [Intent, string]> = [['perce
 
 export const DEFAULT_COLOUR: ColourSettings = {
   rgb: 'srgb', cmyk: 'default', gray: 'id:builtin:gray-g22', rgbPolicy: 'convert', cmykPolicy: 'preserve', grayPolicy: 'preserve',
-  askMismatch: false, askMissing: false, intent: 'relative', bpc: true, dither: false, useDisplay: true, exrAcescg: false,
+  askMismatch: false, askMissing: false, intent: 'relative', bpc: true, dither: false, useDisplay: true, monitor: 'system', askPaste: false, askMode: false, textGamma: 1, exrAcescg: false,
 };
 
 export const BUILTIN_COLOUR_PRESETS: ReadonlyArray<ColourPreset> = [
@@ -52,7 +61,9 @@ export function cleanColour(v: unknown): ColourSettings {
     rgbPolicy: one(r.rgbPolicy, POLICIES.map(([p]) => p), d.rgbPolicy), cmykPolicy: one(r.cmykPolicy, POLICIES.map(([p]) => p), d.cmykPolicy), grayPolicy: one(r.grayPolicy, POLICIES.map(([p]) => p), d.grayPolicy),
     askMismatch: typeof r.askMismatch === 'boolean' ? r.askMismatch : d.askMismatch, askMissing: typeof r.askMissing === 'boolean' ? r.askMissing : d.askMissing,
     intent: one(r.intent, INTENT_CHOICES.map(([i]) => i), d.intent), bpc: typeof r.bpc === 'boolean' ? r.bpc : d.bpc, dither: typeof r.dither === 'boolean' ? r.dither : d.dither,
-    useDisplay: typeof r.useDisplay === 'boolean' ? r.useDisplay : d.useDisplay, exrAcescg: typeof r.exrAcescg === 'boolean' ? r.exrAcescg : d.exrAcescg,
+    useDisplay: typeof r.useDisplay === 'boolean' ? r.useDisplay : d.useDisplay, monitor: r.monitor === 'system' ? 'system' : profileRef(r.monitor, d.monitor),
+    askPaste: typeof r.askPaste === 'boolean' ? r.askPaste : d.askPaste, askMode: typeof r.askMode === 'boolean' ? r.askMode : d.askMode,
+    textGamma: typeof r.textGamma === 'number' && r.textGamma >= 1 && r.textGamma <= 2.4 ? Math.round(r.textGamma * 100) / 100 : d.textGamma, exrAcescg: typeof r.exrAcescg === 'boolean' ? r.exrAcescg : d.exrAcescg,
   };
 }
 

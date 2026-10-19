@@ -192,6 +192,62 @@ export class ConvertProfileDialog extends Dialog {
   }
 }
 
+export interface ModeConvertAnswer { space: Space; choice: string; target: DocProfile | null; intent: string; bpc: boolean; dither: boolean }
+
+/** Image > Mode > Convert Mode (RGB Color, Grayscale, Lab Color): the destination profile, rendering intent, black point
+ *  compensation and dither for the conversion, taken from Color Settings and changeable here for this one conversion. */
+export class ModeConvertDialog extends Dialog {
+  private readonly mode = el<HTMLSelectElement>('<select class="cv-input" aria-label="Convert to"></select>');
+  private readonly sel = el<HTMLSelectElement>('<select class="cv-input" aria-label="Profile"></select>');
+  private readonly intent = el<HTMLSelectElement>('<select class="cv-input" aria-label="Intent"></select>');
+  private readonly bpc = el<HTMLInputElement>('<input type="checkbox" aria-label="Use Black Point Compensation" checked>');
+  private readonly dither = el<HTMLInputElement>('<input type="checkbox" aria-label="Use Dither">');
+  private readonly from = el('<p class="cv-note cv-convert-from"></p>');
+  private readonly note = el('<p class="cv-note" role="status"></p>');
+  private lists: Record<Space, Array<[string, string]>> = { rgb: [], cmyk: [], gray: [], lab: [['lab', 'Lab Color (D50)']] };
+  /** Runs the conversion; resolves to a message when it failed, or null when the document changed. */
+  onApply: ((a: ModeConvertAnswer) => Promise<string | null>) | null = null;
+  constructor(private readonly engine: Engine) {
+    super('Convert Mode', 460);
+    options(this.mode, [['rgb', 'RGB Color'], ['gray', 'Grayscale'], ['lab', 'Lab Color']]);
+    options(this.intent, INTENTS);
+    this.mode.addEventListener('change', () => this.fillProfiles());
+    this.body.append(this.from, row('Convert to', this.mode), row('Profile', this.sel), row('Intent', this.intent), row('Use Black Point Compensation', this.bpc), row('Use Dither (8-bit/channel)', this.dither), this.note);
+    this.button('Cancel', 'ghost', () => this.close());
+    this.button('OK', 'primary', () => void this.ok());
+  }
+  async show(target: Space = 'gray'): Promise<void> {
+    const p = this.engine.current;
+    if (!p) return;
+    const saved = loadPrefs().colour, m = p.doc.mode ?? 'rgb';
+    this.intent.value = saved.intent; this.bpc.checked = saved.bpc; this.dither.checked = saved.dither;
+    this.lists.rgb = await rgbChoices(); this.lists.gray = await grayChoices();
+    const name = m === 'lab' ? 'Lab (D50)' : p.doc.profile?.name ?? 'sRGB IEC61966-2.1 (the working space)';
+    setText(this.from, `Source: ${name} · ${p.doc.depth ?? 8}-bit ${m === 'cmyk' ? 'CMYK' : m === 'lab' ? 'Lab' : m === 'grayscale' ? 'gray' : 'RGB'}`);
+    for (const o of Array.from(this.mode.options)) o.disabled = (o.value === 'rgb' && m === 'rgb') || (o.value === 'gray' && m === 'grayscale') || (o.value === 'lab' && (m === 'lab' || m === 'grayscale'));
+    this.mode.value = target; if (this.mode.selectedOptions[0]?.disabled) this.mode.value = Array.from(this.mode.options).find((o) => !o.disabled)?.value ?? target;
+    this.fillProfiles(); setText(this.note, '');
+    this.open();
+  }
+  private fillProfiles(): void {
+    const space = this.mode.value as Space, list = this.lists[space], c = loadPrefs().colour;
+    options(this.sel, list);
+    this.sel.disabled = space === 'lab';
+    const ref = space === 'rgb' ? c.rgb : space === 'gray' ? c.gray : 'lab';
+    if (list.some(([v]) => v === ref)) this.sel.value = ref;
+  }
+  private async ok(): Promise<void> {
+    const space = this.mode.value as Space;
+    try {
+      setText(this.note, 'Converting...');
+      const label = this.sel.selectedOptions[0]?.textContent ?? '', target = space === 'lab' ? null : await profileOf(this.sel.value, label);
+      const err = await this.onApply?.({ space, choice: this.sel.value, target, intent: this.intent.value, bpc: this.bpc.checked, dither: this.dither.checked });
+      if (err) { setText(this.note, err); return; }
+      this.close();
+    } catch (err) { setText(this.note, msg(err)); }
+  }
+}
+
 /** View > Proof Setup (1.53.5): the device to simulate (any profile here, CMYK included), its intent and black point. */
 export class ProofSetupDialog extends Dialog {
   private readonly sel = el<HTMLSelectElement>('<select class="cv-input" aria-label="Device to Simulate"></select>');

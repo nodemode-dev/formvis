@@ -2,13 +2,13 @@ import type { Engine } from '../../engine';
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
 
-export interface RenderChoice { format: 'mp4' | 'gif' | 'png'; from: number; to: number; scale: number }
+export interface RenderChoice { format: 'mp4' | 'gif' | 'png' | 'jpg' | 'webp'; from: number; to: number; scale: number }
 
 /** File > Export > Render Video (1.59.6, DEV_PLAN 25.4): the video timeline
  *  rendered as an H.264 MP4, a GIF or a picture sequence (numbered PNGs in a zip); every frame or a range (From and
  *  To, frames counted from 0, To excluded); at the document's size, half, or a quarter. Rows built once. */
 export class RenderVideoDialog extends Dialog {
-  private readonly format = el<HTMLSelectElement>('<select class="cv-input" aria-label="Format"><option value="mp4">H.264 video (MP4)</option><option value="gif">Animated GIF</option><option value="png">PNG sequence (zip)</option></select>');
+  private readonly format = el<HTMLSelectElement>('<select class="cv-input" aria-label="Format"><option value="mp4">H.264 video (MP4)</option><option value="gif">Animated GIF</option><option value="png">PNG sequence (zip)</option><option value="jpg">JPEG sequence (zip)</option><option value="webp">WebP sequence (zip)</option></select>');
   private readonly range = el<HTMLSelectElement>('<select class="cv-input" aria-label="Range"><option value="all">All frames</option><option value="work">The work area</option><option value="custom">Frames from and to</option></select>');
   private readonly from = el<HTMLInputElement>('<input class="cv-input" type="number" min="0" step="1" aria-label="From frame">');
   private readonly to = el<HTMLInputElement>('<input class="cv-input" type="number" min="1" step="1" aria-label="To frame">');

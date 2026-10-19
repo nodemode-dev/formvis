@@ -3,7 +3,8 @@ import { createSurface, ctxOf, type Ctx2D, type Raster, type Surface } from './s
 import { TiledRaster } from './tiled';
 import type { SelectionMask } from './selection';
 import type { PixelPatch } from './history';
-import type { Pt, Rect, RGB } from './types';
+import type { BlendMode, Pt, Rect, RGB } from './types';
+import { blendPixels } from './blend';
 import { UPRIGHT, computeOption, shapeActive, symmetryPoints, type BrushSymmetry, type BrushDynamics, type BrushShape, type PenPose } from './brush-dynamics';
 import type { SampledTip } from './abr';
 import { StrokeBuffer, TipAlpha, levelOf } from './dab-buffer';
@@ -169,6 +170,8 @@ export class PixelStroke {
   private orig: Surface | null = null;
   /** Where the window could not grow because tiles there were on disk (the engine brings them back). */
   missing: Rect | null = null;
+  /** A blend mode the canvas has no operation for: the laid paint is blended onto the layer per pixel (blend.ts). */
+  pixelBlend: BlendMode | null = null;
 
   /** The ordinary layer that the retouch strokes (healing, Remove, cloning, Dodge and Burn) work on whole; they are
    *  declined on a tiled layer before they start, and this refuses one plainly if one ever arrives (1.62.5). */
@@ -288,6 +291,14 @@ export class PixelStroke {
   private dualTip: Surface | null = null;
   private textureTile: Surface | null = null;
   private shaped: Surface | null = null;
+  private dualAspect: { x: number; y: number } = { x: 1, y: 1 };
+  private dualLast: Pt | null = null;
+  private dualCarry = 0;
+  private dir0: number | null = null;
+  private fadeLen = 100;
+  private curPressure = 1;
+  private strokeRgb: [number, number, number] | null = null;
+  private poseOv: BrushShape['pose'] | null = null;
 
   /** Installs a Brush Settings shape: its spacing (a percentage of the diameter, where set), the dual brush's round tip,
    *  and the texture as a tile whose alpha is what it cuts from the paint (darker pattern, more; scaled by Depth). */
@@ -297,6 +308,8 @@ export class PixelStroke {
     if (shape) {
       this.colorDyn = shape.color?.on ? { ...shape.color } : null;
       this.transfer = shape.transfer?.on ? { ...shape.transfer } : null;
+      this.poseOv = shape.pose?.on ? { ...shape.pose } : null;
+      this.fadeLen = Math.max(1, shape.transfer?.fadeSteps ?? 100);
       if (shape.noise) this.tip = shapedTip(this.tip, true, false);
       // Wet Edges is the stroke's, not each dab's: overlapping dabs would fill a lighter centre back in (1.50.1's fault).
       if (shape.wetEdges) this.wetInner = takeSurface(this.raster.width, this.raster.height);
@@ -305,7 +318,12 @@ export class PixelStroke {
     this.shape = structuredClone(shape);
     if (shape.spacing !== null) this.spacing = Math.max(0.5, this.style.diameter * (shape.spacing / 100));
     const k = matScale(this.toLocal);
-    if (shape.dual.on) { this.dualPaint = takeSurface(this.raster.width, this.raster.height); this.dualTip = brushTip(shape.dual.diameter * k, 1, { r: 255, g: 255, b: 255 }); }
+    if (shape.dual.on) {
+      const white = { r: 255, g: 255, b: 255 }, own = shape.dual.source === 'main' && this.style.tip;
+      this.dualPaint = takeSurface(this.raster.width, this.raster.height);
+      this.dualTip = own ? sampledTip(shape.dual.diameter * k, own, white) : brushTip(shape.dual.diameter * k, shape.dual.hardness ?? 1, white);
+      this.dualAspect = own ? this.tipAspect : { x: 1, y: 1 };
+    }
     if (shape.texture.on && pattern) {
       const w = pattern.width, h = pattern.height, t = createSurface(w, h), c = ctxOf(t), src = ctxOf(pattern).getImageData(0, 0, w, h), out = c.createImageData(w, h), depth = shape.texture.depth / 100;
       const tx = shape.texture, gain = (tx.contrast ?? 0) >= 0 ? 1 / (1 - 0.99 * ((tx.contrast ?? 0) / 100)) : 1 + (tx.contrast ?? 0) / 100, lift = (tx.brightness ?? 0) / 100;
@@ -325,6 +343,7 @@ export class PixelStroke {
   /** The Airbrush (1.50.4): a dab where the stroke is, so paint builds while the pointer rests. */
   stamp(pressure = 1): void {
     if (!this.last) return;
+    if (this.poseOv?.usePressure) pressure = this.poseOv.pressure / 100;
     this.airbrushing = true;
     this.dab(this.last, Math.min(1, Math.max(0, pressure)));
     this.airbrushing = false;
@@ -341,6 +360,8 @@ export class PixelStroke {
   }
 
   to(p: Pt, pressure = 1, pose: PenPose = UPRIGHT): void {
+    const ov = this.poseOv;
+    if (ov) { pose = { tiltX: ov.tiltX, tiltY: ov.tiltY, twist: ov.rotation }; if (ov.usePressure) pressure = ov.pressure / 100; }
     const from = this.last, pr = this.smooth(pressure, from ? Math.hypot(p.x - from.x, p.y - from.y) : 0);
     this.pose = pose;
     if (!from) {
@@ -352,6 +373,7 @@ export class PixelStroke {
     const dx = p.x - from.x, dy = p.y - from.y, length = Math.hypot(dx, dy);
     if (length === 0) return;
     this.dir = (Math.atan2(dy, dx) * 180) / Math.PI;
+    this.dir0 ??= this.dir;
     let along = this.spacing - this.carry;
     for (; along <= length; along += this.spacing) this.dab({ x: from.x + (dx * along) / length, y: from.y + (dy * along) / length }, this.lastPressure + ((pr - this.lastPressure) * along) / length);
     this.carry = length - (along - this.spacing);
@@ -369,6 +391,7 @@ export class PixelStroke {
   }
 
   private dabAt(p: Pt, pressure: number): void {
+    this.curPressure = pressure;
     if (this.style.aliased) this.aliasedDab(p, pressure);
     else if (this.shape) this.shapedDab(p, pressure);
     else this.plainDab(p, pressure);
@@ -445,6 +468,9 @@ export class PixelStroke {
     if (!t) return 1;
     let k = (1 - Math.random() * (t.opacity / 100)) * (1 - Math.random() * (t.flow / 100));
     if (t.control === 'pressure') k *= Math.max(0, Math.min(1, pressure));
+    else if (t.control === 'fade') k *= 1 - Math.min(1, this.steps / this.fadeLen);
+    else if (t.control === 'tilt') k *= 1 - Math.min(90, Math.hypot(this.pose.tiltX, this.pose.tiltY)) / 90;
+    else if (t.control === 'rotation') k *= 1 - (((this.pose.twist % 360) + 360) % 360) / 360;
     return Math.max(0, k);
   }
 
@@ -455,12 +481,17 @@ export class PixelStroke {
     if (own) return this.tinted(own.r, own.g, own.b);
     const cd = this.colorDyn;
     if (!cd) return this.tip;
-    const fg = this.style.color, bg = this.style.bg ?? fg, t = Math.random() * (cd.fgBg / 100);
+    if (cd.perTip === false && this.strokeRgb) return this.tinted(...this.strokeRgb);
+    const fg = this.style.color, bg = this.style.bg ?? fg, ctl = cd.fgBgControl ?? 'off';
+    const t = ctl === 'pressure' ? (1 - this.curPressure) * (cd.fgBg / 100) : ctl === 'fade' ? Math.min(1, this.steps / this.fadeLen) * (cd.fgBg / 100) : Math.random() * (cd.fgBg / 100);
     let [h, sat, v] = toHsv(fg.r + (bg.r - fg.r) * t, fg.g + (bg.g - fg.g) * t, fg.b + (bg.b - fg.b) * t);
     h = (h + (Math.random() * 2 - 1) * (cd.hue / 100) * 0.5 + 1) % 1;
     sat = Math.max(0, Math.min(1, sat + (Math.random() * 2 - 1) * (cd.saturation / 100)));
+    const purity = (cd.purity ?? 0) / 100;
+    sat = Math.max(0, Math.min(1, purity >= 0 ? sat + (1 - sat) * purity : sat * (1 + purity)));
     v = Math.max(0, Math.min(1, v + (Math.random() * 2 - 1) * (cd.brightness / 100)));
     const [r, g, b] = fromHsv(h, sat, v);
+    if (cd.perTip === false) this.strokeRgb = [r, g, b];
     return this.tinted(r, g, b);
   }
 
@@ -521,13 +552,17 @@ export class PixelStroke {
       if (sh.angleControl === 'direction') angle += this.dir;
       else if (sh.angleControl === 'tilt') angle += (Math.atan2(pose.tiltY, pose.tiltX) * 180) / Math.PI;
       else if (sh.angleControl === 'rotation') angle += pose.twist;
+      else if (sh.angleControl === 'initial') angle += this.dir0 ?? this.dir;
+      else if (sh.angleControl === 'fade') angle += Math.min(1, this.steps / this.fadeLen) * 360;
       angle += (rnd() * 2 - 1) * (sh.angleJitter / 100) * 180;
       let round = sh.roundness / 100;
       if (sh.roundnessControl === 'tilt') round *= 1 - tilt / 90;
+      else if (sh.roundnessControl === 'rotation') round *= 1 - (((pose.twist % 360) + 360) % 360) / 360;
+      else if (sh.roundnessControl === 'fade') round *= 1 - Math.min(1, this.steps / this.fadeLen);
       round *= 1 - (sh.roundnessJitter / 100) * rnd();
       if (varied) round = Math.max(sh.minRoundness / 100, round);
       round = Math.max(0.01, Math.min(1, round));
-      const spread = (sh.scatter / 100) * base * 2;
+      const sc = sh.scatterControl ?? 'off', spread = (sh.scatter / 100) * base * 2 * (sc === 'pressure' ? Math.max(0, Math.min(1, pressure)) : sc === 'fade' ? 1 - Math.min(1, this.steps / this.fadeLen) : 1);
       let x = p.x, y = p.y;
       if (spread > 0) {
         if (sh.bothAxes) { x += (rnd() * 2 - 1) * spread; y += (rnd() * 2 - 1) * spread; }
@@ -545,11 +580,8 @@ export class PixelStroke {
       }
       this.wetMark(at, 0, 0, rx, ry);
       if (this.dualPaint && this.dualTip) {
-        const dc = ctxOf(this.dualPaint), dr = Math.max(0.5, sh.dual.diameter / 2), ds = (sh.dual.scatter / 100) * dr * 2;
-        for (let j = 0; j < Math.max(1, sh.dual.count); j++) {
-          setMat(dc, this.toLocal);
-          dc.drawImage(this.dualTip, x + (rnd() * 2 - 1) * ds - dr, y + (rnd() * 2 - 1) * ds - dr, dr * 2, dr * 2);
-        }
+        if (!sh.dual.spacing) this.layDual(x, y);
+        else if (k === 0) this.walkDual(p);
       }
       const reach = r + (sh.dual.on ? (sh.dual.scatter / 100) * sh.dual.diameter + sh.dual.diameter : 0);
       const corners = [[-reach, -reach], [reach, -reach], [reach, reach], [-reach, reach]].map(([ox, oy]) => applyMat(this.toLocal, x + ox, y + oy));
@@ -557,6 +589,31 @@ export class PixelStroke {
       const hit = intersectRect({ x: box.x - 1, y: box.y - 1, w: box.w + 2, h: box.h + 2 }, { x: 0, y: 0, w: this.raster.width, h: this.raster.height });
       if (hit) { this.pending = unionRect(this.pending, hit); this.touched = unionRect(this.touched, hit); }
     }
+  }
+
+  /** The dual brush's marks at (x, y): Count of them, each scattered by the dual brush's own Scatter, turned to its angle,
+   *  squeezed to its roundness and flipped, drawn white into the dual layer. */
+  private layDual(x: number, y: number): void {
+    const du = (this.shape as BrushShape).dual, dc = ctxOf(this.dualPaint as Surface), dr = Math.max(0.5, du.diameter / 2), ds = (du.scatter / 100) * dr * 2, rnd = this.rnd;
+    const round = Math.max(0.01, Math.min(1, (du.roundness ?? 100) / 100)), a = (((du.angle ?? 0) % 360) * Math.PI) / 180, ca = Math.cos(a), sa = Math.sin(a);
+    const rw = dr * this.dualAspect.x, rh = dr * this.dualAspect.y;
+    for (let j = 0; j < Math.max(1, du.count); j++) {
+      const ox = (rnd() * 2 - 1) * ds, oy = (rnd() * 2 - 1) * ds;
+      setMat(dc, mul(mul(this.toLocal, [ca, sa, -sa, ca, x + ox, y + oy]), [du.flipX ? -1 : 1, 0, 0, du.flipY ? -round : round, 0, 0]));
+      dc.drawImage(this.dualTip as Surface, -rw, -rh, rw * 2, rh * 2);
+    }
+  }
+
+  /** With the dual brush's own Spacing: marks laid along the stroke every Spacing percent of its size, the distance since
+   *  the last carried into the next dab; a jump (a mirrored copy, a new stroke) starts a fresh run. */
+  private walkDual(p: Pt): void {
+    const du = (this.shape as BrushShape).dual, step = Math.max(0.5, du.diameter * ((du.spacing as number) / 100)), from = this.dualLast;
+    if (!from || Math.hypot(p.x - from.x, p.y - from.y) > this.spacing * 1.5 + 1) { this.layDual(p.x, p.y); this.dualLast = p; this.dualCarry = 0; return; }
+    const dx = p.x - from.x, dy = p.y - from.y, len = Math.hypot(dx, dy);
+    let along = step - this.dualCarry;
+    if (len > 0) for (; along <= len; along += step) this.layDual(from.x + (dx * along) / len, from.y + (dy * along) / len);
+    this.dualCarry = len > 0 ? len - (along - step) : this.dualCarry;
+    this.dualLast = p;
   }
 
   /** The paint layer's pixels over `win` replaced by `img`, put through a small canvas: putImageData straight into a
@@ -590,7 +647,7 @@ export class PixelStroke {
       const c = ctxOf(this.shaped);
       openFrame(c, win);
       c.drawImage(this.paint, 0, 0);
-      if (this.dualPaint) { c.globalCompositeOperation = 'destination-in'; c.drawImage(this.dualPaint, 0, 0); }
+      if (this.dualPaint) { c.globalCompositeOperation = this.shape?.dual.mode === 'subtract' ? 'destination-out' : 'destination-in'; c.drawImage(this.dualPaint, 0, 0); }
       if (this.textureTile && this.shape) {
         const pat = c.createPattern(this.textureTile, 'repeat');
         if (pat) {
@@ -643,7 +700,11 @@ export class PixelStroke {
       w.drawImage(coverage, x, y, aw, ah, x, y, aw, ah);
       w.globalCompositeOperation = 'lighter';
     } else w.globalCompositeOperation = this.op;
-    w.drawImage(laid, x, y, aw, ah, x, y, aw, ah);
+    if (this.pixelBlend && !this.lerp) {
+      const lc = ctxOf(laid), dst = w.getImageData(x, y, aw, ah), src = lc.getImageData(x, y, aw, ah);
+      blendPixels(dst.data, src.data, this.pixelBlend, 1, (i) => [lx + (i % aw), ly + Math.floor(i / aw)]);
+      w.putImageData(dst, x, y);
+    } else w.drawImage(laid, x, y, aw, ah, x, y, aw, ah);
     w.restore();
     return area;
   }
@@ -665,7 +726,7 @@ export class PixelStroke {
   /** The alpha the stroke laid (coverage cut to opacity, 0 to 1) over the layer rectangle x, y, w, h, for the 16-bit
    *  rebuild; null when anything else shaped the paint (a shape, texture, selection, mask, varied colour, blend mode). */
   coverFor(x: number, y: number, w: number, h: number): Float32Array | null {
-    if (this.shape || this.texture || this.selection || this.lerp || this.tiled || this.wetInner || this.varied || (this.op !== 'source-over' && this.op !== 'destination-out')) return null;
+    if (this.shape || this.texture || this.selection || this.lerp || this.tiled || this.wetInner || this.varied || this.pixelBlend || (this.op !== 'source-over' && this.op !== 'destination-out')) return null;
     const b = this.buf, out = new Float32Array(w * h), top = levelOf(this.style.opacity) / 255;
     for (let j = 0; j < h; j++) {
       for (let i = 0; i < w; i++) {

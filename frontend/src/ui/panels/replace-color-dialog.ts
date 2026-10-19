@@ -13,8 +13,10 @@ const fromHex = (h: string): RGB => ({ r: parseInt(h.slice(1, 3), 16), g: parseI
  *  showing what is chosen in grey at one fixed size; Hue, Saturation and Lightness set the replacement, Result showing
  *  the first colour replaced (picking a Result sets them). The layer previews live; OK is one step. */
 export class ReplaceColorDialog extends Dialog {
-  private s: ReplaceColorSettings = { plus: [], minus: [], fuzziness: 40, hue: 0, saturation: 0, lightness: 0 };
+  private s: ReplaceColorSettings = { plus: [], minus: [], fuzziness: 40, hue: 0, saturation: 0, lightness: 0, localized: false, range: 50 };
   private readonly colour = el<HTMLInputElement>('<input class="cv-input cv-color" type="color" aria-label="Color to replace">');
+  private readonly localized = checkRow('Localized Color Clusters', (v) => { this.s.localized = v; this.lockRange(); this.refresh(); });
+  private readonly range = sliderRow('Range', 1, 100, 1, (v) => { this.s.range = v; this.refresh(); });
   private readonly fuzz = sliderRow('Fuzziness', 0, 200, 1, (v) => { this.s.fuzziness = v; this.refresh(); });
   private readonly note = el<HTMLParagraphElement>('<p class="cv-hint">Click the image to sample a color; Shift-click adds one, Alt-click takes one away.</p>');
   private readonly box = el<HTMLCanvasElement>(`<canvas width="${BOX_W}" height="${BOX_H}" aria-label="Chosen colors"></canvas>`);
@@ -30,7 +32,7 @@ export class ReplaceColorDialog extends Dialog {
   constructor(private readonly engine: Engine) {
     super('Replace Color', 380);
     this.field('Color', this.colour);
-    this.body.append(this.fuzz.el);
+    this.body.append(this.localized.el, this.fuzz.el, this.range.el);
     this.field('', this.note);
     this.field('', this.box);
     this.body.append(this.hue.el, this.sat.el, this.light.el);
@@ -46,11 +48,16 @@ export class ReplaceColorDialog extends Dialog {
   }
 
   /** Test hook as much as a user path: sample a colour as a click would. */
-  sample(rgb: RGB, how: 'set' | 'add' | 'remove'): void {
-    if (how === 'set') { this.s.plus = [rgb]; this.s.minus = []; }
-    else if (how === 'add') this.s.plus.push(rgb);
+  sample(rgb: RGB, how: 'set' | 'add' | 'remove', at?: { u: number; v: number }): void {
+    const c = at ? { ...rgb, u: at.u, v: at.v } : rgb;
+    if (how === 'set') { this.s.plus = [c]; this.s.minus = []; }
+    else if (how === 'add') this.s.plus.push(c);
     else this.s.minus.push(rgb);
     this.refresh();
+  }
+
+  private lockRange(): void {
+    this.range.el.querySelectorAll('input').forEach((i) => { i.disabled = !this.s.localized; });
   }
 
   private toResult(to: RGB): void {
@@ -95,6 +102,7 @@ export class ReplaceColorDialog extends Dialog {
     if (this.isOpen || !this.engine.targetImage()) return;
     this.s.plus = [{ ...this.engine.fg }];
     this.s.minus = [];
+    this.localized.set(!!this.s.localized); this.range.set(this.s.range ?? 50); this.lockRange();
     this.fuzz.set(this.s.fuzziness); this.hue.set(this.s.hue); this.sat.set(this.s.saturation); this.light.set(this.s.lightness);
     this.preview.set(this.live);
     this.open(q<HTMLInputElement>(this.fuzz.el, 'input[type="range"]'));
@@ -105,8 +113,9 @@ export class ReplaceColorDialog extends Dialog {
       if (e.button !== 0 || !stage || e.target !== stage || !p) return;
       e.preventDefault();
       e.stopPropagation();
-      const b = stage.getBoundingClientRect(), v = p.viewport, rgb = this.engine.sampleOriginal({ x: (e.clientX - b.left - v.panX) / v.zoom, y: (e.clientY - b.top - v.panY) / v.zoom }, false);
-      if (rgb) this.sample({ r: Math.round(rgb[0] * 255), g: Math.round(rgb[1] * 255), b: Math.round(rgb[2] * 255) }, e.shiftKey ? 'add' : e.altKey ? 'remove' : 'set');
+      const b = stage.getBoundingClientRect(), v = p.viewport, pt = { x: (e.clientX - b.left - v.panX) / v.zoom, y: (e.clientY - b.top - v.panY) / v.zoom }, rgb = this.engine.sampleOriginal(pt, false), t = p.activeLayer?.transform;
+      const at = t && t.w > 0 && t.h > 0 ? { u: (pt.x - t.x) / t.w, v: (pt.y - t.y) / t.h } : undefined;
+      if (rgb) this.sample({ r: Math.round(rgb[0] * 255), g: Math.round(rgb[1] * 255), b: Math.round(rgb[2] * 255) }, e.shiftKey ? 'add' : e.altKey ? 'remove' : 'set', at);
     };
     window.addEventListener('pointerdown', handler, true);
     this.handler = handler;

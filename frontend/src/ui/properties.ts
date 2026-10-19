@@ -7,8 +7,9 @@ import { onLanguage, t } from './i18n';
 import { fontFamilies, previewFont } from './fonts';
 import { icon } from './icons';
 import { PanelGroup } from './panel-group';
-import { allBrushPresets, importedBrushPresets, type BrushPreset } from '../engine/brush-dynamics';
-import { importAbr } from '../io/brush-library';
+import { allBrushPresets, brushGroupOf, importedBrushPresets, type BrushPreset } from '../engine/brush-dynamics';
+import { importAbr, moveBrushPreset, renameBrushGroup, renameImportedBrush, saveBrushPreset } from '../io/brush-library';
+import { promptName } from './dialogs';
 
 /** The Properties column (Phase 21, UI_SPEC.md sections 5 and 6, the target's s20): Properties (the active layer's
  *  placement: W, X, H, Y, with a link that keeps the aspect), Brushes (the tip, Size and Hardness, a stroke preview, and
@@ -307,7 +308,7 @@ export class PropertiesColumn {
         <div class="cv-brush-views" role="group" aria-label="View"><button type="button" data-view="grid" title="Grid" aria-label="Grid">${icon('viewGrid', 15)}</button><button type="button" data-view="list" title="List" aria-label="List">${icon('viewList', 15)}</button></div></div>
       <div class="cv-brush-folders"></div>
       <div class="cv-brush-stroke-head"><span>Custom brush</span><span>Stroke preview</span></div><canvas class="cv-brush-stroke" aria-label="Stroke preview"></canvas>
-      <div class="cv-brush-actions"><button class="cv-btn" type="button" data-act="load">${icon('folderOpen', 14)}<span>Load...</span></button><button class="cv-btn" type="button" data-act="settings">${icon('sliders', 14)}<span>Brush Settings</span></button></div>
+      <div class="cv-brush-actions"><button class="cv-btn" type="button" data-act="new" title="Save the current brush as a preset">${icon('plus', 14)}<span>New Preset</span></button><button class="cv-btn" type="button" data-act="load">${icon('folderOpen', 14)}<span>Load...</span></button><button class="cv-btn" type="button" data-act="settings">${icon('sliders', 14)}<span>Brush Settings</span></button></div>
     </div>`);
     const sliders = body.querySelector('.cv-brush-sliders') as HTMLElement, folders = body.querySelector('.cv-brush-folders') as HTMLElement;
     const tip = body.querySelector('.cv-brush-tip') as HTMLCanvasElement, stroke = body.querySelector('.cv-brush-stroke') as HTMLCanvasElement;
@@ -367,10 +368,10 @@ export class PropertiesColumn {
       paintThumb(c, p);
       return c;
     };
-    let key = '', inkSeen = '';
+    let key = '', inkSeen = '', dragId: string | null = null;
     const fill = (): void => {
       const q0 = search.value.trim().toLowerCase(), imported = new Set(importedBrushPresets.map((p) => p.id));
-      const k = [view, q0, e.brushPresetId, [...shut].join(','), allBrushPresets().map((p) => p.id).join(',')].join('|');
+      const k = [view, q0, e.brushPresetId, [...shut].join(','), allBrushPresets().map((p) => `${p.id}:${brushGroupOf(p)}:${p.name}`).join(',')].join('|');
       const inkNow = ink().join(',');
       if (k === key) {
         if (inkNow !== inkSeen) { inkSeen = inkNow; for (const [c, p] of thumbs) paintThumb(c, p); }   // a new theme's ink repaints the tiles in place
@@ -380,7 +381,14 @@ export class PropertiesColumn {
       thumbs.clear();
       for (const b of body.querySelectorAll<HTMLElement>('[data-view]')) b.classList.toggle('is-on', b.dataset.view === view);
       folders.textContent = '';
-      const groups = [{ id: 'general', name: t('General Brushes'), list: allBrushPresets().filter((p) => !imported.has(p.id)) }, { id: 'imported', name: t('Imported Brushes'), list: allBrushPresets().filter((p) => imported.has(p.id)) }];
+      const byGroup = new Map<string, BrushPreset[]>();
+      for (const p of allBrushPresets()) { const g = brushGroupOf(p); byGroup.set(g, [...(byGroup.get(g) ?? []), p]); }
+      const groups = [...byGroup].map(([g, list]) => ({ id: g, name: t(g), raw: g, list }));
+      const dropOn = (node: HTMLElement, group: string, before: string | null): void => {
+        node.addEventListener('dragover', (ev) => { if (dragId) { ev.preventDefault(); node.classList.add('is-drop'); } });
+        node.addEventListener('dragleave', () => node.classList.remove('is-drop'));
+        node.addEventListener('drop', (ev) => { ev.preventDefault(); node.classList.remove('is-drop'); const id = dragId; dragId = null; if (id) void moveBrushPreset(id, group, before).then(() => { key = ''; fill(); }); });
+      };
       for (const grp of groups) {
         const list = grp.list.filter((p) => !q0 || p.name.toLowerCase().includes(q0));
         if (!list.length) continue;
@@ -389,6 +397,11 @@ export class PropertiesColumn {
         setText(head.querySelector('.cv-bf-name') as HTMLElement, grp.name);
         setText(head.querySelector('em') as HTMLElement, String(list.length));
         head.addEventListener('click', () => { if (shut.has(grp.id)) shut.delete(grp.id); else shut.add(grp.id); key = ''; fill(); });
+        dropOn(head, grp.raw, null);
+        if (grp.list.some((p) => imported.has(p.id))) {
+          head.title = 'Double-click to rename the folder';
+          head.addEventListener('dblclick', () => { void promptName('Rename Folder', grp.raw, 'Rename').then((n) => (n ? renameBrushGroup(grp.raw, n) : false)).then(() => { key = ''; fill(); }); });
+        }
         folders.appendChild(head);
         if (!open) continue;
         const box = el(`<div class="cv-brush-${view}"></div>`);
@@ -401,6 +414,14 @@ export class PropertiesColumn {
           tile.setAttribute('aria-label', p.name);
           tile.classList.toggle('is-on', e.brushPresetId === p.id);
           tile.addEventListener('click', () => { e.applyBrushPreset(p); key = ''; fill(); });
+          if (imported.has(p.id)) {
+            tile.draggable = true;
+            tile.title += ' · drag to reorder or move to a folder · double-click to rename';
+            tile.addEventListener('dragstart', (ev) => { dragId = p.id; ev.dataTransfer?.setData('text/plain', p.id); });
+            tile.addEventListener('dragend', () => { dragId = null; });
+            tile.addEventListener('dblclick', () => { void promptName('Rename Brush', p.name, 'Rename').then((n) => (n ? renameImportedBrush(p.id, n) : false)).then(() => { key = ''; fill(); }); });
+          }
+          dropOn(tile, grp.raw, p.id);
           box.appendChild(tile);
         }
         folders.appendChild(box);
@@ -441,6 +462,17 @@ export class PropertiesColumn {
     const picker = el<HTMLInputElement>('<input type="file" accept=".abr,image/*" hidden>');
     body.appendChild(picker);
     (body.querySelector('[data-act="load"]') as HTMLElement).addEventListener('click', () => picker.click());
+    (body.querySelector('[data-act="new"]') as HTMLElement).addEventListener('click', () => {
+      void (async () => {
+        const name = (await promptName('New Brush Preset', `Brush ${importedBrushPresets.length + 1}`, 'Next'))?.trim();
+        if (!name) return;
+        const group = (await promptName('Folder', 'My Brushes', 'Save'))?.trim();
+        if (!group) return;
+        const r = await saveBrushPreset(e, name, group);
+        e.notice(r.kept ? `Saved ${name} in ${group}.` : `Saved ${name} for this session only: it could not be stored.`);
+        key = ''; fill();
+      })();
+    });
     picker.addEventListener('change', () => {
       const f = picker.files?.[0];
       picker.value = '';

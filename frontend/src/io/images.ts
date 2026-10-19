@@ -188,7 +188,7 @@ export async function decodeImage(file: Blob, name: string, raw = false, rawWb?:
   let source: ImportedImage['source'] & { width: number; height: number };
   // 36.19: with the engine service not running a TIFF is read in the browser (utif2); the rest of the engine's formats wait for it.
   const serverBlob = async (): Promise<Blob> => (/\.tiff?$/i.test(name) || file.type === 'image/tiff') && !(await serviceReady()) ? (await import('./tiff-browser')).decodeTiffInBrowser(file) : api.decode(file, name, 0, undefined, rawWb);
-  try { source = await bitmapOf(server ? await serverBlob() : file, raw && !server); } catch (err) {
+  try { source = await bitmapOf(server ? await serverBlob() : file, raw && (!server || /\.tiff?$/i.test(name))); } catch (err) {
     if (outOfMemory(err)) throw new Error(`${name} could not be opened: this computer ran out of memory decoding${size ? ` a ${size.width} by ${size.height} picture` : ' it'}. Close other documents or pictures and try again, or open a smaller copy.`);
     if (server) throw err;
     try { source = await bitmapOf(await api.decode(file, name)); } catch (again) {

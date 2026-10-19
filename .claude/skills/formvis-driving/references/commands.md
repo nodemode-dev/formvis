@@ -1,6 +1,6 @@
 # formvis commands
 
-Generated from the window's command catalogue (1401 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1411 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
@@ -9,16 +9,16 @@ Generated from the window's command catalogue (1401 commands) by `./formvis agen
 - Filter: 87
 - Generate: 6
 - Help: 5
-- Image: 109
+- Image: 111
 - Layer: 257
 - Paint: 1
 - Paths: 11
 - Select: 43
-- Tool options: 394
+- Tool options: 395
 - Tools: 53
 - Type: 49
 - View: 96
-- Window: 99
+- Window: 106
 
 ## Edit
 
@@ -148,7 +148,7 @@ Generated from the window's command catalogue (1401 commands) by `./formvis agen
 | `export-artboards-pdf` | Artboards to PDF... |  | Exports every artboard as one page of a single PDF, in the Layers order, each page at its artboard size from the document resolution; takes name, jpeg, quality and icc. (asks first) |
 | `export-as` | Export As... | Alt+Shift+Mod+W | Opens Export As with format, size and quality. (asks first) |
 | `export-avif` | Export AVIF |  | Exports the flattened picture as AVIF. (asks first) |
-| `export-data-sets` | Data Sets as Files... |  | Applies each data set in turn and exports the flattened document as <doc>_<dataset>.png (or jpg, psd by the format param), all in one zip; the document ends as it started. (asks first) |
+| `export-data-sets` | Data Sets as Files... |  | Applies each data set in turn and exports the flattened document as <doc>_<dataset>.png (or jpg, tiff, webp, psd by the format param; the template param names the files with {document}, {name} and {index}, repeated names are numbered), all in one zip; the document ends as it started. (asks first) |
 | `export-exr` | OpenEXR... |  | Exports an OpenEXR file. (asks first) |
 | `export-exr-half` | OpenEXR Half Float... |  | Exports an OpenEXR file with 16-bit half float channels and ZIP compression. (asks first) |
 | `export-exr-none` | OpenEXR Uncompressed... |  | Exports an OpenEXR file with no compression. (asks first) |
@@ -170,13 +170,13 @@ Generated from the window's command catalogue (1401 commands) by `./formvis agen
 | `export-psd` | Export PSD... |  | Exports the document as a layered PSD. (asks first) |
 | `export-selection-mask` | Selection as Mask PNG |  | Writes the selection as a grey PNG the size of the document, white where selected, black elsewhere, with feathered edges kept. (asks first) |
 | `export-tiff` | Export TIFF |  | Exports the picture as TIFF. (asks first) |
-| `export-tiff-layers` | TIFF with Layers... |  | Exports the picture as a TIFF that carries its layers in the PSD layer block. (asks first) |
+| `export-tiff-layers` | TIFF with Layers... |  | Exports the picture as a TIFF that carries its layers in the PSD layer block; the TIFF Options prompt offers to discard the layers instead, or pass layers true or false to skip it. (asks first) |
 | `export-to-file` | Export to File |  | Encodes the flattened picture as png, jpg, webp or tiff and writes it to the exports folder. (asks first) |
 | `export-webp` | Export WebP |  | Exports the flattened picture as WebP. (asks first) |
 | `file-info` | File Info... | Alt+Shift+Mod+I | Opens File Info (title, author, description, rating, keywords, copyright), or sets the fields given as title, author, author_title, description, rating, description_writer, keywords, copyright_status, copyright_notice and copyright_url at once as one step; the fields travel in the project and are written as XMP into PNG, JPEG, TIFF, WebP and PSD exports. (changes the picture) |
 | `fit-image` | Fit Image... |  | Opens Fit Image to scale within a width and height. (changes the picture) |
 | `generate-image` | Generate Image... |  | Opens Generate Image. (changes the picture) |
-| `generate-image-assets` | Generate Image Assets |  | Writes a zip of image files for every layer whose name holds an asset name such as hero.png, or a list like 200% big.png, small.jpg60%, 64x? icon.png, each trimmed and scaled to its size. (asks first) |
+| `generate-image-assets` | Generate Image Assets |  | Writes a zip holding a <document>-assets folder of image files for every layer or folder whose name holds an asset name such as hero.png, or a list like 200% big.png, small.jpg60%, 64x? icon.png, each trimmed and scaled to its size. (asks first) |
 | `image-assets-on-save` | Image Assets on Save |  | Turns Image Assets on or off for this document; while on, File > Save also regenerates the image files for every layer named like hero.png and delivers them as a zip. (changes the picture) |
 | `image-processor` | Image Processor... |  | Saves chosen files or the open images as JPEG, PSD and TIFF at a maximum size, optionally after an action and with a copyright notice, each type in its own folder. |
 | `import` | Import Images... | Shift+Mod+O | Opens the file picker to place images as layers. (changes the picture) |
@@ -195,7 +195,7 @@ Generated from the window's command catalogue (1401 commands) by `./formvis agen
 | `open-as` | Open As... |  | Opens a dialog to read one file as a format you choose (PNG, JPEG, TIFF, Targa, DPX, Cineon, WBMP, DDS, OpenEXR, PSD and others), whatever its name or extension says; the format parameter preselects it. (changes the picture) |
 | `open-image-data` | Open Image Data |  | Opens base64 picture bytes with a file name as a new document. (changes the picture) |
 | `open-svg-layers` | Open SVG as Layers... |  | Opens an SVG file as a new document with one editable shape layer per drawable element; with the svg parameter it reads that SVG text instead of asking for a file. (changes the picture) |
-| `package` | Package... |  | Saves the document and the files of its linked smart objects together in one zip. (changes the picture) |
+| `package` | Package... |  | Saves the document and the files of its linked smart objects together in one zip, the packaged document pointing at the copies under Links. (changes the picture) |
 | `photomerge` | Photomerge... |  | Opens Photomerge to stitch chosen files or the open documents into a panorama (Auto, Perspective, Cylindrical, Collage or Reposition) with optional vignette and lens distortion correction. (changes the picture) |
 | `pin-tab` | Pin Tab |  | Pins or unpins the current document tab: a pinned tab moves to the front, loses its close button and is kept by Close All and Close Others. |
 | `place-3d` | Place 3D Model... |  | Opens a file picker for a glTF or GLB model and places it as a layer. (changes the picture) |
@@ -403,6 +403,7 @@ Generated from the window's command catalogue (1401 commands) by `./formvis agen
 | `desaturate` | Desaturate | Shift+Mod+U | Removes colour and keeps the mode. (changes the picture) |
 | `duplicate-image` | Duplicate... |  | Opens the dialog that duplicates the document into a new one. |
 | `equalize` | Equalize |  | Spreads brightness values evenly. (changes the picture) |
+| `equalize-layer-from-selection` | Equalize Entire Layer Based on Selection |  | Equalizes the whole layer using the selected area to set the tones. (changes the picture) |
 | `flatten` | Flatten Image |  | Flattens every layer into one. (changes the picture) |
 | `flip-canvas-h` | Flip Canvas Horizontal |  | Flips the whole image left to right. (changes the picture) |
 | `flip-canvas-v` | Flip Canvas Vertical |  | Flips the whole image top to bottom. (changes the picture) |
@@ -421,6 +422,7 @@ Generated from the window's command catalogue (1401 commands) by `./formvis agen
 | `merge-channels` | Merge Channels... |  | Opens a new RGB document from three greys, one each for red, green and blue, taken from open documents or their channels. (changes the picture) |
 | `mode-bitmap` | Bitmap... |  | Opens the Bitmap conversion. (changes the picture) |
 | `mode-cmyk` | CMYK Color... |  | Opens the CMYK conversion. (changes the picture) |
+| `mode-convert` | Convert Mode... |  | Opens Convert Mode: change to RGB Color, Grayscale or Lab Color with a chosen profile, rendering intent, black point compensation and dither. (changes the picture) |
 | `mode-duotone` | Duotone... |  | Opens Duotone options: one to four inks overprinted on a grayscale document. (changes the picture) |
 | `mode-grayscale` | Grayscale |  | Converts the document to grayscale. (changes the picture) |
 | `mode-grayscale-from` | Grayscale From Channels... |  | Opens the Grayscale conversion that picks how grey is made: luminosity, Rec. 709, the average, or one channel. (changes the picture) |
@@ -890,6 +892,7 @@ Generated from the window's command catalogue (1401 commands) by `./formvis agen
 | `tool.options.brush.pressureOpacity` | Brush: Pressure: opacity |  | Sets Pressure: opacity for the Brush tool. |
 | `tool.options.brush.pressureSize` | Brush: Pressure: size |  | Sets Pressure: size for the Brush tool. |
 | `tool.options.brush.quickShape` | Brush: Quick Shape |  | Sets Quick Shape for the Brush tool. |
+| `tool.options.brush.rightClick` | Brush: Right-click |  | Sets Right-click for the Brush tool. |
 | `tool.options.brush.roundness` | Brush: Roundness |  | Sets Roundness for the Brush tool. |
 | `tool.options.brush.scatter` | Brush: Scatter |  | Sets Scatter for the Brush tool. |
 | `tool.options.brush.size` | Brush: Size |  | Sets Size for the Brush tool. |
@@ -1266,7 +1269,7 @@ Generated from the window's command catalogue (1401 commands) by `./formvis agen
 | `tool.select.eyedropper` | Eyedropper Tool |  | Makes the Eyedropper tool the active tool (key I). Click or drag to sample the foreground colour from the visible image · Alt-click samples the background colour |
 | `tool.select.frame` | Frame Tool |  | Makes the Frame tool the active tool (key K). Drag to draw a frame · Shift for a square or circle · Alt to draw from the centre · Import an image with the frame selected to fill it |
 | `tool.select.freeformPen` | Freeform Pen Tool |  | Makes the Freeform Pen tool the active tool (key P). Drag to draw a path freehand · end near the start to close it · Curve Fit sets how closely it follows |
-| `tool.select.gradient` | Gradient Tool |  | Makes the Gradient tool the active tool (key G). Drag to draw a gradient · Drag either end to adjust it · Shift snaps to 45 degrees · Enter applies · Escape cancels · Switching tools applies |
+| `tool.select.gradient` | Gradient Tool |  | Makes the Gradient tool the active tool (key G). Drag to draw a gradient · Drag either end to adjust it · Click the line to add a colour stop, drag stops and midpoints, Alt-click a stop to remove it, Ctrl-click to give it the foreground colour · Shift snaps to 45 degrees · Enter applies · Escape cancels · Switching tools applies |
 | `tool.select.hand` | Hand Tool |  | Makes the Hand tool the active tool (key H). Drag to pan · Scroll pans · Cmd/Ctrl + scroll zooms · Hold Space to pan with any tool |
 | `tool.select.healingBrush` | Healing Brush Tool |  | Makes the Healing Brush tool the active tool (key J). Alt-click to set the source, then paint; on release the copied texture blends into its surroundings · Aligned keeps the offset between strokes · Shift+J cycles the healing tools · [ ] size |
 | `tool.select.historyBrush` | History Brush Tool |  | Makes the History Brush tool the active tool (key Y). Paint to bring back the layer as it was in the source snapshot or history state (History panel) · [ ] size |
@@ -1484,10 +1487,12 @@ Generated from the window's command catalogue (1401 commands) by `./formvis agen
 | `console-log` | Console... |  | Opens the Console, a viewer of this window’s errors and the end of the engine log with a level filter, a text filter, copy, clear and the log path. |
 | `copy-engine-log` | Copy Engine Log |  | Copies the end of the engine's log file (Logs/formvis-engine.log in the data folder) to the clipboard. |
 | `copy-error-log` | Copy Error Log |  | Copies the error log to the clipboard. |
+| `delete-brush-preset` | Delete Brush Preset |  | Deletes a saved or imported brush preset by id; the built-in presets stay. |
 | `delete-frame` | Delete Frame |  | Deletes the current animation frame. (changes the picture) |
 | `delete-workspace` | Delete Workspace |  | Deletes the saved workspace chosen in the title bar and returns to Essentials; the built-in workspaces cannot be deleted. |
 | `float-all-windows` | Float All in Windows |  | Gives every open document a floating window of its own. |
 | `float-window` | Float in Window |  | Detaches a view of the current document into a floating window inside the app, with its own zoom, pan and rotation; drag its title to move it and its edges to resize it. |
+| `get-brush` | Get Brush Settings |  | Returns the brush: size, hardness, opacity, flow, mode, preset, tip shape, jitters, scatter, texture, dual brush, colour dynamics and transfer. |
 | `glyphs` | Glyphs |  | Opens Glyphs, a grid of Unicode characters to add to a type layer. |
 | `help` | formvis Help | F1 | Opens the formvis manual. |
 | `interface-darken` | Darken Interface | Shift+Mod+F1 | Switches to the next darker interface theme, ordered by the theme background; does nothing at the darkest. |
@@ -1498,6 +1503,7 @@ Generated from the window's command catalogue (1401 commands) by `./formvis agen
 | `match-rotation` | Match Rotation |  | Gives every open document the current view rotation. (changes the picture) |
 | `match-zoom` | Match Zoom |  | Gives every open document the current zoom. (changes the picture) |
 | `merge-columns` | Merge Panel Columns |  | Merges the panel columns into one. |
+| `move-brush-preset` | Move Brush Preset |  | Moves a saved or imported brush preset into a folder, before another preset when before is given, else last. |
 | `new-frame` | New Frame |  | Adds a frame to the frame animation. (changes the picture) |
 | `new-window` | New Window for Document |  | Opens a second view of the current document, titled name (2), as a tile with its own zoom, pan and rotation; edits show in both views. |
 | `new-workspace` | New Workspace... |  | Asks for a name and saves the panel arrangement as it is now, which of them show and in what order, as a workspace in the title bar list. |
@@ -1540,9 +1546,13 @@ Generated from the window's command catalogue (1401 commands) by `./formvis agen
 | `record-performance` | Record Performance... |  | Records 10 seconds of real use and reports what took the time: canvas draws, engine events, input handlers, pixel reads and uploads, frame gaps. |
 | `reload-plugins` | Reload Plugins |  | Drops every running plugin and loads the enabled ones in the plugins folder again from disk. |
 | `reload-window` | Reload Window |  | Reloads the app window after asking when a document has unsaved changes; open documents return through the Restore Session preference. |
+| `rename-brush-group` | Rename Brush Folder |  | Renames a folder of saved or imported brush presets. |
+| `rename-brush-preset` | Rename Brush Preset |  | Renames a saved or imported brush preset by id. |
 | `reset-panels` | Reset Panels |  | Restores the default panel layout. |
+| `save-brush-preset` | Save Brush Preset |  | Saves the current brush as a preset in a folder (My Brushes unless group is given) and selects it. |
 | `script-console` | Script Console... |  | Opens the Script Console, a log with a one-line input that runs JavaScript with formvis.run to run any catalogue command, formvis.commands to list them and formvis.api, the plugin API. |
 | `search` | Search... | Mod+K | Opens the command palette. |
+| `set-brush` | Set Brush Settings |  | Sets any of the brush values by name (size, hardness, opacity, flow, mode, preset, angle, roundness, spacing, jitters, scatter, count, flips, noise, wet edges, texture, dual brush, colour dynamics, transfer) and returns the brush as it is after. |
 | `settings` | Preferences... | Mod+, | Opens Preferences. |
 | `sheet-panels` | Panels Sheet |  | Opens the Panels sheet on narrow screens. |
 | `sheet-props` | Properties Sheet |  | Opens the Properties sheet on narrow screens. |

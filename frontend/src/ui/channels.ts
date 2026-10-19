@@ -34,6 +34,8 @@ export class ChannelsPanel {
   private labSolo: 'll' | 'la' | 'lb' | null = null;   // the Lab channel viewed alone (1.57.9)
   private readonly thumbs = new Map<Ch, HTMLCanvasElement>();
   private timer = 0;
+  private seenProject: unknown = null;
+  private seenLayer = '';
 
   constructor(private readonly engine: Engine, private readonly stage: HTMLElement, private readonly onOptions: (id: string) => void = () => undefined) {
     const rows = this.root.querySelector('.cv-ch-rows') as HTMLElement;
@@ -51,6 +53,7 @@ export class ChannelsPanel {
         this.apply();
       });
       row.addEventListener('click', (e) => {
+        if (!(e.metaKey || e.ctrlKey)) this.engine.setAlphaTarget(null);
         if (isLabRow(r.id)) { if (r.id === 'lab') this.engine.showAlpha(null, false); this.labSolo = r.id === 'lab' ? null : r.id; this.engine.paintLab = this.labSolo ? LAB_CH[this.labSolo] : null; this.engine.setChannelView(this.labSolo ? LAB_CH[this.labSolo] : null); this.apply(); return; }
         if (e.metaKey || e.ctrlKey) { this.loadSelection(r.id, clickMode(e)); return; }
         if (r.id === 'rgb' || r.id === 'cmyk') this.engine.showAlpha(null, false);
@@ -68,7 +71,14 @@ export class ChannelsPanel {
     if (!document.getElementById('cv-channel-view-svg')) {
       document.body.appendChild(el('<svg id="cv-channel-view-svg" width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="cv-channel-view" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0"/></filter></svg>'));
     }
-    for (const ev of ['history', 'doc', 'active', 'projects'] as const) engine.on(ev, () => { this.apply(); this.schedule(); });
+    for (const ev of ['history', 'doc', 'active', 'projects'] as const) engine.on(ev, () => {
+      const p = engine.current, id = p?.activeLayer?.id ?? '';
+      if (p === this.seenProject && id !== this.seenLayer) engine.setAlphaTarget(null);
+      this.seenProject = p;
+      this.seenLayer = id;
+      this.apply();
+      this.schedule();
+    });
     // Thumbnails whenever the tab is shown, in whichever group it is (tabs move between groups).
     new ResizeObserver(() => { if (this.root.clientWidth) this.schedule(); }).observe(this.root);
     // Mod+2 or Mod+` the composite, Mod+3 to Mod+9 the next channels in the list, the alpha channels after the colours.
@@ -192,6 +202,7 @@ export class ChannelsPanel {
       if ((e.target as HTMLElement).closest('input')) return;
       if (e.metaKey || e.ctrlKey) { this.engine.loadSelection({ channel: id() }, false, clickMode(e)); return; }
       this.engine.showAlpha(id(), true);
+      this.engine.setAlphaTarget(id());
       this.syncAlphas();
     });
     return row;
@@ -202,6 +213,7 @@ export class ChannelsPanel {
     if (!name.querySelector('input')) setText(name, a.name);
     row.classList.toggle('is-on', on);
     row.classList.toggle('is-spot', !!a.spot);
+    row.classList.toggle('is-target', this.engine.alphaTargeted()?.id === a.id);
     const ink = a.spot && a.color ? `rgb(${a.color.r}, ${a.color.g}, ${a.color.b})` : '';
     if (row.style.getPropertyValue('--ink') !== ink) { if (ink) row.style.setProperty('--ink', ink); else row.style.removeProperty('--ink'); }
     eye.classList.toggle('is-off', !on);

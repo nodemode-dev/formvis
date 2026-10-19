@@ -1,4 +1,4 @@
-import { BLEND_MODES, canvasBlend } from '../../engine';
+import { BLEND_MODES } from '../../engine';
 import { clamp, type Engine, type Pt } from '../../engine';
 import { allBrushPresets, identityOption, pressureOption, type SymmetryMode } from '../../engine/brush-dynamics';
 import { digitOf, type OptionSpec, type Tool } from '../registry';
@@ -154,15 +154,15 @@ export const brushTool: Tool = {
     ...smoothingOptions(e),
     ...shapeOptions(e),
     { kind: 'range', label: 'Angle', priority: 25, min: -180, max: 180, unit: '\u00b0', get: () => Math.round(e.brushShape.angle), set: (v: number) => { e.brushShape = { ...e.brushShape, angle: Math.max(-180, Math.min(180, Math.round(v))) }; e.emit('options', null); } },
-    // Mode: Normal, Behind, Clear and the blend modes the canvas truly draws (Paint/Erase was formvis's own;
-    // erasing is the Eraser's).
-    { kind: 'select', label: 'Mode', priority: 70, choices: [{ id: 'normal', label: 'Normal' }, { id: 'behind', label: 'Behind' }, { id: 'clear', label: 'Clear' }, ...BLEND_MODES.filter((m) => m.id !== 'normal' && canvasBlend(m.id)).map((m) => ({ id: m.id, label: m.label }))], get: () => e.brushBlend, set: (v: string) => e.setBrushBlend(v as typeof e.brushBlend) },
+    // Mode: Normal, Behind, Clear and all the layer blend modes (the ten the canvas lacks are blended per pixel).
+    { kind: 'select', label: 'Mode', priority: 70, choices: [{ id: 'normal', label: 'Normal' }, { id: 'behind', label: 'Behind' }, { id: 'clear', label: 'Clear' }, ...BLEND_MODES.filter((m) => m.id !== 'normal').map((m) => ({ id: m.id, label: m.label }))], get: () => e.brushBlend, set: (v: string) => e.setBrushBlend(v as typeof e.brushBlend) },
     { kind: 'range', label: 'Size', priority: 90, min: 1, max: 1000, unit: 'px', get: () => e.brush.diameter, set: (v) => e.setBrush({ diameter: v }) },
     { kind: 'range', label: 'Hardness', priority: 80, min: 0, max: 100, unit: '%', get: () => Math.round(e.brush.hardness * 100), set: (v) => e.setBrush({ hardness: v / 100 }) },
     { kind: 'range', label: 'Opacity', priority: 95, min: 1, max: 100, unit: '%', get: () => Math.round(e.brush.opacity * 100), set: (v) => e.setBrush({ opacity: v / 100 }) },
     { kind: 'toggle', label: 'Pressure: opacity', priority: 20, get: () => !!e.brushDynamics.opacity?.enabled, set: (v) => { e.alwaysPressure.opacity = v; e.brushDynamics.opacity = v ? pressureOption(0.2) : identityOption(); e.brushPresetId = null; e.emit('options', null); } },
     { kind: 'range', label: 'Flow', priority: 85, min: 1, max: 100, unit: '%', get: () => Math.round(e.brushFlow * 100), set: (v: number) => { e.brushFlow = Math.max(0.01, Math.min(1, v / 100)); e.emit('options', null); } },
     { kind: 'select', label: 'Preset', priority: 45, choices: [{ id: '', label: 'Custom' }, ...allBrushPresets().map((b) => ({ id: b.id, label: b.name }))], live: () => [{ id: '', label: 'Custom' }, ...allBrushPresets().map((b) => ({ id: b.id, label: b.name }))], get: () => e.brushPresetId ?? '', set: (id) => { const b = allBrushPresets().find((x) => x.id === id); if (b) e.applyBrushPreset(b); else { e.brushPresetId = null; e.setBrush({ tip: null }); } } },
+    { kind: 'select', label: 'Right-click', priority: 10, choices: [{ id: 'resize', label: 'Resize only' }, { id: 'picker', label: 'Preset picker' }], get: () => e.brushRightClick, set: (v: string) => { e.brushRightClick = v === 'picker' ? 'picker' : 'resize'; e.emit('options', null); } },
     { kind: 'button', label: 'Import Brushes', priority: 10, icon: 'upload', run: () => e.uiHooks.importBrushes?.() },
     { kind: 'toggle', label: 'Pressure: size', priority: 20, get: () => e.brushDynamics.size.enabled, set: (v) => { e.alwaysPressure.size = v; e.brushDynamics.size = v ? pressureOption(e.brushDynamics.size.enabled ? e.brushDynamics.size.min : 0.2) : identityOption(); e.brushPresetId = null; e.emit('options', null); } },
     { kind: 'range', label: 'Min size', priority: 15, min: 0, max: 100, unit: '%', get: () => Math.round((e.brushDynamics.size.enabled ? e.brushDynamics.size.min : 0.2) * 100), set: (v) => { if (e.brushDynamics.size.enabled) e.brushDynamics.size = pressureOption(v / 100); e.brushPresetId = null; e.emit('options', null); } },

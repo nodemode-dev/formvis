@@ -3,7 +3,7 @@ import { uid, type ID } from './types';
 
 /** Patterns for Pattern Overlay: a few built in, drawn here, and those defined with Edit > Define Pattern. Styles
  *  refer to a pattern by id; projects carry the patterns their styles use, so they open the same elsewhere. */
-export interface Pattern { id: ID; name: string; surface: Surface; builtin: boolean }
+export interface Pattern { id: ID; name: string; surface: Surface; builtin: boolean; group?: string }
 
 const registry = new Map<ID, Pattern>();
 let seeded = false;
@@ -45,6 +45,15 @@ export function removePattern(id: ID): boolean {
   if (!p || p.builtin) return false;
   projectPatterns.delete(id);
   return registry.delete(id);
+}
+
+/** Puts a pattern of the person's own in a named group (empty takes it out of any group). */
+export function setPatternGroup(id: ID, group: string): boolean {
+  const p = registry.get(id);
+  if (!p || p.builtin) return false;
+  const g = group.trim().slice(0, 40);
+  if (g) p.group = g; else delete p.group;
+  return true;
 }
 
 /** Renames a pattern of the person's own; built-ins keep their names. */

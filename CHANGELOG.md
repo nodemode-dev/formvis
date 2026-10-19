@@ -4,6 +4,17 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.89.4 · 2026-10-19
+
+### Added
+
+- Brush Settings: Dual Brush with its own tip settings and Multiply or Subtract; Brush Pose; a lock on each section; Protect Texture; a drawn pen pressure curve; New Brush Preset; Color Dynamics purity, per tip and by pressure or fade; Transfer by pressure, fade, tilt or rotation; angle, roundness and scatter controls.
+- Brush tool: every blend mode in Brush and Pencil; the pen's eraser end switches to the Eraser; on-canvas resize also sets hardness; a brush picker on right-click; thirteen more built-in brushes in groups; preset folders, moving, renaming; set-brush and get-brush commands.
+- Colour: Background Eraser background swatch sampling and Find Edges; the Color Picker's nine axes, Lab fields, screen picking and Add to Swatches; gradient stops and midpoints on the canvas; swatch names, groups and order; new gradients and patterns with names and groups.
+- Adjustments: every adjustment, Invert and Equalize on a targeted alpha channel; Levels histogram handles; scrubbable labels; Curves targeted adjustment; adjustment dialogs leave Hand and Zoom working; Replace Color localized clusters; Match Color from another document or layer; Equalize the selection; Histogram cache levels and statistics; Merge to HDR Pro align and exposure times.
+- Modes and colour: a Convert Mode dialog with profile, intent and black point compensation; ask on paste and on mode change; a monitor profile for the canvas; TIFF and PSD profile prompts; 32-bit highlight compression.
+- Files: PSD colour labels, alpha and spot channels, gradient map stops, shapes kept after a transform; adjustment layers in PSD now keep their real values; save steps in actions; a TIFF Options prompt; Image Assets from groups; image sequence video; data set name templates; Package with a Links folder; Save for Web Perceptual and Selective palettes, Web Snap, a colour table, Optimized JPEG, Convert to sRGB; swatch names in .aco and .ase.
+
 ## 1.89.3 · 2026-10-19
 
 ### Added

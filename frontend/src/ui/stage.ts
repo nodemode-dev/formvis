@@ -44,8 +44,10 @@ export class Stage {
   private zoomDrag: { at: Pt; y: number; z0: number } | null = null;
   private space = false;
   /** right-drag with these resizes the brush tip. */
-  private static readonly brushTools = new Set(['brush', 'spotHealing', 'remove', 'cloneStamp', 'smear']);
+  private static readonly brushTools = new Set(['brush', 'pencil', 'eraser', 'spotHealing', 'remove', 'cloneStamp', 'smear']);
   private tipDragging = false;
+  /** The tool to return to when the stroke made with a pen's eraser end is over. */
+  private penBack: Engine['tool'] | null = null;
   /** Cmd or Ctrl held on a press inside the selection moves its pixels from these tools (with Alt, a copy), as the Move tool does. */
   private static readonly pixelMoveTools = new Set(['marquee', 'lasso', 'objectSelect', 'wand', 'quickSelect', 'selectionBrush', 'brush', 'pencil', 'eraser', 'bucket', 'gradient', 'dodge', 'burn', 'sponge', 'smear', 'cloneStamp', 'spotHealing', 'healingBrush']);
   private pixelDrag: Pt | null = null;
@@ -431,7 +433,10 @@ export class Stage {
    *  the rulers' units, and the grid's and guides' colours ('' is the theme's). */
   static prefs: { cell: number; zoomWheel: boolean; rulerUnits: 'px' | 'in' | 'cm' | 'mm' | '%' | 'col'; gridColor: string; guideColor: string; gridStyle: LineStyle; guideStyle: LineStyle } = { cell: 8, zoomWheel: false, rulerUnits: 'px', gridColor: '', guideColor: '', gridStyle: 'solid', guideStyle: 'solid' };
   /** Preferences > Cursors, Enhanced Controls and Units & Rulers: Other Cursors precise, trackpad pinch and rotate, touch gestures, and a column plus its gutter in millimeters. */
-  static controls = { preciseOther: false, pinch: true, rotate: false, touch: true, colMm: 19.2, colWidthMm: 15 };
+  static controls = { preciseOther: false, pinch: true, rotate: false, touch: true, colMm: 19.2, colWidthMm: 15, penEraser: true };
+
+  /** A pen's eraser end: Pointer Events report it as button 5 or, while in contact, the buttons bit 32. */
+  static isPenEraser(e: PointerEvent): boolean { return e.pointerType === 'pen' && (e.button === 5 || (e.buttons & 32) !== 0); }
 
   /** A stage point back to the unturned, unstretched drawing surfaces: the view's rotation taken off about the centre,
    *  then the pixel aspect stretch `par` (35.4c) taken off horizontally about the centre. */
@@ -867,6 +872,12 @@ export class Stage {
       if (active instanceof HTMLElement && active !== document.body) active.blur();
       e.preventDefault();
       const p = this.pointer(e, e.detail);
+      const eraserEnd = Stage.controls.penEraser && Stage.isPenEraser(e);
+      if (this.penBack && !eraserEnd) { const back = this.penBack; this.penBack = null; this.engine.setTool(back); }
+      if (eraserEnd) {
+        p.button = 0;
+        if (this.engine.tool !== 'eraser') { this.penBack = this.engine.tool; this.engine.setTool('eraser'); }
+      }
       if (e.button === 1 || (e.button === 0 && this.space)) {
         o.setPointerCapture(e.pointerId);
         this.dragId = e.pointerId;
@@ -876,13 +887,15 @@ export class Stage {
         this.updateCursor(p);
         return;
       }
-      if (e.button === 2 && Stage.brushTools.has(this.tool()?.id ?? '') && !this.space && this.engine.beginTipDrag(p.doc, p.screen.x)) {
+      // Right-drag, or Ctrl+Option-drag on the Mac (where Ctrl-click is a right click that never arrives as one), sizes the tip.
+      const tipKeys = e.button === 2 || (isMac && e.button === 0 && e.ctrlKey && e.altKey && !e.metaKey);
+      if (tipKeys && Stage.brushTools.has(this.tool()?.id ?? '') && !this.space && this.engine.beginTipDrag(p.doc, p.screen.x, p.screen.y)) {
         o.setPointerCapture(e.pointerId);
         this.dragId = e.pointerId;
         this.tipDragging = true;
         return;
       }
-      if (e.button !== 0) return;
+      if (e.button !== 0 && !eraserEnd) return;
       // Ctrl+Alt+Cmd (Ctrl+Alt+Shift off the Mac) picks the layer under the pointer with any tool; Cmd+Shift-click with
       // the Move tool adds or removes it from the selection.
       if (e.ctrlKey && e.altKey && (isMac ? e.metaKey : e.shiftKey)) {
@@ -919,7 +932,7 @@ export class Stage {
           this.panLast = p.screen;
           return;
         }
-        if (this.tipDragging) { this.engine.updateTipDrag(this.pointer(e).screen.x, e.shiftKey); return; }
+        if (this.tipDragging) { const q = this.pointer(e).screen; this.engine.updateTipDrag(q.x, e.shiftKey, q.y); return; }
         const gd = this.engine.guideDraft;
         if (gd && gd.index !== null) { const pd = this.pointer(e).doc; gd.at = gd.axis === 'x' ? pd.x : pd.y; this.engine.emit('overlay', null); return; }
         if (this.pixelDrag) {
@@ -948,7 +961,14 @@ export class Stage {
       const p = this.pointer(e);
       stickyModifiers.endGesture();   // a modifier tapped for the next gesture is spent once it ends
       if (this.panLast) { this.panLast = null; this.zoomDrag = null; this.updateCursor(p); return; }
-      if (this.tipDragging) { this.tipDragging = false; this.engine.endTipDrag(); this.updateCursor(p); return; }
+      if (this.tipDragging) {
+        this.tipDragging = false;
+        const click = !cancel && (this.engine.tipDrag?.moved ?? 99) < 4;
+        this.engine.endTipDrag();
+        if (click && this.engine.brushRightClick === 'picker') this.engine.uiHooks.brushPicker?.(e.clientX, e.clientY);
+        this.updateCursor(p);
+        return;
+      }
       const gd = this.engine.guideDraft;
       if (gd && gd.index !== null) {
         this.engine.guideDraft = null;
@@ -963,6 +983,7 @@ export class Stage {
       const t = this.tool();
       if (cancel) t?.cancel?.(this.ctx);
       else t?.up?.(this.ctx, p);
+      if (this.penBack) { const back = this.penBack; this.penBack = null; this.engine.setTool(back); }
       this.updateCursor(p);
     };
     o.addEventListener('pointerup', (e) => finish(e, false));

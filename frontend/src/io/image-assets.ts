@@ -78,15 +78,16 @@ function uniqueName(name: string, used: Set<string>): string {
   return out;
 }
 
-/** Every layer whose name parses to asset specs, drawn alone, trimmed, scaled to each spec and encoded. */
+/** Every layer or folder whose name parses to asset specs, drawn alone (a folder with its contents), trimmed, scaled to
+ *  each spec and encoded. */
 export async function assetFiles(engine: Engine, engineUp: boolean): Promise<Array<{ name: string; blob: Blob }>> {
   const p = engine.current, files: Array<{ name: string; blob: Blob }> = [], used = new Set<string>();
   if (!p) return files;
   for (const l of p.doc.layers) {
-    if (l.isGroup || l.adjustment || !l.raster) continue;
+    if (l.adjustment || (!l.isGroup && !l.raster)) continue;
     const specs = parseAssetSpecs(l.name);
     if (!specs.length) continue;
-    const img = engine.renderLayerAlone(l.id), cut = img ? trimSurface(img) : null;
+    const img = l.isGroup ? engine.renderGroupAlone(l.id) : engine.renderLayerAlone(l.id), cut = img ? trimSurface(img) : null;
     if (!cut) continue;
     for (const spec of specs) files.push({ name: uniqueName(spec.name, used), blob: await encodeAsset(cut, spec, engineUp) });
   }

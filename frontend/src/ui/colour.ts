@@ -1,6 +1,8 @@
 import type { Engine } from '../engine';
 import { lutOf, type ColourLut, type Lut3x4 } from '../engine/colour-lut';
 import { api } from '../io/api';
+import { iccProfile } from '../engine/icc';
+import { toBase64 } from '../io/icc-read';
 import { readDisplay, type DisplayInfo } from './colour-display';
 import { loadPrefs } from './prefs';
 import { toast } from './toast';
@@ -93,6 +95,8 @@ export class ColourView {
   /** 32-bit Preview Options: exposure in stops and display gamma for a 32-bit document's view. */
   exposure = 0;
   gamma = 1;
+  /** 'gamma': exposure and gamma on the 8-bit rendition; 'compress': highlight compression on the composed floats. */
+  method: 'gamma' | 'compress' = 'gamma';
   /** The built-in preset in use (null for Custom, the saved device). */
   preset: ProofKind | null = null;
   private work: { id: string; name: string } | null = null;
@@ -121,9 +125,11 @@ export class ColourView {
   }
 
   /** Sets the 32-bit preview and redraws the view (View > 32-bit Preview Options). */
-  setPreview(exposure: number, gamma: number): void {
+  setPreview(exposure: number, gamma: number, method: 'gamma' | 'compress' = this.method): void {
     this.exposure = Math.max(-10, Math.min(10, exposure));
     this.gamma = Math.max(0.01, Math.min(10, gamma));
+    this.method = method;
+    this.engine.setPreviewCompression(method === 'compress' ? { exposure: this.exposure } : null);
     void this.refresh();
   }
 
@@ -162,6 +168,20 @@ export class ColourView {
     return this.work;
   }
 
+  private readonly monitorIcc = new Map<string, string>();
+
+  /** The profile Color Settings names for the monitor (a built-in space or a listed one) as base64, or null for sRGB or when it cannot be read. */
+  private async chosenMonitor(ref: string): Promise<string | null> {
+    if (ref === 'srgb') return null;
+    const hit = this.monitorIcc.get(ref);
+    if (hit) return hit;
+    try {
+      const icc = ref === 'display-p3' || ref === 'adobe-rgb' ? toBase64(iccProfile(ref)) : ref.startsWith('id:') ? toBase64(await api.colourProfileBytes(ref.slice(3))) : null;
+      if (icc) this.monitorIcc.set(ref, icc);
+      return icc;
+    } catch { return null; }
+  }
+
   /** Called with the proof device's name (or null) whenever the view is refreshed: the status bar badge. */
   onProof: ((label: string | null) => void) | null = null;
 
@@ -172,9 +192,11 @@ export class ColourView {
     const plate = kind === 'cyan' || kind === 'magenta' || kind === 'yellow' || kind === 'black' || kind === 'cmy', cvd = kind === 'protanopia' || kind === 'deuteranopia';
     const device = kind ? DEVICE[kind] : undefined;
     const s = kind === 'cmyk' ? ({ id: this.work?.id ?? '', name: 'Working CMYK', intent: 'relative', bpc: true } as ProofSetup) : device ? ({ id: device, name: PROOF_KINDS.find(([k]) => k === kind)?.[1] ?? '', intent: 'relative', bpc: true } as ProofSetup) : kind ? null : this.setup, proofing = this.proof && (!!s || !!kind);
-    const c = loadPrefs().colour, monitor = c.useDisplay && this.display?.icc && !this.display.managed ? this.display.icc : null, terms = proofing && s ? proofTerms(s) : null;
+    const c = loadPrefs().colour, chosen = c.useDisplay && c.monitor !== 'system' ? await this.chosenMonitor(c.monitor) : null;
+    const monitor = c.useDisplay && c.monitor === 'system' ? (this.display?.icc && !this.display.managed ? this.display.icc : null) : chosen, terms = proofing && s ? proofTerms(s) : null;
     const key = p ? `${prof ? `${prof.icc.length}:${prof.icc.slice(-64)}` : 'srgb'}|${proofing && s && terms ? `${s.id}:${terms.intent}:${terms.bpc}` : ''}|${kind ?? ''}:${c.cmyk}|${proofing && this.gamut ? this.gamutDelta : false}|${monitor ? `${monitor.length}:${monitor.slice(-64)}:${c.intent}:${c.bpc}` : ''}` : '';
-    const pv = p?.doc.depth === 32 && (this.exposure !== 0 || this.gamma !== 1), vkey = pv ? `${key}|p${this.exposure}:${this.gamma}` : key, raw = kind === 'monitor';
+    const squash = this.method === 'compress', lutExposure = squash ? 0 : this.exposure;
+    const pv = p?.doc.depth === 32 && (lutExposure !== 0 || this.gamma !== 1), vkey = pv ? `${key}|p${lutExposure}:${this.gamma}` : key, raw = kind === 'monitor';
     if (vkey === this.key) return;
     this.key = vkey;
     if (!p || (!pv && (raw || (!prof && !proofing && !monitor)))) { this.engine.setViewTransform(null); return; }
@@ -191,7 +213,7 @@ export class ColourView {
         lut = await api.colourLut({ source: prof ? { icc: prof.icc } : null, dest: monitor ? { icc: monitor } : null, proof: proofId ? { id: proofId } : null, intent: c.intent, proofIntent: terms?.intent ?? 'relative', bpc: terms?.bpc ?? c.bpc, gamut: proofing && this.gamut && !cvd, gamutDelta: this.gamutDelta });
         if (cvd) lut = colourBlindLut(lut, kind);
       }
-      if (pv) lut = previewLut(lut, this.exposure, this.gamma);
+      if (pv) lut = previewLut(lut, lutExposure, this.gamma);
       if (n !== this.seq) return;
       this.engine.setViewTransform(!prof && !proofing && nearIdentity(lut) ? null : { lut, gamut: proofing && this.gamut && !plate && !cvd });
     } catch (err) {

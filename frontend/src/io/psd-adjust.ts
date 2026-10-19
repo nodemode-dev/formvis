@@ -1,10 +1,13 @@
 import type { AdjustmentLayer as PsdAdjustment } from 'ag-psd';
 import { COLOR_RANGES, defaultAdjustmentData, defaultHsv, hsvFromData, hsvToData, type Adjustment, type AdjustmentKind } from '../engine';
 import { DEFAULT_BANDS, type ColorRange } from '../engine/adjust';
+import { isParamKind } from '../engine/adjust-params';
 
 /** formvis's adjustment layers and PSD's, both ways, so a PSD keeps them live instead of dropping them. The
  *  parametric kinds map field for field; Levels and Curves by channel (the composite first, then red, green, blue);
- *  Hue/Saturation by range with each range's band as PSD's four band values; Gradient Map as a two-stop gradient.
+ *  Hue/Saturation by range with each range's band as PSD's four band values; Gradient Map with every colour stop.
+ *  Values are read from the project layout's nested blocks (params, levels, curves, exposureSettings,
+ *  gradientMapSettings) and a read writes both the nested block and the flat fields.
  *  Grain and Develop have no PSD adjustment layer, and Hue/Saturation's Colorize is not carried. */
 
 type J = Record<string, unknown>;
@@ -16,9 +19,26 @@ const SELECT = ['reds', 'yellows', 'greens', 'cyans', 'blues', 'magentas', 'whit
 const CHANNELS = ['rgb', 'red', 'green', 'blue'] as const;
 const PS_RANGE: Record<ColorRange, string> = { Master: 'master', Reds: 'reds', Yellows: 'yellows', Greens: 'greens', Cyans: 'cyans', Blues: 'blues', Magentas: 'magentas' };
 
+/** Where a kind keeps its values inside an adjustment's data, in the project file's layout. */
+function nestedKey(kind: AdjustmentKind): string | null {
+  if (kind === 'exposure') return 'exposureSettings';
+  if (kind === 'gradientMap') return 'gradientMapSettings';
+  if (kind === 'levels' || kind === 'curves') return kind;
+  return isParamKind(kind) ? 'params' : null;
+}
+
+/** An adjustment's values as one flat record: the project layout's nested block read first, a flat field of the same
+ *  name winning only where the nested one still holds its default. */
+function flatten(kind: AdjustmentKind, raw: J): J {
+  const def = defaultAdjustmentData(kind) as J, out: J = { ...def, ...raw }, key = nestedKey(kind);
+  const inner = key ? (raw[key] as J | undefined) : undefined, innerDef = key ? ((def[key] ?? {}) as J) : {};
+  if (inner && typeof inner === 'object') for (const [k, v] of Object.entries(inner)) if (!(k in raw) || JSON.stringify(v) !== JSON.stringify(innerDef[k])) out[k] = v;
+  return out;
+}
+
 /** A PSD adjustment for a formvis one, or null when PSD has no such layer (Grain, Develop). */
 export function toPsdAdjustment(a: Adjustment): PsdAdjustment | null {
-  const d = { ...(defaultAdjustmentData(a.kind) as J), ...(a.data as J) };
+  const d = flatten(a.kind, a.data as J);
   switch (a.kind) {
     case 'brightnessContrast': return { type: 'brightness/contrast', brightness: num(d.brightness, 0), contrast: num(d.contrast, 0), useLegacy: d.legacy === true };
     case 'vibrance': return { type: 'vibrance', vibrance: num(d.vibrance, 0), saturation: num(d.saturation, 0) };
@@ -62,7 +82,9 @@ export function toPsdAdjustment(a: Adjustment): PsdAdjustment | null {
     }
     case 'gradientMap': {
       const c = (v: unknown, f: number) => { const o = (v ?? {}) as J; return { r: num(o.red, f) * 255, g: num(o.green, f) * 255, b: num(o.blue, f) * 255 }; };
-      return { type: 'gradient map', name: 'formvis', gradientType: 'solid', reverse: d.reversed === true, colorStops: [{ color: c(d.shadows, 0), location: 0, midpoint: 0.5 }, { color: c(d.highlights, 1), location: 1, midpoint: 0.5 }], opacityStops: [{ opacity: 1, location: 0, midpoint: 0.5 }, { opacity: 1, location: 1, midpoint: 0.5 }] };
+      const list = (Array.isArray(d.stops) ? (d.stops as J[]) : []).map((s) => ({ at: Math.min(1, Math.max(0, num(s.at, 0))), c: c(s, 0) })).sort((x, y) => x.at - y.at);
+      const stops = list.length >= 2 ? list : [{ at: 0, c: c(d.shadows, 0) }, { at: 1, c: c(d.highlights, 1) }];
+      return { type: 'gradient map', name: 'formvis', gradientType: 'solid', reverse: d.reversed === true, dither: d.dither === true, colorStops: stops.map((s) => ({ color: s.c, location: s.at, midpoint: 0.5 })), opacityStops: [{ opacity: 1, location: 0, midpoint: 0.5 }, { opacity: 1, location: 1, midpoint: 0.5 }] };
     }
     default: return null;
   }
@@ -70,7 +92,15 @@ export function toPsdAdjustment(a: Adjustment): PsdAdjustment | null {
 
 /** A formvis adjustment for a PSD one, or null when formvis has no such adjustment (Color Lookup and others). */
 export function fromPsdAdjustment(p: PsdAdjustment): Adjustment | null {
-  const o = p as unknown as J, mk = (kind: AdjustmentKind, data: J): Adjustment => ({ kind, data: { ...(defaultAdjustmentData(kind) as J), ...data } });
+  const o = p as unknown as J, mk = (kind: AdjustmentKind, data: J): Adjustment => {
+    const def = defaultAdjustmentData(kind) as J, out: J = { ...def, ...data }, key = nestedKey(kind);
+    if (key) {
+      const inner = (def[key] ?? {}) as J, merged: J = { ...inner };
+      for (const k of [...Object.keys(inner), ...(kind === 'gradientMap' ? ['stops', 'dither'] : [])]) if (k in data) merged[k] = data[k];
+      out[key] = merged;
+    }
+    return { kind, data: out };
+  };
   switch (p.type) {
     case 'brightness/contrast': return mk('brightnessContrast', { brightness: num(o.brightness, 0), contrast: num(o.contrast, 0), legacy: o.useLegacy === true });
     case 'vibrance': return mk('vibrance', { vibrance: num(o.vibrance, 0), saturation: num(o.saturation, 0) });
@@ -111,7 +141,8 @@ export function fromPsdAdjustment(p: PsdAdjustment): Adjustment | null {
     case 'gradient map': {
       const stops = Array.isArray(o.colorStops) ? (o.colorStops as J[]) : [], first = (stops[0]?.color ?? { r: 0, g: 0, b: 0 }) as J, last = (stops[stops.length - 1]?.color ?? { r: 255, g: 255, b: 255 }) as J;
       const c = (v: J) => ({ red: num(v.r, 0) / 255, green: num(v.g, 0) / 255, blue: num(v.b, 0) / 255 });
-      return mk('gradientMap', { shadows: c(first), highlights: c(last), reversed: o.reverse === true });
+      const all = stops.map((s) => ({ at: Math.min(1, Math.max(0, num(s.location, 0))), ...c((s.color ?? { r: 0, g: 0, b: 0 }) as J) }));
+      return mk('gradientMap', { shadows: c(first), highlights: c(last), reversed: o.reverse === true, ...(all.length > 2 ? { stops: all } : {}), ...(o.dither === true ? { dither: true } : {}) });
     }
     default: return null;
   }

@@ -388,23 +388,32 @@ export function equalizePixels(d: Uint8ClampedArray, cov: Uint8ClampedArray | nu
 
 /** Replace Color's settings: the sampled colours (`plus`, and `minus` taken away), Fuzziness (0 to 200 levels), and
  *  the replacement's Hue (degrees, -180 to 180), Saturation and Lightness (percent, -100 to 100). */
-export interface ReplaceColorSettings { plus: Array<{ r: number; g: number; b: number }>; minus: Array<{ r: number; g: number; b: number }>; fuzziness: number; hue: number; saturation: number; lightness: number }
+export interface ReplaceColorSettings { plus: Array<{ r: number; g: number; b: number; u?: number; v?: number }>; minus: Array<{ r: number; g: number; b: number }>; fuzziness: number; hue: number; saturation: number; lightness: number; localized?: boolean; range?: number }
 
 /** Image > Adjustments > Replace Color (1.65.5): each pixel scored as Select > Color Range scores sampled colours (full
  *  at the nearest of `plus`, none `fuzziness` away, less the score `minus` gives it), and by that score its hue turned
  *  by `hue` degrees and its saturation and lightness pushed `saturation` and `lightness` percent toward full or none;
  *  in place unless `apply` is false. Returns the scores, the dialog's preview. */
-export function replaceColorPixels(d: Uint8ClampedArray, o: ReplaceColorSettings, apply = true): Uint8Array {
+export function replaceColorPixels(d: Uint8ClampedArray, o: ReplaceColorSettings, apply = true, width = 0): Uint8Array {
   const scores = new Uint8Array(d.length / 4), reach = Math.max(1, o.fuzziness) * Math.sqrt(3), change = apply && !!(o.hue || o.saturation || o.lightness);
-  const closeness = (list: ReplaceColorSettings['plus'], r: number, g: number, b: number): number => {
+  const W = width > 0 ? width : 0, H = W ? d.length / 4 / W : 0, diag = Math.hypot(W, H), radius = Math.max(0.01, (o.range ?? 50) / 100) * 0.5;
+  const local = !!o.localized && W > 0;
+  const closeness = (list: ReplaceColorSettings['plus'], r: number, g: number, b: number, p = -1): number => {
     if (!list.length) return 0;
-    let nearest = Infinity;
-    for (const c of list) nearest = Math.min(nearest, Math.hypot(r - c.r, g - c.g, b - c.b));
-    return Math.max(0, 1 - nearest / reach);
+    let best = 0;
+    for (const c of list) {
+      let k = Math.max(0, 1 - Math.hypot(r - c.r, g - c.g, b - c.b) / reach);
+      if (k > 0 && local && p >= 0 && c.u !== undefined && c.v !== undefined) {
+        const far = Math.hypot(((p % W) + 0.5) - c.u * W, (Math.floor(p / W) + 0.5) - c.v * H) / diag;
+        k *= Math.max(0, Math.min(1, 2 * (1 - far / radius)));
+      }
+      if (k > best) best = k;
+    }
+    return best;
   };
   for (let p = 0, j = 0; j < d.length; p++, j += 4) {
     if (!d[j + 3]) continue;
-    const score = Math.max(0, closeness(o.plus, d[j], d[j + 1], d[j + 2]) - closeness(o.minus, d[j], d[j + 1], d[j + 2]));
+    const score = Math.max(0, closeness(o.plus, d[j], d[j + 1], d[j + 2], p) - closeness(o.minus, d[j], d[j + 1], d[j + 2]));
     scores[p] = Math.round(score * 255);
     if (!change || !score) continue;
     const [h, s, l] = hslOf(d[j] / 255, d[j + 1] / 255, d[j + 2] / 255);

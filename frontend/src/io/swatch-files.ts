@@ -38,26 +38,32 @@ function acoColour(space: number, w: number, x: number, y: number, z: number): s
   }
 }
 
-export function readAco(bytes: Uint8Array): string[] {
+/** One swatch as the files hold it: '#rrggbb', an optional name, and (.ase only) an optional group. */
+export interface SwatchItem { c: string; name?: string; group?: string }
+const item = (c: string, name: string, group?: string): SwatchItem => ({ c, ...(name && name !== c ? { name: name.slice(0, 60) } : {}), ...(group ? { group: group.slice(0, 40) } : {}) });
+
+export function parseAco(bytes: Uint8Array): SwatchItem[] {
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let p = 0;
-  const section = (): { version: number; colours: string[] } | null => {
+  const section = (): { version: number; colours: SwatchItem[] } | null => {
     if (p + 4 > bytes.byteLength) return null;
     const version = dv.getUint16(p), count = dv.getUint16(p + 2);
     if (version !== 1 && version !== 2) return null;
     p += 4;
-    const colours: string[] = [];
+    const colours: SwatchItem[] = [];
     for (let i = 0; i < count; i += 1) {
       if (p + 10 > bytes.byteLength) break;
       const c = acoColour(dv.getUint16(p), dv.getUint16(p + 2), dv.getUint16(p + 4), dv.getUint16(p + 6), dv.getUint16(p + 8));
       p += 10;
+      let name = '';
       if (version === 2) {
         if (p + 4 > bytes.byteLength) break;
         p += 2;
         const n = dv.getUint16(p);
-        p += 2 + n * 2;
+        p += 2;
+        for (let k = 0; k < n && p + 2 <= bytes.byteLength; k += 1) { const ch = dv.getUint16(p); p += 2; if (ch) name += String.fromCharCode(ch); }
       }
-      if (c) colours.push(c);
+      if (c) colours.push(item(c, name));
     }
     return { version, colours };
   };
@@ -67,73 +73,95 @@ export function readAco(bytes: Uint8Array): string[] {
   return second && second.colours.length ? second.colours : first.colours;
 }
 
-export function writeAco(list: string[]): Uint8Array {
-  const out = new Uint8Array(4 + list.length * 10 + 4 + list.reduce((n, h) => n + 14 + (h.length + 1) * 2, 0));
+export const readAco = (bytes: Uint8Array): string[] => parseAco(bytes).map((s) => s.c);
+
+/** Version 1 and version 2 sections; version 2 carries each swatch's name (the colour's hex when it has none). */
+export function writeAco(list: ReadonlyArray<string | SwatchItem>): Uint8Array {
+  const items = list.map((s) => (typeof s === 'string' ? { c: s } : s)), names = items.map((s) => s.name || s.c);
+  const out = new Uint8Array(4 + items.length * 10 + 4 + names.reduce((n, t) => n + 14 + (t.length + 1) * 2, 0));
   const dv = new DataView(out.buffer);
   let p = 0;
   const u16 = (v: number): void => { dv.setUint16(p, v); p += 2; };
   for (const version of [1, 2]) {
-    u16(version); u16(list.length);
-    for (const h of list) {
-      const [r, g, b] = parseHex(h);
+    u16(version); u16(items.length);
+    items.forEach((s, k) => {
+      const [r, g, b] = parseHex(s.c);
       u16(0); u16(r * 257); u16(g * 257); u16(b * 257); u16(0);
       if (version === 2) {
-        u16(0); u16(h.length + 1);
-        for (let i = 0; i < h.length; i += 1) u16(h.charCodeAt(i));
+        const t = names[k]!;
+        u16(0); u16(t.length + 1);
+        for (let i = 0; i < t.length; i += 1) u16(t.charCodeAt(i));
         u16(0);
       }
-    }
+    });
   }
   return out;
 }
 
-export function readAse(bytes: Uint8Array): string[] {
+/** Colours with their names, and the group each sits in (group start and end blocks). */
+export function parseAse(bytes: Uint8Array): SwatchItem[] {
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   if (bytes.byteLength < 12 || String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]) !== 'ASEF') throw new Error('This is not an .ase swatch file.');
   const blocks = dv.getUint32(8);
-  let p = 12;
-  const out: string[] = [];
+  let p = 12, group = '';
+  const out: SwatchItem[] = [];
+  const text = (at: number, chars: number): string => { let t = ''; for (let k = 0; k < chars && at + k * 2 + 2 <= bytes.byteLength; k += 1) { const ch = dv.getUint16(at + k * 2); if (ch) t += String.fromCharCode(ch); } return t; };
   for (let i = 0; i < blocks && p + 6 <= bytes.byteLength; i += 1) {
     const type = dv.getUint16(p), len = dv.getUint32(p + 2), end = p + 6 + len;
-    if (type === 0x0001 && end <= bytes.byteLength) {
+    if (end > bytes.byteLength) break;
+    if (type === 0xc001) group = text(p + 8, dv.getUint16(p + 6));
+    else if (type === 0xc002) group = '';
+    else if (type === 0x0001) {
       let q = p + 6;
-      const nameLen = dv.getUint16(q);
+      const nameLen = dv.getUint16(q), name = text(q + 2, nameLen);
       q += 2 + nameLen * 2;
       const model = String.fromCharCode(bytes[q], bytes[q + 1], bytes[q + 2], bytes[q + 3]);
       q += 4;
       const f = (k: number): number => dv.getFloat32(q + k * 4);
-      if (model === 'RGB ') out.push(toHex(f(0) * 255, f(1) * 255, f(2) * 255));
-      else if (model === 'CMYK') out.push(cmykToRgb(f(0), f(1), f(2), f(3)));
-      else if (model === 'LAB ') out.push(labToRgb(f(0) * 100, f(1), f(2)));
-      else if (model === 'Gray') { const g = f(0) * 255; out.push(toHex(g, g, g)); }
+      let c: string | null = null;
+      if (model === 'RGB ') c = toHex(f(0) * 255, f(1) * 255, f(2) * 255);
+      else if (model === 'CMYK') c = cmykToRgb(f(0), f(1), f(2), f(3));
+      else if (model === 'LAB ') c = labToRgb(f(0) * 100, f(1), f(2));
+      else if (model === 'Gray') { const g = f(0) * 255; c = toHex(g, g, g); }
+      if (c) out.push(item(c, name, group));
     }
     p = end;
   }
   return out;
 }
 
-export function writeAse(list: string[]): Uint8Array {
-  const size = 12 + list.reduce((n, h) => n + 6 + 2 + (h.length + 1) * 2 + 4 + 12 + 2, 0);
-  const out = new Uint8Array(size);
-  const dv = new DataView(out.buffer);
-  out.set([0x41, 0x53, 0x45, 0x46], 0);
-  dv.setUint16(4, 1); dv.setUint16(6, 0); dv.setUint32(8, list.length);
-  let p = 12;
-  for (const h of list) {
-    const nameChars = h.length + 1, len = 2 + nameChars * 2 + 4 + 12 + 2;
-    dv.setUint16(p, 0x0001); dv.setUint32(p + 2, len);
-    p += 6;
-    dv.setUint16(p, nameChars);
-    p += 2;
-    for (let i = 0; i < h.length; i += 1) { dv.setUint16(p, h.charCodeAt(i)); p += 2; }
-    p += 2;
-    out.set([0x52, 0x47, 0x42, 0x20], p);
-    p += 4;
-    const [r, g, b] = parseHex(h);
-    dv.setFloat32(p, r / 255); dv.setFloat32(p + 4, g / 255); dv.setFloat32(p + 8, b / 255);
-    p += 12;
-    dv.setUint16(p, 2);
-    p += 2;
+export const readAse = (bytes: Uint8Array): string[] => parseAse(bytes).map((s) => s.c);
+
+/** RGB colour entries with their names (the colour's hex when it has none); a swatch with a group sits between that group's start and end blocks. */
+export function writeAse(list: ReadonlyArray<string | SwatchItem>): Uint8Array {
+  const items = list.map((s) => (typeof s === 'string' ? { c: s } : s));
+  const chunks: Uint8Array[] = [];
+  let blocks = 0, open = '';
+  const block = (type: number, body: number[]): void => {
+    const b = new Uint8Array(6 + body.length), dv = new DataView(b.buffer);
+    dv.setUint16(0, type); dv.setUint32(2, body.length); b.set(body, 6);
+    chunks.push(b); blocks += 1;
+  };
+  const u16 = (v: number): number[] => [(v >> 8) & 255, v & 255];
+  const name = (t: string): number[] => [...u16(t.length + 1), ...Array.from({ length: t.length }, (_, i) => u16(t.charCodeAt(i))).flat(), 0, 0];
+  const f32 = (v: number): number[] => { const a = new Uint8Array(4); new DataView(a.buffer).setFloat32(0, v); return [...a]; };
+  for (const s of items) {
+    const g = s.group ?? '';
+    if (g !== open) {
+      if (open) block(0xc002, []);
+      if (g) block(0xc001, name(g));
+      open = g;
+    }
+    const [r, gr, b] = parseHex(s.c);
+    block(0x0001, [...name(s.name || s.c), 0x52, 0x47, 0x42, 0x20, ...f32(r / 255), ...f32(gr / 255), ...f32(b / 255), ...u16(2)]);
   }
+  if (open) block(0xc002, []);
+  const head = new Uint8Array(12), hv = new DataView(head.buffer);
+  head.set([0x41, 0x53, 0x45, 0x46], 0);
+  hv.setUint16(4, 1); hv.setUint16(6, 0); hv.setUint32(8, blocks);
+  const out = new Uint8Array(12 + chunks.reduce((n, c) => n + c.length, 0));
+  out.set(head, 0);
+  let at = 12;
+  for (const c of chunks) { out.set(c, at); at += c.length; }
   return out;
 }

@@ -14,6 +14,19 @@ const DEFAULTS = [
   '#7514f5', '#ea33f7', '#ea3380', '#80170e', '#834a18', '#8c8c2a', '#588b27', '#3d8a26', '#3d8a4d', '#3d8a8b', '#1b4587', '#000086', '#400787', '#801787', '#801746',
 ];
 const KEY = 'formvis.swatches';
+const KEY_SET = 'formvis.swatch-set';
+/** One swatch: its colour, an optional name and an optional group; the order of the list is the order shown. */
+interface SwatchEntry { c: string; name?: string; group?: string }
+const HEX = /^#[0-9a-f]{6}$/i;
+function loadEntries(): SwatchEntry[] {
+  try {
+    const s = JSON.parse(localStorage.getItem(KEY_SET) ?? 'null');
+    if (Array.isArray(s)) return s.flatMap((e) => (e && typeof e.c === 'string' && HEX.test(e.c) ? [{ c: e.c.toLowerCase(), ...(typeof e.name === 'string' && e.name ? { name: e.name.slice(0, 60) } : {}), ...(typeof e.group === 'string' && e.group ? { group: e.group.slice(0, 40) } : {}) }] : []));
+    const old = JSON.parse(localStorage.getItem(KEY) ?? 'null');
+    if (Array.isArray(old)) return old.filter((v) => typeof v === 'string' && HEX.test(v)).map((c) => ({ c: c.toLowerCase() }));
+  } catch { /* defaults */ }
+  return DEFAULTS.map((c) => ({ c }));
+}
 const hex = (c: RGB): string => `#${[c.r, c.g, c.b].map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
 const rgb = (h: string): RGB => ({ r: parseInt(h.slice(1, 3), 16), g: parseInt(h.slice(3, 5), 16), b: parseInt(h.slice(5, 7), 16) });
 
@@ -30,19 +43,31 @@ function fromHsv(h: number, s: number, v: number): RGB {
 
 export class SwatchesPanel {
   readonly group: PanelGroup;
-  private list: string[];
+  private list: SwatchEntry[];
+  private picked = -1;
   private readonly grid: HTMLElement;
+  private readonly editor: HTMLElement;
+  private readonly nameIn = el<HTMLInputElement>('<input class="cv-input" type="text" maxlength="60" placeholder="Name" aria-label="Swatch name">');
+  private readonly groupIn = el<HTMLInputElement>('<input class="cv-input" type="text" maxlength="40" placeholder="Group" aria-label="Swatch group" list="cv-swatch-groups">');
+  private readonly groupList = el<HTMLDataListElement>('<datalist id="cv-swatch-groups"></datalist>');
   private readonly sv: HTMLCanvasElement;
   private readonly hue: HTMLCanvasElement;
   private hsv: [number, number, number] = [0, 0, 0];
 
   constructor(host: HTMLElement, private readonly engine: Engine) {
-    try { const s = JSON.parse(localStorage.getItem(KEY) ?? 'null'); this.list = Array.isArray(s) ? s.filter((v) => /^#[0-9a-f]{6}$/i.test(v)) : [...DEFAULTS]; } catch { this.list = [...DEFAULTS]; }
-    const swatches = el('<div class="cv-swatches-page"><div class="cv-swatch-grid"></div><p class="cv-swatch-hint"></p></div>');
+    this.list = loadEntries();
+    const swatches = el('<div class="cv-swatches-page"><div class="cv-swatch-grid"></div><div class="cv-swatch-edit" hidden></div><p class="cv-swatch-hint"></p></div>');
     this.grid = swatches.querySelector('.cv-swatch-grid') as HTMLElement;
+    this.editor = swatches.querySelector('.cv-swatch-edit') as HTMLElement;
+    const mk = (label: string, tip: string, run: () => void): HTMLButtonElement => { const b = el<HTMLButtonElement>('<button class="cv-btn cv-btn-ghost" type="button"></button>'); b.textContent = label; b.title = tip; b.setAttribute('aria-label', tip); b.addEventListener('click', run); return b; };
+    this.editor.append(this.nameIn, this.groupIn, this.groupList, mk('<', 'Move earlier', () => this.move(-1)), mk('>', 'Move later', () => this.move(1)), mk('Remove', 'Remove this swatch', () => this.removePicked()));
+    this.nameIn.addEventListener('change', () => this.describePicked());
+    this.groupIn.addEventListener('change', () => this.describePicked());
+    for (const i of [this.nameIn, this.groupIn]) i.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') i.blur(); });
+    document.addEventListener('cv-add-swatch', (e) => { const c = String((e as CustomEvent).detail ?? '').toLowerCase(); if (HEX.test(c)) this.addColor(c); });
     const hint = swatches.querySelector('.cv-swatch-hint') as HTMLElement;
-    hint.innerHTML = `${icon('plus', 12)}<span>Alt-click sets the background. Right-click removes.</span>`;
-    hint.title = 'Click sets the foreground, Alt-click the background; right-click removes a swatch; + adds the foreground.';
+    hint.innerHTML = `${icon('plus', 12)}<span>Alt-click sets the background. Double-click names, groups or moves. Right-click removes.</span>`;
+    hint.title = 'Click sets the foreground, Alt-click the background; double-click to name, group or reorder a swatch; right-click removes a swatch; + adds the foreground.';
     const color = el('<div class="cv-color-page"><canvas class="cv-color-sv" aria-label="Saturation and brightness"></canvas><canvas class="cv-color-hue" aria-label="Hue"></canvas></div>');
     this.sv = color.querySelector('.cv-color-sv') as HTMLCanvasElement;
     // Repainted whenever it gains a size: shown while minimised or before layout, it used to stay blank.
@@ -60,28 +85,80 @@ export class SwatchesPanel {
   /** Brings one of this group's tabs to the front (Window > Color). */
   showTab(tab: 'swatches' | 'color'): void { this.group.show(tab); }
 
-  private save(): void { try { localStorage.setItem(KEY, JSON.stringify(this.list)); } catch { /* this session only */ } }
+  private save(): void { try { localStorage.setItem(KEY, JSON.stringify(this.list.map((e) => e.c))); localStorage.setItem(KEY_SET, JSON.stringify(this.list)); } catch { /* this session only */ } }
 
   /** Adds the foreground colour, as the + tile does (the panel menu's Add Foreground Color). */
-  addForeground(): void { const c = hex(this.engine.fg); if (!this.list.includes(c)) { this.list.push(c); this.save(); this.renderGrid(); } }
+  addForeground(): void { this.addColor(hex(this.engine.fg)); }
+  /** Adds one colour ('#rrggbb') unless it is already there (the Color Picker's Add to Swatches). */
+  addColor(c: string): void { if (!this.list.some((e) => e.c === c)) { this.list.push({ c }); this.save(); this.renderGrid(); } }
   /** The target's swatches again (the panel menu's Reset Swatches). */
-  reset(): void { this.list = [...DEFAULTS]; this.save(); this.renderGrid(); }
+  reset(): void { this.list = DEFAULTS.map((c) => ({ c })); this.picked = -1; this.save(); this.renderGrid(); }
   /** Every swatch as '#rrggbb', in order. */
-  all(): string[] { return [...this.list]; }
-  /** Replaces the whole set (Load Swatches, the Preset Manager); anything not '#rrggbb' is dropped. */
-  setAll(list: string[]): void { this.list = list.filter((v) => /^#[0-9a-f]{6}$/i.test(v)).map((v) => v.toLowerCase()); this.save(); this.renderGrid(); }
+  all(): string[] { return this.list.map((e) => e.c); }
+  /** Every swatch with its name and group, in order. */
+  entries(): ReadonlyArray<Readonly<SwatchEntry>> { return this.list.map((e) => ({ ...e })); }
+  /** Replaces the whole set with colours that bring their own names and groups (a loaded .aco or .ase). */
+  setEntries(list: ReadonlyArray<{ c: string; name?: string; group?: string }>): void {
+    this.list = list.filter((e) => HEX.test(e.c)).map((e) => ({ c: e.c.toLowerCase(), ...(e.name ? { name: e.name.slice(0, 60) } : {}), ...(e.group ? { group: e.group.slice(0, 40) } : {}) }));
+    this.picked = -1; this.save(); this.renderGrid();
+  }
+  /** Replaces the whole set (Load Swatches, the Preset Manager); anything not '#rrggbb' is dropped; a colour that was already here keeps its name and group. */
+  setAll(list: string[]): void {
+    const old = this.list.slice();
+    this.list = list.filter((v) => HEX.test(v)).map((v) => v.toLowerCase()).map((c) => { const k = old.findIndex((e) => e.c === c); return k >= 0 ? old.splice(k, 1)[0] : { c }; });
+    this.picked = -1; this.save(); this.renderGrid();
+  }
+
+  private move(dir: number): void {
+    const i = this.picked, g = this.list[i]?.group;
+    let j = i + dir;
+    while (j >= 0 && j < this.list.length && this.list[j].group !== g) j += dir;
+    if (i < 0 || j < 0 || j >= this.list.length) return;
+    [this.list[i], this.list[j]] = [this.list[j], this.list[i]];
+    this.picked = j; this.save(); this.renderGrid();
+  }
+  private removePicked(): void { if (this.picked < 0) return; this.list.splice(this.picked, 1); this.picked = -1; this.save(); this.renderGrid(); }
+  private describePicked(): void {
+    const e = this.list[this.picked];
+    if (!e) return;
+    const n = this.nameIn.value.trim().slice(0, 60), g = this.groupIn.value.trim().slice(0, 40);
+    const regroup = (e.group ?? '') !== g;
+    if (n) e.name = n; else delete e.name;
+    if (g) e.group = g; else delete e.group;
+    this.save();
+    if (regroup) { this.renderGrid(); return; }
+    const t = this.grid.querySelector<HTMLElement>(`.cv-sw-tile[data-i="${this.picked}"]`);
+    if (t) { t.title = e.name ? `${e.name} ${e.c}` : e.c; t.setAttribute('aria-label', `Swatch ${e.name ?? e.c}`); }
+  }
+  private pick(i: number): void {
+    this.picked = i;
+    const e = this.list[i];
+    this.editor.hidden = !e;
+    if (e) { this.nameIn.value = e.name ?? ''; this.groupIn.value = e.group ?? ''; }
+    this.grid.querySelectorAll<HTMLElement>('.cv-sw-tile[data-i]').forEach((t) => t.setAttribute('aria-pressed', String(Number(t.dataset.i) === i)));
+  }
 
   private renderGrid(): void {
     this.grid.textContent = '';
-    this.list.forEach((c, i) => {
-      const b = el<HTMLButtonElement>('<button class="cv-sw-tile" type="button"></button>');
-      b.style.background = c;
-      b.title = c;
-      b.setAttribute('aria-label', `Swatch ${c}`);
-      b.addEventListener('click', (e) => { if (e.altKey) this.engine.setColors(undefined, rgb(c)); else this.engine.setColors(rgb(c)); });
-      b.addEventListener('contextmenu', (e) => { e.preventDefault(); this.list.splice(i, 1); this.save(); this.renderGrid(); });
-      this.grid.appendChild(b);
-    });
+    const groups = [...new Set(this.list.map((e) => e.group ?? ''))].sort((a, b) => (a === '' ? -1 : b === '' ? 1 : 0));
+    this.groupList.textContent = '';
+    for (const g of groups) if (g) { const o = document.createElement('option'); o.value = g; this.groupList.appendChild(o); }
+    for (const g of groups) {
+      if (g) { const h = el<HTMLElement>('<div class="cv-sw-group"></div>'); h.textContent = g; this.grid.appendChild(h); }
+      this.list.forEach((e, i) => {
+        if ((e.group ?? '') !== g) return;
+        const c = e.c, b = el<HTMLButtonElement>('<button class="cv-sw-tile" type="button"></button>');
+        b.style.background = c;
+        b.title = e.name ? `${e.name} ${c}` : c;
+        b.dataset.i = String(i);
+        b.setAttribute('aria-pressed', String(i === this.picked));
+        b.setAttribute('aria-label', `Swatch ${e.name ?? c}`);
+        b.addEventListener('click', (ev) => { if (ev.altKey) this.engine.setColors(undefined, rgb(c)); else this.engine.setColors(rgb(c)); });
+        b.addEventListener('dblclick', () => this.pick(i));
+        b.addEventListener('contextmenu', (ev) => { ev.preventDefault(); this.list.splice(i, 1); this.picked = -1; this.editor.hidden = true; this.save(); this.renderGrid(); });
+        this.grid.appendChild(b);
+      });
+    }
     const add = el<HTMLButtonElement>(`<button class="cv-sw-tile cv-sw-add" type="button" title="Add the foreground colour" aria-label="Add the foreground colour">${icon('plus', 12)}</button>`);
     add.addEventListener('click', () => this.addForeground());
     this.grid.appendChild(add);

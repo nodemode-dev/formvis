@@ -147,9 +147,10 @@ export async function placeEmbedded(engine: Engine, file: File): Promise<void> {
 }
 
 /** File > Package: the files behind the document's linked smart objects, named Links/<file name> (repeats numbered).
- *  Links whose file cannot be reached are listed by name in `missing`. */
-export async function linkedFiles(engine: Engine): Promise<{ files: { name: string; blob: Blob }[]; missing: string[] }> {
-  const p = engine.current, out = { files: [] as { name: string; blob: Blob }[], missing: [] as string[] };
+ *  Links whose file cannot be reached are listed by name in `missing`; `copies` maps each packaged link's id to the path
+ *  of its copy, which the packaged project points at instead of the original file. */
+export async function linkedFiles(engine: Engine): Promise<{ files: { name: string; blob: Blob }[]; missing: string[]; copies: Map<string, string> }> {
+  const p = engine.current, out = { files: [] as { name: string; blob: Blob }[], missing: [] as string[], copies: new Map<string, string>() };
   if (!p) return out;
   const seen = new Set<string>(), used = new Set<string>();
   for (const l of p.doc.layers) {
@@ -165,6 +166,7 @@ export async function linkedFiles(engine: Engine): Promise<{ files: { name: stri
     while (used.has(name.toLowerCase())) name = `${stem} ${n++}${ext}`;
     used.add(name.toLowerCase());
     out.files.push({ name: `Links/${name}`, blob: file });
+    out.copies.set(link.id, `Links/${name}`);
   }
   return out;
 }

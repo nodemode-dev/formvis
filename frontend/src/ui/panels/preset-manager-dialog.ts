@@ -9,7 +9,7 @@ import { addPattern, allPatterns, removePattern, renamePattern } from '../../eng
 import { createSurface, ctxOf } from '../../engine/surface';
 import { importAbr, removeImportedBrush, renameImportedBrush } from '../../io/brush-library';
 import { readPat, writePat } from '../../io/pat';
-import { readAco, readAse, writeAco, writeAse } from '../../io/swatch-files';
+import { parseAco, parseAse, writeAco, writeAse } from '../../io/swatch-files';
 import { Dialog, promptName } from '../dialogs';
 import { el, setHidden, setText } from '../dom';
 import type { SwatchesPanel } from '../swatches';
@@ -224,9 +224,9 @@ export class PresetManagerDialog extends Dialog {
     if (kind === 'brushes') return (await importAbr(this.engine, f)).added;
     if (kind === 'swatches') {
       const bytes = new Uint8Array(await f.arrayBuffer());
-      const colours = /\.ase$/i.test(f.name) ? readAse(bytes) : readAco(bytes);
+      const colours = /\.ase$/i.test(f.name) ? parseAse(bytes) : parseAco(bytes);
       if (!colours.length) throw new Error('No colours found.');
-      this.swatches.setAll(colours);
+      this.swatches.setEntries(colours);
       return colours.length;
     }
     if (kind === 'patterns') {
@@ -350,8 +350,8 @@ export class PresetManagerDialog extends Dialog {
     try {
       switch (kind) {
         case 'swatches':
-          if (format === 'ase') await this.deliver(new Blob([writeAse(this.swatches.all()) as BlobPart], { type: 'application/octet-stream' }), 'Swatches.ase');
-          else await this.deliver(new Blob([writeAco(this.swatches.all()) as BlobPart], { type: 'application/octet-stream' }), 'Swatches.aco');
+          if (format === 'ase') await this.deliver(new Blob([writeAse(this.swatches.entries()) as BlobPart], { type: 'application/octet-stream' }), 'Swatches.ase');
+          else await this.deliver(new Blob([writeAco(this.swatches.entries()) as BlobPart], { type: 'application/octet-stream' }), 'Swatches.aco');
           break;
         case 'patterns': {
           const mine = allPatterns().filter((q) => !q.builtin);

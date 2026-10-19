@@ -55,7 +55,7 @@ export function pathFromRecords(b: Uint8Array, w: number, h: number): VectorPath
 }
 
 /** Image resource blocks: 8BIM, the id, an even-padded Pascal name, the size, the data padded to even. */
-function block(id: number, name: string, data: Uint8Array): number[] {
+export function block(id: number, name: string, data: Uint8Array): number[] {
   const nm = Array.from(new TextEncoder().encode(name)).slice(0, 255), pascal = [nm.length, ...nm];
   if (pascal.length % 2) pascal.push(0);
   const body = Array.from(data);
@@ -96,6 +96,18 @@ export function addIccResource(psd: ArrayBuffer, icc: Uint8Array | null): ArrayB
   const extra = new Uint8Array(head.length + icc.length + (icc.length % 2));
   extra.set(head, 0);
   extra.set(icc, head.length);
+  const out = new Uint8Array(b.length + extra.length);
+  out.set(b.subarray(0, at + 4 + len), 0);
+  out.set(extra, at + 4 + len);
+  out.set(b.subarray(at + 4 + len), at + 4 + len + extra.length);
+  new DataView(out.buffer).setUint32(at, len + extra.length);
+  return out.buffer;
+}
+
+/** A PSD or PSB with ready-made image resource blocks added at the end of the resources section. */
+export function addResourceBytes(psd: ArrayBuffer, extra: number[]): ArrayBuffer {
+  if (!extra.length) return psd;
+  const b = new Uint8Array(psd), at = resourcesAt(b), len = new DataView(psd).getUint32(at);
   const out = new Uint8Array(b.length + extra.length);
   out.set(b.subarray(0, at + 4 + len), 0);
   out.set(extra, at + 4 + len);

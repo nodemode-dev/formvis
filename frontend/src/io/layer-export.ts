@@ -155,19 +155,35 @@ export async function layerCompFiles(engine: Engine, set: LayerExportSettings, e
   return files;
 }
 
+/** The default Data Sets as Files naming: the document, an underscore, the data set. */
+export const DATA_SET_TEMPLATE = '{document}_{name}';
+
+/** A data set file name from a template with {document}, {name} and {index} (counted from 1, four digits), cleaned for a
+ *  file system; `taken` holds the names already used (lower case) and a repeat becomes `name 2`, `name 3`. */
+export function dataSetFileName(template: string, documentName: string, setName: string, index: number, format: LayerFileFormat, taken: Set<string>): string {
+  const text = (template.trim() || DATA_SET_TEMPLATE).replace(/\.[A-Za-z0-9]{1,5}$/, '')
+    .replace(/\{document\}/gi, safeName(documentName, 60, 'Untitled')).replace(/\{name\}/gi, safeName(setName, 60, 'dataset')).replace(/\{index\}/gi, String(index).padStart(4, '0'));
+  const stem = safeName(text, 120, 'dataset'), ext = format === 'tiff' ? 'tif' : format;
+  let name = stem, n = 1;
+  while (taken.has(`${name}.${ext}`.toLowerCase())) name = `${stem} ${++n}`;
+  taken.add(`${name}.${ext}`.toLowerCase());
+  return `${name}.${ext}`;
+}
+
 /** File > Export > Data Sets as Files (DEV_PLAN 29.9 part b): each data set applied in turn, the flattened document
- *  encoded as `<doc>_<dataset>.<ext>`. Every applied set is undone afterwards, so the document ends as it started. */
-export async function dataSetFiles(engine: Engine, format: LayerFileFormat, engineUp: boolean, done: (n: number, of: number) => void = () => undefined): Promise<Array<{ name: string; blob: Blob }>> {
+ *  encoded under a name from `template` (`<doc>_<dataset>` unless given; a repeated name is numbered so no file replaces
+ *  another). Every applied set is undone afterwards, so the document ends as it started. */
+export async function dataSetFiles(engine: Engine, format: LayerFileFormat, engineUp: boolean, done: (n: number, of: number) => void = () => undefined, template = DATA_SET_TEMPLATE): Promise<Array<{ name: string; blob: Blob }>> {
   const p = engine.current, sets = p?.doc.dataSets ?? [], files: Array<{ name: string; blob: Blob }> = [];
   if (!p || !sets.length) return files;
-  const base = safeName(p.name.replace(/\.[A-Za-z0-9]{1,8}$/, ''), 60, 'Untitled'), set: LayerExportSettings = { ...DEFAULT_LAYER_EXPORT, format };
+  const base = safeName(p.name.replace(/\.[A-Za-z0-9]{1,8}$/, ''), 60, 'Untitled'), set: LayerExportSettings = { ...DEFAULT_LAYER_EXPORT, format }, taken = new Set<string>();
   let applied = 0;
   try {
     for (const [i, d] of sets.entries()) {
       if (await engine.applyDataSet(d.name)) {
         applied++;
         const img = engine.flattened();
-        if (img) files.push({ name: `${base}_${safeName(d.name, 60, 'dataset')}.${format}`, blob: await encodeOne(engine, img, base, set, engineUp) });
+        if (img) files.push({ name: dataSetFileName(template, base, d.name, i + 1, format, taken), blob: await encodeOne(engine, img, base, set, engineUp) });
       }
       done(i + 1, sets.length);
     }

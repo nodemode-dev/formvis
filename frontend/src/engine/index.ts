@@ -27,6 +27,7 @@ import type { DocVariable, LayerLabel, BoxKind, DocBox, LayerComp } from './type
 import type { RelightContent } from './relight';
 import { History, type HistoryEntry, type PixelPatch, type Snapshot } from './history';
 import { restrictPatches, type RgbTarget } from './channel-target';
+import { alphaPlane, planeMask } from './alpha-target';
 import { Renderer, renderDoc, type LayerOverride } from './renderer';
 import { applyDuotoneLut, curveAt, DUOTONE_COUNT, duotoneLut, type Duotone } from './duotone';
 import { compositeChannels, splitChannels } from './multichannel';
@@ -102,7 +103,7 @@ import type { LibFrame, LibImage, LibPath } from './filter-library';
 import type { FilterKind, FilterSettings } from './filter-jobs';
 import { POOL_FROM, bandPlan, bandPoolReady, bandPoolSize, runBandOnPool } from './band-pool';
 import { sharpenSample } from './filters-more';
-import { diamondFill, presetById, reflectStops, resolveStops, type GradientType } from './gradients';
+import { clampMid, colorAt, diamondFill, presetById, reflectStops, resolveStops, type GradientPreset, type GradientType } from './gradients';
 import { convexQuad, evenSpacing, meshSurfacePoint, meshWarpImage, removeSplit, splitGrid, type P2 } from './mesh-warp';
 import { liquifyImage, type LiquifyField } from './liquify';
 import { expandImage, mlsRigid, puppetImage, type PuppetMode } from './puppet';
@@ -113,7 +114,7 @@ import { DEFAULT_GLOBAL_LIGHT, scaledEffects, type GlobalLight } from './style-e
 export { CONTOURS, DEFAULT_GLOBAL_LIGHT, withGlobalLight, type ContourId, type GlobalLight } from './style-extras';
 import { mergeMeta, type DocMeta, type MetaPatch } from './doc-meta';
 export { COPYRIGHT_STATUSES, META_TEXT, cleanMeta, customLines, metaWritable, mergeMeta, parseCustom, parseKeywords, sameMeta, tabName, type CameraData, type CopyrightStatus, type DocMeta } from './doc-meta';
-import { UPRIGHT, allBrushPresets, computeOption, defaultShape, noDynamics, noSymmetry, pressureOption, shapeActive, type BrushSymmetry, type BrushDynamics, type BrushPreset, type BrushShape, type PenPose } from './brush-dynamics';
+import { UPRIGHT, allBrushPresets, computeOption, defaultShape, mergeShape, noDynamics, noSymmetry, pressureOption, shapeActive, type BrushSymmetry, type BrushDynamics, type BrushPreset, type BrushShape, type PenPose } from './brush-dynamics';
 import { DEFAULT_PATH_SHAPE, boxedShapePath, linePath, shapeGradient, type PathShapeKind, type PathShapeOptions } from './shape-paths';
 import { markupPath, type MarkupKind } from './markup';
 import { allCustomShapes } from './custom-shapes';
@@ -121,7 +122,7 @@ import { traceAlpha } from './trace-outline';
 export { CUSTOM_SHAPES, allCustomShapes, addCustomShape, loadCustomShapes } from './custom-shapes';
 import { replaceColours } from './color-replace';
 import { FILL_DEFAULTS, WarpStroke, contentFill, diffusionFill, frequencySplit, ringVariance, SMOOTH_RING_VARIANCE, fillTransparent, healFromSource, premultiply, scaleHealCorrection, spotHeal, unpremultiply, type FillOptions, type HealBlend, type HealMode, type HealSample } from './retouch';
-import { dissolveNoise } from './blend';
+import { PIXEL_BLENDS, dissolveNoise } from './blend';
 import { LUT3_N, adjustmentLut, adjustmentLut3 } from './lut';
 import { decontaminate } from './select-mask';
 import { alphaToMask, defringe, distanceSquared, removeMatte } from './matting';
@@ -208,8 +209,9 @@ export function cornerRadiiOf(style: Record<string, unknown>): number[] | null {
   return Array.isArray(r) && r.length === 4 && r.every((v) => typeof v === 'number' && Number.isFinite(v) && v >= 0) ? (r as number[]).slice() : null;
 }
 
-/** The Background Eraser's settings: Tolerance, Sampling, Limits (contiguous or not), Protect Foreground. */
-export interface BgEraseOpts { tolerance: number; sampling: 'continuous' | 'once'; contiguous: boolean; protectForeground: boolean }
+/** The Background Eraser's settings: Tolerance, Sampling (continuous, once or the background swatch), Limits (contiguous,
+ *  discontiguous or Find Edges, which stops at a sharp step between neighbours), Protect Foreground. */
+export interface BgEraseOpts { tolerance: number; sampling: 'continuous' | 'once' | 'background'; contiguous: boolean; protectForeground: boolean; findEdges?: boolean }
 
 export class Engine {
   readonly events = new Emitter<EngineEvents>();
@@ -257,12 +259,17 @@ export class Engine {
     this.brushDynamics = structuredClone(preset.dynamics);
     if (this.alwaysPressure.size && !this.brushDynamics.size.enabled) this.brushDynamics.size = pressureOption(0.2);
     if (this.alwaysPressure.opacity && !this.brushDynamics.opacity?.enabled) this.brushDynamics.opacity = pressureOption(0.2);
-    const hadSpacing = this.brushPresetId !== null && allBrushPresets().find((p) => p.id === this.brushPresetId)?.spacing !== undefined;
+    const prev = this.brushPresetId !== null ? allBrushPresets().find((p) => p.id === this.brushPresetId) : undefined, hadSpacing = prev?.spacing !== undefined;
+    const undo: Record<string, unknown> = {};
+    for (const k of Object.keys(prev?.shape ?? {})) undo[k] = (defaultShape() as unknown as Record<string, unknown>)[k];   // the last preset's scatter, noise and the like never linger
     this.brushPresetId = preset.id;
     // The preset's tip shape, or a round tip: another preset's angle never lingers. Its spacing too; a preset with none
     // leaves the Brush Settings spacing alone unless the last preset had set it.
-    this.brushShape = { ...this.brushShape, angle: preset.angle ?? 0, roundness: preset.roundness ?? 100, spacing: preset.spacing ?? (hadSpacing ? null : this.brushShape.spacing) };
-    this.setBrush({ diameter: preset.diameter, hardness: preset.hardness, opacity: preset.opacity, tip: preset.tip ?? null });
+    // A locked section of Brush Settings keeps its values (mergeShape); a preset's own shape fills the rest.
+    this.brushShape = mergeShape(this.brushShape, { ...(undo as Partial<BrushShape>), angle: preset.angle ?? 0, roundness: preset.roundness ?? 100, spacing: preset.spacing ?? (hadSpacing ? null : this.brushShape.spacing), ...preset.shape });
+    if (preset.flow !== undefined) this.brushFlow = preset.flow;
+    const tipHeld = (this.brushShape.locks ?? []).includes('tip');
+    this.setBrush({ ...(tipHeld ? {} : { diameter: preset.diameter, hardness: preset.hardness }), opacity: preset.opacity, tip: preset.tip ?? null });
   }
   brushMode: 'paint' | 'erase' = 'paint';
   /** The Brush's Mode (1.50.3, the tool audit): a blend mode, or Behind (only where the layer is empty)
@@ -1542,24 +1549,27 @@ export class Engine {
     this.emit('overlay', null);
   }
 
-  tipDrag: { at: Pt; startX: number; diameter: number; hardness: number } | null = null;
+  tipDrag: { at: Pt; startX: number; startY: number; diameter: number; hardness: number; moved: number } | null = null;
 
-  beginTipDrag(at: Pt, screenX: number): boolean {
+  beginTipDrag(at: Pt, screenX: number, screenY = 0): boolean {
     if (this.stroke) return false;
-    this.tipDrag = { at, startX: screenX, diameter: this.brush.diameter, hardness: this.brush.hardness };
+    this.tipDrag = { at, startX: screenX, startY: screenY, diameter: this.brush.diameter, hardness: this.brush.hardness, moved: 0 };
     this.emit('overlay', null);
     return true;
   }
 
-  updateTipDrag(screenX: number, shift: boolean): void {
+  /** Right-drag on the canvas: across sets the diameter, up and down the hardness (up is harder, after a 6 px dead
+   *  zone so a straight sideways drag keeps it); Shift sets the hardness by the sideways drag alone. */
+  updateTipDrag(screenX: number, shift: boolean, screenY?: number): void {
     const t = this.tipDrag;
     if (!t) return;
-    const dx = screenX - t.startX;
+    const dx = screenX - t.startX, dy = screenY === undefined ? 0 : screenY - t.startY;
+    t.moved = Math.max(t.moved, Math.hypot(dx, dy));
     if (shift) {
       this.setBrush({ hardness: Math.min(1, Math.max(0, t.hardness + dx / 200)), diameter: t.diameter });
     } else {
-      const zoom = this.current ? Math.max(0.0001, this.current.viewport.zoom) : 1;
-      this.setBrush({ diameter: Math.min(2000, Math.max(1, Math.round(t.diameter + (2 * dx) / zoom))), hardness: t.hardness });
+      const zoom = this.current ? Math.max(0.0001, this.current.viewport.zoom) : 1, up = Math.sign(-dy) * Math.max(0, Math.abs(dy) - 6);
+      this.setBrush({ diameter: Math.min(2000, Math.max(1, Math.round(t.diameter + (2 * dx) / zoom))), hardness: Math.min(1, Math.max(0, t.hardness + up / 200)) });
     }
   }
 
@@ -3143,8 +3153,8 @@ export class Engine {
       m.set(dl.id, { hidden: false, opacity: 1, blend: 'normal', effects: null });
     }
     if (this.channelView !== null && (p.doc.mode === 'cmyk' || p.doc.mode === 'lab')) { for (const l of p.doc.layers) if (l.channels && !m.get(l.id)?.source) m.set(l.id, { ...(m.get(l.id) ?? {}), source: this.channelGrey(l.channels, this.channelView).canvas }); }
-    else if (!this.stroke && this.composesFloats(p)) {
-      const composed = this.composedRendition(p);
+    else if (!this.stroke && (this.composesFloats(p) || this.compressing(p))) {
+      const composed = this.compressing(p) ? this.compressedRendition(p) : this.composedRendition(p);
       if (composed) { const first = p.doc.layers.find((l) => l.raster && !l.isGroup); for (const l of p.doc.layers) m.set(l.id, l === first ? { ...(m.get(l.id) ?? {}), source: composed.canvas, transform: docTransform(p.doc.width, p.doc.height), opacity: 1, blend: 'normal' } : { ...(m.get(l.id) ?? {}), hidden: true }); }
     }
     return m.size ? m : undefined;
@@ -3167,6 +3177,31 @@ export class Engine {
       r = 'error' in ink || !p.cmykLut ? null : rasterFromChannels({ mode: 'cmyk', n: 4, width: ink.width, height: ink.height, data: ink.data }, p.cmykLut);
     }
     this.composedCache = { doc: p.doc, r };
+    return r;
+  }
+
+  /** 32-bit Preview Options, Highlight Compression: the canvas of a 32-bit document is drawn from the composed floats
+   *  with an exposure gain and a shoulder that brings light above white into the display range, hue kept (the pixel is
+   *  scaled by its brightest channel). The document, exports and tools never see it. */
+  previewCompression: { exposure: number } | null = null;
+  private compressedCache: { doc: Doc; exposure: number; r: Raster | null } | null = null;
+  setPreviewCompression(v: { exposure: number } | null): void { this.previewCompression = v; this.compressedCache = null; this.emit('render', null); }
+  private compressing(p: Project): boolean { return !!this.previewCompression && p.doc.depth === 32 && p.doc.mode !== 'cmyk' && p.doc.mode !== 'lab'; }
+  private compressedRendition(p: Project): Raster | null {
+    const exposure = this.previewCompression?.exposure ?? 0;
+    if (this.compressedCache && this.compressedCache.doc === p.doc && this.compressedCache.exposure === exposure) return this.compressedCache.r;
+    let r: Raster | null = null;
+    const c = composeFloat(p.doc, 3, false, null, true);
+    if (!('error' in c)) {
+      const d = new Float32Array(c.data), gain = 2 ** exposure, knee = 0.6, span = 1 - knee;
+      for (let i = 0; i < d.length; i += 4) {
+        const m = Math.max(d[i], d[i + 1], d[i + 2]) * gain;
+        const s = m <= knee ? gain : (knee + span * (1 - Math.exp(-(m - knee) / span))) / m;
+        d[i] *= s; d[i + 1] *= s; d[i + 2] *= s;
+      }
+      r = rasterFromDeep({ mode: 'rgb', n: 3, width: c.width, height: c.height, data: d }, true);
+    }
+    this.compressedCache = { doc: p.doc, exposure, r };
     return r;
   }
 
@@ -3830,7 +3865,7 @@ export class Engine {
       return true;
     }
     if (this.tool !== 'brush') return false;
-    const modes: Array<BlendMode | 'behind' | 'clear'> = ['normal', 'behind', 'clear', ...BLEND_MODES.filter((m) => m.id !== 'normal' && canvasBlend(m.id)).map((m) => m.id)];
+    const modes: Array<BlendMode | 'behind' | 'clear'> = ['normal', 'behind', 'clear', ...BLEND_MODES.filter((m) => m.id !== 'normal').map((m) => m.id)];
     const n = modes.length, i = Math.max(0, modes.indexOf(this.brushBlend));
     this.setBrushBlend(modes[(i + (forward ? 1 : n - 1)) % n]);
     return true;
@@ -4281,8 +4316,16 @@ export class Engine {
 
   /** Image > Adjustments > Desaturate, Equalize and Replace Color (1.65.5) on the active layer within the selection,
    *  each one step; Replace Color's settings are its dialog's. */
-  pixelAdjust(kind: 'desaturate' | 'equalize'): void {
+  pixelAdjust(kind: 'desaturate' | 'equalize', scope: 'selection' | 'layer' = 'selection'): void {
     const t = kind === 'equalize' ? this.targetImage() : null, cov = t ? this.targetCoverage(t) : null;
+    if (t && cov && scope === 'layer' && cov.length === t.image.data.length && !this.alphaTargeted()) {
+      this.regionEdit('Equalize', ({ raster, target, rect }) => {
+        const sub = raster.read(rect.x, rect.y, rect.w, rect.h), img = target === 'mask' ? toGray(sub) : sub;
+        equalizePixels(img.data, cov);
+        raster.write(target === 'mask' ? fromGray(img) : img, rect.x, rect.y);
+      }, null);
+      return;
+    }
     this.applyImageEdit(kind === 'desaturate' ? 'Desaturate' : 'Equalize', (src) => {
       const out = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
       if (kind === 'desaturate') desaturatePixels(out.data); else equalizePixels(out.data, cov && cov.length === out.data.length ? cov : null);
@@ -4292,7 +4335,7 @@ export class Engine {
   replaceColor(o: ReplaceColorSettings, preview = false): void {
     const run = (src: ImageData): ImageData => {
       const out = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
-      replaceColorPixels(out.data, o);
+      replaceColorPixels(out.data, o, true, src.width);
       return out;
     };
     if (preview) this.previewImageEdit(run); else this.applyImageEdit('Replace Color', run);
@@ -4375,7 +4418,7 @@ export class Engine {
     if (!r) return null;
     const k = Math.min(1, boxW / r.width, boxH / r.height), w = Math.max(1, Math.round(r.width * k)), h = Math.max(1, Math.round(r.height * k)), c = ctxOf(createSurface(w, h));
     c.drawImage(r.canvas as CanvasImageSource, 0, 0, w, h);
-    return { mask: replaceColorPixels(c.getImageData(0, 0, w, h).data, o, false), w, h };
+    return { mask: replaceColorPixels(c.getImageData(0, 0, w, h).data, o, false, w), w, h };
   }
 
   /** The selection's coverage of the pixels `targetImage` read, or null with no selection. */
@@ -4525,6 +4568,7 @@ export class Engine {
     }
     const s = new PixelStroke(pick.raster, pick.local, { ...this.brush, color, bg: { ...this.bg }, flow: this.brushFlow, aliased: !!opts.aliased || !!opts.square, square: !!opts.square, dabColor: this.tool === 'mixer' && pick.target !== 'mask' && this.brushMode !== 'erase' ? this.mixerSourceFor(p, pick.raster as Raster, pick.local) : null }, op, p.selection);
     s.dynamics = structuredClone(this.brushDynamics);
+    if (this.brushMode !== 'erase' && pick.target !== 'mask' && !keepAlpha && this.brushBlend !== 'behind' && this.brushBlend !== 'clear' && PIXEL_BLENDS.has(this.brushBlend)) s.pixelBlend = this.brushBlend;
     if (this.pressureCurve) for (const o of [s.dynamics.size, s.dynamics.flow, s.dynamics.opacity]) for (const sn of o.sensors) if (sn.id === 'pressure' && !sn.curve) sn.curve = this.pressureCurve;
     if (this.brushSymmetry.mode !== 'off') s.symmetry = { ...this.brushSymmetry, cx: p.doc.width * this.symmetryAt.x, cy: p.doc.height * this.symmetryAt.y };
     // Brush Settings (tip shape, shape dynamics, scattering, texture, dual brush); inactive, the stroke is as before.
@@ -4900,22 +4944,29 @@ export class Engine {
     if (x1 <= x0 || y1 <= y0) return;
     const w = x1 - x0, h = y1 - y0, img = raster.ctx.getImageData(x0, y0, w, h), d = img.data;
     const cx = Math.min(w - 1, Math.max(0, Math.floor(c.x) - x0)), cy = Math.min(h - 1, Math.max(0, Math.floor(c.y) - y0)), ci = (cy * w + cx) * 4;
-    if (b.opts.sampling === 'continuous' || !b.sample) { if (d[ci + 3] === 0 && b.sample) { /* keep the last colour over erased pixels */ } else b.sample = { r: d[ci], g: d[ci + 1], b: d[ci + 2] }; }
+    if (b.opts.sampling === 'background') b.sample = { r: this.bg.r, g: this.bg.g, b: this.bg.b };
+    else if (b.opts.sampling === 'continuous' || !b.sample) { if (d[ci + 3] === 0 && b.sample) { /* keep the last colour over erased pixels */ } else b.sample = { r: d[ci], g: d[ci + 1], b: d[ci + 2] }; }
     const s = b.sample, tol = b.opts.tolerance, fg = this.fg, hard = Math.max(0, Math.min(1, this.brush.hardness)), sel = b.p.selection;
     const matches = (i: number): boolean => d[i + 3] > 0 && Math.max(Math.abs(d[i] - s.r), Math.abs(d[i + 1] - s.g), Math.abs(d[i + 2] - s.b)) <= tol
       && !(b.opts.protectForeground && Math.max(Math.abs(d[i] - fg.r), Math.abs(d[i + 1] - fg.g), Math.abs(d[i + 2] - fg.b)) <= tol);
     // Which pixels the dab may reach: every match in the circle, or (Contiguous) those joined to the centre.
     const reach = new Uint8Array(w * h);
     const inCircle = (x: number, y: number): boolean => Math.hypot(x + x0 + 0.5 - c.x, y + y0 + 0.5 - c.y) <= r;
-    if (b.opts.contiguous) {
-      if (matches(ci) && inCircle(cx, cy)) {
-        const stack = [cy * w + cx]; reach[cy * w + cx] = 1;
+    if (b.opts.contiguous || b.opts.findEdges) {
+      let seed = matches(ci) && inCircle(cx, cy) ? cy * w + cx : -1;
+      if (seed < 0 && b.opts.sampling === 'background') {
+        let best = Infinity;
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const dd = Math.hypot(x + x0 + 0.5 - c.x, y + y0 + 0.5 - c.y); if (dd < best && dd <= r && matches((y * w + x) * 4)) { best = dd; seed = y * w + x; } }
+      }
+      if (seed >= 0) {
+        const step = Math.max(1, tol / 2), stepOk = (a: number, q: number): boolean => !b.opts.findEdges || Math.max(Math.abs(d[a] - d[q]), Math.abs(d[a + 1] - d[q + 1]), Math.abs(d[a + 2] - d[q + 2])) <= step;
+        const stack = [seed]; reach[seed] = 1;
         while (stack.length) {
           const k = stack.pop() as number, x = k % w, y = (k - x) / w;
           for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
             if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
             const nk = ny * w + nx;
-            if (!reach[nk] && inCircle(nx, ny) && matches(nk * 4)) { reach[nk] = 1; stack.push(nk); }
+            if (!reach[nk] && inCircle(nx, ny) && matches(nk * 4) && stepOk(k * 4, nk * 4)) { reach[nk] = 1; stack.push(nk); }
           }
         }
       }
@@ -4963,7 +5014,15 @@ export class Engine {
 
   clearPixels(): void { SO.clearPixels(this.selectHost); }
 
-  invertPixels(): void { SO.invertPixels(this.selectHost); }
+  invertPixels(): void {
+    const a = this.alphaTargeted();
+    if (!a) { SO.invertPixels(this.selectHost); return; }
+    this.applyAlphaEdit(a, 'Invert', (src) => {
+      const out = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
+      for (let i = 0; i < out.data.length; i += 4) { out.data[i] = 255 - out.data[i]; out.data[i + 1] = 255 - out.data[i + 1]; out.data[i + 2] = 255 - out.data[i + 2]; }
+      return out;
+    });
+  }
 
   applySelection(next: SelectionMask | null, mode: SelectionMode, name: string): void { SO.applySelection(this.selectHost, next, mode, name); }
 
@@ -5271,7 +5330,8 @@ export class Engine {
   /** The alpha channels the Channels panel shows over the image in red, per document; the view only. */
   private readonly alphaViews = new WeakMap<Project, Set<ID>>();
   shownAlphas(p: Project): AlphaChannel[] {
-    const v = this.alphaViews.get(p), list = v?.size ? (p.doc.alphas ?? []).filter((a) => v.has(a.id)) : [], mv = this.maskView, l = this.maskViewLayer(p);
+    const v = this.alphaViews.get(p), pv = this.alphaPreview?.project === p ? this.alphaPreview.shown : null, mv = this.maskView, l = this.maskViewLayer(p);
+    const list = (p.doc.alphas ?? []).filter((a) => v?.has(a.id) || a.id === pv?.id).map((a) => (a.id === pv?.id ? pv : a));
     if (!mv || mv.mode !== 'rubylith' || !l?.mask?.raster) return list;
     const key = `${l.mask.raster.id}:${l.mask.raster.version}:${p.doc.width}:${p.doc.height}`;
     if (mv.alphaKey !== key || !mv.alpha) { mv.alphaKey = key; mv.alpha = { id: `mask-view-${l.id}`, name: 'Mask', mask: this.coverage(p, l, true) }; }
@@ -5292,6 +5352,51 @@ export class Engine {
     if (!next && !this.maskView) return;
     this.maskView = next;
     this.emit('render', null);
+    this.emit('overlay', null);
+  }
+  private readonly alphaTargets = new WeakMap<Project, ID>();
+  private alphaPreview: { project: Project; shown: AlphaChannel } | null = null;
+  private alphaSeq = 0;
+  /** The alpha channel the edit target is (clicked in the Channels panel), or null when the layer is. Adjustments, filters,
+   *  Invert and the sampling helpers then work on that channel's single grey plane, inside the selection, as one undo step. */
+  alphaTargeted(): AlphaChannel | null {
+    const p = this.current, id = p ? this.alphaTargets.get(p) : undefined;
+    return (id && p?.doc.alphas?.find((a) => a.id === id)) || null;
+  }
+  setAlphaTarget(id: ID | null): void {
+    const p = this.current;
+    if (!p || (id !== null && !p.doc.alphas?.some((a) => a.id === id)) || (this.alphaTargets.get(p) ?? null) === id) return;
+    if (id) this.alphaTargets.set(p, id); else this.alphaTargets.delete(p);
+    this.alphaSeq++;
+    this.alphaPreview = null;
+    this.emit('overlay', null);
+  }
+  private alphaFrame(p: Project): LibFrame { return this.filterFrame(p, docTransform(p.doc.width, p.doc.height), p.doc.width, p.doc.height); }
+  private previewAlphaEdit(a: AlphaChannel, run: (src: ImageData, scale: number, frame?: LibFrame) => ImageData | Promise<ImageData>): void {
+    const p = this.current;
+    if (!p) return;
+    const mine = ++this.alphaSeq, src = alphaPlane(a.mask, p.doc.width, p.doc.height);
+    const show = (out: ImageData): void => {
+      if (mine !== this.alphaSeq || this.current !== p || out.width !== src.width || out.height !== src.height) return;
+      this.alphaPreview = { project: p, shown: { ...a, mask: planeMask(src, out, p.selection) } };
+      this.emit('overlay', null);
+    };
+    try { Promise.resolve(run(src, 1, this.alphaFrame(p))).then(show).catch(() => undefined); } catch { /* the preview stays as it was */ }
+  }
+  private applyAlphaEdit(a: AlphaChannel, name: string, run: (src: ImageData, scale: number, frame?: LibFrame) => ImageData): void {
+    const p = this.current;
+    if (!p) return;
+    this.alphaSeq++;
+    this.alphaPreview = null;
+    const src = alphaPlane(a.mask, p.doc.width, p.doc.height), out = run(src, 1, this.alphaFrame(p));
+    if (out.width !== src.width || out.height !== src.height) { this.notice('That change cannot be applied to a channel.'); this.emit('overlay', null); return; }
+    const mask = planeMask(src, out, p.selection);
+    this.edit(name, (q) => {
+      const list = q.doc.alphas ?? [];
+      if (!list.some((x) => x.id === a.id)) return false;
+      q.doc = { ...q.doc, alphas: list.map((x) => (x.id === a.id ? { ...x, mask } : x)) };
+      return true;
+    });
     this.emit('overlay', null);
   }
   /** The alpha channel a channel command acts on: the one named or identified by `ref`, else the one shown last, else the last in the list. */
@@ -6963,7 +7068,9 @@ export class Engine {
    *  the colours blended in sRGB (Classic, as before), linear light (Linear) or OKLab (Perceptual). */
   gradientSettings: { shape: GradientType; style: string; reversed: boolean; opacity: number; blend: BlendMode; dither: boolean; transparency: boolean; method: 'classic' | 'linear' | 'perceptual' } = { shape: 'linear', style: 'transparent', reversed: false, opacity: 1, blend: 'normal', dither: false, transparency: true, method: 'classic' };
   /** Dialogs a tool's options can open; the app fills these in, since tools only see the engine. */
-  uiHooks: { gradientEditor?: () => void; importBrushes?: () => void } = {};
+  uiHooks: { gradientEditor?: () => void; importBrushes?: () => void; brushPicker?: (x: number, y: number) => void } = {};
+  /** What a plain right-click does on a painting tool: a right-drag always sizes the tip; a click opens the Brush Preset picker when this is 'picker'. */
+  brushRightClick: 'resize' | 'picker' = 'resize';
   /** The shape tools' settings. mode (1.49.8, the owner's tool list): a shape layer, the work path, or
    *  pixels on the active layer; fill and stroke each the foreground, the background or none, and the stroke's width. */
   shapeSettings: { kind: 'rectangle' | 'ellipse' | PathShapeKind; cornerRadius: number; smoothCorners: boolean; mode: 'shape' | 'path' | 'pixels'; fill: 'fg' | 'bg' | 'none'; stroke: 'fg' | 'bg' | 'none'; strokeWidth: number; strokeDash: 'solid' | 'dashed' | 'dotted'; strokeAlign: 'inside' | 'center' | 'outside'; strokeCap: 'butt' | 'round' | 'square'; strokeJoin: 'miter' | 'round' | 'bevel'; strokeMiter: number; gradient: 'off' | 'linear' | 'radial' | 'angle'; gradientAngle: number; gradientEnd: RGB | null } & PathShapeOptions =
@@ -7130,13 +7237,21 @@ export class Engine {
   }
 
   setPreview(layerId: ID | null, target: Target = 'pixels', surface: Surface | null = null, transform?: Transform): void {
-    if (!layerId) this.previewToken++;
+    if (!layerId) {
+      this.previewToken++;
+      this.alphaSeq++;
+      if (this.alphaPreview) { this.alphaPreview = null; this.emit('overlay', null); }
+    }
     const p = this.current;
     this.preview = p && layerId && surface ? { project: p, layerId, target, surface, ...(transform ? { transform } : {}) } : null;
     this.emit('render', null);
   }
 
-  targetImage(): { layerId: ID; target: Target; image: ImageData; width: number; height: number; unitsPerPixel: number } | null { return IE.targetImage(this.editHost); }
+  targetImage(): { layerId: ID; target: Target; image: ImageData; width: number; height: number; unitsPerPixel: number } | null {
+    const a = this.alphaTargeted(), p = this.current;
+    if (a && p) return { layerId: p.activeLayer?.id ?? '', target: 'mask', image: alphaPlane(a.mask, p.doc.width, p.doc.height), width: p.doc.width, height: p.doc.height, unitsPerPixel: 1 };
+    return IE.targetImage(this.editHost);
+  }
 
   get targetSize(): { width: number; height: number } | null {
     const p = this.current, l = p?.activeLayer ?? null;
@@ -7181,7 +7296,7 @@ export class Engine {
     return { area: p.selection ? local(p.selection.rect) : canvas, canvas, doc: { w: p.doc.width, h: p.doc.height } };
   }
 
-  previewImageEdit(run: (src: ImageData, scale: number, frame?: LibFrame) => ImageData | Promise<ImageData>, grow = 0, maxPixels = 2_000_000): void { ++this.previewToken; IE.previewImageEdit(this.editHost, run, grow, maxPixels); }
+  previewImageEdit(run: (src: ImageData, scale: number, frame?: LibFrame) => ImageData | Promise<ImageData>, grow = 0, maxPixels = 2_000_000): void { const a = this.alphaTargeted(); if (a) { this.previewAlphaEdit(a, run); return; } ++this.previewToken; IE.previewImageEdit(this.editHost, run, grow, maxPixels); }
 
   /** Filters on layers past this many pixels run in bands (1.60.9, DEV_PLAN 26.4); settable so a check can force either way. */
   bandFrom = 16_000_000;
@@ -7199,7 +7314,7 @@ export class Engine {
    *  the filter would grow), for the caller to run that path. */
   bandedFilter(name: string, run: (src: ImageData, frame?: LibFrame) => ImageData, apron: number, grow = 0): boolean | 'refused' {
     const p = this.current, l = p?.activeLayer;
-    if (!p || !l?.raster || this.stroke || p.maskTarget || l.smart || l.vector || l.fillContent || !this.paintable(l)) return false;
+    if (!p || !l?.raster || this.stroke || p.maskTarget || this.alphaTargeted() || l.smart || l.vector || l.fillContent || !this.paintable(l)) return false;
     if (l.raster.width * l.raster.height <= this.bandFrom || (p.doc.depth ?? 8) > 8 || p.doc.mode === 'cmyk' || p.doc.mode === 'lab') return false;
     if (grow > 0 && this.canGrow(p, l)) return this.bandedGrow(name, run, apron, grow, p, l);   // as applyImageEdit grows
     // Bands at least as tall as the apron, and each band's source read before the band above it is written, so the
@@ -7248,7 +7363,7 @@ export class Engine {
    *  threshold, or any case `bandedFilter` declines, and a filter that grows the layer. */
   bandedFilterPool(name: string, job: { kind: FilterKind; settings: FilterSettings; seed: number }, run: (src: ImageData, frame?: LibFrame) => ImageData, apron: number, grow = 0): Promise<boolean> | 'refused' | false {
     const p = this.current, l = p?.activeLayer;
-    if (!p || !l?.raster || this.stroke || p.maskTarget || l.smart || l.vector || l.fillContent || !this.paintable(l)) return false;
+    if (!p || !l?.raster || this.stroke || p.maskTarget || this.alphaTargeted() || l.smart || l.vector || l.fillContent || !this.paintable(l)) return false;
     if (l.raster.width * l.raster.height <= Math.max(this.bandFrom, POOL_FROM) || (p.doc.depth ?? 8) > 8 || p.doc.mode === 'cmyk' || p.doc.mode === 'lab') return false;
     if (grow > 0 && this.canGrow(p, l)) return false;
     if (!bandPoolReady()) return false;
@@ -7566,7 +7681,7 @@ export class Engine {
     });
   }
 
-  applyImageEdit(name: string, run: (src: ImageData, scale: number, frame?: LibFrame) => ImageData, grow = 0, peak = 2): void { IE.applyImageEdit(this.editHost, name, run, grow, peak); }
+  applyImageEdit(name: string, run: (src: ImageData, scale: number, frame?: LibFrame) => ImageData, grow = 0, peak = 2): void { const a = this.alphaTargeted(); if (a) { this.applyAlphaEdit(a, name, run); return; } IE.applyImageEdit(this.editHost, name, run, grow, peak); }
 
   /** applyImageEdit with the work done off the main thread: the source is prepared as the synchronous path prepares
    *  it (padded for a filter that reaches past the layer, grown to the canvas as painting grows a layer, grey for a
@@ -7574,6 +7689,8 @@ export class Engine {
    *  applyImageEdit as one undo step. If the layer changed meanwhile nothing is applied; if the pixels applyImageEdit
    *  sees ever differ in size from those computed on, `fallback` recomputes on them there. */
   async applyImageEditAsync(name: string, run: (src: ImageData, scale: number, frame?: LibFrame) => Promise<ImageData>, grow: number, fallback: (src: ImageData, scale: number, frame?: LibFrame) => ImageData, peak = 2): Promise<boolean> {
+    const alpha = this.alphaTargeted();
+    if (alpha) { this.applyAlphaEdit(alpha, name, fallback); return true; }
     if (!this.room(this.layerBytes() * peak, name)) return false;   // its caller's measured peak (1.61.1)
     const al = this.current?.activeLayer;
     if ((al?.smart || al?.vector || al?.fillContent) && !(this.current?.maskTarget && al.mask)) { this.notice(al.vector ? SHAPE_NOTICE : al.fillContent ? FILL_NOTICE : SMART_NOTICE); return false; }
@@ -7637,7 +7754,7 @@ export class Engine {
    *  around its edge, without touching its pixels: a Curves adjustment clipped to it, each of red, green and blue a line
    *  mapping the layer's mean and spread onto the reference's (the scale kept within a quarter and four). The
    *  adjustment's opacity is the amount; run again on the same layer, it updates its match. One step. */
-  colorMatch(layerId: ID, to: 'beneath' | 'around', amount = 1, tune: { luminance?: number; intensity?: number; neutralize?: boolean } = {}): boolean {
+  colorMatch(layerId: ID, to: 'beneath' | 'around', amount = 1, tune: { luminance?: number; intensity?: number; neutralize?: boolean; source?: { doc?: ID; layer?: ID | 'merged' }; selectionSource?: boolean; selectionTarget?: boolean } = {}): boolean {
     const p = this.current, l = p?.layer(layerId);
     if (!p || !l?.raster || l.isGroup || l.adjustment) { this.notice('Color Match needs a pixel layer.'); return false; }
     const W = p.doc.width, H = p.doc.height;
@@ -7648,13 +7765,29 @@ export class Engine {
     // The picture without this layer and what is above it.
     const at = p.doc.layers.findIndex((x) => x.id === l.id), hidden = new Map<ID, LayerOverride>();
     p.doc.layers.forEach((x, i) => { if (i >= at && x.id !== l.parentId) hidden.set(x.id, { hidden: true }); });
-    const ref = createSurface(W, H);
-    this.work.render({ doc: p.doc, target: ref, view: [1, 0, 0, 1, 0, 0], overrides: hidden, quality: 'high' });
-    const rd = ctxOf(ref).getImageData(0, 0, W, H).data;
+    const chosen = tune.source && (tune.source.doc || tune.source.layer) ? tune.source : null;
+    let rd: Uint8ClampedArray, srcMask: Uint8Array | null = null;
+    if (chosen) {
+      const q = chosen.doc ? this.projects.find((d) => d.id === chosen.doc) : p;
+      const sl = q && chosen.layer && chosen.layer !== 'merged' ? q.doc.layers.find((x) => x.id === chosen.layer) : null;
+      if (!q || (chosen.layer && chosen.layer !== 'merged' && !sl?.raster)) { this.notice('Color Match: the source document or layer is not open.'); return false; }
+      const img = sl?.raster ? sl.raster.read() : ctxOf(renderDoc(this.work, q.doc)).getImageData(0, 0, q.doc.width, q.doc.height);
+      rd = img.data;
+      if (tune.selectionSource && q.selection && !sl && img.width === q.doc.width) {
+        const sel = q.selection;
+        srcMask = new Uint8Array(img.width * img.height);
+        for (let y = 0; y < img.height; y++) for (let x = 0; x < img.width; x++) srcMask[y * img.width + x] = sel.valueAt(x, y) > 127 ? 1 : 0;
+      }
+    } else {
+      const ref = createSurface(W, H);
+      this.work.render({ doc: p.doc, target: ref, view: [1, 0, 0, 1, 0, 0], overrides: hidden, quality: 'high' });
+      rd = ctxOf(ref).getImageData(0, 0, W, H).data;
+    }
     const inside = new Uint8Array(W * H);
     for (let i = 0; i < inside.length; i++) inside[i] = ld[i * 4 + 3] > 128 ? 1 : 0;
-    let where = inside;
-    if (to === 'around') {   // a 24-pixel band outside the layer's edge
+    let where: Uint8Array = inside;
+    if (chosen) where = srcMask ?? new Uint8Array(rd.length / 4).fill(1);
+    else if (to === 'around') {   // a 24-pixel band outside the layer's edge
       const band = new Uint8Array(W * H), R = 24;
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
         if (!inside[y * W + x]) continue;
@@ -7671,7 +7804,13 @@ export class Engine {
       const mean = sum.map((v) => v / Math.max(1, n));
       return { mean, sd: sq.map((v, k) => Math.sqrt(Math.max(0, v / Math.max(1, n) - mean[k] * mean[k]))), n };
     };
-    const a = stats(ld, inside), b = stats(rd, where);
+    let mine = inside;
+    if (tune.selectionTarget && p.selection) {
+      const sel = p.selection;
+      mine = new Uint8Array(W * H);
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) mine[y * W + x] = inside[y * W + x] && sel.valueAt(x, y) > 127 ? 1 : 0;
+    }
+    const a = stats(ld, mine), b = stats(rd, where);
     if (a.n < 16 || b.n < 16) { this.notice(to === 'around' ? 'There is too little around the layer to match to.' : 'There is too little beneath the layer to match to.'); return false; }
     const line = (k: number): Array<{ x: number; y: number }> => {
       const luma = (m: number[]): number => 0.299 * m[0] + 0.587 * m[1] + 0.114 * m[2], lumF = (tune.luminance ?? 100) / 100, intF = (tune.intensity ?? 100) / 100;
@@ -7748,6 +7887,23 @@ export class Engine {
     for (let a = l.parentId; a; a = p.layer(a)?.parentId ?? null) keep.add(a);
     const overrides = new Map<ID, LayerOverride>();
     for (const x of p.doc.layers) overrides.set(x.id, keep.has(x.id) ? { hidden: false, opacity: 1, ...(x.id === id ? { blend: 'normal' as BlendMode } : {}) } : { hidden: true });
+    this.work.render({ doc: p.doc, target: s, view: [1, 0, 0, 1, 0, 0], overrides, quality: 'high' });
+    return s;
+  }
+
+  /** A folder drawn by itself at the document's size: its contents as authored (hidden layers stay hidden), the folder
+   *  and its parents at full opacity and Normal blend, everything outside it hidden. */
+  renderGroupAlone(id: ID): Surface {
+    const p = this.current, s = createSurface(p?.doc.width ?? 1, p?.doc.height ?? 1);
+    const g = p?.layer(id);
+    if (!p || !g?.isGroup) return s;
+    const keep = new Set<ID>([id]), inside = (x: Layer): boolean => { for (let a = x.parentId; a; a = p.layer(a)?.parentId ?? null) if (a === id) return true; return false; };
+    for (let a = g.parentId; a; a = p.layer(a)?.parentId ?? null) keep.add(a);
+    const overrides = new Map<ID, LayerOverride>();
+    for (const x of p.doc.layers) {
+      if (keep.has(x.id)) overrides.set(x.id, { hidden: false, opacity: 1, ...(x.id === id ? { blend: 'normal' as BlendMode } : {}) });
+      else if (!inside(x)) overrides.set(x.id, { hidden: true });
+    }
     this.work.render({ doc: p.doc, target: s, view: [1, 0, 0, 1, 0, 0], overrides, quality: 'high' });
     return s;
   }
@@ -8395,7 +8551,7 @@ export class Engine {
       luminance: (c) => luminance(c),
       css: (c, a) => rgbCss(c, a),
       gradient: { shape: st.shape, opacity: st.opacity, blend: st.blend, dither: st.dither },
-      gradientStops: (fg, bg) => gradientMethod(resolveStops(presetById(st.style), fg, bg, st.reversed).map((x) => (st.transparency ? x : { ...x, alpha: 1 })), st.method),
+      gradientStops: (fg, bg) => gradientMethod(resolveStops(this.gradientPreset(), fg, bg, st.reversed).map((x) => (st.transparency ? x : { ...x, alpha: 1 })), st.method),
       positionLocked: (id) => this.locked(id ? this.current?.layer(id) ?? null : this.activeLayer, 'position'),
       linkedOf: (p) => this.withLinked(p),
       keyMove: (id, dx, dy, label) => this.keyMove(id, dx, dy, label),
@@ -8728,7 +8884,47 @@ export class Engine {
     };
   }
 
+  /** The pending gradient's stops as edited on the canvas (a copy of the chosen Colors preset), used while that preset stays chosen. */
+  private gradientEdit: { base: string; preset: GradientPreset } | null = null;
+  gradientPreset(): GradientPreset {
+    const e = this.gradientEdit;
+    return e && e.base === this.gradientSettings.style && this.gradient ? e.preset : presetById(this.gradientSettings.style);
+  }
+  /** Changes the pending gradient's colour stops in place (on first use a copy of the chosen preset) and redraws it. */
+  editGradientStops(fn: (preset: GradientPreset) => void): void {
+    if (!this.gradient) return;
+    const st = this.gradientSettings;
+    if (!this.gradientEdit || this.gradientEdit.base !== st.style) this.gradientEdit = { base: st.style, preset: structuredClone(this.gradientPreset()) };
+    const pr = this.gradientEdit.preset;
+    pr.stops.sort((a, b) => a.at - b.at);
+    fn(pr);
+    pr.stops.sort((a, b) => a.at - b.at);
+    this.renderGradient();
+  }
+  /** A new colour stop on the pending gradient at `at` (0 to 1 along the line, before Reverse), coloured as the gradient is there. Returns its index. */
+  addGradientStop(at: number): number {
+    const st = this.gradientSettings, t = Math.min(1, Math.max(0, st.reversed ? 1 - at : at));
+    const c = colorAt(resolveStops(this.gradientPreset(), this.fg, this.bg, false), t);
+    this.editGradientStops((pr) => { pr.stops.push({ at: t, color: { r: Math.round(c[0]), g: Math.round(c[1]), b: Math.round(c[2]) }, alpha: c[3] }); });
+    return this.gradientPreset().stops.findIndex((s) => s.at === t && typeof s.color === 'object');
+  }
+  removeGradientStop(i: number): boolean {
+    const n = this.gradientPreset().stops.length;
+    if (!this.gradient || n <= 2 || i < 0 || i >= n) return false;
+    this.editGradientStops((pr) => { pr.stops.splice(i, 1); });
+    return true;
+  }
+  moveGradientStop(i: number, at: number): void {
+    this.editGradientStops((pr) => { const s = pr.stops[i]; if (s) s.at = Math.min(1, Math.max(0, Math.round(at * 1000) / 1000)); });
+  }
+  moveGradientMid(i: number, f: number): void {
+    this.editGradientStops((pr) => { const s = pr.stops[i]; if (s) s.mid = Math.min(0.95, Math.max(0.05, Math.round(f * 100) / 100)); });
+  }
+  setGradientStopColour(i: number, c: RGB): void {
+    this.editGradientStops((pr) => { const s = pr.stops[i]; if (s) s.color = { r: c.r, g: c.g, b: c.b }; });
+  }
   beginGradient(pt: Pt): boolean {
+    this.gradientEdit = null;
     const g = PO.beginGradient(this.paintHost, pt);
     this.gradient = g;
     return !!g;
@@ -10093,7 +10289,16 @@ export class Engine {
   /** Unpremultiplied RGB (0 to 1) of the original pixels under a document point, read from the same source the Levels
    *  histogram uses: the target layer's own pixels, its mask's when the mask is targeted, or with `composite` the
    *  flattened document. The Levels eyedroppers sample the edit's original image the same way. */
-  sampleOriginal(pt: Pt, composite: boolean, radius = 0): [number, number, number] | null { return PM.sampleOriginal(this.moveHost, pt, composite, radius); }
+  sampleOriginal(pt: Pt, composite: boolean, radius = 0): [number, number, number] | null {
+    const a = this.alphaTargeted(), p = this.current;
+    if (a && p && !composite) {
+      if (pt.x < 0 || pt.y < 0 || pt.x >= p.doc.width || pt.y >= p.doc.height) return null;
+      let sum = 0, n = 0;
+      for (let y = -radius; y <= radius; y++) for (let x = -radius; x <= radius; x++) { sum += a.mask?.valueAt(pt.x + x, pt.y + y) ?? 0; n++; }
+      return [sum / n / 255, sum / n / 255, sum / n / 255];
+    }
+    return PM.sampleOriginal(this.moveHost, pt, composite, radius);
+  }
 
   /** Lays a subject mask (0 to 1 per layer pixel, 1 over the subject) on a layer as one Remove Background step. An
    *  existing mask of the same size is multiplied in, so whatever either hides stays hidden; the pixels themselves

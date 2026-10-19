@@ -33,6 +33,22 @@ export function sliderRow(label: string, min: number, max: number, step: number,
     q(root, 'span').addEventListener('dblclick', () => { range.value = String(def); box.value = fmt(def); onInput(def); });
     q(root, 'span').title = 'Double-click to reset';
   }
+  // Scrubbable label: a horizontal drag on the label moves the value across the slider's span in about 250 px; Shift is ten times faster, Alt ten times finer.
+  const lab = q(root, 'span');
+  let scrub: { x: number; v: number; id: number; on: boolean } | null = null;
+  lab.classList.add('cv-scrub');
+  lab.addEventListener('pointerdown', (e) => { if (e.button === 0) { scrub = { x: e.clientX, v: range.valueAsNumber, id: e.pointerId, on: false }; lab.setPointerCapture(e.pointerId); } });
+  lab.addEventListener('pointermove', (e) => {
+    if (!scrub || e.pointerId !== scrub.id) return;
+    const dx = e.clientX - scrub.x;
+    if (!scrub.on) { if (Math.abs(dx) < 3) return; scrub.on = true; }
+    const per = ((max - min) / 250) * (e.shiftKey ? 10 : e.altKey ? 0.1 : 1);
+    range.value = String(clamp(Number((Math.round((scrub.v + dx * per) / step) * step).toFixed(6)), min, max));
+    range.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  const endScrub = (e: PointerEvent): void => { if (lab.hasPointerCapture(e.pointerId)) lab.releasePointerCapture(e.pointerId); scrub = null; };
+  lab.addEventListener('pointerup', endScrub);
+  lab.addEventListener('pointercancel', endScrub);
   return { el: root, set(v) { range.value = String(v); setValue(box, fmt(v)); } };
 }
 

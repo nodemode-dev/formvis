@@ -19,6 +19,7 @@ type StepKind =
   | { kind: 'canvasSize'; label: string; w: number; h: number; dx: number; dy: number; fill: RGB | null; fromW?: number; fromH?: number }
   | { kind: 'fitImage'; label: string; w: number; h: number; enlarge: boolean }
   | { kind: 'conditionalMode'; label: string; from: DocMode[]; to: DocMode }
+  | { kind: 'save'; label: string; format: 'png' | 'jpg' | 'webp'; quality: number }
   | { kind: 'conditional'; label: string; test: ConditionTest; then: string; else: string };
 
 /** What a conditional step asks of the document it plays on. */
@@ -47,7 +48,7 @@ export const RECORDABLE: ReadonlySet<string> = new Set([
   'rasterize-type', 'rasterize-shape', 'rasterize-smart', 'rasterize-all', 'reselect', 'grow', 'similar', 'convert-to-shape',
   'save-selection-channel', 'create-layers', 'hide-all-effects', 'link-layers', 'select-linked',
   'frame-from-layers', 'shapes-unite', 'shapes-subtract', 'shapes-intersect', 'shapes-exclude', 'shapes-merge',
-  'auto-tone', 'auto-contrast', 'auto-color', 'desaturate', 'equalize', 'image-crop',
+  'auto-tone', 'auto-contrast', 'auto-color', 'desaturate', 'equalize', 'equalize-layer-from-selection', 'image-crop',
   'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw',
 ]);
 
@@ -76,6 +77,7 @@ function stepFrom(v: unknown): ActionStep | null {
   const from = isNum(s.fromW) && isNum(s.fromH) && s.fromW > 0 && s.fromH > 0 ? { fromW: s.fromW, fromH: s.fromH } : {};
   if (s.kind === 'imageSize' && isNum(s.w) && isNum(s.h) && typeof s.sampling === 'string' && isNum(s.res)) return { kind: 'imageSize', label: label || 'Image Size', w: s.w, h: s.h, sampling: s.sampling, res: s.res, ...from };
   if (s.kind === 'fitImage' && isNum(s.w) && isNum(s.h) && s.w >= 1 && s.h >= 1) return { kind: 'fitImage', label: label || 'Fit Image', w: Math.round(s.w), h: Math.round(s.h), enlarge: s.enlarge !== false };
+  if (s.kind === 'save' && (s.format === 'png' || s.format === 'jpg' || s.format === 'webp') && isNum(s.quality)) return { kind: 'save', label: label || `Save as ${s.format.toUpperCase()}`, format: s.format, quality: Math.min(1, Math.max(0.01, s.quality)) };
   if (s.kind === 'conditionalMode' && Array.isArray(s.from) && s.from.every(isMode) && s.from.length > 0 && isMode(s.to)) return { kind: 'conditionalMode', label: label || 'Conditional Mode Change', from: s.from.filter(isMode), to: s.to };
   if (s.kind === 'canvasSize' && isNum(s.w) && isNum(s.h) && isNum(s.dx) && isNum(s.dy)) {
     const f = s.fill as Record<string, unknown> | null;

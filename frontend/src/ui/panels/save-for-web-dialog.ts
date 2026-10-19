@@ -7,13 +7,13 @@ import { SFW_METADATA, sfwMeta, type SfwMetadata } from '../../io/export-presets
 import { metaWritable } from '../../engine';
 import { api } from '../../io/api';
 import { embedJpeg, embedPng } from '../../io/embed-icc';
-import { iccProfile } from '../../engine/icc';
-import { DITHERS, PALETTES, matteOf, reduceColours, type DitherKind } from '../../io/sfw-reduce';
+import { convertPixels, iccProfile, type SpaceId } from '../../engine/icc';
+import { DITHERS, PALETTES, matteOf, reduceColours, type DitherKind, type TableEntry } from '../../io/sfw-reduce';
 import { SFW_BUILTIN, SFW_DEFAULT, cfgFrom, loadLast, loadUserPresets, saveLast, type SfwCfg, type SfwFormat, type SfwPreset } from '../../io/sfw-presets';
 import { slicesHtml, type HtmlCell } from '../../io/sfw-html';
 import { autoSlices, readingOrder } from '../../extensions/tools/slice';
 import { Dialog, promptName } from '../dialogs';
-import { el, setText } from '../dom';
+import { el, patchList, setText } from '../dom';
 import { checkRow, colorRow, selectRow, sliderRow } from './controls';
 
 const BOX_W = 280, BOX_H = 200;
@@ -65,6 +65,9 @@ export class SaveForWebDialog extends Dialog {
   private presets: SfwPreset[] = [...SFW_BUILTIN];
   /** The colours the last encoded GIF or PNG-8 pane really used, by pane. */
   private used: Array<number | null> = [null, null, null, null];
+  /** The colour table each pane's last indexed encode produced, and the table entry (by palette colour) being edited. */
+  private tables: Array<TableEntry[] | null> = [null, null, null, null];
+  private picked: string | null = null;
   private view: View = 'optimized';
   private metaMode: SfwMetadata = 'copyright';
   private kbps = 56.6;
@@ -82,10 +85,23 @@ export class SaveForWebDialog extends Dialog {
   private readonly status = el<HTMLElement>('<p class="cv-note"></p>');
   private pct = 100;
   private readonly sizeRow = sliderRow('Image size (%)', 10, 400, 1, (v) => { this.pct = Math.round(v); this.schedule(); }, { min: 1, max: 1000 });
-  private readonly format = selectRow('Format', [['jpeg', 'JPEG'], ['png24', 'PNG-24'], ['png8', 'PNG-8'], ['gif', 'GIF'], ['webp', 'WebP'], ['wbmp', 'WBMP']], (v) => { this.cfg = { ...this.cfg, fmt: v as Fmt }; this.sync(); this.schedule(); });
+  private readonly format = selectRow('Format', [['jpeg', 'JPEG'], ['png24', 'PNG-24'], ['png8', 'PNG-8'], ['gif', 'GIF'], ['webp', 'WebP'], ['wbmp', 'WBMP']], (v) => { this.cfg = { ...this.cfg, fmt: v as Fmt, edits: {} }; this.sync(); this.schedule(); });
   private readonly qRow = sliderRow('Quality', 0, 100, 1, (v) => { this.cfg = { ...this.cfg, quality: v }; this.schedule(); });
-  private readonly colorsRow = sliderRow('Colors', 2, 256, 1, (v) => { this.cfg = { ...this.cfg, colors: Math.round(v) }; this.sync(); this.schedule(); });
-  private readonly paletteRow = selectRow('Color reduction', PALETTES.map(([k, t]) => [k, t] as const), (v) => { this.cfg = { ...this.cfg, palette: v as Cfg['palette'] }; this.sync(); this.schedule(); });
+  private readonly colorsRow = sliderRow('Colors', 2, 256, 1, (v) => { this.cfg = { ...this.cfg, colors: Math.round(v), edits: {} }; this.sync(); this.schedule(); });
+  private readonly paletteRow = selectRow('Color reduction', PALETTES.map(([k, t]) => [k, t] as const), (v) => { this.cfg = { ...this.cfg, palette: v as Cfg['palette'], edits: {} }; this.sync(); this.schedule(); });
+  private readonly snapRow = sliderRow('Web Snap (%)', 0, 100, 1, (v) => { this.cfg = { ...this.cfg, webSnap: Math.round(v), edits: {} }; this.sync(); this.schedule(); });
+  private readonly optRow = checkRow('Optimized', (v) => { this.cfg = { ...this.cfg, optimized: v }; this.sync(); this.schedule(); });
+  private readonly srgbRow = checkRow('Convert to sRGB', (v) => { this.cfg = { ...this.cfg, srgb: v }; this.sync(); this.schedule(); });
+  private readonly tableBox = el<HTMLElement>('<div role="listbox" aria-label="Color table" style="display: flex; flex-wrap: wrap; align-content: flex-start; gap: 2px; height: 76px; overflow: auto; padding: 3px; border: 1px solid var(--border-color); border-radius: 4px"></div>');
+  private readonly tableInfo = el<HTMLElement>('<p class="cv-note"></p>');
+  private readonly pickRow = colorRow('Selected color', (hex) => { if (this.picked) { this.cfg = { ...this.cfg, edits: { ...this.cfg.edits, [this.picked]: hex } }; this.schedule(); } });
+  private readonly lockRow = checkRow('Lock selected color', (v) => {
+    const k = this.picked;
+    if (!k) return;
+    this.cfg = { ...this.cfg, locked: v ? [...new Set([...this.cfg.locked, k])] : this.cfg.locked.filter((h) => h !== k) };
+    this.schedule();
+  });
+  private readonly tableReset = el<HTMLButtonElement>('<button class="cv-prefs-tab" type="button">Reset color edits</button>');
   private readonly ditherRow = selectRow('Dither', DITHERS.map(([k, t]) => [k, t] as const), (v) => { this.cfg = { ...this.cfg, dither: v as DitherKind }; this.sync(); this.schedule(); });
   private readonly amountRow = sliderRow('Dither amount (%)', 0, 100, 1, (v) => { this.cfg = { ...this.cfg, ditherAmount: Math.round(v) }; this.sync(); this.schedule(); });
   private readonly transRow = checkRow('Transparency', (v) => { this.cfg = { ...this.cfg, transparency: v }; this.sync(); this.schedule(); });
@@ -114,7 +130,14 @@ export class SaveForWebDialog extends Dialog {
     presetBar.append(this.presetSave, this.presetDel);
     this.presetSave.addEventListener('click', () => { void this.savePreset(); });
     this.presetDel.addEventListener('click', () => this.deletePreset());
-    this.body.append(strip, grid, this.presetRow.el, presetBar, this.format.el, this.sizeRow.el, this.qRow.el, this.progRow.el, this.colorsRow.el, this.paletteRow.el, this.ditherRow.el, this.amountRow.el, this.transRow.el, this.matteRow.el, this.interRow.el, this.iccRow.el, this.metaRow.el, this.speedRow.el, this.scopeRow.el, this.status);
+    this.tableBox.addEventListener('click', (e) => {
+      const k = (e.target as HTMLElement).closest<HTMLElement>('[data-key]')?.dataset.key;
+      if (!k) return;
+      this.picked = k;
+      this.showTable();
+    });
+    this.tableReset.addEventListener('click', () => { this.cfg = { ...this.cfg, edits: {}, locked: [] }; this.sync(); this.schedule(); });
+    this.body.append(strip, grid, this.presetRow.el, presetBar, this.format.el, this.sizeRow.el, this.qRow.el, this.progRow.el, this.optRow.el, this.colorsRow.el, this.paletteRow.el, this.snapRow.el, this.ditherRow.el, this.amountRow.el, this.transRow.el, this.matteRow.el, this.interRow.el, this.srgbRow.el, this.iccRow.el, this.tableBox, this.tableInfo, this.pickRow.el, this.lockRow.el, this.tableReset, this.metaRow.el, this.speedRow.el, this.scopeRow.el, this.status);
     this.cfg = loadLast();
     for (const p of loadUserPresets()) this.addPreset(p);
     this.button('Cancel', 'ghost', () => this.close());
@@ -181,6 +204,7 @@ export class SaveForWebDialog extends Dialog {
     this.layout();
     this.pan = { x: 0, y: 0 };
     this.shown = [];
+    this.picked = null;
     this.release();
     this.canvases.forEach((c) => c.getContext('2d')?.clearRect(0, 0, BOX_W, BOX_H));
     this.caps.forEach((c) => setText(c, ''));
@@ -215,9 +239,18 @@ export class SaveForWebDialog extends Dialog {
     this.progRow.set(this.cfg.progressive);
     this.interRow.set(this.cfg.interlace);
     this.iccRow.set(this.cfg.embedProfile);
+    this.snapRow.set(this.cfg.webSnap);
+    this.optRow.set(this.cfg.optimized);
+    this.srgbRow.set(this.cfg.srgb);
     const lossy = this.fmt === 'jpeg' || this.fmt === 'webp', indexed = this.fmt === 'png8' || this.fmt === 'gif', c = this.cfg;
     this.qRow.el.hidden = !lossy;
     this.progRow.el.hidden = this.fmt !== 'jpeg';
+    this.optRow.el.hidden = this.fmt !== 'jpeg';
+    this.snapRow.el.hidden = !indexed || c.palette === 'web' || c.palette === 'blackwhite' || c.palette === 'grayscale';
+    this.srgbRow.el.hidden = this.fmt === 'wbmp';
+    for (const n of [this.tableInfo, this.pickRow.el, this.lockRow.el, this.tableReset]) n.hidden = !indexed;
+    const box = indexed ? 'flex' : 'none';
+    if (this.tableBox.style.display !== box) this.tableBox.style.display = box;
     this.colorsRow.el.hidden = !indexed;
     this.paletteRow.el.hidden = !indexed;
     this.ditherRow.el.hidden = !indexed;
@@ -229,6 +262,29 @@ export class SaveForWebDialog extends Dialog {
     this.presetRow.set(this.presets.find((p) => JSON.stringify(cfgFrom(p.cfg)) === JSON.stringify(cfgFrom(c)))?.id ?? 'custom');
     const mine = this.presets.find((p) => p.id === (this.presetRow.el.querySelector('select') as HTMLSelectElement).value);
     this.presetDel.hidden = !mine || mine.builtin;
+  }
+
+  /** The colour table of the optimized pane: one swatch a colour, patched in place by palette colour. */
+  private showTable(): void {
+    const t = this.tables[1] ?? [];
+    if (this.picked && !t.some((e) => e.from === this.picked)) this.picked = null;
+    patchList(this.tableBox, [...t].sort((a, b) => b.count - a.count), {
+      key: (e) => e.from,
+      create: (e) => { const b = el<HTMLButtonElement>('<button type="button" role="option" style="width: 16px; height: 16px; padding: 0; border-radius: 2px; border: 1px solid var(--border-color); flex: none"></button>'); b.dataset.key = e.from; return b; },
+      update: (b, e) => {
+        const bg = `rgb(${e.rgb.join(',')})`, on = e.from === this.picked;
+        if (b.style.background !== bg) b.style.background = bg;
+        const edge = on ? 'var(--accent-color)' : e.locked ? 'var(--text-primary)' : 'var(--border-color)';
+        if (b.style.borderColor !== edge) b.style.borderColor = edge;
+        if (b.getAttribute('aria-selected') !== String(on)) b.setAttribute('aria-selected', String(on));
+        const tip = `${e.from}${e.locked ? ' locked' : ''}, ${e.count} pixels`;
+        if (b.title !== tip) b.title = tip;
+      },
+    });
+    const pick = t.find((e) => e.from === this.picked);
+    this.pickRow.set(pick ? `#${pick.rgb.map((v) => v.toString(16).padStart(2, '0')).join('')}` : '#000000');
+    this.lockRow.set(!!pick && this.cfg.locked.includes(pick.from));
+    setText(this.tableInfo, t.length ? `${t.length} colors in the table${pick ? `. Selected ${pick.from}, ${pick.count} pixels.` : '. Click a color to edit or lock it.'}` : '');
   }
 
   /** A preset in the list: its option is added to the select, never the select rebuilt. */
@@ -287,6 +343,21 @@ export class SaveForWebDialog extends Dialog {
     return c;
   }
 
+  /** A copy of the picture converted to sRGB from the document's profile when that is Display P3 or Adobe RGB; the picture itself otherwise. */
+  private srgbOf(c: HTMLCanvasElement): HTMLCanvasElement {
+    const name = this.engine.current?.doc.profile?.name ?? '';
+    const from: SpaceId | null = /display p3/i.test(name) ? 'display-p3' : /adobe rgb/i.test(name) ? 'adobe-rgb' : null;
+    const ctx = c.getContext('2d');
+    if (!from || !ctx) return c;
+    const m = document.createElement('canvas'), mc = m.getContext('2d');
+    m.width = c.width; m.height = c.height;
+    if (!mc) return c;
+    const d = ctx.getImageData(0, 0, c.width, c.height);
+    convertPixels(d.data, from, 'srgb');
+    mc.putImageData(d, 0, 0);
+    return m;
+  }
+
   /** Encodes a canvas with the given settings. PNG-8 is a true indexed PNG (io/png8.ts); the File Info chosen under
    *  Metadata is written as XMP into PNG, JPEG and WebP (GIF and a palette-free path carry none). */
   private async encode(c: HTMLCanvasElement, cfg: Cfg = this.cfg, real = false, slot = -1): Promise<Blob | null> {
@@ -297,7 +368,8 @@ export class SaveForWebDialog extends Dialog {
       if (mc) { mc.fillStyle = cfg.matte; mc.fillRect(0, 0, m.width, m.height); mc.drawImage(c, 0, 0); }
       return m;
     };
-    if (slot >= 0) this.used[slot] = null;
+    if (slot >= 0) { this.used[slot] = null; this.tables[slot] = null; }
+    if (cfg.srgb) c = this.srgbOf(c);
     switch (cfg.fmt) {
       case 'wbmp': {
         // The preview is the same 1-bit picture as a PNG (browsers cannot show WBMP); the saved file is the engine's.
@@ -307,8 +379,8 @@ export class SaveForWebDialog extends Dialog {
       case 'jpeg': {
         const flat = onMatte();
         blob = null;
-        if (cfg.progressive) {
-          try { const png = await toBlob(flat, 'image/png'); blob = png ? await api.encode(png, 'jpeg', cfg.quality, 72, null, { progressive: true }) : null; } catch { blob = null; }
+        if (cfg.progressive || cfg.optimized) {
+          try { const png = await toBlob(flat, 'image/png'); blob = png ? await api.encode(png, 'jpeg', cfg.quality, 72, null, { progressive: cfg.progressive, optimize: cfg.optimized }) : null; } catch { blob = null; }
         }
         blob = blob ?? await toBlob(flat, 'image/jpeg', cfg.quality / 100);
         break;
@@ -319,8 +391,8 @@ export class SaveForWebDialog extends Dialog {
         const ctx = c.getContext('2d');
         if (!ctx) return null;
         const d = ctx.getImageData(0, 0, c.width, c.height);
-        const r = reduceColours(d.data, c.width, c.height, { palette: cfg.palette, colors: cfg.colors, dither: cfg.dither, amount: cfg.ditherAmount, transparency: cfg.transparency, matte: matteOf(cfg.matte) });
-        if (slot >= 0) this.used[slot] = r.used;
+        const r = reduceColours(d.data, c.width, c.height, { palette: cfg.palette, colors: cfg.colors, dither: cfg.dither, amount: cfg.ditherAmount, transparency: cfg.transparency, matte: matteOf(cfg.matte), snap: cfg.webSnap, locked: cfg.locked, edits: cfg.edits });
+        if (slot >= 0) { this.used[slot] = r.used; this.tables[slot] = r.table; }
         if (cfg.fmt === 'gif') {
           const bytes = encodeGif([{ data: new ImageData(r.data as Uint8ClampedArray<ArrayBuffer>, c.width, c.height), delayMs: 0 }], c.width, c.height);
           return new Blob([bytes as BlobPart], { type: 'image/gif' });
@@ -365,6 +437,7 @@ export class SaveForWebDialog extends Dialog {
     bmps.forEach((b, k) => { this.srcs[k + 1] = b; });
     this.drawAll();
     blobs.forEach((b, k) => { if (b) this.caption(k + 1, vs[k]!, b); });
+    this.showTable();
     if (want[0]) {
       const png = await toBlob(flat, 'image/png');
       if (token !== this.token) return;

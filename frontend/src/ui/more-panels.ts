@@ -119,17 +119,29 @@ function stats(bins: ArrayLike<number>): { n: number; mean: number; sd: number; 
   return { n, mean, sd: Math.sqrt(v / n), median };
 }
 
-/** The Histogram panel: the composite's histogram of a downsampled copy (at most 512 px on the long side), recomputed on
+/** The Histogram panel: the composite's histogram of a downsampled copy (Auto: at most 512 px on the long side; Cache
+ *  Level 1 is every pixel, each level after halves the size again), Level, Count and Percentile under the pointer, recomputed on
  *  'render' and 'history' only, at most once per animation frame and once every 250 ms, and only while the panel shows. */
 function histogramPanel(root: HTMLElement, engine: Engine): void {
   const sec = section(root, 'cv-histogram-panel', 'Histogram', 'histogram',
     `<select class="cv-input cv-hist-channel" aria-label="Channel">${CHANNELS.map((c) => `<option value="${c.id}">${c.label}</option>`).join('')}</select>` +
+    `<select class="cv-input cv-hist-cache" aria-label="Cache Level"><option value="0">Cache Level: Auto</option>${[1, 2, 3, 4, 5, 6, 7, 8].map((n) => `<option value="${n}">Cache Level: ${n}${n === 1 ? ' (full size)' : ''}</option>`).join('')}</select>` +
     '<canvas class="cv-hist-canvas" width="256" height="100" aria-label="Histogram"></canvas>' +
-    '<dl class="cv-hist-stats"><dt>Mean</dt><dd data-s="mean"></dd><dt>Std Dev</dt><dd data-s="sd"></dd><dt>Median value</dt><dd data-s="median"></dd><dt>Pixels</dt><dd data-s="n"></dd></dl>');
-  const select = q<HTMLSelectElement>(sec, '.cv-hist-channel'), canvas = q<HTMLCanvasElement>(sec, '.cv-hist-canvas');
+    '<dl class="cv-hist-stats"><dt>Mean</dt><dd data-s="mean"></dd><dt>Std Dev</dt><dd data-s="sd"></dd><dt>Median value</dt><dd data-s="median"></dd><dt>Pixels</dt><dd data-s="n"></dd><dt>Level</dt><dd data-s="level"></dd><dt>Count</dt><dd data-s="count"></dd><dt>Percentile</dt><dd data-s="pct"></dd><dt>Cache Level</dt><dd data-s="cache"></dd></dl>');
+  const select = q<HTMLSelectElement>(sec, '.cv-hist-channel'), cacheSel = q<HTMLSelectElement>(sec, '.cv-hist-cache'), canvas = q<HTMLCanvasElement>(sec, '.cv-hist-canvas');
   const out = (k: string): HTMLElement => q(sec, `[data-s="${k}"]`);
   let bins: { r: Uint32Array; g: Uint32Array; b: Uint32Array; l: Uint32Array } | null = null;
-  let pixels = 0, dirty = true, queued = false, lastRun = 0, timer = 0;
+  let pixels = 0, sampled = 0, cacheUsed = 0, shown: Uint32Array | null = null, dirty = true, queued = false, lastRun = 0, timer = 0;
+
+  const readout = (level: number): void => {
+    if (!shown || level < 0 || level > 255) { for (const k of ['level', 'count', 'pct']) setText(out(k), ''); return; }
+    let below = 0, all = 0;
+    for (let i = 0; i < 256; i++) { all += shown[i]; if (i < level) below += shown[i]; }
+    const up = sampled > 0 ? pixels / sampled : 1;
+    setText(out('level'), String(level));
+    setText(out('count'), Math.round(shown[level] * up).toLocaleString());
+    setText(out('pct'), all > 0 ? `${((below / all) * 100).toFixed(2)}` : '');
+  };
 
   const draw = (): void => {
     const g = canvas.getContext('2d');
@@ -137,7 +149,7 @@ function histogramPanel(root: HTMLElement, engine: Engine): void {
     g.clearRect(0, 0, canvas.width, canvas.height);
     const ch = select.value;
     const on = !!bins && pixels > 0;
-    if (!bins || !on) { for (const k of ['mean', 'sd', 'median', 'n']) setText(out(k), ''); return; }
+    if (!bins || !on) { shown = null; for (const k of ['mean', 'sd', 'median', 'n', 'level', 'count', 'pct', 'cache']) setText(out(k), ''); return; }
     const H = canvas.height;
     const layers: Array<[Uint32Array, string]> = ch === 'rgb' ? [[bins.r, '#e0453a'], [bins.g, '#3ab55a'], [bins.b, '#4a78e6']]
       : ch === 'r' ? [[bins.r, '#e0453a']] : ch === 'g' ? [[bins.g, '#3ab55a']] : ch === 'b' ? [[bins.b, '#4a78e6']] : [[bins.l, getComputedStyle(canvas).color]];
@@ -152,7 +164,9 @@ function histogramPanel(root: HTMLElement, engine: Engine): void {
     const sum = new Uint32Array(256);
     const src = ch === 'rgb' ? [bins.r, bins.g, bins.b] : ch === 'r' ? [bins.r] : ch === 'g' ? [bins.g] : ch === 'b' ? [bins.b] : [bins.l];
     for (const a of src) for (let i = 0; i < 256; i++) sum[i] += a[i];
+    shown = sum;
     const s = stats(sum);
+    setText(out('cache'), String(cacheUsed));
     setText(out('mean'), s.mean.toFixed(2));
     setText(out('sd'), s.sd.toFixed(2));
     setText(out('median'), String(s.median));
@@ -164,11 +178,13 @@ function histogramPanel(root: HTMLElement, engine: Engine): void {
     lastRun = performance.now();
     const flat = engine.flattened();
     if (!flat || flat.width < 1 || flat.height < 1) { bins = null; pixels = 0; draw(); return; }
-    const k = Math.min(1, SAMPLE_MAX / Math.max(flat.width, flat.height));
+    const level = Number(cacheSel.value) || 0, k = level ? 1 / 2 ** (level - 1) : Math.min(1, SAMPLE_MAX / Math.max(flat.width, flat.height));
     const w = Math.max(1, Math.round(flat.width * k)), h = Math.max(1, Math.round(flat.height * k));
     const small = createSurface(w, h), g = ctxOf(small);
     g.drawImage(flat, 0, 0, w, h);
-    bins = histogram(g.getImageData(0, 0, w, h));
+    bins = histogram(g.getImageData(0, 0, w, h), level > 0);
+    sampled = w * h;
+    cacheUsed = level || Math.max(1, Math.round(Math.log2(1 / Math.min(1, k))) + 1);
     pixels = flat.width * flat.height;
     draw();
   };
@@ -188,6 +204,9 @@ function histogramPanel(root: HTMLElement, engine: Engine): void {
   engine.on('render', () => schedule());
   engine.on('history', () => schedule());
   select.addEventListener('change', draw);
+  cacheSel.addEventListener('change', () => { dirty = true; compute(); });
+  canvas.addEventListener('pointermove', (e) => { const b = canvas.getBoundingClientRect(); readout(Math.floor(((e.clientX - b.left) / Math.max(1, b.width)) * 256)); });
+  canvas.addEventListener('pointerleave', () => readout(-1));
   // A panel shown from the Window menu raises no engine event, so it looks again when it gains a size.
   new ResizeObserver(() => { if (dirty) schedule(); }).observe(sec);
   sec.addEventListener('pointerenter', () => { if (dirty) schedule(); });

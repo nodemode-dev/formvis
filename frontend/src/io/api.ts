@@ -561,8 +561,8 @@ export const api = {
   },
   /** File > Automate > Merge to HDR (1.58.2): the exposures merged by the engine into linear light (RGB floats), with
    *  the exposure times used and where they came from. */
-  async mergeHdr(files: File[]): Promise<{ width: number; height: number; rgb: Float32Array; times: number[]; source: string }> {
-    const r = await request('/merge/hdr', { method: 'POST', body: form({}, files.map((f) => ({ name: f.name, blob: f })), 'file') });
+  async mergeHdr(files: File[], opts: { align?: boolean; times?: number[] } = {}): Promise<{ width: number; height: number; rgb: Float32Array; times: number[]; source: string }> {
+    const r = await request('/merge/hdr', { method: 'POST', body: form({ align: String(opts.align !== false), times: (opts.times ?? []).join(',') }, files.map((f) => ({ name: f.name, blob: f })), 'file') });
     const b = new Uint8Array(await r.arrayBuffer()), n = b[0] | (b[1] << 8) | (b[2] << 16) | (b[3] << 24);
     const head = JSON.parse(new TextDecoder().decode(b.subarray(4, 4 + n))) as { width: number; height: number; times: number[]; source: string };
     return { ...head, rgb: new Float32Array(b.slice(4 + n).buffer) };

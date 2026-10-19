@@ -32,6 +32,24 @@ export async function embeddedProfile(file: Blob): Promise<Uint8Array | null> {
       let at = 0; for (const [, p] of parts) { out.set(p, at); at += p.length; }
       return out;
     }
+    if ((head[0] === 0x49 && head[1] === 0x49 && head[2] === 42 && head[3] === 0) || (head[0] === 0x4d && head[1] === 0x4d && head[2] === 0 && head[3] === 42)) {   // TIFF, tag 34675
+      const le = head[0] === 0x49, u16 = (b: DataView, o: number): number => b.getUint16(o, le), u32 = (b: DataView, o: number): number => b.getUint32(o, le);
+      const ifd = u32(dv, 4), area = new DataView(await file.slice(ifd, ifd + 2 + 12 * 512).arrayBuffer());
+      for (let i = 0, n = Math.min(512, u16(area, 0)); i < n; i++) {
+        const e = 2 + i * 12;
+        if (u16(area, e) === 34675) { const len = u32(area, e + 4), at = u32(area, e + 8); return new Uint8Array(await file.slice(at, at + len).arrayBuffer()); }
+      }
+      return null;
+    }
+    if (tag(0) === '8BPS') {   // PSD, image resource 1039
+      const skip = 26 + 4 + dv.getUint32(26), size = dv.getUint32(skip);
+      for (let o = skip + 4, end = Math.min(head.length, skip + 4 + size); o + 12 <= end;) {
+        const id = dv.getUint16(o + 4), nameLen = head[o + 6], at = o + 6 + ((1 + nameLen + 1) & ~1), len = dv.getUint32(at);
+        if (id === 1039) return head.slice(at + 4, at + 4 + len);
+        o = at + 4 + len + (len & 1);
+      }
+      return null;
+    }
     if (tag(0) === 'RIFF' && tag(8) === 'WEBP') {
       for (let o = 12; o + 8 <= head.length;) {
         const len = dv.getUint32(o + 4, true);

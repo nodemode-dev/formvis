@@ -1,12 +1,12 @@
 import type { BlendMode as PsdBlend, Layer as PsdLayer, LayerEffectsInfo, LinkedFile, PatternInfo, Psd, UnitsValue, VectorContent } from 'ag-psd';
 import {
-  Raster, boundsOf, docTransform, effectsPresent, integral, liveText, newLayer, placement, applyMat, uid, type BlendMode, type Doc, type ID, type Layer, type Surface, invert, mul, toBlob, type Pt, defaultEffects, patternById, addPattern, projectPatterns, createSurface, ctxOf, type LayerEffects, renderText, textKey, TEXT_FONTS, type TextSpec, ADJUSTMENT_LABELS,
+  Raster, boundsOf, docTransform, effectsPresent, integral, liveText, newLayer, placement, applyMat, uid, type BlendMode, type Doc, type ID, type Layer, type Surface, invert, mul, toBlob, type Pt, defaultEffects, patternById, addPattern, projectPatterns, createSurface, ctxOf, type LayerEffects, renderText, textKey, TEXT_FONTS, type TextSpec, ADJUSTMENT_LABELS, hsvFromData,
 } from '../engine';
 import { fromPsdAdjustment, toPsdAdjustment } from './psd-adjust';
 import { artboardFromData, blendIfActive, type BlendIf, type DocSlice, type LayerComp } from '../engine/types';
 import { windingArea } from '../engine/custom-shapes';
 import { addIccResource, addPathResources, clippingPathName, readPathResources, resourceBlocks } from './psd-paths';
-import { readExtraChannels, readIccProfile } from './psd-channels';
+import { addExtraChannels, readExtraChannels, readIccProfile } from './psd-channels';
 import { fromBase64 } from './icc-read';
 import { buildMergedXmp, metaFromXmp } from './xmp';
 import { metaWritable } from '../engine/doc-meta';
@@ -709,13 +709,14 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
     out.mask = { canvas: mp.c, left: mp.x, top: mp.y, defaultColor: maskEdgeTone(mk.raster), disabled: !mk.enabled, ...(mk.density !== undefined && mk.density < 100 ? { userMaskDensity: mk.density / 100 } : {}), ...(mk.feather ? { userMaskFeather: mk.feather } : {}), ...(l.vectorMask?.density !== undefined && l.vectorMask.density < 100 ? { vectorMaskDensity: l.vectorMask.density / 100 } : {}), ...(l.vectorMask?.feather ? { vectorMaskFeather: l.vectorMask.feather } : {}) };
   };
   const toPsd = (l: Layer): PsdLayer | null => {
-    if (l.isGroup) return { name: l.name, hidden: !l.visible, opacity: l.opacity, blendMode: groupIsolated(l) ? TO_PSD[l.blend] ?? 'normal' : 'pass through', opened: true, children: build(l.id), ...toPsdArtboard(l) };
+    const tag: Pick<PsdLayer, 'layerColor'> = l.label ? { layerColor: l.label } : {};
+    if (l.isGroup) return { name: l.name, hidden: !l.visible, opacity: l.opacity, blendMode: groupIsolated(l) ? TO_PSD[l.blend] ?? 'normal' : 'pass through', opened: true, children: build(l.id), ...tag, ...toPsdArtboard(l) };
     if (l.adjustment) {
       // An adjustment layer goes as a PSD one, live, with its mask, opacity, blend and clipping.
       const adjustment = toPsdAdjustment(l.adjustment);
       if (!adjustment) { notes.push(`"${l.name}" is a ${ADJUSTMENT_LABELS[l.adjustment.kind]} adjustment, which the PSD format has no adjustment layer for; it is left out of the PSD.`); return null; }
-      if (l.adjustment.kind === 'hsv' && (l.adjustment.data as { colorize?: unknown }).colorize === true) notes.push(`"${l.name}" uses Colorize, which the PSD's Hue/Saturation layer does not carry from formvis.`);
-      const out: PsdLayer = { name: l.name, opacity: l.opacity, ...(l.fill !== undefined && l.fill !== 1 ? { fillOpacity: l.fill } : {}), ...(l.locks ? { protected: { transparency: !!(l.locks.all || l.locks.transparency), composite: !!(l.locks.all || l.locks.pixels), position: !!(l.locks.all || l.locks.position) } } : {}), hidden: !l.visible, blendMode: TO_PSD[l.blend] ?? 'normal', clipping: !!l.clipId, adjustment, ...toPsdBlending(l) };
+      if (l.adjustment.kind === 'hsv' && hsvFromData(l.adjustment.data as never).colorize) notes.push(`"${l.name}" uses Colorize, which the PSD's Hue/Saturation layer does not carry from formvis.`);
+      const out: PsdLayer = { name: l.name, opacity: l.opacity, ...(l.fill !== undefined && l.fill !== 1 ? { fillOpacity: l.fill } : {}), ...(l.locks ? { protected: { transparency: !!(l.locks.all || l.locks.transparency), composite: !!(l.locks.all || l.locks.pixels), position: !!(l.locks.all || l.locks.position) } } : {}), hidden: !l.visible, blendMode: TO_PSD[l.blend] ?? 'normal', clipping: !!l.clipId, adjustment, ...tag, ...toPsdBlending(l) };
       maskOnto(l, out);
       return out;
     }
@@ -724,7 +725,7 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
     if (!px) return null;
 
 
-    const out: PsdLayer = { name: l.name, left: px.x, top: px.y, canvas: px.c, opacity: l.opacity, ...(l.fill !== undefined && l.fill !== 1 ? { fillOpacity: l.fill } : {}), ...(l.locks ? { protected: { transparency: !!(l.locks.all || l.locks.transparency), composite: !!(l.locks.all || l.locks.pixels), position: !!(l.locks.all || l.locks.position) } } : {}), hidden: !l.visible, blendMode: TO_PSD[l.blend] ?? 'normal', clipping: !!l.clipId, ...toPsdBlending(l) };
+    const out: PsdLayer = { name: l.name, left: px.x, top: px.y, canvas: px.c, opacity: l.opacity, ...(l.fill !== undefined && l.fill !== 1 ? { fillOpacity: l.fill } : {}), ...(l.locks ? { protected: { transparency: !!(l.locks.all || l.locks.transparency), composite: !!(l.locks.all || l.locks.pixels), position: !!(l.locks.all || l.locks.position) } } : {}), hidden: !l.visible, blendMode: TO_PSD[l.blend] ?? 'normal', clipping: !!l.clipId, ...tag, ...toPsdBlending(l) };
     if (effectsPresent(l.effects)) { const e = toPsdEffects(l.effects, psdPatterns); if (e) out.effects = e; }
     const bv = l.effects?.bevel;
     if (bv?.enabled && (bv.contour?.enabled || bv.texture?.enabled)) notes.push(`"${l.name}"'s Bevel & Emboss Contour and Texture are not written to the PSD; it draws the bevel without them.`);
@@ -750,16 +751,19 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
     const v = l.vector, t = l.transform;
     if (v && l.raster) {
       // A shape layer goes as a PSD shape: its path as a vector mask, with its fill and stroke, beside its pixels.
-      // Only a move keeps the path exact; after a scale, rotation or flip it goes as pixels.
-      const moved = t.rotation === 0 && !t.flipX && !t.flipY && Math.abs(t.w - l.raster.width) < 1e-6 && Math.abs(t.h - l.raster.height) < 1e-6;
-      if (moved) {
-        const dx = t.x - v.origin.x, dy = t.y - v.origin.y, rgb = (c: { r: number; g: number; b: number }) => ({ r: c.r, g: c.g, b: c.b });
+      // A move keeps the path exact; a scale, rotation or flip carries the placement into the outline's points.
+      {
+        const moved = t.rotation === 0 && !t.flipX && !t.flipY && Math.abs(t.w - l.raster.width) < 1e-6 && Math.abs(t.h - l.raster.height) < 1e-6;
+        const m = placement(t, l.raster.width, l.raster.height), rgb = (c: { r: number; g: number; b: number }) => ({ r: c.r, g: c.g, b: c.b });
+        const at = (x: number, y: number): Pt => { const q = applyMat(m, x - v.origin.x, y - v.origin.y); return { x: q.x, y: q.y }; };
+        const subpaths = moved ? v.path.subpaths : v.path.subpaths.map((sp) => ({ ...sp, anchors: sp.anchors.map((a) => { const p = at(a.x, a.y), i = at(a.inX, a.inY), o = at(a.outX, a.outY); return { x: p.x, y: p.y, inX: i.x, inY: i.y, outX: o.x, outY: o.y }; }) }));
+        const k = moved ? 1 : Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2])) || 1;
         // formvis fills by the nonzero rule, so an outline wound against the largest one is a hole; the PSD says so with
         // the subtract operation.
-        out.vectorMask = { paths: psdOutlines(v.path.subpaths, dx, dy) };
+        out.vectorMask = { paths: psdOutlines(subpaths, moved ? t.x - v.origin.x : 0, moved ? t.y - v.origin.y : 0) };
         out.vectorFill = { type: 'color', color: rgb(v.fill ?? v.stroke?.color ?? { r: 0, g: 0, b: 0 }) };
-        out.vectorStroke = { strokeEnabled: !!v.stroke, fillEnabled: !!v.fill, lineWidth: { units: 'Pixels', value: v.stroke?.width ?? 1 }, lineCapType: 'round', lineJoinType: 'round', lineAlignment: 'center', content: { type: 'color', color: rgb(v.stroke?.color ?? v.fill ?? { r: 0, g: 0, b: 0 }) } };
-      } else notes.push(`"${l.name}" goes as pixels; after a scale, rotation or flip the PSD cannot keep it as a shape.`);
+        out.vectorStroke = { strokeEnabled: !!v.stroke, fillEnabled: !!v.fill, lineWidth: { units: 'Pixels', value: (v.stroke?.width ?? 1) * k }, lineCapType: 'round', lineJoinType: 'round', lineAlignment: 'center', content: { type: 'color', color: rgb(v.stroke?.color ?? v.fill ?? { r: 0, g: 0, b: 0 }) } };
+      }
     }
     const vm = l.vectorMask;
     if (vm && !v && !l.fillContent) {
@@ -834,5 +838,7 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
   if (doc.globalLight) psd.imageResources = { ...(psd.imageResources ?? {}), globalAngle: Math.round(doc.globalLight.angle), globalAltitude: Math.round(doc.globalLight.altitude) };   // 1037 and 1049
   let icc: Uint8Array | null = null;
   try { icc = doc.profile ? fromBase64(doc.profile.icc) : null; } catch { notes.push('The document\'s colour profile could not be read, so the PSD carries none.'); }
-  return { bytes: addIccResource(addPathResources(writePsd(psd, { generateThumbnail: maximize, psb }), paths, doc.width, doc.height), icc), notes };
+  const alphas = doc.alphas ?? [];
+  if (alphas.length > 50) notes.push('A PSD holds at most 56 channels; the alpha channels after the first 50 are left out.');
+  return { bytes: addExtraChannels(addIccResource(addPathResources(writePsd(psd, { generateThumbnail: maximize, psb }), paths, doc.width, doc.height), icc), alphas), notes };
 }

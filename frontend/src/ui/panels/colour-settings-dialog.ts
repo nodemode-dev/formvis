@@ -8,7 +8,7 @@ import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
 import { loadPrefs, savePrefs } from '../prefs';
 import { toast } from '../toast';
-import { checkRow, selectRow, type Row } from './controls';
+import { checkRow, selectRow, sliderRow, type Row } from './controls';
 import { MissingProfileDialog } from './colour-dialogs';
 
 const BUILT_IN_RGB: Array<[string, string]> = [['srgb', 'sRGB IEC61966-2.1'], ['display-p3', 'Display P3'], ['adobe-rgb', 'Adobe RGB (1998)']];
@@ -49,6 +49,10 @@ export class ColorSettingsDialog extends Dialog {
   private readonly bpcRow: Row<boolean>;
   private readonly ditherRow: Row<boolean>;
   private readonly displayRow: Row<boolean>;
+  private readonly monitorRow: Row<string>;
+  private readonly askPasteRow: Row<boolean>;
+  private readonly askModeRow: Row<boolean>;
+  private readonly gammaRow: Row<number>;
   private readonly exrRow: Row<boolean>;
   private readonly displayNote = el('<p class="cv-note"></p>');
   private readonly tac = readout('Total ink limit');
@@ -76,6 +80,10 @@ export class ColorSettingsDialog extends Dialog {
     this.bpcRow = checkRow('Use Black Point Compensation', (v) => set({ bpc: v }));
     this.ditherRow = checkRow('Use Dither (8-bit/channel)', (v) => set({ dither: v }));
     this.displayRow = checkRow('Draw the canvas through the monitor profile', (v) => set({ useDisplay: v }));
+    this.monitorRow = selectRow('Monitor profile', [['system', 'System profile'], ...BUILT_IN_RGB], (v) => set({ monitor: v }));
+    this.askPasteRow = checkRow('Ask when pasting, profile mismatch', (v) => set({ askPaste: v }));
+    this.askModeRow = checkRow('Ask for options when changing mode', (v) => set({ askMode: v }));
+    this.gammaRow = sliderRow('Blend text colors using gamma', 1, 2.4, 0.05, (v) => set({ textGamma: v }), { def: 1 });
     this.exrRow = checkRow('Open OpenEXR files as ACEScg', (v) => set({ exrAcescg: v }));
     const save = el<HTMLButtonElement>('<button class="cv-btn" type="button">Save Preset</button>');
     this.deleteBtn = el<HTMLButtonElement>('<button class="cv-btn" type="button">Delete Preset</button>');
@@ -84,9 +92,9 @@ export class ColorSettingsDialog extends Dialog {
     const manage = el('<div class="cv-field"><span></span><div class="cv-row-actions"></div></div>');
     (manage.lastElementChild as HTMLElement).append(this.nameInput, save, this.deleteBtn);
     this.body.append(this.presetRow.el, heading('Working Spaces'), this.rgbRow.el, this.cmykRow.el, this.grayRow.el,
-      heading('Color Management Policies'), this.policyRows.rgb.el, this.policyRows.cmyk.el, this.policyRows.gray.el, this.askMismatch.el, this.askMissing.el, this.exrRow.el,
-      heading('Conversion Options'), this.engineRow.el, this.intentRow.el, this.bpcRow.el, this.ditherRow.el,
-      heading('Display'), this.displayRow.el, this.displayNote,
+      heading('Color Management Policies'), this.policyRows.rgb.el, this.policyRows.cmyk.el, this.policyRows.gray.el, this.askMismatch.el, this.askMissing.el, this.askPasteRow.el, this.exrRow.el,
+      heading('Conversion Options'), this.engineRow.el, this.intentRow.el, this.bpcRow.el, this.ditherRow.el, this.askModeRow.el, this.gammaRow.el,
+      heading('Display'), this.displayRow.el, this.monitorRow.el, this.displayNote,
       heading('CMYK Profile'), this.tac.el, this.black.el, this.generation.el, this.doc, manage, this.note);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.ok());
@@ -123,6 +131,7 @@ export class ColorSettingsDialog extends Dialog {
       if (def) shipped = `Default: ${def.name}`;
     } catch (err) { setText(this.note, msg(err)); }
     patch(selectOf(this.rgbRow), rgb);
+    patch(selectOf(this.monitorRow), [['system', 'System profile'], ...rgb.filter(([v]) => v !== 'srgb'), ['srgb', 'sRGB IEC61966-2.1 (assumed)']]);
     patch(selectOf(this.cmykRow), [['default', shipped], ...cmyk]);
     patch(selectOf(this.grayRow), gray.length ? gray : [['id:builtin:gray-g22', 'Gray Gamma 2.2']]);
   }
@@ -143,9 +152,11 @@ export class ColorSettingsDialog extends Dialog {
     this.engineRow.set('lcms'); this.intentRow.set(s.intent); this.bpcRow.set(s.bpc); this.ditherRow.set(s.dither);
     const monitor = this.view()?.display ?? null;
     this.displayRow.set(s.useDisplay);
+    this.monitorRow.set(s.monitor); this.askPasteRow.set(s.askPaste); this.askModeRow.set(s.askMode); this.gammaRow.set(s.textGamma);
     this.exrRow.set(s.exrAcescg);
-    for (const i of this.displayRow.el.querySelectorAll('input')) i.disabled = !monitor?.icc;
-    setText(this.displayNote, displayLine(monitor, s.useDisplay));
+    for (const i of this.displayRow.el.querySelectorAll('input')) i.disabled = !monitor?.icc && s.monitor === 'system';
+    selectOf(this.monitorRow).disabled = !s.useDisplay;
+    setText(this.displayNote, s.monitor === 'system' ? displayLine(monitor, s.useDisplay) : s.useDisplay ? 'The canvas is drawn for the profile chosen here, whatever the system reports.' : displayLine(monitor, false));
     this.deleteBtn.disabled = !this.saved.some((x) => x.id === this.presetId);
     const p = this.engine.current;
     setText(this.doc, p ? `This document: ${p.doc.profile?.name ?? (p.doc.mode === 'lab' ? 'Lab (D50)' : 'sRGB IEC61966-2.1')} · ${p.doc.depth ?? 8}-bit` : '');

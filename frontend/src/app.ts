@@ -29,8 +29,9 @@ import { SelectMaskDialog } from './ui/panels/select-mask-dialog';
 import { ContentFillDialog } from './ui/panels/content-fill-dialog';
 import { GradientEditor, loadSavedGradients } from './ui/panels/gradient-editor';
 import { convertToLinked, linkedFiles, pickLinkSource, placeEmbedded, placeLinked, relink, updateLinked, watchLinked } from './io/links';
-import { importAbr, loadImportedBrushes, addSampledBrush } from './io/brush-library';
-import { importedBrushPresets } from './engine/brush-dynamics';
+import { importAbr, loadImportedBrushes, addSampledBrush, moveBrushPreset, removeImportedBrush, renameBrushGroup, renameImportedBrush, saveBrushPreset } from './io/brush-library';
+import { allBrushPresets, importedBrushPresets } from './engine/brush-dynamics';
+import { BrushPicker } from './ui/brush-picker';
 import { snapOptions } from './engine/pixel-move';
 import { SPACES, convertPixels, iccProfile, type SpaceId } from './engine/icc';
 import { embedJpeg, embedPng } from './io/embed-icc';
@@ -103,7 +104,7 @@ import { LayerStyleDialog } from './ui/panels/layer-style-dialog';
 import { GenerativeDialog } from './ui/panels/generative-dialog';
 import { readPat, writePat } from './io/pat';
 import { cleanFeatures } from './engine/opentype';
-import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, COLOR_RANGE_MODES, Engine, LAYER_LABELS, Raster, SelectionMask,stripExt, toBlob, type ImportedImage, type Pt, type SelectionMode, type TextSpec, effectsActive, effectsPresent, liveText, ctxOf, createSurface, type AdjustmentKind, effectsFromData, runFilterOffThread, addPattern, allPatterns, patternById, projectPatterns, randomSeed, metaWritable, addCustomShape, allCustomShapes, loadCustomShapes } from './engine';
+import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, BLEND_MODES, COLOR_RANGE_MODES, Engine, LAYER_LABELS, Raster, SelectionMask,stripExt, toBlob, type ImportedImage, type Pt, type SelectionMode, type TextSpec, effectsActive, effectsPresent, liveText, ctxOf, createSurface, type AdjustmentKind, effectsFromData, runFilterOffThread, addPattern, allPatterns, patternById, projectPatterns, randomSeed, metaWritable, addCustomShape, allCustomShapes, loadCustomShapes } from './engine';
 import { getTool, toolForKey, toolsForKey } from './extensions/registry';
 import { registerBuiltinTools } from './extensions/tools';
 import { stepBrush } from './extensions/tools/brush';
@@ -131,6 +132,7 @@ import { VanishingPointDialog } from './ui/panels/vanishing-dialog';
 import { VideoImportDialog } from './ui/panels/video-dialog';
 import { VideoTimelinePanel } from './ui/video-timeline';
 import { RenderVideoDialog, type RenderChoice } from './ui/panels/render-video-dialog';
+import { TiffOptionsDialog } from './ui/panels/tiff-options-dialog';
 import { LargePictureError, IMAGE_ACCEPT, PROJECT_ACCEPT, RAW_FILE, decodeDeepLayer, decodeFrames, decodeTgaSplit, decodeHdr, decodeImage, heifBits, isImageFile, isProjectFile, nameRawByContent, apngFrames, rasteriseSvg, svgSize } from './io/images';
 import { addFontFace, familyOfFile, fontFamilies, loadSystemFonts } from './ui/fonts';
 import { deserialize, giantTiles, serialize } from './io/project-io';
@@ -152,6 +154,7 @@ import { NativeDisplay } from './gpu/native-display';
 import { PerfDialog, recordPerformance } from './ui/perf-recorder';
 import { NavigatorPanel } from './ui/navigator';
 import { SwatchesPanel } from './ui/swatches';
+import { setPatternGroup } from './engine/patterns';
 import { PRESET_ACCEPT, PresetManagerDialog, presetKindOf } from './ui/panels/preset-manager-dialog';
 import { PropertiesColumn } from './ui/properties';
 import { RelightSession } from './ui/relight-session';
@@ -198,13 +201,13 @@ import { ColourView, PROOF_KINDS } from './ui/colour';
 import { composeDeep, deepFromU16, deepToU16, deepToned, place, srgbToLinear } from './engine/deep';
 import { composeFloat } from './engine/compose-float';
 import { channelsFromU8, channelsToU8, composeChannels, rasterBytes } from './engine/channels';
-import type { Lut3x4, Lut4 } from './engine/colour-lut';
+import { applyLut, type Lut3x4, type Lut4 } from './engine/colour-lut';
 import type { ChannelPixels, DocMode, DocProfile, ID } from './engine/types';
 import { headerResolution } from './io/image-size';
 import { ConditionalModeDialog, SOURCE_MODES } from './ui/panels/conditional-mode-dialog';
 import { HdrToningDialog } from './ui/panels/hdr-toning';
 import { Preview32Dialog } from './ui/panels/preview32-dialog';
-import { AssignProfileDialog, ConvertProfileDialog, ProfileInfoDialog, ProfileMismatchDialog, ProofSetupDialog, convertDocumentDeep, type Space } from './ui/panels/colour-dialogs';
+import { AssignProfileDialog, ConvertProfileDialog, ModeConvertDialog, ProfileInfoDialog, ProfileMismatchDialog, ProofSetupDialog, convertDocumentDeep, type Space } from './ui/panels/colour-dialogs';
 import { embeddedProfile, exifColourSpace, fromBase64, isSrgbName, profileName, toBase64 } from './io/icc-read';
 import { toolHost } from './extensions/registry';
 import { Viewport } from './engine/viewport';
@@ -540,6 +543,7 @@ export function startApp(): void {
   layers.adoptPaths(q(root, '.cv-paths'));
   layers.adoptChannels(new ChannelsPanel(engine, q(root, '.cv-stage'), (id) => commands.run('channel-options', { channel: id })));   // the Channels tab (Phase 21)
   new TimelinePanel(q(root, '.cv-layers'), engine);
+  const tiffOptions = new TiffOptionsDialog();
   const renderDialog = new RenderVideoDialog(engine, (c) => renderVideo(c));   // 1.59.6, DEV_PLAN 25.4
   // 1.59.3, DEV_PLAN 25.2: under the canvas; 1.59.8: kept for Window > Timeline, and opening the frames panel.
   const vtl = new VideoTimelinePanel(q(root, '.cv-vtl'), engine, () => renderDialog.show(), () => { if (!dock.isShown('timeline')) dock.toggle('timeline'); });
@@ -855,7 +859,18 @@ export function startApp(): void {
             const labPsd = await api.decodeLab(f, f.name).catch(() => null);   // 1.58.1
             if (labPsd) { openLab(f.name.replace(/\.(ps[db]|psdt)$/i, ''), labPsd); continue; }
             const { doc, notes, activeId, paths, report } = await readPsdFile(f).catch(() => readPsdFlat(f, (b) => api.decode(b, b.name)));   // a damaged file opens flat
+            // A profile other than sRGB follows the Color Settings policy like a PNG or JPEG: kept, converted to sRGB, dropped, or asked.
+            let how: 'keep' | 'convert' | 'discard' = 'keep';
+            if (doc.profile && !isSrgbName(doc.profile.name) && (doc.depth ?? 8) === 8) {
+              const pref = loadPrefs().profileMismatch, asked = pref === 'ask' ? await colourDialogs.mismatch.ask(f.name, doc.profile.name) : pref;
+              if (asked === 'cancel') { openStopped = true; continue; }
+              how = asked;
+            }
             const opened = engine.addProject(doc, f.name.replace(/\.(ps[db]|psdt)$/i, ''), activeId);
+            if (how === 'discard') engine.assignProfile(null);
+            else if (how === 'convert' && doc.profile) {
+              try { const c = loadPrefs().colour; engine.convertToProfile(null, await api.colourLut({ source: { icc: doc.profile.icc }, dest: null, intent: c.intent, bpc: c.bpc })); toast(`${f.name} was converted from its embedded profile, ${doc.profile.name}, to sRGB, the working space.`); } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
+            }
             if (paths) engine.setPathsOf(opened, paths);
             // The conversion report is told, never asked: an agent or a batch opening a PSD must not wait on a sheet.
             if (report.dropped.length) toast(reportText(report), 'info');
@@ -889,10 +904,17 @@ export function startApp(): void {
   }
 
   /** The document as a TIFF carrying its PSD layers (DEV_PLAN 34.2). */
-  async function exportLayeredTiff(): Promise<void> {
+  async function exportLayeredTiff(keep?: boolean): Promise<void> {
     engine.settle();
     const p = engine.current;
     if (!p) return;
+    const choice = keep === undefined ? await tiffOptions.choose(p.doc.layers.filter((l) => !l.isGroup).length) : keep ? 'layers' : 'flat';
+    if (!choice) return;
+    if (choice === 'flat') {
+      if (caps) await exportImage('tiff', 0.9);
+      else toast('A flat TIFF is written by the formvis engine, which is not running here.', 'error');
+      return;
+    }
     await engine.task(async () => {
       try {
         const flat = engine.flattened();
@@ -1048,6 +1070,22 @@ export function startApp(): void {
               } else toast(`${f.name} was converted from its embedded profile, ${pname}, to sRGB, the working space.`);
             }
           }
+          // A TIFF with an embedded profile other than sRGB asks like a PNG or JPEG does: the decoded picture carries the
+          // profile and the browser converts it to sRGB, unless the profile is kept or discarded and the numbers stay as stored.
+          if (/\.tiff?$/i.test(f.name)) {
+            const icc = await embeddedProfile(f).catch(() => null), pname = icc ? profileName(icc) : '';
+            if (icc && !isSrgbName(pname)) {
+              const pref = loadPrefs().profileMismatch, how = pref === 'ask' ? await colourDialogs.mismatch.ask(f.name, pname) : pref;
+              if (how === 'cancel') { openStopped = true; continue; }
+              try {
+                const keeps = how === 'keep' && noDoc() && decoded.length === 0, raw = await decodeImage(f, f.name, keeps || how === 'discard');
+                if (keeps) raw.profile = { name: pname, icc: toBase64(icc) };
+                else if (how !== 'discard') toast(`${f.name} was converted from its embedded profile, ${pname}, to sRGB, the working space.`);
+                decoded.push(raw);
+                continue;
+              } catch { /* decoded as before */ }
+            }
+          }
           if (/\.svg$/i.test(f.name)) {
             const declared = await svgSize(f).catch(() => null);
             const asked = await promptName(`Import ${f.name}: width in pixels`, String(Math.round(declared?.width ?? 1024)), 'Import');
@@ -1111,7 +1149,8 @@ export function startApp(): void {
     if (!p) return;
     const files = await assetFiles(engine, !!caps);
     if (!files.length) { if (!quiet) toast('No layer names hold an asset name such as hero.png.', 'info'); return; }
-    if (!await deliverFile(await zipFiles(files), `${stripExt(p.name)}-assets.zip`)) return;
+    const folder = `${stripExt(p.name)}-assets`;
+    if (!await deliverFile(await zipFiles(files.map((f) => ({ name: `${folder}/${f.name}`, blob: f.blob }))), `${folder}.zip`)) return;
     toast(`Generated ${files.length} image asset${files.length === 1 ? '' : 's'}.`, 'info');
   }
 
@@ -1237,8 +1276,10 @@ export function startApp(): void {
     engine.settle();
     await engine.task(async () => {
       try {
-        const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p));
-        const fmv = await api.package(manifest, files), linked = await linkedFiles(engine);
+        const linked = await linkedFiles(engine);
+        const relinked = { ...p.doc, layers: p.doc.layers.map((l) => { const to = l.smart?.link ? linked.copies.get(l.smart.link.id) : undefined; return to && l.smart?.link ? { ...l, smart: { ...l.smart, link: { ...l.smart.link, path: to } } } : l; }) };
+        const { manifest, files } = await serialize(relinked, p.activeId, engine.pathsOf(p), engine.timelineFor(p));
+        const fmv = await api.package(manifest, files);
         await deliver(await zipFiles([{ name: `${p.name}.fvd`, blob: fmv }, ...linked.files]), `${p.name} Package.zip`);
         const n = linked.files.length;
         toast(`Packaged ${n} linked file${n === 1 ? '' : 's'}.${linked.missing.length ? ` Not reachable and left out: ${linked.missing.join(', ')}.` : ''}`, linked.missing.length ? 'info' : undefined);
@@ -1597,16 +1638,16 @@ export function startApp(): void {
     if (!p || p.doc.mode !== 'cmyk' || !p.doc.profile) return;
     await engine.task(async () => {
       try {
-        const rasters = new Map<ID, Raster>();
+        const rasters = new Map<ID, Raster>(), working = await workingRgb();
         for (const l of p.doc.layers) {
           if (!l.channels) continue;
-          const c = loadPrefs().colour;   // Color Settings' intent and black point compensation, as 16 bits (1.87.3, D18)
-          const out = await api.convertPixels(channelsToU8(l.channels.data), l.channels.width, l.channels.height, 'rgb', p.doc.profile!.icc, '', c.intent, c.bpc);
+          const c = loadPrefs().colour;   // Color Settings' working RGB, intent and black point compensation, as 16 bits (1.87.3, D18)
+          const out = await api.convertPixels(channelsToU8(l.channels.data), l.channels.width, l.channels.height, 'rgb', p.doc.profile!.icc, working?.icc ?? '', c.intent, c.bpc);
           const r = new Raster(l.channels.width, l.channels.height), img = r.ctx.createImageData(l.channels.width, l.channels.height);
           img.data.set(out); r.ctx.putImageData(img, 0, 0); r.touch();
           rasters.set(l.id, r);
         }
-        engine.setRgbFromCmyk(rasters);
+        engine.setRgbFromCmyk(rasters, working);
       } catch (err) { toast(message(err), 'error'); }
     });
   }
@@ -1748,10 +1789,13 @@ export function startApp(): void {
     });
   }
 
+  /** True while an action plays its Save step, so the export it runs is not recorded again. */
+  let replayingSave = false;
   async function exportImage(kind: 'png' | 'jpg' | 'webp' | 'tiff' | 'pdf' | 'avif', quality = 0.92): Promise<void> {
     const p = engine.current;
     if (!p) return;
     engine.settle();
+    if (!replayingSave && (kind === 'png' || kind === 'jpg' || kind === 'webp')) actions.record({ kind: 'save', label: `Save as ${kind.toUpperCase()}`, format: kind, quality });
     if (p.doc.mode === 'cmyk' && (kind === 'tiff' || kind === 'jpg')) { await exportCmyk(kind, quality); return; }
     if (p.doc.mode === 'lab' && kind === 'tiff') { await exportLabTiff(); return; }
     await engine.task(async () => {
@@ -1877,6 +1921,11 @@ export function startApp(): void {
   async function runStep(s: ActionStep, relative = false): Promise<boolean | 'stopped'> {
     if (s.kind === 'stop') return (await dialogs.stop.ask(s.message, s.allowContinue)) ? true : 'stopped';
     if (s.kind === 'command') return commands.run(s.id);
+    if (s.kind === 'save') {
+      replayingSave = true;
+      try { await exportImage(s.format, s.quality); } finally { replayingSave = false; }
+      return true;
+    }
     if (s.kind === 'filter') {
       if (!s.ask) return dialogs.filter.applySettings(s.filter as FilterKind, s.settings);
       // Paused for input: the dialog opens with the recorded settings; Cancel stops the action.
@@ -1922,7 +1971,7 @@ export function startApp(): void {
       for (const f of files) {
         try {
           const p = engine.openImage(await decodeImage(f, f.name));
-          const r = await actions.play(x, (s) => runStep(s, !!x.relative));
+          const r = await actions.play(x, (s) => (s.kind === 'save' ? true : runStep(s, !!x.relative)));
           if (r.stopped) { engine.closeProject(p.id); problems.push(`stopped at ${f.name}`); break; }
           if (r.failed) problems.push(`${f.name} stopped at ${r.failed}`);
           engine.settle();
@@ -2018,7 +2067,7 @@ export function startApp(): void {
           const p = engine.openImage(await decodeImage(f, f.name));
           id = p.id;
           if (o.action) {
-            const r = await actions.play(o.action, (s) => runStep(s, !!o.action?.relative));
+            const r = await actions.play(o.action, (s) => (s.kind === 'save' ? true : runStep(s, !!o.action?.relative)));
             if (r.stopped) { problems.push(`stopped at ${f.name}`); break outer; }
             if (r.failed) problems.push(`${f.name} stopped at ${r.failed}`);
           }
@@ -2077,7 +2126,7 @@ export function startApp(): void {
     const p = engine.current, out = await renderVideoBlob(c);
     if (!p || !out) return;
     const base = (p.name || 'Untitled').replace(/\.[^.]+$/, '');
-    await deliver(out, c.format === 'gif' ? `${base}.gif` : c.format === 'png' ? `${base}-frames.zip` : `${base}.mp4`);
+    await deliver(out, c.format === 'gif' ? `${base}.gif` : c.format === 'mp4' ? `${base}.mp4` : `${base}-frames.zip`);
     toast(`Rendered ${c.to - c.from} frames.`);
   }
 
@@ -2092,14 +2141,16 @@ export function startApp(): void {
       if (!s) return null;
       const flat = createSurface(w, h), g = ctxOf(flat);
       g.imageSmoothingQuality = 'high';
-      if (c.format === 'mp4') { g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h); }
+      if (c.format === 'mp4' || c.format === 'jpg') { g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h); }
       g.drawImage(s as CanvasImageSource, 0, 0, w, h);
       if (c.format === 'gif') gif.push({ data: g.getImageData(0, 0, w, h), delayMs: delay });
+      else if (c.format === 'jpg' || c.format === 'webp') pngs.push(await toBlob(flat, c.format === 'jpg' ? 'image/jpeg' : 'image/webp', 0.92));
       else pngs.push(await toBlob(flat, 'image/png'));
       await new Promise((r) => window.setTimeout(r, 0));
     }
     const base = (p.name || 'Untitled').replace(/\.[^.]+$/, '');
     if (c.format === 'gif') return new Blob([encodeGif(gif, w, h, vt.loops)], { type: 'image/gif' });
+    if (c.format === 'jpg' || c.format === 'webp') return zipFiles(pngs.map((blob, i) => ({ name: `${base}_${String(c.from + i).padStart(5, '0')}.${c.format}`, blob })));
     if (c.format === 'png') return api.videoSequence(pngs, base);
     return api.encodeVideo(pngs, pngs.map(() => delay));
   }
@@ -2134,7 +2185,7 @@ export function startApp(): void {
   /** The pattern library: patterns defined here, kept in this browser as PNG data. */
   const PATTERN_KEY = 'formvis.patterns';
   async function loadPatterns(): Promise<void> {
-    let list: Array<{ id: string; name: string; png: string }> = [];
+    let list: Array<{ id: string; name: string; png: string; group?: string }> = [];
     try { list = JSON.parse(localStorage.getItem(PATTERN_KEY) ?? '[]'); } catch { list = []; }
     for (const p of Array.isArray(list) ? list : []) {
       if (typeof p?.id !== 'string' || typeof p.png !== 'string' || patternById(p.id)) continue;
@@ -2142,15 +2193,16 @@ export function startApp(): void {
         const bmp = await createImageBitmap(await (await fetch(p.png)).blob()), s = createSurface(bmp.width, bmp.height);
         ctxOf(s).drawImage(bmp, 0, 0);
         addPattern(typeof p.name === 'string' ? p.name : 'Pattern', s, p.id);
+        if (typeof p.group === 'string') setPatternGroup(p.id, p.group);
       } catch { /* skip an unreadable pattern */ }
     }
   }
   async function savePatterns(): Promise<boolean> {
-    const list: Array<{ id: string; name: string; png: string }> = [];
+    const list: Array<{ id: string; name: string; png: string; group?: string }> = [];
     for (const p of allPatterns()) {
       if (p.builtin || projectPatterns.has(p.id)) continue;
       const blob = await toBlob(p.surface), png = await new Promise<string>((done) => { const r = new FileReader(); r.onload = () => done(String(r.result)); r.readAsDataURL(blob); });
-      list.push({ id: p.id, name: p.name, png });
+      list.push({ id: p.id, name: p.name, png, ...(p.group ? { group: p.group } : {}) });
     }
     try { localStorage.setItem(PATTERN_KEY, JSON.stringify(list)); return true; } catch { return false; }
   }
@@ -2175,6 +2227,17 @@ export function startApp(): void {
     addPattern(name, s);
     if (await savePatterns()) toast(`Defined the pattern "${name}". Choose it in Layer Style > Pattern Overlay.`);
     else toast(`Defined "${name}" for this session; the pattern library is full, so it will not be kept.`, 'error');
+  }
+
+  /** The brush as the set-brush command reads it back: percent for hardness, opacity and flow, as the options bar shows them. */
+  function brushState(): Record<string, unknown> {
+    const b = engine.brush, s = engine.brushShape;
+    return {
+      size: b.diameter, hardness: Math.round(b.hardness * 100), opacity: Math.round(b.opacity * 100), flow: Math.round(engine.brushFlow * 100), mode: engine.brushBlend, preset: engine.brushPresetId, sampled_tip: !!b.tip,
+      angle: s.angle, roundness: s.roundness, spacing: s.spacing ?? 25, size_jitter: s.sizeJitter, angle_jitter: s.angleJitter, roundness_jitter: s.roundnessJitter, scatter: s.scatter, both_axes: s.bothAxes, count: s.count, count_jitter: s.countJitter,
+      flip_x: !!s.flipX, flip_y: !!s.flipY, noise: s.noise, wet_edges: s.wetEdges, texture: { on: s.texture.on, scale: s.texture.scale, depth: s.texture.depth }, dual: { on: s.dual.on, size: s.dual.diameter, scatter: s.dual.scatter, count: s.dual.count },
+      color_dynamics: { on: s.color.on, fg_bg: s.color.fgBg, hue: s.color.hue, saturation: s.color.saturation, brightness: s.color.brightness }, transfer: { on: s.transfer.on, opacity: s.transfer.opacity, flow: s.transfer.flow },
+    };
   }
 
   /** Edit > Define Brush Preset: the visible image within the selection, or the whole canvas, up to 2500 px a side, as a
@@ -3096,6 +3159,21 @@ export function startApp(): void {
   const vanishingDialog = new VanishingPointDialog(engine);   // 1.58.3
   const videoDialog = new VideoImportDialog(engine);   // 1.58.9
   const convertDialog = new ConvertProfileDialog(engine, (pr) => cmykLutFor(pr));   // CMYK's tables (1.57.9)
+  const modeConvertDialog = new ModeConvertDialog(engine);
+  /** Color Settings > Ask for options when changing mode: Image > Mode > RGB Color, Grayscale and Lab Color open Convert Mode instead of converting at once. */
+  function askModeOptions(space: Space): boolean {
+    const m = engine.current?.doc.mode ?? 'rgb';
+    if (!loadPrefs().colour.askMode || !['rgb', 'grayscale', 'cmyk', 'lab'].includes(m) || (space === 'rgb' && m === 'rgb') || (space === 'gray' && m === 'grayscale') || (space === 'lab' && (m === 'lab' || m === 'grayscale'))) return false;
+    void modeConvertDialog.show(space);
+    return true;
+  }
+  modeConvertDialog.onApply = async (a) => {
+    if (!(await downTo(16))) return 'Choose HDR Toning to leave 32 bits first.';
+    const done = await engine.task(async () => {
+      try { return await convertDocumentDeep(engine, a.choice, a.target, a.space, { intent: a.intent, bpc: a.bpc, dither: a.dither }, (pr) => cmykLutFor(pr)); } catch (err) { return message(err); }
+    });
+    return done === true ? null : typeof done === 'string' ? done : 'Nothing was converted.';
+  };
   dialogs.filter.rawProfile = {
     async options() {
       const l = engine.current?.activeLayer, raw = l ? rawLayers.get(l.id) : undefined;
@@ -3153,6 +3231,8 @@ export function startApp(): void {
     });
   });
   engine.uiHooks.importBrushes = () => abrInput.click();
+  const brushPicker = new BrushPicker(engine);
+  engine.uiHooks.brushPicker = (x, y) => brushPicker.show(x, y);
 
   const has = (): boolean => !!engine.current;
   /** Sets type attributes for new type and, when no text is being typed, the active type layer (one undo step). */
@@ -3309,7 +3389,7 @@ export function startApp(): void {
     { id: 'export-psb', label: 'Export PSB (Large Document)...', enabled: has, run: () => void exportPsd(true) },
     { id: 'export-webp', label: 'Export WebP', enabled: has, run: () => void exportImage('webp', 0.9) },
     { id: 'export-tiff', label: 'Export TIFF', enabled: () => has() && !!caps, run: () => void exportImage('tiff', 0.9) },
-    { id: 'export-tiff-layers', label: 'TIFF with Layers...', enabled: () => has(), run: () => void exportLayeredTiff() },
+    { id: 'export-tiff-layers', label: 'TIFF with Layers...', enabled: () => has(), params: { layers: { type: 'boolean', description: 'true keeps the layers, false writes a flat TIFF; left out, the TIFF Options prompt asks (unless it was turned off).' } }, run: (a) => void exportLayeredTiff(a?.layers === undefined ? undefined : a.layers === true || a.layers === 'true') },
     { id: 'export-pdf', label: 'Export PDF', enabled: () => has() && !!caps, run: () => void exportImage('pdf', 0.9) },
     { id: 'export-avif', label: 'Export AVIF', enabled: () => has() && !!caps, run: () => void exportImage('avif', 0.9) },
     { id: 'export-gif', label: 'Export GIF...', enabled: () => !!engine.current, run: () => dialogs.gif.show() },
@@ -3465,14 +3545,17 @@ export function startApp(): void {
     },
     {
       id: 'export-data-sets', label: 'Data Sets as Files...', enabled: () => !!engine.current?.doc.dataSets?.length,
-      params: { format: { type: 'string', description: 'png, jpg or psd; png when left out.' } },
+      params: {
+        format: { type: 'string', description: 'png, jpg, tiff, webp or psd; png when left out.' },
+        template: { type: 'string', description: 'File name template with {document}, {name} and {index}; {document}_{name} when left out.' },
+      },
       run: async (a) => {
-        const p = engine.current, f = String(a?.format ?? 'png').toLowerCase(), format = f === 'jpg' || f === 'jpeg' ? 'jpg' : f === 'psd' ? 'psd' : 'png';
+        const p = engine.current, f = String(a?.format ?? 'png').toLowerCase(), format = f === 'jpg' || f === 'jpeg' ? 'jpg' : f === 'psd' ? 'psd' : f === 'webp' ? 'webp' : f === 'tif' || f === 'tiff' ? 'tiff' : 'png';
         if (!p?.doc.dataSets?.length) { toast('Import data sets first.', 'info'); return; }
         engine.settle();
         await engine.task(async () => {
           try {
-            const files = await dataSetFiles(engine, format, !!caps);
+            const files = await dataSetFiles(engine, format, !!caps, undefined, a?.template === undefined ? undefined : String(a.template));
             if (!files.length) { toast('There are no data sets to export.', 'info'); return; }
             await deliver(await zipFiles(files), `${stripExt(p.name)} data sets.zip`);
             toast(`Exported ${files.length} data set${files.length === 1 ? '' : 's'} as a zip.`, 'info');
@@ -3692,7 +3775,7 @@ export function startApp(): void {
       store(LAYERS_W_KEY, ''); setStyleVar(root, '--cv-layers-w', '288px');
       store('formvis.propsCol', 'shown'); props.resetLayout(); syncPropsCol(); props.relayout();
     } },
-    { id: 'invert', label: 'Invert', keys: ['Mod+I'], enabled: pixel, run: () => engine.invertPixels() },
+    { id: 'invert', label: 'Invert', keys: ['Mod+I'], enabled: () => pixel() || !!engine.alphaTargeted(), run: () => engine.invertPixels() },
     { id: 'remove-bg', label: 'Remove Background', enabled: withPixels, run: () => void removeBackground('auto') },
     { id: 'remove-bg-lite', label: 'Remove Background (Lightweight)', enabled: withPixels, run: () => void removeBackground('lite') },
     { id: 'select-subject', label: 'Subject', enabled: () => !!engine.current, params: AUTO_SELECT_PARAMS, run: (a) => void selectSubject(false, a) },
@@ -3714,6 +3797,7 @@ export function startApp(): void {
     { id: 'auto-color', label: 'Auto Color', keys: ['Shift+Mod+B'], enabled: pixel, run: () => engine.autoAdjust('color') },
     { id: 'desaturate', label: 'Desaturate', keys: ['Shift+Mod+U'], enabled: pixel, run: () => engine.pixelAdjust('desaturate') },
     { id: 'equalize', label: 'Equalize', enabled: pixel, run: () => engine.pixelAdjust('equalize') },
+    { id: 'equalize-layer-from-selection', label: 'Equalize Entire Layer Based on Selection', enabled: () => pixel() && !!engine.current?.selection, run: () => engine.pixelAdjust('equalize', 'layer') },
     { id: 'replace-color', label: 'Replace Color...', enabled: pixel, run: () => dialogs.replaceColor.show() },
     ...(['normal', 'bump'] as const).map((kind): Command => ({
       id: kind === 'normal' ? 'normal-map' : 'bump-map', label: kind === 'normal' ? 'Generate Normal Map...' : 'Generate Bump Map...', enabled: pixel,
@@ -4099,6 +4183,60 @@ export function startApp(): void {
     { id: 'brush-size-down', label: 'Decrease Brush Size', run: () => stepBrush(engine, 'size', -1) },
     { id: 'brush-harder', label: 'Increase Brush Hardness', run: () => stepBrush(engine, 'hardness', 1) },
     { id: 'brush-softer', label: 'Decrease Brush Hardness', run: () => stepBrush(engine, 'hardness', -1) },
+    { id: 'get-brush', label: 'Get Brush Settings', run: () => brushState() },
+    {
+      id: 'set-brush', label: 'Set Brush Settings',
+      params: {
+        size: { type: 'integer', min: 1, max: 5000, description: 'Diameter in pixels.' }, hardness: { type: 'number', min: 0, max: 100, description: 'Percent.' }, opacity: { type: 'number', min: 1, max: 100, description: 'Percent.' }, flow: { type: 'number', min: 1, max: 100, description: 'Percent.' },
+        mode: { type: 'string', description: 'normal, behind, clear or a layer blend mode id such as multiply or vivid-light.' }, preset: { type: 'string', description: 'A brush preset id or name, applied before the other values.' },
+        angle: { type: 'number', min: -180, max: 180 }, roundness: { type: 'number', min: 1, max: 100 }, spacing: { type: 'number', min: 1, max: 1000, description: 'Percent of the diameter.' },
+        size_jitter: { type: 'number', min: 0, max: 100 }, angle_jitter: { type: 'number', min: 0, max: 100 }, roundness_jitter: { type: 'number', min: 0, max: 100 },
+        scatter: { type: 'number', min: 0, max: 1000 }, both_axes: { type: 'boolean' }, count: { type: 'integer', min: 1, max: 16 }, count_jitter: { type: 'number', min: 0, max: 100 },
+        flip_x: { type: 'boolean' }, flip_y: { type: 'boolean' }, noise: { type: 'boolean' }, wet_edges: { type: 'boolean' },
+        texture_on: { type: 'boolean' }, texture_scale: { type: 'number', min: 1, max: 1000 }, texture_depth: { type: 'number', min: 0, max: 100 },
+        dual_on: { type: 'boolean' }, dual_size: { type: 'number', min: 1, max: 5000 }, dual_scatter: { type: 'number', min: 0, max: 1000 }, dual_count: { type: 'integer', min: 1, max: 16 },
+        color_on: { type: 'boolean' }, color_fg_bg: { type: 'number', min: 0, max: 100 }, color_hue: { type: 'number', min: 0, max: 100 }, color_saturation: { type: 'number', min: 0, max: 100 }, color_brightness: { type: 'number', min: 0, max: 100 },
+        transfer_on: { type: 'boolean' }, transfer_opacity: { type: 'number', min: 0, max: 100 }, transfer_flow: { type: 'number', min: 0, max: 100 },
+      },
+      run: (a) => {
+        const num = (k: string, lo: number, hi: number): number | undefined => (a?.[k] === undefined ? undefined : Math.min(hi, Math.max(lo, Number(a[k]))));
+        const flag = (k: string): boolean | undefined => (a?.[k] === undefined ? undefined : a[k] === true || a[k] === 'true');
+        if (a?.preset !== undefined && a.preset !== '') {
+          const pr = allBrushPresets().find((q) => q.id === String(a.preset) || q.name === String(a.preset));
+          if (!pr) throw new Error(`No brush preset has the id or name ${String(a.preset)}.`);
+          engine.applyBrushPreset(pr);
+        }
+        const size = num('size', 1, 5000), hard = num('hardness', 0, 100), op = num('opacity', 1, 100), flow = num('flow', 1, 100);
+        engine.setBrush({ ...(size !== undefined ? { diameter: size } : {}), ...(hard !== undefined ? { hardness: hard / 100 } : {}), ...(op !== undefined ? { opacity: op / 100 } : {}) });
+        if (flow !== undefined) engine.brushFlow = flow / 100;
+        if (a?.mode !== undefined) {
+          const m = String(a.mode);
+          if (m !== 'behind' && m !== 'clear' && !BLEND_MODES.some((b) => b.id === m)) throw new Error(`Unknown mode ${m}: use normal, behind, clear or a blend mode id.`);
+          engine.setBrushBlend(m as Engine['brushBlend']);
+        }
+        const s = engine.brushShape, shape: Partial<Engine['brushShape']> = {};
+        const put = <K extends keyof Engine['brushShape']>(k: K, v: Engine['brushShape'][K] | undefined): void => { if (v !== undefined) shape[k] = v; };
+        put('angle', num('angle', -180, 180)); put('roundness', num('roundness', 1, 100));
+        const sp = num('spacing', 1, 1000); if (sp !== undefined) shape.spacing = sp;
+        put('sizeJitter', num('size_jitter', 0, 100)); put('angleJitter', num('angle_jitter', 0, 100)); put('roundnessJitter', num('roundness_jitter', 0, 100));
+        put('scatter', num('scatter', 0, 1000)); put('bothAxes', flag('both_axes')); put('count', num('count', 1, 16)); put('countJitter', num('count_jitter', 0, 100));
+        put('flipX', flag('flip_x')); put('flipY', flag('flip_y')); put('noise', flag('noise')); put('wetEdges', flag('wet_edges'));
+        const tx = { on: flag('texture_on'), scale: num('texture_scale', 1, 1000), depth: num('texture_depth', 0, 100) }, du = { on: flag('dual_on'), diameter: num('dual_size', 1, 5000), scatter: num('dual_scatter', 0, 1000), count: num('dual_count', 1, 16) };
+        const co = { on: flag('color_on'), fgBg: num('color_fg_bg', 0, 100), hue: num('color_hue', 0, 100), saturation: num('color_saturation', 0, 100), brightness: num('color_brightness', 0, 100) }, tr = { on: flag('transfer_on'), opacity: num('transfer_opacity', 0, 100), flow: num('transfer_flow', 0, 100) };
+        const defined = (o: Record<string, unknown>): Record<string, unknown> => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
+        if (Object.keys(defined(tx)).length) shape.texture = { ...s.texture, ...defined(tx) } as typeof s.texture;
+        if (Object.keys(defined(du)).length) shape.dual = { ...s.dual, ...defined(du) } as typeof s.dual;
+        if (Object.keys(defined(co)).length) shape.color = { ...s.color, ...defined(co) } as typeof s.color;
+        if (Object.keys(defined(tr)).length) shape.transfer = { ...s.transfer, ...defined(tr) } as typeof s.transfer;
+        if (Object.keys(shape).length) { engine.brushShape = { ...s, ...shape }; if (a?.preset === undefined) engine.brushPresetId = null; engine.emit('options', null); }
+        return brushState();
+      },
+    },
+    { id: 'save-brush-preset', label: 'Save Brush Preset', params: { name: { type: 'string', description: 'The preset name; asked for when left out.' }, group: { type: 'string', description: 'The folder; My Brushes when left out.' } }, run: async (a) => { const name = a?.name === undefined ? await promptName('Save Brush Preset', `Brush ${importedBrushPresets.length + 1}`, 'Save') : String(a.name); if (!name?.trim()) return { saved: false }; const r = await saveBrushPreset(engine, name, a?.group === undefined ? undefined : String(a.group)); return { saved: true, id: r.preset.id, group: r.preset.group, kept: r.kept }; } },
+    { id: 'rename-brush-preset', label: 'Rename Brush Preset', params: { id: { type: 'string', required: true }, name: { type: 'string', required: true } }, run: async (a) => { if (!(await renameImportedBrush(String(a?.id ?? ''), String(a?.name ?? '')))) throw new Error('Only saved or imported brush presets can be renamed: give the id of one.'); engine.emit('options', null); return { renamed: true }; } },
+    { id: 'delete-brush-preset', label: 'Delete Brush Preset', params: { id: { type: 'string', required: true } }, run: async (a) => { if (!(await removeImportedBrush(String(a?.id ?? '')))) throw new Error('Only saved or imported brush presets can be deleted: give the id of one.'); engine.emit('options', null); return { deleted: true }; } },
+    { id: 'move-brush-preset', label: 'Move Brush Preset', params: { id: { type: 'string', required: true }, group: { type: 'string', description: 'The folder to move it to; it stays in its folder when left out.' }, before: { type: 'string', description: 'The id of the preset to place it before; last when left out.' } }, run: async (a) => { if (!(await moveBrushPreset(String(a?.id ?? ''), a?.group === undefined ? null : String(a.group), a?.before === undefined ? null : String(a.before)))) throw new Error('Only saved or imported brush presets can be moved: give the id of one.'); engine.emit('options', null); return { moved: true }; } },
+    { id: 'rename-brush-group', label: 'Rename Brush Folder', params: { from: { type: 'string', required: true }, to: { type: 'string', required: true } }, run: async (a) => { if (!(await renameBrushGroup(String(a?.from ?? ''), String(a?.to ?? '')))) throw new Error('No saved or imported brush preset is in that folder.'); engine.emit('options', null); return { renamed: true }; } },
     { id: 'paragraph-styles', label: 'Paragraph Styles...', run: () => dialogs.paragraphStyles.show() },
     { id: 'load-default-type-styles', label: 'Load Default Type Styles', enabled: has, run: () => { engine.loadDefaultTypeStyles(); } },
     { id: 'save-default-type-styles', label: 'Save Default Type Styles', enabled: has, run: () => { engine.saveDefaultTypeStyles(); } },
@@ -4285,8 +4423,30 @@ export function startApp(): void {
     { id: 'copy-error-log', label: 'Copy Error Log', run: () => { void navigator.clipboard?.writeText(errorLog.text()).then(() => toast('Copied the error log.'), () => toast('The clipboard is not available here.', 'error')); } },
   );
 
+  /** The profile the pixels of formvis's own clipboard are in, kept with the copy so a paste can ask when the target differs (Color Settings). */
+  let clipSource: { stamp: string; icc: string | null; name: string } | null = null;
+  async function askPasteProfile(): Promise<boolean> {
+    const cb = engine.clipboard, src = clipSource, p = engine.current, dst = p?.doc.profile ?? null;
+    if (!cb || !src || !p || src.stamp !== cb.stamp || !loadPrefs().colour.askPaste || p.doc.mode === 'cmyk' || p.doc.mode === 'lab' || (src.icc ?? '') === (dst?.icc ?? '')) return true;
+    const how = await colourDialogs.mismatch.ask('The pasted picture', src.name, dst?.name ?? 'sRGB IEC61966-2.1');
+    if (how === 'cancel') return false;
+    if (how === 'convert') {
+      try {
+        const c = loadPrefs().colour, lut = await api.colourLut({ source: src.icc ? { icc: src.icc } : null, dest: dst ? { icc: dst.icc } : null, intent: c.intent, bpc: c.bpc });
+        const s = createSurface(cb.surface.width, cb.surface.height), x = ctxOf(s);
+        x.drawImage(cb.surface as CanvasImageSource, 0, 0);
+        const img = x.getImageData(0, 0, s.width, s.height);
+        applyLut(img.data, lut);
+        x.putImageData(img, 0, 0);
+        engine.clipboard = { ...cb, surface: s };
+        clipSource = { stamp: cb.stamp, icc: dst?.icc ?? null, name: dst?.name ?? 'sRGB IEC61966-2.1' };
+      } catch (err) { toast(`The pasted picture could not be converted: ${message(err)}`, 'error'); }
+    }
+    return true;
+  }
   function writeClipboard(): void {
     const cb = engine.clipboard;
+    if (cb) clipSource = { stamp: cb.stamp, icc: engine.current?.doc.profile?.icc ?? null, name: engine.current?.doc.profile?.name ?? 'sRGB IEC61966-2.1' };
     if (!cb || typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) return;
     try {
       const item = new ClipboardItem({ 'image/png': toBlob(cb.surface), 'text/plain': new Blob([`formvis:${cb.stamp}`], { type: 'text/plain' }) });
@@ -4327,20 +4487,23 @@ export function startApp(): void {
       for (const item of await navigator.clipboard.read()) {
         if (item.types.includes('text/plain') && engine.clipboard) {
           const text = await (await item.getType('text/plain')).text();
-          if (text === `formvis:${engine.clipboard.stamp}`) { own(); return; }
+          if (text === `formvis:${engine.clipboard.stamp}`) { if (await askPasteProfile()) own(); return; }
         }
         const type = item.types.find((t) => t.startsWith('image/'));
         if (type) { await pasteExternal(new File([await item.getType(type)], 'Pasted.png', { type }), outside); return; }
       }
     } catch {
+      if (!(await askPasteProfile())) return;
       if (!own()) toast('Nothing to paste. Use the keyboard shortcut to paste from other apps.');
       return;
     }
+    if (!(await askPasteProfile())) return;
     if (!own()) toast('Nothing to paste.');
   }
 
   const hasTargetPixels = (): boolean => {
     const p = engine.current, l = p?.activeLayer;
+    if (p && engine.alphaTargeted()) return true;
     if (!p || !l || l.isGroup || l.adjustment) return false;
     return p.maskTarget && l.mask ? !!l.mask.raster : !!l.raster;
   };
@@ -4598,13 +4761,14 @@ export function startApp(): void {
     { id: 'canvas-size', label: 'Canvas Size...', keys: ['Alt+Mod+C'], enabled: has, run: () => dialogs.canvasSize.show() },
     { id: 'image-size', label: 'Image Size...', keys: ['Alt+Mod+I'], enabled: has, run: () => dialogs.imageSize.show() },
     // Image > Mode and Layer > Flatten Image (1.50.2, the owner's walkthrough).
-    { id: 'mode-rgb', label: 'RGB Color', enabled: has, checked: () => (engine.current?.doc.mode ?? 'rgb') === 'rgb', run: () => { const m = engine.current?.doc.mode; if (m === 'cmyk' || m === 'lab') void toRgbFirst(); else engine.convertMode('rgb'); } },
-    { id: 'mode-lab', label: 'Lab Color', enabled: () => has() && ['rgb', 'lab'].includes(engine.current?.doc.mode ?? 'rgb'), checked: () => engine.current?.doc.mode === 'lab', run: () => { if (engine.current?.doc.mode !== 'lab') void downTo(16).then((ok) => { if (!ok) return; if (engine.current?.doc.depth === 16) void deepMode('lab', 'lab', null); else engine.setLab(); }); } },
+    { id: 'mode-rgb', label: 'RGB Color', enabled: has, checked: () => (engine.current?.doc.mode ?? 'rgb') === 'rgb', run: () => { if (askModeOptions('rgb')) return; const m = engine.current?.doc.mode; if (m === 'cmyk' || m === 'lab') void toRgbFirst(); else engine.convertMode('rgb'); } },
+    { id: 'mode-lab', label: 'Lab Color', enabled: () => has() && ['rgb', 'lab'].includes(engine.current?.doc.mode ?? 'rgb'), checked: () => engine.current?.doc.mode === 'lab', run: () => { if (askModeOptions('lab')) return; if (engine.current?.doc.mode !== 'lab') void downTo(16).then((ok) => { if (!ok) return; if (engine.current?.doc.depth === 16) void deepMode('lab', 'lab', null); else engine.setLab(); }); } },
     { id: 'mode-cmyk', label: 'CMYK Color...', enabled: () => has() && ['rgb', 'cmyk', 'lab'].includes(engine.current?.doc.mode ?? 'rgb'), checked: () => engine.current?.doc.mode === 'cmyk', run: () => { if (engine.current?.doc.mode === 'cmyk') return; void ((engine.current?.doc.depth ?? 8) > 8 ? downTo(16) : toRgbFirst().then((rgb) => (rgb ? downTo(8) : false))).then((ok) => { if (ok) modeDialog.show('cmyk'); }); } },
-    { id: 'mode-grayscale', label: 'Grayscale', enabled: has, checked: () => engine.current?.doc.mode === 'grayscale', run: () => { const m = engine.current?.doc.mode; if (engine.current?.doc.depth === 16 && m !== 'grayscale') void toGray(); else if (m === 'lab') engine.setGrayFromLab(); else if (m === 'cmyk') void toRgbFirst().then((ok) => { if (ok) engine.convertMode('grayscale'); }); else engine.convertMode('grayscale'); } },
+    { id: 'mode-grayscale', label: 'Grayscale', enabled: has, checked: () => engine.current?.doc.mode === 'grayscale', run: () => { if (askModeOptions('gray')) return; const m = engine.current?.doc.mode; if (engine.current?.doc.depth === 16 && m !== 'grayscale') void toGray(); else if (m === 'lab') engine.setGrayFromLab(); else if (m === 'cmyk') void toRgbFirst().then((ok) => { if (ok) engine.convertMode('grayscale'); }); else engine.convertMode('grayscale'); } },
     { id: 'mode-duotone', label: 'Duotone...', enabled: () => has() && ['grayscale', 'duotone'].includes(engine.current?.doc.mode ?? 'rgb'), checked: () => engine.current?.doc.mode === 'duotone', run: () => dialogs.duotone.show() },   // 31.3a
     { id: 'mode-grayscale-from', label: 'Grayscale From Channels...', enabled: () => has() && ['rgb', 'indexed', 'grayscale'].includes(engine.current?.doc.mode ?? 'rgb') && (engine.current?.doc.depth ?? 8) === 8, run: () => modeDialog.show('grayscale') },
     { id: 'mode-bitmap', label: 'Bitmap...', enabled: has, checked: () => engine.current?.doc.mode === 'bitmap', run: () => void toRgbFirst().then((rgb) => (rgb ? downTo(8) : false)).then((ok) => { if (ok) modeDialog.show('bitmap'); }) },
+    { id: 'mode-convert', label: 'Convert Mode...', enabled: () => has() && ['rgb', 'grayscale', 'cmyk', 'lab'].includes(engine.current?.doc.mode ?? 'rgb'), run: () => void modeConvertDialog.show() },
     { id: 'mode-multichannel', label: 'Multichannel', enabled: () => has() && (engine.current?.doc.depth ?? 8) === 8 && engine.current?.doc.mode !== 'lab', checked: () => engine.current?.doc.mode === 'multichannel', run: () => { engine.convertMode('multichannel'); } },   // 31.3b
     { id: 'mode-indexed', label: 'Indexed Color...', enabled: has, checked: () => engine.current?.doc.mode === 'indexed', run: () => void toRgbFirst().then((rgb) => (rgb ? downTo(8) : false)).then((ok) => { if (ok) modeDialog.show('indexed'); }) },
     { id: 'color-table', label: 'Color Table...', enabled: () => has() && engine.current?.doc.mode === 'indexed', run: () => dialogs.colorTable.show() },   // 31.4
@@ -4695,9 +4859,9 @@ export function startApp(): void {
       { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg', 'fill-fg-keep', 'fill-bg-keep', 'fill-history'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-', 'auto-align-layers', 'auto-blend-layers', '-',
       'fill-path-dialog', 'stroke-path-dialog', '-', 'transform', 'transform-copy', { label: 'Transform', items: ['transform-again', '-', 'transform-scale', 'transform-rotate', 'transform-skew', 'transform-distort', 'transform-perspective', 'transform-warp', 'warp-split-h', 'warp-split-v', 'warp-split-cross', 'warp-remove-split', '-', 'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw', '-', 'flip-layer-h', 'flip-layer-v'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', 'define-brush', 'define-custom-shape', { label: 'Presets', items: ['preset-manager', '-', 'presets-export', 'presets-import', 'presets-migrate', '-', 'swatches-load', 'swatches-save'] }, '-', 'assign-profile', 'convert-profile', 'profile-info', 'colour.settings', '-', 'customize-toolbar', 'shortcuts', 'edit-menus', { label: 'Preferences', items: ['settings', '-', ...PREF_PAGES.slice(0, 7).map(([id]) => `prefs-${id}`), 'export-preferences', ...PREF_PAGES.slice(7).map(([id]) => `prefs-${id}`)] }] },
     { label: 'Image', items: [
-      'apply-image', 'calculations', { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'desaturate', 'replace-color', 'equalize'] }, '-',
+      'apply-image', 'calculations', { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'desaturate', 'replace-color', 'equalize', 'equalize-layer-from-selection'] }, '-',
       'auto-tone', 'auto-contrast', 'auto-color', '-',
-      { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-grayscale-from', 'mode-duotone', 'mode-indexed', 'mode-multichannel', 'color-table', 'mode-rgb', 'mode-cmyk', 'mode-lab', '-', 'split-channels', 'merge-channels', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
+      { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-grayscale-from', 'mode-duotone', 'mode-indexed', 'mode-multichannel', 'color-table', 'mode-rgb', 'mode-cmyk', 'mode-lab', 'mode-convert', '-', 'split-channels', 'merge-channels', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
       'image-size', 'canvas-size', { label: 'Pixel Aspect Ratio', items: ['par-square', 'par-d1-ntsc', 'par-d1-pal', 'par-d1-ntsc-wide', 'par-d1-pal-wide', 'par-anamorphic', 'par-hdv', 'par-dvcpro-hd', '-', 'par-custom'] }, { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'trim', 'reveal-all', 'trap', '-', 'frequency-separation', 'duplicate-image', '-', { label: 'Variables', items: ['variables-define', 'data-sets-import', 'data-set-apply'] }, '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }, '-', { label: 'Analysis', items: ['measure-scale', 'measure-ruler', 'measure-color-sampler', 'measure-count', { label: 'Count Groups', items: ['count-new-group', 'count-set-group'] }, 'measure-record', 'measure-data-points', 'measure-scale-marker', 'measure-log'] }] },
     { label: 'Layer', items: [
       { label: 'New', items: ['new-layer-dialog', 'new-type-layer', 'new-shape-layer', 'new-dodge-burn-layer', 'layer-from-background', 'background-from-layer', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard-dialog', 'artboard-from-group', 'artboard-from-layers-dialog', 'frame-from-layers', '-', 'duplicate', 'layer-via-cut', '-', 'new-relight-layer'] }, 'artboard-options', '-',
@@ -4740,7 +4904,7 @@ export function startApp(): void {
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'guide-layout', 'guides-from-shape', 'clear-guides'] }, 'snap', { label: 'Snap To', items: ['snap-all', '-', 'snap-guides', 'snap-grid', 'snap-layers', 'snap-bounds'] }, { label: 'Show', items: ['show-all-extras', 'show-no-extras', '-', 'show-selection-edges', 'selection-display-tint', 'show-layer-edges', 'show-smart-guides', 'show-comfy-dot', 'show-notes', 'show-counts', 'toggle-show-slices', 'toggle-auto-slices', 'lock-slices', 'layer-based-slice', 'slices-from-guides', 'slice-options', 'divide-slice', 'delete-slice', 'clear-slices'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'os-full-screen', 'toggle-panels', 'rail-columns', 'interface-rtl', { label: 'Pasteboard', items: ['pasteboard-default', 'pasteboard-black', 'pasteboard-dark', 'pasteboard-mid', 'pasteboard-light'] }, { label: 'Theme', items: Object.keys(THEMES).map((tid) => `theme-${tid}`) }] },
     { label: 'Plugins', items: () => { const ids = pluginHost.commandIds(); return ['manage-plugins', 'reload-plugins', 'open-plugins-folder', ...(ids.length && loadPrefs().showExtPanels ? ['-', ...ids] : [])]; } },
-    { label: 'Window', items: [{ label: 'Arrange', items: ['new-window', 'float-window', 'float-all-windows', 'arrange-cascade', '-', 'arrange-tabs','arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-4up', 'arrange-6up', 'arrange-tile', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.connect.open', 'agent.connect.copy-claude-code', 'agent.connect.copy-claude-desktop', 'terminal.toggle', 'terminal.new', 'script-console', 'brush-settings', { label: 'Brush Size', items: ['brush-size-up', 'brush-size-down', 'brush-harder', 'brush-softer'] }, 'paragraph-styles', 'character-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-channels', 'panel-color', 'panel-tools', 'panel-properties-col', 'merge-columns', 'toggle-dock-panels', '-', { label: 'Workspace', items: ['workspace-pixelart', '-', 'new-workspace', 'delete-workspace'] }, 'reset-panels', '-', 'next-document', 'previous-document', '-', 'theme-sync-system', 'next-appearance', 'interface-darken', 'interface-lighten', '-', 'reload-window'] },
+    { label: 'Window', items: [{ label: 'Arrange', items: ['new-window', 'float-window', 'float-all-windows', 'arrange-cascade', '-', 'arrange-tabs','arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-4up', 'arrange-6up', 'arrange-tile', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.connect.open', 'agent.connect.copy-claude-code', 'agent.connect.copy-claude-desktop', 'terminal.toggle', 'terminal.new', 'script-console', 'brush-settings', { label: 'Brush Size', items: ['brush-size-up', 'brush-size-down', 'brush-harder', 'brush-softer'] }, { label: 'Brush Presets', items: ['save-brush-preset', 'rename-brush-preset', 'delete-brush-preset', 'move-brush-preset', 'rename-brush-group', '-', 'set-brush', 'get-brush'] }, 'paragraph-styles', 'character-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-channels', 'panel-color', 'panel-tools', 'panel-properties-col', 'merge-columns', 'toggle-dock-panels', '-', { label: 'Workspace', items: ['workspace-pixelart', '-', 'new-workspace', 'delete-workspace'] }, 'reset-panels', '-', 'next-document', 'previous-document', '-', 'theme-sync-system', 'next-appearance', 'interface-darken', 'interface-lighten', '-', 'reload-window'] },
     { label: 'Help', items: ['help', 'whats-new', '-', 'shortcuts', 'console-log', 'copy-error-log', 'copy-engine-log', 'benchmark', 'record-performance', 'frame-trace', 'copy-frame-trace', 'tile-grid', 'simulate-gpu-loss', '-', 'help-github', 'report-issue', '-', 'check-for-updates', 'system-info', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);
@@ -5066,7 +5230,7 @@ export function startApp(): void {
   const DEEP32_NOT = new Set<string>();
   // 36.19, the browser build: these commands need the engine service (library, video, AI models, the terminal and
   // agents, ComfyUI and NodeMode, LittleCMS conversions). With it not running they are off, with a title saying why.
-  const ENGINE_ONLY = new Set<string>(['save', 'save-as', 'save-copy', 'open', 'revert', 'export-tiff', 'export-pdf', 'export-avif', 'convert-profile', 'mode-cmyk',
+  const ENGINE_ONLY = new Set<string>(['save', 'save-as', 'save-copy', 'open', 'revert', 'export-tiff', 'export-pdf', 'export-avif', 'convert-profile', 'mode-cmyk', 'mode-convert',
     'remove-bg', 'remove-bg-lite', 'select-subject', 'select-object', 'generative-fill', 'generate-image', 'generative-expand', 'upscale-2x', 'upscale-4x', 'assistant',
     'terminal.toggle', 'terminal.new', 'agent.claude.open', 'send-nodemode', 'send-comfyui', 'comfyui-run', 'photomerge', 'merge-hdr', 'manage-plugins', 'reload-plugins', 'open-plugins-folder',
     'import-video', 'video-layer-from-file', 'video-replace-footage', 'export-mp4', 'render-video']);

@@ -86,9 +86,10 @@
 .cv-slider-ctl { display: grid; grid-template-columns: minmax(0, 1fr) 72px; align-items: center; gap: var(--space-2); }
 .cv-slider-ctl input[type="range"] { width: 100%; accent-color: var(--accent-color); margin: 0; }
 .cv-slider-ctl .cv-num { width: 100%; height: var(--ctl-md); }
+.cv-field > span.cv-scrub { cursor: ew-resize; touch-action: none; user-select: none; }
 .cv-check input { justify-self: start; margin: 0; accent-color: var(--accent-color); }
 .cv-color { width: 72px; padding: 2px; }
-.cv-histo { display: block; width: 100%; height: 96px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-primary); }
+.cv-histo { display: block; width: 100%; height: 108px; touch-action: none; cursor: ew-resize; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-primary); }
 .cv-curves { display: block; width: 256px; height: 256px; justify-self: center; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-primary); touch-action: none; cursor: crosshair; }
 .cv-shape-curve { display: block; width: 100%; max-width: 240px; aspect-ratio: 4 / 3; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-primary); touch-action: none; cursor: crosshair; }
 .cv-shape-axis { stroke: var(--border-light); stroke-width: 1; stroke-dasharray: 3 3; }

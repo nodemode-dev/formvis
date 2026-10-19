@@ -2,8 +2,9 @@ import type { Engine } from '../engine';
 import { allCustomShapes, CUSTOM_SHAPES, removeCustomShape } from '../engine/custom-shapes';
 import { allGradients, customGradients, GRADIENT_PRESETS, resolveStops, setCustomGradients } from '../engine/gradients';
 import type { GradientPreset } from '../engine/gradients';
-import { allPatterns, removePattern } from '../engine/patterns';
+import { allPatterns, removePattern, renamePattern, setPatternGroup } from '../engine/patterns';
 import type { Pattern } from '../engine/patterns';
+import { toolHost } from '../extensions/registry';
 import { el, patchList, q, setText } from './dom';
 import { icon } from './icons';
 
@@ -21,6 +22,12 @@ interface PresetKind<T> {
   draw(g: CanvasRenderingContext2D, w: number, h: number, t: T, tile: HTMLElement): void;
   pick(t: T): void;
   remove(t: T): void | Promise<unknown>;
+  /** A foot button that makes a new item (New Gradient, New Pattern from the selection). */
+  add?: { label: string; run(): void };
+  /** Renames a custom item from the foot's name field. */
+  rename?(t: T, name: string): void | Promise<unknown>;
+  /** A custom item's group, edited in the foot's group field. */
+  group?: { get(t: T): string; set(t: T, group: string): void | Promise<unknown> };
 }
 
 /** The shared body of the Gradients, Patterns and Shapes panels (Window menu, DEV_PLAN 35.3 part c): a head with a count,
@@ -31,17 +38,39 @@ class PresetPanel<T> {
   private readonly count: HTMLElement;
   private readonly del: HTMLButtonElement;
   private selected: string | null = null;
+  private readonly nameIn: HTMLInputElement;
+  private readonly groupIn: HTMLInputElement;
 
   constructor(root: HTMLElement, private readonly kind: PresetKind<T>, engine: Engine) {
     root.insertAdjacentHTML('beforeend',
       `<section class="cv-preset-panel cv-${kind.id}" aria-label="${kind.title}">` +
       `<div class="cv-panel-head"><span class="cv-comps-title">${icon(kind.glyph, 14)}<span>${kind.title}</span></span><span></span><span class="cv-comps-count"></span></div>` +
       `<div class="cv-styles-grid" role="listbox" aria-label="${kind.title}"></div>` +
-      `<div class="cv-panel-foot"><button class="cv-icon-btn" type="button" data-act="delete" title="Delete the selected custom item" aria-label="Delete">${icon('delete', 16)}</button></div></section>`);
+      `<div class="cv-panel-foot"><input class="cv-input cv-preset-name" type="text" maxlength="80" placeholder="Name" aria-label="Name of the selected item" data-act="name" hidden>` +
+      `<input class="cv-input cv-preset-group" type="text" maxlength="40" placeholder="Group" aria-label="Group of the selected item" data-act="group" hidden>` +
+      `<button class="cv-icon-btn" type="button" data-act="add" hidden></button>` +
+      `<button class="cv-icon-btn" type="button" data-act="delete" title="Delete the selected custom item" aria-label="Delete">${icon('delete', 16)}</button></div></section>`);
     const section = q(root, `section.cv-${kind.id}`);
     this.grid = q(section, '.cv-styles-grid');
     this.count = q(section, '.cv-comps-count');
     this.del = q<HTMLButtonElement>(section, '[data-act="delete"]');
+    this.nameIn = q<HTMLInputElement>(section, '[data-act="name"]');
+    this.groupIn = q<HTMLInputElement>(section, '[data-act="group"]');
+    const addBtn = q<HTMLButtonElement>(section, '[data-act="add"]');
+    if (kind.add) { addBtn.hidden = false; addBtn.innerHTML = icon('plus', 16); addBtn.title = kind.add.label; addBtn.setAttribute('aria-label', kind.add.label); addBtn.addEventListener('click', () => { kind.add?.run(); this.sync(); }); }
+    this.nameIn.hidden = !kind.rename;
+    this.groupIn.hidden = !kind.group;
+    for (const i of [this.nameIn, this.groupIn]) i.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') i.blur(); });
+    this.nameIn.addEventListener('change', () => {
+      const t = this.current();
+      if (!t || this.kind.builtin(t) || !this.nameIn.value.trim()) return;
+      void Promise.resolve(this.kind.rename?.(t, this.nameIn.value.trim())).then(() => this.sync());
+    });
+    this.groupIn.addEventListener('change', () => {
+      const t = this.current();
+      if (!t || this.kind.builtin(t)) return;
+      void Promise.resolve(this.kind.group?.set(t, this.groupIn.value.trim())).then(() => this.sync());
+    });
     this.del.addEventListener('click', () => {
       const t = this.current();
       if (!t || this.kind.builtin(t)) return;
@@ -69,6 +98,10 @@ class PresetPanel<T> {
     setText(this.count, items.length ? String(items.length) : '');
     const off = !cur || this.kind.builtin(cur);
     if (this.del.disabled !== off) this.del.disabled = off;
+    if (this.nameIn.disabled !== off) this.nameIn.disabled = off;
+    if (this.groupIn.disabled !== off) this.groupIn.disabled = off;
+    if (document.activeElement !== this.nameIn) { const v = cur && !off ? this.kind.label(cur) : ''; if (this.nameIn.value !== v) this.nameIn.value = v; }
+    if (document.activeElement !== this.groupIn) { const v = cur && !off && this.kind.group ? this.kind.group.get(cur) : ''; if (this.groupIn.value !== v) this.groupIn.value = v; }
     patchList<T>(this.grid, [...items], {
       key: (t) => this.kind.key(t),
       create: (t) => {
@@ -89,7 +122,8 @@ class PresetPanel<T> {
       const c = q<HTMLCanvasElement>(tile, '.cv-style-swatch'), g = c.getContext('2d');
       if (g) { g.clearRect(0, 0, c.width, c.height); this.kind.draw(g, c.width, c.height, t, tile); tile.dataset.draw = dk; }
     }
-    if (tile.title !== label) tile.title = label;
+    const grp = this.kind.group?.get(t) ?? '', tip = grp ? `${label} (${grp})` : label;
+    if (tile.title !== tip) tile.title = tip;
     tile.classList.toggle('is-active', id === this.selected);
     tile.setAttribute('aria-selected', String(id === this.selected));
   }
@@ -101,6 +135,9 @@ const rgba = (c: { r: number; g: number; b: number }, a: number): string => `rgb
 /** Builds the Gradients, Patterns and Shapes panels into the side column. `keepPatterns` persists the pattern set after a delete. */
 export function createPresetPanels(root: HTMLElement, engine: Engine, keepPatterns: () => Promise<boolean>): void {
   const builtinGradients = new Set(GRADIENT_PRESETS.map((p) => p.id));
+  const saveGradients = (): void => {
+    try { localStorage.setItem(GRADIENT_KEY, JSON.stringify(customGradients.filter((x) => x.id !== 'edited'))); } catch { engine.notice('Gradients cannot be saved in this browser.'); }
+  };
   new PresetPanel<GradientPreset>(root, {
     id: 'gradients', title: 'Gradients', glyph: 'gradient',
     items: () => allGradients(),
@@ -119,12 +156,21 @@ export function createPresetPanels(root: HTMLElement, engine: Engine, keepPatter
     pick: (p) => { engine.gradientSettings.style = p.id; engine.setTool('gradient'); engine.renderGradient(); engine.emit('options', null); },
     remove: (p) => {
       setCustomGradients(customGradients.filter((x) => x.id !== p.id));
-      try { localStorage.setItem(GRADIENT_KEY, JSON.stringify(customGradients.filter((x) => x.id !== 'edited'))); } catch { engine.notice('Gradients cannot be saved in this browser.'); }
+      saveGradients();
     },
+    add: {
+      label: 'New Gradient from the current Colors',
+      run: () => {
+        const base = engine.gradientPreset(), n = customGradients.length + 1;
+        setCustomGradients([...customGradients, { ...structuredClone(base), id: `custom-${Date.now().toString(36)}`, label: `${base.label.replace(/ \d+$/, '')} ${n}`.slice(0, 60) }]);
+        saveGradients();
+      },
+    },
+    rename: (p, name) => { const c = customGradients.find((x) => x.id === p.id); if (c) { c.label = name.slice(0, 60); saveGradients(); } },
   }, engine);
   new PresetPanel<Pattern>(root, {
     id: 'patterns', title: 'Patterns', glyph: 'layers',
-    items: () => allPatterns(),
+    items: () => allPatterns().sort((a, b) => Number(b.builtin) - Number(a.builtin) || (a.group ?? '').localeCompare(b.group ?? '')),
     key: (p) => p.id,
     label: (p) => p.name,
     builtin: (p) => p.builtin,
@@ -137,6 +183,9 @@ export function createPresetPanels(root: HTMLElement, engine: Engine, keepPatter
     },
     pick: (p) => { engine.patternStampPattern = p.id; engine.emit('options', null); },
     remove: (p) => { removePattern(p.id); return keepPatterns(); },
+    add: { label: 'New Pattern from the selection', run: () => toolHost.run('define-pattern') },
+    rename: (p, name) => { renamePattern(p.id, name); return keepPatterns(); },
+    group: { get: (p) => p.group ?? '', set: (p, g) => { setPatternGroup(p.id, g); return keepPatterns(); } },
   }, engine);
   const builtinShapes = new Set(CUSTOM_SHAPES.map((s) => s.id));
   new PresetPanel<{ id: string; label: string; d: string }>(root, {

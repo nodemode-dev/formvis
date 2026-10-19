@@ -73,6 +73,7 @@ export class AdjustPanel extends Dialog {
   private frame = 0;
   private bins: Float64Array | null = null;
   private histo: HTMLCanvasElement | null = null;
+  private histoHandles: ((c: CanvasRenderingContext2D) => void) | null = null;
   private readonly sections = new Map<AdjustmentKind, Section>();
   private readonly okBtn: HTMLButtonElement;
   private readonly presetBar: HTMLElement;
@@ -110,6 +111,7 @@ export class AdjustPanel extends Dialog {
     this.button('Cancel', 'ghost', () => this.close());
     this.okBtn = this.button('OK', 'primary', () => this.commit());
     this.onClose = () => this.abandon();
+    for (const ev of ['active', 'projects'] as const) engine.on(ev, () => { const id = engine.current?.activeLayer?.id ?? ''; if (this.isOpen && this.mode === 'image' && !this.asking && id !== this.seenLayer) this.close(); });
   }
 
   openForLayer(id: ID, made = false): void {
@@ -240,17 +242,41 @@ export class AdjustPanel extends Dialog {
   private readonly sampleResets: Array<(mode: string | null) => void> = [];
   private targetDrag: { move: (e: PointerEvent) => void; up: (e: PointerEvent) => void } | null = null;
 
+  /** Non-modal: the page behind stays lit and reachable. Wheel, scroll, the Hand and Zoom tools and the panels work while the
+   *  dialog is open; a press on the canvas with any other tool waits (the adjustment is the one edit in progress). */
+  open(focus?: HTMLElement | null): void {
+    if (this.isOpen) return;
+    super.open(focus);
+    this.scrim.classList.add('cv-scrim-through');
+    this.scrim.querySelector('.cv-dialog')?.setAttribute('aria-modal', 'false');
+    this.seenLayer = this.engine.current?.activeLayer?.id ?? '';
+    window.addEventListener('pointerdown', this.guard, true);
+    document.addEventListener('keydown', this.esc);
+  }
+
   close(): void {
     this.stopSampling();
+    window.removeEventListener('pointerdown', this.guard, true);
+    document.removeEventListener('keydown', this.esc);
+    this.scrim.classList.remove('cv-scrim-through');
     super.close();
   }
+
+  private seenLayer = '';
+  private readonly esc = (e: KeyboardEvent): void => { if (e.key === 'Escape' && this.isOpen && !e.defaultPrevented) { e.preventDefault(); this.close(); } };
+  private readonly guard = (e: PointerEvent): void => {
+    if (this.sampleHandler || e.button !== 0 || e.target !== document.querySelector('.cv-overlay-canvas')) return;
+    if (this.engine.tool === 'hand' || this.engine.tool === 'zoom' || this.engine.tool === 'rotateView') return;
+    e.preventDefault();
+    e.stopPropagation();
+  };
 
   /** Canvas sampling for the eyedroppers and the targeted adjustment: while a mode is on, the scrim lets clicks
    *  through and a capture-phase listener takes clicks on the stage before any tool sees them. Levels modes are black,
    *  gray and white; Hue/Saturation's are hue-replace, hue-add, hue-remove and target. */
   private startSampling(mode: string): void {
     this.stopSampling(false);
-    if (!['black', 'gray', 'white', 'c-black', 'c-gray', 'c-white', 'hue-replace', 'hue-add', 'hue-remove', 'target'].includes(mode)) { this.sampleResets.forEach((r) => r(null)); return; }
+    if (!['black', 'gray', 'white', 'c-black', 'c-gray', 'c-white', 'c-target', 'hue-replace', 'hue-add', 'hue-remove', 'target'].includes(mode)) { this.sampleResets.forEach((r) => r(null)); return; }
     this.sampleMode = mode;
     this.sampleResets.forEach((r) => r(mode));
     this.scrim.classList.add('cv-scrim-through');
@@ -268,6 +294,7 @@ export class AdjustPanel extends Dialog {
         const rgb = this.engine.sampleOriginal(pt, this.mode !== 'image', this.sampleRadius);
         if (rgb) this.applyCurveSample(rgb, m.slice(2) as 'black' | 'gray' | 'white');
       } else if (m === 'target') this.beginTarget(pt, e.clientX);
+      else if (m === 'c-target') this.beginCurveTarget(pt, e.clientY);
       else this.sampleHue(pt, m);
     };
     window.addEventListener('pointerdown', handler, true);
@@ -279,7 +306,6 @@ export class AdjustPanel extends Dialog {
     this.endTarget();
     this.sampleHandler = null;
     this.sampleMode = null;
-    this.scrim.classList.remove('cv-scrim-through');
     if (resetUi) this.sampleResets.forEach((r) => r(null));
   }
 
@@ -334,6 +360,34 @@ export class AdjustPanel extends Dialog {
     window.addEventListener('pointerup', up, true);
     this.targetDrag = { move, up };
     this.sections.get('hsv')?.sync();
+    this.changed();
+  }
+
+  /** The Curves targeted adjustment: the level under the pointer (the current channel's, the weighted grey for RGB) gets a
+   *  point on the curve, and dragging up or down raises or lowers it, one level per screen pixel. */
+  private beginCurveTarget(pt: { x: number; y: number }, y0: number): void {
+    const cv = this.data.curves as { channel: string; channels: Pt[][] };
+    const names = channelsOf(this.engine.current?.doc.mode);
+    if (names !== CHANNELS) { toast('The targeted adjustment works on RGB pictures.'); return; }
+    const rgb = this.engine.sampleOriginal(pt, this.mode !== 'image', this.sampleRadius);
+    if (!rgb) return;
+    const ch = Math.max(0, names.indexOf(cv.channel)), list = cv.channels[ch];
+    const level = ch === 0 ? 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2] : rgb[ch - 1], x = Math.round(clamp(level * 255, 1, 254));
+    let at = list.findIndex((q) => Math.abs(q.x - x) <= 4);
+    if (at < 0) { list.push({ x, y: curveTable(ch, list)[x] }); list.sort((a, b) => a.x - b.x); at = list.findIndex((q) => q.x === x); }
+    const start = list[at].y;
+    const move = (e: PointerEvent): void => {
+      e.preventDefault();
+      e.stopPropagation();
+      list[at] = { x: list[at].x, y: clamp(Math.round(start + (y0 - e.clientY)), 0, 255) };
+      this.sections.get('curves')?.sync();
+      this.changed();
+    };
+    const up = (e: PointerEvent): void => { e.preventDefault(); e.stopPropagation(); this.endTarget(); };
+    window.addEventListener('pointermove', move, true);
+    window.addEventListener('pointerup', up, true);
+    this.targetDrag = { move, up };
+    this.sections.get('curves')?.sync();
     this.changed();
   }
 
@@ -492,7 +546,8 @@ export class AdjustPanel extends Dialog {
   private drawHisto(ch: number): void {
     const c = this.histo?.getContext('2d');
     if (!c) return;
-    c.clearRect(0, 0, 256, 96);
+    c.clearRect(0, 0, 256, 108);
+    this.histoHandles?.(c);
     const bins = this.bins;
     if (!bins) return;
     let max = 0;
@@ -507,10 +562,36 @@ export class AdjustPanel extends Dialog {
     let ch = 0;
     const lv = (): { channel: string; ranges: Array<Record<string, number>> } => this.data.levels as { channel: string; ranges: Array<Record<string, number>> };
     const r = (): Record<string, number> => lv().ranges[ch];
-    const set = (key: string, v: number): void => { r()[key] = v; this.changed(); };
+    const set = (key: string, v: number): void => { r()[key] = v; this.drawHisto(ch); this.changed(); };
+    const handleXs = (): number[] => { const x = r(); return [x.black, x.black + (x.white - x.black) * Math.pow(0.5, x.gamma), x.white]; };
+    this.histoHandles = (c) => {
+      c.fillStyle = cssVar('--accent-color');
+      for (const hx of handleXs()) { c.beginPath(); c.moveTo(hx, 97); c.lineTo(hx - 5, 107.5); c.lineTo(hx + 5, 107.5); c.closePath(); c.fill(); }
+    };
+    const canvas = el<HTMLCanvasElement>('<canvas class="cv-histo" width="256" height="108" aria-label="Input levels histogram with black, midtone and white handles"></canvas>');
+    let grab = -1;
+    const histoX = (e: PointerEvent): number => { const b = canvas.getBoundingClientRect(); return b.width > 0 ? clamp(((e.clientX - b.left) / b.width) * 255, 0, 255) : 0; };
+    const dragHandle = (e: PointerEvent): void => {
+      const x = histoX(e), x0 = r();
+      if (grab === 0) set('black', clamp(Math.round(x), 0, x0.white - 2));
+      else if (grab === 2) set('white', clamp(Math.round(x), x0.black + 2, 255));
+      else if (grab === 1) set('gamma', Math.round(clamp(Math.log(clamp((x - x0.black) / (x0.white - x0.black), 0.01, 0.99)) / Math.log(0.5), 0.1, 9.99) * 100) / 100);
+      values();
+    };
+    canvas.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      const x = histoX(e), hs = handleXs(), d = hs.map((h) => Math.abs(h - x));
+      grab = d.indexOf(Math.min(...d));
+      if (grab === 1 && Math.abs(hs[1] - hs[0]) < 1 && x < hs[0]) grab = 0;
+      canvas.setPointerCapture(e.pointerId);
+      dragHandle(e);
+    });
+    canvas.addEventListener('pointermove', (e) => { if (grab >= 0) dragHandle(e); });
+    const release = (e: PointerEvent): void => { grab = -1; if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId); };
+    canvas.addEventListener('pointerup', release);
+    canvas.addEventListener('pointercancel', release);
     const names = (): string[] => channelsOf(this.engine.current?.doc.mode);
     const channel = selectRow('Channel', ALL_CHANNELS.map((c) => [c, c] as const), (v) => { ch = Math.max(0, names().indexOf(v)); lv().channel = v; values(); this.drawHisto(ch); this.changed(); });
-    const canvas = el<HTMLCanvasElement>('<canvas class="cv-histo" width="256" height="96"></canvas>');
     const black = sliderRow('Input black', 0, 253, 1, (v) => set('black', Math.min(v, r().white - 2)), { def: 0 });
     const gamma = sliderRow('Midtones', 0.1, 9.99, 0.01, (v) => set('gamma', v), { def: 1 });
     const white = sliderRow('Input white', 2, 255, 1, (v) => set('white', Math.max(v, r().black + 2)), { def: 255 });
@@ -636,9 +717,10 @@ export class AdjustPanel extends Dialog {
     const smoothBtn = el<HTMLButtonElement>('<button class="cv-btn" type="button">Smooth</button>');
     smoothBtn.addEventListener('click', smooth);
     const sample = selectRow('Eyedropper', [['', 'Off'], ['c-black', 'Black point'], ['c-gray', 'Gray point'], ['c-white', 'White point']], (v) => { if (v) this.startSampling(v); else this.stopSampling(); });
-    this.sampleResets.push((m) => sample.set(m?.startsWith('c-') ? m : ''));
+    const aim = checkRow('Targeted adjustment', (v) => { if (v) this.startSampling('c-target'); else this.stopSampling(); });
+    this.sampleResets.push((m) => { sample.set(m === 'c-black' || m === 'c-gray' || m === 'c-white' ? m : ''); aim.set(m === 'c-target'); });
     const size = this.sampleSizeRow();
-    node.append(channel.el, canvas, pencil.el, smoothBtn, sample.el, size.el, el('<p class="cv-note">Click to add a point, drag to shape the curve, drag a point off the graph to remove it. Pencil draws the curve freehand; Smooth evens it out.</p>'));
+    node.append(channel.el, canvas, pencil.el, smoothBtn, sample.el, aim.el, size.el, el('<p class="cv-note">Click to add a point, drag to shape the curve, drag a point off the graph to remove it. Pencil draws the curve freehand; Smooth evens it out.</p>'));
     const reset = (all: boolean): void => {
       const flat = (): Pt[] => [{ x: 0, y: 0 }, { x: 255, y: 255 }];
       if (all) cv().channels = cv().channels.map(flat);

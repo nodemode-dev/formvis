@@ -110,16 +110,21 @@ def panorama(images: list[bytes], layout: str, crop: bool, distortion: bool = Fa
     return _finish(rgba, cover, crop), len(kept), notes
 
 
-def hdr(images: list[bytes]) -> tuple[bytes, dict]:
+def hdr(images: list[bytes], align: bool = True, times: list[float] | None = None) -> tuple[bytes, dict]:
     import cv2
     read = [_read(d) for d in images]
     imgs, exif = [r[0] for r in read], [r[1] for r in read]
     shape = imgs[0].shape
     if any(i.shape != shape for i in imgs):
         raise ValueError("Merge to HDR needs exposures of the same size.")
-    cv2.createAlignMTB().process(imgs, imgs)
+    if times is not None and (len(times) != len(imgs) or any(not t > 0 for t in times)):
+        raise ValueError("Give one exposure time above zero for each photo.")
+    if align:
+        cv2.createAlignMTB().process(imgs, imgs)
     lin = [((i.astype(np.float32) / 255.0 + 0.055) / 1.055) ** 2.4 for i in imgs]
-    if all(e for e in exif):
+    if times is not None:
+        times, source = np.array(times, np.float32), "entered"
+    elif all(e for e in exif):
         times, source = np.array(exif, np.float32), "EXIF"
     else:
         base = int(np.argsort([float(np.median(l)) for l in lin])[len(lin) // 2])
@@ -152,12 +157,13 @@ async def panorama_route(file: list[UploadFile] = File(...), layout: str = Form(
 
 
 @router.post("/hdr")
-async def hdr_route(file: list[UploadFile] = File(...)) -> Response:
+async def hdr_route(file: list[UploadFile] = File(...), align: bool = Form(True), times: str = Form("")) -> Response:
     if len(file) < 2:
         raise HTTPException(422, "Merge to HDR needs at least two exposures of the same scene.")
     data = [await f.read() for f in file]
     try:
-        raw, head = await run_in_threadpool(hdr, data)
+        given = [float(t) for t in times.split(",") if t.strip()] if times.strip() else None
+        raw, head = await run_in_threadpool(hdr, data, align, given)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     h = json.dumps(head).encode()

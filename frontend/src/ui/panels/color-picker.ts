@@ -1,5 +1,6 @@
 import type { Engine, RGB } from '../../engine';
 import { inkOf, renditionOf, type Ink } from '../../engine/colour-lut';
+import { labToSrgb, srgbToLab } from '../../engine/lab';
 import { Dialog } from '../dialogs';
 import { el, setHidden } from '../dom';
 import { numberRow } from './controls';
@@ -31,6 +32,42 @@ function toHsv(c: RGB, hue: number): HSV {
 
 const hexOf = (c: RGB): string => '#' + [c.r, c.g, c.b].map((n) => n.toString(16).padStart(2, '0')).join('');
 
+/** The nine components the strip can run along; the field shows the other two of the same family (HSB, RGB or Lab). */
+type Axis = 'h' | 's' | 'v' | 'r' | 'g' | 'b' | 'l' | 'a' | 'k';
+type Family = 'hsb' | 'rgb' | 'lab';
+const LAYOUT: Record<Axis, { x: Axis; y: Axis; family: Family }> = {
+  h: { x: 's', y: 'v', family: 'hsb' }, s: { x: 'h', y: 'v', family: 'hsb' }, v: { x: 'h', y: 's', family: 'hsb' },
+  r: { x: 'b', y: 'g', family: 'rgb' }, g: { x: 'b', y: 'r', family: 'rgb' }, b: { x: 'r', y: 'g', family: 'rgb' },
+  l: { x: 'a', y: 'k', family: 'lab' }, a: { x: 'k', y: 'l', family: 'lab' }, k: { x: 'a', y: 'l', family: 'lab' },
+};
+const AXIS_NAME: Record<Axis, string> = { h: 'H', s: 'S', v: 'B', r: 'R', g: 'G', b: 'B', l: 'L', a: 'a', k: 'b' };
+
+/** A component of colour c as 0 to 1; hue is carried in for grays. */
+function axisValue(a: Axis, c: RGB, hue: number): number {
+  switch (a) {
+    case 'h': return hue / 360;
+    case 's': return toHsv(c, hue).s;
+    case 'v': return toHsv(c, hue).v;
+    case 'r': return c.r / 255;
+    case 'g': return c.g / 255;
+    case 'b': return c.b / 255;
+    default: { const lab = srgbToLab(c.r, c.g, c.b); return a === 'l' ? lab[0] / 100 : ((a === 'a' ? lab[1] : lab[2]) + 128) / 255; }
+  }
+}
+
+/** The colour whose strip component is `sv` and whose field components are `xv` and `yv` (all 0 to 1). */
+function colourFrom(strip: Axis, sv: number, xv: number, yv: number): RGB {
+  const L = LAYOUT[strip], v: Partial<Record<Axis, number>> = { [strip]: sv, [L.x]: xv, [L.y]: yv };
+  const n = (a: Axis): number => Math.min(1, Math.max(0, v[a] ?? 0));
+  if (L.family === 'hsb') return toRgb({ h: Math.min(359.99, n('h') * 360), s: n('s'), v: n('v') });
+  if (L.family === 'rgb') return { r: Math.round(n('r') * 255), g: Math.round(n('g') * 255), b: Math.round(n('b') * 255) };
+  const [r, g, b] = labToSrgb(n('l') * 100, n('a') * 255 - 128, n('k') * 255 - 128);
+  return { r, g, b };
+}
+
+const labDist = (p: RGB, q: RGB): number => { const a = srgbToLab(p.r, p.g, p.b), b = srgbToLab(q.r, q.g, q.b); return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]); };
+const snapWeb = (c: RGB): RGB => ({ r: Math.round(c.r / 51) * 51, g: Math.round(c.g / 51) * 51, b: Math.round(c.b / 51) * 51 });
+
 function parseHex(text: string): RGB | null {
   let t = text.trim();
   if (t.startsWith('#')) t = t.slice(1);
@@ -52,24 +89,85 @@ export class ColorPickerDialog extends Dialog {
   private readonly sbField = el<HTMLCanvasElement>(`<canvas class="cv-pick-field" width="${FIELD}" height="${FIELD}" aria-label="Saturation and brightness"></canvas>`);
   private readonly strip = el<HTMLCanvasElement>(`<canvas class="cv-pick-strip" width="${STRIP}" height="${FIELD}" aria-label="Hue"></canvas>`);
   private readonly swatch = el<HTMLCanvasElement>('<canvas class="cv-pick-swatch" width="56" height="56" aria-label="New color above, current below"></canvas>');
-  private readonly red = numberRow('R', 0, 255, 1, (v) => this.setRgb({ ...this.rgb(), r: v }));
-  private readonly green = numberRow('G', 0, 255, 1, (v) => this.setRgb({ ...this.rgb(), g: v }));
-  private readonly blue = numberRow('B', 0, 255, 1, (v) => this.setRgb({ ...this.rgb(), b: v }));
   private readonly hex = el<HTMLInputElement>('<input class="cv-input" type="text" maxlength="7" spellcheck="false" aria-label="Hex">');
   private readonly inks = (['C', 'M', 'Y', 'K'] as const).map((n, k) => numberRow(n, 0, 100, 1, (v) => this.setInk(k, v)));
   private ink: Ink | null = null;
+  /** The component the strip runs along, picked with the radio beside its field (default Hue). */
+  private axis: Axis = 'h';
+  private readonly axisRows = new Map<Axis, ReturnType<typeof numberRow>>();
+  private readonly radios = new Map<Axis, HTMLInputElement>();
+  private readonly gamutWarn = el<HTMLButtonElement>('<button class="cv-btn cv-btn-ghost" type="button" title="Out of gamut for printing: click for the closest printable colour" hidden>Out of gamut</button>');
+  private readonly webWarn = el<HTMLButtonElement>('<button class="cv-btn cv-btn-ghost" type="button" title="Not a web-safe colour: click for the closest one" hidden>Not web safe</button>');
+
+  /** A numeric row for one component with the radio that makes it the strip's axis. */
+  private axisRow(a: Axis, max: number, min = 0): HTMLElement {
+    const fam = LAYOUT[a].family;
+    const row = numberRow(AXIS_NAME[a], min, max, 1, (v) => this.typeAxis(a, v));
+    this.axisRows.set(a, row);
+    const radio = el<HTMLInputElement>(`<input type="radio" name="cv-pick-axis" aria-label="Strip axis ${fam} ${AXIS_NAME[a]}">`);
+    radio.checked = a === this.axis;
+    radio.addEventListener('change', () => { if (radio.checked) { this.axis = a; this.sync(); } });
+    this.radios.set(a, radio);
+    const wrap = el<HTMLElement>('<div class="cv-pick-axis"></div>');
+    wrap.append(radio, row.el);
+    return wrap;
+  }
+
+  /** A component typed into its field. */
+  private typeAxis(a: Axis, v: number): void {
+    if (!Number.isFinite(v)) return;
+    const L = LAYOUT[a], c = this.rgb();
+    if (L.family === 'rgb') { this.setRgb({ ...c, [a]: v }); return; }
+    if (L.family === 'hsb') {
+      const n = { ...this.hsv };
+      if (a === 'h') n.h = Math.min(359.99, Math.max(0, v)); else if (a === 's' || a === 'v') n[a] = Math.min(1, Math.max(0, v / 100));
+      this.applyHsv(n);
+      return;
+    }
+    const lab = srgbToLab(c.r, c.g, c.b);
+    if (a === 'l') lab[0] = Math.min(100, Math.max(0, v)); else lab[a === 'a' ? 1 : 2] = Math.min(127, Math.max(-128, v));
+    const [r, g, b] = labToSrgb(lab[0], lab[1], lab[2]);
+    this.setRgb({ r, g, b });
+  }
+
+  /** The strip and field components moved to a new place (all 0 to 1). */
+  private place(sv: number, xv: number, yv: number): void {
+    const L = LAYOUT[this.axis];
+    if (L.family === 'hsb') {
+      const v: Partial<Record<Axis, number>> = { [this.axis]: sv, [L.x]: xv, [L.y]: yv };
+      this.applyHsv({ h: Math.min(359.99, (v.h ?? 0) * 360), s: v.s ?? 0, v: v.v ?? 0 });
+      return;
+    }
+    this.setRgb(colourFrom(this.axis, sv, xv, yv));
+  }
+
+  /** Pick a colour anywhere on the screen with the browser's eyedropper. */
+  private async fromScreen(): Promise<void> {
+    const Eye = (window as unknown as { EyeDropper?: new () => { open(): Promise<{ sRGBHex: string }> } }).EyeDropper;
+    if (!Eye) return;
+    try { const r = await new Eye().open(), c = parseHex(r.sRGBHex); if (c) this.setRgb(c); } catch { /* cancelled */ }
+  }
 
   constructor(private readonly engine: Engine) {
-    super('Color Picker', 420);
+    super('Color Picker', 600);
     const side = el<HTMLElement>('<div class="cv-pick-side"></div>');
-    side.append(this.swatch, this.red.el, this.green.el, this.blue.el, this.hex, ...this.inks.map((r) => r.el));
+    const comps = el<HTMLElement>('<div class="cv-pick-side"></div>');
+    side.append(this.swatch, this.gamutWarn, this.webWarn, this.hex);
+    comps.append(this.axisRow('h', 359), this.axisRow('s', 100), this.axisRow('v', 100), this.axisRow('r', 255), this.axisRow('g', 255), this.axisRow('b', 255), this.axisRow('l', 100), this.axisRow('a', 127, -128), this.axisRow('k', 127, -128), ...this.inks.map((r) => r.el));
     const wrap = el<HTMLElement>('<div class="cv-pick"></div>');
-    wrap.append(this.sbField, this.strip, side);
-    this.body.append(wrap, el<HTMLElement>('<p class="cv-note">Click the canvas to sample a color.</p>'));
+    wrap.append(this.sbField, this.strip, side, comps);
+    this.body.append(wrap, el<HTMLElement>('<p class="cv-note">Click the canvas to sample a color. The radio beside a component makes the strip run along it.</p>'));
     this.button('Cancel', 'ghost', () => this.close());
+    this.button('Add to Swatches', 'ghost', () => document.dispatchEvent(new CustomEvent('cv-add-swatch', { detail: hexOf(this.rgb()) })));
+    if ('EyeDropper' in window) this.button('Pick from Screen', 'ghost', () => void this.fromScreen());
     this.button('OK', 'primary', () => this.commit());
-    this.drag(this.sbField, (x, y) => this.applyHsv({ ...this.hsv, s: x, v: 1 - y }));
-    this.drag(this.strip, (_x, y) => this.applyHsv({ ...this.hsv, h: Math.min(359.99, y * 360) }));
+    this.gamutWarn.addEventListener('click', () => { const p = this.engine.current; if (this.ink && p?.cmykLut) this.setRgb(renditionOf(this.ink, p.cmykLut)); });
+    this.webWarn.addEventListener('click', () => this.setRgb(snapWeb(this.rgb())));
+    this.drag(this.sbField, (x, y) => this.place(axisValue(this.axis, this.rgb(), this.hsv.h), x, 1 - y));
+    this.drag(this.strip, (_x, y) => {
+      const L = LAYOUT[this.axis], c = this.rgb();
+      this.place(this.axis === 'h' ? y : 1 - y, axisValue(L.x, c, this.hsv.h), axisValue(L.y, c, this.hsv.h));
+    });
     this.hex.addEventListener('change', () => {
       const c = parseHex(this.hex.value);
       if (c) this.setRgb(c);
@@ -222,33 +320,52 @@ export class ColorPickerDialog extends Dialog {
 
   private sync(): void {
     const c = this.rgb();
-    const fx = this.sbField.getContext('2d');
+    const fx = this.sbField.getContext('2d'), ax = this.axis, L = LAYOUT[ax], sv = axisValue(ax, c, this.hsv.h);
+    const xv = axisValue(L.x, c, this.hsv.h), yv = axisValue(L.y, c, this.hsv.h);
     if (fx) {
-      fx.fillStyle = hexOf(toRgb({ h: this.hsv.h, s: 1, v: 1 }));
-      fx.fillRect(0, 0, FIELD, FIELD);
-      const white = fx.createLinearGradient(0, 0, FIELD, 0);
-      white.addColorStop(0, '#ffffff');
-      white.addColorStop(1, 'rgba(255,255,255,0)');
-      fx.fillStyle = white;
-      fx.fillRect(0, 0, FIELD, FIELD);
-      const black = fx.createLinearGradient(0, 0, 0, FIELD);
-      black.addColorStop(0, 'rgba(0,0,0,0)');
-      black.addColorStop(1, '#000000');
-      fx.fillStyle = black;
-      fx.fillRect(0, 0, FIELD, FIELD);
+      if (ax === 'h') {
+        fx.fillStyle = hexOf(toRgb({ h: this.hsv.h, s: 1, v: 1 }));
+        fx.fillRect(0, 0, FIELD, FIELD);
+        const white = fx.createLinearGradient(0, 0, FIELD, 0);
+        white.addColorStop(0, '#ffffff');
+        white.addColorStop(1, 'rgba(255,255,255,0)');
+        fx.fillStyle = white;
+        fx.fillRect(0, 0, FIELD, FIELD);
+        const black = fx.createLinearGradient(0, 0, 0, FIELD);
+        black.addColorStop(0, 'rgba(0,0,0,0)');
+        black.addColorStop(1, '#000000');
+        fx.fillStyle = black;
+        fx.fillRect(0, 0, FIELD, FIELD);
+      } else {
+        const img = fx.createImageData(FIELD, FIELD), d = img.data;
+        for (let j = 0; j < FIELD; j++) for (let i = 0; i < FIELD; i++) {
+          const k = colourFrom(ax, sv, i / (FIELD - 1), 1 - j / (FIELD - 1)), o = (j * FIELD + i) * 4;
+          d[o] = k.r; d[o + 1] = k.g; d[o + 2] = k.b; d[o + 3] = 255;
+        }
+        fx.putImageData(img, 0, 0);
+      }
       fx.beginPath();
-      fx.arc(this.hsv.s * FIELD, (1 - this.hsv.v) * FIELD, 5, 0, Math.PI * 2);
+      fx.arc(xv * FIELD, (1 - yv) * FIELD, 5, 0, Math.PI * 2);
       fx.lineWidth = 1.5;
-      fx.strokeStyle = this.hsv.v > 0.55 ? '#000000' : '#ffffff';
+      fx.strokeStyle = (ax === 'h' ? this.hsv.v : yv) > 0.55 ? '#000000' : '#ffffff';
       fx.stroke();
     }
     const sx = this.strip.getContext('2d');
     if (sx) {
-      const rainbow = sx.createLinearGradient(0, 0, 0, FIELD);
-      for (let i = 0; i <= 6; i++) rainbow.addColorStop(i / 6, hexOf(toRgb({ h: i * 60, s: 1, v: 1 })));
-      sx.fillStyle = rainbow;
-      sx.fillRect(0, 0, STRIP, FIELD);
-      const y = (this.hsv.h / 360) * FIELD;
+      if (ax === 'h') {
+        const rainbow = sx.createLinearGradient(0, 0, 0, FIELD);
+        for (let i = 0; i <= 6; i++) rainbow.addColorStop(i / 6, hexOf(toRgb({ h: i * 60, s: 1, v: 1 })));
+        sx.fillStyle = rainbow;
+        sx.fillRect(0, 0, STRIP, FIELD);
+      } else {
+        const img = sx.createImageData(STRIP, FIELD), d = img.data;
+        for (let j = 0; j < FIELD; j++) {
+          const k = colourFrom(ax, 1 - j / (FIELD - 1), xv, yv);
+          for (let i = 0; i < STRIP; i++) { const o = (j * STRIP + i) * 4; d[o] = k.r; d[o + 1] = k.g; d[o + 2] = k.b; d[o + 3] = 255; }
+        }
+        sx.putImageData(img, 0, 0);
+      }
+      const y = (ax === 'h' ? sv : 1 - sv) * FIELD;
       sx.fillStyle = 'rgba(0,0,0,0.75)';
       sx.fillRect(0, y - 1.5, STRIP, 3);
       sx.fillStyle = '#ffffff';
@@ -261,9 +378,13 @@ export class ColorPickerDialog extends Dialog {
       wx.fillStyle = hexOf(this.current);
       wx.fillRect(0, 28, 56, 28);
     }
-    this.red.set(c.r);
-    this.green.set(c.g);
-    this.blue.set(c.b);
+    const lab = srgbToLab(c.r, c.g, c.b), hv = this.hsv;
+    const shown: Record<Axis, number> = { h: Math.round(hv.h), s: Math.round(hv.s * 100), v: Math.round(hv.v * 100), r: c.r, g: c.g, b: c.b, l: Math.round(lab[0]), a: Math.round(lab[1]), k: Math.round(lab[2]) };
+    for (const [a, row] of this.axisRows) if (document.activeElement !== row.input) row.set(shown[a]);
+    for (const [a, r] of this.radios) r.checked = a === this.axis;
+    const p = this.engine.current;
+    setHidden(this.gamutWarn, !(this.ink && p?.cmykLut && p.cmykIn && labDist(c, renditionOf(inkOf(c, p.cmykIn), p.cmykLut)) > 3));
+    setHidden(this.webWarn, [c.r, c.g, c.b].every((n) => n % 51 === 0));
     if (this.ink) this.inks.forEach((r, k) => r.set(Math.round(this.ink![k] * 100)));
     if (document.activeElement !== this.hex) this.hex.value = hexOf(c);
   }

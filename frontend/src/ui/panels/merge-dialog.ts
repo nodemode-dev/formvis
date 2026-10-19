@@ -18,6 +18,9 @@ export class MergeDialog extends Dialog {
   private readonly picked = el('<p class="cv-dialog-note" role="status" style="min-height: 1.4em"></p>');
   private readonly note = el('<p class="cv-dialog-note" role="status" style="min-height: 2.8em"></p>');
   private readonly panoRows: HTMLElement;
+  private readonly hdrRows: HTMLElement;
+  private align = true;
+  private readonly times = el('<input class="cv-input" type="text" placeholder="Exposure times in seconds, one per photo, comma separated (blank: from the photos)" aria-label="Exposure times">') as HTMLInputElement;
 
   constructor(private readonly engine: Engine, private readonly mode: 'panorama' | 'hdr') {
     super(mode === 'panorama' ? 'Photomerge' : 'Merge to HDR', 440);
@@ -36,8 +39,13 @@ export class MergeDialog extends Dialog {
     this.panoRows = el('<div></div>');
     this.panoRows.append(layout.el, crop.el, vig.el, geo.el, el('<p class="cv-dialog-note">Auto finds where the photos meet and projects them onto a sphere; Perspective keeps straight lines straight for a narrow view; Cylindrical bends the photos onto a cylinder for a wide one; Collage only moves, turns and scales them; Reposition moves and turns. Vignette Removal needs photos of one size. Distortion correction straightens the lens bend the overlaps show.</p>'));
     this.panoRows.hidden = mode !== 'panorama';
+    const align = checkRow('Attempt to Automatically Align Source Images', (v) => { this.align = v; });
+    this.hdrRows = el('<div></div>');
+    this.hdrRows.append(align.el, this.times);
+    this.hdrRows.hidden = mode !== 'hdr';
+    align.set(true);
     const intro = mode === 'panorama' ? 'Choose two or more overlapping photos, or add the open documents.' : 'Choose two or more exposures of the same scene; their exposure times come from the photos\' EXIF, or are worked out from the photos.';
-    this.body.append(el(`<p class="cv-dialog-note">${intro}</p>`), choose, open, this.input, this.picked, this.panoRows, this.note);
+    this.body.append(el(`<p class="cv-dialog-note">${intro}</p>`), choose, open, this.input, this.picked, this.panoRows, this.hdrRows, this.note);
     layout.set('auto'); crop.set(false); vig.set(false); geo.set(false);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => void this.apply());
@@ -61,7 +69,7 @@ export class MergeDialog extends Dialog {
         if (kept && given && kept !== given) this.engine.notice(`${kept} of the ${given} photos could be joined; the others did not overlap enough.`);
         else if (this.distortion || this.vignette) this.engine.notice([this.distortion ? (r.notes.k1 ? `Lens distortion corrected (k1 ${r.notes.k1}).` : 'No lens distortion found.') : '', this.vignette && r.notes.vignette ? `Vignette: ${r.notes.vignette}.` : ''].filter(Boolean).join(' '));
       } else {
-        const r = await api.mergeHdr(files), n = r.width * r.height, data = new Float32Array(n * 4);
+        const raw = this.times.value.trim(), r = await api.mergeHdr(files, { align: this.align, times: raw ? raw.split(',').map((t) => Number(t.trim())) : [] }), n = r.width * r.height, data = new Float32Array(n * 4);
         for (let j = 0; j < n; j++) { data[j * 4] = r.rgb[j * 3]; data[j * 4 + 1] = r.rgb[j * 3 + 1]; data[j * 4 + 2] = r.rgb[j * 3 + 2]; data[j * 4 + 3] = 1; }
         this.close();
         this.engine.openDeep('HDR', { mode: 'rgb', n: 3, width: r.width, height: r.height, data }, 32);

@@ -5,8 +5,8 @@ const MAX = 250_000;
 function stepOf(img: ImageData): number { return Math.max(1, Math.ceil(Math.sqrt((img.width * img.height) / MAX))); }
 const luma = (r: number, g: number, b: number): number => 0.2126 * r + 0.7152 * g + 0.0722 * b;
 
-export function histogram(img: ImageData): { r: Uint32Array; g: Uint32Array; b: Uint32Array; l: Uint32Array } {
-  const r = new Uint32Array(256), g = new Uint32Array(256), b = new Uint32Array(256), l = new Uint32Array(256), d = img.data, st = stepOf(img);
+export function histogram(img: ImageData, exact = false): { r: Uint32Array; g: Uint32Array; b: Uint32Array; l: Uint32Array } {
+  const r = new Uint32Array(256), g = new Uint32Array(256), b = new Uint32Array(256), l = new Uint32Array(256), d = img.data, st = exact ? 1 : stepOf(img);
   for (let y = 0; y < img.height; y += st) for (let x = 0; x < img.width; x += st) {
     const i = (y * img.width + x) * 4;
     if (d[i + 3] === 0) continue;

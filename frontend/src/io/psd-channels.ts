@@ -1,5 +1,5 @@
 import { SelectionMask, uid, type AlphaChannel, type DocProfile } from '../engine';
-import { resourceBlocks } from './psd-paths';
+import { addResourceBytes, block, resourceBlocks } from './psd-paths';
 import { profileName, toBase64 } from './icc-read';
 
 /** What a PSD or PSB keeps beside its layers that ag-psd does not hand over: the alpha, spot and Quick Mask channels
@@ -103,7 +103,7 @@ export function readExtraChannels(buf: ArrayBuffer): { alphas: AlphaChannel[]; n
           for (let i = 0; i < width; i++) plane[r * width + i] = row[i * bytes];
         }
       }
-      const name = names[k + first] ?? names[k] ?? `Alpha ${k + 1}`, disp = display[k + first] ?? display[k];
+      const name = names[k] ?? `Alpha ${k + 1}`, disp = display[k];
       const spot = !!disp && disp.kind >= 2 && disp.kind !== 128, quick = /^quick mask$/i.test(name);
       alphas.push({ id: uid(), name: name || `Alpha ${k + 1}`, mask: SelectionMask.cropped(0, 0, width, height, plane), ...(disp?.color ? { color: disp.color } : {}), ...(disp?.opacity !== undefined ? { opacity: disp.opacity } : {}), indicates: spot || (disp && disp.kind === 0) ? 'selected' : 'masked', ...(spot ? { spot: true } : {}) });
       if (spot) notes.push(`"${name}" is a spot channel; it opened as a spot channel with its ink colour and solidity.`);
@@ -112,6 +112,71 @@ export function readExtraChannels(buf: ArrayBuffer): { alphas: AlphaChannel[]; n
     return { alphas, notes };
   } catch { return none; }
 }
+
+/** One row of 8-bit data as PackBits runs. */
+function packRow(row: Uint8Array, out: Uint8Array): number {
+  let n = 0;
+  for (let i = 0; i < row.length;) {
+    let run = 1;
+    while (i + run < row.length && run < 128 && row[i + run] === row[i]) run++;
+    if (run >= 2) { out[n++] = (257 - run) & 255; out[n++] = row[i]; i += run; continue; }
+    let j = i + 1;
+    while (j < row.length && j - i < 128 && !(j + 1 < row.length && row[j] === row[j + 1])) j++;
+    out[n++] = j - i - 1;
+    for (let k = i; k < j; k++) out[n++] = row[k];
+    i = j;
+  }
+  return n;
+}
+
+const u16 = (v: number): number[] => [(v >> 8) & 255, v & 255], u32 = (v: number): number[] => [(v >>> 24) & 255, (v >>> 16) & 255, (v >>> 8) & 255, v & 255];
+
+/** The document's alpha and spot channels written into an RGB PSD or PSB made by ag-psd: run-length planes after the
+ *  colour channels of the merged image, the channel count in the header, and image resources 1006 and 1045 (names),
+ *  1053 (ids) and 1077 (colour, opacity, and whether the colour marks selected or masked areas, or is a spot ink). */
+export function addExtraChannels(psd: ArrayBuffer, alphas: readonly AlphaChannel[]): ArrayBuffer {
+  const list = alphas.slice(0, 50);
+  if (!list.length) return psd;
+  const v = new DataView(psd), b = new Uint8Array(psd);
+  if (buf4(v) !== 0x38425053 || v.getUint16(MODE_AT) !== 3 || v.getUint16(DEPTH_AT) !== 8) return psd;
+  const big = v.getUint16(4) === 2, channels = v.getUint16(CHANNELS_AT), height = v.getUint32(14), width = v.getUint32(18), lenSize = big ? 8 : 4, rowSize = big ? 4 : 2;
+  const cmEnd = 26 + 4 + v.getUint32(26), resEnd = cmEnd + 4 + v.getUint32(cmEnd);
+  const at = resEnd + lenSize + (big ? Number(v.getBigUint64(resEnd)) : v.getUint32(resEnd));
+  if (at + 2 > b.length || v.getUint16(at) !== 1 || !width || !height) return psd;
+  const tableEnd = at + 2 + channels * height * rowSize, plane = new Uint8Array(width * height), scratch = new Uint8Array(width * 2 + 8), rows: Uint8Array[] = [], table = new Uint8Array(list.length * height * rowSize);
+  let dataLen = 0, ti = 0;
+  for (const a of list) {
+    plane.fill(0);
+    const m = a.mask;
+    if (m) for (let y = Math.max(0, m.y); y < Math.min(height, m.y + m.h); y++) for (let x = Math.max(0, m.x); x < Math.min(width, m.x + m.w); x++) plane[y * width + x] = m.data[(y - m.y) * m.w + (x - m.x)];
+    for (let y = 0; y < height; y++) {
+      const n = packRow(plane.subarray(y * width, (y + 1) * width), scratch);
+      rows.push(scratch.slice(0, n));
+      dataLen += n;
+      if (big) { table[ti++] = n >>> 24; table[ti++] = (n >>> 16) & 255; }
+      table[ti++] = (n >> 8) & 255; table[ti++] = n & 255;
+    }
+  }
+  const out = new Uint8Array(b.length + table.length + dataLen);
+  out.set(b.subarray(0, tableEnd), 0);
+  out.set(table, tableEnd);
+  out.set(b.subarray(tableEnd), tableEnd + table.length);
+  let wo = b.length + table.length;
+  for (const r of rows) { out.set(r, wo); wo += r.length; }
+  new DataView(out.buffer).setUint16(CHANNELS_AT, channels + list.length);
+  const names = list.map((a, i) => a.name || `Alpha ${i + 1}`);
+  const pascalNames = names.flatMap((n) => { const t = Array.from(new TextEncoder().encode(n.replace(/[^\x20-\x7e]/g, '_'))).slice(0, 255); return [t.length, ...t]; });
+  const unicode = names.flatMap((n) => { const cs = Array.from(n).flatMap((c) => { const cp = c.codePointAt(0) as number; return cp > 0xffff ? [0xd800 + ((cp - 0x10000) >> 10), 0xdc00 + ((cp - 0x10000) & 1023)] : [cp]; }); return [...u32(cs.length), ...cs.flatMap((c) => u16(c))]; });
+  const ids = list.flatMap((_, i) => u32(i + 1));
+  const info = [...u32(1), ...list.flatMap((a) => {
+    const c = a.color ?? { r: 255, g: 0, b: 0 }, op = Math.max(0, Math.min(100, Math.round(a.opacity ?? 50))), kind = a.spot ? 2 : a.indicates === 'selected' ? 0 : 1, w16 = (x: number): number[] => u16(Math.max(0, Math.min(255, Math.round(x))) * 257);
+    return [...u16(0), ...w16(c.r), ...w16(c.g), ...w16(c.b), 0, 0, ...u16(op), kind, 0];
+  })];
+  const extra = [...block(1006, '', new Uint8Array(pascalNames)), ...block(1045, '', new Uint8Array(unicode)), ...block(1053, '', new Uint8Array(ids)), ...block(1077, '', new Uint8Array(info))];
+  return addResourceBytes(out.buffer, extra);
+}
+
+const buf4 = (v: DataView): number => v.getUint32(0);
 
 /** The file's embedded ICC profile (image resource 1039) as a document profile; null when it has none. */
 export function readIccProfile(buf: ArrayBuffer): DocProfile | null {

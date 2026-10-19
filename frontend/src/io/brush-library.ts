@@ -1,6 +1,6 @@
 import type { Engine } from '../engine';
 import { parseAbr, type SampledTip } from '../engine/abr';
-import { importedBrushPresets, presetFromTip, setImportedBrushPresets, type BrushPreset } from '../engine/brush-dynamics';
+import { brushGroupOf, defaultShape, importedBrushPresets, presetFromTip, setImportedBrushPresets, type BrushPreset, type BrushShape } from '../engine/brush-dynamics';
 
 /** Imported brushes: .abr files read for their sampled tips, each tip a preset in the Brush tool's list, kept in
  *  IndexedDB (tips can run to megabytes, past what localStorage holds) so they survive a reload. */
@@ -39,7 +39,60 @@ export async function loadImportedBrushes(): Promise<void> {
     try { const r = d.transaction(STORE, 'readonly').objectStore(STORE).get(KEY); r.onsuccess = () => resolve(r.result); r.onerror = () => resolve(null); } catch { resolve(null); }
   });
   if (!Array.isArray(got)) return;
-  setImportedBrushPresets(got.filter((p): p is BrushPreset => !!p && typeof p === 'object' && typeof (p as BrushPreset).id === 'string' && !!(p as BrushPreset).tip && (p as BrushPreset).tip!.data instanceof Uint8Array && (p as BrushPreset).tip!.data.length === (p as BrushPreset).tip!.w * (p as BrushPreset).tip!.h));
+  const tipOk = (p: BrushPreset): boolean => !p.tip || (p.tip.data instanceof Uint8Array && p.tip.data.length === p.tip.w * p.tip.h);
+  setImportedBrushPresets(got.filter((p): p is BrushPreset => !!p && typeof p === 'object' && typeof (p as BrushPreset).id === 'string' && typeof (p as BrushPreset).name === 'string' && (!!(p as BrushPreset).tip || typeof (p as BrushPreset).diameter === 'number') && tipOk(p as BrushPreset)));
+}
+
+const SHAPE_KEYS = ['sizeJitter', 'angleJitter', 'roundnessJitter', 'scatter', 'count', 'countJitter', 'noise', 'wetEdges', 'flipX', 'flipY', 'bothAxes'] as const;
+
+/** The brush as it is now as a preset: size, hardness, opacity, flow, dynamics, tip, angle, roundness, spacing and the shape fields that differ from a plain round brush. */
+export function presetFromBrush(engine: Engine, id: string, name: string, group: string): BrushPreset {
+  const sh = engine.brushShape as unknown as Record<string, unknown>, def = defaultShape() as unknown as Record<string, unknown>, shape: Record<string, unknown> = {};
+  for (const k of SHAPE_KEYS) if (sh[k] !== undefined && sh[k] !== def[k]) shape[k] = sh[k];
+  const b = engine.brush;
+  return { id, name, description: `Saved from the current brush, ${b.diameter} px.`, diameter: b.diameter, hardness: b.hardness, opacity: b.opacity, dynamics: structuredClone(engine.brushDynamics), ...(b.tip ? { tip: b.tip } : {}), angle: engine.brushShape.angle, roundness: engine.brushShape.roundness, ...(engine.brushShape.spacing ? { spacing: engine.brushShape.spacing } : {}), flow: engine.brushFlow, group, ...(Object.keys(shape).length ? { shape: shape as Partial<BrushShape> } : {}) };
+}
+
+/** Saves the current brush as a preset in a folder (My Brushes unless named) and selects it. */
+export async function saveBrushPreset(engine: Engine, name: string, group = 'My Brushes'): Promise<{ preset: BrushPreset; kept: boolean }> {
+  const preset = presetFromBrush(engine, `user-${Date.now().toString(36)}`, name.trim().slice(0, 80) || 'Brush', group.trim().slice(0, 60) || 'My Brushes');
+  const list = [...importedBrushPresets, preset];
+  setImportedBrushPresets(list);
+  const kept = await save(list);
+  engine.brushPresetId = preset.id;
+  engine.emit('options', null);
+  return { preset, kept };
+}
+
+/** Adds a preset made by New Brush Preset (Brush Settings) to the kept presets and selects it. */
+export async function addMadeBrushPreset(engine: Engine, preset: BrushPreset): Promise<{ kept: boolean }> {
+  const list = [...importedBrushPresets, preset];
+  setImportedBrushPresets(list);
+  const kept = await save(list);
+  engine.brushPresetId = preset.id;
+  engine.emit('options', null);
+  return { kept };
+}
+
+/** Moves a saved or imported preset into a folder, before another preset when one is named, else last. Built-in presets stay where they are. */
+export async function moveBrushPreset(id: string, group: string | null, beforeId: string | null = null): Promise<boolean> {
+  const cur = importedBrushPresets.find((p) => p.id === id);
+  if (!cur || id === beforeId) return false;
+  const target = group === null ? undefined : group.trim().slice(0, 60);
+  const moved: BrushPreset = target ? { ...cur, group: target } : cur;
+  const rest = importedBrushPresets.filter((p) => p.id !== id), at = beforeId ? rest.findIndex((p) => p.id === beforeId) : -1;
+  const list = at < 0 ? [...rest, moved] : [...rest.slice(0, at), moved, ...rest.slice(at)];
+  setImportedBrushPresets(list);
+  return save(list);
+}
+
+/** Renames a folder of saved or imported presets; built-in folders keep their names. */
+export async function renameBrushGroup(from: string, to: string): Promise<boolean> {
+  const n = to.trim().slice(0, 60);
+  if (!n || n === from || !importedBrushPresets.some((p) => brushGroupOf(p) === from)) return false;
+  const list = importedBrushPresets.map((p) => (brushGroupOf(p) === from ? { ...p, group: n } : p));
+  setImportedBrushPresets(list);
+  return save(list);
 }
 
 /** Removes an imported brush and keeps the rest. Built-in presets are not in this list, so they are never removed. */
@@ -95,7 +148,7 @@ export async function importAbr(engine: Engine, file: File): Promise<{ added: nu
   }
   const base = file.name.replace(/\.abr$/i, ''), brushes = parseAbr(await file.arrayBuffer(), base);
   if (!brushes.length) return { added: 0, kept: true };
-  const stamp = Date.now().toString(36), made = brushes.map((b, i) => presetFromTip(`abr-${stamp}-${i}`, b.name, b.tip, b.spacing * 100));
+  const stamp = Date.now().toString(36), made = brushes.map((b, i) => ({ ...presetFromTip(`abr-${stamp}-${i}`, b.name, b.tip, b.spacing * 100), group: base.slice(0, 60) || 'Imported Brushes' }));
   const list = [...importedBrushPresets, ...made];
   setImportedBrushPresets(list);
   const kept = await save(list);
