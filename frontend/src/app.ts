@@ -294,8 +294,9 @@ function store(key: string, value: string): void {
 
 const SHELL = `<div class="cv-app">
 <header class="cv-titlebar">
-<div class="cv-brand">${icon('paintbrush', 18)}<span class="cv-brand-name">formvis</span></div>
 <nav class="cv-menubar" aria-label="Main menu"></nav>
+<div class="cv-tb-doc"></div>
+<div class="cv-tb-app">formvis 2026</div>
 <div class="cv-zoom">
 <button class="cv-icon-btn" type="button" data-cmd="undo">${icon('undo', 16)}</button>
 <button class="cv-icon-btn" type="button" data-cmd="redo">${icon('redo', 16)}</button>
@@ -312,10 +313,10 @@ const SHELL = `<div class="cv-app">
 </div>
 </header>
 <div class="cv-main">
+<div class="cv-doc-tabs"><div class="cv-brand">${icon('paintbrush', 18)}</div><div class="cv-tabs"><div class="cv-tab-strip" role="tablist"></div><button class="cv-icon-btn" type="button" data-cmd="new">${icon('add', 16)}</button></div></div>
 <div class="cv-options"></div>
-<aside class="cv-rail" aria-label="Tools"><button class="cv-rail-toggle" type="button" data-cmd="rail-columns" title="One or two columns" aria-label="One or two columns">${icon('collapseRight', 14)}</button><div class="cv-rail-tools"></div><div class="cv-colors"></div><div class="cv-rail-modes"><button class="cv-tool cv-mode-btn" type="button" data-cmd="quick-mask" title="Edit in Quick Mask Mode (Q)" aria-label="Edit in Quick Mask Mode">${icon('quickMask', 18)}</button><button class="cv-tool cv-mode-btn" type="button" data-cmd="screen-next" title="Change Screen Mode (F)" aria-label="Change Screen Mode">${icon('screenMode', 18)}</button></div></aside>
+<aside class="cv-rail" aria-label="Tools"><button class="cv-rail-toggle" type="button" data-cmd="rail-columns" title="One or two columns" aria-label="One or two columns">${icon('collapseRight', 14)}</button><div class="cv-rail-tools"></div><div class="cv-rail-bottom"><div class="cv-colors"></div><div class="cv-rail-modes"><button class="cv-tool cv-mode-btn" type="button" data-cmd="quick-mask" title="Edit in Quick Mask Mode (Q)" aria-label="Edit in Quick Mask Mode">${icon('quickMask', 18)}</button><button class="cv-tool cv-mode-btn" type="button" data-cmd="screen-next" title="Change Screen Mode (F)" aria-label="Change Screen Mode">${icon('screenMode', 18)}</button></div></div></aside>
 <div class="cv-stage-col">
-<div class="cv-doc-tabs"><div class="cv-tabs"><div class="cv-tab-strip" role="tablist"></div><button class="cv-icon-btn" type="button" data-cmd="new">${icon('add', 16)}</button></div></div>
 <main class="cv-stage">
 <canvas class="cv-canvas cv-scene-gpu" hidden></canvas>
 <canvas class="cv-canvas cv-scene-gpu cv-scene-gl" hidden></canvas>
@@ -1186,7 +1187,12 @@ export function startApp(): void {
       await Promise.allSettled(runs);
     }
   };
+  /** Edits wait for a save unless it runs in the background; a giant tiled layer is read band by band over time, so it always waits. */
+  const saveHolds = (p: NonNullable<typeof engine.current>): boolean => !loadPrefs().saveInBackground || p.doc.layers.some((l) => l.tiled);
+  const saveTask = <T>(p: NonNullable<typeof engine.current>, fn: () => Promise<T>): Promise<T> => (saveHolds(p) ? engine.lockedTask('Save', fn) : engine.task(fn));
   function save(saveAs: boolean): Promise<boolean> {
+    const running = [...saving].find(([, doc]) => doc === (engine.current?.id ?? ''));
+    if (running) { toast('This document is still being saved.', 'info'); return running[0]; }
     const run = saveWork(saveAs);
     saving.set(run, engine.current?.id ?? '');
     void run.then(() => saving.delete(run), () => saving.delete(run));
@@ -1249,12 +1255,13 @@ export function startApp(): void {
       }
     }
     const target = name;
-    return engine.lockedTask('Save', async () => {
+    return saveTask(p, async () => {
       const revision = p.history.revision;
       try {
+        const thumb = thumbnailOf(p);
         const { manifest, files } = await serializeJob(p);
         // Based on the version it was opened or last saved at (1.58.8), when saving over that same library item.
-        const res = await api.save(target, manifest, files, target === p.libraryName ? p.libraryVersion ?? '' : '', await thumbnailOf(p));
+        const res = await api.save(target, manifest, files, target === p.libraryName ? p.libraryVersion ?? '' : '', await thumb);
         if (p.history.revision === revision) engine.markSaved(p, res.name, res.name);
         else { p.name = res.name; p.libraryName = res.name; engine.emit('projects', null); }
         p.libraryVersion = res.version ?? null;
@@ -1281,11 +1288,12 @@ export function startApp(): void {
       if (!/\.fvd$/i.test(path)) path = `${path}.fvd`;
     }
     const target = path;
-    return engine.lockedTask('Save', async () => {
+    return saveTask(p, async () => {
       const revision = p.history.revision;
       try {
+        const thumb = thumbnailOf(p);
         const { manifest, files } = await serializeJob(p);
-        const res = await api.saveTo(target, manifest, files, await thumbnailOf(p));
+        const res = await api.saveTo(target, manifest, files, await thumb);
         p.filePath = res.path;
         p.libraryVersion = null;
         if (p.history.revision === revision) engine.markSaved(p, res.name, null);
@@ -3653,6 +3661,7 @@ export function startApp(): void {
     { id: 'show-comfy-dot', label: 'ComfyUI Connection', checked: () => comfyDot.active, run: () => { store('formvis.comfyDot', comfyDot.active ? '0' : '1'); comfyDot.sync(); } },
     { id: 'snap-all', label: 'Snap To All', checked: () => snapOptions.guides && snapOptions.grid && snapOptions.layers && snapOptions.bounds, run: () => { const all = !(snapOptions.guides && snapOptions.grid && snapOptions.layers && snapOptions.bounds); for (const k of ['guides', 'grid', 'layers', 'bounds'] as const) snapOptions[k] = all; snapSave(); } },
     { id: 'toggle-grid', label: () => (engine.view.grid ? 'Hide Grid' : 'Show Grid'), keys: ["Mod+'"], enabled: has, run: () => engine.setView({ grid: !engine.view.grid }) },
+    { id: 'grid-settings', label: 'Grid Settings...', run: () => dialogs.settings.show('Guides & Grid') },
     { id: 'lock-guides', label: () => (engine.view.guidesLocked ? 'Unlock Guides' : 'Lock Guides'), keys: ['Alt+Mod+;'], enabled: has, run: () => engine.setView({ guidesLocked: !engine.view.guidesLocked }) },
     { id: 'clear-guides', label: 'Clear Guides', enabled: () => !!engine.current?.doc.guides?.length, run: () => engine.clearGuides() },
     { id: 'edit-selected-guides', label: 'Edit Selected Guides...', enabled: () => engine.selectedGuides.length > 0, run: () => dialogs.editGuides.show() },
@@ -4366,6 +4375,8 @@ export function startApp(): void {
       run: (a) => { const id = panelGroupId(a?.panel); if (!id || !dock.dockBack(id)) toast('That panel is not floating.', 'error'); } },
     { id: 'panel-activate', label: 'Activate Panel', params: { panel: { type: 'string', description: 'A panel group id, or a tab id: the tab is brought to the front of its group, the group opened and shown.' } },
       run: (a) => { const v = typeof a?.panel === 'string' ? a.panel : '', id = panelGroupId(v); if (!id) { toast('No panel with that id.', 'error'); return; } const g = PanelGroup.all.get(id); g?.setMinimised(false); if (g?.hasTab(v)) g.show(v); dock.activate(id); } },
+    { id: 'panel-close-group', label: 'Close Panel Group', params: { panel: { type: 'string', description: 'A panel group id, or a tab id: the whole group is closed (hidden; Window shows it again).' } },
+      run: (a) => { const id = panelGroupId(typeof a?.panel === 'string' ? a.panel : ''); if (!id || !ALL_PANELS.some((x) => x.id === id)) { toast('No panel with that id.', 'error'); return; } if (dock.isShown(id)) dock.toggle(id); } },
     { id: 'panel-group', label: 'Change Panel Group', params: { tab: { type: 'string', description: 'The id of the tab to move.' }, group: { type: 'string', description: 'The id of the group that takes it (a group holds seven tabs at most).' } },
       run: (a) => { const from = typeof a?.tab === 'string' ? PanelGroup.ofTab(a.tab) : undefined, to = typeof a?.group === 'string' ? PanelGroup.all.get(a.group) : undefined; if (!from || !to || typeof a?.tab !== 'string') { toast('Give a tab id and a group id.', 'error'); return; } if (from !== to && to.full) { toast('That group already holds seven tabs.', 'error'); return; } PanelGroup.moveTab(a.tab, from, to); PanelGroup.saveHomes(); } },
     // Paths is a tab of the Layers group (Phase 21): Window > Paths shows the group on its Paths tab.
@@ -4774,6 +4785,17 @@ export function startApp(): void {
     { id: 'link-layers', label: () => (engine.selectionLinked ? 'Unlink Layers' : 'Link Layers'), enabled: () => engine.selectionLinked || (engine.current?.selectedIds.size ?? 0) > 1, run: () => engine.linkLayers() },
     { id: 'copy-layers', label: 'Copy Layers', enabled: () => (engine.current?.selectedIds.size ?? 0) > 0, run: () => { const n = engine.copyLayers(); if (n) toast(`Copied ${n} ${n === 1 ? 'layer' : 'layers'}.`); } },
     { id: 'paste-layers', label: 'Paste Layers', enabled: () => !!engine.current && engine.canPasteLayers, run: () => { engine.pasteLayers(); } },
+    { id: 'copy-layers-to-document', label: 'Copy Layers to Document', params: { document: { type: 'string', description: 'The name or number (from 1) of the open document that takes the layers, or "new" for a new document the size of this one.' }, x: { type: 'number', description: 'Moves the copies this many pixels right; centred in the target when x and y are both left out.' }, y: { type: 'number', description: 'Moves the copies this many pixels down.' } },
+      enabled: () => (engine.current?.selectedIds.size ?? 0) > 0 && engine.projects.length > 0,
+      run: (a) => {
+        const p = engine.current, ids = p ? [...p.selectedIds] : [], ref = a?.document === undefined || a.document === null ? '' : String(a.document).trim();
+        if (!p || !ids.length) { toast('Select the layers to copy.', 'error'); return; }
+        if (ref.toLowerCase() === 'new') { if (!engine.copyLayersToNewDocument(ids)) toast('The layers could not be copied to a new document.', 'error'); return; }
+        const n = Number(ref), target = (Number.isInteger(n) && n >= 1 ? engine.projects[n - 1] : undefined) ?? engine.projects.find((q) => q.name === ref);
+        if (!target || target === p) { toast('Name another open document, or give its number.', 'error'); return; }
+        const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined), x = num(a?.x), y = num(a?.y);
+        if (!engine.copyLayersToProject(ids, target.id, x === undefined && y === undefined ? false : { dx: x ?? 0, dy: y ?? 0 })) toast('The layers could not be copied.', 'error');
+      } },
     { id: 'select-linked', label: 'Select Linked Layers', enabled: () => { const p = engine.current; return !!p && [...p.selectedIds].some((id) => { const k = p.layer(id)?.link; return !!k && p.doc.layers.some((l) => l.id !== id && l.link === k); }); }, run: () => engine.selectLinkedLayers() },
     { id: 'rasterize-all', label: 'Rasterize All Layers', enabled: () => !!engine.current?.doc.layers.some((l) => l.smart || l.text || l.vector || l.shape || l.fillContent), run: () => engine.rasterizeLayers('all') },
     { id: 'blend-next', label: 'Next Blend Mode', keys: ['Shift+='], enabled: pixel, run: () => engine.cycleBlend(true) },
@@ -5456,6 +5478,8 @@ export function startApp(): void {
     })),
     { id: 'depth-map-smooth', label: 'Smooth Depth Map', enabled: () => !!engine.depthLayer(), params: { radius: { type: 'number', min: 1, max: 32, description: 'Blur radius in pixels; 4 when left out.' }, edges: { type: 'boolean', description: 'Keep depth sharp at the picture\'s own edges (edge snap, radius up to 9); false when left out.' } },
       run: (a) => ({ applied: engine.correctDepthMap('smooth', typeof a?.radius === 'number' ? a.radius : 4, a?.edges === true) }) },
+    { id: 'depth-map-detail', label: 'Depth Map Detail', enabled: () => !!engine.depthLayer(), params: { amount: { type: 'number', min: 1, max: 100, description: 'How much of the picture\'s fine detail is added to the depth, in percent; 50 when left out.' } },
+      run: (a) => ({ applied: engine.correctDepthMap('detail', (typeof a?.amount === 'number' ? Math.min(100, Math.max(1, a.amount)) : 50) / 100) }) },
     { id: 'depth-map-snap', label: 'Snap Depth Map to Edges', enabled: () => !!engine.depthLayer(), params: { radius: { type: 'number', min: 1, max: 9, description: 'Window radius in pixels; 4 when left out.' } },
       run: (a) => ({ applied: engine.correctDepthMap('smooth', typeof a?.radius === 'number' ? Math.min(9, a.radius) : 4, true) }) },
     { id: 'free-helper-models', label: 'Free Helper Models', run: () => void api.freeHelpers().then((freed) => toast(freed.length ? `Freed ${freed.length} helper model${freed.length === 1 ? '' : 's'}: ${freed.join(', ')}.` : 'No helper model was held in memory.'), () => toast('The formvis engine is offline (./formvis boot).', 'error')) },
@@ -5635,7 +5659,7 @@ export function startApp(): void {
     { label: 'Layer', items: [
       { label: 'New', items: ['new-layer-dialog', 'new-type-layer', 'new-shape-layer', 'new-dodge-burn-layer', 'layer-from-background', 'background-from-layer', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard-dialog', 'artboard-from-group', 'artboard-from-layers-dialog', 'frame-from-layers', '-', 'duplicate', 'layer-via-cut', '-', 'new-relight-layer'] }, 'artboard-options', '-',
       { label: 'New Fill Layer', items: ['new-fill-solid', 'new-fill-gradient', 'new-fill-pattern'] }, 'new-fill-adjustment', { label: 'Video Layers', items: ['video-layer-from-file', 'video-layer-blank', '-', 'video-insert-blank-frame', 'video-duplicate-frame', 'video-delete-frame', '-', 'video-restore-frame', 'video-reload-frame', 'video-restore-all', 'video-show-altered', 'video-replace-footage', 'video-interpret-footage', 'video-rasterize'] },{ label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'edit-relight', 'layer-content-options', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, { label: 'Film Pack', items: ['film-apply-look', 'new-adj-filmLook', 'new-adj-chromaticShift', '-', 'film-copy-points', 'film-paste-points'] }, { label: 'EU AI Label', items: ['ai-label-add', 'ai-label-remove', 'ai-label-info'] }, '-',
-      'duplicate-dialog', 'copy-layers', 'paste-layers', { label: 'Delete', items: ['delete-layer', 'delete-hidden'] }, 'rename', 'layer-quick-export-png', 'layer-export-as', '-',
+      'duplicate-dialog', 'copy-layers', 'paste-layers', 'copy-layers-to-document', { label: 'Delete', items: ['delete-layer', 'delete-hidden'] }, 'rename', 'layer-quick-export-png', 'layer-export-as', '-',
       { label: 'Layer Style', items: ['style-blending', 'style-bevel', 'style-stroke', 'style-inner-shadow', 'style-inner-glow', 'style-satin', 'style-color-overlay', 'style-gradient-overlay', 'style-pattern-overlay', 'style-outer-glow', 'style-drop-shadow', '-',
         'copy-layer-style', 'paste-layer-style', 'clear-layer-style', 'copy-style-below', 'move-style-below', '-', 'global-light', 'create-layers', 'hide-all-effects', 'toggle-layer-effects', 'scale-effects'] },
       { label: '3D', items: ['extrude-3d', 'place-3d', '-', 'panorama-view', 'panorama-apply-view'] },
@@ -5669,12 +5693,12 @@ export function startApp(): void {
       { label: '3D', items: ['normal-map', 'bump-map', 'height-from-normal'] },
       { label: 'Plug-ins (WebAssembly)', get items() { const ids = [...wasmIds].map((i) => `wasm-run-${i}`); return [...ids, ...(ids.length ? ['-'] : []), 'wasm-plugins', 'wasm-plugin-install', 'wasm-plugin-example']; } }, '-', 'remove-bg', 'remove-bg-lite'] },
     // Generate: the generative commands in one place (the Generate panel, models, fill, repair, size, relight, and the ComfyUI and NodeMode links).
-    { label: 'Generate', items: ['generate-panel', '-', 'generate-image', 'new-canvas-model-preset', 'generative-fill', 'generative-expand', '-', 'boxes-tool', 'boxes-from-selection', 'boxes-copy', 'boxes-clear', '-', 'generate-remove', 'content-fill-workspace', 'content-fill', 'remove-wires', '-', 'remove-bg', 'remove-bg-lite', '-', 'upscale-2x', 'upscale-4x', 'compute-depth-map', { label: 'Depth Map', items: ['depth-map-from-layer', 'depth-map-recompute', 'depth-map-show', '-', 'depth-map-flatten', 'depth-map-nearer', 'depth-map-farther', 'depth-map-smooth', 'depth-map-snap'] }, 'new-relight-layer', '-', 'comfyui-run', 'send-comfyui', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode'])] },
-    { label: 'View', items: [{ label: 'Proof Setup', items: ['proof-setup', '-', 'proof-preset-monitor', 'proof-preset-macrgb', 'proof-preset-internet', 'proof-preset-cmyk', 'proof-preset-cyan', 'proof-preset-magenta', 'proof-preset-yellow', 'proof-preset-black', 'proof-preset-cmy', '-', 'proof-preset-protanopia', 'proof-preset-deuteranopia'] }, 'proof-colors', 'gamut-warning', 'preview-32', '-', 'zoom-in', 'zoom-out', 'fit', 'fit-layers', 'fit-artboard', 'actual', 'print-size', 'flip-view-h', 'canvas-scrollbars', 'no-tool', '-', 'toggle-extras', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'pattern-preview', 'pixel-art-preview', 'par-correction', 'transform-controls', 'toggle-task-bar', '-',
+    { label: 'Generate', items: ['generate-panel', '-', 'generate-image', 'new-canvas-model-preset', 'generative-fill', 'generative-expand', '-', 'boxes-tool', 'boxes-from-selection', 'boxes-copy', 'boxes-clear', '-', 'generate-remove', 'content-fill-workspace', 'content-fill', 'remove-wires', '-', 'remove-bg', 'remove-bg-lite', '-', 'upscale-2x', 'upscale-4x', 'compute-depth-map', { label: 'Depth Map', items: ['depth-map-from-layer', 'depth-map-recompute', 'depth-map-show', '-', 'depth-map-flatten', 'depth-map-nearer', 'depth-map-farther', 'depth-map-smooth', 'depth-map-snap', 'depth-map-detail'] }, 'new-relight-layer', '-', 'comfyui-run', 'send-comfyui', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode'])] },
+    { label: 'View', items: [{ label: 'Proof Setup', items: ['proof-setup', '-', 'proof-preset-monitor', 'proof-preset-macrgb', 'proof-preset-internet', 'proof-preset-cmyk', 'proof-preset-cyan', 'proof-preset-magenta', 'proof-preset-yellow', 'proof-preset-black', 'proof-preset-cmy', '-', 'proof-preset-protanopia', 'proof-preset-deuteranopia'] }, 'proof-colors', 'gamut-warning', 'preview-32', '-', 'zoom-in', 'zoom-out', 'fit', 'fit-layers', 'fit-artboard', 'actual', 'print-size', 'flip-view-h', 'canvas-scrollbars', 'no-tool', '-', 'toggle-extras', 'toggle-rulers', 'toggle-grid', 'grid-settings', 'pixel-grid', 'pattern-preview', 'pixel-art-preview', 'par-correction', 'transform-controls', 'toggle-task-bar', '-',
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'guide-layout', 'guides-from-shape', 'guides-from-shape-centre', 'edit-selected-guides', 'clear-guides', 'clear-artboard-guides'] }, 'snap', { label: 'Snap To', items: ['snap-all', '-', 'snap-guides', 'snap-grid', 'snap-layers', 'snap-bounds', 'snap-slices', 'snap-selection'] }, { label: 'Show', items: ['show-all-extras', 'show-no-extras', '-', 'show-selection-edges', 'selection-display-tint', 'show-layer-edges', 'show-artboard-guides', 'show-target-path','show-smart-guides', 'show-comfy-dot', 'show-notes', 'show-counts', 'show-brush-preview', 'show-mesh', 'show-edit-pins', '-', 'show-extras-options', '-', 'toggle-show-slices', 'toggle-auto-slices', 'lock-slices', 'layer-based-slice', 'slices-from-guides', 'slice-options', 'divide-slice', 'delete-slice', 'clear-slices'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'os-full-screen', 'toggle-panels', 'rail-columns', 'interface-rtl', 'interface-zoom-in', 'interface-zoom-out', 'interface-zoom-reset', 'custom-title-bar', 'menus-in-window', { label: 'Pasteboard', items: ['pasteboard-default', 'pasteboard-black', 'pasteboard-dark', 'pasteboard-mid', 'pasteboard-light'] }] },
     { label: 'Plugins', items: () => { const ids = [...pluginHost.commandIds(), ...folderPlugins.commandIds()]; return ['manage-plugins', 'reload-plugins', 'open-plugins-folder', ...(ids.length && loadPrefs().showExtPanels ? ['-', ...ids] : [])]; } },
-    { label: 'Window', items: [{ label: 'Arrange', items: ['new-window', 'float-window', 'float-all-windows', 'arrange-cascade', '-', 'arrange-tabs','arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-3up-v', 'arrange-3up-h', 'arrange-4up', 'arrange-6up', 'arrange-tile-v', 'arrange-tile-h', 'arrange-tile', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.connect.open', 'agent.connect.copy-claude-code', 'agent.connect.copy-claude-desktop', 'terminal.toggle', 'terminal.new', 'script-console', 'brush-settings', { label: 'Brush Size', items: ['brush-size-up', 'brush-size-down', 'brush-harder', 'brush-softer'] }, { label: 'Brush Presets', items: ['save-brush-preset', 'rename-brush-preset', 'delete-brush-preset', 'move-brush-preset', 'rename-brush-group', '-', 'set-brush', 'get-brush'] }, 'paragraph-styles', 'character-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-channels', 'panel-color', 'panel-tools', 'panel-options', 'panel-properties-col', 'merge-columns', 'toggle-dock-panels', '-', 'panel-float', 'panel-dock', 'panel-activate', 'panel-group', '-', { label: 'Workspace', items: ['workspace-pixelart', '-', 'new-workspace', 'delete-workspace'] }, 'reset-panels', '-', 'next-document', 'previous-document', 'notices', '-', { label: 'Theme', items: Object.keys(THEMES).map((tid) => `theme-${tid}`) }, 'theme-sync-system', 'next-appearance', 'interface-darken', 'interface-lighten', '-', 'reload-window', 'developer-tools'] },
+    { label: 'Window', items: [{ label: 'Arrange', items: ['new-window', 'float-window', 'float-all-windows', 'arrange-cascade', '-', 'arrange-tabs','arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-3up-v', 'arrange-3up-h', 'arrange-4up', 'arrange-6up', 'arrange-tile-v', 'arrange-tile-h', 'arrange-tile', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.connect.open', 'agent.connect.copy-claude-code', 'agent.connect.copy-claude-desktop', 'terminal.toggle', 'terminal.new', 'script-console', 'brush-settings', { label: 'Brush Size', items: ['brush-size-up', 'brush-size-down', 'brush-harder', 'brush-softer'] }, { label: 'Brush Presets', items: ['save-brush-preset', 'rename-brush-preset', 'delete-brush-preset', 'move-brush-preset', 'rename-brush-group', '-', 'set-brush', 'get-brush'] }, 'paragraph-styles', 'character-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-channels', 'panel-color', 'panel-tools', 'panel-options', 'panel-properties-col', 'merge-columns', 'toggle-dock-panels', '-', 'panel-float', 'panel-dock', 'panel-activate', 'panel-group', 'panel-close-group', '-', { label: 'Workspace', items: ['workspace-pixelart', '-', 'new-workspace', 'delete-workspace'] }, 'reset-panels', '-', 'next-document', 'previous-document', 'notices', '-', { label: 'Theme', items: Object.keys(THEMES).map((tid) => `theme-${tid}`) }, 'theme-sync-system', 'next-appearance', 'interface-darken', 'interface-lighten', '-', 'reload-window', 'developer-tools'] },
     { label: 'Help', items: ['help', 'whats-new', '-', 'shortcuts', 'console-log', 'copy-error-log', 'copy-engine-log', 'benchmark', 'record-performance', 'frame-trace', 'copy-frame-trace', 'tile-grid', 'simulate-gpu-loss', '-', 'help-github', 'report-issue', '-', 'check-for-updates', 'system-info', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);
@@ -5694,7 +5718,7 @@ export function startApp(): void {
   fillMenu.setItems([{ label: 'New Fill Layer', items: ['new-fill-solid', 'new-fill-gradient', 'new-fill-pattern'] }, { label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }]);
   const tabMenu = new PopupMenu(commands, null, true);
   tabMenu.setItems(['close-tab', 'close-others', 'close-tabs-right', 'close-all', '-', 'pin-tab', 'reopen-closed-tab', '-', 'next-document', 'previous-document']);
-  const tabs = new Tabs(q(root, '.cv-tab-strip'), engine, (id) => void (engine.closeSpareView(id) || requestClose(id)), (_id, x, y) => tabMenu.openAt(x, y));   // a further view closes first; the document stays open while one remains (36.16)
+  const tabs = new Tabs(q(root, '.cv-tab-strip'), engine, (id) => void (engine.closeSpareView(id) || requestClose(id)), (_id, x, y) => tabMenu.openAt(x, y), q(root, '.cv-tb-doc'));   // a further view closes first; the document stays open while one remains (36.16)
 
   const zoomLabel = q(root, '.cv-zoom-label');
   let chromeFrame = 0;

@@ -13,15 +13,15 @@ export interface PinHost {
   layer(): { t: Transform; w: number; h: number; ref: Rect } | null;
 }
 
-type Part = 'c' | 'x' | 'y' | 'f' | 'd';
-interface Slot { x: string; y: string; rx?: string; ry?: string; angle?: string; amount?: string; feather?: string; shared?: boolean }
+type Part = 'c' | 'x' | 'y' | 'f' | 'd' | 'r';
+interface Slot { x: string; y: string; rx?: string; ry?: string; angle?: string; amount?: string; feather?: string; round?: string }
 
 const SETUP: Record<PinKind, { count: string; max: number; slots: (n: number) => Slot; amountMax: number }> = {
   fieldBlur: { count: 'pins', max: 4, amountMax: 100, slots: (n) => ({ x: `pin${n}x`, y: `pin${n}y`, amount: `pin${n}blur` }) },
   irisBlur: {
     count: 'irisPins', max: 3, amountMax: 100,
-    slots: (n) => (n === 1 ? { x: 'irisX', y: 'irisY', rx: 'irisRx', ry: 'irisRy', angle: 'irisAngle', feather: 'irisFeather', amount: 'irisBlur', shared: true }
-      : { x: `iris${n}x`, y: `iris${n}y`, rx: `iris${n}rx`, ry: `iris${n}ry`, angle: `iris${n}angle`, feather: `iris${n}feather`, amount: 'irisBlur', shared: true }),
+    slots: (n) => (n === 1 ? { x: 'irisX', y: 'irisY', rx: 'irisRx', ry: 'irisRy', angle: 'irisAngle', feather: 'irisFeather', amount: 'irisBlur', round: 'irisRound' }
+      : { x: `iris${n}x`, y: `iris${n}y`, rx: `iris${n}rx`, ry: `iris${n}ry`, angle: `iris${n}angle`, feather: `iris${n}feather`, amount: `iris${n}blur`, round: `iris${n}round` }),
   },
   spinBlur: {
     count: 'spins', max: 3, amountMax: 360,
@@ -48,19 +48,26 @@ export function createBlurPins(host: PinHost): BlurPins {
     const M = placement(l.t, l.w, l.h);
     return { M, W: invert(M), ref: l.ref };
   };
+  const val = (key: string, fallback: string, last: number): number => { const v = host.get(key); if (Number.isFinite(v)) return v; const f = host.get(fallback); return Number.isFinite(f) ? f : last; };
   const count = (kind: PinKind): number => (kind === 'pathBlur' ? 3 : clamp(Math.round(host.get(SETUP[kind].count)), 1, SETUP[kind].max));
   const loc = (g: { ref: Rect }, x: number, y: number): Pt => ({ x: g.ref.x + (x / 100) * g.ref.w, y: g.ref.y + (y / 100) * g.ref.h });
   const pct = (g: { ref: Rect }, p: Pt): Pt => ({ x: ((p.x - g.ref.x) / g.ref.w) * 100, y: ((p.y - g.ref.y) / g.ref.h) * 100 });
 
-  interface Pin { n: number; c: Pt; px?: Pt; py?: Pt; pf?: Pt; ux: number; uy: number; RX: number; RY: number; amount: number }
+  interface Pin { n: number; c: Pt; px?: Pt; py?: Pt; pf?: Pt; pr?: Pt; ux: number; uy: number; RX: number; RY: number; amount: number; pw: number }
+  /** The superellipse power of a roundness percent (the engine's: 2 for an ellipse, up to 8 for a near square), and the reach of its diagonal point as a share of the radii. */
+  const powOf = (round: number): number => 2 + (1 - clamp(round, 0, 100) / 100) * 6;
   const pins = (kind: PinKind, g: { M: Mat; ref: Rect }): Pin[] => {
     const out: Pin[] = [];
     for (let n = 1; n <= count(kind); n++) {
       const k = SETUP[kind].slots(n), c = loc(g, host.get(k.x), host.get(k.y));
       const a = k.angle ? (host.get(k.angle) * Math.PI) / 180 : 0, ux = Math.cos(a), uy = Math.sin(a);
       const RX = k.rx ? (host.get(k.rx) / 100) * g.ref.w : 0, RY = k.ry ? (host.get(k.ry) / 100) * g.ref.h : 0;
-      const pin: Pin = { n, c, ux, uy, RX, RY, amount: k.amount ? host.get(k.amount) : 0 };
+      const pin: Pin = { n, c, ux, uy, RX, RY, amount: k.amount ? (kind === 'irisBlur' ? val(k.amount, 'irisBlur', 0) : host.get(k.amount)) : 0, pw: k.round ? powOf(val(k.round, 'irisRound', 100)) : 2 };
       if (k.rx) { pin.px = { x: c.x + ux * RX, y: c.y + uy * RX }; pin.py = { x: c.x - uy * RY, y: c.y + ux * RY }; }
+      if (k.round) {
+        const d = Math.pow(2, -1 / pin.pw), a = RX * d, b = RY * d;
+        pin.pr = { x: c.x + ux * a - uy * b, y: c.y + uy * a + ux * b };
+      }
       if (k.feather) { const f = host.get(k.feather) / 100; pin.pf = { x: c.x + uy * RY * f, y: c.y - ux * RY * f }; }
       out.push(pin);
     }
@@ -80,6 +87,7 @@ export function createBlurPins(host: PinHost): BlurPins {
       if (p.px && near(scr(p.px), 8)) return { n: p.n, part: 'x' };
       if (p.py && near(scr(p.py), 8)) return { n: p.n, part: 'y' };
       if (p.pf && near(scr(p.pf), 8)) return { n: p.n, part: 'f' };
+      if (p.pr && near(scr(p.pr), 8)) return { n: p.n, part: 'r' };
     }
     for (const p of order) if (near(scr(p.c), 11)) return { n: p.n, part: 'c' };
     return null;
@@ -97,7 +105,12 @@ export function createBlurPins(host: PinHost): BlurPins {
     const out: Record<string, number> = {};
     for (let j = n; j < c; j++) {
       const a = SETUP[kind].slots(j), b = SETUP[kind].slots(j + 1);
-      for (const role of Object.keys(a) as Array<keyof Slot>) { const ka = a[role], kb = b[role]; if (typeof ka === 'string' && typeof kb === 'string' && !a.shared) out[ka] = host.get(kb); }
+      for (const role of Object.keys(a) as Array<keyof Slot>) {
+        const ka = a[role], kb = b[role];
+        if (typeof ka !== 'string' || typeof kb !== 'string') continue;
+        const v = kind === 'irisBlur' && role === 'amount' ? val(kb, 'irisBlur', 0) : kind === 'irisBlur' && role === 'round' ? val(kb, 'irisRound', 100) : host.get(kb);
+        if (Number.isFinite(v)) out[ka] = v;
+      }
     }
     out[SETUP[kind].count] = c - 1;
     host.put(out);
@@ -108,7 +121,8 @@ export function createBlurPins(host: PinHost): BlurPins {
     const c = count(kind);
     if (kind === 'pathBlur' || c >= SETUP[kind].max) return;
     const at = pct(g, local), n = c + 1, f = fresh(kind, at), k = SETUP[kind].slots(n), out: Record<string, number> = { [SETUP[kind].count]: n, [k.x]: clamp(at.x, 0, 100), [k.y]: clamp(at.y, 0, 100) };
-    if (k.amount && !k.shared) out[k.amount] = f.blur ?? f.amount ?? 0;
+    if (k.amount) out[k.amount] = kind === 'irisBlur' ? val('irisBlur', 'irisBlur', 15) : f.blur ?? f.amount ?? 0;
+    if (k.round) out[k.round] = 100;
     if (k.rx) { out[k.rx] = f.rx; out[k.ry as string] = f.ry; out[k.angle as string] = f.angle; }
     if (k.feather) out[k.feather] = f.feather;
     host.put(out);
@@ -132,6 +146,10 @@ export function createBlurPins(host: PinHost): BlurPins {
       store(kind, drag.n, patch);
     } else if (drag.part === 'y') {
       store(kind, drag.n, { ry: clamp(Math.round((Math.abs((q.x - pin.c.x) * -pin.uy + (q.y - pin.c.y) * pin.ux) / g.ref.h) * 100), 1, 100) });
+    } else if (drag.part === 'r') {
+      const dx = q.x - pin.c.x, dy = q.y - pin.c.y, u = (dx * pin.ux + dy * pin.uy) / Math.max(1, pin.RX), v = (-dx * pin.uy + dy * pin.ux) / Math.max(1, pin.RY);
+      const kk = clamp((Math.abs(u) + Math.abs(v)) / 2, Math.SQRT1_2 + 0.001, 0.95), pw = clamp(-Math.LN2 / Math.log(kk), 2, 8);
+      store(kind, drag.n, { round: Math.round((1 - (pw - 2) / 6) * 100) });
     } else if (drag.part === 'f') {
       const d = Math.abs((q.x - pin.c.x) * pin.uy - (q.y - pin.c.y) * pin.ux);
       store(kind, drag.n, { feather: clamp(Math.round((d / Math.max(1, pin.RY)) * 100), 0, 99) });
@@ -215,7 +233,8 @@ export function createBlurPins(host: PinHost): BlurPins {
           stroke(on, () => {
             g.beginPath();
             for (let i = 0; i <= 64; i++) {
-              const t = (i / 64) * Math.PI * 2, e = scr({ x: p.c.x + Math.cos(t) * p.RX * p.ux - Math.sin(t) * p.RY * p.uy, y: p.c.y + Math.cos(t) * p.RX * p.uy + Math.sin(t) * p.RY * p.ux });
+              const t = (i / 64) * Math.PI * 2, ex = Math.sign(Math.cos(t)) * Math.abs(Math.cos(t)) ** (2 / p.pw), ey = Math.sign(Math.sin(t)) * Math.abs(Math.sin(t)) ** (2 / p.pw);
+              const e = scr({ x: p.c.x + ex * p.RX * p.ux - ey * p.RY * p.uy, y: p.c.y + ex * p.RX * p.uy + ey * p.RY * p.ux });
               if (i) g.lineTo(e.x, e.y); else g.moveTo(e.x, e.y);
             }
           });
@@ -224,7 +243,7 @@ export function createBlurPins(host: PinHost): BlurPins {
           stroke(true, () => { g.beginPath(); g.arc(s.x, s.y, DIAL, 0, Math.PI * 2); });
           dot(dialAt(s, p.amount, max), 5, true);
         }
-        if (on && p.px && p.py) { dot(scr(p.px), 5, true); dot(scr(p.py), 5, true); if (p.pf) dot(scr(p.pf), 4, true); }
+        if (on && p.px && p.py) { dot(scr(p.px), 5, true); dot(scr(p.py), 5, true); if (p.pf) dot(scr(p.pf), 4, true); if (p.pr) dot(scr(p.pr), 4, true); }
         dot(s, on ? 7 : 5, on);
       }
       g.restore();

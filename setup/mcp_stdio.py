@@ -137,6 +137,11 @@ def forward(line: str) -> str | None:
     except urllib.error.HTTPError as exc:
         body = exc.read().decode() or ""
     except (urllib.error.URLError, OSError) as exc:
+        if isinstance(exc, TimeoutError) or isinstance(getattr(exc, "reason", None), TimeoutError):
+            print("[formvis mcp] formvis did not answer in time; the request was dropped and will not run later.", file=sys.stderr, flush=True)
+            if msg.get("id") is None:
+                return None
+            return json.dumps({"jsonrpc": "2.0", "id": msg.get("id"), "result": {"content": [{"type": "text", "text": "formvis did not answer in time: it may be busy, or its window is closed. The request was dropped and will not run later. Check the formvis window, then retry."}], "isError": True}})
         print(f"[formvis mcp] the engine is not answering at {URL}: {exc}", file=sys.stderr, flush=True)
         if ATTACH:
             return offline(msg, version)

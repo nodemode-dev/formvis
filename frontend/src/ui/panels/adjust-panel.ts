@@ -6,6 +6,7 @@ import {
 import { autoLevels, bandCentered, bandExclude, bandHandles, bandInclude, bandSetHandle, bandWeight, hsvAdjust, hueResponse } from '../../engine/adjust';
 import { PARAM_ADJUSTMENTS, PARAM_KINDS, isParamKind, paramKernel, paramValues, parseCube, type ParamKind } from '../../engine/adjust-params';
 import { lutFileToCube } from '../../engine/lut-read';
+import { LIMIT_MODES, limitOf } from '../../engine/limit';
 import { ADJUST_PRESET_STORE as PRESET_STORE, GRADIENT_PRESETS, GRAIN_PRESETS, PHOTO_FILTERS } from '../../engine/adjust-presets';
 import { Dialog, promptName } from '../dialogs';
 import { el, setHidden, setText } from '../dom';
@@ -63,6 +64,7 @@ export class AdjustPanel extends Dialog {
   private readonly previewBox: HTMLInputElement;
   private previewOn = true;
   private original: Json = {};
+  private limitSection!: Section;
 
   constructor(private readonly engine: Engine) {
     super('Adjustment', 480);
@@ -74,6 +76,8 @@ export class AdjustPanel extends Dialog {
     this.sections.set('grain', this.buildGrain());
     for (const k of PARAM_KINDS) this.sections.set(k, this.buildParams(k));
     for (const s of this.sections.values()) { s.node.hidden = true; this.body.appendChild(s.node); }
+    this.limitSection = this.buildLimit();
+    this.body.appendChild(this.limitSection.node);
     this.presetBar = el('<div class="cv-preset-row"><select class="cv-input" aria-label="Preset"><option value="">Presets</option></select><button class="cv-btn" type="button">Save</button><button class="cv-btn" type="button">Delete</button></div>');
     this.presetSel = this.presetBar.querySelector('select') as HTMLSelectElement;
     const [saveBtn, delBtn] = Array.from(this.presetBar.querySelectorAll('button'));
@@ -92,7 +96,7 @@ export class AdjustPanel extends Dialog {
     this.foot.appendChild(previewRow);
     this.button('Cancel', 'ghost', () => this.close());
     this.okBtn = this.button('OK', 'primary', () => this.commit());
-    this.onClose = () => this.abandon();
+    this.onClose = () => { this.engine.showLimit(null); this.abandon(); };
     for (const ev of ['active', 'projects'] as const) engine.on(ev, () => { const id = engine.current?.activeLayer?.id ?? ''; if (this.isOpen && this.mode === 'image' && !this.asking && id !== this.seenLayer) this.close(); });
   }
 
@@ -142,6 +146,8 @@ export class AdjustPanel extends Dialog {
     this.previewOn = true;
     this.previewBox.checked = true;
     this.sections.get(this.kind)?.sync();
+    setHidden(this.limitSection.node, this.mode !== 'layer');
+    this.limitSection.sync();
     for (const o of Array.from(this.presetSel.options)) if (o.value) o.hidden = o.dataset.kind !== this.kind;
     this.presetSel.value = '';
   }
@@ -911,6 +917,36 @@ export class AdjustPanel extends Dialog {
     const which = (): string => PRESETS.find((p) => p[2] === gr().amount && p[3] === gr().size && p[4] === gr().roughness && p[5] === (gr().colour ?? 0) && p[6] === (gr().speckle ?? 0))?.[0] ?? 'custom';
     node.append(presetRow, look.el, amount.el, size.el, rough.el, colour.el, speckle.el, reseed);
     return { node, sync: () => { look.set(gr().look ?? 100); amount.set(gr().amount); size.set(gr().size); rough.set(gr().roughness); colour.set(gr().colour ?? 0); speckle.set(gr().speckle ?? 0); preset.value = which(); } };
+  }
+
+  /** Limit (filter and adjustment layers): what the layer acts on, by luminosity, depth or colour range, with a softness,
+   *  an invert switch and Show the effect. Every row exists from the start; rows that do not apply are only dimmed. */
+  private buildLimit(): Section {
+    const node = el('<div class="cv-panel-section"><p class="cv-note">Limit: where this layer acts, by what lies beneath it.</p></div>');
+    const lim = (): Json => obj(this.data.limit);
+    const put = (patch: Json | null): void => {
+      if (patch === null) delete this.data.limit; else this.data.limit = { mode: 'luminosity', lo: 0, hi: 100, soft: 10, invert: false, hue: 0, width: 60, ...lim(), ...patch };
+      this.limitSection.sync();
+      this.changed();
+    };
+    const mode = selectRow('Limit to', LIMIT_MODES, (v) => put(v === 'none' ? null : { mode: v }));
+    const lo = sliderRow('From (%)', 0, 100, 1, (v) => put({ lo: v }), { def: 0 });
+    const hi = sliderRow('To (%)', 0, 100, 1, (v) => put({ hi: v }), { def: 100 });
+    const hue = sliderRow('Hue (degrees)', 0, 360, 1, (v) => put({ hue: v }), { def: 0 });
+    const width = sliderRow('Width (degrees)', 5, 360, 1, (v) => put({ width: v }), { def: 60 });
+    const soft = sliderRow('Softness (%)', 0, 50, 1, (v) => put({ soft: v }), { def: 10 });
+    const inv = checkRow('Invert', (v) => put({ invert: v }));
+    const show = checkRow('Show the effect', (v) => { const id = this.layerId; this.engine.showLimit(v && id ? id : null); });
+    node.append(mode.el, lo.el, hi.el, hue.el, width.el, soft.el, inv.el, show.el);
+    const dim = (r: { el: HTMLElement }, off: boolean): void => { for (const i of Array.from(r.el.querySelectorAll('input,select'))) (i as HTMLInputElement).disabled = off; };
+    return { node, sync: () => {
+      const l = limitOf({ data: this.data }), m = l?.mode ?? 'none';
+      mode.set(m);
+      lo.set(l?.lo ?? 0); hi.set(l?.hi ?? 100); hue.set(l?.hue ?? 0); width.set(l?.width ?? 60); soft.set(l?.soft ?? 10); inv.set(l?.invert ?? false);
+      show.set(this.engine.limitViewId !== null && this.engine.limitViewId === this.layerId);
+      dim(lo, m !== 'luminosity' && m !== 'depth'); dim(hi, m !== 'luminosity' && m !== 'depth'); dim(hue, m !== 'color'); dim(width, m !== 'color');
+      dim(soft, m === 'none'); dim(inv, m === 'none'); dim(show, m === 'none');
+    } };
   }
 
   /** A section from a parametric adjustment's control list. Every row exists from the start; rows of other groups

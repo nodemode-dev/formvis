@@ -2,6 +2,7 @@
 catalogue.ts) and mirrors it here at boot and whenever it changes; GET /api/commands reads it, POST /api/commands/{id} runs a
 command by handing it to the window over the agent bridge (the run_command message, answered by the window's runCommand)."""
 
+import asyncio
 import json
 import threading
 import time
@@ -88,7 +89,10 @@ async def run(cid: str, request: Request, body: Run | None = None) -> dict:
     found = _find(cid)
     if _state["commands"] and found is None:
         raise HTTPException(404, f"No command has the id {cid}. List them with GET /api/commands?text=word.")
-    out = await mcp._call("run_command", {"id": cid, "params": body.params if body else {}})
+    task = asyncio.ensure_future(mcp._call("run_command", {"id": cid, "params": body.params if body else {}}))
+    if await mcp._until_gone(request, task):
+        return {"ok": False, "error": "The caller hung up; the queued request was dropped."}
+    out = task.result()
     text = " ".join(c.get("text", "") for c in out.get("content", []) if c.get("type") == "text").strip()
     risky = bool(found and found.get("risky"))
     if out.get("isError"):

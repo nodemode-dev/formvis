@@ -662,6 +662,18 @@ async def _ask(name: str, args: dict, timeout: float) -> dict | None:
             _pending.remove(item)
 
 
+async def _until_gone(request: Request, task: asyncio.Future) -> bool:
+    """Waits for a call's task. When the HTTP caller hangs up first (a CLI killed or timed out) the task is cancelled, which
+    drops its queued window request, and True is returned; False when the task finished."""
+    while not task.done():
+        await asyncio.wait({task}, timeout=0.5)
+        if not task.done() and await request.is_disconnected():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            return True
+    return False
+
+
 # Files at absolute paths (1.53.3): read and written here, the window doing the picture's part.
 _PICTURES = {".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif", ".tif", ".tiff", ".heic", ".heif", ".bmp", ".qoi", ".tga", ".ico", ".pbm", ".pgm", ".ppm", ".pnm", ".pam", ".dng", ".cr2", ".cr3", ".nef", ".arw", ".raf", ".orf", ".rw2"}
 _PROJECTS = {".fvd", ".fmv", ".psd", ".psb", ".ora"}
@@ -1274,6 +1286,8 @@ async def mcp(request: Request) -> Response:
                 task = asyncio.ensure_future(_agent_call(client, name, args))
                 _inflight[key] = task
                 try:
+                    if await _until_gone(request, task):
+                        return Response(status_code=499)   # the caller hung up: its queued request was dropped
                     result = _budgeted(name, await task)
                     if _reply_bytes(result) > MAX_REPLY:
                         result = _fail(f"{name} ran, but its reply is {_reply_bytes(result) // 1048576} MB, over the {MAX_REPLY // 1048576} MB limit for agents. Ask for less: a smaller max_size, a crop box, or a JPEG.")

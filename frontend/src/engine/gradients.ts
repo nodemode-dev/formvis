@@ -15,7 +15,10 @@ export interface GradientStop { at: number; color: RGB | 'fg' | 'bg'; alpha: num
 /** Separate opacity stops (with their own midpoints), as .grd files carry them. When a preset has them, `stops` are its colour stops
  *  (their `alpha` kept only as the opacity at that spot, for readers that know nothing of opacity stops). */
 export interface OpacityStop { at: number; alpha: number; mid?: number }
-export interface GradientPreset { id: string; label: string; stops: GradientStop[]; opacityStops?: OpacityStop[]; group?: string }
+export interface GradientPreset { id: string; label: string; stops: GradientStop[]; opacityStops?: OpacityStop[]; group?: string; smooth?: number }
+
+/** Eases the way between two stops: 0 leaves it straight, 1 is a full smooth step, so the colour settles at each stop. */
+export const easeSmooth = (f: number, smooth: number): number => (smooth > 0 ? f + (f * f * (3 - 2 * f) - f) * Math.min(1, smooth) : f);
 
 export const clampMid = (m: number | undefined): number => (typeof m === 'number' && Number.isFinite(m) ? Math.min(0.95, Math.max(0.05, m)) : 0.5);
 /** The midpoint curve: t' = t ^ (log 0.5 / log m), so t' is 0.5 at t = m. */
@@ -56,7 +59,7 @@ export function gradientsFromJson(raw: unknown): GradientPreset[] {
       const q = s && typeof s === 'object' ? (s as Record<string, unknown>) : null;
       return q ? [{ at: n(q.at, 0, 1, 0), alpha: n(q.alpha, 0, 1, 1), ...(typeof q.mid === 'number' ? { mid: n(q.mid, 0.05, 0.95, 0.5) } : {}) } as OpacityStop] : [];
     }) : [];
-    return stops.length >= 2 ? [{ id: o.id, label: o.label.trim().slice(0, 60), stops, ...(ops.length ? { opacityStops: ops } : {}), ...(typeof o.group === 'string' && o.group.trim() ? { group: o.group.trim().slice(0, 40) } : {}) }] : [];
+    return stops.length >= 2 ? [{ id: o.id, label: o.label.trim().slice(0, 60), stops, ...(ops.length ? { opacityStops: ops } : {}), ...(typeof o.smooth === 'number' && o.smooth > 0 ? { smooth: n(o.smooth, 0, 1, 0) } : {}), ...(typeof o.group === 'string' && o.group.trim() ? { group: o.group.trim().slice(0, 40) } : {}) }] : [];
   });
 }
 
@@ -85,7 +88,8 @@ export function sampleStops(preset: GradientPreset, fg: RGB, bg: RGB): Array<{ a
   const bent = (l: Array<{ mid?: number }>): boolean => l.some((s) => clampMid(s.mid) !== 0.5);
   // A preset caught with no colour stops (an editor mid-edit) samples to nothing rather than reading past the list.
   if (!cols.length || !ops.length) return [];
-  if (!hasOps && !bent(cols)) return cols.map(({ at, rgb, alpha }) => ({ at, rgb, alpha }));
+  const smooth = typeof preset.smooth === 'number' && preset.smooth > 0 ? Math.min(1, preset.smooth) : 0;
+  if (!hasOps && !bent(cols) && !smooth) return cols.map(({ at, rgb, alpha }) => ({ at, rgb, alpha }));
   const along = <T extends { at: number; mid?: number }>(l: T[], t: number): { a: T; b: T; f: number } => {
     let i = 0;
     while (i < l.length - 1 && l[i + 1].at <= t) i++;
@@ -93,7 +97,7 @@ export function sampleStops(preset: GradientPreset, fg: RGB, bg: RGB): Array<{ a
     return { a, b, f: a === b || b.at <= a.at ? 0 : Math.min(1, Math.max(0, (t - a.at) / (b.at - a.at))) };
   };
   const at = (t: number): { at: number; rgb: RGB; alpha: number } => {
-    const c = along(cols, t), o = along(ops, t), fc = midCurve(c.f, c.a.mid), fo = midCurve(o.f, o.a.mid);
+    const c = along(cols, t), o = along(ops, t), fc = easeSmooth(midCurve(c.f, c.a.mid), smooth), fo = easeSmooth(midCurve(o.f, o.a.mid), smooth);
     const lerp = (x: number, y: number, f: number): number => x + (y - x) * f;
     return { at: t, rgb: { r: lerp(c.a.rgb.r, c.b.rgb.r, fc), g: lerp(c.a.rgb.g, c.b.rgb.g, fc), b: lerp(c.a.rgb.b, c.b.rgb.b, fc) }, alpha: lerp(o.a.alpha, o.b.alpha, fo) };
   };
@@ -104,7 +108,7 @@ export function sampleStops(preset: GradientPreset, fg: RGB, bg: RGB): Array<{ a
     const next = marks[i + 1];
     if (next === undefined || next <= m) return;
     const mid = (m + next) / 2, c = along(cols, mid), o = along(ops, mid);
-    if (clampMid(c.a.mid) === 0.5 && clampMid(o.a.mid) === 0.5) return;
+    if (!smooth && clampMid(c.a.mid) === 0.5 && clampMid(o.a.mid) === 0.5) return;
     for (let k = 1; k < 12; k++) out.push(at(m + ((next - m) * k) / 12));
   });
   return out;

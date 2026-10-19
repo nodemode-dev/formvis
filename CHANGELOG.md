@@ -4,6 +4,27 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.90.3 · 2026-10-19
+
+### Changed
+
+- The expanded tool rail lists every tool of every group and scrolls; the colour swatches, Quick Mask and Screen Mode stay pinned at the bottom, with Quick Mask and Screen Mode side by side.
+- The top of the window is one row: on the macOS app it is the window's title bar, with the document name, "formvis 2026" in the middle and the tools on the right. The document tabs sit above the options bar, with the formvis icon at their left.
+- Saving runs in the background: you can keep editing while a document saves (Preferences > File Handling).
+
+### Added
+
+- Adjustment layers can be limited by brightness, depth or a colour range, with a view of the limit.
+- Gradient fill layers get a stop editor and offsets; depth maps get a Detail correction.
+- Blur Gallery: roundness and blur per iris, and the blurs at high bit depth; more tree kinds; negative Dehaze adds haze.
+- Layers: smart filter rows under a smart object, copying layers to another document by dragging onto its tab or with a command.
+- Channels: Layer Mask and Quick Mask rows. Properties: shape and artboard actions.
+- Menus by keyboard with Alt; snapping for lasso, gradient, ruler and slices; Gradient Editor smoothness, rename and delete; a grid unit; Grid Settings in the View menu.
+
+### Fixed
+
+- A command-line or agent request that was given up no longer runs later in the window.
+
 ## 1.90.2 · 2026-10-19
 
 ### Added

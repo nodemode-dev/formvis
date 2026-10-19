@@ -91,6 +91,10 @@
 .nm-theme-swatch { width: 28px; height: 28px; padding: 0; border: 2px solid transparent; border-radius: var(--radius); cursor: pointer; }
 .cv-panel-section { display: grid; gap: var(--space-3); }
 .cv-panel-section[hidden] { display: none; }
+.cv-stops { display: grid; gap: var(--space-2); }
+.cv-stops[hidden], .cv-stop-row[hidden] { display: none; }
+.cv-stop-row { display: grid; grid-template-columns: 1fr 2.6rem 1fr 1fr 4.5rem; gap: var(--space-2); align-items: center; }
+.cv-stop-head { font-size: var(--fs-11); color: var(--text-muted); }
 .cv-dialog [hidden] { display: none; }
 .cv-slider-ctl { display: grid; grid-template-columns: minmax(0, 1fr) 72px; align-items: center; gap: var(--space-2); }
 .cv-slider-ctl input[type="range"] { width: 100%; accent-color: var(--accent-color); margin: 0; }

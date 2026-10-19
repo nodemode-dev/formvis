@@ -33,13 +33,13 @@ export const rulerTool: Tool = {
     if (p.alt && m.ruler && (near(m.ruler.b) || near(m.ruler.a))) { ctx.engine.setRulerArm({ v: near(m.ruler.b) ? 'b' : 'a', to: p.doc }); drag = 'arm'; return; }
     if (m.ruler && near(m.ruler.b)) drag = 'b';
     else if (m.ruler && near(m.ruler.a)) drag = 'a';
-    else { m.ruler = { a: p.doc, b: p.doc }; drag = 'new'; ctx.engine.setRulerArm(null); }
+    else { const s = ctx.engine.snapPoint(p.doc); m.ruler = { a: s, b: s }; drag = 'new'; ctx.engine.setRulerArm(null); }
     ctx.engine.measureChanged();
   },
   move(ctx, p) {
     const m = ctx.engine.measure;
     if (!drag || !m?.ruler) return;
-    let q = p.doc;
+    let q = p.shift ? p.doc : ctx.engine.snapPoint(p.doc);
     const arm = ctx.engine.rulerArm;
     if (drag === 'arm' && arm) {
       const v = arm.v === 'a' ? m.ruler.a : m.ruler.b;
@@ -53,6 +53,7 @@ export const rulerTool: Tool = {
     ctx.engine.measureChanged();
   },
   up(ctx) {
+    ctx.engine.snapPoint({ x: 0, y: 0 }, true);
     const m = ctx.engine.measure, arm = ctx.engine.rulerArm;
     if (drag === 'new' && m?.ruler && Math.hypot(m.ruler.b.x - m.ruler.a.x, m.ruler.b.y - m.ruler.a.y) < 0.5) { m.ruler = null; ctx.engine.measureChanged(); }
     if (drag === 'arm' && arm && m?.ruler && Math.hypot(arm.to.x - (arm.v === 'a' ? m.ruler.a : m.ruler.b).x, arm.to.y - (arm.v === 'a' ? m.ruler.a : m.ruler.b).y) < 0.5) ctx.engine.setRulerArm(null);

@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.datastructures import MutableHeaders
 
 from app.core import config, runtime
 from app.routers import comfyui, generative, io, large, llm, mcp, ops, plugins, projects, system, nodemode, colour
@@ -38,17 +39,36 @@ def is_plugin_worker(path: str) -> bool:
     return not path.startswith("/api") and name.startswith("plugin-worker") and name.endswith(".js")
 
 
-@app.middleware("http")
-async def isolate_window(request, call_next):
+class IsolateWindow:
     """The window served by the engine is cross-origin isolated (SharedArrayBuffer, precise timers): COOP same-origin and
-    COEP credentialless, which still lets pictures and fonts from other sites load. FORMVIS_ISOLATED=0 turns it off."""
-    response = await call_next(request)
-    if is_plugin_worker(request.url.path):
-        response.headers["Content-Security-Policy"] = PLUGIN_WORKER_CSP
-    if os.environ.get("FORMVIS_ISOLATED", "1") != "0" and not request.url.path.startswith("/api"):
-        response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
-        response.headers["Cross-Origin-Embedder-Policy"] = "credentialless"
-    return response
+    COEP credentialless, which still lets pictures and fonts from other sites load. FORMVIS_ISOLATED=0 turns it off.
+    Plain ASGI so a handler can still see its caller hang up (request.is_disconnected)."""
+
+    def __init__(self, inner):
+        self.inner = inner
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.inner(scope, receive, send)
+            return
+        path = scope["path"]
+        worker = is_plugin_worker(path)
+        isolate = os.environ.get("FORMVIS_ISOLATED", "1") != "0" and not path.startswith("/api")
+
+        async def with_headers(message):
+            if message["type"] == "http.response.start" and (worker or isolate):
+                headers = MutableHeaders(scope=message)
+                if worker:
+                    headers["Content-Security-Policy"] = PLUGIN_WORKER_CSP
+                if isolate:
+                    headers["Cross-Origin-Opener-Policy"] = "same-origin"
+                    headers["Cross-Origin-Embedder-Policy"] = "credentialless"
+            await send(message)
+
+        await self.inner(scope, receive, with_headers)
+
+
+app.add_middleware(IsolateWindow)
 
 
 app.include_router(system.router, prefix="/api")

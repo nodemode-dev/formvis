@@ -27,6 +27,8 @@ export class GradientEditor extends Dialog {
   private kind: 'solid' | 'noise' = 'solid';
   private seed = 1;
   private rough = 50;
+  private smooth = 0;
+  private presetId = '';
   private pick: { kind: Kind; i: number } = { kind: 'c', i: 0 };
   private dragging = false;
   private readonly bar = el(`<canvas class="cv-grad-bar" width="${BW}" height="${BH}"></canvas>`) as HTMLCanvasElement;
@@ -39,6 +41,9 @@ export class GradientEditor extends Dialog {
   private readonly opacityR: Row<number>;
   private readonly locationR: Row<number>;
   private readonly roughR: Row<number>;
+  private readonly smoothR: Row<number>;
+  private readonly renameBtn = el('<button class="cv-btn" type="button">Rename</button>') as HTMLButtonElement;
+  private readonly dropBtn = el('<button class="cv-btn" type="button">Delete Preset</button>') as HTMLButtonElement;
   private readonly randomize = el('<button class="cv-btn" type="button">Randomize</button>') as HTMLButtonElement;
   private readonly deleteBtn = el('<button class="cv-btn" type="button">Delete Stop</button>') as HTMLButtonElement;
   private readonly nameInput = el('<input class="cv-input" type="text" maxlength="60" placeholder="Name">') as HTMLInputElement;
@@ -52,6 +57,9 @@ export class GradientEditor extends Dialog {
     this.locationR = sliderRow('Stop location (%)', 0, 100, 1, (v) => { const s = this.cur(); if (s && (this.pick.kind === 'c' || this.pick.kind === 'o')) { s.at = v / 100; this.resort(); this.draw(); } });
     this.midR = sliderRow('Midpoint location (%)', 5, 95, 1, (v) => { const s = this.cur(); if (s && (this.pick.kind === 'cm' || this.pick.kind === 'om')) { s.mid = v / 100; this.draw(); } });
     this.roughR = sliderRow('Roughness (%)', 0, 100, 1, (v) => { this.rough = v; this.stops = noiseStops(this.seed, this.rough); this.draw(); });
+    this.smoothR = sliderRow('Smoothness (%)', 0, 100, 1, (v) => { this.smooth = v; this.draw(); });
+    this.renameBtn.addEventListener('click', () => this.renamePreset());
+    this.dropBtn.addEventListener('click', () => this.deletePreset());
     this.randomize.addEventListener('click', () => { this.seed = (Math.random() * 0xffffffff) >>> 0; this.stops = noiseStops(this.seed, this.rough); this.draw(); });
     this.deleteBtn.addEventListener('click', () => this.removeStop());
     const save = el('<button class="cv-btn" type="button">New</button>') as HTMLButtonElement;
@@ -60,7 +68,9 @@ export class GradientEditor extends Dialog {
     (actions.lastElementChild as HTMLElement).append(this.randomize, this.deleteBtn);
     const saving = el('<div class="cv-field"><span></span><div class="cv-row-actions"></div></div>');
     (saving.lastElementChild as HTMLElement).append(this.nameInput, save);
-    this.body.append(this.presetRow.el, this.typeRow.el, this.opStrip, this.bar, this.strip, this.colorR.el, this.opacityR.el, this.locationR.el, this.midR.el, this.roughR.el, actions, saving);
+    const managing = el('<div class="cv-field"><span></span><div class="cv-row-actions"></div></div>');
+    (managing.lastElementChild as HTMLElement).append(this.renameBtn, this.dropBtn);
+    this.body.append(this.presetRow.el, this.typeRow.el, this.opStrip, this.bar, this.strip, this.colorR.el, this.opacityR.el, this.locationR.el, this.midR.el, this.smoothR.el, this.roughR.el, actions, saving, managing);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     this.bindStrip(this.strip, false);
@@ -90,6 +100,8 @@ export class GradientEditor extends Dialog {
       : p.stops.every((s) => s.alpha === p.stops[0].alpha) ? [{ at: 0, alpha: p.stops[0].alpha }, { at: 1, alpha: p.stops[0].alpha }]
         : p.stops.map((s) => ({ at: s.at, alpha: s.alpha, ...(s.mid !== undefined ? { mid: s.mid } : {}) })).sort((a, b) => a.at - b.at);
     this.kind = 'solid';
+    this.smooth = Math.round((p.smooth ?? 0) * 100);
+    this.presetId = p.id;
     this.pick = { kind: 'c', i: 0 };
     this.presetRow.set(p.id);
     this.sync();
@@ -102,7 +114,10 @@ export class GradientEditor extends Dialog {
     const s = list[this.pick.i], mid = k === 'cm' || k === 'om';
     this.typeRow.set(this.kind);
     const off = (row: HTMLElement, disabled: boolean): void => { row.classList.toggle('is-off', disabled); for (const i of row.querySelectorAll('input, button')) (i as HTMLInputElement).disabled = disabled; };
-    off(this.colorR.el, !solid || k !== 'c'); off(this.opacityR.el, !solid || k !== 'o'); off(this.locationR.el, !solid || mid); off(this.midR.el, !solid || !mid); off(this.roughR.el, solid);
+    off(this.colorR.el, !solid || k !== 'c'); off(this.opacityR.el, !solid || k !== 'o'); off(this.locationR.el, !solid || mid); off(this.midR.el, !solid || !mid); off(this.roughR.el, solid); off(this.smoothR.el, !solid);
+    const mine = customGradients.some((q) => q.id === this.presetId && q.id !== 'edited');
+    this.renameBtn.disabled = !mine; this.dropBtn.disabled = !mine;
+    this.smoothR.set(this.smooth);
     this.randomize.disabled = solid; this.deleteBtn.disabled = !solid || mid || list.length <= 1;
     if (k === 'c' && s && 'color' in s && s.color && typeof s.color === 'object') this.colorR.set(hex(s.color as RGB));
     if (k === 'o' && s) this.opacityR.set(Math.round(s.alpha * 100));
@@ -123,7 +138,7 @@ export class GradientEditor extends Dialog {
   }
 
   private asPreset(): GradientPreset {
-    return { id: '', label: '', stops: this.stops, ...(this.kind === 'solid' && this.ops.length ? { opacityStops: this.ops } : {}) };
+    return { id: '', label: '', stops: this.stops, ...(this.kind === 'solid' && this.ops.length ? { opacityStops: this.ops } : {}), ...(this.kind === 'solid' && this.smooth > 0 ? { smooth: this.smooth / 100 } : {}) };
   }
 
   private draw(): void {
@@ -221,7 +236,28 @@ export class GradientEditor extends Dialog {
     if (cols.length === 1) cols.push({ ...cols[0], at: cols[0].at < 1 ? 1 : 0 });
     for (const s of cols) s.alpha = colorAt(dense, s.at)[3] / 255;
     cols.sort((a, b) => a.at - b.at);
-    return { id, label, stops: cols, opacityStops: this.ops.map((s) => ({ ...s })).sort((a, b) => a.at - b.at) };
+    return { id, label, stops: cols, opacityStops: this.ops.map((s) => ({ ...s })).sort((a, b) => a.at - b.at), ...(this.smooth > 0 ? { smooth: this.smooth / 100 } : {}) };
+  }
+
+  private renamePreset(): void {
+    const name = this.nameInput.value.trim(), cur = customGradients.find((p) => p.id === this.presetId);
+    if (!cur) return;
+    if (!name) { toast('Type the new name first.'); this.nameInput.focus(); return; }
+    if (customGradients.some((p) => p.id !== cur.id && p.label.toLowerCase() === name.toLowerCase())) { toast(`A gradient called "${name}" exists.`); return; }
+    this.store(customGradients.map((p) => (p.id === cur.id ? { ...p, label: name.slice(0, 60) } : p)));
+    this.nameInput.value = '';
+    this.fillPresets();
+    this.presetRow.set(cur.id);
+    toast(`Renamed the gradient to "${name}".`);
+  }
+
+  private deletePreset(): void {
+    const cur = customGradients.find((p) => p.id === this.presetId && p.id !== 'edited');
+    if (!cur) return;
+    this.store(customGradients.filter((p) => p.id !== cur.id));
+    this.fillPresets();
+    this.startFrom(allGradients()[0].id);
+    toast(`Deleted the gradient "${cur.label}".`);
   }
 
   private store(list: GradientPreset[]): void {
@@ -237,6 +273,8 @@ export class GradientEditor extends Dialog {
     this.nameInput.value = '';
     this.fillPresets();
     this.presetRow.set(g.id);
+    this.presetId = g.id;
+    this.sync();
     toast(`Saved the gradient "${name}".`);
   }
 

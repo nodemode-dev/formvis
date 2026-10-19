@@ -1001,7 +1001,7 @@ export class AgentBridge {
           const off = e.on('notice', (n) => { said = (n as { text?: string } | null)?.text ?? said; });
           let ok: boolean;
           try { ok = e.correctDepthMap(kind, smooth ? amount : amount / 100, edges); } finally { off?.(); }
-          return ok ? text(`${{ flatten: 'Flattened', nearer: 'Brought nearer', farther: 'Pushed farther', smooth: edges ? 'Smoothed to the picture\'s edges' : 'Smoothed' }[kind]} the depth map${smooth ? ` (radius ${amount})` : ` by ${amount} percent`}${p.selection ? ', inside the selection' : ''}.`) : fail(said || 'The depth map could not be changed.');
+          return ok ? text(`${{ flatten: 'Flattened', nearer: 'Brought nearer', farther: 'Pushed farther', smooth: edges ? 'Smoothed to the picture\'s edges' : 'Smoothed' }[kind as 'flatten' | 'nearer' | 'farther' | 'smooth']} the depth map${smooth ? ` (radius ${amount})` : ` by ${amount} percent`}${p.selection ? ', inside the selection' : ''}.`) : fail(said || 'The depth map could not be changed.');
         }
         case 'set_crop': {
           if (typeof a.width !== 'number' || typeof a.height !== 'number' || !(a.width >= 1) || !(a.height >= 1)) return fail('Give x, y, width and height of the frame in document pixels.');

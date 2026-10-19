@@ -22,11 +22,11 @@ import { brandMark } from './brand';
 import { THEMES, readChoice, setAccent, setIntensity, setTheme, themeSwatchesHtml } from './themes';
 import { toast } from './toast';
 import { DEFAULT_PREFS, INTERPOLATIONS, LINE_STYLES, type LineStyle } from './prefs';
-import { CHECKER_COLORS, CHECKER_SIZES, ENGINE_CHOICES, PAINT_CURSORS, PRESSURE_CURVES, RAW_WB_CHOICES, RECOVERY_CHOICES, RULER_UNITS, UI_FONT_SIZES, UI_SCALES, loadPrefs, recalled, remembered, savePrefs, setUiScale, uiScaleChoice, type CheckerColors, type CheckerSize, type EngineDevice, type PaintCursor, type Prefs, type PressureCurve, type RulerUnits, type UiFontSize } from './prefs';
+import { CHECKER_COLORS, CHECKER_SIZES, ENGINE_CHOICES, GRID_UNITS, PAINT_CURSORS, PRESSURE_CURVES, RAW_WB_CHOICES, RECOVERY_CHOICES, RULER_UNITS, UI_FONT_SIZES, UI_SCALES, gridUnitPx, loadPrefs, openResolution, recalled, remembered, savePrefs, setUiScale, uiScaleChoice, type CheckerColors, type CheckerSize, type EngineDevice, type GridUnit, type PaintCursor, type Prefs, type PressureCurve, type RulerUnits, type UiFontSize } from './prefs';
 import { POWER_CHOICES, RENDERER_CHOICES, type GpuPower, type GpuRenderer } from '../gpu/probe';
 import { FRAME_PACING } from '../gpu/frame-trace';
 import { TILE_SIZES } from '../engine/tiled';
-import { checkRow, selectRow, sliderRow } from './panels/controls';
+import { checkRow, numberRow, selectRow, sliderRow, type Row } from './panels/controls';
 import { PagePrefsRows } from './panels/page-prefs';
 import { SIZES } from './panels/generate-panel';
 
@@ -511,7 +511,13 @@ export class SettingsDialog extends Dialog {
   private readonly pageRows = new PagePrefsRows((patch) => this.change(patch));
   private readonly languageRow = selectRow('Language', languages(), (v) => { this.change({ language: v as Lang }); setLanguage(v as Lang); });
   private readonly rulerRow = selectRow('Rulers', RULER_UNITS, (v) => this.change({ rulerUnits: v as RulerUnits }));
-  private readonly gridEveryRow = sliderRow('Gridline Every (px)', 2, 1000, 1, (v) => this.change({ gridSpacing: v }));
+  private readonly gridEveryRow = numberRow('Gridline Every', 0.01, 5000, 0.01, (v) => this.change({ gridSpacing: Math.round(Math.min(5000, Math.max(0.01, v)) * 100) / 100 }));
+  private readonly gridUnitRow = selectRow('Grid Unit', GRID_UNITS, (v) => {
+    const from = this.prefs.gridUnit, to = v as GridUnit, ppi = openResolution();
+    const spacing = Math.round(Math.min(5000, Math.max(0.01, this.prefs.gridSpacing * gridUnitPx(from, ppi) / gridUnitPx(to, ppi))) * 100) / 100;
+    this.change({ gridUnit: to, gridSpacing: spacing });
+    this.gridEveryRow.set(spacing);
+  });
   private readonly subdivRow = sliderRow('Subdivisions', 1, 32, 1, (v) => this.change({ gridSubdivisions: v }));
   private readonly gridOpacityRow = sliderRow('Grid opacity (%)', 5, 100, 1, (v) => this.change({ gridOpacity: v }));
   private readonly noticeSecondsRow = sliderRow('Notice stays (seconds, 0 is automatic)', 0, 30, 1, (v) => this.change({ noticeSeconds: v }));
@@ -519,8 +525,8 @@ export class SettingsDialog extends Dialog {
     const row = el('<div class="cv-dialog-row"><span></span><button type="button" class="cv-btn cv-btn-ghost">Restore Defaults</button></div>');
     (row.querySelector('button') as HTMLButtonElement).addEventListener('click', () => {
       const d = DEFAULT_PREFS;
-      this.change({ guideColor: d.guideColor, gridColor: d.gridColor, guideStyle: d.guideStyle, gridStyle: d.gridStyle, gridSpacing: d.gridSpacing, gridSubdivisions: d.gridSubdivisions, gridOpacity: d.gridOpacity });
-      this.gridEveryRow.set(d.gridSpacing); this.subdivRow.set(d.gridSubdivisions); this.gridOpacityRow.set(d.gridOpacity);
+      this.change({ guideColor: d.guideColor, gridColor: d.gridColor, guideStyle: d.guideStyle, gridStyle: d.gridStyle, gridSpacing: d.gridSpacing, gridUnit: d.gridUnit, gridSubdivisions: d.gridSubdivisions, gridOpacity: d.gridOpacity });
+      this.gridEveryRow.set(d.gridSpacing); this.gridUnitRow.set(d.gridUnit); this.subdivRow.set(d.gridSubdivisions); this.gridOpacityRow.set(d.gridOpacity);
       this.guideStyleRow.set(d.guideStyle); this.gridStyleRow.set(d.gridStyle);
       const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent-color').trim() || '#f97316';
       this.guideColor.value = accent; this.gridColor.value = '#808080';
@@ -543,10 +549,17 @@ export class SettingsDialog extends Dialog {
   private readonly zoomCentreRow = checkRow('Zoom Clicked Point to Center', (v) => this.change({ zoomClickCentre: v }));
   private readonly lowerExtRow = checkRow('Use Lower Case Extension', (v) => this.change({ lowerExtension: v }));
   private readonly recentCountRow = sliderRow('Recent File List Contains (files)', 0, 40, 1, (v) => this.change({ recentFileCount: v }));
+  private readonly saveBgRow = checkRow('Save in Background', (v) => this.change({ saveInBackground: v }));
   private readonly gamutOpacityRow = sliderRow('Gamut Warning opacity (%)', 0, 100, 1, (v) => this.change({ gamutOpacity: v }));
   private readonly gamutColor = el<HTMLInputElement>('<input class="cv-input" type="color" aria-label="Gamut Warning color">');
   private readonly guideStyleRow = selectRow('Guide line style', LINE_STYLES, (v) => this.change({ guideStyle: v as LineStyle }));
   private readonly gridStyleRow = selectRow('Grid line style', LINE_STYLES, (v) => this.change({ gridStyle: v as LineStyle }));
+  private readonly gridPresetRow: Row<string> = selectRow('Grid colour preset', [['', 'Choose...'], ['#808080', 'Grey'], ['#000000', 'Black'], ['#ffffff', 'White'], ['#ff6b6b', 'Light Red'], ['#6bb5ff', 'Light Blue'], ['#7bdc8a', 'Light Green'], ['#ffd45e', 'Yellow']], (v) => {
+    if (!v) return;
+    this.gridColor.value = v;
+    this.change({ gridColor: v });
+    this.gridPresetRow.set('');
+  });
   private readonly sliceColor = el<HTMLInputElement>('<input class="cv-input" type="color" aria-label="Slice line color">');
   private readonly sliceNumbersRow = checkRow('Show Slice Numbers', (v) => this.change({ sliceNumbers: v }));
   /** Preferences > Scratch Disks: where formvis keeps its working files, read by the app. */
@@ -633,7 +646,7 @@ export class SettingsDialog extends Dialog {
     this.libApply.addEventListener('click', () => void this.applyLibrary());
     const library = el('<div></div>');
     library.append(this.libNow, libRow, pathRow, moveRow, this.libApply, el('<p class="cv-note">The library can live in any folder, a synced one (iCloud Drive, Dropbox, OneDrive, Google Drive) included. If a project changed in that folder since you opened it, from another device or window, saving keeps that version and saves yours beside it as a conflict copy.</p>'));
-    add('File Handling', library, mismatch, restore, el('<p class="cv-note">Every open document is kept on this device, in its tab order, and opens again at the next start, saved or not. Off, only unsaved work is kept, and formvis asks after a crash.</p>'), this.recoveryRow.el, el('<p class="cv-note">Unsaved documents are kept on this device so they can be recovered after a crash; this is how soon after a change that happens.</p>'), this.lowerExtRow.el, this.recentCountRow.el, el('<p class="cv-note">Use Lower Case Extension writes exported files as .jpg; off, as .JPG. The recent file list is how many files File > Open Recent shows; 0 shows none.</p>'));
+    add('File Handling', library, mismatch, restore, el('<p class="cv-note">Every open document is kept on this device, in its tab order, and opens again at the next start, saved or not. Off, only unsaved work is kept, and formvis asks after a crash.</p>'), this.recoveryRow.el, el('<p class="cv-note">Unsaved documents are kept on this device so they can be recovered after a crash; this is how soon after a change that happens.</p>'), this.lowerExtRow.el, this.recentCountRow.el, el('<p class="cv-note">Use Lower Case Extension writes exported files as .jpg; off, as .JPG. The recent file list is how many files File > Open Recent shows; 0 shows none.</p>'), this.saveBgRow.el, el('<p class="cv-note">Save in Background takes a snapshot of the document when you save and writes it while you keep editing; the status line shows the progress and Escape stops it. Off, edits wait until the save has finished. A document with a giant tiled layer always waits.</p>'));
     add('Placing Pictures', this.placeTransformRow.el, el('<p class="cv-note">On, a single picture dropped on an open document or put in with File > Place Embedded opens in Free Transform: Enter keeps it, Escape leaves it at its placed size and spot. A picture larger than the canvas is placed scaled to fit.</p>'));
     add('History Log', this.historyLogRow.el, el('<p class="cv-note">On, every new history step is written down with its time and document, on this device. Edit > History Log saves it as a text file or clears it.</p>'));
     add('Cursors', this.cursorRow.el, this.crossRow.el, ...this.pageRows.cursors, el('<p class="cv-note">How painting tools show where they paint: the tip\'s outline at its size, a crosshair alone, or a small ring.</p>'));
@@ -646,7 +659,7 @@ export class SettingsDialog extends Dialog {
     this.scratchClean.addEventListener('click', () => { this.scratch?.clean(); setTimeout(() => void this.refreshScratch(), 400); });
     add('Scratch Disks', this.pageRows.scratch.el, this.scratchInfo, this.scratchClean, el('<p class="cv-note">formvis keeps recovery copies of open documents and closed tabs in this device\'s storage, the way a desktop editor uses a scratch disk. Clean Working Files removes the copies of documents that are no longer open; open documents are not touched. Layer effect and display caches are set in Performance.</p>'));    add('Language', this.languageRow.el, el('<p class="cv-note">The language of the whole interface. Names you give layers and documents stay as you wrote them.</p>'));
     add('Units & Rulers', this.rulerRow.el, ...this.pageRows.units, el('<p class="cv-note">The rulers\' unit; inches, centimetres and millimetres follow the document\'s resolution, percent its width and height.</p>'));
-    add('Guides & Grid', this.colorRow('Guides', this.guideColor, 'guideColor'), this.guideStyleRow.el, this.colorRow('Grid', this.gridColor, 'gridColor'), this.gridStyleRow.el, this.gridEveryRow.el, this.subdivRow.el, this.gridOpacityRow.el, this.gridResetRow, this.colorRow('Slices', this.sliceColor, 'sliceColor'), this.sliceNumbersRow.el, el('<p class="cv-note">The colour and line style of guides and the grid, and the colour of slice lines and whether their numbers show.</p>'));
+    add('Guides & Grid', this.colorRow('Guides', this.guideColor, 'guideColor'), this.guideStyleRow.el, this.colorRow('Grid', this.gridColor, 'gridColor'), this.gridStyleRow.el, this.gridPresetRow.el, this.gridUnitRow.el, this.gridEveryRow.el, this.subdivRow.el, this.gridOpacityRow.el, this.gridResetRow, this.colorRow('Slices', this.sliceColor, 'sliceColor'), this.sliceNumbersRow.el, el('<p class="cv-note">The colour and line style of guides and the grid, and the colour of slice lines and whether their numbers show.</p>'));
     // Plugins (1.50.8): the other apps formvis sends to; NodeMode first.
     this.nodemodeCheck.addEventListener('click', () => void this.checkNodeMode());
     this.nodemodeUrl.addEventListener('change', () => { const v = this.nodemodeUrl.value.trim(); if (/^https?:\/\/./.test(v)) { this.change({ nodemodeUrl: v }); void this.checkNodeMode(); } else setText(this.nodemodeNote, 'An address starts with http:// or https://, such as http://localhost:8000.'); });
@@ -782,7 +795,7 @@ export class SettingsDialog extends Dialog {
     this.checkerColorsRow.set(this.prefs.checkerColors);
     this.rulerRow.set(this.prefs.rulerUnits);
     this.languageRow.set(this.prefs.language);
-    this.gridEveryRow.set(this.prefs.gridSpacing);
+    this.gridEveryRow.set(this.prefs.gridSpacing); this.gridUnitRow.set(this.prefs.gridUnit);
     this.subdivRow.set(this.prefs.gridSubdivisions); this.gridOpacityRow.set(this.prefs.gridOpacity); this.noticeSecondsRow.set(this.prefs.noticeSeconds);
     const css = getComputedStyle(document.documentElement);
     this.guideColor.value = this.prefs.guideColor || (css.getPropertyValue('--accent-color').trim() || '#f97316');
@@ -795,7 +808,7 @@ export class SettingsDialog extends Dialog {
     this.canvasColourRow.set(this.canvasColour?.get() ?? 'default');
     this.beepRow.set(this.prefs.beepWhenDone); this.interpolationRow.set(this.prefs.interpolation); this.zoomResizesRow.set(this.prefs.zoomResizes); this.floatDockingRow.set(this.prefs.floatDocking);
     this.tooltipsRow.set(this.prefs.showTooltips); this.shiftToolRow.set(this.prefs.shiftToolSwitch); this.zoomCentreRow.set(this.prefs.zoomClickCentre);
-    this.lowerExtRow.set(this.prefs.lowerExtension); this.recentCountRow.set(this.prefs.recentFileCount);
+    this.lowerExtRow.set(this.prefs.lowerExtension); this.recentCountRow.set(this.prefs.recentFileCount); this.saveBgRow.set(this.prefs.saveInBackground);
     void this.refreshScratch();
     if (section && this.sections.has(section)) this.showSection(section);
     this.sync();

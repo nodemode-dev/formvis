@@ -24,6 +24,8 @@ export interface Prefs extends PagePrefs { language: Lang; profileMismatch: Mism
   zoomWheel: boolean; autoFirstSnapshot: boolean; snapshotMB: number; narrowCollapse: boolean; rememberLayout: boolean;
   paintCursor: PaintCursor; cursorCrosshair: boolean; checkerSize: CheckerSize; checkerColors: CheckerColors; checkerTheme: boolean;
   rulerUnits: RulerUnits; guideColor: string; gridColor: string; gridSpacing: number; gridSubdivisions: number;
+  /** Preferences > Guides, Grid & Slices: the unit Gridline Every is measured in; the grid is drawn in pixels through the document's resolution. */
+  gridUnit: GridUnit;
   /* The workspace charter (DEV_PLAN 35.1): the Home screen when the last document closes, What's New after an update,
      and the values that stick: every tool option, and each dialog's last controls. */
   homeOnLastClose: boolean; whatsNewAuto: boolean; whatsNewSeen: string;
@@ -68,6 +70,8 @@ export interface Prefs extends PagePrefs { language: Lang; profileMismatch: Mism
   showTooltips: boolean; shiftToolSwitch: boolean; zoomClickCentre: boolean;
   /** Preferences > File Handling: the extension of exported files in lower case, and how many files File > Open Recent lists. */
   lowerExtension: boolean; recentFileCount: number;
+  /** Preferences > File Handling: Save and Save As take a snapshot of the document and write it while editing goes on. */
+  saveInBackground: boolean;
   /** Preferences > Transparency & Gamut: the Gamut Warning's colour and its opacity in percent. */
   gamutColor: string; gamutOpacity: number;
   /** Preferences > Guides, Grid & Slices: the line styles of guides and the grid, the slice lines' colour and their numbers. */
@@ -144,6 +148,10 @@ export const LINE_DASH: Record<LineStyle, number[]> = { solid: [], dashed: [6, 4
 export const PAINT_CURSORS: ReadonlyArray<readonly [PaintCursor, string]> = [['tip', 'Normal Brush Tip'], ['precise', 'Precise'], ['standard', 'Standard']];
 export const CHECKER_SIZES: ReadonlyArray<readonly [CheckerSize, string]> = [['none', 'None'], ['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']];
 export const CHECKER_COLORS: ReadonlyArray<readonly [CheckerColors, string]> = [['auto', 'Match Theme'], ['light', 'Light'], ['medium', 'Medium'], ['dark', 'Dark'], ['custom', 'Custom']];
+export type GridUnit = 'px' | 'in' | 'cm' | 'mm' | 'pt';
+export const GRID_UNITS: ReadonlyArray<readonly [GridUnit, string]> = [['px', 'Pixels'], ['in', 'Inches'], ['cm', 'Centimeters'], ['mm', 'Millimeters'], ['pt', 'Points']];
+/** Pixels in one grid unit of a document at `ppi` pixels per inch. */
+export const gridUnitPx = (unit: GridUnit, ppi: number): number => ({ px: 1, in: ppi, cm: ppi / 2.54, mm: ppi / 25.4, pt: ppi / 72 })[unit];
 export const RULER_UNITS: ReadonlyArray<readonly [RulerUnits, string]> = [['px', 'Pixels'], ['in', 'Inches'], ['cm', 'Centimeters'], ['mm', 'Millimeters'], ['%', 'Percent'], ['col', 'Columns']];
 /** The checkerboard's cell in screen pixels, and its two colours (the Transparency settings). */
 export const CHECKER_CELL: Record<CheckerSize, number> = { none: 8, small: 4, medium: 8, large: 16 };
@@ -157,8 +165,8 @@ export const ENGINE_CHOICES: ReadonlyArray<readonly [EngineDevice, string]> = [[
 
 export const DEFAULT_PREFS: Prefs = { language: 'en', profileMismatch: 'convert', colour: DEFAULT_COLOUR, colourPresets: [], shortcuts: {}, restoreSession: true, agentsAllowed: false, comfyuiUrl: 'http://127.0.0.1:8188', nodemodeUrl: 'http://localhost:8000', historyStates: 100, historyMB: 256, historyAuto: true, memoryLimitMB: 0, effectCacheMB: 256, backgroundReleaseSec: 30, cacheLevels: 6, regionRedraws: true, layerReuse: true, fullPreviews: false, recoverySeconds: 20, autoShowHome: true, useGpu: true, gpuFilters: true, renderer: 'auto', gpuMemoryMB: 1024, gpuPower: 'high-performance', lowLatency: false, framePacingMs: 0, cacheTilePx: 2048, workerThreads: 0, engineDevice: 'auto',
   zoomWheel: false, autoFirstSnapshot: true, snapshotMB: 768, narrowCollapse: true, rememberLayout: true, paintCursor: 'tip', cursorCrosshair: false,
-  checkerSize: 'medium', checkerColors: 'auto', checkerTheme: true, rulerUnits: 'px', guideColor: '', gridColor: '', gridSpacing: 100, gridSubdivisions: 4,
-  homeOnLastClose: false, whatsNewAuto: true, whatsNewSeen: '', toolOptions: {}, dialogValues: {}, spellWords: [], measureDataPoints: [...DEFAULT_MEASURE_POINTS], fontPreview: 'medium', toolbar: null, pressureCurve: 'linear', uiFontSize: 'default', recentFontCount: 5, recentFonts: [], rawWb: 'as_shot', rawBits: 8, rawAutoTone: false, rawSmart: false, rawAsk: true, rawPpi: 0, rawWide: false, rawSharpen: 'none', rawSharpenAmount: 'standard', autoShowPanels: true, historyLog: false, placeTransform: true, placeFit: true, placeSmart: false, themeAuto: false, themeLight: 'light', themeDark: 'studio', animatedZoom: true, systemPicker: false, zoomResizes: false, beepWhenDone: false, interpolation: 'high', floatDocking: true, showTooltips: true, shiftToolSwitch: true, zoomClickCentre: false, lowerExtension: true, recentFileCount: 20, gamutColor: '#808080', gamutOpacity: 100, guideStyle: 'solid', gridStyle: 'solid', gridOpacity: 100, noticeSeconds: 0, sliceColor: '', sliceNumbers: true, shortcutSets: {}, menuHidden: [], menuColors: {}, animations: true, usePressure: true, ...PAGE_DEFAULTS };
+  checkerSize: 'medium', checkerColors: 'auto', checkerTheme: true, rulerUnits: 'px', guideColor: '', gridColor: '', gridSpacing: 100, gridSubdivisions: 4, gridUnit: 'px',
+  homeOnLastClose: false, whatsNewAuto: true, whatsNewSeen: '', toolOptions: {}, dialogValues: {}, spellWords: [], measureDataPoints: [...DEFAULT_MEASURE_POINTS], fontPreview: 'medium', toolbar: null, pressureCurve: 'linear', uiFontSize: 'default', recentFontCount: 5, recentFonts: [], rawWb: 'as_shot', rawBits: 8, rawAutoTone: false, rawSmart: false, rawAsk: true, rawPpi: 0, rawWide: false, rawSharpen: 'none', rawSharpenAmount: 'standard', autoShowPanels: true, historyLog: false, placeTransform: true, placeFit: true, placeSmart: false, themeAuto: false, themeLight: 'light', themeDark: 'studio', animatedZoom: true, systemPicker: false, zoomResizes: false, beepWhenDone: false, interpolation: 'high', floatDocking: true, showTooltips: true, shiftToolSwitch: true, zoomClickCentre: false, lowerExtension: true, recentFileCount: 20, saveInBackground: true, gamutColor: '#808080', gamutOpacity: 100, guideStyle: 'solid', gridStyle: 'solid', gridOpacity: 100, noticeSeconds: 0, sliceColor: '', sliceNumbers: true, shortcutSets: {}, menuHidden: [], menuColors: {}, animations: true, usePressure: true, ...PAGE_DEFAULTS };
 export const RECOVERY_CHOICES: ReadonlyArray<readonly [string, string]> = [['10', '10 seconds'], ['20', '20 seconds'], ['60', '1 minute'], ['300', '5 minutes'], ['600', '10 minutes']];
 const KEY = 'formvis.prefs';
 
@@ -268,7 +276,8 @@ export function loadPrefs(): Prefs {
       rulerUnits: RULER_UNITS.some(([k]) => k === r.rulerUnits) ? r.rulerUnits as RulerUnits : DEFAULT_PREFS.rulerUnits,
       guideColor: typeof r.guideColor === 'string' && /^(#[0-9a-f]{6})?$/i.test(r.guideColor) ? r.guideColor : DEFAULT_PREFS.guideColor,
       gridColor: typeof r.gridColor === 'string' && /^(#[0-9a-f]{6})?$/i.test(r.gridColor) ? r.gridColor : DEFAULT_PREFS.gridColor,
-      gridSpacing: Math.round(num(r.gridSpacing, 2, 5000, DEFAULT_PREFS.gridSpacing)),
+      gridUnit: GRID_UNITS.some(([k]) => k === r.gridUnit) ? r.gridUnit as GridUnit : DEFAULT_PREFS.gridUnit,
+      gridSpacing: Math.round(num(r.gridSpacing, 0.01, 5000, DEFAULT_PREFS.gridSpacing) * 100) / 100,
       gridSubdivisions: Math.round(num(r.gridSubdivisions, 1, 64, DEFAULT_PREFS.gridSubdivisions)),
       homeOnLastClose: typeof r.homeOnLastClose === 'boolean' ? r.homeOnLastClose : DEFAULT_PREFS.homeOnLastClose,
       whatsNewAuto: typeof r.whatsNewAuto === 'boolean' ? r.whatsNewAuto : DEFAULT_PREFS.whatsNewAuto,
@@ -299,6 +308,7 @@ export function loadPrefs(): Prefs {
       themeDark: typeof r.themeDark === 'string' && THEMES[r.themeDark] && !THEMES[r.themeDark].light ? r.themeDark : 'studio',
       animatedZoom: r.animatedZoom !== false, systemPicker: r.systemPicker === true, zoomResizes: r.zoomResizes === true, beepWhenDone: r.beepWhenDone === true, interpolation: INTERPOLATIONS.some(([k]) => k === r.interpolation) ? r.interpolation as ResampleMethod : 'high', floatDocking: r.floatDocking !== false, showTooltips: r.showTooltips !== false, shiftToolSwitch: r.shiftToolSwitch !== false, zoomClickCentre: r.zoomClickCentre === true, lowerExtension: r.lowerExtension !== false,
       recentFileCount: Math.round(num(r.recentFileCount, 0, 40, DEFAULT_PREFS.recentFileCount)),
+      saveInBackground: r.saveInBackground !== false,
       gamutColor: typeof r.gamutColor === 'string' && /^#[0-9a-f]{6}$/i.test(r.gamutColor) ? r.gamutColor : DEFAULT_PREFS.gamutColor,
       gamutOpacity: Math.round(num(r.gamutOpacity, 0, 100, DEFAULT_PREFS.gamutOpacity)),
       guideStyle: LINE_STYLES.some(([k]) => k === r.guideStyle) ? r.guideStyle as LineStyle : 'solid',
@@ -422,7 +432,11 @@ function followSystemTheme(p: Prefs): void {
 }
 
 /** Puts the engine-side preferences into effect; the recovery delay is read by the app when it schedules a save. */
+let appliedTo: Engine | null = null;
+/** The open document's resolution in pixels per inch, 72 with none open. */
+export const openResolution = (): number => appliedTo?.current?.doc.resolution || 72;
 export function applyPrefs(engine: Engine, p: Prefs): void {
+  appliedTo = engine;
   renderCache.levels = p.cacheLevels;
   framePacing.minMs = p.framePacingMs;
   setTileSize(p.cacheTilePx);
@@ -439,7 +453,7 @@ export function applyPrefs(engine: Engine, p: Prefs): void {
   followSystemTheme(p);
   engine.autoFirstSnapshot = p.autoFirstSnapshot;
   engine.snapshotByteLimit = p.snapshotMB * 1024 * 1024;
-  engine.view = { ...engine.view, gridSpacing: p.gridSpacing, gridSubdivisions: p.gridSubdivisions };
+  engine.view = { ...engine.view, gridSpacing: p.gridSpacing, gridSubdivisions: p.gridSubdivisions, gridUnit: p.gridUnit };
   engine.cursorPrefs = { paint: p.paintCursor, crosshair: p.cursorCrosshair, onlyCross: p.cursorOnlyCross, previewColor: p.brushPreviewColor };
   setScratchFolder(p.scratchFolder);
   engine.zoomPrefs = { animate: p.animatedZoom, centreClick: p.zoomClickCentre };

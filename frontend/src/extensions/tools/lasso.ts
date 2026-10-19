@@ -39,7 +39,7 @@ let active = false;
 let poly = false, pressAlt = false;
 let hover: Pt | null = null;
 
-function reset(ctx: ToolContext): void { pts = []; live = []; fasteners = []; edges = null; active = false; poly = false; ctx.engine.emit('overlay', null); }
+function reset(ctx: ToolContext): void { pts = []; live = []; fasteners = []; edges = null; active = false; poly = false; ctx.engine.snapPoint({ x: 0, y: 0 }, true); ctx.engine.emit('overlay', null); }
 
 /** Turns the finished outline into a selection in the mode chosen at its start. */
 function commit(ctx: ToolContext): void {
@@ -79,7 +79,7 @@ export const lassoTool: Tool = {
       pts = [edges ? snapToEdge(edges, p.doc, mag.width) : p.doc]; fasteners = [0]; live = []; active = true; e.emit('overlay', null); return;
     }
     if (e.lassoKind === 'freehand' && active && poly) { pts.push(p.doc); poly = p.alt; e.emit('overlay', null); return; }
-    if (e.lassoKind === 'freehand' || !active) { mode = modeFor(e, p); pressAlt = p.alt; pts = [p.doc]; active = true; e.emit('overlay', null); return; }
+    if (e.lassoKind === 'freehand' || !active) { mode = modeFor(e, p); pressAlt = p.alt; pts = [e.snapPoint(p.doc)]; active = true; e.emit('overlay', null); return; }
     const first = ctx.view().toScreen(pts[0]);
     // Closing: a double-click, a click on the start, or (Magnetic) a click that snaps to the start (the start itself was
     // snapped onto the edge, so it need not be where the first click landed).
@@ -88,11 +88,11 @@ export const lassoTool: Tool = {
     if (p.clicks >= 2 || snapsHome || Math.hypot(first.x - p.screen.x, first.y - p.screen.y) <= (e.lassoKind === 'magnetic' ? 8 : 6)) { commit(ctx); return; }
     if (e.lassoKind === 'magnetic' && p.alt) { pts.push(p.doc); live = []; fasteners.push(pts.length - 1); e.emit('overlay', null); return; }   // Alt-click: a straight segment, off the edge
     if (e.lassoKind === 'magnetic') { pressure = p.pressure; trace(ctx, p.doc); pts.push(...live.slice(1)); live = []; fasteners.push(pts.length - 1); e.emit('overlay', null); return; }   // a click fastens
-    pts.push(p.doc);
+    pts.push(e.snapPoint(p.doc));
     e.emit('overlay', null);
   },
   move(ctx, p) {
-    hover = p.doc;
+    hover = ctx.engine.lassoKind === 'polygonal' && active ? ctx.engine.snapPoint(p.doc) : p.doc;
     if (ctx.engine.lassoKind === 'magnetic' && active) { pressure = p.pressure; traceSoon(ctx, p.doc); return; }
     if (!active || ctx.engine.lassoKind !== 'freehand' || poly) return;
     const last = ctx.view().toScreen(pts[pts.length - 1]);
@@ -106,7 +106,7 @@ export const lassoTool: Tool = {
     if (pts.length < 3 && mode === 'replace') { reset(ctx); ctx.engine.deselect(); return; }
     commit(ctx);
   },
-  hover(ctx, p) { hover = p?.doc ?? null; if (active && ctx.engine.lassoKind === 'magnetic' && hover) traceSoon(ctx, hover); else if (active) ctx.engine.emit('overlay', null); },
+  hover(ctx, p) { hover = p ? (ctx.engine.lassoKind === 'polygonal' && active ? ctx.engine.snapPoint(p.doc) : p.doc) : null; if (active && ctx.engine.lassoKind === 'magnetic' && hover) traceSoon(ctx, hover); else if (active) ctx.engine.emit('overlay', null); },
   keydown(ctx, e) {
     if (!active || ctx.engine.lassoKind === 'freehand') return nudgeSelectionKey(ctx, e);
     if (ctx.engine.lassoKind === 'magnetic' && (e.key === 'Backspace' || e.key === 'Delete')) {

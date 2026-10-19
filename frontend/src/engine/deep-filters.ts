@@ -1,6 +1,61 @@
 import { blurDeep, unsharpDeep } from './deep';
 import type { DeepPixels } from './types';
 import { boxMean } from './filters-lib/shared';
+import { galleryRadii, type GalleryKind, type GallerySettings, type RadiusMap } from './blur-gallery';
+
+/** Each pixel blurred by its own radius from a stack of float Gaussian blurs (the 8 bit gallery's levels), interpolated between the two nearest. */
+export function variableBlurDeep(src: DeepPixels, m: RadiusMap): DeepPixels {
+  const { width: w, height: h } = src, S = src.n + 1, max = m.max;
+  const levels = [0, max / 8, max / 4, max / 2, max].filter((r, i, a) => i === 0 || r > a[i - 1] + 0.01);
+  const stack = levels.map((r) => (r < 0.3 ? src.data : blurDeep(src, r).data));
+  const out = new Float32Array(src.data.length);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const r = Math.max(0, Math.min(max, m.at(x, y)));
+    let k = 0;
+    while (k < levels.length - 2 && levels[k + 1] < r) k++;
+    const a = levels[k], b = levels[Math.min(k + 1, levels.length - 1)], f = b > a ? Math.min(1, Math.max(0, (r - a) / (b - a))) : 0;
+    const A = stack[k], B = stack[Math.min(k + 1, stack.length - 1)], i = (y * w + x) * S;
+    for (let c = 0; c < S; c++) out[i + c] = A[i + c] * (1 - f) + B[i + c] * f;
+  }
+  return { ...src, data: out };
+}
+
+/** Radial Blur on floats: the 8 bit filter's samples along circles (Spin) or lines from the centre (Zoom), in premultiplied alpha. */
+export function radialBlurDeep(src: DeepPixels, amount: number, method: 'spin' | 'zoom', cxPct: number, cyPct: number, quality: 'draft' | 'good' | 'best' = 'good'): DeepPixels {
+  const { width: w, height: h } = src, S = src.n + 1, A = src.n, d = src.data, out = new Float32Array(d.length);
+  const cx = (cxPct / 100) * w, cy = (cyPct / 100) * h, n = quality === 'draft' ? 8 : quality === 'best' ? 32 : 16, k = Math.max(0, Math.min(100, amount)) / 100;
+  const acc = new Float64Array(S);
+  const at = (u: number, v: number): void => {
+    const cu = Math.min(w - 1, Math.max(0, u)), cv = Math.min(h - 1, Math.max(0, v)), x0 = Math.floor(cu), y0 = Math.floor(cv), x1 = Math.min(w - 1, x0 + 1), y1 = Math.min(h - 1, y0 + 1), fx = cu - x0, fy = cv - y0;
+    for (const [xx, yy, wg] of [[x0, y0, (1 - fx) * (1 - fy)], [x1, y0, fx * (1 - fy)], [x0, y1, (1 - fx) * fy], [x1, y1, fx * fy]] as const) {
+      const s = (yy * w + xx) * S, al = d[s + A] * wg;
+      acc[A] += al;
+      for (let c = 0; c < A; c++) acc[c] += d[s + c] * al;
+    }
+  };
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const dx = x - cx, dy = y - cy;
+    acc.fill(0);
+    for (let s = 0; s < n; s++) {
+      const t = s / (n - 1) - 0.5;
+      if (method === 'spin') { const a = t * k * (Math.PI / 3), c = Math.cos(a), si = Math.sin(a); at(cx + dx * c - dy * si, cy + dx * si + dy * c); }
+      else { const f = 1 + t * k; at(cx + dx * f, cy + dy * f); }
+    }
+    const o = (y * w + x) * S;
+    out[o + A] = acc[A] / n;
+    for (let c = 0; c < A; c++) out[o + c] = acc[A] > 0 ? acc[c] / acc[A] : 0;
+  }
+  return { ...src, data: out };
+}
+
+/** The float version of gallery filter `kind` (Radial, Field, Iris, Tilt-Shift) with its settings, or null for the others. */
+export function deepGalleryFilter(kind: GalleryKind, g: GallerySettings): ((d: DeepPixels) => DeepPixels) | null {
+  if (kind === 'radialBlur') return (d) => radialBlurDeep(d, g.radialAmount, g.radialMethod, g.radialX, g.radialY, g.radialQuality);
+  if (kind !== 'fieldBlur' && kind !== 'irisBlur' && kind !== 'tiltShift') return null;
+  return (d) => { const m = galleryRadii(kind, g, d.width, d.height, 1); return m ? variableBlurDeep(d, m) : d; };
+}
+
+export const DEEP_GALLERY_KINDS: readonly string[] = ['radialBlur', 'fieldBlur', 'irisBlur', 'tiltShift'];
 
 /** Library filters that compute on the float channels of a 16 bit, 32 bit, CMYK or Lab document, with no round trip
  *  through 8 bits: Blur, Blur More, Box Blur, Sharpen, Sharpen More, Sharpen Edges, High Pass, Maximum and Minimum.

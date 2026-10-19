@@ -19,8 +19,9 @@
   ./formvis cli serve [--root DIR] [--token TEXT]   a JSON-lines session on stdin and stdout: {"id":1,"method":"command.run","params":{...}}
   ./formvis cli version   the version, build and the engine's address
 
-Each subcommand takes --help. A command marked risky (undo cannot reverse it) is run only with --yes. The engine's address:
-FORMVIS_URL, or http://127.0.0.1:8190. Editing commands need the window open (./formvis boot) and outside agents allowed
+Each subcommand takes --help. A command marked risky (undo cannot reverse it) is run only with --yes. A call waits up to 660 seconds
+for the window (FORMVIS_CLI_TIMEOUT sets it); when it gives up or is stopped, the engine drops the request so it never runs later.
+The engine's address: FORMVIS_URL, or http://127.0.0.1:8190. Editing commands need the window open (./formvis boot) and outside agents allowed
 (Preferences > Plugins), or --headless on list, describe, run, process, batch, droplet, serve and convert, which starts a window with no
 screen for that run (./formvis headless) and closes it after; info, convert of flat pictures and jobs need only the engine."""
 
@@ -82,16 +83,24 @@ URL = os.environ.get("FORMVIS_URL", "http://127.0.0.1:8190").rstrip("/")
 def call(method: str, path: str, body: dict | None = None) -> tuple[int, dict]:
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(URL + path, data=data, method=method, headers={"Content-Type": "application/json", "X-Formvis-Client": "formvis-cli"})
+    wait = float(os.environ.get("FORMVIS_CLI_TIMEOUT") or 660)
     try:
-        with urllib.request.urlopen(req, timeout=660) as r:
+        with urllib.request.urlopen(req, timeout=wait) as r:
             return r.status, json.loads(r.read().decode() or "{}")
     except urllib.error.HTTPError as exc:
         try:
             return exc.code, json.loads(exc.read().decode() or "{}")
         except ValueError:
             return exc.code, {}
-    except (urllib.error.URLError, OSError):
-        print(f"The formvis engine is not answering at {URL}. Start it with ./formvis boot, then retry.", file=sys.stderr)
+    except KeyboardInterrupt:
+        print("Stopped. The engine drops the request that was waiting for the window.", file=sys.stderr)
+        sys.exit(130)
+    except (urllib.error.URLError, OSError) as exc:
+        if isinstance(exc, TimeoutError) or isinstance(getattr(exc, "reason", None), TimeoutError):
+            print(f"formvis did not answer within {wait:g} seconds. The request was dropped, so it will not run later. Check that the formvis window is open and not busy "
+                  f"(or add --headless), then retry; FORMVIS_CLI_TIMEOUT sets the wait in seconds.", file=sys.stderr)
+        else:
+            print(f"The formvis engine is not answering at {URL}. Start it with ./formvis boot, then retry.", file=sys.stderr)
         sys.exit(1)
 
 

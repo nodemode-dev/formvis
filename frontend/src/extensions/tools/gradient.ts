@@ -168,7 +168,7 @@ export const gradientTool: Tool = {
       if (hit?.kind === 'mid') { dragMid = hit.i; return; }
       if (hit?.kind === 'line') { const i = e.addGradientStop(hit.t); if (i >= 0) dragStop = i; return; }
     }
-    if (e.beginGradient(p.doc)) drag = 'end';
+    if (e.beginGradient(e.snapPoint(p.doc))) drag = 'end';
   },
   move(ctx, p) {
     const e = ctx.engine, gr = e.gradient;
@@ -184,10 +184,12 @@ export const gradientTool: Tool = {
       return;
     }
     if (!drag || !gr) return;
-    if (drag === 'end') e.updateGradient(undefined, p.shift ? constrain(gr.start, p.doc) : p.doc);
-    else e.updateGradient(p.shift ? constrain(gr.end, p.doc) : p.doc, undefined);
+    const q = p.shift ? p.doc : e.snapPoint(p.doc);
+    if (drag === 'end') e.updateGradient(undefined, p.shift ? constrain(gr.start, p.doc) : q);
+    else e.updateGradient(p.shift ? constrain(gr.end, p.doc) : q, undefined);
   },
   up(ctx) {
+    ctx.engine.snapPoint({ x: 0, y: 0 }, true);
     const fd = fillDrag;
     fillDrag = null;
     if (fd) { ctx.engine.setFillContent(fd.id, fd.content); return; }

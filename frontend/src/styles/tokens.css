@@ -229,6 +229,7 @@ body.nm-home .nm-canvas-surface { display: none !important; }
 :root {
   --cv-titlebar-h: 40px;
   --cv-options-h: 40px;
+  --cv-tabs-h: 34px;
   --cv-status-h: 28px;
   --cv-rail-w: 52px;
   --cv-layers-w: 288px;

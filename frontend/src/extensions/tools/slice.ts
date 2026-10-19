@@ -116,7 +116,8 @@ export const sliceTool: Tool = {
     if (p.button !== 0 || !ctx.engine.current || ctx.engine.view.slicesLocked) return;
     const list = ctx.engine.current.doc.slices ?? [];
     if (mode === 'slice') {
-      drag = { start: p.doc, now: p.doc, square: p.shift };
+      const s = ctx.engine.snapPoint(p.doc);
+      drag = { start: s, now: s, square: p.shift };
     } else {
       // Slice Select: an edge of the selected slice resizes it; a press inside a slice (the topmost) selects it and a drag moves it; empty canvas selects none.
       const cur = list.find((s) => s.id === ctx.engine.activeSlice), edge = cur ? edgeAt(ctx, cur, p.screen) : null;
@@ -138,7 +139,7 @@ export const sliceTool: Tool = {
   },
   move(ctx, p) {
     if (!drag) return;
-    drag.now = p.doc;
+    drag.now = mode === 'slice' && !drag.move ? ctx.engine.snapPoint(p.doc) : p.doc;
     drag.square = p.shift;
     ctx.engine.emit('overlay', null);
   },
@@ -146,6 +147,7 @@ export const sliceTool: Tool = {
     if (!drag) return;
     const r = rectOf(drag), moved = drag.move;
     drag = null;
+    ctx.engine.snapPoint({ x: 0, y: 0 }, true);
     if (moved) {
       if (r.w !== moved.w || r.h !== moved.h) ctx.engine.updateSlice(moved.id, { x: r.x, y: r.y, w: r.w, h: r.h }, 'Resize Slice');
       else if (r.x !== moved.x || r.y !== moved.y) ctx.engine.updateSlice(moved.id, { x: r.x, y: r.y }, 'Move Slice');

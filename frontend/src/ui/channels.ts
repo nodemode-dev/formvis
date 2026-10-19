@@ -24,7 +24,9 @@ const isInk = (id: Ch): id is 'c' | 'm' | 'y' | 'k' => id in INK;
 const clickMode = (e: MouseEvent): SelectionMode => (e.shiftKey && e.altKey ? 'intersect' : e.shiftKey ? 'add' : e.altKey ? 'subtract' : 'replace');
 
 export class ChannelsPanel {
-  readonly root = el(`<section class="cv-channels" aria-label="Channels" hidden><div class="cv-ch-rows"></div><div class="cv-ch-rows cv-ch-alphas" aria-label="Alpha channels"></div><p class="cv-ch-note"></p>` +
+  readonly root = el(`<section class="cv-channels" aria-label="Channels" hidden><div class="cv-ch-rows"></div><div class="cv-ch-rows cv-ch-alphas" aria-label="Alpha channels"></div><div class="cv-ch-rows cv-ch-specials" aria-label="Layer mask and Quick Mask">` +
+    `<div class="cv-ch-row" data-special="mask" role="button" tabindex="0" hidden><button class="cv-ch-eye" type="button" aria-label="Show Layer Mask">${icon('eye', 15)}</button><canvas class="cv-ch-thumb" width="44" height="30"></canvas><span class="cv-ch-name">Layer Mask</span></div>` +
+    `<div class="cv-ch-row" data-special="quick" role="button" tabindex="0" hidden><button class="cv-ch-eye" type="button" aria-label="Quick Mask">${icon('eye', 15)}</button><canvas class="cv-ch-thumb" width="44" height="30"></canvas><span class="cv-ch-name">Quick Mask</span></div></div><p class="cv-ch-note"></p>` +
     `<div class="cv-ch-foot"><button class="cv-icon-btn" type="button" data-cmd="load-selection" aria-label="Load Selection">${icon('marquee', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="save-selection-channel" aria-label="Save Selection as Channel">${icon('mask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="duplicate-channel" aria-label="Duplicate Channel">${icon('duplicate', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-channel" aria-label="New Channel">${icon('add', 16)}</button></div></section>`);
   private readonly alphaRows = this.root.querySelector('.cv-ch-alphas') as HTMLElement;
   private readonly drawn = new WeakMap<HTMLElement, { mask: SelectionMask | null; w: number; h: number }>();
@@ -36,6 +38,9 @@ export class ChannelsPanel {
   private timer = 0;
   private seenProject: unknown = null;
   private seenLayer = '';
+  private readonly maskRow: HTMLElement;
+  private readonly quickRow: HTMLElement;
+  private maskDrawn = '';
 
   constructor(private readonly engine: Engine, private readonly stage: HTMLElement, private readonly onOptions: (id: string) => void = () => undefined) {
     const rows = this.root.querySelector('.cv-ch-rows') as HTMLElement;
@@ -67,6 +72,13 @@ export class ChannelsPanel {
       this.thumbs.set(r.id, row.querySelector('.cv-ch-thumb') as HTMLCanvasElement);
       rows.appendChild(row);
     }
+    this.maskRow = q(this.root, '[data-special="mask"]');
+    this.quickRow = q(this.root, '[data-special="quick"]');
+    q(this.maskRow, '.cv-ch-eye').addEventListener('click', (e) => { e.stopPropagation(); if (this.engine.current?.activeLayer?.mask) this.engine.toggleMaskEnabled(); });
+    this.maskRow.addEventListener('click', () => { if (this.engine.current?.activeLayer?.mask) this.engine.setMaskTarget(true); });
+    q(this.quickRow, '.cv-ch-eye').addEventListener('click', (e) => { e.stopPropagation(); this.engine.toggleQuickMask(); });
+    this.quickRow.addEventListener('click', () => this.engine.toggleQuickMask());
+    engine.on('options', () => this.syncSpecials());
     // The view's filter, one for the page; the document's canvases use it while a channel view is on.
     if (!document.getElementById('cv-channel-view-svg')) {
       document.body.appendChild(el('<svg id="cv-channel-view-svg" width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="cv-channel-view" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0"/></filter></svg>'));
@@ -167,6 +179,30 @@ export class ChannelsPanel {
     setText(this.root.querySelector('.cv-ch-note') as HTMLElement, lab ? (this.labSolo ? `The canvas shows ${ROWS.find((r) => r.id === this.labSolo)?.label} alone, as grey (a and b mid-grey where neutral); click Lab to see the colours again. The Brush, Pencil and Eraser paint it alone.` : 'Lab: Lightness, a and b as greys (a and b mid-grey where neutral). Click one to see it alone on the canvas.') : cmyk ? (this.inkSolo ? `The canvas shows ${ROWS.find((r) => r.id === this.inkSolo)?.label} alone (paper white, full ink black); the Brush, Pencil and Eraser paint it alone.` : 'Click an ink to paint it alone; ⌘- or Ctrl-click loads its light areas as a selection.')
       : native && !plain ? 'The Native GPU renderer draws outside the page: switch the renderer in Preferences to view single channels.' : this.solo ? `${ROWS.find((r) => r.id === this.solo)?.label} is the target: strokes, fills and filters change only this channel. Click RGB to edit all three.` : '⌘- or Ctrl-click a channel to load it as a selection.');
     this.syncAlphas();
+    this.syncSpecials();
+  }
+
+  /** The active layer's mask and the Quick Mask as rows after the alpha channels: shown when they exist, patched in place. */
+  private syncSpecials(): void {
+    const p = this.engine.current, l = p?.activeLayer, m = l?.mask ?? null;
+    setHidden(this.maskRow, !m);
+    setHidden(this.quickRow, !p || !this.engine.quickMask);
+    this.maskRow.classList.toggle('is-on', !!m && !!p?.maskTarget && !this.engine.quickMask);
+    q(this.maskRow, '.cv-ch-eye').classList.toggle('is-off', !!m && !m.enabled);
+    this.quickRow.classList.toggle('is-on', this.engine.quickMask);
+    const key = m ? `${l?.id}:${m.raster?.id ?? 'full'}:${m.raster?.version ?? 0}` : '';
+    if (key === this.maskDrawn) return;
+    this.maskDrawn = key;
+    const c = q<HTMLCanvasElement>(this.maskRow, '.cv-ch-thumb'), g = c.getContext('2d') as CanvasRenderingContext2D;
+    g.clearRect(0, 0, c.width, c.height);
+    if (!m) return;
+    g.fillStyle = m.raster ? '#000' : '#fff';
+    g.fillRect(0, 0, c.width, c.height);
+    const r = m.raster;
+    if (r) {
+      const s = Math.min(c.width / r.width, c.height / r.height), w = Math.max(1, r.width * s), h = Math.max(1, r.height * s);
+      g.drawImage(r.canvas as CanvasImageSource, (c.width - w) / 2, (c.height - h) / 2, w, h);
+    }
   }
 
   /** The document's alpha channels (1.65.1), one row each, patched in place. */

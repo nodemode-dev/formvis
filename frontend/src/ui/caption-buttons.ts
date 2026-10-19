@@ -8,6 +8,11 @@ import { icon } from './icons';
  *  so unsaved documents are asked about first. */
 export const wantsCustomTitleBar = (): boolean => '__TAURI_INTERNALS__' in window && !/Mac/.test(navigator.platform);
 
+/** macOS in the desktop app: the window's title bar is an overlay (src-tauri/src/main.rs), so the page's own title bar
+ *  row is the window's title row: the traffic lights sit at its left, and its empty parts drag the window and zoom it
+ *  on a double click through Tauri's drag regions. */
+export const wantsOverlayTitleBar = (): boolean => '__TAURI_INTERNALS__' in window && /Mac/.test(navigator.platform);
+
 type Win = ReturnType<typeof import('@tauri-apps/api/window').getCurrentWindow>;
 
 export class CaptionButtons {
@@ -24,6 +29,10 @@ export class CaptionButtons {
       `<button class="cv-caption-btn" type="button" data-cap="max" title="Maximize" aria-label="Maximize">${icon('capMax', 16)}</button>` +
       `<button class="cv-caption-btn is-close" type="button" data-cap="close" title="Close" aria-label="Close">${icon('close', 16)}</button>`;
     header.append(this.box);
+    if (wantsOverlayTitleBar()) {
+      document.documentElement.classList.add('has-overlay-titlebar');
+      for (const n of [header, ...header.querySelectorAll('.cv-tb-doc, .cv-tb-app, .cv-zoom, .cv-sep, .cv-zoom-label, .cv-title-tools')]) n.setAttribute('data-tauri-drag-region', '');
+    }
     this.box.addEventListener('click', (e) => {
       const b = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-cap]') : null;
       if (b) void this.act(b.dataset.cap ?? '');

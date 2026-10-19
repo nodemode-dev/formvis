@@ -439,7 +439,7 @@ export function layersForCopy(p: Project): { layers: Layer[]; roots: ID[] } | nu
 
 /** Copies `roots` (ids in `source`, with their folder contents) into the project `targetProjectId` as one step there. `place`
  *  'center' puts the group of them at the target's centre; 'keep' leaves their positions. */
-export function copyLayersToProject(host: StructHost, ids: readonly ID[], targetProjectId: string, place: 'center' | 'keep' = 'center'): boolean {
+export function copyLayersToProject(host: StructHost, ids: readonly ID[], targetProjectId: string, place: 'center' | 'keep' | { dx: number; dy: number } = 'center', fresh = false): boolean {
   const source = host.projects.find((pr) => ids.some((i) => pr.layer(i)));
   const target = host.projects.find((pr) => pr.id === targetProjectId);
   if (!source || !target || source === target || host.busy) return false;
@@ -447,7 +447,7 @@ export function copyLayersToProject(host: StructHost, ids: readonly ID[], target
   const picked = source.doc.layers.filter((l) => ids.includes(l.id) && !ancestors(byId(source.doc), l).some((a) => ids.includes(a.id)));
   const set = new Set<ID>();
   for (const r of picked) for (const id of subtree(source.doc.layers, r.id)) set.add(id);
-  return insertCopies(host, source.doc.layers.filter((l) => set.has(l.id)), picked.map((l) => l.id), target, place);
+  return insertCopies(host, source.doc.layers.filter((l) => set.has(l.id)), picked.map((l) => l.id), target, place, fresh);
 }
 
 /** Pastes the layers Copy Layers kept into the current project: in place when the sizes agree, else centred. */
@@ -458,7 +458,7 @@ export function pasteLayerCopies(host: StructHost, clip: { layers: Layer[]; root
   return insertCopies(host, clip.layers, clip.roots, target, clip.width === target.doc.width && clip.height === target.doc.height ? 'keep' : 'center');
 }
 
-function insertCopies(host: StructHost, included: readonly Layer[], roots: readonly ID[], target: Project, place: 'center' | 'keep'): boolean {
+function insertCopies(host: StructHost, included: readonly Layer[], roots: readonly ID[], target: Project, place: 'center' | 'keep' | { dx: number; dy: number }, fresh = false): boolean {
   const pixels = (ls: readonly Layer[]): number => ls.reduce((s, l) => s + (l.raster ? l.raster.width * l.raster.height : 0), 0);
   if (pixels(target.doc.layers) + pixels(included) > LIMITS.pixels) {
     host.notice(`The copied layers exceed this project's ${Math.round(LIMITS.pixels / 1_000_000)}-megapixel limit.`);
@@ -468,8 +468,8 @@ function insertCopies(host: StructHost, included: readonly Layer[], roots: reado
   const heads = included.filter((l) => roots.includes(l.id));
   const x0 = Math.min(...heads.map((h) => h.transform.x)), y0 = Math.min(...heads.map((h) => h.transform.y));
   const x1 = Math.max(...heads.map((h) => h.transform.x + h.transform.w)), y1 = Math.max(...heads.map((h) => h.transform.y + h.transform.h));
-  const dx = place === 'keep' ? 0 : target.doc.width / 2 - (x0 + x1) / 2;
-  const dy = place === 'keep' ? 0 : target.doc.height / 2 - (y0 + y1) / 2;
+  const dx = typeof place === 'object' ? place.dx : place === 'keep' ? 0 : target.doc.width / 2 - (x0 + x1) / 2;
+  const dy = typeof place === 'object' ? place.dy : place === 'keep' ? 0 : target.doc.height / 2 - (y0 + y1) / 2;
   const copies = included.map((l) => {
     const c = cloneLayer(l, {
       parentId: l.parentId && ids.has(l.parentId) ? ids.get(l.parentId)! : null,
@@ -483,7 +483,7 @@ function insertCopies(host: StructHost, included: readonly Layer[], roots: reado
   });
   host.switchTo(target.id);
   host.edit('Copy Layers from Project', (p) => {
-    p.setLayers([...p.doc.layers, ...copies]);
+    p.setLayers(fresh ? copies : [...p.doc.layers, ...copies]);
     const tops = roots.map((r) => ids.get(r)!);
     host.focus(p, tops[tops.length - 1]);
     p.selectedIds = new Set(tops);

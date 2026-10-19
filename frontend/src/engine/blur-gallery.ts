@@ -96,6 +96,8 @@ export interface GallerySettings {
   pins: number; pin1x: number; pin1y: number; pin1blur: number; pin2x: number; pin2y: number; pin2blur: number; pin3x: number; pin3y: number; pin3blur: number; pin4x: number; pin4y: number; pin4blur: number;
   irisBlur: number; irisX: number; irisY: number; irisRx: number; irisRy: number; irisAngle: number; irisFeather: number; irisRound?: number;
   irisPins?: number; iris2x?: number; iris2y?: number; iris2rx?: number; iris2ry?: number; iris2angle?: number; iris2feather?: number; iris3x?: number; iris3y?: number; iris3rx?: number; iris3ry?: number; iris3angle?: number; iris3feather?: number;
+  /** Roundness (0 to 100, 100 an ellipse) and blur of the second and third irises; unset they follow irisRound and irisBlur. */
+  iris2round?: number; iris3round?: number; iris2blur?: number; iris3blur?: number;
   tiltBlur: number; tiltX?: number; tiltY: number; tiltAngle: number; tiltFocus: number; tiltTransition: number;
   pathSpeed: number; pathTaper: number; pathSx: number; pathSy: number; pathBx: number; pathBy: number; pathEx: number; pathEy: number;
   /** Path Blur along the document's drawn path (every sub-path of it) instead of the one curve above. */
@@ -127,12 +129,7 @@ export function runGallery(kind: GalleryKind, g0: GallerySettings, src: ImageDat
       const all: FieldPin[] = [{ x: g.pin1x, y: g.pin1y, blur: g.pin1blur }, { x: g.pin2x, y: g.pin2y, blur: g.pin2blur }, { x: g.pin3x, y: g.pin3y, blur: g.pin3blur }, { x: g.pin4x, y: g.pin4y, blur: g.pin4blur }];
       return fieldBlur(src, all.slice(0, Math.max(1, Math.min(4, Math.round(g.pins)))), scale);
     }
-    case 'irisBlur': {
-      const n = Math.max(1, Math.min(3, Math.round(g.irisPins ?? 1))), more: IrisPin[] = [];
-      if (n >= 2) more.push({ x: g.iris2x ?? 25, y: g.iris2y ?? 50, rx: g.iris2rx ?? 15, ry: g.iris2ry ?? 15, angle: g.iris2angle ?? 0, feather: g.iris2feather ?? 50 });
-      if (n >= 3) more.push({ x: g.iris3x ?? 75, y: g.iris3y ?? 50, rx: g.iris3rx ?? 15, ry: g.iris3ry ?? 15, angle: g.iris3angle ?? 0, feather: g.iris3feather ?? 50 });
-      return irisBlur(src, g.irisBlur, g.irisX, g.irisY, g.irisRx, g.irisRy, g.irisAngle, g.irisFeather, scale, g.irisRound, more);
-    }
+    case 'irisBlur': return irisBlur(src, g.irisBlur, g.irisX, g.irisY, g.irisRx, g.irisRy, g.irisAngle, g.irisFeather, scale, g.irisRound, irisMore(g));
     case 'tiltShift': return tiltShift(src, g.tiltBlur, g.tiltY, g.tiltAngle, g.tiltFocus, g.tiltTransition, scale, g.tiltX);
     case 'pathBlur': return pathBlur(src, g.pathSpeed, [g.pathSx, g.pathSy], [g.pathBx, g.pathBy], [g.pathEx, g.pathEy], g.pathTaper, scale, g.pathDrawn ? drawnLines(g.pathLines ?? null, src, frame ?? null) : null);
   }
@@ -141,43 +138,89 @@ export function runGallery(kind: GalleryKind, g0: GallerySettings, src: ImageDat
 /** Field Blur: pins, each with its own blur, blended across the image by inverse-distance weighting. */
 export function fieldBlur(img: ImageData, pins: FieldPin[], scale = 1): ImageData {
   if (!pins.length) return copy(img);
-  const w = img.width, h = img.height, ps = pins.map((p) => ({ x: (p.x / 100) * w, y: (p.y / 100) * h, r: p.blur * scale }));
+  const m = fieldRadii(img.width, img.height, pins, scale);
+  return variableBlur(img, m.max, m.at);
+}
+
+/** A per-pixel blur radius map: the largest radius and the radius at (x, y). Shared by the 8 bit and the float blurs. */
+export interface RadiusMap { max: number; at: (x: number, y: number) => number }
+
+/** Field Blur's radius map: inverse-distance weighting of the pins' radii. */
+export function fieldRadii(w: number, h: number, pins: FieldPin[], scale = 1): RadiusMap {
+  const ps = pins.map((p) => ({ x: (p.x / 100) * w, y: (p.y / 100) * h, r: p.blur * scale }));
   const max = Math.max(0.5, ...ps.map((p) => p.r));
-  return variableBlur(img, max, (x, y) => {
-    let s = 0, ws = 0;
-    for (const p of ps) { const d2 = (x - p.x) ** 2 + (y - p.y) ** 2; if (d2 < 1) return p.r; const wt = 1 / d2; s += p.r * wt; ws += wt; }
-    return s / ws;
-  });
+  return {
+    max,
+    at: (x, y) => {
+      let s = 0, ws = 0;
+      for (const p of ps) { const d2 = (x - p.x) ** 2 + (y - p.y) ** 2; if (d2 < 1) return p.r; const wt = 1 / d2; s += p.r * wt; ws += wt; }
+      return s / ws;
+    },
+  };
 }
 
 /** Iris Blur: sharp inside the focus (the ellipse's inner `feather` fraction), rising to `blur` at the ellipse's edge
  *  and beyond; the ellipse centred at (cx, cy) with radii rx and ry (percent of width and height), turned by `angle`. */
 export function irisBlur(img: ImageData, blur: number, cx: number, cy: number, rx: number, ry: number, angle: number, feather: number, scale = 1, roundness = 100, more: IrisPin[] = []): ImageData {
-  const rd = clamp01((Number.isFinite(roundness) ? roundness : 100) / 100), pw = 2 + (1 - rd) * 6;
-  const w = img.width, h = img.height, max = Math.max(0.5, blur * scale);
-  const irises = [{ x: cx, y: cy, rx, ry, angle, feather }, ...more].map((p) => {
-    const a = (p.angle * Math.PI) / 180;
-    return { X: (p.x / 100) * w, Y: (p.y / 100) * h, RX: Math.max(1, (p.rx / 100) * w), RY: Math.max(1, (p.ry / 100) * h), c: Math.cos(a), s: Math.sin(a), inner: clamp01(p.feather / 100) };
+  const m = irisRadii(img.width, img.height, blur, cx, cy, rx, ry, angle, feather, scale, roundness, more);
+  return variableBlur(img, m.max, m.at);
+}
+
+/** Iris Blur's radius map: the least blur of any iris at each pixel. */
+export function irisRadii(w: number, h: number, blur: number, cx: number, cy: number, rx: number, ry: number, angle: number, feather: number, scale = 1, roundness = 100, more: IrisPin[] = []): RadiusMap {
+  const roundOf = (r: number | undefined): number => clamp01((r !== undefined && Number.isFinite(r) ? r : 100) / 100);
+  const irises = [{ x: cx, y: cy, rx, ry, angle, feather, round: roundness, blur }, ...more].map((p) => {
+    const a = (p.angle * Math.PI) / 180, rd = roundOf(p.round);
+    return { X: (p.x / 100) * w, Y: (p.y / 100) * h, RX: Math.max(1, (p.rx / 100) * w), RY: Math.max(1, (p.ry / 100) * h), c: Math.cos(a), s: Math.sin(a), inner: clamp01(p.feather / 100), rd, pw: 2 + (1 - rd) * 6, max: Math.max(0.5, (p.blur ?? blur) * scale) };
   });
-  return variableBlur(img, max, (x, y) => {
-    let low = max;
-    for (const q of irises) {
-      const dx = x - q.X, dy = y - q.Y, u = (dx * q.c + dy * q.s) / q.RX, v = (-dx * q.s + dy * q.c) / q.RY, e = rd >= 1 ? Math.sqrt(u * u + v * v) : (Math.abs(u) ** pw + Math.abs(v) ** pw) ** (1 / pw);
-      low = Math.min(low, max * clamp01((e - q.inner) / Math.max(1e-3, 1 - q.inner)));
-    }
-    return low;
-  });
+  const max = Math.max(...irises.map((q) => q.max));
+  return {
+    max,
+    at: (x, y) => {
+      let low = max;
+      for (const q of irises) {
+        const dx = x - q.X, dy = y - q.Y, u = (dx * q.c + dy * q.s) / q.RX, v = (-dx * q.s + dy * q.c) / q.RY, e = q.rd >= 1 ? Math.sqrt(u * u + v * v) : (Math.abs(u) ** q.pw + Math.abs(v) ** q.pw) ** (1 / q.pw);
+        low = Math.min(low, q.max * clamp01((e - q.inner) / Math.max(1e-3, 1 - q.inner)));
+      }
+      return low;
+    },
+  };
 }
 
 /** One more iris for Iris Blur: centre and radii in percent of the image, angle in degrees, sharp area in percent. A pixel takes the least blur of any iris. */
-export interface IrisPin { x: number; y: number; rx: number; ry: number; angle: number; feather: number }
+export interface IrisPin { x: number; y: number; rx: number; ry: number; angle: number; feather: number; round?: number; blur?: number }
 
 /** Tilt-Shift: sharp within `focus` percent of the height either side of a line through `cy` at `angle`, rising over
  *  `transition` percent to `blur`. */
 export function tiltShift(img: ImageData, blur: number, cy: number, angle: number, focus: number, transition: number, scale = 1, cx = 50): ImageData {
-  const w = img.width, h = img.height, X = ((Number.isFinite(cx) ? cx : 50) / 100) * w, Y = (cy / 100) * h, a = (angle * Math.PI) / 180, nx = -Math.sin(a), ny = Math.cos(a);
+  const m = tiltRadii(img.width, img.height, blur, cy, angle, focus, transition, scale, cx);
+  return variableBlur(img, m.max, m.at);
+}
+
+/** Tilt-Shift's radius map. */
+export function tiltRadii(w: number, h: number, blur: number, cy: number, angle: number, focus: number, transition: number, scale = 1, cx = 50): RadiusMap {
+  const X = ((Number.isFinite(cx) ? cx : 50) / 100) * w, Y = (cy / 100) * h, a = (angle * Math.PI) / 180, nx = -Math.sin(a), ny = Math.cos(a);
   const f = (focus / 100) * h, t = Math.max(1, (transition / 100) * h), max = Math.max(0.5, blur * scale);
-  return variableBlur(img, max, (x, y) => max * clamp01((Math.abs((x - X) * nx + (y - Y) * ny) - f) / t));
+  return { max, at: (x, y) => max * clamp01((Math.abs((x - X) * nx + (y - Y) * ny) - f) / t) };
+}
+
+/** The second and third irises of the settings, as many as `irisPins` asks for. */
+function irisMore(g: GallerySettings): IrisPin[] {
+  const n = Math.max(1, Math.min(3, Math.round(g.irisPins ?? 1))), more: IrisPin[] = [];
+  if (n >= 2) more.push({ x: g.iris2x ?? 25, y: g.iris2y ?? 50, rx: g.iris2rx ?? 15, ry: g.iris2ry ?? 15, angle: g.iris2angle ?? 0, feather: g.iris2feather ?? 50, round: g.iris2round ?? g.irisRound, blur: g.iris2blur ?? g.irisBlur });
+  if (n >= 3) more.push({ x: g.iris3x ?? 75, y: g.iris3y ?? 50, rx: g.iris3rx ?? 15, ry: g.iris3ry ?? 15, angle: g.iris3angle ?? 0, feather: g.iris3feather ?? 50, round: g.iris3round ?? g.irisRound, blur: g.iris3blur ?? g.irisBlur });
+  return more;
+}
+
+/** The radius map of a gallery filter that blurs by a per-pixel radius (Field, Iris, Tilt-Shift), or null for the others. */
+export function galleryRadii(kind: GalleryKind, g: GallerySettings, w: number, h: number, scale = 1): RadiusMap | null {
+  if (kind === 'fieldBlur') {
+    const all: FieldPin[] = [{ x: g.pin1x, y: g.pin1y, blur: g.pin1blur }, { x: g.pin2x, y: g.pin2y, blur: g.pin2blur }, { x: g.pin3x, y: g.pin3y, blur: g.pin3blur }, { x: g.pin4x, y: g.pin4y, blur: g.pin4blur }];
+    return fieldRadii(w, h, all.slice(0, Math.max(1, Math.min(4, Math.round(g.pins)))), scale);
+  }
+  if (kind === 'irisBlur') return irisRadii(w, h, g.irisBlur, g.irisX, g.irisY, g.irisRx, g.irisRy, g.irisAngle, g.irisFeather, scale, g.irisRound, irisMore(g));
+  if (kind === 'tiltShift') return tiltRadii(w, h, g.tiltBlur, g.tiltY, g.tiltAngle, g.tiltFocus, g.tiltTransition, scale, g.tiltX);
+  return null;
 }
 
 interface PathPoint { x: number; y: number; tx: number; ty: number; u: number }

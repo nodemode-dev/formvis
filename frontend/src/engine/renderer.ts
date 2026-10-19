@@ -12,6 +12,8 @@ import { shapedMask } from './layer-masks';
 import { adjustmentKernel, type Kernel } from './kernels';
 import { grainFromData, grainKernel, hsvFromData, hsvKernel } from './adjust';
 import type { Adjustment } from './types';
+import { limitOf, limitView, limitWeights } from './limit';
+import { isDepthName } from './depth-map';
 
 const kernelCache = new WeakMap<object, Kernel | null>();
 export function kernelFor(adj: Adjustment | null): Kernel | null {
@@ -1202,6 +1204,28 @@ export class Renderer {
     const inv = invert(job.view) ?? IDENTITY;
     const p0 = applyMat(inv, 0, 0), p1 = applyMat(inv, 1, 0);
     kernel(adjusted, { width: W, height: H, originX: p0.x, originY: p0.y, unitsPerPixel: Math.hypot(p1.x - p0.x, p1.y - p0.y) });
+    const limit = limitOf(layer.adjustment);
+    if (limit) {
+      let depth: Uint8Array | null = null;
+      if (limit.mode === 'depth') {
+        const dl = [...job.doc.layers].reverse().find((x) => !x.isGroup && !!x.raster && isDepthName(x.name) && x.raster.width === job.doc.width && x.raster.height === job.doc.height);
+        if (dl?.raster) {
+          const src = dl.raster.read().data, DW = dl.raster.width, DH = dl.raster.height;
+          depth = new Uint8Array(W * H);
+          for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+            const q = applyMat(inv, x + 0.5, y + 0.5), sx = Math.min(DW - 1, Math.max(0, Math.floor(q.x))), sy = Math.min(DH - 1, Math.max(0, Math.floor(q.y)));
+            depth[y * W + x] = src[(sy * DW + sx) * 4];
+          }
+        }
+      }
+      const wt = limitWeights(limit, px, depth);
+      if (limitView.id === layer.id) {
+        for (let i = 0, p = 0; i < px.length; i += 4, p++) { if (px[i + 3] === 0 || reach[i + 3] === 0) continue; const v = Math.round((wt[p] * reach[i + 3]) / 255); px[i] = px[i + 1] = px[i + 2] = v; }
+        ctx.putImageData(img, 0, 0);
+        return;
+      }
+      for (let i = 0, p = 0; i < px.length; i += 4, p++) reach[i + 3] = Math.round((reach[i + 3] * wt[p]) / 255);
+    }
     if (mode !== 'normal') {
       // The adjusted pixels, at their coverage, blended onto the pixels below in the layer's mode and opacity; the
       // alpha of what lies below is kept, as an adjustment leaves it.

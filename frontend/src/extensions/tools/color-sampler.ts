@@ -2,7 +2,18 @@ import type { Pt } from '../../engine';
 import type { OptionSpec, Tool } from '../registry';
 
 let drag: number | null = null;
+let removeCursor = '';
 const MAX = 10, NEAR = 8;
+
+/** The crosshair with a minus badge: Alt held, so a click on a sampler removes it. */
+function removeSamplerCursor(): string {
+  if (!removeCursor) {
+    const cross = 'M14 4v20M4 14h20', mark = 'M19 22h6';
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"><path d="${cross}" stroke="#fff" stroke-width="3" fill="none"/><path d="${cross}" stroke="#000" stroke-width="1" fill="none"/><path d="${mark}" stroke="#fff" stroke-width="3.500" fill="none"/><path d="${mark}" stroke="#000" stroke-width="1.500" fill="none"/></svg>`;
+    removeCursor = `url("data:image/svg+xml,${encodeURIComponent(svg)}") 14 14, crosshair`;
+  }
+  return removeCursor;
+}
 const SIZES = [1, 3, 5, 11, 31, 51, 101];
 
 /** The Color Sampler (I, the owner's tool list): click to place a sampler (ten at most), drag one to
@@ -12,7 +23,7 @@ export const colorSamplerTool: Tool = {
   id: 'colorSampler', label: 'Color Sampler', key: 'I', order: 80.5,
   icon: () => 'tColorSampler',
   hint: () => 'Click to place a sampler (up to ten) · Drag one to move it · Alt-click one or drag it off the canvas to remove it · Its colour shows in Window > Info',
-  cursor: () => 'crosshair',
+  cursor: (_ctx, p) => (p?.alt ? removeSamplerCursor() : 'crosshair'),
   down(ctx, p) {
     const m = ctx.engine.measure;
     if (p.button !== 0 || !m) return;

@@ -79,7 +79,7 @@ export class Rail {
 
   /** One more slot (its dash and its button), placed before the ••• button. The group it shows is set by `applyLayout`. */
   private makeSlot(): RailSlot {
-    const node = el<HTMLButtonElement>('<button class="cv-tool" type="button" aria-haspopup="false"></button>');
+    const node = el<HTMLButtonElement>('<button class="cv-tool cv-rail-slot" type="button" aria-haspopup="false"></button>');
     const sep = el('<span class="cv-rail-sep" aria-hidden="true" hidden></span>');
     const slot: RailSlot = { group: { key: '', tools: [] }, node, sep };
     const engine = this.engine;
@@ -100,6 +100,29 @@ export class Rail {
     return slot;
   }
 
+  /** One button per tool, shown instead of the slots when the rail is expanded; built once, then moved and updated in place. */
+  private readonly all = new Map<string, { tool: Tool; node: HTMLButtonElement }>();
+
+  private makeAll(tool: Tool): { tool: Tool; node: HTMLButtonElement } {
+    const node = el<HTMLButtonElement>('<button class="cv-tool cv-rail-all" type="button" aria-haspopup="false"></button>');
+    const engine = this.engine;
+    node.addEventListener('click', () => {
+      if (!this.suppressClick) { engine.setTool(tool.id); if (tool.id === 'brush' && !tool.variants) engine.setBrushMode('paint'); }
+      this.suppressClick = false;
+    });
+    const modes = (): boolean => entries({ key: tool.group ?? tool.key, tools: [tool] }) > 1;
+    let hold = 0;
+    node.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || !modes()) return;
+      hold = window.setTimeout(() => { this.suppressClick = true; this.openFlyout({ key: tool.group ?? tool.key, tools: [tool] }, node); }, 350);
+    });
+    for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) node.addEventListener(ev, () => window.clearTimeout(hold));
+    node.addEventListener('contextmenu', (e) => { if (!modes()) return; e.preventDefault(); this.openFlyout({ key: tool.group ?? tool.key, tools: [tool] }, node); });
+    const made = { tool, node };
+    this.all.set(tool.id, made);
+    return made;
+  }
+
   /** Puts the saved layout on the rail in place: the slots (kept, never rebuilt) take the groups in order, surplus slots are
    *  hidden, and a short dash sits between tool families (selection and crop, painting and retouching, vector and type, then
    *  eyedropper and navigation, by the tools' order). */
@@ -109,10 +132,20 @@ export class Rail {
     while (this.slots.length < layout.groups.length) this.slots.push(this.makeSlot());
     const family = (order: number): number => (order <= 45 ? 0 : order <= 72 ? 1 : order <= 79 ? 2 : 3);
     let lastFamily = -1;
+    const used = new Set<string>();
     this.slots.forEach((slot, i) => {
       const group = layout.groups[i];
       if (!group) { setHidden(slot.node, true); setHidden(slot.sep, true); return; }
       slot.group = group;
+      let prev: Node = slot.node;
+      for (const t of group.tools) {
+        const made = this.all.get(t.id) ?? this.makeAll(t);
+        if (prev.nextSibling !== made.node) this.box?.insertBefore(made.node, prev.nextSibling);
+        prev = made.node;
+        used.add(t.id);
+        setClass(made.node, 'has-group', entries({ key: group.key, tools: [t] }) > 1);
+        made.node.setAttribute('aria-haspopup', entries({ key: group.key, tools: [t] }) > 1 ? 'menu' : 'false');
+      }
       const fam = family(group.tools[0].order), multi = entries(group) > 1;
       setHidden(slot.sep, lastFamily === -1 || fam === lastFamily);
       lastFamily = fam;
@@ -120,6 +153,7 @@ export class Rail {
       setClass(slot.node, 'has-group', multi);
       slot.node.setAttribute('aria-haspopup', multi ? 'menu' : 'false');
     });
+    for (const [id, made] of this.all) setHidden(made.node, !used.has(id));
   }
 
   /** The ••• list: the hidden tools (their modes too), then Edit Toolbar. */
@@ -159,6 +193,14 @@ export class Rail {
       const own = t.key ? ` (${t.key})` : '';   // each tool its own key (Rotate View's R in the Hand's slot; Smear has none)
       setTitle(node, entries(group) > 1 ? `${tr(t.label)}${own} · ${tr('hold or right-click for more tools')}${group.key ? ` · Shift+${group.key} ${tr('cycles')}` : ''}` : `${tr(t.label)}${own}`);
       setClass(node, 'is-active', group.tools.some((x) => x.id === this.engine.tool));
+    }
+    for (const { tool, node } of this.all.values()) {
+      if (node.hidden) continue;
+      const key = tool.icon(this.engine), own = tool.key ? ` (${tool.key})` : '';
+      setHtml(node, icon(key, 20), `${tool.id}:${key}`);
+      node.setAttribute('aria-label', tr(tool.label));
+      setTitle(node, `${tr(tool.label)}${own}`);
+      setClass(node, 'is-active', tool.id === this.engine.tool);
     }
   }
 

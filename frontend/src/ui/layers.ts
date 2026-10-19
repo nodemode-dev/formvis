@@ -8,6 +8,9 @@ import { LAYER_LABELS } from '../engine/types';
 import { enhanceSelect } from './dropdown';
 import { el, isMac, patchList, q, setClass, setDisabled, setHidden, setHtml, setStyleVar, setText, setTitle, setValue } from './dom';
 import { icon } from './icons';
+import { FILTER_LABELS, type FilterKind } from './panels/filter-panel';
+import { wasmPlugins } from '../engine/wasm-plugin-host';
+import { isWasmKind, wasmIdOf } from '../engine/wasm-plugin';
 import { loadPrefs } from './prefs';
 import { t } from './i18n';
 import { paint } from './palette';
@@ -105,7 +108,9 @@ export class LayersPanel {
   private swipe: { visible: boolean; pointerId: number } | null = null;
   /** Layers whose effect rows are open, and the effect row being dragged to another layer. */
   private readonly fxOpen = new Set<ID>();
-  private fxDrag: { id: ID; key: FxKey; pointerId: number; startY: number; started: boolean; target: HTMLElement | null } | null = null;
+  private fxDrag: { id: ID; key: FxKey; sf?: ID; pointerId: number; startY: number; started: boolean; target: HTMLElement | null } | null = null;
+  /** Smart objects whose filter rows are open. */
+  private readonly sfOpen = new Set<ID>();
   /** Keeps the open Opacity or Fill slider popover on the layer's value (and closes it when the layer cannot take one). */
   private slideSync: () => void = () => {};
 
@@ -348,7 +353,7 @@ export class LayersPanel {
   }
 
   private createRow(e: HierarchyEntry): HTMLElement {
-    const row = el(`<div class="cv-layer" role="option"><button class="cv-layer-eye" type="button" tabindex="-1" aria-label="Show or hide"><span class="cv-eye-on">${icon('eye', 14)}</span><span class="cv-eye-off">${icon('eyeOff', 14)}</span></button><span class="cv-layer-indent"></span><button class="cv-layer-disclose" type="button" tabindex="-1" aria-label="Expand or collapse"><span class="cv-open">${icon('chevronDown', 12)}</span><span class="cv-shut">${icon('chevronRight', 12)}</span></button><canvas class="cv-layer-thumb" width="${THUMB}" height="${THUMB}"></canvas><span class="cv-layer-kind"></span><span class="cv-layer-masks"><canvas class="cv-layer-mask" width="${THUMB}" height="${THUMB}"></canvas><canvas class="cv-layer-vmask" width="${THUMB}" height="${THUMB}"></canvas></span><span class="cv-layer-name"><button class="cv-layer-chain" type="button" tabindex="-1" hidden aria-label="Link the mask to the layer" aria-pressed="true">${icon('link', 12)}</button><span class="cv-layer-clip">${icon('clipMask', 12)}</span><span class="cv-layer-label"></span><span class="cv-layer-size" hidden></span><span class="cv-layer-fx" hidden title="Layer style: click to list its effects, double-click to edit">fx</span><span class="cv-layer-smart" hidden title="Smart object: double-click for its filters">${icon('smartObject', 12)}</span><span class="cv-layer-vector" hidden title="Shape layer: double-click for its fill and stroke">${icon('penTool', 12)}</span><span class="cv-layer-linked" hidden title="Linked: moves with the layers linked to it">${icon('link', 12)}</span><span class="cv-layer-locked" hidden title="Locked">${icon('lock', 12)}</span></span><div class="cv-layer-fxlist" hidden></div></div>`);
+    const row = el(`<div class="cv-layer" role="option"><button class="cv-layer-eye" type="button" tabindex="-1" aria-label="Show or hide"><span class="cv-eye-on">${icon('eye', 14)}</span><span class="cv-eye-off">${icon('eyeOff', 14)}</span></button><span class="cv-layer-indent"></span><button class="cv-layer-disclose" type="button" tabindex="-1" aria-label="Expand or collapse"><span class="cv-open">${icon('chevronDown', 12)}</span><span class="cv-shut">${icon('chevronRight', 12)}</span></button><canvas class="cv-layer-thumb" width="${THUMB}" height="${THUMB}"></canvas><span class="cv-layer-kind"></span><span class="cv-layer-masks"><canvas class="cv-layer-mask" width="${THUMB}" height="${THUMB}"></canvas><canvas class="cv-layer-vmask" width="${THUMB}" height="${THUMB}"></canvas></span><span class="cv-layer-name"><button class="cv-layer-chain" type="button" tabindex="-1" hidden aria-label="Link the mask to the layer" aria-pressed="true">${icon('link', 12)}</button><span class="cv-layer-clip">${icon('clipMask', 12)}</span><span class="cv-layer-label"></span><span class="cv-layer-size" hidden></span><span class="cv-layer-fx" hidden title="Layer style: click to list its effects, double-click to edit">fx</span><span class="cv-layer-smart" hidden title="Smart object: double-click for its filters">${icon('smartObject', 12)}</span><span class="cv-layer-vector" hidden title="Shape layer: double-click for its fill and stroke">${icon('penTool', 12)}</span><span class="cv-layer-linked" hidden title="Linked: moves with the layers linked to it">${icon('link', 12)}</span><span class="cv-layer-locked" hidden title="Locked">${icon('lock', 12)}</span></span><div class="cv-layer-fxlist" hidden></div><div class="cv-layer-sflist" hidden></div></div>`);
     row.dataset.id = e.layer.id;
     this.updateRow(row, e);
     return row;
@@ -380,6 +385,8 @@ export class LayersPanel {
     setClass(q(row, '.cv-layer-fx'), 'is-off', !!l.effects?.hidden || !effectsPresent(l.effects));
     this.syncFxList(row, l, listed);
     setHidden(q(row, '.cv-layer-smart'), !l.smart);
+    setClass(row, 'is-smart', !!l.smart);
+    this.syncSmartList(row, l);
     setHidden(q(row, '.cv-layer-vector'), !l.vector);
     setHidden(q(row, '.cv-layer-linked'), !l.link || (this.links.get(l.link) ?? 0) < 2);
     const lk = l.locks ?? {}, locked = !!(lk.all || lk.transparency || lk.pixels || lk.position || lk.artboard);
@@ -433,6 +440,29 @@ export class LayersPanel {
       setClass(r, 'is-off', !shown);
       setText(q(r, '.cv-fx-name'), `${FX_ROWS.find(([key]) => key === k)?.[1] ?? k}${all.length > 1 ? ` (${all.length})` : ''}`);
     }
+  }
+
+  /** The smart filter rows under a smart object, patched in place: an eye, the filter's name and a delete button each. */
+  private syncSmartList(row: HTMLElement, l: Layer): void {
+    const box = q(row, '.cv-layer-sflist'), filters = l.smart ? this.engine.smartFiltersShown(l.id) ?? l.smart.filters : [], open = this.sfOpen.has(l.id) && filters.length > 0;
+    setHidden(box, !open);
+    setClass(row, 'has-sflist', open);
+    if (!open) return;
+    patchList(box, filters, {
+      key: (f) => f.id,
+      create: (f) => {
+        const r = el(`<div class="cv-fxrow cv-sfrow"><button class="cv-fx-eye" type="button" tabindex="-1" aria-label="Show or hide this filter"><span class="cv-eye-on">${icon('eye', 12)}</span><span class="cv-eye-off">${icon('eyeOff', 12)}</span></button><span class="cv-fx-name"></span><button class="cv-fx-del" type="button" tabindex="-1" aria-label="Delete this filter" title="Delete this filter">${icon('delete', 12)}</button></div>`);
+        r.dataset.key = f.id;
+        this.fillSmartRow(r, f);
+        return r;
+      },
+      update: (r, f) => this.fillSmartRow(r, f),
+    });
+  }
+
+  private fillSmartRow(r: HTMLElement, f: { kind: string; enabled: boolean }): void {
+    setClass(r, 'is-off', !f.enabled);
+    setText(q(r, '.cv-fx-name'), isWasmKind(f.kind) ? wasmPlugins.get(wasmIdOf(f.kind))?.manifest.name ?? wasmIdOf(f.kind) : f.kind === 'liquify' ? 'Liquify' : FILTER_LABELS[f.kind as FilterKind] ?? f.kind);
   }
 
   private trashButton(): HTMLElement | null { return this.page.querySelector<HTMLElement>('.cv-panel-foot [data-cmd="delete-layer-ask"]'); }
@@ -549,6 +579,7 @@ export class LayersPanel {
   /** Marks the project tab a layer drag would copy into, clearing the rest. */
   private showTabDrop(key: string | null): void {
     for (const t of document.querySelectorAll<HTMLElement>('.cv-tab')) setClass(t, 'is-drop-target', !!key && t.dataset.key === key);
+    for (const n of document.querySelectorAll<HTMLElement>('.cv-tabs > [data-cmd="new"]')) setClass(n, 'is-drop-target', key === 'new');
   }
 
   /** zone: the bottom quarter of a row, the boundary with the layer below. */
@@ -606,6 +637,16 @@ export class LayersPanel {
       const row = t.closest<HTMLElement>('.cv-layer');
       if (!row || e.button !== 0 || this.renaming) return;
       const id = row.dataset.id as ID;
+      const sfr = t.closest<HTMLElement>('.cv-sfrow');
+      if (sfr) {
+        e.preventDefault();
+        const fid = sfr.dataset.key as ID, l = this.engine.current?.layer(id), filters = l?.smart ? this.engine.smartFiltersShown(id) ?? l.smart.filters : [];
+        if (t.closest('.cv-fx-eye')) { this.engine.setSmartFilters(id, filters.map((f) => (f.id === fid ? { ...f, enabled: !f.enabled } : f)), 'Show or Hide Smart Filter'); return; }
+        if (t.closest('.cv-fx-del')) { this.engine.setSmartFilters(id, filters.filter((f) => f.id !== fid), 'Delete Smart Filter'); return; }
+        if (this.engine.current?.activeId !== id) this.engine.selectLayer(id);
+        this.fxDrag = { id, key: 'stroke', sf: fid, pointerId: e.pointerId, startY: e.clientY, started: false, target: null };
+        return;
+      }
       const fxr = t.closest<HTMLElement>('.cv-fxrow');
       if (fxr) {
         e.preventDefault();
@@ -671,7 +712,10 @@ export class LayersPanel {
       if (fd && fd.pointerId === e.pointerId) {
         if (!fd.started && Math.abs(e.clientY - fd.startY) < 4) return;
         if (!fd.started) { rows.setPointerCapture(e.pointerId); fd.started = true; }
-        const over = this.rowAt(e.clientX, e.clientY), next = over && over.dataset.id !== fd.id && !over.classList.contains('is-group') && !over.classList.contains('is-adjust') ? over : null;
+        const over = this.rowAt(e.clientX, e.clientY), sfHit = fd.sf ? document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>('.cv-sfrow') ?? null : null;
+        const next = fd.sf
+          ? (sfHit && over?.dataset.id === fd.id && sfHit.dataset.key !== fd.sf ? sfHit : over && over.dataset.id !== fd.id && over.classList.contains('is-smart') ? over : null)
+          : over && over.dataset.id !== fd.id && !over.classList.contains('is-group') && !over.classList.contains('is-adjust') ? over : null;
         if (next !== fd.target) { setClass(fd.target, 'is-fx-target', false); setClass(next, 'is-fx-target', true); fd.target = next; }
         setClass(this.trashButton(), 'is-fx-trash', this.overTrash(e.clientX, e.clientY));
         return;
@@ -690,9 +734,11 @@ export class LayersPanel {
       if (!d.started && Math.abs(e.clientY - d.startY) < 4) return;
       if (!d.started) rows.setPointerCapture(e.pointerId);
       d.started = true;
+      setClass(rows, 'is-copy-drag', e.altKey || !!d.maskFrom);
       // A row dragged onto another project's tab copies the layer there.
-      const tab = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)?.closest<HTMLElement>('.cv-tab') ?? null;
-      const key = !d.maskFrom && tab?.dataset.key && tab.dataset.key !== this.engine.current?.id ? tab.dataset.key : null;
+      const hit = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+      const tab = hit?.closest<HTMLElement>('.cv-tab') ?? null, slot = hit?.closest<HTMLElement>('.cv-tabs > [data-cmd="new"]') ?? null;
+      const key = d.maskFrom ? null : slot ? 'new' : tab?.dataset.key && tab.dataset.key !== this.engine.current?.id ? tab.dataset.key : null;
       d.tabTarget = key;
       this.showTabDrop(key);
       if (key) { d.target = null; this.showDrop(null); return; }
@@ -714,6 +760,14 @@ export class LayersPanel {
         if (rows.hasPointerCapture(e.pointerId)) rows.releasePointerCapture(e.pointerId);
         setClass(this.trashButton(), 'is-fx-trash', false);
         // Dropped on the delete button, the effect is removed; on another layer, it moves there, or is copied with Option held.
+        if (fd.sf) {
+          const l = this.engine.current?.layer(fd.id), filters = l?.smart ? this.engine.smartFiltersShown(fd.id) ?? l.smart.filters : [], from = filters.findIndex((f) => f.id === fd.sf);
+          if (cancel || !fd.started || from < 0) return;
+          if (this.overTrash(e.clientX, e.clientY)) this.engine.setSmartFilters(fd.id, filters.filter((f) => f.id !== fd.sf), 'Delete Smart Filter');
+          else if (fd.target?.classList.contains('cv-sfrow')) this.engine.reorderSmartFilter(fd.id, from, filters.findIndex((f) => f.id === fd.target?.dataset.key));
+          else if (fd.target?.dataset.id) this.engine.transferSmartFilter(fd.id, fd.sf, fd.target.dataset.id, !e.altKey);
+          return;
+        }
         if (!cancel && fd.started && this.overTrash(e.clientX, e.clientY)) this.engine.removeEffect(fd.id, fd.key);
         else if (!cancel && fd.started && fd.target?.dataset.id) this.engine.transferEffects(fd.id, fd.target.dataset.id, [fd.key], !e.altKey);
         return;
@@ -726,11 +780,13 @@ export class LayersPanel {
       const d = this.drag;
       if (!d || d.pointerId !== e.pointerId) return;
       this.drag = null;
+      setClass(rows, 'is-copy-drag', false);
       this.showDrop(null);
       if (rows.hasPointerCapture(e.pointerId)) rows.releasePointerCapture(e.pointerId);
       if (cancel) return;
       this.showTabDrop(null);
-      if (d.started && d.tabTarget) this.engine.copyLayersToProject(d.ids, d.tabTarget, e.shiftKey);
+      if (d.started && d.tabTarget === 'new') this.engine.copyLayersToNewDocument(d.ids);
+      else if (d.started && d.tabTarget) this.engine.copyLayersToProject(d.ids, d.tabTarget, e.shiftKey);
       else if (d.started && d.target) {
         if (d.maskFrom) this.engine.copyMask(d.maskFrom, d.target.id);
         else this.engine.moveLayers(d.ids, d.target.id, d.target.where, e.altKey);
@@ -744,6 +800,11 @@ export class LayersPanel {
       const t = e.target as HTMLElement;
       const row = t.closest<HTMLElement>('.cv-layer');
       if (row?.dataset.id && t.closest('.cv-layer-disclose')) this.engine.toggleCollapsed(row.dataset.id, e.altKey);
+      if (row?.dataset.id && t.closest('.cv-layer-smart')) {
+        const id = row.dataset.id, l = this.engine.current?.layer(id);
+        if (this.sfOpen.has(id)) this.sfOpen.delete(id); else this.sfOpen.add(id);
+        if (l) this.syncSmartList(row, l);
+      }
       if (row?.dataset.id && t.closest('.cv-layer-fx')) {
         const id = row.dataset.id, l = this.engine.current?.layer(id);
         if (this.fxOpen.has(id)) this.fxOpen.delete(id); else this.fxOpen.add(id);
@@ -777,6 +838,7 @@ export class LayersPanel {
       const t = e.target as HTMLElement;
       const row = t.closest<HTMLElement>('.cv-layer');
       if (!row?.dataset.id) return;
+      if (t.closest('.cv-sfrow')) { if (!t.closest('.cv-fx-eye, .cv-fx-del')) row.dispatchEvent(new CustomEvent('cv:smart-filters', { bubbles: true, detail: row.dataset.id })); return; }
       const fxr = t.closest<HTMLElement>('.cv-fxrow');
       if (fxr && !t.closest('.cv-fx-eye, .cv-fx-del')) { row.dispatchEvent(new CustomEvent('cv:edit-layer-effect', { bubbles: true, detail: { id: row.dataset.id, key: fxr.dataset.key } })); return; }
       if (t.closest('.cv-layer-mask, .cv-layer-vmask')) { row.dispatchEvent(new CustomEvent('cv:mask-properties', { bubbles: true, detail: { id: row.dataset.id, vector: !!t.closest('.cv-layer-vmask') } })); return; }

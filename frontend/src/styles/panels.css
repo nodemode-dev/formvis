@@ -23,6 +23,7 @@
 .cv-opacity input[type="range"] { width: 64px; accent-color: var(--accent-color); }
 .cv-layer-list { position: relative; overflow-y: auto; min-height: 0; padding: var(--space-1) 0; }
 .cv-layer-rows.is-clip-zone, .cv-layer-rows.is-clip-zone * { cursor: alias; }
+.cv-layer-rows.is-copy-drag, .cv-layer-rows.is-copy-drag * { cursor: copy; }
 .cv-layer { display: grid; grid-template-columns: 28px calc(var(--depth, 0) * 14px) 16px var(--cv-thumb) auto minmax(0, 1fr); align-items: center; column-gap: var(--space-1); height: var(--cv-row-h); padding: 0 var(--space-2) 0 var(--space-1); border-left: 3px solid transparent; color: var(--text-secondary); font-size: var(--fs-12); cursor: default; transform: translateY(var(--flip, 0px)); }
 /* A row moved by a layer arriving or leaving eases into its new place (ui/layers.ts render). */
 .cv-layer.is-settling { transition: transform 160ms ease-out; }
@@ -68,7 +69,10 @@
 .cv-layer-fx.is-off { opacity: 0.4; text-decoration: line-through; }
 .cv-layer.has-fxlist { height: auto; grid-template-rows: var(--cv-row-h) auto; }
 .cv-layer-fxlist { grid-column: 1 / -1; display: flex; flex-direction: column; padding: 0 0 var(--space-1) calc(28px + var(--space-1)); }
-.cv-layer-fxlist[hidden], .cv-fxrow[hidden] { display: none; }
+.cv-layer-fxlist[hidden], .cv-fxrow[hidden], .cv-layer-sflist[hidden] { display: none; }
+.cv-layer.has-sflist { height: auto; grid-template-rows: var(--cv-row-h); grid-auto-rows: auto; }
+.cv-layer-sflist { grid-column: 1 / -1; display: flex; flex-direction: column; padding: 0 0 var(--space-1) calc(28px + var(--space-1)); }
+.cv-sfrow.is-fx-target { background: var(--surface-raised); outline: 1px solid var(--accent-color); }
 .cv-fxrow { display: flex; align-items: center; gap: var(--space-1); height: 22px; color: var(--text-secondary); font-size: var(--fs-11); border-radius: var(--radius-sm, 4px); cursor: grab; }
 .cv-fxrow:hover { background: var(--surface-raised); }
 .cv-fxrow.is-off .cv-fx-name { opacity: 0.45; text-decoration: line-through; }
@@ -508,6 +512,8 @@
 .cv-ch-note { margin: 10px 2px 0; color: var(--text-muted); font-size: 12px; }
 .cv-ch-alphas { margin-top: 4px; }
 .cv-ch-alphas:empty { display: none; }
+.cv-ch-specials { margin-top: 4px; }
+.cv-ch-specials:not(:has(.cv-ch-row:not([hidden]))) { display: none; }
 .cv-ch-alpha .cv-ch-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cv-ch-rename { width: 100%; height: 26px; }
 .cv-ch-alpha.is-spot .cv-ch-name { border-left: 4px solid var(--ink, transparent); padding-left: 6px; }
@@ -555,7 +561,7 @@
 /* The options bar ends at the open column's edge, so no control lies hidden under it. */
 :root { --cv-props-open-w: 284px; }
 /* (A window too narrow for this shows the column as its strip: PropertiesColumn.MIN_CANVAS.) */
-.cv-main:has(> .cv-props-col:not(.is-collapsed):not([hidden])) > .cv-options { margin-right: calc(var(--cv-props-open-w) - 46px); }
+.cv-main:has(> .cv-props-col:not(.is-collapsed):not([hidden])) > :is(.cv-options, .cv-doc-tabs) { margin-right: calc(var(--cv-props-open-w) - 46px); }
 /* The History Brush's source column: marked on the snapshot it paints from. */
 .cv-hb-source { display: inline-grid; place-items: center; width: 22px; height: 22px; margin-left: auto; border: 0; border-radius: 6px; background: transparent; color: var(--text-muted); opacity: 0.45; cursor: pointer; }
 .cv-hb-source:hover { opacity: 1; color: var(--text-primary); }

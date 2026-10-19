@@ -23,7 +23,7 @@ export class Tabs {
     this.engine.emit('projects', null);
   }
 
-  constructor(private readonly strip: HTMLElement, private readonly engine: Engine, private readonly requestClose: (id: string) => void, onMenu?: (id: string, x: number, y: number) => void) {
+  constructor(private readonly strip: HTMLElement, private readonly engine: Engine, private readonly requestClose: (id: string) => void, onMenu?: (id: string, x: number, y: number) => void, private readonly docTitle?: HTMLElement) {
     engine.on('projects', () => this.queue());
     engine.on('history', () => this.queue());
     engine.on('busy', (on) => { this.busyId = on ? engine.current?.id ?? null : null; this.queue(); });
@@ -124,7 +124,9 @@ export class Tabs {
       if (moved.length) requestAnimationFrame(() => { for (const n of moved) { setClass(n, 'is-settling', true); setStyleVar(n, '--flip-x', '0px'); } });
     }
     // The window's title follows the document: its name, a dot while unsaved, then the app's name.
-    const title = current ? `${current.modified ? '• ' : ''}${tabName(current.name, current.doc.meta)} - formvis` : 'formvis';
+    const shown = current ? `${current.modified ? '• ' : ''}${tabName(current.name, current.doc.meta)}` : '';
+    setText(this.docTitle ?? null, shown);
+    const title = current ? `${shown} - formvis` : 'formvis';
     if (document.title !== title) {
       document.title = title;
       if ('__TAURI_INTERNALS__' in window) void import('@tauri-apps/api/window').then((m) => m.getCurrentWindow().setTitle(title)).catch(() => undefined);

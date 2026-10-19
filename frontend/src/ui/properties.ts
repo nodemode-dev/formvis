@@ -204,7 +204,7 @@ export class PropertiesColumn {
       <div class="cv-props-transform cv-props-vmask-acts" hidden><button class="cv-btn" type="button" data-pcmd="vmask-invert">Invert</button></div>
       <button class="cv-props-section cv-props-live-head" type="button" aria-expanded="true" hidden>${icon('chevronDown', 12)}<span>Live Content</span></button>
       <dl class="cv-props-doc cv-props-live" hidden><dt>Kind</dt><dd data-live="kind"></dd><dt>Detail</dt><dd data-live="detail"></dd></dl>
-      <div class="cv-props-transform cv-props-live-acts" hidden><button class="cv-btn" type="button" data-pcmd="layer-content-options" data-live-for="fill adjustment" hidden>Edit...</button><button class="cv-btn" type="button" data-pcmd="edit-contents" data-live-for="smart" hidden>Edit Contents</button><button class="cv-btn" type="button" data-pcmd="smart-filters" data-live-for="smart" hidden>Smart Filters...</button><button class="cv-btn" type="button" data-pcmd="update-linked" data-live-for="link" hidden>Update</button><button class="cv-btn" type="button" data-pcmd="relink" data-live-for="link" hidden>Relink...</button></div>
+      <div class="cv-props-transform cv-props-live-acts" hidden><button class="cv-btn" type="button" data-pcmd="layer-content-options" data-live-for="fill adjustment" hidden>Edit...</button><button class="cv-btn" type="button" data-pcmd="edit-contents" data-live-for="smart" hidden>Edit Contents</button><button class="cv-btn" type="button" data-pcmd="smart-filters" data-live-for="smart" hidden>Smart Filters...</button><button class="cv-btn" type="button" data-pcmd="update-linked" data-live-for="link" hidden>Update</button><button class="cv-btn" type="button" data-pcmd="relink" data-live-for="link" hidden>Relink...</button><button class="cv-btn" type="button" data-pcmd="shape-style" data-live-for="shape" hidden>Fill and Stroke...</button><button class="cv-btn" type="button" data-pcmd="artboard-options" data-live-for="artboard" hidden>Artboard Options...</button></div>
       <button class="cv-props-section cv-props-doc-head" type="button" aria-expanded="true">${icon('chevronDown', 12)}<span>Document</span></button>
       <dl class="cv-props-doc"><dt>Name</dt><dd data-doc="name"></dd><dt>Size</dt><dd data-doc="size"></dd><dt>Resolution</dt><dd data-doc="res"></dd><dt>Mode</dt><dd data-doc="mode"></dd><dt>Profile</dt><dd data-doc="profile"></dd><dt>Layers</dt><dd data-doc="layers"></dd></dl>
     </div>`);
@@ -300,6 +300,8 @@ export class PropertiesColumn {
       if (a?.smart?.link) kinds.add('link');
       if (fc) kinds.add('fill');
       if (a?.adjustment) kinds.add('adjustment');
+      if (a?.vector) kinds.add('shape');
+      if (a?.isGroup && !a.parentId && a.artboard) kinds.add('artboard');
       setHidden(liveHead, !kinds.size);
       setHidden(liveList, !kinds.size || !liveOpen());
       setHidden(liveActs, !kinds.size || !liveOpen());
@@ -314,6 +316,12 @@ export class PropertiesColumn {
       } else if (a?.adjustment) {
         setText(liveCell('kind'), 'Adjustment layer');
         setText(liveCell('detail'), a.adjustment.kind);
+      } else if (a?.artboard && a.isGroup) {
+        setText(liveCell('kind'), 'Artboard');
+        setText(liveCell('detail'), `${a.artboard.w} x ${a.artboard.h} px`);
+      } else if (a?.vector) {
+        setText(liveCell('kind'), 'Shape layer');
+        setText(liveCell('detail'), 'Live vector path');
       }
       const cur = e.current, d = cur?.doc, dash = '-';
       setText(docCell('name'), cur?.name ?? dash);

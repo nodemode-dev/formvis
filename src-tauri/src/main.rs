@@ -385,15 +385,22 @@ fn main() {
                                 (logical.width * SCREEN_FRACTION, logical.height * SCREEN_FRACTION)
                             })
                             .unwrap_or(FALLBACK_SIZE);
-                        let _ = WebviewWindowBuilder::new(&handle, "main", WebviewUrl::External(url.parse().unwrap()))
+                        let builder = WebviewWindowBuilder::new(&handle, "main", WebviewUrl::External(url.parse().unwrap()))
                             .title("formvis")
                             .inner_size(width, height)
                             .min_inner_size(MIN_SIZE.0, MIN_SIZE.1)
                             .center()
                             // Files dropped on the window reach the page as ordinary drop events (1.86.1): Tauri's own
                             // drop handler otherwise takes them, and the Home screen and the canvas never saw a drop.
-                            .disable_drag_drop_handler()
-                            .build();
+                            .disable_drag_drop_handler();
+                        // macOS: the page's title row is the title bar (traffic lights over it, the native title hidden);
+                        // the lights are centred in the page's 38 px row.
+                        #[cfg(target_os = "macos")]
+                        let builder = builder
+                            .title_bar_style(tauri::TitleBarStyle::Overlay)
+                            .hidden_title(true)
+                            .traffic_light_position(tauri::LogicalPosition::new(14.0, 12.0));
+                        let _ = builder.build();
                         close_splash(&handle);
                     }
                     None => {

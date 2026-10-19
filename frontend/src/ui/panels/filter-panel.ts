@@ -1,5 +1,5 @@
 import { blurDeep, motionBlurDeep, noiseDeep, surfaceBlurDeep, unsharpDeep } from '../../engine/deep';
-import { deepLibFilter } from '../../engine/deep-filters';
+import { deepGalleryFilter, deepLibFilter } from '../../engine/deep-filters';
 import type { DeepPixels } from '../../engine/types';
 import { addNoise, defaultLensFix, gaussianBlur, gaussianMargin, lensCorrect, motionBlur, motionMargin, randomSeed, runFilterOffThread, unsharpMask, defaultDevelopState, developImage, type Engine, type LensFix } from '../../engine';
 import { ScopesView } from './scopes-view';
@@ -335,7 +335,7 @@ export class FilterPanel extends Dialog {
     // Camera Raw's further panels (the comparison's Develop row). The engine already had the point curve and colour
     // mixer; this dialog did not show them. Every control reads s.develop when used, so loaded settings are what is edited.
     const D = (): DevelopState => s.develop;
-    const darkDehaze = checkRow('Dehaze by dark channel (positive Dehaze)', (v) => { D().dehazeDark = v; this.schedule(); });
+    const darkDehaze = checkRow('Dehaze by dark channel (haze estimate)', (v) => { D().dehazeDark = v; this.schedule(); });
     devNodes.splice(dehazeEl ? devNodes.indexOf(dehazeEl) + 1 : devNodes.length, 0, darkDehaze.el);
     devSync.push(() => darkDehaze.set(D().dehazeDark === true));
     const skyRow = sliderRow('Dehaze protect sky', 0, 100, 1, (v) => { D().dehazeSky = v; this.schedule(); });
@@ -858,7 +858,7 @@ export class FilterPanel extends Dialog {
     const p = this.engine.current;
     if (!p || ((p.doc.depth ?? 8) === 8 && p.doc.mode !== 'cmyk')) return false;
     const s = { ...this.s, ...(settings as Partial<typeof this.s>) }, seed = this.seed, ceiling = p.doc.depth === 32 ? Infinity : 1;
-    const deep = kind === 'gaussianBlur' ? (d: DeepPixels): DeepPixels => blurDeep(d, s.radius) : kind === 'unsharpMask' ? (d: DeepPixels): DeepPixels => unsharpDeep(d, s.usmAmount, s.usmRadius, s.threshold, ceiling) : kind === 'addNoise' ? (d: DeepPixels): DeepPixels => noiseDeep(d, s.amount, s.gaussian, s.monochromatic, seed, ceiling) : kind === 'motionBlur' ? (d: DeepPixels): DeepPixels => motionBlurDeep(d, s.angle, s.distance) : kind === 'surfaceBlur' ? (d: DeepPixels): DeepPixels => surfaceBlurDeep(d, s.gallery.surfaceRadius, s.gallery.surfaceThreshold) : isLibKind(kind) ? deepLibFilter(kind, libValues(kind, (s.lib as Record<string, unknown> | undefined)?.[kind]), ceiling) : null;
+    const deep = kind === 'gaussianBlur' ? (d: DeepPixels): DeepPixels => blurDeep(d, s.radius) : kind === 'unsharpMask' ? (d: DeepPixels): DeepPixels => unsharpDeep(d, s.usmAmount, s.usmRadius, s.threshold, ceiling) : kind === 'addNoise' ? (d: DeepPixels): DeepPixels => noiseDeep(d, s.amount, s.gaussian, s.monochromatic, seed, ceiling) : kind === 'motionBlur' ? (d: DeepPixels): DeepPixels => motionBlurDeep(d, s.angle, s.distance) : kind === 'surfaceBlur' ? (d: DeepPixels): DeepPixels => surfaceBlurDeep(d, s.gallery.surfaceRadius, s.gallery.surfaceThreshold) : kind === 'radialBlur' || kind === 'fieldBlur' || kind === 'irisBlur' || kind === 'tiltShift' ? deepGalleryFilter(kind, s.gallery) : isLibKind(kind) ? deepLibFilter(kind, libValues(kind, (s.lib as Record<string, unknown> | undefined)?.[kind]), ceiling) : null;
     if (!deep) return false;
     this.engine.applyDeepFilter(FILTER_LABELS[kind], deep);
     return true;

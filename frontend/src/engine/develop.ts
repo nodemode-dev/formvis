@@ -105,7 +105,7 @@ export interface VignetteShape {
 export const defaultVignetteShape = (): VignetteShape => ({ midpoint: 30, feather: 50, roundness: 100 });
 export const vignetteShapeOf = (s: DevelopState): VignetteShape => ({ ...defaultVignetteShape(), ...s.vignette });
 
-const darkDehazeOn = (s: DevelopState): boolean => s.dehazeDark === true && s.tone.dehaze > 0;
+const darkDehazeOn = (s: DevelopState): boolean => s.dehazeDark === true && s.tone.dehaze !== 0;
 const vignetteExtras = (s: DevelopState): boolean => s.tone.vignette !== 0 && ((s.vignette?.protect ?? 0) > 0 || (s.vignette?.color ?? '') !== '');
 const hexRgb = (hex: string): [number, number, number] => {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
@@ -792,7 +792,8 @@ function windowed(a: Float32Array, w: number, h: number, r: number, min: boolean
 
 /** Dark channel prior dehazing: the airlight A is the mean colour of the brightest 0.1 percent of the dark channel (the
  *  patch minimum of the least channel); the transmission is 1 - 0.95 x amount x the dark channel of the picture over A,
- *  smoothed; the scene is (I - A) / max(t, 0.15) + A. `amount` is 0 to 1; the patch radius follows the preview scale. */
+ *  smoothed; the scene is (I - A) / max(t, 0.15) + A. `amount` is 0 to 1; the patch radius follows the preview scale.
+ *  A negative `amount` adds haze instead: the picture mixed toward the same airlight by up to 70 percent. */
 function darkDehaze(src: ImageData, amount: number, scale: number, sky = 0): ImageData {
   const { width: w, height: h, data: d } = src, n = w * h, r = Math.max(1, Math.round(7 * scale));
   const least = new Float32Array(n);
@@ -804,6 +805,14 @@ function darkDehaze(src: ImageData, amount: number, scale: number, sky = 0): Ima
   let ar = 0, ag = 0, ab = 0, cnt = 0;
   for (let i = 0; i < n; i++) if (Math.round(dark[i] * 255) >= cut) { ar += d[i * 4]; ag += d[i * 4 + 1]; ab += d[i * 4 + 2]; cnt++; }
   const A = [Math.max(1, ar / cnt), Math.max(1, ag / cnt), Math.max(1, ab / cnt)];
+  if (amount < 0) {
+    const out = new ImageData(w, h), o = out.data, t = 1 - 0.7 * clamp01(-amount);
+    for (let i = 0; i < n; i++) {
+      for (let c = 0; c < 3; c++) o[i * 4 + c] = clamp255(d[i * 4 + c] * t + A[c] * (1 - t));
+      o[i * 4 + 3] = d[i * 4 + 3];
+    }
+    return out;
+  }
   const norm = new Float32Array(n);
   for (let i = 0; i < n; i++) norm[i] = Math.min(d[i * 4] / A[0], d[i * 4 + 1] / A[1], d[i * 4 + 2] / A[2]);
   const t = windowed(windowed(norm, w, h, r, true).map((v) => 1 - 0.95 * clamp01(amount) * Math.min(1, v)), w, h, r, false);

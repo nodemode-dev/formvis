@@ -238,6 +238,11 @@ const TREES: readonly TreeKind[] = [
   T('spruce', 'Spruce', 'conifer', 0.3, [26, 76, 52], BARK), T('cypress', 'Cypress', 'column', 0.16, DEEP, BARK), T('poplar', 'Poplar', 'column', 0.2, [84, 140, 50], [120, 112, 100]),
   T('palm', 'Palm', 'palm', 0.5, [70, 130, 46], [140, 118, 84]), T('coconutPalm', 'Coconut Palm', 'palm', 0.55, [76, 140, 40], [150, 126, 92], [110, 80, 40]),
   T('bamboo', 'Bamboo', 'bamboo', 0.3, [96, 156, 56], [140, 166, 76]), T('shrub', 'Shrub', 'shrub', 1.2, GREEN, BARK), T('bareWinterTree', 'Bare Winter Tree', 'bare', 0.7, GREEN, [80, 68, 60]),
+  T('beech', 'Beech', 'broad', 0.7, [92, 128, 44], [132, 122, 110]), T('ash', 'Ash', 'broad', 0.6, [104, 150, 62], [112, 104, 92]), T('linden', 'Linden', 'broad', 0.8, [98, 152, 70], BARK),
+  T('chestnut', 'Chestnut', 'broad', 0.8, [58, 112, 44], BARK, [120, 78, 36]), T('aspen', 'Aspen', 'column', 0.26, [188, 190, 70], [222, 218, 204]), T('plumBlossom', 'Plum Blossom', 'broad', 0.65, [236, 150, 182], [66, 46, 40]),
+  T('pear', 'Pear', 'broad', 0.55, [112, 156, 60], BARK, [196, 190, 60]), T('orange', 'Orange Tree', 'broad', 0.6, [54, 120, 50], BARK, [238, 140, 30]), T('jacaranda', 'Jacaranda', 'broad', 0.8, [150, 120, 196], [96, 78, 64]),
+  T('acacia', 'Acacia', 'broad', 1.05, [118, 142, 58], [98, 80, 62]), T('redwood', 'Redwood', 'conifer', 0.24, [38, 96, 56], [130, 70, 50]), T('cedar', 'Cedar', 'conifer', 0.5, [44, 100, 70], [112, 82, 62]),
+  T('larch', 'Larch', 'conifer', 0.38, [170, 170, 60], BARK), T('datePalm', 'Date Palm', 'palm', 0.45, [92, 134, 52], [150, 124, 90], [176, 110, 40]), T('autumnBirch', 'Autumn Birch', 'broad', 0.45, [226, 168, 40], [226, 222, 212]),
 ];
 
 interface TreeSpec { kind: string; light: number; amount: number; leafSize: number; branchHeight: number; thickness: number; leafColor: RGB | null; branchColor: RGB | null; flat: boolean; seed: number; x: number; y: number; size: number }

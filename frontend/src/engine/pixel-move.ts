@@ -58,6 +58,7 @@ export interface MoveHost {
   flattened(): Surface | null;
   snapBox(l: Layer, t: Transform): Rect;
   view: { guides: boolean; grid: boolean; slices: boolean; artboardGuides: boolean; gridSpacing: number; gridSubdivisions: number };
+  gridPixels(): number;
   setSnapGuides(g: { xs: number[]; ys: number[] } | null): void;
 }
 
@@ -425,7 +426,7 @@ export function snapDelta(host: MoveHost, p: Project, box: Rect, skip: (l: Layer
   const ex = [box.x, box.x + box.w / 2, box.x + box.w];
   const ey = [box.y, box.y + box.h / 2, box.y + box.h];
   if (snapOptions.grid && host.view.grid) {
-    const step = host.view.gridSpacing / Math.max(1, host.view.gridSubdivisions);
+    const step = host.gridPixels() / Math.max(1, host.view.gridSubdivisions);
     if (step > 0) {
       for (const e of ex) xc.push(Math.round(e / step) * step);
       for (const e of ey) yc.push(Math.round(e / step) * step);

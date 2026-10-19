@@ -124,6 +124,31 @@ function pickBox(e: ToolContext['engine'], id: string): Array<{ x: number; y: nu
   const x0 = Math.min(...pts.map((q) => q.x)), x1 = Math.max(...pts.map((q) => q.x)), y0 = Math.min(...pts.map((q) => q.y)), y1 = Math.max(...pts.map((q) => q.y));
   return [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
 }
+/** A layer drag released over another document's tab copies the layers there (Shift keeps their positions); the tab lights while the pointer is over it. */
+let tabDrop: string | null = null;
+let tabWatch: (() => void) | null = null;
+function watchTabs(e: ToolContext['engine']): void {
+  tabWatch?.();
+  tabDrop = null;
+  const tabAt = (ev: PointerEvent): string | null => {
+    const t = (document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null)?.closest<HTMLElement>('.cv-tab[data-key]');
+    return t?.dataset.key && t.dataset.key !== e.current?.id ? t.dataset.key : null;
+  };
+  const mark = (key: string | null): void => { for (const t of document.querySelectorAll<HTMLElement>('.cv-tab')) t.classList.toggle('is-drop-target', !!key && t.dataset.key === key); };
+  const move = (ev: PointerEvent): void => { tabDrop = tabAt(ev); mark(tabDrop); };
+  const stop = (): void => {
+    document.removeEventListener('pointermove', move, true);
+    document.removeEventListener('pointerup', end, true);
+    document.removeEventListener('pointercancel', stop, true);
+    mark(null);
+    tabWatch = null;
+  };
+  const end = (ev: PointerEvent): void => { tabDrop = tabAt(ev); stop(); };
+  document.addEventListener('pointermove', move, true);
+  document.addEventListener('pointerup', end, true);
+  document.addEventListener('pointercancel', stop, true);
+  tabWatch = stop;
+}
 /** The last opacity digit and when it was typed: a second digit within a moment makes an exact percentage. */
 let lastDigit: { d: number; at: number } | null = null;
 /** The marquee that selects layers: pressed where Auto-Select (or Cmd or Ctrl) finds no layer. */
@@ -211,6 +236,7 @@ export const moveTool: Tool = {
       altCopy = (e.current?.doc.layers.length ?? 0) > before;
     }
     if (m) e.continueTransform(m, p.doc);
+    if (m && m.kind === 'move' && !altCopy && e.transformEdit && e.projects.length > 1) watchTabs(e);
   },
   move(ctx, p) {
     if (ctx.engine.pathTransform && cornerDrag === null) { ctx.engine.updatePathTransform(p.doc, p.shift, p.alt); return; }
@@ -261,6 +287,13 @@ export const moveTool: Tool = {
     if (cornerDrag !== null) { cornerDrag = null; distortFrom = null; return; }
     if (pixelStart) { pixelStart = null; ctx.engine.endPixelMove(); return; }
     altCopy = false;
+    const toTab = tabDrop, ids = [...(ctx.engine.current?.selectedIds ?? [])];
+    tabDrop = null;
+    if (toTab && ids.length) {
+      ctx.engine.cancelTransformDrag();
+      ctx.engine.copyLayersToProject(ids, toTab, p.shift);
+      return;
+    }
     ctx.engine.releaseTransform();
   },
   cancel(ctx) {
@@ -271,6 +304,8 @@ export const moveTool: Tool = {
     if (warpDrag !== null) { warpDrag = null; return; }
     if (cornerDrag !== null) { cornerDrag = null; distortFrom = null; return; }
     if (pixelStart) { pixelStart = null; ctx.engine.cancelPixelMove(); return; }
+    tabWatch?.();
+    tabDrop = null;
     ctx.engine.cancelTransformDrag();
     if (altCopy) { altCopy = false; ctx.engine.undo(); }
   },

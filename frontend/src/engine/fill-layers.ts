@@ -105,7 +105,7 @@ export function fillFromLine(c: GradientFill, frame: Rect, start: Pt, end: Pt): 
 /** A new stop at `at` (0 to 1) coloured as the gradient is there, the stops kept in order; its index is returned. */
 export function addFillStop(c: GradientFill, at: number): { content: GradientFill; index: number } {
   const t = clamp(Math.round(at * 1000) / 1000, 0, 1), k = colorAt(c.stops.map((s) => ({ at: s.at, rgb: s.color, alpha: s.alpha })).sort((a, b) => a.at - b.at), t);
-  const stops = [...c.stops, { at: t, color: { r: Math.round(k[0]), g: Math.round(k[1]), b: Math.round(k[2]) }, alpha: k[3] }].sort((a, b) => a.at - b.at);
+  const stops = [...c.stops, { at: t, color: { r: Math.round(k[0]), g: Math.round(k[1]), b: Math.round(k[2]) }, alpha: Math.round((k[3] / 255) * 1000) / 1000 }].sort((a, b) => a.at - b.at);
   return { content: { ...c, stops }, index: stops.findIndex((s) => s.at === t) };
 }
 

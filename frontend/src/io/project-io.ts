@@ -112,10 +112,18 @@ async function fillTiled(t: TiledRaster, name: string, read: BandReader): Promis
 export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | null = null, timeline: Timeline | null = null, step: ((done: number, total: number) => void) | null = null): Promise<{ manifest: Json; files: FilePart[] }> {
   const files: FilePart[] = [], layers: Json[] = [];
   let written = 0;
+  // Every pixel plane is handed to the encoder at once, which takes its own copy of the bitmap on the spot; with no
+  // await before the last one is started, the whole manifest reads one state and the document may change at once.
+  const encodes: Promise<void>[] = [];
+  const put = (name: string, made: Promise<Blob>): void => {
+    const part: FilePart = { name, blob: new Blob() };
+    files.push(part);
+    encodes.push(made.then((b) => { part.blob = b; }));
+  };
   for (const l of doc.layers) {
     step?.(written++, doc.layers.length);
     const r: Json = { id: l.id, name: l.name, isVisible: l.visible, transform: transformRecord(l.transform) };
-    if (l.raster && !l.isGroup) { const name = `${l.id}.png`; files.push({ name, blob: await toBlob(l.raster.canvas) }); r.imageFile = name; }
+    if (l.raster && !l.isGroup) { const name = `${l.id}.png`; put(name, toBlob(l.raster.canvas)); r.imageFile = name; }
     else if (l.tiled && !l.isGroup) {   // a giant layer, written band by band by the engine (1.62.8)
       const name = `${l.id}.png`;
       files.push({ name, blob: await tiledPng(l.tiled, doc.resolution ?? 72) });
@@ -135,11 +143,11 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
       const frameFiles: string[] = [], originals: (string | null)[] = [];
       for (const [i, f] of l.video.frames.entries()) {
         const fn = `${l.id}.vframe${i}.png`;
-        files.push({ name: fn, blob: await toBlob(f.canvas) });
+        put(fn, toBlob(f.canvas));
         frameFiles.push(fn);
         const o = l.video.original[i];
         if (!o || o === f) originals.push(null);
-        else { const on = `${l.id}.vorig${i}.png`; files.push({ name: on, blob: await toBlob(o.canvas) }); originals.push(on); }
+        else { const on = `${l.id}.vorig${i}.png`; put(on, toBlob(o.canvas)); originals.push(on); }
       }
       const it = l.video.interpret;   // Interpret Footage (33.4), field by field
       const interpret = it ? { ...(it.fps ? { fps: it.fps } : {}), ...(it.loop ? { loop: it.loop } : {}), ...(it.alpha ? { alpha: it.alpha } : {}), ...(it.matte ? { matte: { r: it.matte.r, g: it.matte.g, b: it.matte.b } } : {}) } : null;
@@ -147,13 +155,13 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
     }
     if (l.smart && !l.isGroup) {
       const name = `${l.id}.source.png`;
-      files.push({ name, blob: await toBlob(l.smart.source.canvas) });
+      put(name, toBlob(l.smart.source.canvas));
       r.smartSourceFile = name;
       if (l.smart.stack) {
         const stackFiles: string[] = [];
         for (const [i, s] of l.smart.stack.sources.entries()) {
           const sn = `${l.id}.stack${i}.png`;
-          files.push({ name: sn, blob: await toBlob(s.canvas) });
+          put(sn, toBlob(s.canvas));
           stackFiles.push(sn);
         }
         r.smartStack = { mode: l.smart.stack.mode, files: stackFiles };
@@ -161,7 +169,7 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
       r.smart = { filters: l.smart.filters.map(({ id, kind, settings, enabled, blend, opacity }) => ({ id, kind, settings, enabled, ...(blend && blend !== 'normal' ? { blend } : {}), ...(opacity !== undefined && opacity < 100 ? { opacity } : {}) })), warp: l.smart.warp ?? null, warpAt: l.smart.warpAt ? transformRecord(l.smart.warpAt) : null, deform: l.smart.deform ? { ...l.smart.deform, at: transformRecord(l.smart.deform.at) } : null, filterMaskEnabled: l.smart.filterMaskEnabled !== false, link: l.smart.link ? { id: l.smart.link.id, name: l.smart.link.name, size: l.smart.link.size, lastModified: l.smart.link.lastModified, ...(l.smart.link.path ? { path: l.smart.link.path } : {}) } : null };
       if (l.smart.filterMask) {
         const mn = `${name.replace(/\.png$/i, '')}-filtermask.png`;
-        files.push({ name: mn, blob: await toBlob(l.smart.filterMask.canvas) });
+        put(mn, toBlob(l.smart.filterMask.canvas));
         r.smartFilterMaskFile = mn;
       }
     }
@@ -188,7 +196,7 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
       const w = l.mask.raster?.width ?? l.raster?.width ?? Math.max(1, Math.round(l.transform.w));
       const h = l.mask.raster?.height ?? l.raster?.height ?? Math.max(1, Math.round(l.transform.h));
       const name = `${l.id}.mask.png`;
-      files.push({ name, blob: await toBlob(maskToGray(l.mask.raster ?? Raster.filled(w, h, 'white'))) });
+      put(name, toBlob(maskToGray(l.mask.raster ?? Raster.filled(w, h, 'white'))));
       r.maskFile = name;
       r.maskEnabled = l.mask.enabled;
       if (l.mask.placement) r.maskPlacement = transformRecord(l.mask.placement);
@@ -206,7 +214,7 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
   if (doc.mode === 'multichannel' && doc.multichannel) {
     for (let i = 0; i < doc.multichannel.channels.length; i++) {
       const c = doc.multichannel.channels[i], file = `mchan_${i}.png`;
-      files.push({ name: file, blob: await toBlob(c.data.canvas) });
+      put(file, toBlob(c.data.canvas));
       mcRecords.push({ name: c.name, color: { r: c.color.r, g: c.color.g, b: c.color.b }, solidity: c.solidity, file });
     }
   }
@@ -229,7 +237,7 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
     const pat = patternById(id);
     if (!pat) continue;
     const file = `pattern-${carried.length + 1}.png`;
-    files.push({ name: file, blob: await toBlob(pat.surface) });
+    put(file, toBlob(pat.surface));
     carried.push({ id, name: pat.name, file });
   }
   if (carried.length) manifest.patterns = carried;
@@ -239,10 +247,12 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
   for (const [i, a] of (doc.alphas ?? []).entries()) {
     const file = `alpha-${i + 1}.png`, s = createSurface(doc.width, doc.height);
     ctxOf(s).putImageData(alphaGrey(a.mask, doc.width, doc.height), 0, 0);
-    files.push({ name: file, blob: await toBlob(s) });
+    put(file, toBlob(s));
     alphas.push({ id: a.id, name: a.name, file, ...(a.color ? { color: [a.color.r, a.color.g, a.color.b] } : {}), ...(a.opacity !== undefined ? { opacity: a.opacity } : {}), ...(a.indicates ? { indicates: a.indicates } : {}), ...(a.spot ? { spot: true } : {}) });
   }
   if (alphas.length) manifest.alphas = alphas;
+  let encoded = 0;
+  await Promise.all(encodes.map((e) => e.then(() => step?.(++encoded, encodes.length))));
   return { manifest, files };
 }
 

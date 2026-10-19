@@ -236,6 +236,8 @@ export class MenuBar {
     window.addEventListener('blur', () => this.close());
     window.addEventListener('resize', () => this.close());
     document.addEventListener('keydown', (e) => this.key(e), true);
+    document.addEventListener('keyup', (e) => this.altUp(e), true);
+    window.addEventListener('blur', () => { this.altLone = false; setClass(document.documentElement, 'is-menu-mnemonics', false); });
     onLanguage(() => { for (const b of this.bars) { setText(b.btn, t(b.def.label)); b.menu.relabel(); } });
   }
 
@@ -244,14 +246,56 @@ export class MenuBar {
   private returnTo: HTMLElement | null = null;
   private typed = '';
   private typedAt = 0;
+  private altLone = false;
+  private barBack: HTMLElement | null = null;
+
+  /** Alt pressed and released alone puts focus on the first menu, ready for the arrows; Alt held underlines the first letters. */
+  private altUp(e: KeyboardEvent): void {
+    if (e.key !== 'Alt') return;
+    setClass(document.documentElement, 'is-menu-mnemonics', false);
+    if (!this.altLone) return;
+    this.altLone = false;
+    if (this.openIndex >= 0 || anyDialogOpen() || !this.bars.length) return;
+    e.preventDefault();
+    const from = document.activeElement;
+    this.barBack = from instanceof HTMLElement && !this.bars.some((b) => b.btn === from) ? from : this.barBack;
+    this.bars[0].btn.focus();
+  }
+
+  /** Focus leaves the menu bar for where it was before Alt. */
+  private leaveBar(): void {
+    const back = this.barBack;
+    this.barBack = null;
+    if (back?.isConnected && back !== document.body) back.focus(); else (document.activeElement as HTMLElement | null)?.blur();
+  }
 
   /** Keyboard: F10, or Alt with a menu's first letter, opens a menu; the arrows move through it and across the bar, Enter
    *  runs a row, Escape steps back, and letters jump to the next row that starts with them. */
   private key(e: KeyboardEvent): void {
     const stop = (): void => { e.preventDefault(); e.stopPropagation(); };
+    const mac = /Mac/.test(navigator.platform);
+    if (e.key === 'Alt') {
+      if (!e.repeat && !mac && this.openIndex < 0 && !anyDialogOpen() && !e.ctrlKey && !e.metaKey && !e.shiftKey) { this.altLone = true; setClass(document.documentElement, 'is-menu-mnemonics', true); }
+      return;
+    }
+    this.altLone = false;
     if (this.openIndex < 0) {
       if (anyDialogOpen() || e.ctrlKey || e.metaKey) return;
-      const mac = /Mac/.test(navigator.platform);
+      const at = this.bars.findIndex((b) => b.btn === document.activeElement);
+      if (at >= 0 && !e.altKey && !e.shiftKey) {
+        const focus = (i: number): void => this.bars[(i + this.bars.length) % this.bars.length].btn.focus();
+        if (e.key === 'ArrowRight') { stop(); focus(at + 1); return; }
+        if (e.key === 'ArrowLeft') { stop(); focus(at - 1); return; }
+        if (e.key === 'Home') { stop(); focus(0); return; }
+        if (e.key === 'End') { stop(); focus(-1); return; }
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === ' ') { stop(); this.open(at, true); return; }
+        if (e.key === 'Escape') { stop(); this.leaveBar(); return; }
+        if (e.key.length === 1 && /\S/.test(e.key)) {
+          const hit = this.bars.findIndex((b) => (b.btn.textContent ?? '').trim().charAt(0).toLowerCase() === e.key.toLowerCase());
+          if (hit >= 0) { stop(); this.open(hit, true); }
+          return;
+        }
+      }
       if (e.key === 'F10' && !e.altKey && !e.shiftKey) { stop(); this.open(0, true); return; }
       if (!e.altKey || e.shiftKey || mac || !/^Key[A-Z]$/.test(e.code)) return;
       const letter = e.code.slice(3).toLowerCase(), hits = this.bars.map((b, i) => (b.btn.textContent ?? '').trim().charAt(0).toLowerCase() === letter ? i : -1).filter((i) => i >= 0);

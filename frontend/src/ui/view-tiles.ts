@@ -225,8 +225,7 @@ export class ViewTiles {
     const cs = getComputedStyle(this.col);
     const gap = parseFloat(cs.columnGap) || 0;
     const w = this.col.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0) - gap * Math.max(0, COLS[l] - 1);
-    const tabs = this.col.querySelector<HTMLElement>('.cv-doc-tabs')?.offsetHeight ?? 0;
-    const h = this.col.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0) - tabs - gap * 2;
+    const h = this.col.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0) - gap;
     const hold = (v: number, hi: number): number => Math.max(MIN_TILE, Math.min(hi, v));
     const nv = colGutters(l, k);
     if (nv >= 1 && s.c1 !== undefined) out.c1 = hold(s.c1, w - MIN_TILE * nv);
@@ -250,7 +249,7 @@ export class ViewTiles {
     const num = (s: string): number[] => (s === 'none' ? [] : s.split(/\s+/).map(parseFloat).filter((n) => Number.isFinite(n)));
     const cols = num(cs.gridTemplateColumns), rows = num(cs.gridTemplateRows), gap = parseFloat(cs.columnGap) || 0;
     const sum = (a: number[], n: number): number => a.slice(0, n).reduce((x, y) => x + y, 0) + gap * Math.max(0, n - 1);
-    const width = sum(cols, cols.length), top = (rows[0] ?? 0) + gap, height = sum(rows, rows.length);
+    const width = sum(cols, cols.length), top = 0, height = sum(rows, rows.length);
     const put = (id: GutterId, on: boolean, x: number, y: number, w: number, h: number): void => {
       const el = this.hs[id];
       if (el.hidden === on) el.hidden = !on;
@@ -264,9 +263,9 @@ export class ViewTiles {
     const edge = (n: number): number => sum(cols, n) + gap / 2;   // the middle of the gap after column n
     put('v1', nv >= 1 && cols.length > 1, edge(1) - 3, top, 6, height - top);
     put('v2', nv >= 2 && cols.length > 2, edge(2) - 3, top, 6, height - top);
-    const hy = (rows[0] ?? 0) + gap + (rows[1] ?? 0) + gap / 2;
+    const hy = (rows[0] ?? 0) + gap / 2;
     const hx = l === '3up' ? edge(1) : 0;
-    put('h', row2 && rows.length > 2, hx, hy - 3, width - hx, 6);
+    put('h', row2 && rows.length > 1, hx, hy - 3, width - hx, 6);
   }
 
   private drag(e: PointerEvent): void {
@@ -278,9 +277,9 @@ export class ViewTiles {
     const px = (s: string): number[] => s.split(/\s+/).map(parseFloat);
     const cols = px(cs.gridTemplateColumns), rows = px(cs.gridTemplateRows), k = this.tiles.size;
     // seed from what is on screen, so the first move starts where the gutter stands
-    if (id === 'h') this.sizes.r1 = rows[1];
+    if (id === 'h') this.sizes.r1 = rows[0];
     else { this.sizes.c1 = cols[0]; if (id === 'v2') this.sizes.c2 = cols[1]; }
-    const start = { x: e.clientX, y: e.clientY, c1: cols[0], c2: cols[1], r1: rows[1] };
+    const start = { x: e.clientX, y: e.clientY, c1: cols[0], c2: cols[1], r1: rows[0] };
     el.setPointerCapture(e.pointerId);
     const move = (m: PointerEvent): void => {
       if (id === 'h') this.sizes.r1 = start.r1 + (m.clientY - start.y);

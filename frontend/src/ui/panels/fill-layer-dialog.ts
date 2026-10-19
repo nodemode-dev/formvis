@@ -27,13 +27,18 @@ export class FillLayerDialog extends Dialog {
   private readonly name = el<HTMLInputElement>('<input class="cv-input" type="text" maxlength="200" spellcheck="false">');
   private readonly nameRow: HTMLElement;
   private readonly color = colorRow('Color', () => this.changed());
-  private readonly gradient = selectRow('Gradient', [], (v) => { this.stops = v === 'current' && this.kept ? this.kept : this.preset(v); this.changed(); });
+  private readonly gradient = selectRow('Gradient', [], (v) => { this.stops = v === 'current' && this.kept ? this.copy(this.kept) : this.preset(v); this.syncStops(); this.changed(); });
   private readonly style = selectRow('Style', GRADIENT_TYPES.map((t) => [t.id, t.label] as [string, string]), () => this.changed());
   private readonly angle = numberRow('Angle (degrees)', -180, 180, 1, () => this.changed());
   private readonly scale = numberRow('Scale (%)', 10, 150, 1, () => this.changed());
   private readonly reverse = checkRow('Reverse', () => this.changed());
   private readonly dither = checkRow('Dither', () => this.changed());
   private readonly align = checkRow('Align with Layer', () => this.changed());
+  private readonly offX = numberRow('Offset X (%)', -1000, 1000, 1, (v) => { this.offset.x = v / 100; this.changed(); });
+  private readonly offY = numberRow('Offset Y (%)', -1000, 1000, 1, (v) => { this.offset.y = v / 100; this.changed(); });
+  private readonly stopsBox = el('<div class="cv-stops"><div class="cv-stop-row cv-stop-head"><span>At %</span><span>Color</span><span>Opacity %</span><span>Mid %</span><span></span></div></div>');
+  private readonly stopRows: Array<{ root: HTMLElement; at: HTMLInputElement; col: HTMLInputElement; alpha: HTMLInputElement; mid: HTMLInputElement; del: HTMLButtonElement }> = [];
+  private readonly addStop = el<HTMLButtonElement>('<button class="cv-btn" type="button">Add Stop</button>');
   private readonly pattern = selectRow('Pattern', [], () => this.changed());
   private readonly pAngle = numberRow('Angle (degrees)', -180, 180, 1, () => this.changed());
   private readonly pScale = numberRow('Scale (%)', 1, 1000, 1, () => this.changed());
@@ -45,7 +50,8 @@ export class FillLayerDialog extends Dialog {
   constructor(private readonly engine: Engine) {
     super('Solid Color', 380);
     this.nameRow = this.field('Name', this.name);
-    this.body.append(this.color.el, this.gradient.el, this.style.el, this.angle.el, this.scale.el, this.reverse.el, this.dither.el, this.align.el, this.pattern.el, this.pAngle.el, this.pScale.el, this.link.el, this.phaseX.el, this.phaseY.el, this.snap);
+    this.buildStopRows();
+    this.body.append(this.color.el, this.gradient.el, this.stopsBox, this.addStop, this.style.el, this.angle.el, this.scale.el, this.offX.el, this.offY.el, this.reverse.el, this.dither.el, this.align.el, this.pattern.el, this.pAngle.el, this.pScale.el, this.link.el, this.phaseX.el, this.phaseY.el, this.snap);
     this.snap.addEventListener('click', () => { this.phaseX.set(0); this.phaseY.set(0); this.changed(); });
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
@@ -85,13 +91,16 @@ export class FillLayerDialog extends Dialog {
     this.name.value = this.engine.current?.layer(id)?.name ?? '';
     setHidden(this.nameRow, !fresh);
     for (const r of [this.color.el]) setHidden(r, c.kind !== 'solid');
-    for (const r of [this.gradient.el, this.style.el, this.angle.el, this.scale.el, this.reverse.el, this.dither.el, this.align.el]) setHidden(r, c.kind !== 'gradient');
+    for (const r of [this.gradient.el, this.stopsBox, this.addStop, this.style.el, this.angle.el, this.scale.el, this.offX.el, this.offY.el, this.reverse.el, this.dither.el, this.align.el]) setHidden(r, c.kind !== 'gradient');
     for (const r of [this.pattern.el, this.pAngle.el, this.pScale.el, this.link.el, this.phaseX.el, this.phaseY.el, this.snap]) setHidden(r, c.kind !== 'pattern');
     if (c.kind === 'solid') this.color.set(hex(c.color));
     if (c.kind === 'gradient') {
-      this.stops = c.stops;
-      this.kept = fresh ? null : c.stops;
+      this.stops = this.copy(c.stops);
+      this.kept = fresh ? null : this.copy(c.stops);
       this.offset = { ...c.offset };
+      this.offX.set(Math.round(c.offset.x * 100));
+      this.offY.set(Math.round(c.offset.y * 100));
+      this.syncStops();
       this.options(q<HTMLSelectElement>(this.gradient.el, 'select'), [...(this.kept ? [['current', 'Current gradient'] as [string, string]] : []), ...allGradients().map((p) => [p.id, p.label] as [string, string])]);
       this.gradient.set(this.kept ? 'current' : this.engine.gradientSettings.style);
       this.style.set(c.style);
@@ -116,6 +125,60 @@ export class FillLayerDialog extends Dialog {
     if (fresh) this.name.select();
   }
 
+  private copy(list: FillStop[]): FillStop[] { return list.map((s) => ({ ...s, color: { ...s.color } })); }
+
+  /** The stop rows are made once; stops past the gradient's count are hidden, never removed. */
+  private buildStopRows(): void {
+    const num = (min: number, max: number): HTMLInputElement => el<HTMLInputElement>(`<input class="cv-input" type="number" min="${min}" max="${max}" step="1">`);
+    for (let i = 0; i < 12; i++) {
+      const at = num(0, 100), alpha = num(0, 100), mid = num(5, 95), col = el<HTMLInputElement>('<input class="cv-input cv-color" type="color">'), del = el<HTMLButtonElement>('<button class="cv-btn" type="button" aria-label="Remove stop">Remove</button>');
+      const root = el('<div class="cv-stop-row"></div>');
+      root.append(at, col, alpha, mid, del);
+      root.hidden = true;
+      this.stopsBox.appendChild(root);
+      const read = (): void => {
+        const s = this.stops[i];
+        if (!s) return;
+        const n = (inp: HTMLInputElement, lo: number, hi: number, d: number): number => (Number.isFinite(inp.valueAsNumber) ? Math.min(hi, Math.max(lo, inp.valueAsNumber)) : d);
+        s.at = n(at, 0, 100, s.at * 100) / 100;
+        s.alpha = n(alpha, 0, 100, s.alpha * 100) / 100;
+        s.color = rgbOf(col.value);
+        const m = n(mid, 5, 95, 50) / 100;
+        if (m === 0.5) delete s.mid; else s.mid = m;
+        this.changed();
+      };
+      for (const inp of [at, alpha, mid, col]) inp.addEventListener('input', read);
+      for (const inp of [at, alpha, mid]) inp.addEventListener('change', () => { this.stops.sort((a, b) => a.at - b.at); this.syncStops(); });
+      del.addEventListener('click', () => { if (this.stops.length > 2) { this.stops.splice(i, 1); this.syncStops(); this.changed(); } });
+      this.stopRows.push({ root, at, col, alpha, mid, del });
+    }
+    this.addStop.addEventListener('click', () => {
+      if (this.stops.length >= this.stopRows.length) return;
+      const s = [...this.stops].sort((a, b) => a.at - b.at);
+      let gap = 0, pos = 0.5;
+      for (let k = 0; k + 1 < s.length; k++) if (s[k + 1].at - s[k].at > gap) { gap = s[k + 1].at - s[k].at; pos = (s[k].at + s[k + 1].at) / 2; }
+      const made = this.engine.gradientFillAddStop({ kind: 'gradient', stops: this.copy(s), style: 'linear', angle: 90, scale: 1, reverse: false, dither: false, align: true, offset: { x: 0, y: 0 } }, pos);
+      this.stops = made.content.stops;
+      this.syncStops();
+      this.changed();
+    });
+  }
+
+  private syncStops(): void {
+    const set = (inp: HTMLInputElement, v: string): void => { if (inp.value !== v && document.activeElement !== inp) inp.value = v; };
+    this.stopRows.forEach((r, i) => {
+      const s = this.stops[i];
+      if (r.root.hidden !== !s) r.root.hidden = !s;
+      if (!s) return;
+      set(r.at, String(Math.round(s.at * 100)));
+      set(r.alpha, String(Math.round(s.alpha * 100)));
+      set(r.mid, String(Math.round((s.mid ?? 0.5) * 100)));
+      set(r.col, hex(s.color));
+      r.del.disabled = this.stops.length <= 2;
+    });
+    this.addStop.disabled = this.stops.length >= this.stopRows.length;
+  }
+
   /** A gradient preset's stops, the foreground and background filled in as they are now. */
   private preset(id: string): FillStop[] {
     return resolveStops(presetById(id), this.engine.fg, this.engine.bg, false).map((s) => ({ at: s.at, color: { ...s.rgb }, alpha: s.alpha }));
@@ -133,7 +196,7 @@ export class FillLayerDialog extends Dialog {
     if (this.kind === 'solid') return { kind: 'solid', color: rgbOf(q<HTMLInputElement>(this.color.el, 'input').value) };
     if (this.kind === 'gradient') {
       const style = q<HTMLSelectElement>(this.style.el, 'select').value as Extract<FillContent, { kind: 'gradient' }>['style'];
-      return { kind: 'gradient', stops: this.stops, style, angle: num(this.angle.input, -180, 180, 90), scale: num(this.scale.input, 10, 150, 100) / 100, reverse: box(this.reverse), dither: box(this.dither), align: box(this.align), offset: { ...this.offset } };
+      return { kind: 'gradient', stops: this.copy(this.stops).sort((a, b) => a.at - b.at), style, angle: num(this.angle.input, -180, 180, 90), scale: num(this.scale.input, 10, 150, 100) / 100, reverse: box(this.reverse), dither: box(this.dither), align: box(this.align), offset: { ...this.offset } };
     }
     return { kind: 'pattern', pattern: q<HTMLSelectElement>(this.pattern.el, 'select').value, scale: num(this.pScale.input, 1, 1000, 100) / 100, angle: num(this.pAngle.input, -180, 180, 0), link: box(this.link), phase: { x: num(this.phaseX.input, -100000, 100000, 0), y: num(this.phaseY.input, -100000, 100000, 0) } };
   }

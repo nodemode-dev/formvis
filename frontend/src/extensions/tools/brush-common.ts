@@ -7,6 +7,9 @@ import { extraShown } from '../../ui/view-extras';
 /** Caps Lock turns the precise crosshair on and off over the Preferences > Cursors choice. */
 export const cursorState = { caps: false, hardAt: -1e9 };
 
+// Every painting tool shares the cursor, so the lock state is read from the pointer, not from one tool's key handler.
+if (typeof window !== 'undefined') window.addEventListener('pointermove', (e) => { cursorState.caps = e.getModifierState('CapsLock'); }, { capture: true, passive: true });
+
 const outlines = new WeakMap<Uint8Array, number[]>();
 
 /** A sampled tip's outline as 48 points from its centre, in half the longer side, where its grey last passes a quarter. */

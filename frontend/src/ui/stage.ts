@@ -517,7 +517,7 @@ export class Stage {
     g.save();
     g.lineWidth = 1;
     if (vw.grid) {
-      const major = Math.max(1, vw.gridSpacing), sub = major / Math.max(1, vw.gridSubdivisions);
+      const major = Math.max(1, this.engine.gridPixels()), sub = major / Math.max(1, vw.gridSubdivisions);
       for (const [step, alpha] of [[sub, 0.35], [major, 0.9]] as const) {
         if (step * v.zoom < 4) continue;
         g.globalAlpha = alpha * Stage.prefs.gridOpacity / 100;
@@ -577,6 +577,15 @@ export class Stage {
         for (const x of shown) if ((x.color ?? '') === colour) line(x);
         g.stroke();
       }
+    }
+    const hit = this.engine.snapGuides;
+    if (hit && !this.engine.transformEdit) {
+      g.strokeStyle = pal.accent;
+      g.setLineDash([4, 3]);
+      g.beginPath();
+      for (const x of hit.xs) { const sx = Math.round(x0 + x * v.zoom) + 0.5; g.moveTo(sx, y0 - 8); g.lineTo(sx, y1 + 8); }
+      for (const y of hit.ys) { const sy = Math.round(y0 + y * v.zoom) + 0.5; g.moveTo(x0 - 8, sy); g.lineTo(x1 + 8, sy); }
+      g.stroke();
     }
     g.restore();
   }

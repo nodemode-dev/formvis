@@ -76,14 +76,17 @@ def ensure(timeout: float = 90.0):
         import playwright  # noqa: F401
     except ImportError as exc:
         raise RuntimeError("--headless needs Playwright: python3 -m pip install playwright, then python3 -m playwright install chromium.") from exc
+    clean_logs()
     log = os.path.join(os.environ.get("TMPDIR", "/tmp"), f"formvis-headless-{os.getpid()}.log")
     with open(log, "wb") as out:
         proc = subprocess.Popen([sys.executable, os.path.abspath(__file__), "--run", window_url()], stdin=subprocess.DEVNULL, stdout=out, stderr=out)
+    proc.log = log
     end = time.monotonic() + timeout
     while time.monotonic() < end:
         if proc.poll() is not None:
             with open(log, encoding="utf-8", errors="replace") as f:
                 lines = f.read().strip().splitlines()
+            remove_log(log)
             raise RuntimeError("The headless window stopped" + (": " + lines[-1] if lines else "."))
         seen = status()
         if seen.get("live") and seen.get("allowed"):
@@ -93,9 +96,41 @@ def ensure(timeout: float = 90.0):
     raise RuntimeError(f"The headless window did not connect within {int(timeout)} seconds (page {window_url()}).")
 
 
+def remove_log(path: str) -> None:
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
+def clean_logs() -> None:
+    """Deletes the formvis-headless-PID.log files of runs that are gone (a process with that id no longer exists, or the file is over a day old)."""
+    import glob
+    folder = os.environ.get("TMPDIR", "/tmp")
+    for path in glob.glob(os.path.join(folder, "formvis-headless-*.log")):
+        try:
+            pid = int(os.path.basename(path)[len("formvis-headless-"):-len(".log")])
+            old = time.time() - os.path.getmtime(path) > 86400
+            if pid == os.getpid():
+                continue
+            os.kill(pid, 0)
+            alive = not old
+        except ValueError:
+            alive = False
+        except ProcessLookupError:
+            alive = False
+        except (PermissionError, OSError):
+            alive = True
+        if not alive:
+            remove_log(path)
+
+
 def release(proc) -> None:
     """Stops a window ensure started: asked to close, then killed if it does not within 20 seconds."""
-    if proc is None or proc.poll() is not None:
+    if proc is None:
+        return
+    if proc.poll() is not None:
+        remove_log(getattr(proc, "log", ""))
         return
     proc.terminate()
     try:
@@ -103,6 +138,7 @@ def release(proc) -> None:
     except subprocess.TimeoutExpired:
         proc.kill()
         proc.wait()
+    remove_log(getattr(proc, "log", ""))
     try:   # the engine counts a window live for 30 seconds after its last poll: tell it this one is gone
         urllib.request.urlopen(urllib.request.Request(ENGINE + "/api/mcp/bridge/stop", method="POST"), timeout=3).close()
     except (urllib.error.URLError, OSError):

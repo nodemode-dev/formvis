@@ -102,6 +102,7 @@ export type { Entry as HierarchyEntry } from './tree';
 import { ADJUSTMENT_LABELS, autoLevels, defaultAdjustmentData, desaturatePixels, equalizePixels, grainFromData as grainSettingsOf, grainParams, replaceColorPixels, type GrainParams, type ReplaceColorSettings } from './adjust';
 import { fromGray, gaussianBlur, histogram, resizeMask, toGray } from './filters';
 import { depthCorrect, isDepthName, type DepthCorrection } from './depth-map';
+import { limitOf, limitView } from './limit';
 import { APPLY_CHANNELS, APPLY_COVERAGE_CHANNELS, APPLY_MODES, applyImagePixels, channelSource, coverageSource, maskStrength, type ApplyChannel, type ApplyMode } from './apply-image';
 import { averageImage } from './filters-lib/blur';
 import type { LibFrame, LibImage, LibPath } from './filter-library';
@@ -1931,6 +1932,7 @@ export class Engine {
         // Phase 18.5: a per-channel adjustment goes to the GPU as its proven lookup table (engine/lut.ts); others, by name,
         // keep the document on the CPU, as does one with a blend mode of its own.
         if ((o?.blend ?? l.blend) !== 'normal') return { reason: 'an adjustment layer with a blend mode' };
+        if (limitOf(l.adjustment)) return { reason: 'an adjustment layer with a limit' };
         const lut = adjustmentLut(l.adjustment);
         if (lut) {
           layers.push({ image: null, lut, mask, clip, folders, version: 0, width: 256, height: 1, matrix: [1, 0, 0, 1, 0, 0], opacity: (o?.opacity ?? l.opacity) * (l.fill ?? 1), blend: 'normal' });
@@ -4188,8 +4190,17 @@ export class Engine {
   copyMask(source: ID, target: ID): void { LM.copyMask(this.maskHost, source, target); }
 
   copyLayerToProject(id: ID, targetKey: string): boolean { return LS.copyLayerToProject(this.structHost, id, targetKey); }
-  /** Copies the layers `ids` (with folder contents) into another open document; `keep` leaves their positions, else they are centred. */
-  copyLayersToProject(ids: readonly ID[], targetKey: string, keep = false): boolean { return LS.copyLayersToProject(this.structHost, ids, targetKey, keep ? 'keep' : 'center'); }
+  /** Copies the layers `ids` (with folder contents) into another open document; `keep` leaves their positions, an offset
+   *  moves them by that much, else they are centred. */
+  copyLayersToProject(ids: readonly ID[], targetKey: string, keep: boolean | { dx: number; dy: number } = false): boolean { return LS.copyLayersToProject(this.structHost, ids, targetKey, typeof keep === 'object' ? keep : keep ? 'keep' : 'center'); }
+  /** The layers `ids` into a new transparent document the size of their own (positions kept), as one new document. */
+  copyLayersToNewDocument(ids: readonly ID[]): boolean {
+    const src = this.current;
+    if (!src || !ids.length) return false;
+    const made = this.newDocument(src.doc.width, src.doc.height, `${src.name} copy`, 'transparent', src.doc.resolution);
+    if (!made) return false;
+    return LS.copyLayersToProject(this.structHost, ids, made.id, 'keep', true);
+  }
   private layerClip: { layers: Layer[]; roots: ID[]; width: number; height: number } | null = null;
   get canPasteLayers(): boolean { return !!this.layerClip; }
   /** Copy Layers: the selected layers as objects (masks, styles, live text, folder contents), kept for Paste Layers in any document. */
@@ -7596,7 +7607,12 @@ export class Engine {
   selectionAtBounds = false;
 
   /** View > Rulers, Guides, Grid and Lock Guides; the grid's spacing and subdivisions in document pixels. */
-  view = { rulers: false, guides: true, slices: false, slicesLocked: false, autoSlices: true, grid: false, guidesLocked: false, artboardGuides: true, gridSpacing: 100, gridSubdivisions: 4, patternPreview: false, pixelArt: false, parCorrection: false, tileGrid: false };
+  view = { rulers: false, guides: true, slices: false, slicesLocked: false, autoSlices: true, grid: false, guidesLocked: false, artboardGuides: true, gridSpacing: 100, gridSubdivisions: 4, gridUnit: 'px' as 'px' | 'in' | 'cm' | 'mm' | 'pt', patternPreview: false, pixelArt: false, parCorrection: false, tileGrid: false };
+  /** The grid's major spacing in document pixels: Gridline Every in its unit, through the open document's resolution. */
+  gridPixels(): number {
+    const ppi = this.current?.doc.resolution || 72, u = this.view.gridUnit;
+    return Math.max(0.5, this.view.gridSpacing * ({ px: 1, in: ppi, cm: ppi / 2.54, mm: ppi / 25.4, pt: ppi / 72 })[u]);
+  }
   /** A guide being dragged out of a ruler or across the canvas, drawn but not yet in the document. */
   guideDraft: { axis: 'x' | 'y'; at: number; index: number | null } | null = null;
 
@@ -10524,16 +10540,25 @@ export class Engine {
     if (!p || !l?.raster) { this.notice('This document has no Depth Map layer. Compute Depth Map first.'); return false; }
     if (l.raster.width !== p.doc.width || l.raster.height !== p.doc.height) { this.notice('The Depth Map layer must be the size of the document.'); return false; }
     this.settle();
-    const src = l.raster.read(), guide = kind === 'smooth' && snap ? this.depthSource(p, null) : null;
+    const src = l.raster.read(), guide = (kind === 'smooth' && snap) || kind === 'detail' ? this.depthSource(p, null) : null;
     const g = guide ? ctxOf(guide).getImageData(0, 0, guide.width, guide.height) : null;
     const fixed = depthCorrect(src, kind, amount, g), sel = p.selection, d = fixed.data, s = src.data, W = src.width;
     if (sel) for (let i = 0; i < d.length; i += 4) {
       const k = sel.valueAt((i / 4) % W, Math.floor(i / 4 / W)) / 255;
       for (let c = 0; c < 3; c++) d[i + c] = Math.round(s[i + c] + (d[i + c] - s[i + c]) * k);
     }
-    const names: Record<DepthCorrection, string> = { flatten: 'Flatten Depth Map', nearer: 'Depth Map Nearer', farther: 'Depth Map Farther', smooth: snap ? 'Snap Depth Map to Edges' : 'Smooth Depth Map' };
+    const names: Record<DepthCorrection, string> = { flatten: 'Flatten Depth Map', nearer: 'Depth Map Nearer', farther: 'Depth Map Farther', smooth: snap ? 'Snap Depth Map to Edges' : 'Smooth Depth Map', detail: 'Depth Map Detail' };
     return this.replaceLayerPixels(l.id, fixed, names[kind]);
   }
+
+  /** Show the effect: a filter or adjustment layer's limit shown as a grey matte (white where the effect reaches fully)
+   *  in place of the effect, or the picture again with null. */
+  showLimit(id: ID | null): void {
+    if (limitView.id === id) return;
+    limitView.id = id;
+    this.emit('render', null);
+  }
+  get limitViewId(): ID | null { return limitView.id; }
 
   /** The depth layer shown alone on the canvas, or the picture again. */
   depthView: { project: Project; id: ID } | null = null;
@@ -10914,6 +10939,7 @@ export class Engine {
       flattened: () => this.flattened(),
       snapBox: (l, t) => this.snapBox(l, t),
       view: this.view,
+      gridPixels: () => this.gridPixels(),
       setSnapGuides: (g) => { this.snapGuides = g; },
     };
   }

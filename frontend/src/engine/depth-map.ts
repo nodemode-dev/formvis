@@ -1,7 +1,7 @@
 /** Depth map corrections: plain pixel operations on the grey Depth Map layer (near bright, far dark). */
 
-export type DepthCorrection = 'flatten' | 'nearer' | 'farther' | 'smooth';
-export const DEPTH_CORRECTIONS: readonly DepthCorrection[] = ['flatten', 'nearer', 'farther', 'smooth'];
+export type DepthCorrection = 'flatten' | 'nearer' | 'farther' | 'smooth' | 'detail';
+export const DEPTH_CORRECTIONS: readonly DepthCorrection[] = ['flatten', 'nearer', 'farther', 'smooth', 'detail'];
 
 /** The layer name Compute Depth Map gives, which the depth commands look for. */
 export const DEPTH_LAYER_NAME = 'Depth Map';
@@ -18,6 +18,7 @@ export function depthCorrect(src: ImageData, kind: DepthCorrection, amount: numb
     const r = Math.max(1, Math.min(32, Math.round(amount)));
     return guide && guide.width === w && guide.height === h ? snapSmooth(src, guide, r) : boxSmooth(out, r);
   }
+  if (kind === 'detail') return guide && guide.width === w && guide.height === h ? addDetail(out, guide, Math.min(1, Math.max(0, amount))) : out;
   const k = Math.min(1, Math.max(0, amount));
   for (let i = 0; i < d.length; i += 4) {
     const v = d[i];
@@ -25,6 +26,19 @@ export function depthCorrect(src: ImageData, kind: DepthCorrection, amount: numb
     d[i] = d[i + 1] = d[i + 2] = Math.round(clamp(n));
   }
   return out;
+}
+
+/** Detail levels: the picture's fine brightness structure (its brightness minus a blur of it, radius 3) added to the
+ *  depth by `k` (0 to 1, at 1 it is added as it is), so small shapes the depth model smoothed away come back. */
+function addDetail(depth: ImageData, guide: ImageData, k: number): ImageData {
+  const w = depth.width, h = depth.height, g = guide.data, d = depth.data, grey = new ImageData(w, h), gd = grey.data;
+  for (let p = 0; p < w * h; p++) { const v = Math.round(0.299 * g[p * 4] + 0.587 * g[p * 4 + 1] + 0.114 * g[p * 4 + 2]); gd[p * 4] = gd[p * 4 + 1] = gd[p * 4 + 2] = v; gd[p * 4 + 3] = 255; }
+  const soft = boxSmooth(new ImageData(new Uint8ClampedArray(gd), w, h), 3).data;
+  for (let p = 0; p < w * h; p++) {
+    const v = clamp(d[p * 4] + (gd[p * 4] - soft[p * 4]) * k);
+    d[p * 4] = d[p * 4 + 1] = d[p * 4 + 2] = Math.round(v);
+  }
+  return depth;
 }
 
 /** A box blur of the grey value, two passes, separable. */

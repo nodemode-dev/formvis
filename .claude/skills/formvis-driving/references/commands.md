@@ -1,6 +1,6 @@
 # formvis commands
 
-Generated from the window's command catalogue (1568 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1572 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
@@ -9,16 +9,16 @@ Generated from the window's command catalogue (1568 commands) by `./formvis agen
 - Filter: 93
 - Generate: 6
 - Help: 5
-- Image: 120
-- Layer: 268
+- Image: 121
+- Layer: 269
 - Paint: 1
 - Paths: 12
 - Select: 44
 - Tool options: 445
 - Tools: 53
 - Type: 66
-- View: 99
-- Window: 147
+- View: 100
+- Window: 148
 
 ## Edit
 
@@ -420,6 +420,7 @@ Generated from the window's command catalogue (1568 commands) by `./formvis agen
 | `depth-16` | 16 Bits/Channel |  | Sets 16 bits per channel. (changes the picture) |
 | `depth-32` | 32 Bits/Channel |  | Sets 32 bits per channel. (changes the picture) |
 | `depth-8` | 8 Bits/Channel |  | Sets 8 bits per channel. (changes the picture) |
+| `depth-map-detail` | Depth Map Detail |  | Adds the picture's own fine brightness detail to the Depth Map layer by a percentage, inside the selection when there is one. (changes the picture) |
 | `depth-map-farther` | Depth Map Farther |  | Darkens the Depth Map layer by a percentage of its range, inside the selection when there is one. (changes the picture) |
 | `depth-map-flatten` | Flatten Depth Map |  | Pulls the Depth Map layer toward mid grey by a percentage, inside the selection when there is one. (changes the picture) |
 | `depth-map-from-layer` | Depth Map from Layer |  | Reads the depth of the active layer alone with the local depth model and adds it as a grey layer named Depth Map. (changes the picture) |
@@ -525,6 +526,7 @@ Generated from the window's command catalogue (1568 commands) by `./formvis agen
 | `convert-smart` | Convert to Smart Object |  | Converts the layer to a smart object. (changes the picture) |
 | `copy-layer-style` | Copy Layer Style |  | Copies the layer style. |
 | `copy-layers` | Copy Layers |  | Copies the selected layers as objects, with masks, styles, live text and folder contents, for Paste Layers in any open document. |
+| `copy-layers-to-document` | Copy Layers to Document |  | Copies the selected layers, with masks, styles, live text and folder contents, into another open document or a new one; params document (name, number from 1, or new), x and y offset. |
 | `copy-style-below` | Copy Layer Style to Layer Below |  | Copies the active layer's effects onto the layer below it, replacing that layer's effects. (changes the picture) |
 | `create-layers` | Create Layers |  | Turns the layer effects into layers. (changes the picture) |
 | `delete-filter-mask` | Delete Smart Filter Mask |  | Deletes the smart filter mask. (changes the picture) |
@@ -1489,6 +1491,7 @@ Generated from the window's command catalogue (1568 commands) by `./formvis agen
 | `fit-layers` | Fit Layer(s) on Screen |  | Zooms so the selected layers' content fills the window. |
 | `flip-view-h` | Flip Horizontal |  | Mirrors the view of the document left to right, for this document only; the pixels are not changed and the pointer still lands on the right pixel. |
 | `gamut-warning` | Gamut Warning | Shift+Mod+Y | Turns the gamut warning on or off. |
+| `grid-settings` | Grid Settings... |  | Opens Preferences on Guides & Grid: the grid colour with presets, line style, opacity, spacing and subdivisions, with Restore Defaults. |
 | `guide-layout` | New Guide Layout... |  | Opens New Guide Layout: columns and rows with gutters inside margins, placed as guides in one step. (changes the picture) |
 | `guides-from-shape` | New Guides From Shape |  | Places guides on the edges, the centre or both of the active shape layer or of the selection; the source, edges and centre can be chosen. |
 | `guides-from-shape-centre` | New Guides From Shape Centre |  | Places one vertical and one horizontal guide through the centre of the active shape layer, or of the selection. |
@@ -1639,6 +1642,7 @@ Generated from the window's command catalogue (1568 commands) by `./formvis agen
 | `panel-channels` | Channels |  | Shows the Channels tab, opening the layers panel group if it is hidden. |
 | `panel-character` | Character |  | Shows or hides the Character panel. |
 | `panel-clone-source` | Clone Source |  | Shows or hides the Clone Source panel. |
+| `panel-close-group` | Close Panel Group |  | Closes a whole panel group, every tab in it, by hiding it; param panel is a group id or a tab id; the Window menu shows it again. |
 | `panel-color` | Color | F6 | Shows the Color picker, opening its panel group if it is hidden. |
 | `panel-comfyui` | ComfyUI |  | Shows or hides the ComfyUI panel, ComfyUI's own page inside the window, with a Save graph bar that keeps the graph ComfyUI ran last as a recipe (new, or replacing one) and reports the nodes and models ComfyUI lacks. |
 | `panel-dock` | Dock Panel |  | Returns a floating panel to its place in its column; params panel. |
