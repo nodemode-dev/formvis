@@ -86,7 +86,12 @@ export class HomeFiles {
   private readonly loading = new Set<string>();
   private run = 0;
 
-  constructor(private readonly d: HomeFilesDeps) {
+  /** `fixed` shows one tab only (Home's own pages, 1.87.3); `limit` with `compact` is the Start page's short grid. */
+  constructor(private readonly d: HomeFilesDeps, private readonly opts: { fixed?: Tab; limit?: number; compact?: boolean; onCount?: (n: number) => void } = {}) {
+    if (opts.fixed) this.prefs.tab = opts.fixed;
+    if (opts.compact) this.prefs.view = 'grid';
+    setClass(this.root, 'is-fixed', !!opts.fixed);
+    setClass(this.root, 'is-compact', !!opts.compact);
     for (const b of Array.from(this.root.querySelectorAll<HTMLButtonElement>('.cv-hf-tab'))) b.addEventListener('click', () => { this.prefs.tab = b.dataset.tab as Tab; this.save(); void this.refresh(); });
     for (const b of Array.from(this.root.querySelectorAll<HTMLButtonElement>('.cv-hf-view'))) b.addEventListener('click', () => { this.prefs.view = b.dataset.view as View; this.save(); this.chrome(); });
     this.sort.value = this.prefs.sort;
@@ -101,7 +106,10 @@ export class HomeFiles {
     this.chrome();
   }
 
-  private save(): void { try { localStorage.setItem(PREFS, JSON.stringify(this.prefs)); } catch { /* the choice lasts this session */ } }
+  private save(): void {
+    if (this.opts.fixed) { this.prefs.tab = this.opts.fixed; }
+    try { const keep = readPrefs(); localStorage.setItem(PREFS, JSON.stringify({ ...keep, sort: this.prefs.sort, view: this.opts.compact ? keep.view : this.prefs.view, tab: this.opts.fixed ? keep.tab : this.prefs.tab })); } catch { /* the choice lasts this session */ }
+  }
 
   /** Tabs and view buttons pressed state, the grid or list class: attribute writes only. */
   private chrome(): void {
@@ -132,6 +140,7 @@ export class HomeFiles {
     }
     if (run !== this.run) return;
     this.all = items;
+    this.opts.onCount?.(items.length);
     this.render();
   }
 
@@ -143,6 +152,7 @@ export class HomeFiles {
     else if (sort === 'size') shown.sort((a, b) => b.size - a.size);
     else if (sort === 'kind') shown.sort((a, b) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name));
     else if (this.prefs.tab !== 'recent') shown.sort((a, b) => b.when - a.when);
+    if (this.opts.limit) shown.splice(this.opts.limit);
     patchList(this.items, shown, { key: (i) => i.key, create: (i) => this.row(i), update: (n, i) => this.fillRow(n, i) });
     const none = this.all.length === 0 ? (this.prefs.tab === 'recent' ? 'Projects and pictures you open or save appear here.' : this.prefs.tab === 'projects' ? 'No projects in the library yet. Save a document to add it.' : 'Exports appear here once you export a picture.') : 'No files match the filter.';
     setText(this.empty, none);
