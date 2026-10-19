@@ -11,9 +11,16 @@ export class ScopesView {
   private readonly highlightClip = el<HTMLLabelElement>('<label class="cv-field cv-check"><span>Highlight clipping</span><input type="checkbox" aria-label="Show highlight clipping"></label>');
   /** What share of the pixels is pure black or pure white in some channel, shown beside the toggles. */
   readonly clipNote = el('<p class="cv-note" aria-live="polite"></p>');
+  /** The red, green and blue pixel counts at the histogram level under the pointer. */
+  readonly readout = el('<p class="cv-note" aria-live="off">Move over the histogram for its levels</p>');
 
   constructor() {
-    this.el.append(this.which, this.canvas, this.shadowClip, this.highlightClip, this.clipNote);
+    this.el.append(this.which, this.canvas, this.readout, this.shadowClip, this.highlightClip, this.clipNote);
+    this.canvas.addEventListener('pointermove', (e) => {
+      if (!this.last || this.which.value !== 'histogram') return;
+      const box = this.canvas.getBoundingClientRect(), level = Math.max(0, Math.min(255, Math.floor(((e.clientX - box.left) / Math.max(1, box.width)) * 256))), h = histogram(this.last);
+      this.readout.textContent = `Level ${level}: R ${h.r[level]}, G ${h.g[level]}, B ${h.b[level]}`;
+    });
     this.which.addEventListener('change', () => { if (this.last) this.draw(this.last); });
     for (const t of [this.shadowClip, this.highlightClip]) t.querySelector('input')?.addEventListener('change', () => { if (this.last) this.draw(this.last); });
   }

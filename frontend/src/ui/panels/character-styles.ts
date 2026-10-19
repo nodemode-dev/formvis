@@ -27,6 +27,7 @@ export class CharacterStylesDialog extends Dialog {
       act('Apply', () => { const id = chosen(); return id ? this.engine.applyCharacterStyle(id) : undefined; }),
       act('Clear Override', () => this.engine.clearCharacterStyle()),
       act('Redefine', () => { const id = chosen(); return id ? this.engine.redefineCharacterStyle(id) : undefined; }),
+      act('Duplicate', () => { const id = chosen(); const copy = id ? this.engine.duplicateCharacterStyle(id) : null; if (copy) this.refresh(copy); }),
       act('Rename', () => { const id = chosen(); if (id) { this.engine.renameCharacterStyle(id, this.name.value); this.name.value = ''; } }),
       act('Delete', () => { const id = chosen(); if (id) this.engine.deleteCharacterStyle(id); }),
     );

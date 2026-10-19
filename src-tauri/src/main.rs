@@ -27,6 +27,10 @@ struct OpenQueue(Mutex<Opens>);
 /// close or quit request goes through instead of being handed to the page.
 struct ExitGate(AtomicBool);
 
+/// Set when an update was installed at start: the page settles unsaved documents first, and confirm_exit then restarts
+/// the app instead of quitting it. The page clears it (confirm_exit with cancel) when the person cancels the quit.
+struct RestartAfterExit(AtomicBool);
+
 /// The update the last check found, kept for install_update.
 struct FoundUpdate(Mutex<Option<tauri_plugin_updater::Update>>);
 
@@ -171,8 +175,16 @@ fn take_pending_opens(queue: tauri::State<OpenQueue>) -> Vec<String> {
 
 /// The page has saved or discarded every unsaved document: the app may exit now. The engine is stopped by the Exit event.
 #[tauri::command]
-fn confirm_exit(app: tauri::AppHandle) {
+fn confirm_exit(app: tauri::AppHandle, cancel: Option<bool>) {
+    let restart = app.state::<RestartAfterExit>().0.swap(false, Ordering::SeqCst);
+    if cancel == Some(true) {
+        return;
+    }
     open_exit_gate(&app);
+    if restart {
+        kill_backend(&app);
+        app.restart();
+    }
     app.exit(0);
 }
 
@@ -241,9 +253,13 @@ fn check_for_updates(handle: tauri::AppHandle) {
             .buttons(MessageDialogButtons::OkCancel)
             .blocking_show();
         if accepted && update.download_and_install(|_, _| {}, || {}).await.is_ok() {
-            open_exit_gate(&handle);
-            kill_backend(&handle);
-            handle.restart();
+            // The page settles unsaved documents and writes its recovery copies first; confirm_exit restarts after.
+            handle.state::<RestartAfterExit>().0.store(true, Ordering::SeqCst);
+            if !ask_page_to_quit(&handle) {
+                open_exit_gate(&handle);
+                kill_backend(&handle);
+                handle.restart();
+            }
         }
     });
 }
@@ -306,6 +322,7 @@ fn main() {
         .manage(native::NativeState::default())
         .manage(OpenQueue(Mutex::new(Opens::default())))
         .manage(ExitGate(AtomicBool::new(false)))
+        .manage(RestartAfterExit(AtomicBool::new(false)))
         .manage(FoundUpdate(Mutex::new(None)))
         .on_window_event(|window, event| {
             // The window's close button: the page asks about unsaved documents first and exits through confirm_exit.

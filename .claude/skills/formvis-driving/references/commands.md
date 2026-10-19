@@ -1,23 +1,23 @@
 # formvis commands
 
-Generated from the window's command catalogue (1236 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1289 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
-- Edit: 72
-- File: 83
+- Edit: 74
+- File: 84
 - Filter: 86
 - Generate: 6
 - Help: 3
 - Image: 97
-- Layer: 240
+- Layer: 241
 - Paint: 1
-- Paths: 9
-- Select: 35
-- Tool options: 339
-- Tools: 52
-- Type: 30
-- View: 86
+- Paths: 10
+- Select: 42
+- Tool options: 359
+- Tools: 53
+- Type: 49
+- View: 87
 - Window: 97
 
 ## Edit
@@ -56,6 +56,8 @@ Generated from the window's command catalogue (1236 commands) by `./formvis agen
 | `layer-rotate-90-cw` | Rotate 90° Clockwise |  | Turns the layer 90 degrees clockwise. (changes the picture) |
 | `load-brushes` | Load Brushes... |  | Loads brushes from an .abr file. |
 | `new-snapshot` | New Snapshot |  | Stores the current state as a snapshot in History. |
+| `new-snapshot-layer` | New Snapshot of Current Layer |  | Stores only the selected layer as a snapshot in History. |
+| `new-snapshot-merged` | New Snapshot of Merged Layers |  | Stores the picture as it looks now, merged into one layer, as a snapshot in History. |
 | `paste` | Paste | Mod+V | Pastes the clipboard as a new layer, centred in view when the copied place is off screen. (changes the picture) |
 | `paste-in-place` | Paste in Place | Shift+Mod+V | Pastes at the position the pixels were copied from. (changes the picture) |
 | `paste-into` | Paste Into | Alt+Shift+Mod+V | Pastes into the selection with a mask. (changes the picture) |
@@ -115,6 +117,7 @@ Generated from the window's command catalogue (1236 commands) by `./formvis agen
 | `create-video-timeline` | Create Video Timeline |  | Creates a video timeline from the document layers. (changes the picture) |
 | `crop-straighten-photos` | Crop and Straighten Photos |  | Finds each photo on a scanned page, straightens it and opens it as its own document. (changes the picture) |
 | `download-project` | Download Project File |  | Downloads the project file through the browser. (asks first) |
+| `earlier-states` | Earlier States... |  | Opens a list of the last two sessions and the crash sets formvis kept, to reopen as tabs. |
 | `export-artboards` | Export Artboards to Files |  | Exports every artboard to its own file. (asks first) |
 | `export-artboards-files` | Artboards to Files... |  | Exports each artboard to its own file in a chosen type and quality; opens the dialog, or runs at once when given any of prefix, format, quality, icc or folder. (asks first) |
 | `export-artboards-pdf` | Artboards to PDF... |  | Exports every artboard as one page of a single PDF, in the Layers order, each page at its artboard size from the document resolution; takes name, jpeg, quality and icc. (asks first) |
@@ -548,6 +551,7 @@ Generated from the window's command catalogue (1236 commands) by `./formvis agen
 | `new-layer` | New Layer |  | Adds an empty layer above the active one. (changes the picture) |
 | `new-layer-dialog` | Layer... | Shift+Mod+N | Opens the New Layer dialog with name, colour and mode. (changes the picture) |
 | `new-relight-layer` | Relight Layer... |  | Adds a Relight layer that lights what lies beneath it with virtual lights, on this computer. (changes the picture) |
+| `new-type-layer` | Type Layer |  | Adds a type layer from text, position, size, colour, orientation and an optional paragraph box; with no text it starts typing on the canvas. (changes the picture) |
 | `panorama-apply-view` | Apply View to Panorama |  | Projects the current panorama edit view back onto its source panorama as a new layer named Panorama edit, one undo step. (changes the picture) |
 | `panorama-view` | Spherical Panorama... |  | Opens the active document, taken as an equirectangular picture, as a sphere you turn by dragging, with yaw, pitch and field of view; Edit View makes the current view a new document. (changes the picture) |
 | `paste-layer-style` | Paste Layer Style |  | Pastes the copied layer style. (changes the picture) |
@@ -686,7 +690,7 @@ Generated from the window's command catalogue (1236 commands) by `./formvis agen
 ### paint.stroke parameters
 
 - `points`: array; required; Points in document pixels: [{x, y, pressure?}] with pressure 0 to 1, or [x, y, pressure?] triples
-- `tool`: string (brush | pencil | eraser | mixer | smear | dodge | burn | sponge); Painting tool to use; the active tool when omitted
+- `tool`: string (brush | pencil | eraser | mixer | colorReplace | smear | dodge | burn | sponge); Painting tool to use; the active tool when omitted
 
 ## Paths
 
@@ -699,6 +703,7 @@ Generated from the window's command catalogue (1236 commands) by `./formvis agen
 | `new-path` | New Path |  | Starts a new empty path. (changes the picture) |
 | `new-shape-path` | New Shape Layer from Path |  | Makes a shape layer from the current path. (changes the picture) |
 | `path-selection` | Make Selection from Path | Mod+Enter | Makes a selection from the current path. (changes the picture) |
+| `selection-to-work-path` | Make Work Path from Selection |  | Traces the selection's outline into the Work Path in the Paths panel, simplified within a tolerance in pixels. (changes the picture) |
 | `stroke-path` | Stroke Path |  | Strokes the path with the current brush. (changes the picture) |
 | `stroke-path-dialog` | Stroke Path... |  | Opens Stroke Path. (changes the picture) |
 
@@ -706,6 +711,7 @@ Generated from the window's command catalogue (1236 commands) by `./formvis agen
 
 | Id | Name | Keys | Does |
 | --- | --- | --- | --- |
+| `auto-select-sample-all` | Sample All Layers |  | Toggles whether Subject, Sky and Object in Selection look at the whole picture or the active layer alone. |
 | `border` | Border... |  | Opens Border to select a band along the edge. (changes the picture) |
 | `channel-down` | Move Channel Down |  | Moves a channel one place down the list. (changes the picture) |
 | `channel-options` | Channel Options... |  | Sets a channel name, overlay colour and opacity. (changes the picture) |
@@ -713,6 +719,7 @@ Generated from the window's command catalogue (1236 commands) by `./formvis agen
 | `color-range` | Color Range... |  | Opens Color Range. (changes the picture) |
 | `contract` | Contract by 1 px... |  | Contracts the selection by the given pixels, or opens Contract when none are given. (changes the picture) |
 | `convert-to-shape` | Convert to Shape |  | Turns the selection into a shape layer. (changes the picture) |
+| `convert-to-shape-tolerance` | Convert to Shape Tolerance... |  | Asks for a Tolerance, then turns the selection into a shape layer with that much simplifying. (changes the picture) |
 | `deselect` | Deselect | Mod+D | Clears the selection. (changes the picture) |
 | `duplicate-channel` | Duplicate Channel |  | Copies a channel. (changes the picture) |
 | `expand` | Expand by 1 px... |  | Expands the selection by the given pixels, or opens Expand when none are given. (changes the picture) |
@@ -732,6 +739,9 @@ Generated from the window's command catalogue (1236 commands) by `./formvis agen
 | `save-selection-channel` | Save Selection as Channel |  | Saves the selection as a new channel. (changes the picture) |
 | `select-all` | All | Mod+A | Selects the whole canvas. (changes the picture) |
 | `select-and-mask` | Select and Mask... | Alt+Mod+R | Opens Select and Mask to refine edges. (changes the picture) |
+| `select-color-range` | Select Color Range |  | Selects by sampled colour, hue family, tone, skin tones or the Depth Map layer, combined with the selection as asked. (changes the picture) |
+| `select-drop` | Drop Floating Pixels |  | Drops the floating selection onto its layer as one step. (changes the picture) |
+| `select-float` | Float Selected Pixels |  | Lifts the selected pixels of the active layer into a floating selection that takes the Move tool's handles, until dropped. (changes the picture) |
 | `select-object` | Object in Selection |  | Selects the object inside the current selection. (changes the picture) |
 | `select-sky` | Sky |  | Selects the sky. (changes the picture) |
 | `select-subject` | Subject |  | Selects the main subject. (changes the picture) |
@@ -739,6 +749,8 @@ Generated from the window's command catalogue (1236 commands) by `./formvis agen
 | `select.lasso` | Lasso Selection |  | Selects the polygon through the points. (changes the picture) |
 | `select.rect` | Rectangular Selection |  | Selects a rectangle in document pixels. (changes the picture) |
 | `similar` | Similar |  | Selects all pixels in the picture similar to the selection. (changes the picture) |
+| `sky-sensitivity` | Sky Sensitivity... |  | Asks for Sky's Sensitivity, how readily faint sky counts. |
+| `sky-softness` | Sky Edge Softness... |  | Asks for the edge softness Select Sky feathers by. |
 | `smooth` | Smooth... |  | Opens Smooth to round the selection corners. (changes the picture) |
 | `transform-selection` | Transform Selection |  | Starts transforming the selection outline. (changes the picture) |
 
@@ -838,6 +850,7 @@ Generated from the window's command catalogue (1236 commands) by `./formvis agen
 | `tool.options.burn.pressureCurve` | Burn: Pressure curve |  | Sets Pressure curve for the Burn tool. |
 | `tool.options.burn.protectTones` | Burn: Protect Tones |  | Sets Protect Tones for the Burn tool. |
 | `tool.options.burn.range` | Burn: Range |  | Sets Range for the Burn tool. |
+| `tool.options.burn.sample` | Burn: Sample |  | Sets Sample for the Burn tool. |
 | `tool.options.burn.size` | Burn: Size |  | Sets Size for the Burn tool. |
 | `tool.options.burn.strength` | Burn: Strength |  | Sets Strength for the Burn tool. |
 | `tool.options.burn.symmetry` | Burn: Symmetry |  | Sets Symmetry for the Burn tool. |
@@ -864,7 +877,19 @@ Generated from the window's command catalogue (1236 commands) by `./formvis agen
 | `tool.options.cloneStamp.symmetry` | Clone Stamp: Symmetry |  | Sets Symmetry for the Clone Stamp tool. |
 | `tool.options.cloneStamp.symmetryX` | Clone Stamp: Symmetry X |  | Sets Symmetry X for the Clone Stamp tool. |
 | `tool.options.cloneStamp.symmetryY` | Clone Stamp: Symmetry Y |  | Sets Symmetry Y for the Clone Stamp tool. |
+| `tool.options.colorReplace.hardness` | Color Replacement: Hardness |  | Sets Hardness for the Color Replacement tool. |
+| `tool.options.colorReplace.mode` | Color Replacement: Mode |  | Sets Mode for the Color Replacement tool. |
+| `tool.options.colorReplace.opacity` | Color Replacement: Opacity |  | Sets Opacity for the Color Replacement tool. |
+| `tool.options.colorReplace.pressureCurve` | Color Replacement: Pressure curve |  | Sets Pressure curve for the Color Replacement tool. |
+| `tool.options.colorReplace.sampling` | Color Replacement: Sampling |  | Sets Sampling for the Color Replacement tool. |
+| `tool.options.colorReplace.size` | Color Replacement: Size |  | Sets Size for the Color Replacement tool. |
+| `tool.options.colorReplace.symmetry` | Color Replacement: Symmetry |  | Sets Symmetry for the Color Replacement tool. |
+| `tool.options.colorReplace.symmetryX` | Color Replacement: Symmetry X |  | Sets Symmetry X for the Color Replacement tool. |
+| `tool.options.colorReplace.symmetryY` | Color Replacement: Symmetry Y |  | Sets Symmetry Y for the Color Replacement tool. |
+| `tool.options.colorReplace.tolerance` | Color Replacement: Tolerance |  | Sets Tolerance for the Color Replacement tool. |
+| `tool.options.contentAwareMove.color` | Content-Aware Move: Color |  | Sets Color for the Content-Aware Move tool. |
 | `tool.options.contentAwareMove.mode` | Content-Aware Move: Mode |  | Sets Mode for the Content-Aware Move tool. |
+| `tool.options.contentAwareMove.structure` | Content-Aware Move: Structure |  | Sets Structure for the Content-Aware Move tool. |
 | `tool.options.crop.contentAware` | Crop: Content-Aware |  | Sets Content-Aware for the Crop tool. |
 | `tool.options.crop.deleteCroppedPixels` | Crop: Delete Cropped Pixels |  | Sets Delete Cropped Pixels for the Crop tool. |
 | `tool.options.crop.h` | Crop: H |  | Sets H for the Crop tool. |
@@ -885,6 +910,7 @@ Generated from the window's command catalogue (1236 commands) by `./formvis agen
 | `tool.options.dodge.pressureCurve` | Dodge: Pressure curve |  | Sets Pressure curve for the Dodge tool. |
 | `tool.options.dodge.protectTones` | Dodge: Protect Tones |  | Sets Protect Tones for the Dodge tool. |
 | `tool.options.dodge.range` | Dodge: Range |  | Sets Range for the Dodge tool. |
+| `tool.options.dodge.sample` | Dodge: Sample |  | Sets Sample for the Dodge tool. |
 | `tool.options.dodge.size` | Dodge: Size |  | Sets Size for the Dodge tool. |
 | `tool.options.dodge.strength` | Dodge: Strength |  | Sets Strength for the Dodge tool. |
 | `tool.options.dodge.symmetry` | Dodge: Symmetry |  | Sets Symmetry for the Dodge tool. |
@@ -984,6 +1010,7 @@ Generated from the window's command catalogue (1236 commands) by `./formvis agen
 | `tool.options.move.warpGrid` | Move: Warp grid |  | Sets Warp grid for the Move tool. |
 | `tool.options.move.x` | Move: X |  | Sets X for the Move tool. |
 | `tool.options.move.y` | Move: Y |  | Sets Y for the Move tool. |
+| `tool.options.objectSelect.antiAlias` | Object Selection: Anti-alias |  | Sets Anti-alias for the Object Selection tool. |
 | `tool.options.objectSelect.mode` | Object Selection: Mode |  | Sets Mode for the Object Selection tool. |
 | `tool.options.objectSelect.objectFinder` | Object Selection: Object Finder |  | Sets Object Finder for the Object Selection tool. |
 | `tool.options.objectSelect.sampleAllLayers` | Object Selection: Sample All Layers |  | Sets Sample All Layers for the Object Selection tool. |
@@ -1022,14 +1049,17 @@ Generated from the window's command catalogue (1236 commands) by `./formvis agen
 | `tool.options.pencil.symmetry` | Pencil: Symmetry |  | Sets Symmetry for the Pencil tool. |
 | `tool.options.pencil.symmetryX` | Pencil: Symmetry X |  | Sets Symmetry X for the Pencil tool. |
 | `tool.options.pencil.symmetryY` | Pencil: Symmetry Y |  | Sets Symmetry Y for the Pencil tool. |
+| `tool.options.quickSelect.enhanceEdge` | Quick Selection: Enhance Edge |  | Sets Enhance Edge for the Quick Selection tool. |
 | `tool.options.quickSelect.sampleAllLayers` | Quick Selection: Sample all layers |  | Sets Sample all layers for the Quick Selection tool. |
 | `tool.options.quickSelect.selection` | Quick Selection: Selection |  | Sets Selection for the Quick Selection tool. |
 | `tool.options.quickSelect.size` | Quick Selection: Size |  | Sets Size for the Quick Selection tool. |
 | `tool.options.redEye.darkenAmount` | Red Eye: Darken Amount |  | Sets Darken Amount for the Red Eye tool. |
 | `tool.options.redEye.pupilSize` | Red Eye: Pupil Size |  | Sets Pupil Size for the Red Eye tool. |
 | `tool.options.remove.hardness` | Remove: Hardness |  | Sets Hardness for the Remove tool. |
+| `tool.options.remove.lamaNewLayer` | Remove: LaMa (new layer) |  | Sets LaMa (new layer) for the Remove tool. |
 | `tool.options.remove.opacity` | Remove: Opacity |  | Sets Opacity for the Remove tool. |
 | `tool.options.remove.pressureCurve` | Remove: Pressure curve |  | Sets Pressure curve for the Remove tool. |
+| `tool.options.remove.sample` | Remove: Sample |  | Sets Sample for the Remove tool. |
 | `tool.options.remove.size` | Remove: Size |  | Sets Size for the Remove tool. |
 | `tool.options.remove.symmetry` | Remove: Symmetry |  | Sets Symmetry for the Remove tool. |
 | `tool.options.remove.symmetryX` | Remove: Symmetry X |  | Sets Symmetry X for the Remove tool. |
@@ -1072,6 +1102,7 @@ Generated from the window's command catalogue (1236 commands) by `./formvis agen
 | `tool.options.sponge.hardness` | Sponge: Hardness |  | Sets Hardness for the Sponge tool. |
 | `tool.options.sponge.mode` | Sponge: Mode |  | Sets Mode for the Sponge tool. |
 | `tool.options.sponge.pressureCurve` | Sponge: Pressure curve |  | Sets Pressure curve for the Sponge tool. |
+| `tool.options.sponge.sample` | Sponge: Sample |  | Sets Sample for the Sponge tool. |
 | `tool.options.sponge.size` | Sponge: Size |  | Sets Size for the Sponge tool. |
 | `tool.options.sponge.strength` | Sponge: Strength |  | Sets Strength for the Sponge tool. |
 | `tool.options.sponge.symmetry` | Sponge: Symmetry |  | Sets Symmetry for the Sponge tool. |
@@ -1096,6 +1127,7 @@ Generated from the window's command catalogue (1236 commands) by `./formvis agen
 | `tool.options.type.hyphenate` | Type: Hyphenate |  | Sets Hyphenate for the Type tool. |
 | `tool.options.type.kerning` | Type: Kerning |  | Sets Kerning for the Type tool. |
 | `tool.options.type.language` | Type: Language |  | Sets Language for the Type tool. |
+| `tool.options.type.languageOptions` | Type: Language Options |  | Sets Language Options for the Type tool. |
 | `tool.options.type.leading` | Type: Leading |  | Sets Leading for the Type tool. |
 | `tool.options.type.opentype` | Type: OpenType |  | Sets OpenType for the Type tool. |
 | `tool.options.type.orientation` | Type: Orientation |  | Sets Orientation for the Type tool. |
@@ -1120,6 +1152,7 @@ Generated from the window's command catalogue (1236 commands) by `./formvis agen
 | `tool.select.bucket` | Paint Bucket Tool |  | Makes the Paint Bucket tool the active tool (key G). Click to fill the area of similar color with the foreground color · Tolerance sets how similar · Stays inside the selection |
 | `tool.select.burn` | Burn Tool |  | Makes the Burn tool the active tool (key O). Paint to darken, most in the chosen tonal range · [ ] size |
 | `tool.select.cloneStamp` | Clone Stamp Tool |  | Makes the Clone Stamp tool the active tool (key S). Alt-click sets the source, then paint to copy from it · Aligned keeps the offset between strokes · Sample All Layers copies what you see · [ ] size |
+| `tool.select.colorReplace` | Color Replacement Tool |  | Makes the Color Replacement tool the active tool (key B). Drag over a colour to replace it with the foreground color · Tolerance sets how far from it colours match · [ ] size |
 | `tool.select.colorSampler` | Color Sampler Tool |  | Makes the Color Sampler tool the active tool (key I). Click to place a sampler (up to ten) · Drag one to move it · Alt-click one to remove it · Its colour shows in Window > Info |
 | `tool.select.contentAwareMove` | Content-Aware Move Tool |  | Makes the Content-Aware Move tool the active tool (key J). Draw around what to move, then drag it: the hole it leaves is filled from around it |
 | `tool.select.convertPoint` | Convert Point Tool |  | Makes the Convert Point tool the active tool (key P). Click a smooth point to make it a corner · Drag from a point to pull out smooth handles · Drag a handle to move it alone |
@@ -1162,7 +1195,7 @@ Generated from the window's command catalogue (1236 commands) by `./formvis agen
 | `tool.select.sponge` | Sponge Tool |  | Makes the Sponge tool the active tool (key O). Paint to take color out, or with Saturate, to strengthen it · [ ] size |
 | `tool.select.spotHealing` | Spot Healing Tool |  | Makes the Spot Healing tool the active tool (key J). Paint over a spot and it heals on release · Content-Aware copies a matching patch nearby · Create Texture fills smoothly with matching grain · Proximity Match prefers the nearest patch · [ ] size |
 | `tool.select.type` | Type Tool |  | Makes the Type tool the active tool (key T). Click to add point text · Drag a box for paragraph text · Click a type layer to edit its text |
-| `tool.select.wand` | Magic Wand Tool |  | Makes the Magic Wand tool the active tool (key W). Click to select similar colours · Shift adds · Alt subtracts · Tolerance sets how alike · Arrows nudge the outline |
+| `tool.select.wand` | Magic Wand Tool |  | Makes the Magic Wand tool the active tool (key W). Click to select similar colours · Shift adds · Alt subtracts · Tolerance sets how alike · With a layer mask targeted it samples the mask · Arrows nudge the outline |
 | `tool.select.zoom` | Zoom Tool |  | Makes the Zoom tool the active tool (key Z). Click zooms in · Alt-click zooms out · Drag right or left to zoom smoothly · Space pans |
 
 ## Type
@@ -1183,18 +1216,37 @@ Generated from the window's command catalogue (1236 commands) by `./formvis agen
 | `font-preview-medium` | Medium |  | Draws each family in the font menus in its own face, medium (the default). |
 | `font-preview-none` | None |  | Shows the font menus plainly, each family in the interface font. |
 | `font-preview-small` | Small |  | Draws each family in the font menus in its own face, small. |
+| `language-default` | Default Features |  | Sets the active type layer, and new type, to the browser's default shaping. (changes the picture) |
+| `language-east-asian` | East Asian Features |  | Sets the active type layer, and new type, to East Asian features: Japanese glyph forms by default and legibility-first shaping. (changes the picture) |
+| `language-middle-eastern` | Middle Eastern Features |  | Sets the active type layer, and new type, to Middle Eastern features: right-to-left base direction, Arabic shaping by default. (changes the picture) |
 | `list-fonts` | List Fonts |  | Returns the font families the type menus offer, the four faces each has and the family new text uses. (changes the picture) |
-| `load-default-type-styles` | Load Default Type Styles |  | Adds the default Heading 1, Heading 2, Body and Caption paragraph styles to the document. |
+| `load-default-type-styles` | Load Default Type Styles |  | Adds the saved default type styles (else Heading 1, Heading 2, Body and Caption) to the document and takes the saved Type settings for new type. (changes the picture) |
 | `paragraph-styles` | Paragraph Styles... |  | Opens Paragraph Styles. |
-| `paste-lorem-ipsum` | Paste Lorem Ipsum |  | Appends a Lorem Ipsum paragraph to the active type layer, or starts a new paragraph type layer when none is active. (changes the picture) |
+| `paste-lorem-ipsum` | Paste Lorem Ipsum |  | Puts a Lorem Ipsum paragraph at the caret while typing, or at a character position or the end of the active type layer, or starts a new paragraph type layer when none is active or new_layer is true. (changes the picture) |
 | `replace-missing-fonts` | Replace All Missing Fonts |  | Sets every type layer whose font is not installed to the default font in one undo step. (changes the picture) |
+| `reset-character` | Reset Character |  | Puts the active type layer, and new type, back to the factory character attributes: font, size, style, leading, tracking, kerning, OpenType features, caps, scale, baseline shift and variable axes. (changes the picture) |
+| `reset-paragraph` | Reset Paragraph |  | Puts the active type layer, and new type, back to the factory paragraph attributes: left alignment, no indents, no space before or after, no hyphenation. (changes the picture) |
 | `resolve-missing-fonts` | Resolve Missing Fonts... |  | Lists the fonts type layers use that are not installed and replaces each with an installed family. (changes the picture) |
+| `save-default-type-styles` | Save Default Type Styles |  | Keeps the current Type settings and this document's paragraph and character styles on this computer as the defaults Load Default Type Styles brings back. |
+| `type-aa-crisp` | Crisp |  | Sets the type anti-aliasing to Crisp: steeper edges, centred a little lower. (changes the picture) |
+| `type-aa-none` | None |  | Sets the type anti-aliasing to None: every edge pixel fully on or off. (changes the picture) |
+| `type-aa-sharp` | Sharp |  | Sets the type anti-aliasing to Sharp: steeper edges. (changes the picture) |
+| `type-aa-smooth` | Smooth |  | Sets the type anti-aliasing to Smooth: the canvas's own edges (the default). (changes the picture) |
+| `type-aa-strong` | Strong |  | Sets the type anti-aliasing to Strong: steeper edges that read heavier. (changes the picture) |
+| `type-aa-windows` | Windows |  | Sets the type anti-aliasing to Windows: a coverage gamma on grayscale edges. (changes the picture) |
+| `type-aa-windows-lcd` | Windows LCD |  | Sets the type anti-aliasing to Windows LCD: each edge averaged with its horizontal neighbours. (changes the picture) |
+| `type-all-caps` | All Caps |  | Sets the active type layer, and new type, in capital letters, or back to as typed. (changes the picture) |
 | `type-features` | OpenType Features |  | Turns OpenType features (ligatures, small caps, oldstyle figures, swash and more) on or off for the active type layer. (changes the picture) |
 | `type-horizontal` | Horizontal |  | Sets the active type layer to horizontal lines of type. (changes the picture) |
 | `type-on-arc` | Type on Arc... |  | Sets text on an arc, live and editable. (changes the picture) |
 | `type-on-circle` | Type on Circle... |  | Sets text round a full circle, live and editable. (changes the picture) |
 | `type-on-path` | Type on Path... |  | Opens Type on Path. (changes the picture) |
+| `type-path-flip` | Flip Type on Path |  | Moves type set on a path to the other side of the path. (changes the picture) |
+| `type-path-release` | Release Type from Path |  | Releases type from its path: the same words become straight point text. (changes the picture) |
+| `type-small-caps` | Small Caps |  | Sets the active type layer, and new type, in small capitals, or back to as typed. (changes the picture) |
+| `type-strikethrough` | Strikethrough |  | Strikes through the active type layer and new type, or removes it. (changes the picture) |
 | `type-to-shape` | Convert to Shape |  | Turns the active type layer into a shape layer in the text colour and hides the type layer. (changes the picture) |
+| `type-underline` | Underline |  | Underlines the active type layer and new type, or removes it. (changes the picture) |
 | `type-vertical` | Vertical |  | Sets the active type layer to vertical columns of type, running right to left. (changes the picture) |
 | `type-work-path` | Create Work Path |  | Traces the active type layer's outlines from its rendered pixels into the Work Path. (changes the picture) |
 | `update-all-text` | Update All Text Layers |  | Re-renders every type layer from its own settings. (changes the picture) |
@@ -1247,6 +1299,7 @@ Generated from the window's command catalogue (1236 commands) by `./formvis agen
 | `screen-menu` | Full Screen Mode with Menu Bar |  | Full screen with the menu bar kept. |
 | `screen-next` | Change Screen Mode | F | Steps through standard, menu and full screen modes. |
 | `screen-standard` | Standard Screen Mode |  | Shows the normal window with its title bar. |
+| `selection-display-tint` | Selection Display: Tint |  | Switches the selection display between marching ants and a red tint over what is not selected, outside Quick Mask; the choice is remembered on this device. |
 | `show-all-extras` | Show All |  | Shows every canvas helper: guides, grid, slices, notes, counts, selection edges and layer edges. |
 | `show-comfy-dot` | ComfyUI Connection |  | Shows or hides the ComfyUI connection dot on the title bar icon; it asks your own ComfyUI address every 30 seconds. |
 | `show-counts` | Show Count |  | Shows or hides the count numbers on the canvas. |

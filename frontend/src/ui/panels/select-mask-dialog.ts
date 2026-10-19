@@ -1,6 +1,6 @@
 import { createSurface, ctxOf, type Engine } from '../../engine';
 import { levelsOf } from '../../engine/matte';
-import { DEFAULT_REFINE, refineRegion, refineSelection, type RefineSettings } from '../../engine/select-mask';
+import { DEFAULT_REFINE, edgeZone, refineRegion, refineSelection, type RefineSettings } from '../../engine/select-mask';
 import { Dialog } from '../dialogs';
 import { el } from '../dom';
 import { toast } from '../toast';
@@ -33,6 +33,7 @@ export class SelectMaskDialog extends Dialog {
   private painting = false;
   private decon = false;
   private deconAmount = 100;
+  private showEdge = false;
 
   /** A soft round dab of the Refine Edge brush at the pointer, in preview pixels (the size is in document pixels). */
   private paint(e: PointerEvent): void {
@@ -56,6 +57,8 @@ export class SelectMaskDialog extends Dialog {
     const viewRow = selectRow('View', [['onionSkin', 'Onion Skin'], ['marchingAnts', 'Marching Ants'], ['overlay', 'Overlay'], ['onBlack', 'On Black'], ['onWhite', 'On White'], ['blackWhite', 'Black & White'], ['onLayers', 'On Layers']], (v) => { this.view = v as View; this.render(); });
     const rows = ([['radius', 'Radius (px)', 0, 100], ['smooth', 'Smooth', 0, 100], ['feather', 'Feather (px)', 0, 100], ['contrast', 'Contrast (%)', 0, 100], ['shift', 'Shift Edge (px)', -20, 20]] as const)
       .map(([k, label, min, max]) => { const r = sliderRow(label, min, max, 1, (v) => { this.s = { ...this.s, [k]: v }; this.render(); }); return { k, r }; });
+    const smartRow = checkRow('Smart Radius (wide where the picture is busy, narrow on hard edges)', (v) => { this.s = { ...this.s, smart: v }; this.render(); });
+    const edgeRow = checkRow('Show Edge (tint the band Radius works in)', (v) => { this.showEdge = v; this.render(); });
     // The Refine Edge brush: while on, painting on the preview marks where the edge is worked out again from the image.
     const brushRow = checkRow('Refine Edge Brush (paint on the preview)', (v) => { this.brushOn = v; this.canvas.classList.toggle('is-brush', v); });
     const sizeRow = sliderRow('Brush Size (px)', 2, 200, 1, (v) => { this.brushSize = v; });
@@ -66,8 +69,8 @@ export class SelectMaskDialog extends Dialog {
       if (v && (this.output === 'selection' || this.output === 'mask')) { this.output = 'layerMask'; outRow.set(this.output); }
     });
     const amountRow = sliderRow('Amount (%)', 0, 100, 1, (v) => { this.deconAmount = v; });
-    this.body.append(this.canvas, viewRow.el, ...rows.map((x) => x.r.el), brushRow.el, sizeRow.el, deconRow.el, amountRow.el, outRow.el);
-    this.syncRows = () => { viewRow.set(this.view); outRow.set(this.output); for (const { k, r } of rows) r.set(this.s[k]); brushRow.set(this.brushOn); sizeRow.set(this.brushSize); deconRow.set(this.decon); amountRow.set(this.deconAmount); };
+    this.body.append(this.canvas, viewRow.el, edgeRow.el, ...rows.map((x) => x.r.el), smartRow.el, brushRow.el, sizeRow.el, deconRow.el, amountRow.el, outRow.el);
+    this.syncRows = () => { smartRow.set(!!this.s.smart); edgeRow.set(this.showEdge); viewRow.set(this.view); outRow.set(this.output); for (const { k, r } of rows) r.set(this.s[k]); brushRow.set(this.brushOn); sizeRow.set(this.brushSize); deconRow.set(this.decon); amountRow.set(this.deconAmount); };
     this.canvas.addEventListener('pointerdown', (e) => { if (!this.brushOn) return; this.painting = true; this.canvas.setPointerCapture(e.pointerId); this.paint(e); });
     this.canvas.addEventListener('pointermove', (e) => { if (this.painting) this.paint(e); });
     const stop = (e: PointerEvent): void => { this.painting = false; if (this.canvas.hasPointerCapture(e.pointerId)) this.canvas.releasePointerCapture(e.pointerId); };
@@ -138,6 +141,10 @@ export class SelectMaskDialog extends Dialog {
         else if (this.view === 'overlay') { d[k] = Math.round(s[k] * (a + (1 - a) * 0.5) + 255 * (1 - a) * 0.5); d[k + 1] = Math.round(s[k + 1] * (a + (1 - a) * 0.5)); d[k + 2] = Math.round(s[k + 2] * (a + (1 - a) * 0.5)); }
         else { const bg = this.view === 'onWhite' ? 255 : 0; d[k] = Math.round(s[k] * a + bg * (1 - a)); d[k + 1] = Math.round(s[k + 1] * a + bg * (1 - a)); d[k + 2] = Math.round(s[k + 2] * a + bg * (1 - a)); }
         d[k + 3] = 255;
+      }
+      if (this.showEdge) {
+        const zone = edgeZone(mask, this.pw, this.ph, this.s.radius, this.scale);
+        for (let i = 0; i < zone.length; i++) if (zone[i]) { const k = i * 4; d[k] = Math.round(d[k] * 0.55); d[k + 1] = Math.round(d[k + 1] * 0.55 + 90); d[k + 2] = Math.round(d[k + 2] * 0.55 + 115); }
       }
       g.clearRect(0, 0, PW, PH);
       g.putImageData(out, this.ox, this.oy);

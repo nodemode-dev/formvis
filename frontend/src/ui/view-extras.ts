@@ -4,7 +4,7 @@ export type ExtraKey = 'notes' | 'counts' | 'selectionEdges' | 'layerEdges';
 export const EXTRA_KEYS: readonly ExtraKey[] = ['notes', 'counts', 'selectionEdges', 'layerEdges'];
 
 const STORE = 'formvis.viewExtras';
-const state: Record<ExtraKey | 'master', boolean> = { master: true, notes: true, counts: true, selectionEdges: true, layerEdges: false };
+const state: Record<ExtraKey | 'master' | 'selectionTint', boolean> = { master: true, notes: true, counts: true, selectionEdges: true, layerEdges: false, selectionTint: false };
 const listeners = new Set<() => void>();
 
 try {
@@ -21,6 +21,9 @@ function changed(): void {
 export const extraShown = (k: ExtraKey): boolean => state.master && state[k];
 export const extraOn = (k: ExtraKey): boolean => state[k];
 export const extrasOn = (): boolean => state.master;
+/** View > Selection Display: the selection shown as a red tint over what is not selected (as Quick Mask does) instead of marching ants; remembered on this device. */
+export const selectionTintOn = (): boolean => state.selectionTint;
+export function setSelectionTint(on: boolean): void { if (state.selectionTint === on) return; state.selectionTint = on; changed(); }
 export function setExtra(k: ExtraKey, on: boolean): void { if (state[k] === on) return; state[k] = on; changed(); }
 export function setExtras(on: boolean): void { if (state.master === on) return; state.master = on; changed(); }
 /** Show > All and Show > None: every helper on or off together. */

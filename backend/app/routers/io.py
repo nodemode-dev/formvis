@@ -11,7 +11,7 @@ from fastapi import APIRouter, Body, File, Form, HTTPException, Request, UploadF
 from fastapi.responses import Response
 
 from app.core import config
-from app.services import camera_profiles, cin, dpx, fits, imaging, pnm
+from app.services import camera_profiles, cin, dpx, fits, imaging, pnm, raw_develop
 
 router = APIRouter(tags=["io"])
 #: Every file type the app writes: pictures, projects, video, deep formats, archives, tables, presets and scripts.
@@ -551,14 +551,20 @@ def encode_cmyk(file: UploadFile = File(...), width: int = Form(...), height: in
 
 
 @router.post("/decode")
-def decode(file: UploadFile = File(...), page: int = Form(0), camera_profile: str = Form("auto"), wb: str = Form("as_shot"), temperature: float = Form(0.0), tint: float = Form(0.0), bits: int = Form(8), half: bool = Form(False)) -> Response:
+def decode(file: UploadFile = File(...), page: int = Form(0), camera_profile: str = Form("auto"), wb: str = Form("as_shot"), temperature: float = Form(0.0), tint: float = Form(0.0), bits: int = Form(8), half: bool = Form(False), develop: str = Form("")) -> Response:
     """Any picture to a PNG. For a camera RAW (DEV_PLAN 36.21): `wb` (as_shot, auto or daylight), `temperature` and `tint`
     (-100 to 100) set the white balance at the RAW stage; `half` decodes at half size for Camera Raw's preview; `bits=16`
-    returns RGBA 16-bit little-endian samples instead of a PNG (X-Depth: 16). The defaults are the plain as-shot decode."""
+    returns RGBA 16-bit little-endian samples instead of a PNG (X-Depth: 16). `develop` is a JSON object of RAW-stage
+    controls (raw_develop.options: exposure, recovery, noise, blackPoint, shadows, highlights, clarity, texture, dehaze).
+    A RAW is known by its bytes as well as its suffix. The defaults are the plain as-shot decode."""
     data = file.file.read()
-    if bits == 16 and Path(file.filename or "").suffix.lower() in imaging.RAW_SUFFIXES:
+    try:
+        opts = raw_develop.options(develop)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if bits == 16 and imaging.is_raw(data, file.filename or ""):
         try:
-            px, width, height = imaging.raw_deep(data, file.filename or "", wb, temperature, tint, half)
+            px, width, height = imaging.raw_deep(data, file.filename or "", wb, temperature, tint, half, opts)
         except imaging.DecodeError as exc:
             raise HTTPException(status_code=415, detail=str(exc)) from exc
         return Response(px, media_type="application/octet-stream", headers={"X-Width": str(width), "X-Height": str(height), "X-Depth": "16"})
@@ -574,10 +580,23 @@ def decode(file: UploadFile = File(...), page: int = Form(0), camera_profile: st
             raise HTTPException(status_code=415, detail="The FITS picture could not be converted.")
         return Response(content=enc.tobytes(), media_type="image/png", headers={"X-Width": str(px.shape[1]), "X-Height": str(px.shape[0])})
     try:
-        png, width, height = imaging.decode_to_png(data, file.filename or "", page, camera_profile, wb, temperature, tint, half)
+        png, width, height = imaging.decode_to_png(data, file.filename or "", page, camera_profile, wb, temperature, tint, half, opts)
     except imaging.DecodeError as exc:
         raise HTTPException(status_code=415, detail=str(exc)) from exc
     return Response(content=png, media_type="image/png", headers={"X-Width": str(width), "X-Height": str(height)})
+
+
+@router.post("/raw-info")
+def raw_info(file: UploadFile = File(...)) -> dict:
+    """The open summary of a camera RAW: make and model, raw and visible sensor sizes, CFA pattern, white balance
+    multipliers, orientation (EXIF value), baseline exposure, black and white levels. 415 for anything LibRaw cannot read."""
+    data = file.file.read()
+    if not imaging.is_raw(data, file.filename or ""):
+        raise HTTPException(status_code=415, detail=f"{file.filename or 'The file'} is not a camera RAW file.")
+    try:
+        return imaging.raw_info(data, file.filename or "")
+    except imaging.DecodeError as exc:
+        raise HTTPException(status_code=415, detail=str(exc)) from exc
 
 
 @router.post("/frames")

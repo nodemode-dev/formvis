@@ -38,6 +38,7 @@ function toneTool(id: 'dodge' | 'burn' | 'sponge', label: string, order: number,
             { kind: 'range', label: 'Exposure', priority: 80, min: 1, max: 100, get: () => Math.round(e.tone.exposure * 100), set: (v: number) => e.setTone({ exposure: v / 100 }) },
             { kind: 'toggle', label: 'Protect Tones', priority: 40, get: () => e.tone.protectTones, set: (v: boolean) => e.setTone({ protectTones: v }) },   // 1.50.7
           ] as OptionSpec[]),
+      { kind: 'select', label: 'Sample', priority: 20, choices: [{ id: 'current', label: 'Current Layer' }, { id: 'below', label: 'Current & Below' }, { id: 'all', label: 'All Layers' }], get: () => e.retouch.toneSample, set: (v: string) => { e.retouch.toneSample = v === 'below' || v === 'all' ? v : 'current'; e.emit('options', null); } },
       ...brushOptions(e, 'Strength'),
     ],
   };

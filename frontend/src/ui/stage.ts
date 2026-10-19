@@ -15,7 +15,7 @@ const REDUCED = typeof matchMedia === 'function' && matchMedia('(prefers-reduced
 const RULER = 18;
 
 import { drawSlices } from '../extensions/tools/slice';
-import { extraShown, onExtras } from './view-extras';
+import { extraShown, onExtras, selectionTintOn } from './view-extras';
 
 export class Stage {
   readonly ctx: ToolContext;
@@ -43,6 +43,9 @@ export class Stage {
   /** right-drag with these resizes the brush tip. */
   private static readonly brushTools = new Set(['brush', 'spotHealing', 'remove', 'cloneStamp', 'smear']);
   private tipDragging = false;
+  /** Cmd or Ctrl held on a press inside the selection moves its pixels from these tools (with Alt, a copy), as the Move tool does. */
+  private static readonly pixelMoveTools = new Set(['marquee', 'lasso', 'objectSelect', 'wand', 'quickSelect', 'selectionBrush', 'brush', 'pencil', 'eraser', 'bucket', 'gradient', 'dodge', 'burn', 'sponge', 'smear', 'cloneStamp', 'spotHealing', 'healingBrush']);
+  private pixelDrag: Pt | null = null;
   private cursor = '';
   private hover: ToolPointer | null = null;
   private checker: { key: string; pattern: CanvasPattern } | null = null;
@@ -561,8 +564,8 @@ export class Stage {
       const d = this.dpr;
       g.setTransform(v.zoom * d, 0, 0, v.zoom * d, (v.panX + this.offX) * d, (v.panY + this.offY) * d); g.imageSmoothingEnabled = v.zoom < 1; g.drawImage(this.alphaTint(p, a), 0, 0); g.setTransform(1, 0, 0, 1, 0, 0);
     }
-    if (this.engine.quickMask || this.engine.quickMaskLive) {
-      // Quick Mask, or a Selection Brush stroke in progress: a red tint where nothing is selected, in place of the outline; live while a stroke paints it.
+    if (this.engine.quickMask || this.engine.quickMaskLive || (selectionTintOn() && sel && !fl && extraShown('selectionEdges'))) {
+      // Quick Mask, a Selection Brush stroke in progress, or the tint display choice: a red tint where nothing is selected, in place of the outline; live while a stroke paints it.
       const src = this.quickTint(p);
       if (src) { const d = this.dpr; g.setTransform(v.zoom * d, 0, 0, v.zoom * d, (v.panX + this.offX) * d, (v.panY + this.offY) * d); g.imageSmoothingEnabled = v.zoom < 1; g.drawImage(src, 0, 0); g.setTransform(1, 0, 0, 1, 0, 0); }
     } else if ((sel || fl) && extraShown('selectionEdges')) {
@@ -618,7 +621,7 @@ export class Stage {
   }
 
   private syncAnts(): void {
-    const need = (!!this.engine.current?.selection || this.engine.floatingSelection) && !REDUCED && extraShown('selectionEdges');
+    const need = (!!this.engine.current?.selection || this.engine.floatingSelection) && !REDUCED && extraShown('selectionEdges') && !(selectionTintOn() && !this.engine.floatingSelection);
     if (need && !this.antsTimer) this.antsTimer = window.setInterval(() => { this.phase = (this.phase + 1) % 8; this.queue(false, true); }, 140);
     else if (!need && this.antsTimer) { window.clearInterval(this.antsTimer); this.antsTimer = 0; }
   }
@@ -716,9 +719,21 @@ export class Stage {
     this.updateCursor();
   }
 
-  toolKeydown(e: KeyboardEvent): boolean { return this.tool()?.keydown?.(this.ctx, e) ?? false; }
+  toolKeydown(e: KeyboardEvent): boolean {
+    if ((isMac ? e.metaKey : e.ctrlKey) && !e.repeat && Stage.pixelMoveTools.has(this.tool()?.id ?? '') && !this.pixelDrag) {
+      const step = e.shiftKey ? 10 : 1, d = e.key === 'ArrowLeft' ? [-step, 0] : e.key === 'ArrowRight' ? [step, 0] : e.key === 'ArrowUp' ? [0, -step] : e.key === 'ArrowDown' ? [0, step] : null;
+      if (d && this.engine.nudgePixels(d[0], d[1], e.altKey)) return true;
+    }
+    return this.tool()?.keydown?.(this.ctx, e) ?? false;
+  }
 
-  cancelTool(): void { this.tool()?.cancel?.(this.ctx); }
+  /** True when the tool in use holds something Edit > Undo takes back before any history step (probe: only asks). */
+  toolUndo(probe = false): boolean { return this.tool()?.undoPending?.(this.ctx, probe) ?? false; }
+
+  cancelTool(): void {
+    if (this.pixelDrag) { this.pixelDrag = null; this.engine.cancelPixelMove(); return; }
+    this.tool()?.cancel?.(this.ctx);
+  }
 
   /** Touch gestures (1.58.6, the parity plan's L12), as on a tablet: one finger works the tool; a second finger undoes
    *  whatever the first began and starts a gesture, in which the fingers' spread zooms about their midpoint, the
@@ -839,6 +854,10 @@ export class Stage {
         this.engine.emit('overlay', null);
         return;
       }
+      if (p.mod && Stage.pixelMoveTools.has(this.tool()?.id ?? '')) {
+        const sel = this.engine.current?.selection;
+        if (sel && sel.valueAt(Math.floor(p.doc.x), Math.floor(p.doc.y)) >= 128 && this.engine.beginPixelMove(p.alt)) { this.pixelDrag = { x: p.doc.x, y: p.doc.y }; return; }
+      }
       this.tool()?.down?.(this.ctx, p);
       this.updateCursor(p);
     });
@@ -854,6 +873,13 @@ export class Stage {
         if (this.tipDragging) { this.engine.updateTipDrag(this.pointer(e).screen.x, e.shiftKey); return; }
         const gd = this.engine.guideDraft;
         if (gd && gd.index !== null) { const pd = this.pointer(e).doc; gd.at = gd.axis === 'x' ? pd.x : pd.y; this.engine.emit('overlay', null); return; }
+        if (this.pixelDrag) {
+          const pd = this.pointer(e).doc;
+          let dx = pd.x - this.pixelDrag.x, dy = pd.y - this.pixelDrag.y;
+          if (e.shiftKey) { if (Math.abs(dx) >= Math.abs(dy)) dy = 0; else dx = 0; }
+          this.engine.movePixelsBy(dx, dy);
+          return;
+        }
         const t = this.tool();
         if (!t?.move) return;
         const events = typeof e.getCoalescedEvents === 'function' ? e.getCoalescedEvents() : [];
@@ -884,6 +910,7 @@ export class Stage {
         else this.engine.moveGuide(gd.index, gd.at);
         return;
       }
+      if (this.pixelDrag) { this.pixelDrag = null; if (cancel) this.engine.cancelPixelMove(); else this.engine.endPixelMove(); this.updateCursor(p); return; }
       const t = this.tool();
       if (cancel) t?.cancel?.(this.ctx);
       else t?.up?.(this.ctx, p);

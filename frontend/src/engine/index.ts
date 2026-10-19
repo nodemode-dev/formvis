@@ -16,6 +16,7 @@ import { fillVector, mapPath, pathBounds, samplePath, shiftPath, tracePath, type
 import { simplify, smoothAnchors } from './curve-fit';
 export { PATH_OPS, type PathOp } from './paths';
 import { charStyleOf, defaultText, liveText, loadTextFont, renderText, styleOf, textKey, withCharStyle, withStyle } from './text';
+import { BASIC_PARAGRAPH, CHARACTER_RESET, PARAGRAPH_RESET, basicParagraph, readTypeDefaults, saveTypeDefaults } from './type-defaults';
 import type { CharacterStyle } from './types';
 import { Emitter } from './events';
 import { bumpMap, heightField, heightFromNormal, normalMap } from './normal-map';
@@ -36,7 +37,8 @@ import { ancestors, byId, descendantIds, groupIsolated, hierarchy, isDescendant 
 import { dragged, following, rounded, type DragMode } from './transform';
 import { againQuad, carried, cornersOf, cropWarp, distortDragged, distortUsable, maskEdgeTone, visibleBounds, warpRaster, type DistortMode, type Warped, imageCorners, homography, project, inverse3 } from './distort';
 import { withResolution } from './dpi';
-import { antialiasMask, levelsKernel, wandMask } from './kernels';
+import { antialiasMask, enhanceEdge, levelsKernel, sensitivityMask, wandMask } from './kernels';
+import { depthWeight, hueWeight, type ColorRangeOptions } from './color-range';
 import { Project } from './project';
 import { DocViews, type DocView, type FloatRect } from './doc-views';
 import { computeStack, type StackMode } from './stack-modes';
@@ -71,6 +73,7 @@ import type { FillContent, VectorMask } from './types';
 import { boxChange, followVector, hasOutline, movedVector, vectorCoverage } from './vector-mask';
 
 export * from './types';
+export { COLOR_RANGE_MODES, type ColorRangeMode, type ColorRangeOptions } from './color-range';
 export * from './geometry';
 export { Project } from './project';
 export { Viewport } from './viewport';
@@ -111,6 +114,7 @@ import { markupPath, type MarkupKind } from './markup';
 import { allCustomShapes } from './custom-shapes';
 import { traceAlpha } from './trace-outline';
 export { CUSTOM_SHAPES, allCustomShapes, addCustomShape, loadCustomShapes } from './custom-shapes';
+import { replaceColours } from './color-replace';
 import { FILL_DEFAULTS, WarpStroke, contentFill, diffusionFill, frequencySplit, ringVariance, SMOOTH_RING_VARIANCE, fillTransparent, healFromSource, premultiply, scaleHealCorrection, spotHeal, unpremultiply, type FillOptions, type HealBlend, type HealMode, type HealSample } from './retouch';
 import { dissolveNoise } from './blend';
 import { LUT3_N, adjustmentLut, adjustmentLut3 } from './lut';
@@ -134,7 +138,8 @@ export type { HealMode } from './retouch';
 import type { AdjustmentKind } from './types';
 export { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, COLOR_RANGES, defaultAdjustmentData, defaultHsv, grainFromData, grainKernel, hsvFromData, hsvKernel, hsvToData, randomSeed } from './adjust';
 export type { ColorRange, GrainSettings, HsvSettings } from './adjust';
-export { addNoise, gaussianBlur, gaussianMargin, histogram, lensDistort, motionBlur, motionMargin, unsharpMask } from './filters';
+export { addNoise, defaultLensFix, gaussianBlur, gaussianMargin, histogram, lensCorrect, lensDistort, motionBlur, motionMargin, unsharpMask } from './filters';
+export type { LensFix } from './filters';
 export { defaultDevelopState, developImage, type DevelopState } from './develop';
 export { TEXT_ANTIALIAS, TEXT_FONTS, defaultText, fontCss, liveText, paragraphStylesFrom, characterStylesFrom, charStyleOf, withCharStyle, styleOf, textFromData, textKey, textMetrics, renderText, withStyle } from './text';
 export { addPattern, allPatterns, patternById, projectPatterns, type Pattern } from './patterns';
@@ -303,6 +308,20 @@ export class Engine {
   lassoFeather = 0;
   lassoKind: 'freehand' | 'polygonal' | 'magnetic' = 'freehand';
   wand = { tolerance: 32, contiguous: true, sampleAll: false, sampleSize: 0, antialias: true };
+  /** Select > Subject, Sky and Object in Selection: Sample All Layers (off reads the active layer alone), Sky's
+   *  Sensitivity (0 to 100, 50 keeps the model's mask as it is) and Sky's edge Softness in pixels. They select with
+   *  the options bar's Mode. */
+  autoSel = { sampleAll: true, skySensitivity: 50, skySoftness: 0 };
+  setAutoSel(patch: Partial<Engine['autoSel']>): void { this.autoSel = { ...this.autoSel, ...patch }; this.emit('options', null); }
+  /** The pixels Subject, Sky and Object look at: what the document shows, or the active layer alone at document size. */
+  autoSelSource(): Surface | null {
+    const p = this.current, l = p?.activeLayer;
+    if (this.autoSel.sampleAll || !p) return this.flattened();
+    if (!l) return null;
+    const s = createSurface(p.doc.width, p.doc.height);
+    if (l.raster) { const c = ctxOf(s); setMat(c, placement(l.transform, l.raster.width, l.raster.height)); c.drawImage(l.raster.canvas, 0, 0); }
+    return s;
+  }
   selectionAntialiased = true;
   showPixelGrid = true;
   showTransformControls = true;
@@ -1228,15 +1247,17 @@ export class Engine {
   /** Snapshots copy every layer's pixels, so beside the history's own limit they have a budget of their own, per
    *  document; past it, New Snapshot declines rather than risk running out of memory. */
   snapshotByteLimit = 768 * 1024 * 1024;
+  /** The most snapshots one document keeps, beside the memory budget. */
+  snapshotCountLimit = 100;
 
   private docBytes(doc: Doc): number { return SN.docBytes(doc); }
 
   /** The current document's snapshots, newest last, with the memory each keeps. They live with the open document and
    *  are not saved. */
-  get snapshots(): ReadonlyArray<{ id: ID; name: string; bytes: number }> { return SN.snapshots(this.snapshotHost); }
+  get snapshots(): ReadonlyArray<{ id: ID; name: string; bytes: number; kind: SN.SnapshotKind }> { return SN.snapshots(this.snapshotHost); }
 
   /** History > New Snapshot: the document as it is now, kept to return to however far the steps move on. */
-  takeSnapshot(name?: string): void { SN.takeSnapshot(this.snapshotHost, name); }
+  takeSnapshot(name?: string, kind: SN.SnapshotKind = 'document'): void { SN.takeSnapshot(this.snapshotHost, name, kind); }
 
   /** Gives a snapshot a name of its own (the History panel: double-click it). */
   renameSnapshot(id: ID, name: string): boolean { return SN.renameSnapshot(this.snapshotHost, id, name); }
@@ -1746,7 +1767,7 @@ export class Engine {
   typeMask = false;
   /** Type Mask: the text rendered and placed as a layer would be, its coverage made the selection; one
    *  step, no layer. */
-  async createTextSelection(at: Pt, spec: TextSpec): Promise<void> { return TX.createTextSelection(this.textHost, at, spec); }
+  async createTextSelection(at: Pt, spec: TextSpec, mode: SelectionMode = this.selectionMode): Promise<void> { return TX.createTextSelection(this.textHost, at, spec, mode); }
 
   async createTextLayer(at: Pt, spec: TextSpec): Promise<void> { return TX.createTextLayer(this.textHost, at, spec); }
 
@@ -1809,7 +1830,10 @@ export class Engine {
   }
 
   /** Window > Paragraph Styles: the document's styles. */
-  get paragraphStyles(): readonly ParagraphStyle[] { return this.current?.doc.paragraphStyles ?? []; }
+  get paragraphStyles(): readonly ParagraphStyle[] {
+    const own = this.current?.doc.paragraphStyles ?? [];
+    return this.current ? [own.find((s) => s.id === BASIC_PARAGRAPH) ?? basicParagraph(), ...own.filter((s) => s.id !== BASIC_PARAGRAPH)] : own;
+  }
 
   /** New Paragraph Style: the selected type layer's settings as a style, the layer linked to it; one step. */
   newParagraphStyle(name?: string): ID | null {
@@ -1820,22 +1844,79 @@ export class Engine {
     return id;
   }
 
-  /** Type > Load Default Type Styles: Heading 1, Heading 2, Body and Caption added as paragraph styles of the document,
-   *  those whose name it already has left alone; one step. Returns how many were added. */
+  /** Type > Save Default Type Styles: the Type settings and this document's paragraph and character styles kept on this
+   *  computer as the defaults Load Default Type Styles brings back. */
+  saveDefaultTypeStyles(): boolean {
+    const p = this.current;
+    if (!p) return false;
+    const ok = saveTypeDefaults({ settings: this.textSettings, paragraphStyles: p.doc.paragraphStyles ?? [], characterStyles: p.doc.characterStyles ?? [] });
+    this.notice(ok ? 'Saved the default type styles.' : 'The default type styles could not be saved here.', ok ? 'info' : 'error');
+    return ok;
+  }
+
+  /** Type > Load Default Type Styles: the saved defaults (else Heading 1, Heading 2, Body and Caption) added to the document
+   *  as paragraph and character styles, those whose name it already has left alone, and the saved Type settings taken for
+   *  new type; one step. Returns how many styles were added. */
   loadDefaultTypeStyles(): number {
     const p = this.current;
     if (!p) return 0;
-    const list = p.doc.paragraphStyles ?? [], base = defaultText();
+    const list = p.doc.paragraphStyles ?? [], chars = p.doc.characterStyles ?? [], base = defaultText(), saved = readTypeDefaults();
     const defs: Array<[string, Partial<TextSpec>]> = [['Heading 1', { size: 48, bold: true, lineHeight: 1.1 }], ['Heading 2', { size: 32, bold: true, lineHeight: 1.15 }], ['Body', { size: 16, lineHeight: 1.5 }], ['Caption', { size: 12, italic: true, lineHeight: 1.3 }]];
-    const add = defs.filter(([name]) => !list.some((s) => s.name === name)).map(([name, v]) => styleOf({ ...base, ...v }, uid(), name));
-    if (!add.length) { this.notice('The default type styles are already in this document.'); return 0; }
-    this.edit('Load Default Type Styles', (pp) => { pp.doc = { ...pp.doc, paragraphStyles: [...list, ...add] }; });
-    return add.length;
+    const addP = saved && (saved.paragraphStyles.length || saved.characterStyles.length)
+      ? saved.paragraphStyles.filter((s) => !list.some((x) => x.id === s.id || x.name === s.name)).map((s) => ({ ...s, id: s.id === BASIC_PARAGRAPH ? s.id : uid() }))
+      : defs.filter(([name]) => !list.some((s) => s.name === name)).map(([name, v]) => styleOf({ ...base, ...v }, uid(), name));
+    const addC = (saved?.characterStyles ?? []).filter((s) => !chars.some((x) => x.name === s.name)).map((s) => ({ ...s, id: uid() }));
+    if (saved?.settings) this.textSettings = { ...this.textSettings, ...saved.settings, content: '', rendered: undefined };
+    if (!addP.length && !addC.length) { this.notice('The default type styles are already in this document.'); return 0; }
+    this.edit('Load Default Type Styles', (pp) => { pp.doc = { ...pp.doc, paragraphStyles: [...list, ...addP], characterStyles: [...chars, ...addC] }; });
+    return addP.length + addC.length;
+  }
+
+  /** Duplicate a paragraph style as "name copy"; one step. Returns the copy's id. */
+  duplicateParagraphStyle(id: ID): ID | null {
+    const p = this.current, s = this.paragraphStyles.find((x) => x.id === id);
+    if (!p || !s) return null;
+    const copy: ParagraphStyle = { ...structuredClone(s), id: uid(), name: `${s.name} copy`.slice(0, 80) };
+    this.edit('Duplicate Paragraph Style', (pp) => { pp.doc = { ...pp.doc, paragraphStyles: [...(pp.doc.paragraphStyles ?? []), copy] }; });
+    return copy.id;
+  }
+
+  /** Rename a paragraph style; one step. */
+  renameParagraphStyle(id: ID, name: string): void {
+    const p = this.current, clean = name.trim().slice(0, 80), s = this.paragraphStyles.find((x) => x.id === id);
+    if (!p || !clean || !s) return;
+    this.edit('Rename Paragraph Style', (pp) => {
+      const own = pp.doc.paragraphStyles ?? [];
+      pp.doc = { ...pp.doc, paragraphStyles: own.some((x) => x.id === id) ? own.map((x) => (x.id === id ? { ...x, name: clean } : x)) : [...own, { ...s, name: clean }] };
+    });
+  }
+
+  /** Clear Override for the selected type layer's paragraph style: the style's settings put back on the layer. */
+  async clearParagraphOverride(): Promise<void> {
+    const l = this.current?.activeLayer, s = l?.text?.style ? this.paragraphStyles.find((x) => x.id === l.text?.style) : undefined;
+    if (!l || !liveText(l) || !l.text || !s) { this.notice('Select a type layer that has a paragraph style.'); return; }
+    await this.updateTextLayer(l.id, withStyle(l.text, s));
+  }
+
+  /** Character panel > Reset Character and Paragraph panel > Reset Paragraph: the selected type layer (else the settings for
+   *  new type) takes the factory values of the character or paragraph attributes. Colour, text and warp stay. */
+  async resetTypeAttributes(kind: 'character' | 'paragraph'): Promise<void> {
+    const d = defaultText(), l = this.current?.activeLayer, live = !!l && liveText(l) && !!l.text;
+    const drop = (t: TextSpec): TextSpec => {
+      const o: TextSpec = { ...t };
+      for (const k of kind === 'character' ? CHARACTER_RESET : PARAGRAPH_RESET) delete (o as unknown as Record<string, unknown>)[k];
+      return kind === 'character'
+        ? { ...o, family: d.family, size: d.size, bold: false, italic: false, tracking: 0, kerning: 'metrics', lineHeight: d.lineHeight, features: null, language: undefined, rendered: undefined }
+        : { ...o, align: 'left', hyphenate: false, rendered: undefined };
+    };
+    this.textSettings = drop(this.textSettings);
+    if (live && l?.text) await this.updateTextLayer(l.id, drop(l.text));
+    this.emit('options', null);
   }
 
   /** Apply a paragraph style to the selected type layer: its settings, the layer's own text, warp and path kept. */
   async applyParagraphStyle(id: ID): Promise<void> {
-    const p = this.current, l = p?.activeLayer, s = p?.doc.paragraphStyles?.find((x) => x.id === id);
+    const p = this.current, l = p?.activeLayer, s = this.paragraphStyles.find((x) => x.id === id);
     if (!p || !l || !liveText(l) || !l.text || !s) { this.notice('Select a type layer and a paragraph style.'); return; }
     await this.updateTextLayer(l.id, withStyle(l.text, s));
   }
@@ -1843,7 +1924,7 @@ export class Engine {
   /** Redefine a paragraph style from the selected type layer's settings, and re-render every type layer linked to it,
    *  each keeping its scale and its left edge, centre or right edge, as editing its text does; one step. */
   async redefineParagraphStyle(id: ID): Promise<void> {
-    const p = this.current, src = p?.activeLayer, old = p?.doc.paragraphStyles?.find((x) => x.id === id);
+    const p = this.current, src = p?.activeLayer, old = this.paragraphStyles.find((x) => x.id === id);
     if (!p || !src || !liveText(src) || !src.text || !old) { this.notice('Select a type layer to redefine the style from.'); return; }
     const style = styleOf(src.text, id, old.name);
     const linked = p.doc.layers.filter((l) => liveText(l) && l.raster && (l.text?.style === id || l.id === src.id));
@@ -1853,7 +1934,8 @@ export class Engine {
     for (const s of specs) await loadTextFont(charOf(s));
     if (this.current !== p) return;
     this.edit('Redefine Paragraph Style', (pp) => {
-      pp.doc = { ...pp.doc, paragraphStyles: (pp.doc.paragraphStyles ?? []).map((x) => (x.id === id ? style : x)) };
+      const own = pp.doc.paragraphStyles ?? [];
+      pp.doc = { ...pp.doc, paragraphStyles: own.some((x) => x.id === id) ? own.map((x) => (x.id === id ? style : x)) : [...own, style] };
       linked.forEach((l, i) => {
         const spec = specs[i], r = renderText(charOf(spec)), oldR = l.raster as Raster, t = l.transform;
         const nw = r.raster.width * (t.w / oldR.width), nh = r.raster.height * (t.h / oldR.height);
@@ -1867,7 +1949,7 @@ export class Engine {
   /** Delete a paragraph style; the type linked to it keeps its look and is simply unlinked; one step. */
   deleteParagraphStyle(id: ID): void {
     const p = this.current;
-    if (!p || !p.doc.paragraphStyles?.some((x) => x.id === id)) return;
+    if (!p || id === BASIC_PARAGRAPH || !p.doc.paragraphStyles?.some((x) => x.id === id)) return;
     this.edit('Delete Paragraph Style', (pp) => {
       pp.doc = { ...pp.doc, paragraphStyles: (pp.doc.paragraphStyles ?? []).filter((x) => x.id !== id) };
       for (const l of pp.doc.layers) if (l.text?.style === id) pp.updateLayer(l.id, { text: { ...l.text, style: null } });
@@ -1917,6 +1999,15 @@ export class Engine {
       pp.doc = { ...pp.doc, characterStyles: next };
       for (const x of patches) pp.updateLayer(x.id, x.patch);
     });
+  }
+
+  /** Duplicate a character style as "name copy"; one step. Returns the copy's id. */
+  duplicateCharacterStyle(id: ID): ID | null {
+    const p = this.current, s = p?.doc.characterStyles?.find((x) => x.id === id);
+    if (!p || !s) return null;
+    const copy: CharacterStyle = { ...structuredClone(s), id: uid(), name: `${s.name} copy`.slice(0, 80) };
+    this.edit('Duplicate Character Style', (pp) => { pp.doc = { ...pp.doc, characterStyles: [...(pp.doc.characterStyles ?? []), copy] }; });
+    return copy.id;
   }
 
   /** Rename a character style; one step. */
@@ -1999,7 +2090,9 @@ export class Engine {
 
   /** New text or settings for a type layer, re-rendered in place as one undo step: any scaling of the layer is kept,
    *  and so is its left edge, centre or right edge, by its alignment. */
-  async updateTextLayer(id: ID, spec: TextSpec): Promise<void> { return TX.updateTextLayer(this.textHost, id, spec); }
+  async updateTextLayer(id: ID, spec: TextSpec, move?: Pt): Promise<void> { return TX.updateTextLayer(this.textHost, id, spec, move); }
+  /** Paragraph text's box set to `box` (in the text's own pixels) with its top left at `to`, reflowing the text; one undo step. */
+  async resizeTextBox(id: ID, box: { w: number; h: number }, to: Pt): Promise<boolean> { return TX.resizeTextBox(this.textHost, id, box, to); }
 
   /** The new pixels, place and name of type layer `id` set to `spec`, rendered but not applied, so several layers can
    *  change in one undo step (Find and Replace Text, Update All Text Layers). Null when the layer is not live type. */
@@ -2434,14 +2527,14 @@ export class Engine {
     this.insertRasterLayer(r.raster, `Shape ${n}`, r.x, r.y, { vector: { path, fill: look.fill, stroke: look.stroke, origin: { x: r.x, y: r.y } } }, 'New Shape Layer');
   }
 
-  /** Layer > Type > Create Work Path (DEV_PLAN 32.7 part b): the active type layer's outlines, traced from its rendered
-   *  pixels (not read from the font), become the Work Path. Paths sit outside undo, so this is not a history step. Placement
-   *  uses the layer's x, y and size only; rotation is ignored. */
-  typeToWorkPath(): boolean { return TX.typeToWorkPath(this.textHost); }
+  /** Layer > Type > Create Work Path (DEV_PLAN 32.7 part b): the active type layer's outlines, read from the font's glyph
+   *  outlines where possible, else traced from its pixels, with the layer's rotation applied, become the Work Path.
+   *  Paths sit outside undo, so this is not a history step. */
+  typeToWorkPath(): Promise<boolean> { return TX.typeToWorkPath(this.textHost); }
 
-  /** Layer > Type > Convert to Shape: Create Work Path, then a shape layer in the text colour above the type layer, which
-   *  is hidden. The shape and the hiding are one undo step. */
-  typeToShape(): boolean { return TX.typeToShape(this.textHost); }
+  /** Layer > Type > Convert to Shape: Create Work Path, then a shape layer in the text colour that takes the type layer's
+   *  place, the type layer removed. The shape and the removal are one undo step. */
+  typeToShape(): Promise<boolean> { return TX.typeToShape(this.textHost); }
 
   /** File > Open SVG as Layers (DEV_PLAN 34.4): one shape layer per entry, in order, each outline still editable. insertRasterLayer
    *  records its own undo step, so each layer is one step. Returns the number of layers made. */
@@ -4279,6 +4372,20 @@ export class Engine {
       this.refresh();
       return;
     }
+    // Remove with LaMa: the stroke's footprint (grown by two pixels) is sent to the local model instead of the patch
+    // fill, when the layer sits unscaled on the document; the white footprint is undone first.
+    if (st.heal === 'remove' && this.retouch.removeLama && this.removeBrushFill && st.target === 'pixels') {
+      const r = st.s.layer, dw = st.project.doc.width, dh = st.project.doc.height, t = st.project.layer(st.layerId)?.transform;
+      if (r.width === dw && r.height === dh && t && t.x === 0 && t.y === 0 && t.w === dw && t.h === dh && !t.rotation) {
+        const cov = st.s.coverageAlpha(), hole0 = new Uint8Array(dw * dh);
+        for (let i = 0; i < hole0.length; i++) hole0[i] = cov[i] > 0 ? 255 : 0;
+        const area = new SelectionMask(0, 0, dw, dh, resizeMask(hole0, dw, dh, 2)), fill = this.removeBrushFill;
+        this.stroke = st;
+        this.cancelStroke();
+        void fill(area);
+        return;
+      }
+    }
     // A plain stroke on pixels in an 8-bit RGB document keeps its undo as the tiles it changed (1.60.7, DEV_PLAN 26.3);
     // healing, masks and deep, CMYK or Lab documents keep the whole patch, which their steps below read.
     const plain = !st.heal && !st.healFrom && st.target === 'pixels' && (st.project.doc.depth ?? 8) <= 8 && st.project.doc.mode !== 'cmyk' && st.project.doc.mode !== 'lab';
@@ -4502,7 +4609,13 @@ export class Engine {
     });
   }
 
-  fill(which: 'fg' | 'bg'): void { PO.fill(this.paintHost, which); }
+  /** Edit > Fill with Foreground or Background: on a live type layer with nothing selected, the text itself takes the
+   *  colour (one Edit Type step, still editable); otherwise the selection or layer is filled with pixels. */
+  fill(which: 'fg' | 'bg'): void {
+    const p = this.current, l = p?.activeLayer;
+    if (p && l?.text && liveText(l) && !p.selection && !p.maskTarget) { void this.updateTextLayer(l.id, { ...l.text, color: { ...(which === 'fg' ? this.fg : this.bg) } }); return; }
+    PO.fill(this.paintHost, which);
+  }
 
   /** The Background Eraser (E; 1.49.5, the owner's tool list): erases, within the brush, the pixels of
    *  the active layer whose colour is within Tolerance of the colour sampled under the brush's centre (at every dab, or
@@ -4937,12 +5050,16 @@ export class Engine {
     this.applySelection(SelectionMask.cropped(0, 0, W, H, this.wand.antialias ? antialiasMask(hard, W, H) : hard), 'replace', contiguous ? 'Grow' : 'Similar');
   }
 
-  /** Select > Convert to Shape: the selection's outline (where at least half selected), simplified within 1.5 px and
-   *  smoothed except at its corners, as a shape layer in the foreground colour. One step. */
-  selectionToShape(): void {
+  /** Select > Convert to Shape's Tolerance (0.1 to 20 px): how far the traced outline may stray from the selection's
+   *  edge when it is simplified; 1.5 until set. */
+  shapeTolerance = 1.5;
+
+  /** Select > Convert to Shape: the selection's outline (where at least half selected), simplified within `tolerance` px
+   *  (the Tolerance setting, 1.5 until set) and smoothed except at its corners, as a shape layer in the foreground colour. One step. */
+  selectionToShape(tolerance = this.shapeTolerance): void {
     const p = this.current, sel = p?.selection;
     if (!p || !sel) return;
-    const subpaths = this.tracedOutline(sel.data, sel.w, sel.h, sel.x, sel.y);
+    const subpaths = this.tracedOutline(sel.data, sel.w, sel.h, sel.x, sel.y, Math.max(0.1, Math.min(20, tolerance)));
     if (!subpaths.length) { this.notice('The selection is too small to make a shape.'); return; }
     const path: VectorPath = { subpaths }, look: ShapeStyle = { fill: { ...this.fg }, stroke: null }, r = this.renderShape(path, look);
     if (!r) return;
@@ -4951,9 +5068,22 @@ export class Engine {
     this.insertRasterLayer(r.raster, `Shape ${k}`, r.x, r.y, { vector: { path, fill: look.fill, stroke: look.stroke, origin: { x: r.x, y: r.y } } }, 'Convert to Shape');
   }
 
+  /** Paths > Make Work Path (Select > Selection to Work Path): the selection's outline, traced and simplified within
+   *  `tolerance` px (0.1 to 20; the Convert to Shape tolerance until given), becomes the Work Path, replacing the old one.
+   *  Paths sit outside undo, so this is not a history step. */
+  selectionToWorkPath(tolerance = this.shapeTolerance): boolean {
+    const p = this.current, sel = p?.selection;
+    if (!p || !sel) { this.notice('Make a selection first.'); return false; }
+    const subpaths = this.tracedOutline(sel.data, sel.w, sel.h, sel.x, sel.y, Math.max(0.1, Math.min(20, tolerance)));
+    if (!subpaths.length) { this.notice('The selection is too small to make a path.'); return false; }
+    this.selectPath(null);
+    this.setWorkPath({ subpaths });
+    return true;
+  }
+
   /** The outline of coverage `data` (`w` by `h` at `x`, `y`, at least half covered), each loop simplified within 1.5 of
    *  its units and smoothed except at its corners, holes wound against their outer loops. */
-  private tracedOutline(data: Uint8Array, w: number, h: number, x: number, y: number): SubPath[] {
+  private tracedOutline(data: Uint8Array, w: number, h: number, x: number, y: number, tolerance = 1.5): SubPath[] {
     const loops: Pt[][] = [];
     traceOutline(data, w, h, x, y, 128, {
       moveTo: (x: number, y: number) => { loops.push([{ x, y }]); },
@@ -4965,7 +5095,7 @@ export class Engine {
     for (const raw of loops) {
       const pts = raw.length > 1 && raw[0].x === raw[raw.length - 1].x && raw[0].y === raw[raw.length - 1].y ? raw.slice(0, -1) : raw;
       if (pts.length < 3) continue;
-      const kept = simplify([...pts, pts[0]], 1.5).slice(0, -1);
+      const kept = simplify([...pts, pts[0]], tolerance).slice(0, -1);
       if (kept.length < 3) continue;
       const corners = new Set<number>();
       kept.forEach((q, i) => {
@@ -5010,7 +5140,7 @@ export class Engine {
     const { width: W, height: H } = p.doc;
     const x = Math.floor(pt.x), y = Math.floor(pt.y);
     if (x < 0 || y < 0 || x >= W || y >= H) return;
-    if (p.selection && p.selection.valueAt(x, y) <= 0) { this.notice('Click inside the selection to fill; the Paint Bucket fills only there.'); return; }
+    if (!this.quickMask && p.selection && p.selection.valueAt(x, y) <= 0) { this.notice('Click inside the selection to fill; the Paint Bucket fills only there.'); return; }
     let surface: Surface;
     if (this.bucket.sampleAll) surface = renderDoc(this.work, p.doc);
     else {
@@ -5038,6 +5168,11 @@ export class Engine {
       mask = soft;
     }
     let region: SelectionMask | null = SelectionMask.cropped(0, 0, W, H, mask);
+    if (this.quickMask) {
+      const white = luminance(this.fg) >= 0.5;
+      if (region && (p.selection || !white)) SO.applySelection(this.selectHost, (p.selection ?? SelectionMask.all(W, H)).combine(region, white ? 'add' : 'subtract'), 'replace', 'Quick Mask Fill');
+      return;
+    }
     if (p.selection && region) region = p.selection.combine(region, 'intersect');
     if (!region) { this.notice('The area clicked is outside the selection.'); return; }
     const color = this.fg, alpha = this.bucket.opacity;
@@ -5094,12 +5229,15 @@ export class Engine {
 
   /** Select > Color Range: each pixel of the composite scored by how close its colour is to the sampled colours (fully
    *  selected at a sample, falling to none at Fuzziness away, less what is close to a colour taken away), or by tone for
-   *  Highlights, Midtones or Shadows; inverted on request; kept within any selection. `scale` below 1 works on a reduced
-   *  copy for the dialog's preview. */
-  colorRangeMask(o: { mode: 'sampled' | 'highlights' | 'midtones' | 'shadows'; plus: RGB[]; minus: RGB[]; fuzziness: number; invert: boolean }, scale = 1): { mask: Uint8Array; w: number; h: number; any: boolean } | null {
+   *  Highlights, Midtones or Shadows, by hue for a colour family or Skin Tones, or by the Depth Map layer's value
+   *  between `lo` and `hi` (Fuzziness the ramp past them); inverted on request; kept within any selection unless
+   *  `combine` says how to meet it. `scale` below 1 works on a reduced copy for the dialog's preview. */
+  colorRangeMask(o: ColorRangeOptions, scale = 1): { mask: Uint8Array; w: number; h: number; any: boolean } | null {
     const p = this.current;
     if (!p) return null;
     const { width: W, height: H } = p.doc, comp = renderDoc(this.work, p.doc);
+    const dl = o.mode === 'depth' ? this.depthLayer(p) : null, depth = dl?.raster && dl.raster.width === W && dl.raster.height === H ? dl.raster.read().data : null;
+    const dlo = Math.max(0, Math.min(255, o.lo ?? 0)), dhi = Math.max(dlo, Math.min(255, o.hi ?? 255));
     const w = scale < 1 ? Math.max(1, Math.round(W * scale)) : W, h = scale < 1 ? Math.max(1, Math.round(H * scale)) : H;
     let src = comp;
     if (scale < 1) { src = createSurface(w, h); ctxOf(src).drawImage(comp as CanvasImageSource, 0, 0, w, h); }
@@ -5112,28 +5250,39 @@ export class Engine {
     let any = false;
     for (let i = 0, j = 0; i < out.length; i++, j += 4) {
       const r = d[j], g = d[j + 1], b = d[j + 2], L = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      const sx = scale < 1 ? Math.floor((i % w) / scale) : i % w, sy = scale < 1 ? Math.floor(Math.floor(i / w) / scale) : Math.floor(i / w);
       let v = o.mode === 'sampled' ? Math.max(0, near(o.plus, r, g, b) - near(o.minus, r, g, b))
         : o.mode === 'highlights' ? Math.min(1, Math.max(0, (L - 0.55) / 0.2))
         : o.mode === 'shadows' ? Math.min(1, Math.max(0, (0.45 - L) / 0.2))
-        : Math.min(1, Math.max(0, 1 - Math.abs(L - 0.5) / 0.3));
+        : o.mode === 'midtones' ? Math.min(1, Math.max(0, 1 - Math.abs(L - 0.5) / 0.3))
+        : o.mode === 'depth' ? (depth ? depthWeight(depth[(Math.min(H - 1, sy) * W + Math.min(W - 1, sx)) * 4], dlo, dhi, o.fuzziness) : 0)
+        : hueWeight(o.mode, r, g, b, o.fuzziness);
       if (o.invert) v = 1 - v;
-      const sx = scale < 1 ? Math.floor((i % w) / scale) : i % w, sy = scale < 1 ? Math.floor(Math.floor(i / w) / scale) : Math.floor(i / w);
-      if (p.selection) v *= p.selection.valueAt(sx, sy) / 255;
+      if (p.selection && (!o.combine || o.combine === 'replace')) v *= p.selection.valueAt(sx, sy) / 255;
       out[i] = Math.round(v * 255);
       if (out[i]) any = true;
     }
     return { mask: out, w, h, any };
   }
 
-  selectColorRange(o: Parameters<Engine['colorRangeMask']>[0]): void {
+  selectColorRange(o: ColorRangeOptions): void {
     const r = this.colorRangeMask(o);
     if (!r) return;
+    if (o.mode === 'depth' && !this.depthLayer()) { this.notice('This document has no Depth Map layer. Compute Depth Map first.'); return; }
     if (!r.any) { this.notice('No pixels matched; nothing was selected.'); return; }
-    this.applySelection(SelectionMask.cropped(0, 0, r.w, r.h, r.mask), 'replace', 'Color Range');
+    this.applySelection(SelectionMask.cropped(0, 0, r.w, r.h, r.mask), o.combine ?? 'replace', 'Color Range');
+  }
+
+  /** Applies the mask Subject, Sky or Object in Selection found (`w` by `h` at `x`, `y`): for Sky its Sensitivity then
+   *  its Softness first, then `mode` (the options bar's Mode when left out), as one step. */
+  applyAutoSelection(x: number, y: number, w: number, h: number, data: Uint8Array, label: string, o: { mode?: SelectionMode; sky?: boolean } = {}): void {
+    let sel: SelectionMask | null = SelectionMask.cropped(x, y, w, h, o.sky ? sensitivityMask(data, this.autoSel.skySensitivity) : data);
+    if (o.sky && sel && this.autoSel.skySoftness > 0) sel = this.featherMask(sel, this.autoSel.skySoftness);
+    this.applySelection(sel, o.mode ?? this.selectionMode, label);
   }
 
   /** Quick Selection: brush over an area and the selection grows to it, stopping at edges; it shares the brush size. */
-  quick = { sampleAll: false };
+  quick = { sampleAll: false, enhance: false };
   setQuick(patch: Partial<Engine['quick']>): void { this.quick = { ...this.quick, ...patch }; this.emit('options', null); }
   private quickState: { project: Project; data: Uint8ClampedArray; W: number; H: number; base: SelectionMask | null; grown: Uint8Array; box: Rect | null; subtract: boolean; last: Pt | null } | null = null;
   get quickSelecting(): boolean { return !!this.quickState; }
@@ -5212,7 +5361,8 @@ export class Engine {
     const q = this.quickState;
     if (!q) return;
     this.quickState = null;
-    const result = q.project.selection;
+    let result = q.project.selection;
+    if (this.quick.enhance && result && result !== q.base) result = SelectionMask.cropped(result.x, result.y, result.w, result.h, enhanceEdge(result.data, result.w, result.h)) ?? result;
     q.project.selection = q.base;
     if (result !== q.base) { if (this.current === q.project) this.applySelection(result, 'replace', 'Quick Selection'); else q.project.selection = result; }
   }
@@ -5226,16 +5376,38 @@ export class Engine {
     this.emit('render', null);
   }
 
+  /** A Marquee or Lasso point snapped to the guides, grid, document bounds and layer edges within 6 screen pixels, each
+   *  axis on its own, through the Snap settings (smart guides show while it holds); the point itself when nothing is
+   *  near or snapping is off. `done` clears the smart guides. */
+  snapPoint(pt: Pt, done = false): Pt {
+    const p = this.current;
+    if (done || !p || !this.snapping) { this.snapGuides = null; return pt; }
+    const d = PM.snapDelta(this.moveHost, p, { x: pt.x, y: pt.y, w: 0, h: 0 }, () => false);
+    this.emit('overlay', null);
+    return d ? { x: pt.x + d.x, y: pt.y + d.y } : pt;
+  }
+
   magicWand(pt: Pt, mode: SelectionMode): void { SO.magicWand(this.selectHost, pt, mode); }
 
   beginSelectionShift(): void { this.selectionShift = TE.beginSelectionShift(this.entryHost); }
 
-  updateSelectionShift(dx: number, dy: number): void { if (this.selectionShift) TE.updateSelectionShift(this.entryHost, this.selectionShift, dx, dy); }
+  /** Moving the outline snaps its box to the guides, grid, document bounds and layer edges as a layer move does, through the
+   *  same Snap settings; the smart guides show while it is near one. */
+  updateSelectionShift(dx: number, dy: number): void {
+    const s = this.selectionShift, sel = s?.project.selection;
+    if (!s) return;
+    if (sel && this.snapping && (dx || dy)) {
+      const d = PM.snapDelta(this.moveHost, s.project, { x: sel.x + dx, y: sel.y + dy, w: sel.w, h: sel.h }, () => false);
+      if (d) { dx += d.x; dy += d.y; }
+    } else this.snapGuides = null;
+    TE.updateSelectionShift(this.entryHost, s, dx, dy);
+  }
 
   endSelectionShift(): void {
     const s = this.selectionShift;
     if (!s) return;
     this.selectionShift = null;
+    this.snapGuides = null;
     TE.endSelectionShift(this.entryHost, s);
   }
 
@@ -7607,7 +7779,9 @@ export class Engine {
       get stroke() { return e.stroke; },
       get autoFirstSnapshot() { return e.autoFirstSnapshot; },
       get snapshotByteLimit() { return e.snapshotByteLimit; },
+      get snapshotCountLimit() { return e.snapshotCountLimit; },
       get memoryBudget() { return e.memoryBudget; },
+      mergedDoc: () => e.mergedDoc(),
       get historyBrushSource() { return e.historyBrushSource; },
       store: this.snapshotStore,
       notice: (m) => this.notice(m),
@@ -7785,7 +7959,8 @@ export class Engine {
       composite: (p) => renderDoc(this.work, p.doc),
       layerSample: (p, l) => this.layerSample(p, l),
       brush: this.brush,
-      smudge: { sampleAll: this.retouch.smearSampleAll, fingerPainting: this.retouch.fingerPainting },
+      smudge: { sampleAll: this.retouch.smearSampleAll, below: this.retouch.smudgeBelow, fingerPainting: this.retouch.fingerPainting, length: this.retouch.smudgeLength },
+      belowSample: (p, l) => this.healSampleSurface(p, l, 'below'),
       fg: this.fg,
       css: (c, a) => rgbCss(c, a),
     };
@@ -7856,22 +8031,22 @@ export class Engine {
     this.insertRasterLayer(this.shapeRaster(style, r.w, r.h), kind, r.x, r.y, { shape: style }, kind);
   }
 
-  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSample: HealSample; cloneBlend: BlendMode; cloneFlow: number; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify'; smearBlend: BlendMode; smearSampleAll: boolean; blurRadius: number; protectDetail: boolean; fingerPainting: boolean; cloneScale: number; cloneAngle: number; cloneFlipH: boolean; cloneFlipV: boolean; patchMode: 'normal' | 'contentAware'; patchFrom: 'source' | 'destination'; patchTransparent: boolean; patchDiffusion: number; patchStructure: number; patchColor: number; healDiffusion: number; healBlendMode: HealBlend; spotBlendMode: HealBlend; healSample: HealSample; spotSampleAll: boolean; patchSampleAll: boolean; healSource: 'sampled' | 'pattern'; healPattern: ID | null; patchPattern: ID | null } = { healMode: 'contentAware', cloneAligned: true, cloneSample: 'current', cloneBlend: 'normal', cloneFlow: 1, smearMode: 'blur', smearBlend: 'normal', smearSampleAll: false, blurRadius: 0, protectDetail: true, fingerPainting: false, cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false, patchMode: 'normal', patchFrom: 'source', patchTransparent: false, patchDiffusion: 7, patchStructure: 5, patchColor: 10, healDiffusion: 7, healBlendMode: 'normal', spotBlendMode: 'normal', healSample: 'current', spotSampleAll: false, patchSampleAll: false, healSource: 'sampled', healPattern: null, patchPattern: null };
+  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSample: HealSample; cloneBlend: BlendMode; cloneFlow: number; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify'; smearBlend: BlendMode; smearSampleAll: boolean; blurRadius: number; protectDetail: boolean; fingerPainting: boolean; smudgeBelow: boolean; smudgeLength: number; toneSample: HealSample; removeSample: HealSample; removeLama: boolean; cloneScaleY: number | null; replaceTolerance: number; replaceMode: 'color' | 'hue' | 'saturation' | 'luminosity'; replaceSampling: 'once' | 'swatch'; moveStructure: number; moveColor: number; cloneScale: number; cloneAngle: number; cloneFlipH: boolean; cloneFlipV: boolean; patchMode: 'normal' | 'contentAware'; patchFrom: 'source' | 'destination'; patchTransparent: boolean; patchDiffusion: number; patchStructure: number; patchColor: number; healDiffusion: number; healBlendMode: HealBlend; spotBlendMode: HealBlend; healSample: HealSample; spotSampleAll: boolean; patchSampleAll: boolean; healSource: 'sampled' | 'pattern'; healPattern: ID | null; patchPattern: ID | null } = { healMode: 'contentAware', cloneAligned: true, cloneSample: 'current', cloneBlend: 'normal', cloneFlow: 1, smearMode: 'blur', smearBlend: 'normal', smearSampleAll: false, blurRadius: 0, protectDetail: true, fingerPainting: false, smudgeBelow: false, smudgeLength: 100, toneSample: 'current', removeSample: 'current', removeLama: false, cloneScaleY: null, replaceTolerance: 30, replaceMode: 'color', replaceSampling: 'once', moveStructure: 7, moveColor: 0, cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false, patchMode: 'normal', patchFrom: 'source', patchTransparent: false, patchDiffusion: 7, patchStructure: 5, patchColor: 10, healDiffusion: 7, healBlendMode: 'normal', spotBlendMode: 'normal', healSample: 'current', spotSampleAll: false, patchSampleAll: false, healSource: 'sampled', healPattern: null, patchPattern: null };
 
   /** Clone Source: where a document point's source moves once scaled, rotated and flipped about `pivot` (the sample
    *  point), as a matrix taking source pixels to where they are painted from; null when all are neutral. Painting at
    *  50 percent paints the source at half size, as the panel's W and H do. */
   private cloneTransform(pivot: Pt): Mat | null {
-    const r = this.retouch, s = Math.min(1000, Math.max(1, r.cloneScale)) / 100;
-    if (s === 1 && !(r.cloneAngle % 360) && !r.cloneFlipH && !r.cloneFlipV) return null;
-    const a = mul(rotation((r.cloneAngle * Math.PI) / 180), scaling(s * (r.cloneFlipH ? -1 : 1), s * (r.cloneFlipV ? -1 : 1)));
+    const r = this.retouch, s = Math.min(1000, Math.max(1, r.cloneScale)) / 100, sv = Math.min(1000, Math.max(1, r.cloneScaleY ?? r.cloneScale)) / 100;
+    if (s === 1 && sv === 1 && !(r.cloneAngle % 360) && !r.cloneFlipH && !r.cloneFlipV) return null;
+    const a = mul(rotation((r.cloneAngle * Math.PI) / 180), scaling(s * (r.cloneFlipH ? -1 : 1), sv * (r.cloneFlipV ? -1 : 1)));
     return mul(translation(pivot.x, pivot.y), mul(a, translation(-pivot.x, -pivot.y)));
   }
   cloneSource: Pt | null = null;
   cloneOffset: Pt | null = null;
   /** The Clone Source panel's five sources: Alt-click
    *  sets the chosen slot's source, and each slot keeps its own point, scale, angle and flips, restored on choosing it. */
-  cloneSlots: Array<{ source: Pt; scale: number; angle: number; flipH: boolean; flipV: boolean } | null> = [null, null, null, null, null];
+  cloneSlots: Array<{ source: Pt; scale: number; scaleY?: number | null; angle: number; flipH: boolean; flipV: boolean } | null> = [null, null, null, null, null];
   cloneSlot = 0;
   /** The overlay: Show Overlay; Clipped (on by default) keeps it to the brush, off shows the whole source as a stroke
    *  would copy it; its opacity; Auto Hide hides it while painting. */
@@ -7886,7 +8061,7 @@ export class Engine {
     this.cloneSource = { x: pt.x, y: pt.y };
     this.cloneOffset = null;
     const r = this.retouch;
-    this.cloneSlots[this.cloneSlot] = { source: { x: pt.x, y: pt.y }, scale: r.cloneScale, angle: r.cloneAngle, flipH: r.cloneFlipH, flipV: r.cloneFlipV };
+    this.cloneSlots[this.cloneSlot] = { source: { x: pt.x, y: pt.y }, scale: r.cloneScale, scaleY: r.cloneScaleY, angle: r.cloneAngle, flipH: r.cloneFlipH, flipV: r.cloneFlipV };
     this.emit('overlay', null);
     this.emit('options', null);
   }
@@ -7896,11 +8071,11 @@ export class Engine {
   selectCloneSlot(i: number): void {
     if (!Number.isInteger(i) || i < 0 || i > 4 || i === this.cloneSlot) return;
     const r = this.retouch, left = this.cloneSlots[this.cloneSlot];
-    if (left) Object.assign(left, { scale: r.cloneScale, angle: r.cloneAngle, flipH: r.cloneFlipH, flipV: r.cloneFlipV });
+    if (left) Object.assign(left, { scale: r.cloneScale, scaleY: r.cloneScaleY, angle: r.cloneAngle, flipH: r.cloneFlipH, flipV: r.cloneFlipV });
     this.cloneSlot = i;
     const s = this.cloneSlots[i];
     this.cloneSource = s ? { ...s.source } : null;
-    if (s) Object.assign(r, { cloneScale: s.scale, cloneAngle: s.angle, cloneFlipH: s.flipH, cloneFlipV: s.flipV });
+    if (s) Object.assign(r, { cloneScale: s.scale, cloneScaleY: s.scaleY ?? null, cloneAngle: s.angle, cloneFlipH: s.flipH, cloneFlipV: s.flipV });
     this.cloneOffset = null;
     this.emit('overlay', null);
     this.emit('options', null);
@@ -7915,7 +8090,7 @@ export class Engine {
 
   /** The panel's reset: scale 100%, no rotation, no flips. */
   resetCloneTransform(): void {
-    Object.assign(this.retouch, { cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false });
+    Object.assign(this.retouch, { cloneScale: 100, cloneScaleY: null, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false });
     this.emit('overlay', null);
     this.emit('options', null);
   }
@@ -7954,7 +8129,7 @@ export class Engine {
     const p = this.current, l = p?.activeLayer, sp = this.clonePoint(at);
     if (!p || !l || !sp || this.stroke) return null;
     const d = this.brush.diameter, side = clamp(Math.ceil(d * scale), 1, 1024);
-    const r0 = this.retouch, key = [sp.x.toFixed(2), sp.y.toFixed(2), d, this.brush.hardness, side, r0.cloneSample, l.id, p.history.revision, r0.cloneScale, r0.cloneAngle, r0.cloneFlipH, r0.cloneFlipV].join('|');
+    const r0 = this.retouch, key = [sp.x.toFixed(2), sp.y.toFixed(2), d, this.brush.hardness, side, r0.cloneSample, l.id, p.history.revision, r0.cloneScale, r0.cloneScaleY, r0.cloneAngle, r0.cloneFlipH, r0.cloneFlipV].join('|');
     if (this.clonePreviewCache?.key === key) return this.clonePreviewCache.surface;
     const s = createSurface(side, side), c = ctxOf(s), per = side / d, tm = this.cloneTransform(sp);
     const view = mul(mul(scaling(per, per), translation(d / 2 - sp.x, d / 2 - sp.y)), tm ?? [1, 0, 0, 1, 0, 0]);
@@ -8011,7 +8186,7 @@ export class Engine {
     return artHistoryTexture(src, this.artHistory.style, Math.max(2, this.brush.diameter / 4), Math.floor(Math.random() * 2 ** 31), current, tol);
   }
 
-  beginRetouchStroke(kind: 'heal' | 'remove' | 'clone' | 'blur' | 'sharpen' | 'healBrush' | 'dodge' | 'burn' | 'sponge' | 'historyBrush' | 'artHistory' | 'patternStamp', pt: Pt, shift: boolean): boolean {
+  beginRetouchStroke(kind: 'heal' | 'remove' | 'clone' | 'blur' | 'sharpen' | 'healBrush' | 'dodge' | 'burn' | 'sponge' | 'historyBrush' | 'artHistory' | 'patternStamp' | 'colorReplace', pt: Pt, shift: boolean): boolean {
     if (!this.deepPaintOk()) return false;
     const p = this.current;
     if (!p || this.stroke || this.warpState) return false;
@@ -8046,7 +8221,18 @@ export class Engine {
       const before = ctxOf(src).getImageData(0, 0, W, H), sharp = sharpenSample(before, clamp(this.brush.diameter / 40, 0.8, 4));
       ctxOf(out).putImageData(this.retouch.protectDetail ? withinNeighbours(before, sharp) : sharp, 0, 0);   // Protect Detail: no halos
       texture = { surface: out, dx: 0, dy: 0 };
-    } else if (kind === 'dodge' || kind === 'burn' || kind === 'sponge') texture = { surface: this.toned(this.layerSample(p, l0), kind), dx: 0, dy: 0 };
+    } else if (kind === 'colorReplace') {
+      // Color Replacement: the colour under the first touch (or the background swatch) is swapped for the foreground in
+      // the chosen mode, within Tolerance; the layer's other colours are left as they are.
+      const base = this.layerSample(p, l0), W = base.width, H = base.height, img = ctxOf(base).getImageData(0, 0, W, H);
+      const px = Math.floor(pt.x), py = Math.floor(pt.y), at = (py * W + px) * 4, inside = px >= 0 && py >= 0 && px < W && py < H;
+      if (this.retouch.replaceSampling === 'once' && (!inside || img.data[at + 3] === 0)) { this.notice('Start the stroke on the colour to replace.'); return false; }
+      const seed: [number, number, number] = this.retouch.replaceSampling === 'swatch' ? [this.bg.r, this.bg.g, this.bg.b] : [img.data[at], img.data[at + 1], img.data[at + 2]];
+      replaceColours(img, seed, [this.fg.r, this.fg.g, this.fg.b], this.retouch.replaceTolerance, this.retouch.replaceMode);
+      const out = createSurface(W, H);
+      ctxOf(out).putImageData(img, 0, 0);
+      texture = { surface: out, dx: 0, dy: 0 };
+    } else if (kind === 'dodge' || kind === 'burn' || kind === 'sponge') texture = { surface: this.toned(this.healSampleSurface(p, l0, this.retouch.toneSample), kind), dx: 0, dy: 0 };
     else if (kind === 'patternStamp') {
       // The Pattern Stamp (1.49.5, the owner's tool list): the pattern tiled across the document, anchored to it, so
       // strokes line up (Aligned).
@@ -8068,7 +8254,7 @@ export class Engine {
       // The History Brush paints this layer back from the source snapshot's own copy of it, in document space; the Art
       // History Brush (1.56.3) paints a stylised version of that copy (engine/art-history.ts).
       const id = this.historyBrushSourceId, snap = id ? this.historySnapshots.get(p)?.find((x) => x.id === id) : undefined;
-      const src = snap?.state.doc.layers.find((l) => l.id === l0.id);
+      const src = snap?.kind === 'merged' ? snap.state.doc.layers[0] : snap?.state.doc.layers.find((l) => l.id === l0.id);
       if (this.historyBrushFromState && this.historySourceIndex !== null) {
         const state = this.historySource(p);
         if (!state) { this.notice('This layer did not exist at the history state chosen as the source.'); return false; }
@@ -8080,7 +8266,7 @@ export class Engine {
         texture = { surface: kind === 'artHistory' ? this.artHistoryTexture(p, l0, sample) : sample, dx: 0, dy: 0 };
       }
     }
-    p.history.begin({ heal: 'Spot Healing', remove: 'Remove', clone: 'Clone Stamp', healBrush: 'Healing Brush', blur: 'Blur', sharpen: 'Sharpen', dodge: 'Dodge', burn: 'Burn', sponge: 'Sponge', historyBrush: 'History Brush', artHistory: 'Art History Brush', patternStamp: 'Pattern Stamp' }[kind], p.snapshot());
+    p.history.begin({ heal: 'Spot Healing', remove: 'Remove', clone: 'Clone Stamp', healBrush: 'Healing Brush', blur: 'Blur', sharpen: 'Sharpen', dodge: 'Dodge', burn: 'Burn', sponge: 'Sponge', historyBrush: 'History Brush', artHistory: 'Art History Brush', patternStamp: 'Pattern Stamp', colorReplace: 'Color Replacement' }[kind], p.snapshot());
     const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
     const white = { r: 255, g: 255, b: 255 };
     // The Clone Stamp's Flow and Mode (1.50.6, the tool audit), from the options bar; Lock Transparency keeps precedence.
@@ -8324,10 +8510,34 @@ export class Engine {
     });
   }
 
+  private patchPreviewCache: { key: string; surface: Surface } | null = null;
+
+  /** What a Patch drag by dx, dy shows while it is under way: the pixels that would be copied (the area the selection is
+   *  dragged onto, or the selection itself with Destination), cut to the selection's shape, unblended. The edit itself
+   *  still happens only on release. Null with no selection or layer. */
+  patchPreview(dx: number, dy: number): { surface: Surface; x: number; y: number } | null {
+    const p = this.current, l = p?.activeLayer, sel = p?.selection;
+    if (!p || !l || !sel) return null;
+    const dest = this.retouch.patchFrom === 'destination', all = this.retouch.patchMode === 'contentAware' && this.retouch.patchSampleAll;
+    const key = [p.id, l.id, p.history.revision, sel.x, sel.y, sel.w, sel.h, dx, dy, dest, all].join('|');
+    if (this.patchPreviewCache?.key !== key) {
+      const from = this.healSampleSurface(p, l, all ? 'all' : 'current'), s = createSurface(sel.w, sel.h), c = ctxOf(s);
+      c.drawImage(from, dest ? -sel.x : -(sel.x + dx), dest ? -sel.y : -(sel.y + dy));
+      c.globalCompositeOperation = 'destination-in';
+      c.drawImage(sel.surface(), 0, 0);
+      this.patchPreviewCache = { key, surface: s };
+    }
+    return { surface: (this.patchPreviewCache as { surface: Surface }).surface, x: dest ? sel.x + dx : sel.x, y: dest ? sel.y + dy : sel.y };
+  }
+
   /** The Remove tool's release: what the stroke covered, grown by two pixels so its soft edge goes too, rebuilt by
    *  content-aware fill (PatchMatch-style patch copying) from the rest of the layer. */
   private removePatch(s: PixelStroke): ReturnType<PixelStroke['commit']> {
-    const r = s.layer, W = r.width, H = r.height, before = r.read(), pm = premultiply(before.data), cov = s.coverageAlpha(), hole0 = new Uint8Array(W * H);
+    const r = s.layer, W = r.width, H = r.height, before = r.read(), cov = s.coverageAlpha(), hole0 = new Uint8Array(W * H);
+    // Sample (Current & Below, All Layers): the fill is worked out on those layers' pixels and laid on only over the hole.
+    const p = this.current, l = p?.activeLayer, sample = this.retouch.removeSample;
+    const other = sample !== 'current' && p && l ? this.rasterSpace(this.healSampleSurface(p, l, sample), l, W, H) : null;
+    const pm = premultiply((other ?? before).data);
     for (let i = 0; i < hole0.length; i++) hole0[i] = cov[i] > 0 ? 255 : 0;
     const grown = resizeMask(hole0, W, H, 2), hole = new Uint8Array(W * H);
     for (let i = 0; i < hole.length; i++) hole[i] = grown[i] >= 128 ? 1 : 0;
@@ -8337,7 +8547,7 @@ export class Engine {
     if (!(quick ? diffusionFill(pm, hole, W, H) : contentFill(pm, hole, W, H))) { this.notice('There is nothing opaque around the stroke to fill from.'); return null; }
     const out = new ImageData(W, H);
     unpremultiply(pm, out.data);
-    r.write(out);
+    r.write(other ? this.layHeal(before, out, hole.map((v) => (v ? 255 : 0)), 1) : out);
     return { raster: r, x: 0, y: 0, before, after: r.read() };
   }
 
@@ -8608,6 +8818,9 @@ export class Engine {
   /** Remove's People and Distractions (1.57.4, the parity plan's M1): the app sets `removeFinder` (it asks the engine
    *  for the area and LaMa for the fill); `removeArea` fills a found area as one step, as Generative Fill does. */
   removeFinder: ((kind: 'people' | 'distractions') => Promise<void>) | null = null;
+  /** The Remove brush's LaMa route: the app sets it; a released stroke's area goes to the local LaMa model and comes
+   *  back as a new masked layer. */
+  removeBrushFill: ((area: SelectionMask) => Promise<void>) | null = null;
   async removeArea(area: SelectionMask, undoName: string, generate: (image: Blob, mask: Blob) => Promise<Blob>): Promise<boolean> {
     const p = this.current;
     if (!p) return false;
@@ -8672,7 +8885,31 @@ export class Engine {
       if (mode === 'move') {
         const pm = premultiply(src.data), hole = new Uint8Array(W * H);
         for (let i = 0; i < hole.length; i++) hole[i] = cov[i * 4 + 3] ? 1 : 0;
-        if (contentFill(pm, hole, W, H)) unpremultiply(pm, out.data);
+        // Structure (1 to 7) is how strictly the fill follows the surrounding patterns: 7 copies them as they are, lower
+        // values let the fill try turned candidates too. Applied once, on release.
+        const rotation = Math.min(4, Math.floor(((7 - Math.min(7, Math.max(1, this.retouch.moveStructure))) * 4) / 6));
+        if (contentFill(pm, hole, W, H, null, { color: 0, rotation, scale: false, mirror: false })) unpremultiply(pm, out.data);
+      }
+      // Color (0 to 10): the moved pixels shift by that tenth of the difference between their average colour and the
+      // average colour of the ring around where they land, one offset per channel.
+      const shift = [0, 0, 0], colour = Math.min(10, Math.max(0, this.retouch.moveColor)) / 10;
+      if (colour > 0) {
+        const dm = new Uint8Array(W * H), mean = [0, 0, 0], ring = [0, 0, 0];
+        let nm = 0, nr = 0, bx0 = W, by0 = H, bx1 = -1, by1 = -1;
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+          const i = y * W + x, tx = x + ox, ty = y + oy;
+          if (!cov[i * 4 + 3] || tx < 0 || ty < 0 || tx >= W || ty >= H) continue;
+          dm[ty * W + tx] = 1;
+          bx0 = Math.min(bx0, tx); by0 = Math.min(by0, ty); bx1 = Math.max(bx1, tx); by1 = Math.max(by1, ty);
+          if (src.data[i * 4 + 3] > 0) { nm++; for (let k = 0; k < 3; k++) mean[k] += src.data[i * 4 + k]; }
+        }
+        for (let y = Math.max(0, by0 - 6); y <= Math.min(H - 1, by1 + 6); y++) for (let x = Math.max(0, bx0 - 6); x <= Math.min(W - 1, bx1 + 6); x++) {
+          if (dm[y * W + x] || out.data[(y * W + x) * 4 + 3] === 0) continue;
+          let near = false;
+          for (let j = -5; j <= 5 && !near; j += 2) for (let i2 = -5; i2 <= 5; i2 += 2) { const X = x + i2, Y = y + j; if (X >= 0 && Y >= 0 && X < W && Y < H && dm[Y * W + X]) { near = true; break; } }
+          if (near) { nr++; for (let k = 0; k < 3; k++) ring[k] += out.data[(y * W + x) * 4 + k]; }
+        }
+        if (nm && nr) for (let k = 0; k < 3; k++) shift[k] = (ring[k] / nr - mean[k] / nm) * colour;
       }
       // The moved pixels over what is there, by the selection's coverage.
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
@@ -8681,7 +8918,7 @@ export class Engine {
         const tx = x + ox, ty = y + oy;
         if (tx < 0 || ty < 0 || tx >= W || ty >= H) continue;
         const s4 = i * 4, d4 = (ty * W + tx) * 4, sa = (src.data[s4 + 3] / 255) * a, da = out.data[d4 + 3] / 255, oa = sa + da * (1 - sa);
-        for (let k = 0; k < 3; k++) out.data[d4 + k] = oa ? Math.round((src.data[s4 + k] * sa + out.data[d4 + k] * da * (1 - sa)) / oa) : 0;
+        for (let k = 0; k < 3; k++) out.data[d4 + k] = oa ? Math.round((Math.min(255, Math.max(0, src.data[s4 + k] + shift[k])) * sa + out.data[d4 + k] * da * (1 - sa)) / oa) : 0;
         out.data[d4 + 3] = Math.round(oa * 255);
       }
       raster.ctx.putImageData(out, 0, 0);
@@ -8893,6 +9130,16 @@ export class Engine {
     if (!f) return;
     this.floating = null;
     PM.cancelPixelMove(this.moveHost, f);
+  }
+
+  /** Cmd or Ctrl with the arrows from a selection or paint tool: the selected pixels move by the amount as one Move
+   *  Pixels step, or as a copy (Duplicate Pixels) when `duplicate`. False when nothing is selected or the move declines. */
+  nudgePixels(dx: number, dy: number, duplicate = false): boolean {
+    if (!this.current?.selection || this.floating || (!dx && !dy)) return false;
+    if (!this.beginPixelMove(duplicate)) return false;
+    this.movePixelsBy(dx, dy);
+    this.endPixelMove();
+    return true;
   }
 
   private floatSel: PM.FloatingSelection | null = null;

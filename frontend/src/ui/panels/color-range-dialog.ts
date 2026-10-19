@@ -1,4 +1,4 @@
-import type { Engine, RGB } from '../../engine';
+import { COLOR_RANGE_MODES, type ColorRangeMode, type Engine, type RGB, type SelectionMode } from '../../engine';
 import { Dialog } from '../dialogs';
 import { el } from '../dom';
 
@@ -10,7 +10,11 @@ const BOX_W = 320, BOX_H = 200;
 export class ColorRangeDialog extends Dialog {
   private plus: RGB[] = [];
   private minus: RGB[] = [];
-  private readonly pick = el<HTMLSelectElement>('<select class="cv-input"><option value="sampled">Sampled Colors</option><option value="highlights">Highlights</option><option value="midtones">Midtones</option><option value="shadows">Shadows</option></select>');
+  private readonly pick = el<HTMLSelectElement>(`<select class="cv-input">${COLOR_RANGE_MODES.map(([id, label]) => `<option value="${id}">${label}</option>`).join('')}</select>`);
+  private readonly combine = el<HTMLSelectElement>('<select class="cv-input"><option value="replace">New Selection</option><option value="add">Add to Selection</option><option value="subtract">Subtract from Selection</option><option value="intersect">Intersect with Selection</option></select>');
+  private readonly tool = el<HTMLSelectElement>('<select class="cv-input"><option value="set">Sample</option><option value="add">Add to Sample</option><option value="remove">Subtract from Sample</option></select>');
+  private readonly farLimit = el<HTMLInputElement>('<input class="cv-input" type="number" min="0" max="255" step="1" value="128" disabled>');
+  private readonly nearLimit = el<HTMLInputElement>('<input class="cv-input" type="number" min="0" max="255" step="1" value="255" disabled>');
   private readonly fuzz = el<HTMLInputElement>('<input class="cv-input" type="number" min="0" max="200" step="1" value="40">');
   private readonly invert = el<HTMLInputElement>('<input type="checkbox">');
   private readonly note = el<HTMLParagraphElement>('<p class="cv-hint">Click the image to sample a color; Shift-click adds one, Alt-click takes one away.</p>');
@@ -22,20 +26,24 @@ export class ColorRangeDialog extends Dialog {
     super('Color Range', 380);
     this.field('Select', this.pick);
     this.field('Fuzziness', this.fuzz);
+    this.field('Depth Far Limit', this.farLimit);
+    this.field('Depth Near Limit', this.nearLimit);
+    this.field('Eyedropper', this.tool);
+    this.field('Combine', this.combine);
     const inv = el<HTMLLabelElement>('<label class="cv-check"></label>');
     inv.append(this.invert, document.createTextNode(' Invert'));
     this.field('', inv);
     this.field('', this.note);
     this.field('', this.preview);
-    for (const c of [this.pick, this.fuzz, this.invert]) c.addEventListener('input', () => this.refresh());
+    for (const c of [this.pick, this.fuzz, this.invert, this.farLimit, this.nearLimit]) c.addEventListener('input', () => { this.farLimit.disabled = this.nearLimit.disabled = this.pick.value !== 'depth'; this.refresh(); });
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => { const o = this.options(); this.close(); this.engine.selectColorRange(o); });
     this.remember();
   }
 
   private options(): Parameters<Engine['colorRangeMask']>[0] {
-    const mode = this.pick.value === 'highlights' || this.pick.value === 'midtones' || this.pick.value === 'shadows' ? this.pick.value : 'sampled';
-    return { mode, plus: this.plus, minus: this.minus, fuzziness: Math.min(200, Math.max(0, Number(this.fuzz.value) || 0)), invert: this.invert.checked };
+    const mode = COLOR_RANGE_MODES.find(([id]) => id === this.pick.value)?.[0] ?? ('sampled' as ColorRangeMode), n = (f: HTMLInputElement): number => Math.min(255, Math.max(0, Number(f.value) || 0));
+    return { mode, plus: this.plus, minus: this.minus, fuzziness: Math.min(200, Math.max(0, Number(this.fuzz.value) || 0)), invert: this.invert.checked, combine: this.combine.value as SelectionMode, lo: n(this.farLimit), hi: n(this.nearLimit) };
   }
 
   /** Test hook as much as a user path: sample a colour as a click would. */
@@ -64,6 +72,7 @@ export class ColorRangeDialog extends Dialog {
 
   show(): void {
     if (!this.engine.current) return;
+    this.combine.value = this.engine.selectionMode;
     this.open();
     this.refresh();
     this.scrim.classList.add('cv-scrim-through');
@@ -74,7 +83,7 @@ export class ColorRangeDialog extends Dialog {
       e.stopPropagation();
       const b = stage.getBoundingClientRect(), v = p.viewport, rgb = this.engine.sampleOriginal({ x: (e.clientX - b.left - v.panX) / v.zoom, y: (e.clientY - b.top - v.panY) / v.zoom }, true);
       // sampleOriginal gives channels from 0 to 1.
-      if (rgb) this.sample({ r: Math.round(rgb[0] * 255), g: Math.round(rgb[1] * 255), b: Math.round(rgb[2] * 255) }, e.shiftKey ? 'add' : e.altKey ? 'remove' : 'set');
+      if (rgb) this.sample({ r: Math.round(rgb[0] * 255), g: Math.round(rgb[1] * 255), b: Math.round(rgb[2] * 255) }, e.shiftKey ? 'add' : e.altKey ? 'remove' : (this.tool.value as 'set' | 'add' | 'remove'));
     };
     window.addEventListener('pointerdown', handler, true);
     this.handler = handler;

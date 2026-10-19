@@ -7,8 +7,10 @@ import { EdgeMap, liveWire, snapToEdge } from '../../engine/livewire';
 /* The Magnetic Lasso (1.49.4, the owner's tool list): the segment from the last fastening point to the
    pointer follows the strongest edge within Width; points fasten themselves as the trace grows (Frequency), and a
    click fastens one; Contrast is the weakest edge that counts. The edge map is made once per trace from the image. */
-const mag = { width: 10, contrast: 10, frequency: 57 };
-let edges: EdgeMap | null = null, live: Pt[] = [], fasteners: number[] = [], pending: Pt | null = null, frame = 0;
+const mag = { width: 10, contrast: 10, frequency: 57, pressure: false };
+let edges: EdgeMap | null = null, live: Pt[] = [], fasteners: number[] = [], pending: Pt | null = null, frame = 0, pressure = 0;
+/** Width the trace looks for an edge in: with Pen Pressure on, a harder press narrows it (half at full pressure) and a lighter one widens it. */
+const reach = (): number => (mag.pressure && pressure > 0 ? Math.max(1, Math.round(mag.width * (1.5 - Math.min(1, pressure)))) : mag.width);
 const fastenEvery = (): number => Math.round(12 + (100 - mag.frequency) * 1.2);   // in pixels along the trace
 function edgeMapOf(ctx: ToolContext): EdgeMap | null {
   const c = ctx.engine.flattened?.(); if (!c) return null;
@@ -18,7 +20,7 @@ function edgeMapOf(ctx: ToolContext): EdgeMap | null {
 /** The live segment to the pointer; fastening a point each time the trace grows past the spacing. */
 function trace(ctx: ToolContext, at: Pt): void {
   if (!edges || !pts.length) return;
-  const to = snapToEdge(edges, at, mag.width), margin = mag.width * 2 + 8;
+  const w = reach(), to = snapToEdge(edges, at, w), margin = w * 2 + 8;
   live = liveWire(edges, pts[pts.length - 1], to, margin);
   const every = fastenEvery();
   while (live.length > every + 1) { pts.push(...live.slice(1, every + 1)); fasteners.push(pts.length - 1); live = liveWire(edges, pts[pts.length - 1], to, margin); }
@@ -84,13 +86,14 @@ export const lassoTool: Tool = {
     const home = Math.max(3, mag.width * 0.6);   // near the start, in document pixels
     const snapsHome = e.lassoKind === 'magnetic' && !!edges && ((q) => Math.hypot(q.x - pts[0].x, q.y - pts[0].y) <= home)(snapToEdge(edges, p.doc, mag.width));
     if (p.clicks >= 2 || snapsHome || Math.hypot(first.x - p.screen.x, first.y - p.screen.y) <= (e.lassoKind === 'magnetic' ? 8 : 6)) { commit(ctx); return; }
-    if (e.lassoKind === 'magnetic') { trace(ctx, p.doc); pts.push(...live.slice(1)); live = []; fasteners.push(pts.length - 1); e.emit('overlay', null); return; }   // a click fastens
+    if (e.lassoKind === 'magnetic' && p.alt) { pts.push(p.doc); live = []; fasteners.push(pts.length - 1); e.emit('overlay', null); return; }   // Alt-click: a straight segment, off the edge
+    if (e.lassoKind === 'magnetic') { pressure = p.pressure; trace(ctx, p.doc); pts.push(...live.slice(1)); live = []; fasteners.push(pts.length - 1); e.emit('overlay', null); return; }   // a click fastens
     pts.push(p.doc);
     e.emit('overlay', null);
   },
   move(ctx, p) {
     hover = p.doc;
-    if (ctx.engine.lassoKind === 'magnetic' && active) { traceSoon(ctx, p.doc); return; }
+    if (ctx.engine.lassoKind === 'magnetic' && active) { pressure = p.pressure; traceSoon(ctx, p.doc); return; }
     if (!active || ctx.engine.lassoKind !== 'freehand' || poly) return;
     const last = ctx.view().toScreen(pts[pts.length - 1]);
     if (Math.hypot(last.x - p.screen.x, last.y - p.screen.y) < 2) return;
@@ -145,6 +148,7 @@ export const lassoTool: Tool = {
     ...(e.lassoKind === 'magnetic' ? [
       { kind: 'range' as const, label: 'Width', priority: 65, min: 1, max: 256, unit: 'px', get: () => mag.width, set: (v: number) => { mag.width = Math.max(1, Math.min(256, Math.round(v))); e.emit('options', null); } },
       { kind: 'range' as const, label: 'Contrast', priority: 62, min: 1, max: 100, unit: '%', get: () => mag.contrast, set: (v: number) => { mag.contrast = Math.max(1, Math.min(100, Math.round(v))); edges = null; e.emit('options', null); } },
+      { kind: 'toggle' as const, label: 'Pen Pressure', priority: 58, get: () => mag.pressure, set: (v: boolean) => { mag.pressure = v; e.emit('options', null); } },
       { kind: 'range' as const, label: 'Frequency', priority: 60, min: 0, max: 100, unit: '', get: () => mag.frequency, set: (v: number) => { mag.frequency = Math.max(0, Math.min(100, Math.round(v))); e.emit('options', null); } },
     ] : []),
     { kind: 'toggle', label: 'Anti-alias', priority: 40, get: () => e.selectionAntialiased, set: (v) => { e.selectionAntialiased = v; e.emit('options', null); } },

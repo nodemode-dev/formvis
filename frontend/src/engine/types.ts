@@ -191,7 +191,7 @@ export interface DocSlice { id: ID; name: string; x: number; y: number; w: numbe
 /** A layout box (Generate's region prompting): what the rectangle is for, in document pixels, with its words and name. */
 export type BoxKind = 'new' | 'keep' | 'move' | 'remove' | 'reference' | 'text';
 export interface DocBox { id: ID; kind: BoxKind; name: string; text: string; x: number; y: number; w: number; h: number }
-export type ToolId = 'slice' | 'move' | 'artboard' |'marquee' | 'lasso' | 'objectSelect' | 'wand' | 'crop' | 'brush' | 'remove' | 'spotHealing' | 'healingBrush' | 'patch' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'pathSelect' | 'directSelect' | 'freeformPen' | 'curvaturePen' | 'pen' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'bucket' | 'dodge' | 'burn' | 'sponge' | 'quickSelect' | 'historyBrush' | 'mixer' | 'artHistory' | 'frame' | 'convertPoint' | 'selectionBrush' | 'pencil' | 'eraser' | 'magicEraser' | 'patternStamp' | 'backgroundEraser' | 'colorSampler' | 'ruler' | 'note' | 'markup' | 'count' | 'boxes' | 'contentAwareMove' | 'redEye' | 'rotateView' | 'relight' | 'idle';
+export type ToolId = 'slice' | 'move' | 'artboard' |'marquee' | 'lasso' | 'objectSelect' | 'wand' | 'crop' | 'brush' | 'remove' | 'spotHealing' | 'healingBrush' | 'patch' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'pathSelect' | 'directSelect' | 'freeformPen' | 'curvaturePen' | 'pen' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'bucket' | 'dodge' | 'burn' | 'sponge' | 'quickSelect' | 'historyBrush' | 'mixer' | 'artHistory' | 'frame' | 'convertPoint' | 'selectionBrush' | 'pencil' | 'eraser' | 'magicEraser' | 'patternStamp' | 'colorReplace' | 'backgroundEraser' | 'colorSampler' | 'ruler' | 'note' | 'markup' | 'count' | 'boxes' | 'contentAwareMove' | 'redEye' | 'rotateView' | 'relight' | 'idle';
 
 /** pixels follows this computer's memory (1.53.4, setPixelBudget from the engine's capabilities); 100 megapixels until known. */
 export const LIMITS: { readonly side: number; pixels: number; readonly layers: number; readonly depth: number } = { side: 30000, pixels: 100_000_000, layers: 10000, depth: 64 };
@@ -380,16 +380,26 @@ export function effectsFromData(raw: unknown): LayerEffects | null {
  *  off), Sharp (steeper edges) or Smooth (absent). */
 /** features (DEV_PLAN 32.6b): OpenType feature tags turned on ('smcp'), and '-liga' or '-calt' for a default feature off. */
 /** hyphenate: paragraph text breaks a word that does not fit at a syllable-like point with a hyphen; language: a BCP 47 tag the canvas shapes the text for. */
-export interface TextSpec { hyphenate?: boolean; language?: string; features?: string[] | null; antialias?: 'none' | 'sharp' | 'crisp' | 'strong' | 'smooth' | 'windows-lcd' | 'windows'; box?: { w: number; h: number } | null; direction?: 'horizontal' | 'vertical'; content: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right' | 'justify'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning; warp?: TextWarp | null; onPath?: TextPath | null; style?: ID | null; charStyle?: ID | null; rendered?: string }
+export type TextShaping = 'default' | 'eastAsian' | 'middleEastern';
+/** Character and paragraph attributes beyond the basics. caps: all capitals, or small capitals (the font's smcp when it has
+ *  one, else lower case set as capitals at 80 percent); scaleX and scaleY: horizontal and vertical scale in percent;
+ *  baselineShift: pixels, up positive; variations: variable font axis values ('wght': 600); indentFirst, indentLeft,
+ *  indentRight, spaceBefore, spaceAfter: pixels; lastLine: where Justify puts a paragraph's last line (default left). */
+export interface TextExtras {
+  weight?: number; caps?: 'all' | 'small'; scaleX?: number; scaleY?: number; baselineShift?: number; underline?: boolean; strike?: boolean;
+  variations?: Record<string, number> | null;
+  indentFirst?: number; indentLeft?: number; indentRight?: number; spaceBefore?: number; spaceAfter?: number; lastLine?: 'left' | 'center' | 'right' | 'all';
+}
+export interface TextSpec extends TextExtras { shaping?: TextShaping; hyphenate?: boolean; language?: string; features?: string[] | null; antialias?: 'none' | 'sharp' | 'crisp' | 'strong' | 'smooth' | 'windows-lcd' | 'windows'; box?: { w: number; h: number } | null; direction?: 'horizontal' | 'vertical'; content: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right' | 'justify'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning; warp?: TextWarp | null; onPath?: TextPath | null; style?: ID | null; charStyle?: ID | null; rendered?: string }
 /** A character style (DEV_PLAN 32.6c): only the fields it sets override the type layer's own; the layer links it by `TextSpec.charStyle`. */
-export interface CharacterStyle { id: ID; name: string; family?: string; size?: number; color?: RGB; bold?: boolean; italic?: boolean; tracking?: number; features?: string[] }
+export interface CharacterStyle extends Pick<TextExtras, 'caps' | 'scaleX' | 'scaleY' | 'baselineShift' | 'underline' | 'strike' | 'variations'> { id: ID; name: string; family?: string; size?: number; color?: RGB; bold?: boolean; italic?: boolean; tracking?: number; features?: string[] }
 /** A paragraph style (Window > Paragraph Styles): a named set of type settings kept in the document; type layers linked
  *  to it by TextSpec.style take its settings, and redefining it updates every one of them. */
-export interface ParagraphStyle { id: ID; name: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right' | 'justify'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning }
+export interface ParagraphStyle extends Pick<TextExtras, 'indentFirst' | 'indentLeft' | 'indentRight' | 'spaceBefore' | 'spaceAfter' | 'lastLine'> { id: ID; name: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right' | 'justify'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning }
 /** Type on a path: the path's points in the layer's own pixels (a frame around the path, so editing the text never moves
  *  the layer), where the text starts along it (Start Offset, a percentage of its length), and the frame's size. */
-export interface TextPath { points: Pt[]; offset: number; frame: { w: number; h: number } }
-export type TextKerning = 'metrics' | 'none';
+export interface TextPath { points: Pt[]; offset: number; frame: { w: number; h: number }; /** The type hangs on the other side of the path. */ flip?: boolean }
+export type TextKerning = 'metrics' | 'none' | 'optical';
 /** Warp Text: a style, its orientation, and Bend, Horizontal and Vertical Distortion (-100 to 100). */
 export type WarpStyle = 'arc' | 'arcLower' | 'arcUpper' | 'arch' | 'bulge' | 'shellLower' | 'shellUpper' | 'flag' | 'wave' | 'fish' | 'rise' | 'fisheye' | 'inflate' | 'squeeze' | 'twist';
 export interface TextWarp { style: WarpStyle; orientation: 'horizontal' | 'vertical'; bend: number; horizontal: number; vertical: number }

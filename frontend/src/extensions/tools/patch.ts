@@ -59,6 +59,15 @@ export const patchTool: Tool = {
     const v = ctx.view(), dx = drag.now.x - drag.start.x, dy = drag.now.y - drag.start.y;
     const a = v.toScreen({ x: sel.x + dx, y: sel.y + dy }), b = v.toScreen({ x: sel.x + sel.w + dx, y: sel.y + sel.h + dy });
     const pal = ctx.paint();
+    // The pixels the patch will copy, cut to the selection's shape, before the edit blends them in.
+    const pre = ctx.engine.patchPreview(Math.round(dx), Math.round(dy));
+    if (pre) {
+      const o = v.toScreen({ x: pre.x, y: pre.y }), o2 = v.toScreen({ x: pre.x + pre.surface.width, y: pre.y + pre.surface.height });
+      g.save();
+      g.globalAlpha = 0.9;
+      g.drawImage(pre.surface as CanvasImageSource, o.x, o.y, o2.x - o.x, o2.y - o.y);
+      g.restore();
+    }
     g.save();
     g.setLineDash([4, 4]);
     g.lineWidth = 1;

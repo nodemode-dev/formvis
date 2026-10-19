@@ -4,6 +4,20 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.88.9 · 2026-10-19
+
+### Added
+
+- Selections: Subject and Sky take the selection mode and Sample All Layers, and Sky has sensitivity and softness; Color Range adds hue families, skin tones, a depth range and combine modes; Convert to Shape and Selection to Work Path take a tolerance; Quick Selection Enhance Edge and a footprint trail; the marquee snaps to guides; Focus Area modes; Magnetic Lasso straight segments; the selection can show as a tint; Ctrl-drag moves selected pixels from any selection, paint or retouch tool (Ctrl+Alt copies) and Ctrl+arrows nudge them; Quick Mask works with the Paint Bucket; Select and Mask Show Edge and Smart Radius.
+- History and safety: snapshots of merged layers or the current layer, a bound of 100 snapshots, Undo takes back a pending Pen point, File > Earlier States... reopens earlier sessions and crash sets, a lost GPU restarts then falls back, and quitting waits for the recovery copies.
+- Retouch: Smudge Length and Sample; Dodge, Burn and Sponge Sample; a Color Replacement tool; Remove sampling and a LaMa result on a new layer with the local model; Content-Aware Move Structure and Color, applied when the drag ends; a Patch source preview; clone source offsets and a separate height.
+- Camera Raw and Develop: raw files are recognised by content with their camera details; the open-time dialog develops exposure, highlight recovery, noise, shadows, highlights, clarity, texture and dehaze at the raw stage; Lens Correction fixes colour fringes, vignetting and perspective; Develop has eight colour bands with swatches, an Effects vignette shape, Sharpening Radius, Detail and Masking, Noise Reduction, Auto white balance with an eyedropper, a grading wheel, Remove Chromatic Aberration and a histogram readout.
+- Type: weight, baseline shift, scale, underline and strikethrough; optical kerning; all caps and small caps; any OpenType feature and variable font axes; paragraph indents, spacing and last-line justification; Save and Load Default Type Styles and more style commands; Layer > New > Type Layer; Lorem Ipsum at the caret; type masks follow the selection mode; Ctrl-drag while typing and paragraph box handles; Language Options; type on a path Flip and Release; Create Work Path and Convert to Shape from the real glyph outlines; the Glyphs panel shows the font's own characters; a list_fonts agent tool (79 tools).
+
+### Fixed
+
+- Colour Grading's midtones had no effect; Develop's Tone and Detail sliders showed 0 after recalling settings.
+
 ## 1.88.8 · 2026-10-19
 
 ### Added

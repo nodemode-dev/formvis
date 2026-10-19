@@ -15,6 +15,34 @@ const RAW_ACCEPT = '.dng,.cr2,.cr3,.crw,.nef,.nrw,.arw,.srf,.sr2,.raf,.orf,.rw2,
 export const IMAGE_ACCEPT = `.png,.jpg,.jpeg,.gif,.webp,.bmp,.avif,.svg,.heic,.heif,.tif,.tiff,.hdr,.exr,.dpx,.cin,.dds,.wbmp,.qoi,.tga,.ico,.pcx,.xpm,.pbm,.pgm,.ppm,.pnm,.pam,.fits,.fit,.fts,${RAW_ACCEPT},image/*`;   // .hdr, .exr: 32 bits (1.53.9); .dpx: film scans, 16 bits from the engine
 export const PROJECT_ACCEPT = ['.fvd', '.fmv', ...FORMER_PROJECT_EXTENSIONS, '.canvasor', '.comp', '.zip', '.psd', '.psb', '.psdt', '.ora', '.kra', '.pdn', '.af', '.afphoto', '.afdesign', '.afpub'].join(',');   // OpenRaster (1.51.7)
 
+const FRONT_MAGIC: Array<[string, number, string]> = [['FUJIFILMCCD-RAW', 0, 'raf'], ['IIRO', 0, 'orf'], ['IIRS', 0, 'orf'], ['MMOR', 0, 'orf'], ['IIU\0', 0, 'rw2'], ['\0MRM', 0, 'mrw'], ['FOVb', 0, 'x3f'], ['HEAPCCDR', 6, 'crw'], ['ftypcrx ', 4, 'cr3']];
+
+/** The raw family a file's first bytes show ("dng", "cr2", "raf" and so on), or null. A DNG is a TIFF with the DNGVersion tag in
+ *  its first directory; a CR2 is a TIFF with "CR" at byte 8. */
+export async function sniffRaw(file: Blob): Promise<string | null> {
+  const buf = new Uint8Array(await file.slice(0, 1 << 16).arrayBuffer());
+  const text = (at: number, n: number): string => String.fromCharCode(...buf.subarray(at, at + n));
+  for (const [magic, at, kind] of FRONT_MAGIC) if (text(at, magic.length) === magic) return kind;
+  const le = text(0, 2) === 'II';
+  if (!le && text(0, 2) !== 'MM') return null;
+  const v = new DataView(buf.buffer);
+  if (v.byteLength < 16 || v.getUint16(2, le) !== 42) return null;
+  if (text(8, 2) === 'CR') return 'cr2';
+  const at = v.getUint32(4, le);
+  if (at + 2 > v.byteLength) return null;
+  const n = Math.min(v.getUint16(at, le), 512);
+  for (let i = 0; i < n && at + 14 + i * 12 <= v.byteLength; i++) if (v.getUint16(at + 2 + i * 12, le) === 50706) return 'dng';
+  return null;
+}
+
+/** A file that is a camera RAW by its bytes but not by its name (a TIFF, a file with no extension) comes back renamed with the
+ *  right extension, so the rest of the open path treats it as a RAW; any other file comes back as it was. */
+export async function nameRawByContent(file: File): Promise<File> {
+  if (RAW_FILE.test(file.name) || !/(\.(tiff?|bin|dat|raw)|^[^.]*)$/i.test(file.name)) return file;
+  const kind = await sniffRaw(file).catch(() => null);
+  return kind ? new File([file], `${file.name.replace(/\.[^.]*$/, '')}.${kind}`, { type: file.type, lastModified: file.lastModified }) : file;
+}
+
 export const isImageFile = (f: File): boolean => f.type.startsWith('image/') || NATIVE.test(f.name) || SERVER.test(f.name) || RAW_FILE.test(f.name) || /\.(hdr|exr)$/i.test(f.name);
 /** `.comp` is opened so its owners can move their work to formvis; formvis never writes it (the owner's decision, 2026-09-25). */
 export const isProjectFile = (f: File): boolean => PROJECT_ACCEPT.split(',').some((x) => f.name.toLowerCase().endsWith(x));

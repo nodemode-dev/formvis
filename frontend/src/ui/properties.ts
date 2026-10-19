@@ -1,6 +1,7 @@
 import type { Engine } from '../engine';
 import type { Layer, TextSpec } from '../engine/types';
 import { setType } from '../extensions/tools/type';
+import { axesOf, featuresFromText, featuresToText, variationsFromText, variationsToText } from '../engine/opentype';
 import { el, setHidden, setText } from './dom';
 import { onLanguage, t } from './i18n';
 import { fontFamilies, previewFont } from './fonts';
@@ -459,11 +460,28 @@ export class PropertiesColumn {
 
   private paragraph(): void {
     const e = this.engine;
-    const body = el(`<div class="cv-para"><div class="cv-seg" role="group" aria-label="Alignment">${(['left', 'center', 'right', 'justify'] as const).map((a) => `<button type="button" data-align="${a}" title="${a === 'justify' ? 'Justify' : `Align ${a}`}" aria-label="${a === 'justify' ? 'Justify' : `Align ${a}`}">${icon(a === 'left' ? 'alignLeft' : a === 'center' ? 'alignCenter' : a === 'right' ? 'alignRight' : 'alignJustify', 16)}</button>`).join('')}</div></div>`);
+    const body = el(`<div class="cv-para cv-char"><div class="cv-seg" role="group" aria-label="Alignment">${(['left', 'center', 'right', 'justify'] as const).map((a) => `<button type="button" data-align="${a}" title="${a === 'justify' ? 'Justify' : `Align ${a}`}" aria-label="${a === 'justify' ? 'Justify' : `Align ${a}`}">${icon(a === 'left' ? 'alignLeft' : a === 'center' ? 'alignCenter' : a === 'right' ? 'alignRight' : 'alignJustify', 16)}</button>`).join('')}</div></div>`);
     const btns = Array.from(body.querySelectorAll<HTMLButtonElement>('[data-align]'));
     for (const b of btns) b.addEventListener('click', () => setType(e, { align: b.dataset.align as TextSpec['align'] }));
+    const row = (label: string, control: HTMLElement): void => { const r = el(`<label class="cv-char-row"><span>${label}</span></label>`); r.appendChild(control); body.appendChild(r); };
+    const last = el<HTMLSelectElement>('<select class="cv-select" aria-label="Justify last line"><option value="left">Last line left</option><option value="center">Last line centre</option><option value="right">Last line right</option><option value="all">Justify all</option></select>');
+    last.addEventListener('change', () => setType(e, { lastLine: last.value === 'left' ? undefined : last.value as TextSpec['lastLine'] }));
+    const fields = ([['Left indent', 'indentLeft', 0], ['Right indent', 'indentRight', 0], ['First line', 'indentFirst', -2000], ['Space before', 'spaceBefore', 0], ['Space after', 'spaceAfter', 0]] as const).map(([label, key, min]) => {
+      const f = numField('px', label, min, 5000, 1, (v) => setType(e, { [key]: v || undefined }));
+      row(label, f.root);
+      return { key, f };
+    });
+    const hyph = el<HTMLInputElement>('<input type="checkbox" aria-label="Hyphenate">');
+    hyph.addEventListener('change', () => setType(e, { hyphenate: hyph.checked }));
+    row('Justify', last); row('Hyphenate', hyph);
     new PanelGroup(this.root, 'paragraph', [{ id: 'paragraph', label: 'Paragraph', body }], 'Paragraph');
-    this.refreshers.push(() => { for (const b of btns) { const on = b.dataset.align === e.textSettings.align; b.classList.toggle('is-on', on); b.setAttribute('aria-pressed', String(on)); } });
+    this.refreshers.push(() => {
+      const t = e.textSettings;
+      for (const b of btns) { const on = b.dataset.align === t.align; b.classList.toggle('is-on', on); b.setAttribute('aria-pressed', String(on)); }
+      if (document.activeElement !== last) last.value = t.lastLine ?? 'left';
+      for (const { key, f } of fields) f.set(t[key] ?? 0);
+      hyph.checked = !!t.hyphenate;
+    });
   }
 
   private character(): void {
@@ -472,7 +490,7 @@ export class PropertiesColumn {
     const row = (label: string, control: HTMLElement): void => { const r = el(`<label class="cv-char-row"><span>${label}</span></label>`); r.appendChild(control); body.appendChild(r); };
     const font = el<HTMLSelectElement>('<select class="cv-select" aria-label="Font"></select>');
     const style = el<HTMLSelectElement>('<select class="cv-select" aria-label="Style"><option value="00">Regular</option><option value="10">Bold</option><option value="01">Italic</option><option value="11">Bold Italic</option></select>');
-    const kern = el<HTMLSelectElement>('<select class="cv-select" aria-label="Kerning"><option value="metrics">Metrics</option><option value="none">None</option></select>');
+    const kern = el<HTMLSelectElement>('<select class="cv-select" aria-label="Kerning"><option value="metrics">Metrics</option><option value="optical">Optical</option><option value="none">None</option></select>');
     font.addEventListener('change', () => setType(e, { family: font.value }));
     style.addEventListener('change', () => setType(e, { bold: style.value[0] === '1', italic: style.value[1] === '1' }));
     kern.addEventListener('change', () => setType(e, { kerning: kern.value as TextSpec['kerning'] }));
@@ -480,7 +498,30 @@ export class PropertiesColumn {
     const leading = numField('pt', 'Leading', 1, 5000, 1, (v) => setType(e, { lineHeight: v / Math.max(1, e.textSettings.size) }));
     const tracking = numField('', 'Tracking', -1000, 10000, 10, (v) => setType(e, { tracking: Math.round(v) }));
     row('Font', font); row('Style', style); row('Size', size.root); row('Leading', leading.root); row('Tracking', tracking.root); row('Kerning', kern);
+    const weight = el<HTMLSelectElement>(`<select class="cv-select" aria-label="Weight"><option value="">Auto</option>${[100, 200, 300, 400, 500, 600, 700, 800, 900].map((w) => `<option value="${w}">${w}</option>`).join('')}</select>`);
+    weight.addEventListener('change', () => setType(e, { weight: weight.value ? Number(weight.value) : undefined }));
+    const caps = el<HTMLSelectElement>('<select class="cv-select" aria-label="Caps"><option value="">Normal</option><option value="all">All Caps</option><option value="small">Small Caps</option></select>');
+    caps.addEventListener('change', () => setType(e, { caps: caps.value === 'all' || caps.value === 'small' ? caps.value : undefined }));
+    const lines = el<HTMLSelectElement>('<select class="cv-select" aria-label="Lines"><option value="">None</option><option value="u">Underline</option><option value="s">Strikethrough</option><option value="us">Both</option></select>');
+    lines.addEventListener('change', () => setType(e, { underline: lines.value.includes('u') || undefined, strike: lines.value.includes('s') || undefined }));
+    const hscale = numField('%', 'Horizontal scale', 10, 500, 1, (v) => setType(e, { scaleX: v === 100 ? undefined : v }));
+    const vscale = numField('%', 'Vertical scale', 10, 500, 1, (v) => setType(e, { scaleY: v === 100 ? undefined : v }));
+    const shift = numField('px', 'Baseline shift', -2000, 2000, 1, (v) => setType(e, { baselineShift: v || undefined }));
+    const feats = el<HTMLInputElement>('<input class="cv-input" type="text" spellcheck="false" aria-label="OpenType features" placeholder="tnum, lnum, case, -kern">');
+    feats.addEventListener('change', () => setType(e, { features: featuresFromText(feats.value) }));
+    const axes = el<HTMLInputElement>('<input class="cv-input" type="text" spellcheck="false" aria-label="Variable axes" placeholder="wght 600, wdth 90">');
+    axes.addEventListener('change', () => { const v = variationsFromText(axes.value); setType(e, { variations: Object.keys(v).length ? v : null }); });
+    const color = el<HTMLInputElement>('<input class="cv-input cv-color" type="color" aria-label="Colour">');
+    color.addEventListener('input', () => {
+      const m = /^#([0-9a-f]{6})$/i.exec(color.value), l = e.activeLayer;
+      if (!m) return;
+      e.fg = { r: parseInt(m[1].slice(0, 2), 16), g: parseInt(m[1].slice(2, 4), 16), b: parseInt(m[1].slice(4, 6), 16) };
+      e.emit('options', null);
+      if (l?.text && e.liveText(l)) void e.updateTextLayer(l.id, { ...l.text, color: e.fg });
+    });
+    row('Weight', weight); row('Colour', color); row('Caps', caps); row('Lines', lines); row('H scale', hscale.root); row('V scale', vscale.root); row('Baseline', shift.root); row('Features', feats); row('Axes', axes);
     new PanelGroup(this.root, 'character', [{ id: 'character', label: 'Character', body }], 'Character');
+    let axesFace = '';
     let fonts = '';
     this.refreshers.push(() => {
       const t = e.textSettings, list = fontFamilies(), key = list.join('|');
@@ -494,6 +535,18 @@ export class PropertiesColumn {
       if (document.activeElement !== style) style.value = `${t.bold ? 1 : 0}${t.italic ? 1 : 0}`;
       if (document.activeElement !== kern) kern.value = t.kerning;
       size.set(t.size); leading.set(Math.round(t.size * t.lineHeight * 10) / 10); tracking.set(t.tracking);
+      if (document.activeElement !== weight) weight.value = t.weight ? String(t.weight) : '';
+      if (document.activeElement !== caps) caps.value = t.caps ?? '';
+      if (document.activeElement !== lines) lines.value = `${t.underline ? 'u' : ''}${t.strike ? 's' : ''}`;
+      hscale.set(t.scaleX ?? 100); vscale.set(t.scaleY ?? 100); shift.set(t.baselineShift ?? 0);
+      if (document.activeElement !== feats) feats.value = featuresToText(t.features);
+      if (document.activeElement !== axes) axes.value = variationsToText(t.variations);
+      if (document.activeElement !== color) color.value = `#${[e.fg.r, e.fg.g, e.fg.b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+      const face = `${t.family}|${t.bold}|${t.italic}`;
+      if (face !== axesFace) {
+        axesFace = face;
+        void axesOf(t.family, t.bold, t.italic).then((found) => { if (axesFace === face) axes.placeholder = found?.length ? found.map((a) => `${a.tag} ${a.min}-${a.max}`).join(', ') : 'No variable axes in this font'; });
+      }
     });
   }
 }

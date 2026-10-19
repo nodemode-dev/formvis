@@ -3,17 +3,22 @@ import { Dialog } from '../dialogs';
 import { el, q, setText } from '../dom';
 import { toast } from '../toast';
 import { featureOn, featuresKnown, featuresOf, OT_STYLISTIC_SETS, withFeature } from '../../engine/opentype';
+import { mappedChars } from '../../engine/glyph-outlines';
+import { fontFamilies } from '../fonts';
 import { selectRow } from './controls';
 
-/** Window > Glyphs (DEV_PLAN 32.6 part a): a 16-column grid of one Unicode block in the type layer's font, a row of
- *  the last 12 glyphs used, and a click that appends the glyph to the active type layer's content (one undo step).
- *  The grid's 256 buttons are built once; changing the block changes only their text and font. */
+/** Window > Glyphs (DEV_PLAN 32.6 part a): a 16-column grid of one Unicode block in a font chosen here (the type layer's
+ *  to start), showing only the characters the font file maps, a row of the last 12 glyphs used, and a click that puts the
+ *  glyph at the in-canvas editor's caret, or else at the end of the active type layer's content (one undo step).
+ *  The grid's 256 buttons are built once; changing the block or font changes only their text and font. */
 
 interface Block { id: string; label: string; from: number; to: number }
 const BLOCKS: readonly Block[] = [
   { id: 'latin', label: 'Basic Latin', from: 0x20, to: 0x7e },
   { id: 'latin1', label: 'Latin-1 Supplement', from: 0xa0, to: 0xff },
   { id: 'latinA', label: 'Latin Extended-A', from: 0x100, to: 0x17f },
+  { id: 'latinB', label: 'Latin Extended-B', from: 0x180, to: 0x24f },
+  { id: 'latinAdd', label: 'Latin Extended Additional', from: 0x1e00, to: 0x1eff },
   { id: 'greek', label: 'Greek', from: 0x370, to: 0x3ff },
   { id: 'cyrillic', label: 'Cyrillic', from: 0x400, to: 0x4ff },
   { id: 'punct', label: 'General Punctuation', from: 0x2010, to: 0x205e },
@@ -45,8 +50,11 @@ function saveRecent(list: string[]): void {
 }
 
 export class GlyphsDialog extends Dialog {
-  private readonly font = el('<label class="cv-field"><span></span><input class="cv-input" type="text" readonly></label>');
-  private readonly fontInput: HTMLInputElement;
+  private readonly font = el('<label class="cv-field"><span></span><select class="cv-input"></select></label>');
+  private readonly fontInput: HTMLSelectElement;
+  private readonly charNote = el('<p class="cv-dialog-note"></p>');
+  private mapped: Set<number> | null = null;
+  private mapSeq = 0;
   private readonly grid = el('<div class="cv-glyph-grid" role="grid" style="display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; margin-top: 8px"></div>');
   private readonly recentRow = el('<div class="cv-glyph-recent" style="display: flex; gap: 2px; min-height: 30px; margin-top: 8px" aria-label="Recently used"></div>');
   private readonly altRow = el('<div class="cv-glyph-alts" style="display: flex; flex-wrap: wrap; gap: 4px" aria-label="Alternates"></div>');
@@ -62,7 +70,8 @@ export class GlyphsDialog extends Dialog {
   constructor(private readonly engine: Engine) {
     super('Glyphs', 560);
     setText(q(this.font, 'span'), 'Font');
-    this.fontInput = q(this.font, 'input') as HTMLInputElement;
+    this.fontInput = q(this.font, 'select') as HTMLSelectElement;
+    this.fontInput.addEventListener('change', () => { this.family = this.fontInput.value; this.fill(); this.detectAlternates(); void this.loadChars(); });
     const show = selectRow('Show', BLOCKS.map((b) => [b.id, b.label] as const), (v) => { this.block = BLOCKS.find((b) => b.id === v) ?? BLOCKS[0]; this.fill(); });
     show.set(this.block.id);
     for (let i = 0; i < 256; i++) {
@@ -77,7 +86,7 @@ export class GlyphsDialog extends Dialog {
       this.recentCells.push(b);
       this.recentRow.appendChild(b);
     }
-    this.body.append(this.font, show.el, el('<p class="cv-dialog-note">Recently used</p>'), this.recentRow, this.grid,
+    this.body.append(this.font, show.el, this.charNote, el('<p class="cv-dialog-note">Recently used</p>'), this.recentRow, this.grid,
       el('<p class="cv-dialog-note">Alternates</p>'), this.altRow,
       this.altNote, el('<p class="cv-dialog-note">A click on a glyph adds it to the end of the selected type layer.</p>'));
     for (const f of ALTERNATES) {
@@ -93,8 +102,11 @@ export class GlyphsDialog extends Dialog {
   show(): void {
     const t = this.engine.current?.activeLayer?.text;
     this.family = t && this.engine.liveText(this.engine.current?.activeLayer) ? t.family : this.engine.textSettings.family;
+    if (!this.fontInput.options.length) for (const f of fontFamilies()) this.fontInput.add(new Option(f, f));
+    if (!Array.from(this.fontInput.options).some((o) => o.value === this.family)) this.fontInput.add(new Option(this.family, this.family));
     this.fontInput.value = this.family;
     this.fill();
+    void this.loadChars();
     this.paintRecent();
     this.paintAlternates();
     this.detectAlternates();
@@ -118,17 +130,30 @@ export class GlyphsDialog extends Dialog {
     void featuresOf(this.family || s.family, !!s.bold, !!s.italic).then(apply);
   }
 
-  /** Sets the 256 kept buttons for the current block: text and font only, nothing is added or removed. */
+  /** Reads which characters the chosen face maps from its font file, then redraws the grid with only those. */
+  private async loadChars(): Promise<void> {
+    const seq = ++this.mapSeq, l = this.engine.current?.activeLayer, t = l && this.engine.liveText(l) ? l.text : null;
+    const list = await mappedChars(this.family, !!(t ?? this.engine.textSettings).bold, !!(t ?? this.engine.textSettings).italic);
+    if (seq !== this.mapSeq) return;
+    this.mapped = list ? new Set(list) : null;
+    this.fill();
+  }
+
+  /** Sets the 256 kept buttons for the current block: text and font only, nothing is added or removed. Where the face's
+   *  characters are known, only the ones it maps are shown, packed from the first cell. */
   private fill(): void {
-    const { from, to } = this.block;
+    const { from, to } = this.block, cps: number[] = [];
+    for (let cp = from; cp <= to; cp++) if (!this.mapped || this.mapped.has(cp)) cps.push(cp);
     const font = this.family ? `"${this.family}", sans-serif` : '';
     this.cells.forEach((b, i) => {
-      const cp = from + i, on = cp <= to;
+      const cp = cps[i], on = cp !== undefined;
       b.hidden = !on;
       b.style.fontFamily = font;
       b.textContent = on ? String.fromCodePoint(cp) : '';
       b.title = on ? `U+${cp.toString(16).toUpperCase().padStart(4, '0')}` : '';
     });
+    setText(this.charNote, !this.mapped ? 'The font file could not be read, so every code point in the block is shown.'
+      : `${cps.length} of this font's ${this.mapped.size} mapped characters are in this block.`);
   }
 
   private paintRecent(): void {

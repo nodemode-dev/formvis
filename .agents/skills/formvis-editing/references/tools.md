@@ -14,7 +14,7 @@ Generated from the engine's catalogue by `./formvis agents sync`; do not edit by
 - Painting and generating: `fill`, `generative_fill`, `generate_image`, `remove_background`
 - Colour, filters and looks: `add_adjustment`, `apply_filter`, `set_adjustment`, `color_match`, `add_film_layer`
 - History: `undo`, `redo`
-- Other: `close_document`, `ping`, `list_plugins`, `select_feather`, `select_grow`, `select_point`, `timeline_get`, `timeline_create`, `timeline_delete`, `timeline_set`, `timeline_go_to`, `timeline_clip`, `timeline_split`, `timeline_keyframe`, `timeline_transition`, `timeline_frame_image`, `timeline_render`, `select_mask`, `list_settings`, `set_settings`, `ui_inspect`, `boxes_list`, `boxes_add`, `boxes_set`, `boxes_remove`, `boxes_from_selection`, `boxes_clear`, `sample_box`, `frequency_separation`, `sample_depth`, `depth_edit`, `set_crop`, `export_mask`
+- Other: `close_document`, `ping`, `list_plugins`, `select_feather`, `select_grow`, `select_point`, `timeline_get`, `timeline_create`, `timeline_delete`, `timeline_set`, `timeline_go_to`, `timeline_clip`, `timeline_split`, `timeline_keyframe`, `timeline_transition`, `timeline_frame_image`, `timeline_render`, `select_mask`, `list_settings`, `list_fonts`, `set_settings`, `ui_inspect`, `boxes_list`, `boxes_add`, `boxes_set`, `boxes_remove`, `boxes_from_selection`, `boxes_clear`, `sample_box`, `frequency_separation`, `sample_depth`, `depth_edit`, `set_crop`, `export_mask`
 
 ## get_document
 
@@ -558,6 +558,14 @@ Makes the selection from a layer: its pixels (transparency), its layer mask, or 
 The window's simple settings (numbers, on-off choices and short texts in Preferences) with their current values. Use when you need to know how the window is set up before changing it.
 
 - no parameters
+
+Note: read-only.
+
+## list_fonts
+
+The font families the window offers for type, bundled and installed ones, most recently used first. Give family to get that family's faces (regular, bold, italic, bold italic) with whether the font file could be read and how many characters it maps; use a listed family name in add_text. Use when you need a font family name that exists here before adding or changing text.
+
+- `family`: string; A family from the list; omit to list all families.
 
 Note: read-only.
 

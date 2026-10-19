@@ -37,7 +37,7 @@ const TOOL_WHEN: Record<string, string> = {
   brush: 'to paint soft strokes with the foreground colour', pencil: 'to draw hard-edged lines', mixer: 'to paint with colours that blend like wet paint',
   spotHealing: 'to remove small blemishes with one click', remove: 'to paint over an object and have it removed', healingBrush: 'to repair texture from a sampled source',
   patch: 'to repair a selected area with pixels from another area', contentAwareMove: 'to move or extend an object and heal the gap', redEye: 'to fix red eyes in a flash photo',
-  cloneStamp: 'to copy pixels from a sampled source by painting', patternStamp: 'to paint with a pattern', historyBrush: 'to paint back an earlier state of the picture',
+  cloneStamp: 'to copy pixels from a sampled source by painting', patternStamp: 'to paint with a pattern', colorReplace: 'to swap one colour for the foreground colour by painting over it', historyBrush: 'to paint back an earlier state of the picture',
   artHistory: 'to paint a stylised version of an earlier state', eraser: 'to erase pixels to transparency or background colour', backgroundEraser: 'to erase a background colour while keeping edges',
   magicEraser: 'to erase a region of similar colour with one click', smear: 'to smudge, blur or sharpen by painting', dodge: 'to lighten areas by painting',
   burn: 'to darken areas by painting', sponge: 'to raise or lower colour saturation by painting', gradient: 'to fill with a gradient by dragging',
@@ -56,7 +56,9 @@ const CORE: Record<string, Record<string, FlatParam>> = {
   gaussianBlur: { radius: num('radius', 0.1, 250, 'Blur radius in pixels') },
   motionBlur: { angle: num('angle', -90, 90, 'Direction in degrees'), distance: num('distance', 1, 2000, 'Length in pixels') },
   addNoise: { amount: num('amount', 0.1, 400, 'Noise strength in percent'), gaussian: { path: 'gaussian', type: 'boolean', description: 'Gaussian instead of uniform noise' }, monochromatic: { path: 'monochromatic', type: 'boolean', description: 'Noise without colour' } },
-  lensCorrection: { distortion: num('distortion', -100, 100, 'Positive corrects barrel distortion, negative pincushion') },
+  lensCorrection: { distortion: num('distortion', -100, 100, 'Positive corrects barrel distortion, negative pincushion'), redCyan: num('lensFix.caRc', -100, 100, 'Red/cyan fringe correction'), blueYellow: num('lensFix.caBy', -100, 100, 'Blue/yellow fringe correction'),
+    vignette: num('lensFix.vignette', -100, 100, 'Positive lightens the corners, negative darkens them'), midpoint: num('lensFix.midpoint', 0, 100, 'Where the vignette starts'), vertical: num('lensFix.vertical', -100, 100, 'Vertical perspective'), horizontal: num('lensFix.horizontal', -100, 100, 'Horizontal perspective'),
+    edge: { path: 'lensFix.edge', type: 'string', enum: ['transparent', 'extend', 'black', 'white'], description: 'What the edges show' } },
   unsharpMask: { amount: num('usmAmount', 1, 500, 'Strength in percent'), radius: num('usmRadius', 0.1, 250, 'Radius in pixels'), threshold: num('threshold', 0, 255, 'Smallest difference sharpened, in levels') },
   lensBlur: { radius: num('lensRadius', 1, 100, 'Blur radius in pixels'), brightness: num('lensBrightness', 0, 100, 'Specular brightness'), threshold: num('lensThreshold', 0, 255, 'Specular threshold') },
   smartSharpen: { amount: num('smart.amount', 1, 500, 'Strength in percent'), radius: num('smart.radius', 0.1, 64, 'Radius in pixels'), noise: num('smart.noise', 0, 100, 'Noise reduction in percent'),
@@ -119,7 +121,7 @@ function adjustVariants(): Record<string, Record<string, CommandParam>> {
 
 const POINTS: CommandParam = { type: 'array', required: true, description: 'Points in document pixels: [{x, y, pressure?}] with pressure 0 to 1, or [x, y, pressure?] triples' };
 const MODE: CommandParam = { type: 'string', enum: ['replace', 'add', 'subtract', 'intersect'], description: 'How the new selection combines with the current one; replace by default' };
-const PAINT_TOOLS = ['brush', 'pencil', 'eraser', 'mixer', 'smear', 'dodge', 'burn', 'sponge'];
+const PAINT_TOOLS = ['brush', 'pencil', 'eraser', 'mixer', 'colorReplace', 'smear', 'dodge', 'burn', 'sponge'];
 
 function actionEntries(): CatalogueEntry[] {
   const a = (id: string, label: string, group: string, description: string, when: string, params: Record<string, CommandParam>, extra: Partial<CatalogueEntry> = {}): CatalogueEntry =>

@@ -10,7 +10,8 @@ import type { Snapshot } from './history';
 import { uid, type Doc, type ID } from './types';
 
 /** One kept snapshot. */
-export type SnapshotEntry = { id: ID; name: string; state: Snapshot };
+export type SnapshotKind = 'document' | 'merged' | 'layer';
+export type SnapshotEntry = { id: ID; name: string; state: Snapshot; kind?: SnapshotKind };
 
 /** The snapshot state the Engine keeps: each open document's snapshots, oldest first. */
 export class SnapshotStore {
@@ -24,7 +25,9 @@ export interface SnapshotHost {
   readonly stroke: unknown;
   readonly autoFirstSnapshot: boolean;
   readonly snapshotByteLimit: number;
+  readonly snapshotCountLimit: number;
   readonly memoryBudget: number;
+  mergedDoc(): Doc | null;
   readonly historyBrushSource: ID | null;
   store: SnapshotStore;
   notice(text: string): void;
@@ -77,24 +80,37 @@ export function docBytes(doc: Doc): number {
 
 /** The current document's snapshots, newest last, with the memory each keeps. They live with the open document and
  *  are not saved. */
-export function snapshots(host: SnapshotHost): ReadonlyArray<{ id: ID; name: string; bytes: number }> {
+export function snapshots(host: SnapshotHost): ReadonlyArray<{ id: ID; name: string; bytes: number; kind: SnapshotKind }> {
   const p = host.current;
-  return p ? (host.store.lists.get(p) ?? []).map((x) => ({ id: x.id, name: x.name, bytes: docBytes(x.state.doc) })) : [];
+  return p ? (host.store.lists.get(p) ?? []).map((x) => ({ id: x.id, name: x.name, bytes: docBytes(x.state.doc), kind: x.kind ?? 'document' })) : [];
 }
 
 /** History > New Snapshot: the document as it is now, kept to return to however far the steps move on. */
-export function takeSnapshot(host: SnapshotHost, name?: string): void {
+export function takeSnapshot(host: SnapshotHost, name?: string, kind: SnapshotKind = 'document'): void {
   const p = host.current;
   if (!p || host.stroke) return;
   host.settle();
-  const list = host.store.lists.get(p) ?? [], need = docBytes(p.doc), used = list.reduce((a, x) => a + docBytes(x.state.doc), 0), mb = (b: number): number => Math.ceil(b / 1048576);
+  const list = host.store.lists.get(p) ?? [], mb = (b: number): number => Math.ceil(b / 1048576);
+  if (list.length >= host.snapshotCountLimit) { host.notice(`This document already keeps ${list.length} snapshots, the most it may keep. Delete one first.`); return; }
+  // Merged Layers keeps the picture in one layer; Current Layer keeps the active layer alone, free of its folder and clip.
+  let source: Doc | null = p.doc, activeId = p.activeId;
+  if (kind === 'merged') { source = host.mergedDoc(); activeId = source?.layers[0]?.id ?? null; }
+  else if (kind === 'layer') {
+    const l = p.activeLayer;
+    if (!l || l.isGroup || !l.raster) { host.notice('Select a layer with pixels first: Current Layer keeps only that layer.'); return; }
+    source = { ...p.doc, layers: [{ ...l, parentId: null, clipId: null }] };
+    activeId = l.id;
+  }
+  if (!source) return;
+  const need = docBytes(source), used = list.reduce((a, x) => a + docBytes(x.state.doc), 0);
   if (used + need > host.snapshotByteLimit) { host.notice(`A snapshot of this document needs ${mb(need)} MB, and snapshots already keep ${mb(used)} MB of the ${mb(host.snapshotByteLimit)} MB they may use. Delete one first.`); return; }
   if (!host.room(need, 'A snapshot')) return;   // its copy of every pixel (1.60.5)
   // Numbering: the opening snapshot bears the document's name, so the first taken is Snapshot 1.
-  let n = list.filter((x) => /^Snapshot \d+$/.test(x.name)).length + 1;
-  while (list.some((x) => x.name === `Snapshot ${n}`)) n += 1;
+  const label = kind === 'merged' ? 'Merged Snapshot' : kind === 'layer' ? 'Layer Snapshot' : 'Snapshot';
+  let n = list.filter((x) => x.name.startsWith(`${label} `) && /^\d+$/.test(x.name.slice(label.length + 1))).length + 1;
+  while (list.some((x) => x.name === `${label} ${n}`)) n += 1;
   const given = name?.trim().slice(0, 100);
-  list.push({ id: uid(), name: given || `Snapshot ${n}`, state: { doc: copyDoc(p.doc), activeId: p.activeId, selection: p.selection } });
+  list.push({ id: uid(), name: given || `${label} ${n}`, kind, state: { doc: kind === 'merged' ? source : copyDoc(source), activeId, selection: p.selection } });
   host.store.lists.set(p, list);
   host.emit('history');
 }

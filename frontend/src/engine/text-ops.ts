@@ -3,7 +3,8 @@
 // they use, so this file never imports the Engine class. The Type tool's settings stay a field of the Engine; the host
 // reads and writes them through `textSettings`.
 import type { Project } from './project';
-import { contains } from './geometry';
+import { applyMat, contains, placement } from './geometry';
+import { glyphOutlines } from './glyph-outlines';
 import { SelectionMask, type SelectionMode } from './selection';
 import { samplePath, type SubPath, type VectorPath } from './paths';
 import { traceAlpha } from './trace-outline';
@@ -39,7 +40,7 @@ export function textLayerAt(host: TextHost, pt: Pt): ID | null {
 
 /** Type Mask: the text rendered and placed as a layer would be, its coverage made the selection; one
  *  step, no layer. */
-export async function createTextSelection(host: TextHost, at: Pt, spec: TextSpec): Promise<void> {
+export async function createTextSelection(host: TextHost, at: Pt, spec: TextSpec, mode: SelectionMode = 'replace'): Promise<void> {
   const p = host.current;
   if (!p || !spec.content.trim()) return;
   await loadTextFont(spec);
@@ -51,7 +52,7 @@ export async function createTextSelection(host: TextHost, at: Pt, spec: TextSpec
   if (x1 <= x0 || y1 <= y0) { host.notice('The type lies outside the canvas.'); return; }
   const cw = x1 - x0, ch = y1 - y0, d = r.raster.ctx.getImageData(x0 - x, y0 - y, cw, ch).data, a = new Uint8Array(cw * ch);
   for (let i = 0; i < a.length; i++) a[i] = d[i * 4 + 3];
-  host.applySelection(SelectionMask.cropped(x0, y0, cw, ch, a), 'replace', spec.direction === 'vertical' ? 'Vertical Type Mask' : 'Horizontal Type Mask');
+  host.applySelection(SelectionMask.cropped(x0, y0, cw, ch, a), mode, spec.direction === 'vertical' ? 'Vertical Type Mask' : 'Horizontal Type Mask');
 }
 
 export async function createTextLayer(host: TextHost, at: Pt, spec: TextSpec): Promise<void> {
@@ -111,44 +112,64 @@ export async function textOnSubpath(host: TextHost, content: string, offset: num
   return true;
 }
 
-/** Layer > Type > Create Work Path (DEV_PLAN 32.7 part b): the active type layer's outlines, traced from its rendered
- *  pixels (not read from the font), become the Work Path. Paths sit outside undo, so this is not a history step. Placement
- *  uses the layer's x, y and size only; rotation is ignored. */
-export function typeToWorkPath(host: TextHost): boolean {
+/** Layer > Type > Create Work Path (DEV_PLAN 32.7 part b): the active type layer's outlines become the Work Path, read from
+ *  the font file's glyph outlines (curves exact, the layer's position, scale, flips and rotation applied) where the layout
+ *  is one they follow, else traced from the rendered pixels (position, scale and rotation applied). Paths sit outside
+ *  undo, so this is not a history step. */
+export async function typeToWorkPath(host: TextHost): Promise<boolean> {
   const p = host.current, l = p?.activeLayer;
-  if (!p || !l || !l.raster || !liveText(l)) { host.notice('Select a type layer first.'); return false; }
-  const r = l.raster, d = r.ctx.getImageData(0, 0, r.width, r.height).data, alpha = new Uint8ClampedArray(r.width * r.height);
-  for (let i = 0; i < alpha.length; i++) alpha[i] = d[i * 4 + 3];
-  const vp = traceAlpha(alpha, r.width, r.height, { scale: l.transform.w / r.width, offsetX: l.transform.x, offsetY: l.transform.y });
+  if (!p || !l || !l.raster || !l.text || !liveText(l)) { host.notice('Select a type layer first.'); return false; }
+  const r = l.raster, spec = withCharStyle(l.text, l.text.charStyle ? p.doc.characterStyles?.find((x) => x.id === l.text?.charStyle) : undefined);
+  let vp: VectorPath | null = await glyphOutlines(spec, r, l.transform);
+  if (host.current !== p || p.activeLayer !== l) return false;
+  if (!vp) {
+    const d = r.ctx.getImageData(0, 0, r.width, r.height).data, alpha = new Uint8ClampedArray(r.width * r.height);
+    for (let i = 0; i < alpha.length; i++) alpha[i] = d[i * 4 + 3];
+    vp = traceAlpha(alpha, r.width, r.height);
+    const m = placement(l.transform, r.width, r.height), at = (x: number, y: number): { x: number; y: number } => applyMat(m, x, y);
+    for (const sp of vp.subpaths) sp.anchors = sp.anchors.map((a) => { const c = at(a.x, a.y), i = at(a.inX, a.inY), o = at(a.outX, a.outY); return { x: c.x, y: c.y, inX: i.x, inY: i.y, outX: o.x, outY: o.y }; });
+  }
   if (!vp.subpaths.length) { host.notice('This type layer has no outlines to trace.'); return false; }
   host.paths.select(null);
   host.paths.setWork(vp);
   return true;
 }
 
-/** Layer > Type > Convert to Shape: Create Work Path, then a shape layer in the text colour above the type layer, which
- *  is hidden. The shape and the hiding are one undo step. */
-export function typeToShape(host: TextHost): boolean {
+/** Layer > Type > Convert to Shape: Create Work Path, then a shape layer in the text colour that takes the type layer's
+ *  place, the type layer removed. The shape and the removal are one undo step. */
+export async function typeToShape(host: TextHost): Promise<boolean> {
   const p = host.current, l = p?.activeLayer, spec = l?.text;
   if (!p || !l || !spec || !liveText(l)) { host.notice('Select a type layer first.'); return false; }
-  if (!typeToWorkPath(host)) return false;
+  if (!(await typeToWorkPath(host))) return false;
   const path = structuredClone(host.paths.work as VectorPath), look: ShapeStyle = { fill: { ...spec.color }, stroke: null };
   const r = host.renderShape(path, look);
   if (!r) return false;
   const name = spec.content.replace(/\s+/g, ' ').trim().slice(0, 32) || 'Type Shape', typeId = l.id;
   return host.edit('Convert to Shape', (q) => {
     host.insertRasterLayer(r.raster, name, r.x, r.y, { vector: { path, fill: look.fill, stroke: look.stroke, origin: { x: r.x, y: r.y } } }, 'Convert to Shape');
-    q.updateLayer(typeId, { visible: false });
+    q.setLayers(q.doc.layers.filter((x) => x.id !== typeId));
   });
 }
 
 /** New text or settings for a type layer, re-rendered in place as one undo step: any scaling of the layer is kept,
  *  and so is its left edge, centre or right edge, by its alignment. */
-export async function updateTextLayer(host: TextHost, id: ID, spec: TextSpec): Promise<void> {
+export async function updateTextLayer(host: TextHost, id: ID, spec: TextSpec, move?: Pt): Promise<void> {
   const p = host.current, patch = p ? await textPatch(host, p, id, spec) : null;
   if (!p || !patch || host.current !== p) return;
   host.textSettings = { ...spec, content: '', rendered: undefined };
-  host.edit('Edit Type', (pp) => { pp.updateLayer(id, patch); });
+  const t = patch.transform, out = move && t ? { ...patch, transform: { ...t, x: t.x + move.x, y: t.y + move.y } } : patch;
+  host.edit('Edit Type', (pp) => { pp.updateLayer(id, out); });
+}
+
+/** Resize Text Box: paragraph text's box set to `box` with its top left at `to`, the text reflowed, as one undo step. */
+export async function resizeTextBox(host: TextHost, id: ID, box: { w: number; h: number }, to: Pt): Promise<boolean> {
+  const p = host.current, l = p?.layer(id);
+  if (!p || !l?.text || !l.text.box || !liveText(l)) return false;
+  const spec: TextSpec = { ...l.text, box: { w: Math.max(8, Math.round(box.w)), h: Math.max(8, Math.round(box.h)) } };
+  const patch = await textPatch(host, p, id, spec);
+  if (!patch || host.current !== p || !patch.transform) return false;
+  host.textSettings = { ...spec, content: '', rendered: undefined };
+  return host.edit('Resize Text Box', (pp) => { pp.updateLayer(id, { ...patch, transform: { ...patch.transform as Layer['transform'], x: to.x, y: to.y } }); });
 }
 
 /** The new pixels, place and name of type layer `id` set to `spec`, rendered but not applied, so several layers can

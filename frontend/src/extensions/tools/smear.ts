@@ -51,8 +51,14 @@ export const smearTool: Tool = {
     ...(e.retouch.smearMode === 'blur' || e.retouch.smearMode === 'sharpen'
       ? [{ kind: 'select' as const, label: 'Mode', priority: 70, choices: (['normal', 'darken', 'lighten', 'hue', 'saturation', 'color', 'luminosity'] as const).map((id) => ({ id, label: BLEND_MODES.find((m) => m.id === id)?.label ?? id })), get: () => e.retouch.smearBlend, set: (v: string) => { e.retouch.smearBlend = v as typeof e.retouch.smearBlend; e.emit('options', null); } }]
       : []),
-    ...(e.retouch.smearMode !== 'liquify'
+    ...(e.retouch.smearMode === 'blur' || e.retouch.smearMode === 'sharpen'
       ? [{ kind: 'toggle' as const, label: 'Sample All Layers', priority: 20, get: () => e.retouch.smearSampleAll, set: (v: boolean) => { e.retouch.smearSampleAll = v; e.emit('options', null); } }]
+      : []),
+    ...(e.retouch.smearMode === 'smudge'
+      ? [
+          { kind: 'select' as const, label: 'Sample', priority: 20, choices: [{ id: 'current', label: 'Current Layer' }, { id: 'below', label: 'Current & Below' }, { id: 'all', label: 'All Layers' }], get: () => (e.retouch.smearSampleAll ? 'all' : e.retouch.smudgeBelow ? 'below' : 'current'), set: (v: string) => { e.retouch.smearSampleAll = v === 'all'; e.retouch.smudgeBelow = v === 'below'; e.emit('options', null); } },
+          { kind: 'number' as const, label: 'Length', priority: 45, min: 0, max: 100, step: 5, get: () => e.retouch.smudgeLength, set: (v: number) => { e.retouch.smudgeLength = Math.round(Math.min(100, Math.max(0, v))); e.emit('options', null); } },
+        ]
       : []),
     ...(e.retouch.smearMode === 'blur' ? [{ kind: 'number' as const, label: 'Radius', priority: 45, min: 0, max: 60, step: 1, get: () => e.retouch.blurRadius, set: (v: number) => { e.retouch.blurRadius = Math.round(Math.min(60, Math.max(0, v))); e.emit('options', null); } }] : []),
     ...(e.retouch.smearMode === 'sharpen' ? [{ kind: 'toggle' as const, label: 'Protect Detail', priority: 40, get: () => e.retouch.protectDetail, set: (v: boolean) => { e.retouch.protectDetail = v; e.emit('options', null); } }] : []),

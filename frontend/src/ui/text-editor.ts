@@ -7,8 +7,8 @@ import { el, setHidden, setStyleVar } from './dom';
  *  hidden meanwhile). The engine renders the text when it commits. Ctrl or Cmd with Enter, a click elsewhere with the
  *  Type tool, or a change of tool commits; Escape cancels. The Type tool's options restyle it as you type. */
 export class TextEditor {
-  private readonly box = el<HTMLTextAreaElement>('<textarea class="cv-type-editor" wrap="off" spellcheck="false" aria-label="Text" hidden></textarea>');
-  private session: { project: Project; at: Pt; layerId: ID | null; spec: TextSpec; scale: number; mask?: boolean } | null = null;
+  private readonly box = el<HTMLTextAreaElement>('<textarea class="cv-type-editor" wrap="off" spellcheck="true" aria-label="Text" hidden></textarea>');
+  private session: { project: Project; at: Pt; layerId: ID | null; spec: TextSpec; scale: number; mask?: boolean; shift?: Pt } | null = null;
 
   constructor(host: HTMLElement, private readonly engine: Engine) {
     host.appendChild(this.box);
@@ -25,6 +25,7 @@ export class TextEditor {
     engine.on('tool', () => { if (engine.tool !== 'type') void this.commit(); });
     engine.on('active', () => { if (this.session && this.session.project !== engine.current) this.cancel(); });
     document.addEventListener('cv:type-settings', () => this.restyle());
+    document.addEventListener('cv:type-move', (e) => { const d = (e as CustomEvent<Pt>).detail; if (d) this.moveBy(d.x, d.y); });
   }
 
   get editing(): boolean { return this.session !== null; }
@@ -63,12 +64,32 @@ export class TextEditor {
     const spec: TextSpec = { ...s.spec, content: this.box.value.replace(/\r\n?/g, '\n') };
     this.end();
     if (this.engine.current !== s.project || !spec.content.trim()) return;
-    if (s.layerId) await this.engine.updateTextLayer(s.layerId, spec);
+    if (s.layerId) await this.engine.updateTextLayer(s.layerId, spec, s.shift);
     else if (s.mask) await this.engine.createTextSelection(s.at, spec);
     else await this.engine.createTextLayer(s.at, spec);
   }
 
   cancel(): void { this.end(); }
+
+  /** Ctrl drag with the Type tool while typing: the text being typed (a new one, or an existing layer's) moves by (dx, dy) document pixels. */
+  moveBy(dx: number, dy: number): void {
+    const s = this.session;
+    if (!s) return;
+    s.at = { x: s.at.x + dx, y: s.at.y + dy };
+    if (s.layerId) s.shift = { x: (s.shift?.x ?? 0) + dx, y: (s.shift?.y ?? 0) + dy };
+    this.place();
+    if (document.activeElement !== this.box) this.box.focus({ preventScroll: true });
+  }
+
+  /** Puts `text` at the caret (over a selection) of the text being typed; false when nothing is being typed. */
+  insertAtCaret(text: string): boolean {
+    if (!this.session) return false;
+    const b = this.box, a = b.selectionStart, z = b.selectionEnd;
+    b.setRangeText(text, a, z, 'end');
+    b.focus();
+    this.place();
+    return true;
+  }
 
   private end(): void {
     this.session = null;
@@ -98,7 +119,7 @@ export class TextEditor {
   private restyle(): void {
     const s = this.session, t = this.engine.textSettings;
     if (!s) return;
-    s.spec = { ...s.spec, antialias: t.antialias, hyphenate: t.hyphenate, language: t.language, family: t.family, size: t.size, align: t.align, bold: t.bold, italic: t.italic, lineHeight: t.lineHeight, tracking: t.tracking, kerning: t.kerning };
+    s.spec = { ...s.spec, antialias: t.antialias, hyphenate: t.hyphenate, language: t.language, shaping: t.shaping, family: t.family, size: t.size, align: t.align, bold: t.bold, italic: t.italic, lineHeight: t.lineHeight, tracking: t.tracking, kerning: t.kerning, features: t.features, weight: t.weight, caps: t.caps, scaleX: t.scaleX, scaleY: t.scaleY, baselineShift: t.baselineShift, underline: t.underline, strike: t.strike, variations: t.variations, indentFirst: t.indentFirst, indentLeft: t.indentLeft, indentRight: t.indentRight, spaceBefore: t.spaceBefore, spaceAfter: t.spaceAfter, lastLine: t.lastLine };
     this.place();
   }
 
@@ -129,6 +150,10 @@ export class TextEditor {
     box.classList.toggle('is-box', !!area);
     box.classList.toggle('is-vertical', vertical);
     box.classList.toggle('is-mask', !!s.mask);
+    const dir = s.spec.shaping === 'middleEastern' ? 'rtl' : 'ltr';
+    if (box.dir !== dir) box.dir = dir;
+    const lang = s.spec.language || (s.spec.shaping === 'eastAsian' ? 'ja' : s.spec.shaping === 'middleEastern' ? 'ar' : '');
+    if (box.lang !== lang) box.lang = lang;
     box.setAttribute('wrap', area ? 'soft' : 'off');
     if (area) {   // paragraph text: the box itself, wrapping as typed
       setStyleVar(box, '--x', `${v.panX + s.at.x * v.zoom}px`); setStyleVar(box, '--y', `${v.panY + s.at.y * v.zoom}px`);

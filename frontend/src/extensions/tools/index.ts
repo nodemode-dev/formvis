@@ -37,6 +37,7 @@ import { pencilTool } from './pencil';
 import { eraserTool } from './eraser';
 import { magicEraserTool } from './magic-eraser';
 import { patternStampTool } from './pattern-stamp';
+import { colorReplaceTool } from './color-replace';
 import { backgroundEraserTool } from './background-eraser';
 import { colorSamplerTool } from './color-sampler';
 import { rulerTool } from './ruler';
@@ -51,5 +52,5 @@ import { artboardTool } from './artboard';
 import { relightTool } from './relight';
 
 export function registerBuiltinTools(): void {
-  for (const tool of [historyBrushTool, artHistoryTool, mixerTool, frameTool, convertPointTool, selectionBrushTool, pencilTool, eraserTool, magicEraserTool, patternStampTool, backgroundEraserTool, colorSamplerTool, rulerTool, noteTool, markupTool, countTool, boxesTool, contentAwareMoveTool, redEyeTool, rotateViewTool, artboardTool, moveTool, marqueeTool, lassoTool, objectSelectTool, quickSelectTool, wandTool, cropTool, sliceTool, brushTool, healTool, removeTool, healingBrushTool, patchTool, cloneTool, smearTool, dodgeTool, burnTool, spongeTool, gradientTool, bucketTool, shapeTool, pathSelectTool, directSelectTool, penTool, freeformPenTool, curvaturePenTool, typeTool, eyedropperTool, handTool, zoomTool, relightTool]) registerTool(tool);
+  for (const tool of [historyBrushTool, artHistoryTool, mixerTool, frameTool, convertPointTool, selectionBrushTool, pencilTool, eraserTool, magicEraserTool, patternStampTool, colorReplaceTool, backgroundEraserTool, colorSamplerTool, rulerTool, noteTool, markupTool, countTool, boxesTool, contentAwareMoveTool, redEyeTool, rotateViewTool, artboardTool, moveTool, marqueeTool, lassoTool, objectSelectTool, quickSelectTool, wandTool, cropTool, sliceTool, brushTool, healTool, removeTool, healingBrushTool, patchTool, cloneTool, smearTool, dodgeTool, burnTool, spongeTool, gradientTool, bucketTool, shapeTool, pathSelectTool, directSelectTool, penTool, freeformPenTool, curvaturePenTool, typeTool, eyedropperTool, handTool, zoomTool, relightTool]) registerTool(tool);
 }

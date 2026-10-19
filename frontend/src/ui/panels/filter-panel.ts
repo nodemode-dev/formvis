@@ -1,6 +1,6 @@
 import { blurDeep, motionBlurDeep, noiseDeep, surfaceBlurDeep, unsharpDeep } from '../../engine/deep';
 import type { DeepPixels } from '../../engine/types';
-import { addNoise, gaussianBlur, gaussianMargin, lensDistort, motionBlur, motionMargin, randomSeed, runFilterOffThread, unsharpMask, defaultDevelopState, developImage, type Engine } from '../../engine';
+import { addNoise, defaultLensFix, gaussianBlur, gaussianMargin, lensCorrect, motionBlur, motionMargin, randomSeed, runFilterOffThread, unsharpMask, defaultDevelopState, developImage, type Engine, type LensFix } from '../../engine';
 import { ScopesView } from './scopes-view';
 import { Dialog } from '../dialogs';
 import { el, q, setDisabled, setHidden, setText, setValue } from '../dom';
@@ -11,7 +11,7 @@ import { lensBlur, lensBlurMargin, shakeMargin, shakeReduce, smartSharpen, smart
 import { estimateShake } from '../../engine/shake';
 import { runGallery, type GallerySettings } from '../../engine/blur-gallery';
 import { LIBRARY, isLibKind, libAllDefaults, libApron, libFilter, libImageParams, libMargin, libPathParams, libValues, runLib, type LibColors, type LibFrame, type LibImage, type LibKind, type LibParam, type LibPath, type LibValue, type LibValues } from '../../engine/filter-library';
-import { HSL_BANDS, buildCurveLut, defaultCalibration, defaultGeometry, defaultGrading, defaultOptics, defaultParametric, defaultPointColor, type CalibrationState, type CurveChannel, type CurvePoint,type DevelopState, type GeometryState, type GradingState, type HslBand, type HslBandState, type OpticsState, type ParametricState, type PointColorState } from '../../engine/develop';
+import { HSL_BANDS, autoWhiteBalance, bandOf, buildCurveLut, defaultCalibration, defaultGeometry, defaultGrading, defaultNoise, defaultOptics, defaultParametric, defaultPointColor, defaultVignetteShape, hslToRgb, whiteBalanceFor, type CalibrationState, type CurveChannel, type CurvePoint,type DevelopState, type GeometryState, type GradingState, type HslBand, type HslBandState, type OpticsState, type ParametricState, type PointColorState } from '../../engine/develop';
 import { curveGraph } from './curve-graph';
 import { GalleryView } from './gallery-view';
 
@@ -23,7 +23,7 @@ export const FILTER_LABELS: Record<FilterKind, string> = { gaussianBlur: 'Gaussi
 
 export function defaultFilterSettings() {
   return {
-    radius: 1, angle: 0, distance: 10, amount: 10, gaussian: false, monochromatic: false, distortion: 0, usmAmount: 100, usmRadius: 1, threshold: 0, develop: defaultDevelopState(),
+    radius: 1, angle: 0, distance: 10, amount: 10, gaussian: false, monochromatic: false, distortion: 0, lensFix: defaultLensFix(), usmAmount: 100, usmRadius: 1, threshold: 0, develop: defaultDevelopState(),
     lensRadius: 15, lensBrightness: 0, lensThreshold: 255,
     smart: { amount: 200, radius: 1, noise: 10, remove: 'lens' as SharpenRemove, angle: 0, shadows: 0, highlights: 0 },
     shake: { angle: 0, length: 10, smoothing: 10, amount: 100 } as ShakeSettings,
@@ -49,7 +49,7 @@ export function runFilter(kind: FilterKind, s: FilterPanelSettings, seed: number
       case 'gaussianBlur': return gaussianBlur(src, s.radius * scale);
       case 'motionBlur': return motionBlur(src, s.angle, s.distance * scale);
       case 'addNoise': return addNoise(src, s.amount, s.gaussian, s.monochromatic, seed);
-      case 'lensCorrection': return lensDistort(src, s.distortion);
+      case 'lensCorrection': return lensCorrect(src, s.distortion, s.lensFix ?? defaultLensFix());
       case 'unsharpMask': return unsharpMask(src, s.usmAmount, s.usmRadius * scale, s.threshold);
       case 'develop': return developImage(src, s.develop, scale);
       case 'lensBlur': return lensBlur(src, s.lensRadius * scale, s.lensBrightness, s.lensThreshold);
@@ -132,7 +132,16 @@ export class FilterPanel extends Dialog {
     const nzMono = checkRow('Monochromatic', (v) => { s.monochromatic = v; this.schedule(); });
     this.section('addNoise', [nzAmount.el, nzKind.el, nzMono.el], () => { nzAmount.set(s.amount); nzKind.set(s.gaussian ? 'gaussian' : 'uniform'); nzMono.set(s.monochromatic); });
     const lcDistortion = sliderRow('Distortion', -100, 100, 1, (v) => { s.distortion = v; this.schedule(); });
-    this.section('lensCorrection', [lcDistortion.el, el('<p class="cv-note">Positive values correct barrel distortion, negative values pincushion.</p>')], () => lcDistortion.set(s.distortion));
+    const fix = (): LensFix => s.lensFix ?? (s.lensFix = defaultLensFix());
+    const lcRc = sliderRow('Fix Red/Cyan Fringe', -100, 100, 1, (v) => { fix().caRc = v; this.schedule(); });
+    const lcBy = sliderRow('Fix Blue/Yellow Fringe', -100, 100, 1, (v) => { fix().caBy = v; this.schedule(); });
+    const lcVignette = sliderRow('Vignette Amount', -100, 100, 1, (v) => { fix().vignette = v; this.schedule(); });
+    const lcMidpoint = sliderRow('Vignette Midpoint', 0, 100, 1, (v) => { fix().midpoint = v; this.schedule(); });
+    const lcVertical = sliderRow('Vertical Perspective', -100, 100, 1, (v) => { fix().vertical = v; this.schedule(); });
+    const lcHorizontal = sliderRow('Horizontal Perspective', -100, 100, 1, (v) => { fix().horizontal = v; this.schedule(); });
+    const lcEdge = selectRow('Edge', [['transparent', 'Transparency'], ['extend', 'Edge Extension'], ['black', 'Black Color'], ['white', 'White Color']], (v) => { fix().edge = v as LensFix['edge']; this.schedule(); });
+    this.section('lensCorrection', [lcDistortion.el, lcRc.el, lcBy.el, lcVignette.el, lcMidpoint.el, lcVertical.el, lcHorizontal.el, lcEdge.el, el('<p class="cv-note">Positive Distortion corrects barrel distortion, negative pincushion. Fringe sliders shift the red and blue channels against green.</p>')],
+      () => { const f = fix(); lcDistortion.set(s.distortion); lcRc.set(f.caRc); lcBy.set(f.caBy); lcVignette.set(f.vignette); lcMidpoint.set(f.midpoint); lcVertical.set(f.vertical); lcHorizontal.set(f.horizontal); lcEdge.set(f.edge); });
     const usAmount = sliderRow('Amount (%)', 1, 500, 1, (v) => { s.usmAmount = v; this.schedule(); });
     const usRadius = sliderRow('Radius (px)', 0.1, 100, 0.1, (v) => { s.usmRadius = v; this.schedule(); }, { max: 1000 });
     const usThreshold = sliderRow('Threshold (levels)', 0, 255, 1, (v) => { s.threshold = v; this.schedule(); });
@@ -192,7 +201,9 @@ export class FilterPanel extends Dialog {
     const shEstimate = el<HTMLButtonElement>('<button class="cv-btn" type="button">Estimate from image</button>');
     shEstimate.addEventListener('click', () => this.estimateShake());
     this.section('shakeReduction', [this.shakeNote, shAngle.el, shLength.el, shSmooth.el, shAmount.el, shEstimate], () => { shAngle.set(sh.angle); shLength.set(sh.length); shSmooth.set(sh.smoothing); shAmount.set(sh.amount); });
-    const dev = s.develop, t = dev.tone, dt = dev.detail;
+    // s.develop is replaced when saved settings are recalled, so the tone and detail rows reach it through these views.
+    const view = <T extends object>(get: () => T): T => new Proxy({} as T, { get: (_o, k) => (get() as Record<string | symbol, unknown>)[k], set: (_o, k, v) => { (get() as Record<string | symbol, unknown>)[k] = v; return true; } });
+    const t = view(() => s.develop.tone), dt = view(() => s.develop.detail);
     const devRows: Array<[string, number, number, number, () => number, (v: number) => void] | string> = [
       'Light',
       ['Exposure (EV)', -5, 5, 0.05, () => t.exposure / 100, (v) => { t.exposure = v * 100; }],
@@ -208,21 +219,34 @@ export class FilterPanel extends Dialog {
       ['Saturation', -100, 100, 1, () => t.saturation, (v) => { t.saturation = v; }],
       'Effects',
       ['Dehaze', -100, 100, 1, () => t.dehaze, (v) => { t.dehaze = v; }],
-      ['Vignette', 0, 100, 1, () => t.vignette, (v) => { t.vignette = v; }],
+      ['Vignette', -100, 100, 1, () => t.vignette, (v) => { t.vignette = v; }],
+      ['Vignette midpoint', 0, 100, 1, () => (D().vignette ??defaultVignetteShape()).midpoint, (v) => { (D().vignette ??=defaultVignetteShape()).midpoint = v; }],
+      ['Vignette feather', 1, 100, 1, () => (D().vignette ??defaultVignetteShape()).feather, (v) => { (D().vignette ??=defaultVignetteShape()).feather = v; }],
+      ['Vignette roundness', 0, 100, 1, () => (D().vignette ??defaultVignetteShape()).roundness, (v) => { (D().vignette ??=defaultVignetteShape()).roundness = v; }],
       ['Grain', 0, 100, 1, () => t.grain, (v) => { t.grain = v; }],
       'Detail',
       ['Clarity', -100, 100, 1, () => dt.clarity, (v) => { dt.clarity = v; }],
       ['Texture', -100, 100, 1, () => dt.texture, (v) => { dt.texture = v; }],
       ['Sharpening', 0, 100, 1, () => dt.sharpen, (v) => { dt.sharpen = v; }],
+      ['Sharpen radius (px)', 1, 3, 0.1, () => dt.sharpenRadius ?? 1.2, (v) => { dt.sharpenRadius = v; }],
+      ['Sharpen detail', 0, 100, 1, () => dt.sharpenDetail ?? 100, (v) => { dt.sharpenDetail = v; }],
+      ['Sharpen masking', 0, 100, 1, () => dt.sharpenMasking ?? 0, (v) => { dt.sharpenMasking = v; }],
+      'Noise Reduction',
+      ['Luminance', 0, 100, 1, () => (D().noise ??defaultNoise()).luminance, (v) => { (D().noise ??=defaultNoise()).luminance = v; }],
+      ['Luminance detail', 0, 100, 1, () => (D().noise ??defaultNoise()).detail, (v) => { (D().noise ??=defaultNoise()).detail = v; }],
+      ['Luminance contrast', 0, 100, 1, () => (D().noise ??defaultNoise()).contrast, (v) => { (D().noise ??=defaultNoise()).contrast = v; }],
+      ['Noise colour', 0, 100, 1, () => (D().noise ??defaultNoise()).color, (v) => { (D().noise ??=defaultNoise()).color = v; }],
     ];
     const devNodes: HTMLElement[] = [this.profileRow.el], devSync: Array<() => void> = [];
-    let dehazeEl: HTMLElement | null = null;
+    let dehazeEl: HTMLElement | null = null, tintEl: HTMLElement | null = null;
+    let wbCustom = (): void => undefined;
     for (const row of devRows) {
       if (typeof row === 'string') { devNodes.push(el(`<p class="cv-note">${row}</p>`)); continue; }
       const [label, min, max, step, read, write] = row;
-      const r = sliderRow(label, min, max, step, (v) => { write(v); this.schedule(); });
+      const r = sliderRow(label, min, max, step, (v) => { write(v); if (label === 'Temperature' || label === 'Tint') wbCustom(); this.schedule(); });
       devNodes.push(r.el);
       if (label === 'Dehaze') dehazeEl = r.el;
+      if (label === 'Tint') tintEl = r.el;
       devSync.push(() => r.set(read()));
     }
     // Camera Raw's further panels (the comparison's Develop row). The engine already had the point curve and colour
@@ -231,6 +255,30 @@ export class FilterPanel extends Dialog {
     const darkDehaze = checkRow('Dehaze by dark channel (positive Dehaze)', (v) => { D().dehazeDark = v; this.schedule(); });
     devNodes.splice(dehazeEl ? devNodes.indexOf(dehazeEl) + 1 : devNodes.length, 0, darkDehaze.el);
     devSync.push(() => darkDehaze.set(D().dehazeDark === true));
+    // White balance: As Shot clears Temperature and Tint, Auto takes the picture's mean colour as the neutral, and the
+    // eyedropper (where the window has one) reads a neutral off the screen; a moved slider makes the choice Custom.
+    const setWb = (temperature: number, tint: number): void => { D().tone.temperature = temperature; D().tone.tint = tint; for (const f of devSync) f(); };
+    const wbSel = selectRow('White balance', [['shot', 'As Shot'], ['auto', 'Auto'], ['custom', 'Custom']], (v) => {
+      if (v === 'shot') setWb(0, 0);
+      else if (v === 'auto') { const img = this.engine.targetImage(); if (img) { const w = autoWhiteBalance(img.image); setWb(w.temperature, w.tint); } }
+      wbSel.set(v);
+      this.schedule(0);
+    });
+    wbCustom = () => wbSel.set('custom');
+    const Eye = (window as unknown as { EyeDropper?: new () => { open(): Promise<{ sRGBHex: string }> } }).EyeDropper;
+    const wbPick = el<HTMLButtonElement>('<button class="cv-btn" type="button">White balance eyedropper</button>');
+    if (!Eye) { wbPick.disabled = true; wbPick.title = 'This window cannot read a colour from the screen.'; }
+    wbPick.addEventListener('click', () => {
+      if (!Eye) return;
+      void new Eye().open().then(({ sRGBHex }) => {
+        const n = parseInt(sRGBHex.slice(1), 16), w = whiteBalanceFor((n >> 16) & 255, (n >> 8) & 255, n & 255), t = D().tone;
+        setWb(Math.max(-100, Math.min(100, t.temperature + w.temperature)), Math.max(-100, Math.min(100, t.tint + w.tint)));
+        wbSel.set('custom');
+        this.schedule(0);
+      }).catch(() => undefined);
+    });
+    devNodes.splice(tintEl ? devNodes.indexOf(tintEl) + 1 : devNodes.length, 0, wbSel.el, wbPick);
+    devSync.push(() => { const tn = D().tone; if (tn.temperature !== 0 || tn.tint !== 0) { if (wbSel.el.querySelector('select')?.value === 'shot') wbSel.set('custom'); } else wbSel.set('shot'); });
     const slide =(label: string, min: number, max: number, step: number, read: () => number, write: (v: number) => void): void => {
       const r = sliderRow(label, min, max, step, (v) => { write(v); this.schedule(); });
       devNodes.push(r.el);
@@ -261,21 +309,62 @@ export class FilterPanel extends Dialog {
     slide('Split Darks/Lights', 10, 95, 1, () => para().split2, (v) => { para().split2 = v; });
     slide('Split Lights/Highlights', 15, 98, 1, () => para().split3, (v) => { para().split3 = v; });
     let band: 'master' | HslBand = 'master';
-    const bandState = (): HslBandState => (band === 'master' ? D().color.master : D().color.bands[band]);
+    const bandState = (): HslBandState => (band === 'master' ? D().color.master : (D().color.bands[band] ??= bandOf(D().color, band)));
     const mixH = sliderRow('Hue', -180, 180, 1, (v) => { bandState().h = v; this.schedule(); });
     const mixS = sliderRow('Saturation', -100, 100, 1, (v) => { bandState().s = v; this.schedule(); });
     const mixL = sliderRow('Luminance', -100, 100, 1, (v) => { bandState().l = v; this.schedule(); });
     const syncMix = (): void => { mixH.set(bandState().h); mixS.set(bandState().s); mixL.set(bandState().l); };
-    const mixSel = selectRow('Colours', [['master', 'All colours'], ...HSL_BANDS.map((b) => [b, b[0].toUpperCase() + b.slice(1)] as const)], (v) => { band = v as 'master' | HslBand; syncMix(); });
-    devNodes.push(el('<p class="cv-note">Colour Mixer</p>'), mixSel.el, mixH.el, mixS.el, mixL.el);
-    devSync.push(() => { mixSel.set(band); syncMix(); });
+    const BAND_NAME: Record<HslBand, string> = { reds: 'Reds', oranges: 'Oranges', yellows: 'Yellows', greens: 'Greens', cyans: 'Aquas', blues: 'Blues', purples: 'Purples', magentas: 'Magentas' };
+    const BAND_HUE: Record<HslBand, number> = { reds: 0, oranges: 30, yellows: 60, greens: 120, cyans: 180, blues: 240, purples: 270, magentas: 300 };
+    const swatchRow = el('<div class="cv-field" role="group" aria-label="Colours" style="display:flex;flex-wrap:wrap;gap:6px"></div>');
+    const swatches = new Map<string, HTMLButtonElement>();
+    for (const b of ['master', ...HSL_BANDS] as const) {
+      const sw = el<HTMLButtonElement>(`<button class="cv-btn" type="button" aria-pressed="false" title="${b === 'master' ? 'All colours' : BAND_NAME[b]}" aria-label="${b === 'master' ? 'All colours' : BAND_NAME[b]}" style="width:24px;height:24px;padding:0;border-radius:50%;background:${b === 'master' ? 'conic-gradient(red,yellow,lime,cyan,blue,magenta,red)' : `hsl(${BAND_HUE[b]} 80% 50%)`}"></button>`);
+      sw.addEventListener('click', () => { band = b; setBandSwatch(); syncMix(); });
+      swatches.set(b, sw);
+      swatchRow.append(sw);
+    }
+    const setBandSwatch = (): void => { for (const [k, sw] of swatches) { sw.setAttribute('aria-pressed', String(k === band)); sw.style.outline = k === band ? '2px solid var(--accent)' : 'none'; sw.style.outlineOffset = '1px'; } };
+    devNodes.push(el('<p class="cv-note">Colour Mixer</p>'), swatchRow, mixH.el, mixS.el, mixL.el);
+    devSync.push(() => { setBandSwatch(); syncMix(); });
     let range: 'shadows' | 'midtones' | 'highlights' | 'global' = 'midtones';
     const grading = (): GradingState => (D().grading ??= defaultGrading());
-    const gH = sliderRow('Hue', 0, 360, 1, (v) => { grading()[range].h = v; this.schedule(); });
-    const gS = sliderRow('Saturation', 0, 100, 1, (v) => { grading()[range].s = v; this.schedule(); });
-    const syncWheel = (): void => { gH.set(grading()[range].h); gS.set(grading()[range].s); };
+    const gH = sliderRow('Hue', 0, 360, 1, (v) => { grading()[range].h = v; placeDot(); this.schedule(); });
+    const gS = sliderRow('Saturation', 0, 100, 1, (v) => { grading()[range].s = v; placeDot(); this.schedule(); });
+    const gL = sliderRow('Luminance', -100, 100, 1, (v) => { grading()[range].l = v; this.schedule(); });
+    // The colour wheel: hue is the angle and saturation the distance from the centre. Painted once; the marker moves in place.
+    const WHEEL = 96, wheelBox = el(`<div style="position:relative;width:${WHEEL}px;height:${WHEEL}px;margin:6px auto"></div>`);
+    const wheel = el<HTMLCanvasElement>(`<canvas width="${WHEEL}" height="${WHEEL}" aria-label="Colour grading wheel" style="display:block;touch-action:none;cursor:crosshair;border-radius:50%"></canvas>`);
+    const dot = el('<span style="position:absolute;width:10px;height:10px;border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 1px #000;pointer-events:none;transform:translate(-50%,-50%)"></span>');
+    wheelBox.append(wheel, dot);
+    const wctx = wheel.getContext('2d');
+    if (wctx) {
+      const disc = wctx.createImageData(WHEEL, WHEEL), R = WHEEL / 2;
+      for (let y = 0; y < WHEEL; y++) for (let x = 0; x < WHEEL; x++) {
+        const dx = x + 0.5 - R, dy = y + 0.5 - R, dist = Math.hypot(dx, dy), i = (y * WHEEL + x) * 4;
+        if (dist > R) continue;
+        const [r, g, b] = hslToRgb((Math.atan2(dy, dx) * 180) / Math.PI, dist / R, 0.5);
+        disc.data[i] = r; disc.data[i + 1] = g; disc.data[i + 2] = b; disc.data[i + 3] = 255;
+      }
+      wctx.putImageData(disc, 0, 0);
+    }
+    const placeDot = (): void => {
+      const w = grading()[range], a = (w.h * Math.PI) / 180, d = (w.s / 100) * (WHEEL / 2);
+      dot.style.left = `${WHEEL / 2 + Math.cos(a) * d}px`; dot.style.top = `${WHEEL / 2 + Math.sin(a) * d}px`;
+    };
+    const fromWheel = (e: PointerEvent): void => {
+      const box = wheel.getBoundingClientRect(), dx = e.clientX - box.left - box.width / 2, dy = e.clientY - box.top - box.height / 2;
+      const w = grading()[range];
+      w.h = Math.round(((Math.atan2(dy, dx) * 180) / Math.PI + 360) % 360);
+      w.s = Math.round(Math.min(1, Math.hypot(dx, dy) / (box.width / 2)) * 100);
+      syncWheel();
+      this.schedule();
+    };
+    wheel.addEventListener('pointerdown', (e) => { wheel.setPointerCapture(e.pointerId); fromWheel(e); });
+    wheel.addEventListener('pointermove', (e) => { if (wheel.hasPointerCapture(e.pointerId)) fromWheel(e); });
+    const syncWheel = (): void => { gH.set(grading()[range].h); gS.set(grading()[range].s); gL.set(grading()[range].l ?? 0); placeDot(); };
     const rangeSel = selectRow('Range', [['shadows', 'Shadows'], ['midtones', 'Midtones'], ['highlights', 'Highlights'], ['global', 'Global']], (v) => { range = v as typeof range; syncWheel(); });
-    devNodes.push(el('<p class="cv-note">Colour Grading</p>'), rangeSel.el, gH.el, gS.el);
+    devNodes.push(el('<p class="cv-note">Colour Grading</p>'), rangeSel.el, wheelBox, gH.el, gS.el, gL.el);
     devSync.push(() => { rangeSel.set(range); syncWheel(); });
     slide('Blending', 0, 100, 1, () => grading().blending, (v) => { grading().blending = v; });
     slide('Balance', -100, 100, 1, () => grading().balance, (v) => { grading().balance = v; });
@@ -284,6 +373,9 @@ export class FilterPanel extends Dialog {
     devNodes.push(el('<p class="cv-note">Optics</p>'));
     slide('Distortion', -100, 100, 1, () => optics().distortion, (v) => { optics().distortion = v; });
     slide('Chromatic Aberration', -100, 100, 1, () => optics().chromatic, (v) => { optics().chromatic = v; });
+    const removeCA = checkRow('Remove Chromatic Aberration', (v) => { optics().removeCA = v; this.schedule(); });
+    devNodes.push(removeCA.el);
+    devSync.push(() => removeCA.set(optics().removeCA === true));
     slide('Vignetting', -100, 100, 1, () => optics().vignetting, (v) => { optics().vignetting = v; });
     slide('Midpoint', 0, 100, 1, () => optics().midpoint, (v) => { optics().midpoint = v; });
     slide('Vignette feather', 0, 100, 1, () => optics().feather ?? 50, (v) => { optics().feather = v; });
@@ -314,7 +406,7 @@ export class FilterPanel extends Dialog {
     const toneKeys = (keys: Array<keyof DevelopState['tone']>) => (): void => { for (const k of keys) D().tone[k] = defaultDevelopState().tone[k]; };
     const resets: Record<string, () => void> = {
       Light: toneKeys(['exposure', 'contrast', 'highlights', 'shadows', 'whites', 'blacks']), Colour: toneKeys(['temperature', 'tint', 'vibrance', 'saturation']),
-      Effects: toneKeys(['dehaze', 'vignette', 'grain']), Detail: () => { D().detail = defaultDevelopState().detail; }, 'Point Curve': () => { D().curves = defaultDevelopState().curves; },
+      Effects: () => { toneKeys(['dehaze', 'vignette', 'grain'])(); D().vignette = defaultVignetteShape(); }, Detail: () => { D().detail = defaultDevelopState().detail; }, 'Noise Reduction': () => { D().noise = defaultNoise(); }, 'Point Curve': () => { D().curves = defaultDevelopState().curves; },
       'Parametric Curve': () => { D().parametric = defaultParametric(); }, 'Colour Mixer': () => { D().color = defaultDevelopState().color; }, 'Colour Grading': () => { D().grading = defaultGrading(); },
       'Point Color': () => { D().pointColor = defaultPointColor(); }, Optics: () => { D().optics = defaultOptics(); }, Geometry: () => { D().geometry = defaultGeometry(); }, Calibration: () => { D().calibration = defaultCalibration(); },
     };

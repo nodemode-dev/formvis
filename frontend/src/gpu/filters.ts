@@ -1,5 +1,5 @@
 import type { GpuFilterRunner } from '../engine/gpu-filters';
-import { HSL_BANDS, buildCurveLut, colorActive, curvesActive, type DevelopState } from '../engine/develop';
+import { BAND_CENTER, BAND_WIDTH, HSL_BANDS, bandOf, buildCurveLut, colorActive, curvesActive, vignetteShapeOf, type DevelopState } from '../engine/develop';
 import { threeBoxWidths } from '../engine/filters';
 
 /** The GPU filter runner (DEV_PLAN 36.10): Threshold, Add Noise (grain), Gaussian Blur, Unsharp Mask and the per-pixel
@@ -73,7 +73,7 @@ void main() {
 /** Develop's per-pixel pass (developPass), tone then colour mixer then the curve table; t1 is the 256 entry table. */
 const FS_DEVELOP = `${MIX}
 uniform uint u_seed; uniform float u_offset, u_exp, u_cont, u_high, u_shad, u_white, u_black, u_temp, u_tint, u_vib, u_sat, u_dehz, u_vig, u_grain;
-uniform bool u_hasColor, u_hasCurve, u_colorize; uniform vec3 u_master; uniform vec3 u_band[6];
+uniform bool u_hasColor, u_hasCurve, u_colorize; uniform vec3 u_master; uniform vec3 u_vigp; uniform vec3 u_band[8]; uniform vec2 u_bandc[8];
 float c01(float x) { return clamp(x, 0.0, 1.0); }
 vec3 c01(vec3 x) { return clamp(x, 0.0, 1.0); }
 float sstep(float e0, float e1, float x) { float t = c01((x - e0) / (e1 - e0)); return t * t * (3.0 - 2.0 * t); }
@@ -97,9 +97,9 @@ vec3 hslToRgb(float h, float s, float l) {
   return c01(vec3(hue2rgb(p, q, hn + 1.0 / 3.0), hue2rgb(p, q, hn), hue2rgb(p, q, hn - 1.0 / 3.0)));
 }
 float shiftL(float l, float delta) { float d = clamp(delta, -1.0, 1.0); return d >= 0.0 ? c01(l + (1.0 - l) * d) : c01(l + l * d); }
-float hueW(float h, float center) {
+float hueW(float h, float center, float width) {
   float diff = abs(h - center); if (diff > 180.0) diff = 360.0 - diff;
-  float half_ = 30.0, fall = max(12.0, half_ * 0.65);
+  float half_ = max(5.0, width / 2.0), fall = max(12.0, half_ * 0.65);
   if (diff <= half_) return 1.0;
   if (diff <= half_ + fall) { float t = (diff - half_) / fall; return 0.5 * (1.0 + cos(3.14159265358979 * t)); }
   return 0.0;
@@ -148,9 +148,12 @@ void main() {
     } else { float soften = -k * 0.45 * w; v = (v - 0.5) * (1.0 - soften) + 0.5; }
     v = c01(v);
   }
-  if (u_vig > 0.0) {
-    float cx = float(sz.x) / 2.0, cy = float(sz.y) / 2.0, maxR = sqrt(cx * cx + cy * cy), rad = length(vec2(float(c.x) - cx, float(c.y) - cy));
-    v *= c01(1.0 - (rad / maxR - 0.3) * (u_vig / 50.0));
+  if (u_vig != 0.0) {
+    float cx = float(sz.x) / 2.0, cy = float(sz.y) / 2.0, maxR = sqrt(cx * cx + cy * cy), ro = u_vigp.z / 100.0;
+    float sx = max(1.0, cx * (1.0 - ro) + maxR * ro), sy = max(1.0, cy * (1.0 - ro) + maxR * ro), corner = length(vec2(cx / sx, cy / sy));
+    if (corner == 0.0) corner = 1.0;
+    float fall = c01((length(vec2((float(c.x) - cx) / sx, (float(c.y) - cy) / sy)) / corner - u_vigp.x / 100.0) * (abs(u_vig) / 50.0) * (50.0 / max(1.0, u_vigp.y)));
+    if (u_vig > 0.0) v *= 1.0 - fall; else v += (1.0 - v) * fall;
   }
   if (u_grain > 0.0) {
     uint a = u_seed + uint(c.y * sz.x + c.x + 1) * 0x6d2b79f5u;
@@ -166,9 +169,9 @@ void main() {
       nc = hslToRgb(nh, c01(0.5 + u_master.y / 100.0), shiftL(hsl.z, u_master.z / 100.0));
     } else {
       float hShift = u_master.x, lShift = u_master.z / 100.0, chroma = 1.0 + (u_master.y / 100.0) * 1.2;
-      for (int i = 0; i < 6; i++) {
+      for (int i = 0; i < 8; i++) {
         vec3 bd = u_band[i]; if (bd.x == 0.0 && bd.y == 0.0 && bd.z == 0.0) continue;
-        float w = hueW(hsl.x, float(i) * 60.0);
+        float w = hueW(hsl.x, u_bandc[i].x, u_bandc[i].y);
         if (w > 0.0) { hShift += bd.x * w; chroma += (bd.y / 100.0) * 1.2 * w; lShift += (bd.z / 100.0) * w; }
       }
       float nh = mod(hsl.x + hShift, 360.0);
@@ -394,7 +397,10 @@ export class GlFilters implements GpuFilterRunner {
         gl.uniform1i(loc('u_hasColor'), hasColor ? 1 : 0); gl.uniform1i(loc('u_hasCurve'), hasCurve ? 1 : 0); gl.uniform1i(loc('u_colorize'), state.color.colorize ? 1 : 0);
         const m = state.color.master;
         gl.uniform3f(loc('u_master'), m.h, m.s, m.l);
-        gl.uniform3fv(loc('u_band'), HSL_BANDS.flatMap((k) => [state.color.bands[k].h, state.color.bands[k].s, state.color.bands[k].l]));
+        const vs = vignetteShapeOf(state);
+        gl.uniform3f(loc('u_vigp'), vs.midpoint, vs.feather, vs.roundness);
+        gl.uniform3fv(loc('u_band'), HSL_BANDS.flatMap((k) => { const b = bandOf(state.color, k); return [b.h, b.s, b.l]; }));
+        gl.uniform2fv(loc('u_bandc'), HSL_BANDS.flatMap((k) => [BAND_CENTER[k], BAND_WIDTH[k]]));
       }, table ?? undefined);
     } finally { if (table) this.free(table); }
   }

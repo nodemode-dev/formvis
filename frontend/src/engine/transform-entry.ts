@@ -49,7 +49,8 @@ export interface EntryHost {
   composite(p: Project): Surface;
   layerSample(p: Project, l: Layer): Surface;
   brush: { diameter: number; hardness: number; opacity: number };
-  smudge: { sampleAll: boolean; fingerPainting: boolean };
+  smudge: { sampleAll: boolean; below: boolean; fingerPainting: boolean; length: number };
+  belowSample(p: Project, l: Layer): Surface;
   fg: { r: number; g: number; b: number };
   css(c: { r: number; g: number; b: number }, a?: number): string;
 }
@@ -393,14 +394,14 @@ export function beginWarp(host: EntryHost, mode: 'smudge' | 'liquify', pt: Pt): 
     host.notice(noLayer);
     return null;
   }
-  const sampleAll = mode === 'smudge' && host.smudge.sampleAll;
+  const sampleAll = mode === 'smudge' && (host.smudge.sampleAll || host.smudge.below);
   if (!sampleAll && !visibleBounds(target.raster)) {
     host.notice(noLayer);
     return null;
   }
   const label = mode === 'smudge' ? 'Smudge' : 'Liquify';
   p.history.begin(label, p.snapshot());
-  const src = sampleAll ? host.composite(p) : host.layerSample(p, target.layer);
+  const src = sampleAll ? (host.smudge.sampleAll ? host.composite(p) : host.belowSample(p, target.layer)) : host.layerSample(p, target.layer);
   const W = p.doc.width;
   const H = p.doc.height;
   const surface = createSurface(W, H);
@@ -417,7 +418,7 @@ export function beginWarp(host: EntryHost, mode: 'smudge' | 'liquify', pt: Pt): 
     ctx.fillRect(pt.x - r, pt.y - r, r * 2, r * 2);
   }
   const image = ctx.getImageData(0, 0, W, H);
-  const stroke = new WarpStroke(premultiply(image.data), W, H, mode, host.brush.diameter, host.brush.hardness, host.brush.opacity);
+  const stroke = new WarpStroke(premultiply(image.data), W, H, mode, host.brush.diameter, host.brush.hardness, host.brush.opacity, mode === 'smudge' ? host.smudge.length / 100 : 1);
   const drag: WarpDrag = { project: p, layerId: target.layer.id, stroke, surface, image };
   const first = stroke.append(pt);
   if (first) syncRect(drag, first);

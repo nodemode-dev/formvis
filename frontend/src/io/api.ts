@@ -91,12 +91,21 @@ export interface CmykPsd { width: number; height: number; icc: Uint8Array | null
 
 /** A camera RAW's white balance at the RAW stage (DEV_PLAN 36.21): the preset, Temperature and Tint (-100 to 100), and
  *  `half` for Camera Raw's fast half-size preview. */
-export type RawWhiteBalance = { wb: 'as_shot' | 'auto' | 'daylight'; temperature: number; tint: number; half?: boolean };
+export type RawWhiteBalance = { wb: 'as_shot' | 'auto' | 'daylight'; temperature: number; tint: number; half?: boolean; develop?: RawDevelop };
+
+/** The RAW-stage develop controls the engine applies in linear light: Exposure in stops, Noise Reduction 0 to 100, highlight
+ *  recovery, the black point, and Shadows, Highlights, Clarity, Texture and Dehaze from -100 to 100. */
+export type RawDevelop = { exposure: number; recovery: 'clip' | 'unclip' | 'blend' | 'rebuild'; noise: number; blackPoint: 'as_shot' | 'auto'; shadows: number; highlights: number; clarity: number; texture: number; dehaze: number };
+export const RAW_DEVELOP_ZERO: RawDevelop = { exposure: 0, recovery: 'clip', noise: 0, blackPoint: 'as_shot', shadows: 0, highlights: 0, clarity: 0, texture: 0, dehaze: 0 };
+
+/** What the engine reads from a camera RAW file's bytes (POST /io/raw-info). */
+export type RawInfo = { kind: string; make: string; model: string; rawWidth: number; rawHeight: number; width: number; height: number; cfa: string; colors: number; whiteBalance: number[]; orientation: number; baselineExposure: number | null; blackLevel: number[]; whiteLevel: number };
 
 /** The decode route's form fields for `raw`; none when it is the plain as-shot decode, so the engine's defaults stand. */
 function rawFields(raw?: RawWhiteBalance): Record<string, string> {
   if (!raw) return {};
-  return { ...(raw.wb !== 'as_shot' ? { wb: raw.wb } : {}), ...(raw.temperature ? { temperature: String(raw.temperature) } : {}), ...(raw.tint ? { tint: String(raw.tint) } : {}), ...(raw.half ? { half: 'true' } : {}) };
+  const d = raw.develop, plain = !d || (Object.keys(RAW_DEVELOP_ZERO) as Array<keyof RawDevelop>).every((k) => d[k] === RAW_DEVELOP_ZERO[k]);
+  return { ...(raw.wb !== 'as_shot' ? { wb: raw.wb } : {}), ...(raw.temperature ? { temperature: String(raw.temperature) } : {}), ...(raw.tint ? { tint: String(raw.tint) } : {}), ...(raw.half ? { half: 'true' } : {}), ...(plain ? {} : { develop: JSON.stringify(d) }) };
 }
 
 function form(fields: Record<string, string>, files: FilePart[] = [], key = 'files'): FormData {
@@ -294,6 +303,10 @@ export const api = {
     const r = await request('/io/decode', { method: 'POST', body: form({ bits: '16', ...rawFields(raw) }, [{ name, blob: file }], 'file') });
     const b = await r.arrayBuffer();
     return { width: Number(r.headers.get('X-Width')), height: Number(r.headers.get('X-Height')), data: new Uint16Array(b) };
+  },
+  /** A camera RAW's open summary read from the file's bytes: make, model, sensor sizes, CFA pattern, white balance multipliers, orientation, baseline exposure. Rejects for a file that is not a RAW. */
+  async rawInfo(file: Blob, name: string): Promise<RawInfo> {
+    return (await (await request('/io/raw-info', { method: 'POST', body: form({}, [{ name, blob: file }], 'file') })).json()) as RawInfo;
   },
   /** The camera a RAW file came from and the DNG camera profiles on this computer that are made for it (DEV_PLAN 28.2). */
   async cameraProfiles(file: Blob, name: string): Promise<{ camera: { make: string; model: string; unique: string }; profiles: Array<{ id: string; name: string; camera: string; file: string }>; auto: string | null; folders: string[] }> {

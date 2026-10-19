@@ -48,6 +48,8 @@ export interface Tool {
   up?(ctx: ToolContext, p: ToolPointer): void;
   hover?(ctx: ToolContext, p: ToolPointer | null): void;
   keydown?(ctx: ToolContext, e: KeyboardEvent): boolean;
+  /** Edit > Undo takes back what the tool holds that is not yet a history step (the Pen's last point); `probe` only asks. */
+  undoPending?(ctx: ToolContext, probe: boolean): boolean;
   cancel?(ctx: ToolContext): void;
   overlay?(ctx: ToolContext, g: CanvasRenderingContext2D): void;
   options?(engine: Engine): OptionSpec[];

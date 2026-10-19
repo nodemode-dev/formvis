@@ -213,6 +213,53 @@ export function lensDistort(img: ImageData, distortion: number): ImageData {
   return unpremultiply(dst, w, h);
 }
 
+/** The rest of Lens Correction: lateral chromatic aberration (red/cyan and blue/yellow fringes, -100 to 100, up to 1 percent
+ *  of the radius), a vignette (-100 to 100, lightens the corners when positive, from Midpoint outward), vertical and
+ *  horizontal perspective (-100 to 100, a keystone of up to 40 percent across the frame), and what the edges show. */
+export interface LensFix { caRc: number; caBy: number; vignette: number; midpoint: number; vertical: number; horizontal: number; edge: 'transparent' | 'extend' | 'black' | 'white' }
+export const defaultLensFix = (): LensFix => ({ caRc: 0, caBy: 0, vignette: 0, midpoint: 50, vertical: 0, horizontal: 0, edge: 'transparent' });
+
+/** Lens Correction with Distortion and the settings of `fix`; with `fix` at rest it is `lensDistort`. */
+export function lensCorrect(img: ImageData, distortion: number, fix: LensFix): ImageData {
+  const idle = !fix.caRc && !fix.caBy && !fix.vignette && !fix.vertical && !fix.horizontal;
+  if (idle && fix.edge === 'transparent') return lensDistort(img, distortion);
+  const { width: w, height: h } = img;
+  const k = (distortion / 100) * 0.35, src = premultiply(img.data), dst = new Float32Array(src.length);
+  const cx = w / 2, cy = h / 2, halfDiagonal2 = cx * cx + cy * cy, va = (fix.vertical / 100) * 0.4, ha = (fix.horizontal / 100) * 0.4;
+  const scale = [1 + (fix.caRc / 100) * 0.01, 1, 1 - (fix.caBy / 100) * 0.01], acc = [new Float64Array(4), new Float64Array(4), new Float64Array(4)];
+  const solid = fix.edge === 'black' ? 0 : 255, fill = fix.edge === 'black' || fix.edge === 'white';
+  const sample = (x: number, y: number, a: Float64Array): void => {
+    if (fix.edge === 'extend') addBilinear(src, w, h, Math.min(w - 0.5, Math.max(0.5, x + 0.5)) - 0.5, Math.min(h - 0.5, Math.max(0.5, y + 0.5)) - 0.5, a);
+    else addBilinear(src, w, h, x, y, a);
+  };
+  const channels = fix.caRc || fix.caBy ? 3 : 1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let dx = x + 0.5 - cx, dy = y + 0.5 - cy;
+      dx *= 1 + va * (dy / cy);
+      dy *= 1 + ha * ((x + 0.5 - cx) / cx);
+      const s = 1 - (k * (dx * dx + dy * dy)) / halfDiagonal2, o = (y * w + x) * 4;
+      for (let c = 0; c < channels; c++) {
+        const a = acc[c], f = scale[c];
+        a.fill(0);
+        sample(cx + dx * s * f - 0.5, cy + dy * s * f - 0.5, a);
+      }
+      const g = acc[channels === 3 ? 1 : 0];
+      dst[o] = acc[0][0]; dst[o + 1] = g[1]; dst[o + 2] = acc[channels === 3 ? 2 : 0][2]; dst[o + 3] = g[3];
+      if (fill) { const miss = 1 - dst[o + 3] / 255; if (miss > 0) { dst[o] += solid * miss; dst[o + 1] += solid * miss; dst[o + 2] += solid * miss; dst[o + 3] = 255; } }
+    }
+  }
+  const out = unpremultiply(dst, w, h);
+  if (fix.vignette) {
+    const d = out.data, start = (fix.midpoint / 100) * 0.9, amount = (fix.vignette / 100) * 0.8;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const r = Math.hypot(x + 0.5 - cx, y + 0.5 - cy) / Math.sqrt(halfDiagonal2), t = Math.min(1, Math.max(0, (r - start) / Math.max(0.002, 1 - start))), fall = t * t * (3 - 2 * t) * amount, i = (y * w + x) * 4;
+      for (let c = 0; c < 3; c++) d[i + c] = Math.round(clamp(fall > 0 ? d[i + c] + (255 - d[i + c]) * fall : d[i + c] * (1 + fall), 0, 255));
+    }
+  }
+  return out;
+}
+
 /** Histograms for Levels: bins 0 to 255 are the composite (each channel adding a third), then red, green and blue.
  *  Each pixel counts by its alpha, times the selection's coverage when one is given. */
 export function histogram(img: ImageData, coverage: Uint8ClampedArray | null = null): Float64Array {

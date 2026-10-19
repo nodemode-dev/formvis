@@ -4,7 +4,7 @@ import { boxMean, refineMatte } from './matte';
  *  own edges within that distance (the guided filter Remove Background already uses, `matte.ts`), Smooth rounds off
  *  a jagged outline, Feather softens it, Contrast hardens it again, and Shift Edge grows or shrinks it. Masks and
  *  guides hold 0 to 1 per pixel, row by row; distances are in document pixels, shrunk by `scale` for a preview. */
-export interface RefineSettings { radius: number; smooth: number; feather: number; contrast: number; shift: number }
+export interface RefineSettings { radius: number; smooth: number; feather: number; contrast: number; shift: number; smart?: boolean }
 export const DEFAULT_REFINE: RefineSettings = { radius: 0, smooth: 0, feather: 0, contrast: 0, shift: 0 };
 
 /** Three box passes of radius r approximate a Gaussian (sigma about r). */
@@ -17,7 +17,7 @@ function softBlur(m: Float32Array, w: number, h: number, r: number): Float32Arra
 export function refineSelection(mask: Float32Array, guide: Float32Array, w: number, h: number, s: RefineSettings, scale = 1): Float32Array {
   const one = (m: Float32Array, refineEdges: number, matteContrast: number, shiftEdge: number): Float32Array => refineMatte(m, guide, w, h, { quality: 'advanced', refineEdges, matteContrast, shiftEdge }, scale);
   let m = mask;
-  if (s.radius > 0) m = one(m, s.radius, 0, 0);
+  if (s.radius > 0) m = s.smart ? smartRadius(m, guide, w, h, s.radius, scale, one) : one(m, s.radius, 0, 0);
   if (s.smooth > 0) {
     const r = Math.max(1, Math.round((s.smooth / 100) * 10 * scale)), b = boxMean(m, w, h, r), out = new Float32Array(m.length);
     for (let i = 0; i < m.length; i++) { const t = Math.min(1, Math.max(0, (b[i] - 0.3) / 0.4)); out[i] = t * t * (3 - 2 * t); }
@@ -27,6 +27,29 @@ export function refineSelection(mask: Float32Array, guide: Float32Array, w: numb
   if (s.contrast > 0) m = one(m, 0, s.contrast, 0);
   if (s.shift !== 0) m = one(m, 0, 0, s.shift);
   return m;
+}
+
+/** Smart Radius: the radius adapts to the picture. Where the image is smooth around the edge (a hard outline) the edge
+ *  is refined at a quarter of Radius; where it is busy (hair, fur, foliage) at the full Radius; the two refinements are
+ *  blended by the local contrast of the guide, measured over the radius. */
+function smartRadius(mask: Float32Array, guide: Float32Array, w: number, h: number, radius: number, scale: number, one: (m: Float32Array, refineEdges: number, matteContrast: number, shiftEdge: number) => Float32Array): Float32Array {
+  const near = one(mask, Math.max(1, radius / 4), 0, 0), far = one(mask, radius, 0, 0), r = Math.max(1, Math.round(radius * scale / 2));
+  const sq = new Float32Array(guide.length);
+  for (let i = 0; i < sq.length; i++) sq[i] = guide[i] * guide[i];
+  const mean = boxMean(guide, w, h, r), mean2 = boxMean(sq, w, h, r), out = new Float32Array(mask.length);
+  for (let i = 0; i < out.length; i++) {
+    const sd = Math.sqrt(Math.max(0, mean2[i] - mean[i] * mean[i])), t = Math.min(1, Math.max(0, (sd - 0.05) / 0.15));
+    out[i] = near[i] * (1 - t) + far[i] * t;
+  }
+  return out;
+}
+
+/** The band Show Edge marks: where the selection is partly covered within `radius` (document pixels, times `scale`)
+ *  of its boundary, which is the zone Radius and the Refine Edge brush work in. 0 to 1 per pixel. */
+export function edgeZone(mask: Float32Array, w: number, h: number, radius: number, scale = 1): Float32Array {
+  const b = boxMean(mask, w, h, Math.max(1, Math.round(Math.max(2, radius) * scale))), out = new Float32Array(mask.length);
+  for (let i = 0; i < out.length; i++) out[i] = b[i] > 0.02 && b[i] < 0.98 ? 1 : 0;
+  return out;
 }
 
 /** The Refine Edge brush: where `region` (0 to 1, what the brush has painted) is set, the edge is worked out again from

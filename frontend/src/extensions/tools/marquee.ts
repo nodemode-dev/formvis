@@ -16,7 +16,7 @@ function follow(ctx: ToolContext, doc: Pt, shift: boolean, alt: boolean): void {
     return;
   }
   if (!draft) return;
-  draft.point = doc;
+  draft.point = ctx.engine.snapPoint(doc);
   // A modifier held since the press picks the mode, not a constraint, until it is let go mid-drag.
   if (!shift) draft.shiftAtPress = false;
   if (!alt) draft.altAtPress = false;
@@ -105,7 +105,8 @@ export const marqueeTool: Tool = {
       return;
     }
     if (mode === 'replace' && inside(ctx, p)) { moving = p.doc; shifted = false; e.beginSelectionShift(); return; }
-    draft = { anchor: p.doc, point: p.doc, mode, shiftAtPress: p.shift, altAtPress: p.alt, square: false, center: false };
+    const start = e.snapPoint(p.doc);
+    draft = { anchor: start, point: start, mode, shiftAtPress: p.shift, altAtPress: p.alt, square: false, center: false };
     e.emit('overlay', null);
   },
   move(ctx, p) {
@@ -120,6 +121,7 @@ export const marqueeTool: Tool = {
     if (moving) { moving = null; if (shifted) e.endSelectionShift(); else { e.updateSelectionShift(0, 0); e.endSelectionShift(); e.deselect(); } return; }
     const d = draft;
     draft = null;
+    e.snapPoint(d?.point ?? { x: 0, y: 0 }, true);
     const doc = e.current?.doc;
     if (!d || !doc) return;
     const r = styledRect(e, d);
@@ -141,6 +143,7 @@ export const marqueeTool: Tool = {
     stopScroll();
     if (moving) { ctx.engine.updateSelectionShift(0, 0); ctx.engine.endSelectionShift(); moving = null; }
     draft = null;
+    ctx.engine.snapPoint({ x: 0, y: 0 }, true);
     ctx.engine.emit('overlay', null);
   },
   overlay(ctx, g) {

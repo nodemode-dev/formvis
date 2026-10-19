@@ -46,8 +46,9 @@ export async function listenShell(on: { open: (paths: string[]) => void; exitReq
   if (Array.isArray(waiting) && waiting.length) on.open(waiting);
 }
 
-/** Lets the app exit: every unsaved document was saved or discarded. */
-export const confirmExit = (): Promise<void> => invoke<void>('confirm_exit', {});
+/** Lets the app exit: every unsaved document was saved or discarded. `cancel` instead says the person called the quit
+ *  off, so an update waiting to restart the app does not. */
+export const confirmExit = (cancel = false): Promise<void> => invoke<void>('confirm_exit', cancel ? { cancel: true } : {});
 
 export interface UpdateReport { status: 'current' | 'available' | 'unconfigured' | 'failed'; version: string | null; message: string; notes?: string | null }
 

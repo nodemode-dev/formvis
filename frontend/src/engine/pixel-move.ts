@@ -385,15 +385,22 @@ export const snapOptions = { on: true, guides: true, grid: true, layers: true, b
 export function snapMove(host: MoveHost, p: Project, id: ID, t: Transform, moving?: ReadonlySet<ID>): Transform {
   const layer = p.layer(id);
   if (!layer) return t;
-  if (!snapOptions.on) { host.setSnapGuides(null); return t; }
-  const box = host.snapBox(layer, t);
+  const d = snapDelta(host, p, host.snapBox(layer, t), (l) => l.id === id || !!moving?.has(l.id));
+  return d ? { ...t, x: t.x + d.x, y: t.y + d.y } : t;
+}
+
+/** The shift that snaps `box` (a moving rectangle in document pixels) to the guides, grid, document bounds and other
+ *  layers' edges within 6 screen pixels, drawing the smart guides; null when nothing is near or snapping is off.
+ *  `skip` names layers that move with the box. */
+export function snapDelta(host: MoveHost, p: Project, box: Rect, skip: (l: Layer) => boolean): Pt | null {
+  if (!snapOptions.on) { host.setSnapGuides(null); return null; }
   const tol = 6 / (p.viewport.zoom || 1);
   const xc: number[] = snapOptions.bounds ? [0, p.doc.width / 2, p.doc.width] : [];
   const yc: number[] = snapOptions.bounds ? [0, p.doc.height / 2, p.doc.height] : [];
   for (const h of hierarchy(p.doc)) {
     if (!snapOptions.layers) break;
     const l = h.layer;
-    if (!h.visible || l.id === id || (moving && moving.has(l.id))) continue;
+    if (!h.visible || skip(l)) continue;
     if (l.isGroup) continue;
     const b = host.snapBox(l, l.transform);
     xc.push(b.x, b.x + b.w / 2, b.x + b.w);
@@ -436,10 +443,10 @@ export function snapMove(host: MoveHost, p: Project, id: ID, t: Transform, movin
   const sy = axis(ey, yc);
   if (!sx && !sy) {
     host.setSnapGuides(null);
-    return t;
+    return null;
   }
   host.setSnapGuides(snapOptions.smart ? { xs: sx ? sx.lines : [], ys: sy ? sy.lines : [] } : null);
-  return { ...t, x: t.x + (sx ? sx.shift : 0), y: t.y + (sy ? sy.shift : 0) };
+  return { x: sx ? sx.shift : 0, y: sy ? sy.shift : 0 };
 }
 
 export function sampleOriginal(host: MoveHost, pt: Pt, composite: boolean): [number, number, number] | null {

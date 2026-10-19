@@ -25,6 +25,9 @@ export class ParagraphStylesDialog extends Dialog {
       act('New Style', () => { const id = this.engine.newParagraphStyle(this.name.value); if (id) { this.name.value = ''; this.refresh(id); } }),
       act('Apply', () => { const id = chosen(); return id ? this.engine.applyParagraphStyle(id) : undefined; }),
       act('Redefine', () => { const id = chosen(); return id ? this.engine.redefineParagraphStyle(id) : undefined; }),
+      act('Clear Override', () => this.engine.clearParagraphOverride()),
+      act('Duplicate', () => { const id = chosen(); const copy = id ? this.engine.duplicateParagraphStyle(id) : null; if (copy) this.refresh(copy); }),
+      act('Rename', () => { const id = chosen(); if (id) { this.engine.renameParagraphStyle(id, this.name.value); this.name.value = ''; } }),
       act('Delete', () => { const id = chosen(); if (id) this.engine.deleteParagraphStyle(id); }),
     );
     this.body.append(this.list, nameRow, row);

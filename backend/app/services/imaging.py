@@ -9,7 +9,7 @@ import numpy as np
 from PIL import Image, ImageCms, ImageOps
 
 from app.core import config
-from app.services import camera_profiles, cin, dcp, dpx, fits, ico, pnm, qoi, tga, wbmp
+from app.services import camera_profiles, cin, dcp, dpx, fits, ico, pnm, qoi, raw_develop, tga, wbmp
 
 Image.MAX_IMAGE_PIXELS = config.MAX_PIXELS
 
@@ -163,7 +163,24 @@ def _raw_args(wb: str, temperature: float, tint: float, bits: int) -> tuple[str,
     return wb, max(-100.0, min(100.0, float(temperature))), max(-100.0, min(100.0, float(tint))), bits
 
 
-def _raw(data: bytes, filename: str, camera_profile: str = "auto", wb: str = "as_shot", temperature: float = 0.0, tint: float = 0.0, half: bool = False) -> tuple[bytes, int, int]:
+def is_raw(data: bytes, filename: str) -> bool:
+    """A camera RAW by its suffix or, for a file named otherwise, by its bytes (raw_develop.sniff)."""
+    return Path(filename).suffix.lower() in RAW_SUFFIXES or bool(RAW and raw_develop.sniff(data))
+
+
+def raw_info(data: bytes, filename: str) -> dict:
+    """The open summary of a camera RAW (raw_develop.info): make and model, sensor sizes, CFA pattern, white balance
+    multipliers, orientation, baseline exposure, levels."""
+    if not RAW:
+        raise DecodeError(f"{filename} is a camera RAW file, and the engine's RAW decoder (rawpy) is not installed.")
+    try:
+        with rawpy.imread(io.BytesIO(data)) as raw:
+            return raw_develop.info(data, raw, camera_profiles.camera_of(data))
+    except Exception as exc:
+        raise DecodeError(f"{filename} could not be read as a camera RAW file. It may be damaged, or from a camera LibRaw does not support yet.") from exc
+
+
+def _raw(data: bytes, filename: str, camera_profile: str = "auto", wb: str = "as_shot", temperature: float = 0.0, tint: float = 0.0, half: bool = False, develop: dict | None = None) -> tuple[bytes, int, int]:
     """A camera RAW developed as Camera Raw opens it by default: the camera's own white balance (as shot), sRGB, 8 bits,
     turned upright by the camera's orientation flag. Develop (Filter > Develop) then works on it. `camera_profile` is
     "none" for LibRaw's own colour, "auto" for the profile in the profile folders that is named like the common defaults and
@@ -173,10 +190,11 @@ def _raw(data: bytes, filename: str, camera_profile: str = "auto", wb: str = "as
     if not RAW:
         raise DecodeError(f"{filename} is a camera RAW file, and the engine's RAW decoder (rawpy) is not installed.")
     wb, temperature, tint, _ = _raw_args(wb, temperature, tint, 8)
-    custom = wb != "as_shot" or bool(temperature) or bool(tint)
+    develop = develop or {}
+    custom = wb != "as_shot" or bool(temperature) or bool(tint) or raw_develop.active(develop)
     chosen = None
     if custom and camera_profile not in ("none", "", "auto"):
-        raise DecodeError("A camera profile works with the as-shot white balance; set White Balance to As Shot to use one.")
+        raise DecodeError("A camera profile works with the as-shot white balance and no RAW-stage develop controls; set White Balance to As Shot and the controls to zero to use one.")
     if camera_profile not in ("none", "") and not custom:
         try:
             if camera_profile == "auto":
@@ -197,7 +215,7 @@ def _raw(data: bytes, filename: str, camera_profile: str = "auto", wb: str = "as
                     if camera_profile != "auto":
                         raise DecodeError(f"The camera profile could not be used: {exc}") from exc
             if rgb is None:
-                rgb = raw.postprocess(**_wb_kwargs(raw, wb, temperature, tint), output_color=rawpy.ColorSpace.sRGB, output_bps=8, half_size=half)
+                rgb = raw_develop.develop(raw, _wb_kwargs(raw, wb, temperature, tint), develop, half, 8, rawpy)
     except DecodeError:
         raise
     except Exception as exc:
@@ -206,7 +224,7 @@ def _raw(data: bytes, filename: str, camera_profile: str = "auto", wb: str = "as
     return _png(Image.fromarray(rgb))
 
 
-def raw_deep(data: bytes, filename: str, wb: str = "as_shot", temperature: float = 0.0, tint: float = 0.0, half: bool = False) -> tuple[bytes, int, int]:
+def raw_deep(data: bytes, filename: str, wb: str = "as_shot", temperature: float = 0.0, tint: float = 0.0, half: bool = False, develop: dict | None = None) -> tuple[bytes, int, int]:
     """A camera RAW developed at 16 bits per channel (Camera Raw's 16 Bits/Channel workflow option): sRGB, the white
     balance set at the RAW stage, as RGBA little-endian 16-bit samples (opaque) with the width and height, the way
     /io/decode-deep returns them. LibRaw's own colour is used: camera profiles render at 8 bits only."""
@@ -215,7 +233,7 @@ def raw_deep(data: bytes, filename: str, wb: str = "as_shot", temperature: float
     wb, temperature, tint, _ = _raw_args(wb, temperature, tint, 16)
     try:
         with rawpy.imread(io.BytesIO(data)) as raw:
-            rgb = raw.postprocess(**_wb_kwargs(raw, wb, temperature, tint), output_color=rawpy.ColorSpace.sRGB, output_bps=16, half_size=half)
+            rgb = raw_develop.develop(raw, _wb_kwargs(raw, wb, temperature, tint), develop or {}, half, 16, rawpy)
     except DecodeError:
         raise
     except Exception as exc:
@@ -281,10 +299,10 @@ def frames(data: bytes, filename: str) -> dict | None:
         raise DecodeError(f"Could not read {filename or 'the animation'}: {exc}") from exc
 
 
-def decode_to_png(data: bytes, filename: str, page: int = 0, camera_profile: str = "auto", wb: str = "as_shot", temperature: float = 0.0, tint: float = 0.0, half: bool = False) -> tuple[bytes, int, int]:
+def decode_to_png(data: bytes, filename: str, page: int = 0, camera_profile: str = "auto", wb: str = "as_shot", temperature: float = 0.0, tint: float = 0.0, half: bool = False, develop: dict | None = None) -> tuple[bytes, int, int]:
     suffix = Path(filename).suffix.lower()
-    if suffix in RAW_SUFFIXES:
-        return _raw(data, filename, camera_profile, wb, temperature, tint, half)
+    if is_raw(data, filename):
+        return _raw(data, filename, camera_profile, wb, temperature, tint, half, develop)
     if dpx.is_dpx(data):
         try:
             px, _info = dpx.read(data)

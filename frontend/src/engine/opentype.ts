@@ -11,7 +11,7 @@ export const OT_FEATURES: ReadonlyArray<{ tag: string; label: string }> = [
 ];
 
 /** Features fonts apply unless told otherwise: their toggle shows on until '-tag' is listed. */
-export const OT_DEFAULT_ON: ReadonlySet<string> = new Set(['liga', 'calt']);
+export const OT_DEFAULT_ON: ReadonlySet<string> = new Set(['liga', 'calt', 'kern', 'clig', 'ccmp', 'locl', 'rlig', 'mark', 'mkmk']);
 
 /** Stylistic sets ss01 to ss20 (DEV_PLAN 32.6c): known to the feature list, offered in the Glyphs dialog, not in the type menu. */
 export const OT_STYLISTIC_SETS: ReadonlyArray<{ tag: string; label: string }> = Array.from({ length: 20 }, (_, i) => {
@@ -22,12 +22,36 @@ export const OT_STYLISTIC_SETS: ReadonlyArray<{ tag: string; label: string }> = 
 const ALL_FEATURES = [...OT_FEATURES, ...OT_STYLISTIC_SETS];
 const KNOWN = new Set(ALL_FEATURES.map((f) => f.tag));
 
-/** A feature list cleaned: known tags only, once each, in the catalogue's order. */
+/** A feature list cleaned: once each, the catalogue's tags first in its order, then any other valid four-character tag
+ *  (tnum, lnum, case, zero, ...) as written; a default-on feature is kept only as '-tag', a catalogue feature only as 'tag'. */
 export function cleanFeatures(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
   const seen = new Set(raw.filter((v): v is string => typeof v === 'string'));
-  return ALL_FEATURES.flatMap(({ tag }) => (seen.has(tag) && !OT_DEFAULT_ON.has(tag) ? [tag] : seen.has(`-${tag}`) && OT_DEFAULT_ON.has(tag) ? [`-${tag}`] : []));
+  const known = ALL_FEATURES.flatMap(({ tag }) => (seen.has(tag) && !OT_DEFAULT_ON.has(tag) ? [tag] : seen.has(`-${tag}`) && OT_DEFAULT_ON.has(tag) ? [`-${tag}`] : []));
+  const other = [...seen].filter((f) => /^-?[A-Za-z0-9]{4}$/.test(f) && !KNOWN.has(f.replace(/^-/, '')) && OT_DEFAULT_ON.has(f.replace(/^-/, '')) === f.startsWith('-')).slice(0, 40);
+  return [...known, ...other];
 }
+
+/** Feature tags typed as text ("tnum, lnum, -kern") read into a list; a tag that is not four letters or digits is dropped. */
+export function featuresFromText(text: string): string[] {
+  return cleanFeatures(text.split(/[\s,;]+/).filter(Boolean));
+}
+
+/** The list written back as text, for a field. */
+export const featuresToText = (features: readonly string[] | null | undefined): string => (features ?? []).join(', ');
+
+/** Variable font axes typed as text ("wght 600, wdth 90"; a colon or equals sign also parses) read into values; a tag that
+ *  is not four characters, or a value that is not finite, is dropped. */
+export function variationsFromText(text: string): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const m of text.matchAll(/([A-Za-z0-9]{4})\s*[:= ]\s*(-?\d+(?:\.\d+)?)/g)) out[m[1]] = Math.max(-1000, Math.min(10000, Number(m[2])));
+  return out;
+}
+
+export const variationsToText = (v: Record<string, number> | null | undefined): string => Object.entries(v ?? {}).map(([k, n]) => `${k} ${n}`).join(', ');
+
+/** The CSS font-variation-settings for a set of axes. */
+export const variationCss = (v: Record<string, number> | null | undefined): string => Object.entries(v ?? {}).map(([k, n]) => `"${k}" ${n}`).join(', ');
 
 /** Whether a feature is on in a list: listed for most, not listed as off for the defaults. */
 export const featureOn = (features: readonly string[] | null | undefined, tag: string): boolean => {
@@ -37,7 +61,7 @@ export const featureOn = (features: readonly string[] | null | undefined, tag: s
 
 /** The list with one feature set on or off. */
 export function withFeature(features: readonly string[] | null | undefined, tag: string, on: boolean): string[] {
-  if (!KNOWN.has(tag)) return cleanFeatures(features ?? []);
+  if (!/^[A-Za-z0-9]{4}$/.test(tag)) return cleanFeatures(features ?? []);
   const rest = (features ?? []).filter((f) => f !== tag && f !== `-${tag}`);
   if (OT_DEFAULT_ON.has(tag)) return cleanFeatures(on ? rest : [...rest, `-${tag}`]);
   return cleanFeatures(on ? [...rest, tag] : rest);
@@ -65,6 +89,9 @@ const GENERIC = new Set(['serif', 'sans-serif', 'monospace', 'cursive', 'fantasy
 function fileOf(family: string, bold: boolean, italic: boolean): Promise<ArrayBuffer> {
   return GENERIC.has(family.trim().toLowerCase()) ? Promise.reject(new Error(`${family} is a generic family`)) : source(family, bold, italic);
 }
+
+/** The same font file for the glyph outline reader. */
+export const fontFileBytes = fileOf;
 
 /** The feature tags a font file's GSUB and GPOS tables list (DEV_PLAN 32.6d). Every read is bounds-checked; on a bad
  *  offset the tags collected so far are returned. A TrueType Collection is read at its first font. */
@@ -132,6 +159,59 @@ export function featuresKnown(family: string, bold: boolean, italic: boolean): S
   return detectedDone.get(faceKey(family, bold, italic));
 }
 
+export interface FontAxis { tag: string; min: number; def: number; max: number }
+
+/** The variable axes a font file's fvar table lists (none for a static font). Every read is bounds-checked. */
+export function fontAxes(buf: ArrayBuffer): FontAxis[] {
+  const view = new DataView(buf), len = buf.byteLength, out: FontAxis[] = [];
+  const ok = (at: number, n: number): boolean => Number.isInteger(at) && at >= 0 && at + n <= len;
+  try {
+    let base = 0;
+    if (ok(0, 4) && view.getUint32(0) === 0x74746366) base = view.getUint32(12);   // 'ttcf': the first font
+    if (!ok(base, 12)) return out;
+    const count = view.getUint16(base + 4);
+    for (let i = 0; i < count; i += 1) {
+      const rec = base + 12 + i * 16;
+      if (!ok(rec, 16)) break;
+      if (view.getUint32(rec) !== 0x66766172) continue;   // 'fvar'
+      const t = view.getUint32(rec + 8);
+      if (!ok(t, 16)) break;
+      const first = t + view.getUint16(t + 4), n = view.getUint16(t + 8), size = view.getUint16(t + 10);
+      for (let k = 0; k < n; k += 1) {
+        const a = first + k * size;
+        if (!ok(a, 16)) break;
+        const tag = String.fromCharCode(view.getUint8(a), view.getUint8(a + 1), view.getUint8(a + 2), view.getUint8(a + 3));
+        out.push({ tag, min: view.getInt32(a + 4) / 65536, def: view.getInt32(a + 8) / 65536, max: view.getInt32(a + 12) / 65536 });
+      }
+      break;
+    }
+  } catch { /* return what was read */ }
+  return out;
+}
+
+const axesDone = new Map<string, FontAxis[] | null>();
+const axesJobs = new Map<string, Promise<FontAxis[] | null>>();
+
+/** The variable axes of a face, cached; null where the font file cannot be had. */
+export function axesOf(family: string, bold: boolean, italic: boolean): Promise<FontAxis[] | null> {
+  const key = faceKey(family, bold, italic), have = axesJobs.get(key);
+  if (have) return have;
+  const job = (async (): Promise<FontAxis[] | null> => {
+    try {
+      let data = bytes.get(key);
+      if (!data) { data = fileOf(family, bold, italic); bytes.set(key, data); }
+      const found = fontAxes(await data);
+      axesDone.set(key, found);
+      return found;
+    } catch { bytes.delete(key); axesDone.set(key, null); return null; }
+  })();
+  axesJobs.set(key, job);
+  return job;
+}
+
+/** The axes already read for a face (sync, for the panel): undefined while not read, null where unavailable. */
+export const axesKnown = (family: string, bold: boolean, italic: boolean): FontAxis[] | null | undefined => axesDone.get(faceKey(family, bold, italic));
+
 const bytes = new Map<string, Promise<ArrayBuffer>>();
 const ready = new Map<string, string>();
 const pending = new Map<string, Promise<string | null>>();
@@ -144,20 +224,20 @@ function hash(text: string): string {
   return h.toString(36);
 }
 
-const variantKey = (family: string, bold: boolean, italic: boolean, tags: readonly string[]): string => `${faceKey(family, bold, italic)}|${tags.join(',')}`;
+const variantKey = (family: string, bold: boolean, italic: boolean, tags: readonly string[], axes = ''): string => `${faceKey(family, bold, italic)}|${tags.join(',')}|${axes}`;
 
 /** The variant family already registered for these settings, or null (sync, for building a CSS font). */
-export function variantFamily(family: string, bold: boolean, italic: boolean, tags: readonly string[] | null | undefined): string | null {
-  const list = cleanFeatures(tags ?? []);
-  return list.length ? ready.get(variantKey(family, bold, italic, list)) ?? null : null;
+export function variantFamily(family: string, bold: boolean, italic: boolean, tags: readonly string[] | null | undefined, variations?: Record<string, number> | null): string | null {
+  const list = cleanFeatures(tags ?? []), axes = variationCss(variations);
+  return list.length || axes ? ready.get(variantKey(family, bold, italic, list, axes)) ?? null : null;
 }
 
 /** Registers a variant of a family with the features set, fetching the font file once per family and style; the variant's
  *  family name, or null where it cannot be made (no file, no FontFace), so the plain face is drawn. */
-export async function ensureVariant(family: string, bold: boolean, italic: boolean, tags: readonly string[]): Promise<string | null> {
-  const list = cleanFeatures(tags);
-  if (!list.length || typeof FontFace === 'undefined' || typeof document === 'undefined' || !document.fonts) return null;
-  const key = variantKey(family, bold, italic, list), done = ready.get(key);
+export async function ensureVariant(family: string, bold: boolean, italic: boolean, tags: readonly string[], variations?: Record<string, number> | null): Promise<string | null> {
+  const list = cleanFeatures(tags), axes = variationCss(variations);
+  if ((!list.length && !axes) || typeof FontFace === 'undefined' || typeof document === 'undefined' || !document.fonts) return null;
+  const key = variantKey(family, bold, italic, list, axes), done = ready.get(key);
   if (done) return done;
   const waiting = pending.get(key);
   if (waiting) return waiting;
@@ -167,7 +247,7 @@ export async function ensureVariant(family: string, bold: boolean, italic: boole
       let data = bytes.get(fk);
       if (!data) { data = fileOf(family, bold, italic); bytes.set(fk, data); }
       const name = `${family}__ot_${hash(key)}`;
-      const face = new FontFace(name, await data, { featureSettings: settings(list), weight: bold ? '700' : '400', style: italic ? 'italic' : 'normal' });
+      const face = new FontFace(name, await data, { featureSettings: settings(list) || 'normal', ...(axes ? { variationSettings: axes } : {}), weight: bold ? '700' : '400', style: italic ? 'italic' : 'normal' });
       await face.load();
       document.fonts.add(face);
       ready.set(key, name);

@@ -19,6 +19,7 @@ export class PathsPanel {
       `<button class="cv-icon-btn" type="button" data-cmd="new-path" title="New path" aria-label="New path">${icon('add', 16)}</button></div>` +
       `<div class="cv-paths-body" hidden><div class="cv-path-list"><div class="cv-path-rows" role="listbox" aria-label="Paths"></div><div class="cv-paths-empty">No paths. Draw one with the Pen (P).</div></div>` +
       `<div class="cv-panel-foot"><button class="cv-icon-btn" type="button" data-cmd="path-selection" title="Load path as a selection" aria-label="Load path as a selection">${icon('marquee', 16)}</button>` +
+      `<button class="cv-icon-btn" type="button" data-cmd="selection-to-work-path" title="Make work path from selection" aria-label="Make work path from selection">${icon('penTool', 16)}</button>` +
       `<button class="cv-icon-btn" type="button" data-cmd="fill-path-dialog" title="Fill path..." aria-label="Fill path">${icon('fill', 16)}</button>` +
       `<button class="cv-icon-btn" type="button" data-cmd="new-shape-path" title="New shape layer from path" aria-label="New shape layer from path">${icon('rectTool', 16)}</button>` +
       `<button class="cv-icon-btn" type="button" data-cmd="stroke-path-dialog" title="Stroke path..." aria-label="Stroke path">${icon('paintbrush', 16)}</button>` +

@@ -1,4 +1,5 @@
 import { SelectionMask, createSurface, ctxOf, toBlob, type Engine, type Pt, type SelectionMode } from '../../engine';
+import { antialiasMask } from '../../engine/kernels';
 import { api } from '../../io/api';
 import { toolHost } from '../registry';
 import { dashed, type Tool } from '../registry';
@@ -49,7 +50,7 @@ async function request(engine: Engine, points: Array<[number, number, 0 | 1]>, b
   const px = c.getImageData(0, 0, W, H).data, data = new Uint8Array(W * H);
   for (let i = 0; i < data.length; i++) data[i] = px[i * 4];
   if (engine.current !== p || !data.some((v) => v >= 128)) return null;
-  return data;
+  return engine.selectionAntialiased ? antialiasMask(data.map((v) => (v >= 128 ? 255 : 0)), W, H) : data.map((v) => (v >= 128 ? 255 : 0));
 }
 
 /** True when a click found the object that is already the selection (nine tenths overlap), so a new-selection click toggles it off. */
@@ -199,6 +200,7 @@ export const objectSelectTool: Tool = {
   options: (e) => [
     { kind: 'title', text: 'Object Selection' },
     { kind: 'toggle', label: 'Sample All Layers', priority: 45, get: () => sampleAll, set: (v) => { sampleAll = v; } },
+    { kind: 'toggle', label: 'Anti-alias', priority: 42, get: () => e.selectionAntialiased, set: (v) => { e.selectionAntialiased = v; e.emit('options', null); } },
     { kind: 'toggle', label: 'Object Finder', priority: 40, get: () => hoverOn, set: (v) => { hoverOn = v; hoverDownUntil = 0; if (!v) { highlight = null; hoverSeq++; clearTimeout(hoverTimer); e.emit('overlay', null); } } },
     modeSegment(e),
     { kind: 'button', label: 'Feather Selection...', priority: 28, run: () => toolHost.run('feather'), when: () => !!e.current?.selection },

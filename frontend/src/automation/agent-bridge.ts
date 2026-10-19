@@ -7,6 +7,8 @@ import { decodeImage } from '../io/images';
 import { VIDEO_PROPS, type VideoProp, type VideoTimeline } from '../engine/video-timeline';
 import { localFill, localInpaint, localModels, localUpscale, modelReady, runLocal } from '../io/local-gen';
 import { applyPrefs, loadPrefs, savePrefs, updatePrefs, type Prefs } from '../ui/prefs';
+import { fontFamilies } from '../ui/fonts';
+import { mappedChars } from '../engine/glyph-outlines';
 
 /** Outside agents in the window (1.52.1): while Allow outside agents is on (Preferences > Plugins), the window collects
  *  MCP tool calls from the engine and runs them here, each change an ordinary undoable step. Generative calls cost the
@@ -687,6 +689,16 @@ export class AgentBridge {
         case 'list_settings': {
           const values = settingsOf(loadPrefs());
           return text(JSON.stringify(values), { settings: values });
+        }
+        case 'list_fonts': {
+          const families = fontFamilies(), family = str('family');
+          if (!family) return text(JSON.stringify(families), { families });
+          if (!families.includes(family)) return fail(`${family} is not a listed family: call list_fonts without family for the names.`);
+          const faces = await Promise.all([[false, false], [true, false], [false, true], [true, true]].map(async ([bold, italic]) => {
+            const chars = await mappedChars(family, bold, italic);
+            return { bold, italic, readable: !!chars, characters: chars?.length ?? 0 };
+          }));
+          return text(JSON.stringify({ family, faces }), { family, faces });
         }
         case 'set_settings': {
           const want = a.values && typeof a.values === 'object' ? a.values as Record<string, unknown> : {}, have = settingsOf(loadPrefs()), patch: Record<string, unknown> = {};

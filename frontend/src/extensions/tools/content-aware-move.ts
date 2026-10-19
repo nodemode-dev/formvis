@@ -43,5 +43,7 @@ export const contentAwareMoveTool: Tool = {
   options: (e): OptionSpec[] => [
     { kind: 'title', text: 'Content-Aware Move' },
     { kind: 'segment', label: 'Mode', choices: [{ id: 'move', label: 'Move' }, { id: 'extend', label: 'Extend' }], get: () => mode, set: (v) => { mode = v as 'move' | 'extend'; e.emit('options', null); } },
+    { kind: 'number', label: 'Structure', min: 1, max: 7, step: 1, get: () => e.retouch.moveStructure, set: (v: number) => { e.retouch.moveStructure = Math.round(Math.min(7, Math.max(1, v))); e.emit('options', null); }, when: () => mode === 'move' },
+    { kind: 'number', label: 'Color', min: 0, max: 10, step: 1, get: () => e.retouch.moveColor, set: (v: number) => { e.retouch.moveColor = Math.round(Math.min(10, Math.max(0, v))); e.emit('options', null); } },
   ],
 };

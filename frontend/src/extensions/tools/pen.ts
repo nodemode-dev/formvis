@@ -15,6 +15,16 @@ function editAt(vp: VectorPath, at: Pt, map: (p: Pt) => Pt): { kind: 'delete'; s
   return seg && seg.d <= NEAR && seg.t > 0.02 && seg.t < 0.98 ? { kind: 'add', sp: seg.sp, index: seg.index, t: seg.t } : null;
 }
 
+/** Removes the open sub-path's last point (Backspace, and Edit > Undo while points are pending). */
+function dropLast(ctx: ToolContext): void {
+  if (!active) return;
+  const vp = workPath(ctx), sp = active as SubPath | null;
+  if (!sp) return;
+  sp.anchors.pop();
+  if (!sp.anchors.length) { vp.subpaths.splice(vp.subpaths.indexOf(sp), 1); active = null; }
+  ctx.engine.setWorkPath(vp);
+}
+
 /** The Work Path to draw into, forgetting a sub-path left over from another document. */
 function workPath(ctx: ToolContext): VectorPath {
   const vp = ctx.engine.workPath ?? { subpaths: [] };
@@ -105,14 +115,13 @@ export const penTool: Tool = {
       return true;
     }
     if ((e.key === 'Enter' || e.key === 'Escape') && active) { active = null; ctx.engine.emit('overlay', null); return true; }
-    if ((e.key === 'Backspace' || e.key === 'Delete') && active) {
-      const vp = workPath(ctx);
-      active.anchors.pop();
-      if (!active.anchors.length) { vp.subpaths.splice(vp.subpaths.indexOf(active), 1); active = null; }
-      ctx.engine.setWorkPath(vp);
-      return true;
-    }
+    if ((e.key === 'Backspace' || e.key === 'Delete') && active) { dropLast(ctx); return true; }
     return false;
+  },
+  undoPending(ctx, probe) {
+    if (!active || !active.anchors.length) return false;
+    if (!probe) dropLast(ctx);
+    return true;
   },
   overlay(ctx, g) {
     const vp = ctx.engine.workPath;

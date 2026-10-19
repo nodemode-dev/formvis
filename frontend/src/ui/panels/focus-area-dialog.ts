@@ -1,4 +1,4 @@
-import { SelectionMask, type Engine } from '../../engine';
+import { SelectionMask, type Engine, type SelectionMode } from '../../engine';
 import { DEFAULT_FOCUS, focusArea, type FocusSettings } from '../../engine/focus-area';
 import { ctxOf } from '../../engine/surface';
 import { Dialog } from '../dialogs';
@@ -14,6 +14,8 @@ export class FocusAreaDialog extends Dialog {
   private s: FocusSettings = { ...DEFAULT_FOCUS };
   private readonly canvas = el(`<canvas width="${PW}" height="${PH}" style="display: block; width: ${PW}px; height: ${PH}px; background: var(--surface-2, #222)"></canvas>`) as HTMLCanvasElement;
   private readonly note = el('<p class="cv-dialog-note" role="status" style="min-height: 1.4em"></p>');
+  private readonly mode = el<HTMLSelectElement>('<select class="cv-input"><option value="replace">New Selection</option><option value="add">Add to Selection</option><option value="subtract">Subtract from Selection</option><option value="intersect">Intersect with Selection</option></select>');
+  private sampleRow: ReturnType<typeof checkRow> | null = null;
   private img: ImageData | null = null;
   private mask: Uint8Array | null = null;
   private timer = 0;
@@ -23,7 +25,11 @@ export class FocusAreaDialog extends Dialog {
     const range = sliderRow('In-Focus Range', 0, 100, 1, (v) => { this.s = { ...this.s, range: v }; this.soon(); });
     const noise = sliderRow('Image Noise Level', 0, 100, 1, (v) => { this.s = { ...this.s, noise: v }; this.soon(); });
     const soften = checkRow('Soften Edge', (v) => { this.s = { ...this.s, soften: v }; this.soon(); });
-    this.body.append(this.canvas, range.el, noise.el, soften.el, this.note);
+    const sampleAll = checkRow('Sample All Layers', (v) => { this.engine.setAutoSel({ sampleAll: v }); this.load(); this.compute(); });
+    this.sampleRow = sampleAll;
+    this.body.append(this.canvas, range.el, noise.el, soften.el, sampleAll.el);
+    this.field('Mode', this.mode);
+    this.body.append(this.note);
     range.set(this.s.range); noise.set(this.s.noise); soften.set(this.s.soften);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
@@ -31,11 +37,18 @@ export class FocusAreaDialog extends Dialog {
   }
 
   show(): void {
-    const flat = this.engine.flattened();
-    if (!flat) return;
-    this.img = ctxOf(flat).getImageData(0, 0, flat.width, flat.height);
+    if (!this.load()) return;
+    this.mode.value = this.engine.selectionMode;
+    this.sampleRow?.set(this.engine.autoSel.sampleAll);
     this.open();
     this.compute();
+  }
+
+  private load(): boolean {
+    const flat = this.engine.autoSelSource();
+    if (!flat) return false;
+    this.img = ctxOf(flat).getImageData(0, 0, flat.width, flat.height);
+    return true;
   }
 
   private soon(): void { if (this.timer) clearTimeout(this.timer); this.timer = window.setTimeout(() => { this.timer = 0; this.compute(); }, 120); }
@@ -61,6 +74,6 @@ export class FocusAreaDialog extends Dialog {
     const m = this.mask, img = this.img, p = this.engine.current;
     this.close();
     if (!m || !img || !p || !m.some((v) => v >= 128)) { if (m) this.engine.notice('Nothing in focus was found; raise the In-Focus Range.'); return; }
-    this.engine.applySelection(SelectionMask.cropped(0, 0, img.width, img.height, m), 'replace', 'Focus Area');
+    this.engine.applySelection(SelectionMask.cropped(0, 0, img.width, img.height, m), this.mode.value as SelectionMode, 'Focus Area');
   }
 }

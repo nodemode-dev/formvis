@@ -233,3 +233,33 @@ export function antialiasMask(mask: Uint8Array, width: number, height: number): 
   }
   return out;
 }
+
+/** Quick Selection's Enhance Edge: two passes of a 3 by 3 majority vote (a pixel is kept when five of its nine
+ *  neighbours are half selected or more) to even out ragged edges and drop specks, then the boundary anti-aliased. A new mask. */
+export function enhanceEdge(mask: Uint8Array, width: number, height: number): Uint8Array {
+  let cur = Uint8Array.from(mask, (v) => (v >= 128 ? 255 : 0));
+  for (let pass = 0; pass < 2; pass++) {
+    const next = new Uint8Array(cur.length);
+    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+      let n = 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const xx = x + dx, yy = y + dy;
+        if (xx >= 0 && yy >= 0 && xx < width && yy < height && cur[yy * width + xx]) n++;
+      }
+      next[y * width + x] = n >= 5 ? 255 : 0;
+    }
+    cur = next;
+  }
+  return antialiasMask(cur, width, height);
+}
+
+/** Select > Sky's Sensitivity on a soft mask: 50 returns it unchanged; above 50 lets fainter values count as fully
+ *  selected (the sky grows), below 50 lifts the floor so only stronger values count (the sky shrinks). A new mask. */
+export function sensitivityMask(mask: Uint8Array, sensitivity: number): Uint8Array {
+  const s = Math.max(0, Math.min(100, sensitivity)), out = mask.slice();
+  if (s === 50) return out;
+  const cut = Math.max(1, 255 * (1 - s / 100));
+  if (s > 50) { const k = 127.5 / cut; for (let i = 0; i < out.length; i++) out[i] = Math.min(255, Math.round(mask[i] * k)); }
+  else { const lift = cut - 127.5; for (let i = 0; i < out.length; i++) out[i] = Math.max(0, Math.min(255, Math.round(((mask[i] - lift) * 255) / (255 - lift)))); }
+  return out;
+}

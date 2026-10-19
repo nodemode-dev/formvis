@@ -706,7 +706,11 @@ export class WarpStroke {
   /** Smudge's paint on the brush: a square of 2 radius + 1 pixels a side around the dab centre, premultiplied. */
   private paint: Float32Array | null = null;
 
-  constructor(readonly pixels: Uint8ClampedArray, readonly width: number, readonly height: number, readonly mode: 'smudge' | 'liquify', diameter: number, hardness: number, strength: number) {
+  /** Smudge Length: 1 keeps the paint as far as Strength allows, 0 lets it take on the canvas fully at every dab. */
+  private readonly length: number;
+
+  constructor(readonly pixels: Uint8ClampedArray, readonly width: number, readonly height: number, readonly mode: 'smudge' | 'liquify', diameter: number, hardness: number, strength: number, length = 1) {
+    this.length = clamp(length, 0, 1);
     this.diameter = Math.max(2, diameter);
     this.hardness = clamp(hardness, 0, 0.98);
     this.strength = clamp(strength, 0.01, 1);
@@ -772,7 +776,7 @@ export class WarpStroke {
   private deposit(at: Pt): void {
     const paint = this.paint;
     if (!paint) return;
-    const r = this.radius, side = 2 * r + 1, cx = Math.round(at.x), cy = Math.round(at.y), half = this.diameter / 2, lay = this.strength * this.pressure, take = 1 - lay;
+    const r = this.radius, side = 2 * r + 1, cx = Math.round(at.x), cy = Math.round(at.y), half = this.diameter / 2, lay = this.strength * this.pressure, take = 1 - lay * this.length;
     for (let oy = -r; oy <= r; oy++) {
       const y = cy + oy;
       if (y < 0 || y >= this.height) continue;

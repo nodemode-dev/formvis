@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { addNoise, gaussianBlur, lensDistort, motionBlur, unsharpMask } from './filters';
+import { addNoise, defaultLensFix, gaussianBlur, lensCorrect, motionBlur, unsharpMask } from './filters';
 import { developImage } from './develop';
 import { lensBlur, shakeReduce, smartSharpen } from './filters-more';
 import { isGalleryKind, runGallery } from './blur-gallery';
@@ -19,7 +19,7 @@ onmessage = (e: MessageEvent<FilterJob>) => {
   else if (job.kind === 'gaussianBlur') out = gaussianBlur(src, s.radius * job.scale);
   else if (job.kind === 'motionBlur') out = motionBlur(src, s.angle, s.distance * job.scale);
   else if (job.kind === 'addNoise') out = addNoise(src, s.amount, s.gaussian, s.monochromatic, job.seed);
-  else if (job.kind === 'lensCorrection') out = lensDistort(src, s.distortion);
+  else if (job.kind === 'lensCorrection') out = lensCorrect(src, s.distortion, s.lensFix ?? defaultLensFix());
   else if (job.kind === 'unsharpMask') out = unsharpMask(src, s.usmAmount, s.usmRadius * job.scale, s.threshold);
   else if (job.kind === 'develop') out = developImage(src, s.develop, job.scale);
   else if (job.kind === 'lensBlur') out = lensBlur(src, s.lensRadius * job.scale, s.lensBrightness, s.lensThreshold);

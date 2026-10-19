@@ -260,10 +260,11 @@ class Confirm extends Dialog {
   }
 
   /** A destructive question opens with Cancel focused, so Return alone never confirms it; the arrow keys move between the buttons. */
-  ask(title: string, text: string, okLabel: string, danger: boolean): Promise<boolean> {
+  ask(title: string, text: string, okLabel: string, danger: boolean, cancelLabel = 'Cancel'): Promise<boolean> {
     this.setTitle(title);
     setText(this.note, text);
     setText(this.ok, okLabel);
+    setText(this.cancel, cancelLabel);
     this.ok.className = danger ? 'cv-btn cv-btn-danger' : 'cv-btn cv-btn-primary';
     this.open(danger ? this.cancel : this.ok);
     return new Promise<boolean>((resolve) => { this.resolve = resolve; });
@@ -314,9 +315,9 @@ class Prompt extends Dialog {
 let confirmDlg: Confirm | null = null;
 let promptDlg: Prompt | null = null;
 
-export function confirmAction(title: string, text: string, okLabel = 'OK', danger = false): Promise<boolean> {
+export function confirmAction(title: string, text: string, okLabel = 'OK', danger = false, cancelLabel = 'Cancel'): Promise<boolean> {
   confirmDlg ??= new Confirm();
-  return confirmDlg.ask(title, text, okLabel, danger);
+  return confirmDlg.ask(title, text, okLabel, danger, cancelLabel);
 }
 
 export function promptName(title: string, value: string, okLabel = 'OK'): Promise<string | null> {

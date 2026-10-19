@@ -1,7 +1,7 @@
 import type { Engine } from '../engine';
 import { clamp } from '../engine';
 import { checkRow, numberRow } from './panels/controls';
-import { q, setText } from './dom';
+import { q } from './dom';
 import { icon } from './icons';
 
 const SLOTS = [0, 1, 2, 3, 4] as const;
@@ -14,7 +14,7 @@ export function createCloneSourcePanel(root: HTMLElement, engine: Engine): void 
     '<section class="cv-preset-panel cv-clone-source" aria-label="Clone Source">' +
     `<div class="cv-panel-head"><span class="cv-comps-title">${icon('tStamp', 14)}<span>Clone Source</span></span><span></span><span class="cv-comps-count"></span></div>` +
     `<div class="cv-clone-slots" role="group" aria-label="Clone Source">${SLOTS.map((i) => `<button class="cv-btn cv-clone-slot" type="button" data-slot="${i}" aria-pressed="false" title="Source ${i + 1}" aria-label="Source ${i + 1}">${i + 1}</button>`).join('')}</div>` +
-    '<dl class="cv-clone-pos"><dt>X</dt><dd data-s="x"></dd><dt>Y</dt><dd data-s="y"></dd></dl>' +
+    '<div class="cv-clone-pos"></div>' +
     '<div class="cv-clone-rows"></div>' +
     '<div class="cv-clone-overlay"></div></section>');
   const sec = q(root, 'section.cv-clone-source');
@@ -23,11 +23,22 @@ export function createCloneSourcePanel(root: HTMLElement, engine: Engine): void 
   const r = engine.retouch;
   const changed = (): void => { engine.emit('options', null); engine.emit('overlay', null); };
 
-  const scale = numberRow('Scale (W, H %)', 1, 1000, 1, (v) => { r.cloneScale = clamp(v, 1, 1000); changed(); });
+  const pos = q(sec, '.cv-clone-pos');
+  const place = (x: number | null, y: number | null): void => {
+    const s = engine.cloneSource;
+    engine.setCloneSource({ x: x ?? s?.x ?? 0, y: y ?? s?.y ?? 0 });
+  };
+  const posX = numberRow('Offset X', -100000, 100000, 1, (v) => place(Math.round(v), null));
+  const posY = numberRow('Offset Y', -100000, 100000, 1, (v) => place(null, Math.round(v)));
+  pos.append(posX.el, posY.el);
+
+  const scale = numberRow('W (%)', 1, 1000, 1, (v) => { r.cloneScale = clamp(v, 1, 1000); changed(); });
+  const scaleY = numberRow('H (%)', 1, 1000, 1, (v) => { const k = clamp(v, 1, 1000); if (r.cloneScaleY === null) r.cloneScale = k; else r.cloneScaleY = k; changed(); });
+  const link = checkRow('Link W and H', (v) => { r.cloneScaleY = v ? null : r.cloneScale; if (v) r.cloneScale = clamp(r.cloneScale, 1, 1000); changed(); });
   const angle = numberRow('Angle', -180, 180, 1, (v) => { r.cloneAngle = clamp(v, -180, 180); changed(); });
   const flipH = checkRow('Flip Horizontal', (v) => { r.cloneFlipH = v; changed(); });
   const flipV = checkRow('Flip Vertical', (v) => { r.cloneFlipV = v; changed(); });
-  rows.append(scale.el, angle.el, flipH.el, flipV.el);
+  rows.append(scale.el, scaleY.el, link.el, angle.el, flipH.el, flipV.el);
   rows.insertAdjacentHTML('beforeend', '<button class="cv-btn" type="button" data-act="reset">Reset Transform</button>');
   const reset = q<HTMLButtonElement>(rows, '[data-act="reset"]');
 
@@ -48,9 +59,8 @@ export function createCloneSourcePanel(root: HTMLElement, engine: Engine): void 
       const t = empty ? `Source ${i + 1} (empty)` : `Source ${i + 1}`;
       if (b.title !== t) { b.title = t; b.setAttribute('aria-label', t); }
     });
-    setText(q(sec, '[data-s="x"]'), src ? String(Math.round(src.x)) : 'Not set');
-    setText(q(sec, '[data-s="y"]'), src ? String(Math.round(src.y)) : 'Not set');
-    scale.set(rt.cloneScale); angle.set(rt.cloneAngle);
+    posX.set(src ? Math.round(src.x) : 0); posY.set(src ? Math.round(src.y) : 0);
+    scale.set(rt.cloneScale); scaleY.set(rt.cloneScaleY ?? rt.cloneScale); link.set(rt.cloneScaleY === null); angle.set(rt.cloneAngle);
     flipH.set(rt.cloneFlipH); flipV.set(rt.cloneFlipV);
     show.set(ov.show); opacity.set(Math.round(ov.opacity * 100));
     clipped.set(ov.clipped); autoHide.set(ov.autoHide); invert.set(ov.invert);

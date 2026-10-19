@@ -125,6 +125,22 @@ export function selectLayerPixels(host: SelectHost, id?: string): void {
   applySelection(host, SelectionMask.fromAlpha(0, 0, w, h, rgba), 'replace', "Select Layer's Pixels");
 }
 
+/** The active layer's mask as opaque gray at document size (white where the mask has no pixels), what the Magic Wand
+ *  samples while the mask is the target. */
+function maskRgba(layer: Layer, w: number, h: number): Uint8ClampedArray {
+  const s = createSurface(w, h), c = ctxOf(s), m = layer.mask;
+  c.fillStyle = '#ffffff';
+  c.fillRect(0, 0, w, h);
+  if (m?.raster) {
+    setMat(c, placement(m.placement ?? layer.transform, m.raster.width, m.raster.height));
+    c.drawImage(m.raster.canvas, 0, 0);
+    setMat(c, [1, 0, 0, 1, 0, 0]);
+  }
+  const g = toGray(c.getImageData(0, 0, w, h));
+  for (let i = 3; i < g.data.length; i += 4) g.data[i] = 255;
+  return g.data;
+}
+
 export function magicWand(host: SelectHost, pt: Pt, mode: SelectionMode): void {
   const p = host.current;
   if (!p) return;
@@ -143,7 +159,7 @@ export function magicWand(host: SelectHost, pt: Pt, mode: SelectionMode): void {
       host.notice('Select a layer first.');
       return;
     }
-    rgba = layerRgba(layer, w, h);
+    rgba = p.maskTarget && layer.mask ? maskRgba(layer, w, h) : layerRgba(layer, w, h);
   }
   let region = wandMask(rgba, w, h, x, y, o.tolerance, o.contiguous, o.sampleSize);
   if (o.antialias) region = antialiasMask(region, w, h);
