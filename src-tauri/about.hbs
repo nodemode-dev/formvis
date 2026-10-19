@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>formvis Rust licences</title>
+<style>
+body { font: 14px/1.5 system-ui, sans-serif; max-width: 52rem; margin: 2rem auto; padding: 0 1rem; color: #222; }
+pre { white-space: pre-wrap; word-wrap: break-word; background: #f4f4f4; padding: 0.75rem; }
+li { margin: 0.1rem 0; }
+</style>
+</head>
+<body>
+<h1>Third-party Rust licences</h1>
+<p>The Rust crates this build links, grouped by licence. Where a crate offers a choice, any one of its licences may be used.</p>
+<h2>Licences used</h2>
+<ul>
+{{#each overview}}
+<li><a href="#{{id}}">{{name}}</a> ({{count}})</li>
+{{/each}}
+</ul>
+{{#each licenses}}
+<h2 id="{{id}}">{{name}}</h2>
+<h3>Used by</h3>
+<ul>
+{{#each used_by}}
+<li>{{crate.name}} {{crate.version}}{{#if crate.repository}} (<a href="{{crate.repository}}">{{crate.repository}}</a>){{/if}}</li>
+{{/each}}
+</ul>
+<pre>{{text}}</pre>
+{{/each}}
+</body>
+</html>
