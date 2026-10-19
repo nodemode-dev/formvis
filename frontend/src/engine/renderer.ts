@@ -15,6 +15,7 @@ import type { Adjustment } from './types';
 import { limitOf, limitView, limitWeights } from './limit';
 import { isDepthName } from './depth-map';
 import { runEffectOnGpu, type GpuEffectJob } from './gpu-effects';
+import type { EffectWorker, FxAsk, FxLanded } from './fx-wire';
 
 const kernelCache = new WeakMap<object, Kernel | null>();
 export function kernelFor(adj: Adjustment | null): Kernel | null {
@@ -203,6 +204,11 @@ export class Renderer {
   readonly fxStats = { full: 0, partial: 0, pixels: 0 };
   /** Whether a GPU effect map is rebuilt only over a damaged part (off until the comparison against a whole rebuild has been run). */
   partialMaps = false;
+  /** The worker that builds a previewed layer's effect parts off the page's thread (CO-0274); null leaves the build to the page. While it builds, the parts the layer had stay on show. */
+  effectWorker: EffectWorker | null = null;
+  /** Called when a worker's parts have landed in the cache, so the picture is drawn again. */
+  onEffects: (() => void) | null = null;
+  private detached = false;
   /** What the layer-effect cache holds now: entries and bytes. */
   effectCacheUse(): { entries: number; bytes: number } { return { entries: this.fxCache.size, bytes: this.fxBytes }; }
   /** What the scratch surfaces hold now: the stack-reuse prefix, the scratch slots and the clip surfaces, in bytes. */
@@ -525,9 +531,10 @@ export class Renderer {
     const r = layer.raster, mk = layer.mask, fast = this.fastEffects && !exact;
     const rest = JSON.stringify([r?.id ?? null, t, mk ? [mk.raster?.id ?? null, mk.raster?.version ?? 0, mk.enabled, maskPlacement ?? mk.placement, mk.density ?? 100, mk.feather ?? 0] : null, fx, docW, docH, fast, layer.transparencyShapes === false]);
     const ver = r?.version ?? 0, key = `${ver}|${rest}`;
-    const hit = exact ? undefined : this.fxCache.get(layer.id);
+    const hit = exact || this.detached ? undefined : this.fxCache.get(layer.id);
     if (hit && hit.key === key) return hit.parts;
-    this.fxFor = exact ? null : { id: layer.id, ver, prev: hit && hit.rest === rest ? hit.ver : -1, rect: null };
+    if (fast && !this.detached && this.askWorker(layer, fx, src, t, own, docW, docH, key, rest, ver)) return hit?.parts ?? [];
+    this.fxFor = exact || this.detached ? null : { id: layer.id, ver, prev: hit && hit.rest === rest ? hit.ver : -1, rect: null };
     const d = fx.dropShadow, g = fx.outerGlow, k = fx.stroke, is = fx.innerShadow, ig = fx.innerGlow;
     const reach = fxReach(fx) + 4;
     const lm = placement(t, src.width, src.height);
@@ -556,8 +563,12 @@ export class Renderer {
       this.exactFx = exact;
       const dm = this.fxFor && this.fxFor.prev >= 0 && this.fxFor.prev !== ver && r ? r.damageSince(this.fxFor.prev, ver) : null;
       if (dm && this.fxFor) {
-        const vm = mul(view, lm), b = boundsOf([applyMat(vm, dm.x, dm.y), applyMat(vm, dm.x + dm.w, dm.y), applyMat(vm, dm.x + dm.w, dm.y + dm.h), applyMat(vm, dm.x, dm.y + dm.h)]);
-        this.fxFor.rect = integral({ x: b.x - 2, y: b.y - 2, w: b.w + 4, h: b.h + 4 });
+        // Only a layer drawn upright at about its own size: a rotated or strongly scaled one spreads a changed pixel past the margin.
+        const vm = mul(view, lm), sx = Math.hypot(vm[0], vm[1]), sy = Math.hypot(vm[2], vm[3]);
+        if (Math.abs(vm[1]) < 1e-6 && Math.abs(vm[2]) < 1e-6 && sx >= 0.5 && sx <= 2 && sy >= 0.5 && sy <= 2) {
+          const b = boundsOf([applyMat(vm, dm.x, dm.y), applyMat(vm, dm.x + dm.w, dm.y), applyMat(vm, dm.x + dm.w, dm.y + dm.h), applyMat(vm, dm.x, dm.y + dm.h)]);
+          this.fxFor.rect = integral({ x: b.x - 2, y: b.y - 2, w: b.w + 4, h: b.h + 4 });
+        }
       }
       try {
         for (const phase of ['below', 'above'] as const) {
@@ -574,13 +585,50 @@ export class Renderer {
         this.previewPixels = Math.round(Math.min(6_000_000, Math.max(250_000, ms > 90 ? this.previewPixels * 0.7 : ms < 25 ? this.previewPixels * 1.25 : this.previewPixels)));
       }
     }
-    if (exact) return parts;
-    const old = this.fxCache.get(layer.id);
-    if (old) { this.fxCache.delete(layer.id); this.fxBytes -= old.bytes; }
+    if (exact || this.detached) return parts;
+    this.keepParts(layer.id, key, rest, ver, parts);
+    return parts;
+  }
+
+  private keepParts(id: ID, key: string, rest: string, ver: number, parts: FxPart[]): void {
+    const old = this.fxCache.get(id);
+    if (old) { this.fxCache.delete(id); this.fxBytes -= old.bytes; }
     const bytes = parts.reduce((n, q) => n + surfaceBytes(q.s), 0);
     this.trimEffectCache(bytes);
-    if (bytes <= renderCache.effectBytes) { this.fxCache.set(layer.id, { key, rest, ver, parts, bytes }); this.fxBytes += bytes; }
-    return parts;
+    if (bytes <= renderCache.effectBytes) { this.fxCache.set(id, { key, rest, ver, parts, bytes }); this.fxBytes += bytes; }
+  }
+
+  /** Hands a previewed layer's effect build to the worker, when there is one and the layer is a plain one (its own picture and a mask that is a raster); false leaves the build to the page. */
+  private askWorker(layer: Layer, fx: LayerEffects, src: Surface, t: Transform, own: MaskInfo | null, docW: number, docH: number, key: string, rest: string, ver: number): boolean {
+    const r = layer.raster, w = this.effectWorker;
+    if (!w || !r || src !== r.canvas) return false;
+    const mr = own ? rasterOf(own.src) : undefined;
+    if (own && !mr) return false;
+    const patterns: FxAsk['patterns'] = [];
+    for (const id of [fx.patternOverlay.enabled && fx.patternOverlay.opacity > 0 ? fx.patternOverlay.pattern : null, fx.bevel.enabled && fx.bevel.texture?.enabled ? fx.bevel.texture.pattern : null]) {
+      const pat = id ? patternById(id) : null;
+      if (pat && !pat.builtin && !patterns.some((q) => q.id === pat.id)) patterns.push({ id: pat.id, surface: pat.surface });
+    }
+    return w.ask({
+      layerId: layer.id, key, src: { key: `${r.id}:${r.version}`, surface: src, w: r.width, h: r.height },
+      mask: own && mr ? { key: `${mr.id}:${mr.version}`, surface: own.src, w: own.w, h: own.h, t: own.t, covers: own.covers } : null,
+      patterns, fx, t, docW, docH, fast: true, pixels: () => this.previewPixels, shapes: layer.transparencyShapes !== false,
+      land: (parts, ms) => this.landParts(layer.id, key, rest, ver, parts, ms),
+      late: () => { this.previewPixels = Math.max(250_000, Math.round(this.previewPixels * 0.5)); },
+    });
+  }
+
+  private landParts(id: ID, key: string, rest: string, ver: number, parts: FxLanded[], ms: number): void {
+    if (!this.fastEffects) return;
+    this.keepParts(id, key, rest, ver, parts.map((p) => ({ s: p.surface, x: p.x, y: p.y, k: p.k, alpha: p.alpha, op: p.op, above: p.above, name: p.name, kept: p.kept })));
+    this.previewPixels = Math.round(Math.min(6_000_000, Math.max(250_000, ms > 200 ? this.previewPixels * 0.7 : ms < 60 ? this.previewPixels * 1.25 : this.previewPixels)));
+    this.onEffects?.();
+  }
+
+  /** The parts a worker draws for the page: the very builder the page uses, with nothing kept in this renderer's cache or maps. */
+  buildDetached(layer: Layer, fx: LayerEffects, src: Surface, t: Transform, own: { src: Surface; w: number; h: number; t: Transform; covers: boolean } | null, docW: number, docH: number): FxPart[] {
+    this.detached = true;
+    try { return this.effectParts(layer, fx, src, t, own, null, docW, docH); } finally { this.detached = false; }
   }
 
   /** A GPU effect map over `box`: whole, or, when the layer changed since the map was last made inside a known rectangle, only the part within the effect's reach of that rectangle, rebuilt over a box grown by the reach again (outside its box the silhouette reads as empty) and laid into the map kept. */

@@ -283,6 +283,84 @@ def convert(target: str = Form(...), workflow: str = Form(...)) -> dict:
         raise HTTPException(status_code=422, detail=str(exc))
 
 
+MIRROR_KEEP = 64
+MIRROR_BYTES = 256_000_000
+
+
+def _mirror_dir() -> Path:
+    folder = config.data_dir() / "comfy-inputs"
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
+
+
+def _mirror(name: str, data: bytes) -> None:
+    """A copy of each file sent to ComfyUI, in the data folder: the newest of each name (as ComfyUI keeps it, overwritten),
+    MIRROR_KEEP at most, the oldest out. A copy that cannot be written does not stop the send."""
+    if len(data) > MIRROR_BYTES // 8:
+        return
+    try:
+        folder = _mirror_dir()
+        temp = folder / f".{uuid.uuid4().hex[:8]}.tmp"
+        temp.write_bytes(data)
+        temp.replace(folder / f"{name}.png")
+        files = sorted(folder.glob("*.png"), key=lambda p: p.stat().st_mtime)
+        total = sum(p.stat().st_size for p in files)
+        while files and (len(files) > MIRROR_KEEP or total > MIRROR_BYTES):
+            old = files.pop(0)
+            total -= old.stat().st_size
+            old.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+@router.get("/mirror")
+def mirror_list(request: Request) -> dict:
+    """The pictures formvis has sent to ComfyUI that the data folder still holds, newest first (name as ComfyUI lists it, size, time)."""
+    require_local(request)
+    files = []
+    for f in sorted(_mirror_dir().glob("*.png"), key=lambda p: -p.stat().st_mtime):
+        try:
+            st = f.stat()
+            files.append({"name": f"{SUBFOLDER}/{f.name}", "bytes": st.st_size, "time": st.st_mtime})
+        except OSError:
+            continue
+    return {"folder": str(_mirror_dir()), "files": files}
+
+
+@router.post("/reupload")
+def reupload(request: Request, target: str = Form(...), names: str = Form(...)) -> dict:
+    """Sends mirrored pictures to ComfyUI again, for an input folder ComfyUI emptied or a ComfyUI that was reinstalled.
+    `names` is JSON, a list of input names as ComfyUI lists them (formvis/ref0.png). Replies with what was sent and what
+    the data folder no longer holds."""
+    require_local(request)
+    base = _base(target)
+    try:
+        wanted = json.loads(names)
+        assert isinstance(wanted, list) and 0 < len(wanted) <= 64 and all(isinstance(n, str) for n in wanted)
+    except (ValueError, AssertionError):
+        raise HTTPException(status_code=422, detail="Name the pictures to send again as a list of ComfyUI input names.")
+    sent, missing = [], []
+    try:
+        for n in wanted:
+            stem = n.split("/", 1)[-1]
+            stem = stem[:-4] if stem.lower().endswith(".png") else stem
+            path = _mirror_dir() / f"{stem}.png"
+            if not stem or "/" in stem or "\\" in stem or stem.startswith(".") or not path.is_file():
+                missing.append(n)
+                continue
+            body, kind = outbound.multipart("image", path.name, path.read_bytes(), {"type": "input", "subfolder": SUBFOLDER, "overwrite": "true"})
+            with _request(base + "/upload/image", body, {"Content-Type": kind}, "POST") as r:
+                reply = json.loads(r.read() or b"{}")
+            stored = reply.get("name") or path.name
+            folder = reply.get("subfolder", SUBFOLDER)
+            sent.append(f"{folder}/{stored}" if folder else stored)
+    except urllib.error.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"ComfyUI refused the upload ({exc.code}).")
+    except (urllib.error.URLError, OSError) as exc:
+        raise outbound.unreachable("ComfyUI", base, "Preferences > Plugins", exc)
+    return {"sent": sent, "missing": missing}
+
+
 @router.post("/send")
 async def send(target: str = Form(...), items: str = Form(...), files: list[UploadFile] = File(...)) -> dict:
     """Uploads `files` into ComfyUI's input folder. `items` is JSON, one entry per file in order: its name and kind
@@ -297,11 +375,13 @@ async def send(target: str = Form(...), items: str = Form(...), files: list[Uplo
     try:
         for m, f in zip(meta, files):
             name = "".join(c if c.isalnum() or c in " -_." else "_" for c in str(m.get("name") or "image"))[:120].strip() or "image"
-            body, kind = outbound.multipart("image", f"{name}.png", await f.read(), {"type": "input", "subfolder": SUBFOLDER, "overwrite": "true"})
+            data = await f.read()
+            body, kind = outbound.multipart("image", f"{name}.png", data, {"type": "input", "subfolder": SUBFOLDER, "overwrite": "true"})
             with _request(base + "/upload/image", body, {"Content-Type": kind}, "POST") as r:
                 reply = json.loads(r.read() or b"{}")
             stored = reply.get("name") or f"{name}.png"
             folder = reply.get("subfolder", SUBFOLDER)
+            _mirror(name, data)
             sent.append({"name": f"{folder}/{stored}" if folder else stored, "kind": m.get("kind", "image")})
     except urllib.error.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"ComfyUI refused the upload ({exc.code}).")

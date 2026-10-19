@@ -4,6 +4,31 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.91.0 · 2026-10-19
+
+### Added
+
+- Select and Mask (Alt+Mod+R, the selection tools' option bar, the Properties mask button) opens as a workspace on the main canvas and falls back to the dialog where it cannot open; Select > Select and Mask Dialog opens the dialog.
+- Window > Jobs, and a click on the Working indicator, list each running job with its bar, percent and its own Stop.
+- Panels tear off into floating windows by dragging a tab or header out of the dock and dock back onto a gap or a tab strip; positions are kept between sessions.
+- Canvas scrollbars are on by default and the overscroll past the canvas edge is a preference (0 to 100 percent of the view, default 50).
+- EXIF and XMP are read from HEIF and AVIF files, and AVIF export keeps them.
+- Type: Ctrl or Cmd drag on a corner of the layer box scales an existing type layer while it is edited, and Ctrl+Shift drag turns it, in one Edit Type step.
+- Lights: a compass at the top left of the picture points to where the picture's own light comes from.
+- Vanishing Point: connected planes hinge on the right, bottom, left or top edge.
+- A curved Bevel and Emboss edge Contour is written to PSD while the gloss Contour is Linear.
+- Flat saves name the merged layers, the hidden layers left out, and File Info a kind cannot hold.
+- Layer Style previews are computed on a worker; Prompt Improver takes reference images; ComfyUI inputs are mirrored and re-uploaded by the engine.
+
+### Fixed
+
+- Levels in saved PSD and PSB follow the format (29 records and the Lvls tail), so other readers take the block.
+- Select and Mask output to a New Document records one undo step and honours Decontaminate Colors.
+- A PSD, PSB, TIFF or PNG written in bands from a document wider than 32,767 px renders its merged picture in strips; a stopped or failed layered export frees the engine's spools; cancelling the PSD conversion sheet frees tiles already on disk.
+- Type in 16-bit, 32-bit, CMYK and Lab documents keeps its exact colour to the edge of the letters.
+- Fill, Paint Bucket and Duplicate Document work on tiled layers; deleted tiled layers release their tiles; tiled documents are recovered.
+- The desktop shell compiles (a borrow in the window-state flush).
+
 ## 1.90.9 · 2026-10-19
 
 ### Added

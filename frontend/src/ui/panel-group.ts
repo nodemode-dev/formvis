@@ -29,8 +29,12 @@ export class PanelGroup {
   /** A tab released over a column's gap, not a header: the app makes it a new group there (true if it did). */
   static onDetach: ((tid: string, from: PanelGroup, x: number, y: number) => boolean) | null = null;
   /** While a tab is dragged over a column's gap: where a new group would go (null: nowhere). */
-  static onGapHint: ((x: number | null, y: number) => void) | null = null;
+  static onGapHint: ((x: number | null, y: number, many?: boolean) => void) | null = null;
+  /** A tab released over neither a header nor a column: the app floats it (a lone tab's group whole, or a new group made from it); true if it did. */
+  static onTearOff: ((tid: string, from: PanelGroup, x: number, y: number) => boolean) | null = null;
   get size(): number { return this.tabs.size; }
+  /** The tab ids in order (a copy). */
+  get tabIds(): string[] { return [...this.tabs.keys()]; }
   hasTab(tid: string): boolean { return this.tabs.has(tid); }
   /** The group holding a tab. */
   static ofTab(tid: string): PanelGroup | undefined { return [...PanelGroup.all.values()].find((g) => g.tabs.has(tid)); }
@@ -166,7 +170,7 @@ export class PanelGroup {
       const t = over(ev);
       // A full group (7 tabs) says so and takes nothing.
       if (t !== target) { target?.root.classList.remove('is-tab-target', 'is-tab-full'); target = t; target?.root.classList.add(t?.full ? 'is-tab-full' : 'is-tab-target'); }
-      if (this.tabs.size > 1) PanelGroup.onGapHint?.(t ? null : ev.clientX, ev.clientY);   // over a gap: New group here
+      PanelGroup.onGapHint?.(t ? null : ev.clientX, ev.clientY, this.tabs.size > 1);   // over a gap: New group here; past the columns: float here
     };
     const up = (ev: PointerEvent): void => {
       PanelGroup.onGapHint?.(null, 0);
@@ -177,6 +181,7 @@ export class PanelGroup {
       if (ghost) PanelGroup.justDragged = true;
       if (ghost && target) { if (!target.full) { PanelGroup.moveTab(tid, this, target); PanelGroup.saveHomes(); } }
       else if (ghost && this.tabs.size > 1 && PanelGroup.onDetach?.(tid, this, ev.clientX, ev.clientY)) PanelGroup.saveHomes();
+      else if (ghost && PanelGroup.onTearOff?.(tid, this, ev.clientX, ev.clientY)) PanelGroup.saveHomes();
     };
     document.addEventListener('pointermove', move, true);
     document.addEventListener('pointerup', up, true);

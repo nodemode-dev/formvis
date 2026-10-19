@@ -1,6 +1,6 @@
 # formvis commands
 
-Generated from the window's command catalogue (1607 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1608 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
@@ -18,7 +18,7 @@ Generated from the window's command catalogue (1607 commands) by `./formvis agen
 - Tools: 53
 - Type: 66
 - View: 102
-- Window: 149
+- Window: 150
 
 ## Edit
 
@@ -862,8 +862,8 @@ Generated from the window's command catalogue (1607 commands) by `./formvis agen
 | `save-selection` | Save Selection... |  | Opens the dialog that saves the selection to a channel. (changes the picture) |
 | `save-selection-channel` | Save Selection as Channel |  | Saves the selection as a new channel. (changes the picture) |
 | `select-all` | All | Mod+A | Selects the whole canvas. (changes the picture) |
-| `select-and-mask` | Select and Mask... | Alt+Mod+R | Opens Select and Mask to refine edges. (changes the picture) |
-| `select-and-mask-workspace` | Select and Mask Workspace |  | Opens Select and Mask on the main canvas: view modes, refine tools on the picture and the properties beside it, applied as one step. (changes the picture) |
+| `select-and-mask` | Select and Mask... | Alt+Mod+R | Opens Select and Mask on the main canvas: view modes, refine tools on the picture and the properties beside it, applied as one step; a dialog where the workspace cannot open. (changes the picture) |
+| `select-and-mask-dialog` | Select and Mask Dialog... |  | Opens Select and Mask as a dialog with its own preview instead of on the main canvas. (changes the picture) |
 | `select-color-range` | Select Color Range |  | Selects by sampled colour, hue family, tone, skin tones or the Depth Map layer, combined with the selection as asked. (changes the picture) |
 | `select-drop` | Drop Floating Pixels |  | Drops the floating selection onto its layer as one step. (changes the picture) |
 | `select-float` | Float Selected Pixels |  | Lifts the selected pixels of the active layer into a floating selection that takes the Move tool's handles, until dropped. (changes the picture) |
@@ -1656,6 +1656,7 @@ Generated from the window's command catalogue (1607 commands) by `./formvis agen
 | `help` | formvis Help | F1 | Opens the formvis manual. |
 | `interface-darken` | Darken Interface | Shift+Mod+F1 | Switches to the next darker interface theme, ordered by the theme background; does nothing at the darkest. |
 | `interface-lighten` | Lighten Interface | Shift+Mod+F2 | Switches to the next lighter interface theme, ordered by the theme background; does nothing at the lightest. |
+| `jobs-list` | Jobs |  | Opens or closes the list of running background jobs (opening a giant PSB, saving, exporting in parts, banded filters), each with its name, progress bar, percent and its own Stop. |
 | `manage-plugins` | Manage Plugins... |  | Opens the plugins dialog, which lists each plugin with whether it runs, its commands, their keys and its latest error. |
 | `match-all` | Match All |  | Matches zoom, location and rotation across open documents. (changes the picture) |
 | `match-location` | Match Location |  | Centres every open document on the same point as the current one. (changes the picture) |

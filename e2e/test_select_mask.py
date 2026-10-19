@@ -4,7 +4,7 @@ SCENE = """async () => {
   const l = e.current.activeLayer, c = l.raster.ctx;
   c.fillStyle = '#222'; c.fillRect(60, 30, 80, 80); l.raster.touch(); e.refresh();
   e.applySelection(E.SelectionMask.cropped(60, 30, 80, 80, new Uint8Array(6400).fill(255)), 'replace', 's');
-  window.formvis.commands.run('select-and-mask');
+  window.formvis.commands.run('select-and-mask-dialog');
 }"""
 
 

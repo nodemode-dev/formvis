@@ -11,7 +11,7 @@ import { t } from '../i18n';
 import { loadPrefs } from '../prefs';
 import { ReferencePicker } from './references';
 import { ReferenceChips } from './reference-chips';
-import { PromptImprover, areaView } from './prompt-improver';
+import { PromptImprover, areaView, referenceViews } from './prompt-improver';
 import { GenerationOptions } from './generation-options';
 
 /** The shapes Generate offers beside the picture's own: name, words, pixels (multiples of 16, within every local model's range). */
@@ -23,9 +23,26 @@ export const SIZES: ReadonlyArray<readonly [string, string, number, number]> = [
   ['9:16', 'Tall 9:16 (768 x 1344)', 768, 1344],
 ];
 
+type Shape = readonly [string, string, number, number];
+
+/** The shapes each provider asks for in its own terms (OpenAI three sizes, the others aspect ratios, all multiples of 16). */
+const PROVIDER_SHAPES: Record<string, ReadonlyArray<Shape>> = {
+  openai: [['1:1', 'Square 1:1 (1024 x 1024)', 1024, 1024], ['3:2', 'Landscape 3:2 (1536 x 1024)', 1536, 1024], ['2:3', 'Portrait 2:3 (1024 x 1536)', 1024, 1536]],
+  google: [['1:1', 'Square 1:1 (1024 x 1024)', 1024, 1024], ['3:2', 'Landscape 3:2 (1248 x 832)', 1248, 832], ['2:3', 'Portrait 2:3 (832 x 1248)', 832, 1248], ['4:3', 'Landscape 4:3 (1184 x 864)', 1184, 864], ['3:4', 'Portrait 3:4 (864 x 1184)', 864, 1184], ['16:9', 'Wide 16:9 (1344 x 768)', 1344, 768], ['9:16', 'Tall 9:16 (768 x 1344)', 768, 1344], ['21:9', 'Ultrawide 21:9 (1536 x 656)', 1536, 656]],
+  bfl: [['1:1', 'Square 1:1 (1024 x 1024)', 1024, 1024], ['4:3', 'Landscape 4:3 (1152 x 864)', 1152, 864], ['3:4', 'Portrait 3:4 (864 x 1152)', 864, 1152], ['3:2', 'Landscape 3:2 (1248 x 832)', 1248, 832], ['2:3', 'Portrait 2:3 (832 x 1248)', 832, 1248], ['16:9', 'Wide 16:9 (1344 x 768)', 1344, 768], ['9:16', 'Tall 9:16 (768 x 1344)', 768, 1344]],
+  ideogram: [['1:1', 'Square 1:1 (1024 x 1024)', 1024, 1024], ['16:9', 'Wide 16:9 (1344 x 768)', 1344, 768], ['9:16', 'Tall 9:16 (768 x 1344)', 768, 1344], ['4:3', 'Landscape 4:3 (1152 x 864)', 1152, 864], ['3:4', 'Portrait 3:4 (864 x 1152)', 864, 1152], ['3:2', 'Landscape 3:2 (1248 x 832)', 1248, 832], ['2:3', 'Portrait 2:3 (832 x 1248)', 832, 1248], ['16:10', 'Wide 16:10 (1280 x 800)', 1280, 800], ['10:16', 'Tall 10:16 (800 x 1280)', 800, 1280]],
+};
+
+/** The shapes the model chosen offers: a provider's own, a model on this computer's catalogue sizes (`local`, "WxH"), else the common five. */
+export function shapesFor(choice: string, local: readonly string[] = []): ReadonlyArray<Shape> {
+  if (choice.startsWith('provider:')) return PROVIDER_SHAPES[choice.slice(9)] ?? SIZES;
+  const own = choice.startsWith('local:') ? local.map((s): Shape => { const [w, h] = s.split('x').map(Number); return [s, `${w} x ${h}`, w, h]; }) : [];
+  return own.length ? own : SIZES;
+}
+
 /** One model Generate Image can use: its value in the picker, its words, and why it cannot be chosen when it cannot. */
 export interface GenerationModel { value: string; label: string; disabled: boolean; reason: string }
-export interface GenerationModels { models: GenerationModel[]; providers: ProviderStatus[]; preferred: string; fal: GenerativeStatus | null }
+export interface GenerationModels { models: GenerationModel[]; providers: ProviderStatus[]; preferred: string; fal: GenerativeStatus | null; sizes: Record<string, string[]> }
 
 const PROVIDER_NAMES: Record<string, string> = { openai: 'GPT Image', google: 'Gemini image', bfl: 'FLUX1.1 [pro]', ideogram: 'Ideogram 3.0' };
 
@@ -76,13 +93,15 @@ export function runLogText(): string {
 
 export function clearRunLog(): void { runLog.length = 0; changed(); }
 
-/** Replaces @img1, @img2 and on with the words "image 1", "image 2" that name the references in order, the way the
- *  workflow is given them. Throws when a token names a reference that is not chosen. */
-export function resolveReferenceTokens(prompt: string, count: number): string {
+/** Replaces @img1, @img2 and on with the words that name the references in order, the way the workflow is given them:
+ *  "image 1", "image 2" unless the workflow has its own pattern (`style`, with {n}). Throws when a token names a
+ *  reference that is not chosen. */
+export function resolveReferenceTokens(prompt: string, count: number, style = 'image {n}'): string {
+  const pattern = style.includes('{n}') ? style : 'image {n}';
   return prompt.replace(/@img(\d+)\b/gi, (_m, n: string) => {
     const k = Number(n);
     if (k < 1 || k > count) throw new Error(t(`@img${k} names a reference that is not chosen (${count} chosen).`));
-    return `image ${k}`;
+    return pattern.replace('{n}', String(k));
   });
 }
 
@@ -125,7 +144,7 @@ export async function generationModels(comfy = true): Promise<GenerationModels> 
   ];
   // fal, the cloud default, when it has a key; else a model on this computer; else fal, whose key is then asked for (1.58.5).
   const fal = await api.generativeStatus(), local = locals.find((m) => m.ready)?.id ?? null;
-  return { models, providers, preferred: fal?.configured ? 'fal' : local ?? 'fal', fal };
+  return { models, providers, preferred: fal?.configured ? 'fal' : local ?? 'fal', fal, sizes: Object.fromEntries(locals.map((m) => [m.id, m.sizes])) };
 }
 
 const applyModel = (o: HTMLOptionElement, m: GenerationModel): void => {
@@ -155,6 +174,8 @@ export interface GenerationRequest {
   target?: 'layer' | 'document';
   /** The layers sent as references to a ComfyUI workflow. */
   references?: () => Promise<Array<{ name: string; blob: Blob }>>;
+  /** Cut the background away from the result with the engine's background removal, so the layer has a transparent background. */
+  transparent?: boolean;
   /** Seed (fal and models on this computer) and negative prompt (this computer); the seed used comes back through `onSeed`. */
   seed?: number;
   negative?: string;
@@ -210,6 +231,25 @@ async function placeResult(engine: Engine, blob: Blob, w: number, h: number, gen
   engine.insertRasterLayer(r, 'Generated Image', Math.round((W - w) / 2), Math.round((H - h) / 2), generation ? { generation } : {}, 'Generate Image');
 }
 
+/** The picture with its background made transparent: the engine's subject mask becomes the picture's alpha. */
+async function cutBackground(picture: Blob): Promise<Blob> {
+  const { mask } = await api.removeBackground(picture, 'auto');
+  const [img, m] = await Promise.all([createImageBitmap(picture), createImageBitmap(mask)]);
+  const c = document.createElement('canvas');
+  c.width = img.width; c.height = img.height;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  if (!g) { img.close(); m.close(); throw new Error('no canvas to work on'); }
+  g.drawImage(m, 0, 0, c.width, c.height);
+  const matte = g.getImageData(0, 0, c.width, c.height);
+  g.clearRect(0, 0, c.width, c.height);
+  g.drawImage(img, 0, 0);
+  const px = g.getImageData(0, 0, c.width, c.height);
+  for (let i = 0; i < px.data.length; i += 4) px.data[i + 3] = Math.min(px.data[i + 3], matte.data[i]);
+  g.putImageData(px, 0, 0);
+  img.close(); m.close();
+  return new Promise<Blob>((ok, no) => c.toBlob((b) => (b ? ok(b) : no(new Error('the picture could not be saved'))), 'image/png'));
+}
+
 /** Adds an earlier result as a new layer again, without running the model; false when it is gone or no picture is open. */
 export async function addKeptResult(engine: Engine, id: number): Promise<boolean> {
   const k = kept.find((x) => x.id === id);
@@ -255,10 +295,15 @@ async function generateOnce(engine: Engine, req: GenerationRequest): Promise<boo
     if (!recipe) throw new Error(t('That workflow is no longer kept: add it again in Edit > Generative Fill.'));
     req.status(t('Sending to ComfyUI...'));
     const refs = req.references ? await req.references() : [];
-    const said = resolveReferenceTokens(prompt, refs.length);
+    const said = resolveReferenceTokens(prompt, refs.length, recipe.refs);
     blob = (await runToResults(loadPrefs().comfyuiUrl, recipe.json, refs.map((r) => ({ name: r.name, kind: 'reference' })), refs.map((r, i) => ({ name: `ref${i}.png`, blob: r.blob })), said, req.status, req.stopped))[0];
   }
   if (req.stopped() || engine.current !== p) return false;
+  if (req.transparent) {
+    req.status(t('Cutting the background away...'));
+    blob = await cutBackground(blob).catch((err: unknown) => { req.heard?.({ warning: `${t('The background could not be cut away, so the picture keeps it.')} ${err instanceof Error ? err.message : ''}`.trim(), notes: [] }); return blob; });
+    if (req.stopped() || engine.current !== p) return false;
+  }
   if (req.target === 'document' && !fresh) engine.newDocument(w, h, 'Generated', 'transparent');
   await placeResult(engine, blob, w, h, generation);
   kept.unshift({ id: ++serial, time: Date.now(), prompt: req.prompt, choice, width: w, height: h, blob, generation });
@@ -277,7 +322,11 @@ export class GenerateImageDialog extends Dialog {
   private readonly cw = el<HTMLInputElement>('<input class="cv-input" type="number" min="256" max="2048" step="16" value="1024" aria-label="Width" hidden>');
   private readonly ch = el<HTMLInputElement>('<input class="cv-input" type="number" min="256" max="2048" step="16" value="1024" aria-label="Height" hidden>');
   private readonly target = el<HTMLSelectElement>('<select class="cv-input" aria-label="Result"><option value="layer">Result: a layer of this picture</option><option value="document">Result: a new document</option></select>');
+  private readonly clear = el<HTMLInputElement>('<input type="checkbox" aria-label="Transparent background">');
+  private readonly clearRow = el('<label class="cv-dialog-row" title="Cuts the background away from the result with the background removal engine"><span>Transparent background</span></label>');
   private busy = false;
+  private shapes: ReadonlyArray<Shape> = SIZES;
+  private localSizes: Record<string, string[]> = {};
   private readonly refs: ReferencePicker;
   private readonly chips: ReferenceChips;
   private readonly improver: PromptImprover;
@@ -301,20 +350,22 @@ export class GenerateImageDialog extends Dialog {
     row.append(this.model);
     this.refs = new ReferencePicker(engine);
     this.chips = new ReferenceChips(this.refs, this.prompt);
-    this.model.addEventListener('change', () => { this.picked = true; this.refs.forFal(this.model.value === 'fal'); this.opts.forModel(this.model.value); this.keyFor(); });
+    this.model.addEventListener('change', () => { this.picked = true; this.refs.forFal(this.model.value === 'fal'); this.opts.forModel(this.model.value); this.keyFor(); this.paintShapes(); });
     this.improver = new PromptImprover(this.prompt, 'Richer detail');
     this.improver.view = areaView(engine, false);
+    this.improver.refs = referenceViews(() => this.chips.ordered());
     this.keyButton.addEventListener('click', () => {
       const pr = this.chosenProvider();
       if (pr?.configured && !this.changing) { this.changing = true; this.keyFor(); this.keyInput.focus(); } else void this.saveKey();
     });
     this.keyRow.append(this.keyInput, this.keyButton);
-    this.size.replaceChildren(...[['doc', 'Size: the picture\'s own'], ...SIZES.map(([id, label]) => [id, label]), ['custom', 'Custom width and height']].map(([v, label]) => { const o = document.createElement('option'); o.value = v; o.textContent = label; return o; }));
+    this.paintShapes();
     this.size.addEventListener('change', () => { const c = this.size.value !== 'custom'; this.cw.hidden = c; this.ch.hidden = c; });
     for (const f of [this.cw, this.ch]) f.addEventListener('change', () => { f.value = String(this.side(Number(f.value))); });
     const shape = el('<div class="cv-dialog-row"></div>');
     shape.append(this.size, this.cw, this.ch, this.target);
-    this.body.append(this.prompt, this.improver.el, row, shape, this.opts.el, this.keyRow, this.refs.el, this.chips.el, this.status, this.hist, this.logBox);
+    this.clearRow.prepend(this.clear);
+    this.body.append(this.prompt, this.improver.el, row, shape, this.clearRow, this.opts.el, this.keyRow, this.refs.el, this.chips.el, this.status, this.hist, this.logBox);
     this.hist.addEventListener('click', (ev) => {
       const b = (ev.target as HTMLElement).closest<HTMLButtonElement>('button[data-id]');
       if (!b) return;
@@ -337,8 +388,9 @@ export class GenerateImageDialog extends Dialog {
 
   async show(): Promise<void> {
     const was = this.model.value;
-    const { models, providers, preferred } = await generationModels();   // the models the Generate panel offers too
+    const { models, providers, preferred, sizes } = await generationModels();   // the models the Generate panel offers too
     this.providers = providers;
+    this.localSizes = sizes;
     fillModelPicker(this.model, models);
     // The person's choice while it stands; else the default (fal with a key, else a model on this computer). The other
     // providers are chosen, never defaults (1.58.5).
@@ -347,6 +399,7 @@ export class GenerateImageDialog extends Dialog {
     this.refs.refresh(this.model.value === 'fal');
     this.opts.forModel(this.model.value);
     this.keyFor();
+    this.paintShapes();
     this.improver.refresh();
     setText(this.status, 'Your ComfyUI workflows are added in Edit > Generative Fill.');
     this.stopped = false;
@@ -414,11 +467,27 @@ export class GenerateImageDialog extends Dialog {
   /** One side of a custom size: a multiple of 16 from 256 to 2048, the range every local model takes. */
   private side(v: number): number { return Math.min(2048, Math.max(256, Math.round((Number.isFinite(v) ? v : 1024) / 16) * 16)); }
 
-  /** The shape asked for: the picture's own (undefined), a preset, or the custom width and height. */
+  /** The shape asked for: the picture's own (undefined), a preset of the model chosen, or the custom width and height. */
   private asked(): { width: number; height: number } | undefined {
     if (this.size.value === 'custom') return { width: this.side(Number(this.cw.value)), height: this.side(Number(this.ch.value)) };
-    const s = SIZES.find(([id]) => id === this.size.value);
+    const s = this.shapes.find(([id]) => id === this.size.value);
     return s ? { width: s[2], height: s[3] } : undefined;
+  }
+
+  /** The size picker holds the picture's own size, the shapes the model chosen offers (a provider's own, a local model's
+   *  catalogue) and a custom entry; options are patched by value so the picker never blinks, and what is chosen stays
+   *  while the new model still offers it. */
+  private paintShapes(): void {
+    this.shapes = shapesFor(this.model.value, this.localSizes[this.model.value] ?? []);
+    const was = this.size.value, items: Array<readonly [string, string]> = [['doc', 'Size: the picture\'s own'], ...this.shapes.map((s): readonly [string, string] => [s[0], s[1]]), ['custom', 'Custom width and height']];
+    patchList(this.size, items, {
+      key: (i) => i[0],
+      create: (i) => { const o = document.createElement('option'); o.value = i[0]; o.textContent = i[1]; return o; },
+      update: (o, i) => { if (o.textContent !== i[1]) setText(o, i[1]); },
+    });
+    this.size.value = items.some((i) => i[0] === was) ? was : 'doc';
+    const c = this.size.value !== 'custom';
+    if (this.cw.hidden !== c) { this.cw.hidden = c; this.ch.hidden = c; }
   }
 
   private async generate(): Promise<void> {
@@ -429,7 +498,7 @@ export class GenerateImageDialog extends Dialog {
     this.stopped = false;
     try {
       // The same generation the Generate panel runs; a new layer at the document's size (a new document when none is open).
-      const added = await runGeneration(this.engine, { prompt, choice: this.model.value, providers: this.providers, size: this.asked(), target: this.target.value === 'document' ? 'document' : 'layer', references: () => this.chips.ordered(), ...this.opts.request(), onSeed: (s) => this.opts.used(s), onStop: () => { this.stopped = true; setText(this.status, 'Stopped.'); }, status: (text) => setText(this.status, text), stopped: () => this.stopped, heard: (r) => this.heard(r) });
+      const added = await runGeneration(this.engine, { prompt, choice: this.model.value, providers: this.providers, size: this.asked(), target: this.target.value === 'document' ? 'document' : 'layer', transparent: this.clear.checked, references: () => this.chips.ordered(), ...this.opts.request(), onSeed: (s) => this.opts.used(s), onStop: () => { this.stopped = true; setText(this.status, 'Stopped.'); }, status: (text) => setText(this.status, text), stopped: () => this.stopped, heard: (r) => this.heard(r) });
       if (!added) return;
       this.close();
       this.toast('The generated image was added as a layer.');

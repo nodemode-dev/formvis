@@ -25,5 +25,5 @@ def test_a_dropped_raw_file_is_developed_and_opens_develop(page):
     assert (px["w"], px["h"]) == (64, 48), px
     assert px["left"][0] > 200 and px["left"][2] < 150 and px["right"][2] > 200 and px["right"][0] < 150, px   # red left, blue right
     # formvis opens a RAW file into Develop.
-    page.wait_for_function("[...document.querySelectorAll('.cv-scrim:not([hidden]) .cv-note')].some((n) => n.textContent === 'Point Curve')", timeout=10000)
+    page.wait_for_function("[...document.querySelectorAll('.cv-scrim:not([hidden]) .cv-develop-head > button:first-child')].some((n) => n.textContent === 'Point Curve')", timeout=10000)
     page.keyboard.press("Escape")

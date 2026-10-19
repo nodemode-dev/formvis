@@ -345,7 +345,7 @@ export class SelectMaskWorkspace {
     if (adds && subs && (adds.some((v) => v > 0) || subs.some((v) => v > 0))) m = this.stroked(m, up(adds), up(subs));
     const data = new Uint8Array(W * H);
     for (let i = 0; i < data.length; i++) data[i] = Math.round(Math.min(1, Math.max(0, m[i])) * 255);
-    if (output === 'document' || output === 'documentMask') this.engine.applyRefinedToDocument(data, output === 'documentMask');
+    if (output === 'document' || output === 'documentMask') this.engine.applyRefinedToDocument(data, output === 'documentMask', decon);
     else this.engine.applyRefinedSelection(data, output, decon);
   }
 }

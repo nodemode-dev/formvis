@@ -103,7 +103,7 @@ import { withAiLabel } from './io/ai-label';
 import { withGenerationText } from './io/png-text';
 import { pathsToAi } from './io/ai-paths';
 import { svgSource, svgToShapes } from './io/svg-layers';
-import { withXmp } from './io/xmp';
+import { metaForEngine, withXmp } from './io/xmp';
 import { FileInfoDialog } from './ui/panels/file-info-dialog';
 import { PrintDialog } from './ui/panels/print-dialog';
 import { printDocument, printSettings } from './io/print';
@@ -661,7 +661,12 @@ export function startApp(): void {
   };
   PanelGroup.onMoved = () => { dropEmptyGroups(); dock.refresh(); props.relayout(); };
   // A tab released over a column's gap becomes a new group there; the marker says so while dragging.
-  PanelGroup.onGapHint = (x, y) => { if (x === null) dock.hideGap(); else dock.showGap(x, y, 'New group'); };
+  PanelGroup.onGapHint = (x, y, many = true) => {
+    if (x === null) { dock.hideGap(); dock.floatHint(null, 0, ''); return; }
+    const over = !!dock.gapAt(x, y);
+    if (over && many) dock.showGap(x, y, 'New group'); else dock.hideGap();
+    if (over) dock.floatHint(null, 0, ''); else dock.floatHint(x, y, '');
+  };
   PanelGroup.onDetach = (tid, from, x, y) => {
     const at = dock.gapAt(x, y);
     if (!at || from.size < 2) return false;
@@ -673,7 +678,25 @@ export function startApp(): void {
     PanelGroup.moveTab(tid, from, g);
     return true;
   };
+  // A tab let go over neither a header nor a column is torn off: a lone tab's group floats whole, a tab out of several floats as a new group.
+  PanelGroup.onTearOff = (tid, from, x, y) => {
+    if (dock.locked || dock.gapAt(x, y)) return false;
+    if (from.size < 2) { const own = dockIdOfGroup(from.id); return !!own && !dock.isFloating(own) && dock.tearOff(own, x, y); }
+    const id = `g${Date.now().toString(36)}`, label = from.labelOf(tid);
+    const g = new PanelGroup(q(root, '.cv-layers'), id, [], label);
+    registerPanel({ id, label, selector: `section.cv-${id}` });
+    store(CUSTOM, JSON.stringify([...customGroups(), { id, label }]));
+    dock.float(id, { x: x - 40, y: y - 12 });
+    PanelGroup.moveTab(tid, from, g);
+    return true;
+  };
+  // Every tab goes home before the columns settle once, so a group still waiting for its tab is not taken for an empty one.
+  const settle = PanelGroup.onMoved;
+  let homed = false;
+  PanelGroup.onMoved = () => { homed = true; };
   PanelGroup.restoreHomes();
+  PanelGroup.onMoved = settle;
+  if (homed) settle?.();
   // Collapsed, the column is its strip of icons; expanded, the width chosen by dragging (or the target's 288).
   const syncDockWidth = (on: boolean): void => { const w = Number(stored(LAYERS_W_KEY)); setStyleVar(root, '--cv-layers-w', on ? '46px' : `${w >= 200 && w <= 480 ? w : 288}px`); q(root, '.cv-resizer').classList.toggle('is-inert', on); };   // kept in the grid (hiding it would move the dock into its column)
   dock.onCollapse = syncDockWidth;
@@ -974,12 +997,13 @@ export function startApp(): void {
             const job = giant ? engine.startJob(`Open ${f.name}`, 1) : null;
             const { doc, notes, activeId, paths, report } = job ? await readGiantPsd(f, { step: (d, n) => engine.jobStep(job, d, n), stopped: () => job.cancelled }).finally(() => engine.endJob(job)) : await readPsdFile(f, files).catch(() => readPsdFlat(f, (b) => api.decode(b, b.name)));   // a damaged file opens flat
             // A PSD opened by hand shows its conversion report as a sheet with Cancel and Import; agents and batches get the toast below.
-            if (interactive && (report.approximated.length || report.dropped.length) && !(await psdReportDialog.ask(f.name, report))) { openStopped = true; continue; }
+            const declined = (): void => { const st = giantTiles.store; if (st) for (const l of doc.layers) l.tiled?.release(st); openStopped = true; };
+            if (interactive && (report.approximated.length || report.dropped.length) && !(await psdReportDialog.ask(f.name, report))) { declined(); continue; }
             // A profile other than sRGB follows the Color Settings policy like a PNG or JPEG: kept, converted to sRGB, dropped, or asked.
             let how: 'keep' | 'convert' | 'discard' = 'keep';
             if (doc.profile && !isSrgbName(doc.profile.name) && (doc.depth ?? 8) === 8) {
               const pref = loadPrefs().profileMismatch, asked = pref === 'ask' ? await colourDialogs.mismatch.ask(f.name, doc.profile.name) : pref;
-              if (asked === 'cancel') { openStopped = true; continue; }
+              if (asked === 'cancel') { declined(); continue; }
               how = asked;
             }
             const opened = engine.addProject(doc, f.name.replace(/\.(ps[db]|psdt)$/i, ''), activeId);
@@ -1610,7 +1634,7 @@ export function startApp(): void {
           const img = x.getImageData(0, 0, z.w, z.h);
           return new Blob([await encodeIndexedPng({ data: img.data, width: z.w, height: z.h }, pal.map((e) => [e.r, e.g, e.b] as const), p.doc.transparentIndex) as BlobPart], { type: 'image/png' });
         };
-        const blob = viaEngine ? await api.encode(await toBlob(c), (s.format === 'jpg' ? 'jpeg' : s.format) as 'avif' | 'tiff' | 'pdf' | 'webp', s.quality, p.doc.resolution ?? 72, keep, formatOptions(s))
+        const blob = viaEngine ? await api.encode(await toBlob(c), (s.format === 'jpg' ? 'jpeg' : s.format) as 'avif' | 'tiff' | 'pdf' | 'webp', s.quality, p.doc.resolution ?? 72, keep, s.format === 'avif' ? { ...formatOptions(s), ...metaForEngine(exportMeta(s, p.doc.meta), new Date(), s.aiLabel && s.aiLabel !== 'none' ? s.aiLabel : undefined) } : formatOptions(s))
           : s.format === 'png' ? await withResolution(keep ? await embedPng(await pngOut(), keep, label) : await pngOut(), p.doc.resolution ?? 72)
           : s.format === 'jpg' ? await withResolution(keep ? await embedJpeg(await toBlob(c, 'image/jpeg', s.quality / 100), keep) : await toBlob(c, 'image/jpeg', s.quality / 100), p.doc.resolution ?? 72)
           : await toBlob(c, 'image/webp', s.quality / 100);
@@ -4563,8 +4587,8 @@ export function startApp(): void {
         } else focusAreaDialog.show();
       } },
     { id: 'select-object', label: 'Object in Selection', enabled: selected, params: AUTO_SELECT_PARAMS, run: (a) => void selectSubject(true, a) },
-    { id: 'select-and-mask', label: 'Select and Mask...', keys: ['Alt+Mod+R'], enabled: selected, run: () => dialogs.selectMask.show() },
-    { id: 'select-and-mask-workspace', label: 'Select and Mask Workspace', enabled: selected, run: () => { if (!selectMaskWorkspace.enter()) dialogs.selectMask.show(); } },
+    { id: 'select-and-mask', label: 'Select and Mask...', keys: ['Alt+Mod+R'], enabled: selected, run: () => { if (!selectMaskWorkspace.enter()) dialogs.selectMask.show(); } },
+    { id: 'select-and-mask-dialog', label: 'Select and Mask Dialog...', enabled: selected, run: () => dialogs.selectMask.show() },
     { id: 'rotate-180', label: '180°', enabled: has, run: () => engine.rotateCanvas(2) },
     { id: 'rotate-90-cw', label: '90° Clockwise', enabled: has, run: () => engine.rotateCanvas(1) },
     { id: 'rotate-90-ccw', label: '90° Counter Clockwise', enabled: has, run: () => engine.rotateCanvas(3) },
@@ -4992,7 +5016,7 @@ export function startApp(): void {
     { id: 'guides-from-shape-centre', label: 'New Guides From Shape Centre', enabled: () => !!engine.current?.activeLayer?.vector || !!engine.current?.selection, run: () => { if (!engine.guidesFromShape({ edges: false, centre: true })) toast('Select a shape layer, or make a selection, to place guides from.', 'info'); } },
     { id: 'actual', label: 'Actual Pixels', keys: ['Mod+1'], enabled: has, run: () => engine.zoomTo(1) },
     { id: 'flip-view-h', label: 'Flip Horizontal', checked: () => !!engine.current?.viewport.flipped, enabled: has, run: () => engine.setViewFlip(!engine.current?.viewport.flipped) },
-    { id: 'canvas-scrollbars', label: 'Canvas Scrollbars', checked: () => engine.canvasScrollbars, enabled: has, run: () => engine.setCanvasScrollbars(!engine.canvasScrollbars) },
+    { id: 'canvas-scrollbars', label: 'Canvas Scrollbars', checked: () => engine.canvasScrollbars, enabled: has, run: () => { engine.setCanvasScrollbars(!engine.canvasScrollbars); savePrefs({ ...loadPrefs(), canvasScrollbars: engine.canvasScrollbars }); } },
     { id: 'no-tool', label: 'No Tool', enabled: has, run: () => engine.setTool('idle') },
     { id: 'print-size', label: 'Print Size', enabled: has, run: () => { const ppi = engine.current?.doc.resolution || 72; engine.zoomTo(96 / ppi); } },
     { id: 'pixel-grid', label: 'Pixel Grid', checked: () => engine.showPixelGrid, run: () => engine.update({ showPixelGrid: !engine.showPixelGrid }) },
@@ -5004,6 +5028,7 @@ export function startApp(): void {
     { id: 'shortcuts', label: 'Keyboard Shortcuts...', keys: ['Alt+Shift+Mod+K', 'Shift+/'], run: () => dialogs.shortcuts.show() },   // Edit and Help menus
     { id: 'search', label: 'Search...', keys: ['Mod+K'], run: () => dialogs.palette.show() },
     { id: 'notices', label: 'Notices...', run: () => dialogs.notices.show() },
+    { id: 'jobs-list', label: 'Jobs', checked: () => status.jobsOpen, run: () => status.toggleJobs() },
     { id: 'apply-edit', label: 'Apply Pending Edit', keys: ['Enter'], enabled: has, run: () => stage.toolKeydown(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', cancelable: true })) },
     { id: 'cancel-edit', label: 'Cancel Pending Edit', keys: ['Escape'], enabled: has, run: () => stage.toolKeydown(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', cancelable: true })) },
     { id: 'about', label: 'About formvis', run: () => dialogs.about.show(caps) },
@@ -5860,7 +5885,7 @@ export function startApp(): void {
       'lock-transparency', 'lock-layers', '-', 'link-layers', 'select-linked', '-',
       'merge', 'merge-visible', 'stamp-visible', 'frequency-separation', 'stamp-down', 'flatten', '-', 'show-only-layer', 'show-all-layers', { label: 'Color Label', items: ['layer-label-none', '-', ...LAYER_LABELS.map((c) => `layer-label-${c}`)] }, { label: 'Role', items: ['layer-role-none', '-', ...LAYER_ROLES.map((r) => `layer-role-${r}`)] }, '-',
       { label: 'Matting', items: ['matting-decontaminate', 'matting-defringe', 'matting-black', 'matting-white'] }] },
-    { label: 'Select', items: ['select-all', 'deselect', 'reselect', 'inverse', 'convert-to-shape', 'convert-to-shape-tolerance', 'selection-to-work-path', '-', 'select-all-layers', 'deselect-layers', 'find-layers', 'isolate-layers', '-', 'color-range', 'focus-area', 'select-subject', 'select-sky', 'select-object', { label: 'Subject and Sky Options', items: ['auto-select-sample-all', 'sky-sensitivity', 'sky-softness'] }, 'select-and-mask', 'select-and-mask-workspace', '-', 'layer-pixels', 'mask-black', '-',
+    { label: 'Select', items: ['select-all', 'deselect', 'reselect', 'inverse', 'convert-to-shape', 'convert-to-shape-tolerance', 'selection-to-work-path', '-', 'select-all-layers', 'deselect-layers', 'find-layers', 'isolate-layers', '-', 'color-range', 'focus-area', 'select-subject', 'select-sky', 'select-object', { label: 'Subject and Sky Options', items: ['auto-select-sample-all', 'sky-sensitivity', 'sky-softness'] }, 'select-and-mask', 'select-and-mask-dialog', '-', 'layer-pixels', 'mask-black', '-',
       { label: 'Modify', items: ['expand', 'contract', 'feather', 'border', 'smooth'] }, 'grow', 'similar', '-', 'transform-selection', 'transform-selection-numeric', 'select-float', 'select-drop', '-', 'quick-mask', '-', 'load-selection', 'load-luminosity', 'load-selection-vector-mask', 'save-selection', { label: 'Channel', items: ['new-channel', 'new-spot-channel', 'duplicate-channel', 'channel-options', '-', 'channel-up', 'channel-down'] }, 'path-selection', 'path-selection-dialog', 'delete-path'] },
     { label: 'Filter', items: ['filter-last', 'filter-convert-smart', '-', 'filter-filterGallery', 'filter-develop', 'filter-wide-angle', 'filter-lensCorrection', 'filter-liquify', 'filter-vanishing-point', 'filter-neural', '-',
       { label: 'Blur', items: filterGroup('Blur', ['filter-average', 'filter-gaussianBlur', 'filter-lensBlur', 'filter-motionBlur', 'filter-radialBlur', 'filter-surfaceBlur']) },
@@ -5881,7 +5906,7 @@ export function startApp(): void {
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'guide-layout', 'guides-from-shape', 'guides-from-shape-centre', 'edit-selected-guides', 'clear-guides', 'clear-artboard-guides'] }, 'snap', { label: 'Snap To', items: ['snap-all', '-', 'snap-guides', 'snap-grid', 'snap-layers', 'snap-bounds', 'snap-slices', 'snap-selection'] }, { label: 'Show', items: ['show-all-extras', 'show-no-extras', '-', 'show-selection-edges', 'selection-display-tint', 'show-layer-edges', 'show-artboard-guides', 'show-target-path','show-smart-guides', 'show-comfy-dot', 'show-notes', 'show-counts', 'show-brush-preview', 'show-mesh', 'show-edit-pins', '-', 'show-extras-options', '-', 'toggle-show-slices', 'toggle-auto-slices', 'lock-slices', 'layer-based-slice', 'slices-from-guides', 'slice-options', 'divide-slice', 'delete-slice', 'clear-slices'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'os-full-screen', 'toggle-panels', 'rail-columns', 'interface-rtl', 'next-favourite-theme', 'interface-zoom-in', 'interface-zoom-out', 'interface-zoom-reset', 'custom-title-bar', 'menus-in-window', { label: 'Pasteboard', items: ['pasteboard-default', 'pasteboard-black', 'pasteboard-dark', 'pasteboard-mid', 'pasteboard-light'] }] },
     { label: 'Plugins', items: () => { const ids = [...pluginHost.commandIds(), ...folderPlugins.commandIds()]; return ['manage-plugins', 'reload-plugins', 'open-plugins-folder', ...(ids.length && loadPrefs().showExtPanels ? ['-', ...ids] : [])]; } },
-    { label: 'Window', items: [{ label: 'Arrange', items: ['new-window', 'float-window', 'float-all-windows', 'arrange-cascade', '-', 'arrange-tabs','arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-3up-v', 'arrange-3up-h', 'arrange-4up', 'arrange-6up', 'arrange-tile-v', 'arrange-tile-h', 'arrange-tile', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.chat', 'agent.connect.open', 'agent.connect.copy-claude-code', 'agent.connect.copy-claude-desktop', 'terminal.toggle', 'terminal.new', 'script-console', 'brush-settings', { label: 'Brush Size', items: ['brush-size-up', 'brush-size-down', 'brush-harder', 'brush-softer'] }, { label: 'Brush Presets', items: ['save-brush-preset', 'rename-brush-preset', 'delete-brush-preset', 'move-brush-preset', 'rename-brush-group', '-', 'set-brush', 'get-brush'] }, 'paragraph-styles', 'character-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-channels', 'panel-color', 'panel-tools', 'panel-options', 'panel-properties-col', 'merge-columns', 'toggle-dock-panels', '-', 'panel-float', 'panel-dock', 'panel-activate', 'panel-group', 'panel-close-group', '-', { label: 'Workspace', items: ['workspace-pixelart', '-', 'new-workspace', 'delete-workspace'] }, 'reset-panels', '-', 'next-document', 'previous-document', 'notices', '-', { label: 'Theme', items: Object.keys(THEMES).map((tid) => `theme-${tid}`) }, 'theme-sync-system', 'next-appearance', 'interface-darken', 'interface-lighten', '-', 'reload-window', 'developer-tools'] },
+    { label: 'Window', items: [{ label: 'Arrange', items: ['new-window', 'float-window', 'float-all-windows', 'arrange-cascade', '-', 'arrange-tabs','arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-3up-v', 'arrange-3up-h', 'arrange-4up', 'arrange-6up', 'arrange-tile-v', 'arrange-tile-h', 'arrange-tile', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.chat', 'agent.connect.open', 'agent.connect.copy-claude-code', 'agent.connect.copy-claude-desktop', 'terminal.toggle', 'terminal.new', 'script-console', 'brush-settings', { label: 'Brush Size', items: ['brush-size-up', 'brush-size-down', 'brush-harder', 'brush-softer'] }, { label: 'Brush Presets', items: ['save-brush-preset', 'rename-brush-preset', 'delete-brush-preset', 'move-brush-preset', 'rename-brush-group', '-', 'set-brush', 'get-brush'] }, 'paragraph-styles', 'character-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-channels', 'panel-color', 'panel-tools', 'panel-options', 'panel-properties-col', 'merge-columns', 'toggle-dock-panels', '-', 'panel-float', 'panel-dock', 'panel-activate', 'panel-group', 'panel-close-group', '-', { label: 'Workspace', items: ['workspace-pixelart', '-', 'new-workspace', 'delete-workspace'] }, 'reset-panels', '-', 'next-document', 'previous-document', 'notices', 'jobs-list', '-', { label: 'Theme', items: Object.keys(THEMES).map((tid) => `theme-${tid}`) }, 'theme-sync-system', 'next-appearance', 'interface-darken', 'interface-lighten', '-', 'reload-window', 'developer-tools'] },
     { label: 'Help', items: ['help', 'whats-new', '-', 'shortcuts', 'console-log', 'copy-error-log', 'copy-engine-log', 'benchmark', 'record-performance', 'frame-trace', 'copy-frame-trace', 'tile-grid', 'simulate-gpu-loss', '-', 'help-github', 'report-issue', '-', 'check-for-updates', 'system-info', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);
@@ -6278,6 +6303,7 @@ export function startApp(): void {
   // Off, only unsaved documents are kept and formvis asks after a crash, as before.
   const SESSION = 'formvis.session';
   const keptAt = new Map<string, string>();
+  const tiledKeptAt = new Map<string, number>();
   let keepTimer = 0;
   async function keepModified(): Promise<void> {
     const whole = loadPrefs().restoreSession;
@@ -6285,11 +6311,16 @@ export function startApp(): void {
       if (!p.modified && !whole) { if (keptAt.delete(p.id)) await recovery.drop(p.id); continue; }
       const key = `${p.history.revision}:${p.modified}:${p.libraryName ?? ''}:${p.name}`;
       if (keptAt.get(p.id) === key) continue;
-      if (p.doc.layers.some((l) => l.tiled)) continue;   // a giant document: saving it takes minutes, too long to repeat every few seconds (1.62.8)
+      const store = giantTiles.store, giants = p.doc.layers.filter((l) => l.tiled && !l.isGroup);
+      if (giants.length && !store) continue;   // tiles are written through the engine's bands
+      if (giants.length && (engine.busyWith || Date.now() - (tiledKeptAt.get(p.id) ?? 0) < 45_000)) { keepSoon(); continue; }   // not while a band job changes them, and at most one copy in 45 seconds: a tiled document's takes a while (1.91.0)
+      const copies = new Map(giants.map((l) => [l.id, (l.tiled as NonNullable<typeof l.tiled>).clone()]));   // its tiles shared, so the copy is of this instant whatever is drawn while it is written
       try {
-        const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p));
-        if (await recovery.keep({ id: p.id, name: p.name, savedAt: Date.now(), manifest, files, modified: p.modified, libraryName: p.libraryName })) keptAt.set(p.id, key);
+        const doc = copies.size ? { ...p.doc, layers: p.doc.layers.map((l) => (copies.has(l.id) ? { ...l, tiled: copies.get(l.id) } : l)) } : p.doc;
+        const { manifest, files } = await serialize(doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p));
+        if (await recovery.keep({ id: p.id, name: p.name, savedAt: Date.now(), manifest, files, modified: p.modified, libraryName: p.libraryName })) { keptAt.set(p.id, key); if (copies.size) tiledKeptAt.set(p.id, Date.now()); }
       } catch (err) { errorLog.add('Recovery copy', message(err)); }
+      finally { if (store) for (const c of copies.values()) c.release(store); }
     }
     for (const id of [...keptAt.keys()]) if (!engine.projects.some((p) => p.id === id)) { keptAt.delete(id); await recovery.drop(id); }
     try {
@@ -6315,7 +6346,10 @@ export function startApp(): void {
   async function reopen(r: RecoveryRecord, name: string): Promise<ReturnType<typeof engine.addProject> | null> {
     try {
       const byName = new Map(r.files.map((f) => [f.name, f.blob]));
-      const { doc, activeId, paths, timeline } = await deserialize(r.manifest, (n) => { const b = byName.get(n); return b ? Promise.resolve(b) : Promise.reject(new Error(`${n} is missing.`)); });
+      const giant = (Array.isArray(r.manifest.layers) ? r.manifest.layers : []).some((x) => !!(x as { tiled?: unknown } | null)?.tiled);   // a copy with layers kept in tiles is read back by the engine, a band at a time (1.91.0)
+      const { doc, activeId, paths, timeline } = giant
+        ? await readOpened(await api.importProject([new File([JSON.stringify(r.manifest)], 'manifest.json'), ...r.files.map((f) => new File([f.blob], f.name))], ['recovery/manifest.json', ...r.files.map((f) => `recovery/images/${f.name}`)]))
+        : await deserialize(r.manifest, (n) => { const b = byName.get(n); return b ? Promise.resolve(b) : Promise.reject(new Error(`${n} is missing.`)); });
       const p = engine.addProject(doc, name, activeId);
       if (paths) engine.setPathsOf(p, paths);
       if (timeline) engine.setTimelineFor(p, timeline);

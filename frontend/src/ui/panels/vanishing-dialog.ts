@@ -20,9 +20,11 @@ export class VanishingPointDialog extends Dialog {
   private readonly source = selectRow('Paste from', [], (v) => { this.pasteFrom = v; });
   private tool: Tool = 'create';
   /** Every plane of the picture; `cur` is the one the tools work on. A connected plane keeps its parent and angle. */
-  private planes: Array<{ corners: P2[]; plane: PlaneMap | null; parent?: number; angle?: number; depth?: number }> = [{ corners: [], plane: null }];
+  private planes: Array<{ corners: P2[]; plane: PlaneMap | null; parent?: number; angle?: number; depth?: number; edge?: number }> = [{ corners: [], plane: null }];
   private cur = 0;
+  private edgeNext = 0;
   private readonly planeRow = selectRow('Plane', [], (v) => { this.pick(Number(v)); });
+  private readonly edgeRow = selectRow('Hinge edge for connected planes', [['0', 'Right'], ['1', 'Bottom'], ['2', 'Left'], ['3', 'Top']], (v) => { this.setEdge(Number(v)); });
   private readonly angleRow = sliderRow('Child angle (degrees)',-90, 90, 1, (v) => { this.setAngle(v); });
   private readonly depthRow = sliderRow('Child depth (% of plane width)', -100, 100, 1, (v) => { this.setDepth(v); });
   /** The focal length in pixels set by hand for the connected planes; null follows what the plane implies. */
@@ -71,7 +73,7 @@ export class VanishingPointDialog extends Dialog {
     const estimate = el('<button class="cv-btn cv-btn-ghost" type="button">Estimate focal length</button>') as HTMLButtonElement;
     estimate.addEventListener('click', () => { this.focalPx = null; this.rebuildChildren(); this.syncPlanes(); this.render(); });
     planeBar.append(estimate);
-    this.body.append(bar, this.view, this.planeRow.el, planeBar, this.angleRow.el, this.depthRow.el, this.focalRow.el, this.source.el, size.el, brush.el, hard.el, flow.el, newLayer.el, this.note);
+    this.body.append(bar, this.view, this.planeRow.el, planeBar, this.edgeRow.el, this.angleRow.el, this.depthRow.el, this.focalRow.el, this.source.el, size.el, brush.el, hard.el, flow.el, newLayer.el, this.note);
     newLayer.set(false); size.set(40); brush.set(40); hard.set(50); flow.set(100); this.angleRow.set(0); this.depthRow.set(0); this.focalRow.set(50);
     this.view.addEventListener('pointerdown', (e) => this.down(e));
     this.view.addEventListener('pointermove', (e) => this.move(e));
@@ -107,6 +109,7 @@ export class VanishingPointDialog extends Dialog {
     this.planes.forEach((p, i) => { sel.options[i].textContent = `Plane ${i + 1}${p.parent !== undefined ? ` (connected to ${p.parent + 1})` : ''}`; });
     sel.value = String(this.cur);
     this.angleRow.set(this.planes[this.cur].angle ?? 0);
+    this.edgeRow.set(String(this.planes[this.cur].parent !== undefined ? this.planes[this.cur].edge ?? 0 : this.edgeNext));
     this.depthRow.set(Math.round((this.planes[this.cur].depth ?? 0) * 100));
     for (const row of [this.angleRow, this.depthRow]) for (const i of row.el.querySelectorAll('input')) i.disabled = this.planes[this.cur].parent === undefined;
     const w = this.work, root = this.plane ?? this.planes.find((p) => p.plane)?.plane ?? null;
@@ -133,9 +136,9 @@ export class VanishingPointDialog extends Dialog {
   }
 
   /** The corners of the connected plane `q` from its parent, with the focal length and depth in force. */
-  private childQuad(q: { parent?: number; angle?: number; depth?: number }): Quad | null {
+  private childQuad(q: { parent?: number; angle?: number; depth?: number; edge?: number }): Quad | null {
     const w = this.work, parent = q.parent !== undefined ? this.planes[q.parent]?.plane : null;
-    return w && parent ? connectedQuad(parent, w.width, w.height, q.angle ?? 0, { focal: this.focalPx, depth: q.depth ?? 0 }) : null;
+    return w && parent ? connectedQuad(parent, w.width, w.height, q.angle ?? 0, { focal: this.focalPx, depth: q.depth ?? 0, edge: q.edge }) : null;
   }
 
   /** Every connected plane carried again from its parent, parents first. */
@@ -147,7 +150,7 @@ export class VanishingPointDialog extends Dialog {
     });
   }
 
-  private addPlane(p: { corners: P2[]; plane: PlaneMap | null; parent?: number; angle?: number; depth?: number }): void {
+  private addPlane(p: { corners: P2[]; plane: PlaneMap | null; parent?: number; angle?: number; depth?: number; edge?: number }): void {
     this.planes.push(p); this.cur = this.planes.length - 1; this.stampSource = null; this.syncPlanes();
   }
 
@@ -157,15 +160,29 @@ export class VanishingPointDialog extends Dialog {
     this.setTool(this.plane ? (this.tool === 'create' ? 'edit' : this.tool) : 'create');
   }
 
-  /** A plane hinged on the right edge of the one in hand (its corners 2 and 3), flat to start. */
+  /** A plane hinged on the edge picked (the right one to start) of the one in hand, flat to start. */
   private addConnected(): void {
-    const parent = this.plane, w = this.work;
-    if (!parent || !w) { setText(this.note, 'Create a plane first; a connected plane grows from its right edge.'); return; }
-    const quad = this.childQuad({ parent: this.cur, angle: 0, depth: 0 }), made = quad ? makePlane(quad) : null;
+    const parent = this.plane, w = this.work, edge = this.edgeNext;
+    if (!parent || !w) { setText(this.note, 'Create a plane first; a connected plane grows from an edge of it.'); return; }
+    const quad = this.childQuad({ parent: this.cur, angle: 0, depth: 0, edge }), made = quad ? makePlane(quad) : null;
     if (!quad || !made) { setText(this.note, 'A connected plane does not fit past this edge.'); return; }
     this.commitPaste();
-    this.addPlane({ corners: quad.map((c) => [c[0], c[1]] as P2), plane: made, parent: this.cur, angle: 0, depth: 0 });
+    this.addPlane({ corners: quad.map((c) => [c[0], c[1]] as P2), plane: made, parent: this.cur, angle: 0, depth: 0, edge });
     this.setTool('edit');
+  }
+
+  /** The edge a connected plane grows from: the next one made takes it, and the connected plane in hand is hinged on it now. */
+  private setEdge(k: number): void {
+    const me = this.planes[this.cur];
+    this.edgeNext = k;
+    if (me.parent === undefined) return;
+    const was = me.edge;
+    me.edge = k;
+    const quad = this.childQuad(me), made = quad ? makePlane(quad) : null;
+    if (!quad || !made) { me.edge = was; this.edgeRow.set(String(was ?? 0)); setText(this.note, 'A connected plane does not fit past that edge.'); return; }
+    me.corners = quad.map((c) => [c[0], c[1]] as P2); me.plane = made;
+    this.rebuildChildren();
+    if (this.paste) this.resizePaste(); else this.render();
   }
 
   /** The connected plane in hand turned to `deg` out of its parent. */

@@ -130,10 +130,10 @@ export class Stage {
     this.resize();
   }
 
-  /** A canvas scrollbar's thumb as fractions of the track: the document plus half a view of overscroll each side is the scroll range. */
-  static barSpan(pan: number, size: number, docPx: number, flip: boolean): { a: number; len: number } {
-    const content = Math.max(1, docPx + size), len = Math.min(1, size / content);
-    const a = (-pan + size / 2) / content;
+  /** A canvas scrollbar's thumb as fractions of the track: the document plus the overscroll margin (a share of the view, half by default) each side is the scroll range. */
+  static barSpan(pan: number, size: number, docPx: number, flip: boolean, margin = 0.5): { a: number; len: number } {
+    const room = margin * size, content = Math.max(1, docPx + 2 * room), len = Math.min(1, size / content);
+    const a = (-pan + room) / content;
     return { a: Math.min(1 - len, Math.max(0, flip ? 1 - a - len : a)), len };
   }
 
@@ -144,7 +144,7 @@ export class Stage {
     setHidden(this.bars.h, !on);
     setHidden(this.bars.v, !on);
     if (p && v && on) {
-      const h = Stage.barSpan(v.panX, this.cssW, p.doc.width * v.zoom, v.flipped), w = Stage.barSpan(v.panY, this.cssH, p.doc.height * v.zoom, false);
+      const room = this.engine.overscroll / 100, h = Stage.barSpan(v.panX, this.cssW, p.doc.width * v.zoom, v.flipped, room), w = Stage.barSpan(v.panY, this.cssH, p.doc.height * v.zoom, false, room);
       const hw = `${Math.round(h.len * this.cssW)}px`, hx = `translateX(${Math.round(h.a * this.cssW)}px)`, vh = `${Math.round(w.len * this.cssH)}px`, vy = `translateY(${Math.round(w.a * this.cssH)}px)`;
       if (this.bars.ht.style.width !== hw) this.bars.ht.style.width = hw;
       if (this.bars.ht.style.transform !== hx) this.bars.ht.style.transform = hx;
@@ -169,7 +169,7 @@ export class Stage {
     const geometry = (): { size: number; content: number; sign: number } | null => {
       const p = this.engine.current;
       if (!p) return null;
-      const size = axis === 'x' ? this.cssW : this.cssH, content = (axis === 'x' ? p.doc.width : p.doc.height) * p.viewport.zoom + size;
+      const size = axis === 'x' ? this.cssW : this.cssH, content = (axis === 'x' ? p.doc.width : p.doc.height) * p.viewport.zoom + size * 2 * (this.engine.overscroll / 100);
       return { size, content, sign: axis === 'x' && p.viewport.flipped ? -1 : 1 };
     };
     const move = (d: number): void => this.engine.pan(axis === 'x' ? d : 0, axis === 'y' ? d : 0);

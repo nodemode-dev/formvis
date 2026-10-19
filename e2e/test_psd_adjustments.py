@@ -13,8 +13,8 @@ SCENE = """async () => {
   e.current.activeLayer.raster.touch(); e.refresh();
   const bc = e.addAdjustmentLayer('brightnessContrast'), lv = e.addAdjustmentLayer('levels'), inv = e.addAdjustmentLayer('invert');
   const patch = (id, data) => e.edit('t', (p) => { const l = p.layer(id); p.updateLayer(id, { adjustment: { ...l.adjustment, data: { ...l.adjustment.data, ...data } } }); return true; });
-  patch(bc, { brightness: 40, contrast: 20 });
-  patch(lv, { ranges: [{ black: 20, white: 230, gamma: 1.2, outputBlack: 0, outputWhite: 255 }, {}, {}, {}] });
+  patch(bc, { params: { brightness: 40, contrast: 20 } });
+  patch(lv, { levels: { ranges: [{ black: 20, white: 230, gamma: 1.2, outputBlack: 0, outputWhite: 255 }, {}, {}, {}] } });
   if (e.current.activeLayer.id !== inv) throw new Error('the new invert layer should be active');
   e.applySelection(E.SelectionMask.cropped(0, 0, 60, 80, new Uint8Array(4800).fill(255)), 'replace', 's'); e.addMask(false); e.deselect();
 }"""

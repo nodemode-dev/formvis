@@ -39,6 +39,20 @@ export function deriveWhole(img: ImageData, t: DeriveTables | null, lab = false,
   return t ? { mode: 'cmyk', n: 4, width: w, height: h, data: out } : { mode: 'rgb', n: 3, width: w, height: h, data: out };
 }
 
+/** A layer drawn in one colour (type): its floats with that colour taken once, in the document's own terms (the profile's
+ *  separation, the foreground's ink when it is that colour, Lab, linear light, or 16-bit RGB), under the 8-bit coverage
+ *  as alpha. Edge pixels so carry the colour itself and not the colour read back from premultiplied bytes, which drifts
+ *  by several levels where the coverage is low. */
+export function deriveFlat(img: ImageData, c: { r: number; g: number; b: number }, t: DeriveTables | null, lab = false, linear = false): ChannelPixels {
+  const one = deriveWhole(new ImageData(new Uint8ClampedArray([c.r, c.g, c.b, 255]), 1, 1), t, lab, linear), { width: w, height: h, data: d } = img, n = one.n, S = n + 1, out = new Float32Array(w * h * S);
+  for (let j = 0, i = 3; j < w * h; j++, i += 4) {
+    const o = j * S;
+    for (let k = 0; k < n; k++) out[o + k] = one.data[k];
+    out[o + n] = d[i] / 255;
+  }
+  return { mode: one.mode, n: one.n, width: w, height: h, data: out };
+}
+
 /** The region (x, y, the size of `before`) of a layer's floats brought into step with what changed there. */
 export function deriveRegion(ch: ChannelPixels, x: number, y: number, before: ImageData, after: ImageData, t: DeriveTables | null, linear = false): ChannelPixels {
   const out = new Float32Array(ch.data), S = ch.n + 1, A = ch.n, bw = before.width, bh = before.height, B = before.data, F = after.data;

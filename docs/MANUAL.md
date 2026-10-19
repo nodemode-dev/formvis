@@ -208,7 +208,8 @@ ask it questions.
 - Filter > Vanishing Point: click a surface's four corners in turn (top left, top right, bottom right, bottom left)
   to make a perspective plane, and drag them to fit. Paste puts another layer on the plane in perspective (drag it
   along; Paste size sets how much of the plane it covers); Stamp clones in perspective (Alt-click a source, then
-  paint). OK applies it as one step.
+  paint). Connected plane hinges a new plane on the edge chosen in Hinge edge (right, bottom, left or top) and turns it
+  with Child angle. OK applies it as one step.
 - The Gradient Editor (click the gradient in the Gradient tool's options) has opacity stops above the bar and colour
   stops below it, each with a draggable midpoint between neighbours. `.grd` files keep the midpoints and the
   opacity stops both ways. Limit: a Gradient Fill layer and the stops read from a PSD fill layer keep their dense list
@@ -242,7 +243,10 @@ ask it questions.
 ## Type, shapes and paths
 
 - The Type tool adds editable text: point text or a paragraph in a box, horizontal or vertical, with font style,
-  anti-aliasing, colour and warp. Type Mask tools make a selection in the shape of text.
+  anti-aliasing, colour and warp. Type Mask tools make a selection in the shape of text. While you type in an existing
+  type layer, Ctrl or Cmd with a drag on a corner of its box scales it about the opposite corner, and Ctrl or Cmd with
+  Shift turns it about its centre; the text box follows, and the typing, the scale and the turn are one undo step. In
+  16 and 32 bit, CMYK and Lab documents the type keeps its exact colour to the edge of each letter.
 - Shape tools draw rectangles, ellipses, triangles, polygons, stars, lines, arrows and custom shapes, as shape
   layers, paths or pixels, with a fill and a stroke; the stroke is solid, dashed or dotted, and inside, centred on or
   outside the shape's edge.
@@ -318,7 +322,9 @@ other modes and depths its menu items are off, with the reason as their tooltip.
 - On the canvas, drag a light's round handle to move it and its small target to aim it (Alt-drag also aims); with a pattern, Shift-drag places the pattern's centre (the
   ringed reticle, then draggable itself) apart from the aim, as the strip across her face while the light aims at her
   chest. Done
-  (or Enter) renders the layer at full size; Cancel (or Escape) leaves things as they were.
+  (or Enter) renders the layer at full size; Cancel (or Escape) leaves things as they were. A dial at the top left of
+  the picture points to the side the picture's own light comes from, its arrow longer the more one-sided the light is;
+  H hides it with the handles.
 - Edit Lighting, under the picture when a Relight layer is selected, reopens it; so do Layer > Edit Lighting...,
   Layer Content Options... and a double-click on the layer in the Layers panel.
 - With Depth Anything V2 Small downloaded (Preferences > Plugins > Local models, about 99 MB), light follows the shapes in the photo and casts
@@ -397,7 +403,11 @@ other modes and depths its menu items are off, with the reason as their tooltip.
   Krea 2's licence notice is shown with each of its pictures. The models are large (up to about 18 GB) and want a
   recent Mac with Apple silicon, or a PC with an NVIDIA graphics card.
 - Improve, beside the prompt, rewrites it through a language model following a prompt template; Restore puts yours
-  back. Set the model, and edit the templates, in Preferences > Plugins.
+  back. Set the model, and edit the templates, in Preferences > Plugins. When the model is marked as reading pictures,
+  Improve also shows it the area and each chosen reference labelled with its @img token; the tokens are kept, and the
+  note names any words the rewrite no longer has and any names or numbers it adds.
+- Generate Image: the size list holds the shapes the model chosen offers (each provider's own, a local model's own
+  sizes), and Transparent background cuts the background away from the result with the background removal engine.
 
 ## ComfyUI
 
@@ -406,6 +416,10 @@ other modes and depths its menu items are off, with the reason as their tooltip.
   ComfyUI's input folder, under formvis, for its Load Image nodes.
 - File > Run ComfyUI Workflow runs a workflow on your picture and brings the results back as layers, masked to the
   selection if you sent one. Save the workflow in ComfyUI with Export (API).
+- Each workflow kept in Preferences > Plugins has a choice for how @img1, @img2 are written into its prompt (image 1,
+  Picture 1, and others), since each model reads its own words. formvis keeps a copy of every picture it sends in the
+  data folder (comfy-inputs); in the ComfyUI panel, Send inputs again puts them back after ComfyUI empties its input
+  folder, and Copy recipe puts a kept graph on the clipboard to paste on the canvas and edit, then Save graph replaces it.
 - How formvis fills a workflow: the first Load Image takes the picture; the first Load Image (as Mask) takes the
   selection's mask; a text node titled "formvis prompt" takes the prompt; Load Image nodes titled "formvis reference"
   (then "formvis reference 1", "2" and on) take reference layers. A workflow with no Load Image runs on the prompt.

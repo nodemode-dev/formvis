@@ -764,7 +764,10 @@ def _convert(args: dict) -> dict:
     if fmt == "pnm":
         options.setdefault("kind", dst.suffix.lower().lstrip(".") if dst.suffix.lower() in (".ppm", ".pgm", ".pbm") else "ppm")
     try:
-        png, width, height = imaging.decode_to_png(src.read_bytes(), src.name, int(args.get("page", 0)))
+        raw = src.read_bytes()
+        png, width, height = imaging.decode_to_png(raw, src.name, int(args.get("page", 0)))
+        if fmt == "avif":
+            options = {**imaging.source_meta(raw), **options}
         blob = imaging.encode(png, fmt, int(round(float(args.get("quality", 0.92)) * 100)), int(args.get("dpi", 72)), None, options)
     except imaging.DecodeError as exc:
         raise ValueError(str(exc)) from exc

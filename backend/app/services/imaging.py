@@ -1,3 +1,5 @@
+import base64
+import binascii
 import io
 import platform
 import shutil
@@ -521,6 +523,44 @@ def _tiff(rgba: Image.Image, o: dict, dpi: int, icc: bytes | None) -> bytes:
     return out.getvalue()
 
 
+def _kept_meta(options: dict) -> dict:
+    """The Exif block (`exif`, base64 from the TIFF header on) and XMP packet (`xmp`, text) a caller hands over to be written
+    into an AVIF; a value that is not what it says, or is too large, is left out rather than failing the export."""
+    out: dict = {}
+    exif, xmp = options.get("exif"), options.get("xmp")
+    if isinstance(exif, str) and exif:
+        try:
+            raw = base64.b64decode(exif, validate=True)
+        except (binascii.Error, ValueError):
+            raw = b""
+        if 8 < len(raw) <= 65_000 and raw[:2] in (b"II", b"MM"):
+            out["exif"] = raw
+    if isinstance(xmp, str) and 0 < len(xmp) <= 200_000:
+        out["xmp"] = xmp.encode("utf-8")
+    return out
+
+
+def source_meta(data: bytes) -> dict:
+    """The Exif block (`exif`, base64 from the TIFF header on) and XMP packet (`xmp`, text) a picture file carries, with the Exif
+    Orientation set upright because decoding turns the pixels; the dict `encode` takes to write them into an AVIF. Empty when
+    the file holds none."""
+    out: dict = {}
+    try:
+        with Image.open(io.BytesIO(data)) as image:
+            raw, packet = image.info.get("exif"), image.info.get("xmp")
+        if isinstance(raw, (bytes, bytearray)) and raw:
+            exif = Image.Exif()
+            exif.load(bytes(raw))
+            exif[0x0112] = 1
+            block = exif.tobytes()
+            out["exif"] = base64.b64encode(block[6:] if block[:6] == b"Exif\x00\x00" else block).decode("ascii")
+        if isinstance(packet, (bytes, bytearray)) and packet:
+            out["xmp"] = bytes(packet).decode("utf-8", "replace")
+    except Exception:
+        return {}
+    return out
+
+
 def encode(png: bytes, fmt: str, quality: int = 90, dpi: int = 72, icc: bytes | None = None, options: dict | None = None) -> bytes:
     """Re-encodes a PNG from the editor: TIFF (LZW, alpha kept), PDF (one page at `dpi`, flattened on white, since PDF
     images carry no alpha here), WebP or AVIF (at `quality`, alpha kept). `icc`, an ICC profile the pixels are already
@@ -605,5 +645,5 @@ def encode(png: bytes, fmt: str, quality: int = 90, dpi: int = 72, icc: bytes | 
         else:
             rgba.save(out, "WEBP", quality=q, method=4, **extra)
     else:
-        rgba.save(out, "AVIF", quality=q, **extra)
+        rgba.save(out, "AVIF", quality=q, **extra, **_kept_meta(options or {}))
     return out.getvalue()

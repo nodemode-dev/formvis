@@ -1,7 +1,7 @@
-import { baseDirection, fontCss, liveText, shapingLang, shiftParas, textMetrics, withParaAttrs, type Engine, type ID, type ParaAttrs, type Pt, type TextSpec } from '../engine';
+import { baseDirection, fontCss, liveText, shapingLang, shiftParas, textMetrics, unitPoint, withParaAttrs, type Engine, type ID, type ParaAttrs, type Pt, type TextSpec } from '../engine';
 import type { Project } from '../engine/project';
 import { runAttrsOver, runFeatureOn, shiftRuns, withRunAttrs, withRunFeature, type RunPatch } from '../engine/opentype';
-import type { RGB } from '../engine/types';
+import type { RGB, Transform } from '../engine/types';
 import { el, setHidden, setStyleVar } from './dom';
 import { loadPrefs } from './prefs';
 
@@ -18,6 +18,12 @@ export const typedAttrs = (): { color: RGB; family: string; bold: boolean; itali
 export type ParaPatch = Partial<Record<keyof ParaAttrs, unknown>>;
 export const typedParas = (): ParaAttrs | null => live?.paragraphAttrs() ?? null;
 export const typedParaSet = (patch: ParaPatch): boolean => live?.styleParagraphs(patch) ?? false;
+/** The layer box of the text being typed as scaled or turned so far, and the grip on its corners (Ctrl drag scales about the opposite corner, Ctrl and Shift drag turns about the centre). */
+export const typedBox = (): Transform | null => live?.layerBox() ?? null;
+export const typedCorner = (at: Pt): number => live?.cornerAt(at) ?? -1;
+export const typedGrab = (at: Pt, turn: boolean): boolean => live?.grab(at, turn) ?? false;
+export const typedDrag = (at: Pt): void => live?.drag(at);
+export const typedRelease = (): void => live?.release();
 
 /** Typing on the canvas: one kept text box over the stage, set in the text's own font, size, colour and line spacing
  *  at the current zoom, with its first baseline on the click (or on an existing layer's first baseline, the layer
@@ -25,7 +31,8 @@ export const typedParaSet = (patch: ParaPatch): boolean => live?.styleParagraphs
  *  Type tool, or a change of tool commits; Escape cancels. The Type tool's options restyle it as you type. */
 export class TextEditor {
   private readonly box = el<HTMLTextAreaElement>('<textarea class="cv-type-editor" wrap="off" spellcheck="true" aria-label="Text" hidden></textarea>');
-  private session: { project: Project; at: Pt; layerId: ID | null; spec: TextSpec; scale: number; mask?: boolean; shift?: Pt } | null = null;
+  private session: { project: Project; at: Pt; layerId: ID | null; spec: TextSpec; scale: number; mask?: boolean; xf?: Transform; off?: Pt } | null = null;
+  private grip: { turn: boolean; xf: Transform; pivot: Pt; from: Pt } | null = null;
 
   private typed = '';
   private lastPara = -1;
@@ -61,6 +68,14 @@ export class TextEditor {
       const box = this.box;
       let lx = e.clientX, ly = e.clientY;
       box.setPointerCapture(e.pointerId);
+      if (this.grab(this.toDoc(e.clientX, e.clientY), e.shiftKey)) {
+        const drag = (m: PointerEvent): void => this.drag(this.toDoc(m.clientX, m.clientY));
+        const done = (): void => { this.release(); box.removeEventListener('pointermove', drag); box.removeEventListener('pointerup', done); box.removeEventListener('pointercancel', done); };
+        box.addEventListener('pointermove', drag);
+        box.addEventListener('pointerup', done);
+        box.addEventListener('pointercancel', done);
+        return;
+      }
       const move = (m: PointerEvent): void => {
         const v = this.engine.current?.viewport, r = -((v?.rotation ?? 0) * Math.PI) / 180, k = v?.zoom || 1, dx = m.clientX - lx, dy = m.clientY - ly;
         lx = m.clientX; ly = m.clientY;
@@ -186,7 +201,8 @@ export class TextEditor {
       if (!l?.text || !l.raster || !liveText(l)) return;
       const t = l.transform, scale = t.w / l.raster.width, m = textMetrics(l.text);
       const x = l.text.align === 'center' ? t.x + t.w / 2 : l.text.align === 'right' ? t.x + t.w - m.pad * scale : t.x + m.pad * scale;
-      this.session = { project: p, at: { x, y: t.y + (m.pad + m.ascent) * (t.h / l.raster.height) }, layerId: l.id, spec: { ...l.text }, scale };
+      const ky = t.h / l.raster.height, y = t.y + (m.pad + m.ascent) * ky;
+      this.session = { project: p, at: { x, y }, layerId: l.id, spec: { ...l.text }, scale, xf: { ...t }, off: { x: (x - t.x) / scale, y: (y - t.y) / ky } };
       e.textSettings = { ...l.text, content: '', rendered: undefined, runs: undefined, paras: undefined };
       e.emit('options', null);
       e.setTextEditing(l.id);
@@ -201,6 +217,7 @@ export class TextEditor {
     queueMicrotask(() => e.emit('options', null));
     setHidden(this.box, false);
     this.place();
+    this.engine.emit('overlay', null);
     this.box.focus();
     if (this.box.value === PLACEHOLDER && !('layerId' in target)) this.box.select();   // typing replaces the placeholder
   }
@@ -222,7 +239,7 @@ export class TextEditor {
     const spec: TextSpec = { ...s.spec, content: this.box.value.replace(/\r\n?/g, '\n') };
     this.end();
     if (this.engine.current !== s.project || !spec.content.trim()) return;
-    if (s.layerId) await this.engine.updateTextLayer(s.layerId, spec, s.shift);
+    if (s.layerId) await this.engine.updateTextLayer(s.layerId, spec, undefined, s.xf);
     else if (s.mask) await this.engine.createTextSelection(s.at, spec);
     else await this.engine.createTextLayer(s.at, spec);
   }
@@ -234,9 +251,61 @@ export class TextEditor {
     const s = this.session;
     if (!s) return;
     s.at = { x: s.at.x + dx, y: s.at.y + dy };
-    if (s.layerId) s.shift = { x: (s.shift?.x ?? 0) + dx, y: (s.shift?.y ?? 0) + dy };
+    if (s.xf) s.xf = { ...s.xf, x: s.xf.x + dx, y: s.xf.y + dy };
     this.place();
+    this.engine.emit('overlay', null);
     if (document.activeElement !== this.box) this.box.focus({ preventScroll: true });
+  }
+
+  /** The layer box of the text being typed with the scaling and turning so far; null for new text. */
+  layerBox(): Transform | null { return this.session?.xf ?? null; }
+
+  /** A pointer position in the stage's pixels, as a document point (undoing the view's turn about the stage centre). */
+  private toDoc(cx: number, cy: number): Pt {
+    const host = this.box.parentElement as HTMLElement, r = host.getBoundingClientRect(), v = this.engine.current?.viewport;
+    if (!v) return { x: 0, y: 0 };
+    const a = -(((v.rotation ?? 0) * Math.PI) / 180), sx = host.clientWidth / 2, sy = host.clientHeight / 2, x = cx - r.left - sx, y = cy - r.top - sy;
+    return { x: (sx + x * Math.cos(a) - y * Math.sin(a) - v.panX) / (v.zoom || 1), y: (sy + x * Math.sin(a) + y * Math.cos(a) - v.panY) / (v.zoom || 1) };
+  }
+
+  /** The corner of the layer box (0 to 3, clockwise from the top left) within `reach` screen pixels of the document point `at`, or -1. */
+  cornerAt(at: Pt, reach = 14): number {
+    const xf = this.session?.xf, v = this.engine.current?.viewport;
+    if (!xf || !v) return -1;
+    return [[0, 0], [1, 0], [1, 1], [0, 1]].findIndex(([u, w]) => { const c = unitPoint(xf, u, w); return Math.hypot(c.x - at.x, c.y - at.y) * (v.zoom || 1) <= reach; });
+  }
+
+  /** Takes hold of a corner of the layer box at `at`: a drag then scales the layer about the opposite corner, or turns it about its centre. */
+  grab(at: Pt, turn: boolean): boolean {
+    const xf = this.session?.xf, corner = this.cornerAt(at);
+    if (!xf || corner < 0) return false;
+    const [u, w] = [[0, 0], [1, 0], [1, 1], [0, 1]][corner];
+    this.grip = { turn, xf, pivot: turn ? unitPoint(xf, 0.5, 0.5) : unitPoint(xf, 1 - u, 1 - w), from: at };
+    return true;
+  }
+
+  /** The grip followed to `at`: the layer box scaled or turned from where it was grabbed, the typing box following in place. */
+  drag(at: Pt): void {
+    const g = this.grip, s = this.session, r = s?.layerId ? s.project.layer(s.layerId)?.raster : null;
+    if (!g || !s || !s.off || !r) return;
+    const a0 = { x: g.from.x - g.pivot.x, y: g.from.y - g.pivot.y }, a = { x: at.x - g.pivot.x, y: at.y - g.pivot.y };
+    if (g.turn) {
+      const deg = ((Math.atan2(a.y, a.x) - Math.atan2(a0.y, a0.x)) * 180) / Math.PI;
+      s.xf = { ...g.xf, rotation: Math.round((g.xf.rotation + deg) * 100) / 100 };
+    } else {
+      const k = Math.min(40, Math.max(0.05, (a.x * a0.x + a.y * a0.y) / Math.max(1e-6, a0.x * a0.x + a0.y * a0.y))), c = { x: g.xf.x + g.xf.w / 2, y: g.xf.y + g.xf.h / 2 };
+      const w = g.xf.w * k, h = g.xf.h * k;
+      s.xf = { ...g.xf, w, h, x: g.pivot.x + (c.x - g.pivot.x) * k - w / 2, y: g.pivot.y + (c.y - g.pivot.y) * k - h / 2 };
+    }
+    s.scale = s.xf.w / r.width;
+    s.at = { x: s.xf.x + s.off.x * s.scale, y: s.xf.y + s.off.y * (s.xf.h / r.height) };
+    this.place();
+    this.engine.emit('overlay', null);
+  }
+
+  release(): void {
+    this.grip = null;
+    if (this.session && document.activeElement !== this.box) this.box.focus({ preventScroll: true });
   }
 
   /** Puts `text` at the caret (over a selection) of the text being typed; false when nothing is being typed. */
@@ -251,10 +320,12 @@ export class TextEditor {
 
   private end(): void {
     this.session = null;
+    this.grip = null;
     this.engine.setTextEditing(null);
     setHidden(this.box, true);
     this.box.blur();
     this.engine.emit('options', null);
+    this.engine.emit('overlay', null);
   }
 
   /** Type size shortcuts: Ctrl or Cmd with Shift and . or , grows or shrinks the size by 2 (Alt: 10), for the text being typed. */
@@ -286,11 +357,19 @@ export class TextEditor {
   /** Placed on the drawing surfaces' space, then turned with the view about the stage's centre (Rotate View). */
   private place(): void {
     this.placeFlat();
-    const v = this.engine.current?.viewport, box = this.box, deg = v?.rotation ?? 0;
-    if (!deg) { box.style.transform = ''; return; }
+    const v = this.engine.current?.viewport, box = this.box, deg = v?.rotation ?? 0, xf = this.session?.xf, turn = xf?.rotation ?? 0;
+    if (!deg && !turn) { box.style.transform = ''; return; }
     const host = box.parentElement as HTMLElement, x = parseFloat(box.style.getPropertyValue('--x')) || 0, y = parseFloat(box.style.getPropertyValue('--y')) || 0;
-    box.style.transformOrigin = `${host.clientWidth / 2 - x}px ${host.clientHeight / 2 - y}px`;
-    box.style.transform = `rotate(${deg}deg)`;
+    if (!turn || !xf || !v) {
+      box.style.transformOrigin = `${host.clientWidth / 2 - x}px ${host.clientHeight / 2 - y}px`;
+      box.style.transform = `rotate(${deg}deg)`;
+      return;
+    }
+    const sx = host.clientWidth / 2, sy = host.clientHeight / 2, cx = v.panX + (xf.x + xf.w / 2) * v.zoom, cy = v.panY + (xf.y + xf.h / 2) * v.zoom;
+    const rv = (deg * Math.PI) / 180, th = ((deg + turn) * Math.PI) / 180, vc = Math.cos(rv), vs = Math.sin(rv), co = Math.cos(th), si = Math.sin(th);
+    const tx = sx + vc * (cx - sx) - vs * (cy - sy) - (co * cx - si * cy), ty = sy + vs * (cx - sx) + vc * (cy - sy) - (si * cx + co * cy);
+    box.style.transformOrigin = '0 0';
+    box.style.transform = `matrix(${co}, ${si}, ${-si}, ${co}, ${co * x - si * y + tx - x}, ${si * x + co * y + ty - y})`;
   }
 
   private placeFlat(): void {
@@ -317,7 +396,7 @@ export class TextEditor {
     box.setAttribute('wrap', area ? 'soft' : 'off');
     if (area) {   // paragraph text: the box itself, wrapping as typed
       setStyleVar(box, '--x', `${v.panX + s.at.x * v.zoom}px`); setStyleVar(box, '--y', `${v.panY + s.at.y * v.zoom}px`);
-      setStyleVar(box, '--w', `${area.w * v.zoom}px`); setStyleVar(box, '--h', `${area.h * v.zoom}px`);
+      setStyleVar(box, '--w', `${area.w * v.zoom * s.scale}px`); setStyleVar(box, '--h', `${area.h * v.zoom * s.scale}px`);
       return;
     }
     setStyleVar(box, '--w', '0px');

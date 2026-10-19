@@ -4,6 +4,7 @@ import { getTool } from '../extensions/registry';
 import { pendingClass, q, setClass, setStyleVar, setText, setTitle, type Disposer } from './dom';
 import { onLanguage, t } from './i18n';
 import { icon } from './icons';
+import { JobsList } from './jobs-list';
 
 /** The one note when the engine service is not running (DEV_PLAN 36.19): the status bar's title and the boot toast. */
 export const SERVICE_NOTE = 'The engine service is not running, so editing works but these wait for it: saving to the library, HEIC, RAW, DPX and other camera and film formats, colour conversion, AI tools, video, the terminal and agents. Start it with ./formvis boot.';
@@ -78,6 +79,9 @@ export class StatusBar {
     this.stop.appendChild(document.createTextNode(t('Cancel')));
     this.stop.addEventListener('click', () => { this.engine.cancelJob(); });
     this.busy.append(this.bar, this.steps, this.stop);
+    this.jobs = new JobsList(engine, this.busy);
+    this.busy.title = t('Show the running jobs, each with its own Stop');
+    this.busy.addEventListener('click', (e) => { if (!(e.target instanceof Element && e.target.closest('.cv-st-stop'))) this.jobs.toggle(); });
     engine.on('progress', () => this.syncProgress());
     engine.on('notice', (n) => { if (n.kind === 'error') this.flashError(n.text); });
     this.engineState = q(root, '.cv-st-engine');
@@ -95,6 +99,7 @@ export class StatusBar {
     // A language change re-sets every word in place (no rebuild, no flash).
     onLanguage(() => {
       this.busyText.data = t('Working');
+      setTitle(this.busy, t('Show the running jobs, each with its own Stop'));
       this.showEngine();
       this.showGpu();
       this.syncMemory();
@@ -103,6 +108,11 @@ export class StatusBar {
       this.syncHint();
     });
   }
+
+  private readonly jobs: JobsList;
+  /** Window > Jobs: the list of running background jobs, each with its own Stop, opened or closed above the Working indicator. */
+  toggleJobs(): void { this.jobs.toggle(); }
+  get jobsOpen(): boolean { return this.jobs.isOpen; }
 
   private readonly info: HTMLElement;
   private infoKind: InfoKind = 'sizes';

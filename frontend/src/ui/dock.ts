@@ -1,10 +1,11 @@
 import { el, setHidden } from './dom';
 import { icon } from './icons';
+import { PanelGroup } from './panel-group';
 
 /** The side dock's panels: drag a panel by its header to move it up or down the dock (a line
  *  shows where it will land), show or hide panels from the Window menu, and have the arrangement remembered on this
- *  device. Sourced in the planning notes' workspace research. Every panel in the side dock moves, the Layers panel included; floating panels and grouping into
- *  tabs come later. */
+ *  device. Sourced in the planning notes' workspace research. Every panel in the side dock moves, the Layers panel included; dragged past
+ *  both columns a panel floats in a window of its own, which docks back onto a column or a group's tab strip. */
 export interface DockPanel { id: string; label: string; selector: string }
 export const DOCK_PANELS: readonly DockPanel[] = [
   { id: 'navigator', label: 'Navigator', selector: '.cv-navigator' },
@@ -46,6 +47,8 @@ interface DockState { order: string[]; hidden: string[]; side: string[] }
 const KEY = 'formvis.dock';
 const HEIGHTS_KEY = 'formvis.dock.heights';
 const FLOATS_KEY = 'formvis.dock.floats';
+/** A header drag's target when the pointer is past both columns: the panel floats there. */
+const FLOAT = -2;
 /** The Essentials default: Navigator, Swatches and Layers shown; Timeline and History in Window. */
 const DEFAULT: DockState = { order: DOCK_PANELS.map((p) => p.id), hidden: ['generate', 'timeline', 'history', 'info', 'layer-comps', 'styles', 'gradients', 'patterns', 'shapes', 'measurement-log', 'modifier-keys', 'adjustments', 'notes', 'histogram', 'clone-source', 'reference', 'comfyui', 'actions'], side: [...DEFAULT_SIDE] };
 
@@ -74,7 +77,7 @@ export class Dock {
   static remember = true;
   private state = load();
   private readonly marker = el('<div class="cv-dock-marker" hidden></div>');
-  private drag: { id: string; startY: number; moving: boolean; target: number; col: 'dock' | 'side' } | null = null;
+  private drag: { id: string; startY: number; moving: boolean; target: number; col: 'dock' | 'side'; x: number; y: number } | null = null;
   private suppressClick = false;
   onChange: (() => void) | null = null;
 
@@ -94,7 +97,7 @@ export class Dock {
         if (section?.classList.contains('cv-group') && (e.target as HTMLElement).closest('.cv-group-tab')) return;
         if (this.floats[p.id]) return;   // a floating panel moves by its own bar
         // The pointer is captured only once the drag moves (move), so a plain click still reaches a tab in the header.
-        this.drag = { id: p.id, startY: e.clientY, moving: false, target: -1, col: 'dock' };
+        this.drag = { id: p.id, startY: e.clientY, moving: false, target: -1, col: 'dock', x: e.clientX, y: e.clientY };
         // Movement is followed on the whole document until release: a quick flick leaves the header at once.
         document.addEventListener('pointermove', this.docMove, true);
       });
@@ -143,6 +146,7 @@ export class Dock {
     const n = Object.keys(this.floats).length, prev = this.floats[id];
     this.floats[id] = { x: at.x ?? prev?.x ?? 160 + 28 * n, y: at.y ?? prev?.y ?? 110 + 28 * n, w: at.w ?? prev?.w ?? 300, h: at.h ?? prev?.h ?? 380 };
     this.state.hidden = this.state.hidden.filter((h) => h !== id);
+    if (!this.state.order.includes(id) && !this.state.side.includes(id)) this.state.order = [...this.state.order, id];
     this.saveFloats();
     this.save();
     return true;
@@ -175,8 +179,26 @@ export class Dock {
       if (e.button !== 0 || !r || this.locked || (e.target as HTMLElement).closest('button')) return;
       e.preventDefault();
       const x0 = e.clientX, y0 = e.clientY, ox = r.x, oy = r.y;
-      const move = (m: PointerEvent): void => { r.x = Math.max(0, Math.min(window.innerWidth - 80, ox + m.clientX - x0)); r.y = Math.max(0, Math.min(window.innerHeight - 40, oy + m.clientY - y0)); f.style.left = `${Math.round(r.x)}px`; f.style.top = `${Math.round(r.y)}px`; };
-      const up = (): void => { document.removeEventListener('pointermove', move, true); document.removeEventListener('pointerup', up, true); this.saveFloats(); };
+      let onto: PanelGroup | null = null, gap: ReturnType<Dock['gapAt']> = null;
+      const move = (m: PointerEvent): void => {
+        r.x = Math.max(0, Math.min(window.innerWidth - 80, ox + m.clientX - x0)); r.y = Math.max(0, Math.min(window.innerHeight - 40, oy + m.clientY - y0)); f.style.left = `${Math.round(r.x)}px`; f.style.top = `${Math.round(r.y)}px`;
+        // Dragged back over a docked group's tab strip, or a column's gap: the drop indicator says what a release does.
+        const head = document.elementsFromPoint(m.clientX, m.clientY).find((n) => n.classList.contains('cv-group-head') && !f.contains(n)), own = this.ownGroup(p.id);
+        const g = own && head ? PanelGroup.all.get((head.closest('.cv-group') as HTMLElement | null)?.dataset.group ?? '') ?? null : null;
+        const next = g && g !== own ? g : null;
+        if (next !== onto) { onto?.root.classList.remove('is-tab-target', 'is-tab-full'); onto = next; onto?.root.classList.add(onto.full ? 'is-tab-full' : 'is-tab-target'); }
+        gap = onto ? null : this.gapAt(m.clientX, m.clientY);
+        if (gap) this.placeMarker(gap, 'Dock here'); else if (!this.drag) setHidden(this.marker, true);
+      };
+      const up = (): void => {
+        document.removeEventListener('pointermove', move, true); document.removeEventListener('pointerup', up, true);
+        onto?.root.classList.remove('is-tab-target', 'is-tab-full');
+        if (!this.drag) setHidden(this.marker, true);
+        const own = this.ownGroup(p.id);
+        if (onto && own && !onto.full) { for (const tid of own.tabIds) if (!onto.full) PanelGroup.moveTab(tid, own, onto); PanelGroup.saveHomes(); this.dockBack(p.id); return; }
+        if (gap) { delete this.floats[p.id]; this.saveFloats(); this.insertPanel(p.id, gap.col, gap.index); return; }
+        this.saveFloats();
+      };
       document.addEventListener('pointermove', move, true);
       document.addEventListener('pointerup', up, true);
     });
@@ -382,16 +404,33 @@ export class Dock {
     if ((e.buttons & 1) === 0) { this.drag = null; setHidden(this.marker, true); return; }
     if (!d.moving && Math.abs(e.clientY - d.startY) < 5) return;
     d.moving = true;
+    d.x = e.clientX; d.y = e.clientY;
     const at = this.gapAt(e.clientX, e.clientY);
-    if (!at) return;
-    const { col, index: best } = at;
     // What is dragged, following the pointer; the marker says what a release does.
     if (!this.ghost) { this.ghost = el('<div class="cv-drag-ghost"></div>'); this.ghost.textContent = ALL_PANELS.find((p) => p.id === d.id)?.label ?? d.id; document.body.appendChild(this.ghost); }
     this.ghost.style.left = `${e.clientX + 12}px`; this.ghost.style.top = `${e.clientY + 10}px`;
-    d.target = best;
-    d.col = col;
+    // Past both columns the panel is torn off: an outline shows where its window would open.
+    if (!at) { d.target = FLOAT; setHidden(this.marker, true); this.floatHint(e.clientX, e.clientY, d.id); return; }
+    this.floatHint(null, 0, d.id);
+    d.target = at.index;
+    d.col = at.col;
     this.placeMarker(at, 'Move here');
   }
+
+  private hint: HTMLElement | null = null;
+  /** Where a panel released over the canvas would float: an outline the size of its window, patched in place (null hides it). */
+  floatHint(x: number | null, y: number, id: string): void {
+    if (x === null) { if (this.hint) setHidden(this.hint, true); return; }
+    if (!this.hint) { this.hint = el('<div class="cv-float-hint" hidden></div>'); (document.getElementById('overlay-root') ?? document.body).appendChild(this.hint); }
+    const r = this.floats[id], w = r?.w ?? 300, h = r?.h ?? 380;
+    const css: Array<[string, string]> = [['left', `${Math.round(Math.max(0, Math.min(window.innerWidth - 80, x - 40)))}px`], ['top', `${Math.round(Math.max(0, Math.min(window.innerHeight - 40, y - 12)))}px`], ['width', `${Math.round(w)}px`], ['height', `${Math.round(h)}px`]];
+    for (const [k, v] of css) if (this.hint.style.getPropertyValue(k) !== v) this.hint.style.setProperty(k, v);
+    setHidden(this.hint, false);
+  }
+  /** A tab group released over neither column floats whole at the pointer, or a tab pulled out of a group of several first becomes a group of its own (set by the app). */
+  tearOff(id: string, x: number, y: number): boolean { return this.gapAt(x, y) ? false : this.float(id, { x: x - 40, y: y - 12 }); }
+  /** The tab group that a panel is (a plain panel is none). */
+  private ownGroup(id: string): PanelGroup | undefined { return PanelGroup.all.get(this.section(id)?.dataset.group ?? ''); }
 
   private ghost: HTMLElement | null = null;
   /** The column and the gap among its shown panels nearest a point: the side column's when over it (and open), else the
@@ -442,6 +481,8 @@ export class Dock {
     this.ghost = null;
     document.removeEventListener('pointermove', this.docMove, true);
     setHidden(this.marker, true);
+    this.floatHint(null, 0, '');
+    if (d?.moving && d.target === FLOAT) { this.float(d.id, { x: d.x - 40, y: d.y - 12 }); return; }
     if (!d || !d.moving || d.target < 0) return;
     this.suppressClick = true;
     // Into the column it was dropped in, before the panel it was dropped above (or at the end).

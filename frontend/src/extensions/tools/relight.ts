@@ -16,6 +16,8 @@ export interface RelightHost {
   add(at: { x: number; y: number }): void;
   remove(): void;
   adjust(id: string, key: 'intensity' | 'diffusion', delta: number): void;
+  /** Which way the picture's own light seems to come from (a unit vector in picture pixels, y down) and how strongly, for the compass. */
+  original(): { x: number; y: number; strength: number } | null;
 }
 
 let hidden = false;
@@ -129,6 +131,24 @@ export const relightTool: Tool = {
       g.lineWidth = on ? 2.5 : 1.5; g.strokeStyle = pal.accent; g.stroke();
       g.beginPath(); g.arc(a.x, a.y, on ? 7 : 6, 0, Math.PI * 2);
       g.fillStyle = `rgb(${l.color.r},${l.color.g},${l.color.b})`; g.fill();
+    }
+    const o = host.original();
+    if (o) {
+      const q = v.toScreen({ x: 0, y: 0 }), cx = Math.min(v.width - 34, Math.max(34, q.x + 34)), cy = Math.min(v.height - 34, Math.max(34, q.y + 34)), len = 8 + 12 * o.strength;
+      g.setLineDash([]);
+      g.lineWidth = 1.5;
+      g.strokeStyle = pal.antsB;
+      g.fillStyle = pal.handle;
+      g.beginPath(); g.arc(cx, cy, 24, 0, Math.PI * 2); g.fill(); g.stroke();
+      g.beginPath();
+      for (let i = 0; i < 4; i++) { const t = (i * Math.PI) / 2; g.moveTo(cx + Math.cos(t) * 20, cy + Math.sin(t) * 20); g.lineTo(cx + Math.cos(t) * 24, cy + Math.sin(t) * 24); }
+      g.stroke();
+      const tx = cx + o.x * len, ty = cy + o.y * len, th = Math.atan2(o.y, o.x);
+      g.strokeStyle = pal.accent;
+      g.lineWidth = 2;
+      g.beginPath(); g.moveTo(cx - o.x * 6, cy - o.y * 6); g.lineTo(tx, ty); g.stroke();
+      g.beginPath(); g.moveTo(tx, ty); g.lineTo(tx - Math.cos(th - 0.5) * 6, ty - Math.sin(th - 0.5) * 6); g.lineTo(tx - Math.cos(th + 0.5) * 6, ty - Math.sin(th + 0.5) * 6); g.closePath();
+      g.fillStyle = pal.accent; g.fill();
     }
     g.restore();
   },

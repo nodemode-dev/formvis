@@ -1,6 +1,6 @@
 import type { Engine, ID, ToolId } from '../engine';
 import {
-  MAX_RELIGHT_LIGHTS, RELIGHT_LOOKS, TAKE_OUT, levelGain, RELIGHT_PATTERNS, RELIGHT_TYPES, defaultRelight, estimateDepth, kelvinToRgb, newLight, relightFrom, relightGeometry, resampleDepth, sceneGeometry, shadeRelight, shadingField, withNormals,
+  MAX_RELIGHT_LIGHTS, RELIGHT_LOOKS, TAKE_OUT, levelGain, RELIGHT_PATTERNS, RELIGHT_TYPES, defaultRelight, estimateDepth, kelvinToRgb, newLight, originalLight, relightFrom, relightGeometry, resampleDepth, sceneGeometry, shadeRelight, shadingField, withNormals,
   type RelightContent, type RelightGeometry, type RelightLight, type RelightPatternKind, type RelightType, type SplitMaps,
 } from '../engine/relight';
 import { renderRelight } from '../gpu/relight-gl';
@@ -65,6 +65,7 @@ export class RelightSession {
   private selectedId: string | null = null;
   private full: Sized | null = null;
   private proxy: { base: Uint8ClampedArray; geo: RelightGeometry; shade: Float32Array; albedo?: Uint8ClampedArray; split?: SplitMaps; normals?: Float32Array | null; scene?: boolean } | null = null;
+  private lit: { x: number; y: number; strength: number } | null | undefined;
   private splitUsed: 'marigold' | 'classic' | null = null;
   private source: Blob | null = null;
   private engines: RelightEngines | null = null;
@@ -123,6 +124,10 @@ export class RelightSession {
         l[key] = Math.max(0, Math.min(100, l[key] + delta));
         this.sync(); this.schedule();
       },
+      original: () => {
+        if (this.lit === undefined) this.lit = this.proxy ? originalLight(this.proxy.base, this.proxy.shade, this.proxy.geo.width, this.proxy.geo.height) : null;
+        return this.lit;
+      },
     });
     for (const ev of ['active', 'history', 'doc'] as const) engine.on(ev, () => this.syncPill());
     this.syncPill();
@@ -148,6 +153,7 @@ export class RelightSession {
     const k = Math.min(1, PREVIEW_SIDE / Math.max(W, H)), pw = Math.max(1, Math.round(W * k)), ph = Math.max(1, Math.round(H * k));
     const pbase = k < 1 ? scaled(below, pw, ph) : below.data;
     this.proxy = { base: pbase, geo: relightGeometry(estimateDepth(pbase, pw, ph), pw, ph), shade: shadingField(pbase, pw, ph) };
+    this.lit = undefined;
     this.content.depth = 'estimate';
     this.depthFull = null;
     this.selectedId = this.content.lights[0]?.id ?? null;

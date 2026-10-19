@@ -10,7 +10,7 @@ const PW = 640, PH = 440;
 type View = 'onionSkin' | 'marchingAnts' | 'overlay' | 'onBlack' | 'onWhite' | 'blackWhite' | 'onLayers';
 type Output = 'selection' | 'mask' | 'layer' | 'layerMask' | 'document' | 'documentMask';
 
-/** Select > Select and Mask (Alt+Mod+R): the image with the selection shown as Overlay, On
+/** Select > Select and Mask Dialog (and Select and Mask where its workspace cannot open): the image with the selection shown as Overlay, On
  *  Black, On White or Black & White; Radius, Smooth, Feather, Contrast and Shift Edge; Output To the selection, a
  *  layer mask, a new layer or a new layer with a mask. The preview is refined at its own scale and OK refines at full
  *  resolution. The preview keeps one size, so the dialog never resizes. */
@@ -196,7 +196,7 @@ export class SelectMaskDialog extends Dialog {
     }
     const data = new Uint8Array(W * H);
     for (let i = 0; i < data.length; i++) data[i] = Math.round(Math.min(1, Math.max(0, m[i])) * 255);
-    if (output === 'document' || output === 'documentMask') this.engine.applyRefinedToDocument(data, output === 'documentMask');
+    if (output === 'document' || output === 'documentMask') this.engine.applyRefinedToDocument(data, output === 'documentMask', decon);
     else this.engine.applyRefinedSelection(data, output, decon);
   }
 }

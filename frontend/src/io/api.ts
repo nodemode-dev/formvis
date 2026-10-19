@@ -240,9 +240,9 @@ export const api = {
   async recipeFileDelete(name: string): Promise<void> { await request(`/comfyui/recipe-files/${encodeURIComponent(name)}`, { method: 'DELETE' }); },
   async llmModels(): Promise<string[]> { return ((await (await request('/llm/models')).json()) as { models: string[] }).models; },
   /** The prompt rewritten; with `picture` (a data address of the area it is for) a model row that reads pictures sees it too (`seen`), and `restored` names the @img tokens the model dropped and the engine put back. */
-  async improvePrompt(prompt: string, instructions: string, picture = ''): Promise<{ prompt: string; restored: string[]; seen: boolean }> {
-    const r = (await (await request('/llm/improve', { method: 'POST', body: form({ prompt, instructions, ...(picture ? { picture } : {}) }) })).json()) as { prompt: string; restored?: string[]; seen?: boolean };
-    return { prompt: r.prompt, restored: r.restored ?? [], seen: r.seen === true };
+  async improvePrompt(prompt: string, instructions: string, picture = '', references: ReadonlyArray<{ token: string; picture: string }> = []): Promise<{ prompt: string; restored: string[]; seen: boolean; shown: string[]; dropped: string[]; added: string[] }> {
+    const r = (await (await request('/llm/improve', { method: 'POST', body: form({ prompt, instructions, ...(picture ? { picture } : {}), ...(references.length ? { references: JSON.stringify(references) } : {}) }) })).json()) as { prompt: string; restored?: string[]; seen?: boolean; shown?: string[]; dropped?: string[]; added?: string[] };
+    return { prompt: r.prompt, restored: r.restored ?? [], seen: r.seen === true, shown: r.shown ?? [], dropped: r.dropped ?? [], added: r.added ?? [] };
   },
 
   /** Edit > Generate Image (1.51.2): a picture from a prompt alone through fal, or (1.58.4) through another provider,
@@ -323,6 +323,15 @@ export const api = {
   /** The graph of the newest job ComfyUI ran (API format, as text); throws the engine's reason when it has run none. */
   async comfyuiGraph(target: string): Promise<string> {
     return ((await (await request(`/comfyui/graph?target=${encodeURIComponent(target)}`)).json()) as { workflow: string }).workflow;
+  },
+
+  /** The pictures formvis sent to ComfyUI that the data folder still holds copies of (names as ComfyUI lists them). */
+  async comfyuiMirror(): Promise<Array<{ name: string; bytes: number; time: number }>> {
+    try { return ((await (await request('/comfyui/mirror')).json()) as { files: Array<{ name: string; bytes: number; time: number }> }).files; } catch { return []; }
+  },
+  /** Sends mirrored pictures to ComfyUI again from the copies in the data folder; the names sent and those no copy is left of. */
+  async comfyuiReupload(target: string, names: string[]): Promise<{ sent: string[]; missing: string[] }> {
+    return (await (await request('/comfyui/reupload', { method: 'POST', body: form({ target, names: JSON.stringify(names) }) })).json()) as { sent: string[]; missing: string[] };
   },
 
   /** Sign-in for the user's own ComfyUI server: the mode, user name and header name (never the secret). */
@@ -560,6 +569,10 @@ export const api = {
   },
   async psdLayersEnd(key: string): Promise<Blob> {
     return (await request(`/bands/psdl/${key}/end`, { method: 'POST' })).blob();
+  },
+  /** A layered picture that will not be finished (the export was stopped or failed): the engine closes and deletes its spools. */
+  async psdLayersDrop(key: string): Promise<void> {
+    try { await request(`/bands/psdl/${key}`, { method: 'DELETE' }); } catch { /* an engine without the route keeps them until it restarts */ }
   },
   /** An opened project's PNG read by the engine a band of rows at a time (1.62.8): a giant layer's, past what a browser
    *  can decode. */

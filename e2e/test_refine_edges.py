@@ -42,7 +42,7 @@ def test_the_dialog_views_brush_and_decontaminate(page):
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.evaluate("window.formvis.engine.newDocument(120, 80, 'M', 'white'); window.formvis.engine.selectAll()")
-    assert page.evaluate("window.formvis.commands.run('select-and-mask')")
+    assert page.evaluate("window.formvis.commands.run('select-and-mask-dialog')")
     views = page.locator(DLG + " .cv-field", has=page.get_by_text("View", exact=True)).locator("select")
     values = views.evaluate("(s) => [...s.options].map((o) => o.value)")
     assert values == ["onionSkin", "marchingAnts", "overlay", "onBlack", "onWhite", "blackWhite", "onLayers"], values

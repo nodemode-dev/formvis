@@ -22,6 +22,25 @@ export function areaView(engine: Engine, selection: boolean): () => Promise<stri
   };
 }
 
+/** The chosen reference pictures, in the order the chips name them, as small JPEG data addresses (512 pixels on a side at
+ *  most) with their @img tokens; a picture that cannot be read is left out and the rest keep their numbers. */
+export function referenceViews(ordered: () => Promise<Array<{ name: string; blob: Blob }>>): () => Promise<Array<{ token: string; picture: string }>> {
+  return async () => {
+    const out: Array<{ token: string; picture: string }> = [];
+    const list = await ordered();
+    for (let i = 0; i < list.length; i++) {
+      try {
+        const bmp = await createImageBitmap(list[i].blob), k = Math.min(1, 512 / Math.max(bmp.width, bmp.height)), c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(bmp.width * k)); c.height = Math.max(1, Math.round(bmp.height * k));
+        const g = c.getContext('2d');
+        if (g) { g.fillStyle = '#ffffff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(bmp, 0, 0, c.width, c.height); out.push({ token: `@img${i + 1}`, picture: c.toDataURL('image/jpeg', 0.8) }); }
+        bmp.close();
+      } catch { /* this reference is not shown to the model */ }
+    }
+    return out;
+  };
+}
+
 /** Improve Prompt (1.51.5): a template, Improve and Restore beside a prompt, rewriting it through the language model
  *  set in Preferences > Plugins; Restore puts the original back. */
 export class PromptImprover {
@@ -35,6 +54,8 @@ export class PromptImprover {
   private original: string | null = null;
   /** The area the prompt is for as a data address, sent when the language model row reads pictures; empty when none. */
   view: (() => Promise<string>) | null = null;
+  /** The reference pictures the prompt names, each with its @img token, as small data addresses; sent when the row reads pictures. */
+  refs: (() => Promise<Array<{ token: string; picture: string }>>) | null = null;
   /** The field's own undo stack: typing, Improve, Restore and prompts set from outside. */
   readonly history: PromptHistory;
 
@@ -72,11 +93,13 @@ export class PromptImprover {
     setText(this.note, 'Improving...');
     try {
       const picture = this.view ? await this.view().catch(() => '') : '';
-      const better = await api.improvePrompt(prompt, fillPlaceholders(t?.text ?? '', { prompt }), picture);
+      const named = this.refs ? await this.refs().catch(() => []) : [];
+      const better = await api.improvePrompt(prompt, fillPlaceholders(t?.text ?? '', { prompt }), picture, named);
       this.original = this.field.value;
       this.history.set(better.prompt);
       setHidden(this.undo, false);
-      setText(this.note, `Improved${better.seen ? ' with a look at the area' : ''}${better.restored.length ? `; put back ${better.restored.join(', ')}` : ''}.`);
+      const looked = [better.seen ? 'the area' : '', better.shown.length ? better.shown.join(', ') : ''].filter(Boolean).join(' and ');
+      setText(this.note, `Improved${looked ? ` with a look at ${looked}` : ''}${better.restored.length ? `; put back ${better.restored.join(', ')}` : ''}${better.dropped.length ? `. No longer in it: ${better.dropped.join(', ')}` : ''}${better.added.length ? `. New in it: ${better.added.join(', ')}` : ''}.`);
     } catch (err) {
       setText(this.note, err instanceof ApiError ? err.message : 'The formvis engine is offline (./formvis boot).');
     } finally { this.go.disabled = false; }

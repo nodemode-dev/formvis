@@ -14,9 +14,11 @@ export function createComfyPanel(root: HTMLElement): void {
     '<section class="cv-preset-panel cv-comfyui" aria-label="ComfyUI">' +
     `<div class="cv-panel-head"><span class="cv-comps-title">${icon('genPlug', 14)}<span>ComfyUI</span></span><span></span><span class="cv-comps-count"></span></div>` +
     `<div class="cv-ref-bar"><button class="cv-btn" type="button" data-act="reload" title="Load ComfyUI again">${icon('refresh', 14)}<span>Reload</span></button>` +
-    `<button class="cv-btn" type="button" data-act="browser" title="Open ComfyUI in a browser tab">${icon('send', 14)}<span>Open in browser</span></button></div>` +
+    `<button class="cv-btn" type="button" data-act="browser" title="Open ComfyUI in a browser tab">${icon('send', 14)}<span>Open in browser</span></button>` +
+    `<button class="cv-btn" type="button" data-act="resend" title="Send the pictures formvis sent to ComfyUI before again, from the copies in the data folder">${icon('send', 14)}<span>Send inputs again</span></button></div>` +
     '<div class="cv-ref-bar cv-comfy-graph"><select class="cv-input" data-recipe aria-label="Recipe to replace"></select>' +
     '<input class="cv-input cv-comfy-name" type="text" data-name placeholder="Recipe name" maxlength="100" spellcheck="false" aria-label="New recipe name">' +
+    '<button class="cv-btn" type="button" data-act="copy-recipe" title="Copy the chosen recipe\'s graph: paste it on the ComfyUI canvas (Ctrl+V) to edit it, run it once, then Save graph replaces the recipe" disabled>Copy recipe</button>' +
     '<button class="cv-btn" type="button" data-act="save-graph" title="Keep the graph ComfyUI ran last as a recipe">Save graph</button></div>' +
     '<iframe class="cv-comfy-frame" title="ComfyUI" referrerpolicy="no-referrer" credentialless allow="clipboard-read; clipboard-write" hidden></iframe>' +
     '<p class="cv-ref-note" data-note>The ComfyUI window loads when this panel is shown.</p></section>');
@@ -40,7 +42,7 @@ export function createComfyPanel(root: HTMLElement): void {
     say(`${url}. If the page stays blank, ComfyUI refuses to be framed: use Open in browser.`);
   };
 
-  const pick = q<HTMLSelectElement>(sec, '[data-recipe]'), nameBox = q<HTMLInputElement>(sec, '[data-name]');
+  const pick = q<HTMLSelectElement>(sec, '[data-recipe]'), nameBox = q<HTMLInputElement>(sec, '[data-name]'), copy = q<HTMLButtonElement>(sec, '[data-act="copy-recipe"]');
   const syncPick = (): void => {
     const labels = ['New recipe', ...recipes().map((r) => r.name)];
     while (pick.options.length > labels.length) pick.remove(pick.options.length - 1);
@@ -52,7 +54,18 @@ export function createComfyPanel(root: HTMLElement): void {
       if (o.textContent !== t) o.textContent = t;
     });
     nameBox.disabled = pick.value !== '';
+    if (copy.disabled !== (pick.value === '')) copy.disabled = pick.value === '';
   };
+  /** Copy recipe: the chosen recipe's graph goes to the clipboard, to paste on the canvas above and edit; Save graph then replaces the same recipe. */
+  copy.addEventListener('click', () => {
+    const r = recipes().find((x) => x.name === pick.value);
+    if (!r) return;
+    void navigator.clipboard.writeText(r.json).then(async () => {
+      const url = loadPrefs().comfyuiUrl.trim(), names = (await api.comfyuiMirror()).map((f) => f.name).filter((n) => r.json.includes(n));
+      const again = names.length && /^https?:\/\/./i.test(url) ? await api.comfyuiReupload(url, names).then((s) => s.sent.length, () => 0) : 0;
+      say(`${r.name} copied: paste it on the ComfyUI canvas (Ctrl+V), edit it, run it once, then press Save graph to replace ${r.name}.${again ? ` ${again} of its input pictures were sent to ComfyUI again.` : ''}`);
+    }, () => say(`${r.name} could not be copied: use Edit in ComfyUI in Preferences > Plugins.`));
+  });
   pick.addEventListener('focus', syncPick);
   pick.addEventListener('change', syncPick);
   /** Save graph: the graph ComfyUI ran last replaces the chosen recipe or becomes a new one, then ComfyUI is asked what it lacks. */
@@ -71,6 +84,18 @@ export function createComfyPanel(root: HTMLElement): void {
     } catch (err) { say(err instanceof Error ? err.message : 'The graph could not be read.'); }
   };
   q(sec, '[data-act="save-graph"]').addEventListener('click', () => { void saveGraph(); });
+  /** Send inputs again: every picture formvis sent to ComfyUI that the data folder still has a copy of goes up again, for an input folder ComfyUI emptied. */
+  const resend = async (): Promise<void> => {
+    const url = loadPrefs().comfyuiUrl.trim();
+    if (!/^https?:\/\/./i.test(url)) { say('Set the ComfyUI address in Preferences > Plugins.'); return; }
+    try {
+      const kept = await api.comfyuiMirror();
+      if (!kept.length) { say('No pictures have been sent to ComfyUI from here yet.'); return; }
+      const r = await api.comfyuiReupload(url, kept.map((f) => f.name));
+      say(`${r.sent.length} picture${r.sent.length === 1 ? '' : 's'} sent to ComfyUI again${r.missing.length ? `; ${r.missing.length} no longer have a copy` : ''}.`);
+    } catch (err) { say(err instanceof Error ? err.message : 'The pictures could not be sent again.'); }
+  };
+  q(sec, '[data-act="resend"]').addEventListener('click', () => { void resend(); });
   syncPick();
 
   q(sec, '[data-act="reload"]').addEventListener('click', () => { void load(true); });

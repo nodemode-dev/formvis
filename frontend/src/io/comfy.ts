@@ -3,8 +3,12 @@ import { api } from './api';
 /** ComfyUI workflows in formvis (1.51.2): the ones kept as choices (Generative Fill, Generate Image), the check that a
  *  workflow is in API format, running one through to its result images, and the generator Generative Fill and Expand
  *  call, so a workflow stands where the fal model does. */
-export interface Recipe { name: string; json: string; builtin?: boolean }
+export interface Recipe { name: string; json: string; builtin?: boolean; /** How @img1, @img2 are written into the prompt for this workflow: a pattern with {n}; "image {n}" when absent. */ refs?: string }
 const KEY = 'formvis.comfyui.recipes', HIDDEN_KEY = 'formvis.comfyui.recipesHidden';
+
+/** The picture names a workflow can be given for @img1, @img2 and on: pattern, example. A workflow's prompt is written for its own model. */
+export const REFERENCE_NAMES: ReadonlyArray<readonly [string, string]> = [['image {n}', 'image 1, image 2'], ['Image {n}', 'Image 1, Image 2'], ['picture {n}', 'picture 1, picture 2'], ['Picture {n}', 'Picture 1, Picture 2'], ['reference {n}', 'reference 1, reference 2'], ['img{n}', 'img1, img2'], ['<image {n}>', '<image 1>, <image 2>']];
+export const DEFAULT_REFERENCE_NAME = REFERENCE_NAMES[0][0];
 
 const graph = (nodes: Array<[string, Record<string, unknown>]>): string => JSON.stringify(Object.fromEntries(nodes.map(([type, inputs], i) => [String(i + 1), { class_type: type, inputs }])));
 
@@ -59,11 +63,20 @@ export function addRecipe(name: string, json: string, mirror = true): string | n
   const problem = workflowProblem(json, name);
   if (problem) return problem;
   if (json.length > 500_000) return `${name} is too large to keep (500 KB at most).`;
-  const kept = name.replace(/\.json$/i, '');
-  const list = keptRecipes().filter((r) => r.name !== kept).concat([{ name: kept, json }]);
+  const kept = name.replace(/\.json$/i, ''), was = keptRecipes().find((r) => r.name === kept);
+  const list = keptRecipes().filter((r) => r.name !== kept).concat([{ name: kept, json, ...(was?.refs ? { refs: was.refs } : {}) }]);
   try { localStorage.setItem(KEY, JSON.stringify(list.slice(-40))); } catch { return 'There is no room left to keep it.'; }
   if (mirror) void api.recipeFileSave(kept, json).catch(() => { /* the copy in the browser is kept */ });
   return null;
+}
+
+/** Sets how @img1, @img2 are written into the prompt for a kept workflow; false when it is not a kept one or the pattern is not offered. */
+export function setRecipeRefs(name: string, refs: string): boolean {
+  const list = keptRecipes(), at = list.findIndex((r) => r.name === name);
+  if (at < 0 || !REFERENCE_NAMES.some(([p]) => p === refs)) return false;
+  list[at] = { name, json: list[at].json, ...(refs === DEFAULT_REFERENCE_NAME ? {} : { refs }) };
+  try { localStorage.setItem(KEY, JSON.stringify(list)); } catch { return false; }
+  return true;
 }
 
 export function removeRecipe(name: string): Recipe | null {

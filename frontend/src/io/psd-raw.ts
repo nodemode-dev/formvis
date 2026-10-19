@@ -57,6 +57,75 @@ export function layerBlockSpans(buf: ArrayBuffer, psd: Psd, wanted: ReadonlySet<
   return out;
 }
 
+const LEVELS_HEAD = 2 + 29 * 10;
+
+/** The layer writer gives a Levels block 63 level records, where the format has 29 and then an optional 'Lvls' tail that
+ *  counts any more. Each such block is cut to the 29 records and given the tail (count 29), the form other readers
+ *  take; the file comes back unchanged when its layer section cannot be followed. */
+export function conformLevels(bytes: ArrayBuffer): ArrayBuffer {
+  try {
+    const v = new DataView(bytes), big = v.getUint16(4) === 2, lenSize = big ? 8 : 4, keep = LEVELS_HEAD + 8;
+    const cm = 26 + 4 + v.getUint32(26), res = cm + 4 + v.getUint32(cm), infoAt = res + lenSize;
+    let at = infoAt + lenSize;
+    const count = Math.abs(v.getInt16(at)), cuts: Array<{ lenAt: number; sizeAt: number; body: number; len: number }> = [];
+    at += 2;
+    for (let i = 0; i < count; i++) {
+      const channels = v.getUint16(at + 16);
+      at += 18 + channels * (2 + lenSize) + 4 + 4 + 4;
+      const lenAt = at, extraEnd = at + 4 + v.getUint32(at);
+      at += 4;
+      at += 4 + v.getUint32(at);
+      at += 4 + v.getUint32(at);
+      at += (1 + v.getUint8(at) + 3) & ~3;
+      while (at + 12 <= extraEnd) {
+        const sig = String.fromCharCode(v.getUint8(at), v.getUint8(at + 1), v.getUint8(at + 2), v.getUint8(at + 3)), key = String.fromCharCode(v.getUint8(at + 4), v.getUint8(at + 5), v.getUint8(at + 6), v.getUint8(at + 7));
+        const wide = big && (sig === '8B64' || LARGE.has(key)), len = wide ? Number(v.getBigUint64(at + 8)) : v.getUint32(at + 8), body = at + 8 + (wide ? 8 : 4);
+        if (key === 'levl' && !wide && len > keep && body + len <= extraEnd) cuts.push({ lenAt, sizeAt: at + 8, body, len });
+        at = body + len + (len % 2);
+      }
+      at = extraEnd;
+    }
+    if (!cuts.length) return bytes;
+    const drop = cuts.reduce((n, c) => n + c.len - keep, 0), out = new Uint8Array(bytes.byteLength - drop), ov = new DataView(out.buffer);
+    let from = 0, to = 0, shift = 0;
+    for (const c of cuts) {
+      const head = c.body + LEVELS_HEAD - from;
+      out.set(new Uint8Array(bytes, from, head), to);
+      to += head;
+      out.set([0x4c, 0x76, 0x6c, 0x73, 0, 3, 0, 29], to);
+      to += 8;
+      ov.setUint32(c.lenAt - shift, ov.getUint32(c.lenAt - shift) - (c.len - keep));
+      ov.setUint32(c.sizeAt - shift, keep);
+      shift += c.len - keep;
+      from = c.body + c.len;
+    }
+    out.set(new Uint8Array(bytes, from), to);
+    for (const p of [res, infoAt]) {
+      if (big) ov.setBigUint64(p, ov.getBigUint64(p) - BigInt(drop));
+      else ov.setUint32(p, ov.getUint32(p) - drop);
+    }
+    return out.buffer;
+  } catch { return bytes; }
+}
+
+/** The layer writer has a key for a bevel's gloss contour (TrnS) and none for its edge contour (MpgS). A layer whose edge
+ *  curve was written in the gloss slot has that key renamed in place, so the bytes keep their length. */
+export function edgeContourKeys(buf: ArrayBuffer, psd: Psd, layers: ReadonlySet<PsdLayer>): ArrayBuffer {
+  if (!layers.size) return buf;
+  const b = new Uint8Array(buf), code = (s: string): number[] => Array.from(s, (c) => c.charCodeAt(0));
+  const find = (pat: number[], from: number, to: number): number => {
+    for (let i = from; i + pat.length <= to; i++) { let k = 0; while (k < pat.length && b[i + k] === pat[k]) k++; if (k === pat.length) return i; }
+    return -1;
+  };
+  for (const [pl, found] of layerBlockSpans(buf, psd, new Set(['lfx2']))) {
+    const span = found.get('lfx2');
+    if (!span || !layers.has(pl)) continue;
+    const end = span.at + span.len, bevel = find([...code('ebbl'), ...code('Objc')], span.at, end), gloss = bevel < 0 ? -1 : find([...code('TrnS'), ...code('Objc')], bevel, end);
+    if (gloss >= 0) b.set(code('MpgS'), gloss);
+  }
+  return buf;
+}
+
 const isDesc = (v: Val | undefined): v is Desc => !!v && typeof v === 'object' && !Array.isArray(v) && 'items' in v;
 const numOf = (v: Val | undefined): number | undefined => {
   if (typeof v === 'number') return v;

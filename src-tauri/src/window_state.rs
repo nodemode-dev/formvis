@@ -116,7 +116,7 @@ pub fn flush(handle: &tauri::AppHandle) {
     let state = handle.state::<Memory>();
     if let Ok(kept) = state.0.lock() {
         write(handle, &kept.place);
-    }
+    };
 }
 
 /// The main window's events: its place is noted as it moves and resizes, and written when it closes.

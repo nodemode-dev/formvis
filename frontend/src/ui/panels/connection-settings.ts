@@ -1,5 +1,5 @@
 import { api, type ComfyAuth, type LlmRow, type LlmStatus, type ModelsFolder } from '../../io/api';
-import { addRecipe, apiWorkflow, hiddenBuiltins, hideBuiltin, RECIPE_FAMILIES, recipeFamily, recipes, removeRecipe, syncRecipeFolder, type Recipe, type RecipeFamily } from '../../io/comfy';
+import { addRecipe, apiWorkflow, DEFAULT_REFERENCE_NAME, hiddenBuiltins, hideBuiltin, RECIPE_FAMILIES, recipeFamily, recipes, REFERENCE_NAMES, removeRecipe, setRecipeRefs, syncRecipeFolder, type Recipe, type RecipeFamily } from '../../io/comfy';
 import { folderTemplateCount, saveTemplates, syncTemplates, templateFromMarkdown, templateToMarkdown, templates } from '../../io/prompt-templates';
 import { el, patchList, setHidden, setText, setValue } from '../dom';
 import { confirmAction } from '../dialogs';
@@ -237,8 +237,11 @@ export class RecipesSection {
       patch(g.list, items, {
         key: (r) => r.name,
         create: (r) => {
-          const line = el('<div class="cv-plugins-row"><span></span><button type="button" class="cv-btn cv-btn-ghost" data-act="edit" title="Copies the workflow and opens ComfyUI; paste it on the canvas">Edit in ComfyUI</button><button type="button" class="cv-btn cv-btn-ghost" data-act="update" title="Replace this recipe with a workflow saved from ComfyUI">Update...</button><button type="button" class="cv-btn cv-btn-ghost" data-act="remove">Remove</button></div>');
+          const line = el('<div class="cv-plugins-row"><span></span><select class="cv-input" data-act="refs" aria-label="Picture names in the prompt" title="How @img1, @img2 are written into the prompt for this workflow"></select><button type="button" class="cv-btn cv-btn-ghost" data-act="edit" title="Copies the workflow and opens ComfyUI; paste it on the canvas">Edit in ComfyUI</button><button type="button" class="cv-btn cv-btn-ghost" data-act="update" title="Replace this recipe with a workflow saved from ComfyUI">Update...</button><button type="button" class="cv-btn cv-btn-ghost" data-act="remove">Remove</button></div>');
           const act = (name: string): HTMLButtonElement => line.querySelector(`[data-act="${name}"]`) as HTMLButtonElement;
+          const names = line.querySelector('[data-act="refs"]') as unknown as HTMLSelectElement;
+          names.replaceChildren(...REFERENCE_NAMES.map(([pattern, example]) => { const o = document.createElement('option'); o.value = pattern; o.textContent = `@img1 as ${example.split(',')[0]}`; o.title = example; return o; }));
+          names.addEventListener('change', () => { if (setRecipeRefs(r.name, names.value)) setText(this.note, `${r.name}: @img1, @img2 are written as ${REFERENCE_NAMES.find(([p]) => p === names.value)?.[1] ?? names.value}.`); });
           act('remove').addEventListener('click', () => void this.drop(r.name, line.dataset.builtin === 'true'));
           act('update').addEventListener('click', () => { this.updating = r.name; this.replace.click(); });
           act('edit').addEventListener('click', () => void this.edit(r.name));
@@ -246,6 +249,9 @@ export class RecipesSection {
         },
         update: (node, r) => {
           node.dataset.builtin = r.builtin ? 'true' : 'false';
+          const names = node.querySelector('[data-act="refs"]') as HTMLSelectElement, want = r.refs ?? DEFAULT_REFERENCE_NAME;
+          if (names.value !== want) names.value = want;
+          setHidden(names, !!r.builtin);
           setText(node.querySelector('span'), r.builtin ? `${r.name} · built in` : `${r.name} · ${r.nodes} nodes`);
           setText(node.querySelector('[data-act="remove"]'), r.builtin ? 'Hide' : 'Remove');
         },
@@ -267,6 +273,7 @@ export class RecipesSection {
     const r = this.removed.pop();
     if (!r) return;
     const problem = addRecipe(r.name, r.json);
+    if (!problem && r.refs) setRecipeRefs(r.name, r.refs);
     this.refresh();
     setText(this.note, problem ?? `${r.name} is back.`);
   }

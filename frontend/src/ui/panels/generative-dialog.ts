@@ -11,7 +11,7 @@ import { CropStitchSettings } from './crop-stitch-settings';
 import { withCropStitch } from '../../io/crop-stitch-run';
 import { generatePrompt } from '../../io/prompt-templates';
 import { comfyReadiness, resolveReferenceTokens, stoppable, stoppableFill } from './generate-image';
-import { PromptImprover, areaView } from './prompt-improver';
+import { PromptImprover, areaView, referenceViews } from './prompt-improver';
 import { GenerationOptions } from './generation-options';
 
 type Mode = 'fill' | 'expand' | 'upscale';
@@ -83,6 +83,7 @@ export class GenerativeDialog extends Dialog {
     this.body.appendChild(this.chips.el);
     this.improver = new PromptImprover(this.prompt, 'Fill a selection');
     this.improver.view = areaView(engine, true);
+    this.improver.refs = referenceViews(() => this.chips.ordered());
     this.body.appendChild(this.improver.el);
     this.body.appendChild(this.opts.el);
     this.prompt.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.defaultPrevented) { e.preventDefault(); void this.generate(); } });
@@ -294,7 +295,7 @@ export class GenerativeDialog extends Dialog {
       const margins = { left: Number(this.margin.left.value), top: Number(this.margin.top.value), right: Number(this.margin.right.value), bottom: Number(this.margin.bottom.value) };
       const refs = await this.chips.ordered();
       let said: string;
-      try { said = await generatePrompt(resolveReferenceTokens(prompt, refs.length), 'comfyui'); } catch (err) { setText(this.state, err instanceof Error ? err.message : 'A reference token could not be read.'); return; }
+      try { said = await generatePrompt(resolveReferenceTokens(prompt, refs.length, recipe.refs), 'comfyui'); } catch (err) { setText(this.state, err instanceof Error ? err.message : 'A reference token could not be read.'); return; }
       this.close();
       const fill = stoppableFill((stopped) => withCropStitch(comfyGenerator(target, recipe, said, refs, stopped)));
       if (mode === 'expand') await e.task(() => e.generativeExpand(margins, prompt, fill));

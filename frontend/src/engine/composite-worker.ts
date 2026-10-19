@@ -2,6 +2,8 @@ import { Renderer } from './renderer';
 import { Raster, createSurface, ctxOf } from './surface';
 import type { Doc, Layer } from './types';
 import type { CompIn, CompOut, WireLayer } from './composite-bands';
+import type { FxDone, FxJob, FxPartWire, FxPut } from './fx-wire';
+import { addPattern } from './patterns';
 
 /** One band of the CPU composite, drawn by the very renderer the page uses on its own thread: the worker keeps the layer
  *  pixels it was sent (by key, so a layer that has not changed is not sent again), builds a document of them and renders
@@ -9,7 +11,7 @@ import type { CompIn, CompOut, WireLayer } from './composite-bands';
 
 const renderer = new Renderer();
 const rasters = new Map<string, Raster>();
-const scope = self as unknown as { postMessage(m: unknown, t?: Transferable[]): void; onmessage: ((e: MessageEvent<CompIn>) => void) | null };
+const scope = self as unknown as { postMessage(m: unknown, t?: Transferable[]): void; onmessage: ((e: MessageEvent<CompIn | FxPut | FxJob>) => void) | null };
 
 function keep(key: string, width: number, height: number, pixels: ArrayBufferLike): void {
   const r = new Raster(width, height), bytes = new Uint8ClampedArray(pixels.byteLength);
@@ -24,9 +26,38 @@ function layerOf(w: WireLayer): Layer {
   return l as unknown as Layer;
 }
 
-scope.onmessage = (e: MessageEvent<CompIn>) => {
+function keepBitmap(key: string, width: number, height: number, bitmap: ImageBitmap): void {
+  const r = new Raster(width, height);
+  r.ctx.drawImage(bitmap, 0, 0);
+  bitmap.close();
+  rasters.set(key, r);
+}
+
+/** A previewed layer's effect parts (CO-0274), drawn by the renderer's own builder and handed back as bitmaps. */
+function buildEffects(m: FxJob): void {
+  const began = performance.now();
+  try {
+    const live = new Set<string>(m.live);
+    for (const k of [...rasters.keys()]) if (!live.has(k)) rasters.delete(k);
+    const src = rasters.get(m.src), mr = m.mask ? rasters.get(m.mask.key) ?? null : null;
+    if (!src || (m.mask && !mr)) throw new Error('a layer picture is missing');
+    for (const p of m.patterns) { const r = rasters.get(p.key); if (r) addPattern('Pattern', r.canvas, p.id); }
+    const layer = { id: m.layerId, name: '', raster: src, mask: null, transparencyShapes: m.shapes ? undefined : false } as unknown as Layer;
+    const own = m.mask && mr ? { src: mr.canvas, w: m.mask.w, h: m.mask.h, t: m.mask.t, covers: m.mask.covers } : null;
+    renderer.fastEffects = m.fast;
+    renderer.previewPixels = m.pixels;
+    const out: FxPartWire[] = renderer.buildDetached(layer, m.fx, src.canvas, m.t, own, m.docW, m.docH).map((p) => ({ bitmap: (p.s as OffscreenCanvas).transferToImageBitmap(), w: p.s.width, h: p.s.height, x: p.x, y: p.y, k: p.k, alpha: p.alpha, op: p.op, above: p.above, name: p.name, kept: p.kept }));
+    scope.postMessage({ type: 'fxdone', id: m.id, ms: performance.now() - began, parts: out } satisfies FxDone, out.map((p) => p.bitmap));
+  } catch (err) {
+    scope.postMessage({ type: 'fxdone', id: m.id, ms: 0, error: String(err) } satisfies FxDone);
+  }
+}
+
+scope.onmessage = (e: MessageEvent<CompIn | FxPut | FxJob>) => {
   const m = e.data;
   if (m.type === 'put') { keep(m.key, m.width, m.height, m.pixels); return; }
+  if (m.type === 'fxput') { keepBitmap(m.key, m.width, m.height, m.bitmap); return; }
+  if (m.type === 'fx') { buildEffects(m); return; }
   try {
     const live = new Set<string>(m.keys);
     for (const k of [...rasters.keys()]) if (!live.has(k)) rasters.delete(k);

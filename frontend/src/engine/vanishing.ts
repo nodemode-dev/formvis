@@ -28,12 +28,21 @@ export function estimateFocal(plane: PlaneMap, W: number, H: number): number {
   return f2 > 1 && Number.isFinite(f2) ? Math.sqrt(f2) : Math.max(W, H) * 1.2;
 }
 
+/** The plane with its corners named a quarter turn on `k` times (1 bottom edge, 2 left, 3 top), so the edge to hinge on is
+ *  the one `connectedQuad` reads as the right edge; the same surface, its axes turned. */
+export function rolledPlane(p: PlaneMap, k: number): PlaneMap | null {
+  const q = p.quad, n = ((Math.round(k) % 4) + 4) % 4;
+  return n ? makePlane([q[n % 4], q[(n + 1) % 4], q[(n + 2) % 4], q[(n + 3) % 4]] as Quad) : p;
+}
+
 /** A plane hinged on `parent`'s right edge (top right to bottom right) and turned `angle` degrees out of it (0 carries
  *  the plane on flat, 90 stands it square to the parent), its width the parent's. The camera is found from the parent
  *  alone: its focal length from the two plane axes being at a right angle (principal point at the picture centre), then
  *  the plane's pose; the quad comes back as top left, top right, bottom right, bottom left, or null when the pose
  *  cannot be found or the plane would pass behind the camera. */
-export function connectedQuad(parent: PlaneMap, W: number, H: number, angle: number, opts: { focal?: number | null; depth?: number } = {}): Quad | null {
+export function connectedQuad(from: PlaneMap, W: number, H: number, angle: number, opts: { focal?: number | null; depth?: number; edge?: number } = {}): Quad | null {
+  const parent = opts.edge ? rolledPlane(from, opts.edge) : from;
+  if (!parent) return null;
   const cx = W / 2, cy = H / 2, a = parent.aspect, m = parent.h;
   // Columns of the plane-to-picture map in metric plane units (u scaled by the aspect), picture centre as the origin.
   const col = (i: number): [number, number, number] => i === 0 ? [m[0] / a, m[3] / a, m[6] / a] : i === 1 ? [m[1], m[4], m[7]] : [m[2], m[5], m[8]];

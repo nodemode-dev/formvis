@@ -2,7 +2,7 @@ import { applyLut, inkOf, renditionOf, type ColourLut, type Ink, type Lut3x4, ty
 import { composeChannels, labGreyValue, rasterFromChannels, strokeChannels, strokeLabChannel } from './channels';
 import { trapInk } from './trap';
 import { Viewport as ViewLimits } from './viewport';
-import { deriveRegion, deriveWhole, renderRegion, type DeriveTables } from './derive';
+import { deriveFlat, deriveRegion, deriveWhole, renderRegion, type DeriveTables } from './derive';
 import { sameImage, solidFillPixels, type SolidFill } from './fill-recipe';
 import { DEFAULT_MIXER, mixerSource, mixerStart, windowSampler, type MixerSettings, type MixerState } from './mixer';
 import { artHistoryTexture, type ArtStyle } from './art-history';
@@ -30,6 +30,7 @@ import { restrictPatches, type RgbTarget } from './channel-target';
 import { alphaPlane, alphaRaster, planeMask, rasterMask } from './alpha-target';
 import { Renderer, dropHalved, halvedBytes, renderDoc, type LayerOverride } from './renderer';
 import { compositeKey, compositeOnWorkers } from './composite-bands';
+import { effectWorker } from './fx-jobs';
 import { wasmHealFull } from './wasm-kernels';
 import { applyDuotoneLut, curveAt, DUOTONE_COUNT, duotoneLut, type Duotone } from './duotone';
 import { compositeChannels, splitChannels } from './multichannel';
@@ -367,7 +368,7 @@ export class Engine {
   selectionShift: TE.SelectionShift | null = null;
   private currentId: string | null = null;
   private viewSize = { w: 800, h: 600 };
-  private readonly display = new Renderer();
+  private readonly display = Object.assign(new Renderer(), { effectWorker, onEffects: (): void => this.emit('render', null) });
   private readonly work = new Renderer();
   private stroke: { project: Project; layerId: ID; target: Target; s: PixelStroke; heal?: HealMode | 'remove'; healFrom?: Pt; quick?: Raster; meet?: SelectionMask | null; alpha?: { id: ID; raster: Raster } } | null = null;
 
@@ -1297,7 +1298,7 @@ export class Engine {
     // Its stored undo (1.60.8) and its streamed steps' (1.62.7), in one request (1.63.0).
     this.dropKeys(closing.history.entries().flatMap((e) => e.patches.flatMap((q) => [...(q.paged ? [q.paged.key] : []), ...(q.disk ? [q.disk.before, q.disk.after] : [])])));
     for (const r of this.rastersOf(closing)) { const t = this.pagedRasters.get(r); if (t) { for (const x of t) this.undoStore?.drop(x.key); this.pagedRasters.delete(r); } }   // and its paged layers (1.61.3)
-    if (this.undoStore) for (const l of closing.doc.layers) l.tiled?.dropAll(this.undoStore);   // and its stored tiles (1.62.4)
+    this.releaseTiledOf(closing.history.entries(), closing);   // and its tiles, those a deleted layer's step or a duplicate shared too (1.62.4, 1.91.0)
     const kept = new Set<Raster>();
     for (const q of this.projects) for (const r of this.rastersOf(q)) kept.add(r);
     for (const r of this.rastersOf(closing)) if (!kept.has(r)) { try { r.canvas.width = 0; r.canvas.height = 0; } catch { /* already gone */ } }
@@ -1827,9 +1828,17 @@ export class Engine {
     };
     this.zoomFrame = requestAnimationFrame(tick);
   }
+  /** Preferences > Interface: how far the picture's edge may be scrolled past the view's centre line, as a share of the view (0 to 100). */
+  overscroll = 50;
+  /** The move `d` along one axis held to the overscroll margin; a view already beyond it can only move back in. */
+  private overscrolled(pan: number, d: number, size: number, docPx: number): number {
+    const m = (this.overscroll / 100) * size, edge = size - docPx - m, hi = Math.max(m, edge), lo = Math.min(m, edge);
+    return (d > 0 ? Math.min(pan + d, Math.max(hi, pan)) : Math.max(pan + d, Math.min(lo, pan))) - pan;
+  }
   pan(dx: number, dy: number): void {
-    const v = this.current?.viewport;
-    if (!v) return;
+    const p = this.current, v = p?.viewport;
+    if (!p || !v) return;
+    if (!v.rotation) { dx = this.overscrolled(v.panX, dx, v.width, p.doc.width * v.zoom); dy = this.overscrolled(v.panY, dy, v.height, p.doc.height * v.zoom); }
     v.panBy(dx, dy);
     this.emit('viewport', null);
     this.emit('render', null);
@@ -1851,8 +1860,8 @@ export class Engine {
     this.flickFrame = requestAnimationFrame(tick);
   }
   stopFlick(): void { cancelAnimationFrame(this.flickFrame); this.flickFrame = 0; }
-  /** View > Canvas Scrollbars: thin scroll indicators over the canvas that also drag the view; off unless asked for. */
-  canvasScrollbars = false;
+  /** View > Canvas Scrollbars: thin scroll indicators over the canvas that also drag the view; on unless turned off (kept in Preferences). */
+  canvasScrollbars = true;
   setCanvasScrollbars(on: boolean): void { this.canvasScrollbars = on; this.emit('viewport', null); this.emit('options', null); }
 
   /** Multichannel (31.3b): the channels overprinted on white, drawn once per channel set. */
@@ -2539,7 +2548,7 @@ export class Engine {
 
   /** New text or settings for a type layer, re-rendered in place as one undo step: any scaling of the layer is kept,
    *  and so is its left edge, centre or right edge, by its alignment. */
-  async updateTextLayer(id: ID, spec: TextSpec, move?: Pt): Promise<void> { return TX.updateTextLayer(this.textHost, id, spec, move); }
+  async updateTextLayer(id: ID, spec: TextSpec, move?: Pt, base?: Transform): Promise<void> { return TX.updateTextLayer(this.textHost, id, spec, move, base); }
   /** Shows type layer `id` as `spec` with no undo step; null puts the layer back as it was. */
   async previewTextLayer(id: ID, spec: TextSpec | null): Promise<void> { return TX.previewTextLayer(this.textHost, id, spec); }
   /** Paragraph text's box set to `box` (in the text's own pixels) with its top left at `to`, reflowing the text; one undo step. */
@@ -4496,8 +4505,9 @@ export class Engine {
 
   /** Select and Mask's New Document outputs: what the document shows inside the refined selection (`data`, 0 to 255 over
    *  the whole canvas) in a new document the size of the selection, as transparent pixels or, with `withMask`, whole
-   *  pixels under a layer mask. */
-  applyRefinedToDocument(data: Uint8Array, withMask: boolean): boolean {
+   *  pixels under a layer mask. `decontam` (percent) moves the edge colours toward the subject's first. The cutout is
+   *  recorded as a pixel patch, so the new document's history holds one step that undoes it. */
+  applyRefinedToDocument(data: Uint8Array, withMask: boolean, decontam = 0): boolean {
     const p0 = this.current, flat = this.flattened();
     if (!p0 || !flat || data.length !== p0.doc.width * p0.doc.height) return false;
     const sel = SelectionMask.cropped(0, 0, p0.doc.width, p0.doc.height, data);
@@ -4509,9 +4519,12 @@ export class Engine {
       const l = pq.activeLayer;
       if (!l) return false;
       if (!l.raster) l.raster = new Raster(r.w, r.h);
-      if (!withMask) for (let i = 0; i < sel.data.length; i++) px.data[i * 4 + 3] = Math.round(px.data[i * 4 + 3] * sel.data[i] / 255);
-      l.raster.ctx.putImageData(px, 0, 0);
-      l.raster.touch();
+      const raster = l.raster, before = raster.read(0, 0, r.w, r.h);
+      let img = px;
+      if (decontam > 0) { const local = new Float32Array(sel.data.length); for (let i = 0; i < local.length; i++) local[i] = sel.data[i] / 255; img = decontaminate(px, local, decontam); }
+      if (!withMask) for (let i = 0; i < sel.data.length; i++) img.data[i * 4 + 3] = Math.round(img.data[i * 4 + 3] * sel.data[i] / 255);
+      raster.write(img, 0, 0);
+      pq.history.addPatch({ raster, x: 0, y: 0, before, after: raster.read(0, 0, r.w, r.h) });
       if (withMask) { pq.selection = new SelectionMask(0, 0, r.w, r.h, sel.data); this.addMask(false); pq.selection = null; }
       return true;
     });
@@ -4909,7 +4922,7 @@ export class Engine {
   mergedDoc(): Doc | null {
     const p = this.current;
     if (!p) return null;
-    if (p.doc.layers.some((l) => l.tiled)) { this.notice('A document with layers past 268 megapixels cannot be flattened into a copy yet.'); return null; }
+    if (p.doc.layers.some((l) => l.tiled) && (p.doc.width * p.doc.height > CANVAS_PIXELS || p.doc.width > CANVAS_SIDE || p.doc.height > CANVAS_SIDE)) { this.notice('A document with layers past 268 megapixels cannot be flattened into a copy yet.'); return null; }
     const flat = this.flattened();
     if (!flat) return null;
     const layer = newLayer('Background', p.doc, { raster: Raster.from(flat as CanvasImageSource, p.doc.width, p.doc.height) });
@@ -4922,14 +4935,17 @@ export class Engine {
   duplicateDocument(name: string, merged = false): Project | null {
     const p = this.current;
     if (!p) return null;
-    if (p.doc.layers.some((l) => l.tiled)) { this.notice('A document with layers past 268 megapixels cannot be duplicated yet: save it and open the copy.'); return null; }
+    if (merged && p.doc.layers.some((l) => l.tiled) && (p.doc.width * p.doc.height > CANVAS_PIXELS || p.doc.width > CANVAS_SIDE || p.doc.height > CANVAS_SIDE)) { this.notice('A document past 268 megapixels cannot be flattened into a copy yet; duplicate it with its layers.'); return null; }
     this.settle();
     const title = name.trim().slice(0, 200) || `${p.name} copy`, flat = merged ? this.mergedDoc() : null;
     let doc: Doc, active: ID | null = p.activeId;
     if (flat) {
       doc = flat;
       active = flat.layers[0].id;
-    } else doc = { ...this.copyDoc(p.doc), id: uid() };
+    } else {
+      const c = this.copyDoc(p.doc);
+      doc = { ...c, id: uid(), layers: c.layers.map((l) => (l.tiled ? { ...l, tiled: l.tiled.clone() } : l)) };   // a layer kept in tiles shares them with the copy until one is written (1.91.0)
+    }
     const paths = this.pathSet(p), tl = !flat && this.timelines.has(p) ? structuredClone(this.timelineFor(p)) : null;
     const q = this.addProject(doc, title, active);
     if (paths.list.length) this.pathStore.sets.set(q, structuredClone(paths));
@@ -5268,7 +5284,47 @@ export class Engine {
     return doc;
   }
 
+  /** Edit > Fill on a layer kept in tiles (1.91.0): the single-canvas path's own compositing on a band of rows at a time,
+   *  the selection cutting the fill as it cuts it there, so the pixels are the same; the step streams to the engine's disk. */
+  private fillTiledWith(contents: { color: RGB } | { patternId: ID }, blend: BlendMode, opacity: number, preserveTransparency: boolean, opts: { name?: string; patternScale?: number; patternAngle?: number }, region?: SelectionMask | null): void {
+    const p = this.current, pat = 'patternId' in contents ? patternById(contents.patternId) : null, lt = p?.activeLayer?.tiled, tf = p?.activeLayer?.transform;
+    if ('patternId' in contents && !pat) { this.notice('That pattern is no longer available.'); return; }
+    if (region && lt && tf && !(tf.x === 0 && tf.y === 0 && tf.w === lt.width && tf.h === lt.height && !tf.flipX && !tf.flipY && !tf.rotation)) { this.notice(`${opts.name ?? 'Fill'} on a moved layer kept in tiles comes in a later release.`); return; }
+    void this.bandedFilterTiled(opts.name ?? 'Fill', (src, _frame, top = 0) => {
+      const rect = { x: 0, y: top, w: src.width, h: src.height }, sel = region === undefined ? p?.selection ?? null : region;
+      const s = createSurface(rect.w, rect.h), sc = ctxOf(s), orig = createSurface(rect.w, rect.h), out = createSurface(rect.w, rect.h), oc = ctxOf(out);
+      if (pat) { const cp = sc.createPattern(pat.surface, 'repeat'); if (cp) { const k = Math.max(1, Math.min(1000, opts.patternScale ?? 100)) / 100; cp.setTransform(new DOMMatrix().translate(-rect.x, -rect.y).rotate(opts.patternAngle ?? 0).scale(k)); sc.fillStyle = cp; } }
+      else if ('color' in contents) sc.fillStyle = rgbCss(contents.color);
+      sc.fillRect(0, 0, rect.w, rect.h);
+      if (sel) {
+        const cover = createSurface(rect.w, rect.h);
+        ctxOf(cover).drawImage(sel.surface(), sel.x - rect.x, sel.y - rect.y, sel.w, sel.h);
+        sc.globalCompositeOperation = 'destination-in';
+        sc.drawImage(cover, 0, 0);
+        cover.width = 0;
+        cover.height = 0;
+      }
+      ctxOf(orig).putImageData(src, 0, 0);
+      oc.drawImage(orig, 0, 0);
+      if (PIXEL_BLENDS.has(blend)) {
+        const dst = oc.getImageData(0, 0, rect.w, rect.h), over = sc.getImageData(0, 0, rect.w, rect.h);
+        blendPixels(dst.data, over.data, blend, opacity, (i) => [rect.x + (i % rect.w), rect.y + Math.floor(i / rect.w)]);
+        oc.putImageData(dst, 0, 0);
+      } else {
+        oc.globalAlpha = opacity;
+        oc.globalCompositeOperation = compositeOp(blend);
+        oc.drawImage(s, 0, 0);
+      }
+      if (preserveTransparency) { oc.globalAlpha = 1; oc.globalCompositeOperation = 'destination-in'; oc.drawImage(orig, 0, 0); }
+      const res = oc.getImageData(0, 0, rect.w, rect.h);
+      for (const z of [s, orig, out]) { z.width = 0; z.height = 0; }
+      return res;
+    }, 0, true);
+  }
+
   fillWith(contents: { color: RGB } | { patternId: ID } | { history: true }, blend: BlendMode, opacity: number, preserveTransparency: boolean, opts: { name?: string; region?: SelectionMask | null; patternScale?: number; patternAngle?: number } = {}): void {
+    const q = this.current;
+    if (q?.activeLayer?.tiled && !('history' in contents) && opts.region === undefined && !q.maskTarget && !this.quickMask && !this.alphaTargeted()) { this.fillTiledWith(contents, blend, opacity, preserveTransparency, opts); return; }
     const hist = 'history' in contents && this.current ? this.historySource(this.current) : null;
     if ('history' in contents && !hist) { this.notice('This layer did not exist at the oldest history step, so there is nothing to fill from.'); return; }
     const pat = 'patternId' in contents ? patternById(contents.patternId) : null;
@@ -6102,11 +6158,15 @@ export class Engine {
     else {
       const l = p.activeLayer;
       if (!l) { this.notice('Select a layer first.'); return; }
+      if (l.tiled && (W * H > CANVAS_PIXELS || W > CANVAS_SIDE || H > CANVAS_SIDE)) { this.notice('The Paint Bucket works on a layer kept in tiles while the picture fits one canvas (268 megapixels); a larger one comes in a later release.'); return; }
       surface = createSurface(W, H);   // an empty layer is transparent, and fills (1.50.2)
       if (l.raster) {
         const c = ctxOf(surface);
         setMat(c, placement(l.transform, l.raster.width, l.raster.height));
         c.drawImage(l.raster.canvas, 0, 0);
+      } else if (l.tiled) {
+        if (l.tiled.pagedIn(0, 0, l.tiled.width, l.tiled.height)) { this.notice('Some of this layer is on the engine\'s disk; wait a moment and click again.'); return; }
+        l.tiled.drawTo(ctxOf(surface), placement(l.transform, l.tiled.width, l.tiled.height));
       }
     }
     const data = ctxOf(surface).getImageData(0, 0, W, H).data;
@@ -6132,6 +6192,11 @@ export class Engine {
     if (p.selection && region) region = p.selection.combine(region, 'intersect');
     if (!region) { this.notice('The area clicked is outside the selection.'); return; }
     const color = this.fg, alpha = this.bucket.opacity;
+    if (p.activeLayer?.tiled && !p.maskTarget && !this.alphaTargeted()) {   // a layer kept in tiles: the same compositing, a band of rows at a time (1.91.0)
+      const tilePat = this.bucket.source === 'pattern' ? patternById(this.bucket.pattern) ?? allPatterns()[0] ?? null : null;
+      this.fillTiledWith(tilePat ? { patternId: tilePat.id } : { color }, this.bucket.mode, alpha, false, { name: 'Paint Bucket', patternScale: this.bucket.scale, patternAngle: this.bucket.angle }, region);
+      return;
+    }
     this.regionEdit('Paint Bucket', ({ raster, target, rect, cover }) => {
       const c = raster.ctx;
       c.save();
@@ -8209,7 +8274,7 @@ export class Engine {
    *  sent at once to the engine's store, so the step's undo (up to 2.4 GB a side at 600 MP) never sits in memory: undo
    *  and redo stream it back a tile at a time. Tiles behind are paged out as it goes; edits wait while it runs. A
    *  blur's spill past the canvas is not kept here (an ordinary layer grows to keep it; a giant one cannot). */
-  async bandedFilterTiled(name: string, run: (src: ImageData, frame?: LibFrame) => ImageData, apron: number): Promise<boolean | 'refused'> {
+  async bandedFilterTiled(name: string, run: (src: ImageData, frame?: LibFrame, top?: number) => ImageData, apron: number, own = false): Promise<boolean | 'refused'> {
     const p = this.current, l = p?.activeLayer, t = l?.tiled, store = this.undoStore;
     if (!p || !l || !t || this.stroke) return false;
     if (this.waiting() || !this.paintable(l, true)) return 'refused';
@@ -8232,7 +8297,7 @@ export class Engine {
       for (let y0 = 0; y0 < H; y0 += B) {
         if (jb.cancelled) { this.notice(`${name} was cancelled part way; what it did is one step you can undo.`); break; }
         this.jobStep(jb, Math.floor(y0 / B));
-        const y1 = Math.min(H, y0 + B), h = y1 - y0, out = run(src.img, this.bandFrame(f0, src.a0)), a0 = src.a0;
+        const y1 = Math.min(H, y0 + B), h = y1 - y0, out = run(src.img, this.bandFrame(f0, src.a0), src.a0), a0 = src.a0;
         if (y1 < H) src = await source(y1);   // the next band's originals, before this band is written
         await t.ensure(0, y0, W, h, store);
         for (let x0 = 0; x0 < W; x0 += 512) {
@@ -8241,7 +8306,7 @@ export class Engine {
           const before = t.read(x0, y0, w, h);
           let after = new ImageData(w, h);
           for (let yy = 0; yy < h; yy++) { const so = ((y0 - a0 + yy) * W + x0) * 4; after.data.set(out.data.subarray(so, so + w * 4), yy * w * 4); }
-          if (sel) after = IE.blendThrough(before, after, coverageOver(sel, x0, y0, w, h));   // the selection's coverage decides how much of the result lands
+          if (sel && !own) after = IE.blendThrough(before, after, coverageOver(sel, x0, y0, w, h));   // the selection's coverage decides how much of the result lands (own: the band's result already took it)
           if (l.locks?.transparency) for (let i = 3; i < after.data.length; i += 4) after.data[i] = before.data[i];   // Lock Transparency keeps the alpha
           if (sameBytes(before.data, after.data)) continue;
           t.write(after, x0, y0);
@@ -9579,6 +9644,7 @@ export class Engine {
       get current() { return e.current; },
       get textSettings() { return e.textSettings; },
       set textSettings(v) { e.textSettings = v; },
+      typeDepth: (p, raster, color) => this.typeDepth(p, raster, color),
       notice: (m) => this.notice(m),
       edit: (name, fn) => this.edit(name, fn),
       applySelection: (next, mode, name) => this.applySelection(next, mode, name),
@@ -11611,18 +11677,26 @@ export class Engine {
     // About 4 megapixels a band, 16 to 512 rows, from the width (1.62.6): 16 MB at 30,000 wide, where 512 rows had been
     // 61 MB and, piling up awaiting collection, crashed the page at 1.62.3; one band surface, cleared and reused.
     const W = p.doc.width, H = p.doc.height, B = Math.max(16, Math.min(512, Math.floor(4_194_304 / W)));
-    const s = createSurface(W, Math.min(B, H)), c = ctxOf(s), store = this.undoStore;
+    // Wider than one canvas (32,767): a band is drawn in strips 16,384 wide and joined into one block of full-width rows.
+    const S = W > CANVAS_SIDE ? 16_384 : W;
+    const s = createSurface(S, Math.min(B, H)), c = ctxOf(s), store = this.undoStore;
     const tiled = p.doc.layers.map((l) => l.tiled).filter((t): t is TiledRaster => !!t);
     try {
       for (let y0 = 0; y0 < H; y0 += B) {
-        const h = Math.min(B, H - y0);
-        // A tiled layer's tiles under the band brought back first: a tile on disk draws as its preview, a placeholder on
-        // screen but wrong pixels in a file (1.62.6).
-        if (store) for (const t of tiled) await t.ensure(0, y0, W, h, store);
-        c.clearRect(0, 0, W, s.height);
-        this.work.render({ doc: p.doc, target: s, view: translation(0, -y0), background, quality: 'high' });
-        const rows = c.getImageData(0, 0, W, h).data as Uint8ClampedArray<ArrayBuffer>;
-        await sink(rows, y0, h);
+        const h = Math.min(B, H - y0), joined = S < W ? new Uint8ClampedArray(W * h * 4) : null;
+        let rows: Uint8ClampedArray<ArrayBuffer> | null = null;
+        for (let x0 = 0; x0 < W; x0 += S) {
+          const w = Math.min(S, W - x0);
+          // A tiled layer's tiles under the band brought back first: a tile on disk draws as its preview, a placeholder on
+          // screen but wrong pixels in a file (1.62.6).
+          if (store) for (const t of tiled) await t.ensure(x0, y0, w, h, store);
+          c.clearRect(0, 0, S, s.height);
+          this.work.render({ doc: p.doc, target: s, view: translation(-x0, -y0), background, quality: 'high' });
+          const part = c.getImageData(0, 0, w, h).data as Uint8ClampedArray<ArrayBuffer>;
+          if (joined) for (let y = 0; y < h; y++) joined.set(part.subarray(y * w * 4, (y + 1) * w * 4), (y * W + x0) * 4);
+          else rows = part;
+        }
+        await sink((joined ?? rows) as Uint8ClampedArray<ArrayBuffer>, y0, h);
         if (tiled.length) await this.pageTiles();   // the tiles behind it back to disk past their share
       }
     } finally {
@@ -11766,6 +11840,17 @@ export class Engine {
    *  fill layer's CMYK rendition keeps the note of what its pixels were drawn for (1.66.0), so pinFills leaves it. */
   private deriveChannels(p: Project, before: ReadonlyMap<ID, Layer>, patches: readonly PixelPatch[]): boolean { return MO.deriveChannels(this.modeHost, p, before, patches); }
 
+  /** Type at the document's depth (16 or 32 bits, CMYK, Lab): the type raster's coverage with its one colour exact in the
+   *  document's own terms (engine/derive.ts `deriveFlat`), and in CMYK the rendition through the table; null at 8 bits. */
+  private typeDepth(p: Project, raster: Raster, color: RGB): { channels: ChannelPixels; raster: Raster } | null {
+    const cmyk = p.doc.mode === 'cmyk', lab = p.doc.mode === 'lab';
+    if (!cmyk && !lab && (p.doc.depth ?? 8) <= 8) return null;
+    const t = cmyk ? this.deriveTables(p) : null;
+    if (cmyk && (!t || !p.cmykLut)) return null;
+    const channels = deriveFlat(raster.read(), color, t, lab, p.doc.depth === 32);
+    return { channels, raster: cmyk && p.cmykLut ? rasterFromChannels(channels, p.cmykLut) : raster };
+  }
+
   /** Layer styles for the float compositor (1.56.9): the layer drawn alone by the 8-bit renderer, with and without its
    *  style, at full opacity with its Fill, without mask, blend, clipping or group (the compositor applies those). */
   /** A style swatch (DEV_PLAN 35.3): `effects` drawn on a mid-grey rounded square in a `size`-pixel document, for the
@@ -11794,7 +11879,33 @@ export class Engine {
   private readonly dropHook = (History.onDrop = (e: HistoryEntry): void => {
     // A trimmed step's stored pixels, a streamed step's both sides (1.62.7), in one request (1.63.0).
     this.dropKeys(e.patches.flatMap((q) => [...(q.paged ? [q.paged.key] : []), ...(q.disk ? [q.disk.before, q.disk.after] : [])]));
+    this.releaseTiledOf([e]);
   });
+
+  /** The tiles of layers only the given steps still reach (a deleted duplicate, a layer a step replaced) let go: a copy of
+   *  its own is freed, a tile it shared with another layer goes back to that layer alone, and a stored tile nothing else
+   *  holds leaves the store. Every open document's layers and steps count as reaching, so nothing in use is released. */
+  private releaseTiledOf(steps: readonly HistoryEntry[], closing: Project | null = null): void {
+    const store = this.undoStore;
+    if (!store) return;
+    const gone = new Set<TiledRaster>();
+    for (const e of steps) {
+      for (const s of [e.before, e.after]) for (const l of s.doc.layers) if (l.tiled) gone.add(l.tiled);
+      for (const q of e.patches) if (q.raster instanceof TiledRaster) gone.add(q.raster);
+    }
+    if (closing) for (const l of closing.doc.layers) if (l.tiled) gone.add(l.tiled);
+    if (!gone.size) return;
+    for (const q of this.projects) {
+      if (q === closing) continue;
+      for (const l of q.doc.layers) if (l.tiled) gone.delete(l.tiled);
+      for (const x of q.history.entries()) {
+        for (const s of [x.before, x.after]) for (const l of s.doc.layers) if (l.tiled) gone.delete(l.tiled);
+        for (const o of x.patches) if (o.raster instanceof TiledRaster) gone.delete(o.raster);
+      }
+      for (const x of this.snapshotStore.lists.get(q) ?? []) for (const l of x.state.doc.layers) if (l.tiled) gone.delete(l.tiled);   // the History panel's snapshots share a document's tiles
+    }
+    for (const t of gone) t.release(store);
+  }
 
   private readonly stepHook = (History.onStepEnd = (h: History, before: Snapshot, patches: readonly PixelPatch[]): Snapshot | null => {
     const p = this.projects.find((q) => q.history === h);

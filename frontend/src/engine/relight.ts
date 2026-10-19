@@ -175,6 +175,22 @@ export function shadingField(rgba: ArrayLike<number>, w: number, h: number): Flo
   return out;
 }
 
+/** The side the picture's own light seems to come from: a unit vector in picture pixels (y down) and how strongly one side
+ *  is lit (0 to 1), from the shading field's first moment, the centre of what is brighter than the mean taken from the
+ *  centre of what is darker. Null for a picture lit evenly or with nothing in it. */
+export function originalLight(rgba: ArrayLike<number>, shade: Float32Array, w: number, h: number): { x: number; y: number; strength: number } | null {
+  let bx = 0, by = 0, bw = 0, dx = 0, dy = 0, dw = 0;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x;
+    if (rgba[i * 4 + 3] === 0) continue;
+    const d = shade[i] - 1;
+    if (d > 0) { bx += x * d; by += y * d; bw += d; } else { dx -= x * d; dy -= y * d; dw -= d; }
+  }
+  if (bw < 1e-6 || dw < 1e-6) return null;
+  const vx = bx / bw - dx / dw, vy = by / bw - dy / dw, len = Math.hypot(vx, vy);
+  return len / Math.max(w, h) < 0.01 ? null : { x: vx / len, y: vy / len, strength: Math.min(1, (len / Math.max(w, h)) * 3) };
+}
+
 export const depthWindow = (d: number, near: number, far: number): number => {
   const f = 0.04;
   return (near <= 0 ? 1 : smooth(near - f, near + f, d)) * (far >= 1 ? 1 : smooth(far + f, far - f, d));

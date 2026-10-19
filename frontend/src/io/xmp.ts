@@ -278,6 +278,74 @@ export async function withXmp(blob: Blob, format: string, meta: DocMeta | undefi
   return new Blob([out as BlobPart], { type: blob.type });
 }
 
+/** HEIF and AVIF: the Exif and XMP items, found through the meta box (iinf names each item's kind, iloc says where its bytes lie).
+ *  An Exif item opens with the offset of its TIFF header; an XMP item is a mime item of type application/rdf+xml. */
+function isoPackets(b: Uint8Array): { xmp: string | null; exif: Uint8Array | null } {
+  const none = { xmp: null, exif: null }, dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  const four = (p: number): string => String.fromCharCode(b[p], b[p + 1], b[p + 2], b[p + 3]);
+  const num = (p: number, n: number): number => { let v = 0; for (let i = 0; i < n; i++) v = v * 256 + b[p + i]; return v; };
+  const boxes = (from: number, to: number): Array<{ type: string; body: number; end: number }> => {
+    const out: Array<{ type: string; body: number; end: number }> = [];
+    for (let p = from; p + 8 <= to;) {
+      const big = dv.getUint32(p) === 1, size = big ? dv.getUint32(p + 8) * 4294967296 + dv.getUint32(p + 12) : dv.getUint32(p) || to - p, head = big ? 16 : 8;
+      if (size < head || p + size > to) break;
+      out.push({ type: four(p + 4), body: p + head, end: p + size });
+      p += size;
+    }
+    return out;
+  };
+  const meta = boxes(0, b.length).find((k) => k.type === 'meta');
+  if (!meta) return none;
+  const kids = boxes(meta.body + 4, meta.end), iinf = kids.find((k) => k.type === 'iinf'), iloc = kids.find((k) => k.type === 'iloc');
+  if (!iinf || !iloc) return none;
+  const kind = new Map<number, 'exif' | 'xmp'>();
+  for (const k of boxes(iinf.body + (b[iinf.body] === 0 ? 6 : 8), iinf.end)) {
+    const v = b[k.body];
+    if (k.type !== 'infe' || v < 2) continue;
+    const id = num(k.body + 4, v === 2 ? 2 : 4), t = k.body + (v === 2 ? 8 : 10);
+    if (four(t) === 'Exif') kind.set(id, 'exif');
+    else if (four(t) === 'mime') {
+      let q = t + 4;
+      while (q < k.end && b[q] !== 0) q++;
+      let r = ++q;
+      while (r < k.end && b[r] !== 0) r++;
+      if (new TextDecoder().decode(b.subarray(q, r)) === 'application/rdf+xml') kind.set(id, 'xmp');
+    }
+  }
+  const v = b[iloc.body], offSize = b[iloc.body + 4] >> 4, lenSize = b[iloc.body + 4] & 15, baseSize = b[iloc.body + 5] >> 4, idxSize = v === 1 || v === 2 ? b[iloc.body + 5] & 15 : 0, wide = v < 2 ? 2 : 4;
+  let p = iloc.body + 6, xmp: string | null = null, exif: Uint8Array | null = null;
+  const count = num(p, wide);
+  p += wide;
+  for (let i = 0; i < count && p + wide < iloc.end; i++) {
+    const id = num(p, wide);
+    p += wide;
+    const method = v === 1 || v === 2 ? num(p, 2) & 15 : 0;
+    p += (v === 1 || v === 2 ? 2 : 0) + 2;
+    const base = num(p, baseSize), extents = num(p + baseSize, 2), parts: Uint8Array[] = [];
+    p += baseSize + 2;
+    for (let e = 0; e < extents; e++) {
+      const off = base + num(p + idxSize, offSize), len = num(p + idxSize + offSize, lenSize);
+      p += idxSize + offSize + lenSize;
+      if (method === 0 && off + len <= b.length) parts.push(b.subarray(off, off + len));
+    }
+    const what = kind.get(id);
+    if (!what || !parts.length) continue;
+    const data = parts.length === 1 ? parts[0] : join(parts);
+    if (what === 'xmp') { xmp = new TextDecoder().decode(data); continue; }
+    let block = data.length > 8 ? data.subarray(4 + u32be(data, 0)) : data.subarray(0, 0);
+    if (at(block, 0, 'Exif\u0000\u0000')) block = block.subarray(6);
+    if ((block[0] === 0x49 && block[1] === 0x49) || (block[0] === 0x4d && block[1] === 0x4d)) exif = block;
+  }
+  return { xmp, exif };
+}
+
+/** The Exif block (base64) and XMP packet the engine writes into an AVIF it encodes; empty when File Info holds nothing to write. */
+export function metaForEngine(meta: DocMeta | undefined, now = new Date(), ai?: AiLabel): { exif?: string; xmp?: string } {
+  if (!metaWritable(meta)) return {};
+  const exif = exifBlockOf(meta);
+  return { xmp: buildMergedXmp(meta, now, ai ?? meta.aiLabel), ...(exif ? { exif: toB64(exif) } : {}) };
+}
+
 /** The XMP packet and the Exif block in the first bytes of a picture file, whichever the format holds. */
 function packets(b: Uint8Array): { xmp: string | null; exif: Uint8Array | null } {
   const dec = (a: Uint8Array): string => new TextDecoder().decode(a);
@@ -309,6 +377,8 @@ function packets(b: Uint8Array): { xmp: string | null; exif: Uint8Array | null }
       if (c.id === 'XMP ') xmp = dec(c.data);
       else if (c.id === 'EXIF') exif = at(c.data, 0, 'Exif\u0000\u0000') ? c.data.subarray(6) : c.data;
     }
+  } else if (at(b, 4, 'ftyp')) {
+    ({ xmp, exif } = isoPackets(b));
   } else if ((b[0] === 0x49 && b[1] === 0x49 && b[2] === 42) || (b[0] === 0x4d && b[1] === 0x4d && b[3] === 42)) {
     const le = b[0] === 0x49, dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
     exif = b;

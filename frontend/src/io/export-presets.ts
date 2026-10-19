@@ -1,5 +1,5 @@
 import { SPACES, type SpaceId } from '../engine/icc';
-import { cleanMeta, type DocMeta } from '../engine/doc-meta';
+import { cleanMeta, metaWritable, type DocMeta } from '../engine/doc-meta';
 
 export type ExportFormat = 'png' | 'jpg' | 'webp' | 'avif' | 'tiff' | 'pdf' | 'dpx' | 'qoi' | 'pnm' | 'tga' | 'ico' | 'bmp' | 'fits' | 'wbmp';
 /** DEV_PLAN 34.1: the options the engine-written formats take, kept in `ExportSettings.option` (one choice a format) and
@@ -127,7 +127,7 @@ export function sfwMeta(mode: SfwMetadata, doc: DocMeta | undefined): DocMeta | 
   return cleanMeta({ copyright, notice, url, ...(mode === 'contact' ? { author, authorTitle } : {}) }) ?? undefined;
 }
 /** What the chosen metadata cannot reach: formats written without an XMP packet. */
-export const XMP_FORMATS: ReadonlySet<ExportFormat> = new Set(['png', 'jpg', 'webp', 'tiff']);
+export const XMP_FORMATS: ReadonlySet<ExportFormat> = new Set(['png', 'jpg', 'webp', 'tiff', 'avif']);
 const icoSizesOf = (v: unknown): number[] => {
   const kept = ICO_SIZES.filter((n) => Array.isArray(v) && v.includes(n));
   return kept.length ? kept : [...DEFAULT_ICO_SIZES];
@@ -155,21 +155,33 @@ export function formatOptions(s: ExportSettings): Record<string, unknown> {
 }
 /** Formats that write no alpha channel with these settings: transparency is laid on a matte. */
 export const dropsAlpha = (s: ExportSettings): boolean => s.format === 'jpg' || s.format === 'pdf' || s.format === 'wbmp' || (s.format === 'bmp' && s.option === '24') || (s.format === 'tga' && !!s.option?.startsWith('24')) || (s.format === 'tiff' && s.option === 'gray-opaque');
+interface FlatDoc { depth?: number; mode?: string; resolution?: number; meta?: DocMeta; layers?: ReadonlyArray<{ visible: boolean; isGroup: boolean; adjustment?: unknown; mask?: unknown; text?: unknown; smart?: unknown }> }
+const INFO_KINDS: ReadonlySet<string> = new Set(['png', 'jpg', 'webp', 'tiff', 'avif']);
+/** What a flat save leaves behind that its pixels do not show: layers merged into one picture, hidden layers left out, and
+ *  File Info (title, author, camera data) in a kind that cannot hold it. */
+function keptLoss(kind: string, name: string, doc: FlatDoc): string[] {
+  const out: string[] = [], real = (doc.layers ?? []).filter((l) => !l.isGroup), hidden = real.filter((l) => !l.visible).length, shown = real.length - hidden;
+  const live = real.filter((l) => l.visible && (l.adjustment || l.mask || l.text || l.smart)).length;
+  if (shown > 1 || live) out.push(`${name} is one flat picture: ${shown} visible layer${shown === 1 ? '' : 's'} merged${live ? `, and the text, adjustments, masks and smart objects among them are no longer editable` : ''}.`);
+  if (hidden) out.push(`${hidden} hidden layer${hidden === 1 ? ' is' : 's are'} left out of the ${name}.`);
+  if (metaWritable(doc.meta) && !INFO_KINDS.has(kind)) out.push(`${name} carries no File Info; the title, author and camera data stay in the document only.`);
+  return out;
+}
 /** What a flat export changed or lost, one short sentence each: depth, ink, alpha, lossy encoding and resolution. The depth
  *  sentence for QOI, TGA and ICO is said elsewhere. `clear` is whether the picture has see-through pixels. */
-export function fidelityNotes(s: ExportSettings, doc: { depth?: number; mode?: string; resolution?: number }, clear: boolean): string[] {
+export function fidelityNotes(s: ExportSettings, doc: FlatDoc, clear: boolean): string[] {
   const name = s.format === 'jpg' ? 'JPEG' : s.format.toUpperCase(), out: string[] = [];
   if ((doc.depth ?? 8) > 8 && !['qoi', 'tga', 'ico'].includes(s.format)) out.push(`${name} is written at 8 bits a channel here; the ${doc.depth}-bit picture is reduced.`);
   if (doc.mode === 'cmyk' || doc.mode === 'lab') out.push(`The ${doc.mode === 'cmyk' ? 'CMYK' : 'Lab'} picture is converted to RGB for ${name}.`);
   if (clear && dropsAlpha(s)) out.push(`${name} keeps no transparency; clear areas are laid on ${s.format === 'pdf' && s.option === 'black' ? 'black' : s.format === 'wbmp' ? 'white and thresholded' : 'white'}.`);
   if (s.format === 'jpg' || s.format === 'avif' || (s.format === 'webp' && s.option !== 'lossless')) out.push(`${name} is lossy; written at quality ${s.quality}.`);
   if (['qoi', 'pnm', 'tga', 'ico', 'fits', 'wbmp', 'dpx'].includes(s.format) && (doc.resolution ?? 72) !== 72) out.push(`${name} has no resolution field; the document's ${doc.resolution} ppi is not recorded.`);
-  return out;
+  return [...out, ...keptLoss(s.format, name, doc)];
 }
 /** What a save in one flat kind (the Save As and Save a Copy kinds, CMYK and Lab included, and the wide-range kinds HDR, EXR and PFM)
  *  changes or drops, one short sentence each: depth, ink, alpha, lossy encoding and resolution. `clear` is whether the
  *  picture has see-through pixels; `quality` is 0 to 1 where the kind has one. */
-export function saveCopyNotes(kind: string, doc: { depth?: number; mode?: string; resolution?: number }, clear: boolean, quality = 1): string[] {
+export function saveCopyNotes(kind: string, doc: FlatDoc, clear: boolean, quality = 1): string[] {
   const name = kind === 'jpg' ? 'JPEG' : kind === 'webp' ? 'WebP' : kind.toUpperCase(), out: string[] = [], depth = doc.depth ?? 8, cmyk = doc.mode === 'cmyk', lab = doc.mode === 'lab';
   const wide = kind === 'hdr' || kind === 'exr' || kind === 'pfm', keepsInk = cmyk && (kind === 'tiff' || kind === 'jpg'), keepsLab = lab && kind === 'tiff';
   if (wide) {
@@ -177,7 +189,7 @@ export function saveCopyNotes(kind: string, doc: { depth?: number; mode?: string
     if (cmyk || lab) out.push(`The ${cmyk ? 'CMYK' : 'Lab'} picture is converted to RGB for ${name}.`);
     if (kind !== 'exr' && clear) out.push(`${name} keeps no transparency.`);
     if ((doc.resolution ?? 72) !== 72) out.push(`${name} has no resolution field; the document's ${doc.resolution} ppi is not recorded.`);
-    return out;
+    return [...out, ...keptLoss(kind, name, doc)];
   }
   if (depth === 32 && kind === 'png') out.push('PNG is written at 16 bits, sRGB encoded; values brighter than white are clipped.');
   else if (depth > 8 && !((kind === 'png' || kind === 'tiff') && !cmyk && !lab) && !(kind === 'tiff' && (cmyk || lab) && depth === 16) && !(depth === 32 && kind === 'tiff')) out.push(`${name} is written at 8 bits a channel; the ${depth}-bit picture is reduced.`);
@@ -185,7 +197,7 @@ export function saveCopyNotes(kind: string, doc: { depth?: number; mode?: string
   if (clear && (kind === 'jpg' || kind === 'pdf' || keepsInk || keepsLab)) out.push(`${name} keeps no transparency here; clear areas are laid on ${cmyk ? 'paper white' : 'white'}.`);
   if (kind === 'jpg' || kind === 'avif' || (kind === 'webp' && quality < 1)) out.push(`${name} is lossy; written at quality ${Math.round(quality * 100)}.`);
   if (cmyk && (kind === 'jpg' || kind === 'tiff')) out.push(`${name} CMYK files carry no File Info or AI label here.`);
-  return out;
+  return [...out, ...keptLoss(kind, name, doc)];
 }
 /** PNG and JPEG are written by the browser unless a compression level or a chroma subsampling other than the default is chosen. */
 export const engineWrites = (s: ExportSettings): boolean => ENGINE_FORMATS.has(s.format) || (s.format === 'png' && !!s.option && s.option !== '6') || (s.format === 'jpg' && !!s.option && s.option !== '420') || (s.format === 'webp' && s.option === 'lossless');

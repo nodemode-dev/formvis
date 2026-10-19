@@ -365,19 +365,70 @@ def models() -> list[str]:
     return [str(m.get("id")) for m in data if isinstance(m, dict) and m.get("id")][:200]
 
 
-def improve(prompt: str, instructions: str, picture: str = "") -> dict:
+_COMMON = frozenset("with that this from into over under onto have been about there their where which while some very just like make made each your would could should than then them they will what when were also only more most much many".split())
+
+
+def _dropped(original: str, rewritten: str) -> list[str]:
+    """The words and numbers of `original` that `rewritten` no longer has (matched by their first four letters, so a plural
+    or an ending does not count): details the model may have dropped, for the person to look at. At most six."""
+    heads = {w[:4] for w in re.findall(r"[\w'-]+", rewritten.lower())}
+    out: list[str] = []
+    for w in re.findall(r"[\w'-]+", re.sub(r"@img\d+", " ", original, flags=re.I)):
+        k = w.lower()
+        if (len(k) >= 4 or k.isdigit()) and k not in _COMMON and k[:4] not in heads and k not in out:
+            out.append(k)
+    return out[:6]
+
+
+def _added(original: str, rewritten: str) -> list[str]:
+    """The names and numbers `rewritten` brings that `original` did not have (a capitalised word inside a sentence, or a
+    number): specifics the model may have invented, for the person to look at. At most six."""
+    have = {w.lower() for w in re.findall(r"[\w'-]+", original)}
+    out: list[str] = []
+    for m in re.finditer(r"(?<=[a-z,;:] )[A-Z][\w'-]{2,}|\b\d[\d.,]*\b", rewritten):
+        k = m.group(0).rstrip(".,")
+        if k.lower() not in have and k not in out:
+            out.append(k)
+    return out[:6]
+
+
+def _named_pictures(prompt: str, references: list | None) -> list[tuple[str, str]]:
+    """The reference pictures a request may carry, as (token, data address): those with a data address under the size
+    limit, the ones the prompt names first, each token once."""
+    named = {t.lower() for t in re.findall(r"@img\d+", prompt, re.I)}
+    out: dict[str, str] = {}
+    for r in references or []:
+        token = str(r.get("token") or "").lower() if isinstance(r, dict) else ""
+        url = r.get("picture") if isinstance(r, dict) else None
+        if re.fullmatch(r"@img\d+", token) and token not in out and isinstance(url, str) and url.startswith("data:image/") and len(url) <= MAX_PICTURE_BYTES:
+            out[token] = url
+    return sorted(out.items(), key=lambda kv: (kv[0] not in named, int(kv[0][4:])))
+
+
+def improve(prompt: str, instructions: str, picture: str = "", references: list | None = None) -> dict:
     """`prompt` rewritten by the model under `instructions` (a prompt template). With `picture` (a data address of the
-    area the prompt is for) and a model row marked as reading pictures, the model sees it too. The @img tokens of the
-    prompt stay: any the model dropped are put back at the end and named in `restored`."""
+    area the prompt is for) and `references` (each a token such as @img1 and the data address of the picture it names)
+    and a model row marked as reading pictures, the model sees them too, each reference labelled with its token; at
+    most MAX_PICTURES go in the request, the area last. The @img tokens of the prompt stay: any the model dropped are
+    put back at the end and named in `restored`; `shown` names the references the model saw."""
     prompt, instructions = prompt.strip(), instructions.strip()
     if not prompt:
         raise LlmError("Write a prompt to improve first.", 400)
-    seen = picture.startswith("data:image/") and len(picture) <= MAX_PICTURE_BYTES and bool(_active().get("vision"))
+    reads = bool(_active().get("vision"))
+    area = picture.startswith("data:image/") and len(picture) <= MAX_PICTURE_BYTES and reads
+    shown = _named_pictures(prompt, references)[:MAX_PICTURES - (1 if area else 0)] if reads else []
+    seen = area
     keep = "\n\nKeep every @img token such as @img1 exactly as written." if re.search(r"@img\d+", prompt, re.I) else ""
     look = "\n\nThe picture is the area the prompt is for: describe what belongs there and do not invent what it contradicts." if seen else ""
-    user = [{"type": "text", "text": prompt[:4000]}, {"type": "image_url", "image_url": {"url": picture}}] if seen else prompt[:4000]
+    who = "\n\nThe pictures after the prompt are the references; each is labelled with the @img token that names it in the prompt. Say what a token's picture adds only where the prompt needs it, and keep the token." if shown else ""
+    parts = [{"type": "text", "text": prompt[:4000]}]
+    for token, url in sorted(shown, key=lambda kv: int(kv[0][4:])):
+        parts += [{"type": "text", "text": f"{token}:"}, {"type": "image_url", "image_url": {"url": url}}]
+    if seen:
+        parts += [{"type": "text", "text": "The area:"}, {"type": "image_url", "image_url": {"url": picture}}]
+    user = parts if len(parts) > 1 else prompt[:4000]
     body = {"model": _active().get("model"), "temperature": 0.7, "max_tokens": 600,
-            "messages": [{"role": "system", "content": f"{instructions[:8000]}{keep}{look}\n\n{RULE}"}, {"role": "user", "content": user}]}
+            "messages": [{"role": "system", "content": f"{instructions[:8000]}{keep}{look}{who}\n\n{RULE}"}, {"role": "user", "content": user}]}
     choices = _call("/chat/completions", body).get("choices") or []
     text = str(((choices[0] if choices else {}).get("message") or {}).get("content") or "").strip()
     for prefix in ("prompt:", "rewritten prompt:", "improved prompt:"):
@@ -390,4 +441,5 @@ def improve(prompt: str, instructions: str, picture: str = "") -> dict:
     lost = [t for t in dict.fromkeys(re.findall(r"@img\d+", prompt, re.I)) if t.lower() not in text.lower()]
     if lost:
         text = f"{text} {' '.join(lost)}"
-    return {"prompt": text, **({"restored": lost} if lost else {}), **({"seen": True} if seen else {})}
+    gone, new = _dropped(prompt, text), _added(prompt, text)
+    return {"prompt": text, **({"restored": lost} if lost else {}), **({"seen": True} if seen else {}), **({"shown": [t for t, _ in sorted(shown, key=lambda kv: int(kv[0][4:]))]} if shown else {}), **({"dropped": gone} if gone else {}), **({"added": new} if new else {})}

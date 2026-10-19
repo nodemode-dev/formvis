@@ -1,6 +1,6 @@
-import { HANDLES, TEXT_ANTIALIAS, dropParaKeys, type Engine, type Layer, type Rect, type TextSpec } from '../../engine';
+import { HANDLES, TEXT_ANTIALIAS, dropParaKeys, unitPoint, type Engine, type Layer, type Rect, type TextSpec } from '../../engine';
 import { OT_FEATURES, featureOn, featuresKnown, featuresOf, withFeature } from '../../engine/opentype';
-import { typedAttrs, typedFeatureOn, typedFeatureToggle, typedRange, typedStyle } from '../../ui/text-editor';
+import { typedAttrs, typedBox, typedCorner, typedDrag, typedFeatureOn, typedFeatureToggle, typedGrab, typedRange, typedRelease, typedStyle } from '../../ui/text-editor';
 import { canListSystemFonts, fontGroups, loadSystemFonts, rememberFont, resolveFontName } from '../../ui/fonts';
 import type { Pt } from '../../engine';
 import { dashed, toolHost, type Tool, type ToolContext, type ToolPointer } from '../registry';
@@ -11,6 +11,7 @@ let draft: { from: Pt; to: Pt } | null = null;
 // while typing moves the text being typed.
 let boxDrag: { id: string; handle: number; from: Rect; start: Pt; to: Pt; scale: number } | null = null;
 let moveDrag: Pt | null = null;
+let gripDrag = false;
 const typingNow = (): boolean => !!document.querySelector('.cv-type-editor:not([hidden])');
 
 /** The active layer when it is live paragraph text, upright and unflipped, and no text is being typed. */
@@ -100,6 +101,8 @@ export const typeTool: Tool = {
   })),
   hint: (e) => (e.typeMask ? 'Click or drag a box, type, then click away: the text becomes a selection' : 'Click to add point text · Drag a box for paragraph text · Click a type layer to edit its text'),
   cursor: (ctx, p) => {
+    const corner = p && typingNow() ? typedCorner(p.doc) : -1;
+    if (corner >= 0) return corner % 2 ? 'nesw-resize' : 'nwse-resize';
     const grab = p ? boxHit(ctx, p) : null;
     if (!grab) return 'text';
     const h = HANDLES[grab.handle];
@@ -166,7 +169,7 @@ export const typeTool: Tool = {
   // A click starts point text (or edits the type layer under it); a drag draws a box for paragraph text (1.49.7).
   down(ctx, p) {
     if (p.button !== 0 || !ctx.engine.current) return;
-    if (p.mod && typingNow()) { moveDrag = p.doc; return; }
+    if (p.mod && typingNow()) { if (typedGrab(p.doc, p.shift)) gripDrag = true; else moveDrag = p.doc; return; }
     const grab = boxHit(ctx, p);
     if (grab) { const t = grab.layer.transform; boxDrag = { id: grab.layer.id, handle: grab.handle, from: { x: t.x, y: t.y, w: t.w, h: t.h }, start: p.doc, to: p.doc, scale: t.w / (grab.layer.raster?.width || t.w) }; return; }
     const hit = ctx.engine.typeMask ? null : ctx.engine.textLayerAt(p.doc);
@@ -174,6 +177,7 @@ export const typeTool: Tool = {
     draft = { from: p.doc, to: p.doc };
   },
   move(ctx, p) {
+    if (gripDrag) { typedDrag(p.doc); return; }
     if (moveDrag) { document.dispatchEvent(new CustomEvent('cv:type-move', { detail: { x: p.doc.x - moveDrag.x, y: p.doc.y - moveDrag.y } })); moveDrag = p.doc; return; }
     if (boxDrag) { boxDrag.to = p.doc; ctx.engine.emit('overlay', null); return; }
     if (!draft) return;
@@ -181,6 +185,7 @@ export const typeTool: Tool = {
     ctx.engine.emit('overlay', null);
   },
   up(ctx) {
+    if (gripDrag) { gripDrag = false; typedRelease(); return; }
     if (moveDrag) { moveDrag = null; return; }
     if (boxDrag) {
       const b = boxDrag, r = dragRect(b);
@@ -198,8 +203,22 @@ export const typeTool: Tool = {
     const x = Math.min(d.from.x, d.to.x), y = Math.min(d.from.y, d.to.y);
     document.dispatchEvent(new CustomEvent('cv:type', { detail: { x, y, box: { w: Math.abs(d.to.x - d.from.x), h: Math.abs(d.to.y - d.from.y) } } }));
   },
-  cancel(ctx) { draft = null; boxDrag = null; moveDrag = null; ctx.engine.emit('overlay', null); },
+  cancel(ctx) { draft = null; boxDrag = null; moveDrag = null; if (gripDrag) { gripDrag = false; typedRelease(); } ctx.engine.emit('overlay', null); },
   overlay(ctx, g) {
+    const tb = typingNow() ? typedBox() : null;
+    if (tb) {
+      const v = ctx.view(), pal = ctx.paint(), pts = [[0, 0], [1, 0], [1, 1], [0, 1]].map(([u, w]) => v.toScreen(unitPoint(tb, u, w)));
+      g.save();
+      g.strokeStyle = pal.accent;
+      g.lineWidth = 1;
+      g.beginPath();
+      pts.forEach((q, i) => { if (i) g.lineTo(q.x, q.y); else g.moveTo(q.x, q.y); });
+      g.closePath();
+      g.stroke();
+      g.fillStyle = pal.handle;
+      for (const q of pts) { g.fillRect(q.x - 4, q.y - 4, 8, 8); g.strokeRect(q.x - 3.5, q.y - 3.5, 7, 7); }
+      g.restore();
+    }
     const bl = boxLayer(ctx.engine);
     if (bl) {
       const v = ctx.view(), pal = ctx.paint(), t = bl.transform, r = boxDrag ? dragRect(boxDrag) : { x: t.x, y: t.y, w: t.w, h: t.h };

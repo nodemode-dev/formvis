@@ -10,11 +10,13 @@ import { samplePath, type SubPath, type VectorPath } from './paths';
 import { traceAlpha } from './trace-outline';
 import { liveText, loadTextFont, renderText, textKey, withCharStyle } from './text';
 import type { Raster } from './surface';
-import type { CharacterStyle, ID, Layer, Pt, ShapeStyle, TextSpec } from './types';
+import type { ChannelPixels, CharacterStyle, ID, Layer, Pt, RGB, ShapeStyle, TextSpec } from './types';
 
 /** What the type methods need of the Engine. `current` is read live, as these methods wait on font loads. */
 export interface TextHost {
   readonly current: Project | null;
+  /** At 16 or 32 bits, in CMYK or in Lab: a type raster's floats with its one colour taken exactly, and in CMYK its rendition; null at 8 bits. */
+  typeDepth?(p: Project, raster: Raster, color: RGB): { channels: ChannelPixels; raster: Raster } | null;
   /** The Type dialog's last settings, which new text starts from. */
   textSettings: TextSpec;
   notice(text: string): void;
@@ -28,6 +30,14 @@ export interface TextHost {
     setWork(vp: VectorPath | null): void;
   };
   renderShape(path: VectorPath, style: ShapeStyle): { raster: Raster; x: number; y: number } | null;
+}
+
+/** The type raster as the layer holds it at the document's depth: the coverage is computed once, by the 8-bit render, and the
+ *  layer's floats take the text colour with that coverage as alpha (the colour in CMYK as its separation), instead of the
+ *  floats being read back from the premultiplied 8-bit pixels. Nothing to add at 8 bits, or where runs colour letters apart. */
+function atDepth(host: TextHost, p: Project | null, spec: TextSpec, raster: Raster, deep: boolean): { raster: Raster; extra: Partial<Layer> } {
+  const d = deep && p && !spec.runs?.some((q) => q.color) ? host.typeDepth?.(p, raster, spec.color) : null;
+  return d ? { raster: d.raster, extra: { channels: d.channels } } : { raster, extra: {} };
 }
 
 /** The topmost visible type layer whose box contains `pt`, for the Type tool to edit. */
@@ -66,7 +76,8 @@ export async function createTextLayer(host: TextHost, at: Pt, spec: TextSpec): P
   host.textSettings = { ...spec, content: '', rendered: undefined, runs: undefined, paras: undefined };
   const name =spec.content.split('\n')[0].trim().slice(0, 40) || 'Type';
   const y = spec.box ? at.y : spec.direction === 'vertical' ? at.y - r.pad : at.y - r.baseline;
-  host.insertRasterLayer(r.raster, name, Math.round(x), Math.round(y), { text: { ...spec, rendered: textKey(r.raster) } }, 'Type');
+  const d = atDepth(host, host.current, spec, r.raster, true);
+  host.insertRasterLayer(d.raster, name, Math.round(x), Math.round(y), { text: { ...spec, rendered: textKey(d.raster) }, ...d.extra }, 'Type');
 }
 
 /** Layer > Type on Path: `content` set along the active path's first subpath of two or more anchors, in the current
@@ -108,7 +119,8 @@ export async function textOnSubpath(host: TextHost, content: string, offset: num
   const spec: TextSpec = { ...base, onPath: { points: pts.map((q) => ({ x: q.x - ox, y: q.y - oy })), offset: Math.max(0, Math.min(100, offset)), frame } };
   const r = renderText(spec);
   host.textSettings = { ...base, content: '', onPath: null };
-  host.insertRasterLayer(r.raster, spec.content.trim().slice(0, 40) || 'Type', ox, oy, { text: { ...spec, rendered: textKey(r.raster) } }, undoName);
+  const d = atDepth(host, p, spec, r.raster, true);
+  host.insertRasterLayer(d.raster, spec.content.trim().slice(0, 40) || 'Type', ox, oy, { text: { ...spec, rendered: textKey(d.raster) }, ...d.extra }, undoName);
   return true;
 }
 
@@ -153,8 +165,8 @@ export async function typeToShape(host: TextHost): Promise<boolean> {
 
 /** New text or settings for a type layer, re-rendered in place as one undo step: any scaling of the layer is kept,
  *  and so is its left edge, centre or right edge, by its alignment. */
-export async function updateTextLayer(host: TextHost, id: ID, spec: TextSpec, move?: Pt): Promise<void> {
-  const p = host.current, patch = p ? await textPatch(host, p, id, spec) : null;
+export async function updateTextLayer(host: TextHost, id: ID, spec: TextSpec, move?: Pt, base?: Layer['transform']): Promise<void> {
+  const p = host.current, patch = p ? await textPatch(host, p, id, spec, p.doc.characterStyles, base, true) : null;
   if (!p || !patch || host.current !== p) return;
   host.textSettings = { ...spec, content: '', rendered: undefined, runs: undefined, paras: undefined };
   const t = patch.transform, out = move && t ? { ...patch, transform: { ...t, x: t.x + move.x, y: t.y + move.y } } : patch;
@@ -188,7 +200,7 @@ export async function resizeTextBox(host: TextHost, id: ID, box: { w: number; h:
   const p = host.current, l = p?.layer(id);
   if (!p || !l?.text || !l.text.box || !liveText(l)) return false;
   const spec: TextSpec = { ...l.text, box: { w: Math.max(8, Math.round(box.w)), h: Math.max(8, Math.round(box.h)) } };
-  const patch = await textPatch(host, p, id, spec);
+  const patch = await textPatch(host, p, id, spec, p.doc.characterStyles, undefined, true);
   if (!patch || host.current !== p || !patch.transform) return false;
   host.textSettings = { ...spec, content: '', rendered: undefined, runs: undefined, paras: undefined };
   return host.edit('Resize Text Box', (pp) => { pp.updateLayer(id, { ...patch, transform: { ...patch.transform as Layer['transform'], x: to.x, y: to.y } }); });
@@ -196,7 +208,7 @@ export async function resizeTextBox(host: TextHost, id: ID, box: { w: number; h:
 
 /** The new pixels, place and name of type layer `id` set to `spec`, rendered but not applied, so several layers can
  *  change in one undo step (Find and Replace Text, Update All Text Layers). Null when the layer is not live type. */
-export async function textPatch(host: TextHost, p: Project, id: ID, spec: TextSpec, styles: readonly CharacterStyle[] | undefined = p.doc.characterStyles): Promise<Partial<Layer> | null> {
+export async function textPatch(host: TextHost, p: Project, id: ID, spec: TextSpec, styles: readonly CharacterStyle[] | undefined = p.doc.characterStyles, base?: Layer['transform'], deep = false): Promise<Partial<Layer> | null> {
   const l = p.layer(id);
   if (!l || !liveText(l) || !l.raster || !l.text) return null;
   if (!spec.content.trim()) { host.notice('Type some text, or delete the layer.'); return null; }
@@ -204,13 +216,14 @@ export async function textPatch(host: TextHost, p: Project, id: ID, spec: TextSp
   const effective = withCharStyle(spec, spec.charStyle ? styles?.find((x) => x.id === spec.charStyle) : undefined);
   await loadTextFont(effective);
   if (host.current !== p || !liveText(p.layer(id))) return null;
-  const r = renderText(effective), old = l.raster, t = l.transform, before = l.text;
+  const r = renderText(effective), old = l.raster, t = base ?? l.transform, before = l.text;
   const nw = r.raster.width * (t.w / old.width), nh = r.raster.height * (t.h / old.height);
   // Vertical type keeps its right edge (its first column); paragraph text its box's corner; point text its alignment.
   const x = spec.box ? t.x : spec.direction === 'vertical' ? t.x + t.w - nw : spec.align === 'center' ? t.x + (t.w - nw) / 2 : spec.align === 'right' ? t.x + t.w - nw : t.x;
   const autoName = before.content.split('\n')[0].trim().slice(0, 40) || 'Type';
   const name = l.name === autoName ? spec.content.split('\n')[0].trim().slice(0, 40) || 'Type' : l.name;
-  return { raster: r.raster, transform: { ...t, x, w: nw, h: nh }, name, text: { ...spec, rendered: textKey(r.raster) } };
+  const d = atDepth(host, p, effective, r.raster, deep);
+  return { raster: d.raster, transform: { ...t, x, w: nw, h: nh }, name, text: { ...spec, rendered: textKey(d.raster) }, ...d.extra };
 }
 
 /** Several type layers re-rendered to new specs as one undo step named `step`. Returns how many changed. */
@@ -218,7 +231,7 @@ export async function updateTextLayers(host: TextHost, changes: ReadonlyArray<{ 
   const p = host.current;
   if (!p) return 0;
   const patches: Array<{ id: ID; patch: Partial<Layer> }> = [];
-  for (const c of changes) { const patch = await textPatch(host, p, c.id, c.spec); if (patch) patches.push({ id: c.id, patch }); }
+  for (const c of changes) { const patch = await textPatch(host, p, c.id, c.spec, p.doc.characterStyles, undefined, true); if (patch) patches.push({ id: c.id, patch }); }
   if (!patches.length || host.current !== p) return 0;
   host.edit(step, (pp) => { for (const x of patches) pp.updateLayer(x.id, x.patch); });
   return patches.length;

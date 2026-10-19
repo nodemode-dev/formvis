@@ -13,7 +13,7 @@ import { addIccResource, addPathResources, addResourceBytes, block as resourceBl
 import { addExtraChannels, readExtraChannels, readIccProfile } from './psd-channels';
 import { readPsdChannelMode, writeMultichannelPsd } from './psd-modes';
 import { readChannelRestrictions } from './psd-blend';
-import { readBevelDetails, type BevelDetail } from './psd-raw';
+import { conformLevels, edgeContourKeys, readBevelDetails, type BevelDetail } from './psd-raw';
 import { ADJUSTMENT_KEY, SMART_STACK_KEY, addLayerBlocks, adjustmentFromBlock, readLayerBlocks, type OwnBlock } from './psd-own';
 import { vectorCoverage } from '../engine/vector-mask';
 import { fromBase64, toBase64 } from './icc-read';
@@ -188,9 +188,9 @@ function toPsdEffects(fx: LayerEffects, patterns: PatternInfo[]): LayerEffectsIn
   if (sa.enabled) e.satin = { ...on, color: sa.color, opacity: sa.opacity, blendMode: bm(sa.blend), angle: sa.angle, distance: px(sa.distance), size: px(sa.size), invert: sa.invert, ...(sa.antiAlias ? { antialiased: true } : {}), ...cn(sa.contour) };
   if (bv.enabled) e.bevel = { ...on, style: BEVEL_TO[bv.style], technique: bv.technique === 'chiselHard' ? 'chisel hard' : bv.technique === 'chiselSoft' ? 'chisel soft' : 'smooth', strength: bv.depth / 100, direction: bv.down ? 'down' : 'up', size: px(bv.size), soften: px(bv.soften), angle: bv.angle, altitude: bv.altitude, useGlobalLight: bv.useGlobal === true,
     highlightColor: bv.highlight, highlightOpacity: bv.highlightOpacity, highlightBlendMode: bm(bv.highlightBlend), shadowColor: bv.shadow, shadowOpacity: bv.shadowOpacity, shadowBlendMode: bm(bv.shadowBlend), ...cn(bv.gloss), ...(bv.antiAlias ? { antialiasGloss: true } : {}),
-    // The Texture sub-panel (pattern, scale, link) and a Linear edge Contour with its range go in the effect's own keys; the writer has none for the texture's depth and invert or a curved edge contour.
+    // The Texture sub-panel (pattern, scale, link) and the edge Contour with its range go in the effect's own keys; a curved edge Contour rides in the gloss slot (renamed once written) while the gloss is Linear, and the writer has no key for the texture's depth and invert.
     ...(bv.texture?.enabled && psdPattern(bv.texture.pattern, patterns) ? (() => { const t = bv.texture as NonNullable<typeof bv.texture>, info = psdPattern(t.pattern, patterns) as PatternInfo; return { useTexture: true, pattern: { name: info.name, id: info.id }, scale: t.scale, align: t.link !== false }; })() : {}),
-    ...(bv.contour?.enabled && bv.contour.id === 'linear' ? { useShape: true, range: Math.min(1, Math.max(0.01, bv.contour.range)) } : {}) } as LayerEffectsInfo['bevel'];
+    ...(bv.contour?.enabled ? { useShape: true, range: Math.min(1, Math.max(0.01, bv.contour.range)), ...(bv.contour.id !== 'linear' && !toPsdContour(bv.gloss) ? cn(bv.contour.id) : {}) } : {}) } as LayerEffectsInfo['bevel'];
   const info = po.enabled ? psdPattern(po.pattern, patterns) : null;
   if (info) e.patternOverlay = { ...on, opacity: po.opacity, blendMode: bm(po.blend), scale: po.scale, pattern: { name: info.name, id: info.id }, align: po.link !== false, ...(po.phaseX || po.phaseY ? { phase: { x: po.phaseX ?? 0, y: po.phaseY ?? 0 } } : {}) };
   return Object.keys(e).length ? e : null;
@@ -1071,7 +1071,7 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
   const multi = writeMultichannelPsd(doc, psb);
   if (multi) return multi;
   const { writePsd } = await import('ag-psd');
-  const notes: string[] = [], linked: LinkedFile[] = [], sources = new Map<ID, { data: Uint8Array; name: string; type: string }>(), psdPatterns: PatternInfo[] = [], own = new Map<PsdLayer, OwnBlock>();
+  const notes: string[] = [], linked: LinkedFile[] = [], sources = new Map<ID, { data: Uint8Array; name: string; type: string }>(), psdPatterns: PatternInfo[] = [], own = new Map<PsdLayer, OwnBlock>(), edgeKeys = new Set<PsdLayer>();
   for (const l of doc.layers) if (l.smart) sources.set(l.id, await embedOf(l, notes));
   /** A raster drawn through `t` into a box aligned to the canvas; null when it covers nothing. */
   const placed = (r: Raster, t: Layer['transform']): { c: HTMLCanvasElement; x: number; y: number } | null => {
@@ -1132,7 +1132,9 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
     if (l.blendChannels?.some((on) => !on)) out.channelBlendingRestrictions = l.blendChannels.flatMap((on, i) => (on ? [] : [i]));
     const bv = l.effects?.bevel;
     if (bv?.enabled) {
-      const left = [...(bv.contour?.enabled && bv.contour.id !== 'linear' ? ['edge Contour curve'] : []), ...(bv.texture?.enabled && (bv.texture.invert || bv.texture.depth !== 1) ? ['Texture depth and invert'] : [])];
+      const edgeCurved = bv.contour?.enabled === true && bv.contour.id !== 'linear', edgeInGloss = edgeCurved && !toPsdContour(bv.gloss);
+      if (edgeInGloss) edgeKeys.add(out);
+      const left = [...(edgeCurved && !edgeInGloss ? ['edge Contour curve while the gloss Contour is curved too'] : []), ...(bv.texture?.enabled && (bv.texture.invert || bv.texture.depth !== 1) ? ['Texture depth and invert'] : [])];
       if (left.length) notes.push(`"${l.name}"'s Bevel & Emboss ${left.join(' and ')} ${left.length > 1 ? 'are' : 'is'} not written to the PSD (the library that writes it has no key for ${left.length > 1 ? 'them' : 'it'}); the bevel keeps the rest.`);
     }
     if (liveText(l) && l.text && l.raster) {
@@ -1281,5 +1283,5 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
   if (alphas.length > 50) notes.push('A PSD holds at most 56 channels; the alpha channels after the first 50 are left out.');
   const exif = metaWritable(doc.meta) ? exifBlockOf(doc.meta) : null;
   const withExif = (bytes: ArrayBuffer): ArrayBuffer => (exif && exif.length <= 64000 ? addResourceBytes(bytes, resourceBlock(1058, '', exif)) : bytes);   // image resource 1058, the Exif block
-  return { bytes: withExif(addExtraChannels(addIccResource(addPathResources(addLayerBlocks(writePsd(psd, { generateThumbnail: maximize, psb }), psd.children ?? [], own), paths, doc.width, doc.height), icc), alphas)), notes };
+  return { bytes: withExif(addExtraChannels(addIccResource(addPathResources(addLayerBlocks(edgeContourKeys(conformLevels(writePsd(psd, { generateThumbnail: maximize, psb })), psd, edgeKeys), psd.children ?? [], own), paths, doc.width, doc.height), icc), alphas)), notes };
 }

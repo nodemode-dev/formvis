@@ -37,29 +37,34 @@ export async function writePsdInParts(doc: Doc, psb: boolean, merged: (put: (row
   const work = specs.reduce((n, s) => n + s.height, 0) + doc.height, store = giantTiles.store;
   let done = 0;
   const key = await api.psdLayersBegin(doc.width, doc.height, doc.resolution ?? 72, psb, specs, doc.profile?.icc ?? null);
-  for (let i = 0; i < items.length; i++) {
-    const { kind, l } = items[i], sp = specs[i];
-    if (kind !== 'layer' || !sp.width || !sp.height) continue;
-    const B = bandRows(sp.width);
-    for (let y0 = 0; y0 < sp.height; y0 += B) {
-      if (opts.stopped?.()) throw new Error('The export was stopped; nothing was written.');
-      const h = Math.min(B, sp.height - y0);
-      let rows: Uint8ClampedArray<ArrayBuffer>;
-      if (l.tiled) {
-        if (store) await l.tiled.ensure(0, y0, sp.width, h, store);
-        rows = l.tiled.read(0, y0, sp.width, h).data as Uint8ClampedArray<ArrayBuffer>;
-      } else rows = (l.raster as NonNullable<Layer['raster']>).ctx.getImageData(0, y0, sp.width, h).data as Uint8ClampedArray<ArrayBuffer>;
-      await api.psdLayersPut(key, rows, i);
-      done += h;
-      opts.step?.(done, work);
-      if (l.tiled) await giantTiles.page();
+  try {
+    for (let i = 0; i < items.length; i++) {
+      const { kind, l } = items[i], sp = specs[i];
+      if (kind !== 'layer' || !sp.width || !sp.height) continue;
+      const B = bandRows(sp.width);
+      for (let y0 = 0; y0 < sp.height; y0 += B) {
+        if (opts.stopped?.()) throw new Error('The export was stopped; nothing was written.');
+        const h = Math.min(B, sp.height - y0);
+        let rows: Uint8ClampedArray<ArrayBuffer>;
+        if (l.tiled) {
+          if (store) await l.tiled.ensure(0, y0, sp.width, h, store);
+          rows = l.tiled.read(0, y0, sp.width, h).data as Uint8ClampedArray<ArrayBuffer>;
+        } else rows = (l.raster as NonNullable<Layer['raster']>).ctx.getImageData(0, y0, sp.width, h).data as Uint8ClampedArray<ArrayBuffer>;
+        await api.psdLayersPut(key, rows, i);
+        done += h;
+        opts.step?.(done, work);
+        if (l.tiled) await giantTiles.page();
+      }
     }
+    await merged((rows) => { done += rows.length / (doc.width * 4); opts.step?.(done, work); return api.psdLayersPut(key, rows, null); });
+    if (skipped) notes.push(`${skipped} adjustment, fill or other layer${skipped === 1 ? ' was' : 's were'} written empty: a document this large is written in parts, from pixels only.`);
+    if (moved) notes.push(`${moved} layer${moved === 1 ? ' was' : 's were'} written at ${moved === 1 ? 'its' : 'their'} stored pixels, without ${moved === 1 ? 'its' : 'their'} rotation, flip or scale.`);
+    if (masks) notes.push(`${masks} layer mask${masks === 1 ? ' was' : 's were'} left out.`);
+    if (styles) notes.push(`${styles} layer${styles === 1 ? "'s style was" : "s' styles were"} left out.`);
+    notes.push('Written at 8 bits per channel, channels uncompressed.');
+    return { blob: await api.psdLayersEnd(key), notes };
+  } catch (err) {
+    await api.psdLayersDrop(key);
+    throw err;
   }
-  await merged((rows) => { done += rows.length / (doc.width * 4); opts.step?.(done, work); return api.psdLayersPut(key, rows, null); });
-  if (skipped) notes.push(`${skipped} adjustment, fill or other layer${skipped === 1 ? ' was' : 's were'} written empty: a document this large is written in parts, from pixels only.`);
-  if (moved) notes.push(`${moved} layer${moved === 1 ? ' was' : 's were'} written at ${moved === 1 ? 'its' : 'their'} stored pixels, without ${moved === 1 ? 'its' : 'their'} rotation, flip or scale.`);
-  if (masks) notes.push(`${masks} layer mask${masks === 1 ? ' was' : 's were'} left out.`);
-  if (styles) notes.push(`${styles} layer${styles === 1 ? "'s style was" : "s' styles were"} left out.`);
-  notes.push('Written at 8 bits per channel, channels uncompressed.');
-  return { blob: await api.psdLayersEnd(key), notes };
 }

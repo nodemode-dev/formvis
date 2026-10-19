@@ -1,5 +1,7 @@
 """Prompt improvement (1.51.5): the language model's settings, its models, and improving a prompt."""
 
+import json
+
 from fastapi import APIRouter, Form, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
 
@@ -121,5 +123,12 @@ def chat_delete(chat_id: str, request: Request) -> dict:
 
 
 @router.post("/improve")
-async def improve(prompt: str = Form(...), instructions: str = Form(""), picture: str = Form("")) -> dict:
-    return await run_in_threadpool(_run, llm.improve, prompt, instructions, picture)
+async def improve(prompt: str = Form(...), instructions: str = Form(""), picture: str = Form(""), references: str = Form("")) -> dict:
+    """`references` is a JSON list of {token, picture}: the @img tokens the prompt may name and their pictures as data addresses."""
+    try:
+        named = json.loads(references) if references.strip() else []
+        if not isinstance(named, list) or len(named) > 16:
+            raise ValueError
+    except ValueError:
+        raise HTTPException(422, "The references are a list of an @img token and its picture, at most 16.")
+    return await run_in_threadpool(_run, llm.improve, prompt, instructions, picture, named)

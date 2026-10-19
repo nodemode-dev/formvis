@@ -577,6 +577,23 @@ async def end_layered(key: str) -> FileResponse:
     return FileResponse(s["path"], media_type="image/vnd.adobe.photoshop", background=_gone(s["path"]))
 
 
+def _psdl_drop(s: dict) -> None:
+    for f in [*s["spools"], *(f for group in s["lspools"].values() for f in group)]:
+        f.close()
+        Path(f.name).unlink(missing_ok=True)
+
+
+@router.delete("/psdl/{key}")
+async def drop_layered(key: str) -> dict[str, bool]:
+    """Drops a layered picture that will not be finished (the export was stopped or failed): its spools are closed and deleted."""
+    s = _psds.get(key)
+    if s is None or "lspools" not in s:
+        return {"dropped": False}
+    _psds.pop(key, None)
+    await asyncio.to_thread(_psdl_drop, s)
+    return {"dropped": True}
+
+
 @router.post("/psdl/{key}/{index}")
 async def put_layer(key: str, index: int, request: Request) -> dict[str, int]:
     """The next rows of layer `index` (RGBA, top first, a whole number of rows of that layer's width)."""
