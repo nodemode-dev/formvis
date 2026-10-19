@@ -49,6 +49,22 @@ export function installed(family: string): boolean {
 }
 
 const added: string[] = [];
+const postscript = new Map<string, { family: string; style: string }>();
+
+/** A font name as typed or read from a file, matched to a family: a listed family in its own spelling, else a PostScript name
+ *  (as Local Font Access reports them, or the family part of a name such as Family-BoldItalic). Null when nothing matches. */
+export function resolveFontName(name: string): { family: string; bold: boolean; italic: boolean } | null {
+  const raw = name.trim(), key = raw.toLowerCase();
+  if (!raw) return null;
+  const listed = fontFamilies().find((f) => f.toLowerCase() === key);
+  if (listed) return { family: listed, bold: false, italic: false };
+  const ps = postscript.get(key);
+  if (ps) return { family: ps.family, bold: /bold|black|heavy/i.test(ps.style), italic: /italic|oblique/i.test(ps.style) };
+  const m = /^(.+?)[-_ ]?(BoldItalic|BoldOblique|Bold|Italic|Oblique|Regular|Roman|Book)?(MT|PSMT)?$/.exec(raw.replace(/\s+/g, ''));
+  const bare = (m?.[1] ?? raw).toLowerCase(), style = m?.[2] ?? '';
+  const hit = fontFamilies().find((f) => f.replace(/\s+/g, '').toLowerCase() === bare);
+  return hit ? { family: hit, bold: /bold/i.test(style), italic: /italic|oblique/i.test(style) } : null;
+}
 
 /** Registers a font the person brings (SC-ED-0179, PC-AU-0143) under `family` from a font file's bytes or a web address
  *  (CORS permitting) and lists it in the font menus; the family is returned. Rejects where the file is not a font. */
@@ -98,7 +114,8 @@ export async function loadSystemFonts(): Promise<string[] | null> {
   const query = (window as unknown as { queryLocalFonts?: () => Promise<Array<{ family: string }>> }).queryLocalFonts;
   if (!query) return null;
   try {
-    const fonts = await query();
+    const fonts = await query() as Array<{ family: string; postscriptName?: string; style?: string }>;
+    for (const f of fonts) if (f.postscriptName) postscript.set(f.postscriptName.toLowerCase(), { family: f.family, style: f.style ?? '' });
     system = [...new Set(fonts.map((f) => f.family).filter((f) => typeof f === 'string' && f.trim()))];
     return system;
   } catch {

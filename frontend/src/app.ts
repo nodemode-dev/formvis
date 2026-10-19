@@ -100,7 +100,7 @@ import { withXmp } from './io/xmp';
 import { FileInfoDialog } from './ui/panels/file-info-dialog';
 import { PrintDialog } from './ui/panels/print-dialog';
 import { printDocument, printSettings } from './io/print';
-import { TextEditor, typedFeatureOn, typedFeatureToggle, typedStyle } from './ui/text-editor';
+import { TextEditor, typedAttrs, typedFeatureOn, typedFeatureToggle, typedStyle } from './ui/text-editor';
 import { runPatchFrom, runPatchOfStyle } from './engine/text';
 import { TextDialog } from './ui/panels/text-dialog';
 import { BrushSettingsDialog } from './ui/panels/brush-settings';
@@ -1242,7 +1242,7 @@ export function startApp(): void {
     return engine.lockedTask('Save', async () => {
       const revision = p.history.revision;
       try {
-        const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p));
+        const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p), (d, n) => engine.reportProgress(d, n));
         // Based on the version it was opened or last saved at (1.58.8), when saving over that same library item.
         const res = await api.save(target, manifest, files, target === p.libraryName ? p.libraryVersion ?? '' : '', await thumbnailOf(p));
         if (p.history.revision === revision) engine.markSaved(p, res.name, res.name);
@@ -1274,7 +1274,7 @@ export function startApp(): void {
     return engine.lockedTask('Save', async () => {
       const revision = p.history.revision;
       try {
-        const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p));
+        const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p), (d, n) => engine.reportProgress(d, n));
         const res = await api.saveTo(target, manifest, files, await thumbnailOf(p));
         p.filePath = res.path;
         p.libraryVersion = null;
@@ -3019,14 +3019,24 @@ export function startApp(): void {
         name = stripExt(file.name);
       }
       const parsed = svgToShapes(text);
-      if (!parsed.shapes.length && !parsed.texts.length) { toast(`No shapes or text found; ${parsed.skipped} elements skipped.`, 'error'); return; }
+      if (!parsed.shapes.length && !parsed.texts.length && !parsed.pictures.length) { toast(`No shapes or text found; ${parsed.skipped} elements skipped.`, 'error'); return; }
       if (!engine.newDocument(parsed.width, parsed.height, name, 'transparent')) return;
-      const n = engine.addShapeLayers(parsed.shapes, true);
+      const n = parsed.shapes.length ? engine.addShapeLayers(parsed.shapes, true) : 0;
       // Text as point type (34.4d), each its own step; the Type tool's own settings are put back afterwards.
       const kept = engine.textSettings;
       for (const tx of parsed.texts) await engine.createTextLayer({ x: tx.x, y: tx.y }, { ...kept, content: tx.content, family: tx.family, size: tx.size, color: tx.color, align: tx.align, bold: tx.bold, italic: tx.italic, box: null, direction: 'horizontal', warp: null, onPath: null, rendered: undefined });
       engine.textSettings = kept;
-      toast(`${n} shape layers, ${parsed.texts.length} type layers; ${parsed.skipped} elements skipped.`);
+      // Clip paths, masks, filters, patterns and pictures cannot be shapes: each is drawn by the browser into a pixel layer on top.
+      let drawn = 0;
+      for (const pic of parsed.pictures) {
+        try {
+          const img = await rasteriseSvg(new Blob([pic.svg], { type: 'image/svg+xml' }), pic.name, parsed.width), raster = new Raster(img.width, img.height);
+          raster.ctx.drawImage(img.source, 0, 0); raster.touch();
+          engine.insertRasterLayer(raster, pic.name, 0, 0, {}, 'Open SVG');
+          drawn++;
+        } catch { parsed.skipped++; }
+      }
+      toast(`${n} shape layers, ${parsed.texts.length} type layers${drawn ? `, ${drawn} pixel layers` : ''}; ${parsed.skipped} elements skipped.`);
     } catch (err) { toast(message(err), 'error'); }
   };
   const linkError = (err: unknown): void => { toast(message(err), 'error'); };
@@ -4081,6 +4091,7 @@ export function startApp(): void {
         reference: { type: 'string' as const, enum: ['bottom', 'middle', 'top'], description: 'Which selected layer stays put; bottom when left out.' },
         vignette: { type: 'boolean' as const, description: 'Vignette Removal; off when left out.' },
         distortion: { type: 'boolean' as const, description: 'Geometric Distortion Correction: straighten the lens bend the overlaps show; off when left out.' },
+        registration: { type: 'string' as const, enum: ['features', 'intensity'], description: 'Registration: features (SIFT or ORB matches) or intensity (refines by image correlation, works with few features); features when left out.' },
       } : {
         method: { type: 'string' as const, enum: ['panorama', 'stack', 'multiband'], description: 'Blend method: panorama (soft seams), stack (sharpest layer, for focus stacking) or multiband (a pyramid blend into a new layer); panorama when left out.' },
         seamless: { type: 'boolean' as const, description: 'Seamless Tones and Colors: match each layer\'s tones to the reference; on when left out.' },
@@ -4089,7 +4100,7 @@ export function startApp(): void {
       }) as NonNullable<Command['params']>,
       run: (a?: Record<string, unknown>) => import('./ui/panels/align-blend-dialog').then(async (m) => {
         if (!a || !Object.keys(a).length) { m.AlignBlendDialog.get(engine, mode).show(); return undefined; }
-        return { message: await m.AlignBlendDialog.execute(engine, mode, { projection: a.projection === undefined ? undefined : String(a.projection), method: a.method === undefined ? undefined : String(a.method), seamless: a.seamless === undefined ? true : !!a.seamless, vignette: !!a.vignette, distortion: !!a.distortion, reference: a.reference === undefined ? undefined : String(a.reference), halo: typeof a.halo === 'number' ? a.halo : undefined, depth: !!a.depth }) };
+        return { message: await m.AlignBlendDialog.execute(engine, mode, { projection: a.projection === undefined ? undefined : String(a.projection), method: a.method === undefined ? undefined : String(a.method), seamless: a.seamless === undefined ? true : !!a.seamless, vignette: !!a.vignette, distortion: !!a.distortion, registration: a.registration === undefined ? undefined : String(a.registration), reference: a.reference === undefined ? undefined : String(a.reference), halo: typeof a.halo === 'number' ? a.halo : undefined, depth: !!a.depth }) };
       }),
     })),
     {
@@ -4100,6 +4111,9 @@ export function startApp(): void {
         times: { type: 'string', description: 'Exposure times in seconds, one per photo, comma separated, as numbers or 1/60; from the photos when left out.' },
         depth: { type: 'integer', enum: [32, 16, 8], description: 'Bit depth of the result; 32 keeps the radiance, 16 or 8 tone it down. 32 when left out.' },
         ghost: { type: 'number', min: 0, max: 100, description: 'Remove ghosts: 0 is off; higher takes moving objects from the base photo at smaller disagreements. 0 when left out.' },
+        method: { type: 'string', enum: ['exposure', 'highlights', 'equalize'], description: 'Toning at 16 or 8 bit: exposure (Exposure and Gamma), highlights (Highlight Compression) or equalize (Equalize Histogram). exposure when left out.' },
+        exposure: { type: 'number', min: -20, max: 20, description: 'Exposure in stops for the exposure method at 16 or 8 bit. 0 when left out.' },
+        gamma: { type: 'number', min: 0.1, max: 9.99, description: 'Gamma for the exposure method at 16 or 8 bit. 1 when left out.' },
         base: { type: 'integer', min: 1, description: 'Ghost base: the photo (1 is the first) that moving areas are taken from; the middle exposure when left out.' },
       },
       run: async (a) => {
@@ -4239,6 +4253,7 @@ export function startApp(): void {
       engine.setCloneOverlay(patch);
     } },
     { id: 'clone-source-reset', label: 'Clone Source: Reset Transform', run: () => engine.resetCloneTransform() },
+    { id: 'match-edges-below', label: 'Match Edges to Layer Below', enabled: pixel, run: () => { void engine.task(async () => { await new Promise((r) => requestAnimationFrame(() => window.setTimeout(r, 0))); engine.matchEdgesBelow(); }); } },
     { id: 'remove-wires', label: 'Remove Wires and Cables', enabled: pixel, run: () => { void engine.task(async () => { await new Promise((r) => requestAnimationFrame(() => window.setTimeout(r, 0))); engine.removeWires(); }); } },
     { id: 'transform-warp', label: 'Warp', enabled: pixel, run: (a) => { engine.setTool('move'); if (engine.beginMeshWarp(typeof a?.grid === 'number' ? a.grid : engine.meshWarpGrid) && typeof a?.style === 'string') engine.setMeshWarpPreset({ style: a.style as 'custom', ...(typeof a.bend === 'number' ? { bend: a.bend } : {}), ...(typeof a.horizontal === 'number' ? { horizontal: a.horizontal } : {}), ...(typeof a.vertical === 'number' ? { vertical: a.vertical } : {}), ...(a.orientation === 'vertical' ? { orientation: 'vertical' as const } : {}) }); } },
     { id: 'warp-split-h', label: 'Split Warp Horizontally', enabled: () => !!engine.meshWarpEdit, run: (a) => { engine.splitMeshWarp('h', typeof a?.x === 'number' && typeof a?.y === 'number' ? { x: a.x, y: a.y } : engine.meshSplitPoint()); } },
@@ -4430,6 +4445,7 @@ export function startApp(): void {
     },
     { id: 'par-correction', label: 'Pixel Aspect Ratio Correction', checked: () => engine.view.parCorrection, run: () => engine.setView({ parCorrection: !engine.view.parCorrection }) },
     { id: 'measure-record', label: 'Record Measurements', enabled: has, run: () => { engine.recordMeasurements(); } },
+    { id: 'measure-record-features', label: 'Record Measurements per Feature', enabled: () => has() && selected(), run: () => { engine.recordMeasurements(true); } },
     { id: 'measure-data-points', label: 'Select Data Points...', enabled: has, run: () => dialogs.measureDataPoints.show() },
     {
       id: 'measure-scale-marker', label: 'Place Scale Marker...', enabled: () => !!engine.current?.doc.measureScale,
@@ -4844,10 +4860,10 @@ export function startApp(): void {
     { id: 'save-default-type-styles', label: 'Save Default Type Styles', enabled: has, run: () => { engine.saveDefaultTypeStyles(); } },
     { id: 'reset-character', label: 'Reset Character', run: async () => { await engine.resetTypeAttributes('character'); } },
     { id: 'reset-paragraph', label: 'Reset Paragraph', run: async () => { await engine.resetTypeAttributes('paragraph'); } },
-    { id: 'type-all-caps', label: 'All Caps', checked: () => typeNow().caps === 'all', run: () => typeAttr({ caps: typeNow().caps === 'all' ? undefined : 'all' }) },
-    { id: 'type-small-caps', label: 'Small Caps', checked: () => typeNow().caps === 'small', run: () => typeAttr({ caps: typeNow().caps === 'small' ? undefined : 'small' }) },
-    { id: 'type-underline', label: 'Underline', checked: () => !!typeNow().underline, run: () => typeAttr({ underline: !typeNow().underline || undefined }) },
-    { id: 'type-strikethrough', label: 'Strikethrough', checked: () => !!typeNow().strike, run: () => typeAttr({ strike: !typeNow().strike || undefined }) },
+    { id: 'type-all-caps', label: 'All Caps', checked: () => (typedAttrs()?.caps ?? typeNow().caps) === 'all', run: () => { const on = (typedAttrs()?.caps ?? typeNow().caps) === 'all'; if (typedStyle({ caps: on ? null : 'all' })) { engine.emit('options', null); return; } return typeAttr({ caps: on ? undefined : 'all' }); } },
+    { id: 'type-small-caps', label: 'Small Caps', checked: () => (typedAttrs()?.caps ?? typeNow().caps) === 'small', run: () => { const on = (typedAttrs()?.caps ?? typeNow().caps) === 'small'; if (typedStyle({ caps: on ? null : 'small' })) { engine.emit('options', null); return; } return typeAttr({ caps: on ? undefined : 'small' }); } },
+    { id: 'type-underline', label: 'Underline', checked: () => !!(typedAttrs()?.underline ?? typeNow().underline), run: () => { const on = !!(typedAttrs()?.underline ?? typeNow().underline); if (typedStyle({ underline: on ? null : true })) { engine.emit('options', null); return; } return typeAttr({ underline: !on || undefined }); } },
+    { id: 'type-strikethrough', label: 'Strikethrough', checked: () => !!(typedAttrs()?.strike ?? typeNow().strike), run: () => { const on = !!(typedAttrs()?.strike ?? typeNow().strike); if (typedStyle({ strike: on ? null : true })) { engine.emit('options', null); return; } return typeAttr({ strike: !on || undefined }); } },
     ...(['none', 'sharp', 'crisp', 'strong', 'smooth', 'windows-lcd', 'windows'] as const).map((how) => ({
       id: `type-aa-${how}`, label: how === 'windows-lcd' ? 'Windows LCD' : how[0].toUpperCase() + how.slice(1),
       checked: () => (typeNow().antialias ?? 'smooth') === how, run: () => typeAttr({ antialias: how }),
@@ -4999,7 +5015,8 @@ export function startApp(): void {
         family: { type: 'string', description: 'Font family over the range.' }, weight: { type: 'integer', min: 1, max: 1000, description: 'Weight over the range, 100 to 900.' },
         bold: { type: 'boolean', description: 'Bold over the range.' }, italic: { type: 'boolean', description: 'Italic over the range.' },
         baseline_shift: { type: 'number', min: -2000, max: 2000, description: 'Baseline shift in pixels over the range, up positive.' }, tracking: { type: 'integer', min: -1000, max: 10000, description: 'Tracking in thousandths of an em over the range.' },
-        language: { type: 'string', description: 'Language tag of the range, such as ja or ar.' }, clear: { type: 'boolean', description: 'true clears every attribute the range sets, back to the layer\'s own.' },
+        language: { type: 'string', description: 'Language tag of the range, such as ja or ar.' }, underline: { type: 'boolean', description: 'Underline over the range; false takes it off.' }, strike: { type: 'boolean', description: 'Strikethrough over the range; false takes it off.' },
+        caps: { type: 'string', description: 'all, small or normal over the range.' }, clear: { type: 'boolean', description: 'true clears every attribute the range sets, back to the layer\'s own.' },
       },
       run: (a) => typeRange(runPatchFrom(a), a) },
     { id: 'type-range-character-style', label: 'Apply Character Style to Range', enabled: () => engine.liveText(engine.current?.activeLayer) || typing.editing,
@@ -5161,6 +5178,7 @@ export function startApp(): void {
     { id: 'purge-clipboard', label: 'Clipboard', enabled: () => !!engine.clipboard, run: () => { if (engine.purgeClipboard()) toast('Cleared the clipboard.'); } },
     { id: 'save-history-log', label: 'Save History Log...', enabled: () => historyLog.count > 0, run: () => void deliverFile(new Blob([historyLog.text()], { type: 'text/plain' }), 'formvis-history-log.txt') },
     { id: 'clear-history-log', label: 'Clear History Log', enabled: () => historyLog.count > 0, run: () => { const n = historyLog.count; historyLog.clear(); toast(`Cleared ${n} history log entries.`); } },
+    { id: 'purge-video-cache', label: 'Video Cache', enabled: () => engine.hasVideoLayers, run: () => { const n = engine.purgeVideoCache(); toast(n > 0 ? `Purged ${(n / 1048576).toFixed(1)} MB of video frame caches.` : 'The video frame caches were already empty.'); } },
     { id: 'purge-undo', label: 'Undo', enabled: () => !!engine.current?.history.canRedo, run: () => { const n = engine.purgeUndo(); if (n) toast(`Purged ${n} undone ${n === 1 ? 'step' : 'steps'}.`); } },
     { id: 'purge-histories', label: 'Histories', enabled: () => engine.projects.some((q) => q.history.steps.names.length > 0), run: () => { const docs = engine.projects.length; void confirmAction('Purge histories?', `This clears the undo and redo history of ${docs === 1 ? 'this document' : `every open document (${docs})`}, keeping ${docs === 1 ? 'its' : 'their'} current state and snapshots. It cannot be undone.`, 'Purge', true).then((ok) => { if (ok) toast(`Purged ${engine.purgeHistories(true)} history steps.`); }); } },
     {
@@ -5539,14 +5557,14 @@ export function startApp(): void {
       { label: 'Automate', items: ['actions', 'action-stop', 'insert-conditional', 'insert-action-step', 'action-options', '-', 'load-actions', 'export-actions-atn', '-', 'batch', 'create-droplet', '-', 'lens-correction-batch', 'fit-image', 'conditional-mode-change', 'contact-sheet', 'crop-straighten-photos', 'photomerge', 'merge-hdr'] },
       { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'script-browse', 'image-processor', 'script-events', 'load-files-stack', 'stack-statistics', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'reopen-closed-tab', 'close-all', 'close-others', 'close-tabs-right', 'pin-tab', '-', 'exit'] },
     { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', 'peek-original', 'compare-split', 'cancel-job', { label: 'Snapshot', items: ['new-snapshot', 'new-snapshot-merged', 'new-snapshot-layer'] }, '-', 'fade', 'compare-documents', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', 'pick-screen-colour', 'cycle-tool-mode', '-',
-      { label: 'Purge', items: ['purge-clipboard', 'purge-undo', 'purge-histories', 'clean-working-files', 'free-helper-models', 'purge-all'] }, { label: 'History Log', items: ['save-history-log', 'clear-history-log'] }, 'apply-edit', 'cancel-edit', 'reset-tool', 'reset-all-tools', '-',
-      { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg', 'fill-fg-keep', 'fill-bg-keep', 'fill-history'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', { label: 'Clone Source', items: ['clone-source-slot', 'clone-source-set', 'clone-source-overlay', 'clone-source-reset'] }, '-', 'auto-align-layers', 'auto-blend-layers', '-',
+      { label: 'Purge', items: ['purge-clipboard', 'purge-undo', 'purge-histories', 'purge-video-cache', 'clean-working-files', 'free-helper-models', 'purge-all'] }, { label: 'History Log', items: ['save-history-log', 'clear-history-log'] }, 'apply-edit', 'cancel-edit', 'reset-tool', 'reset-all-tools', '-',
+      { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg', 'fill-fg-keep', 'fill-bg-keep', 'fill-history'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', { label: 'Clone Source', items: ['clone-source-slot', 'clone-source-set', 'clone-source-overlay', 'clone-source-reset'] }, '-', 'auto-align-layers', 'auto-blend-layers', 'match-edges-below', '-',
       'fill-path-dialog', 'stroke-path-dialog', '-', 'transform', 'transform-copy', { label: 'Transform', items: ['transform-again', '-', 'transform-scale', 'transform-rotate', 'transform-skew', 'transform-distort', 'transform-perspective', 'transform-warp', 'warp-split-h', 'warp-split-v', 'warp-split-cross', 'warp-remove-split', '-', 'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw', '-', 'flip-layer-h', 'flip-layer-v'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', 'define-brush', 'define-custom-shape', { label: 'Presets', items: ['preset-manager', '-', 'presets-export', 'presets-import', 'presets-migrate', '-', 'swatches-load', 'swatches-save'] }, '-', 'assign-profile', 'convert-profile', 'profile-info', 'colour.settings', '-', 'customize-toolbar', 'shortcuts', 'edit-menus', { label: 'Preferences', items: ['settings', '-', ...PREF_PAGES.slice(0, 7).map(([id]) => `prefs-${id}`), 'export-preferences', ...PREF_PAGES.slice(7).map(([id]) => `prefs-${id}`)] }] },
     { label: 'Image', items: [
       'apply-image', 'calculations', { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'desaturate', 'replace-color', 'equalize', 'equalize-layer-from-selection'] }, '-',
       'auto-tone', 'auto-contrast', 'auto-color', '-',
       { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-grayscale-from', 'mode-duotone', 'mode-indexed', 'mode-multichannel', 'color-table', 'mode-rgb', 'mode-cmyk', 'mode-lab', 'mode-convert', '-', 'split-channels', 'merge-channels', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
-      'image-size', 'canvas-size', { label: 'Pixel Aspect Ratio', items: ['par-square', 'par-d1-ntsc', 'par-d1-pal', 'par-d1-ntsc-wide', 'par-d1-pal-wide', 'par-anamorphic', 'par-hdv', 'par-dvcpro-hd', '-', 'par-custom'] }, { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'trim', 'reveal-all', 'trap', '-', 'frequency-separation', 'duplicate-image', '-', { label: 'Variables', items: ['variables-define', 'data-sets-import', 'data-set-apply'] }, '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }, '-', { label: 'Analysis', items: ['measure-scale', 'measure-ruler', 'measure-color-sampler', { label: 'Color Samplers', items: ['sampler-add', 'sampler-move', 'sampler-delete', 'sampler-clear'] }, 'measure-count', { label: 'Count Groups', items: ['count-new-group', 'count-set-group'] }, 'measure-record', 'measure-data-points', 'measure-scale-marker', 'measure-log'] }] },
+      'image-size', 'canvas-size', { label: 'Pixel Aspect Ratio', items: ['par-square', 'par-d1-ntsc', 'par-d1-pal', 'par-d1-ntsc-wide', 'par-d1-pal-wide', 'par-anamorphic', 'par-hdv', 'par-dvcpro-hd', '-', 'par-custom'] }, { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'trim', 'reveal-all', 'trap', '-', 'frequency-separation', 'duplicate-image', '-', { label: 'Variables', items: ['variables-define', 'data-sets-import', 'data-set-apply'] }, '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }, '-', { label: 'Analysis', items: ['measure-scale', 'measure-ruler', 'measure-color-sampler', { label: 'Color Samplers', items: ['sampler-add', 'sampler-move', 'sampler-delete', 'sampler-clear'] }, 'measure-count', { label: 'Count Groups', items: ['count-new-group', 'count-set-group'] }, 'measure-record', 'measure-record-features', 'measure-data-points', 'measure-scale-marker', 'measure-log'] }] },
     { label: 'Layer', items: [
       { label: 'New', items: ['new-layer-dialog', 'new-type-layer', 'new-shape-layer', 'new-dodge-burn-layer', 'layer-from-background', 'background-from-layer', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard-dialog', 'artboard-from-group', 'artboard-from-layers-dialog', 'frame-from-layers', '-', 'duplicate', 'layer-via-cut', '-', 'new-relight-layer'] }, 'artboard-options', '-',
       { label: 'New Fill Layer', items: ['new-fill-solid', 'new-fill-gradient', 'new-fill-pattern'] }, 'new-fill-adjustment', { label: 'Video Layers', items: ['video-layer-from-file', 'video-layer-blank', '-', 'video-insert-blank-frame', 'video-duplicate-frame', 'video-delete-frame', '-', 'video-restore-frame', 'video-reload-frame', 'video-restore-all', 'video-show-altered', 'video-replace-footage', 'video-interpret-footage', 'video-rasterize'] },{ label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'edit-relight', 'layer-content-options', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, { label: 'Film Pack', items: ['film-apply-look', 'new-adj-filmLook', 'new-adj-chromaticShift', '-', 'film-copy-points', 'film-paste-points'] }, { label: 'EU AI Label', items: ['ai-label-add', 'ai-label-remove', 'ai-label-info'] }, '-',

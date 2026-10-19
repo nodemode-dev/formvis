@@ -271,8 +271,10 @@ export async function readPdn(file: File): Promise<{ doc: Doc; notes: string[]; 
 
   let reason = '';
   try {
-    if (buf[7 + n] !== 0 || buf[8 + n] !== 1) throw new Error('its layers are stored compressed, which formvis does not read');
-    const read = await readLayers(buf.subarray(9 + n), notes);
+    if (buf[7 + n] !== 0 || buf[8 + n] !== 1) throw new Error('its layer stream has an unknown start');
+    let body: Uint8Array = buf.subarray(9 + n);
+    if (body[0] === 0x1f && body[1] === 0x8b) body = await gunzip(body);   // the whole layer stream gzip-wrapped
+    const read = await readLayers(body, notes);
     for (const l of read) {
       if (l.stride !== l.w * 4 || !l.px) throw new Error('a layer is stored in a form formvis does not read');
       if (l.w * l.h > 400_000_000) { notes.add('A layer is too large to open and was left out.'); continue; }

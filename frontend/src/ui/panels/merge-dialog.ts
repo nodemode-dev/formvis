@@ -1,5 +1,6 @@
 import type { Engine } from '../../engine';
 import { Raster, toBlob, type Surface } from '../../engine/surface';
+import type { ToneMethod } from '../../engine/deep';
 import { api } from '../../io/api';
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
@@ -24,6 +25,10 @@ export class MergeDialog extends Dialog {
   private depth: 32 | 16 | 8 = 32;
   private ghost = 0;
   private ghostBase = -1;
+  private method: ToneMethod = 'exposure';
+  private exposure = 0;
+  private gamma = 1;
+  private toneRows: HTMLElement[] = [];
   private readonly times = el('<input class="cv-input" type="text" placeholder="Exposure times in seconds, one per photo, comma separated (blank: from the photos)" aria-label="Exposure times">') as HTMLInputElement;
 
   constructor(private readonly engine: Engine, private readonly mode: 'panorama' | 'hdr') {
@@ -47,9 +52,15 @@ export class MergeDialog extends Dialog {
     const align = checkRow('Attempt to Automatically Align Source Images', (v) => { this.align = v; });
     this.hdrRows = el('<div></div>');
     const ghost = sliderRow('Remove ghosts', 0, 100, 1, (v) => { this.ghost = v; }, { def: 0 });
-    this.hdrRows.append(align.el, ghost.el, this.times);
+    const syncTone = (): void => { const down = this.depth !== 32; method.el.hidden = !down; for (const r of this.toneRows) r.hidden = !down || this.method !== 'exposure'; };
+    const bits = selectRow('Mode', [['32', '32 Bit'], ['16', '16 Bit'], ['8', '8 Bit']], (v) => { this.depth = Number(v) as 32 | 16 | 8; syncTone(); });
+    const method = selectRow('Toning method', [['exposure', 'Exposure and Gamma'], ['highlights', 'Highlight Compression'], ['equalize', 'Equalize Histogram']], (v) => { this.method = v as ToneMethod; syncTone(); });
+    const exposure = sliderRow('Exposure', -5, 5, 0.1, (v) => { this.exposure = v; }, { def: 0 });
+    const gamma = sliderRow('Gamma', 0.1, 4, 0.05, (v) => { this.gamma = v; }, { def: 1 });
+    this.toneRows = [exposure.el, gamma.el];
+    this.hdrRows.append(align.el, ghost.el, bits.el, method.el, exposure.el, gamma.el, this.times);
     this.hdrRows.hidden = mode !== 'hdr';
-    align.set(true); ghost.set(0);
+    align.set(true); ghost.set(0); bits.set('32'); method.set('exposure'); exposure.set(0); gamma.set(1); syncTone();
     const intro = mode === 'panorama' ? 'Choose two or more overlapping photos, or add the open documents.' : 'Choose two or more exposures of the same scene; their exposure times come from the photos\' EXIF, or are worked out from the photos.';
     this.body.append(el(`<p class="cv-dialog-note">${intro}</p>`), choose, open, this.input, this.picked, this.panoRows, this.hdrRows, this.note);
     layout.set('auto'); crop.set(false); layers.set(false); vig.set(false); geo.set(false);
@@ -58,24 +69,27 @@ export class MergeDialog extends Dialog {
     this.remember([this.input]);   // the layout and the crop; the photos themselves are chosen each time
   }
 
-  show(): void { this.files = []; this.depth = 32; this.input.value = ''; this.describe(); setText(this.note, ''); this.open(); }
+  show(): void { this.files = []; this.input.value = ''; this.describe(); setText(this.note, ''); this.open(); }
 
   private describe(): void { setText(this.picked, this.files.length ? `${this.files.length} photo${this.files.length > 1 ? 's' : ''}: ${this.files.map((f) => f.name).join(', ')}` : 'No photos chosen yet.'); }
 
   /** The command's way in: the photos given and the choices from `o` (layout, crop, vignette, distortion; align, times); throws what the dialog would say. */
   async drive(files: File[], o: Record<string, unknown>): Promise<void> {
     this.files = files;
-    const shown = this.ghost;
+    const shown = { ghost: this.ghost, depth: this.depth, method: this.method, exposure: this.exposure, gamma: this.gamma };
     this.layout = (['auto', 'perspective', 'cylindrical', 'collage', 'reposition'] as const).find((l) => l === o.layout) ?? 'auto';
     this.crop = o.crop === true; this.asLayers = o.layers === true; this.vignette = o.vignette === true; this.distortion = o.distortion === true;
     this.align = o.align !== false;
     this.times.value = typeof o.times === 'string' ? o.times.split(',').map((t) => { const [top, bottom] = t.split('/'); return bottom ? String(Number(top) / Number(bottom)) : t.trim(); }).join(',') : '';
     this.depth = o.depth === 16 || o.depth === 8 ? o.depth : 32;
+    this.method = o.method === 'highlights' || o.method === 'equalize' ? o.method : 'exposure';
+    this.exposure = typeof o.exposure === 'number' ? Math.max(-20, Math.min(20, o.exposure)) : 0;
+    this.gamma = typeof o.gamma === 'number' ? Math.max(0.1, Math.min(9.99, o.gamma)) : 1;
     this.ghost = typeof o.ghost === 'number' ? Math.max(0, Math.min(100, o.ghost)) : 0;
     this.ghostBase = typeof o.base === 'number' && o.base >= 1 ? Math.round(o.base) - 1 : -1;
     this.failed = '';
     await this.apply();
-    this.ghost = shown; this.ghostBase = -1;
+    this.ghost = shown.ghost; this.depth = shown.depth; this.method = shown.method; this.exposure = shown.exposure; this.gamma = shown.gamma; this.ghostBase = -1;
     if (this.failed) throw new Error(this.failed);
   }
 
@@ -111,7 +125,7 @@ export class MergeDialog extends Dialog {
         for (let j = 0; j < n; j++) { data[j * 4] = r.rgb[j * 3]; data[j * 4 + 1] = r.rgb[j * 3 + 1]; data[j * 4 + 2] = r.rgb[j * 3 + 2]; data[j * 4 + 3] = 1; }
         this.close();
         this.engine.openDeep('HDR', { mode: 'rgb', n: 3, width: r.width, height: r.height, data }, 32);
-        if (this.depth !== 32 && !this.engine.setDepth(this.depth)) this.engine.notice('The merge stayed 32 bit: it could not be toned down.', 'error');
+        if (this.depth !== 32 && !this.engine.setDepth(this.depth, { exposure: this.exposure, gamma: this.gamma, method: this.method })) this.engine.notice('The merge stayed 32 bit: it could not be toned down.', 'error');
         this.engine.notice(`Merged at exposure times ${r.times.map((t) => (t >= 1 ? t.toFixed(2) : `1/${Math.round(1 / t)}`)).join(', ')} (${r.source})${r.ghosts > 0 ? `; ghosts covered ${(r.ghosts * 100).toFixed(1)} percent of the picture` : ''}.`);
       }
     } catch (err) { this.failed = err instanceof Error ? err.message : 'The engine could not merge these photos.'; setText(this.note, this.failed); }

@@ -70,6 +70,24 @@ void main() {
   o = vec4(vec3(l + 0.0005 >= u_level ? 1.0 : 0.0), s.a);
 }`;
 
+/** Liquify (liquifyImage): the source read bilinearly, premultiplied, at q - D(q) where D is the field read bilinearly from t1 (RG32F). */
+const FS_LIQUIFY = `uniform float u_cell, u_scale; uniform ivec2 u_g;
+void main() {
+  ivec2 c = ivec2(gl_FragCoord.xy), sz = textureSize(t0, 0);
+  vec2 q = (vec2(c) + 0.5) / u_scale, g = clamp(q / u_cell, vec2(0.0), vec2(u_g) - 1.001);
+  ivec2 g0 = ivec2(floor(g)); vec2 t = g - vec2(g0);
+  vec2 d = (texelFetch(t1, g0, 0).rg * (1.0 - t.x) + texelFetch(t1, g0 + ivec2(1, 0), 0).rg * t.x) * (1.0 - t.y) + (texelFetch(t1, g0 + ivec2(0, 1), 0).rg * (1.0 - t.x) + texelFetch(t1, g0 + ivec2(1, 1), 0).rg * t.x) * t.y;
+  vec2 sp = q - d - 0.5; ivec2 s0 = ivec2(floor(sp)); vec2 f = sp - vec2(s0);
+  vec3 acc = vec3(0.0); float a = 0.0;
+  for (int j = 0; j < 2; j++) for (int i = 0; i < 2; i++) {
+    ivec2 p = s0 + ivec2(i, j);
+    if (p.x < 0 || p.y < 0 || p.x >= sz.x || p.y >= sz.y) continue;
+    vec4 s = texelFetch(t0, p, 0); float al = s.a * (i == 1 ? f.x : 1.0 - f.x) * (j == 1 ? f.y : 1.0 - f.y);
+    acc += s.rgb * 255.0 * al; a += al;
+  }
+  if (a > 1e-4) o = vec4(floor(acc / a + 0.5) / 255.0, floor(a * 255.0 + 0.5) / 255.0); else o = vec4(0.0);
+}`;
+
 /** Develop's per-pixel pass (developPass), tone then colour mixer then the curve table; t1 is the 256 entry table. */
 const FS_DEVELOP = `${MIX}
 uniform uint u_seed; uniform float u_offset, u_exp, u_cont, u_high, u_shad, u_white, u_black, u_temp, u_tint, u_vib, u_sat, u_dehz, u_vig, u_grain;
@@ -382,6 +400,24 @@ export class GlFilters implements GpuFilterRunner {
         this.pass(this.program('unsharp', FS_UNSHARP), out, [input, soft], (gl, loc) => { gl.uniform1f(loc('u_gain'), amount / 100); gl.uniform1f(loc('u_thr'), threshold); });
         this.readBack(out, new Uint8Array(res.data.buffer));
       } finally { this.free(input, out); if (soft) this.free(soft); }
+      return res;
+    });
+  }
+
+  liquify(src: ImageData, field: { gw: number; gh: number; cell: number; d: Float32Array }, scale: number, outW: number, outH: number): ImageData | null {
+    const { width: w, height: h } = src;
+    if (!(scale > 0) || field.gw < 2 || field.gh < 2 || outW < 1 || outH < 1) return null;
+    return this.guard(Math.max(w, outW, field.gw), Math.max(h, outH, field.gh), () => {
+      const gl = this.gl, input = this.tex(w, h, 'u8', new Uint8Array(src.data.buffer, src.data.byteOffset, src.data.byteLength)), out = this.tex(outW, outH, 'u8');
+      const ft = gl.createTexture()!, fld: Tex = { t: ft, w: field.gw, h: field.gh };
+      gl.bindTexture(gl.TEXTURE_2D, ft);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG32F, field.gw, field.gh, 0, gl.RG, gl.FLOAT, field.d);
+      for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]] as const) gl.texParameteri(gl.TEXTURE_2D, k, v);
+      const res = new ImageData(outW, outH);
+      try {
+        this.pass(this.program('liquify', FS_LIQUIFY), out, [input, fld], (g, loc) => { g.uniform1f(loc('u_cell'), field.cell); g.uniform1f(loc('u_scale'), scale); g.uniform2i(loc('u_g'), field.gw, field.gh); });
+        this.readBack(out, new Uint8Array(res.data.buffer));
+      } finally { this.free(input, out, fld); }
       return res;
     });
   }

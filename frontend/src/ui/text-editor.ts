@@ -13,7 +13,7 @@ export const typedRange = (): { start: number; end: number } | null => live?.sel
 export const typedFeatureOn = (tag: string): boolean | null => live?.featureOn(tag) ?? null;
 export const typedFeatureToggle = (tag: string): boolean => live?.toggleFeature(tag) ?? false;
 export const typedStyle = (patch: RunPatch): boolean => live?.styleRange(patch) ?? false;
-export const typedAttrs = (): { color: RGB; family: string; bold: boolean; italic: boolean } | null => live?.rangeAttrs() ?? null;
+export const typedAttrs = (): { color: RGB; family: string; bold: boolean; italic: boolean; underline: boolean; strike: boolean; caps?: 'all' | 'small' } | null => live?.rangeAttrs() ?? null;
 
 /** Typing on the canvas: one kept text box over the stage, set in the text's own font, size, colour and line spacing
  *  at the current zoom, with its first baseline on the click (or on an existing layer's first baseline, the layer
@@ -86,11 +86,11 @@ export class TextEditor {
   }
 
   /** What the selected letters share (colour, family, bold, italic), over the layer's own. */
-  rangeAttrs(): { color: RGB; family: string; bold: boolean; italic: boolean } | null {
+  rangeAttrs(): { color: RGB; family: string; bold: boolean; italic: boolean; underline: boolean; strike: boolean; caps?: 'all' | 'small' } | null {
     const r = this.selection(), s = this.session;
     if (!r || !s) return null;
     const a = runAttrsOver(s.spec.runs, r.start, r.end), t = s.spec;
-    return { color: a.color ?? t.color, family: a.family ?? t.family, bold: a.bold ?? t.bold, italic: a.italic ?? t.italic };
+    return { color: a.color ?? t.color, family: a.family ?? t.family, bold: a.bold ?? t.bold, italic: a.italic ?? t.italic, underline: a.underline ?? !!t.underline, strike: a.strike ?? !!t.strike, caps: a.caps ?? t.caps };
   }
 
   /** Starts typing new text whose first baseline begins at (x, y), or edits type layer `layerId`; a session already

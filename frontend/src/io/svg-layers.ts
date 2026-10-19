@@ -12,7 +12,9 @@ export interface SvgGroup { key: number; name: string; blend?: BlendMode }
 export interface SvgShape { name: string; path: VectorPath; fill: RGB | null; stroke: { color: RGB; width: number; dash?: 'solid' | 'dashed' | 'dotted' } | null; opacity: number; gradient?: ShapeGradient; blend?: BlendMode; /** The folders it sits in, outermost first. */ groups?: SvgGroup[] }
 /** A text element (34.4d), to become a point type layer with its baseline at (x, y) in document pixels. */
 export interface SvgText { content: string; x: number; y: number; size: number; family: string; color: RGB; align: 'left' | 'center' | 'right'; bold: boolean; italic: boolean; opacity: number }
-export interface SvgLayers { width: number; height: number; shapes: SvgShape[]; texts: SvgText[]; skipped: number }
+/** An element the shape model cannot hold (clip path, mask, filter, pattern, picture): a standalone SVG of it alone, in its place in the tree, for the browser to draw into a pixel layer. */
+export interface SvgPicture { name: string; svg: string }
+export interface SvgLayers { width: number; height: number; shapes: SvgShape[]; texts: SvgText[]; skipped: number; pictures: SvgPicture[] }
 
 type Mat = [number, number, number, number, number, number];
 const IDENT: Mat = [1, 0, 0, 1, 0, 0];
@@ -266,8 +268,38 @@ export function svgToShapes(text: string): SvgLayers {
 
   const BLENDS: Record<string, BlendMode> = { multiply: 'multiply', screen: 'screen', overlay: 'overlay', darken: 'darken', lighten: 'lighten', 'color-dodge': 'color-dodge', 'color-burn': 'color-burn', 'hard-light': 'hard-light', 'soft-light': 'soft-light', difference: 'difference', exclusion: 'exclusion', hue: 'hue', saturation: 'saturation', color: 'color', luminosity: 'luminosity' };
   let groupKey = 0;
+  const pictures: SvgPicture[] = [];
+  const own = (el: Element, k: string): string => (el.getAttribute(k) ?? new RegExp(`(?:^|;)\\s*${k}\\s*:\\s*([^;]+)`).exec(el.getAttribute('style') ?? '')?.[1] ?? '').trim();
+  const needsPicture = (el: Element, tag: string): boolean => {
+    if (tag === 'image' || tag === 'foreignobject') return true;
+    if (SKIPPED.has(tag) || IGNORED.has(tag)) return false;
+    if (['clip-path', 'mask', 'filter'].some((k) => { const v = own(el, k); return v !== '' && v !== 'none'; })) return true;
+    return ['fill', 'stroke'].some((k) => { const id = /url\(\s*['"]?#([^)'"\s]+)/.exec(own(el, k))?.[1]; return !!id && byId.get(id)?.localName.toLowerCase() === 'pattern'; });
+  };
+  const KEEP = new Set(['defs', 'style', 'lineargradient', 'radialgradient', 'filter', 'clippath', 'mask', 'pattern', 'marker', 'symbol', 'title', 'desc', 'metadata', 'script', 'namedview']);
+  /** The file with every drawn element removed except the target and the ancestors that carry its transforms and styles. */
+  const pictureSvg = (el: Element): string => {
+    const steps: number[] = [];
+    for (let n: Element = el; n !== root && n.parentElement; n = n.parentElement) steps.unshift(Array.from(n.parentElement.children).indexOf(n));
+    const copy = root.cloneNode(true) as Element;
+    let node = copy;
+    for (const i of steps) {
+      const next = node.children[i];
+      if (!next) break;
+      for (const sib of Array.from(node.children)) if (sib !== next && !KEEP.has(sib.localName.toLowerCase())) node.removeChild(sib);
+      node = next;
+    }
+    copy.setAttribute('width', String(width)); copy.setAttribute('height', String(height));
+    return new XMLSerializer().serializeToString(copy);
+  };
   const walk = (el: Element, parent: Mat, inherited: Paint, groups: SvgGroup[] = []): void => {
     const tag = el.localName.toLowerCase();
+    if (el !== root && needsPicture(el, tag)) {
+      if (active.size || pictures.length >= 40) { skipped++; return; }
+      const id = el.getAttribute('id')?.trim();
+      pictures.push({ name: id ? id.slice(0, 60) : `${tag} ${pictures.length + 1}`, svg: pictureSvg(el) });
+      return;
+    }
     if (SKIPPED.has(tag)) { skipped++; return; }
     if (IGNORED.has(tag)) return;
     const st = style(el);
@@ -424,5 +456,5 @@ export function svgToShapes(text: string): SvgLayers {
   }
 
   walk(root, base, { fill: 'black', stroke: 'none', sw: 1, op: 1, fo: 1, so: 1, dash: 'none', family: 'sans-serif', size: 16, weight: 'normal', fstyle: 'normal', anchor: 'start' });
-  return { width, height, shapes, texts, skipped };
+  return { width, height, shapes, texts, skipped, pictures };
 }

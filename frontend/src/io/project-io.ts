@@ -109,9 +109,11 @@ async function fillTiled(t: TiledRaster, name: string, read: BandReader): Promis
   }
 }
 
-export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | null = null, timeline: Timeline | null = null): Promise<{ manifest: Json; files: FilePart[] }> {
+export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | null = null, timeline: Timeline | null = null, step: ((done: number, total: number) => void) | null = null): Promise<{ manifest: Json; files: FilePart[] }> {
   const files: FilePart[] = [], layers: Json[] = [];
+  let written = 0;
   for (const l of doc.layers) {
+    step?.(written++, doc.layers.length);
     const r: Json = { id: l.id, name: l.name, isVisible: l.visible, transform: transformRecord(l.transform) };
     if (l.raster && !l.isGroup) { const name = `${l.id}.png`; files.push({ name, blob: await toBlob(l.raster.canvas) }); r.imageFile = name; }
     else if (l.tiled && !l.isGroup) {   // a giant layer, written band by band by the engine (1.62.8)
@@ -125,7 +127,7 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
     else if (ch?.mode === 'rgb') { const name = `${l.id}.deep16`; files.push({ name, blob: new Blob([deepToU16(ch.data).buffer as ArrayBuffer]) }); r.deepFile = name; r.deepWidth = ch.width; r.deepHeight = ch.height; }
     else if (ch?.mode === 'cmyk') { const name = `${l.id}.cmyk32`; files.push({ name, blob: new Blob([new Float32Array(ch.data).buffer as ArrayBuffer]) }); r.inkFile = name; r.inkWidth = ch.width; r.inkHeight = ch.height; }
     else if (ch?.mode === 'lab') { const name = `${l.id}.lab32`; files.push({ name, blob: new Blob([new Float32Array(ch.data).buffer as ArrayBuffer]) }); r.inkFile = name; r.inkWidth = ch.width; r.inkHeight = ch.height; }
-    if (l.vector) r.vector = { fill: l.vector.fill, stroke: l.vector.stroke ?? null, ...(l.vector.gradient ? { gradient: l.vector.gradient } : {}), origin: l.vector.origin, subpaths: pathData(l.vector.path)?.subpaths ?? [] };
+    if (l.vector) r.vector = { fill: l.vector.fill, stroke: l.vector.stroke ?? null, ...(l.vector.gradient ? { gradient: l.vector.gradient } : {}), ...(l.vector.live ? { live: l.vector.live } : {}), origin: l.vector.origin, subpaths: pathData(l.vector.path)?.subpaths ?? [] };
     if (l.fillContent && l.raster) r.fillContent = structuredClone(l.fillContent);
     if (l.relight && l.raster) r.relight = structuredClone(l.relight);
     if (l.vectorMask) r.vectorMask = { enabled: l.vectorMask.enabled, linked: l.vectorMask.linked, inverted: l.vectorMask.inverted, subpaths: pathData(l.vectorMask.path)?.subpaths ?? [], ...(l.vectorMask.density !== undefined && l.vectorMask.density < 100 ? { density: l.vectorMask.density } : {}), ...(l.vectorMask.feather ? { feather: l.vectorMask.feather } : {}) };
@@ -295,7 +297,13 @@ function vectorFrom(raw: unknown): Layer['vector'] {
   const stops = Array.isArray(gr.stops) ? gr.stops.slice(0, 32).flatMap((raw) => { const q = obj(raw), c = colorFrom(q.color); return c && finite(q.at) ? [{ at: Math.max(0, Math.min(1, q.at)), color: c, ...(finite(q.alpha) ? { alpha: Math.max(0, Math.min(1, q.alpha)) } : {}) }] : []; }) : [];
   const gradient = gtype && stops.length >= 2 && fill ? { type: gtype, angle: finite(gr.angle) ? gr.angle : 0, stops } : null;
   if (!path || !finite(origin.x) || !finite(origin.y) || (!fill && !stroke)) return null;
-  return { path, fill, stroke, ...(gradient ? { gradient } : {}), origin: { x: origin.x, y: origin.y } };
+  const sg = obj(s.gradient), sgType = pick(sg.type, ['linear', 'radial', 'angle'] as const);
+  const sgStops = Array.isArray(sg.stops) ? sg.stops.slice(0, 32).flatMap((raw) => { const q = obj(raw), c = colorFrom(q.color); return c && finite(q.at) ? [{ at: Math.max(0, Math.min(1, q.at)), color: c, ...(finite(q.alpha) ? { alpha: Math.max(0, Math.min(1, q.alpha)) } : {}) }] : []; }) : [];
+  if (stroke && sgType && sgStops.length >= 2) Object.assign(stroke, { gradient: { type: sgType, angle: finite(sg.angle) ? sg.angle : 0, stops: sgStops } });
+  const lv = obj(o.live), lk = pick(lv.kind, ['polygon', 'star', 'triangle'] as const), bx = obj(lv.box);
+  const live = lk && finite(lv.sides) && finite(lv.inset) && finite(lv.radius) && finite(bx.x) && finite(bx.y) && finite(bx.w) && finite(bx.h) && bx.w > 0 && bx.h > 0
+    ? { kind: lk, sides: Math.max(3, Math.min(100, Math.round(lv.sides))), inset: Math.max(1, Math.min(99, lv.inset)), radius: Math.max(0, Math.min(15000, lv.radius)), box: { x: bx.x, y: bx.y, w: bx.w, h: bx.h } } : null;
+  return { path, fill, stroke, ...(gradient ? { gradient } : {}), ...(live ? { live } : {}), origin: { x: origin.x, y: origin.y } };
 }
 
 export async function deserialize(manifest: Json, fetchImage: (name: string) => Promise<Blob>, read: BandReader | null = null): Promise<{ doc: Doc; activeId: ID | null; paths: PathSet | null; timeline: Timeline | null }> {

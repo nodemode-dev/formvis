@@ -1,4 +1,4 @@
-import { invert, mul, type BlendMode, type Mat } from '../engine';
+import { invert, mul, type BlendMode, type GrainParams, type Mat } from '../engine';
 import { COMPOSITE_WGSL, blendIndex } from './blend-wgsl';
 import type { DisplayOptions } from './probe';
 
@@ -9,13 +9,15 @@ const BUF = { MAP_READ: 0x0001, COPY_DST: 0x0008, UNIFORM: 0x0040 } as const;
 export interface DisplayMask { image: HTMLCanvasElement | OffscreenCanvas; version: number; width: number; height: number; matrix: Mat }
 /** A clipping base: its coverage (alpha x opacity x its mask) clips every layer that carries this same object. */
 export interface DisplayClip { image: HTMLCanvasElement | OffscreenCanvas; version: number; width: number; height: number; matrix: Mat; opacity: number; mask?: DisplayMask }
-export interface DisplayLayer { image: HTMLCanvasElement | OffscreenCanvas | null; lut?: Uint8Array; lut3?: boolean; mask?: DisplayMask; clip?: DisplayClip; folders?: DisplayMask[]; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
+export interface DisplayLayer { image: HTMLCanvasElement | OffscreenCanvas | null; lut?: Uint8Array; lut3?: boolean; grain?: GrainParams; mask?: DisplayMask; clip?: DisplayClip; folders?: DisplayMask[]; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
 /** The shader mode that renders a clipping base's coverage, and a folder mask's coverage (no source image). */
 export const CLIP_MODE = 102;
 export const FOLDER_MODE = 103;
 /** The shader modes for an adjustment's lookup table (Phase 18.5), after the 27 blend modes: per channel, and 3D. */
 export const LUT_MODE = 100;
 export const LUT3_MODE = 101;
+/** A Grain adjustment, computed per screen pixel from document coordinates; only the WebGL2 display draws it. */
+export const GRAIN_MODE = 104;
 export interface Checker { a: [number, number, number]; b: [number, number, number]; cell: number; origin: [number, number] }
 /** What the stage draws through: the WebGPU display or the WebGL2 one (gl-display.ts), each on its own canvas. */
 export interface ScreenDisplay {
@@ -95,6 +97,8 @@ export class GpuDisplay {
 
   /** The largest texture side this device takes (maxTextureDimension2D). */
   get maxTexture(): number { return this.device.limits.maxTextureDimension2D; }
+
+  unsupported(layers: readonly DisplayLayer[]): string | null { return layers.some((l) => l.grain) ? 'a Grain adjustment layer is drawn by the WebGL2 display, not WebGPU' : null; }
 
   /** One frame: `view` maps document pixels to canvas pixels; `rect` is the document's visible rectangle on the canvas
    *  (x0, y0, x1, y1). Sampling is nearest from 200% zoom up, as the CPU path draws it. With `out` the frame goes to that

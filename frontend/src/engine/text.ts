@@ -59,7 +59,14 @@ function walk(c: Ctx, t: TextSpec, line: string, x: number, y: number, draw: boo
         const st = specWith(t, s.attrs, s.features);
         setType(c, st);
         if (draw && s.attrs.color) c.fillStyle = `rgb(${st.color.r},${st.color.g},${st.color.b})`;
-        cx += walk(c, st, line.slice(s.from - at, s.to - at), cx, y + (t.baselineShift ?? 0) - (st.baselineShift ?? 0), draw);
+        const piece = line.slice(s.from - at, s.to - at), by = y + (t.baselineShift ?? 0) - (st.baselineShift ?? 0);
+        const adv = walk(c, st, s.attrs.caps === 'all' && t.caps !== 'all' ? piece.toUpperCase() : piece, cx, by, draw);
+        if (draw && (s.attrs.underline || s.attrs.strike)) {   // a run's own underline and strikethrough, over the run's advance
+          const th = Math.max(1, st.size / 18);
+          if (s.attrs.underline) c.fillRect(cx, by + st.size * 0.12, adv, th);
+          if (s.attrs.strike) c.fillRect(cx, by - st.size * 0.3, adv, th);
+        }
+        cx += adv;
         if (draw && s.attrs.color) c.fillStyle = fill;
       }
       setType(c, t);
@@ -96,6 +103,7 @@ export function specWith(t: TextSpec, a: RunAttrs, features: string[] = cleanFea
     ...(a.bold !== undefined ? { bold: a.bold, weight: a.weight } : a.weight !== undefined ? { weight: a.weight } : {}),
     ...(a.italic !== undefined ? { italic: a.italic } : {}), ...(a.baselineShift !== undefined ? { baselineShift: a.baselineShift } : {}),
     ...(a.tracking !== undefined ? { tracking: a.tracking } : {}), ...(a.language ? { language: a.language } : {}),
+    ...(a.caps ? { caps: a.caps } : {}),
   };
 }
 
@@ -614,6 +622,9 @@ export function runPatchFrom(a: Record<string, unknown> | undefined): RunPatch {
   put('baselineShift', 'baseline_shift', (v) => (fin(v) ? clamp(v, -2000, 2000) : undefined));
   put('tracking', 'tracking', (v) => (fin(v) ? Math.round(clamp(v, -1000, 10000)) : undefined));
   put('language', 'language', (v) => (typeof v === 'string' && /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(v) ? v : undefined));
+  put('underline', 'underline', (v) => (typeof v === 'boolean' ? v || null : undefined));
+  put('strike', 'strike', (v) => (typeof v === 'boolean' ? v || null : undefined));
+  put('caps', 'caps', (v) => (v === 'all' || v === 'small' ? v : v === 'normal' ? null : undefined));
   return out as RunPatch;
 }
 

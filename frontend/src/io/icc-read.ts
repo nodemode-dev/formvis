@@ -41,6 +41,14 @@ export async function embeddedProfile(file: Blob): Promise<Uint8Array | null> {
       }
       return null;
     }
+    if ((head[0] === 0x49 && head[1] === 0x49 && head[2] === 43 && head[3] === 0) || (head[0] === 0x4d && head[1] === 0x4d && head[2] === 0 && head[3] === 43)) {   // BigTIFF: 8-byte offsets, 20-byte entries
+      const le = head[0] === 0x49, ifd = Number(dv.getBigUint64(8, le)), area = new DataView(await file.slice(ifd, ifd + 8 + 20 * 512).arrayBuffer());
+      for (let i = 0, n = Math.min(512, Number(area.getBigUint64(0, le))); i < n; i++) {
+        const e = 8 + i * 20;
+        if (area.getUint16(e, le) === 34675) { const len = Number(area.getBigUint64(e + 4, le)), at = Number(area.getBigUint64(e + 12, le)); return new Uint8Array(await file.slice(at, at + len).arrayBuffer()); }
+      }
+      return null;
+    }
     if (tag(0) === '8BPS') {   // PSD, image resource 1039
       const skip = 26 + 4 + dv.getUint32(26), size = dv.getUint32(skip);
       for (let o = skip + 4, end = Math.min(head.length, skip + 4 + size); o + 12 <= end;) {

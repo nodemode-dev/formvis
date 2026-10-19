@@ -56,6 +56,9 @@ export interface PathHost {
     beginRetouch(kind: PathRetouchKind, pt: Pt): boolean;
     to(pt: Pt, pressure: number): void;
     end(): void;
+    beginSmudge(pt: Pt): boolean;
+    smudgeTo(pt: Pt, pressure: number): void;
+    endSmudge(): void;
   };
 }
 
@@ -275,12 +278,22 @@ export function strokePathWith(host: PathHost, tool: StrokeTool, simulatePressur
   if (!host.paintable(p.activeLayer)) { host.notice('Select a pixel layer to stroke on.'); return; }
   const runs = vp.subpaths.map((sp) => samplePath(sp, 2)).filter((pts) => pts.length > 1);
   if (!runs.length) return;
+  if (tool === 'smudge') {
+    const sm = host.stroker;
+    for (const pts of runs) {
+      if (!sm.beginSmudge(pts[0])) break;
+      for (let i = 1; i < pts.length; i++) sm.smudgeTo(pts[i], simulatePressure ? Math.max(0.01, Math.sin((Math.PI * i) / (pts.length - 1))) : 1);
+      sm.endSmudge();
+    }
+    host.refresh();
+    return;
+  }
   const st = host.stroker, brush = tool === 'brush' || tool === 'eraser' || tool === 'pencil', savedDyn = st.dynamics, savedMode = st.mode;
   if (brush) {
     st.mode = tool === 'eraser' ? 'erase' : 'paint';
     if (simulatePressure && !st.dynamics.size.enabled) st.dynamics = { ...savedDyn, size: pressureOption(0.02) };
   }
-  const kind = ({ clone: 'clone', healBrush: 'healBrush', spotHealing: 'heal', dodge: 'dodge', burn: 'burn', sponge: 'sponge', blur: 'blur', sharpen: 'sharpen', patternStamp: 'patternStamp', historyBrush: 'historyBrush', colorReplace: 'colorReplace' } as const)[tool as Exclude<StrokeTool, 'brush' | 'eraser' | 'pencil'>];
+  const kind = ({ clone: 'clone', healBrush: 'healBrush', spotHealing: 'heal', dodge: 'dodge', burn: 'burn', sponge: 'sponge', blur: 'blur', sharpen: 'sharpen', patternStamp: 'patternStamp', historyBrush: 'historyBrush', colorReplace: 'colorReplace' } as const)[tool as Exclude<StrokeTool, 'brush' | 'eraser' | 'pencil' | 'smudge'>];
   p.history.begin('Stroke Path', p.snapshot());
   try {
     for (const pts of runs) {

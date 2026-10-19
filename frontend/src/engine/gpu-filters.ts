@@ -17,6 +17,8 @@ export interface GpuFilterRunner {
   unsharpMask(src: ImageData, amount: number, radius: number, threshold: number): ImageData | null;
   /** The per-pixel Develop pass; null unless the state is only per-pixel stages (see developPerPixelOnly). */
   develop(src: ImageData, state: DevelopState, seed: number): ImageData | null;
+  /** The image resampled through a Liquify displacement field (liquifyImage), or null when the GPU cannot. */
+  liquify(src: ImageData, field: { gw: number; gh: number; cell: number; d: Float32Array }, scale: number, outW: number, outH: number): ImageData | null;
 }
 
 let runner: GpuFilterRunner | null = null;

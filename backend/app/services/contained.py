@@ -35,6 +35,34 @@ def _decode_worker(data: bytes, q: "mp.Queue[object]") -> None:
         q.put(None)
 
 
+def _flatten_deep(chans: dict) -> "np.ndarray | None":
+    """A deep EXR's samples composited front to back by depth (premultiplied colour, Z, or the first depth-like channel
+    the file has; samples in stored order without one), as BGRA float32. A pixel with no samples stays clear."""
+    key = next((k for k in chans if k.split(".")[-1] == "RGBA"), None)
+    if key is None:
+        return None
+    rgba = chans[key].pixels
+    zkey = next((k for k in chans if k.split(".")[-1] in ("Z", "depth", "Depth")), None)
+    depth = chans[zkey].pixels if zkey else None
+    h, w = rgba.shape[:2]
+    out = np.zeros((h, w, 4), np.float32)
+    for y in range(h):
+        for x in range(w):
+            s = rgba[y, x]
+            if s is None or len(s) == 0:
+                continue
+            s = np.asarray(s, np.float32)
+            if depth is not None and depth[y, x] is not None and len(depth[y, x]) == len(s):
+                s = s[np.argsort(np.asarray(depth[y, x]), kind="stable")]
+            c = np.zeros(4, np.float32)
+            for v in s:
+                c += (1.0 - c[3]) * v
+                if c[3] >= 1.0:
+                    break
+            out[y, x] = c
+    return np.ascontiguousarray(out[:, :, [2, 1, 0, 3]])
+
+
 def _binding_decode(data: bytes) -> "np.ndarray | None":
     """A single-part EXR through the OpenEXR binding, as OpenCV returns it (BGR or BGRA, or one plane, float32)."""
     try:
@@ -42,6 +70,8 @@ def _binding_decode(data: bytes) -> "np.ndarray | None":
         import OpenEXR
         f = OpenEXR.File(io.BytesIO(data))
         chans = f.parts[0].channels
+        if f.parts[0].header.get("type") in (OpenEXR.deepscanline, OpenEXR.deeptile):
+            return _flatten_deep(chans)
         key = next((k for k in chans if k.split(".")[-1] == "RGBA"), None) or next((k for k in chans if k.split(".")[-1] == "RGB"), None) or next(iter(chans), None)
         if key is None:
             return None

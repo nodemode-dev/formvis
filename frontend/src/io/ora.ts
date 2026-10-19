@@ -14,6 +14,8 @@ const TO_ORA: Partial<Record<BlendMode, string>> = {
   difference: 'svg:difference', color: 'svg:color', luminosity: 'svg:luminosity', hue: 'svg:hue', saturation: 'svg:saturation', 'linear-dodge': 'svg:plus',
 };
 const FROM_ORA = new Map<string, BlendMode>(Object.entries(TO_ORA).map(([k, v]) => [v as string, k as BlendMode]));
+// Operators other programs write beyond the specification's list: read, not written.
+for (const m of ['exclusion', 'linear-burn', 'vivid-light', 'linear-light', 'pin-light', 'hard-mix', 'subtract', 'divide', 'darker-color', 'lighter-color', 'dissolve'] as const) FROM_ORA.set(`svg:${m}`, m);
 const esc = (s: string): string => s.replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c] as string));
 
 /** The document as an OpenRaster file. `alone(layer)` draws a layer that is not plain pixels (text, a shape, a smart

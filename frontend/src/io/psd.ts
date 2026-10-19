@@ -9,6 +9,8 @@ import { windingArea } from '../engine/custom-shapes';
 import { addIccResource, addPathResources, addResourceBytes, block as resourceBlock, clippingPathName, readPathResources, resourceBlocks } from './psd-paths';
 import { addExtraChannels, readExtraChannels, readIccProfile } from './psd-channels';
 import { readPsdChannelMode } from './psd-modes';
+import { readChannelRestrictions } from './psd-blend';
+import { vectorCoverage } from '../engine/vector-mask';
 import { fromBase64, toBase64 } from './icc-read';
 import { cameraFromTiff, exifBlockOf } from './exif';
 import { cleanRuns, runsStyled, styleSegments } from '../engine/opentype';
@@ -582,8 +584,8 @@ export async function readPsdFile(file: File, siblings: readonly File[] = []): P
     if (!links.has(g)) links.set(g, uid());
     return { link: links.get(g) as ID };
   };
-  const closedGroups: ID[] = [];
-  const maskOf = (mk: PsdLayer['mask']): Layer['mask'] | null => {
+  const closedGroups: ID[] = [], restrictions = readChannelRestrictions(buffer, psd);
+  const maskOf =(mk: PsdLayer['mask']): Layer['mask'] | null => {
     if (!mk?.canvas || !mk.canvas.width || !mk.canvas.height) return null;
     // PSD masks are grey; formvis's are white with the level in alpha.
     const mw = mk.canvas.width, mh = mk.canvas.height, grey = mk.canvas.getContext('2d')?.getImageData(0, 0, mw, mh);
@@ -615,7 +617,7 @@ export async function readPsdFile(file: File, siblings: readonly File[] = []): P
     return { path, enabled: !vm.disable, linked: !vm.notLink, inverted: !!vm.invert, ...(vd ? { density: vd } : {}), ...(vfe ? { feather: vfe } : {}) };
   };
   const walk = (children: PsdLayer[] | undefined, parentId: ID | null): void => {
-    let base: Layer | null = null;
+    let base: Layer | null = null, basePl: PsdLayer | null = null;
     for (const pl of children ?? []) {
       const name = pl.name || 'Layer', blend = (pl.blendMode && FROM_PSD.get(pl.blendMode)) ?? 'normal';
       if (pl.children) {
@@ -633,15 +635,18 @@ export async function readPsdFile(file: File, siblings: readonly File[] = []): P
         psdIds.set(pl, group.id);
         layers.push(group); // after its children, where formvis keeps a folder's entry
         base = null;
+        basePl = null;
         continue;
       }
       if (pl.blendMode && !FROM_PSD.has(pl.blendMode) && pl.blendMode !== 'pass through') notes.push(`"${name}" uses ${pl.blendMode}, which formvis does not have; it opened as Normal.`);
       const adj = pl.adjustment ? fromPsdAdjustment(pl.adjustment) : null;
       if (pl.adjustment && !adj) { notes.push(`"${name}" is a ${pl.adjustment.type} adjustment, which formvis does not have; formvis left it out.`); continue; }
       // A PSD fill layer (a colour, a gradient or a pattern, with no shape's path) opens as formvis's (1.66.0).
-      const fillSpec = !adj && pl.vectorFill && !pl.vectorMask?.paths?.length && !pl.vectorStroke ? fromPsdFill(pl.vectorFill, psd.patterns, name, notes) : null;
+      // A shape filled with a gradient or a pattern and not stroked is a fill layer behind a vector mask.
+      const shapeFill = !!pl.vectorMask?.paths?.length && (pl.vectorFill?.type === 'solid' || pl.vectorFill?.type === 'pattern') && !pl.vectorStroke?.strokeEnabled && pl.vectorStroke?.fillEnabled !== false;
+      const fillSpec = !adj && pl.vectorFill && ((!pl.vectorMask?.paths?.length && !pl.vectorStroke) || shapeFill) ? fromPsdFill(pl.vectorFill, psd.patterns, name, notes) : null;
       if (!adj && !fillSpec && (!pl.canvas || !pl.canvas.width || !pl.canvas.height)) continue;
-      const drawn = fillSpec && (!pl.canvas || !pl.canvas.width || !pl.canvas.height) ? renderFill(fillSpec, doc.width, doc.height, { x: 0, y: 0, w: doc.width, h: doc.height }) : null;
+      const drawn = fillSpec && (shapeFill || !pl.canvas || !pl.canvas.width || !pl.canvas.height) ? renderFill(fillSpec, doc.width, doc.height, { x: 0, y: 0, w: doc.width, h: doc.height }) : null;
       if (fillSpec && !drawn && (!pl.canvas || !pl.canvas.width || !pl.canvas.height)) continue;
       // A plain pixel layer more than four canvases large is cut to the canvas; type, shapes and smart objects keep all their pixels.
       const cut = adj || drawn || !pl.canvas || pl.placedLayer || pl.text || pl.vectorMask || pl.vectorFill || pl.canvas.width * pl.canvas.height <= 4 * doc.width * doc.height ? null : cropToCanvas(pl.canvas, pl.left ?? 0, pl.top ?? 0, doc.width, doc.height);
@@ -652,11 +657,10 @@ export async function readPsdFile(file: File, siblings: readonly File[] = []): P
       const pr = pl.protected, all = !!(pr?.transparency && pr?.composite && pr?.position);
       const lk = pr && (pr.transparency || pr.composite || pr.position) ? { locks: all ? { all: true } : { ...(pr.transparency ? { transparency: true } : {}), ...(pr.composite ? { pixels: true } : {}), ...(pr.position ? { position: true } : {}) } } : {};
       const fill = { ...(pl.fillOpacity !== undefined && pl.fillOpacity !== 1 ? { fill: Math.min(1, Math.max(0, pl.fillOpacity)) } : {}), ...lk, ...linkOf(pl) };
-      // The reader stops one channel short of the file's restriction list, so which channels are restricted cannot be told; the layer is only reported.
-      const advanced = labelOf(pl);
-      if (pl.channelBlendingRestrictions) notes.push(`"${name}" restricts the channels it blends into, which formvis cannot read from the file; it opened with all channels.`);
-      if (pl.blendClippendElements === false) notes.push(`"${name}" does not blend clipped layers as a group, which formvis does not do; it opened with the default.`);
-      if (pl.transparencyShapesLayer === false) notes.push(`"${name}" has Transparency Shapes Layer off, which formvis does not do; it opened with it on.`);
+      // Channel restrictions are read from the layer records (the layer reader drops the last entry); Transparency Shapes Layer off is kept.
+      const restricted = restrictions.get(pl);
+      const advanced = { ...labelOf(pl), ...(restricted ? { blendChannels: restricted } : {}), ...(pl.transparencyShapesLayer === false ? { transparencyShapes: false } : {}) };
+      if (pl.channelBlendingRestrictions?.length && !restricted) notes.push(`"${name}" restricts the channels it blends into, which this file's layer records did not let formvis read; it opened with all channels.`);
       const layer = adj ? newLayer(name, doc, { adjustment: adj, parentId, visible: !pl.hidden, opacity: pl.opacity ?? 1, blend, ...fill, ...advanced })
         : newLayer(name, doc, { raster, parentId, transform: { ...docTransform(w, h), x: drawn ? 0 : atX, y: drawn ? 0 : atY }, visible: !pl.hidden, opacity: pl.opacity ?? 1, blend, ...fill, ...advanced, ...(fillSpec ? { fillContent: fillSpec } : {}) });
       const made = maskOf(pl.mask);
@@ -742,8 +746,10 @@ export async function readPsdFile(file: File, siblings: readonly File[] = []): P
         layer.locks = { ...(layer.locks ?? {}), all: true };
         kept.push('Locked Background layer.');
       }
-      if (pl.clipping && base) layer.clipId = base.id;
-      else base = layer;
+      if (pl.clipping && base) {
+        layer.clipId = base.id;
+        if (basePl?.blendClippendElements === true && !base.isGroup && !base.adjustment) base.blendClipped = true;   // Blend Clipped Layers as Group, on the base
+      } else { base = layer; basePl = pl; }
       psdIds.set(pl, layer.id);
       layers.push(layer);
     }
@@ -880,6 +886,9 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
 
     const out: PsdLayer = { name: l.name, left: px.x, top: px.y, canvas: px.c, opacity: l.opacity, ...(l.fill !== undefined && l.fill !== 1 ? { fillOpacity: l.fill } : {}), ...(l.locks ? { protected: { transparency: !!(l.locks.all || l.locks.transparency), composite: !!(l.locks.all || l.locks.pixels), position: !!(l.locks.all || l.locks.position) } } : {}), hidden: !l.visible, blendMode: TO_PSD[l.blend] ?? 'normal', clipping: !!l.clipId, ...tag, ...toPsdBlending(l) };
     if (effectsPresent(l.effects)) { const e = toPsdEffects(l.effects, psdPatterns); if (e) out.effects = e; }
+    out.blendClippendElements = l.blendClipped === true;
+    if (l.transparencyShapes === false) out.transparencyShapesLayer = false;
+    if (l.blendChannels?.some((on) => !on)) out.channelBlendingRestrictions = l.blendChannels.flatMap((on, i) => (on ? [] : [i]));
     const bv = l.effects?.bevel;
     if (bv?.enabled && (bv.contour?.enabled || bv.texture?.enabled)) notes.push(`"${l.name}"'s Bevel & Emboss Contour and Texture are not written to the PSD; it draws the bevel without them.`);
     if (liveText(l) && l.text && l.raster) {
@@ -920,7 +929,17 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
       }
     }
     const vm = l.vectorMask;
-    if (vm && !v && !l.fillContent) {
+    if (vm && !v && l.fillContent && l.fillContent.kind !== 'solid' && vm.path.subpaths.some((sp) => sp.anchors.length)) {
+      // A gradient or pattern fill behind a vector mask is a PSD shape: the outlines and the fill, the pixels cut by the mask.
+      const paths = psdOutlines(vm.path.subpaths, 0, 0), cov = vm.enabled ? vectorCoverage(vm, doc.width, doc.height) : null;
+      out.vectorMask = { paths, ...(vm.inverted ? { invert: true } : {}), ...(vm.linked ? {} : { notLink: true }), ...(vm.enabled ? {} : { disable: true }) };
+      if (cov) {
+        const g = px.c.getContext('2d') as CanvasRenderingContext2D;
+        g.globalCompositeOperation = 'destination-in';
+        g.drawImage(cov.surface as CanvasImageSource, -px.x, -px.y);
+        g.globalCompositeOperation = 'source-over';
+      }
+    } else if (vm && !v && !l.fillContent) {
       // Layer > Vector Mask on a pixel, type or smart layer: the outlines as the PSD's vector mask beside the pixels.
       const paths = psdOutlines(vm.path.subpaths, 0, 0);
       if (paths.length) out.vectorMask = { paths, ...(vm.inverted ? { invert: true } : {}), ...(vm.linked ? {} : { notLink: true }), ...(vm.enabled ? {} : { disable: true }) };

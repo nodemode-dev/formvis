@@ -10,7 +10,7 @@ import { stickyModifiers } from './modifier-keys';
 import { paint, type StagePaint } from './palette';
 import type { DisplayLayer, ScreenDisplay } from '../gpu/display';
 import { documentFallback } from '../gpu/fallback';
-import { frameTrace } from '../gpu/frame-trace';
+import { frameTrace, framePacing } from '../gpu/frame-trace';
 import { LINE_DASH, loadPrefs, type LineStyle } from './prefs';
 
 const REDUCED = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -306,7 +306,9 @@ export class Stage {
     if (scene) this.pending = region && this.pending !== null ? (this.pending ? unionRect(this.pending, region) : region) : null;
     if (this.frame) return;
     const asked = frameTrace.on ? performance.now() : 0;
-    this.frame = requestAnimationFrame(() => {
+    const tick = (now: number): void => {
+      if (framePacing.minMs > 0 && now - framePacing.last < framePacing.minMs - 2) { this.frame = requestAnimationFrame(tick); return; }
+      framePacing.last = now;
       this.frame = 0;
       const region = this.pending ?? null;
       this.pending = undefined;
@@ -314,7 +316,8 @@ export class Stage {
       if (this.wantScene) this.renderScene(region);
       if (this.wantOverlay) this.renderOverlay();
       if (traced && asked) frameTrace.record(asked, t0, performance.now(), scene ? (this.gpu && !this.gpuReason ? 'gpu' : 'cpu') : 'overlay');
-    });
+    };
+    this.frame = requestAnimationFrame(tick);
   }
 
   private syncWelcome(): void { setHidden(this.welcome, this.engine.projects.length > 0); }

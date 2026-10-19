@@ -164,6 +164,20 @@ export function gridToSource(pos: number[] | undefined, n: number, t: number): n
   return pos[i] + (pos[i + 1] - pos[i]) * f;
 }
 
+/** The inverse of `gridToSource`: the grid parameter whose source fraction is `s`, the end segments extended linearly. */
+export function sourceToGrid(pos: number[] | undefined, n: number, s: number): number {
+  if (!pos || pos.length !== n) return s * (n - 1);
+  let i = 0;
+  while (i < n - 2 && s > pos[i + 1]) i++;
+  const span = pos[i + 1] - pos[i];
+  return i + (Math.abs(span) < 1e-9 ? 0 : (s - pos[i]) / span);
+}
+
+/** Where the mesh sends the source fraction (sx, sy) of its box: the grid surface at the matching parameters. */
+export function meshForward(gw: number, gh: number, points: P2[], us: number[] | undefined, vs: number[] | undefined, sx: number, sy: number, out: P2): void {
+  meshSurfacePoint(gw, gh, points, sourceToGrid(us, gw, sx), sourceToGrid(vs, gh, sy), out);
+}
+
 export interface MeshGrid { gw: number; gh: number; points: P2[]; us: number[]; vs: number[] }
 
 /** Inserts a column at fractional grid position `at.u` (0..gw-1) and/or a row at `at.v`. Each new point is the current

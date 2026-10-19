@@ -6,6 +6,8 @@
  *  zero, Twirl rotates what lies under the brush, Pucker draws it in and Bloat swells it out, each weighted by a
  *  smoothstep falloff from the brush centre. */
 
+import { gpuFilters } from './gpu-filters';
+
 export interface LiquifyField { gw: number; gh: number; cell: number; d: Float32Array; freeze?: Float32Array }
 export type LiquifyTool = 'warp' | 'pushLeft' | 'reconstruct' | 'twirlCW' | 'twirlCCW' | 'pucker' | 'bloat' | 'smooth' | 'freeze' | 'thaw';
 
@@ -180,6 +182,11 @@ export const fieldIsZero = (f: LiquifyField): boolean => f.d.every((v) => v === 
 /** The image resampled through the field, into an image of `outW` x `outH` that shows the source at `scale`
  *  (1 for full size, below 1 for a preview). Bilinear, premultiplied, outside transparent. */
 export function liquifyImage(src: ImageData, f: LiquifyField, scale = 1, outW = src.width, outH = src.height): ImageData {
+  try { const gpu = gpuFilters()?.liquify(src, f, scale, outW, outH); if (gpu) return gpu; } catch { /* the CPU does it */ }
+  return liquifyImageCpu(src, f, scale, outW, outH);
+}
+
+export function liquifyImageCpu(src: ImageData, f: LiquifyField, scale = 1, outW = src.width, outH = src.height): ImageData {
   const W = src.width, H = src.height, s = src.data, out = new ImageData(outW, outH), o = out.data, d: [number, number] = [0, 0];
   for (let y = 0; y < outH; y++) for (let x = 0; x < outW; x++) {
     const qx = (x + 0.5) / scale, qy = (y + 0.5) / scale;

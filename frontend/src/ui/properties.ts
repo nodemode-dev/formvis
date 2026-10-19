@@ -1,6 +1,6 @@
 import type { Engine } from '../engine';
 import type { Layer, TextSpec } from '../engine/types';
-import { setType } from '../extensions/tools/type';
+import { TYPE_LANGUAGES, setType } from '../extensions/tools/type';
 import { axesOf, featuresFromText, featuresToText, variationsFromText, variationsToText } from '../engine/opentype';
 import { el, setHidden, setText } from './dom';
 import { onLanguage, t } from './i18n';
@@ -611,7 +611,10 @@ export class PropertiesColumn {
       e.emit('options', null);
       if (l?.text && e.liveText(l)) void e.updateTextLayer(l.id, { ...l.text, color: e.fg });
     });
-    row('Weight', weight); row('Colour', color); row('Caps', caps); row('Lines', lines); row('H scale', hscale.root); row('V scale', vscale.root); row('Baseline', shift.root); row('Features', feats); row('Axes', axes);
+    const angle = numField('deg', 'Angle', -360, 360, 1, (v) => setType(e, { angle: v || undefined }));
+    const lang = el<HTMLSelectElement>(`<select class="cv-select" aria-label="Language">${TYPE_LANGUAGES.map(([id, name]) => `<option value="${id}">${name}</option>`).join('')}</select>`);
+    lang.addEventListener('change', () => setType(e, { language: lang.value || undefined }));
+    row('Weight', weight); row('Colour', color); row('Caps', caps); row('Lines', lines); row('H scale', hscale.root); row('V scale', vscale.root); row('Baseline', shift.root); row('Angle', angle.root); row('Language', lang); row('Features', feats); row('Axes', axes);
     new PanelGroup(this.root, 'character', [{ id: 'character', label: 'Character', body }], 'Character');
     let axesFace = '';
     let fonts = '';
@@ -630,7 +633,8 @@ export class PropertiesColumn {
       if (document.activeElement !== weight) weight.value = t.weight ? String(t.weight) : '';
       if (document.activeElement !== caps) caps.value = t.caps ?? '';
       if (document.activeElement !== lines) lines.value = `${t.underline ? 'u' : ''}${t.strike ? 's' : ''}`;
-      hscale.set(t.scaleX ?? 100); vscale.set(t.scaleY ?? 100); shift.set(t.baselineShift ?? 0);
+      hscale.set(t.scaleX ?? 100); vscale.set(t.scaleY ?? 100); shift.set(t.baselineShift ?? 0); angle.set(t.angle ?? 0);
+      if (document.activeElement !== lang) lang.value = TYPE_LANGUAGES.some(([id]) => id === (t.language ?? '')) ? (t.language ?? '') : '';
       if (document.activeElement !== feats) feats.value = featuresToText(t.features);
       if (document.activeElement !== axes) axes.value = variationsToText(t.variations);
       if (document.activeElement !== color) color.value = `#${[e.fg.r, e.fg.g, e.fg.b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;

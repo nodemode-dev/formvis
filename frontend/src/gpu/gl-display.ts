@@ -1,6 +1,6 @@
 import { invert, mul, type Mat } from '../engine';
 import { blendIndex } from './blend-wgsl';
-import { CLIP_MODE, FOLDER_MODE, LUT3_MODE, LUT_MODE, type Checker, type DisplayClip, type DisplayLayer, type DisplayMask } from './display';
+import { CLIP_MODE, FOLDER_MODE, GRAIN_MODE, LUT3_MODE, LUT_MODE, type Checker, type DisplayClip, type DisplayLayer, type DisplayMask } from './display';
 import type { DisplayOptions } from './probe';
 
 /** The display on WebGL2 (Phase 18.4): the GPU path where WebGPU is missing, as in the Linux desktop shell, whose
@@ -51,6 +51,17 @@ vec3 blend(int m, vec3 b, vec3 s) {
   if (m == 23) return setLum(setSat(s, sat(b)), lum(b)); if (m == 24) return setLum(setSat(b, sat(s)), lum(b));
   if (m == 25) return setLum(s, lum(b)); if (m == 26) return setLum(b, lum(s));
   return vec3(sep(m, b.r, s.r), sep(m, b.g, s.g), sep(m, b.b, s.b)); }
+uniform vec4 gA; uniform vec4 gB; uniform uvec4 gS;
+float lattice(int x, int y, uint seed) {
+  uint z = (uint(x) * 0x27d4eb2du) ^ (uint(y) * 0x165667b1u) ^ seed; float sum = 0.0;
+  for (int r = 0; r < 2; r++) { z += 0x9e3779b9u; z = (z ^ (z >> 16u)) * 0x85ebca6bu; z = (z ^ (z >> 13u)) * 0xc2b2ae35u; z ^= z >> 16u; sum += float(z) / 4294967295.0; }
+  return sum - 1.0;
+}
+float grainAt(ivec2 c, vec2 t, ivec2 f, uint seed, uint fine) {
+  float a = lattice(c.x, c.y, seed), b = lattice(c.x + 1, c.y, seed), cc = lattice(c.x, c.y + 1, seed), d = lattice(c.x + 1, c.y + 1, seed);
+  float s = ((a + (b - a) * t.x) * (1.0 - t.y) + (cc + (d - cc) * t.x) * t.y) * 1.6;
+  return s + (lattice(f.x, f.y, fine) - s) * gA.y;
+}
 float dissolveNoise(int x, int y) { uint h = uint(x) * 374761393u + uint(y) * 668265263u; h = (h ^ (h >> 13u)) * 1274126177u; return float(h ^ (h >> 16u)) / 4294967296.0; }
 void main() {
   ivec2 fb = ivec2(gl_FragCoord.xy);
@@ -69,9 +80,27 @@ void main() {
     vec3 t = vec3(texelFetch(source, ivec2(i.r, 0), 0).r, texelFetch(source, ivec2(i.g, 0), 0).g, texelFetch(source, ivec2(i.b, 0), 0).b);
     outColor = vec4(bd.rgb + (t - bd.rgb) * opacity * cov, bd.a); return;
   }
+  if (mode == 104) {
+    if (bd.a <= 0.0) { outColor = bd; return; }
+    vec3 uq = inv * vec3(gl_FragCoord.x, H - gl_FragCoord.y, 1.0);
+    if (gB.z > 0.0) uq.xy = floor(uq.xy) + 0.5;
+    vec2 uv = uq.xy / gB.x, fl = floor(uv);
+    vec2 t = uv - fl; t = t * t * (3.0 - 2.0 * t);
+    ivec2 c = ivec2(fl), f = ivec2(floor(uq.xy));
+    vec3 px = floor(bd.rgb * 255.0 + 0.5);
+    float noise = grainAt(c, t, f, gS.x, gS.y);
+    float luma = min(1.0, (0.2126 * px.r + 0.7152 * px.g + 0.0722 * px.b) / 255.0), weight = gA.x * (0.4 + 2.4 * luma * (1.0 - luma)), speck = 0.0;
+    if (gA.w > 0.0) { float h = lattice(f.x, f.y, gS.z); if (abs(h) > 1.0 - gA.w) speck = sign(h) * 0.55 * 255.0 * min(1.0, gB.y / 50.0); }
+    vec3 g3 = px;
+    for (int ch = 0; ch < 3; ch++) {
+      float own = gA.z > 0.0 ? grainAt(c, t, f, gS.x + uint(ch + 1) * 0x9e3779b1u, gS.y + uint(ch + 1) * 0x85ebca6bu) : noise;
+      g3[ch] = floor(clamp(px[ch] + (noise + (own - noise) * gA.z) * weight + speck, 0.0, 255.0) + 0.5);
+    }
+    outColor = vec4(bd.rgb + (g3 / 255.0 - bd.rgb) * opacity * cov, bd.a); return;
+  }
   if (mode == 101) {
     if (bd.a <= 0.0) { outColor = bd; return; }
-    vec3 v = floor(bd.rgb * 255.0 + 0.5) / 5.0;
+    vec3 v =floor(bd.rgb * 255.0 + 0.5) / 5.0;
     ivec3 b0 = min(ivec3(floor(v)), ivec3(50));
     vec3 f = v - vec3(b0), acc = vec3(0.0);
     for (int k = 0; k < 8; k++) {
@@ -210,7 +239,7 @@ export class GlDisplay {
     for (const l of layers) {
       if (l.opacity <= 0 || l.width < 1 || l.height < 1) continue;
       const cover = l.clip ? clipOut.get(l.clip) ?? null : l.folders ? folderOut.get(l.folders) ?? null : null;
-      this.drawLayer(l, l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend), cover, a.tex, b.fb, view, filter, used, u);
+      this.drawLayer(l, l.grain ? GRAIN_MODE : l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend), cover, a.tex, b.fb, view, filter, used, u);
       [a, b] = [b, a];
     }
     gl.useProgram(this.pres);
@@ -260,9 +289,16 @@ export class GlDisplay {
   /** One composite pass: `l` over `backdrop` into framebuffer `fb`, in shader `mode`, clipped by `clip` (a coverage texture). */
   private drawLayer(l: DisplayLayer, mode: number, clip: WebGLTexture | null, backdrop: WebGLTexture, fb: WebGLFramebuffer, view: Mat, filter: number, used: Set<object>, u: (n: string) => WebGLUniformLocation | null): void {
     const gl = this.gl;
-    if (mode !== FOLDER_MODE) used.add(l.lut ?? (l.image as object));
+    const noImage = mode === FOLDER_MODE || mode === GRAIN_MODE;
+    if (!noImage) used.add(l.lut ?? (l.image as object));
     gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, mode === FOLDER_MODE ? this.blank() : this.texture(l));
+    gl.bindTexture(gl.TEXTURE_2D, noImage ? this.blank() : this.texture(l));
+    if (l.grain) {
+      const g = l.grain;
+      gl.uniform4f(u('gA'), g.strength, g.rough, g.colour, g.speckle);
+      gl.uniform4f(u('gB'), g.cell, g.amount, filter === gl.NEAREST ? 1 : 0, 0);
+      gl.uniform4ui(u('gS'), g.seed >>> 0, g.fineSeed >>> 0, g.specSeed >>> 0, 0);
+    }
     for (const k of [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D, k, filter);
     const [ia, ib, ic, id, ie, iff] = invert(mul(view, l.matrix));
     gl.uniformMatrix3fv(u('inv'), false, [ia, ib, 0, ic, id, 0, ie, iff, 1]);

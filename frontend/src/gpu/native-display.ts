@@ -48,6 +48,7 @@ export class NativeDisplay implements ScreenDisplay {
   unsupported(layers: readonly DisplayLayer[]): string | null {
     for (const l of layers) {
       if (l.lut3) return 'an adjustment uses a 3D lookup table, which the native renderer does not draw yet';
+      if (l.grain) return 'a Grain adjustment layer is not drawn by the native renderer yet';
       if (l.folders?.length) return 'a layer is in a folder with a mask, which the native renderer does not draw yet';
       if (l.mask && !isIdentity(l.mask.matrix)) return 'a mask is placed apart from the document, which the native renderer does not draw yet';
       if (l.clip?.mask && !isIdentity(l.clip.mask.matrix)) return 'a clipping base has a mask placed apart from the document, which the native renderer does not draw yet';

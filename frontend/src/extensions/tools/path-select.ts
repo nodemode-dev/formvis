@@ -1,7 +1,7 @@
 import { pathActions } from './path-actions';
 import { cornerWidgetCancel, cornerWidgetDown, cornerWidgetMove, cornerWidgetOverlay, cornerWidgetUp } from './corner-widgets';
-import { PATH_OPS, tracePath, type Anchor, type PathOp, type Pt, type SubPath, type VectorPath } from '../../engine';
-import type { Tool } from '../registry';
+import { PATH_OPS, pathBounds, tracePath, type Anchor, type Engine, type PathOp, type Pt, type SubPath, type VectorPath } from '../../engine';
+import type { OptionSpec, Tool } from '../registry';
 
 /** The subpath chosen with Path Selection, as an index into the selected path's subpaths. */
 let chosen: number | null = null;
@@ -25,9 +25,44 @@ export function subpathAt(vp: VectorPath, at: Pt, reach: number): number | null 
   return null;
 }
 
-/** Path Selection (A, with Direct Selection): click a subpath to choose it whole, drag to move it, Alt-drag to move a
- *  copy, Delete to remove it, and the arrow keys to nudge it (Shift for 10 px); the
- *  points themselves are Direct Selection's. */
+type Edge = 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom';
+
+/** Aligns the chosen subpaths to one another's outer box (a single one to the canvas), or spreads three or more evenly
+ *  between the outermost two; one undo step. */
+function arrange(e: Engine, how: Edge | 'distH' | 'distV'): void {
+  const vp = e.workPath, doc = e.current?.doc, idx = [...new Set(e.pathComponents)].filter((i) => !!vp?.subpaths[i]);
+  if (!vp || !doc || !idx.length) { e.notice('Choose paths with the Path Selection tool first (Shift-click adds more).'); return; }
+  const boxes = idx.map((i) => pathBounds({ subpaths: [vp.subpaths[i]] }) as NonNullable<ReturnType<typeof pathBounds>>);
+  const shifts: Array<[number, number]> = idx.map(() => [0, 0]);
+  if (how === 'distH' || how === 'distV') {
+    if (idx.length < 3) { e.notice('Distribute needs three or more chosen paths.'); return; }
+    const h = how === 'distH', at = (b: (typeof boxes)[number]): number => (h ? b.x + b.w / 2 : b.y + b.h / 2);
+    const order = idx.map((_, k) => k).sort((a, b) => at(boxes[a]) - at(boxes[b])), first = at(boxes[order[0]]), last = at(boxes[order[order.length - 1]]);
+    order.forEach((k, n) => { const d = first + ((last - first) * n) / (order.length - 1) - at(boxes[k]); shifts[k] = h ? [d, 0] : [0, d]; });
+  } else {
+    const whole = idx.length === 1 ? { x: 0, y: 0, w: doc.width, h: doc.height } : { x: Math.min(...boxes.map((b) => b.x)), y: Math.min(...boxes.map((b) => b.y)), w: 0, h: 0 };
+    if (idx.length > 1) { whole.w = Math.max(...boxes.map((b) => b.x + b.w)) - whole.x; whole.h = Math.max(...boxes.map((b) => b.y + b.h)) - whole.y; }
+    boxes.forEach((b, k) => {
+      shifts[k] = how === 'left' ? [whole.x - b.x, 0] : how === 'right' ? [whole.x + whole.w - (b.x + b.w), 0] : how === 'hcenter' ? [whole.x + whole.w / 2 - (b.x + b.w / 2), 0]
+        : how === 'top' ? [0, whole.y - b.y] : how === 'bottom' ? [0, whole.y + whole.h - (b.y + b.h)] : [0, whole.y + whole.h / 2 - (b.y + b.h / 2)];
+    });
+  }
+  if (shifts.every(([x, y]) => !x && !y)) return;
+  e.beginPathEdit();
+  idx.forEach((i, k) => { vp.subpaths[i].anchors = vp.subpaths[i].anchors.map((a) => shifted(a, shifts[k][0], shifts[k][1])); });
+  e.setWorkPath(vp);
+  e.endPathEdit();
+}
+
+const arrangeButtons = (e: Engine): OptionSpec[] => ([
+  ['Align left edges', 'alignLeftEdge', 'left'], ['Align horizontal centres', 'alignHcenterEdge', 'hcenter'], ['Align right edges', 'alignRightEdge', 'right'],
+  ['Align top edges', 'alignTopEdge', 'top'], ['Align vertical centres', 'alignVcenterEdge', 'vcenter'], ['Align bottom edges', 'alignBottomEdge', 'bottom'],
+  ['Distribute horizontally', 'distributeH', 'distH'], ['Distribute vertically', 'distributeV', 'distV'],
+] as const).map(([label, icon, how]) => ({ kind: 'button', label, icon, run: () => arrange(e, how), compact: true }));
+
+/** Path Selection (A, with Direct Selection): click a subpath to choose it whole (Shift adds or removes one), drag to move
+ *  it, Alt-drag to move a copy, Delete to remove it, and the arrow keys to nudge it (Shift for 10 px); the bar's align and
+ *  distribute buttons line the chosen paths up. The points themselves are Direct Selection's. */
 export const pathSelectTool: Tool = {
   id: 'pathSelect', label: 'Path Selection', key: 'A', order: 75.5,
   icon: () => 'tPathSelect',
@@ -48,6 +83,7 @@ export const pathSelectTool: Tool = {
         e.emit('options', null);
       },
     },
+    ...arrangeButtons(e),
     ...pathActions(),
   ],
   down(ctx, p) {
@@ -55,6 +91,15 @@ export const pathSelectTool: Tool = {
     const vp = ctx.engine.workPath;
     if (p.button !== 0 || !vp) return;
     const hit = subpathAt(vp, p.doc, 5 / ctx.view().zoom);
+    if (p.shift && hit !== null) {
+      const set = ctx.engine.pathComponents.filter((i) => i !== hit);
+      ctx.engine.pathComponents = set.length === ctx.engine.pathComponents.length ? [...set, hit] : set;
+      chosen = ctx.engine.pathComponents.includes(hit) ? hit : (ctx.engine.pathComponents[0] ?? null);
+      drag = null;
+      ctx.engine.emit('options', null);
+      ctx.engine.emit('overlay', null);
+      return;
+    }
     chosen = hit;
     ctx.engine.pathComponents = hit === null ? [] : [hit];
     drag = null;
@@ -124,11 +169,10 @@ export const pathSelectTool: Tool = {
     gx.strokeStyle = pal.accent;
     gx.stroke(tracePath(vp, (q) => v.toScreen(q)));
     // The chosen subpath's points show solid when a path is selected whole.
-    const sp = chosen !== null ? vp.subpaths[chosen] : null;
-    if (sp) {
-      gx.fillStyle = pal.accent;
-      for (const a of sp.anchors) { const s = v.toScreen(a); gx.fillRect(Math.round(s.x) - 3, Math.round(s.y) - 3, 6, 6); }
-    }
+    const picked = new Set(ctx.engine.pathComponents);
+    if (chosen !== null) picked.add(chosen);
+    gx.fillStyle = pal.accent;
+    for (const i of picked) for (const a of vp.subpaths[i]?.anchors ?? []) { const s = v.toScreen(a); gx.fillRect(Math.round(s.x) - 3, Math.round(s.y) - 3, 6, 6); }
     gx.restore();
   },
 };

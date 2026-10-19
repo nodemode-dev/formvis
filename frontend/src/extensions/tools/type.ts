@@ -1,7 +1,7 @@
 import { HANDLES, TEXT_ANTIALIAS, type Engine, type Layer, type Rect, type TextSpec } from '../../engine';
 import { OT_FEATURES, featureOn, featuresKnown, featuresOf, withFeature } from '../../engine/opentype';
 import { typedAttrs, typedFeatureOn, typedFeatureToggle, typedRange, typedStyle } from '../../ui/text-editor';
-import { canListSystemFonts, fontFamilies, loadSystemFonts, rememberFont } from '../../ui/fonts';
+import { canListSystemFonts, fontFamilies, loadSystemFonts, rememberFont, resolveFontName } from '../../ui/fonts';
 import type { Pt } from '../../engine';
 import { dashed, toolHost, type Tool, type ToolContext, type ToolPointer } from '../registry';
 
@@ -45,9 +45,9 @@ function fontChoices(current: string): Array<{ id: string; label: string }> {
 }
 
 /** Changes the Type settings, shows them in the options bar, and restyles text being typed. */
-const STYLE_KEYS = ['family', 'size', 'bold', 'italic', 'align', 'antialias', 'lineHeight', 'tracking', 'kerning', 'features', 'hyphenate', 'language', 'shaping', 'weight', 'caps', 'scaleX', 'scaleY', 'baselineShift', 'underline', 'strike', 'variations', 'indentFirst', 'indentLeft', 'indentRight', 'spaceBefore', 'spaceAfter', 'lastLine', 'bidi'] as const;
+const STYLE_KEYS = ['family', 'size', 'bold', 'italic', 'align', 'antialias', 'lineHeight', 'tracking', 'kerning', 'features', 'hyphenate', 'language', 'shaping', 'weight', 'caps', 'scaleX', 'scaleY', 'baselineShift', 'underline', 'strike', 'variations', 'indentFirst', 'indentLeft', 'indentRight', 'spaceBefore', 'spaceAfter', 'lastLine', 'bidi', 'angle'] as const;
 
-const LANGUAGES: Array<[string, string]> = [['', 'Default'], ['en-US', 'English'], ['de', 'German'], ['fr', 'French'], ['es', 'Spanish'], ['ja', 'Japanese'], ['zh-CN', 'Chinese (Simplified)'], ['zh-TW', 'Chinese (Traditional)'], ['ko', 'Korean'], ['ar', 'Arabic'], ['he', 'Hebrew']];
+export const TYPE_LANGUAGES: Array<[string, string]> = [['', 'Default'], ['en-US', 'English'], ['de', 'German'], ['fr', 'French'], ['es', 'Spanish'], ['ja', 'Japanese'], ['zh-CN', 'Chinese (Simplified)'], ['zh-TW', 'Chinese (Traditional)'], ['ko', 'Korean'], ['ar', 'Arabic'], ['he', 'Hebrew']];
 
 /** The OpenType menu (DEV_PLAN 32.6b): each feature marked on or off, a pick toggling it for new text and the selected type layer. */
 function featureChoices(e: Engine): Array<{ id: string; label: string }> {
@@ -73,6 +73,8 @@ function previewType(e: Engine, patch: Partial<TextSpec> | null): void {
 }
 
 export function setType(e: Engine, patch: Partial<TextSpec>): void {
+  const named = patch.family ? resolveFontName(patch.family) : null;
+  if (named && named.family !== patch.family) patch = { ...patch, family: named.family, ...(named.bold || named.italic ? { bold: named.bold, italic: named.italic } : {}) };
   e.textSettings = { ...e.textSettings, ...patch };
   if (patch.family) rememberFont(patch.family);
   e.emit('options', null);
@@ -146,10 +148,12 @@ export const typeTool: Tool = {
       } },
     { kind: 'select', label: 'Anti-aliasing', priority: 40, choices: [{ id: 'none', label: 'None' }, { id: 'sharp', label: 'Sharp' }, { id: 'crisp', label: 'Crisp' }, { id: 'strong', label: 'Strong' }, { id: 'smooth', label: 'Smooth' }, { id: 'windows-lcd', label: 'Windows LCD' }, { id: 'windows', label: 'Windows' }], get: () => e.textSettings.antialias ?? 'smooth', set: (v: string) => setType(e, { antialias: TEXT_ANTIALIAS.find((m) => m === v) ?? 'smooth' }) },
     { kind: 'toggle', label: 'Hyphenate', priority: 25, get: () => !!e.textSettings.hyphenate, set: (v) => setType(e, { hyphenate: v }) },
-    { kind: 'select', label: 'Language', priority: 22, choices: LANGUAGES.map(([id, label]) => ({ id, label })), get: () => e.textSettings.language ?? '', set: (v: string) => setType(e, { language: v || undefined }) },
+    { kind: 'select', label: 'Language', priority: 22, choices: TYPE_LANGUAGES.map(([id, label]) => ({ id, label })), get: () => e.textSettings.language ?? '', set: (v: string) => setType(e, { language: v || undefined }) },
     { kind: 'select', label: 'Language Options', priority: 21, choices: [{ id: 'default', label: 'Default Features' }, { id: 'eastAsian', label: 'East Asian Features' }, { id: 'middleEastern', label: 'Middle Eastern Features' }, { id: 'southAsian', label: 'Middle Eastern and South Asian Features' }], get: () => e.textSettings.shaping ?? 'default', set: (v: string) => setType(e, { shaping: v === 'eastAsian' || v === 'middleEastern' || v === 'southAsian' ? v : undefined }) },
     { kind: 'color', label: 'Color', priority: 88, get: () => typedAttrs()?.color ?? e.fg, set: (c) => { e.fg = c; e.emit('options', null); if (typedStyle({ color: c })) return; const l = e.activeLayer; if (l?.text) void e.updateTextLayer(l.id, { ...l.text, color: e.fg }); } },
     { kind: 'button', label: 'Warp Text...', priority: 30, run: () => toolHost.run('warp-text') },
+    { kind: 'button', label: 'Character', priority: 20, run: () => toolHost.run('panel-character') },
+    { kind: 'button', label: 'Paragraph', priority: 19, run: () => toolHost.run('panel-paragraph') },
     { kind: 'button', label: 'Commit', icon: 'check', priority: 91, when: typingNow, run: () => { document.dispatchEvent(new CustomEvent('cv:type-commit')); } },
     { kind: 'button', label: 'Cancel', icon: 'close', priority: 91, when: typingNow, run: () => { document.dispatchEvent(new CustomEvent('cv:type-cancel')); } },
   ],

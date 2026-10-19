@@ -1,15 +1,15 @@
 # formvis commands
 
-Generated from the window's command catalogue (1563 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1566 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
-- Edit: 105
+- Edit: 107
 - File: 101
 - Filter: 93
 - Generate: 6
 - Help: 5
-- Image: 118
+- Image: 119
 - Layer: 268
 - Paint: 1
 - Paths: 12
@@ -25,7 +25,7 @@ Generated from the window's command catalogue (1563 commands) by `./formvis agen
 | Id | Name | Keys | Does |
 | --- | --- | --- | --- |
 | `apply-edit` | Apply Pending Edit | Enter | Applies what the tool in use is holding, as Return does: a crop, a warp, a floating selection, a polygon lasso. Bound to Return and movable in Keyboard Shortcuts. (changes the picture) |
-| `auto-align-layers` | Auto-Align Layers... |  | Aligns the selected layers to a reference layer (bottom, middle or top) by matching their features, with perspective, cylindrical, spherical, collage (move, turn and scale) or reposition projection, vignette removal and lens distortion correction. (changes the picture) |
+| `auto-align-layers` | Auto-Align Layers... |  | Aligns the selected layers to a reference layer (bottom, middle or top) by matching their features (or, with registration intensity, by image correlation), with perspective, cylindrical, spherical, collage (move, turn and scale) or reposition projection, vignette removal and lens distortion correction. (changes the picture) |
 | `auto-blend-layers` | Auto-Blend Layers... |  | Adds layer masks that blend the selected layers into a panorama or a focus stack, with halo control and an optional depth map layer, or a multiband (pyramid) blend into a new layer. (changes the picture) |
 | `cancel-edit` | Cancel Pending Edit | Escape | Cancels what the tool in use is holding, as Escape does. Bound to Escape and movable in Keyboard Shortcuts. |
 | `cancel-job` | Cancel Background Job |  | Stops the running background job, such as a filter on a large layer, and keeps the document as it was. (changes the picture) |
@@ -66,6 +66,7 @@ Generated from the window's command catalogue (1563 commands) by `./formvis agen
 | `layer-rotate-90-ccw` | Rotate 90° Counter Clockwise |  | Turns the layer 90 degrees counter clockwise. (changes the picture) |
 | `layer-rotate-90-cw` | Rotate 90° Clockwise |  | Turns the layer 90 degrees clockwise. (changes the picture) |
 | `load-brushes` | Load Brushes... |  | Loads brushes from an .abr file. |
+| `match-edges-below` | Match Edges to Layer Below |  | Scales, turns and shifts the active layer a little so the band just inside its edge matches the picture under it; refuses a fit that does not improve the match or needs more than a small correction. (changes the picture) |
 | `new-snapshot` | New Snapshot |  | Stores the current state as a snapshot in History. |
 | `new-snapshot-layer` | New Snapshot of Current Layer |  | Stores only the selected layer as a snapshot in History. |
 | `new-snapshot-merged` | New Snapshot of Merged Layers |  | Stores the picture as it looks now, merged into one layer, as a snapshot in History. |
@@ -103,6 +104,7 @@ Generated from the window's command catalogue (1563 commands) by `./formvis agen
 | `purge-clipboard` | Clipboard |  | Clears formvis's internal clipboard. (changes the picture) |
 | `purge-histories` | Histories |  | Clears the undo and redo history of every open document after asking, keeping their states and snapshots. (changes the picture) |
 | `purge-undo` | Undo |  | Forgets the undone steps that Redo would make again, in the current document. (changes the picture) |
+| `purge-video-cache` | Video Cache |  | Frees the reduced display copies and layer-effect results that video layers built while their frames were shown; the frames themselves stay. (changes the picture) |
 | `redo` | Redo | Shift+Mod+Z Mod+Y | Steps forward one history step. (changes the picture) |
 | `remove-wires` | Remove Wires and Cables |  | Finds wires and cables and removes them. (changes the picture) |
 | `reset-all-tools` | Reset All Tools |  | Puts the options of every tool back to their defaults and forgets all the kept values. |
@@ -201,7 +203,7 @@ Generated from the window's command catalogue (1563 commands) by `./formvis agen
 | `list-actions` | List Actions |  | Returns the recorded actions with their step counts and which one is recording, or one action's steps with their kind, label and on or off state. |
 | `load-actions` | Load Actions... |  | Loads actions from an .atn file (base64) or formvis JSON; steps with no formvis equivalent stay in the action greyed and are skipped when it plays. |
 | `load-files-stack` | Load Files into Stack... |  | Loads image files (files, or documents true for the open ones) as the layers of one new document, optionally aligned and as a smart object stack; without parameters it opens the dialog. (changes the picture) |
-| `merge-hdr` | Merge to HDR... |  | Merges bracketed exposures (files, or documents true) into a 32-bit picture, or toned to 16 or 8 bit with depth, with optional alignment, exposure times and ghost removal (ghost strength, ghost base photo); without parameters it opens the dialog. (changes the picture) |
+| `merge-hdr` | Merge to HDR... |  | Merges bracketed exposures (files, or documents true) into a 32-bit picture, or toned to 16 or 8 bit with depth (method exposure, highlights or equalize; exposure and gamma for the first), with optional alignment, exposure times and ghost removal (ghost strength, ghost base photo); without parameters it opens the dialog. (changes the picture) |
 | `new` | New Canvas... | Alt+Mod+N Mod+N | Opens the New Canvas dialog. |
 | `new-canvas-model-preset` | New Canvas from Model Preset... |  | Opens New Canvas from Model Preset, which makes a blank document at a size a chosen model family works well at. (changes the picture) |
 | `new-from-clipboard` | New from Clipboard |  | Makes a new document the size of the clipboard picture. (changes the picture) |
@@ -440,6 +442,7 @@ Generated from the window's command catalogue (1563 commands) by `./formvis agen
 | `measure-data-points` | Select Data Points... |  | Chooses which measurements the Measurement Log and its CSV export show (label, scale, area, perimeter, length, angle, count, width, height, gray value and its minimum and maximum, integrated density, centroid, circularity). |
 | `measure-log` | Measurement Log... |  | Opens the measurement log: a table of recorded measurements that can be added to, deleted, cleared or exported as CSV. (changes the picture) |
 | `measure-record` | Record Measurements |  | Records one measurement from the selection (area, perimeter, size), the Ruler line (length, angle) and the counts, scaled by the measurement scale. (changes the picture) |
+| `measure-record-features` | Record Measurements per Feature |  | Records one measurement for each separate part of the selection (area, perimeter, size, gray value, centroid), the Ruler line and the counts going on the first, scaled by the measurement scale. (changes the picture) |
 | `measure-ruler` | Ruler Tool |  | Picks the Ruler tool, which measures a distance and an angle, and with Alt-drag from an end a second arm and the angle between. |
 | `measure-scale` | Set Measurement Scale... |  | Sets the measurement scale: how many pixels make a logical length in chosen units. Without parameters it opens a dialog prefilled from the Ruler line. (changes the picture) |
 | `measure-scale-marker` | Place Scale Marker... |  | Places a scale bar with a text label as a new pixel layer at the bottom left, sized from the measurement scale. (changes the picture) |
@@ -1454,7 +1457,7 @@ Generated from the window's command catalogue (1563 commands) by `./formvis agen
 | `type-path-flip` | Flip Type on Path |  | Moves type set on a path to the other side of the path. (changes the picture) |
 | `type-path-release` | Release Type from Path |  | Releases type from its path: the same words become straight point text. (changes the picture) |
 | `type-range-character-style` | Apply Character Style to Range |  | Applies a saved character style (by name or id) to a character range of the selected type layers, or to the letters selected while typing, as per-range overrides. (changes the picture) |
-| `type-range-style` | Character Range Style |  | Sets size, colour, font family, weight, bold, italic, baseline shift, tracking or language on a character range of the selected type layers (the whole text when no range is given), or on the letters selected while typing; clear true takes the range back to the layer's own look. (changes the picture) |
+| `type-range-style` | Character Range Style |  | Sets size, colour, font family, weight, bold, italic, baseline shift, tracking, language, underline, strikethrough or caps on a character range of the selected type layers (the whole text when no range is given), or on the letters selected while typing; clear true takes the range back to the layer's own look. (changes the picture) |
 | `type-small-caps` | Small Caps |  | Sets the active type layer, and new type, in small capitals, or back to as typed. (changes the picture) |
 | `type-strikethrough` | Strikethrough |  | Strikes through the active type layer and new type, or removes it. (changes the picture) |
 | `type-to-shape` | Convert to Shape |  | Turns the active type layer into a shape layer in the text colour and hides the type layer. (changes the picture) |

@@ -43,6 +43,7 @@ export interface EntryHost {
   applySmartDistort(d: DistortEditState, label: string): void;
   smartPreview(l: Layer, d: DistortEditState, quad: Pt[], scale: number): { pixels: Warped | null; mask: DistortedMask | null };
   vectorThrough(l: Layer, from: Pt[], to: Pt[]): Layer['vectorMask'];
+  shapeThrough(p: Project, l: Layer, from: Pt[], to: Pt[]): boolean;
   setLastQuads(from: Pt[], to: Pt[]): void;
   requestFrame(fn: () => void): void;
   cancelFrame(): void;
@@ -187,7 +188,7 @@ export function beginDistort(host: EntryHost, mode: DistortMode = 'distort', sha
   if (!p) return null;
   const l = p.activeLayer;
   if (!l || host.busy) return null;
-  if (l.vector) {
+  if (l.vector && l.mask?.raster) {
     host.notice(shapeNotice);
     return null;
   }
@@ -329,6 +330,10 @@ export function applyDistort(host: EntryHost, d: DistortEditState): void {
       if (!l || !l.raster) continue;
       const quad = d.members ? carried(l.transform, d.box, d.corners) : d.corners;
       if (!distortUsable(quad)) continue;
+      if (l.vector && !d.members) {
+        if (host.shapeThrough(pr, l, cornersOf(l.transform), quad)) any = true;
+        continue;
+      }
       const w = warpRaster(l.raster, l.transform, quad);
       if (!w) continue;
       const vis = visibleBounds(w.raster);

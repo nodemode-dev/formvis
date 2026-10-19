@@ -244,8 +244,35 @@ export function deepToLinear(d: DeepPixels): DeepPixels {
   for (let i = 0; i < out.length; i++) if (i % 4 !== 3) out[i] = srgbToLinear(out[i]);
   return { ...d, data: out };
 }
-export function deepToned(d: DeepPixels, exposure: number, gamma: number): DeepPixels {
+export type ToneMethod = 'exposure' | 'highlights' | 'equalize';
+
+/** Linear light to display values: Exposure and Gamma, Highlight Compression (luminance above a knee at one half
+ *  rolls off toward white, hue kept) or Equalize Histogram (luminance spread evenly over the display range). */
+export function deepToned(d: DeepPixels, exposure: number, gamma: number, method: ToneMethod = 'exposure'): DeepPixels {
   const out = new Float32Array(d.data), gain = 2 ** exposure, inv = 1 / Math.max(0.01, gamma);
-  for (let i = 0; i < out.length; i++) if (i % 4 !== 3) out[i] = linearToSrgb(Math.min(1, Math.max(0, Math.pow(Math.max(0, out[i] * gain), inv))));
+  if (method === 'exposure') {
+    for (let i = 0; i < out.length; i++) if (i % 4 !== 3) out[i] = linearToSrgb(Math.min(1, Math.max(0, Math.pow(Math.max(0, out[i] * gain), inv))));
+    return { ...d, data: out };
+  }
+  const lum = (i: number): number => 0.2126 * out[i] + 0.7152 * out[i + 1] + 0.0722 * out[i + 2];
+  let map: (y: number) => number;
+  if (method === 'highlights') {
+    const k = 0.5;
+    map = (y) => (y <= k ? y : k + (1 - k) * (1 - Math.exp(-(y - k) / (1 - k))));
+  } else {
+    const BINS = 1024, LO = -14;
+    let top = 1e-6;
+    for (let i = 0; i < out.length; i += 4) top = Math.max(top, lum(i));
+    const span = Math.max(1, Math.log2(top) - LO), bin = (y: number): number => Math.min(BINS - 1, Math.max(0, Math.floor(((Math.log2(Math.max(y, 1e-9)) - LO) / span) * BINS)));
+    const cdf = new Float64Array(BINS);
+    for (let i = 0; i < out.length; i += 4) cdf[bin(lum(i))]++;
+    for (let b = 1; b < BINS; b++) cdf[b] += cdf[b - 1];
+    const total = Math.max(1, cdf[BINS - 1]);
+    map = (y) => srgbToLinear(cdf[bin(y)] / total);
+  }
+  for (let i = 0; i < out.length; i += 4) {
+    const y = lum(i), s = y > 1e-9 ? map(y) / y : 1;
+    for (let c = 0; c < 3; c++) out[i + c] = linearToSrgb(Math.min(1, Math.max(0, out[i + c] * s)));
+  }
   return { ...d, data: out };
 }

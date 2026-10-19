@@ -24,11 +24,21 @@ let failed = false;
 let nextId = 1;
 const waiting = new Map<number, { slot: Slot; done: (img: ImageData | null) => void }>();
 
-/** How many workers the pool runs: min(hardwareConcurrency - 1, 4), at least 1; 0 where it cannot start. */
+/** Preferences > Performance > Worker threads: 0 is automatic (min(cores - 1, 4)); a number is the most workers the pool
+ *  may run (1 to 16). A pool already started is ended so the next large filter starts one of the new size. */
+let threadsPref = 0;
+export function setBandThreads(n: number): void {
+  const next = Math.max(0, Math.min(16, Math.round(n) || 0));
+  if (next === threadsPref) return;
+  threadsPref = next;
+  if (waiting.size === 0) { for (const s of slots) s.w.terminate(); slots = []; }
+}
+
+/** How many workers the pool runs: min(hardwareConcurrency - 1, 4), at least 1, or the Worker threads preference; 0 where it cannot start. */
 export function bandPoolSize(): number {
   if (failed || typeof Worker === 'undefined') return 0;
   const cores = typeof navigator !== 'undefined' && navigator.hardwareConcurrency ? navigator.hardwareConcurrency : 2;
-  return Math.max(1, Math.min(cores - 1, 4));
+  return threadsPref > 0 ? threadsPref : Math.max(1, Math.min(cores - 1, 4));
 }
 
 function lose(slot: Slot): void {

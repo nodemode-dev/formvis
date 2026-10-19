@@ -41,6 +41,24 @@ export async function implausibleSize(file: Blob, size: { width: number; height:
 
 type Reader = (at: number, len: number) => Promise<Uint8Array>;
 
+/** The same for a BigTIFF: 8-byte offsets and counts, 20-byte entries, a rational held in the entry itself. */
+async function bigTiffResolution(read: Reader, le: boolean): Promise<number | null> {
+  const head = await read(0, 16);
+  if (head.length < 16) return null;
+  const ifd = Number(new DataView(head.buffer, head.byteOffset, 16).getBigUint64(8, le)), cb = await read(ifd, 8);
+  if (cb.length < 8) return null;
+  const count = Number(new DataView(cb.buffer, cb.byteOffset, 8).getBigUint64(0, le));
+  if (!count || count > 512) return null;
+  const table = await read(ifd + 8, count * 20), tv = new DataView(table.buffer, table.byteOffset, table.byteLength);
+  let unit = 2, ratio: number | null = null;
+  for (let k = 0; k < count && (k + 1) * 20 <= table.length; k++) {
+    const o = k * 20, tag = tv.getUint16(o, le), type = tv.getUint16(o + 2, le);
+    if (tag === 296 && type === 3) unit = tv.getUint16(o + 12, le);
+    if (tag === 282 && type === 5) { const den = tv.getUint32(o + 16, le); ratio = den ? tv.getUint32(o + 12, le) / den : null; }
+  }
+  return ratio === null || unit === 1 ? null : ratio * (unit === 3 ? 2.54 : 1);
+}
+
 /** XResolution in pixels per inch from the first directory of a TIFF structure; `read` fetches bytes by offset. */
 async function tiffResolution(read: Reader): Promise<number | null> {
   const head = await read(0, 8);
@@ -48,6 +66,7 @@ async function tiffResolution(read: Reader): Promise<number | null> {
   const le = head[0] === 0x49 && head[1] === 0x49;
   if (!le && !(head[0] === 0x4d && head[1] === 0x4d)) return null;
   const hv = new DataView(head.buffer, head.byteOffset, head.byteLength);
+  if (hv.getUint16(2, le) === 43) return bigTiffResolution(read, le);
   if (hv.getUint16(2, le) !== 42) return null;
   const ifd = hv.getUint32(4, le), cb = await read(ifd, 2);
   if (cb.length < 2) return null;
@@ -108,7 +127,7 @@ export async function headerResolution(file: Blob): Promise<number | null> {
       const perMetre = v.getInt32(38, true);
       return perMetre > 0 ? inRange(perMetre * 0.0254) : null;
     }
-    if (b.length >= 8 && ((b[0] === 0x49 && b[1] === 0x49 && b[2] === 42) || (b[0] === 0x4d && b[1] === 0x4d && b[3] === 42))) {
+    if (b.length >= 8 && ((b[0] === 0x49 && b[1] === 0x49 && (b[2] === 42 || b[2] === 43)) || (b[0] === 0x4d && b[1] === 0x4d && (b[3] === 42 || b[3] === 43)))) {
       return inRange(await tiffResolution(async (o, n) => new Uint8Array(await file.slice(o, o + n).arrayBuffer())));
     }
   } catch { /* no resolution stated */ }

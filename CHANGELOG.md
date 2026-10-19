@@ -4,6 +4,19 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.90.1 · 2026-10-19
+
+### Added
+
+- Transform: Match Edges to Layer Below; shape layers keep their outlines under Distort, Skew, Perspective and Warp, and vector masks follow a warp.
+- Vanishing Point: several planes, with connected planes at an angle. Auto-Align Layers: registration by intensity for low-detail pictures.
+- Shapes and paths: path thumbnails, Stroke Path with Smudge, align and distribute paths, live polygon, star and triangle settings, gradient strokes; scaling a shape redraws its outline.
+- Files: PSD channel restrictions, Blend Clipped Layers and Transparency Shapes read and written, gradient and pattern shapes as fill layers; BigTIFF resolution and profile; SVG clip paths, masks, filters and patterns kept as pixel layers; KRA transparency masks; more ORA modes; FITS and DPX header fields; deep EXR flattened.
+- Merge to HDR in 32, 16 or 8 bit with three toning methods; Record Measurements per feature.
+- Performance: frame pacing, cache tile size, worker threads, Purge Video Cache, save progress per layer; Grain and Liquify on the GPU.
+- Type: angle and language fields, underline, strike and caps on selected letters, Character and Paragraph buttons on the Type bar.
+- More Arabic and Hindi labels (drafts for review).
+
 ## 1.90.0 · 2026-10-19
 
 ### Added

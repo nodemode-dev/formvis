@@ -25,6 +25,8 @@ export interface CommitHost {
   maskFollowing(l: Layer, t: Transform): Layer['mask'];
   vectorFollowing(l: Layer, t: Transform): Layer['vectorMask'];
   shapeRaster(shape: NonNullable<Layer['shape']>, w: number, h: number): Raster;
+  /** A vector shape layer scaled to `t`: its path carried across and redrawn, or null when the layer is moved only. */
+  shapeFollowing(l: Layer, t: Transform): Partial<Layer> | null;
   selectedRoots(p: Project): ID[];
   artboardFrom(data: object): Layer['artboard'] | null;
   keyMove(layerId: ID, dx: number, dy: number, label: string): boolean;
@@ -43,6 +45,11 @@ const validTransform = (t: Transform): boolean =>
   t.w >= 1 && t.h >= 1 && [t.x, t.y, t.w, t.h, t.rotation].every(Number.isFinite);
 
 const followPatch = (host: CommitHost, l: Layer, t: Transform): Partial<Layer> => {
+  const drawn = l.vector ? host.shapeFollowing(l, t) : null;
+  if (drawn) {
+    const at = drawn.transform ?? t;
+    return { ...drawn, mask: host.maskFollowing(l, at), vectorMask: host.vectorFollowing(l, at) };
+  }
   const patch: Partial<Layer> = {
     transform: t,
     mask: host.maskFollowing(l, t),

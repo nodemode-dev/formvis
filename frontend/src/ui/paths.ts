@@ -1,6 +1,7 @@
 import type { Engine, NamedPath } from '../engine';
 import { el, patchList, q, setHidden, setText } from './dom';
 import { icon } from './icons';
+import { fillVector, samplePath } from '../engine/paths';
 
 /** The Paths panel, below the layers: the Work Path (in italics) and named paths. Clicking one selects it for the Pen,
  *  Direct Selection and the path commands; clicking the empty list deselects, so the next drawing starts a new Work
@@ -55,7 +56,7 @@ export class PathsPanel {
     patchList<NamedPath>(this.rows, list, {
       key: (n) => n.id,
       create: (n) => {
-        const row = el(`<div class="cv-path-row" role="option"><span class="cv-path-icon">${icon('penTool', 12)}</span><span class="cv-path-name"></span></div>`);
+        const row = el('<div class="cv-path-row" role="option"><canvas class="cv-path-thumb" width="64" height="44" aria-hidden="true"></canvas><span class="cv-path-name"></span></div>');
         row.dataset.key = n.id;
         this.fill(row, n, active);
         return row;
@@ -72,6 +73,37 @@ export class PathsPanel {
     row.classList.toggle('is-active', n.id === active);
     row.setAttribute('aria-selected', String(n.id === active));
     row.title = n.mask ? 'The layer\'s vector mask: reshape it with Direct Selection or the Pen' : n.shape ? 'The shape layer\'s outline: reshape it with Direct Selection' : n.work ? 'Work Path: double-click to name and keep it' : 'Double-click to rename';
+    this.thumb(q<HTMLCanvasElement>(row, '.cv-path-thumb'), n);
+  }
+
+  /** The path drawn small over the document's outline, in place on the row's own canvas. */
+  private thumb(cv: HTMLCanvasElement, n: NamedPath): void {
+    const d = this.engine.current?.doc, g = cv.getContext('2d');
+    if (!d || !g || !d.width || !d.height) return;
+    const s = Math.min(cv.width / d.width, cv.height / d.height), ox = (cv.width - d.width * s) / 2, oy = (cv.height - d.height * s) / 2;
+    const ink = getComputedStyle(cv).color;
+    g.clearRect(0, 0, cv.width, cv.height);
+    g.save();
+    g.translate(ox, oy);
+    g.scale(s, s);
+    g.fillStyle = 'rgba(128, 128, 128, 0.16)';
+    g.fillRect(0, 0, d.width, d.height);
+    g.fillStyle = ink;
+    g.globalAlpha = 0.35;
+    fillVector(g, n.path);
+    g.globalAlpha = 1;
+    g.strokeStyle = ink;
+    g.lineWidth = 1.5 / s;
+    g.lineJoin = 'round';
+    for (const sp of n.path.subpaths) {
+      const pts = samplePath(sp, 4 / s);
+      if (pts.length < 2) continue;
+      g.beginPath();
+      pts.forEach((p, i) => (i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y)));
+      if (sp.closed) g.closePath();
+      g.stroke();
+    }
+    g.restore();
   }
 
   /** Inline renaming in place of the name; Enter or leaving the field keeps the name, Escape cancels. */

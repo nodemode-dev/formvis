@@ -267,13 +267,20 @@ export function grainFromData(d: Json): GrainSettings {
 /** Grain: value noise on a lattice of `size` document units (smoothstep-interpolated), mixed toward per-pixel noise by
  *  roughness, added equally to all channels, scaled by amount and weighted toward the midtones. Positions are in
  *  document units, so the grain stays put as the layer's pixels are rendered at any zoom. */
+export interface GrainParams { amount: number; cell: number; strength: number; rough: number; seed: number; fineSeed: number; colour: number; speckle: number; specSeed: number }
+/** The numbers the grain is drawn from, shared by the CPU kernel and the GPU display so the two cannot drift apart. */
+export function grainParams(g: GrainSettings): GrainParams {
+  const look = clamp((g.look ?? 100) / 100, 0, 1), amount = g.amount * look;
+  return {
+    amount, cell: g.size > 0 ? g.size : 1, strength: Math.min(1, amount / 100) * 0.35 * 255, rough: clamp(g.roughness / 100, 0, 1), seed: g.seed, fineSeed: (g.seed ^ 0x5bd1e995) >>> 0,
+    colour: clamp((g.colour * look) / 100, 0, 1), speckle: clamp((g.speckle * look) / 100, 0, 1) * 0.14, specSeed: (g.seed ^ 0x2545f491) >>> 0,
+  };
+}
 export function grainKernel(g: GrainSettings): Kernel {
   return (px, ctx?: KernelContext) => {
-    const width = ctx?.width ?? 0, look = clamp((g.look ?? 100) / 100, 0, 1), amount = g.amount * look;
+    const width = ctx?.width ?? 0, { amount, cell, strength, rough, fineSeed, colour, speckle, specSeed } = grainParams(g);
     if (!(amount > 0) || !width) return;
-    const unit = ctx?.unitsPerPixel ?? 1, ox = ctx?.originX ?? 0, oy = ctx?.originY ?? 0, cell = g.size > 0 ? g.size : 1;
-    const strength = Math.min(1, amount / 100) * 0.35 * 255, rough = clamp(g.roughness / 100, 0, 1), fineSeed = (g.seed ^ 0x5bd1e995) >>> 0;
-    const colour = clamp((g.colour * look) / 100, 0, 1), speckle = clamp((g.speckle * look) / 100, 0, 1) * 0.14, specSeed = (g.seed ^ 0x2545f491) >>> 0;
+    const unit = ctx?.unitsPerPixel ?? 1, ox = ctx?.originX ?? 0, oy = ctx?.originY ?? 0;
     const rows = px.length / 4 / width;
     for (let y = 0; y < rows; y++) {
       const v = oy + (y + 0.5) * unit, cy = Math.floor(v / cell), ty = smoothstep(v / cell - cy), fy = Math.floor(v);

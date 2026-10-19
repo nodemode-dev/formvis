@@ -449,7 +449,7 @@ export interface FeatureRun extends RunAttrs { start: number; end: number; on: s
 /** Character attributes one run sets over the layer's own (UTF-16 offsets as for features). A field left out inherits the
  *  layer's; `tracking` is in thousandths of an em, `baselineShift` in pixels (up positive), `size` in pixels, `language`
  *  a BCP 47 tag. Runs are kept sorted and apart; opentype.ts cleanRuns, withRunAttrs and styleSegments are the only readers. */
-export interface RunAttrs { family?: string; size?: number; color?: RGB; weight?: number; bold?: boolean; italic?: boolean; baselineShift?: number; tracking?: number; language?: string }
+export interface RunAttrs { family?: string; size?: number; color?: RGB; weight?: number; bold?: boolean; italic?: boolean; baselineShift?: number; tracking?: number; language?: string; underline?: boolean; strike?: boolean; caps?: 'all' | 'small' }
 export interface TextSpec extends TextExtras { runs?: FeatureRun[]; shaping?: TextShaping; hyphenate?: boolean; language?: string; features?: string[] | null; antialias?: 'none' | 'sharp' | 'crisp' | 'strong' | 'smooth' | 'windows-lcd' | 'windows'; box?: { w: number; h: number } | null; direction?: 'horizontal' | 'vertical'; content: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right' | 'justify'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning; warp?: TextWarp | null; onPath?: TextPath | null; style?: ID | null; charStyle?: ID | null; rendered?: string }
 /** A character style (DEV_PLAN 32.6c): only the fields it sets override the type layer's own; the layer links it by `TextSpec.charStyle`. */
 export interface CharacterStyle extends Pick<TextExtras, 'caps' | 'scaleX' | 'scaleY' | 'baselineShift' | 'underline' | 'strike' | 'variations'> { id: ID; name: string; family?: string; size?: number; color?: RGB; bold?: boolean; italic?: boolean; tracking?: number; features?: string[] }
@@ -503,9 +503,13 @@ export function smartFiltersFrom(raw: unknown): SmartFilter[] {
  *  rendered, so a later move of the layer can carry the path along. */
 /** dash and align (1.52.8, the tool audit), the stroke options: solid, dashed or dotted; inside, centred
  *  on or outside the path (an open path is always centred). */
-export interface ShapeStroke { color: RGB; width: number; dash?: 'solid' | 'dashed' | 'dotted'; align?: 'inside' | 'center' | 'outside'; cap?: 'butt' | 'round' | 'square'; join?: 'miter' | 'round' | 'bevel'; miter?: number; dashes?: number[]; dashOffset?: number; opacity?: number }
+export interface ShapeStroke { color: RGB; width: number; dash?: 'solid' | 'dashed' | 'dotted'; align?: 'inside' | 'center' | 'outside'; cap?: 'butt' | 'round' | 'square'; join?: 'miter' | 'round' | 'bevel'; miter?: number; dashes?: number[]; dashOffset?: number; opacity?: number; /** Paints the stroke with a gradient across the shape's bounds in place of `color`. */ gradient?: ShapeGradient | null }
 /** A gradient fill across the shape's bounds: linear at `angle` degrees (0 runs left to right), radial from the centre, or
  *  angle (a sweep from the centre). The fill colour stays as the fallback and the colour a gradient-less restyle starts from. */
 export interface ShapeGradient { type: 'linear' | 'radial' | 'angle'; angle: number; stops: Array<{ at: number; color: RGB; alpha?: number }> }
 export interface ShapeStyle { fill: RGB | null; stroke: ShapeStroke | null; gradient?: ShapeGradient | null }
-export interface VectorLayer { path: import('./paths').VectorPath; fill: RGB | null; stroke?: ShapeStroke | null; gradient?: ShapeGradient | null; origin: Pt }
+/** The parameters a polygon, star or triangle shape layer was drawn from, with the box it was fitted to (in the path's own
+ *  frame), so the sides, the star's inset and the corner radius can be changed after the fact. A hand edit of the
+ *  outline drops it. */
+export interface LiveShape { kind: 'polygon' | 'star' | 'triangle'; sides: number; inset: number; radius: number; box: Rect }
+export interface VectorLayer { path: import('./paths').VectorPath; fill: RGB | null; stroke?: ShapeStroke | null; gradient?: ShapeGradient | null; live?: LiveShape; origin: Pt }

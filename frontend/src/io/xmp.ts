@@ -4,6 +4,7 @@ import { crc32 } from './embed-icc';
 import { SOURCE, type AiLabel } from './ai-label';
 import { VERSION } from '../version';
 import { cameraFromTiff, exifBlockOf, exifForTiff, exposureText, isoOfExifDate, rationalOf, roundText } from './exif';
+import { dpxFields, fitsCards } from './header-meta';
 
 /** File Info as standard XMP (DEV_PLAN 29.2). The packet carries Dublin Core (dc:title, dc:creator, dc:description,
  *  dc:subject, dc:rights), xmp:Rating, xmp:CreateDate and ModifyDate, xmpRights:Marked and WebStatement,
@@ -327,7 +328,10 @@ function packets(b: Uint8Array): { xmp: string | null; exif: Uint8Array | null }
 export async function readFileMeta(file: Blob): Promise<DocMeta | null> {
   try {
     const head = new Uint8Array(await file.slice(0, 4).arrayBuffer()), jpeg = head[0] === 0xff && head[1] === 0xd8;
-    const b = new Uint8Array(await file.slice(0, jpeg ? JPEG_READ : READ_LIMIT).arrayBuffer()), { xmp, exif } = packets(b);
+    const b = new Uint8Array(await file.slice(0, jpeg ? JPEG_READ : READ_LIMIT).arrayBuffer());
+    const header = fitsCards(b) ?? dpxFields(b);   // a FITS or DPX file's header cards, kept as custom fields
+    if (header) return cleanMeta({ custom: header });
+    const { xmp, exif } = packets(b);
     const fromXmp = xmp ? metaFromXmp(xmp) : null, camera = fromXmp?.camera ?? (exif ? cameraFromTiff(exif) : null);
     const quality = jpeg ? jpegQuality(b) : null;
     const tiff = head[0] === 0x49 || head[0] === 0x4d;   // a TIFF's whole file is its Exif; only JPEG, PNG and WebP blocks are kept

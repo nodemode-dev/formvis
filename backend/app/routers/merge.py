@@ -237,6 +237,34 @@ def _translation(src: np.ndarray, dst: np.ndarray) -> list[float]:
     return [1.0, 0.0, float(t[0]), 0.0, 1.0, float(t[1]), 0.0, 0.0, 1.0]
 
 
+def _intensity_refine(ref: tuple[np.ndarray, np.ndarray], layer: tuple[np.ndarray, np.ndarray], mat: list[float], translate_only: bool) -> tuple[list[float], float | None]:
+    """Intensity registration: the enhanced correlation coefficient (Evangelidis and Psarakis, 2008) maximised over a
+    homography (a translation for Reposition), started from `mat` (layer pixels to the reference's) on grey images
+    of at most 800 px. Returns the refined matrix and the correlation reached, or `mat` and None when it did not
+    converge or moved the layer implausibly."""
+    import cv2
+    s = min(1.0, 800 / max(ref[0].shape[:2]))
+    grey = lambda bgr: cv2.resize(cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY), None, fx=s, fy=s, interpolation=cv2.INTER_AREA).astype(np.float32) / 255
+    tg, ig = grey(ref[0]), grey(layer[0])
+    mask = cv2.resize(layer[1].astype(np.uint8) * 255, (ig.shape[1], ig.shape[0]), interpolation=cv2.INTER_NEAREST)
+    S = np.diag([s, s, 1.0])
+    m0 = np.array(mat, dtype=np.float64).reshape(3, 3)
+    w0 = S @ np.linalg.inv(m0) @ np.linalg.inv(S)
+    motion = cv2.MOTION_TRANSLATION if translate_only else cv2.MOTION_HOMOGRAPHY
+    start = np.eye(2, 3, dtype=np.float32) if translate_only else (w0 / w0[2, 2]).astype(np.float32)
+    if translate_only:
+        start[:, 2] = w0[:2, 2]
+    try:
+        cc, w = cv2.findTransformECC(tg, ig, start, motion, (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 100, 1e-6), mask, 5)
+    except cv2.error:
+        return mat, None
+    w3 = np.vstack([w, [0, 0, 1]]) if translate_only else w
+    new = np.linalg.inv(np.linalg.inv(S) @ w3.astype(np.float64) @ S)
+    if not np.all(np.isfinite(new)) or cc < 0.3 or not 0.25 < abs(np.linalg.det(new[:2, :2])) < 4.0:
+        return mat, None
+    return (new / new[2, 2]).ravel().tolist(), float(cc)
+
+
 _LUT = 64
 _MAX_GAIN = 2.5
 
@@ -328,7 +356,7 @@ def _png(img: np.ndarray) -> str:
     return base64.b64encode(buf.getvalue()).decode()
 
 
-def align(images: list[bytes], projection: str, vignette: bool, reference: int = 0, distortion: bool = False) -> dict:
+def align(images: list[bytes], projection: str, vignette: bool, reference: int = 0, distortion: bool = False, registration: str = "features") -> dict:
     """Edit > Auto-Align Layers. `reference` is the layer (0 = the first sent) the others are moved onto. Plain
     Auto, Perspective and Reposition take the quick path below; Cylindrical and Geometric Distortion correction go
     through stitch.py, which bends or straightens the layers' pixels itself and answers them as `warped` PNGs (None for
@@ -339,7 +367,7 @@ def align(images: list[bytes], projection: str, vignette: bool, reference: int =
     data = [images[i] for i in order]
     bent = projection in ("cylindrical", "spherical")
     if not bent and projection != "collage" and not distortion:
-        res = _align_plain(data, projection, vignette)
+        res = _align_plain(data, projection, vignette, registration == "intensity")
         back = {key: [None] * len(images) for key in ("matrices", "layers", "gains")}
         for pos, i in enumerate(order):
             for key in back:
@@ -361,9 +389,10 @@ def align(images: list[bytes], projection: str, vignette: bool, reference: int =
     return {**out, "vignette": prep["vignette"], "lens": {"k1": prep["k1"], "error_before": prep["error_before"], "error_after": prep["error_after"]} if distortion else None, "focal": focal}
 
 
-def _align_plain(images: list[bytes], projection: str, vignette: bool) -> dict:
+def _align_plain(images: list[bytes], projection: str, vignette: bool, intensity: bool = False) -> dict:
     """Per-layer 3x3 matrices (row-major, layer pixels to the reference's) with SIFT (ORB if absent) features and a
-    RANSAC homography; Reposition keeps only a translation. With vignette, the
+    RANSAC homography; Reposition keeps only a translation. With intensity, each result is then refined by maximising
+    the correlation of the grey pictures (_intensity_refine), and a layer with too few features starts from no move. With vignette, the
     lens's radial falloff is estimated from the aligned overlaps (_vignette_gains) and its gain tables come back as
     `gains` (None for a layer with none) for the window to apply to the layers before they are moved and blended."""
     import cv2
@@ -385,10 +414,18 @@ def _align_plain(images: list[bytes], projection: str, vignette: bool) -> dict:
     for n, (bgr, valid) in enumerate(layers[1:], 1):
         kp, ds = features(bgr, valid)
         if rd is None or ds is None or len(rd) < 2 or len(ds) < 2:
-            raise ValueError(f"Layer {n + 1} has too few features to align.")
-        good = [m[0] for m in bf.knnMatch(ds, rd, k=2) if len(m) == 2 and m[0].distance < 0.75 * m[1].distance]
-        if len(good) < 3:
+            if not intensity:
+                raise ValueError(f"Layer {n + 1} has too few features to align.")
+            good = []
+        else:
+            good = [m[0] for m in bf.knnMatch(ds, rd, k=2) if len(m) == 2 and m[0].distance < 0.75 * m[1].distance]
+        if len(good) < 3 and not intensity:
             raise ValueError(f"Layer {n + 1} does not overlap the reference enough to align.")
+        if len(good) < 3:
+            mat0, cc = _intensity_refine(layers[0], (bgr, valid), ident, projection == "reposition")
+            out.append(mat0)
+            info.append({"inliers": 0, "kind": "intensity" if cc is not None else "none", "correlation": cc})
+            continue
         src = np.float32([kp[m.queryIdx].pt for m in good])
         dst = np.float32([rk[m.trainIdx].pt for m in good])
         kind, mat, inl = "translation", None, len(good)
@@ -396,7 +433,11 @@ def _align_plain(images: list[bytes], projection: str, vignette: bool) -> dict:
             h, mask = cv2.findHomography(src, dst, cv2.RANSAC, 3.0)
             if h is not None and mask is not None and int(mask.sum()) >= 8 and 0.25 < abs(np.linalg.det(h[:2, :2])) < 4.0:
                 kind, mat, inl = "homography", (h / h[2, 2]).ravel().tolist(), int(mask.sum())
-        out.append(mat if mat is not None else _translation(src, dst))
+        m3 = mat if mat is not None else _translation(src, dst)
+        if intensity:
+            m3, cc = _intensity_refine(layers[0], (bgr, valid), m3, projection == "reposition")
+            kind = "intensity" if cc is not None else kind
+        out.append(m3)
         info.append({"inliers": inl, "kind": kind})
     if vignette:
         gains = _vignette_gains(layers, out)
@@ -515,12 +556,12 @@ def blend(images: list[bytes], method: str, seamless: bool, halo: int = 0, depth
 
 
 @router.post("/align")
-async def align_route(file: list[UploadFile] = File(...), projection: str = Form("auto"), vignette: bool = Form(False), reference: int = Form(0), distortion: bool = Form(False)) -> dict:
+async def align_route(file: list[UploadFile] = File(...), projection: str = Form("auto"), vignette: bool = Form(False), reference: int = Form(0), distortion: bool = Form(False), registration: str = Form("features")) -> dict:
     if len(file) < 2:
         raise HTTPException(422, "Auto-Align Layers needs at least two layers.")
     data = [await f.read() for f in file]
     try:
-        return await run_in_threadpool(align, data, projection, vignette, reference, distortion)
+        return await run_in_threadpool(align, data, projection, vignette, reference, distortion, registration)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
 

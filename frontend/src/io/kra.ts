@@ -44,7 +44,7 @@ interface Tile { x: number; y: number; px: Uint8Array }
 
 /** The tiles of one .kra paint-layer file, each as 64 by 64 planar B, G, R, A channels of one byte (8 bit) or two
  *  little-endian bytes (16 bit); `bytes` is 1 or 2 per channel. */
-function readTiles(data: Uint8Array): { tiles: Tile[]; tw: number; th: number; bytes: number } | null {
+function readTiles(data: Uint8Array): { tiles: Tile[]; tw: number; th: number; bytes: number; gray: boolean } | null {
   let pos = 0;
   const line = (): string => {
     let end = pos;
@@ -61,8 +61,8 @@ function readTiles(data: Uint8Array): { tiles: Tile[]; tw: number; th: number; b
     else if (key === 'PIXELSIZE') pixelSize = Number(val);
     else if (key === 'DATA') { count = Number(val); break; }
   }
-  if (tw !== 64 || th !== 64 || (pixelSize !== 4 && pixelSize !== 8)) return null;
-  const bytes = pixelSize / 4, tileBytes = TILE_PIXELS * pixelSize;
+  if (tw !== 64 || th !== 64 || (pixelSize !== 1 && pixelSize !== 4 && pixelSize !== 8)) return null;
+  const bytes = pixelSize === 1 ? 1 : pixelSize / 4, tileBytes = TILE_PIXELS * pixelSize;
   const tiles: Tile[] = [];
   for (let t = 0; t < count && pos < data.length; t++) {
     const head = line().trim().split(',');
@@ -74,7 +74,7 @@ function readTiles(data: Uint8Array): { tiles: Tile[]; tw: number; th: number; b
     if (px.length < tileBytes) throw new Error('a tile is damaged');
     tiles.push({ x, y, px });
   }
-  return { tiles, tw, th, bytes };
+  return { tiles, tw, th, bytes, gray: pixelSize === 1 };
 }
 
 export async function readKra(file: File): Promise<{ doc: Doc; notes: string[]; activeId: ID | null; paths: null }> {
@@ -97,6 +97,28 @@ export async function readKra(file: File): Promise<{ doc: Doc; notes: string[]; 
   const READABLE = new Set(['RGBA', 'RGBA16']);
   let notRgba8 = !READABLE.has(image.getAttribute('colorspacename') ?? 'RGBA');
 
+  // A paint layer's transparency mask: its 8-bit tiles over the level the file stores for the rest of the canvas (255 when none).
+  const maskOf = (e: Element): Layer['mask'] => {
+    const holder = [...e.children].find((c) => c.tagName === 'masks'), m = holder ? [...holder.children].find((c) => c.getAttribute('nodetype') === 'transparencymask') : undefined;
+    if (!m) return null;
+    try {
+      const file = m.getAttribute('filename') ?? '', data = parts.get(`${docName}/layers/${file}`), read = data ? readTiles(data) : null;
+      if (!read || !read.gray) { notes.add('A transparency mask could not be read and was left out.'); return null; }
+      const outside = parts.get(`${docName}/layers/${file}.defaultpixel`)?.[0] ?? 255, ox = num(m, 'x', 0), oy = num(m, 'y', 0), img = new ImageData(W, H);
+      for (let i = 0; i < img.data.length; i += 4) { img.data[i] = img.data[i + 1] = img.data[i + 2] = 255; img.data[i + 3] = outside; }
+      for (const t of read.tiles) {
+        for (let ty = 0; ty < read.th; ty++) {
+          const py = t.y + oy + ty;
+          if (py < 0 || py >= H) continue;
+          for (let tx = 0; tx < read.tw; tx++) { const px = t.x + ox + tx; if (px >= 0 && px < W) img.data[(py * W + px) * 4 + 3] = t.px[ty * read.tw + tx]; }
+        }
+      }
+      const raster = new Raster(W, H);
+      raster.write(img);
+      return { raster, enabled: m.getAttribute('visible') !== '0', linked: true, placement: { ...docTransform(W, H), x: 0, y: 0 } };
+    } catch { notes.add('A transparency mask could not be read and was left out.'); return null; }
+  };
+
   const walk = (list: Element[], parentId: ID | null): void => {
     for (const e of [...list].reverse()) {   // the file lists the top first; formvis keeps the bottom first
       const kind = e.getAttribute('nodetype') ?? '', name = e.getAttribute('name') || (kind === 'grouplayer' ? 'Group' : 'Layer');
@@ -112,7 +134,7 @@ export async function readKra(file: File): Promise<{ doc: Doc; notes: string[]; 
       const data = parts.get(`${docName}/layers/${e.getAttribute('filename') ?? ''}`);
       if (!data) { notes.add('Some layers named pixel files the file does not hold, and were left out.'); continue; }
       const read = readTiles(data);
-      if (!read) { notRgba8 = true; continue; }
+      if (!read || read.gray) { notRgba8 = true; continue; }
       if (!read.tiles.length) continue;
       const op = e.getAttribute('compositeop') ?? 'normal', blend = FROM_KRA.get(op) ?? 'normal';
       if (!FROM_KRA.has(op)) notes.add(`${op} is not a blend mode formvis has; those layers open as Normal.`);
@@ -132,7 +154,8 @@ export async function readKra(file: File): Promise<{ doc: Doc; notes: string[]; 
       }
       const raster = new Raster(w, h);
       raster.write(img);
-      layers.push(newLayer(name, doc, { raster, parentId, visible, opacity, blend, ...(e.getAttribute('locked') === '1' ? { locks: { all: true } } : {}), transform: { ...docTransform(w, h), x: num(e, 'x', 0) + x0, y: num(e, 'y', 0) + y0 } }));
+      const mask = maskOf(e);
+      layers.push(newLayer(name, doc, { raster, parentId, visible, opacity, blend, ...(mask ? { mask } : {}), ...(e.getAttribute('locked') === '1' ? { locks: { all: true } } : {}), transform: { ...docTransform(w, h), x: num(e, 'x', 0) + x0, y: num(e, 'y', 0) + y0 } }));
     }
   };
   const top = [...image.children].find((c) => c.tagName === 'layers');

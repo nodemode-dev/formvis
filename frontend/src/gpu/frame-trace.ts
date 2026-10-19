@@ -44,3 +44,8 @@ export class FrameTrace {
 }
 
 export const frameTrace = new FrameTrace();
+
+/** Preferences > Performance > Frame pacing: the fewest milliseconds between two scene frames. 0 draws on every display
+ *  refresh (the lowest latency); a larger value skips refreshes, which saves power and the processor on slow machines. */
+export const FRAME_PACING: ReadonlyArray<readonly [string, string]> = [['0', 'Every display refresh (lowest latency)'], ['16', 'Up to 60 frames a second'], ['33', 'Up to 30 frames a second'], ['66', 'Up to 15 frames a second']];
+export const framePacing = { minMs: 0, last: 0 };

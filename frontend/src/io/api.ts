@@ -608,8 +608,8 @@ export const api = {
   },
   /** Edit > Auto-Align Layers (DEV_PLAN 32.1): each layer as a document-sized PNG, bottom-most first; a 3x3 matrix per
    *  layer (row-major, layer pixels to the reference's), identity for the reference. */
-  async mergeAlign(layers: Blob[], projection: string, vignette: boolean, reference = 0, distortion = false): Promise<{ matrices: number[][]; layers: Array<{ inliers: number; kind: string }>; vignette: string; warped?: Array<string | null>; lens?: { k1: number; error_before: number | null; error_after: number | null } | null; focal?: number | null }> {
-    const r = await request('/merge/align', { method: 'POST', body: form({ projection, vignette: String(vignette), reference: String(reference), distortion: String(distortion) }, layers.map((b, i) => ({ name: `layer${i}.png`, blob: b })), 'file') });
+  async mergeAlign(layers: Blob[], projection: string, vignette: boolean, reference = 0, distortion = false, registration = 'features'): Promise<{ matrices: number[][]; layers: Array<{ inliers: number; kind: string; correlation?: number | null }>; vignette: string; warped?: Array<string | null>; lens?: { k1: number; error_before: number | null; error_after: number | null } | null; focal?: number | null }> {
+    const r = await request('/merge/align', { method: 'POST', body: form({ projection, vignette: String(vignette), reference: String(reference), distortion: String(distortion), registration },layers.map((b, i) => ({ name: `layer${i}.png`, blob: b })), 'file') });
     return await r.json();
   },
   /** File > Automate > Crop and Straighten Photos (DEV_PLAN 30.3 part b): the photos found on a scan, each cut out and

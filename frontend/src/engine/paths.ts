@@ -196,6 +196,24 @@ export function shiftPath(vp: VectorPath, dx: number, dy: number): VectorPath {
   return mapPath(vp, (p) => ({ x: p.x + dx, y: p.y + dy }));
 }
 
+/** A copy of the path with every segment split into equal parts about `step` pixels long (at most 48), the curves
+ *  keeping their exact shape, so a bending map carries each part rather than only the old anchors. With `keepStraight`
+ *  a straight segment stays whole, right for maps that keep straight lines straight. */
+export function subdividePath(vp: VectorPath, step: number, keepStraight = false): VectorPath {
+  const out = structuredClone(vp);
+  for (const sp of out.subpaths) {
+    const n = sp.anchors.length, segs = sp.closed ? n : n - 1;
+    for (let i = segs - 1; i >= 0; i--) {
+      const a = sp.anchors[i], b = sp.anchors[(i + 1) % n];
+      const len = Math.hypot(a.outX - a.x, a.outY - a.y) + Math.hypot(b.inX - a.outX, b.inY - a.outY) + Math.hypot(b.x - b.inX, b.y - b.inY);
+      const straight = a.outX === a.x && a.outY === a.y && b.inX === b.x && b.inY === b.y;
+      const k = keepStraight && straight ? 1 : Math.max(1, Math.min(48, Math.ceil(len / Math.max(1, step))));
+      for (let r = k, at = i; r > 1; r--, at++) splitSegment(sp, at, 1 / r);
+    }
+  }
+  return out;
+}
+
 /** The path with every anchor and handle taken through `map`, as a new path, each subpath keeping its operation. */
 export function mapPath(vp: VectorPath, map: (p: Pt) => Pt): VectorPath {
   return { ...(vp.evenOdd ? { evenOdd: true } : {}), subpaths: vp.subpaths.map((s) => ({ closed: s.closed, ...(s.op && s.op !== 'combine' ? { op: s.op } : {}), anchors: s.anchors.map((a) => {

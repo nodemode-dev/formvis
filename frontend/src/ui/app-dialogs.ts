@@ -24,6 +24,8 @@ import { toast } from './toast';
 import { DEFAULT_PREFS, INTERPOLATIONS, LINE_STYLES, type LineStyle } from './prefs';
 import { CHECKER_COLORS, CHECKER_SIZES, ENGINE_CHOICES, PAINT_CURSORS, PRESSURE_CURVES, RAW_WB_CHOICES, RECOVERY_CHOICES, RULER_UNITS, UI_FONT_SIZES, UI_SCALES, loadPrefs, recalled, remembered, savePrefs, setUiScale, uiScaleChoice, type CheckerColors, type CheckerSize, type EngineDevice, type PaintCursor, type Prefs, type PressureCurve, type RulerUnits, type UiFontSize } from './prefs';
 import { POWER_CHOICES, RENDERER_CHOICES, type GpuPower, type GpuRenderer } from '../gpu/probe';
+import { FRAME_PACING } from '../gpu/frame-trace';
+import { TILE_SIZES } from '../engine/tiled';
 import { checkRow, selectRow, sliderRow } from './panels/controls';
 import { PagePrefsRows } from './panels/page-prefs';
 import { SIZES } from './panels/generate-panel';
@@ -568,6 +570,9 @@ export class SettingsDialog extends Dialog {
   private readonly cacheLevelsRow = sliderRow('Cache levels (reduced copies for display, 0 is off)', 0, 8, 1, (v) => this.change({ cacheLevels: v }));
   private readonly gpuPowerRow = selectRow('Graphics processor (next launch)', POWER_CHOICES, (v) => this.change({ gpuPower: v as GpuPower }));
   private readonly lowLatencyRow = checkRow('Low-latency drawing (next launch)', (v) => this.change({ lowLatency: v }));
+  private readonly pacingRow = selectRow('Frame pacing', FRAME_PACING, (v) => this.change({ framePacingMs: Number(v) }));
+  private readonly tileRow = selectRow('Cache tile size (giant layers made from now on)', TILE_SIZES.map((n) => [String(n), `${n} by ${n} pixels`] as const), (v) => this.change({ cacheTilePx: Number(v) }));
+  private readonly threadsRow = sliderRow('Worker threads for large filters (0 is automatic)', 0, 16, 1, (v) => this.change({ workerThreads: v }));
   /** The engine's compute device (Phase 18.6): the choice, and what the engine reports it uses and why. */
   private readonly engineRow = selectRow('Engine processor', ENGINE_CHOICES, (v) => this.change({ engineDevice: v as EngineDevice }));
   private readonly engineMode = el('<p class="cv-note cv-engine-mode">Engine: not reached yet.</p>');
@@ -602,7 +607,7 @@ export class SettingsDialog extends Dialog {
     this.intensityRow.set(Math.round((readChoice().intensity ?? 1) * 100));
     add('Interface', row, accentRow, this.intensityRow.el, this.fontSizeRow.el, this.scaleRow.el, this.animationsRow.el, this.noticeSecondsRow.el, this.canvasColourRow.el, el('<p class="cv-note">Canvas Color is the pasteboard around the picture (the same as View > Pasteboard). Theme and accent are shared with NodeMode on this device. Intensity sets how strongly the accent tints what it marks; 100% is the design\'s. Text size scales the interface\'s text.</p>'));
     add('Performance', this.budgetNote, this.memoryLimitRow.el, this.effectCacheRow.el, this.releaseRow.el, this.cacheLevelsRow.el, this.redrawRow.el, this.reuseRow.el, this.previewRow.el,
-      el('<h3 class="cv-prefs-sub">Graphics Processor Settings</h3>'), this.gpuNameRow(), this.gpuUseRow.el, this.gpuFiltersRow.el, this.rendererRow.el, this.gpuMemoryRow.el, this.gpuPowerRow.el, this.lowLatencyRow.el, this.gpuMode,
+      el('<h3 class="cv-prefs-sub">Graphics Processor Settings</h3>'), this.gpuNameRow(), this.gpuUseRow.el, this.gpuFiltersRow.el, this.rendererRow.el, this.gpuMemoryRow.el, this.gpuPowerRow.el, this.lowLatencyRow.el, this.pacingRow.el, this.tileRow.el, this.threadsRow.el, this.gpuMode,
       el('<p class="cv-note">Automatic uses WebGPU (Metal on macOS, Direct3D 12 on Windows), then WebGL2 (as on Linux), on a hardware graphics processor, and the CPU otherwise; a software GPU is slower than the CPU renderer, so Automatic does not use one. If the graphics processor fails to start, formvis turns this off and says so. The canvas draws on the graphics processor; a document using something it does not draw yet draws on the CPU, and the status bar says why.</p>'),
       el('<h3 class="cv-prefs-sub">Engine</h3>'), this.engineRow.el, this.engineMode,
       el('<p class="cv-note">Where the engine runs its models (Remove Background, and the local models that follow). Automatic uses CUDA on an NVIDIA graphics processor, Core ML (Metal) on a Mac, and the CPU otherwise; a choice this machine cannot run falls back to the CPU, and the line above says why.</p>'));
@@ -741,6 +746,9 @@ export class SettingsDialog extends Dialog {
     this.cacheLevelsRow.set(this.prefs.cacheLevels);
     this.pageRows.set(this.prefs);
     this.gpuPowerRow.set(this.prefs.gpuPower);
+    this.pacingRow.set(String(this.prefs.framePacingMs));
+    this.tileRow.set(String(this.prefs.cacheTilePx));
+    this.threadsRow.set(this.prefs.workerThreads);
     this.lowLatencyRow.set(this.prefs.lowLatency);
     this.engineRow.set(this.prefs.engineDevice);
     this.wheelRow.set(this.prefs.zoomWheel);

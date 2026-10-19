@@ -14,7 +14,11 @@ import { createSurface, ctxOf, type Ctx2D, type Surface } from './surface';
 import { uid } from './types';
 
 /** A tile's side: 2,048 pixels, 16 MB, small enough to page and large enough to keep the count down (600 MP is 150). */
-export const TILE = 2048;
+export let TILE = 2048;
+/** Preferences > Performance > Cache Tile Size: the side of the tiles of giant layers made from now on (each tile is one
+ *  GPU texture); a power of two from 512 to 4096. Tiles already made keep their own side. */
+export const TILE_SIZES: readonly number[] = [512, 1024, 2048, 4096];
+export function setTileSize(px: number): void { TILE = TILE_SIZES.includes(px) ? px : 2048; }
 
 /** The tiles a rectangle touches, row by row, within a grid of `cols` by `rows` tiles of side `tile`. */
 export function tilesIn(x: number, y: number, w: number, h: number, tile: number, cols: number, rows: number): Array<[number, number]> {

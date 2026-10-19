@@ -5,7 +5,7 @@ import { el, setText } from '../dom';
 import { checkRow, selectRow, sliderRow } from './controls';
 
 export type AlignBlendMode = 'align' | 'blend';
-export interface AlignBlendOptions { projection?: string; method?: string; seamless?: boolean; vignette?: boolean; reference?: string; distortion?: boolean; halo?: number; depth?: boolean }
+export interface AlignBlendOptions { projection?: string; method?: string; seamless?: boolean; vignette?: boolean; reference?: string; distortion?: boolean; registration?: string; halo?: number; depth?: boolean }
 /** A layer's radial gain from the engine: centre and radius in layer pixels, and the gain at 64 steps of r from 0 to 1. */
 interface VignetteGain { cx: number; cy: number; radius: number; lut: number[] }
 
@@ -19,6 +19,7 @@ export class AlignBlendDialog extends Dialog {
   private vignette = false;
   private reference = 'bottom';
   private distortion = false;
+  private registration = 'features';
   private halo = 0;
   private depth = false;
   private readonly note = el('<p class="cv-dialog-note" role="status" style="min-height: 1.4em"></p>');
@@ -64,7 +65,7 @@ export class AlignBlendDialog extends Dialog {
     }
     if (mode === 'align') {
       const refAt = o.reference === 'top' ? ids.length - 1 : o.reference === 'middle' ? Math.floor((ids.length - 1) / 2) : 0;
-      const r = await api.mergeAlign(blobs, o.projection ?? 'auto', !!o.vignette, refAt, !!o.distortion);
+      const r = await api.mergeAlign(blobs, o.projection ?? 'auto', !!o.vignette, refAt, !!o.distortion, o.registration ?? 'features');
       const edits = ids.map((id, i) => ({ id, matrix: r.matrices[i] }));
       const W = engine.current?.doc.width ?? 1, H = engine.current?.doc.height ?? 1;
       const bent: Array<ImageData | null> = [];
@@ -119,10 +120,11 @@ export class AlignBlendDialog extends Dialog {
     if (mode === 'align') {
       const proj = selectRow('Projection', [['auto', 'Auto'], ['perspective', 'Perspective'], ['cylindrical', 'Cylindrical'], ['spherical', 'Spherical'], ['collage', 'Collage'], ['reposition', 'Reposition']], (v) => { this.projection = v; });
       const ref = selectRow('Reference Layer', [['bottom', 'Bottom-most'], ['middle', 'Middle'], ['top', 'Top-most']], (v) => { this.reference = v; });
+      const reg = selectRow('Registration', [['features', 'Features (SIFT or ORB)'], ['intensity', 'Intensity (correlation)']], (v) => { this.registration = v; });
       const vig = checkRow('Vignette Removal', (v) => { this.vignette = v; });
       const geo = checkRow('Geometric Distortion Correction', (v) => { this.distortion = v; });
-      this.body.append(el('<p class="cv-dialog-note">The reference layer stays put; every other selected layer is moved to line up with it. Cylindrical and Spherical find the lens focal length from the overlaps and bend every layer onto a cylinder or a sphere first. Collage only moves, turns and scales each layer. Vignette Removal brightens the corners of every layer by the falloff the overlaps show. Geometric Distortion Correction finds the barrel or pincushion bend that makes the overlaps agree and straightens the layers.</p>'), proj.el, ref.el, vig.el, geo.el, this.note);
-      proj.set('auto'); ref.set('bottom'); vig.set(false); geo.set(false);
+      this.body.append(el('<p class="cv-dialog-note">The reference layer stays put; every other selected layer is moved to line up with it. Cylindrical and Spherical find the lens focal length from the overlaps and bend every layer onto a cylinder or a sphere first. Collage only moves, turns and scales each layer. Vignette Removal brightens the corners of every layer by the falloff the overlaps show. Geometric Distortion Correction finds the barrel or pincushion bend that makes the overlaps agree and straightens the layers. Intensity registration refines Auto, Perspective and Reposition by maximising the correlation of the grey pictures, so it also works on layers with few features.</p>'), proj.el, ref.el, reg.el, vig.el, geo.el, this.note);
+      proj.set('auto'); ref.set('bottom'); reg.set('features'); vig.set(false); geo.set(false);
     } else {
       const meth = selectRow('Blend Method', [['panorama', 'Panorama'], ['stack', 'Stack Images'], ['multiband', 'Multiband (new layer)']], (v) => { this.method = v; });
       const tone = checkRow('Seamless Tones and Colors', (v) => { this.seamless = v; });
@@ -140,7 +142,7 @@ export class AlignBlendDialog extends Dialog {
   private async apply(): Promise<void> {
     setText(this.note, this.mode === 'align' ? 'Aligning...' : 'Blending...');
     try {
-      const msg = await AlignBlendDialog.execute(this.engine, this.mode, { projection: this.projection, method: this.method, seamless: this.seamless, vignette: this.vignette, reference: this.reference, distortion: this.distortion, halo: this.halo, depth: this.depth });
+      const msg = await AlignBlendDialog.execute(this.engine, this.mode, { projection: this.projection, method: this.method, seamless: this.seamless, vignette: this.vignette, reference: this.reference, distortion: this.distortion, registration: this.registration, halo: this.halo, depth: this.depth });
       this.close();
       this.engine.notice(msg);
     } catch (err) { setText(this.note, err instanceof Error ? err.message : 'The engine could not do this.'); }

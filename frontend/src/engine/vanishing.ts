@@ -19,6 +19,35 @@ export function makePlane(quad: Quad): PlaneMap | null {
   return { quad, h, inv, aspect };
 }
 
+/** A plane hinged on `parent`'s right edge (top right to bottom right) and turned `angle` degrees out of it (0 carries
+ *  the plane on flat, 90 stands it square to the parent), its width the parent's. The camera is found from the parent
+ *  alone: its focal length from the two plane axes being at a right angle (principal point at the picture centre), then
+ *  the plane's pose; the quad comes back as top left, top right, bottom right, bottom left, or null when the pose
+ *  cannot be found or the plane would pass behind the camera. */
+export function connectedQuad(parent: PlaneMap, W: number, H: number, angle: number): Quad | null {
+  const cx = W / 2, cy = H / 2, a = parent.aspect, m = parent.h;
+  // Columns of the plane-to-picture map in metric plane units (u scaled by the aspect), picture centre as the origin.
+  const col = (i: number): [number, number, number] => i === 0 ? [m[0] / a, m[3] / a, m[6] / a] : i === 1 ? [m[1], m[4], m[7]] : [m[2], m[5], m[8]];
+  const shift = (c: [number, number, number]): [number, number, number] => [c[0] - cx * c[2], c[1] - cy * c[2], c[2]];
+  const c1 = shift(col(0)), c2 = shift(col(1)), c3 = shift(col(2));
+  const f2 = -(c1[0] * c2[0] + c1[1] * c2[1]) / (c1[2] * c2[2]);
+  const f = f2 > 1 && Number.isFinite(f2) ? Math.sqrt(f2) : Math.max(W, H) * 1.2;
+  const g = (c: [number, number, number]): [number, number, number] => [c[0] / f, c[1] / f, c[2]];
+  const g1 = g(c1), g2 = g(c2), g3 = g(c3), len = Math.hypot(...g1);
+  if (!(len > 1e-9)) return null;
+  const sc = 1 / len, r1 = g1.map((v) => v * sc) as [number, number, number], r2 = g2.map((v) => v * sc) as [number, number, number], t = g3.map((v) => v * sc) as [number, number, number];
+  let n: [number, number, number] = [r1[1] * r2[2] - r1[2] * r2[1], r1[2] * r2[0] - r1[0] * r2[2], r1[0] * r2[1] - r1[1] * r2[0]];
+  if (n[2] > 0) n = [-n[0], -n[1], -n[2]];
+  const th = (angle * Math.PI) / 180, c = Math.cos(th), s = Math.sin(th);
+  const point = (sx: number, y: number): P2 | null => {
+    const X = a + sx * a * c, Z = sx * a * s;
+    const P = [X * r1[0] + y * r2[0] + t[0] + Z * n[0], X * r1[1] + y * r2[1] + t[1] + Z * n[1], X * r1[2] + y * r2[2] + t[2] + Z * n[2]];
+    return P[2] > 1e-6 ? [cx + (f * P[0]) / P[2], cy + (f * P[1]) / P[2]] : null;
+  };
+  const q = [point(0, 0), point(1, 0), point(1, 1), point(0, 1)];
+  return q.every(Boolean) ? (q as Quad) : null;
+}
+
 export const toImage = (p: PlaneMap, u: number, v: number): P2 => applyH(p.h, u, v);
 export const toPlane = (p: PlaneMap, x: number, y: number): P2 => applyH(p.inv, x, y);
 
