@@ -47,11 +47,11 @@ async def fill(image: UploadFile = File(...), mask: UploadFile = File(...), prom
 
 
 @router.post("/generate")
-async def generate(prompt: str = Form(""), width: int = Form(1024), height: int = Form(1024), provider: str = Form("fal")) -> Response:
-    """Generate Image (1.51.2): a picture from a prompt alone, as PNG; by fal or (1.58.4) another provider."""
+async def generate(prompt: str = Form(""), width: int = Form(1024), height: int = Form(1024), provider: str = Form("fal"), seed: int | None = Form(None)) -> Response:
+    """Generate Image (1.51.2): a picture from a prompt alone, as PNG; by fal or (1.58.4) another provider. `seed` is used by fal only."""
     try:
         if provider == "fal":
-            png = await run_in_threadpool(generative.generate, prompt, width, height)
+            png = await run_in_threadpool(generative.generate, prompt, width, height, seed)
         else:
             png = await run_in_threadpool(providers.generate, provider, prompt, width, height)
     except generative.GenerativeError as exc:

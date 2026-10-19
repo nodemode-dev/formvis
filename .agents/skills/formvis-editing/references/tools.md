@@ -14,7 +14,7 @@ Generated from the engine's catalogue by `./formvis agents sync`; do not edit by
 - Painting and generating: `fill`, `generative_fill`, `generate_image`, `remove_background`
 - Colour, filters and looks: `add_adjustment`, `apply_filter`, `set_adjustment`, `color_match`, `add_film_layer`
 - History: `undo`, `redo`
-- Other: `timeline_get`, `timeline_create`, `timeline_delete`, `timeline_set`, `timeline_go_to`, `timeline_clip`, `timeline_split`, `timeline_keyframe`, `timeline_transition`, `timeline_frame_image`, `timeline_render`, `select_mask`, `list_settings`, `set_settings`, `ui_inspect`
+- Other: `close_document`, `ping`, `list_plugins`, `select_feather`, `select_grow`, `select_point`, `timeline_get`, `timeline_create`, `timeline_delete`, `timeline_set`, `timeline_go_to`, `timeline_clip`, `timeline_split`, `timeline_keyframe`, `timeline_transition`, `timeline_frame_image`, `timeline_render`, `select_mask`, `list_settings`, `set_settings`, `ui_inspect`
 
 ## get_document
 
@@ -26,18 +26,28 @@ Note: read-only.
 
 ## get_image
 
-The document as it looks, as a PNG image, its longer side at most max_size pixels. Use when you need to see the picture, and again after each change to check it.
+A picture of the document as it looks, its longer side at most max_size pixels (a PNG, or a JPEG with format). view document is the flattened picture; editor is the window's canvas as the person sees it, with the selection outline, guides and tool overlays; layer is one layer alone (id from get_document). x, y, width and height crop a box in document pixels, shown at 1:1 unless it is larger than max_size. Use when you need to see the picture, and again after each change to check it.
 
 - `max_size`: integer; default 1024
+- `view`: string (document | editor | layer); default "document"
+- `id`: string; A layer id from get_document; for view layer.
+- `x`: integer
+- `y`: integer
+- `width`: integer
+- `height`: integer
+- `format`: string (png | jpeg); default "png"
+- `quality`: number; default 0.9
 
 Note: read-only.
 
 ## new_document
 
-Opens a new document. Use when there is nothing open, or the person wants a blank canvas of a size.
+Opens a new document of width x height pixels, or of an aspect and size class (a model-friendly size, sides in steps of 16: size_class 1k is about 1024 on the longer side, 2k about 2048, 4k about 4096). Width and height win when given. Use when there is nothing open, or the person wants a blank canvas of a size.
 
-- `width`: integer; required
-- `height`: integer; required
+- `width`: integer
+- `height`: integer
+- `aspect`: string (1:1 | 4:3 | 3:4 | 3:2 | 2:3 | 16:9 | 9:16 | 21:9 | 5:4 | 4:5)
+- `size_class`: string (1k | 2k | 4k); default "1k"
 - `name`: string
 - `background`: string (white | transparent | black); default "white"
 
@@ -190,6 +200,30 @@ Makes an open document the one tools act on, by its id from get_document's docum
 
 - `id`: string; required; A layer id from get_document.
 
+## close_document
+
+Closes an open document by its id from get_document's documents (the active one when id is left out) without asking about unsaved changes: they are discarded, so save_project first to keep them. The person can bring the tab back with Reopen Closed Tab. Use when an open document is finished with and its tab should go.
+
+- `id`: string; A document id from get_document's documents.
+
+Note: replaces or removes.
+
+## ping
+
+Reports in one call whether formvis is there: its version, whether the window is open and connected, whether outside agents are allowed, and the open documents (id, name, size). Never opens the window and never asks the person anything. Use when you want to know whether formvis is running, connected and allowed before the first edit.
+
+- no parameters
+
+Note: read-only.
+
+## list_plugins
+
+Lists the plugins in the plugins folder: file name, size, whether it is on, whether it is running, its name and the commands it registered (run one with run_command id plugin:<file>:<command>). Use when you need to know which plugins are installed and what commands they add.
+
+- no parameters
+
+Note: read-only.
+
 ## resize_image
 
 Resamples the whole document to width x height pixels (keep the shape by scaling both by one factor). Use when the whole picture should be scaled to a size.
@@ -309,6 +343,29 @@ Selects pixels near a colour (#rrggbb) in the active layer; fuzziness 0 to 200 w
 
 - `color`: string; required
 - `fuzziness`: number; default 40
+
+## select_feather
+
+Softens the selection's edge by radius pixels (0.1 to 1000), as Select > Modify > Feather; the selection stays one selection with a gradual edge. Needs a selection. Use when a selection's edge should fade, so a fill or edit blends in.
+
+- `radius`: number; required
+- `at_bounds`: boolean; default false; Feather along the canvas edge too, instead of carrying the edge pixels on.
+
+## select_grow
+
+Makes the selection bigger or smaller by amount pixels (1 to 1024), as Select > Modify > Expand or Contract. Needs a selection. Use when a selection should be made a few pixels bigger or smaller.
+
+- `amount`: integer; required
+- `direction`: string (expand | contract); default "expand"
+- `at_bounds`: boolean; default false; Act along the canvas edge too, instead of carrying the edge pixels on.
+
+## select_point
+
+Selects the object at points, as the Object Selection tool does: inside points (x, y in document pixels) lie on the object, outside points on what it must not include. Runs the Segment Anything model on this computer, which takes a few seconds the first time and fails with how to install it when it is missing. Use when an object should be selected by pointing at it rather than drawing around it.
+
+- `inside`: array; required
+- `outside`: array
+- `mode`: string (replace | add | subtract | intersect); default "replace"
 
 ## apply_filter
 

@@ -1,4 +1,4 @@
-import { Raster, SelectionMask, createSurface, ctxOf, toBlob, type BlendMode, type Engine } from '../engine';
+import { Raster, SelectionMask, createSurface, ctxOf, toBlob, type BlendMode, type Engine, type Surface } from '../engine';
 import { api, whenServiceUp } from '../io/api';
 import { PARAM_KINDS } from '../engine/adjust-params';
 import { LIMITS } from '../engine/types';
@@ -18,6 +18,10 @@ export interface AgentDeps {
   selectSubject?(): Promise<void>; removeBackground?(): Promise<void>;
   // 1.59.7, DEV_PLAN 25.5: Render Video's file, for timeline_render.
   renderVideo?(c: { format: 'mp4' | 'gif' | 'png'; from: number; to: number; scale: number }): Promise<Blob | null>;
+  // The window's canvas as the person sees it (get_image view editor), Select Object by points (select_point) and the plugins folder (list_plugins).
+  viewCapture?(): Surface | null;
+  selectPoints?(inside: Array<[number, number]>, outside: Array<[number, number]>, mode: 'replace' | 'add' | 'subtract' | 'intersect'): Promise<string | null>;
+  plugins?(): Promise<Array<Record<string, unknown>>>;
 }
 
 const settingsOf = (p: Prefs): Record<string, string | number | boolean> => Object.fromEntries(Object.entries(p).filter(([, v]) => typeof v === 'number' || typeof v === 'boolean' || (typeof v === 'string' && v.length <= 60))) as Record<string, string | number | boolean>;
@@ -130,7 +134,14 @@ export class AgentBridge {
     try {
       if (name === 'new_document') {
         const bg = str('background') || 'white';
-        e.newDocument(Math.round(num('width', 1024)), Math.round(num('height', 1024)), str('name') || 'Untitled', bg === 'transparent' ? 'transparent' : 'white');
+        let nw = Math.round(num('width', 0)), nh = Math.round(num('height', 0));
+        if (!nw || !nh) {
+          const ratio = /^(\d+):(\d+)$/.exec(str('aspect')), long = { '1k': 1024, '2k': 2048, '4k': 4096 }[str('size_class') || '1k'];
+          if (!ratio || !long) return fail('Give width and height in pixels, or an aspect such as 16:9 (with size_class 1k, 2k or 4k).');
+          const ra = Number(ratio[1]), rb = Number(ratio[2]), side = (v: number): number => Math.max(16, Math.round(v / 16) * 16);
+          [nw, nh] = ra >= rb ? [long, side(long * rb / ra)] : [side(long * ra / rb), long];
+        }
+        e.newDocument(nw, nh, str('name') || 'Untitled', bg === 'transparent' ? 'transparent' : 'white');
         if (bg === 'black') { e.fg = { r: 0, g: 0, b: 0 }; e.fill('fg'); }
         return text(`Opened a ${e.current?.doc.width} by ${e.current?.doc.height} document.`);
       }
@@ -142,6 +153,23 @@ export class AgentBridge {
         return text(q ? `Opened ${file.name}: ${q.doc.width} by ${q.doc.height}, ${q.doc.layers.length} layer${q.doc.layers.length === 1 ? '' : 's'}.` : `Could not open ${file.name}.`, q ? { id: q.id, width: q.doc.width, height: q.doc.height } : undefined);
       }
       if (name === 'list_commands' || name === 'describe_command' || name === 'run_command' || name === 'run_commands') return await catalogueTool(name, a);
+      if (name === 'ping') {
+        const documents = e.projects.map((q) => ({ id: q.id, name: q.name, active: q === p, width: q.doc.width, height: q.doc.height }));
+        return text(`${documents.length} open document${documents.length === 1 ? '' : 's'}.`, { documents, active: p?.id ?? null });
+      }
+      if (name === 'list_plugins') {
+        if (!this.deps.plugins) return fail('Plugins are not available here.');
+        const plugins = await this.deps.plugins();
+        return text(plugins.length ? JSON.stringify(plugins) : 'No plugins are installed: the person adds .js files in Preferences > Plugins.', { plugins });
+      }
+      if (name === 'close_document') {
+        const cat = catalogueOf();
+        if (!cat) return fail(NO_CATALOGUE);
+        if (!e.projects.length) return fail('No document is open.');
+        if (str('id') && !e.projects.some((q) => q.id === str('id'))) return fail(`No open document has the id ${str('id')}: see documents in get_document.`);
+        const r = await cat.runCommand('close-document', str('id') ? { id: str('id') } : {});
+        return r.ok ? text(`Closed ${str('id') || 'the active document'}; ${e.projects.length} left open${e.current ? `, now working on ${e.current.name}` : ''}.`, { documents: e.projects.map((q) => ({ id: q.id, name: q.name })) }) : fail(`${r.error ?? 'The document could not be closed.'}`);
+      }
       if (!p) return fail('No document is open: call new_document or open_file first.');
       const layerOf = (): NonNullable<ReturnType<typeof p.layer>> => { const l = p.layer(str('id')); if (!l) throw new Error(`No layer has the id ${str('id')}: call get_document for the ids.`); return l; };
       switch (name) {
@@ -155,11 +183,21 @@ export class AgentBridge {
           return text(JSON.stringify(data), data);
         }
         case 'get_image': {
-          const flat = e.flattened();
-          if (!flat) return fail('Nothing to show.');
-          const k = Math.min(1, num('max_size', 1024) / Math.max(flat.width, flat.height)), s = createSurface(Math.max(1, Math.round(flat.width * k)), Math.max(1, Math.round(flat.height * k)));
-          ctxOf(s).drawImage(flat as CanvasImageSource, 0, 0, s.width, s.height);
-          return { content: [{ type: 'image', data: await b64(await toBlob(s)), mimeType: 'image/png' }, { type: 'text', text: `${p.doc.width} by ${p.doc.height}, shown at ${s.width} by ${s.height}.` }] };
+          const view = str('view') || 'document', jpeg = str('format') === 'jpeg';
+          if (!['document', 'editor', 'layer'].includes(view)) return fail('view is document, editor or layer.');
+          let flat: Surface | null;
+          if (view === 'editor') flat = this.deps.viewCapture?.() ?? null;
+          else if (view === 'layer') { if (!str('id')) return fail('view layer needs id: a layer id from get_document.'); const l = layerOf(); if (l.isGroup) return fail(`${l.name} is a group: give a layer, or use view document.`); flat = e.renderLayerAlone(l.id); }
+          else flat = e.flattened();
+          if (!flat) return fail(view === 'editor' ? 'The editor view cannot be captured here: use view document.' : 'Nothing to show.');
+          const boxed = view !== 'editor' && ['x', 'y', 'width', 'height'].some((k) => typeof a[k] === 'number');
+          const sx = boxed ? Math.min(flat.width - 1, Math.max(0, Math.round(num('x', 0)))) : 0, sy = boxed ? Math.min(flat.height - 1, Math.max(0, Math.round(num('y', 0)))) : 0;
+          const sw = boxed ? Math.max(1, Math.min(flat.width - sx, Math.round(num('width', flat.width - sx)))) : flat.width, sh = boxed ? Math.max(1, Math.min(flat.height - sy, Math.round(num('height', flat.height - sy)))) : flat.height;
+          const k = Math.min(1, num('max_size', 1024) / Math.max(sw, sh)), s = createSurface(Math.max(1, Math.round(sw * k)), Math.max(1, Math.round(sh * k))), c = ctxOf(s);
+          if (jpeg) { c.fillStyle = '#ffffff'; c.fillRect(0, 0, s.width, s.height); }
+          c.drawImage(flat as CanvasImageSource, sx, sy, sw, sh, 0, 0, s.width, s.height);
+          const what = view === 'editor' ? `the editor view, ${flat.width} by ${flat.height}` : `${view === 'layer' ? `${layerOf().name} alone, ` : ''}${p.doc.width} by ${p.doc.height}${boxed ? `, the box ${sx}, ${sy}, ${sw} by ${sh}` : ''}`;
+          return { content: [{ type: 'image', data: await b64(await toBlob(s, jpeg ? 'image/jpeg' : 'image/png', jpeg ? Math.min(1, Math.max(0.1, num('quality', 0.9))) : undefined)), mimeType: jpeg ? 'image/jpeg' : 'image/png' }, { type: 'text', text: `${what}, shown at ${s.width} by ${s.height}.` }] };
         }
         case 'select': {
           const shape = str('shape');
@@ -392,6 +430,27 @@ export class AgentBridge {
           e.selectColorRange({ mode: 'sampled', plus: [c], minus: [], fuzziness: num('fuzziness', 40), invert: false });   // checked by TypeScript, not cast
           const s = e.current?.selection;
           return s ? text(`Selected ${str('color')}: ${s.w} by ${s.h} at ${s.x}, ${s.y}.`) : fail(`Nothing near ${str('color')} was found.`);
+        }
+        case 'select_feather': case 'select_grow': {
+          if (!p.selection) return fail('There is no selection: call select, select_subject or select_color_range first.');
+          const feather = name === 'select_feather', amount = feather ? Math.round(num('radius', 0) * 10) / 10 : Math.round(num('amount', 0));
+          if (!(amount >= (feather ? 0.1 : 1)) || amount > (feather ? 1000 : 1024)) return fail(feather ? 'radius is 0.1 to 1000 pixels.' : 'amount is 1 to 1024 pixels.');
+          if (feather) e.modifySelection('feather', amount, a.at_bounds === true);
+          else e.resizeSelection(str('direction') === 'contract' ? -amount : amount, a.at_bounds === true);
+          const s = e.current?.selection;
+          return s ? text(`${feather ? `Feathered by ${amount} pixels` : `${str('direction') === 'contract' ? 'Contracted' : 'Expanded'} by ${amount} pixels`}: the selection is ${s.w} by ${s.h} at ${s.x}, ${s.y}.`, { x: s.x, y: s.y, width: s.w, height: s.h })
+            : fail(`${feather ? 'Feathering' : 'Contracting'} left nothing selected.`);
+        }
+        case 'select_point': {
+          if (!this.deps.selectPoints) return fail('Selecting by points is not available here.');
+          const pts = (k: string): Array<[number, number]> => (Array.isArray(a[k]) ? (a[k] as Array<{ x?: unknown; y?: unknown }>) : []).filter((q) => typeof q?.x === 'number' && typeof q?.y === 'number').map((q) => [Math.floor(q.x as number), Math.floor(q.y as number)]);
+          const inside = pts('inside'), outside = pts('outside'), mode = (['replace', 'add', 'subtract', 'intersect'].includes(str('mode')) ? str('mode') : 'replace') as 'replace';
+          if (!inside.length) return fail('Give at least one inside point as { x, y } in document pixels.');
+          if ([...inside, ...outside].some(([x, y]) => x < 0 || y < 0 || x >= p.doc.width || y >= p.doc.height)) return fail(`Every point must lie inside the picture (0 to ${p.doc.width - 1}, 0 to ${p.doc.height - 1}).`);
+          const why = await this.deps.selectPoints(inside, outside, mode);
+          if (why) return fail(`${why} Try points nearer the middle of the object, or select_subject.`);
+          const s = e.current?.selection;
+          return s ? text(`Selected the object: ${s.w} by ${s.h} at ${s.x}, ${s.y}.`, { x: s.x, y: s.y, width: s.w, height: s.h }) : fail('Nothing is selected.');
         }
         // Filters and looks.
         case 'apply_filter': {

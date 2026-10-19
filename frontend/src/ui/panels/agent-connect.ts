@@ -4,6 +4,7 @@ import type { Commands } from '../commands';
 import { el, patchList, q, setChecked, setClass, setHidden, setText, setValue } from '../dom';
 import { icon } from '../icons';
 import { loadPrefs, savePrefs } from '../prefs';
+import { toast } from '../toast';
 
 const KEY = 'formvis.agentConnect';
 const FEED_LIMIT = 200;
@@ -30,6 +31,16 @@ async function post(path: string, body: unknown): Promise<void> {
   try { await fetch(`/api/agents${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); } catch { return; }
 }
 
+/** Copies how to register formvis in a client: Claude Code's claude mcp add line, or Claude Desktop's mcpServers JSON with this copy's launcher path. */
+export async function copyRegistration(kind: 'claude_code' | 'claude_desktop'): Promise<void> {
+  try {
+    const text = ((await (await fetch('/api/mcp/registration')).json()) as Record<string, string>)[kind];
+    if (!text) throw new Error('empty');
+    await navigator.clipboard.writeText(text);
+    toast(kind === 'claude_code' ? 'Copied the Claude Code line.' : 'Copied the Claude Desktop JSON.', 'info');
+  } catch { toast('Could not copy: the engine is not answering or the clipboard is blocked.', 'error'); }
+}
+
 /** Window > Agent Connect (DEV_PLAN 28.4): the master switch for outside agents, one row per connected agent with its policy
  *  (Allow all, Ask for risky steps, Deny), the steps waiting for the person's approval, the activity feed (newest first),
  *  Follow Agent and Stop. Built once; the engine's WebSocket patches rows, approvals and feed entries in place. */
@@ -42,6 +53,9 @@ export class AgentConnect {
     <div class="ft-connect-section"><span class="ft-connect-label">Connected agents</span>
       <div class="ft-connect-agents"></div>
       <p class="ft-connect-empty">No agent has connected yet. Start one with ./formvis agents install, then ask it to edit the picture.</p></div>
+    <div class="ft-connect-section"><span class="ft-connect-label">Connect an agent</span>
+      <div class="ft-connect-bar"><button type="button" class="cv-btn cv-btn-ghost" data-copy="claude_code" title="Copies the claude mcp add line">Copy Claude Code line</button>
+      <button type="button" class="cv-btn cv-btn-ghost" data-copy="claude_desktop" title="Copies the mcpServers JSON with this copy's path">Copy Claude Desktop JSON</button></div></div>
     <div class="ft-connect-section is-feed"><div class="ft-connect-bar"><span class="ft-connect-label">Activity</span>
       <label class="ft-connect-follow"><input type="checkbox" class="ft-connect-follow-on"><span>Follow Agent</span></label>
       <button type="button" class="cv-btn cv-btn-ghost ft-connect-stop" title="Cancel the steps waiting for approval">${icon('close', 14)}<span>Stop</span></button></div>
@@ -66,6 +80,7 @@ export class AgentConnect {
     setChecked(this.follow, read().follow);
     q(this.el, '.ft-connect-close').addEventListener('click', () => this.toggle(false));
     q(this.el, '.ft-connect-stop').addEventListener('click', () => void post('/stop', {}));
+    for (const b of Array.from(this.el.querySelectorAll<HTMLButtonElement>('[data-copy]'))) b.addEventListener('click', () => void copyRegistration(b.dataset.copy === 'claude_desktop' ? 'claude_desktop' : 'claude_code'));
     this.follow.addEventListener('change', () => keep(this.follow.checked));
     this.master.addEventListener('change', () => this.switchAgents(this.master.checked));
     this.connect();
@@ -212,5 +227,7 @@ export function installAgentConnect(commands: Commands, engine: Engine): AgentCo
   const panel = new AgentConnect(engine);
   document.body.appendChild(panel.el);
   commands.add({ id: 'agent.connect.open', label: 'Agent Connect', icon: 'link', checked: () => panel.isOpen(), run: () => panel.toggle() });
+  commands.add({ id: 'agent.connect.copy-claude-code', label: 'Copy Claude Code Connect Line', run: () => copyRegistration('claude_code') });
+  commands.add({ id: 'agent.connect.copy-claude-desktop', label: 'Copy Claude Desktop Connect JSON', run: () => copyRegistration('claude_desktop') });
   return panel;
 }

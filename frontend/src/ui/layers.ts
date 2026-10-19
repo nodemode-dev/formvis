@@ -3,6 +3,7 @@ import { PanelGroup } from './panel-group';
 import type { ChannelsPanel } from './channels';
 import type { LayerLocks } from '../engine/types';
 import { groupIsolated } from '../engine/tree';
+import { LAYER_LABELS } from '../engine/types';
 import { enhanceSelect } from './dropdown';
 import { el, isMac, patchList, q, setClass, setDisabled, setHidden, setHtml, setStyleVar, setText, setTitle, setValue } from './dom';
 import { icon } from './icons';
@@ -36,6 +37,10 @@ const sizeOf = (l: Layer): string => {
   const t = l.transform, w = l.raster?.width ?? 0, s = w ? Math.round((t.w / w) * 100) : 100;
   return `${Math.round(t.w)} x ${Math.round(t.h)}${s !== 100 ? ` ${s}%` : ''}`;
 };
+/** The attribute filter: what a layer has set, decided from its own fields. */
+const ATTRS = [['visible', 'Visible'], ['hidden', 'Hidden'], ['locked', 'Locked'], ['clipped', 'Clipped'], ['masked', 'With mask'], ['effects', 'With effects']] as const;
+type AttrId = (typeof ATTRS)[number][0];
+const hasAttr = (l: Layer, a: AttrId): boolean => a === 'visible' ? l.visible : a === 'hidden' ? !l.visible : a === 'locked' ? Object.values(l.locks ?? {}).some(Boolean) : a === 'clipped' ? !!l.clipId : a === 'masked' ? !!l.mask : effectsPresent(l.effects);
 const kindOf = (l: Layer): KindId => (l.adjustment || l.fillContent ? 'adjustment' : l.text ? 'type' : l.vector ? 'shape' : l.smart ? 'smart' : 'pixel');
 
 /** The blend modes in their groups (s21), as <optgroup>s; any mode not named falls in Other. */
@@ -64,6 +69,10 @@ export class LayersPanel {
   private readonly opacity: HTMLInputElement;
   private readonly fill: HTMLInputElement;
   private readonly kind: HTMLSelectElement;
+  private readonly fName: HTMLInputElement;
+  private readonly fMode: HTMLSelectElement;
+  private readonly fAttr: HTMLSelectElement;
+  private readonly fLabel: HTMLSelectElement;
   /** The kinds shown; empty shows every kind. */
   private kinds = new Set<KindId>();
   /** Select > Isolate Layers, per document: the layers listed while isolated. */
@@ -87,6 +96,10 @@ export class LayersPanel {
       `<div class="cv-layers-page">` +
       `<div class="cv-layer-props"><div class="cv-layer-kind"><select class="cv-select cv-kind" title="Filter by kind" aria-label="Filter by kind"><option value="all">Kind</option>${KINDS.map((k) => `<option value="${k.id}">${k.label}</option>`).join('')}</select>` +
       `<div class="cv-kind-icons" role="group" aria-label="Show only">${KINDS.map((k) => `<button class="cv-kind-btn" type="button" data-kind="${k.id}" title="${k.label} layers" aria-label="${k.label} layers" aria-pressed="false">${icon(k.icon, 14)}</button>`).join('')}</div></div>` +
+      `<div class="cv-layer-filt"><input class="cv-input cv-filt-name" type="search" placeholder="Name" title="Filter by name" aria-label="Filter by name" spellcheck="false">` +
+      `<select class="cv-select cv-filt-mode" title="Filter by blend mode" aria-label="Filter by blend mode"><option value="all">Mode</option>${BLEND_MODES.map((m) => `<option value="${m.id}">${m.label}</option>`).join('')}</select>` +
+      `<select class="cv-select cv-filt-attr" title="Filter by attribute" aria-label="Filter by attribute"><option value="all">Attribute</option>${ATTRS.map(([id, label]) => `<option value="${id}">${label}</option>`).join('')}</select>` +
+      `<select class="cv-select cv-filt-label" title="Filter by colour label" aria-label="Filter by colour label"><option value="all">Color</option><option value="none">No Color</option>${LAYER_LABELS.map((c) => `<option value="${c}">${c[0].toUpperCase()}${c.slice(1)}</option>`).join('')}</select></div>` +
       `<div class="cv-layer-blendrow"><select class="cv-select cv-blend" title="Blend mode" aria-label="Blend mode">${blendOptions()}</select><span class="cv-vsep"></span>` +
       `<label class="cv-opacity" title="Opacity"><span>Opacity</span><span class="cv-num"><input class="cv-opacity-field" type="text" inputmode="numeric" value="100" aria-label="Opacity"><span class="cv-unit">%</span></span><button class="cv-slide-btn cv-slide-opacity" type="button" title="${t('Opacity slider')}" aria-label="${t('Opacity slider')}" aria-haspopup="dialog" aria-expanded="false">${icon('chevronDown', 12)}</button></label></div>` +
       `<div class="cv-layer-lockrow"><span class="cv-lock-slot"></span><span class="cv-vsep"></span><label class="cv-opacity" title="Fill: the layer's pixels, not its styles"><span>Fill</span><span class="cv-num"><input class="cv-fill-field" type="text" inputmode="numeric" value="100" aria-label="Fill"><span class="cv-unit">%</span></span><button class="cv-slide-btn cv-slide-fill" type="button" title="${t('Fill slider')}" aria-label="${t('Fill slider')}" aria-haspopup="dialog" aria-expanded="false">${icon('chevronDown', 12)}</button></label></div></div>` +
@@ -229,6 +242,13 @@ export class LayersPanel {
         this.render();
       });
     }
+    // The name, mode, attribute and colour filters narrow the rows in place; the rows kept stay the same nodes.
+    this.fName = q<HTMLInputElement>(root, '.cv-filt-name');
+    this.fMode = q<HTMLSelectElement>(root, '.cv-filt-mode');
+    this.fAttr = q<HTMLSelectElement>(root, '.cv-filt-attr');
+    this.fLabel = q<HTMLSelectElement>(root, '.cv-filt-label');
+    this.fName.addEventListener('input', () => this.render());
+    for (const s of [this.fMode, this.fAttr, this.fLabel]) s.addEventListener('change', () => this.render());
     // The panel menu, by the tab shown: the Layers panel's commands, or the Paths panel's.
     this.group.setMenu(() => this.group.current === 'paths' ? ['new-path', 'delete-path', '-', 'fill-path-dialog', 'stroke-path-dialog', '-', 'clipping-path'] : this.group.current === 'channels' ? [] : ['new-layer', 'duplicate-dialog', 'delete-layer', '-', 'new-folder', 'group', '-', 'merge', '-', 'layer-style', 'convert-smart', 'rasterize']);
     for (const k of ['doc', 'active', 'projects', 'history'] as const) engine.on(k, () => this.queue());
@@ -265,7 +285,9 @@ export class LayersPanel {
     if (p && iso && map && ![...iso].some((id) => map.has(id))) { this.isolation.delete(p); iso = undefined; }
     if (iso && map) for (const id of iso) for (let l = map.get(id); l; l = l.parentId ? map.get(l.parentId) : undefined) keep.add(l.id);
     const shown = (l: Layer): boolean => { if (!iso || !map || keep.has(l.id)) return true; for (let a = l.parentId ? map.get(l.parentId) : undefined; a; a = a.parentId ? map.get(a.parentId) : undefined) if (iso.has(a.id)) return true; return false; };
-    const entries = (this.kinds.size ? all.filter((e) => e.layer.isGroup || this.kinds.has(kindOf(e.layer))) : all).filter((e) => shown(e.layer));
+    const nm = this.fName.value.trim().toLowerCase(), md = this.fMode.value, at = this.fAttr.value as AttrId | 'all', lb = this.fLabel.value;
+    const passes = (l: Layer): boolean => l.isGroup || ((!nm || l.name.toLowerCase().includes(nm)) && (md === 'all' || l.blend === md) && (at === 'all' || hasAttr(l, at)) && (lb === 'all' || (l.label ?? 'none') === lb));
+    const entries = (this.kinds.size ? all.filter((e) => e.layer.isGroup || this.kinds.has(kindOf(e.layer))) : all).filter((e) => shown(e.layer) && passes(e.layer));
     setHidden(this.empty, all.length > 0);
     // Rows moved by a layer arriving or leaving are held where they were by a transform and then eased into place (FLIP),
     // so a layer that arrives with no click just before it (an import, Remove Background finishing) does not make the

@@ -86,6 +86,15 @@ export class PluginHost {
     this.onChange();
   }
 
+  /** Every plugin file with whether it is on and running, and the name and commands it registered (list_plugins). */
+  async list(): Promise<Array<Record<string, unknown>>> {
+    const off = this.off();
+    return (await api.plugins()).map((f) => {
+      const p = this.loaded.get(f.name);
+      return { file: f.name, size: f.size, on: !off.has(f.name), running: !!p, name: p?.label ?? null, commands: (p?.commands ?? []).map((c) => ({ id: this.id(f.name, c.id), label: c.label })) };
+    });
+  }
+
   /** The plugins' commands, for the Plugins menu. */
   commandIds(): string[] { return [...this.loaded.values()].flatMap((p) => p.commands.map((c) => this.id(p.name, c.id))); }
 

@@ -64,7 +64,7 @@ import * as PA from './path-ops';
 import * as TX from './text-ops';
 import * as VD from './video-ops';
 import * as TE from './transform-entry';
-import { type DocMode, BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStroke, type ShapeStyle, type FootageInterpretation, effectsFromData, type Artboard, artboardFromData, type AlphaChannel, effectsPresent } from './types';
+import { type DocMode, BLEND_MODES, canvasBlend, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStroke, type ShapeStyle, type FootageInterpretation, effectsFromData, type Artboard, artboardFromData, type AlphaChannel, effectsPresent } from './types';
 import { allPatterns, patternById } from './patterns';
 import { fillFrame, fillName, renderFill } from './fill-layers';
 import type { FillContent, VectorMask } from './types';
@@ -3044,6 +3044,40 @@ export class Engine {
     }
   }
 
+  /** The colour that leaves what lies below unchanged in blend mode `blend`; null where none does (Normal, Dissolve and
+   *  the four colour-component modes, which the New Layer dialog leaves transparent). */
+  neutralFor(blend: BlendMode): string | null {
+    if (['multiply', 'darken', 'color-burn', 'linear-burn', 'darker-color', 'divide'].includes(blend)) return '#ffffff';
+    if (['screen', 'lighten', 'color-dodge', 'linear-dodge', 'lighter-color', 'difference', 'exclusion', 'subtract'].includes(blend)) return '#000000';
+    if (['overlay', 'soft-light', 'hard-light', 'vivid-light', 'linear-light', 'pin-light'].includes(blend)) return '#808080';
+    return null;
+  }
+
+  /** Layer > New > Layer with its dialog's Color label and Fill with Mode-Neutral Color: the layer as `addLayer` makes
+   *  it, tagged with `label`, and filled with the neutral colour of its mode when `neutral` is set and the mode has one.
+   *  One step; false when the document has no room or holds a tiled layer. */
+  addLayerWith(opts: { name?: string; blend?: BlendMode; opacity?: number; clip?: boolean; label?: LayerLabel | null; neutral?: boolean } = {}): boolean {
+    const p = this.current;
+    if (!p) return false;
+    const fill = opts.neutral && opts.blend ? this.neutralFor(opts.blend) : null;
+    if (fill && (p.doc.layers.some((l) => l.tiled) || !this.sizeOk(p.doc.width, p.doc.height))) return false;
+    if (!fill && !opts.label) { this.addLayer(opts); return true; }
+    this.settle();
+    const W = p.doc.width, H = p.doc.height, before = p.doc.layers.length;
+    p.history.begin('New Layer', p.snapshot());
+    try {
+      this.addLayer(opts);
+      const made = p.activeLayer;
+      if (p.doc.layers.length === before || !made) return false;
+      return this.edit('Layer Options', (q) => {
+        q.updateLayer(made.id, { ...(fill ? { raster: Raster.filled(W, H, fill), transform: docTransform(W, H) } : {}), ...(opts.label ? { label: opts.label } : {}) });
+        return true;
+      });
+    } finally {
+      p.history.end(p.snapshot());
+    }
+  }
+
   /** Layer > New > Group; the New Group dialog passes a name. One step. */
   addFolder(name?: string): void { LS.addFolder(this.structHost, name); }
 
@@ -3127,6 +3161,25 @@ export class Engine {
 
   /** Layer > Duplicate Layer; the dialog passes a name, used when one layer or folder is duplicated. One step. */
   duplicateLayers(name?: string): void { LS.duplicateLayers(this.structHost, name); }
+
+  /** Layer > Duplicate Layer with a Document destination: the selected layers (each with the folder contents under it)
+   *  copied into the open document `target`, or into a new transparent document of this size when `target` is 'new'. One
+   *  step in the target a layer; returns the layers copied. */
+  duplicateLayersTo(target: string, docName?: string): number {
+    const src = this.current;
+    if (!src || !src.selectedIds.size) return 0;
+    const sel = src.selectedIds, ids = [...sel].filter((id) => { for (let l = src.layer(id)?.parentId; l; l = src.layer(l)?.parentId) if (sel.has(l)) return false; return true; });
+    let key = target;
+    if (target === 'new') {
+      const made = this.newDocument(src.doc.width, src.doc.height, docName?.trim() || `${src.layer(ids[0])?.name ?? 'Layer'}`, 'transparent', src.doc.resolution);
+      if (!made) return 0;
+      key = made.id;
+      made.setLayers([]);
+    }
+    let n = 0;
+    for (const id of ids) if (this.copyLayerToProject(id, key)) n += 1;
+    return n;
+  }
 
   /** The layers that stay but are clipped to a layer that is being deleted. Deleting their base asks whether to bake
    *  their masked look into their pixels or to drop the links; `deleteLayers(true)` bakes. */
@@ -3450,7 +3503,18 @@ export class Engine {
     });
   }
 
+  /** Shift+Plus and Shift+Minus with the Brush tool: its Mode stepped through Normal, Behind, Clear and the canvas blend
+   *  modes, wrapping. Returns false for any other tool, which steps the layer's blend mode instead. */
+  cycleToolBlend(forward: boolean): boolean {
+    if (this.tool !== 'brush') return false;
+    const modes: Array<BlendMode | 'behind' | 'clear'> = ['normal', 'behind', 'clear', ...BLEND_MODES.filter((m) => m.id !== 'normal' && canvasBlend(m.id)).map((m) => m.id)];
+    const n = modes.length, i = Math.max(0, modes.indexOf(this.brushBlend));
+    this.setBrushBlend(modes[(i + (forward ? 1 : n - 1)) % n]);
+    return true;
+  }
+
   cycleBlend(forward: boolean): void {
+    if (this.cycleToolBlend(forward)) return;
     const l = this.activeLayer;
     if (!l || l.artboard) return;
     const n = BLEND_MODES.length, i = BLEND_MODES.findIndex((m) => m.id === l.blend);
@@ -8375,7 +8439,11 @@ export class Engine {
     const p = this.current, view = this.flattened();
     if (!p || !view) return false;
     const W = p.doc.width * scale, H = p.doc.height * scale;
-    if (W > LIMITS.side || H > LIMITS.side || W * H > LIMITS.pixels) { this.notice(`Upscaled ${scale} times, this image would pass 30,000 px a side or ${Math.round(LIMITS.pixels / 1_000_000)} megapixels.`, 'error'); return false; }
+    if (W > LIMITS.side || H > LIMITS.side || W * H > LIMITS.pixels) {
+      const fits = Math.floor(Math.min(LIMITS.side / p.doc.width, LIMITS.side / p.doc.height, Math.sqrt(LIMITS.pixels / (p.doc.width * p.doc.height))) * 10) / 10;
+      this.notice(`Upscaled ${scale} times, this image would pass 30,000 px a side or ${Math.round(LIMITS.pixels / 1_000_000)} megapixels. The largest factor that fits is ${fits}.`, 'error');
+      return false;
+    }
     let result: Blob;
     try {
       result = await run(await toBlob(view));
@@ -8392,6 +8460,22 @@ export class Engine {
     const base: Doc = { id: uid(), width: W, height: H, resolution: p.doc.resolution, layers: [] };
     const layer = { ...newLayer('Background', base), raster };
     this.addProject({ ...base, layers: [layer] }, `${p.name} ${scale}x`, layer.id);
+    return true;
+  }
+
+  /** Compute Depth Map: what the document shows, read by `run` (near bright, far dark), added as a grey layer 'Depth Map'
+   *  at the document's size, one step. */
+  async computeDepthMap(run: (image: Blob) => Promise<Blob>): Promise<boolean> {
+    const p = this.current, view = this.flattened();
+    if (!p || !view) return false;
+    let result: Blob;
+    try { result = await run(await toBlob(view)); } catch (err) { this.notice(err instanceof Error ? err.message : 'The depth could not be read.', 'error'); return false; }
+    if (this.current !== p) return false;
+    const bitmap = await createImageBitmap(result), raster = new Raster(p.doc.width, p.doc.height);
+    raster.ctx.drawImage(bitmap, 0, 0, p.doc.width, p.doc.height);
+    bitmap.close();
+    raster.touch();
+    this.insertRasterLayer(raster, 'Depth Map', 0, 0, {}, 'Compute Depth Map');
     return true;
   }
 

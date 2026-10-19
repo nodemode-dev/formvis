@@ -1,15 +1,15 @@
 # formvis commands
 
-Generated from the window's command catalogue (1163 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1167 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
-- Edit: 69
+- Edit: 70
 - File: 83
 - Filter: 86
 - Generate: 6
 - Help: 3
-- Image: 88
+- Image: 89
 - Layer: 240
 - Paint: 1
 - Paths: 9
@@ -18,7 +18,7 @@ Generated from the window's command catalogue (1163 commands) by `./formvis agen
 - Tools: 52
 - Type: 30
 - View: 68
-- Window: 94
+- Window: 96
 
 ## Edit
 
@@ -47,6 +47,7 @@ Generated from the window's command catalogue (1163 commands) by `./formvis agen
 | `fill-dialog` | Fill... | Shift+F5 | Opens the Fill dialog with its contents and blend options. (changes the picture) |
 | `fill-fg` | Fill with Foreground | Alt+Backspace Alt+Delete | Fills the selection or layer with the foreground colour. (changes the picture) |
 | `fill-history` | Fill with History | Alt+Mod+Backspace Alt+Mod+Delete | Fills the selection or layer with its pixels from the history source, at full opacity. (changes the picture) |
+| `free-helper-models` | Free Helper Models |  | Frees the ONNX helper models formvis holds in memory (depth, segmentation, background removal and the like) and names what it freed; the next use loads its model again. (changes the picture) |
 | `generative-fill` | Generative Fill... |  | Opens Generative Fill for the selection. (changes the picture) |
 | `layer-rotate-180` | Rotate 180° |  | Turns the layer 180 degrees. (changes the picture) |
 | `layer-rotate-90-ccw` | Rotate 90° Counter Clockwise |  | Turns the layer 90 degrees counter clockwise. (changes the picture) |
@@ -339,6 +340,7 @@ Generated from the window's command catalogue (1163 commands) by `./formvis agen
 | `canvas-size` | Canvas Size... | Alt+Mod+C | Opens Canvas Size. (changes the picture) |
 | `color-match` | Color Match... |  | Opens Color Match. (changes the picture) |
 | `color-table` | Color Table... |  | Opens the Color Table of an Indexed Color document: edit, load or save its palette. (changes the picture) |
+| `compute-depth-map` | Compute Depth Map |  | Reads the depth of what the document shows with Depth Anything V2 Small on this computer and adds it as a grey layer named Depth Map, near bright and far dark. (changes the picture) |
 | `convert-profile` | Convert to Profile... |  | Opens Convert to Profile. (changes the picture) |
 | `data-set-apply` | Apply Data Set |  | Applies a data set to the document: sets bound layers visible or hidden, replaces bound type text keeping its style, and swaps bound pixel layers, as one undo step. |
 | `data-sets-import` | Data Sets... |  | Reads data sets from CSV or tab-separated text whose first row names the variables; each later row is one data set. With no text it opens a file chooser for .csv and .txt. |
@@ -699,12 +701,12 @@ Generated from the window's command catalogue (1163 commands) by `./formvis agen
 | `channel-options` | Channel Options... |  | Sets a channel name, overlay colour and opacity. (changes the picture) |
 | `channel-up` | Move Channel Up |  | Moves a channel one place up the list. (changes the picture) |
 | `color-range` | Color Range... |  | Opens Color Range. (changes the picture) |
-| `contract` | Contract by 1 px... |  | Contracts the selection by one pixel. (changes the picture) |
+| `contract` | Contract by 1 px... |  | Contracts the selection by the given pixels, or opens Contract when none are given. (changes the picture) |
 | `convert-to-shape` | Convert to Shape |  | Turns the selection into a shape layer. (changes the picture) |
 | `deselect` | Deselect | Mod+D | Clears the selection. (changes the picture) |
 | `duplicate-channel` | Duplicate Channel |  | Copies a channel. (changes the picture) |
-| `expand` | Expand by 1 px... |  | Expands the selection by one pixel. (changes the picture) |
-| `feather` | Feather... | Shift+F6 | Opens Feather to soften the selection edge. (changes the picture) |
+| `expand` | Expand by 1 px... |  | Expands the selection by the given pixels, or opens Expand when none are given. (changes the picture) |
+| `feather` | Feather... | Shift+F6 | Softens the selection edge by the given radius, or opens Feather when none is given. (changes the picture) |
 | `focus-area` | Focus Area... |  | Opens Focus Area to select what is in focus. (changes the picture) |
 | `grow` | Grow |  | Grows the selection over similar neighbouring colours. (changes the picture) |
 | `inverse` | Inverse | Shift+Mod+I | Inverts the selection. (changes the picture) |
@@ -1078,7 +1080,7 @@ Generated from the window's command catalogue (1163 commands) by `./formvis agen
 | `tool.select.dodge` | Dodge Tool |  | Makes the Dodge tool the active tool (key O). Paint to lighten, most in the chosen tonal range · [ ] size |
 | `tool.select.eraser` | Eraser Tool |  | Makes the Eraser tool the active tool (key E). Drag to erase · Shift-click erases a line from the last point · [ ] size · Shift+[ ] hardness |
 | `tool.select.eyedropper` | Eyedropper Tool |  | Makes the Eyedropper tool the active tool (key I). Click or drag to sample the foreground colour from the visible image · Alt-click samples the background colour |
-| `tool.select.frame` | Frame Tool |  | Makes the Frame tool the active tool (key K). Drag to draw a frame · Shift for a square or circle · Import an image with the frame selected to fill it |
+| `tool.select.frame` | Frame Tool |  | Makes the Frame tool the active tool (key K). Drag to draw a frame · Shift for a square or circle · Alt to draw from the centre · Import an image with the frame selected to fill it |
 | `tool.select.freeformPen` | Freeform Pen Tool |  | Makes the Freeform Pen tool the active tool (key P). Drag to draw a path freehand · end near the start to close it · Curve Fit sets how closely it follows |
 | `tool.select.gradient` | Gradient Tool |  | Makes the Gradient tool the active tool (key G). Drag to draw a gradient · Drag either end to adjust it · Shift snaps to 45 degrees · Enter applies · Escape cancels · Switching tools applies |
 | `tool.select.hand` | Hand Tool |  | Makes the Hand tool the active tool (key H). Drag to pan · Scroll pans · Cmd/Ctrl + scroll zooms · Hold Space to pan with any tool |
@@ -1229,6 +1231,8 @@ Generated from the window's command catalogue (1163 commands) by `./formvis agen
 | `action-stop` | Stop Recording |  | Stops recording an action. |
 | `actions` | Actions... |  | Opens the Actions panel to record and play steps. |
 | `agent.claude.open` | Claude Code |  | Shows or hides the Claude Code panel. |
+| `agent.connect.copy-claude-code` | Copy Claude Code Connect Line |  | Copies the claude mcp add line that registers formvis in Claude Code. |
+| `agent.connect.copy-claude-desktop` | Copy Claude Desktop Connect JSON |  | Copies the mcpServers JSON, with this copy of formvis installed path, for Claude Desktop settings. |
 | `agent.connect.open` | Agent Connect |  | Shows or hides Agent Connect: which outside agents may act, their policy, approvals and activity. |
 | `arrange-2up-h` | 2-up Horizontal |  | Shows the active document and one other stacked top and bottom; the other is a read-only view tile. |
 | `arrange-2up-v` | 2-up Vertical |  | Shows the active document and one other side by side; the other is a read-only view tile. |

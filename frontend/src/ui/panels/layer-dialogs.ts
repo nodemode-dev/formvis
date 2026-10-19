@@ -1,12 +1,13 @@
 import { BLEND_MODES, canvasBlend, type BlendMode, type Engine, type Layer, type LayerLocks } from '../../engine';
+import { LAYER_LABELS, type LayerLabel } from '../../engine/types';
 import { Dialog } from '../dialogs';
 import { el } from '../dom';
 import { checkRow, selectRow, sliderRow } from './controls';
 
 const enterTo = (input: HTMLInputElement, run: () => void): void => input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); run(); } });
 
-/** Layer > New > Layer (Shift+Ctrl+N): Name, Mode and Opacity (sourced in WORKSPACE_RESEARCH.md). Colour labels are set
- *  from Layer > Color Label (1.87.3). The Layers panel's New Layer button still makes a layer at once. */
+/** Layer > New > Layer (Shift+Ctrl+N): Name, Color label, Mode, Opacity and Fill with Mode-Neutral Color. The Layers
+ *  panel's New Layer button still makes a layer at once. */
 export class NewLayerDialog extends Dialog {
   private readonly name = el<HTMLInputElement>('<input class="cv-input" type="text" maxlength="200" spellcheck="false">');
   private blend: BlendMode = 'normal';
@@ -15,11 +16,15 @@ export class NewLayerDialog extends Dialog {
   private readonly opacityRow = sliderRow('Opacity (%)', 0, 100, 1, (v) => { this.opacity = v; });
   private clip = false;
   private readonly clipRow = checkRow('Use Previous Layer to Create Clipping Mask', (v) => { this.clip = v; });
+  private label: LayerLabel | null = null;
+  private readonly labelRow = selectRow('Color', [['none', 'None'], ...LAYER_LABELS.map((c) => [c, c[0].toUpperCase() + c.slice(1)] as const)], (v) => { this.label = v === 'none' ? null : v as LayerLabel; });
+  private neutral = false;
+  private readonly neutralRow = checkRow('Fill with Mode-Neutral Color', (v) => { this.neutral = v; });
 
   constructor(private readonly engine: Engine) {
     super('New Layer', 380);
     this.field('Name', this.name);
-    this.body.append(this.clipRow.el, this.modeRow.el, this.opacityRow.el, el('<p class="cv-note">Set a colour label from Layer > Color Label. Fill With Mode-Neutral Color is not in formvis yet.</p>'));
+    this.body.append(this.clipRow.el, this.labelRow.el, this.modeRow.el, this.opacityRow.el, this.neutralRow.el, el('<p class="cv-note">Fill with Mode-Neutral Color applies to modes that have a neutral colour; Normal, Dissolve and the colour modes stay transparent.</p>'));
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     enterTo(this.name, () => this.apply());
@@ -42,6 +47,12 @@ export class NewLayerDialog extends Dialog {
     this.opacity = 100;
     this.clip = false;
     this.clipRow.set(false);
+    this.label = null;
+    this.labelRow.set('none');
+    this.neutral = false;
+    this.neutralRow.set(false);
+    this.neutralRow.el.hidden = background;
+    this.labelRow.el.hidden = background;
     this.modeRow.set(this.blend);
     this.opacityRow.set(this.opacity);
     this.open(this.name);
@@ -51,7 +62,7 @@ export class NewLayerDialog extends Dialog {
   private apply(): void {
     this.close();
     if (this.background) this.engine.layerFromBackground({ name: this.name.value, blend: this.blend, opacity: this.opacity / 100 });
-    else this.engine.addLayer({ name: this.name.value, blend: this.blend, opacity: this.opacity / 100, clip: this.clip });
+    else this.engine.addLayerWith({ name: this.name.value, blend: this.blend, opacity: this.opacity / 100, clip: this.clip, label: this.label, neutral: this.neutral });
   }
 }
 
@@ -92,17 +103,23 @@ export class NewGroupDialog extends Dialog {
   }
 }
 
-/** Layer > Duplicate Layer: a name for the duplicate (sourced in WORKSPACE_RESEARCH.md). A destination document is
- *  not offered; copying layers between open documents is not built yet, so the
- *  duplicate goes in this one. With several layers chosen, each keeps its own "copy" name. */
+/** Layer > Duplicate Layer: a name for the duplicate and a Document destination: this document, another open one or a
+ *  new one. With several layers chosen, each keeps its own "copy" name. Copies into another document keep their names
+ *  and are centred there. */
 export class DuplicateLayerDialog extends Dialog {
   private readonly name = el<HTMLInputElement>('<input class="cv-input" type="text" maxlength="200" spellcheck="false">');
   private readonly note = el('<p class="cv-note" hidden>Several layers are chosen; each duplicate is named after its layer.</p>');
+  private readonly dest = el<HTMLSelectElement>('<select class="cv-input" aria-label="Document"></select>');
+  private readonly docName = el<HTMLInputElement>('<input class="cv-input" type="text" maxlength="200" spellcheck="false" aria-label="Name of the new document">');
+  private readonly docField: HTMLElement;
 
   constructor(private readonly engine: Engine) {
     super('Duplicate Layer', 360);
     this.field('As', this.name);
-    this.body.append(this.note, el('<p class="cv-note">The duplicate goes in this document; choosing another open document is not in formvis yet.</p>'));
+    this.field('Document', this.dest);
+    this.docField = this.field('Name', this.docName);
+    this.dest.addEventListener('change', () => this.sync());
+    this.body.append(this.note);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     enterTo(this.name, () => this.apply());
@@ -115,13 +132,24 @@ export class DuplicateLayerDialog extends Dialog {
     this.name.value = several ? '' : `${l.name} copy`;
     this.name.disabled = several;
     this.note.hidden = !several;
+    const opts = [['', p.name ? `${p.name} (this document)` : 'This document'], ...this.engine.projects.filter((o) => o !== p).map((o) => [o.id, o.name || 'Untitled'] as const), ['new', 'New']] as const;
+    this.dest.replaceChildren(...opts.map(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; return o; }));
+    this.docName.value = l.name;
+    this.sync();
     this.open(this.name);
     if (!several) this.name.select();
   }
 
+  private sync(): void {
+    const away = this.dest.value !== '';
+    this.name.disabled = away || (this.engine.current?.selectedIds.size ?? 0) > 1;
+    this.docField.hidden = this.dest.value !== 'new';
+  }
+
   private apply(): void {
     this.close();
-    this.engine.duplicateLayers(this.name.disabled ? undefined : this.name.value);
+    if (this.dest.value) this.engine.duplicateLayersTo(this.dest.value, this.docName.value);
+    else this.engine.duplicateLayers(this.name.disabled ? undefined : this.name.value);
   }
 }
 

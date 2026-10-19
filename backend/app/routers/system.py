@@ -92,6 +92,24 @@ def _select_object() -> dict:
     return {"available": True, "model": "SAM 2.1 tiny", "device": device, "reason": reason}
 
 
+@router.get("/helpers")
+def helpers_held() -> dict:
+    """The ONNX helper sessions formvis holds in memory now (depth, segmentation, background and the like)."""
+    from app.localgen import sessions
+    return {"held": sessions.held()}
+
+
+@router.post("/helpers/free")
+def helpers_free() -> dict:
+    """Frees every ONNX helper session formvis holds; the next use loads its model again."""
+    from app.localgen import sessions
+    freed = sessions.held()
+    sessions.release_all()
+    import gc
+    gc.collect()
+    return {"freed": freed, "held": sessions.held()}
+
+
 @router.get("/capabilities")
 def capabilities() -> dict:
     return {

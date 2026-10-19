@@ -261,6 +261,9 @@
 .cv-layer-props { display: block; padding: 6px 8px 2px; }
 .cv-layer-kind { display: flex; align-items: center; gap: 6px; }
 .cv-kind { width: 96px; flex: none; }
+.cv-layer-filt { display: flex; gap: 4px; padding: 4px 0 0; min-width: 0; }
+.cv-layer-filt > * { flex: 1 1 0; min-width: 0; }
+.cv-filt-name { flex: 1.4 1 0; }
 .cv-kind-icons { display: flex; gap: 1px; padding: 2px; border: 1px solid var(--line-2); border-radius: 8px; }
 .cv-kind-btn { display: inline-grid; place-items: center; width: 26px; height: 22px; border: 0; border-radius: 6px; background: transparent; color: var(--text-secondary); cursor: pointer; }
 .cv-kind-btn:hover { color: var(--text-primary); }

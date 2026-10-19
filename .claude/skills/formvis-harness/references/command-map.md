@@ -1,17 +1,17 @@
 # Command map
 
-Generated from the window's command catalogue (1163 commands: 8 action, 804 command, 299 option, 52 tool) by `./formvis agents sync`; do not edit by hand.
+Generated from the window's command catalogue (1167 commands: 8 action, 808 command, 299 option, 52 tool) by `./formvis agents sync`; do not edit by hand.
 
 Every command is registered in `frontend/src/app.ts` (hand-written), `frontend/src/automation/catalogue.ts` (`tool.select.*`, `tool.options.*` and the seven actions) or by a plug-in; its words are in `frontend/src/automation/command-meta.ts`. A command with no words is reported missing and `./formvis counts --commands --check` fails.
 
 | Group | Commands | Harness sub-skill | First ids |
 | --- | --- | --- | --- |
-| Edit | 69 | `command-author` | `auto-align-layers`, `auto-blend-layers`, `clean-working-files`, `clear` |
+| Edit | 70 | `command-author` | `auto-align-layers`, `auto-blend-layers`, `clean-working-files`, `clear` |
 | File | 83 | `io-formats` | `assemble-tiles`, `batch`, `clear-recent`, `close-all` |
 | Filter | 86 | `filter-library` | `bump-map`, `filter-addNoise`, `filter-average`, `filter-blur` |
 | Generate | 6 | `command-author` | `boxes-clear`, `boxes-copy`, `boxes-from-selection`, `boxes-tool` |
 | Help | 3 | `command-author` | `help-github`, `report-issue`, `simulate-gpu-loss` |
-| Image | 88 | `engine-builder` | `adj-blackWhite`, `adj-brightnessContrast`, `adj-channelMixer`, `adj-clarity` |
+| Image | 89 | `engine-builder` | `adj-blackWhite`, `adj-brightnessContrast`, `adj-channelMixer`, `adj-clarity` |
 | Layer | 240 | `engine-builder` | `add-filter-mask`, `add-mask`, `add-mask-hide`, `align-bottom` |
 | Paint | 1 | `brush-engine` | `paint.stroke` |
 | Paths | 9 | `tool-builder` | `clipping-path`, `delete-path`, `fill-path`, `fill-path-dialog` |
@@ -20,7 +20,7 @@ Every command is registered in `frontend/src/app.ts` (hand-written), `frontend/s
 | Tools | 52 | `tool-builder` | `tool.select.artHistory`, `tool.select.artboard`, `tool.select.backgroundEraser`, `tool.select.boxes` |
 | Type | 30 | `tool-builder` | `add-font-files`, `add-web-font`, `character-styles`, `check-spelling` |
 | View | 68 | `ui-builder` | `actual`, `clear-guides`, `clear-slices`, `delete-slice` |
-| Window | 94 | `ui-builder` | `about`, `action-stop`, `actions`, `agent.claude.open` |
+| Window | 96 | `ui-builder` | `about`, `action-stop`, `actions`, `agent.claude.open` |
 
 ## Id families
 

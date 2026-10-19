@@ -171,8 +171,8 @@ def generation_size(width: int, height: int) -> tuple[int, int]:
     return max(256, round(w / 32) * 32), max(256, round(h / 32) * 32)
 
 
-def generate(prompt: str, width: int, height: int) -> bytes:
-    """A picture from `prompt` alone with FLUX1.1 [pro], as PNG, at generation_size(width, height)."""
+def generate(prompt: str, width: int, height: int, seed: int | None = None) -> bytes:
+    """A picture from `prompt` alone with FLUX1.1 [pro], as PNG, at generation_size(width, height); `seed` fixes the result."""
     key, _ = _key()
     if not key:
         raise GenerativeError("Add a fal API key to generate an image.", 428)
@@ -181,6 +181,8 @@ def generate(prompt: str, width: int, height: int) -> bytes:
         raise GenerativeError("Describe the image to generate.", 400)
     w, h = generation_size(width, height)
     body = {"prompt": prompt[:2000], "image_size": {"width": w, "height": h}, "num_images": 1, "output_format": "png", "sync_mode": True, "safety_tolerance": "2"}
+    if seed is not None and seed >= 0:
+        body["seed"] = int(seed) & 0x7FFFFFFF
     return _result_png(_post(IMAGE_MODEL, body, key))
 
 

@@ -4,7 +4,7 @@ Outside agents (Claude Code, Codex, Cursor and any MCP client) edit what is open
 
 | Source path | What lives there |
 | --- | --- |
-| `backend/app/routers/mcp.py` | The MCP server (`/mcp`): 56 tools, each description ending in a "Use when" line; `/mcp?tools=core` lists the 31 most used for clients that cap tools |
+| `backend/app/routers/mcp.py` | The MCP server (`/mcp`): 66 tools, each description ending in a "Use when" line; `/mcp?tools=core` lists the 31 most used for clients that cap tools |
 | `frontend/src/automation/agent-bridge.ts` | The window side: polls the engine for tool calls, runs them through the engine and the catalogue, answers |
 | `frontend/src/automation/catalogue.ts`, `command-meta.ts` | The command catalogue: every registered command, `tool.select.*`, `tool.options.*` and seven exact actions (`paint.stroke`, `select.rect`, `select.ellipse`, `select.lasso`, `layer.set`, `adjust.apply`, `filter.apply`); the words for each id live in `command-meta.ts` |
 | `backend/app/routers/commands.py` | `POST /api/commands/catalogue` (the window mirrors its catalogue to `commands-catalogue.json` in the data folder), `GET /api/commands`, `GET /api/commands/{id}`, `POST /api/commands/{id}` |

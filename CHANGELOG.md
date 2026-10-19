@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.88.6 · 2026-10-19
+
+### Added
+
+- Agents: six more MCP tools (66 in all): ping, close_document, list_plugins, select_feather, select_grow and select_point; get_image can show the editor view, one layer or a 1:1 box, as PNG or JPEG; new_document takes an aspect and a size class. Feather, Expand and Contract take an amount from commands. Agent Connect copies the Claude Code line and the Claude Desktop setup.
+- Generate: a negative prompt for local models; seed controls (random, fixed, reuse last); the prompt fields have their own undo; Escape or a click on the status bar stops a run; Edit > Purge > Free Helper Models; Generate > Compute Depth Map.
+- Layers: New Layer takes a colour label and a mode-neutral fill; Duplicate Layer can go to another open document or a new one; the Layers panel filters by name, mode, attribute and colour; the Frame tool draws from the centre with Alt; Shift+Plus and Minus step the Brush mode.
+
 ## 1.88.5 · 2026-10-19
 
 ### Added

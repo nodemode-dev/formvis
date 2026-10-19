@@ -82,6 +82,21 @@ async function selectWith(engine: Engine, points: Array<[number, number, 0 | 1]>
   });
 }
 
+/** Select by points for agents (select_point): clicks on the object and off it, as the tool sends them; null when it selected, else why not. */
+export async function selectByPoints(engine: Engine, inside: Array<[number, number]>, outside: Array<[number, number]>, mode: SelectionMode): Promise<string | null> {
+  const p = engine.current;
+  if (!p) return 'No document is open.';
+  let said = null as string | null;
+  await engine.task(async () => {
+    try {
+      const data = await request(engine, [...inside.map(([x, y]) => [x, y, 1] as [number, number, 1]), ...outside.map(([x, y]) => [x, y, 0] as [number, number, 0])], null);
+      if (!data) { said = 'No object was found at those points.'; return; }
+      engine.applySelection(SelectionMask.cropped(0, 0, p.doc.width, p.doc.height, data), mode, 'Object Selection');
+    } catch (err) { said = err instanceof Error ? err.message : String(err); }
+  });
+  return said;
+}
+
 /* Box mode and the hover highlight (1.49.10, the owner's tool list): a drag draws a box and selects the
    object in it; resting the pointer shows the object under it, tinted, before any click. */
 let draft: { from: Pt; to: Pt; mode: SelectionMode } | null = null;

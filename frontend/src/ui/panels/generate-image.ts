@@ -11,6 +11,7 @@ import { loadPrefs } from '../prefs';
 import { ReferencePicker } from './references';
 import { ReferenceChips } from './reference-chips';
 import { PromptImprover } from './prompt-improver';
+import { GenerationOptions } from './generation-options';
 
 /** One model Generate Image can use: its value in the picker, its words, and why it cannot be chosen when it cannot. */
 export interface GenerationModel { value: string; label: string; disabled: boolean; reason: string }
@@ -27,7 +28,13 @@ const LOG_LIMIT = 200, KEPT_LIMIT = 12;
 const runLog: RunLogEntry[] = [];
 const kept: KeptResult[] = [];
 const listeners = new Set<() => void>();
+const running = new Set<{ stop: () => void }>();
 let serial = 0;
+
+/** Stops every generation in flight (Escape and the status bar's stop): local jobs are cancelled in the engine, ComfyUI
+ *  prompts are interrupted and a cloud answer is dropped when it arrives. Returns how many were running. */
+export function stopGenerations(): number { const n = running.size; for (const r of [...running]) r.stop(); return n; }
+export const generationsRunning = (): number => running.size;
 
 export const generationLog = (): readonly RunLogEntry[] => runLog;
 export const keptResults = (): readonly KeptResult[] => kept;
@@ -96,6 +103,12 @@ export interface GenerationRequest {
   size?: { width: number; height: number };
   /** The layers sent as references to a ComfyUI workflow. */
   references?: () => Promise<Array<{ name: string; blob: Blob }>>;
+  /** Seed (fal and models on this computer) and negative prompt (this computer); the seed used comes back through `onSeed`. */
+  seed?: number;
+  negative?: string;
+  onSeed?: (seed: number | undefined) => void;
+  /** Called when stopGenerations stops this run, so the caller can say so. */
+  onStop?: () => void;
   status: (text: string) => void;
   stopped: () => boolean;
   heard?: (r: { notice?: string; warning?: string; notes: string[] }) => void;
@@ -109,8 +122,15 @@ export interface GenerationRequest {
  *  for the person. The dialog and the panel both run this. */
 export async function runGeneration(engine: Engine, req: GenerationRequest): Promise<boolean> {
   const t0 = performance.now(), entry: RunLogEntry = { id: ++serial, time: Date.now(), choice: req.choice, prompt: req.prompt, ms: 0, ok: false, note: '' };
+  let cancelled = false, release: (v: boolean) => void = () => {};
+  const gone = new Promise<boolean>((ok) => { release = ok; });
+  const run = { stop: () => { cancelled = true; req.onStop?.(); release(false); } };
+  running.add(run);
   try {
-    const added = await generateOnce(engine, req);
+    // Stopping answers at once; a cloud answer that arrives later finds the run cancelled and is dropped.
+    const work = generateOnce(engine, { ...req, stopped: () => cancelled || req.stopped() });
+    work.catch(() => undefined);
+    const added = await engine.task(() => Promise.race([work, gone]));
     entry.ok = true;
     entry.note = added ? 'added as a layer' : 'stopped';
     return added;
@@ -118,6 +138,7 @@ export async function runGeneration(engine: Engine, req: GenerationRequest): Pro
     entry.note = err instanceof Error ? err.message : 'failed';
     throw err;
   } finally {
+    running.delete(run);
     entry.ms = Math.round(performance.now() - t0);
     runLog.push(entry);
     if (runLog.length > LOG_LIMIT) runLog.splice(0, runLog.length - LOG_LIMIT);
@@ -156,10 +177,11 @@ async function generateOnce(engine: Engine, req: GenerationRequest): Promise<boo
   if (choice.startsWith('local:')) {
     // On this computer: the shape asked within the model's 2048 pixels, in multiples of 16.
     const k = Math.min(1, 2048 / Math.max(w, h)), lw = Math.max(256, Math.round((w * k) / 16) * 16), lh = Math.max(256, Math.round((h * k) / 16) * 16);
-    const r = await runLocal({ generator: choice, prompt, size: `${lw}x${lh}`, count: 1 }, req.status, req.stopped);
+    const r = await runLocal({ generator: choice, prompt, size: `${lw}x${lh}`, count: 1, ...(req.negative ? { negative: req.negative } : {}), ...(req.seed !== undefined ? { options: { seed: req.seed } } : {}) }, req.status, req.stopped);
     req.heard?.(r);
     blob = r.pictures[0];
     generation = r.settings[0];
+    req.onSeed?.(generation?.seed ?? req.seed);
   } else if (choice.startsWith('provider:')) {
     const pr = req.providers.find((x) => `provider:${x.id}` === choice);
     if (!pr) throw new Error(t('That provider is not available.'));
@@ -171,7 +193,8 @@ async function generateOnce(engine: Engine, req: GenerationRequest): Promise<boo
     if (!st) throw new Error(t('The formvis engine is offline. Start it with ./formvis boot.'));
     if (!st.configured) throw new Error(hint.fal);
     req.status(t('Generating on fal...'));
-    blob = await api.generateImage(prompt, w, h);
+    blob = await api.generateImage(prompt, w, h, 'fal', req.seed);
+    req.onSeed?.(req.seed);
   } else {
     const recipe = recipes().find((r) => r.name === choice);
     if (!recipe) throw new Error(t('That workflow is no longer kept: add it again in Edit > Generative Fill.'));
@@ -198,6 +221,7 @@ export class GenerateImageDialog extends Dialog {
   private readonly refs: ReferencePicker;
   private readonly chips: ReferenceChips;
   private readonly improver: PromptImprover;
+  private readonly opts = new GenerationOptions();
   private stopped = false;
   // The providers beside fal (1.58.4, L7): which have keys, and a key field shown when the chosen one has none.
   private providers: ProviderStatus[] = [];
@@ -217,14 +241,14 @@ export class GenerateImageDialog extends Dialog {
     row.append(this.model);
     this.refs = new ReferencePicker(engine);
     this.chips = new ReferenceChips(this.refs, this.prompt);
-    this.model.addEventListener('change', () => { this.picked = true; this.refs.forFal(this.model.value === 'fal'); this.keyFor(); });
+    this.model.addEventListener('change', () => { this.picked = true; this.refs.forFal(this.model.value === 'fal'); this.opts.forModel(this.model.value); this.keyFor(); });
     this.improver = new PromptImprover(this.prompt, 'Richer detail');
     this.keyButton.addEventListener('click', () => {
       const pr = this.chosenProvider();
       if (pr?.configured && !this.changing) { this.changing = true; this.keyFor(); this.keyInput.focus(); } else void this.saveKey();
     });
     this.keyRow.append(this.keyInput, this.keyButton);
-    this.body.append(this.prompt, this.improver.el, row, this.keyRow, this.refs.el, this.chips.el, this.status, this.hist, this.logBox);
+    this.body.append(this.prompt, this.improver.el, row, this.opts.el, this.keyRow, this.refs.el, this.chips.el, this.status, this.hist, this.logBox);
     this.hist.addEventListener('click', (ev) => {
       const b = (ev.target as HTMLElement).closest<HTMLButtonElement>('button[data-id]');
       if (!b) return;
@@ -255,6 +279,7 @@ export class GenerateImageDialog extends Dialog {
     if (this.picked && [...this.model.options].some((o) => o.value === was && !o.disabled)) this.model.value = was;
     else this.model.value = preferred;
     this.refs.refresh(this.model.value === 'fal');
+    this.opts.forModel(this.model.value);
     this.keyFor();
     this.improver.refresh();
     setText(this.status, 'Your ComfyUI workflows are added in Edit > Generative Fill.');
@@ -328,7 +353,7 @@ export class GenerateImageDialog extends Dialog {
     this.stopped = false;
     try {
       // The same generation the Generate panel runs; a new layer at the document's size (a new document when none is open).
-      const added = await runGeneration(this.engine, { prompt, choice: this.model.value, providers: this.providers, references: () => this.chips.ordered(), status: (text) => setText(this.status, text), stopped: () => this.stopped, heard: (r) => this.heard(r) });
+      const added = await runGeneration(this.engine, { prompt, choice: this.model.value, providers: this.providers, references: () => this.chips.ordered(), ...this.opts.request(), onSeed: (s) => this.opts.used(s), onStop: () => { this.stopped = true; setText(this.status, 'Stopped.'); }, status: (text) => setText(this.status, text), stopped: () => this.stopped, heard: (r) => this.heard(r) });
       if (!added) return;
       this.close();
       this.toast('The generated image was added as a layer.');

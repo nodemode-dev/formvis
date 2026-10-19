@@ -1,11 +1,12 @@
 import type { Pt } from '../../engine';
 import type { OptionSpec, Tool } from '../registry';
 
-let from: Pt | null = null, to: Pt | null = null, square = false;
+let from: Pt | null = null, to: Pt | null = null, square = false, centre = false;
 
-const rectOf = (a: Pt, b: Pt, sq: boolean): { x: number; y: number; w: number; h: number } => {
+const rectOf = (a: Pt, b: Pt, sq: boolean, mid = false): { x: number; y: number; w: number; h: number } => {
   let w = b.x - a.x, h = b.y - a.y;
   if (sq) { const s = Math.max(Math.abs(w), Math.abs(h)); w = Math.sign(w || 1) * s; h = Math.sign(h || 1) * s; }
+  if (mid) return { x: a.x - Math.abs(w), y: a.y - Math.abs(h), w: Math.abs(w) * 2, h: Math.abs(h) * 2 };
   return { x: Math.min(a.x, a.x + w), y: Math.min(a.y, a.y + h), w: Math.abs(w), h: Math.abs(h) };
 };
 
@@ -19,19 +20,19 @@ export const frameTool: Tool = {
     { id: 'rect', label: 'Rectangular Frame', icon: 'tFrame', active: () => e.frameShape !== 'ellipse', pick: () => { e.frameShape = 'rect'; e.emit('options', null); } },
     { id: 'ellipse', label: 'Elliptical Frame', icon: 'tFrameEllipse', active: () => e.frameShape === 'ellipse', pick: () => { e.frameShape = 'ellipse'; e.emit('options', null); } },
   ],
-  hint: () => 'Drag to draw a frame · Shift for a square or circle · Import an image with the frame selected to fill it',
+  hint: () => 'Drag to draw a frame · Shift for a square or circle · Alt to draw from the centre · Import an image with the frame selected to fill it',
   cursor: () => 'crosshair',
-  down(ctx, p) { if (p.button !== 0 || !ctx.engine.current) return; from = p.doc; to = p.doc; square = p.shift; ctx.engine.emit('overlay', null); },
-  move(ctx, p) { if (!from) return; to = p.doc; square = p.shift; ctx.engine.emit('overlay', null); },
+  down(ctx, p) { if (p.button !== 0 || !ctx.engine.current) return; from = p.doc; to = p.doc; square = p.shift; centre = p.alt; ctx.engine.emit('overlay', null); },
+  move(ctx, p) { if (!from) return; to = p.doc; square = p.shift; centre = p.alt; ctx.engine.emit('overlay', null); },
   up(ctx) {
-    if (from && to) { const r = rectOf(from, to, square); if (r.w >= 4 && r.h >= 4) ctx.engine.newFrameLayer(r); }
+    if (from && to) { const r = rectOf(from, to, square, centre); if (r.w >= 4 && r.h >= 4) ctx.engine.newFrameLayer(r); }
     from = to = null;
     ctx.engine.emit('overlay', null);
   },
   cancel(ctx) { from = to = null; ctx.engine.emit('overlay', null); },
   overlay(ctx, g) {
     if (!from || !to) return;
-    const v = ctx.view(), pal = ctx.paint(), r = rectOf(from, to, square), a = v.toScreen({ x: r.x, y: r.y }), b = v.toScreen({ x: r.x + r.w, y: r.y + r.h });
+    const v = ctx.view(), pal = ctx.paint(), r = rectOf(from, to, square, centre), a = v.toScreen({ x: r.x, y: r.y }), b = v.toScreen({ x: r.x + r.w, y: r.y + r.h });
     g.save();
     for (const [color, off] of [[pal.antsA, 0], [pal.antsB, 4]] as const) {
       g.strokeStyle = color; g.lineWidth = 1; g.setLineDash([4, 4]); g.lineDashOffset = off;

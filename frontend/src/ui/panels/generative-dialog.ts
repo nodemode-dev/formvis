@@ -121,7 +121,7 @@ export class GenerativeDialog extends Dialog {
     this.crop.load();
     setHidden(this.improver.el, mode === 'upscale');
     this.improver.refresh();
-    if (start && mode !== 'upscale') this.prompt.value = start.prompt;
+    if (start && mode !== 'upscale') this.improver.history.set(start.prompt);
     this.sync();
     if (start && this.runnable) { await this.generate(); return; }
     this.open();

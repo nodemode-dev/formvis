@@ -139,6 +139,18 @@ export class Stage {
 
   restyle(): void { this.checker = null; this.queue(true, true); }
 
+  /** The stage as the person sees it (get_image view editor): the drawing surfaces, the GPU ones when shown, with the overlay on top, cut to the stage. */
+  capture(): HTMLCanvasElement | null {
+    if (!this.cssW || !this.cssH || !this.engine.current) return null;
+    const out = document.createElement('canvas');
+    out.width = Math.round(this.cssW * this.dpr); out.height = Math.round(this.cssH * this.dpr);
+    const g = out.getContext('2d');
+    if (!g) return null;
+    const dx = -Math.round(this.offX * this.dpr), dy = -Math.round(this.offY * this.dpr);
+    for (const c of [...this.gpuCanvases.filter((x) => !x.hidden && x.style.display !== 'none'), this.scene, this.overlay]) g.drawImage(c, dx, dy);
+    return out;
+  }
+
   /** The document region the next scene frame must repaint: undefined nothing pending, null everything, else the
    *  union of the stroke regions reported since the last frame. Any full request wins until the frame runs. */
   private pending: Rect | null | undefined = undefined;

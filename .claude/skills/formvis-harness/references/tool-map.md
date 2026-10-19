@@ -1,6 +1,6 @@
 # Tool map
 
-Generated from the MCP catalogue (60 tools, `TOOLS` in `backend/app/routers/mcp.py`) and the `formvis-driving` sub-skills by `./formvis agents sync`; do not edit by hand. A tool no sub-skill names reads `none` and needs a line in the sub-skill that covers its family.
+Generated from the MCP catalogue (66 tools, `TOOLS` in `backend/app/routers/mcp.py`) and the `formvis-driving` sub-skills by `./formvis agents sync`; do not edit by hand. A tool no sub-skill names reads `none` and needs a line in the sub-skill that covers its family.
 
 | Tool | Reads or changes | Driving sub-skills that name it |
 | --- | --- | --- |
@@ -25,6 +25,9 @@ Generated from the MCP catalogue (60 tools, `TOOLS` in `backend/app/routers/mcp.
 | `save_project` | replaces or removes | `documents-and-files`, `export`, `generation-and-ai`, `layers-and-masks` |
 | `export_image` | replaces or removes | `colour-and-modes`, `documents-and-files`, `export`, `generation-and-ai`, `layers-and-masks`, `terminal`, `type-and-shapes` |
 | `switch_document` | adds or changes | `documents-and-files`, `selections` |
+| `close_document` | replaces or removes | none |
+| `ping` | reads only | none |
+| `list_plugins` | reads only | none |
 | `resize_image` | adds or changes | `export`, `transform-and-warp` |
 | `resize_canvas` | adds or changes | `transform-and-warp` |
 | `crop` | replaces or removes | `generation-and-ai`, `transform-and-warp` |
@@ -39,6 +42,9 @@ Generated from the MCP catalogue (60 tools, `TOOLS` in `backend/app/routers/mcp.
 | `draw_shape` | adds or changes | `layers-and-masks`, `painting-and-brushes`, `type-and-shapes` |
 | `select_subject` | adds or changes | `adjustments-and-filters`, `generation-and-ai`, `selections` |
 | `select_color_range` | adds or changes | `painting-and-brushes`, `selections` |
+| `select_feather` | adds or changes | none |
+| `select_grow` | adds or changes | none |
+| `select_point` | adds or changes | none |
 | `apply_filter` | adds or changes | `adjustments-and-filters`, `layers-and-masks`, `painting-and-brushes`, `selections`, `type-and-shapes` |
 | `set_adjustment` | adds or changes | `adjustments-and-filters`, `colour-and-modes` |
 | `color_match` | adds or changes | `adjustments-and-filters`, `colour-and-modes` |

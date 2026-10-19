@@ -8,6 +8,8 @@ import { BoxesSection } from '../boxes-panel';
 import { loadPrefs, recalled, remembered, updatePrefs } from '../prefs';
 import { fillModelPicker, generationModels, runGeneration } from './generate-image';
 import { comfyuiStatusText, nodemodeStatusText } from './send-to';
+import { GenerationOptions } from './generation-options';
+import { PromptHistory } from './prompt-history';
 
 /** The Generate panel (Window > Generate): the generative side of formvis in one place, always in reach. Generate makes a
  *  picture from a prompt with any model Generate Image offers (the same list and the same run); Edit with AI puts the
@@ -101,6 +103,8 @@ export class GeneratePanel {
   private providers: ProviderStatus[] = [];
   private fal: GenerativeStatus | null = null;
   private chosen: string | null = null;
+  private readonly opts = new GenerationOptions();
+  private readonly promptHistory: PromptHistory;
   private busy = false;
   private stopped = false;
   private frame = 0;
@@ -183,9 +187,11 @@ export class GeneratePanel {
     this.conns = { comfyui: this.makeConn('comfyui', 'ComfyUI'), nodemode: this.makeConn('nodemode', 'NodeMode') };
     q(b, '.cv-genp-conns').append(this.conns.comfyui.root, this.conns.nodemode.root);
 
+    this.go.parentElement?.insertBefore(this.opts.el, this.go);
+    this.promptHistory = new PromptHistory(this.prompt);
     this.go.addEventListener('click', () => void this.generate());
     this.prompt.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void this.generate(); } });
-    this.model.addEventListener('change', () => { this.chosen = this.model.value; remembered(NAME, 'model', this.model.value); });
+    this.model.addEventListener('change', () => { this.chosen = this.model.value; remembered(NAME, 'model', this.model.value); this.opts.forModel(this.model.value); });
     this.size.addEventListener('change', () => remembered(NAME, 'size', this.size.value));
     this.keyList.addEventListener('click', (e) => { const btn = e.target instanceof Element ? e.target.closest<HTMLButtonElement>('.cv-genp-save') : null; const row = btn?.closest<HTMLElement>('[data-key]'); if (row) void this.saveKey(row); });
     this.keyList.addEventListener('keydown', (e) => { if (e.key !== 'Enter' || !(e.target instanceof HTMLInputElement)) return; const row = e.target.closest<HTMLElement>('[data-key]'); if (row) { e.preventDefault(); void this.saveKey(row); } });
@@ -269,6 +275,7 @@ export class GeneratePanel {
     try {
       const added = await runGeneration(this.engine, {
         prompt, choice, providers: this.providers, size: this.asked(),   // none: the picture's own shape (a new 1024 by 1024 picture when none is open)
+        ...this.opts.request(), onSeed: (s) => this.opts.used(s), onStop: () => { this.stopped = true; setText(this.status, t('Stopped.')); },
         status: (text) => setText(this.status, text), stopped: () => this.stopped, heard: (r) => this.deps.heard(r),
         keyHint: { fal: t('Add a fal API key first, in Connections below.'), provider: (name) => t(`Add a ${name} API key first, in Connections below.`) },
       });
@@ -293,6 +300,7 @@ export class GeneratePanel {
     // The person's choice while it stands; else the default (fal with a key, else a model on this computer).
     const ok = (v: string | null): v is string => !!v && g.models.some((m) => m.value === v && !m.disabled);
     setValue(this.model, ok(this.chosen) ? this.chosen : g.preferred);
+    this.opts.forModel(this.model.value);
     this.renderKeys();
   }
 

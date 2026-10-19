@@ -183,8 +183,12 @@ export const api = {
 
   /** Edit > Generate Image (1.51.2): a picture from a prompt alone through fal, or (1.58.4) through another provider,
    *  near the document's shape. */
-  async generateImage(prompt: string, width: number, height: number, provider = 'fal'): Promise<Blob> {
-    return (await request('/generative/generate', { method: 'POST', body: form({ prompt, width: String(width), height: String(height), provider }) })).blob();
+  async generateImage(prompt: string, width: number, height: number, provider = 'fal', seed?: number): Promise<Blob> {
+    return (await request('/generative/generate', { method: 'POST', body: form({ prompt, width: String(width), height: String(height), provider, ...(seed !== undefined && seed >= 0 ? { seed: String(seed) } : {}) }) })).blob();
+  },
+  /** Edit > Free Helper Models: the engine lets go of the ONNX sessions it holds; the names it freed. */
+  async freeHelpers(): Promise<string[]> {
+    return ((await (await request('/helpers/free', { method: 'POST' })).json()) as { freed: string[] }).freed;
   },
   /** The providers beside fal (1.58.4, L7): which have keys, never the keys themselves. */
   async providers(): Promise<ProviderStatus[]> {
