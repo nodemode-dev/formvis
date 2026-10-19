@@ -10,6 +10,7 @@ import { Raster, createSurface, ctxOf } from './surface';
 import { applyMat, invert, mul, placement, setMat } from './geometry';
 import { cropWarp, homography, project, visibleBounds, warpRaster, type Warped } from './distort';
 import { computeStack, type StackMode } from './stack-modes';
+import { fadeImages } from './fade';
 import * as LS from './layer-structure';
 import { docTransform, newLayer, uid, type Doc, type ID, type Layer, type Pt, type SmartFilter, type SmartLink, type SmartObject } from './types';
 import type { Surface } from './surface';
@@ -89,13 +90,21 @@ export function maskFilters(filtered: ImageData, source: Raster, m: number, mask
   return out;
 }
 
+/** A smart filter's result laid over the image before it by the filter's own mode and opacity (Blending Options). */
+const blends = (f: SmartFilter): boolean => (f.blend ?? 'normal') !== 'normal' || (f.opacity ?? 100) < 100;
+const copyOf = (i: ImageData): ImageData => new ImageData(new Uint8ClampedArray(i.data), i.width, i.height);
+export function blendStage(before: ImageData, after: ImageData, f: SmartFilter): ImageData {
+  const mode = f.blend ?? 'normal', k = (f.opacity ?? 100) / 100;
+  return !blends(f) || before.width !== after.width || before.height !== after.height ? after : fadeImages(before, after, mode, k);
+}
+
 export function renderSmart(host: SmartObjectHost, source: Raster, filters: SmartFilter[], mask: Raster | null = null): Raster {
   const shown = filters.filter((f) => f.enabled);
   const m = smartMargin(host, filters);
   const pad = createSurface(source.width + 2 * m, source.height + 2 * m);
   ctxOf(pad).drawImage(source.canvas, m, m);
   let img = ctxOf(pad).getImageData(0, 0, pad.width, pad.height);
-  for (const f of shown) if (host.smartFilterRunner) img = host.smartFilterRunner(f.kind, f.settings, img);
+  for (const f of shown) if (host.smartFilterRunner) { const prior = blends(f) ? copyOf(img) : img; img = blendStage(prior, host.smartFilterRunner(f.kind, f.settings, img), f); }
   if (shown.length) img = maskFilters(img, source, m, mask);
   const out = new Raster(img.width, img.height);
   out.write(img);
@@ -236,7 +245,9 @@ export async function renderSmartAsync(host: SmartObjectHost, source: Raster, fi
   ctxOf(pad).drawImage(source.canvas, m, m);
   let img = ctxOf(pad).getImageData(0, 0, pad.width, pad.height);
   for (const f of filters.filter((x) => x.enabled)) {
-    img = host.smartFilterRunnerAsync ? await host.smartFilterRunnerAsync(f.kind, f.settings, img) : host.smartFilterRunner ? host.smartFilterRunner(f.kind, f.settings, img) : img;
+    const prior = blends(f) ? copyOf(img) : img;
+    const done = host.smartFilterRunnerAsync ? await host.smartFilterRunnerAsync(f.kind, f.settings, img) : host.smartFilterRunner ? host.smartFilterRunner(f.kind, f.settings, img) : img;
+    img = blendStage(prior, done, f);
   }
   if (filters.some((x) => x.enabled)) img = maskFilters(img, source, m, mask);
   const out = new Raster(img.width, img.height);

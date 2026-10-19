@@ -367,7 +367,11 @@ fn main() {
                 }
                 match port {
                     Some(port) => {
-                        let url = format!("http://127.0.0.1:{port}");
+                        let url = if std::env::args().any(|arg| arg == "--no-skin") {
+                            format!("http://127.0.0.1:{port}/?no-skin")
+                        } else {
+                            format!("http://127.0.0.1:{port}")
+                        };
                         let (width, height) = handle
                             .primary_monitor()
                             .ok()

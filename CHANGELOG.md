@@ -4,6 +4,22 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.88.7 · 2026-10-19
+
+### Added
+
+- Settings: View > Theme lists every theme; `?no-skin` (or `--no-skin` on the desktop) starts on the default theme without losing the saved one; the assistant's chats kept and tool calls a turn are settings, with Delete all chats; prompt templates import and export as Markdown; Preferences > Plugins has a ComfyUI sign-in (basic, bearer or a custom header), a models folder and a grouped recipes list with Remove.
+- Masks and depth: Apply Image takes the selection or a layer mask as its source and can preserve transparency; each smart filter has its own blend mode and opacity; Generate > Depth Map adds From Layer, Recompute, Show, Flatten, Nearer, Farther, Smooth and Snap to Edges.
+- Filters and styles: Inner Shadow choke and noise; Inner Glow technique, source, choke and noise; gradient strokes; film-stock grain presets with colour grain and speckle; vignette feather and roundness; a dark-channel Dehaze; relight colour temperature presets; filter choices preview on hover.
+
+### Changed
+
+- Switching themes no longer rebuilds the title bar icon or the brush tiles.
+
+### Fixed
+
+- With a ComfyUI sign-in set, a redirect to another server is refused instead of sending it the credentials.
+
 ## 1.88.6 · 2026-10-19
 
 ### Added

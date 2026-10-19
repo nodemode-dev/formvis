@@ -100,7 +100,7 @@ function adjustVariants(): Record<string, Record<string, CommandParam>> {
     hsv: { hue: rangeParam('hue', -180, 180, 'Hue shift'), saturation: rangeParam('saturation', -100, 100, 'Saturation'), lightness: rangeParam('lightness', -100, 100, 'Lightness'), colorize: { type: 'boolean', description: 'Colorize' } },
     levels: { black: rangeParam('black', 0, 253, 'Input black point'), gamma: rangeParam('gamma', 0.1, 9.99, 'Midtone gamma'), white: rangeParam('white', 2, 255, 'Input white point'), outputBlack: rangeParam('outputBlack', 0, 255, 'Output black'), outputWhite: rangeParam('outputWhite', 0, 255, 'Output white') },
     exposure: { exposure: rangeParam('exposure', -20, 20, 'Exposure in stops'), offset: rangeParam('offset', -0.5, 0.5, 'Offset'), gamma: rangeParam('gamma', 0.01, 9.99, 'Gamma') },
-    grain: { amount: rangeParam('amount', 0, 100, 'Grain amount'), size: rangeParam('size', 0.5, 4, 'Grain size'), roughness: rangeParam('roughness', 0, 100, 'Roughness'), seed: { type: 'integer', min: 0, description: 'Seed' } },
+    grain: { amount: rangeParam('amount', 0, 100, 'Grain amount'), size: rangeParam('size', 0.5, 4, 'Grain size'), roughness: rangeParam('roughness', 0, 100, 'Roughness'), colour: rangeParam('colour', 0, 100, 'Share of the grain that differs per colour channel'), speckle: rangeParam('speckle', 0, 100, 'Sparse bright and dark specks'), seed: { type: 'integer', min: 0, description: 'Seed' } },
     curves: {}, gradientMap: {},
   };
   for (const k of PARAM_KINDS) {

@@ -529,6 +529,16 @@ export class RelightSession {
       this.rows[key] = r; host.append(r.el);
     };
     slider('kelvin', 'Temperature', 1000, 12000, (l, v) => { l.kelvin = v; l.color = kelvinToRgb(v); });
+    const temps = el('<div class="cv-relight-gels" role="group"></div>');
+    temps.setAttribute('aria-label', t('Colour temperature presets'));
+    const KELVINS: ReadonlyArray<readonly [number, string]> = [[1900, 'Candle'], [2850, 'Tungsten'], [3200, 'Halogen'], [4200, 'Fluorescent'], [5600, 'Daylight'], [6500, 'Overcast'], [7500, 'Shade'], [10000, 'Blue sky']];
+    for (const [k, name] of KELVINS) {
+      const b = el<HTMLButtonElement>('<button class="cv-relight-gel" type="button"></button>');
+      b.style.background = hex(kelvinToRgb(k)); b.dataset.kelvin = String(k); b.title = `${t(name)} ${k} K`; b.setAttribute('aria-label', `${t(name)} ${k} K`);
+      b.addEventListener('click', () => this.change((l) => { l.kelvin = k; l.color = kelvinToRgb(k); }));
+      temps.append(b);
+    }
+    light.append(temps);
     const color = colorRow(t('Color'), (h) => this.change((l) => { l.kelvin = null; l.color = fromHex(h); }));
     this.rows.color = color; light.append(color.el);
     // Gels (1.86.1): one click sets the light's colour, as the reference's colour menu does, without relying on the

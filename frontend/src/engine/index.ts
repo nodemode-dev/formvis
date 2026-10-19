@@ -87,7 +87,8 @@ export type { FilterSettings } from './filter-jobs';
 export type { Entry as HierarchyEntry } from './tree';
 import { ADJUSTMENT_LABELS, autoLevels, defaultAdjustmentData, desaturatePixels, equalizePixels, replaceColorPixels, type ReplaceColorSettings } from './adjust';
 import { fromGray, gaussianBlur, histogram, resizeMask, toGray } from './filters';
-import { APPLY_CHANNELS, APPLY_MODES, applyImagePixels, channelSource, coverageSource, maskStrength, type ApplyChannel, type ApplyMode } from './apply-image';
+import { depthCorrect, isDepthName, type DepthCorrection } from './depth-map';
+import { APPLY_CHANNELS, APPLY_COVERAGE_CHANNELS, APPLY_MODES, applyImagePixels, channelSource, coverageSource, maskStrength, type ApplyChannel, type ApplyMode } from './apply-image';
 import { averageImage } from './filters-lib/blur';
 import type { LibFrame, LibImage, LibPath } from './filter-library';
 import type { FilterKind, FilterSettings } from './filter-jobs';
@@ -2828,6 +2829,11 @@ export class Engine {
       for (const l of p.doc.layers) if (l.id !== mva.id && !l.isGroup) m.set(l.id, { hidden: true });
       m.set(mva.id, { source: LM.maskGrey(mva.mask.raster).canvas, transform: place, maskSource: this.opaqueDot(), maskPlacement: place, opacity: 1, blend: 'normal', effects: null });
     }
+    const dv = this.depthView, dl = dv && dv.project === p ? p.layer(dv.id) : null;
+    if (dl?.raster) {
+      for (const l of p.doc.layers) if (l.id !== dl.id && !l.isGroup) m.set(l.id, { hidden: true });
+      m.set(dl.id, { hidden: false, opacity: 1, blend: 'normal', effects: null });
+    }
     if (this.channelView !== null && (p.doc.mode === 'cmyk' || p.doc.mode === 'lab')) { for (const l of p.doc.layers) if (l.channels && !m.get(l.id)?.source) m.set(l.id, { ...(m.get(l.id) ?? {}), source: this.channelGrey(l.channels, this.channelView).canvas }); }
     else if (!this.stroke && this.composesFloats(p)) {
       const composed = this.composedRendition(p);
@@ -3953,7 +3959,7 @@ export class Engine {
    *  pixels (within the selection) by a mode at `opacity` (0 to 1), through an optional mask; one step. A source or mask
    *  document must be the target's pixel size. `channel` is rgb, red, green, blue, transparency or a saved alpha
    *  channel's id or name. Returns whether it ran. */
-  applyImage(opts: { doc?: ID; layer?: ID | 'merged'; channel?: string; invert?: boolean; mode?: ApplyMode; opacity?: number; scale?: number; offset?: number; mask?: { doc?: ID; layer?: ID | 'merged'; channel?: string; invert?: boolean } | null; preview?: boolean } = {}): boolean {
+  applyImage(opts: { doc?: ID; layer?: ID | 'merged'; channel?: string; invert?: boolean; mode?: ApplyMode; opacity?: number; scale?: number; offset?: number; mask?: { doc?: ID; layer?: ID | 'merged'; channel?: string; invert?: boolean } | null; preserve?: boolean; preview?: boolean } = {}): boolean {
     const t = this.targetImage();
     if (!t) { this.notice('Apply Image needs a layer to apply to.'); return false; }
     this.settle();
@@ -3966,6 +3972,20 @@ export class Engine {
         if (W !== t.width || H !== t.height) { this.notice(`Apply Image: the ${what} must be the same pixel size as the target.`); return null; }
         const cov = new Uint8Array(W * H);
         if (alpha.mask) for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) cov[y * W + x] = alpha.mask.valueAt(x, y);
+        return coverageSource(cov, !!s.invert);
+      }
+      if (APPLY_COVERAGE_CHANNELS.includes(ch)) {
+        const W = q.doc.width, H = q.doc.height;
+        if (W !== t.width || H !== t.height) { this.notice(`Apply Image: the ${what} must be the same pixel size as the target.`); return null; }
+        let m: SelectionMask | null;
+        if (ch === 'selection') m = q.selection ?? SelectionMask.all(W, H);
+        else {
+          const l = s.layer && s.layer !== 'merged' ? q.doc.layers.find((x) => x.id === s.layer) : q.activeLayer;
+          if (!l?.mask) { this.notice(`Apply Image: the ${what} layer has no layer mask.`); return null; }
+          m = this.coverage(q, l, true);
+        }
+        const cov = new Uint8Array(W * H);
+        if (m) for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) cov[y * W + x] = m.valueAt(x, y);
         return coverageSource(cov, !!s.invert);
       }
       if (!(APPLY_CHANNELS as readonly string[]).includes(ch)) { this.notice(`Apply Image: no channel named ${ch}.`); return null; }
@@ -3984,7 +4004,7 @@ export class Engine {
     let mask: Uint8ClampedArray | null = null;
     if (opts.mask) { const m = grab(opts.mask, 'mask'); if (!m) return false; mask = maskStrength(m); }
     const mode = opts.mode && (APPLY_MODES as readonly string[]).includes(opts.mode) ? opts.mode : 'normal';
-    const o = { mode, opacity: Math.min(1, Math.max(0, opts.opacity ?? 1)), scale: Math.min(255, Math.max(1, opts.scale ?? 1)), offset: Math.min(255, Math.max(-255, opts.offset ?? 0)), mask };
+    const o = { mode, opacity: Math.min(1, Math.max(0, opts.opacity ?? 1)), scale: Math.min(255, Math.max(1, opts.scale ?? 1)), offset: Math.min(255, Math.max(-255, opts.offset ?? 0)), mask, preserve: opts.preserve !== false };
     const run = (s: ImageData): ImageData => {
       const out = new ImageData(new Uint8ClampedArray(s.data), s.width, s.height);
       if (s.width === t.width && s.height === t.height) { applyImagePixels(out.data, src, s.width, o); return out; }
@@ -8465,9 +8485,13 @@ export class Engine {
 
   /** Compute Depth Map: what the document shows, read by `run` (near bright, far dark), added as a grey layer 'Depth Map'
    *  at the document's size, one step. */
-  async computeDepthMap(run: (image: Blob) => Promise<Blob>): Promise<boolean> {
-    const p = this.current, view = this.flattened();
-    if (!p || !view) return false;
+  async computeDepthMap(run: (image: Blob) => Promise<Blob>, opts: { layer?: ID; recompute?: boolean } = {}): Promise<boolean> {
+    const p = this.current;
+    if (!p) return false;
+    const old = opts.recompute ? this.depthLayer(p) : null;
+    if (opts.recompute && !old) { this.notice('This document has no Depth Map layer to recompute.'); return false; }
+    const view = this.depthSource(p, opts.layer ?? null);
+    if (!view) return false;
     let result: Blob;
     try { result = await run(await toBlob(view)); } catch (err) { this.notice(err instanceof Error ? err.message : 'The depth could not be read.', 'error'); return false; }
     if (this.current !== p) return false;
@@ -8475,8 +8499,61 @@ export class Engine {
     raster.ctx.drawImage(bitmap, 0, 0, p.doc.width, p.doc.height);
     bitmap.close();
     raster.touch();
-    this.insertRasterLayer(raster, 'Depth Map', 0, 0, {}, 'Compute Depth Map');
+    if (old) return this.replaceLayerPixels(old.id, raster.read(), 'Recompute Depth Map');
+    this.insertRasterLayer(raster, 'Depth Map', 0, 0, {}, opts.layer ? 'Depth Map from Layer' : 'Compute Depth Map');
     return true;
+  }
+
+  /** The document's depth layer: the active layer when it is named Depth Map, else the topmost layer so named. */
+  depthLayer(p: Project | null = this.current): Layer | null {
+    if (!p) return null;
+    const a = p.activeLayer;
+    if (a && !a.isGroup && isDepthName(a.name)) return a;
+    return [...p.doc.layers].reverse().find((l) => !l.isGroup && !!l.raster && isDepthName(l.name)) ?? null;
+  }
+
+  /** What the depth model reads: the document with its depth layers hidden, or with `only` alone showing (its groups stay on). */
+  private depthSource(p: Project, only: ID | null): Surface | null {
+    const keep = new Set<ID>();
+    if (only) for (let l: Layer | null | undefined = p.layer(only); l; l = l.parentId ? p.layer(l.parentId) : null) keep.add(l.id);
+    const hide = (l: Layer): boolean => (only ? !l.isGroup && !keep.has(l.id) : !!l.raster && isDepthName(l.name));
+    if (only && !p.layer(only)) { this.notice('That layer is not in the document.'); return null; }
+    if (!only && !p.doc.layers.some(hide)) return this.flattened();
+    const s = renderDoc(this.work, { ...p.doc, layers: p.doc.layers.map((l) => (hide(l) ? { ...l, visible: false } : l)) });
+    if (!s) return null;
+    const out = createSurface(s.width, s.height);
+    ctxOf(out).drawImage(s as CanvasImageSource, 0, 0);
+    return out;
+  }
+
+  /** Depth map corrections on the depth layer, within the selection when there is one, one step: flatten (`amount` 0 to
+   *  1 toward mid grey), nearer and farther (0 to 1 of the range), smooth (a radius in px; `snap` keeps the picture's
+   *  edges sharp, reading the document without the depth layer). */
+  correctDepthMap(kind: DepthCorrection, amount: number, snap = false): boolean {
+    const p = this.current, l = this.depthLayer(p);
+    if (!p || !l?.raster) { this.notice('This document has no Depth Map layer. Compute Depth Map first.'); return false; }
+    if (l.raster.width !== p.doc.width || l.raster.height !== p.doc.height) { this.notice('The Depth Map layer must be the size of the document.'); return false; }
+    this.settle();
+    const src = l.raster.read(), guide = kind === 'smooth' && snap ? this.depthSource(p, null) : null;
+    const g = guide ? ctxOf(guide).getImageData(0, 0, guide.width, guide.height) : null;
+    const fixed = depthCorrect(src, kind, amount, g), sel = p.selection, d = fixed.data, s = src.data, W = src.width;
+    if (sel) for (let i = 0; i < d.length; i += 4) {
+      const k = sel.valueAt((i / 4) % W, Math.floor(i / 4 / W)) / 255;
+      for (let c = 0; c < 3; c++) d[i + c] = Math.round(s[i + c] + (d[i + c] - s[i + c]) * k);
+    }
+    const names: Record<DepthCorrection, string> = { flatten: 'Flatten Depth Map', nearer: 'Depth Map Nearer', farther: 'Depth Map Farther', smooth: snap ? 'Snap Depth Map to Edges' : 'Smooth Depth Map' };
+    return this.replaceLayerPixels(l.id, fixed, names[kind]);
+  }
+
+  /** The depth layer shown alone on the canvas, or the picture again. */
+  depthView: { project: Project; id: ID } | null = null;
+  showDepthMap(on?: boolean): void {
+    const p = this.current, l = this.depthLayer(p);
+    const want = on ?? !(this.depthView && this.depthView.project === p);
+    const next = want && p && l ? { project: p, id: l.id } : null;
+    if (!next && !this.depthView) { if (want) this.notice('This document has no Depth Map layer. Compute Depth Map first.'); return; }
+    this.depthView = next;
+    this.emit('render', null);
   }
 
   /** Sends what the document shows around `sel` (a quarter of its size again as context, 16 to 256 px), with see-

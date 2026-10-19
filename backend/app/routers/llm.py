@@ -68,6 +68,12 @@ async def chat_put(chat_id: str, request: Request) -> dict:
     return await run_in_threadpool(_run, llm.chat_put, chat_id, await request.json())
 
 
+@router.delete("/chats")
+def chats_clear(request: Request) -> dict:
+    require_local(request)
+    return {"deleted": llm.chats_clear()}
+
+
 @router.delete("/chats/{chat_id}")
 def chat_delete(chat_id: str, request: Request) -> dict:
     require_local(request)

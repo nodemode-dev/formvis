@@ -1,6 +1,6 @@
 # formvis commands
 
-Generated from the window's command catalogue (1167 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1190 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
@@ -9,7 +9,7 @@ Generated from the window's command catalogue (1167 commands) by `./formvis agen
 - Filter: 86
 - Generate: 6
 - Help: 3
-- Image: 89
+- Image: 96
 - Layer: 240
 - Paint: 1
 - Paths: 9
@@ -17,7 +17,7 @@ Generated from the window's command catalogue (1167 commands) by `./formvis agen
 - Tool options: 299
 - Tools: 52
 - Type: 30
-- View: 68
+- View: 84
 - Window: 96
 
 ## Edit
@@ -347,6 +347,13 @@ Generated from the window's command catalogue (1167 commands) by `./formvis agen
 | `depth-16` | 16 Bits/Channel |  | Sets 16 bits per channel. (changes the picture) |
 | `depth-32` | 32 Bits/Channel |  | Sets 32 bits per channel. (changes the picture) |
 | `depth-8` | 8 Bits/Channel |  | Sets 8 bits per channel. (changes the picture) |
+| `depth-map-farther` | Depth Map Farther |  | Darkens the Depth Map layer by a percentage of its range, inside the selection when there is one. (changes the picture) |
+| `depth-map-flatten` | Flatten Depth Map |  | Pulls the Depth Map layer toward mid grey by a percentage, inside the selection when there is one. (changes the picture) |
+| `depth-map-from-layer` | Depth Map from Layer |  | Reads the depth of the active layer alone with the local depth model and adds it as a grey layer named Depth Map. (changes the picture) |
+| `depth-map-nearer` | Depth Map Nearer |  | Brightens the Depth Map layer by a percentage of its range, inside the selection when there is one. (changes the picture) |
+| `depth-map-recompute` | Recompute Depth Map |  | Reads the depth again from what the document shows without the depth layer and replaces the Depth Map layer pixels. (changes the picture) |
+| `depth-map-smooth` | Smooth Depth Map |  | Blurs the Depth Map layer by a radius, optionally keeping the picture's own edges sharp. (changes the picture) |
+| `depth-map-snap` | Snap Depth Map to Edges |  | Smooths the Depth Map layer without blending across the edges of the picture it was read from. (changes the picture) |
 | `desaturate` | Desaturate | Shift+Mod+U | Removes colour and keeps the mode. (changes the picture) |
 | `duplicate-image` | Duplicate... |  | Opens the dialog that duplicates the document into a new one. |
 | `equalize` | Equalize |  | Spreads brightness values evenly. (changes the picture) |
@@ -1158,6 +1165,7 @@ Generated from the window's command catalogue (1167 commands) by `./formvis agen
 | `clear-guides` | Clear Guides |  | Removes every guide. (changes the picture) |
 | `clear-slices` | Clear Slices |  | Removes every user slice. (changes the picture) |
 | `delete-slice` | Delete Slice |  | Removes the selected user slice and keeps the others. (changes the picture) |
+| `depth-map-show` | Show Depth Map |  | Shows the Depth Map layer alone on the canvas, or the picture again. |
 | `fit` | Fit on Screen | Mod+0 | Zooms so the picture fits the window. |
 | `fit-artboard` | Fit Artboard on Screen |  | Zooms so the artboard holding the active layer fills the window. |
 | `fit-layers` | Fit Layer(s) on Screen |  | Zooms so the selected layers' content fills the window. |
@@ -1211,6 +1219,21 @@ Generated from the window's command catalogue (1167 commands) by `./formvis agen
 | `snap-layers` | Snap To Layers |  | Turns snapping to the edges and centres of other visible layers on or off. |
 | `task-bar-pin` | Pin Task Bar |  | Pins the Contextual Task Bar where it stands, or lets it follow the selection again. |
 | `task-bar-reset` | Reset Task Bar Position |  | Puts the Contextual Task Bar back at the bottom centre of the canvas. |
+| `theme-contrast` | Theme: High Contrast |  | Switches the window to the High Contrast theme; nothing in the window is rebuilt. |
+| `theme-ember` | Theme: Ember |  | Switches the window to the Ember theme; nothing in the window is rebuilt. |
+| `theme-forest` | Theme: Forest |  | Switches the window to the Forest theme; nothing in the window is rebuilt. |
+| `theme-github-dark` | Theme: GitHub Dark |  | Switches the window to the GitHub Dark theme; nothing in the window is rebuilt. |
+| `theme-light` | Theme: Light |  | Switches the window to the Light theme; nothing in the window is rebuilt. |
+| `theme-midnight` | Theme: Midnight Blue |  | Switches the window to the Midnight Blue theme; nothing in the window is rebuilt. |
+| `theme-mono` | Theme: Mono Ink |  | Switches the window to the Mono Ink theme; nothing in the window is rebuilt. |
+| `theme-nodemode-dark` | Theme: NodeMode Dark |  | Switches the window to the NodeMode Dark theme; nothing in the window is rebuilt. |
+| `theme-ocean` | Theme: Deep Ocean |  | Switches the window to the Deep Ocean theme; nothing in the window is rebuilt. |
+| `theme-rose` | Theme: Rose Noir |  | Switches the window to the Rose Noir theme; nothing in the window is rebuilt. |
+| `theme-sand` | Theme: Sand (light) |  | Switches the window to the Sand (light) theme; nothing in the window is rebuilt. |
+| `theme-slate` | Theme: Slate |  | Switches the window to the Slate theme; nothing in the window is rebuilt. |
+| `theme-studio` | Theme: Studio Dark |  | Switches the window to the Studio Dark theme; nothing in the window is rebuilt. |
+| `theme-terminal` | Theme: Terminal Green |  | Switches the window to the Terminal Green theme; nothing in the window is rebuilt. |
+| `theme-violet` | Theme: Violet Haze |  | Switches the window to the Violet Haze theme; nothing in the window is rebuilt. |
 | `toggle-dock-panels` | Toggle Dock Panels | Shift+Tab | Shows or hides the panel column and the properties column, and keeps the toolbar and the options bar. |
 | `toggle-extras` | Toggle Extras |  | Turns every canvas helper on or off at once: notes, counts, selection edges and layer edges. |
 | `toggle-grid` | Toggle Grid | Mod+' | Shows or hides the grid. |

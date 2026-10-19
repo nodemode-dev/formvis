@@ -1,6 +1,7 @@
-import type { Engine, SmartFilter } from '../../engine';
+import { BLEND_MODES, type BlendMode, type Engine, type SmartFilter } from '../../engine';
 import { Dialog } from '../dialogs';
 import { el, patchList, q, setChecked, setText } from '../dom';
+import { selectRow, sliderRow, type Row } from './controls';
 import { FILTER_LABELS, type FilterKind, type FilterPanel } from './filter-panel';
 
 /** Layer > Smart Filters: the active smart object's filters, top first, each shown or hidden, changed or removed. Every
@@ -9,14 +10,21 @@ export class SmartFiltersDialog extends Dialog {
   private layerId: string | null = null;
   private readonly list = el('<div class="cv-list cv-sf-list" tabindex="-1"></div>');
   private readonly note = el('<p class="cv-note"></p>');
+  private selId: string | null = null;
+  private timer = 0;
+  private readonly blendRow: Row<string>;
+  private readonly opacityRow: Row<number>;
 
   constructor(private readonly engine: Engine, private readonly filters: () => FilterPanel) {
     super('Smart Filters', 420);
-    this.body.append(this.list, this.note);
+    this.blendRow = selectRow('Blending', BLEND_MODES.map((m) => [m.id, m.label] as const), (v) => this.setBlend({ blend: v as BlendMode }));
+    this.opacityRow = sliderRow('Opacity (%)', 0, 100, 1, (v) => { window.clearTimeout(this.timer); this.timer = window.setTimeout(() => this.setBlend({ opacity: v }), 160); });
+    this.body.append(this.list, this.blendRow.el, this.opacityRow.el, this.note);
     this.button('Close', 'primary', () => this.close());
     this.list.addEventListener('click', (e) => {
       const t = e.target as HTMLElement, id = t.closest<HTMLElement>('[data-key]')?.dataset.key;
       if (!id) return;
+      if (!t.closest('button, input')) { this.selId = id; this.sync(); return; }
       if (t.closest('[data-act="remove"]')) this.change((fs) => fs.filter((f) => f.id !== id), 'Remove Smart Filter');
       else if (t.closest('[data-act="edit"]')) this.edit(id);
       else if (t.closest('[data-act="up"]') || t.closest('[data-act="down"]')) {
@@ -59,8 +67,22 @@ export class SmartFiltersDialog extends Dialog {
       },
       update: (row, f) => this.fill(row, f),
     });
+    if (!shown.some((f) => f.id === this.selId)) this.selId = shown[0]?.id ?? null;
+    const cur = shown.find((f) => f.id === this.selId);
+    for (const row of Array.from(this.list.children) as HTMLElement[]) row.classList.toggle('is-selected', row.dataset.key === this.selId);
+    this.blendRow.el.classList.toggle('is-off', !cur);
+    this.opacityRow.el.classList.toggle('is-off', !cur);
+    this.blendRow.el.querySelector('select')!.disabled = !cur;
+    this.opacityRow.el.querySelectorAll('input').forEach((i) => { i.disabled = !cur; });
+    this.blendRow.set(cur?.blend ?? 'normal');
+    this.opacityRow.set(cur?.opacity ?? 100);
     setText(this.note, smart && shown.length ? "Filters run top first, each on the one before's result, always from the smart object's original pixels."
       : 'No smart filters yet. Choose a filter from the Filter menu while this smart object is selected.');
+  }
+
+  private setBlend(patch: { blend?: BlendMode; opacity?: number }): void {
+    const id = this.selId;
+    if (id) this.change((fs) => fs.map((f) => (f.id === id ? { ...f, ...patch } : f)), 'Smart Filter Blending');
   }
 
   private fill(row: HTMLElement, f: SmartFilter): void {

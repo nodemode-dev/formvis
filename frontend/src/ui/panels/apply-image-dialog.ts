@@ -5,7 +5,7 @@ import { Dialog } from '../dialogs';
 import { toast } from '../toast';
 import { checkRow, selectRow, sliderRow, type Row } from './controls';
 
-const CHANNELS: ReadonlyArray<readonly [string, string]> = [['rgb', 'RGB'], ['red', 'Red'], ['green', 'Green'], ['blue', 'Blue'], ['transparency', 'Transparency']];
+const CHANNELS: ReadonlyArray<readonly [string, string]> = [['rgb', 'RGB'], ['red', 'Red'], ['green', 'Green'], ['blue', 'Blue'], ['transparency', 'Transparency'], ['selection', 'Selection'], ['mask', 'Layer Mask']];
 
 /** One Source or Mask block: document, layer and channel selects with their Invert box, refilled as the choice narrows. */
 interface Block { doc: string; layer: string; channel: string; invert: boolean }
@@ -21,6 +21,7 @@ export class ApplyImageDialog extends Dialog {
   private scale = 1;
   private offset = 0;
   private useMask = false;
+  private preserve = true;
   private preview = true;
   private done = false;
   private timer = 0;
@@ -31,6 +32,7 @@ export class ApplyImageDialog extends Dialog {
   private readonly scaleRow: Row<number>;
   private readonly offsetRow: Row<number>;
   private readonly maskRow: Row<boolean>;
+  private readonly preserveRow: Row<boolean>;
   private readonly previewRow: Row<boolean>;
   private readonly okBtn: HTMLButtonElement;
   private readonly dynamic: Element[] = [];
@@ -55,11 +57,12 @@ export class ApplyImageDialog extends Dialog {
     this.scaleRow = sliderRow('Scale', 1, 2, 0.01, (v) => { this.scale = v; this.schedule(); });
     this.offsetRow = sliderRow('Offset', -255, 255, 1, (v) => { this.offset = v; this.schedule(); });
     this.maskRow = checkRow('Mask', (v) => { this.useMask = v; this.sync(); this.schedule(); });
+    this.preserveRow = checkRow('Preserve Transparency', (v) => { this.preserve = v; this.schedule(); });
     this.previewRow = checkRow('Preview', (v) => { this.preview = v; this.schedule(0); });
     this.rows = { src: s.sels, msk: m.sels, srcInv: s.inv, mskInv: m.inv };
     this.body.append(
       ...s.sels.map((r) => r.el), s.inv.el, target,
-      this.modeRow.el, this.opacityRow.el, this.scaleRow.el, this.offsetRow.el,
+      this.modeRow.el, this.opacityRow.el, this.scaleRow.el, this.offsetRow.el, this.preserveRow.el,
       this.maskRow.el, ...m.sels.map((r) => r.el), m.inv.el, this.previewRow.el,
     );
     this.button('Cancel', 'ghost', () => this.close());
@@ -82,6 +85,7 @@ export class ApplyImageDialog extends Dialog {
     this.scaleRow.set(this.scale);
     this.offsetRow.set(this.offset);
     this.maskRow.set(this.useMask);
+    this.preserveRow.set(this.preserve);
     this.rows.srcInv.set(this.src.invert);
     this.rows.mskInv.set(this.msk.invert);
     this.previewRow.set(this.preview);
@@ -132,6 +136,7 @@ export class ApplyImageDialog extends Dialog {
       doc: this.src.doc, layer: this.src.layer as 'merged', channel: this.src.channel, invert: this.src.invert,
       mode: this.mode, opacity: this.opacity / 100, scale: arith ? this.scale : 1, offset: arith ? this.offset : 0,
       mask: this.useMask ? { doc: this.msk.doc, layer: this.msk.layer as 'merged', channel: this.msk.channel, invert: this.msk.invert } : null,
+      preserve: this.preserve,
       preview,
     };
   }

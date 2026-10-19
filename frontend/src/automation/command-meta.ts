@@ -600,6 +600,14 @@ const ROWS: Record<string, Row> = {
   'generative-expand': ['Image', 'Opens Generative Expand.', 'Use when the canvas should grow and the new area be filled in.', 'm'],
   'upscale-2x': ['Image', 'Opens the dialog that enlarges the picture two times.', 'Use when a small picture needs twice the pixels.'],
   'upscale-4x': ['Image', 'Opens the dialog that enlarges the picture four times.', 'Use when a small picture needs four times the pixels.'],
+  'depth-map-from-layer': ['Image', 'Reads the depth of the active layer alone with the local depth model and adds it as a grey layer named Depth Map.', 'Use when the depth should come from one layer rather than the whole picture; the model is downloaded in Preferences > Plugins > Local models.', 'm'],
+  'depth-map-recompute': ['Image', 'Reads the depth again from what the document shows without the depth layer and replaces the Depth Map layer pixels.', 'Use when the picture changed after the depth map was made.', 'm'],
+  'depth-map-show': ['View', 'Shows the Depth Map layer alone on the canvas, or the picture again.', 'Use when you want to look at the depth map while correcting it.'],
+  'depth-map-flatten': ['Image', 'Pulls the Depth Map layer toward mid grey by a percentage, inside the selection when there is one.', 'Use when the depth range is too exaggerated.', 'm'],
+  'depth-map-nearer': ['Image', 'Brightens the Depth Map layer by a percentage of its range, inside the selection when there is one.', 'Use when a region should count as nearer.', 'm'],
+  'depth-map-farther': ['Image', 'Darkens the Depth Map layer by a percentage of its range, inside the selection when there is one.', 'Use when a region should count as farther.', 'm'],
+  'depth-map-smooth': ['Image', 'Blurs the Depth Map layer by a radius, optionally keeping the picture\'s own edges sharp.', 'Use when the depth map is noisy or blocky.', 'm'],
+  'depth-map-snap': ['Image', 'Smooths the Depth Map layer without blending across the edges of the picture it was read from.', 'Use when depth edges do not line up with the subject\'s edges.', 'm'],
   'compute-depth-map': ['Image', 'Reads the depth of what the document shows with Depth Anything V2 Small on this computer and adds it as a grey layer named Depth Map, near bright and far dark.', 'Use when you want a depth map to mask, select or blur by distance; the model is downloaded in Preferences > Plugins > Local models.', 'm'],
   'mask-black': ['Select', "Selects the mask's black areas.", 'Use when you want the hidden part of a mask as a selection.', 'm'],
   'expand': ['Select', 'Expands the selection by the given pixels, or opens Expand when none are given.', 'Use when the selection is slightly too small.', 'm'],
@@ -687,6 +695,7 @@ const FAMILIES: Array<[RegExp, Family]> = [
   [/^new-adj-/, (_, label) => ({ group: 'Layer', description: `Adds a ${plain(label)} adjustment layer; its dialog opens for the values.`, when: `Use when you want ${lower(plain(label))} that stays editable and reversible.`, mutates: true })],
   [/^adj-/, (_, label) => ({ group: 'Image', description: `Opens ${plain(label)} and applies it to the pixels of the active layer.`, when: `Use when ${lower(plain(label))} should be baked into the pixels; adjust.apply sets exact values without the dialog.`, mutates: true })],
   [/^filter-/, (_, label) => ({ group: 'Filter', description: `Opens the ${plain(label)} filter on the active layer.`, when: `Use when you want ${plain(label)} tuned by eye; filter.apply runs it with exact values.`, mutates: true })],
+  [/^theme-/, (_, label) => ({ group: 'View', description: `Switches the window to the ${plain(label.replace(/^Theme: /, ''))} theme; nothing in the window is rebuilt.`, when: 'Use when you want a different window look from the View > Theme list; start with --no-skin to begin with the default look.', mutates: false })],
   [/^plugin:/, (_, label) => ({ group: 'Plugins', description: `Runs the plugin command ${label}.`, when: 'Use when a plugin you turned on offers this step.', mutates: true })],
 ];
 

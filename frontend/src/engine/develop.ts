@@ -69,7 +69,12 @@ export interface DevelopState {
   calibration?: CalibrationState;
   parametric?: ParametricState;
   pointColor?: PointColorState;
+  /** Dehaze by the dark channel prior (a patch minimum finds the haze, the airlight is taken from the haziest pixels and
+   *  divided out) instead of the per-pixel heuristic; a positive Dehaze only, run on the CPU before the tone pass. */
+  dehazeDark?: boolean;
 }
+
+const darkDehazeOn = (s: DevelopState): boolean => s.dehazeDark === true && s.tone.dehaze > 0;
 
 /** Point Color: a colour picked from the picture (a hex string; empty for none) and how far around it the change reaches
  *  (`range`, 0 to 100 percent of the hue wheel's 90 degrees, and as much of the saturation and lightness range), then the
@@ -128,7 +133,9 @@ export interface GradeWheel { h: number; s: number }
 export interface GradingState { shadows: GradeWheel; midtones: GradeWheel; highlights: GradeWheel; global: GradeWheel; blending: number; balance: number }
 /** Optics: Distortion (-100 to 100, as Lens Correction), Chromatic Aberration (-100 to 100, red and blue channels
  *  scaled apart), Vignetting (-100 to 100, positive brightens the corners) and its Midpoint (0 to 100). */
-export interface OpticsState { distortion: number; chromatic: number; vignetting: number; midpoint: number; defringe?: number }
+/** `feather` (0 to 100, 50 reaches full strength at the corners) is the vignette's softness; `roundness` (0 to 100, 100 a
+ *  circle as before) follows the frame's shape as it falls. */
+export interface OpticsState { distortion: number; chromatic: number; vignetting: number; midpoint: number; defringe?: number; feather?: number; roundness?: number }
 /** Geometry: Vertical and Horizontal perspective (-100 to 100), Rotate (-10 to 10 degrees), Scale (50 to 150 percent),
  *  Offset X and Y (-100 to 100, percent of half the image). */
 export interface GeometryState { vertical: number; horizontal: number; rotate: number; scale: number; offsetX: number; offsetY: number }
@@ -136,7 +143,7 @@ export interface GeometryState { vertical: number; horizontal: number; rotate: n
 export interface CalibrationState { shadowTint: number; redHue: number; redSat: number; greenHue: number; greenSat: number; blueHue: number; blueSat: number }
 
 export const defaultGrading = (): GradingState => ({ shadows: { h: 0, s: 0 }, midtones: { h: 0, s: 0 }, highlights: { h: 0, s: 0 }, global: { h: 0, s: 0 }, blending: 50, balance: 0 });
-export const defaultOptics = (): OpticsState => ({ distortion: 0, chromatic: 0, vignetting: 0, midpoint: 50, defringe: 0 });
+export const defaultOptics = (): OpticsState => ({ distortion: 0, chromatic: 0, vignetting: 0, midpoint: 50, defringe: 0, feather: 50, roundness: 100 });
 export const defaultGeometry = (): GeometryState => ({ vertical: 0, horizontal: 0, rotate: 0, scale: 100, offsetX: 0, offsetY: 0 });
 export const defaultCalibration = (): CalibrationState => ({ shadowTint: 0, redHue: 0, redSat: 0, greenHue: 0, greenSat: 0, blueHue: 0, blueSat: 0 });
 export const gradingOf = (s: DevelopState): GradingState => ({ ...defaultGrading(), ...s.grading });
@@ -205,7 +212,7 @@ export function detailActive(d: DetailState): boolean {
 /** True when the state holds only what `developPass` does (tone, colour mixer, curves): the stages after it (grading,
  *  calibration, clarity, texture, sharpening, optics, geometry) are all at their defaults. The GPU runs only these. */
 export function developPerPixelOnly(s: DevelopState): boolean {
-  return !detailActive(s.detail) && !parametricActive(parametricOf(s)) && !pointColorActive(pointColorOf(s)) && !gradingActive(gradingOf(s)) && !calibrationActive(calibrationOf(s)) && !opticsActive(opticsOf(s)) && !geometryActive(geometryOf(s));
+  return !darkDehazeOn(s) && !detailActive(s.detail) && !parametricActive(parametricOf(s)) && !pointColorActive(pointColorOf(s)) && !gradingActive(gradingOf(s)) && !calibrationActive(calibrationOf(s)) && !opticsActive(opticsOf(s)) && !geometryActive(geometryOf(s));
 }
 
 export function stateActive(s: DevelopState): boolean {
@@ -674,18 +681,65 @@ function opticsPass(src: ImageData, o: OpticsState): ImageData {
   const { width: w, height: h } = img, cx = (w - 1) / 2, cy = (h - 1) / 2, rmax = Math.hypot(cx, cy) || 1;
   if (o.chromatic || o.vignetting) {
     const out = new ImageData(new Uint8ClampedArray(img.data), w, h), d = img.data, od = out.data, k = (o.chromatic / 100) * 0.006;
-    const start = (o.midpoint / 100) * 0.9;
+    const start = (o.midpoint / 100) * 0.9, end = start + Math.max(0.002, (1 - start) * ((o.feather ?? 50) / 50)), ro = (o.roundness ?? 100) / 100;
+    const sx = Math.max(1, cx * (1 - ro) + rmax * ro), sy = Math.max(1, cy * (1 - ro) + rmax * ro), corner = Math.hypot(cx / sx, cy / sy) || 1;
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       const i = (y * w + x) * 4;
       if (k) for (const [c, f] of [[0, 1 + k], [2, 1 - k]] as const) { const v = sampleChannel(d, w, h, cx + (x - cx) / f, cy + (y - cy) / f, c); if (v >= 0) od[i + c] = v; }
       if (o.vignetting) {
-        const r = Math.hypot(x - cx, y - cy) / rmax, fall = smoothstep(start, 1, r) * (o.vignetting / 100) * 0.8;
+        const r = Math.hypot((x - cx) / sx, (y - cy) / sy) / corner, fall = smoothstep(start, end, r) * (o.vignetting / 100) * 0.8;
         for (let c = 0; c < 3; c++) od[i + c] = clamp255(fall > 0 ? od[i + c] + (255 - od[i + c]) * fall : od[i + c] * (1 + fall));
       }
     }
     img = out;
   }
   return img;
+}
+
+/** A separable window of radius `r` over `a`: the minimum, or the mean. */
+function windowed(a: Float32Array, w: number, h: number, r: number, min: boolean): Float32Array {
+  const tmp = new Float32Array(a.length), out = new Float32Array(a.length);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const x0 = Math.max(0, x - r), x1 = Math.min(w - 1, x + r);
+    let acc = min ? 1e9 : 0;
+    for (let k = x0; k <= x1; k++) { const v = a[y * w + k]; acc = min ? Math.min(acc, v) : acc + v; }
+    tmp[y * w + x] = min ? acc : acc / (x1 - x0 + 1);
+  }
+  for (let y = 0; y < h; y++) {
+    const y0 = Math.max(0, y - r), y1 = Math.min(h - 1, y + r);
+    for (let x = 0; x < w; x++) {
+      let acc = min ? 1e9 : 0;
+      for (let k = y0; k <= y1; k++) { const v = tmp[k * w + x]; acc = min ? Math.min(acc, v) : acc + v; }
+      out[y * w + x] = min ? acc : acc / (y1 - y0 + 1);
+    }
+  }
+  return out;
+}
+
+/** Dark channel prior dehazing: the airlight A is the mean colour of the brightest 0.1 percent of the dark channel (the
+ *  patch minimum of the least channel); the transmission is 1 - 0.95 x amount x the dark channel of the picture over A,
+ *  smoothed; the scene is (I - A) / max(t, 0.15) + A. `amount` is 0 to 1; the patch radius follows the preview scale. */
+function darkDehaze(src: ImageData, amount: number, scale: number): ImageData {
+  const { width: w, height: h, data: d } = src, n = w * h, r = Math.max(1, Math.round(7 * scale));
+  const least = new Float32Array(n);
+  for (let i = 0; i < n; i++) least[i] = Math.min(d[i * 4], d[i * 4 + 1], d[i * 4 + 2]) / 255;
+  const dark = windowed(least, w, h, r, true), bins = new Uint32Array(256);
+  for (let i = 0; i < n; i++) bins[Math.min(255, Math.round(dark[i] * 255))]++;
+  let cut = 255, seen = 0;
+  for (; cut > 0; cut--) { seen += bins[cut]; if (seen >= Math.max(1, n * 0.001)) break; }
+  let ar = 0, ag = 0, ab = 0, cnt = 0;
+  for (let i = 0; i < n; i++) if (Math.round(dark[i] * 255) >= cut) { ar += d[i * 4]; ag += d[i * 4 + 1]; ab += d[i * 4 + 2]; cnt++; }
+  const A = [Math.max(1, ar / cnt), Math.max(1, ag / cnt), Math.max(1, ab / cnt)];
+  const norm = new Float32Array(n);
+  for (let i = 0; i < n; i++) norm[i] = Math.min(d[i * 4] / A[0], d[i * 4 + 1] / A[1], d[i * 4 + 2] / A[2]);
+  const t = windowed(windowed(norm, w, h, r, true).map((v) => 1 - 0.95 * clamp01(amount) * Math.min(1, v)), w, h, r, false);
+  const out = new ImageData(w, h), o = out.data;
+  for (let i = 0; i < n; i++) {
+    const k = 1 / Math.max(0.15, t[i]);
+    for (let c = 0; c < 3; c++) o[i * 4 + c] = clamp255((d[i * 4 + c] - A[c]) * k + A[c]);
+    o[i * 4 + 3] = d[i * 4 + 3];
+  }
+  return out;
 }
 
 /** Geometry, last: each output pixel sampled from where the transform (rotate, scale, offset, then vertical and
@@ -709,7 +763,8 @@ function geometryPass(src: ImageData, g: GeometryState): ImageData {
  *  scaled preview. Panels at their defaults are skipped, so a state without them renders as before. */
 export function developImage(src: ImageData, state: DevelopState, scale = 1, seed = 7): ImageData {
   let img = new ImageData(src.width, src.height);
-  developPass(src.data, img.data, src.width, src.height, state, seed);
+  if (darkDehazeOn(state)) developPass(darkDehaze(src, state.tone.dehaze / 100, scale).data, img.data, src.width, src.height, { ...state, tone: { ...state.tone, dehaze: 0 } }, seed);
+  else developPass(src.data, img.data, src.width, src.height, state, seed);
   const grading = gradingOf(state), calibration = calibrationOf(state), optics = opticsOf(state), geometry = geometryOf(state), parametric = parametricOf(state);
   if (parametricActive(parametric)) {
     const lut = buildParametricLut(parametric), d = img.data;

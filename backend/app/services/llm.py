@@ -158,6 +158,7 @@ def _budget_pictures(messages: list) -> list:
 
 
 CHAT_LIMIT = 100
+CHAT_LIMIT_MAX = 1000
 CHAT_BYTES = 2_000_000
 
 
@@ -205,13 +206,24 @@ def chat_put(chat_id: str, chat: dict) -> dict:
     with os.fdopen(fd, "w") as f:
         f.write(data)
     os.replace(temp, path)
-    for old in chats()[CHAT_LIMIT:]:
+    keep = chat.get("keep")
+    keep = min(CHAT_LIMIT_MAX, max(1, int(keep))) if isinstance(keep, (int, float)) and not isinstance(keep, bool) else CHAT_LIMIT
+    for old in chats()[keep:]:
         _chat_file(old["id"]).unlink(missing_ok=True)
     return {"id": chat_id}
 
 
 def chat_delete(chat_id: str) -> None:
     _chat_file(chat_id).unlink(missing_ok=True)
+
+
+def chats_clear() -> int:
+    """Removes every saved chat (the assistant's Delete all chats); returns how many went."""
+    gone = 0
+    for f in _chats().glob("*.json"):
+        f.unlink(missing_ok=True)
+        gone += 1
+    return gone
 
 
 def models() -> list[str]:

@@ -1,5 +1,5 @@
 import { api, ApiError } from '../../io/api';
-import { templates } from '../../io/prompt-templates';
+import { fillPlaceholders, templates } from '../../io/prompt-templates';
 import { el, setHidden, setText } from '../dom';
 import { PromptHistory } from './prompt-history';
 
@@ -45,7 +45,7 @@ export class PromptImprover {
     this.go.disabled = true;
     setText(this.note, 'Improving...');
     try {
-      const better = await api.improvePrompt(prompt, t?.text ?? '');
+      const better = await api.improvePrompt(prompt, fillPlaceholders(t?.text ?? '', { prompt }));
       this.original = this.field.value;
       this.history.set(better);
       setHidden(this.undo, false);

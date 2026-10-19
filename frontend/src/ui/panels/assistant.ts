@@ -3,6 +3,7 @@ import { api, ApiError } from '../../io/api';
 import type { AgentBridge, McpResult } from '../../automation/agent-bridge';
 import { describeCommand, runCommand } from '../../automation/catalogue';
 import { el, setDisabled, setHidden, setText, setTitle } from '../dom';
+import { confirmAction } from '../dialogs';
 
 const SYSTEM = 'You are the assistant inside formvis, a layered image editor. Act on the open document with the tools: call get_document first '
   + 'to learn its layers and their ids. Each change is one undoable step. Generative tools cost the user money and they are asked first. '
@@ -11,19 +12,18 @@ const SYSTEM = 'You are the assistant inside formvis, a layered image editor. Ac
   + 'Keep replies short and say what you changed.';
 const PLAN = ' The user asked to see a plan first. Do not call any tool now. Reply with a short numbered plan, one command per line, naming the command '
   + 'and its settings in plain words. Wait for the go-ahead before acting.';
-const MAX_STEPS = 12;
 const SETTINGS_KEY = 'formvis.assistant';
 const IDLE_MS = 800;
 const AGENT_LIVE_S = 60;
 
 /** The assistant's own settings, kept in this browser: the tools it may not call, and whether and how pictures are sent. */
-interface Settings { excluded: string[]; vision: boolean; pictures: number; side: number }
+interface Settings { excluded: string[]; vision: boolean; pictures: number; side: number; chatsKept: number; maxCalls: number }
 const clampInt = (v: unknown, lo: number, hi: number, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : d);
 function loadSettings(): Settings {
   try {
     const s = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') as Partial<Settings>;
-    return { excluded: Array.isArray(s.excluded) ? s.excluded.filter((n): n is string => typeof n === 'string').slice(0, 200) : [], vision: s.vision === true, pictures: clampInt(s.pictures, 1, 4, 2), side: clampInt(s.side, 256, 2048, 768) };
-  } catch { return { excluded: [], vision: false, pictures: 2, side: 768 }; }
+    return { excluded: Array.isArray(s.excluded) ? s.excluded.filter((n): n is string => typeof n === 'string').slice(0, 200) : [], vision: s.vision === true, pictures: clampInt(s.pictures, 1, 4, 2), side: clampInt(s.side, 256, 2048, 768), chatsKept: clampInt(s.chatsKept, 1, 1000, 100), maxCalls: clampInt(s.maxCalls, 1, 100, 12) };
+  } catch { return { excluded: [], vision: false, pictures: 2, side: 768, chatsKept: 100, maxCalls: 12 }; }
 }
 function storeSettings(s: Settings): void { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch { /* storage is blocked: the settings last this session */ } }
 
@@ -123,6 +123,9 @@ export class AssistantPanel {
   private readonly visionBox = el<HTMLInputElement>('<input type="checkbox">');
   private readonly picturesIn = el<HTMLInputElement>('<input class="cv-input" type="number" min="1" max="4" step="1" aria-label="Pictures a turn">');
   private readonly sideIn = el<HTMLInputElement>('<input class="cv-input" type="number" min="256" max="2048" step="64" aria-label="Longest side in pixels">');
+  private readonly keptIn = el<HTMLInputElement>('<input class="cv-input" type="number" min="1" max="1000" step="1" aria-label="Chats kept">');
+  private readonly callsIn = el<HTMLInputElement>('<input class="cv-input" type="number" min="1" max="100" step="1" aria-label="Tool calls a turn">');
+  private readonly clearBtn = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Delete all chats</button>');
 
   constructor(private readonly engine: Engine, private readonly bridge: AgentBridge) {
     const head = el('<div class="cv-assistant-head"><span>Assistant</span></div>'), close = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost" aria-label="Close assistant">Close</button>');
@@ -185,16 +188,24 @@ export class AssistantPanel {
     const nums = el('<div class="cv-assistant-nums"><label><span>Pictures a turn</span></label><label><span>Longest side, px</span></label></div>');
     nums.children[0].append(this.picturesIn);
     nums.children[1].append(this.sideIn);
+    this.keptIn.value = String(this.settings.chatsKept);
+    this.callsIn.value = String(this.settings.maxCalls);
+    const limits = el('<div class="cv-assistant-nums"><label><span>Chats kept</span></label><label><span>Tool calls a turn</span></label></div>');
+    limits.children[0].append(this.keptIn);
+    limits.children[1].append(this.callsIn);
     const changed = (): void => {
-      this.settings = { ...this.settings, vision: this.visionBox.checked, pictures: clampInt(Number(this.picturesIn.value), 1, 4, 2), side: clampInt(Number(this.sideIn.value), 256, 2048, 768) };
+      this.settings = { ...this.settings, vision: this.visionBox.checked, pictures: clampInt(Number(this.picturesIn.value), 1, 4, 2), side: clampInt(Number(this.sideIn.value), 256, 2048, 768), chatsKept: clampInt(Number(this.keptIn.value), 1, 1000, 100), maxCalls: clampInt(Number(this.callsIn.value), 1, 100, 12) };
       storeSettings(this.settings);
       this.showPrivacy();
     };
     this.visionBox.addEventListener('change', changed);
     this.picturesIn.addEventListener('change', () => { changed(); this.picturesIn.value = String(this.settings.pictures); });
     this.sideIn.addEventListener('change', () => { changed(); this.sideIn.value = String(this.settings.side); });
-    for (const i of [this.picturesIn, this.sideIn]) i.addEventListener('keydown', (e) => e.stopPropagation());
-    box.append(tools, vision, nums);
+    this.keptIn.addEventListener('change', () => { changed(); this.keptIn.value = String(this.settings.chatsKept); });
+    this.callsIn.addEventListener('change', () => { changed(); this.callsIn.value = String(this.settings.maxCalls); });
+    this.clearBtn.addEventListener('click', () => void this.clearChats());
+    for (const i of [this.picturesIn, this.sideIn, this.keptIn, this.callsIn]) i.addEventListener('keydown', (e) => e.stopPropagation());
+    box.append(tools, vision, nums, limits, this.clearBtn);
     return box;
   }
 
@@ -388,7 +399,9 @@ export class AssistantPanel {
         this.showPlan();
         return;
       }
-      for (let step = 0; step < MAX_STEPS && !this.stopped; step++) {
+      const maxCalls = this.settings.maxCalls;
+      let calls = 0;
+      for (let step = 0; step <= maxCalls && !this.stopped; step++) {
         const reply = await this.step([{ role: 'system', content: SYSTEM }, ...this.history]);
         this.history.push({ role: 'assistant', content: reply.content || null, ...(reply.tool_calls.length ? { tool_calls: reply.tool_calls.map((c) => ({ id: c.id, type: 'function', function: { name: c.name, arguments: c.arguments } })) } : {}) });
         if (reply.content) this.line('assistant', reply.content);
@@ -400,7 +413,10 @@ export class AssistantPanel {
           const { label, shown } = this.labelOf(call.name, args);
           const row = this.stepRow(label, shown);
           if (!this.stopped) await this.waitIdle();
+          const over = calls >= maxCalls;
+          if (!over) calls++;
           const result: McpResult = this.stopped ? { content: [{ type: 'text', text: 'Stopped by the user.' }], isError: true }
+            : over ? { content: [{ type: 'text', text: `The limit of ${maxCalls} tool calls for this turn is reached, so ${call.name} was not run. Tell the person what is done and what is left.` }], isError: true }
             : this.settings.excluded.includes(call.name) ? { content: [{ type: 'text', text: `The tool ${call.name} is excluded in the assistant's settings, so it was not run. Use another tool or tell the person what is needed.` }], isError: true }
               : await this.bridge.run(call.name, args);
           const parts: string[] = [];
@@ -424,7 +440,7 @@ export class AssistantPanel {
           this.history.push({ role: 'tool', tool_call_id: call.id, content: said.slice(0, 4000) });
         }
         if (pictures.length) { this.history.push({ role: 'user', content: [{ type: 'text', text: 'The picture of the document from the tool result above.' }, ...pictures] }); this.trimPictures(); }
-        if (step === MAX_STEPS - 1) this.line('note', `Stopped after ${MAX_STEPS} steps.`);
+        if (step === maxCalls) this.line('note', `Stopped after ${maxCalls} tool calls.`);
       }
       if (this.stopped) this.line('note', 'Stopped.');
     } catch (err) {
@@ -468,7 +484,7 @@ export class AssistantPanel {
       return Array.isArray(c.content) ? { ...(m as object), content: (c.content as Array<{ type: string; text?: string }>).filter((p) => p.type === 'text').map((p) => p.text).join('\n') } : m;
     });
     try {
-      await llmCall(`/chats/${this.chatId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: first.text.slice(0, 60), history: plain, lines: this.lines, usage: this.usage }) });
+      await llmCall(`/chats/${this.chatId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: first.text.slice(0, 60), history: plain, lines: this.lines, usage: this.usage, keep: this.settings.chatsKept }) });
       void this.refreshChats();
     } catch (err) { this.line('note', err instanceof ApiError ? err.message : 'This chat could not be saved.', false); }
   }
@@ -555,6 +571,14 @@ export class AssistantPanel {
   private async deleteChat(id: string): Promise<void> {
     try { await llmCall(`/chats/${id}`, { method: 'DELETE' }); } catch { return; }
     if (id === this.chatId && !this.busy) this.newChat();
+    void this.refreshChats();
+  }
+
+  private async clearChats(): Promise<void> {
+    if (this.busy) { this.line('note', 'Stop the assistant before deleting the chats.', false); return; }
+    if (!(await confirmAction('Delete all chats', 'Delete every saved assistant chat? This cannot be undone.', 'Delete', true))) return;
+    try { await llmCall('/chats', { method: 'DELETE' }); } catch { return; }
+    this.newChat();
     void this.refreshChats();
   }
 

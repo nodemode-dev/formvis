@@ -50,7 +50,13 @@ export interface ThemeChoice { theme: string; accentColor: string; intensity?: n
 export const APPEARANCE = 3;
 const clampIntensity = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? Math.min(1.5, Math.max(0, v)) : DEFAULT_INTENSITY);
 
+/** `?no-skin` on the page address (the desktop app's `--no-skin` flag adds it) starts with the default look and keeps the saved choice until a theme is picked. */
+let skinEscape = false;
+try { skinEscape = /[?&]no-skin(?:[=&]|$)/.test(location.search); } catch { /* no address */ }
+export const skinEscaped = (): boolean => skinEscape;
+
 export function readChoice(): ThemeChoice {
+  if (skinEscape) return { theme: DEFAULT_THEME, accentColor: DEFAULT_ACCENT, intensity: DEFAULT_INTENSITY };
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
@@ -97,6 +103,7 @@ export function applyTheme(choice: ThemeChoice = readChoice()): void {
 }
 
 export function setTheme(theme: string): void {
+  skinEscape = false;
   const choice = { ...readChoice(), theme };
   saveChoice(choice);
   applyTheme(choice);
@@ -105,12 +112,14 @@ export function setTheme(theme: string): void {
 
 /** Preferences > Interface: how strongly the accent tints what it marks (0 to 1.5; 1 is the design's). */
 export function setIntensity(intensity: number): void {
+  skinEscape = false;
   const choice = { ...readChoice(), intensity: clampIntensity(intensity) };
   saveChoice(choice);
   applyTheme(choice);
   document.dispatchEvent(new CustomEvent('nm:ui-settings-changed', { detail: { key: 'intensity' } }));
 }
 export function setAccent(accentColor: string): void {
+  skinEscape = false;
   const choice = { ...readChoice(), accentColor };
   saveChoice(choice);
   applyTheme(choice);

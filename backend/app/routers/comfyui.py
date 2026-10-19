@@ -5,10 +5,12 @@ takes each image, into a formvis subfolder, replacing an earlier send of the sam
 import json
 import urllib.error
 import urllib.parse
+import urllib.request
 
-from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, Response, UploadFile
 
-from app.services import outbound
+from app.routers.terminal import require_local
+from app.services import comfyui_auth, outbound
 
 router = APIRouter(prefix="/api/comfyui", tags=["comfyui"])
 SUBFOLDER = "formvis"
@@ -18,12 +20,49 @@ def _base(target: str) -> str:
     return outbound.base(target, "ComfyUI", "http://127.0.0.1:8188")
 
 
+class _SameHostRedirects(urllib.request.HTTPRedirectHandler):
+    """Follows a redirect only to the same scheme, host and port, so the sign-in headers never reach another server."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        old, new = urllib.parse.urlsplit(req.full_url), urllib.parse.urlsplit(newurl)
+        if (old.scheme, old.netloc) != (new.scheme, new.netloc):
+            raise urllib.error.HTTPError(newurl, code, "ComfyUI redirected to another server; not followed with the sign-in", headers, fp)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_signed = urllib.request.build_opener(_SameHostRedirects)
+
+
+def _request(url: str, data: bytes | None = None, headers: dict | None = None, method: str = "GET", timeout: float = 20):
+    """outbound.request with the sign-in headers set up in Preferences > Plugins (basic, bearer or a custom header); with a
+    sign-in, a redirect to another server is refused rather than sent the credentials."""
+    auth = comfyui_auth.headers()
+    if not auth:
+        return outbound.request(url, data, headers, method, timeout)
+    return _signed.open(urllib.request.Request(url, data=data, headers={**auth, **(headers or {})}, method=method), timeout=timeout)
+
+
+@router.get("/auth")
+def auth_status(request: Request) -> dict:
+    require_local(request)
+    return comfyui_auth.status()
+
+
+@router.post("/auth")
+def auth_save(request: Request, mode: str = Form("none"), user: str = Form(""), header: str = Form(""), secret: str | None = Form(None), forget_secret: bool = Form(False)) -> dict:
+    require_local(request)
+    try:
+        return comfyui_auth.save(mode, user, header, secret, forget_secret)
+    except comfyui_auth.AuthError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc))
+
+
 @router.get("/status")
 def status(target: str) -> dict:
     """Whether ComfyUI answers at `target`, and its version when it says."""
     base = _base(target)
     try:
-        with outbound.request(base + "/system_stats", timeout=3) as r:
+        with _request(base + "/system_stats", timeout=3) as r:
             stats = json.loads(r.read() or b"{}")
     except urllib.error.HTTPError:
         return {"running": False, "detail": f"Something answers at {base}, but it is not ComfyUI."}
@@ -49,7 +88,7 @@ async def send(target: str = Form(...), items: str = Form(...), files: list[Uplo
         for m, f in zip(meta, files):
             name = "".join(c if c.isalnum() or c in " -_." else "_" for c in str(m.get("name") or "image"))[:120].strip() or "image"
             body, kind = outbound.multipart("image", f"{name}.png", await f.read(), {"type": "input", "subfolder": SUBFOLDER, "overwrite": "true"})
-            with outbound.request(base + "/upload/image", body, {"Content-Type": kind}, "POST") as r:
+            with _request(base + "/upload/image", body, {"Content-Type": kind}, "POST") as r:
                 reply = json.loads(r.read() or b"{}")
             stored = reply.get("name") or f"{name}.png"
             folder = reply.get("subfolder", SUBFOLDER)
@@ -111,7 +150,7 @@ async def run(target: str = Form(...), workflow: str = Form(...), items: str = F
     flow = _fill(flow, image, mask, prompt, references)
     body = json.dumps({"prompt": flow, "client_id": "formvis"}).encode()
     try:
-        with outbound.request(base + "/prompt", body, {"Content-Type": "application/json"}, "POST") as r:
+        with _request(base + "/prompt", body, {"Content-Type": "application/json"}, "POST") as r:
             reply = json.loads(r.read() or b"{}")
     except urllib.error.HTTPError as exc:
         detail = ""
@@ -136,7 +175,7 @@ def job(job: str, target: str) -> dict:
     """queued (with how many are ahead), running, done (with the output images) or failed."""
     base = _base(target)
     try:
-        with outbound.request(f"{base}/history/{urllib.parse.quote(job)}", timeout=5) as r:
+        with _request(f"{base}/history/{urllib.parse.quote(job)}", timeout=5) as r:
             history = json.loads(r.read() or b"{}")
         entry = history.get(job)
         if entry:
@@ -146,7 +185,7 @@ def job(job: str, target: str) -> dict:
             images = [{"filename": i["filename"], "subfolder": i.get("subfolder", ""), "type": i.get("type", "output")}
                       for out in entry.get("outputs", {}).values() for i in out.get("images", []) if i.get("type", "output") == "output"]
             return {"state": "done", "images": images}
-        with outbound.request(base + "/queue", timeout=5) as r:
+        with _request(base + "/queue", timeout=5) as r:
             queue = json.loads(r.read() or b"{}")
     except (urllib.error.URLError, OSError, ValueError) as exc:
         raise outbound.unreachable("ComfyUI", base, "Preferences > Plugins", exc)
@@ -165,7 +204,7 @@ def image(target: str, filename: str, subfolder: str = "") -> Response:
     base = _base(target)
     q = urllib.parse.urlencode({"filename": filename, "subfolder": subfolder, "type": "output"})
     try:
-        with outbound.request(f"{base}/view?{q}") as r:
+        with _request(f"{base}/view?{q}") as r:
             return Response(content=r.read(), media_type=r.headers.get("Content-Type", "image/png"))
     except urllib.error.HTTPError as exc:
         raise HTTPException(status_code=404 if exc.code == 404 else 502, detail="ComfyUI no longer has that result.")
@@ -178,9 +217,9 @@ def cancel(job: str, target: str = Form(...)) -> dict:
     """Stops the job: interrupted if it is running, taken out of the queue if it is waiting."""
     base = _base(target)
     try:
-        with outbound.request(base + "/queue", json.dumps({"delete": [job]}).encode(), {"Content-Type": "application/json"}, "POST", 5):
+        with _request(base + "/queue", json.dumps({"delete": [job]}).encode(), {"Content-Type": "application/json"}, "POST", 5):
             pass
-        with outbound.request(base + "/interrupt", b"{}", {"Content-Type": "application/json"}, "POST", 5):
+        with _request(base + "/interrupt", b"{}", {"Content-Type": "application/json"}, "POST", 5):
             pass
     except (urllib.error.URLError, OSError) as exc:
         raise outbound.unreachable("ComfyUI", base, "Preferences > Plugins", exc)

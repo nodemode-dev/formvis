@@ -107,7 +107,13 @@ export class TitleTools {
     const search = el<HTMLButtonElement>(`<button class="cv-tt-btn" type="button" title="Search commands" aria-label="Search commands">${icon('search', 16)}</button>`);
     const ws = el<HTMLSelectElement>(`<select class="cv-tt-select" aria-label="Workspace"><optgroup label="Built-in">${WORKSPACES.map((w) => `<option value="${w.id}">${w.label}</option>`).join('')}</optgroup></select>`);
     const lock = el<HTMLButtonElement>('<button class="cv-tt-btn" type="button"></button>');
-    const syncTheme = (): void => { const light = readChoice().theme === 'light'; theme.innerHTML = icon(light ? 'moon' : 'sun', 17); theme.setAttribute('aria-pressed', String(light)); };
+    const syncTheme = (): void => {
+      const light = readChoice().theme === 'light';
+      if (!theme.firstElementChild) theme.innerHTML = `<span class="cv-tt-sun">${icon('sun', 17)}</span><span class="cv-tt-moon">${icon('moon', 17)}</span>`;
+      (theme.children[0] as HTMLElement).hidden = light;
+      (theme.children[1] as HTMLElement).hidden = !light;
+      theme.setAttribute('aria-pressed', String(light));
+    };
     theme.addEventListener('click', () => { setTheme(readChoice().theme === 'light' ? 'studio' : 'light'); syncTheme(); });
     syncTheme();
     document.addEventListener('nm:ui-settings-changed', syncTheme);

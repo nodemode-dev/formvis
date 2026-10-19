@@ -16,6 +16,10 @@ export interface OpenedProject { session: string; name: string; manifest: Record
  *  the synced folders found on this computer with a Formvis folder suggested in each. */
 export interface LibraryFolder { folder: string; default: string; custom: boolean; fixed: boolean; synced: Array<{ label: string; base: string; suggested: string }> }
 export interface FilePart { name: string; blob: Blob }
+/** Sign-in for the user's own ComfyUI server; the secret is kept by the engine and only whether it is set comes back. */
+export interface ComfyAuth { mode: 'none' | 'basic' | 'bearer' | 'header'; user: string; header: string; hasSecret: boolean; store: 'system' | 'file' }
+/** The helper model folder: in use now, saved for the next start, the environment override, and whether a restart is needed. */
+export interface ModelsFolder { active: string; saved: string; env: string; restart: boolean }
 /** A file in the exports folder (1.87.0), for Home's Outputs. */
 export interface OutputItem { name: string; path: string; modified: number; size: number; kind: string }
 /** Marks the calls that read or write files by path (1.87.0): the engine answers them only for formvis's own window. */
@@ -217,6 +221,22 @@ export const api = {
   /** Send to ComfyUI (1.50.9): whether ComfyUI answers at `target`, and its version. */
   async comfyuiStatus(target: string): Promise<{ running: boolean; version?: string; detail?: string } | null> {
     try { return (await (await request(`/comfyui/status?target=${encodeURIComponent(target)}`)).json()) as { running: boolean; version?: string; detail?: string }; } catch { return null; }
+  },
+
+  /** Sign-in for the user's own ComfyUI server: the mode, user name and header name (never the secret). */
+  async comfyuiAuth(): Promise<ComfyAuth | null> {
+    try { return (await (await request('/comfyui/auth')).json()) as ComfyAuth; } catch { return null; }
+  },
+  async comfyuiAuthSave(mode: ComfyAuth['mode'], user: string, header: string, secret: string | null, forgetSecret = false): Promise<ComfyAuth> {
+    return (await (await request('/comfyui/auth', { method: 'POST', body: form({ mode, user, header, ...(secret ? { secret } : {}), ...(forgetSecret ? { forget_secret: 'true' } : {}) }) })).json()) as ComfyAuth;
+  },
+
+  /** The helper model folder: the one in use, the one saved for the next start, and the environment override. */
+  async modelsFolder(): Promise<ModelsFolder | null> {
+    try { return (await (await request('/models/folder')).json()) as ModelsFolder; } catch { return null; }
+  },
+  async modelsFolderSave(path: string): Promise<ModelsFolder> {
+    return (await (await request('/models/folder', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path }) })).json()) as ModelsFolder;
   },
 
   /** Uploads `parts` into ComfyUI's input folder through the engine; the names its Load Image lists. */

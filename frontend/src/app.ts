@@ -3151,6 +3151,7 @@ export function startApp(): void {
     { id: 'next-document', label: 'Next Document', keys: ['Mod+Tab'], enabled: () => engine.projects.length > 1, run: () => stepDocument(1) },
     { id: 'previous-document', label: 'Previous Document', keys: ['Shift+Mod+Tab'], enabled: () => engine.projects.length > 1, run: () => stepDocument(-1) },
     { id: 'theme-sync-system', label: 'Sync Theme with System', checked: () => stored(THEME_SYNC_KEY) === '1', run: () => { store(THEME_SYNC_KEY, stored(THEME_SYNC_KEY) === '1' ? '0' : '1'); applySystemTheme(); } },
+    ...Object.entries(THEMES).map(([tid, th]) => ({ id: `theme-${tid}`, label: `Theme: ${th.label}`, checked: () => readChoice().theme === tid, run: () => { if (readChoice().theme !== tid) setTheme(tid); } })),
     { id: 'interface-darken', label: 'Darken Interface', keys: ['Shift+Mod+F1'], enabled: () => themeStep(-1) !== null, run: () => { const id = themeStep(-1); if (id) setTheme(id); } },
     { id: 'interface-lighten', label: 'Lighten Interface', keys: ['Shift+Mod+F2'], enabled: () => themeStep(1) !== null, run: () => { const id = themeStep(1); if (id) setTheme(id); } },
     { id: 'next-appearance', label: 'Next Appearance Mode', run: () => {
@@ -3266,14 +3267,15 @@ export function startApp(): void {
       id: 'apply-image', label: 'Apply Image...', enabled: pixel, params: {
         source_doc: { type: 'string', description: 'Id of the source document, which must be the target\'s pixel size; the current document when left out.' },
         layer: { type: 'string', description: 'Source layer id, or "merged" for the whole image; the active layer when left out.' },
-        channel: { type: 'string', description: 'Source channel: rgb (default), red, green, blue, transparency, or a saved alpha channel\'s id or name.' },
+        channel: { type: 'string', description: 'Source channel: rgb (default), red, green, blue, transparency, selection, mask (the layer mask), or a saved alpha channel\'s id or name.' },
         invert: { type: 'boolean', description: 'Invert the source channel.' },
+        preserve_transparency: { type: 'boolean', description: 'Keep the target\'s transparency; true when left out. False lets the source fill transparent pixels.' },
         mode: { type: 'string', enum: APPLY_MODES, description: 'Blending mode; normal when left out. Add and subtract use scale and offset.' },
         opacity: { type: 'number', min: 0, max: 100, description: 'Opacity in percent; 100 when left out.' },
         scale: { type: 'number', min: 1, max: 255, description: 'Scale for add and subtract; 1 when left out.' },
         offset: { type: 'number', min: -255, max: 255, description: 'Offset for add and subtract; 0 when left out.' },
         mask_layer: { type: 'string', description: 'Mask layer id, or "merged"; giving any mask_ field turns the mask on.' },
-        mask_channel: { type: 'string', description: 'Mask channel: rgb (its luminosity), red, green, blue, transparency, or an alpha channel\'s id or name.' },
+        mask_channel: { type: 'string', description: 'Mask channel: rgb (its luminosity), red, green, blue, transparency, selection, mask (the layer mask), or an alpha channel\'s id or name.' },
         mask_invert: { type: 'boolean', description: 'Invert the mask.' },
       },
       run: (a) => {
@@ -3284,6 +3286,7 @@ export function startApp(): void {
           doc: s('source_doc'), layer: s('layer'), channel: s('channel'), invert: a.invert === true, mode: s('mode') as ApplyMode | undefined,
           opacity: n('opacity') === undefined ? undefined : (n('opacity') as number) / 100, scale: n('scale'), offset: n('offset'),
           mask: hasMask ? { doc: s('source_doc'), layer: s('mask_layer'), channel: s('mask_channel'), invert: a.mask_invert === true } : null,
+          preserve: a.preserve_transparency !== false,
         });
         return { applied: ran };
       },
@@ -3843,6 +3846,25 @@ export function startApp(): void {
       if (!(await depthReady())) { toast('Compute Depth Map needs Depth Anything V2 Small (99 MB): download it in Preferences > Plugins > Local models.', 'error'); return; }
       if (await engine.task(() => engine.computeDepthMap(localDepth))) toast('Added a Depth Map layer: near is bright, far is dark.');
     })() },
+    { id: 'depth-map-from-layer', label: 'Depth Map from Layer', enabled: () => !!layer() && !layer()?.isGroup, run: () => void (async () => {
+      if (!(await depthReady())) { toast('Depth Map from Layer needs Depth Anything V2 Small (99 MB): download it in Preferences > Plugins > Local models.', 'error'); return; }
+      const id = engine.current?.activeLayer?.id;
+      if (id && await engine.task(() => engine.computeDepthMap(localDepth, { layer: id }))) toast('Added a Depth Map layer read from that layer alone.');
+    })() },
+    { id: 'depth-map-recompute', label: 'Recompute Depth Map', enabled: () => !!engine.depthLayer(), run: () => void (async () => {
+      if (!(await depthReady())) { toast('Recompute Depth Map needs Depth Anything V2 Small (99 MB): download it in Preferences > Plugins > Local models.', 'error'); return; }
+      if (await engine.task(() => engine.computeDepthMap(localDepth, { recompute: true }))) toast('Recomputed the Depth Map from what the document shows.');
+    })() },
+    { id: 'depth-map-show', label: 'Show Depth Map', enabled: () => !!engine.depthLayer() || !!engine.depthView, checked: () => !!engine.depthView && engine.depthView.project === engine.current, run: () => engine.showDepthMap() },
+    ...(['flatten', 'nearer', 'farther'] as const).map((kind) => ({
+      id: `depth-map-${kind}`, label: { flatten: 'Flatten Depth Map', nearer: 'Depth Map Nearer', farther: 'Depth Map Farther' }[kind], enabled: () => !!engine.depthLayer(),
+      params: { amount: { type: 'number' as const, min: 1, max: 100, description: `Percent of the depth range to ${kind === 'flatten' ? 'pull toward mid grey' : kind === 'nearer' ? 'brighten by' : 'darken by'}; ${kind === 'flatten' ? 50 : 10} when left out. Works inside the selection when there is one.` } },
+      run: (a?: Record<string, unknown>) => ({ applied: engine.correctDepthMap(kind, (typeof a?.amount === 'number' ? Math.min(100, Math.max(1, a.amount)) : kind === 'flatten' ? 50 : 10) / 100) }),
+    })),
+    { id: 'depth-map-smooth', label: 'Smooth Depth Map', enabled: () => !!engine.depthLayer(), params: { radius: { type: 'number', min: 1, max: 32, description: 'Blur radius in pixels; 4 when left out.' }, edges: { type: 'boolean', description: 'Keep depth sharp at the picture\'s own edges (edge snap, radius up to 9); false when left out.' } },
+      run: (a) => ({ applied: engine.correctDepthMap('smooth', typeof a?.radius === 'number' ? a.radius : 4, a?.edges === true) }) },
+    { id: 'depth-map-snap', label: 'Snap Depth Map to Edges', enabled: () => !!engine.depthLayer(), params: { radius: { type: 'number', min: 1, max: 9, description: 'Window radius in pixels; 4 when left out.' } },
+      run: (a) => ({ applied: engine.correctDepthMap('smooth', typeof a?.radius === 'number' ? Math.min(9, a.radius) : 4, true) }) },
     { id: 'free-helper-models', label: 'Free Helper Models', run: () => void api.freeHelpers().then((freed) => toast(freed.length ? `Freed ${freed.length} helper model${freed.length === 1 ? '' : 's'}: ${freed.join(', ')}.` : 'No helper model was held in memory.'), () => toast('The formvis engine is offline (./formvis boot).', 'error')) },
     { id: 'mask-black', label: "Mask's Black Areas", enabled: () => !!layer()?.mask, run: () => engine.selectMaskBlack() },
     { id: 'expand', label: () => `Expand by ${engine.selectionAmounts.expand} px...`, enabled: selected, params: { amount: { type: 'number', description: 'Pixels to expand by, 1 to 1024; leave out to open the dialog.' } },
@@ -4002,10 +4024,10 @@ export function startApp(): void {
       { label: 'Other', items: filterGroup('Other', []) },
       { label: '3D', items: ['normal-map', 'bump-map', 'height-from-normal'] }, '-', 'remove-bg', 'remove-bg-lite'] },
     // Generate: the generative commands in one place (the Generate panel, models, fill, repair, size, relight, and the ComfyUI and NodeMode links).
-    { label: 'Generate', items: ['generate-panel', '-', 'generate-image', 'new-canvas-model-preset', 'generative-fill', 'generative-expand', '-', 'boxes-tool', 'boxes-from-selection', 'boxes-copy', 'boxes-clear', '-', 'generate-remove', 'content-fill-workspace', 'content-fill', 'remove-wires', '-', 'remove-bg', 'remove-bg-lite', '-', 'upscale-2x', 'upscale-4x', 'compute-depth-map', 'new-relight-layer', '-', 'comfyui-run', 'send-comfyui', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode'])] },
+    { label: 'Generate', items: ['generate-panel', '-', 'generate-image', 'new-canvas-model-preset', 'generative-fill', 'generative-expand', '-', 'boxes-tool', 'boxes-from-selection', 'boxes-copy', 'boxes-clear', '-', 'generate-remove', 'content-fill-workspace', 'content-fill', 'remove-wires', '-', 'remove-bg', 'remove-bg-lite', '-', 'upscale-2x', 'upscale-4x', 'compute-depth-map', { label: 'Depth Map', items: ['depth-map-from-layer', 'depth-map-recompute', 'depth-map-show', '-', 'depth-map-flatten', 'depth-map-nearer', 'depth-map-farther', 'depth-map-smooth', 'depth-map-snap'] }, 'new-relight-layer', '-', 'comfyui-run', 'send-comfyui', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode'])] },
     { label: 'View', items: [{ label: 'Proof Setup', items: ['proof-setup', '-', 'proof-preset-monitor', 'proof-preset-cmyk', 'proof-preset-cyan', 'proof-preset-magenta', 'proof-preset-yellow', 'proof-preset-black', 'proof-preset-cmy', '-', 'proof-preset-protanopia', 'proof-preset-deuteranopia'] }, 'proof-colors', 'gamut-warning', 'preview-32', '-', 'zoom-in', 'zoom-out', 'fit', 'fit-layers', 'fit-artboard', 'actual', 'print-size', '-', 'toggle-extras', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'pattern-preview', 'pixel-art-preview', 'par-correction', 'transform-controls', 'toggle-task-bar', '-',
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'guide-layout', 'guides-from-shape', 'clear-guides'] }, 'snap', { label: 'Snap To', items: ['snap-all', '-', 'snap-guides', 'snap-grid', 'snap-layers', 'snap-bounds'] }, { label: 'Show', items: ['show-all-extras', 'show-no-extras', '-', 'show-selection-edges', 'show-layer-edges', 'show-notes', 'show-counts', 'toggle-show-slices', 'layer-based-slice', 'slice-options', 'delete-slice', 'clear-slices'] }, '-',
-      { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'os-full-screen', 'toggle-panels', 'rail-columns', 'interface-rtl', { label: 'Pasteboard', items: ['pasteboard-default', 'pasteboard-black', 'pasteboard-dark', 'pasteboard-mid', 'pasteboard-light'] }] },
+      { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'os-full-screen', 'toggle-panels', 'rail-columns', 'interface-rtl', { label: 'Pasteboard', items: ['pasteboard-default', 'pasteboard-black', 'pasteboard-dark', 'pasteboard-mid', 'pasteboard-light'] }, { label: 'Theme', items: Object.keys(THEMES).map((tid) => `theme-${tid}`) }] },
     { label: 'Plugins', items: () => { const ids = pluginHost.commandIds(); return ['manage-plugins', ...(ids.length ? ['-', ...ids] : [])]; } },
     { label: 'Window', items: [{ label: 'Arrange', items: ['new-window', 'float-window', 'float-all-windows', 'arrange-cascade', '-', 'arrange-tabs','arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-4up', 'arrange-6up', 'arrange-tile', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.connect.open', 'agent.connect.copy-claude-code', 'agent.connect.copy-claude-desktop', 'terminal.toggle', 'terminal.new', 'script-console', 'brush-settings', { label: 'Brush Size', items: ['brush-size-up', 'brush-size-down', 'brush-harder', 'brush-softer'] }, 'paragraph-styles', 'character-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-channels', 'panel-color', 'panel-tools', 'panel-properties-col', 'merge-columns', 'toggle-dock-panels', '-', { label: 'Workspace', items: ['workspace-pixelart', '-', 'new-workspace', 'delete-workspace'] }, 'reset-panels', '-', 'next-document', 'previous-document', '-', 'theme-sync-system', 'next-appearance', 'interface-darken', 'interface-lighten', '-', 'reload-window'] },
     { label: 'Help', items: ['help', 'whats-new', '-', 'shortcuts', 'copy-error-log', 'copy-engine-log', 'benchmark', 'record-performance', 'simulate-gpu-loss', '-', 'help-github', 'report-issue', '-', 'check-for-updates', 'system-info', 'about'] },

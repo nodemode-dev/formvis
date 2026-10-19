@@ -155,7 +155,7 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
         }
         r.smartStack = { mode: l.smart.stack.mode, files: stackFiles };
       }
-      r.smart = { filters: l.smart.filters.map(({ id, kind, settings, enabled }) => ({ id, kind, settings, enabled })), warp: l.smart.warp ?? null, warpAt: l.smart.warpAt ? transformRecord(l.smart.warpAt) : null, filterMaskEnabled: l.smart.filterMaskEnabled !== false, link: l.smart.link ? { id: l.smart.link.id, name: l.smart.link.name, size: l.smart.link.size, lastModified: l.smart.link.lastModified, ...(l.smart.link.path ? { path: l.smart.link.path } : {}) } : null };
+      r.smart = { filters: l.smart.filters.map(({ id, kind, settings, enabled, blend, opacity }) => ({ id, kind, settings, enabled, ...(blend && blend !== 'normal' ? { blend } : {}), ...(opacity !== undefined && opacity < 100 ? { opacity } : {}) })), warp: l.smart.warp ?? null, warpAt: l.smart.warpAt ? transformRecord(l.smart.warpAt) : null, filterMaskEnabled: l.smart.filterMaskEnabled !== false, link: l.smart.link ? { id: l.smart.link.id, name: l.smart.link.name, size: l.smart.link.size, lastModified: l.smart.link.lastModified, ...(l.smart.link.path ? { path: l.smart.link.path } : {}) } : null };
       if (l.smart.filterMask) {
         const mn = `${name.replace(/\.png$/i, '')}-filtermask.png`;
         files.push({ name: mn, blob: await toBlob(l.smart.filterMask.canvas) });

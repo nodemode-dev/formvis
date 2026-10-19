@@ -216,17 +216,22 @@ export class FilterPanel extends Dialog {
       ['Sharpening', 0, 100, 1, () => dt.sharpen, (v) => { dt.sharpen = v; }],
     ];
     const devNodes: HTMLElement[] = [this.profileRow.el], devSync: Array<() => void> = [];
+    let dehazeEl: HTMLElement | null = null;
     for (const row of devRows) {
       if (typeof row === 'string') { devNodes.push(el(`<p class="cv-note">${row}</p>`)); continue; }
       const [label, min, max, step, read, write] = row;
       const r = sliderRow(label, min, max, step, (v) => { write(v); this.schedule(); });
       devNodes.push(r.el);
+      if (label === 'Dehaze') dehazeEl = r.el;
       devSync.push(() => r.set(read()));
     }
     // Camera Raw's further panels (the comparison's Develop row). The engine already had the point curve and colour
     // mixer; this dialog did not show them. Every control reads s.develop when used, so loaded settings are what is edited.
     const D = (): DevelopState => s.develop;
-    const slide = (label: string, min: number, max: number, step: number, read: () => number, write: (v: number) => void): void => {
+    const darkDehaze = checkRow('Dehaze by dark channel (positive Dehaze)', (v) => { D().dehazeDark = v; this.schedule(); });
+    devNodes.splice(dehazeEl ? devNodes.indexOf(dehazeEl) + 1 : devNodes.length, 0, darkDehaze.el);
+    devSync.push(() => darkDehaze.set(D().dehazeDark === true));
+    const slide =(label: string, min: number, max: number, step: number, read: () => number, write: (v: number) => void): void => {
       const r = sliderRow(label, min, max, step, (v) => { write(v); this.schedule(); });
       devNodes.push(r.el);
       devSync.push(() => r.set(read()));
@@ -281,6 +286,8 @@ export class FilterPanel extends Dialog {
     slide('Chromatic Aberration', -100, 100, 1, () => optics().chromatic, (v) => { optics().chromatic = v; });
     slide('Vignetting', -100, 100, 1, () => optics().vignetting, (v) => { optics().vignetting = v; });
     slide('Midpoint', 0, 100, 1, () => optics().midpoint, (v) => { optics().midpoint = v; });
+    slide('Vignette feather', 0, 100, 1, () => optics().feather ?? 50, (v) => { optics().feather = v; });
+    slide('Vignette roundness', 0, 100, 1, () => optics().roundness ?? 100, (v) => { optics().roundness = v; });
     slide('Defringe', 0, 100, 1, () => optics().defringe ?? 0, (v) => { optics().defringe = v; });
     devNodes.push(el('<p class="cv-note">Geometry</p>'));
     slide('Vertical', -100, 100, 1, () => geometry().vertical, (v) => { geometry().vertical = v; });
@@ -344,7 +351,12 @@ export class FilterPanel extends Dialog {
 
   private libRow(p: LibParam, put: (key: string, v: LibValue) => void): { el: HTMLElement; set: (v: LibValue) => void } {
     if (p.kind === 'range') { const r = sliderRow(p.label, p.min, p.max, p.step, (v) => put(p.key, v), { max: p.limit ?? p.max }); return { el: r.el, set: (v) => r.set(v as number) }; }
-    if (p.kind === 'select') { const r = selectRow(p.label, p.options, (v) => put(p.key, v)); return { el: r.el, set: (v) => r.set(v as string) }; }
+    if (p.kind === 'select') {
+      // Hovering a choice previews it on the picture; closing the menu puts back the chosen value (or keeps a new choice).
+      let chosen = String(p.def);
+      const r = selectRow(p.label, p.options, (v) => { chosen = v; put(p.key, v); }, (v) => put(p.key, v ?? chosen));
+      return { el: r.el, set: (v) => { chosen = v as string; r.set(v as string); } };
+    }
     if (p.kind === 'check') { const r = checkRow(p.label, (v) => put(p.key, v)); return { el: r.el, set: (v) => r.set(v as boolean) }; }
     if (p.kind === 'seed') {
       const node = el('<div class="cv-field"><span></span><button class="cv-btn" type="button">Randomize</button></div>');

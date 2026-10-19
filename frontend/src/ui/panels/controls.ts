@@ -1,5 +1,6 @@
 import { clamp } from '../../engine';
 import { el, q, setChecked, setText, setValue } from '../dom';
+import { enhanceSelect } from '../dropdown';
 
 export interface Row<T> { el: HTMLElement; set(v: T): void }
 
@@ -34,11 +35,13 @@ export function sliderRow(label: string, min: number, max: number, step: number,
   return { el: root, set(v) { range.value = String(v); setValue(box, fmt(v)); } };
 }
 
-export function selectRow(label: string, options: ReadonlyArray<readonly [string, string]>, onChange: (v: string) => void): Row<string> {
+/** With `onHover`, the choices show as the hover-preview menu: the value under the pointer or arrow keys, null when it closes. */
+export function selectRow(label: string, options: ReadonlyArray<readonly [string, string]>, onChange: (v: string) => void, onHover?: (v: string | null) => void): Row<string> {
   const root = el(`<label class="cv-field"><span></span><select class="cv-input">${options.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select></label>`);
   setText(q(root, 'span'), label);
   const sel = q(root, 'select') as HTMLSelectElement;
   sel.addEventListener('change', () => onChange(sel.value));
+  if (onHover) enhanceSelect(sel, { onHover });
   return { el: root, set(v) { if (sel.value !== v) sel.value = v; } };
 }
 

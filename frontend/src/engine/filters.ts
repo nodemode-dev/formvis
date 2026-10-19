@@ -252,7 +252,7 @@ function squaredDistance1d(f: Float64Array, n: number, out: Float64Array, roots:
 }
 
 /** The Euclidean distance from each pixel to the nearest pixel where `inside` holds, by columns then rows. */
-function distanceField(inside: (i: number) => boolean, w: number, h: number): Float64Array {
+export function distanceField(inside: (i: number) => boolean, w: number, h: number): Float64Array {
   const far = 1e20, field = new Float64Array(w * h);
   for (let i = 0; i < field.length; i++) field[i] = inside(i) ? 0 : far;
   const n = Math.max(w, h), f = new Float64Array(n), out = new Float64Array(n), roots = new Int32Array(n), bounds = new Float64Array(n + 1);

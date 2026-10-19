@@ -9,8 +9,19 @@ from app.core import config
 DATA_DIR: Path = config.data_dir()
 
 
+FOLDER_FILE: Path = DATA_DIR / "models_folder.txt"
+
+
+def saved_folder() -> str:
+    """The helper model folder chosen in Preferences (used at the next engine start); empty when none was chosen."""
+    try:
+        return FOLDER_FILE.read_text().strip()
+    except OSError:
+        return ""
+
+
 def _models() -> Path:
-    raw = os.environ.get("FORMVIS_MODELS_DIR")
+    raw = os.environ.get("FORMVIS_MODELS_DIR") or saved_folder()
     path = Path(raw).expanduser().resolve() if raw else DATA_DIR / "models"
     path.mkdir(parents=True, exist_ok=True)
     return path

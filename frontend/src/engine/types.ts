@@ -225,9 +225,13 @@ export function newLayer(name: string, size: { width: number; height: number }, 
 export interface DropShadowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; angle: number; distance: number; size: number; contour?: ContourId; useGlobal?: boolean }
 export interface OuterGlowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; size: number; contour?: ContourId }
 /** `position`: Outside (the default, drawn beneath), Inside or Center (drawn over the layer). */
-export interface StrokeEffect { enabled: boolean; color: RGB; opacity: number; size: number; position?: 'outside' | 'inside' | 'center' }
-export interface InnerShadowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; angle: number; distance: number; size: number; contour?: ContourId; useGlobal?: boolean }
-export interface InnerGlowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; size: number; contour?: ContourId }
+/** A stroke's gradient fill: `from` at the start to `to` along `angle` (linear) or from the centre (radial). */
+export interface StrokeGradient { from: RGB; to: RGB; angle: number; style: 'linear' | 'radial'; reverse: boolean }
+export interface StrokeEffect { enabled: boolean; color: RGB; opacity: number; size: number; position?: 'outside' | 'inside' | 'center'; gradient?: StrokeGradient }
+/** `choke` (0 to 100) contracts the shadow's matte by that share of `size` before it softens; `noise` (0 to 100) grains its opacity. */
+export interface InnerShadowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; angle: number; distance: number; size: number; contour?: ContourId; useGlobal?: boolean; choke?: number; noise?: number }
+/** Inner Glow: `technique` softer (blurred) or precise (a distance ramp), `source` the edge or the centre, plus choke and noise as Inner Shadow's. */
+export interface InnerGlowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; size: number; contour?: ContourId; technique?: 'precise'; source?: 'center'; choke?: number; noise?: number }
 export interface ColorOverlayEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode }
 /** A gradient across the layer's bounds, kept to its silhouette: from `from` to `to` along `angle` (degrees
  *  counter-clockwise from the right, so 90 runs bottom to top), or outward from the centre when radial; `scale` stretches
@@ -339,6 +343,14 @@ export function effectsFromData(raw: unknown): LayerEffects | null {
   if (bc) fx.bevel.contour = { enabled: bc.enabled === true, id: isContour(bc.id) ? bc.id : 'linear', range: num(bc.range, 0.5, 0.01, 1) };
   if (bt) fx.bevel.texture = { enabled: bt.enabled === true, pattern: typeof bt.pattern === 'string' && bt.pattern ? bt.pattern.slice(0, 120) : 'builtin:checker', scale: num(bt.scale, 1, 0.01, 10), depth: num(bt.depth, 1, -10, 10), invert: bt.invert === true };
   if (k.position === 'inside' || k.position === 'center') fx.stroke.position = k.position;
+  const kg = k.gradient && typeof k.gradient === 'object' ? (k.gradient as Record<string, unknown>) : null;
+  if (kg) fx.stroke.gradient = { from: rgb(kg.from, { r: 0, g: 0, b: 0 }), to: rgb(kg.to, { r: 255, g: 255, b: 255 }), angle: num(kg.angle, 90, -360, 360), style: kg.style === 'radial' ? 'radial' : 'linear', reverse: kg.reverse === true };
+  for (const [dst, src] of [[fx.innerShadow, is], [fx.innerGlow, ig]] as const) {
+    if (typeof src.choke === 'number' && src.choke > 0) dst.choke = num(src.choke, 0, 0, 100);
+    if (typeof src.noise === 'number' && src.noise > 0) dst.noise = num(src.noise, 0, 0, 100);
+  }
+  if (ig.technique === 'precise') fx.innerGlow.technique = 'precise';
+  if (ig.source === 'center') fx.innerGlow.source = 'center';
   const ex = o.extra && typeof o.extra === 'object' ? (o.extra as Record<string, unknown>) : null;
   if (ex) {
     const extra: EffectExtras = {};
@@ -384,7 +396,7 @@ export interface TextWarp { style: WarpStyle; orientation: 'horizontal' | 'verti
 
 /** A smart filter: a filter kind and its settings (the noise seed among them), re-run on the smart object's source
  *  whenever the stack changes. */
-export interface SmartFilter { id: ID; kind: string; settings: Record<string, unknown>; enabled: boolean }
+export interface SmartFilter { id: ID; kind: string; settings: Record<string, unknown>; enabled: boolean; /** Blending Options: the mode the filter's result is laid over the image before it in (absent: normal) and its opacity in percent (absent: 100). */ blend?: BlendMode; opacity?: number }
 /** A smart object: the pixels it was made from, kept untouched, and the filters shown on them. */
 /** `warp`: where the source's corners land (top left, top right, bottom right, bottom left) after Distort or
  *  Perspective, kept so every re-render warps afresh from the source; `warpAt` is the layer transform its last render
@@ -404,7 +416,8 @@ export function smartFiltersFrom(raw: unknown): SmartFilter[] {
     if (!f || typeof f !== 'object') return [];
     const o = f as Record<string, unknown>;
     if (typeof o.kind !== 'string' || !o.settings || typeof o.settings !== 'object') return [];
-    return [{ id: typeof o.id === 'string' && o.id ? o.id : uid(), kind: o.kind, settings: o.settings as Record<string, unknown>, enabled: o.enabled !== false }];
+    const blend = BLEND_MODES.find((m) => m.id === o.blend)?.id, opacity = typeof o.opacity === 'number' && Number.isFinite(o.opacity) ? Math.min(100, Math.max(0, o.opacity)) : undefined;
+    return [{ id: typeof o.id === 'string' && o.id ? o.id : uid(), kind: o.kind, settings: o.settings as Record<string, unknown>, enabled: o.enabled !== false, ...(blend && blend !== 'normal' ? { blend } : {}), ...(opacity !== undefined && opacity < 100 ? { opacity } : {}) }];
   });
 }
 

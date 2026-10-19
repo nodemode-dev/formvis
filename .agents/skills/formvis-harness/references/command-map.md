@@ -1,6 +1,6 @@
 # Command map
 
-Generated from the window's command catalogue (1167 commands: 8 action, 808 command, 299 option, 52 tool) by `./formvis agents sync`; do not edit by hand.
+Generated from the window's command catalogue (1190 commands: 8 action, 831 command, 299 option, 52 tool) by `./formvis agents sync`; do not edit by hand.
 
 Every command is registered in `frontend/src/app.ts` (hand-written), `frontend/src/automation/catalogue.ts` (`tool.select.*`, `tool.options.*` and the seven actions) or by a plug-in; its words are in `frontend/src/automation/command-meta.ts`. A command with no words is reported missing and `./formvis counts --commands --check` fails.
 
@@ -11,7 +11,7 @@ Every command is registered in `frontend/src/app.ts` (hand-written), `frontend/s
 | Filter | 86 | `filter-library` | `bump-map`, `filter-addNoise`, `filter-average`, `filter-blur` |
 | Generate | 6 | `command-author` | `boxes-clear`, `boxes-copy`, `boxes-from-selection`, `boxes-tool` |
 | Help | 3 | `command-author` | `help-github`, `report-issue`, `simulate-gpu-loss` |
-| Image | 89 | `engine-builder` | `adj-blackWhite`, `adj-brightnessContrast`, `adj-channelMixer`, `adj-clarity` |
+| Image | 96 | `engine-builder` | `adj-blackWhite`, `adj-brightnessContrast`, `adj-channelMixer`, `adj-clarity` |
 | Layer | 240 | `engine-builder` | `add-filter-mask`, `add-mask`, `add-mask-hide`, `align-bottom` |
 | Paint | 1 | `brush-engine` | `paint.stroke` |
 | Paths | 9 | `tool-builder` | `clipping-path`, `delete-path`, `fill-path`, `fill-path-dialog` |
@@ -19,9 +19,9 @@ Every command is registered in `frontend/src/app.ts` (hand-written), `frontend/s
 | Tool options | 299 | `tool-builder` | `tool.options.artHistory.hardness`, `tool.options.artHistory.opacity`, `tool.options.artHistory.pressureCurve`, `tool.options.artHistory.size` |
 | Tools | 52 | `tool-builder` | `tool.select.artHistory`, `tool.select.artboard`, `tool.select.backgroundEraser`, `tool.select.boxes` |
 | Type | 30 | `tool-builder` | `add-font-files`, `add-web-font`, `character-styles`, `check-spelling` |
-| View | 68 | `ui-builder` | `actual`, `clear-guides`, `clear-slices`, `delete-slice` |
+| View | 84 | `ui-builder` | `actual`, `clear-guides`, `clear-slices`, `delete-slice` |
 | Window | 96 | `ui-builder` | `about`, `action-stop`, `actions`, `agent.claude.open` |
 
 ## Id families
 
-`tool` 353, `filter` 83, `new` 49, `panel` 28, `adj` 27, `export` 26, `layer` 25, `select` 16, `stack` 14, `toggle` 12, `transform` 12, `pick` 11, `proof` 11, `style` 11, `delete` 10, `video` 10, `mask` 9, `par` 9, `arrange` 8, `distribute` 8, `mode` 8, `rasterize` 8, `show` 8, `smart` 8, `type` 8, `save` 7, `vmask` 7, `align` 6, `clear` 6, `fill` 6, `font` 6, `load` 6, `paste` 6, `snap` 6, `add` 5, `auto` 5, `brush` 5, `convert` 5, `copy` 5, `edit` 5
+`tool` 353, `filter` 83, `new` 49, `panel` 28, `adj` 27, `export` 26, `layer` 25, `select` 16, `theme` 16, `stack` 14, `toggle` 12, `transform` 12, `depth` 11, `pick` 11, `proof` 11, `style` 11, `delete` 10, `video` 10, `mask` 9, `par` 9, `arrange` 8, `distribute` 8, `mode` 8, `rasterize` 8, `show` 8, `smart` 8, `type` 8, `save` 7, `vmask` 7, `align` 6, `clear` 6, `fill` 6, `font` 6, `load` 6, `paste` 6, `snap` 6, `add` 5, `auto` 5, `brush` 5, `convert` 5

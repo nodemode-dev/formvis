@@ -6,7 +6,7 @@ import threading
 from pathlib import Path
 
 import httpx
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -604,6 +604,53 @@ def set_source(model: str, mode: str, url: str | None) -> dict:
     data[model] = {"mode": mode, "url": url}
     SOURCES_FILE.write_text(json.dumps(data, indent=2))
     return data[model]
+
+
+class FolderBody(BaseModel):
+    path: str = Field(default="", max_length=1024)
+
+
+def _folder_state() -> dict:
+    from .paths import saved_folder
+
+    env = os.environ.get("FORMVIS_MODELS_DIR") or ""
+    saved = saved_folder()
+    wanted = Path(env or saved).expanduser().resolve() if (env or saved) else DATA_DIR / "models"
+    return {"active": str(ROOT), "saved": saved, "env": env, "restart": wanted != ROOT.resolve()}
+
+
+@router.get("/folder")
+def get_folder():
+    """The helper model folder in use, the one saved for the next start, and whether FORMVIS_MODELS_DIR overrides it."""
+    return _folder_state()
+
+
+@router.put("/folder")
+def put_folder(body: FolderBody, request: Request):
+    """Saves where helper models are kept from the next engine start; an empty path goes back to the data folder. Files already
+    downloaded stay where they are."""
+    from app.routers.terminal import require_local
+
+    from .paths import FOLDER_FILE
+
+    require_local(request)
+
+    raw = body.path.strip()
+    if raw:
+        path = Path(raw).expanduser()
+        if not path.is_absolute():
+            raise HTTPException(400, "Give a full folder path, such as /Volumes/Models or D:\\Models")
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+            probe = path / ".formvis-write-test"
+            probe.write_text("x")
+            probe.unlink()
+        except OSError:
+            raise HTTPException(400, "That folder cannot be created or written to")
+        FOLDER_FILE.write_text(str(path.resolve()))
+    else:
+        FOLDER_FILE.unlink(missing_ok=True)
+    return _folder_state()
 
 
 @router.delete("/{model}")

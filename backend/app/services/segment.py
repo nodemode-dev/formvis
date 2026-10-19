@@ -38,7 +38,9 @@ def model_dir() -> Path:
     else Models/sam2 in the data folder."""
     import os
 
-    raw = os.environ.get("FORMVIS_MODELS_DIR")
+    from app.localgen import paths
+
+    raw = os.environ.get("FORMVIS_MODELS_DIR") or paths.saved_folder()
     path = (Path(raw).expanduser() if raw else config.data_dir() / "Models") / "sam2"
     path.mkdir(parents=True, exist_ok=True)
     return path

@@ -2,6 +2,7 @@ import type { Engine } from '../engine';
 import { api, type Capabilities, type LibraryItem } from '../io/api';
 import { saveTemplates, templates } from '../io/prompt-templates';
 import { LocalModelsSection } from './panels/local-models';
+import { ComfyAuthSection, ModelFolderSection, RecipesSection, TemplateFiles } from './panels/connection-settings';
 import { IMAGE_ACCEPT, PROJECT_ACCEPT } from '../io/images';
 import { PRESET_ACCEPT } from './panels/preset-manager-dialog';
 import { VERSION } from '../version';
@@ -533,13 +534,14 @@ export class SettingsDialog extends Dialog {
     tNew.addEventListener('click', () => { const list = templates(); let n = 1; while (list.some((t) => t.name === `Template ${n}`)) n++; list.push({ name: `Template ${n}`, text: '' }); saveTemplates(list); this.fillTemplates(`Template ${n}`); });
     tSave.addEventListener('click', () => { const list = templates(), i = list.findIndex((t) => t.name === this.tplPick.value), name = this.tplName.value.trim() || this.tplPick.value; if (i >= 0) list[i] = { name, text: this.tplText.value }; saveTemplates(list); this.fillTemplates(name); setText(this.tplNote, 'Saved.'); });
     tDel.addEventListener('click', () => { const list = templates().filter((t) => t.name !== this.tplPick.value); saveTemplates(list.length ? list : templates()); this.fillTemplates(); });
-    tp.append(lmRow('Template', this.tplPick), lmRow('Name', this.tplName), this.tplText, tButtons, this.tplNote);
+    const tFiles = new TemplateFiles(() => this.tplPick.value, this.tplNote, (name) => this.fillTemplates(name));
+    tp.append(lmRow('Template', this.tplPick), lmRow('Name', this.tplName), this.tplText, tButtons, tFiles.el, this.tplNote);
     // Outside agents over MCP (1.52.1): off unless turned on here; how to connect Claude Code and Claude Desktop.
     this.agents.addEventListener('change', () => { this.change({ agentsAllowed: this.agents.checked }); window.dispatchEvent(new CustomEvent('formvis:agents', { detail: this.agents.checked })); });
     const ag = el('<label class="cv-dialog-row"><span>Allow outside agents (MCP)</span></label>');
     ag.append(this.agents);
     const agNote = el('<p class="cv-note">Lets Claude Code, Claude Desktop or another MCP client work in the open document; each change is an undoable step, and anything that costs money asks you first. Claude Code: <code>claude mcp add --transport http formvis http://127.0.0.1:8190/mcp</code>. Claude Desktop: a server whose command is <code>./formvis mcp</code> in the formvis folder.</p>');
-    add('Plugins', this.keysNote, nm, this.nodemodeNote, cu, this.comfyuiNote, lm, tp, ag, agNote, this.localModels.el);
+    add('Plugins', this.keysNote, nm, this.nodemodeNote, cu, this.comfyuiNote, this.comfyAuth.el, this.recipesList.el, lm, tp, ag, agNote, this.modelFolder.el, this.localModels.el);
     const wrap = el('<div class="cv-prefs"></div>');
     wrap.append(this.nav, pages);
     this.body.appendChild(wrap);
@@ -668,6 +670,9 @@ export class SettingsDialog extends Dialog {
   private libDefault = '';
   private readonly agents = el<HTMLInputElement>('<input type="checkbox" aria-label="Allow outside agents">');
   private readonly localModels = new LocalModelsSection();   // 1.52.9
+  private readonly comfyAuth = new ComfyAuthSection();
+  private readonly modelFolder = new ModelFolderSection();
+  private readonly recipesList = new RecipesSection();
   private readonly mismatchSel = el<HTMLSelectElement>('<select class="cv-input" aria-label="Embedded profiles"><option value="convert">Convert to the working space (sRGB)</option><option value="keep">Keep the embedded profile</option><option value="ask">Ask when opening</option></select>');   // 1.53.5
   private readonly budgetNote = el('<p class="cv-note cv-budget-note" role="status"></p>');   // the largest document (1.53.4)
   private readonly keysNote = el('<p class="cv-note cv-keys-note" role="status"></p>');   // where API keys are kept (1.52.5)
@@ -747,6 +752,9 @@ export class SettingsDialog extends Dialog {
     if (document.activeElement !== this.comfyuiUrl) setValue(this.comfyuiUrl, this.prefs.comfyuiUrl);
     void this.loadLlm();
     void this.localModels.refresh();
+    void this.comfyAuth.refresh();
+    void this.modelFolder.refresh();
+    this.recipesList.refresh();
     setText(this.budgetNote, `Largest document: ${Math.round(LIMITS.pixels / 1_000_000)} megapixels, set from this computer's memory (at least 100, at most 250).`);
     this.agents.checked = this.prefs.agentsAllowed;
     if (!this.tplPick.options.length) this.fillTemplates();

@@ -34,6 +34,18 @@ export function removeRecipe(name: string): void {
   try { localStorage.setItem(KEY, JSON.stringify(recipes().filter((r) => r.name !== name))); } catch { /* nothing kept */ }
 }
 
+export type RecipeFamily = 'fill' | 'image' | 'text' | 'other';
+export const RECIPE_FAMILIES: ReadonlyArray<readonly [RecipeFamily, string]> = [['fill', 'Fill a selection (image and mask)'], ['image', 'Picture in, picture out'], ['text', 'Text to image'], ['other', 'Other']];
+
+/** What a kept workflow takes in, from its nodes: a Load Image (as Mask) makes it a fill, a Load Image a picture edit, a prompt node alone a text to image. */
+export function recipeFamily(json: string): { family: RecipeFamily; nodes: number } {
+  try {
+    const nodes = Object.values(JSON.parse(json) as Record<string, { class_type?: unknown }>), types = nodes.map((n) => String(n?.class_type ?? ''));
+    const family: RecipeFamily = types.includes('LoadImageMask') ? 'fill' : types.includes('LoadImage') ? 'image' : types.some((t) => /^CLIPTextEncode/.test(t)) ? 'text' : 'other';
+    return { family, nodes: nodes.length };
+  } catch { return { family: 'other', nodes: 0 }; }
+}
+
 export interface Run { job: string; mask: string | null; prompt: boolean }
 
 /** Queues `json` with `parts` (the image, then any mask) and follows it once a second until it ends; the result

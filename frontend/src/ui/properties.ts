@@ -311,10 +311,11 @@ export class PropertiesColumn {
     const shut = new Set<string>();
     for (const b of body.querySelectorAll<HTMLButtonElement>('[data-view]')) b.addEventListener('click', () => { view = b.dataset.view as 'grid' | 'list'; try { localStorage.setItem('formvis.brushView', view); } catch { /* session */ } key = ''; fill(); });
     search.addEventListener('input', () => { key = ''; fill(); });
-    const thumb = (p: BrushPreset, w: number, h: number): HTMLCanvasElement => {
-      const dpr = window.devicePixelRatio || 1, c = document.createElement('canvas');
-      c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); c.style.width = `${w}px`; c.style.height = `${h}px`;
+    const thumbs = new Map<HTMLCanvasElement, BrushPreset>();
+    const paintThumb = (c: HTMLCanvasElement, p: BrushPreset): void => {
+      const dpr = window.devicePixelRatio || 1;
       const g = c.getContext('2d') as CanvasRenderingContext2D, R = Math.min(c.height * 0.42, Math.max(3 * dpr, (Math.log(p.diameter + 1) / Math.log(1001)) * c.height * 0.9));
+      g.clearRect(0, 0, c.width, c.height);
       if (p.tip) {
         const INK = ink();
         const t = document.createElement('canvas'); t.width = p.tip.w; t.height = p.tip.h;
@@ -329,14 +330,25 @@ export class PropertiesColumn {
         g.save(); g.translate(c.width / 2, c.height / 2); g.rotate((-(p.angle ?? 0) * Math.PI) / 180); g.scale(1, Math.max(0.05, (p.roundness ?? 100) / 100));   // its own shape
         g.fillStyle = gr; g.beginPath(); g.arc(0, 0, R, 0, Math.PI * 2); g.fill(); g.restore();
       }
+    };
+    const thumb = (p: BrushPreset, w: number, h: number): HTMLCanvasElement => {
+      const dpr = window.devicePixelRatio || 1, c = document.createElement('canvas');
+      c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); c.style.width = `${w}px`; c.style.height = `${h}px`;
+      thumbs.set(c, p);
+      paintThumb(c, p);
       return c;
     };
-    let key = '';
+    let key = '', inkSeen = '';
     const fill = (): void => {
       const q0 = search.value.trim().toLowerCase(), imported = new Set(importedBrushPresets.map((p) => p.id));
-      const k = [view, q0, e.brushPresetId, [...shut].join(','), allBrushPresets().map((p) => p.id).join(','), ink().join(',')].join('|');   // the theme's ink too
-      if (k === key) return;
-      key = k;
+      const k = [view, q0, e.brushPresetId, [...shut].join(','), allBrushPresets().map((p) => p.id).join(',')].join('|');
+      const inkNow = ink().join(',');
+      if (k === key) {
+        if (inkNow !== inkSeen) { inkSeen = inkNow; for (const [c, p] of thumbs) paintThumb(c, p); }   // a new theme's ink repaints the tiles in place
+        return;
+      }
+      key = k; inkSeen = inkNow;
+      thumbs.clear();
       for (const b of body.querySelectorAll<HTMLElement>('[data-view]')) b.classList.toggle('is-on', b.dataset.view === view);
       folders.textContent = '';
       const groups = [{ id: 'general', name: t('General Brushes'), list: allBrushPresets().filter((p) => !imported.has(p.id)) }, { id: 'imported', name: t('Imported Brushes'), list: allBrushPresets().filter((p) => imported.has(p.id)) }];

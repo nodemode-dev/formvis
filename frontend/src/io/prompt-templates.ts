@@ -17,6 +17,34 @@ export function templates(): PromptTemplate[] {
   return STARTERS.map((t) => ({ ...t }));
 }
 
+/** A template as a Markdown file: front matter with its name, then the instruction. */
+export function templateToMarkdown(t: PromptTemplate): string {
+  return `---\nname: ${t.name.replace(/[\r\n]+/g, ' ')}\nuse: improve\n---\n\n${t.text.trim()}\n`;
+}
+
+/** A template from a Markdown file. Front matter (`name`, and `use` which must be improve when given) is optional; the rest
+ *  is the instruction. A file for another use is refused with null. */
+export function templateFromMarkdown(src: string, fallbackName: string): PromptTemplate | null {
+  const text = src.replace(/^﻿/, '').replace(/\r\n?/g, '\n');
+  let name = fallbackName, body = text;
+  const m = /^---\n([\s\S]*?)\n---\n?/.exec(text);
+  if (m) {
+    body = text.slice(m[0].length);
+    for (const line of m[1].split('\n')) {
+      const kv = /^([A-Za-z_-]+)\s*:\s*(.*)$/.exec(line);
+      if (!kv) continue;
+      const v = kv[2].trim().replace(/^["']|["']$/g, '');
+      if (kv[1].toLowerCase() === 'name' && v) name = v;
+      if (kv[1].toLowerCase() === 'use' && v && v.toLowerCase() !== 'improve') return null;
+    }
+  }
+  body = body.trim();
+  return body ? { name: name.slice(0, 80), text: body.slice(0, 8000) } : null;
+}
+
+/** The instruction with {prompt} replaced by the prompt being improved. */
+export const fillPlaceholders = (text: string, vars: { prompt: string }): string => text.replace(/\{prompt\}/g, () => vars.prompt);
+
 export function saveTemplates(list: PromptTemplate[]): void {
   try { localStorage.setItem(KEY, JSON.stringify(list.slice(0, 40).map((t) => ({ name: t.name.slice(0, 80), text: t.text.slice(0, 8000) })))); } catch { /* not kept */ }
 }

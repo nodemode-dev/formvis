@@ -1,4 +1,4 @@
-import { resizeMask } from './filters';
+import { distanceField, resizeMask } from './filters';
 import { blendPixels } from './blend';
 import { patternById } from './patterns';
 import { CONTOURS, applyContour, contourLut, withGlobalLight, type ContourId } from './style-extras';
@@ -458,6 +458,25 @@ export class Renderer {
     return s;
   }
 
+  /** An effect's coverage grained in place: each pixel's alpha scaled by 1 + noise * (2r - 1), r a hash of its place in
+   *  the document grid, so the grain holds still while the effect is edited. */
+  private grained(s: Surface, w: number, h: number, noise: number | undefined, ox: number, oy: number): Surface {
+    if (!noise) return s;
+    const n = noise / 100, c = ctxOf(s), img = c.getImageData(0, 0, w, h), d = img.data;
+    for (let j = 0; j < h; j++) {
+      for (let i = 0; i < w; i++) {
+        const o = (j * w + i) * 4 + 3;
+        if (!d[o]) continue;
+        let q = Math.imul(i + ox, 374761393) ^ Math.imul(j + oy, 668265263);
+        q = Math.imul(q ^ (q >>> 13), 1274126177);
+        const r = ((q ^ (q >>> 16)) >>> 0) / 4294967296;
+        d[o] = Math.max(0, Math.min(255, Math.round(d[o] * (1 + n * (2 * r - 1)))));
+      }
+    }
+    c.putImageData(img, 0, 0);
+    return s;
+  }
+
   private bevelMaps(A: Float32Array, w: number, h: number, bv: LayerEffects['bevel'], scale: number, origin: Pt): [ImageData, ImageData] {
     const n = w * h;
     const blur = (src: Float32Array, r: number): Float32Array => blur1(src, w, h, r);
@@ -528,6 +547,24 @@ export class Renderer {
       out.c.restore();
       return out.s;
     };
+    const ringPaint = (k: LayerEffects['stroke'], px: Uint8ClampedArray, band: ArrayLike<number>): void => {
+      // A stroke's pixels from its coverage: the colour, or the gradient spanning the layer's bounds like Gradient Overlay.
+      const g = k.gradient, cx = bounds.x + bounds.w / 2 - bx, cy = bounds.y + bounds.h / 2 - by, a = g ? (g.angle * Math.PI) / 180 : 0, ux = Math.cos(a), uy = -Math.sin(a);
+      const half = Math.max(0.5, (Math.abs(bounds.w * ux) + Math.abs(bounds.h * uy)) / 2), rad = Math.max(1, Math.max(bounds.w, bounds.h) / 2);
+      for (let i = 0; i < band.length; i++) {
+        if (!band[i]) continue;
+        const o = i * 4;
+        let r = k.color.r, gr = k.color.g, b = k.color.b;
+        if (g) {
+          const x = (i % bw) - cx, y = Math.floor(i / bw) - cy;
+          let t = g.style === 'radial' ? Math.hypot(x, y) / rad : 0.5 + (x * ux + y * uy) / (2 * half);
+          t = Math.min(1, Math.max(0, t));
+          if (g.reverse) t = 1 - t;
+          r = g.from.r + (g.to.r - g.from.r) * t; gr = g.from.g + (g.to.g - g.from.g) * t; b = g.from.b + (g.to.b - g.from.b) * t;
+        }
+        px[o] = r; px[o + 1] = gr; px[o + 2] = b; px[o + 3] = band[i];
+      }
+    };
     if (phase === 'above') {
       // Above the content, each kept to the silhouette: Color Overlay, then Inner Glow, then Inner Shadow on top. The
       // inner effects are the shadow cast by everything around the silhouette (its inverse within the box).
@@ -543,7 +580,7 @@ export class Renderer {
         out.c.restore();
         return out.s;
       };
-      const castByInverse = (color: RGB, blur: number, dx: number, dy: number): Surface => {
+      const castByInverse = (color: RGB, blur: number, dx: number, dy: number, choke = 0): Surface => {
         const inv = this.slot(6, bw, bh);
         inv.c.save();
         inv.c.setTransform(1, 0, 0, 1, 0, 0);
@@ -553,6 +590,14 @@ export class Renderer {
         inv.c.globalCompositeOperation = 'destination-out';
         inv.c.drawImage(sil.s, bx, by, bw, bh, 0, 0, bw, bh);
         inv.c.restore();
+        if (choke > 0) {
+          // Choke: the matte the shadow is cast by is the silhouette contracted by `choke` px.
+          const a = sil.c.getImageData(bx, by, bw, bh).data, m = new Uint8Array(bw * bh);
+          for (let i = 0; i < m.length; i++) m[i] = a[i * 4 + 3];
+          const e = resizeMask(m, bw, bh, -choke), img = new ImageData(bw, bh);
+          for (let i = 0; i < m.length; i++) img.data[i * 4 + 3] = 255 - e[i];
+          inv.c.putImageData(img, 0, 0);
+        }
         return kept((c) => {
           const far = bw + Math.ceil(Math.abs(dx) + blur * 3) + 16;
           c.shadowColor = css(color);
@@ -616,10 +661,31 @@ export class Renderer {
         s.c.putImageData(img, 0, 0);
         lay(s.s, sa.opacity * opacity, compositeOp(sa.blend), 'Satin', true);
       }
-      if (ig.enabled && ig.opacity > 0 && ig.size > 0) lay(this.contoured(castByInverse(ig.color, ig.size * scale, 0, 0), bw, bh, ig.contour), ig.opacity * opacity, compositeOp(ig.blend), 'Inner Glow', true);
+      if (ig.enabled && ig.opacity > 0 && ig.size > 0) {
+        // Edge or Center; Softer is the blurred cast, Precise a distance ramp that holds full for `choke` of the size.
+        const sz = ig.size * scale, hold = sz * ((ig.choke ?? 0) / 100), center = ig.source === 'center';
+        let cov: Surface;
+        if (ig.technique === 'precise') {
+          const a = sil.c.getImageData(bx, by, bw, bh).data, dist = distanceField((i) => a[i * 4 + 3] < 128, bw, bh), img = new ImageData(bw, bh), px = img.data;
+          for (let i = 0; i < dist.length; i++) {
+            const sa = a[i * 4 + 3];
+            if (!sa) continue;
+            const d = Math.max(0, dist[i] - 0.5), r = d <= hold ? 1 : Math.max(0, 1 - (d - hold) / Math.max(1e-6, sz - hold)), o = i * 4;
+            px[o] = ig.color.r; px[o + 1] = ig.color.g; px[o + 2] = ig.color.b; px[o + 3] = Math.round((center ? 1 - r : r) * sa);
+          }
+          cov = this.slot(11, bw, bh).s;
+          ctxOf(cov).putImageData(img, 0, 0);
+        } else if (center) {
+          cov = castByInverse(ig.color, sz, 0, 0, hold);
+          const c = ctxOf(cov), img = c.getImageData(0, 0, bw, bh), px = img.data, a = sil.c.getImageData(bx, by, bw, bh).data;
+          for (let i = 3; i < px.length; i += 4) { px[i] = Math.round((a[i] * (255 - px[i])) / 255); px[i - 3] = ig.color.r; px[i - 2] = ig.color.g; px[i - 1] = ig.color.b; }
+          c.putImageData(img, 0, 0);
+        } else cov = castByInverse(ig.color, sz, 0, 0, hold);
+        lay(this.grained(this.contoured(cov, bw, bh, ig.contour), bw, bh, ig.noise, bx, by), ig.opacity * opacity, compositeOp(ig.blend), 'Inner Glow', true);
+      }
       for (const is of instances(fx, 'innerShadow')) if (is.enabled && is.opacity > 0) {
         const rad = (is.angle * Math.PI) / 180;
-        lay(this.contoured(castByInverse(is.color, is.size * scale, -Math.cos(rad) * is.distance * scale, Math.sin(rad) * is.distance * scale), bw, bh, is.contour), is.opacity * opacity, compositeOp(is.blend), 'Inner Shadow', true);
+        lay(this.grained(this.contoured(castByInverse(is.color, is.size * scale, -Math.cos(rad) * is.distance * scale, Math.sin(rad) * is.distance * scale, is.size * scale * ((is.choke ?? 0) / 100)), bw, bh, is.contour), bw, bh, is.noise, bx, by), is.opacity * opacity, compositeOp(is.blend), 'Inner Shadow', true);
       }
       const ring = bv.style === 'stroke' ? instances(fx, 'stroke').find((s) => s.enabled && s.size * scale > 0) : undefined;
       if (bv.enabled && bv.size > 0 && (bv.highlightOpacity > 0 || bv.shadowOpacity > 0) && (bv.style !== 'stroke' || ring)) {
@@ -644,7 +710,9 @@ export class Renderer {
         for (let i = 0; i < inside.length; i++) inside[i] = alpha[i * 4 + 3];
         const s = k.size * scale, outer = k.position === 'inside' ? inside : resizeMask(inside, bw, bh, s / 2), inner = resizeMask(inside, bw, bh, -(k.position === 'inside' ? s : s / 2));
         const img = new ImageData(bw, bh), px = img.data;
-        for (let i = 0; i < inside.length; i++) { const o = i * 4; px[o] = k.color.r; px[o + 1] = k.color.g; px[o + 2] = k.color.b; px[o + 3] = Math.max(0, outer[i] - inner[i]); }
+        const band = new Uint8Array(inside.length);
+        for (let i = 0; i < inside.length; i++) band[i] = Math.max(0, outer[i] - inner[i]);
+        ringPaint(k, px, band);
         const out = this.slot(12, bw, bh);
         out.c.putImageData(img, 0, 0);
         lay(out.s, k.opacity * opacity, 'source-over', k.position === 'inside' ? 'Inner Stroke' : 'Stroke', k.position === 'inside');
@@ -660,7 +728,7 @@ export class Renderer {
       const alpha = sil.c.getImageData(bx, by, bw, bh).data, inside = new Uint8Array(bw * bh);
       for (let i = 0; i < inside.length; i++) inside[i] = alpha[i * 4 + 3];
       const ring = resizeMask(inside, bw, bh, k.size * scale), img = new ImageData(bw, bh), px = img.data;
-      for (let i = 0; i < ring.length; i++) { const o = i * 4; px[o] = k.color.r; px[o + 1] = k.color.g; px[o + 2] = k.color.b; px[o + 3] = ring[i]; }
+      ringPaint(k, px, ring);
       const out = this.slot(6, bw, bh);
       out.c.save();
       out.c.setTransform(1, 0, 0, 1, 0, 0);

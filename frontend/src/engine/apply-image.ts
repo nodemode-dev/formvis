@@ -14,8 +14,12 @@ export const APPLY_MODES: readonly ApplyMode[] = [
 ];
 export type ApplyChannel = 'rgb' | 'red' | 'green' | 'blue' | 'transparency';
 export const APPLY_CHANNELS: readonly ApplyChannel[] = ['rgb', 'red', 'green', 'blue', 'transparency'];
+/** Sources beyond the colour channels: the document's selection and the layer mask, read by the engine as coverage. */
+export const APPLY_COVERAGE_CHANNELS: readonly string[] = ['selection', 'mask'];
 
-export interface ApplyOptions { mode: ApplyMode; opacity: number; scale: number; offset: number; mask: Uint8ClampedArray | null }
+/** `preserve` (default true): the target's alpha is kept. Off, the source also fills transparent pixels: the result
+ *  lies over the target with coverage opacity x mask. */
+export interface ApplyOptions { mode: ApplyMode; opacity: number; scale: number; offset: number; mask: Uint8ClampedArray | null; preserve?: boolean }
 
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 
@@ -101,6 +105,25 @@ function nonSeparable(mode: ApplyMode, b: [number, number, number], s: [number, 
 /** Blends `src` into `dst` in place (RGBA, same size, `width` wide). `o.mask` is one strength byte a pixel, or null.
  *  Alpha of `dst` is kept. Add and Subtract are (target + source) / scale + offset and (target - source) / scale + offset. */
 export function applyImagePixels(dst: Uint8ClampedArray, src: Uint8ClampedArray, width: number, o: ApplyOptions): void {
+  if (o.preserve !== false) { blendInto(dst, src, width, o); return; }
+  const base = new Uint8ClampedArray(dst), full = new Uint8ClampedArray(dst);
+  blendInto(full, src, width, { ...o, opacity: 1, mask: null });
+  blendInto(dst, src, width, o);
+  for (let p = 0, i = 0; p < base.length / 4; p++, i += 4) {
+    const a = base[i + 3] / 255;
+    if (a >= 1) continue;
+    const k = clamp01(o.opacity) * (o.mask ? o.mask[p] / 255 : 1);
+    if (k <= 0) continue;
+    const outA = k + (1 - k) * a;
+    for (let c = 0; c < 3; c++) {
+      const r = a * full[i + c] + (1 - a) * src[i + c];
+      dst[i + c] = Math.round(((1 - k) * a * base[i + c] + k * r) / outA);
+    }
+    dst[i + 3] = Math.round(outA * 255);
+  }
+}
+
+function blendInto(dst: Uint8ClampedArray, src: Uint8ClampedArray, width: number, o: ApplyOptions): void {
   const op = clamp01(o.opacity), n = dst.length / 4, scale = o.scale > 0 ? o.scale : 1, off = o.offset / 255;
   if (PIXEL_BLENDS.has(o.mode as BlendMode) && o.mode !== 'subtract') {
     const alphas = new Uint8ClampedArray(n), s2 = new Uint8ClampedArray(src);
