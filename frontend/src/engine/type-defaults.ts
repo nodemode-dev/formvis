@@ -13,7 +13,7 @@ export const basicParagraph = (): ParagraphStyle => styleOf(defaultText(), BASIC
 
 /** The attributes Reset Character and Reset Paragraph take away. */
 export const CHARACTER_RESET = ['weight', 'caps', 'scaleX', 'scaleY', 'baselineShift', 'underline', 'strike', 'variations'] as const;
-export const PARAGRAPH_RESET = ['indentFirst', 'indentLeft', 'indentRight', 'spaceBefore', 'spaceAfter', 'lastLine'] as const;
+export const PARAGRAPH_RESET = ['indentFirst', 'indentLeft', 'indentRight', 'spaceBefore', 'spaceAfter', 'lastLine', 'bidi'] as const;
 
 export interface TypeDefaults { settings: TextSpec | null; paragraphStyles: ParagraphStyle[]; characterStyles: CharacterStyle[] }
 

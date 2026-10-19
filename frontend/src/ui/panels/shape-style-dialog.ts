@@ -20,6 +20,9 @@ export class ShapeStyleDialog extends Dialog {
   private readonly cap = el<HTMLSelectElement>('<select class="cv-input"><option value="round">Round</option><option value="butt">Butt</option><option value="square">Square</option></select>');
   private readonly join = el<HTMLSelectElement>('<select class="cv-input"><option value="round">Round</option><option value="miter">Miter</option><option value="bevel">Bevel</option></select>');
   private readonly miter = el<HTMLInputElement>('<input class="cv-input" type="number" min="1" max="10" step="0.5" value="4">');
+  private readonly dashes = el<HTMLInputElement>('<input class="cv-input" type="text" spellcheck="false" placeholder="4 2 (in stroke widths; empty uses the type)">');
+  private readonly dashOffset = el<HTMLInputElement>('<input class="cv-input" type="number" min="-1000" max="1000" step="0.5" value="0">');
+  private readonly strokeOpacity = el<HTMLInputElement>('<input class="cv-input" type="number" min="0" max="100" step="1" value="100">');
   private readonly note = el('<p class="cv-note"></p>');
   private fill: RGB = { r: 0, g: 0, b: 0 };
   private stroke: RGB = { r: 0, g: 0, b: 0 };
@@ -42,6 +45,9 @@ export class ShapeStyleDialog extends Dialog {
     this.field('Stroke caps', this.cap);
     this.field('Stroke corners', this.join);
     this.field('Miter limit', this.miter);
+    this.field('Dash pattern', this.dashes);
+    this.field('Dash offset', this.dashOffset);
+    this.field('Stroke opacity %', this.strokeOpacity);
     this.field('Gradient fill', this.gradMode);
     this.field('Gradient angle', this.gradAngle);
     const endRow = el('<div class="cv-shape-row"></div>'), endBtn = el<HTMLButtonElement>('<button class="cv-btn cv-btn-ghost" type="button">Use background</button>');
@@ -70,6 +76,9 @@ export class ShapeStyleDialog extends Dialog {
     this.cap.value = v.stroke?.cap ?? 'round';
     this.join.value = v.stroke?.join ?? 'round';
     this.miter.value = String(v.stroke?.miter ?? 4);
+    this.dashes.value = (v.stroke?.dashes ?? []).join(' ');
+    this.dashOffset.value = String(v.stroke?.dashOffset ?? 0);
+    this.strokeOpacity.value = String(Math.round((v.stroke?.opacity ?? 1) * 100));
     const g = v.gradient;
     this.gradMode.value = g ? g.type : 'none';
     this.gradAngle.value = String(g?.angle ?? 0);
@@ -90,14 +99,22 @@ export class ShapeStyleDialog extends Dialog {
     this.cap.disabled = this.width.disabled;
     this.join.disabled = this.width.disabled;
     this.miter.disabled = this.width.disabled || this.join.value !== 'miter';
+    this.dashes.disabled = this.width.disabled;
+    this.dashOffset.disabled = this.width.disabled;
+    this.strokeOpacity.disabled = this.width.disabled;
     this.gradAngle.disabled = this.fillMode.value !== 'color' || this.gradMode.value === 'none';
     this.gradMode.disabled = this.fillMode.value !== 'color';
     setText(this.note, 'Use foreground takes the current foreground colour.');
   }
 
+  private dashExtras(): { dashes?: number[]; dashOffset?: number; opacity?: number } {
+    const d = this.dashes.value.split(/[\s,]+/).filter(Boolean).map(Number).slice(0, 16), off = Number(this.dashOffset.value) || 0, op = Math.min(100, Math.max(0, Number(this.strokeOpacity.value))) / 100;
+    return { ...(d.length && d.every((n) => Number.isFinite(n) && n >= 0 && n <= 1000) && d.some((n) => n > 0) ? { dashes: d } : {}), ...(off ? { dashOffset: Math.max(-1000, Math.min(1000, off)) } : {}), ...(op < 1 ? { opacity: op } : {}) };
+  }
+
   private apply(): void {
     const w = Math.min(1000, Math.max(1, Math.round(Number(this.width.value) || 1)));
-    const fill = this.fillMode.value === 'color' ? { ...this.fill } : null, stroke = this.strokeMode.value === 'color' ? { color: { ...this.stroke }, width: w, dash: this.dash.value as 'solid' | 'dashed' | 'dotted', align: this.align.value as 'inside' | 'center' | 'outside', cap: this.cap.value as 'butt' | 'round' | 'square', join: this.join.value as 'miter' | 'round' | 'bevel', miter: Math.min(10, Math.max(1, Number(this.miter.value) || 4)) } : null;
+    const fill = this.fillMode.value === 'color' ? { ...this.fill } : null, stroke = this.strokeMode.value === 'color' ? { color: { ...this.stroke }, width: w, dash: this.dash.value as 'solid' | 'dashed' | 'dotted', align: this.align.value as 'inside' | 'center' | 'outside', cap: this.cap.value as 'butt' | 'round' | 'square', join: this.join.value as 'miter' | 'round' | 'bevel', miter: Math.min(10, Math.max(1, Number(this.miter.value) || 4)), ...this.dashExtras() } : null;
     if (!fill && !stroke) { setText(this.note, 'A shape needs a fill, a stroke or both.'); return; }
     const style: { fill: RGB | null; stroke: typeof stroke; gradient?: ShapeGradient } = { fill, stroke };
     if (fill && this.gradMode.value !== 'none') style.gradient = { type: this.gradMode.value as ShapeGradient['type'], angle: Math.min(180, Math.max(-180, Number(this.gradAngle.value) || 0)), stops: this.kept ? this.kept.map((s, i) => (i === 0 ? { ...s, color: { ...fill } } : s)) : [{ at: 0, color: { ...fill } }, { at: 1, color: { ...this.gradEnd } }] };

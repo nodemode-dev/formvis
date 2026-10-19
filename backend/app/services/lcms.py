@@ -38,13 +38,11 @@ def _candidates() -> list[str]:
     meipass = getattr(sys, "_MEIPASS", None)
     if meipass:
         found += glob.glob(os.path.join(meipass, "**", "liblcms2*"), recursive=True)
-    for name in ("lcms2", "liblcms2.so.2", "liblcms2.2.dylib", "lcms2.dll"):
-        try:
-            import ctypes.util
-            path = ctypes.util.find_library(name) or name
-            found.append(path)
-        except Exception:
-            found.append(name)
+    # Library names go straight to the loader's own search. ctypes.util.find_library is not used: on Linux, when its
+    # compiler probe finds nothing it runs `ld -t -o /dev/null -l<name>`, and a failed link removes its output file, so
+    # an engine or test run as root deleted /dev/null (found 1.89.8).
+    found += ["liblcms2.so.2", "liblcms2.so", "/opt/homebrew/lib/liblcms2.2.dylib", "/usr/local/lib/liblcms2.2.dylib",
+              "liblcms2.2.dylib", "lcms2.dll", "liblcms2-2.dll"]
     return found
 
 

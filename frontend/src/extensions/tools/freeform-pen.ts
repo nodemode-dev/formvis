@@ -1,8 +1,9 @@
-import type { Pt, VectorPath } from '../../engine';
+import { cornerAt, type Pt, type SubPath, type VectorPath } from '../../engine';
 import { simplify, smoothAnchors } from '../../engine/curve-fit';
 import type { Tool } from '../registry';
 
 let stroke: Pt[] | null = null;
+let chain: SubPath | null = null;
 const fit = { px: 2 };
 const CLOSE = 8;
 
@@ -12,7 +13,7 @@ const CLOSE = 8;
 export const freeformPenTool: Tool = {
   id: 'freeformPen', label: 'Freeform Pen', key: 'P', order: 77.5,
   icon: () => 'tFreeformPen',
-  hint: () => 'Drag to draw a path freehand · end near the start to close it · Curve Fit sets how closely it follows',
+  hint: () => 'Drag to draw a path freehand · end near the start to close it · Alt-click for straight segments · Curve Fit sets how closely it follows',
   cursor: () => 'crosshair',
   options: () => [
     { kind: 'title', text: 'Freeform Pen' },
@@ -20,7 +21,23 @@ export const freeformPenTool: Tool = {
   ],
   down(ctx, p) {
     if (p.button !== 0 || !ctx.engine.current) return;
-    stroke = [p.doc];
+    if (!p.alt) { chain = null; stroke = [p.doc]; return; }
+    // Alt-click lays straight segments: each click adds a corner point; the first point closes the chain.
+    const vp: VectorPath = ctx.engine.workPath ?? { subpaths: [] }, z = ctx.view().zoom;
+    ctx.engine.beginPathEdit();
+    if (chain && vp.subpaths.includes(chain) && chain.anchors.length > 2 && Math.hypot(chain.anchors[0].x - p.doc.x, chain.anchors[0].y - p.doc.y) * z <= CLOSE) { chain.closed = true; chain = null; }
+    else {
+      if (!chain || !vp.subpaths.includes(chain)) { chain = { closed: false, anchors: [] }; vp.subpaths.push(chain); }
+      chain.anchors.push(cornerAt(p.doc));
+    }
+    ctx.engine.setWorkPath(vp);
+    ctx.engine.endPathEdit();
+  },
+  keydown(ctx, e) {
+    if (!chain || (e.key !== 'Enter' && e.key !== 'Escape')) return false;
+    chain = null;
+    ctx.engine.emit('overlay', null);
+    return true;
   },
   move(ctx, p) {
     if (!stroke) return;

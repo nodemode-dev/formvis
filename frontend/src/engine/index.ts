@@ -27,7 +27,7 @@ import type { DocVariable, LayerLabel, BoxKind, DocBox, LayerComp } from './type
 import type { RelightContent } from './relight';
 import { History, type HistoryEntry, type PixelPatch, type Snapshot } from './history';
 import { restrictPatches, type RgbTarget } from './channel-target';
-import { alphaPlane, planeMask } from './alpha-target';
+import { alphaPlane, alphaRaster, planeMask, rasterMask } from './alpha-target';
 import { Renderer, renderDoc, type LayerOverride } from './renderer';
 import { applyDuotoneLut, curveAt, DUOTONE_COUNT, duotoneLut, type Duotone } from './duotone';
 import { compositeChannels, splitChannels } from './multichannel';
@@ -71,9 +71,9 @@ import * as PA from './path-ops';
 import * as TX from './text-ops';
 import * as VD from './video-ops';
 import * as TE from './transform-entry';
-import { type DocMode, BLEND_MODES, canvasBlend, LIMITS, setPixelLimit, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartDeform, type SmartDeformData, type SmartFilter, type SmartLink, type SmartObject, type ShapeStroke, type ShapeStyle, type FootageInterpretation, effectsFromData, type Artboard, artboardFromData, type AlphaChannel, effectsPresent } from './types';
+import { type DocMode, BLEND_MODES, LAYER_BLEND_MODES, canvasBlend, LIMITS, setPixelLimit, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartDeform, type SmartDeformData, type SmartFilter, type SmartLink, type SmartObject, type ShapeStroke, type ShapeStyle, type FootageInterpretation, effectsFromData, type Artboard, artboardFromData, type AlphaChannel, effectsPresent } from './types';
 import { allPatterns, patternById } from './patterns';
-import { fillFrame, fillName, renderFill } from './fill-layers';
+import { addFillStop, fillFrame, fillFromLine, fillLine, fillName, renderFill, type GradientFill } from './fill-layers';
 import type { FillContent, VectorMask, WarpStyle } from './types';
 import { boxChange, followVector, hasOutline, movedVector, vectorCoverage } from './vector-mask';
 
@@ -122,7 +122,7 @@ import { traceAlpha } from './trace-outline';
 export { CUSTOM_SHAPES, allCustomShapes, addCustomShape, loadCustomShapes } from './custom-shapes';
 import { replaceColours } from './color-replace';
 import { FILL_DEFAULTS, WarpStroke, contentFill, diffusionFill, frequencySplit, ringVariance, SMOOTH_RING_VARIANCE, fillTransparent, healFromSource, premultiply, scaleHealCorrection, spotHeal, unpremultiply, type FillOptions, type HealBlend, type HealMode, type HealSample } from './retouch';
-import { PIXEL_BLENDS, dissolveNoise } from './blend';
+import { EXTRA_BLENDS, PIXEL_BLENDS, dissolveNoise } from './blend';
 import { LUT3_N, adjustmentLut, adjustmentLut3 } from './lut';
 import { decontaminate } from './select-mask';
 import { alphaToMask, defringe, distanceSquared, removeMatte } from './matting';
@@ -148,7 +148,7 @@ export type { ColorRange, GrainSettings, HsvSettings } from './adjust';
 export { addNoise, defaultLensFix, gaussianBlur, gaussianMargin, histogram, lensCorrect, lensDistort, motionBlur, motionMargin, unsharpMask } from './filters';
 export type { LensFix } from './filters';
 export { defaultDevelopState, developImage, type DevelopState } from './develop';
-export { TEXT_ANTIALIAS, TEXT_FONTS, defaultText, fontCss, liveText, paragraphStylesFrom, characterStylesFrom, charStyleOf, withCharStyle, styleOf, textFromData, textKey, textMetrics, renderText, withStyle } from './text';
+export { TEXT_ANTIALIAS, TEXT_FONTS, baseDirection, shapingLang, defaultText, fontCss, liveText, paragraphStylesFrom, characterStylesFrom, charStyleOf, withCharStyle, styleOf, textFromData, textKey, textMetrics, renderText, withStyle } from './text';
 export { addPattern, allPatterns, patternById, projectPatterns, type Pattern } from './patterns';
 export { FRAME_DELAYS, captureFrame, frameLayers, timelineData, timelineFrom, type Frame, type FrameLayer, type Timeline } from './timeline';
 export { anchorNear, cornerAt, nearestSegment, pathBounds, pathData, pathFrom, pathSetData, pathSetFrom, splitSegment, tracePath, type Anchor, type NamedPath, type PathSet, type SubPath, type VectorPath } from './paths';
@@ -350,7 +350,7 @@ export class Engine {
   private viewSize = { w: 800, h: 600 };
   private readonly display = new Renderer();
   private readonly work = new Renderer();
-  private stroke: { project: Project; layerId: ID; target: Target; s: PixelStroke; heal?: HealMode | 'remove'; healFrom?: Pt; quick?: Raster; meet?: SelectionMask | null } | null = null;
+  private stroke: { project: Project; layerId: ID; target: Target; s: PixelStroke; heal?: HealMode | 'remove'; healFrom?: Pt; quick?: Raster; meet?: SelectionMask | null; alpha?: { id: ID; raster: Raster } } | null = null;
 
   /** Quick Mask (Q): the Brush and Eraser paint the selection itself, white adding to it and black
    *  taking away (the Eraser the other way), shown as a red tint where nothing is selected. Each stroke becomes the new
@@ -398,6 +398,31 @@ export class Engine {
     this.emit('selection', null);
     return true;
   }
+  /** A stroke on the targeted alpha channel: light paints it in (the Eraser the other way), inside any selection, one step; the channel shows live in its red view. */
+  private beginAlphaStroke(p: Project, a: AlphaChannel, pt: Pt, pressure: number, pose: PenPose, opts: { aliased?: boolean; square?: boolean; name?: string }): boolean {
+    const r = alphaRaster(a.mask, p.doc.width, p.doc.height);
+    p.history.begin(opts.name ?? (this.brushMode === 'erase' ? 'Eraser' : 'Brush'), p.snapshot());
+    const white = luminance(this.fg) >= 0.5 !== (this.brushMode === 'erase');
+    const s = new PixelStroke(r, [1, 0, 0, 1, 0, 0], { ...this.brush, color: { r: 255, g: 255, b: 255 }, flow: this.brushFlow, aliased: !!opts.aliased || !!opts.square, square: !!opts.square }, white ? 'source-over' : 'destination-out', p.selection);
+    s.keepWhole();
+    s.dynamics = structuredClone(this.brushDynamics);
+    if (!opts.aliased) s.setShape(this.brushShape, null);
+    this.stroke = { project: p, layerId: p.activeId ?? '', target: 'mask', s, alpha: { id: a.id, raster: r } };
+    s.to(pt, pressure, pose);
+    s.compose();
+    this.alphaStrokeShow(this.stroke, true);
+    return true;
+  }
+  private alphaShownAt = 0;
+  private alphaStrokeShow(st: { project: Project; alpha?: { id: ID; raster: Raster } }, force = false): void {
+    const a = st.alpha, now = performance.now();
+    if (!a || (!force && now - this.alphaShownAt < 60)) return;
+    this.alphaShownAt = now;
+    const ch = st.project.doc.alphas?.find((x) => x.id === a.id);
+    if (!ch) return;
+    this.alphaPreview = { project: st.project, shown: { ...ch, mask: rasterMask(a.raster) } };
+    this.emit('overlay', null);
+  }
   private lastBrush: { layerId: ID; target: Target; p: Pt } | null = null;
   private opacityOpen: Project | null = null;
   private fillOpen: Project | null = null;
@@ -407,7 +432,10 @@ export class Engine {
   private busyCount = 0;
 
   on<K extends keyof EngineEvents>(key: K, fn: (p: EngineEvents[K]) => void): () => void { return this.events.on(key, fn); }
-  emit<K extends keyof EngineEvents>(key: K, payload: EngineEvents[K]): void { this.events.emit(key, payload); }
+  emit<K extends keyof EngineEvents>(key: K, payload: EngineEvents[K]): void {
+    if (key === 'doc' || key === 'history' || key === 'active') this.current?.stampCollapsed();
+    this.events.emit(key, payload);
+  }
   /** Set while a preview computes, so its refusals stay quiet; the dialog's OK says them. */
   private quiet = false;
 
@@ -1140,7 +1168,14 @@ export class Engine {
       let n = p.doc.layers.filter((l) => l.frame).length + 1;
       while (p.doc.layers.some((l) => l.name === `Frame ${n}`)) n += 1;
       const layer = newLayer(`Frame ${n}`, p.doc, { isGroup: true, frame: { x, y, w, h, shape }, mask: { raster: mask, enabled: true, linked: true, placement: null } });
-      p.setLayers([...p.doc.layers, layer]);
+      // A frame drawn over a plain top-level pixel layer takes it: the layer moves inside and covers the frame.
+      const hit = this.layerAt({ x: x + w / 2, y: y + h / 2 }), under = hit ? p.layer(hit) : null, t = under?.transform;
+      const take = under && t && !under.parentId && under.name !== 'Background' && !under.isGroup && !under.mask && !under.vectorMask && !under.clipId && !under.link && !under.text && !under.shape && !under.smart && !under.adjustment && !under.video && !under.artboard && !under.locks?.all && !under.locks?.position && !t.rotation && t.w > 0 && t.h > 0 ? under : null;
+      if (take) {
+        const cover = Math.max(w / take.transform.w, h / take.transform.h), nw = take.transform.w * cover, nh = take.transform.h * cover;
+        const moved = { ...take, parentId: layer.id, transform: { ...take.transform, x: x + (w - nw) / 2, y: y + (h - nh) / 2, w: nw, h: nh } };
+        p.setLayers(this.normalizeClips([...p.doc.layers.filter((l) => l.id !== take.id), moved, layer]));
+      } else p.setLayers([...p.doc.layers, layer]);
       this.focus(p, layer.id);
       made = layer.id;
       return true;
@@ -1866,6 +1901,7 @@ export class Engine {
       }
       // Dissolve's pattern is fixed to document pixels; the display composites in screen pixels, so it stays on the CPU.
       if ((o?.blend ?? l.blend) === 'dissolve') return { reason: 'a layer in Dissolve mode' };
+      if (EXTRA_BLENDS.has(o?.blend ?? l.blend)) return { reason: 'a layer in Negation, Reflect, Glow or Xor mode' };
       if (l.tiled && view) {   // a giant layer: its tiles in view, each its own texture (1.62.9)
         if (mask || clip || fxParts.length) return { reason: 'a mask, clipping mask or style on a layer kept in tiles' };
         this.tileSpecs(l.tiled, o?.transform ?? l.transform, (o?.opacity ?? l.opacity) * (l.fill ?? 1), o?.blend ?? l.blend, folders, view, layers);
@@ -2285,6 +2321,8 @@ export class Engine {
   /** New text or settings for a type layer, re-rendered in place as one undo step: any scaling of the layer is kept,
    *  and so is its left edge, centre or right edge, by its alignment. */
   async updateTextLayer(id: ID, spec: TextSpec, move?: Pt): Promise<void> { return TX.updateTextLayer(this.textHost, id, spec, move); }
+  /** Shows type layer `id` as `spec` with no undo step; null puts the layer back as it was. */
+  async previewTextLayer(id: ID, spec: TextSpec | null): Promise<void> { return TX.previewTextLayer(this.textHost, id, spec); }
   /** Paragraph text's box set to `box` (in the text's own pixels) with its top left at `to`, reflowing the text; one undo step. */
   async resizeTextBox(id: ID, box: { w: number; h: number }, to: Pt): Promise<boolean> { return TX.resizeTextBox(this.textHost, id, box, to); }
 
@@ -2398,6 +2436,25 @@ export class Engine {
 
   /** Replaces a smart object's filter stack and re-renders its pixels from the source, as one undo step. */
   setSmartFilters(id: ID, filters: SmartFilter[], name = 'Smart Filters'): void { SM.setSmartFilters(this.smartHost, id, filters, name); }
+
+  /** A smart filter row dragged within its smart object: the filter at `from` moved to `to` in the stack, one step. */
+  reorderSmartFilter(id: ID, from: number, to: number): boolean {
+    const f = this.current?.layer(id)?.smart?.filters.slice();
+    if (!f || from === to || from < 0 || to < 0 || from >= f.length || to >= f.length) return false;
+    f.splice(to, 0, f.splice(from, 1)[0]);
+    this.setSmartFilters(id, f, 'Reorder Smart Filters');
+    return true;
+  }
+
+  /** A smart filter row dropped on another smart object: filter `filterId` of `fromId` copied to the end of `toId`'s stack
+   *  (taken off `fromId` as well when `move`), one step for each object. */
+  transferSmartFilter(fromId: ID, filterId: ID, toId: ID, move = false): boolean {
+    const p = this.current, a = p?.layer(fromId), b = p?.layer(toId), f = a?.smart?.filters.find((x) => x.id === filterId);
+    if (!a?.smart || !b?.smart || !f || fromId === toId) return false;
+    this.setSmartFilters(toId, [...b.smart.filters, { ...structuredClone(f), id: uid() }], move ? 'Move Smart Filter' : 'Copy Smart Filter');
+    if (move) this.setSmartFilters(fromId, a.smart.filters.filter((x) => x.id !== filterId), 'Move Smart Filter');
+    return true;
+  }
 
   /** Layer > Smart Filter > Disable Smart Filters (1.68.0): true while the active smart object has filters and all are off,
    *  so the command reads Enable Smart Filters. */
@@ -2668,6 +2725,8 @@ export class Engine {
   /** Replace Footage: the active video layer's original and painted frames both become `frames`, and its clip as long as
    *  they are. One undo step. */
   replaceFootage(frames: Raster[]): boolean { return VD.replaceFootage(this.videoHost, frames); }
+  /** Reload Frame: the playhead's frame read again from the frames of a clip chosen anew. */
+  reloadFrame(frames: Raster[]): boolean { return VD.reloadFrame(this.videoHost, frames); }
 
   /** Convert to Frame Animation: a frame for each frame of the work area (500 at most), the video timeline gone. */
   convertVideoToFrames(): boolean { return VD.convertVideoToFrames(this.videoHost); }
@@ -3935,8 +3994,8 @@ export class Engine {
     if (this.cycleToolBlend(forward)) return;
     const l = this.activeLayer;
     if (!l || l.artboard) return;
-    const n = BLEND_MODES.length, i = BLEND_MODES.findIndex((m) => m.id === l.blend);
-    this.setBlend(BLEND_MODES[(i + (forward ? 1 : n - 1)) % n].id);
+    const n = LAYER_BLEND_MODES.length, i = LAYER_BLEND_MODES.findIndex((m) => m.id === l.blend);
+    this.setBlend(LAYER_BLEND_MODES[(i + (forward ? 1 : n - 1)) % n].id);
   }
 
   moveLayers(ids: ID[], targetId: ID, where: 'above' | 'below' | 'inside', duplicate = false): void { LS.moveLayers(this.structHost, ids, targetId, where, duplicate); }
@@ -4597,6 +4656,8 @@ export class Engine {
     if (!this.room(first * ((p.selection ? 3 : 2) + 1.25) + fresh, 'This stroke')) return false;
     this.settle();
     if (this.quickMask) return this.beginQuickMaskStroke(p, pt, pressure, pose);   // paints the selection, any layer
+    const targeted = this.alphaTargeted();
+    if (targeted) return this.beginAlphaStroke(p, targeted, pt, pressure, pose, opts);   // paints the alpha channel, any layer
     if (!this.paintable(p.activeLayer, true)) { this.notice('Select a pixel layer to paint on.'); return false; }
     if (this.smartLocked(p)) return false;
     // A giant layer kept in tiles (1.62.5, DEV_PLAN 26.6d): the plain brush, pencil and eraser paint it; what needs
@@ -4668,6 +4729,7 @@ export class Engine {
     if (!st) return;
     const f = st.s.compose();
     if (!f) return;
+    if (st.alpha) { this.alphaStrokeShow(st); return; }
     if (st.quick) { this.emit('selection', null); return; }   // Quick Mask: the tint follows the stroke; no layer repaints
     const l = st.project.layer(st.layerId), r = st.target === 'mask' ? l?.mask?.raster : l?.raster;
     const t = st.target === 'mask' ? (l?.mask?.placement ?? l?.transform) : l?.transform;
@@ -4685,6 +4747,17 @@ export class Engine {
     if (!st) return;
     this.stroke = null;
     if (st.s.clipped) this.notice('The stroke stopped where it would have needed more memory than this computer allows formvis. Merge or delete layers, close a document, or paint in shorter strokes.');   // 1.60.6
+    if (st.alpha) {
+      st.s.commit();
+      const id = st.alpha.id, mask = rasterMask(st.alpha.raster), doc = st.project.doc;
+      this.alphaPreview = null;
+      st.project.doc = { ...doc, alphas: (doc.alphas ?? []).map((x) => (x.id === id ? { ...x, mask } : x)) };
+      st.project.history.end(st.project.snapshot());
+      st.s.release();
+      this.emit('overlay', null);
+      this.refresh();
+      return;
+    }
     if (st.quick) {
       // Quick Mask: the painted coverage is the new selection, in this stroke's history step (the raster was temporary).
       st.s.commit();
@@ -4767,7 +4840,21 @@ export class Engine {
     st.s.release();
   }
 
-  private regionEdit(name: string, apply: (a: { raster: Raster; target: Target; rect: Rect; cover: Surface | null }) => void, region?: SelectionMask | null): void { IE.regionEdit(this.editHost, name, apply, region); }
+  private regionEdit(name: string, apply: (a: { raster: Raster; target: Target; rect: Rect; cover: Surface | null }) => void, region?: SelectionMask | null): void {
+    const a = this.alphaTargeted(), p = this.current, layer = p?.activeLayer;
+    if (!a || !p || !layer) { IE.regionEdit(this.editHost, name, apply, region); return; }
+    const raster = alphaRaster(a.mask, p.doc.width, p.doc.height);
+    const host: IE.EditHost = {
+      ...this.editHost,
+      canPaint: () => true,
+      target: () => ({ layer, raster, local: [1, 0, 0, 1, 0, 0], target: 'mask' }),
+      edit: (label, fn) => this.edit(label, (q) => {
+        fn(q);
+        q.doc = { ...q.doc, alphas: (q.doc.alphas ?? []).map((x) => (x.id === a.id ? { ...x, mask: rasterMask(raster) } : x)) };
+      }),
+    };
+    IE.regionEdit(host, name, apply, region);
+  }
 
   /** A pattern tiled from the raster's corner over `rect`, kept to `cover` (the Paint Bucket's Pattern source). */
   private patternTint(rect: Rect, tile: Surface, cover: Surface | null, scale = 100, angle = 0): Surface {
@@ -5722,6 +5809,7 @@ export class Engine {
         : o.mode === 'highlights' ? Math.min(1, Math.max(0, (L - 0.55) / 0.2))
         : o.mode === 'shadows' ? Math.min(1, Math.max(0, (0.45 - L) / 0.2))
         : o.mode === 'midtones' ? Math.min(1, Math.max(0, 1 - Math.abs(L - 0.5) / 0.3))
+        : o.mode === 'luminosity' ? depthWeight(L * 255, dlo, dhi, o.fuzziness)
         : o.mode === 'depth' ? (depth ? depthWeight(depth[(Math.min(H - 1, sy) * W + Math.min(W - 1, sx)) * 4], dlo, dhi, o.fuzziness) : 0)
         : hueWeight(o.mode, r, g, b, o.fuzziness);
       if (o.invert) v = 1 - v;
@@ -7209,7 +7297,7 @@ export class Engine {
     { gradientEnd: null, kind: 'rectangle', cornerRadius: 0, smoothCorners: false, mode: 'shape', fill: 'fg', stroke: 'none', strokeWidth: 3, strokeDash: 'solid', strokeAlign: 'center', strokeCap: 'round', strokeJoin: 'round', strokeMiter: 4, gradient: 'off', gradientAngle: 0, ...DEFAULT_PATH_SHAPE };
   /** The Pen's Mode and Auto Add/Delete (1.52.8, the tool audit): a path, or a shape layer made from
    *  each path closed; clicking a path adds a point and clicking a point deletes it, unless turned off. */
-  penSettings = { mode: 'path' as 'path' | 'shape', autoAddDelete: true };
+  penSettings = { mode: 'path' as 'path' | 'shape' | 'pixels', autoAddDelete: true };
 
   /** The Pen in Shape mode: a closed path made into a shape layer with the Shape tool's fill and stroke. */
   shapeFromPath(path: VectorPath): void {
@@ -8179,7 +8267,8 @@ export class Engine {
 
   /** Layer > New Fill Layer (1.66.0): a fill layer over the whole canvas above the active layer, named by its
    *  kind, with the usual default layer mask (revealing all, or with a selection only it, the
-   *  selection used up) as the target, so painting it paints the mask. One New Fill Layer step; the dialog that follows
+   *  selection used up) as the target, so painting it paints the mask; with no selection and a path that has an outline,
+   *  the path becomes its vector mask. One New Fill Layer step; the dialog that follows
    *  sets its content into that step (amendNewFill) or takes it back (dropNewFill). */
   newFillLayer(content: FillContent): ID | null {
     let made: ID | null = null;
@@ -8191,7 +8280,8 @@ export class Engine {
       if (sel) { const r = new Raster(W, H); r.ctx.drawImage(sel.surface(), sel.x, sel.y); r.touch(); mask = { ...mask, raster: r }; }
       const shell = newLayer(`${base} ${n}`, p.doc, { fillContent: content, mask, parentId: this.parentForNew(p) }), raster = this.drawFill(shell, W, H);
       if (!raster) { this.notice('That pattern is not defined in this window.'); return false; }
-      this.insertAboveActive(p, { ...shell, raster });
+      const wp = sel ? null : this.workPath;
+      this.insertAboveActive(p, { ...shell, raster, ...(wp && hasOutline(wp) ? { vectorMask: { path: structuredClone(wp), enabled: true, linked: true, inverted: false } } : {}) });
       p.maskTarget = true;
       p.selection = null;
       made = shell.id;
@@ -8212,6 +8302,34 @@ export class Engine {
     if (r && t && p?.cmykLut) r = rasterFromChannels(deriveWhole(r.read(), t, false, false), p.cmykLut);
     this.fillPreview = p && l && r ? { project: p, layerId: l.id, source: r.canvas } : null;
     this.emit('render', null);
+  }
+
+  /** The active Gradient Fill layer when the Gradient tool may edit it on the canvas (no pending gradient, its mask not
+   *  the target): its id, `content` (or its own) and the line it is drawn along, in document points. */
+  gradientFillTarget(content?: GradientFill): { id: ID; content: GradientFill; start: Pt; end: Pt; frame: Rect } | null {
+    const p = this.current, l = p?.activeLayer, c = content ?? l?.fillContent;
+    if (!p || !l || c?.kind !== 'gradient' || l.fillContent?.kind !== 'gradient' || p.maskTarget || this.gradient || this.stroke) return null;
+    const frame = fillFrame({ ...l, fillContent: c }, p.doc.width, p.doc.height);
+    return { id: l.id, content: c, frame, ...fillLine(c, frame) };
+  }
+
+  /** `content` drawn along the line from `start` to `end` in `frame` (the Gradient tool's drag on a Gradient Fill layer). */
+  gradientFillAlong(content: GradientFill, frame: Rect, start: Pt, end: Pt): GradientFill | null { return fillFromLine(content, frame, start, end); }
+
+  /** `content` with one more stop at `at` along its line; the new stop's index. */
+  gradientFillAddStop(content: GradientFill, at: number): { content: GradientFill; index: number } { return addFillStop(content, at); }
+
+  /** The pending gradient made a Gradient Fill layer instead of pixels (its shape, colours, Reverse and Dither kept,
+   *  a selection becoming the layer's mask); the new layer's id. */
+  gradientAsFillLayer(): ID | null {
+    const g = this.gradient, p = this.current, st = this.gradientSettings;
+    if (!g || !p) return null;
+    const stops = resolveStops(this.gradientPreset(), this.fg, this.bg, false).map((s) => ({ at: s.at, color: s.rgb, alpha: st.transparency ? s.alpha : 1 }));
+    const base: GradientFill = { kind: 'gradient', stops, style: st.shape, angle: 90, scale: 1, reverse: st.reversed, dither: st.dither, align: false, offset: { x: 0, y: 0 } };
+    const start = { ...g.start }, end = { ...g.end };
+    this.cancelGradient();
+    const content = fillFromLine(base, { x: 0, y: 0, w: p.doc.width, h: p.doc.height }, start, end);
+    return content ? this.newFillLayer(content) : null;
   }
 
   /** Layer > Layer Content Options on a fill layer: its content set to `content` and drawn again, one Modify Fill Layer
@@ -9098,6 +9216,7 @@ export class Engine {
   }
   beginGradient(pt: Pt): boolean {
     this.gradientEdit = null;
+    if (this.alphaTargeted()) { this.notice('The gradient does not paint an alpha channel yet. Click RGB in the Channels panel, or fill the channel instead.'); return false; }
     const g = PO.beginGradient(this.paintHost, pt);
     this.gradient = g;
     return !!g;
@@ -11038,10 +11157,13 @@ function strokeShape(c: Ctx2D, shape: Path2D, s: ShapeStroke, closed: boolean): 
   const set = (x: Ctx2D, width: number): void => {
     x.strokeStyle = rgbCss(s.color); x.lineWidth = width; x.lineJoin = s.join ?? 'round'; x.miterLimit = Math.max(1, Math.min(10, s.miter ?? 4));
     x.lineCap = dotted ? (s.cap === 'square' ? 'square' : 'round') : s.dash === 'dashed' ? s.cap ?? 'butt' : s.cap ?? 'round';
-    x.setLineDash(s.dash === 'dashed' ? [4 * w, 2 * w] : dotted ? [0.001, 2 * w] : []);
+    x.setLineDash(s.dashes?.length ? s.dashes.map((d) => Math.max(0.001, d) * w) : s.dash === 'dashed' ? [4 * w, 2 * w] : dotted ? [0.001, 2 * w] : []);
+    x.lineDashOffset = (s.dashOffset ?? 0) * w;
+    x.globalAlpha = (x === c ? base : 1) * op;
   };
-  if (align === 'center') { set(c, w); c.stroke(shape); c.setLineDash([]); return; }
-  if (align === 'inside') { c.save(); c.clip(shape); set(c, 2 * w); c.stroke(shape); c.restore(); return; }
+  const base = c.globalAlpha, op = Math.max(0, Math.min(1, s.opacity ?? 1));
+  if (align === 'center') { set(c, w); c.stroke(shape); c.setLineDash([]); c.lineDashOffset = 0; c.globalAlpha = base; return; }
+  if (align === 'inside') { c.save(); c.clip(shape); set(c, 2 * w); c.stroke(shape); c.restore(); c.globalAlpha = base; return; }
   // Outside: twice the width, then the shape itself cut away, drawn over what is there.
   const t = createSurface(c.canvas.width, c.canvas.height), x = ctxOf(t);
   x.setTransform(c.getTransform());

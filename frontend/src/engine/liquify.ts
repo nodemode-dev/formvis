@@ -144,6 +144,36 @@ export function smoothField(f: LiquifyField, cx: number, cy: number, radius: num
   for (const [i, x, y] of keep) { f.d[i] = x; f.d[i + 1] = y; }
 }
 
+/** A field as smart filter settings: the grid and its displacements in sixteenths of a pixel, 16-bit, in base64. */
+export function fieldToSettings(f: LiquifyField): Record<string, unknown> {
+  const q = new Int16Array(f.d.length);
+  for (let i = 0; i < q.length; i++) q[i] = Math.max(-32767, Math.min(32767, Math.round(f.d[i] * 16)));
+  const bytes = new Uint8Array(q.buffer);
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 8192) s += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  return { gw: f.gw, gh: f.gh, cell: f.cell, d: btoa(s) };
+}
+
+/** The field a smart filter's settings hold; null when they do not describe a grid. */
+export function fieldFromSettings(o: Record<string, unknown>): LiquifyField | null {
+  const { gw, gh, cell, d } = o;
+  if (typeof gw !== 'number' || typeof gh !== 'number' || typeof cell !== 'number' || typeof d !== 'string' || gw < 2 || gh < 2 || cell < 1) return null;
+  let raw: string;
+  try { raw = atob(d); } catch { return null; }
+  if (raw.length !== gw * gh * 4) return null;
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+  const q = new Int16Array(bytes.buffer), f: LiquifyField = { gw, gh, cell, d: new Float32Array(q.length) };
+  for (let i = 0; i < q.length; i++) f.d[i] = q[i] / 16;
+  return f;
+}
+
+/** A Liquify smart filter run on `src`: the saved field, resampled from the smart object's original pixels. */
+export function runLiquifySmart(settings: Record<string, unknown>, src: ImageData): ImageData {
+  const f = fieldFromSettings(settings);
+  return f ? liquifyImage(src, f) : src;
+}
+
 export function resetField(f: LiquifyField): void { f.d.fill(0); }
 export const fieldIsZero = (f: LiquifyField): boolean => f.d.every((v) => v === 0);
 

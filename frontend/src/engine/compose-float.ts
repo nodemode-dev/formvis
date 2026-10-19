@@ -52,6 +52,10 @@ export const SEPARABLE_FLOAT: Partial<Record<BlendMode, Sep>> = {
   subtract: (b, s) => clamp01(b - s),
   divide: (b, s) => (s <= 0 ? (b <= 0 ? 0 : 1) : Math.min(1, b / s)),
   'linear-dodge': (b, s) => clamp01(b + s),
+  negation: (b, s) => 1 - Math.abs(1 - b - s),
+  reflect: (b, s) => (s >= 1 ? 1 : Math.min(1, (b * b) / (1 - s))),
+  glow: (b, s) => (b >= 1 ? 1 : Math.min(1, (s * s) / (1 - b))),
+  xor: (b, s) => ((Math.round(b * 255) ^ Math.round(s * 255)) & 255) / 255,
 };
 
 /** At 32 bits (1.57.1) values are linear light and may pass 1: the modes usually offered there, unclamped. Darker and

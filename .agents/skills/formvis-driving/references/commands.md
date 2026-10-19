@@ -1,6 +1,6 @@
 # formvis commands
 
-Generated from the window's command catalogue (1535 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1547 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
@@ -9,14 +9,14 @@ Generated from the window's command catalogue (1535 commands) by `./formvis agen
 - Filter: 93
 - Generate: 6
 - Help: 5
-- Image: 113
-- Layer: 265
+- Image: 114
+- Layer: 268
 - Paint: 1
-- Paths: 11
+- Paths: 12
 - Select: 43
 - Tool options: 438
 - Tools: 53
-- Type: 59
+- Type: 66
 - View: 98
 - Window: 146
 
@@ -25,8 +25,8 @@ Generated from the window's command catalogue (1535 commands) by `./formvis agen
 | Id | Name | Keys | Does |
 | --- | --- | --- | --- |
 | `apply-edit` | Apply Pending Edit | Enter | Applies what the tool in use is holding, as Return does: a crop, a warp, a floating selection, a polygon lasso. Bound to Return and movable in Keyboard Shortcuts. (changes the picture) |
-| `auto-align-layers` | Auto-Align Layers... |  | Aligns the selected layers to a reference layer (bottom, middle or top) by matching their features, with perspective, true cylindrical, collage-like reposition, vignette removal and lens distortion correction. (changes the picture) |
-| `auto-blend-layers` | Auto-Blend Layers... |  | Adds layer masks that blend the selected layers into a panorama or a focus stack, with halo control and an optional depth map layer. (changes the picture) |
+| `auto-align-layers` | Auto-Align Layers... |  | Aligns the selected layers to a reference layer (bottom, middle or top) by matching their features, with perspective, cylindrical, spherical, collage (move, turn and scale) or reposition projection, vignette removal and lens distortion correction. (changes the picture) |
+| `auto-blend-layers` | Auto-Blend Layers... |  | Adds layer masks that blend the selected layers into a panorama or a focus stack, with halo control and an optional depth map layer, or a multiband (pyramid) blend into a new layer. (changes the picture) |
 | `cancel-edit` | Cancel Pending Edit | Escape | Cancels what the tool in use is holding, as Escape does. Bound to Escape and movable in Keyboard Shortcuts. |
 | `cancel-job` | Cancel Background Job |  | Stops the running background job, such as a filter on a large layer, and keeps the document as it was. (changes the picture) |
 | `clean-working-files` | Working Files |  | Deletes the stored recovery copies of documents that are no longer open and the closed tabs kept for Reopen Closed Tab, and says how much space came back. (changes the picture) |
@@ -199,7 +199,7 @@ Generated from the window's command catalogue (1535 commands) by `./formvis agen
 | `list-actions` | List Actions |  | Returns the recorded actions with their step counts and which one is recording, or one action's steps with their kind, label and on or off state. |
 | `load-actions` | Load Actions... |  | Loads actions from an .atn file (base64) or formvis JSON; steps with no formvis equivalent stay in the action greyed and are skipped when it plays. |
 | `load-files-stack` | Load Files into Stack... |  | Loads image files (files, or documents true for the open ones) as the layers of one new document, optionally aligned and as a smart object stack; without parameters it opens the dialog. (changes the picture) |
-| `merge-hdr` | Merge to HDR... |  | Merges bracketed exposures (files, or documents true) into a 32-bit picture, or toned to 16 or 8 bit with depth, with optional alignment and exposure times; without parameters it opens the dialog. (changes the picture) |
+| `merge-hdr` | Merge to HDR... |  | Merges bracketed exposures (files, or documents true) into a 32-bit picture, or toned to 16 or 8 bit with depth, with optional alignment, exposure times and ghost removal (ghost strength, ghost base photo); without parameters it opens the dialog. (changes the picture) |
 | `new` | New Canvas... | Alt+Mod+N Mod+N | Opens the New Canvas dialog. |
 | `new-canvas-model-preset` | New Canvas from Model Preset... |  | Opens New Canvas from Model Preset, which makes a blank document at a size a chosen model family works well at. (changes the picture) |
 | `new-from-clipboard` | New from Clipboard |  | Makes a new document the size of the clipboard picture. (changes the picture) |
@@ -278,7 +278,7 @@ Generated from the window's command catalogue (1535 commands) by `./formvis agen
 | `filter-lensCorrection` | Lens Correction... | Shift+Mod+R | Opens the Lens Correction filter on the active layer. (changes the picture) |
 | `filter-lensFlare` | Lens Flare... |  | Opens the Lens Flare filter on the active layer. (changes the picture) |
 | `filter-lightingEffects` | Lighting Effects... |  | Opens the Lighting Effects filter on the active layer. (changes the picture) |
-| `filter-liquify` | Liquify... | Shift+Mod+X | Opens the Liquify workspace. (changes the picture) |
+| `filter-liquify` | Liquify... | Shift+Mod+X | Opens the Liquify workspace; on a smart object the result is kept as an editable smart filter. (changes the picture) |
 | `filter-maximum` | Maximum... |  | Opens the Maximum filter on the active layer. (changes the picture) |
 | `filter-median` | Median... |  | Opens the Median filter on the active layer. (changes the picture) |
 | `filter-mezzotint` | Mezzotint... |  | Opens the Mezzotint filter on the active layer. (changes the picture) |
@@ -386,6 +386,7 @@ Generated from the window's command catalogue (1535 commands) by `./formvis agen
 | `adj-levels` | Levels... | Mod+L | Opens Levels and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-light` | Light... |  | Opens Light and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-motionBlur` | Motion Blur... |  | Opens Motion Blur and applies it to the pixels of the active layer. (changes the picture) |
+| `adj-normalise` | Normalise... |  | Opens Normalise and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-photoFilter` | Photo Filter... |  | Opens Photo Filter and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-posterize` | Posterize... |  | Opens Posterize and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-selectiveColor` | Selective Color... |  | Opens Selective Color and applies it to the pixels of the active layer. (changes the picture) |
@@ -623,6 +624,7 @@ Generated from the window's command catalogue (1535 commands) by `./formvis agen
 | `new-adj-levels` | New Levels Layer... |  | Adds a Levels Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-light` | New Light Layer... |  | Adds a Light Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-motionBlur` | New Motion Blur Layer... |  | Adds a Motion Blur Layer adjustment layer; its dialog opens for the values. (changes the picture) |
+| `new-adj-normalise` | New Normalise Layer... |  | Adds a Normalise Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-photoFilter` | New Photo Filter Layer... |  | Adds a Photo Filter Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-posterize` | New Posterize Layer... |  | Adds a Posterize Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-selectiveColor` | New Selective Color Layer... |  | Adds a Selective Color Layer adjustment layer; its dialog opens for the values. (changes the picture) |
@@ -634,6 +636,7 @@ Generated from the window's command catalogue (1535 commands) by `./formvis agen
 | `new-artboard` | New Artboard |  | Adds an artboard. (changes the picture) |
 | `new-artboard-dialog` | Artboard... |  | Opens the New Artboard dialog. (changes the picture) |
 | `new-dodge-burn-layer` | Dodge & Burn Layer |  | Adds a Soft Light layer filled with 50% grey for dodging and burning. (changes the picture) |
+| `new-fill-adjustment` | New Fill or Adjustment Layer |  | Opens the list of fill layers and adjustment layers beside the Layers panel button and adds the one picked. (changes the picture) |
 | `new-fill-gradient` | Gradient... |  | Adds a gradient fill layer. (changes the picture) |
 | `new-fill-pattern` | Pattern... |  | Adds a pattern fill layer. (changes the picture) |
 | `new-fill-solid` | Solid Color... |  | Adds a solid colour fill layer. (changes the picture) |
@@ -740,6 +743,7 @@ Generated from the window's command catalogue (1535 commands) by `./formvis agen
 | `video-layer-blank` | New Blank Video Layer |  | Adds a video layer of empty frames the length of the timeline. (changes the picture) |
 | `video-layer-from-file` | New Video Layer from File... |  | Adds a video file as a layer with one frame per video frame. (changes the picture) |
 | `video-rasterize` | Rasterize Video Layer |  | Turns the video layer into a pixel layer of the playhead frame. (changes the picture) |
+| `video-reload-frame` | Reload Frame... |  | Reads the playhead frame again from a clip or pictures you choose, painted frame and original both. (changes the picture) |
 | `video-replace-footage` | Replace Footage... |  | Swaps the active video layer's footage for a chosen clip, keeping its place on the timeline. (changes the picture) |
 | `video-restore-all` | Restore All Frames |  | Puts every frame of the video layer back to the footage as loaded. (changes the picture) |
 | `video-restore-frame` | Restore Frame |  | Puts the playhead frame back to the footage as loaded. (changes the picture) |
@@ -797,6 +801,7 @@ Generated from the window's command catalogue (1535 commands) by `./formvis agen
 | `fill-path-dialog` | Fill Path... |  | Opens Fill Path. (changes the picture) |
 | `new-path` | New Path |  | Starts a new empty path. (changes the picture) |
 | `new-shape-path` | New Shape Layer from Path |  | Makes a shape layer from the current path. (changes the picture) |
+| `path-fill-rule` | Path Fill Rule: Even-Odd |  | Switches the current path between the non-zero and the even-odd fill rule, which decides which overlapping areas are inside when it is filled, stroked or made a selection. (changes the picture) |
 | `path-selection` | Make Selection from Path | Mod+Enter | Makes a selection from the current path, with an optional feather radius, anti-alias choice and operation (replace, add, subtract, intersect). (changes the picture) |
 | `path-selection-dialog` | Make Selection from Path... |  | Opens Make Selection from Path, with Feather Radius, Anti-aliased and the operation. (changes the picture) |
 | `selection-to-work-path` | Make Work Path from Selection |  | Traces the selection's outline into the Work Path in the Paths panel, simplified within a tolerance in pixels. (changes the picture) |
@@ -1334,14 +1339,14 @@ Generated from the window's command catalogue (1535 commands) by `./formvis agen
 | `tool.select.convertPoint` | Convert Point Tool |  | Makes the Convert Point tool the active tool (key P). Click a smooth point to make it a corner · Drag from a point to pull out smooth handles · Drag a handle to move it alone |
 | `tool.select.count` | Count Tool |  | Makes the Count tool the active tool (key I). Click to count · Drag a mark to move it · Alt-click a mark to remove it · New Group in the bar starts another count |
 | `tool.select.crop` | Crop Tool |  | Makes the Crop tool the active tool (key C). Drag a frame · Drag inside to move it · Handles resize · Alt keeps the centre · Edges snap to the canvas and layer edges · Enter crops · Escape cancels |
-| `tool.select.curvaturePen` | Curvature Pen Tool |  | Makes the Curvature Pen tool the active tool (key P). Click to place points; the curve runs smoothly through them · Alt-click for a corner · click the first point to close · Enter ends |
+| `tool.select.curvaturePen` | Curvature Pen Tool |  | Makes the Curvature Pen tool the active tool (key P). Click to place points; the curve runs smoothly through them · Alt-click for a corner · drag a point to move it · double-click a point to toggle corner · click the first point to close · Enter ends |
 | `tool.select.directSelect` | Direct Selection Tool |  | Makes the Direct Selection tool the active tool (key A). Click a point to select it, Shift to add, or drag a box · Drag points to move them, handles to reshape · Alt-drag a point to pull out handles, a handle to break it · Alt-click a segment to select its whole path · Arrows nudge |
 | `tool.select.dodge` | Dodge Tool |  | Makes the Dodge tool the active tool (key O). Paint to lighten, most in the chosen tonal range · [ ] size |
 | `tool.select.eraser` | Eraser Tool |  | Makes the Eraser tool the active tool (key E). Drag to erase · Shift-click erases a line from the last point · [ ] size · Shift+[ ] hardness |
 | `tool.select.eyedropper` | Eyedropper Tool |  | Makes the Eyedropper tool the active tool (key I). Click or drag to sample the foreground colour from the visible image · Alt-click samples the background colour |
 | `tool.select.frame` | Frame Tool |  | Makes the Frame tool the active tool (key K). Drag to draw a frame · Shift for a square or circle · Alt to draw from the centre · Import an image with the frame selected to fill it |
-| `tool.select.freeformPen` | Freeform Pen Tool |  | Makes the Freeform Pen tool the active tool (key P). Drag to draw a path freehand · end near the start to close it · Curve Fit sets how closely it follows |
-| `tool.select.gradient` | Gradient Tool |  | Makes the Gradient tool the active tool (key G). Drag to draw a gradient · Drag either end to adjust it · Click the line to add a colour stop, drag stops and midpoints, Alt-click a stop to remove it, Ctrl-click to give it the foreground colour · Shift snaps to 45 degrees · Enter applies · Escape cancels · Switching tools applies |
+| `tool.select.freeformPen` | Freeform Pen Tool |  | Makes the Freeform Pen tool the active tool (key P). Drag to draw a path freehand · end near the start to close it · Alt-click for straight segments · Curve Fit sets how closely it follows |
+| `tool.select.gradient` | Gradient Tool |  | Makes the Gradient tool the active tool (key G). Drag to draw a gradient · Drag either end to adjust it · Click the line to add a colour stop, drag stops and midpoints, Alt-click a stop to remove it, Ctrl-click to give it the foreground colour · On a Gradient Fill layer the same handles edit the layer · Shift snaps to 45 degrees · Enter applies · Escape cancels · Switching tools applies |
 | `tool.select.hand` | Hand Tool |  | Makes the Hand tool the active tool (key H). Drag to pan · Scroll pans · Cmd/Ctrl + scroll zooms · Hold Space to pan with any tool |
 | `tool.select.healingBrush` | Healing Brush Tool |  | Makes the Healing Brush tool the active tool (key J). Alt-click to set the source, then paint; on release the copied texture blends into its surroundings · Aligned keeps the offset between strokes · Shift+J cycles the healing tools · [ ] size |
 | `tool.select.historyBrush` | History Brush Tool |  | Makes the History Brush tool the active tool (key Y). Paint to bring back the layer as it was in the source snapshot or history state (History panel) · [ ] size |
@@ -1395,6 +1400,7 @@ Generated from the window's command catalogue (1535 commands) by `./formvis agen
 | `language-default` | Default Features |  | Sets the active type layer, and new type, to the browser's default shaping. (changes the picture) |
 | `language-east-asian` | East Asian Features |  | Sets the active type layer, and new type, to East Asian features: Japanese glyph forms by default and legibility-first shaping. (changes the picture) |
 | `language-middle-eastern` | Middle Eastern Features |  | Sets the active type layer, and new type, to Middle Eastern features: right-to-left base direction, Arabic shaping by default. (changes the picture) |
+| `language-south-asian` | Middle Eastern and South Asian Features |  | Sets the active type layer, and new type, to Middle Eastern and South Asian features: complex-script shaping with Hindi forms by default and a base direction that follows the text. (changes the picture) |
 | `list-fonts` | List Fonts |  | Returns the font families the type menus offer, the four faces each has and the family new text uses. (changes the picture) |
 | `load-default-type-styles` | Load Default Type Styles |  | Adds the saved default type styles (else Heading 1, Heading 2, Body and Caption) to the document and takes the saved Type settings for new type. (changes the picture) |
 | `paragraph-styles` | Paragraph Styles... |  | Opens Paragraph Styles. |
@@ -1412,6 +1418,10 @@ Generated from the window's command catalogue (1535 commands) by `./formvis agen
 | `type-aa-windows` | Windows |  | Sets the type anti-aliasing to Windows: a coverage gamma on grayscale edges. (changes the picture) |
 | `type-aa-windows-lcd` | Windows LCD |  | Sets the type anti-aliasing to Windows LCD: each edge averaged with its horizontal neighbours. (changes the picture) |
 | `type-all-caps` | All Caps |  | Sets the active type layer, and new type, in capital letters, or back to as typed. (changes the picture) |
+| `type-angle` | Type Angle |  | Turns the active type layer by an angle in degrees, clockwise, drawing the glyphs at that angle so the edges stay sharp; 0 sets it straight. (changes the picture) |
+| `type-direction-auto` | Follow Language Options |  | Sets the active type layer, and new type, to take its base direction from Language Options. (changes the picture) |
+| `type-direction-ltr` | Left to Right |  | Sets the active type layer, and new type, to a left-to-right base direction. (changes the picture) |
+| `type-direction-rtl` | Right to Left |  | Sets the active type layer, and new type, to a right-to-left base direction: the order of runs and the side punctuation falls on follow it. (changes the picture) |
 | `type-features` | OpenType Features |  | Turns OpenType features (ligatures, small caps, oldstyle figures, swash and more) on or off for the active type layer. (changes the picture) |
 | `type-horizontal` | Horizontal |  | Sets the active type layer to horizontal lines of type. (changes the picture) |
 | `type-on-arc` | Type on Arc... |  | Sets text on an arc, live and editable. (changes the picture) |
@@ -1429,6 +1439,8 @@ Generated from the window's command catalogue (1535 commands) by `./formvis agen
 | `type-ot-titl` | Titling Alternates |  | Turns the OpenType titling alternates on or off for the characters selected while typing, else a start to end range of the selected type layers, else the whole layers, else new type. (changes the picture) |
 | `type-path-flip` | Flip Type on Path |  | Moves type set on a path to the other side of the path. (changes the picture) |
 | `type-path-release` | Release Type from Path |  | Releases type from its path: the same words become straight point text. (changes the picture) |
+| `type-range-character-style` | Apply Character Style to Range |  | Applies a saved character style (by name or id) to a character range of the selected type layers, or to the letters selected while typing, as per-range overrides. (changes the picture) |
+| `type-range-style` | Character Range Style |  | Sets size, colour, font family, weight, bold, italic, baseline shift, tracking or language on a character range of the selected type layers (the whole text when no range is given), or on the letters selected while typing; clear true takes the range back to the layer's own look. (changes the picture) |
 | `type-small-caps` | Small Caps |  | Sets the active type layer, and new type, in small capitals, or back to as typed. (changes the picture) |
 | `type-strikethrough` | Strikethrough |  | Strikes through the active type layer and new type, or removes it. (changes the picture) |
 | `type-to-shape` | Convert to Shape |  | Turns the active type layer into a shape layer in the text colour and hides the type layer. (changes the picture) |
@@ -1617,7 +1629,7 @@ Generated from the window's command catalogue (1535 commands) by `./formvis agen
 | `panel-history` | History |  | Shows or hides the History panel. |
 | `panel-info` | Info |  | Shows or hides the Info panel. |
 | `panel-layer-comps` | Layer Comps |  | Shows or hides the Layer Comps panel. |
-| `panel-layers` | Layers |  | Shows or hides the Layers panel. |
+| `panel-layers` | Layers | F7 | Shows or hides the Layers panel. |
 | `panel-measurement-log` | Measurement Log |  | Shows or hides the Measurement Log panel. |
 | `panel-modifier-keys` | Modifier Keys |  | Shows or hides the Modifier Keys panel. |
 | `panel-navigator` | Navigator |  | Shows or hides the Navigator panel. |

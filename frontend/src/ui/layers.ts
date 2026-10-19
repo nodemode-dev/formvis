@@ -1,8 +1,9 @@
-import { BLEND_MODES, byId, hierarchy, type Engine, type HierarchyEntry, type ID, type Layer, type LayerEffects, type Project, type Raster, defaultEffects, effectsPresent, instances, MULTI_EFFECTS } from '../engine';
+import { LAYER_BLEND_MODES, byId, hierarchy, type Engine, type HierarchyEntry, type ID, type Layer, type LayerEffects, type Project, type Raster, defaultEffects, effectsPresent, instances, MULTI_EFFECTS } from '../engine';
 import { PanelGroup } from './panel-group';
 import type { ChannelsPanel } from './channels';
 import type { LayerLocks } from '../engine/types';
 import { groupIsolated } from '../engine/tree';
+import { vectorCoverage } from '../engine/vector-mask';
 import { LAYER_LABELS } from '../engine/types';
 import { enhanceSelect } from './dropdown';
 import { el, isMac, patchList, q, setClass, setDisabled, setHidden, setHtml, setStyleVar, setText, setTitle, setValue } from './dom';
@@ -31,6 +32,7 @@ const LOCKS = [
   { id: 'transparency', title: 'transparent pixels', icon: 'canvasGrid' },
   { id: 'pixels', title: 'image pixels', icon: 'paintbrush' },
   { id: 'position', title: 'position', icon: 'moveSel' },
+  { id: 'artboard', title: 'auto-nesting into and out of artboards', icon: 'artboard' },
   { id: 'all', title: 'all', icon: 'lock' },
 ] as const;
 /** A layer's size as it shows on the canvas, with its scale when it is not 100%. */
@@ -66,8 +68,8 @@ const BLEND_GROUPS: ReadonlyArray<[string, readonly string[]]> = [
   ['Component', ['hue', 'saturation', 'color', 'luminosity']],
 ];
 function blendOptions(): string {
-  const opt = (id: string): string => { const b = BLEND_MODES.find((m) => m.id === id); return b ? `<option value="${b.id}">${b.label}</option>` : ''; };
-  const named = new Set(BLEND_GROUPS.flatMap(([, ids]) => ids)), rest = BLEND_MODES.filter((m) => !named.has(m.id));
+  const opt = (id: string): string => { const b = LAYER_BLEND_MODES.find((m) => m.id === id); return b ? `<option value="${b.id}">${b.label}</option>` : ''; };
+  const named = new Set(BLEND_GROUPS.flatMap(([, ids]) => ids)), rest = LAYER_BLEND_MODES.filter((m) => !named.has(m.id));
   // Pass Through is a folder's alone: its option is built here once and shown or hidden with the selection.
   return '<option value="pass-through" hidden>Pass Through</option>' + BLEND_GROUPS.map(([g, ids]) => `<optgroup label="${g}">${ids.map(opt).join('')}</optgroup>`).join('') + (rest.length ? `<optgroup label="Other">${rest.map((m) => opt(m.id)).join('')}</optgroup>` : '');
 }
@@ -92,7 +94,7 @@ export class LayersPanel {
   private readonly isolation = new WeakMap<Project, Set<ID>>();
   /** The Paths panel's section, shown in this group's Paths tab (adoptPaths). */
   private paths: HTMLElement | null = null;
-  private readonly painted = new WeakMap<HTMLElement, { pixels: string; mask: string }>();
+  private readonly painted = new WeakMap<HTMLElement, { pixels: string; mask: string; vmask?: string }>();
   /** How many layers hold each link, counted at each render (1.65.3): a row shows its link when another holds it. */
   private links = new Map<ID, number>();
   private frame = 0;
@@ -113,14 +115,14 @@ export class LayersPanel {
       `<div class="cv-layer-props"><div class="cv-layer-kind"><select class="cv-select cv-kind" title="Filter by kind" aria-label="Filter by kind"><option value="all">Kind</option>${KINDS.map((k) => `<option value="${k.id}">${k.label}</option>`).join('')}</select>` +
       `<div class="cv-kind-icons" role="group" aria-label="Show only">${KINDS.map((k) => `<button class="cv-kind-btn" type="button" data-kind="${k.id}" title="${k.label} layers" aria-label="${k.label} layers" aria-pressed="false">${icon(k.icon, 14)}</button>`).join('')}</div></div>` +
       `<div class="cv-layer-filt"><input class="cv-input cv-filt-name" type="search" placeholder="Name" title="Filter by name" aria-label="Filter by name" spellcheck="false">` +
-      `<select class="cv-select cv-filt-mode" title="Filter by blend mode" aria-label="Filter by blend mode"><option value="all">Mode</option>${BLEND_MODES.map((m) => `<option value="${m.id}">${m.label}</option>`).join('')}</select>` +
+      `<select class="cv-select cv-filt-mode" title="Filter by blend mode" aria-label="Filter by blend mode"><option value="all">Mode</option>${LAYER_BLEND_MODES.map((m) => `<option value="${m.id}">${m.label}</option>`).join('')}</select>` +
       `<select class="cv-select cv-filt-attr" title="Filter by attribute" aria-label="Filter by attribute"><option value="all">Attribute</option>${ATTRS.map(([id, label]) => `<option value="${id}">${label}</option>`).join('')}</select>` +
       `<select class="cv-select cv-filt-label" title="Filter by colour label" aria-label="Filter by colour label"><option value="all">Color</option><option value="none">No Color</option>${LAYER_LABELS.map((c) => `<option value="${c}">${c[0].toUpperCase()}${c.slice(1)}</option>`).join('')}</select></div>` +
       `<div class="cv-layer-blendrow"><select class="cv-select cv-blend" title="Blend mode" aria-label="Blend mode">${blendOptions()}</select><span class="cv-vsep"></span>` +
       `<label class="cv-opacity" title="Opacity"><span>Opacity</span><span class="cv-num"><input class="cv-opacity-field" type="text" inputmode="numeric" value="100" aria-label="Opacity"><span class="cv-unit">%</span></span><button class="cv-slide-btn cv-slide-opacity" type="button" title="${t('Opacity slider')}" aria-label="${t('Opacity slider')}" aria-haspopup="dialog" aria-expanded="false">${icon('chevronDown', 12)}</button></label></div>` +
       `<div class="cv-layer-lockrow"><span class="cv-lock-slot"></span><span class="cv-vsep"></span><label class="cv-opacity" title="Fill: the layer's pixels, not its styles"><span>Fill</span><span class="cv-num"><input class="cv-fill-field" type="text" inputmode="numeric" value="100" aria-label="Fill"><span class="cv-unit">%</span></span><button class="cv-slide-btn cv-slide-fill" type="button" title="${t('Fill slider')}" aria-label="${t('Fill slider')}" aria-haspopup="dialog" aria-expanded="false">${icon('chevronDown', 12)}</button></label></div></div>` +
       `<div class="cv-layer-list"><div class="cv-layer-rows" role="listbox" aria-label="Layers"></div><div class="cv-drop-line"></div><div class="cv-layers-empty">No canvas open. Create one or drop images on the stage.</div></div>` +
-      `<div class="cv-panel-foot"><button class="cv-icon-btn" type="button" data-cmd="link-layers">${icon('link', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="add-mask">${icon('mask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="clip">${icon('clipMask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-folder">${icon('folder', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="duplicate">${icon('duplicate', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-layer">${icon('add', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="delete-layer-ask">${icon('delete', 16)}</button></div></div>`);
+      `<div class="cv-panel-foot"><button class="cv-icon-btn" type="button" data-cmd="link-layers">${icon('link', 16)}</button><button class="cv-icon-btn cv-foot-fx" type="button" data-cmd="layer-style">fx</button><button class="cv-icon-btn" type="button" data-cmd="add-mask">${icon('mask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-fill-adjustment">${icon('halfCircle', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="clip">${icon('clipMask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-folder">${icon('folder', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="duplicate">${icon('duplicate', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-layer">${icon('add', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="delete-layer-ask">${icon('delete', 16)}</button></div></div>`);
     // The Layers group is a panel group (1.49.2, the owner's walkthrough: every panel groups with any other): its Layers
     // tab is this page, Channels and Paths are adopted as tabs, and any of them can move to another group.
     this.page = root.lastElementChild as HTMLElement;
@@ -267,7 +269,7 @@ export class LayersPanel {
     this.fName.addEventListener('input', () => this.render());
     for (const s of [this.fMode, this.fAttr, this.fLabel]) s.addEventListener('change', () => this.render());
     // The panel menu, by the tab shown: the Layers panel's commands, or the Paths panel's.
-    this.group.setMenu(() => this.group.current === 'paths' ? ['new-path', 'delete-path', '-', 'fill-path-dialog', 'stroke-path-dialog', '-', 'clipping-path'] : this.group.current === 'channels' ? [] : ['new-layer', 'duplicate-dialog', 'delete-layer', '-', 'new-folder', 'group', '-', 'merge', '-', 'layer-style', 'convert-smart', 'rasterize']);
+    this.group.setMenu(() => this.group.current === 'paths' ? ['new-path', 'delete-path', '-', 'fill-path-dialog', 'stroke-path-dialog', '-', 'path-fill-rule', 'clipping-path'] : this.group.current === 'channels' ? [] : ['new-layer', 'duplicate-dialog', 'delete-layer', '-', 'new-folder', 'group', '-', 'merge', '-', 'layer-style', 'convert-smart', 'rasterize']);
     for (const k of ['doc', 'active', 'projects', 'history'] as const) engine.on(k, () => this.queue());
     this.bindRows();
     this.render();
@@ -346,7 +348,7 @@ export class LayersPanel {
   }
 
   private createRow(e: HierarchyEntry): HTMLElement {
-    const row = el(`<div class="cv-layer" role="option"><button class="cv-layer-eye" type="button" tabindex="-1" aria-label="Show or hide"><span class="cv-eye-on">${icon('eye', 14)}</span><span class="cv-eye-off">${icon('eyeOff', 14)}</span></button><span class="cv-layer-indent"></span><button class="cv-layer-disclose" type="button" tabindex="-1" aria-label="Expand or collapse"><span class="cv-open">${icon('chevronDown', 12)}</span><span class="cv-shut">${icon('chevronRight', 12)}</span></button><canvas class="cv-layer-thumb" width="${THUMB}" height="${THUMB}"></canvas><span class="cv-layer-kind"></span><canvas class="cv-layer-mask" width="${THUMB}" height="${THUMB}"></canvas><span class="cv-layer-name"><button class="cv-layer-chain" type="button" tabindex="-1" hidden aria-label="Link the mask to the layer" aria-pressed="true">${icon('link', 12)}</button><span class="cv-layer-clip">${icon('clipMask', 12)}</span><span class="cv-layer-label"></span><span class="cv-layer-size" hidden></span><span class="cv-layer-fx" hidden title="Layer style: click to list its effects, double-click to edit">fx</span><span class="cv-layer-smart" hidden title="Smart object: double-click for its filters">${icon('smartObject', 12)}</span><span class="cv-layer-vector" hidden title="Shape layer: double-click for its fill and stroke">${icon('penTool', 12)}</span><span class="cv-layer-linked" hidden title="Linked: moves with the layers linked to it">${icon('link', 12)}</span><span class="cv-layer-locked" hidden title="Locked">${icon('lock', 12)}</span></span><div class="cv-layer-fxlist" hidden></div></div>`);
+    const row = el(`<div class="cv-layer" role="option"><button class="cv-layer-eye" type="button" tabindex="-1" aria-label="Show or hide"><span class="cv-eye-on">${icon('eye', 14)}</span><span class="cv-eye-off">${icon('eyeOff', 14)}</span></button><span class="cv-layer-indent"></span><button class="cv-layer-disclose" type="button" tabindex="-1" aria-label="Expand or collapse"><span class="cv-open">${icon('chevronDown', 12)}</span><span class="cv-shut">${icon('chevronRight', 12)}</span></button><canvas class="cv-layer-thumb" width="${THUMB}" height="${THUMB}"></canvas><span class="cv-layer-kind"></span><span class="cv-layer-masks"><canvas class="cv-layer-mask" width="${THUMB}" height="${THUMB}"></canvas><canvas class="cv-layer-vmask" width="${THUMB}" height="${THUMB}"></canvas></span><span class="cv-layer-name"><button class="cv-layer-chain" type="button" tabindex="-1" hidden aria-label="Link the mask to the layer" aria-pressed="true">${icon('link', 12)}</button><span class="cv-layer-clip">${icon('clipMask', 12)}</span><span class="cv-layer-label"></span><span class="cv-layer-size" hidden></span><span class="cv-layer-fx" hidden title="Layer style: click to list its effects, double-click to edit">fx</span><span class="cv-layer-smart" hidden title="Smart object: double-click for its filters">${icon('smartObject', 12)}</span><span class="cv-layer-vector" hidden title="Shape layer: double-click for its fill and stroke">${icon('penTool', 12)}</span><span class="cv-layer-linked" hidden title="Linked: moves with the layers linked to it">${icon('link', 12)}</span><span class="cv-layer-locked" hidden title="Locked">${icon('lock', 12)}</span></span><div class="cv-layer-fxlist" hidden></div></div>`);
     row.dataset.id = e.layer.id;
     this.updateRow(row, e);
     return row;
@@ -380,7 +382,7 @@ export class LayersPanel {
     setHidden(q(row, '.cv-layer-smart'), !l.smart);
     setHidden(q(row, '.cv-layer-vector'), !l.vector);
     setHidden(q(row, '.cv-layer-linked'), !l.link || (this.links.get(l.link) ?? 0) < 2);
-    const lk = l.locks ?? {}, locked = !!(lk.all || lk.transparency || lk.pixels || lk.position);
+    const lk = l.locks ?? {}, locked = !!(lk.all || lk.transparency || lk.pixels || lk.position || lk.artboard);
     setHidden(q(row, '.cv-layer-locked'), !locked);
     setClass(q(row, '.cv-layer-locked'), 'is-partial', locked && !lk.all);
     setClass(row, 'is-text', this.engine.liveText(l));
@@ -390,7 +392,7 @@ export class LayersPanel {
     const board = l.isGroup && !l.parentId ? l.artboard : null;
     const kind = board ? 'artboard' : l.isGroup ? (collapsed ? 'folder' : 'folderOpen') : l.adjustment ? 'levels' : '';
     if (kind) setHtml(q(row, '.cv-layer-kind'), icon(kind, 16), kind);
-    const dims = board ? `${board.w} x ${board.h}` : active && l.raster && !l.isGroup ? sizeOf(l) : '';
+    const dims = board ? `${board.w} x ${board.h}` : active && l.raster && !l.isGroup ? `${sizeOf(l)}${p.doc.depth && p.doc.depth !== 8 ? ` ${p.doc.depth}-bit` : ''}` : '';
     setHidden(q(row, '.cv-layer-size'), !dims);
     setText(q(row, '.cv-layer-size'), dims);
     const chain = q(row, '.cv-layer-chain'), linked = l.mask?.linked !== false;
@@ -398,7 +400,13 @@ export class LayersPanel {
     chain.setAttribute('aria-pressed', String(linked));
     setClass(chain, 'is-off', !linked);
     setTitle(chain, linked ? 'Mask linked to the layer: click to unlink' : 'Mask unlinked: click to link');
+    const vm = l.vectorMask ?? null;
+    setClass(row, 'has-vmask', !!vm);
+    setClass(row, 'vmask-off', !!vm && !vm.enabled);
+    setClass(row, 'is-vmask-target', active && !!vm && !l.mask);
     const state = this.painted.get(row) ?? { pixels: '', mask: '' };
+    const vk = vm ? `${this.vectorKey(vm)}:${vm.enabled}:${vm.inverted}:${p.doc.width}x${p.doc.height}` : 'none';
+    if (state.vmask !== vk) { if (vm) this.drawVectorThumb(q<HTMLCanvasElement>(row, '.cv-layer-vmask'), vm, p.doc.width, p.doc.height); state.vmask = vk; }
     const pk = l.raster && !l.isGroup ? `${l.raster.id}:${l.raster.version}` : 'none';
     if (state.pixels !== pk) { this.drawThumb(q<HTMLCanvasElement>(row, '.cv-layer-thumb'), l.isGroup ? null : l.raster, false); state.pixels = pk; }
     const mk = l.mask ? `${l.mask.raster?.id ?? 'full'}:${l.mask.raster?.version ?? 0}` : 'none';
@@ -425,6 +433,32 @@ export class LayersPanel {
       setClass(r, 'is-off', !shown);
       setText(q(r, '.cv-fx-name'), `${FX_ROWS.find(([key]) => key === k)?.[1] ?? k}${all.length > 1 ? ` (${all.length})` : ''}`);
     }
+  }
+
+  private trashButton(): HTMLElement | null { return this.page.querySelector<HTMLElement>('.cv-panel-foot [data-cmd="delete-layer-ask"]'); }
+  private overTrash(x: number, y: number): boolean { const b = this.trashButton(), hit = document.elementFromPoint(x, y); return !!b && !!hit && b.contains(hit); }
+
+  private readonly vectorIds = new WeakMap<object, number>();
+  private vectorSeq = 0;
+  private vectorKey(v: object): number {
+    let n = this.vectorIds.get(v);
+    if (n === undefined) { n = ++this.vectorSeq; this.vectorIds.set(v, n); }
+    return n;
+  }
+
+  /** A vector mask's thumbnail: its outline filled white on black, the canvas shape letterboxed as the pixel mask thumbnail is. */
+  private drawVectorThumb(c: HTMLCanvasElement, v: NonNullable<Layer['vectorMask']>, W: number, H: number): void {
+    const g = c.getContext('2d');
+    if (!g) return;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, THUMB, THUMB);
+    g.fillStyle = '#000000';
+    g.fillRect(0, 0, THUMB, THUMB);
+    const s = Math.min(THUMB / W, THUMB / H), w = Math.max(1, W * s), h = Math.max(1, H * s), x = (THUMB - w) / 2, y = (THUMB - h) / 2;
+    const cov = vectorCoverage(v, W, H);
+    if (!cov) { g.fillStyle = '#ffffff'; g.fillRect(x, y, w, h); return; }
+    g.imageSmoothingQuality = 'medium';
+    g.drawImage(cov.surface as CanvasImageSource, x, y, w, h);
   }
 
   private drawThumb(c: HTMLCanvasElement, r: Raster | null, mask: boolean): void {
@@ -618,12 +652,15 @@ export class LayersPanel {
       }
       const wasSelected = p.selectedIds.has(id);
       if (mod) this.engine.selectLayer(id, 'toggle');
-      else if (e.shiftKey && !t.closest('.cv-layer-mask')) this.engine.selectLayer(id, 'range');
+      else if (e.shiftKey && !t.closest('.cv-layer-mask, .cv-layer-vmask')) this.engine.selectLayer(id, 'range');
       else if (!wasSelected) this.engine.selectLayer(id);
       else if (p.activeId !== id) { p.activeId = id; this.engine.emit('active', null); }
       if (t.closest('.cv-layer-mask')) {
         if (e.shiftKey && !e.altKey) this.engine.toggleMaskEnabled();
         else this.engine.setMaskTarget(true);
+      } else if (t.closest('.cv-layer-vmask')) {
+        if (e.shiftKey) this.engine.changeVectorMask('enable');
+        else this.engine.setMaskTarget(false);
       } else if (t.closest('.cv-layer-thumb')) this.engine.setMaskTarget(false);
       const ids = p.selectedIds.has(id) ? [...p.selectedIds] : [id];
       const maskFrom = e.altKey && t.closest('.cv-layer-mask') && p.layer(id)?.mask ? id : null;
@@ -636,6 +673,7 @@ export class LayersPanel {
         if (!fd.started) { rows.setPointerCapture(e.pointerId); fd.started = true; }
         const over = this.rowAt(e.clientX, e.clientY), next = over && over.dataset.id !== fd.id && !over.classList.contains('is-group') && !over.classList.contains('is-adjust') ? over : null;
         if (next !== fd.target) { setClass(fd.target, 'is-fx-target', false); setClass(next, 'is-fx-target', true); fd.target = next; }
+        setClass(this.trashButton(), 'is-fx-trash', this.overTrash(e.clientX, e.clientY));
         return;
       }
       if (this.swipe && this.swipe.pointerId === e.pointerId) {
@@ -674,8 +712,10 @@ export class LayersPanel {
         this.fxDrag = null;
         setClass(fd.target, 'is-fx-target', false);
         if (rows.hasPointerCapture(e.pointerId)) rows.releasePointerCapture(e.pointerId);
-        // Dropped on another layer, the effect moves there; with Option held it is copied.
-        if (!cancel && fd.started && fd.target?.dataset.id) this.engine.transferEffects(fd.id, fd.target.dataset.id, [fd.key], !e.altKey);
+        setClass(this.trashButton(), 'is-fx-trash', false);
+        // Dropped on the delete button, the effect is removed; on another layer, it moves there, or is copied with Option held.
+        if (!cancel && fd.started && this.overTrash(e.clientX, e.clientY)) this.engine.removeEffect(fd.id, fd.key);
+        else if (!cancel && fd.started && fd.target?.dataset.id) this.engine.transferEffects(fd.id, fd.target.dataset.id, [fd.key], !e.altKey);
         return;
       }
       if (this.swipe && this.swipe.pointerId === e.pointerId) {
@@ -739,6 +779,7 @@ export class LayersPanel {
       if (!row?.dataset.id) return;
       const fxr = t.closest<HTMLElement>('.cv-fxrow');
       if (fxr && !t.closest('.cv-fx-eye, .cv-fx-del')) { row.dispatchEvent(new CustomEvent('cv:edit-layer-effect', { bubbles: true, detail: { id: row.dataset.id, key: fxr.dataset.key } })); return; }
+      if (t.closest('.cv-layer-mask, .cv-layer-vmask')) { row.dispatchEvent(new CustomEvent('cv:mask-properties', { bubbles: true, detail: { id: row.dataset.id, vector: !!t.closest('.cv-layer-vmask') } })); return; }
       if (t.closest('.cv-layer-fx')) row.dispatchEvent(new CustomEvent('cv:edit-layer-style', { bubbles: true, detail: row.dataset.id }));
       if (t.closest('.cv-layer-smart')) row.dispatchEvent(new CustomEvent('cv:smart-filters', { bubbles: true, detail: row.dataset.id }));
       if (t.closest('.cv-layer-vector')) row.dispatchEvent(new CustomEvent('cv:shape-style', { bubbles: true, detail: row.dataset.id }));

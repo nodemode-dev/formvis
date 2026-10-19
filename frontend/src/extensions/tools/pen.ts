@@ -4,6 +4,8 @@ import type { Tool, ToolContext } from '../registry';
 let active: SubPath | null = null;
 let pulling: Anchor | null = null;
 let hover: Pt | null = null;
+let convert: { moved: boolean } | null = null;
+let moving: { a: Anchor; from: Pt; start: Anchor } | null = null;
 const NEAR = 7;
 
 /** What a click at screen point `at` would do to the path between drawing: delete the point there, add one on the
@@ -43,7 +45,7 @@ export const penTool: Tool = {
   options: (e) => [
     { kind: 'title', text: 'Pen' },
     // Mode and Auto Add/Delete (1.52.8, the tool audit).
-    { kind: 'segment', label: 'Mode', choices: [{ id: 'shape', label: 'Shape' }, { id: 'path', label: 'Path' }], get: () => e.penSettings.mode, set: (v: string) => { e.penSettings.mode = v === 'shape' ? 'shape' : 'path'; e.emit('options', null); } },
+    { kind: 'segment', label: 'Mode', choices: [{ id: 'shape', label: 'Shape' }, { id: 'path', label: 'Path' }, { id: 'pixels', label: 'Pixels' }], get: () => e.penSettings.mode, set: (v: string) => { e.penSettings.mode = v === 'shape' ? 'shape' : v === 'pixels' ? 'pixels' : 'path'; e.emit('options', null); } },
     { kind: 'toggle', label: 'Auto Add/Delete', get: () => e.penSettings.autoAddDelete, set: (v: boolean) => { e.penSettings.autoAddDelete = v; e.emit('options', null); } },
     { kind: 'button', label: 'Make Selection', run: () => { active = null; e.pathToSelection(); } },
     { kind: 'button', label: 'Fill Path', run: () => e.fillPath() },
@@ -54,6 +56,16 @@ export const penTool: Tool = {
     if (p.button !== 0 || !ctx.engine.current) return;
     ctx.engine.beginPathEdit();
     const vp = workPath(ctx), v = ctx.view();
+    if (p.alt || p.mod) {
+      // Alt on a point converts it (drag pulls handles out, a click makes it a corner); Ctrl or Cmd drags the point.
+      const hit = anchorNear(vp, v.toScreen(p.doc), (q) => v.toScreen(q), NEAR);
+      if (hit) {
+        const a = hit.sp.anchors[hit.index];
+        if (p.alt) { pulling = a; convert = { moved: false }; }
+        else moving = { a, from: p.doc, start: { ...a } };
+        return;
+      }
+    }
     if (active && active.anchors.length > 1) {
       const first = v.toScreen(active.anchors[0]), at = v.toScreen(p.doc);
       if (Math.hypot(first.x - at.x, first.y - at.y) <= NEAR) {
@@ -65,6 +77,15 @@ export const penTool: Tool = {
           ctx.engine.setWorkPath(vp);
           ctx.engine.endPathEdit();
           ctx.engine.shapeFromPath({ subpaths: [sp] });
+          return;
+        }
+        if (ctx.engine.penSettings.mode === 'pixels') {   // Pixels mode: the closed path is painted into the layer in the foreground and leaves no path
+          const sp = active, rest = vp.subpaths.filter((s) => s !== sp);
+          active = null;
+          ctx.engine.setWorkPath({ subpaths: [sp] });
+          ctx.engine.endPathEdit();
+          ctx.engine.fillPath();
+          ctx.engine.setWorkPath(rest.length ? { subpaths: rest } : null);
           return;
         }
         active = null;
@@ -94,16 +115,29 @@ export const penTool: Tool = {
   move(ctx, p) {
     hover = p.doc;
     const a = pulling;
-    if (a) { a.outX = p.doc.x; a.outY = p.doc.y; a.inX = 2 * a.x - p.doc.x; a.inY = 2 * a.y - p.doc.y; }
+    if (a) { a.outX = p.doc.x; a.outY = p.doc.y; a.inX = 2 * a.x - p.doc.x; a.inY = 2 * a.y - p.doc.y; if (convert) convert.moved = true; }
+    if (moving) {
+      const dx = p.doc.x - moving.from.x, dy = p.doc.y - moving.from.y, s = moving.start;
+      Object.assign(moving.a, { x: s.x + dx, y: s.y + dy, inX: s.inX + dx, inY: s.inY + dy, outX: s.outX + dx, outY: s.outY + dy });
+      const vp = ctx.engine.workPath;
+      if (vp) ctx.engine.setWorkPath(vp);
+    }
     ctx.engine.emit('overlay', null);
   },
   up(ctx) {
+    if (pulling && convert) {
+      if (!convert.moved) Object.assign(pulling, { inX: pulling.x, inY: pulling.y, outX: pulling.x, outY: pulling.y });
+      const vp = ctx.engine.workPath;
+      if (vp) ctx.engine.setWorkPath(vp);
+    }
     pulling = null;
+    convert = null;
+    moving = null;
     ctx.engine.endPathEdit();
     ctx.engine.emit('overlay', null);
   },
   hover(ctx, p) { hover = p ? p.doc : null; ctx.engine.emit('overlay', null); },
-  cancel(ctx) { pulling = null; ctx.engine.endPathEdit(); },
+  cancel(ctx) { pulling = null; convert = null; moving = null; ctx.engine.endPathEdit(); },
   keydown(ctx, e) {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { active = null; ctx.engine.pathToSelection(); return true; }
     if (e.key === 'Enter' && active && active.anchors.length > 1 && ctx.engine.penSettings.mode === 'shape') {   // Shape mode: Enter turns an open polyline into a shape layer

@@ -78,11 +78,17 @@
 .cv-fx-eye .cv-eye-off, .cv-fxrow.is-off .cv-fx-eye .cv-eye-on { display: none; }
 .cv-fxrow.is-off .cv-fx-eye .cv-eye-off { display: inline-flex; }
 .cv-layer.is-fx-target { border-color: var(--accent-color); }
+.cv-panel-foot .is-fx-trash { color: var(--text-primary); background: var(--bg-hover); outline: 1px solid var(--accent-color); }
 .cv-layer-eye { grid-column: 1; }
 .cv-layer-indent { grid-column: 2; }
 .cv-layer-disclose { grid-column: 3; }
 .cv-layer-thumb, .cv-layer-kind { grid-column: 4; grid-row: 1; }
-.cv-layer-mask { grid-column: 5; grid-row: 1; }
+.cv-layer-masks { grid-column: 5; grid-row: 1; display: flex; gap: var(--space-1); }
+.cv-layer-vmask { display: none; width: var(--cv-thumb); height: var(--cv-thumb); border: 1px solid var(--border-light); border-radius: var(--radius-xs); background: var(--bg-primary); }
+.cv-layer.has-vmask .cv-layer-vmask { display: block; }
+.cv-layer.is-vmask-target .cv-layer-vmask { border-color: var(--accent-color); }
+.cv-layer.vmask-off .cv-layer-vmask { opacity: 0.35; }
+.cv-foot-fx { font-size: var(--fs-12); font-style: italic; font-weight: 600; }
 .cv-layer-name { grid-column: 6; grid-row: 1; }
 .cv-layer-clip { display: none; color: var(--text-muted); }
 .cv-layer.is-clipped .cv-layer-clip { display: inline-flex; }

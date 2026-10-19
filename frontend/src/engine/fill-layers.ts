@@ -82,6 +82,33 @@ export function renderFill(c: FillContent, W: number, H: number, frame: Rect): R
   return r;
 }
 
+export type GradientFill = Extract<FillContent, { kind: 'gradient' }>;
+
+/** The line a gradient fill is drawn along in `frame`, for editing on the canvas: from the 0 end to the 1 end for
+ *  Linear, from the centre out to the 1 end for the other styles. */
+export function fillLine(c: GradientFill, frame: Rect): { start: Pt; end: Pt } {
+  const w = Math.max(1, frame.w), h = Math.max(1, frame.h), cx = frame.x + w * (0.5 + c.offset.x), cy = frame.y + h * (0.5 + c.offset.y);
+  const a = (c.angle * Math.PI) / 180, dx = Math.cos(a), dy = -Math.sin(a), half = Math.max(1, (Math.abs(dx) * w + Math.abs(dy) * h) * Math.max(0.01, c.scale)) / 2;
+  return { start: c.style === 'linear' ? { x: cx - dx * half, y: cy - dy * half } : { x: cx, y: cy }, end: { x: cx + dx * half, y: cy + dy * half } };
+}
+
+/** `c` redrawn along the line from `start` to `end` in `frame` (angle, scale and offset follow it); null for a line under a pixel. */
+export function fillFromLine(c: GradientFill, frame: Rect, start: Pt, end: Pt): GradientFill | null {
+  const dx = end.x - start.x, dy = end.y - start.y, len = Math.hypot(dx, dy);
+  if (len < 1) return null;
+  const w = Math.max(1, frame.w), h = Math.max(1, frame.h), deg = (Math.atan2(-dy, dx) * 180) / Math.PI, a = (deg * Math.PI) / 180;
+  const reach = Math.abs(Math.cos(a)) * w + Math.abs(Math.sin(a)) * h, lin = c.style === 'linear';
+  const mid = lin ? { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 } : start, r4 = (v: number): number => Math.round(v * 10000) / 10000;
+  return { ...c, angle: Math.round(deg * 100) / 100, scale: r4(clamp((lin ? len : len * 2) / reach, 0.1, 1.5)), offset: { x: r4((mid.x - frame.x) / w - 0.5), y: r4((mid.y - frame.y) / h - 0.5) } };
+}
+
+/** A new stop at `at` (0 to 1) coloured as the gradient is there, the stops kept in order; its index is returned. */
+export function addFillStop(c: GradientFill, at: number): { content: GradientFill; index: number } {
+  const t = clamp(Math.round(at * 1000) / 1000, 0, 1), k = colorAt(c.stops.map((s) => ({ at: s.at, rgb: s.color, alpha: s.alpha })).sort((a, b) => a.at - b.at), t);
+  const stops = [...c.stops, { at: t, color: { r: Math.round(k[0]), g: Math.round(k[1]), b: Math.round(k[2]) }, alpha: k[3] }].sort((a, b) => a.at - b.at);
+  return { content: { ...c, stops }, index: stops.findIndex((s) => s.at === t) };
+}
+
 /** A fill layer's default name: Color Fill, Gradient Fill or Pattern Fill. */
 export const fillName = (c: FillContent): string => (c.kind === 'solid' ? 'Color Fill' : c.kind === 'gradient' ? 'Gradient Fill' : 'Pattern Fill');
 

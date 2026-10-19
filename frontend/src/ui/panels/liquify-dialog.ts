@@ -1,5 +1,5 @@
 import type { Engine, ID } from '../../engine';
-import { clearFreeze, dabField, fieldIsZero, freezeAt, invertFreeze, liquifyImage, makeField, meshFromJson, meshToJson, paintFreeze, pushField, pushLeftField, rateScale, resetField, resizeField, smoothField, type LiquifyField, type LiquifyTool } from '../../engine/liquify';
+import { clearFreeze, dabField, fieldFromSettings, fieldIsZero, fieldToSettings, freezeAt, invertFreeze, liquifyImage, makeField, meshFromJson, meshToJson, paintFreeze, pushField, pushLeftField, rateScale, resetField, resizeField, smoothField, type LiquifyField, type LiquifyTool } from '../../engine/liquify';
 import { FACE_SLIDERS, faceField, noFaceChange, type Face, type FaceSettings, type FaceSlider } from '../../engine/face-liquify';
 import { faceReady, findFaces } from '../../io/local-gen';
 import { Dialog } from '../dialogs';
@@ -113,15 +113,21 @@ export class LiquifyDialog extends Dialog {
     });
   }
 
-  show(): void {
+  /** A smart object's Liquify filter being edited: the saved field is the starting point and `done` takes the new one. */
+  private editing: ((settings: Record<string, unknown>) => void) | null = null;
+
+  show(edit?: { settings: Record<string, unknown>; done: (settings: Record<string, unknown>) => void }): void {
     const p = this.engine.current, l = p?.activeLayer;
     if (this.isOpen || !p || !l) return;
-    if (!l.raster || l.vector || l.smart || l.isGroup || l.adjustment) { toast('Liquify works on a pixel layer. Rasterize shape layers and smart objects first.'); return; }
-    if (p.maskTarget && l.mask) { toast('Liquify works on layer pixels. Click the layer thumbnail to target them.'); return; }
+    if (!l.raster || l.vector || l.isGroup || l.adjustment) { toast('Liquify works on a pixel layer or a smart object. Rasterize shape layers first.'); return; }
+    if (p.maskTarget && l.mask && !l.smart) { toast('Liquify works on layer pixels. Click the layer thumbnail to target them.'); return; }
     this.engine.settle();
-    this.src = l.raster.read();
+    this.src = l.smart ? l.smart.source.read() : l.raster.read();
     this.layerId = l.id;
-    this.liq = makeField(this.src.width, this.src.height, this.cell);
+    const saved = l.smart && edit ? fieldFromSettings(edit.settings) : null;
+    this.editing = l.smart ? edit?.done ?? null : null;
+    if (saved && saved.cell !== this.cell && MESH_SIZES.includes(saved.cell)) this.cell = saved.cell;
+    this.liq = saved && saved.cell === this.cell ? saved : makeField(this.src.width, this.src.height, this.cell);
     this.undoStack = []; this.redoStack = []; this.syncUndo();
     this.faces = []; this.faceSet = noFaceChange(); for (const r of this.faceRows.values()) r.set(0); setText(this.faceNote, 'Find faces to shape them with the sliders.');
     this.scale = Math.min(1, PW / this.src.width, PH / this.src.height);
@@ -287,9 +293,12 @@ export class LiquifyDialog extends Dialog {
   }
 
   private apply(): void {
-    const f = this.liq ? this.combined(this.liq) : null, id = this.layerId;
+    const f = this.liq ? this.combined(this.liq) : null, id = this.layerId, done = this.editing, smart = !!this.engine.current?.activeLayer?.smart;
     this.close();
-    if (f && id && !fieldIsZero(f)) this.engine.applyLiquify(id, f);
+    if (!f || !id) return;
+    if (done) done(fieldToSettings(f));
+    else if (smart) { if (!fieldIsZero(f)) this.engine.addSmartFilter('liquify', fieldToSettings(f)); }
+    else if (!fieldIsZero(f)) this.engine.applyLiquify(id, f);
   }
 
   /** The brushes' field with the face's sliders added (Face-Aware Liquify, 1.56.7), recomputed so they never compound. */

@@ -1,6 +1,6 @@
 import { HANDLES, TEXT_ANTIALIAS, type Engine, type Layer, type Rect, type TextSpec } from '../../engine';
 import { OT_FEATURES, featureOn, featuresKnown, featuresOf, withFeature } from '../../engine/opentype';
-import { typedFeatureOn, typedFeatureToggle, typedRange } from '../../ui/text-editor';
+import { typedAttrs, typedFeatureOn, typedFeatureToggle, typedRange, typedStyle } from '../../ui/text-editor';
 import { canListSystemFonts, fontFamilies, loadSystemFonts, rememberFont } from '../../ui/fonts';
 import type { Pt } from '../../engine';
 import { dashed, toolHost, type Tool, type ToolContext, type ToolPointer } from '../registry';
@@ -45,7 +45,7 @@ function fontChoices(current: string): Array<{ id: string; label: string }> {
 }
 
 /** Changes the Type settings, shows them in the options bar, and restyles text being typed. */
-const STYLE_KEYS = ['family', 'size', 'bold', 'italic', 'align', 'antialias', 'lineHeight', 'tracking', 'kerning', 'features', 'hyphenate', 'language', 'shaping', 'weight', 'caps', 'scaleX', 'scaleY', 'baselineShift', 'underline', 'strike', 'variations', 'indentFirst', 'indentLeft', 'indentRight', 'spaceBefore', 'spaceAfter', 'lastLine'] as const;
+const STYLE_KEYS = ['family', 'size', 'bold', 'italic', 'align', 'antialias', 'lineHeight', 'tracking', 'kerning', 'features', 'hyphenate', 'language', 'shaping', 'weight', 'caps', 'scaleX', 'scaleY', 'baselineShift', 'underline', 'strike', 'variations', 'indentFirst', 'indentLeft', 'indentRight', 'spaceBefore', 'spaceAfter', 'lastLine', 'bidi'] as const;
 
 const LANGUAGES: Array<[string, string]> = [['', 'Default'], ['en-US', 'English'], ['de', 'German'], ['fr', 'French'], ['es', 'Spanish'], ['ja', 'Japanese'], ['zh-CN', 'Chinese (Simplified)'], ['zh-TW', 'Chinese (Traditional)'], ['ko', 'Korean'], ['ar', 'Arabic'], ['he', 'Hebrew']];
 
@@ -60,6 +60,16 @@ function featureChoices(e: Engine): Array<{ id: string; label: string }> {
 function featureSource(e: Engine): TextSpec {
   const l = e.current?.activeLayer;
   return l?.text && e.liveText(l) ? l.text : e.textSettings;
+}
+
+/** Face hover preview: the selected live type layer drawn with `patch` and no undo step; null puts it back. Not while typing. */
+let previewed: string | null = null;
+function previewType(e: Engine, patch: Partial<TextSpec> | null): void {
+  if (!patch) { if (previewed) { void e.previewTextLayer(previewed, null); previewed = null; } return; }
+  const l = e.current?.activeLayer;
+  if (!l?.text || !e.liveText(l) || typingNow()) return;
+  previewed = l.id;
+  void e.previewTextLayer(l.id, { ...l.text, ...patch });
 }
 
 export function setType(e: Engine, patch: Partial<TextSpec>): void {
@@ -92,9 +102,10 @@ export const typeTool: Tool = {
   },
   options: (e) => [
     { kind: 'title', text: 'Type' },
-    { kind: 'select', label: 'Font', priority: 90, choices: fontChoices(e.textSettings.family), live: () => fontChoices(e.textSettings.family), get: () => e.textSettings.family, set: (v) => {
+    { kind: 'select', label: 'Font', priority: 90, choices: fontChoices(e.textSettings.family), live: () => fontChoices(e.textSettings.family), get: () => typedAttrs()?.family ?? e.textSettings.family, preview: (id) => previewType(e, id && !id.startsWith('__') ? { family: id } : null), set: (v) => {
       // "Load system fonts..." asks for the machine's font list (a click is what lets the browser ask), then refreshes.
       if (v === SYSTEM_FONTS) { void loadSystemFonts().then(() => e.emit('options', null)); return; }
+      if (typedStyle({ family: v })) { rememberFont(v); e.emit('options', null); return; }   // letters selected in the editor: only that range
       setType(e, { family: v });
     } },
     { kind: 'number', label: 'Size', priority: 95, min: 1, max: 2000, unit: 'px', get: () => e.textSettings.size, set: (v) => setType(e, { size: Math.min(2000, Math.max(1, v)) }) },
@@ -108,9 +119,11 @@ export const typeTool: Tool = {
       } },
     // Font Style and Warp Text (1.50.3, the tool audit; Bold and Italic were two toggles).
     { kind: 'select', label: 'Font Style', priority: 85, choices: [{ id: 'regular', label: 'Regular' }, { id: 'italic', label: 'Italic' }, { id: 'bold', label: 'Bold' }, { id: 'bold-italic', label: 'Bold Italic' }],
-      get: () => (e.textSettings.bold ? (e.textSettings.italic ? 'bold-italic' : 'bold') : e.textSettings.italic ? 'italic' : 'regular'),
-      set: (v: string) => setType(e, { bold: v.startsWith('bold'), italic: v.endsWith('italic') }) },
+      get: () => { const s = typedAttrs() ?? e.textSettings; return s.bold ? (s.italic ? 'bold-italic' : 'bold') : s.italic ? 'italic' : 'regular'; },
+      preview: (id) => previewType(e, id ? { bold: id.startsWith('bold'), italic: id.endsWith('italic') } : null),
+      set: (v: string) => { const face = { bold: v.startsWith('bold'), italic: v.endsWith('italic') }; if (typedStyle(face)) { e.emit('options', null); return; } setType(e, face); } },
     { kind: 'number', label: 'Leading', priority: 50, min: 0.5, max: 4, step: 0.05, unit: 'x', get: () => e.textSettings.lineHeight, set: (v) => setType(e, { lineHeight: Math.min(4, Math.max(0.5, v)) }) },
+    { kind: 'button', label: 'Auto Leading', priority: 49, run: () => setType(e, { lineHeight: 1.2 }) },
     // The usual units: tracking in thousandths of an em; kerning the font's own (Metrics) or none (0).
     { kind: 'number', label: 'Tracking', priority: 45, min: -1000, max: 10000, step: 10, unit: '', get: () => e.textSettings.tracking, set: (v) => setType(e, { tracking: Math.round(Math.min(10000, Math.max(-1000, v))) }) },
     { kind: 'select', label: 'Kerning', priority: 35, choices: [{ id: 'metrics', label: 'Metrics' }, { id: 'optical', label: 'Optical' }, { id: 'none', label: '0' }], get: () => e.textSettings.kerning, set: (v) => setType(e, { kerning: v === 'none' || v === 'optical' ? v : 'metrics' }) },
@@ -134,8 +147,8 @@ export const typeTool: Tool = {
     { kind: 'select', label: 'Anti-aliasing', priority: 40, choices: [{ id: 'none', label: 'None' }, { id: 'sharp', label: 'Sharp' }, { id: 'crisp', label: 'Crisp' }, { id: 'strong', label: 'Strong' }, { id: 'smooth', label: 'Smooth' }, { id: 'windows-lcd', label: 'Windows LCD' }, { id: 'windows', label: 'Windows' }], get: () => e.textSettings.antialias ?? 'smooth', set: (v: string) => setType(e, { antialias: TEXT_ANTIALIAS.find((m) => m === v) ?? 'smooth' }) },
     { kind: 'toggle', label: 'Hyphenate', priority: 25, get: () => !!e.textSettings.hyphenate, set: (v) => setType(e, { hyphenate: v }) },
     { kind: 'select', label: 'Language', priority: 22, choices: LANGUAGES.map(([id, label]) => ({ id, label })), get: () => e.textSettings.language ?? '', set: (v: string) => setType(e, { language: v || undefined }) },
-    { kind: 'select', label: 'Language Options', priority: 21, choices: [{ id: 'default', label: 'Default Features' }, { id: 'eastAsian', label: 'East Asian Features' }, { id: 'middleEastern', label: 'Middle Eastern Features' }], get: () => e.textSettings.shaping ?? 'default', set: (v: string) => setType(e, { shaping: v === 'eastAsian' || v === 'middleEastern' ? v : undefined }) },
-    { kind: 'color', label: 'Color', priority: 88, get: () => e.fg, set: (c) => { e.fg = c; e.emit('options', null); const l = e.activeLayer; if (l?.text) void e.updateTextLayer(l.id, { ...l.text, color: e.fg }); } },
+    { kind: 'select', label: 'Language Options', priority: 21, choices: [{ id: 'default', label: 'Default Features' }, { id: 'eastAsian', label: 'East Asian Features' }, { id: 'middleEastern', label: 'Middle Eastern Features' }, { id: 'southAsian', label: 'Middle Eastern and South Asian Features' }], get: () => e.textSettings.shaping ?? 'default', set: (v: string) => setType(e, { shaping: v === 'eastAsian' || v === 'middleEastern' || v === 'southAsian' ? v : undefined }) },
+    { kind: 'color', label: 'Color', priority: 88, get: () => typedAttrs()?.color ?? e.fg, set: (c) => { e.fg = c; e.emit('options', null); if (typedStyle({ color: c })) return; const l = e.activeLayer; if (l?.text) void e.updateTextLayer(l.id, { ...l.text, color: e.fg }); } },
     { kind: 'button', label: 'Warp Text...', priority: 30, run: () => toolHost.run('warp-text') },
     { kind: 'button', label: 'Commit', icon: 'check', priority: 91, when: typingNow, run: () => { document.dispatchEvent(new CustomEvent('cv:type-commit')); } },
     { kind: 'button', label: 'Cancel', icon: 'close', priority: 91, when: typingNow, run: () => { document.dispatchEvent(new CustomEvent('cv:type-cancel')); } },

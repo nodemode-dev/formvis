@@ -81,6 +81,8 @@ export function addPathResources(psd: ArrayBuffer, set: PathSet | null, w: numbe
     if (p.work) extra.push(...block(WORK_ID, 'Work Path', pathRecords(p.path, w, h)));
     else if (id <= LAST) extra.push(...block(id++, p.name, pathRecords(p.path, w, h)));
   }
+  const clip = list.find((p) => !p.work && p.clipping !== undefined);
+  if (clip) extra.push(...block(2999, '', new Uint8Array([Math.min(255, new TextEncoder().encode(clip.name).length), ...Array.from(new TextEncoder().encode(clip.name)).slice(0, 255)])));
   const out = new Uint8Array(b.length + extra.length);
   out.set(b.subarray(0, at + 4 + len), 0);
   out.set(extra, at + 4 + len);

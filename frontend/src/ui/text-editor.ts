@@ -1,6 +1,7 @@
-import { fontCss, liveText, textMetrics, type Engine, type ID, type Pt, type TextSpec } from '../engine';
+import { baseDirection, fontCss, liveText, shapingLang, textMetrics, type Engine, type ID, type Pt, type TextSpec } from '../engine';
 import type { Project } from '../engine/project';
-import { runFeatureOn, shiftRuns, withRunFeature } from '../engine/opentype';
+import { runAttrsOver, runFeatureOn, shiftRuns, withRunAttrs, withRunFeature, type RunPatch } from '../engine/opentype';
+import type { RGB } from '../engine/types';
 import { el, setHidden, setStyleVar } from './dom';
 import { loadPrefs } from './prefs';
 
@@ -11,6 +12,8 @@ let live: TextEditor | null = null;
 export const typedRange = (): { start: number; end: number } | null => live?.selection() ?? null;
 export const typedFeatureOn = (tag: string): boolean | null => live?.featureOn(tag) ?? null;
 export const typedFeatureToggle = (tag: string): boolean => live?.toggleFeature(tag) ?? false;
+export const typedStyle = (patch: RunPatch): boolean => live?.styleRange(patch) ?? false;
+export const typedAttrs = (): { color: RGB; family: string; bold: boolean; italic: boolean } | null => live?.rangeAttrs() ?? null;
 
 /** Typing on the canvas: one kept text box over the stage, set in the text's own font, size, colour and line spacing
  *  at the current zoom, with its first baseline on the click (or on an existing layer's first baseline, the layer
@@ -71,6 +74,23 @@ export class TextEditor {
     s.spec = { ...s.spec, runs: withRunFeature(s.spec.runs, r.start, r.end, tag, !runFeatureOn(s.spec.features, s.spec.runs, r.start, r.end, tag)) };
     this.place();
     return true;
+  }
+
+  /** Sets run attributes (colour, font family, bold, italic ...) over the selection; false when nothing is selected. */
+  styleRange(patch: RunPatch): boolean {
+    const r = this.selection(), s = this.session;
+    if (!r || !s) return false;
+    s.spec = { ...s.spec, runs: withRunAttrs(s.spec.runs, r.start, r.end, patch) };
+    this.place();
+    return true;
+  }
+
+  /** What the selected letters share (colour, family, bold, italic), over the layer's own. */
+  rangeAttrs(): { color: RGB; family: string; bold: boolean; italic: boolean } | null {
+    const r = this.selection(), s = this.session;
+    if (!r || !s) return null;
+    const a = runAttrsOver(s.spec.runs, r.start, r.end), t = s.spec;
+    return { color: a.color ?? t.color, family: a.family ?? t.family, bold: a.bold ?? t.bold, italic: a.italic ?? t.italic };
   }
 
   /** Starts typing new text whose first baseline begins at (x, y), or edits type layer `layerId`; a session already
@@ -175,7 +195,7 @@ export class TextEditor {
   private restyle(): void {
     const s = this.session, t = this.engine.textSettings;
     if (!s) return;
-    s.spec = { ...s.spec, antialias: t.antialias, hyphenate: t.hyphenate, language: t.language, shaping: t.shaping, family: t.family, size: t.size, align: t.align, bold: t.bold, italic: t.italic, lineHeight: t.lineHeight, tracking: t.tracking, kerning: t.kerning, features: t.features, weight: t.weight, caps: t.caps, scaleX: t.scaleX, scaleY: t.scaleY, baselineShift: t.baselineShift, underline: t.underline, strike: t.strike, variations: t.variations, indentFirst: t.indentFirst, indentLeft: t.indentLeft, indentRight: t.indentRight, spaceBefore: t.spaceBefore, spaceAfter: t.spaceAfter, lastLine: t.lastLine };
+    s.spec = { ...s.spec, antialias: t.antialias, hyphenate: t.hyphenate, language: t.language, shaping: t.shaping, family: t.family, size: t.size, align: t.align, bold: t.bold, italic: t.italic, lineHeight: t.lineHeight, tracking: t.tracking, kerning: t.kerning, features: t.features, weight: t.weight, angle: t.angle, caps: t.caps, scaleX: t.scaleX, scaleY: t.scaleY, baselineShift: t.baselineShift, underline: t.underline, strike: t.strike, variations: t.variations, indentFirst: t.indentFirst, indentLeft: t.indentLeft, indentRight: t.indentRight, spaceBefore: t.spaceBefore, spaceAfter: t.spaceAfter, lastLine: t.lastLine, bidi: t.bidi };
     this.place();
   }
 
@@ -206,9 +226,9 @@ export class TextEditor {
     box.classList.toggle('is-box', !!area);
     box.classList.toggle('is-vertical', vertical);
     box.classList.toggle('is-mask', !!s.mask);
-    const dir = s.spec.shaping === 'middleEastern' ? 'rtl' : 'ltr';
+    const dir = baseDirection(s.spec);
     if (box.dir !== dir) box.dir = dir;
-    const lang = s.spec.language || (s.spec.shaping === 'eastAsian' ? 'ja' : s.spec.shaping === 'middleEastern' ? 'ar' : '');
+    const lang = s.spec.language || shapingLang(s.spec);
     if (box.lang !== lang) box.lang = lang;
     box.setAttribute('wrap', area ? 'soft' : 'off');
     if (area) {   // paragraph text: the box itself, wrapping as typed

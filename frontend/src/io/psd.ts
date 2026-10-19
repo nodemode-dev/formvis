@@ -15,7 +15,7 @@ import type { PathSet, SubPath } from '../engine/paths';
 import { maskEdgeTone } from '../engine/distort';
 import { groupIsolated } from '../engine/tree';
 import { renderFill } from '../engine/fill-layers';
-import type { FillContent } from '../engine/types';
+import type { ExtraBlend, FillContent } from '../engine/types';
 
 /** Layered PSD files, read and written with ag-psd (MIT). Pixel layers keep their position, opacity, blend mode and
  *  visibility, folders become groups and back, layer masks and clipping carry across, and the flattened image goes in
@@ -23,14 +23,14 @@ import type { FillContent } from '../engine/types';
  *  adjustment layers and editable type, is reported in the notes. The library loads on first use, keeping it out of
  *  the start-up bundle. */
 
-const TO_PSD: Record<BlendMode, PsdBlend> = {
+const TO_PSD: Record<Exclude<BlendMode, ExtraBlend>, PsdBlend> & Partial<Record<ExtraBlend, PsdBlend>> = {
   normal: 'normal', darken: 'darken', multiply: 'multiply', 'color-burn': 'color burn', lighten: 'lighten', screen: 'screen',
   'color-dodge': 'color dodge', 'linear-dodge': 'linear dodge', overlay: 'overlay', 'soft-light': 'soft light', 'hard-light': 'hard light',
   difference: 'difference', exclusion: 'exclusion', hue: 'hue', saturation: 'saturation', color: 'color', luminosity: 'luminosity',
   dissolve: 'dissolve', 'linear-burn': 'linear burn', 'darker-color': 'darker color', 'lighter-color': 'lighter color', 'vivid-light': 'vivid light',
   'linear-light': 'linear light', 'pin-light': 'pin light', 'hard-mix': 'hard mix', subtract: 'subtract', divide: 'divide',
 };
-const FROM_PSD = new Map<PsdBlend, BlendMode>(Object.entries(TO_PSD).map(([k, v]) => [v, k as BlendMode]));
+const FROM_PSD = new Map<PsdBlend, BlendMode>((Object.entries(TO_PSD) as Array<[BlendMode, PsdBlend]>).map(([k, v]) => [v, k]));
 
 const WARP_STYLES = new Set<string>(['arc', 'arcLower', 'arcUpper', 'arch', 'bulge', 'shellLower', 'shellUpper', 'flag', 'wave', 'fish', 'rise', 'fisheye', 'inflate', 'squeeze', 'twist']);
 

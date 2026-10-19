@@ -6,6 +6,8 @@ import type { BlendMode } from './types';
  *  not at all, with a chance equal to its opacity, on a pattern fixed to document pixels. */
 export const PIXEL_BLENDS: ReadonlySet<BlendMode> = new Set<BlendMode>(['dissolve', 'linear-burn', 'darker-color', 'lighter-color', 'vivid-light', 'linear-light', 'pin-light', 'hard-mix', 'subtract', 'divide']);
 
+export const EXTRA_BLENDS: ReadonlySet<BlendMode> = new Set<BlendMode>(['negation', 'reflect', 'glow', 'xor']);
+
 const burn = (b: number, s: number): number => (b >= 1 ? 1 : s <= 0 ? 0 : 1 - Math.min(1, (1 - b) / s));
 const dodge = (b: number, s: number): number => (b <= 0 ? 0 : s >= 1 ? 1 : Math.min(1, b / (1 - s)));
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -19,6 +21,10 @@ const SEPARABLE: Partial<Record<BlendMode, Sep>> = {
   'hard-mix': (b, s) => (b + s >= 1 ? 1 : 0),
   subtract: (b, s) => clamp01(b - s),
   divide: (b, s) => (s <= 0 ? (b <= 0 ? 0 : 1) : Math.min(1, b / s)),
+  negation: (b, s) => 1 - Math.abs(1 - b - s),
+  reflect: (b, s) => (s >= 1 ? 1 : Math.min(1, (b * b) / (1 - s))),
+  glow: (b, s) => (b >= 1 ? 1 : Math.min(1, (s * s) / (1 - b))),
+  xor: (b, s) => ((Math.round(b * 255) ^ Math.round(s * 255)) & 255) / 255,
 };
 
 /** A stable value in [0, 1) for a document pixel. */

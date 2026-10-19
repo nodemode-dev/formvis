@@ -1,11 +1,11 @@
 import { Raster, createSurface, ctxOf } from './surface';
-import { cleanFeatures, cleanRuns, ensureVariant, featureSegments, variantFamily } from './opentype';
+import { RUN_KEYS, cleanFeatures, cleanRuns, ensureVariant, runsStyled, styleSegments, variantFamily, type RunPatch } from './opentype';
 import { SMALL_CAP_SCALE, opticalKern, smallCapPieces } from './text-attrs';
-import { clamp, type CharacterStyle, type ID, type Layer, type ParagraphStyle, type Pt, type TextExtras, type TextPath, type TextSpec, type TextWarp, type WarpStyle } from './types';
+import { clamp, type CharacterStyle, type ID, type Layer, type ParagraphStyle, type Pt, type RunAttrs, type TextExtras, type TextPath, type TextSpec, type TextWarp, type WarpStyle } from './types';
 
 /** Type layers: text set in a font, drawn into a layer's pixels and kept editable while those pixels are untouched. */
 
-export const TEXT_FONTS = ['Inter', 'Arial', 'Helvetica', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana', 'Trebuchet MS', 'Impact', 'serif', 'sans-serif', 'monospace'];
+export const TEXT_FONTS = ['Inter', 'JetBrains Mono', 'Arial', 'Helvetica', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana', 'Trebuchet MS', 'Impact', 'serif', 'sans-serif', 'monospace'];
 const GENERIC = new Set(['serif', 'sans-serif', 'monospace', 'system-ui', 'cursive', 'fantasy']);
 
 export function defaultText(): TextSpec {
@@ -19,13 +19,19 @@ export const trackingPx = (t: TextSpec): number => (t.tracking / 1000) * t.size;
  *  character. */
 const CANVAS_TRACKING = typeof CanvasRenderingContext2D !== 'undefined' && 'letterSpacing' in CanvasRenderingContext2D.prototype;
 
+/** The language Language Options implies when the layer names none. */
+export const shapingLang = (t: Pick<TextSpec, 'shaping'>): string => (t.shaping === 'eastAsian' ? 'ja' : t.shaping === 'middleEastern' ? 'ar' : t.shaping === 'southAsian' ? 'hi' : '');
+
+/** The paragraph's base direction: the layer's own setting, else right-to-left for Middle Eastern features. */
+export const baseDirection = (t: Pick<TextSpec, 'shaping' | 'bidi'>): 'ltr' | 'rtl' => t.bidi ?? (t.shaping === 'middleEastern' ? 'rtl' : 'ltr');
+
 /** Sets a context's font, kerning and, where the canvas can, tracking, as `renderText` draws with them. */
 export function setType(c: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, t: TextSpec): void {
   c.font = fontCss(t);
   const k = c as unknown as { fontKerning?: string; letterSpacing?: string; lang?: string; direction?: string; textRendering?: string };
-  const lang = t.language || (t.shaping === 'eastAsian' ? 'ja' : t.shaping === 'middleEastern' ? 'ar' : '');
+  const lang = t.language || shapingLang(t);
   if (lang && 'lang' in c) k.lang = lang;
-  if (t.shaping === 'middleEastern' && 'direction' in c) k.direction = 'rtl';
+  if ('direction' in c) k.direction = baseDirection(t);
   if (t.shaping && t.shaping !== 'default' && 'textRendering' in c) k.textRendering = 'optimizeLegibility';
   if ('fontKerning' in c) k.fontKerning = t.kerning === 'none' ? 'none' : 'normal';
   if (CANVAS_TRACKING) k.letterSpacing = `${trackingPx(t)}px`;
@@ -44,14 +50,17 @@ const hScale = (t: TextSpec): number => (t.scaleX ?? 100) / 100;
  *  as capitals at 80 percent of the size; optical kerning, and tracking where the canvas cannot space letters, set one
  *  character at a time. The common case is the canvas's own measure and fill of the whole line. */
 function walk(c: Ctx, t: TextSpec, line: string, x: number, y: number, draw: boolean, at?: number): number {
-  if (at !== undefined && t.runs?.length) {   // feature runs: the line is set in pieces, each with its own features
-    const segs = featureSegments(t.features, t.runs, at, at + line.length);
-    if (segs.length > 1 || (segs[0] && segs[0].features.join(',') !== cleanFeatures(t.features).join(','))) {
+  if (at !== undefined && t.runs?.length) {   // runs: the line is set in pieces, each with its own features and attributes
+    const segs = styleSegments(t.features, t.runs, at, at + line.length);
+    if (segs.length > 1 || (segs[0] && (segs[0].features.join(',') !== cleanFeatures(t.features).join(',') || Object.keys(segs[0].attrs).length))) {
       let cx = x;
+      const fill = c.fillStyle;
       for (const s of segs) {
-        const st: TextSpec = { ...t, features: s.features, runs: undefined };
+        const st = specWith(t, s.attrs, s.features);
         setType(c, st);
-        cx += walk(c, st, line.slice(s.from - at, s.to - at), cx, y, draw);
+        if (draw && s.attrs.color) c.fillStyle = `rgb(${st.color.r},${st.color.g},${st.color.b})`;
+        cx += walk(c, st, line.slice(s.from - at, s.to - at), cx, y + (t.baselineShift ?? 0) - (st.baselineShift ?? 0), draw);
+        if (draw && s.attrs.color) c.fillStyle = fill;
       }
       setType(c, t);
       return cx - x;
@@ -79,17 +88,68 @@ function walk(c: Ctx, t: TextSpec, line: string, x: number, y: number, draw: boo
   return cx - x;
 }
 
-/** The CSS font for a spec, with a sans-serif fallback for named families. */
+/** The spec with one run's attributes and features laid over it, for drawing that piece (its own runs dropped). */
+export function specWith(t: TextSpec, a: RunAttrs, features: string[] = cleanFeatures(t.features)): TextSpec {
+  return {
+    ...t, features, runs: undefined,
+    ...(a.family ? { family: a.family } : {}), ...(a.size ? { size: a.size } : {}), ...(a.color ? { color: { ...a.color } } : {}),
+    ...(a.bold !== undefined ? { bold: a.bold, weight: a.weight } : a.weight !== undefined ? { weight: a.weight } : {}),
+    ...(a.italic !== undefined ? { italic: a.italic } : {}), ...(a.baselineShift !== undefined ? { baselineShift: a.baselineShift } : {}),
+    ...(a.tracking !== undefined ? { tracking: a.tracking } : {}), ...(a.language ? { language: a.language } : {}),
+  };
+}
+
+/** Fonts tried, in order, for a script the family has no glyph for: the system faces that cover it on each platform, with
+ *  the Noto families where installed. The browser's own fallback still follows the list. */
+export const SCRIPT_FALLBACKS: ReadonlyArray<{ id: string; test: RegExp; langs: RegExp; fonts: string[] }> = [
+  { id: 'ja', test: /[\u3040-\u30ff\u31f0-\u31ff]/, langs: /^ja/i, fonts: ['Hiragino Sans', 'Yu Gothic', 'Meiryo', 'Noto Sans CJK JP', 'Noto Sans JP'] },
+  { id: 'ko', test: /[\uac00-\ud7af\u1100-\u11ff]/, langs: /^ko/i, fonts: ['Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans CJK KR', 'Noto Sans KR'] },
+  { id: 'zh-hant', test: /(?!)/, langs: /^zh-(hant|tw|hk|mo)/i, fonts: ['PingFang TC', 'Microsoft JhengHei', 'Noto Sans CJK TC', 'Noto Sans TC'] },
+  { id: 'zh', test: /[\u3400-\u4dbf\u4e00-\u9fff]/, langs: /^zh/i, fonts: ['PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans SC'] },
+  { id: 'ar', test: /[\u0600-\u06ff\u0750-\u077f]/, langs: /^(ar|fa|ur)/i, fonts: ['Geeza Pro', 'Segoe UI', 'Tahoma', 'Noto Sans Arabic'] },
+  { id: 'he', test: /[\u0590-\u05ff]/, langs: /^he/i, fonts: ['Arial Hebrew', 'Segoe UI', 'Noto Sans Hebrew'] },
+  { id: 'th', test: /[\u0e00-\u0e7f]/, langs: /^th/i, fonts: ['Thonburi', 'Leelawadee UI', 'Noto Sans Thai'] },
+  { id: 'hi', test: /[\u0900-\u097f]/, langs: /^(hi|mr|ne|sa)/i, fonts: ['Kohinoor Devanagari', 'Nirmala UI', 'Noto Sans Devanagari'] },
+];
+
+const chains = new Map<string, string>();
+let lastChain: { content: string; language: string; css: string } | null = null;
+
+/** The fallback fonts for a spec as CSS, ordered for its language (a tag, else the scripts its text holds), then the
+ *  colour emoji faces; always ends in the generic sans-serif. */
+export function fallbackCss(t: Pick<TextSpec, 'content' | 'language' | 'shaping'>): string {
+  const language = t.language || shapingLang(t), content = t.content ?? '';
+  if (lastChain && lastChain.content === content && lastChain.language === language) return lastChain.css;
+  const ids: string[] = [], byLang = SCRIPT_FALLBACKS.find((s) => language && s.langs.test(language));
+  if (byLang) ids.push(byLang.id);
+  for (const s of SCRIPT_FALLBACKS) if (!ids.includes(s.id) && content && s.test.test(content)) ids.push(s.id);
+  const emoji = /\p{Extended_Pictographic}/u.test(content), key = `${ids.join('|')}${emoji ? '+e' : ''}`;
+  let css = chains.get(key);
+  if (css === undefined) {
+    const names = ids.flatMap((id) => SCRIPT_FALLBACKS.find((s) => s.id === id)?.fonts ?? []);
+    css = [...names, ...(emoji ? ['Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji'] : [])].map((n) => `"${n}"`).concat('sans-serif').join(', ');
+    chains.set(key, css);
+  }
+  lastChain = { content, language, css };
+  return css;
+}
+
+/** The CSS font for a spec, with the script fallbacks after a named family. */
 export function fontCss(t: TextSpec): string {
-  const variant = GENERIC.has(t.family) ? null : variantFamily(t.family, t.bold, t.italic, t.features, t.variations);
-  const family = variant ? `"${variant}", "${t.family.replace(/["\\]/g, '')}", sans-serif` : GENERIC.has(t.family) ? t.family : `"${t.family.replace(/["\\]/g, '')}", sans-serif`;
+  const variant = GENERIC.has(t.family) ? null : variantFamily(t.family, t.bold, t.italic, t.features, t.variations), fall = fallbackCss(t);
+  const family = variant ? `"${variant}", "${t.family.replace(/["\\]/g, '')}", ${fall}` : GENERIC.has(t.family) ? `${t.family}, ${fall}` : `"${t.family.replace(/["\\]/g, '')}", ${fall}`;
   return `${t.italic ? 'italic ' : ''}${t.weight ?? (t.bold ? 700 : 400)} ${t.size}px ${family}`;
 }
 
-/** Waits for the spec's font to load where the browser can, so the first rendering uses it. */
+/** Waits for the spec's font, and the fonts its runs name, to load where the browser can, so the first rendering uses them. */
 export async function loadTextFont(t: TextSpec): Promise<void> {
   if ((t.features?.length || (t.variations && Object.keys(t.variations).length)) && !GENERIC.has(t.family)) await ensureVariant(t.family, t.bold, t.italic, t.features ?? [], t.variations);
-  if (t.runs?.length && !GENERIC.has(t.family)) for (const s of featureSegments(t.features, t.runs, 0, t.content.length)) if (s.features.length) await ensureVariant(t.family, t.bold, t.italic, s.features, t.variations);
+  const pieces = t.runs?.length ? styleSegments(t.features, t.runs, 0, t.content.length) : [];
+  for (const s of pieces) {
+    const st = specWith(t, s.attrs, s.features);
+    if ((s.features.length || (st.variations && Object.keys(st.variations).length)) && !GENERIC.has(st.family)) await ensureVariant(st.family, st.bold, st.italic, s.features, st.variations);
+    if (Object.keys(s.attrs).length) { try { await document.fonts?.load(fontCss(st), t.content.slice(s.from, s.to) || 'Ag'); } catch { /* the canvas falls back */ } }
+  }
   try { await document.fonts?.load(fontCss(t), t.content || 'Ag'); } catch { /* the canvas falls back to what it has */ }
 }
 
@@ -132,15 +192,30 @@ export function renderPlain(t: TextSpec): TextRender {
   lines.forEach((_, i) => { para.push(i && lines[i - 1].last ? para[i - 1] + 1 : i ? para[i - 1] : 0); opens.push(i === 0 || lines[i - 1].last); });
   const lead = (i: number): number => iL + (opens[i] ? iF : 0);
   const starts = t.runs?.length ? lineStarts(text, lines) : [];   // where each line begins in the text, for feature runs
+  const styled = runsStyled(t.runs);   // runs with sizes or shifts change a line's height: it takes its largest size
+  const segsOf = (i: number): ReturnType<typeof styleSegments> => styleSegments(t.features, t.runs, starts[i], starts[i] + lines[i].text.length);
+  const lineK = lines.map((_, i) => (styled ? Math.max(...segsOf(i).map((s) => s.attrs.size ?? t.size)) / t.size : 1));
+  const shifts = styled ? lines.flatMap((_, i) => segsOf(i).map((s) => s.attrs.baselineShift ?? shift)) : [shift];
   const metrics = lines.map((line) => probe.measureText(line.text || ' '));
   const widths = lines.map((line, i) => lineWidth(probe, t, line.text || ' ', starts[i]));
-  const ascent = (metrics[0].fontBoundingBoxAscent || t.size * 0.8) * ky, descent = (metrics[0].fontBoundingBoxDescent || t.size * 0.25) * ky;
-  const advance = t.size * t.lineHeight, up = Math.max(0, shift), down = Math.max(0, -shift);
+  const ascent = (metrics[0].fontBoundingBoxAscent || t.size * 0.8) * ky * lineK[0], descent = (metrics[0].fontBoundingBoxDescent || t.size * 0.25) * ky * lineK[lines.length - 1];
+  const advance = t.size * t.lineHeight, up = Math.max(0, ...shifts), down = Math.max(0, ...shifts.map((s) => -s));
+  const offs: number[] = [];
+  lines.forEach((_, i) => offs.push(styled ? (i ? offs[i - 1] + advance * lineK[i] : 0) : i * advance));
   const widest = Math.max(1, ...metrics.map((m, i) => Math.max(widths[i], ((m.actualBoundingBoxLeft || 0) + (m.actualBoundingBoxRight || 0)) * kx) + lead(i) + iR));
   const width = box ? Math.max(1, Math.round(box.w)) : Math.ceil(widest) + pad * 2;
-  const height = box ? Math.max(1, Math.round(box.h)) : Math.ceil(ascent + descent + advance * (lines.length - 1) + para[lines.length - 1] * gapPara + up + down) + pad * 2;
-  const raster = new Raster(width, height), c = raster.ctx;
+  const height = box ? Math.max(1, Math.round(box.h)) : Math.ceil(ascent + descent + offs[lines.length - 1] + para[lines.length - 1] * gapPara + up + down) + pad * 2;
+  // A type angle turns the drawing itself, so the glyphs are rasterized at the angle and stay sharp: the raster is the turned
+  // box's bounds, the first baseline's start (by alignment; a box's corner) the turn's centre, and pad and baseline say where it lies.
+  const rad = ((t.angle ?? 0) * Math.PI) / 180, turned = rad !== 0, cs = Math.cos(rad), sn = Math.sin(rad), side = t.align === 'center' || t.align === 'right' ? t.align : 'left';
+  const ax = box ? 0 : side === 'center' ? width / 2 : side === 'right' ? width - pad : pad, ay = box ? 0 : pad + up + ascent;
+  const turnedPts = [[0, 0], [width, 0], [width, height], [0, height]].map(([x, y]) => [(x - ax) * cs - (y - ay) * sn, (x - ax) * sn + (y - ay) * cs]);
+  const minX = Math.min(...turnedPts.map((q) => q[0])), maxX = Math.max(...turnedPts.map((q) => q[0])), minY = Math.min(...turnedPts.map((q) => q[1])), maxY = Math.max(...turnedPts.map((q) => q[1]));
+  const rw = turned ? Math.max(1, Math.ceil(side === 'center' && !box ? 2 * Math.max(-minX, maxX) : maxX - minX)) : width, rh = turned ? Math.max(1, Math.ceil(maxY - minY)) : height;
+  const rax = turned ? (side === 'center' && !box ? rw / 2 : -minX) : 0, ray = turned ? -minY : 0;
+  const raster = new Raster(rw, rh), c = raster.ctx;
   setType(c, t);
+  if (turned) { c.translate(rax, ray); c.rotate(rad); c.translate(-ax, -ay); }
   c.fillStyle = `rgb(${t.color.r},${t.color.g},${t.color.b})`;
   c.textBaseline = 'alphabetic';
   const run = (s: string, x: number, y: number, at?: number): void => {   // a run of text from x, scaled, spaced as it will measure
@@ -158,7 +233,7 @@ export function renderPlain(t: TextSpec): TextRender {
   c.textAlign = 'left';
   const base = pad + up + ascent;
   lines.forEach((line, i) => {
-    const y = base + i * advance + para[i] * gapPara;
+    const y = base + offs[i] + para[i] * gapPara;
     if (box && y + descent > height) return;                       // past the box: clipped
     const left = pad + lead(i), right = width - pad - iR, words = line.text.split(' '), ty = y - shift;
     let al: 'left' | 'center' | 'right' | 'justify' = t.align === 'justify' ? (!line.last || t.lastLine === 'all' ? 'justify' : t.lastLine ?? 'left') : t.align;
@@ -177,7 +252,7 @@ export function renderPlain(t: TextSpec): TextRender {
     rule(x, ty, lw);
   });
   raster.touch();
-  return { raster, baseline: base, pad };
+  return turned ? { raster, baseline: ray, pad: side === 'right' && !box ? rw - rax : rax } : { raster, baseline: base, pad };
 }
 
 /** Each wrapped line's first character in `text`: lines run in order, a break at a space or line break uses it up, and a
@@ -211,27 +286,32 @@ function hyphenAt(c: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2
 /** Words to lines no wider than `max`, each paragraph (a line break) on its own, its last line marked. */
 export function wrapLines(c: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, t: TextSpec, content: string, wide: number, wideFirst = wide): Array<{ text: string; last: boolean }> {
   const out: Array<{ text: string; last: boolean }> = [];
+  let origin = 0;   // where the paragraph begins in `content`, so a run's size and tracking count in the measure
   for (const para of content.split('\n')) {
-    let cur = '';
+    let cur = '', curAt = origin, pos = origin;
     const from = out.length;
     for (let w of para.split(' ')) {
-      let max = out.length === from ? wideFirst : wide;   // a paragraph's first line may be indented
+      let wAt = pos, max = out.length === from ? wideFirst : wide;   // a paragraph's first line may be indented
+      pos += w.length + 1;
       const trial = cur ? `${cur} ${w}` : w;
-      if (lineWidth(c, t, trial) <= max) { cur = trial; continue; }
+      if (lineWidth(c, t, trial, cur ? curAt : wAt) <= max) { if (!cur) curAt = wAt; cur = trial; continue; }
       const cut = t.hyphenate ? hyphenAt(c, t, cur ? `${cur} ` : '', w, max) : 0;
-      if (cut) { out.push({ text: `${cur ? `${cur} ` : ''}${w.slice(0, cut)}-`, last: false }); w = w.slice(cut); cur = ''; }
+      if (cut) { out.push({ text: `${cur ? `${cur} ` : ''}${w.slice(0, cut)}-`, last: false }); w = w.slice(cut); wAt += cut; cur = ''; }
       if (cur) { out.push({ text: cur, last: false }); cur = ''; }
       max = out.length === from ? wideFirst : wide;
-      while (w.length > 1 && lineWidth(c, t, w) > max) {
+      while (w.length > 1 && lineWidth(c, t, w, wAt) > max) {
         let k = w.length - 1;
-        while (k > 1 && lineWidth(c, t, w.slice(0, k) + (t.hyphenate ? '-' : '')) > max) k -= 1;
+        while (k > 1 && lineWidth(c, t, w.slice(0, k) + (t.hyphenate ? '-' : ''), wAt) > max) k -= 1;
         out.push({ text: w.slice(0, k) + (t.hyphenate ? '-' : ''), last: false });
         w = w.slice(k);
+        wAt += k;
         max = wide;
       }
       cur = w;
+      curAt = wAt;
     }
     out.push({ text: cur, last: true });
+    origin += para.length + 1;
   }
   return out;
 }
@@ -363,14 +443,19 @@ function renderPathText(t: TextSpec, tp: TextPath): TextRender {
   c.textBaseline = tp.flip ? 'top' : 'alphabetic';
   c.textAlign = 'center';
   let d = (Math.max(0, Math.min(100, tp.offset)) / 100) * total;
+  let idx = 0;
+  const styled = runsStyled(t.runs);   // runs set size, colour, face, shift, tracking or language per character
   for (const ch of t.content.replace(/\r?\n/g, ' ')) {
-    const w = c.measureText(ch).width + (CANVAS_TRACKING ? 0 : trackingPx(t));
+    const seg = styled ? styleSegments(t.features, t.runs, idx, idx + ch.length)[0] : null, st = seg ? specWith(t, seg.attrs, seg.features) : t;
+    idx += ch.length;
+    if (seg) { setType(c, st); c.fillStyle = `rgb(${st.color.r},${st.color.g},${st.color.b})`; }
+    const w = c.measureText(ch).width + (CANVAS_TRACKING ? 0 : trackingPx(st));
     if (d + w > total + 0.5) break;
     const p = at(d + w / 2);
     c.save();
     c.translate(p.x, p.y);
     c.rotate(p.a);
-    c.fillText(ch, 0, 0);
+    c.fillText(ch, 0, -(st.baselineShift ?? 0));
     c.restore();
     d += w;
   }
@@ -380,9 +465,32 @@ function renderPathText(t: TextSpec, tp: TextPath): TextRender {
 
 /** The type as it is drawn: along its path, or plain, then warped when the spec has an active Warp Text. */
 export function renderText(t: TextSpec): TextRender {
-  if (t.onPath) return renderPathText(t, t.onPath);
+  if (t.onPath) return blendGamma(renderPathText(t, t.onPath));
   const plain = renderPlain(t);
-  return antialiased(warpActive(t.warp) ? warpRender(plain, t.warp) : plain, t.antialias);
+  return blendGamma(antialiased(warpActive(t.warp) ? warpRender(plain, t.warp) : plain, t.antialias));
+}
+
+let blendGammaValue = 1;
+/** Color Settings > Blend text colors using gamma: set from the settings; type drawn after it carries the gamma. */
+export function setTextBlendGamma(g: number): void { blendGammaValue = g >= 1 && g <= 2.4 ? g : 1; }
+
+/** Edge coverage moved to what blending the text over an opposite-tone backdrop in a space of this gamma would show:
+ *  the blend of F over B at coverage a is ((1-a) B^g + a F^g)^(1/g), and the coverage that gives the same result by
+ *  plain blending is kept in the alpha. Dark type gets thinner and light type heavier as the gamma rises. */
+function blendGamma(r: TextRender): TextRender {
+  const g = blendGammaValue;
+  if (g === 1) return r;
+  const w = r.raster.width, h = r.raster.height, c = r.raster.ctx, img = c.getImageData(0, 0, w, h), d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const a = d[i + 3];
+    if (a === 0 || a === 255) continue;
+    const f = (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) / 255, b = f >= 0.5 ? 0 : 1, k = a / 255;
+    const x = ((1 - k) * b ** g + k * f ** g) ** (1 / g);
+    d[i + 3] = Math.max(0, Math.min(255, Math.round(((x - b) / (f - b)) * 255)));
+  }
+  c.putImageData(img, 0, 0);
+  r.raster.touch();
+  return r;
 }
 
 export const TEXT_ANTIALIAS = ['none', 'sharp', 'crisp', 'strong', 'smooth', 'windows-lcd', 'windows'] as const;
@@ -428,7 +536,7 @@ export function withStyle(t: TextSpec, s: ParagraphStyle): TextSpec {
   return { ...own, family: s.family, size: s.size, color: { ...s.color }, align: s.align, bold: s.bold, italic: s.italic, lineHeight: s.lineHeight, tracking: s.tracking, kerning: s.kerning, ...pick(s, PARA_KEYS), style: s.id, rendered: undefined };
 }
 
-const PARA_KEYS = ['indentFirst', 'indentLeft', 'indentRight', 'spaceBefore', 'spaceAfter', 'lastLine'] as const;
+const PARA_KEYS = ['indentFirst', 'indentLeft', 'indentRight', 'spaceBefore', 'spaceAfter', 'lastLine', 'bidi'] as const;
 const CHAR_KEYS = ['caps', 'scaleX', 'scaleY', 'baselineShift', 'underline', 'strike', 'variations'] as const;
 
 /** The listed keys of `o` that are set (not undefined), copied. */
@@ -446,6 +554,7 @@ export function extrasFrom(o: Record<string, unknown>): TextExtras {
   if (fin(o.scaleX) && o.scaleX !== 100) out.scaleX = clamp(o.scaleX, 10, 500);
   if (fin(o.scaleY) && o.scaleY !== 100) out.scaleY = clamp(o.scaleY, 10, 500);
   if (fin(o.baselineShift) && o.baselineShift !== 0) out.baselineShift = clamp(o.baselineShift, -2000, 2000);
+  if (fin(o.angle) && o.angle !== 0) out.angle = clamp(o.angle, -360, 360);
   if (o.underline === true) out.underline = true;
   if (o.strike === true) out.strike = true;
   if (o.variations && typeof o.variations === 'object') {
@@ -458,6 +567,7 @@ export function extrasFrom(o: Record<string, unknown>): TextExtras {
   if (fin(o.spaceBefore) && o.spaceBefore > 0) out.spaceBefore = clamp(o.spaceBefore, 0, 5000);
   if (fin(o.spaceAfter) && o.spaceAfter > 0) out.spaceAfter = clamp(o.spaceAfter, 0, 5000);
   if (o.lastLine === 'center' || o.lastLine === 'right' || o.lastLine === 'all') out.lastLine = o.lastLine;
+  if (o.bidi === 'ltr' || o.bidi === 'rtl') out.bidi = o.bidi;
   return out;
 }
 
@@ -478,6 +588,42 @@ export function withCharStyle(t: TextSpec, s: CharacterStyle | undefined): TextS
  *  caps, scale, baseline shift, line and axis settings the spec has. */
 export function charStyleOf(t: TextSpec, id: ID, name: string): CharacterStyle {
   return { id, name, family: t.family, size: t.size, color: { ...t.color }, bold: t.bold, italic: t.italic, tracking: t.tracking, features: cleanFeatures(t.features), ...pick(t, CHAR_KEYS) };
+}
+
+/** A run patch from command arguments (size, color as #rrggbb or {r,g,b}, family, weight, bold, italic, baseline_shift,
+ *  tracking, language): a valid value sets that attribute, null clears it, `clear` true clears them all. */
+export function runPatchFrom(a: Record<string, unknown> | undefined): RunPatch {
+  const out: Record<string, unknown> = {};
+  if (!a) return out;
+  if (a.clear === true) { for (const k of RUN_KEYS) out[k] = null; return out; }
+  const fin = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+  const put = (key: string, from: string, ok: (v: unknown) => unknown): void => {
+    if (a[from] === null) out[key] = null;
+    else if (a[from] !== undefined) { const v = ok(a[from]); if (v !== undefined) out[key] = v; }
+  };
+  put('size', 'size', (v) => (fin(v) ? clamp(v, 1, 2000) : undefined));
+  put('color', 'color', (v) => {
+    if (typeof v === 'string' && /^#?[0-9a-f]{6}$/i.test(v.trim())) { const h = v.trim().replace('#', ''); return { r: parseInt(h.slice(0, 2), 16), g: parseInt(h.slice(2, 4), 16), b: parseInt(h.slice(4, 6), 16) }; }
+    const o = v as Record<string, unknown>;
+    return o && typeof o === 'object' && fin(o.r) && fin(o.g) && fin(o.b) ? { r: Math.round(clamp(o.r, 0, 255)), g: Math.round(clamp(o.g, 0, 255)), b: Math.round(clamp(o.b, 0, 255)) } : undefined;
+  });
+  put('family', 'family', (v) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 80) : undefined));
+  put('weight', 'weight', (v) => (fin(v) ? Math.round(clamp(v, 1, 1000)) : undefined));
+  put('bold', 'bold', (v) => (typeof v === 'boolean' ? v : undefined));
+  put('italic', 'italic', (v) => (typeof v === 'boolean' ? v : undefined));
+  put('baselineShift', 'baseline_shift', (v) => (fin(v) ? clamp(v, -2000, 2000) : undefined));
+  put('tracking', 'tracking', (v) => (fin(v) ? Math.round(clamp(v, -1000, 10000)) : undefined));
+  put('language', 'language', (v) => (typeof v === 'string' && /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(v) ? v : undefined));
+  return out as RunPatch;
+}
+
+/** The run attributes a character style sets (family, size, colour, weight, slant, tracking, baseline shift). */
+export function runPatchOfStyle(s: CharacterStyle): RunPatch {
+  return {
+    ...(s.family !== undefined ? { family: s.family } : {}), ...(s.size !== undefined ? { size: s.size } : {}), ...(s.color !== undefined ? { color: { ...s.color } } : {}),
+    ...(s.bold !== undefined ? { bold: s.bold } : {}), ...(s.italic !== undefined ? { italic: s.italic } : {}), ...(s.tracking !== undefined ? { tracking: s.tracking } : {}),
+    ...(s.baselineShift !== undefined ? { baselineShift: s.baselineShift } : {}),
+  };
 }
 
 /** A document's saved character styles read back: an id and a name are needed; each field is kept only when it is valid. */
@@ -551,7 +697,7 @@ export function textFromData(raw: unknown, raster: Raster | null): TextSpec | nu
     ...(cleanFeatures(o.features).length ? { features: cleanFeatures(o.features) } : {}),
     ...(cleanRuns(o.runs, o.content.length).length ? { runs: cleanRuns(o.runs, o.content.length) } : {}),
     ...(o.hyphenate === true ? { hyphenate: true } : {}),
-    ...(o.shaping === 'eastAsian' || o.shaping === 'middleEastern' ? { shaping: o.shaping } : {}),
+    ...(o.shaping === 'eastAsian' || o.shaping === 'middleEastern' || o.shaping === 'southAsian' ? { shaping: o.shaping } : {}),
     ...(typeof o.language === 'string' && /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(o.language) ? { language: o.language } : {}),
     ...extrasFrom(o),
     lineHeight: num(o.lineHeight, d.lineHeight, 0.5, 4), tracking: Math.round(num(o.tracking, 0, -1000, 10000)), kerning: o.kerning === 'none' || o.kerning === 'optical' ? o.kerning : 'metrics',

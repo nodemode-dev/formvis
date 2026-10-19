@@ -110,7 +110,27 @@ def panorama(images: list[bytes], layout: str, crop: bool, distortion: bool = Fa
     return _finish(rgba, cover, crop), len(kept), notes
 
 
-def hdr(images: list[bytes], align: bool = True, times: list[float] | None = None) -> tuple[bytes, dict]:
+def _ghost_weight(lin: list[np.ndarray], times: np.ndarray, base: int, strength: float) -> np.ndarray:
+    """Where the exposures disagree about the light: for each photo that is well exposed beside the base photo, the
+    difference of their radiance estimates in stops; a pixel is a ghost when any exceeds a threshold that falls from
+    1.5 stops (strength 1) to 0.25 (strength 100). Opened by a blur and grown a little, so the edges of a moved
+    object are covered; 0 to 1 per pixel."""
+    from scipy import ndimage
+    ref = np.log2(np.maximum(lin[base].mean(axis=2) / times[base], 1e-6))
+    ref_ok = (lin[base].max(axis=2) > 0.03) & (lin[base].max(axis=2) < 0.92)
+    worst = np.zeros(ref.shape, np.float32)
+    for k, l in enumerate(lin):
+        if k == base:
+            continue
+        ok = ref_ok & (l.max(axis=2) > 0.03) & (l.max(axis=2) < 0.92)
+        diff = np.abs(np.log2(np.maximum(l.mean(axis=2) / times[k], 1e-6)) - ref)
+        worst = np.maximum(worst, np.where(ok, diff, 0.0).astype(np.float32))
+    thr = 1.5 - 1.25 * (min(max(strength, 1.0), 100.0) - 1.0) / 99.0
+    hit = ndimage.median_filter((worst > thr).astype(np.float32), size=5)
+    return np.clip(ndimage.gaussian_filter(ndimage.maximum_filter(hit, size=7), 2.0) * 1.5, 0.0, 1.0).astype(np.float32)
+
+
+def hdr(images: list[bytes], align: bool = True, times: list[float] | None = None, ghost: float = 0.0, base: int = -1) -> tuple[bytes, dict]:
     import cv2
     read = [_read(d) for d in images]
     imgs, exif = [r[0] for r in read], [r[1] for r in read]
@@ -138,10 +158,18 @@ def hdr(images: list[bytes], align: bool = True, times: list[float] | None = Non
     response = cv2.createCalibrateDebevec().process(imgs, times)
     radiance = cv2.createMergeDebevec().process(imgs, times, response)   # BGR, as the photos are here
     mid = int(np.argsort(times)[len(times) // 2])
+    ghosts = 0.0
+    if ghost > 0:
+        pick = base if 0 <= base < len(imgs) else mid
+        weight = _ghost_weight(lin, times, pick, ghost)
+        single = cv2.createMergeDebevec().process([imgs[pick]], times[pick:pick + 1], response)
+        weight = weight * np.isfinite(single).all(axis=2) * (lin[pick].max(axis=2) < 0.92)
+        radiance = radiance * (1.0 - weight[..., None]) + np.nan_to_num(single) * weight[..., None]
+        ghosts = float((weight > 0.5).mean())
     ok = (lin[mid] > 0.05) & (lin[mid] < 0.85)
     scale = float(np.median(lin[mid][ok] / np.maximum(radiance[ok], 1e-9))) if ok.sum() > 100 else 1.0 / max(1e-9, float(np.median(radiance)))
     out = np.ascontiguousarray((radiance[..., ::-1] * scale).astype(np.float32))
-    return out.tobytes(), {"width": int(shape[1]), "height": int(shape[0]), "times": [float(t) for t in times], "source": source}
+    return out.tobytes(), {"width": int(shape[1]), "height": int(shape[0]), "times": [float(t) for t in times], "source": source, "ghosts": ghosts}
 
 
 @router.post("/panorama")
@@ -157,13 +185,13 @@ async def panorama_route(file: list[UploadFile] = File(...), layout: str = Form(
 
 
 @router.post("/hdr")
-async def hdr_route(file: list[UploadFile] = File(...), align: bool = Form(True), times: str = Form("")) -> Response:
+async def hdr_route(file: list[UploadFile] = File(...), align: bool = Form(True), times: str = Form(""), ghost: float = Form(0.0), base: int = Form(-1)) -> Response:
     if len(file) < 2:
         raise HTTPException(422, "Merge to HDR needs at least two exposures of the same scene.")
     data = [await f.read() for f in file]
     try:
         given = [float(t) for t in times.split(",") if t.strip()] if times.strip() else None
-        raw, head = await run_in_threadpool(hdr, data, align, given)
+        raw, head = await run_in_threadpool(hdr, data, align, given, ghost, base)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     h = json.dumps(head).encode()
@@ -286,7 +314,8 @@ def align(images: list[bytes], projection: str, vignette: bool, reference: int =
     ref = min(max(reference, 0), len(images) - 1)
     order = [ref] + [i for i in range(len(images)) if i != ref]
     data = [images[i] for i in order]
-    if projection != "cylindrical" and not distortion:
+    bent = projection in ("cylindrical", "spherical")
+    if not bent and projection != "collage" and not distortion:
         res = _align_plain(data, projection, vignette)
         back = {key: [None] * len(images) for key in ("matrices", "layers", "gains")}
         for pos, i in enumerate(order):
@@ -297,8 +326,8 @@ def align(images: list[bytes], projection: str, vignette: bool, reference: int =
     layers = [_decode(d) for d in data]
     imgs = [np.dstack([bgr, v.astype(np.uint8) * 255]) for bgr, v in layers]
     imgs, prep = stitch.prepare(imgs, 0, distortion, vignette, _vignette_gains)
-    placed, mats, info = stitch.register(imgs, "cylindrical" if projection == "cylindrical" else ("reposition" if projection == "reposition" else "perspective"), 0)
-    changed = projection == "cylindrical" or prep["k1"] != 0.0 or prep["vignette"] == "applied"
+    placed, mats, info = stitch.register(imgs, projection if projection in ("cylindrical", "spherical", "reposition", "collage") else "perspective", 0)
+    changed = bent or prep["k1"] != 0.0 or prep["vignette"] == "applied"
     out = {"matrices": [None] * len(images), "layers": [None] * len(images), "gains": [None] * len(images), "warped": [None] * len(images)}
     for pos, i in enumerate(order):
         out["matrices"][i] = [float(v) for v in mats[pos].ravel()]
@@ -362,6 +391,47 @@ def _guided(guide: np.ndarray, src: np.ndarray, r: int, eps: float) -> np.ndarra
     return box(a) * guide + box(mp - a * mi)
 
 
+def _multiband(layers: list, seams: list, tones: list | None) -> str:
+    """Multiband blend (Burt and Adelson, 1983) of aligned layers: each layer's Laplacian pyramid is mixed with the
+    Gaussian pyramid of its seam mask, band by band, so wide bands cross the seam softly and fine detail changes at it.
+    Pixels outside a layer are first filled from its nearest real pixel so the dark border does not leak into a band.
+    Returns the blend as an RGBA PNG (base64) whose alpha is where any layer has pixels."""
+    import cv2
+    h, w = seams[0].shape
+    n = max(1, min(6, int(np.log2(max(2, min(h, w)))) - 2))
+    size = lambda a: (a.shape[1], a.shape[0])
+    laps, wps = [], []
+    for k, (bgr, v) in enumerate(layers):
+        f = bgr.astype(np.float32)
+        if v.any() and not v.all():
+            _, lab = cv2.distanceTransformWithLabels((~v).astype(np.uint8), cv2.DIST_L2, 3, labelType=cv2.DIST_LABEL_PIXEL)
+            lut = np.zeros((int(lab.max()) + 1, 3), np.float32)
+            lut[lab[v]] = f[v]
+            f = lut[lab]
+        if tones is not None:
+            f = f * np.asarray(tones[k][::-1], np.float32)
+        g = [f]
+        wp = [seams[k].astype(np.float32)]
+        for _ in range(n):
+            g.append(cv2.pyrDown(g[-1]))
+            wp.append(cv2.pyrDown(wp[-1]))
+        laps.append([g[i] - cv2.pyrUp(g[i + 1], dstsize=size(g[i])) for i in range(n)] + [g[n]])
+        wps.append(wp)
+    mixed = []
+    for i in range(n + 1):
+        num = sum(wps[k][i][..., None] * laps[k][i] for k in range(len(layers)))
+        den = np.maximum(sum(wps[k][i] for k in range(len(layers))), 1e-6)
+        mixed.append(num / den[..., None])
+    r = mixed[n]
+    for i in range(n - 1, -1, -1):
+        r = cv2.pyrUp(r, dstsize=size(mixed[i])) + mixed[i]
+    rgb = np.clip(r[..., ::-1] + 0.5, 0, 255).astype(np.uint8)
+    alpha = (np.any(np.stack([v for _, v in layers]), axis=0) * 255).astype(np.uint8)
+    buf = io.BytesIO()
+    Image.fromarray(np.dstack([rgb, alpha]), "RGBA").save(buf, "PNG")
+    return base64.b64encode(buf.getvalue()).decode()
+
+
 def blend(images: list[bytes], method: str, seamless: bool, halo: int = 0, depth: bool = False) -> dict:
     """Per-layer masks (0-255 PNGs) where each pixel comes from one layer with smooth transitions: Stack Images picks
     the layer with the most local Laplacian energy (its choice cleaned with a median so lone pixels do not flip layers),
@@ -369,7 +439,8 @@ def blend(images: list[bytes], method: str, seamless: bool, halo: int = 0, depth
     blur of each choice for a guided filter that follows the edges of the picked-pixel composite, so a sharp edge keeps
     the layer that has it and its blurred neighbour does not bleed over. Seamless Tones returns per-layer RGB gains
     matching each layer's overlap with the reference (the median ratio of its mid-tones). With depth, `depth` is a grey
-    PNG of which layer is sharpest at each point, 0 for the first layer and 255 for the last."""
+    PNG of which layer is sharpest at each point, 0 for the first layer and 255 for the last. Multiband takes the
+    Panorama seams and returns `blended`, a Laplacian pyramid blend of the layers (see `_multiband`)."""
     import cv2
     layers = [_decode(d) for d in images]
     h, w = layers[0][0].shape[:2]
@@ -413,6 +484,8 @@ def blend(images: list[bytes], method: str, seamless: bool, halo: int = 0, depth
         else:
             tones.append([1.0, 1.0, 1.0])
     out: dict = {"masks": masks, "tones": tones}
+    if method == "multiband":
+        out["blended"] = _multiband(layers, hard, tones if seamless else None)
     if depth:
         out["depth"] = encode(sum(wt / total * (i / max(1, len(layers) - 1)) for i, wt in enumerate(wts)))
     return out

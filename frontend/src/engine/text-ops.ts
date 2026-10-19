@@ -161,6 +161,28 @@ export async function updateTextLayer(host: TextHost, id: ID, spec: TextSpec, mo
   host.edit('Edit Type', (pp) => { pp.updateLayer(id, out); });
 }
 
+/** A look at type layer `id` set to `spec` without an undo step: the layer's pixels, place and spec are swapped for the
+ *  preview and put back exactly by `previewTextLayer(host, id, null)`. Hovering a face in a font list uses it. */
+let previewing: { p: Project; id: ID; keep: Pick<Layer, 'raster' | 'transform' | 'name' | 'text'>; shown: Partial<Layer> | null } | null = null;
+let previewTick = 0;
+export async function previewTextLayer(host: TextHost, id: ID, spec: TextSpec | null): Promise<void> {
+  const tick = ++previewTick, p = host.current, held = previewing;
+  if (held) {
+    // Back to the original first, so the new preview is measured against the layer as it was (alignment shifts would add up otherwise).
+    held.p.updateLayer(held.id, held.keep);
+    if (!spec || held.id !== id || held.p !== p) { previewing = null; if (!spec) return; }
+  }
+  if (!p || !spec) return;
+  const job = textPatch(host, p, id, spec), l = p.layer(id);
+  const keep = l ? { raster: l.raster, transform: l.transform, name: l.name, text: l.text } : null;
+  if (held?.shown && keep && held.p === p && held.id === id) p.updateLayer(id, held.shown);   // the last preview stays on screen while the next one renders
+  const patch = await job;
+  if (tick !== previewTick || host.current !== p) return;
+  if (!patch || !keep) { if (keep) p.updateLayer(id, keep); previewing = null; return; }
+  previewing = { p, id, keep, shown: patch };
+  p.updateLayer(id, patch);
+}
+
 /** Resize Text Box: paragraph text's box set to `box` with its top left at `to`, the text reflowed, as one undo step. */
 export async function resizeTextBox(host: TextHost, id: ID, box: { w: number; h: number }, to: Pt): Promise<boolean> {
   const p = host.current, l = p?.layer(id);

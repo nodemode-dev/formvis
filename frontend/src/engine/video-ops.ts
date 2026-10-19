@@ -419,6 +419,18 @@ export function replaceFootage(host: VideoHost, frames: Raster[]): boolean {
   return videoStep(host, 'Replace Footage', () => ({ frames, original: frames.slice() }));
 }
 
+/** Reload Frame: the playhead's frame, painted and as loaded, read again from a clip chosen anew (the frame at the same
+ *  place in it, or its last). One undo step. */
+export function reloadFrame(host: VideoHost, frames: Raster[]): boolean {
+  return videoStep(host, 'Reload Frame', (v, i) => {
+    const r = frames[Math.min(i, frames.length - 1)];
+    if (!r) return null;
+    const f = v.frames.slice(), o = v.original.slice();
+    f[i] = r; o[i] = r;
+    return { frames: f, original: o };
+  });
+}
+
 /** Convert to Frame Animation: a frame for each frame of the work area (500 at most), the video timeline gone. */
 export function convertVideoToFrames(host: VideoHost): boolean {
   const p = host.current, vt = video(host);

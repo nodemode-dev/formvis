@@ -1,4 +1,5 @@
 import type { Engine } from '../../engine';
+import { setTextBlendGamma } from '../../engine/text';
 import { api, ApiError } from '../../io/api';
 import { BUILTIN_COLOUR_PRESETS, INTENT_CHOICES, POLICIES, cleanColour, mismatchPref, type ColourPreset, type ColourSettings, type Policy } from '../colour-settings';
 import type { ColourView, Intent } from '../colour';
@@ -187,6 +188,7 @@ export class ColorSettingsDialog extends Dialog {
   private store(): void {
     const prefs = loadPrefs();
     savePrefs({ ...prefs, colour: this.s, colourPresets: this.saved, profileMismatch: mismatchPref(this.s) });
+    setTextBlendGamma(this.s.textGamma);
     void this.view()?.refresh();
   }
 
@@ -226,6 +228,7 @@ export class ColorSettingsDialog extends Dialog {
  *  dialogs, so the opening path can show the missing-profile prompt when the settings ask for it. */
 export function installColorSettings(commands: Commands, engine: Engine, view: () => ColourView | null = () => null): { settings: ColorSettingsDialog; missing: MissingProfileDialog } {
   const settings = new ColorSettingsDialog(engine, view), missing = new MissingProfileDialog();
+  setTextBlendGamma(loadPrefs().colour.textGamma);
   commands.add({ id: 'colour.settings', label: 'Color Settings...', keys: ['Shift+Mod+K'], run: () => void settings.show() });
   return { settings, missing };
 }

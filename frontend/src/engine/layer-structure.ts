@@ -297,8 +297,12 @@ export function moveLayers(
     const want = new Set(ids);
     const moving = layers.filter((l) => want.has(l.id) && !ancestors(map, l).some((a) => want.has(a.id)));
     if (!moving.length || moving.some((m) => m.id === targetId)) return false;
+    const base = layers.find((l) => !l.parentId);
+    if (where === 'below' && base && !base.isGroup && base.name === 'Background' && base.id === targetId) { host.notice('Nothing goes below the Background.'); return false; }
     const dest = where === 'inside' ? target.id : target.parentId;
     if (dest !== null && moving.some((m) => m.id === dest || isDescendant(map, dest, m.id))) return false;
+    const boardOf = (id: ID | null): ID | null => { for (let c = id ? map.get(id) : undefined; c; c = c.parentId ? map.get(c.parentId) : undefined) if (c.isGroup && c.artboard) return c.id; return null; };
+    if (!duplicate && moving.some((m) => m.locks?.artboard && boardOf(m.parentId) !== boardOf(dest))) { host.notice('The layer is locked against moving into or out of an artboard.'); return false; }
 
     const slot = (arr: readonly Layer[]): number => {
       const i = arr.findIndex((l) => l.id === targetId);

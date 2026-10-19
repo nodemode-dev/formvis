@@ -35,7 +35,7 @@ export class ColorRangeDialog extends Dialog {
     this.field('', inv);
     this.field('', this.note);
     this.field('', this.preview);
-    for (const c of [this.pick, this.fuzz, this.invert, this.farLimit, this.nearLimit]) c.addEventListener('input', () => { this.farLimit.disabled = this.nearLimit.disabled = this.pick.value !== 'depth'; this.refresh(); });
+    for (const c of [this.pick, this.fuzz, this.invert, this.farLimit, this.nearLimit]) c.addEventListener('input', () => { this.farLimit.disabled = this.nearLimit.disabled = this.pick.value !== 'depth' && this.pick.value !== 'luminosity'; this.refresh(); });
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => { const o = this.options(); this.close(); this.engine.selectColorRange(o); });
     this.remember();

@@ -7,7 +7,7 @@ export interface Anchor { x: number; y: number; inX: number; inY: number; outX: 
 export type PathOp = 'combine' | 'subtract' | 'intersect' | 'exclude';
 export const PATH_OPS: readonly PathOp[] = ['combine', 'subtract', 'intersect', 'exclude'];
 export interface SubPath { anchors: Anchor[]; closed: boolean; op?: PathOp }
-export interface VectorPath { subpaths: SubPath[] }
+export interface VectorPath { subpaths: SubPath[]; evenOdd?: boolean }
 
 export const cornerAt = (p: Pt): Anchor => ({ x: p.x, y: p.y, inX: p.x, inY: p.y, outX: p.x, outY: p.y });
 
@@ -37,7 +37,8 @@ export function samplePath(sp: SubPath, step: number): Pt[] {
 export function fillVector(c: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, vp: VectorPath): void {
   const mode = c.globalCompositeOperation;
   let run: SubPath[] = [];
-  const flush = (): void => { if (run.length) { c.globalCompositeOperation = mode; c.fill(tracePath({ subpaths: run }), 'nonzero'); run = []; } };
+  const rule = vp.evenOdd ? 'evenodd' : 'nonzero';
+  const flush = (): void => { if (run.length) { c.globalCompositeOperation = mode; c.fill(tracePath({ subpaths: run }), rule); run = []; } };
   for (const sp of vp.subpaths) {
     const op = sp.op ?? 'combine';
     if (op === 'combine') { run.push(sp); continue; }
@@ -80,13 +81,13 @@ export function pathBounds(vp: VectorPath): Rect | null {
 const round3 = (v: number): number => Math.round(v * 1000) / 1000;
 
 /** The path as plain data for a project file, coordinates to a thousandth of a pixel; null when it has no points. */
-export function pathData(vp: VectorPath | null): { subpaths: Array<{ closed: boolean; anchors: number[][]; op?: PathOp }> } | null {
+export function pathData(vp: VectorPath | null): { subpaths: Array<{ closed: boolean; anchors: number[][]; op?: PathOp }>; evenOdd?: true } | null {
   const subpaths = (vp?.subpaths ?? []).filter((s) => s.anchors.length).map((s) => ({
     closed: s.closed,
     anchors: s.anchors.map((a) => [a.x, a.y, a.inX, a.inY, a.outX, a.outY].map(round3)),
     ...(s.op && s.op !== 'combine' ? { op: s.op } : {}),
   }));
-  return subpaths.length ? { subpaths } : null;
+  return subpaths.length ? { subpaths, ...(vp?.evenOdd ? { evenOdd: true as const } : {}) } : null;
 }
 
 /** A path read back from a project file, checked: numbers must be finite, and sizes stay bounded. */
@@ -104,7 +105,7 @@ export function pathFrom(raw: unknown): VectorPath | null {
     const op = (s as { op?: unknown }).op;
     if (anchors.length) subpaths.push({ anchors, closed: (s as { closed?: unknown }).closed === true, ...(op === 'subtract' || op === 'intersect' || op === 'exclude' ? { op } : {}) });
   }
-  return subpaths.length ? { subpaths } : null;
+  return subpaths.length ? { subpaths, ...((raw as { evenOdd?: unknown }).evenOdd === true ? { evenOdd: true } : {}) } : null;
 }
 
 const lerp = (a: Pt, b: Pt, t: number): Pt => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
@@ -167,8 +168,8 @@ export interface NamedPath { id: ID; name: string; path: VectorPath; work: boole
 export interface PathSet { list: NamedPath[]; active: ID | null }
 
 /** A document's paths as project-file data; null when there are none. A named path saves even when empty. */
-export function pathSetData(set: PathSet | null): { list: Array<{ id: ID; name: string; work: boolean; subpaths: unknown[]; clipping?: number }>; active: ID | null } | null {
-  const list = (set?.list ?? []).map((n) => ({ id: n.id, name: n.name, work: n.work, subpaths: pathData(n.path)?.subpaths ?? [], ...(n.clipping !== undefined && !n.work ? { clipping: n.clipping } : {}) })).filter((n) => !n.work || n.subpaths.length);
+export function pathSetData(set: PathSet | null): { list: Array<{ id: ID; name: string; work: boolean; subpaths: unknown[]; evenOdd?: boolean; clipping?: number }>; active: ID | null } | null {
+  const list = (set?.list ?? []).map((n) => ({ id: n.id, name: n.name, work: n.work, subpaths: pathData(n.path)?.subpaths ?? [], ...(n.path.evenOdd ? { evenOdd: true } : {}), ...(n.clipping !== undefined && !n.work ? { clipping: n.clipping } : {}) })).filter((n) => !n.work || n.subpaths.length);
   return list.length ? { list, active: set?.active && list.some((n) => n.id === set.active) ? set.active : null } : null;
 }
 
@@ -197,7 +198,7 @@ export function shiftPath(vp: VectorPath, dx: number, dy: number): VectorPath {
 
 /** The path with every anchor and handle taken through `map`, as a new path, each subpath keeping its operation. */
 export function mapPath(vp: VectorPath, map: (p: Pt) => Pt): VectorPath {
-  return { subpaths: vp.subpaths.map((s) => ({ closed: s.closed, ...(s.op && s.op !== 'combine' ? { op: s.op } : {}), anchors: s.anchors.map((a) => {
+  return { ...(vp.evenOdd ? { evenOdd: true } : {}), subpaths: vp.subpaths.map((s) => ({ closed: s.closed, ...(s.op && s.op !== 'combine' ? { op: s.op } : {}), anchors: s.anchors.map((a) => {
     const q = map(a), i = map({ x: a.inX, y: a.inY }), o = map({ x: a.outX, y: a.outY });
     return { x: q.x, y: q.y, inX: i.x, inY: i.y, outX: o.x, outY: o.y };
   }) })) };

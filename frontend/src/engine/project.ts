@@ -29,7 +29,14 @@ export class Project {
   readonly history = new History();
   readonly viewport = new Viewport();
 
-  constructor(public doc: Doc, public name: string) {}
+  constructor(public doc: Doc, public name: string) { for (const id of doc.collapsed ?? []) this.collapsed.add(id); }
+
+  /** Mirrors the closed folders onto the document so a save writes them; the same object is changed, so no history step and no new document. */
+  stampCollapsed(): void {
+    const now = [...this.collapsed], was = this.doc.collapsed ?? [];
+    if (now.length === was.length && now.every((id, i) => id === was[i])) return;
+    if (now.length) this.doc.collapsed = now; else delete this.doc.collapsed;
+  }
 
   snapshot(): Snapshot { return { doc: this.doc, activeId: this.activeId, selection: this.selection }; }
   get activeLayer(): Layer | null { return this.activeId ? this.layer(this.activeId) : null; }

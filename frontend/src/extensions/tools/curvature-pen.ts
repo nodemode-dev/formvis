@@ -5,6 +5,7 @@ import type { Tool } from '../registry';
 /** The path being drawn: the clicked points, which of them are corners, and the subpath they make. */
 let active: { points: Pt[]; corners: Set<number>; sp: SubPath } | null = null;
 let hover: Pt | null = null;
+let drag: number | null = null;
 const NEAR = 7;
 
 const reshape = (a: NonNullable<typeof active>, closed: boolean): void => { a.sp.anchors = smoothAnchors(a.points, closed, a.corners); };
@@ -15,12 +16,23 @@ const reshape = (a: NonNullable<typeof active>, closed: boolean): void => { a.sp
 export const curvaturePenTool: Tool = {
   id: 'curvaturePen', label: 'Curvature Pen', key: 'P', order: 77.6,
   icon: () => 'tCurvaturePen',
-  hint: () => 'Click to place points; the curve runs smoothly through them · Alt-click for a corner · click the first point to close · Enter ends',
+  hint: () => 'Click to place points; the curve runs smoothly through them · Alt-click for a corner · drag a point to move it · double-click a point to toggle corner · click the first point to close · Enter ends',
   cursor: () => 'crosshair',
   down(ctx, p) {
     if (p.button !== 0 || !ctx.engine.current) return;
     const vp: VectorPath = ctx.engine.workPath ?? { subpaths: [] }, v = ctx.view();
     ctx.engine.beginPathEdit();
+    if (active && vp.subpaths.includes(active.sp)) {
+      // A placed point is grabbed to move it; a double-click on it toggles smooth and corner.
+      const at = v.toScreen(p.doc), k = active.points.findIndex((q) => { const s = v.toScreen(q); return Math.hypot(s.x - at.x, s.y - at.y) <= NEAR; });
+      if (k > 0 || (k === 0 && active.points.length <= 2)) {
+        if (p.clicks >= 2) { if (active.corners.has(k)) active.corners.delete(k); else active.corners.add(k); reshape(active, false); drag = null; }
+        else drag = k;
+        ctx.engine.setWorkPath(vp);
+        if (drag === null) ctx.engine.endPathEdit();
+        return;
+      }
+    }
     if (active && active.points.length > 2) {
       const first = v.toScreen(active.points[0]), at = v.toScreen(p.doc);
       if (Math.hypot(first.x - at.x, first.y - at.y) <= NEAR) {
@@ -43,7 +55,21 @@ export const curvaturePenTool: Tool = {
     ctx.engine.setWorkPath(vp);
     ctx.engine.endPathEdit();
   },
-  move(ctx, p) { hover = p.doc; ctx.engine.emit('overlay', null); },
+  move(ctx, p) {
+    hover = p.doc;
+    if (active && drag !== null && active.points[drag]) {
+      active.points[drag] = p.doc;
+      reshape(active, false);
+      const vp = ctx.engine.workPath;
+      if (vp) ctx.engine.setWorkPath(vp);
+    }
+    ctx.engine.emit('overlay', null);
+  },
+  up(ctx) {
+    if (drag === null) return;
+    drag = null;
+    ctx.engine.endPathEdit();
+  },
   hover(ctx, p) { hover = p ? p.doc : null; ctx.engine.emit('overlay', null); },
   keydown(ctx, e) {
     if (!active) return false;

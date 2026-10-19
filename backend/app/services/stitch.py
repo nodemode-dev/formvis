@@ -173,6 +173,19 @@ def cylinder(img: np.ndarray, f: float, c: tuple[float, float]) -> np.ndarray:
     return cv2.remap(img, x, y, cv2.INTER_CUBIC, borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0, 0))
 
 
+def sphere(img: np.ndarray, f: float, c: tuple[float, float]) -> np.ndarray:
+    """The picture bent onto a sphere of radius f about its centre: u = f atan(x / f), v = f atan(y / sqrt(x^2 + f^2))."""
+    h, w = img.shape[:2]
+    uu, vv = np.mgrid[0:h, 0:w].astype(np.float32)[::-1]
+    th, ph = (uu - c[0]) / f, (vv - c[1]) / f
+    z = np.cos(th) * np.cos(ph)
+    ok = z > 0.2
+    zs = np.where(ok, z, 1.0)
+    x = np.where(ok, f * np.sin(th) * np.cos(ph) / zs + c[0], -1.0).astype(np.float32)
+    y = np.where(ok, f * np.sin(ph) / zs + c[1], -1.0).astype(np.float32)
+    return cv2.remap(img, x, y, cv2.INTER_CUBIC, borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0, 0))
+
+
 def edge_matrix(src: np.ndarray, dst: np.ndarray, kind: str) -> tuple[np.ndarray, int, str]:
     """3x3 matrix taking `src` to `dst`: a homography, a similarity or a translation, with how many points agree."""
     if kind == "homography" and len(src) >= 8:
@@ -265,7 +278,7 @@ def register(imgs: list[np.ndarray], projection: str, ref: int = 0) -> tuple[lis
     kind = {"reposition": "translation", "collage": "similarity"}.get(projection, "homography")
     out = list(imgs)
     f_used = None
-    if projection == "cylindrical":
+    if projection in ("cylindrical", "spherical"):
         size = max(imgs[ref].shape[:2])
         fs = []
         for j, (i, s, d) in edges.items():
@@ -276,7 +289,8 @@ def register(imgs: list[np.ndarray], projection: str, ref: int = 0) -> tuple[lis
             if e < 0.2:
                 fs.append(f)
         f_used = float(np.median(fs)) if fs else float(size)
-        out = [cylinder(im, f_used, fr[:2]) for im, fr in zip(imgs, frames)]
+        bend = sphere if projection == "spherical" else cylinder
+        out = [bend(im, f_used, fr[:2]) for im, fr in zip(imgs, frames)]
         feats = [features(det, im) for im in out]
         _, edges = tree(out, ref, feats, norm)
         kind = "similarity"

@@ -17,7 +17,11 @@ export type BlendMode =
   | 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | 'difference' | 'color-dodge' | 'color-burn'
   | 'hue' | 'saturation' | 'color' | 'luminosity'
   | 'linear-dodge' | 'soft-light' | 'hard-light' | 'exclusion'
-  | 'dissolve' | 'linear-burn' | 'darker-color' | 'lighter-color' | 'vivid-light' | 'linear-light' | 'pin-light' | 'hard-mix' | 'subtract' | 'divide';
+  | 'dissolve' | 'linear-burn' | 'darker-color' | 'lighter-color' | 'vivid-light' | 'linear-light' | 'pin-light' | 'hard-mix' | 'subtract' | 'divide'
+  | 'negation' | 'reflect' | 'glow' | 'xor';
+
+/** The four modes beyond the 27 of the PSD format: composited per pixel on the CPU (`blend.ts`, `compose-float.ts`), never on the display card, and written to PSD as Normal. */
+export type ExtraBlend = 'negation' | 'reflect' | 'glow' | 'xor';
 
 /** The usual menu order, all 27 layer modes of the PSD format, grouped darken, lighten, contrast, inversion, component.
  *  Linear Dodge (Add) is the canvas's `lighter`; the ten the canvas lacks are blended per pixel (`blend.ts`). */
@@ -29,13 +33,18 @@ export const BLEND_MODES: ReadonlyArray<{ id: BlendMode; label: string }> = [
   { id: 'difference', label: 'Difference' }, { id: 'exclusion', label: 'Exclusion' }, { id: 'subtract', label: 'Subtract' }, { id: 'divide', label: 'Divide' },
   { id: 'hue', label: 'Hue' }, { id: 'saturation', label: 'Saturation' }, { id: 'color', label: 'Color' }, { id: 'luminosity', label: 'Luminosity' },
 ];
+/** The four layer-only modes beyond the 27, listed after them in the Layers panel (blend.ts and compose-float.ts hold the formulas). */
+export const EXTRA_BLEND_MODES: ReadonlyArray<{ id: ExtraBlend; label: string }> = [
+  { id: 'negation', label: 'Negation' }, { id: 'reflect', label: 'Reflect' }, { id: 'glow', label: 'Glow' }, { id: 'xor', label: 'Xor' },
+];
+export const LAYER_BLEND_MODES: ReadonlyArray<{ id: BlendMode; label: string }> = [...BLEND_MODES, ...EXTRA_BLEND_MODES];
 
 
 const CANVAS_BLENDS: ReadonlySet<BlendMode> = new Set(['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'difference', 'color-dodge', 'color-burn', 'hue', 'saturation', 'color', 'luminosity', 'linear-dodge', 'soft-light', 'hard-light', 'exclusion']);
 export const canvasBlend = (mode: BlendMode): boolean => CANVAS_BLENDS.has(mode);
 export function compositeOp(mode: BlendMode): GlobalCompositeOperation { return mode === 'normal' || !CANVAS_BLENDS.has(mode) ? 'source-over' : mode === 'linear-dodge' ? 'lighter' : (mode as GlobalCompositeOperation); }
-export function blendFromLabel(label: unknown): BlendMode { return BLEND_MODES.find((m) => m.label === label)?.id ?? 'normal'; }
-export function blendLabel(mode: BlendMode): string { return BLEND_MODES.find((m) => m.id === mode)?.label ?? 'Normal'; }
+export function blendFromLabel(label: unknown): BlendMode { return LAYER_BLEND_MODES.find((m) => m.label === label)?.id ?? 'normal'; }
+export function blendLabel(mode: BlendMode): string { return LAYER_BLEND_MODES.find((m) => m.id === mode)?.label ?? 'Normal'; }
 
 export type Sampling = 'nearest' | 'smooth' | 'high';
 export const SAMPLING_LABELS: Record<Sampling, string> = { nearest: 'Nearest', smooth: 'Smooth', high: 'High quality' };
@@ -52,7 +61,7 @@ export interface Adjustment { kind: AdjustmentKind; data: Record<string, unknown
 /** Layer locks (the Lock row): transparency (paint only where there are pixels), image pixels
  *  (no painting, filling or filtering), position (no moving or transforming), all (every one of them). */
 export interface FrameSpec { x: number; y: number; w: number; h: number; shape: 'rect' | 'ellipse' }
-export interface LayerLocks { transparency?: boolean; pixels?: boolean; position?: boolean; all?: boolean }
+export interface LayerLocks { transparency?: boolean; pixels?: boolean; position?: boolean; all?: boolean; /** Auto-nesting: the layer stays in the artboard it is in (or out of all), however it is moved in the Layers panel. */ artboard?: boolean }
 
 /** What made a picture generated on this computer: the prompt, seed, steps, LoRAs and the full parameters text. */
 export interface GenerationInfo { prompt?: string; seed?: number; steps?: number; model?: string; sampler?: string; guidance?: number; loras?: Array<{ file: string; scale: number }>; parameters?: string }
@@ -179,7 +188,7 @@ export interface LayerComp {
 export interface DocVariable { name: string; layer: ID; kind: 'visibility' | 'text' | 'pixels'; method?: 'fit' | 'fill' | 'asis' | 'conform' }
 /** A named row of values, one per variable name. */
 export interface DataSet { name: string; values: Record<string, string> }
-export interface Doc { /** DEV_PLAN 36.14: Image Assets on; File > Save also writes the layers named like foo.png. Absent means off. */ assetsOnSave?: boolean; /** Width over height of one pixel (35.4 part b); absent means square. */ pixelAspect?: number; measureScale?: { pixels: number; length: number; units: string }; measurements?: Array<{ id: number; label: string; scale: number; units: string; area?: number; perimeter?: number; length?: number; angle?: number; count?: number; w?: number; h?: number; gray?: number; grayMin?: number; grayMax?: number; intDen?: number; cx?: number; cy?: number; /** Sixteen gray-level bins of the selection (0 to 255 in steps of 16), each the area in the record's squared units. */ hist?: number[] }>; multichannel?: { channels: { name: string; color: RGB; solidity: number; data: Raster }[] }; duotone?: { type: 'mono' | 'duo' | 'tri' | 'quad'; inks: { name: string; color: RGB; curve: number[] }[] }; variables?: DocVariable[]; dataSets?: DataSet[]; activeDataSet?: string | null; comps?: readonly LayerComp[]; activeComp?: ID | null; /** The layers' state before the first comp was applied, for Last Document State. Not saved. */ lastState?: LayerComp; depth?: 8 | 16 | 32; profile?: DocProfile; mode?: DocMode; palette?: readonly RGB[]; /** The Indexed Color entry whose pixels are clear. */ transparentIndex?: number; readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[]; guides?: readonly Guide[]; slices?: readonly DocSlice[];notes?: readonly DocNote[]; counts?: readonly { x: number; y: number; /** The count group it belongs to; absent means the first. */ g?: ID }[]; /** Count groups (the Count tool): a name and a colour each, hidden or shown. Absent means one default group. */ countGroups?: readonly CountGroup[]; boxes?: readonly DocBox[]; globalLight?: GlobalLight; paragraphStyles?: readonly ParagraphStyle[]; characterStyles?: readonly CharacterStyle[]; alphas?: readonly AlphaChannel[]; meta?: DocMeta }
+export interface Doc { /** Folders shown closed in the Layers panel: the panel's own state, mirrored from Project.collapsed and saved with the file, never a history step. */ collapsed?: ID[]; /** DEV_PLAN 36.14: Image Assets on; File > Save also writes the layers named like foo.png. Absent means off. */ assetsOnSave?: boolean; /** Width over height of one pixel (35.4 part b); absent means square. */ pixelAspect?: number; measureScale?: { pixels: number; length: number; units: string }; measurements?: Array<{ id: number; label: string; scale: number; units: string; area?: number; perimeter?: number; length?: number; angle?: number; count?: number; w?: number; h?: number; gray?: number; grayMin?: number; grayMax?: number; intDen?: number; cx?: number; cy?: number; /** Sixteen gray-level bins of the selection (0 to 255 in steps of 16), each the area in the record's squared units. */ hist?: number[] }>; multichannel?: { channels: { name: string; color: RGB; solidity: number; data: Raster }[] }; duotone?: { type: 'mono' | 'duo' | 'tri' | 'quad'; inks: { name: string; color: RGB; curve: number[] }[] }; variables?: DocVariable[]; dataSets?: DataSet[]; activeDataSet?: string | null; comps?: readonly LayerComp[]; activeComp?: ID | null; /** The layers' state before the first comp was applied, for Last Document State. Not saved. */ lastState?: LayerComp; depth?: 8 | 16 | 32; profile?: DocProfile; mode?: DocMode; palette?: readonly RGB[]; /** The Indexed Color entry whose pixels are clear. */ transparentIndex?: number; readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[]; guides?: readonly Guide[]; slices?: readonly DocSlice[];notes?: readonly DocNote[]; counts?: readonly { x: number; y: number; /** The count group it belongs to; absent means the first. */ g?: ID }[]; /** Count groups (the Count tool): a name and a colour each, hidden or shown. Absent means one default group. */ countGroups?: readonly CountGroup[]; boxes?: readonly DocBox[]; globalLight?: GlobalLight; paragraphStyles?: readonly ParagraphStyle[]; characterStyles?: readonly CharacterStyle[]; alphas?: readonly AlphaChannel[]; meta?: DocMeta }
 /** An alpha channel (1.65.1): a selection saved with the document, `mask` null when nothing in it is selected. */
 export interface AlphaChannel { readonly id: ID; readonly name: string; readonly mask: SelectionMask | null; /** Channel Options: the overlay colour, its opacity in percent, and whether the colour marks the masked or the selected area. Absent means red, 50 and masked. */ readonly color?: RGB; readonly opacity?: number; readonly indicates?: 'masked' | 'selected'; /** A spot channel: the colour is its ink, the opacity its solidity, and the mask is how much ink lands where. */ readonly spot?: boolean }
 
@@ -415,19 +424,25 @@ export function effectsFromData(raw: unknown): LayerEffects | null {
  *  off), Sharp (steeper edges) or Smooth (absent). */
 /** features (DEV_PLAN 32.6b): OpenType feature tags turned on ('smcp'), and '-liga' or '-calt' for a default feature off. */
 /** hyphenate: paragraph text breaks a word that does not fit at a syllable-like point with a hyphen; language: a BCP 47 tag the canvas shapes the text for. */
-export type TextShaping = 'default' | 'eastAsian' | 'middleEastern';
+export type TextShaping = 'default' | 'eastAsian' | 'middleEastern' | 'southAsian';
 /** Character and paragraph attributes beyond the basics. caps: all capitals, or small capitals (the font's smcp when it has
  *  one, else lower case set as capitals at 80 percent); scaleX and scaleY: horizontal and vertical scale in percent;
  *  baselineShift: pixels, up positive; variations: variable font axis values ('wght': 600); indentFirst, indentLeft,
  *  indentRight, spaceBefore, spaceAfter: pixels; lastLine: where Justify puts a paragraph's last line (default left). */
 export interface TextExtras {
-  weight?: number; caps?: 'all' | 'small'; scaleX?: number; scaleY?: number; baselineShift?: number; underline?: boolean; strike?: boolean;
+  weight?: number; angle?: number; caps?: 'all' | 'small'; scaleX?: number; scaleY?: number; baselineShift?: number; underline?: boolean; strike?: boolean;
   variations?: Record<string, number> | null;
   indentFirst?: number; indentLeft?: number; indentRight?: number; spaceBefore?: number; spaceAfter?: number; lastLine?: 'left' | 'center' | 'right' | 'all';
+  /** bidi: the paragraph's base direction (right-to-left sets Arabic and Hebrew runs and punctuation from the right); unset follows Language Options. */
+  bidi?: 'ltr' | 'rtl';
 }
 /** OpenType features set on one character range (UTF-16 offsets into `content`, end exclusive): `on` and `off` are tags the
  *  range turns on or off over the layer's own `features`. */
-export interface FeatureRun { start: number; end: number; on: string[]; off: string[] }
+export interface FeatureRun extends RunAttrs { start: number; end: number; on: string[]; off: string[] }
+/** Character attributes one run sets over the layer's own (UTF-16 offsets as for features). A field left out inherits the
+ *  layer's; `tracking` is in thousandths of an em, `baselineShift` in pixels (up positive), `size` in pixels, `language`
+ *  a BCP 47 tag. Runs are kept sorted and apart; opentype.ts cleanRuns, withRunAttrs and styleSegments are the only readers. */
+export interface RunAttrs { family?: string; size?: number; color?: RGB; weight?: number; bold?: boolean; italic?: boolean; baselineShift?: number; tracking?: number; language?: string }
 export interface TextSpec extends TextExtras { runs?: FeatureRun[]; shaping?: TextShaping; hyphenate?: boolean; language?: string; features?: string[] | null; antialias?: 'none' | 'sharp' | 'crisp' | 'strong' | 'smooth' | 'windows-lcd' | 'windows'; box?: { w: number; h: number } | null; direction?: 'horizontal' | 'vertical'; content: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right' | 'justify'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning; warp?: TextWarp | null; onPath?: TextPath | null; style?: ID | null; charStyle?: ID | null; rendered?: string }
 /** A character style (DEV_PLAN 32.6c): only the fields it sets override the type layer's own; the layer links it by `TextSpec.charStyle`. */
 export interface CharacterStyle extends Pick<TextExtras, 'caps' | 'scaleX' | 'scaleY' | 'baselineShift' | 'underline' | 'strike' | 'variations'> { id: ID; name: string; family?: string; size?: number; color?: RGB; bold?: boolean; italic?: boolean; tracking?: number; features?: string[] }
@@ -481,7 +496,7 @@ export function smartFiltersFrom(raw: unknown): SmartFilter[] {
  *  rendered, so a later move of the layer can carry the path along. */
 /** dash and align (1.52.8, the tool audit), the stroke options: solid, dashed or dotted; inside, centred
  *  on or outside the path (an open path is always centred). */
-export interface ShapeStroke { color: RGB; width: number; dash?: 'solid' | 'dashed' | 'dotted'; align?: 'inside' | 'center' | 'outside'; cap?: 'butt' | 'round' | 'square'; join?: 'miter' | 'round' | 'bevel'; miter?: number }
+export interface ShapeStroke { color: RGB; width: number; dash?: 'solid' | 'dashed' | 'dotted'; align?: 'inside' | 'center' | 'outside'; cap?: 'butt' | 'round' | 'square'; join?: 'miter' | 'round' | 'bevel'; miter?: number; dashes?: number[]; dashOffset?: number; opacity?: number }
 /** A gradient fill across the shape's bounds: linear at `angle` degrees (0 runs left to right), radial from the centre, or
  *  angle (a sweep from the centre). The fill colour stays as the fallback and the colour a gradient-less restyle starts from. */
 export interface ShapeGradient { type: 'linear' | 'radial' | 'angle'; angle: number; stops: Array<{ at: number; color: RGB; alpha?: number }> }

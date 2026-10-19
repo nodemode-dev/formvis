@@ -217,6 +217,10 @@ body { font-size: var(--fs-12); line-height: 1.35; }
 .cv-num:focus { outline: none; border-color: var(--accent-color); }
 .cv-opt-select { height: var(--ctl-sm); padding: 0 var(--space-1); border: 1px solid var(--border-light); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-secondary); font-size: var(--fs-11); }
 .cv-opt-select:focus { outline: none; border-color: var(--accent-color); }
+.cv-face-list { position: fixed; z-index: var(--z-menu); pointer-events: auto; max-height: 50vh; overflow-y: auto; padding: var(--space-1) 0; border: 1px solid var(--line-1); border-radius: var(--radius-md); background: var(--bg-secondary); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); }
+.cv-face-list[hidden] { display: none; }
+.cv-face-row { padding: var(--space-1) var(--space-3); color: var(--text-secondary); font-size: var(--fs-12); white-space: nowrap; cursor: default; }
+.cv-face-row.is-on { background: var(--accent-color); color: var(--text-primary); }
 .cv-type-editor { position: absolute; left: var(--x, 0); top: var(--y, 0); width: var(--w, 0); height: var(--h, 0); z-index: var(--z-raised); margin: 0; padding: 0; border: 0; outline: 1px dashed var(--accent-color); background: transparent; color: var(--ink, currentColor); font: var(--font, inherit); line-height: var(--lh, normal); text-align: var(--align, left); letter-spacing: var(--ls, normal); font-kerning: var(--kern, normal); white-space: pre; overflow: hidden; resize: none; caret-color: var(--accent-color); }
 .cv-readout { min-width: 64px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .cv-seg { display: inline-flex; border: 1px solid var(--border-light); border-radius: var(--radius); overflow: hidden; }

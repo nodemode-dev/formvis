@@ -178,12 +178,12 @@ export class FindLayersDialog extends Dialog {
   }
 }
 
-const LOCK_ROWS = [['transparency', 'Transparency'], ['pixels', 'Image'], ['position', 'Position'], ['all', 'All']] as const;
+const LOCK_ROWS = [['transparency', 'Transparency'], ['pixels', 'Image'], ['position', 'Position'], ['artboard', 'Artboard auto-nesting'], ['all', 'All']] as const;
 
 /** Layer > Lock Layers (1.65.3), or Lock All Layers in Group with a folder selected: the four locks for the
  *  selected layers (and, for a folder, the layers in it), each ticked when every selected layer has it. */
 export class LockLayersDialog extends Dialog {
-  private readonly state: Required<LayerLocks> = { transparency: false, pixels: false, position: false, all: false };
+  private readonly state: Required<LayerLocks> = { transparency: false, pixels: false, position: false, artboard: false, all: false };
   private readonly rows = LOCK_ROWS.map(([k, label]) => checkRow(label, (v) => { this.state[k] = v; }));
   private deep = false;
 

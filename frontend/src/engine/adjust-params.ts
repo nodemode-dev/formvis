@@ -10,7 +10,7 @@ import { FILM_STOCK_OPTIONS, chromaticKernel, filmKernel } from './film-stocks';
  *  Colour Balance weights shadows, midtones and highlights by lightness with the usual overlapping ramps; Selective
  *  Colour weights each pixel by how much it belongs to a colour family and moves its ink, relative or absolute. */
 
-export type ParamKind = 'brightnessContrast' | 'vibrance' | 'colorBalance' | 'blackWhite' | 'photoFilter' | 'channelMixer' | 'invert' | 'posterize' | 'threshold' | 'selectiveColor' | 'shadowsHighlights' | 'hdrToning' | 'colorLookup' | 'develop' | 'clarity' | 'dehaze' | 'texture' | 'light' | 'splitToning' | 'halation' | 'glow' | 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'filmLook' | 'chromaticShift';
+export type ParamKind = 'brightnessContrast' | 'vibrance' | 'colorBalance' | 'blackWhite' | 'photoFilter' | 'channelMixer' | 'invert' | 'posterize' | 'threshold' | 'selectiveColor' | 'shadowsHighlights' | 'hdrToning' | 'colorLookup' | 'develop' | 'clarity' | 'dehaze' | 'texture' | 'light' | 'splitToning' | 'halation' | 'glow' | 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'filmLook' | 'chromaticShift' | 'normalise';
 
 export type ParamSpec =
   | { key: string; label: string; kind: 'range'; min: number; max: number; step: number; def: number; group?: string }
@@ -539,6 +539,12 @@ export const PARAM_ADJUSTMENTS: Record<ParamKind, ParamAdjustment> = {
       }
     },
   },
+  normalise: {
+    label: 'Normalise',
+    params: [{ key: 'mode', label: 'Mode', kind: 'select', options: [['stretch', 'Stretch to the ends'], ['mean', 'Towards the mean']], def: 'stretch' }, { key: 'each', label: 'Each channel on its own', kind: 'check', def: false },
+      range('clip', 'Clip %', 0, 10, 0.1, 0.05), range('mean', 'Target mean', 0, 100, 50), range('spread', 'Target spread', 1, 50, 22), range('amount', 'Amount', 0, 100, 100)],
+    kernel: (v) => (px) => normalisePixels(px, v.mode === 'mean', v.each === true, n(v, 'clip') / 100, n(v, 'mean') / 100 * 255, n(v, 'spread') / 100 * 255, n(v, 'amount') / 100),
+  },
   // Film pack: a film stock as one layer (tone curve with editable points, colour matrix, speed-based grain).
   filmLook: {
     label: 'Film Look',
@@ -557,6 +563,45 @@ export const PARAM_ADJUSTMENTS: Record<ParamKind, ParamAdjustment> = {
 export const PARAM_KINDS = Object.keys(PARAM_ADJUSTMENTS) as ParamKind[];
 export const isParamKind = (k: string): k is ParamKind => k in PARAM_ADJUSTMENTS;
 export const paramKernel = (kind: ParamKind, raw: unknown): Kernel => PARAM_ADJUSTMENTS[kind].kernel(paramValues(kind, raw));
+
+/** Normalise: the levels of the pixels that show (alpha above zero) taken from their own histogram. Stretch maps the
+ *  `clip` fraction at each end to black and white; the mean mode moves the mean and spread to the targets (0 to 255).
+ *  Together (the default) one table from the luminance serves all three channels, so colours keep their balance; `each`
+ *  gives every channel its own. `amount` mixes the result with the original. */
+function normalisePixels(px: Uint8ClampedArray, toMean: boolean, each: boolean, clip: number, mean: number, spread: number, amount: number): void {
+  if (amount <= 0) return;
+  const hist = [0, 1, 2, 3].map(() => new Float64Array(256));
+  let count = 0;
+  for (let i = 0; i < px.length; i += 4) {
+    if (!px[i + 3]) continue;
+    count++;
+    hist[0][px[i]]++; hist[1][px[i + 1]]++; hist[2][px[i + 2]]++;
+    hist[3][Math.round(lum(px[i], px[i + 1], px[i + 2]))]++;
+  }
+  if (!count) return;
+  const table = (h: Float64Array): Uint8ClampedArray => {
+    const t = new Uint8ClampedArray(256);
+    let f: (x: number) => number = (x) => x;
+    if (toMean) {
+      let m = 0, q = 0;
+      for (let i = 0; i < 256; i++) m += i * h[i];
+      m /= count;
+      for (let i = 0; i < 256; i++) q += (i - m) ** 2 * h[i];
+      const s = Math.sqrt(q / count);
+      f = s < 0.5 ? (x) => x - m + mean : (x) => (x - m) * (spread / s) + mean;
+    } else {
+      let lo = 0, hi = 255, acc = 0;
+      while (lo < 255 && acc + h[lo] <= clip * count) acc += h[lo++];
+      acc = 0;
+      while (hi > lo && acc + h[hi] <= clip * count) acc += h[hi--];
+      if (hi > lo) f = (x) => ((x - lo) / (hi - lo)) * 255;
+    }
+    for (let i = 0; i < 256; i++) t[i] = Math.round(i + (f(i) - i) * amount);
+    return t;
+  };
+  const tr = each ? [table(hist[0]), table(hist[1]), table(hist[2])] : [table(hist[3]), table(hist[3]), table(hist[3])];
+  for (let i = 0; i < px.length; i += 4) { px[i] = tr[0][px[i]]; px[i + 1] = tr[1][px[i + 1]]; px[i + 2] = tr[2][px[i + 2]]; }
+}
 
 /** Halation and Glow: what is brighter than `threshold` blurred by `radius` document pixels (three box passes, close to
  *  a Gaussian), tinted (Halation) or in its own colour (Glow), and screened back over the picture by `amount`. */

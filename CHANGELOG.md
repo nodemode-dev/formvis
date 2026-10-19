@@ -4,6 +4,22 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.89.8 · 2026-10-19
+
+### Fixed
+
+- The engine could delete /dev/null when run as root on Linux (a library lookup fell back to a linker call that removes its output file on failure). Library names now go straight to the loader, and that fallback is off for the engine process.
+
+### Added
+
+- Layers: fx and fill buttons in the panel footer, folders stay collapsed after saving, vector mask thumbnails, a bit depth tag, four more layer blend modes, an artboard lock, a multiband Auto-Blend, frames that take the layer under them, Reload Frame for video.
+- Masks and channels: brushes, erasers and fills work on a targeted alpha channel; Color Range by luminosity.
+- Fill layers and smart objects: edit a Gradient Fill layer on the canvas; a Live Content section in Properties; Liquify on smart objects as an editable smart filter.
+- Alignment: Spherical and Collage in Auto-Align; Adaptive Wide Angle focal length.
+- Paths and shapes: Pen convert and move, a Pixels mode, Curvature and Freeform Pen improvements, an even-odd fill rule, custom dashes and stroke opacity, the clipping path written to PSD.
+- Type: size, colour, font, weight, shift, tracking and language for selected letters; a type angle; fallback fonts per script; a face picker that previews on hover; South Asian options and paragraph text direction.
+- Adjustments: Normalise; text blend gamma applied; Multichannel from Lab; HDR ghost removal.
+
 ## 1.89.7 · 2026-10-19
 
 ### Added

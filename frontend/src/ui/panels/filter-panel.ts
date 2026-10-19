@@ -477,6 +477,7 @@ export class FilterPanel extends Dialog {
     };
     wheel.addEventListener('pointerdown', (e) => { wheel.setPointerCapture(e.pointerId); fromWheel(e); });
     wheel.addEventListener('pointermove', (e) => { if (wheel.hasPointerCapture(e.pointerId)) fromWheel(e); });
+    wheel.addEventListener('dblclick', () => { const w = grading()[range]; w.h = 0; w.s = 0; w.l = 0; syncWheel(); this.schedule(); });
     const syncWheel = (): void => { gH.set(grading()[range].h); gS.set(grading()[range].s); gL.set(grading()[range].l ?? 0); placeDot(); };
     const rangeSel = selectRow('Range', [['shadows', 'Shadows'], ['midtones', 'Midtones'], ['highlights', 'Highlights'], ['global', 'Global']], (v) => { range = v as typeof range; syncWheel(); });
     devNodes.push(el('<p class="cv-note">Colour Grading</p>'), rangeSel.el, wheelBox, gH.el, gS.el, gL.el);

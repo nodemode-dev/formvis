@@ -90,11 +90,18 @@ export class AlignBlendDialog extends Dialog {
         })
         : engine.applyLayerEdits(edits, 'Auto-Align Layers');
       const vig = o.vignette ? (lens.some(Boolean) || r.vignette === 'applied' ? ' Vignetting removed.' : ' No vignetting found.') : '';
-      const lensNote = (r.lens && r.lens.k1 !== 0 ? ` Lens distortion corrected (k1 ${r.lens.k1}, matching error ${r.lens.error_before} px to ${r.lens.error_after} px).` : r.lens ? ' No lens distortion found.' : '') + (r.focal ? ` Cylinder radius ${Math.round(r.focal)} px.` : '');
+      const lensNote = (r.lens && r.lens.k1 !== 0 ? ` Lens distortion corrected (k1 ${r.lens.k1}, matching error ${r.lens.error_before} px to ${r.lens.error_after} px).` : r.lens ? ' No lens distortion found.' : '') + (r.focal ? ` ${o.projection === 'spherical' ? 'Sphere' : 'Cylinder'} radius ${Math.round(r.focal)} px.` : '');
       const refName = o.reference === 'top' ? 'top-most' : o.reference === 'middle' ? 'middle' : 'bottom-most';
       return ok ? `Aligned ${ids.length - 1} layer${ids.length > 2 ? 's' : ''} to the ${refName}.${vig}${lensNote}` : 'Nothing was aligned.';
     }
     const r = await api.mergeBlend(blobs, o.method ?? 'panorama', !!o.seamless, o.halo ?? 0, !!o.depth);
+    if (o.method === 'multiband' && r.blended && engine.current) {
+      const W = engine.current.doc.width, H = engine.current.doc.height, bmp = await createImageBitmap(await (await fetch(`data:image/png;base64,${r.blended}`)).blob()), raster = new Raster(W, H);
+      raster.ctx.drawImage(bmp, 0, 0, W, H);
+      raster.touch();
+      engine.insertRasterLayer(raster, 'Multiband Blend', 0, 0, {}, 'Auto-Blend Layers');
+      return `Blended ${ids.length} layers into a new Multiband Blend layer.`;
+    }
     const masks: ImageBitmap[] = [];
     for (const m of r.masks) masks.push(await createImageBitmap(await (await fetch(`data:image/png;base64,${m}`)).blob()));
     const ok = engine.applyLayerEdits(ids.map((id, i) => ({ id, mask: masks[i], gain: o.seamless ? r.tones[i] : undefined })), 'Auto-Blend Layers');
@@ -110,18 +117,18 @@ export class AlignBlendDialog extends Dialog {
   constructor(private readonly engine: Engine, private readonly mode: AlignBlendMode) {
     super(mode === 'align' ? 'Auto-Align Layers' : 'Auto-Blend Layers', 420);
     if (mode === 'align') {
-      const proj = selectRow('Projection', [['auto', 'Auto'], ['perspective', 'Perspective'], ['cylindrical', 'Cylindrical'], ['reposition', 'Reposition']], (v) => { this.projection = v; });
+      const proj = selectRow('Projection', [['auto', 'Auto'], ['perspective', 'Perspective'], ['cylindrical', 'Cylindrical'], ['spherical', 'Spherical'], ['collage', 'Collage'], ['reposition', 'Reposition']], (v) => { this.projection = v; });
       const ref = selectRow('Reference Layer', [['bottom', 'Bottom-most'], ['middle', 'Middle'], ['top', 'Top-most']], (v) => { this.reference = v; });
       const vig = checkRow('Vignette Removal', (v) => { this.vignette = v; });
       const geo = checkRow('Geometric Distortion Correction', (v) => { this.distortion = v; });
-      this.body.append(el('<p class="cv-dialog-note">The reference layer stays put; every other selected layer is moved to line up with it. Cylindrical finds the lens focal length from the overlaps and bends every layer onto a cylinder first. Vignette Removal brightens the corners of every layer by the falloff the overlaps show. Geometric Distortion Correction finds the barrel or pincushion bend that makes the overlaps agree and straightens the layers.</p>'), proj.el, ref.el, vig.el, geo.el, this.note);
+      this.body.append(el('<p class="cv-dialog-note">The reference layer stays put; every other selected layer is moved to line up with it. Cylindrical and Spherical find the lens focal length from the overlaps and bend every layer onto a cylinder or a sphere first. Collage only moves, turns and scales each layer. Vignette Removal brightens the corners of every layer by the falloff the overlaps show. Geometric Distortion Correction finds the barrel or pincushion bend that makes the overlaps agree and straightens the layers.</p>'), proj.el, ref.el, vig.el, geo.el, this.note);
       proj.set('auto'); ref.set('bottom'); vig.set(false); geo.set(false);
     } else {
-      const meth = selectRow('Blend Method', [['panorama', 'Panorama'], ['stack', 'Stack Images']], (v) => { this.method = v; });
+      const meth = selectRow('Blend Method', [['panorama', 'Panorama'], ['stack', 'Stack Images'], ['multiband', 'Multiband (new layer)']], (v) => { this.method = v; });
       const tone = checkRow('Seamless Tones and Colors', (v) => { this.seamless = v; });
       const halo = sliderRow('Halo Control', 0, 100, 1, (v) => { this.halo = v; });
       const depth = checkRow('Depth Map Layer (Stack Images)', (v) => { this.depth = v; });
-      this.body.append(el('<p class="cv-dialog-note">Adds a layer mask to each selected layer. Panorama joins overlapping layers along soft seams; Stack Images keeps the sharpest layer at each point. Halo Control, for Stack Images, makes the transitions follow the sharp edges so a blurred neighbour does not bleed over them. Depth Map Layer adds a hidden grey layer showing which layer is sharpest where.</p>'), meth.el, tone.el, halo.el, depth.el, this.note);
+      this.body.append(el('<p class="cv-dialog-note">Adds a layer mask to each selected layer. Panorama joins overlapping layers along soft seams; Stack Images keeps the sharpest layer at each point. Halo Control, for Stack Images, makes the transitions follow the sharp edges so a blurred neighbour does not bleed over them. Depth Map Layer adds a hidden grey layer showing which layer is sharpest where. Multiband mixes the layers band by band along the Panorama seams (a Laplacian pyramid blend) into a new layer and leaves the sources as they are.</p>'), meth.el, tone.el, halo.el, depth.el, this.note);
       meth.set('panorama'); tone.set(true); halo.set(0); depth.set(false);
     }
     this.button('Cancel', 'ghost', () => this.close());

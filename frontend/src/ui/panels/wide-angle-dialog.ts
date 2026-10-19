@@ -16,6 +16,10 @@ export class WideAngleDialog extends Dialog {
   private readonly view = el<HTMLCanvasElement>(`<canvas width="${VIEW_W}" height="${VIEW_H}" style="width: ${VIEW_W}px; height: ${VIEW_H}px; display: block; cursor: crosshair; border-radius: 4px; background: var(--cv-surface-2, #111)"></canvas>`);
   private readonly note = el('<p class="cv-dialog-note" role="status" style="min-height: 2.8em"></p>');
   private readonly strength = sliderRow('Strength (field of view)', 0, 100, 1, (v) => { this.s.strength = v / 100; this.schedule(); });
+  private lensMm = 14;
+  private crop = 1;
+  private readonly focalRow = sliderRow('Focal length (mm)', 4, 50, 0.5, (v) => { this.lensMm = v; this.fromLens(); });
+  private readonly cropRow = sliderRow('Crop factor', 0.5, 6, 0.1, (v) => { this.crop = v; this.fromLens(); });
   private readonly scale = sliderRow('Scale (%)', 50, 200, 1, (v) => { this.s.scale = v / 100; this.schedule(); });
   private readonly rotation = sliderRow('Rotation (degrees)', -45, 45, 0.1, (v) => { this.s.rotation = v; this.schedule(); });
   private readonly model = selectRow('Correction', [['fisheye', 'Fisheye'], ['equisolid', 'Equisolid fisheye'], ['stereographic', 'Stereographic']], (v) => { this.s.model = v as LensModel; this.schedule(); });
@@ -38,7 +42,7 @@ export class WideAngleDialog extends Dialog {
       this.lines[this.lines.length - 1].push({ x, y });
       this.drawView();
     });
-    this.body.append(this.view, buttons, this.model.el, this.strength.el, this.scale.el, this.rotation.el, this.note);
+    this.body.append(this.view, buttons, this.model.el, this.focalRow.el, this.cropRow.el, this.strength.el, this.scale.el, this.rotation.el, this.note);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     this.onClose = () => { window.clearTimeout(this.timer); this.engine.setPreview(null); };
@@ -52,8 +56,18 @@ export class WideAngleDialog extends Dialog {
     this.s = { model: this.s.model, strength: 0, scale: 1, rotation: 0 };
     this.lines = [[]];
     this.strength.set(0); this.scale.set(100); this.rotation.set(0); this.model.set(this.s.model);
+    this.focalRow.set(this.lensMm); this.cropRow.set(this.crop);
     this.open();
     this.drawView();
+    this.schedule();
+  }
+
+  /** The lens's focal length and the sensor's crop factor as a field of view across the diagonal (a full frame diagonal is 43.27 mm). */
+  private fromLens(): void {
+    const fov = 2 * Math.atan(43.27 / this.crop / (2 * this.lensMm)), strength = Math.min(1, fov / ((179 * Math.PI) / 180));
+    this.s = { ...this.s, strength };
+    this.strength.set(Math.round(strength * 100));
+    setText(this.note, `${this.lensMm} mm at crop factor ${this.crop}: field of view ${Math.round((fov * 180) / Math.PI)} degrees across the diagonal.`);
     this.schedule();
   }
 

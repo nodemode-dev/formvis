@@ -8,6 +8,57 @@ import { previewFont } from './fonts';
 /** An options-bar label in the current language, its English kept in data-en for language changes (35.5d). */
 const labelEn = (s: HTMLElement, en: string): void => { s.dataset.en = en; setText(s, tr(en)); };
 
+/** A choice list that previews: it opens over a select in place of the native menu, and hovering or arrowing to a choice
+ *  calls `spec.preview(id)` (the Type tool shows that face on the layer); Escape, leaving the list or a click outside
+ *  calls `preview(null)`, which puts the layer back. The list is built once; its rows are patched as the choices change. */
+function facePicker(box: HTMLSelectElement, spec: Extract<OptionSpec, { kind: 'select' }>): void {
+  const pop = el<HTMLDivElement>('<div class="cv-face-list" role="listbox" hidden></div>');
+  let open = false, at = -1;
+  const rows = (): HTMLElement[] => Array.from(pop.children) as HTMLElement[];
+  const mark = (i: number): void => { at = i; rows().forEach((r, k) => setClass(r, 'is-on', k === i)); const r = rows()[i]; if (r) { r.scrollIntoView({ block: 'nearest' }); spec.preview?.(r.dataset.id ?? null); } };
+  const close = (keep: boolean): void => {
+    if (!open) return;
+    open = false; setHidden(pop, true); document.removeEventListener('pointerdown', away, true); document.removeEventListener('keydown', keys, true);
+    if (!keep) spec.preview?.(null);
+  };
+  const pick = (id: string): void => { spec.preview?.(null); close(true); if (box.value !== id) box.value = id; spec.set(id); };
+  const away = (e: Event): void => { if (!pop.contains(e.target as Node) && e.target !== box) close(false); };
+  const keys = (e: KeyboardEvent): void => {
+    const n = rows().length;
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(false); }
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); mark(Math.min(n - 1, Math.max(0, at + (e.key === 'ArrowDown' ? 1 : -1)))); }
+    else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); const r = rows()[at]; if (r) pick(r.dataset.id ?? ''); else close(false); }
+  };
+  pop.addEventListener('mouseover', (e) => { const r = (e.target as HTMLElement).closest<HTMLElement>('.cv-face-row'); if (r) { at = rows().indexOf(r); rows().forEach((x) => setClass(x, 'is-on', x === r)); spec.preview?.(r.dataset.id ?? null); } });
+  pop.addEventListener('mouseleave', () => { rows().forEach((x) => setClass(x, 'is-on', false)); spec.preview?.(null); });
+  pop.addEventListener('click', (e) => { const r = (e.target as HTMLElement).closest<HTMLElement>('.cv-face-row'); if (r) pick(r.dataset.id ?? ''); });
+  box.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    if (open) { close(false); return; }
+    const list = (spec.live ? spec.live() : spec.choices).filter((c) => c.id);
+    while (pop.children.length > list.length) pop.lastElementChild?.remove();
+    list.forEach((c, i) => {
+      const r = (pop.children[i] as HTMLElement | undefined) ?? pop.appendChild(el('<div class="cv-face-row" role="option"></div>'));
+      if (r.dataset.id !== c.id) r.dataset.id = c.id;
+      const label = c.label.replace(/^\[[ x]\] /, '');
+      if (r.textContent !== label) r.textContent = label;
+      const own = spec.label === 'Font' && c.id === c.label ? `"${c.id.replace(/"/g, '')}", sans-serif` : '';
+      if (r.style.fontFamily !== own) r.style.fontFamily = own;
+    });
+    const b = box.getBoundingClientRect();
+    pop.style.left = `${b.left}px`; pop.style.top = `${b.bottom + 2}px`; pop.style.minWidth = `${b.width}px`;
+    if (!pop.parentElement) (document.getElementById('overlay-root') ?? document.body).appendChild(pop);
+    at = list.findIndex((c) => c.id === box.value);
+    rows().forEach((r, k) => setClass(r, 'is-on', k === at));
+    setHidden(pop, false);
+    open = true;
+    document.addEventListener('pointerdown', away, true);
+    document.addEventListener('keydown', keys, true);
+    rows()[at]?.scrollIntoView({ block: 'nearest' });
+  });
+  box.addEventListener('keydown', (e) => { if (e.key === 'ArrowDown' || e.key === 'ArrowUp') e.preventDefault(); });
+}
+
 /** One tool's built row of controls, and the functions that bring those controls up to date; `parked` holds the
  *  trailing controls moved into the More panel while the row is wider than the bar (1.87.2), in row order. */
 interface Group { node: HTMLElement; sync: Array<() => void>; parked: HTMLElement[] }
@@ -118,6 +169,7 @@ export class OptionsBar {
         for (const c of spec.choices) { const o = document.createElement('option'); o.value = c.id; o.textContent = c.label; box.appendChild(o); }
         box.addEventListener('change', () => spec.set(box.value));
         box.addEventListener('keydown', (e) => e.stopPropagation());
+        if (spec.preview) facePicker(box, spec);
         sync.push(() => {
           // A live list (presets added while the tool is active) is patched in place: same values keep their nodes.
           const list = spec.live?.();

@@ -202,6 +202,9 @@ export class PropertiesColumn {
       <button class="cv-props-section cv-props-vmask-head" type="button" aria-expanded="true" hidden>${icon('chevronDown', 12)}<span>Vector Mask</span></button>
       <div class="cv-props-transform cv-props-vmask" hidden><div class="cv-props-grid"></div></div>
       <div class="cv-props-transform cv-props-vmask-acts" hidden><button class="cv-btn" type="button" data-pcmd="vmask-invert">Invert</button></div>
+      <button class="cv-props-section cv-props-live-head" type="button" aria-expanded="true" hidden>${icon('chevronDown', 12)}<span>Live Content</span></button>
+      <dl class="cv-props-doc cv-props-live" hidden><dt>Kind</dt><dd data-live="kind"></dd><dt>Detail</dt><dd data-live="detail"></dd></dl>
+      <div class="cv-props-transform cv-props-live-acts" hidden><button class="cv-btn" type="button" data-pcmd="layer-content-options" data-live-for="fill adjustment" hidden>Edit...</button><button class="cv-btn" type="button" data-pcmd="edit-contents" data-live-for="smart" hidden>Edit Contents</button><button class="cv-btn" type="button" data-pcmd="smart-filters" data-live-for="smart" hidden>Smart Filters...</button><button class="cv-btn" type="button" data-pcmd="update-linked" data-live-for="link" hidden>Update</button><button class="cv-btn" type="button" data-pcmd="relink" data-live-for="link" hidden>Relink...</button></div>
       <button class="cv-props-section cv-props-doc-head" type="button" aria-expanded="true">${icon('chevronDown', 12)}<span>Document</span></button>
       <dl class="cv-props-doc"><dt>Name</dt><dd data-doc="name"></dd><dt>Size</dt><dd data-doc="size"></dd><dt>Resolution</dt><dd data-doc="res"></dd><dt>Mode</dt><dd data-doc="mode"></dd><dt>Profile</dt><dd data-doc="profile"></dd><dt>Layers</dt><dd data-doc="layers"></dd></dl>
     </div>`);
@@ -252,6 +255,12 @@ export class PropertiesColumn {
       row.appendChild(vf[k].root);
       vBody.querySelector('.cv-props-grid')?.appendChild(row);
     }
+    // Live content: what a fill layer, adjustment layer or smart object holds, with the commands that edit it.
+    const liveHead = body.querySelector('.cv-props-live-head') as HTMLButtonElement, liveList = body.querySelector('.cv-props-live') as HTMLElement, liveActs = body.querySelector('.cv-props-live-acts') as HTMLElement;
+    const liveOpen = (): boolean => liveHead.getAttribute('aria-expanded') === 'true';
+    liveHead.addEventListener('click', () => { liveHead.setAttribute('aria-expanded', String(!liveOpen())); setHidden(liveList, !liveOpen()); setHidden(liveActs, !liveOpen()); });
+    const liveCell = (k: string): HTMLElement => liveList.querySelector(`[data-live="${k}"]`) as HTMLElement;
+    const liveBtns = Array.from(liveActs.querySelectorAll<HTMLButtonElement>('[data-live-for]'));
     for (const b of body.querySelectorAll<HTMLButtonElement>('[data-pcmd]')) {
       b.addEventListener('click', () => {
         const cmd = b.dataset.pcmd as string;
@@ -286,6 +295,26 @@ export class PropertiesColumn {
       setHidden(vActs, !vk || vHead.getAttribute('aria-expanded') !== 'true');
       vf.density.set(vk ? vk.density ?? 100 : null);
       vf.feather.set(vk ? vk.feather ?? 0 : null);
+      const fc = a?.fillContent, kinds = new Set<string>();
+      if (a?.smart) kinds.add('smart');
+      if (a?.smart?.link) kinds.add('link');
+      if (fc) kinds.add('fill');
+      if (a?.adjustment) kinds.add('adjustment');
+      setHidden(liveHead, !kinds.size);
+      setHidden(liveList, !kinds.size || !liveOpen());
+      setHidden(liveActs, !kinds.size || !liveOpen());
+      for (const b of liveBtns) setHidden(b, !(b.dataset.liveFor ?? '').split(' ').some((k) => kinds.has(k)));
+      const hex = (c: { r: number; g: number; b: number }): string => `#${[c.r, c.g, c.b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+      if (a?.smart) {
+        setText(liveCell('kind'), a.smart.link ? 'Linked Smart Object' : 'Smart Object');
+        setText(liveCell('detail'), `${a.smart.link ? `${a.smart.link.name}, ` : ''}${a.smart.filters.length} smart filter${a.smart.filters.length === 1 ? '' : 's'}`);
+      } else if (fc) {
+        setText(liveCell('kind'), fc.kind === 'solid' ? 'Solid Color fill' : fc.kind === 'gradient' ? 'Gradient fill' : 'Pattern fill');
+        setText(liveCell('detail'), fc.kind === 'solid' ? hex(fc.color) : fc.kind === 'gradient' ? `${fc.style}, ${fc.stops.length} stops, ${Math.round(fc.angle)} deg` : fc.pattern);
+      } else if (a?.adjustment) {
+        setText(liveCell('kind'), 'Adjustment layer');
+        setText(liveCell('detail'), a.adjustment.kind);
+      }
       const cur = e.current, d = cur?.doc, dash = '-';
       setText(docCell('name'), cur?.name ?? dash);
       setText(docCell('size'), d ? `${d.width} x ${d.height} px` : dash);
@@ -533,12 +562,15 @@ export class PropertiesColumn {
     });
     const hyph = el<HTMLInputElement>('<input type="checkbox" aria-label="Hyphenate">');
     hyph.addEventListener('change', () => setType(e, { hyphenate: hyph.checked }));
-    row('Justify', last); row('Hyphenate', hyph);
+    const dir = el<HTMLSelectElement>('<select class="cv-select" aria-label="Text direction"><option value="auto">Follow Language Options</option><option value="ltr">Left to right</option><option value="rtl">Right to left</option></select>');
+    dir.addEventListener('change', () => setType(e, { bidi: dir.value === 'ltr' || dir.value === 'rtl' ? dir.value : undefined }));
+    row('Justify', last); row('Hyphenate', hyph); row('Direction', dir);
     new PanelGroup(this.root, 'paragraph', [{ id: 'paragraph', label: 'Paragraph', body }], 'Paragraph');
     this.refreshers.push(() => {
       const t = e.textSettings;
       for (const b of btns) { const on = b.dataset.align === t.align; b.classList.toggle('is-on', on); b.setAttribute('aria-pressed', String(on)); }
       if (document.activeElement !== last) last.value = t.lastLine ?? 'left';
+      if (document.activeElement !== dir) dir.value = t.bidi ?? 'auto';
       for (const { key, f } of fields) f.set(t[key] ?? 0);
       hyph.checked = !!t.hyphenate;
     });

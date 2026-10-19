@@ -110,6 +110,20 @@ const fmt = (n: number): string => String(Math.round(n * 10) / 10);
 let pixelStart: { x: number; y: number } | null = null;
 /** An Alt-drag made a copy of the layers before the drag; Escape takes the copy away again. */
 let altCopy = false;
+/** The layer or folder a click would pick now (Auto-Select), outlined while the pointer rests over it. */
+let hoverPick: string | null = null;
+/** The corners of a layer, or of every pixel layer a folder holds, where the Auto-Select outline goes. */
+function pickBox(e: ToolContext['engine'], id: string): Array<{ x: number; y: number }> | null {
+  const doc = e.current?.doc;
+  const top = doc?.layers.find((l) => l.id === id);
+  if (!doc || !top) return null;
+  if (!top.isGroup) return top.raster ? corners(top.transform) : null;
+  const inside = (l: typeof top): boolean => { for (let q: typeof top | undefined = l; q; q = doc.layers.find((x) => x.id === q?.parentId)) if (q.id === id) return true; return false; };
+  const pts = doc.layers.filter((l) => !l.isGroup && l.raster && l.visible && inside(l)).flatMap((l) => corners(l.transform));
+  if (!pts.length) return null;
+  const x0 = Math.min(...pts.map((q) => q.x)), x1 = Math.max(...pts.map((q) => q.x)), y0 = Math.min(...pts.map((q) => q.y)), y1 = Math.max(...pts.map((q) => q.y));
+  return [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
+}
 /** The last opacity digit and when it was typed: a second digit within a moment makes an exact percentage. */
 let lastDigit: { d: number; at: number } | null = null;
 /** The marquee that selects layers: pressed where Auto-Select (or Cmd or Ctrl) finds no layer. */
@@ -138,9 +152,22 @@ export const moveTool: Tool = {
     if (m.kind === 'rotate') return 'alias';
     return resizeCursor(t, m.handle);
   },
+  hover(ctx, p) {
+    const e = ctx.engine;
+    let id: string | null = null;
+    if (p && !!p.mod !== e.autoSelect && !e.anyTransformPending && !e.floatingSelection) {
+      id = e.layerAt(p.doc);
+      if (id && e.autoSelectTarget === 'group') { const doc = e.current?.doc; let l = doc?.layers.find((x) => x.id === id); while (l?.parentId) { const up = doc?.layers.find((x) => x.id === l?.parentId); if (!up) break; l = up; } if (l) id = l.id; }
+      if (id && e.current?.selectedIds.has(id)) id = null;
+    }
+    if (id === hoverPick) return;
+    hoverPick = id;
+    e.emit('overlay', null);
+  },
   down(ctx, p) {
     if (p.button !== 0) return;
     const e = ctx.engine;
+    hoverPick = null;
     if (e.pathTransform) {
       if (e.pathTransform.corners) {
         const c = distortCorner(ctx, p);
@@ -289,6 +316,16 @@ export const moveTool: Tool = {
   },
   overlay(ctx, g) {
     const e = ctx.engine;
+    const pick = hoverPick ? pickBox(e, hoverPick) : null;
+    if (pick) {
+      const v = ctx.view(), pal = ctx.paint(), cs = pick.map((c) => v.toScreen(c));
+      g.save();
+      g.strokeStyle = pal.accent;
+      g.lineWidth = 1;
+      g.setLineDash([3, 3]);
+      g.beginPath(); cs.forEach((s, i) => (i ? g.lineTo(s.x, s.y) : g.moveTo(s.x, s.y))); g.closePath(); g.stroke();
+      g.restore();
+    }
     if (e.pathTransform && e.workPath) {
       const v = ctx.view(), pal = ctx.paint();
       g.save();

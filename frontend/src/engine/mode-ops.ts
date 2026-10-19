@@ -9,7 +9,7 @@ import { Renderer, renderDoc } from './renderer';
 import { inkOf, renditionOf, type Ink, type Lut3x4, type Lut4 } from './colour-lut';
 import { rasterFromChannels } from './channels';
 import { deriveRegion, deriveWhole, renderRegion, type DeriveTables } from './derive';
-import { decodeLab, labFromFloats, labFromRgba, labToSrgb, renderLab } from './lab';
+import { decodeLab, labFromFloats, labFromRgba, labToSrgb, renderLab, srgbToLab as labFromRgbBytes } from './lab';
 import { applyDuotoneLut, curveAt, DUOTONE_COUNT, duotoneLut } from './duotone';
 import { splitChannels } from './multichannel';
 import { bitmapPixels, indexedPixels, INDEXED_DEFAULTS, type BitmapMethod, type Halftone, type IndexedChoice } from './quantize';
@@ -216,9 +216,19 @@ export function setCmykTables(host: ModeHost, p: Project, lut: Lut4, inLut: Lut3
 /** The conversion dialog's choices: Bitmap `method` and `halftone`; Indexed Color `indexed` (a boolean `dither` stays the old Diffusion on or off). */
 export interface ModeOpts { /** Grayscale: the red, green and blue weights of the grey (8-bit pixels); absent is the luminosity weights. */ grayWeights?: readonly [number, number, number]; dither?: boolean; colors?: number; method?: BitmapMethod; halftone?: Halftone; indexed?: Partial<IndexedChoice> }
 
+/** A Lab picture as three grey channels: Lightness (0 to 100 as 0 to 255) and a and b (-128 to 127 as 0 to 255), each a single spot channel at full solidity. */
+function labParts(px: Uint8ClampedArray, n: number): { name: string; color: RGB; solidity: number; grey: ArrayLike<number> }[] {
+  const l = new Uint8ClampedArray(n), a = new Uint8ClampedArray(n), b = new Uint8ClampedArray(n);
+  for (let i = 0; i < n; i++) {
+    const [L, A, B] = labFromRgbBytes(px[i * 4], px[i * 4 + 1], px[i * 4 + 2]);
+    l[i] = Math.round(L * 2.55); a[i] = Math.round(A + 128); b[i] = Math.round(B + 128);
+  }
+  return [{ name: 'Lightness', color: { r: 0, g: 0, b: 0 }, solidity: 1, grey: l }, { name: 'a', color: { r: 236, g: 0, b: 140 }, solidity: 1, grey: a }, { name: 'b', color: { r: 255, g: 242, b: 0 }, solidity: 1, grey: b }];
+}
+
 export function convertMode(host: ModeHost, mode: DocMode, opts: ModeOpts = {}): boolean {
   const p = host.current;
-  if (!p || (p.doc.mode ?? 'rgb') === mode || mode === 'cmyk' || (p.doc.mode === 'cmyk' && mode !== 'multichannel') || mode === 'lab' || p.doc.mode === 'lab' || (p.doc.mode === 'multichannel' && mode !== 'rgb')) return false;
+  if (!p || (p.doc.mode ?? 'rgb') === mode || mode === 'cmyk' || (p.doc.mode === 'cmyk' && mode !== 'multichannel') || mode === 'lab' || (p.doc.mode === 'lab' && mode !== 'multichannel') || (p.doc.mode === 'multichannel' && mode !== 'rgb')) return false;
   if (mode === 'duotone') return false;   // reached through setDuotone, from Grayscale only
   const label = { rgb: 'RGB Color', grayscale: 'Grayscale', bitmap: 'Bitmap', indexed: 'Indexed Color', cmyk: 'CMYK Color', lab: 'Lab Color', duotone: 'Duotone', multichannel: 'Multichannel' }[mode];
   const flat = mode === 'bitmap' || mode === 'indexed' || mode === 'multichannel' ? host.flattened() : null;
@@ -249,6 +259,7 @@ export function convertMode(host: ModeHost, mode: DocMode, opts: ModeOpts = {}):
           for (let i = 0; i < g.length; i++) g[i] = 255 - Math.round(curveAt(ink.curve, (1 - px[i * 4] / 255) * 100) * 2.55);
           return { name: ink.name, color: ink.color, solidity: 1, grey: g };
         })
+        : src === 'lab' ? labParts(px, W * H)
         : splitChannels(px, src === 'cmyk' ? 'cmyk' : src === 'grayscale' ? 'grayscale' : 'rgb');
       const channels = parts.map((c) => {
         const r = new Raster(W, H), img = r.ctx.createImageData(W, H);

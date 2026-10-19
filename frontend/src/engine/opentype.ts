@@ -2,7 +2,12 @@
  *  with the `featureSettings` descriptor applies them to that face, so a spec with features draws with a variant of its
  *  family registered from the font file's bytes. `TextSpec.features` lists the tags turned on ('smcp'), and '-liga' or
  *  '-calt' for a default-on feature turned off. */
-import type { FeatureRun } from './types';
+import type { FeatureRun, RunAttrs } from './types';
+
+/* The run model (types.ts FeatureRun + RunAttrs): TextSpec.runs lists ranges [start, end) of `content`, sorted and apart. A run
+ * carries OpenType tags (on, off) and any of the character attributes family, size, color, weight, bold, italic,
+ * baselineShift, tracking, language; a field left out inherits the layer's. Read it with styleSegments (pieces of a line with
+ * the features and attributes in force), edit it with withRunFeature and withRunAttrs, keep it after typing with shiftRuns. */
 
 export const OT_FEATURES: ReadonlyArray<{ tag: string; label: string }> = [
   { tag: 'liga', label: 'Standard Ligatures' }, { tag: 'dlig', label: 'Discretionary Ligatures' }, { tag: 'calt', label: 'Contextual Alternates' },
@@ -69,7 +74,35 @@ export function withFeature(features: readonly string[] | null | undefined, tag:
 }
 
 const TAG = /^[A-Za-z0-9]{4}$/;
-const runKey = (r: { on: readonly string[]; off: readonly string[] }): string => `${r.on.join(',')}|${r.off.join(',')}`;
+export const RUN_KEYS = ['family', 'size', 'color', 'weight', 'bold', 'italic', 'baselineShift', 'tracking', 'language'] as const;
+export type RunPatch = { [K in keyof RunAttrs]?: RunAttrs[K] | null };
+
+/** The attributes a run sets, copied. */
+export function attrsOf(r: RunAttrs | null | undefined): RunAttrs {
+  const out: Record<string, unknown> = {};
+  if (r) for (const k of RUN_KEYS) if (r[k] !== undefined) out[k] = k === 'color' ? { ...r.color } : r[k];
+  return out as RunAttrs;
+}
+
+const attrKey = (r: RunAttrs): string => RUN_KEYS.map((k) => JSON.stringify(r[k]) ?? '').join(';');
+const runKey = (r: RunAttrs & { on: readonly string[]; off: readonly string[] }): string => `${r.on.join(',')}|${r.off.join(',')}|${attrKey(r)}`;
+const hasAttrs = (r: RunAttrs): boolean => RUN_KEYS.some((k) => r[k] !== undefined);
+
+/** Run attributes read from saved data: each kept only when valid and clamped. */
+export function attrsFrom(o: Record<string, unknown>): RunAttrs {
+  const num = (v: unknown, lo: number, hi: number): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : undefined);
+  const out: RunAttrs = {}, size = num(o.size, 1, 2000), weight = num(o.weight, 1, 1000), shift = num(o.baselineShift, -2000, 2000), track = num(o.tracking, -1000, 10000);
+  if (typeof o.family === 'string' && o.family.trim()) out.family = o.family.slice(0, 80);
+  if (size !== undefined) out.size = size;
+  if (o.color && typeof o.color === 'object') { const c = o.color as Record<string, unknown>; out.color = { r: Math.round(num(c.r, 0, 255) ?? 0), g: Math.round(num(c.g, 0, 255) ?? 0), b: Math.round(num(c.b, 0, 255) ?? 0) }; }
+  if (weight !== undefined) out.weight = Math.round(weight);
+  if (typeof o.bold === 'boolean') out.bold = o.bold;
+  if (typeof o.italic === 'boolean') out.italic = o.italic;
+  if (shift !== undefined) out.baselineShift = shift;
+  if (track !== undefined) out.tracking = Math.round(track);
+  if (typeof o.language === 'string' && /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(o.language)) out.language = o.language;
+  return out;
+}
 
 /** Feature runs read back from saved data: valid tags only, ranges clamped to `length`, sorted, none overlapping, empty
  *  ones dropped, neighbours with the same settings joined. */
@@ -82,7 +115,8 @@ export function cleanRuns(raw: unknown, length: number): FeatureRun[] {
     const o = r as Record<string, unknown>, s = Number(o.start), e = Number(o.end);
     if (!Number.isFinite(s) || !Number.isFinite(e)) continue;
     const start = Math.max(0, Math.floor(s)), end = Math.min(length, Math.floor(e)), off = tags(o.off), on = tags(o.on).filter((t) => !off.includes(t));
-    if (end > start && (on.length || off.length)) list.push({ start, end, on, off });
+    const attrs = attrsFrom(o);
+    if (end > start && (on.length || off.length || hasAttrs(attrs))) list.push({ ...attrs, start, end, on, off });
   }
   list.sort((a, b) => a.start - b.start);
   const out: FeatureRun[] = [];
@@ -109,12 +143,45 @@ export function withRunFeature(runs: readonly FeatureRun[] | null | undefined, s
       onTags = onTags.filter((t) => t !== tag); offTags = offTags.filter((t) => t !== tag);
       (on ? onTags : offTags).push(tag);
     }
-    if (!onTags.length && !offTags.length) continue;
-    const last = out[out.length - 1], piece = { start: a, end: b, on: onTags, off: offTags };
+    const kept = attrsOf(have);
+    if (!onTags.length && !offTags.length && !hasAttrs(kept)) continue;
+    const last = out[out.length - 1], piece = { ...kept, start: a, end: b, on: onTags, off: offTags };
     if (last && last.end === a && runKey(last) === runKey(piece)) last.end = b;
     else out.push(piece);
   }
   return out;
+}
+
+/** The runs with the attributes of `patch` set over [start, end): a value sets the attribute, null clears it, a key left out
+ *  leaves it. Runs are split at the range's edges, empty pieces dropped and equal neighbours joined. */
+export function withRunAttrs(runs: readonly FeatureRun[] | null | undefined, start: number, end: number, patch: RunPatch): FeatureRun[] {
+  const list = runs ?? [];
+  if (end <= start) return list.map((r) => ({ ...r, on: [...r.on], off: [...r.off] }));
+  const cuts = [...new Set([start, end, ...list.flatMap((r) => [r.start, r.end])])].sort((a, b) => a - b);
+  const out: FeatureRun[] = [];
+  for (let k = 0; k + 1 < cuts.length; k++) {
+    const a = cuts[k], b = cuts[k + 1], have = list.find((r) => r.start <= a && r.end >= b), attrs = attrsOf(have) as Record<string, unknown>;
+    if (a >= start && b <= end) for (const key of RUN_KEYS) {
+      const v = patch[key];
+      if (v === null) delete attrs[key];
+      else if (v !== undefined) attrs[key] = key === 'color' ? { ...(v as RunAttrs['color']) } : v;
+    }
+    const onTags = have ? [...have.on] : [], offTags = have ? [...have.off] : [];
+    if (!onTags.length && !offTags.length && !hasAttrs(attrs as RunAttrs)) continue;
+    const last = out[out.length - 1], piece = { ...(attrs as RunAttrs), start: a, end: b, on: onTags, off: offTags };
+    if (last && last.end === a && runKey(last) === runKey(piece)) last.end = b;
+    else out.push(piece);
+  }
+  return out;
+}
+
+/** What every character of [start, end) shares for each attribute a run can set: its value, or undefined where the characters
+ *  differ or none sets it. Characters outside any run set nothing. */
+export function runAttrsOver(runs: readonly FeatureRun[] | null | undefined, start: number, end: number): RunAttrs {
+  const cuts = [...new Set([start, ...(runs ?? []).flatMap((r) => [r.start, r.end]).filter((p) => p > start && p < end)])];
+  const parts = cuts.map((c) => attrsOf(runs?.find((r) => r.start <= c && c < r.end))), out: Record<string, unknown> = {};
+  for (const k of RUN_KEYS) if (parts.length && parts.every((p) => JSON.stringify(p[k]) === JSON.stringify(parts[0][k])) && parts[0][k] !== undefined) out[k] = parts[0][k];
+  return out as RunAttrs;
 }
 
 /** The features in force at character `i`: the layer's list with the run that covers it applied. */
@@ -145,6 +212,23 @@ export function featureSegments(base: readonly string[] | null | undefined, runs
   });
   return out;
 }
+
+export interface StyleSegment { from: number; to: number; features: string[]; attrs: RunAttrs }
+
+/** [from, to) of a line cut where the features or any run attribute change: each piece with both in force over it. */
+export function styleSegments(base: readonly string[] | null | undefined, runs: readonly FeatureRun[] | null | undefined, from: number, to: number): StyleSegment[] {
+  const cuts = [...new Set([from, ...(runs ?? []).flatMap((r) => [r.start, r.end]).filter((p) => p > from && p < to)])].sort((a, b) => a - b);
+  const out: StyleSegment[] = [];
+  cuts.forEach((c, k) => {
+    const end = k + 1 < cuts.length ? cuts[k + 1] : to, features = featuresAt(base, runs, c), attrs = attrsOf(runs?.find((r) => r.start <= c && c < r.end)), last = out[out.length - 1];
+    if (last && last.features.join(',') === features.join(',') && attrKey(last.attrs) === attrKey(attrs)) last.to = end;
+    else out.push({ from: c, to: end, features, attrs });
+  });
+  return out;
+}
+
+/** Whether any run sets a character attribute (not only features). */
+export const runsStyled = (runs: readonly FeatureRun[] | null | undefined): boolean => !!runs?.some((r) => hasAttrs(r));
 
 /** The runs after the text changed from `before` to `after`: the common start and end stay put, the changed middle is
  *  replaced, so positions after it move by the change in length and positions inside it fall to its start. */
