@@ -1,12 +1,13 @@
 import type { Engine } from '../../engine';
 import { allBrushPresets, BUILTIN_BRUSH_PRESETS } from '../../engine/brush-dynamics';
-import { allCustomShapes, CUSTOM_SHAPES, addCustomShape, parseShape, removeCustomShape, renameCustomShape } from '../../engine/custom-shapes';
+import { allCustomShapes, CUSTOM_SHAPES, addCustomShape, parseShape, removeCustomShape, renameCustomShape, stepCustomShape } from '../../engine/custom-shapes';
 import { allGradients, customGradients, GRADIENT_PRESETS, gradientsFromJson, setCustomGradients } from '../../engine/gradients';
 import type { GradientPreset } from '../../engine/gradients';
 import { readGgr, readGrd, writeGrd } from '../../io/grd';
 import { readCsh, writeCsh } from '../../io/csh';
-import { addPattern, allPatterns, removePattern, renamePattern } from '../../engine/patterns';
+import { addPattern, allPatterns, removePattern, renamePattern, stepPattern } from '../../engine/patterns';
 import { createSurface, ctxOf } from '../../engine/surface';
+import { defaultEffects } from '../../engine/types';
 import { addBrushesFromJson, brushesToJson, importAbr, removeImportedBrush, renameImportedBrush, stepBrushPreset } from '../../io/brush-library';
 import { readPat, writePat } from '../../io/pat';
 import { parseAco, parseAse, writeAco, writeAse } from '../../io/swatch-files';
@@ -14,9 +15,11 @@ import { Dialog, promptName } from '../dialogs';
 import { el, setHidden, setText } from '../dom';
 import type { SwatchesPanel } from '../swatches';
 import { toast } from '../toast';
+import { loadStylePresets, saveStylePresets, type StylePreset } from '../styles-panel';
+import { loadToolPresets, saveToolPresets, type ToolPreset } from './tool-presets-dialog';
 import { MENU_COLORS, cleanBindings, loadPrefs, updatePrefs } from '../prefs';
 
-export type Kind ='brushes' | 'swatches' | 'gradients' | 'patterns' | 'shapes';
+export type Kind ='brushes' | 'swatches' | 'gradients' | 'patterns' | 'shapes' | 'styles' | 'tools';
 interface Item { id: string; label: string; builtin: boolean }
 
 const KINDS: ReadonlyArray<{ id: Kind; label: string; accept: string }> = [
@@ -25,6 +28,8 @@ const KINDS: ReadonlyArray<{ id: Kind; label: string; accept: string }> = [
   { id: 'gradients', label: 'Gradients', accept: '.json,.grd,.ggr,application/json' },
   { id: 'patterns', label: 'Patterns', accept: '.pat' },
   { id: 'shapes', label: 'Custom Shapes', accept: '.json,.csh,application/json' },
+  { id: 'styles', label: 'Layer Styles', accept: '.json,application/json' },
+  { id: 'tools', label: 'Tool Presets', accept: '.json,application/json' },
 ];
 const GRADIENT_KEY = 'formvis.gradients';
 const PRESET_KIND: ReadonlyArray<[RegExp, Kind]> = [[/\.abr$/i, 'brushes'], [/\.(aco|ase)$/i, 'swatches'], [/\.(grd|ggr)$/i, 'gradients'], [/\.pat$/i, 'patterns'], [/\.csh$/i, 'shapes']];
@@ -108,6 +113,8 @@ export class PresetManagerDialog extends Dialog {
         const builtin = new Set(CUSTOM_SHAPES.map((s) => s.id));
         return allCustomShapes().map((s) => ({ id: s.id, label: s.label, builtin: builtin.has(s.id) }));
       }
+      case 'styles': return loadStylePresets().map((s) => ({ id: s.id, label: s.group ? `${s.group} / ${s.name}` : s.name, builtin: false }));
+      case 'tools': return loadToolPresets().map((p, i) => ({ id: String(i), label: `${p.name} (${p.tool})`, builtin: false }));
     }
   }
 
@@ -124,18 +131,18 @@ export class PresetManagerDialog extends Dialog {
       ? 'Swatches have no names, so they cannot be renamed. Load takes .aco or .ase; Save Set writes .aco and Export writes .ase.'
       : this.kind === 'gradients' ? 'Load takes .json, .grd or .ggr; Save Set writes .json and Export writes a .grd. Built-in presets cannot be renamed or deleted.'
       : this.kind === 'shapes' ? 'Load takes .json or a .csh; Save Set writes .json and Export writes a .csh. Built-in presets cannot be renamed or deleted.'
+      : this.kind === 'styles' ? 'Layer styles saved in the Styles panel. Load and Save Set use .json; the panel also reads and writes .asl.'
+      : this.kind === 'tools' ? 'Tool presets saved in Window > Tool Presets. Load and Save Set use .json; a loaded preset replaces one with the same name and tool.'
       : 'Built-in presets are listed but cannot be renamed or deleted.');
     setHidden(this.renameBtn, this.kind === 'swatches');
     setHidden(this.aseBtn, this.kind !== 'swatches');
     setHidden(this.grdBtn, this.kind !== 'gradients');
     setHidden(this.cshBtn, this.kind !== 'shapes');
-    setHidden(this.upBtn, this.kind === 'patterns' || this.kind === 'shapes');
-    setHidden(this.downBtn, this.kind === 'patterns' || this.kind === 'shapes');
     this.saveBtn.title = this.kind === 'brushes' ? 'Writes the brushes you saved or imported, with their tips, as a .json file.' : '';
     this.sync();
   }
 
-  /** Moves the selected preset of your own one place; brushes, swatches and gradients keep the order. */
+  /** Moves the selected preset of your own one place; every kind keeps the order. */
   private async step(by: -1 | 1): Promise<void> {
     const it = this.selected()[0];
     if (!it || it.builtin) return;
@@ -151,9 +158,21 @@ export class PresetManagerDialog extends Dialog {
       [list[i], list[j]] = [list[j], list[i]];
       setCustomGradients(list);
       this.keepGradients();
+    } else if (this.kind === 'patterns') { stepPattern(it.id, by); await this.keepPatterns(); }
+    else if (this.kind === 'shapes') stepCustomShape(it.id, by);
+    else if (this.kind === 'styles') {
+      const list = loadStylePresets(), i = list.findIndex((s) => s.id === it.id), j = i + by;
+      if (i < 0 || j < 0 || j >= list.length) return;
+      [list[i], list[j]] = [list[j], list[i]];
+      saveStylePresets(list);
+    } else if (this.kind === 'tools') {
+      const list = loadToolPresets(), i = Number(it.id), j = i + by;
+      if (j < 0 || j >= list.length) return;
+      [list[i], list[j]] = [list[j], list[i]];
+      saveToolPresets(list);
     }
     this.refresh();
-    const at = this.items.findIndex((x) => (this.kind === 'swatches' ? x.id === String(Number(it.id) + by) : x.id === it.id));
+    const at = this.items.findIndex((x) => (this.kind === 'swatches' || this.kind === 'tools' ? x.id === String(Number(it.id) + by) : x.id === it.id));
     if (at >= 0) this.list.options[at].selected = true;
     this.sync();
   }
@@ -187,6 +206,8 @@ export class PresetManagerDialog extends Dialog {
         }
         case 'patterns': renamePattern(it.id, name); await this.keepPatterns(); break;
         case 'shapes': renameCustomShape(it.id, name); break;
+        case 'styles': saveStylePresets(loadStylePresets().map((s) => (s.id === it.id ? { ...s, name } : s))); break;
+        case 'tools': saveToolPresets(loadToolPresets().map((p, i) => (String(i) === it.id ? { ...p, name } : p))); break;
         case 'swatches': break;
       }
       this.refresh();
@@ -211,6 +232,8 @@ export class PresetManagerDialog extends Dialog {
       }
       case 'patterns': for (const it of sel) removePattern(it.id); await this.keepPatterns(); break;
       case 'shapes': for (const it of sel) removeCustomShape(it.id); break;
+      case 'styles': { const drop = new Set(sel.map((s) => s.id)); saveStylePresets(loadStylePresets().filter((s) => !drop.has(s.id))); break; }
+      case 'tools': { const drop = new Set(sel.map((s) => s.id)); saveToolPresets(loadToolPresets().filter((_, i) => !drop.has(String(i)))); break; }
     }
     this.refresh();
   }
@@ -292,6 +315,8 @@ export class PresetManagerDialog extends Dialog {
       return res.shapes.length;
     }
     const raw: unknown = JSON.parse(await f.text());
+    if (kind === 'styles') return this.addStyles(raw);
+    if (kind === 'tools') return this.addToolPresets(raw);
     if (kind === 'gradients') {
       const known = new Set(allGradients().map((g) => g.id));
       const fresh = gradientsFromJson(raw).filter((g) => !known.has(g.id));
@@ -305,6 +330,41 @@ export class PresetManagerDialog extends Dialog {
       const o = s && typeof s === 'object' ? (s as { label?: unknown; d?: unknown }) : null;
       if (o && typeof o.label === 'string' && typeof o.d === 'string') { addCustomShape(o.label, parseShape(o.d)); n += 1; }
     }
+    return n;
+  }
+
+  /** Layer styles from a list in a file or bundle: effects keep only the groups the engine knows, missing values take
+   *  their defaults, and a style whose id is already saved is left out. Returns how many were added. */
+  private addStyles(raw: unknown): number {
+    if (!Array.isArray(raw)) throw new Error('Expected a list of styles.');
+    const have = loadStylePresets(), known = new Set(have.map((s) => s.id)), base = defaultEffects() as unknown as Record<string, unknown>, fresh: StylePreset[] = [];
+    for (const x of raw) {
+      const o = x && typeof x === 'object' ? (x as { id?: unknown; name?: unknown; group?: unknown; effects?: unknown }) : null;
+      if (!o || typeof o.name !== 'string' || !o.effects || typeof o.effects !== 'object') continue;
+      const id = typeof o.id === 'string' && o.id ? o.id : `style-${Date.now().toString(36)}-${fresh.length}`;
+      if (known.has(id)) continue;
+      known.add(id);
+      const src = o.effects as Record<string, unknown>, fx: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(base)) fx[k] = v && typeof v === 'object' && src[k] && typeof src[k] === 'object' ? { ...(v as object), ...(src[k] as object) } : v;
+      fresh.push({ id, name: o.name.slice(0, 80) || 'Style', effects: fx as unknown as StylePreset['effects'], ...(typeof o.group === 'string' && o.group ? { group: o.group.slice(0, 40) } : {}) });
+    }
+    if (fresh.length) saveStylePresets([...have, ...fresh]);
+    return fresh.length;
+  }
+
+  /** Tool presets from a list: a preset with the name and tool of a saved one replaces it. Returns how many were taken. */
+  private addToolPresets(raw: unknown): number {
+    if (!Array.isArray(raw)) throw new Error('Expected a list of tool presets.');
+    const list = loadToolPresets();
+    let n = 0;
+    for (const x of raw) {
+      const o = x && typeof x === 'object' ? (x as { name?: unknown; tool?: unknown; values?: unknown }) : null;
+      if (!o || typeof o.name !== 'string' || typeof o.tool !== 'string' || !o.values || typeof o.values !== 'object') continue;
+      const p: ToolPreset = { name: o.name.slice(0, 80), tool: o.tool, values: o.values as Record<string, unknown> }, at = list.findIndex((q) => q.name === p.name && q.tool === p.tool);
+      if (at >= 0) list[at] = p; else list.push(p);
+      n += 1;
+    }
+    if (n) saveToolPresets(list);
     return n;
   }
 
@@ -323,10 +383,12 @@ export class PresetManagerDialog extends Dialog {
         gradients: customGradients.filter((g) => g.id !== 'edited'),
         shapes: allCustomShapes().filter((s) => !builtin.has(s.id)).map((s) => ({ label: s.label, d: s.d })),
         patterns: allPatterns().filter((x) => !x.builtin).map((x) => ({ name: x.name, width: x.surface.width, height: x.surface.height, rgba: toBase64(new Uint8Array(ctxOf(x.surface).getImageData(0, 0, x.surface.width, x.surface.height).data.buffer)) })),
+        styles: loadStylePresets(),
+        toolPresets: loadToolPresets(),
         settings: { shortcuts: p.shortcuts, shortcutSets: p.shortcutSets, menuHidden: p.menuHidden, menuColors: p.menuColors },
       };
       await this.deliver(new Blob([JSON.stringify(bundle)], { type: 'application/json' }), 'formvis-presets.json');
-      toast(`Exported ${bundle.brushes.length} brushes, ${bundle.swatches.length} swatches, ${bundle.gradients.length} gradients, ${bundle.shapes.length} shapes and ${bundle.patterns.length} patterns.`);
+      toast(`Exported ${bundle.brushes.length} brushes, ${bundle.swatches.length} swatches, ${bundle.gradients.length} gradients, ${bundle.shapes.length} shapes, ${bundle.patterns.length} patterns, ${bundle.styles.length} layer styles and ${bundle.toolPresets.length} tool presets.`);
     } catch (err) { toast(message(err), 'error'); }
   }
 
@@ -365,6 +427,7 @@ export class PresetManagerDialog extends Dialog {
       }
       if (patterns) await this.keepPatterns();
       const brushes = await addBrushesFromJson(raw.brushes);
+      const styles = Array.isArray(raw.styles) ? this.addStyles(raw.styles) : 0, tools = Array.isArray(raw.toolPresets) ? this.addToolPresets(raw.toolPresets) : 0;
       let tail = '';
       const st = withSettings && raw.settings && typeof raw.settings === 'object' ? (raw.settings as Record<string, unknown>) : null;
       if (st) {
@@ -377,7 +440,7 @@ export class PresetManagerDialog extends Dialog {
         this.onSettings?.({ shortcuts });
         tail = ', and the keyboard and menu settings';
       }
-      toast(`Imported ${brushes} brushes, ${colours.length} swatches, ${grads.length} gradients, ${shapes} shapes and ${patterns} patterns${tail}.`);
+      toast(`Imported ${brushes} brushes, ${colours.length} swatches, ${grads.length} gradients, ${shapes} shapes, ${patterns} patterns, ${styles} layer styles and ${tools} tool presets${tail}.`);
       this.refresh();
     } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
   }
@@ -414,6 +477,18 @@ export class PresetManagerDialog extends Dialog {
           const list = brushesToJson();
           if (!list.length) { toast('There are no brushes of your own to save.', 'info'); return; }
           await this.deliver(new Blob([JSON.stringify({ format: 'formvis-brushes', version: 1, brushes: list })], { type: 'application/json' }), 'Brushes.json');
+          break;
+        }
+        case 'styles': {
+          const list = loadStylePresets();
+          if (!list.length) { toast('There are no layer styles to save.', 'info'); return; }
+          await this.deliver(new Blob([JSON.stringify(list, null, 2)], { type: 'application/json' }), 'Layer Styles.json');
+          break;
+        }
+        case 'tools': {
+          const list = loadToolPresets();
+          if (!list.length) { toast('There are no tool presets to save.', 'info'); return; }
+          await this.deliver(new Blob([JSON.stringify(list, null, 2)], { type: 'application/json' }), 'Tool Presets.json');
           break;
         }
       }

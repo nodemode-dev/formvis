@@ -64,6 +64,16 @@ export function setPatternGroup(id: ID, group: string): boolean {
   return true;
 }
 
+/** Moves a pattern of the person's own one place up (-1) or down (1) among their own. */
+export function stepPattern(id: ID, by: -1 | 1): boolean {
+  const own = [...registry.values()].filter((p) => !p.builtin), i = own.findIndex((p) => p.id === id), j = i + by;
+  if (i < 0 || j < 0 || j >= own.length) return false;
+  [own[i], own[j]] = [own[j], own[i]];
+  for (const p of own) registry.delete(p.id);
+  for (const p of own) registry.set(p.id, p);
+  return true;
+}
+
 /** Renames a pattern of the person's own; built-ins keep their names. */
 export function renamePattern(id: ID, name: string): boolean {
   const p = registry.get(id), n = name.trim().slice(0, 80);

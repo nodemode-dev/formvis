@@ -243,7 +243,7 @@ export class AgentBridge {
           if (/\.(fmv|fvd|psd|psb|ora)$/i.test(file.name)) return fail(`into ${into} takes a picture, not a project: open ${file.name} without into.`);
         }
         if (into === 'layer') return await this.run('place_image', { data: str('data'), name: file.name.replace(/\.[^.]+$/, '').slice(0, 120), ...(a.svg_width !== undefined ? { svg_width: a.svg_width } : {}), ...(a.reference === true ? { reference: true } : {}) });
-        if (/\.(fmv|psd|psb|ora)$/i.test(file.name)) { if (!this.deps.openFile) return fail('formvis cannot open projects for agents here.'); await this.deps.openFile(file); }
+        if (/\.(fmv|fvd|psd|psb|ora)$/i.test(file.name)) { if (!this.deps.openFile) return fail('formvis cannot open projects for agents here.'); await this.deps.openFile(file); }
         else if (/\.svg$/i.test(file.name)) e.openImage(await rasteriseSvg(file, file.name, Math.round(num('svg_width', (await svgSize(file))?.width ?? 1024))));
         else e.openImage(await decodeImage(file, file.name));
         if (into === 'replace' && was && e.current && e.current.id !== was) e.closeProject(was);

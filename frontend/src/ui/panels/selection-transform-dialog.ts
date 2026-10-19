@@ -13,8 +13,8 @@ export class SelectionTransformDialog extends Dialog {
   private readonly matrix = el<HTMLInputElement>('<input class="cv-input" type="text" value="1 0 0 1 0 0" aria-label="Matrix a b c d e f">');
   private readonly smooth = el<HTMLSelectElement>('<select class="cv-input"><option value="1">Bilinear</option><option value="0">Nearest Neighbour</option></select>');
 
-  constructor(private readonly engine: Engine) {
-    super('Transform Selection', 380);
+  constructor(private readonly engine: Engine, private readonly layer = false) {
+    super(layer ? 'Transform Layer' : 'Transform Selection', 380);
     this.field('Reference point', this.ref);
     const rows: ReadonlyArray<readonly [keyof SelectionWarp, string, number, number, number, number]> = [
       ['moveX', 'Move X (px)', 0, -100000, 100000, 1], ['moveY', 'Move Y (px)', 0, -100000, 100000, 1],
@@ -28,9 +28,9 @@ export class SelectionTransformDialog extends Dialog {
       this.field(label, input);
     }
     this.field('Matrix a b c d e f', this.matrix);
-    this.field('Interpolation', this.smooth);
+    if (!layer) this.field('Interpolation', this.smooth);
     this.button('Cancel', 'ghost', () => this.close());
-    this.button('OK', 'primary', () => { const o = this.options(); this.close(); this.engine.transformSelectionBy(o); });
+    this.button('OK', 'primary', () => { const o = this.options(); this.close(); if (this.layer) this.engine.transformLayerBy(o); else this.engine.transformSelectionBy(o); });
     this.remember();
   }
 
@@ -43,7 +43,8 @@ export class SelectionTransformDialog extends Dialog {
   }
 
   show(): void {
-    if (!this.engine.current?.selection) { this.engine.notice('Make a selection first.'); return; }
+    if (!this.layer && !this.engine.current?.selection) { this.engine.notice('Make a selection first.'); return; }
+    if (this.layer && !this.engine.activeLayer) { this.engine.notice('Select a layer first.'); return; }
     this.open();
   }
 }

@@ -22,6 +22,11 @@ function token(name: string, fallback: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 }
 
+function termFontSize(): number {
+  const n = parseFloat(token('--fs-13', '13'));
+  return n > 0 ? n : 13;
+}
+
 function saved(): { open: boolean; h: number } {
   try {
     const s = JSON.parse(localStorage.getItem(KEY) ?? '{}') as { open?: boolean; h?: number };
@@ -68,7 +73,11 @@ export class TerminalDock {
     document.addEventListener('keydown', (e) => {
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.code === 'KeyJ' && !e.repeat && !(this.yieldsKey() && !this.root.contains(e.target as Node))) { e.preventDefault(); e.stopPropagation(); this.toggle(); }
     }, true);
-    document.addEventListener('nm:ui-settings-changed', () => { for (const t of this.tabs.values()) t.term.options.theme = this.theme(); });
+    document.addEventListener('nm:ui-settings-changed', () => {
+      const size = termFontSize();
+      for (const t of this.tabs.values()) { t.term.options.theme = this.theme(); if (t.term.options.fontSize !== size) t.term.options.fontSize = size; }
+      this.fitActive();
+    });
     this.grip(q(this.root, '.ft-dock-grip'), html);
     if (this.isOpen()) void this.ensure();
   }
@@ -171,7 +180,7 @@ export class TerminalDock {
   private mount(info: TerminalInfo, show: boolean): void {
     const agent = info.kind === 'agent';
     const term = new Terminal({
-      fontFamily: token('--font-mono', 'monospace'), fontSize: 13, lineHeight: 1.25, cursorBlink: !agent, disableStdin: agent,
+      fontFamily: token('--font-mono', 'monospace'), fontSize: termFontSize(), lineHeight: 1.25, cursorBlink: !agent, disableStdin: agent,
       scrollback: 5000, theme: this.theme(), overviewRuler: { width: 0 },
     });
     const fit = new FitAddon();

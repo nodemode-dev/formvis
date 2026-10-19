@@ -4,6 +4,28 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.90.2 · 2026-10-19
+
+### Added
+
+- PSD saving: multichannel documents, live smart filters, more layer style settings and instances, layer styles on groups, the Quick Mask channel, scaled pattern fills.
+- Export: CMYK JPEG and TIFF from Export As with a press profile; BMP and TGA from Layers and Artboards to Files, straight into a chosen folder in the browser; notes on what each format loses.
+- Files: palette PNG for Indexed Color documents, OpenRaster locks and adjustment layers, swatch colour values kept exactly, a Package dialog with PSD and PSB.
+- Canvas Size fills the new border by stretched edge, average colour, grey or noise, and can select it; a Perspective Crop command; copying a single channel.
+- Preferences: fit and smart objects when placing, follow the system's light or dark appearance.
+- Free Transform and Rotate on alpha channels and Quick Mask; Transform by numbers; Lasso Freeze and Thaw in Liquify with a larger preview.
+- Preset Manager: Layer Styles and Tool Presets, reorder patterns and shapes.
+
+### Changed
+
+- Saving can be stopped before anything is written.
+- Interface text size now also applies to dialogs and the terminal that had fixed sizes.
+- A plugin can no longer load code from a URL in the built app.
+
+### Fixed
+
+- Converting from a .fvd project on the command line.
+
 ## 1.90.1 · 2026-10-19
 
 ### Added

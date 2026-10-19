@@ -71,9 +71,37 @@ export function quantize8(img: Png8Image, o: Png8Options): { indices: Uint8Array
   return { indices, colors, transparent: clear };
 }
 
+/** An Indexed Color document's picture as an indexed PNG that keeps the document's own palette (at most 256 entries);
+ *  each pixel takes its exact palette entry, else the nearest, and a see-through pixel takes `clearIndex` when given. */
+export async function encodeIndexedPng(img: Png8Image, colors: ReadonlyArray<readonly [number, number, number]>, clearIndex?: number): Promise<Uint8Array> {
+  const { width: w, height: h, data } = img, pal = colors.slice(0, 256), seen = new Map<number, number>(), indices = new Uint8Array(w * h);
+  const near = (r: number, g: number, b: number): number => {
+    let best = 0, bd = Infinity;
+    for (let k = 0; k < pal.length; k++) {
+      const c = pal[k]!, d = (c[0] - r) ** 2 + (c[1] - g) ** 2 + (c[2] - b) ** 2;
+      if (d < bd) { bd = d; best = k; if (d === 0) break; }
+    }
+    return best;
+  };
+  for (let i = 0, p = 0; i < indices.length; i++, p += 4) {
+    if (clearIndex !== undefined && data[p + 3]! < 128) { indices[i] = clearIndex; continue; }
+    const key = (data[p]! << 16) | (data[p + 1]! << 8) | data[p + 2]!;
+    let k = seen.get(key);
+    if (k === undefined) { k = near(data[p]!, data[p + 1]!, data[p + 2]!); seen.set(key, k); }
+    indices[i] = k;
+  }
+  return packIndexed(w, h, indices, pal.map((c) => [c[0], c[1], c[2]]), clearIndex !== undefined && clearIndex < pal.length ? clearIndex : -1);
+}
+
 /** The PNG-8 file for `img`. */
 export async function encodePng8(img: Png8Image, o: Png8Options): Promise<Uint8Array> {
-  const { width: w, height: h } = img, q = quantize8(img, o), n = q.colors.length;
+  const q = quantize8(img, o);
+  return packIndexed(img.width, img.height, q.indices, q.colors, q.transparent ? 0 : -1);
+}
+
+/** Indexed pixels and their palette as a PNG; `clear` is the palette entry that is see-through, or -1 for none. */
+async function packIndexed(w: number, h: number, indices: Uint8Array, colors: number[][], clear: number): Promise<Uint8Array> {
+  const q = { indices, colors, clear }, n = q.colors.length;
   const depth = n <= 2 ? 1 : n <= 4 ? 2 : n <= 16 ? 4 : 8, perByte = 8 / depth, stride = Math.ceil(w / perByte);
   const raw = new Uint8Array((stride + 1) * h);
   for (let y = 0; y < h; y++) {
@@ -85,7 +113,7 @@ export async function encodePng8(img: Png8Image, o: Png8Options): Promise<Uint8A
   const plte = new Uint8Array(n * 3);
   q.colors.forEach((c, i) => plte.set(c as number[], i * 3));
   const parts = [new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', head), chunk('PLTE', plte)];
-  if (q.transparent) parts.push(chunk('tRNS', new Uint8Array([0])));
+  if (q.clear >= 0) parts.push(chunk('tRNS', Uint8Array.from({ length: q.clear + 1 }, (_, i) => (i === q.clear ? 0 : 255))));
   parts.push(chunk('IDAT', await zlib(raw)), chunk('IEND', new Uint8Array(0)));
   const out = new Uint8Array(parts.reduce((s, p) => s + p.length, 0));
   let at = 0;

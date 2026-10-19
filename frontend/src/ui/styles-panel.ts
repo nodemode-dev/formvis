@@ -6,7 +6,7 @@ import { promptName } from './dialogs';
 import { el, patchList, q, setHidden, setText } from './dom';
 import { icon } from './icons';
 
-interface StylePreset { id: string; name: string; effects: LayerEffects; group?: string }
+export interface StylePreset { id: string; name: string; effects: LayerEffects; group?: string }
 
 const KEY = 'formvis.stylePresets';
 
@@ -36,6 +36,13 @@ let docSink: ((list: readonly StylePreset[]) => void) | null = null;
 function savePresets(list: readonly StylePreset[]): void {
   try { localStorage.setItem(KEY, JSON.stringify(list)); } catch { /* storage unavailable: the styles last for this session */ }
   docSink?.(list);
+}
+
+/** The Preset Manager's way to the saved styles: it reads and writes the same list, and the panel reloads on the event. */
+export const loadStylePresets = (): StylePreset[] => loadPresets();
+export function saveStylePresets(list: readonly StylePreset[]): void {
+  savePresets(list);
+  window.dispatchEvent(new Event('formvis:style-presets'));
 }
 
 /** The Styles panel (Window > Styles, DEV_PLAN 35.3 part b): a grid of saved layer styles. A tile shows the style's name;
@@ -93,6 +100,7 @@ export class StylesPanel {
       if (p) void this.rename(p);
     });
     docSink = (list) => { engine.setStylePresets(list); };
+    window.addEventListener('formvis:style-presets', () => { this.presets = loadPresets(); if (this.selected && !this.presets.some((p) => p.id === this.selected)) this.selected = null; this.sync(); });
     for (const ev of ['doc', 'history', 'active', 'projects'] as const) engine.on(ev, () => this.sync());
     this.sync();
   }

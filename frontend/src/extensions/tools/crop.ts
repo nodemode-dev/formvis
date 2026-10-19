@@ -264,7 +264,7 @@ function commit(e: Engine): void {
   if (perspective && quad) {
     const q = quad;
     quad = null; frame = null; drag = null; cornerDrag = -1;
-    e.perspectiveCrop(q, ratioId === 'size' ? sizePx() : null);
+    e.perspectiveCrop(q, ratioId === 'size' ? sizePx() : null, ratioId === 'size' ? size.res : null);
     e.emit('overlay', null);
     e.emit('options', null);
     return;
@@ -284,6 +284,17 @@ function commit(e: Engine): void {
 
 /** True while the Crop tool holds a frame (or perspective corners) not yet applied. */
 export const cropPending = (): boolean => !!frame || !!quad;
+
+/** Perspective Crop as its own entry: the Crop tool with its four-corner mode on. */
+export function startPerspectiveCrop(e: Engine): void {
+  e.setTool('crop');
+  perspective = true;
+  const s = e.current?.selection;
+  quad = frame && !quad ? quadOf(frame) : quad;
+  if (!frame && !quad && s) { frame = whole(s.rect); quad = quadOf(frame); }
+  e.emit('options', null);
+  e.emit('overlay', null);
+}
 /** Image > Crop with a frame open applies that frame, as Enter does; false when none is open. */
 export function commitPendingCrop(e: Engine): boolean {
   if (!cropPending()) return false;

@@ -59,6 +59,7 @@ import * as SO from './select-ops';
 import * as IE from './image-edit';
 import { diffRegions } from './image-diff';
 import * as DS from './document-size';
+import { borderCoverage, borderFill, type BorderMode } from './canvas-border';
 import * as AB from './artboard-ops';
 import * as GD from './guides-ops';
 import * as PR from './profile-ops';
@@ -6252,6 +6253,7 @@ export class Engine {
       return true;
     }
     if (this.pathTarget) return this.transformPathsBy((b) => turnAbout({ x: b.x + b.w / 2, y: b.y + b.h / 2 }, quarters));
+    if (this.alphaTargeted() || this.quickMask) return this.turnMask(quarters, this.alphaTargeted());
     if (!this.beginTransform({ kind: 'rotate' }, { x: 0, y: 0 }) || !this.transformEdit) return false;
     const te = this.transformEdit, r = te.original.rotation + quarters * 90;
     te.draft = { ...te.original, rotation: r - 360 * Math.ceil((r - 180) / 360) };
@@ -7478,11 +7480,13 @@ export class Engine {
         // Into a frame, the image covers it, centred; elsewhere it lands at its own size.
         const fr = parentId ? p.layer(parentId)?.frame : null, cover = fr ? Math.max(fr.w / img.width, fr.h / img.height) : 1;
         const depth = p.doc.depth ?? 8, channels = img.deep && !fr && (!p.doc.mode || p.doc.mode === 'rgb') ? (depth === 32 ? img.deep : depth === 16 ? deepToned(img.deep, 0, 1) : null) : null;
+        const raster = Raster.from(img.source, img.width, img.height), placed = !created && !fr && !channels;
         const layer = newLayer(created && img.palette && img.transparentIndex === undefined ? 'Background' : stripExt(img.name), p.doc, {
-          raster: Raster.from(img.source, img.width, img.height), parentId, ...(channels ? { channels } : {}),
+          raster, parentId, ...(channels ? { channels } : {}),
+          ...(placed && SOB.placePrefs.smart ? { smart: { source: raster, filters: [] } } : {}),
           transform: fr
             ? { ...docTransform(img.width, img.height), x: fr.x + (fr.w - img.width * cover) / 2, y: fr.y + (fr.h - img.height * cover) / 2, w: img.width * cover, h: img.height * cover }
-            : { ...docTransform(img.width, img.height), x: Math.floor(c.x - img.width / 2), y: Math.floor(c.y - img.height / 2) },
+            : { ...docTransform(img.width, img.height), x: Math.floor(c.x - img.width / 2), y: Math.floor(c.y - img.height / 2), ...(placed ? SOB.fitTransform({ current: p }, img).transform : {}) },
         });
         p.setLayers([...p.doc.layers, layer]);
         this.focus(p, layer.id);
@@ -8380,6 +8384,23 @@ export class Engine {
     return s;
   }
 
+  /** The document drawn up to and including layer `id`, with `id` at full opacity and Normal blend and every layer
+   *  above it hidden: what an adjustment layer does to the layers below it, as a picture at the document's size. */
+  renderThrough(id: ID): Surface {
+    const p = this.current, s = createSurface(p?.doc.width ?? 1, p?.doc.height ?? 1);
+    const at = p ? p.doc.layers.findIndex((l) => l.id === id) : -1;
+    if (!p || at < 0) return s;
+    const keep = new Set<ID>([id]);
+    for (let a = p.doc.layers[at]!.parentId; a; a = p.layer(a)?.parentId ?? null) keep.add(a);
+    const overrides = new Map<ID, LayerOverride>();
+    p.doc.layers.forEach((l, i) => {
+      if (keep.has(l.id)) overrides.set(l.id, { hidden: false, opacity: 1, ...(l.id === id ? { blend: 'normal' as BlendMode } : {}) });
+      else if (i > at) overrides.set(l.id, { hidden: true });
+    });
+    this.work.render({ doc: p.doc, target: s, view: [1, 0, 0, 1, 0, 0], overrides, quality: 'high' });
+    return s;
+  }
+
   /** A folder drawn by itself at the document's size: its contents as authored (hidden layers stay hidden), the folder
    *  and its parents at full opacity and Normal blend, everything outside it hidden. */
   renderGroupAlone(id: ID): Surface {
@@ -8697,6 +8718,21 @@ export class Engine {
 
   resizeCanvas(width: number, height: number, dx: number, dy: number, fill: RGB | null = null, name = 'Canvas Size'): boolean { return DS.resizeCanvas(this.sizeHost, width, height, dx, dy, fill, name); }
 
+  /** Selects the border a canvas change just added around the old picture (`oldW` by `oldH` at `dx`, `dy`). */
+  selectCanvasBorder(oldW: number, oldH: number, dx: number, dy: number): void {
+    const d = this.current?.doc;
+    if (d) this.applySelection(new SelectionMask(0, 0, d.width, d.height, borderCoverage(d.width, d.height, dx, dy, oldW, oldH)), 'replace', 'Select Border');
+  }
+
+  /** Canvas Size with the new border filled from the picture (its edge stretched out, its average colour), mid grey or
+   *  noise, as its own layer; `select` leaves the border selected so it can be outpainted next. */
+  resizeCanvasBordered(width: number, height: number, dx: number, dy: number, mode: BorderMode, select: boolean, name = 'Canvas Size'): boolean {
+    const p = this.current, flat = this.flattened();
+    if (!p || !flat) return false;
+    const old = ctxOf(flat).getImageData(0, 0, p.doc.width, p.doc.height);
+    return DS.resizeCanvas(this.sizeHost, width, height, dx, dy, null, name, { pixels: borderFill(old, width, height, dx, dy, mode), select });
+  }
+
   /** Image > Trim: crops away the border of transparent pixels, or of pixels the colour of the top-left or bottom-right
    *  pixel, judged on the flattened image, as one undo step. `sides` set false keep that edge where it is. */
   trim(basis: 'transparent' | 'topLeft' | 'bottomRight', sides: { top?: boolean; bottom?: boolean; left?: boolean; right?: boolean } = {}): boolean {
@@ -8849,7 +8885,7 @@ export class Engine {
   /** Perspective Crop: the quad `quad` (top-left, top-right, bottom-right, bottom-left, in document pixels) becomes the
    *  whole canvas, a rectangle as wide and tall as the quad's opposite sides on average; every pixel layer is carried
    *  through the same perspective (linked masks with it), as one step. Shape, type and smart layers become pixels. */
-  perspectiveCrop(quad: Pt[], size: { w: number; h: number } | null = null): boolean {
+  perspectiveCrop(quad: Pt[], size: { w: number; h: number } | null = null, resolution: number | null = null): boolean {
     const p0 = this.current;
     if (!p0) return false;
     if (!distortUsable(quad)) { this.notice('Keep the four corners in order, with no sides crossing, to crop in perspective.'); return false; }
@@ -8877,7 +8913,7 @@ export class Engine {
     }
     return this.edit('Perspective Crop', (p) => {
       const prior = p.doc;
-      p.doc = { ...p.doc, width: W, height: H, layers: this.carryVectors(p.doc.layers.map((l) => (moved.has(l.id) ? { ...l, ...moved.get(l.id) } : l)), (x, y) => toOut({ x, y })), ...alphasRedrawn(p.doc, W, H, (g, m) => {
+      p.doc = { ...p.doc, width: W, height: H, ...(resolution && resolution >= 1 ? { resolution } : {}), layers: this.carryVectors(p.doc.layers.map((l) => (moved.has(l.id) ? { ...l, ...moved.get(l.id) } : l)), (x, y) => toOut({ x, y })), ...alphasRedrawn(p.doc, W, H, (g, m) => {
         const t = { ...docTransform(m.w, m.h), x: m.x, y: m.y }, w = warpRaster(Raster.from(m.surface(), m.w, m.h), t, cornersOf(t).map(toOut), 1, true);
         if (w) { setMat(g, placement(w.t, w.raster.width, w.raster.height)); g.drawImage(w.raster.canvas, 0, 0); }
       }) };
@@ -8967,8 +9003,45 @@ export class Engine {
    *  the whole canvas when nothing is selected. Rendered over the selection's region, shared by Copy and Layer via Copy. */
   private selectedPixels(merged: boolean): { surface: Surface; region: Rect } | null { return SO.selectedPixels(this.selectHost, merged); }
 
+  /** The targeted channel as grey over the selection's region: an alpha channel's coverage, or the one colour channel
+   *  of the active layer that the Channels panel targets. Null when the target is the layer itself. */
+  private channelPixels(): { surface: Surface; region: Rect } | null {
+    const p = this.current;
+    if (!p) return null;
+    const alpha = this.alphaTargeted(), t = this.rgbTarget, one = t && t.filter(Boolean).length === 1 ? t.findIndex(Boolean) : -1;
+    if (!alpha && one < 0) return null;
+    const sel = p.selection, canvas: Rect = { x: 0, y: 0, w: p.doc.width, h: p.doc.height };
+    const clipped = sel ? intersectRect(integral(sel.rect), canvas) : canvas;
+    if (!clipped || clipped.w <= 0 || clipped.h <= 0) return null;
+    const region = integral(clipped), out = createSurface(region.w, region.h), g = ctxOf(out);
+    if (alpha) {
+      const img = g.createImageData(region.w, region.h);
+      for (let j = 0; j < region.h; j++) for (let i = 0; i < region.w; i++) {
+        const o = (j * region.w + i) * 4, v = alpha.mask ? alpha.mask.valueAt(region.x + i, region.y + j) : 0;
+        img.data[o] = img.data[o + 1] = img.data[o + 2] = v;
+        img.data[o + 3] = 255;
+      }
+      g.putImageData(img, 0, 0);
+    } else {
+      const layer = p.activeLayer;
+      if (!layer?.raster || layer.isGroup || layer.adjustment) return null;
+      const got = SO.selectedPixels(this.selectHost, false);
+      if (!got) return null;
+      const img = ctxOf(got.surface).getImageData(0, 0, got.region.w, got.region.h);
+      for (let o = 0; o < img.data.length; o += 4) { const v = img.data[o + one]; img.data[o] = img.data[o + 1] = img.data[o + 2] = v; }
+      ctxOf(got.surface).putImageData(img, 0, 0);
+      return got;
+    }
+    if (sel) {
+      g.globalCompositeOperation = 'destination-in';
+      g.drawImage(sel.surface() as CanvasImageSource, sel.x - region.x, sel.y - region.y);
+      g.globalCompositeOperation = 'source-over';
+    }
+    return { surface: out, region };
+  }
+
   copySelection(merged: boolean): boolean {
-    const s = this.selectedPixels(merged);
+    const s = (!merged ? this.channelPixels() : null) ?? this.selectedPixels(merged);
     if (!s) return false;
     const { surface, region: { x, y, w, h } } = s;
     this.clipboard = { surface, x, y, w, h, stamp: uid() };
@@ -10985,6 +11058,10 @@ export class Engine {
   transformCommand(): void {
     this.endTransformMode();
     if (this.pathTarget) { this.beginPathTransform(); return; }
+    if (this.alphaTargeted() || this.quickMask) {
+      if (!this.beginOutlineTransform(this.alphaTargeted() ?? undefined)) this.notice(this.alphaTargeted() ? 'The channel is empty.' : 'Nothing is masked yet.');
+      return;
+    }
     if (this.canTransformSelection) { this.beginSelectionTransform(); return; }
     this.settle();
     if (!this.showTransformControls) this.update({ showTransformControls: true });
@@ -11029,8 +11106,8 @@ export class Engine {
 
   /** Select > Transform Selection: the selection's outline alone takes the Move tool's handles, the pixels staying;
    *  Enter applies it as one step and Escape cancels, as with selected pixels. */
-  beginOutlineTransform(): boolean {
-    const fs = PM.beginOutlineTransform(this.moveHost);
+  beginOutlineTransform(alpha?: AlphaChannel): boolean {
+    const fs = PM.beginOutlineTransform(this.moveHost, alpha);
     this.floatSel = fs;
     return !!fs;
   }
@@ -11047,6 +11124,41 @@ export class Engine {
     if (!next) { this.notice('Nothing of the selection is left inside the picture.'); return false; }
     this.applySelection(next, 'replace', 'Transform Selection');
     return true;
+  }
+
+  /** Edit > Transform > Numerically: the selected layer's four corners carried through the same numbers as the
+   *  outline's (reference point, move, scale, angle, skew, perspective, matrix), as one Distort step. */
+  transformLayerBy(o: SelectionWarp): boolean {
+    if (this.floatSel || this.distortEdit || this.meshWarpEdit || this.puppetEdit || this.perspectiveEdit) { this.notice('Apply or cancel the transform under way first (Enter or Escape).'); return false; }
+    this.endTransformMode();
+    if (!this.beginDistort('distort')) return false;
+    const d = this.distortNow();
+    if (!d) return false;
+    const xs = d.corners.map((c) => c.x), ys = d.corners.map((c) => c.y), x0 = Math.min(...xs), y0 = Math.min(...ys);
+    const quad = selectionQuad({ x: x0, y: y0, w: Math.max(...xs) - x0, h: Math.max(...ys) - y0 }, o, d.corners);
+    if (!distortUsable(quad)) { this.cancelDistort(); this.notice('That transform folds the layer over or collapses it; use smaller skew or perspective.'); return false; }
+    d.corners = quad;
+    this.applyDistort();
+    return true;
+  }
+
+  private distortNow(): NonNullable<typeof this.distortEdit> | null { return this.distortEdit; }
+
+  /** Rotate 180 and 90 on an alpha channel or the Quick Mask: the mask turned about the middle of its bounds, one step. */
+  private turnMask(quarters: 1 | 2 | 3, alpha: AlphaChannel | null): boolean {
+    const p = this.current, mask = alpha ? alpha.mask : p?.selection;
+    if (!p || !mask) { this.notice(alpha ? 'The channel is empty.' : 'Nothing is masked yet.'); return false; }
+    this.settle();
+    const next = warpSelection(mask, selectionQuad(mask.rect, { angle: quarters * 90 }), p.doc.width, p.doc.height, false);
+    if (!next) { this.notice('Nothing of the mask is left inside the picture.'); return false; }
+    const name = quarters === 1 ? 'Rotate 90° Clockwise' : quarters === 2 ? 'Rotate 180°' : 'Rotate 90° Counter Clockwise';
+    if (!alpha) { this.applySelection(next, 'replace', name); return true; }
+    return this.edit(name, (q) => {
+      const list = q.doc.alphas ?? [];
+      if (!list.some((x) => x.id === alpha.id)) return false;
+      q.doc = { ...q.doc, alphas: list.map((x) => (x.id === alpha.id ? { ...x, mask: next } : x)) };
+      return true;
+    });
   }
 
   /** Unpremultiplied RGB (0 to 1) of the original pixels under a document point, read from the same source the Levels

@@ -25,7 +25,7 @@ export class ConsoleLogDialog extends Dialog {
   private lines: Line[] = [];
   private hidden = new Set<string>();
   private path = '';
-  private readonly list = el('<div class="cv-conlog" role="log" tabindex="0" style="height: 280px; overflow-y: auto; font: 12px/1.45 var(--font-mono, monospace); border: 1px solid var(--border-color); border-radius: var(--radius-sm, 4px); padding: var(--space-2); background: var(--bg-primary)"></div>');
+  private readonly list = el('<div class="cv-conlog" role="log" tabindex="0" style="height: 280px; overflow-y: auto; font: var(--fs-12)/1.45 var(--font-mono, monospace); border: 1px solid var(--border-color); border-radius: var(--radius-sm, 4px); padding: var(--space-2); background: var(--bg-primary)"></div>');
   private readonly empty = el('<p class="cv-dialog-note" hidden>Nothing matches.</p>');
   private readonly pathNote = el('<p class="cv-dialog-note"></p>');
   private readonly count = el('<span class="cv-dialog-note" style="margin-right: auto"></span>');

@@ -30,17 +30,19 @@ export interface SelectionWarp {
 const num = (v: number | undefined, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 
 /** The corners the selection's bounds go to under `o`, in handle order. */
-export function selectionQuad(r: { x: number; y: number; w: number; h: number }, o: SelectionWarp): Pt[] {
+export function selectionQuad(r: { x: number; y: number; w: number; h: number }, o: SelectionWarp, from?: readonly Pt[]): Pt[] {
   const m = o.matrix && o.matrix.length === 6 && o.matrix.every(Number.isFinite) ? o.matrix : null;
   let q: Pt[];
   if (o.quad && o.quad.length === 4) q = o.quad.map((p) => ({ x: p.x, y: p.y }));
   else {
     const ref = Math.max(0, Math.min(8, Math.round(num(o.ref, 4)))), px = r.x + (ref % 3) * r.w / 2, py = r.y + Math.floor(ref / 3) * r.h / 2;
     const ph = Math.max(-90, Math.min(90, num(o.perspH, 0))) / 200 * r.w, pv = Math.max(-90, Math.min(90, num(o.perspV, 0))) / 200 * r.h;
-    const corners: Pt[] = [
-      { x: r.x + ph, y: r.y + pv }, { x: r.x + r.w - ph, y: r.y - pv },
-      { x: r.x + r.w + ph, y: r.y + r.h + pv }, { x: r.x - ph, y: r.y + r.h - pv },
-    ];
+    const corners: Pt[] = from && from.length === 4
+      ? from.map((c, i) => ({ x: c.x + (i % 2 === 0 ? ph : -ph), y: c.y + (i % 2 === 0 ? pv : -pv) }))
+      : [
+        { x: r.x + ph, y: r.y + pv }, { x: r.x + r.w - ph, y: r.y - pv },
+        { x: r.x + r.w + ph, y: r.y + r.h + pv }, { x: r.x - ph, y: r.y + r.h - pv },
+      ];
     const sx = num(o.scaleX, 100) / 100, sy = num(o.scaleY, 100) / 100, kh = Math.tan(num(o.skewH, 0) * Math.PI / 180), kv = Math.tan(num(o.skewV, 0) * Math.PI / 180);
     const a = num(o.angle, 0) * Math.PI / 180, cs = Math.cos(a), sn = Math.sin(a);
     q = corners.map((c) => {

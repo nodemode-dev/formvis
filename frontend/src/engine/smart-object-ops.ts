@@ -231,10 +231,13 @@ export function placeLinked(host: SmartObjectHost, raster: Raster, link: SmartLi
   host.insertRasterLayer(raster, name, null, null, { smart: { source: raster, filters: [], link }, ...fitTransform(host, raster) }, 'Place Linked');
 }
 
+/** Preferences > General: whether a placed picture is scaled to fit and whether dropped pictures become smart objects. */
+export const placePrefs = { fit: true, smart: false };
+
 /** A picture larger than the canvas is placed scaled down to fit it, centred; a smaller one keeps its own size (no extra). */
-function fitTransform(host: SmartObjectHost, raster: Raster): Partial<Layer> {
+export function fitTransform(host: { current: { doc: Doc } | null }, raster: { width: number; height: number }): Partial<Layer> {
   const d = host.current?.doc;
-  if (!d || (raster.width <= d.width && raster.height <= d.height)) return {};
+  if (!placePrefs.fit || !d || (raster.width <= d.width && raster.height <= d.height)) return {};
   const s = Math.min(d.width / raster.width, d.height / raster.height), w = raster.width * s, h = raster.height * s;
   return { transform: { ...docTransform(raster.width, raster.height), x: (d.width - w) / 2, y: (d.height - h) / 2, w, h } };
 }

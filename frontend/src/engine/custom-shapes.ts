@@ -59,6 +59,15 @@ export function renameCustomShape(id: string, label: string): boolean {
   return true;
 }
 
+/** Moves a shape the person defined one place up (-1) or down (1) among their own. */
+export function stepCustomShape(id: string, by: -1 | 1): boolean {
+  const i = user.findIndex((u) => u.id === id), j = i + by;
+  if (i < 0 || j < 0 || j >= user.length) return false;
+  [user[i], user[j]] = [user[j], user[i]];
+  keepUserShapes();
+  return true;
+}
+
 function keepUserShapes(): void {
   try { localStorage.setItem(USER_KEY, JSON.stringify(user)); } catch { /* storage full or blocked: the shape lasts for the session */ }
 }

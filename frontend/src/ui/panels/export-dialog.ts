@@ -198,7 +198,7 @@ export class ExportDialog extends Dialog {
   private async listProfiles(): Promise<void> {
     const sel = this.profileRow.el.querySelector('select') as HTMLSelectElement;
     let listed: Array<readonly [string, string]> = [];
-    try { listed = (await api.colourProfiles()).profiles.filter((p) => p.space === 'RGB').map((p) => [`id:${p.id}`, p.name] as const); } catch { /* the built-in ones only */ }
+    try { listed = (await api.colourProfiles()).profiles.filter((p) => p.space === 'RGB' || p.space === 'CMYK').map((p) => [`id:${p.id}`, p.space === 'CMYK' ? `${p.name} (CMYK, JPEG and TIFF)` : p.name] as const); } catch { /* the built-in ones only */ }
     const want = [...BUILT_IN_PROFILES, ...listed];
     while (sel.options.length > want.length) sel.remove(sel.options.length - 1);
     want.forEach(([v, t], i) => { const o = sel.options[i] ?? sel.appendChild(document.createElement('option')); if (o.value !== v) o.value = v; if (o.textContent !== t) o.textContent = t; });

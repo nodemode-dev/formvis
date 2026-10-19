@@ -105,7 +105,7 @@ export class PerfDialog extends Dialog {
 
   constructor(private readonly ctx: PerfContext) {
     super('Record Performance', 760);
-    this.text.style.cssText = 'width:100%;font:12px/1.45 var(--font-mono, monospace);white-space:pre;resize:vertical;';
+    this.text.style.cssText = 'width:100%;font:var(--fs-12)/1.45 var(--font-mono, monospace);white-space:pre;resize:vertical;';
     this.body.append(this.state, this.text);
     this.button('Close', 'ghost', () => this.close());
     this.button('Save', 'ghost', () => this.save());

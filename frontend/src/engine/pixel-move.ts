@@ -3,7 +3,7 @@ import { applyMat, integral, intersectRect, invert, mul, placement, sameTransfor
 import type { Ctx2D, Surface } from './surface';
 import { createSurface, ctxOf, Raster } from './surface';
 import { SelectionMask } from './selection';
-import type { ID, Layer, Pt, Rect, Transform } from './types';
+import type { AlphaChannel, ID, Layer, Pt, Rect, Transform } from './types';
 import { docTransform, newLayer } from './types';
 import { hierarchy } from './tree';
 import type { Project } from './project';
@@ -33,6 +33,8 @@ export interface FloatingSelection {
   selection: SelectionMask;
   original: Transform;
   outline?: boolean;
+  /** The alpha channel the outline is the mask of; the channel, not the selection, takes the result. */
+  alphaId?: ID;
   sourceRaster: Raster;
   base: ImageData | null;
   floatRaster: Raster;
@@ -199,11 +201,12 @@ export function cancelPixelMove(host: MoveHost, f: FloatingPixels): void {
   host.refresh();
 }
 
-function openFloat(host: MoveHost, outline: boolean): FloatingSelection | null {
+function openFloat(host: MoveHost, outline: boolean, alpha?: AlphaChannel): FloatingSelection | null {
   const p = host.current;
-  if (!p || !p.selection || host.busy) return null;
+  const source = alpha ? alpha.mask : p?.selection;
+  if (!p || !source || host.busy) return null;
   host.settle();
-  if (!host.canPaint(p) || p.maskTarget) {
+  if (!host.canPaint(p) || (p.maskTarget && !alpha)) {
     host.notice(NOTICE);
     return null;
   }
@@ -212,7 +215,7 @@ function openFloat(host: MoveHost, outline: boolean): FloatingSelection | null {
     host.notice(NOTICE);
     return null;
   }
-  const sel = p.selection;
+  const sel = source;
   const region = outline ? sel.rect : clipToCanvas(p, sel);
   if (!region || region.w <= 0 || region.h <= 0) return null;
   host.setTool('move');
@@ -246,7 +249,7 @@ function openFloat(host: MoveHost, outline: boolean): FloatingSelection | null {
     blend: t.layer.blend,
   });
   host.insertAboveActive(p, layer);
-  p.selection = null;
+  if (!alpha) p.selection = null;
   host.focus(p, layer.id);
   host.refresh();
   return {
@@ -257,6 +260,7 @@ function openFloat(host: MoveHost, outline: boolean): FloatingSelection | null {
     selection: sel,
     original: { ...layer.transform },
     outline,
+    ...(alpha ? { alphaId: alpha.id } : {}),
     sourceRaster: t.raster,
     base,
     floatRaster: fr,
@@ -269,8 +273,8 @@ export function beginSelectionTransform(host: MoveHost): FloatingSelection | nul
   return openFloat(host, false);
 }
 
-export function beginOutlineTransform(host: MoveHost): FloatingSelection | null {
-  return openFloat(host, true);
+export function beginOutlineTransform(host: MoveHost, alpha?: AlphaChannel): FloatingSelection | null {
+  return openFloat(host, true, alpha);
 }
 
 function carrySelection(p: Project, sel: SelectionMask, m: Mat): SelectionMask | null {
@@ -317,7 +321,9 @@ export function commitSelectionTransform(host: MoveHost, fs: FloatingSelection):
   removeLayer(p, fs.floatingId);
   host.focus(p, fs.sourceId);
   if (fs.outline) {
-    p.selection = carried;
+    const aid = fs.alphaId;
+    if (aid) p.doc = { ...p.doc, alphas: (p.doc.alphas ?? []).map((a) => (a.id === aid ? { ...a, mask: carried } : a)) };
+    else p.selection = carried;
     p.history.end(p.snapshot());
     host.refresh();
     return;

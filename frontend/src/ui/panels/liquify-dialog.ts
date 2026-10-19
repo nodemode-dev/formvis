@@ -1,5 +1,5 @@
 import type { Engine, ID } from '../../engine';
-import { clearFreeze, dabField, fieldFromSettings, fieldIsZero, fieldToSettings, freezeAt, invertFreeze, liquifyImage, makeField, meshFromJson, meshToJson, paintFreeze, pushField, pushLeftField, rateScale, resetField, resizeField, smoothField, type LiquifyField, type LiquifyTool } from '../../engine/liquify';
+import { clearFreeze, dabField, fieldFromSettings, fieldIsZero, fieldToSettings, freezeAt, freezePolygon, invertFreeze, liquifyImage, makeField, meshFromJson, meshToJson, paintFreeze, pushField, pushLeftField, rateScale, resetField, resizeField, smoothField, type LiquifyField, type LiquifyTool } from '../../engine/liquify';
 import { FACE_SLIDERS, faceField, noFaceChange, type Face, type FaceSettings, type FaceSlider } from '../../engine/face-liquify';
 import { faceReady, findFaces } from '../../io/local-gen';
 import { Dialog } from '../dialogs';
@@ -8,8 +8,8 @@ import { paint } from '../palette';
 import { toast } from '../toast';
 import { checkRow, selectRow, sliderRow, type Row } from './controls';
 
-const PW = 640, PH = 440;
-const TOOLS: ReadonlyArray<readonly [LiquifyTool, string]> = [['warp', 'Forward Warp'], ['pushLeft', 'Push Left'], ['reconstruct', 'Reconstruct'], ['twirlCW', 'Twirl Clockwise'], ['twirlCCW', 'Twirl Counterclockwise'], ['pucker', 'Pucker'], ['bloat', 'Bloat'], ['smooth', 'Smooth'], ['freeze', 'Freeze Mask'], ['thaw', 'Thaw Mask']];
+const PW = Math.max(640, Math.min(960, Math.floor(window.innerWidth * 0.7))), PH = Math.max(440, Math.min(680, Math.floor(window.innerHeight * 0.58)));
+const TOOLS: ReadonlyArray<readonly [LiquifyTool, string]> = [['warp', 'Forward Warp'], ['pushLeft', 'Push Left'], ['reconstruct', 'Reconstruct'], ['twirlCW', 'Twirl Clockwise'], ['twirlCCW', 'Twirl Counterclockwise'], ['pucker', 'Pucker'], ['bloat', 'Bloat'], ['smooth', 'Smooth'], ['freeze', 'Freeze Mask'], ['thaw', 'Thaw Mask'], ['lassoFreeze', 'Lasso Freeze'], ['lassoThaw', 'Lasso Thaw']];
 const MESH_SIZES = [2, 4, 8, 16];
 
 /** Filter > Liquify (Shift+Mod+X): the active layer in a preview, brushed with Forward Warp,
@@ -48,7 +48,8 @@ export class LiquifyDialog extends Dialog {
   private penNow = 1;
   private readonly undoBtn = el<HTMLButtonElement>('<button class="cv-btn cv-btn-ghost" type="button" disabled>Undo Stroke</button>');
   private readonly redoBtn = el<HTMLButtonElement>('<button class="cv-btn cv-btn-ghost" type="button" disabled>Redo Stroke</button>');
-  private readonly canvas = el(`<canvas class="cv-liquify-canvas" width="${PW}" height="${PH}"></canvas>`) as HTMLCanvasElement;
+  private lasso: Array<{ x: number; y: number }> | null = null;
+  private readonly canvas = el(`<canvas class="cv-liquify-canvas" width="${PW}" height="${PH}" style="width: ${PW}px; aspect-ratio: ${PW} / ${PH}"></canvas>`) as HTMLCanvasElement;
   private readonly toolButtons: HTMLButtonElement[] = [];
   private readonly sizeRow: Row<number>;
   private readonly pressureRow: Row<number>;
@@ -222,7 +223,7 @@ export class LiquifyDialog extends Dialog {
     else if (this.tool === 'pushLeft') { if (this.last) pushLeftField(f, this.last.x, this.last.y, pt.x, pt.y, r, s, alt, dn); }
     else if (this.tool === 'smooth') smoothField(f, pt.x, pt.y, r, s, dn);
     else if (this.tool === 'freeze' || this.tool === 'thaw') paintFreeze(f, pt.x, pt.y, r, s, (this.tool === 'thaw') !== alt, dn);
-    else dabField(f, ((alt ? flip[this.tool] : undefined) ?? this.tool) as Exclude<LiquifyTool, 'warp' | 'pushLeft' | 'smooth' | 'freeze' | 'thaw'>, pt.x, pt.y, r, s, dn);
+    else dabField(f, ((alt ? flip[this.tool] : undefined) ?? this.tool) as Exclude<LiquifyTool, 'warp' | 'pushLeft' | 'smooth' | 'freeze' | 'thaw' | 'lassoFreeze' | 'lassoThaw'>, pt.x, pt.y, r, s, dn);
     this.last = pt;
     this.render();
   }
@@ -234,6 +235,7 @@ export class LiquifyDialog extends Dialog {
       c.setPointerCapture(e.pointerId);
       this.altDown = e.altKey;
       this.penNow = e.pointerType === 'pen' ? Math.max(0.05, e.pressure) : 1;
+      if (this.tool === 'lassoFreeze' || this.tool === 'lassoThaw') { this.lasso = [this.at(e)]; return; }
       this.snap();
       this.last = this.at(e);
       if (this.tool !== 'warp' && this.tool !== 'pushLeft') { this.dab(this.last); this.held = setInterval(() => { if (this.last) this.dab(this.last); }, 50); }
@@ -242,10 +244,19 @@ export class LiquifyDialog extends Dialog {
       this.altDown = e.altKey;
       if (e.pointerType === 'pen') this.penNow = Math.max(0.05, e.pressure);
       this.hover = this.at(e);
-      if (c.hasPointerCapture(e.pointerId)) this.dab(this.hover);
+      if (this.lasso) { this.lasso.push(this.hover); this.draw(); }
+      else if (c.hasPointerCapture(e.pointerId)) this.dab(this.hover);
       else this.draw();
     });
-    const end = (e: PointerEvent): void => { if (c.hasPointerCapture(e.pointerId)) c.releasePointerCapture(e.pointerId); this.stopHeld(); this.last = null; };
+    const end = (e: PointerEvent): void => {
+      if (c.hasPointerCapture(e.pointerId)) c.releasePointerCapture(e.pointerId);
+      this.stopHeld();
+      this.last = null;
+      const ring = this.lasso;
+      this.lasso = null;
+      if (ring && this.liq && ring.length >= 3) { this.snap(); freezePolygon(this.liq, ring, (this.tool === 'lassoThaw') !== this.altDown); this.render(); }
+      else if (ring) this.draw();
+    };
     c.addEventListener('pointerup', end);
     c.addEventListener('pointercancel', end);
     c.addEventListener('pointerleave', () => { this.hover = null; this.draw(); });
@@ -283,7 +294,15 @@ export class LiquifyDialog extends Dialog {
       }
       g.putImageData(img, this.ox, this.oy);
     }
-    if (this.hover) {
+    if (this.lasso && this.lasso.length > 1) {
+      g.strokeStyle = pal.accent;
+      g.lineWidth = 1;
+      g.beginPath();
+      this.lasso.forEach((q, i) => { const x = this.ox + q.x * this.scale, y = this.oy + q.y * this.scale; if (i) g.lineTo(x, y); else g.moveTo(x, y); });
+      g.closePath();
+      g.stroke();
+    }
+    if (this.hover && !this.lasso && this.tool !== 'lassoFreeze' && this.tool !== 'lassoThaw') {
       g.strokeStyle = pal.accent;
       g.lineWidth = 1;
       g.beginPath();

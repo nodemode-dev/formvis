@@ -28,11 +28,23 @@ app = FastAPI(title=config.APP_NAME, version=config.VERSION, lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=config.cors_origins(), allow_methods=["*"], allow_headers=["*"])
 
 
+PLUGIN_WORKER_CSP = "default-src 'none'; script-src blob:; connect-src 'none'; worker-src 'none'; frame-src 'none'; img-src 'none'; style-src 'none'"
+
+
+def is_plugin_worker(path: str) -> bool:
+    """The built script of the sealed folder-plugin worker. A policy on a worker's own script governs everything it loads,
+    so the plugin module (a blob) is the only script it may import and import() of any address sends no request."""
+    name = path.rsplit("/", 1)[-1]
+    return not path.startswith("/api") and name.startswith("plugin-worker") and name.endswith(".js")
+
+
 @app.middleware("http")
 async def isolate_window(request, call_next):
     """The window served by the engine is cross-origin isolated (SharedArrayBuffer, precise timers): COOP same-origin and
     COEP credentialless, which still lets pictures and fonts from other sites load. FORMVIS_ISOLATED=0 turns it off."""
     response = await call_next(request)
+    if is_plugin_worker(request.url.path):
+        response.headers["Content-Security-Policy"] = PLUGIN_WORKER_CSP
     if os.environ.get("FORMVIS_ISOLATED", "1") != "0" and not request.url.path.startswith("/api"):
         response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
         response.headers["Cross-Origin-Embedder-Policy"] = "credentialless"

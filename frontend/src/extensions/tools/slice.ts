@@ -121,7 +121,15 @@ export const sliceTool: Tool = {
       // Slice Select: an edge of the selected slice resizes it; a press inside a slice (the topmost) selects it and a drag moves it; empty canvas selects none.
       const cur = list.find((s) => s.id === ctx.engine.activeSlice), edge = cur ? edgeAt(ctx, cur, p.screen) : null;
       const hit = edge ? cur : [...list].reverse().find((s) => p.doc.x >= s.x && p.doc.x < s.x + s.w && p.doc.y >= s.y && p.doc.y < s.y + s.h);
-      if (!hit) { ctx.engine.activeSlice = null; ctx.engine.emit('overlay', null); ctx.engine.emit('options', null); return; }
+      if (!hit) {
+        // An auto slice under the press is promoted to a user slice of the same rectangle
+        const auto = ctx.engine.view.autoSlices ? autoSlices(ctx.engine.current.doc).find((a) => p.doc.x >= a.x && p.doc.x < a.x + a.w && p.doc.y >= a.y && p.doc.y < a.y + a.h) : null;
+        if (auto && ctx.engine.addSlice(auto)) ctx.engine.activeSlice = ctx.engine.current.doc.slices?.at(-1)?.id ?? null;
+        else ctx.engine.activeSlice = null;
+        ctx.engine.emit('overlay', null);
+        ctx.engine.emit('options', null);
+        return;
+      }
       ctx.engine.activeSlice = hit.id;
       drag = { start: p.doc, now: p.doc, square: false, move: hit, ...(edge ? { edge } : {}) };
     }

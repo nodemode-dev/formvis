@@ -9,7 +9,7 @@
 import { gpuFilters } from './gpu-filters';
 
 export interface LiquifyField { gw: number; gh: number; cell: number; d: Float32Array; freeze?: Float32Array }
-export type LiquifyTool = 'warp' | 'pushLeft' | 'reconstruct' | 'twirlCW' | 'twirlCCW' | 'pucker' | 'bloat' | 'smooth' | 'freeze' | 'thaw';
+export type LiquifyTool = 'warp' | 'pushLeft' | 'reconstruct' | 'twirlCW' | 'twirlCCW' | 'pucker' | 'bloat' | 'smooth' | 'freeze' | 'thaw' | 'lassoFreeze' | 'lassoThaw';
 
 export function makeField(w: number, h: number, cell = 4): LiquifyField {
   const gw = Math.ceil(w / cell) + 1, gh = Math.ceil(h / cell) + 1;
@@ -70,6 +70,27 @@ export function paintFreeze(f: LiquifyField, cx: number, cy: number, radius: num
   eachNode(f, cx, cy, radius, (i, _x, _y, w) => { const n = i / 2; m[n] = Math.min(1, Math.max(0, m[n] + (thaw ? -1 : 1) * w * s)); }, true, density);
 }
 
+/** Lasso Freeze and Lasso Thaw: every mesh node inside the closed outline `pts` (image pixels, even-odd) frozen fully, or thawed. */
+export function freezePolygon(f: LiquifyField, pts: ReadonlyArray<{ x: number; y: number }>, thaw: boolean): void {
+  if (pts.length < 3) return;
+  if (!f.freeze) f.freeze = new Float32Array(f.gw * f.gh);
+  let y0 = Infinity, y1 = -Infinity;
+  for (const p of pts) { y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y); }
+  const gy0 = Math.max(0, Math.ceil(y0 / f.cell)), gy1 = Math.min(f.gh - 1, Math.floor(y1 / f.cell)), v = thaw ? 0 : 1;
+  for (let gy = gy0; gy <= gy1; gy++) {
+    const y = gy * f.cell, xs: number[] = [];
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      const a = pts[i], b = pts[j];
+      if ((a.y <= y) !== (b.y <= y)) xs.push(a.x + ((y - a.y) / (b.y - a.y)) * (b.x - a.x));
+    }
+    xs.sort((p, q) => p - q);
+    for (let k = 0; k + 1 < xs.length; k += 2) {
+      const gx0 = Math.max(0, Math.ceil(xs[k] / f.cell)), gx1 = Math.min(f.gw - 1, Math.floor(xs[k + 1] / f.cell));
+      for (let gx = gx0; gx <= gx1; gx++) f.freeze[gy * f.gw + gx] = v;
+    }
+  }
+}
+
 /** The freeze mask cleared, or inverted (Mask Options: None, Invert All). */
 export function clearFreeze(f: LiquifyField): void { f.freeze = undefined; }
 export function invertFreeze(f: LiquifyField): void { const m = f.freeze ?? new Float32Array(f.gw * f.gh); for (let i = 0; i < m.length; i++) m[i] = 1 - m[i]; f.freeze = m; }
@@ -117,7 +138,7 @@ export function meshFromJson(f: LiquifyField, text: string): boolean {
 }
 
 /** One dab of a stationary tool at (cx, cy): Reconstruct, Twirl either way, Pucker or Bloat. */
-export function dabField(f: LiquifyField, tool: Exclude<LiquifyTool, 'warp' | 'pushLeft' | 'smooth' | 'freeze' | 'thaw'>, cx: number, cy: number, radius: number, strength: number, density = 50): void {
+export function dabField(f: LiquifyField, tool: Exclude<LiquifyTool, 'warp' | 'pushLeft' | 'smooth' | 'freeze' | 'thaw' | 'lassoFreeze' | 'lassoThaw'>, cx: number, cy: number, radius: number, strength: number, density = 50): void {
   const s = Math.min(1, Math.max(0.02, strength));
   eachNode(f, cx, cy, radius, (i, px, py, w) => {
     const k = w * s;

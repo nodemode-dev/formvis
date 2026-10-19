@@ -8,8 +8,15 @@ import { writePsdFile } from './psd';
 /** File > Export > Layers to Files and Artboards to Files (DEV_PLAN 29.1): each layer (or artboard) drawn alone with
  *  its effects and mask applied, encoded through the same paths as Export As and returned as named files. */
 
-export type LayerFileFormat = 'png' | 'jpg' | 'tiff' | 'webp' | 'psd';
-export const LAYER_FILE_FORMATS: ReadonlyArray<readonly [LayerFileFormat, string]> = [['png', 'PNG'], ['jpg', 'JPEG'], ['tiff', 'TIFF'], ['webp', 'WebP'], ['psd', 'PSD']];
+export type LayerFileFormat = 'png' | 'jpg' | 'tiff' | 'webp' | 'psd' | 'bmp' | 'tga';
+export const LAYER_FILE_FORMATS: ReadonlyArray<readonly [LayerFileFormat, string]> = [['png', 'PNG'], ['jpg', 'JPEG'], ['tiff', 'TIFF'], ['webp', 'WebP'], ['psd', 'PSD'], ['bmp', 'BMP'], ['tga', 'TGA']];
+/** What a layer file of this type cannot hold, in one short sentence; empty when it keeps the picture whole. */
+export function layerFileLoss(format: LayerFileFormat, icc: boolean): string {
+  if (format === 'jpg') return 'JPEG keeps no transparency (clear areas are laid on white) and is lossy.';
+  if (format === 'webp') return 'WebP is lossy at the quality set.';
+  if (format === 'bmp' || format === 'tga') return `${format.toUpperCase()} carries no colour profile${icc ? ', so none is embedded' : ''}.`;
+  return '';
+}
 /** Formats with a quality setting. */
 export const LAYER_FILE_LOSSY: ReadonlySet<LayerFileFormat> = new Set(['jpg', 'webp']);
 
@@ -29,6 +36,8 @@ export interface LayerExportSettings {
   comps?: boolean;
   /** Only these layers, artboards or comps; every one when left out or empty. */
   ids?: ID[];
+  /** Browser: a folder the person chose with the directory picker; the files are written into it instead of a zip. */
+  dir?: FileSystemDirectoryHandle;
 }
 
 export const DEFAULT_LAYER_EXPORT: LayerExportSettings = { prefix: '', visibleOnly: true, format: 'png', quality: 90, trim: false, icc: true, folder: '', artboards: false };
@@ -88,6 +97,10 @@ export async function encodeOne(engine: Engine, s: Surface, name: string, set: L
   if (set.format === 'tiff') {
     if (!engineUp) throw new Error('TIFF is written by the formvis engine, which is not running here. Choose PNG, JPEG or WebP.');
     return api.encode(png, 'tiff', set.quality, dpi, icc);
+  }
+  if (set.format === 'bmp' || set.format === 'tga') {
+    if (!engineUp) throw new Error(`${set.format.toUpperCase()} is written by the formvis engine, which is not running here. Choose PNG, JPEG or WebP.`);
+    return api.encode(png, set.format, 100, dpi, null, { bits: 32 });
   }
   if (icc && own && engineUp) return api.encode(png, 'webp', set.quality, dpi, icc);
   return toBlob(s, 'image/webp', set.quality / 100);

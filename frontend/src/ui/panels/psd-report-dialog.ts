@@ -21,7 +21,7 @@ export class PsdReportDialog extends Dialog {
   }
 
   private section(title: string): { root: HTMLElement; title: HTMLElement; list: HTMLUListElement } {
-    const root = el('<div class="cv-psd-report-part" style="margin:0 0 8px"><b style="font-size:12px"></b><ul style="margin:4px 0 0;padding-left:18px;font-size:12px;max-height:150px;overflow:auto"></ul></div>');
+    const root = el('<div class="cv-psd-report-part" style="margin:0 0 8px"><b style="font-size:var(--fs-12)"></b><ul style="margin:4px 0 0;padding-left:18px;font-size:var(--fs-12);max-height:150px;overflow:auto"></ul></div>');
     const t = root.querySelector('b') as HTMLElement;
     setText(t, title);
     return { root, title: t, list: root.querySelector('ul') as HTMLUListElement };

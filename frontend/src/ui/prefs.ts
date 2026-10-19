@@ -6,6 +6,8 @@ import { setBandThreads } from '../engine/band-pool';
 import { framePacing } from '../gpu/frame-trace';
 import { api } from '../io/api';
 import { gamutWarning } from '../engine/colour-lut';
+import { placePrefs } from '../engine/smart-object-ops';
+import { THEMES, readChoice, setTheme } from './themes';
 import { slicePrefs } from '../extensions/tools/slice';
 import type { RawSharpen, RawSharpenAmount } from '../io/raw-sharpen';
 import { isLang, type Lang } from './i18n/langs';
@@ -54,6 +56,10 @@ export interface Prefs extends PagePrefs { language: Lang; profileMismatch: Mism
   historyLog: boolean;
   /** Preferences > File Handling: a picture placed or dropped into an open document starts in Free Transform. */
   placeTransform: boolean;
+  /** Preferences > General: a picture placed larger than the canvas is scaled to fit it, and every placed picture becomes a smart object. */
+  placeFit: boolean; placeSmart: boolean;
+  /** Preferences > Interface: the theme follows the system's light or dark appearance, using these two themes. */
+  themeAuto: boolean; themeLight: string; themeDark: string;
   /** Preferences > General: ease zoom steps, and the colour picker the swatches open (formvis's own or the system's). */
   animatedZoom: boolean; systemPicker: boolean; zoomResizes: boolean; beepWhenDone: boolean; interpolation: ResampleMethod;
   /** Preferences > Workspace: a floating document window dropped on the tab bar goes back to its tab. */
@@ -152,7 +158,7 @@ export const ENGINE_CHOICES: ReadonlyArray<readonly [EngineDevice, string]> = [[
 export const DEFAULT_PREFS: Prefs = { language: 'en', profileMismatch: 'convert', colour: DEFAULT_COLOUR, colourPresets: [], shortcuts: {}, restoreSession: true, agentsAllowed: false, comfyuiUrl: 'http://127.0.0.1:8188', nodemodeUrl: 'http://localhost:8000', historyStates: 100, historyMB: 256, historyAuto: true, memoryLimitMB: 0, effectCacheMB: 256, backgroundReleaseSec: 30, cacheLevels: 6, regionRedraws: true, layerReuse: true, fullPreviews: false, recoverySeconds: 20, autoShowHome: true, useGpu: true, gpuFilters: true, renderer: 'auto', gpuMemoryMB: 1024, gpuPower: 'high-performance', lowLatency: false, framePacingMs: 0, cacheTilePx: 2048, workerThreads: 0, engineDevice: 'auto',
   zoomWheel: false, autoFirstSnapshot: true, snapshotMB: 768, narrowCollapse: true, rememberLayout: true, paintCursor: 'tip', cursorCrosshair: false,
   checkerSize: 'medium', checkerColors: 'auto', checkerTheme: true, rulerUnits: 'px', guideColor: '', gridColor: '', gridSpacing: 100, gridSubdivisions: 4,
-  homeOnLastClose: false, whatsNewAuto: true, whatsNewSeen: '', toolOptions: {}, dialogValues: {}, spellWords: [], measureDataPoints: [...DEFAULT_MEASURE_POINTS], fontPreview: 'medium', toolbar: null, pressureCurve: 'linear', uiFontSize: 'default', recentFontCount: 5, recentFonts: [], rawWb: 'as_shot', rawBits: 8, rawAutoTone: false, rawSmart: false, rawAsk: true, rawPpi: 0, rawWide: false, rawSharpen: 'none', rawSharpenAmount: 'standard', autoShowPanels: true, historyLog: false, placeTransform: true, animatedZoom: true, systemPicker: false, zoomResizes: false, beepWhenDone: false, interpolation: 'high', floatDocking: true, showTooltips: true, shiftToolSwitch: true, zoomClickCentre: false, lowerExtension: true, recentFileCount: 20, gamutColor: '#808080', gamutOpacity: 100, guideStyle: 'solid', gridStyle: 'solid', gridOpacity: 100, noticeSeconds: 0, sliceColor: '', sliceNumbers: true, shortcutSets: {}, menuHidden: [], menuColors: {}, animations: true, usePressure: true, ...PAGE_DEFAULTS };
+  homeOnLastClose: false, whatsNewAuto: true, whatsNewSeen: '', toolOptions: {}, dialogValues: {}, spellWords: [], measureDataPoints: [...DEFAULT_MEASURE_POINTS], fontPreview: 'medium', toolbar: null, pressureCurve: 'linear', uiFontSize: 'default', recentFontCount: 5, recentFonts: [], rawWb: 'as_shot', rawBits: 8, rawAutoTone: false, rawSmart: false, rawAsk: true, rawPpi: 0, rawWide: false, rawSharpen: 'none', rawSharpenAmount: 'standard', autoShowPanels: true, historyLog: false, placeTransform: true, placeFit: true, placeSmart: false, themeAuto: false, themeLight: 'light', themeDark: 'studio', animatedZoom: true, systemPicker: false, zoomResizes: false, beepWhenDone: false, interpolation: 'high', floatDocking: true, showTooltips: true, shiftToolSwitch: true, zoomClickCentre: false, lowerExtension: true, recentFileCount: 20, gamutColor: '#808080', gamutOpacity: 100, guideStyle: 'solid', gridStyle: 'solid', gridOpacity: 100, noticeSeconds: 0, sliceColor: '', sliceNumbers: true, shortcutSets: {}, menuHidden: [], menuColors: {}, animations: true, usePressure: true, ...PAGE_DEFAULTS };
 export const RECOVERY_CHOICES: ReadonlyArray<readonly [string, string]> = [['10', '10 seconds'], ['20', '20 seconds'], ['60', '1 minute'], ['300', '5 minutes'], ['600', '10 minutes']];
 const KEY = 'formvis.prefs';
 
@@ -288,6 +294,9 @@ export function loadPrefs(): Prefs {
       autoShowPanels: r.autoShowPanels !== false,
       historyLog: r.historyLog === true,
       placeTransform: r.placeTransform !== false,
+      placeFit: r.placeFit !== false, placeSmart: r.placeSmart === true, themeAuto: r.themeAuto === true,
+      themeLight: typeof r.themeLight === 'string' && THEMES[r.themeLight]?.light ? r.themeLight : 'light',
+      themeDark: typeof r.themeDark === 'string' && THEMES[r.themeDark] && !THEMES[r.themeDark].light ? r.themeDark : 'studio',
       animatedZoom: r.animatedZoom !== false, systemPicker: r.systemPicker === true, zoomResizes: r.zoomResizes === true, beepWhenDone: r.beepWhenDone === true, interpolation: INTERPOLATIONS.some(([k]) => k === r.interpolation) ? r.interpolation as ResampleMethod : 'high', floatDocking: r.floatDocking !== false, showTooltips: r.showTooltips !== false, shiftToolSwitch: r.shiftToolSwitch !== false, zoomClickCentre: r.zoomClickCentre === true, lowerExtension: r.lowerExtension !== false,
       recentFileCount: Math.round(num(r.recentFileCount, 0, 40, DEFAULT_PREFS.recentFileCount)),
       gamutColor: typeof r.gamutColor === 'string' && /^#[0-9a-f]{6}$/i.test(r.gamutColor) ? r.gamutColor : DEFAULT_PREFS.gamutColor,
@@ -338,8 +347,10 @@ export function applyUiFontSize(p: Prefs): void {
   const k = UI_FONT_SCALE[p.uiFontSize], s = document.documentElement.style;
   for (const n of [9, 10, 11, 12, 13, 14, 16, 18]) { if (k === 1) s.removeProperty(`--fs-${n}`); else s.setProperty(`--fs-${n}`, `${Math.round(n * k * 10) / 10}px`); }
   scalePxFonts(k);
+  if (k !== sizedK) { const first = sizedK === 0; sizedK = k; if (!first) document.dispatchEvent(new CustomEvent('nm:ui-settings-changed', { detail: { key: 'fontSize' } })); }
 }
 
+let sizedK = 0;
 let pxFontSheet: HTMLStyleElement | null = null;
 let pxFontFactor = 1;
 /** The style rules with a literal pixel font size get the same factor from one generated sheet that follows them, made
@@ -396,6 +407,20 @@ function setScratchFolder(folder: string): void {
 /** Sends the saved scratch folder again, as the engine becomes reachable (it may have restarted). */
 export const resendScratch = (): void => { appliedScratch = null; setScratchFolder(loadPrefs().scratchFolder); };
 
+let systemScheme: MediaQueryList | null = null;
+let systemSchemeOn: (() => void) | null = null;
+/** Interface > Match System Appearance: the light or dark theme of the pair is set now and again when the system's appearance changes. */
+function followSystemTheme(p: Prefs): void {
+  if (typeof matchMedia !== 'function') return;
+  if (!systemScheme) systemScheme = matchMedia('(prefers-color-scheme: dark)');
+  if (systemSchemeOn) { systemScheme.removeEventListener('change', systemSchemeOn); systemSchemeOn = null; }
+  if (!p.themeAuto) return;
+  const pick = (): void => { const id = systemScheme?.matches ? p.themeDark : p.themeLight; if (readChoice().theme !== id) setTheme(id); };
+  systemSchemeOn = pick;
+  systemScheme.addEventListener('change', pick);
+  pick();
+}
+
 /** Puts the engine-side preferences into effect; the recovery delay is read by the app when it schedules a save. */
 export function applyPrefs(engine: Engine, p: Prefs): void {
   renderCache.levels = p.cacheLevels;
@@ -410,6 +435,8 @@ export function applyPrefs(engine: Engine, p: Prefs): void {
   engine.dirtyRendering = p.regionRedraws;
   previewMode.full = p.fullPreviews;
   if (p.pressureCurve !== appliedCurve) { appliedCurve = p.pressureCurve; engine.pressureCurve = PRESSURE_POINTS[p.pressureCurve]; }   // only when the choice changes, so a tool's own pick is not undone by another setting
+  placePrefs.fit = p.placeFit; placePrefs.smart = p.placeSmart;
+  followSystemTheme(p);
   engine.autoFirstSnapshot = p.autoFirstSnapshot;
   engine.snapshotByteLimit = p.snapshotMB * 1024 * 1024;
   engine.view = { ...engine.view, gridSpacing: p.gridSpacing, gridSubdivisions: p.gridSubdivisions };

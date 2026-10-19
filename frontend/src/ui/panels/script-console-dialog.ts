@@ -16,7 +16,7 @@ export interface ConsoleDeps {
 /** Window > Script Console (DEV_PLAN 36.7). The input is JavaScript run as an async function body with `formvis` in scope.
  *  The DOM is built once; every line is appended to the log (never rebuilt) and the oldest drop past 500. */
 export class ScriptConsoleDialog extends Dialog {
-  private readonly log = el('<div class="cv-console-log" role="log" aria-live="polite" tabindex="0" style="height: 260px; overflow-y: auto; font: 12px/1.45 var(--font-mono, monospace); border: 1px solid var(--border-color); border-radius: 4px; padding: 6px 8px; user-select: text; -webkit-user-select: text"></div>');
+  private readonly log = el('<div class="cv-console-log" role="log" aria-live="polite" tabindex="0" style="height: 260px; overflow-y: auto; font: var(--fs-12)/1.45 var(--font-mono, monospace); border: 1px solid var(--border-color); border-radius: 4px; padding: 6px 8px; user-select: text; -webkit-user-select: text"></div>');
   private readonly input = el('<textarea class="cv-input" rows="1" spellcheck="false" autocomplete="off" aria-label="Script" placeholder="formvis.run(\'id\'), formvis.commands(), formvis.api, formvis.log(...)" style="width: 100%; margin-top: 6px; resize: vertical; font: 12px/1.4 var(--font-mono, monospace)"></textarea>') as HTMLTextAreaElement;
   private readonly history: string[] = [];
   private cursor = 0;

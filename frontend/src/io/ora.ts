@@ -24,13 +24,14 @@ export async function writeOra(doc: Doc, composite: Surface, alone: (l: Layer) =
   const files: Array<{ name: string; blob: Blob }> = [], notes = new Set<string>();
   let n = 0;
   const layerXml = async (l: Layer, depth: string): Promise<string> => {
-    const common = `name="${esc(l.name)}" opacity="${l.opacity.toFixed(3)}" visibility="${l.visible === false ? 'hidden' : 'visible'}"`;
+    const locked = `${l.locks?.all ? ' edit-locked="true"' : ''}${l.locks?.transparency ? ' alpha-locked="true"' : ''}`;
+    const common = `name="${esc(l.name)}" opacity="${l.opacity.toFixed(3)}" visibility="${l.visible === false ? 'hidden' : 'visible'}"${locked}`;
     if (l.isGroup) {
       const kids = await children(l.id, depth + '  ');
       return `${depth}<stack ${common} isolation="auto">\n${kids}${depth}</stack>\n`;
     }
-    if (l.adjustment) { notes.add('Adjustment layers have no OpenRaster form and were left out.'); return ''; }
-    const op = TO_ORA[l.blend ?? 'normal'];
+    if (l.adjustment) notes.add('Adjustment layers have no OpenRaster form and were written as pictures of what they do to the layers below.');
+    const op = l.adjustment ? 'svg:src-over' : TO_ORA[l.blend ?? 'normal'];
     if (!op) notes.add(`${l.blend} has no OpenRaster blend mode; those layers were written as Normal.`);
     // Plain pixels when the layer's placement is an unscaled, unrotated move by whole pixels: written as they are.
     const m = l.raster ? placement(l.transform, l.raster.width, l.raster.height) : null;

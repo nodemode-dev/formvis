@@ -39,8 +39,13 @@ function acoColour(space: number, w: number, x: number, y: number, z: number): s
 }
 
 /** One swatch as the files hold it: '#rrggbb', an optional name, and (.ase only) an optional group. */
-export interface SwatchItem { c: string; name?: string; group?: string }
-const item = (c: string, name: string, group?: string): SwatchItem => ({ c, ...(name && name !== c ? { name: name.slice(0, 60) } : {}), ...(group ? { group: group.slice(0, 40) } : {}) });
+export interface SwatchItem { c: string; name?: string; group?: string; /** The colour as the file held it when it was not RGB, at full precision: CMYK as 0 to 1 each, Lab as L 0 to 100 then a and b, Gray as 0 to 1. */ src?: SwatchSource; /** Global, spot or process (.ase colour types); absent means process. */ kind?: 'global' | 'spot' }
+export interface SwatchSource { m: 'cmyk' | 'lab' | 'gray'; v: number[] }
+const item = (c: string, name: string, group?: string, src?: SwatchSource, kind?: 'global' | 'spot'): SwatchItem => ({ c, ...(name && name !== c ? { name: name.slice(0, 60) } : {}), ...(group ? { group: group.slice(0, 40) } : {}), ...(src ? { src } : {}), ...(kind ? { kind } : {}) });
+const sourceOf = (space: number, w: number, x: number, y: number, z: number): SwatchSource | undefined => {
+  const sg = (v: number): number => (v > 32767 ? v - 65536 : v);
+  return space === 2 ? { m: 'cmyk', v: [1 - w / 65535, 1 - x / 65535, 1 - y / 65535, 1 - z / 65535] } : space === 7 ? { m: 'lab', v: [w / 100, sg(x) / 100, sg(y) / 100] } : space === 8 ? { m: 'gray', v: [clamp(w, 0, 10000) / 10000] } : undefined;
+};
 
 export function parseAco(bytes: Uint8Array): SwatchItem[] {
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -53,7 +58,8 @@ export function parseAco(bytes: Uint8Array): SwatchItem[] {
     const colours: SwatchItem[] = [];
     for (let i = 0; i < count; i += 1) {
       if (p + 10 > bytes.byteLength) break;
-      const c = acoColour(dv.getUint16(p), dv.getUint16(p + 2), dv.getUint16(p + 4), dv.getUint16(p + 6), dv.getUint16(p + 8));
+      const sp = dv.getUint16(p), w = dv.getUint16(p + 2), x = dv.getUint16(p + 4), y = dv.getUint16(p + 6), z = dv.getUint16(p + 8);
+      const c = acoColour(sp, w, x, y, z), src = sourceOf(sp, w, x, y, z);
       p += 10;
       let name = '';
       if (version === 2) {
@@ -63,7 +69,7 @@ export function parseAco(bytes: Uint8Array): SwatchItem[] {
         p += 2;
         for (let k = 0; k < n && p + 2 <= bytes.byteLength; k += 1) { const ch = dv.getUint16(p); p += 2; if (ch) name += String.fromCharCode(ch); }
       }
-      if (c) colours.push(item(c, name));
+      if (c) colours.push(item(c, name, undefined, src));
     }
     return { version, colours };
   };
@@ -85,8 +91,11 @@ export function writeAco(list: ReadonlyArray<string | SwatchItem>): Uint8Array {
   for (const version of [1, 2]) {
     u16(version); u16(items.length);
     items.forEach((s, k) => {
-      const [r, g, b] = parseHex(s.c);
-      u16(0); u16(r * 257); u16(g * 257); u16(b * 257); u16(0);
+      const [r, g, b] = parseHex(s.c), v = s.src?.v ?? [], q = (f: number): number => Math.round(clamp(f, 0, 1) * 65535), sg = (f: number): number => Math.round(clamp(f, -128, 127) * 100) & 0xffff;
+      if (s.src?.m === 'cmyk' && v.length === 4) { u16(2); u16(65535 - q(v[0]!)); u16(65535 - q(v[1]!)); u16(65535 - q(v[2]!)); u16(65535 - q(v[3]!)); }
+      else if (s.src?.m === 'lab' && v.length === 3) { u16(7); u16(Math.round(clamp(v[0]!, 0, 100) * 100)); u16(sg(v[1]!)); u16(sg(v[2]!)); u16(0); }
+      else if (s.src?.m === 'gray' && v.length === 1) { u16(8); u16(Math.round(clamp(v[0]!, 0, 1) * 10000)); u16(0); u16(0); u16(0); }
+      else { u16(0); u16(r * 257); u16(g * 257); u16(b * 257); u16(0); }
       if (version === 2) {
         const t = names[k]!;
         u16(0); u16(t.length + 1);
@@ -118,12 +127,13 @@ export function parseAse(bytes: Uint8Array): SwatchItem[] {
       const model = String.fromCharCode(bytes[q], bytes[q + 1], bytes[q + 2], bytes[q + 3]);
       q += 4;
       const f = (k: number): number => dv.getFloat32(q + k * 4);
-      let c: string | null = null;
-      if (model === 'RGB ') c = toHex(f(0) * 255, f(1) * 255, f(2) * 255);
-      else if (model === 'CMYK') c = cmykToRgb(f(0), f(1), f(2), f(3));
-      else if (model === 'LAB ') c = labToRgb(f(0) * 100, f(1), f(2));
-      else if (model === 'Gray') { const g = f(0) * 255; c = toHex(g, g, g); }
-      if (c) out.push(item(c, name, group));
+      let c: string | null = null, src: SwatchSource | undefined, used = 0;
+      if (model === 'RGB ') { c = toHex(f(0) * 255, f(1) * 255, f(2) * 255); used = 3; }
+      else if (model === 'CMYK') { c = cmykToRgb(f(0), f(1), f(2), f(3)); src = { m: 'cmyk', v: [f(0), f(1), f(2), f(3)] }; used = 4; }
+      else if (model === 'LAB ') { c = labToRgb(f(0) * 100, f(1), f(2)); src = { m: 'lab', v: [f(0) * 100, f(1), f(2)] }; used = 3; }
+      else if (model === 'Gray') { const g = f(0) * 255; c = toHex(g, g, g); src = { m: 'gray', v: [f(0)] }; used = 1; }
+      const kindAt = q + used * 4, code = kindAt + 2 <= end ? dv.getUint16(kindAt) : 2;
+      if (c) out.push(item(c, name, group, src, code === 1 ? 'spot' : code === 0 ? 'global' : undefined));
     }
     p = end;
   }
@@ -152,8 +162,10 @@ export function writeAse(list: ReadonlyArray<string | SwatchItem>): Uint8Array {
       if (g) block(0xc001, name(g));
       open = g;
     }
-    const [r, gr, b] = parseHex(s.c);
-    block(0x0001, [...name(s.name || s.c), 0x52, 0x47, 0x42, 0x20, ...f32(r / 255), ...f32(gr / 255), ...f32(b / 255), ...u16(2)]);
+    const [r, gr, b] = parseHex(s.c), v = s.src?.v ?? [], code = s.kind === 'spot' ? 1 : s.kind === 'global' ? 0 : 2, tag = (t: string): number[] => Array.from(t, (ch) => ch.charCodeAt(0));
+    const model = s.src?.m === 'cmyk' && v.length === 4 ? [...tag('CMYK'), ...v.flatMap(f32)] : s.src?.m === 'lab' && v.length === 3 ? [...tag('LAB '), ...f32(v[0]! / 100), ...f32(v[1]!), ...f32(v[2]!)]
+      : s.src?.m === 'gray' && v.length === 1 ? [...tag('Gray'), ...f32(v[0]!)] : [...tag('RGB '), ...f32(r / 255), ...f32(gr / 255), ...f32(b / 255)];
+    block(0x0001, [...name(s.name || s.c), ...model, ...u16(code)]);
   }
   if (open) block(0xc002, []);
   const head = new Uint8Array(12), hv = new DataView(head.buffer);

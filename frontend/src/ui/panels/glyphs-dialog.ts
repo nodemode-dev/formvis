@@ -75,13 +75,13 @@ export class GlyphsDialog extends Dialog {
     const show = selectRow('Show', BLOCKS.map((b) => [b.id, b.label] as const), (v) => { this.block = BLOCKS.find((b) => b.id === v) ?? BLOCKS[0]; this.fill(); });
     show.set(this.block.id);
     for (let i = 0; i < 256; i++) {
-      const b = el<HTMLButtonElement>('<button type="button" class="cv-btn ghost" style="padding: 2px 0; font-size: 18px; min-width: 0; height: 30px" role="gridcell"></button>');
+      const b = el<HTMLButtonElement>('<button type="button" class="cv-btn ghost" style="padding: 2px 0; font-size: var(--fs-18); min-width: 0; height: 30px" role="gridcell"></button>');
       b.addEventListener('click', () => { if (b.textContent) void this.insert(b.textContent); });
       this.cells.push(b);
       this.grid.appendChild(b);
     }
     for (let i = 0; i < RECENT_MAX; i++) {
-      const b = el<HTMLButtonElement>('<button type="button" class="cv-btn ghost" style="padding: 2px 0; font-size: 18px; width: 30px; height: 30px" hidden></button>');
+      const b = el<HTMLButtonElement>('<button type="button" class="cv-btn ghost" style="padding: 2px 0; font-size: var(--fs-18); width: 30px; height: 30px" hidden></button>');
       b.addEventListener('click', () => { if (b.textContent) void this.insert(b.textContent); });
       this.recentCells.push(b);
       this.recentRow.appendChild(b);

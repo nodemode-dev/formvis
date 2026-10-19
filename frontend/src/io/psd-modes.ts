@@ -1,7 +1,8 @@
 import { Raster, newLayer, uid, type Doc, type ID, type RGB } from '../engine';
 import { defaultDuotone } from '../engine/duotone';
 import { displayInfo, pascals, readIccProfile, unicodeNames } from './psd-channels';
-import { resourceBlocks } from './psd-paths';
+import { addIccResource, addResourceBytes, block, resourceBlocks } from './psd-paths';
+import { fromBase64 } from './icc-read';
 
 /** Multichannel (mode 7) and Duotone (mode 8) PSD and PSB files, which the layer reader does not handle. Only the merged
  *  image is read: a Duotone's one grey channel, or each channel of a Multichannel file, 8 or 16 bit, raw or run-length
@@ -68,6 +69,33 @@ const greyRaster = (plane: Uint8Array, w: number, h: number): Raster => {
   r.write(img);
   return r;
 };
+
+/** A Multichannel document as a Multichannel PSD or PSB (mode 7): no layers, one 8-bit plane per channel as formvis keeps it
+ *  (a stored 255 meaning no ink), raw coded, with the channel names (resources 1006 and 1045), their ink colours and solidity
+ *  (1077), the resolution (1005) and the ICC profile (1039). Null when the document holds no channels or more than 56. */
+export function writeMultichannelPsd(doc: Doc, psb = false): { bytes: ArrayBuffer; notes: string[] } | null {
+  const list = doc.multichannel?.channels ?? [];
+  if (doc.mode !== 'multichannel' || !list.length || list.length > 56) return null;
+  const w = doc.width, h = doc.height, lenSize = psb ? 8 : 4, notes: string[] = [];
+  const u16 = (v: number): number[] => [(v >> 8) & 255, v & 255], u32 = (v: number): number[] => [(v >>> 24) & 255, (v >>> 16) & 255, (v >>> 8) & 255, v & 255];
+  const head = [0x38, 0x42, 0x50, 0x53, ...u16(psb ? 2 : 1), 0, 0, 0, 0, 0, 0, ...u16(list.length), ...u32(h), ...u32(w), ...u16(8), ...u16(7), ...u32(0), ...u32(0), ...new Array<number>(lenSize).fill(0), ...u16(0)];
+  const out = new Uint8Array(head.length + list.length * w * h);
+  out.set(head, 0);
+  list.forEach((c, k) => {
+    const px = c.data.read(0, 0, Math.min(w, c.data.width), Math.min(h, c.data.height)).data, base = head.length + k * w * h, cw = Math.min(w, c.data.width), ch = Math.min(h, c.data.height);
+    for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) out[base + y * w + x] = px[(y * cw + x) * 4];
+  });
+  const names = list.map((c, i) => c.name || `Channel ${i + 1}`);
+  const pascalNames = names.flatMap((n) => { const t = Array.from(new TextEncoder().encode(n.replace(/[^\x20-\x7e]/g, '_'))).slice(0, 255); return [t.length, ...t]; });
+  const unicode = names.flatMap((n) => { const cs = Array.from(n).flatMap((c) => { const cp = c.codePointAt(0) as number; return cp > 0xffff ? [0xd800 + ((cp - 0x10000) >> 10), 0xdc00 + ((cp - 0x10000) & 1023)] : [cp]; }); return [...u32(cs.length), ...cs.flatMap((c) => u16(c))]; });
+  const w16 = (x: number): number[] => u16(Math.max(0, Math.min(255, Math.round(x))) * 257);
+  const info = [...u32(1), ...list.flatMap((c) => [...u16(0), ...w16(c.color.r), ...w16(c.color.g), ...w16(c.color.b), 0, 0, ...u16(Math.max(0, Math.min(100, Math.round(c.solidity * 100)))), 2, 0])];
+  const ppi = doc.resolution >= 1 && doc.resolution <= 65535 ? Math.round(doc.resolution) : 72, fixed = [...u16(ppi), 0, 0, ...u16(1), ...u16(1), ...u16(ppi), 0, 0, ...u16(1), ...u16(1)];
+  let bytes = addResourceBytes(out.buffer, [...block(1005, '', new Uint8Array(fixed)), ...block(1006, '', new Uint8Array(pascalNames)), ...block(1045, '', new Uint8Array(unicode)), ...block(1077, '', new Uint8Array(info))]);
+  try { if (doc.profile) bytes = addIccResource(bytes, fromBase64(doc.profile.icc)); } catch { notes.push('The document\'s colour profile could not be read, so the PSD carries none.'); }
+  if (doc.layers.length > 1 || doc.layers.some((l) => l.isGroup)) notes.push('A Multichannel PSD holds channels only; the layers are not written.');
+  return { bytes, notes };
+}
 
 /** A Duotone or Multichannel file as a document, or null for any other mode or a merged image that cannot be read. */
 export function readPsdChannelMode(buf: ArrayBuffer, resolution: number | null): { doc: Doc; notes: string[]; activeId: ID | null } | null {

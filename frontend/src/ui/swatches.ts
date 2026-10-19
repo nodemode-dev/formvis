@@ -3,6 +3,7 @@ import type { RGB } from '../engine/types';
 import { el } from './dom';
 import { icon } from './icons';
 import { PanelGroup } from './panel-group';
+import type { SwatchItem } from '../io/swatch-files';
 
 /** Swatches and Color, one group as the target's (Phase 21, UI_SPEC.md section 6; s20, s22). Swatches: the target's
  *  47 colours (sampled from its screenshot) until changed; a click sets the foreground, Alt-click the background, a
@@ -16,12 +17,20 @@ const DEFAULTS = [
 const KEY = 'formvis.swatches';
 const KEY_SET = 'formvis.swatch-set';
 /** One swatch: its colour, an optional name and an optional group; the order of the list is the order shown. */
-interface SwatchEntry { c: string; name?: string; group?: string }
+type SwatchEntry = SwatchItem;
 const HEX = /^#[0-9a-f]{6}$/i;
+const SOURCE_LEN = { cmyk: 4, lab: 3, gray: 1 } as const;
+/** The full-precision source colour and the global or spot type a swatch brought from its file, when valid. */
+function extras(e: { src?: unknown; kind?: unknown }): Pick<SwatchEntry, 'src' | 'kind'> {
+  const s = e.src as { m?: string; v?: unknown } | undefined;
+  const ok = !!s && (s.m === 'cmyk' || s.m === 'lab' || s.m === 'gray') && Array.isArray(s.v) && s.v.length === SOURCE_LEN[s.m] && s.v.every((n) => typeof n === 'number' && Number.isFinite(n));
+  return { ...(ok ? { src: { m: s!.m as 'cmyk' | 'lab' | 'gray', v: [...(s!.v as number[])] } } : {}), ...(e.kind === 'spot' || e.kind === 'global' ? { kind: e.kind } : {}) };
+}
+const KIND_WORD = { spot: 'spot', global: 'global' } as const;
 function loadEntries(): SwatchEntry[] {
   try {
     const s = JSON.parse(localStorage.getItem(KEY_SET) ?? 'null');
-    if (Array.isArray(s)) return s.flatMap((e) => (e && typeof e.c === 'string' && HEX.test(e.c) ? [{ c: e.c.toLowerCase(), ...(typeof e.name === 'string' && e.name ? { name: e.name.slice(0, 60) } : {}), ...(typeof e.group === 'string' && e.group ? { group: e.group.slice(0, 40) } : {}) }] : []));
+    if (Array.isArray(s)) return s.flatMap((e) => (e && typeof e.c === 'string' && HEX.test(e.c) ? [{ c: e.c.toLowerCase(), ...(typeof e.name === 'string' && e.name ? { name: e.name.slice(0, 60) } : {}), ...(typeof e.group === 'string' && e.group ? { group: e.group.slice(0, 40) } : {}), ...extras(e) }] : []));
     const old = JSON.parse(localStorage.getItem(KEY) ?? 'null');
     if (Array.isArray(old)) return old.filter((v) => typeof v === 'string' && HEX.test(v)).map((c) => ({ c: c.toLowerCase() }));
   } catch { /* defaults */ }
@@ -156,8 +165,8 @@ export class SwatchesPanel {
   /** Every swatch with its name and group, in order. */
   entries(): ReadonlyArray<Readonly<SwatchEntry>> { return this.list.map((e) => ({ ...e })); }
   /** Replaces the whole set with colours that bring their own names and groups (a loaded .aco or .ase). */
-  setEntries(list: ReadonlyArray<{ c: string; name?: string; group?: string }>): void {
-    this.list = list.filter((e) => HEX.test(e.c)).map((e) => ({ c: e.c.toLowerCase(), ...(e.name ? { name: e.name.slice(0, 60) } : {}), ...(e.group ? { group: e.group.slice(0, 40) } : {}) }));
+  setEntries(list: ReadonlyArray<SwatchItem>): void {
+    this.list = list.filter((e) => HEX.test(e.c)).map((e) => ({ c: e.c.toLowerCase(), ...(e.name ? { name: e.name.slice(0, 60) } : {}), ...(e.group ? { group: e.group.slice(0, 40) } : {}), ...extras(e) }));
     this.picked = -1; this.save(); this.renderGrid();
   }
   /** Replaces the whole set (Load Swatches, the Preset Manager); anything not '#rrggbb' is dropped; a colour that was already here keeps its name and group. */
@@ -207,7 +216,7 @@ export class SwatchesPanel {
         if ((e.group ?? '') !== g) return;
         const c = e.c, b = el<HTMLButtonElement>('<button class="cv-sw-tile" type="button"></button>');
         b.style.background = c;
-        b.title = e.name ? `${e.name} ${c}` : c;
+        b.title = `${e.name ? `${e.name} ${c}` : c}${e.kind ? ` (${KIND_WORD[e.kind]} color)` : ''}${e.src ? ` (${e.src.m.toUpperCase()}: ${e.src.v.map((n) => +n.toFixed(3)).join(', ')})` : ''}`;
         b.dataset.i = String(i);
         b.setAttribute('aria-pressed', String(i === this.picked));
         b.setAttribute('aria-label', `Swatch ${e.name ?? c}`);

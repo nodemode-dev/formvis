@@ -1,15 +1,15 @@
 # formvis commands
 
-Generated from the window's command catalogue (1566 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1568 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
-- Edit: 107
+- Edit: 108
 - File: 101
 - Filter: 93
 - Generate: 6
 - Help: 5
-- Image: 119
+- Image: 120
 - Layer: 268
 - Paint: 1
 - Paths: 12
@@ -121,6 +121,7 @@ Generated from the window's command catalogue (1566 commands) by `./formvis agen
 | `transform-again-copy` | Transform Again on a Copy | Alt+Shift+Mod+T | Repeats the last transform on a copy of the layer. (changes the picture) |
 | `transform-copy` | Free Transform a Copy | Alt+Mod+T | Copies the layer or selected pixels in place, then starts Free Transform on the copy. (changes the picture) |
 | `transform-distort` | Distort |  | Starts a Distort transform. (changes the picture) |
+| `transform-numeric` | Numerically... |  | Carries the layer's corners through numbers: a reference point, moveX, moveY, scaleX, scaleY (percent), angle, skewH, skewV, perspH, perspV or a six number matrix (a b c d e f); without arguments it opens the dialog. (changes the picture) |
 | `transform-perspective` | Perspective |  | Starts a Perspective transform. (changes the picture) |
 | `transform-rotate` | Rotate |  | Starts a Rotate transform. (changes the picture) |
 | `transform-scale` | Scale |  | Starts a Scale transform. (changes the picture) |
@@ -211,7 +212,7 @@ Generated from the window's command catalogue (1566 commands) by `./formvis agen
 | `open-as` | Open As... |  | Opens a dialog to read one file as a format you choose (PNG, JPEG, TIFF, Targa, DPX, Cineon, WBMP, DDS, OpenEXR, PSD and others), whatever its name or extension says; the format parameter preselects it. (changes the picture) |
 | `open-image-data` | Open Image Data |  | Opens base64 picture bytes with a file name as a new document. (changes the picture) |
 | `open-svg-layers` | Open SVG as Layers... |  | Opens an SVG file as a new document with one editable shape layer per drawable element; with the svg parameter it reads that SVG text instead of asking for a file. (changes the picture) |
-| `package` | Package... |  | Saves the document and the files of its linked smart objects together in one zip, the packaged document pointing at the copies under Links. (changes the picture) |
+| `package` | Package... |  | Saves the document and the files of its linked smart objects together in one zip, as a formvis project pointing at the copies under Links, or as a PSD or PSB beside them. Pass format fvd, psd or psb to skip the dialog. (changes the picture) |
 | `photomerge` | Photomerge... |  | Stitches files or the open documents (documents true) into a panorama (Auto, Perspective, Cylindrical, Collage or Reposition) with optional crop, vignette and lens distortion correction, or (layers true) as one layer per photo with seam masks; without parameters it opens the dialog. (changes the picture) |
 | `pin-tab` | Pin Tab |  | Pins or unpins the current document tab: a pinned tab moves to the front, loses its close button and is kept by Close All and Close Others. |
 | `place-3d` | Place 3D Model... |  | Opens a file picker for a glTF or GLB model and places it as a layer. (changes the picture) |
@@ -466,6 +467,7 @@ Generated from the window's command catalogue (1566 commands) by `./formvis agen
 | `par-dvcpro-hd` | DVCPRO HD 1080 (1.5) |  | Sets the pixel aspect ratio to DVCPRO HD 1080 (1.5). (changes the picture) |
 | `par-hdv` | HDV 1080 (1.33) |  | Sets the pixel aspect ratio to HDV 1080 (1.33). (changes the picture) |
 | `par-square` | Square (1) |  | Sets the pixel aspect ratio to square (1). (changes the picture) |
+| `perspective-crop` | Perspective Crop |  | Starts the Crop tool in its four-corner mode: move the corners onto a slanted rectangle and Enter flattens it to an upright picture, at the size and resolution chosen when the ratio is Size. (changes the picture) |
 | `profile-info` | Profile Info... |  | Opens Profile Info, which shows the picture profile or a chosen profile file: name, colour space, device class, connection space, version and ink limit. |
 | `remove-bg` | Remove Background |  | Removes the background of the active layer with the neural model. (changes the picture) |
 | `remove-bg-lite` | Remove Background (Lightweight) |  | Removes the background with the lightweight model. (changes the picture) |

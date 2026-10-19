@@ -5,6 +5,8 @@ import { Raster } from './surface';
 import type { Project } from './project';
 import { carryMarks } from './guides-ops';
 import { resampleRaster, type ResampleMethod } from './resample';
+import { SelectionMask } from './selection';
+import { borderCoverage } from './canvas-border';
 
 export type { ResampleMethod } from './resample';
 
@@ -60,6 +62,7 @@ export function resizeCanvas(
   dy: number,
   fill: RGB | null = null,
   label = 'Canvas Size',
+  border: { pixels: ImageData; select: boolean } | null = null,
 ): boolean {
   const project = host.current;
   if (!project) return false;
@@ -81,9 +84,14 @@ export function resizeCanvas(
       raster.ctx.clearRect(dx, dy, doc.width, doc.height);
       raster.touch();
       layers = [newLayer('Canvas Extension', { width, height }, { raster }), ...layers];
+    } else if (border && border.pixels.width === width && border.pixels.height === height && (width > doc.width || height > doc.height)) {
+      const raster = new Raster(width, height);
+      raster.write(border.pixels);
+      layers = [newLayer('Canvas Extension', { width, height }, { raster }), ...layers];
     }
     p.doc = { ...doc, width, height, layers, ...host.alphasShifted(doc, dx, dy, width, height), ...carryMarks(doc, { map: shift, width, height }) };
     p.selection = p.selection ? p.selection.translated(dx, dy, width, height) : null;
+    if (border?.select && (width > doc.width || height > doc.height)) p.selection = new SelectionMask(0, 0, width, height, borderCoverage(width, height, dx, dy, doc.width, doc.height));
     host.carryMeasure(p, doc, label, shift);
     return true;
   });

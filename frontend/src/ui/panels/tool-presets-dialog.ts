@@ -32,6 +32,9 @@ function savePresets(list: ToolPreset[]): void {
   try { localStorage.setItem(KEY, JSON.stringify(list)); } catch { /* storage unavailable: presets live for the session */ }
 }
 
+export const loadToolPresets = (): ToolPreset[] => loadPresets();
+export const saveToolPresets = (list: ToolPreset[]): void => savePresets(list);
+
 /** The settable specs of a tool with the key each is stored under (a repeated label gets a count). */
 function keyed(tool: Tool, specs: OptionSpec[]): Array<{ spec: Settable; key: string }> {
   const seen = new Map<string, number>(), out: Array<{ spec: Settable; key: string }> = [];
@@ -71,6 +74,7 @@ export class ToolPresetsDialog extends Dialog {
   }
 
   show(): void {
+    this.presets = loadPresets();
     this.paint();
     this.open();
   }

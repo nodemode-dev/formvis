@@ -1,14 +1,14 @@
-import type { BlendMode as PsdBlend, Layer as PsdLayer, LayerEffectsInfo, LinkedFile, PatternInfo, Psd, TextStyle, TextStyleRun, UnitsValue, VectorContent } from 'ag-psd';
+import type { BlendMode as PsdBlend, EffectContour, Layer as PsdLayer, LayerEffectsInfo, LinkedFile, PatternInfo, Psd, TextStyle, TextStyleRun, UnitsValue, VectorContent } from 'ag-psd';
 import {
-  Raster, boundsOf, docTransform, effectsPresent, integral, liveText, newLayer, placement, applyMat, uid, type BlendMode, type Doc, type ID, type Layer, type SmartLink, type Surface, invert, mul, toBlob, type Pt, defaultEffects, patternById, addPattern, projectPatterns, createSurface, ctxOf, type LayerEffects, renderText, textKey, TEXT_FONTS, type TextSpec, ADJUSTMENT_LABELS, hsvFromData, type WarpStyle,
+  Raster, boundsOf, docTransform, effectsPresent, integral, liveText, newLayer, placement, applyMat, uid, type BlendMode, type Doc, type ID, type Layer, type SmartLink, type Surface, invert, mul, toBlob, type Pt, defaultEffects, patternById, addPattern, projectPatterns, createSurface, ctxOf, type LayerEffects, CONTOURS, contourCurve, customContourId, customContourPoints, instances, type ContourId, renderText, textKey, TEXT_FONTS, type TextSpec, ADJUSTMENT_LABELS, hsvFromData, type WarpStyle,
 } from '../engine';
 import { fromPsdAdjustment, toPsdAdjustment } from './psd-adjust';
-import { fromPsdSmartFilters } from './psd-filters';
+import { fromPsdSmartFilters, toPsdFilter } from './psd-filters';
 import { artboardFromData, blendIfActive, type BlendIf, type DocSlice, type LayerComp } from '../engine/types';
 import { windingArea } from '../engine/custom-shapes';
 import { addIccResource, addPathResources, addResourceBytes, block as resourceBlock, clippingPathName, readPathResources, resourceBlocks } from './psd-paths';
 import { addExtraChannels, readExtraChannels, readIccProfile } from './psd-channels';
-import { readPsdChannelMode } from './psd-modes';
+import { readPsdChannelMode, writeMultichannelPsd } from './psd-modes';
 import { readChannelRestrictions } from './psd-blend';
 import { vectorCoverage } from '../engine/vector-mask';
 import { fromBase64, toBase64 } from './icc-read';
@@ -16,8 +16,9 @@ import { cameraFromTiff, exifBlockOf } from './exif';
 import { cleanRuns, runsStyled, styleSegments } from '../engine/opentype';
 import type { FeatureRun } from '../engine/types';
 import { buildMergedXmp, metaFromXmp } from './xmp';
-import { metaWritable } from '../engine/doc-meta';
+import { cleanMeta, MAX_XMP_RAW_CHARS, metaWritable } from '../engine/doc-meta';
 import type { PathSet, SubPath } from '../engine/paths';
+import type { SelectionMask } from '../engine/selection';
 import { maskEdgeTone } from '../engine/distort';
 import { groupIsolated } from '../engine/tree';
 import { renderFill } from '../engine/fill-layers';
@@ -85,22 +86,56 @@ function toPsdEffects(fx: LayerEffects, patterns: PatternInfo[]): LayerEffectsIn
   const px = (value: number): UnitsValue => ({ units: 'Pixels', value }), bm = (m: BlendMode): PsdBlend => TO_PSD[m] ?? 'normal', on = { enabled: true, present: true, showInDialog: true };
   const e: LayerEffectsInfo = fx.hidden ? { disabled: true } : {};
   const d = fx.dropShadow, is = fx.innerShadow, g = fx.outerGlow, ig = fx.innerGlow, k = fx.stroke, co = fx.colorOverlay, go = fx.gradientOverlay, sa = fx.satin, bv = fx.bevel, po = fx.patternOverlay;
-  if (d.enabled) e.dropShadow = [{ ...on, color: d.color, opacity: d.opacity, blendMode: bm(d.blend), angle: d.angle, distance: px(d.distance), size: px(d.size), useGlobalLight: false }];
-  if (is.enabled) e.innerShadow = [{ ...on, color: is.color, opacity: is.opacity, blendMode: bm(is.blend), angle: is.angle, distance: px(is.distance), size: px(is.size), useGlobalLight: false }];
-  if (g.enabled) e.outerGlow = { ...on, color: g.color, opacity: g.opacity, blendMode: bm(g.blend), size: px(g.size) };
-  if (ig.enabled) e.innerGlow = { ...on, color: ig.color, opacity: ig.opacity, blendMode: bm(ig.blend), size: px(ig.size), source: 'edge' };
-  if (k.enabled) e.stroke = [{ ...on, position: k.position ?? 'outside', fillType: 'color', color: k.color, opacity: k.opacity, blendMode: 'normal', size: px(k.size) }];
-  if (co.enabled) e.solidFill = [{ ...on, color: co.color, opacity: co.opacity, blendMode: bm(co.blend) }];
-  if (go.enabled) e.gradientOverlay = [{ ...on, opacity: go.opacity, blendMode: bm(go.blend), type: go.style, angle: go.angle, scale: go.scale, reverse: go.reverse, align: true,
+  const cn = (id: ContourId | undefined): { contour?: EffectContour } => { const c = toPsdContour(id); return c ? { contour: c } : {}; };
+  const pct = (v: number | undefined): { choke?: UnitsValue } => (v ? { choke: px(Math.max(0, Math.min(100, v))) } : {});
+  const shadowOf = (s: typeof d | typeof is, spread: number | undefined) => ({ ...on, color: s.color, opacity: s.opacity, blendMode: bm(s.blend), angle: s.angle, distance: px(s.distance), size: px(s.size), useGlobalLight: s.useGlobal === true, ...(s.antiAlias ? { antialiased: true } : {}), ...pct(spread), ...cn(s.contour) });
+  const strokeOf = (s: typeof k) => ({ ...on, position: s.position ?? 'outside', opacity: s.opacity, blendMode: 'normal', size: px(s.size), color: s.color,
+    ...(s.gradient ? { fillType: 'gradient', gradient: { name: 'formvis', type: 'solid', colorStops: [{ color: s.gradient.from, location: 0, midpoint: 0.5 }, { color: s.gradient.to, location: 1, midpoint: 0.5 }], opacityStops: [{ opacity: 1, location: 0, midpoint: 0.5 }, { opacity: 1, location: 1, midpoint: 0.5 }], style: s.gradient.style, angle: s.gradient.angle, reverse: s.gradient.reverse, scale: 1, align: true } } : { fillType: 'color', color: s.color }) });
+  const gradientOf = (go: typeof fx.gradientOverlay) => ({ ...on, opacity: go.opacity, blendMode: bm(go.blend), type: go.style, angle: go.angle, scale: go.scale, reverse: go.reverse, align: true, ...(go.dither ? { dither: true } : {}), ...(go.method ? { interpolationMethod: go.method } : {}),
     gradient: { name: 'formvis', type: 'solid',   // every stop and its alpha when the overlay has them (36.8)
       colorStops: go.stops ? go.stops.map((s) => ({ color: s.color, location: s.at, midpoint: 0.5 })) : [{ color: go.from, location: 0, midpoint: 0.5 }, { color: go.to, location: 1, midpoint: 0.5 }],
-      opacityStops: go.stops ? go.stops.map((s) => ({ opacity: s.alpha, location: s.at, midpoint: 0.5 })) : [{ opacity: 1, location: 0, midpoint: 0.5 }, { opacity: 1, location: 1, midpoint: 0.5 }] } }];
-  if (sa.enabled) e.satin = { ...on, color: sa.color, opacity: sa.opacity, blendMode: bm(sa.blend), angle: sa.angle, distance: px(sa.distance), size: px(sa.size), invert: sa.invert };
-  if (bv.enabled) e.bevel = { ...on, style: BEVEL_TO[bv.style], technique: bv.technique === 'chiselHard' ? 'chisel hard' : bv.technique === 'chiselSoft' ? 'chisel soft' : 'smooth', strength: bv.depth / 100, direction: bv.down ? 'down' : 'up', size: px(bv.size), soften: px(bv.soften), angle: bv.angle, altitude: bv.altitude, useGlobalLight: false,
+      opacityStops: go.stops ? go.stops.map((s) => ({ opacity: s.alpha, location: s.at, midpoint: 0.5 })) : [{ opacity: 1, location: 0, midpoint: 0.5 }, { opacity: 1, location: 1, midpoint: 0.5 }] } });
+  // Each effect the format can repeat goes once per enabled instance, the main one first, then the extras.
+  const ds = instances(fx, 'dropShadow').filter((x) => x.enabled), ins = instances(fx, 'innerShadow').filter((x) => x.enabled), sk = instances(fx, 'stroke').filter((x) => x.enabled), cos = instances(fx, 'colorOverlay').filter((x) => x.enabled), gos = instances(fx, 'gradientOverlay').filter((x) => x.enabled);
+  if (ds.length) e.dropShadow = ds.map((x) => shadowOf(x, x.spread)) as LayerEffectsInfo['dropShadow'];
+  if (ins.length) e.innerShadow = ins.map((x) => shadowOf(x, x.choke)) as LayerEffectsInfo['innerShadow'];
+  if (g.enabled) e.outerGlow = { ...on, color: g.color, opacity: g.opacity, blendMode: bm(g.blend), size: px(g.size), ...pct(g.spread), ...(g.noise ? { noise: g.noise / 100 } : {}), ...(g.range ? { range: g.range / 100 } : {}), ...(g.antiAlias ? { antialiased: true } : {}), ...cn(g.contour) };
+  if (ig.enabled) e.innerGlow = { ...on, color: ig.color, opacity: ig.opacity, blendMode: bm(ig.blend), size: px(ig.size), source: ig.source === 'center' ? 'center' : 'edge', technique: ig.technique === 'precise' ? 'precise' : 'softer', ...pct(ig.choke), ...(ig.noise ? { noise: ig.noise / 100 } : {}), ...(ig.antiAlias ? { antialiased: true } : {}), ...cn(ig.contour) };
+  if (sk.length) e.stroke = sk.map(strokeOf) as LayerEffectsInfo['stroke'];
+  if (cos.length) e.solidFill = cos.map((x) => ({ ...on, color: x.color, opacity: x.opacity, blendMode: bm(x.blend) }));
+  if (gos.length) e.gradientOverlay = gos.map(gradientOf) as LayerEffectsInfo['gradientOverlay'];
+  if (sa.enabled) e.satin = { ...on, color: sa.color, opacity: sa.opacity, blendMode: bm(sa.blend), angle: sa.angle, distance: px(sa.distance), size: px(sa.size), invert: sa.invert, ...(sa.antiAlias ? { antialiased: true } : {}), ...cn(sa.contour) };
+  if (bv.enabled) e.bevel = { ...on, style: BEVEL_TO[bv.style], technique: bv.technique === 'chiselHard' ? 'chisel hard' : bv.technique === 'chiselSoft' ? 'chisel soft' : 'smooth', strength: bv.depth / 100, direction: bv.down ? 'down' : 'up', size: px(bv.size), soften: px(bv.soften), angle: bv.angle, altitude: bv.altitude, useGlobalLight: bv.useGlobal === true,
     highlightColor: bv.highlight, highlightOpacity: bv.highlightOpacity, highlightBlendMode: bm(bv.highlightBlend), shadowColor: bv.shadow, shadowOpacity: bv.shadowOpacity, shadowBlendMode: bm(bv.shadowBlend) };
   const info = po.enabled ? psdPattern(po.pattern, patterns) : null;
   if (info) e.patternOverlay = { ...on, opacity: po.opacity, blendMode: bm(po.blend), scale: po.scale, pattern: { name: info.name, id: info.id }, align: true };
   return Object.keys(e).length ? e : null;
+}
+
+/** A contour as the PSD's curve (33 samples, or a custom contour's own points, on a 0 to 255 scale); null for Linear. */
+function toPsdContour(id: ContourId | undefined): EffectContour | null {
+  if (!id || id === 'linear') return null;
+  const f = contourCurve(id), pts = customContourPoints(id);
+  if (!f) return null;
+  const at = (v: number): number => Math.round(Math.min(1, Math.max(0, v)) * 255);
+  return { name: CONTOURS.find((c) => c.id === id)?.label ?? 'Custom', curve: pts ? pts.map((p) => ({ x: at(p.x), y: at(p.y) })) : Array.from({ length: 33 }, (_, i) => ({ x: at(i / 32), y: at(f(i / 32)) })) };
+}
+
+/** A PSD contour curve as a contour id: a preset it matches to within 3 percent, a custom contour otherwise, undefined for Linear. */
+function fromPsdContour(c: EffectContour | undefined): ContourId | undefined {
+  const pts = (c?.curve ?? []).map((p) => ({ x: p.x / 255, y: p.y / 255 })).filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y)).sort((a, b) => a.x - b.x);
+  if (pts.length < 2) return undefined;
+  const at = (t: number): number => {
+    if (t <= pts[0].x) return pts[0].y;
+    for (let i = 1; i < pts.length; i++) if (t <= pts[i].x) { const a = pts[i - 1], b = pts[i]; return a.y + (b.y - a.y) * (t - a.x) / Math.max(1e-6, b.x - a.x); }
+    return pts[pts.length - 1].y;
+  };
+  const fits = (f: (t: number) => number): boolean => { for (let i = 0; i <= 32; i++) if (Math.abs(f(i / 32) - at(i / 32)) > 0.03) return false; return true; };
+  if (fits((t) => t)) return undefined;
+  const preset = CONTOURS.find((x) => x.id !== 'linear' && fits(x.f));
+  if (preset) return preset.id;
+  const keep = pts.length > 32 ? Array.from({ length: 32 }, (_, i) => pts[Math.round(i * (pts.length - 1) / 31)]) : pts;
+  return customContourId(keep);
 }
 
 /** A formvis pattern in the PSD's patterns, added under a GUID the first time a layer uses it; null when undefined. */
@@ -124,11 +159,31 @@ function toPsdFill(c: FillContent, patterns: PatternInfo[], name: string, notes:
   if (c.kind === 'solid') return { type: 'color', color: { ...c.color } };
   if (c.kind === 'gradient') return { type: 'solid', name: 'formvis', colorStops: c.stops.map((s) => ({ color: { ...s.color }, location: s.at, midpoint: 0.5 })), opacityStops: c.stops.map((s) => ({ opacity: s.alpha, location: s.at, midpoint: 0.5 })),
     style: c.style, angle: c.angle, scale: c.scale, reverse: c.reverse, dither: c.dither, align: c.align, offset: { ...c.offset } };
-  const info = psdPattern(c.pattern, patterns);
+  const scaled = c.scale !== 1 && c.scale > 0 && Math.abs(c.angle) < 1e-6;
+  const info = scaled ? scaledPsdPattern(c.pattern, c.scale, patterns) : psdPattern(c.pattern, patterns);
   if (!info) return null;
-  if (c.scale !== 1 || c.angle !== 0) notes.push(`"${name}"'s pattern scale and angle are not written to the PSD; it draws the pattern at 100 percent, unturned.`);
-  if (!c.link) notes.push(`"${name}"'s pattern goes linked with the layer, the format's default; the writer cannot mark it unlinked.`);
+  if (c.angle !== 0) notes.push(`"${name}"'s pattern angle is not written to the PSD (the library that writes it has no angle field for a pattern fill); it draws the pattern unturned.`);
+  else if (c.scale !== 1 && !scaled) notes.push(`"${name}"'s pattern scale is not written to the PSD; it draws the pattern at 100 percent.`);
+  if (!c.link) notes.push(`"${name}"'s pattern goes linked with the layer, the format's default; the library's writer cannot mark it unlinked.`);
   return { type: 'pattern', name: info.name, id: info.id, phase: { ...c.phase } };
+}
+
+/** A pattern tile resampled by `scale` (0.01 to 16) and added under a GUID, so a fill drawn at that scale reads back
+ *  at 100 percent the same size: the file's pattern fill has no scale of its own in the writer. */
+function scaledPsdPattern(id: ID, scale: number, patterns: PatternInfo[]): PatternInfo | null {
+  const pat = patternById(id), k = Math.min(16, Math.max(0.01, scale));
+  if (!pat) return null;
+  const tag = `${pat.id}@${k}`;
+  let info = patterns.find((x) => (x as PatternInfo & { formvis?: string }).formvis === tag);
+  if (!info) {
+    const w = Math.max(1, Math.round(pat.surface.width * k)), h = Math.max(1, Math.round(pat.surface.height * k)), c = canvas(w, h), g = c.getContext('2d') as CanvasRenderingContext2D;
+    g.imageSmoothingEnabled = k < 1;
+    g.drawImage(pat.surface as CanvasImageSource, 0, 0, w, h);
+    info = { name: `${pat.name} ${Math.round(k * 100)}%`, id: guid(), x: 0, y: 0, bounds: { x: 0, y: 0, w, h }, data: new Uint8Array(g.getImageData(0, 0, w, h).data) };
+    (info as PatternInfo & { formvis?: string }).formvis = tag;
+    patterns.push(info);
+  }
+  return info;
 }
 
 /** A PSD fill layer's content as a formvis fill (1.66.0): its pattern registered from the file's patterns; null,
@@ -213,14 +268,15 @@ function fromPsdEffects(info: LayerEffectsInfo, patterns: PatternInfo[] | undefi
     return list[0];
   };
   const on = (x: { enabled?: boolean } | null | undefined): boolean => !!x && x.enabled !== false;
+  const ct = (c: EffectContour | undefined): { contour?: ContourId } => { const id = fromPsdContour(c); return id ? { contour: id } : {}; };
   const d = first(info.dropShadow, 'Drop Shadow');
-  if (d) fx.dropShadow = { enabled: on(d), color: col(d.color, fx.dropShadow.color), opacity: op(d.opacity, fx.dropShadow.opacity), blend: bm(d.blendMode, 'multiply'), angle: d.angle ?? 120, distance: px(d.distance, 5), size: px(d.size, 5) };
+  if (d) fx.dropShadow = { enabled: on(d), color: col(d.color, fx.dropShadow.color), opacity: op(d.opacity, fx.dropShadow.opacity), blend: bm(d.blendMode, 'multiply'), angle: d.angle ?? 120, distance: px(d.distance, 5), size: px(d.size, 5), ...(d.useGlobalLight ? { useGlobal: true } : {}), ...(d.antialiased ? { antiAlias: true } : {}), ...(px(d.choke, 0) > 0 ? { spread: Math.min(100, px(d.choke, 0)) } : {}), ...ct(d.contour) };
   const is = first(info.innerShadow, 'Inner Shadow');
-  if (is) fx.innerShadow = { enabled: on(is), color: col(is.color, fx.innerShadow.color), opacity: op(is.opacity, fx.innerShadow.opacity), blend: bm(is.blendMode, 'multiply'), angle: is.angle ?? 120, distance: px(is.distance, 5), size: px(is.size, 5) };
+  if (is) fx.innerShadow = { enabled: on(is), color: col(is.color, fx.innerShadow.color), opacity: op(is.opacity, fx.innerShadow.opacity), blend: bm(is.blendMode, 'multiply'), angle: is.angle ?? 120, distance: px(is.distance, 5), size: px(is.size, 5), ...(is.useGlobalLight ? { useGlobal: true } : {}), ...(is.antialiased ? { antiAlias: true } : {}), ...(px(is.choke, 0) > 0 ? { choke: Math.min(100, px(is.choke, 0)) } : {}), ...ct(is.contour) };
   const g = info.outerGlow;
-  if (g) fx.outerGlow = { enabled: on(g), color: col(g.color, fx.outerGlow.color), opacity: op(g.opacity, fx.outerGlow.opacity), blend: bm(g.blendMode, 'screen'), size: px(g.size, 5) };
+  if (g) fx.outerGlow = { enabled: on(g), color: col(g.color, fx.outerGlow.color), opacity: op(g.opacity, fx.outerGlow.opacity), blend: bm(g.blendMode, 'screen'), size: px(g.size, 5), ...(px(g.choke, 0) > 0 ? { spread: Math.min(100, px(g.choke, 0)) } : {}), ...(g.noise ? { noise: Math.min(100, Math.round(g.noise * 100)) } : {}), ...(g.range !== undefined && g.range < 1 ? { range: Math.max(1, Math.round(g.range * 100)) } : {}), ...(g.antialiased ? { antiAlias: true } : {}), ...ct(g.contour) };
   const ig = info.innerGlow;
-  if (ig) fx.innerGlow = { enabled: on(ig), color: col(ig.color, fx.innerGlow.color), opacity: op(ig.opacity, fx.innerGlow.opacity), blend: bm(ig.blendMode, 'screen'), size: px(ig.size, 5) };
+  if (ig) fx.innerGlow = { enabled: on(ig), color: col(ig.color, fx.innerGlow.color), opacity: op(ig.opacity, fx.innerGlow.opacity), blend: bm(ig.blendMode, 'screen'), size: px(ig.size, 5), ...(ig.source === 'center' ? { source: 'center' as const } : {}), ...(ig.technique === 'precise' ? { technique: 'precise' as const } : {}), ...(px(ig.choke, 0) > 0 ? { choke: Math.min(100, px(ig.choke, 0)) } : {}), ...(ig.noise ? { noise: Math.min(100, Math.round(ig.noise * 100)) } : {}), ...(ig.antialiased ? { antiAlias: true } : {}), ...ct(ig.contour) };
   const k = first(info.stroke, 'Stroke');
   if (k) {
     fx.stroke = { enabled: on(k), color: col(k.color, fx.stroke.color), opacity: op(k.opacity, 1), size: px(k.size, 3), ...(k.position === 'inside' || k.position === 'center' ? { position: k.position } : {}) };
@@ -248,12 +304,13 @@ function fromPsdEffects(info: LayerEffectsInfo, patterns: PatternInfo[] | undefi
     if (full.length > 2 || full.some((s) => s.alpha < 1)) fx.gradientOverlay.stops = full;
   }
   const sa = info.satin;
-  if (sa) fx.satin = { enabled: on(sa), color: col(sa.color, fx.satin.color), opacity: op(sa.opacity, 0.5), blend: bm(sa.blendMode, 'multiply'), angle: sa.angle ?? 19, distance: px(sa.distance, 11), size: px(sa.size, 14), invert: sa.invert !== false };
+  if (sa) fx.satin = { enabled: on(sa), color: col(sa.color, fx.satin.color), opacity: op(sa.opacity, 0.5), blend: bm(sa.blendMode, 'multiply'), angle: sa.angle ?? 19, distance: px(sa.distance, 11), size: px(sa.size, 14), invert: sa.invert !== false, ...(sa.antialiased ? { antiAlias: true } : {}), ...ct(sa.contour) };
   const bv = info.bevel;
   if (bv) {
     const style = bv.style === 'outer bevel' ? 'outer' : bv.style === 'emboss' ? 'emboss' : bv.style === 'pillow emboss' ? 'pillow' : bv.style === 'stroke emboss' ? 'stroke' : 'inner';
     fx.bevel = { enabled: on(bv), style, depth: Math.max(1, Math.min(1000, Math.round((bv.strength ?? 1) * 100))), down: bv.direction === 'down', size: px(bv.size, 5), soften: px(bv.soften, 0), angle: bv.angle ?? 120, altitude: bv.altitude ?? 30,
       highlight: col(bv.highlightColor, fx.bevel.highlight), highlightOpacity: op(bv.highlightOpacity, 0.75), highlightBlend: bm(bv.highlightBlendMode, 'screen'), shadow: col(bv.shadowColor, fx.bevel.shadow), shadowOpacity: op(bv.shadowOpacity, 0.75), shadowBlend: bm(bv.shadowBlendMode, 'multiply') };
+    if (bv.useGlobalLight) fx.bevel.useGlobal = true;
     if (bv.technique === 'chisel hard' || bv.technique === 'chisel soft') fx.bevel.technique = bv.technique === 'chisel hard' ? 'chiselHard' : 'chiselSoft';
     if (bv.useShape || bv.useTexture) notes.push(`"${name}" has a bevel with a Contour or Texture whose settings the file's reader does not give; formvis draws the bevel without them.`);
   }
@@ -546,7 +603,8 @@ export async function readPsdFile(file: File, siblings: readonly File[] = []): P
     if (found && raster) { contents.set(lf.id, raster); linkOfFile.set(lf.id, { id: uid(), name: found.name, size: found.size, lastModified: found.lastModified }); }
     else unresolved.set(lf.id, lf.linkedFile?.relativePath || lf.linkedFile?.name || lf.name);
   }
-  const fileInfo = psd.imageResources?.xmpMetadata ? metaFromXmp(psd.imageResources.xmpMetadata) : null;   // File Info (29.2): the XMP image resource
+  const xmpText = psd.imageResources?.xmpMetadata, fromXmp = xmpText ? metaFromXmp(xmpText) : null;   // File Info (29.2): the XMP image resource
+  const fileInfo = xmpText && xmpText.length <= MAX_XMP_RAW_CHARS ? cleanMeta({ ...(fromXmp ?? {}), xmpRaw: xmpText }) : fromXmp;   // the whole packet kept, so its other properties go back out
   const parRead = psd.imageResources?.pixelAspectRatio?.aspect;   // Pixel Aspect Ratio (35.4 part b)
   const doc: Doc = { id: uid(), width: psd.width, height: psd.height, resolution: psdResolution(buffer) ?? 72, layers: [], ...(fileInfo ? { meta: fileInfo } : {}), ...(typeof parRead === 'number' && parRead > 0 && parRead !== 1 ? { pixelAspect: parRead } : {}) };
   const layers: Layer[] = [], notes: string[] = [], links = new Map<number, ID>(), psdIds = new Map<PsdLayer, ID>();
@@ -840,7 +898,9 @@ function psdOutlines(subpaths: SubPath[], dx: number, dy: number): NonNullable<P
 }
 
 /** The document as a layered PSD, with notes on what it could not carry. */
-export async function writePsdFile(doc: Doc, composite: Surface, psb = false, paths: PathSet | null = null, maximize = true): Promise<{ bytes: ArrayBuffer; notes: string[] }> {
+export async function writePsdFile(doc: Doc, composite: Surface, psb = false, paths: PathSet | null = null, maximize = true, quickMask: SelectionMask | null = null): Promise<{ bytes: ArrayBuffer; notes: string[] }> {
+  const multi = writeMultichannelPsd(doc, psb);
+  if (multi) return multi;
   const { writePsd } = await import('ag-psd');
   const notes: string[] = [], linked: LinkedFile[] = [], sources = new Map<ID, Uint8Array>(), psdPatterns: PatternInfo[] = [];
   for (const l of doc.layers) if (l.smart) sources.set(l.id, new Uint8Array(await (await toBlob(l.smart.source.canvas)).arrayBuffer()));
@@ -869,7 +929,7 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
   };
   const toPsd = (l: Layer): PsdLayer | null => {
     const tag: Pick<PsdLayer, 'layerColor'> = l.label ? { layerColor: l.label } : {};
-    if (l.isGroup) return { name: l.name, hidden: !l.visible, opacity: l.opacity, blendMode: groupIsolated(l) ? TO_PSD[l.blend] ?? 'normal' : 'pass through', opened: true, children: build(l.id), ...tag, ...toPsdArtboard(l) };
+    if (l.isGroup) return { name: l.name, hidden: !l.visible, opacity: l.opacity, blendMode: groupIsolated(l) ? TO_PSD[l.blend] ?? 'normal' : 'pass through', opened: true, children: build(l.id), ...(effectsPresent(l.effects) ? (() => { const e = toPsdEffects(l.effects as LayerEffects, psdPatterns); return e ? { effects: e } : {}; })() : {}), ...tag, ...toPsdArtboard(l) };
     if (l.adjustment) {
       // An adjustment layer goes as a PSD one, live, with its mask, opacity, blend and clipping.
       const adjustment = toPsdAdjustment(l.adjustment);
@@ -909,7 +969,9 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
       const id = guid(), corners = smartCorners(l).flatMap((q) => [q.x, q.y]);
       linked.push({ id, name: `${l.name || 'Smart Object'}.png`, type: 'png ', data: embed });
       out.placedLayer = { id, placed: id, type: 'raster', transform: corners, nonAffineTransform: corners, width: l.smart.source.width, height: l.smart.source.height };
-      if (l.smart.filters.some((f) => f.enabled)) notes.push(`"${l.name}" keeps its smart filters applied in its pixels; in the PSD its smart object holds the original without them.`);
+      const sf = l.smart.filters, listed = sf.map((f) => toPsdFilter(f, (m) => TO_PSD[m] ?? 'normal')).filter((f): f is NonNullable<typeof f> => f !== null);
+      if (sf.length && listed.length === sf.length && !l.smart.filterMask) out.placedLayer.filter = { enabled: true, validAtPosition: true, maskEnabled: l.smart.filterMaskEnabled !== false, maskLinked: true, maskExtendWithWhite: false, list: listed };
+      else if (sf.some((f) => f.enabled)) notes.push(`"${l.name}" keeps its smart filters applied in its pixels; in the PSD its smart object holds the original without them${l.smart.filterMask ? ' (a filter mask is not written)' : listed.length < sf.length ? ' (the PSD stack holds only filters it has a record for)' : ''}.`);
     }
     const v = l.vector, t = l.transform;
     if (v && l.raster) {
@@ -1011,7 +1073,7 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
   if (doc.globalLight) psd.imageResources = { ...(psd.imageResources ?? {}), globalAngle: Math.round(doc.globalLight.angle), globalAltitude: Math.round(doc.globalLight.altitude) };   // 1037 and 1049
   let icc: Uint8Array | null = null;
   try { icc = doc.profile ? fromBase64(doc.profile.icc) : null; } catch { notes.push('The document\'s colour profile could not be read, so the PSD carries none.'); }
-  const alphas = doc.alphas ?? [];
+  const alphas = quickMask ? [...(doc.alphas ?? []).filter((a) => !/^quick mask$/i.test(a.name)), { id: 'quick-mask', name: 'Quick Mask', mask: quickMask, color: { r: 255, g: 0, b: 0 }, opacity: 50, indicates: 'masked' as const }] : doc.alphas ?? [];
   if (alphas.length > 50) notes.push('A PSD holds at most 56 channels; the alpha channels after the first 50 are left out.');
   const exif = metaWritable(doc.meta) ? exifBlockOf(doc.meta) : null;
   const withExif = (bytes: ArrayBuffer): ArrayBuffer => (exif && exif.length <= 64000 ? addResourceBytes(bytes, resourceBlock(1058, '', exif)) : bytes);   // image resource 1058, the Exif block

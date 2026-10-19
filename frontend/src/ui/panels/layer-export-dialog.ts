@@ -1,5 +1,6 @@
 import type { Engine } from '../../engine';
 import { DEFAULT_LAYER_EXPORT, LAYER_FILE_FORMATS, LAYER_FILE_LOSSY, exportableLayers, layerFileName, safeName, type LayerExportSettings, type LayerFileFormat } from '../../io/layer-export';
+import { outFolderAvailable, pickOutFolder } from '../../io/out-folder';
 import { Dialog } from '../dialogs';
 import { el, patchList, setText, setValue } from '../dom';
 import { checkRow, selectRow, sliderRow, type Row } from './controls';
@@ -11,6 +12,8 @@ export class LayerExportDialog extends Dialog {
   private s: LayerExportSettings = { ...DEFAULT_LAYER_EXPORT };
   private readonly destInput = el('<input class="cv-input" type="text" maxlength="100" aria-label="Destination folder">') as HTMLInputElement;
   private readonly destRow = el('<label class="cv-field"><span>Destination</span></label>');
+  private readonly destPick = el('<button class="cv-btn" type="button">Choose folder...</button>') as HTMLButtonElement;
+  private dir: FileSystemDirectoryHandle | undefined;
   private readonly prefixInput = el('<input class="cv-input" type="text" maxlength="60" aria-label="File name prefix">') as HTMLInputElement;
   private readonly prefixRow = el('<label class="cv-field"><span>File name prefix</span></label>');
   private readonly visibleRow: Row<boolean>;
@@ -28,7 +31,8 @@ export class LayerExportDialog extends Dialog {
   /** `desktop` says whether files are written to a folder by the engine (true) or downloaded as one zip (false). */
   constructor(private readonly engine: Engine, private readonly desktop: () => boolean, private readonly run: (s: LayerExportSettings) => void) {
     super('Export Layers to Files', 420);
-    this.destRow.append(this.destInput);
+    this.destRow.append(this.destInput, this.destPick);
+    this.destPick.addEventListener('click', (e) => { e.preventDefault(); void pickOutFolder().then((h) => { if (h) { this.dir = h; this.sync(); } }); });
     this.prefixRow.append(this.prefixInput);
     this.destInput.addEventListener('input', () => { this.s = { ...this.s, folder: this.destInput.value }; this.sync(); });
     this.prefixInput.addEventListener('input', () => { this.s = { ...this.s, prefix: this.prefixInput.value }; this.sync(); });
@@ -44,7 +48,7 @@ export class LayerExportDialog extends Dialog {
     });
     this.body.append(this.destRow, this.prefixRow, this.visibleRow.el, this.selectedRow.el, this.pickRow, this.formatRow.el, this.qualityRow.el, this.trimRow.el, this.iccRow.el, this.note);
     this.button('Cancel', 'ghost', () => this.close());
-    this.button('Export', 'primary', () => { this.close(); this.run({ ...this.s, prefix: this.s.prefix.trim(), folder: this.s.folder.trim(), ids: this.chosen() }); });
+    this.button('Export', 'primary', () => { this.close(); this.run({ ...this.s, prefix: this.s.prefix.trim(), folder: this.s.folder.trim(), ids: this.chosen(), ...(this.dir && !this.desktop() ? { dir: this.dir } : {}) }); });
     this.remember();   // the type, quality, visible-only, trim and profile; the name and folder come from the document
   }
 
@@ -55,6 +59,7 @@ export class LayerExportDialog extends Dialog {
     const name = p.name.replace(/\.[A-Za-z0-9]{1,8}$/, '') || 'Untitled', what = comps ? 'comps' : artboards ? 'artboards' : 'layers';
     this.s = { ...this.s, artboards, comps, prefix: this.s.prefix || name, folder: this.s.folder || `${safeName(name, 60, 'Untitled')} ${what}` };
     this.left.clear();
+    this.dir = undefined;
     this.selectedOnly = false;
     this.setTitle(comps ? 'Export Layer Comps to Files' : artboards ? 'Export Artboards to Files' : 'Export Layers to Files');
     this.sync();
@@ -76,9 +81,10 @@ export class LayerExportDialog extends Dialog {
 
   private sync(): void {
     const p = this.engine.current, s = this.s, comps = !!s.comps, boards = s.artboards || comps, desktop = this.desktop();
-    if (document.activeElement !== this.destInput) setValue(this.destInput, desktop ? s.folder : 'Zip download');
+    if (document.activeElement !== this.destInput) setValue(this.destInput, desktop ? s.folder : this.dir ? this.dir.name : 'Zip download');
     if (document.activeElement !== this.prefixInput) setValue(this.prefixInput, s.prefix);
     this.destInput.disabled = !desktop;
+    this.destPick.disabled = desktop || !outFolderAvailable();
     this.visibleRow.set(s.visibleOnly);
     this.formatRow.set(s.format);
     this.qualityRow.set(s.quality);
@@ -87,11 +93,12 @@ export class LayerExportDialog extends Dialog {
     this.visibleRow.el.classList.toggle('is-off', boards);
     this.trimRow.el.classList.toggle('is-off', boards);
     this.qualityRow.el.classList.toggle('is-off', !LAYER_FILE_LOSSY.has(s.format));
-    this.iccRow.el.classList.toggle('is-off', s.format === 'psd');
+    const noIcc = s.format === 'psd' || s.format === 'bmp' || s.format === 'tga';
+    this.iccRow.el.classList.toggle('is-off', noIcc);
     for (const i of this.visibleRow.el.querySelectorAll('input')) i.disabled = boards;
     for (const i of this.trimRow.el.querySelectorAll('input')) i.disabled = boards;
     for (const i of this.qualityRow.el.querySelectorAll('input')) i.disabled = !LAYER_FILE_LOSSY.has(s.format);
-    for (const i of this.iccRow.el.querySelectorAll('input')) i.disabled = s.format === 'psd';
+    for (const i of this.iccRow.el.querySelectorAll('input')) i.disabled = noIcc;
     if (!p) return;
     const all = comps ? (p.doc.comps ?? []) : s.artboards ? this.engine.artboards(p) : exportableLayers(p.doc, s.visibleOnly);
     this.selectedRow.set(this.selectedOnly);
@@ -105,6 +112,6 @@ export class LayerExportDialog extends Dialog {
     });
     const list = boards ? all.filter((x) => !this.left.has(String(x.id))) : this.selectedOnly ? all.filter((x) => p.selectedIds.has(x.id) || (!p.selectedIds.size && x.id === p.activeId)) : all, n = list.length;
     const first = layerFileName(s.prefix.trim() || 'Untitled', 0, list[0]?.name ?? 'layer', s.format);
-    setText(this.note, n ? `${n} file${n === 1 ? '' : 's'} · ${first}${desktop ? '' : ' · in one zip'}` : boards && all.length ? 'Tick at least one to export.' : comps ? 'This document has no layer comps.' : boards ? 'This document has no artboards.' : 'There are no layers to export.');
+    setText(this.note, n ? `${n} file${n === 1 ? '' : 's'} · ${first}${desktop || this.dir ? '' : ' · in one zip'}` : boards && all.length ? 'Tick at least one to export.' : comps ? 'This document has no layer comps.' : boards ? 'This document has no artboards.' : 'There are no layers to export.');
   }
 }

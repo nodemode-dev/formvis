@@ -11,7 +11,7 @@ import { ExportDialog } from './ui/panels/export-dialog';
 import { LayerExportDialog } from './ui/panels/layer-export-dialog';
 import { DataSetsDialog, DefineVariablesDialog } from './ui/panels/variables-dialog';
 import { ArtboardPdfDialog, type ArtboardPdfSettings } from './ui/panels/artboard-pdf-dialog';
-import { DEFAULT_LAYER_EXPORT, dataSetFiles, layerCompFiles, layerFiles, safeName, selectedLayerFiles, type LayerExportSettings } from './io/layer-export';
+import { DEFAULT_LAYER_EXPORT, dataSetFiles, layerCompFiles, layerFileLoss, layerFiles, safeName, selectedLayerFiles, type LayerExportSettings } from './io/layer-export';
 import { loadExportPrefs } from './io/export-prefs';
 import { ExportPrefsDialog } from './ui/panels/export-prefs-dialog';
 import { GuideDialog } from './ui/panels/guide-dialog';
@@ -39,6 +39,7 @@ import { BrushPicker } from './ui/brush-picker';
 import { snapHold, snapOptions } from './engine/pixel-move';
 import { SPACES, convertPixels, iccProfile, type SpaceId } from './engine/icc';
 import { embedJpeg, embedPng } from './io/embed-icc';
+import { encodeIndexedPng } from './io/png8';
 import { withResolution } from './engine/dpi';
 import { dpxBlob } from './io/dpx';
 import { pickOutFolder, writeFolder } from './io/out-folder';
@@ -118,7 +119,7 @@ import { getTool, toolForKey, toolsForKey } from './extensions/registry';
 import { registerBuiltinTools } from './extensions/tools';
 import { stepBrush } from './extensions/tools/brush';
 import { selectByPoints } from './extensions/tools/object-select';
-import { commitPendingCrop, cropPending } from './extensions/tools/crop';
+import { commitPendingCrop, cropPending, startPerspectiveCrop } from './extensions/tools/crop';
 import { HostLink } from './host';
 import { api, onServiceChange, serviceDown, type Capabilities, type CmykPsd, type OpenedProject } from './io/api';
 import { PROJECT_FILTER, baseName, checkForUpdate, chooseOpenPaths, chooseSavePath, confirmExit, folderOf, hasPanels, installUpdate, isDiskPath, listenShell } from './io/disk';
@@ -213,6 +214,7 @@ import { LargePictureDialog } from './ui/panels/large-picture';
 import { TiffPagesDialog } from './ui/panels/tiff-pages';
 import { ExrPartsDialog } from './ui/panels/exr-parts';
 import { OpenAsDialog } from './ui/panels/open-as';
+import { PackageDialog, type PackageChoice } from './ui/panels/package-dialog';
 import { addNotes, readNotesFile } from './io/notes-import';
 import { CameraRawDialog, type RawChoice } from './ui/panels/camera-raw';
 import { ColourView, PROOF_KINDS } from './ui/colour';
@@ -1212,6 +1214,14 @@ export function startApp(): void {
     toast(`Generated ${files.length} image asset${files.length === 1 ? '' : 's'}.`, 'info');
   }
 
+  /** The document written layer by layer as a stoppable job: the status line counts layers, Escape or Cancel Background Job stops it before anything is sent. */
+  async function serializeJob(p: NonNullable<typeof engine.current>): ReturnType<typeof serialize> {
+    const job = engine.startJob('Save', p.doc.layers.length);
+    try {
+      return await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p), (d, n) => { if (job.cancelled) throw new Error('The save was stopped; nothing was written.'); engine.jobStep(job, d, n); });
+    } finally { engine.endJob(job); }
+  }
+
   async function saveCore(saveAs: boolean): Promise<boolean> {
     const p = engine.current;
     if (!p) return false;
@@ -1242,7 +1252,7 @@ export function startApp(): void {
     return engine.lockedTask('Save', async () => {
       const revision = p.history.revision;
       try {
-        const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p), (d, n) => engine.reportProgress(d, n));
+        const { manifest, files } = await serializeJob(p);
         // Based on the version it was opened or last saved at (1.58.8), when saving over that same library item.
         const res = await api.save(target, manifest, files, target === p.libraryName ? p.libraryVersion ?? '' : '', await thumbnailOf(p));
         if (p.history.revision === revision) engine.markSaved(p, res.name, res.name);
@@ -1274,7 +1284,7 @@ export function startApp(): void {
     return engine.lockedTask('Save', async () => {
       const revision = p.history.revision;
       try {
-        const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p), (d, n) => engine.reportProgress(d, n));
+        const { manifest, files } = await serializeJob(p);
         const res = await api.saveTo(target, manifest, files, await thumbnailOf(p));
         p.filePath = res.path;
         p.libraryVersion = null;
@@ -1348,19 +1358,36 @@ export function startApp(): void {
     });
   }
 
-  async function packageDocument(): Promise<void> {
+  async function packageDocument(given?: PackageChoice): Promise<void> {
     const p = engine.current;
     if (!p) return;
     engine.settle();
+    const choice = given ?? await packageDialog.ask();
+    if (!choice || engine.current !== p) return;
+    let format = choice.format;
+    if (format !== 'fvd' && (p.doc.mode === 'cmyk' || p.doc.mode === 'lab')) { format = 'fvd'; toast('A CMYK or Lab document is packaged as a formvis project; use Export PSD for its PSD.', 'info'); }
+    engine.settle();
     await engine.task(async () => {
       try {
-        const linked = await linkedFiles(engine);
-        const relinked = { ...p.doc, layers: p.doc.layers.map((l) => { const to = l.smart?.link ? linked.copies.get(l.smart.link.id) : undefined; return to && l.smart?.link ? { ...l, smart: { ...l.smart, link: { ...l.smart.link, path: to } } } : l; }) };
-        const { manifest, files } = await serialize(relinked, p.activeId, engine.pathsOf(p), engine.timelineFor(p));
-        const fmv = await api.package(manifest, files);
-        await deliver(await zipFiles([{ name: `${p.name}.fvd`, blob: fmv }, ...linked.files]), `${p.name} Package.zip`);
+        const linked = choice.links ? await linkedFiles(engine) : { files: [], missing: [], copies: new Map<string, string>() };
+        const notes: string[] = [];
+        let main: { name: string; blob: Blob };
+        if (format === 'fvd') {
+          const relinked = { ...p.doc, layers: p.doc.layers.map((l) => { const to = l.smart?.link ? linked.copies.get(l.smart.link.id) : undefined; return to && l.smart?.link ? { ...l, smart: { ...l.smart, link: { ...l.smart.link, path: to } } } : l; }) };
+          const { manifest, files } = await serialize(relinked, p.activeId, engine.pathsOf(p), engine.timelineFor(p));
+          main = { name: `${p.name}.fvd`, blob: await api.package(manifest, files) };
+        } else {
+          const flat = engine.flattened();
+          if (!flat) return;
+          const big = p.doc.width > 30000 || p.doc.height > 30000, psb = format === 'psb' || big;
+          if (big && format === 'psd') notes.push('The document is too large for a PSD, so it is a PSB.');
+          const out = await writePsdFile(p.doc, flat, psb, engine.pathsOf(p), loadExportPrefs().maximizePsd);
+          main = { name: `${p.name}.${psb ? 'psb' : 'psd'}`, blob: new Blob([out.bytes], { type: 'image/vnd.adobe.photoshop' }) };
+          notes.push(...out.notes);
+        }
+        await deliver(await zipFiles([main, ...linked.files]), `${p.name} Package.zip`);
         const n = linked.files.length;
-        toast(`Packaged ${n} linked file${n === 1 ? '' : 's'}.${linked.missing.length ? ` Not reachable and left out: ${linked.missing.join(', ')}.` : ''}`, linked.missing.length ? 'info' : undefined);
+        toast(`Packaged ${n} linked file${n === 1 ? '' : 's'}.${linked.missing.length ? ` Not reachable and left out: ${linked.missing.join(', ')}.` : ''}${notes.length ? ` ${notes.join(' ')}` : ''}`, linked.missing.length || notes.length ? 'info' : undefined);
       } catch (err) { toast(message(err), 'error'); }
     });
   }
@@ -1416,6 +1443,12 @@ export function startApp(): void {
       } catch (err) { toast(message(err), 'error'); }
     });
   }
+  /** The CMYK profile an Export As names (a listed profile whose colour space is CMYK), or null. */
+  async function cmykTarget(s: ExportSettings): Promise<{ id: string; name: string } | null> {
+    if (!s.profile?.startsWith('id:')) return null;
+    const id = s.profile.slice(3);
+    try { const hit = (await api.colourProfiles()).profiles.find((x) => x.id === id); return hit?.space === 'CMYK' ? { id, name: hit.name } : null; } catch { return null; }
+  }
   /** `io.layerId` exports that layer alone instead of the composite; `io.sink` takes the finished file (and the picture it
    *  was encoded from) instead of delivering it; `io.quiet` skips the busy state and the notices, for the live preview. */
   interface ExportIo { layerId?: string; sink?: (blob: Blob, name: string, view?: ReturnType<typeof createSurface>) => void; quiet?: boolean }
@@ -1445,6 +1478,16 @@ export function startApp(): void {
         x.imageSmoothingQuality = 'high';
         x.drawImage(bmp, L.dx, L.dy, L.dw, L.dh);
         bmp.close();
+        const inks = await cmykTarget(s);
+        if (inks && (s.format === 'jpg' || s.format === 'tiff')) {
+          // CMYK JPEG or TIFF: the pixels go through the chosen press profile (LittleCMS in the engine) and are written as ink with that profile embedded.
+          const px = x.getImageData(0, 0, z.w, z.h), prof = await api.colourProfileBytes(inks.id), src = p.doc.mode !== 'cmyk' && p.doc.profile ? p.doc.profile.icc : '';
+          const ink = await api.convertPixels(new Uint8Array(px.data.buffer, px.data.byteOffset, px.data.byteLength), z.w, z.h, 'cmyk', toBase64(prof), src, s.intent ?? 'relative', s.bpc !== false);
+          say(`Written as CMYK in ${inks.name}${s.embed === false ? '' : ' with the profile embedded'}. ${s.format === 'jpg' ? 'JPEG' : 'TIFF'} CMYK files carry no File Info or AI label here.`);
+          await give(await api.encodeCmyk(ink, z.w, z.h, s.format, s.embed === false ? null : prof, s.quality, p.doc.resolution ?? 72), exportName(p.name, s, suffix), c);
+          return;
+        }
+        if (inks) { say(`CMYK profiles write JPEG and TIFF only; ${s.format.toUpperCase()} is written in sRGB.`); s = { ...s, profile: undefined }; }
         // Colour: formvis works in sRGB; another profile converts the pixels, and every format but PDF carries the
         // profile (WebP through the engine when it is not sRGB, as the browser's WebP encoder cannot embed one).
         // A document with its own profile (1.53.5) is exported in it, the profile embedded as it is.
@@ -1477,8 +1520,15 @@ export function startApp(): void {
           const lost = fidelityNotes(s, p.doc, clear);
           if (lost.length) say(lost.join(' '));
         }
+        // An Indexed Color document is written as a palette PNG that keeps its own colour table and clear entry.
+        const pngOut = async (): Promise<Blob> => {
+          const pal = p.doc.mode === 'indexed' ? p.doc.palette : undefined;
+          if (!pal?.length) return toBlob(c, 'image/png');
+          const img = x.getImageData(0, 0, z.w, z.h);
+          return new Blob([await encodeIndexedPng({ data: img.data, width: z.w, height: z.h }, pal.map((e) => [e.r, e.g, e.b] as const), p.doc.transparentIndex) as BlobPart], { type: 'image/png' });
+        };
         const blob = viaEngine ? await api.encode(await toBlob(c), (s.format === 'jpg' ? 'jpeg' : s.format) as 'avif' | 'tiff' | 'pdf' | 'webp', s.quality, p.doc.resolution ?? 72, keep, formatOptions(s))
-          : s.format === 'png' ? await withResolution(keep ? await embedPng(await toBlob(c, 'image/png'), keep, label) : await toBlob(c, 'image/png'), p.doc.resolution ?? 72)
+          : s.format === 'png' ? await withResolution(keep ? await embedPng(await pngOut(), keep, label) : await pngOut(), p.doc.resolution ?? 72)
           : s.format === 'jpg' ? await withResolution(keep ? await embedJpeg(await toBlob(c, 'image/jpeg', s.quality / 100), keep) : await toBlob(c, 'image/jpeg', s.quality / 100), p.doc.resolution ?? 72)
           : await toBlob(c, 'image/webp', s.quality / 100);
         // The AI label (1.51.8), in PNG, JPEG and WebP.
@@ -2487,15 +2537,21 @@ export function startApp(): void {
         const { files, skipped } = set.comps ? { files: await layerCompFiles(engine, set, !!caps, set.ids ?? []), skipped: 0 } : await layerFiles(engine, set, !!caps);
         if (!files.length) { toast(set.comps ? 'There are no layer comps to export.' : set.artboards ? 'There are no artboards to export.' : 'There are no layers to export.', 'info'); return; }
         const what = set.comps ? 'comp' : set.artboards ? 'artboard' : 'layer', n = `${files.length} ${what}${files.length === 1 ? '' : 's'}`, left = skipped ? ` (${skipped} with nothing to write skipped)` : '';
+        const loss = layerFileLoss(set.format, set.icc), lossNote = loss ? ` ${loss}` : '';
         if (caps?.desktop) {
           const folder = set.folder.trim() || `${stripExt(p.name)} ${what}s`;
           let where = '';
           for (const f of files) where = await api.exportFile(f.blob, f.name, folder);
-          toast(`Exported ${n}${left} to ${where.replace(/[\\/][^\\/]*$/, '')}`, 'info');
+          toast(`Exported ${n}${left} to ${where.replace(/[\\/][^\\/]*$/, '')}.${lossNote}`, 'info');
+          return;
+        }
+        if (set.dir) {
+          await writeFolder(set.dir, files);
+          toast(`Exported ${n}${left} into ${set.dir.name}.${lossNote}`, 'info');
           return;
         }
         await deliver(await zipFiles(files), `${stripExt(p.name)} ${what}s.zip`);
-        toast(`Exported ${n}${left} as a zip.`, 'info');
+        toast(`Exported ${n}${left} as a zip.${lossNote}`, 'info');
       } catch (err) { toast(message(err), 'error'); }
     });
   }
@@ -2568,7 +2624,7 @@ export function startApp(): void {
   /** Layers to Files from a person (the dialog) or an agent (any parameter given runs it at once). */
   const LAYER_EXPORT_PARAMS: Record<string, CommandParam> = {
     prefix: { type: 'string', description: 'File name prefix; the document name when left out.' },
-    format: { type: 'string', enum: ['png', 'jpg', 'tiff', 'webp', 'psd'], description: 'File type; png when left out.' },
+    format: { type: 'string', enum: ['png', 'jpg', 'tiff', 'webp', 'psd', 'bmp', 'tga'], description: 'File type; png when left out.' },
     quality: { type: 'integer', min: 1, max: 100, description: 'JPEG and WebP quality.' },
     visible_only: { type: 'boolean', description: 'Only layers that are shown; true when left out. Layers only.' },
     trim: { type: 'boolean', description: 'Cut each layer to its visible pixels. Layers only.' },
@@ -2579,7 +2635,7 @@ export function startApp(): void {
   function layerExportRun(artboards: boolean, a?: Record<string, unknown>, comps = false): void {
     if (!a || !Object.keys(a).length) { dialogs.layerExport.show(artboards, comps); return; }
     const d = DEFAULT_LAYER_EXPORT, f = String(a.format ?? d.format) as LayerExportSettings['format'];
-    void exportLayerFiles({ artboards, comps, prefix: String(a.prefix ?? ''), format: ['png', 'jpg', 'tiff', 'webp', 'psd'].includes(f) ? f : d.format, quality: Number(a.quality ?? d.quality), visibleOnly: a.visible_only === undefined ? d.visibleOnly : a.visible_only === true, trim: a.trim === true, icc: a.icc === undefined ? d.icc : a.icc === true, folder: String(a.folder ?? ''), ...(a.selected_only === true && !artboards && !comps ? { ids: (() => { const c = engine.current; const ids = c ? (c.selectedIds.size ? [...c.selectedIds] : c.activeId ? [c.activeId] : []) : []; return ids.length ? ids : ['none']; })() } : {}) });
+    void exportLayerFiles({ artboards, comps, prefix: String(a.prefix ?? ''), format: ['png', 'jpg', 'tiff', 'webp', 'psd', 'bmp', 'tga'].includes(f) ? f : d.format, quality: Number(a.quality ?? d.quality), visibleOnly: a.visible_only === undefined ? d.visibleOnly : a.visible_only === true, trim: a.trim === true, icc: a.icc === undefined ? d.icc : a.icc === true, folder: String(a.folder ?? ''), ...(a.selected_only === true && !artboards && !comps ? { ids: (() => { const c = engine.current; const ids = c ? (c.selectedIds.size ? [...c.selectedIds] : c.activeId ? [c.activeId] : []) : []; return ids.length ? ids : ['none']; })() } : {}) });
   }
 
   /** File > Export > OpenRaster (1.51.7): layers, groups, positions, opacity, visibility and blend modes, for any
@@ -2620,7 +2676,7 @@ export function startApp(): void {
       try {
         const composite = engine.flattened();
         if (!composite) return;
-        const { blob, notes } = await writeOra(p.doc, composite, (l) => engine.renderLayerAlone(l.id));
+        const { blob, notes } = await writeOra(p.doc, composite, (l) => (l.adjustment ? engine.renderThrough(l.id) : engine.renderLayerAlone(l.id)));
         await deliver(blob, `${p.name}.ora`);
         if (notes.length) toast(notes.join(' '), 'info');
       } catch (err) { toast(message(err), 'error'); }
@@ -2640,7 +2696,7 @@ export function startApp(): void {
       try {
         const flat = engine.flattened();
         if (!flat) return;
-        const { bytes, notes } = await writePsdFile(p.doc, flat, psb, engine.pathsOf(p), loadExportPrefs().maximizePsd);
+        const { bytes, notes } = await writePsdFile(p.doc, flat, psb, engine.pathsOf(p), loadExportPrefs().maximizePsd, engine.quickMask ? p.selection : null);
         await deliver(new Blob([bytes], { type: 'image/vnd.adobe.photoshop' }), `${p.name}.${psb ? 'psb' : 'psd'}`);
         if (notes.length) toast(notes.join(' '), 'info');
       } catch (err) { toast(message(err), 'error'); }
@@ -3121,6 +3177,7 @@ export function startApp(): void {
     frequency: new FrequencyDialog(engine),
     colorRange: new ColorRangeDialog(engine),
     selectionTransform: new SelectionTransformDialog(engine),
+    layerTransform: new SelectionTransformDialog(engine, true),
     actions: new ActionsDialog(actions, {
       play: (x) => playAction(x), save: (b, n) => deliver(b, n),
       menu: () => commands.all().filter((c) => c.id !== 'play-action').map((c) => ({ id: c.id, label: commands.label(c) })).sort((a, b) => a.label.localeCompare(b.label)),
@@ -3375,6 +3432,7 @@ export function startApp(): void {
   const tiffPages = new TiffPagesDialog(engine);
   const exrChooser = new ExrPartsDialog();
   const openAs = new OpenAsDialog((f) => importFiles([f]));
+  const packageDialog = new PackageDialog();
   const colourView = new ColourView(engine);   // colour management (1.53.5)
   colourView.onProof = (label) => status.setProof(label);
   const hdrToning = new HdrToningDialog();   // 1.53.9
@@ -3566,7 +3624,7 @@ export function startApp(): void {
     { id: 'save-copy', label: 'Save a Copy...', keys: ['Alt+Mod+S'], enabled: has, run: () => { engine.settle(); dialogs.saveCopy.show(); } },
     { id: 'revert', label: 'Revert', keys: '__TAURI_INTERNALS__' in window ? ['F12'] : [], enabled: () => !!(engine.current?.libraryName || engine.current?.filePath) && !!engine.current?.modified, run: () => void revert() },
     { id: 'download-project', label: 'Download Project File', enabled: has, run: () => void downloadProject() },
-    { id: 'package', label: 'Package...', enabled: has, run: () => void packageDocument() },
+    { id: 'package', label: 'Package...', enabled: has, params: { format: { type: 'string', enum: ['fvd', 'psd', 'psb'], description: 'The document inside the zip: fvd (the project, relinked), psd or psb; leave out to choose in the dialog.' }, links: { type: 'boolean', description: 'Copy linked files into Links; true when left out.' } }, run: (a) => void packageDocument(a?.format === 'fvd' || a?.format === 'psd' || a?.format === 'psb' ? { format: a.format, links: a.links !== false } : undefined) },
     { id: 'export-png', label: 'Export PNG', keys: ['Shift+Mod+E'], enabled: has, run: () => void exportImage('png') },
     { id: 'export-jpg', label: 'Export JPEG...', keys: ['Alt+Shift+Mod+S'], enabled: has, run: () => { engine.settle(); dialogs.jpeg.show((q) => void exportImage('jpg', q)); } },
     { id: 'export-as', label: 'Export As...', keys: ['Alt+Shift+Mod+W'], enabled: has, run: () => dialogs.exportAs.show() },
@@ -3851,7 +3909,7 @@ export function startApp(): void {
           if (!flat) throw new Error('Nothing to export.');
           if (kind !== 'ora' && kind !== 'fvd' && (p.doc.mode === 'cmyk' || p.doc.mode === 'lab')) throw new Error(`A ${p.doc.mode} document goes out as a PSD from File > Export; convert it to RGB first (mode-rgb).`);
           let layered: Blob;
-          if (kind === 'ora') layered = (await writeOra(p.doc, flat, (l) => engine.renderLayerAlone(l.id))).blob;
+          if (kind === 'ora') layered = (await writeOra(p.doc, flat, (l) => (l.adjustment ? engine.renderThrough(l.id) : engine.renderLayerAlone(l.id)))).blob;
           else if (kind === 'fvd') { const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p)); layered = await api.package(manifest, files); }
           else layered = new Blob([(await writePsdFile(p.doc, flat, kind === 'psb', engine.pathsOf(p), loadExportPrefs().maximizePsd)).bytes]);
           return { path: await api.exportFile(layered, typeof a?.name === 'string' && a.name ? a.name : `${p.name}.${kind}`) };
@@ -4267,6 +4325,14 @@ export function startApp(): void {
     { id: 'transform-skew', label: 'Skew', enabled: () => !!engine.activeLayer || engine.pathTarget, run: () => { engine.beginDistortMode('skew'); } },
     { id: 'transform-distort', label: 'Distort', enabled: () => !!engine.activeLayer || engine.pathTarget, run: () => { engine.beginDistortMode('distort'); } },
     { id: 'transform-perspective', label: 'Perspective', enabled: () => !!engine.activeLayer || engine.pathTarget, run: () => { engine.beginDistortMode('perspective'); } },
+    { id: 'transform-numeric', label: 'Numerically...', enabled: () => !!engine.activeLayer && !engine.pathTarget && !engine.floatingSelection && !engine.distortEdit,
+      run: (a) => {
+        const n = (k: string): number | undefined => (typeof a?.[k] === 'number' ? (a[k] as number) : undefined);
+        const keys = ['ref', 'moveX', 'moveY', 'scaleX', 'scaleY', 'angle', 'skewH', 'skewV', 'perspH', 'perspV'] as const;
+        const m = Array.isArray(a?.matrix) && a.matrix.length === 6 ? (a.matrix as unknown[]).map(Number) : undefined;
+        if (m || keys.some((k) => n(k) !== undefined)) engine.transformLayerBy({ ref: n('ref'), moveX: n('moveX'), moveY: n('moveY'), scaleX: n('scaleX'), scaleY: n('scaleY'), angle: n('angle'), skewH: n('skewH'), skewV: n('skewV'), perspH: n('perspH'), perspV: n('perspV'), matrix: m });
+        else dialogs.layerTransform.show();
+      } },
     { id: 'layer-rotate-180', label: 'Rotate 180°', enabled: () => (!!engine.activeLayer || engine.pathTarget) && !engine.distortEdit, run: () => { engine.rotateLayers(2); } },
     { id: 'layer-rotate-90-cw', label: 'Rotate 90° Clockwise', enabled: () => (!!engine.activeLayer || engine.pathTarget) && !engine.distortEdit, run: () => { engine.rotateLayers(1); } },
     { id: 'layer-rotate-90-ccw', label: 'Rotate 90° Counter Clockwise', enabled: () => (!!engine.activeLayer || engine.pathTarget) && !engine.distortEdit, run: () => { engine.rotateLayers(3); } },
@@ -4393,6 +4459,7 @@ export function startApp(): void {
       },
     },
     { id: 'image-crop', label: 'Crop', enabled: () => selected() || cropPending(), run: () => { if (!commitPendingCrop(engine)) engine.cropToSelection(); } },
+    { id: 'perspective-crop', label: 'Perspective Crop', enabled: has, run: () => startPerspectiveCrop(engine) },
     { id: 'duplicate-image', label: 'Duplicate...', enabled: has, run: () => dialogs.duplicateImage.show() },
     { id: 'new-layer', label: 'New Layer', enabled: has, run: () => engine.addLayer() },
     { id: 'new-layer-dialog', label: 'Layer...', keys: ['Shift+Mod+N'], enabled: has, run: () => dialogs.newLayer.show() },
@@ -5559,12 +5626,12 @@ export function startApp(): void {
     { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', 'peek-original', 'compare-split', 'cancel-job', { label: 'Snapshot', items: ['new-snapshot', 'new-snapshot-merged', 'new-snapshot-layer'] }, '-', 'fade', 'compare-documents', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', 'pick-screen-colour', 'cycle-tool-mode', '-',
       { label: 'Purge', items: ['purge-clipboard', 'purge-undo', 'purge-histories', 'purge-video-cache', 'clean-working-files', 'free-helper-models', 'purge-all'] }, { label: 'History Log', items: ['save-history-log', 'clear-history-log'] }, 'apply-edit', 'cancel-edit', 'reset-tool', 'reset-all-tools', '-',
       { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg', 'fill-fg-keep', 'fill-bg-keep', 'fill-history'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', { label: 'Clone Source', items: ['clone-source-slot', 'clone-source-set', 'clone-source-overlay', 'clone-source-reset'] }, '-', 'auto-align-layers', 'auto-blend-layers', 'match-edges-below', '-',
-      'fill-path-dialog', 'stroke-path-dialog', '-', 'transform', 'transform-copy', { label: 'Transform', items: ['transform-again', '-', 'transform-scale', 'transform-rotate', 'transform-skew', 'transform-distort', 'transform-perspective', 'transform-warp', 'warp-split-h', 'warp-split-v', 'warp-split-cross', 'warp-remove-split', '-', 'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw', '-', 'flip-layer-h', 'flip-layer-v'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', 'define-brush', 'define-custom-shape', { label: 'Presets', items: ['preset-manager', '-', 'presets-export', 'presets-import', 'presets-migrate', '-', 'swatches-load', 'swatches-save'] }, '-', 'assign-profile', 'convert-profile', 'profile-info', 'colour.settings', '-', 'customize-toolbar', 'shortcuts', 'edit-menus', { label: 'Preferences', items: ['settings', '-', ...PREF_PAGES.slice(0, 7).map(([id]) => `prefs-${id}`), 'export-preferences', ...PREF_PAGES.slice(7).map(([id]) => `prefs-${id}`)] }] },
+      'fill-path-dialog', 'stroke-path-dialog', '-', 'transform', 'transform-copy', { label: 'Transform', items: ['transform-again', '-', 'transform-scale', 'transform-rotate', 'transform-skew', 'transform-distort', 'transform-perspective', 'transform-numeric', 'transform-warp', 'warp-split-h', 'warp-split-v', 'warp-split-cross', 'warp-remove-split', '-', 'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw', '-', 'flip-layer-h', 'flip-layer-v'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', 'define-brush', 'define-custom-shape', { label: 'Presets', items: ['preset-manager', '-', 'presets-export', 'presets-import', 'presets-migrate', '-', 'swatches-load', 'swatches-save'] }, '-', 'assign-profile', 'convert-profile', 'profile-info', 'colour.settings', '-', 'customize-toolbar', 'shortcuts', 'edit-menus', { label: 'Preferences', items: ['settings', '-', ...PREF_PAGES.slice(0, 7).map(([id]) => `prefs-${id}`), 'export-preferences', ...PREF_PAGES.slice(7).map(([id]) => `prefs-${id}`)] }] },
     { label: 'Image', items: [
       'apply-image', 'calculations', { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'desaturate', 'replace-color', 'equalize', 'equalize-layer-from-selection'] }, '-',
       'auto-tone', 'auto-contrast', 'auto-color', '-',
       { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-grayscale-from', 'mode-duotone', 'mode-indexed', 'mode-multichannel', 'color-table', 'mode-rgb', 'mode-cmyk', 'mode-lab', 'mode-convert', '-', 'split-channels', 'merge-channels', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
-      'image-size', 'canvas-size', { label: 'Pixel Aspect Ratio', items: ['par-square', 'par-d1-ntsc', 'par-d1-pal', 'par-d1-ntsc-wide', 'par-d1-pal-wide', 'par-anamorphic', 'par-hdv', 'par-dvcpro-hd', '-', 'par-custom'] }, { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'trim', 'reveal-all', 'trap', '-', 'frequency-separation', 'duplicate-image', '-', { label: 'Variables', items: ['variables-define', 'data-sets-import', 'data-set-apply'] }, '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }, '-', { label: 'Analysis', items: ['measure-scale', 'measure-ruler', 'measure-color-sampler', { label: 'Color Samplers', items: ['sampler-add', 'sampler-move', 'sampler-delete', 'sampler-clear'] }, 'measure-count', { label: 'Count Groups', items: ['count-new-group', 'count-set-group'] }, 'measure-record', 'measure-record-features', 'measure-data-points', 'measure-scale-marker', 'measure-log'] }] },
+      'image-size', 'canvas-size', { label: 'Pixel Aspect Ratio', items: ['par-square', 'par-d1-ntsc', 'par-d1-pal', 'par-d1-ntsc-wide', 'par-d1-pal-wide', 'par-anamorphic', 'par-hdv', 'par-dvcpro-hd', '-', 'par-custom'] }, { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'perspective-crop', 'trim', 'reveal-all', 'trap', '-', 'frequency-separation', 'duplicate-image', '-', { label: 'Variables', items: ['variables-define', 'data-sets-import', 'data-set-apply'] }, '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }, '-', { label: 'Analysis', items: ['measure-scale', 'measure-ruler', 'measure-color-sampler', { label: 'Color Samplers', items: ['sampler-add', 'sampler-move', 'sampler-delete', 'sampler-clear'] }, 'measure-count', { label: 'Count Groups', items: ['count-new-group', 'count-set-group'] }, 'measure-record', 'measure-record-features', 'measure-data-points', 'measure-scale-marker', 'measure-log'] }] },
     { label: 'Layer', items: [
       { label: 'New', items: ['new-layer-dialog', 'new-type-layer', 'new-shape-layer', 'new-dodge-burn-layer', 'layer-from-background', 'background-from-layer', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard-dialog', 'artboard-from-group', 'artboard-from-layers-dialog', 'frame-from-layers', '-', 'duplicate', 'layer-via-cut', '-', 'new-relight-layer'] }, 'artboard-options', '-',
       { label: 'New Fill Layer', items: ['new-fill-solid', 'new-fill-gradient', 'new-fill-pattern'] }, 'new-fill-adjustment', { label: 'Video Layers', items: ['video-layer-from-file', 'video-layer-blank', '-', 'video-insert-blank-frame', 'video-duplicate-frame', 'video-delete-frame', '-', 'video-restore-frame', 'video-reload-frame', 'video-restore-all', 'video-show-altered', 'video-replace-footage', 'video-interpret-footage', 'video-rasterize'] },{ label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'edit-relight', 'layer-content-options', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, { label: 'Film Pack', items: ['film-apply-look', 'new-adj-filmLook', 'new-adj-chromaticShift', '-', 'film-copy-points', 'film-paste-points'] }, { label: 'EU AI Label', items: ['ai-label-add', 'ai-label-remove', 'ai-label-info'] }, '-',

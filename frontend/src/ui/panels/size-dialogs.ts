@@ -35,8 +35,10 @@ export class CanvasSizeDialog extends Dialog {
   private readonly lockRow = checkRow('Constrain proportions', (v) => { this.locked = v; });
   private relative = false;
   private readonly relativeRow = checkRow('Relative', (v) => { this.relative = v; this.sizeBounds(); this.fields(); });
-  private readonly fill = selectRow('Extension', [['none', 'Transparent'], ['fg', 'Foreground color'], ['bg', 'Background color'], ['white', 'White'], ['black', 'Black'], ['custom', 'Other color']], (v) => { setHidden(this.custom.el, v !== 'custom'); });
+  private readonly fill = selectRow('Extension', [['none', 'Transparent'], ['fg', 'Foreground color'], ['bg', 'Background color'], ['white', 'White'], ['black', 'Black'], ['custom', 'Other color'], ['edge', 'Stretched edge'], ['average', 'Average color'], ['grey', 'Mid grey'], ['noise', 'Noise']], (v) => { setHidden(this.custom.el, v !== 'custom'); });
   private readonly custom = colorRow('Other color', () => undefined);
+  private selectBorder = false;
+  private readonly selectRow = checkRow('Select the new border', (v) => { this.selectBorder = v; });
   private readonly anchors: HTMLButtonElement[] = [];
 
   constructor(private readonly engine: Engine) {
@@ -50,7 +52,7 @@ export class CanvasSizeDialog extends Dialog {
     }
     const anchorRow = el('<div class="cv-field"><span>Anchor</span></div>');
     anchorRow.append(grid);
-    this.body.append(this.note, this.width.el, this.height.el, this.lockRow.el, this.relativeRow.el, this.units.el, this.estimate, anchorRow, this.fill.el, this.custom.el);
+    this.body.append(this.note, this.width.el, this.height.el, this.lockRow.el, this.relativeRow.el, this.units.el, this.estimate, anchorRow, this.fill.el, this.custom.el, this.selectRow.el);
     setHidden(this.custom.el, true);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
@@ -81,6 +83,8 @@ export class CanvasSizeDialog extends Dialog {
     this.sizeBounds();
     this.fill.set('none');
     setHidden(this.custom.el, true);
+    this.selectBorder = false;
+    this.selectRow.set(false);
     this.fields();
     this.syncAnchor();
     this.open(this.width.input);
@@ -144,6 +148,16 @@ export class CanvasSizeDialog extends Dialog {
     const choice = this.fill.el.querySelector('select')?.value ?? 'none';
     const colors: Record<string, RGB | null> = { none: null, fg: this.engine.fg, bg: this.engine.bg, white: { r: 255, g: 255, b: 255 }, black: { r: 0, g: 0, b: 0 }, custom: this.customColour() };
     const fromW = this.engine.current?.doc.width ?? W, fromH = this.engine.current?.doc.height ?? H;
+    if (choice === 'edge' || choice === 'average' || choice === 'grey' || choice === 'noise') {
+      if (this.engine.resizeCanvasBordered(W, H, dx, dy, choice, this.selectBorder)) this.close();
+      return;
+    }
+    if (this.selectBorder && this.engine.resizeCanvas(W, H, dx, dy, colors[choice] ?? null)) {
+      this.engine.selectCanvasBorder(fromW, fromH, dx, dy);
+      this.onApplied?.({ w: W, h: H, dx, dy, fill: colors[choice] ?? null, fromW, fromH });
+      this.close();
+      return;
+    }
     if (this.engine.resizeCanvas(W, H, dx, dy, colors[choice] ?? null)) { this.onApplied?.({ w: W, h: H, dx, dy, fill: colors[choice] ?? null, fromW, fromH }); this.close(); }
   }
 }
