@@ -21,7 +21,7 @@ MIN_COLS, MIN_ROWS = 10, 4
 
 
 class Session:
-    def __init__(self, sid: str, title: str, cwd: str, proc) -> None:
+    def __init__(self, sid: str, title: str, cwd: str, proc, kind: str = "shell", argv: list[str] | None = None, env: dict | None = None) -> None:
         self.id = sid
         self.title = title
         self.cwd = cwd
@@ -34,7 +34,9 @@ class Session:
         self.gen = 0
         self.cols = 100
         self.rows = 30
-        self.kind = "shell"
+        self.kind = kind
+        self.argv = argv
+        self.env = env
 
     def describe(self) -> dict:
         return {"id": self.id, "title": self.title, "cwd": self.cwd, "alive": self.alive, "kind": self.kind}
@@ -65,14 +67,14 @@ def call_in_loop(fn, *args) -> None:
         _loop.call_soon_threadsafe(fn, *args)
 
 
-def _shell() -> list[str]:
+def login_shell() -> list[str]:
     if os.name == "nt":
         return [os.environ.get("COMSPEC", "cmd.exe")]
     shell = os.environ.get("SHELL") or shutil.which("bash") or "/bin/sh"
     return [shell, "-l"]
 
 
-def _env() -> dict:
+def base_env() -> dict:
     env = dict(os.environ)
     env["TERM"] = "xterm-256color"
     env["COLORTERM"] = "truecolor"
@@ -111,18 +113,19 @@ def _pump(session: Session, proc, gen: int) -> None:
     _send(session, None)
 
 
-def _spawn(cwd: str, cols: int, rows: int):
-    return PtyProcess.spawn(_shell(), cwd=cwd, env=_env(), dimensions=(max(MIN_ROWS, rows), max(MIN_COLS, cols)))
+def _spawn(cwd: str, cols: int, rows: int, argv: list[str] | None = None, env: dict | None = None):
+    return PtyProcess.spawn(argv or login_shell(), cwd=cwd, env=env or base_env(), dimensions=(max(MIN_ROWS, rows), max(MIN_COLS, cols)))
 
 
-def open_session(cwd: str | None = None, cols: int = 100, rows: int = 30, title: str | None = None) -> Session:
+def open_session(cwd: str | None = None, cols: int = 100, rows: int = 30, title: str | None = None,
+                 argv: list[str] | None = None, env: dict | None = None, kind: str = "shell") -> Session:
     where = cwd or str(config.REPO_DIR)
     if not os.path.isdir(where):
         raise FileNotFoundError(f"There is no folder {where}.")
-    proc = _spawn(where, cols, rows)
+    proc = _spawn(where, cols, rows, argv, env)
     sid = uuid.uuid4().hex[:12]
     shells = sum(1 for s in SESSIONS.values() if s.kind == "shell")
-    session = Session(sid, title or f"Terminal {shells + 1}", where, proc)
+    session = Session(sid, title or f"Terminal {shells + 1}", where, proc, kind, argv, env)
     session.cols, session.rows = max(MIN_COLS, cols), max(MIN_ROWS, rows)
     SESSIONS[sid] = session
     threading.Thread(target=_pump, args=(session, proc, 0), name=f"pty-{sid}", daemon=True).start()
@@ -131,7 +134,7 @@ def open_session(cwd: str | None = None, cols: int = 100, rows: int = 30, title:
 
 def restart(sid: str) -> Session:
     session = get(sid)
-    if session.kind != "shell":
+    if session.kind not in ("shell", "claude"):
         raise ValueError("The Claude terminal has no shell to restart.")
     old = session.proc
     session.gen += 1
@@ -141,7 +144,7 @@ def restart(sid: str) -> Session:
     except Exception:
         pass
     where = session.cwd if os.path.isdir(session.cwd) else str(config.REPO_DIR)
-    proc = _spawn(where, session.cols, session.rows)
+    proc = _spawn(where, session.cols, session.rows, session.argv, session.env)
     with session.lock:
         session.chunks.clear()
         session.size = 0
@@ -200,6 +203,10 @@ def get(sid: str) -> Session:
     if session is None:
         raise KeyError(sid)
     return session
+
+
+def live_claude() -> Session | None:
+    return next((s for s in SESSIONS.values() if s.kind == "claude" and s.alive), None)
 
 
 def listing() -> list[dict]:

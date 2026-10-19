@@ -4,14 +4,18 @@ runs and tells it how the run ended; the /api/agents routes let the window read 
 
 import asyncio
 import collections
+import hmac
 import itertools
 import json
 import os
+import secrets
 import time
 import uuid
 
 from app.core import config
 
+INAPP_TOKEN = secrets.token_urlsafe(24)
+INAPP_CLIENT = "Claude Code in formvis"
 POLICIES = ("allow", "ask", "deny")
 POLICY_LABELS = {"allow": "Allow all", "ask": "Ask for risky steps", "deny": "Deny"}
 APPROVAL_SECONDS = 120.0
@@ -169,6 +173,11 @@ def identity(sid: str | None, info: dict | None, fallback: str) -> tuple[str, st
     if isinstance(info, dict) and str(info.get("name") or "").strip():
         return str(info["name"]).strip()[:80], str(info.get("version") or "")[:40]
     return (fallback.strip()[:80] or "unknown agent"), ""
+
+
+def is_inapp(token: str | None) -> bool:
+    """True for the per-run token only the engine puts in the MCP configuration of the Claude Code it starts in the window's terminal dock."""
+    return bool(token) and hmac.compare_digest(token.encode(), INAPP_TOKEN.encode())
 
 
 def set_enabled(on: bool) -> None:

@@ -4,6 +4,29 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.90.8 · 2026-10-19
+
+### Added
+
+- Claude Code lives in the terminal dock as in formlit: shell, Claude Code and Chat tabs, an ask bar at the dock's foot, and Claude Code and Show Terminal buttons in the title bar, with formlit's agent, chat and terminal icons. A Claude Code tab runs the program itself with formvis's tools attached, and its calls are trusted as the window's own through a per-run token kept in that tab's environment. Window > Chat with Claude opens the Chat tab, whose hand-off resumes the conversation in a Claude Code tab. A tab that cannot start says why, with the install command when the program is missing.
+- Select > Select and Mask Workspace: Select and Mask on the main canvas with live view modes and opacity, Quick Selection, Refine Edge Brush, Brush, Hand and Zoom on the picture, the properties beside it and other panels hidden while it is open, applied as one step.
+- Painting a layer mask from outside the layer's pixels grows the mask to the canvas, kept by undo, projects and PSD export.
+- Layers take a generation role (Reference, Subject, Background, Style) with a badge, Layer > Role and a Properties control; Reference layers list as @img tokens in the Generate panel with a fit choice. Layers dropped on another document's canvas land where you let go. Properties gains Align. Generate > Compute Depth Map as 16-Bit Document.
+- Smart objects keep the file they were placed from (Export Contents and the PSD writer give it back byte for byte) and cache their filter stages; PSD placed layers open with embedded layered contents and custom warp meshes as live warps, and are written back the same way.
+- GPU layer styles: Drop Shadow, Outer Glow, Stroke, Inner Shadow and Inner Glow are built in WebGL2 passes when the GPU runs filters; the Layer Style preview budget follows how long the last preview took; the parametric curve runs in the GPU Develop pass and the Develop preview reaches 8 megapixels.
+- 16 and 32-bit documents reach the GPU as half-float textures with mipmaps below 50 percent zoom; 32-bit documents can present in high dynamic range under WebGPU on HDR screens (Preferences > Performance); live stroke previews upload only their changed tiles.
+- Composite on worker threads (Performance, off by default) for plain documents at 100 percent and above, byte-identical to the single-thread result; WebAssembly kernels for Image Size resampling, ordered Dither and the healing blend.
+- PSD: Color Lookup layers open and save live; shape pattern fills and strokes and stroke caps, joins, alignment and opacity are written and read; bevel texture and a linear edge contour are written; the pattern overlay's link and origin are kept. Swatches: colour-book entries in .aco are written back as read. Export asks where to save in Chromium browsers and remembers the folder.
+
+### Changed
+
+- The Claude Code side panel is retired; Window > Claude Code opens the dock on a Claude Code tab. The terminal and Claude Code commands are refused to agents through run_command, run_commands and menu paths.
+- `./formvis counts --check` also fails if the three-star sparkle icon returns, under any name.
+
+### Fixed
+
+- Properties no longer shows six empty shape fields under Transform for every layer.
+
 ## 1.90.7 · 2026-10-19
 
 ### Added

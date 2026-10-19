@@ -21,10 +21,11 @@ type SwatchEntry = SwatchItem;
 const HEX = /^#[0-9a-f]{6}$/i;
 const SOURCE_LEN = { cmyk: 4, lab: 3, gray: 1 } as const;
 /** The full-precision source colour and the global or spot type a swatch brought from its file, when valid. */
-function extras(e: { src?: unknown; kind?: unknown }): Pick<SwatchEntry, 'src' | 'kind'> {
+function extras(e: { src?: unknown; kind?: unknown; book?: unknown; raw?: unknown }): Pick<SwatchEntry, 'src' | 'kind' | 'book' | 'raw'> {
   const s = e.src as { m?: string; v?: unknown } | undefined;
   const ok = !!s && (s.m === 'cmyk' || s.m === 'lab' || s.m === 'gray') && Array.isArray(s.v) && s.v.length === SOURCE_LEN[s.m] && s.v.every((n) => typeof n === 'number' && Number.isFinite(n));
-  return { ...(ok ? { src: { m: s!.m as 'cmyk' | 'lab' | 'gray', v: [...(s!.v as number[])] } } : {}), ...(e.kind === 'spot' || e.kind === 'global' ? { kind: e.kind } : {}) };
+  const r = e.raw, rawOk = Array.isArray(r) && r.length === 5 && r.every((n) => Number.isInteger(n) && n >= 0 && n <= 65535);
+  return { ...(ok ? { src: { m: s!.m as 'cmyk' | 'lab' | 'gray', v: [...(s!.v as number[])] } } : {}), ...(e.kind === 'spot' || e.kind === 'global' ? { kind: e.kind } : {}), ...(typeof e.book === 'string' && e.book ? { book: e.book.slice(0, 24) } : {}), ...(rawOk ? { raw: [...(r as number[])] as [number, number, number, number, number] } : {}) };
 }
 const KIND_WORD = { spot: 'spot', global: 'global' } as const;
 function loadEntries(): SwatchEntry[] {

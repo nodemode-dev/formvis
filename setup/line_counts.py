@@ -86,17 +86,23 @@ DECLINED = re.compile(r"content-aware-scale|contentAwareScale|ContentAwareScale|
 def declined_problems(root: Path = ROOT) -> list[str]:
     """Product code that names a feature declined for patents (see DECLINED); the README check fails on any."""
     problems = []
-    files = subprocess.run(["git", "ls-files", "frontend/src", "backend/app", "src-tauri/src", "native"], cwd=root,
+    files = subprocess.run(["git", "ls-files", "frontend/src", "frontend/public", "frontend/index.html", "backend/app", "src-tauri/src", "native"], cwd=root,
                            capture_output=True, text=True, check=True).stdout.split("\n")
     for rel in files:
-        if not rel.endswith((".ts", ".py", ".rs", ".css", ".html")) or "/i18n/" in rel or rel.endswith(".test.ts"):
+        if not rel.endswith((".ts", ".py", ".rs", ".css", ".html", ".svg")) or "/i18n/" in rel or rel.endswith(".test.ts"):
             continue
         for n, line in enumerate((root / rel).read_text(encoding="utf-8", errors="replace").splitlines(), 1):
             if DECLINED.search(line):
                 problems.append(f"{rel}:{n}: declined for patents (Content-Aware Scale, seam carving, skin-tone protection)")
             if PROVIDERS_DECLINED.search(line):
                 problems.append(f"{rel}:{n}: declined provider (one cloud provider by design: fal)")
+            if SPARKLE_BANNED.search(line):
+                problems.append(f"{rel}:{n}: the three-star sparkle icon is banned app-wide (the owner's rule)")
     return problems
+
+
+SPARKLE_BANNED = re.compile("\\bsparkle\\s*:\\s*[`'\"]?\\s*<svg|icon\\(\\s*['\"]sparkle['\"]|M12 1\\.5l1\\.5 4\\.5 4\\.5 1\\.5|"
+                            "M7\\.5 5\\.6L10 7 8\\.6 4\\.5|[\\u2726\\u2727\\u2728\\u2734\\u2747]")
 
 
 # Declined by the owner (1.88.3): one cloud provider by design, fal. Image or model providers other than fal are not

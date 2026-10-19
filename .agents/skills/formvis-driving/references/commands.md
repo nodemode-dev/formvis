@@ -1,6 +1,6 @@
 # formvis commands
 
-Generated from the window's command catalogue (1599 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1607 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
@@ -9,16 +9,16 @@ Generated from the window's command catalogue (1599 commands) by `./formvis agen
 - Filter: 93
 - Generate: 6
 - Help: 5
-- Image: 121
-- Layer: 271
+- Image: 122
+- Layer: 276
 - Paint: 1
 - Paths: 12
-- Select: 44
+- Select: 45
 - Tool options: 467
 - Tools: 53
 - Type: 66
 - View: 102
-- Window: 148
+- Window: 149
 
 ## Edit
 
@@ -413,6 +413,7 @@ Generated from the window's command catalogue (1599 commands) by `./formvis agen
 | `color-match` | Color Match... |  | Opens Color Match. (changes the picture) |
 | `color-table` | Color Table... |  | Opens the Color Table of an Indexed Color document: edit, load or save its palette. (changes the picture) |
 | `compute-depth-map` | Compute Depth Map |  | Reads the depth of what the document shows with Depth Anything V2 Small on this computer and adds it as a grey layer named Depth Map, near bright and far dark. (changes the picture) |
+| `compute-depth-map-16` | Compute Depth Map as 16-Bit Document |  | Reads the depth of what the document shows with Depth Anything V2 Small on this computer and opens it as a new 16-bit grey document, near bright and far dark, with 65536 steps instead of 256. (changes the picture) |
 | `convert-profile` | Convert to Profile... |  | Opens Convert to Profile. (changes the picture) |
 | `count-new-group` | New Count Group |  | Starts a new count group with a name and colour; marks placed afterwards go into it. The first group made also takes the marks already placed. (changes the picture) |
 | `count-set-group` | Set Count Group |  | Renames, recolours, hides, shows, activates or deletes a count group, found by name or id; the active group when none is named. (changes the picture) |
@@ -589,6 +590,11 @@ Generated from the window's command catalogue (1599 commands) by `./formvis agen
 | `layer-label-violet` | Violet |  | Labels the selected layers violet in the Layers panel. (changes the picture) |
 | `layer-label-yellow` | Yellow |  | Labels the selected layers yellow in the Layers panel. (changes the picture) |
 | `layer-quick-export-png` | Quick Export as PNG |  | Exports each selected layer (the active one when none is selected) alone, with its effects and mask, as a PNG file named after the layer. (asks first) |
+| `layer-role-background` | Background |  | Marks the selected layers as the Background of the picture, saved with the project. (changes the picture) |
+| `layer-role-none` | No Role |  | Removes the generation role from the selected layers. (changes the picture) |
+| `layer-role-reference` | Reference |  | Marks the selected layers as Reference: the Generate panel lists them as the reference pictures (@img1, @img2 and on) that a ComfyUI workflow receives. (changes the picture) |
+| `layer-role-style` | Style |  | Marks the selected layers as the Style of the picture, saved with the project. (changes the picture) |
+| `layer-role-subject` | Subject |  | Marks the selected layers as the Subject of the picture, saved with the project. (changes the picture) |
 | `layer-style` | Layer Style... |  | Opens Layer Style. (changes the picture) |
 | `layer-via-cut` | Layer via Cut | Shift+Mod+J | Moves the selected pixels to a new layer. (changes the picture) |
 | `layer.set` | Set Layer |  | Changes a layer name, visibility, opacity or blend mode; the active layer when id is omitted. (changes the picture) |
@@ -857,6 +863,7 @@ Generated from the window's command catalogue (1599 commands) by `./formvis agen
 | `save-selection-channel` | Save Selection as Channel |  | Saves the selection as a new channel. (changes the picture) |
 | `select-all` | All | Mod+A | Selects the whole canvas. (changes the picture) |
 | `select-and-mask` | Select and Mask... | Alt+Mod+R | Opens Select and Mask to refine edges. (changes the picture) |
+| `select-and-mask-workspace` | Select and Mask Workspace |  | Opens Select and Mask on the main canvas: view modes, refine tools on the picture and the properties beside it, applied as one step. (changes the picture) |
 | `select-color-range` | Select Color Range |  | Selects by sampled colour, hue family, tone, skin tones or the Depth Map layer, combined with the selection as asked. (changes the picture) |
 | `select-drop` | Drop Floating Pixels |  | Drops the floating selection onto its layer as one step. (changes the picture) |
 | `select-float` | Float Selected Pixels |  | Lifts the selected pixels of the active layer into a floating selection that takes the Move tool's handles, until dropped. (changes the picture) |
@@ -1610,7 +1617,8 @@ Generated from the window's command catalogue (1599 commands) by `./formvis agen
 | `about` | About formvis |  | Opens the About dialog. |
 | `action-stop` | Stop Recording |  | Stops recording an action. |
 | `actions` | Actions... |  | Opens the Actions panel to record and play steps. |
-| `agent.claude.open` | Claude Code |  | Shows or hides the Claude Code panel. |
+| `agent.chat` | Chat with Claude |  | Shows the terminal dock on its Chat tab, a conversation with Claude about the open picture that works through formvis's tools, or hides the dock while that tab is showing. |
+| `agent.claude.open` | Claude Code |  | Shows the terminal dock on a Claude Code tab (opening one if none is running), or hides the dock while that tab is showing. |
 | `agent.connect.copy-claude-code` | Copy Claude Code Connect Line |  | Copies the claude mcp add line that registers formvis in Claude Code. |
 | `agent.connect.copy-claude-desktop` | Copy Claude Desktop Connect JSON |  | Copies the mcpServers JSON, with this copy of formvis installed path, for Claude Desktop settings. |
 | `agent.connect.open` | Agent Connect |  | Shows or hides Agent Connect: which outside agents may act, their policy, approvals and activity. |

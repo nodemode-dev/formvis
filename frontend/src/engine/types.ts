@@ -67,10 +67,18 @@ export interface LayerLocks { transparency?: boolean; pixels?: boolean; position
 
 /** What made a picture generated on this computer: the prompt, seed, steps, LoRAs and the full parameters text. */
 export interface GenerationInfo { prompt?: string; seed?: number; steps?: number; model?: string; sampler?: string; guidance?: number; loras?: Array<{ file: string; scale: number }>; parameters?: string }
+export const LAYER_ROLES = ['reference', 'subject', 'background', 'style'] as const;
+export type LayerRole = (typeof LAYER_ROLES)[number];
+export const LAYER_ROLE_LABELS: Record<LayerRole, string> = { reference: 'Reference', subject: 'Subject', background: 'Background', style: 'Style' };
+export const isLayerRole = (v: unknown): v is LayerRole => (LAYER_ROLES as readonly unknown[]).includes(v);
+/** A layer's role; the older reference flag counts as the Reference role. */
+export const layerRoleOf = (l: { role?: LayerRole; reference?: boolean }): LayerRole | null => l.role ?? (l.reference ? 'reference' : null);
 export interface Layer {
   readonly id: ID;
   /** A reference picture for the generation dialogs: their References list starts with it chosen. */
   reference?: boolean;
+  /** What the layer is for in generation; Reference layers fill the Generate panel's reference pictures. Saved in the project. */
+  role?: LayerRole;
   /** Layer styles drawn beneath the layer; absent or null for none. */
   effects?: LayerEffects | null;
   /** Blending Options (1.54.5, the parity plan's M2). Blend If: the layer's pixels shown only where this layer's
@@ -497,7 +505,10 @@ export type SmartDeform = SmartDeformData & { base: readonly [number, number, nu
 /** A smart object's contents as a layered document of its own, kept whole (groups, adjustment, shape, type and smart
  *  object layers stay live inside it); `source` is its flattened render. Saved with the project, nested to any depth. */
 export interface NestedContents { width: number; height: number; resolution?: number; layers: Layer[] }
-export interface SmartObject { source: Raster; filters: SmartFilter[]; nested?: NestedContents | null; stack?: SmartStack | null; warp?: Pt[] | null; warpAt?: Transform | null; deform?: SmartDeform | null; filterMask?: Raster | null; filterMaskEnabled?: boolean; link?: SmartLink | null }
+/** The file a smart object was placed from, kept as it came (its bytes, never re-encoded), so Export Contents and the PSD
+ *  writer give it back unchanged. Any new source (Replace Contents, Edit Contents, a stack mode) drops it. */
+export interface SmartOriginal { name: string; mime: string; data: Uint8Array }
+export interface SmartObject { source: Raster; filters: SmartFilter[]; nested?: NestedContents | null; stack?: SmartStack | null; warp?: Pt[] | null; warpAt?: Transform | null; deform?: SmartDeform | null; filterMask?: Raster | null; filterMaskEnabled?: boolean; link?: SmartLink | null; original?: SmartOriginal | null }
 
 /** Smart filters read back from saved data, checked. */
 export function smartFiltersFrom(raw: unknown): SmartFilter[] {

@@ -5,7 +5,7 @@ description: Terminals, pseudo-terminals, the Claude Code panel, Agent Connect a
 
 # terminal-operator
 
-Since 1.67.4 formvis has a terminal dock, a Claude Code panel and (1.67.5) Agent Connect. The engine owns every process; the window only draws and sends keys. This skill records where each piece lives and the rules process code must follow.
+Since 1.67.4 formvis has a terminal dock (with Claude Code and Chat tabs since 1.90.8, as in formlit) and (1.67.5) Agent Connect. The engine owns every process; the window only draws and sends keys. This skill records where each piece lives and the rules process code must follow.
 
 ## What exists
 
@@ -14,8 +14,9 @@ Since 1.67.4 formvis has a terminal dock, a Claude Code panel and (1.67.5) Agent
 | `backend/app/services/terminal.py`, `routers/terminal.py` | PTY sessions (`ptyprocess`, `pywinpty` on Windows) with a 256 KiB scrollback, resize, restart and close under `/api/terminal`; output on a WebSocket at `/api/terminal/{sid}/stream`. Every route and socket passes `origin_ok` (loopback Host, known Origin) |
 | `backend/app/services/claude_code.py`, `routers/claude_code.py` | Finds `claude` (`FORMVIS_CLAUDE_BIN`, PATH), starts it in stream-JSON with the project's `.mcp.json`, streams its messages on `/api/agent/claude/stream`, answers Ask-mode permissions, mirrors bash calls into a read-only terminal tab |
 | `backend/app/routers/agents.py` | Agent Connect: master switch, a policy per agent, approvals, the activity feed and Stop under `/api/agents`, with a WebSocket at `/api/agents/stream` |
-| `frontend/src/ui/terminal-dock.ts`, `styles/terminal.css` | The dock: xterm with the fit addon, a tab per PTY, open state and height on `documentElement` attributes set by a boot script in `index.html` before first paint; xterm's own scrollbar elements hidden |
-| `frontend/src/ui/panels/agent-panel.ts`, `agent-connect.ts` | The Claude Code panel and the Agent Connect panel, each built once and patched in place |
+| `frontend/src/ui/terminal-dock.ts`, `styles/terminal.css` | The dock as in formlit: xterm with the fit addon, a tab per PTY (shell tabs with the `terminal` icon, Claude Code tabs with the `agent` icon, the Chat tab first with `agentChat`), the head buttons New Terminal, Chat, Claude Code, Restart and Hide, the ask bar at the foot, and a status note in the stage when a tab cannot start; open state and height on `documentElement` attributes set by a boot script in `index.html` before first paint; xterm's own scrollbar elements hidden |
+| `frontend/src/ui/chat-pane.ts` | The Chat tab: Claude Code in stream-JSON mode over `/api/agent/claude/*`, messages, tool chips, Allow and Deny cards, and Continue in Claude Code (a Claude Code tab that resumes the chat's session) |
+| `frontend/src/ui/panels/agent-connect.ts` | The Agent Connect panel, built once and patched in place |
 | `backend/app/localgen/local_runner.py` | `run(...)` and `_run(...)` start a local model as a subprocess, pump its output through `_pump` and a queue, enforce time limits and cancellation, and end it with `_end`. `_Terminal` echoes the model's own output (a tqdm bar) into the terminal the engine was started from, sized with `COLUMNS` and `LINES`; it is a mirror to a console, not an interactive terminal |
 | `backend/app/localgen/processes.py` | `communicate(process, data, timeout, cancelled)` waits for a process in 0.25 second steps so a cancel or a timeout can stop it |
 | `backend/app/services/contained.py` | Runs OpenEXR decode and encode in a child interpreter (`multiprocessing`) with `TIMEOUT_S` 60 so a crash or hang cannot take the engine down; `OPENCV_IO_ENABLE_OPENEXR` is turned on only in the child |
@@ -35,7 +36,7 @@ Constraints that bind every change to the above:
 4. Windows: the repo ships `.bat` twins for every script; a PTY layer must name how it works on Windows (ConPTY) or say it does not.
 5. Frontend: any new panel obeys the zero-DOM-flash law and the z-index scale (see `ui-builder`); terminal output is appended to an existing node, never rebuilt. Register the panel with `registerPanel` in `frontend/src/ui/dock.ts` and add a Window menu command (see `command-author`).
 6. Dependencies: no GPL code in the frozen engine (see `references/desktop-and-embedding.md`); check any PTY library's licence before adding it to `backend/requirements.txt`.
-7. Agents: if a spawner starts Claude Code, it must pass the project's `.mcp.json` unchanged so the spawned agent uses the same consent flow, and it must not auto-approve the consent prompt.
+7. Agents: a Claude Code tab (`POST /api/terminal/claude`) gets formvis's MCP through its own configuration carrying the per-run in-app token in its environment (`FORMVIS_INAPP_TOKEN`, header `x-formvis-inapp`), so its calls count as the window's own, as in formlit; the Agent Connect switch, deny policy and risky-step approval still apply. Outside agents and the Chat tab keep the consent flow, nothing auto-approves an outside agent's consent prompt, and the terminal and Claude commands stay window-only.
 8. Record the change in `frontend/HASHOUT_LOG.md` and `backend/HASHOUT_LOG.md`, and update this skill's table with any new file. `formvis-driving` gets a `terminal` entry only if an MCP tool is added for it.
 
 ## Do not

@@ -3,7 +3,7 @@
 import { invert, mul, placement, setMat, translation } from './geometry';
 import type { Project } from './project';
 import { Raster } from './surface';
-import { uid, type ID, type SmartFilter, type SmartObject } from './types';
+import { uid, type ID, type SmartFilter, type SmartObject, type SmartOriginal } from './types';
 
 /** What the smart filter methods need of the Engine. */
 export interface SmartHost {
@@ -14,9 +14,9 @@ export interface SmartHost {
   smartFiltersShown(id: ID): SmartFilter[] | null;
 }
 
-export function smartContents(host: SmartHost): { name: string; raster: Raster } | null {
+export function smartContents(host: SmartHost): { name: string; raster: Raster; original: SmartOriginal | null } | null {
   const l = host.current?.activeLayer;
-  return l?.smart ? { name: l.name, raster: l.smart.source } : null;
+  return l?.smart ? { name: l.name, raster: l.smart.source, original: l.smart.original ?? null } : null;
 }
 
 export function addSmartFilter(host: SmartHost, kind: string, settings: Record<string, unknown>): void {

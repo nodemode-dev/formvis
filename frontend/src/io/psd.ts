@@ -4,6 +4,9 @@ import {
 } from '../engine';
 import { fromPsdAdjustment, keepPsdAdjustment, restorePsdAdjustment, toPsdAdjustment } from './psd-adjust';
 import { fromPsdSmartFilters, toPsdFilter } from './psd-filters';
+import type { NestedContents, SmartDeform, SmartOriginal } from '../engine/types';
+import { evenSpacing } from '../engine/mesh-warp';
+import { deformNow } from '../engine/smart-deform';
 import { artboardFromData, blendIfActive, type BlendIf, type DocSlice, type LayerComp } from '../engine/types';
 import { windingArea } from '../engine/custom-shapes';
 import { addIccResource, addPathResources, addResourceBytes, block as resourceBlock, clippingPathName, readPathResources, resourceBlocks } from './psd-paths';
@@ -24,7 +27,7 @@ import { maskEdgeTone } from '../engine/distort';
 import { groupIsolated } from '../engine/tree';
 import { renderFill } from '../engine/fill-layers';
 import { rasterFromDeep } from '../engine/deep';
-import type { DeepPixels, ExtraBlend, FillContent, Guide, ShapeGradient } from '../engine/types';
+import type { DeepPixels, ExtraBlend, FillContent, Guide, ShapeGradient, ShapePattern } from '../engine/types';
 
 /** Layered PSD files, read and written with ag-psd (MIT). Pixel layers keep their position, opacity, blend mode and
  *  visibility, folders become groups and back, layer masks and clipping carry across, and the flattened image goes in
@@ -80,6 +83,81 @@ async function decodeLinked(data: Uint8Array, readPsd: typeof import('ag-psd').r
   } catch { return null; }
 }
 
+/** What an embedded file is by its first bytes: its media type and the extension its name should end in. */
+function sniffLinked(d: Uint8Array): { mime: string; ext: string } {
+  const at = (s: string, i = 0): boolean => s.split('').every((c, k) => d[i + k] === c.charCodeAt(0));
+  if (d[0] === 0x89 && at('PNG', 1)) return { mime: 'image/png', ext: '.png' };
+  if (d[0] === 0xff && d[1] === 0xd8) return { mime: 'image/jpeg', ext: '.jpg' };
+  if (at('GIF8')) return { mime: 'image/gif', ext: '.gif' };
+  if (at('8BPS')) return { mime: 'image/vnd.adobe.photoshop', ext: '.psd' };
+  if (at('RIFF') && at('WEBP', 8)) return { mime: 'image/webp', ext: '.webp' };
+  if ((at('II') && d[2] === 42) || (at('MM') && d[3] === 42)) return { mime: 'image/tiff', ext: '.tif' };
+  if (at('BM')) return { mime: 'image/bmp', ext: '.bmp' };
+  return { mime: 'application/octet-stream', ext: '' };
+}
+
+const FILE_TYPE: Record<string, string> = { 'image/png': 'png ', 'image/jpeg': 'jpeg', 'image/gif': 'gif ', 'image/tiff': 'tiff', 'image/bmp': 'bmp ', 'image/webp': 'webp', 'image/vnd.adobe.photoshop': '8BPS' };
+
+type Placed = NonNullable<PsdLayer['placedLayer']>;
+
+/** The mesh of a placed layer's custom warp and its content's extent, or null when the warp is none or the mesh sits on its own grid. */
+function warpMesh(plc: Placed, src: { width: number; height: number }): { gw: number; gh: number; nodes: Array<{ x: number; y: number }>; lw: number; lh: number } | null {
+  const w = plc.warp, nodes = w?.customEnvelopeWarp?.meshPoints, gw = w?.uOrder ?? 0, gh = w?.vOrder ?? 0, b = w?.bounds;
+  if (!w || w.style !== 'custom' || !nodes || gw < 2 || gh < 2 || nodes.length !== gw * gh) return null;
+  const lw = b ? b.right.value - b.left.value : src.width, lh = b ? b.bottom.value - b.top.value : src.height;
+  if (!(lw > 0) || !(lh > 0) || nodes.some((q) => !Number.isFinite(q.x) || !Number.isFinite(q.y))) return null;
+  return nodes.every((q, i) => Math.abs(q.x - ((i % gw) / (gw - 1)) * lw) < 0.5 && Math.abs(q.y - (Math.floor(i / gw) / (gh - 1)) * lh) < 0.5) ? null : { gw, gh, nodes, lw, lh };
+}
+
+/** What kind of warp a placed layer carries, or null for none: a preset with nothing to bend, or a mesh on its own grid, is none. */
+function warpKind(plc: Placed, src: { width: number; height: number }): string | null {
+  const w = plc.warp;
+  if (!w?.style || w.style === 'none') return null;
+  if (w.style === 'custom') return warpMesh(plc, src) ? 'custom mesh' : null;
+  return w.value || w.perspective || w.perspectiveOther ? w.style : null;
+}
+
+/** A custom warp mesh as a smart object's live Warp: its nodes, in the content's own pixels, carried by the placement into
+ *  the document. Null unless the placement is a parallelogram and the nodes land over the layer's saved pixels (`box`). */
+function meshDeform(plc: Placed, t8: number[], src: { width: number; height: number }, at: Layer['transform']): SmartDeform | null {
+  const m = warpMesh(plc, src);
+  if (!m) return null;
+  const [x0, y0, x1, y1, x2, y2, x3, y3] = t8;
+  if (Math.abs(x0 + x2 - x1 - x3) > 0.5 || Math.abs(y0 + y2 - y1 - y3) > 0.5) return null;
+  const local = [(x1 - x0) / m.lw, (y1 - y0) / m.lw, (x3 - x0) / m.lh, (y3 - y0) / m.lh, x0, y0];
+  const points = m.nodes.map((q): [number, number] => [local[0] * q.x + local[2] * q.y + local[4], local[1] * q.x + local[3] * q.y + local[5]]);
+  const xs = points.map((q) => q[0]), ys = points.map((q) => q[1]), slack = Math.max(at.w, at.h) * 0.15 + 2;
+  const x = Math.min(...xs), X = Math.max(...xs), y = Math.min(...ys), Y = Math.max(...ys);
+  if (x < at.x - slack || X > at.x + at.w + slack || y < at.y - slack || Y > at.y + at.h + slack || X - x < at.w * 0.7 || Y - y < at.h * 0.7) return null;
+  const base = [(x1 - x0) / src.width, (y1 - y0) / src.width, (x3 - x0) / src.height, (y3 - y0) / src.height, x0, y0] as const;
+  return { kind: 'mesh', gw: m.gw, gh: m.gh, points, us: evenSpacing(m.gw), vs: evenSpacing(m.gh), base, pad: 0, at };
+}
+
+let nestedDepth = 0;
+/** An embedded PSD read as the smart object's own layered contents; null for any other file. */
+async function nestedOf(data: Uint8Array, name: string): Promise<NestedContents | null> {
+  if (nestedDepth >= 3 || sniffLinked(data).ext !== '.psd') return null;
+  nestedDepth++;
+  try {
+    const inner = await readPsdFile(new File([data.slice()], name || 'contents.psd'));
+    return inner.doc.layers.length ? { width: inner.doc.width, height: inner.doc.height, resolution: inner.doc.resolution, layers: [...inner.doc.layers] } : null;
+  } catch { return null; } finally { nestedDepth--; }
+}
+
+/** The file a smart object embeds in a PSD: the file it was placed from as it came, else its layered contents as a PSD of
+ *  their own, else its source as a PNG. */
+async function embedOf(l: Layer, notes: string[]): Promise<{ data: Uint8Array; name: string; type: string }> {
+  const sm = l.smart as NonNullable<Layer['smart']>, base = l.name || 'Smart Object', kept = sm.original;
+  if (kept) return { data: kept.data, name: kept.name, type: FILE_TYPE[kept.mime || sniffLinked(kept.data).mime] ?? '    ' };
+  if (sm.nested?.layers.length) {
+    const inner: Doc = { id: uid(), width: sm.nested.width, height: sm.nested.height, resolution: sm.nested.resolution ?? 72, layers: sm.nested.layers };
+    const out = await writePsdFile(inner, sm.source.canvas);
+    for (const n of out.notes) notes.push(`"${base}" contents: ${n}`);
+    return { data: new Uint8Array(out.bytes), name: `${base}.psd`, type: '8BPS' };
+  }
+  return { data: new Uint8Array(await (await toBlob(sm.source.canvas)).arrayBuffer()), name: `${base}.png`, type: 'png ' };
+}
+
 const BEVEL_TO: Record<LayerEffects['bevel']['style'], 'inner bevel' | 'outer bevel' | 'emboss' | 'pillow emboss' | 'stroke emboss'> = { inner: 'inner bevel', outer: 'outer bevel', emboss: 'emboss', pillow: 'pillow emboss', stroke: 'stroke emboss' };
 
 /** A formvis layer style as PSD layer effects: each enabled effect in the format's own terms. A pattern used by
@@ -108,9 +186,12 @@ function toPsdEffects(fx: LayerEffects, patterns: PatternInfo[]): LayerEffectsIn
   if (gos.length) e.gradientOverlay = gos.map(gradientOf) as LayerEffectsInfo['gradientOverlay'];
   if (sa.enabled) e.satin = { ...on, color: sa.color, opacity: sa.opacity, blendMode: bm(sa.blend), angle: sa.angle, distance: px(sa.distance), size: px(sa.size), invert: sa.invert, ...(sa.antiAlias ? { antialiased: true } : {}), ...cn(sa.contour) };
   if (bv.enabled) e.bevel = { ...on, style: BEVEL_TO[bv.style], technique: bv.technique === 'chiselHard' ? 'chisel hard' : bv.technique === 'chiselSoft' ? 'chisel soft' : 'smooth', strength: bv.depth / 100, direction: bv.down ? 'down' : 'up', size: px(bv.size), soften: px(bv.soften), angle: bv.angle, altitude: bv.altitude, useGlobalLight: bv.useGlobal === true,
-    highlightColor: bv.highlight, highlightOpacity: bv.highlightOpacity, highlightBlendMode: bm(bv.highlightBlend), shadowColor: bv.shadow, shadowOpacity: bv.shadowOpacity, shadowBlendMode: bm(bv.shadowBlend), ...cn(bv.gloss), ...(bv.antiAlias ? { antialiasGloss: true } : {}) };
+    highlightColor: bv.highlight, highlightOpacity: bv.highlightOpacity, highlightBlendMode: bm(bv.highlightBlend), shadowColor: bv.shadow, shadowOpacity: bv.shadowOpacity, shadowBlendMode: bm(bv.shadowBlend), ...cn(bv.gloss), ...(bv.antiAlias ? { antialiasGloss: true } : {}),
+    // The Texture sub-panel (pattern, scale, link) and a Linear edge Contour with its range go in the effect's own keys; the writer has none for the texture's depth and invert or a curved edge contour.
+    ...(bv.texture?.enabled && psdPattern(bv.texture.pattern, patterns) ? (() => { const t = bv.texture as NonNullable<typeof bv.texture>, info = psdPattern(t.pattern, patterns) as PatternInfo; return { useTexture: true, pattern: { name: info.name, id: info.id }, scale: t.scale, align: t.link !== false }; })() : {}),
+    ...(bv.contour?.enabled && bv.contour.id === 'linear' ? { useShape: true, range: Math.min(1, Math.max(0.01, bv.contour.range)) } : {}) } as LayerEffectsInfo['bevel'];
   const info = po.enabled ? psdPattern(po.pattern, patterns) : null;
-  if (info) e.patternOverlay = { ...on, opacity: po.opacity, blendMode: bm(po.blend), scale: po.scale, pattern: { name: info.name, id: info.id }, align: true };
+  if (info) e.patternOverlay = { ...on, opacity: po.opacity, blendMode: bm(po.blend), scale: po.scale, pattern: { name: info.name, id: info.id }, align: po.link !== false, ...(po.phaseX || po.phaseY ? { phase: { x: po.phaseX ?? 0, y: po.phaseY ?? 0 } } : {}) };
   return Object.keys(e).length ? e : null;
 }
 
@@ -347,7 +428,8 @@ function fromPsdEffects(info: LayerEffectsInfo, patterns: PatternInfo[] | undefi
       id = `psd-${src.id}`;
       if (!patternById(id)) { addPattern(src.name || 'Pattern', surface, id); projectPatterns.add(id); }
     } else notes.push(`"${name}" uses a pattern the file does not include; formvis shows Checker in its place.`);
-    fx.patternOverlay = { enabled: on(po), pattern: id, opacity: op(po.opacity, 1), blend: bm(po.blendMode, 'normal'), scale: Math.max(0.1, Math.min(10, po.scale ?? 1)) };
+    fx.patternOverlay = { enabled: on(po), pattern: id, opacity: op(po.opacity, 1), blend: bm(po.blendMode, 'normal'), scale: Math.max(0.1, Math.min(10, po.scale ?? 1)), ...(po.align === false ? { link: false } : {}),
+      ...(po.phase && Number.isFinite(po.phase.x) && Number.isFinite(po.phase.y) && (po.phase.x || po.phase.y) ? { phaseX: Math.max(-4096, Math.min(4096, Math.round(po.phase.x))), phaseY: Math.max(-4096, Math.min(4096, Math.round(po.phase.y))) } : {}) };
   }
   if (!all) {
     // The second to tenth instance of each effect the file can repeat, each read the same way and kept in the layer's extras.
@@ -624,9 +706,15 @@ export async function readPsdFile(file: File, siblings: readonly File[] = []): P
     }
   }
   // Smart objects' embedded contents, decoded before the layers are built.
-  const contents = new Map<string, Raster | null>(), linkOfFile = new Map<string, SmartLink>(), unresolved = new Map<string, string>();
+  const contents = new Map<string, Raster | null>(), linkOfFile = new Map<string, SmartLink>(), unresolved = new Map<string, string>(), originals = new Map<string, SmartOriginal>(), nests = new Map<string, NestedContents>();
   for (const lf of psd.linkedFiles ?? []) {
-    if (lf.data) { contents.set(lf.id, await decodeLinked(lf.data, readPsd)); continue; }
+    if (lf.data) {
+      contents.set(lf.id, await decodeLinked(lf.data, readPsd));
+      const kind = sniffLinked(lf.data), base = lf.name || 'Smart Object', inner = await nestedOf(lf.data, base);
+      originals.set(lf.id, { name: /\.[A-Za-z0-9]{1,8}$/.test(base) ? base : `${base}${kind.ext}`, mime: kind.mime, data: lf.data.slice() });
+      if (inner) nests.set(lf.id, inner);
+      continue;
+    }
     // A linked (not embedded) smart object: its file is found among the files opened with the PSD, else beside it on disk in the desktop app.
     const found = await resolveLinked(lf, file, siblings);
     const raster = found ? await decodeLinked(new Uint8Array(await found.arrayBuffer()), readPsd).catch(() => null) : null;
@@ -791,10 +879,15 @@ export async function readPsdFile(file: File, siblings: readonly File[] = []): P
           return { type: g.style === 'radial' ? 'radial' : g.style === 'angle' ? 'angle' : 'linear', angle: -g.angle, stops };
         };
         const fillGrad = vs?.fillEnabled === false ? null : gradOf(vf), strokeGrad = vs?.strokeEnabled ? gradOf(vs.content) : null;
-        const fill = vs?.fillEnabled === false ? null : vf?.type === 'color' ? col(vf.color) : fillGrad ? fillGrad.stops[0].color : null;
-        const sc = vs?.strokeEnabled && vs.content?.type === 'color' ? col(vs.content.color) : strokeGrad ? strokeGrad.stops[0].color : null;
-        const stroke = sc ? { color: sc, width: vs?.lineWidth?.value ?? 1, ...(strokeGrad ? { gradient: strokeGrad } : {}) } : null;
-        if (path.subpaths.length && (fill || stroke)) layer.vector = { path, fill, stroke, ...(fillGrad ? { gradient: fillGrad } : {}), origin: { x: pl.left ?? 0, y: pl.top ?? 0 } };
+        // A pattern fill or stroke is the library pattern the file's patterns hold, with a mid grey standing in for the colour.
+        const patOf = (c: VectorContent | undefined): ShapePattern | null => { const g = c?.type === 'pattern' ? fromPsdFill(c, psd.patterns, name, []) : null; return g && g.kind === 'pattern' ? { id: g.pattern, scale: 1 } : null; };
+        const fillPat = vs?.fillEnabled === false ? null : patOf(vf), strokePat = vs?.strokeEnabled ? patOf(vs.content) : null, grey = { r: 128, g: 128, b: 128 };
+        const fill = vs?.fillEnabled === false ? null : vf?.type === 'color' ? col(vf.color) : fillGrad ? fillGrad.stops[0].color : fillPat ? grey : null;
+        const sc = vs?.strokeEnabled && vs.content?.type === 'color' ? col(vs.content.color) : strokeGrad ? strokeGrad.stops[0].color : strokePat ? grey : null;
+        const stroke = sc ? { color: sc, width: vs?.lineWidth?.value ?? 1, ...(strokeGrad ? { gradient: strokeGrad } : {}), ...(strokePat ? { pattern: strokePat } : {}),
+          ...(vs?.lineAlignment === 'inside' || vs?.lineAlignment === 'outside' ? { align: vs.lineAlignment } : {}), ...(vs?.lineCapType === 'butt' || vs?.lineCapType === 'square' ? { cap: vs.lineCapType } : {}), ...(vs?.lineJoinType === 'miter' || vs?.lineJoinType === 'bevel' ? { join: vs.lineJoinType } : {}),
+          ...(typeof vs?.miterLimit === 'number' && vs.miterLimit >= 1 && vs.miterLimit <= 10 ? { miter: vs.miterLimit } : {}), ...(typeof vs?.opacity === 'number' && vs.opacity >= 0 && vs.opacity < 1 ? { opacity: vs.opacity } : {}) } : null;
+        if (path.subpaths.length && (fill || stroke)) layer.vector = { path, fill, stroke, ...(fillGrad ? { gradient: fillGrad } : {}), ...(fillPat ? { pattern: fillPat } : {}), origin: { x: pl.left ?? 0, y: pl.top ?? 0 } };
       } else if (vm?.paths?.length) {
         // A vector mask on a pixel layer (Layer > Vector Mask): kept as formvis's own, with its invert, link and disable flags.
         const vmask = vectorMaskOf(pl);
@@ -806,7 +899,12 @@ export async function readPsdFile(file: File, siblings: readonly File[] = []): P
         // saved until it is next re-rendered.
         const source = contents.get(plc.id) ?? null, t8 = plc.nonAffineTransform ?? plc.transform;
         if (source && t8?.length === 8 && t8.every((v) => Number.isFinite(v))) {
-          layer.smart = { source, filters: [], warp: [0, 2, 4, 6].map((k) => ({ x: t8[k], y: t8[k + 1] })), warpAt: layer.transform, ...(linkOfFile.has(plc.id) ? { link: linkOfFile.get(plc.id) } : {}) };
+          const deform = meshDeform(plc, t8, source, layer.transform);
+          layer.smart = { source, filters: [], warp: deform ? null : [0, 2, 4, 6].map((k) => ({ x: t8[k], y: t8[k + 1] })), warpAt: deform ? null : layer.transform, ...(deform ? { deform } : {}),...(linkOfFile.has(plc.id) ? { link: linkOfFile.get(plc.id) } : {}), ...(originals.has(plc.id) ? { original: originals.get(plc.id) } : {}), ...(nests.has(plc.id) ? { nested: nests.get(plc.id) } : {}) };
+          const bent = warpKind(plc, source);
+          if (deform) kept.push(`"${name}" keeps its warp mesh as a live Warp.`);
+          else if (bent) notes.push(`"${name}" has a ${bent} warp; formvis keeps its four-corner transform, so the saved pixels show the warp until the smart object is next re-rendered, which straightens it.`);
+          if (nests.has(plc.id)) kept.push(`"${name}" opens its layers as the smart object's contents.`);
           if (plc.filter?.list?.length) {
             // Smart filters come in as the live stack when every one of them maps; the pixels stay as saved until the next render.
             const got = fromPsdSmartFilters(plc.filter.list, plc.filter.enabled !== false, (m) => FROM_PSD.get(m as PsdBlend));
@@ -969,8 +1067,8 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
   const multi = writeMultichannelPsd(doc, psb);
   if (multi) return multi;
   const { writePsd } = await import('ag-psd');
-  const notes: string[] = [], linked: LinkedFile[] = [], sources = new Map<ID, Uint8Array>(), psdPatterns: PatternInfo[] = [];
-  for (const l of doc.layers) if (l.smart) sources.set(l.id, new Uint8Array(await (await toBlob(l.smart.source.canvas)).arrayBuffer()));
+  const notes: string[] = [], linked: LinkedFile[] = [], sources = new Map<ID, { data: Uint8Array; name: string; type: string }>(), psdPatterns: PatternInfo[] = [];
+  for (const l of doc.layers) if (l.smart) sources.set(l.id, await embedOf(l, notes));
   /** A raster drawn through `t` into a box aligned to the canvas; null when it covers nothing. */
   const placed = (r: Raster, t: Layer['transform']): { c: HTMLCanvasElement; x: number; y: number } | null => {
     const m = placement(t, r.width, r.height);
@@ -1023,7 +1121,10 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
     if (l.transparencyShapes === false) out.transparencyShapesLayer = false;
     if (l.blendChannels?.some((on) => !on)) out.channelBlendingRestrictions = l.blendChannels.flatMap((on, i) => (on ? [] : [i]));
     const bv = l.effects?.bevel;
-    if (bv?.enabled && (bv.contour?.enabled || bv.texture?.enabled)) notes.push(`"${l.name}"'s Bevel & Emboss Contour and Texture are not written to the PSD; it draws the bevel without them.`);
+    if (bv?.enabled) {
+      const left = [...(bv.contour?.enabled && bv.contour.id !== 'linear' ? ['edge Contour curve'] : []), ...(bv.texture?.enabled && (bv.texture.invert || bv.texture.depth !== 1) ? ['Texture depth and invert'] : [])];
+      if (left.length) notes.push(`"${l.name}"'s Bevel & Emboss ${left.join(' and ')} ${left.length > 1 ? 'are' : 'is'} not written to the PSD (the library that writes it has no key for ${left.length > 1 ? 'them' : 'it'}); the bevel keeps the rest.`);
+    }
     if (liveText(l) && l.text && l.raster) {
       // Live type goes as PSD point type: anchored where formvis anchors it, on the first line's baseline, the
       // layer's placement carried into the text transform so moved, scaled or rotated type lands the same.
@@ -1039,9 +1140,17 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
     const embed = l.smart ? sources.get(l.id) : undefined;
     if (l.smart && embed && l.raster) {
       // A smart object goes as a PSD placed layer: its source embedded as PNG, its corners where it sits.
-      const id = guid(), corners = smartCorners(l).flatMap((q) => [q.x, q.y]);
-      linked.push({ id, name: `${l.name || 'Smart Object'}.png`, type: 'png ', data: embed });
-      out.placedLayer = { id, placed: id, type: 'raster', transform: corners, nonAffineTransform: corners, width: l.smart.source.width, height: l.smart.source.height };
+      const live = deformNow(l), mesh = live?.kind === 'mesh' ? live : null, sw = l.smart.source.width, sh = l.smart.source.height, o = mesh?.pad ?? 0, b = mesh?.base;
+      const home = b ? [[o, o], [o + sw, o], [o + sw, o + sh], [o, o + sh]].flatMap(([x, y]) => [b[0] * x + b[2] * y + b[4], b[1] * x + b[3] * y + b[5]]) : null;
+      const id = guid(), corners = home ?? smartCorners(l).flatMap((q) => [q.x, q.y]);
+      linked.push({ id, name: embed.name, type: embed.type, data: embed.data });
+      if (l.smart.link) notes.push(`"${l.name}" is linked to ${l.smart.link.name}; the PSD embeds its contents so it stays whole.`);
+      out.placedLayer = { id, placed: id, type: 'raster', transform: corners, nonAffineTransform: corners, width: sw, height: sh };
+      if (mesh && b && mesh.us.every((u, i) => Math.abs(u - i / (mesh.gw - 1)) < 1e-6) && mesh.vs.every((v, j) => Math.abs(v - j / (mesh.gh - 1)) < 1e-6)) {
+        const det = b[0] * b[3] - b[1] * b[2], un = (value: number): UnitsValue => ({ units: 'Pixels', value });
+        out.placedLayer.warp = { style: 'custom', value: 0, perspective: 0, perspectiveOther: 0, rotate: 'horizontal', bounds: { top: un(0), left: un(0), bottom: un(sh), right: un(sw) }, uOrder: mesh.gw, vOrder: mesh.gh,
+          customEnvelopeWarp: { meshPoints: mesh.points.map(([x, y]) => ({ x: ((x - b[4]) * b[3] - (y - b[5]) * b[2]) / det - o, y: ((y - b[5]) * b[0] - (x - b[4]) * b[1]) / det - o })) } };
+      } else if (live) notes.push(`"${l.name}" has a ${live.kind === 'puppet' ? 'Puppet Warp' : live.kind === 'perspective' ? 'Perspective Warp' : 'Warp with uneven grid lines'} that the PSD's smart object cannot hold live; it is written with its pixels and the smart object's corners.`);
       const sf = l.smart.filters, listed = sf.map((f) => toPsdFilter(f, (m) => TO_PSD[m] ?? 'normal')).filter((f): f is NonNullable<typeof f> => f !== null);
       if (sf.length && listed.length === sf.length && !l.smart.filterMask) out.placedLayer.filter = { enabled: true, validAtPosition: true, maskEnabled: l.smart.filterMaskEnabled !== false, maskLinked: true, maskExtendWithWhite: false, list: listed };
       else if (sf.some((f) => f.enabled)) notes.push(`"${l.name}" keeps its smart filters applied in its pixels; in the PSD its smart object holds the original without them${l.smart.filterMask ? ' (a filter mask is not written)' : listed.length < sf.length ? ' (the PSD stack holds only filters it has a record for)' : ''}.`);
@@ -1063,9 +1172,13 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
         const gradientContent = (g: ShapeGradient): VectorContent => ({ type: 'solid', name: 'formvis', colorStops: g.stops.map((s) => ({ color: rgb(s.color), location: s.at, midpoint: 0.5 })), opacityStops: g.stops.map((s) => ({ opacity: s.alpha ?? 1, location: s.at, midpoint: 0.5 })),
           style: g.type, angle: g.angle ? -g.angle : 0, scale: 1, reverse: false, dither: false, align: true, offset: { x: 0, y: 0 } });
         const fg = v.fill && v.gradient && v.gradient.stops.length >= 2 ? v.gradient : null, sg = v.stroke?.gradient && v.stroke.gradient.stops.length >= 2 ? v.stroke.gradient : null;
-        out.vectorFill = fg ? gradientContent(fg) : { type: 'color', color: rgb(v.fill ?? v.stroke?.color ?? { r: 0, g: 0, b: 0 }) };
-        out.vectorStroke = { strokeEnabled: !!v.stroke, fillEnabled: !!v.fill, lineWidth: { units: 'Pixels', value: (v.stroke?.width ?? 1) * k }, lineCapType: 'round', lineJoinType: 'round', lineAlignment: 'center', content: sg ? gradientContent(sg) : { type: 'color', color: rgb(v.stroke?.color ?? v.fill ?? { r: 0, g: 0, b: 0 }) } };
-        if ((v.fill && v.pattern) || (v.stroke?.pattern)) notes.push(`"${l.name}"'s pattern fill or stroke is not written to the PSD shape; it keeps its colour.`);
+        // A pattern fill or stroke is the format's pattern content, the library pattern added under a GUID (resampled when drawn at another scale).
+        const patternOf = (p: ShapePattern | null | undefined): VectorContent | null => { const info = p ? (p.scale && p.scale !== 1 ? scaledPsdPattern(p.id, p.scale, psdPatterns) : psdPattern(p.id, psdPatterns)) : null; return info ? { type: 'pattern', name: info.name, id: info.id, phase: { x: 0, y: 0 } } : null; };
+        const fp = v.fill && !fg ? patternOf(v.pattern) : null, sp = v.stroke && !sg ? patternOf(v.stroke.pattern) : null, sk = v.stroke;
+        out.vectorFill = fg ? gradientContent(fg) : fp ?? { type: 'color', color: rgb(v.fill ?? v.stroke?.color ?? { r: 0, g: 0, b: 0 }) };
+        out.vectorStroke = { strokeEnabled: !!sk, fillEnabled: !!v.fill, lineWidth: { units: 'Pixels', value: (v.stroke?.width ?? 1) * k }, lineCapType: sk?.cap ?? 'round', lineJoinType: sk?.join ?? 'round', lineAlignment: sk?.align ?? 'center', ...(sk?.miter ? { miterLimit: sk.miter } : {}), ...(sk?.opacity !== undefined && sk.opacity < 1 ? { opacity: Math.max(0, sk.opacity) } : {}), content: sg ? gradientContent(sg) : sp ?? { type: 'color', color: rgb(v.stroke?.color ?? v.fill ?? { r: 0, g: 0, b: 0 }) } };
+        if ((v.fill && v.pattern && !fp) || (v.stroke?.pattern && !sp)) notes.push(`"${l.name}"'s pattern fill or stroke names a pattern the project no longer has, so the PSD shape keeps its colour.`);
+        if (sk && (sk.dash && sk.dash !== 'solid' || sk.dashes?.length)) notes.push(`"${l.name}"'s dashed stroke is written solid; the PSD shape's dash record is not written yet.`);
       }
     }
     const vm = l.vectorMask;

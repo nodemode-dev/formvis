@@ -1,4 +1,5 @@
 import { Raster } from './surface';
+import { wasmResample, type Taps } from './wasm-kernels';
 
 /** How Image Size resamples: the three browser filters, and separable kernels computed here. */
 export type ResampleMethod = 'nearest' | 'smooth' | 'high' | 'bilinear' | 'bicubic' | 'smoother' | 'sharper' | 'lanczos';
@@ -46,12 +47,22 @@ function weights(from: number, to: number, k: Kernel): { start: Int32Array; w: F
   return { start, w };
 }
 
+function flatTaps(t: { start: Int32Array; w: Float32Array[] }): Taps {
+  const offs = new Uint32Array(t.w.length + 1);
+  for (let i = 0; i < t.w.length; i++) offs[i + 1] = offs[i] + t.w[i].length;
+  const flat = new Float32Array(offs[t.w.length]);
+  t.w.forEach((row, i) => flat.set(row, offs[i]));
+  return { start: t.start, offs, weights: flat };
+}
+
 /** The image at `w` by `h` through a separable kernel, on premultiplied colour so clear pixels do not bleed. */
 export function kernelResample(src: ImageData, w: number, h: number, method: ResampleMethod): ImageData {
   const k = KERNELS[method];
   if (!k) throw new Error(`Not a kernel method: ${method}`);
   const sw = src.width, sh = src.height, s = src.data;
   const hx = weights(sw, w, k), vy = weights(sh, h, k);
+  const fast = wasmResample(s, sw, sh, w, h, flatTaps(hx), flatTaps(vy));
+  if (fast) return new ImageData(fast as Uint8ClampedArray<ArrayBuffer>, w, h);
   const mid = new Float32Array(w * sh * 4);
   for (let y = 0; y < sh; y++) {
     for (let x = 0; x < w; x++) {

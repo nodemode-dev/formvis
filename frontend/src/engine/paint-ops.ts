@@ -242,7 +242,7 @@ export function fill(host: PaintHost, which: 'fg' | 'bg'): void {
       ctx.globalCompositeOperation = 'source-over';
       ctx.drawImage(s, rect.x, rect.y);
       ctx.restore();
-      raster.touch();
+      raster.touch({ x: rect.x, y: rect.y, w: s.width, h: s.height });
       return;
     }
     const lum = Math.round(host.luminance(c) * 255);
@@ -328,6 +328,24 @@ export function growLayer(p: Project, layer: Layer, want: Rect): Raster {
   }
   p.updateLayer(layer.id, patch);
   return nr;
+}
+
+/** A mask that has a box of its own, grown to cover `want`: the old mask kept where it was, the new area revealing (white).
+ *  Only the mask changes, never the layer's pixels. Returns the mask's raster, grown or not. */
+export function growMask(p: Project, layer: Layer, want: Rect): Raster | null {
+  const m = layer.mask, mr = m?.raster ?? null, t = m?.placement ?? null;
+  if (!m || !mr || !t) return mr;
+  if (t.rotation !== 0 || t.flipX || t.flipY || t.w !== mr.width || t.h !== mr.height) return mr;
+  const box: Rect = { x: t.x, y: t.y, w: t.w, h: t.h };
+  const u = unionRect(box, integral(want));
+  if (u.x === box.x && u.y === box.y && u.w === box.w && u.h === box.h) return mr;
+  if (u.w > LIMITS.side || u.h > LIMITS.side || u.w * u.h > LIMITS.pixels) return mr;
+  const nm = Raster.filled(u.w, u.h, '#ffffff');
+  nm.ctx.clearRect(box.x - u.x, box.y - u.y, mr.width, mr.height);
+  nm.ctx.drawImage(mr.canvas, box.x - u.x, box.y - u.y);
+  nm.touch();
+  p.updateLayer(layer.id, { mask: { ...m, raster: nm, placement: { ...t, x: u.x, y: u.y, w: u.w, h: u.h } } });
+  return nm;
 }
 
 export function nudge(host: PaintHost, dx: number, dy: number): void {

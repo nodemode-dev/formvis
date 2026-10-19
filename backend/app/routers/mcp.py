@@ -3,7 +3,9 @@ formvis window. Streamable HTTP in stateless JSON mode at /mcp, following the 20
 handshake, no session; server/discover; the version on every request) and still answering initialize for clients of
 2025-11-25. The Origin header is checked (only this computer), as the specification requires. The work happens in the
 window, which collects requests from /api/mcp/bridge only while Allow outside agents is on in Preferences > Plugins;
-anything that costs money asks the user there first."""
+anything that costs money asks the user there first. The Claude Code the window's own terminal dock starts sends the
+per-run x-formvis-inapp header (agents.INAPP_TOKEN): it is never asked the Allow question and is served with outside
+agents off. The terminal and Claude Code commands (WINDOW_ONLY) are refused to every agent."""
 
 import asyncio
 import collections
@@ -640,6 +642,7 @@ def _open_window() -> bool:
 
 _sink: contextvars.ContextVar = contextvars.ContextVar("progress_sink", default=None)   # the queue of a call whose client asked for progress
 _sinks: dict[str, asyncio.Queue] = {}   # window request id: where that call's progress goes
+_inapp_call: contextvars.ContextVar = contextvars.ContextVar("inapp_call", default=False)   # the call is the Claude Code the window's own terminal dock started
 
 
 async def _ask(name: str, args: dict, timeout: float) -> dict | None:
@@ -648,7 +651,7 @@ async def _ask(name: str, args: dict, timeout: float) -> dict | None:
     _waiting[rid] = fut
     if _sink.get() is not None:
         _sinks[rid] = _sink.get()
-    item = {"id": rid, "name": name, "arguments": args}
+    item = {"id": rid, "name": name, "arguments": args, **({"inapp": True} if _inapp_call.get() else {})}
     _put(item)
     try:
         return await asyncio.wait_for(fut, timeout=timeout)
@@ -873,8 +876,8 @@ async def _run(name: str, args: dict) -> dict:
     """A tool call: files at paths handled here, around the window's part; everything else in the window."""
     try:
         if name == "ping":   # attach-only: answers with no window and asks nobody
-            info: dict = {"version": __version__, "window": _live(), "allowed": _allowed, "documents": []}
-            if info["window"] and _allowed:
+            info: dict = {"version": __version__, "window": _live(), "allowed": _allowed or _inapp_call.get(), "documents": []}
+            if info["window"] and info["allowed"]:
                 seen = (await _ask("ping", {}, 10) or {}).get("structuredContent") or {}
                 info["documents"] = seen.get("documents", [])
                 info["active"] = seen.get("active")
@@ -993,7 +996,7 @@ async def _call(name: str, args: dict) -> dict:
                     break
         if not _live():
             return _fail("formvis is not open. Start it with ./formvis boot (or open the formvis app), then retry.")
-    if not _allowed:
+    if not _allowed and not _inapp_call.get():
         if time.monotonic() < _declined_until:
             return _fail("The person chose not to allow outside agents in formvis just now. Ask them to turn on Allow outside agents (Preferences > Plugins), then retry.")
         answer = await _ask("__consent__", {}, 180)
@@ -1005,17 +1008,30 @@ async def _call(name: str, args: dict) -> dict:
     return out if out is not None else _fail("formvis did not answer in time: it may be busy with a long task. Check the formvis window, then retry.")
 
 
+WINDOW_ONLY = ("terminal.", "claudecode.", "chat.", "agent.claude", "agent.chat")   # the terminal dock, its Chat tab and Claude Code are the person's own: no agent reaches them through a command
+
+
+async def _command_ids(name: str, args: dict) -> list:
+    """The catalogue commands a call would run: run_command's, run_commands' and the one a menu path of ui_menu_invoke names."""
+    if name == "ui_menu_invoke":
+        found = await _call("__menu_id", {"path": args.get("path", "")})
+        return [(found.get("structuredContent") or {}).get("id")] if not found.get("isError") else []
+    return [args.get("id")] if name == "run_command" else [c.get("id") for c in args.get("commands") or [] if isinstance(c, dict)] if name == "run_commands" else []
+
+
+async def _window_only(name: str, args: dict) -> str | None:
+    """Why a command is refused to every agent, the in-app Claude Code included; None when none of the call's commands is the window's own."""
+    hit = next((i for i in await _command_ids(name, args) if isinstance(i, str) and i.strip().lower().startswith(WINDOW_ONLY)), None)
+    return f"{hit} is only available in the formvis window, so a person runs it. Do not retry." if hit else None
+
+
 async def _risk(name: str, args: dict) -> str | None:
     """Why a call cannot be undone (a file written, or a catalogue command marked risky); None when Undo covers it."""
     if name in agents.RISKY_TOOLS and (name != "convert_file" or args.get("overwrite") is True):   # a new file replaces nothing
         return f"{name} {agents.RISKY_TOOLS[name]} at {args.get('output_path') or args.get('path', 'a path')}, which Undo cannot restore"
     if name == "ui_window" and args.get("action") == "quit":
         return "ui_window quit closes formvis, which Undo cannot reverse"
-    ids = [args.get("id")] if name == "run_command" else [c.get("id") for c in args.get("commands") or [] if isinstance(c, dict)] if name == "run_commands" else []
-    if name == "ui_menu_invoke":   # the menu path names a command; it is judged as run_command would judge it
-        found = await _call("__menu_id", {"path": args.get("path", "")})
-        ids = [(found.get("structuredContent") or {}).get("id")] if not found.get("isError") else []
-    for cid in dict.fromkeys(i for i in ids if isinstance(i, str)):
+    for cid in dict.fromkeys(i for i in await _command_ids(name, args) if isinstance(i, str)):   # a menu path is judged as the command it names
         out = await _call("describe_command", {"id": cid})
         meta = out.get("structuredContent") or {}
         if not out.get("isError") and meta.get("risky"):
@@ -1039,7 +1055,9 @@ async def _write_back(name: str) -> str:
 
 async def _agent_call(client: str, name: str, args: dict) -> dict:
     """A tool call as an outside agent's: refused when agents are off or this client is denied, held for the person's
-    approval when it is risky under the Ask policy, and noted in the activity feed either way."""
+    approval when it is risky under the Ask policy, and noted in the activity feed either way. The Claude Code the window's own
+    terminal dock started (agents.INAPP_CLIENT, known by its per-run token) is not asked whether outside agents may edit."""
+    _inapp_call.set(client == agents.INAPP_CLIENT)
     if name == "control_call":   # a dotted method name is the typed tool under another name, checked against that tool's schema
         target = CONTROL_METHODS.get(args.get("method", ""))
         why = _invalid(args.get("params") or {}, SCHEMAS[target], "params") if target else None
@@ -1061,6 +1079,10 @@ async def _agent_call(client: str, name: str, args: dict) -> dict:
         refusal = _refused(name, args)
         if refusal:
             agents.end(entry, "error", refusal)
+            return _fail(refusal)
+        refusal = await _window_only(name, args)
+        if refusal:
+            agents.end(entry, "denied", refusal)
             return _fail(refusal)
         if agents.policy_of(client) == "ask":
             why = await _risk(name, args)
@@ -1091,7 +1113,10 @@ def _cancel(client: str, request_id) -> bool:
 
 def _client_of(request: Request, params: dict, sid: str | None) -> tuple[str, str]:
     info = (params.get("_meta") or {}).get("io.modelcontextprotocol/clientInfo") or params.get("clientInfo")
-    return agents.identity(sid, info, request.headers.get("x-formvis-client") or request.headers.get("user-agent") or "")
+    name, version = agents.identity(sid, info, request.headers.get("x-formvis-client") or request.headers.get("user-agent") or "")
+    if agents.is_inapp(request.headers.get("x-formvis-inapp")):
+        return agents.INAPP_CLIENT, version
+    return (f"{name} (outside)" if name == agents.INAPP_CLIENT else name), version
 
 
 # Live resources: the same state the read tools give, as documents a client can attach.
@@ -1318,7 +1343,7 @@ async def bridge_next(request: Request) -> Response:
         globals()["_declined_until"] = 0.0
     _allowed = allowed
     deadline = time.monotonic() + 20
-    eligible = lambda it: allowed or it.get("name") == "__consent__"   # not allowed: only the question goes out
+    eligible = lambda it: allowed or it.get("name") == "__consent__" or it.get("inapp") is True   # not allowed: only the question and the window's own Claude Code go out
     while time.monotonic() < deadline:
         _seen = time.monotonic()
         if await request.is_disconnected():

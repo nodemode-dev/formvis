@@ -3,6 +3,7 @@ import { previewMode } from '../engine/image-edit';
 import { renderCache } from '../engine/renderer';
 import { TILE_SIZES, setTileSize } from '../engine/tiled';
 import { setBandThreads } from '../engine/band-pool';
+import { setCompositeOnWorkers } from '../engine/composite-bands';
 import { framePacing } from '../gpu/frame-trace';
 import { api } from '../io/api';
 import { gamutWarning } from '../engine/colour-lut';
@@ -22,7 +23,7 @@ import { DEFAULT_COLOUR, cleanColour, cleanPresets, type ColourPreset, type Colo
  *  something real: History States and history memory are the undo limits every project uses; region redraws decide
  *  whether a brush stroke repaints only what it changed; the recovery delay is how soon after a change unsaved work is
  *  kept for crash recovery. The graphics processor settings choose the renderer (Phase 18). */
-export interface Prefs extends PagePrefs { language: Lang; profileMismatch: MismatchPref; colour: ColourSettings; colourPresets: ColourPreset[]; shortcuts: Record<string, string[]>; restoreSession: boolean; agentsAllowed: boolean; comfyuiUrl: string; nodemodeUrl: string; historyStates: number; historyMB: number; historyAuto: boolean; memoryLimitMB: number; effectCacheMB: number; backgroundReleaseSec: number; backgroundCacheMB: number; memoryReserveMB: number; cacheLevels: number; regionRedraws: boolean; layerReuse: boolean; fullPreviews: boolean; recoverySeconds: number; autoShowHome: boolean; useGpu: boolean; gpuFilters: boolean; renderer: GpuRenderer; gpuMemoryMB: number; gpuPower: GpuPower; lowLatency: boolean; framePacingMs: number; cacheTilePx: number; workerThreads: number; engineDevice: EngineDevice;
+export interface Prefs extends PagePrefs { language: Lang; profileMismatch: MismatchPref; colour: ColourSettings; colourPresets: ColourPreset[]; shortcuts: Record<string, string[]>; restoreSession: boolean; agentsAllowed: boolean; comfyuiUrl: string; nodemodeUrl: string; historyStates: number; historyMB: number; historyAuto: boolean; memoryLimitMB: number; effectCacheMB: number; backgroundReleaseSec: number; backgroundCacheMB: number; memoryReserveMB: number; cacheLevels: number; regionRedraws: boolean; layerReuse: boolean; fullPreviews: boolean; recoverySeconds: number; autoShowHome: boolean; useGpu: boolean; gpuFilters: boolean; renderer: GpuRenderer; gpuMemoryMB: number; gpuPower: GpuPower; lowLatency: boolean; hdrDisplay: boolean; framePacingMs: number; cacheTilePx: number; workerThreads: number; workerComposite: boolean; engineDevice: EngineDevice;
   /* The sections (the owner's walkthrough): Tools, History & Cache, Workspace, Cursors, Transparency & Gamut,
      Units & Rulers, Guides & Grid; every one acts on something real. */
   zoomWheel: boolean; autoFirstSnapshot: boolean; snapshotMB: number; narrowCollapse: boolean; rememberLayout: boolean; largeTabs: boolean; narrowOptions: boolean;
@@ -203,7 +204,7 @@ export const checkerPair = (choice: CheckerColors, themeLight: boolean, custom: 
 export type EngineDevice = 'auto' | 'metal' | 'cuda' | 'dml' | 'cpu';
 export const ENGINE_CHOICES: ReadonlyArray<readonly [EngineDevice, string]> = [['auto', 'Automatic'], ['metal', 'Metal (Core ML)'], ['cuda', 'CUDA'], ['dml', 'DirectML (Windows GPU)'], ['cpu', 'CPU']];
 
-export const DEFAULT_PREFS: Prefs = { language: 'en', profileMismatch: 'convert', colour: DEFAULT_COLOUR, colourPresets: [], shortcuts: {}, restoreSession: true, agentsAllowed: false, comfyuiUrl: 'http://127.0.0.1:8188', nodemodeUrl: 'http://localhost:8000', historyStates: 100, historyMB: 256, historyAuto: true, memoryLimitMB: 0, effectCacheMB: 256, backgroundReleaseSec: 30, backgroundCacheMB: 512, memoryReserveMB: 256, cacheLevels: 6, regionRedraws: true, layerReuse: true, fullPreviews: false, recoverySeconds: 20, autoShowHome: true, useGpu: true, gpuFilters: true, renderer: 'auto', gpuMemoryMB: 1024, gpuPower: 'high-performance', lowLatency: false, framePacingMs: 0, cacheTilePx: 2048, workerThreads: 0, engineDevice: 'auto',
+export const DEFAULT_PREFS: Prefs = { language: 'en', profileMismatch: 'convert', colour: DEFAULT_COLOUR, colourPresets: [], shortcuts: {}, restoreSession: true, agentsAllowed: false, comfyuiUrl: 'http://127.0.0.1:8188', nodemodeUrl: 'http://localhost:8000', historyStates: 100, historyMB: 256, historyAuto: true, memoryLimitMB: 0, effectCacheMB: 256, backgroundReleaseSec: 30, backgroundCacheMB: 512, memoryReserveMB: 256, cacheLevels: 6, regionRedraws: true, layerReuse: true, fullPreviews: false, recoverySeconds: 20, autoShowHome: true, useGpu: true, gpuFilters: true, renderer: 'auto', gpuMemoryMB: 1024, gpuPower: 'high-performance', lowLatency: false, hdrDisplay: true, framePacingMs: 0, cacheTilePx: 2048, workerThreads: 0, workerComposite: false, engineDevice: 'auto',
   zoomWheel: false, autoFirstSnapshot: true, snapshotMB: 768, narrowCollapse: true, rememberLayout: true, largeTabs: false, narrowOptions: false, paintCursor: 'tip', cursorCrosshair: false,
   checkerSize: 'medium', checkerColors: 'auto', checkerTheme: true, rulerUnits: 'px', guideColor: '', gridColor: '', gridSpacing: 100, gridSubdivisions: 4, gridUnit: 'px',
   homeOnLastClose: false, whatsNewAuto: true, whatsNewSeen: '', toolOptions: {}, dialogValues: {}, spellWords: [], measureDataPoints: [...DEFAULT_MEASURE_POINTS], fontPreview: 'medium', toolbar: null, pressureCurve: 'linear', uiFontSize: 'default', recentFontCount: 5, recentFonts: [], rawWb: 'as_shot', rawBits: 8, rawAutoTone: false, rawSmart: false, rawAsk: true, rawPpi: 0, rawWide: false, rawSharpen: 'none', rawSharpenAmount: 'standard', autoShowPanels: true, historyLog: false, placeTransform: true, placeFit: true, placeSmart: false, themeAuto: false, themeLight: 'light', themeDark: 'studio', animatedZoom: true, systemPicker: false, zoomResizes: false, beepWhenDone: false, interpolation: 'high', floatDocking: true, showTooltips: true, shiftToolSwitch: true, zoomClickCentre: false, lowerExtension: true, recentFileCount: 20, saveInBackground: true, historyCapMb: 0, gamutColor: '#808080', gamutOpacity: 100, guideStyle: 'solid', gridStyle: 'solid', gridOpacity: 100, noticeSeconds: 0, sliceColor: '', sliceNumbers: true, shortcutSets: {}, menuHidden: [], menuColors: {}, animations: true, usePressure: true, ...PAGE_DEFAULTS };
@@ -301,9 +302,11 @@ export function loadPrefs(): Prefs {
       gpuMemoryMB: Math.round(num(r.gpuMemoryMB, 128, 16384, DEFAULT_PREFS.gpuMemoryMB)),
       gpuPower: r.gpuPower === 'low-power' || r.gpuPower === 'default' || r.gpuPower === 'high-performance' ? r.gpuPower : DEFAULT_PREFS.gpuPower,
       lowLatency: typeof r.lowLatency === 'boolean' ? r.lowLatency : DEFAULT_PREFS.lowLatency,
+      hdrDisplay: typeof r.hdrDisplay === 'boolean' ? r.hdrDisplay : DEFAULT_PREFS.hdrDisplay,
       framePacingMs: [0, 16, 33, 66].includes(Number(r.framePacingMs)) ? Number(r.framePacingMs) : DEFAULT_PREFS.framePacingMs,
       cacheTilePx: TILE_SIZES.includes(Number(r.cacheTilePx)) ? Number(r.cacheTilePx) : DEFAULT_PREFS.cacheTilePx,
       workerThreads: Math.round(num(r.workerThreads, 0, 16, DEFAULT_PREFS.workerThreads)),
+      workerComposite: r.workerComposite === true,
       engineDevice: ENGINE_CHOICES.some(([k]) => k === r.engineDevice) ? r.engineDevice as EngineDevice : DEFAULT_PREFS.engineDevice,
       zoomWheel: typeof r.zoomWheel === 'boolean' ? r.zoomWheel : DEFAULT_PREFS.zoomWheel,
       autoFirstSnapshot: typeof r.autoFirstSnapshot === 'boolean' ? r.autoFirstSnapshot : DEFAULT_PREFS.autoFirstSnapshot,
@@ -498,6 +501,7 @@ export function applyPrefs(engine: Engine, p: Prefs): void {
   framePacing.minMs = p.framePacingMs;
   setTileSize(p.cacheTilePx);
   setBandThreads(p.workerThreads);
+  setCompositeOnWorkers(p.workerComposite);
   renderCache.prefix = p.layerReuse;
   renderCache.effectBytes = p.effectCacheMB * 1048576;
   engine.setMemoryLimit(p.memoryLimitMB * 1048576);

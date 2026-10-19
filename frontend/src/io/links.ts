@@ -143,7 +143,7 @@ export async function placeLinked(engine: Engine, id: string, source: LinkSource
 export async function placeEmbedded(engine: Engine, file: File): Promise<void> {
   const img = await decodeImage(file, file.name), raster = new Raster(img.width, img.height);
   raster.ctx.drawImage(img.source, 0, 0);
-  engine.placeEmbedded(raster, file.name.replace(/\.[^.]+$/, ''));
+  engine.placeEmbedded(raster, file.name.replace(/\.[^.]+$/, ''), { name: file.name, mime: file.type, data: new Uint8Array(await file.arrayBuffer()) });
 }
 
 /** File > Package: the files behind the document's linked smart objects, named Links/<file name> (repeats numbered).

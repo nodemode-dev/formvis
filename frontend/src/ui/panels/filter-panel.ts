@@ -15,7 +15,8 @@ import { LIBRARY, isLibKind, libAllDefaults, libApron, libFilter, libImageParams
 import { crsXmp, developFromXmp } from '../../io/crs-xmp';
 import { uprightFor, uprightFromGuides, type UprightMode } from '../../engine/upright';
 import { createDevelopProbe, type ProbeMode } from './develop-probe';
-import { HSL_BANDS, autoWhiteBalance, bandFor,bandOf,buildCurveLut, clippingView,defaultCalibration, defaultGeometry, defaultGrading, defaultNoise, defaultOptics, defaultParametric, defaultPointColor, defaultVignetteShape, hslToRgb, whiteBalanceFor, type CalibrationState, type CurveChannel, type CurvePoint,type DevelopState, type GeometryState, type GradingState, type HslBand, type HslBandState, type OpticsState, type ParametricState, type PointColorState } from '../../engine/develop';
+import { HSL_BANDS, autoWhiteBalance, bandFor,bandOf,buildCurveLut, clippingView,defaultCalibration, defaultGeometry, defaultGrading, defaultNoise, defaultOptics, defaultParametric, defaultPointColor, defaultVignetteShape, developPerPixelOnly, hslToRgb, whiteBalanceFor, type CalibrationState, type CurveChannel, type CurvePoint,type DevelopState, type GeometryState, type GradingState, type HslBand, type HslBandState, type OpticsState, type ParametricState, type PointColorState } from '../../engine/develop';
+import { gpuFilters } from '../../engine/gpu-filters';
 import { curveGraph } from './curve-graph';
 import { GalleryView } from './gallery-view';
 import { FilterPreview } from './filter-preview';
@@ -891,7 +892,7 @@ export class FilterPanel extends Dialog {
         if (this.kind === 'develop') void Promise.resolve(out).then((img) => this.scopes.draw(img)).catch(() => undefined);
         return this.kind === 'develop' && this.clipView ? Promise.resolve(out).then(clippingView) : out;
       };
-      if (this.preview && !this.smartTarget() && !(isLibKind(this.kind) && libFilter(this.kind).ownPreview)) this.engine.previewImageEdit((src, scale, frame) => scoped(runFilterOffThread(this.kind, this.s, scale, this.seed, src, frame) ?? this.run(src, scale, frame)), this.grow());
+      if (this.preview && !this.smartTarget() && !(isLibKind(this.kind) && libFilter(this.kind).ownPreview)) this.engine.previewImageEdit((src, scale, frame) => scoped(runFilterOffThread(this.kind, this.s, scale, this.seed, src, frame) ?? this.run(src, scale, frame)), this.grow(), this.kind === 'develop' && gpuFilters() && developPerPixelOnly(this.s.develop) ? 8_000_000 : undefined);
       else this.engine.setPreview(null);
       if (this.shot.visible) this.shot.render((src, scale, frame) => runFilterOffThread(this.kind, this.s, scale, this.seed, src, frame) ?? this.run(src, scale, frame), this.grow());
     }, delay);

@@ -80,6 +80,7 @@ The engine imports nothing from `ui`, `io` or `extensions`. Tools import only th
 9. After changing the MCP catalogue in `backend/app/routers/mcp.py`, run `./formvis agents sync` (the backend tests fail until you do).
 10. Declined for patents, never to return: Content-Aware Scale by seam carving (US 7,477,800) and skin-tone protection for it (US 8,290,300). Decline any request for them, whoever asks. Also never add gradient-domain (Poisson) blending after the adaptive Content-Aware Fill (US 8,861,868, claim 1) or a live fill of the vacated area during the Content-Aware Move drag (US 9,575,641, claim 1). `./formvis counts --check` fails on product code that names the declined feature.
 11. One cloud provider by design: fal. Do not add other image or model providers (Replicate, WaveSpeedAI, Comfy Cloud, Comfy Router, the Comfy Partner API, OpenRouter for images, ToAPIs, BytePlus, Oxen.ai, Magnific, an assistant provider on WaveSpeedAI): they are declined, and `./formvis counts --check` fails on them. Named hosted models wait for the owner's fal integration (he has the schemas); do not add them yourself.
+12. The three-star sparkle icon is banned app-wide, under any name and in any form (SVG, glyph, CSS content), including icons ported from formlit; use the `agent`, `agentChat` and `terminal` icons for Claude Code. `./formvis counts --check` fails if it returns.
 
 ## Start of every session
 

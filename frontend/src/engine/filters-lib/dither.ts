@@ -1,6 +1,7 @@
 import type { LibColor, LibFilter, LibImage, LibValues } from '../filter-library';
 import { decodeMap } from './distort';
 import { boxOf, copyImage, luma } from './shared';
+import { wasmDither } from '../wasm-kernels';
 
 const num = (v: LibValues, k: string): number => v[k] as number;
 const str = (v: LibValues, k: string): string => v[k] as string;
@@ -39,6 +40,7 @@ const MATRICES: Record<string, { n: number; m: number[] }> = {
 export function ditherImage(img: ImageData, pattern: string, levels: number, pixel: number, colour: boolean, amount: number, ink: LibColor, paper: LibColor, ox: number, oy: number): ImageData {
   const { n, m } = MATRICES[pattern] ?? MATRICES.bayer4, q = Math.max(1, Math.round(levels) - 1), px = Math.max(1, Math.round(pixel));
   const out = copyImage(img), d = out.data, w = img.width, a = Math.max(0, Math.min(1, amount / 100));
+  if (wasmDither(d, w, m, n, q, px, colour, a, ink, paper, ox, oy)) return out;
   const cut = (v: number, t: number): number => {
     const s = (v / 255) * q, lo = Math.floor(s), frac = s - lo;
     const hard = (frac > t ? lo + 1 : lo) / q, soft = s / q;

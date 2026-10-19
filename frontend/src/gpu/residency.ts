@@ -1,4 +1,4 @@
-import { rasterOf } from '../engine/surface';
+import { damageOf } from '../engine/surface';
 import type { Rect } from '../engine/types';
 
 /** The side of the tiles a changed layer is re-uploaded in. */
@@ -13,7 +13,7 @@ export interface UploadStats { uploads: number; tiled: number; bytes: number }
  *  whole texture must go up (the changes are unknown, left the raster's log, or cover the texture). */
 export function dirtyBox(image: unknown, from: number, to: number, W: number, H: number): Rect | null {
   if (!Number.isFinite(from) || !image) return null;
-  const r = rasterOf(image as CanvasImageSource)?.damageSince(from, to);
+  const r = damageOf(image as object)?.damageSince(from, to);
   if (!r || r.w <= 0 || r.h <= 0) return null;
   const T = UPLOAD_TILE, x0 = Math.max(0, Math.floor(r.x / T) * T), y0 = Math.max(0, Math.floor(r.y / T) * T);
   const x1 = Math.min(W, Math.ceil((r.x + r.w) / T) * T), y1 = Math.min(H, Math.ceil((r.y + r.h) / T) * T);

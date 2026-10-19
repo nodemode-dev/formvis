@@ -1,12 +1,14 @@
 import type { Commands } from './commands';
-import { el, setHidden, setText } from './dom';
+import { el, setClass, setHidden, setText } from './dom';
+import { t } from './i18n';
 import { icon } from './icons';
 import { readChoice, setTheme } from './themes';
 import { enhanceSelect } from './dropdown';
 
 /** The title bar's right-hand tools, as the target's (Phase 21, UI_SPEC.md section 2): a theme toggle (Studio Dark and
- *  Light); a search that finds and runs any enabled command by name, with its shortcut shown; the workspace dropdown,
- *  each workspace an arrangement of the panels for a kind of work; and Lock Workspace. */
+ *  Light); a search that finds and runs any enabled command by name, with its shortcut shown; the Claude Code and Show
+ *  Terminal buttons, which show the terminal dock on that kind of tab; the workspace dropdown, each workspace an
+ *  arrangement of the panels for a kind of work; and Lock Workspace. */
 export interface Workspace { id: string; label: string; order: string[]; hidden: string[]; propsColumn: boolean }
 export const WORKSPACES: readonly Workspace[] = [
   // The Generate panel (generative fill, models, ComfyUI and NodeMode) sits near the top of the dock in the photo and painting workspaces.
@@ -27,6 +29,7 @@ export interface TitleToolsDeps {
   arrange: (w: Workspace) => void;
   locked: () => boolean;
   setLocked: (on: boolean) => void;
+  dock?: (kind: 'claude' | 'shell') => void;
 }
 
 const CUSTOM_KEY = 'formvis.customWorkspaces';
@@ -41,6 +44,8 @@ function saveCustom(list: Workspace[]): void { try { localStorage.setItem(CUSTOM
 export class TitleTools {
   readonly root = el('<div class="cv-title-tools"></div>');
   private ws!: HTMLSelectElement;
+  private claudeBtn!: HTMLButtonElement;
+  private shellBtn!: HTMLButtonElement;
   private readonly customGroup = el<HTMLOptGroupElement>('<optgroup label="Custom"></optgroup>');
   private custom: Workspace[] = loadCustom();
 
@@ -105,6 +110,12 @@ export class TitleTools {
   constructor(host: HTMLElement, private readonly d: TitleToolsDeps) {
     const theme = el<HTMLButtonElement>('<button class="cv-tt-btn cv-tt-bare" type="button" title="Light or dark" aria-label="Light or dark"></button>');
     const search = el<HTMLButtonElement>(`<button class="cv-tt-btn" type="button" title="Search commands" aria-label="Search commands">${icon('search', 16)}</button>`);
+    const claude = el<HTMLButtonElement>(`<button class="cv-tt-btn" type="button" title="${t('Claude Code')}" aria-label="${t('Claude Code')}" aria-pressed="false">${icon('agent', 16)}</button>`);
+    const shell = el<HTMLButtonElement>(`<button class="cv-tt-btn" type="button" title="${t('Show Terminal')}" aria-label="${t('Show Terminal')}" aria-pressed="false">${icon('terminal', 16)}</button>`);
+    claude.addEventListener('click', () => d.dock?.('claude'));
+    shell.addEventListener('click', () => d.dock?.('shell'));
+    this.claudeBtn = claude;
+    this.shellBtn = shell;
     const ws = el<HTMLSelectElement>(`<select class="cv-tt-select" aria-label="Workspace"><optgroup label="Built-in">${WORKSPACES.map((w) => `<option value="${w.id}">${w.label}</option>`).join('')}</optgroup></select>`);
     const lock = el<HTMLButtonElement>('<button class="cv-tt-btn" type="button"></button>');
     const syncTheme = (): void => {
@@ -148,9 +159,18 @@ export class TitleTools {
       if (e.key === 'Enter') { const b = this.results.children[this.picked] as HTMLElement | undefined; if (b) b.click(); }
     });
     document.addEventListener('pointerdown', (e) => { if (!this.pop.hidden && !this.pop.contains(e.target as Node) && !search.contains(e.target as Node)) this.close(); });
-    this.root.append(theme, search, ws, lock, this.pop);
+    this.root.append(theme, search, claude, shell, ws, lock, this.pop);
     enhanceSelect(ws);   // shown as the target's list (s23)
     host.appendChild(this.root);
+  }
+
+  /** The Claude Code and Show Terminal buttons light while the dock shows that kind of tab. */
+  syncDock(open: boolean, kind: string | null): void {
+    for (const [k, b] of [['claude', this.claudeBtn], ['shell', this.shellBtn]] as const) {
+      const on = open && kind === k;
+      setClass(b, 'is-on', on);
+      if (b.getAttribute('aria-pressed') !== String(on)) b.setAttribute('aria-pressed', String(on));
+    }
   }
 
   open(): void {

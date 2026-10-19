@@ -2,6 +2,7 @@ import type { AdjustmentLayer as PsdAdjustment } from 'ag-psd';
 import { COLOR_RANGES, defaultAdjustmentData, defaultHsv, hsvFromData, hsvToData, type Adjustment, type AdjustmentKind } from '../engine';
 import { DEFAULT_BANDS, type ColorRange } from '../engine/adjust';
 import { isParamKind } from '../engine/adjust-params';
+import { lutFileToCube } from '../engine/lut-read';
 import { fromBase64, toBase64 } from './icc-read';
 
 /** formvis's adjustment layers and PSD's, both ways, so a PSD keeps them live instead of dropping them. The
@@ -92,6 +93,13 @@ export function toPsdAdjustment(a: Adjustment): PsdAdjustment | null {
       const stops = list.length >= 2 ? list : [{ at: 0, c: c(d.shadows, 0) }, { at: 1, c: c(d.highlights, 1) }];
       return { type: 'gradient map', name: 'formvis', gradientType: 'solid', reverse: d.reversed === true, dither: d.dither === true, colorStops: stops.map((s) => ({ color: s.c, location: s.at, midpoint: 0.5 })), opacityStops: [{ opacity: 1, location: 0, midpoint: 0.5 }, { opacity: 1, location: 1, midpoint: 0.5 }] };
     }
+    case 'colorLookup': {
+      // Only a loaded .cube or .3dl table has a PSD form; the built-in looks do not.
+      const cube = typeof d.cube === 'string' ? d.cube : '';
+      if (!cube) return null;
+      const title = String(d.cubeName || 'formvis').replace(/\.(cube|3dl)$/i, '');
+      return { type: 'color lookup', lookupType: '3dlut', name: title, dither: d.dither === true, lutFormat: 'cube', dataOrder: 'rgb', tableOrder: 'rgb', lut3DFileData: new TextEncoder().encode(cube), lut3DFileName: `${title}.cube` };
+    }
     default: return null;
   }
 }
@@ -123,7 +131,7 @@ export function restorePsdAdjustment(kept: Record<string, unknown> | null | unde
   return walk(kept) as PsdAdjustment;
 }
 
-/** A formvis adjustment for a PSD one, or null when formvis has no such adjustment (Color Lookup and others). */
+/** A formvis adjustment for a PSD one, or null when formvis has no such adjustment (a Color Lookup that is not a .cube or .3dl table, and others). */
 export function fromPsdAdjustment(p: PsdAdjustment): Adjustment | null {
   const o = p as unknown as J, mk = (kind: AdjustmentKind, data: J): Adjustment => {
     const def = defaultAdjustmentData(kind) as J, out: J = { ...def, ...data }, key = nestedKey(kind);
@@ -182,6 +190,13 @@ export function fromPsdAdjustment(p: PsdAdjustment): Adjustment | null {
       const c = (v: J) => ({ red: num(v.r, 0) / 255, green: num(v.g, 0) / 255, blue: num(v.b, 0) / 255 });
       const all = stops.map((s) => ({ at: Math.min(1, Math.max(0, num(s.location, 0))), ...c((s.color ?? { r: 0, g: 0, b: 0 }) as J) }));
       return mk('gradientMap', { shadows: c(first), highlights: c(last), reversed: o.reverse === true, ...(all.length > 2 ? { stops: all } : {}), ...(o.dither === true ? { dither: true } : {}) });
+    }
+    case 'color lookup': {
+      // A 3D table held as .cube or .3dl text opens live; a profile lookup or a .look file stays with the layer as the file had it.
+      const raw = o.lut3DFileData, file = typeof o.lut3DFileName === 'string' ? o.lut3DFileName : '', title = typeof o.name === 'string' ? o.name : '';
+      if (!(raw instanceof Uint8Array) || !raw.length || raw.length > 64_000_000 || (o.lookupType !== undefined && o.lookupType !== '3dlut')) return null;
+      const cube = lutFileToCube(/\.(cube|3dl)$/i.test(file) ? file : `${file || title || 'lut'}.${o.lutFormat === '3dl' ? '3dl' : 'cube'}`, new TextDecoder().decode(raw));
+      return cube ? mk('colorLookup', { cube, cubeName: file || title, dither: o.dither === true }) : null;
     }
     default: return null;
   }

@@ -1,5 +1,5 @@
 import type { Engine } from '../engine';
-import type { Layer, ParaAttrs, TextSpec } from '../engine/types';
+import { LAYER_ROLES, LAYER_ROLE_LABELS, layerRoleOf, type Layer, type ParaAttrs, type TextSpec } from '../engine/types';
 import { baseDirection, paraOf } from '../engine/text';
 import { TYPE_LANGUAGES, setType } from '../extensions/tools/type';
 import { axesOf, featuresFromText, featuresToText, variationsFromText, variationsToText } from '../engine/opentype';
@@ -209,6 +209,10 @@ export class PropertiesColumn {
       <div class="cv-props-transform cv-props-live-acts" hidden><button class="cv-btn" type="button" data-pcmd="layer-content-options" data-live-for="fill adjustment" hidden>Edit...</button><button class="cv-btn" type="button" data-pcmd="edit-contents" data-live-for="smart" hidden>Edit Contents</button><button class="cv-btn" type="button" data-pcmd="smart-filters" data-live-for="smart" hidden>Smart Filters...</button><button class="cv-btn" type="button" data-pcmd="update-linked" data-live-for="link" hidden>Update</button><button class="cv-btn" type="button" data-pcmd="relink" data-live-for="link" hidden>Relink...</button><button class="cv-btn" type="button" data-pcmd="shape-style" data-live-for="shape" hidden>Fill and Stroke...</button><button class="cv-btn" type="button" data-pcmd="artboard-options" data-live-for="artboard" hidden>Artboard Options...</button></div>
       <button class="cv-props-section cv-props-quick-head" type="button" aria-expanded="true" hidden>${icon('chevronDown', 12)}<span>Quick Actions</span></button>
       <div class="cv-props-transform cv-props-quick" hidden><button class="cv-btn" type="button" data-pcmd="remove-bg" data-quick-for="pixel" hidden>Remove Background</button><button class="cv-btn" type="button" data-pcmd="select-subject" data-quick-for="pixel" hidden>Select Subject</button><button class="cv-btn" type="button" data-pcmd="convert-smart" data-quick-for="pixel" hidden>Convert to Smart Object</button><button class="cv-btn" type="button" data-pcmd="rasterize" data-quick-for="raster" hidden>Rasterize Layer</button><button class="cv-btn" type="button" data-pcmd="add-mask" data-quick-for="maskless" hidden>Add Layer Mask</button></div>
+      <button class="cv-props-section cv-props-role-head" type="button" aria-expanded="true" hidden>${icon('chevronDown', 12)}<span>Generation Role</span></button>
+      <div class="cv-props-transform cv-props-role" hidden><label class="cv-props-field"><span>Role</span><select class="cv-input cv-props-role-select" aria-label="Layer role"><option value="">None</option>${LAYER_ROLES.map((r) => `<option value="${r}">${LAYER_ROLE_LABELS[r]}</option>`).join('')}</select></label></div>
+      <button class="cv-props-section cv-props-align-head" type="button" aria-expanded="true" hidden>${icon('chevronDown', 12)}<span>Align</span></button>
+      <div class="cv-props-transform cv-props-align" hidden>${([['left', 'alignLeftEdge', 'Align left edges'], ['hcenter', 'alignHcenterEdge', 'Align horizontal centers'], ['right', 'alignRightEdge', 'Align right edges'], ['top', 'alignTopEdge', 'Align top edges'], ['vcenter', 'alignVcenterEdge', 'Align vertical centers'], ['bottom', 'alignBottomEdge', 'Align bottom edges']] as const).map(([k, ic, tip]) => `<button class="cv-btn cv-icon-btn" type="button" data-pcmd="align-${k}" title="${tip}" aria-label="${tip}">${icon(ic, 16)}</button>`).join('')}</div>
       <button class="cv-props-section cv-props-doc-head" type="button" aria-expanded="true">${icon('chevronDown', 12)}<span>Document</span></button>
       <dl class="cv-props-doc"><dt>Name</dt><dd data-doc="name"></dd><dt>Size</dt><dd data-doc="size"></dd><dt>Resolution</dt><dd data-doc="res"></dd><dt>Mode</dt><dd data-doc="mode"></dd><dt>Profile</dt><dd data-doc="profile"></dd><dt>Layers</dt><dd data-doc="layers"></dd></dl>
     </div>`);
@@ -267,6 +271,10 @@ export class PropertiesColumn {
     const liveBtns = Array.from(liveActs.querySelectorAll<HTMLButtonElement>('[data-live-for]'));
     const quickHead = body.querySelector('.cv-props-quick-head') as HTMLButtonElement, quickActs = body.querySelector('.cv-props-quick') as HTMLElement, quickBtns = Array.from(quickActs.querySelectorAll<HTMLButtonElement>('[data-quick-for]'));
     quickHead.addEventListener('click', () => { quickHead.setAttribute('aria-expanded', String(quickHead.getAttribute('aria-expanded') !== 'true')); this.refreshers.forEach((r) => r()); });
+    const roleHead = body.querySelector('.cv-props-role-head') as HTMLButtonElement, roleBody = body.querySelector('.cv-props-role') as HTMLElement, roleSel = body.querySelector('.cv-props-role-select') as HTMLSelectElement;
+    const alignHead = body.querySelector('.cv-props-align-head') as HTMLButtonElement, alignBody = body.querySelector('.cv-props-align') as HTMLElement;
+    for (const h of [roleHead, alignHead]) h.addEventListener('click', () => { h.setAttribute('aria-expanded', String(h.getAttribute('aria-expanded') !== 'true')); this.refreshers.forEach((r) => r()); });
+    roleSel.addEventListener('change', () => e.setLayerRole(roleSel.value === '' ? null : (roleSel.value as (typeof LAYER_ROLES)[number])));
     // A live shape's own numbers, built once: the rows that fit the shape's kind are shown, the others stay hidden.
     const shapeGrid = el('<div class="cv-props-grid cv-props-shape" hidden></div>');
     const sf = {
@@ -338,6 +346,11 @@ export class PropertiesColumn {
       for (const b of quickBtns) setHidden(b, !(b.dataset.quickFor ?? '').split(' ').some((k) => quick.has(k)));
       setHidden(quickHead, !quick.size);
       setHidden(quickActs, !quick.size || quickHead.getAttribute('aria-expanded') !== 'true');
+      setHidden(roleHead, !l);
+      setHidden(roleBody, !l || roleHead.getAttribute('aria-expanded') !== 'true');
+      if (roleSel.value !== (l ? layerRoleOf(l) ?? '' : '') && document.activeElement !== roleSel) roleSel.value = l ? layerRoleOf(l) ?? '' : '';
+      setHidden(alignHead, !a);
+      setHidden(alignBody, !a || alignHead.getAttribute('aria-expanded') !== 'true');
       const hex = (c: { r: number; g: number; b: number }): string => `#${[c.r, c.g, c.b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
       if (a?.smart) {
         setText(liveCell('kind'), a.smart.link ? 'Linked Smart Object' : 'Smart Object');

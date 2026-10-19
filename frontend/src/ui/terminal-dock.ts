@@ -1,9 +1,13 @@
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
-import { api, socketTo, type TerminalInfo } from '../io/api';
-import { el, isMac, q, setDisabled, setText } from './dom';
+import { api, ApiError, socketTo, type TerminalInfo } from '../io/api';
+import { ChatPane } from './chat-pane';
+import { el, isMac, q, setDisabled, setHidden, setText } from './dom';
+import { t } from './i18n';
 import { icon } from './icons';
+
+export type DockKind = 'shell' | 'claude' | 'chat';
 
 const KEY = 'formvis.terminal';
 const MIN_H = 120;
@@ -15,7 +19,9 @@ interface Tab {
   host: HTMLElement;
   tab: HTMLElement;
   socket: WebSocket | null;
-  agent: boolean;
+  kind: 'shell' | 'claude' | 'agent';
+  seen: boolean;
+  closed: boolean;
 }
 
 function token(name: string, fallback: string): string {
@@ -38,28 +44,47 @@ function keep(open: boolean, h: number): void {
   try { localStorage.setItem(KEY, JSON.stringify({ open, h })); } catch { return; }
 }
 
-/** The terminal dock (DEV_PLAN 28.5): the window's bottom band of engine PTYs, one tab each, plus the read-only Claude tab.
- *  Its open state and height live on documentElement (data-ft-dock, data-ft-dock-h, --ft-dock-size), written before the
- *  first paint by index.html's boot script, so the band's row is reserved from the first frame and opening moves nothing. */
+/** The terminal dock (DEV_PLAN 28.5): the window's bottom band of engine PTYs, one tab each (shells and Claude Code), the
+ *  Chat tab, and the ask bar at its foot. The head, the stage and the ask bar are built once; tabs are added and removed
+ *  one by one and the status note is patched in place. Its open state and height live on documentElement (data-ft-dock,
+ *  data-ft-dock-h, --ft-dock-size), written before the first paint by index.html's boot script, so the band's row is
+ *  reserved from the first frame and opening moves nothing. */
 export class TerminalDock {
-  readonly root = el(`<section class="ft-dock" aria-label="Terminal">
-    <div class="ft-dock-grip" role="separator" aria-orientation="horizontal" aria-label="Resize the terminal"></div>
+  readonly root = el(`<section class="ft-dock" aria-label="${t('Terminal')}">
+    <div class="ft-dock-grip" role="separator" aria-orientation="horizontal" aria-label="${t('Resize the terminal')}"></div>
     <div class="ft-dock-head">
-      <div class="ft-dock-tabs" role="tablist"></div>
+      <div class="ft-dock-tabs" role="tablist" aria-label="${t('Terminals')}"></div>
       <span class="ft-dock-spacer"></span>
-      <button type="button" class="cv-icon-btn ft-dock-new" aria-label="New terminal" title="New terminal">${icon('plus', 16)}</button>
-      <button type="button" class="cv-icon-btn ft-dock-restart" aria-label="Restart terminal" title="Restart this terminal's shell">${icon('refresh', 16)}</button>
-      <button type="button" class="cv-icon-btn ft-dock-hide" aria-label="Hide terminal" title="Hide terminal (${isMac ? 'Cmd' : 'Ctrl'}+J); the shells keep running">${icon('chevronDown', 16)}</button>
+      <button type="button" class="cv-tt-btn ft-dock-new" title="${t('New Terminal')}" aria-label="${t('New Terminal')}">${icon('plus', 15)}</button>
+      <button type="button" class="cv-tt-btn ft-dock-chat" title="${t('Chat with Claude about your picture')}" aria-label="${t('Chat with Claude')}">${icon('agentChat', 15)}</button>
+      <button type="button" class="cv-tt-btn ft-dock-claude" title="${t('Claude Code')}" aria-label="${t('Claude Code')}">${icon('agent', 15)}</button>
+      <button type="button" class="cv-tt-btn ft-dock-restart" title="${t('Restart this tab')}" aria-label="${t('Restart this tab')}">${icon('refresh', 15)}</button>
+      <button type="button" class="cv-tt-btn ft-dock-hide" title="${t('Hide Terminal')} (${isMac ? 'Cmd' : 'Ctrl'}+J); ${t('programs keep running')}" aria-label="${t('Hide Terminal')}">${icon('close', 15)}</button>
     </div>
-    <div class="ft-dock-stage"></div>
+    <div class="ft-dock-stage"><p class="ft-dock-empty cv-note" hidden>${t('No terminal is open. Start a shell with the plus button, Claude Code with the agent button, or Chat with the speech bubble.')}</p>
+      <div class="ft-dock-note" role="status" hidden><span class="ft-dock-note-text"></span><code class="ft-dock-note-cmd" hidden></code><button type="button" class="cv-btn ft-dock-note-copy" hidden>${t('Copy')}</button><button type="button" class="cv-tt-btn ft-dock-note-x" title="${t('Dismiss')}" aria-label="${t('Dismiss')}">${icon('close', 12)}</button></div></div>
+    <form class="ft-dock-ask" autocomplete="off">
+      <span class="ft-dock-ask-mark">${icon('agent', 15)}</span>
+      <input class="cv-input ft-dock-ask-input" type="text" spellcheck="false" placeholder="${t('Ask Claude Code to work on your picture')}" aria-label="${t('Ask Claude Code')}">
+      <button type="submit" class="cv-tt-btn ft-dock-ask-send" title="${t('Send to Claude Code')}" aria-label="${t('Send to Claude Code')}">${icon('send', 14)}</button>
+    </form>
   </section>`);
   private readonly tabsEl = q(this.root, '.ft-dock-tabs');
   private readonly stage = q(this.root, '.ft-dock-stage');
+  private readonly empty = q(this.root, '.ft-dock-empty');
+  private readonly note = q(this.root, '.ft-dock-note');
+  private readonly noteText = q(this.root, '.ft-dock-note-text');
+  private readonly noteCmd = q(this.root, '.ft-dock-note-cmd');
+  private readonly noteCopy = q<HTMLButtonElement>(this.root, '.ft-dock-note-copy');
+  private readonly ask = q<HTMLInputElement>(this.root, '.ft-dock-ask-input');
   private readonly restartBtn = q<HTMLButtonElement>(this.root, '.ft-dock-restart');
   private readonly tabs = new Map<string, Tab>();
+  private chat: ChatPane | null = null;
+  private chatTab: HTMLElement | null = null;
   private active: string | null = null;
   private started = false;
   private pending: Promise<void> | null = null;
+  onTab: () => void = () => undefined;
   onChange: () => void = () => undefined;
   /** True when Mod+J belongs to Layer via Copy (a layer is open and focus is outside the dock); the window's key handler then runs it. */
   yieldsKey: () => boolean = () => false;
@@ -67,15 +92,21 @@ export class TerminalDock {
   constructor() {
     const html = document.documentElement;
     q(this.root, '.ft-dock-new').addEventListener('click', () => void this.open());
+    q(this.root, '.ft-dock-claude').addEventListener('click', () => void this.claude());
+    q(this.root, '.ft-dock-chat').addEventListener('click', () => void this.showChat());
     q(this.root, '.ft-dock-hide').addEventListener('click', () => this.toggle(false));
     this.restartBtn.addEventListener('click', () => void this.restart());
+    q(this.root, '.ft-dock-ask').addEventListener('submit', (e) => { e.preventDefault(); void this.send(); });
+    q(this.root, '.ft-dock-note-x').addEventListener('click', () => this.dismiss());
+    this.noteCopy.addEventListener('click', () => { void navigator.clipboard?.writeText(this.noteCmd.textContent ?? '').catch(() => undefined); });
+    this.ask.addEventListener('keydown', (e) => { e.stopPropagation(); });
     new ResizeObserver(() => this.fitActive()).observe(this.stage);
     document.addEventListener('keydown', (e) => {
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.code === 'KeyJ' && !e.repeat && !(this.yieldsKey() && !this.root.contains(e.target as Node))) { e.preventDefault(); e.stopPropagation(); this.toggle(); }
     }, true);
     document.addEventListener('nm:ui-settings-changed', () => {
       const size = termFontSize();
-      for (const t of this.tabs.values()) { t.term.options.theme = this.theme(); if (t.term.options.fontSize !== size) t.term.options.fontSize = size; }
+      for (const x of this.tabs.values()) { x.term.options.theme = this.theme(); if (x.term.options.fontSize !== size) x.term.options.fontSize = size; }
       this.fitActive();
     });
     this.grip(q(this.root, '.ft-dock-grip'), html);
@@ -84,13 +115,14 @@ export class TerminalDock {
 
   isOpen(): boolean { return document.documentElement.getAttribute('data-ft-dock') === 'open'; }
 
-  toggle(on = !this.isOpen()): void {
+  toggle(on = !this.isOpen(), seed: DockKind | 'none' = 'shell'): void {
     const html = document.documentElement;
     html.setAttribute('data-ft-dock', on ? 'open' : 'closed');
     keep(on, this.height());
     this.onChange();
     window.dispatchEvent(new Event('resize'));
-    if (on) void this.ensure();
+    if (on) void this.ensure(seed);
+    this.onTab();
   }
 
   async newTerminal(): Promise<void> {
@@ -98,9 +130,34 @@ export class TerminalDock {
     else await this.open();
   }
 
+  activeKind(): DockKind | null {
+    if (this.active === 'chat') return 'chat';
+    const kind = this.active ? this.tabs.get(this.active)?.kind : undefined;
+    return kind === 'shell' || kind === 'claude' ? kind : null;
+  }
+
+  isShowing(kind: DockKind): boolean { return this.isOpen() && this.activeKind() === kind; }
+
+  /** Opens the dock on a tab of this kind: the first one there is, or a new one. */
+  async show(kind: DockKind): Promise<void> {
+    if (!this.isOpen()) this.toggle(true, 'none');
+    await this.ensure('none');
+    if (kind === 'chat') { await this.showChat(); return; }
+    const own = [...this.tabs.values()].find((x) => x.kind === kind);
+    if (own) this.select(own.id);
+    else if (kind === 'claude') await this.claude();
+    else await this.open();
+  }
+
+  /** The title bar buttons and the Window menu: hides the dock while this kind of tab is showing, shows it on one otherwise. */
+  async toggleKind(kind: DockKind): Promise<void> {
+    if (this.isShowing(kind)) this.toggle(false);
+    else await this.show(kind);
+  }
+
   async sync(): Promise<void> {
     if (!this.started) return;
-    for (const t of await this.list()) if (t.kind === 'agent') this.adopt(t);
+    for (const info of await this.list()) if (info.kind === 'agent') this.adopt(info);
   }
 
   private height(): number {
@@ -135,24 +192,109 @@ export class TerminalDock {
     try { return await api.terminals(); } catch { return []; }
   }
 
-  private ensure(): Promise<void> {
-    this.pending ??= this.boot().finally(() => { this.pending = null; });
+  private ensure(seed: DockKind | 'none' = 'shell'): Promise<void> {
+    this.pending ??= this.boot(seed).finally(() => { this.pending = null; });
     return this.pending;
   }
 
-  private async boot(): Promise<void> {
+  private async boot(seed: DockKind | 'none'): Promise<void> {
     if (!this.started) {
       this.started = true;
       const listed = await this.list();
-      for (const t of listed) this.adopt(t);
+      for (const info of listed) this.adopt(info);
     }
-    if (![...this.tabs.values()].some((t) => !t.agent)) await this.open();
+    const shown = !!this.chatTab || [...this.tabs.values()].some((x) => x.kind !== 'agent');
+    if (!shown && seed === 'shell') await this.open();
+    setHidden(this.empty, !!this.chatTab || this.tabs.size > 0);
     this.fitActive();
     this.focus();
+    this.onTab();
   }
 
   focus(): void {
-    if (this.active) this.tabs.get(this.active)?.term.focus();
+    if (this.active === 'chat') this.ask.focus({ preventScroll: true });
+    else if (this.active) this.tabs.get(this.active)?.term.focus();
+  }
+
+  async showChat(): Promise<void> {
+    if (!this.chat) {
+      const chat = new ChatPane();
+      chat.onFail = (err) => this.warn(err);
+      chat.onHandoff = (session) => void this.claude(undefined, session);
+      chat.onBash = () => void this.sync();
+      this.chat = chat;
+      this.stage.appendChild(chat.root);
+    }
+    if (!this.chatTab) {
+      const tab = el(`<button type="button" class="ft-dock-tab is-chat" role="tab" aria-selected="false">${icon('agentChat', 13)}<span class="ft-dock-tab-title">${t('Chat')}</span><span class="ft-dock-tab-x" role="button" aria-label="${t('Close the Chat tab')}">${icon('close', 11)}</span></button>`);
+      tab.addEventListener('click', (e) => {
+        if ((e.target as HTMLElement).closest('.ft-dock-tab-x')) this.closeChat();
+        else this.select('chat');
+      });
+      this.tabsEl.prepend(tab);
+      this.chatTab = tab;
+    }
+    setHidden(this.empty, true);
+    this.select('chat');
+    await this.chat.load();
+  }
+
+  private closeChat(): void {
+    this.chatTab?.remove();
+    this.chatTab = null;
+    this.chat?.release();
+    if (this.chat) setHidden(this.chat.root, true);
+    if (this.active === 'chat') {
+      this.active = null;
+      const next = [...this.tabs.keys()].pop();
+      if (next) this.select(next);
+      else { setHidden(this.empty, false); this.syncAsk(); setDisabled(this.restartBtn, true); this.onTab(); }
+    }
+  }
+
+  private syncAsk(): void {
+    const chat = this.active === 'chat';
+    const text = chat ? t('Ask Claude about your picture (Enter to send)') : t('Ask Claude Code to work on your picture');
+    if (this.ask.placeholder !== text) this.ask.placeholder = text;
+  }
+
+  private async send(): Promise<void> {
+    const text = this.ask.value.trim();
+    if (!text) return;
+    if (this.active === 'chat' && this.chat) {
+      if (this.chat.isBusy()) return;
+      this.ask.value = '';
+      await this.chat.send(text);
+      return;
+    }
+    this.ask.value = '';
+    const ok = await this.claude(text);
+    if (!ok && !this.ask.value) this.ask.value = text;
+  }
+
+  private say(text: string, cmd = ''): void {
+    setText(this.noteText, text);
+    setText(this.noteCmd, cmd);
+    setHidden(this.noteCmd, cmd === '');
+    setHidden(this.noteCopy, cmd === '');
+    setHidden(this.note, false);
+  }
+
+  private dismiss(): void { setHidden(this.note, true); }
+
+  private warn(err: unknown): void {
+    this.say(err instanceof Error ? err.message : t('The request failed.'));
+  }
+
+  private async fail(err: unknown, what: 'shell' | 'claude'): Promise<void> {
+    if (what === 'shell') { this.warn(err); return; }
+    const status = await api.claudeCodeStatus();
+    if (status && !status.installed) {
+      this.say(t('Claude Code is not installed. Install it with the command below, then sign in once by running claude in a terminal.'), status.install);
+      return;
+    }
+    if (err instanceof ApiError && (err.status === 404 || err.status === 405) && /^(Not Found|Method Not Allowed)$/i.test(err.message)) this.say(t('This copy of the formvis engine cannot run Claude Code in a tab yet. Restart the engine, then try again.'));
+    else this.say(`${t('Claude Code could not be started.')} ${err instanceof Error ? err.message : ''}`.trim());
   }
 
   private theme() {
@@ -174,11 +316,35 @@ export class TerminalDock {
     try {
       const info = await api.openTerminal(100, 24);
       this.mount(info, true);
-    } catch { return; }
+      this.dismiss();
+    } catch (err) { await this.fail(err, 'shell'); }
+  }
+
+  /** Opens Claude Code in a tab (the live one is reused; a prompt is typed into it) or resumes a chat's session. False when it could not start. */
+  async claude(prompt?: string, resume?: string): Promise<boolean> {
+    const size = this.size();
+    try {
+      const info = await api.openClaude({ prompt: prompt || undefined, resume: resume || undefined, cols: size.cols, rows: size.rows });
+      if (!this.isOpen()) this.toggle(true, 'none');
+      if (this.tabs.has(info.id)) this.select(info.id);
+      else this.mount(info, true);
+      this.dismiss();
+      return true;
+    } catch (err) {
+      await this.fail(err, 'claude');
+      return false;
+    }
+  }
+
+  private size(): { cols: number; rows: number } {
+    const tab = this.active ? this.tabs.get(this.active) : null;
+    return tab ? { cols: tab.term.cols, rows: tab.term.rows } : { cols: 100, rows: 20 };
   }
 
   private mount(info: TerminalInfo, show: boolean): void {
-    const agent = info.kind === 'agent';
+    if (this.tabs.has(info.id)) { if (show) this.select(info.id); return; }
+    const kind = info.kind === 'claude' || info.kind === 'agent' ? info.kind : 'shell';
+    const agent = kind === 'agent';
     const term = new Terminal({
       fontFamily: token('--font-mono', 'monospace'), fontSize: termFontSize(), lineHeight: 1.25, cursorBlink: !agent, disableStdin: agent,
       scrollback: 5000, theme: this.theme(), overviewRuler: { width: 0 },
@@ -186,88 +352,101 @@ export class TerminalDock {
     const fit = new FitAddon();
     term.loadAddon(fit);
     const host = el('<div class="ft-term" hidden></div>');
-    const tab = el(`<button type="button" class="ft-dock-tab" role="tab"><span class="ft-dock-tab-title"></span><span class="ft-dock-tab-x" aria-label="Close terminal">${icon('close', 12)}</span></button>`);
+    const tab = el(`<button type="button" class="ft-dock-tab${kind === 'claude' ? ' is-claude' : ''}${agent ? ' is-agent' : ''}" role="tab" aria-selected="false">${icon(kind === 'claude' ? 'agent' : 'terminal', 13)}<span class="ft-dock-tab-title"></span><span class="ft-dock-tab-x" role="button" aria-label="${t('Close this tab')}">${icon('close', 11)}</span></button>`);
     setText(q(tab, '.ft-dock-tab-title'), info.title);
-    tab.classList.toggle('is-agent', agent);
-    if (agent) tab.title = "Claude's commands, read only";
+    if (agent) tab.title = t("Claude's commands, read only");
     tab.addEventListener('click', (e) => {
       if ((e.target as HTMLElement).closest('.ft-dock-tab-x')) void this.close(info.id);
       else this.select(info.id);
     });
     this.stage.appendChild(host);
     this.tabsEl.appendChild(tab);
-    const t: Tab = { id: info.id, term, fit, host, tab, socket: null, agent };
-    this.tabs.set(info.id, t);
+    const entry: Tab = { id: info.id, term, fit, host, tab, socket: null, kind, seen: false, closed: false };
+    this.tabs.set(info.id, entry);
+    setHidden(this.empty, true);
     term.open(host);
     if (agent) term.write('\x1b[?25l');
     if (show) this.select(info.id, !agent);
-    this.connect(t);
+    this.connect(entry);
   }
 
-  private connect(t: Tab): void {
-    const socket = socketTo(`/terminal/${t.id}/stream`);
+  private connect(entry: Tab): void {
+    const socket = socketTo(`/terminal/${entry.id}/stream`);
     socket.binaryType = 'arraybuffer';
-    t.socket = socket;
-    socket.addEventListener('open', () => this.sendSize(t));
+    entry.socket = socket;
+    socket.addEventListener('open', () => this.sendSize(entry));
     socket.addEventListener('message', (msg) => {
-      if (typeof msg.data === 'string') { t.term.write(msg.data); return; }
+      entry.seen = true;
+      if (typeof msg.data === 'string') { entry.term.write(msg.data); return; }
       try {
         const ctl = JSON.parse(new TextDecoder().decode(msg.data as ArrayBuffer)) as { type?: string };
-        if (ctl.type === 'exit') t.term.write('\r\n\x1b[2m[shell exited]\x1b[0m\r\n');
+        if (ctl.type === 'exit') entry.term.write(`\r\n\x1b[2m[${entry.kind === 'claude' ? 'Claude Code' : 'shell'} ${t('exited')} · ${t('Restart runs it again')}]\x1b[0m\r\n`);
       } catch { return; }
     });
-    t.term.onData((data) => {
+    socket.addEventListener('close', () => {
+      if (!entry.seen && !entry.closed) entry.term.write(`\r\n\x1b[2m[${t('The engine did not answer on this terminal. Restart the engine, then close this tab and open it again.')}]\x1b[0m\r\n`);
+    });
+    entry.term.onData((data) => {
       if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'input', data }));
     });
   }
 
-  private sendSize(t: Tab): void {
-    if (t.socket?.readyState === WebSocket.OPEN) t.socket.send(JSON.stringify({ type: 'resize', cols: t.term.cols, rows: t.term.rows }));
+  private sendSize(x: Tab): void {
+    if (x.socket?.readyState === WebSocket.OPEN) x.socket.send(JSON.stringify({ type: 'resize', cols: x.term.cols, rows: x.term.rows }));
   }
 
   private fitActive(): void {
-    const t = this.active ? this.tabs.get(this.active) : null;
-    if (!t || t.host.hidden || this.stage.clientHeight < 20) return;
-    const before = `${t.term.cols}x${t.term.rows}`;
-    t.fit.fit();
-    if (`${t.term.cols}x${t.term.rows}` !== before) this.sendSize(t);
+    const x = this.active ? this.tabs.get(this.active) : null;
+    if (!x || x.host.hidden || this.stage.clientHeight < 20) return;
+    const before = `${x.term.cols}x${x.term.rows}`;
+    x.fit.fit();
+    if (`${x.term.cols}x${x.term.rows}` !== before) this.sendSize(x);
   }
 
   private select(id: string, focus = true): void {
     this.active = id;
-    for (const [tid, t] of this.tabs) {
+    for (const [tid, x] of this.tabs) {
       const on = tid === id;
-      if (t.host.hidden === on) t.host.hidden = !on;
-      t.tab.classList.toggle('is-on', on);
-      t.tab.setAttribute('aria-selected', String(on));
+      setHidden(x.host, !on);
+      x.tab.classList.toggle('is-on', on);
+      x.tab.setAttribute('aria-selected', String(on));
     }
-    setDisabled(this.restartBtn, !!this.tabs.get(id)?.agent);
+    if (this.chat) setHidden(this.chat.root, id !== 'chat');
+    if (this.chatTab) {
+      this.chatTab.classList.toggle('is-on', id === 'chat');
+      this.chatTab.setAttribute('aria-selected', String(id === 'chat'));
+    }
+    this.syncAsk();
+    setDisabled(this.restartBtn, id === 'chat' || this.tabs.get(id)?.kind === 'agent');
     this.fitActive();
     if (focus) this.focus();
+    this.onTab();
   }
 
   private async restart(): Promise<void> {
-    const t = this.active ? this.tabs.get(this.active) : null;
-    if (!t || t.agent) return;
-    try { await api.restartTerminal(t.id); } catch { return; }
-    this.sendSize(t);
-    t.term.focus();
+    const x = this.active ? this.tabs.get(this.active) : null;
+    if (!x || x.kind === 'agent') return;
+    try { await api.restartTerminal(x.id); } catch (err) { this.warn(err); return; }
+    this.sendSize(x);
+    x.term.focus();
   }
 
   private async close(id: string): Promise<void> {
-    const t = this.tabs.get(id);
-    if (!t) return;
-    t.socket?.close();
-    t.term.dispose();
-    t.host.remove();
-    t.tab.remove();
+    const x = this.tabs.get(id);
+    if (!x) return;
+    x.closed = true;
+    x.socket?.close();
+    x.term.dispose();
+    x.host.remove();
+    x.tab.remove();
     this.tabs.delete(id);
     try { await api.closeTerminal(id); } catch { /* the session was already gone */ }
     if (this.active === id) {
       this.active = null;
-      const next = [...this.tabs.keys()].pop();
+      const next = [...this.tabs.keys()].pop() ?? (this.chatTab ? 'chat' : undefined);
       if (next) this.select(next);
+      else { setDisabled(this.restartBtn, true); this.syncAsk(); this.onTab(); }
     }
-    if (this.tabs.size === 0) this.toggle(false);
+    setHidden(this.empty, this.tabs.size > 0 || !!this.chatTab);
   }
 }

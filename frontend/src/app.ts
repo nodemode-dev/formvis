@@ -33,6 +33,7 @@ import { filterLayerHook } from './engine/kernels';
 import { depthSource } from './engine/develop';
 import { runWideAngleSmart } from './engine/wide-angle';
 import { SelectMaskDialog } from './ui/panels/select-mask-dialog';
+import { SelectMaskWorkspace } from './ui/select-mask-workspace';
 import { ContentFillDialog } from './ui/panels/content-fill-dialog';
 import { GradientEditor, loadSavedGradients } from './ui/panels/gradient-editor';
 import { convertToLinked, linkedFiles, pickLinkSource, placeEmbedded, placeLinked, relink, updateLinked, watchLinked } from './io/links';
@@ -116,6 +117,7 @@ import { CharacterStylesDialog } from './ui/panels/character-styles';
 import { LayerStyleDialog, type StyleSection } from './ui/panels/layer-style-dialog';
 import { GenerativeDialog } from './ui/panels/generative-dialog';
 import { readPat, writePat } from './io/pat';
+import { LAYER_ROLES, LAYER_ROLE_LABELS, layerRoleOf } from './engine/types';
 import { cleanFeatures, cleanRuns, featureOn, runFeatureOn, withFeature, withRunAttrs, withRunFeature } from './engine/opentype';
 import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, BLEND_MODES, COLOR_RANGE_MODES, Engine, LAYER_LABELS, Raster, SelectionMask,stripExt, toBlob, type ImportedImage, type Pt, type SelectionMode, type TextSpec, effectsActive, effectsPresent, liveText, ctxOf, createSurface, type AdjustmentKind, effectsFromData, runFilterOffThread, addPattern, allPatterns, patternById, projectPatterns, randomSeed, metaWritable, addCustomShape, allCustomShapes, loadCustomShapes } from './engine';
 import { getTool, toolForKey, toolsForKey } from './extensions/registry';
@@ -126,7 +128,7 @@ import { commitPendingCrop, cropPending, startPerspectiveCrop } from './extensio
 import { HostLink } from './host';
 import { api, onServiceChange, serviceDown, serviceReady, type Capabilities, type CmykPsd, type OpenedProject } from './io/api';
 import { PROJECT_FILTER, baseName, checkForUpdate, chooseOpenPaths, chooseSavePath, confirmExit, folderOf, hasPanels, installUpdate, isDiskPath, listenShell } from './io/disk';
-import { depthReady, findToRemove, installModel, localDepth, localInpaint, modelReady, skyMask, skyReady, warmLama } from './io/local-gen';
+import { depthReady, findToRemove, installModel, localDepth, localDepth16, localInpaint, modelReady, skyMask, skyReady, warmLama } from './io/local-gen';
 import { FocusAreaDialog } from './ui/panels/focus-area-dialog';
 import { MergeDialog } from './ui/panels/merge-dialog';
 import { ScriptEventsDialog } from './ui/panels/script-events-dialog';
@@ -165,6 +167,7 @@ import { GlFilters } from './gpu/filters';
 import { frameTrace } from './gpu/frame-trace';
 import { perfHud } from './ui/perf-hud';
 import { setGpuFilters } from './engine/gpu-filters';
+import { setGpuEffects } from './engine/gpu-effects';
 import { NativeDisplay } from './gpu/native-display';
 import { PerfDialog, recordPerformance } from './ui/perf-recorder';
 import { NavigatorPanel } from './ui/navigator';
@@ -203,7 +206,6 @@ import { runScript } from './automation/script-sandbox';
 import { parseAtn, writeAtn } from './io/atn';
 import { setPixelBudget } from './engine/types';
 import { AssistantPanel } from './ui/panels/assistant';
-import { AgentPanel } from './ui/panels/agent-panel';
 import { installAgentConnect } from './ui/panels/agent-connect';
 import { installColorSettings } from './ui/panels/colour-settings-dialog';
 import { TerminalDock } from './ui/terminal-dock';
@@ -605,6 +607,7 @@ export function startApp(): void {
   });
   const swatches = new SwatchesPanel(q(root, '.cv-layers'), engine);
   const layers = new LayersPanel(q(root, '.cv-layers'), engine, contextMenu);
+  layers.docPoint = (x, y) => stage.docPoint(x, y);
   new PathsPanel(q(root, '.cv-layers'), engine);
   layers.adoptPaths(q(root, '.cv-paths'));
   layers.adoptChannels(new ChannelsPanel(engine, q(root, '.cv-stage'), (id) => commands.run('channel-options', { channel: id })));   // the Channels tab (Phase 21)
@@ -665,6 +668,7 @@ export function startApp(): void {
     arrange: (w) => { dock.arrange(w.order, w.hidden); store('formvis.propsCol', w.propsColumn ? 'shown' : 'hidden'); syncPropsCol(); },
     locked: () => dock.locked,
     setLocked: (on) => { dock.locked = on; },
+    dock: (kind) => { void termDock.toggleKind(kind); },
   });
   dock.locked = dock.locked;
   const dockIdOfGroup = (gid: string): string | null => ALL_PANELS.find((p) => p.id === gid || p.selector.endsWith(`.cv-${gid}`))?.id ?? null;
@@ -702,13 +706,28 @@ export function startApp(): void {
       // The desktop app asks where an export goes (1.87.0, CLOSE_GAPS P01); Cancel writes nothing.
       const ext = (/\.([A-Za-z0-9]+)$/.exec(name)?.[1] ?? '').toLowerCase();
       let path: string | null = null, panel = true;
-      try { path = await chooseSavePath('Export', name, ext ? [{ name: ext.toUpperCase(), extensions: [ext] }] : []); } catch { panel = false; }
+      const last = stored('formvis.exportFolder');   // the panel opens in the folder the last export went to
+      try { path = await chooseSavePath('Export', last ? `${last}/${name}` : name, ext ? [{ name: ext.toUpperCase(), extensions: [ext] }] : []); } catch { panel = false; }
       if (panel) {
         if (!path) return false;
-        try { const written = await api.writePath(path, blob); noteOutput(written); toast(`Saved ${written}`); fireEvent('export'); return true; } catch (err) { toast(message(err), 'error'); return false; }
+        try { const written = await api.writePath(path, blob); noteOutput(written); if (isDiskPath(path)) store('formvis.exportFolder', folderOf(path)); toast(`Saved ${written}`); fireEvent('export'); return true; } catch (err) { toast(message(err), 'error'); return false; }
       }
     }
     if (caps?.desktop) { const written = await api.exportFile(blob, name); noteOutput(written); toast(`Saved to ${written}`); fireEvent('export'); return true; }
+    const pick = (window as unknown as { showSaveFilePicker?: (o: object) => Promise<{ name: string; createWritable: () => Promise<{ write: (b: Blob) => Promise<void>; close: () => Promise<void> }> }> }).showSaveFilePicker;
+    if (pick && !folder && !navigator.webdriver && window.isSecureContext && window === window.top) {
+      // Chromium browsers ask where the file goes and open in the folder the last export used (the id keys that memory); Cancel writes nothing, and a browser without the picker downloads.
+      const ext = /\.([A-Za-z0-9]+)$/.exec(name)?.[1]?.toLowerCase() ?? '', mime = blob.type.split(';')[0] || 'application/octet-stream';
+      try {
+        const handle = await pick.call(window, { suggestedName: name, id: 'formvis-export', startIn: 'pictures', ...(ext ? { types: [{ description: ext.toUpperCase(), accept: { [mime]: [`.${ext}`] } }] } : {}) });
+        const out = await handle.createWritable();
+        await out.write(blob);
+        await out.close();
+        toast(`Saved ${handle.name}`);
+        fireEvent('export');
+        return true;
+      } catch (err) { if (err instanceof DOMException && err.name === 'AbortError') return false; }
+    }
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -840,6 +859,7 @@ export function startApp(): void {
     if (filterGl && (!want || !filterGl.ok)) { filterGl.destroy(); filterGl = null; }
     if (want && !filterGl) filterGl = GlFilters.create();
     setGpuFilters(want ? filterGl : null);
+    setGpuEffects(want ? filterGl : null);
   }
   // A lost device (Phase 18.1, recovery 1.88.9): the first loss in ten minutes starts the renderer again at once, the
   // second drops that renderer for this session so drawing falls back to the CPU, and the third turns Use Graphics
@@ -888,6 +908,7 @@ export function startApp(): void {
     const live = off ? null : gpuDisplay, api = ch.mode === 'webgl2' ? 'WebGL2' : ch.mode === 'native' ? 'Native GPU' : 'WebGPU';
     const name = ch.mode === 'native' && gpuDisplay instanceof NativeDisplay ? gpuDisplay.adapter : adapterName;
     const cpuWhy = off ?? ch.reason;
+    if (live) live.hdrAllowed = pr.hdrDisplay;
     stage.setGpu(live, pr.gpuMemoryMB * 1024 * 1024, live ? (reason) => status.setGpu(reason ? 'GPU: CPU' : `GPU: ${api}`, reason ? `${api} is on, but ${reason}, so it draws on the CPU` : `${name}: ${ch.reason}`) : null);
     if (!live) status.setGpu('GPU: CPU', cpuWhy);
     else status.setGpu(`GPU: ${api}`, `${name}: ${ch.reason}`);
@@ -3225,6 +3246,7 @@ export function startApp(): void {
     if (removed) fireEvent('close');
   });
   window.setTimeout(() => fireEvent('start'), 0);
+  const selectMaskWorkspace = new SelectMaskWorkspace(engine, root);
   const dialogs = {
     scriptEvents: new ScriptEventsDialog(scriptEvents, actions),
     saveForWeb: new SaveForWebDialog(engine, deliver),
@@ -3553,13 +3575,12 @@ export function startApp(): void {
   void pluginHost.loadAll();
   void folderPlugins.loadAll();
   document.body.appendChild(assistant.el);
-  // The terminal dock and the Claude Code panel (DEV_PLAN 28.5): the dock's grid row sits above the status bar and is
-  // reserved by terminal.css from the first frame; the panel is placed by the same attributes.
+  // The terminal dock (DEV_PLAN 28.5) with its Claude Code tabs, Chat tab and ask bar: its grid row sits above the status
+  // bar and is reserved by terminal.css from the first frame; the title bar's two buttons follow its active tab.
   const termDock = new TerminalDock();
   root.insertBefore(termDock.root, q(root, '.cv-status'));
   termDock.onChange = () => { window.dispatchEvent(new Event('resize')); };
-  const claudePanel = new AgentPanel(() => { void termDock.sync(); });
-  document.body.appendChild(claudePanel.el);
+  termDock.onTab = () => { titleTools.syncDock(termDock.isOpen(), termDock.activeKind()); };
   installAgentConnect(commands, engine);
   const model3dInput = el<HTMLInputElement>('<input type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" data-role="place-3d" hidden>');
   model3dInput.addEventListener('change', () => { const f = model3dInput.files?.[0]; model3dInput.value = ''; if (f) void model3d.load(f); });
@@ -3772,7 +3793,8 @@ export function startApp(): void {
     { id: 'assistant', label: 'Assistant', keys: ['Alt+Mod+J'], checked: () => !assistant.el.hidden, run: () => assistant.toggle() },   // 1.52.2
     { id: 'terminal.toggle', label: 'Terminal', keys: ['Mod+J'], checked: () => termDock.isOpen(), run: () => termDock.toggle() },   // DEV_PLAN 28.5
     { id: 'terminal.new', label: 'New Terminal', run: () => void termDock.newTerminal() },
-    { id: 'agent.claude.open', label: 'Claude Code', checked: () => claudePanel.isOpen(), run: () => claudePanel.toggle() },
+    { id: 'agent.claude.open', label: 'Claude Code', checked: () => termDock.isShowing('claude'), run: () => void termDock.toggleKind('claude') },
+    { id: 'agent.chat', label: 'Chat with Claude', checked: () => termDock.isShowing('chat'), run: () => void termDock.toggleKind('chat') },
     { id: 'help', label: 'formvis Help', keys: ['F1'], run: () => help.show() },   // 1.52.3
     { id: 'whats-new', label: 'What\'s New...', run: () => whatsNew.show() },
     { id: 'pref-home-launch', label: 'Show Home Screen at Launch', checked: () => loadPrefs().autoShowHome, run: () => { updatePrefs({ autoShowHome: !loadPrefs().autoShowHome }); home.sync(); } },
@@ -4505,6 +4527,7 @@ export function startApp(): void {
       } },
     { id: 'select-object', label: 'Object in Selection', enabled: selected, params: AUTO_SELECT_PARAMS, run: (a) => void selectSubject(true, a) },
     { id: 'select-and-mask', label: 'Select and Mask...', keys: ['Alt+Mod+R'], enabled: selected, run: () => dialogs.selectMask.show() },
+    { id: 'select-and-mask-workspace', label: 'Select and Mask Workspace', enabled: selected, run: () => { if (!selectMaskWorkspace.enter()) dialogs.selectMask.show(); } },
     { id: 'rotate-180', label: '180°', enabled: has, run: () => engine.rotateCanvas(2) },
     { id: 'rotate-90-cw', label: '90° Clockwise', enabled: has, run: () => engine.rotateCanvas(1) },
     { id: 'rotate-90-ccw', label: '90° Counter Clockwise', enabled: has, run: () => engine.rotateCanvas(3) },
@@ -4757,6 +4780,7 @@ export function startApp(): void {
     { id: 'select-layer-top', label: 'Top Layer', keys: ['Alt+.'], enabled: () => !!engine.current?.doc.layers.length, run: () => stepLayer(Infinity, false) },
     { id: 'select-layer-bottom', label: 'Bottom Layer', keys: ['Alt+,'], enabled: () => !!engine.current?.doc.layers.length, run: () => stepLayer(-Infinity, false) },
     ...[null, ...LAYER_LABELS].map((c) => ({ id: `layer-label-${c ?? 'none'}`, label: c ? c[0].toUpperCase() + c.slice(1) : 'No Color', checked: () => (layer()?.label ?? null) === c, enabled: () => !!layer(), run: () => engine.setLayerLabel(c) })),
+    ...[null, ...LAYER_ROLES].map((r) => ({ id: `layer-role-${r ?? 'none'}`, label: r ? LAYER_ROLE_LABELS[r] : 'No Role', checked: () => { const l = layer(); return (l ? layerRoleOf(l) : null) === r; }, enabled: () => { const l = layer(); return !!l && !l.isGroup; }, run: () => engine.setLayerRole(r) })),
     ...Array.from({ length: 10 }, (_, i) => ({ id: `pick-layer-${i}`, label: () => engine.current?.layer(picked[i] ?? '')?.name ?? '', enabled: () => i < picked.length, run: () => { const id = picked[i]; if (id) engine.selectLayer(id); } })),
     { id: 'background-from-layer', label: 'Background from Layer', enabled: () => pixel() && !engine.backgroundLayer(), run: () => { engine.backgroundFromLayer(); } },
     { id: 'stamp-visible', label: 'Stamp Visible', keys: ['Alt+Shift+Mod+E'], enabled: () => !!engine.current?.doc.layers.length, run: () => { engine.stampVisible(); } },
@@ -5454,8 +5478,13 @@ export function startApp(): void {
     { id: 'smart-export-contents', label: 'Export Contents...', enabled: () => !!engine.current?.activeLayer?.smart, run: async () => {
       const c = engine.smartContents();
       if (!c) return;
-      const typed = await promptName('Export Contents (end the name in .png, .jpg or .webp)', `${c.name.replace(/[\\/:*?"<>|]+/g, '_') || 'Smart Object'}.png`, 'Export');
+      const kept = c.original, tail = (n: string): string => /\.[^.\\/]+$/.exec(n)?.[0].toLowerCase() ?? '';
+      const typed = await promptName('Export Contents (end the name in .png, .jpg or .webp)', kept ? kept.name.replace(/[\\/:*?"<>|]+/g, '_') : `${c.name.replace(/[\\/:*?"<>|]+/g, '_') || 'Smart Object'}.png`, 'Export');
       if (!typed) return;
+      if (kept && tail(typed) === tail(kept.name)) {
+        try { await deliver(new Blob([kept.data.slice()], { type: kept.mime || 'application/octet-stream' }), typed.replace(/[\\/:*?"<>|]+/g, '_')); } catch (err) { toast(message(err), 'error'); }
+        return;
+      }
       const ext = /\.(jpe?g|webp|png)$/i.exec(typed)?.[1].toLowerCase() ?? 'png', type = ext === 'webp' ? 'image/webp' : ext === 'png' ? 'image/png' : 'image/jpeg';
       try { await deliver(await toBlob(c.raster.canvas, type, 0.92), `${typed.replace(/\.(jpe?g|webp|png)$/i, '').replace(/[\\/:*?"<>|]+/g, '_') || 'Smart Object'}.${ext === 'jpeg' ? 'jpg' : ext}`); } catch (err) { toast(message(err), 'error'); }
     } },
@@ -5552,6 +5581,21 @@ export function startApp(): void {
     { id: 'compute-depth-map', label: 'Compute Depth Map', enabled: has, run: () => void (async () => {
       if (!(await depthReady())) { toast('Compute Depth Map needs Depth Anything V2 Small (99 MB): download it in Preferences > Plugins > Local models.', 'error'); return; }
       if (await engine.task(() => engine.computeDepthMap(localDepth))) toast('Added a Depth Map layer: near is bright, far is dark.');
+    })() },
+    { id: 'compute-depth-map-16', label: 'Compute Depth Map as 16-Bit Document', enabled: has, run: () => void (async () => {
+      if (!(await depthReady())) { toast('Compute Depth Map needs Depth Anything V2 Small (99 MB): download it in Preferences > Plugins > Local models.', 'error'); return; }
+      const p = engine.current, flat = engine.flattened();
+      if (!p || !flat) return;
+      const W = p.doc.width, H = p.doc.height;
+      let deep: ReturnType<typeof deepFromU16> | null = null;
+      await engine.task(async () => {
+        try {
+          const d = await api.decodeDeep(await localDepth16(await toBlob(flat), W, H), 'Depth Map.png');
+          if (d.depth === 16) deep = deepFromU16(d.data as Uint16Array, d.width, d.height);
+          else toast('The depth route gave 8 bits, so no 16-bit document was made.', 'error');
+        } catch (err) { toast(message(err), 'error'); }
+      });
+      if (deep) { engine.openDeep(`${p.name} Depth`, deep, 16, p.doc.resolution); toast('Opened the depth as a 16-bit grey document: near is bright, far is dark.'); }
     })() },
     { id: 'depth-map-from-layer', label: 'Depth Map from Layer', enabled: () => !!layer() && !layer()?.isGroup, run: () => void (async () => {
       if (!(await depthReady())) { toast('Depth Map from Layer needs Depth Anything V2 Small (99 MB): download it in Preferences > Plugins > Local models.', 'error'); return; }
@@ -5777,9 +5821,9 @@ export function startApp(): void {
       { label: 'Distribute', items: ['distribute-left', 'distribute-hcenter', 'distribute-right', '-', 'distribute-top', 'distribute-vcenter', 'distribute-bottom', '-', 'distribute-hspace', 'distribute-vspace'] },
       { label: 'Flip', items: ['flip-layer-h', 'flip-layer-v'] }, '-',
       'lock-transparency', 'lock-layers', '-', 'link-layers', 'select-linked', '-',
-      'merge', 'merge-visible', 'stamp-visible', 'frequency-separation', 'stamp-down', 'flatten', '-', 'show-only-layer', 'show-all-layers', { label: 'Color Label', items: ['layer-label-none', '-', ...LAYER_LABELS.map((c) => `layer-label-${c}`)] }, '-',
+      'merge', 'merge-visible', 'stamp-visible', 'frequency-separation', 'stamp-down', 'flatten', '-', 'show-only-layer', 'show-all-layers', { label: 'Color Label', items: ['layer-label-none', '-', ...LAYER_LABELS.map((c) => `layer-label-${c}`)] }, { label: 'Role', items: ['layer-role-none', '-', ...LAYER_ROLES.map((r) => `layer-role-${r}`)] }, '-',
       { label: 'Matting', items: ['matting-decontaminate', 'matting-defringe', 'matting-black', 'matting-white'] }] },
-    { label: 'Select', items: ['select-all', 'deselect', 'reselect', 'inverse', 'convert-to-shape', 'convert-to-shape-tolerance', 'selection-to-work-path', '-', 'select-all-layers', 'deselect-layers', 'find-layers', 'isolate-layers', '-', 'color-range', 'focus-area', 'select-subject', 'select-sky', 'select-object', { label: 'Subject and Sky Options', items: ['auto-select-sample-all', 'sky-sensitivity', 'sky-softness'] }, 'select-and-mask', '-', 'layer-pixels', 'mask-black', '-',
+    { label: 'Select', items: ['select-all', 'deselect', 'reselect', 'inverse', 'convert-to-shape', 'convert-to-shape-tolerance', 'selection-to-work-path', '-', 'select-all-layers', 'deselect-layers', 'find-layers', 'isolate-layers', '-', 'color-range', 'focus-area', 'select-subject', 'select-sky', 'select-object', { label: 'Subject and Sky Options', items: ['auto-select-sample-all', 'sky-sensitivity', 'sky-softness'] }, 'select-and-mask', 'select-and-mask-workspace', '-', 'layer-pixels', 'mask-black', '-',
       { label: 'Modify', items: ['expand', 'contract', 'feather', 'border', 'smooth'] }, 'grow', 'similar', '-', 'transform-selection', 'transform-selection-numeric', 'select-float', 'select-drop', '-', 'quick-mask', '-', 'load-selection', 'load-luminosity', 'load-selection-vector-mask', 'save-selection', { label: 'Channel', items: ['new-channel', 'new-spot-channel', 'duplicate-channel', 'channel-options', '-', 'channel-up', 'channel-down'] }, 'path-selection', 'path-selection-dialog', 'delete-path'] },
     { label: 'Filter', items: ['filter-last', 'filter-convert-smart', '-', 'filter-filterGallery', 'filter-develop', 'filter-wide-angle', 'filter-lensCorrection', 'filter-liquify', 'filter-vanishing-point', 'filter-neural', '-',
       { label: 'Blur', items: filterGroup('Blur', ['filter-average', 'filter-gaussianBlur', 'filter-lensBlur', 'filter-motionBlur', 'filter-radialBlur', 'filter-surfaceBlur']) },
@@ -5795,12 +5839,12 @@ export function startApp(): void {
       { label: '3D', items: ['normal-map', 'bump-map', 'height-from-normal'] },
       { label: 'Plug-ins (WebAssembly)', get items() { const ids = [...wasmIds].map((i) => `wasm-run-${i}`); return [...ids, ...(ids.length ? ['-'] : []), 'wasm-plugins', 'wasm-plugin-install', 'wasm-plugin-example']; } }, '-', 'remove-bg', 'remove-bg-lite'] },
     // Generate: the generative commands in one place (the Generate panel, models, fill, repair, size, relight, and the ComfyUI and NodeMode links).
-    { label: 'Generate', items: ['generate-panel', '-', 'generate-image', 'new-canvas-model-preset', 'generative-fill', 'generative-expand', '-', 'boxes-tool', 'boxes-from-selection', 'boxes-copy', 'boxes-clear', '-', 'generate-remove', 'content-fill-workspace', 'content-fill', 'remove-wires', '-', 'remove-bg', 'remove-bg-lite', '-', 'upscale-2x', 'upscale-4x', 'compute-depth-map', { label: 'Depth Map', items: ['depth-map-from-layer', 'depth-map-recompute', 'depth-map-show', '-', 'depth-map-flatten', 'depth-map-nearer', 'depth-map-farther', 'depth-map-smooth', 'depth-map-snap', 'depth-map-detail'] }, 'new-relight-layer', '-', 'comfyui-run', 'send-comfyui', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode'])] },
+    { label: 'Generate', items: ['generate-panel', '-', 'generate-image', 'new-canvas-model-preset', 'generative-fill', 'generative-expand', '-', 'boxes-tool', 'boxes-from-selection', 'boxes-copy', 'boxes-clear', '-', 'generate-remove', 'content-fill-workspace', 'content-fill', 'remove-wires', '-', 'remove-bg', 'remove-bg-lite', '-', 'upscale-2x', 'upscale-4x', 'compute-depth-map', 'compute-depth-map-16', { label: 'Depth Map', items: ['depth-map-from-layer', 'depth-map-recompute', 'depth-map-show', '-', 'depth-map-flatten', 'depth-map-nearer', 'depth-map-farther', 'depth-map-smooth', 'depth-map-snap', 'depth-map-detail'] }, 'new-relight-layer', '-', 'comfyui-run', 'send-comfyui', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode'])] },
     { label: 'View', items: [{ label: 'Proof Setup', items: ['proof-setup', '-', 'proof-preset-monitor', 'proof-preset-macrgb', 'proof-preset-internet', 'proof-preset-cmyk', 'proof-preset-cyan', 'proof-preset-magenta', 'proof-preset-yellow', 'proof-preset-black', 'proof-preset-cmy', '-', 'proof-preset-protanopia', 'proof-preset-deuteranopia'] }, 'proof-colors', 'gamut-warning', 'preview-32', '-', 'zoom-in', 'zoom-out', 'fit', 'fit-layers', 'fit-artboard', 'actual', 'print-size', 'flip-view-h', 'canvas-scrollbars', 'no-tool', '-', 'toggle-extras', 'toggle-rulers', 'toggle-grid', 'grid-settings', 'pixel-grid', 'pattern-preview', 'pixel-art-preview', 'par-correction', 'transform-controls', 'toggle-task-bar', 'performance-hud', '-',
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'guide-layout', 'guides-from-shape', 'guides-from-shape-centre', 'edit-selected-guides', 'clear-guides', 'clear-artboard-guides'] }, 'snap', { label: 'Snap To', items: ['snap-all', '-', 'snap-guides', 'snap-grid', 'snap-layers', 'snap-bounds', 'snap-slices', 'snap-selection'] }, { label: 'Show', items: ['show-all-extras', 'show-no-extras', '-', 'show-selection-edges', 'selection-display-tint', 'show-layer-edges', 'show-artboard-guides', 'show-target-path','show-smart-guides', 'show-comfy-dot', 'show-notes', 'show-counts', 'show-brush-preview', 'show-mesh', 'show-edit-pins', '-', 'show-extras-options', '-', 'toggle-show-slices', 'toggle-auto-slices', 'lock-slices', 'layer-based-slice', 'slices-from-guides', 'slice-options', 'divide-slice', 'delete-slice', 'clear-slices'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'os-full-screen', 'toggle-panels', 'rail-columns', 'interface-rtl', 'next-favourite-theme', 'interface-zoom-in', 'interface-zoom-out', 'interface-zoom-reset', 'custom-title-bar', 'menus-in-window', { label: 'Pasteboard', items: ['pasteboard-default', 'pasteboard-black', 'pasteboard-dark', 'pasteboard-mid', 'pasteboard-light'] }] },
     { label: 'Plugins', items: () => { const ids = [...pluginHost.commandIds(), ...folderPlugins.commandIds()]; return ['manage-plugins', 'reload-plugins', 'open-plugins-folder', ...(ids.length && loadPrefs().showExtPanels ? ['-', ...ids] : [])]; } },
-    { label: 'Window', items: [{ label: 'Arrange', items: ['new-window', 'float-window', 'float-all-windows', 'arrange-cascade', '-', 'arrange-tabs','arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-3up-v', 'arrange-3up-h', 'arrange-4up', 'arrange-6up', 'arrange-tile-v', 'arrange-tile-h', 'arrange-tile', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.connect.open', 'agent.connect.copy-claude-code', 'agent.connect.copy-claude-desktop', 'terminal.toggle', 'terminal.new', 'script-console', 'brush-settings', { label: 'Brush Size', items: ['brush-size-up', 'brush-size-down', 'brush-harder', 'brush-softer'] }, { label: 'Brush Presets', items: ['save-brush-preset', 'rename-brush-preset', 'delete-brush-preset', 'move-brush-preset', 'rename-brush-group', '-', 'set-brush', 'get-brush'] }, 'paragraph-styles', 'character-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-channels', 'panel-color', 'panel-tools', 'panel-options', 'panel-properties-col', 'merge-columns', 'toggle-dock-panels', '-', 'panel-float', 'panel-dock', 'panel-activate', 'panel-group', 'panel-close-group', '-', { label: 'Workspace', items: ['workspace-pixelart', '-', 'new-workspace', 'delete-workspace'] }, 'reset-panels', '-', 'next-document', 'previous-document', 'notices', '-', { label: 'Theme', items: Object.keys(THEMES).map((tid) => `theme-${tid}`) }, 'theme-sync-system', 'next-appearance', 'interface-darken', 'interface-lighten', '-', 'reload-window', 'developer-tools'] },
+    { label: 'Window', items: [{ label: 'Arrange', items: ['new-window', 'float-window', 'float-all-windows', 'arrange-cascade', '-', 'arrange-tabs','arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-3up-v', 'arrange-3up-h', 'arrange-4up', 'arrange-6up', 'arrange-tile-v', 'arrange-tile-h', 'arrange-tile', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.chat', 'agent.connect.open', 'agent.connect.copy-claude-code', 'agent.connect.copy-claude-desktop', 'terminal.toggle', 'terminal.new', 'script-console', 'brush-settings', { label: 'Brush Size', items: ['brush-size-up', 'brush-size-down', 'brush-harder', 'brush-softer'] }, { label: 'Brush Presets', items: ['save-brush-preset', 'rename-brush-preset', 'delete-brush-preset', 'move-brush-preset', 'rename-brush-group', '-', 'set-brush', 'get-brush'] }, 'paragraph-styles', 'character-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-channels', 'panel-color', 'panel-tools', 'panel-options', 'panel-properties-col', 'merge-columns', 'toggle-dock-panels', '-', 'panel-float', 'panel-dock', 'panel-activate', 'panel-group', 'panel-close-group', '-', { label: 'Workspace', items: ['workspace-pixelart', '-', 'new-workspace', 'delete-workspace'] }, 'reset-panels', '-', 'next-document', 'previous-document', 'notices', '-', { label: 'Theme', items: Object.keys(THEMES).map((tid) => `theme-${tid}`) }, 'theme-sync-system', 'next-appearance', 'interface-darken', 'interface-lighten', '-', 'reload-window', 'developer-tools'] },
     { label: 'Help', items: ['help', 'whats-new', '-', 'shortcuts', 'console-log', 'copy-error-log', 'copy-engine-log', 'benchmark', 'record-performance', 'frame-trace', 'copy-frame-trace', 'tile-grid', 'simulate-gpu-loss', '-', 'help-github', 'report-issue', '-', 'check-for-updates', 'system-info', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);
@@ -5817,7 +5861,7 @@ export function startApp(): void {
     { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-style-copy', 'shape-style-paste', 'shape-corners', '-', 'apply-redactions'] },
     { label: 'Layer Style', items: ['layer-style', '-', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style'] },
     { label: 'Layer Comps', items: ['layer-comp-new', 'layer-comp-apply', 'layer-comp-update', 'layer-comp-options', 'layer-comp-duplicate', 'layer-comp-delete', '-', 'layer-comp-last-state', 'layer-comp-next', 'layer-comp-previous'] }, '-',
-    { label: 'Layer Mask', items: ['mask-reveal-all', 'mask-hide-all', '-', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask'] }, 'clip', 'link-layers', 'select-linked', '-', 'hide-layers', 'show-only-layer', 'show-all-layers', { label: 'Color Label', items: ['layer-label-none', '-', ...LAYER_LABELS.map((c) => `layer-label-${c}`)] }, '-', 'group', 'ungroup', 'move-out', 'merge', 'merge-visible', 'flatten', '-', 'copy-layers', 'paste-layers', 'layer-quick-export-png', 'layer-export-as', '-', 'layer-pixels', { label: 'Convert Bit Depth', items: ['depth-8', 'depth-16'] }]);
+    { label: 'Layer Mask', items: ['mask-reveal-all', 'mask-hide-all', '-', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask'] }, 'clip', 'link-layers', 'select-linked', '-', 'hide-layers', 'show-only-layer', 'show-all-layers', { label: 'Color Label', items: ['layer-label-none', '-', ...LAYER_LABELS.map((c) => `layer-label-${c}`)] }, { label: 'Role', items: ['layer-role-none', '-', ...LAYER_ROLES.map((r) => `layer-role-${r}`)] }, '-', 'group', 'ungroup', 'move-out', 'merge', 'merge-visible', 'flatten', '-', 'copy-layers', 'paste-layers', 'layer-quick-export-png', 'layer-export-as', '-', 'layer-pixels', { label: 'Convert Bit Depth', items: ['depth-8', 'depth-16'] }]);
   fillMenu.setItems([{ label: 'New Fill Layer', items: ['new-fill-solid', 'new-fill-gradient', 'new-fill-pattern'] }, { label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }]);
   const tabMenu = new PopupMenu(commands, null, true);
   tabMenu.setItems(['close-tab', 'close-others', 'close-tabs-right', 'close-all', '-', 'pin-tab', 'reopen-closed-tab', '-', 'next-document', 'previous-document']);
@@ -6164,7 +6208,7 @@ export function startApp(): void {
   // agents, ComfyUI and NodeMode, LittleCMS conversions). With it not running they are off, with a title saying why.
   const ENGINE_ONLY = new Set<string>(['save', 'save-as', 'save-as-history', 'save-copy', 'open', 'revert', 'export-tiff', 'export-pdf', 'export-avif', 'convert-profile', 'mode-cmyk', 'mode-convert',
     'remove-bg', 'remove-bg-lite', 'select-subject', 'select-object', 'generative-fill', 'generate-image', 'generative-expand', 'upscale-2x', 'upscale-4x', 'assistant',
-    'terminal.toggle', 'terminal.new', 'agent.claude.open', 'send-nodemode', 'send-comfyui', 'comfyui-run', 'photomerge', 'merge-hdr', 'manage-plugins', 'reload-plugins', 'open-plugins-folder',
+    'terminal.toggle', 'terminal.new', 'agent.claude.open', 'agent.chat', 'send-nodemode', 'send-comfyui', 'comfyui-run', 'photomerge', 'merge-hdr', 'manage-plugins', 'reload-plugins', 'open-plugins-folder',
     'import-video', 'video-layer-from-file', 'video-replace-footage', 'video-reload-frame', 'export-mp4', 'render-video']);
   // Relight lights the 8-bit RGB picture beneath it (its shader reads and writes 8-bit RGBA), so other modes and depths say why it waits.
   const relightWhy = (): string => {

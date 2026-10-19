@@ -7,6 +7,7 @@ import { PanelGroup } from '../panel-group';
 import { BoxesSection } from '../boxes-panel';
 import { loadPrefs, recalled, remembered, updatePrefs } from '../prefs';
 import { SIZES, fillModelPicker, generationModels, runGeneration } from './generate-image';
+import { referenceLayers, referencePicture, type ReferenceFit } from './references';
 import { comfyuiStatusText, nodemodeStatusText } from './send-to';
 import { GenerationOptions } from './generation-options';
 import { PromptHistory } from './prompt-history';
@@ -87,6 +88,9 @@ export class GeneratePanel {
   private readonly go: HTMLButtonElement;
   private readonly goLabel: HTMLElement;
   private readonly status: HTMLElement;
+  private readonly refList: HTMLElement;
+  private readonly refFit: HTMLSelectElement;
+  private readonly refNote: HTMLElement;
   private readonly hint: HTMLElement;
   private readonly linkHint: HTMLElement;
   private readonly keyList: HTMLElement;
@@ -115,6 +119,11 @@ export class GeneratePanel {
           <label class="cv-genp-row"><span data-t="Model"></span><select class="cv-input cv-genp-model" data-t-aria="Model"><option value="fal" data-key="fal">FLUX1.1 [pro] (fal)</option></select></label>
           <label class="cv-genp-row"><span data-t="Size"></span><select class="cv-input cv-genp-size" data-t-aria="Size"></select></label>
           <div class="cv-genp-row cv-genp-custom" hidden><span></span><div class="cv-genp-wh"><input class="cv-input cv-genp-cw" type="number" min="256" max="2048" step="16" value="1024" data-t-aria="Width"><input class="cv-input cv-genp-ch" type="number" min="256" max="2048" step="16" value="1024" data-t-aria="Height"></div></div>
+          <div class="cv-genp-refs" role="group" data-t-aria="Reference layers">
+            <div class="cv-genp-refhead"><span data-t="Reference layers"></span><select class="cv-input cv-genp-fit" data-t-aria="Reference fit"><option value="placed" data-t="As placed"></option><option value="stretch" data-t="Stretch"></option><option value="pad" data-t="Pad"></option><option value="crop" data-t="Crop"></option></select></div>
+            <div class="cv-genp-reflist"></div>
+            <p class="cv-note cv-genp-refnote" role="status"></p>
+          </div>
           <button class="cv-genp-go" type="button">${icon('generate', 14)}<span class="cv-genp-golabel"></span></button>
           <p class="cv-note cv-genp-status" role="status"></p>
         </div>
@@ -152,6 +161,18 @@ export class GeneratePanel {
     this.go =q<HTMLButtonElement>(b, '.cv-genp-go');
     this.goLabel = q(b, '.cv-genp-golabel');
     this.status = q(b, '.cv-genp-status');
+    this.refList = q(b, '.cv-genp-reflist');
+    this.refFit = q<HTMLSelectElement>(b, '.cv-genp-fit');
+    this.refNote = q(b, '.cv-genp-refnote');
+    const savedFit = recalled(NAME, 'fit');
+    if (typeof savedFit === 'string' && [...this.refFit.options].some((o) => o.value === savedFit)) this.refFit.value = savedFit;
+    this.refFit.addEventListener('change', () => remembered(NAME, 'fit', this.refFit.value));
+    this.refList.addEventListener('click', (e) => {
+      const hit = e.target instanceof Element ? e.target.closest<HTMLElement>('button') : null, row = hit?.closest<HTMLElement>('[data-key]');
+      if (!hit || !row) return;
+      if (hit.classList.contains('cv-genp-refname')) this.engine.selectLayer(row.dataset.key as string);
+      else this.insertToken(`@img${[...this.refList.children].indexOf(row) + 1}`);
+    });
     this.hint = q(b, '.cv-genp-hint');
     this.linkHint = q(b, '.cv-genp-linkhint');
     this.keyList = q(b, '.cv-genp-keys');
@@ -195,7 +216,7 @@ export class GeneratePanel {
     this.promptHistory = new PromptHistory(this.prompt);
     this.go.addEventListener('click', () => void this.generate());
     this.prompt.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void this.generate(); } });
-    this.model.addEventListener('change', () => { this.chosen = this.model.value; remembered(NAME, 'model', this.model.value); this.opts.forModel(this.model.value); });
+    this.model.addEventListener('change', () => { this.chosen = this.model.value; remembered(NAME, 'model', this.model.value); this.opts.forModel(this.model.value); this.syncRefs(); });
     this.size.addEventListener('change', () => { remembered(NAME, 'size', this.size.value); setHidden(this.custom, this.size.value !== 'custom'); });
     for (const f of [this.cw, this.ch]) {
       f.addEventListener('change', () => { f.value = String(this.side(Number(f.value))); remembered(NAME, 'custom', `${this.side(Number(this.cw.value))}x${this.side(Number(this.ch.value))}`); });
@@ -290,6 +311,7 @@ export class GeneratePanel {
     try {
       const added = await runGeneration(this.engine, {
         prompt, choice, providers: this.providers, size: this.asked(),   // none: the picture's own shape (a new 1024 by 1024 picture when none is open)
+        references: () => this.referencePictures(),
         ...this.opts.request(), onSeed: (s) => this.opts.used(s), onStop: () => { this.stopped = true; setText(this.status, t('Stopped.')); },
         status: (text) => setText(this.status, text), stopped: () => this.stopped, heard: (r) => this.deps.heard(r),
         keyHint: { fal: t('Add a fal API key first, in Connections below.'), provider: (name) => t(`Add a ${name} API key first, in Connections below.`) },
@@ -316,7 +338,42 @@ export class GeneratePanel {
     const ok = (v: string | null): v is string => !!v && g.models.some((m) => m.value === v && !m.disabled);
     setValue(this.model, ok(this.chosen) ? this.chosen : g.preferred);
     this.opts.forModel(this.model.value);
+    this.syncRefs();
     this.renderKeys();
+  }
+
+  /** The layers marked Reference, listed as @img1, @img2 and on (the first four, top of the stack first), patched in place. */
+  private syncRefs(): void {
+    const layers = referenceLayers(this.engine).slice(0, 4), choice = this.model.value, takes = !(choice === 'fal' || choice.startsWith('local:') || choice.startsWith('provider:'));
+    patchList(this.refList, layers.map((l, i) => ({ id: l.id, name: l.name, i })), {
+      key: (r) => r.id,
+      create: (r) => { const row = el('<div class="cv-genp-ref"><button class="cv-genp-reftok" type="button"></button><button class="cv-genp-refname" type="button"></button></div>'); this.fillRef(row, r); return row; },
+      update: (row, r) => this.fillRef(row as HTMLElement, r),
+    });
+    setText(this.refNote, !this.engine.current ? '' : !layers.length ? t('Mark layers as Reference in Layer > Role: they are listed here as @img1, @img2 and on.') : takes ? t('Sent to the workflow in this order. Click a token to put it in the prompt.') : t('This model takes no references: choose a ComfyUI workflow to send them.'));
+  }
+
+  private fillRef(row: HTMLElement, r: { name: string; i: number }): void {
+    setText(q(row, '.cv-genp-reftok'), `@img${r.i + 1}`);
+    setText(q(row, '.cv-genp-refname'), r.name);
+  }
+
+  private insertToken(tok: string): void {
+    const f = this.prompt, at = f.selectionStart ?? f.value.length, end = f.selectionEnd ?? at, pad = at > 0 && !/\s/.test(f.value[at - 1]) ? ' ' : '';
+    f.value = `${f.value.slice(0, at)}${pad}${tok} ${f.value.slice(end)}`;
+    const caret = at + pad.length + tok.length + 1;
+    f.setSelectionRange(caret, caret);
+    f.focus();
+    f.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  private async referencePictures(): Promise<Array<{ name: string; blob: Blob }>> {
+    const out: Array<{ name: string; blob: Blob }> = [];
+    for (const l of referenceLayers(this.engine).slice(0, 4)) {
+      const blob = await referencePicture(this.engine, l, this.refFit.value as ReferenceFit);
+      if (blob) out.push({ name: l.name, blob });
+    }
+    return out;
   }
 
   // ---- Edit with AI ---------------------------------------------------------------------------------------------
@@ -346,6 +403,7 @@ export class GeneratePanel {
       const tip = a.key === 'remove' && !selected ? 'Switches to the Remove tool: paint over what to take out.' : a.tip;
       setTitle(btn, why ? `${t(a.label)}: ${why}` : t(tip));
     }
+    this.syncRefs();
     setText(this.hint, !p ? t('Open or create a picture to use these.') : !selected ? t('Generative Fill and Replace need a selection: make one with a Select tool first.') : '');
     setText(this.linkHint, !p ? t('Open or create a picture to send it.') : '');
     const label = this.size.options[0];

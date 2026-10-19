@@ -188,7 +188,7 @@ export class AgentBridge {
         await whenServiceUp();   // with the engine service not running there is nothing to poll, and no timer either
         const res = await fetch(`/api/mcp/bridge/next?allowed=${this.on ? 1 : 0}`);
         if (res.status === 200) {
-          const item = await res.json() as { id: string; name: string; arguments: Record<string, unknown> };
+          const item = await res.json() as { id: string; name: string; arguments: Record<string, unknown>; inapp?: boolean };
           if (item.name === '__consent__') {
             const yes = this.on || await this.deps.ask('Allow an outside agent to edit?', 'An AI agent connected to formvis (such as Claude Code, Codex or Cursor) asks to edit your documents. Each change is an undoable step, and anything that costs money asks first. You can turn this off in Preferences > Plugins.');
             if (yes && !this.on) { this.on = true; this.deps.allow(); }
@@ -198,7 +198,7 @@ export class AgentBridge {
           this.inflight++;
           this.callId = item.id;
           let result: McpResult;
-          try { result = this.on ? await this.run(item.name, item.arguments ?? {}) : fail('formvis stopped taking requests.'); } finally { this.inflight--; }
+          try { result = this.on || item.inapp === true ? await this.run(item.name, item.arguments ?? {}) : fail('formvis stopped taking requests.'); } finally { this.inflight--; }
           await fetch('/api/mcp/bridge/result', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id, result }) });
         } else if (res.status !== 204) await sleep(2000);
       } catch { await sleep(2000); }   // the engine is not answering: try again shortly

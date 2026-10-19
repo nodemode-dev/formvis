@@ -1,5 +1,6 @@
-import { invert, mul, type BlendMode, type GrainParams, type Mat } from '../engine';
+import { invert, mul, type BlendMode, type ChannelPixels, type GrainParams, type Mat } from '../engine';
 import { COMPOSITE_WGSL, blendIndex } from './blend-wgsl';
+import { MIP_WGSL, deepHalf, lodFor, mipLevels } from './deep-upload';
 import { WgpuFrameTimer } from './gpu-timing';
 import type { DisplayOptions } from './probe';
 import { dirtyBox, trimResident, type UploadStats } from './residency';
@@ -10,10 +11,10 @@ const BUF = { MAP_READ: 0x0001, COPY_DST: 0x0008, UNIFORM: 0x0040 } as const;
 
 export interface DisplayMask { image: HTMLCanvasElement | OffscreenCanvas; version: number; width: number; height: number; matrix: Mat }
 /** A clipping base: its coverage (alpha x opacity x its mask) clips every layer that carries this same object; a base that is itself clipped has the base it is clipped to as `parent`, whose coverage limits its own. */
-export interface DisplayClip { image: HTMLCanvasElement | OffscreenCanvas; version: number; width: number; height: number; matrix: Mat; opacity: number; mask?: DisplayMask; parent?: DisplayClip }
+export interface DisplayClip { image: HTMLCanvasElement | OffscreenCanvas; deep?: ChannelPixels; linear?: boolean; version: number; width: number; height: number; matrix: Mat; opacity: number; mask?: DisplayMask; parent?: DisplayClip }
 /** A layer's Blend If: the channel tested (1 grey, 2 red, 3 green, 4 blue) and the four-point ranges of the layer and of what is under it. */
 export interface DisplayBlendIf { channel: 1 | 2 | 3 | 4; thisLayer: readonly [number, number, number, number]; underlying: readonly [number, number, number, number] }
-export interface DisplayLayer { image: HTMLCanvasElement | OffscreenCanvas | null; lut?: Uint8Array; lut3?: boolean; grain?: GrainParams; mask?: DisplayMask; clip?: DisplayClip; folders?: DisplayMask[]; blendIf?: DisplayBlendIf; chOff?: number; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
+export interface DisplayLayer { image: HTMLCanvasElement | OffscreenCanvas | null; lut?: Uint8Array; lut3?: boolean; grain?: GrainParams; mask?: DisplayMask; clip?: DisplayClip; folders?: DisplayMask[]; blendIf?: DisplayBlendIf; chOff?: number; deep?: ChannelPixels; linear?: boolean; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
 /** The shader mode that renders a clipping base's coverage, and a folder mask's coverage (no source image). */
 export const CLIP_MODE = 102;
 export const FOLDER_MODE = 103;
@@ -32,6 +33,9 @@ export interface ScreenDisplay {
   budgetBytes?: number;
   /** Texture uploads so far: calls, the tile-sized ones among them, and bytes sent. */
   readonly stats?: UploadStats;
+  /** Whether Preferences lets a 32 bit document present in high dynamic range, and the call that applies it for the frame about to be drawn; returns whether the display now presents in HDR. */
+  hdrAllowed?: boolean;
+  hdr?(want: boolean): boolean;
   render(layers: readonly DisplayLayer[], view: Mat, zoom: number, rect: [number, number, number, number], checker: Checker): void;
   /** The document's size in its pixels, told before render; the native display needs it, the others do not have it. */
   document?(width: number, height: number): void;
@@ -66,10 +70,17 @@ struct Present { rect: vec4<f32>, a: vec4<f32>, b: vec4<f32>, originCell: vec4<f
  *  kept while their raster's version is unchanged (a live preview, version -1, uploads every frame) and released when
  *  a frame no longer uses them. `create` returns null where WebGPU cannot start; `onLost` fires if the device is lost. */
 export class GpuDisplay {
-  private readonly cache = new Map<object, { tex: GPUTexture; version: number; w: number; h: number; bytes: number; seen: number; at: number }>();
+  private readonly cache = new Map<object, { tex: GPUTexture; version: number; w: number; h: number; bytes: number; seen: number; at: number; src: unknown; mipAt: number }>();
   private acc: [GPUTexture, GPUTexture] | null = null;
   onLost: (() => void) | null = null;
   budgetBytes = 0;
+  hdrAllowed = true;
+  sdrFormat: GPUTextureFormat = 'rgba8unorm';
+  private hdrOn = false;
+  private readonly pipes = new Map<string, GPURenderPipeline>();
+  private shaders: Record<'composite' | 'present' | 'mip', GPUShaderModule> | null = null;
+  private mipSampler: GPUSampler | null = null;
+  private retired: GPUTexture[] = [];
   readonly stats: UploadStats = { uploads: 0, tiled: 0, bytes: 0 };
   private frameNo = 0;
   private readonly timer: WgpuFrameTimer;
@@ -102,7 +113,9 @@ export class GpuDisplay {
       const present = device.createRenderPipeline({ layout: 'auto', vertex: { module: pm, entryPoint: 'vs' }, fragment: { module: pm, entryPoint: 'fs', targets: [{ format }] }, primitive: { topology: 'triangle-list' } });
       const presentOff = device.createRenderPipeline({ layout: 'auto', vertex: { module: pm, entryPoint: 'vs' }, fragment: { module: pm, entryPoint: 'fs', targets: [{ format: 'rgba8unorm' }] }, primitive: { topology: 'triangle-list' } });
       const edge = { addressModeU: 'clamp-to-edge', addressModeV: 'clamp-to-edge' } as const;
-      return new GpuDisplay(canvas, device, ctx, composite, present, presentOff, device.createSampler({ ...edge, magFilter: 'linear', minFilter: 'linear' }), device.createSampler({ ...edge, magFilter: 'nearest', minFilter: 'nearest' }));
+      const display = new GpuDisplay(canvas, device, ctx, composite, present, presentOff, device.createSampler({ ...edge, magFilter: 'linear', minFilter: 'linear' }), device.createSampler({ ...edge, magFilter: 'nearest', minFilter: 'nearest' }));
+      display.sdrFormat = format;
+      return display;
     } catch (err) {
       console.warn('formvis: WebGPU could not start:', err);
       return null;
@@ -111,6 +124,29 @@ export class GpuDisplay {
 
   /** The largest texture side this device takes (maxTextureDimension2D). */
   get maxTexture(): number { return this.device.limits.maxTextureDimension2D; }
+
+  /** The pipeline for a shader and target format, made on first use: the half-float composite, the HDR present and the mip pass. */
+  private pipe(kind: 'composite' | 'present' | 'mip', format: GPUTextureFormat): GPURenderPipeline {
+    const key = `${kind}:${format}`, have = this.pipes.get(key);
+    if (have) return have;
+    const d = this.device;
+    this.shaders ??= { composite: d.createShaderModule({ code: COMPOSITE_WGSL }), present: d.createShaderModule({ code: PRESENT_WGSL }), mip: d.createShaderModule({ code: MIP_WGSL }) };
+    const module = this.shaders[kind], made = d.createRenderPipeline({ layout: 'auto', vertex: { module, entryPoint: 'vs' }, fragment: { module, entryPoint: 'fs', targets: [{ format }] }, primitive: { topology: 'triangle-list' } });
+    this.pipes.set(key, made);
+    return made;
+  }
+
+  /** Presents the canvas in half float with extended tone mapping (values past 1.0 brighter than SDR white) when the
+   *  caller wants it, Preferences allows it and the display reports a high dynamic range; otherwise in the preferred
+   *  8-bit format. Reconfigures only on a change; returns whether the canvas now presents in HDR. */
+  hdr(want: boolean): boolean {
+    let on = false;
+    try { on = want && this.hdrAllowed && typeof matchMedia === 'function' && matchMedia('(dynamic-range: high)').matches; } catch { on = false; }
+    if (on === this.hdrOn) return on;
+    this.hdrOn = on;
+    this.ctx.configure({ device: this.device, format: on ? 'rgba16float' : this.sdrFormat, alphaMode: 'premultiplied', ...(on ? { toneMapping: { mode: 'extended' } } : {}) } as unknown as GPUCanvasConfiguration);
+    return on;
+  }
 
   unsupported(layers: readonly DisplayLayer[]): string | null { return layers.some((l) => l.grain) ? 'a Grain adjustment layer is drawn by the WebGL2 display, not WebGPU' : null; }
 
@@ -121,13 +157,15 @@ export class GpuDisplay {
     const d = this.device, W = out ? out.width : this.canvas.width, H = out ? out.height : this.canvas.height;
     if (W < 1 || H < 1) return;
     this.frameNo++;
-    if (!this.acc || this.acc[0].width !== W || this.acc[0].height !== H) {
+    // A frame with a deep layer (or an HDR canvas) composites in half float; every other frame stays 8-bit, as before.
+    const accFormat: GPUTextureFormat = this.hdrOn || layers.some((l) => l.deep) ? 'rgba16float' : 'rgba8unorm';
+    if (!this.acc || this.acc[0].width !== W || this.acc[0].height !== H || this.acc[0].format !== accFormat) {
       this.acc?.forEach((t) => t.destroy());
-      const make = (): GPUTexture => d.createTexture({ size: [W, H], format: 'rgba8unorm', usage: TEX.TEXTURE_BINDING | TEX.RENDER_ATTACHMENT });
+      const make = (): GPUTexture => d.createTexture({ size: [W, H], format: accFormat, usage: TEX.TEXTURE_BINDING | TEX.RENDER_ATTACHMENT });
       this.acc = [make(), make()];
     }
     let [a, b] = this.acc;
-    const enc = d.createCommandEncoder(), used = new Set<object>(), buffers: GPUBuffer[] = [], sampler = zoom >= 2 ? this.nearest : this.linear;
+    const enc = d.createCommandEncoder(), used = new Set<object>(), buffers: GPUBuffer[] = [], sampler = zoom >= 2 ? this.nearest : zoom < 0.5 ? this.mipLinear() : this.linear;
     this.timer.arm(!out);
     enc.beginRenderPass({ colorAttachments: [{ view: a.createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }], ...this.timer.first() }).end();
     // Each clipping base's coverage, once per frame, into its own screen-sized texture (mode 102).
@@ -136,7 +174,7 @@ export class GpuDisplay {
       const have = clipTex.get(c);
       if (have) return have;
       const up = c.parent ? clipCover(c.parent) : null, t = this.clipTarget(clipTex.size, W, H);
-      this.layerPass(enc, this.blank(), t, { image: c.image, version: c.version, width: c.width, height: c.height, matrix: c.matrix, opacity: c.opacity, blend: 'normal', mask: c.mask }, CLIP_MODE, up, sampler, view, used, buffers);
+      this.layerPass(enc, this.blank(), t, { image: c.image, deep: c.deep, linear: c.linear, version: c.version, width: c.width, height: c.height, matrix: c.matrix, opacity: c.opacity, blend: 'normal', mask: c.mask }, CLIP_MODE, up, sampler, view, used, buffers);
       clipTex.set(c, t);
       return t;
     };
@@ -163,7 +201,7 @@ export class GpuDisplay {
     const pu = d.createBuffer({ size: 64, usage: BUF.UNIFORM | BUF.COPY_DST });
     d.queue.writeBuffer(pu, 0, new Float32Array([...rect, ...checker.a.map((v) => v / 255), 1, ...checker.b.map((v) => v / 255), 1, checker.origin[0], checker.origin[1], checker.cell, 0]));
     buffers.push(pu);
-    const pipe = out ? this.presentOff : this.present;
+    const pipe = out ? (out.format === 'rgba8unorm' ? this.presentOff : this.pipe('present', out.format)) : this.hdrOn ? this.pipe('present', 'rgba16float') : this.present;
     const pbind = d.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: a.createView() }, { binding: 1, resource: { buffer: pu } }] });
     const pass = enc.beginRenderPass({ colorAttachments: [{ view: (out ?? this.ctx.getCurrentTexture()).createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }], ...this.timer.last() });
     pass.setPipeline(pipe);
@@ -174,6 +212,8 @@ export class GpuDisplay {
     d.queue.submit([enc.finish()]);
     this.timer.read();
     for (const u of buffers) u.destroy();
+    for (const t of this.retired) t.destroy();
+    this.retired.length = 0;
     trimResident(this.cache, this.frameNo, this.budgetBytes, performance.now(), (e) => e.tex.destroy());
   }
 
@@ -207,21 +247,41 @@ export class GpuDisplay {
     return px;
   }
 
+  /** The same frame into a half-float target, read back as half-float bits (RGBA, W by H): the pipeline an HDR canvas
+   *  presents through, with nothing clamped or rounded to 8 bits. */
+  async renderToHalf(layers: readonly DisplayLayer[], view: Mat, zoom: number, rect: [number, number, number, number], checker: Checker, W: number, H: number): Promise<Uint16Array> {
+    const d = this.device, out = d.createTexture({ size: [W, H], format: 'rgba16float', usage: TEX.RENDER_ATTACHMENT | TEX.COPY_SRC });
+    this.render(layers, view, zoom, rect, checker, out);
+    const row = Math.ceil((W * 8) / 256) * 256, buf = d.createBuffer({ size: row * H, usage: BUF.COPY_DST | BUF.MAP_READ });
+    const enc = d.createCommandEncoder();
+    enc.copyTextureToBuffer({ texture: out }, { buffer: buf, bytesPerRow: row }, [W, H]);
+    d.queue.submit([enc.finish()]);
+    await buf.mapAsync(0x1);
+    const src = new Uint16Array(buf.getMappedRange()), bits = new Uint16Array(W * H * 4), perRow = row / 2;
+    for (let y = 0; y < H; y++) bits.set(src.subarray(y * perRow, y * perRow + W * 4), y * W * 4);
+    buf.unmap();
+    buf.destroy();
+    out.destroy();
+    return bits;
+  }
+
   /** One composite pass: `l` over `backdrop` into `target`, in shader `mode`, clipped by `clip` (a coverage texture). */
   private layerPass(enc: GPUCommandEncoder, backdrop: GPUTexture, target: GPUTexture, l: DisplayLayer, mode: number, clip: GPUTexture | null, sampler: GPUSampler, view: Mat, used: Set<object>, buffers: GPUBuffer[]): void {
     const d = this.device;
     if (mode !== FOLDER_MODE) used.add(l.lut ?? (l.image as object));
-    const tex = mode === FOLDER_MODE ? this.blank() : this.texture(l);
+    const lod = mode < LUT_MODE ? lodFor(mul(view, l.matrix), l.width, l.height) : 0, pipe = target.format === 'rgba8unorm' ? this.composite : this.pipe('composite', target.format);
+    const tex = mode === FOLDER_MODE ? this.blank() : this.texture(l, lod > 0);
     const [ia, ib, ic, id, ie, iff] = invert(mul(view, l.matrix));
     // 224 bytes, WGSL's layout: inv (0), size (48), opacity (56), mode (60), the mask's inverse placement (64), its
     // size (112), whether there is one (120), whether the layer is clipped (124), the view's inverse (128), Blend If's
-    // ranges (176, 192) and channel (208), the channels switched off (212).
+    // ranges (176, 192) and channel (208), the channels switched off (212), the mip level sampled (216).
     const raw = new ArrayBuffer(224), f = new Float32Array(raw), u32 = new Uint32Array(raw), [va, vb, vc, vd, ve, vf] = invert(view);
     f.set([ia, ib, 0, 0, ic, id, 0, 0, ie, iff, 1, 0, l.width, l.height, Math.min(1, Math.max(0, l.opacity))]);
     f.set([va, vb, 0, 0, vc, vd, 0, 0, ve, vf, 1, 0], 32);
     u32[15] = mode;
     if (l.blendIf) { f.set(l.blendIf.thisLayer, 44); f.set(l.blendIf.underlying, 48); u32[52] = l.blendIf.channel; }
     u32[53] = l.chOff ?? 0;
+    f[54] = lod;
     let maskTex = this.blank();
     if (l.mask) {
       const mk = l.mask, [ma, mb, mc, md, me, mf] = invert(mul(view, mk.matrix));
@@ -234,12 +294,12 @@ export class GpuDisplay {
     const ub = d.createBuffer({ size: 224, usage: BUF.UNIFORM | BUF.COPY_DST });
     d.queue.writeBuffer(ub, 0, raw);
     buffers.push(ub);
-    const bind = d.createBindGroup({ layout: this.composite.getBindGroupLayout(0), entries: [
+    const bind = d.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries: [
       { binding: 0, resource: backdrop.createView() }, { binding: 1, resource: tex.createView() }, { binding: 2, resource: sampler }, { binding: 3, resource: { buffer: ub } },
       { binding: 4, resource: maskTex.createView() }, { binding: 5, resource: (clip ?? this.blank()).createView() },
     ] });
     const pass = enc.beginRenderPass({ colorAttachments: [{ view: target.createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
-    pass.setPipeline(this.composite);
+    pass.setPipeline(pipe);
     pass.setBindGroup(0, bind);
     pass.draw(3);
     pass.end();
@@ -262,23 +322,53 @@ export class GpuDisplay {
     return this.blankTex;
   }
 
-  private texture(l: DisplayLayer): GPUTexture {
-    const key = l.lut ?? (l.image as object);
+  /** A texture for a layer's pixels: half float for a deep layer, else 8-bit; a mip chain only when asked (below). */
+  private make(w: number, h: number, format: GPUTextureFormat, mips: boolean): GPUTexture {
+    return this.device.createTexture({ size: [w, h], format, mipLevelCount: mips ? mipLevels(w, h) : 1, usage: TEX.TEXTURE_BINDING | TEX.COPY_DST | TEX.COPY_SRC | TEX.RENDER_ATTACHMENT });
+  }
+
+  private mipLinear(): GPUSampler {
+    this.mipSampler ??= this.device.createSampler({ addressModeU: 'clamp-to-edge', addressModeV: 'clamp-to-edge', magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear' });
+    return this.mipSampler;
+  }
+
+  /** Fills every level below the first with the mean of the 2 by 2 block above it. */
+  private fillMips(tex: GPUTexture): void {
+    const d = this.device, pipe = this.pipe('mip', tex.format), enc = d.createCommandEncoder();
+    for (let i = 1; i < tex.mipLevelCount; i++) {
+      const bind = d.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: tex.createView({ baseMipLevel: i - 1, mipLevelCount: 1 }) }] });
+      const pass = enc.beginRenderPass({ colorAttachments: [{ view: tex.createView({ baseMipLevel: i, mipLevelCount: 1 }), loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
+      pass.setPipeline(pipe);
+      pass.setBindGroup(0, bind);
+      pass.draw(3);
+      pass.end();
+    }
+    d.queue.submit([enc.finish()]);
+  }
+
+  private texture(l: DisplayLayer, mips = false): GPUTexture {
+    const key = l.lut ?? (l.image as object), deep = !!l.deep && !l.lut, format: GPUTextureFormat = deep ? 'rgba16float' : 'rgba8unorm';
     let e = this.cache.get(key);
-    if (e && (e.w !== l.width || e.h !== l.height)) { e.tex.destroy(); e = undefined; }
+    if (e && (e.w !== l.width || e.h !== l.height || e.tex.format !== format)) { this.retired.push(e.tex); e = undefined; }
     if (!e) {
-      e = { tex: this.device.createTexture({ size: [l.width, l.height], format: 'rgba8unorm', usage: TEX.TEXTURE_BINDING | TEX.COPY_DST | TEX.RENDER_ATTACHMENT }), version: NaN, w: l.width, h: l.height, bytes: l.width * l.height * 4, seen: 0, at: 0 };
+      e = { tex: this.make(l.width, l.height, format, false), version: NaN, w: l.width, h: l.height, bytes: l.width * l.height * (deep ? 8 : 4), seen: 0, at: 0, src: null, mipAt: NaN };
       this.cache.set(key, e);
     }
     e.seen = this.frameNo;
     e.at = performance.now();
+    if (deep && e.src !== l.deep) { e.src = l.deep; e.version = NaN; e.mipAt = NaN; }
     if (l.lut) {
       // A table is fixed for its settings (a new table comes with new settings), so it is written once, at its own size.
       if (Number.isNaN(e.version)) { this.device.queue.writeTexture({ texture: e.tex }, l.lut, { bytesPerRow: l.width * 4 }, [l.width, l.height]); e.version = 0; this.stats.uploads++; this.stats.bytes += e.bytes; }
     } else if (l.image && (l.version < 0 || e.version !== l.version)) {
       // A changed layer sends only the 256 px tiles its raster says changed since this texture was written.
       const box = l.version < 0 ? null : dirtyBox(l.image, e.version, l.version, l.width, l.height);
-      if (box) {
+      if (deep && l.deep) {
+        const part = box ?? { x: 0, y: 0, w: l.width, h: l.height };
+        this.device.queue.writeTexture({ texture: e.tex, origin: [part.x, part.y] }, deepHalf(l.deep, !!l.linear, part), { bytesPerRow: part.w * 8 }, [part.w, part.h]);
+        if (box) this.stats.tiled++;
+        this.stats.bytes += part.w * part.h * 8;
+      } else if (box) {
         this.device.queue.copyExternalImageToTexture({ source: l.image, origin: [box.x, box.y] }, { texture: e.tex, origin: [box.x, box.y], premultipliedAlpha: true }, [box.w, box.h]);
         this.stats.tiled++;
         this.stats.bytes += box.w * box.h * 4;
@@ -288,6 +378,17 @@ export class GpuDisplay {
       }
       this.stats.uploads++;
       e.version = l.version;
+    }
+    if (mips && !l.lut && Math.max(l.width, l.height) > 1) {
+      if (e.tex.mipLevelCount < 2) {
+        const fresh = this.make(l.width, l.height, format, true), enc = this.device.createCommandEncoder();
+        enc.copyTextureToTexture({ texture: e.tex }, { texture: fresh }, [l.width, l.height]);
+        this.device.queue.submit([enc.finish()]);
+        this.retired.push(e.tex);
+        e.tex = fresh;
+        e.mipAt = NaN;
+      }
+      if (e.version < 0 || e.mipAt !== e.version) { this.fillMips(e.tex); e.mipAt = e.version; }
     }
     return e.tex;
   }

@@ -601,11 +601,17 @@ other modes and depths its menu items are off, with the reason as their tooltip.
   (`./formvis`) first on the path. The plus button (or Window > New Terminal) opens another tab, the restart button
   starts a tab's shell again, and the cross on a tab ends it.
 - Only the formvis window on this computer can attach to a terminal; nothing else can read or type into one.
-- Window > Claude Code opens a panel that runs it, if it is installed here and signed in, on the open document: type
-  a request, and it edits layers, selections and text through the same tools outside agents use. Choose Ask (each
-  request that could change something waits for Allow or Deny), Auto-accept edits, or Plan (it proposes, you decide);
-  Stop ends the turn. Its shell commands appear in a read-only tab of the terminal dock. Install it or sign in from
-  any terminal tab; the panel says which is missing.
+- Window > Claude Code shows the dock on a tab running the program itself, started in the formvis folder with
+  formvis's tools attached, if it is installed here and signed in. The robot button in the dock's head and the one in
+  the title bar do the same, and the ask bar at the dock's foot types a request into the running tab, or opens one
+  with it. If it is not installed, a note in the dock says so and how to install it; sign in once by running it in a
+  terminal tab.
+- The speech bubble in the dock's head (also in the Window menu) opens the Chat tab, first among the tabs: type a
+  request in the ask bar, and it edits layers, selections and text through the same tools outside agents use, each
+  tool call shown as a chip. Choose Ask (each request that could change something waits for Allow or Deny),
+  Auto-accept edits, or Plan (it proposes, you decide); Stop ends the turn, and New Chat starts over. The hand-off
+  button opens a program tab that resumes this conversation. Its shell commands appear in a read-only tab of the
+  terminal dock.
 
 ## Agents
 

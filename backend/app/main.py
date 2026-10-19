@@ -106,6 +106,7 @@ from app.routers import terminal as _terminal_router  # noqa: E402  (the window'
 app.include_router(_terminal_router.router)
 from app.routers import claude_code as _claude_router  # noqa: E402  (Claude Code in the window, DEV_PLAN 28.5)
 app.include_router(_claude_router.router)
+app.include_router(_claude_router.window_router)
 # Local image generation (1.52.9), from formcut's engine: jobs, model downloads, Krea 2, FLUX.2 [klein], LoRAs, checkpoints.
 from app.localgen import checkpoints as _lg_checkpoints, generate as _lg_generate, jobs as _lg_jobs, klein as _lg_klein, krea2 as _lg_krea2, loras as _lg_loras, model_manager as _lg_models  # noqa: E402
 from app.localgen import ai_upscale as _lg_upscale  # noqa: E402  (1.53.1)

@@ -14,6 +14,7 @@ import { grainFromData, grainKernel, hsvFromData, hsvKernel } from './adjust';
 import type { Adjustment } from './types';
 import { limitOf, limitView, limitWeights } from './limit';
 import { isDepthName } from './depth-map';
+import { runEffectOnGpu, type GpuEffectJob } from './gpu-effects';
 
 const kernelCache = new WeakMap<object, Kernel | null>();
 export function kernelFor(adj: Adjustment | null): Kernel | null {
@@ -225,6 +226,9 @@ export class Renderer {
   /** While a style is being previewed, effects over large regions are computed at reduced resolution (about 1.5
    *  megapixels) and drawn scaled up, so dragging a slider stays quick; the style applied is computed in full. */
   fastEffects = false;
+  /** The most pixels a previewed style's effects are computed over before they drop to a smaller copy; it follows how long the last preview build took (250 thousand to 6 million). */
+  previewPixels = 1_500_000;
+  private exactFx = false;
   private readonly clipPool = new Map<ID, Slot>();
 
   /** Resizes a scratch slot, puts its context back to a plain state and clears it. */
@@ -519,7 +523,7 @@ export class Renderer {
     const region = intersectRect(integral({ x: placed.x - reach, y: placed.y - reach, w: placed.w + 2 * reach, h: placed.h + 2 * reach }), { x: 0, y: 0, w: docW, h: docH });
     const parts: FxPart[] = [];
     if (region) {
-      const k = fast && region.w * region.h > 1_500_000 ? Math.sqrt(1_500_000 / (region.w * region.h)) : 1;
+      const k = fast && region.w * region.h > this.previewPixels ? Math.sqrt(this.previewPixels / (region.w * region.h)) : 1, began = performance.now();
       const rw = Math.max(1, Math.ceil(region.w * k)), rh = Math.max(1, Math.ceil(region.h * k));
       const view = mul([k, 0, 0, k, 0, 0], translation(-region.x, -region.y)), sil = this.slot(8, rw, rh);
       sil.c.save();
@@ -537,6 +541,7 @@ export class Renderer {
       }
       if (own && fx.layerMaskHides !== false) this.cover(sil.c, own, view, rw, rh);
       const local = { x: (placed.x - region.x) * k, y: (placed.y - region.y) * k, w: placed.w * k, h: placed.h * k };
+      this.exactFx = exact;
       for (const phase of ['below', 'above'] as const) {
         this.effects((s, box, alpha, op, name, kept) => {
           const copy = createSurface(box.w, box.h);
@@ -544,6 +549,10 @@ export class Renderer {
           if (exact && kept) unkeep(copy, sil.c.getImageData(box.x, box.y, box.w, box.h).data);
           parts.push({ s: copy, x: region.x + box.x / k, y: region.y + box.y / k, k, alpha, op, above: phase === 'above', name, kept });
         }, sil, fx, k, 1, rw, rh, local, phase, { x: -region.x * k, y: -region.y * k });
+      }
+      if (fast) {
+        const ms = performance.now() - began;
+        this.previewPixels = Math.round(Math.min(6_000_000, Math.max(250_000, ms > 90 ? this.previewPixels * 0.7 : ms < 25 ? this.previewPixels * 1.25 : this.previewPixels)));
       }
     }
     if (exact) return parts;
@@ -733,6 +742,13 @@ export class Renderer {
     const { x: bx, y: by, w: bw, h: bh } = box;
     const css = (c: RGB): string => `rgb(${c.r},${c.g},${c.b})`;
     const lay = (s: Surface, alpha: number, op: GlobalCompositeOperation, name: string, kept = false): void => out(s, box, alpha, op, name, kept);
+    const gpuMap = (job: GpuEffectJob, slotNo: number): Surface | null => {
+      const img = this.exactFx ? null : runEffectOnGpu(sil.s, box, job);
+      if (!img) return null;
+      const s = this.slot(slotNo, bw, bh);
+      s.c.putImageData(img, 0, 0);
+      return s.s;
+    };
     const grown = (px: number): Surface | undefined => {
       if (!(px > 0)) return undefined;
       const a = sil.c.getImageData(bx, by, bw, bh).data, m = new Uint8Array(bw * bh);
@@ -834,6 +850,8 @@ export class Renderer {
           c.drawImage(inv.s, -far, 0);
         });
       };
+      const castInner = (color: RGB, blur: number, dx: number, dy: number, choke: number, plain: boolean): Surface =>
+        (plain ? gpuMap({ kind: 'cast', color, blur, dx, dy, grow: -choke, knockout: false, inner: true }, 5) : null) ?? castByInverse(color, blur, dx, dy, choke);
       const po = fx.patternOverlay, pat = po.enabled && po.opacity > 0 ? patternById(po.pattern) : null;
       if (pat) {
         // Lowest of the overlays: the pattern tiled from the layer's top-left corner, kept to its silhouette.
@@ -910,12 +928,12 @@ export class Renderer {
           const c = ctxOf(cov), img = c.getImageData(0, 0, bw, bh), px = img.data, a = sil.c.getImageData(bx, by, bw, bh).data;
           for (let i = 3; i < px.length; i += 4) { px[i] = Math.round((a[i] * (255 - px[i])) / 255); px[i - 3] = ig.color.r; px[i - 2] = ig.color.g; px[i - 1] = ig.color.b; }
           c.putImageData(img, 0, 0);
-        } else cov = castByInverse(ig.color, sz, 0, 0, hold);
+        } else cov = castInner(ig.color, sz, 0, 0, hold, !ig.noise && !contourLut(ig.contour));
         lay(this.grained(this.contoured(cov, bw, bh, ig.contour, ig.antiAlias), bw, bh, ig.noise, bx, by), ig.opacity * opacity, compositeOp(ig.blend), 'Inner Glow', true);
       }
       for (const is of instances(fx, 'innerShadow')) if (is.enabled && is.opacity > 0) {
         const rad = (is.angle * Math.PI) / 180;
-        lay(this.grained(this.contoured(castByInverse(is.color, is.size * scale, -Math.cos(rad) * is.distance * scale, Math.sin(rad) * is.distance * scale, is.size * scale * ((is.choke ?? 0) / 100)), bw, bh, is.contour, is.antiAlias), bw, bh, is.noise, bx, by), is.opacity * opacity, compositeOp(is.blend), 'Inner Shadow', true);
+        lay(this.grained(this.contoured(castInner(is.color, is.size * scale, -Math.cos(rad) * is.distance * scale, Math.sin(rad) * is.distance * scale, is.size * scale * ((is.choke ?? 0) / 100), !is.noise && !contourLut(is.contour)), bw, bh, is.contour, is.antiAlias), bw, bh, is.noise, bx, by), is.opacity * opacity, compositeOp(is.blend), 'Inner Shadow', true);
       }
       const ring = bv.style === 'stroke' ? instances(fx, 'stroke').find((s) => s.enabled && s.size * scale > 0) : undefined;
       if (bv.enabled && bv.size > 0 && (bv.highlightOpacity > 0 || bv.shadowOpacity > 0) && (bv.style !== 'stroke' || ring)) {
@@ -937,6 +955,8 @@ export class Renderer {
       }
       for (const k of instances(fx, 'stroke')) if (k.enabled && k.opacity > 0 && k.size * scale > 0 && (k.position === 'inside' || k.position === 'center')) {
         // Inside: the silhouette less itself shrunk by the size; Center: grown by half less shrunk by half.
+        const edge = k.size * scale, ringed = k.gradient ? null : gpuMap({ kind: 'ring', color: k.color, outer: k.position === 'inside' ? 0 : edge / 2, inner: k.position === 'inside' ? edge : edge / 2, clear: false }, 12);
+        if (ringed) { lay(ringed, k.opacity * opacity, 'source-over', k.position === 'inside' ? 'Inner Stroke' : 'Stroke', k.position === 'inside'); continue; }
         const alpha = sil.c.getImageData(bx, by, bw, bh).data, inside = new Uint8Array(bw * bh);
         for (let i = 0; i < inside.length; i++) inside[i] = alpha[i * 4 + 3];
         const s = k.size * scale, outer = k.position === 'inside' ? inside : resizeMask(inside, bw, bh, s / 2), inner = resizeMask(inside, bw, bh, -(k.position === 'inside' ? s : s / 2));
@@ -952,9 +972,10 @@ export class Renderer {
     }
     for (const d of instances(fx, 'dropShadow')) if (d.enabled && d.opacity > 0) {
       // Spread grows the matte by that share of the size, the blur taking the rest; Knocks Out clears it under the layer.
-      const rad = (d.angle * Math.PI) / 180, spreadPx = d.size * scale * ((d.spread ?? 0) / 100);
-      const sh = this.grained(this.contoured(shadowOf(d.color, d.size * scale - spreadPx, -Math.cos(rad) * d.distance * scale, Math.sin(rad) * d.distance * scale, grown(spreadPx)), bw, bh, d.contour, d.antiAlias), bw, bh, d.noise, bx, by);
-      if (d.knockout) {
+      const rad = (d.angle * Math.PI) / 180, spreadPx = d.size * scale * ((d.spread ?? 0) / 100), dxs = -Math.cos(rad) * d.distance * scale, dys = Math.sin(rad) * d.distance * scale;
+      const gsh = !d.noise && !contourLut(d.contour) ? gpuMap({ kind: 'cast', color: d.color, blur: d.size * scale - spreadPx, dx: dxs, dy: dys, grow: spreadPx, knockout: !!d.knockout }, 5) : null;
+      const sh = gsh ?? this.grained(this.contoured(shadowOf(d.color, d.size * scale - spreadPx, dxs, dys, grown(spreadPx)), bw, bh, d.contour, d.antiAlias), bw, bh, d.noise, bx, by);
+      if (d.knockout && !gsh) {
         const kc = ctxOf(sh);
         kc.save();
         kc.setTransform(1, 0, 0, 1, 0, 0);
@@ -966,8 +987,8 @@ export class Renderer {
     }
     if (g.enabled && g.opacity > 0 && g.size > 0) {
       const gsz = g.size * scale, hold = gsz * ((g.spread ?? 0) / 100);
-      let cov: Surface;
-      if (g.technique === 'precise') {
+      let cov: Surface | null = !g.noise && !contourLut(g.contour) ? gpuMap(g.technique === 'precise' ? { kind: 'ramp', color: g.color, size: gsz, hold } : { kind: 'cast', color: g.color, blur: gsz - hold, dx: 0, dy: 0, grow: hold, knockout: false }, 5) : null;
+      if (!cov && g.technique === 'precise') {
         // A distance ramp from the edge: full out to the spread, then falling to nothing at the size.
         const a = sil.c.getImageData(bx, by, bw, bh).data, dist = distanceField((i) => a[i * 4 + 3] >= 128, bw, bh), img = new ImageData(bw, bh), px = img.data, part = contourLut(g.contour) ? 0.5 : 1;
         for (let i = 0; i < dist.length; i++) {
@@ -977,10 +998,12 @@ export class Renderer {
         const p5 = this.slot(5, bw, bh);
         p5.c.putImageData(img, 0, 0);
         cov = p5.s;
-      } else cov = shadowOf(g.color, gsz - hold, 0, 0, grown(hold));
+      } else if (!cov) cov = shadowOf(g.color, gsz - hold, 0, 0, grown(hold));
       lay(this.grained(this.contoured(cov, bw, bh, g.contour, g.antiAlias, (g.range ?? 100) / 100), bw, bh, g.noise, bx, by), g.opacity * opacity, compositeOp(g.blend), 'Outer Glow');
     }
     for (const k of instances(fx, 'stroke')) if (k.enabled && k.opacity > 0 && k.size * scale > 0 && (k.position ?? 'outside') === 'outside') {
+      const ringed = k.gradient ? null : gpuMap({ kind: 'ring', color: k.color, outer: k.size * scale, inner: 0, clear: true }, 6);
+      if (ringed) { lay(ringed, k.opacity * opacity, 'source-over', 'Outer Stroke'); continue; }
       const alpha = sil.c.getImageData(bx, by, bw, bh).data, inside = new Uint8Array(bw * bh);
       for (let i = 0; i < inside.length; i++) inside[i] = alpha[i * 4 + 3];
       const ring = resizeMask(inside, bw, bh, k.size * scale), img = new ImageData(bw, bh), px = img.data;

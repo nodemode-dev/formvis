@@ -263,10 +263,10 @@ export function detailActive(d: DetailState): boolean {
   return d.clarity !== 0 || d.texture !== 0 || d.sharpen !== 0;
 }
 
-/** True when the state holds only what `developPass` does (tone, colour mixer, curves): the stages after it (grading,
+/** True when the state holds only what `developPass` and the parametric curve's table do (tone, colour mixer, curves): the stages after them (point colour, grading,
  *  calibration, clarity, texture, sharpening, optics, geometry) are all at their defaults. The GPU runs only these. */
 export function developPerPixelOnly(s: DevelopState): boolean {
-  return !darkDehazeOn(s) && !vignetteExtras(s) && !noiseActive(noiseOf(s)) && !detailActive(s.detail) && !parametricActive(parametricOf(s)) && !pointColorActive(pointColorOf(s)) && !gradingActive(gradingOf(s)) && !calibrationActive(calibrationOf(s)) && !opticsActive(opticsOf(s)) && !geometryActive(geometryOf(s));
+  return !darkDehazeOn(s) && !vignetteExtras(s) && !noiseActive(noiseOf(s)) && !detailActive(s.detail) && !pointColorActive(pointColorOf(s)) && !gradingActive(gradingOf(s)) && !calibrationActive(calibrationOf(s)) && !opticsActive(opticsOf(s)) && !geometryActive(geometryOf(s));
 }
 
 export function stateActive(s: DevelopState): boolean {

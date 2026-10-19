@@ -13,7 +13,7 @@ export const BLEND_IDS: readonly BlendMode[] = [
 export const blendIndex = (m: BlendMode): number => Math.max(0, BLEND_IDS.indexOf(m));
 
 export const COMPOSITE_WGSL = /* wgsl */ `
-struct Layer { inv: mat3x3<f32>, size: vec2<f32>, opacity: f32, mode: u32, minv: mat3x3<f32>, msize: vec2<f32>, hasMask: u32, hasClip: u32, vinv: mat3x3<f32>, biT: vec4<f32>, biU: vec4<f32>, biCh: u32, chOff: u32 };
+struct Layer { inv: mat3x3<f32>, size: vec2<f32>, opacity: f32, mode: u32, minv: mat3x3<f32>, msize: vec2<f32>, hasMask: u32, hasClip: u32, vinv: mat3x3<f32>, biT: vec4<f32>, biU: vec4<f32>, biCh: u32, chOff: u32, lod: f32 };
 @group(0) @binding(0) var backdrop: texture_2d<f32>;
 @group(0) @binding(1) var source: texture_2d<f32>;
 @group(0) @binding(2) var smp: sampler;
@@ -167,7 +167,7 @@ fn keep(o: vec4<f32>, b: vec4<f32>) -> vec4<f32> {
   if (q.x < 0.0 || q.y < 0.0 || q.x >= layer.size.x || q.y >= layer.size.y) { return bd; }
   // The layer is uploaded premultiplied, as the canvas stores it, and un-premultiplied here in float: unpremultiplying
   // in 8 bits first rounds near-grey colours, which Hue then amplifies (measured: 7 levels against the CPU renderer).
-  let s0 = textureSampleLevel(source, smp, q.xy / layer.size, 0.0);
+  let s0 = textureSampleLevel(source, smp, q.xy / layer.size, layer.lod);
   var sc = s0;
   if (s0.a > 0.0) { sc = vec4<f32>(s0.rgb / s0.a, s0.a); }
   // The per-pixel modes (engine/blend.ts) read the layer through getImageData, unpremultiplied to 8 bits, and their

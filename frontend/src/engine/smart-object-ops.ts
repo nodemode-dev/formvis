@@ -13,8 +13,9 @@ import { deformNow, transformOf } from './smart-deform';
 import { computeStack, type StackMode } from './stack-modes';
 import { fadeImages } from './fade';
 import * as LS from './layer-structure';
-import { docTransform, newLayer, uid, type Doc, type ID, type Layer, type NestedContents, type Pt, type SmartDeform, type SmartFilter, type SmartLink, type SmartObject } from './types';
+import { docTransform, newLayer, uid, type Doc, type ID, type Layer, type NestedContents, type Pt, type SmartDeform, type SmartFilter, type SmartLink, type SmartObject, type SmartOriginal } from './types';
 import type { Surface } from './surface';
+import { cachedStage, keepStage, smartKeys, type SmartKeys } from './smart-cache';
 
 /** The smart object state the Engine keeps. */
 export class SmartObjectStore {
@@ -103,17 +104,36 @@ export function blendStage(before: ImageData, after: ImageData, f: SmartFilter):
   return !blends(f) || before.width !== after.width || before.height !== after.height ? after : fadeImages(before, after, mode, k);
 }
 
-export function renderSmart(host: SmartObjectHost, source: Raster, filters: SmartFilter[], mask: Raster | null = null): Raster {
-  const shown = filters.filter((f) => f.enabled);
-  const m = smartMargin(host, filters);
+/** Where a smart object's render starts: the finished render or the latest filter stage the cache holds, else the padded source. */
+interface Resume { shown: SmartFilter[]; m: number; keys: SmartKeys; img: ImageData; from: number; done: boolean }
+function resumeSmart(host: SmartObjectHost, source: Raster, filters: SmartFilter[], mask: Raster | null): Resume {
+  const shown = filters.filter((f) => f.enabled), m = smartMargin(host, filters), keys = smartKeys(source, m, shown, mask);
+  const whole = shown.length ? cachedStage(keys.done, false) : null;
+  if (whole) return { shown, m, keys, img: whole, from: shown.length, done: true };
+  for (let k = shown.length; k > 0; k--) { const hit = cachedStage(keys.stages[k - 1]); if (hit) return { shown, m, keys, img: hit, from: k, done: false }; }
   const pad = createSurface(source.width + 2 * m, source.height + 2 * m);
   ctxOf(pad).drawImage(source.canvas, m, m);
-  let img = ctxOf(pad).getImageData(0, 0, pad.width, pad.height);
-  for (const f of shown) if (host.smartFilterRunner) { const prior = blends(f) ? copyOf(img) : img; img = blendStage(prior, host.smartFilterRunner(f.kind, f.settings, img), f); }
-  if (shown.length) img = maskFilters(img, source, m, mask);
+  return { shown, m, keys, img: ctxOf(pad).getImageData(0, 0, pad.width, pad.height), from: 0, done: false };
+}
+
+function finishSmart(host: SmartObjectHost, r: Resume, source: Raster, mask: Raster | null): Raster {
+  let img = r.img;
+  if (!r.done && r.shown.length) { img = maskFilters(img, source, r.m, mask); if (mask && host.smartFilterRunner) keepStage(r.keys.done, img); }
   const out = new Raster(img.width, img.height);
   out.write(img);
   return out;
+}
+
+export function renderSmart(host: SmartObjectHost, source: Raster, filters: SmartFilter[], mask: Raster | null = null): Raster {
+  const r = resumeSmart(host, source, filters, mask);
+  for (let k = r.from; k < r.shown.length; k++) {
+    const f = r.shown[k];
+    if (!host.smartFilterRunner) continue;
+    const prior = blends(f) ? copyOf(r.img) : r.img;
+    r.img = blendStage(prior, host.smartFilterRunner(f.kind, f.settings, r.img), f);
+    keepStage(r.keys.stages[k], r.img);
+  }
+  return finishSmart(host, r, source, mask);
 }
 
 /** Layer > Convert to Smart Object: keeps the layer's pixels as the untouched source of a smart object. */
@@ -271,8 +291,8 @@ export function replaceContents(host: SmartObjectHost, source: Raster): boolean 
 }
 
 /** File > Place Linked: `raster` as a new smart object, centred, linked to a file through `link`. */
-export function placeEmbedded(host: SmartObjectHost, raster: Raster, name: string): void {
-  host.insertRasterLayer(raster, name, null, null, { smart: { source: raster, filters: [] }, ...fitTransform(host, raster) }, 'Place Embedded');
+export function placeEmbedded(host: SmartObjectHost, raster: Raster, name: string, original: SmartOriginal | null = null): void {
+  host.insertRasterLayer(raster, name, null, null, { smart: { source: raster, filters: [], ...(original ? { original } : {}) }, ...fitTransform(host, raster) }, 'Place Embedded');
 }
 
 export function placeLinked(host: SmartObjectHost, raster: Raster, link: SmartLink, name: string): void {
@@ -318,18 +338,14 @@ export function smartFiltersShown(host: SmartObjectHost, id: ID): SmartFilter[] 
 
 /** renderSmart with each filter run in the worker in turn, the interface staying live. */
 export async function renderSmartAsync(host: SmartObjectHost, source: Raster, filters: SmartFilter[], mask: Raster | null = null): Promise<Raster> {
-  const m = smartMargin(host, filters), pad = createSurface(source.width + 2 * m, source.height + 2 * m);
-  ctxOf(pad).drawImage(source.canvas, m, m);
-  let img = ctxOf(pad).getImageData(0, 0, pad.width, pad.height);
-  for (const f of filters.filter((x) => x.enabled)) {
-    const prior = blends(f) ? copyOf(img) : img;
-    const done = host.smartFilterRunnerAsync ? await host.smartFilterRunnerAsync(f.kind, f.settings, img) : host.smartFilterRunner ? host.smartFilterRunner(f.kind, f.settings, img) : img;
-    img = blendStage(prior, done, f);
+  const r = resumeSmart(host, source, filters, mask);
+  for (let k = r.from; k < r.shown.length; k++) {
+    const f = r.shown[k], prior = blends(f) ? copyOf(r.img) : r.img;
+    const done = host.smartFilterRunnerAsync ? await host.smartFilterRunnerAsync(f.kind, f.settings, r.img) : host.smartFilterRunner ? host.smartFilterRunner(f.kind, f.settings, r.img) : r.img;
+    r.img = blendStage(prior, done, f);
+    if (host.smartFilterRunnerAsync || host.smartFilterRunner) keepStage(r.keys.stages[k], r.img);
   }
-  if (filters.some((x) => x.enabled)) img = maskFilters(img, source, m, mask);
-  const out = new Raster(img.width, img.height);
-  out.write(img);
-  return out;
+  return finishSmart(host, r, source, mask);
 }
 
 /** Re-renders a smart object: at once when it is small (up to 2 megapixels) or shows no filter, else in the
@@ -362,6 +378,7 @@ export function restack(host: SmartObjectHost, p: Project, id: ID, source: Raste
     const l = p.layer(id);
     if (!l?.smart) return false;
     const src = source ?? l.smart.source;
+    if (source && !(extra && 'original' in extra)) extra = { ...extra, original: null };
     const fm = maskChange ?? { filterMask: l.smart.filterMask ?? null, filterMaskEnabled: l.smart.filterMaskEnabled !== false };
     const stack = structuredClone(filters ?? l.smart.filters), raster = rendered ?? renderSmart(host, src, stack, fm.filterMaskEnabled ? fm.filterMask : null), old = l.raster as Raster, t = l.transform;
     const live = deformNow(l);

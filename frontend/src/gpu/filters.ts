@@ -1,5 +1,8 @@
 import type { GpuFilterRunner, GpuSmudge, LensGatherInput } from '../engine/gpu-filters';
-import { BAND_CENTER, BAND_WIDTH, HSL_BANDS, bandOf, buildCurveLut, colorActive, curvesActive, vignetteShapeOf, type DevelopState } from '../engine/develop';
+import type { GpuEffectJob, GpuEffectRunner } from '../engine/gpu-effects';
+import type { Surface } from '../engine/surface';
+import type { Rect } from '../engine/types';
+import { BAND_CENTER, BAND_WIDTH, HSL_BANDS, bandOf, buildCurveLut, buildParametricLut, colorActive, curvesActive, parametricActive, parametricOf, vignetteShapeOf, type DevelopState } from '../engine/develop';
 import { threeBoxWidths } from '../engine/filters';
 import { frameTrace } from './frame-trace';
 
@@ -119,7 +122,7 @@ const FS_SMUDGE_CANVAS = `${SM_WEIGHT}void main() {
 /** Develop's per-pixel pass (developPass), tone then colour mixer then the curve table; t1 is the 256 entry table. */
 const FS_DEVELOP = `${MIX}
 uniform uint u_seed; uniform float u_offset, u_exp, u_cont, u_high, u_shad, u_white, u_black, u_temp, u_tint, u_vib, u_sat, u_dehz, u_vig, u_grain;
-uniform bool u_hasColor, u_hasCurve, u_colorize; uniform vec3 u_master; uniform vec3 u_vigp; uniform vec3 u_band[8]; uniform vec2 u_bandc[8];
+uniform bool u_hasColor, u_hasCurve, u_hasPara, u_colorize; uniform vec3 u_master; uniform vec3 u_vigp; uniform vec3 u_band[8]; uniform vec2 u_bandc[8];
 float c01(float x) { return clamp(x, 0.0, 1.0); }
 vec3 c01(vec3 x) { return clamp(x, 0.0, 1.0); }
 float sstep(float e0, float e1, float x) { float t = c01((x - e0) / (e1 - e0)); return t * t * (3.0 - 2.0 * t); }
@@ -230,6 +233,10 @@ void main() {
     ivec3 i = ivec3(clamp(floor(v * 255.0 + 0.5), 0.0, 255.0));
     v = vec3(texelFetch(t1, ivec2(i.r, 0), 0).r, texelFetch(t1, ivec2(i.g, 0), 0).g, texelFetch(t1, ivec2(i.b, 0), 0).b);
   }
+  if (u_hasPara) {
+    ivec3 j = ivec3(clamp(floor(v * 255.0 + 0.5), 0.0, 255.0));
+    v = vec3(texelFetch(t1, ivec2(j.r, 1), 0).r, texelFetch(t1, ivec2(j.g, 1), 0).g, texelFetch(t1, ivec2(j.b, 1), 0).b);
+  }
   o = vec4(v, s.a);
 }`;
 
@@ -265,10 +272,91 @@ void main() {
   o = vec4(enc(a.x / a.w), enc(a.y / a.w), enc(a.z / a.w), floor(a.w / ws * 255.0 + 0.5) / 255.0);
 }`;
 
+/** Layer-style effect maps (PC-EN-0507). t0 is the silhouette's canvas, whose alpha is read through u_org and u_box (the part of it the
+ *  effect covers, which is the output's size; outside it nothing is silhouette); the other inputs follow from t1. The arithmetic is
+ *  the CPU builder's: distances are the exact Euclidean transform (columns, then rows), a grow or shrink the one-pixel soft edge of
+ *  resizeMask, the blur a Gaussian of half the canvas shadow's blur, the colour a constant. */
+const FX_HEAD = `uniform ivec2 u_org; uniform ivec2 u_box;
+bool inBox(ivec2 c) { return c.x >= 0 && c.y >= 0 && c.x < u_box.x && c.y < u_box.y; }
+float silByte(ivec2 c) { return inBox(c) ? floor(texelFetch(t0, c + u_org, 0).a * 255.0 + 0.5) : 0.0; }
+`;
+const FS_FX_ALPHA = `${FX_HEAD}uniform bool u_inv; void main() { float a = silByte(ivec2(gl_FragCoord.xy)) / 255.0; o = vec4(u_inv ? 1.0 - a : a, 0.0, 0.0, 1.0); }`;
+const FS_FX_EDT_V = `${FX_HEAD}uniform int u_r; uniform bool u_inv;
+bool hit(ivec2 c) { return inBox(c) && (u_inv ? silByte(c) < 128.0 : silByte(c) >= 128.0); }
+void main() {
+  ivec2 c = ivec2(gl_FragCoord.xy); float best = 1.0e20;
+  for (int k = 0; k <= u_r; k++) if (hit(c + ivec2(0, k)) || hit(c - ivec2(0, k))) { best = float(k * k); break; }
+  o = vec4(best, 0.0, 0.0, 1.0);
+}`;
+const FS_FX_EDT_H = `uniform int u_r;
+void main() {
+  ivec2 c = ivec2(gl_FragCoord.xy), sz = textureSize(t0, 0); float best = 1.0e20;
+  for (int k = -u_r; k <= u_r; k++) {
+    int x = c.x + k;
+    if (x < 0 || x >= sz.x) continue;
+    best = min(best, float(k * k) + texelFetch(t0, ivec2(x, c.y), 0).r);
+  }
+  o = vec4(sqrt(best), 0.0, 0.0, 1.0);
+}`;
+const FS_FX_GROW = `${FX_HEAD}uniform float u_d; uniform bool u_shrink, u_inv;
+void main() {
+  ivec2 c = ivec2(gl_FragCoord.xy); float a = silByte(c), v;
+  if (u_shrink) v = a < 128.0 ? 0.0 : floor(clamp(texelFetch(t1, c, 0).r - u_d - 0.5, 0.0, 1.0) * 255.0 + 0.5);
+  else v = a >= 128.0 ? 255.0 : floor(clamp(u_d + 0.5 - texelFetch(t1, c, 0).r, 0.0, 1.0) * 255.0 + 0.5);
+  o = vec4((u_inv ? 255.0 - v : v) / 255.0, 0.0, 0.0, 1.0);
+}`;
+const FS_FX_BLUR = `${FX_HEAD}uniform ivec2 u_dir; uniform float u_sigma, u_shift; uniform bool u_final; uniform int u_mode; uniform vec3 u_color;
+void main() {
+  ivec2 c = ivec2(gl_FragCoord.xy), sz = textureSize(t1, 0); bool horiz = u_dir.x != 0;
+  float u = float(horiz ? c.x : c.y) - u_shift, k2 = 1.0 / (2.0 * u_sigma * u_sigma), acc = 0.0, z = 0.0;
+  int i0 = int(floor(u)), K = int(ceil(3.0 * u_sigma)), n = horiz ? sz.x : sz.y;
+  for (int k = -K; k <= K + 1; k++) {
+    int i = i0 + k; float d = float(i) - u, w = exp(-d * d * k2);
+    z += w;
+    if (i < 0 || i >= n) continue;
+    acc += w * texelFetch(t1, horiz ? ivec2(i, c.y) : ivec2(c.x, i), 0).r;
+  }
+  float v = acc / z;
+  if (!u_final) { o = vec4(v, 0.0, 0.0, 1.0); return; }
+  float a = floor(v * 255.0 + 0.5);
+  if (u_mode == 1) a = floor(a * (1.0 - silByte(c) / 255.0) + 0.5); else if (u_mode == 2) a = floor(a * silByte(c) / 255.0 + 0.5);
+  o = vec4(u_color / 255.0, a / 255.0);
+}`;
+const FS_FX_DOWN = `void main() {
+  ivec2 c = ivec2(gl_FragCoord.xy) * 2, sz = textureSize(t1, 0); float s = 0.0;
+  for (int j = 0; j < 2; j++) for (int i = 0; i < 2; i++) { ivec2 q = c + ivec2(i, j); if (q.x < sz.x && q.y < sz.y) s += texelFetch(t1, q, 0).r; }
+  o = vec4(s * 0.25, 0.0, 0.0, 1.0);
+}`;
+const FS_FX_UP = `${FX_HEAD}uniform int u_mode; uniform vec3 u_color;
+void main() {
+  ivec2 c = ivec2(gl_FragCoord.xy), sz = textureSize(t1, 0), hi = sz - 1;
+  vec2 q = (vec2(c) + 0.5) * 0.5 - 0.5, fl = floor(q), f = q - fl; ivec2 q0 = ivec2(fl);
+  float a00 = texelFetch(t1, clamp(q0, ivec2(0), hi), 0).r, a10 = texelFetch(t1, clamp(q0 + ivec2(1, 0), ivec2(0), hi), 0).r;
+  float a01 = texelFetch(t1, clamp(q0 + ivec2(0, 1), ivec2(0), hi), 0).r, a11 = texelFetch(t1, clamp(q0 + ivec2(1, 1), ivec2(0), hi), 0).r;
+  float a = floor(mix(mix(a00, a10, f.x), mix(a01, a11, f.x), f.y) * 255.0 + 0.5);
+  if (u_mode == 1) a = floor(a * (1.0 - silByte(c) / 255.0) + 0.5); else if (u_mode == 2) a = floor(a * silByte(c) / 255.0 + 0.5);
+  o = vec4(u_color / 255.0, a / 255.0);
+}`;
+const FS_FX_RAMP = `${FX_HEAD}uniform float u_size, u_hold; uniform vec3 u_color;
+void main() {
+  ivec2 c = ivec2(gl_FragCoord.xy); float dd = silByte(c) >= 128.0 ? 0.0 : max(0.0, texelFetch(t1, c, 0).r - 0.5);
+  float r = dd <= u_hold ? 1.0 : max(0.0, 1.0 - (dd - u_hold) / max(1.0e-6, u_size - u_hold));
+  o = vec4(u_color / 255.0, floor(r * 255.0 + 0.5) / 255.0);
+}`;
+const FS_FX_RING = `${FX_HEAD}uniform sampler2D t2; uniform float u_outer, u_inner; uniform bool u_clear; uniform vec3 u_color;
+void main() {
+  ivec2 c = ivec2(gl_FragCoord.xy); float a = silByte(c);
+  float outer = u_outer > 0.0 ? (a >= 128.0 ? 255.0 : floor(clamp(u_outer + 0.5 - texelFetch(t1, c, 0).r, 0.0, 1.0) * 255.0 + 0.5)) : a;
+  float inner = u_inner > 0.0 ? (a < 128.0 ? 0.0 : floor(clamp(texelFetch(t2, c, 0).r - u_inner - 0.5, 0.0, 1.0) * 255.0 + 0.5)) : 0.0;
+  float band = max(0.0, outer - inner);
+  if (u_clear) band = floor(band * (1.0 - a / 255.0) + 0.5);
+  o = vec4(u_color / 255.0, band / 255.0);
+}`;
+
 interface Tex { t: WebGLTexture; w: number; h: number }
 type Loc = (name: string) => WebGLUniformLocation | null;
 
-export class GlFilters implements GpuFilterRunner {
+export class GlFilters implements GpuFilterRunner, GpuEffectRunner {
   private readonly programs = new Map<string, WebGLProgram>();
   private readonly fbo: WebGLFramebuffer;
   private readonly maxSize: number;
@@ -465,6 +553,71 @@ export class GlFilters implements GpuFilterRunner {
     });
   }
 
+  /** The silhouette canvas as an RGBA8 texture, straight alpha, row 0 the canvas's top row. */
+  private canvasTex(c: Surface): Tex {
+    const gl = this.gl, t = gl.createTexture()!;
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, c);
+    for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]] as const) gl.texParameteri(gl.TEXTURE_2D, k, v);
+    if (gl.getError() !== gl.NO_ERROR) { gl.deleteTexture(t); throw new Error('canvas upload failed'); }
+    return { t, w: c.width, h: c.height };
+  }
+
+  /** One layer-style effect over `box` of the silhouette canvas (engine/gpu-effects.ts): straight RGBA bytes, or null where the GPU cannot. */
+  effectMap(sil: Surface, box: Rect, job: GpuEffectJob): ImageData | null {
+    const { w, h } = box;
+    if (w < 1 || h < 1 || sil.width < 1 || sil.height < 1 || (job.kind === 'cast' && !(job.blur >= 1))) return null;
+    return this.guard(Math.max(w, sil.width), Math.max(h, sil.height), () => {
+      const made: Tex[] = [], keep = (t: Tex): Tex => { made.push(t); return t; };
+      try {
+        const src = keep(this.canvasTex(sil)), out = keep(this.tex(w, h, 'u8')), res = new ImageData(w, h);
+        const area = (gl: WebGL2RenderingContext, loc: Loc): void => { gl.uniform2i(loc('u_org'), box.x, box.y); gl.uniform2i(loc('u_box'), w, h); };
+        const paint = (gl: WebGL2RenderingContext, loc: Loc): void => { area(gl, loc); gl.uniform3f(loc('u_color'), job.color.r, job.color.g, job.color.b); };
+        const distance = (inverse: boolean, reach: number): Tex => {
+          const r = Math.ceil(reach) + 1, cols = keep(this.tex(w, h, 'float')), d = keep(this.tex(w, h, 'float'));
+          this.pass(this.program('fxEdtV', FS_FX_EDT_V), cols, [src], (gl, loc) => { area(gl, loc); gl.uniform1i(loc('u_r'), r); gl.uniform1i(loc('u_inv'), inverse ? 1 : 0); });
+          this.pass(this.program('fxEdtH', FS_FX_EDT_H), d, [cols], (gl, loc) => gl.uniform1i(loc('u_r'), r));
+          return d;
+        };
+        if (job.kind === 'cast') {
+          const m = keep(this.tex(w, h, 'float')), half = keep(this.tex(w, h, 'float'));
+          const reach = Math.abs(job.grow), shrink = job.grow < 0, mode = job.inner ? 2 : job.knockout ? 1 : 0;
+          if (reach > 0) this.pass(this.program('fxGrow', FS_FX_GROW), m, [src, distance(shrink, reach)], (gl, loc) => { area(gl, loc); gl.uniform1f(loc('u_d'), reach); gl.uniform1i(loc('u_shrink'), shrink ? 1 : 0); gl.uniform1i(loc('u_inv'), job.inner ? 1 : 0); });
+          else this.pass(this.program('fxAlpha', FS_FX_ALPHA), m, [src], (gl, loc) => { area(gl, loc); gl.uniform1i(loc('u_inv'), job.inner ? 1 : 0); });
+          const blur = this.program('fxBlur', FS_FX_BLUR);
+          const soft = job.blur > 8 && !job.inner, k = soft ? 2 : 1;
+          const along = (dir: readonly [number, number], shift: number, final: boolean) => (gl: WebGL2RenderingContext, loc: Loc): void => {
+            paint(gl, loc);
+            gl.uniform2i(loc('u_dir'), dir[0], dir[1]); gl.uniform1f(loc('u_sigma'), job.blur / (2 * k)); gl.uniform1f(loc('u_shift'), shift / k);
+            gl.uniform1i(loc('u_final'), final ? 1 : 0); gl.uniform1i(loc('u_mode'), mode);
+          };
+          if (!soft) {
+            this.pass(blur, half, [src, m], along([1, 0], job.dx, false));
+            this.pass(blur, out, [src, half], along([0, 1], job.dy, true));
+          } else {
+            const hw = Math.ceil(w / 2), hh = Math.ceil(h / 2), small = keep(this.tex(hw, hh, 'float')), mid = keep(this.tex(hw, hh, 'float')), done = keep(this.tex(hw, hh, 'float'));
+            this.pass(this.program('fxDown', FS_FX_DOWN), small, [src, m]);
+            this.pass(blur, mid, [src, small], along([1, 0], job.dx, false));
+            this.pass(blur, done, [src, mid], along([0, 1], job.dy, false));
+            this.pass(this.program('fxUp', FS_FX_UP), out, [src, done], (gl, loc) => { paint(gl, loc); gl.uniform1i(loc('u_mode'), mode); });
+          }
+        } else if (job.kind === 'ramp') {
+          this.pass(this.program('fxRamp', FS_FX_RAMP), out, [src, distance(false, job.size)], (gl, loc) => { paint(gl, loc); gl.uniform1f(loc('u_size'), job.size); gl.uniform1f(loc('u_hold'), job.hold); });
+        } else {
+          const outer = job.outer > 0 ? distance(false, job.outer) : src, inner = job.inner > 0 ? distance(true, job.inner) : src;
+          this.pass(this.program('fxRing', FS_FX_RING), out, [src, outer, inner], (gl, loc) => {
+            paint(gl, loc);
+            gl.uniform1f(loc('u_outer'), job.outer); gl.uniform1f(loc('u_inner'), job.inner); gl.uniform1i(loc('u_clear'), job.clear ? 1 : 0);
+          });
+        }
+        this.readBack(out, new Uint8Array(res.data.buffer));
+        return res;
+      } finally { this.free(...made); }
+    });
+  }
+
   liquify(src: ImageData, field: { gw: number; gh: number; cell: number; d: Float32Array }, scale: number, outW: number, outH: number): ImageData | null {
     const { width: w, height: h } = src;
     if (!(scale > 0) || field.gw < 2 || field.gh < 2 || outW < 1 || outH < 1) return null;
@@ -604,13 +757,20 @@ export class GlFilters implements GpuFilterRunner {
   }
 
   develop(src: ImageData, state: DevelopState, seed: number): ImageData | null {
-    const t = state.tone, hasColor = colorActive(state.color), hasCurve = curvesActive(state.curves);
+    const t = state.tone, hasColor = colorActive(state.color), hasCurve = curvesActive(state.curves), para = parametricOf(state), hasPara = parametricActive(para);
     let table: Tex | null = null;
-    if (hasCurve) {
-      // One entry per level: the RGB curve, then the channel's own, as developPass applies them one after the other.
-      const rgb = buildCurveLut(state.curves.rgb), lr = buildCurveLut(state.curves.r), lg = buildCurveLut(state.curves.g), lb = buildCurveLut(state.curves.b), d = new Uint8Array(256 * 4);
-      for (let i = 0; i < 256; i++) d.set([lr[rgb[i]], lg[rgb[i]], lb[rgb[i]], 255], i * 4);
-      table = this.guard(256, 1, () => this.tex(256, 1, 'u8', d));
+    if (hasCurve || hasPara) {
+      // Row 0, one entry per level: the RGB curve, then the channel's own, as developPass applies them one after the other. Row 1: the parametric curve.
+      const d = new Uint8Array(256 * 4 * 2);
+      if (hasCurve) {
+        const rgb = buildCurveLut(state.curves.rgb), lr = buildCurveLut(state.curves.r), lg = buildCurveLut(state.curves.g), lb = buildCurveLut(state.curves.b);
+        for (let i = 0; i < 256; i++) d.set([lr[rgb[i]], lg[rgb[i]], lb[rgb[i]], 255], i * 4);
+      }
+      if (hasPara) {
+        const pl = buildParametricLut(para);
+        for (let i = 0; i < 256; i++) d.set([pl[i], pl[i], pl[i], 255], 1024 + i * 4);
+      }
+      table = this.guard(256, 2, () => this.tex(256, 2, 'u8', d));
       if (!table) return null;
     }
     try {
@@ -619,7 +779,7 @@ export class GlFilters implements GpuFilterRunner {
         f('u_offset', t.offset); f('u_exp', t.exposure); f('u_cont', t.contrast); f('u_high', t.highlights); f('u_shad', t.shadows); f('u_white', t.whites); f('u_black', t.blacks);
         f('u_temp', t.temperature); f('u_tint', t.tint); f('u_vib', t.vibrance); f('u_sat', t.saturation); f('u_dehz', t.dehaze); f('u_vig', t.vignette); f('u_grain', t.grain);
         gl.uniform1ui(loc('u_seed'), seed >>> 0);
-        gl.uniform1i(loc('u_hasColor'), hasColor ? 1 : 0); gl.uniform1i(loc('u_hasCurve'), hasCurve ? 1 : 0); gl.uniform1i(loc('u_colorize'), state.color.colorize ? 1 : 0);
+        gl.uniform1i(loc('u_hasColor'), hasColor ? 1 : 0); gl.uniform1i(loc('u_hasCurve'), hasCurve ? 1 : 0); gl.uniform1i(loc('u_hasPara'), hasPara ? 1 : 0); gl.uniform1i(loc('u_colorize'), state.color.colorize ? 1 : 0);
         const m = state.color.master;
         gl.uniform3f(loc('u_master'), m.h, m.s, m.l);
         const vs = vignetteShapeOf(state);

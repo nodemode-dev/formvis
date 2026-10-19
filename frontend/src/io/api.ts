@@ -135,7 +135,9 @@ function form(fields: Record<string, string>, files: FilePart[] = [], key = 'fil
 }
 
 /** The window's terminals and Claude Code (DEV_PLAN 28.5): the engine's PTY sessions, and the agent's status and messages. */
-export interface TerminalInfo { id: string; title: string; cwd: string; alive: boolean; kind: 'shell' | 'agent' }
+export interface TerminalInfo { id: string; title: string; cwd?: string; alive: boolean; kind: 'shell' | 'claude' | 'agent' }
+export interface ClaudeCodeStatus { installed: boolean; version: string | null; install: string; signedIn: boolean | null }
+export interface ClaudeOpen { prompt?: string; resume?: string; cols?: number; rows?: number; fresh?: boolean }
 export type AgentMode = 'ask' | 'auto-edits' | 'plan';
 export interface ClaudeStatus { installed: boolean; path: string | null; version: string | null; signedIn: boolean | null; install: string; running: boolean; state: string; mode: AgentMode; session: string | null; modes: AgentMode[] }
 export type AgentEvent =
@@ -822,6 +824,19 @@ export const api = {
   },
   async restartTerminal(id: string): Promise<void> { await request(`/terminal/${id}/restart`, { method: 'POST' }); },
   async closeTerminal(id: string): Promise<void> { await request(`/terminal/${id}`, { method: 'DELETE' }); },
+  async openClaude(opts: ClaudeOpen): Promise<TerminalInfo> {
+    const info = (await (await request('/terminal/claude', json(opts))).json()) as Partial<TerminalInfo> | null;
+    if (!info || typeof info.id !== 'string' || info.id === '') throw new ApiError('Claude Code did not start.', 502);
+    return info as TerminalInfo;
+  },
+  async claudeCodeStatus(): Promise<ClaudeCodeStatus | null> {
+    let now: Partial<ClaudeCodeStatus> | null = null;
+    try { now = (await (await request('/claude-code/status')).json()) as Partial<ClaudeCodeStatus>; } catch { now = null; }
+    if (now?.installed === true) return { installed: true, version: now.version ?? null, install: '', signedIn: now.signedIn ?? null };
+    const old = await api.claudeStatus();
+    if (!now && !old) return null;
+    return { installed: now ? false : old?.installed === true, version: now?.version ?? old?.version ?? null, install: now?.install || old?.install || '', signedIn: now?.signedIn ?? old?.signedIn ?? null };
+  },
   async claudeStatus(fresh = false): Promise<ClaudeStatus | null> {
     try { return (await (await request(`/agent/claude/status${fresh ? '?fresh=true' : ''}`)).json()) as ClaudeStatus; } catch { return null; }
   },

@@ -93,19 +93,17 @@
 })();
   </script>
   <script>
-/* The terminal dock's and the Claude Code panel's open state and the dock's height, on documentElement before the first
-   paint (DEV_PLAN 28.5): terminal.css reserves the dock's row and places the panel from these, so nothing moves on open. */
+/* The terminal dock's open state and height, on documentElement before the first paint (DEV_PLAN 28.5): terminal.css
+   reserves the dock's row from these, so nothing moves on open. */
 (function () {
-  var r = document.documentElement, open = 0, h = 280, agent = 0;
+  var r = document.documentElement, open = 0, h = 280;
   try {
     var t = JSON.parse(localStorage.getItem('formvis.terminal') || '{}');
     open = t.open === true ? 1 : 0;
     if (typeof t.h === 'number' && t.h >= 120 && t.h <= 2000) h = Math.round(t.h);
-    agent = JSON.parse(localStorage.getItem('formvis.agent') || '{}').open === true ? 1 : 0;
   } catch (e) { /* private mode or blocked storage: closed is correct */ }
   r.setAttribute('data-ft-dock', open ? 'open' : 'closed');
   r.setAttribute('data-ft-dock-h', String(h));
-  r.setAttribute('data-ft-agent', agent ? 'open' : 'closed');
   r.style.setProperty('--ft-dock-size', h + 'px');
 })();
   </script>

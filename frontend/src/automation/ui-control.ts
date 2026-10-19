@@ -388,6 +388,7 @@ export class UiControl {
 
   async key(keys: string[] | undefined, typed: string | undefined): Promise<McpResult> {
     const target = (document.activeElement && document.activeElement !== document.body ? document.activeElement : document.body) as HTMLElement, sent: string[] = [];
+    if (target.closest('.ft-dock')) return fail('The terminal dock belongs to the person: ui_key does not type into it. Focus the canvas or open a dialog first.');
     for (const combo of keys ?? []) {
       const parts = combo.split('+'), name = parts[parts.length - 1] || '+', mods = parts.slice(0, -1).map((m) => m.toLowerCase());
       const shift = mods.includes('shift'), mod = mods.includes('mod');

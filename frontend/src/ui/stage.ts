@@ -466,6 +466,7 @@ export class Stage {
     }
     if (gpuLayers && this.gpu) {
       this.gpu.document?.(p.doc.width, p.doc.height);
+      this.gpu.hdr?.(p.doc.depth === 32);
       this.gpu.render(gpuLayers, [z, 0, 0, z, ox, oy], v.zoom, [vis.x, vis.y, vis.x + vis.w, vis.y + vis.h],
         { a: this.rgb(pal.checkerA), b: this.rgb(pal.checkerB), cell: Math.max(1, Math.round(Stage.prefs.cell * this.dpr)), origin: [Math.round(ox), Math.round(oy)] });
     } else if (v.zoom >= 2 || this.engine.view.pixelArt) {
@@ -474,14 +475,16 @@ export class Stage {
       const d =intersectRect(integral({ x: (vis.x - ox) / z, y: (vis.y - oy) / z, w: vis.w / z, h: vis.h / z }), { x: 0, y: 0, w: p.doc.width, h: p.doc.height });
       if (d) {
         sizeSurface(this.work, d.w, d.h);
-        this.engine.compose(this.work, translation(-d.x, -d.y));
+        const shift = translation(-d.x, -d.y);
+        if (!this.engine.composeBands(this.work, shift, 'high', () => this.queue(true, false))) this.engine.compose(this.work, shift);
         this.applyView(d.w, d.h);
         g.imageSmoothingEnabled = false;
         g.drawImage(this.work as CanvasImageSource, 0, 0, d.w, d.h, ox + d.x * z, oy + d.y * z, d.w * z, d.h * z);
       }
     } else {
       sizeSurface(this.work, vis.w, vis.h);
-      this.engine.compose(this.work, [z, 0, 0, z, ox - vis.x, oy - vis.y], v.zoom < 0.5 ? 'medium' : 'high');
+      const view = [z, 0, 0, z, ox - vis.x, oy - vis.y] as const, quality = v.zoom < 0.5 ? 'medium' : 'high';
+      if (!this.engine.composeBands(this.work, view, quality, () => this.queue(true, false))) this.engine.compose(this.work, view, quality);
       this.applyView(vis.w, vis.h);
       g.drawImage(this.work as CanvasImageSource, vis.x, vis.y);
     }

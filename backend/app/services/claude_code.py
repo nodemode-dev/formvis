@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -15,7 +16,7 @@ import time
 from pathlib import Path
 
 from app.core import config
-from app.services import terminal
+from app.services import agents, terminal
 
 log = logging.getLogger("formvis.claude_code")
 KEEP_ENV = {"CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CONFIG_DIR"}
@@ -23,6 +24,7 @@ CANDIDATES = (".claude/local/claude", ".local/bin/claude", ".npm-global/bin/clau
 SYSTEM_PATHS = ("/opt/homebrew/bin/claude", "/usr/local/bin/claude", "/usr/bin/claude")
 MODES = {"ask": "manual", "auto-edits": "acceptEdits", "plan": "plan"}
 INSTALL = "irm https://claude.ai/install.ps1 | iex" if sys.platform == "win32" else "curl -fsSL https://claude.ai/install.sh | bash"
+MISSING = f"Claude Code is not installed. Install it with: {INSTALL}"
 NOTE = ("You are answering in formvis, a layered image editor, inside a panel next to the canvas. Your working directory is the "
         "formvis repository. To edit the open picture use the formvis MCP server's tools; to change formvis's own code, edit the files.")
 PERMISSION_WAIT = 600
@@ -45,7 +47,18 @@ def cli() -> str | None:
     for p in [home / c for c in CANDIDATES] + [Path(s) for s in SYSTEM_PATHS]:
         if p.is_file() and os.access(p, os.X_OK):
             return str(p)
-    return None
+    return _from_login_shell()
+
+
+def _from_login_shell() -> str | None:
+    if os.name == "nt":
+        return None
+    try:
+        out = subprocess.run(terminal.login_shell() + ["-c", "command -v claude"], capture_output=True, text=True, timeout=10, env=child_env(), stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    found = out.stdout.strip().splitlines()[-1:] if out.returncode == 0 else []
+    return found[0] if found and os.path.isabs(found[0]) else None
 
 
 def _signed_in(path: str) -> bool | None:
@@ -360,3 +373,57 @@ def stop(quiet: bool = False) -> dict:
         publish({"type": "notice", "text": "Stopped."})
     set_state("stopped")
     return AGENT.describe()
+
+
+TERMINAL_NOTE = ("You are Claude Code running in the terminal dock inside formvis, the layered image editor open on this computer. "
+                 "Edit pictures with the formvis MCP server's tools: start with get_document for the layers and their ids, and look with get_image before and after a change. "
+                 "They act on the document open in the window, the person sees every change happen, and each change is one undo step. "
+                 "Use the formvis-driving skill when it is available.")
+INAPP_VAR = "FORMVIS_INAPP_TOKEN"
+_open_lock = threading.Lock()
+
+
+def program() -> str | None:
+    path = cli()
+    return path if path and os.path.isfile(path) and os.access(path, os.X_OK) else None
+
+
+def inapp_mcp_config(port: int) -> str:
+    return json.dumps({"mcpServers": {"formvis": {"type": "http", "url": f"http://127.0.0.1:{port}/mcp", "headers": {"x-formvis-inapp": "${" + INAPP_VAR + "}"}}}})
+
+
+def terminal_env() -> dict:
+    return {k: v for k, v in terminal.base_env().items() if not k.startswith("CLAUDE") or k in KEEP_ENV} | {INAPP_VAR: agents.INAPP_TOKEN}
+
+
+def terminal_argv(path: str, port: int, prompt: str | None, resume: str | None) -> list[str]:
+    cmd = [path, "--mcp-config", inapp_mcp_config(port), "--allowedTools", "mcp__formvis", "--append-system-prompt", TERMINAL_NOTE]
+    if resume:
+        cmd += ["--strict-mcp-config", "--resume", resume]
+    if prompt:
+        cmd.append(prompt)
+    if os.name == "nt":
+        return cmd
+    return terminal.login_shell() + ["-c", "exec " + shlex.join(cmd)]
+
+
+def workdir(document_folder: str | None = None) -> str:
+    return document_folder if document_folder and os.path.isdir(document_folder) else str(config.data_dir())
+
+
+def open_terminal(port: int, prompt: str | None = None, resume: str | None = None, cols: int = 100, rows: int = 30,
+                  fresh: bool = False, document_folder: str | None = None) -> dict:
+    """The person's own Claude Code in a terminal tab, connected to this formvis without the outside-agent question. A live tab is
+    reused (a prompt is typed into it) unless fresh or resume asks for another; LookupError when the program is not installed."""
+    with _open_lock:
+        running = terminal.live_claude()
+        if running is not None and not fresh and not resume:
+            if prompt:
+                terminal.write(running.id, prompt.replace("\r\n", "\n").replace("\r", "\n") + "\r")
+            return running.describe()
+        path = program()
+        if path is None:
+            raise LookupError(MISSING)
+        title = "Claude Code (from Chat)" if resume else "Claude Code"
+        folder = str(config.REPO_DIR) if resume else workdir(document_folder)   # a conversation is kept per folder, and the Chat tab's runs in the repository
+        return terminal.open_session(folder, cols, rows, title, terminal_argv(path, port, prompt, resume), terminal_env(), "claude").describe()

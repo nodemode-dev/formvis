@@ -7,10 +7,11 @@ import json
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
-from app.routers.terminal import origin_ok, release_socket, require_local, take_socket
-from app.services import claude_code
+from app.routers.terminal import document_folder, origin_ok, release_socket, require_local, take_socket
+from app.services import claude_code, terminal
 
 router = APIRouter(prefix="/api/agent/claude", tags=["agent"])
+window_router = APIRouter(prefix="/api/claude-code", tags=["agent"])
 
 
 class StartBody(BaseModel):
@@ -31,6 +32,13 @@ class AnswerBody(BaseModel):
 def status(request: Request, fresh: bool = False) -> dict:
     require_local(request)
     return claude_code.info(fresh=fresh) | claude_code.AGENT.describe() | {"modes": list(claude_code.MODES)}
+
+
+@window_router.get("/status")
+def window_status(request: Request, fresh: bool = False) -> dict:
+    require_local(request)
+    tab = next((s.describe() for s in terminal.SESSIONS.values() if s.kind == "claude"), None)
+    return claude_code.info(fresh=fresh) | {"folder": claude_code.workdir(document_folder()), "terminal": tab}
 
 
 @router.post("/start")

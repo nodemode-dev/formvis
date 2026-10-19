@@ -101,16 +101,41 @@ export class Raster {
     if (this.damage.length > 32) this.damage.shift();
   }
   /** The rectangle that changed after version `from` up to `to`, or null when any of those changes has no rectangle or has left the log. */
-  damageSince(from: number, to: number = this.version): Rect | null {
-    if (!(to > from)) return null;
-    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, n = 0;
-    for (const d of this.damage) {
-      if (d.v <= from || d.v > to) continue;
-      if (!d.r) return null;
-      n++;
-      x0 = Math.min(x0, d.r.x); y0 = Math.min(y0, d.r.y); x1 = Math.max(x1, d.r.x + d.r.w); y1 = Math.max(y1, d.r.y + d.r.h);
-    }
-    return n === to - from ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null;
-  }
+  damageSince(from: number, to: number = this.version): Rect | null { return damageBetween(this.damage, from, to); }
   get bytes(): number { return this.width * this.height * 4; }
 }
+
+type Damage = ReadonlyArray<{ v: number; r: Rect | null }>;
+function damageBetween(log: Damage, from: number, to: number): Rect | null {
+  if (!(to > from)) return null;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, n = 0;
+  for (const d of log) {
+    if (d.v <= from || d.v > to) continue;
+    if (!d.r) return null;
+    n++;
+    x0 = Math.min(x0, d.r.x); y0 = Math.min(y0, d.r.y); x1 = Math.max(x1, d.r.x + d.r.w); y1 = Math.max(y1, d.r.y + d.r.h);
+  }
+  return n === to - from ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null;
+}
+
+/** The damage log of a surface that is not a Raster (a stroke's working copy, which a live preview draws from): each
+ *  note bumps its version, a note without a rectangle says the whole surface changed. */
+class SurfaceLog {
+  version = 0;
+  private damage: Array<{ v: number; r: Rect | null }> = [];
+  note(r: Rect | null): void {
+    this.damage.push({ v: ++this.version, r });
+    if (this.damage.length > 32) this.damage.shift();
+  }
+  damageSince(from: number, to: number = this.version): Rect | null { return damageBetween(this.damage, from, to); }
+}
+const surfaceLogs = new WeakMap<object, SurfaceLog>();
+export function noteSurface(s: object, r: Rect | null): void {
+  let log = surfaceLogs.get(s);
+  if (!log) surfaceLogs.set(s, log = new SurfaceLog());
+  log.note(r);
+}
+/** The version of a noted surface, or -1 when nothing tracks it (a display then sends it whole every frame). */
+export const surfaceVersion = (s: object): number => surfaceLogs.get(s)?.version ?? -1;
+/** What changed in an image since a version: its Raster's log, or the log of a noted surface. */
+export const damageOf = (image: object): { damageSince(from: number, to?: number): Rect | null } | undefined => rasterOf(image as CanvasImageSource) ?? surfaceLogs.get(image);

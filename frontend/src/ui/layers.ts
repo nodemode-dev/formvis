@@ -4,7 +4,7 @@ import type { ChannelsPanel } from './channels';
 import type { LayerLocks } from '../engine/types';
 import { groupIsolated } from '../engine/tree';
 import { vectorCoverage } from '../engine/vector-mask';
-import { LAYER_LABELS } from '../engine/types';
+import { LAYER_LABELS, LAYER_ROLE_LABELS, layerRoleOf } from '../engine/types';
 import { enhanceSelect } from './dropdown';
 import { el, isMac, patchList, q, setClass, setDisabled, setHidden, setHtml, setStyleVar, setText, setTitle, setValue } from './dom';
 import { icon } from './icons';
@@ -38,6 +38,7 @@ const LOCKS = [
   { id: 'artboard', title: 'auto-nesting into and out of artboards', icon: 'artboard' },
   { id: 'all', title: 'all', icon: 'lock' },
 ] as const;
+const ROLE_BADGE: Record<string, string> = { reference: 'Ref', subject: 'Subj', background: 'Bg', style: 'Style' };
 /** A layer's size as it shows on the canvas, with its scale when it is not 100%. */
 const sizeOf = (l: Layer): string => {
   const t = l.transform, w = l.raster?.width ?? 0, s = w ? Math.round((t.w / w) * 100) : 100;
@@ -108,6 +109,10 @@ export class LayersPanel {
   /** The document tab a layer drag has rested on, and the timer that shows that document so the drop lands in it. */
   private spring: { key: string; timer: ReturnType<typeof setTimeout> } | null = null;
   private clearSpring(): void { if (this.spring) { clearTimeout(this.spring.timer); this.spring = null; } }
+  /** Set by the app: the document point under a screen point on the stage, or null off it. A layer drag released on another document's canvas lands where it is let go. */
+  docPoint: ((x: number, y: number) => { x: number; y: number } | null) | null = null;
+  private stageHost: HTMLElement | null = null;
+  private showStageDrop(on: boolean): void { this.stageHost ??= document.querySelector<HTMLElement>('.cv-stage'); setClass(this.stageHost, 'is-layer-drop', on); }
   private swipe: { visible: boolean; pointerId: number } | null = null;
   /** Layers whose effect rows are open, and the effect row being dragged to another layer. */
   private readonly fxOpen = new Set<ID>();
@@ -356,7 +361,7 @@ export class LayersPanel {
   }
 
   private createRow(e: HierarchyEntry): HTMLElement {
-    const row = el(`<div class="cv-layer" role="option"><button class="cv-layer-eye" type="button" tabindex="-1" aria-label="Show or hide"><span class="cv-eye-on">${icon('eye', 14)}</span><span class="cv-eye-off">${icon('eyeOff', 14)}</span></button><span class="cv-layer-indent"></span><button class="cv-layer-disclose" type="button" tabindex="-1" aria-label="Expand or collapse"><span class="cv-open">${icon('chevronDown', 12)}</span><span class="cv-shut">${icon('chevronRight', 12)}</span></button><canvas class="cv-layer-thumb" width="${THUMB}" height="${THUMB}"></canvas><span class="cv-layer-kind"></span><span class="cv-layer-masks"><canvas class="cv-layer-mask" width="${THUMB}" height="${THUMB}"></canvas><canvas class="cv-layer-vmask" width="${THUMB}" height="${THUMB}"></canvas></span><span class="cv-layer-name"><button class="cv-layer-chain" type="button" tabindex="-1" hidden aria-label="Link the mask to the layer" aria-pressed="true">${icon('link', 12)}</button><span class="cv-layer-clip">${icon('clipMask', 12)}</span><span class="cv-layer-label"></span><span class="cv-layer-size" hidden></span><span class="cv-layer-fx" hidden title="Layer style: click to list its effects, double-click to edit">fx</span><span class="cv-layer-smart" hidden title="Smart object: double-click for its filters">${icon('smartObject', 12)}</span><span class="cv-layer-vector" hidden title="Shape layer: double-click for its fill and stroke">${icon('penTool', 12)}</span><span class="cv-layer-linked" hidden title="Linked: moves with the layers linked to it">${icon('link', 12)}</span><span class="cv-layer-locked" hidden title="Locked">${icon('lock', 12)}</span></span><div class="cv-layer-fxlist" hidden></div><div class="cv-layer-sflist" hidden></div></div>`);
+    const row = el(`<div class="cv-layer" role="option"><button class="cv-layer-eye" type="button" tabindex="-1" aria-label="Show or hide"><span class="cv-eye-on">${icon('eye', 14)}</span><span class="cv-eye-off">${icon('eyeOff', 14)}</span></button><span class="cv-layer-indent"></span><button class="cv-layer-disclose" type="button" tabindex="-1" aria-label="Expand or collapse"><span class="cv-open">${icon('chevronDown', 12)}</span><span class="cv-shut">${icon('chevronRight', 12)}</span></button><canvas class="cv-layer-thumb" width="${THUMB}" height="${THUMB}"></canvas><span class="cv-layer-kind"></span><span class="cv-layer-masks"><canvas class="cv-layer-mask" width="${THUMB}" height="${THUMB}"></canvas><canvas class="cv-layer-vmask" width="${THUMB}" height="${THUMB}"></canvas></span><span class="cv-layer-name"><button class="cv-layer-chain" type="button" tabindex="-1" hidden aria-label="Link the mask to the layer" aria-pressed="true">${icon('link', 12)}</button><span class="cv-layer-clip">${icon('clipMask', 12)}</span><span class="cv-layer-label"></span><span class="cv-layer-role" hidden></span><span class="cv-layer-size" hidden></span><span class="cv-layer-fx" hidden title="Layer style: click to list its effects, double-click to edit">fx</span><span class="cv-layer-smart" hidden title="Smart object: double-click for its filters">${icon('smartObject', 12)}</span><span class="cv-layer-vector" hidden title="Shape layer: double-click for its fill and stroke">${icon('penTool', 12)}</span><span class="cv-layer-linked" hidden title="Linked: moves with the layers linked to it">${icon('link', 12)}</span><span class="cv-layer-locked" hidden title="Locked">${icon('lock', 12)}</span></span><div class="cv-layer-fxlist" hidden></div><div class="cv-layer-sflist" hidden></div></div>`);
     row.dataset.id = e.layer.id;
     this.updateRow(row, e);
     return row;
@@ -395,6 +400,9 @@ export class LayersPanel {
     const lk = l.locks ?? {}, locked = !!(lk.all || lk.transparency || lk.pixels || lk.position || lk.artboard);
     setHidden(q(row, '.cv-layer-locked'), !locked);
     setClass(q(row, '.cv-layer-locked'), 'is-partial', locked && !lk.all);
+    const role = l.isGroup ? null : layerRoleOf(l), badge = q(row, '.cv-layer-role');
+    setHidden(badge, !role);
+    if (role) { setText(badge, t(ROLE_BADGE[role])); setTitle(badge, `${t('Role')}: ${t(LAYER_ROLE_LABELS[role])}`); }
     setClass(row, 'is-text', this.engine.liveText(l));
     setStyleVar(row, '--depth', String(e.depth));
     if (this.renaming !== l.id) setText(q(row, '.cv-layer-label'), l.name);
@@ -601,6 +609,14 @@ export class LayersPanel {
     return null;
   }
 
+  /** The move that puts the centre of the dragged layers at a point of the target document. */
+  private dropShift(srcId: string, ids: readonly ID[], at: { x: number; y: number }): { dx: number; dy: number } | false {
+    const src = this.engine.projects.find((pr) => pr.id === srcId), lay = ids.map((i) => src?.layer(i)).filter((l): l is Layer => !!l && !l.isGroup);
+    if (!lay.length) return false;
+    const x0 = Math.min(...lay.map((l) => l.transform.x)), y0 = Math.min(...lay.map((l) => l.transform.y)), x1 = Math.max(...lay.map((l) => l.transform.x + l.transform.w)), y1 = Math.max(...lay.map((l) => l.transform.y + l.transform.h));
+    return { dx: at.x - (x0 + x1) / 2, dy: at.y - (y0 + y1) / 2 };
+  }
+
   /** Marks the project tab a layer drag would copy into, clearing the rest. */
   private showTabDrop(key: string | null): void {
     for (const t of document.querySelectorAll<HTMLElement>('.cv-tab')) setClass(t, 'is-drop-target', !!key && t.dataset.key === key);
@@ -772,6 +788,7 @@ export class LayersPanel {
       } else if (!over || over === cur || slot) this.clearSpring();
       d.tabTarget = key;
       this.showTabDrop(key);
+      this.showStageDrop(!!key && key !== 'new' && !!this.docPoint?.(e.clientX, e.clientY));
       if (key) { d.target = null; this.showDrop(null); return; }
       const row = this.rowAt(e.clientX, e.clientY);
       if (!row?.dataset.id || d.ids.includes(row.dataset.id)) { d.target = null; this.showDrop(null); return; }
@@ -816,9 +833,11 @@ export class LayersPanel {
       this.showDrop(null);
       if (rows.hasPointerCapture(e.pointerId)) rows.releasePointerCapture(e.pointerId);
       this.showTabDrop(null);
+      this.showStageDrop(false);
+      const drop = d.started && d.tabTarget && d.tabTarget !== 'new' && !e.shiftKey && !cancel ? this.docPoint?.(e.clientX, e.clientY) ?? null : null;
       if (cancel || (d.started && !d.tabTarget && this.engine.current?.id !== d.src)) { this.engine.switchTo(d.src); return; }
       if (d.started && d.tabTarget === 'new') { if (this.engine.current?.id !== d.src) this.engine.switchTo(d.src); this.engine.copyLayersToNewDocument(d.ids); }
-      else if (d.started && d.tabTarget) this.engine.copyLayersToProject(d.ids, d.tabTarget, e.shiftKey);
+      else if (d.started && d.tabTarget) this.engine.copyLayersToProject(d.ids, d.tabTarget, drop ? this.dropShift(d.src, d.ids, drop) : e.shiftKey);
       else if (d.started && d.target) {
         if (d.maskFrom) this.engine.copyMask(d.maskFrom, d.target.id);
         else this.engine.moveLayers(d.ids, d.target.id, d.target.where, e.altKey);

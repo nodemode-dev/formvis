@@ -23,19 +23,21 @@ import type { CharacterStyle } from './types';
 import { Emitter } from './events';
 import { bumpMap, heightField, heightFromNormal, normalMap } from './normal-map';
 import * as VR from './variables';
-import type { DocVariable, LayerLabel, BoxKind, DocBox, LayerComp } from './types';
+import type { DocVariable, LayerLabel, LayerRole, BoxKind, DocBox, LayerComp } from './types';
 import type { RelightContent } from './relight';
 import { History, type HistoryEntry, type PixelPatch, type Snapshot } from './history';
 import { restrictPatches, type RgbTarget } from './channel-target';
 import { alphaPlane, alphaRaster, planeMask, rasterMask } from './alpha-target';
 import { Renderer, dropHalved, halvedBytes, renderDoc, type LayerOverride } from './renderer';
+import { compositeKey, compositeOnWorkers } from './composite-bands';
+import { wasmHealFull } from './wasm-kernels';
 import { applyDuotoneLut, curveAt, DUOTONE_COUNT, duotoneLut, type Duotone } from './duotone';
 import { compositeChannels, splitChannels } from './multichannel';
 import { PixelStroke, dropSpareSurfaces, sameBytes, spareBytes, strokeWindowFrom, warmStrokeSurfaces } from './stroke';
 import { PREVIEW, TiledRaster } from './tiled';
 import { SelectionMask, traceOutline, type SelectionMode } from './selection';
 import { selectionFeatures } from './measure-features';
-import { CANVAS_PIXELS, CANVAS_SIDE, Raster, createSurface, ctxOf, toBlob, type Surface, type Ctx2D } from './surface';
+import { CANVAS_PIXELS, CANVAS_SIDE, Raster, createSurface, ctxOf, surfaceVersion, toBlob, type Surface, type Ctx2D } from './surface';
 import { projectBack, type PanoramaLink } from './panorama';
 import { applyMat, boundsOf, contains, integral, intersectRect, invert, isAxisAligned, mul, placement, rotation, sameTransform, scaling, setMat, transformBounds, translation, unionRect, unitPoint, type Mat } from './geometry';
 import { ancestors, byId, descendantIds, groupIsolated, hierarchy, isDescendant } from './tree';
@@ -78,7 +80,7 @@ import * as TE from './transform-entry';
 import { type DocMode, BLEND_MODES, LAYER_BLEND_MODES, canvasBlend, LIMITS, setPixelLimit, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartDeform, type SmartDeformData, type SmartFilter, type SmartLink, type SmartObject, type LiveShape, type ShapeGradient, type ShapePattern, type ShapeStroke, type ShapeStyle, type FootageInterpretation, effectsFromData, type Artboard, artboardFromData, type AlphaChannel, effectsPresent } from './types';
 import { allPatterns, patternById } from './patterns';
 import { addFillStop, fillFrame, fillFromLine, fillLine, fillName, renderFill, type GradientFill } from './fill-layers';
-import type { FillContent, VectorMask, WarpStyle } from './types';
+import type { FillContent, VectorMask, WarpStyle, SmartOriginal } from './types';
 import { boxChange, followVector, hasOutline, movedVector, vectorCoverage } from './vector-mask';
 import { fitEdges } from './edge-fit';
 
@@ -142,9 +144,9 @@ export interface CalcOptions { source1: CalcSource; source2: CalcSource; mode?: 
 
 /** One entry of the GPU display's layer list (gpuLayers): a pixel layer's image, or an adjustment's lookup table applied
  *  to what is below it (per channel, 256 x 1; or 3D, 52 x 52 x 52 packed into 2704 x 52, with lut3 set). */
-export interface GpuLayerSpec { image: Surface | null; lut?: Uint8Array; lut3?: boolean; grain?: GrainParams; mask?: GpuMaskSpec; clip?: GpuClipSpec; folders?: GpuMaskSpec[]; blendIf?: GpuBlendIf; chOff?: number; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
+export interface GpuLayerSpec { image: Surface | null; lut?: Uint8Array; lut3?: boolean; grain?: GrainParams; mask?: GpuMaskSpec; clip?: GpuClipSpec; folders?: GpuMaskSpec[]; blendIf?: GpuBlendIf; chOff?: number; /** The float pixels of a 16 or 32 bit layer (RGB, straight alpha), which a display uploads as half floats in place of the 8-bit rendition; `linear` says they are linear light (32 bit). */ deep?: ChannelPixels; linear?: boolean; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
 /** A clipping base for the GPU: its pixels, placement and opacity, and its own mask; its coverage clips the layer. */
-export interface GpuClipSpec { image: Surface; version: number; width: number; height: number; matrix: Mat; opacity: number; mask?: GpuMaskSpec; parent?: GpuClipSpec }
+export interface GpuClipSpec { image: Surface; deep?: ChannelPixels; linear?: boolean; version: number; width: number; height: number; matrix: Mat; opacity: number; mask?: GpuMaskSpec; parent?: GpuClipSpec }
 /** A layer's Blend If for the GPU: the channel tested (1 grey, 2 red, 3 green, 4 blue) and the four-point ranges of the layer and of what lies under it. */
 export interface GpuBlendIf { channel: 1 | 2 | 3 | 4; thisLayer: readonly [number, number, number, number]; underlying: readonly [number, number, number, number] }
 /** A layer's mask for the GPU: its pixels (alpha is coverage), their version, size and placement. */
@@ -1885,6 +1887,42 @@ export class Engine {
     this.display.render({ doc: p.doc, target, view, overrides: this.overrides(p), quality, reuse: true });
   }
 
+  private workerFrame: { key: string; surface: Surface; project: Project } | null = null;
+  private workerBuilding = '';
+  private workerDeclined = '';
+
+  /** Composite on worker threads: fills `target` from the frame the workers composed for this view, or from the last
+   *  complete frame of this document while the next is built (`ready` runs when it lands, so the stage swaps one whole
+   *  frame for the next); false where `compose` must draw it (a document or view the bands do not take, a stroke in
+   *  progress, the first frame). */
+  composeBands(target: Surface, view: Mat, quality: ImageSmoothingQuality, ready: () => void): boolean {
+    const p = this.current;
+    if (!p || this.overrides(p) || (p.doc.mode === 'multichannel' && p.doc.multichannel)) { this.workerFrame = null; return false; }
+    const w = target.width, h = target.height, key = compositeKey(p.doc, w, h, view, quality);
+    if (!key) { this.workerFrame = null; return false; }
+    if (key === this.workerDeclined) return false;
+    if (this.workerFrame?.key !== key && this.workerBuilding !== key) {
+      this.workerBuilding = key;
+      void compositeOnWorkers(p.doc, w, h, view, quality).then((img) => {
+        this.workerBuilding = '';
+        if (!img) { this.workerDeclined = key; ready(); return; }
+        const s = createSurface(w, h);
+        ctxOf(s).putImageData(img, 0, 0);
+        this.workerFrame = { key, surface: s, project: p };
+        ready();
+      });
+    }
+    const show = this.workerFrame;
+    if (!show || show.project !== p || show.surface.width !== w || show.surface.height !== h) return false;
+    const c = ctxOf(target);
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.globalCompositeOperation = 'copy';
+    c.globalAlpha = 1;
+    c.drawImage(show.surface as CanvasImageSource, 0, 0);
+    c.globalCompositeOperation = 'source-over';
+    return true;
+  }
+
   /** The GPU display's view of the current document (Phase 18.2b): its visible layers bottom to top, each with its
    *  pixels, placement, opacity and blend mode, live previews applied as `compose` applies them; or the reason the
    *  document still draws on the CPU (what the GPU path does not draw yet). */
@@ -1914,6 +1952,11 @@ export class Engine {
     // visibility and folder masks do not enter); null where it cannot clip (a folder, no pixels), which hides the
     // clipped layer; a base that is itself clipped carries the base it is clipped to as `parent`, whose coverage limits
     // its own as the renderer's destination-in does (up to 8 deep, and none with a vector mask, which stay on the CPU).
+    // A 16 or 32 bit layer's floats for the display (RGB only; not while a live preview stands in for its pixels); a 32 bit document with an adjustment layer keeps 8-bit textures, as the adjustment's table indexes 0 to 255.
+    const deepOf = (x: Layer, src: { width: number; height: number }, live: unknown): ChannelPixels | undefined => {
+      const c = x.channels;
+      return c && c.mode === 'rgb' && !live && c.width === src.width && c.height === src.height && (p.doc.depth === 16 || (p.doc.depth === 32 && !p.doc.layers.some((q) => q.adjustment))) ? c : undefined;
+    };
     const clipOf = (id: ID, depth = 0): GpuClipSpec | null | 'nested' => {
       const b = map.get(id);
       if (!b || b.isGroup || !b.raster) return null;
@@ -1928,7 +1971,7 @@ export class Engine {
         parent = pc;
       }
       const bo = ov?.get(b.id), src = bo?.source ?? b.raster.canvas, t = bo?.transform ?? b.transform;
-      return { image: src, version: bo?.source ? -1 : b.raster.version, width: src.width, height: src.height, matrix: placement(t, src.width, src.height), opacity: bo?.opacity ?? b.opacity, mask: maskFor(b, bo), parent };
+      return { image: src, version: bo?.source ? -1 : b.raster.version, width: src.width, height: src.height, matrix: placement(t, src.width, src.height), opacity: bo?.opacity ?? b.opacity, mask: maskFor(b, bo), parent, deep: deepOf(b, src, bo?.source), linear: p.doc.depth === 32 };
     };
     for (const { layer: l, visible } of hierarchy(p.doc)) {
       // A pass-through folder is its layers in order, hidden with the folder; one with its own opacity or blend mode is
@@ -2000,7 +2043,8 @@ export class Engine {
       const lop = o?.opacity ?? l.opacity;
       const part = (q: NonNullable<typeof fxParts>[number]): GpuLayerSpec => ({ image: q.image, version: 0, width: q.image.width, height: q.image.height, matrix: q.matrix, opacity: q.alpha * lop, blend: q.blend });
       for (const q of fxParts) if (!q.above) layers.push(part(q));
-      layers.push({ image: img, version: o?.source ? -1 : l.raster.version, width: img.width, height: img.height, matrix: placement(o?.transform ?? l.transform, img.width, img.height), opacity: (o?.opacity ?? l.opacity) * (l.fill ?? 1), blend: o?.blend ?? l.blend, mask, clip, folders, blendIf, chOff: chOff || undefined });
+      const deep = deepOf(l, img, o?.source);
+      layers.push({ image: img, version: o?.source ? surfaceVersion(o.source) : l.raster.version, width: img.width, height: img.height, matrix: placement(o?.transform ?? l.transform, img.width, img.height), opacity: (o?.opacity ?? l.opacity) * (l.fill ?? 1), blend: o?.blend ?? l.blend, mask, clip, folders, blendIf, chOff: chOff || undefined, deep, linear: deep ? p.doc.depth === 32 : undefined });
       for (const q of fxParts) if (q.above) layers.push(part(q));
     }
     return { layers };
@@ -2556,7 +2600,7 @@ export class Engine {
   resetSmartDeform(): boolean { return SOB.resetDeform(this.smartObjectHost); }
 
   /** The active smart object's name and source raster, for Layer > Smart Objects > Export Contents; null when none. */
-  smartContents(): { name: string; raster: Raster } | null { return SM.smartContents(this.smartHost); }
+  smartContents(): { name: string; raster: Raster; original: SmartOriginal | null } | null { return SM.smartContents(this.smartHost); }
 
   /** Adds a filter to the active smart object's stack and re-renders it, as one undo step. */
   addSmartFilter(kind: string, settings: Record<string, unknown>): void { SM.addSmartFilter(this.smartHost, kind, settings); }
@@ -2666,7 +2710,7 @@ export class Engine {
   toggleSmartFilterMask(): void { SM.toggleSmartFilterMask(this.smartHost); }
 
   /** File > Place Linked: `raster` as a new smart object, centred, linked to a file through `link`. */
-  placeEmbedded(raster: Raster, name: string): void { SOB.placeEmbedded(this.smartObjectHost, raster, name); }
+  placeEmbedded(raster: Raster, name: string, original: SmartOriginal | null = null): void { SOB.placeEmbedded(this.smartObjectHost, raster, name, original); }
 
   placeLinked(raster: Raster, link: SmartLink, name: string): void { SOB.placeLinked(this.smartObjectHost, raster, link, name); }
 
@@ -3973,6 +4017,20 @@ export class Engine {
     });
   }
 
+  /** The selected layers' generation role (Reference, Subject, Background, Style), null for none; one step. */
+  setLayerRole(role: LayerRole | null): void {
+    this.edit('Layer Role', (p) => {
+      let changed = false;
+      for (const id of p.selectedIds.size ? p.selectedIds : p.activeId ? [p.activeId] : []) {
+        const l = p.layer(id);
+        if (!l || l.isGroup || (l.role ?? (l.reference ? 'reference' : null)) === role) continue;
+        p.updateLayer(id, { role: role ?? undefined, reference: role === 'reference' ? true : undefined });
+        changed = true;
+      }
+      return changed;
+    });
+  }
+
   renameLayer(id: ID, name: string): void {
     const n = name.trim().slice(0, 200);
     if (!n || !this.current || this.current.layer(id)?.name === n) return;
@@ -4866,21 +4924,35 @@ export class Engine {
 
   private growLayer(p: Project, layer: Layer, want: Rect): Raster { return PO.growLayer(p, layer, want); }
 
-  private ensureMask(p: Project, layer: Layer): Raster {
+  private ensureMask(p: Project, layer: Layer, at?: Pt): Raster {
     const m = layer.mask as NonNullable<Layer['mask']>;
-    if (m.raster) return m.raster;
+    if (m.raster) return at ? this.reachMask(p, layer, at) : m.raster;
     const r = Raster.filled(layer.raster ? layer.raster.width : p.doc.width, layer.raster ? layer.raster.height : p.doc.height, '#ffffff');
     p.updateLayer(layer.id, { mask: { ...m, raster: r } });
-    return r;
+    return at ? this.reachMask(p, p.layer(layer.id) as Layer, at) : r;
   }
 
-  private target(p: Project): { layer: Layer; target: Target; raster: Raster; local: Mat } | null {
+  /** A mask stroke that starts outside the mask's pixels, or within the brush's reach of their edge, grows the mask to cover
+   *  the canvas (the new area revealing) so painting past the layer's own pixels is kept. A mask tied to the pixels grows with
+   *  the layer's raster, as a pixel stroke grows it; a mask with a box of its own grows alone. */
+  private reachMask(p: Project, layer: Layer, at: Pt): Raster {
+    const m = layer.mask as NonNullable<Layer['mask']>, r = m.raster as Raster, t = m.placement ?? layer.transform, reach = this.brush.diameter / 2 + 2;
+    if (at.x >= t.x + reach && at.y >= t.y + reach && at.x <= t.x + t.w - reach && at.y <= t.y + t.h - reach) return r;
+    if (p.doc.width * p.doc.height > 25_000_000 || layer.isGroup || layer.adjustment || layer.tiled) return r;
+    const canvas: Rect = { x: 0, y: 0, w: p.doc.width, h: p.doc.height };
+    if (m.placement) return PO.growMask(p, layer, canvas) ?? r;
+    if (!layer.raster || liveText(layer) || layer.smart || layer.vector || layer.shape || layer.fillContent) return r;
+    this.growLayer(p, layer, canvas);
+    return (p.layer(layer.id) as Layer).mask?.raster ?? r;
+  }
+
+  private target(p: Project, at?: Pt): { layer: Layer; target: Target; raster: Raster; local: Mat } | null {
     const l0 = p.activeLayer;
     if (!this.paintable(l0)) return null;
     // An adjustment layer paints its mask (made, revealing all, when it has none).
     if (l0.adjustment && !l0.mask) p.updateLayer(l0.id, { mask: { raster: null, enabled: true, linked: true, placement: null } });
     const la = p.layer(l0.id) as Layer, target: Target = la.adjustment || (p.maskTarget && la.mask) ? 'mask' : 'pixels';
-    const raster = target === 'mask' ? this.ensureMask(p, la) : this.ensurePixels(p, la);
+    const raster = target === 'mask' ? this.ensureMask(p, la, at) : this.ensurePixels(p, la);
     const l = p.layer(l0.id) as Layer;
     const t = target === 'mask' ? (l.mask?.placement ?? l.transform) : l.transform;
     return { layer: l, target, raster, local: placement(t, raster.width, raster.height) };
@@ -4919,7 +4991,7 @@ export class Engine {
     const al = p.activeLayer as Layer;
     const pick: { layer: Layer; target: Target; raster: Raster | TiledRaster; local: Mat } = lt
       ? { layer: al, target: 'pixels', raster: lt, local: placement(al.transform, lt.width, lt.height) }
-      : this.target(p) as NonNullable<ReturnType<Engine['target']>>;
+      : this.target(p, pt) as NonNullable<ReturnType<Engine['target']>>;
     const white = pick.target === 'mask' && ((this.maskPaint === 'follow' ? luminance(this.fg) >= 0.5 : this.maskPaint === 'white') !== (this.brushMode === 'erase'));
     // Lock Transparency: paint only where the layer has pixels (source-atop); the Eraser then paints the background
     // colour, since it may not make pixels transparent.
@@ -5065,19 +5137,19 @@ export class Engine {
     } else if (patch && exact && dl?.channels?.mode === 'cmyk' && dl.raster === patch.raster && st.project.cmykLut) {
       const after = patch.raster.ctx.getImageData(patch.x, patch.y, patch.before.width, patch.before.height);
       const r = strokeChannels(dl.channels, patch.before, after, patch.x, patch.y, this.brushMode === 'erase' || this.tool === 'eraser' ? null : this.fgInk, this.bgInk, st.project.cmykLut, this.paintChannel);
-      after.data.set(r.region); patch.raster.ctx.putImageData(after, patch.x, patch.y); patch.raster.touch(); patch.after.data.set(r.region);
+      after.data.set(r.region); patch.raster.ctx.putImageData(after, patch.x, patch.y); patch.raster.touch({ x: patch.x, y: patch.y, w: after.width, h: after.height }); patch.after.data.set(r.region);
       st.project.updateLayer(st.layerId, { channels: r.channels });
     } else if (patch && exact && dl?.channels?.mode === 'lab' && this.paintLab !== null && dl.raster === patch.raster) {
       const after = patch.raster.ctx.getImageData(patch.x, patch.y, patch.before.width, patch.before.height), erasing = this.brushMode === 'erase' || this.tool === 'eraser';
       const r = strokeLabChannel(dl.channels, patch.before, after, patch.x, patch.y, erasing ? this.bgc : this.fgc, labGreyValue(erasing ? this.bgc : this.fgc), erasing, this.paintLab);
-      after.data.set(r.region); patch.raster.ctx.putImageData(after, patch.x, patch.y); patch.raster.touch(); patch.after.data.set(r.region);
+      after.data.set(r.region); patch.raster.ctx.putImageData(after, patch.x, patch.y); patch.raster.touch({ x: patch.x, y: patch.y, w: after.width, h: after.height }); patch.after.data.set(r.region);
       st.project.updateLayer(st.layerId, { channels: r.channels });
     } else if (patch && dl?.channels && dl.raster === patch.raster) {
       const t = dl.channels.mode === 'cmyk' ? this.deriveTables(st.project) : null;
       if (dl.channels.mode !== 'cmyk' || t) {
         const after = patch.raster.ctx.getImageData(patch.x, patch.y, patch.before.width, patch.before.height);
         const linear = st.project.doc.depth === 32, ch = deriveRegion(dl.channels, patch.x, patch.y, patch.before, after, t, linear), img = renderRegion(ch, patch.x, patch.y, after.width, after.height, t ? t.out : null, linear);
-        patch.raster.ctx.putImageData(img, patch.x, patch.y); patch.raster.touch(); patch.after.data.set(img.data);
+        patch.raster.ctx.putImageData(img, patch.x, patch.y); patch.raster.touch({ x: patch.x, y: patch.y, w: img.width, h: img.height }); patch.after.data.set(img.data);
         st.project.updateLayer(st.layerId, { channels: ch });
       }
     }
@@ -5342,7 +5414,7 @@ export class Engine {
     if (r) {
       const before = new ImageData(r.w, r.h);
       for (let y = 0; y < r.h; y++) before.data.set(b.full.data.subarray(((r.y + y) * b.full.width + r.x) * 4, ((r.y + y) * b.full.width + r.x + r.w) * 4), y * r.w * 4);
-      if (cancel) { b.raster.ctx.putImageData(before, r.x, r.y); b.raster.touch(); }
+      if (cancel) { b.raster.ctx.putImageData(before, r.x, r.y); b.raster.touch(r); }
       else b.p.history.addPatch({ raster: b.raster, x: r.x, y: r.y, before, after: b.raster.read(r.x, r.y, r.w, r.h) });
     }
     b.p.history.end(b.p.snapshot());
@@ -5395,7 +5467,7 @@ export class Engine {
     }
     if (!any) return;
     raster.ctx.putImageData(img, x0, y0);
-    raster.touch();
+    raster.touch({ x: x0, y: y0, w, h });
     b.touched = unionRect(b.touched, { x: x0, y: y0, w, h });
   }
 
@@ -10123,7 +10195,8 @@ export class Engine {
   private healBlend(before: ImageData, out: ImageData, coverage: Uint8Array, opacity: number, mode: HealBlend): void {
     if (mode === 'normal') return;
     const W = out.width, H = out.height, a = before.data, o = out.data, full = new ImageData(W, H), f = full.data;
-    for (let i = 0; i < coverage.length; i++) {
+    const byWasm = wasmHealFull(a, o, coverage, W, opacity, mode === 'replace', f);
+    for (let i = 0; i < coverage.length && !byWasm; i++) {
       const k = (coverage[i] / 255) * opacity, j = i * 4;
       if (k < 0.02) continue;
       for (let ch = 0; ch < 3; ch++) f[j + ch] = a[j + ch] + (o[j + ch] - a[j + ch]) / k;

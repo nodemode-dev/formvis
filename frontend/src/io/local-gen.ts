@@ -213,6 +213,12 @@ export async function localDepthValues(image: Blob, width: number, height: numbe
   return data;
 }
 
+/** The depth at 16 bits a channel, from the engine's png16 route: a 16-bit grey PNG at `width` by `height`, near bright and far dark. */
+export async function localDepth16(image: Blob, width: number, height: number): Promise<Blob> {
+  const form = new FormData(); form.append('image', image, 'image.png');
+  return (await ask(`/depth/local?fmt=png16&width=${width}&height=${height}`, { method: 'POST', headers: { 'x-formvis-local': '1' }, body: form })).blob();
+}
+
 /** Remove's People and Distractions (1.57.4): the area to remove from `image`, a white-on-black mask the same size. */
 export async function findToRemove(image: Blob, kind: 'people' | 'distractions'): Promise<Blob> {
   const form = new FormData(); form.append('image', image, 'image.png'); form.append('kind', kind);

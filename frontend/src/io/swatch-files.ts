@@ -47,13 +47,13 @@ const COLOUR_BOOKS: Record<number, string> = { 3: 'Pantone', 4: 'Focoltone', 5: 
 export function swatchNotes(list: readonly SwatchItem[]): string[] {
   const books = new Map<string, number>();
   for (const s of list) if (s.book) books.set(s.book, (books.get(s.book) ?? 0) + 1);
-  return [...books].map(([book, n]) => `${n} ${book} colour book swatch${n === 1 ? '' : 'es'} kept by name with an approximate colour; the book's own entry is not carried.`);
+  return [...books].map(([book, n]) => `${n} ${book} colour book swatch${n === 1 ? '' : 'es'} shown with an approximate colour; an .aco saved again carries the book's own entry.`);
 }
 
 /** One swatch as the files hold it: '#rrggbb', an optional name, and (.ase only) an optional group. */
-export interface SwatchItem { c: string; name?: string; group?: string; /** The colour as the file held it when it was not RGB, at full precision: CMYK as 0 to 1 each, Lab as L 0 to 100 then a and b, Gray as 0 to 1. */ src?: SwatchSource; /** Global, spot or process (.ase colour types); absent means process. */ kind?: 'global' | 'spot'; /** The colour book (Pantone and the like) the file named; the colour is then an approximation. */ book?: string }
+export interface SwatchItem { c: string; name?: string; group?: string; /** The colour as the file held it when it was not RGB, at full precision: CMYK as 0 to 1 each, Lab as L 0 to 100 then a and b, Gray as 0 to 1. */ src?: SwatchSource; /** Global, spot or process (.ase colour types); absent means process. */ kind?: 'global' | 'spot'; /** The colour book (Pantone and the like) the file named; the colour is then an approximation. */ book?: string; /** A colour book entry's record as the .aco file held it (space, then four 16-bit values), written back as it was. */ raw?: [number, number, number, number, number] }
 export interface SwatchSource { m: 'cmyk' | 'lab' | 'gray'; v: number[] }
-const item = (c: string, name: string, group?: string, src?: SwatchSource, kind?: 'global' | 'spot', book?: string): SwatchItem => ({ c, ...(name && name !== c ? { name: name.slice(0, 60) } : {}), ...(group ? { group: group.slice(0, 40) } : {}), ...(src ? { src } : {}), ...(kind ? { kind } : {}), ...(book ? { book } : {}) });
+const item = (c: string, name: string, group?: string, src?: SwatchSource, kind?: 'global' | 'spot', book?: string, raw?: SwatchItem['raw']): SwatchItem => ({ c, ...(name && name !== c ? { name: name.slice(0, 60) } : {}), ...(group ? { group: group.slice(0, 40) } : {}), ...(src ? { src } : {}), ...(kind ? { kind } : {}), ...(book ? { book } : {}), ...(raw ? { raw } : {}) });
 const sourceOf = (space: number, w: number, x: number, y: number, z: number): SwatchSource | undefined => {
   const sg = (v: number): number => (v > 32767 ? v - 65536 : v);
   if (space === 9) return { m: 'cmyk', v: [w, x, y, z].map((q) => clamp(q, 0, 10000) / 10000) };
@@ -82,7 +82,7 @@ export function parseAco(bytes: Uint8Array): SwatchItem[] {
         p += 2;
         for (let k = 0; k < n && p + 2 <= bytes.byteLength; k += 1) { const ch = dv.getUint16(p); p += 2; if (ch) name += String.fromCharCode(ch); }
       }
-      if (c) colours.push(item(c, name, undefined, src, undefined, COLOUR_BOOKS[sp]));
+      if (c) colours.push(item(c, name, undefined, src, undefined, COLOUR_BOOKS[sp], COLOUR_BOOKS[sp] ? [sp, w, x, y, z] : undefined));
     }
     return { version, colours };
   };
@@ -105,7 +105,8 @@ export function writeAco(list: ReadonlyArray<string | SwatchItem>): Uint8Array {
     u16(version); u16(items.length);
     items.forEach((s, k) => {
       const [r, g, b] = parseHex(s.c), v = s.src?.v ?? [], q = (f: number): number => Math.round(clamp(f, 0, 1) * 65535), sg = (f: number): number => Math.round(clamp(f, -128, 127) * 100) & 0xffff;
-      if (s.src?.m === 'cmyk' && v.length === 4) { u16(2); u16(65535 - q(v[0]!)); u16(65535 - q(v[1]!)); u16(65535 - q(v[2]!)); u16(65535 - q(v[3]!)); }
+      if (s.raw && COLOUR_BOOKS[s.raw[0]]) { for (const q of s.raw) u16(q); }
+      else if (s.src?.m === 'cmyk' && v.length === 4) { u16(2); u16(65535 - q(v[0]!)); u16(65535 - q(v[1]!)); u16(65535 - q(v[2]!)); u16(65535 - q(v[3]!)); }
       else if (s.src?.m === 'lab' && v.length === 3) { u16(7); u16(Math.round(clamp(v[0]!, 0, 100) * 100)); u16(sg(v[1]!)); u16(sg(v[2]!)); u16(0); }
       else if (s.src?.m === 'gray' && v.length === 1) { u16(8); u16(Math.round(clamp(v[0]!, 0, 1) * 10000)); u16(0); u16(0); u16(0); }
       else { u16(0); u16(r * 257); u16(g * 257); u16(b * 257); u16(0); }

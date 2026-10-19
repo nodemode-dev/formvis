@@ -5,13 +5,14 @@ origin is refused, because a WebSocket is not covered by CORS."""
 
 import asyncio
 import json
+import os
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
 from app.core import config
-from app.services import terminal
+from app.services import claude_code, terminal
 
 router = APIRouter(prefix="/api/terminal", tags=["terminal"])
 
@@ -66,6 +67,24 @@ class SizeBody(BaseModel):
     rows: int = Field(ge=4, le=200)
 
 
+class ClaudeBody(BaseModel):
+    prompt: str | None = Field(None, max_length=100_000)
+    resume: str | None = Field(None, max_length=200)
+    cols: int | None = None
+    rows: int | None = None
+    fresh: bool = False
+
+
+def server_port(request: Request) -> int:
+    server = request.scope.get("server")
+    return server[1] if server and server[1] else int(os.environ.get("FORMVIS_PORT") or config.BACKEND_PORT)
+
+
+def document_folder() -> str | None:
+    from app.routers import mcp
+    return os.path.dirname(next(reversed(mcp._opened.values()))) if mcp._opened else None
+
+
 def _session(sid: str) -> terminal.Session:
     try:
         return terminal.get(sid)
@@ -86,6 +105,17 @@ def open_terminal(body: OpenBody, request: Request) -> dict:
         return terminal.open_session(cols=body.cols, rows=body.rows, title=body.title).describe()
     except (OSError, FileNotFoundError) as exc:
         raise HTTPException(status_code=500, detail=f"The shell could not start: {exc}")
+
+
+@router.post("/claude")
+def open_claude(body: ClaudeBody, request: Request) -> dict:
+    require_local(request)
+    try:
+        return claude_code.open_terminal(server_port(request), body.prompt, body.resume, min(max(body.cols or 100, 10), 500), min(max(body.rows or 30, 4), 200), body.fresh, document_folder())
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Claude Code could not start: {exc}")
 
 
 @router.post("/{sid}/resize")
@@ -135,7 +165,7 @@ async def attach(ws: WebSocket, sid: str) -> None:
         backlog = session.scrollback()
         if backlog:
             await ws.send_text(backlog)
-        if not session.alive and session.kind == "shell":
+        if not session.alive and session.kind != "agent":
             await ws.send_bytes(json.dumps({"type": "exit"}).encode())
         while True:
             text = await queue.get()
@@ -153,7 +183,7 @@ async def attach(ws: WebSocket, sid: str) -> None:
                 continue
             if not isinstance(msg, dict):
                 continue
-            if msg.get("type") == "input" and session.alive and session.kind == "shell":
+            if msg.get("type") == "input" and session.alive and session.kind != "agent":
                 terminal.write(sid, str(msg.get("data", "")))
             elif msg.get("type") == "resize":
                 try:

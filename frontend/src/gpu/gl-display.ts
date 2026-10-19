@@ -4,6 +4,7 @@ import { CLIP_MODE, FOLDER_MODE, GRAIN_MODE, LUT3_MODE, LUT_MODE, type Checker, 
 import { GlFrameTimer } from './gpu-timing';
 import type { DisplayOptions } from './probe';
 import { dirtyBox, trimResident, type UploadStats } from './residency';
+import { deepHalf, lodFor } from './deep-upload';
 
 /** The display on WebGL2 (Phase 18.4): the GPU path where WebGPU is missing, as in the Linux desktop shell, whose
  *  webview has none. The same passes as the WebGPU display and the same maths as blend-wgsl.ts, in GLSL ES 3.00: layers
@@ -21,7 +22,7 @@ uniform sampler2D backdrop; uniform sampler2D source;
 uniform mat3 inv; uniform vec2 size; uniform float opacity; uniform int mode; uniform float H;
 uniform sampler2D maskTex; uniform mat3 minv; uniform vec2 msize; uniform int hasMask;
 uniform sampler2D clipTex; uniform int hasClip;
-uniform mat3 vinv; uniform vec4 biT; uniform vec4 biU; uniform int biCh; uniform int chOff;
+uniform mat3 vinv; uniform vec4 biT; uniform vec4 biU; uniform int biCh; uniform int chOff; uniform float lod;
 out vec4 outColor;
 float biFactor(float v, vec4 r) {
   float lo = v < r.x ? 0.0 : v < r.y ? (v - r.x) / max(1.0, r.y - r.x) : 1.0;
@@ -125,7 +126,7 @@ void main() {
   vec2 p = vec2(gl_FragCoord.x, H - gl_FragCoord.y);
   vec3 q = inv * vec3(p, 1.0);
   if (q.x < 0.0 || q.y < 0.0 || q.x >= size.x || q.y >= size.y) { outColor = bd; return; }
-  vec4 s0 = texture(source, q.xy / size);
+  vec4 s0 = textureLod(source, q.xy / size, lod);
   vec4 sc = s0.a > 0.0 ? vec4(s0.rgb / s0.a, s0.a) : s0;
   if (mode == 1 || mode == 5 || mode == 6 || mode == 11 || (mode >= 15 && mode <= 18) || mode == 21 || mode == 22) sc = vec4(floor(sc.rgb * 255.0 + 0.5) / 255.0, sc.a);
   float bif = 1.0;
@@ -171,10 +172,13 @@ function program(gl: GL, fs: string): WebGLProgram {
 }
 
 export class GlDisplay {
-  private readonly cache = new Map<object, { tex: WebGLTexture; version: number; w: number; h: number; bytes: number; seen: number; at: number }>();
+  private readonly cache = new Map<object, { tex: WebGLTexture; version: number; w: number; h: number; bytes: number; seen: number; at: number; deep: boolean; src: unknown; mipAt: number }>();
   private acc: { tex: WebGLTexture; fb: WebGLFramebuffer }[] = [];
   private accW = 0;
   private accH = 0;
+  private accHalf = false;
+  /** Whether half-float colour attachments exist here (EXT_color_buffer_float): without it deep layers go up as 8 bits, as before. */
+  floatOk = false;
   onLost: (() => void) | null = null;
   budgetBytes = 0;
   readonly stats: UploadStats = { uploads: 0, tiled: 0, bytes: 0 };
@@ -191,7 +195,9 @@ export class GlDisplay {
     try {
       const gl = canvas.getContext('webgl2', { powerPreference: options.power, desynchronized: options.lowLatency, premultipliedAlpha: true, antialias: false, alpha: true });
       if (!gl) { console.warn('formvis: the display canvas gives no WebGL2 context'); return null; }
-      return new GlDisplay(canvas, gl, program(gl, COMPOSITE_FS), program(gl, PRESENT_FS));
+      const display = new GlDisplay(canvas, gl, program(gl, COMPOSITE_FS), program(gl, PRESENT_FS));
+      display.floatOk = !!gl.getExtension('EXT_color_buffer_float');
+      return display;
     } catch (err) {
       console.warn('formvis: WebGL2 could not start:', err);
       return null;
@@ -200,10 +206,11 @@ export class GlDisplay {
 
   get maxTexture(): number { return Number(this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE)); }
 
-  private target(W: number, H: number): { tex: WebGLTexture; fb: WebGLFramebuffer } {
+  private target(W: number, H: number, half = false): { tex: WebGLTexture; fb: WebGLFramebuffer } {
     const gl = this.gl, tex = gl.createTexture() as WebGLTexture, fb = gl.createFramebuffer() as WebGLFramebuffer;
     gl.bindTexture(gl.TEXTURE_2D, tex);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, W, H, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    if (half) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, W, H, 0, gl.RGBA, gl.HALF_FLOAT, null);
+    else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, W, H, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
     for (const k of [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D, k, gl.NEAREST);
     gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
@@ -216,10 +223,11 @@ export class GlDisplay {
     const gl = this.gl, W = out ? out.W : this.canvas.width, H = out ? out.H : this.canvas.height;
     if (W < 1 || H < 1 || gl.isContextLost()) return;
     this.frameNo++;
-    if (!this.acc.length || this.accW !== W || this.accH !== H) {
+    const half = this.floatOk && layers.some((l) => l.deep);
+    if (!this.acc.length || this.accW !== W || this.accH !== H || this.accHalf !== half) {
       for (const a of this.acc) { gl.deleteTexture(a.tex); gl.deleteFramebuffer(a.fb); }
-      this.acc = [this.target(W, H), this.target(W, H)];
-      this.accW = W; this.accH = H;
+      this.acc = [this.target(W, H, half), this.target(W, H, half)];
+      this.accW = W; this.accH = H; this.accHalf = half;
     }
     let [a, b] = this.acc;
     if (!out) this.timer.begin();
@@ -242,7 +250,7 @@ export class GlDisplay {
       const have = clipOut.get(c);
       if (have) return have;
       const up = c.parent ? clipCover(c.parent) : null, t = this.clipTarget(clipOut.size, W, H);
-      this.drawLayer({ image: c.image, version: c.version, width: c.width, height: c.height, matrix: c.matrix, opacity: c.opacity, blend: 'normal', mask: c.mask }, CLIP_MODE, up, this.blank(), t.fb, view, filter, used, u);
+      this.drawLayer({ image: c.image, deep: c.deep, linear: c.linear, version: c.version, width: c.width, height: c.height, matrix: c.matrix, opacity: c.opacity, blend: 'normal', mask: c.mask }, CLIP_MODE, up, this.blank(), t.fb, view, filter, used, u);
       clipOut.set(c, t.tex);
       return t.tex;
     };
@@ -315,15 +323,18 @@ export class GlDisplay {
     const gl = this.gl;
     const noImage = mode === FOLDER_MODE || mode === GRAIN_MODE;
     if (!noImage) used.add(l.lut ?? (l.image as object));
+    const lod = !noImage && mode < LUT_MODE ? lodFor(mul(view, l.matrix), l.width, l.height) : 0;
     gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, noImage ? this.blank() : this.texture(l));
+    gl.bindTexture(gl.TEXTURE_2D, noImage ? this.blank() : this.texture(l, lod > 0));
     if (l.grain) {
       const g = l.grain;
       gl.uniform4f(u('gA'), g.strength, g.rough, g.colour, g.speckle);
       gl.uniform4f(u('gB'), g.cell, g.amount, filter === gl.NEAREST ? 1 : 0, 0);
       gl.uniform4ui(u('gS'), g.seed >>> 0, g.fineSeed >>> 0, g.specSeed >>> 0, 0);
     }
-    for (const k of [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D, k, filter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, lod > 0 ? gl.LINEAR_MIPMAP_LINEAR : filter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+    gl.uniform1f(u('lod'), lod);
     const [ia, ib, ic, id, ie, iff] = invert(mul(view, l.matrix));
     gl.uniformMatrix3fv(u('inv'), false, [ia, ib, 0, ic, id, 0, ie, iff, 1]);
     gl.uniform2f(u('size'), l.width, l.height);
@@ -379,14 +390,15 @@ export class GlDisplay {
     return this.blankTex;
   }
 
-  private texture(l: DisplayLayer): WebGLTexture {
-    const gl = this.gl, key = l.lut ?? (l.image as object);
+  private texture(l: DisplayLayer, mips = false): WebGLTexture {
+    const gl = this.gl, key = l.lut ?? (l.image as object), deep = this.floatOk && !!l.deep && !l.lut;
     let e = this.cache.get(key);
-    if (e && (e.w !== l.width || e.h !== l.height)) { gl.deleteTexture(e.tex); e = undefined; }
-    if (!e) { e = { tex: gl.createTexture() as WebGLTexture, version: NaN, w: l.width, h: l.height, bytes: l.width * l.height * 4, seen: 0, at: 0 }; this.cache.set(key, e); }
+    if (e && (e.w !== l.width || e.h !== l.height || e.deep !== deep)) { gl.deleteTexture(e.tex); e = undefined; }
+    if (!e) { e = { tex: gl.createTexture() as WebGLTexture, version: NaN, w: l.width, h: l.height, bytes: l.width * l.height * (deep ? 8 : 4), seen: 0, at: 0, deep, src: null, mipAt: NaN }; this.cache.set(key, e); }
     e.seen = this.frameNo;
     e.at = performance.now();
     gl.bindTexture(gl.TEXTURE_2D, e.tex);
+    if (deep && e.src !== l.deep) { e.src = l.deep; e.version = NaN; e.mipAt = NaN; }
     if (l.lut) {
       // A table is data, not an image: uploaded as it is (no premultiplying), once for its settings.
       if (Number.isNaN(e.version)) {
@@ -397,11 +409,16 @@ export class GlDisplay {
         this.stats.bytes += e.bytes;
       }
     } else if (l.image && (l.version < 0 || e.version !== l.version)) {
-      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, !deep);
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
       // A changed layer sends only the 256 px tiles its raster says changed since this texture was written.
       const box = l.version < 0 ? null : dirtyBox(l.image, e.version, l.version, l.width, l.height);
-      if (box) {
+      if (deep && l.deep) {
+        const part = box ?? { x: 0, y: 0, w: l.width, h: l.height }, bits = deepHalf(l.deep, !!l.linear, part);
+        if (box) { gl.texSubImage2D(gl.TEXTURE_2D, 0, part.x, part.y, part.w, part.h, gl.RGBA, gl.HALF_FLOAT, bits); this.stats.tiled++; }
+        else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, part.w, part.h, 0, gl.RGBA, gl.HALF_FLOAT, bits);
+        this.stats.bytes += part.w * part.h * 8;
+      } else if (box) {
         const sc = this.scratch ??= document.createElement('canvas');
         if (sc.width !== box.w || sc.height !== box.h) { sc.width = box.w; sc.height = box.h; }
         const g = sc.getContext('2d') as CanvasRenderingContext2D;
@@ -418,6 +435,7 @@ export class GlDisplay {
       for (const k of [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T]) gl.texParameteri(gl.TEXTURE_2D, k, gl.CLAMP_TO_EDGE);
       e.version = l.version;
     }
+    if (mips && !l.lut && (e.version < 0 || e.mipAt !== e.version)) { gl.generateMipmap(gl.TEXTURE_2D); e.mipAt = e.version; }
     return e.tex;
   }
 

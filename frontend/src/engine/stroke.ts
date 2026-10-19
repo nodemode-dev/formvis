@@ -1,5 +1,5 @@
 import { applyMat, boundsOf, integral, intersectRect, invert, matScale, mul, setMat, translation, unionRect, type Mat } from './geometry';
-import { createSurface, ctxOf, type Ctx2D, type Raster, type Surface } from './surface';
+import { createSurface, ctxOf, noteSurface, type Ctx2D, type Raster, type Surface } from './surface';
 import { TiledRaster } from './tiled';
 import type { SelectionMask } from './selection';
 import type { PixelPatch } from './history';
@@ -77,6 +77,7 @@ function takeSurface(w: number, h: number): Surface {
   const i = spares.findIndex((x) => x.width === w && x.height === h);
   if (i < 0) return createSurface(w, h);
   const surface = spares.splice(i, 1)[0], c = ctxOf(surface);
+  noteSurface(surface, null);
   c.setTransform(1, 0, 0, 1, 0, 0);
   c.globalAlpha = 1;
   c.globalCompositeOperation = 'source-over';
@@ -807,6 +808,7 @@ export class PixelStroke {
       w.putImageData(dst, x, y);
     } else w.drawImage(laid, x, y, aw, ah, x, y, aw, ah);
     w.restore();
+    noteSurface(this.working, win);
     return area;
   }
 

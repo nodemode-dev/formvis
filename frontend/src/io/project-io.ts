@@ -6,7 +6,7 @@ import { readDuotone, type Duotone } from '../engine/duotone';
 import {
   Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid, type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsPresent, effectsFromData, liveText, textFromData, paragraphStylesFrom, characterStylesFrom,smartFiltersFrom, pathSetData, pathSetFrom, pathData, pathFrom, type PathSet, type RGB, timelineData, timelineFrom, type Timeline, addPattern, patternById, projectPatterns, SelectionMask, type AlphaChannel,
 } from '../engine';
-import { artboardFromData, LAYER_LABELS, type LayerLabel, type NestedContents, type SmartStack } from '../engine/types';
+import { artboardFromData, isLayerRole, LAYER_LABELS, type LayerLabel, type NestedContents, type SmartOriginal, type SmartStack } from '../engine/types';
 import { deformFrom } from '../engine/smart-deform';
 import { isStackMode } from '../engine/stack-modes';
 import { cleanMeta } from '../engine/doc-meta';
@@ -122,6 +122,7 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
   // await before the last one is started, the whole manifest reads one state and the document may change at once.
   const encodes: Promise<void>[] = [];
   const nests: Promise<void>[] = [];
+  const originalFiles = new Map<Uint8Array, string>();
   const giants: Array<() => Promise<void>> = [];
   const put =(name: string, made: Promise<Blob>): void => {
     const part: FilePart = { name, blob: new Blob() };
@@ -166,6 +167,12 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
       const name = `${l.id}.source.png`;
       put(name, toBlob(l.smart.source.canvas));
       r.smartSourceFile = name;
+      const kept = l.smart.original;
+      if (kept) {
+        const on = originalFiles.get(kept.data) ?? `${l.id}.original${/\.[A-Za-z0-9]{1,8}$/.exec(kept.name)?.[0] ?? ''}`;
+        if (!originalFiles.has(kept.data)) { originalFiles.set(kept.data, on); put(on, Promise.resolve(new Blob([kept.data.slice()], { type: kept.mime }))); }
+        r.smartOriginal = { file: on, name: kept.name, mime: kept.mime };
+      }
       if (l.smart.stack) {
         const stackFiles: string[] = [];
         for (const [i, s] of l.smart.stack.sources.entries()) {
@@ -200,6 +207,8 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
     if (l.psdAdjustment) r.psdAdjustment = JSON.parse(JSON.stringify(l.psdAdjustment));
     if (l.isGroup && l.isolate) r.isolate = true;
     if (l.label) r.label = l.label;
+    if (l.role) r.role = l.role;
+    if (l.reference) r.reference = true;
     if (l.locks && Object.values(l.locks).some(Boolean)) r.locks = { ...l.locks };
     if (l.link) r.linkID = l.link;
     if (l.generation) r.generation = structuredClone(l.generation);
@@ -412,6 +421,13 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
     const d = await deserialize(inner, (n) => fetchImage(`${id}.n.${n}`));
     nestedById.set(id, { width: d.doc.width, height: d.doc.height, resolution: d.doc.resolution, layers: [...d.doc.layers] });
   }));
+  const originals = new Map<string, SmartOriginal>();
+  await Promise.all(records.map(async (r) => {
+    const o = obj(r.smartOriginal), file = str(o.file), id = str(r.id);
+    if (!file || !id || !str(r.smartSourceFile)) return;
+    const blob = await fetchImage(file).catch(() => null);
+    if (blob) originals.set(id, { name: str(o.name) ?? file, mime: str(o.mime) ?? '', data: new Uint8Array(await blob.arrayBuffer()) });
+  }));
   const stackFrom = (raw: unknown): SmartStack | null => {
     const o = obj(raw), list = Array.isArray(o.files) ? o.files : [];
     const pics = list.map((n) => bitmaps.get(typeof n === 'string' ? n : ''));
@@ -438,7 +454,7 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
     const sw = obj(r.smart), warpPts = Array.isArray(sw.warp) && sw.warp.length === 4 && sw.warp.every((q) => finite(obj(q).x) && finite(obj(q).y)) ? (sw.warp as Array<{ x: number; y: number }>).map((q) => ({ x: q.x, y: q.y })) : null;
     const fmImage = bitmaps.get(str(r.smartFilterMaskFile) ?? ''), fmOk = !!fmImage && !!sourceImage && fmImage.width === sourceImage.width && fmImage.height === sourceImage.height;
     const lk = obj(sw.link), link = str(lk.id) && str(lk.name) && finite(lk.size) && finite(lk.lastModified) ? { id: str(lk.id) as string, name: str(lk.name) as string, size: lk.size as number, lastModified: lk.lastModified as number, ...(typeof lk.path === 'string' && lk.path ? { path: lk.path.slice(0, 1024) } : {}) } : null;
-    const smart = raster && sourceImage ? { source: Raster.from(sourceImage, sourceImage.width, sourceImage.height), filters: smartFiltersFrom(r.smart), stack: stackFrom(r.smartStack), warp: warpPts, warpAt: warpPts && sw.warpAt ? transformFrom(sw.warpAt, raster.width, raster.height) : null, deform: deformFrom(sw.deform, sw.deform && obj(sw.deform).at ? transformFrom(obj(sw.deform).at, raster.width, raster.height) : null), filterMask: fmOk && fmImage ? Raster.from(fmImage, fmImage.width, fmImage.height) : null, filterMaskEnabled: sw.filterMaskEnabled !== false, link, ...(nestedById.has(str(r.id) ?? '') ? { nested: nestedById.get(str(r.id) ?? '') } : {}) } : null;
+    const smart = raster && sourceImage ? { source: Raster.from(sourceImage, sourceImage.width, sourceImage.height), filters: smartFiltersFrom(r.smart), stack: stackFrom(r.smartStack), warp: warpPts, warpAt: warpPts && sw.warpAt ? transformFrom(sw.warpAt, raster.width, raster.height) : null, deform: deformFrom(sw.deform, sw.deform && obj(sw.deform).at ? transformFrom(obj(sw.deform).at, raster.width, raster.height) : null), filterMask: fmOk && fmImage ? Raster.from(fmImage, fmImage.width, fmImage.height) : null, filterMaskEnabled: sw.filterMaskEnabled !== false, link, ...(nestedById.has(str(r.id) ?? '') ? { nested: nestedById.get(str(r.id) ?? '') } : {}), ...(originals.has(str(r.id) ?? '') ? { original: originals.get(str(r.id) ?? '') } : {}) } : null;
     const maskPicture = bitmaps.get(str(r.maskFile) ?? '');
     const mask: Mask | null = maskPicture
       ? { raster: grayToMask(maskPicture), enabled: r.maskEnabled !== false, linked: r.maskLinked !== false, placement: r.maskPlacement ? transformFrom(r.maskPlacement, maskPicture.width, maskPicture.height) : null, ...(typeof r.maskDensity === 'number' ? { density: r.maskDensity } : {}), ...(typeof r.maskFeather === 'number' ? { feather: r.maskFeather } : {}) }
@@ -462,6 +478,8 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
       ...(r.psdAdjustment && typeof r.psdAdjustment === 'object' ? { psdAdjustment: r.psdAdjustment as Record<string, unknown> } : {}),
       ...(r.isGroup === true && r.isolate === true ? { isolate: true } : {}),
       ...((LAYER_LABELS as readonly unknown[]).includes(r.label) ? { label: r.label as LayerLabel } : {}),
+      ...(isLayerRole(r.role) ? { role: r.role } : {}),
+      ...(r.reference === true ? { reference: true } : {}),
       ...(r.frame && typeof r.frame === 'object' ? (() => { const f = r.frame as Record<string, unknown>; return { frame: { x: num(f.x, 0), y: num(f.y, 0), w: Math.max(2, num(f.w, 2)), h: Math.max(2, num(f.h, 2)), shape: f.shape === 'ellipse' ? 'ellipse' as const : 'rect' as const } }; })() : {}),
       ...(r.locks && typeof r.locks === 'object' ? (() => { const k = r.locks as Record<string, unknown>, out = Object.fromEntries((['transparency', 'pixels', 'position', 'all'] as const).filter((n) => k[n] === true).map((n) => [n, true])); return Object.keys(out).length ? { locks: out } : {}; })() : {}),
       ...(str(r.linkID) ? { link: (str(r.linkID) as string).slice(0, 120) } : {}),
