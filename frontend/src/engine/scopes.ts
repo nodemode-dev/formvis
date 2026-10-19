@@ -1,5 +1,6 @@
 /** Scopes for Develop (1.53.4): a histogram (R, G, B and Rec. 709 luma), a waveform (luma by column) and a vectorscope
  *  (Rec. 709 colour difference), from an image, sampled to at most MAX pixels so they stay live while sliders move. */
+import { srgbToLab } from './lab';
 const MAX = 250_000;
 
 function stepOf(img: ImageData): number { return Math.max(1, Math.ceil(Math.sqrt((img.width * img.height) / MAX))); }
@@ -39,6 +40,21 @@ export function vectorscope(img: ImageData, size = 128): Uint32Array {
     out[py * size + px]++;
   }
   return out;
+}
+
+/** The a* (right) and b* (up) plane of CIE Lab on a `size` square, -128 to 127 each, the centre neutral, with the mean L* of the pixels counted. */
+export function labScope(img: ImageData, size = 128): { plane: Uint32Array; meanL: number } {
+  const plane = new Uint32Array(size * size), d = img.data, st = stepOf(img);
+  let sum = 0, n = 0;
+  for (let y = 0; y < img.height; y += st) for (let x = 0; x < img.width; x += st) {
+    const i = (y * img.width + x) * 4;
+    if (d[i + 3] === 0) continue;
+    const [L, a, b] = srgbToLab(d[i], d[i + 1], d[i + 2]);
+    const px = Math.min(size - 1, Math.max(0, Math.round(((a + 128) / 256) * (size - 1)))), py = Math.min(size - 1, Math.max(0, Math.round(((128 - b) / 256) * (size - 1))));
+    plane[py * size + px]++;
+    sum += L; n++;
+  }
+  return { plane, meanL: n ? sum / n : 0 };
 }
 
 /** The angle of the skin-tone line on the vectorscope, in degrees from Cb's axis (Rec. 709, about 123 degrees). */

@@ -4,6 +4,26 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.90.4 · 2026-10-19
+
+### Added
+
+- Camera Raw: drag on the picture to adjust a colour band, click to pick Point Color, Guided Upright with guide lines, a Lab scope.
+- Selection: Detect Faces in Color Range Skin Tones; Skew, Distort and Perspective on a Transform Selection outline.
+- Type: horizontal and vertical scale on selected letters; edit a character style's settings and see where a layer differs.
+- Shapes and paths: a magnetic Freeform Pen, dragging several paths together, pattern fill and stroke, path operations for new shapes, managing custom shapes, Stroke Path with the Mixer Brush.
+- Adaptive Wide Angle: Perspective, Full Spherical and Auto, horizontal and vertical constraints, local straightening, and use on smart objects. Vanishing Point: focal length and depth.
+- PSD: 16 and 32-bit files open at their depth; gradient shape strokes and artboard presets and guides are read.
+- Preferences: Large Tabs, Narrow Options Bar, brush hardness by drag, pixel-grid snapping, transform readout, rollover highlight, flick panning, channels in colour, colour slider gradients, canvas border, favourite themes, export clipboard, layered TIFF prompt, type sizes in points, swatch names.
+
+### Changed
+
+- Distort, Perspective Warp and mesh Warp resample with bicubic.
+
+### Fixed
+
+- Empty pixel layers are no longer dropped when saving PSD or PSB.
+
 ## 1.90.3 · 2026-10-19
 
 ### Changed

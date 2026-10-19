@@ -459,6 +459,10 @@ html[dir='rtl'] .cv-stage { direction: ltr; }
 .cv-doc-tabs .cv-tabs { display: flex; align-items: flex-end; gap: 2px; min-width: 0; height: 100%; }
 .cv-tab { display: flex; align-items: center; gap: 6px; width: auto; min-width: 110px; max-width: 240px; height: 28px; padding: 0 6px 0 12px; }
 .cv-tab-name { flex: 0 1 auto; min-width: 0; font-size: 13px; }
+body.large-tabs { --cv-tabs-h: 44px; }
+body.large-tabs .cv-tab { height: 38px; min-width: 140px; }
+body.large-tabs .cv-tab-name { font-size: 14px; }
+body.narrow-options { --cv-options-h: 32px; }
 .cv-tab-dot { order: 2; width: auto; height: auto; background: none; border-radius: 0; color: var(--text-primary); }
 .cv-tab-dot::after { content: ''; }
 .cv-tab.is-dirty .cv-tab-dot::after { content: '*'; }

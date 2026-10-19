@@ -1,4 +1,5 @@
 import { applyMat, invert, placement, unitPoint } from './geometry';
+import { cubicWeights } from './mesh-warp';
 import { Raster } from './surface';
 import type { Pt, Rect, Transform } from './types';
 
@@ -83,8 +84,8 @@ export function imageCorners(c: readonly Pt[], flipX: boolean, flipY: boolean): 
 export interface Warped { raster: Raster; t: Transform }
 
 /** `src`, shown through `t`, resampled so its corners land on `quad`, over the quad's whole-pixel bounds with an
- *  upright transform. Each output pixel's centre is mapped back into the source and read with premultiplied bilinear
- *  filtering, edges clamped; `scale` below 1 renders a smaller preview of the same bounds. For a mask the result is
+ *  upright transform. Each output pixel's centre is mapped back into the source and read with premultiplied bicubic
+ *  (Catmull-Rom) filtering for High sampling, bilinear otherwise, edges clamped; `scale` below 1 renders a smaller preview of the same bounds. For a mask the result is
  *  opaque grey, with `background` (0 black, hidden) outside the shape. */
 export function warpRaster(src: Raster, t: Transform, quad: readonly Pt[], scale = 1, mask = false, background = 0): Warped | null {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -94,7 +95,7 @@ export function warpRaster(src: Raster, t: Transform, quad: readonly Pt[], scale
   if (W < 1 || H < 1 || !back) return null;
   const ow = Math.max(1, Math.round(W * scale)), oh = Math.max(1, Math.round(H * scale));
   const sw = src.width, sh = src.height, sd = src.ctx.getImageData(0, 0, sw, sh).data;
-  const out = new ImageData(ow, oh), od = out.data;
+  const out = new ImageData(ow, oh), od = out.data, cubic = t.sampling === 'high', cwx = new Float32Array(4), cwy = new Float32Array(4);
   // Masks keep their level in alpha over white: outside the shape they take the edge's level.
   if (mask) for (let k = 0; k < od.length; k += 4) { od[k] = od[k + 1] = od[k + 2] = 255; od[k + 3] = background; }
   const texel = (x: number, y: number): number => (Math.min(sh - 1, Math.max(0, y)) * sw + Math.min(sw - 1, Math.max(0, x))) * 4;
@@ -107,7 +108,16 @@ export function warpRaster(src: Raster, t: Transform, quad: readonly Pt[], scale
       if (!(u >= 0 && u <= 1 && v >= 0 && v <= 1)) continue;
       const fx = u * sw - 0.5, fy = v * sh - 0.5, ix = Math.floor(fx), iy = Math.floor(fy), tx = fx - ix, ty = fy - iy;
       let r = 0, g = 0, b = 0, a = 0;
-      for (let dy = 0; dy < 2; dy++) {
+      if (cubic) {
+        cubicWeights(tx, cwx); cubicWeights(ty, cwy);
+        for (let dy = 0; dy < 4; dy++) for (let dx = 0; dx < 4; dx++) {
+          const weight = cwy[dy] * cwx[dx], o = texel(ix - 1 + dx, iy - 1 + dy);
+          if (mask) { a += weight * sd[o + 3]; continue; }
+          const k = weight * sd[o + 3];
+          r += k * sd[o]; g += k * sd[o + 1]; b += k * sd[o + 2]; a += k;
+        }
+        a = Math.min(255, Math.max(0, a));
+      } else for (let dy = 0; dy < 2; dy++) {
         const wy = dy ? ty : 1 - ty;
         for (let dx = 0; dx < 2; dx++) {
           const weight = wy * (dx ? tx : 1 - tx);

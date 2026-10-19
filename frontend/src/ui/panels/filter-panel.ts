@@ -13,7 +13,8 @@ import { estimateShake } from '../../engine/shake';
 import { runGallery, type GallerySettings } from '../../engine/blur-gallery';
 import { LIBRARY, isLibKind, libAllDefaults, libApron, libFilter, libImageParams, libMargin, libPathParams, libValues, runLib, type LibColors, type LibFrame, type LibImage, type LibKind, type LibParam, type LibPath, type LibValue, type LibValues } from '../../engine/filter-library';
 import { crsXmp, developFromXmp } from '../../io/crs-xmp';
-import { uprightFor, type UprightMode } from '../../engine/upright';
+import { uprightFor, uprightFromGuides, type UprightMode } from '../../engine/upright';
+import { createDevelopProbe, type ProbeMode } from './develop-probe';
 import { HSL_BANDS, autoWhiteBalance, bandFor,bandOf,buildCurveLut, clippingView,defaultCalibration, defaultGeometry, defaultGrading, defaultNoise, defaultOptics, defaultParametric, defaultPointColor, defaultVignetteShape, hslToRgb, whiteBalanceFor, type CalibrationState, type CurveChannel, type CurvePoint,type DevelopState, type GeometryState, type GradingState, type HslBand, type HslBandState, type OpticsState, type ParametricState, type PointColorState } from '../../engine/develop';
 import { curveGraph } from './curve-graph';
 import { GalleryView } from './gallery-view';
@@ -150,6 +151,34 @@ export class FilterPanel extends Dialog {
       return { t: l.transform, w, h, ref: { x: 0, y: 0, w, h } };
     },
   });
+
+  /** Develop's on-image tools (targeted mixer drag, Point Color pick, Upright guides): the stage lends them the pointer while one is switched on. */
+  private probeFor: 'mixer' | 'point' | 'guides' | null = null;
+  private readonly probeButtons: Array<readonly [HTMLElement, 'mixer' | 'point' | 'guides']> = [];
+  private guideLines: Array<[{ x: number; y: number }, { x: number; y: number }]> = [];
+  private onPick: (r: number, g: number, b: number) => void = () => undefined;
+  private onDrag: (up: number) => void = () => undefined;
+  private onGuide: (a: { x: number; y: number }, b: { x: number; y: number }) => void = () => undefined;
+  private readonly developProbe = createDevelopProbe({
+    mode: (): ProbeMode | null => (this.probeFor === 'mixer' ? 'drag' : this.probeFor === 'point' ? 'pick' : this.probeFor === 'guides' ? 'guides' : null),
+    layer: () => {
+      const l = this.engine.current?.activeLayer, r = l?.raster, t = this.engine.targetImage();
+      return l && r && t && t.image.width === r.width && t.image.height === r.height ? { t: l.transform, w: r.width, h: r.height, img: t.image } : null;
+    },
+    pick: (r, g, b) => this.onPick(r, g, b),
+    drag: (up) => this.onDrag(up),
+    guide: (a, b) => this.onGuide(a, b),
+    guides: () => this.guideLines,
+  });
+
+  private setProbe(which: 'mixer' | 'point' | 'guides' | null): void {
+    this.probeFor = which;
+    this.scrim.classList.toggle('cv-scrim-through', which !== null);
+    this.scrim.classList.toggle('cv-scrim-side', which !== null);
+    setDialogTool(which ? this.developProbe : null);
+    for (const [b, k] of this.probeButtons) b.setAttribute('aria-pressed', String(k === which));
+    this.engine.emit('overlay', null);
+  }
 
   /** Lighting Effects handles on the canvas: the stage lends them the pointer while the dialog shows. */
   private readonly lightPins = createLightPins({
@@ -441,9 +470,15 @@ export class FilterPanel extends Dialog {
       swatchRow.append(sw);
     }
     const setBandSwatch = (): void => { for (const [k, sw] of swatches) { sw.setAttribute('aria-pressed', String(k === band)); sw.style.outline = k === band ? '2px solid var(--accent)' : 'none'; sw.style.outlineOffset = '1px'; } };
-    const mixTarget = el<HTMLButtonElement>('<button class="cv-btn" type="button">Targeted adjustment</button>');
-    pickColour(mixTarget, (r, g, b) => { band = bandFor(r, g, b) ?? 'master'; setBandSwatch(); syncMix(); });
-    devNodes.push(el('<p class="cv-note">Colour Mixer</p>'), swatchRow, mixTarget, mixH.el, mixS.el, mixL.el);
+    const mixTarget = el<HTMLButtonElement>('<button class="cv-btn" type="button" aria-pressed="false" title="Press a colour in the picture, then drag up or down to change it.">Targeted adjustment</button>');
+    mixTarget.addEventListener('click', () => this.setProbe(this.probeFor === 'mixer' ? null : 'mixer'));
+    this.probeButtons.push([mixTarget, 'mixer']);
+    const mixChan = selectRow('Drag changes', [['s', 'Saturation'], ['l', 'Luminance'], ['h', 'Hue']], () => undefined);
+    let mixFrom = 0;
+    const mixKey = (): 'h' | 's' | 'l' => (mixChan.el.querySelector('select')?.value as 'h' | 's' | 'l' | undefined) ?? 's';
+    const mixPick = (r: number, g: number, b: number): void => { band = bandFor(r, g, b) ?? 'master'; setBandSwatch(); syncMix(); mixFrom = bandState()[mixKey()]; };
+    const mixDrag = (up: number): void => { const k = mixKey(), lim = k === 'h' ? 180 : 100; bandState()[k] = Math.max(-lim, Math.min(lim, Math.round(mixFrom + up / 2))); syncMix(); this.schedule(); };
+    devNodes.push(el('<p class="cv-note">Colour Mixer</p>'), swatchRow, mixTarget, mixChan.el, mixH.el, mixS.el, mixL.el);
     devSync.push(() => { setBandSwatch(); syncMix(); });
     let range: 'shadows' | 'midtones' | 'highlights' | 'global' = 'midtones';
     const grading = (): GradingState => (D().grading ??= defaultGrading());
@@ -500,14 +535,29 @@ export class FilterPanel extends Dialog {
     slide('Vignette feather', 0, 100, 1, () => optics().feather ?? 50, (v) => { optics().feather = v; });
     slide('Vignette roundness', 0, 100, 1, () => optics().roundness ?? 100, (v) => { optics().roundness = v; });
     slide('Defringe', 0, 100, 1, () => optics().defringe ?? 0, (v) => { optics().defringe = v; });
-    const upright = selectRow('Upright', [['off', 'Off'], ['auto', 'Auto'], ['level', 'Level'], ['vertical', 'Vertical'], ['full', 'Full']], (v) => {
+    const upright = selectRow('Upright', [['off', 'Off'], ['auto', 'Auto'], ['level', 'Level'], ['vertical', 'Vertical'], ['full', 'Full'], ['guided', 'Guided']], (v) => {
+      if (v === 'guided') { this.guideLines = []; this.setProbe('guides'); upright.set(v); return; }
+      if (this.probeFor === 'guides') { this.guideLines = []; this.setProbe(null); }
       const img = v === 'off' ? null : this.engine.targetImage();
       Object.assign(geometry(), v === 'off' ? { rotate: 0, vertical: 0, horizontal: 0 } : img ? uprightFor(img.image, v as UprightMode) : {});
       for (const f of devSync) f();
       upright.set(v);
       this.schedule(0);
     });
-    devNodes.push(el('<p class="cv-note">Geometry</p>'), upright.el);
+    const clearGuides = el<HTMLButtonElement>('<button class="cv-btn" type="button" title="Remove the guides and straighten nothing.">Clear Guides</button>');
+    clearGuides.addEventListener('click', () => { this.guideLines = []; Object.assign(geometry(), { rotate: 0, vertical: 0, horizontal: 0 }); for (const f of devSync) f(); this.engine.emit('overlay', null); this.schedule(0); });
+    this.onGuide = (a, b) => {
+      const r = this.engine.current?.activeLayer?.raster;
+      if (!r) return;
+      this.guideLines.push([a, b]);
+      if (this.guideLines.length > 4) this.guideLines.shift();
+      Object.assign(geometry(), uprightFromGuides(this.guideLines, r.width, r.height));
+      for (const f of devSync) f();
+      upright.set('guided');
+      this.engine.emit('overlay', null);
+      this.schedule(0);
+    };
+    devNodes.push(el('<p class="cv-note">Geometry</p>'), upright.el, clearGuides);
     slide('Vertical', -100, 100, 1, () => geometry().vertical, (v) => { geometry().vertical = v; });
     slide('Horizontal', -100, 100, 1, () => geometry().horizontal, (v) => { geometry().horizontal = v; });
     slide('Rotate (\u00b0)', -10, 10, 0.1, () => geometry().rotate, (v) => { geometry().rotate = v; });
@@ -522,8 +572,14 @@ export class FilterPanel extends Dialog {
     }
     const point = (): PointColorState => (D().pointColor ??= defaultPointColor());
     const pointPick = colorRow('Colour', (v) => { point().color = v; this.schedule(); });
-    const pointEye = el<HTMLButtonElement>('<button class="cv-btn" type="button">Pick from image</button>');
-    pickColour(pointEye, (r, g, b) => { const hex = '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join(''); point().color = hex; pointPick.set(hex); this.schedule(0); });
+    const pointEye = el<HTMLButtonElement>('<button class="cv-btn" type="button" aria-pressed="false" title="Click a colour in the picture.">Pick from image</button>');
+    pointEye.addEventListener('click', () => this.setProbe(this.probeFor === 'point' ? null : 'point'));
+    this.probeButtons.push([pointEye, 'point']);
+    this.onPick = (r, g, b) => {
+      if (this.probeFor === 'mixer') { mixPick(r, g, b); return; }
+      const hex = '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join(''); point().color = hex; pointPick.set(hex); this.schedule(0);
+    };
+    this.onDrag = (up) => { if (this.probeFor === 'mixer') mixDrag(up); };
     devNodes.push(el('<p class="cv-note">Point Color</p>'), pointPick.el, pointEye);
     devSync.push(() => pointPick.set(/^#[0-9a-f]{6}$/i.test(point().color) ? point().color : '#ff0000'));
     slide('Point Range', 0, 100, 1, () => point().range, (v) => { point().range = v; });
@@ -980,6 +1036,9 @@ export class FilterPanel extends Dialog {
   private abandon(): void {
     this.scrim.classList.remove('cv-scrim-through', 'cv-scrim-side');
     document.removeEventListener('keydown', this.pinKey);
+    this.guideLines = [];
+    this.probeFor = null;
+    for (const [b] of this.probeButtons) b.setAttribute('aria-pressed', 'false');
     setDialogTool(null);
     this.engine.emit('overlay', null);
     window.clearTimeout(this.timer);

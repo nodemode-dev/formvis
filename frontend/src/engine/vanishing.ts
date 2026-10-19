@@ -19,19 +19,27 @@ export function makePlane(quad: Quad): PlaneMap | null {
   return { quad, h, inv, aspect };
 }
 
+/** The camera's focal length in pixels that the plane implies: its two axes are at a right angle in the world, the
+ *  principal point at the picture centre; a guess from the picture's size when the corners do not say. */
+export function estimateFocal(plane: PlaneMap, W: number, H: number): number {
+  const cx = W / 2, cy = H / 2, a = plane.aspect, m = plane.h;
+  const c1 = [m[0] / a - cx * (m[6] / a), m[3] / a - cy * (m[6] / a), m[6] / a], c2 = [m[1] - cx * m[7], m[4] - cy * m[7], m[7]];
+  const f2 = -(c1[0] * c2[0] + c1[1] * c2[1]) / (c1[2] * c2[2]);
+  return f2 > 1 && Number.isFinite(f2) ? Math.sqrt(f2) : Math.max(W, H) * 1.2;
+}
+
 /** A plane hinged on `parent`'s right edge (top right to bottom right) and turned `angle` degrees out of it (0 carries
  *  the plane on flat, 90 stands it square to the parent), its width the parent's. The camera is found from the parent
  *  alone: its focal length from the two plane axes being at a right angle (principal point at the picture centre), then
  *  the plane's pose; the quad comes back as top left, top right, bottom right, bottom left, or null when the pose
  *  cannot be found or the plane would pass behind the camera. */
-export function connectedQuad(parent: PlaneMap, W: number, H: number, angle: number): Quad | null {
+export function connectedQuad(parent: PlaneMap, W: number, H: number, angle: number, opts: { focal?: number | null; depth?: number } = {}): Quad | null {
   const cx = W / 2, cy = H / 2, a = parent.aspect, m = parent.h;
   // Columns of the plane-to-picture map in metric plane units (u scaled by the aspect), picture centre as the origin.
   const col = (i: number): [number, number, number] => i === 0 ? [m[0] / a, m[3] / a, m[6] / a] : i === 1 ? [m[1], m[4], m[7]] : [m[2], m[5], m[8]];
   const shift = (c: [number, number, number]): [number, number, number] => [c[0] - cx * c[2], c[1] - cy * c[2], c[2]];
   const c1 = shift(col(0)), c2 = shift(col(1)), c3 = shift(col(2));
-  const f2 = -(c1[0] * c2[0] + c1[1] * c2[1]) / (c1[2] * c2[2]);
-  const f = f2 > 1 && Number.isFinite(f2) ? Math.sqrt(f2) : Math.max(W, H) * 1.2;
+  const f = opts.focal && opts.focal > 1 ? opts.focal : estimateFocal(parent, W, H), depth = opts.depth ?? 0;
   const g = (c: [number, number, number]): [number, number, number] => [c[0] / f, c[1] / f, c[2]];
   const g1 = g(c1), g2 = g(c2), g3 = g(c3), len = Math.hypot(...g1);
   if (!(len > 1e-9)) return null;
@@ -40,7 +48,7 @@ export function connectedQuad(parent: PlaneMap, W: number, H: number, angle: num
   if (n[2] > 0) n = [-n[0], -n[1], -n[2]];
   const th = (angle * Math.PI) / 180, c = Math.cos(th), s = Math.sin(th);
   const point = (sx: number, y: number): P2 | null => {
-    const X = a + sx * a * c, Z = sx * a * s;
+    const X = a + sx * a * c, Z = sx * a * s + depth * a;
     const P = [X * r1[0] + y * r2[0] + t[0] + Z * n[0], X * r1[1] + y * r2[1] + t[1] + Z * n[1], X * r1[2] + y * r2[2] + t[2] + Z * n[2]];
     return P[2] > 1e-6 ? [cx + (f * P[0]) / P[2], cy + (f * P[1]) / P[2]] : null;
   };

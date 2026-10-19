@@ -151,7 +151,7 @@ export type FillContent =
   | { kind: 'pattern'; pattern: ID; scale: number; angle: number; link: boolean; phase: Pt };
 export interface FillStop { at: number; color: RGB; alpha: number; mid?: number }
 /** A ruler guide: `axis: 'x'` is a vertical guide at x = `at`, `'y'` a horizontal one, in document pixels. */
-export interface Artboard { x: number; y: number; w: number; h: number; background: RGB | null }
+export interface Artboard { x: number; y: number; w: number; h: number; background: RGB | null; /** The preset name a PSD gave the board (iPhone, A4), kept for re-save. */ preset?: string }
 
 /** An artboard read back from saved data, every field checked; null when it is not one. */
 export function artboardFromData(raw: unknown): Artboard | null {
@@ -160,7 +160,7 @@ export function artboardFromData(raw: unknown): Artboard | null {
   const x = n(o.x), y = n(o.y), w = n(o.w), h = n(o.h);
   if (x === null || y === null || w === null || h === null || w < 1 || h < 1 || w > 30000 || h > 30000) return null;
   const b = o.background as Record<string, unknown> | null | undefined, c = (v: unknown): number => Math.round(clamp(n(v) ?? 0, 0, 255));
-  return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h), background: b && typeof b === 'object' ? { r: c(b.r), g: c(b.g), b: c(b.b) } : null };
+  return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h), background: b && typeof b === 'object' ? { r: c(b.r), g: c(b.g), b: c(b.b) } : null, ...(typeof o.preset === 'string' && o.preset ? { preset: o.preset.slice(0, 80) } : {}) };
 }
 
 export interface Guide { axis: 'x' | 'y'; at: number; color?: string; board?: ID }
@@ -449,7 +449,7 @@ export interface FeatureRun extends RunAttrs { start: number; end: number; on: s
 /** Character attributes one run sets over the layer's own (UTF-16 offsets as for features). A field left out inherits the
  *  layer's; `tracking` is in thousandths of an em, `baselineShift` in pixels (up positive), `size` in pixels, `language`
  *  a BCP 47 tag. Runs are kept sorted and apart; opentype.ts cleanRuns, withRunAttrs and styleSegments are the only readers. */
-export interface RunAttrs { family?: string; size?: number; color?: RGB; weight?: number; bold?: boolean; italic?: boolean; baselineShift?: number; tracking?: number; language?: string; underline?: boolean; strike?: boolean; caps?: 'all' | 'small' }
+export interface RunAttrs { family?: string; size?: number; color?: RGB; weight?: number; bold?: boolean; italic?: boolean; baselineShift?: number; tracking?: number; language?: string; underline?: boolean; strike?: boolean; caps?: 'all' | 'small'; scaleX?: number; scaleY?: number }
 export interface TextSpec extends TextExtras { runs?: FeatureRun[]; shaping?: TextShaping; hyphenate?: boolean; language?: string; features?: string[] | null; antialias?: 'none' | 'sharp' | 'crisp' | 'strong' | 'smooth' | 'windows-lcd' | 'windows'; box?: { w: number; h: number } | null; direction?: 'horizontal' | 'vertical'; content: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right' | 'justify'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning; warp?: TextWarp | null; onPath?: TextPath | null; style?: ID | null; charStyle?: ID | null; rendered?: string }
 /** A character style (DEV_PLAN 32.6c): only the fields it sets override the type layer's own; the layer links it by `TextSpec.charStyle`. */
 export interface CharacterStyle extends Pick<TextExtras, 'caps' | 'scaleX' | 'scaleY' | 'baselineShift' | 'underline' | 'strike' | 'variations'> { id: ID; name: string; family?: string; size?: number; color?: RGB; bold?: boolean; italic?: boolean; tracking?: number; features?: string[] }
@@ -503,13 +503,15 @@ export function smartFiltersFrom(raw: unknown): SmartFilter[] {
  *  rendered, so a later move of the layer can carry the path along. */
 /** dash and align (1.52.8, the tool audit), the stroke options: solid, dashed or dotted; inside, centred
  *  on or outside the path (an open path is always centred). */
-export interface ShapeStroke { color: RGB; width: number; dash?: 'solid' | 'dashed' | 'dotted'; align?: 'inside' | 'center' | 'outside'; cap?: 'butt' | 'round' | 'square'; join?: 'miter' | 'round' | 'bevel'; miter?: number; dashes?: number[]; dashOffset?: number; opacity?: number; /** Paints the stroke with a gradient across the shape's bounds in place of `color`. */ gradient?: ShapeGradient | null }
+export interface ShapeStroke { color: RGB; width: number; dash?: 'solid' | 'dashed' | 'dotted'; align?: 'inside' | 'center' | 'outside'; cap?: 'butt' | 'round' | 'square'; join?: 'miter' | 'round' | 'bevel'; miter?: number; dashes?: number[]; dashOffset?: number; opacity?: number; /** Paints the stroke with a gradient across the shape's bounds in place of `color`. */ gradient?: ShapeGradient | null; /** Paints the stroke with a tiled pattern in place of `color` (a gradient wins when both are set). */ pattern?: ShapePattern | null }
 /** A gradient fill across the shape's bounds: linear at `angle` degrees (0 runs left to right), radial from the centre, or
  *  angle (a sweep from the centre). The fill colour stays as the fallback and the colour a gradient-less restyle starts from. */
 export interface ShapeGradient { type: 'linear' | 'radial' | 'angle'; angle: number; stops: Array<{ at: number; color: RGB; alpha?: number }> }
-export interface ShapeStyle { fill: RGB | null; stroke: ShapeStroke | null; gradient?: ShapeGradient | null }
+/** A pattern from the library tiled across the shape's bounds, `scale` times its size; it paints in place of the colour. */
+export interface ShapePattern { id: ID; scale: number }
+export interface ShapeStyle { fill: RGB | null; stroke: ShapeStroke | null; gradient?: ShapeGradient | null; pattern?: ShapePattern | null }
 /** The parameters a polygon, star or triangle shape layer was drawn from, with the box it was fitted to (in the path's own
  *  frame), so the sides, the star's inset and the corner radius can be changed after the fact. A hand edit of the
  *  outline drops it. */
 export interface LiveShape { kind: 'polygon' | 'star' | 'triangle'; sides: number; inset: number; radius: number; box: Rect }
-export interface VectorLayer { path: import('./paths').VectorPath; fill: RGB | null; stroke?: ShapeStroke | null; gradient?: ShapeGradient | null; live?: LiveShape; origin: Pt }
+export interface VectorLayer { path: import('./paths').VectorPath; fill: RGB | null; stroke?: ShapeStroke | null; gradient?: ShapeGradient | null; pattern?: ShapePattern | null; live?: LiveShape; origin: Pt }

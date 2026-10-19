@@ -60,13 +60,19 @@ function walk(c: Ctx, t: TextSpec, line: string, x: number, y: number, draw: boo
         setType(c, st);
         if (draw && s.attrs.color) c.fillStyle = `rgb(${st.color.r},${st.color.g},${st.color.b})`;
         const piece = line.slice(s.from - at, s.to - at), by = y + (t.baselineShift ?? 0) - (st.baselineShift ?? 0);
-        const adv = walk(c, st, s.attrs.caps === 'all' && t.caps !== 'all' ? piece.toUpperCase() : piece, cx, by, draw);
+        // a run's own scale is absolute; the layer's scale is applied by the caller, so the run is set at the ratio to it
+        const rx = s.attrs.scaleX ? s.attrs.scaleX / 100 / hScale(t) : 1, ry = s.attrs.scaleY ? s.attrs.scaleY / (t.scaleY ?? 100) : 1;
+        const scaled = rx !== 1 || ry !== 1;
+        if (draw && scaled) { c.save(); c.translate(cx, by); c.scale(rx, ry); }
+        const text = s.attrs.caps === 'all' && t.caps !== 'all' ? piece.toUpperCase() : piece;
+        const adv = walk(c, st, text, draw && scaled ? 0 : cx, draw && scaled ? 0 : by, draw);
         if (draw && (s.attrs.underline || s.attrs.strike)) {   // a run's own underline and strikethrough, over the run's advance
-          const th = Math.max(1, st.size / 18);
-          if (s.attrs.underline) c.fillRect(cx, by + st.size * 0.12, adv, th);
-          if (s.attrs.strike) c.fillRect(cx, by - st.size * 0.3, adv, th);
+          const th = Math.max(1, st.size / 18), ox = scaled ? 0 : cx, oy = scaled ? 0 : by;
+          if (s.attrs.underline) c.fillRect(ox, oy + st.size * 0.12, adv, th);
+          if (s.attrs.strike) c.fillRect(ox, oy - st.size * 0.3, adv, th);
         }
-        cx += adv;
+        if (draw && scaled) c.restore();
+        cx += adv * rx;
         if (draw && s.attrs.color) c.fillStyle = fill;
       }
       setType(c, t);
@@ -202,7 +208,7 @@ export function renderPlain(t: TextSpec): TextRender {
   const starts = t.runs?.length ? lineStarts(text, lines) : [];   // where each line begins in the text, for feature runs
   const styled = runsStyled(t.runs);   // runs with sizes or shifts change a line's height: it takes its largest size
   const segsOf = (i: number): ReturnType<typeof styleSegments> => styleSegments(t.features, t.runs, starts[i], starts[i] + lines[i].text.length);
-  const lineK = lines.map((_, i) => (styled ? Math.max(...segsOf(i).map((s) => s.attrs.size ?? t.size)) / t.size : 1));
+  const lineK = lines.map((_, i) => (styled ? Math.max(...segsOf(i).map((s) => (s.attrs.size ?? t.size) * (s.attrs.scaleY ? s.attrs.scaleY / (t.scaleY ?? 100) : 1))) / t.size : 1));
   const shifts = styled ? lines.flatMap((_, i) => segsOf(i).map((s) => s.attrs.baselineShift ?? shift)) : [shift];
   const metrics = lines.map((line) => probe.measureText(line.text || ' '));
   const widths = lines.map((line, i) => lineWidth(probe, t, line.text || ' ', starts[i]));
@@ -625,6 +631,8 @@ export function runPatchFrom(a: Record<string, unknown> | undefined): RunPatch {
   put('underline', 'underline', (v) => (typeof v === 'boolean' ? v || null : undefined));
   put('strike', 'strike', (v) => (typeof v === 'boolean' ? v || null : undefined));
   put('caps', 'caps', (v) => (v === 'all' || v === 'small' ? v : v === 'normal' ? null : undefined));
+  put('scaleX', 'scale_x', (v) => (fin(v) ? (v === 100 ? null : clamp(v, 10, 500)) : undefined));
+  put('scaleY', 'scale_y', (v) => (fin(v) ? (v === 100 ? null : clamp(v, 10, 500)) : undefined));
   return out as RunPatch;
 }
 
@@ -634,6 +642,8 @@ export function runPatchOfStyle(s: CharacterStyle): RunPatch {
     ...(s.family !== undefined ? { family: s.family } : {}), ...(s.size !== undefined ? { size: s.size } : {}), ...(s.color !== undefined ? { color: { ...s.color } } : {}),
     ...(s.bold !== undefined ? { bold: s.bold } : {}), ...(s.italic !== undefined ? { italic: s.italic } : {}), ...(s.tracking !== undefined ? { tracking: s.tracking } : {}),
     ...(s.baselineShift !== undefined ? { baselineShift: s.baselineShift } : {}),
+    ...(s.caps !== undefined ? { caps: s.caps } : {}), ...(s.underline !== undefined ? { underline: s.underline || null } : {}), ...(s.strike !== undefined ? { strike: s.strike || null } : {}),
+    ...(s.scaleX !== undefined ? { scaleX: s.scaleX === 100 ? null : s.scaleX } : {}), ...(s.scaleY !== undefined ? { scaleY: s.scaleY === 100 ? null : s.scaleY } : {}),
   };
 }
 

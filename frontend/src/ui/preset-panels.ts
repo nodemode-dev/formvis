@@ -1,5 +1,5 @@
 import type { Engine } from '../engine';
-import { allCustomShapes, CUSTOM_SHAPES, removeCustomShape } from '../engine/custom-shapes';
+import { allCustomShapes, CUSTOM_SHAPES, customShapePath, type CustomShapeDef, removeCustomShape, renameCustomShape, replaceCustomShape, resetCustomShapes, setCustomShapeGroup, stepCustomShape } from '../engine/custom-shapes';
 import { allGradients, customGradients, GRADIENT_PRESETS, resolveStops, setCustomGradients } from '../engine/gradients';
 import type { GradientPreset } from '../engine/gradients';
 import { allPatterns, removePattern, renamePattern, setPatternGroup } from '../engine/patterns';
@@ -30,6 +30,8 @@ interface PresetKind<T> {
   group?: { get(t: T): string; set(t: T, group: string): void | Promise<unknown> };
   /** Moves a custom item one place earlier (-1) or later (1) among the items of its group. */
   move?(t: T, dir: -1 | 1): void | Promise<unknown>;
+  /** More foot buttons: `custom` ones act on the selected custom item, the others on the panel as a whole. */
+  extras?: ReadonlyArray<{ label: string; glyph: string; custom: boolean; run(t: T | undefined): void }>;
 }
 
 /** The shared body of the Gradients, Patterns and Shapes panels (Window menu, DEV_PLAN 35.3 part c): a head with a count,
@@ -44,6 +46,7 @@ class PresetPanel<T> {
   private readonly groupIn: HTMLInputElement;
   private readonly earlier: HTMLButtonElement;
   private readonly later: HTMLButtonElement;
+  private readonly extraBtns: Array<{ b: HTMLButtonElement; custom: boolean }> = [];
 
   constructor(root: HTMLElement, private readonly kind: PresetKind<T>, engine: Engine) {
     root.insertAdjacentHTML('beforeend',
@@ -75,6 +78,20 @@ class PresetPanel<T> {
         if (!t || this.kind.builtin(t)) return;
         void Promise.resolve(this.kind.move?.(t, dir)).then(() => this.sync());
       });
+    }
+    for (const x of kind.extras ?? []) {
+      const b = el<HTMLButtonElement>('<button class="cv-icon-btn" type="button"></button>');
+      b.innerHTML = icon(x.glyph, 16);
+      b.title = x.label;
+      b.setAttribute('aria-label', x.label);
+      b.addEventListener('click', () => {
+        const t = this.current();
+        if (x.custom && (!t || this.kind.builtin(t))) return;
+        x.run(t);
+        this.sync();
+      });
+      this.del.before(b);
+      this.extraBtns.push({ b, custom: x.custom });
     }
     for (const i of [this.nameIn, this.groupIn]) i.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') i.blur(); });
     this.nameIn.addEventListener('change', () => {
@@ -137,6 +154,7 @@ class PresetPanel<T> {
     });
     const moveOff = off || !this.kind.move;
     for (const b of [this.earlier, this.later]) if (b.disabled !== moveOff) b.disabled = moveOff;
+    for (const x of this.extraBtns) if (x.b.disabled !== (x.custom && off)) x.b.disabled = x.custom && off;
   }
 
   private fill(tile: HTMLElement, t: T): void {
@@ -227,7 +245,7 @@ export function createPresetPanels(root: HTMLElement, engine: Engine, keepPatter
     group: { get: (p) => p.group ?? '', set: (p, g) => { setPatternGroup(p.id, g); return keepPatterns(); } },
   }, engine);
   const builtinShapes = new Set(CUSTOM_SHAPES.map((s) => s.id));
-  new PresetPanel<{ id: string; label: string; d: string }>(root, {
+  new PresetPanel<CustomShapeDef>(root, {
     id: 'shapes', title: 'Shapes', glyph: 'layers',
     items: () => allCustomShapes(),
     key: (s) => s.id,
@@ -246,5 +264,31 @@ export function createPresetPanels(root: HTMLElement, engine: Engine, keepPatter
     },
     pick: (s) => { engine.shapeSettings.kind = 'custom'; engine.shapeSettings.custom = s.id; engine.setTool('shape'); engine.emit('options', null); engine.emit('tool', null); },
     remove: (s) => { removeCustomShape(s.id); },
+    add: { label: 'New Custom Shape from the work path', run: () => toolHost.run('define-custom-shape') },
+    rename: (s, name) => { renameCustomShape(s.id, name); },
+    group: { get: (s) => s.group ?? '', set: (s, g) => { setCustomShapeGroup(s.id, g); } },
+    move: (s, dir) => {
+      const mine = allCustomShapes().filter((x) => !builtinShapes.has(x.id) && (x.group ?? '') === (s.group ?? '')), at = mine.findIndex((x) => x.id === s.id), to = mine[at + dir];
+      if (!to) return;
+      const place = (id: string): number => allCustomShapes().findIndex((x) => x.id === id);
+      for (let n = 0; n < 500 && (dir < 0 ? place(s.id) > place(to.id) : place(s.id) < place(to.id)); n++) if (!stepCustomShape(s.id, dir)) break;
+    },
+    extras: [
+      {
+        label: 'Edit the selected shape as the work path', glyph: 'penTool', custom: true,
+        run: (s) => {
+          const doc = engine.current?.doc;
+          if (!s || !doc) return;
+          const side = Math.min(doc.width, doc.height) * 0.6;
+          engine.setWorkPath(customShapePath(s.id, { x: (doc.width - side) / 2, y: (doc.height - side) / 2, w: side, h: side }));
+          engine.setTool('directSelect');
+        },
+      },
+      {
+        label: 'Replace the selected shape with the work path', glyph: 'save', custom: true,
+        run: (s) => { if (!s || !engine.workPath || !replaceCustomShape(s.id, engine.workPath)) engine.notice('Draw or edit a path first, then choose a shape of your own to replace.'); },
+      },
+      { label: 'Reset Shapes: remove the shapes you defined', glyph: 'refresh', custom: false, run: () => { if (allCustomShapes().length > CUSTOM_SHAPES.length && window.confirm('Remove every shape you defined? The built-in shapes stay.')) resetCustomShapes(); } },
+    ],
   }, engine);
 }

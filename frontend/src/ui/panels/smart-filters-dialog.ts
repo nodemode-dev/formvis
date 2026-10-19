@@ -22,6 +22,9 @@ export class SmartFiltersDialog extends Dialog {
   /** Opens Liquify on a Liquify smart filter's saved field. */
   editLiquify: ((settings: Record<string, unknown>, done: (settings: Record<string, unknown>) => void) => void) | null = null;
 
+  /** Opens Adaptive Wide Angle on its smart filter's saved settings. */
+  editWideAngle: ((settings: Record<string, unknown>, done: (settings: Record<string, unknown>) => void) => void) | null = null;
+
   constructor(private readonly engine: Engine, private readonly filters: () => FilterPanel) {
     super('Smart Filters', 420);
     this.blendRow = selectRow('Blending', BLEND_MODES.map((m) => [m.id, m.label] as const), (v) => this.setBlend({ blend: v as BlendMode }));
@@ -93,7 +96,7 @@ export class SmartFiltersDialog extends Dialog {
   }
 
   private fill(row: HTMLElement, f: SmartFilter): void {
-    setText(q(row, '.cv-sf-name'), isWasmKind(f.kind) ? wasmPlugins.get(wasmIdOf(f.kind))?.manifest.name ?? wasmIdOf(f.kind) : f.kind === 'liquify' ? 'Liquify' : FILTER_LABELS[f.kind as FilterKind] ?? f.kind);
+    setText(q(row, '.cv-sf-name'), isWasmKind(f.kind) ? wasmPlugins.get(wasmIdOf(f.kind))?.manifest.name ?? wasmIdOf(f.kind) : f.kind === 'liquify' ? 'Liquify' : f.kind === 'wideangle' ? 'Adaptive Wide Angle' : FILTER_LABELS[f.kind as FilterKind] ?? f.kind);
     setChecked(q<HTMLInputElement>(row, 'input'), f.enabled);
   }
 
@@ -115,6 +118,7 @@ export class SmartFiltersDialog extends Dialog {
       if (now) this.engine.setSmartFilters(layerId, now.map((x) => (x.id === id ? { ...x, settings } : x)), 'Edit Smart Filter');
     };
     if (f.kind === 'liquify') this.editLiquify?.(f.settings, done);
+    else if (f.kind === 'wideangle') this.editWideAngle?.(f.settings, done);
     else if (isWasmKind(f.kind)) this.editWasm?.(wasmIdOf(f.kind), f.settings, done);
     else this.filters().showFor(f.kind as FilterKind, f.settings, done);
   }

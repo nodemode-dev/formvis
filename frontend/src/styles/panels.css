@@ -320,6 +320,9 @@
 .cv-color-chip[aria-pressed="true"] { outline: 2px solid var(--cta-bg); outline-offset: 1px; }
 .cv-color-fields > span { color: var(--text-muted); font-size: 11px; }
 .cv-color-fields input[type="range"] { min-width: 0; width: 100%; }
+.cv-color-fields input[type="range"].is-dynamic { -webkit-appearance: none; appearance: none; height: 10px; border-radius: 5px; background: var(--dyn-track); }
+.cv-color-fields input[type="range"].is-dynamic::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 8px; height: 16px; border-radius: 3px; background: var(--text-primary); border: 1px solid var(--bg-primary); }
+.cv-color-fields input[type="range"].is-dynamic::-moz-range-thumb { width: 8px; height: 16px; border-radius: 3px; background: var(--text-primary); border: 1px solid var(--bg-primary); }
 .cv-color-fields .cv-input { min-width: 0; width: 100%; height: var(--ctl-md); }
 .cv-color-hex { grid-column: 2 / -1; }
 .cv-color-sv { flex: 1; min-width: 0; height: 100%; border-radius: 6px; cursor: crosshair; }

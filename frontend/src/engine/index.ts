@@ -43,7 +43,7 @@ import { dragged, following, rounded, type DragMode } from './transform';
 import { againQuad, carried, cornersOf, cropWarp, distortDragged, distortUsable, maskEdgeTone, visibleBounds, warpRaster, type DistortMode, type Warped, imageCorners, homography, project, inverse3 } from './distort';
 import { withResolution } from './dpi';
 import { antialiasMask, enhanceEdge, levelsKernel, sensitivityMask, wandMask } from './kernels';
-import { depthWeight, hueWeight, type ColorRangeOptions } from './color-range';
+import { depthWeight, faceWeight, hueWeight, type ColorRangeOptions } from './color-range';
 import { selectionQuad, warpSelection, type SelectionWarp } from './selection-warp';
 import { DEFAULT_FOCUS, focusArea, type FocusSettings } from './focus-area';
 import { Project } from './project';
@@ -75,7 +75,7 @@ import * as PA from './path-ops';
 import * as TX from './text-ops';
 import * as VD from './video-ops';
 import * as TE from './transform-entry';
-import { type DocMode, BLEND_MODES, LAYER_BLEND_MODES, canvasBlend, LIMITS, setPixelLimit, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartDeform, type SmartDeformData, type SmartFilter, type SmartLink, type SmartObject, type LiveShape, type ShapeGradient, type ShapeStroke, type ShapeStyle, type FootageInterpretation, effectsFromData, type Artboard, artboardFromData, type AlphaChannel, effectsPresent } from './types';
+import { type DocMode, BLEND_MODES, LAYER_BLEND_MODES, canvasBlend, LIMITS, setPixelLimit, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartDeform, type SmartDeformData, type SmartFilter, type SmartLink, type SmartObject, type LiveShape, type ShapeGradient, type ShapePattern, type ShapeStroke, type ShapeStyle, type FootageInterpretation, effectsFromData, type Artboard, artboardFromData, type AlphaChannel, effectsPresent } from './types';
 import { allPatterns, patternById } from './patterns';
 import { addFillStop, fillFrame, fillFromLine, fillLine, fillName, renderFill, type GradientFill } from './fill-layers';
 import type { FillContent, VectorMask, WarpStyle } from './types';
@@ -121,7 +121,7 @@ export { CONTOURS, DEFAULT_GLOBAL_LIGHT, contourCurve, customContourId, customCo
 import { mergeMeta, type DocMeta, type MetaPatch } from './doc-meta';
 export { COPYRIGHT_STATUSES, META_TEXT, cleanMeta, customLines, metaWritable, mergeMeta, parseCustom, parseKeywords, sameMeta, tabName, type CameraData, type CopyrightStatus, type DocMeta } from './doc-meta';
 import { UPRIGHT, allBrushPresets, computeOption, defaultShape, mergeShape, noDynamics, noSymmetry, pressureOption, shapeActive, type BrushSymmetry, type BrushDynamics, type BrushPreset, type BrushShape, type PenPose } from './brush-dynamics';
-import { DEFAULT_PATH_SHAPE, boxedShapePath, linePath, shapeGradient, type PathShapeKind, type PathShapeOptions } from './shape-paths';
+import { DEFAULT_PATH_SHAPE, boxedShapePath, linePath, shapeGradient, shapePattern, type PathShapeKind, type PathShapeOptions } from './shape-paths';
 import { markupPath, type MarkupKind } from './markup';
 import { allCustomShapes } from './custom-shapes';
 import { traceAlpha } from './trace-outline';
@@ -206,8 +206,8 @@ const FILL_NOTICE = 'This is a fill layer. Change it in Layer > Layer Content Op
 const PAINT_TOOLS: ReadonlySet<ToolId> = new Set<ToolId>(['brush', 'mixer', 'cloneStamp', 'healingBrush', 'spotHealing', 'remove']);
 
 /** The tools Stroke Path can stroke with, and their names in its dialog. */
-export type StrokeTool = 'brush' | 'pencil' | 'eraser' | 'clone' | 'patternStamp' | 'historyBrush' | 'colorReplace' | 'healBrush' | 'spotHealing' | 'dodge' | 'burn' | 'sponge' | 'blur' | 'sharpen' | 'smudge';
-export const STROKE_TOOLS: ReadonlyArray<readonly [StrokeTool, string]> = [['brush', 'Brush'], ['pencil', 'Pencil'], ['eraser', 'Eraser'], ['clone', 'Clone Stamp'], ['patternStamp', 'Pattern Stamp'], ['historyBrush', 'History Brush'], ['colorReplace', 'Color Replacement'], ['healBrush', 'Healing Brush'], ['spotHealing', 'Spot Healing Brush'], ['blur', 'Blur'], ['sharpen', 'Sharpen'], ['smudge', 'Smudge'], ['dodge', 'Dodge'], ['burn', 'Burn'], ['sponge', 'Sponge']];
+export type StrokeTool = 'brush' | 'mixer' | 'pencil' | 'eraser' | 'clone' | 'patternStamp' | 'historyBrush' | 'colorReplace' | 'healBrush' | 'spotHealing' | 'dodge' | 'burn' | 'sponge' | 'blur' | 'sharpen' | 'smudge';
+export const STROKE_TOOLS: ReadonlyArray<readonly [StrokeTool, string]> = [['brush', 'Brush'], ['mixer', 'Mixer Brush'], ['pencil', 'Pencil'], ['eraser', 'Eraser'], ['clone', 'Clone Stamp'], ['patternStamp', 'Pattern Stamp'], ['historyBrush', 'History Brush'], ['colorReplace', 'Color Replacement'], ['healBrush', 'Healing Brush'], ['spotHealing', 'Spot Healing Brush'], ['blur', 'Blur'], ['sharpen', 'Sharpen'], ['smudge', 'Smudge'], ['dodge', 'Dodge'], ['burn', 'Burn'], ['sponge', 'Sponge']];
 
 /** A rectangle shape's four corner radii (top left, top right, bottom right, bottom left) when it carries them and
  *  they are all finite and not negative; null when it has one radius for all. */
@@ -1387,7 +1387,7 @@ export class Engine {
   edit(name: string, fn: (p: Project) => boolean | void): boolean {
     const p = this.current;
     if (!p || this.stroke || this.waiting()) return false;
-    this.settle();
+    this.settle(this.keepFloat);
     const nested = p.history.open;
     p.history.begin(name, p.snapshot());
     let ok: boolean | void = true;
@@ -1666,10 +1666,10 @@ export class Engine {
     if (!t) return;
     const dx = screenX - t.startX, dy = screenY === undefined ? 0 : screenY - t.startY;
     t.moved = Math.max(t.moved, Math.hypot(dx, dy));
-    if (shift) {
+    if (shift && this.toolPrefs.tipHardness) {
       this.setBrush({ hardness: Math.min(1, Math.max(0, t.hardness + dx / 200)), diameter: t.diameter });
     } else {
-      const zoom = this.current ? Math.max(0.0001, this.current.viewport.zoom) : 1, up = Math.sign(-dy) * Math.max(0, Math.abs(dy) - 6);
+      const zoom = this.current ? Math.max(0.0001, this.current.viewport.zoom) : 1, up = this.toolPrefs.tipHardness ? Math.sign(-dy) * Math.max(0, Math.abs(dy) - 6) : 0;
       this.setBrush({ diameter: Math.min(2000, Math.max(1, Math.round(t.diameter + (2 * dx) / zoom))), hardness: Math.min(1, Math.max(0, t.hardness + up / 200)) });
     }
   }
@@ -1774,6 +1774,8 @@ export class Engine {
   }
   /** Preferences > General and Tools: whether a zoom step eases to its size, and whether a click with the Zoom tool brings the clicked point to the centre. */
   zoomPrefs = { animate: false, centreClick: false };
+  /** Preferences > Tools: the brush drag sets hardness, vector points land on whole pixels, the transform shows its numbers, the layer under the pointer is outlined. */
+  toolPrefs = { tipHardness: true, snapPx: false, readout: true, rollover: true, flick: true, channelsColour: false, typeUnits: 'px' as 'px' | 'pt', dynamicSliders: true };
   private zoomGoal: { z: number } | null = null;
   private zoomFrame = 0;
   /** A zoom that eases over about 140 ms when Animated Zoom is on, and that moves the point under `at` to the view's centre when `centre` is set. */
@@ -1812,6 +1814,7 @@ export class Engine {
   private flickFrame = 0;
   flick(vx: number, vy: number): void {
     cancelAnimationFrame(this.flickFrame);
+    if (!this.toolPrefs.flick) return;
     let last = performance.now();
     const tick = (now: number): void => {
       const dt = Math.min(50, now - last);
@@ -2296,6 +2299,33 @@ export class Engine {
       pp.doc = { ...pp.doc, characterStyles: next };
       for (const x of patches) pp.updateLayer(x.id, x.patch);
     });
+  }
+
+  /** Character Style Options: sets or clears (null) fields of a style and re-renders every layer linked to it; one step. */
+  async updateCharacterStyle(id: ID, patch: { [K in keyof CharacterStyle]?: CharacterStyle[K] | null }): Promise<void> {
+    const p = this.current, old = p?.doc.characterStyles?.find((x) => x.id === id);
+    if (!p || !old) return;
+    const merged: Record<string, unknown> = { ...old };
+    for (const [k, v] of Object.entries(patch)) { if (k === 'id') continue; if (v === null || v === undefined) delete merged[k]; else merged[k] = v; }
+    const style = merged as unknown as CharacterStyle, next = (p.doc.characterStyles ?? []).map((x) => (x.id === id ? style : x));
+    const patches: Array<{ id: ID; patch: Partial<Layer> }> = [];
+    for (const l of p.doc.layers.filter((x) => liveText(x) && x.raster && x.text && x.text.charStyle === id)) {
+      const lp = await this.textPatch(p, l.id, l.text as TextSpec, next);
+      if (this.current !== p) return;
+      if (lp) patches.push({ id: l.id, patch: lp });
+    }
+    this.edit('Character Style Options', (pp) => {
+      pp.doc = { ...pp.doc, characterStyles: next };
+      for (const x of patches) pp.updateLayer(x.id, x.patch);
+    });
+  }
+
+  /** The fields where the selected type layer's own settings differ from a style's: what Redefine would change. */
+  characterStyleOverrides(id: ID): string[] {
+    const p = this.current, l = p?.activeLayer, s = p?.doc.characterStyles?.find((x) => x.id === id);
+    if (!l?.text || !s) return [];
+    const own = charStyleOf(l.text, id, s.name) as unknown as Record<string, unknown>, st = s as unknown as Record<string, unknown>;
+    return Object.keys(st).filter((k) => k !== 'id' && k !== 'name' && JSON.stringify(own[k]) !== JSON.stringify(st[k]));
   }
 
   /** Duplicate a character style as "name copy"; one step. Returns the copy's id. */
@@ -2831,7 +2861,7 @@ export class Engine {
     const x = Math.floor(b.x - pad), y = Math.floor(b.y - pad), w = Math.min(LIMITS.side, Math.ceil(b.x + b.w + pad) - x), h = Math.min(LIMITS.side, Math.ceil(b.y + b.h + pad) - y);
     const raster = new Raster(Math.max(1, w), Math.max(1, h)), c = raster.ctx, shape = tracePath(path);
     c.translate(-x, -y);
-    if (style.gradient || style.fill) { c.fillStyle = style.gradient ? shapeGradient(c, style.gradient, b) : rgbCss(style.fill as RGB); fillVector(c, path); }
+    if (style.gradient || style.fill) { c.fillStyle = style.gradient ? shapeGradient(c, style.gradient, b) : (style.pattern && shapePattern(c, style.pattern, b)) || rgbCss(style.fill as RGB); fillVector(c, path); }
     if (style.stroke && style.stroke.width > 0) strokeShape(c, shape, style.stroke, path.subpaths.every((sp) => sp.closed), b);
     c.setTransform(1, 0, 0, 1, 0, 0);
     raster.touch();
@@ -2842,10 +2872,10 @@ export class Engine {
   private reshape(p: Project, id: ID, path: VectorPath, style?: ShapeStyle): void {
     const l = p.layer(id), v = l?.vector;
     if (!l || !v) return;
-    const look = style ?? { fill: v.fill, stroke: v.stroke ?? null, gradient: v.gradient ?? null }, r = this.renderShape(path, look);
+    const look = style ?? { fill: v.fill, stroke: v.stroke ?? null, gradient: v.gradient ?? null, pattern: v.pattern ?? null }, r = this.renderShape(path, look);
     if (!r) return;
     const stored = structuredClone(path);
-    p.updateLayer(id, { raster: r.raster, transform: { ...l.transform, x: r.x, y: r.y, w: r.raster.width, h: r.raster.height, rotation: 0, flipX: false, flipY: false }, vector: { path: stored, fill: look.fill, stroke: look.stroke, ...(look.gradient ? { gradient: look.gradient } : {}), origin: { x: r.x, y: r.y } }, shape: null });
+    p.updateLayer(id, { raster: r.raster, transform: { ...l.transform, x: r.x, y: r.y, w: r.raster.width, h: r.raster.height, rotation: 0, flipX: false, flipY: false }, vector: { path: stored, fill: look.fill, stroke: look.stroke, ...(look.gradient ? { gradient: look.gradient } : {}), ...(look.pattern ? { pattern: look.pattern } : {}), origin: { x: r.x, y: r.y } }, shape: null });
     const e = this.pathStore.shapeEdit, now = p.layer(id);
     if (e && e.project === p && e.layerId === id && now) { e.layer = now; e.path = path; }
   }
@@ -2857,10 +2887,10 @@ export class Engine {
     if (!v || (o.w === t.w && o.h === t.h) || o.rotation || t.rotation || o.flipX || o.flipY || t.flipX || t.flipY) return null;
     const sx = t.w / o.w, sy = t.h / o.h, dx = o.x - v.origin.x, dy = o.y - v.origin.y;
     const path = mapPath(v.path, (q) => ({ x: t.x + (q.x + dx - o.x) * sx, y: t.y + (q.y + dy - o.y) * sy }));
-    const look: ShapeStyle = { fill: v.fill, stroke: v.stroke ?? null, gradient: v.gradient ?? null }, r = this.renderShape(path, look);
+    const look: ShapeStyle = { fill: v.fill, stroke: v.stroke ?? null, gradient: v.gradient ?? null, pattern: v.pattern ?? null }, r = this.renderShape(path, look);
     if (!r) return null;
     const live = v.live ? { ...v.live, box: { x: t.x + (v.live.box.x + dx - o.x) * sx, y: t.y + (v.live.box.y + dy - o.y) * sy, w: v.live.box.w * sx, h: v.live.box.h * sy } } : null;
-    return { raster: r.raster, transform: { ...t, x: r.x, y: r.y, w: r.raster.width, h: r.raster.height }, vector: { path, fill: look.fill, stroke: look.stroke, ...(look.gradient ? { gradient: look.gradient } : {}), ...(live ? { live } : {}), origin: { x: r.x, y: r.y } }, shape: null };
+    return { raster: r.raster, transform: { ...t, x: r.x, y: r.y, w: r.raster.width, h: r.raster.height }, vector: { path, fill: look.fill, stroke: look.stroke, ...(look.gradient ? { gradient: look.gradient } : {}), ...(look.pattern ? { pattern: look.pattern } : {}), ...(live ? { live } : {}), origin: { x: r.x, y: r.y } }, shape: null };
   }
 
   /** Brackets a pointer gesture on the selected path, so a gesture on a Shape Path is one undo step. */
@@ -2919,7 +2949,7 @@ export class Engine {
           parentId = id;
         }
         const base = newLayer(s.name, p.doc, { raster: r.raster, parentId, opacity: s.opacity ?? 1, ...(s.blend ? { blend: s.blend } : {}) });
-        this.insertAboveActive(p, { ...base, transform: { ...docTransform(r.raster.width, r.raster.height), x: r.x, y: r.y }, vector: { path: s.path, fill: look.fill, stroke: look.stroke, ...(look.gradient ? { gradient: look.gradient } : {}), origin: { x: r.x, y: r.y } } });
+        this.insertAboveActive(p, { ...base, transform: { ...docTransform(r.raster.width, r.raster.height), x: r.x, y: r.y }, vector: { path: s.path, fill: look.fill, stroke: look.stroke, ...(look.gradient ? { gradient: look.gradient } : {}), ...(look.pattern ? { pattern: look.pattern } : {}), origin: { x: r.x, y: r.y } } });
       }
       if (blank.length) { const gone = new Set(blank.map((l) => l.id)); p.setLayers(p.doc.layers.filter((l) => !gone.has(l.id))); }
     });
@@ -3006,7 +3036,7 @@ export class Engine {
     const st = this.shapeSettings, label = st.kind === 'custom' ? allCustomShapes().find((c) => c.id === st.custom)?.label ?? name : name;
     let n = 1;
     while (p.doc.layers.some((l) => l.name === `${label} ${n}`)) n++;
-    this.insertRasterLayer(r.raster, `${label} ${n}`, r.x, r.y, { vector: { path, fill: look.fill, stroke: look.stroke, ...(look.gradient ? { gradient: look.gradient } : {}), ...(live ? { live } : {}), origin: { x: r.x, y: r.y } } }, `New ${label}`);
+    this.insertRasterLayer(r.raster, `${label} ${n}`, r.x, r.y, { vector: { path, fill: look.fill, stroke: look.stroke, ...(look.gradient ? { gradient: look.gradient } : {}), ...(look.pattern ? { pattern: look.pattern } : {}), ...(live ? { live } : {}), origin: { x: r.x, y: r.y } } }, `New ${label}`);
   }
 
   /** Changes a live polygon, star or triangle shape layer: its sides, the star's inset (percent), its corner radius. The path
@@ -3019,7 +3049,7 @@ export class Engine {
       if (next.sides === lv.sides && next.inset === lv.inset && next.radius === lv.radius) return false;
       const dx = l.transform.x - v.origin.x, dy = l.transform.y - v.origin.y, box = { ...next.box, x: next.box.x + dx, y: next.box.y + dy };
       const path = boxedShapePath(next.kind, box, { ...this.shapeSettings, sides: next.sides, starInset: next.inset, cornerRadius: next.radius });
-      this.reshape(p, id, path, { fill: v.fill, stroke: v.stroke ?? null, gradient: v.gradient ?? null });
+      this.reshape(p, id, path, { fill: v.fill, stroke: v.stroke ?? null, gradient: v.gradient ?? null, pattern: v.pattern ?? null });
       const now = p.layer(id);
       if (now?.vector) p.updateLayer(id, { vector: { ...now.vector, live: { ...next, box: { ...next.box, x: box.x, y: box.y } } } });
       return true;
@@ -3053,7 +3083,7 @@ export class Engine {
   copyShapeStyle(): boolean {
     const v = this.current?.activeLayer?.vector;
     if (!v) { this.notice('Select a shape layer first.'); return false; }
-    this.shapeStyleClip = structuredClone({ fill: v.fill, stroke: v.stroke ?? null, gradient: v.gradient ?? null });
+    this.shapeStyleClip = structuredClone({ fill: v.fill, stroke: v.stroke ?? null, gradient: v.gradient ?? null, pattern: v.pattern ?? null });
     return true;
   }
 
@@ -4804,7 +4834,7 @@ export class Engine {
 
   /** opts (1.49.5, the owner's tool list): aliased paints hard pixel-exact dabs (the Pencil); autoErase paints the
    *  background colour when the stroke starts on the foreground colour (the Pencil's Auto Erase); name names the step. */
-  beginStroke(pt: Pt, shift: boolean, pressure = 1, pose: PenPose = UPRIGHT, opts: { aliased?: boolean; square?: boolean; autoErase?: boolean; name?: string } = {}): boolean {
+  beginStroke(pt: Pt, shift: boolean, pressure = 1, pose: PenPose = UPRIGHT, opts: { aliased?: boolean; square?: boolean; autoErase?: boolean; name?: string; mixer?: boolean } = {}): boolean {
     if (!this.deepPaintOk()) return false;   // 16 bits: Brush, Pencil and Eraser paint (1.53.8)
     const p = this.current;
     if (!p || this.stroke || this.waiting()) return false;
@@ -4826,11 +4856,11 @@ export class Engine {
     // the whole layer declines here, before any history step opens.
     const lt = p.activeLayer?.tiled ?? null;
     if (lt) {
-      const whole = this.tool === 'mixer' ? 'The Mixer Brush' : p.maskTarget ? 'Painting a mask' : p.selection ? 'Painting inside a selection'
+      const whole = this.tool === 'mixer' || opts.mixer ? 'The Mixer Brush' : p.maskTarget ? 'Painting a mask' : p.selection ? 'Painting inside a selection'
         : !opts.aliased && shapeActive(this.brushShape) ? 'Brush Settings (shape and scattering, texture, dual brush, wet edges)' : null;
       if (whole) { this.notice(`${whole} on a layer kept in tiles comes in a later release; the plain brush, pencil and eraser paint it now.`); return false; }
     }
-    p.history.begin(opts.name ?? (this.brushMode === 'erase' ? 'Eraser' : this.tool === 'mixer' ? 'Mixer Brush' : 'Brush'), p.snapshot());
+    p.history.begin(opts.name ?? (this.brushMode === 'erase' ? 'Eraser' : this.tool === 'mixer' || opts.mixer ? 'Mixer Brush' : 'Brush'), p.snapshot());
     // A tiled layer's target is its tiles, placed as target places a layer (target would give it a full-size canvas).
     const al = p.activeLayer as Layer;
     const pick: { layer: Layer; target: Target; raster: Raster | TiledRaster; local: Mat } = lt
@@ -4849,7 +4879,7 @@ export class Engine {
       try { px = 'ctx' in rr ? rr.ctx.getImageData(Math.floor(q.x), Math.floor(q.y), 1, 1).data : rr.read(Math.floor(q.x), Math.floor(q.y), 1, 1).data; } catch { px = new Uint8ClampedArray(4); }   // a tile on disk: not the foreground
       if (px[3] > 0 && px[0] === this.fg.r && px[1] === this.fg.g && px[2] === this.fg.b) color = this.bg;
     }
-    const s = new PixelStroke(pick.raster, pick.local, { ...this.brush, color, bg: { ...this.bg }, flow: this.brushFlow, aliased: !!opts.aliased || !!opts.square, square: !!opts.square, dabColor: this.tool === 'mixer' && pick.target !== 'mask' && this.brushMode !== 'erase' ? this.mixerSourceFor(p, pick.raster as Raster, pick.local) : null }, op, p.selection);
+    const s = new PixelStroke(pick.raster, pick.local, { ...this.brush, color, bg: { ...this.bg }, flow: this.brushFlow, aliased: !!opts.aliased || !!opts.square, square: !!opts.square, dabColor: (this.tool === 'mixer' || opts.mixer) && pick.target !== 'mask' && this.brushMode !== 'erase' ? this.mixerSourceFor(p, pick.raster as Raster, pick.local) : null }, op, p.selection);
     s.dynamics = structuredClone(this.brushDynamics);
     if (this.brushMode !== 'erase' && pick.target !== 'mask' && !keepAlpha && this.brushBlend !== 'behind' && this.brushBlend !== 'clear' && PIXEL_BLENDS.has(this.brushBlend)) s.pixelBlend = this.brushBlend;
     if (this.pressureCurve) for (const o of [s.dynamics.size, s.dynamics.flow, s.dynamics.opacity]) for (const sn of o.sensors) if (sn.id === 'pressure' && !sn.curve) sn.curve = this.pressureCurve;
@@ -6001,6 +6031,7 @@ export class Engine {
         : o.mode === 'depth' ? (depth ? depthWeight(depth[(Math.min(H - 1, sy) * W + Math.min(W - 1, sx)) * 4], dlo, dhi, o.fuzziness) : 0)
         : o.mode === 'gamut' ? (gflags && gflags[Math.round(r * gs) * gg + Math.round(g * gs) * gn + Math.round(b * gs)] ? 1 : 0)
         : hueWeight(o.mode, r, g, b, o.fuzziness);
+      if (o.mode === 'skin' && o.faces) v *= faceWeight(sx, sy, o.faces);
       if (o.invert) v = 1 - v;
       if (p.selection && (!o.combine || o.combine === 'replace')) v *= p.selection.valueAt(sx, sy) / 255;
       out[i] = Math.round(v * 255);
@@ -6141,6 +6172,9 @@ export class Engine {
     this.emit('overlay', null);
     return d ? { x: pt.x + d.x, y: pt.y + d.y } : pt;
   }
+
+  /** A vector tool's point on a whole document pixel when Snap Vector Tools to Pixel Grid is on, else the point itself. */
+  gridPoint(pt: Pt): Pt { return this.toolPrefs.snapPx ? { x: Math.round(pt.x), y: Math.round(pt.y) } : pt; }
 
   magicWand(pt: Pt, mode: SelectionMode): void { SO.magicWand(this.selectHost, pt, mode); }
 
@@ -6642,11 +6676,14 @@ export class Engine {
   /** Applies the free distort: each distorted layer's pixels resampled into its shape at full resolution and trimmed
    *  to what is visible, leaving upright layers, its mask handled by `distortMask` (a linked mask cropped with the pixels), as
    *  one step named by the mode (Distort, Skew or Perspective), with Layers after it for a group. */
+  private keepFloat = false;
+
   applyDistort(): void {
     const d = this.distortEdit;
     if (!d) return;
     this.distortEdit = null;
-    TE.applyDistort(this.entryHost, d);
+    this.keepFloat = this.floatSel?.floatingId === d.layerId;
+    try { TE.applyDistort(this.entryHost, d); } finally { this.keepFloat = false; }
   }
 
   /** A linked vector mask carried through a distortion from corners `from` to `to` (1.66.1): its anchors and handles
@@ -7537,6 +7574,8 @@ export class Engine {
    *  pixels on the active layer; fill and stroke each the foreground, the background or none, and the stroke's width. */
   shapeSettings: { kind: 'rectangle' | 'ellipse' | PathShapeKind; cornerRadius: number; smoothCorners: boolean; mode: 'shape' | 'path' | 'pixels'; fill: 'fg' | 'bg' | 'none'; stroke: 'fg' | 'bg' | 'none'; strokeWidth: number; strokeDash: 'solid' | 'dashed' | 'dotted'; strokeAlign: 'inside' | 'center' | 'outside'; strokeCap: 'butt' | 'round' | 'square'; strokeJoin: 'miter' | 'round' | 'bevel'; strokeMiter: number; gradient: 'off' | 'linear' | 'radial' | 'angle'; gradientAngle: number; gradientEnd: RGB | null } & PathShapeOptions =
     { gradientEnd: null, kind: 'rectangle', cornerRadius: 0, smoothCorners: false, mode: 'shape', fill: 'fg', stroke: 'none', strokeWidth: 3, strokeDash: 'solid', strokeAlign: 'center', strokeCap: 'round', strokeJoin: 'round', strokeMiter: 4, gradient: 'off', gradientAngle: 0, ...DEFAULT_PATH_SHAPE };
+  /** The path operation a shape drawn in Path mode joins the work path with (combine adds it as it is). */
+  shapePathOp: PathOp = 'combine';
   /** The Pen's Mode and Auto Add/Delete (1.52.8, the tool audit): a path, or a shape layer made from
    *  each path closed; clicking a path adds a point and clicking a point deletes it, unless turned off. */
   penSettings = { mode: 'path' as 'path' | 'shape' | 'pixels', autoAddDelete: true };
@@ -7566,7 +7605,8 @@ export class Engine {
       // Path: the outline joins the work path (one undoable edit when there is one).
       const vp = this.workPath;
       this.beginPathEdit();
-      this.setWorkPath({ subpaths: [...(vp?.subpaths ?? []), ...path.subpaths] });
+      const op = this.shapePathOp;
+      this.setWorkPath({ subpaths: [...(vp?.subpaths ?? []), ...path.subpaths.map((sp) => (op === 'combine' ? sp : { ...sp, op }))] });
       this.endPathEdit();
       return;
     }
@@ -7574,7 +7614,7 @@ export class Engine {
       // Pixels: painted into the active layer, fill then stroke, in one step.
       this.paintPath(name, (c, shape) => {
         const gb = pathBounds(path);
-        if (look.fill) { c.fillStyle = look.gradient && gb ? shapeGradient(c, look.gradient, gb) : rgbCss(look.fill); c.fill(shape); }
+        if (look.fill) { c.fillStyle = look.gradient && gb ? shapeGradient(c, look.gradient, gb) : (look.pattern && gb && shapePattern(c, look.pattern, gb)) || rgbCss(look.fill); c.fill(shape); }
         if (look.stroke) strokeShape(c, shape, look.stroke, path.subpaths.every((sp) => sp.closed), gb);
       }, path);
       return;
@@ -9237,7 +9277,7 @@ export class Engine {
         set dynamics(v) { e.brushDynamics = v; },
         get mode() { return e.brushMode; },
         set mode(v) { e.brushMode = v; },
-        begin: (pt, pressure, aliased) => e.beginStroke(pt, false, pressure, undefined, aliased ? { aliased: true, name: 'Pencil' } : {}),
+        begin: (pt, pressure, aliased, mixer) => e.beginStroke(pt, false, pressure, undefined, aliased ? { aliased: true, name: 'Pencil' } : mixer ? { mixer: true } : {}),
         beginRetouch: (kind, pt) => e.beginRetouchStroke(kind, pt, false),
         to: (pt, pressure) => e.strokeTo(pt, pressure),
         end: () => e.endStroke(),
@@ -11705,7 +11745,7 @@ function withinNeighbours(orig: ImageData, sharp: ImageData): ImageData {
 function strokeShape(c: Ctx2D, shape: Path2D, s: ShapeStroke, closed: boolean, box?: Rect | null): void {
   const w = s.width, align = closed ? s.align ?? 'center' : 'center', dotted = s.dash === 'dotted';
   const set = (x: Ctx2D, width: number): void => {
-    x.strokeStyle = s.gradient && box ? shapeGradient(x, s.gradient, box) : rgbCss(s.color); x.lineWidth = width; x.lineJoin = s.join ?? 'round'; x.miterLimit = Math.max(1, Math.min(10, s.miter ?? 4));
+    x.strokeStyle = s.gradient && box ? shapeGradient(x, s.gradient, box) : (s.pattern && box && shapePattern(x, s.pattern, box)) || rgbCss(s.color); x.lineWidth = width; x.lineJoin = s.join ?? 'round'; x.miterLimit = Math.max(1, Math.min(10, s.miter ?? 4));
     x.lineCap = dotted ? (s.cap === 'square' ? 'square' : 'round') : s.dash === 'dashed' ? s.cap ?? 'butt' : s.cap ?? 'round';
     x.setLineDash(s.dashes?.length ? s.dashes.map((d) => Math.max(0.001, d) * w) : s.dash === 'dashed' ? [4 * w, 2 * w] : dotted ? [0.001, 2 * w] : []);
     x.lineDashOffset = (s.dashOffset ?? 0) * w;

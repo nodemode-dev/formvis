@@ -107,7 +107,7 @@ export const penTool: Tool = {
       active = { anchors: [], closed: false };
       vp.subpaths.push(active);
     }
-    const anchor = cornerAt(ctx.engine.snapPoint(p.doc));
+    const anchor = cornerAt(ctx.engine.gridPoint(ctx.engine.snapPoint(p.doc)));
     ctx.engine.snapPoint(p.doc, true);
     active.anchors.push(anchor);
     pulling = anchor;

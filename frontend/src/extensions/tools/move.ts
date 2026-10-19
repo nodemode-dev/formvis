@@ -180,7 +180,7 @@ export const moveTool: Tool = {
   hover(ctx, p) {
     const e = ctx.engine;
     let id: string | null = null;
-    if (p && !!p.mod !== e.autoSelect && !e.anyTransformPending && !e.floatingSelection) {
+    if (p && (!!p.mod !== e.autoSelect || e.toolPrefs.rollover) && !e.anyTransformPending && !e.floatingSelection) {
       id = e.layerAt(p.doc);
       if (id && e.autoSelectTarget === 'group') { const doc = e.current?.doc; let l = doc?.layers.find((x) => x.id === id); while (l?.parentId) { const up = doc?.layers.find((x) => x.id === l?.parentId); if (!up) break; l = up; } if (l) id = l.id; }
       if (id && e.current?.selectedIds.has(id)) id = null;
@@ -388,6 +388,17 @@ export const moveTool: Tool = {
       for (const x of e.snapGuides.xs) { const sx = Math.round(v.toScreen({ x, y: 0 }).x) + 0.5; g.moveTo(sx, 0); g.lineTo(sx, v.height); }
       for (const y of e.snapGuides.ys) { const sy = Math.round(v.toScreen({ x: 0, y }).y) + 0.5; g.moveTo(0, sy); g.lineTo(v.width, sy); }
       g.stroke();
+      g.restore();
+    }
+    if (e.transformEdit && e.toolPrefs.readout) {
+      const te = e.transformEdit, v = ctx.view(), pal = ctx.paint(), d = te.draft, k = te.mode.kind;
+      const text = k === 'rotate' ? `${(Math.round(d.rotation * 10) / 10)}°` : k === 'resize' ? `W ${Math.round(d.w)}  H ${Math.round(d.h)}` : `X ${Math.round(d.x)}  Y ${Math.round(d.y)}`;
+      const cs = corners(d).map((c) => v.toScreen(c)), x = Math.max(...cs.map((c) => c.x)), y = Math.max(...cs.map((c) => c.y));
+      g.save();
+      g.font = '11px sans-serif';
+      const w = Math.ceil(g.measureText(text).width) + 10, bx = Math.min(Math.max(2, x + 8), v.width - w - 2), by = Math.min(Math.max(2, y + 8), v.height - 20);
+      g.fillStyle = pal.antsA; g.globalAlpha = 0.8; g.fillRect(bx, by, w, 18);
+      g.globalAlpha = 1; g.fillStyle = pal.antsB; g.textBaseline = 'middle'; g.fillText(text, bx + 5, by + 9.5);
       g.restore();
     }
     const px = e.perspectiveEdit;

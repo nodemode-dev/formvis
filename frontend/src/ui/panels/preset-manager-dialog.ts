@@ -13,6 +13,7 @@ import { readPat, writePat } from '../../io/pat';
 import { parseAco, parseAse, writeAco, writeAse } from '../../io/swatch-files';
 import { Dialog, promptName } from '../dialogs';
 import { el, setHidden, setText } from '../dom';
+import { checkRow } from './controls';
 import type { SwatchesPanel } from '../swatches';
 import { toast } from '../toast';
 import { loadStylePresets, saveStylePresets, type StylePreset } from '../styles-panel';
@@ -20,7 +21,7 @@ import { loadToolPresets, saveToolPresets, type ToolPreset } from './tool-preset
 import { MENU_COLORS, cleanBindings, loadPrefs, updatePrefs } from '../prefs';
 
 export type Kind ='brushes' | 'swatches' | 'gradients' | 'patterns' | 'shapes' | 'styles' | 'tools';
-interface Item { id: string; label: string; builtin: boolean }
+interface Item { id: string; label: string; builtin: boolean; colour?: string; name?: string }
 
 const KINDS: ReadonlyArray<{ id: Kind; label: string; accept: string }> = [
   { id: 'brushes', label: 'Brushes', accept: '.abr,.json,application/json,image/*' },
@@ -75,7 +76,8 @@ export class PresetManagerDialog extends Dialog {
       const b = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost"></button>');
       setText(b, label); b.addEventListener('click', run); bundle.append(b);
     }
-    this.body.append(row, this.list, this.note, bundle);
+    const builtinRow = checkRow('Include built-in gradients, shapes and patterns in Export All', (v) => { this.includeBuiltins = v; });
+    this.body.append(row, this.list, this.note, bundle, builtinRow.el);
     this.type.addEventListener('change', () => this.refresh());
     this.list.addEventListener('change', () => this.sync());
     this.renameBtn = this.button('Rename', 'ghost', () => this.rename());
@@ -103,7 +105,7 @@ export class PresetManagerDialog extends Dialog {
         const builtin = new Set(BUILTIN_BRUSH_PRESETS.map((p) => p.id));
         return allBrushPresets().map((p) => ({ id: p.id, label: p.name, builtin: builtin.has(p.id) }));
       }
-      case 'swatches': return this.swatches.all().map((c, i) => ({ id: String(i), label: c, builtin: false }));
+      case 'swatches': return this.swatches.entries().map((e, i) => ({ id: String(i), label: e.name ? `${e.name} ${e.c}` : e.c, builtin: false, colour: e.c, name: e.name }));
       case 'gradients': {
         const builtin = new Set(GRADIENT_PRESETS.map((p) => p.id));
         return allGradients().map((p) => ({ id: p.id, label: p.label, builtin: builtin.has(p.id) }));
@@ -124,17 +126,17 @@ export class PresetManagerDialog extends Dialog {
     this.list.replaceChildren(...this.items.map((it) => {
       const o = new Option(it.builtin ? `${it.label} (built in)` : it.label, it.id);
       o.title = it.label;
-      if (this.kind === 'swatches') o.style.borderLeft = `14px solid ${it.label}`;
+      if (this.kind === 'swatches') o.style.borderLeft = `14px solid ${it.colour ?? it.label}`;
       return o;
     }));
     setText(this.note, this.kind === 'swatches'
-      ? 'Swatches have no names, so they cannot be renamed. Load takes .aco or .ase; Save Set writes .aco and Export writes .ase.'
+      ? 'Rename gives a swatch a name, kept in Save Set and Export .ase. Load takes .aco or .ase; Save Set writes .aco and Export writes .ase.'
       : this.kind === 'gradients' ? 'Load takes .json, .grd or .ggr; Save Set writes .json and Export writes a .grd. Built-in presets cannot be renamed or deleted.'
       : this.kind === 'shapes' ? 'Load takes .json or a .csh; Save Set writes .json and Export writes a .csh. Built-in presets cannot be renamed or deleted.'
       : this.kind === 'styles' ? 'Layer styles saved in the Styles panel. Load and Save Set use .json; the panel also reads and writes .asl.'
       : this.kind === 'tools' ? 'Tool presets saved in Window > Tool Presets. Load and Save Set use .json; a loaded preset replaces one with the same name and tool.'
       : 'Built-in presets are listed but cannot be renamed or deleted.');
-    setHidden(this.renameBtn, this.kind === 'swatches');
+    setHidden(this.renameBtn, false);
     setHidden(this.aseBtn, this.kind !== 'swatches');
     setHidden(this.grdBtn, this.kind !== 'gradients');
     setHidden(this.cshBtn, this.kind !== 'shapes');
@@ -195,8 +197,8 @@ export class PresetManagerDialog extends Dialog {
     const it = this.selected()[0];
     if (!it || it.builtin) return;
     void (async () => {
-      const name = (await promptName('Rename Preset', it.label, 'Rename'))?.trim();   // the app's own prompt, not the browser's
-      if (!name || name === it.label) return;
+      const name = (await promptName('Rename Preset', this.kind === 'swatches' ? it.name ?? '' : it.label, 'Rename'))?.trim();   // the app's own prompt, not the browser's
+      if (!name || name === (this.kind === 'swatches' ? it.name : it.label)) return;
       switch (this.kind) {
         case 'brushes': await renameImportedBrush(it.id, name); break;
         case 'gradients': {
@@ -208,7 +210,7 @@ export class PresetManagerDialog extends Dialog {
         case 'shapes': renameCustomShape(it.id, name); break;
         case 'styles': saveStylePresets(loadStylePresets().map((s) => (s.id === it.id ? { ...s, name } : s))); break;
         case 'tools': saveToolPresets(loadToolPresets().map((p, i) => (String(i) === it.id ? { ...p, name } : p))); break;
-        case 'swatches': break;
+        case 'swatches': this.swatches.rename(Number(it.id), name); break;
       }
       this.refresh();
     })();
@@ -370,6 +372,7 @@ export class PresetManagerDialog extends Dialog {
 
   /** Called with the settings an imported bundle carried (keyboard shortcuts, shortcut sets, menu choices), after they are kept. */
   onSettings: ((s: { shortcuts: Record<string, string[]> }) => void) | null = null;
+  private includeBuiltins = false;
 
   /** Edit > Presets > Export Presets: the brushes, swatches, gradients, custom shapes and patterns of your own, and the
    *  keyboard and menu choices, in one file. Built-in presets are not written; they are in every copy. */
@@ -380,9 +383,9 @@ export class PresetManagerDialog extends Dialog {
         format: 'formvis-presets', version: 1,
         brushes: brushesToJson(),
         swatches: this.swatches.all(),
-        gradients: customGradients.filter((g) => g.id !== 'edited'),
-        shapes: allCustomShapes().filter((s) => !builtin.has(s.id)).map((s) => ({ label: s.label, d: s.d })),
-        patterns: allPatterns().filter((x) => !x.builtin).map((x) => ({ name: x.name, width: x.surface.width, height: x.surface.height, rgba: toBase64(new Uint8Array(ctxOf(x.surface).getImageData(0, 0, x.surface.width, x.surface.height).data.buffer)) })),
+        gradients: (this.includeBuiltins ? allGradients() : customGradients).filter((g) => g.id !== 'edited'),
+        shapes: allCustomShapes().filter((s) => this.includeBuiltins || !builtin.has(s.id)).map((s) => ({ label: s.label, d: s.d })),
+        patterns: allPatterns().filter((x) => this.includeBuiltins || !x.builtin).map((x) => ({ name: x.name, width: x.surface.width, height: x.surface.height, rgba: toBase64(new Uint8Array(ctxOf(x.surface).getImageData(0, 0, x.surface.width, x.surface.height).data.buffer)) })),
         styles: loadStylePresets(),
         toolPresets: loadToolPresets(),
         settings: { shortcuts: p.shortcuts, shortcutSets: p.shortcutSets, menuHidden: p.menuHidden, menuColors: p.menuColors },

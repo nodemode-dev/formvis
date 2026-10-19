@@ -50,7 +50,7 @@ export const curvaturePenTool: Tool = {
       active = { points: [], corners: new Set(), sp };
     }
     if (p.alt) active.corners.add(active.points.length);
-    active.points.push(p.doc);
+    active.points.push(ctx.engine.gridPoint(p.doc));
     reshape(active, false);
     ctx.engine.setWorkPath(vp);
     ctx.engine.endPathEdit();
@@ -58,7 +58,7 @@ export const curvaturePenTool: Tool = {
   move(ctx, p) {
     hover = p.doc;
     if (active && drag !== null && active.points[drag]) {
-      active.points[drag] = p.doc;
+      active.points[drag] = ctx.engine.gridPoint(p.doc);
       reshape(active, false);
       const vp = ctx.engine.workPath;
       if (vp) ctx.engine.setWorkPath(vp);

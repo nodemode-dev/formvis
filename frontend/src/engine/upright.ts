@@ -84,3 +84,37 @@ export function uprightFor(img: ImageData, mode: UprightMode): UprightFix {
   if (mode === 'vertical') out.rotate = 0;
   return out;
 }
+
+/** Guided Upright: the Geometry settings from lines the person drew along edges that should be vertical or horizontal
+ *  (pairs of layer pixels, `w` by `h`). A line closer to vertical joins the vertical family, otherwise the horizontal one.
+ *  Two or more lines in a family, one each side of the frame's middle, give the keystone as `convergence` does for found
+ *  edges; a family with a single line only turns the picture. Lengths weight the lines. */
+export function uprightFromGuides(guides: ReadonlyArray<readonly [{ x: number; y: number }, { x: number; y: number }]>, w: number, h: number): UprightFix {
+  const out: UprightFix = { rotate: 0, vertical: 0, horizontal: 0 };
+  type G = { angle: number; weight: number; across: number };
+  const vertical: G[] = [], horizontal: G[] = [];
+  for (const [a, b] of guides) {
+    const dx = b.x - a.x, dy = b.y - a.y, weight = Math.hypot(dx, dy);
+    if (weight < 1) continue;
+    let deg = (Math.atan2(dy, dx) * 180) / Math.PI;
+    while (deg <= -90) deg += 180;
+    while (deg > 90) deg -= 180;
+    const mx = (a.x + b.x) / 2 - (w - 1) / 2, my = (a.y + b.y) / 2 - (h - 1) / 2;
+    if (Math.abs(deg) >= 45) vertical.push({ angle: deg > 0 ? deg - 90 : deg + 90, weight, across: mx });
+    else horizontal.push({ angle: deg, weight, across: my });
+  }
+  const mean = (list: G[], key: 'angle' | 'across'): number => { let sw = 0, s = 0; for (const e of list) { sw += e.weight; s += e[key] * e.weight; } return sw ? s / sw : 0; };
+  const keystone = (list: G[], extent: number, half: number, sign: number): number => {
+    if (list.length < 2) return 0;
+    const sorted = [...list].sort((p, q) => p.across - q.across), cut = Math.max(1, Math.floor(sorted.length / 2)), lo = sorted.slice(0, cut), hi = sorted.slice(cut);
+    const gap = mean(hi, 'across') - mean(lo, 'across');
+    if (Math.abs(gap) < half * 0.3) return 0;
+    const slope = (deg: number): number => sign * Math.tan((deg * Math.PI) / 180);
+    return -((slope(mean(hi, 'angle')) - slope(mean(lo, 'angle'))) / gap) * extent * 200;
+  };
+  out.vertical = Math.round(clamp(keystone(vertical, (h - 1) / 2, (w - 1) / 2, -1), -100, 100));
+  out.horizontal = Math.round(clamp(keystone(horizontal, (w - 1) / 2, (h - 1) / 2, 1), -100, 100));
+  const turning = [...(vertical.length < 2 ? vertical : []), ...(horizontal.length < 2 ? horizontal : [])];
+  out.rotate = turning.length ? Math.round(clamp(-mean(turning, 'angle'), -10, 10) * 10) / 10 : 0;
+  return out;
+}

@@ -60,6 +60,8 @@
 /* Window > Paragraph Styles: the style list and its actions. */
 .cv-pstyle-list { width: 100%; min-height: 120px; }
 .cv-pstyle-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.cv-cstyle-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; margin-top: 10px; }
+.cv-cstyle-diff { min-height: 2.6em; margin-top: 8px; color: var(--text-muted); font-size: 12px; }
 .cv-list { display: grid; gap: 2px; max-height: 280px; min-height: 120px; overflow-y: auto; padding: var(--space-1); border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-primary); }
 .cv-list-row { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; column-gap: var(--space-2); height: var(--ctl); padding: 0 var(--space-2); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary); font-size: var(--fs-12); text-align: left; cursor: pointer; }
 .cv-list-row:hover { background: var(--bg-hover); color: var(--text-primary); }
@@ -88,7 +90,8 @@
 .cv-keys-row .cv-list-name, .cv-keys-row .cv-list-meta { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .cv-keys-row .cv-list-meta { text-align: right; }
 .nm-theme-grid { display: grid; grid-template-columns: repeat(7, 28px); gap: var(--space-2); }
-.nm-theme-swatch { width: 28px; height: 28px; padding: 0; border: 2px solid transparent; border-radius: var(--radius); cursor: pointer; }
+.nm-theme-swatch { position: relative; width: 28px; height: 28px; padding: 0; border: 2px solid transparent; border-radius: var(--radius); cursor: pointer; }
+.nm-theme-swatch.is-fav::after { content: ''; position: absolute; top: 2px; right: 2px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent-color); box-shadow: 0 0 0 1px var(--bg-secondary); }
 .cv-panel-section { display: grid; gap: var(--space-3); }
 .cv-panel-section[hidden] { display: none; }
 .cv-stops { display: grid; gap: var(--space-2); }

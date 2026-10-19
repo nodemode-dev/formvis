@@ -17,6 +17,18 @@ export interface ColorRangeOptions {
   at?: Array<{ x: number; y: number }>;
   lo?: number;
   hi?: number;
+  /** Detect Faces (Skin Tones): face boxes (x, y, w, h in document pixels); skin counts only on a face. */
+  faces?: Array<readonly [number, number, number, number]>;
+}
+
+/** How much a point lies on a face, 0 to 1: whole inside an ellipse over the box, falling off over a quarter of its size. */
+export function faceWeight(x: number, y: number, faces: ReadonlyArray<readonly [number, number, number, number]>): number {
+  let best = 0;
+  for (const [fx, fy, fw, fh] of faces) {
+    const d = Math.hypot((x - (fx + fw / 2)) / (fw * 0.6), (y - (fy + fh / 2)) / (fh * 0.6));
+    best = Math.max(best, clamp01(1 - (d - 1) / 0.4));
+  }
+  return best;
 }
 
 export const HUE_FAMILIES = { reds: 0, yellows: 60, greens: 120, cyans: 180, blues: 240, magentas: 300 } as const;

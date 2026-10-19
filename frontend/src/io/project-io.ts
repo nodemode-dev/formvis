@@ -135,7 +135,7 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
     else if (ch?.mode === 'rgb') { const name = `${l.id}.deep16`; files.push({ name, blob: new Blob([deepToU16(ch.data).buffer as ArrayBuffer]) }); r.deepFile = name; r.deepWidth = ch.width; r.deepHeight = ch.height; }
     else if (ch?.mode === 'cmyk') { const name = `${l.id}.cmyk32`; files.push({ name, blob: new Blob([new Float32Array(ch.data).buffer as ArrayBuffer]) }); r.inkFile = name; r.inkWidth = ch.width; r.inkHeight = ch.height; }
     else if (ch?.mode === 'lab') { const name = `${l.id}.lab32`; files.push({ name, blob: new Blob([new Float32Array(ch.data).buffer as ArrayBuffer]) }); r.inkFile = name; r.inkWidth = ch.width; r.inkHeight = ch.height; }
-    if (l.vector) r.vector = { fill: l.vector.fill, stroke: l.vector.stroke ?? null, ...(l.vector.gradient ? { gradient: l.vector.gradient } : {}), ...(l.vector.live ? { live: l.vector.live } : {}), origin: l.vector.origin, subpaths: pathData(l.vector.path)?.subpaths ?? [] };
+    if (l.vector) r.vector = { fill: l.vector.fill, stroke: l.vector.stroke ?? null, ...(l.vector.gradient ? { gradient: l.vector.gradient } : {}), ...(l.vector.pattern ? { pattern: l.vector.pattern } : {}), ...(l.vector.live ? { live: l.vector.live } : {}), origin: l.vector.origin, subpaths: pathData(l.vector.path)?.subpaths ?? [] };
     if (l.fillContent && l.raster) r.fillContent = structuredClone(l.fillContent);
     if (l.relight && l.raster) r.relight = structuredClone(l.relight);
     if (l.vectorMask) r.vectorMask = { enabled: l.vectorMask.enabled, linked: l.vectorMask.linked, inverted: l.vectorMask.inverted, subpaths: pathData(l.vectorMask.path)?.subpaths ?? [], ...(l.vectorMask.density !== undefined && l.vectorMask.density < 100 ? { density: l.vectorMask.density } : {}), ...(l.vectorMask.feather ? { feather: l.vectorMask.feather } : {}) };
@@ -230,7 +230,7 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
   const used = new Set<string>();
   for (const l of doc.layers) {
     const po = l.effects?.patternOverlay, bt = l.effects?.bevel.enabled ? l.effects.bevel.texture : undefined, fc = l.fillContent;
-    for (const id of [po?.enabled ? po.pattern : '', bt?.enabled ? bt.pattern : '', fc?.kind === 'pattern' ? fc.pattern : '']) if (id && !id.startsWith('builtin:')) used.add(id);
+    for (const id of [po?.enabled ? po.pattern : '', bt?.enabled ? bt.pattern : '', fc?.kind === 'pattern' ? fc.pattern : '', l.vector?.pattern?.id ?? '', l.vector?.stroke?.pattern?.id ?? '']) if (id && !id.startsWith('builtin:')) used.add(id);
   }
   const carried: Array<{ id: string; name: string; file: string }> = [];
   for (const id of used) {
@@ -310,10 +310,13 @@ function vectorFrom(raw: unknown): Layer['vector'] {
   const sg = obj(s.gradient), sgType = pick(sg.type, ['linear', 'radial', 'angle'] as const);
   const sgStops = Array.isArray(sg.stops) ? sg.stops.slice(0, 32).flatMap((raw) => { const q = obj(raw), c = colorFrom(q.color); return c && finite(q.at) ? [{ at: Math.max(0, Math.min(1, q.at)), color: c, ...(finite(q.alpha) ? { alpha: Math.max(0, Math.min(1, q.alpha)) } : {}) }] : []; }) : [];
   if (stroke && sgType && sgStops.length >= 2) Object.assign(stroke, { gradient: { type: sgType, angle: finite(sg.angle) ? sg.angle : 0, stops: sgStops } });
+  const patternOf = (raw: unknown): { id: string; scale: number } | null => { const q = obj(raw); return typeof q.id === 'string' && q.id && finite(q.scale) ? { id: q.id.slice(0, 120), scale: Math.max(0.05, Math.min(16, q.scale)) } : null; };
+  const fillPattern = fill ? patternOf(o.pattern) : null, strokePattern = stroke ? patternOf(s.pattern) : null;
+  if (stroke && strokePattern) Object.assign(stroke, { pattern: strokePattern });
   const lv = obj(o.live), lk = pick(lv.kind, ['polygon', 'star', 'triangle'] as const), bx = obj(lv.box);
   const live = lk && finite(lv.sides) && finite(lv.inset) && finite(lv.radius) && finite(bx.x) && finite(bx.y) && finite(bx.w) && finite(bx.h) && bx.w > 0 && bx.h > 0
     ? { kind: lk, sides: Math.max(3, Math.min(100, Math.round(lv.sides))), inset: Math.max(1, Math.min(99, lv.inset)), radius: Math.max(0, Math.min(15000, lv.radius)), box: { x: bx.x, y: bx.y, w: bx.w, h: bx.h } } : null;
-  return { path, fill, stroke, ...(gradient ? { gradient } : {}), ...(live ? { live } : {}), origin: { x: origin.x, y: origin.y } };
+  return { path, fill, stroke, ...(gradient ? { gradient } : {}), ...(fillPattern ? { pattern: fillPattern } : {}), ...(live ? { live } : {}), origin: { x: origin.x, y: origin.y } };
 }
 
 export async function deserialize(manifest: Json, fetchImage: (name: string) => Promise<Blob>, read: BandReader | null = null): Promise<{ doc: Doc; activeId: ID | null; paths: PathSet | null; timeline: Timeline | null }> {

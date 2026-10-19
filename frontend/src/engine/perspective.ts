@@ -83,13 +83,18 @@ function distToQuad(q: Quad, x: number, y: number): number {
 
 export interface Plane { src: Quad; dst: Quad }
 
+function cubicWeights(t: number, w: Float32Array): void {
+  const t2 = t * t, t3 = t2 * t;
+  w[0] = -0.5 * t3 + t2 - 0.5 * t; w[1] = 1.5 * t3 - 2.5 * t2 + 1; w[2] = -1.5 * t3 + 2 * t2 + 0.5 * t; w[3] = 0.5 * t3 - 0.5 * t2;
+}
+
 /** The picture through the planes into a document-space region (x0, y0, W, H) at scale `s`: each output pixel finds
  *  its plane (the warped quad holding it, or the nearest), goes back through that plane's inverse map to the layout
  *  position in the document, then through `toLocal` into the picture, sampled bilinearly in premultiplied alpha. */
 export function perspectiveImage(src: ImageData, toLocal: (x: number, y: number) => P2, planes: readonly Plane[], x0: number, y0: number, W: number, H: number, s: number): ImageData {
   const ow = Math.max(1, Math.round(W * s)), oh = Math.max(1, Math.round(H * s)), out = new ImageData(ow, oh), o = out.data;
   const inv = planes.map((p) => { const f = homography(p.src, p.dst); return f ? invertH(f) : null; });
-  const sw = src.width, sh = src.height, d = src.data;
+  const sw = src.width, sh = src.height, d = src.data, wx = new Float32Array(4), wy = new Float32Array(4);
   for (let j = 0; j < oh; j++) for (let i = 0; i < ow; i++) {
     const x = x0 + (i + 0.5) / s, y = y0 + (j + 0.5) / s;
     let k = -1;
@@ -98,16 +103,23 @@ export function perspectiveImage(src: ImageData, toLocal: (x: number, y: number)
     if (k < 0) continue;
     const [lx, ly] = applyH(inv[k] as H, x, y), [u0, v0] = toLocal(lx, ly), u = u0 - 0.5, v = v0 - 0.5;
     if (!(u > -1 && v > -1 && u < sw && v < sh)) continue;
-    const xa = Math.floor(u), ya = Math.floor(v), fx = u - xa, fy = v - ya;
+    const xa = Math.floor(u), ya = Math.floor(v);
+    cubicWeights(u - xa, wx); cubicWeights(v - ya, wy);
     let r = 0, g = 0, b = 0, a = 0;
-    for (const [xx, yy, w] of [[xa, ya, (1 - fx) * (1 - fy)], [xa + 1, ya, fx * (1 - fy)], [xa, ya + 1, (1 - fx) * fy], [xa + 1, ya + 1, fx * fy]] as const) {
-      if (xx < 0 || yy < 0 || xx >= sw || yy >= sh || w === 0) continue;
-      const p = (yy * sw + xx) * 4, al = (d[p + 3] / 255) * w;
-      r += d[p] * al; g += d[p + 1] * al; b += d[p + 2] * al; a += al;
+    for (let jj = 0; jj < 4; jj++) {
+      const yy = ya - 1 + jj;
+      if (yy < 0 || yy >= sh) continue;
+      for (let ii = 0; ii < 4; ii++) {
+        const xx = xa - 1 + ii;
+        if (xx < 0 || xx >= sw) continue;
+        const p = (yy * sw + xx) * 4, al = (d[p + 3] / 255) * wx[ii] * wy[jj];
+        r += d[p] * al; g += d[p + 1] * al; b += d[p + 2] * al; a += al;
+      }
     }
-    if (a <= 0) continue;
+    a = Math.min(1, a);
+    if (a <= 0.0005) continue;
     const t = (j * ow + i) * 4;
-    o[t] = r / a; o[t + 1] = g / a; o[t + 2] = b / a; o[t + 3] = a * 255;
+    o[t] = Math.min(255, Math.max(0, r / a)); o[t + 1] = Math.min(255, Math.max(0, g / a)); o[t + 2] = Math.min(255, Math.max(0, b / a)); o[t + 3] = a * 255;
   }
   return out;
 }

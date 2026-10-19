@@ -33,11 +33,12 @@ export const CUSTOM_SHAPES: ReadonlyArray<{ id: string; label: string; d: string
   { id: 'arrow-right', label: 'Block arrow', d: 'M4 36 L56 36 L56 12 L96 50 L56 88 L56 64 L4 64 Z' },
 ];
 
-const user: Array<{ id: string; label: string; d: string }> = [];
+export interface CustomShapeDef { id: string; label: string; d: string; group?: string }
+const user: CustomShapeDef[] = [];
 const USER_KEY = 'formvis.customShapes';
 
 /** The built-in shapes, then the ones the person defined from paths. */
-export function allCustomShapes(): ReadonlyArray<{ id: string; label: string; d: string }> {
+export function allCustomShapes(): ReadonlyArray<CustomShapeDef> {
   return [...CUSTOM_SHAPES, ...user];
 }
 
@@ -81,14 +82,46 @@ export function loadCustomShapes(): void {
     if (!Array.isArray(got)) return;
     for (const s of got) {
       if (!s || typeof s !== 'object') continue;
-      const { id, label, d } = s as { id?: unknown; label?: unknown; d?: unknown };
-      if (typeof id === 'string' && typeof label === 'string' && typeof d === 'string' && !user.some((u) => u.id === id)) user.push({ id, label, d });
+      const { id, label, d, group } = s as { id?: unknown; label?: unknown; d?: unknown; group?: unknown };
+      if (typeof id === 'string' && typeof label === 'string' && typeof d === 'string' && !user.some((u) => u.id === id)) user.push({ id, label, d, ...(typeof group === 'string' && group ? { group: group.slice(0, 40) } : {}) });
     }
   } catch { /* unreadable storage: start with the built-ins */ }
 }
 
 /** Adds a shape from a path: fitted into the 100 x 100 box keeping its aspect and centred, kept as M, C and Z. Returns its id. */
 export function addCustomShape(label: string, path: VectorPath): string {
+  const id = `user-${Date.now().toString(36)}-${user.length}`;
+  user.push({ id, label, d: shapeData(path) });
+  keepUserShapes();
+  return id;
+}
+
+/** Replaces the outline of a shape the person defined with `path`, fitted as a new one is; its name, group and place stay. */
+export function replaceCustomShape(id: string, path: VectorPath): boolean {
+  const s = user.find((u) => u.id === id);
+  if (!s || !path.subpaths.some((sp) => sp.anchors.length > 1)) return false;
+  s.d = shapeData(path);
+  keepUserShapes();
+  return true;
+}
+
+/** Sets the group a shape the person defined belongs to (empty for none). */
+export function setCustomShapeGroup(id: string, group: string): boolean {
+  const s = user.find((u) => u.id === id);
+  if (!s) return false;
+  const g = group.trim().slice(0, 40);
+  if (g) s.group = g; else delete s.group;
+  keepUserShapes();
+  return true;
+}
+
+/** Drops every shape the person defined, leaving the built-ins. */
+export function resetCustomShapes(): void {
+  user.length = 0;
+  keepUserShapes();
+}
+
+function shapeData(path: VectorPath): string {
   const b = pathBounds(path), w = Math.max(b?.w ?? 0, 1e-6), h = Math.max(b?.h ?? 0, 1e-6);
   const k = 100 / Math.max(w, h), ox = 50 - ((b?.x ?? 0) + w / 2) * k, oy = 50 - ((b?.y ?? 0) + h / 2) * k;
   const f = (v: number, o: number): string => String(Math.round((v * k + o) * 100) / 100);
@@ -105,10 +138,7 @@ export function addCustomShape(label: string, path: VectorPath): string {
     }
     if (sp.closed) parts.push('Z');
   }
-  const id = `user-${Date.now().toString(36)}-${user.length}`;
-  user.push({ id, label, d: parts.join(' ') });
-  keepUserShapes();
-  return id;
+  return parts.join(' ');
 }
 
 /** Absolute M, L, C and Z commands as subpaths of anchors with handles; a closing point equal to the start is merged. */

@@ -1,4 +1,4 @@
-import { allCustomShapes, hexOf, type Pt } from '../../engine';
+import { PATH_OPS, allCustomShapes, hexOf, type PathOp, type Pt } from '../../engine';
 import { boxedShapePath, linePath } from '../../engine/shape-paths';
 import { dashed, type Tool } from '../registry';
 import { dragRect } from './marquee';
@@ -25,13 +25,13 @@ export const shapeTool: Tool = {
   down(ctx, p) {
     if (p.button !== 0 || !ctx.engine.current) return;
     if (cornerWidgetDown(ctx, p)) return;
-    const at = ctx.engine.snapPoint(p.doc);
+    const at = ctx.engine.gridPoint(ctx.engine.snapPoint(p.doc));
     draft = { anchor: at, point: at, shiftAtPress: p.shift, altAtPress: p.alt, square: false, center: false };
   },
   move(ctx, p) {
     if (cornerWidgetMove(ctx, p)) return;
     if (!draft) return;
-    draft.point = ctx.engine.snapPoint(p.doc);
+    draft.point = ctx.engine.gridPoint(ctx.engine.snapPoint(p.doc));
     draft.square = p.shift && !draft.shiftAtPress;
     draft.center = p.alt && !draft.altAtPress;
     ctx.engine.emit('overlay', null);
@@ -96,6 +96,7 @@ export const shapeTool: Tool = {
       // Mode, Fill and Stroke (the owner's tool list): a shape layer, a path, or pixels; each colour the
       // foreground, the background or none; the stroke's width.
       { kind: 'segment', label: 'Mode', priority: 70, choices: [{ id: 'shape', label: 'Shape' }, { id: 'path', label: 'Path' }, { id: 'pixels', label: 'Pixels' }], get: () => s.mode, set: (v) => set({ mode: v as 'shape' | 'path' | 'pixels' }) },
+      { kind: 'segment', label: 'Path operation', priority: 65, choices: PATH_OPS.map((o) => ({ id: o, label: o[0].toUpperCase() + o.slice(1) })), get: () => e.shapePathOp, set: (v) => { e.shapePathOp = v as PathOp; e.emit('options', null); }, when: () => s.mode === 'path' },
       { kind: 'segment', label: 'Fill', priority: 90, choices: [{ id: 'fg', label: 'Foreground' }, { id: 'bg', label: 'Background' }, { id: 'none', label: 'None' }], get: () => s.fill, set: (v) => set({ fill: v as 'fg' | 'bg' | 'none' }), when: () => s.mode !== 'path' },
       { kind: 'segment', label: 'Stroke', priority: 85, choices: [{ id: 'none', label: 'None' }, { id: 'fg', label: 'Foreground' }, { id: 'bg', label: 'Background' }], get: () => s.stroke, set: (v) => set({ stroke: v as 'fg' | 'bg' | 'none' }), when: () => s.mode !== 'path' },
       { kind: 'range', label: 'Width', priority: 80, min: 0.5, max: 200, unit: 'px', get: () => s.strokeWidth, set: (v: number) => set({ strokeWidth: Math.max(0.5, Math.min(200, v)) }), when: () => s.mode !== 'path' && s.stroke !== 'none' },

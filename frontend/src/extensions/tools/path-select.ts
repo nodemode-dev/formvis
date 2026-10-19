@@ -5,7 +5,7 @@ import type { OptionSpec, Tool } from '../registry';
 
 /** The subpath chosen with Path Selection, as an index into the selected path's subpaths. */
 let chosen: number | null = null;
-let drag: { from: Pt; start: Anchor[] } | null = null;
+let drag: { from: Pt; moves: Array<{ at: number; start: Anchor[] }> } | null = null;
 let probe: CanvasRenderingContext2D | null = null;
 
 const shifted = (a: Anchor, dx: number, dy: number): Anchor => ({ x: a.x + dx, y: a.y + dy, inX: a.inX + dx, inY: a.inY + dy, outX: a.outX + dx, outY: a.outY + dy });
@@ -100,26 +100,32 @@ export const pathSelectTool: Tool = {
       ctx.engine.emit('overlay', null);
       return;
     }
-    chosen = hit;
-    ctx.engine.pathComponents = hit === null ? [] : [hit];
+    // Pressing on one of several chosen paths keeps them all chosen and drags them together.
+    const group = hit !== null && ctx.engine.pathComponents.length > 1 && ctx.engine.pathComponents.includes(hit) ? ctx.engine.pathComponents.filter((i) => !!vp.subpaths[i]) : null;
+    if (!group) {
+      chosen = hit;
+      ctx.engine.pathComponents = hit === null ? [] : [hit];
+    } else chosen = hit;
     drag = null;
     ctx.engine.emit('options', null);
     if (hit === null) { ctx.engine.emit('overlay', null); return; }
     ctx.engine.beginPathEdit();
-    // Alt-drag leaves the original where it was and moves a copy placed just above it.
-    if (p.alt) vp.subpaths.splice(hit + 1, 0, copy(vp.subpaths[hit]));
-    const at = p.alt ? hit + 1 : hit;
-    chosen = at;
-    ctx.engine.pathComponents = [at];
-    drag = { from: p.doc, start: vp.subpaths[at].anchors.map((a) => ({ ...a })) };
+    // Alt-drag leaves the originals where they were and moves copies: one placed just above a single path, or added after the group.
+    let moved = group ?? [hit];
+    if (p.alt) {
+      if (group) { moved = group.map((i) => { vp.subpaths.push(copy(vp.subpaths[i])); return vp.subpaths.length - 1; }); chosen = moved[group.indexOf(hit)]; }
+      else { vp.subpaths.splice(hit + 1, 0, copy(vp.subpaths[hit])); moved = [hit + 1]; chosen = hit + 1; }
+      ctx.engine.pathComponents = moved;
+    }
+    drag = { from: p.doc, moves: moved.map((at) => ({ at, start: vp.subpaths[at].anchors.map((a) => ({ ...a })) })) };
     ctx.engine.emit('overlay', null);
   },
   move(ctx, p) {
     if (cornerWidgetMove(ctx, p)) return;
     const vp = ctx.engine.workPath;
-    if (!drag || chosen === null || !vp?.subpaths[chosen]) return;
+    if (!drag || !vp) return;
     const dx = p.doc.x - drag.from.x, dy = p.doc.y - drag.from.y;
-    vp.subpaths[chosen].anchors = drag.start.map((a) => shifted(a, dx, dy));
+    for (const m of drag.moves) if (vp.subpaths[m.at]) vp.subpaths[m.at].anchors = m.start.map((a) => shifted(a, dx, dy));
     ctx.engine.setWorkPath(vp);
   },
   up(ctx) {
@@ -132,7 +138,7 @@ export const pathSelectTool: Tool = {
   cancel(ctx) {
     cornerWidgetCancel(ctx);
     const vp = ctx.engine.workPath;
-    if (drag && vp && chosen !== null && vp.subpaths[chosen]) { vp.subpaths[chosen].anchors = drag.start; ctx.engine.setWorkPath(vp); }
+    if (drag && vp) { for (const m of drag.moves) if (vp.subpaths[m.at]) vp.subpaths[m.at].anchors = m.start; ctx.engine.setWorkPath(vp); }
     drag = null;
     ctx.engine.endPathEdit();
   },
@@ -154,7 +160,7 @@ export const pathSelectTool: Tool = {
     const d = arrows[e.key];
     if (!d) return false;
     ctx.engine.beginPathEdit();
-    vp.subpaths[chosen].anchors = vp.subpaths[chosen].anchors.map((a) => shifted(a, d[0], d[1]));
+    for (const i of new Set([chosen, ...ctx.engine.pathComponents])) if (vp.subpaths[i]) vp.subpaths[i].anchors = vp.subpaths[i].anchors.map((a) => shifted(a, d[0], d[1]));
     ctx.engine.setWorkPath(vp);
     ctx.engine.endPathEdit();
     return true;

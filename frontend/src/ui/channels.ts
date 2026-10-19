@@ -83,6 +83,7 @@ export class ChannelsPanel {
     if (!document.getElementById('cv-channel-view-svg')) {
       document.body.appendChild(el('<svg id="cv-channel-view-svg" width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="cv-channel-view" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0"/></filter></svg>'));
     }
+    window.addEventListener('formvis:channels-colour', () => { this.apply(); this.schedule(); });
     for (const ev of ['history', 'doc', 'active', 'projects'] as const) engine.on(ev, () => {
       const p = engine.current, id = p?.activeLayer?.id ?? '';
       if (p === this.seenProject && id !== this.seenLayer) engine.setAlphaTarget(null);
@@ -149,7 +150,8 @@ export class ChannelsPanel {
       }
       g.drawImage(src, (c.width - w) / 2, (c.height - h) / 2, w, h);
       const img = g.getImageData(0, 0, c.width, c.height), d = img.data, k = id === 'r' ? 0 : id === 'g' ? 1 : 2;
-      for (let i = 0; i < d.length; i += 4) { const v = d[i + k]; d[i] = d[i + 1] = d[i + 2] = v; }
+      const tint = this.engine.toolPrefs.channelsColour;
+      for (let i = 0; i < d.length; i += 4) { const v = d[i + k]; if (tint) { d[i] = d[i + 1] = d[i + 2] = 0; d[i + k] = v; } else d[i] = d[i + 1] = d[i + 2] = v; }
       g.putImageData(img, 0, 0);
     }
   }
@@ -160,7 +162,7 @@ export class ChannelsPanel {
     if (!cmyk && this.inkSolo) { this.inkSolo = null; this.engine.paintChannel = null; this.engine.setChannelView(null); }
     if (!lab && this.labSolo) { this.labSolo = null; this.engine.paintLab = null; this.engine.setChannelView(null); }
     const m = this.solo && !cmyk && !lab
-      ? (() => { const k = { r: [1, 0, 0], g: [0, 1, 0], b: [0, 0, 1] }[this.solo]; return [...k, 0, 0, ...k, 0, 0, ...k, 0, 0, 0, 0, 0, 1, 0]; })()
+      ? (() => { const k = { r: [1, 0, 0], g: [0, 1, 0], b: [0, 0, 1] }[this.solo], z = [0, 0, 0], c = this.engine.toolPrefs.channelsColour, solo = this.solo; return [...(c && solo !== 'r' ? z : k), 0, 0, ...(c && solo !== 'g' ? z : k), 0, 0, ...(c && solo !== 'b' ? z : k), 0, 0, 0, 0, 0, 1, 0]; })()
       : [this.shown.r || cmyk ? 1 : 0, 0, 0, 0, 0, 0, this.shown.g || cmyk ? 1 : 0, 0, 0, 0, 0, 0, this.shown.b || cmyk ? 1 : 0, 0, 0, 0, 0, 0, 1, 0];
     document.querySelector('#cv-channel-view feColorMatrix')?.setAttribute('values', m.join(' '));
     this.engine.rgbTarget = this.solo && !cmyk && !lab ? [this.solo === 'r', this.solo === 'g', this.solo === 'b'] : null;

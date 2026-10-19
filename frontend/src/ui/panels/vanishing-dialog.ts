@@ -1,6 +1,6 @@
 import type { Engine, ID } from '../../engine';
 import type { P2, Quad } from '../../engine/perspective';
-import { connectedQuad, makePlane, pasteInPerspective, rectFor, stampInPerspective, toImage, toPlane, type PlaneMap, type PlaneRect } from '../../engine/vanishing';
+import { connectedQuad, estimateFocal, makePlane, pasteInPerspective, rectFor, stampInPerspective, toImage, toPlane, type PlaneMap, type PlaneRect } from '../../engine/vanishing';
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
 import { selectRow, sliderRow } from './controls';
@@ -20,10 +20,14 @@ export class VanishingPointDialog extends Dialog {
   private readonly source = selectRow('Paste from', [], (v) => { this.pasteFrom = v; });
   private tool: Tool = 'create';
   /** Every plane of the picture; `cur` is the one the tools work on. A connected plane keeps its parent and angle. */
-  private planes: Array<{ corners: P2[]; plane: PlaneMap | null; parent?: number; angle?: number }> = [{ corners: [], plane: null }];
+  private planes: Array<{ corners: P2[]; plane: PlaneMap | null; parent?: number; angle?: number; depth?: number }> = [{ corners: [], plane: null }];
   private cur = 0;
   private readonly planeRow = selectRow('Plane', [], (v) => { this.pick(Number(v)); });
   private readonly angleRow = sliderRow('Child angle (degrees)',-90, 90, 1, (v) => { this.setAngle(v); });
+  private readonly depthRow = sliderRow('Child depth (% of plane width)', -100, 100, 1, (v) => { this.setDepth(v); });
+  /** The focal length in pixels set by hand for the connected planes; null follows what the plane implies. */
+  private focalPx: number | null = null;
+  private readonly focalRow = sliderRow('Focal length (mm, 35 mm equivalent)', 8, 300, 1, (v) => { this.setFocal(v); });
   private get corners(): P2[] { return this.planes[this.cur].corners; }
   private set corners(v: P2[]) { this.planes[this.cur].corners = v; }
   private get plane(): PlaneMap | null { return this.planes[this.cur].plane; }
@@ -58,8 +62,11 @@ export class VanishingPointDialog extends Dialog {
     del.addEventListener('click', () => this.deletePlane());
     const planeBar = el('<div class="cv-row-actions"></div>');
     planeBar.append(add, child, del);
-    this.body.append(bar, this.view, this.planeRow.el, planeBar, this.angleRow.el, this.source.el, size.el, brush.el, this.note);
-    size.set(40); brush.set(40); this.angleRow.set(0);
+    const estimate = el('<button class="cv-btn cv-btn-ghost" type="button">Estimate focal length</button>') as HTMLButtonElement;
+    estimate.addEventListener('click', () => { this.focalPx = null; this.rebuildChildren(); this.syncPlanes(); this.render(); });
+    planeBar.append(estimate);
+    this.body.append(bar, this.view, this.planeRow.el, planeBar, this.angleRow.el, this.depthRow.el, this.focalRow.el, this.source.el, size.el, brush.el, this.note);
+    size.set(40); brush.set(40); this.angleRow.set(0); this.depthRow.set(0); this.focalRow.set(50);
     this.view.addEventListener('pointerdown', (e) => this.down(e));
     this.view.addEventListener('pointermove', (e) => this.move(e));
     this.view.addEventListener('pointerup', () => { this.drag = null; this.stroke = null; this.render(); });
@@ -80,7 +87,7 @@ export class VanishingPointDialog extends Dialog {
     const sel = this.source.el.querySelector('select') as HTMLSelectElement;
     sel.replaceChildren(...others.map((x) => { const o = document.createElement('option'); o.value = x.id; o.textContent = x.name; return o; }));
     this.pasteFrom = others[others.length - 1]?.id ?? ''; if (this.pasteFrom) sel.value = this.pasteFrom;
-    this.planes = [{ corners: [], plane: null }]; this.cur = 0; this.paste = null; this.stampSource = null;
+    this.planes = [{ corners: [], plane: null }]; this.cur = 0; this.paste = null; this.stampSource = null; this.focalPx = null;
     this.syncPlanes();
     this.setTool('create');
     this.open();
@@ -94,10 +101,47 @@ export class VanishingPointDialog extends Dialog {
     this.planes.forEach((p, i) => { sel.options[i].textContent = `Plane ${i + 1}${p.parent !== undefined ? ` (connected to ${p.parent + 1})` : ''}`; });
     sel.value = String(this.cur);
     this.angleRow.set(this.planes[this.cur].angle ?? 0);
-    for (const i of this.angleRow.el.querySelectorAll('input')) i.disabled = this.planes[this.cur].parent === undefined;
+    this.depthRow.set(Math.round((this.planes[this.cur].depth ?? 0) * 100));
+    for (const row of [this.angleRow, this.depthRow]) for (const i of row.el.querySelectorAll('input')) i.disabled = this.planes[this.cur].parent === undefined;
+    const w = this.work, root = this.plane ?? this.planes.find((p) => p.plane)?.plane ?? null;
+    if (w && root) this.focalRow.set(Math.round(this.mmOf(this.focalPx ?? estimateFocal(root, w.width, w.height), w)));
   }
 
-  private addPlane(p: { corners: P2[]; plane: PlaneMap | null; parent?: number; angle?: number }): void {
+  private mmOf(px: number, w: ImageData): number { return (px / Math.hypot(w.width, w.height)) * 43.27; }
+
+  /** The focal length typed in, 35 mm equivalent, kept for every connected plane. */
+  private setFocal(mm: number): void {
+    const w = this.work;
+    if (!w) return;
+    this.focalPx = (mm / 43.27) * Math.hypot(w.width, w.height);
+    this.rebuildChildren();
+    this.render();
+  }
+
+  private setDepth(pct: number): void {
+    const me = this.planes[this.cur];
+    if (me.parent === undefined) return;
+    me.depth = pct / 100;
+    this.rebuildChildren();
+    if (this.paste) this.resizePaste(); else this.render();
+  }
+
+  /** The corners of the connected plane `q` from its parent, with the focal length and depth in force. */
+  private childQuad(q: { parent?: number; angle?: number; depth?: number }): Quad | null {
+    const w = this.work, parent = q.parent !== undefined ? this.planes[q.parent]?.plane : null;
+    return w && parent ? connectedQuad(parent, w.width, w.height, q.angle ?? 0, { focal: this.focalPx, depth: q.depth ?? 0 }) : null;
+  }
+
+  /** Every connected plane carried again from its parent, parents first. */
+  private rebuildChildren(): void {
+    this.planes.forEach((q) => {
+      if (q.parent === undefined) return;
+      const quad = this.childQuad(q), made = quad ? makePlane(quad) : null;
+      if (quad && made) { q.corners = quad.map((c) => [c[0], c[1]] as P2); q.plane = made; }
+    });
+  }
+
+  private addPlane(p: { corners: P2[]; plane: PlaneMap | null; parent?: number; angle?: number; depth?: number }): void {
     this.planes.push(p); this.cur = this.planes.length - 1; this.stampSource = null; this.syncPlanes();
   }
 
@@ -111,10 +155,10 @@ export class VanishingPointDialog extends Dialog {
   private addConnected(): void {
     const parent = this.plane, w = this.work;
     if (!parent || !w) { setText(this.note, 'Create a plane first; a connected plane grows from its right edge.'); return; }
-    const quad = connectedQuad(parent, w.width, w.height, 0), made = quad ? makePlane(quad) : null;
+    const quad = this.childQuad({ parent: this.cur, angle: 0, depth: 0 }), made = quad ? makePlane(quad) : null;
     if (!quad || !made) { setText(this.note, 'A connected plane does not fit past this edge.'); return; }
     this.commitPaste();
-    this.addPlane({ corners: quad.map((c) => [c[0], c[1]] as P2), plane: made, parent: this.cur, angle: 0 });
+    this.addPlane({ corners: quad.map((c) => [c[0], c[1]] as P2), plane: made, parent: this.cur, angle: 0, depth: 0 });
     this.setTool('edit');
   }
 
@@ -123,7 +167,7 @@ export class VanishingPointDialog extends Dialog {
     const me = this.planes[this.cur], parent = me.parent !== undefined ? this.planes[me.parent]?.plane : null, w = this.work;
     if (!parent || !w) return;
     me.angle = deg;
-    const quad = connectedQuad(parent, w.width, w.height, deg), made = quad ? makePlane(quad) : null;
+    const quad = this.childQuad(me), made = quad ? makePlane(quad) : null;
     if (!quad || !made) { setText(this.note, 'That angle puts the plane behind the camera.'); return; }
     me.corners = quad.map((c) => [c[0], c[1]] as P2); me.plane = made;
     if (this.paste) this.resizePaste(); else this.render();
@@ -162,7 +206,7 @@ export class VanishingPointDialog extends Dialog {
       if (this.corners.length === 4) {
         this.plane = makePlane(this.corners as Quad);
         if (!this.plane) { this.corners = []; setText(this.note, 'Those corners do not make a plane: click them in turn, top left, top right, bottom right, bottom left.'); }
-        else { this.setTool('edit'); return; }
+        else { this.syncPlanes(); this.setTool('edit'); return; }
       }
       this.render();
     } else if (this.tool === 'edit') {
@@ -189,12 +233,8 @@ export class VanishingPointDialog extends Dialog {
       const next = makePlane(this.corners as Quad);
       if (next) {
         this.plane = next;
-        const w = this.work;
-        this.planes.forEach((q, n) => {
-          if (q.parent !== this.cur || n === this.cur || !w) return;
-          const quad = connectedQuad(next, w.width, w.height, q.angle ?? 0), made = quad ? makePlane(quad) : null;
-          if (quad && made) { q.corners = quad.map((c) => [c[0], c[1]] as P2); q.plane = made; }
-        });
+        this.rebuildChildren();
+        if (this.focalPx === null) this.syncPlanes();
         if (this.paste) this.resizePaste();
       }
       this.render();

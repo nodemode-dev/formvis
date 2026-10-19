@@ -1,10 +1,10 @@
-import { SKIN_LINE_DEGREES, histogram, vectorscope, waveform } from '../../engine/scopes';
+import { SKIN_LINE_DEGREES, histogram, labScope, vectorscope, waveform } from '../../engine/scopes';
 import { el } from '../dom';
 
 /** Develop's scopes (1.53.4): a histogram, a waveform or a vectorscope of the developed preview, beside the sliders. */
 export class ScopesView {
   readonly el = el('<div class="cv-scopes"></div>');
-  private readonly which = el<HTMLSelectElement>('<select class="cv-input" aria-label="Scope"><option value="histogram">Histogram</option><option value="waveform">Waveform</option><option value="vectorscope">Vectorscope</option></select>');
+  private readonly which = el<HTMLSelectElement>('<select class="cv-input" aria-label="Scope"><option value="histogram">Histogram</option><option value="waveform">Waveform</option><option value="vectorscope">Vectorscope</option><option value="lab">Lab a* b*</option></select>');
   readonly canvas = el<HTMLCanvasElement>('<canvas class="cv-scopes-canvas" width="256" height="128" aria-label="Scope"></canvas>');
   private last: ImageData | null = null;
   private readonly shadowClip = el<HTMLLabelElement>('<label class="cv-field cv-check"><span>Shadow clipping</span><input type="checkbox" aria-label="Show shadow clipping"></label>');
@@ -53,6 +53,11 @@ export class ScopesView {
     } else if (this.which.value === 'waveform') {
       const w = waveform(img, W, H), peak = Math.max(1, ...w);
       for (let i = 0; i < w.length; i++) if (w[i]) { const v = 60 + Math.round(195 * Math.sqrt(w[i] / peak)); put(i % W, Math.floor(i / W), v * 0.6, v, v * 0.6, 255); }
+    } else if (this.which.value === 'lab') {
+      const S = H, { plane, meanL } = labScope(img, S), peak = Math.max(1, ...plane), ox = Math.floor((W - S) / 2);
+      for (let i = 0; i < plane.length; i++) if (plane[i]) { const t = 60 + Math.round(195 * Math.sqrt(plane[i] / peak)); put(ox + (i % S), Math.floor(i / S), t, t, t, 255); }
+      for (let k = 0; k < S; k++) { put(ox + Math.floor(S / 2), k, 70, 70, 70, 255); put(ox + k, Math.floor(S / 2), 70, 70, 70, 255); }
+      this.readout.textContent = `Mean L* ${meanL.toFixed(1)}; a* runs green to red, b* blue to yellow`;
     } else {
       const S = H, v = vectorscope(img, S), peak = Math.max(1, ...v), ox = Math.floor((W - S) / 2);
       for (let i = 0; i < v.length; i++) if (v[i]) { const t = 60 + Math.round(195 * Math.sqrt(v[i] / peak)); put(ox + (i % S), Math.floor(i / S), t, t, t, 255); }

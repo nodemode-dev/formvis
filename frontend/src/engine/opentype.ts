@@ -74,7 +74,7 @@ export function withFeature(features: readonly string[] | null | undefined, tag:
 }
 
 const TAG = /^[A-Za-z0-9]{4}$/;
-export const RUN_KEYS = ['family', 'size', 'color', 'weight', 'bold', 'italic', 'baselineShift', 'tracking', 'language', 'underline', 'strike', 'caps'] as const;
+export const RUN_KEYS = ['family', 'size', 'color', 'weight', 'bold', 'italic', 'baselineShift', 'tracking', 'language', 'underline', 'strike', 'caps', 'scaleX', 'scaleY'] as const;
 export type RunPatch = { [K in keyof RunAttrs]?: RunAttrs[K] | null };
 
 /** The attributes a run sets, copied. */
@@ -104,6 +104,9 @@ export function attrsFrom(o: Record<string, unknown>): RunAttrs {
   if (o.underline === true) out.underline = true;
   if (o.strike === true) out.strike = true;
   if (o.caps === 'all' || o.caps === 'small') out.caps = o.caps;
+  const sx = num(o.scaleX, 10, 500), sy = num(o.scaleY, 10, 500);
+  if (sx !== undefined) out.scaleX = sx;
+  if (sy !== undefined) out.scaleY = sy;
   return out;
 }
 

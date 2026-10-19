@@ -22,7 +22,8 @@ import type { SelectionMask } from '../engine/selection';
 import { maskEdgeTone } from '../engine/distort';
 import { groupIsolated } from '../engine/tree';
 import { renderFill } from '../engine/fill-layers';
-import type { ExtraBlend, FillContent } from '../engine/types';
+import { rasterFromDeep } from '../engine/deep';
+import type { DeepPixels, ExtraBlend, FillContent, Guide, ShapeGradient } from '../engine/types';
 
 /** Layered PSD files, read and written with ag-psd (MIT). Pixel layers keep their position, opacity, blend mode and
  *  visibility, folders become groups and back, layer masks and clipping carry across, and the flattened image goes in
@@ -358,7 +359,7 @@ export function fromPsdArtboard(pl: PsdLayer): { artboard: NonNullable<Layer['ar
   if (!a?.rect) return {};
   const r = a.rect, c = a.color as unknown as { r?: number; g?: number; b?: number } | undefined, k = (v: unknown): number => Math.round(Math.min(255, Math.max(0, Number(v) || 0)));
   const bg = a.backgroundType === 3 ? null : a.backgroundType === 2 ? { r: 0, g: 0, b: 0 } : a.backgroundType === 4 && c && typeof c.r === 'number' ? { r: k(c.r), g: k(c.g), b: k(c.b) } : { r: 255, g: 255, b: 255 };
-  const board = artboardFromData({ x: r.left, y: r.top, w: r.right - r.left, h: r.bottom - r.top, background: bg });
+  const board = artboardFromData({ x: r.left, y: r.top, w: r.right - r.left, h: r.bottom - r.top, background: bg, preset: a.presetName });
   return board ? { artboard: board } : {};
 }
 
@@ -367,7 +368,7 @@ export function toPsdArtboard(l: Layer): Pick<PsdLayer, 'artboard'> | Record<str
   const a = l.artboard;
   if (!a || l.parentId) return {};
   const bg = a.background, white = !!bg && bg.r === 255 && bg.g === 255 && bg.b === 255, black = !!bg && !bg.r && !bg.g && !bg.b;
-  return { artboard: { rect: { top: a.y, left: a.x, bottom: a.y + a.h, right: a.x + a.w }, presetName: '', backgroundType: !bg ? 3 : white ? 1 : black ? 2 : 4, ...(bg ? { color: { r: bg.r, g: bg.g, b: bg.b } } : {}) } };
+  return { artboard: { rect: { top: a.y, left: a.x, bottom: a.y + a.h, right: a.x + a.w }, presetName: a.preset ?? '', backgroundType: !bg ? 3 : white ? 1 : black ? 2 : 4, ...(bg ? { color: { r: bg.r, g: bg.g, b: bg.b } } : {}) } };
 }
 
 function familyOf(psName: string): { family: string; bold: boolean; italic: boolean } {
@@ -538,6 +539,13 @@ function registerPsdPattern(src: PatternInfo): string | null {
   return id;
 }
 
+/** A 16 or 32 bit layer's RGBA samples as the engine's float pixels: 16 bits scaled to 0..1, 32 bits kept as stored (linear light). */
+function deepOfPixels(d: { data: ArrayLike<number>; width: number; height: number }, bits: number): DeepPixels {
+  const data = new Float32Array(d.width * d.height * 4), scale = bits === 16 ? 1 / 65535 : 1;
+  for (let i = 0; i < data.length; i++) data[i] = d.data[i] * scale;
+  return { mode: 'rgb', n: 3, width: d.width, height: d.height, data };
+}
+
 /** A layer's pixels cut to the canvas; null where it does not overlap it. */
 function cropToCanvas(c: HTMLCanvasElement, left: number, top: number, W: number, H: number): { canvas: HTMLCanvasElement; left: number; top: number } | null {
   const x0 = Math.max(0, left), y0 = Math.max(0, top), x1 = Math.min(W, left + c.width), y1 = Math.min(H, top + c.height);
@@ -582,6 +590,8 @@ async function resolveLinked(lf: NonNullable<Psd['linkedFiles']>[number], psdFil
 export async function readPsdFile(file: File, siblings: readonly File[] = []): Promise<{ doc: Doc; notes: string[]; activeId: ID | null; paths: PathSet | null; report: PsdReport }> {
   const { readPsd } = await import('ag-psd');
   const buffer = await file.arrayBuffer();
+  // The layer reader swaps the bytes of 16 bit samples in place, so the raw-sample read below starts from an untouched copy.
+  const pristine = buffer.byteLength > 26 && new DataView(buffer).getUint16(22) > 8 ? buffer.slice(0) : null;
   const chanMode = readPsdChannelMode(buffer, psdResolution(buffer));
   if (chanMode) return { doc: chanMode.doc, notes: chanMode.notes, activeId: chanMode.activeId, paths: null, report: reportOf(1, [], chanMode.notes) };
   let psd: Psd, cut: 'merged' | 'layers' | null = null;
@@ -611,7 +621,23 @@ export async function readPsdFile(file: File, siblings: readonly File[] = []): P
   if (cut === 'merged') notes.push('This PSD is cut short: its layers opened, but its merged image is incomplete.');
   if (cut === 'layers') notes.push('This PSD is cut short: the layers after the cut are blank and its merged image is missing.');
   const kept: string[] = [], blocks = resourceBlocks(buffer), colorMode = psd.colorMode as number | undefined, bits = psd.bitsPerChannel ?? 8;
-  if (bits !== 8) notes.push(`This ${bits}-bit file opened at 8 bits per channel.`);
+  // A 16 or 32 bit RGB or grey file is read a second time as raw samples, so its pixel layers open deep.
+  const deepOf = new Map<PsdLayer, DeepPixels>();
+  let deepFlat: DeepPixels | null = null;
+  if (pristine && (bits === 16 || bits === 32) && !cut && (colorMode === undefined || colorMode === 1 || colorMode === 3)) {
+    try {
+      const raw = readPsd(pristine, { skipThumbnail: true, skipLinkedFilesData: true, skipCompositeImageData: !!psd.children?.length, useImageData: true });
+      const pair = (a: PsdLayer[] | undefined, b: PsdLayer[] | undefined): void => {
+        if (!a || !b || a.length !== b.length) return;
+        a.forEach((pl, i) => { const px = b[i].imageData; if (px && !pl.children && px.width * px.height * 4 === px.data.length) deepOf.set(pl, deepOfPixels(px, bits)); pair(pl.children, b[i].children); });
+      };
+      pair(psd.children, raw.children);
+      if (raw.imageData && raw.imageData.width * raw.imageData.height * 4 === raw.imageData.data.length) deepFlat = deepOfPixels(raw.imageData, bits);
+    } catch { deepOf.clear(); }
+  }
+  const deepDoc = deepOf.size > 0 || deepFlat !== null;
+  if (deepDoc) { doc.depth = bits as 16 | 32; kept.push(`Opened at ${bits} bits per channel.`); }
+  else if (bits !== 8) notes.push(`This ${bits}-bit file opened at 8 bits per channel.`);
   if (colorMode === 1) { doc.mode = 'grayscale'; kept.push('Grayscale mode.'); }
   else if (colorMode === 0) { doc.mode = 'bitmap'; kept.push('Bitmap mode.'); }
   else if (colorMode === 2 && psd.palette?.length) { doc.mode = 'indexed'; doc.palette = psd.palette.map((c) => ({ r: c.r, g: c.g, b: c.b })); kept.push(`Indexed Color with ${psd.palette.length} colours.`); }
@@ -703,14 +729,16 @@ export async function readPsdFile(file: File, siblings: readonly File[] = []): P
       // A shape filled with a gradient or a pattern and not stroked is a fill layer behind a vector mask.
       const shapeFill = !!pl.vectorMask?.paths?.length && (pl.vectorFill?.type === 'solid' || pl.vectorFill?.type === 'pattern') && !pl.vectorStroke?.strokeEnabled && pl.vectorStroke?.fillEnabled !== false;
       const fillSpec = !adj && pl.vectorFill && ((!pl.vectorMask?.paths?.length && !pl.vectorStroke) || shapeFill) ? fromPsdFill(pl.vectorFill, psd.patterns, name, notes) : null;
-      if (!adj && !fillSpec && (!pl.canvas || !pl.canvas.width || !pl.canvas.height)) continue;
+      const emptyPixels = !adj && !fillSpec && (!pl.canvas || !pl.canvas.width || !pl.canvas.height);
       const drawn = fillSpec && (shapeFill || !pl.canvas || !pl.canvas.width || !pl.canvas.height) ? renderFill(fillSpec, doc.width, doc.height, { x: 0, y: 0, w: doc.width, h: doc.height }) : null;
       if (fillSpec && !drawn && (!pl.canvas || !pl.canvas.width || !pl.canvas.height)) continue;
       // A plain pixel layer more than four canvases large is cut to the canvas; type, shapes and smart objects keep all their pixels.
       const cut = adj || drawn || !pl.canvas || pl.placedLayer || pl.text || pl.vectorMask || pl.vectorFill || pl.canvas.width * pl.canvas.height <= 4 * doc.width * doc.height ? null : cropToCanvas(pl.canvas, pl.left ?? 0, pl.top ?? 0, doc.width, doc.height);
       if (cut) croppedCount++;
-      const src = cut?.canvas ?? pl.canvas, atX = cut ? cut.left : pl.left ?? 0, atY = cut ? cut.top : pl.top ?? 0;
-      const w = drawn?.width ?? src?.width ?? 0, h = drawn?.height ?? src?.height ?? 0, raster = adj ? null : drawn ?? (src ? Raster.from(src, w, h) : null);
+      const src = emptyPixels ? undefined : cut?.canvas ?? pl.canvas, atX = cut ? cut.left : emptyPixels ? 0 : pl.left ?? 0, atY = cut ? cut.top : emptyPixels ? 0 : pl.top ?? 0;
+      const w = drawn?.width ?? src?.width ?? (emptyPixels ? doc.width : 0), h = drawn?.height ?? src?.height ?? (emptyPixels ? doc.height : 0);
+      const dp = !adj && !drawn && !cut && !pl.text && !pl.placedLayer && !pl.vectorMask && !pl.vectorFill ? deepOf.get(pl) : undefined, deep = dp && dp.width === w && dp.height === h ? dp : undefined;
+      const raster = adj ? null : deep ? rasterFromDeep(deep, bits === 32) : drawn ?? (src ? Raster.from(src, w, h) : emptyPixels ? new Raster(w, h) : null);
       // An adjustment layer opens as formvis's own, live, with its mask, opacity, blend and clipping.
       const pr = pl.protected, all = !!(pr?.transparency && pr?.composite && pr?.position);
       const lk = pr && (pr.transparency || pr.composite || pr.position) ? { locks: all ? { all: true } : { ...(pr.transparency ? { transparency: true } : {}), ...(pr.composite ? { pixels: true } : {}), ...(pr.position ? { position: true } : {}) } } : {};
@@ -720,7 +748,7 @@ export async function readPsdFile(file: File, siblings: readonly File[] = []): P
       const advanced = { ...labelOf(pl), ...(restricted ? { blendChannels: restricted } : {}), ...(pl.transparencyShapesLayer === false ? { transparencyShapes: false } : {}) };
       if (pl.channelBlendingRestrictions?.length && !restricted) notes.push(`"${name}" restricts the channels it blends into, which this file's layer records did not let formvis read; it opened with all channels.`);
       const layer = adj ? newLayer(name, doc, { adjustment: adj, parentId, visible: !pl.hidden, opacity: pl.opacity ?? 1, blend, ...fill, ...advanced })
-        : newLayer(name, doc, { raster, parentId, transform: { ...docTransform(w, h), x: drawn ? 0 : atX, y: drawn ? 0 : atY }, visible: !pl.hidden, opacity: pl.opacity ?? 1, blend, ...fill, ...advanced, ...(fillSpec ? { fillContent: fillSpec } : {}) });
+        : newLayer(name, doc, { raster, parentId, ...(deep ? { channels: deep } : {}), transform: { ...docTransform(w, h), x: drawn ? 0 : atX, y: drawn ? 0 : atY }, visible: !pl.hidden, opacity: pl.opacity ?? 1, blend, ...fill, ...advanced, ...(fillSpec ? { fillContent: fillSpec } : {}) });
       const made = maskOf(pl.mask);
       if (made) layer.mask = made;
       const vm = pl.vectorMask, vf = pl.vectorFill, vs = pl.vectorStroke;
@@ -734,10 +762,18 @@ export async function readPsdFile(file: File, siblings: readonly File[] = []): P
           return null;
         };
         const path = fromPsdOutlines(vm.paths);
-        const fill = vs?.fillEnabled === false || vf?.type !== 'color' ? null : col(vf.color);
-        const sc = vs?.strokeEnabled && vs.content?.type === 'color' ? col(vs.content.color) : null;
-        const stroke = sc ? { color: sc, width: vs?.lineWidth?.value ?? 1 } : null;
-        if (path.subpaths.length && (fill || stroke)) layer.vector = { path, fill, stroke, origin: { x: pl.left ?? 0, y: pl.top ?? 0 } };
+        // A gradient on the fill or the stroke becomes the shape's own gradient, drawn across its bounds.
+        const gradOf = (c: VectorContent | undefined): ShapeGradient | null => {
+          const g = c?.type === 'solid' ? fromPsdFill(c, psd.patterns, name, []) : null;
+          if (!g || g.kind !== 'gradient') return null;
+          const stops = (g.reverse ? g.stops.map((s) => ({ ...s, at: 1 - s.at })) : g.stops).map((s) => ({ at: s.at, color: s.color, alpha: s.alpha }));
+          return { type: g.style === 'radial' ? 'radial' : g.style === 'angle' ? 'angle' : 'linear', angle: -g.angle, stops };
+        };
+        const fillGrad = vs?.fillEnabled === false ? null : gradOf(vf), strokeGrad = vs?.strokeEnabled ? gradOf(vs.content) : null;
+        const fill = vs?.fillEnabled === false ? null : vf?.type === 'color' ? col(vf.color) : fillGrad ? fillGrad.stops[0].color : null;
+        const sc = vs?.strokeEnabled && vs.content?.type === 'color' ? col(vs.content.color) : strokeGrad ? strokeGrad.stops[0].color : null;
+        const stroke = sc ? { color: sc, width: vs?.lineWidth?.value ?? 1, ...(strokeGrad ? { gradient: strokeGrad } : {}) } : null;
+        if (path.subpaths.length && (fill || stroke)) layer.vector = { path, fill, stroke, ...(fillGrad ? { gradient: fillGrad } : {}), origin: { x: pl.left ?? 0, y: pl.top ?? 0 } };
       } else if (vm?.paths?.length) {
         // A vector mask on a pixel layer (Layer > Vector Mask): kept as formvis's own, with its invert, link and disable flags.
         const vmask = vectorMaskOf(pl);
@@ -853,13 +889,23 @@ export async function readPsdFile(file: File, siblings: readonly File[] = []): P
     if (got.length) doc.slices = got;
   }
   // Guides and text notes (Import Notes): the file's guides in pixels, and each text note at its icon's corner.
-  const guideList = (psd.imageResources?.gridAndGuidesInformation?.guides ?? []).filter((g) => Number.isFinite(g.location) && g.location >= 0);
-  if (guideList.length) doc.guides = guideList.map((g) => ({ axis: g.direction === 'horizontal' ? 'y' as const : 'x' as const, at: Math.round(g.location * 2) / 2 }));
+  const allGuides = psd.imageResources?.gridAndGuidesInformation?.guides ?? [], guideAt = new Map<number, number>();
+  const guideList = allGuides.filter((g, i) => { const ok = Number.isFinite(g.location) && g.location >= 0; if (ok) guideAt.set(i, guideAt.size); return ok; });
+  if (guideList.length) {
+    const made: Guide[] = guideList.map((g) => ({ axis: g.direction === 'horizontal' ? 'y' as const : 'x' as const, at: Math.round(g.location * 2) / 2 }));
+    // An artboard's own guides: its artboard data lists their places in the file's guide list.
+    for (const [pl, lid] of psdIds) {
+      if (!pl.artboard?.guideIndices?.length || !layers.some((l) => l.id === lid && l.artboard)) continue;
+      for (const idx of pl.artboard.guideIndices) { const at = guideAt.get(Number(idx)); if (at !== undefined) made[at] = { ...made[at], board: lid }; }
+    }
+    doc.guides = made;
+  }
   const noteList = (psd.annotations ?? []).filter((a) => a.type === 'text' && typeof a.data === 'string' && a.data.trim());
   if (noteList.length) doc.notes = noteList.map((a) => ({ id: uid(), x: Math.max(0, Math.min(psd.width, a.iconLocation.left)), y: Math.max(0, Math.min(psd.height, a.iconLocation.top)), text: a.data as string }));
   if (psd.annotations && psd.annotations.length > noteList.length) notes.push('Sound notes in the PSD were left out.');
   if (!layers.length && psd.canvas) {
-    layers.push(newLayer('Background', doc, { raster: Raster.from(psd.canvas, psd.width, psd.height) }));
+    const flat = deepFlat && deepFlat.width === psd.width && deepFlat.height === psd.height ? deepFlat : null;
+    layers.push(newLayer('Background', doc, flat ? { raster: rasterFromDeep(flat, bits === 32), channels: flat } : { raster: Raster.from(psd.canvas, psd.width, psd.height) }));
     notes.push('This PSD has no layers; it opened as a single one.');
   }
   // The Paths panel: saved paths and the Work Path, which ag-psd leaves in the image resources.
@@ -939,9 +985,8 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
       maskOnto(l, out);
       return out;
     }
-    if (!l.raster) return null;
-    const px = placed(l.raster, l.transform);
-    if (!px) return null;
+    const px = l.raster ? placed(l.raster, l.transform) : null;
+    if (!px) return { name: l.name, opacity: l.opacity, hidden: !l.visible, blendMode: TO_PSD[l.blend] ?? 'normal', clipping: !!l.clipId, ...tag };
 
 
     const out: PsdLayer = { name: l.name, left: px.x, top: px.y, canvas: px.c, opacity: l.opacity, ...(l.fill !== undefined && l.fill !== 1 ? { fillOpacity: l.fill } : {}), ...(l.locks ? { protected: { transparency: !!(l.locks.all || l.locks.transparency), composite: !!(l.locks.all || l.locks.pixels), position: !!(l.locks.all || l.locks.position) } } : {}), hidden: !l.visible, blendMode: TO_PSD[l.blend] ?? 'normal', clipping: !!l.clipId, ...tag, ...toPsdBlending(l) };

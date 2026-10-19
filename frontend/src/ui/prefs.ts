@@ -21,7 +21,7 @@ import { DEFAULT_COLOUR, cleanColour, cleanPresets, type ColourPreset, type Colo
 export interface Prefs extends PagePrefs { language: Lang; profileMismatch: MismatchPref; colour: ColourSettings; colourPresets: ColourPreset[]; shortcuts: Record<string, string[]>; restoreSession: boolean; agentsAllowed: boolean; comfyuiUrl: string; nodemodeUrl: string; historyStates: number; historyMB: number; historyAuto: boolean; memoryLimitMB: number; effectCacheMB: number; backgroundReleaseSec: number; cacheLevels: number; regionRedraws: boolean; layerReuse: boolean; fullPreviews: boolean; recoverySeconds: number; autoShowHome: boolean; useGpu: boolean; gpuFilters: boolean; renderer: GpuRenderer; gpuMemoryMB: number; gpuPower: GpuPower; lowLatency: boolean; framePacingMs: number; cacheTilePx: number; workerThreads: number; engineDevice: EngineDevice;
   /* The sections (the owner's walkthrough): Tools, History & Cache, Workspace, Cursors, Transparency & Gamut,
      Units & Rulers, Guides & Grid; every one acts on something real. */
-  zoomWheel: boolean; autoFirstSnapshot: boolean; snapshotMB: number; narrowCollapse: boolean; rememberLayout: boolean;
+  zoomWheel: boolean; autoFirstSnapshot: boolean; snapshotMB: number; narrowCollapse: boolean; rememberLayout: boolean; largeTabs: boolean; narrowOptions: boolean;
   paintCursor: PaintCursor; cursorCrosshair: boolean; checkerSize: CheckerSize; checkerColors: CheckerColors; checkerTheme: boolean;
   rulerUnits: RulerUnits; guideColor: string; gridColor: string; gridSpacing: number; gridSubdivisions: number;
   /** Preferences > Guides, Grid & Slices: the unit Gridline Every is measured in; the grid is drawn in pixels through the document's resolution. */
@@ -94,10 +94,24 @@ export interface PagePrefs {
   printRes: number; screenRes: number; colWidth: number; gutter: number;
   showExtPanels: boolean;
   smartQuotes: boolean; escCommit: boolean; placeholderText: boolean;
-  pinchZoom: boolean; trackpadRotate: boolean; scrubAccel: number; touchGestures: boolean }
+  pinchZoom: boolean; trackpadRotate: boolean; scrubAccel: number; touchGestures: boolean;
+  /** Preferences > Tools: the brush drag sets hardness, vector points snap to whole pixels, the transform shows its values, the layer under the pointer is outlined, a quick pan coasts on. */
+  tipHardness: boolean; snapVectorPx: boolean; transformReadout: boolean; rolloverHighlight: boolean; flickPan: boolean;
+  /** Preferences > Interface: a single channel is shown in its own colour, and the line drawn round the picture on the canvas. */
+  channelsColour: boolean; canvasBorder: CanvasBorder; dynamicSliders: boolean;
+  /** Preferences > File Handling: ask before a TIFF export keeps layers. Preferences > Type: type sizes are shown in points or pixels. */
+  askLayeredTiff: boolean; typeUnits: TypeUnits;
+  /** Preferences > Interface: the themes marked as favourites (right-click a swatch); they come first in the picker and View > Next Favourite Theme steps through them. */
+  favouriteThemes: string[];
+  /** Preferences > General: Copy and Cut also put the picture on the system clipboard. */
+  exportClipboard: boolean }
+export type CanvasBorder = 'none' | 'line' | 'shadow';
+export const CANVAS_BORDERS: ReadonlyArray<readonly [CanvasBorder, string]> = [['none', 'None'], ['line', 'Line'], ['shadow', 'Drop Shadow']];
+export type TypeUnits = 'px' | 'pt';
 export const PAGE_DEFAULTS: PagePrefs = { scratchFolder: '', cursorOnlyCross: false, cursorOther: 'standard', brushPreviewColor: '#ff0000', checkerA: '#ffffff', checkerB: '#cccccc',
   printRes: 300, screenRes: 72, colWidth: 15, gutter: 4.2,
-  showExtPanels: true, smartQuotes: false, escCommit: false, placeholderText: false, pinchZoom: true, trackpadRotate: false, scrubAccel: 0, touchGestures: true };
+  showExtPanels: true, smartQuotes: false, escCommit: false, placeholderText: false, pinchZoom: true, trackpadRotate: false, scrubAccel: 0, touchGestures: true,
+  tipHardness: true, snapVectorPx: false, transformReadout: true, rolloverHighlight: true, flickPan: true, channelsColour: false, canvasBorder: 'line', dynamicSliders: true, askLayeredTiff: true, typeUnits: 'px', favouriteThemes: [], exportClipboard: true };
 const hex = (v: unknown, d: string, blank = false): string => (typeof v === 'string' && (blank ? /^(#[0-9a-f]{6})?$/i : /^#[0-9a-f]{6}$/i).test(v) ? v : d);
 const flag = (v: unknown, d: boolean): boolean => (typeof v === 'boolean' ? v : d);
 const pageOf = (r: Partial<Record<keyof PagePrefs, unknown>>): PagePrefs => {
@@ -108,6 +122,11 @@ const pageOf = (r: Partial<Record<keyof PagePrefs, unknown>>): PagePrefs => {
     checkerA: hex(r.checkerA, d.checkerA), checkerB: hex(r.checkerB, d.checkerB),
     printRes: Math.round(num(r.printRes, 1, 10000, d.printRes)), screenRes: Math.round(num(r.screenRes, 1, 10000, d.screenRes)), colWidth: num(r.colWidth, 1, 1000, d.colWidth), gutter: num(r.gutter, 0, 500, d.gutter),    showExtPanels: flag(r.showExtPanels, d.showExtPanels), smartQuotes: flag(r.smartQuotes, d.smartQuotes), escCommit: flag(r.escCommit, d.escCommit), placeholderText: flag(r.placeholderText, d.placeholderText),
     pinchZoom: flag(r.pinchZoom, d.pinchZoom), trackpadRotate: flag(r.trackpadRotate, d.trackpadRotate), scrubAccel: Math.round(num(r.scrubAccel, 0, 100, d.scrubAccel)), touchGestures: flag(r.touchGestures, d.touchGestures),
+    tipHardness: flag(r.tipHardness, d.tipHardness), snapVectorPx: flag(r.snapVectorPx, d.snapVectorPx), transformReadout: flag(r.transformReadout, d.transformReadout), rolloverHighlight: flag(r.rolloverHighlight, d.rolloverHighlight), flickPan: flag(r.flickPan, d.flickPan),
+    channelsColour: flag(r.channelsColour, d.channelsColour), dynamicSliders: flag(r.dynamicSliders, d.dynamicSliders), canvasBorder: r.canvasBorder === 'none' || r.canvasBorder === 'shadow' ? r.canvasBorder : 'line',
+    askLayeredTiff: flag(r.askLayeredTiff, d.askLayeredTiff), typeUnits: r.typeUnits === 'pt' ? 'pt' : 'px',
+    exportClipboard: flag(r.exportClipboard, d.exportClipboard),
+    favouriteThemes: Array.isArray(r.favouriteThemes) ? Array.from(new Set(r.favouriteThemes.filter((x): x is string => typeof x === 'string' && !!THEMES[x]))).slice(0, 30) : [],
   };
 };
 export type PressureCurve = 'linear' | 'soft' | 'firm' | 's';
@@ -164,7 +183,7 @@ export type EngineDevice = 'auto' | 'metal' | 'cuda' | 'dml' | 'cpu';
 export const ENGINE_CHOICES: ReadonlyArray<readonly [EngineDevice, string]> = [['auto', 'Automatic'], ['metal', 'Metal (Core ML)'], ['cuda', 'CUDA'], ['dml', 'DirectML (Windows GPU)'], ['cpu', 'CPU']];
 
 export const DEFAULT_PREFS: Prefs = { language: 'en', profileMismatch: 'convert', colour: DEFAULT_COLOUR, colourPresets: [], shortcuts: {}, restoreSession: true, agentsAllowed: false, comfyuiUrl: 'http://127.0.0.1:8188', nodemodeUrl: 'http://localhost:8000', historyStates: 100, historyMB: 256, historyAuto: true, memoryLimitMB: 0, effectCacheMB: 256, backgroundReleaseSec: 30, cacheLevels: 6, regionRedraws: true, layerReuse: true, fullPreviews: false, recoverySeconds: 20, autoShowHome: true, useGpu: true, gpuFilters: true, renderer: 'auto', gpuMemoryMB: 1024, gpuPower: 'high-performance', lowLatency: false, framePacingMs: 0, cacheTilePx: 2048, workerThreads: 0, engineDevice: 'auto',
-  zoomWheel: false, autoFirstSnapshot: true, snapshotMB: 768, narrowCollapse: true, rememberLayout: true, paintCursor: 'tip', cursorCrosshair: false,
+  zoomWheel: false, autoFirstSnapshot: true, snapshotMB: 768, narrowCollapse: true, rememberLayout: true, largeTabs: false, narrowOptions: false, paintCursor: 'tip', cursorCrosshair: false,
   checkerSize: 'medium', checkerColors: 'auto', checkerTheme: true, rulerUnits: 'px', guideColor: '', gridColor: '', gridSpacing: 100, gridSubdivisions: 4, gridUnit: 'px',
   homeOnLastClose: false, whatsNewAuto: true, whatsNewSeen: '', toolOptions: {}, dialogValues: {}, spellWords: [], measureDataPoints: [...DEFAULT_MEASURE_POINTS], fontPreview: 'medium', toolbar: null, pressureCurve: 'linear', uiFontSize: 'default', recentFontCount: 5, recentFonts: [], rawWb: 'as_shot', rawBits: 8, rawAutoTone: false, rawSmart: false, rawAsk: true, rawPpi: 0, rawWide: false, rawSharpen: 'none', rawSharpenAmount: 'standard', autoShowPanels: true, historyLog: false, placeTransform: true, placeFit: true, placeSmart: false, themeAuto: false, themeLight: 'light', themeDark: 'studio', animatedZoom: true, systemPicker: false, zoomResizes: false, beepWhenDone: false, interpolation: 'high', floatDocking: true, showTooltips: true, shiftToolSwitch: true, zoomClickCentre: false, lowerExtension: true, recentFileCount: 20, saveInBackground: true, gamutColor: '#808080', gamutOpacity: 100, guideStyle: 'solid', gridStyle: 'solid', gridOpacity: 100, noticeSeconds: 0, sliceColor: '', sliceNumbers: true, shortcutSets: {}, menuHidden: [], menuColors: {}, animations: true, usePressure: true, ...PAGE_DEFAULTS };
 export const RECOVERY_CHOICES: ReadonlyArray<readonly [string, string]> = [['10', '10 seconds'], ['20', '20 seconds'], ['60', '1 minute'], ['300', '5 minutes'], ['600', '10 minutes']];
@@ -267,6 +286,7 @@ export function loadPrefs(): Prefs {
       autoFirstSnapshot: typeof r.autoFirstSnapshot === 'boolean' ? r.autoFirstSnapshot : DEFAULT_PREFS.autoFirstSnapshot,
       snapshotMB: Math.round(num(r.snapshotMB, 64, 8192, DEFAULT_PREFS.snapshotMB)),
       narrowCollapse: typeof r.narrowCollapse === 'boolean' ? r.narrowCollapse : DEFAULT_PREFS.narrowCollapse,
+      largeTabs: r.largeTabs === true, narrowOptions: r.narrowOptions === true,
       rememberLayout: typeof r.rememberLayout === 'boolean' ? r.rememberLayout : DEFAULT_PREFS.rememberLayout,
       paintCursor: PAINT_CURSORS.some(([k]) => k === r.paintCursor) ? r.paintCursor as PaintCursor : DEFAULT_PREFS.paintCursor,
       cursorCrosshair: typeof r.cursorCrosshair === 'boolean' ? r.cursorCrosshair : DEFAULT_PREFS.cursorCrosshair,
@@ -457,6 +477,11 @@ export function applyPrefs(engine: Engine, p: Prefs): void {
   engine.cursorPrefs = { paint: p.paintCursor, crosshair: p.cursorCrosshair, onlyCross: p.cursorOnlyCross, previewColor: p.brushPreviewColor };
   setScratchFolder(p.scratchFolder);
   engine.zoomPrefs = { animate: p.animatedZoom, centreClick: p.zoomClickCentre };
+  const wasColour = engine.toolPrefs.channelsColour, wasUnits = engine.toolPrefs.typeUnits, wasDyn = engine.toolPrefs.dynamicSliders;
+  engine.toolPrefs = { tipHardness: p.tipHardness, snapPx: p.snapVectorPx, readout: p.transformReadout, rollover: p.rolloverHighlight, flick: p.flickPan, channelsColour: p.channelsColour, typeUnits: p.typeUnits, dynamicSliders: p.dynamicSliders };
+  if (wasDyn !== p.dynamicSliders) window.dispatchEvent(new Event('formvis:dynamic-sliders'));
+  if (wasColour !== p.channelsColour) window.dispatchEvent(new Event('formvis:channels-colour'));
+  if (wasUnits !== p.typeUnits) engine.emit('options', null);
   slicePrefs.color = p.sliceColor; slicePrefs.numbers = p.sliceNumbers;
   const gc = parseInt(p.gamutColor.slice(1), 16), go = p.gamutOpacity / 100;
   if (gamutWarning.r !== gc >> 16 || gamutWarning.g !== ((gc >> 8) & 255) || gamutWarning.b !== (gc & 255) || gamutWarning.opacity !== go) {

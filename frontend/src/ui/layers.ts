@@ -462,7 +462,7 @@ export class LayersPanel {
 
   private fillSmartRow(r: HTMLElement, f: { kind: string; enabled: boolean }): void {
     setClass(r, 'is-off', !f.enabled);
-    setText(q(r, '.cv-fx-name'), isWasmKind(f.kind) ? wasmPlugins.get(wasmIdOf(f.kind))?.manifest.name ?? wasmIdOf(f.kind) : f.kind === 'liquify' ? 'Liquify' : FILTER_LABELS[f.kind as FilterKind] ?? f.kind);
+    setText(q(r, '.cv-fx-name'), isWasmKind(f.kind) ? wasmPlugins.get(wasmIdOf(f.kind))?.manifest.name ?? wasmIdOf(f.kind) : f.kind === 'liquify' ? 'Liquify' : f.kind === 'wideangle' ? 'Adaptive Wide Angle' : FILTER_LABELS[f.kind as FilterKind] ?? f.kind);
   }
 
   private trashButton(): HTMLElement | null { return this.page.querySelector<HTMLElement>('.cv-panel-foot [data-cmd="delete-layer-ask"]'); }

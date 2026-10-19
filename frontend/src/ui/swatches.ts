@@ -92,6 +92,7 @@ export class SwatchesPanel {
     this.bindColor();
     this.bindFields();
     engine.on('colors', () => { this.pull(); this.paintColor(); });
+    window.addEventListener('formvis:dynamic-sliders', () => this.pull());
     this.pull();
   }
 
@@ -109,6 +110,12 @@ export class SwatchesPanel {
       const r = q<HTMLInputElement>(`[data-hsb="${i}"]`), n = q<HTMLInputElement>(`[data-hsbn="${i}"]`);
       if (r.value !== String(vals[i])) r.value = String(vals[i]);
       if (document.activeElement !== n && n.value !== String(vals[i])) n.value = String(vals[i]);
+      const dyn = this.engine.toolPrefs.dynamicSliders;
+      if (r.classList.contains('is-dynamic') !== dyn) r.classList.toggle('is-dynamic', dyn);
+      const [hh, ss, vv] = this.hsv, hs = (x: number, y: number, z: number): string => hex(fromHsv(x, y, z));
+      const track = !dyn ? '' : i === 0 ? `linear-gradient(to right, ${[0, 60, 120, 180, 240, 300, 359.99].map((x) => hs(x, Math.max(ss, 0.01), Math.max(vv, 0.01))).join(', ')})`
+        : i === 1 ? `linear-gradient(to right, ${hs(hh, 0, Math.max(vv, 0.01))}, ${hs(hh, 1, Math.max(vv, 0.01))})` : `linear-gradient(to right, ${hs(hh, ss, 0)}, ${hs(hh, ss, 1)})`;
+      if (r.style.getPropertyValue('--dyn-track') !== track) r.style.setProperty('--dyn-track', track);
     }
     const hx = q<HTMLInputElement>('[data-hex]');
     if (document.activeElement !== hx) hx.value = hex(c);
@@ -162,6 +169,14 @@ export class SwatchesPanel {
   reset(): void { this.list = DEFAULTS.map((c) => ({ c })); this.picked = -1; this.save(); this.renderGrid(); }
   /** Every swatch as '#rrggbb', in order. */
   all(): string[] { return this.list.map((e) => e.c); }
+  /** Names swatch `i` (the Preset Manager's Rename); an empty name clears it. */
+  rename(i: number, name: string): void {
+    const e = this.list[i];
+    if (!e) return;
+    const n = name.trim().slice(0, 60);
+    if (n) e.name = n; else delete e.name;
+    this.save(); this.renderGrid();
+  }
   /** Every swatch with its name and group, in order. */
   entries(): ReadonlyArray<Readonly<SwatchEntry>> { return this.list.map((e) => ({ ...e })); }
   /** Replaces the whole set with colours that bring their own names and groups (a loaded .aco or .ase). */

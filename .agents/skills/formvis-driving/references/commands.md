@@ -1,6 +1,6 @@
 # formvis commands
 
-Generated from the window's command catalogue (1572 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1577 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
@@ -14,10 +14,10 @@ Generated from the window's command catalogue (1572 commands) by `./formvis agen
 - Paint: 1
 - Paths: 12
 - Select: 44
-- Tool options: 445
+- Tool options: 449
 - Tools: 53
 - Type: 66
-- View: 100
+- View: 101
 - Window: 148
 
 ## Edit
@@ -157,7 +157,7 @@ Generated from the window's command catalogue (1572 commands) by `./formvis agen
 | `exit` | Exit |  | Quits formvis after asking Save, Don't Save or Cancel for each document with unsaved changes; in a browser it ends by saying the page can be closed. (asks first) |
 | `export-actions-atn` | Save Actions... |  | Saves the actions of one set, or all of them, as an .atn file; steps with no .atn form are left out and listed. |
 | `export-artboards` | Export Artboards to Files |  | Exports every artboard to its own file. (asks first) |
-| `export-artboards-files` | Artboards to Files... |  | Exports each artboard to its own file in a chosen type and quality; opens the dialog, or runs at once when given any of prefix, format, quality, icc or folder. (asks first) |
+| `export-artboards-files` | Artboards to Files... |  | Exports each artboard to its own file in a chosen type and quality; opens the dialog, or runs at once when given any of prefix, format, quality, icc, folder or names (the artboards to write, by name). (asks first) |
 | `export-artboards-pdf` | Artboards to PDF... |  | Exports every artboard as one page of a single PDF, in the Layers order, each page at its artboard size from the document resolution; takes name, jpeg, quality and icc. (asks first) |
 | `export-as` | Export As... | Alt+Shift+Mod+W | Opens Export As with format, size and quality. (asks first) |
 | `export-avif` | Export AVIF |  | Exports the flattened picture as AVIF. (asks first) |
@@ -1083,7 +1083,10 @@ Generated from the window's command catalogue (1572 commands) by `./formvis agen
 | `tool.options.eyedropper.sampleRing` | Eyedropper: Sample Ring |  | Sets Sample Ring for the Eyedropper tool. |
 | `tool.options.eyedropper.sampleSize` | Eyedropper: Sample Size |  | Sets Sample Size for the Eyedropper tool. |
 | `tool.options.frame.shape` | Frame: Shape |  | Sets Shape for the Frame tool. |
+| `tool.options.freeformPen.contrast` | Freeform Pen: Contrast |  | Sets Contrast for the Freeform Pen tool. |
 | `tool.options.freeformPen.curveFit` | Freeform Pen: Curve fit |  | Sets Curve fit for the Freeform Pen tool. |
+| `tool.options.freeformPen.magnetic` | Freeform Pen: Magnetic |  | Sets Magnetic for the Freeform Pen tool. |
+| `tool.options.freeformPen.width` | Freeform Pen: Width |  | Sets Width for the Freeform Pen tool. |
 | `tool.options.gradient.colors` | Gradient: Colors |  | Sets Colors for the Gradient tool. |
 | `tool.options.gradient.dither` | Gradient: Dither |  | Sets Dither for the Gradient tool. |
 | `tool.options.gradient.liveFillLayer` | Gradient: Live Fill Layer |  | Sets Live Fill Layer for the Gradient tool. |
@@ -1271,6 +1274,7 @@ Generated from the window's command catalogue (1572 commands) by `./formvis agen
 | `tool.options.shape.indent` | Shape: Indent |  | Sets Indent for the Shape tool. |
 | `tool.options.shape.miterLimit` | Shape: Miter limit |  | Sets Miter limit for the Shape tool. |
 | `tool.options.shape.mode` | Shape: Mode |  | Sets Mode for the Shape tool. |
+| `tool.options.shape.pathOperation` | Shape: Path operation |  | Sets Path operation for the Shape tool. |
 | `tool.options.shape.points` | Shape: Points |  | Sets Points for the Shape tool. |
 | `tool.options.shape.shape` | Shape: Shape |  | Sets Shape for the Shape tool. |
 | `tool.options.shape.sides` | Shape: Sides |  | Sets Sides for the Shape tool. |
@@ -1366,7 +1370,7 @@ Generated from the window's command catalogue (1572 commands) by `./formvis agen
 | `tool.select.eraser` | Eraser Tool |  | Makes the Eraser tool the active tool (key E). Drag to erase · Shift-click erases a line from the last point · [ ] size · Shift+[ ] hardness |
 | `tool.select.eyedropper` | Eyedropper Tool |  | Makes the Eyedropper tool the active tool (key I). Click or drag to sample the foreground colour from the visible image · Alt-click samples the background colour |
 | `tool.select.frame` | Frame Tool |  | Makes the Frame tool the active tool (key K). Drag to draw a frame · Shift for a square or circle · Alt to draw from the centre · Import an image with the frame selected to fill it |
-| `tool.select.freeformPen` | Freeform Pen Tool |  | Makes the Freeform Pen tool the active tool (key P). Drag to draw a path freehand · end near the start to close it · Alt-click for straight segments · Curve Fit sets how closely it follows |
+| `tool.select.freeformPen` | Freeform Pen Tool |  | Makes the Freeform Pen tool the active tool (key P). Drag to draw a path freehand · end near the start to close it · Alt-click for straight segments · Curve Fit sets how closely it follows · Magnetic hugs the edges within Width |
 | `tool.select.gradient` | Gradient Tool |  | Makes the Gradient tool the active tool (key G). Drag to draw a gradient · Drag either end to adjust it · Click the line to add a colour stop, drag stops and midpoints, Alt-click a stop to remove it, Ctrl-click to give it the foreground colour · On a Gradient Fill layer the same handles edit the layer · Shift snaps to 45 degrees · Enter applies · Escape cancels · Switching tools applies |
 | `tool.select.hand` | Hand Tool |  | Makes the Hand tool the active tool (key H). Drag to pan · Scroll pans · Cmd/Ctrl + scroll zooms · Hold Space to pan with any tool |
 | `tool.select.healingBrush` | Healing Brush Tool |  | Makes the Healing Brush tool the active tool (key J). Alt-click to set the source, then paint; on release the copied texture blends into its surroundings · Aligned keeps the offset between strokes · Shift+J cycles the healing tools · [ ] size |
@@ -1461,7 +1465,7 @@ Generated from the window's command catalogue (1572 commands) by `./formvis agen
 | `type-path-flip` | Flip Type on Path |  | Moves type set on a path to the other side of the path. (changes the picture) |
 | `type-path-release` | Release Type from Path |  | Releases type from its path: the same words become straight point text. (changes the picture) |
 | `type-range-character-style` | Apply Character Style to Range |  | Applies a saved character style (by name or id) to a character range of the selected type layers, or to the letters selected while typing, as per-range overrides. (changes the picture) |
-| `type-range-style` | Character Range Style |  | Sets size, colour, font family, weight, bold, italic, baseline shift, tracking, language, underline, strikethrough or caps on a character range of the selected type layers (the whole text when no range is given), or on the letters selected while typing; clear true takes the range back to the layer's own look. (changes the picture) |
+| `type-range-style` | Character Range Style |  | Sets size, colour, font family, weight, bold, italic, baseline shift, tracking, language, underline, strikethrough, caps, horizontal scale (scale_x) or vertical scale (scale_y) on a character range of the selected type layers (the whole text when no range is given), or on the letters selected while typing; clear true takes the range back to the layer's own look. (changes the picture) |
 | `type-small-caps` | Small Caps |  | Sets the active type layer, and new type, in small capitals, or back to as typed. (changes the picture) |
 | `type-strikethrough` | Strikethrough |  | Strikes through the active type layer and new type, or removes it. (changes the picture) |
 | `type-to-shape` | Convert to Shape |  | Turns the active type layer into a shape layer in the text colour and hides the type layer. (changes the picture) |
@@ -1504,6 +1508,7 @@ Generated from the window's command catalogue (1572 commands) by `./formvis agen
 | `lock-slices` | Lock Slices |  | Locks or unlocks the slices so the Slice and Slice Select tools cannot add, move, resize or delete them. |
 | `menus-in-window` | Menus in Window |  | Keeps the menus in the window instead of the macOS menu bar (desktop app on macOS). The choice is kept and applies at the next start. |
 | `new-guide` | New Guide... |  | Opens the New Guide dialog to place a guide at a position. (changes the picture) |
+| `next-favourite-theme` | Next Favourite Theme |  | Switches to the next theme marked as a favourite in Preferences > Interface (right-click a theme swatch to mark it). |
 | `no-tool` | No Tool |  | Switches to no tool at all, so a click or drag on the canvas does nothing. |
 | `os-full-screen` | Full Screen | F11 | Puts the whole window into the operating system full screen, or leaves it. |
 | `par-correction` | Pixel Aspect Ratio Correction |  | Shows or hides the pixel aspect correction, which stretches the canvas and the Navigator preview by the pixel shape; tools and the pointer keep working in document pixels. |

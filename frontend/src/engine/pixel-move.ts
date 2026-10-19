@@ -302,6 +302,24 @@ function carrySelection(p: Project, sel: SelectionMask, m: Mat): SelectionMask |
   return SelectionMask.fromAlpha(b.x, b.y, b.w, b.h, c.getImageData(0, 0, b.w, b.h).data);
 }
 
+/** The outline after a skew, distort, perspective or warp: the alpha of the floating layer's new raster where it now sits. */
+function carryWarped(p: Project, fl: Layer): SelectionMask | null {
+  const r = fl.raster;
+  if (!r || r.width <= 0 || r.height <= 0) return null;
+  const m = placement(fl.transform, r.width, r.height);
+  const pts = [applyMat(m, 0, 0), applyMat(m, r.width, 0), applyMat(m, 0, r.height), applyMat(m, r.width, r.height)];
+  const x0 = Math.min(...pts.map((q) => q.x)), y0 = Math.min(...pts.map((q) => q.y));
+  const b = intersectRect(integral({ x: x0, y: y0, w: Math.max(...pts.map((q) => q.x)) - x0, h: Math.max(...pts.map((q) => q.y)) - y0 }), { x: 0, y: 0, w: p.doc.width, h: p.doc.height });
+  if (!b || b.w <= 0 || b.h <= 0) return null;
+  const s = createSurface(b.w, b.h), c = ctxOf(s);
+  c.save();
+  setMat(c, mul(translation(-b.x, -b.y), m));
+  c.imageSmoothingEnabled = true;
+  c.drawImage(r.canvas as CanvasImageSource, 0, 0);
+  c.restore();
+  return SelectionMask.fromAlpha(b.x, b.y, b.w, b.h, c.getImageData(0, 0, b.w, b.h).data);
+}
+
 function removeLayer(p: Project, id: ID): void {
   p.setLayers(p.doc.layers.filter((l: Layer) => l.id !== id));
 }
@@ -318,7 +336,7 @@ export function commitSelectionTransform(host: MoveHost, fs: FloatingSelection):
   const fh = fs.floatRaster.height;
   const newT = fl.transform;
   const fm = placement(newT, fw, fh);
-  const carried = carrySelection(p, fs.selection, mul(fm, invert(placement(fs.original, fw, fh))));
+  const carried = fs.outline && fl.raster && fl.raster !== fs.floatRaster ? carryWarped(p, fl) : carrySelection(p, fs.selection, mul(fm, invert(placement(fs.original, fw, fh))));
   removeLayer(p, fs.floatingId);
   host.focus(p, fs.sourceId);
   if (fs.outline) {

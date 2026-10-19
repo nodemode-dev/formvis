@@ -31,8 +31,56 @@ export class CharacterStylesDialog extends Dialog {
       act('Rename', () => { const id = chosen(); if (id) { this.engine.renameCharacterStyle(id, this.name.value); this.name.value = ''; } }),
       act('Delete', () => { const id = chosen(); if (id) this.engine.deleteCharacterStyle(id); }),
     );
-    this.body.append(this.list, nameRow, row);
+    this.list.addEventListener('change', () => this.fill());
+    this.body.append(this.list, nameRow, row, this.optionsEditor(), this.diff);
     this.button('Done', 'primary', () => this.close());
+  }
+
+  private readonly diff = el('<div class="cv-cstyle-diff" aria-live="polite"></div>');
+  private readonly fields = new Map<string, HTMLInputElement | HTMLSelectElement>();
+
+  /** Style Options: one field per setting a style can carry. A blank field leaves the setting to the layer; a change is one
+   *  undo step and re-renders the layers linked to the style. Built once and filled in place. */
+  private optionsEditor(): HTMLElement {
+    const box = el('<div class="cv-cstyle-opts"></div>');
+    const add = (key: string, label: string, input: HTMLInputElement | HTMLSelectElement, read: () => unknown): void => {
+      const f = el(`<label class="cv-field"><span>${label}</span></label>`);
+      f.append(input);
+      input.addEventListener('change', () => { const id = this.list.value; if (id) void this.engine.updateCharacterStyle(id, { [key]: read() } as never).then(() => this.fill()); });
+      this.fields.set(key, input);
+      box.append(f);
+    };
+    const num = (key: string, label: string, lo: number, hi: number): void => {
+      const i = el<HTMLInputElement>(`<input class="cv-input" type="number" min="${lo}" max="${hi}" step="1" aria-label="${label}">`);
+      add(key, label, i, () => (i.value.trim() === '' || !Number.isFinite(Number(i.value)) ? null : Math.min(hi, Math.max(lo, Number(i.value)))));
+    };
+    const pick = (key: string, label: string, opts: Array<[string, string]>, read: (v: string) => unknown): void => {
+      const s = el<HTMLSelectElement>(`<select class="cv-select" aria-label="${label}">${opts.map(([v, n]) => `<option value="${v}">${n}</option>`).join('')}</select>`);
+      add(key, label, s, () => read(s.value));
+    };
+    const fam = el<HTMLInputElement>('<input class="cv-input" type="text" spellcheck="false" aria-label="Font family">');
+    add('family', 'Font', fam, () => fam.value.trim() || null);
+    num('size', 'Size', 1, 2000); num('tracking', 'Tracking', -1000, 10000); num('scaleX', 'H scale %', 10, 500); num('scaleY', 'V scale %', 10, 500); num('baselineShift', 'Baseline', -2000, 2000);
+    const tri = (v: string): unknown => (v === '' ? null : v === '1');
+    const triOpts: Array<[string, string]> = [['', 'From layer'], ['1', 'On'], ['0', 'Off']];
+    pick('bold', 'Bold', triOpts, tri); pick('italic', 'Italic', triOpts, tri);
+    pick('underline', 'Underline', triOpts, (v) => (v === '1' ? true : v === '0' ? false : null)); pick('strike', 'Strikethrough', triOpts, (v) => (v === '1' ? true : v === '0' ? false : null));
+    pick('caps', 'Caps', [['', 'From layer'], ['all', 'All Caps'], ['small', 'Small Caps']], (v) => v || null);
+    return box;
+  }
+
+  /** The option fields and the differing-settings line for the chosen style, written in place. */
+  private fill(): void {
+    const s = this.engine.characterStyles.find((x) => x.id === this.list.value) as unknown as Record<string, unknown> | undefined;
+    for (const [key, input] of this.fields) {
+      const v = s?.[key];
+      input.disabled = !s;
+      if (document.activeElement === input) continue;
+      input.value = v === undefined || v === null ? '' : typeof v === 'boolean' ? (v ? '1' : '0') : String(v);
+    }
+    const over = s ? this.engine.characterStyleOverrides(String(s.id)) : [];
+    const text = !s ? '' : over.length ? `The selected layer differs from this style in: ${over.join(', ')}.` : 'The selected layer matches this style.';
+    if (this.diff.textContent !== text) this.diff.textContent = text;
   }
 
   /** The list from the document, keeping the chosen style when it is still there. */
@@ -40,6 +88,8 @@ export class CharacterStylesDialog extends Dialog {
     const keep = select ?? this.list.value;
     this.list.replaceChildren(...this.engine.characterStyles.map((s) => new Option(s.name, s.id)));
     if (keep && this.engine.characterStyles.some((s) => s.id === keep)) this.list.value = keep;
+    else if (this.engine.characterStyles.length) this.list.value = this.engine.characterStyles[0].id;
+    this.fill();
   }
 
   show(): void {

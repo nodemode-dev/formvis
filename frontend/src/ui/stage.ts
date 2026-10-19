@@ -434,9 +434,18 @@ export class Stage {
       g.clearRect(vis.x, vis.y, vis.w, vis.h);
     } else {
       g.clearRect(0, 0, W, H);
-      g.lineWidth = 1;
-      g.strokeStyle = pal.edge;
-      g.strokeRect(Math.round(docRect.x) - 0.5, Math.round(docRect.y) - 0.5, Math.round(docRect.w) + 1, Math.round(docRect.h) + 1);
+      const border = Stage.controls.border;
+      if (border === 'shadow') {
+        g.save();
+        g.shadowColor = 'rgba(0, 0, 0, 0.55)'; g.shadowBlur = 16 * this.dpr; g.shadowOffsetY = 4 * this.dpr;
+        g.fillStyle = pal.edge;
+        g.fillRect(Math.round(docRect.x), Math.round(docRect.y), Math.round(docRect.w), Math.round(docRect.h));
+        g.restore();
+      } else if (border === 'line') {
+        g.lineWidth = 1;
+        g.strokeStyle = pal.edge;
+        g.strokeRect(Math.round(docRect.x) - 0.5, Math.round(docRect.y) - 0.5, Math.round(docRect.w) + 1, Math.round(docRect.h) + 1);
+      }
     }
     if (!vis) { if (gpuLayers) this.showGpu(false); return; }
     g.save();
@@ -595,7 +604,7 @@ export class Stage {
    *  the rulers' units, and the grid's and guides' colours ('' is the theme's). */
   static prefs: { cell: number; zoomWheel: boolean; rulerUnits: 'px' | 'in' | 'cm' | 'mm' | '%' | 'col'; gridColor: string; guideColor: string; gridStyle: LineStyle; guideStyle: LineStyle; gridOpacity: number } = { cell: 8, zoomWheel: false, rulerUnits: 'px', gridColor: '', guideColor: '', gridStyle: 'solid', guideStyle: 'solid', gridOpacity: 100 };
   /** Preferences > Cursors, Enhanced Controls and Units & Rulers: Other Cursors precise, trackpad pinch and rotate, touch gestures, and a column plus its gutter in millimeters. */
-  static controls = { preciseOther: false, pinch: true, rotate: false, touch: true, colMm: 19.2, colWidthMm: 15, penEraser: true };
+  static controls = { preciseOther: false, pinch: true, rotate: false, touch: true, colMm: 19.2, colWidthMm: 15, penEraser: true, border: 'line' as 'none' | 'line' | 'shadow' };
 
   /** A pen's eraser end: Pointer Events report it as button 5 or, while in contact, the buttons bit 32. */
   static isPenEraser(e: PointerEvent): boolean { return e.pointerType === 'pen' && (e.button === 5 || (e.buttons & 32) !== 0); }

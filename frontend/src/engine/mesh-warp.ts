@@ -94,16 +94,32 @@ function invSmooth(gw: number, gh: number, points: P2[], qx: number, qy: number,
   return false;
 }
 
-/** Bilinear sample of premultiplied RGBA at (x, y), pixel centres at half-integers; outside is transparent. */
+/** Catmull-Rom weights for the four taps around a fractional position t. */
+export function cubicWeights(t: number, w: Float32Array | number[]): void {
+  const t2 = t * t, t3 = t2 * t;
+  w[0] = -0.5 * t3 + t2 - 0.5 * t; w[1] = 1.5 * t3 - 2.5 * t2 + 1; w[2] = -1.5 * t3 + 2 * t2 + 0.5 * t; w[3] = 0.5 * t3 - 0.5 * t2;
+}
+
+const wxs = new Float32Array(4), wys = new Float32Array(4);
+
+/** Bicubic (Catmull-Rom) sample of premultiplied RGBA at (x, y), pixel centres at half-integers; outside is
+ *  transparent. Alpha is held to 0..1 and colour to alpha, so the overshoot never leaves the range. */
 function sample(p: Float32Array, w: number, h: number, x: number, y: number, o: Float32Array): void {
-  const x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0;
+  const x0 = Math.floor(x), y0 = Math.floor(y);
+  cubicWeights(x - x0, wxs); cubicWeights(y - y0, wys);
   o.fill(0);
-  for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) {
-    const X = x0 + i, Y = y0 + j;
-    if (X < 0 || Y < 0 || X >= w || Y >= h) continue;
-    const wgt = (i ? fx : 1 - fx) * (j ? fy : 1 - fy), k = (Y * w + X) * 4;
-    o[0] += p[k] * wgt; o[1] += p[k + 1] * wgt; o[2] += p[k + 2] * wgt; o[3] += p[k + 3] * wgt;
+  for (let j = 0; j < 4; j++) {
+    const Y = y0 - 1 + j;
+    if (Y < 0 || Y >= h) continue;
+    for (let i = 0; i < 4; i++) {
+      const X = x0 - 1 + i;
+      if (X < 0 || X >= w) continue;
+      const wgt = wxs[i] * wys[j], k = (Y * w + X) * 4;
+      o[0] += p[k] * wgt; o[1] += p[k + 1] * wgt; o[2] += p[k + 2] * wgt; o[3] += p[k + 3] * wgt;
+    }
   }
+  o[3] = Math.min(1, Math.max(0, o[3]));
+  for (let c = 0; c < 3; c++) o[c] = Math.min(o[3] * 255, Math.max(0, o[c]));
 }
 
 /** Warps `src` through a gw x gh control grid into a new outW x outH image. `points` are where the uniform source

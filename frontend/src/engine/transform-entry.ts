@@ -224,7 +224,7 @@ export function beginDistort(host: EntryHost, mode: DistortMode = 'distort', sha
     return d;
   }
   if (l.isGroup || l.adjustment || !l.raster || transformsMask(p, l)) return null;
-  host.settle();
+  host.settle(host.floatingId(p) === l.id);
   const cur = p.layer(l.id);
   if (!cur) return null;
   const d: DistortEditState = { project: p, layerId: cur.id, box: copyTransform(cur.transform), members: null, corners: cornersOf(cur.transform), mode, previews: new Map() };

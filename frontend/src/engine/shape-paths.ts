@@ -1,7 +1,17 @@
 import { cornerAt, type VectorPath } from './paths';
 import { customShapePath } from './custom-shapes';
 import type { Ctx2D } from './surface';
-import type { Pt, Rect, ShapeGradient } from './types';
+import { patternById } from './patterns';
+import type { Pt, Rect, ShapeGradient, ShapePattern } from './types';
+
+/** A library pattern as a canvas paint, tiled from the shape's bounds at `p.scale` times its size; null when the pattern is not known. */
+export function shapePattern(c: Ctx2D, p: ShapePattern, b: Rect): CanvasPattern | null {
+  const pat = patternById(p.id);
+  if (!pat) return null;
+  const out = c.createPattern(pat.surface as CanvasImageSource, 'repeat');
+  out?.setTransform(new DOMMatrix().translate(b.x, b.y).scale(Math.min(16, Math.max(0.05, p.scale))));
+  return out;
+}
 
 /** A shape's gradient fill as a canvas gradient over the shape's bounds `b`: linear runs corner to corner along its angle,
  *  radial reaches the bounds' corners from the centre, angle sweeps round the centre starting at its angle. */

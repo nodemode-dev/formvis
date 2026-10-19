@@ -1,6 +1,7 @@
 import { COLOR_RANGE_MODES, type ColorRangeMode, type Engine, type RGB, type SelectionMode } from '../../engine';
 import { Dialog } from '../dialogs';
-import { el } from '../dom';
+import { el, setText } from '../dom';
+import { faceReady, findFaces } from '../../io/local-gen';
 
 const BOX_W = 320, BOX_H = 200;
 
@@ -21,6 +22,8 @@ export class ColorRangeDialog extends Dialog {
   private readonly nearLimit = el<HTMLInputElement>('<input class="cv-input" type="number" min="0" max="255" step="1" value="255" disabled>');
   private readonly fuzz = el<HTMLInputElement>('<input class="cv-input" type="number" min="0" max="200" step="1" value="40">');
   private readonly invert = el<HTMLInputElement>('<input type="checkbox">');
+  private readonly detect = el<HTMLInputElement>('<input type="checkbox" disabled>');
+  private faces: Array<[number, number, number, number]> | null = null;
   private readonly note = el<HTMLParagraphElement>('<p class="cv-hint">Click the image to sample a color; Shift-click adds one, Alt-click takes one away.</p>');
   private readonly preview = el<HTMLCanvasElement>(`<canvas class="cv-jpeg-preview" width="${BOX_W}" height="${BOX_H}" aria-label="Selection preview"></canvas>`);
   private handler: ((e: PointerEvent) => void) | null = null;
@@ -44,9 +47,13 @@ export class ColorRangeDialog extends Dialog {
     const inv = el<HTMLLabelElement>('<label class="cv-check"></label>');
     inv.append(this.invert, document.createTextNode(' Invert'));
     this.field('', inv);
+    const det = el<HTMLLabelElement>('<label class="cv-check"></label>');
+    det.append(this.detect, document.createTextNode(' Detect Faces (Skin Tones)'));
+    this.field('', det);
+    this.detect.addEventListener('input', () => void this.findFaces());
     this.field('', this.note);
     this.field('', this.preview);
-    for (const c of [this.pick, this.fuzz, this.invert, this.farLimit, this.nearLimit]) c.addEventListener('input', () => { this.farLimit.disabled = this.nearLimit.disabled = this.pick.value !== 'depth' && this.pick.value !== 'luminosity'; this.refresh(); });
+    for (const c of [this.pick, this.fuzz, this.invert, this.farLimit, this.nearLimit]) c.addEventListener('input', () => { this.farLimit.disabled = this.nearLimit.disabled = this.pick.value !== 'depth' && this.pick.value !== 'luminosity'; this.detect.disabled = this.pick.value !== 'skin'; this.refresh(); });
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => { const o = this.options(); this.close(); this.engine.selectColorRange(o); });
     this.remember();
@@ -54,7 +61,7 @@ export class ColorRangeDialog extends Dialog {
 
   private options(): Parameters<Engine['colorRangeMask']>[0] {
     const mode = COLOR_RANGE_MODES.find(([id]) => id === this.pick.value)?.[0] ?? ('sampled' as ColorRangeMode), n = (f: HTMLInputElement): number => Math.min(255, Math.max(0, Number(f.value) || 0));
-    return { mode, plus: this.plus, minus: this.minus, localized: this.local.checked, spread: Math.min(100, Math.max(0, Number(this.spread.value) || 0)), at: this.at, fuzziness: Math.min(200, Math.max(0, Number(this.fuzz.value) || 0)), invert: this.invert.checked, combine: this.combine.value as SelectionMode, lo: n(this.farLimit), hi: n(this.nearLimit) };
+    return { mode, faces: this.detect.checked && this.faces ? this.faces : undefined, plus: this.plus, minus: this.minus, localized: this.local.checked, spread: Math.min(100, Math.max(0, Number(this.spread.value) || 0)), at: this.at, fuzziness: Math.min(200, Math.max(0, Number(this.fuzz.value) || 0)), invert: this.invert.checked, combine: this.combine.value as SelectionMode, lo: n(this.farLimit), hi: n(this.nearLimit) };
   }
 
   /** Test hook as much as a user path: sample a colour as a click would. */
@@ -63,6 +70,31 @@ export class ColorRangeDialog extends Dialog {
     else if (how === 'add') { this.plus.push(rgb); this.at.push(at); }
     else this.minus.push(rgb);
     if (this.pick.value !== 'sampled') this.pick.value = 'sampled';
+    this.refresh();
+  }
+
+  /** Detect Faces: the engine's face finder over the flattened picture, once per dialog; skin counts only on a face. */
+  private async findFaces(): Promise<void> {
+    if (!this.detect.checked) { this.refresh(); return; }
+    if (!this.faces) {
+      const flat = this.engine.flattened();
+      if (!flat) { this.detect.checked = false; return; }
+      setText(this.note, 'Finding faces...');
+      try {
+        if (!(await faceReady())) throw new Error('Detect Faces needs the face finder (YuNet, 232 KB, MIT): download it in Preferences > Plugins > Local models.');
+        const c = document.createElement('canvas');
+        c.width = flat.width; c.height = flat.height;
+        (c.getContext('2d') as CanvasRenderingContext2D).drawImage(flat as CanvasImageSource, 0, 0);
+        const blob = await new Promise<Blob>((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('no pixels'))), 'image/png'));
+        this.faces = (await findFaces(blob)).map((f) => [...f.box] as [number, number, number, number]);
+      } catch (err) {
+        this.detect.checked = false;
+        setText(this.note, err instanceof Error ? err.message : 'The faces could not be found.');
+        return;
+      }
+    }
+    setText(this.note, this.faces.length ? `${this.faces.length} face${this.faces.length > 1 ? 's' : ''} found; skin counts only on a face.` : 'No face found; Skin Tones selects as before.');
+    if (!this.faces.length) this.detect.checked = false;
     this.refresh();
   }
 
@@ -97,6 +129,8 @@ export class ColorRangeDialog extends Dialog {
   show(): void {
     if (!this.engine.current) return;
     this.combine.value = this.engine.selectionMode;
+    this.faces = null;
+    this.detect.checked = false;
     this.open();
     this.refresh();
     this.scrim.classList.add('cv-scrim-through');

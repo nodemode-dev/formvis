@@ -29,6 +29,7 @@ import { MergeChannelsDialog } from './ui/panels/merge-channels-dialog';
 import { GlobalLightDialog, ScaleEffectsDialog } from './ui/panels/style-dialogs';
 import { LiquifyDialog } from './ui/panels/liquify-dialog';
 import { runLiquifySmart } from './engine/liquify';
+import { runWideAngleSmart } from './engine/wide-angle';
 import { SelectMaskDialog } from './ui/panels/select-mask-dialog';
 import { ContentFillDialog } from './ui/panels/content-fill-dialog';
 import { GradientEditor, loadSavedGradients } from './ui/panels/gradient-editor';
@@ -469,6 +470,10 @@ export function startApp(): void {
     { id: 'os-full-screen', label: 'Full Screen', keys: ['F11'], checked: osFull, run: () => setOsFull(!osFull()) },
     { id: 'rail-columns', label: 'Tools in Two Columns', checked: railDouble, run: () => { store('formvis.railDouble', railDouble() ? '0' : '1'); applyRail(); } },
     { id: 'interface-rtl', label: 'Right-to-Left Layout', checked: rtl, run: () => { store('formvis.rtl', rtl() ? '0' : '1'); applyRtl(); } },
+    { id: 'next-favourite-theme', label: 'Next Favourite Theme', enabled: () => loadPrefs().favouriteThemes.length > 0, run: () => {
+      const fav = loadPrefs().favouriteThemes, at = fav.indexOf(readChoice().theme), next = fav[(at + 1) % fav.length];
+      if (next) { setTheme(next); toast(`Theme: ${THEMES[next]?.label ?? next}.`, 'info'); }
+    } },
     { id: 'interface-zoom-in', label: 'Interface Zoom In', keys: ['Alt+Mod+='], run: () => stepUiZoom(1) },
     { id: 'interface-zoom-out', label: 'Interface Zoom Out', keys: ['Alt+Mod+-'], run: () => stepUiZoom(-1) },
     { id: 'interface-zoom-reset', label: 'Reset Interface Zoom', keys: ['Alt+Mod+0'], enabled: () => uiZoom() !== 1, run: () => { store('formvis.uiZoom', '1'); applyUiZoom(); } },
@@ -533,7 +538,7 @@ export function startApp(): void {
   const historyLog = new HistoryLog(engine);
   const applyUiPrefs = (pr: Prefs): void => {
     Stage.prefs = { cell: CHECKER_CELL[pr.checkerSize], zoomWheel: pr.zoomWheel, rulerUnits: pr.rulerUnits, gridColor: pr.gridColor, guideColor: pr.guideColor, gridStyle: pr.gridStyle, guideStyle: pr.guideStyle, gridOpacity: pr.gridOpacity };
-    Object.assign(Stage.controls, { preciseOther: pr.cursorOther === 'precise', pinch: pr.pinchZoom, rotate: pr.trackpadRotate, touch: pr.touchGestures, colMm: pr.colWidth + pr.gutter, colWidthMm: pr.colWidth });
+    Object.assign(Stage.controls, { preciseOther: pr.cursorOther === 'precise', pinch: pr.pinchZoom, rotate: pr.trackpadRotate, touch: pr.touchGestures, colMm: pr.colWidth + pr.gutter, colWidthMm: pr.colWidth, border: pr.canvasBorder });
     applyChecker(pr);
     applyTooltips(pr.showTooltips);
     FloatViews.prefs = { zoomResize: pr.zoomResizes, docking: pr.floatDocking };
@@ -544,6 +549,8 @@ export function startApp(): void {
     setMenuStyle(pr.menuHidden, pr.menuColors);
     PropertiesColumn.narrowCollapse = pr.narrowCollapse;
     Dock.remember = pr.rememberLayout;
+    document.body.classList.toggle('large-tabs', pr.largeTabs);
+    document.body.classList.toggle('narrow-options', pr.narrowOptions);
     historyLog.enable(pr.historyLog);
     stage.restyle();
     window.dispatchEvent(new Event('resize'));
@@ -965,7 +972,7 @@ export function startApp(): void {
     engine.settle();
     const p = engine.current;
     if (!p) return;
-    const choice = keep === undefined ? await tiffOptions.choose(p.doc.layers.filter((l) => !l.isGroup).length) : keep ? 'layers' : 'flat';
+    const choice = keep === undefined ? (loadPrefs().askLayeredTiff ? await tiffOptions.choose(p.doc.layers.filter((l) => !l.isGroup).length) : 'layers') : keep ? 'layers' : 'flat';
     if (!choice) return;
     if (choice === 'flat') {
       if (caps) await exportImage('tiff', 0.9);
@@ -2639,11 +2646,12 @@ export function startApp(): void {
     icc: { type: 'boolean', description: 'Embed the ICC profile; true when left out.' },
     folder: { type: 'string', description: 'Desktop app: the folder made inside the exports folder.' },
     selected_only: { type: 'boolean', description: 'Only the selected layers (the active one when none is selected). Layers only.' },
+    names: { type: 'string', description: 'Only these artboards, their names separated by commas; every artboard when left out. Artboards only.' },
   };
   function layerExportRun(artboards: boolean, a?: Record<string, unknown>, comps = false): void {
     if (!a || !Object.keys(a).length) { dialogs.layerExport.show(artboards, comps); return; }
     const d = DEFAULT_LAYER_EXPORT, f = String(a.format ?? d.format) as LayerExportSettings['format'];
-    void exportLayerFiles({ artboards, comps, prefix: String(a.prefix ?? ''), format: ['png', 'jpg', 'tiff', 'webp', 'psd', 'bmp', 'tga'].includes(f) ? f : d.format, quality: Number(a.quality ?? d.quality), visibleOnly: a.visible_only === undefined ? d.visibleOnly : a.visible_only === true, trim: a.trim === true, icc: a.icc === undefined ? d.icc : a.icc === true, folder: String(a.folder ?? ''), ...(a.selected_only === true && !artboards && !comps ? { ids: (() => { const c = engine.current; const ids = c ? (c.selectedIds.size ? [...c.selectedIds] : c.activeId ? [c.activeId] : []) : []; return ids.length ? ids : ['none']; })() } : {}) });
+    void exportLayerFiles({ artboards, comps, prefix: String(a.prefix ?? ''), format: ['png', 'jpg', 'tiff', 'webp', 'psd', 'bmp', 'tga'].includes(f) ? f : d.format, quality: Number(a.quality ?? d.quality), visibleOnly: a.visible_only === undefined ? d.visibleOnly : a.visible_only === true, trim: a.trim === true, icc: a.icc === undefined ? d.icc : a.icc === true, folder: String(a.folder ?? ''), ...(a.selected_only === true && !artboards && !comps ? { ids: (() => { const c = engine.current; const ids = c ? (c.selectedIds.size ? [...c.selectedIds] : c.activeId ? [c.activeId] : []) : []; return ids.length ? ids : ['none']; })() } : {}), ...(artboards && typeof a.names === 'string' && a.names.trim() ? { ids: (() => { const want = a.names.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean), ids = engine.artboards().filter((b) => want.includes(b.name.toLowerCase())).map((b) => b.id); return ids.length ? ids : ['none']; })() } : {}) });
   }
 
   /** File > Export > OpenRaster (1.51.7): layers, groups, positions, opacity, visibility and blend modes, for any
@@ -5105,7 +5113,9 @@ export function startApp(): void {
         bold: { type: 'boolean', description: 'Bold over the range.' }, italic: { type: 'boolean', description: 'Italic over the range.' },
         baseline_shift: { type: 'number', min: -2000, max: 2000, description: 'Baseline shift in pixels over the range, up positive.' }, tracking: { type: 'integer', min: -1000, max: 10000, description: 'Tracking in thousandths of an em over the range.' },
         language: { type: 'string', description: 'Language tag of the range, such as ja or ar.' }, underline: { type: 'boolean', description: 'Underline over the range; false takes it off.' }, strike: { type: 'boolean', description: 'Strikethrough over the range; false takes it off.' },
-        caps: { type: 'string', description: 'all, small or normal over the range.' }, clear: { type: 'boolean', description: 'true clears every attribute the range sets, back to the layer\'s own.' },
+        caps: { type: 'string', description: 'all, small or normal over the range.' },
+        scale_x: { type: 'number', min: 10, max: 500, description: 'Horizontal scale in percent over the range; 100 takes it off.' }, scale_y: { type: 'number', min: 10, max: 500, description: 'Vertical scale in percent over the range; 100 takes it off.' },
+        clear: { type: 'boolean', description: 'true clears every attribute the range sets, back to the layer\'s own.' },
       },
       run: (a) => typeRange(runPatchFrom(a), a) },
     { id: 'type-range-character-style', label: 'Apply Character Style to Range', enabled: () => engine.liveText(engine.current?.activeLayer) || typing.editing,
@@ -5192,7 +5202,7 @@ export function startApp(): void {
   function writeClipboard(): void {
     const cb = engine.clipboard;
     if (cb) clipSource = { stamp: cb.stamp, icc: engine.current?.doc.profile?.icc ?? null, name: engine.current?.doc.profile?.name ?? 'sRGB IEC61966-2.1' };
-    if (!cb || typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) return;
+    if (!cb || !loadPrefs().exportClipboard || typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) return;
     try {
       const item = new ClipboardItem({ 'image/png': toBlob(cb.surface), 'text/plain': new Blob([`formvis:${cb.stamp}`], { type: 'text/plain' }) });
       void navigator.clipboard.write([item]).catch(() => undefined);
@@ -5637,6 +5647,7 @@ export function startApp(): void {
   wasmPlugins.watch(syncWasm);
   dialogs.smartFilters.editWasm = (id, settings, done) => wasmFilter.showFor(id, settings, done);
   dialogs.smartFilters.editLiquify = (settings, done) => dialogs.liquify.show({ settings, done });
+  dialogs.smartFilters.editWideAngle = (settings, done) => dialogs.wideAngle.show({ settings, done });
   void wasmPlugins.load();
 
   const filterName =(id: string): string => (id === 'filter-average' ? 'Average' : FILTER_LABELS[id.slice('filter-'.length) as FilterKind] ?? id);
@@ -5696,7 +5707,7 @@ export function startApp(): void {
     { label: 'Generate', items: ['generate-panel', '-', 'generate-image', 'new-canvas-model-preset', 'generative-fill', 'generative-expand', '-', 'boxes-tool', 'boxes-from-selection', 'boxes-copy', 'boxes-clear', '-', 'generate-remove', 'content-fill-workspace', 'content-fill', 'remove-wires', '-', 'remove-bg', 'remove-bg-lite', '-', 'upscale-2x', 'upscale-4x', 'compute-depth-map', { label: 'Depth Map', items: ['depth-map-from-layer', 'depth-map-recompute', 'depth-map-show', '-', 'depth-map-flatten', 'depth-map-nearer', 'depth-map-farther', 'depth-map-smooth', 'depth-map-snap', 'depth-map-detail'] }, 'new-relight-layer', '-', 'comfyui-run', 'send-comfyui', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode'])] },
     { label: 'View', items: [{ label: 'Proof Setup', items: ['proof-setup', '-', 'proof-preset-monitor', 'proof-preset-macrgb', 'proof-preset-internet', 'proof-preset-cmyk', 'proof-preset-cyan', 'proof-preset-magenta', 'proof-preset-yellow', 'proof-preset-black', 'proof-preset-cmy', '-', 'proof-preset-protanopia', 'proof-preset-deuteranopia'] }, 'proof-colors', 'gamut-warning', 'preview-32', '-', 'zoom-in', 'zoom-out', 'fit', 'fit-layers', 'fit-artboard', 'actual', 'print-size', 'flip-view-h', 'canvas-scrollbars', 'no-tool', '-', 'toggle-extras', 'toggle-rulers', 'toggle-grid', 'grid-settings', 'pixel-grid', 'pattern-preview', 'pixel-art-preview', 'par-correction', 'transform-controls', 'toggle-task-bar', '-',
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'guide-layout', 'guides-from-shape', 'guides-from-shape-centre', 'edit-selected-guides', 'clear-guides', 'clear-artboard-guides'] }, 'snap', { label: 'Snap To', items: ['snap-all', '-', 'snap-guides', 'snap-grid', 'snap-layers', 'snap-bounds', 'snap-slices', 'snap-selection'] }, { label: 'Show', items: ['show-all-extras', 'show-no-extras', '-', 'show-selection-edges', 'selection-display-tint', 'show-layer-edges', 'show-artboard-guides', 'show-target-path','show-smart-guides', 'show-comfy-dot', 'show-notes', 'show-counts', 'show-brush-preview', 'show-mesh', 'show-edit-pins', '-', 'show-extras-options', '-', 'toggle-show-slices', 'toggle-auto-slices', 'lock-slices', 'layer-based-slice', 'slices-from-guides', 'slice-options', 'divide-slice', 'delete-slice', 'clear-slices'] }, '-',
-      { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'os-full-screen', 'toggle-panels', 'rail-columns', 'interface-rtl', 'interface-zoom-in', 'interface-zoom-out', 'interface-zoom-reset', 'custom-title-bar', 'menus-in-window', { label: 'Pasteboard', items: ['pasteboard-default', 'pasteboard-black', 'pasteboard-dark', 'pasteboard-mid', 'pasteboard-light'] }] },
+      { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'os-full-screen', 'toggle-panels', 'rail-columns', 'interface-rtl', 'next-favourite-theme', 'interface-zoom-in', 'interface-zoom-out', 'interface-zoom-reset', 'custom-title-bar', 'menus-in-window', { label: 'Pasteboard', items: ['pasteboard-default', 'pasteboard-black', 'pasteboard-dark', 'pasteboard-mid', 'pasteboard-light'] }] },
     { label: 'Plugins', items: () => { const ids = [...pluginHost.commandIds(), ...folderPlugins.commandIds()]; return ['manage-plugins', 'reload-plugins', 'open-plugins-folder', ...(ids.length && loadPrefs().showExtPanels ? ['-', ...ids] : [])]; } },
     { label: 'Window', items: [{ label: 'Arrange', items: ['new-window', 'float-window', 'float-all-windows', 'arrange-cascade', '-', 'arrange-tabs','arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-3up-v', 'arrange-3up-h', 'arrange-4up', 'arrange-6up', 'arrange-tile-v', 'arrange-tile-h', 'arrange-tile', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.connect.open', 'agent.connect.copy-claude-code', 'agent.connect.copy-claude-desktop', 'terminal.toggle', 'terminal.new', 'script-console', 'brush-settings', { label: 'Brush Size', items: ['brush-size-up', 'brush-size-down', 'brush-harder', 'brush-softer'] }, { label: 'Brush Presets', items: ['save-brush-preset', 'rename-brush-preset', 'delete-brush-preset', 'move-brush-preset', 'rename-brush-group', '-', 'set-brush', 'get-brush'] }, 'paragraph-styles', 'character-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-channels', 'panel-color', 'panel-tools', 'panel-options', 'panel-properties-col', 'merge-columns', 'toggle-dock-panels', '-', 'panel-float', 'panel-dock', 'panel-activate', 'panel-group', 'panel-close-group', '-', { label: 'Workspace', items: ['workspace-pixelart', '-', 'new-workspace', 'delete-workspace'] }, 'reset-panels', '-', 'next-document', 'previous-document', 'notices', '-', { label: 'Theme', items: Object.keys(THEMES).map((tid) => `theme-${tid}`) }, 'theme-sync-system', 'next-appearance', 'interface-darken', 'interface-lighten', '-', 'reload-window', 'developer-tools'] },
     { label: 'Help', items: ['help', 'whats-new', '-', 'shortcuts', 'console-log', 'copy-error-log', 'copy-engine-log', 'benchmark', 'record-performance', 'frame-trace', 'copy-frame-trace', 'tile-grid', 'simulate-gpu-loss', '-', 'help-github', 'report-issue', '-', 'check-for-updates', 'system-info', 'about'] },
@@ -5772,10 +5783,11 @@ export function startApp(): void {
   root.addEventListener('cv:fill-options', (e) => dialogs.fillLayer.showEdit((e as CustomEvent<string>).detail));
   root.addEventListener('cv:relight-edit', (e) => { void relight.begin((e as CustomEvent<string>).detail); });
   watchLinked(engine, (names) => toast(`Updated from changed file${names.length > 1 ? 's' : ''}: ${names.join(', ')}.`));
-  engine.smartFilterMargin = (kind, settings) => kind === 'liquify' ? 0 : isWasmKind(kind) ? wasmPlugins.get(wasmIdOf(kind))?.manifest.reach ?? 0 : filterMargin(kind as FilterKind,{ ...defaultFilterSettings(), ...(settings as Partial<FilterPanelSettings>) });
+  engine.smartFilterMargin = (kind, settings) => kind === 'liquify' || kind === 'wideangle' ? 0 : isWasmKind(kind) ? wasmPlugins.get(wasmIdOf(kind))?.manifest.reach ?? 0 : filterMargin(kind as FilterKind,{ ...defaultFilterSettings(), ...(settings as Partial<FilterPanelSettings>) });
   void loadPatterns();
   engine.smartFilterRunnerAsync = (kind, settings, src) => {
     if (kind === 'liquify') return Promise.resolve(runLiquifySmart(settings, src));
+    if (kind === 'wideangle') return Promise.resolve(runWideAngleSmart(settings, src));
     if (isWasmKind(kind)) {
       const e = wasmPlugins.get(wasmIdOf(kind));
       if (!e) { toast(`The plug-in ${wasmIdOf(kind)} is not installed, so its smart filter is skipped.`, 'error'); return Promise.resolve(src); }
@@ -5784,7 +5796,7 @@ export function startApp(): void {
     const s ={ ...defaultFilterSettings(), ...(settings as Partial<FilterPanelSettings>) }, seed = typeof settings.seed === 'number' ? settings.seed : 0;
     return runFilterOffThread(kind as FilterKind, s, 1, seed, src) ?? Promise.resolve(runFilter(kind as FilterKind, s, seed, src, 1));
   };
-  engine.smartFilterRunner = (kind, settings, src) => kind === 'liquify' ? runLiquifySmart(settings, src) : isWasmKind(kind) ? src : runFilter(kind as FilterKind, { ...defaultFilterSettings(), ...(settings as Partial<FilterPanelSettings>) }, typeof settings.seed === 'number' ? settings.seed : 0, src, 1);
+  engine.smartFilterRunner = (kind, settings, src) => kind === 'liquify' ? runLiquifySmart(settings, src) : kind === 'wideangle' ? runWideAngleSmart(settings, src) : isWasmKind(kind) ? src : runFilter(kind as FilterKind, { ...defaultFilterSettings(), ...(settings as Partial<FilterPanelSettings>) }, typeof settings.seed === 'number' ? settings.seed : 0, src, 1);
   document.addEventListener('cv:type', (e) => {
     const d = (e as CustomEvent<{ layerId?: string; x?: number; y?: number; box?: { w: number; h: number } }>).detail;
     if (d?.layerId) typing.begin({ layerId: d.layerId });

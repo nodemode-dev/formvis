@@ -5,6 +5,7 @@ import { axesOf, featuresFromText, featuresToText, variationsFromText, variation
 import { el, setHidden, setText } from './dom';
 import { onLanguage, t } from './i18n';
 import { fontFamilies, previewFont } from './fonts';
+import { typedAttrs, typedStyle } from './text-editor';
 import { icon } from './icons';
 import { PanelGroup } from './panel-group';
 import { allBrushPresets, brushGroupOf, importedBrushPresets, type BrushPreset } from '../engine/brush-dynamics';
@@ -320,8 +321,12 @@ export class PropertiesColumn {
         setText(liveCell('kind'), 'Artboard');
         setText(liveCell('detail'), `${a.artboard.w} x ${a.artboard.h} px`);
       } else if (a?.vector) {
-        setText(liveCell('kind'), 'Shape layer');
-        setText(liveCell('detail'), 'Live vector path');
+        const v = a.vector, lv = v.live, st = v.stroke;
+        const fillText = v.pattern ? 'pattern fill' : v.gradient ? `${v.gradient.type} gradient fill` : v.fill ? `fill ${hex(v.fill)}` : 'no fill';
+        const strokeText = st ? `${Math.round(st.width * 10) / 10} px ${st.pattern ? 'pattern' : st.gradient ? 'gradient' : hex(st.color)} stroke, ${st.align ?? 'center'}` : 'no stroke';
+        const liveText = lv ? `${lv.kind === 'star' ? `star, ${lv.sides} points, inset ${Math.round(lv.inset)}%` : lv.kind === 'triangle' ? 'triangle' : `polygon, ${lv.sides} sides`}${lv.radius ? `, corner radius ${Math.round(lv.radius)} px` : ''}` : 'path';
+        setText(liveCell('kind'), lv ? 'Live shape layer' : 'Shape layer');
+        setText(liveCell('detail'), `${liveText}; ${fillText}; ${strokeText}`);
       }
       const cur = e.current, d = cur?.doc, dash = '-';
       setText(docCell('name'), cur?.name ?? dash);
@@ -604,8 +609,8 @@ export class PropertiesColumn {
     caps.addEventListener('change', () => setType(e, { caps: caps.value === 'all' || caps.value === 'small' ? caps.value : undefined }));
     const lines = el<HTMLSelectElement>('<select class="cv-select" aria-label="Lines"><option value="">None</option><option value="u">Underline</option><option value="s">Strikethrough</option><option value="us">Both</option></select>');
     lines.addEventListener('change', () => setType(e, { underline: lines.value.includes('u') || undefined, strike: lines.value.includes('s') || undefined }));
-    const hscale = numField('%', 'Horizontal scale', 10, 500, 1, (v) => setType(e, { scaleX: v === 100 ? undefined : v }));
-    const vscale = numField('%', 'Vertical scale', 10, 500, 1, (v) => setType(e, { scaleY: v === 100 ? undefined : v }));
+    const hscale = numField('%', 'Horizontal scale', 10, 500, 1, (v) => { if (typedStyle({ scaleX: v === 100 ? null : v })) { e.emit('options', null); return; } setType(e, { scaleX: v === 100 ? undefined : v }); });
+    const vscale = numField('%', 'Vertical scale', 10, 500, 1, (v) => { if (typedStyle({ scaleY: v === 100 ? null : v })) { e.emit('options', null); return; } setType(e, { scaleY: v === 100 ? undefined : v }); });
     const shift = numField('px', 'Baseline shift', -2000, 2000, 1, (v) => setType(e, { baselineShift: v || undefined }));
     const feats = el<HTMLInputElement>('<input class="cv-input" type="text" spellcheck="false" aria-label="OpenType features" placeholder="tnum, lnum, case, -kern">');
     feats.addEventListener('change', () => setType(e, { features: featuresFromText(feats.value) }));
@@ -641,7 +646,8 @@ export class PropertiesColumn {
       if (document.activeElement !== weight) weight.value = t.weight ? String(t.weight) : '';
       if (document.activeElement !== caps) caps.value = t.caps ?? '';
       if (document.activeElement !== lines) lines.value = `${t.underline ? 'u' : ''}${t.strike ? 's' : ''}`;
-      hscale.set(t.scaleX ?? 100); vscale.set(t.scaleY ?? 100); shift.set(t.baselineShift ?? 0); angle.set(t.angle ?? 0);
+      const ra = typedAttrs();
+      hscale.set(ra?.scaleX ?? t.scaleX ?? 100); vscale.set(ra?.scaleY ?? t.scaleY ?? 100); shift.set(t.baselineShift ?? 0); angle.set(t.angle ?? 0);
       if (document.activeElement !== lang) lang.value = TYPE_LANGUAGES.some(([id]) => id === (t.language ?? '')) ? (t.language ?? '') : '';
       if (document.activeElement !== feats) feats.value = featuresToText(t.features);
       if (document.activeElement !== axes) axes.value = variationsToText(t.variations);
