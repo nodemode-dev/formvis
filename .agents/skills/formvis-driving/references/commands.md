@@ -1,11 +1,11 @@
 # formvis commands
 
-Generated from the window's command catalogue (1055 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1059 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
-- Edit: 62
-- File: 75
+- Edit: 63
+- File: 78
 - Filter: 86
 - Generate: 2
 - Image: 88
@@ -25,6 +25,7 @@ Generated from the window's command catalogue (1055 commands) by `./formvis agen
 | --- | --- | --- | --- |
 | `auto-align-layers` | Auto-Align Layers... |  | Aligns the selected layers to the bottom-most one by matching their features. (changes the picture) |
 | `auto-blend-layers` | Auto-Blend Layers... |  | Adds layer masks that blend the selected layers into a panorama or a focus stack. (changes the picture) |
+| `clean-working-files` | Working Files |  | Deletes the stored recovery copies of documents that are no longer open and the closed tabs kept for Reopen Closed Tab, and says how much space came back. (changes the picture) |
 | `clear` | Clear Selection Pixels |  | Erases the pixels inside the selection. (changes the picture) |
 | `colour.settings` | Color Settings... | Shift+Mod+K | Opens Color Settings: working spaces, colour management policies and conversion options. |
 | `compare-documents` | Compare with... |  | Opens Compare with: picks another open document and makes a new document with both pictures and a Differences layer in Difference blend mode, selecting where they differ. |
@@ -136,11 +137,13 @@ Generated from the window's command catalogue (1055 commands) by `./formvis agen
 | `image-assets-on-save` | Image Assets on Save |  | Turns Image Assets on or off for this document; while on, File > Save also regenerates the image files for every layer named like hero.png and delivers them as a zip. (changes the picture) |
 | `image-processor` | Image Processor... |  | Saves chosen files or the open images as JPEG, PSD and TIFF at a maximum size, optionally after an action and with a copyright notice, each type in its own folder. |
 | `import` | Import Images... | Shift+Mod+O | Opens the file picker to place images as layers. (changes the picture) |
+| `import-notes` | Import Notes... |  | Opens the file picker to add the text notes of a PSD, or the paragraphs of a text file, to the document as notes. (changes the picture) |
 | `import-video` | Video Frames to Layers... |  | Opens the dialog that turns video frames into layers. (changes the picture) |
 | `load-files-stack` | Load Files into Stack... |  | Opens a dialog to load chosen image files as the layers of one new document, optionally as a smart object stack. (changes the picture) |
 | `merge-hdr` | Merge to HDR... |  | Opens Merge to HDR for bracketed exposures. (changes the picture) |
 | `new` | New Canvas... | Alt+Mod+N Mod+N | Opens the New Canvas dialog. |
 | `open` | Open Project... | Mod+O | Opens the library dialog to open a saved project. |
+| `open-as` | Open As... |  | Opens a dialog to read one file as a format you choose (PNG, JPEG, TIFF, Targa, DPX, Cineon, WBMP, DDS, OpenEXR, PSD and others), whatever its name or extension says; the format parameter preselects it. (changes the picture) |
 | `open-image-data` | Open Image Data |  | Opens base64 picture bytes with a file name as a new document. (changes the picture) |
 | `open-svg-layers` | Open SVG as Layers... |  | Opens an SVG file as a new document with one editable shape layer per drawable element; with the svg parameter it reads that SVG text instead of asking for a file. (changes the picture) |
 | `package` | Package... |  | Saves the document and the files of its linked smart objects together in one zip. (changes the picture) |
@@ -152,6 +155,7 @@ Generated from the window's command catalogue (1055 commands) by `./formvis agen
 | `print` | Print... | Mod+P | Opens the Print dialog: paper size, orientation, position, scaled print size and a preview, then prints the flattened document through the system print dialog. |
 | `print-one-copy` | Print One Copy | Alt+Shift+Mod+P | Prints the flattened document with the settings Print last used, skipping formvis's Print dialog; the system print dialog still opens to confirm the printer. |
 | `render-video` | Render Video... |  | Opens the Render Video dialog for the video timeline. (asks first) |
+| `reopen-closed-tab` | Reopen Closed Tab | Alt+Shift+Mod+T | Brings back the document closed last, with its layers, history-free state and unsaved changes as they were; the last five closed are kept until the window reloads. (changes the picture) |
 | `revert` | Revert |  | Throws away changes and reopens the last saved version. (changes the picture) (asks first) |
 | `save` | Save | Mod+S | Saves the document to the library, or asks for a name the first time. (asks first) |
 | `save-as` | Save As... | Shift+Mod+S | Saves the document under a new name in the library. (asks first) |
@@ -423,7 +427,7 @@ Generated from the window's command catalogue (1055 commands) by `./formvis agen
 | `flip-layer-v` | Flip Layer Vertical |  | Flips the layer top to bottom. (changes the picture) |
 | `forward` | Bring Forward | Mod+] | Moves the layer up one place. (changes the picture) |
 | `frame-from-layers` | Frame from Layers |  | Makes an image frame from the selected layers. (changes the picture) |
-| `frequency-separation` | Frequency Separation |  | Splits what is visible into a blurred Low Frequency layer for colour and tone and a High Frequency layer for fine detail, stacked so the picture looks unchanged. (changes the picture) |
+| `frequency-separation` | Frequency Separation... |  | Splits what is visible into a blurred Low Frequency layer for colour and tone and a High Frequency layer for fine detail, stacked so the picture looks unchanged. Takes a blur radius in pixels; the dialog opens when it is left out. (changes the picture) |
 | `global-light` | Global Light... |  | Opens the Global Light dialog. (changes the picture) |
 | `group` | Group Layers | Mod+G | Puts the selected layers into a new folder. (changes the picture) |
 | `group-from-layers` | Group from Layers... |  | Opens the New Group from Layers dialog. (changes the picture) |

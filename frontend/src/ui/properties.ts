@@ -194,7 +194,12 @@ export class PropertiesColumn {
       <button class="cv-props-section" type="button" aria-expanded="true">${icon('chevronDown', 12)}<span>Transform</span></button>
       <div class="cv-props-transform"><button class="cv-link-btn is-on" type="button" title="Keep the aspect" aria-pressed="true">${icon('link', 14)}</button><div class="cv-props-grid"></div></div>
       <p class="cv-props-none">Select a layer with pixels to see its placement.</p>
+      <button class="cv-props-section cv-props-doc-head" type="button" aria-expanded="true">${icon('chevronDown', 12)}<span>Document</span></button>
+      <dl class="cv-props-doc"><dt>Name</dt><dd data-doc="name"></dd><dt>Size</dt><dd data-doc="size"></dd><dt>Resolution</dt><dd data-doc="res"></dd><dt>Mode</dt><dd data-doc="mode"></dd><dt>Profile</dt><dd data-doc="profile"></dd><dt>Layers</dt><dd data-doc="layers"></dd></dl>
     </div>`);
+    const docHead = body.querySelector('.cv-props-doc-head') as HTMLButtonElement, docList = body.querySelector('.cv-props-doc') as HTMLElement;
+    docHead.addEventListener('click', () => { const open = docHead.getAttribute('aria-expanded') !== 'true'; docHead.setAttribute('aria-expanded', String(open)); setHidden(docList, !open); });
+    const docCell = (k: string): HTMLElement => docList.querySelector(`[data-doc="${k}"]`) as HTMLElement;
     const grid = body.querySelector('.cv-props-grid') as HTMLElement, link = body.querySelector('.cv-link-btn') as HTMLButtonElement;
     const tr = body.querySelector('.cv-props-transform') as HTMLElement, none = body.querySelector('.cv-props-none') as HTMLElement;
     const section = body.querySelector('.cv-props-section') as HTMLButtonElement;
@@ -235,6 +240,13 @@ export class PropertiesColumn {
       setHidden(section, false);
       setHidden(none, true);
       for (const k of ['w', 'x', 'h', 'y'] as const) f[k].set(l ? l.transform[k] : null);
+      const cur = e.current, d = cur?.doc, dash = '-';
+      setText(docCell('name'), cur?.name ?? dash);
+      setText(docCell('size'), d ? `${d.width} x ${d.height} px` : dash);
+      setText(docCell('res'), d ? `${Math.round(d.resolution * 100) / 100} ppi` : dash);
+      setText(docCell('mode'), d ? `${({ rgb: 'RGB', grayscale: 'Grayscale', bitmap: 'Bitmap', indexed: 'Indexed', cmyk: 'CMYK', lab: 'Lab', duotone: 'Duotone', multichannel: 'Multichannel' } as Record<string, string>)[d.mode ?? 'rgb']}, ${d.depth ?? 8} bit` : dash);
+      setText(docCell('profile'), d ? d.profile?.name ?? 'None' : dash);
+      setText(docCell('layers'), d ? String(d.layers.length) : dash);
     });
   }
 

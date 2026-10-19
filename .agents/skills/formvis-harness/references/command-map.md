@@ -1,13 +1,13 @@
 # Command map
 
-Generated from the window's command catalogue (1055 commands: 8 action, 727 command, 269 option, 51 tool) by `./formvis agents sync`; do not edit by hand.
+Generated from the window's command catalogue (1059 commands: 8 action, 731 command, 269 option, 51 tool) by `./formvis agents sync`; do not edit by hand.
 
 Every command is registered in `frontend/src/app.ts` (hand-written), `frontend/src/automation/catalogue.ts` (`tool.select.*`, `tool.options.*` and the seven actions) or by a plug-in; its words are in `frontend/src/automation/command-meta.ts`. A command with no words is reported missing and `./formvis counts --commands --check` fails.
 
 | Group | Commands | Harness sub-skill | First ids |
 | --- | --- | --- | --- |
-| Edit | 62 | `command-author` | `auto-align-layers`, `auto-blend-layers`, `clear`, `colour.settings` |
-| File | 75 | `io-formats` | `assemble-tiles`, `batch`, `clear-recent`, `close-all` |
+| Edit | 63 | `command-author` | `auto-align-layers`, `auto-blend-layers`, `clean-working-files`, `clear` |
+| File | 78 | `io-formats` | `assemble-tiles`, `batch`, `clear-recent`, `close-all` |
 | Filter | 86 | `filter-library` | `bump-map`, `filter-addNoise`, `filter-average`, `filter-blur` |
 | Generate | 2 | `command-author` | `generate-panel`, `generate-remove` |
 | Image | 88 | `engine-builder` | `adj-blackWhite`, `adj-brightnessContrast`, `adj-channelMixer`, `adj-clarity` |

@@ -4,6 +4,21 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.87.7 · 2026-10-19
+
+### Added
+
+- File > Open As (choose the format for a file with an odd name), File > Import > Notes (from a PSD or a text file), and WBMP, DDS, Cineon (16-bit) and .psdt files open; PSD guides and notes come in with the document.
+- File > Reopen Closed Tab (Shift+Mod+T in the desktop app, Alt+Shift+Mod+T in a browser); Edit > Purge > Working Files; Frequency Separation asks for its radius and is also in the Image menu; the Properties panel has a Document section; File Info has Custom Fields saved with the project.
+
+### Changed
+
+- Arrow-key nudges in quick succession are one history step.
+
+### Fixed
+
+- The Relight depth model works from the app: Local models (and Relight's own note) install the Relight runtime, the Python packages MoGe-2 needs, in an environment of its own, after the model's 141 MB download.
+
 ## 1.87.6 · 2026-10-19
 
 ### Added

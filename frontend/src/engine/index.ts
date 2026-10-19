@@ -102,7 +102,7 @@ import type { SampledTip } from './abr';
 import { DEFAULT_GLOBAL_LIGHT, scaledEffects, type GlobalLight } from './style-extras';
 export { CONTOURS, DEFAULT_GLOBAL_LIGHT, withGlobalLight, type ContourId, type GlobalLight } from './style-extras';
 import { mergeMeta, type DocMeta, type MetaPatch } from './doc-meta';
-export { COPYRIGHT_STATUSES, META_TEXT, cleanMeta, metaWritable, mergeMeta, parseKeywords, sameMeta, tabName, type CameraData, type CopyrightStatus, type DocMeta } from './doc-meta';
+export { COPYRIGHT_STATUSES, META_TEXT, cleanMeta, customLines, metaWritable, mergeMeta, parseCustom, parseKeywords, sameMeta, tabName, type CameraData, type CopyrightStatus, type DocMeta } from './doc-meta';
 import { UPRIGHT, allBrushPresets, defaultShape, noDynamics, noSymmetry, pressureOption, shapeActive, type BrushSymmetry, type BrushDynamics, type BrushPreset, type BrushShape, type PenPose } from './brush-dynamics';
 import { DEFAULT_PATH_SHAPE, boxedShapePath, linePath, type PathShapeKind, type PathShapeOptions } from './shape-paths';
 import { markupPath, type MarkupKind } from './markup';

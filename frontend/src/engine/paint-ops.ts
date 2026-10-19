@@ -323,6 +323,8 @@ export function nudge(host: PaintHost, dx: number, dy: number): void {
     const only = p.selectedIds.values().next().value;
     if (only !== undefined && host.keyMove(only, dx, dy, 'Nudge')) return;
   }
+  const burst = lastNudge;
+  const joins = !!burst && burst.project === p && burst.rev === p.history.revision && performance.now() - burst.at < NUDGE_BURST_MS;
   host.edit('Nudge', (proj) => {
     let moved = 0;
     for (const id of linked) {
@@ -338,7 +340,13 @@ export function nudge(host: PaintHost, dx: number, dy: number): void {
     }
     return moved > 0;
   });
+  // Presses in a quick run fold into one history step.
+  if (joins) p.history.foldLast();
+  lastNudge = { project: p, rev: p.history.revision, at: performance.now() };
 }
+
+const NUDGE_BURST_MS = 1000;
+let lastNudge: { project: Project; rev: number; at: number } | null = null;
 
 export function layerAt(host: PaintHost, pt: Pt): ID | null {
   const p = host.current;

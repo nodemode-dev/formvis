@@ -1,4 +1,4 @@
-import { COPYRIGHT_STATUSES, META_TEXT, type CameraData, type CopyrightStatus, type Engine } from '../../engine';
+import { COPYRIGHT_STATUSES, META_TEXT, customLines, type CameraData, type CopyrightStatus, type Engine } from '../../engine';
 import type { GenerationInfo } from '../../engine/types';
 import { Dialog } from '../dialogs';
 import { el, q, setText, setValue } from '../dom';
@@ -44,6 +44,7 @@ export class FileInfoDialog extends Dialog {
     descriptionWriter: input('Description Writer', META_TEXT.descriptionWriter), keywords: input('Keywords', 2000), notice: input('Copyright Notice', META_TEXT.notice), url: input('Copyright Info URL', META_TEXT.url),
   };
   private readonly description = el<HTMLElement>(`<label class="cv-field cv-meta-top"><span>Description</span><textarea class="cv-input cv-meta-desc" maxlength="${META_TEXT.description}" aria-label="Description"></textarea></label>`);
+  private readonly custom = el<HTMLElement>('<label class="cv-field cv-meta-top"><span>Custom Fields</span><textarea class="cv-input cv-meta-desc" spellcheck="false" aria-label="Custom Fields" placeholder="One per line, as  Job: 4411"></textarea></label>');
   private readonly generated = el<HTMLElement>('<label class="cv-field cv-meta-top"><span>Generation Settings</span><textarea class="cv-input cv-meta-desc cv-meta-generated" readonly aria-label="Generation Settings" placeholder="No picture in this document was generated on this computer."></textarea></label>');
   private readonly rating = selectRow('Rating', [['0', 'None'], ['1', '1 Star'], ['2', '2 Stars'], ['3', '3 Stars'], ['4', '4 Stars'], ['5', '5 Stars']], () => undefined);
   private readonly status = selectRow('Copyright Status', COPYRIGHT_STATUSES.map(([v, t]) => [v, t] as const), () => undefined);
@@ -68,7 +69,7 @@ export class FileInfoDialog extends Dialog {
     dates.append(this.created, this.modified);
     this.body.append(
       this.fields.title, this.fields.author, this.fields.authorTitle, this.description, this.rating.el, this.fields.descriptionWriter, this.fields.keywords,
-      head('Copyright'), this.status.el, this.fields.notice, this.fields.url, head('Generated Pictures'), this.generated, cameraHead, pairs, dates);
+      head('Copyright'), this.status.el, this.fields.notice, this.fields.url, head('Free-form Text'), this.custom, head('Generated Pictures'), this.generated, cameraHead, pairs, dates);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
   }
@@ -81,6 +82,7 @@ export class FileInfoDialog extends Dialog {
     set('title', m?.title ?? ''); set('author', m?.author ?? ''); set('authorTitle', m?.authorTitle ?? ''); set('descriptionWriter', m?.descriptionWriter ?? '');
     set('keywords', (m?.keywords ?? []).join(', ')); set('notice', m?.notice ?? ''); set('url', m?.url ?? '');
     q<HTMLTextAreaElement>(this.description, 'textarea').value = m?.description ?? '';
+    q<HTMLTextAreaElement>(this.custom, 'textarea').value = customLines(m?.custom);
     q<HTMLTextAreaElement>(this.generated, 'textarea').value = p.doc.layers.filter((l) => l.generation).map((l) => `${l.name}\n${generationText(l.generation as GenerationInfo)}`).join('\n\n');
     this.rating.set(String(m?.rating ?? 0));
     this.status.set(m?.copyright ?? 'unknown');
@@ -98,7 +100,7 @@ export class FileInfoDialog extends Dialog {
     const select = (row: HTMLElement): string => q<HTMLSelectElement>(row, 'select').value;
     const patch = {
       title: value('title'), author: value('author'), authorTitle: value('authorTitle'), descriptionWriter: value('descriptionWriter'), notice: value('notice'), url: value('url'),
-      description: q<HTMLTextAreaElement>(this.description, 'textarea').value, keywords: value('keywords'), rating: Number(select(this.rating.el)), copyright: select(this.status.el) as CopyrightStatus,
+      description: q<HTMLTextAreaElement>(this.description, 'textarea').value, keywords: value('keywords'), custom: q<HTMLTextAreaElement>(this.custom, 'textarea').value, rating: Number(select(this.rating.el)), copyright: select(this.status.el) as CopyrightStatus,
     };
     this.close();
     this.engine.setMeta(patch);

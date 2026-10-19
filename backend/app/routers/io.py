@@ -11,7 +11,7 @@ from fastapi import APIRouter, Body, File, Form, HTTPException, Request, UploadF
 from fastapi.responses import Response
 
 from app.core import config
-from app.services import camera_profiles, dpx, fits, imaging, pnm
+from app.services import camera_profiles, cin, dpx, fits, imaging, pnm
 
 router = APIRouter(tags=["io"])
 #: Every file type the app writes: pictures, projects, video, deep formats, archives, tables, presets and scripts.
@@ -63,6 +63,13 @@ def decode_deep(file: UploadFile = File(...)) -> Response:
             raise HTTPException(status_code=415, detail=str(exc)) from exc
         return Response(np.ascontiguousarray(px).astype("<u2").tobytes(), media_type="application/octet-stream",
                         headers={"X-Width": str(info["width"]), "X-Height": str(info["height"]), "X-Depth": "16", "X-Transfer": info["transfer"], "X-Bits": str(info["bits"])})
+    if cin.is_cineon(raw):
+        try:
+            px, info = cin.read(raw)
+        except cin.CinError as exc:
+            raise HTTPException(status_code=415, detail=str(exc)) from exc
+        return Response(np.ascontiguousarray(px).astype("<u2").tobytes(), media_type="application/octet-stream",
+                        headers={"X-Width": str(info["width"]), "X-Height": str(info["height"]), "X-Depth": "16"})
     if pnm.is_pnm(raw):
         try:
             px, bits = pnm.read(raw)

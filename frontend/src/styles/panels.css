@@ -293,6 +293,10 @@
 .cv-props-field .cv-num { flex: 1; min-width: 0; }
 .cv-props-field .cv-num input, .cv-char-row .cv-num input, .cv-brush-row .cv-num input { width: 100%; }
 .cv-props-none { margin: 6px 2px; color: var(--text-muted); font-size: 12px; }
+.cv-props-doc { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0 2px 8px; font-size: 12px; }
+.cv-props-doc[hidden] { display: none; }
+.cv-props-doc dt { color: var(--text-muted); }
+.cv-props-doc dd { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); text-align: right; }
 .cv-num input:disabled { color: var(--text-muted); }
 /* Brushes */
 .cv-brush-top { display: flex; gap: 10px; }

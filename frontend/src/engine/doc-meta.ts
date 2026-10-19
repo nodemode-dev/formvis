@@ -19,12 +19,36 @@ export interface DocMeta {
   notice?: string;
   url?: string;
   camera?: CameraData;
+  /** Free-form text fields the person names (a job number, a client, a shot id): key to text. */
+  custom?: Readonly<Record<string, string>>;
   created?: string;
   modified?: string;
 }
 
-/** The fields a change may name; keywords may be one typed line. */
-export type MetaPatch = Omit<Partial<DocMeta>, 'keywords'> & { keywords?: string | readonly string[] };
+/** The fields a change may name; keywords may be one typed line, custom fields lines of `key: value`. */
+export type MetaPatch = Omit<Partial<DocMeta>, 'keywords' | 'custom'> & { keywords?: string | readonly string[]; custom?: string | Readonly<Record<string, string>> };
+
+const MAX_CUSTOM = 50, MAX_CUSTOM_KEY = 64, MAX_CUSTOM_VALUE = 1000;
+
+/** Free-form fields from typed lines (`key: value`, one per line) or a record: keys trimmed, a repeated key (any case)
+ *  keeps its first, empty keys and values dropped. */
+export function parseCustom(input: string | Readonly<Record<string, unknown>>): Record<string, string> {
+  const pairs: Array<[string, string]> = typeof input === 'string'
+    ? input.split('\n').map((line) => { const i = line.indexOf(':'); return (i < 0 ? ['', ''] : [line.slice(0, i), line.slice(i + 1)]) as [string, string]; })
+    : Object.entries(input).map(([k, v]) => [k, String(v ?? '')] as [string, string]);
+  const seen = new Set<string>(), out: Record<string, string> = {};
+  for (const [rawKey, rawValue] of pairs) {
+    const k = rawKey.replace(/\s+/g, ' ').trim().slice(0, MAX_CUSTOM_KEY), v = rawValue.replace(/\u0000/g, '').trim().slice(0, MAX_CUSTOM_VALUE), id = k.toLowerCase();
+    if (!k || !v || seen.has(id)) continue;
+    seen.add(id);
+    out[k] = v;
+    if (seen.size >= MAX_CUSTOM) break;
+  }
+  return out;
+}
+
+/** The free-form fields as the typed lines the File Info dialog shows. */
+export const customLines = (c: Readonly<Record<string, string>> | undefined): string => Object.entries(c ?? {}).map(([k, v]) => `${k}: ${v}`).join('\n');
 
 export const COPYRIGHT_STATUSES: ReadonlyArray<readonly [CopyrightStatus, string]> = [['unknown', 'Unknown'], ['copyrighted', 'Copyrighted'], ['public', 'Public Domain']];
 
@@ -66,6 +90,7 @@ export function cleanMeta(v: unknown): DocMeta | null {
     for (const k of CAMERA_KEYS) { const s = str(cam[k], 100); if (s !== undefined) camera[k] = s.trim(); }
     if (Object.keys(camera).length) out.camera = camera;
   }
+  if (o.custom && typeof o.custom === 'object' && !Array.isArray(o.custom)) { const c = parseCustom(o.custom as Record<string, unknown>); if (Object.keys(c).length) out.custom = c; }
   const created = stamp(o.created), modified = stamp(o.modified);
   if (created) out.created = created;
   if (modified) out.modified = modified;
@@ -75,7 +100,7 @@ export function cleanMeta(v: unknown): DocMeta | null {
 /** True when `m` has anything worth writing into a file: a field the person fills in, or the camera's record. */
 export function metaWritable(m: DocMeta | null | undefined): m is DocMeta {
   if (!m) return false;
-  return !!(m.title || m.author || m.authorTitle || m.description || m.rating || m.descriptionWriter || m.keywords?.length || (m.copyright && m.copyright !== 'unknown') || m.notice || m.url || m.camera);
+  return !!(m.title || m.author || m.authorTitle || m.description || m.rating || m.descriptionWriter || m.keywords?.length || (m.copyright && m.copyright !== 'unknown') || m.notice || m.url || m.camera || (m.custom && Object.keys(m.custom).length));
 }
 
 const sameList = (a: readonly string[] | undefined, b: readonly string[] | undefined): boolean => (a?.length ?? 0) === (b?.length ?? 0) && (a ?? []).every((x, i) => x === (b as readonly string[])[i]);
@@ -85,7 +110,8 @@ export function sameMeta(a: DocMeta | null | undefined, b: DocMeta | null | unde
   const x = a ?? {}, y = b ?? {};
   return (x.title ?? '') === (y.title ?? '') && (x.author ?? '') === (y.author ?? '') && (x.authorTitle ?? '') === (y.authorTitle ?? '') && (x.description ?? '') === (y.description ?? '')
     && (x.rating ?? 0) === (y.rating ?? 0) && (x.descriptionWriter ?? '') === (y.descriptionWriter ?? '') && sameList(x.keywords, y.keywords)
-    && (x.copyright ?? 'unknown') === (y.copyright ?? 'unknown') && (x.notice ?? '') === (y.notice ?? '') && (x.url ?? '') === (y.url ?? '');
+    && (x.copyright ?? 'unknown') === (y.copyright ?? 'unknown') && (x.notice ?? '') === (y.notice ?? '') && (x.url ?? '') === (y.url ?? '')
+    && customLines(x.custom) === customLines(y.custom);
 }
 
 /** The record after `patch` (only the fields it names change; an empty string clears a text field) and a note of when it
@@ -100,6 +126,7 @@ export function mergeMeta(cur: DocMeta | undefined, patch: MetaPatch, now: strin
   if (patch.rating !== undefined) { const r = Math.min(5, Math.max(0, Math.round(Number(patch.rating)) || 0)); if (r) next.rating = r; else delete next.rating; }
   if (patch.keywords !== undefined) { const k = parseKeywords(patch.keywords); if (k.length) next.keywords = k; else delete next.keywords; }
   if (patch.copyright !== undefined) { if (patch.copyright === 'copyrighted' || patch.copyright === 'public') next.copyright = patch.copyright; else delete next.copyright; }
+  if (patch.custom !== undefined) { const c = parseCustom(patch.custom); if (Object.keys(c).length) next.custom = c; else delete next.custom; }
   const merged = next as DocMeta;
   if (sameMeta(cur, merged)) return cur;
   merged.created = cur?.created ?? now;

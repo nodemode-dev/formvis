@@ -2,6 +2,31 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The Relight runtime installs from the app; MoGe-2 runs through it · _v1.87.7 (app/localgen/relight_runtime.py, app/localgen/relight_scene.py, app/localgen/relight_split.py)
+
+CLOSE_GAPS D39, the owner's audit: the model file already downloaded from Local models (checked: a real 141 MB download reached ready), but nothing installed the Python packages MoGe-2 needs, and a frozen engine cannot take them.
+
+- `relight_runtime.py` (new): a virtual environment of its own at models/relight-runtime, as Krea 2 has (`install(report, cancelled)` from requirements_relight.txt or the pinned `PINNED` list plus numpy, pip output streamed for progress and cancel, then an import check of torch and moge; refused without git, which the moge package needs; ready at once when the engine's own Python already has the packages), `start()` (one job at a time), `status()`, `installed()`, `engine_has_moge()`, `infer()` (runs MoGe-2 in the runtime's Python and returns the arrays as npz). `relight_split.py`: `GET /api/relight/runtime` and `POST /api/relight/runtime/install` (202) after `_moge_ready`.
+- `relight_scene.py`: `moge_ready()` is `engine_has_moge() or installed()`; replaced:
+
+```python
+    try:
+        import importlib.util
+        return importlib.util.find_spec("moge") is not None and importlib.util.find_spec("torch") is not None
+    except Exception:
+        return False
+```
+
+  `_moge_raw(small)` runs in this process when it can, otherwise through the runtime; `_moge_scene` uses it. Moved out of `_moge_scene` into `_moge_raw`: `global _moge`, `import torch`, `from moge.model.v2 import MoGeModel`, `if _moge is None:` with `_moge = MoGeModel.from_pretrained(str(model_manager.model_file(MOGE_FILE))).eval()`, and `with torch.inference_mode():` with `out = _moge.infer(torch.from_numpy(small.astype(np.float32) / 255).permute(2, 0, 1), use_fp16=False)`; replaced `n = out["normal"].cpu().numpy().astype(np.float32)`, `z = out["depth"].cpu().numpy().astype(np.float32)` and `fx = float(out["intrinsics"].cpu().numpy()[0, 0])` (now plain arrays).
+- Checked on a scratch engine with pip replaced by a stub: install 202, a second POST answered the same job, cancel ended it, the next run reached done; `/runtime` ready and `/engines` moge true; a stub MoGe in the runtime gave the same normals, depth and focal as the in-process path. Not run: a real PyTorch install (1 to 2 GB) or the GitHub moge package; Marigold still needs the packages in the engine itself; each runtime call loads the model again.
+
+## WBMP, DDS and Cineon read · _v1.87.7 (app/services/wbmp.py, app/services/cin.py, app/services/imaging.py, app/routers/io.py)
+
+CLOSE_GAPS P15.
+
+- `wbmp.py` (`looks_like_wbmp`, `read`, `WbmpError`) and `cin.py` (10-bit left-justified, packed, 8, 12 and 16-bit, the density curve from `dpx.py`), new. `imaging.py` routes .wbmp in `_sniffed` and .cin in `decode_to_png`; DDS goes to Pillow. Replaced: `from app.services import camera_profiles, dcp, dpx, fits, ico, pnm, qoi, tga` and `except (qoi.QoiError, pnm.PnmError, tga.TgaError, ico.IcoError) as exc:` (both gained the new modules). `io.py` `decode_deep` reads Cineon at 16 bits (the import was `from app.services import camera_profiles, dpx, fits, imaging, pnm`).
+- Measured: WBMP 13 x 3 alternating 0 and 255; DXT5 DDS 8 x 8 (206,28,57); Cineon 4 x 2: R 685 to 255, G 95 to 0, B 400 to 90, `/decode-deep` 64 bytes at 16 bits.
+
 ## BMP, FITS and WBMP written; PNG level and JPEG subsampling · _v1.87.6 (app/services/fits.py, app/services/imaging.py, app/routers/io.py)
 
 CLOSE_GAPS P16. Only additions.

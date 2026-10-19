@@ -2,6 +2,31 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Install the Relight runtime from Local models and from Relight · _v1.87.7 (ui/panels/local-models.ts, io/local-gen.ts, ui/relight-session.ts)
+
+CLOSE_GAPS D39 (the engine side is in the backend log).
+
+- `local-models.ts`: `showDownload(..., after?)`; the MoGe-2 card says about 141 MB (was 'a small download'); `showMogeRuntime` shows Install the Relight runtime with its size note, Cancel and progress when the model is here and the runtime is not, rejoins a running job, and says when it is ready. Removed: `<p class="cv-note">The model is here, but the engine lacks its Python packages (torch and moge): install backend/requirements_relight.txt to use it.</p>`. `local-gen.ts` `installRelightRuntime`.
+- `relight-session.ts` `noteMoge`: the button stays, reading Install the Relight runtime when the model is here, else Download MoGe-2 (was `setHidden(btn, !!e.mogeModel);`); `getMoge` downloads the model, then asks for a second click before the large runtime install.
+- Measured in Chromium against a scratch engine with a stubbed pip: one POST to /relight/runtime/install, progress from "Making the runtime environment (2%)" to "Checking MoGe-2 imports (95%)", ending "The Relight runtime is ready: Relight uses MoGe-2."; the Local models download of the model itself was checked for real before (141 MB, ready). Relight's own button was type-checked only.
+
+## Reopen Closed Tab, clean working files, Frequency Separation dialog, nudges as one step, document properties, free-form metadata · _v1.87.7 (app.ts, engine/history.ts, engine/paint-ops.ts, engine/doc-meta.ts, engine/index.ts, ui/properties.ts, ui/panels/file-info-dialog.ts, ui/panels/frequency-dialog.ts, styles/panels.css, automation/command-meta.ts)
+
+CLOSE_GAPS P17 (SC-ED-0123, SC-ED-0137, SC-AI-0324, PC-UI-0952, PC-UI-0865 closed; PC-IO-0202 advanced).
+
+- `app.ts` `rememberClosed(p)` (the last 5 closed documents, serialised in memory, tiled giants skipped) called in `requestClose` before `engine.closeProject(id);`; commands `reopen-closed-tab` (Shift+Mod+T in the desktop app, Alt+Shift+Mod+T in a browser; the File menu was `'close-tab', 'close-all', 'close-others'] },`) and `clean-working-files` (Edit > Purge > Working Files: stale recovery copies and the closed-tab list). Frequency Separation opens `FrequencyDialog` (radius 0.5 to 100) and is also in the Image menu; replaced `{ id: 'frequency-separation', label: 'Frequency Separation', enabled: () => !!engine.current?.doc.layers.length, run: () => { engine.frequencySeparation(); } },`.
+- `history.ts` `foldLast()`; `paint-ops.ts` `nudge()` folds a press into the previous Nudge step within 1,000 ms when nothing else changed (`NUDGE_BURST_MS`, `lastNudge`; the `host.edit` call is wrapped, nothing removed). Layer nudges only.
+- `properties.ts`: a folding Document section (name, size, resolution, mode, profile, layers), built once and set in place (`.cv-props-doc`). `doc-meta.ts` `DocMeta.custom` with `parseCustom`, `customLines` and the clean, merge and compare helpers; File Info's Custom Fields ("key: value" lines) saved with the project; not yet written into exported files.
+- Measured in Chromium: a closed 50 x 50 document came back as current; Working Files reported 1 closed tab cleaned and reopen then had nothing; radius 4 by command and 12 from the dialog each added 2 layers; 5 quick nudges were 1 step (x 5), a press after 1.2 s a second (x 6), undo 5 then 0, redo twice 6; the Document section read 300 x 200 px, 72 ppi, RGB 8 bit, 3 layers; custom text "Job: 4411 / Client: Acme / bad line / job: dup" kept Job and Client.
+
+## Open As, Import Notes, WBMP, DDS, Cineon and .psdt, guides and notes from PSD · _v1.87.7 (io/psd.ts, io/images.ts, io/notes-import.ts, ui/panels/open-as.ts, app.ts, automation/command-meta.ts)
+
+CLOSE_GAPS P15 (PC-IO-0027, PC-IO-0016, PC-IO-0026, PC-IO-0034, PC-IO-0050, PC-IO-0054, PC-UI-0003, PC-IO-0100, PC-UI-0047, PC-IO-0112 closed; PC-IO-0057 found present; PC-IO-0046 partial).
+
+- `psd.ts`: `isPsdFile` takes .psdt (was `export const isPsdFile = (f: File): boolean => /\.ps[db]$/i.test(f.name) || f.type === 'image/vnd.adobe.photoshop';`); `readPsdFile` reads guides into `doc.guides` and text notes into `doc.notes` (sound notes skipped with a note). `images.ts`: `PROJECT_ACCEPT` gains .psdt (was `'.psd', '.psb', '.ora',`), `SERVER` gains cin, dds and wbmp after dpx, `IMAGE_ACCEPT` was `.hdr,.exr,.dpx,.qoi,.tga,`.
+- `open-as.ts` `OpenAsDialog`, `OPEN_AS_FORMATS`, `asFormat`; `notes-import.ts` `readNotesFile`, `addNotes` (one step). `app.ts`: commands `open-as` (optional format) and `import-notes`; the File menu was `'new', 'open', 'import', 'import-video',`; the three `f.name.replace(/\.ps[db]$/i, '')` in the PSD open branch and the two deep-open patterns (`/\.(png|tiff?|hdr|exr|dpx|pbm|pgm|ppm|pnm|pam|fits|fit|fts)$/i` and the TIFF one) take psdt and cin.
+- Measured in Chromium with decodes routed to a scratch engine: a 13 x 3 WBMP, an 8 x 8 DDS ((206,28,57) for (200,30,60)), a 4 x 2 Cineon at 16 bits, a 40 x 30 .psdt, guides [{x 10}, {y 12.5}], a note at (5,6) with its text; Open As wbmp opened a file named mystery.bin that plain import refused; Import Notes placed a PSD's note scaled to (25,20) and a text file's 3 paragraphs as 3 notes. Not done: scanner import (no API reachable), JPEG quality kept, deep EXR and Cryptomatte, PSD alpha and spot channels, cropping large PSD layers (would discard data).
+
 ## Export: BMP, FITS and WBMP, PNG compression, JPEG subsampling, Save for Web size, selection as mask · _v1.87.6 (io/export-presets.ts, io/api.ts, app.ts, ui/panels/save-for-web-dialog.ts, automation/command-meta.ts, tests/export-presets.test.ts)
 
 CLOSE_GAPS P16 (PC-IO-0079, PC-IO-0085, PC-IO-0134, PC-IO-0131, PC-IO-0076, SC-ED-0203 closed; PC-IO-0074 advanced, no interlaced PNG).

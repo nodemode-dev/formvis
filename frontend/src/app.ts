@@ -39,6 +39,7 @@ import { CALC_MODES, type CalcMode } from './engine/calculations';
 import { recovery, type RecoveryRecord } from './io/recovery';
 import { TrimDialog } from './ui/panels/trim-dialog';
 import { TrapDialog, trapPixels } from './ui/panels/trap-dialog';
+import { FrequencyDialog } from './ui/panels/frequency-dialog';
 import type { TrapUnit } from './ui/panels/trap-dialog';
 import { ColorRangeDialog } from './ui/panels/color-range-dialog';
 import { ArbitraryRotationDialog, DuplicateImageDialog } from './ui/panels/image-dialogs';
@@ -170,6 +171,8 @@ import { PluginHost } from './plugins/host';
 import { PluginsDialog } from './ui/panels/plugins-dialog';
 import { LargePictureDialog } from './ui/panels/large-picture';
 import { TiffPagesDialog } from './ui/panels/tiff-pages';
+import { OpenAsDialog } from './ui/panels/open-as';
+import { addNotes, readNotesFile } from './io/notes-import';
 import { CameraRawDialog, type RawChoice } from './ui/panels/camera-raw';
 import { ColourView, PROOF_KINDS } from './ui/colour';
 import { composeDeep, deepFromU16, deepToU16, deepToned, place, srgbToLinear } from './engine/deep';
@@ -717,11 +720,11 @@ export function startApp(): void {
             if (notes.length) toast(notes.join(' '), 'info');
           } else if (isPsdFile(f)) {
             const cmykPsd =await api.decodeCmykPsd(f, f.name).catch(() => null);
-            if (cmykPsd) { await openCmykPsd(f.name.replace(/\.ps[db]$/i, ''), cmykPsd); continue; }
+            if (cmykPsd) { await openCmykPsd(f.name.replace(/\.(ps[db]|psdt)$/i, ''), cmykPsd); continue; }
             const labPsd = await api.decodeLab(f, f.name).catch(() => null);   // 1.58.1
-            if (labPsd) { openLab(f.name.replace(/\.ps[db]$/i, ''), labPsd); continue; }
+            if (labPsd) { openLab(f.name.replace(/\.(ps[db]|psdt)$/i, ''), labPsd); continue; }
             const { doc, notes, activeId, paths } = await readPsdFile(f).catch(() => readPsdFlat(f, (b) => api.decode(b, b.name)));   // a damaged file opens flat
-            const opened = engine.addProject(doc, f.name.replace(/\.ps[db]$/i, ''), activeId);
+            const opened = engine.addProject(doc, f.name.replace(/\.(ps[db]|psdt)$/i, ''), activeId);
             if (paths) engine.setPathsOf(opened, paths);
             if (notes.length) toast(notes.join(' '), 'info');
           } else {
@@ -827,9 +830,9 @@ export function startApp(): void {
             continue;
           }
           // A 16-bit PNG or TIFF opens as a 16-bit document (1.53.6, H1).
-          if (/\.(png|tiff?|hdr|exr|dpx|pbm|pgm|ppm|pnm|pam|fits|fit|fts)$/i.test(f.name) && !engine.current && decoded.length === 0) {
+          if (/\.(png|tiff?|hdr|exr|dpx|cin|pbm|pgm|ppm|pnm|pam|fits|fit|fts)$/i.test(f.name) && !engine.current && decoded.length === 0) {
             const head = new Uint8Array(await f.slice(0, 26).arrayBuffer()), png16 = head[0] === 0x89 && head[24] === 16;
-            if (png16 || /\.(tiff?|hdr|exr|dpx|pbm|pgm|ppm|pnm|pam|fits|fit|fts)$/i.test(f.name)) {
+            if (png16 || /\.(tiff?|hdr|exr|dpx|cin|pbm|pgm|ppm|pnm|pam|fits|fit|fts)$/i.test(f.name)) {
               try {
                 // A multi-part OpenEXR opens one layer per part, named after it (DEV_PLAN 36.15).
                 if (/\.exr$/i.test(f.name)) {
@@ -1976,6 +1979,7 @@ export function startApp(): void {
     copyright_status: { type: 'string', enum: ['unknown', 'copyrighted', 'public_domain'], description: 'Copyright Status; copyrighted puts the copyright symbol before the title in the document tab.' },
     copyright_notice: { type: 'string', description: 'Copyright Notice. A single space clears the field.' },
     copyright_url: { type: 'string', description: 'Copyright Info URL. A single space clears the field.' },
+    custom: { type: 'string', description: 'Free-form text fields, one per line as "key: value"; replaces the list. A single space clears it.' },
   };
   function fileInfoRun(a?: Record<string, unknown>): unknown {
     if (!a || !Object.keys(a).length) { dialogs.fileInfo.show(); return undefined; }
@@ -1983,7 +1987,7 @@ export function startApp(): void {
     const status = text('copyright_status');
     const changed = engine.setMeta({
       title: text('title'), author: text('author'), authorTitle: text('author_title'), description: text('description'), descriptionWriter: text('description_writer'),
-      keywords: text('keywords'), notice: text('copyright_notice'), url: text('copyright_url'), rating: a.rating === undefined ? undefined : Number(a.rating),
+      keywords: text('keywords'), custom: text('custom'), notice: text('copyright_notice'), url: text('copyright_url'), rating: a.rating === undefined ? undefined : Number(a.rating),
       copyright: status === undefined ? undefined : status === 'public_domain' ? 'public' : status === 'copyrighted' ? 'copyrighted' : 'unknown',
     });
     const m = engine.current?.doc.meta;
@@ -2214,8 +2218,20 @@ export function startApp(): void {
         if (!(await save(false))) return false;
       }
     }
+    await rememberClosed(p);
     engine.closeProject(id);
     return !engine.projects.includes(p);
+  }
+
+  /** The last few documents closed, kept whole in memory so File > Reopen Closed Tab brings one back as it was. */
+  const closedTabs: RecoveryRecord[] = [];
+  async function rememberClosed(p: ReturnType<typeof engine.addProject>): Promise<void> {
+    if (p.doc.layers.some((l) => l.tiled)) return;
+    try {
+      const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p));
+      closedTabs.push({ id: p.id, name: p.name, savedAt: Date.now(), manifest, files, modified: p.modified, libraryName: p.libraryName });
+      while (closedTabs.length > 5) closedTabs.shift();
+    } catch { /* the tab just cannot be reopened */ }
   }
 
   /** File > Close All and Close Others (1.65.8): every document, or every one but `keep`, closed in
@@ -2271,6 +2287,24 @@ export function startApp(): void {
     document.body.appendChild(i);
     i.click();
   });
+  /** One PSD or text file whose notes are wanted, through a fresh input; null when cancelled. */
+  const pickNotesFile = (): Promise<File | null> => new Promise((resolve) => {
+    const i = el<HTMLInputElement>('<input type="file" accept=".psd,.psb,.psdt,.txt,text/plain" data-role="import-notes-file" hidden>');
+    const done = (f: File | null): void => { resolve(f); i.remove(); };
+    i.addEventListener('change', () => done(i.files?.[0] ?? null), { once: true });
+    i.addEventListener('cancel', () => done(null), { once: true });
+    document.body.appendChild(i);
+    i.click();
+  });
+  /** File > Import > Notes: the text notes of a PSD, or the paragraphs of a text file, added to the document as notes. */
+  const importNotes = async (): Promise<void> => {
+    const f = await pickNotesFile(), p = engine.current;
+    if (!f || !p) return;
+    try {
+      const got = await readNotesFile(f, p.doc.width, p.doc.height), n = addNotes(engine, got.notes);
+      toast(n ? `${n} note${n === 1 ? '' : 's'} imported from ${f.name}.${got.skipped ? ' Sound notes were left out.' : ''}` : `${f.name} holds no text notes.`, 'info');
+    } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
+  };
   /** One .svg file through a fresh input; null when cancelled. */
   const pickSvg = (): Promise<File | null> => new Promise((resolve) => {
     const i = el<HTMLInputElement>('<input type="file" accept=".svg,image/svg+xml" data-role="svg-layers-file" hidden>');
@@ -2358,6 +2392,7 @@ export function startApp(): void {
     presetManager: new PresetManagerDialog(engine, swatches, deliver, savePatterns),
     trim: new TrimDialog(engine),
     trap: new TrapDialog(engine),
+    frequency: new FrequencyDialog(engine),
     colorRange: new ColorRangeDialog(engine),
     actions: new ActionsDialog(actions, { play: (x) => playAction(x), save: (b, n) => deliver(b, n) }),
     batch: new BatchDialog(actions, (x, f, fmt, q) => runBatch(x, f, fmt, q)),
@@ -2523,6 +2558,7 @@ export function startApp(): void {
   const pluginsDialog = new PluginsDialog(pluginHost, (title, text, ok) => confirmAction(title, text, ok));
   const largePicture = new LargePictureDialog(engine);
   const tiffPages = new TiffPagesDialog(engine);
+  const openAs = new OpenAsDialog((f) => importFiles([f]));
   const colourView = new ColourView(engine);   // colour management (1.53.5)
   const hdrToning = new HdrToningDialog();   // 1.53.9
   const focusAreaDialog = new FocusAreaDialog(engine);   // 1.57.6
@@ -2613,6 +2649,8 @@ export function startApp(): void {
     ...Array.from({ length: 10 }, (_, i) => ({ id: `recent-${i}`, label: () => (isDiskPath(recent[i] ?? '') ? baseName(recent[i]) : recent[i] ?? ''), enabled: () => i < recent.length, run: () => { const n = recent[i]; if (n) void openLibrary(n); } })),
     { id: 'clear-recent', label: 'Clear Recent', enabled: () => recent.length > 0, run: () => keepRecent([]) },
     { id: 'import', label: 'Import Images...', keys: ['Shift+Mod+O'], run: () => imageInput.click() },
+    { id: 'import-notes', label: 'Import Notes...', enabled: has, run: () => { void importNotes(); } },
+    { id: 'open-as', label: 'Open As...', params: { format: { type: 'string', description: 'The format to read the file as, by extension (png, jpg, tif, tga, dpx, cin, wbmp, dds, exr, psd); leave out to choose in the dialog.' } }, run: (a) => openAs.show(typeof a?.format === 'string' ? a.format.toLowerCase() : undefined) },
     { id: 'import-video', label: 'Video Frames to Layers...', run: () => videoDialog.show() },   // 1.58.9, L1
     { id: 'video-layer-from-file', label: 'New Video Layer from File...', enabled: () => !!engine.current, run: () => { void import('./ui/panels/video-layer-file').then((m) => m.videoLayerFromFile(engine, toast)); } },   // 33.4a
     { id: 'video-layer-blank', label: 'New Blank Video Layer', enabled: () => !!engine.current, run: () => { if (engine.newBlankVideoLayer()) toast('Blank video layer added.'); } },
@@ -2895,6 +2933,15 @@ export function startApp(): void {
     { id: 'close-tab', label: 'Close Tab', keys: '__TAURI_INTERNALS__' in window ? ['Mod+W'] : ['Alt+Mod+W'], enabled: has, run: () => { const p = engine.current; if (p && !engine.closeSpareView(p.id)) void requestClose(p.id); } },
     { id: 'close-all', label: 'Close All', keys: '__TAURI_INTERNALS__' in window ? ['Alt+Mod+W'] : [], enabled: has, run: () => void closeMany(null) },
     { id: 'close-others', label: 'Close Others', keys: ['Alt+Mod+P'], enabled: () => engine.projects.length > 1, run: () => { const p = engine.current; if (p) void closeMany(p.id); } },
+    {
+      id: 'reopen-closed-tab', label: 'Reopen Closed Tab', keys: ['__TAURI_INTERNALS__' in window ? 'Shift+Mod+T' : 'Alt+Shift+Mod+T'], enabled: () => closedTabs.length > 0,
+      run: async () => {
+        const r = closedTabs.pop();
+        if (!r) return;
+        const p = await reopen(r, r.name);
+        if (p) engine.switchTo(p.id); else closedTabs.push(r);
+      },
+    },
     { id: 'undo', label: () => { const h = engine.current?.history; return h?.canUndo ? `Undo ${h.undoName}` : 'Undo'; }, keys: ['Mod+Z'], enabled: () => !!engine.current?.history.canUndo, run: () => engine.undo() },
     { id: 'redo', label: () => { const h = engine.current?.history; return h?.canRedo ? `Redo ${h.redoName}` : 'Redo'; }, keys: ['Shift+Mod+Z', 'Mod+Y'], enabled: () => !!engine.current?.history.canRedo, run: () => engine.redo() },
     { id: 'compare-documents', label: 'Compare with...', enabled: () => !!engine.current && engine.projects.length > 1, run: () => dialogs.compare.show() },
@@ -3132,7 +3179,11 @@ export function startApp(): void {
     ...Array.from({ length: 10 }, (_, i) => ({ id: `pick-layer-${i}`, label: () => engine.current?.layer(picked[i] ?? '')?.name ?? '', enabled: () => i < picked.length, run: () => { const id = picked[i]; if (id) engine.selectLayer(id); } })),
     { id: 'background-from-layer', label: 'Background from Layer', enabled: () => pixel() && !engine.backgroundLayer(), run: () => { engine.backgroundFromLayer(); } },
     { id: 'stamp-visible', label: 'Stamp Visible', keys: ['Alt+Shift+Mod+E'], enabled: () => !!engine.current?.doc.layers.length, run: () => { engine.stampVisible(); } },
-    { id: 'frequency-separation', label: 'Frequency Separation', enabled: () => !!engine.current?.doc.layers.length, run: () => { engine.frequencySeparation(); } },
+    {
+      id: 'frequency-separation', label: 'Frequency Separation...', enabled: () => !!engine.current?.doc.layers.length,
+      params: { radius: { type: 'number', min: 0.5, max: 100, description: 'Blur radius in pixels that splits colour from detail; the dialog opens when left out.' } },
+      run: (a) => { if (a?.radius === undefined) dialogs.frequency.show(); else engine.frequencySeparation(Number(a.radius)); },
+    },
     { id: 'stamp-down', label: 'Stamp Down', keys: ['Alt+Mod+E'], enabled: () => !!layer(), run: () => { engine.stampDown(); } },
     { id: 'show-only-layer', label: 'Show Only This Layer', enabled: () => !!layer(), run: () => { const l = layer(); if (l) engine.soloLayer(l.id); } },
     { id: 'merge-visible', label: 'Merge Visible', enabled: () => (engine.current?.doc.layers.length ?? 0) > 1, run: () => engine.mergeVisible() },
@@ -3376,6 +3427,17 @@ export function startApp(): void {
     { id: 'paste-outside', label: 'Paste Outside', enabled: selected, run: () => void pasteFromMenu(true) },
     { id: 'purge-clipboard', label: 'Clipboard', enabled: () => !!engine.clipboard, run: () => { if (engine.purgeClipboard()) toast('Cleared the clipboard.'); } },
     { id: 'purge-histories', label: 'Histories', enabled: () => !!engine.current && engine.historySteps.names.length > 0, run: () => { void confirmAction('Purge histories?', 'This clears the undo and redo history of this document, keeping its current state and snapshots. It cannot be undone.', 'Purge', true).then((ok) => { if (ok) toast(`Purged ${engine.purgeHistories(false)} history steps.`); }); } },
+    {
+      id: 'clean-working-files', label: 'Working Files', enabled: () => true,
+      run: async () => {
+        const stale = (await recovery.list()).filter((r) => !engine.projects.some((q) => q.id === r.id));
+        const bytes = stale.reduce((n, r) => n + r.files.reduce((m, f) => m + f.blob.size, 0), 0) + closedTabs.reduce((n, r) => n + r.files.reduce((m, f) => m + f.blob.size, 0), 0);
+        const tabs = closedTabs.length;
+        for (const r of stale) await recovery.drop(r.id);
+        closedTabs.length = 0;
+        toast(`Cleaned ${stale.length} recovery ${stale.length === 1 ? 'copy' : 'copies'} and ${tabs} closed ${tabs === 1 ? 'tab' : 'tabs'}, ${(bytes / 1048576).toFixed(1)} MB.`);
+      },
+    },
     { id: 'purge-all', label: 'All', enabled: () => !!engine.clipboard || engine.projects.some((q) => q.history.steps.names.length > 0), run: () => { void confirmAction('Purge everything?', 'This clears the clipboard and the undo and redo history of every open document, keeping their current states and snapshots. It cannot be undone.', 'Purge', true).then((ok) => { if (ok) { engine.purgeClipboard(); toast(`Purged the clipboard and ${engine.purgeHistories(true)} history steps.`); } }); } },
     { id: 'stroke-dialog', label: 'Stroke...', enabled: () => pixel() && (selected() || !!engine.activeLayer?.raster), run: () => dialogs.stroke.show() },
     { id: 'transform', label: () => (engine.canTransformSelection || engine.floatingSelection ? 'Transform Selection' : 'Transform Layer'), keys: ['Mod+T'], enabled: () => !!engine.activeLayer && !engine.floatingSelection, run: () => engine.transformCommand() },
@@ -3571,19 +3633,19 @@ export function startApp(): void {
   const filterGroup = (group: LibGroup, core: string[]): string[] => [...core, ...libInGroup(group).map((f) => `filter-${f.id}`)].sort((a, b) => filterName(a).localeCompare(filterName(b)));
   const drawnFirst = ['filter-flame', 'filter-pictureFrame', 'filter-tree'];
   const menus: MenuDef[] = [
-    { label: 'File', items: () => ['new', 'open', 'import', 'import-video', 'create-video-timeline', 'place-embedded', 'place-linked', 'place-3d', 'open-svg-layers', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.slice(0, 10).map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'save-copy', 'revert', 'download-project', 'package', '-',
+    { label: 'File', items: () => ['new', 'open', 'open-as', 'import', 'import-notes', 'import-video', 'create-video-timeline', 'place-embedded', 'place-linked', 'place-3d', 'open-svg-layers', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.slice(0, 10).map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'save-copy', 'revert', 'download-project', 'package', '-',
       { label: 'Export', items: ['export-as', 'save-for-web', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-tiff-layers', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'export-paths-ai', 'assemble-tiles', '-', 'export-layers', 'export-layer-comps', 'export-selection-mask', 'generate-image-assets', 'image-assets-on-save', 'export-luts', 'export-artboards-files', 'export-data-sets', 'export-artboards'] },
       { label: 'Automate', items: ['actions', 'action-stop', 'batch', 'create-droplet', '-', 'fit-image', 'conditional-mode-change', 'contact-sheet', 'crop-straighten-photos', 'photomerge', 'merge-hdr'] },
-      { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'image-processor', 'script-events', 'load-files-stack', 'stack-statistics', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'close-all', 'close-others'] },
+      { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'image-processor', 'script-events', 'load-files-stack', 'stack-statistics', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'reopen-closed-tab', 'close-all', 'close-others'] },
     { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', '-', 'fade', 'compare-documents', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', 'pick-screen-colour', '-',
-      { label: 'Purge', items: ['purge-clipboard', 'purge-histories', 'purge-all'] }, '-',
+      { label: 'Purge', items: ['purge-clipboard', 'purge-histories', 'clean-working-files', 'purge-all'] }, '-',
       { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-', 'auto-align-layers', 'auto-blend-layers', '-',
       'fill-path-dialog', 'stroke-path-dialog', '-', 'transform', 'transform-copy', { label: 'Transform', items: ['transform-again', '-', 'transform-scale', 'transform-rotate', 'transform-skew', 'transform-distort', 'transform-perspective', 'transform-warp', 'warp-split-h', 'warp-split-v', 'warp-split-cross', 'warp-remove-split', '-', 'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw', '-', 'flip-layer-h', 'flip-layer-v'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', 'define-brush', 'define-custom-shape', { label: 'Presets', items: ['preset-manager', '-', 'swatches-load', 'swatches-save'] }, '-', 'assign-profile', 'convert-profile', 'colour.settings', '-', 'customize-toolbar', 'shortcuts', 'settings'] },
     { label: 'Image', items: [
       'apply-image', 'calculations', { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'desaturate', 'replace-color', 'equalize'] }, '-',
       'auto-tone', 'auto-contrast', 'auto-color', '-',
       { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-duotone', 'mode-indexed', 'mode-multichannel', 'color-table', 'mode-rgb', 'mode-cmyk', 'mode-lab', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
-      'image-size', 'canvas-size', { label: 'Pixel Aspect Ratio', items: ['par-square', 'par-d1-ntsc', 'par-d1-pal', 'par-d1-ntsc-wide', 'par-d1-pal-wide', 'par-anamorphic', 'par-hdv', '-', 'par-custom'] }, { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'trim', 'reveal-all', 'trap', '-', 'duplicate-image', '-', { label: 'Variables', items: ['variables-define', 'data-sets-import', 'data-set-apply'] }, '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }, '-', { label: 'Analysis', items: ['measure-scale', 'measure-record', 'measure-data-points', 'measure-scale-marker', 'measure-log'] }] },
+      'image-size', 'canvas-size', { label: 'Pixel Aspect Ratio', items: ['par-square', 'par-d1-ntsc', 'par-d1-pal', 'par-d1-ntsc-wide', 'par-d1-pal-wide', 'par-anamorphic', 'par-hdv', '-', 'par-custom'] }, { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'trim', 'reveal-all', 'trap', '-', 'frequency-separation', 'duplicate-image', '-', { label: 'Variables', items: ['variables-define', 'data-sets-import', 'data-set-apply'] }, '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }, '-', { label: 'Analysis', items: ['measure-scale', 'measure-record', 'measure-data-points', 'measure-scale-marker', 'measure-log'] }] },
     { label: 'Layer', items: [
       { label: 'New', items: ['new-layer-dialog', 'layer-from-background', 'background-from-layer', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard-dialog', 'artboard-from-group', 'artboard-from-layers', 'frame-from-layers', '-', 'duplicate', 'layer-via-cut', '-', 'new-relight-layer'] }, 'artboard-options', '-',
       { label: 'New Fill Layer', items: ['new-fill-solid', 'new-fill-gradient', 'new-fill-pattern'] }, { label: 'Video Layers', items: ['video-layer-from-file', 'video-layer-blank', '-', 'video-insert-blank-frame', 'video-duplicate-frame', 'video-delete-frame', '-', 'video-restore-frame', 'video-restore-all', 'video-replace-footage', 'video-interpret-footage', 'video-rasterize'] },{ label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'edit-relight', 'layer-content-options', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, '-',

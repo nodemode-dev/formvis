@@ -29,7 +29,7 @@ const TO_PSD: Record<BlendMode, PsdBlend> = {
 };
 const FROM_PSD = new Map<PsdBlend, BlendMode>(Object.entries(TO_PSD).map(([k, v]) => [v, k as BlendMode]));
 
-export const isPsdFile = (f: File): boolean => /\.ps[db]$/i.test(f.name) || f.type === 'image/vnd.adobe.photoshop';
+export const isPsdFile = (f: File): boolean => /\.(ps[db]|psdt)$/i.test(f.name) || f.type === 'image/vnd.adobe.photoshop';
 
 const canvas = (w: number, h: number): HTMLCanvasElement => { const c = document.createElement('canvas'); c.width = Math.max(1, w); c.height = Math.max(1, h); return c; };
 
@@ -552,6 +552,12 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
     }
     if (got.length) doc.slices = got;
   }
+  // Guides and text notes (Import Notes): the file's guides in pixels, and each text note at its icon's corner.
+  const guideList = (psd.imageResources?.gridAndGuidesInformation?.guides ?? []).filter((g) => Number.isFinite(g.location) && g.location >= 0);
+  if (guideList.length) doc.guides = guideList.map((g) => ({ axis: g.direction === 'horizontal' ? 'y' as const : 'x' as const, at: Math.round(g.location * 2) / 2 }));
+  const noteList = (psd.annotations ?? []).filter((a) => a.type === 'text' && typeof a.data === 'string' && a.data.trim());
+  if (noteList.length) doc.notes = noteList.map((a) => ({ id: uid(), x: Math.max(0, Math.min(psd.width, a.iconLocation.left)), y: Math.max(0, Math.min(psd.height, a.iconLocation.top)), text: a.data as string }));
+  if (psd.annotations && psd.annotations.length > noteList.length) notes.push('Sound notes in the PSD were left out.');
   if (!layers.length && psd.canvas) {
     layers.push(newLayer('Background', doc, { raster: Raster.from(psd.canvas, psd.width, psd.height) }));
     notes.push('This PSD has no layers; it opened as a single one.');

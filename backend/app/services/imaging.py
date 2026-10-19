@@ -9,7 +9,7 @@ import numpy as np
 from PIL import Image, ImageCms, ImageOps
 
 from app.core import config
-from app.services import camera_profiles, dcp, dpx, fits, ico, pnm, qoi, tga
+from app.services import camera_profiles, cin, dcp, dpx, fits, ico, pnm, qoi, tga, wbmp
 
 Image.MAX_IMAGE_PIXELS = config.MAX_PIXELS
 
@@ -89,7 +89,9 @@ def _sniffed(data: bytes, suffix: str, page: int) -> tuple[bytes, int, int] | No
             return _from_rgba(ico.read(data, page))
         if suffix in (".tga", ".icb", ".vda", ".vst") and tga.looks_like_tga(data):
             return _from_rgba(tga.read(data))
-    except (qoi.QoiError, pnm.PnmError, tga.TgaError, ico.IcoError) as exc:
+        if suffix == ".wbmp" and wbmp.looks_like_wbmp(data):
+            return _from_rgba(wbmp.read(data))
+    except (qoi.QoiError, pnm.PnmError, tga.TgaError, ico.IcoError, wbmp.WbmpError) as exc:
         raise DecodeError(f"Could not decode the image: {exc}") from exc
     return None
 
@@ -289,6 +291,12 @@ def decode_to_png(data: bytes, filename: str, page: int = 0, camera_profile: str
         except dpx.DpxError as exc:
             raise DecodeError(f"Could not decode {filename or 'the image'}: {exc}") from exc
         return _png(Image.fromarray(((px.astype("uint32") + 128) // 257).astype("uint8"), "RGBA"))
+    if cin.is_cineon(data):
+        try:
+            px, _info = cin.read(data)
+        except cin.CinError as exc:
+            raise DecodeError(f"Could not decode {filename or 'the image'}: {exc}") from exc
+        return _from_rgba(px)
     own = _sniffed(data, suffix, page)
     if own is not None:
         return own
