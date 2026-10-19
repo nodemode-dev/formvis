@@ -4,6 +4,15 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.89.1 · 2026-10-19
+
+### Added
+
+- Import: PSD extra channels, patterns, profile, labels and mask density; a conversion report; TGA alpha as a channel; JPEG quality kept for re-save; 10-bit HEIF; deep PNG, TIFF and float files placed at depth; an EXR parts chooser with Cryptomatte mattes; PFM; Shift-drop to the Reference panel, drops on the tab strip, a drop into Free Transform; Place Embedded fits the canvas; a brush tip from a picture; File > Import Folder; stacks from a folder with Auto-Align; video frames from pictures or a GIF; ComfyUI editor workflows convert for your own ComfyUI.
+- Automation: 26 more MCP tools (105 in all), MCP resources, transport limits; `./formvis cli` info, convert, jobs and serve; attach mode for the stdio bridge; an .mcpb bundle and a Claude Code plugin manifest; plugin shortcuts, Reload Plugins and Open Plugins Folder; conditional action steps; droplet options; Contact Sheet units and order.
+- Analysis and help: measurement scale presets, a ruler protractor, the scale marker dialog, Color Sampler sizes, Count groups, Enter and Escape as commands, Help > Report an Issue with diagnostics.
+- Performance: Cancel for long filters in the status bar, a memory limit, an effect cache budget, cache levels, refusing implausible image sizes before decoding, `./formvis perf` and `./formvis corpus`; frame tracing, a tile grid overlay and GPU power preferences; Linux desktop files, Flatpak, Homebrew, Docker and web hosting files (not yet built here).
+
 ## 1.89.0 · 2026-10-19
 
 ### Added

@@ -9,6 +9,9 @@ import { localFill, localInpaint, localModels, localUpscale, modelReady, runLoca
 import { applyPrefs, loadPrefs, savePrefs, updatePrefs, type Prefs } from '../ui/prefs';
 import { fontFamilies } from '../ui/fonts';
 import { mappedChars } from '../engine/glyph-outlines';
+import { liveText } from '../engine/text';
+import { allBrushPresets } from '../engine/brush-dynamics';
+import { isLibKind } from '../engine/filter-library';
 
 /** Outside agents in the window (1.52.1): while Allow outside agents is on (Preferences > Plugins), the window collects
  *  MCP tool calls from the engine and runs them here, each change an ordinary undoable step. Generative calls cost the
@@ -25,6 +28,8 @@ export interface AgentDeps {
   viewCapture?(): Surface | null;
   selectPoints?(inside: Array<[number, number]>, outside: Array<[number, number]>, mode: 'replace' | 'add' | 'subtract' | 'intersect'): Promise<string | null>;
   plugins?(): Promise<Array<Record<string, unknown>>>;
+  // The window's error log, for read_log.
+  log?(): Array<{ at: number; what: string; message: string }>;
 }
 
 const settingsOf = (p: Prefs): Record<string, string | number | boolean> => Object.fromEntries(Object.entries(p).filter(([, v]) => typeof v === 'number' || typeof v === 'boolean' || (typeof v === 'string' && v.length <= 60))) as Record<string, string | number | boolean>;
@@ -32,11 +37,14 @@ const text = (t: string, data?: Record<string, unknown>): McpResult => ({ conten
 const fail = (t: string): McpResult => ({ content: [{ type: 'text', text: t }], isError: true });
 const sleep = (ms: number): Promise<void> => new Promise((ok) => setTimeout(ok, ms));
 const hex = (v: unknown): { r: number; g: number; b: number } | null => { const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(v ?? '')); return m ? { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) } : null; };
+const modeOf = (v: unknown): 'replace' | 'add' | 'subtract' | 'intersect' => (v === 'add' || v === 'subtract' || v === 'intersect' ? v : 'replace');
+const filterSettings = (kind: string, s: Record<string, unknown>): Record<string, unknown> => (isLibKind(kind) && !('lib' in s) ? { lib: { [kind]: s }, seed: typeof s.seed === 'number' ? s.seed : 0 } : s);
+const filterKnown = (kind: string): boolean => isLibKind(kind) || ['gaussianBlur', 'motionBlur', 'addNoise', 'lensCorrection', 'unsharpMask', 'develop', 'lensBlur', 'smartSharpen', 'shakeReduction', 'radialBlur', 'surfaceBlur', 'fieldBlur', 'irisBlur', 'tiltShift', 'pathBlur'].includes(kind);
 const b64 = async (blob: Blob): Promise<string> => { const b = new Uint8Array(await blob.arrayBuffer()); let s = ''; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000)); return btoa(s); };
 
 /** The command catalogue (window.formvis.catalogue, DEV_PLAN 28.4's contract with the catalogue): list_commands,
  *  describe_command, run_command and run_commands go through it, and say so plainly when it is not there. */
-interface CommandMeta { id: string; label: string; group?: string; description?: string; when?: string; params?: unknown; mutates?: boolean; risky?: boolean }
+interface CommandMeta { id: string; label: string; group?: string; description?: string; when?: string; params?: unknown; mutates?: boolean; risky?: boolean; keys?: string[]; enabled?: boolean }
 type CommandRun = { ok: boolean; result?: unknown; error?: string };
 interface CatalogueApi {
   listCommands(filter?: { group?: string; text?: string }): CommandMeta[];
@@ -57,8 +65,9 @@ async function catalogueTool(name: string, a: Record<string, unknown>): Promise<
   if (!cat) return fail(NO_CATALOGUE);
   const id = typeof a.id === 'string' ? a.id : '', params = a.params && typeof a.params === 'object' ? a.params as Record<string, unknown> : undefined;
   if (name === 'list_commands') {
-    const all = cat.listCommands({ ...(typeof a.group === 'string' && a.group ? { group: a.group } : {}), ...(typeof a.text === 'string' && a.text ? { text: a.text } : {}) });
-    const shown = all.slice(0, LIST_CAP).map((c) => ({ id: c.id, label: c.label, ...(c.group ? { group: c.group } : {}), ...(c.when ? { when: c.when } : {}), ...(c.params !== undefined ? { params: c.params } : {}), ...(c.risky ? { risky: true } : {}) }));
+    const found = cat.listCommands({ ...(typeof a.group === 'string' && a.group ? { group: a.group } : {}), ...(typeof a.text === 'string' && a.text ? { text: a.text } : {}) });
+    const all = a.enabled === true ? found.filter((c) => c.enabled !== false) : found;
+    const shown = all.slice(0, LIST_CAP).map((c) => ({ id: c.id, label: c.label, ...(c.group ? { group: c.group } : {}), ...(c.when ? { when: c.when } : {}), ...(c.params !== undefined ? { params: c.params } : {}), ...(c.risky ? { risky: true } : {}), ...(c.keys?.length ? { keys: c.keys } : {}), ...(c.enabled !== undefined ? { enabled: c.enabled } : {}) }));
     const data = { total: all.length, commands: shown };
     return text(`${all.length} command${all.length === 1 ? '' : 's'}${all.length > shown.length ? `, the first ${shown.length} shown: narrow with group or text` : ''}. ${brief(shown)}`, data);
   }
@@ -165,6 +174,51 @@ export class AgentBridge {
         const plugins = await this.deps.plugins();
         return text(plugins.length ? JSON.stringify(plugins) : 'No plugins are installed: the person adds .js files in Preferences > Plugins.', { plugins });
       }
+      if (name === 'list_recipes') {
+        const falOn = (async () => (await api.generativeStatus())?.configured === true)().catch(() => false);
+        const [models, lama, up, depth, fal] = await Promise.all([localModels(), modelReady('lama-inpaint'), modelReady('ai-upscale'), modelReady('depth-anything-v2-small'), falOn]);
+        const row = (id: string, task: string, where: string, ready: boolean, why: string, tool: string) => ({ id, task, where, ready, reason: ready ? null : why, tool });
+        const recipes = [
+          row('lama', 'fill: remove what a selection covers', 'this computer', lama, 'Download LaMa in Preferences > Plugins > Local models (about 208 MB).', 'generative_fill'),
+          ...models.map((m) => row(m.id.replace(/^local:/, ''), 'generate a picture, fill with a prompt', 'this computer', m.ready, m.reason ?? 'Install it in Preferences > Plugins > Local models.', 'generate_image, generative_fill')),
+          row('real-esrgan', 'upscale 2 or 4 times', 'this computer', up, 'Download Real-ESRGAN in Preferences > Plugins > Local models (about 67 MB).', 'upscale'),
+          row('depth-anything-v2-small', 'depth map', 'this computer', depth, 'Download it in Preferences > Plugins > Local models.', 'run_command compute-depth-map'),
+          row('fal', 'fill, generate and upscale on a hosted service', 'fal, costs money and asks the person each time', fal, 'Add a fal key in Edit > Generative Fill.', 'generative_fill, generate_image, upscale with model fal'),
+        ];
+        return text(`${recipes.filter((r) => r.ready).length} of ${recipes.length} ready: ${recipes.map((r) => `${r.id} ${r.ready ? 'ready' : 'not ready'}`).join(', ')}.`, { recipes });
+      }
+      if (name === 'read_log') {
+        if (!this.deps.log) return fail('The error log is not available here.');
+        const all = [...this.deps.log()].sort((x, y) => x.at - y.at), shown = all.slice(-Math.max(1, Math.min(100, Math.round(num('limit', 30))))).map((x) => ({ at: new Date(x.at).toISOString(), what: x.what, message: x.message }));
+        return text(shown.length ? JSON.stringify(shown) : 'The error log is empty.', { total: all.length, entries: shown });
+      }
+      if (name === 'list_brush_tips') {
+        const sh = e.brushShape, tips = allBrushPresets().map((q) => ({ id: q.id, name: q.name, description: q.description, size: q.diameter, hardness: q.hardness, opacity: q.opacity, angle: q.angle ?? 0, roundness: q.roundness ?? 100, spacing: q.spacing ?? 25, sampled: !!q.tip }));
+        const now = { preset: e.brushPresetId, size: e.brush.diameter, hardness: e.brush.hardness, opacity: e.brush.opacity, flow: e.brushFlow, angle: sh.angle, roundness: sh.roundness, spacing: sh.spacing ?? 25, follow_direction: sh.angleControl === 'direction' };
+        return text(`${tips.length} presets: ${tips.map((q) => q.id).join(', ')}. Now: ${JSON.stringify(now)}`, { tips, current: now });
+      }
+      if (name === 'set_brush') {
+        if (!['size', 'hardness', 'opacity', 'flow', 'preset', 'angle', 'roundness', 'spacing', 'follow_direction'].some((k) => a[k] !== undefined)) return fail('Give at least one of size, hardness, opacity, flow, preset, angle, roundness, spacing, follow_direction.');
+        if (a.preset !== undefined) {
+          const pr = allBrushPresets().find((q) => q.id === str('preset') || q.name === str('preset'));
+          if (!pr) return fail(`No brush preset has the id ${str('preset')}: list_brush_tips lists them.`);
+          e.applyBrushPreset(pr);
+        }
+        const patch: Partial<Engine['brush']> = {};
+        if (typeof a.size === 'number') patch.diameter = a.size;
+        if (typeof a.hardness === 'number') patch.hardness = a.hardness;
+        if (typeof a.opacity === 'number') patch.opacity = a.opacity;
+        const shape = { ...e.brushShape };
+        if (typeof a.angle === 'number') shape.angle = a.angle;
+        if (typeof a.roundness === 'number') shape.roundness = a.roundness;
+        if (typeof a.spacing === 'number') shape.spacing = a.spacing;
+        if (typeof a.follow_direction === 'boolean') shape.angleControl = a.follow_direction ? 'direction' : 'off';
+        if (typeof a.flow === 'number') e.brushFlow = Math.min(1, Math.max(0.01, a.flow));
+        e.brushShape = shape;
+        e.setBrush(patch);
+        return text(`The brush is ${e.brush.diameter} px, hardness ${e.brush.hardness}, opacity ${e.brush.opacity}, flow ${e.brushFlow}, angle ${e.brushShape.angle}, roundness ${e.brushShape.roundness}, spacing ${e.brushShape.spacing ?? 25}.`,
+          { size: e.brush.diameter, hardness: e.brush.hardness, opacity: e.brush.opacity, flow: e.brushFlow, angle: e.brushShape.angle, roundness: e.brushShape.roundness, spacing: e.brushShape.spacing ?? 25, preset: e.brushPresetId });
+      }
       if (name === 'close_document') {
         const cat = catalogueOf();
         if (!cat) return fail(NO_CATALOGUE);
@@ -227,6 +281,11 @@ export class AgentBridge {
           if (typeof a.visible === 'boolean' && a.visible !== (l.visible !== false)) e.toggleVisibility(l.id);
           if (typeof a.opacity === 'number') e.setOpacity(Math.min(1, Math.max(0, a.opacity)));
           if (typeof a.blend === 'string') e.setBlend(a.blend as BlendMode);
+          if (a.locks && typeof a.locks === 'object') {
+            const lk = a.locks as Record<string, unknown>, patch: Record<string, boolean> = {};
+            for (const k of ['pixels', 'position', 'transparency', 'all']) if (typeof lk[k] === 'boolean') patch[k] = lk[k] as boolean;
+            if (Object.keys(patch).length) { e.selectLayer(l.id); e.setLocks(patch); }
+          }
           return text(`Updated ${e.current?.layer(l.id)?.name}.`);
         }
         case 'delete_layer': { const l = layerOf(); e.selectLayer(l.id); e.deleteLayers(); return text(`Deleted ${l.name}.`); }
@@ -347,7 +406,17 @@ export class AgentBridge {
         }
         case '__export': {
           const t = (['image/png', 'image/jpeg', 'image/webp'].includes(str('type')) ? str('type') : 'image/png') as 'image/png';
-          const blob = await e.exportBlob(t, Math.min(1, Math.max(0.1, num('quality', 0.92))));
+          const q = Math.min(1, Math.max(0.1, num('quality', 0.92))), sc = Math.min(4, Math.max(0.05, num('scale', 1)));
+          if (sc !== 1) {
+            const flat = e.flattened();
+            if (!flat) return fail('Nothing to export.');
+            const out = createSurface(Math.max(1, Math.round(flat.width * sc)), Math.max(1, Math.round(flat.height * sc))), oc = ctxOf(out);
+            if (str('type') === 'image/jpeg') { oc.fillStyle = '#ffffff'; oc.fillRect(0, 0, out.width, out.height); }
+            oc.imageSmoothingQuality = 'high';
+            oc.drawImage(flat as CanvasImageSource, 0, 0, out.width, out.height);
+            return text(`The picture at ${out.width} by ${out.height}.`, { data: await b64(await toBlob(out, t, str('type') === 'image/png' || !str('type') ? undefined : q)), width: out.width, height: out.height });
+          }
+          const blob = await e.exportBlob(t, q);
           return blob ? text('The picture.', { data: await b64(blob) }) : fail('Nothing to export.');
         }
         case 'switch_document': {
@@ -357,7 +426,12 @@ export class AgentBridge {
         }
         // The document's size and shape.
         case 'resize_image': {
-          const w = Math.round(num('width', p.doc.width)), h = Math.round(num('height', p.doc.height));
+          const W = p.doc.width, H = p.doc.height, hasW = typeof a.width === 'number', hasH = typeof a.height === 'number';
+          let w: number, h: number;
+          if (typeof a.percent === 'number') { w = Math.max(1, Math.round(W * a.percent / 100)); h = Math.max(1, Math.round(H * a.percent / 100)); }
+          else if (typeof a.long_side === 'number') { const k = a.long_side / Math.max(W, H); w = Math.max(1, Math.round(W * k)); h = Math.max(1, Math.round(H * k)); }
+          else if (hasW || hasH) { w = hasW ? Math.round(num('width', W)) : Math.max(1, Math.round(num('height', H) * W / H)); h = hasH ? Math.round(num('height', H)) : Math.max(1, Math.round(w * H / W)); }
+          else return fail('Give width and height, or one of them, or percent, or long_side.');
           return e.resampleImage(w, h, 'high', p.doc.resolution ?? 72) ? text(`Resized to ${w} by ${h}.`) : fail(`The size is outside what formvis allows (30,000 pixels a side, ${Math.round(LIMITS.pixels / 1_000_000)} megapixels on this computer).`);
         }
         case 'resize_canvas': {
@@ -685,6 +759,252 @@ export class AgentBridge {
           }
           c.putImageData(img, 0, 0);
           return text('The mask.', { data: await b64(await toBlob(s, 'image/png')), width: W, height: H });
+        }
+        case '__layer': {
+          const l = layerOf();
+          if (l.isGroup) return fail(`${l.name} is a group: give a layer.`);
+          const s = e.renderLayerAlone(l.id);
+          let out: Surface = s;
+          if (a.trim === true) {
+            const d = ctxOf(s).getImageData(0, 0, s.width, s.height).data;
+            let x0 = s.width, y0 = s.height, x1 = -1, y1 = -1;
+            for (let j = 0; j < s.height; j++) for (let i = 0; i < s.width; i++) if (d[(j * s.width + i) * 4 + 3] > 0) { if (i < x0) x0 = i; if (i > x1) x1 = i; if (j < y0) y0 = j; if (j > y1) y1 = j; }
+            if (x1 < 0) return fail(`${l.name} shows nothing, so there is nothing to write.`);
+            out = createSurface(x1 - x0 + 1, y1 - y0 + 1);
+            ctxOf(out).drawImage(s as CanvasImageSource, x0, y0, out.width, out.height, 0, 0, out.width, out.height);
+          }
+          return text('The layer.', { data: await b64(await toBlob(out, 'image/png')), width: out.width, height: out.height });
+        }
+        case 'set_active_layer': {
+          const ids = [...new Set(Array.isArray(a.ids) ? (a.ids as unknown[]).map(String) : [])], miss = ids.filter((id) => !p.layer(id));
+          if (!ids.length) return fail('Give ids: layer ids from get_document.');
+          if (miss.length) return fail(`No layer has the id ${miss.join(', ')}: call get_document for the ids.`);
+          ids.forEach((id, i) => { if (i === 0 && a.add !== true) e.selectLayer(id); else if (!p.selectedIds.has(id)) e.selectLayer(id, 'toggle'); });
+          const sel = [...p.selectedIds];
+          return text(`${sel.length} layer${sel.length === 1 ? '' : 's'} selected; the active layer is ${p.activeLayer?.name}.`, { selected: sel, active: p.activeId });
+        }
+        case 'select_color': {
+          const x = Math.floor(num('x', -1)), y = Math.floor(num('y', -1));
+          if (x < 0 || y < 0 || x >= p.doc.width || y >= p.doc.height) return fail(`x and y must lie inside the picture (0 to ${p.doc.width - 1}, 0 to ${p.doc.height - 1}).`);
+          const was = { ...e.wand }, before = p.selection;
+          e.setWand({ tolerance: Math.min(255, Math.max(0, Math.round(num('tolerance', 32)))), contiguous: a.contiguous !== false, sampleAll: str('source') === 'merged' });
+          try { e.magicWand({ x, y }, modeOf(a.mode)); } finally { e.setWand(was); }
+          const s = e.current?.selection;
+          return s && s !== before ? text(`Selected the colour at ${x}, ${y}: ${s.w} by ${s.h} at ${s.x}, ${s.y}.`, { x: s.x, y: s.y, width: s.w, height: s.h }) : fail(`Nothing was selected at ${x}, ${y}: raise tolerance, or check that source ${str('source') || 'layer'} has pixels there.`);
+        }
+        case 'select_shape': {
+          const shape = str('shape'), feather = Math.min(1000, Math.max(0, num('feather', 0)));
+          let m: SelectionMask | null;
+          if (shape === 'polygon') {
+            const pts = (Array.isArray(a.points) ? a.points as Array<{ x?: unknown; y?: unknown }> : []).filter((q) => typeof q?.x === 'number' && typeof q?.y === 'number').map((q) => ({ x: q.x as number, y: q.y as number }));
+            if (pts.length < 3) return fail('A polygon needs points: at least 3 objects { x, y } in document pixels.');
+            const x0 = Math.floor(Math.min(...pts.map((q) => q.x))), y0 = Math.floor(Math.min(...pts.map((q) => q.y))), w = Math.max(1, Math.ceil(Math.max(...pts.map((q) => q.x))) - x0), h = Math.max(1, Math.ceil(Math.max(...pts.map((q) => q.y))) - y0);
+            if (w * h > 100_000_000) return fail('The polygon is larger than formvis can select at once.');
+            const s = createSurface(w, h), c = ctxOf(s);
+            c.fillStyle = '#ffffff'; c.beginPath();
+            pts.forEach((q, i) => (i ? c.lineTo(q.x - x0, q.y - y0) : c.moveTo(q.x - x0, q.y - y0)));
+            c.closePath(); c.fill();
+            const d = c.getImageData(0, 0, w, h).data, bits = new Uint8Array(w * h);
+            for (let i = 0; i < bits.length; i++) bits[i] = d[i * 4 + 3];
+            m = SelectionMask.cropped(x0, y0, w, h, bits);
+          } else if (shape === 'rectangle' || shape === 'ellipse') {
+            if (typeof a.width !== 'number' || typeof a.height !== 'number') return fail('Give x, y, width and height in document pixels.');
+            const x = Math.round(num('x', 0)), y = Math.round(num('y', 0)), w = Math.max(1, Math.round(a.width)), h = Math.max(1, Math.round(a.height)), bits = new Uint8Array(w * h);
+            if (shape === 'ellipse') { for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { const u = (i + 0.5) / w * 2 - 1, v = (j + 0.5) / h * 2 - 1; if (u * u + v * v <= 1) bits[j * w + i] = 255; } }
+            else bits.fill(255);
+            m = SelectionMask.cropped(x, y, w, h, bits);
+          } else return fail('shape is rectangle, ellipse or polygon.');
+          if (m && feather > 0) m = e.featherMask(m, feather) ?? m;
+          if (!m) return fail('The shape selects nothing inside the picture.');
+          e.applySelection(m,modeOf(a.mode), shape === 'polygon' ? 'Polygon Selection' : shape === 'ellipse' ? 'Elliptical Marquee' : 'Rectangular Marquee');
+          const s = e.current?.selection;
+          return s ? text(`The selection is now ${s.w} by ${s.h} at ${s.x}, ${s.y}${feather > 0 ? `, feathered ${feather} pixels` : ''}.`, { x: s.x, y: s.y, width: s.w, height: s.h }) : fail('The shape selects nothing inside the picture.');
+        }
+        case 'select_range': {
+          const kind = str('kind'), mode = modeOf(a.mode), lo = Math.round(num('lo', 0)), hi = Math.round(num('hi', 255)), fz = Math.min(200, Math.max(0, num('fuzziness', 40))), before = p.selection;
+          if (lo > hi) return fail('lo must not be above hi.');
+          if (kind === 'luminosity') {
+            const l = e.activeLayer;
+            if (str('source') !== 'merged' && !l) return fail('There is no active layer: call set_layer with active true, or use source merged.');
+            const src = str('source') === 'merged' ? e.flattened() : e.renderLayerAlone((l as NonNullable<typeof l>).id), W = p.doc.width, H = p.doc.height;
+            if (!src || src.width !== W || src.height !== H) return fail('That source cannot be read at the document size.');
+            const d = ctxOf(src).getImageData(0, 0, W, H).data, bits = new Uint8Array(W * H), ramp = Math.max(1, fz);
+            for (let i = 0; i < bits.length; i++) {
+              const o = i * 4, v = 0.2126 * d[o] + 0.7152 * d[o + 1] + 0.0722 * d[o + 2], wt = Math.min(1, Math.max(0, 1 - Math.max(lo - v, v - hi, 0) / ramp)), k = Math.round(255 * wt * d[o + 3] / 255);
+              bits[i] = a.invert === true ? 255 - k : k;
+            }
+            if (!bits.some((v) => v)) return fail(`No pixels have a luminosity from ${lo} to ${hi}: widen lo and hi, or raise fuzziness.`);
+            e.applySelection(SelectionMask.cropped(0, 0, W, H, bits), mode, 'Luminosity Range');
+          } else {
+            const c = hex(a.color);
+            if (kind === 'color' && !c) return fail('kind color needs color as #rrggbb.');
+            if (kind === 'depth' && !e.depthLayer()) return fail('This document has no Depth Map layer: run_command compute-depth-map first.');
+            let said = '';
+            const off = e.on('notice', (n) => { said = (n as { text?: string } | null)?.text ?? said; });
+            try { e.selectColorRange({ mode: (kind === 'color' ? 'sampled' : kind) as 'sampled', plus: c ? [c] : [], minus: [], fuzziness: fz, invert: a.invert === true, combine: mode, lo, hi }); } finally { off?.(); }
+            if (e.current?.selection === before) return fail(said || `Nothing matched kind ${kind}.`);
+          }
+          const s = e.current?.selection;
+          return s ? text(`Selected the ${kind} range: ${s.w} by ${s.h} at ${s.x}, ${s.y}.`, { x: s.x, y: s.y, width: s.w, height: s.h }) : fail(`Nothing matched kind ${kind}.`);
+        }
+        case 'sample_mean_color': {
+          let src: Surface | null;
+          if (str('id')) { const l = layerOf(); if (l.isGroup) return fail(`${l.name} is a group: give a layer, or leave id out.`); src = e.renderLayerAlone(l.id); } else src = e.flattened();
+          if (!src) return fail('Nothing to sample.');
+          const sel = p.selection, x0 = sel ? Math.max(0, sel.x) : 0, y0 = sel ? Math.max(0, sel.y) : 0, x1 = sel ? Math.min(src.width, sel.x + sel.w) : src.width, y1 = sel ? Math.min(src.height, sel.y + sel.h) : src.height;
+          if (x1 <= x0 || y1 <= y0) return fail('The selection lies outside the picture.');
+          const bw = x1 - x0, d = ctxOf(src).getImageData(x0, y0, bw, y1 - y0).data;
+          let r = 0, g = 0, bl = 0, ws = 0, as = 0, n = 0;
+          for (let j = y0; j < y1; j++) for (let i = x0; i < x1; i++) {
+            const o = ((j - y0) * bw + (i - x0)) * 4, m = sel ? (sel.data[(j - sel.y) * sel.w + (i - sel.x)] ?? 0) / 255 : 1;
+            if (!m) continue;
+            const w = m * d[o + 3]; n += m; as += w / 255; ws += w; r += d[o] * w; g += d[o + 1] * w; bl += d[o + 2] * w;
+          }
+          if (!ws) return fail('That area is fully transparent or not selected.');
+          const c = { r: Math.round(r / ws), g: Math.round(g / ws), b: Math.round(bl / ws) }, code = `#${[c.r, c.g, c.b].map((v) => v.toString(16).padStart(2, '0')).join('')}`, opaque = Math.round(as / n * 1000) / 1000;
+          return text(`The mean colour of ${sel ? 'the selection' : 'the picture'}${str('id') ? ` (layer ${str('id')})` : ''} is ${code} (${c.r}, ${c.g}, ${c.b}), ${Math.round(opaque * 100)} percent opaque.`, { hex: code, ...c, opaque, pixels: Math.round(n) });
+        }
+        case 'align_layers': case 'group_layers': {
+          if (Array.isArray(a.ids)) {
+            const ids = [...new Set((a.ids as unknown[]).map(String))], miss = ids.filter((id) => !p.layer(id));
+            if (miss.length) return fail(`No layer has the id ${miss.join(', ')}: call get_document for the ids.`);
+            ids.forEach((id, i) => (i ? e.selectLayer(id, 'toggle') : e.selectLayer(id)));
+          } else if (name === 'group_layers' || !p.selectedIds.size) return fail('Give ids: layer ids from get_document.');
+          if (name === 'group_layers') {
+            e.groupLayers(str('name') || undefined);
+            const g = e.activeLayer;
+            return g?.isGroup ? text(`Grouped into ${g.name} (id ${g.id}).`, { id: g.id }) : fail('The layers could not be grouped.');
+          }
+          const edges = ['left', 'hcenter', 'right', 'top', 'vcenter', 'bottom'], spread = [...edges, 'hspace', 'vspace'];
+          if (!str('align') && !str('distribute')) return fail('Give align (left, hcenter, right, top, vcenter, bottom) or distribute (those, or hspace, vspace).');
+          if ((str('align') && !edges.includes(str('align'))) || (str('distribute') && !spread.includes(str('distribute')))) return fail('align is left, hcenter, right, top, vcenter or bottom; distribute is also hspace or vspace.');
+          const to = ['auto', 'selection', 'canvas'].includes(str('to')) ? str('to') as 'auto' : 'auto', was = e.alignTo;
+          let said = '';
+          const off = e.on('notice', (n) => { said = (n as { text?: string } | null)?.text ?? said; });
+          e.alignTo = to;
+          try { if (str('align')) e.alignLayers(str('align') as 'left'); if (str('distribute') && !said) e.distributeLayers(str('distribute') as 'left'); } finally { off?.(); e.alignTo = was; }
+          if (said) return fail(said);
+          const boxes = [...p.selectedIds].map((id) => { const t = p.layer(id)?.transform; return { id, x: Math.round(t?.x ?? 0), y: Math.round(t?.y ?? 0), width: Math.round(t?.w ?? 0), height: Math.round(t?.h ?? 0) }; });
+          return text(`${str('align') ? `Aligned ${str('align')}` : ''}${str('align') && str('distribute') ? ' and ' : ''}${str('distribute') ? `Distributed ${str('distribute')}` : ''} ${boxes.length} layers.`, { layers: boxes });
+        }
+        case 'set_group': {
+          const g = layerOf();
+          if (!g.isGroup) return fail(`${g.name} is not a group: call get_layer_tree for the groups.`);
+          if (typeof a.name === 'string' && a.name !== g.name) e.renameLayer(g.id, a.name);
+          if (typeof a.visible === 'boolean' && a.visible !== (g.visible !== false)) e.toggleVisibility(g.id);
+          if (typeof a.locked === 'boolean') { e.selectLayer(g.id); e.setLocks({ all: a.locked }); }
+          if (typeof a.collapsed === 'boolean' && a.collapsed !== p.collapsed.has(g.id)) e.toggleCollapsed(g.id);
+          const n = p.layer(g.id);
+          return text(`${n?.name}: ${n?.visible === false ? 'hidden' : 'shown'}, ${n?.locks?.all ? 'locked' : 'unlocked'}, ${p.collapsed.has(g.id) ? 'collapsed' : 'open'}.`, { id: g.id, name: n?.name, visible: n?.visible !== false, locked: !!n?.locks?.all, collapsed: p.collapsed.has(g.id) });
+        }
+        case 'set_mask': {
+          const l = layerOf(), act = str('action');
+          e.selectLayer(l.id);
+          const mask = () => p.layer(l.id)?.mask ?? null;
+          if (act === 'reveal_all' || act === 'hide_all') e.addMask(act === 'hide_all', false);
+          else if (act === 'reveal_selection' || act === 'hide_selection') {
+            if (l.mask) return fail(`${l.name} has a mask already: delete it first, or use invert or copy_from.`);
+            if (!p.selection) return fail('There is no selection: call select, select_shape or select_subject first.');
+            e.addMask(act === 'hide_selection', true);
+          } else if (act === 'enable' || act === 'disable') {
+            if (!l.mask) return fail(`${l.name} has no layer mask.`);
+            if (l.mask.enabled !== (act === 'enable')) e.toggleMaskEnabled();
+          } else if (act === 'delete' || act === 'apply') {
+            if (!l.mask) return fail(`${l.name} has no layer mask.`);
+            e.deleteMask(act === 'apply');
+          } else if (act === 'invert') {
+            const w = l.raster?.width ?? p.doc.width, h = l.raster?.height ?? p.doc.height;
+            if (!l.mask) return fail(`${l.name} has no layer mask.`);
+            e.edit('Invert Layer Mask', (q) => {
+              const x = q.layer(l.id);
+              if (!x?.mask) return false;
+              const r = new Raster(x.mask.raster?.width ?? w, x.mask.raster?.height ?? h), img = r.read(), src = x.mask.raster?.read().data;
+              for (let o = 0; o < img.data.length; o += 4) { img.data[o] = 255; img.data[o + 1] = 255; img.data[o + 2] = 255; img.data[o + 3] = src ? 255 - src[o + 3] : 0; }
+              r.write(img);
+              q.updateLayer(l.id, { mask: { ...x.mask, raster: r } });
+            });
+          } else if (act === 'copy_from') {
+            const from = p.layer(str('from_id'));
+            if (!from?.mask) return fail(`from_id must be a layer that has a mask (call get_document for the ids).`);
+            e.copyMask(from.id, l.id);
+          } else return fail('action is reveal_all, hide_all, reveal_selection, hide_selection, enable, disable, invert, delete, apply or copy_from.');
+          const m = mask();
+          return text(`${l.name}: ${m ? `${m.enabled ? 'mask on' : 'mask off'}` : 'no mask'}.`, { id: l.id, mask: !!m, enabled: m?.enabled ?? null });
+        }
+        case 'set_text': {
+          const l = layerOf();
+          if (!l.text || !liveText(l)) return fail(`${l.name} is not a live text layer (it may be rasterized): add_text makes one.`);
+          const spec = { ...l.text };
+          if (typeof a.text === 'string') spec.content = a.text;
+          if (typeof a.font === 'string' && a.font) spec.family = a.font;
+          if (typeof a.size === 'number') spec.size = a.size;
+          if (a.color !== undefined) { const c = hex(a.color); if (!c) return fail('color must be #rrggbb.'); spec.color = c; }
+          if (typeof a.bold === 'boolean') spec.bold = a.bold;
+          if (typeof a.italic === 'boolean') spec.italic = a.italic;
+          if (['left', 'center', 'right', 'justify'].includes(str('align'))) spec.align = str('align') as 'left';
+          if (typeof a.line_height === 'number') spec.lineHeight = a.line_height;
+          if (typeof a.tracking === 'number') spec.tracking = a.tracking;
+          await e.updateTextLayer(l.id, spec);
+          if (typeof a.angle === 'number') { e.selectLayer(l.id); e.setLayerTransform({ rotation: a.angle }, 'Transform Layer'); }
+          const n = p.layer(l.id);
+          return text(`Updated ${n?.name}: "${n?.text?.content.slice(0, 60)}", ${n?.text?.family} ${n?.text?.size}.`, { id: l.id, content: n?.text?.content, family: n?.text?.family, size: n?.text?.size, rotation: n?.transform.rotation ?? 0 });
+        }
+        case 'list_history': {
+          const h = e.historySteps, steps = h.names.map((n, i) => ({ index: i, name: n, done: i < h.current })).slice(-200), snaps = e.snapshots.map((s) => ({ id: s.id, name: s.name, kind: s.kind, bytes: s.bytes }));
+          return text(`${h.names.length} steps, ${h.current} done; ${snaps.length} snapshot${snaps.length === 1 ? '' : 's'}. ${brief({ steps: steps.slice(-30), snapshots: snaps })}`, { current: h.current, count: h.names.length, steps, snapshots: snaps });
+        }
+        case 'take_snapshot': {
+          const had = new Set(e.snapshots.map((s) => s.id)), kind = (['document', 'merged', 'layer'].includes(str('kind')) ? str('kind') : 'document') as 'document';
+          let said = '';
+          const off = e.on('notice', (n) => { said = (n as { text?: string } | null)?.text ?? said; });
+          try { e.takeSnapshot(str('name') || undefined, kind); } finally { off?.(); }
+          const s = e.snapshots.find((x) => !had.has(x.id));
+          return s ? text(`Took the snapshot ${s.name} (id ${s.id}).`, { id: s.id, name: s.name, kind: s.kind, bytes: s.bytes }) : fail(said || 'No snapshot was taken: the document may be too large to keep one.');
+        }
+        case 'restore_snapshot': case 'delete_snapshot': {
+          const all = e.snapshots, hit = str('id') ? all.find((s) => s.id === str('id')) : str('name') ? [...all].reverse().find((s) => s.name === str('name')) : undefined;
+          if (!hit) return fail(`No snapshot has that ${str('id') ? 'id' : 'name'}: list_history shows the snapshots.`);
+          if (name === 'restore_snapshot') e.revertToSnapshot(hit.id); else e.deleteSnapshot(hit.id);
+          return text(`${name === 'restore_snapshot' ? 'Returned to' : 'Deleted'} the snapshot ${hit.name}.`, { id: hit.id, name: hit.name });
+        }
+        case 'extend_canvas': {
+          const l = Math.round(num('left', 0)), t = Math.round(num('top', 0)), r = Math.round(num('right', 0)), b = Math.round(num('bottom', 0)), f = str('fill') || 'transparent';
+          if (!(l || t || r || b)) return fail('Give at least one of left, top, right, bottom in pixels.');
+          const col = f === 'transparent' ? null : f === 'foreground' ? e.fg : f === 'background' ? e.bg : hex(f);
+          if (f !== 'transparent' && !col) return fail('fill is transparent, #rrggbb, foreground or background.');
+          const w = p.doc.width + l + r, h = p.doc.height + t + b;
+          return e.resizeCanvas(w, h, l, t, col, 'Extend Canvas') ? text(`The canvas is ${w} by ${h}: ${l} left, ${t} top, ${r} right, ${b} bottom added.`, { width: w, height: h }) : fail('The canvas size is outside what formvis allows.');
+        }
+        case 'add_filter': {
+          const l = str('id') ? layerOf() : e.activeLayer;
+          if (!l) return fail('There is no layer: give id from get_document.');
+          if (l.isGroup || l.adjustment || l.fillContent || l.text || l.shape) return fail(`${l.name} is not a pixel layer: rasterize_layer a text or shape layer first.`);
+          const kind = str('kind'), settings = filterSettings(kind, (a.settings && typeof a.settings === 'object' ? a.settings : {}) as Record<string, unknown>);
+          if (!filterKnown(kind)) return fail(`${kind} is not a filter formvis can keep editable: use a kind from apply_filter (not average).`);
+          e.selectLayer(l.id);
+          if (!l.smart) e.convertToSmartObject();
+          const t = e.activeLayer;
+          if (!t?.smart) return fail(`${l.name} could not become a smart object.`);
+          const had = new Set((e.smartFiltersShown(t.id) ?? t.smart.filters).map((f) => f.id));
+          e.addSmartFilter(kind, settings);
+          const now = e.current?.layer(t.id), list = (e.smartFiltersShown(t.id) ?? now?.smart?.filters ?? []).map((f) => ({ id: f.id, kind: f.kind, enabled: f.enabled })), added = list.find((f) => !had.has(f.id));
+          return added ? text(`Added the smart filter ${kind} (id ${added.id}) to ${now?.name} (layer id ${t.id}).`, { layer: t.id, filter: added.id, filters: list }) : fail(`${kind} could not be added as a smart filter: apply_filter lists the kinds.`);
+        }
+        case 'set_filter': {
+          const l = layerOf();
+          if (!l.smart) return fail(`${l.name} has no smart filters: add_filter makes one.`);
+          const cur = e.smartFiltersShown(l.id) ?? l.smart.filters, show = (list: typeof cur) => list.map((f) => ({ id: f.id, kind: f.kind, enabled: f.enabled, opacity: f.opacity ?? 100, blend: f.blend ?? 'normal' }));
+          const change = ['kind', 'settings', 'enabled', 'opacity', 'blend'].some((k) => a[k] !== undefined) || a.remove === true;
+          if (!change) return text(`${cur.length} smart filter${cur.length === 1 ? '' : 's'}: ${brief(show(cur))}`, { layer: l.id, filters: show(cur) });
+          const f = str('filter_id') ? cur.find((x) => x.id === str('filter_id')) : cur[cur.length - 1];
+          if (!f) return fail(str('filter_id') ? `No filter has the id ${str('filter_id')}: set_filter with only id lists them.` : `${l.name} has no smart filters.`);
+          if (str('kind') && !filterKnown(str('kind'))) return fail(`${str('kind')} is not a filter formvis can keep editable: use a kind from apply_filter (not average).`);
+          const kind = str('kind') || f.kind, next = a.remove === true ? cur.filter((x) => x.id !== f.id)
+            : cur.map((x) => (x.id !== f.id ? x : { ...x, kind, settings: a.settings && typeof a.settings === 'object' ? filterSettings(kind, a.settings as Record<string, unknown>) : kind !== f.kind ? filterSettings(kind, {}) : x.settings,
+              enabled: typeof a.enabled === 'boolean' ? a.enabled : x.enabled, ...(typeof a.opacity === 'number' ? { opacity: a.opacity } : {}), ...(typeof a.blend === 'string' ? { blend: a.blend as BlendMode } : {}) }));
+          e.setSmartFilters(l.id, next, a.remove === true ? 'Delete Smart Filter' : 'Smart Filter');
+          const after = e.smartFiltersShown(l.id) ?? p.layer(l.id)?.smart?.filters ?? [];
+          return text(a.remove === true ? `Removed the filter ${f.kind}; ${after.length} left.` : `Updated the filter ${kind}.`, { layer: l.id, filters: show(after) });
         }
         case 'list_settings': {
           const values = settingsOf(loadPrefs());

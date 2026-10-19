@@ -585,7 +585,7 @@ other modes and depths its menu items are off, with the reason as their tooltip.
 - Outside agents (Claude Code, Codex, Cursor): ask them in plain language to edit what is open in formvis. In the
   formvis folder, `./formvis agents install` sets all three up for your account (the MCP server and the editing skill);
   inside the formvis repository they are already set up. formvis starts itself when an agent asks, opens a window if
-  none is open, and asks you once to allow outside agents. They get 79 tools, from opening, saving and exporting files
+  none is open, and asks you once to allow outside agents. They get 105 tools, from opening, saving and exporting files
   to layers, text, selections, filters, the video timeline and generative fill, which uses the models on this computer
   first.
 - Either way, every change is an undoable step, anything that costs money asks you first, your keys are never shown,

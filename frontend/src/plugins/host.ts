@@ -25,12 +25,14 @@ const RUNTIME = `<script>
       catch (err) { send({ op: 'done', runId: m.runId, error: String(err && err.message || err) }); }
     }
   });
+  addEventListener('error', (e) => send({ op: 'error', args: { message: String(e.message || 'Script error') } }));
+  addEventListener('unhandledrejection', (e) => send({ op: 'error', args: { message: String(e.reason && e.reason.message || e.reason || 'Rejected') } }));
   window.formvis = {
     register(spec) {
       name = String(spec && spec.name || 'Plugin');
       const list = (spec && spec.commands || []).filter((c) => c && c.id && typeof c.run === 'function');
       for (const c of list) commands[c.id] = c.run;
-      send({ op: 'register', args: { name, commands: list.map((c) => ({ id: String(c.id), label: String(c.label || c.id) })) } });
+      send({ op: 'register', args: { name, commands: list.map((c) => ({ id: String(c.id), label: String(c.label || c.id), keys: Array.isArray(c.keys) ? c.keys.map(String) : [] })) } });
     },
     call: (tool, args) => rpc('call', { tool, args: args || {} }),
     getPixels: () => rpc('getPixels', {}),
@@ -39,7 +41,16 @@ const RUNTIME = `<script>
 })();
 <\/script>`;
 
-interface Loaded { name: string; frame: HTMLIFrameElement; label: string; commands: Array<{ id: string; label: string }> }
+interface Loaded { name: string; frame: HTMLIFrameElement; label: string; commands: Array<{ id: string; label: string; keys: string[] }>; errors: string[] }
+
+/** A plugin accelerator is well formed when it is written as comboOf writes a press and carries Mod or Alt, so a plugin
+ *  cannot take a plain letter from typing. */
+const ORDER: Record<string, number> = { Alt: 0, Shift: 1, Mod: 2 };
+function wellFormed(combo: string): boolean {
+  const parts = combo.split('+'), key = parts.pop() ?? '';
+  if (!key || parts.some((p) => !(p in ORDER)) || !(parts.includes('Mod') || parts.includes('Alt'))) return false;
+  return parts.every((p, i) => i === 0 || ORDER[parts[i - 1]] < ORDER[p]);
+}
 
 export class PluginHost {
   private readonly loaded = new Map<string, Loaded>();
@@ -73,9 +84,19 @@ export class PluginHost {
     frame.hidden = true;
     frame.title = `Plugin ${name}`;
     frame.srcdoc = `<!doctype html><meta charset="utf-8">${FRAME_STYLE}${RUNTIME}<script>\n${code.replace(/<\/script/gi, '<\\/script')}\n<\/script>`;
-    this.loaded.set(name, { name, frame, label: name.replace(/\.js$/, ''), commands: [] });
+    this.loaded.set(name, { name, frame, label: name.replace(/\.js$/, ''), commands: [], errors: [] });
     document.body.appendChild(frame);
+    this.onChange();
   }
+
+  /** Reload Plugins: every running plugin is dropped and the enabled ones in the folder are loaded again from disk. */
+  async reloadAll(): Promise<number> {
+    for (const name of [...this.loaded.keys()]) this.unload(name);
+    await this.loadAll();
+    return this.loaded.size;
+  }
+
+  private fail(p: Loaded, text: string): void { p.errors = [...p.errors, text.slice(0, 200)].slice(-10); this.onChange(); }
 
   unload(name: string): void {
     const p = this.loaded.get(name);
@@ -91,7 +112,7 @@ export class PluginHost {
     const off = this.off();
     return (await api.plugins()).map((f) => {
       const p = this.loaded.get(f.name);
-      return { file: f.name, size: f.size, on: !off.has(f.name), running: !!p, name: p?.label ?? null, commands: (p?.commands ?? []).map((c) => ({ id: this.id(f.name, c.id), label: c.label })) };
+      return { file: f.name, size: f.size, on: !off.has(f.name), running: !!p, name: p?.label ?? null, commands: (p?.commands ?? []).map((c) => ({ id: this.id(f.name, c.id), label: c.label, keys: c.keys })), errors: p?.errors ?? [] };
     });
   }
 
@@ -102,7 +123,7 @@ export class PluginHost {
 
   private run(p: Loaded, command: string, label: string): void {
     const runId = ++this.runId;
-    this.runs.set(runId, (error) => { if (error) this.note(`${label}: ${error}`, 'error'); });
+    this.runs.set(runId, (error) => { if (error) { this.fail(p, `${label}: ${error}`); this.note(`${label}: ${error}`, 'error'); } });
     p.frame.contentWindow?.postMessage({ formvisRun: true, runId, command }, '*');
   }
 
@@ -114,14 +135,21 @@ export class PluginHost {
     try {
       switch (m.op) {
         case 'register': {
-          const cmds = Array.isArray(m.args?.commands) ? (m.args.commands as Array<{ id: string; label: string }>).slice(0, 40) : [];
+          const cmds = Array.isArray(m.args?.commands) ? (m.args.commands as Array<{ id: string; label: string; keys?: unknown }>).slice(0, 40) : [];
           for (const c of p.commands) this.commands.remove(this.id(p.name, c.id));
           p.label = String(m.args?.name ?? p.label).slice(0, 60);
-          p.commands = cmds.map((c) => ({ id: String(c.id).slice(0, 60), label: String(c.label).slice(0, 80) }));
-          for (const c of p.commands) this.commands.add({ id: this.id(p.name, c.id), label: `${c.label}`, enabled: () => !!this.engine.current, run: () => this.run(p, c.id, c.label) });
+          p.commands = cmds.map((c) => ({ id: String(c.id).slice(0, 60), label: String(c.label).slice(0, 80), keys: [] as string[] }));
+          cmds.forEach((c, i) => {
+            const want = Array.isArray(c.keys) ? (c.keys as unknown[]).map((k) => String(k)).filter(wellFormed).slice(0, 2) : [];
+            const free = want.filter((k) => !this.commands.forCombo(k));
+            if (free.length < want.length) this.fail(p, `${p.commands[i].label}: ${want.filter((k) => !free.includes(k)).join(', ')} is already in use.`);
+            p.commands[i].keys = free;
+          });
+          for (const c of p.commands) this.commands.add({ id: this.id(p.name, c.id), label: `${c.label}`, keys: [...c.keys], enabled: () => !!this.engine.current, run: () => this.run(p, c.id, c.label) });
           this.onChange();
           return;
         }
+        case 'error': this.fail(p, String(m.args?.message ?? 'Script error')); return;
         case 'done': { const f = this.runs.get(m.runId ?? -1); this.runs.delete(m.runId ?? -1); f?.(m.error); return; }
         case 'call': case 'getPixels': case 'putPixels': {
           const out = await this.serve(m.op, m.args ?? {}, p.label);

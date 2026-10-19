@@ -1,4 +1,5 @@
 import asyncio
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -25,6 +26,19 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title=config.APP_NAME, version=config.VERSION, lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=config.cors_origins(), allow_methods=["*"], allow_headers=["*"])
+
+
+@app.middleware("http")
+async def isolate_window(request, call_next):
+    """The window served by the engine is cross-origin isolated (SharedArrayBuffer, precise timers): COOP same-origin and
+    COEP credentialless, which still lets pictures and fonts from other sites load. FORMVIS_ISOLATED=0 turns it off."""
+    response = await call_next(request)
+    if os.environ.get("FORMVIS_ISOLATED", "1") != "0" and not request.url.path.startswith("/api"):
+        response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+        response.headers["Cross-Origin-Embedder-Policy"] = "credentialless"
+    return response
+
+
 app.include_router(system.router, prefix="/api")
 app.include_router(io.router, prefix="/api/io")
 app.include_router(projects.router, prefix="/api/projects")

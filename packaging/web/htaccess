@@ -1,0 +1,11 @@
+# Copy next to index.html as .htaccess (Apache with mod_headers and mod_rewrite).
+<IfModule mod_headers.c>
+  Header always set Content-Security-Policy "frame-ancestors 'self' https://example.com"
+  Header always set Permissions-Policy "clipboard-read=(self), clipboard-write=(self)"
+</IfModule>
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule ^ index.html [L]
+</IfModule>

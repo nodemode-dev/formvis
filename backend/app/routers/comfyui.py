@@ -73,6 +73,35 @@ def status(target: str) -> dict:
     return {"running": True, **({"version": str(version)[:40]} if version else {})}
 
 
+@router.post("/convert")
+def convert(target: str = Form(...), workflow: str = Form(...)) -> dict:
+    """A workflow saved in the editor's (UI) format, as the API format the other routes take. The widget names and order come
+    from the node definitions of the ComfyUI at `target`, so it must be running. 422 for a file that is not a workflow."""
+    from app.services import comfy_convert
+    base = _base(target)
+    try:
+        flow = json.loads(workflow)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="That file is not a ComfyUI workflow (it is not JSON).")
+    if not comfy_convert.is_ui_format(flow):
+        raise HTTPException(status_code=422, detail="That file is not a ComfyUI workflow in the editor format.")
+    info: dict[str, dict] = {}
+    for kind in comfy_convert.node_types(flow):
+        try:
+            with _request(base + "/object_info/" + urllib.parse.quote(kind, safe=""), timeout=10) as r:
+                got = json.loads(r.read() or b"{}")
+        except urllib.error.HTTPError:
+            raise HTTPException(status_code=422, detail=f"ComfyUI does not have the node {kind}; install its custom node package, then try again.")
+        except (urllib.error.URLError, OSError, ValueError) as exc:
+            raise outbound.unreachable("ComfyUI", base, "Preferences > Plugins", exc)
+        if isinstance(got, dict) and isinstance(got.get(kind), dict):
+            info[kind] = got[kind]
+    try:
+        return {"workflow": json.dumps(comfy_convert.convert(flow, info))}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
 @router.post("/send")
 async def send(target: str = Form(...), items: str = Form(...), files: list[UploadFile] = File(...)) -> dict:
     """Uploads `files` into ComfyUI's input folder. `items` is JSON, one entry per file in order: its name and kind

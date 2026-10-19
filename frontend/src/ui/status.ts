@@ -55,7 +55,13 @@ export class StatusBar {
     this.steps = document.createElement('span');
     this.steps.className = 'cv-st-steps';
     this.steps.appendChild(this.stepsText);
-    this.busy.append(this.bar, this.steps);
+    this.stop = document.createElement('button');
+    this.stop.type = 'button';
+    this.stop.className = 'cv-st-stop';
+    this.stop.hidden = true;
+    this.stop.appendChild(document.createTextNode(t('Cancel')));
+    this.stop.addEventListener('click', () => { this.engine.cancelJob(); });
+    this.busy.append(this.bar, this.steps, this.stop);
     engine.on('progress', () => this.syncProgress());
     engine.on('notice', (n) => { if (n.kind === 'error') this.flashError(n.text); });
     this.engineState = q(root, '.cv-st-engine');
@@ -84,6 +90,7 @@ export class StatusBar {
   private readonly bar: HTMLElement;
   private readonly steps: HTMLElement;
   private readonly stepsText = document.createTextNode('');
+  private readonly stop: HTMLButtonElement;
   private errText = '';
   private errTimer = 0;
 
@@ -98,6 +105,10 @@ export class StatusBar {
     const pc = inner ? `${Math.round((p.done / p.total) * 100)}%` : '';
     const label = [part, pc].filter(Boolean).join(' · ');
     if (this.stepsText.data !== label) this.stepsText.data = label;
+    const jobs = this.engine.jobs, live = jobs.some((j) => !j.cancelled);
+    if (this.stop.hidden === live) this.stop.hidden = !live;
+    const names = jobs.map((j) => (j.cancelled ? `${j.name} (stopping)` : j.name)).join(', ');
+    if (this.stop.title !== names) this.stop.title = names ? `${t('Cancel')}: ${names}` : '';
   }
 
   /** An error sits in the hint slot in the danger colour for six seconds, then the tool's hint comes back; nothing blinks. */

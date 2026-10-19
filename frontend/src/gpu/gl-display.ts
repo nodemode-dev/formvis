@@ -1,6 +1,7 @@
 import { invert, mul, type Mat } from '../engine';
 import { blendIndex } from './blend-wgsl';
 import { CLIP_MODE, FOLDER_MODE, LUT3_MODE, LUT_MODE, type Checker, type DisplayClip, type DisplayLayer, type DisplayMask } from './display';
+import type { DisplayOptions } from './probe';
 
 /** The display on WebGL2 (Phase 18.4): the GPU path where WebGPU is missing, as in the Linux desktop shell, whose
  *  webview has none. The same passes as the WebGPU display and the same maths as blend-wgsl.ts, in GLSL ES 3.00: layers
@@ -139,9 +140,9 @@ export class GlDisplay {
     canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); console.warn('formvis: the WebGL2 context was lost'); this.onLost?.(); });
   }
 
-  static create(canvas: HTMLCanvasElement): GlDisplay | null {
+  static create(canvas: HTMLCanvasElement, options: DisplayOptions = { power: 'high-performance', lowLatency: false }): GlDisplay | null {
     try {
-      const gl = canvas.getContext('webgl2', { powerPreference: 'high-performance', premultipliedAlpha: true, antialias: false, alpha: true });
+      const gl = canvas.getContext('webgl2', { powerPreference: options.power, desynchronized: options.lowLatency, premultipliedAlpha: true, antialias: false, alpha: true });
       if (!gl) { console.warn('formvis: the display canvas gives no WebGL2 context'); return null; }
       return new GlDisplay(canvas, gl, program(gl, COMPOSITE_FS), program(gl, PRESENT_FS));
     } catch (err) {

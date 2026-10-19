@@ -23,6 +23,8 @@ export interface DocMeta {
   custom?: Readonly<Record<string, string>>;
   created?: string;
   modified?: string;
+  /** The quality a JPEG was saved at, estimated when it was opened; Export As offers it again for the first re-save. */
+  jpegQuality?: number;
 }
 
 /** The fields a change may name; keywords may be one typed line, custom fields lines of `key: value`. */
@@ -94,6 +96,8 @@ export function cleanMeta(v: unknown): DocMeta | null {
   const created = stamp(o.created), modified = stamp(o.modified);
   if (created) out.created = created;
   if (modified) out.modified = modified;
+  const jq = Math.round(Number(o.jpegQuality));
+  if (Number.isFinite(jq) && jq >= 1 && jq <= 100) out.jpegQuality = jq;
   return Object.keys(out).length ? out : null;
 }
 

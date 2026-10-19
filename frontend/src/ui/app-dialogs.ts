@@ -18,7 +18,7 @@ import { brandMark } from './brand';
 import { THEMES, readChoice, setAccent, setIntensity, setTheme, themeSwatchesHtml } from './themes';
 import { toast } from './toast';
 import { CHECKER_COLORS, CHECKER_SIZES, ENGINE_CHOICES, PAINT_CURSORS, PRESSURE_CURVES, RAW_WB_CHOICES, RECOVERY_CHOICES, RULER_UNITS, UI_FONT_SIZES, loadPrefs, recalled, remembered, savePrefs, type CheckerColors, type CheckerSize, type EngineDevice, type PaintCursor, type Prefs, type PressureCurve, type RulerUnits, type UiFontSize } from './prefs';
-import { RENDERER_CHOICES, type GpuRenderer } from '../gpu/probe';
+import { POWER_CHOICES, RENDERER_CHOICES, type GpuPower, type GpuRenderer } from '../gpu/probe';
 import { checkRow, selectRow, sliderRow } from './panels/controls';
 
 /** New Document presets by category (Phase 21, UI_SPEC.md section 4, the target's s02 to s14): name, width, height in
@@ -409,6 +409,7 @@ export class SettingsDialog extends Dialog {
   private readonly rawWbRow = selectRow('Default White Balance', RAW_WB_CHOICES, (v) => this.change({ rawWb: v as Prefs['rawWb'] }));
   private readonly rawBitsRow = selectRow('Default Depth', [['8', '8 Bits/Channel'], ['16', '16 Bits/Channel']], (v) => this.change({ rawBits: v === '16' ? 16 : 8 }));
   private readonly historyLogRow = checkRow('Keep a log of history steps', (v) => this.change({ historyLog: v }));
+  private readonly placeTransformRow = checkRow('Start placed pictures in Free Transform', (v) => this.change({ placeTransform: v }));
   private readonly rawToneRow =checkRow('Apply Auto Tone', (v) => this.change({ rawAutoTone: v }));
   private readonly rawSmartRow = checkRow('Open as a Smart Object', (v) => this.change({ rawSmart: v }));
   private readonly rawPpiRow = sliderRow('Resolution (ppi, 0 keeps the file\'s)', 0, 600, 1, (v) => this.change({ rawPpi: v }));
@@ -445,6 +446,11 @@ export class SettingsDialog extends Dialog {
   private readonly gpuFiltersRow = checkRow('Use the GPU for filters', (v) => this.change({ gpuFilters: v }));
   private readonly rendererRow = selectRow('Renderer', RENDERER_CHOICES, (v) => this.change({ renderer: v as GpuRenderer }));
   private readonly gpuMemoryRow = sliderRow('GPU memory (MB)', 128, 16384, 128, (v) => this.change({ gpuMemoryMB: v }));
+  private readonly memoryLimitRow = sliderRow('Memory limit (MB, 0 is automatic)', 0, 65536, 512, (v) => this.change({ memoryLimitMB: v }));
+  private readonly effectCacheRow = sliderRow('Layer effect cache (MB)', 16, 4096, 16, (v) => this.change({ effectCacheMB: v }));
+  private readonly cacheLevelsRow = sliderRow('Cache levels (reduced copies for display, 0 is off)', 0, 8, 1, (v) => this.change({ cacheLevels: v }));
+  private readonly gpuPowerRow = selectRow('Graphics processor (next launch)', POWER_CHOICES, (v) => this.change({ gpuPower: v as GpuPower }));
+  private readonly lowLatencyRow = checkRow('Low-latency drawing (next launch)', (v) => this.change({ lowLatency: v }));
   /** The engine's compute device (Phase 18.6): the choice, and what the engine reports it uses and why. */
   private readonly engineRow = selectRow('Engine processor', ENGINE_CHOICES, (v) => this.change({ engineDevice: v as EngineDevice }));
   private readonly engineMode = el('<p class="cv-note cv-engine-mode">Engine: not reached yet.</p>');
@@ -478,8 +484,8 @@ export class SettingsDialog extends Dialog {
     add('General', this.homeRow.el, this.homeCloseRow.el, this.whatsNewRow.el, reset, el('<p class="cv-note">The Home screen covers the canvas area. At launch it shows while no document is open; closing the last document leaves the empty workspace with its panels unless the second choice is on. The brand mark at the top left opens it at any time; Esc leaves it. What\'s New (Help menu) lists the recent additions, each with a Show Me button; with the third choice on it opens once after an update.</p>'));
     this.intensityRow.set(Math.round((readChoice().intensity ?? 1) * 100));
     add('Interface', row, accentRow, this.intensityRow.el, this.fontSizeRow.el, el('<p class="cv-note">Theme and accent are shared with NodeMode on this device. Intensity sets how strongly the accent tints what it marks; 100% is the design\'s. Text size scales the interface\'s text.</p>'));
-    add('Performance', this.budgetNote, this.redrawRow.el, this.previewRow.el,
-      el('<h3 class="cv-prefs-sub">Graphics Processor Settings</h3>'), this.gpuNameRow(), this.gpuUseRow.el, this.gpuFiltersRow.el, this.rendererRow.el, this.gpuMemoryRow.el, this.gpuMode,
+    add('Performance', this.budgetNote, this.memoryLimitRow.el, this.effectCacheRow.el, this.cacheLevelsRow.el, this.redrawRow.el, this.previewRow.el,
+      el('<h3 class="cv-prefs-sub">Graphics Processor Settings</h3>'), this.gpuNameRow(), this.gpuUseRow.el, this.gpuFiltersRow.el, this.rendererRow.el, this.gpuMemoryRow.el, this.gpuPowerRow.el, this.lowLatencyRow.el, this.gpuMode,
       el('<p class="cv-note">Automatic uses WebGPU (Metal on macOS, Direct3D 12 on Windows), then WebGL2 (as on Linux), on a hardware graphics processor, and the CPU otherwise; a software GPU is slower than the CPU renderer, so Automatic does not use one. If the graphics processor fails to start, formvis turns this off and says so. The canvas draws on the graphics processor; a document using something it does not draw yet draws on the CPU, and the status bar says why.</p>'),
       el('<h3 class="cv-prefs-sub">Engine</h3>'), this.engineRow.el, this.engineMode,
       el('<p class="cv-note">Where the engine runs its models (Remove Background, and the local models that follow). Automatic uses CUDA on an NVIDIA graphics processor, Core ML (Metal) on a Mac, and the CPU otherwise; a choice this machine cannot run falls back to the CPU, and the line above says why.</p>'));
@@ -501,6 +507,7 @@ export class SettingsDialog extends Dialog {
     const library = el('<div></div>');
     library.append(this.libNow, libRow, pathRow, moveRow, this.libApply, el('<p class="cv-note">The library can live in any folder, a synced one (iCloud Drive, Dropbox, OneDrive, Google Drive) included. If a project changed in that folder since you opened it, from another device or window, saving keeps that version and saves yours beside it as a conflict copy.</p>'));
     add('File Handling', library, mismatch, restore, el('<p class="cv-note">Every open document is kept on this device, in its tab order, and opens again at the next start, saved or not. Off, only unsaved work is kept, and formvis asks after a crash.</p>'), this.recoveryRow.el, el('<p class="cv-note">Unsaved documents are kept on this device so they can be recovered after a crash; this is how soon after a change that happens.</p>'));
+    add('Placing Pictures', this.placeTransformRow.el, el('<p class="cv-note">On, a single picture dropped on an open document or put in with File > Place Embedded opens in Free Transform: Enter keeps it, Escape leaves it at its placed size and spot. A picture larger than the canvas is placed scaled to fit.</p>'));
     add('History Log', this.historyLogRow.el, el('<p class="cv-note">On, every new history step is written down with its time and document, on this device. Edit > History Log saves it as a text file or clears it.</p>'));
     add('Cursors', this.cursorRow.el, this.crossRow.el, el('<p class="cv-note">How painting tools show where they paint: the tip\'s outline at its size, a crosshair alone, or a small ring.</p>'));
     add('Type', this.recentFontsRow.el, el('<p class="cv-note">The fonts you used last are listed first in the font menus, newest first; 0 lists none first.</p>'));
@@ -600,6 +607,11 @@ export class SettingsDialog extends Dialog {
     this.gpuFiltersRow.set(this.prefs.gpuFilters);
     this.rendererRow.set(this.prefs.renderer);
     this.gpuMemoryRow.set(this.prefs.gpuMemoryMB);
+    this.memoryLimitRow.set(this.prefs.memoryLimitMB);
+    this.effectCacheRow.set(this.prefs.effectCacheMB);
+    this.cacheLevelsRow.set(this.prefs.cacheLevels);
+    this.gpuPowerRow.set(this.prefs.gpuPower);
+    this.lowLatencyRow.set(this.prefs.lowLatency);
     this.engineRow.set(this.prefs.engineDevice);
     this.wheelRow.set(this.prefs.zoomWheel);
     this.curveRow.set(this.prefs.pressureCurve);
@@ -607,6 +619,7 @@ export class SettingsDialog extends Dialog {
     this.rawWbRow.set(this.prefs.rawWb);
     this.rawBitsRow.set(String(this.prefs.rawBits));
     this.historyLogRow.set(this.prefs.historyLog);
+    this.placeTransformRow.set(this.prefs.placeTransform);
     this.rawToneRow.set(this.prefs.rawAutoTone); this.rawSmartRow.set(this.prefs.rawSmart); this.rawPpiRow.set(this.prefs.rawPpi);
     this.fontSizeRow.set(this.prefs.uiFontSize);
     this.firstSnapRow.set(this.prefs.autoFirstSnapshot);
@@ -747,6 +760,12 @@ export class SettingsDialog extends Dialog {
     this.prefs = { ...this.prefs, ...patch, toolOptions: kept.toolOptions, dialogValues: kept.dialogValues, whatsNewSeen: kept.whatsNewSeen };
     savePrefs(this.prefs);
     this.onPrefs(this.prefs);
+    this.showBudget();
+  }
+
+  private showBudget(): void {
+    const own = this.prefs.memoryLimitMB > 0;
+    setText(this.budgetNote, `Largest document: ${Math.round(LIMITS.pixels / 1_000_000)} megapixels, ${own ? `within the ${this.prefs.memoryLimitMB.toLocaleString()} MB memory limit chosen below` : "set from this computer's memory (at least 100, at most 250)"}.`);
   }
 
   private sync(): void {
@@ -757,7 +776,7 @@ export class SettingsDialog extends Dialog {
     void this.comfyAuth.refresh();
     void this.modelFolder.refresh();
     this.recipesList.refresh();
-    setText(this.budgetNote, `Largest document: ${Math.round(LIMITS.pixels / 1_000_000)} megapixels, set from this computer's memory (at least 100, at most 250).`);
+    this.showBudget();
     this.agents.checked = this.prefs.agentsAllowed;
     if (!this.tplPick.options.length) this.fillTemplates();
     const c = readChoice();
@@ -899,6 +918,7 @@ export class AboutDialog extends Dialog {
     this.body.appendChild(el('<p class="cv-note">A layered image editor for the web and the desktop, in the NodeMode design system.</p>'));
     this.body.appendChild(this.engineLine);
     this.body.appendChild(el('<p class="cv-note">Apache License 2.0. Copyright 2026 nodemode-ai.</p>'));
+    this.body.appendChild(el('<p class="cv-note">Credits: formvis is built on open-source components; each one with its licence is listed in NOTICE.md beside the app. Help > System Info has the graphics and monitor details.</p>'));
     this.button('Close', 'primary', () => this.close());
   }
 
@@ -924,6 +944,32 @@ export class SystemInfoDialog extends Dialog {
   show(text: string): void {
     setText(this.out, text);
     this.open();
+  }
+}
+
+/** Help > Report an Issue: what happened (the person's words) above the diagnostics, in one report to read, edit and copy.
+ *  Nothing is sent: Copy puts it on the clipboard, and Open Issue Page opens formvis's own issue page to paste it into. */
+export class ReportIssueDialog extends Dialog {
+  private readonly what = el<HTMLTextAreaElement>('<textarea class="cv-input" rows="3" placeholder="What happened, and what did you expect?" aria-label="What happened"></textarea>');
+  private readonly diag = el<HTMLTextAreaElement>('<textarea class="cv-input cv-sysinfo" rows="12" spellcheck="false" aria-label="Diagnostics"></textarea>');
+
+  constructor() {
+    super('Report an Issue', 600);
+    this.body.append(el('<p class="cv-dialog-note">This report stays on your computer until you paste it. Read it, remove anything private, then copy it into the issue page.</p>'));
+    this.field('What happened', this.what);
+    this.field('Diagnostics', this.diag);
+    this.button('Open Issue Page', 'ghost', () => { window.open('https://github.com/nodemode-ai/formvis/issues/new', '_blank', 'noopener'); });
+    this.button('Close', 'ghost', () => this.close());
+    this.button('Copy Report', 'primary', () => {
+      const text = `${this.what.value.trim() ? `${this.what.value.trim()}\n\n` : ''}${this.diag.value}`;
+      void navigator.clipboard?.writeText(text).then(() => toast('Copied the report.'), () => toast('The clipboard is not available here.', 'error'));
+    });
+  }
+
+  show(diagnostics: string): void {
+    if (this.diag.value !== diagnostics) this.diag.value = diagnostics;
+    this.open();
+    this.what.focus();
   }
 }
 

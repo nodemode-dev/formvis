@@ -14,7 +14,8 @@ Generated from the engine's catalogue by `./formvis agents sync`; do not edit by
 - Painting and generating: `fill`, `generative_fill`, `generate_image`, `remove_background`
 - Colour, filters and looks: `add_adjustment`, `apply_filter`, `set_adjustment`, `color_match`, `add_film_layer`
 - History: `undo`, `redo`
-- Other: `close_document`, `ping`, `list_plugins`, `select_feather`, `select_grow`, `select_point`, `timeline_get`, `timeline_create`, `timeline_delete`, `timeline_set`, `timeline_go_to`, `timeline_clip`, `timeline_split`, `timeline_keyframe`, `timeline_transition`, `timeline_frame_image`, `timeline_render`, `select_mask`, `list_settings`, `list_fonts`, `set_settings`, `ui_inspect`, `boxes_list`, `boxes_add`, `boxes_set`, `boxes_remove`, `boxes_from_selection`, `boxes_clear`, `sample_box`, `frequency_separation`, `sample_depth`, `depth_edit`, `set_crop`, `export_mask`
+- Files without the window, and jobs: `file_info`, `convert_file`, `jobs_list`, `jobs_cancel`
+- Other: `close_document`, `ping`, `list_plugins`, `select_feather`, `select_grow`, `select_point`, `timeline_get`, `timeline_create`, `timeline_delete`, `timeline_set`, `timeline_go_to`, `timeline_clip`, `timeline_split`, `timeline_keyframe`, `timeline_transition`, `timeline_frame_image`, `timeline_render`, `select_mask`, `list_settings`, `list_fonts`, `set_settings`, `ui_inspect`, `boxes_list`, `boxes_add`, `boxes_set`, `boxes_remove`, `boxes_from_selection`, `boxes_clear`, `sample_box`, `frequency_separation`, `sample_depth`, `depth_edit`, `set_crop`, `export_mask`, `list_recipes`, `set_active_layer`, `select_color`, `select_shape`, `select_range`, `sample_mean_color`, `align_layers`, `group_layers`, `set_group`, `set_mask`, `set_text`, `list_history`, `take_snapshot`, `restore_snapshot`, `delete_snapshot`, `extend_canvas`, `export_layer`, `read_log`, `list_brush_tips`, `set_brush`, `add_filter`, `set_filter`
 
 ## get_document
 
@@ -70,7 +71,7 @@ Adds an empty layer above the active one and makes it active; returns its id. Us
 
 ## set_layer
 
-Changes a layer's name, visibility, opacity (0 to 1) or blend mode, or makes it the active layer. Use when a layer should be renamed, hidden, faded, blended, or made the active one.
+Changes a layer's name, visibility, opacity (0 to 1), blend mode or locks (locks: pixels, position, transparency, all; true locks, false unlocks, left out stays), or makes it the active layer. Use when a layer should be renamed, hidden, faded, blended, or made the active one.
 
 - `id`: string; required; A layer id from get_document.
 - `name`: string
@@ -78,6 +79,7 @@ Changes a layer's name, visibility, opacity (0 to 1) or blend mode, or makes it 
 - `opacity`: number
 - `blend`: string
 - `active`: boolean
+- `locks`: object
 
 ## delete_layer
 
@@ -190,6 +192,7 @@ Writes the document as it looks to an absolute path as PNG, JPEG or WebP (by the
 
 - `path`: string; required; Absolute path ending .png, .jpg or .webp
 - `quality`: number; default 0.92
+- `scale`: number; default 1; Writes the picture at this factor of its size; the document is not changed.
 - `overwrite`: boolean; default false; Replace a file already at the path. Without it an existing file is not touched.
 
 Note: replaces or removes.
@@ -226,10 +229,12 @@ Note: read-only.
 
 ## resize_image
 
-Resamples the whole document to width x height pixels (keep the shape by scaling both by one factor). Use when the whole picture should be scaled to a size.
+Resamples the whole document. Give width and height in pixels, or one of them (the other follows the shape), or percent (100 keeps the size), or long_side (the longer side in pixels, the shape kept). Use when the whole picture should be scaled to a size.
 
-- `width`: integer; required
-- `height`: integer; required
+- `width`: integer
+- `height`: integer
+- `percent`: number
+- `long_side`: integer
 
 ## resize_canvas
 
@@ -500,6 +505,7 @@ Lists formvis's commands: every menu and palette action, each as id, label, when
 
 - `group`: string
 - `text`: string
+- `enabled`: boolean; true lists only the commands that can run right now; each row says enabled and its keys.
 
 Note: read-only.
 
@@ -568,6 +574,46 @@ The font families the window offers for type, bundled and installed ones, most r
 - `family`: string; A family from the list; omit to list all families.
 
 Note: read-only.
+
+## file_info
+
+Reads a picture or project file at an absolute path without opening it: size in pixels, colour mode, bit depth, resolution, whether it carries a colour profile, pages or frames, and for projects (.fvd, .fmv, .ora, .psd, .psb) the layer count. Works with no window open. Use when you need a file's size, mode, depth or layer count and no window needs to open it.
+
+- `path`: string; required; Absolute path to a picture or project file.
+
+Note: read-only.
+
+## convert_file
+
+Converts a picture file to another format without opening it in the window: path in, output_path out, the output's extension picks the format (png, jpg, webp, avif, tif, bmp, qoi, tga, ico, pdf, ppm, pgm, pbm, pnm, dpx, fits, wbmp). The result is one flat picture; layers are not kept (open_file then save_project does that). A file already at output_path is kept unless overwrite is true. Works with no window open. Use when a picture file should become another format and nothing else about it changes.
+
+- `path`: string; required; Absolute path to the picture to read.
+- `output_path`: string; required; Absolute path to write, with the new extension.
+- `quality`: number; default 0.92; For jpg, webp and avif.
+- `dpi`: integer; default 72
+- `page`: integer; default 0; Which page of a multi-page TIFF; the first by default.
+- `options`: object; Format settings as the export dialog names them, for example {compression: deflate} for tiff or {level: 9} for png.
+- `overwrite`: boolean; default false; Replace a file already at the path. Without it an existing file is not touched.
+
+Note: replaces or removes.
+
+## jobs_list
+
+Lists the engine's background work: local generation, upscaling and similar jobs (id, kind, status, progress, what it is doing) and the agent calls now running or waiting for the person's approval. Newest first. Use when you started local generation or upscaling and want to know what is running, or why a call is waiting.
+
+- `status`: string (all | active | finished); default "all"
+- `limit`: integer; default 50
+
+Note: read-only.
+
+## jobs_cancel
+
+Cancels a background job by its id from jobs_list, or every active one with all true. A job stops at its next step; jobs_list shows it as cancelled. Use when a background job is no longer wanted.
+
+- `id`: string; A job id from jobs_list.
+- `all`: boolean; default false
+
+Note: replaces or removes.
 
 ## set_settings
 
@@ -700,5 +746,222 @@ Writes a mask as a grey PNG the size of the document (white shows, black hides, 
 - `source`: string (selection | layer_mask | layer_pixels); default "selection"
 - `id`: string; A layer id from get_document; for layer_mask and layer_pixels.
 - `overwrite`: boolean; default false; Replace a file already at the path. Without it an existing file is not touched.
+
+Note: replaces or removes.
+
+## list_recipes
+
+Which ways of filling, generating, upscaling and reading depth this computer can run now: each with its id, the task, where it runs (this computer, or fal which costs money and asks the person), whether it is ready, why not when it is not, and the tool that uses it. Use when you need to know which fill, generate, upscale or depth models are ready here before choosing one.
+
+- no parameters
+
+Note: read-only.
+
+## set_active_layer
+
+Selects the layers in ids (from get_document) so commands that act on the selected layers, such as align_layers or group_layers, reach them; the last id becomes the active layer. With add true the layers join the current selection, else they replace it. Use when several specific layers should be selected together before aligning or grouping them.
+
+- `ids`: array; required
+- `add`: boolean; default false
+
+## select_color
+
+Selects by colour from a seed point, as the Magic Wand does: the pixels within tolerance of the colour at x, y, either contiguous with the point or everywhere. source layer reads the active layer, merged reads the whole picture. mode combines the result with the selection. Use when a region of one colour should be selected from a point, contiguous or everywhere.
+
+- `x`: integer; required
+- `y`: integer; required
+- `tolerance`: integer; default 32
+- `contiguous`: boolean; default true
+- `source`: string (layer | merged); default "layer"
+- `mode`: string (replace | add | subtract | intersect); default "replace"
+
+## select_shape
+
+Selects a rectangle, an ellipse (x, y, width, height in pixels) or a polygon (points, at least 3, in pixels), with an optional feather radius, combined with the selection by mode. Use when an ellipse or polygon, or a soft-edged shape, should be selected.
+
+- `shape`: string (rectangle | ellipse | polygon); required
+- `x`: number
+- `y`: number
+- `width`: number
+- `height`: number
+- `points`: array
+- `feather`: number; default 0; Edge softness in pixels.
+- `mode`: string (replace | add | subtract | intersect); default "replace"
+
+## select_range
+
+Selects by range, as Select > Color Range: kind color (pixels near a colour, with fuzziness), a hue family (reds, yellows, greens, cyans, blues, magentas), highlights, midtones, shadows, skin, depth (lo to hi of the Depth Map, 0 to 255, near is bright), or luminosity (lo to hi, 0 to 255, of the layer or the merged picture; fuzziness softens the ends). invert flips the result; mode combines it with the selection. Use when a range of hue, tone, luminosity or depth should be selected.
+
+- `kind`: string (color | reds | yellows | greens | cyans | blues | magentas | highlights | midtones | shadows | skin | depth | luminosity); required
+- `color`: string; #rrggbb, for kind color.
+- `fuzziness`: number; default 40
+- `lo`: integer; default 0
+- `hi`: integer; default 255
+- `source`: string (layer | merged); default "layer"; For luminosity.
+- `invert`: boolean; default false
+- `mode`: string (replace | add | subtract | intersect); default "replace"
+
+## sample_mean_color
+
+The mean colour of the selection (weighted by how much each pixel is selected and opaque), or of the whole picture when nothing is selected; with id, of that layer alone. Changes nothing. Returns #rrggbb, red, green, blue, how opaque the area is and the pixels counted. Use when you need the mean colour of the selection, a layer or the picture.
+
+- `id`: string; A layer id from get_document; omit for the flattened picture.
+
+Note: read-only.
+
+## align_layers
+
+Aligns or distributes the layers in ids (from get_document; the current selection when left out). align: left, hcenter, right, top, vcenter or bottom; distribute: the same edges or hspace and vspace for equal gaps (three or more layers, or two with to selection or canvas). to auto uses the bounds of the layers themselves, or the selection or canvas. Use when layers should line up or be spread evenly.
+
+- `ids`: array
+- `align`: string (left | hcenter | right | top | vcenter | bottom)
+- `distribute`: string (left | hcenter | right | top | vcenter | bottom | hspace | vspace)
+- `to`: string (auto | selection | canvas); default "auto"
+
+## group_layers
+
+Puts the layers in ids (from get_document) into one new group, named name; returns the group's id. Use when several layers should become one group.
+
+- `ids`: array; required
+- `name`: string
+
+## set_group
+
+Changes a group's name, visibility, lock (every lock) or collapsed state in the Layers panel. id is a group from get_document. Use when a group should be renamed, hidden, locked or collapsed.
+
+- `id`: string; required; A layer id from get_document.
+- `name`: string
+- `visible`: boolean
+- `locked`: boolean
+- `collapsed`: boolean
+
+## set_mask
+
+Changes a layer's raster mask. action reveal_all or hide_all (adds one, or resets the layer's), reveal_selection or hide_selection (from the selection; the layer has no mask yet), enable, disable, invert, delete, apply (burns it into the pixels, then removes it), or copy_from (a copy of the mask of from_id). Use when a layer mask should be added, inverted, copied, turned off or removed.
+
+- `id`: string; required; A layer id from get_document.
+- `action`: string (reveal_all | hide_all | reveal_selection | hide_selection | enable | disable | invert | delete | apply | copy_from); required
+- `from_id`: string; A layer id with a mask; for copy_from.
+
+Note: replaces or removes.
+
+## set_text
+
+Changes a text layer (id from get_document): its words, font, size, colour, bold, italic, alignment, line height, tracking, and its angle in degrees. Give only what changes. Use when the words or style of a text layer should change.
+
+- `id`: string; required; A layer id from get_document.
+- `text`: string
+- `font`: string
+- `size`: number
+- `color`: string
+- `bold`: boolean
+- `italic`: boolean
+- `align`: string (left | center | right | justify)
+- `line_height`: number
+- `tracking`: number
+- `angle`: number
+
+## list_history
+
+The document's undo history (each step's name, which are done and which are undone) and its snapshots (id, name, kind, memory), newest last. Snapshots live with the open document and are not saved. Use when you need the undo steps or snapshots before going back.
+
+- no parameters
+
+Note: read-only.
+
+## take_snapshot
+
+Keeps the document as it is now as a named snapshot to return to however far the steps move on; returns its id. kind document keeps every layer, merged the flattened picture, layer the active layer. Use when a state of the document should be kept to return to later.
+
+- `name`: string
+- `kind`: string (document | merged | layer); default "document"
+
+## restore_snapshot
+
+Returns the document to a snapshot, by id or by name (list_history shows both), as one undo step; the snapshot stays. Use when the document should return to a snapshot.
+
+- `id`: string; A snapshot id from list_history.
+- `name`: string
+
+## delete_snapshot
+
+Deletes a snapshot by id or by name (list_history shows both). The history steps are not touched. Use when a snapshot is no longer wanted.
+
+- `id`: string; A snapshot id from list_history.
+- `name`: string
+
+Note: replaces or removes.
+
+## extend_canvas
+
+Adds pixels to each side of the canvas independently (left, top, right, bottom), filled with fill: transparent, a colour #rrggbb, foreground or background. The picture keeps its place. Use when different amounts of space should be added on each side.
+
+- `left`: integer; default 0
+- `top`: integer; default 0
+- `right`: integer; default 0
+- `bottom`: integer; default 0
+- `fill`: string; default "transparent"; transparent, #rrggbb, foreground or background.
+
+## export_layer
+
+Writes one layer alone, with its mask and transparency, as a PNG to an absolute path: the size of the document, or trimmed to the layer's visible pixels with trim true. A file already there is kept unless overwrite is true. Use when one layer alone should be written as a transparent PNG.
+
+- `path`: string; required; Absolute path ending .png
+- `id`: string; required; A layer id from get_document.
+- `trim`: boolean; default false
+- `overwrite`: boolean; default false; Replace a file already at the path. Without it an existing file is not touched.
+
+Note: replaces or removes.
+
+## read_log
+
+The window's error log: uncaught errors and failed tasks (at most 100, newest last), each with when, what and the message. It is not a full application log. Use when something failed in the window and you need the error log.
+
+- `limit`: integer; default 30
+
+Note: read-only.
+
+## list_brush_tips
+
+The brush presets and sampled tips: id, name, description, size, hardness, opacity, angle, roundness and spacing, with the brush as it is set now. Use an id as preset in set_brush. Use when you need the brush presets and tips before choosing one.
+
+- no parameters
+
+Note: read-only.
+
+## set_brush
+
+Sets the brush: size (pixels), hardness, opacity, flow (0 to 1), a preset id from list_brush_tips (applied first), and the tip's angle (degrees), roundness (percent), spacing (percent of the size) and follow_direction (the tip turns with the stroke). Use when the brush size, hardness, opacity, flow, preset or tip should change before painting.
+
+- `size`: integer
+- `hardness`: number
+- `opacity`: number
+- `flow`: number
+- `preset`: string
+- `angle`: number
+- `roundness`: number
+- `spacing`: number
+- `follow_direction`: boolean
+
+## add_filter
+
+Adds a filter to a layer as a smart filter that stays editable (the layer becomes a smart object when it is not one): kind and settings as apply_filter takes them. Returns the filter's id; set_filter changes, disables or removes it later. Use when a filter should stay editable on a layer.
+
+- `id`: string; A layer id from get_document; the active layer when left out.
+- `kind`: string; required
+- `settings`: object; default {}
+
+## set_filter
+
+Changes a smart filter on a smart object layer: its settings, kind, enabled, opacity (percent), blend mode, or remove it. With only id it lists the layer's filters. Use when a smart filter needs other settings, or should be turned off or removed.
+
+- `id`: string; required; A layer id from get_document.
+- `filter_id`: string; A filter id from add_filter or set_filter's list; the last filter when left out.
+- `kind`: string
+- `settings`: object
+- `enabled`: boolean
+- `opacity`: number
+- `blend`: string
+- `remove`: boolean; default false
 
 Note: replaces or removes.

@@ -1,0 +1,35 @@
+app-id: ai.nodemode.formvis
+runtime: org.gnome.Platform
+runtime-version: '47'
+sdk: org.gnome.Sdk
+command: formvis
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --device=dri
+  - --share=network
+  - --filesystem=xdg-pictures
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-download
+  - --talk-name=org.freedesktop.secrets
+modules:
+  - name: formvis
+    buildsystem: simple
+    build-commands:
+      - ar x formvis.deb data.tar.gz
+      - tar -xzf data.tar.gz -C /app --strip-components=2 ./usr
+      - install -Dm644 ai.nodemode.formvis.desktop /app/share/applications/ai.nodemode.formvis.desktop
+      - install -Dm644 ai.nodemode.formvis.xml /app/share/mime/packages/ai.nodemode.formvis.xml
+      - install -Dm644 ai.nodemode.formvis.metainfo.xml /app/share/metainfo/ai.nodemode.formvis.metainfo.xml
+    sources:
+      - type: file
+        url: https://github.com/nodemode-ai/formvis/releases/download/v1.89.0/formvis_1.89.0_amd64.deb
+        sha256: REPLACE_WITH_THE_RELEASE_DEB_SHA256
+        dest-filename: formvis.deb
+      - type: file
+        path: ../linux/ai.nodemode.formvis.desktop
+      - type: file
+        path: ../linux/ai.nodemode.formvis.xml
+      - type: file
+        path: ../linux/ai.nodemode.formvis.metainfo.xml

@@ -1,6 +1,6 @@
 import type { Engine } from '../../engine';
 import { STACK_MODES, type StackMode } from '../../engine/stack-modes';
-import { decodeImage, IMAGE_ACCEPT } from '../../io/images';
+import { decodeImage, IMAGE_ACCEPT, isImageFile } from '../../io/images';
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
 import { checkRow, selectRow } from './controls';
@@ -13,6 +13,9 @@ export class LoadStackDialog extends Dialog {
   private smart = false;
   private mode: StackMode = 'median';
   private readonly input = el(`<input type="file" accept="${IMAGE_ACCEPT}" multiple style="display: none">`) as HTMLInputElement;
+  private align = false;
+  private readonly dir = el('<input type="file" webkitdirectory multiple style="display: none">') as HTMLInputElement;
+  private readonly alignRow: ReturnType<typeof checkRow>;
   private readonly picked = el('<p class="cv-dialog-note" role="status" style="min-height: 1.4em"></p>');
   private readonly note = el('<p class="cv-dialog-note" role="status" style="min-height: 1.4em"></p>');
   private readonly smartRow: ReturnType<typeof checkRow>;
@@ -23,13 +26,22 @@ export class LoadStackDialog extends Dialog {
     const browse = el('<button class="cv-btn" type="button">Browse...</button>') as HTMLButtonElement;
     browse.addEventListener('click', () => this.input.click());
     this.input.addEventListener('change', () => { this.files = Array.from(this.input.files ?? []); this.describe(); });
+    const folder = el('<button class="cv-btn" type="button" title="Every picture in a folder, in name order">Folder...</button>') as HTMLButtonElement;
+    folder.addEventListener('click', () => this.dir.click());
+    this.dir.addEventListener('change', () => {
+      this.files = Array.from(this.dir.files ?? []).filter(isImageFile).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+      this.dir.value = '';
+      this.describe();
+    });
+    this.alignRow = checkRow('Attempt to Automatically Align Source Images', (v) => { this.align = v; });
     this.smartRow = checkRow('Create Smart Object after Loading Layers', (v) => { this.smart = v; });
     this.modeRow = selectRow('Stack Mode', STACK_MODES.filter((m) => m.id !== 'none').map((m) => [m.id, m.label] as const), (v) => { this.mode = v as StackMode; });
     this.smartRow.el.hidden = statistics;
     this.modeRow.el.hidden = !statistics;
     const intro = statistics ? 'Choose two or more images; they load as a smart object stack and the stack mode combines them.' : 'Choose two or more images; each becomes a layer of one new document.';
-    this.body.append(el(`<p class="cv-dialog-note">${intro}</p>`), browse, this.input, this.picked, this.smartRow.el, this.modeRow.el, this.note);
+    this.body.append(el(`<p class="cv-dialog-note">${intro}</p>`), browse, folder, this.input, this.dir, this.picked, this.smartRow.el, this.modeRow.el, this.alignRow.el, this.note);
     this.smartRow.set(false);
+    this.alignRow.set(false);
     this.modeRow.set('median');
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => void this.apply());
@@ -47,7 +59,17 @@ export class LoadStackDialog extends Dialog {
       const imgs = [];
       for (const f of files) imgs.push(await decodeImage(f, f.name));
       this.close();
-      this.engine.loadStack(imgs, this.statistics ? { smart: true, mode: this.mode } : { smart: this.smart, mode: 'none' });
+      const align = this.align, made = this.engine.loadStack(imgs, align ? { smart: false, mode: 'none' } : this.statistics ? { smart: true, mode: this.mode } : { smart: this.smart, mode: 'none' });
+      if (align && made) {
+        this.engine.selectAllLayers();
+        const { AlignBlendDialog } = await import('./align-blend-dialog');
+        this.engine.notice(await AlignBlendDialog.execute(this.engine, 'align', {}));
+        if (this.statistics || this.smart) {
+          this.engine.selectAllLayers();
+          this.engine.convertToSmartObject();
+          if (this.statistics) this.engine.setStackMode(this.mode);
+        }
+      }
     } catch (err) { setText(this.note, err instanceof Error ? err.message : 'These files could not be loaded.'); }
   }
 }

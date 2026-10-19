@@ -57,16 +57,49 @@ _LINK_IMAGE_SUFFIXES = {
 }
 
 
+_LINK_MAX_BYTES = 1024 * 1024 * 1024
+
+
+def _link_target(path: str, base: str) -> Path:
+    """The file a link names. A path is absolute, or relative to `base` (the document's folder) and then it may not leave
+    that folder. Network shares (UNC paths) are refused. The image suffix is checked on the file a link resolves to, so a
+    link named like a picture that points at something else is refused."""
+    if not path or "\x00" in path or "\x00" in base:
+        raise HTTPException(status_code=400, detail="That is not a file path.")
+    if path.startswith(("\\\\", "//")) or base.startswith(("\\\\", "//")):
+        raise HTTPException(status_code=400, detail="Files on a network share are not read through a link.")
+    given = Path(path).expanduser()
+    if given.is_absolute():
+        target = given
+    else:
+        if not base:
+            raise HTTPException(status_code=400, detail="A link must be an absolute path, or relative to the document's folder.")
+        root = Path(base).expanduser()
+        if not root.is_absolute():
+            raise HTTPException(status_code=400, detail="The document's folder must be an absolute path.")
+        root = root.resolve()
+        target = (root / given).resolve()
+        if root != target and root not in target.parents:
+            raise HTTPException(status_code=400, detail="A relative link may not leave the document's folder.")
+    try:
+        return target.resolve()
+    except (OSError, RuntimeError):
+        raise HTTPException(status_code=400, detail="That path could not be resolved.")
+
+
 @router.get("/file")
-def linked_file(path: str) -> Response:
+def linked_file(path: str, base: str = "") -> Response:
     """Linked smart object file (33.2): the bytes of an existing image file on disk, for the desktop app to re-read a link
-    from its real path. 400 for a path that is not an image file by suffix, 404 when it does not exist as a regular file."""
+    from its real path. 400 for a path that is not an image file by suffix (checked on the resolved file), a network share,
+    or a relative path that leaves `base`; 404 when it does not exist as a regular file; 413 above 1 GB."""
     import mimetypes
-    target = Path(path).expanduser()
+    target = _link_target(path, base)
     if target.suffix.lower() not in _LINK_IMAGE_SUFFIXES:
         raise HTTPException(status_code=400, detail="That is not an image file.")
     if not target.is_file():
         raise HTTPException(status_code=404, detail="That file does not exist.")
+    if target.stat().st_size > _LINK_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="That file is too large to link.")
     media = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
     from email.utils import formatdate
     return Response(content=target.read_bytes(), media_type=media, headers={"Last-Modified": formatdate(target.stat().st_mtime, usegmt=True)})

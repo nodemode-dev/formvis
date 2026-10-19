@@ -2,7 +2,7 @@ import type { Engine } from '../../engine';
 import { api, type GenerativeStatus, type ProviderStatus } from '../../io/api';
 import { Dialog } from '../dialogs';
 import { el, setHidden, setText } from '../dom';
-import { addRecipe, comfyGenerator, recipes, removeRecipe } from '../../io/comfy';
+import { addRecipe, apiWorkflow, comfyGenerator, recipes, removeRecipe } from '../../io/comfy';
 import { localFill, localInpaint, localModels, localUpscale, modelReady, upscalerReady, type LocalModel } from '../../io/local-gen';
 import { loadPrefs } from '../prefs';
 import { ReferencePicker } from './references';
@@ -162,7 +162,9 @@ export class GenerativeDialog extends Dialog {
     const f = this.addFile.files?.[0];
     this.addFile.value = '';
     if (!f) return;
-    const problem = addRecipe(f.name.replace(/\.json$/i, ''), await f.text());
+    let text = await f.text();
+    try { text = await apiWorkflow(text, loadPrefs().comfyuiUrl, f.name); } catch (err) { setText(this.state, err instanceof Error ? err.message : 'That workflow could not be converted.'); return; }
+    const problem = addRecipe(f.name.replace(/\.json$/i, ''), text);
     if (problem) { setText(this.state, problem); return; }
     this.fillModels();
     this.model.value = `comfy:${f.name.replace(/\.json$/i, '')}`;

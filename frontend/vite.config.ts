@@ -4,6 +4,9 @@ const FRONTEND_PORT = 5190;
 // FORMVIS_BACKEND_PORT points the /api proxy somewhere else, e.g. at a closed port to run the browser build with no engine service.
 const BACKEND_PORT = Number(process.env.FORMVIS_BACKEND_PORT) || 8190;
 
+// A cross-origin isolated window (SharedArrayBuffer); credentialless keeps pictures and fonts from other sites loading.
+const ISOLATION = process.env.FORMVIS_ISOLATED === '0' ? {} : { 'Cross-Origin-Opener-Policy': 'same-origin', 'Cross-Origin-Embedder-Policy': 'credentialless' };
+
 export default defineConfig({
   root: '.',
   publicDir: 'public',
@@ -13,11 +16,13 @@ export default defineConfig({
     port: FRONTEND_PORT,
     host: false,
     strictPort: true,
+    headers: ISOLATION,
     proxy: {
       '/api': { target: `http://127.0.0.1:${BACKEND_PORT}`, changeOrigin: true, ws: true },
     },
   },
   preview: {
+    headers: ISOLATION,
     port: FRONTEND_PORT + 1,
     host: false,
     strictPort: true,

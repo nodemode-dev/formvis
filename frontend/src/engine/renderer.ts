@@ -30,11 +30,16 @@ const halfCache = new WeakMap<Raster, { version: number; levels: Map<number, Sur
 /** How many halvings suit an output of `factor` pixels per image pixel: as many as still leave the copy at least that
  *  large, at most 6, and none at half size or more. */
 function halvingsFor(factor: number): number {
-  if (!(factor > 0) || factor >= 0.5) return 0;
+  if (!(factor > 0) || factor >= 0.5 || renderCache.levels < 1) return 0;
   let n = 1;
-  while (n < 6 && 1 / 2 ** (n + 1) >= factor) n++;
+  while (n < renderCache.levels && 1 / 2 ** (n + 1) >= factor) n++;
   return n;
 }
+
+/** Preferences > Performance: how many halved copies a raster keeps for display (Cache Levels, 0 to 8) and the memory
+ *  the layer-effect cache may hold (Layer Effect Cache, bytes). */
+export const renderCache = { levels: 6, effectBytes: 256 * 1048576 };
+const surfaceBytes = (s: Surface): number => s.width * s.height * 4;
 
 /** The raster's canvas halved `level` times, each step drawn from the one before; `scale` says how much smaller it is. */
 function halved(r: Raster, level: number): { surface: Surface; scale: number } {
@@ -168,7 +173,17 @@ function textureHeight(H: Float32Array, w: number, h: number, t: BevelTexture, s
 
 export class Renderer {
   private readonly slots: Slot[] = [];
-  private readonly fxCache = new Map<ID, { key: string; parts: FxPart[] }>();
+  private readonly fxCache = new Map<ID, { key: string; parts: FxPart[]; bytes: number }>();
+  private fxBytes = 0;
+  /** What the layer-effect cache holds now: entries and bytes. */
+  effectCacheUse(): { entries: number; bytes: number } { return { entries: this.fxCache.size, bytes: this.fxBytes }; }
+  private trimEffectCache(room: number): void {
+    for (const [id, e] of this.fxCache) {
+      if (this.fxBytes + room <= renderCache.effectBytes && this.fxCache.size < 256) break;
+      this.fxCache.delete(id);
+      this.fxBytes -= e.bytes;
+    }
+  }
   /** While a style is being previewed, effects over large regions are computed at reduced resolution (about 1.5
    *  megapixels) and drawn scaled up, so dragging a slider stays quick; the style applied is computed in full. */
   fastEffects = false;
@@ -395,8 +410,11 @@ export class Renderer {
       }
     }
     if (exact) return parts;
-    if (this.fxCache.size > 64) this.fxCache.clear();
-    this.fxCache.set(layer.id, { key, parts });
+    const old = this.fxCache.get(layer.id);
+    if (old) { this.fxCache.delete(layer.id); this.fxBytes -= old.bytes; }
+    const bytes = parts.reduce((n, q) => n + surfaceBytes(q.s), 0);
+    this.trimEffectCache(bytes);
+    if (bytes <= renderCache.effectBytes) { this.fxCache.set(layer.id, { key, parts, bytes }); this.fxBytes += bytes; }
     return parts;
   }
 

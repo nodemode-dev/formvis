@@ -23,6 +23,22 @@ export async function headerSize(file: Blob): Promise<{ width: number; height: n
   return null;
 }
 
+/** Whether a PNG or JPEG file could really hold a picture of the size its header declares (PC-IO-0203): deflate cannot
+ *  shrink bytes more than 1032 to 1 and a JPEG block of 64 pixels takes at least a few bits, so a small file that
+ *  declares a vast picture is damaged or built to exhaust memory. Returns the reason, or null when plausible. */
+export async function implausibleSize(file: Blob, size: { width: number; height: number }): Promise<string | null> {
+  const b = new Uint8Array(await file.slice(0, 32).arrayBuffer());
+  const px = size.width * size.height;
+  if (b.length >= 26 && b[0] === 0x89 && b[1] === 0x50) {
+    const channels = [1, 0, 3, 1, 2, 0, 4][b[25]] ?? 4, bits = b[24] * channels, raw = size.height * (Math.ceil(size.width * bits / 8) + 1);
+    return raw > file.size * 1100 ? `The file is only ${Math.ceil(file.size / 1024).toLocaleString()} KB but declares a ${size.width} by ${size.height} picture, more than a PNG of that size can hold. It is damaged or not a real picture.` : null;
+  }
+  if (b.length >= 2 && b[0] === 0xff && b[1] === 0xd8) {
+    return px > file.size * 4000 ? `The file is only ${Math.ceil(file.size / 1024).toLocaleString()} KB but declares a ${size.width} by ${size.height} picture, more than a JPEG of that size can hold. It is damaged or not a real picture.` : null;
+  }
+  return null;
+}
+
 type Reader = (at: number, len: number) => Promise<Uint8Array>;
 
 /** XResolution in pixels per inch from the first directory of a TIFF structure; `read` fetches bytes by offset. */

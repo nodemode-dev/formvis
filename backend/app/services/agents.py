@@ -15,7 +15,7 @@ POLICIES = ("allow", "ask", "deny")
 POLICY_LABELS = {"allow": "Allow all", "ask": "Ask for risky steps", "deny": "Deny"}
 APPROVAL_SECONDS = 120.0
 LOG_LIMIT = 200
-RISKY_TOOLS = {"save_project": "overwrites a project file", "export_image": "overwrites a picture file", "timeline_render": "overwrites a video file"}
+RISKY_TOOLS = {"save_project": "overwrites a project file", "export_image": "overwrites a picture file", "timeline_render": "overwrites a video file", "convert_file": "writes a picture file"}
 
 _enabled = True
 _loaded = False

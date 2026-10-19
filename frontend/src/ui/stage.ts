@@ -9,10 +9,12 @@ import { stickyModifiers } from './modifier-keys';
 import { paint, type StagePaint } from './palette';
 import type { DisplayLayer, ScreenDisplay } from '../gpu/display';
 import { documentFallback } from '../gpu/fallback';
+import { frameTrace } from '../gpu/frame-trace';
 
 const REDUCED = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 /** Ruler thickness in CSS pixels; the rulers lie over the stage's top and left edges, so showing them moves nothing. */
 const RULER = 18;
+const TILE_PX = 256;
 
 import { drawSlices } from '../extensions/tools/slice';
 import { extraShown, onExtras, selectionTintOn } from './view-extras';
@@ -163,12 +165,15 @@ export class Stage {
     this.wantOverlay ||= overlay;
     if (scene) this.pending = region && this.pending !== null ? (this.pending ? unionRect(this.pending, region) : region) : null;
     if (this.frame) return;
+    const asked = frameTrace.on ? performance.now() : 0;
     this.frame = requestAnimationFrame(() => {
       this.frame = 0;
       const region = this.pending ?? null;
       this.pending = undefined;
+      const traced = frameTrace.on, t0 = traced ? performance.now() : 0, scene = this.wantScene;
       if (this.wantScene) this.renderScene(region);
       if (this.wantOverlay) this.renderOverlay();
+      if (traced && asked) frameTrace.record(asked, t0, performance.now(), scene ? (this.gpu && !this.gpuReason ? 'gpu' : 'cpu') : 'overlay');
     });
   }
 
@@ -381,6 +386,26 @@ export class Stage {
       }
       g.globalAlpha = 1;
     }
+    if (vw.tileGrid && v.zoom * TILE_PX >= 6) {
+      // Developer tile grid: the 256 px tiles giant layers and the GPU pages in, with the tile count in the corner.
+      g.strokeStyle = pal.accent;
+      g.globalAlpha = 0.7;
+      g.setLineDash([4, 3]);
+      g.beginPath();
+      for (let x = TILE_PX; x < W; x += TILE_PX) { const sx = Math.round(x0 + x * v.zoom) + 0.5; g.moveTo(sx, y0); g.lineTo(sx, y1); }
+      for (let y = TILE_PX; y < H; y += TILE_PX) { const sy = Math.round(y0 + y * v.zoom) + 0.5; g.moveTo(x0, sy); g.lineTo(x1, sy); }
+      g.stroke();
+      g.setLineDash([]);
+      g.globalAlpha = 1;
+      g.fillStyle = pal.accent;
+      g.font = '11px sans-serif';
+      g.fillText(`${Math.ceil(W / TILE_PX)} x ${Math.ceil(H / TILE_PX)} tiles of ${TILE_PX} px`, Math.max(x0, 0) + 6, Math.max(y0, 0) + 14);
+    }
+    if (frameTrace.on) {
+      g.fillStyle = pal.accent;
+      g.font = '11px sans-serif';
+      g.fillText(frameTrace.summary(120), 8 - this.offX, 16 - this.offY);
+    }
     const draft = this.engine.guideDraft, guides = (p.doc.guides ?? []).map((x, i) => (draft && draft.index === i ? null : x));
     if (vw.guides || draft) {
       const shown = [...guides, draft].filter((q): q is NonNullable<typeof q> => !!q && (vw.guides || q === draft)).map((x) => ({ axis: x.axis, at: x.at, color: 'color' in x ? x.color : undefined }));
@@ -541,12 +566,16 @@ export class Stage {
         g.beginPath(); g.moveTo(q.x, q.y); g.lineTo(q.x + 16, q.y); g.lineTo(q.x + 16, q.y + 11); g.lineTo(q.x + 11, q.y + 16); g.lineTo(q.x, q.y + 16); g.closePath(); g.fill(); g.stroke();
         g.beginPath(); g.moveTo(q.x + 4, q.y + 5); g.lineTo(q.x + 12, q.y + 5); g.moveTo(q.x + 4, q.y + 9); g.lineTo(q.x + 10, q.y + 9); g.strokeStyle = 'rgba(0,0,0,0.55)'; g.stroke();
       }
-      g.font = '600 12px Inter, system-ui, sans-serif';
-      (extraShown('counts') ? p.doc.counts ?? [] : []).forEach((c, i) => {
-        const q = v.toScreen(c.x, c.y);
-        g.fillStyle = pal.accent; g.beginPath(); g.arc(q.x, q.y, 3, 0, Math.PI * 2); g.fill();
-        g.lineWidth = 3; g.strokeStyle = pal.antsB; g.strokeText(String(i + 1), q.x + 5, q.y - 5);
-        g.fillStyle = pal.antsA; g.fillText(String(i + 1), q.x + 5, q.y - 5);
+      const look = this.engine.measureOpts, groups = p.doc.countGroups ?? [], seen = new Map<string, number>();
+      g.font = `600 ${look.countLabel}px Inter, system-ui, sans-serif`;
+      (extraShown('counts') ? p.doc.counts ?? [] : []).forEach((c) => {
+        const gr = groups.find((k) => k.id === c.g) ?? groups[0], key = gr?.id ?? '', n = (seen.get(key) ?? 0) + 1;
+        seen.set(key, n);
+        if (gr?.hidden) return;
+        const q = v.toScreen(c.x, c.y), r = look.countMarker;
+        g.fillStyle = gr?.color ?? pal.accent; g.beginPath(); g.arc(q.x, q.y, r, 0, Math.PI * 2); g.fill();
+        g.lineWidth = 3; g.strokeStyle = pal.antsB; g.strokeText(String(n), q.x + r + 2, q.y - r - 2);
+        g.fillStyle = pal.antsA; g.fillText(String(n), q.x + r + 2, q.y - r - 2);
       });
       g.restore();
     }

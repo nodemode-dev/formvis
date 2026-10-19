@@ -410,7 +410,7 @@ export class PropertiesColumn {
     const release = (): void => { grab = null; };
     tip.addEventListener('pointerup', release);
     tip.addEventListener('pointercancel', release);
-    const picker = el<HTMLInputElement>('<input type="file" accept=".abr" hidden>');
+    const picker = el<HTMLInputElement>('<input type="file" accept=".abr,image/*" hidden>');
     body.appendChild(picker);
     (body.querySelector('[data-act="load"]') as HTMLElement).addEventListener('click', () => picker.click());
     picker.addEventListener('change', () => {

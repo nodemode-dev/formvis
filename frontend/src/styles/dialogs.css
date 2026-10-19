@@ -269,7 +269,8 @@
 .cv-help-answer:empty { display: none; }
 /* Plugins (1.52.6). */
 .cv-plugins-list { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; }
-.cv-plugins-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
+.cv-plugins-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 2px 8px; font-size: 13px; }
+.cv-plugins-state { flex: 1 0 100%; margin: 0; overflow-wrap: anywhere; }
 .cv-plugins-row label { display: flex; align-items: center; gap: 6px; }
 /* Local models (1.52.9). */
 .cv-local-card { border-top: 1px solid var(--border, #333); padding-top: 6px; margin-top: 6px; }

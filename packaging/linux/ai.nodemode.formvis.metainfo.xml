@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>ai.nodemode.formvis</id>
+  <name>formvis</name>
+  <summary>Layered image editor</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <developer id="ai.nodemode">
+    <name>nodemode-ai</name>
+  </developer>
+  <description>
+    <p>formvis is a layered image editor: layers, folders, masks, clipping, blend modes, selections, painting, filters, colour management and PSD, TIFF, EXR and OpenRaster files.</p>
+    <p>It runs its own local engine, and edits stay on this computer.</p>
+  </description>
+  <launchable type="desktop-id">ai.nodemode.formvis.desktop</launchable>
+  <url type="homepage">https://github.com/nodemode-ai/formvis</url>
+  <url type="bugtracker">https://github.com/nodemode-ai/formvis/issues</url>
+  <categories>
+    <category>Graphics</category>
+    <category>2DGraphics</category>
+    <category>RasterGraphics</category>
+  </categories>
+  <provides>
+    <binary>formvis</binary>
+    <mediatype>application/x-formvis</mediatype>
+    <mediatype>image/vnd.adobe.photoshop</mediatype>
+    <mediatype>image/openraster</mediatype>
+  </provides>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="1.89.0" date="2026-10-19"/>
+  </releases>
+</component>

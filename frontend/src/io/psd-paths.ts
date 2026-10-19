@@ -121,3 +121,28 @@ export function readPathResources(psd: ArrayBuffer, w: number, h: number): Named
   }
   return out;
 }
+
+/** Every image resource block of a PSD or PSB by id, the data as stored; a repeated id keeps its first block. */
+export function resourceBlocks(psd: ArrayBuffer): Map<number, Uint8Array> {
+  const out = new Map<number, Uint8Array>();
+  try {
+    const b = new Uint8Array(psd), dv = new DataView(psd), at = resourcesAt(b), end = Math.min(b.length, at + 4 + dv.getUint32(at));
+    let o = at + 4;
+    while (o + 12 <= end && dv.getUint32(o) === 0x3842494d) {
+      const id = dv.getUint16(o + 4), nlen = b[o + 6];
+      const p = o + 6 + 1 + nlen + ((1 + nlen) % 2), size = dv.getUint32(p);
+      if (p + 4 + size > end) break;
+      if (!out.has(id)) out.set(id, b.subarray(p + 4, p + 4 + size));
+      o = p + 4 + size + (size % 2);
+    }
+  } catch { /* a header that is not one */ }
+  return out;
+}
+
+/** The name stored in the clipping path resource (2999), a Pascal string; null when the file has none. */
+export function clippingPathName(blocks: Map<number, Uint8Array>): string | null {
+  const d = blocks.get(2999);
+  if (!d || !d.length || d[0] + 1 > d.length) return null;
+  const name = new TextDecoder().decode(d.subarray(1, 1 + d[0]));
+  return name || null;
+}

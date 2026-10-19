@@ -1,6 +1,6 @@
 """The Netpbm family from the published format descriptions (netpbm.sourceforge.net/doc): PBM (P1 text, P4 raw bits),
-PGM (P2 text, P5 raw), PPM (P3 text, P6 raw) and PAM (P7, tuple types BLACKANDWHITE, GRAYSCALE, RGB and their _ALPHA
-forms). Samples above 255 are two bytes, most significant first. A picture comes out as RGBA with every sample scaled
+PGM (P2 text, P5 raw), PPM (P3 text, P6 raw), PAM (P7, tuple types BLACKANDWHITE, GRAYSCALE, RGB and their _ALPHA
+forms, and CMYK and CMYK_ALPHA turned to RGB by 1 - ink times 1 - black) and the floating point PFM (PF, Pf). Samples above 255 are two bytes, most significant first. A picture comes out as RGBA with every sample scaled
 from its maxval to the full range of 8 or, past a maxval of 255, 16 bits; PBM's 1 is black. Writers take RGBA at 8 or 16
 bits: P4 thresholds the luma at half, P5 and P6 flatten transparency on white, and P7 keeps alpha and chooses
 GRAYSCALE, GRAYSCALE_ALPHA, RGB or RGB_ALPHA from what the picture holds."""
@@ -21,6 +21,37 @@ class PnmError(Exception):
 
 def is_pnm(data: bytes) -> bool:
     return len(data) >= 3 and data[0:1] == b"P" and data[1:2] in b"1234567" and data[2] in WHITESPACE + b"#"
+
+
+def is_pfm(data: bytes) -> bool:
+    return len(data) >= 3 and data[0:1] == b"P" and data[1:2] in b"Ff" and data[2] in WHITESPACE
+
+
+def read_pfm(data: bytes) -> np.ndarray:
+    """A floating point PFM ('PF' colour, 'Pf' grey) as float32 RGBA of shape (height, width, 4), top row first. The
+    scale's sign gives the byte order (negative little endian); rows are stored bottom to top."""
+    if not is_pfm(data):
+        raise PnmError("This is not a PFM file.")
+    colour = data[1:2] == b"F"
+    rd = _Reader(data, 2)
+    width, height = rd.number(), rd.number()
+    _check(width, height)
+    try:
+        scale = float(rd.token())
+    except ValueError as exc:
+        raise PnmError("The PFM scale is not a number.") from exc
+    if scale == 0 or scale != scale:
+        raise PnmError("The PFM scale must not be zero.")
+    rd.pos += 1
+    depth = 3 if colour else 1
+    count = width * height * depth
+    if len(data) - rd.pos < count * 4:
+        raise PnmError("The pixel data ends before the picture does.")
+    flat = np.frombuffer(data, "<f4" if scale < 0 else ">f4", count=count, offset=rd.pos).astype(np.float32)
+    rows = flat.reshape(height, width, depth)[::-1]
+    out = np.ones((height, width, 4), np.float32)
+    out[..., :3] = rows
+    return np.ascontiguousarray(out)
 
 
 class _Reader:
@@ -160,11 +191,11 @@ def _read_pam(data: bytes, rd: _Reader) -> tuple[np.ndarray, int]:
     if not 1 <= maxval <= 65535:
         raise PnmError("The maximum sample value must be between 1 and 65535.")
     tuple_type = fields.get("TUPLTYPE", "").split(" ")[0].upper() if fields.get("TUPLTYPE") else ""
-    wanted = {"BLACKANDWHITE": 1, "GRAYSCALE": 1, "RGB": 3, "BLACKANDWHITE_ALPHA": 2, "GRAYSCALE_ALPHA": 2, "RGB_ALPHA": 4}.get(tuple_type)
+    wanted = {"BLACKANDWHITE": 1, "GRAYSCALE": 1, "RGB": 3, "BLACKANDWHITE_ALPHA": 2, "GRAYSCALE_ALPHA": 2, "RGB_ALPHA": 4, "CMYK": 4, "CMYK_ALPHA": 5}.get(tuple_type)
     if wanted is not None and wanted != depth:
         raise PnmError(f"The PAM tuple type {tuple_type} needs a DEPTH of {wanted}.")
-    if depth not in (1, 2, 3, 4):
-        raise PnmError("This PAM holds a tuple type formvis cannot show as a picture (DEPTH must be 1 to 4).")
+    if depth not in (1, 2, 3, 4, 5) or (depth == 5 and tuple_type != "CMYK_ALPHA"):
+        raise PnmError("This PAM holds a tuple type formvis cannot show as a picture (DEPTH must be 1 to 4, or 4 or 5 for CMYK).")
     wide = maxval > 255
     count = width * height * depth
     if n - pos < count * (2 if wide else 1):
@@ -172,6 +203,10 @@ def _read_pam(data: bytes, rd: _Reader) -> tuple[np.ndarray, int]:
     arr = np.frombuffer(data, ">u2" if wide else np.uint8, count=count, offset=pos).reshape(height, width, depth).astype(np.uint32)
     if int(arr.max()) > maxval:
         raise PnmError("A sample is above the maximum value the header gives.")
+    if tuple_type.startswith("CMYK"):
+        ink = arr[..., :4].astype(np.uint64)
+        rgb = (((maxval - ink[..., :3]) * (maxval - ink[..., 3:4]) + maxval // 2) // maxval).astype(np.uint32)
+        arr, depth = np.concatenate([rgb, arr[..., 4:5]], axis=2) if depth == 5 else rgb, 4 if depth == 5 else 3
     return _rgba(arr, depth, maxval)
 
 

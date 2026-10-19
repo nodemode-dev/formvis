@@ -1,7 +1,7 @@
 import { IMAGE_ACCEPT } from '../../io/images';
 import { parseAtn } from '../../io/atn';
 import type { Action, Actions } from '../actions';
-import { actionsFrom } from '../actions';
+import { actionsFrom, CONDITION_TESTS } from '../actions';
 import { Dialog } from '../dialogs';
 import { el, patchList, q, setChecked, setDisabled, setHidden, setText } from '../dom';
 import type { ActionStep } from '../actions';
@@ -35,6 +35,9 @@ export class ActionsDialog extends Dialog {
   private readonly deleteStepBtn: HTMLButtonElement;
   private readonly moveBtns: HTMLButtonElement[];
   private picked = -1;
+  private readonly cTest = el<HTMLSelectElement>(`<select class="cv-input" aria-label="Condition">${CONDITION_TESTS.map(([t, l]) => `<option value="${t}">${l}</option>`).join('')}</select>`);
+  private readonly cThen = el<HTMLSelectElement>('<select class="cv-input" aria-label="Play when it holds"></select>');
+  private readonly cElse = el<HTMLSelectElement>('<select class="cv-input" aria-label="Play when it does not"></select>');
   private readonly follow = el<HTMLInputElement>('<input type="checkbox">');
   private readonly note = el('<p class="cv-note"></p>');
   private readonly file = el<HTMLInputElement>('<input type="file" accept=".json,.atn,application/json" hidden>');
@@ -61,6 +64,13 @@ export class ActionsDialog extends Dialog {
     };
     this.moveBtns = [mover('Step Up', () => this.moveStep(-1)), mover('Step Down', () => this.moveStep(1)), mover('Action Up', () => this.moveAction(-1)), mover('Action Down', () => this.moveAction(1)), mover('Rename', () => this.rename())];
     this.body.append(stops, moves);
+    this.field('If', this.cTest);
+    this.field('Then play', this.cThen);
+    this.field('Otherwise play', this.cElse);
+    const cond = el('<div class="cv-welcome-actions cv-step-tools"></div>'), addCond = el<HTMLButtonElement>('<button class="cv-btn" type="button">Insert Conditional</button>');
+    cond.append(addCond);
+    this.body.append(cond);
+    addCond.addEventListener('click', () => this.insertConditional());
     insert.addEventListener('click', () => this.insertStop());
     this.deleteStepBtn.addEventListener('click', () => this.deleteStep());
     this.steps.addEventListener('click', (e) => {
@@ -110,6 +120,17 @@ export class ActionsDialog extends Dialog {
 
   private sync(): void {
     syncOptions(this.pick, this.store.list.map(titled));
+    for (const sel of [this.cThen, this.cElse]) {
+      const names = ['', ...this.store.list.map((x) => x.name)];
+      while (sel.options.length > names.length) sel.remove(sel.options.length - 1);
+      names.forEach((n, i) => {
+        let o = sel.options[i];
+        if (!o) { o = document.createElement('option'); sel.appendChild(o); }
+        if (o.value !== n) o.value = n;
+        const text = n || 'Nothing';
+        if (o.textContent !== text) o.textContent = text;
+      });
+    }
     const a = this.selected();
     const list = a?.steps ?? [];
     if (this.picked >= list.length) this.picked = -1;
@@ -161,6 +182,19 @@ export class ActionsDialog extends Dialog {
     a.steps.splice(at, 0, { kind: 'stop', label: 'Stop', message, allowContinue: this.stopGo.checked });
     this.store.save();
     this.stopText.value = '';
+    this.picked = at;
+    this.sync();
+  }
+
+  /** Insert Conditional: a step after the selected one that plays one action when the test holds and another when not. */
+  private insertConditional(): void {
+    const a = this.selected();
+    if (!a) return;
+    const test = CONDITION_TESTS.find(([t]) => t === this.cTest.value), then = this.cThen.value, other = this.cElse.value;
+    if (!test || (!then && !other)) { setText(this.note, 'Choose the action to play when the condition holds, when it does not, or both.'); return; }
+    const at = this.picked >= 0 ? this.picked + 1 : a.steps.length;
+    a.steps.splice(at, 0, { kind: 'conditional', label: `If ${test[1].toLowerCase()}`, test: test[0], then, else: other });
+    this.store.save();
     this.picked = at;
     this.sync();
   }
@@ -306,5 +340,43 @@ export class BatchDialog extends Dialog {
     const files = this.files, format = this.format.value === 'jpg' ? 'jpg' : 'png', q = Math.min(100, Math.max(1, Number(this.quality.value) || 92)) / 100;
     this.close();
     await this.run(a, files, format, q, this.template.value, Math.max(0, Math.floor(Number(this.serial.value) || 0)));
+  }
+}
+
+export interface DropletOptions { action: string; format: string; quality: number; out: string; recursive: boolean }
+
+/** File > Automate > Create Droplet: the action, the file type and quality, the output folder (blank: beside each
+ *  picture) and whether dropped folders are searched through; it writes the droplet script. */
+export class DropletDialog extends Dialog {
+  private readonly pick = el<HTMLSelectElement>('<select class="cv-input"></select>');
+  private readonly format = el<HTMLSelectElement>('<select class="cv-input"><option value="png">PNG</option><option value="jpg">JPEG</option><option value="webp">WebP</option><option value="tiff">TIFF</option></select>');
+  private readonly quality = el<HTMLInputElement>('<input class="cv-input" type="number" min="1" max="100" step="1" value="92">');
+  private readonly out = el<HTMLInputElement>('<input class="cv-input" type="text" placeholder="Beside each picture" spellcheck="false" maxlength="400" aria-label="Output folder">');
+  private readonly sub = el<HTMLInputElement>('<input type="checkbox" checked>');
+
+  constructor(private readonly store: Actions, private readonly create: (o: DropletOptions) => Promise<void>) {
+    super('Create Droplet', 420);
+    this.field('Action', this.pick);
+    this.field('Save as', this.format);
+    this.field('JPEG and WebP quality', this.quality);
+    this.field('Output folder', this.out);
+    this.field('Include All Sub-folders', this.sub);
+    this.button('Cancel', 'ghost', () => this.close());
+    this.button('Create', 'primary', () => void this.go());
+    this.format.addEventListener('change', () => setDisabled(this.quality, this.format.value === 'png' || this.format.value === 'tiff'));
+    this.remember([this.pick]);
+  }
+
+  show(): void {
+    syncOptions(this.pick, this.store.list.map(titled));
+    setDisabled(this.quality, this.format.value === 'png' || this.format.value === 'tiff');
+    this.open();
+  }
+
+  private async go(): Promise<void> {
+    const a = this.store.list[Number(this.pick.value)];
+    if (!a) return;
+    this.close();
+    await this.create({ action: a.name, format: this.format.value, quality: Math.min(100, Math.max(1, Number(this.quality.value) || 92)), out: this.out.value.trim(), recursive: this.sub.checked });
   }
 }

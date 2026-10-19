@@ -11,7 +11,7 @@ from fastapi import APIRouter, Body, File, Form, HTTPException, Request, UploadF
 from fastapi.responses import Response
 
 from app.core import config
-from app.services import camera_profiles, cin, dpx, fits, imaging, pnm, raw_develop
+from app.services import camera_profiles, cin, dpx, fits, imaging, pnm, raw_develop, tga
 
 router = APIRouter(tags=["io"])
 #: Every file type the app writes: pictures, projects, video, deep formats, archives, tables, presets and scripts.
@@ -70,6 +70,13 @@ def decode_deep(file: UploadFile = File(...)) -> Response:
             raise HTTPException(status_code=415, detail=str(exc)) from exc
         return Response(np.ascontiguousarray(px).astype("<u2").tobytes(), media_type="application/octet-stream",
                         headers={"X-Width": str(info["width"]), "X-Height": str(info["height"]), "X-Depth": "16"})
+    if pnm.is_pfm(raw):
+        try:
+            px = pnm.read_pfm(raw)
+        except pnm.PnmError as exc:
+            raise HTTPException(status_code=415, detail=str(exc)) from exc
+        return Response(px.astype("<f4").tobytes(), media_type="application/octet-stream",
+                        headers={"X-Width": str(px.shape[1]), "X-Height": str(px.shape[0]), "X-Depth": "32"})
     if pnm.is_pnm(raw):
         try:
             px, bits = pnm.read(raw)
@@ -84,6 +91,24 @@ def decode_deep(file: UploadFile = File(...)) -> Response:
             raise HTTPException(status_code=415, detail=str(exc)) from exc
         return Response(np.ascontiguousarray(px).astype("<f4" if bits == 32 else "<u2").tobytes(), media_type="application/octet-stream",
                         headers={"X-Width": str(px.shape[1]), "X-Height": str(px.shape[0]), "X-Depth": str(bits)})
+    if Path(file.filename or "").suffix.lower() in imaging.HEIF_SUFFIXES:
+        deep = imaging.heif_deep(raw)
+        if deep is None:
+            raise HTTPException(status_code=415, detail="This HEIF holds 8 bits a channel, or no HEIF engine is installed.")
+        px = deep[0]
+        if px.shape[1] > 30000 or px.shape[0] > 30000 or px.shape[0] * px.shape[1] > config.MAX_PIXELS:
+            raise HTTPException(status_code=413, detail="The picture is larger than formvis edits in one piece.")
+        return Response(px.astype("<u2").tobytes(), media_type="application/octet-stream",
+                        headers={"X-Width": str(px.shape[1]), "X-Height": str(px.shape[0]), "X-Depth": "16", "X-Bits": str(deep[1])})
+    if raw[:4] in (b"II*\x00", b"MM\x00*", b"II+\x00", b"MM\x00+"):
+        try:
+            from PIL import Image
+            with Image.open(io.BytesIO(raw)) as probe:
+                separated = probe.mode in ("CMYK", "LAB")
+        except Exception:
+            separated = False
+        if separated:
+            raise HTTPException(status_code=415, detail="A CMYK or Lab TIFF opens through its own colour path, not as RGB at its depth.")
     img = contained.decode_exr(raw) if contained.is_exr(raw) else cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_UNCHANGED)
     if img is None:
         raise HTTPException(status_code=415, detail="The picture could not be read at its depth." if not contained.is_exr(raw) else "The OpenEXR file could not be read; a malformed file is refused outside the engine.")
@@ -124,6 +149,66 @@ def exr_parts(file: UploadFile = File(...)) -> Response:
     if not res or res.get("count", 1) < 2:
         head = json.dumps({"count": 1}).encode()
         return Response(len(head).to_bytes(4, "little") + head, media_type="application/octet-stream")
+    if res["width"] > 30000 or res["height"] > 30000 or res["width"] * res["height"] > config.MAX_PIXELS:
+        raise HTTPException(status_code=413, detail="The picture is larger than formvis edits in one piece.")
+    head = json.dumps({"count": res["count"], "width": res["width"], "height": res["height"], "parts": res["parts"]}).encode()
+    body = b"".join(np.ascontiguousarray(px).astype("<f4").tobytes() for px in res["pixels"])
+    return Response(len(head).to_bytes(4, "little") + head + body, media_type="application/octet-stream")
+
+
+@router.post("/decode-split")
+def decode_split(file: UploadFile = File(...)) -> Response:
+    """A Targa with an alpha channel as an opaque RGB PNG, colours under zero alpha kept, and the alpha as a grey PNG.
+    The body is a 4-byte little-endian length, that many bytes of JSON ({hasAlpha, width, height, rgb, alpha}, the two
+    PNG lengths), then the two PNGs. A Targa whose alpha is all opaque gives the JSON alone with hasAlpha false."""
+    from PIL import Image
+    raw = file.file.read()
+    if not tga.looks_like_tga(raw):
+        raise HTTPException(status_code=415, detail="This is not a Targa file.")
+    try:
+        px = tga.read(raw)
+    except tga.TgaError as exc:
+        raise HTTPException(status_code=415, detail=str(exc)) from exc
+    h, w = px.shape[:2]
+    if not bool((px[..., 3] != 255).any()):
+        head = json.dumps({"hasAlpha": False, "width": w, "height": h}).encode()
+        return Response(len(head).to_bytes(4, "little") + head, media_type="application/octet-stream")
+    rgb, alpha = io.BytesIO(), io.BytesIO()
+    Image.fromarray(np.ascontiguousarray(px[..., :3]), "RGB").save(rgb, format="PNG", compress_level=1)
+    Image.fromarray(np.ascontiguousarray(px[..., 3]), "L").save(alpha, format="PNG", compress_level=1)
+    head = json.dumps({"hasAlpha": True, "width": w, "height": h, "rgb": rgb.tell(), "alpha": alpha.tell()}).encode()
+    return Response(len(head).to_bytes(4, "little") + head + rgb.getvalue() + alpha.getvalue(), media_type="application/octet-stream")
+
+
+@router.post("/exr-layout")
+def exr_layout(file: UploadFile = File(...)) -> dict:
+    """The channel groups of an OpenEXR for the Open EXR chooser: each part's groups (a part's own channels, or channels
+    sharing a prefix such as diffuse.R) and the Cryptomatte sets with their object names."""
+    from app.services import contained
+    raw = file.file.read()
+    if not contained.is_exr(raw):
+        raise HTTPException(status_code=415, detail="This is not an OpenEXR file.")
+    res = contained.inspect_exr(raw)
+    if not res:
+        raise HTTPException(status_code=415, detail="The OpenEXR file could not be read; a malformed file is refused outside the engine.")
+    return res
+
+
+@router.post("/exr-select")
+def exr_select(file: UploadFile = File(...), picks: str = Form(...)) -> Response:
+    """The groups `picks` names ([{part, key}] or [{crypto, object}], from /exr-layout) as RGBA float32, in the body
+    format of /exr-parts."""
+    from app.services import contained
+    try:
+        chosen = json.loads(picks)
+        if not isinstance(chosen, list) or not chosen or not all(isinstance(x, dict) for x in chosen):
+            raise ValueError
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Picks must be a JSON list of groups from the layout.") from exc
+    raw = file.file.read()
+    res = contained.inspect_exr(raw, chosen) if contained.is_exr(raw) else None
+    if not res or not res.get("count"):
+        raise HTTPException(status_code=415, detail="None of the chosen groups could be read from the OpenEXR file.")
     if res["width"] > 30000 or res["height"] > 30000 or res["width"] * res["height"] > config.MAX_PIXELS:
         raise HTTPException(status_code=413, detail="The picture is larger than formvis edits in one piece.")
     head = json.dumps({"count": res["count"], "width": res["width"], "height": res["height"], "parts": res["parts"]}).encode()

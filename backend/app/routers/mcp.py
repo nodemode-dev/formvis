@@ -69,8 +69,9 @@ TOOLS = [
           "x": {"type": "number"}, "y": {"type": "number"}, "width": {"type": "number", "minimum": 1}, "height": {"type": "number", "minimum": 1},
           "mode": {"type": "string", "enum": ["replace", "add", "subtract", "intersect"], "default": "replace"}}, ["shape"]),
     _tool("add_layer", "Adds an empty layer above the active one and makes it active; returns its id.", {"name": {"type": "string", "maxLength": 120}}),
-    _tool("set_layer", "Changes a layer's name, visibility, opacity (0 to 1) or blend mode, or makes it the active layer.", {"id": _ID, "name": {"type": "string", "maxLength": 120},
-          "visible": {"type": "boolean"}, "opacity": {"type": "number", "minimum": 0, "maximum": 1}, "blend": {"type": "string"}, "active": {"type": "boolean"}}, ["id"], idempotent=True),
+    _tool("set_layer", "Changes a layer's name, visibility, opacity (0 to 1), blend mode or locks (locks: pixels, position, transparency, all; true locks, false unlocks, left out stays), or makes it the active layer.", {"id": _ID, "name": {"type": "string", "maxLength": 120},
+          "visible": {"type": "boolean"}, "opacity": {"type": "number", "minimum": 0, "maximum": 1}, "blend": {"type": "string"}, "active": {"type": "boolean"},
+          "locks": {"type": "object", "properties": {"pixels": {"type": "boolean"}, "position": {"type": "boolean"}, "transparency": {"type": "boolean"}, "all": {"type": "boolean"}}, "additionalProperties": False}}, ["id"], idempotent=True),
     _tool("delete_layer", "Deletes a layer (undoable).", {"id": _ID}, ["id"], destructive=True),
     _tool("fill", "Fills the selection (or the whole active layer when nothing is selected) with a colour.", {"color": {"type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "description": "#rrggbb"}}, ["color"]),
     _tool("add_adjustment", "Adds an adjustment layer (for example curves, levels, hsv, exposure, splitToning, halation, glow) with optional parameters.",
@@ -100,15 +101,17 @@ TOOLS = [
     _tool("save_project", "Saves the document as a formvis project (.fvd: layers, masks, adjustments and text stay editable) at an absolute path. A file already there is kept unless overwrite is true.",
           {"path": {"type": "string", "description": "Absolute path ending .fvd"}, "overwrite": _OVERWRITE}, ["path"], destructive=True),
     _tool("export_image", "Writes the document as it looks to an absolute path as PNG, JPEG or WebP (by the path's extension). A file already there is kept unless overwrite is true.",
-          {"path": {"type": "string", "description": "Absolute path ending .png, .jpg or .webp"}, "quality": {"type": "number", "minimum": 0.1, "maximum": 1, "default": 0.92}, "overwrite": _OVERWRITE}, ["path"], destructive=True),
+          {"path": {"type": "string", "description": "Absolute path ending .png, .jpg or .webp"}, "quality": {"type": "number", "minimum": 0.1, "maximum": 1, "default": 0.92},
+           "scale": {"type": "number", "minimum": 0.05, "maximum": 4, "default": 1, "description": "Writes the picture at this factor of its size; the document is not changed."}, "overwrite": _OVERWRITE}, ["path"], destructive=True),
     _tool("switch_document", "Makes an open document the one tools act on, by its id from get_document's documents.", {"id": _ID}, ["id"], idempotent=True),
     _tool("close_document", "Closes an open document by its id from get_document's documents (the active one when id is left out) without asking about unsaved changes: they are discarded, so save_project first to keep them. The person can bring the tab back with Reopen Closed Tab.",
           {"id": {"type": "string", "description": "A document id from get_document's documents."}}, destructive=True),
     _tool("ping", "Reports in one call whether formvis is there: its version, whether the window is open and connected, whether outside agents are allowed, and the open documents (id, name, size). Never opens the window and never asks the person anything.", {}, read=True, idempotent=True),
     _tool("list_plugins", "Lists the plugins in the plugins folder: file name, size, whether it is on, whether it is running, its name and the commands it registered (run one with run_command id plugin:<file>:<command>).", {}, read=True, idempotent=True),
     # The document's size and shape.
-    _tool("resize_image", "Resamples the whole document to width x height pixels (keep the shape by scaling both by one factor).",
-          {"width": {"type": "integer", "minimum": 1, "maximum": 30000}, "height": {"type": "integer", "minimum": 1, "maximum": 30000}}, ["width", "height"]),
+    _tool("resize_image", "Resamples the whole document. Give width and height in pixels, or one of them (the other follows the shape), or percent (100 keeps the size), or long_side (the longer side in pixels, the shape kept).",
+          {"width": {"type": "integer", "minimum": 1, "maximum": 30000}, "height": {"type": "integer", "minimum": 1, "maximum": 30000},
+           "percent": {"type": "number", "minimum": 1, "maximum": 1000}, "long_side": {"type": "integer", "minimum": 1, "maximum": 30000}}),
     _tool("resize_canvas", "Changes the canvas to width x height without scaling the picture; anchor says where the picture stays.",
           {"width": {"type": "integer", "minimum": 1, "maximum": 30000}, "height": {"type": "integer", "minimum": 1, "maximum": 30000},
            "anchor": {"type": "string", "enum": ["center", "top-left", "top", "top-right", "left", "right", "bottom-left", "bottom", "bottom-right"], "default": "center"}}, ["width", "height"]),
@@ -182,7 +185,7 @@ TOOLS = [
           {"path": {"type": "string", "description": "Absolute path ending .mp4, .gif or .zip"}, "from": {"type": "integer", "minimum": 0}, "to": {"type": "integer", "minimum": 1},
            "scale": {"type": "number", "enum": [1, 0.5, 0.25], "default": 1}, "overwrite": _OVERWRITE}, ["path"], destructive=True),
     _tool("list_commands", "Lists formvis's commands: every menu and palette action, each as id, label, when (what it is for) and params (what it takes). Narrow it with group (a menu or family such as Filter or Layer) or text (words from the label, id or description); an unfiltered list is capped, so filter first.",
-          {"group": {"type": "string", "maxLength": 80}, "text": {"type": "string", "maxLength": 120}}, read=True, idempotent=True),
+          {"group": {"type": "string", "maxLength": 80}, "text": {"type": "string", "maxLength": 120}, "enabled": {"type": "boolean", "description": "true lists only the commands that can run right now; each row says enabled and its keys."}}, read=True, idempotent=True),
     _tool("describe_command", "One command in full: its label, group, description, when to use it, params with types and defaults, and whether it changes the document or is risky (cannot be undone).",
           {"id": {"type": "string", "maxLength": 120, "description": "A command id from list_commands."}}, ["id"], read=True, idempotent=True),
     _tool("run_command", "Runs one command by id with params, as one undoable step. A command marked risky waits for the person's approval in the formvis window (Window > Agent Connect) unless they allowed all.",
@@ -197,6 +200,18 @@ TOOLS = [
     _tool("list_settings", "The window's simple settings (numbers, on-off choices and short texts in Preferences) with their current values.", {}, read=True, idempotent=True),
     _tool("list_fonts", "The font families the window offers for type, bundled and installed ones, most recently used first. Give family to get that family's faces (regular, bold, italic, bold italic) with whether the font file could be read and how many characters it maps; use a listed family name in add_text.",
           {"family": {"type": "string", "maxLength": 120, "description": "A family from the list; omit to list all families."}}, read=True, idempotent=True),
+    # Headless: the engine alone, no window.
+    _tool("file_info", "Reads a picture or project file at an absolute path without opening it: size in pixels, colour mode, bit depth, resolution, whether it carries a colour profile, pages or frames, and for projects (.fvd, .fmv, .ora, .psd, .psb) the layer count. Works with no window open.",
+          {"path": {"type": "string", "description": "Absolute path to a picture or project file."}}, ["path"], read=True, idempotent=True),
+    _tool("convert_file", "Converts a picture file to another format without opening it in the window: path in, output_path out, the output's extension picks the format (png, jpg, webp, avif, tif, bmp, qoi, tga, ico, pdf, ppm, pgm, pbm, pnm, dpx, fits, wbmp). The result is one flat picture; layers are not kept (open_file then save_project does that). A file already at output_path is kept unless overwrite is true. Works with no window open.",
+          {"path": {"type": "string", "description": "Absolute path to the picture to read."}, "output_path": {"type": "string", "description": "Absolute path to write, with the new extension."},
+           "quality": {"type": "number", "minimum": 0.1, "maximum": 1, "default": 0.92, "description": "For jpg, webp and avif."}, "dpi": {"type": "integer", "minimum": 1, "maximum": 9600, "default": 72},
+           "page": {"type": "integer", "minimum": 0, "default": 0, "description": "Which page of a multi-page TIFF; the first by default."},
+           "options": {"type": "object", "description": "Format settings as the export dialog names them, for example {compression: deflate} for tiff or {level: 9} for png."}, "overwrite": _OVERWRITE}, ["path", "output_path"], destructive=True),
+    _tool("jobs_list", "Lists the engine's background work: local generation, upscaling and similar jobs (id, kind, status, progress, what it is doing) and the agent calls now running or waiting for the person's approval. Newest first.",
+          {"status": {"type": "string", "enum": ["all", "active", "finished"], "default": "all"}, "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}}, read=True, idempotent=True),
+    _tool("jobs_cancel", "Cancels a background job by its id from jobs_list, or every active one with all true. A job stops at its next step; jobs_list shows it as cancelled.",
+          {"id": {"type": "string", "maxLength": 80, "description": "A job id from jobs_list."}, "all": {"type": "boolean", "default": False}}, destructive=True, idempotent=True),
     _tool("set_settings", "Changes simple settings by name, as list_settings names them. A value must be the same kind as the current one. The person is asked first.",
           {"values": {"type": "object", "description": "Setting names and their new values."}}, ["values"], idempotent=True),
     _tool("ui_inspect", "Describes parts of the formvis window: for each element matching a CSS selector, its tag, id, text, whether it is visible, disabled or pressed, and its box in window pixels.",
@@ -229,6 +244,58 @@ TOOLS = [
     _tool("export_mask", "Writes a mask as a grey PNG the size of the document (white shows, black hides, greys are partial) to an absolute path: the selection, a layer's mask, or what a layer's pixels cover. A file already there is kept unless overwrite is true.",
           {"path": {"type": "string", "description": "Absolute path ending .png"}, "source": {"type": "string", "enum": ["selection", "layer_mask", "layer_pixels"], "default": "selection"},
            "id": {"type": "string", "description": "A layer id from get_document; for layer_mask and layer_pixels."}, "overwrite": _OVERWRITE}, ["path"], destructive=True),
+    # Recipes, selecting, layers, masks, history, brush and files (P22).
+    _tool("list_recipes", "Which ways of filling, generating, upscaling and reading depth this computer can run now: each with its id, the task, where it runs (this computer, or fal which costs money and asks the person), whether it is ready, why not when it is not, and the tool that uses it.", {}, read=True, idempotent=True),
+    _tool("set_active_layer", "Selects the layers in ids (from get_document) so commands that act on the selected layers, such as align_layers or group_layers, reach them; the last id becomes the active layer. With add true the layers join the current selection, else they replace it.",
+          {"ids": {"type": "array", "minItems": 1, "maxItems": 200, "items": _ID}, "add": {"type": "boolean", "default": False}}, ["ids"], idempotent=True),
+    _tool("select_color", "Selects by colour from a seed point, as the Magic Wand does: the pixels within tolerance of the colour at x, y, either contiguous with the point or everywhere. source layer reads the active layer, merged reads the whole picture. mode combines the result with the selection.",
+          {"x": {"type": "integer", "minimum": 0}, "y": {"type": "integer", "minimum": 0}, "tolerance": {"type": "integer", "minimum": 0, "maximum": 255, "default": 32}, "contiguous": {"type": "boolean", "default": True},
+           "source": {"type": "string", "enum": ["layer", "merged"], "default": "layer"}, "mode": {"type": "string", "enum": ["replace", "add", "subtract", "intersect"], "default": "replace"}}, ["x", "y"]),
+    _tool("select_shape", "Selects a rectangle, an ellipse (x, y, width, height in pixels) or a polygon (points, at least 3, in pixels), with an optional feather radius, combined with the selection by mode.",
+          {"shape": {"type": "string", "enum": ["rectangle", "ellipse", "polygon"]}, "x": {"type": "number"}, "y": {"type": "number"}, "width": {"type": "number", "minimum": 1}, "height": {"type": "number", "minimum": 1},
+           "points": {"type": "array", "minItems": 3, "maxItems": 500, "items": {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}}, "required": ["x", "y"], "additionalProperties": False}},
+           "feather": {"type": "number", "minimum": 0, "maximum": 1000, "default": 0, "description": "Edge softness in pixels."}, "mode": {"type": "string", "enum": ["replace", "add", "subtract", "intersect"], "default": "replace"}}, ["shape"]),
+    _tool("select_range", "Selects by range, as Select > Color Range: kind color (pixels near a colour, with fuzziness), a hue family (reds, yellows, greens, cyans, blues, magentas), highlights, midtones, shadows, skin, depth (lo to hi of the Depth Map, 0 to 255, near is bright), or luminosity (lo to hi, 0 to 255, of the layer or the merged picture; fuzziness softens the ends). invert flips the result; mode combines it with the selection.",
+          {"kind": {"type": "string", "enum": ["color", "reds", "yellows", "greens", "cyans", "blues", "magentas", "highlights", "midtones", "shadows", "skin", "depth", "luminosity"]}, "color": {"type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "description": "#rrggbb, for kind color."},
+           "fuzziness": {"type": "number", "minimum": 0, "maximum": 200, "default": 40}, "lo": {"type": "integer", "minimum": 0, "maximum": 255, "default": 0}, "hi": {"type": "integer", "minimum": 0, "maximum": 255, "default": 255},
+           "source": {"type": "string", "enum": ["layer", "merged"], "default": "layer", "description": "For luminosity."}, "invert": {"type": "boolean", "default": False}, "mode": {"type": "string", "enum": ["replace", "add", "subtract", "intersect"], "default": "replace"}}, ["kind"]),
+    _tool("sample_mean_color", "The mean colour of the selection (weighted by how much each pixel is selected and opaque), or of the whole picture when nothing is selected; with id, of that layer alone. Changes nothing. Returns #rrggbb, red, green, blue, how opaque the area is and the pixels counted.",
+          {"id": {"type": "string", "description": "A layer id from get_document; omit for the flattened picture."}}, read=True, idempotent=True),
+    _tool("align_layers", "Aligns or distributes the layers in ids (from get_document; the current selection when left out). align: left, hcenter, right, top, vcenter or bottom; distribute: the same edges or hspace and vspace for equal gaps (three or more layers, or two with to selection or canvas). to auto uses the bounds of the layers themselves, or the selection or canvas.",
+          {"ids": {"type": "array", "minItems": 1, "maxItems": 200, "items": _ID}, "align": {"type": "string", "enum": ["left", "hcenter", "right", "top", "vcenter", "bottom"]},
+           "distribute": {"type": "string", "enum": ["left", "hcenter", "right", "top", "vcenter", "bottom", "hspace", "vspace"]}, "to": {"type": "string", "enum": ["auto", "selection", "canvas"], "default": "auto"}}),
+    _tool("group_layers", "Puts the layers in ids (from get_document) into one new group, named name; returns the group's id.",
+          {"ids": {"type": "array", "minItems": 1, "maxItems": 200, "items": _ID}, "name": {"type": "string", "maxLength": 120}}, ["ids"]),
+    _tool("set_group", "Changes a group's name, visibility, lock (every lock) or collapsed state in the Layers panel. id is a group from get_document.",
+          {"id": _ID, "name": {"type": "string", "maxLength": 120}, "visible": {"type": "boolean"}, "locked": {"type": "boolean"}, "collapsed": {"type": "boolean"}}, ["id"], idempotent=True),
+    _tool("set_mask", "Changes a layer's raster mask. action reveal_all or hide_all (adds one, or resets the layer's), reveal_selection or hide_selection (from the selection; the layer has no mask yet), enable, disable, invert, delete, apply (burns it into the pixels, then removes it), or copy_from (a copy of the mask of from_id).",
+          {"id": _ID, "action": {"type": "string", "enum": ["reveal_all", "hide_all", "reveal_selection", "hide_selection", "enable", "disable", "invert", "delete", "apply", "copy_from"]}, "from_id": {"type": "string", "description": "A layer id with a mask; for copy_from."}}, ["id", "action"], destructive=True),
+    _tool("set_text", "Changes a text layer (id from get_document): its words, font, size, colour, bold, italic, alignment, line height, tracking, and its angle in degrees. Give only what changes.",
+          {"id": _ID, "text": {"type": "string", "maxLength": 5000}, "font": {"type": "string"}, "size": {"type": "number", "minimum": 1, "maximum": 2000}, "color": {"type": "string", "pattern": "^#[0-9a-fA-F]{6}$"}, "bold": {"type": "boolean"}, "italic": {"type": "boolean"},
+           "align": {"type": "string", "enum": ["left", "center", "right", "justify"]}, "line_height": {"type": "number", "minimum": 0.5, "maximum": 5}, "tracking": {"type": "number", "minimum": -500, "maximum": 1000}, "angle": {"type": "number", "minimum": -360, "maximum": 360}}, ["id"], idempotent=True),
+    _tool("list_history", "The document's undo history (each step's name, which are done and which are undone) and its snapshots (id, name, kind, memory), newest last. Snapshots live with the open document and are not saved.", {}, read=True, idempotent=True),
+    _tool("take_snapshot", "Keeps the document as it is now as a named snapshot to return to however far the steps move on; returns its id. kind document keeps every layer, merged the flattened picture, layer the active layer.",
+          {"name": {"type": "string", "maxLength": 120}, "kind": {"type": "string", "enum": ["document", "merged", "layer"], "default": "document"}}),
+    _tool("restore_snapshot", "Returns the document to a snapshot, by id or by name (list_history shows both), as one undo step; the snapshot stays.",
+          {"id": {"type": "string", "description": "A snapshot id from list_history."}, "name": {"type": "string", "maxLength": 120}}),
+    _tool("delete_snapshot", "Deletes a snapshot by id or by name (list_history shows both). The history steps are not touched.",
+          {"id": {"type": "string", "description": "A snapshot id from list_history."}, "name": {"type": "string", "maxLength": 120}}, destructive=True),
+    _tool("extend_canvas", "Adds pixels to each side of the canvas independently (left, top, right, bottom), filled with fill: transparent, a colour #rrggbb, foreground or background. The picture keeps its place.",
+          {"left": {"type": "integer", "minimum": 0, "maximum": 30000, "default": 0}, "top": {"type": "integer", "minimum": 0, "maximum": 30000, "default": 0}, "right": {"type": "integer", "minimum": 0, "maximum": 30000, "default": 0},
+           "bottom": {"type": "integer", "minimum": 0, "maximum": 30000, "default": 0}, "fill": {"type": "string", "default": "transparent", "description": "transparent, #rrggbb, foreground or background."}}),
+    _tool("export_layer", "Writes one layer alone, with its mask and transparency, as a PNG to an absolute path: the size of the document, or trimmed to the layer's visible pixels with trim true. A file already there is kept unless overwrite is true.",
+          {"path": {"type": "string", "description": "Absolute path ending .png"}, "id": _ID, "trim": {"type": "boolean", "default": False}, "overwrite": _OVERWRITE}, ["path", "id"], destructive=True),
+    _tool("read_log", "The window's error log: uncaught errors and failed tasks (at most 100, newest last), each with when, what and the message. It is not a full application log.",
+          {"limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 30}}, read=True, idempotent=True),
+    _tool("list_brush_tips", "The brush presets and sampled tips: id, name, description, size, hardness, opacity, angle, roundness and spacing, with the brush as it is set now. Use an id as preset in set_brush.", {}, read=True, idempotent=True),
+    _tool("set_brush", "Sets the brush: size (pixels), hardness, opacity, flow (0 to 1), a preset id from list_brush_tips (applied first), and the tip's angle (degrees), roundness (percent), spacing (percent of the size) and follow_direction (the tip turns with the stroke).",
+          {"size": {"type": "integer", "minimum": 1, "maximum": 5000}, "hardness": {"type": "number", "minimum": 0, "maximum": 1}, "opacity": {"type": "number", "minimum": 0.01, "maximum": 1}, "flow": {"type": "number", "minimum": 0.01, "maximum": 1},
+           "preset": {"type": "string", "maxLength": 120}, "angle": {"type": "number", "minimum": -180, "maximum": 180}, "roundness": {"type": "number", "minimum": 1, "maximum": 100}, "spacing": {"type": "number", "minimum": 1, "maximum": 1000}, "follow_direction": {"type": "boolean"}}, idempotent=True),
+    _tool("add_filter", "Adds a filter to a layer as a smart filter that stays editable (the layer becomes a smart object when it is not one): kind and settings as apply_filter takes them. Returns the filter's id; set_filter changes, disables or removes it later.",
+          {"id": {"type": "string", "description": "A layer id from get_document; the active layer when left out."}, "kind": {"type": "string", "maxLength": 60}, "settings": {"type": "object", "default": {}}}, ["kind"]),
+    _tool("set_filter", "Changes a smart filter on a smart object layer: its settings, kind, enabled, opacity (percent), blend mode, or remove it. With only id it lists the layer's filters.",
+          {"id": _ID, "filter_id": {"type": "string", "description": "A filter id from add_filter or set_filter's list; the last filter when left out."}, "kind": {"type": "string", "maxLength": 60}, "settings": {"type": "object"},
+           "enabled": {"type": "boolean"}, "opacity": {"type": "number", "minimum": 0, "maximum": 100}, "blend": {"type": "string"}, "remove": {"type": "boolean", "default": False}}, ["id"], destructive=True),
 ]
 USE_WHEN = {
     "get_document": "you need the document's size, mode, layer ids or documents before any edit.",
@@ -296,6 +363,10 @@ USE_WHEN = {
     "select_mask": "a layer's pixels or mask should become the selection.",
     "list_settings": "you need to know how the window is set up before changing it.",
     "list_fonts": "you need a font family name that exists here before adding or changing text.",
+    "file_info": "you need a file's size, mode, depth or layer count and no window needs to open it.",
+    "convert_file": "a picture file should become another format and nothing else about it changes.",
+    "jobs_list": "you started local generation or upscaling and want to know what is running, or why a call is waiting.",
+    "jobs_cancel": "a background job is no longer wanted.",
     "set_settings": "a simple setting in Preferences should change.",
     "ui_inspect": "you need to know what a button, panel or dialog in the window shows or whether it is enabled.",
     "boxes_list": "you need to see the layout boxes before changing them or generating.",
@@ -310,6 +381,28 @@ USE_WHEN = {
     "depth_edit": "the Depth Map layer needs flattening, shifting or smoothing before it is used.",
     "set_crop": "the crop needs a turn to straighten the horizon, or a fixed output size, or a frame that reaches past the edge.",
     "export_mask": "a selection or a layer's mask should be written as a PNG for another program.",
+    "list_recipes": "you need to know which fill, generate, upscale or depth models are ready here before choosing one.",
+    "set_active_layer": "several specific layers should be selected together before aligning or grouping them.",
+    "select_color": "a region of one colour should be selected from a point, contiguous or everywhere.",
+    "select_shape": "an ellipse or polygon, or a soft-edged shape, should be selected.",
+    "select_range": "a range of hue, tone, luminosity or depth should be selected.",
+    "sample_mean_color": "you need the mean colour of the selection, a layer or the picture.",
+    "align_layers": "layers should line up or be spread evenly.",
+    "group_layers": "several layers should become one group.",
+    "set_group": "a group should be renamed, hidden, locked or collapsed.",
+    "set_mask": "a layer mask should be added, inverted, copied, turned off or removed.",
+    "set_text": "the words or style of a text layer should change.",
+    "list_history": "you need the undo steps or snapshots before going back.",
+    "take_snapshot": "a state of the document should be kept to return to later.",
+    "restore_snapshot": "the document should return to a snapshot.",
+    "delete_snapshot": "a snapshot is no longer wanted.",
+    "extend_canvas": "different amounts of space should be added on each side.",
+    "export_layer": "one layer alone should be written as a transparent PNG.",
+    "read_log": "something failed in the window and you need the error log.",
+    "list_brush_tips": "you need the brush presets and tips before choosing one.",
+    "set_brush": "the brush size, hardness, opacity, flow, preset or tip should change before painting.",
+    "add_filter": "a filter should stay editable on a layer.",
+    "set_filter": "a smart filter needs other settings, or should be turned off or removed.",
 }
 for _t in TOOLS:
     _t["description"] += f" Use when {USE_WHEN[_t['name']]}"
@@ -475,7 +568,7 @@ _PROJECTS = {".fvd", ".fmv", ".psd", ".psb", ".ora"}
 _EXPORTS = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
 _MAX_OPEN = 512 * 1024 * 1024
 _FILES = {"open_file": (_PICTURES | _PROJECTS, True), "place_image": ({".png", ".jpg", ".jpeg", ".webp"}, True), "timeline_render": ({".mp4", ".gif", ".zip"}, False),
-          "save_project": ({".fvd"}, False), "export_image": (set(_EXPORTS), False), "export_mask": ({".png"}, False)}   # tool: the suffixes it takes, whether it reads
+          "save_project": ({".fvd"}, False), "export_image": (set(_EXPORTS), False), "export_mask": ({".png"}, False), "export_layer": ({".png"}, False)}   # tool: the suffixes it takes, whether it reads
 
 
 def _system_roots() -> list[str]:
@@ -498,7 +591,10 @@ def _confined(path: Path) -> None:
     import tempfile
     key = (lambda p: Path(os.path.normcase(str(p)))) if os.name == "nt" else Path
     here = key(path)
-    exempt = [key(Path.home().resolve()), key(Path(tempfile.gettempdir()).resolve())] + ([key(Path("/var/tmp").resolve()), key(Path("/private/var/tmp").resolve())] if os.name != "nt" else [])
+    roots = [r for r in os.environ.get("FORMVIS_AGENT_ROOTS", "").split(os.pathsep) if r.strip()]   # when set, the only folders agents may read or write
+    if roots and not any(_inside(here, key(Path(os.path.expanduser(r)).resolve())) for r in roots):
+        raise ValueError(f"{path} is outside the folders agents may use here (FORMVIS_AGENT_ROOTS: {', '.join(roots)}). Choose a file inside one of them.")
+    exempt =[key(Path.home().resolve()), key(Path(tempfile.gettempdir()).resolve())] + ([key(Path("/var/tmp").resolve()), key(Path("/private/var/tmp").resolve())] if os.name != "nt" else [])
     for root in _system_roots():
         base = key(Path(root).resolve())
         if _inside(here, base) and not any(_inside(here, ok) and not _inside(base, ok) for ok in exempt):
@@ -524,9 +620,130 @@ def _path(raw, kinds: set, reading: bool, overwrite: bool = False) -> Path:
     return path
 
 
+# Headless tools: the engine reads and writes pictures itself, with no window.
+_CONVERT = {".png": "png", ".jpg": "jpeg", ".jpeg": "jpeg", ".webp": "webp", ".avif": "avif", ".tif": "tiff", ".tiff": "tiff", ".bmp": "bmp", ".qoi": "qoi", ".tga": "tga",
+            ".ico": "ico", ".pdf": "pdf", ".ppm": "pnm", ".pgm": "pnm", ".pbm": "pnm", ".pnm": "pnm", ".dpx": "dpx", ".fits": "fits", ".wbmp": "wbmp"}
+_READABLE = _PICTURES | {".dpx", ".cin", ".fits", ".fit"}
+_PSD_MODES = {0: "bitmap", 1: "grayscale", 2: "indexed", 3: "rgb", 4: "cmyk", 7: "multichannel", 8: "duotone", 9: "lab"}
+
+
+def _convert_paths(args: dict) -> tuple[Path, Path]:
+    src = _path(args.get("path"), _READABLE, True)
+    dst = _path(args.get("output_path"), set(_CONVERT), False, args.get("overwrite"))
+    if dst == src:
+        raise ValueError("output_path is the same file as path: choose another name.")
+    return src, dst
+
+
+def _convert(args: dict) -> dict:
+    from app.services import imaging
+    src, dst = _convert_paths(args)
+    if src.stat().st_size > _MAX_OPEN:
+        raise ValueError(f"{src.name} is larger than 512 MB.")
+    fmt = _CONVERT[dst.suffix.lower()]
+    options = dict(args.get("options") or {})
+    if fmt == "pnm":
+        options.setdefault("kind", dst.suffix.lower().lstrip(".") if dst.suffix.lower() in (".ppm", ".pgm", ".pbm") else "ppm")
+    try:
+        png, width, height = imaging.decode_to_png(src.read_bytes(), src.name, int(args.get("page", 0)))
+        blob = imaging.encode(png, fmt, int(round(float(args.get("quality", 0.92)) * 100)), int(args.get("dpi", 72)), None, options)
+    except imaging.DecodeError as exc:
+        raise ValueError(str(exc)) from exc
+    dst.write_bytes(blob)
+    return {"path": str(dst), "source": str(src), "format": fmt, "width": width, "height": height, "bytes": len(blob)}
+
+
+def _depth_of(mode: str) -> int:
+    return 16 if mode.startswith("I;16") or mode == "I" else 32 if mode == "F" else 1 if mode == "1" else 8
+
+
+def _info(args: dict) -> dict:
+    import struct
+    import zipfile
+    src = _path(args.get("path"), _READABLE | _PROJECTS, True)
+    suffix = src.suffix.lower()
+    info: dict = {"path": str(src), "name": src.name, "bytes": src.stat().st_size, "kind": "project" if suffix in _PROJECTS else "picture"}
+    if suffix in (".psd", ".psb"):
+        with open(src, "rb") as f:
+            sig, ver, _, channels, height, width, depth, mode = struct.unpack(">4sH6sHIIHH", f.read(26))
+            if sig != b"8BPS":
+                raise ValueError(f"{src.name} is not a PSD file.")
+            big = ver == 2
+            for _skip in range(2):   # the colour mode data, then the image resources
+                f.seek(struct.unpack(">I", f.read(4))[0], 1)
+            wide = 8 if big else 4
+            section = struct.unpack(">Q" if big else ">I", f.read(wide))[0]
+            layers = 0
+            if section:
+                inner = struct.unpack(">Q" if big else ">I", f.read(wide))[0]
+                layers = abs(struct.unpack(">h", f.read(2))[0]) if inner else 0
+        info.update(width=width, height=height, mode=_PSD_MODES.get(mode, str(mode)), depth=depth, channels=channels, layers=layers)
+    elif suffix in (".fvd", ".fmv", ".ora"):
+        try:
+            with zipfile.ZipFile(src) as z:
+                names = z.namelist()
+                if suffix == ".ora":
+                    import re
+                    stack = z.read("stack.xml").decode("utf-8", "replace")
+                    size = re.search(r'<image[^>]*\bw="(\d+)"[^>]*\bh="(\d+)"', stack) or re.search(r'<image[^>]*\bh="(\d+)"[^>]*\bw="(\d+)"', stack)
+                    info.update(layers=len(re.findall(r"<layer\b", stack)), **({"width": int(size.group(1)), "height": int(size.group(2))} if size else {}))
+                else:
+                    manifest = json.loads(z.read(next(n for n in names if n.endswith("manifest.json"))))
+                    layers = manifest.get("layers") or []
+                    info.update(width=manifest.get("width"), height=manifest.get("height"), layers=len(layers), groups=sum(1 for l in layers if l.get("isGroup")),
+                                **{k: manifest[k] for k in ("mode", "depth", "profile", "resolution") if k in manifest})
+        except (zipfile.BadZipFile, KeyError, StopIteration, ValueError) as exc:
+            raise ValueError(f"{src.name} is not a readable project: {exc}") from exc
+    else:
+        from PIL import Image
+        from app.services import imaging
+        try:
+            with Image.open(src) as im:
+                mode = im.mode
+                info.update(width=im.width, height=im.height, format=im.format, mode={"RGB": "rgb", "RGBA": "rgb", "L": "grayscale", "LA": "grayscale", "CMYK": "cmyk", "LAB": "lab", "P": "indexed", "1": "bitmap"}.get(mode, mode),
+                            alpha="A" in mode or "transparency" in im.info, depth=_depth_of(mode), pages=getattr(im, "n_frames", 1), profile=bool(im.info.get("icc_profile")))
+                if im.info.get("dpi"):
+                    info["dpi"] = [round(float(v), 2) for v in im.info["dpi"]]
+        except Exception as exc:
+            data = src.read_bytes() if src.stat().st_size <= _MAX_OPEN else b""
+            if data and imaging.is_raw(data, src.name):
+                info.update(format="raw", **imaging.raw_info(data, src.name))
+            else:
+                raise ValueError(f"{src.name} could not be read as a picture: {exc}") from exc
+    return info
+
+
+def _jobs_listing(status: str = "all", limit: int = 50) -> list[dict]:
+    from app.localgen import jobs
+    with jobs._lock:
+        rows = [{"id": j["id"], "source": "local", "kind": j.get("kind"), "status": j["status"], "progress": round(float(j.get("progress", 0)), 3), "message": j.get("message", ""),
+                 "created": j.get("created", 0)} for j in jobs._jobs.values()]
+    rows += [{"id": f"call:{e['id']}", "source": "agent", "kind": e["tool"], "status": e["status"], "progress": None, "message": e.get("message") or e.get("summary", ""), "created": e["t"], "client": e["client"]}
+             for e in agents.activity(200) if e["status"] in ("running", "waiting") and e["tool"] != "jobs_list"]
+    live = ("queued", "running", "waiting")
+    rows = [r for r in rows if status == "all" or (r["status"] in live) == (status == "active")]
+    return sorted(rows, key=lambda r: r["created"], reverse=True)[:limit]
+
+
+def _jobs_cancel(args: dict) -> dict:
+    from app.localgen import jobs
+    with jobs._lock:
+        wanted = [k for k, j in jobs._jobs.items() if j["status"] in ("queued", "running")] if args.get("all") else [args["id"]] if args.get("id") in jobs._jobs else []
+        for k in wanted:
+            jobs._jobs[k]["cancel"].set()
+    waiting = agents.stop(None) if args.get("all") else 0
+    return {"cancelled": wanted, "approvals_stopped": waiting}
+
+
 def _refused(name: str, args: dict) -> str | None:
     """Why a call's file path is refused (system location, existing file without overwrite, wrong kind), checked before the
     person is asked to approve anything; None when the path is fine or the tool has none."""
+    if name == "convert_file":
+        try:
+            _convert_paths(args)
+        except (ValueError, OSError) as exc:
+            return str(exc)
+        return None
     if name not in _FILES or (name == "place_image" and not args.get("path")):
         return None
     kinds, reading = _FILES[name]
@@ -549,6 +766,22 @@ async def _run(name: str, args: dict) -> dict:
             state = ("the window is open and agents are allowed" if info["window"] and info["allowed"] else "the window is open but outside agents are not allowed (the first edit asks the person)" if info["window"]
                      else "no window is open (the first edit opens one)")
             return {"content": [{"type": "text", "text": f"formvis {__version__}: {state}; {len(info['documents'])} open document{'' if len(info['documents']) == 1 else 's'}."}], "structuredContent": info}
+        if name == "file_info":
+            info = await asyncio.to_thread(_info, args)
+            return {"content": [{"type": "text", "text": json.dumps(info)}], "structuredContent": info}
+        if name == "convert_file":
+            made = await asyncio.to_thread(_convert, args)
+            return {"content": [{"type": "text", "text": f"Wrote {made['path']} ({made['bytes']:,} bytes, {made['width']} by {made['height']}, {made['format']})."}], "structuredContent": made}
+        if name == "jobs_list":
+            rows = _jobs_listing(args.get("status", "all"), int(args.get("limit", 50)))
+            return {"content": [{"type": "text", "text": f"{len(rows)} job{'' if len(rows) == 1 else 's'}. {json.dumps(rows)}"}], "structuredContent": {"jobs": rows}}
+        if name == "jobs_cancel":
+            if not args.get("all") and not args.get("id"):
+                return _fail("Give the job id from jobs_list, or all true to cancel every active job.")
+            done = _jobs_cancel(args)
+            if not done["cancelled"] and not done["approvals_stopped"]:
+                return _fail("No active job matches. Call jobs_list for the ids.")
+            return {"content": [{"type": "text", "text": f"Asked {len(done['cancelled'])} job{'' if len(done['cancelled']) == 1 else 's'} to stop."}], "structuredContent": done}
         if name == "open_file":
             path = _path(args.get("path"), _FILES[name][0], True)
             if path.stat().st_size > _MAX_OPEN:
@@ -573,9 +806,9 @@ async def _run(name: str, args: dict) -> dict:
             blob = base64.b64decode(data)
             await asyncio.to_thread(path.write_bytes, blob)
             return {"content": [{"type": "text", "text": f"Wrote {path} ({len(blob):,} bytes)."}], "structuredContent": {"path": str(path), "bytes": len(blob)}}
-        if name == "export_mask":
+        if name in ("export_mask", "export_layer"):
             path = _path(args.get("path"), _FILES[name][0], False, args.get("overwrite"))
-            out = await _call("__mask", {k: args[k] for k in ("source", "id") if k in args})
+            out = await _call("__mask" if name == "export_mask" else "__layer", {k: args[k] for k in ("source", "id", "trim") if k in args})
             data = (out.get("structuredContent") or {}).get("data") if not out.get("isError") else None
             if not data:
                 return out if out.get("isError") else _fail("formvis gave nothing to write.")
@@ -584,7 +817,7 @@ async def _run(name: str, args: dict) -> dict:
             return {"content": [{"type": "text", "text": f"Wrote {path} ({len(blob):,} bytes)."}], "structuredContent": {"path": str(path), "bytes": len(blob)}}
         if name in ("save_project", "export_image"):
             path = _path(args.get("path"), _FILES[name][0], False, args.get("overwrite"))
-            out = await _call("__project" if name == "save_project" else "__export", {} if name == "save_project" else {"type": _EXPORTS[path.suffix.lower()], "quality": args.get("quality", 0.92)})
+            out = await _call("__project" if name == "save_project" else "__export", {} if name == "save_project" else {"type": _EXPORTS[path.suffix.lower()], "quality": args.get("quality", 0.92), "scale": args.get("scale", 1)})
             data = (out.get("structuredContent") or {}).get("data") if not out.get("isError") else None
             if not data:
                 return out if out.get("isError") else _fail("formvis gave nothing to write.")
@@ -630,8 +863,8 @@ async def _call(name: str, args: dict) -> dict:
 
 async def _risk(name: str, args: dict) -> str | None:
     """Why a call cannot be undone (a file written, or a catalogue command marked risky); None when Undo covers it."""
-    if name in agents.RISKY_TOOLS:
-        return f"{name} {agents.RISKY_TOOLS[name]} at {args.get('path', 'a path')}, which Undo cannot restore"
+    if name in agents.RISKY_TOOLS and (name != "convert_file" or args.get("overwrite") is True):   # a new file replaces nothing
+        return f"{name} {agents.RISKY_TOOLS[name]} at {args.get('output_path') or args.get('path', 'a path')}, which Undo cannot restore"
     ids = [args.get("id")] if name == "run_command" else [c.get("id") for c in args.get("commands") or [] if isinstance(c, dict)] if name == "run_commands" else []
     for cid in dict.fromkeys(i for i in ids if isinstance(i, str)):
         out = await _call("describe_command", {"id": cid})
@@ -686,6 +919,41 @@ def _client_of(request: Request, params: dict, sid: str | None) -> tuple[str, st
     return agents.identity(sid, info, request.headers.get("x-formvis-client") or request.headers.get("user-agent") or "")
 
 
+# Live resources: the same state the read tools give, as documents a client can attach.
+RESOURCES = [{"uri": "formvis://document", "name": "document", "title": "The open document", "description": "Name, size, colour mode, bit depth, layers and the open documents, as get_document gives them.", "mimeType": "application/json"},
+             {"uri": "formvis://layers", "name": "layers", "title": "The layer tree", "description": "The layers bottom to top with ids, kinds and nesting.", "mimeType": "application/json"},
+             {"uri": "formvis://selection", "name": "selection", "title": "The selection", "description": "The selection's bounds in pixels, or none.", "mimeType": "application/json"},
+             {"uri": "formvis://commands", "name": "commands", "title": "The command catalogue", "description": "Every menu and palette command: id, label, group, what it is for.", "mimeType": "application/json"},
+             {"uri": "formvis://jobs", "name": "jobs", "title": "Background jobs", "description": "Running and finished local jobs and the agent calls now running.", "mimeType": "application/json"}]
+_RESOURCE_TOOLS = {"formvis://document": "get_document", "formvis://layers": "get_layer_tree", "formvis://selection": "get_selection"}
+
+
+async def _read_resource(client: str, uri: str) -> tuple[str | None, str]:
+    """(mime text, error): the resource's JSON, or why it cannot be read."""
+    if uri in _RESOURCE_TOOLS:
+        out = await _agent_call(client, _RESOURCE_TOOLS[uri], {})
+        if out.get("isError"):
+            return None, next((c.get("text", "") for c in out.get("content", []) if c.get("type") == "text"), "formvis gave no reason.")
+        return json.dumps(out.get("structuredContent") or {"text": next((c.get("text", "") for c in out.get("content", []) if c.get("type") == "text"), "")}), ""
+    if uri == "formvis://commands":
+        from app.routers import commands
+        commands._load()
+        rows = [{k: c[k] for k in ("id", "label", "group", "when", "risky") if k in c} for c in commands._state["commands"]]
+        return json.dumps({"total": len(rows), "commands": rows}), ""
+    if uri == "formvis://jobs":
+        return json.dumps({"jobs": _jobs_listing("all", 100)}), ""
+    return None, f"No resource {uri}: resources/list gives the addresses."
+
+
+MAX_BODY = 64 * 1024 * 1024   # the most a request may carry (a base64 picture included)
+MAX_INFLIGHT = 32   # calls waiting at once
+MAX_REPLY = 24 * 1024 * 1024   # the most a tool's reply may carry in text and picture data
+
+
+def _reply_bytes(result: dict) -> int:
+    return sum(len(c.get("data") or "") + len(c.get("text") or "") for c in result.get("content", []) if isinstance(c, dict))
+
+
 @router.get("/mcp")
 async def mcp_stream() -> Response:
     return Response(status_code=405, headers={"Allow": "POST, DELETE"})   # no server-initiated stream: replies come with the POST
@@ -703,8 +971,13 @@ async def mcp_end(request: Request) -> Response:
 async def mcp(request: Request) -> Response:
     if not _local_origin(request.headers.get("origin")):
         return Response(status_code=403, content=json.dumps(_err(None, -32600, "Origin not allowed")), media_type="application/json")
+    if int(request.headers.get("content-length") or 0) > MAX_BODY:
+        return Response(status_code=413, content=json.dumps(_err(None, -32600, f"The request is over {MAX_BODY // 1048576} MB; send a smaller picture, or give a path instead of data.")), media_type="application/json")
     try:
-        msg = json.loads(await request.body())
+        body = await request.body()
+        if len(body) > MAX_BODY:
+            return Response(status_code=413, content=json.dumps(_err(None, -32600, f"The request is over {MAX_BODY // 1048576} MB; send a smaller picture, or give a path instead of data.")), media_type="application/json")
+        msg = json.loads(body)
     except ValueError:
         return Response(content=json.dumps(_err(None, -32700, "Parse error")), media_type="application/json", status_code=400)
     if isinstance(msg, list):
@@ -723,18 +996,26 @@ async def mcp(request: Request) -> Response:
     if version not in VERSIONS and method != "initialize":
         out = _err(req_id, -32602, f"Unsupported protocol version {version}; supported: {', '.join(VERSIONS)}")
     elif method == "server/discover":
-        out = _ok(req_id, {"supportedVersions": VERSIONS, "capabilities": {"tools": {}, "prompts": {}}, "_meta": {"io.modelcontextprotocol/serverInfo": server}, "instructions": INSTRUCTIONS}, True, cacheable=True)
+        out = _ok(req_id, {"supportedVersions": VERSIONS, "capabilities": {"tools": {}, "prompts": {}, "resources": {}}, "_meta": {"io.modelcontextprotocol/serverInfo": server}, "instructions": INSTRUCTIONS}, True, cacheable=True)
     elif method == "initialize":
         asked = params.get("protocolVersion")
         who = _client_of(request, params, None)
         headers["Mcp-Session-Id"] = agents.open_session(*who)
-        out = _ok(req_id, {"protocolVersion": asked if asked in VERSIONS else "2025-11-25", "capabilities": {"tools": {}, "prompts": {}}, "serverInfo": server, "instructions": INSTRUCTIONS}, False)
+        out = _ok(req_id, {"protocolVersion": asked if asked in VERSIONS else "2025-11-25", "capabilities": {"tools": {}, "prompts": {}, "resources": {}}, "serverInfo": server, "instructions": INSTRUCTIONS}, False)
     elif method == "ping":
         out = _ok(req_id, {}, modern)
     elif method == "prompts/list":
         out = _ok(req_id, {"prompts": PROMPTS}, modern, cacheable=True)
     elif method == "prompts/get":
         out = _ok(req_id, {"description": PROMPTS[0]["description"], "messages": [{"role": "user", "content": {"type": "text", "text": STRATEGY}}]}, modern) if params.get("name") == "edit_strategy" else _err(req_id, -32602, f"No prompt named {params.get('name')}")
+    elif method == "resources/list":
+        out = _ok(req_id, {"resources": RESOURCES}, modern, cacheable=True)
+    elif method == "resources/templates/list":
+        out = _ok(req_id, {"resourceTemplates": []}, modern, cacheable=True)
+    elif method == "resources/read":
+        uri = params.get("uri")
+        found, why = await _read_resource(_client_of(request, params, sid)[0], uri) if isinstance(uri, str) else (None, "Give the resource's uri from resources/list.")
+        out = _ok(req_id, {"contents": [{"uri": uri, "mimeType": "application/json", "text": found}]}, modern) if found is not None else _err(req_id, -32002, why)
     elif method == "tools/list":
         core = request.query_params.get("tools") == "core"   # for clients that cap their tools: /mcp?tools=core lists the 31 most used; the rest still answer by name
         out = _ok(req_id, {"tools": [t for t in TOOLS if t["name"] in CORE] if core else TOOLS}, modern, cacheable=True)
@@ -745,13 +1026,18 @@ async def mcp(request: Request) -> Response:
             why = _invalid(args, SCHEMAS[name], "")
             if why:
                 out = _ok(req_id, _fail(f"{name} was not run: {why}"), modern)
+            elif len(_inflight) >= MAX_INFLIGHT:
+                out = _ok(req_id, _fail(f"{name} was not run: {len(_inflight)} calls are already waiting. Wait for one to finish, or cancel one, then retry."), modern)
             else:
                 client = _client_of(request, params, sid)[0]
                 key = (client, json.dumps(req_id))
                 task = asyncio.ensure_future(_agent_call(client, name, args))
                 _inflight[key] = task
                 try:
-                    out = _ok(req_id, await task, modern)
+                    result = await task
+                    if _reply_bytes(result) > MAX_REPLY:
+                        result = _fail(f"{name} ran, but its reply is {_reply_bytes(result) // 1048576} MB, over the {MAX_REPLY // 1048576} MB limit for agents. Ask for less: a smaller max_size, a crop box, or a JPEG.")
+                    out = _ok(req_id, result, modern)
                 except asyncio.CancelledError:
                     if key not in _cancelled:
                         task.cancel()

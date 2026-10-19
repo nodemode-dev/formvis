@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-formvis">
+    <comment>formvis layered image project</comment>
+    <glob pattern="*.fvd"/>
+    <glob pattern="*.fmv"/>
+    <glob pattern="*.formvis"/>
+    <icon name="ai.nodemode.formvis"/>
+  </mime-type>
+  <mime-type type="image/openraster">
+    <comment>OpenRaster image</comment>
+    <glob pattern="*.ora"/>
+    <magic priority="60">
+      <match type="string" offset="0" value="PK\003\004">
+        <match type="string" offset="30" value="mimetypeimage/openraster"/>
+      </match>
+    </magic>
+  </mime-type>
+  <mime-type type="image/x-exr">
+    <comment>OpenEXR image</comment>
+    <glob pattern="*.exr"/>
+    <magic priority="60">
+      <match type="string" offset="0" value="\166\057\061\001"/>
+    </magic>
+  </mime-type>
+</mime-info>

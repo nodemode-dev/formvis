@@ -4,6 +4,7 @@ import { composeChannels } from '../engine/channels';
 import { composeFloat } from '../engine/compose-float';
 import { decodeLab } from '../engine/lab';
 import { PanelGroup } from './panel-group';
+import { armMeasures } from '../extensions/tools/ruler';
 
 /** The Info panel (1.49.6, the owner's tool list): the colour and position under the pointer, the
  *  selection's size, the Ruler's measurements and each Color Sampler's colour. It reads the image only while shown,
@@ -35,7 +36,7 @@ export class InfoPanel {
   }
 
   /** The composite colour at a document point (null outside it). */
-  private colorAt(pt: Pt): [number, number, number, number] | null {
+  private colorAt(pt: Pt, size = 1): [number, number, number, number] | null {
     const p = this.engine.current;
     if (!p) return null;
     if (!this.pixels) {
@@ -46,6 +47,14 @@ export class InfoPanel {
     }
     const x = Math.floor(pt.x), y = Math.floor(pt.y), px = this.pixels;
     if (x < 0 || y < 0 || x >= px.w || y >= px.h) return null;
+    if (size > 1) {   // the square of `size` pixels about the point, averaged over the pixels it holds
+      const r = size >> 1, sum = [0, 0, 0, 0];
+      let n = 0;
+      for (let j = Math.max(0, y - r); j <= Math.min(px.h - 1, y + r); j++) {
+        for (let k = Math.max(0, x - r); k <= Math.min(px.w - 1, x + r); k++) { const o = (j * px.w + k) * 4; for (let c = 0; c < 4; c++) sum[c] += px.data[o + c]; n++; }
+      }
+      return [Math.round(sum[0] / n), Math.round(sum[1] / n), Math.round(sum[2] / n), Math.round(sum[3] / n)];
+    }
     const i = (y * px.w + x) * 4;
     return [px.data[i], px.data[i + 1], px.data[i + 2], px.data[i + 3]];
   }
@@ -83,9 +92,13 @@ export class InfoPanel {
     const r = m?.ruler;
     if (r) {
       const dx = r.b.x - r.a.x, dy = r.b.y - r.a.y;
-      rows.push(['Ruler', `A ${(-Math.atan2(dy, dx) * 180 / Math.PI).toFixed(1)}\u00b0  L ${Math.hypot(dx, dy).toFixed(1)} px`]);
+      const { k, units } = e.rulerUnit();
+      rows.push(['Ruler', `A ${(-Math.atan2(dy, dx) * 180 / Math.PI).toFixed(1)}\u00b0  L ${(Math.hypot(dx, dy) * k).toFixed(1)} ${units}`]);
+      const arm = e.rulerArm;
+      if (arm) { const a = armMeasures(r, arm); rows.push(['Protractor', `L2 ${(a.length * k).toFixed(1)} ${units}  between ${a.between.toFixed(1)}\u00b0`]); }
     }
-    for (const [i, s] of (m?.samplers ?? []).entries()) rows.push([`#${i + 1}`, at(s)]);
+    const size = e.measureOpts.sampleSize;
+    for (const [i, s] of (m?.samplers ?? []).entries()) rows.push([`#${i + 1}`, size > 1 ? rgb(this.colorAt(s, size)) : at(s)]);
     const html = rows.map(([k, v]) => `<div class="cv-info-row"><span class="cv-info-key">${k}</span><span class="cv-info-val">${v}</span></div>`).join('');
     if (this.body.innerHTML !== html) this.body.innerHTML = html;
   }

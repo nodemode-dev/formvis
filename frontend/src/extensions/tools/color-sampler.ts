@@ -3,13 +3,15 @@ import type { OptionSpec, Tool } from '../registry';
 
 let drag: number | null = null;
 const MAX = 10, NEAR = 8;
+const SIZES = [1, 3, 5, 11, 31, 51, 101];
 
 /** The Color Sampler (I, the owner's tool list): click to place a sampler (ten at most), drag one to
- *  move it, Alt-click one to remove it; each sampler's colour shows in the Info panel. */
+ *  move it, Alt-click one or drag it off the canvas to remove it; each sampler's colour shows in the Info panel,
+ *  averaged over the Sample Size square. */
 export const colorSamplerTool: Tool = {
   id: 'colorSampler', label: 'Color Sampler', key: 'I', order: 80.5,
   icon: () => 'tColorSampler',
-  hint: () => 'Click to place a sampler (up to ten) · Drag one to move it · Alt-click one to remove it · Its colour shows in Window > Info',
+  hint: () => 'Click to place a sampler (up to ten) · Drag one to move it · Alt-click one or drag it off the canvas to remove it · Its colour shows in Window > Info',
   cursor: () => 'crosshair',
   down(ctx, p) {
     const m = ctx.engine.measure;
@@ -24,11 +26,19 @@ export const colorSamplerTool: Tool = {
     ctx.engine.measureChanged();
   },
   move(ctx, p) { const m = ctx.engine.measure; if (drag === null || !m) return; m.samplers[drag] = { x: Math.floor(p.doc.x) + 0.5, y: Math.floor(p.doc.y) + 0.5 }; ctx.engine.measureChanged(); },
-  up() { drag = null; },
+  up(ctx) {
+    const m = ctx.engine.measure, d = ctx.engine.current?.doc;
+    if (drag !== null && m && d) {
+      const s = m.samplers[drag];
+      if (s && (s.x < 0 || s.y < 0 || s.x > d.width || s.y > d.height)) { m.samplers.splice(drag, 1); ctx.engine.measureChanged(); }
+    }
+    drag = null;
+  },
   cancel() { drag = null; },
   overlay(ctx, g) { drawSamplers(ctx.view(), ctx.paint(), g, ctx.engine.measure?.samplers ?? []); },
   options: (e): OptionSpec[] => [
     { kind: 'title', text: 'Color Sampler' },
+    { kind: 'select', label: 'Sample Size', choices: SIZES.map((n) => ({ id: String(n), label: n === 1 ? 'Point Sample' : `${n} by ${n} Average` })), get: () => String(e.measureOpts.sampleSize), set: (id) => { e.measureOpts.sampleSize = Number(id) || 1; e.measureChanged(); } },
     { kind: 'readout', label: 'Samplers', get: () => `${e.measure?.samplers.length ?? 0} of ${MAX}` },
     { kind: 'button', label: 'Clear All', run: () => { const m = e.measure; if (m) { m.samplers.length = 0; e.measureChanged(); } } },
   ],

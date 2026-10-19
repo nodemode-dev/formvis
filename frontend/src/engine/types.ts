@@ -150,6 +150,7 @@ export function artboardFromData(raw: unknown): Artboard | null {
 export interface Guide { axis: 'x' | 'y'; at: number; color?: string }
 /** A note pinned to the document (the Note tool, 1.49.6), and the Count tool's marks: saved with it. */
 export interface DocNote { id: ID; x: number; y: number; text: string }
+export interface CountGroup { id: ID; name: string; color: string; hidden?: boolean }
 /** A document's colour mode (1.50.2, the owner's walkthrough): RGB, Grayscale (8-bit grey), Bitmap (1-bit
  *  black and white) or Indexed Color (a palette of at most 256). Absent means RGB. */
 export type DocMode = 'rgb' | 'grayscale' | 'bitmap' | 'indexed' | 'cmyk' | 'lab' | 'duotone' | 'multichannel';
@@ -178,7 +179,7 @@ export interface LayerComp {
 export interface DocVariable { name: string; layer: ID; kind: 'visibility' | 'text' | 'pixels'; method?: 'fit' | 'fill' | 'asis' | 'conform' }
 /** A named row of values, one per variable name. */
 export interface DataSet { name: string; values: Record<string, string> }
-export interface Doc { /** DEV_PLAN 36.14: Image Assets on; File > Save also writes the layers named like foo.png. Absent means off. */ assetsOnSave?: boolean; /** Width over height of one pixel (35.4 part b); absent means square. */ pixelAspect?: number; measureScale?: { pixels: number; length: number; units: string }; measurements?: Array<{ id: number; label: string; scale: number; units: string; area?: number; perimeter?: number; length?: number; angle?: number; count?: number; w?: number; h?: number; gray?: number; grayMin?: number; grayMax?: number; intDen?: number; cx?: number; cy?: number }>; multichannel?: { channels: { name: string; color: RGB; solidity: number; data: Raster }[] }; duotone?: { type: 'mono' | 'duo' | 'tri' | 'quad'; inks: { name: string; color: RGB; curve: number[] }[] }; variables?: DocVariable[]; dataSets?: DataSet[]; activeDataSet?: string | null; comps?: readonly LayerComp[]; activeComp?: ID | null; depth?: 8 | 16 | 32; profile?: DocProfile; mode?: DocMode; palette?: readonly RGB[]; /** The Indexed Color entry whose pixels are clear. */ transparentIndex?: number; readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[]; guides?: readonly Guide[]; slices?: readonly DocSlice[];notes?: readonly DocNote[]; counts?: readonly { x: number; y: number }[]; boxes?: readonly DocBox[]; globalLight?: GlobalLight; paragraphStyles?: readonly ParagraphStyle[]; characterStyles?: readonly CharacterStyle[]; alphas?: readonly AlphaChannel[]; meta?: DocMeta }
+export interface Doc { /** DEV_PLAN 36.14: Image Assets on; File > Save also writes the layers named like foo.png. Absent means off. */ assetsOnSave?: boolean; /** Width over height of one pixel (35.4 part b); absent means square. */ pixelAspect?: number; measureScale?: { pixels: number; length: number; units: string }; measurements?: Array<{ id: number; label: string; scale: number; units: string; area?: number; perimeter?: number; length?: number; angle?: number; count?: number; w?: number; h?: number; gray?: number; grayMin?: number; grayMax?: number; intDen?: number; cx?: number; cy?: number }>; multichannel?: { channels: { name: string; color: RGB; solidity: number; data: Raster }[] }; duotone?: { type: 'mono' | 'duo' | 'tri' | 'quad'; inks: { name: string; color: RGB; curve: number[] }[] }; variables?: DocVariable[]; dataSets?: DataSet[]; activeDataSet?: string | null; comps?: readonly LayerComp[]; activeComp?: ID | null; depth?: 8 | 16 | 32; profile?: DocProfile; mode?: DocMode; palette?: readonly RGB[]; /** The Indexed Color entry whose pixels are clear. */ transparentIndex?: number; readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[]; guides?: readonly Guide[]; slices?: readonly DocSlice[];notes?: readonly DocNote[]; counts?: readonly { x: number; y: number; /** The count group it belongs to; absent means the first. */ g?: ID }[]; /** Count groups (the Count tool): a name and a colour each, hidden or shown. Absent means one default group. */ countGroups?: readonly CountGroup[]; boxes?: readonly DocBox[]; globalLight?: GlobalLight; paragraphStyles?: readonly ParagraphStyle[]; characterStyles?: readonly CharacterStyle[]; alphas?: readonly AlphaChannel[]; meta?: DocMeta }
 /** An alpha channel (1.65.1): a selection saved with the document, `mask` null when nothing in it is selected. */
 export interface AlphaChannel { readonly id: ID; readonly name: string; readonly mask: SelectionMask | null; /** Channel Options: the overlay colour, its opacity in percent, and whether the colour marks the masked or the selected area. Absent means red, 50 and masked. */ readonly color?: RGB; readonly opacity?: number; readonly indicates?: 'masked' | 'selected' }
 
@@ -195,7 +196,14 @@ export type ToolId = 'slice' | 'move' | 'artboard' |'marquee' | 'lasso' | 'objec
 
 /** pixels follows this computer's memory (1.53.4, setPixelBudget from the engine's capabilities); 100 megapixels until known. */
 export const LIMITS: { readonly side: number; pixels: number; readonly layers: number; readonly depth: number } = { side: 30000, pixels: 100_000_000, layers: 10000, depth: 64 };
-export function setPixelBudget(pixels: number): void { if (Number.isFinite(pixels) && pixels >= 100_000_000) LIMITS.pixels = Math.min(250_000_000, Math.round(pixels)); }
+const pixelCaps = { auto: 100_000_000, user: 0 };
+function applyPixelCaps(): void { LIMITS.pixels = pixelCaps.user > 0 ? Math.min(pixelCaps.auto, pixelCaps.user) : pixelCaps.auto; }
+export function setPixelBudget(pixels: number): void { if (Number.isFinite(pixels) && pixels >= 100_000_000) { pixelCaps.auto = Math.min(250_000_000, Math.round(pixels)); applyPixelCaps(); } }
+/** The Memory Usage preference (PC-AU-0155): a smaller document cap than the computer allows; 0 or less leaves the automatic one. */
+export function setPixelLimit(pixels: number): void { pixelCaps.user = Number.isFinite(pixels) && pixels > 0 ? Math.round(pixels) : 0; applyPixelCaps(); }
+
+/** A background job the person can stop: bands done of bands planned, and whether a stop was asked for. */
+export interface EngineJob { id: number; name: string; done: number; total: number; cancelled: boolean; startedAt: number }
 
 let idCounter = 0;
 export function uid(): ID {

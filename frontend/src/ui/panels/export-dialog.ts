@@ -17,6 +17,7 @@ const KEY = 'formvis.exportPresets';
  *  disabled for lossless formats rather than hidden. */
 export class ExportDialog extends Dialog {
   private s: ExportSettings = { format: 'png', quality: 90, scale: 100 };
+  private readonly offered = new Set<string>();
   private presetId = 'png-1x';
   private saved: ExportPreset[] = [];
   private readonly presetRow: Row<string>;
@@ -135,6 +136,8 @@ export class ExportDialog extends Dialog {
     if (this.isOpen || !this.engine.current) return;
     this.layers = layers;
     this.setTitle(layers ? 'Export Layer As' : 'Export As');
+    const kept = this.engine.current.doc.meta?.jpegQuality, id = this.engine.current.doc.id;
+    if (kept && !this.offered.has(id)) { this.offered.add(id); this.s = clampSettings({ ...this.s, format: 'jpg', quality: kept }); }
     this.load();
     this.sync();
     this.open();

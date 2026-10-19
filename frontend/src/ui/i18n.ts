@@ -92,6 +92,22 @@ export function t(english: string): string {
   return tail && look(base) !== undefined ? `${found}${tail}` : found;
 }
 
+/** A phrase with a number in it, in the form the language's plural rules pick for `n`. `one` and `other` are the English
+ *  forms with `{n}` where the number goes ("{n} record", "{n} records"). A language's table may hold a form for each
+ *  category its rules use, under the English `other` plus "#" and the category ("{n} records#few"); a category it does not
+ *  list falls back to the translation of `other`, then to the English forms. The number is written in the language's own
+ *  digits and grouping. */
+export function tn(n: number, one: string, other: string): string {
+  const lang = current;
+  let cat: Intl.LDMLPluralRule = n === 1 ? 'one' : 'other';
+  try { if (lang !== 'en') cat = new Intl.PluralRules(lang).select(n); } catch { /* keep the English rule */ }
+  const hit = (key: string): string | undefined => { const f = t(key); return f === key ? undefined : f; };
+  const form = lang === 'en' ? (n === 1 ? one : other) : hit(`${other}#${cat}`) ?? hit(cat === 'one' ? one : other) ?? hit(other) ?? (n === 1 ? one : other);
+  let shown = String(n);
+  try { shown = new Intl.NumberFormat(lang === 'en' ? 'en' : lang).format(n); } catch { /* keep plain digits */ }
+  return form.replace('{n}', shown);
+}
+
 /** Whether `text` has an entry in the current language (the page translator only touches text that does). */
 const known = (text: string): boolean => current !== 'en' && t(text) !== text;
 

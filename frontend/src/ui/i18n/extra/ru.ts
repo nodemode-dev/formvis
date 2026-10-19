@@ -1,5 +1,9 @@
 /** Russian, part c (DEV_PLAN 36.32): strings the app assembles at run time, keyed by the English. */
 export const ru: Record<string, string> = {
+  '{n} records.#one': '{n} запись.',
+  '{n} records.#few': '{n} записи.',
+  '{n} records.#many': '{n} записей.',
+  '{n} records.#other': '{n} записи.',
   'Working': 'Обработка',
   'GPU': 'GPU',
   'CPU': 'CPU',

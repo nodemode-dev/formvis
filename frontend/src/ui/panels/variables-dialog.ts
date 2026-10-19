@@ -87,6 +87,7 @@ export class DataSetsDialog extends Dialog {
   private readonly next = el('<button class="cv-btn ghost" type="button">Next</button>') as HTMLButtonElement;
   private readonly imp = el('<button class="cv-btn ghost" type="button">Import...</button>') as HTMLButtonElement;
   private readonly add = el('<button class="cv-btn ghost" type="button">New</button>') as HTMLButtonElement;
+  private readonly delim = el('<select class="cv-input" aria-label="Delimiter" title="The character that separates the fields of an imported file"><option value="">Detect</option><option value=",">Comma</option><option value=";">Semicolon</option><option value="\\t">Tab</option><option value="|">Bar</option></select>') as HTMLSelectElement;
   private readonly preview: Row<boolean>;
   private readonly table = el('<div class="cv-field" style="display:block;height:180px;overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left">Variable</th><th style="text-align:left">Value</th></tr></thead><tbody></tbody></table></div>');
   private readonly rows = this.table.querySelector('tbody') as HTMLTableSectionElement;
@@ -97,7 +98,7 @@ export class DataSetsDialog extends Dialog {
   constructor(private readonly engine: Engine) {
     super('Data Sets', 460);
     const nav = el('<div class="cv-field" style="display:flex;gap:8px"></div>');
-    nav.append(this.prev, this.next, this.add, this.imp);
+    nav.append(this.prev, this.next, this.add, this.imp, this.delim);
     this.selRow.append(this.sel);
     this.preview = checkRow('Preview', (v) => { this.previewOn = v; if (v) void this.go(); });
     this.body.append(this.selRow, nav, this.preview.el, this.table, this.note, this.file);
@@ -109,7 +110,7 @@ export class DataSetsDialog extends Dialog {
     this.file.addEventListener('change', () => {
       const f = this.file.files?.[0];
       this.file.value = '';
-      if (f) void f.text().then((t) => { this.engine.importDataSets(t); this.load(); });
+      if (f) void f.text().then((t) => { this.engine.importDataSets(t, this.delim.value); this.load(); });
     });
     this.button('Close', 'ghost', () => this.close());
     this.button('Apply', 'primary', () => { void this.go(); });
@@ -160,7 +161,7 @@ export class DataSetsDialog extends Dialog {
   /** Sets one variable's value in one data set; the rows on show stay as they are. */
   private setValue(set: string, variable: string, value: string): void {
     const next = this.sets().map((s) => (s.name === set ? { ...s, values: { ...s.values, [variable]: value } } : s));
-    this.engine.importDataSets(this.csv(next));
+    this.engine.importDataSets(this.csv(next), ',');
   }
 
   /** New: an empty data set after the others, chosen so its values can be typed in. */
@@ -170,7 +171,7 @@ export class DataSetsDialog extends Dialog {
     if (!vars.length) { setText(this.note, 'Define a variable first (Image > Variables > Define).'); return; }
     let n = sets.length + 1, name = `Data Set ${n}`;
     while (sets.some((s) => s.name === name)) name = `Data Set ${++n}`;
-    if (!this.engine.importDataSets(this.csv([...sets, { name, values: {} }]))) return;
+    if (!this.engine.importDataSets(this.csv([...sets, { name, values: {} }]), ',')) return;
     this.load();
     this.sel.value = name;
     this.fill();

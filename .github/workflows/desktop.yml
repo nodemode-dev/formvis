@@ -66,6 +66,19 @@ jobs:
             unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
             ./formvis desktop build
           fi
+      - name: Portable Windows zip
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $out = "portable/formvis"
+          New-Item -ItemType Directory -Force $out | Out-Null
+          Copy-Item src-tauri/target/release/formvis.exe $out
+          Copy-Item src-tauri/target/release/formvis-engine.exe $out
+          Set-Content -Path "$out/portable.txt" -Value "formvis keeps its data in the FormvisData folder beside this file."
+          Compress-Archive -Path "portable/formvis" -DestinationPath "portable/formvis-portable-windows-x64.zip"
+      - name: Linux tar.gz
+        if: runner.os == 'Linux'
+        run: tar -czf formvis-linux-x64.tar.gz -C src-tauri/target/release/bundle/deb/formvis_*_amd64/data usr
       - uses: actions/upload-artifact@v4
         with:
           name: formvis-${{ matrix.name }}
@@ -78,6 +91,8 @@ jobs:
             src-tauri/target/release/bundle/msi/*.msi
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/release/bundle/macos/*.app.tar.gz
+            portable/formvis-portable-windows-x64.zip
+            formvis-linux-x64.tar.gz
             src-tauri/target/release/bundle/**/*.sig
 
   release:
@@ -85,6 +100,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: bundles
@@ -111,7 +127,18 @@ jobs:
           else:
               print('no updater signatures (TAURI_SIGNING_PRIVATE_KEY unset); latest.json not written')
           PY
+      - name: Release notes from the CHANGELOG
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, re
+          tag = os.environ['GITHUB_REF_NAME'].lstrip('v')
+          text = open('CHANGELOG.md', encoding='utf-8').read()
+          m = re.search(r'^## ' + re.escape(tag) + r'\b.*?(?=^## |\Z)', text, re.S | re.M)
+          open('release-notes.md', 'w', encoding='utf-8').write(m.group(0).strip() if m else f'formvis {tag}')
+          PY
       - uses: softprops/action-gh-release@v2
         with:
           draft: true
+          body_path: release-notes.md
           files: bundles/**/*

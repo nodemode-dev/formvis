@@ -1,31 +1,34 @@
 # formvis commands
 
-Generated from the window's command catalogue (1325 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1347 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
-- Edit: 74
-- File: 88
+- Edit: 77
+- File: 90
 - Filter: 86
 - Generate: 6
-- Help: 3
-- Image: 99
+- Help: 5
+- Image: 104
 - Layer: 243
 - Paint: 1
 - Paths: 11
 - Select: 42
-- Tool options: 380
+- Tool options: 387
 - Tools: 53
 - Type: 49
-- View: 93
-- Window: 97
+- View: 94
+- Window: 99
 
 ## Edit
 
 | Id | Name | Keys | Does |
 | --- | --- | --- | --- |
+| `apply-edit` | Apply Pending Edit | Enter | Applies what the tool in use is holding, as Return does: a crop, a warp, a floating selection, a polygon lasso. Bound to Return and movable in Keyboard Shortcuts. (changes the picture) |
 | `auto-align-layers` | Auto-Align Layers... |  | Aligns the selected layers to the bottom-most one by matching their features. (changes the picture) |
 | `auto-blend-layers` | Auto-Blend Layers... |  | Adds layer masks that blend the selected layers into a panorama or a focus stack. (changes the picture) |
+| `cancel-edit` | Cancel Pending Edit | Escape | Cancels what the tool in use is holding, as Escape does. Bound to Escape and movable in Keyboard Shortcuts. |
+| `cancel-job` | Cancel Background Job |  | Stops the running background job, such as a filter on a large layer, and keeps the document as it was. (changes the picture) |
 | `clean-working-files` | Working Files |  | Deletes the stored recovery copies of documents that are no longer open and the closed tabs kept for Reopen Closed Tab, and says how much space came back. (changes the picture) |
 | `clear` | Clear Selection Pixels |  | Erases the pixels inside the selection. (changes the picture) |
 | `clear-history-log` | Clear History Log |  | Empties the history log. |
@@ -113,7 +116,7 @@ Generated from the window's command catalogue (1325 commands) by `./formvis agen
 | `comfyui-run` | Run ComfyUI Workflow... |  | Opens the dialog that runs a ComfyUI workflow and brings the result back. (changes the picture) (asks first) |
 | `conditional-mode-change` | Conditional Mode Change... |  | Changes the document to a target mode only when its current mode is one of the ticked source modes. (changes the picture) |
 | `contact-sheet` | Contact Sheet II... |  | Opens Contact Sheet II to lay chosen images out as thumbnails on new documents. (changes the picture) |
-| `create-droplet` | Create Droplet... |  | Writes a shell script that runs a chosen action over any pictures dropped onto it. (asks first) |
+| `create-droplet` | Create Droplet... |  | Writes a shell script that runs a chosen action over any pictures or folders dropped onto it, saving them in the chosen type and quality beside each picture or in an output folder; with the action parameter it writes the script without asking. (asks first) |
 | `create-video-timeline` | Create Video Timeline |  | Creates a video timeline from the document layers. (changes the picture) |
 | `crop-straighten-photos` | Crop and Straighten Photos |  | Finds each photo on a scanned page, straightens it and opens it as its own document. (changes the picture) |
 | `download-project` | Download Project File |  | Downloads the project file through the browser. (asks first) |
@@ -155,8 +158,10 @@ Generated from the window's command catalogue (1325 commands) by `./formvis agen
 | `image-assets-on-save` | Image Assets on Save |  | Turns Image Assets on or off for this document; while on, File > Save also regenerates the image files for every layer named like hero.png and delivers them as a zip. (changes the picture) |
 | `image-processor` | Image Processor... |  | Saves chosen files or the open images as JPEG, PSD and TIFF at a maximum size, optionally after an action and with a copyright notice, each type in its own folder. |
 | `import` | Import Images... | Shift+Mod+O | Opens the file picker to place images as layers. (changes the picture) |
+| `import-folder` | Import Images from Folder... |  | Opens the folder picker and places every picture in the chosen folder as a layer, in name order. (changes the picture) |
 | `import-notes` | Import Notes... |  | Opens the file picker to add the text notes of a PSD, or the paragraphs of a text file, to the document as notes. (changes the picture) |
 | `import-video` | Video Frames to Layers... |  | Opens the dialog that turns video frames into layers. (changes the picture) |
+| `insert-conditional` | Insert Conditional... |  | Adds a conditional step to a recorded action: when the document is landscape, portrait or square, 8, 16 or 32 bit, has a selection, unsaved changes, several layers, or an active type, smart object or masked layer, it plays one named action, otherwise another. Without parameters it opens the Actions dialog. (changes the picture) |
 | `list-actions` | List Actions |  | Returns the recorded actions with their step counts and which one is recording, or one action's steps with their kind, label and on or off state. |
 | `load-files-stack` | Load Files into Stack... |  | Opens a dialog to load chosen image files as the layers of one new document, optionally as a smart object stack. (changes the picture) |
 | `merge-hdr` | Merge to HDR... |  | Opens Merge to HDR for bracketed exposures. (changes the picture) |
@@ -303,8 +308,10 @@ Generated from the window's command catalogue (1325 commands) by `./formvis agen
 
 | Id | Name | Keys | Does |
 | --- | --- | --- | --- |
+| `copy-frame-trace` | Copy Frame Trace |  | Copies the traced frames as CSV: time, wait for the frame, draw time and whether the GPU or the CPU drew it. |
+| `frame-trace` | Frame Trace |  | Starts or stops timing every frame the canvas draws, from the moment it was asked for to the end of the draw, with a live line over the canvas; stopping reports the median, 90th percentile and worst. |
 | `help-github` | formvis on GitHub |  | Opens the formvis project page on GitHub in the browser. |
-| `report-issue` | Report an Issue... |  | Opens a new issue page for formvis on GitHub in the browser. |
+| `report-issue` | Report an Issue... |  | Opens a report to read and edit: the System Info text and this session's errors under a box for what happened, with Copy Report and a button that opens formvis's issue page. Nothing is sent. |
 | `simulate-gpu-loss` | Simulate GPU Device Loss |  | Acts as if the GPU device was lost, so drawing falls back to the CPU renderer for this session. |
 
 ## Image
@@ -351,6 +358,8 @@ Generated from the window's command catalogue (1325 commands) by `./formvis agen
 | `color-table` | Color Table... |  | Opens the Color Table of an Indexed Color document: edit, load or save its palette. (changes the picture) |
 | `compute-depth-map` | Compute Depth Map |  | Reads the depth of what the document shows with Depth Anything V2 Small on this computer and adds it as a grey layer named Depth Map, near bright and far dark. (changes the picture) |
 | `convert-profile` | Convert to Profile... |  | Opens Convert to Profile. (changes the picture) |
+| `count-new-group` | New Count Group |  | Starts a new count group with a name and colour; marks placed afterwards go into it. The first group made also takes the marks already placed. (changes the picture) |
+| `count-set-group` | Set Count Group |  | Renames, recolours, hides, shows, activates or deletes a count group, found by name or id; the active group when none is named. (changes the picture) |
 | `data-set-apply` | Apply Data Set |  | Applies a data set to the document: sets bound layers visible or hidden, replaces bound type text keeping its style, and swaps bound pixel layers, as one undo step. |
 | `data-sets-import` | Data Sets... |  | Reads data sets from CSV or tab-separated text whose first row names the variables; each later row is one data set. With no text it opens a file chooser for .csv and .txt. |
 | `depth-16` | 16 Bits/Channel |  | Sets 16 bits per channel. (changes the picture) |
@@ -373,9 +382,12 @@ Generated from the window's command catalogue (1325 commands) by `./formvis agen
 | `image-crop` | Crop |  | Crops the document to the Crop tool frame when one is open, else to the selection. (changes the picture) |
 | `image-size` | Image Size... | Alt+Mod+I | Opens Image Size. (changes the picture) |
 | `invert` | Invert | Mod+I | Inverts the colours of the active layer. (changes the picture) |
+| `measure-color-sampler` | Color Sampler Tool |  | Picks the Color Sampler tool, which pins up to ten sample points whose colours show in the Info panel, averaged over the chosen sample size. |
+| `measure-count` | Count Tool |  | Picks the Count tool, which numbers marks placed on the picture, grouped by name and colour. |
 | `measure-data-points` | Select Data Points... |  | Chooses which measurements the Measurement Log and its CSV export show (label, scale, area, perimeter, length, angle, count, width, height, gray value and its minimum and maximum, integrated density, centroid, circularity). |
 | `measure-log` | Measurement Log... |  | Opens the measurement log: a table of recorded measurements that can be added to, deleted, cleared or exported as CSV. (changes the picture) |
 | `measure-record` | Record Measurements |  | Records one measurement from the selection (area, perimeter, size), the Ruler line (length, angle) and the counts, scaled by the measurement scale. (changes the picture) |
+| `measure-ruler` | Ruler Tool |  | Picks the Ruler tool, which measures a distance and an angle, and with Alt-drag from an end a second arm and the angle between. |
 | `measure-scale` | Set Measurement Scale... |  | Sets the measurement scale: how many pixels make a logical length in chosen units. Without parameters it opens a dialog prefilled from the Ruler line. (changes the picture) |
 | `measure-scale-marker` | Place Scale Marker... |  | Places a scale bar with a text label as a new pixel layer at the bottom left, sized from the measurement scale. (changes the picture) |
 | `mode-bitmap` | Bitmap... |  | Opens the Bitmap conversion. (changes the picture) |
@@ -896,9 +908,15 @@ Generated from the window's command catalogue (1325 commands) by `./formvis agen
 | `tool.options.colorReplace.symmetryX` | Color Replacement: Symmetry X |  | Sets Symmetry X for the Color Replacement tool. |
 | `tool.options.colorReplace.symmetryY` | Color Replacement: Symmetry Y |  | Sets Symmetry Y for the Color Replacement tool. |
 | `tool.options.colorReplace.tolerance` | Color Replacement: Tolerance |  | Sets Tolerance for the Color Replacement tool. |
+| `tool.options.colorSampler.sampleSize` | Color Sampler: Sample Size |  | Sets Sample Size for the Color Sampler tool. |
 | `tool.options.contentAwareMove.color` | Content-Aware Move: Color |  | Sets Color for the Content-Aware Move tool. |
 | `tool.options.contentAwareMove.mode` | Content-Aware Move: Mode |  | Sets Mode for the Content-Aware Move tool. |
 | `tool.options.contentAwareMove.structure` | Content-Aware Move: Structure |  | Sets Structure for the Content-Aware Move tool. |
+| `tool.options.count.group` | Count: Group |  | Sets Group for the Count tool. |
+| `tool.options.count.groupColour` | Count: Group Colour |  | Sets Group Colour for the Count tool. |
+| `tool.options.count.hideGroup` | Count: Hide Group |  | Sets Hide Group for the Count tool. |
+| `tool.options.count.labelSize` | Count: Label Size |  | Sets Label Size for the Count tool. |
+| `tool.options.count.markerSize` | Count: Marker Size |  | Sets Marker Size for the Count tool. |
 | `tool.options.crop.contentAware` | Crop: Content-Aware |  | Sets Content-Aware for the Crop tool. |
 | `tool.options.crop.deleteCroppedPixels` | Crop: Delete Cropped Pixels |  | Sets Delete Cropped Pixels for the Crop tool. |
 | `tool.options.crop.h` | Crop: H |  | Sets H for the Crop tool. |
@@ -1085,6 +1103,7 @@ Generated from the window's command catalogue (1325 commands) by `./formvis agen
 | `tool.options.remove.symmetryX` | Remove: Symmetry X |  | Sets Symmetry X for the Remove tool. |
 | `tool.options.remove.symmetryY` | Remove: Symmetry Y |  | Sets Symmetry Y for the Remove tool. |
 | `tool.options.rotateView.rotationAngle` | Rotate View: Rotation Angle |  | Sets Rotation Angle for the Rotate View tool. |
+| `tool.options.ruler.useMeasurementScale` | Ruler: Use Measurement Scale |  | Sets Use Measurement Scale for the Ruler tool. |
 | `tool.options.selectionBrush.hardness` | Selection Brush: Hardness |  | Sets Hardness for the Selection Brush tool. |
 | `tool.options.selectionBrush.pressureCurve` | Selection Brush: Pressure curve |  | Sets Pressure curve for the Selection Brush tool. |
 | `tool.options.selectionBrush.size` | Selection Brush: Size |  | Sets Size for the Selection Brush tool. |
@@ -1183,10 +1202,10 @@ Generated from the window's command catalogue (1325 commands) by `./formvis agen
 | `tool.select.burn` | Burn Tool |  | Makes the Burn tool the active tool (key O). Paint to darken, most in the chosen tonal range · [ ] size |
 | `tool.select.cloneStamp` | Clone Stamp Tool |  | Makes the Clone Stamp tool the active tool (key S). Alt-click sets the source, then paint to copy from it · Aligned keeps the offset between strokes · Sample All Layers copies what you see · [ ] size |
 | `tool.select.colorReplace` | Color Replacement Tool |  | Makes the Color Replacement tool the active tool (key B). Drag over a colour to replace it with the foreground color · Tolerance sets how far from it colours match · [ ] size |
-| `tool.select.colorSampler` | Color Sampler Tool |  | Makes the Color Sampler tool the active tool (key I). Click to place a sampler (up to ten) · Drag one to move it · Alt-click one to remove it · Its colour shows in Window > Info |
+| `tool.select.colorSampler` | Color Sampler Tool |  | Makes the Color Sampler tool the active tool (key I). Click to place a sampler (up to ten) · Drag one to move it · Alt-click one or drag it off the canvas to remove it · Its colour shows in Window > Info |
 | `tool.select.contentAwareMove` | Content-Aware Move Tool |  | Makes the Content-Aware Move tool the active tool (key J). Draw around what to move, then drag it: the hole it leaves is filled from around it |
 | `tool.select.convertPoint` | Convert Point Tool |  | Makes the Convert Point tool the active tool (key P). Click a smooth point to make it a corner · Drag from a point to pull out smooth handles · Drag a handle to move it alone |
-| `tool.select.count` | Count Tool |  | Makes the Count tool the active tool (key I). Click to count · Alt-click a mark to remove it · Clear in the bar |
+| `tool.select.count` | Count Tool |  | Makes the Count tool the active tool (key I). Click to count · Drag a mark to move it · Alt-click a mark to remove it · New Group in the bar starts another count |
 | `tool.select.crop` | Crop Tool |  | Makes the Crop tool the active tool (key C). Drag a frame · Drag inside to move it · Handles resize · Alt keeps the centre · Edges snap to the canvas and layer edges · Enter crops · Escape cancels |
 | `tool.select.curvaturePen` | Curvature Pen Tool |  | Makes the Curvature Pen tool the active tool (key P). Click to place points; the curve runs smoothly through them · Alt-click for a corner · click the first point to close · Enter ends |
 | `tool.select.directSelect` | Direct Selection Tool |  | Makes the Direct Selection tool the active tool (key A). Click a point to select it, Shift to add, or drag a box · Drag points to move them, handles to reshape · Alt-drag a point to pull out handles, a handle to break it · Alt-click a segment to select its whole path · Arrows nudge |
@@ -1217,7 +1236,7 @@ Generated from the window's command catalogue (1325 commands) by `./formvis agen
 | `tool.select.relight` | Relight Tool |  | Makes the Relight tool the active tool. Click the Relight tool to light the picture with virtual lights, or open Filter > Relight. |
 | `tool.select.remove` | Remove Tool |  | Makes the Remove tool the active tool (key J). Paint over what to remove; it is filled from its surroundings when you release · [ ] size |
 | `tool.select.rotateView` | Rotate View Tool |  | Makes the Rotate View tool the active tool (key R). Drag to turn the view · Shift for 15 degree steps · Double-click or Escape straightens it |
-| `tool.select.ruler` | Ruler Tool |  | Makes the Ruler tool the active tool (key I). Drag to measure · Drag an end to adjust · Straighten Layer levels the layer along the line |
+| `tool.select.ruler` | Ruler Tool |  | Makes the Ruler tool the active tool (key I). Drag to measure · Drag an end to adjust · Alt-drag from an end for a second arm and the angle between · Straighten Layer levels the layer along the line |
 | `tool.select.selectionBrush` | Selection Brush Tool |  | Makes the Selection Brush tool the active tool (key W). Paint to add to the selection · Alt-paint to take away · Shift+Alt-paint to keep only what is painted over the selection · [ ] size · Shift+[ ] hardness |
 | `tool.select.shape` | Shape Tool |  | Makes the Shape tool the active tool (key U). Drag to draw a rectangle (on a new shape layer) · Shift after starting keeps it square · Alt after starting grows from the center · Shift+U switches shape |
 | `tool.select.slice` | Slice Tool |  | Makes the Slice tool the active tool (key C). Drag a rectangle to add a slice · Shift makes it square · Slices are numbered in reading order |
@@ -1367,6 +1386,7 @@ Generated from the window's command catalogue (1325 commands) by `./formvis agen
 | `theme-studio` | Theme: Studio Dark |  | Switches the window to the Studio Dark theme; nothing in the window is rebuilt. |
 | `theme-terminal` | Theme: Terminal Green |  | Switches the window to the Terminal Green theme; nothing in the window is rebuilt. |
 | `theme-violet` | Theme: Violet Haze |  | Switches the window to the Violet Haze theme; nothing in the window is rebuilt. |
+| `tile-grid` | Tile Grid |  | Shows or hides a dashed grid of the 256 pixel tiles the GPU and giant layers work in. |
 | `toggle-auto-slices` | Toggle Auto Slices |  | Shows or hides the dashed auto slices that fill the space between user slices. |
 | `toggle-dock-panels` | Toggle Dock Panels | Shift+Tab | Shows or hides the panel column and the properties column, and keeps the toolbar and the options bar. |
 | `toggle-extras` | Toggle Extras |  | Turns every canvas helper on or off at once: notes, counts, selection edges and layer edges. |
@@ -1386,7 +1406,7 @@ Generated from the window's command catalogue (1325 commands) by `./formvis agen
 | --- | --- | --- | --- |
 | `about` | About formvis |  | Opens the About dialog. |
 | `action-stop` | Stop Recording |  | Stops recording an action. |
-| `actions` | Actions... |  | Opens the Actions panel to record and play steps. |
+| `actions` | Actions... | Alt+F9 | Opens the Actions panel to record and play steps. |
 | `agent.claude.open` | Claude Code |  | Shows or hides the Claude Code panel. |
 | `agent.connect.copy-claude-code` | Copy Claude Code Connect Line |  | Copies the claude mcp add line that registers formvis in Claude Code. |
 | `agent.connect.copy-claude-desktop` | Copy Claude Desktop Connect JSON |  | Copies the mcpServers JSON, with this copy of formvis installed path, for Claude Desktop settings. |
@@ -1418,7 +1438,7 @@ Generated from the window's command catalogue (1325 commands) by `./formvis agen
 | `help` | formvis Help | F1 | Opens the formvis manual. |
 | `interface-darken` | Darken Interface | Shift+Mod+F1 | Switches to the next darker interface theme, ordered by the theme background; does nothing at the darkest. |
 | `interface-lighten` | Lighten Interface | Shift+Mod+F2 | Switches to the next lighter interface theme, ordered by the theme background; does nothing at the lightest. |
-| `manage-plugins` | Manage Plugins... |  | Opens the plugins dialog. |
+| `manage-plugins` | Manage Plugins... |  | Opens the plugins dialog, which lists each plugin with whether it runs, its commands, their keys and its latest error. |
 | `match-all` | Match All |  | Matches zoom, location and rotation across open documents. (changes the picture) |
 | `match-location` | Match Location |  | Centres every open document on the same point as the current one. (changes the picture) |
 | `match-rotation` | Match Rotation |  | Gives every open document the current view rotation. (changes the picture) |
@@ -1429,6 +1449,7 @@ Generated from the window's command catalogue (1325 commands) by `./formvis agen
 | `new-workspace` | New Workspace... |  | Asks for a name and saves the panel arrangement as it is now, which of them show and in what order, as a workspace in the title bar list. |
 | `next-appearance` | Next Appearance Mode |  | Cycles the appearance between Dark, Light and Auto, where Auto follows the system scheme. |
 | `next-document` | Next Document | Mod+Tab | Switches to the next open document in the tab strip, wrapping from the last to the first. |
+| `open-plugins-folder` | Open Plugins Folder |  | Shows the plugins folder in the system file manager. |
 | `panel-adjustments` | Adjustments |  | Shows or hides the Adjustments panel. |
 | `panel-brushes` | Brushes |  | Shows or hides the Brushes panel. |
 | `panel-channels` | Channels |  | Shows the Channels tab, opening the layers panel group if it is hidden. |
@@ -1463,6 +1484,7 @@ Generated from the window's command catalogue (1325 commands) by `./formvis agen
 | `pref-whats-new-auto` | Show What's New Once After an Update |  | Turns on or off opening What's New once after an update (Preferences > General). |
 | `previous-document` | Previous Document | Shift+Mod+Tab | Switches to the previous open document in the tab strip, wrapping from the first to the last. |
 | `record-performance` | Record Performance... |  | Records 10 seconds of real use and reports what took the time: canvas draws, engine events, input handlers, pixel reads and uploads, frame gaps. |
+| `reload-plugins` | Reload Plugins |  | Drops every running plugin and loads the enabled ones in the plugins folder again from disk. |
 | `reload-window` | Reload Window |  | Reloads the app window after asking when a document has unsaved changes; open documents return through the Restore Session preference. |
 | `reset-panels` | Reset Panels |  | Restores the default panel layout. |
 | `script-console` | Script Console... |  | Opens the Script Console, a log with a one-line input that runs JavaScript with formvis.run to run any catalogue command, formvis.commands to list them and formvis.api, the plugin API. |

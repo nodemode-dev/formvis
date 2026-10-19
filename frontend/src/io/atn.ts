@@ -131,6 +131,10 @@ function stepFor(it: Item): ActionStep | null {
     }
     return null;
   }
+  if (it.event === 'Stop') {
+    const msg = get('Msge'), go = get('Cntn');
+    return { kind: 'stop', label, message: typeof msg === 'string' ? msg.slice(0, 500) : '', allowContinue: go !== false };
+  }
   if (it.event === 'GsnB') {
     const rds = get('Rds ');
     const radius = isUnit(rds) ? rds.value : typeof rds === 'number' ? rds : null;
@@ -156,10 +160,9 @@ export function parseAtn(buf: ArrayBuffer): { actions: Action[]; unsupported: st
       actions.push({ name: name || `Action ${a + 1}`, steps });
       for (let i = 0; i < items; i++) {
         const it = readItem(r);
-        if (!it.enabled) continue;
         const step = stepFor(it);
-        if (step) steps.push(step);
-        else unsupported.push(it.name || it.event);
+        if (step) steps.push(it.enabled ? step : { ...step, off: true });
+        else if (it.enabled) unsupported.push(it.name || it.event);
       }
     }
   } catch {

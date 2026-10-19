@@ -70,8 +70,29 @@ export async function addSampledBrush(engine: Engine, name: string, tip: Sampled
   return { kept };
 }
 
-/** Reads an .abr file, adds its tips as presets (named after the file) and selects the first. Returns how many. */
+/** A picture file as a sampled tip, up to 2500 px a side: dark paints, transparency does not (coverage = (255 - luminance) * alpha / 255). */
+async function tipFromImage(file: File): Promise<SampledTip> {
+  const bmp = await createImageBitmap(file);
+  try {
+    if (bmp.width > 2500 || bmp.height > 2500) throw new Error('A brush tip can be at most 2500 by 2500 pixels.');
+    const c = document.createElement('canvas');
+    c.width = bmp.width; c.height = bmp.height;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    if (!g) throw new Error('The picture could not be read.');
+    g.drawImage(bmp, 0, 0);
+    const px = g.getImageData(0, 0, c.width, c.height).data, data = new Uint8Array(c.width * c.height);
+    for (let i = 0; i < data.length; i++) data[i] = Math.round(((255 - (0.299 * px[i * 4] + 0.587 * px[i * 4 + 1] + 0.114 * px[i * 4 + 2])) * px[i * 4 + 3]) / 255);
+    return { w: c.width, h: c.height, data };
+  } finally { bmp.close(); }
+}
+
+/** Reads an .abr file, adds its tips as presets (named after the file) and selects the first. Returns how many. A picture
+ *  file (PNG, JPEG, WebP and the like) becomes one sampled tip named after it. */
 export async function importAbr(engine: Engine, file: File): Promise<{ added: number; kept: boolean }> {
+  if (!/\.abr$/i.test(file.name) && (file.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp|avif)$/i.test(file.name))) {
+    const r = await addSampledBrush(engine, file.name.replace(/\.[^.]+$/, ''), await tipFromImage(file));
+    return { added: 1, kept: r.kept };
+  }
   const base = file.name.replace(/\.abr$/i, ''), brushes = parseAbr(await file.arrayBuffer(), base);
   if (!brushes.length) return { added: 0, kept: true };
   const stamp = Date.now().toString(36), made = brushes.map((b, i) => presetFromTip(`abr-${stamp}-${i}`, b.name, b.tip, b.spacing * 100));

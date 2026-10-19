@@ -1,4 +1,6 @@
 import { lutFrom, lut4From, lut3x4From, type ColourLut, type Lut4, type Lut3x4 } from '../engine/colour-lut';
+export interface ExrLayout { width: number; height: number; parts: Array<{ part: number; name: string; groups: Array<{ key: string; label: string; channels: number }> }>; crypto: Array<{ name: string; objects: string[] }> }
+export type ExrPick = { part: number; key: string } | { crypto: string; object: string };
 export interface Capabilities { pixelBudget?: number; memory?: number;
   name: string; version: string;
   desktop: boolean;
@@ -227,6 +229,11 @@ export const api = {
     try { await request(`/comfyui/cancel/${encodeURIComponent(job)}`, { method: 'POST', body: form({ target }) }); } catch { /* it may have finished */ }
   },
 
+  /** A workflow saved in ComfyUI's editor format as the API format, with the widget names read from the ComfyUI at `target`. */
+  async comfyuiConvert(target: string, workflow: string): Promise<string> {
+    return ((await (await request('/comfyui/convert', { method: 'POST', body: form({ target, workflow }, []) })).json()) as { workflow: string }).workflow;
+  },
+
   /** Send to ComfyUI (1.50.9): whether ComfyUI answers at `target`, and its version. */
   async comfyuiStatus(target: string): Promise<{ running: boolean; version?: string; detail?: string } | null> {
     try { return (await (await request(`/comfyui/status?target=${encodeURIComponent(target)}`)).json()) as { running: boolean; version?: string; detail?: string }; } catch { return null; }
@@ -324,6 +331,26 @@ export const api = {
     const buf = await (await request('/io/exr-parts', { method: 'POST', body: form({}, [{ name, blob: file }], 'file') })).arrayBuffer();
     const n = new DataView(buf).getUint32(0, true), head = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, n))) as { count: number; width: number; height: number; parts: Array<{ name: string; width: number; height: number; x: number; y: number }> };
     if (head.count < 2) return null;
+    let at = 4 + n;
+    const parts = head.parts.map((p) => { const len = p.width * p.height * 4; const data = new Float32Array(buf.slice(at, at + len * 4)); at += len * 4; return { ...p, data }; });
+    return { width: head.width, height: head.height, parts };
+  },
+  /** A Targa with real alpha as an opaque RGB picture (colours under zero alpha kept) and its alpha plane as a grey picture; null where the alpha is all opaque. */
+  async decodeSplit(file: Blob, name: string): Promise<{ width: number; height: number; rgb: Blob; alpha: Blob } | null> {
+    const buf = await (await request('/io/decode-split', { method: 'POST', body: form({}, [{ name, blob: file }], 'file') })).arrayBuffer();
+    const n = new DataView(buf).getUint32(0, true), head = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, n))) as { hasAlpha: boolean; width: number; height: number; rgb?: number; alpha?: number };
+    if (!head.hasAlpha) return null;
+    const at = 4 + n;
+    return { width: head.width, height: head.height, rgb: new Blob([buf.slice(at, at + (head.rgb ?? 0))], { type: 'image/png' }), alpha: new Blob([buf.slice(at + (head.rgb ?? 0), at + (head.rgb ?? 0) + (head.alpha ?? 0))], { type: 'image/png' }) };
+  },
+  /** An OpenEXR's channel groups for the Open EXR chooser: per part the groups (a part's own channels, or a prefix such as diffuse), and the Cryptomatte sets with their object names. */
+  async exrLayout(file: Blob, name: string): Promise<ExrLayout> {
+    return (await (await request('/io/exr-layout', { method: 'POST', body: form({}, [{ name, blob: file }], 'file') })).json()) as ExrLayout;
+  },
+  /** The groups chosen in the Open EXR chooser as RGBA float32 parts, laid out as exrParts returns them. */
+  async exrSelect(file: Blob, name: string, picks: ExrPick[]): Promise<{ width: number; height: number; parts: Array<{ name: string; width: number; height: number; x: number; y: number; data: Float32Array }> }> {
+    const buf = await (await request('/io/exr-select', { method: 'POST', body: form({ picks: JSON.stringify(picks) }, [{ name, blob: file }], 'file') })).arrayBuffer();
+    const n = new DataView(buf).getUint32(0, true), head = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, n))) as { width: number; height: number; parts: Array<{ name: string; width: number; height: number; x: number; y: number }> };
     let at = 4 + n;
     const parts = head.parts.map((p) => { const len = p.width * p.height * 4; const data = new Float32Array(buf.slice(at, at + len * 4)); at += len * 4; return { ...p, data }; });
     return { width: head.width, height: head.height, parts };

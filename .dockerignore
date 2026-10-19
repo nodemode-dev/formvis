@@ -1,0 +1,9 @@
+.git
+**/node_modules
+backend/venv
+**/__pycache__
+src-tauri/target
+native/formvis-render/target
+frontend/dist
+dist-engine
+*.log

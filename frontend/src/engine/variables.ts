@@ -4,10 +4,12 @@ import type { DataSet, Doc, DocVariable, ID } from './types';
  *  changes one data set makes to a document. No DOM, no engine: the engine applies the plan. */
 
 /** Rows of fields from CSV or tab-separated text: quoted fields, doubled quotes, newlines inside quotes, a BOM dropped. */
-export function parseDelimited(text: string): string[][] {
+export function parseDelimited(text: string, delimiter = ''): string[][] {
   const src = text.replace(/^﻿/, '');
   const firstLine = src.split(/\r\n|\n|\r/, 1)[0] ?? '';
-  const sep = firstLine.includes('\t') ? '\t' : ',';
+  const outside = firstLine.replace(/"[^"]*"/g, '');
+  const count = (c: string): number => outside.split(c).length - 1;
+  const sep = delimiter === '\\t' ? '\t' : delimiter.length === 1 && delimiter !== '"' ? delimiter : firstLine.includes('\t') ? '\t' : [',', ';', '|'].reduce((best, c) => (count(c) > count(best) ? c : best), ',');
   const rows: string[][] = [];
   let row: string[] = [], field = '', quoted = false, any = false;
   const endRow = (): void => { row.push(field); field = ''; if (row.length > 1 || row[0] !== '') rows.push(row); row = []; any = false; };
@@ -26,8 +28,8 @@ export function parseDelimited(text: string): string[][] {
 }
 
 /** Data sets from text whose first row names the variables; each later row is a data set, named by its first value. */
-export function buildDataSets(text: string): { names: string[]; dataSets: DataSet[] } {
-  const rows = parseDelimited(text);
+export function buildDataSets(text: string, delimiter = ''): { names: string[]; dataSets: DataSet[] } {
+  const rows = parseDelimited(text, delimiter);
   if (rows.length < 2) return { names: [], dataSets: [] };
   const names = rows[0].map((n) => n.trim());
   const dataSets: DataSet[] = [];

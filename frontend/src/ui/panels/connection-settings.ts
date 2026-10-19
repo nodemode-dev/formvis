@@ -1,7 +1,8 @@
 import { api, type ComfyAuth, type ModelsFolder } from '../../io/api';
-import { addRecipe, RECIPE_FAMILIES, recipeFamily, recipes, removeRecipe, type RecipeFamily } from '../../io/comfy';
+import { addRecipe, apiWorkflow, RECIPE_FAMILIES, recipeFamily, recipes, removeRecipe, type RecipeFamily } from '../../io/comfy';
 import { saveTemplates, templateFromMarkdown, templateToMarkdown, templates } from '../../io/prompt-templates';
 import { el, patchList, setHidden, setText, setValue } from '../dom';
+import { loadPrefs } from '../prefs';
 
 const row = (label: string, ...c: HTMLElement[]): HTMLElement => { const r = el('<label class="cv-dialog-row"><span></span></label>'); setText(r.querySelector('span'), label); r.append(...c); return r; };
 const failure = (err: unknown, d: string): string => (err instanceof Error && err.message ? err.message : d);
@@ -146,7 +147,12 @@ export class RecipesSection {
     this.input.value = '';
     const problems: string[] = [];
     let added = 0;
-    for (const f of files.slice(0, 20)) { const p = addRecipe(f.name, await f.text()); if (p) problems.push(p); else added++; }
+    for (const f of files.slice(0, 20)) {
+      let text = await f.text();
+      try { text = await apiWorkflow(text, loadPrefs().comfyuiUrl, f.name); } catch (err) { problems.push(err instanceof Error ? err.message : `${f.name} could not be converted.`); continue; }
+      const p = addRecipe(f.name, text);
+      if (p) problems.push(p); else added++;
+    }
     this.refresh();
     setText(this.note, `${added} workflow${added === 1 ? '' : 's'} added${problems.length ? `. ${problems[0]}` : '.'}`);
   }

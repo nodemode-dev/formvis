@@ -1,7 +1,7 @@
 import { api, ApiError } from '../../io/api';
 import type { PluginHost } from '../../plugins/host';
 import { Dialog } from '../dialogs';
-import { el, setText } from '../dom';
+import { el, patchList, q, setChecked, setHidden, setText } from '../dom';
 
 /** Plugins > Manage Plugins (1.52.6): the plugins folder's plugins, each on or off, removable; Add Plugin says plainly
  *  what a plugin can do before it is added. */
@@ -9,29 +9,54 @@ export class PluginsDialog extends Dialog {
   private readonly list = el('<div class="cv-plugins-list"></div>');
   private readonly file = el<HTMLInputElement>('<input type="file" accept=".js,text/javascript" aria-label="Plugin file" hidden>');
   private readonly note = el('<p class="cv-note" role="status"></p>');
+  private readonly empty = el('<p class="cv-note">No plugins yet.</p>');
 
   constructor(private readonly host: PluginHost, private readonly confirm: (title: string, text: string, ok: string) => Promise<boolean>) {
     super('Plugins', 440);
     const add = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Add Plugin...</button>');
+    const reload = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Reload Plugins</button>');
     add.addEventListener('click', () => this.file.click());
+    reload.addEventListener('click', () => void this.reload());
     this.file.addEventListener('change', () => void this.add());
-    this.body.append(el('<p class="cv-note">A plugin runs in a sandbox: it can change the open document through formvis\'s tools, each change undoable, and anything that costs money still asks you; it cannot see your keys or your files. Its commands are in the Plugins menu.</p>'), this.list, add, this.file, this.note);
+    this.host.onChange = () => { if (this.isOpen) void this.refresh(); };
+    this.body.append(el('<p class="cv-note">A plugin runs in a sandbox: it can change the open document through formvis\'s tools, each change undoable, and anything that costs money still asks you; it cannot see your keys or your files. Its commands are in the Plugins menu.</p>'), this.list, this.empty, add, reload, this.file, this.note);
     this.button('Close', 'ghost', () => this.close());
   }
 
   async show(): Promise<void> { await this.refresh(); setText(this.note, ''); this.open(); }
 
   private async refresh(): Promise<void> {
-    const off = this.host.off(), all = await api.plugins();
-    this.list.replaceChildren(...(all.length ? all.map((p) => {
-      const row = el('<div class="cv-plugins-row"><label><input type="checkbox"><span></span></label><button type="button" class="cv-btn cv-btn-ghost">Remove</button></div>');
-      const box = row.querySelector('input') as HTMLInputElement, name = row.querySelector('span') as HTMLElement;
-      box.checked = !off.has(p.name); box.setAttribute('aria-label', `${p.name} on`);
-      setText(name, p.name);
-      box.addEventListener('change', () => this.host.setOn(p.name, box.checked));
-      (row.querySelector('button') as HTMLButtonElement).addEventListener('click', () => void (async () => { this.host.unload(p.name); await api.removePlugin(p.name); await this.refresh(); })());
-      return row;
-    }) : [el('<p class="cv-note">No plugins yet.</p>')]));
+    const rows = await this.host.list();
+    patchList<Record<string, unknown>>(this.list, rows, {
+      key: (p) => String(p.file),
+      create: (p) => {
+        const file = String(p.file);
+        const row = el('<div class="cv-plugins-row"><label><input type="checkbox"><span class="cv-plugins-name"></span></label><button type="button" class="cv-btn cv-btn-ghost">Remove</button><span class="cv-note cv-plugins-state"></span></div>');
+        const box = q<HTMLInputElement>(row, 'input');
+        box.setAttribute('aria-label', `${file} on`);
+        setText(q(row, '.cv-plugins-name'), file);
+        box.addEventListener('change', () => { this.host.setOn(file, box.checked); });
+        q<HTMLButtonElement>(row, 'button').addEventListener('click', () => void (async () => { this.host.unload(file); await api.removePlugin(file); await this.refresh(); })());
+        this.fill(row, p);
+        return row;
+      },
+      update: (row, p) => this.fill(row, p),
+    });
+    setHidden(this.empty, rows.length > 0);
+  }
+
+  /** A row's checkbox and its state line: running or off, the commands with their keys, and the latest errors. */
+  private fill(row: HTMLElement, p: Record<string, unknown>): void {
+    setChecked(q<HTMLInputElement>(row, 'input'), p.on === true);
+    const cmds = p.commands as Array<{ label: string; keys: string[] }>, errors = p.errors as string[];
+    const state = !p.on ? 'Off' : !p.running ? 'Not running' : `${String(p.name)} · ${cmds.length} command${cmds.length === 1 ? '' : 's'}${cmds.length ? ': ' + cmds.map((c) => c.label + (c.keys.length ? ` (${c.keys[0]})` : '')).join(', ') : ''}`;
+    setText(q(row, '.cv-plugins-state'), errors.length ? `${state}. Error: ${errors[errors.length - 1]}` : state);
+  }
+
+  private async reload(): Promise<void> {
+    const n = await this.host.reloadAll();
+    await this.refresh();
+    setText(this.note, `Reloaded: ${n} plugin${n === 1 ? '' : 's'} running.`);
   }
 
   private async add(): Promise<void> {

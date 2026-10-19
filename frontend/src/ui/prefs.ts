@@ -1,14 +1,15 @@
 import type { Engine } from '../engine';
 import { previewMode } from '../engine/image-edit';
+import { renderCache } from '../engine/renderer';
 import { isLang, type Lang } from './i18n/langs';
-import type { GpuRenderer } from '../gpu/probe';
+import type { GpuPower, GpuRenderer } from '../gpu/probe';
 import { DEFAULT_COLOUR, cleanColour, cleanPresets, type ColourPreset, type ColourSettings, type MismatchPref } from './colour-settings';
 
 /** Preferences that change how formvis works, kept on this device. Every one acts on
  *  something real: History States and history memory are the undo limits every project uses; region redraws decide
  *  whether a brush stroke repaints only what it changed; the recovery delay is how soon after a change unsaved work is
  *  kept for crash recovery. The graphics processor settings choose the renderer (Phase 18). */
-export interface Prefs { language: Lang; profileMismatch: MismatchPref; colour: ColourSettings; colourPresets: ColourPreset[]; shortcuts: Record<string, string[]>; restoreSession: boolean; agentsAllowed: boolean; comfyuiUrl: string; nodemodeUrl: string; historyStates: number; historyMB: number; historyAuto: boolean; regionRedraws: boolean; fullPreviews: boolean; recoverySeconds: number; autoShowHome: boolean; useGpu: boolean; gpuFilters: boolean; renderer: GpuRenderer; gpuMemoryMB: number; engineDevice: EngineDevice;
+export interface Prefs { language: Lang; profileMismatch: MismatchPref; colour: ColourSettings; colourPresets: ColourPreset[]; shortcuts: Record<string, string[]>; restoreSession: boolean; agentsAllowed: boolean; comfyuiUrl: string; nodemodeUrl: string; historyStates: number; historyMB: number; historyAuto: boolean; memoryLimitMB: number; effectCacheMB: number; cacheLevels: number; regionRedraws: boolean; fullPreviews: boolean; recoverySeconds: number; autoShowHome: boolean; useGpu: boolean; gpuFilters: boolean; renderer: GpuRenderer; gpuMemoryMB: number; gpuPower: GpuPower; lowLatency: boolean; engineDevice: EngineDevice;
   /* The sections (the owner's walkthrough): Tools, History & Cache, Workspace, Cursors, Transparency & Gamut,
      Units & Rulers, Guides & Grid; every one acts on something real. */
   zoomWheel: boolean; autoFirstSnapshot: boolean; snapshotMB: number; narrowCollapse: boolean;
@@ -37,7 +38,9 @@ export interface Prefs { language: Lang; profileMismatch: MismatchPref; colour: 
   /** Camera Raw Defaults: Auto Tone applied on open, the layer opened as a smart object, and the resolution (ppi) a RAW opens at; 0 keeps the file's. */
   rawAutoTone: boolean; rawSmart: boolean; rawPpi: number;
   /** Preferences > History Log: each new history step is written to the log (Edit > History Log saves it). */
-  historyLog: boolean }
+  historyLog: boolean;
+  /** Preferences > File Handling: a picture placed or dropped into an open document starts in Free Transform. */
+  placeTransform: boolean }
 export const RAW_WB_CHOICES: ReadonlyArray<readonly ['as_shot' | 'auto' | 'daylight', string]> = [['as_shot', 'As Shot'], ['auto', 'Auto'], ['daylight', 'Daylight']];
 export type PressureCurve = 'linear' | 'soft' | 'firm' | 's';
 export const PRESSURE_CURVES: ReadonlyArray<readonly [PressureCurve, string]> = [['linear', 'Linear'], ['soft', 'Soft'], ['firm', 'Firm'], ['s', 'S curve']];
@@ -83,10 +86,10 @@ export const checkerPair = (choice: CheckerColors, themeLight: boolean): readonl
 export type EngineDevice = 'auto' | 'metal' | 'cuda' | 'cpu';
 export const ENGINE_CHOICES: ReadonlyArray<readonly [EngineDevice, string]> = [['auto', 'Automatic'], ['metal', 'Metal (Core ML)'], ['cuda', 'CUDA'], ['cpu', 'CPU']];
 
-export const DEFAULT_PREFS: Prefs = { language: 'en', profileMismatch: 'convert', colour: DEFAULT_COLOUR, colourPresets: [], shortcuts: {}, restoreSession: true, agentsAllowed: false, comfyuiUrl: 'http://127.0.0.1:8188', nodemodeUrl: 'http://localhost:8000', historyStates: 100, historyMB: 256, historyAuto: true, regionRedraws: true, fullPreviews: false, recoverySeconds: 20, autoShowHome: true, useGpu: true, gpuFilters: true, renderer: 'auto', gpuMemoryMB: 1024, engineDevice: 'auto',
+export const DEFAULT_PREFS: Prefs = { language: 'en', profileMismatch: 'convert', colour: DEFAULT_COLOUR, colourPresets: [], shortcuts: {}, restoreSession: true, agentsAllowed: false, comfyuiUrl: 'http://127.0.0.1:8188', nodemodeUrl: 'http://localhost:8000', historyStates: 100, historyMB: 256, historyAuto: true, memoryLimitMB: 0, effectCacheMB: 256, cacheLevels: 6, regionRedraws: true, fullPreviews: false, recoverySeconds: 20, autoShowHome: true, useGpu: true, gpuFilters: true, renderer: 'auto', gpuMemoryMB: 1024, gpuPower: 'high-performance', lowLatency: false, engineDevice: 'auto',
   zoomWheel: false, autoFirstSnapshot: true, snapshotMB: 768, narrowCollapse: true, paintCursor: 'tip', cursorCrosshair: false,
   checkerSize: 'medium', checkerColors: 'auto', checkerTheme: true, rulerUnits: 'px', guideColor: '', gridColor: '', gridSpacing: 100, gridSubdivisions: 4,
-  homeOnLastClose: false, whatsNewAuto: true, whatsNewSeen: '', toolOptions: {}, dialogValues: {}, spellWords: [], measureDataPoints: [...DEFAULT_MEASURE_POINTS], fontPreview: 'medium', toolbar: null, pressureCurve: 'linear', uiFontSize: 'default', recentFontCount: 5, recentFonts: [], rawWb: 'as_shot', rawBits: 8, rawAutoTone: false, rawSmart: false, rawPpi: 0, historyLog: false };
+  homeOnLastClose: false, whatsNewAuto: true, whatsNewSeen: '', toolOptions: {}, dialogValues: {}, spellWords: [], measureDataPoints: [...DEFAULT_MEASURE_POINTS], fontPreview: 'medium', toolbar: null, pressureCurve: 'linear', uiFontSize: 'default', recentFontCount: 5, recentFonts: [], rawWb: 'as_shot', rawBits: 8, rawAutoTone: false, rawSmart: false, rawPpi: 0, historyLog: false, placeTransform: true };
 export const RECOVERY_CHOICES: ReadonlyArray<readonly [string, string]> = [['10', '10 seconds'], ['20', '20 seconds'], ['60', '1 minute'], ['300', '5 minutes'], ['600', '10 minutes']];
 const KEY = 'formvis.prefs';
 
@@ -133,6 +136,9 @@ export function loadPrefs(): Prefs {
       historyStates: Math.round(num(r.historyStates, 1, 1000, DEFAULT_PREFS.historyStates)),
       historyMB: Math.round(num(r.historyMB, 16, 4096, DEFAULT_PREFS.historyMB)),
       historyAuto: typeof r.historyAuto === 'boolean' ? r.historyAuto : DEFAULT_PREFS.historyAuto,   // 1.61.3
+      memoryLimitMB: r.memoryLimitMB === 0 ? 0 : Math.round(num(r.memoryLimitMB, 512, 65536, DEFAULT_PREFS.memoryLimitMB)),   // 0 is automatic (PC-AU-0155)
+      effectCacheMB: Math.round(num(r.effectCacheMB, 16, 4096, DEFAULT_PREFS.effectCacheMB)),
+      cacheLevels: Math.round(num(r.cacheLevels, 0, 8, DEFAULT_PREFS.cacheLevels)),
       regionRedraws: typeof r.regionRedraws === 'boolean' ? r.regionRedraws : DEFAULT_PREFS.regionRedraws,
       fullPreviews: typeof r.fullPreviews === 'boolean' ? r.fullPreviews : DEFAULT_PREFS.fullPreviews,
       recoverySeconds: Math.round(num(r.recoverySeconds, 5, 3600, DEFAULT_PREFS.recoverySeconds)),
@@ -150,6 +156,8 @@ export function loadPrefs(): Prefs {
       gpuFilters: typeof r.gpuFilters === 'boolean' ? r.gpuFilters : DEFAULT_PREFS.gpuFilters,   // 36.10
       renderer: r.renderer === 'webgpu' || r.renderer === 'webgl2' || r.renderer === 'cpu' || r.renderer === 'auto' || r.renderer === 'native' ? r.renderer : DEFAULT_PREFS.renderer,
       gpuMemoryMB: Math.round(num(r.gpuMemoryMB, 128, 16384, DEFAULT_PREFS.gpuMemoryMB)),
+      gpuPower: r.gpuPower === 'low-power' || r.gpuPower === 'default' || r.gpuPower === 'high-performance' ? r.gpuPower : DEFAULT_PREFS.gpuPower,
+      lowLatency: typeof r.lowLatency === 'boolean' ? r.lowLatency : DEFAULT_PREFS.lowLatency,
       engineDevice: ENGINE_CHOICES.some(([k]) => k === r.engineDevice) ? r.engineDevice as EngineDevice : DEFAULT_PREFS.engineDevice,
       zoomWheel: typeof r.zoomWheel === 'boolean' ? r.zoomWheel : DEFAULT_PREFS.zoomWheel,
       autoFirstSnapshot: typeof r.autoFirstSnapshot === 'boolean' ? r.autoFirstSnapshot : DEFAULT_PREFS.autoFirstSnapshot,
@@ -183,6 +191,7 @@ export function loadPrefs(): Prefs {
       rawAutoTone: r.rawAutoTone === true,
       rawSmart: r.rawSmart === true,
       historyLog: r.historyLog === true,
+      placeTransform: r.placeTransform !== false,
       rawPpi: typeof r.rawPpi === 'number' && Number.isFinite(r.rawPpi) && r.rawPpi >= 1 && r.rawPpi <= 10000 ? Math.round(r.rawPpi) : 0,
     };
   } catch { return { ...DEFAULT_PREFS }; }
@@ -219,6 +228,9 @@ export function applyUiFontSize(p: Prefs): void {
 
 /** Puts the engine-side preferences into effect; the recovery delay is read by the app when it schedules a save. */
 export function applyPrefs(engine: Engine, p: Prefs): void {
+  renderCache.levels = p.cacheLevels;
+  renderCache.effectBytes = p.effectCacheMB * 1048576;
+  engine.setMemoryLimit(p.memoryLimitMB * 1048576);
   engine.setHistoryLimits(p.historyStates, p.historyAuto ? null : p.historyMB * 1024 * 1024);   // automatic: from the memory budget (1.61.3)
   engine.dirtyRendering = p.regionRedraws;
   previewMode.full = p.fullPreviews;

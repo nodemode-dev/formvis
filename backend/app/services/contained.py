@@ -164,6 +164,127 @@ def _parts_worker(data: bytes, q: "mp.Queue[object]") -> None:
         q.put(None)
 
 
+MAX_MATTES = 64
+
+
+def _crypto_names(parts) -> dict:
+    """Cryptomatte sets named in the headers: {set name: {object name: hash as uint32}}. A manifest that is not
+    JSON, or sits in a sidecar file, gives a set with no objects."""
+    import json
+    import re
+    out: dict = {}
+    for p in parts:
+        for k, v in p.header.items():
+            m = re.fullmatch(r"cryptomatte/([0-9a-fA-F]+)/name", str(k))
+            if not m:
+                continue
+            name, objects = str(v), {}
+            try:
+                for obj, h in json.loads(str(p.header.get(f"cryptomatte/{m.group(1)}/manifest", "{}"))).items():
+                    objects[str(obj)] = int(str(h), 16) & 0xFFFFFFFF
+            except Exception:
+                objects = {}
+            out[name] = objects
+    return out
+
+
+def _group_label(part, key: str) -> str:
+    if "." in key:
+        return key.rsplit(".", 1)[0]
+    return (part.name() or "Beauty") if key in ("RGBA", "RGB") else key
+
+
+def _crypto_carrier(key: str, sets) -> "str | None":
+    import re
+    m = re.fullmatch(r"(.+?)(\d{2})(?:\.[A-Za-z]+)?", key)
+    return m.group(1) if m and m.group(1) in sets else None
+
+
+def _matte(parts, name: str, hash32: int, shape) -> np.ndarray:
+    """The coverage of one Cryptomatte object: each rank's coverage where its id equals the object's hash."""
+    cov = np.zeros(shape, np.float32)
+    for p in parts:
+        for key, ch in p.channels.items():
+            if _crypto_carrier(key, {name}) != name:
+                continue
+            px = np.asarray(ch.pixels, dtype=np.float32)
+            if px.ndim != 3 or px.shape[2] < 2 or px.shape[:2] != shape:
+                continue
+            for r in range(0, px.shape[2] - 1, 2):
+                ids = np.ascontiguousarray(px[:, :, r]).view(np.uint32)
+                cov += np.where(ids == np.uint32(hash32), px[:, :, r + 1], 0.0)
+    return np.clip(cov, 0.0, 1.0)
+
+
+def _inspect_worker(arg, q: "mp.Queue[object]") -> None:
+    """The channel groups of an OpenEXR, or (with `picks`) the chosen groups as RGBA float32. A group is a channel set
+    sharing a prefix (diffuse.R, diffuse.G, diffuse.B), a part's own channels, or one Cryptomatte object's matte."""
+    data, picks = arg
+    try:
+        import io
+        import OpenEXR
+        f = OpenEXR.File(io.BytesIO(data))
+        parts = list(f.parts)
+        if not parts or len(parts) > MAX_PARTS:
+            q.put(None)
+            return
+        boxes = []
+        for p in parts:
+            dw, disp = p.header["dataWindow"], p.header.get("displayWindow", p.header["dataWindow"])
+            boxes.append((int(dw[0][0]), int(dw[0][1]), int(dw[1][0]), int(dw[1][1]), int(disp[0][0]), int(disp[0][1]), int(disp[1][0]), int(disp[1][1])))
+        if sum((b[2] - b[0] + 1) * (b[3] - b[1] + 1) for b in boxes) > MAX_PART_PIXELS:
+            q.put(None)
+            return
+        x0 = min([boxes[0][4]] + [b[0] for b in boxes]); y0 = min([boxes[0][5]] + [b[1] for b in boxes])
+        x1 = max([boxes[0][6]] + [b[2] for b in boxes]); y1 = max([boxes[0][7]] + [b[3] for b in boxes])
+        sets = _crypto_names(parts)
+        listing, carriers = [], set()
+        for i, p in enumerate(parts):
+            groups = []
+            for key, ch in p.channels.items():
+                if _crypto_carrier(key, sets):
+                    carriers.add(key)
+                    continue
+                shape = np.asarray(ch.pixels).shape
+                groups.append({"key": key, "label": _group_label(p, key), "channels": int(shape[2]) if len(shape) == 3 else 1})
+            listing.append({"part": i, "name": p.name() or f"Part {i + 1}", "groups": groups})
+        if picks is None:
+            q.put({"width": x1 - x0 + 1, "height": y1 - y0 + 1, "parts": listing,
+                   "crypto": [{"name": n, "objects": sorted(o)[:MAX_MATTES]} for n, o in sets.items()]})
+            return
+        out, meta = [], []
+        for pick in picks[:MAX_PARTS]:
+            if "crypto" in pick:
+                objects = sets.get(str(pick["crypto"]), {})
+                obj = str(pick.get("object", ""))
+                if obj not in objects:
+                    continue
+                shape = next((np.asarray(ch.pixels).shape[:2] for p in parts for k, ch in p.channels.items() if _crypto_carrier(k, {str(pick["crypto"])})), None)
+                if shape is None:
+                    continue
+                m = _matte(parts, str(pick["crypto"]), objects[obj], shape)
+                px = np.dstack([m, m, m, np.ones(shape, np.float32)])
+                meta.append({"name": obj, "width": shape[1], "height": shape[0], "x": boxes[0][0] - x0, "y": boxes[0][1] - y0})
+                out.append(np.ascontiguousarray(px))
+                continue
+            i = int(pick.get("part", 0))
+            ch = parts[i].channels.get(str(pick.get("key"))) if 0 <= i < len(parts) else None
+            if ch is None:
+                continue
+            px = np.asarray(ch.pixels, dtype=np.float32)
+            if px.ndim == 2:
+                px = np.stack([px, px, px], axis=2)
+            if px.shape[2] == 2:
+                px = np.dstack([px, np.zeros(px.shape[:2], np.float32)])
+            if px.shape[2] == 3:
+                px = np.dstack([px, np.ones(px.shape[:2], np.float32)])
+            meta.append({"name": _group_label(parts[i], str(pick.get("key"))),"width": px.shape[1], "height": px.shape[0], "x": boxes[i][0] - x0, "y": boxes[i][1] - y0})
+            out.append(np.ascontiguousarray(px[:, :, :4]))
+        q.put({"count": len(meta), "width": x1 - x0 + 1, "height": y1 - y0 + 1, "parts": meta, "pixels": out})
+    except Exception:
+        q.put(None)
+
+
 def _run(worker, arg) -> object:
     ctx = mp.get_context("spawn")
     q: "mp.Queue[object]" = ctx.Queue(1)
@@ -209,6 +330,14 @@ def decode_exr_parts(data: bytes) -> dict | None:
     if not is_multipart_exr(data):
         return {"count": 1}
     out = _run(_parts_worker, data)
+    return out if isinstance(out, dict) else None
+
+
+def inspect_exr(data: bytes, picks: "list | None" = None) -> dict | None:
+    """The channel groups of an EXR ({width, height, parts: [{part, name, groups: [{key, label, channels}]}], crypto:
+    [{name, objects}]}), or with `picks` ([{part, key}] or [{crypto, object}]) the chosen groups in the format of
+    `decode_exr_parts`. None when the child could not read the file."""
+    out = _run(_inspect_worker, (data, picks))
     return out if isinstance(out, dict) else None
 
 

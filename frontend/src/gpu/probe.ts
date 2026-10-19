@@ -11,6 +11,12 @@ export interface GpuAdapter { api: 'webgpu' | 'webgl2'; name: string; software: 
 export interface GpuProbe { webgpu: GpuAdapter | null; webgl2: GpuAdapter | null; native?: boolean }
 export interface GpuChoice { mode: GpuMode; adapter: GpuAdapter | null; reason: string }
 
+/** Which graphics processor the page asks for on a computer with two, and the low-latency canvas hint; both are read when a
+ *  display starts, so a change applies at the next launch. */
+export type GpuPower = 'high-performance' | 'low-power' | 'default';
+export interface DisplayOptions { power: GpuPower; lowLatency: boolean }
+export const POWER_CHOICES: ReadonlyArray<readonly [GpuPower, string]> = [['high-performance', 'High performance'], ['low-power', 'Low power'], ['default', 'System default']];
+
 export const RENDERER_CHOICES: ReadonlyArray<readonly [GpuRenderer, string]> = [['auto', 'Automatic'], ['webgpu', 'WebGPU'], ['webgl2', 'WebGL2'], ['native', 'Native GPU (desktop app)'], ['cpu', 'CPU']];
 
 /** Software rasterisers: a GPU API on the CPU, slower than drawing on the CPU directly. */

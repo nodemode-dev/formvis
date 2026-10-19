@@ -47,7 +47,8 @@ def tools_reference() -> str:
               ("Layers", {"add_layer", "set_layer", "delete_layer", "transform_layer", "duplicate_layer", "move_layer", "merge_layers", "flatten_image", "rasterize_layer", "place_image"}),
               ("Text and shapes", {"add_text", "draw_shape"}), ("Selecting", {"select", "select_subject", "select_color_range"}),
               ("Painting and generating", {"fill", "generative_fill", "generate_image", "remove_background"}),
-              ("Colour, filters and looks", {"add_adjustment", "set_adjustment", "apply_filter", "color_match", "add_film_layer"}), ("History", {"undo", "redo"})]
+              ("Colour, filters and looks", {"add_adjustment", "set_adjustment", "apply_filter", "color_match", "add_film_layer"}), ("History", {"undo", "redo"}),
+              ("Files without the window, and jobs", {"file_info", "convert_file", "jobs_list", "jobs_cancel"})]
     listed = set()
     for title, names in groups:
         here = [t["name"] for t in TOOLS if t["name"] in names]

@@ -65,6 +65,7 @@ export function createReferencePanel(root: HTMLElement): void {
     }
   };
 
+  document.addEventListener('nm:add-references', (e) => { const f = (e as CustomEvent<File[]>).detail; if (Array.isArray(f)) add(f); });
   q(sec, '[data-act="add"]').addEventListener('click', () => input.click());
   input.addEventListener('change', () => { if (input.files) add(Array.from(input.files)); input.value = ''; });
   remove.addEventListener('click', () => {

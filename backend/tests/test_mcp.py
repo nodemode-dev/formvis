@@ -29,7 +29,7 @@ def rpc(client, method, params=None, id=1, headers=None):
 
 def test_the_protocol(client):
     d = rpc(client, "server/discover", {"_meta": MODERN}).json()["result"]
-    assert d["resultType"] == "complete" and d["supportedVersions"] == ["2026-07-28", "2025-11-25"] and d["capabilities"] == {"tools": {}, "prompts": {}}
+    assert d["resultType"] == "complete" and d["supportedVersions"] == ["2026-07-28", "2025-11-25"] and d["capabilities"] == {"tools": {}, "prompts": {}, "resources": {}}
     assert d["_meta"]["io.modelcontextprotocol/serverInfo"]["name"] == "formvis" and "get_document" in d["instructions"]
     init = rpc(client, "initialize", {"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "old", "version": "1"}}).json()["result"]
     assert init["protocolVersion"] == "2025-11-25" and init["serverInfo"]["name"] == "formvis" and "resultType" not in init

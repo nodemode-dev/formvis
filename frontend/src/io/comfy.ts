@@ -20,6 +20,15 @@ export function workflowProblem(json: string, file = 'That file'): string | null
   } catch { return `${file} is not a ComfyUI workflow.`; }
 }
 
+/** A workflow in the API format: one saved with Export (API) as it is, one saved from the editor (its nodes and links) converted
+ *  by the person's own ComfyUI, which supplies the widget names. Throws with a message the person can act on. */
+export async function apiWorkflow(json: string, target: string, file = 'That file'): Promise<string> {
+  let editor = false;
+  try { const w = JSON.parse(json) as { nodes?: unknown } | null; editor = !!w && typeof w === 'object' && Array.isArray(w.nodes); } catch { /* reported below */ }
+  if (!editor) return json;
+  try { return await api.comfyuiConvert(target, json); } catch (err) { throw new Error(`${file} is in ComfyUI's editor format and could not be converted: ${err instanceof Error ? err.message : 'ComfyUI did not answer.'}`); }
+}
+
 /** Keeps a workflow as a choice (a same-named one is replaced); its problem, or null. */
 export function addRecipe(name: string, json: string): string | null {
   const problem = workflowProblem(json, name);

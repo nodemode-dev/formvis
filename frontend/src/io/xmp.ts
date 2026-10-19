@@ -1,3 +1,4 @@
+import { jpegQuality } from './jpeg-quality';
 import { cleanMeta, metaWritable, type CameraData, type DocMeta } from '../engine/doc-meta';
 import { crc32 } from './embed-icc';
 import { SOURCE, type AiLabel } from './ai-label';
@@ -264,7 +265,8 @@ export async function readFileMeta(file: Blob): Promise<DocMeta | null> {
     const head = new Uint8Array(await file.slice(0, 4).arrayBuffer()), jpeg = head[0] === 0xff && head[1] === 0xd8;
     const b = new Uint8Array(await file.slice(0, jpeg ? JPEG_READ : READ_LIMIT).arrayBuffer()), { xmp, exif } = packets(b);
     const fromXmp = xmp ? metaFromXmp(xmp) : null, camera = fromXmp?.camera ?? (exif ? cameraFromTiff(exif) : null);
-    if (!fromXmp && !camera) return null;
-    return cleanMeta({ ...(fromXmp ?? {}), ...(camera ? { camera } : {}) });
+    const quality = jpeg ? jpegQuality(b) : null;
+    if (!fromXmp && !camera && !quality) return null;
+    return cleanMeta({ ...(fromXmp ?? {}), ...(camera ? { camera } : {}), ...(quality ? { jpegQuality: quality } : {}) });
   } catch { return null; }
 }

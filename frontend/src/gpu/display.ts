@@ -1,5 +1,6 @@
 import { invert, mul, type BlendMode, type Mat } from '../engine';
 import { COMPOSITE_WGSL, blendIndex } from './blend-wgsl';
+import type { DisplayOptions } from './probe';
 
 /** The WebGPU flag values fixed by the specification (the project's type definitions carry the interfaces only). */
 const TEX = { COPY_SRC: 0x01, COPY_DST: 0x02, TEXTURE_BINDING: 0x04, RENDER_ATTACHMENT: 0x10 } as const;
@@ -70,10 +71,10 @@ export class GpuDisplay {
     });
   }
 
-  static async create(canvas: HTMLCanvasElement): Promise<GpuDisplay | null> {
+  static async create(canvas: HTMLCanvasElement, options: DisplayOptions = { power: 'high-performance', lowLatency: false }): Promise<GpuDisplay | null> {
     try {
       const gpu = (navigator as unknown as { gpu?: GPU }).gpu;
-      const adapter = gpu ? await gpu.requestAdapter({ powerPreference: 'high-performance' }) : null;
+      const adapter = gpu ? await gpu.requestAdapter(options.power === 'default' ? {} : { powerPreference: options.power }) : null;
       if (!gpu || !adapter) { console.warn('formvis: WebGPU has no adapter here'); return null; }
       const device = await adapter.requestDevice();
       const ctx = canvas.getContext('webgpu') as GPUCanvasContext | null;

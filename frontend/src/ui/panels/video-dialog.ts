@@ -1,5 +1,6 @@
 import { Raster, type Engine } from '../../engine';
 import { api } from '../../io/api';
+import { decodeFrames, decodeImage } from '../../io/images';
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
 
@@ -11,6 +12,7 @@ export class VideoImportDialog extends Dialog {
   private file: File | null = null;
   private info: { width: number; height: number; fps: number; duration: number; frames: number } | null = null;
   private readonly input = el('<input type="file" accept="video/*,.mp4,.mov,.m4v,.webm,.mkv,.avi" style="display: none">') as HTMLInputElement;
+  private readonly stills = el('<input type="file" multiple accept="image/*" style="display: none">') as HTMLInputElement;
   private readonly about = el('<p class="cv-dialog-note" role="status" style="min-height: 2.8em"></p>');
   private readonly from = el<HTMLInputElement>('<input class="cv-input" type="number" min="0" step="0.1" value="0" aria-label="From, in seconds">');
   private readonly to = el<HTMLInputElement>('<input class="cv-input" type="number" min="0" step="0.1" value="0" aria-label="To, in seconds">');
@@ -25,7 +27,10 @@ export class VideoImportDialog extends Dialog {
     this.input.addEventListener('change', () => void this.picked());
     const row = (label: string, control: HTMLElement): HTMLElement => { const r = el(`<label class="cv-dialog-row"><span>${label}</span></label>`); r.append(control); return r; };
     for (const n of [this.from, this.to, this.every]) n.addEventListener('input', () => this.describe());
-    this.body.append(choose, this.input, this.about, row('From (seconds)', this.from), row('To (seconds)', this.to), row('Every Nth frame', this.every), row('Make Frame Animation', this.animate), this.note);
+    const pictures = el('<button class="cv-btn" type="button" title="An animated GIF or WebP, or several numbered pictures taken in name order">Choose pictures or a GIF...</button>') as HTMLButtonElement;
+    pictures.addEventListener('click', () => this.stills.click());
+    this.stills.addEventListener('change', () => void this.fromPictures());
+    this.body.append(choose, pictures, this.input, this.stills, this.about, row('From (seconds)', this.from), row('To (seconds)', this.to), row('Every Nth frame', this.every), row('Make Frame Animation', this.animate), this.note);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => void this.apply());
     this.remember([this.from, this.to]);   // the range belongs to the clip chosen
@@ -42,6 +47,37 @@ export class VideoImportDialog extends Dialog {
       this.from.value = '0'; this.to.value = String(this.info.duration); this.every.value = '1';
       this.describe();
     } catch (err) { this.info = null; setText(this.about, err instanceof Error ? err.message : 'That video could not be read.'); }
+  }
+
+  /** An animated GIF or WebP, or several pictures in natural name order (frame2 before frame10), as the layers of a new
+   *  document at the file's own frame times, or at 24 frames a second for pictures; every picture is drawn at the first one's size. */
+  private async fromPictures(): Promise<void> {
+    const files = Array.from(this.stills.files ?? []).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    this.stills.value = '';
+    if (!files.length) return;
+    setText(this.note, 'Reading the pictures...');
+    try {
+      const rasters: Raster[] = [];
+      let width = 0, height = 0, delay = 1000 / 24;
+      const anim = files.length === 1 ? await decodeFrames(files[0], files[0].name) : null;
+      if (anim) {
+        width = anim.width; height = anim.height; delay = Math.max(10, anim.frames[0]?.delay ?? 100);
+        for (const f of anim.frames) { const ras = new Raster(width, height); ras.ctx.drawImage(f.source, 0, 0); ras.touch(); rasters.push(ras); }
+      } else {
+        if (files.length < 2) { setText(this.note, `${files[0].name} holds one picture. Choose an animated GIF or several pictures.`); return; }
+        if (files.length > 300) { setText(this.note, 'At most 300 pictures at a time.'); return; }
+        for (const f of files) {
+          const img = await decodeImage(f, f.name);
+          if (!rasters.length) { width = img.width; height = img.height; }
+          const ras = new Raster(width, height);
+          ras.ctx.drawImage(img.source, 0, 0);
+          ras.touch();
+          rasters.push(ras);
+        }
+      }
+      this.close();
+      this.engine.openFrames(files[0].name.replace(/\.[^.]+$/, '').replace(/[\s._-]*\d+$/, '') || 'Frames', width, height, rasters, Math.round(delay), this.animate.checked);
+    } catch (err) { setText(this.note, err instanceof Error ? err.message : 'The pictures could not be read.'); }
   }
 
   /** The clip and what the range takes from it. */

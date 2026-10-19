@@ -18,7 +18,18 @@ type StepKind =
   | { kind: 'imageSize'; label: string; w: number; h: number; sampling: string; res: number; fromW?: number; fromH?: number }
   | { kind: 'canvasSize'; label: string; w: number; h: number; dx: number; dy: number; fill: RGB | null; fromW?: number; fromH?: number }
   | { kind: 'fitImage'; label: string; w: number; h: number; enlarge: boolean }
-  | { kind: 'conditionalMode'; label: string; from: DocMode[]; to: DocMode };
+  | { kind: 'conditionalMode'; label: string; from: DocMode[]; to: DocMode }
+  | { kind: 'conditional'; label: string; test: ConditionTest; then: string; else: string };
+
+/** What a conditional step asks of the document it plays on. */
+export const CONDITION_TESTS = [
+  ['landscape', 'The document is landscape'], ['portrait', 'The document is portrait'], ['square', 'The document is square'],
+  ['depth8', 'The document is 8 bits per channel'], ['depth16', 'The document is 16 bits per channel'], ['depth32', 'The document is 32 bits per channel'],
+  ['selection', 'There is a selection'], ['unsaved', 'The document has unsaved changes'], ['layers', 'The document has more than one layer'],
+  ['textLayer', 'The active layer is a type layer'], ['smartLayer', 'The active layer is a smart object'], ['maskLayer', 'The active layer has a mask'],
+] as const;
+export type ConditionTest = (typeof CONDITION_TESTS)[number][0];
+const isTest = (v: unknown): v is ConditionTest => CONDITION_TESTS.some(([t]) => t === v);
 /** `off`: the step is left out when the action plays. */
 export type ActionStep = StepKind & { off?: boolean };
 /** `relative`: size steps follow each document, Image Size as the same proportion and Canvas Size as the same pixels
@@ -61,6 +72,7 @@ function stepFrom(v: unknown): ActionStep | null {
   if (s.kind === 'layerStyle' && (s.effects === null || (s.effects && typeof s.effects === 'object'))) return { kind: 'layerStyle', label: label || 'Layer Style', effects: (s.effects as Record<string, unknown> | null) ?? null };
   if (s.kind === 'adjustment' && typeof s.adj === 'string' && (ADJUSTMENT_KINDS as readonly string[]).includes(s.adj) && s.data && typeof s.data === 'object') return { kind: 'adjustment', adj: s.adj, label: label || s.adj, data: s.data as Record<string, unknown>, layer: s.layer === true, ...(s.layer === true ? {} : ask) };
   if (s.kind === 'filter' && typeof s.filter === 'string' && s.settings && typeof s.settings === 'object') return { kind: 'filter', filter: s.filter, label: label || s.filter, settings: s.settings as Record<string, unknown>, ...ask };
+  if (s.kind === 'conditional' && isTest(s.test) && typeof s.then === 'string' && typeof s.else === 'string' && (s.then || s.else)) return { kind: 'conditional', label: label || 'Conditional', test: s.test, then: s.then.slice(0, 80), else: s.else.slice(0, 80) };
   const from = isNum(s.fromW) && isNum(s.fromH) && s.fromW > 0 && s.fromH > 0 ? { fromW: s.fromW, fromH: s.fromH } : {};
   if (s.kind === 'imageSize' && isNum(s.w) && isNum(s.h) && typeof s.sampling === 'string' && isNum(s.res)) return { kind: 'imageSize', label: label || 'Image Size', w: s.w, h: s.h, sampling: s.sampling, res: s.res, ...from };
   if (s.kind === 'fitImage' && isNum(s.w) && isNum(s.h) && s.w >= 1 && s.h >= 1) return { kind: 'fitImage', label: label || 'Fit Image', w: Math.round(s.w), h: Math.round(s.h), enlarge: s.enlarge !== false };
@@ -114,6 +126,7 @@ export class Actions {
   /** Runs each step through `run`, stopping at the first that cannot run, or that the person stopped (a stop step, or a
    *  dialog cancelled while paused for input); returns how many ran, which step ended it, and whether it was stopped. */
   async play(a: Action, run: (step: ActionStep) => boolean | 'stopped' | Promise<boolean | 'stopped'>, from = 0): Promise<{ done: number; failed: string | null; stopped: boolean }> {
+    const was = this.playing;
     this.playing = true;
     try {
       for (let i = Math.max(0, Math.min(a.steps.length, Math.floor(from))); i < a.steps.length; i++) {
@@ -122,6 +135,6 @@ export class Actions {
         if (r !== true) return { done: i, failed: a.steps[i].label, stopped: r === 'stopped' };
       }
       return { done: a.steps.length, failed: null, stopped: false };
-    } finally { this.playing = false; }
+    } finally { this.playing = was; }
   }
 }

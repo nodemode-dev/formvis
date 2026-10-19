@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=formvis
+GenericName=Layered image editor
+Comment=Layered image editor with masks, blend modes, painting and PSD support
+Exec=formvis %F
+Icon=ai.nodemode.formvis
+Terminal=false
+Categories=Graphics;2DGraphics;RasterGraphics;
+Keywords=image;photo;layers;paint;retouch;psd;
+StartupWMClass=formvis
+MimeType=application/x-formvis;image/vnd.adobe.photoshop;image/x-psd;image/openraster;image/png;image/jpeg;image/tiff;image/webp;image/x-exr;

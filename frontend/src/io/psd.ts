@@ -5,7 +5,8 @@ import {
 import { fromPsdAdjustment, toPsdAdjustment } from './psd-adjust';
 import { artboardFromData, blendIfActive, type BlendIf, type DocSlice, type LayerComp } from '../engine/types';
 import { windingArea } from '../engine/custom-shapes';
-import { addIccResource, addPathResources, readPathResources } from './psd-paths';
+import { addIccResource, addPathResources, clippingPathName, readPathResources, resourceBlocks } from './psd-paths';
+import { readExtraChannels, readIccProfile } from './psd-channels';
 import { fromBase64 } from './icc-read';
 import { buildXmp, metaFromXmp } from './xmp';
 import { metaWritable } from '../engine/doc-meta';
@@ -352,7 +353,7 @@ function mergedIsShort(buf: ArrayBuffer): boolean {
 
 /** A PSD whose layers could not be read, opened from what is left: the merged image at the end of the file, else the
  *  one `decode` (the engine's flat reading) returns. Throws when neither can be read. */
-export async function readPsdFlat(file: File, decode?: (f: File) => Promise<Blob>): Promise<{ doc: Doc; notes: string[]; activeId: ID | null; paths: PathSet | null }> {
+export async function readPsdFlat(file: File, decode?: (f: File) => Promise<Blob>): Promise<{ doc: Doc; notes: string[]; activeId: ID | null; paths: PathSet | null; report: PsdReport }> {
   const buffer = await file.arrayBuffer(), s = psdSections(buffer), resolution = psdResolution(buffer);
   let flat: { source: CanvasImageSource; width: number; height: number } | null = null;
   if (s) {
@@ -382,12 +383,52 @@ export async function readPsdFlat(file: File, decode?: (f: File) => Promise<Blob
   (c.getContext('2d') as CanvasRenderingContext2D).drawImage(flat.source, 0, 0);
   const doc: Doc = { id: uid(), width: flat.width, height: flat.height, resolution: resolution ?? 72, layers: [] };
   const layer = newLayer('Background', doc, { raster: Raster.from(c, flat.width, flat.height) });
-  const notes = ['This PSD is damaged: its layers could not be read, so it opened as one flattened layer.'];
+  const mode = s ? new DataView(buffer).getUint16(24) : -1, notes = [mode === 7 || mode === 8 ? `This is a ${mode === 7 ? 'Multichannel' : 'Duotone'} file, which formvis cannot read layer by layer; its layers could not be read, so it opened as one flattened RGB layer without its ink channels.` : 'This PSD is damaged: its layers could not be read, so it opened as one flattened layer.'];
   if (mergedIsShort(buffer)) notes.push('The merged image is cut short too, so part of it is blank.');
-  return { doc: { ...doc, layers: [layer] }, notes, activeId: layer.id, paths: null };
+  return { doc: { ...doc, layers: [layer] }, notes, activeId: layer.id, paths: null, report: reportOf(1, [], notes) };
 }
 
-export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string[]; activeId: ID | null; paths: PathSet | null }> {
+/** What opening a PSD did to it: how many layers came in, what was kept as is (`kept`), what was approximated and what
+ *  was left out, each a sentence. `notes` on a read are the approximated and dropped ones together. */
+export interface PsdReport { layers: number; kept: string[]; approximated: string[]; dropped: string[] }
+
+const LEFT_OUT = /left out|left them out|could not be read|were left|is blank|are blank|cut short|did not open/i;
+export function reportOf(layers: number, kept: string[], notes: readonly string[]): PsdReport {
+  return { layers, kept, approximated: notes.filter((n) => !LEFT_OUT.test(n)), dropped: notes.filter((n) => LEFT_OUT.test(n)) };
+}
+
+/** The report as one readable block for the open sheet: counts first, then each item. */
+export function reportText(r: PsdReport): string {
+  const lines = [`${r.layers} layer${r.layers === 1 ? '' : 's'} read`, ...(r.kept.length ? [`Kept: ${r.kept.join(' ')}`] : []), ...(r.approximated.length ? [`Approximated (${r.approximated.length}): ${r.approximated.join(' ')}`] : []), ...(r.dropped.length ? [`Left out (${r.dropped.length}): ${r.dropped.join(' ')}`] : [])];
+  return lines.join(' · ');
+}
+
+/** A layer's colour label from the file's layer colour. */
+const labelOf = (pl: PsdLayer): { label?: Layer['label'] } => (pl.layerColor && pl.layerColor !== 'none' ? { label: pl.layerColor as Layer['label'] } : {});
+
+/** A PSD pattern in the project's patterns under its own id; the id, or null when it holds no pixels. */
+function registerPsdPattern(src: PatternInfo): string | null {
+  if (!src.data || src.bounds.w <= 0 || src.bounds.h <= 0) return null;
+  const id = `psd-${src.id}`;
+  if (patternById(id)) return id;
+  const w = src.bounds.w, h = src.bounds.h, surface = createSurface(w, h), img = new ImageData(w, h);
+  img.data.set(src.data.subarray(0, w * h * 4));
+  ctxOf(surface).putImageData(img, 0, 0);
+  addPattern(src.name || 'Pattern', surface, id);
+  projectPatterns.add(id);
+  return id;
+}
+
+/** A layer's pixels cut to the canvas; null where it does not overlap it. */
+function cropToCanvas(c: HTMLCanvasElement, left: number, top: number, W: number, H: number): { canvas: HTMLCanvasElement; left: number; top: number } | null {
+  const x0 = Math.max(0, left), y0 = Math.max(0, top), x1 = Math.min(W, left + c.width), y1 = Math.min(H, top + c.height);
+  if (x1 <= x0 || y1 <= y0) return null;
+  const out = canvas(x1 - x0, y1 - y0);
+  (out.getContext('2d') as CanvasRenderingContext2D).drawImage(c, x0 - left, y0 - top, x1 - x0, y1 - y0, 0, 0, x1 - x0, y1 - y0);
+  return { canvas: out, left: x0, top: y0 };
+}
+
+export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string[]; activeId: ID | null; paths: PathSet | null; report: PsdReport }> {
   const { readPsd } = await import('ag-psd');
   const buffer = await file.arrayBuffer();
   let psd: Psd, cut: 'merged' | 'layers' | null = null;
@@ -408,6 +449,26 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
   const layers: Layer[] = [], notes: string[] = [], links = new Map<number, ID>(), psdIds = new Map<PsdLayer, ID>();
   if (cut === 'merged') notes.push('This PSD is cut short: its layers opened, but its merged image is incomplete.');
   if (cut === 'layers') notes.push('This PSD is cut short: the layers after the cut are blank and its merged image is missing.');
+  const kept: string[] = [], blocks = resourceBlocks(buffer), colorMode = psd.colorMode as number | undefined, bits = psd.bitsPerChannel ?? 8;
+  if (bits !== 8) notes.push(`This ${bits}-bit file opened at 8 bits per channel.`);
+  if (colorMode === 1) { doc.mode = 'grayscale'; kept.push('Grayscale mode.'); }
+  else if (colorMode === 0) { doc.mode = 'bitmap'; kept.push('Bitmap mode.'); }
+  else if (colorMode === 2 && psd.palette?.length) { doc.mode = 'indexed'; doc.palette = psd.palette.map((c) => ({ r: c.r, g: c.g, b: c.b })); kept.push(`Indexed Color with ${psd.palette.length} colours.`); }
+  else if (colorMode === 2) notes.push('This Indexed Color file has no colour table that formvis could read; it opened as RGB.');
+  const icc = readIccProfile(buffer);
+  if (icc) { doc.profile = icc; kept.push(`Colour profile ${icc.name}.`); }
+  const gAngle = psd.imageResources?.globalAngle, gAlt = psd.imageResources?.globalAltitude;
+  if (typeof gAngle === 'number' && (gAngle !== 120 || (typeof gAlt === 'number' && gAlt !== 30))) { doc.globalLight = { angle: gAngle, altitude: typeof gAlt === 'number' ? gAlt : 30 }; kept.push(`Global light ${gAngle} degrees.`); }
+  if (psd.imageResources?.resolutionInfo) kept.push(`Resolution ${doc.resolution} ppi.`);
+  const clipName = clippingPathName(blocks);
+  if (clipName) notes.push(`The file's clipping path is the saved path "${clipName}"; formvis keeps the path but does not clip with it on export.`);
+  let patternCount = 0;
+  for (const pat of psd.patterns ?? []) if (registerPsdPattern(pat)) patternCount++;
+  if (patternCount) kept.push(`${patternCount} pattern${patternCount === 1 ? '' : 's'} added to the project.`);
+  const extra = readExtraChannels(buffer);
+  if (extra.alphas.length) { doc.alphas = extra.alphas; kept.push(`${extra.alphas.length} alpha channel${extra.alphas.length === 1 ? '' : 's'}.`); }
+  notes.push(...extra.notes);
+  let croppedCount = 0;
   const linkOf =(pl: PsdLayer): { link?: ID } => {
     const g = pl.linkGroup;
     if (!g || pl.linkGroupEnabled === false) return {};
@@ -423,7 +484,7 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
         // included, composites the group on its own.
         const through = !pl.blendMode || pl.blendMode === 'pass through', gblend = through ? 'normal' : FROM_PSD.get(pl.blendMode as PsdBlend) ?? 'normal';
         if (!through && !FROM_PSD.has(pl.blendMode as PsdBlend)) notes.push(`"${name}" uses ${pl.blendMode}, which formvis does not have; it opened as Normal.`);
-        const group = newLayer(name, doc, { isGroup: true, parentId, visible: !pl.hidden, opacity: pl.opacity ?? 1, blend: gblend, ...(!through && gblend === 'normal' ? { isolate: true } : {}), ...linkOf(pl), ...(!parentId ? fromPsdArtboard(pl) : {}) });
+        const group = newLayer(name, doc, { isGroup: true, parentId, visible: !pl.hidden, opacity: pl.opacity ?? 1, blend: gblend, ...(!through && gblend === 'normal' ? { isolate: true } : {}), ...linkOf(pl), ...labelOf(pl), ...(!parentId ? fromPsdArtboard(pl) : {}) });
         walk(pl.children, group.id);
         psdIds.set(pl, group.id);
         layers.push(group); // after its children, where formvis keeps a folder's entry
@@ -438,13 +499,23 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
       if (!adj && !fillSpec && (!pl.canvas || !pl.canvas.width || !pl.canvas.height)) continue;
       const drawn = fillSpec && (!pl.canvas || !pl.canvas.width || !pl.canvas.height) ? renderFill(fillSpec, doc.width, doc.height, { x: 0, y: 0, w: doc.width, h: doc.height }) : null;
       if (fillSpec && !drawn && (!pl.canvas || !pl.canvas.width || !pl.canvas.height)) continue;
-      const w = drawn?.width ?? pl.canvas?.width ?? 0, h = drawn?.height ?? pl.canvas?.height ?? 0, raster = adj ? null : drawn ?? (pl.canvas ? Raster.from(pl.canvas, w, h) : null);
+      // A plain pixel layer more than four canvases large is cut to the canvas; type, shapes and smart objects keep all their pixels.
+      const cut = adj || drawn || !pl.canvas || pl.placedLayer || pl.text || pl.vectorMask || pl.vectorFill || pl.canvas.width * pl.canvas.height <= 4 * doc.width * doc.height ? null : cropToCanvas(pl.canvas, pl.left ?? 0, pl.top ?? 0, doc.width, doc.height);
+      if (cut) croppedCount++;
+      const src = cut?.canvas ?? pl.canvas, atX = cut ? cut.left : pl.left ?? 0, atY = cut ? cut.top : pl.top ?? 0;
+      const w = drawn?.width ?? src?.width ?? 0, h = drawn?.height ?? src?.height ?? 0, raster = adj ? null : drawn ?? (src ? Raster.from(src, w, h) : null);
       // An adjustment layer opens as formvis's own, live, with its mask, opacity, blend and clipping.
       const pr = pl.protected, all = !!(pr?.transparency && pr?.composite && pr?.position);
       const lk = pr && (pr.transparency || pr.composite || pr.position) ? { locks: all ? { all: true } : { ...(pr.transparency ? { transparency: true } : {}), ...(pr.composite ? { pixels: true } : {}), ...(pr.position ? { position: true } : {}) } } : {};
       const fill = { ...(pl.fillOpacity !== undefined && pl.fillOpacity !== 1 ? { fill: Math.min(1, Math.max(0, pl.fillOpacity)) } : {}), ...lk, ...linkOf(pl) };
-      const layer = adj ? newLayer(name, doc, { adjustment: adj, parentId, visible: !pl.hidden, opacity: pl.opacity ?? 1, blend, ...fill })
-        : newLayer(name, doc, { raster, parentId, transform: { ...docTransform(w, h), x: drawn ? 0 : pl.left ?? 0, y: drawn ? 0 : pl.top ?? 0 }, visible: !pl.hidden, opacity: pl.opacity ?? 1, blend, ...fill, ...(fillSpec ? { fillContent: fillSpec } : {}) });
+      // The reader stops one channel short of the file's restriction list, so which channels are restricted cannot be told; the layer is only reported.
+      const advanced = labelOf(pl);
+      if (pl.channelBlendingRestrictions) notes.push(`"${name}" restricts the channels it blends into, which formvis cannot read from the file; it opened with all channels.`);
+      if (pl.blendInteriorElements) notes.push(`"${name}" blends interior effects as a group, which formvis does not do; it opened without it.`);
+      if (pl.blendClippendElements === false) notes.push(`"${name}" does not blend clipped layers as a group, which formvis does not do; it opened with the default.`);
+      if (pl.transparencyShapesLayer === false) notes.push(`"${name}" has Transparency Shapes Layer off, which formvis does not do; it opened with it on.`);
+      const layer = adj ? newLayer(name, doc, { adjustment: adj, parentId, visible: !pl.hidden, opacity: pl.opacity ?? 1, blend, ...fill, ...advanced })
+        : newLayer(name, doc, { raster, parentId, transform: { ...docTransform(w, h), x: drawn ? 0 : atX, y: drawn ? 0 : atY }, visible: !pl.hidden, opacity: pl.opacity ?? 1, blend, ...fill, ...advanced, ...(fillSpec ? { fillContent: fillSpec } : {}) });
       const mk = pl.mask;
       if (mk?.canvas && mk.canvas.width && mk.canvas.height) {
         // PSD masks are grey; formvis's are white with the level in alpha.
@@ -452,9 +523,21 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
         if (grey) {
           const img = new ImageData(mw, mh);
           for (let i = 0; i < img.data.length; i += 4) { img.data[i] = img.data[i + 1] = img.data[i + 2] = 255; img.data[i + 3] = grey.data[i]; }
-          const mr = new Raster(mw, mh);
+          let mr = new Raster(mw, mh), rw = mw, rh = mh, mx = mk.left ?? 0, my = mk.top ?? 0;
           mr.write(img);
-          layer.mask = { raster: mr, enabled: !mk.disabled, linked: true, placement: { ...docTransform(mw, mh), x: mk.left ?? 0, y: mk.top ?? 0 } };
+          const outside = mk.defaultColor === 255 ? 255 : 0;
+          if (maskEdgeTone(mr) !== outside) {
+            // The file's default colour shows past the mask's pixels; formvis shows the tone of the mask's edge, so a ring of it is added.
+            const ring = new ImageData(mw + 2, mh + 2);
+            for (let i = 0; i < ring.data.length; i += 4) { ring.data[i] = ring.data[i + 1] = ring.data[i + 2] = 255; ring.data[i + 3] = outside; }
+            mr = new Raster(mw + 2, mh + 2);
+            mr.ctx.putImageData(ring, 0, 0);
+            mr.ctx.putImageData(img, 1, 1);
+            mr.touch();
+            rw = mw + 2; rh = mh + 2; mx -= 1; my -= 1;
+          }
+          const dens = typeof mk.userMaskDensity === 'number' && mk.userMaskDensity < 1 ? Math.round(mk.userMaskDensity * 100) : 0, feather = typeof mk.userMaskFeather === 'number' && mk.userMaskFeather > 0 ? mk.userMaskFeather : 0;
+          layer.mask = { raster: mr, enabled: !mk.disabled, linked: true, placement: { ...docTransform(rw, rh), x: mx, y: my }, ...(dens ? { density: dens } : {}), ...(feather ? { feather } : {}) };
         }
       }
       const vm = pl.vectorMask, vf = pl.vectorFill, vs = pl.vectorStroke;
@@ -477,6 +560,8 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
         const path = fromPsdOutlines(vm.paths);
         if (path.subpaths.length) layer.vectorMask = { path, enabled: !vm.disable, linked: !vm.notLink, inverted: !!vm.invert };
       }
+      const vmd = pl.realMask ?? pl.mask;
+      if (vm?.paths?.length && vmd && ((typeof vmd.vectorMaskDensity === 'number' && vmd.vectorMaskDensity < 1) || (vmd.vectorMaskFeather ?? 0) > 0)) notes.push(`"${name}" has a vector mask density or feather, which formvis does not read; the mask opened sharp.`);
       const plc = pl.placedLayer;
       if (plc) {
         // A PSD smart object opens as a formvis one: its contents the source, its corners the warp, its pixels as
@@ -484,8 +569,7 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
         const source = contents.get(plc.id) ?? null, t8 = plc.nonAffineTransform ?? plc.transform;
         if (source && t8?.length === 8 && t8.every((v) => Number.isFinite(v))) {
           layer.smart = { source, filters: [], warp: [0, 2, 4, 6].map((k) => ({ x: t8[k], y: t8[k + 1] })), warpAt: layer.transform };
-          if (plc.filter) notes.push(`"${name}" has smart filters; they stay applied in its pixels and are not editable here.`);
-        } else notes.push(`"${name}" is a smart object whose contents formvis cannot read; it opened as pixels.`);
+          if (plc.filter?.list?.length) notes.push(`"${name}" has smart filters (${plc.filter.list.map((f) => f.name || f.type).join(', ')}${plc.filter.enabled === false ? '; switched off in the file' : ''}); they stay applied in its pixels and are not editable here.`);        } else notes.push(`"${name}" is a smart object whose contents formvis cannot read; it opened as pixels.`);
       }
       const tx = pl.text;
       if (tx && typeof tx.text === 'string' && raster) {
@@ -564,7 +648,8 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
     const list = readPathResources(buffer, psd.width, psd.height);
     if (list.length) paths = { list, active: null };
   } catch { notes.push('The file\'s paths could not be read; the layers opened without them.'); }
-  return { doc: { ...doc, layers }, notes, activeId: layers.at(-1)?.id ?? null, paths };
+  if (croppedCount) notes.push(`${croppedCount} layer${croppedCount === 1 ? ' was' : 's were'} more than four canvases large and cut to the canvas; the pixels outside it were left out.`);
+  return { doc: { ...doc, layers }, notes, activeId: layers.at(-1)?.id ?? null, paths, report: reportOf(layers.filter((l) => !l.isGroup).length, kept, notes) };
 }
 
 /** A PSD vector mask's bezier paths as formvis outlines. A subtract outline cuts a hole, so it is wound against the

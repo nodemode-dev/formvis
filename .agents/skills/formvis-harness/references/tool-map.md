@@ -1,6 +1,6 @@
 # Tool map
 
-Generated from the MCP catalogue (79 tools, `TOOLS` in `backend/app/routers/mcp.py`) and the `formvis-driving` sub-skills by `./formvis agents sync`; do not edit by hand. A tool no sub-skill names reads `none` and needs a line in the sub-skill that covers its family.
+Generated from the MCP catalogue (105 tools, `TOOLS` in `backend/app/routers/mcp.py`) and the `formvis-driving` sub-skills by `./formvis agents sync`; do not edit by hand. A tool no sub-skill names reads `none` and needs a line in the sub-skill that covers its family.
 
 | Tool | Reads or changes | Driving sub-skills that name it |
 | --- | --- | --- |
@@ -69,6 +69,10 @@ Generated from the MCP catalogue (79 tools, `TOOLS` in `backend/app/routers/mcp.
 | `select_mask` | adds or changes | none |
 | `list_settings` | reads only | none |
 | `list_fonts` | reads only | none |
+| `file_info` | reads only | none |
+| `convert_file` | replaces or removes | none |
+| `jobs_list` | reads only | none |
+| `jobs_cancel` | replaces or removes | none |
 | `set_settings` | adds or changes | none |
 | `ui_inspect` | reads only | none |
 | `boxes_list` | reads only | none |
@@ -83,3 +87,25 @@ Generated from the MCP catalogue (79 tools, `TOOLS` in `backend/app/routers/mcp.
 | `depth_edit` | adds or changes | none |
 | `set_crop` | replaces or removes | none |
 | `export_mask` | replaces or removes | none |
+| `list_recipes` | reads only | none |
+| `set_active_layer` | adds or changes | none |
+| `select_color` | adds or changes | none |
+| `select_shape` | adds or changes | none |
+| `select_range` | adds or changes | none |
+| `sample_mean_color` | reads only | none |
+| `align_layers` | adds or changes | none |
+| `group_layers` | adds or changes | none |
+| `set_group` | adds or changes | none |
+| `set_mask` | replaces or removes | none |
+| `set_text` | adds or changes | none |
+| `list_history` | reads only | none |
+| `take_snapshot` | adds or changes | none |
+| `restore_snapshot` | adds or changes | none |
+| `delete_snapshot` | replaces or removes | none |
+| `extend_canvas` | adds or changes | none |
+| `export_layer` | replaces or removes | none |
+| `read_log` | reads only | none |
+| `list_brush_tips` | reads only | none |
+| `set_brush` | adds or changes | none |
+| `add_filter` | adds or changes | none |
+| `set_filter` | replaces or removes | none |

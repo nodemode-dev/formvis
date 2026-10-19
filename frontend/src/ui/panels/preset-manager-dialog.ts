@@ -19,7 +19,7 @@ export type Kind ='brushes' | 'swatches' | 'gradients' | 'patterns' | 'shapes';
 interface Item { id: string; label: string; builtin: boolean }
 
 const KINDS: ReadonlyArray<{ id: Kind; label: string; accept: string }> = [
-  { id: 'brushes', label: 'Brushes', accept: '.abr' },
+  { id: 'brushes', label: 'Brushes', accept: '.abr,image/*' },
   { id: 'swatches', label: 'Swatches', accept: '.aco,.ase' },
   { id: 'gradients', label: 'Gradients', accept: '.json,.grd,.ggr,application/json' },
   { id: 'patterns', label: 'Patterns', accept: '.pat' },

@@ -56,6 +56,21 @@ def _check(width: int, height: int) -> None:
         raise DecodeError(f"The image exceeds the 30,000 px side or {config.MAX_PIXELS // 1_000_000}-megapixel limit.")
 
 
+PLAUSIBLE_RATIO = {"PNG": 1100, "JPEG": 4000}
+
+
+def _plausible(image: Image.Image, size: int) -> None:
+    """A PNG or JPEG cannot shrink a picture past what its codec allows (deflate 1032 to 1), so a small file that
+    declares a vast picture is damaged or a decompression bomb: refused before any pixel is decoded."""
+    ratio = PLAUSIBLE_RATIO.get(image.format or "")
+    if not ratio or not size:
+        return
+    bits = {"1": 1, "L": 1, "P": 1, "LA": 16, "RGB": 24, "RGBA": 32, "I;16": 16}.get(image.mode, 8) if image.format == "PNG" else 1
+    need = image.width * image.height * bits / 8 if image.format == "PNG" else image.width * image.height
+    if need > size * ratio:
+        raise DecodeError(f"The file is only {max(1, size // 1024):,} KB but declares a {image.width} by {image.height} picture, more than a {image.format} of that size can hold. It is damaged or not a real picture.")
+
+
 def _png(image: Image.Image) -> tuple[bytes, int, int]:
     _check(image.width, image.height)
     upright = ImageOps.exif_transpose(image)
@@ -78,6 +93,30 @@ def _from_rgba(px: np.ndarray, bits: int = 8) -> tuple[bytes, int, int]:
     return _png(image)
 
 
+def heif_deep(data: bytes) -> tuple[np.ndarray, int] | None:
+    """A HEIF or HEIC holding more than 8 bits a channel as uint16 RGBA of shape (height, width, 4) stretched to the full
+    16-bit range, and its bit depth; None for an 8-bit file or without pillow-heif."""
+    if not HEIF:
+        return None
+    try:
+        heif = pillow_heif.open_heif(io.BytesIO(data), convert_hdr_to_8bit=False)
+    except Exception:
+        return None
+    bits = int(heif.info.get("bit_depth") or 8)
+    if bits <= 8 or heif.mode.split(";")[0] not in ("RGB", "RGBA", "L"):
+        return None
+    arr = np.asarray(heif)
+    if arr.dtype != np.uint16:
+        return None
+    top = ((1 << bits) - 1) << (16 - bits)
+    px = np.minimum(arr.astype(np.uint64) * 65535 // top, 65535).astype(np.uint16)
+    if px.ndim == 2:
+        px = np.stack([px, px, px], axis=2)
+    if px.shape[2] == 3:
+        px = np.dstack([px, np.full(px.shape[:2], 65535, np.uint16)])
+    return np.ascontiguousarray(px[:, :, :4]), bits
+
+
 def _sniffed(data: bytes, suffix: str, page: int) -> tuple[bytes, int, int] | None:
     """QOI, Netpbm, TGA and ICO, read by the engine's own codecs (qoi.py, pnm.py, tga.py, ico.py); None for anything else."""
     try:
@@ -85,6 +124,11 @@ def _sniffed(data: bytes, suffix: str, page: int) -> tuple[bytes, int, int] | No
             return _from_rgba(qoi.read(data)[0])
         if pnm.is_pnm(data):
             return _from_rgba(pnm.read(data)[0])
+        if pnm.is_pfm(data):
+            lin = np.clip(pnm.read_pfm(data), 0.0, 1.0)
+            enc = np.where(lin <= 0.0031308, lin * 12.92, 1.055 * np.power(lin, 1 / 2.4) - 0.055)
+            enc[..., 3] = 1.0
+            return _from_rgba(np.round(enc * 255).astype(np.uint8))
         if ico.is_ico(data) and suffix in (".ico", ".cur"):
             return _from_rgba(ico.read(data, page))
         if suffix in (".tga", ".icb", ".vda", ".vst") and tga.looks_like_tga(data):
@@ -320,6 +364,7 @@ def decode_to_png(data: bytes, filename: str, page: int = 0, camera_profile: str
         return own
     try:
         with Image.open(io.BytesIO(data)) as image:
+            _plausible(image, len(data))
             if page:
                 count = getattr(image, "n_frames", 1)
                 if not 0 <= page < count:

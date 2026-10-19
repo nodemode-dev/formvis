@@ -8,7 +8,7 @@ import { artHistoryTexture, type ArtStyle } from './art-history';
 import { decodeLab, labFromFloats, labFromRgba, labToSrgb, renderLab } from './lab';
 import { composeFloat, setStyleDrawer } from './compose-float';
 import { deepFromRaster, deepToLinear, deepToned, rasterFromDeep, resampleDeep, strokeDeep } from './deep';
-import type { ChannelPixels, DeepPixels, DocProfile } from './types';
+import type { ChannelPixels, DeepPixels, DocProfile, EngineJob } from './types';
 import { applyComp, captureComp, type CompOptions } from './layer-comps';
 import { captureFrame, frameLayers, type Frame, type FrameLayer, type Timeline } from './timeline';
 import { newVideoTimeline, sampleToFrames, stateAt, valueAt, type FadeColor, type VideoTimeline } from './video-timeline';
@@ -67,7 +67,7 @@ import * as PA from './path-ops';
 import * as TX from './text-ops';
 import * as VD from './video-ops';
 import * as TE from './transform-entry';
-import { type DocMode, BLEND_MODES, canvasBlend, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStroke, type ShapeStyle, type FootageInterpretation, effectsFromData, type Artboard, artboardFromData, type AlphaChannel, effectsPresent } from './types';
+import { type DocMode, BLEND_MODES, canvasBlend, LIMITS, setPixelLimit, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStroke, type ShapeStyle, type FootageInterpretation, effectsFromData, type Artboard, artboardFromData, type AlphaChannel, effectsPresent } from './types';
 import { allPatterns, patternById } from './patterns';
 import { fillFrame, fillName, renderFill } from './fill-layers';
 import type { FillContent, VectorMask, WarpStyle } from './types';
@@ -513,6 +513,34 @@ export class Engine {
     this.emit('progress', null);
   }
 
+  /** Long operations that can be stopped (background jobs): each reports its bands and checks `cancelled` between them. */
+  readonly jobs: EngineJob[] = [];
+  private jobSeq = 0;
+  startJob(name: string, total = 0): EngineJob {
+    const j: EngineJob = { id: ++this.jobSeq, name, done: 0, total, cancelled: false, startedAt: Date.now() };
+    this.jobs.push(j);
+    this.emit('progress', null);
+    return j;
+  }
+  jobStep(j: EngineJob, done: number, total = j.total): void {
+    j.done = done;
+    j.total = total;
+    this.reportProgress(done, total);
+  }
+  endJob(j: EngineJob): void {
+    const i = this.jobs.indexOf(j);
+    if (i >= 0) this.jobs.splice(i, 1);
+    this.reportProgress(0, 0);
+    this.emit('progress', null);
+  }
+  /** Asks one job (or, with no id, every job) to stop; returns how many were asked. */
+  cancelJob(id?: number): number {
+    let n = 0;
+    for (const j of this.jobs) if ((id === undefined || j.id === id) && !j.cancelled) { j.cancelled = true; n++; }
+    if (n) this.emit('progress', null);
+    return n;
+  }
+
   async task<T>(fn: () => Promise<T>): Promise<T> {
     this.busyCount++;
     this.taskProgress.steps++;
@@ -614,8 +642,22 @@ export class Engine {
 
   /** The memory budget set (1.61.3), and with it the history's memory when that is automatic (a chosen figure stays). */
   setMemoryBudget(bytes: number): void {
-    this.memoryBudget = bytes;
+    this.autoMemory = bytes;
+    this.applyMemory();
+  }
+  private autoMemory = 0;
+  private userMemory = 0;
+  /** Preferences > Performance > Memory Usage (PC-AU-0155): one limit for the pixels and, when history is automatic,
+   *  its share; the largest document follows it (18 bytes a pixel, as the automatic figures do). 0 is automatic. */
+  setMemoryLimit(bytes: number): void {
+    this.userMemory = Number.isFinite(bytes) && bytes > 0 ? Math.round(bytes) : 0;
+    this.applyMemory();
+  }
+  private applyMemory(): void {
+    this.memoryBudget = this.userMemory || this.autoMemory;
+    setPixelLimit(this.userMemory ? Math.floor(this.userMemory / 18) : 0);
     this.setHistoryLimits(this.historyLimits.states, this.historyBytesChosen);
+    this.emit('history', null);
   }
 
   /** Raster `r`, no longer in `p`'s document, to the store tile by tile, its canvas freed once all are stored; left as
@@ -823,6 +865,23 @@ export class Engine {
     return m;
   }
   measureChanged(): void { this.emit('overlay', null); this.emit('options', null); }
+  /** The measuring tools' options: the Ruler's Use Measurement Scale, the Color Sampler's Sample Size (the edge in pixels
+   *  of the square it averages) and the Count tool's marker and label sizes. */
+  measureOpts = { useScale: true, sampleSize: 1, countMarker: 3, countLabel: 12 };
+  /** What one pixel is in the units the Ruler reads: the document's measurement scale when Use Measurement Scale is on. */
+  rulerUnit(): { k: number; units: string } {
+    const sc = this.current?.doc.measureScale;
+    return sc && this.measureOpts.useScale ? { k: sc.length / sc.pixels, units: sc.units } : { k: 1, units: 'px' };
+  }
+  /** The Ruler's second arm (the protractor, Alt-drag from an end of the line): the end it turns about and where it stops. */
+  private rulerArms = new WeakMap<Project, { v: 'a' | 'b'; to: Pt }>();
+  get rulerArm(): { v: 'a' | 'b'; to: Pt } | null { const p = this.current; return p && this.measures.get(p)?.ruler ? this.rulerArms.get(p) ?? null : null; }
+  setRulerArm(arm: { v: 'a' | 'b'; to: Pt } | null): void {
+    const p = this.current;
+    if (!p) return;
+    if (arm) this.rulerArms.set(p, arm); else this.rulerArms.delete(p);
+    this.measureChanged();
+  }
   /** A change of the canvas carries the sampler points and the ruler line with the pixels; the marks either side of it are
    *  kept against the document it began from, so the step's undo and redo bring them back (they are not in the document). */
   private markSteps = new WeakMap<Doc, { name: string; after: Doc; before: { samplers: Pt[]; ruler: { a: Pt; b: Pt } | null }; then: { samplers: Pt[]; ruler: { a: Pt; b: Pt } | null } }>();
@@ -863,7 +922,16 @@ export class Engine {
   clearNotes(): void { NT.clearNotes(this.noteHost); }
 
   /** Counting (the Count tool): numbered marks on the document, saved with it; each change one step. */
-  addCount(pt: Pt): void { NT.addCount(this.noteHost, pt); }
+  /** The count group new marks go into (null: the first, or none while there are no groups). */
+  activeCountGroup: ID | null = null;
+  addCount(pt: Pt): void {
+    const groups = this.current?.doc.countGroups ?? [];
+    NT.addCount(this.noteHost, pt, groups.length ? (groups.find((g) => g.id === this.activeCountGroup) ?? groups[0]).id : undefined);
+  }
+  newCountGroup(name?: string, color?: string): ID | null { const id = NT.newCountGroup(this.noteHost, name, color); if (id) { this.activeCountGroup = id; this.emit('options', null); } return id; }
+  setCountGroup(id: ID, patch: { name?: string; color?: string; hidden?: boolean }): boolean { return NT.setCountGroup(this.noteHost, id, patch); }
+  removeCountGroup(id: ID): boolean { const ok = NT.removeCountGroup(this.noteHost, id); if (ok && this.activeCountGroup === id) this.activeCountGroup = null; return ok; }
+  moveCount(i: number, pt: Pt): void { NT.moveCount(this.noteHost, i, pt); }
   removeCount(i: number): void { NT.removeCount(this.noteHost, i); }
   clearCounts(): void { NT.clearCounts(this.noteHost); }
 
@@ -980,19 +1048,20 @@ export class Engine {
   clearMeasurements(): void {
     this.edit('Clear Measurements', (p) => { if (!p.doc.measurements?.length) return false; p.doc = { ...p.doc, measurements: [] }; return true; });
   }
-  placeScaleMarker(opts: { lengthUnits: number; text: boolean; color: 'black' | 'white' }): void {
+  placeScaleMarker(opts: { lengthUnits: number; text: boolean; color: 'black' | 'white'; fontSize?: number; font?: string; textBelow?: boolean; label?: string }): void {
     const p = this.current, sc = p?.doc.measureScale;
     if (!p || !sc) { this.notice('Set the measurement scale first.', 'info'); return; }
     const bar = Math.max(1, Math.round(opts.lengthUnits * sc.pixels / sc.length));
-    const label = `${String(Number(opts.lengthUnits.toFixed(3)))} ${sc.units}`;
+    const label = (opts.label ?? '').trim() || `${String(Number(opts.lengthUnits.toFixed(3)))} ${sc.units}`;
+    const size = Math.round(clamp(opts.fontSize ?? 12, 6, 200)), font = `${size}px ${opts.font?.trim() || 'sans-serif'}`, barH = Math.max(4, Math.round(size / 3));
     const probe = ctxOf(createSurface(1, 1));
-    probe.font = '12px sans-serif';
-    const tw = opts.text ? Math.ceil(probe.measureText(label).width) : 0;
-    const w = Math.max(bar, tw, 1), h = opts.text ? 20 : 4;
-    const s = createSurface(w, h), c = ctxOf(s);
+    probe.font = font;
+    const tw = opts.text ? Math.ceil(probe.measureText(label).width) : 0, gap = Math.ceil(size * 0.3);
+    const w = Math.max(bar, tw, 1), th = opts.text ? Math.ceil(size * 1.2) + gap : 0, h = barH + th;
+    const s = createSurface(w, h), c = ctxOf(s), barY = opts.textBelow ? 0 : th;
     c.fillStyle = opts.color;
-    c.fillRect(0, h - 4, bar, 4);
-    if (opts.text) { c.font = '12px sans-serif'; c.textBaseline = 'alphabetic'; c.fillText(label, 0, 12); }
+    c.fillRect(0, barY, bar, barH);
+    if (opts.text) { c.font = font; c.textBaseline = 'alphabetic'; c.fillText(label, 0, opts.textBelow ? barH + gap + size : size); }
     this.insertRasterLayer(Raster.from(s, w, h), 'Measurement Scale Marker', 10, p.doc.height - 10 - h, {}, 'Place Scale Marker');
   }
   /** The Pattern Stamp's pattern (null: the first). */
@@ -2040,8 +2109,8 @@ export class Engine {
   }
 
   /** Data sets from CSV or tab-separated text, replacing the document's data sets: one undo step. Returns how many were read. */
-  importDataSets(text: string): number {
-    const { dataSets } = VR.buildDataSets(text);
+  importDataSets(text: string, delimiter = ''): number {
+    const { dataSets } = VR.buildDataSets(text, delimiter);
     if (!dataSets.length) { this.notice('No data sets found: the first row names the variables, each later row is a data set.'); return 0; }
     return this.edit('Import Data Sets', (pp) => { pp.doc = { ...pp.doc, dataSets, activeDataSet: null }; return true; }) ? dataSets.length : 0;
   }
@@ -4944,6 +5013,17 @@ export class Engine {
     return ok ? id : null;
   }
 
+  /** An alpha channel made from one grey value per pixel (a Targa's alpha plane opened beside an opaque picture); one step. Returns its id. */
+  addAlphaFromGrey(grey: Uint8Array, name?: string): ID | null {
+    const p = this.current;
+    if (!p) return null;
+    const W = p.doc.width, H = p.doc.height;
+    if (grey.length !== W * H || W > CANVAS_SIDE || H > CANVAS_SIDE || W * H > CANVAS_PIXELS) return null;
+    const id = uid(), mask = SelectionMask.cropped(0, 0, W, H, grey);
+    const ok = this.edit('Add Alpha Channel', (q) => { const list = q.doc.alphas ?? []; q.doc = { ...q.doc, alphas: [...list, { id, name: name || nextAlphaName(list), mask }] }; return true; });
+    return ok ? id : null;
+  }
+
   /** Duplicate Channel: a copy of alpha channel `id`, named "<name> copy" unless `name` is given, right after it; one step. */
   duplicateAlpha(id: ID, name?: string): ID | null {
     const copy = uid();
@@ -6712,7 +6792,7 @@ export class Engine {
   selectionAtBounds = false;
 
   /** View > Rulers, Guides, Grid and Lock Guides; the grid's spacing and subdivisions in document pixels. */
-  view = { rulers: false, guides: true, slices: false, slicesLocked: false, autoSlices: true, grid: false, guidesLocked: false, gridSpacing: 100, gridSubdivisions: 4, patternPreview: false, pixelArt: false, parCorrection: false };
+  view = { rulers: false, guides: true, slices: false, slicesLocked: false, autoSlices: true, grid: false, guidesLocked: false, gridSpacing: 100, gridSubdivisions: 4, patternPreview: false, pixelArt: false, parCorrection: false, tileGrid: false };
   /** A guide being dragged out of a ruler or across the canvas, drawn but not yet in the document. */
   guideDraft: { axis: 'x' | 'y'; at: number; index: number | null } | null = null;
 
@@ -6951,25 +7031,35 @@ export class Engine {
     this.busyWith = name;
     return (async (): Promise<boolean> => {
     p.history.begin(name, p.snapshot());
+    const jb = this.startJob(name);
+    let stopped = false;
     try {
       const queue: { y0: number; y1: number; a0: number; src: ImageData; out: Promise<ImageData | null> }[] = [];
       const plan = bandPlan(H, A, B);
       let written = 0;
-      this.reportProgress(0, plan.length);
+      this.jobStep(jb, 0, plan.length);
       for (const b of plan) {
+        if (jb.cancelled) break;
         const src = r.ctx.getImageData(0, b.a0, W, b.a1 - b.a0);
         queue.push({ y0: b.y0, y1: b.y1, a0: b.a0, src, out: runBandOnPool(job.kind, job.settings, job.seed, src, this.bandFrame(f0, b.a0)) });
-        while (queue.length > N) { await write(queue.shift()!); this.reportProgress(++written, plan.length); }   // band j is written once band j + 1 is sent
+        while (queue.length > N && !jb.cancelled) { await write(queue.shift()!); this.jobStep(jb, ++written); }   // band j is written once band j + 1 is sent
       }
-      while (queue.length) { await write(queue.shift()!); this.reportProgress(++written, plan.length); }
-      this.reportProgress(0, 0);
+      while (queue.length && !jb.cancelled) { await write(queue.shift()!); this.jobStep(jb, ++written); }
+      stopped = jb.cancelled;
       r.touch();
-      if (l.shape) p.updateLayer(l.id, { shape: null });
+      if (l.shape && !stopped) p.updateLayer(l.id, { shape: null });
     } finally {
-      p.history.end(p.snapshot());
+      this.endJob(jb);
+      if (stopped) {
+        const rb = p.history.rollback();
+        if (rb) for (let i = rb.patches.length - 1; i >= 0; i--) { const q = rb.patches[i]; q.raster.write(q.before, q.x, q.y); }
+        r.touch();
+        this.notice(`${name} was cancelled and the layer is as it was.`);
+      } else p.history.end(p.snapshot());
       this.busyWith = null;
       this.refresh();
     }
+    if (stopped) return false;
     void this.pageNewest(p);
     return true;
     })();
@@ -7036,6 +7126,7 @@ export class Engine {
     this.busyWith = name;
     this.notice(`${name} runs over the picture a band at a time, keeping its undo on disk; editing waits until it finishes.`);
     p.history.begin(name, p.snapshot());
+    const jb = this.startJob(name, Math.ceil(H / B));
     try {
       const source = async (y0: number): Promise<{ img: ImageData; a0: number }> => {
         const a0 = Math.max(0, y0 - A), a1 = Math.min(H, Math.min(H, y0 + B) + A);
@@ -7045,6 +7136,8 @@ export class Engine {
       let src = await source(0);
       const f0 = this.filterFrame(p, l.transform, W, H);
       for (let y0 = 0; y0 < H; y0 += B) {
+        if (jb.cancelled) { this.notice(`${name} was cancelled part way; what it did is one step you can undo.`); break; }
+        this.jobStep(jb, Math.floor(y0 / B));
         const y1 = Math.min(H, y0 + B), h = y1 - y0, out = run(src.img, this.bandFrame(f0, src.a0)), a0 = src.a0;
         if (y1 < H) src = await source(y1);   // the next band's originals, before this band is written
         await t.ensure(0, y0, W, h, store);
@@ -7062,6 +7155,7 @@ export class Engine {
     } catch (err) {
       this.notice(`${name} stopped part way (what it did is one step, undoable): ${String((err as Error)?.message ?? err)}`, 'error');
     } finally {
+      this.endJob(jb);
       p.history.end(p.snapshot());
       const e = p.history.peekUndo();
       if (e && e.patches.some((q) => q.disk)) e.streamed = true;   // undo and redo stream it from the store
@@ -7986,11 +8080,11 @@ export class Engine {
   pasteClipboard(inPlace = false): boolean { return SO.pasteClipboard(this.selectHost, inPlace); }
 
   /** File > New from Clipboard: a document the size of the clipboard picture, holding it as its layer; one new tab. */
-  newFromClipboard(image: { raster: Raster; name: string } | null = null): boolean {
+  newFromClipboard(image: { raster: Raster; name: string; resolution?: number } | null = null): boolean {
     const c = this.clipboard;
     const raster = image ? image.raster : c ? Raster.from(c.surface, c.w, c.h) : null;
     if (!raster || !this.sizeOk(raster.width, raster.height)) return false;
-    this.addProject({ id: uid(), width: raster.width, height: raster.height, resolution: 72, layers: [] }, image?.name ?? 'Clipboard');
+    this.addProject({ id: uid(), width: raster.width, height: raster.height, resolution: image?.resolution ?? 72, layers: [] }, image?.name ?? 'Clipboard');
     this.insertRasterLayer(raster, 'Layer 1', 0, 0);
     return true;
   }

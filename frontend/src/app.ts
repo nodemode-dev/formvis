@@ -70,12 +70,12 @@ import { ShapeStyleDialog } from './ui/panels/shape-style-dialog';
 import { PathsPanel } from './ui/paths';
 import { SmartFiltersDialog } from './ui/panels/smart-filters-dialog';
 import { STACK_MODES } from './engine/stack-modes';
-import { Actions, RECORDABLE, batchName, type Action, type ActionStep } from './ui/actions';
-import { ActionsDialog, BatchDialog } from './ui/panels/actions-dialogs';
+import { Actions, CONDITION_TESTS, RECORDABLE, batchName, type Action, type ActionStep, type ConditionTest } from './ui/actions';
+import { ActionsDialog, BatchDialog, DropletDialog } from './ui/panels/actions-dialogs';
 import { ImageProcessorDialog, type ImageProcessorOptions } from './ui/panels/image-processor-dialog';
 import { zipFiles } from './io/zip';
 import { assetFiles } from './io/image-assets';
-import { isPsdFile, readPsdFile, readPsdFlat, writePsdFile } from './io/psd';
+import { isPsdFile, readPsdFile, readPsdFlat, reportText, writePsdFile } from './io/psd';
 import { isKraFile, readKra } from './io/kra';
 import { isPdnFile, readPdn } from './io/pdn';
 import { isAfFile, readAf } from './io/af-preview';
@@ -119,7 +119,7 @@ import { ScriptEvents, type ScriptEvent } from './ui/script-events';
 import { LutExportDialog } from './ui/panels/lut-export-dialog';
 import { GlyphsDialog } from './ui/panels/glyphs-dialog';
 import { ToolPresetsDialog } from './ui/panels/tool-presets-dialog';
-import { MeasureDataPointsDialog, MeasureScaleDialog, MeasurementLogDialog } from './ui/panels/measurement-dialogs';
+import { MeasureDataPointsDialog, MeasureScaleDialog, MeasurementLogDialog, ScaleMarkerDialog, autoMarkerLength } from './ui/panels/measurement-dialogs';
 import { FindReplaceTextDialog } from './ui/panels/find-replace-text-dialog';
 import { SpellDialog } from './ui/panels/spell-dialog';
 import { MissingFontsDialog } from './ui/panels/missing-fonts-dialog';
@@ -129,10 +129,10 @@ import { VanishingPointDialog } from './ui/panels/vanishing-dialog';
 import { VideoImportDialog } from './ui/panels/video-dialog';
 import { VideoTimelinePanel } from './ui/video-timeline';
 import { RenderVideoDialog, type RenderChoice } from './ui/panels/render-video-dialog';
-import { LargePictureError, IMAGE_ACCEPT, PROJECT_ACCEPT, RAW_FILE, decodeFrames, decodeHdr, decodeImage, isImageFile, isProjectFile, nameRawByContent, apngFrames, rasteriseSvg, svgSize } from './io/images';
+import { LargePictureError, IMAGE_ACCEPT, PROJECT_ACCEPT, RAW_FILE, decodeDeepLayer, decodeFrames, decodeTgaSplit, decodeHdr, decodeImage, heifBits, isImageFile, isProjectFile, nameRawByContent, apngFrames, rasteriseSvg, svgSize } from './io/images';
 import { addFontFace, familyOfFile, fontFamilies, loadSystemFonts } from './ui/fonts';
 import { deserialize, giantTiles, serialize } from './io/project-io';
-import { AboutDialog, BenchmarkDialog, NewCanvasDialog, OpenDialog, SettingsDialog, ShortcutsDialog, SystemInfoDialog, UpdateDialog } from './ui/app-dialogs';
+import { AboutDialog, BenchmarkDialog, NewCanvasDialog, OpenDialog, ReportIssueDialog, SettingsDialog, ShortcutsDialog, SystemInfoDialog, UpdateDialog } from './ui/app-dialogs';
 import { HistoryLog } from './ui/history-log';
 import { extraOn, extrasOn, selectionTintOn, setAllExtras, setExtra, setExtras, setSelectionTint } from './ui/view-extras';
 import { CHECKER_CELL, FONT_PREVIEWS, applyPrefs, applyUiFontSize, checkerPair, DEFAULT_PREFS, loadPrefs, savePrefs, updatePrefs, type Prefs } from './ui/prefs';
@@ -143,6 +143,7 @@ import { GpuDisplay, type ScreenDisplay } from './gpu/display';
 import { benchText, runBenchmark } from './gpu/bench';
 import { GlDisplay } from './gpu/gl-display';
 import { GlFilters } from './gpu/filters';
+import { frameTrace } from './gpu/frame-trace';
 import { setGpuFilters } from './engine/gpu-filters';
 import { NativeDisplay } from './gpu/native-display';
 import { PerfDialog, recordPerformance } from './ui/perf-recorder';
@@ -186,6 +187,7 @@ import { PluginHost } from './plugins/host';
 import { PluginsDialog } from './ui/panels/plugins-dialog';
 import { LargePictureDialog } from './ui/panels/large-picture';
 import { TiffPagesDialog } from './ui/panels/tiff-pages';
+import { ExrPartsDialog } from './ui/panels/exr-parts';
 import { OpenAsDialog } from './ui/panels/open-as';
 import { addNotes, readNotesFile } from './io/notes-import';
 import { CameraRawDialog, type RawChoice } from './ui/panels/camera-raw';
@@ -422,6 +424,7 @@ export function startApp(): void {
   );
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && screen === 'full') { setScreen('standard'); e.preventDefault(); } }, true);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !e.defaultPrevented && !anyDialogOpen() && generationsRunning() && stopGenerations()) { e.preventDefault(); toast('Stopped the generation.'); } });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !e.defaultPrevented && !anyDialogOpen() && engine.cancelJob()) { e.preventDefault(); toast('Stopping the running job.'); } });
   document.addEventListener('click', (e) => { if (e.target instanceof Element && e.target.closest('.cv-st-busy') && generationsRunning() && stopGenerations()) toast('Stopped the generation.'); });
   engine.on('busy', (on: boolean) => { const b = root.querySelector('.cv-st-busy'); const tip = on && generationsRunning() ?'A generation is running: click to stop it (Esc)' : ''; if (b && b.getAttribute('title') !== tip) { if (tip) b.setAttribute('title', tip); else b.removeAttribute('title'); } });
   engine.on('options', () => q(root, '.cv-rail [data-cmd="quick-mask"]').classList.toggle('is-on', engine.quickMask));
@@ -762,9 +765,10 @@ export function startApp(): void {
         if (d) { gpuDisplay = d; gpuKind = want; d.onLost = () => gpuLost(d, want); } else gpuFailed.add(want);
         syncGpu();
       };
-      if (want === 'webgpu') void GpuDisplay.create(q<HTMLCanvasElement>(root, '.cv-scene-gpu:not(.cv-scene-gl):not(.cv-scene-native)')).then(started);
+      const opts = { power: pr.gpuPower, lowLatency: pr.lowLatency };
+      if (want === 'webgpu') void GpuDisplay.create(q<HTMLCanvasElement>(root, '.cv-scene-gpu:not(.cv-scene-gl):not(.cv-scene-native)'), opts).then(started);
       else if (want === 'native') void NativeDisplay.create(q<HTMLCanvasElement>(root, '.cv-scene-native')).then(started);
-      else started(GlDisplay.create(q<HTMLCanvasElement>(root, '.cv-scene-gl')));
+      else started(GlDisplay.create(q<HTMLCanvasElement>(root, '.cv-scene-gl'), opts));
     }
     const off = rendererFallback({ mode: ch.mode, chosenReason: ch.reason, displayReady: !!gpuDisplay, displayFailed: !!want && gpuFailed.has(want) });
     const live = off ? null : gpuDisplay, api = ch.mode === 'webgl2' ? 'WebGL2' : ch.mode === 'native' ? 'Native GPU' : 'WebGPU';
@@ -812,10 +816,12 @@ export function startApp(): void {
             if (cmykPsd) { await openCmykPsd(f.name.replace(/\.(ps[db]|psdt)$/i, ''), cmykPsd); continue; }
             const labPsd = await api.decodeLab(f, f.name).catch(() => null);   // 1.58.1
             if (labPsd) { openLab(f.name.replace(/\.(ps[db]|psdt)$/i, ''), labPsd); continue; }
-            const { doc, notes, activeId, paths } = await readPsdFile(f).catch(() => readPsdFlat(f, (b) => api.decode(b, b.name)));   // a damaged file opens flat
+            const { doc, notes, activeId, paths, report } = await readPsdFile(f).catch(() => readPsdFlat(f, (b) => api.decode(b, b.name)));   // a damaged file opens flat
             const opened = engine.addProject(doc, f.name.replace(/\.(ps[db]|psdt)$/i, ''), activeId);
             if (paths) engine.setPathsOf(opened, paths);
-            if (notes.length) toast(notes.join(' '), 'info');
+            // The conversion report is told, never asked: an agent or a batch opening a PSD must not wait on a sheet.
+            if (report.dropped.length) toast(reportText(report), 'info');
+            else if (notes.length) toast(notes.join(' '), 'info');
           } else {
             const layered = /\.tiff?$/i.test(f.name) ? await readLayeredTiff(f) : null;   // a TIFF with PSD layers (34.2)
             if (layered) {
@@ -866,6 +872,15 @@ export function startApp(): void {
   /** Camera Raw on open (DEV_PLAN 36.21): a camera RAW opens into this panel first (white balance at the RAW stage, 8 or 16 bits). */
   const cameraRaw = new CameraRawDialog();
 
+  /** The open document and its layer count, taken before a picture is placed. */
+  const layersOf = (): { doc: unknown; n: number } | null => (engine.current ? { doc: engine.current, n: engine.current.doc.layers.length } : null);
+  /** A single picture just placed into the same document starts in Free Transform (Preferences > File Handling). */
+  function enterPlacedTransform(was: { doc: unknown; n: number } | null): void {
+    const p = engine.current;
+    if (!was || !p || p !== was.doc || p.doc.layers.length !== was.n + 1 || !loadPrefs().placeTransform || !p.activeLayer?.raster) return;
+    engine.transformCommand();
+  }
+
   /** `how` 'layers' (the default) adds pictures to the open document; 'documents' (File > Open, Ctrl-drop) opens each as its own document. Preset files go to their libraries either way. */
   async function importFiles(files: File[], at?: Pt, how: 'layers' | 'documents' = 'layers'): Promise<void> {
     files = await Promise.all(files.map(nameRawByContent));
@@ -883,6 +898,7 @@ export function startApp(): void {
         let largeAsked = false;
         let pagesAsked = false;
         let rawPick: RawChoice | null = null;
+        let tgaAlpha: Uint8Array | null = null;
         openStopped = false;
         for (const f of images) {
           if (openStopped) break;
@@ -920,6 +936,13 @@ export function startApp(): void {
           if (/\.(jpe?g|tiff?)$/i.test(f.name) && noDoc() && decoded.length === 0) {
             try { const c = await api.decodeCmyk(f, f.name); if (c) { await openCmyk(f.name.replace(/\.[^.]+$/, ''), c); continue; } } catch (err) { if (serviceDown()) { /* the engine service is not running: opened as RGB below */ } else { toast(message(err), 'error'); continue; } }
           }
+          // A Targa with real alpha asks whether it is layer transparency or an Alpha 1 channel beside an opaque picture.
+          if (/\.(tga|icb|vda|vst)$/i.test(f.name) && noDoc() && decoded.length === 0) {
+            try {
+              const split = await decodeTgaSplit(f, f.name);
+              if (split && await confirmAction('Targa alpha', `${f.name} has an alpha channel. Keep it as an Alpha 1 channel with an opaque picture, or as the layer's transparency?`, 'Alpha channel', false, 'Transparency')) { decoded.push(split.image); tgaAlpha = split.alpha; continue; }
+            } catch { /* opened with its transparency below */ }
+          }
           // An 8-bit grayscale picture opens as a Grayscale document under the Gray policy (Color Settings).
           if (/\.(png|jpe?g|tiff?|webp)$/i.test(f.name) && noDoc() && decoded.length === 0) {
             try { const gray = await openGray(f); if (gray) { decoded.push(gray); continue; } } catch (err) { if (!serviceDown()) { toast(`${f.name}: ${message(err)}`, 'error'); continue; } }
@@ -930,14 +953,26 @@ export function startApp(): void {
             try { decoded.push(await decodeHdr(f, f.name)); } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
             continue;
           }
+          // A 16 or 32 bit PNG, TIFF, HEIC, DPX, Netpbm, PFM or FITS placed into a 16 or 32 bit document keeps its depth as a layer.
+          if (!noDoc() && (engine.current?.doc.depth ?? 8) > 8) {
+            const deep = await decodeDeepLayer(f, f.name).catch(() => null);
+            if (deep) { decoded.push(deep); continue; }
+          }
           // A 16-bit PNG or TIFF opens as a 16-bit document (1.53.6, H1).
-          if (/\.(png|tiff?|hdr|exr|dpx|cin|pbm|pgm|ppm|pnm|pam|fits|fit|fts)$/i.test(f.name) && noDoc() && decoded.length === 0) {
+          if (/\.(png|tiff?|hdr|exr|dpx|cin|pbm|pgm|ppm|pnm|pam|pfm|heic|heif|hif|fits|fit|fts)$/i.test(f.name) && noDoc() && decoded.length === 0) {
             const head = new Uint8Array(await f.slice(0, 26).arrayBuffer()), png16 = head[0] === 0x89 && head[24] === 16;
-            if (png16 || /\.(tiff?|hdr|exr|dpx|cin|pbm|pgm|ppm|pnm|pam|fits|fit|fts)$/i.test(f.name)) {
+            if (png16 || /\.(tiff?|hdr|exr|dpx|cin|pbm|pgm|ppm|pnm|pam|pfm|fits|fit|fts)$/i.test(f.name) || (/\.(heic|heif|hif)$/i.test(f.name) && (await heifBits(f)) > 8)) {
               try {
                 // A multi-part OpenEXR opens one layer per part, named after it (DEV_PLAN 36.15).
                 if (/\.exr$/i.test(f.name)) {
-                  const mp = await api.exrParts(f, f.name).catch(() => null);
+                  const lay = await api.exrLayout(f, f.name).catch(() => null);
+                  if (lay && lay.parts.reduce((n, p) => n + p.groups.length, 0) + lay.crypto.reduce((n, c) => n + c.objects.length, 0) > 1) {
+                    const picks = await exrChooser.ask(f.name, lay);
+                    if (!picks) continue;
+                    const mp = await api.exrSelect(f, f.name, picks);
+                    if (engine.openDeepLayers(f.name.replace(/\.[^.]+$/, ''), mp.width, mp.height, mp.parts.map((q) => ({ name: q.name, x: q.x, y: q.y, deep: { mode: 'rgb', n: 3, width: q.width, height: q.height, data: q.data } })))) continue;
+                  }
+                  const mp = lay ? null : await api.exrParts(f, f.name).catch(() => null);
                   if (mp && engine.openDeepLayers(f.name.replace(/\.[^.]+$/, ''), mp.width, mp.height, mp.parts.map((q) => ({ name: q.name, x: q.x, y: q.y, deep: { mode: 'rgb', n: 3, width: q.width, height: q.height, data: q.data } })))) continue;
                 }
                 const d = await api.decodeDeep(f, f.name), name = f.name.replace(/\.[^.]+$/, ''), ppi = (await headerResolution(f)) ?? undefined;
@@ -990,6 +1025,7 @@ export function startApp(): void {
           }
         }
         engine.insertImages(decoded, fresh ? undefined : at, fresh);
+        if (tgaAlpha && decoded.length === 1) engine.addAlphaFromGrey(tgaAlpha);
         for (const img of decoded) {
           const file = RAW_FILE.test(img.name) ? images.find((f) => f.name === img.name) : undefined, layer = file ? [...(engine.current?.doc.layers ?? [])].reverse().find((l) => l.name === stripExt(img.name)) : undefined;
           // A white balance chosen in Camera Raw is kept with the layer (for this session); the engine applies no camera profile with it.
@@ -1704,9 +1740,15 @@ export function startApp(): void {
   }
 
   /** The droplet script (DEV_PLAN 30.5): drop pictures onto it to run the named action over them from the formvis folder. */
-  function dropletScript(action: string, format: string): string {
-    const q = `'${action.replace(/'/g, `'\\''`)}'`;
-    return `#!/bin/sh\n# formvis droplet for the action ${action}. Keep this file in the formvis folder, then drop pictures onto it or run it with file names.\ncd "$(dirname "$0")" || exit 1\nexec ./formvis cli process "$@" --action ${q} --format ${format}\n`;
+  function dropletScript(action: string, format: string, o: { quality?: number; out?: string; recursive?: boolean } = {}): string {
+    const sh = (v: string): string => `'${v.replace(/'/g, `'\\''`)}'`, q = sh(action);
+    const extra = `${o.quality && format !== 'png' && format !== 'tiff' ? ` --quality ${Math.min(100, Math.max(1, Math.round(o.quality)))}` : ''}${o.out?.trim() ? ` --out ${sh(o.out.trim())}` : ''}${o.recursive ? ' --recursive' : ''}`;
+    return `#!/bin/sh\n# formvis droplet for the action ${action.replace(/[\r\n]+/g, ' ')}. Keep this file in the formvis folder, then drop pictures or folders onto it or run it with their names.\ncd "$(dirname "$0")" || exit 1\nexec ./formvis cli process "$@" --action ${q} --format ${format}${extra}\n`;
+  }
+
+  async function makeDroplet(o: { action: string; format: string; quality: number; out: string; recursive: boolean }): Promise<void> {
+    await deliver(new Blob([dropletScript(o.action, o.format, o)], { type: 'text/x-shellscript' }), `${o.action}-droplet.sh`);
+    toast('Put the droplet in the formvis folder, make it executable, then drop pictures or folders onto it.');
   }
 
   /** Conditional Mode Change (DEV_PLAN 30.5a): a document whose mode is in `from` goes to `to` by the routes the Mode
@@ -1740,6 +1782,42 @@ export function startApp(): void {
     return engine.current?.doc.mode === to;
   }
 
+  /** Whether the current document and active layer meet a conditional step's test. */
+  function conditionHolds(t: ConditionTest): boolean {
+    const p = engine.current;
+    if (!p) return false;
+    const d = p.doc, l = p.activeLayer;
+    switch (t) {
+      case 'landscape': return d.width > d.height;
+      case 'portrait': return d.height > d.width;
+      case 'square': return d.width === d.height;
+      case 'depth8': return (d.depth ?? 8) === 8;
+      case 'depth16': return d.depth === 16;
+      case 'depth32': return d.depth === 32;
+      case 'selection': return !!p.selection;
+      case 'unsaved': return p.modified;
+      case 'layers': return d.layers.length > 1;
+      case 'textLayer': return !!l?.text;
+      case 'smartLayer': return !!l?.smart;
+      case 'maskLayer': return !!(l as { mask?: unknown } | null)?.mask;
+    }
+  }
+
+  /** A conditional step plays the action named for the branch that holds (none named: nothing happens). It fails when that
+   *  action is missing, or when conditionals are nested more than eight deep. */
+  let conditionalDepth = 0;
+  async function conditionalStep(s: Extract<ActionStep, { kind: 'conditional' }>): Promise<boolean | 'stopped'> {
+    const name = conditionHolds(s.test) ? s.then : s.else;
+    if (!name) return true;
+    const target = actions.list.find((a) => a.name === name);
+    if (!target || conditionalDepth >= 8) return false;
+    conditionalDepth++;
+    try {
+      const r = await actions.play(target, (x) => runStep(x, !!target.relative));
+      return r.stopped ? 'stopped' : r.failed === null;
+    } finally { conditionalDepth--; }
+  }
+
   /** One recorded step on the current document: a command through the registry, a filter with its settings, or a
    *  size change through the engine. False when it cannot run here. */
   async function runStep(s: ActionStep, relative = false): Promise<boolean | 'stopped'> {
@@ -1759,6 +1837,7 @@ export function startApp(): void {
     if (s.kind === 'adjustment') return dialogs.adjust.applySettings(s.adj as AdjustmentKind, s.data as Parameters<typeof dialogs.adjust.applySettings>[1], s.layer);
     if (s.kind === 'fitImage') return engine.fitImage(s.w, s.h, s.enlarge, true);
     if (s.kind === 'conditionalMode') return conditionalMode(s.from, s.to);
+    if (s.kind === 'conditional') return conditionalStep(s);
     const doc = engine.current?.doc, follow = relative && !!doc && !!s.fromW && !!s.fromH;
     if (s.kind === 'imageSize') {
       // Following each image: the same proportion of this document as of the one the step was recorded on.
@@ -2552,6 +2631,8 @@ export function startApp(): void {
 
   const imageInput = el<HTMLInputElement>(`<input type="file" multiple accept="${IMAGE_ACCEPT}" data-role="import-images" hidden>`);
   document.body.appendChild(imageInput);
+  const folderInput = el<HTMLInputElement>('<input type="file" webkitdirectory multiple data-role="import-folder" hidden>');
+  document.body.appendChild(folderInput);
   const replaceInput = el<HTMLInputElement>(`<input type="file" accept="${IMAGE_ACCEPT}" data-role="replace-contents" hidden>`);
   document.body.appendChild(replaceInput);
   /** One file picked through a fresh input, for links in browsers without file handles; null when cancelled. */
@@ -2623,6 +2704,12 @@ export function startApp(): void {
       } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
     });
   });
+  folderInput.addEventListener('change', () => {
+    const all = Array.from(folderInput.files ?? []), files = all.filter((f) => !isProjectFile(f) && isImageFile(f)).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    folderInput.value = '';
+    if (files.length) void importFiles(files);
+    else if (all.length) toast('That folder holds no pictures formvis can open.', 'info');
+  });
   imageInput.addEventListener('change', () => {
     const files = Array.from(imageInput.files ?? []);
     imageInput.value = '';
@@ -2653,6 +2740,7 @@ export function startApp(): void {
     saveForWeb: new SaveForWebDialog(engine, deliver),
     exportLuts: new LutExportDialog(engine, deliver),
     measureScale: new MeasureScaleDialog(engine),
+    scaleMarker: new ScaleMarkerDialog(engine),
     measureLog: new MeasurementLogDialog(engine, deliver),
     measureDataPoints: new MeasureDataPointsDialog(),
     findReplaceText: new FindReplaceTextDialog(engine),
@@ -2672,6 +2760,7 @@ export function startApp(): void {
     colorRange: new ColorRangeDialog(engine),
     actions: new ActionsDialog(actions, { play: (x) => playAction(x), save: (b, n) => deliver(b, n) }),
     batch: new BatchDialog(actions, (x, f, fmt, q, t, s) => runBatch(x, f, fmt, q, t, s)),
+    droplet: new DropletDialog(actions, (o) => makeDroplet(o)),
     imageProcessor: new ImageProcessorDialog(actions, (o) => imageProcessor(o)),
     generative: new GenerativeDialog(engine),
     layerStyle: new LayerStyleDialog(engine),
@@ -2686,6 +2775,7 @@ export function startApp(): void {
     shortcuts: new ShortcutsDialog(commands),
     about: new AboutDialog(),
     systemInfo: new SystemInfoDialog(),
+    reportIssue: new ReportIssueDialog(),
     update: new UpdateDialog(),
     brushSettings: new BrushSettingsDialog(engine),
     warpText: new WarpTextDialog(engine),
@@ -2758,7 +2848,7 @@ export function startApp(): void {
   engine.uiHooks.gradientEditor = () => dialogs.gradientEditor.show();
   loadCustomShapes();
   void loadImportedBrushes().then(() => engine.emit('options', null));
-  const abrInput = el<HTMLInputElement>('<input type="file" accept=".abr" data-role="import-brushes" hidden>');
+  const abrInput = el<HTMLInputElement>('<input type="file" accept=".abr,image/*" data-role="import-brushes" hidden>');
   document.body.appendChild(abrInput);
   dialogs.settings.workspaceLock = { get: () => dock.locked, set: (on) => { dock.locked = on; } };   // Preferences > Workspace
   // The usual question before painting a type, shape or smart-object layer (1.50.2): rasterize it, or leave it.
@@ -2824,6 +2914,7 @@ export function startApp(): void {
     viewCapture: () => stage.capture(),
     selectPoints: (inside, outside, mode) => selectByPoints(engine, inside, outside, mode),
     plugins: () => pluginHost.list(),
+    log: () => [...errorLog.entries, ...engine.failures],
   });
   agents.setEnabled(loadPrefs().agentsAllowed);
   window.addEventListener('formvis:agents', (ev) => agents.setEnabled((ev as CustomEvent<boolean>).detail === true));
@@ -2858,6 +2949,7 @@ export function startApp(): void {
   const pluginsDialog = new PluginsDialog(pluginHost,(title, text, ok) => confirmAction(title, text, ok));
   const largePicture = new LargePictureDialog(engine);
   const tiffPages = new TiffPagesDialog(engine);
+  const exrChooser = new ExrPartsDialog();
   const openAs = new OpenAsDialog((f) => importFiles([f]));
   const colourView = new ColourView(engine);   // colour management (1.53.5)
   colourView.onProof = (label) => status.setProof(label);
@@ -2959,6 +3051,7 @@ export function startApp(): void {
     ...Array.from({ length: 10 }, (_, i) => ({ id: `recent-${i}`, label: () => (isDiskPath(recent[i] ?? '') ? baseName(recent[i]) : recent[i] ?? ''), enabled: () => i < recent.length, run: () => { const n = recent[i]; if (n) void openLibrary(n); } })),
     { id: 'clear-recent', label: 'Clear Recent', enabled: () => recent.length > 0, run: () => keepRecent([]) },
     { id: 'import', label: 'Import Images...', keys: ['Shift+Mod+O'], run: () => imageInput.click() },
+    { id: 'import-folder', label: 'Import Images from Folder...', run: () => folderInput.click() },
     { id: 'import-notes', label: 'Import Notes...', enabled: has, run: () => { void importNotes(); } },
     { id: 'open-as', label: 'Open As...', params: { format: { type: 'string', description: 'The format to read the file as, by extension (png, jpg, tif, tga, dpx, cin, wbmp, dds, exr, psd); leave out to choose in the dialog.' } }, run: (a) => openAs.show(typeof a?.format === 'string' ? a.format.toLowerCase() : undefined) },
     { id: 'import-video', label: 'Video Frames to Layers...', run: () => videoDialog.show() },   // 1.58.9, L1
@@ -3049,6 +3142,18 @@ export function startApp(): void {
     { id: 'pref-home-last-close', label: 'Show Home Screen When the Last Document Closes', checked: () => loadPrefs().homeOnLastClose, run: () => { updatePrefs({ homeOnLastClose: !loadPrefs().homeOnLastClose }); home.sync(); } },
     { id: 'pref-whats-new-auto', label: 'Show What\'s New Once After an Update', checked: () => loadPrefs().whatsNewAuto, run: () => { updatePrefs({ whatsNewAuto: !loadPrefs().whatsNewAuto }); } },
     { id: 'manage-plugins', label: 'Manage Plugins...', run: () => void pluginsDialog.show() },   // 1.52.6
+    { id: 'reload-plugins', label: 'Reload Plugins', run: () => { void pluginHost.reloadAll().then((n) => toast(`Plugins reloaded: ${n} running.`)); } },
+    { id: 'open-plugins-folder', label: 'Open Plugins Folder', run: () => {
+      void (async () => {
+        const dir = (await api.capabilities())?.dataDir;
+        if (!dir) { toast('The formvis engine is offline (./formvis boot).', 'error'); return; }
+        const path = `${dir.replace(/[\\/]+$/, '')}/plugins`;
+        try {
+          const res = await fetch('/api/reveal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path }) });
+          if (!res.ok) toast(`Plugins folder: ${path}`);
+        } catch { toast(`Plugins folder: ${path}`); }
+      })();
+    } },
     { id: 'open-svg-layers', label: 'Open SVG as Layers...', params: { svg: { type: 'string', description: 'The SVG text to open; leave out to pick a file.' } }, run: (a) => { void openSvgLayers(typeof a?.svg === 'string' ? a.svg : null); } },
     { id: 'place-3d', label: 'Place 3D Model...', enabled: has, run: () => model3dInput.click() },   // 1.51.9
     { id: 'extrude-3d', label: 'New 3D Extrusion from Selected Layer...', enabled: () => { const l = engine.current?.activeLayer; return !!l && !l.isGroup && (!!l.vector || !!l.raster); }, run: () => void extrude3d.start() },   // DEV_PLAN 32.9
@@ -3087,20 +3192,49 @@ export function startApp(): void {
         engine.trap(trapPixels(Number(a.width), unit, p.doc.resolution));
       },
     },
-    { id: 'actions', label: 'Actions...', run: () => dialogs.actions.show() },
+    { id: 'actions', label: 'Actions...', keys: ['Alt+F9'], run: () => dialogs.actions.show() },
     { id: 'script-console', label: 'Script Console...', run: () => scriptConsole.show() },
     { id: 'console-log', label: 'Console...', run: () => consoleLog.show() },
     { id: 'earlier-states', label: 'Earlier States...', run: () => void earlierStates.show() },
     { id: 'action-stop', label: 'Stop Recording', enabled: () => !!actions.recording, run: () => { const x = actions.recording; actions.stop(); if (x) toast(`Recorded "${x.name}", ${x.steps.length} step${x.steps.length === 1 ? '' : 's'}.`); } },
+    {
+      id: 'insert-conditional', label: 'Insert Conditional...', enabled: () => actions.list.length > 0,
+      params: {
+        action: { type: 'string', description: 'The action that gets the step; the one being recorded, else the last one, when left out.' },
+        test: { type: 'string', enum: CONDITION_TESTS.map(([t]) => t), description: 'What the document is asked: landscape, portrait, square, depth8, depth16, depth32, selection, unsaved, layers, textLayer, smartLayer or maskLayer.' },
+        then: { type: 'string', description: 'The name of the action played when the test holds; leave out for nothing.' },
+        else: { type: 'string', description: 'The name of the action played when it does not; leave out for nothing.' },
+      },
+      run: (a) => {
+        const test = CONDITION_TESTS.find(([t]) => t === a?.test);
+        if (!a || !test) { dialogs.actions.show(); return undefined; }
+        const into = typeof a.action === 'string' && a.action ? actions.list.find((x) => x.name === a.action) : actions.recording ?? actions.list[actions.list.length - 1];
+        const then = typeof a.then === 'string' ? a.then : '', other = typeof a.else === 'string' ? a.else : '';
+        if (!into) throw new Error(`There is no action named "${String(a.action)}".`);
+        if (!then && !other) throw new Error('Give then, else or both: the name of the action to play.');
+        for (const n of [then, other]) if (n && !actions.list.some((x) => x.name === n)) throw new Error(`There is no action named "${n}".`);
+        into.steps.push({ kind: 'conditional', label: `If ${test[1].toLowerCase()}`, test: test[0], then, else: other });
+        actions.save();
+        return { action: into.name, steps: into.steps.length };
+      },
+    },
     { id: 'batch', label: 'Batch...', enabled: () => actions.list.some((x) => x.steps.length > 0), run: () => dialogs.batch.show() },
     {
       id: 'create-droplet', label: 'Create Droplet...', enabled: () => actions.list.length > 0,
-      run: async () => {
-        const name = await promptName('Create Droplet: action name', actions.list[0]?.name ?? '', 'Create');
-        if (!name) return;
-        if (!actions.list.some((x) => x.name === name)) { toast(`There is no action named "${name}".`, 'error'); return; }
-        await deliver(new Blob([dropletScript(name, 'png')], { type: 'text/x-shellscript' }), `${name}-droplet.sh`);
-        toast('Put the droplet in the formvis folder, make it executable, then drop pictures onto it.');
+      params: {
+        action: { type: 'string', description: 'The name of the recorded action the droplet runs; leave out to choose in the dialog.' },
+        format: { type: 'string', description: 'png, jpg, webp or tiff; png when left out.' },
+        quality: { type: 'number', min: 1, max: 100, description: 'Quality for jpg and webp; 92 when left out.' },
+        out: { type: 'string', description: 'The folder the results go to; beside each picture when left out.' },
+        recursive: { type: 'boolean', description: 'Search dropped folders through their sub-folders.' },
+      },
+      run: async (a) => {
+        if (typeof a?.action !== 'string' || !a.action) { dialogs.droplet.show(); return undefined; }
+        if (!actions.list.some((x) => x.name === a.action)) { toast(`There is no action named "${a.action}".`, 'error'); return undefined; }
+        const f = String(a.format ?? 'png').toLowerCase(), format = f === 'jpeg' ? 'jpg' : f === 'tif' ? 'tiff' : f;
+        if (format !== 'png' && format !== 'jpg' && format !== 'webp' && format !== 'tiff') throw new Error('format must be png, jpg, webp or tiff.');
+        await makeDroplet({ action: a.action, format, quality: typeof a.quality === 'number' ? a.quality : 92, out: typeof a.out === 'string' ? a.out : '', recursive: a.recursive === true });
+        return undefined;
       },
     },
     {
@@ -3180,9 +3314,9 @@ export function startApp(): void {
     },
     {
       id: 'data-sets-import', label: 'Data Sets...', enabled: has,
-      params: { text: { type: 'string', description: 'CSV or tab-separated text: the first row names the variables, each later row is a data set.' } },
+      params: { text: { type: 'string', description: 'CSV or tab-separated text: the first row names the variables, each later row is a data set.' }, delimiter: { type: 'string', description: 'One character that separates the fields, or \\t for a tab; left out, the comma, semicolon, bar or tab the first row uses.' } },
       run: (a) => {
-        if (a?.text !== undefined) return engine.importDataSets(String(a.text));
+        if (a?.text !== undefined) return engine.importDataSets(String(a.text), a.delimiter === undefined ? '' : String(a.delimiter));
         dialogs.dataSets.show();
         return undefined;
       },
@@ -3349,6 +3483,7 @@ export function startApp(): void {
     { id: 'fill-history', label: 'Fill with History', keys: ['Alt+Mod+Backspace', 'Alt+Mod+Delete'], enabled: pixel, run: () => engine.fillWith({ history: true }, 'normal', 1, false) },
     { id: 'fill-dialog', label: 'Fill...', keys: ['Shift+F5'], enabled: pixel, run: () => dialogs.fill.show() },
     { id: 'content-fill-workspace', label: 'Content-Aware Fill...', enabled: () => pixel() && selected(), run: () => dialogs.contentFill.show() },
+    { id: 'cancel-job', label: 'Cancel Background Job', enabled: () => engine.jobs.some((j) => !j.cancelled), run: () => { const n = engine.cancelJob(); if (n) toast(n === 1 ? 'Stopping the running job.' : `Stopping ${n} running jobs.`); } },
     { id: 'remove-wires', label: 'Remove Wires and Cables', enabled: pixel, run: () => { void engine.task(async () => { await new Promise((r) => requestAnimationFrame(() => window.setTimeout(r, 0))); engine.removeWires(); }); } },
     { id: 'transform-warp', label: 'Warp', enabled: pixel, run: (a) => { engine.setTool('move'); if (engine.beginMeshWarp(typeof a?.grid === 'number' ? a.grid : engine.meshWarpGrid) && typeof a?.style === 'string') engine.setMeshWarpPreset({ style: a.style as 'custom', ...(typeof a.bend === 'number' ? { bend: a.bend } : {}), ...(typeof a.horizontal === 'number' ? { horizontal: a.horizontal } : {}), ...(typeof a.vertical === 'number' ? { vertical: a.vertical } : {}), ...(a.orientation === 'vertical' ? { orientation: 'vertical' as const } : {}) }); } },
     { id: 'warp-split-h', label: 'Split Warp Horizontally', enabled: () => !!engine.meshWarpEdit, run: (a) => { engine.splitMeshWarp('h', typeof a?.x === 'number' && typeof a?.y === 'number' ? { x: a.x, y: a.y } : engine.meshSplitPoint()); } },
@@ -3513,16 +3648,48 @@ export function startApp(): void {
     { id: 'measure-data-points', label: 'Select Data Points...', enabled: has, run: () => dialogs.measureDataPoints.show() },
     {
       id: 'measure-scale-marker', label: 'Place Scale Marker...', enabled: () => !!engine.current?.doc.measureScale,
-      params: { length: { type: 'number', description: 'The marker length in logical units; leave out for about a fifth of the width.' } },
+      params: {
+        length: { type: 'number', description: 'The marker length in logical units; leave out for about a fifth of the width.' },
+        font_size: { type: 'number', description: 'The text size in pixels; 12 when left out.' },
+        text: { type: 'string', description: 'The text; the length with its units when left out.' },
+        show_text: { type: 'boolean', description: 'Whether the marker has text; true when left out.' },
+        text_position: { type: 'string', description: 'above or below the bar; above when left out.' },
+        color: { type: 'string', description: 'black or white; black when left out.' },
+      },
       run: (a) => {
         const d = engine.current?.doc, sc = d?.measureScale;
         if (!d || !sc) return;
-        let len = typeof a?.length === 'number' && a.length > 0 ? a.length : 0;
-        if (!len) {
-          const raw = (d.width / 5) * (sc.length / sc.pixels), pow = Math.pow(10, Math.floor(Math.log10(raw)));
-          len = pow * ([1, 2, 5, 10].reduce((best, m) => (Math.abs(m * pow - raw) < Math.abs(best * pow - raw) ? m : best), 1));
-        }
-        engine.placeScaleMarker({ lengthUnits: len, text: true, color: 'black' });
+        if (!a || Object.keys(a).length === 0) { dialogs.scaleMarker.show(); return; }
+        const len = typeof a.length === 'number' && a.length > 0 ? a.length : autoMarkerLength(d.width, sc);
+        engine.placeScaleMarker({ lengthUnits: len, text: a.show_text !== false, color: a.color === 'white' ? 'white' : 'black', ...(typeof a.font_size === 'number' ? { fontSize: a.font_size } : {}), ...(typeof a.text === 'string' ? { label: a.text } : {}), textBelow: a.text_position === 'below' });
+      },
+    },
+    { id: 'measure-ruler', label: 'Ruler Tool', enabled: has, run: () => engine.setTool('ruler') },
+    { id: 'measure-color-sampler', label: 'Color Sampler Tool', enabled: has, run: () => engine.setTool('colorSampler') },
+    { id: 'measure-count', label: 'Count Tool', enabled: has, run: () => engine.setTool('count') },
+    {
+      id: 'count-new-group', label: 'New Count Group', enabled: has,
+      params: { name: { type: 'string', description: 'The group name; Group and its number when left out.' }, color: { type: 'string', description: 'The marker colour as #rrggbb; one is chosen when left out.' } },
+      run: (a) => { const id = engine.newCountGroup(typeof a?.name === 'string' ? a.name : undefined, typeof a?.color === 'string' ? a.color : undefined); return id ? { group: id } : { group: null }; },
+    },
+    {
+      id: 'count-set-group', label: 'Set Count Group', enabled: () => !!engine.current?.doc.countGroups?.length,
+      params: {
+        group: { type: 'string', description: 'The group to change, by name or id; the group new marks go into when left out.' },
+        name: { type: 'string', description: 'A new name.' },
+        color: { type: 'string', description: 'A new colour as #rrggbb.' },
+        hidden: { type: 'boolean', description: 'Hide or show the group and its markers.' },
+        active: { type: 'boolean', description: 'Make it the group new marks go into.' },
+        delete: { type: 'boolean', description: 'Delete the group and its markers.' },
+      },
+      run: (a) => {
+        const groups = engine.current?.doc.countGroups ?? [], key = typeof a?.group === 'string' ? a.group : '';
+        const g = key ? groups.find((x) => x.id === key || x.name === key) : groups.find((x) => x.id === engine.activeCountGroup) ?? groups[0];
+        if (!g) { toast('No such count group.', 'info'); return { changed: false }; }
+        if (a?.delete === true) return { changed: engine.removeCountGroup(g.id) };
+        if (a?.active === true) { engine.activeCountGroup = g.id; engine.emit('options', null); }
+        const patch = { ...(typeof a?.name === 'string' ? { name: a.name } : {}), ...(typeof a?.color === 'string' ? { color: a.color } : {}), ...(typeof a?.hidden === 'boolean' ? { hidden: a.hidden } : {}) };
+        return { changed: Object.keys(patch).length ? engine.setCountGroup(g.id, patch) : a?.active === true };
       },
     },
     { id: 'measure-log', label: 'Measurement Log...', enabled: has, run: () => dialogs.measureLog.show() },
@@ -3709,10 +3876,13 @@ export function startApp(): void {
     { id: 'customize-toolbar', label: 'Toolbar...', run: () => openToolbarDialog(engine) },   // Edit > Toolbar (36.22)
     { id: 'shortcuts', label: 'Keyboard Shortcuts...', keys: ['Alt+Shift+Mod+K', 'Shift+/'], run: () => dialogs.shortcuts.show() },   // Edit and Help menus
     { id: 'search', label: 'Search...', keys: ['Mod+K'], run: () => dialogs.palette.show() },
+    { id: 'apply-edit', label: 'Apply Pending Edit', keys: ['Enter'], enabled: has, run: () => stage.toolKeydown(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', cancelable: true })) },
+    { id: 'cancel-edit', label: 'Cancel Pending Edit', keys: ['Escape'], enabled: has, run: () => stage.toolKeydown(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', cancelable: true })) },
     { id: 'about', label: 'About formvis', run: () => dialogs.about.show(caps) },
     {
       id: 'system-info', label: 'System Info...',
-      run: async () => {
+      params: { show: { type: 'boolean', description: 'Open the System Info window; true when left out. Either way the text is returned.' } },
+      run: async (a) => {
         const mb = (n?: number): string => (n === undefined ? 'not reported' : `${(n / 1048576).toFixed(0)} MB`);
         const [c, m] = [await api.capabilities(), await api.metrics()], s = window.screen, pr = loadPrefs();
         const lines = [
@@ -3727,7 +3897,8 @@ export function startApp(): void {
           `Engine log: ${c?.logFile ?? 'none'}`,
           `Switches: ${c?.switches ? `tiles ${c.switches.tiles}, ${c.switches.noComfy ? 'no ComfyUI, ' : ''}log level ${c.switches.logLevel}` : 'unknown'}`,
         ];
-        dialogs.systemInfo.show(lines.join('\n'));
+        if (a?.show !== false) dialogs.systemInfo.show(lines.join('\n'));
+        return lines.join('\n');
       },
     },
     {
@@ -3914,9 +4085,18 @@ export function startApp(): void {
     { id: 'check-for-updates', label: 'Check for Updates...', enabled: hasPanels, run: () => void checkUpdates() },
     { id: 'reset-tool', label: 'Reset Tool', run: () => { const n = optionMemory.reset(engine.tool); toast(n ? `Reset ${n} ${n === 1 ? 'option' : 'options'} of the ${getTool(engine.tool)?.label ?? 'current'} tool.` : 'This tool already has its default options.', 'info'); } },
     { id: 'reset-all-tools', label: 'Reset All Tools', run: () => { const n = optionMemory.reset(); toast(n ? `Reset ${n} tool ${n === 1 ? 'option' : 'options'} to their defaults.` : 'Every tool already has its default options.', 'info'); } },
+    { id: 'frame-trace', label: 'Frame Trace', checked: () => frameTrace.on, run: () => { if (frameTrace.on) { frameTrace.stop(); toast(frameTrace.summary(), 'info'); } else { frameTrace.start(); toast('Tracing frames; run Frame Trace again to stop, and Copy Frame Trace for the table.', 'info'); } engine.setView({}); } },
+    { id: 'copy-frame-trace', label: 'Copy Frame Trace', enabled: () => frameTrace.samples.length > 0, run: () => { void navigator.clipboard?.writeText(frameTrace.csv()).then(() => toast(`Copied ${frameTrace.samples.length} traced frames as CSV.`), () => toast('The clipboard is not available here.', 'error')); } },
+    { id: 'tile-grid', label: 'Tile Grid', checked: () => engine.view.tileGrid, enabled: has, run: () => engine.setView({ tileGrid: !engine.view.tileGrid }) },
     { id: 'simulate-gpu-loss', label: 'Simulate GPU Device Loss', enabled: () => !!gpuDisplay, run: () => { const d = gpuDisplay; if (d?.onLost) { d.onLost(); toast('Simulated a lost GPU device; drawing fell back.', 'info'); } } },
     { id: 'help-github', label: 'formvis on GitHub', run: () => { window.open('https://github.com/nodemode-ai/formvis', '_blank', 'noopener'); } },
-    { id: 'report-issue', label: 'Report an Issue...', run: () => { window.open('https://github.com/nodemode-ai/formvis/issues/new', '_blank', 'noopener'); } },
+    {
+      id: 'report-issue', label: 'Report an Issue...',
+      run: async () => {
+        const info = String(await commands.get('system-info')?.run({ show: false }) ?? '');
+        dialogs.reportIssue.show(`${info}\n\nErrors this session:\n${errorLog.text().split('\n').slice(1).join('\n')}`);
+      },
+    },
     { id: 'copy-error-log', label: 'Copy Error Log', run: () => { void navigator.clipboard?.writeText(errorLog.text()).then(() => toast('Copied the error log.'), () => toast('The clipboard is not available here.', 'error')); } },
   );
 
@@ -3948,7 +4128,7 @@ export function startApp(): void {
         const type = item.types.find((t) => t.startsWith('image/'));
         if (type) {
           const img = await decodeImage(new File([await item.getType(type)], 'Clipboard.png', { type }), 'Clipboard.png');
-          engine.newFromClipboard({ raster: Raster.from(img.source, img.width, img.height), name: 'Clipboard' });
+          engine.newFromClipboard({ raster: Raster.from(img.source, img.width, img.height), name: 'Clipboard', ...(img.resolution ? { resolution: img.resolution } : {}) });
           return;
         }
       }
@@ -4067,7 +4247,7 @@ export function startApp(): void {
     { id: 'smart-filters-clear', label: 'Clear Smart Filters', enabled: () => !!engine.current?.activeLayer?.smart?.filters.length, run: () => engine.clearSmartFilters() },
     { id: 'edit-contents', label: 'Edit Contents', enabled: () => !!engine.current?.activeLayer?.smart, run: () => engine.editContents() },
     { id: 'replace-contents', label: 'Replace Contents...', enabled: () => !!engine.current?.activeLayer?.smart, run: () => replaceInput.click() },
-    { id: 'place-embedded', label: 'Place Embedded...', enabled: has, run: () => { void (async () => { const f = await pickOnce(); if (f) await engine.task(() => placeEmbedded(engine, f)); })(); } },
+    { id: 'place-embedded', label: 'Place Embedded...', enabled: has, run: () => { void (async () => { const f = await pickOnce(); if (!f) return; const was = layersOf(); await engine.task(() => placeEmbedded(engine, f)); enterPlacedTransform(was); })(); } },
     { id: 'place-linked', label: 'Place Linked...', enabled: has, run: () => { void (async () => { try { const got = await pickLinkSource(pickOnce); if (got) await engine.task(() => placeLinked(engine, got.id, got.source)); } catch (err) { linkError(err); } })(); } },
     { id: 'update-linked', label: 'Update Modified Content', enabled: () => !!engine.current?.doc.layers.some((l) => l.smart?.link), run: () => { void engine.task(async () => { try { const r = await updateLinked(engine); toast(r.missing.length ? `Could not reach ${r.missing.join(', ')}. Use Relink to File.` : r.updated ? `Updated ${r.updated} linked smart object${r.updated === 1 ? '' : 's'}.` : 'Linked contents are up to date.', r.missing.length ? 'error' : undefined); } catch (err) { linkError(err); } }); } },
     { id: 'relink', label: 'Relink to File...', enabled: () => !!engine.current?.activeLayer?.smart?.link, run: () => { void (async () => { try { await relink(engine, pickOnce); } catch (err) { linkError(err); } })(); } },
@@ -4286,19 +4466,19 @@ export function startApp(): void {
   const filterGroup = (group: LibGroup, core: string[]): string[] => [...core, ...libInGroup(group).map((f) => `filter-${f.id}`)].sort((a, b) => filterName(a).localeCompare(filterName(b)));
   const drawnFirst = ['filter-flame', 'filter-pictureFrame', 'filter-tree'];
   const menus: MenuDef[] = [
-    { label: 'File', items: () => ['new', 'new-from-clipboard', 'open', 'open-as', 'import', 'import-notes', 'import-video', 'create-video-timeline', 'place-embedded', 'place-linked', 'place-3d', 'open-svg-layers', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.slice(0, 10).map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'save-copy', 'revert', 'earlier-states', 'download-project', 'package', '-',
+    { label: 'File', items: () => ['new', 'new-from-clipboard', 'open', 'open-as', 'import', 'import-folder', 'import-notes', 'import-video', 'create-video-timeline', 'place-embedded', 'place-linked', 'place-3d', 'open-svg-layers', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.slice(0, 10).map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'save-copy', 'revert', 'earlier-states', 'download-project', 'package', '-',
       { label: 'Export', items: ['quick-export', 'export-as', 'export-preferences', 'save-for-web', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-tiff-layers', 'export-hdr', 'export-exr', 'export-exr-half', 'export-exr-piz', 'export-exr-none', 'export-pfm', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'export-paths-ai', 'assemble-tiles', '-', 'export-layers', 'export-layer-comps', 'export-selection-mask', 'generate-image-assets', 'image-assets-on-save', 'export-luts', 'export-artboards-files', 'export-data-sets', 'export-artboards'] },
-      { label: 'Automate', items: ['actions', 'action-stop', 'batch', 'create-droplet', '-', 'fit-image', 'conditional-mode-change', 'contact-sheet', 'crop-straighten-photos', 'photomerge', 'merge-hdr'] },
+      { label: 'Automate', items: ['actions', 'action-stop', 'insert-conditional', 'batch', 'create-droplet', '-', 'fit-image', 'conditional-mode-change', 'contact-sheet', 'crop-straighten-photos', 'photomerge', 'merge-hdr'] },
       { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'image-processor', 'script-events', 'load-files-stack', 'stack-statistics', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'reopen-closed-tab', 'close-all', 'close-others'] },
-    { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', { label: 'Snapshot', items: ['new-snapshot', 'new-snapshot-merged', 'new-snapshot-layer'] }, '-', 'fade', 'compare-documents', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', 'pick-screen-colour', '-',
-      { label: 'Purge', items: ['purge-clipboard', 'purge-undo', 'purge-histories', 'clean-working-files', 'free-helper-models', 'purge-all'] }, { label: 'History Log', items: ['save-history-log', 'clear-history-log'] }, 'reset-tool', 'reset-all-tools', '-',
+    { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', 'cancel-job', { label: 'Snapshot', items: ['new-snapshot', 'new-snapshot-merged', 'new-snapshot-layer'] }, '-', 'fade', 'compare-documents', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', 'pick-screen-colour', '-',
+      { label: 'Purge', items: ['purge-clipboard', 'purge-undo', 'purge-histories', 'clean-working-files', 'free-helper-models', 'purge-all'] }, { label: 'History Log', items: ['save-history-log', 'clear-history-log'] }, 'apply-edit', 'cancel-edit', 'reset-tool', 'reset-all-tools', '-',
       { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg', 'fill-fg-keep', 'fill-bg-keep', 'fill-history'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-', 'auto-align-layers', 'auto-blend-layers', '-',
       'fill-path-dialog', 'stroke-path-dialog', '-', 'transform', 'transform-copy', { label: 'Transform', items: ['transform-again', '-', 'transform-scale', 'transform-rotate', 'transform-skew', 'transform-distort', 'transform-perspective', 'transform-warp', 'warp-split-h', 'warp-split-v', 'warp-split-cross', 'warp-remove-split', '-', 'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw', '-', 'flip-layer-h', 'flip-layer-v'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', 'define-brush', 'define-custom-shape', { label: 'Presets', items: ['preset-manager', '-', 'swatches-load', 'swatches-save'] }, '-', 'assign-profile', 'convert-profile', 'profile-info', 'colour.settings', '-', 'customize-toolbar', 'shortcuts', 'settings'] },
     { label: 'Image', items: [
       'apply-image', 'calculations', { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'desaturate', 'replace-color', 'equalize'] }, '-',
       'auto-tone', 'auto-contrast', 'auto-color', '-',
       { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-grayscale-from', 'mode-duotone', 'mode-indexed', 'mode-multichannel', 'color-table', 'mode-rgb', 'mode-cmyk', 'mode-lab', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
-      'image-size', 'canvas-size', { label: 'Pixel Aspect Ratio', items: ['par-square', 'par-d1-ntsc', 'par-d1-pal', 'par-d1-ntsc-wide', 'par-d1-pal-wide', 'par-anamorphic', 'par-hdv', 'par-dvcpro-hd', '-', 'par-custom'] }, { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'trim', 'reveal-all', 'trap', '-', 'frequency-separation', 'duplicate-image', '-', { label: 'Variables', items: ['variables-define', 'data-sets-import', 'data-set-apply'] }, '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }, '-', { label: 'Analysis', items: ['measure-scale', 'measure-record', 'measure-data-points', 'measure-scale-marker', 'measure-log'] }] },
+      'image-size', 'canvas-size', { label: 'Pixel Aspect Ratio', items: ['par-square', 'par-d1-ntsc', 'par-d1-pal', 'par-d1-ntsc-wide', 'par-d1-pal-wide', 'par-anamorphic', 'par-hdv', 'par-dvcpro-hd', '-', 'par-custom'] }, { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'trim', 'reveal-all', 'trap', '-', 'frequency-separation', 'duplicate-image', '-', { label: 'Variables', items: ['variables-define', 'data-sets-import', 'data-set-apply'] }, '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }, '-', { label: 'Analysis', items: ['measure-scale', 'measure-ruler', 'measure-color-sampler', 'measure-count', { label: 'Count Groups', items: ['count-new-group', 'count-set-group'] }, 'measure-record', 'measure-data-points', 'measure-scale-marker', 'measure-log'] }] },
     { label: 'Layer', items: [
       { label: 'New', items: ['new-layer-dialog', 'new-type-layer', 'new-shape-layer', 'new-dodge-burn-layer', 'layer-from-background', 'background-from-layer', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard-dialog', 'artboard-from-group', 'artboard-from-layers-dialog', 'frame-from-layers', '-', 'duplicate', 'layer-via-cut', '-', 'new-relight-layer'] }, 'artboard-options', '-',
       { label: 'New Fill Layer', items: ['new-fill-solid', 'new-fill-gradient', 'new-fill-pattern'] }, { label: 'Video Layers', items: ['video-layer-from-file', 'video-layer-blank', '-', 'video-insert-blank-frame', 'video-duplicate-frame', 'video-delete-frame', '-', 'video-restore-frame', 'video-restore-all', 'video-replace-footage', 'video-interpret-footage', 'video-rasterize'] },{ label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'edit-relight', 'layer-content-options', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, '-',
@@ -4339,9 +4519,9 @@ export function startApp(): void {
     { label: 'View', items: [{ label: 'Proof Setup', items: ['proof-setup', '-', 'proof-preset-monitor', 'proof-preset-macrgb', 'proof-preset-internet', 'proof-preset-cmyk', 'proof-preset-cyan', 'proof-preset-magenta', 'proof-preset-yellow', 'proof-preset-black', 'proof-preset-cmy', '-', 'proof-preset-protanopia', 'proof-preset-deuteranopia'] }, 'proof-colors', 'gamut-warning', 'preview-32', '-', 'zoom-in', 'zoom-out', 'fit', 'fit-layers', 'fit-artboard', 'actual', 'print-size', '-', 'toggle-extras', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'pattern-preview', 'pixel-art-preview', 'par-correction', 'transform-controls', 'toggle-task-bar', '-',
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'guide-layout', 'guides-from-shape', 'clear-guides'] }, 'snap', { label: 'Snap To', items: ['snap-all', '-', 'snap-guides', 'snap-grid', 'snap-layers', 'snap-bounds'] }, { label: 'Show', items: ['show-all-extras', 'show-no-extras', '-', 'show-selection-edges', 'selection-display-tint', 'show-layer-edges', 'show-smart-guides', 'show-comfy-dot', 'show-notes', 'show-counts', 'toggle-show-slices', 'toggle-auto-slices', 'lock-slices', 'layer-based-slice', 'slices-from-guides', 'slice-options', 'divide-slice', 'delete-slice', 'clear-slices'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'os-full-screen', 'toggle-panels', 'rail-columns', 'interface-rtl', { label: 'Pasteboard', items: ['pasteboard-default', 'pasteboard-black', 'pasteboard-dark', 'pasteboard-mid', 'pasteboard-light'] }, { label: 'Theme', items: Object.keys(THEMES).map((tid) => `theme-${tid}`) }] },
-    { label: 'Plugins', items: () => { const ids = pluginHost.commandIds(); return ['manage-plugins', ...(ids.length ? ['-', ...ids] : [])]; } },
+    { label: 'Plugins', items: () => { const ids = pluginHost.commandIds(); return ['manage-plugins', 'reload-plugins', 'open-plugins-folder', ...(ids.length ? ['-', ...ids] : [])]; } },
     { label: 'Window', items: [{ label: 'Arrange', items: ['new-window', 'float-window', 'float-all-windows', 'arrange-cascade', '-', 'arrange-tabs','arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-4up', 'arrange-6up', 'arrange-tile', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.connect.open', 'agent.connect.copy-claude-code', 'agent.connect.copy-claude-desktop', 'terminal.toggle', 'terminal.new', 'script-console', 'brush-settings', { label: 'Brush Size', items: ['brush-size-up', 'brush-size-down', 'brush-harder', 'brush-softer'] }, 'paragraph-styles', 'character-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-channels', 'panel-color', 'panel-tools', 'panel-properties-col', 'merge-columns', 'toggle-dock-panels', '-', { label: 'Workspace', items: ['workspace-pixelart', '-', 'new-workspace', 'delete-workspace'] }, 'reset-panels', '-', 'next-document', 'previous-document', '-', 'theme-sync-system', 'next-appearance', 'interface-darken', 'interface-lighten', '-', 'reload-window'] },
-    { label: 'Help', items: ['help', 'whats-new', '-', 'shortcuts', 'console-log', 'copy-error-log', 'copy-engine-log', 'benchmark', 'record-performance', 'simulate-gpu-loss', '-', 'help-github', 'report-issue', '-', 'check-for-updates', 'system-info', 'about'] },
+    { label: 'Help', items: ['help', 'whats-new', '-', 'shortcuts', 'console-log', 'copy-error-log', 'copy-engine-log', 'benchmark', 'record-performance', 'frame-trace', 'copy-frame-trace', 'tile-grid', 'simulate-gpu-loss', '-', 'help-github', 'report-issue', '-', 'check-for-updates', 'system-info', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);
   // The desktop app on macOS puts these menus in the system menu bar, as the target's (Phase 21); the in-window bar then hides.
@@ -4477,10 +4657,15 @@ export function startApp(): void {
     const target = e.target instanceof Element ? e.target : null;
     if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
     if (e.code === 'Space' && !e.shiftKey) { e.preventDefault(); if (!e.repeat) stage.setSpace(true); return; }   // with Ctrl or Cmd it is the temporary Zoom (a drag)
-    if (stage.toolKeydown(e)) { e.preventDefault(); return; }
-    const cmd = commands.forEvent(e);
+    // Return and Escape reach the tool through the two edit commands, so Keyboard Shortcuts can move them: a key bound to
+    // one is passed on as the tool's own Return or Escape, and a plain Return or Escape that was rebound away is not.
+    const cmd = commands.forEvent(e), plain = !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey;
+    const editCmd = cmd?.id === 'apply-edit' || cmd?.id === 'cancel-edit';
+    if (editCmd && e.key !== (cmd?.id === 'apply-edit' ? 'Enter' : 'Escape')) { if (cmd && commands.get(cmd.id)?.run()) e.preventDefault(); return; }
+    const rebound = plain && ((e.key === 'Enter' && cmd?.id !== 'apply-edit') || (e.key === 'Escape' && cmd?.id !== 'cancel-edit'));
+    if (!rebound && stage.toolKeydown(e)) { e.preventDefault(); return; }
     if (cmd?.id === 'paste') return;
-    if (cmd) {
+    if (cmd && !editCmd) {
       e.preventDefault();
       if (!e.repeat || /^(undo|redo|zoom-in|zoom-out)$/.test(cmd.id)) commands.run(cmd.id);
       return;
@@ -4542,6 +4727,8 @@ export function startApp(): void {
     dragDepth = 0;
     setHidden(drop, true);
     const at = stage.docPoint(e.clientX, e.clientY) ?? undefined, ctrlDrop = e.ctrlKey || e.metaKey;
+    const onTabs = e.target instanceof Element && !!e.target.closest('.cv-doc-tabs'), shiftDrop = e.shiftKey && !ctrlDrop && !onTabs;
+    const tabAt = onTabs ? Array.from(root.querySelectorAll<HTMLElement>('.cv-tab-strip .cv-tab')).filter((t) => { const r = t.getBoundingClientRect(); return e.clientX > r.left + r.width / 2; }).length : -1;
     const items = Array.from(e.dataTransfer?.items ?? []).filter((i) => i.kind === 'file');
     const folders: FileSystemEntry[] = [];
     const files: File[] = [];
@@ -4557,7 +4744,27 @@ export function startApp(): void {
         const out = { files: [] as File[], paths: [] as string[] };
         try { await readEntry(entry, '', out); await openFolder(out.files, out.paths); } catch (err) { toast(message(err), 'error'); }
       }
-      if (files.length) await importFiles(files, at, ctrlDrop ? 'documents' : 'layers');
+      if (shiftDrop) {
+        const refs = files.filter((f) => !isProjectFile(f) && isImageFile(f) && f.type.startsWith('image/'));
+        if (refs.length) {
+          if (!dock.isShown('reference')) dock.toggle('reference');
+          document.dispatchEvent(new CustomEvent('nm:add-references', { detail: refs }));
+          files.splice(0, files.length, ...files.filter((f) => !refs.includes(f)));
+          toast(refs.length === 1 ? `${refs[0].name} added to the Reference panel.` : `${refs.length} pictures added to the Reference panel.`, 'info');
+        }
+      }
+      if (!files.length) return;
+      const before = new Set(engine.projects.map((q) => q.id)), was = layersOf();
+      const many = files.filter((f) => !isProjectFile(f) && isImageFile(f)).length > 1;
+      await importFiles(files, at, ctrlDrop || onTabs || (!engine.current && many) ? 'documents' : 'layers');
+      if (onTabs) {
+        const list = engine.projects, fresh = list.filter((q) => !before.has(q.id));
+        if (fresh.length) {
+          const rest = list.filter((q) => before.has(q.id));
+          list.splice(0, list.length, ...rest.slice(0, tabAt), ...fresh, ...rest.slice(tabAt));
+          engine.emit('projects', null);
+        }
+      } else if (!ctrlDrop && files.length === 1) enterPlacedTransform(was);
     })();
   });
 
@@ -4637,7 +4844,7 @@ export function startApp(): void {
   // agents, ComfyUI and NodeMode, LittleCMS conversions). With it not running they are off, with a title saying why.
   const ENGINE_ONLY = new Set<string>(['save', 'save-as', 'save-copy', 'open', 'revert', 'export-tiff', 'export-pdf', 'export-avif', 'convert-profile', 'mode-cmyk',
     'remove-bg', 'remove-bg-lite', 'select-subject', 'select-object', 'generative-fill', 'generate-image', 'generative-expand', 'upscale-2x', 'upscale-4x', 'assistant',
-    'terminal.toggle', 'terminal.new', 'agent.claude.open', 'send-nodemode', 'send-comfyui', 'comfyui-run', 'photomerge', 'merge-hdr', 'manage-plugins',
+    'terminal.toggle', 'terminal.new', 'agent.claude.open', 'send-nodemode', 'send-comfyui', 'comfyui-run', 'photomerge', 'merge-hdr', 'manage-plugins', 'reload-plugins', 'open-plugins-folder',
     'import-video', 'video-layer-from-file', 'video-replace-footage', 'export-mp4', 'render-video']);
   // Relight lights the 8-bit RGB picture beneath it (its shader reads and writes 8-bit RGBA), so other modes and depths say why it waits.
   const relightWhy = (): string => {

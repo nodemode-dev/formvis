@@ -206,11 +206,19 @@ export function replaceContents(host: SmartObjectHost, source: Raster): boolean 
 
 /** File > Place Linked: `raster` as a new smart object, centred, linked to a file through `link`. */
 export function placeEmbedded(host: SmartObjectHost, raster: Raster, name: string): void {
-  host.insertRasterLayer(raster, name, null, null, { smart: { source: raster, filters: [] } }, 'Place Embedded');
+  host.insertRasterLayer(raster, name, null, null, { smart: { source: raster, filters: [] }, ...fitTransform(host, raster) }, 'Place Embedded');
 }
 
 export function placeLinked(host: SmartObjectHost, raster: Raster, link: SmartLink, name: string): void {
-  host.insertRasterLayer(raster, name, null, null, { smart: { source: raster, filters: [], link } }, 'Place Linked');
+  host.insertRasterLayer(raster, name, null, null, { smart: { source: raster, filters: [], link }, ...fitTransform(host, raster) }, 'Place Linked');
+}
+
+/** A picture larger than the canvas is placed scaled down to fit it, centred; a smaller one keeps its own size (no extra). */
+function fitTransform(host: SmartObjectHost, raster: Raster): Partial<Layer> {
+  const d = host.current?.doc;
+  if (!d || (raster.width <= d.width && raster.height <= d.height)) return {};
+  const s = Math.min(d.width / raster.width, d.height / raster.height), w = raster.width * s, h = raster.height * s;
+  return { transform: { ...docTransform(raster.width, raster.height), x: (d.width - w) / 2, y: (d.height - h) / 2, w, h } };
 }
 
 /** New contents read from a linked file: the smart object `id` re-rendered from `raster` at the same scale and

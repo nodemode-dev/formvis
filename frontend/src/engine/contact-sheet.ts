@@ -7,7 +7,20 @@ export interface SheetSettings {
   auto: boolean; vertical: number; horizontal: number;
   /** Room kept under each cell for its caption (0 when there are none). */
   caption: number;
+  /** Place across first (row by row, the default) or down first (column by column). */
+  order?: 'across' | 'down';
 }
+
+export type SheetUnit = 'px' | 'in' | 'cm' | 'mm';
+
+/** A page length in `unit` as whole pixels at `ppi`. */
+export const toPixels = (v: number, unit: SheetUnit, ppi: number): number => Math.round(unit === 'in' ? v * ppi : unit === 'cm' ? (v / 2.54) * ppi : unit === 'mm' ? (v / 25.4) * ppi : v);
+
+/** Pixels as a length in `unit` at `ppi`, to two decimals (whole for px). */
+export const fromPixels = (px: number, unit: SheetUnit, ppi: number): number => {
+  const v = unit === 'in' ? px / ppi : unit === 'cm' ? (px / ppi) * 2.54 : unit === 'mm' ? (px / ppi) * 25.4 : px;
+  return unit === 'px' ? Math.round(v) : Math.round(v * 100) / 100;
+};
 
 export interface Cell { x: number; y: number; w: number; h: number }
 export interface Placement { cell: Cell; x: number; y: number; w: number; h: number; rotate: boolean }
@@ -22,7 +35,9 @@ export function sheetCells(s: SheetSettings): Cell[] {
   const cw = (s.width - gx * (cols + 1)) / cols, ch = (s.height - gy * (rows + 1)) / rows;
   const out: Cell[] = [];
   if (!(cw >= 1) || !(ch - s.caption >= 1)) return out;
-  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) out.push({ x: Math.round(gx + c * (cw + gx)), y: Math.round(gy + r * (ch + gy)), w: Math.floor(cw), h: Math.floor(ch - s.caption) });
+  const cell = (r: number, c: number): Cell => ({ x: Math.round(gx + c * (cw + gx)), y: Math.round(gy + r * (ch + gy)), w: Math.floor(cw), h: Math.floor(ch - s.caption) });
+  if (s.order === 'down') for (let c = 0; c < cols; c++) for (let r = 0; r < rows; r++) out.push(cell(r, c));
+  else for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) out.push(cell(r, c));
   return out;
 }
 

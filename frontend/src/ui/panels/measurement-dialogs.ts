@@ -3,9 +3,23 @@ import type { Doc } from '../../engine/types';
 import { Dialog } from '../dialogs';
 import { el, q, setText, setValue } from '../dom';
 import { MEASURE_POINTS, loadPrefs, updatePrefs } from '../prefs';
+import { tn } from '../i18n';
+
+/** The Set Measurement Scale presets: a pixel length that stands for a logical length. Custom keeps what is typed. */
+export const SCALE_PRESETS: ReadonlyArray<{ label: string; pixels: number; length: number; units: string; custom?: boolean }> = [
+  { label: 'Custom', pixels: 1, length: 1, units: 'px', custom: true },
+  { label: '1 pixel = 1 pixel', pixels: 1, length: 1, units: 'px' },
+  { label: '10 pixels = 1 millimeter', pixels: 10, length: 1, units: 'mm' },
+  { label: '100 pixels = 1 centimeter', pixels: 100, length: 1, units: 'cm' },
+  { label: '96 pixels = 1 inch', pixels: 96, length: 1, units: 'in' },
+  { label: '72 pixels = 1 inch', pixels: 72, length: 1, units: 'in' },
+  { label: '300 pixels = 1 inch', pixels: 300, length: 1, units: 'in' },
+  { label: '10 pixels = 1 micrometer', pixels: 10, length: 1, units: 'um' },
+];
 
 /** Image > Analysis > Set Measurement Scale (DEV_PLAN 31.6 part a): pixels per logical length. Built once. */
 export class MeasureScaleDialog extends Dialog {
+  private readonly preset = el<HTMLSelectElement>('<select class="cv-input"></select>');
   private readonly pixels = el('<label class="cv-field"><span></span><input class="cv-input" type="number" min="0.001" step="any"></label>');
   private readonly length = el('<label class="cv-field"><span></span><input class="cv-input" type="number" min="0.001" step="any"></label>');
   private readonly units = el('<label class="cv-field"><span></span><input class="cv-input" type="text" maxlength="12"></label>');
@@ -21,7 +35,15 @@ export class MeasureScaleDialog extends Dialog {
     this.pIn = q(this.pixels, 'input') as HTMLInputElement;
     this.lIn = q(this.length, 'input') as HTMLInputElement;
     this.uIn = q(this.units, 'input') as HTMLInputElement;
-    this.body.append(el('<p class="cv-dialog-note">How many pixels make a logical length. Draw a Ruler line first to fill the pixel length.</p>'), this.pixels, this.length, this.units);
+    this.body.append(el('<p class="cv-dialog-note">How many pixels make a logical length. Draw a Ruler line first to fill the pixel length.</p>'), this.field('Preset', this.preset), this.pixels, this.length, this.units);
+    for (const [i, p] of SCALE_PRESETS.entries()) this.preset.append(el(`<option value="${i}">${p.label}</option>`));
+    this.preset.addEventListener('change', () => {
+      const p = SCALE_PRESETS[Number(this.preset.value)];
+      if (!p || p.custom) return;
+      setValue(this.pIn, String(p.pixels));
+      setValue(this.lIn, String(p.length));
+      setValue(this.uIn, p.units);
+    });
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => {
       this.engine.setMeasureScale(Number(this.pIn.value), Number(this.lIn.value), this.uIn.value);
@@ -35,8 +57,52 @@ export class MeasureScaleDialog extends Dialog {
     setValue(this.pIn, String(Number((ruler > 0 ? ruler : sc?.pixels ?? 1).toFixed(3))));
     setValue(this.lIn, String(sc?.length ?? 1));
     setValue(this.uIn, sc?.units ?? 'cm');
+    setValue(this.preset, '0');
     this.open();
   }
+}
+
+/** Image > Analysis > Place Scale Marker: the bar's length in logical units, its colour, and the text's font, size,
+ *  wording and position. Built once; the length starts at about a fifth of the width. */
+export class ScaleMarkerDialog extends Dialog {
+  private readonly length = el<HTMLInputElement>('<input class="cv-input" type="number" min="0.001" step="any">');
+  private readonly show$ = el<HTMLInputElement>('<input type="checkbox" checked>');
+  private readonly textIn = el<HTMLInputElement>('<input class="cv-input" type="text" maxlength="40" placeholder="Length and units">');
+  private readonly font = el<HTMLSelectElement>('<select class="cv-input"><option value="sans-serif">Sans-serif</option><option value="serif">Serif</option><option value="monospace">Monospace</option></select>');
+  private readonly size = el<HTMLInputElement>('<input class="cv-input" type="number" min="6" max="200" step="1" value="12">');
+  private readonly pos = el<HTMLSelectElement>('<select class="cv-input"><option value="above">Above</option><option value="below">Below</option></select>');
+  private readonly color = el<HTMLSelectElement>('<select class="cv-input"><option value="black">Black</option><option value="white">White</option></select>');
+
+  constructor(private readonly engine: Engine) {
+    super('Place Scale Marker', 360);
+    this.body.append(el('<p class="cv-dialog-note">A bar as long as the length below, on a new layer at the lower left.</p>'));
+    this.field('Length', this.length);
+    this.field('Display Text', this.show$).classList.add('cv-check');
+    this.field('Text', this.textIn);
+    this.field('Font', this.font);
+    this.field('Font Size', this.size);
+    this.field('Text Position', this.pos);
+    this.field('Colour', this.color);
+    this.button('Cancel', 'ghost', () => this.close());
+    this.button('OK', 'primary', () => {
+      const len = Number(this.length.value);
+      if (!(len > 0)) return;
+      this.engine.placeScaleMarker({ lengthUnits: len, text: this.show$.checked, color: this.color.value === 'white' ? 'white' : 'black', fontSize: Number(this.size.value) || 12, font: this.font.value, textBelow: this.pos.value === 'below', label: this.textIn.value });
+      this.close();
+    });
+  }
+
+  show(): void {
+    const d = this.engine.current?.doc, sc = d?.measureScale;
+    if (d && sc) setValue(this.length, String(autoMarkerLength(d.width, sc)));
+    this.open();
+  }
+}
+
+/** About a fifth of the width in logical units, rounded to 1, 2, 5 or 10 times a power of ten. */
+export function autoMarkerLength(width: number, sc: { pixels: number; length: number }): number {
+  const raw = (width / 5) * (sc.length / sc.pixels), pow = Math.pow(10, Math.floor(Math.log10(raw)));
+  return pow * ([1, 2, 5, 10].reduce((best, m) => (Math.abs(m * pow - raw) < Math.abs(best * pow - raw) ? m : best), 1));
 }
 
 type Rec = NonNullable<Doc['measurements']>[number];
@@ -146,7 +212,7 @@ export class MeasurementLogDialog extends Dialog {
       return tr;
     });
     this.tbody.replaceChildren(...rows);
-    setText(this.note, list.length ? `${list.length} record${list.length === 1 ? '' : 's'}.` : 'No records yet. Press Record to measure the selection, the Ruler line or the counts.');
+    setText(this.note, list.length ? tn(list.length, '{n} record.', '{n} records.') :'No records yet. Press Record to measure the selection, the Ruler line or the counts.');
   }
 
   private async exportCsv(): Promise<void> {

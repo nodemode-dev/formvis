@@ -1,0 +1,14 @@
+{
+  "name": "formvis",
+  "description": "Edit pictures in formvis, the layered image editor, in plain language: the formvis MCP server and the skills that drive it.",
+  "author": { "name": "nodemode-ai", "email": "mackin@nodemode.ai" },
+  "license": "Apache-2.0",
+  "keywords": ["image editor", "photo", "layers", "retouch", "mcp"],
+  "skills": ["./.claude/skills/formvis-driving", "./.claude/skills/formvis-colour-science"],
+  "mcpServers": {
+    "formvis": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/formvis",
+      "args": ["mcp"]
+    }
+  }
+}

@@ -19,10 +19,56 @@ router = APIRouter(prefix="/api/undo", tags=["undo"])
 _MAX = 512 * 1024 * 1024   # one tile pair is at most 2 MB; this is only a guard
 
 
+_scratch: Path | None = None
+_before: list[Path] = []
+
+
 def _dir() -> Path:
-    d = config.data_dir() / "undo"
+    d = _scratch or config.data_dir() / "undo"
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def _find(key: str) -> Path:
+    """Where `key` is kept: the scratch folder in use, or one used before it was changed."""
+    for d in (_dir(), *_before):
+        if (d / f"{key}.z").exists():
+            return d / f"{key}.z"
+    return _path(key)
+
+
+@router.get("/scratch")
+def scratch_get() -> dict:
+    """The scratch disk (Preferences > Performance): the folder the undo store and giant layers' tiles are kept in."""
+    d = _dir()
+    return {"folder": str(d), "default": str(config.data_dir() / "undo"), "free": shutil.disk_usage(d).free, "custom": _scratch is not None}
+
+
+@router.put("/scratch")
+def scratch_set(body: dict) -> dict:
+    """Moves new undo tiles to `folder` (a formvis-undo folder is made inside it); empty puts them back in the data
+    folder. Tiles already kept stay where they are and are still found. The folder must be writable."""
+    global _scratch
+    folder = str(body.get("folder", "")).strip()
+    if not folder:
+        if _scratch is not None and _scratch not in _before:
+            _before.append(_scratch)
+        _scratch = None
+        return scratch_get()
+    base = Path(folder).expanduser()
+    target = base / "formvis-undo"
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+        probe = target / ".probe"
+        probe.write_bytes(b"x")
+        probe.unlink()
+    except OSError as err:
+        raise HTTPException(400, f"That folder cannot be written to: {err.strerror or err}") from err
+    old = _dir()
+    if old != target and old not in _before:
+        _before.append(old)
+    _scratch = target
+    return scratch_get()
 
 
 def clear() -> None:
@@ -51,7 +97,7 @@ async def put(request: Request) -> dict[str, str | int]:
 @router.get("/{key}")
 async def get(key: str) -> Response:
     """The bytes kept under `key`, as they were sent."""
-    p = _path(key)
+    p = _find(key)
     if not p.exists():
         raise HTTPException(404, "No undo kept under that key.")
     data = await asyncio.to_thread(lambda: zlib.decompress(p.read_bytes()))
@@ -68,7 +114,7 @@ async def drop_many(request: Request) -> dict[str, int]:
     if not isinstance(keys, list) or len(keys) > 100_000:
         raise HTTPException(400, 'Expected {"keys": [...]}, at most 100,000 a request.')
     hexdigits = set("0123456789abcdef")
-    paths = [_dir() / f"{k}.z" for k in keys if isinstance(k, str) and len(k) == 32 and set(k) <= hexdigits]
+    paths = [_find(k) for k in keys if isinstance(k, str) and len(k) == 32 and set(k) <= hexdigits]
 
     def unlink_all() -> int:
         n = 0
@@ -84,7 +130,7 @@ async def drop_many(request: Request) -> dict[str, int]:
 @router.delete("/{key}")
 async def drop(key: str) -> dict[str, bool]:
     """Forgets what is kept under `key` (a step trimmed from the history, a document closed)."""
-    p = _path(key)
+    p = _find(key)
     existed = p.exists()
     p.unlink(missing_ok=True)
     return {"dropped": existed}

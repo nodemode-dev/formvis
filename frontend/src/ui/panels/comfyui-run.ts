@@ -1,5 +1,6 @@
 import { Raster, type Engine } from '../../engine';
 import { api, ApiError } from '../../io/api';
+import { apiWorkflow } from '../../io/comfy';
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
 import { loadPrefs } from '../prefs';
@@ -54,7 +55,8 @@ export class RunWorkflowDialog extends Dialog {
     const f = this.file.files?.[0];
     this.file.value = '';
     if (!f) return;
-    const json = await f.text();
+    let json = await f.text();
+    try { json = await apiWorkflow(json, loadPrefs().comfyuiUrl, f.name); } catch (err) { setText(this.status, err instanceof Error ? err.message : `${f.name} could not be converted.`); return; }
     try {
       const w = JSON.parse(json) as Record<string, unknown>;
       if ('nodes' in w || !Object.values(w).every((n) => typeof n === 'object' && n !== null && 'class_type' in n)) {

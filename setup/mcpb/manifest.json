@@ -1,0 +1,35 @@
+{
+  "manifest_version": "0.2",
+  "name": "formvis",
+  "display_name": "formvis",
+  "version": "0.0.0",
+  "description": "Edit pictures in formvis, the layered image editor, in plain language: layers, selections, filters, generative fill, text and export.",
+  "long_description": "Connects Claude Desktop to formvis running on this computer. Start formvis first (the desktop app, or ./formvis boot); this extension never starts it. Until formvis answers, only a ping tool is offered, and the full tool list appears once it does. Every edit is one undoable step, and the first edit asks you, in the formvis window, to allow outside agents.",
+  "author": { "name": "nodemode-ai", "email": "mackin@nodemode.ai" },
+  "license": "Apache-2.0",
+  "icon": "icon.png",
+  "server": {
+    "type": "python",
+    "entry_point": "server/mcp_stdio.py",
+    "mcp_config": {
+      "command": "python3",
+      "args": ["${__dirname}/server/mcp_stdio.py", "--attach"],
+      "env": { "FORMVIS_MCP_URL": "${user_config.engine_url}" }
+    }
+  },
+  "tools_generated": true,
+  "user_config": {
+    "engine_url": {
+      "type": "string",
+      "title": "formvis engine address",
+      "description": "Where the formvis engine listens. The default suits a formvis started on this computer.",
+      "default": "http://127.0.0.1:8190/mcp",
+      "required": false
+    }
+  },
+  "keywords": ["image editor", "photo", "layers", "retouch", "design"],
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": { "python": ">=3.9" }
+  }
+}
