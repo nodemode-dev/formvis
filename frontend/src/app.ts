@@ -100,6 +100,7 @@ import { cleanFeatures } from './engine/opentype';
 import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, LAYER_LABELS, Raster, SelectionMask,stripExt, toBlob, type ImportedImage, type Pt, effectsActive, effectsPresent, liveText, ctxOf, createSurface, type AdjustmentKind, effectsFromData, runFilterOffThread, addPattern, allPatterns, patternById, projectPatterns, randomSeed, metaWritable, addCustomShape, allCustomShapes, loadCustomShapes } from './engine';
 import { getTool, toolForKey, toolsForKey } from './extensions/registry';
 import { registerBuiltinTools } from './extensions/tools';
+import { stepBrush } from './extensions/tools/brush';
 import { HostLink } from './host';
 import { api, onServiceChange, serviceDown, type Capabilities, type CmykPsd, type OpenedProject } from './io/api';
 import { PROJECT_FILTER, baseName, checkForUpdate, chooseOpenPaths, chooseSavePath, confirmExit, folderOf, hasPanels, installUpdate, isDiskPath, listenShell } from './io/disk';
@@ -3335,6 +3336,7 @@ export function startApp(): void {
     },
     { id: 'stamp-down', label: 'Stamp Down', keys: ['Alt+Mod+E'], enabled: () => !!layer(), run: () => { engine.stampDown(); } },
     { id: 'show-only-layer', label: 'Show Only This Layer', enabled: () => !!layer(), run: () => { const l = layer(); if (l) engine.soloLayer(l.id); } },
+    { id: 'show-all-layers', label: 'Show All Layers', enabled: () => !!engine.current?.doc.layers.some((l) => !l.visible), run: () => engine.showAllLayers() },
     { id: 'merge-visible', label: 'Merge Visible', enabled: () => (engine.current?.doc.layers.length ?? 0) > 1, run: () => engine.mergeVisible() },
     { id: 'select-all-layers', label: 'All Layers', keys: ['Alt+Mod+A'], enabled: () => !!engine.current?.doc.layers.length, run: () => engine.selectAllLayers() },
     { id: 'deselect-layers', label: 'Deselect Layers', enabled: () => !!engine.current && (!!engine.current.activeId || engine.current.selectedIds.size > 0), run: () => engine.selectAllLayers(false) },
@@ -3433,6 +3435,10 @@ export function startApp(): void {
     { id: 'search', label: 'Search...', keys: ['Mod+K'], run: () => dialogs.palette.show() },
     { id: 'about', label: 'About formvis', run: () => dialogs.about.show(caps) },
     { id: 'brush-settings', label: 'Brush Settings...', keys: ['F5'], run: () => dialogs.brushSettings.show() },
+    { id: 'brush-size-up', label: 'Increase Brush Size', run: () => stepBrush(engine, 'size', 1) },
+    { id: 'brush-size-down', label: 'Decrease Brush Size', run: () => stepBrush(engine, 'size', -1) },
+    { id: 'brush-harder', label: 'Increase Brush Hardness', run: () => stepBrush(engine, 'hardness', 1) },
+    { id: 'brush-softer', label: 'Decrease Brush Hardness', run: () => stepBrush(engine, 'hardness', -1) },
     { id: 'paragraph-styles', label: 'Paragraph Styles...', run: () => dialogs.paragraphStyles.show() },
     { id: 'load-default-type-styles', label: 'Load Default Type Styles', enabled: has, run: () => { engine.loadDefaultTypeStyles(); } },
     { id: 'character-styles', label: 'Character Styles...', run: () => dialogs.characterStyles.show() },
@@ -3692,6 +3698,8 @@ export function startApp(): void {
     { id: 'global-light', label: 'Global Light...', enabled: has, run: () => dialogs.globalLight.show() },
     { id: 'create-layers', label: 'Create Layers', enabled: () => effectsActive(engine.current?.activeLayer?.effects) && !engine.current?.activeLayer?.clipId, run: () => { engine.effectsToLayers(); } },
     { id: 'hide-all-effects', label: () => (engine.effectsShown ? 'Hide All Effects' : 'Show All Effects'), enabled: () => !!engine.current?.doc.layers.some((l) => effectsPresent(l.effects)), run: () => engine.setAllEffectsHidden(engine.effectsShown) },
+    { id: 'toggle-layer-effects', label: () => (engine.current?.activeLayer?.effects?.hidden ? 'Show Layer Effects' : 'Hide Layer Effects'), enabled: () => effectsPresent(engine.current?.activeLayer?.effects), run: () => engine.setLayerEffectsHidden(!engine.current?.activeLayer?.effects?.hidden) },
+    { id: 'rasterize-style', label: 'Layer Style', enabled: () => [...(engine.current?.selectedIds ?? [])].some((id) => effectsActive(engine.current?.layer(id)?.effects)), run: () => engine.rasterizeLayerStyle() },
     { id: 'scale-effects', label: 'Scale Effects...', enabled: () => effectsPresent(engine.current?.activeLayer?.effects), run: () => dialogs.scaleEffects.show() },
     { id: 'generative-expand', label: 'Generative Expand...', enabled: has, run: () => void dialogs.generative.show('expand') },
     { id: 'upscale-2x', label: 'Upscale 2x...', enabled: has, run: () => void dialogs.generative.show('upscale', 2) },
@@ -3820,11 +3828,11 @@ export function startApp(): void {
       { label: 'New Fill Layer', items: ['new-fill-solid', 'new-fill-gradient', 'new-fill-pattern'] }, { label: 'Video Layers', items: ['video-layer-from-file', 'video-layer-blank', '-', 'video-insert-blank-frame', 'video-duplicate-frame', 'video-delete-frame', '-', 'video-restore-frame', 'video-restore-all', 'video-replace-footage', 'video-interpret-footage', 'video-rasterize'] },{ label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'edit-relight', 'layer-content-options', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, '-',
       'duplicate-dialog', { label: 'Delete', items: ['delete-layer', 'delete-hidden'] }, 'rename', '-',
       { label: 'Layer Style', items: ['style-blending', 'style-bevel', 'style-stroke', 'style-inner-shadow', 'style-inner-glow', 'style-satin', 'style-color-overlay', 'style-gradient-overlay', 'style-pattern-overlay', 'style-outer-glow', 'style-drop-shadow', '-',
-        'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'global-light', 'create-layers', 'hide-all-effects', 'scale-effects'] },
+        'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'global-light', 'create-layers', 'hide-all-effects', 'toggle-layer-effects', 'scale-effects'] },
       { label: '3D', items: ['extrude-3d', 'place-3d', '-', 'panorama-view', 'panorama-apply-view'] },
       { label: 'Smart Objects', items: ['convert-smart', 'smart-new-via-copy', 'smart-convert-to-layers', 'edit-contents', 'replace-contents', 'smart-export-contents', { label: 'Stack Mode', items: STACK_MODES.map((m) => `stack-mode-${m.id}`) }, '-', 'smart-convert-to-linked', 'update-linked', 'relink', 'embed-linked', 'smart-reveal-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
       { label: 'Smart Filter', items: ['smart-filters-disable', 'smart-filters-clear'] },
-      { label: 'Rasterize', items: ['rasterize-type', 'rasterize-shape', 'rasterize-fill', 'rasterize-smart', 'rasterize-vmask', '-', 'rasterize', 'rasterize-all'] }, { label: 'Type', items: ['check-spelling', 'find-replace-text', 'paste-lorem-ipsum', '-', 'convert-point-text', 'convert-paragraph-text', '-', 'type-work-path', 'type-to-shape', '-', 'update-all-text', 'resolve-missing-fonts', 'load-default-type-styles', 'add-font-files', 'add-web-font', '-', { label: 'Font Preview Size', items: FONT_PREVIEWS.map((v) => `font-preview-${v}`) }, '-', 'type-on-arc', 'type-on-circle'] }, 'edit-text', 'warp-text', 'type-on-path', { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-style-copy', 'shape-style-paste', 'shape-corners', '-', 'apply-redactions'] }, '-',
+      { label: 'Rasterize', items: ['rasterize-type', 'rasterize-shape', 'rasterize-fill', 'rasterize-smart', 'rasterize-vmask', 'rasterize-style', '-', 'rasterize', 'rasterize-all'] }, { label: 'Type', items: ['check-spelling', 'find-replace-text', 'paste-lorem-ipsum', '-', 'convert-point-text', 'convert-paragraph-text', '-', 'type-work-path', 'type-to-shape', '-', 'update-all-text', 'resolve-missing-fonts', 'load-default-type-styles', 'add-font-files', 'add-web-font', '-', { label: 'Font Preview Size', items: FONT_PREVIEWS.map((v) => `font-preview-${v}`) }, '-', 'type-on-arc', 'type-on-circle'] }, 'edit-text', 'warp-text', 'type-on-path', { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-style-copy', 'shape-style-paste', 'shape-corners', '-', 'apply-redactions'] }, '-',
       { label: 'Layer Mask', items: ['mask-reveal-all', 'mask-hide-all', 'mask-reveal-selection', 'mask-hide-selection', 'mask-from-transparency', '-', 'delete-mask', 'apply-mask', '-', 'toggle-mask', 'link-mask', '-', 'mask-view-alone', 'mask-view-red'] },
       { label: 'Vector Mask', items: ['vmask-reveal-all', 'vmask-hide-all', 'vmask-current-path', 'vmask-delete', '-', 'vmask-enable', 'vmask-link', 'vmask-invert'] }, 'clip', 'mask-all-objects', '-',
       'group', 'ungroup', 'move-out', 'hide-layers', '-',
@@ -3834,7 +3842,7 @@ export function startApp(): void {
       { label: 'Distribute', items: ['distribute-left', 'distribute-hcenter', 'distribute-right', '-', 'distribute-top', 'distribute-vcenter', 'distribute-bottom', '-', 'distribute-hspace', 'distribute-vspace'] },
       { label: 'Flip', items: ['flip-layer-h', 'flip-layer-v'] }, '-',
       'lock-transparency', 'lock-layers', '-', 'link-layers', 'select-linked', '-',
-      'merge', 'merge-visible', 'stamp-visible', 'frequency-separation', 'stamp-down', 'flatten', '-', 'show-only-layer', { label: 'Color Label', items: ['layer-label-none', '-', ...LAYER_LABELS.map((c) => `layer-label-${c}`)] }, '-',
+      'merge', 'merge-visible', 'stamp-visible', 'frequency-separation', 'stamp-down', 'flatten', '-', 'show-only-layer', 'show-all-layers', { label: 'Color Label', items: ['layer-label-none', '-', ...LAYER_LABELS.map((c) => `layer-label-${c}`)] }, '-',
       { label: 'Matting', items: ['matting-decontaminate', 'matting-defringe', 'matting-black', 'matting-white'] }] },
     { label: 'Select', items: ['select-all', 'deselect', 'reselect', 'inverse', 'convert-to-shape', '-', 'select-all-layers', 'deselect-layers', 'find-layers', 'isolate-layers', '-', 'color-range', 'focus-area', 'select-subject', 'select-sky', 'select-object', 'select-and-mask', '-', 'layer-pixels', 'mask-black', '-',
       { label: 'Modify', items: ['expand', 'contract', 'feather', 'border', 'smooth'] }, 'grow', 'similar', '-', 'transform-selection', '-', 'quick-mask', '-', 'load-selection', 'load-luminosity', 'load-selection-vector-mask', 'save-selection', { label: 'Channel', items: ['new-channel', 'duplicate-channel', 'channel-options', '-', 'channel-up', 'channel-down'] }, 'path-selection', 'delete-path'] },
@@ -3856,7 +3864,7 @@ export function startApp(): void {
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'guide-layout', 'guides-from-shape', 'clear-guides'] }, 'snap', { label: 'Snap To', items: ['snap-all', '-', 'snap-guides', 'snap-grid', 'snap-layers', 'snap-bounds'] }, { label: 'Show', items: ['show-all-extras', 'show-no-extras', '-', 'show-selection-edges', 'show-layer-edges', 'show-notes', 'show-counts', 'toggle-show-slices', 'layer-based-slice', 'slice-options', 'delete-slice', 'clear-slices'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'os-full-screen', 'toggle-panels', 'rail-columns', 'interface-rtl', { label: 'Pasteboard', items: ['pasteboard-default', 'pasteboard-black', 'pasteboard-dark', 'pasteboard-mid', 'pasteboard-light'] }] },
     { label: 'Plugins', items: () => { const ids = pluginHost.commandIds(); return ['manage-plugins', ...(ids.length ? ['-', ...ids] : [])]; } },
-    { label: 'Window', items: [{ label: 'Arrange', items: ['new-window', 'float-window', 'float-all-windows', 'arrange-cascade', '-', 'arrange-tabs','arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-4up', 'arrange-6up', 'arrange-tile', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.connect.open', 'terminal.toggle', 'terminal.new', 'script-console', 'brush-settings', 'paragraph-styles', 'character-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-channels', 'panel-color', 'panel-tools', 'panel-properties-col', 'merge-columns', 'toggle-dock-panels', '-', { label: 'Workspace', items: ['workspace-pixelart', '-', 'new-workspace', 'delete-workspace'] }, 'reset-panels', '-', 'next-document', 'previous-document', '-', 'theme-sync-system', 'next-appearance', 'interface-darken', 'interface-lighten', '-', 'reload-window'] },
+    { label: 'Window', items: [{ label: 'Arrange', items: ['new-window', 'float-window', 'float-all-windows', 'arrange-cascade', '-', 'arrange-tabs','arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-4up', 'arrange-6up', 'arrange-tile', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.connect.open', 'terminal.toggle', 'terminal.new', 'script-console', 'brush-settings', { label: 'Brush Size', items: ['brush-size-up', 'brush-size-down', 'brush-harder', 'brush-softer'] }, 'paragraph-styles', 'character-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-channels', 'panel-color', 'panel-tools', 'panel-properties-col', 'merge-columns', 'toggle-dock-panels', '-', { label: 'Workspace', items: ['workspace-pixelart', '-', 'new-workspace', 'delete-workspace'] }, 'reset-panels', '-', 'next-document', 'previous-document', '-', 'theme-sync-system', 'next-appearance', 'interface-darken', 'interface-lighten', '-', 'reload-window'] },
     { label: 'Help', items: ['help', 'whats-new', '-', 'shortcuts', 'copy-error-log', 'benchmark', 'record-performance', 'simulate-gpu-loss', '-', 'help-github', 'report-issue', '-', 'check-for-updates', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);
@@ -3872,7 +3880,7 @@ export function startApp(): void {
     { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-style-copy', 'shape-style-paste', 'shape-corners', '-', 'apply-redactions'] },
     { label: 'Layer Style', items: ['layer-style', '-', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style'] },
     { label: 'Layer Comps', items: ['layer-comp-new', 'layer-comp-apply', 'layer-comp-update', 'layer-comp-delete', '-', 'layer-comp-next', 'layer-comp-previous'] }, '-',
-    { label: 'Layer Mask', items: ['add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask'] }, 'clip', 'link-layers', 'select-linked', '-', 'group', 'ungroup', 'move-out', 'merge', 'merge-visible', '-', 'layer-pixels']);
+    { label: 'Layer Mask', items: ['add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask'] }, 'clip', 'link-layers', 'select-linked', '-', 'hide-layers', 'show-only-layer', 'show-all-layers', '-', 'group', 'ungroup', 'move-out', 'merge', 'merge-visible', '-', 'layer-pixels']);
   new Tabs(q(root, '.cv-tab-strip'), engine, (id) => void (engine.closeSpareView(id) || requestClose(id)));   // a further view closes first; the document stays open while one remains (36.16)
 
   const zoomLabel = q(root, '.cv-zoom-label');

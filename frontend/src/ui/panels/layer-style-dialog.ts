@@ -1,4 +1,4 @@
-import { CONTOURS, DEFAULT_GLOBAL_LIGHT, MAX_EXTRA, MULTI_EFFECTS, defaultEffects, effectsActive, instances, withGlobalLight, type BevelContour, type BevelTexture, type ContourId, type EffectExtras, type Engine, type GlobalLight, type LayerEffects, type MultiEffect, type RGB, allPatterns } from '../../engine';
+import { BLEND_MODES, CONTOURS, DEFAULT_GLOBAL_LIGHT, MAX_EXTRA, MULTI_EFFECTS, defaultEffects, effectsActive, instances, withGlobalLight, type BevelContour, type BevelTexture, type BlendMode, type ContourId, type EffectExtras, type Engine, type GlobalLight, type LayerEffects, type MultiEffect, type RGB, allPatterns } from '../../engine';
 import { BLEND_IF_IDENTITY, type BlendIf } from '../../engine/types';
 import { Dialog } from '../dialogs';
 import { el } from '../dom';
@@ -24,7 +24,7 @@ export class LayerStyleDialog extends Dialog {
   private sel = {} as Record<MultiEffect, number>;
   private layerId: string | null = null;
   private applied = false;
-  private blending: { blendIf: BlendIf; knockout: 'none' | 'shallow' | 'deep'; channels: [boolean, boolean, boolean] } = { blendIf: structuredClone(BLEND_IF_IDENTITY), knockout: 'none', channels: [true, true, true] };
+  private blending: { blendIf: BlendIf; knockout: 'none' | 'shallow' | 'deep'; channels: [boolean, boolean, boolean]; blend: BlendMode; opacity: number; fill: number } = { blendIf: structuredClone(BLEND_IF_IDENTITY), knockout: 'none', channels: [true, true, true], blend: 'normal', opacity: 1, fill: 1 };
   private readonly syncs: Array<() => void> = [];
 
   constructor(private readonly engine: Engine) {
@@ -53,6 +53,7 @@ export class LayerStyleDialog extends Dialog {
       this.syncs.push(() => { select.value = get(); });
     };
     const contours = CONTOURS.map((c) => [c.id, c.label] as [string, string]);
+    const blends = BLEND_MODES.map((m) => [m.id, m.label] as [string, string]);
     // Instances: each multi effect's controls edit the selected instance, since this.fx[k] is that very object.
     const multi = (k: MultiEffect): void => {
       const pick = el<HTMLSelectElement>('<select class="cv-input"></select>');
@@ -77,8 +78,11 @@ export class LayerStyleDialog extends Dialog {
     const lightRowB = sliderRow('Global light altitude (\u00b0)', 0, 90, 1, (v) => { this.light = { ...this.light, altitude: v }; this.changed(); });
     this.body.append(lightRowA.el, lightRowB.el);
     this.syncs.push(() => { lightRowA.set(this.light.angle); lightRowB.set(this.light.altitude); });
-    const bl = (): { blendIf: BlendIf; knockout: 'none' | 'shallow' | 'deep'; channels: [boolean, boolean, boolean] } => this.blending;
+    const bl = (): LayerStyleDialog['blending'] => this.blending;
     this.body.appendChild(el('<p class="cv-dialog-note">Blending Options (M2): Knockout punches through what lies below; Blend If shows the layer only inside each range, each end feathered between its two values.</p>'));
+    choice('Layer blend mode', blends, () => bl().blend, (v) => { bl().blend = v as BlendMode; });
+    slider('Layer opacity (%)', 0, 100, () => Math.round(bl().opacity * 100), (v) => { bl().opacity = v / 100; });
+    slider('Fill opacity (%)', 0, 100, () => Math.round(bl().fill * 100), (v) => { bl().fill = v / 100; });
     choice('Knockout', [['none', 'None'], ['shallow', 'Shallow'], ['deep', 'Deep']], () => bl().knockout, (v) => { bl().knockout = v as 'none' | 'shallow' | 'deep'; });
     for (const [i, name] of ['Red', 'Green', 'Blue'].entries()) check(`Channel ${name}`, () => bl().channels[i], (v) => { bl().channels[i] = v; });
     choice('Blend If', [['gray', 'Gray'], ['r', 'Red'], ['g', 'Green'], ['b', 'Blue']], () => bl().blendIf.channel, (v) => { bl().blendIf.channel = v as BlendIf['channel']; });
@@ -87,6 +91,7 @@ export class LayerStyleDialog extends Dialog {
     }
     check('Drop Shadow', () => fx().dropShadow.enabled, (v) => { fx().dropShadow.enabled = v; });
     multi('dropShadow');
+    choice('Blend mode', blends, () => fx().dropShadow.blend, (v) => { fx().dropShadow.blend = v as BlendMode; });
     colour('Colour', () => fx().dropShadow.color, (c) => { fx().dropShadow.color = c; });
     slider('Opacity (%)', 0, 100, () => Math.round(fx().dropShadow.opacity * 100), (v) => { fx().dropShadow.opacity = v / 100; });
     slider('Angle (\u00b0)', -180, 180, () => fx().dropShadow.angle, (v) => { fx().dropShadow.angle = v; });
@@ -95,18 +100,20 @@ export class LayerStyleDialog extends Dialog {
     slider('Size (px)', 0, 100, () => fx().dropShadow.size, (v) => { fx().dropShadow.size = v; });
     choice('Contour', contours, () => fx().dropShadow.contour ?? 'linear', (v) => { fx().dropShadow.contour = v as ContourId; });
     check('Outer Glow', () => fx().outerGlow.enabled, (v) => { fx().outerGlow.enabled = v; });
+    choice('Blend mode', blends, () => fx().outerGlow.blend, (v) => { fx().outerGlow.blend = v as BlendMode; });
     colour('Colour', () => fx().outerGlow.color, (c) => { fx().outerGlow.color = c; });
     slider('Opacity (%)', 0, 100, () => Math.round(fx().outerGlow.opacity * 100), (v) => { fx().outerGlow.opacity = v / 100; });
-    slider('Size (px)', 0, 100, () => fx().outerGlow.size, (v) => { fx().outerGlow.size = v; });
+    slider('Size (px)', 0, 500, () => fx().outerGlow.size, (v) => { fx().outerGlow.size = v; });
     choice('Contour', contours, () => fx().outerGlow.contour ?? 'linear', (v) => { fx().outerGlow.contour = v as ContourId; });
     check('Stroke', () => fx().stroke.enabled, (v) => { fx().stroke.enabled = v; });
     multi('stroke');
     choice('Position', [['outside', 'Outside'], ['inside', 'Inside'], ['center', 'Center']], () => fx().stroke.position ?? 'outside', (v) => { fx().stroke.position = v === 'inside' || v === 'center' ? v : 'outside'; });
     colour('Colour', () => fx().stroke.color, (c) => { fx().stroke.color = c; });
-    slider('Size (px)', 1, 50, () => fx().stroke.size, (v) => { fx().stroke.size = v; });
+    slider('Size (px)', 1, 500, () => fx().stroke.size, (v) => { fx().stroke.size = v; });
     slider('Opacity (%)', 0, 100, () => Math.round(fx().stroke.opacity * 100), (v) => { fx().stroke.opacity = v / 100; });
     check('Inner Shadow', () => fx().innerShadow.enabled, (v) => { fx().innerShadow.enabled = v; });
     multi('innerShadow');
+    choice('Blend mode', blends, () => fx().innerShadow.blend, (v) => { fx().innerShadow.blend = v as BlendMode; });
     colour('Colour', () => fx().innerShadow.color, (c) => { fx().innerShadow.color = c; });
     slider('Opacity (%)', 0, 100, () => Math.round(fx().innerShadow.opacity * 100), (v) => { fx().innerShadow.opacity = v / 100; });
     slider('Angle (\u00b0)', -180, 180, () => fx().innerShadow.angle, (v) => { fx().innerShadow.angle = v; });
@@ -115,12 +122,14 @@ export class LayerStyleDialog extends Dialog {
     slider('Size (px)', 0, 100, () => fx().innerShadow.size, (v) => { fx().innerShadow.size = v; });
     choice('Contour', contours, () => fx().innerShadow.contour ?? 'linear', (v) => { fx().innerShadow.contour = v as ContourId; });
     check('Inner Glow', () => fx().innerGlow.enabled, (v) => { fx().innerGlow.enabled = v; });
+    choice('Blend mode', blends, () => fx().innerGlow.blend, (v) => { fx().innerGlow.blend = v as BlendMode; });
     colour('Colour', () => fx().innerGlow.color, (c) => { fx().innerGlow.color = c; });
     slider('Opacity (%)', 0, 100, () => Math.round(fx().innerGlow.opacity * 100), (v) => { fx().innerGlow.opacity = v / 100; });
-    slider('Size (px)', 0, 100, () => fx().innerGlow.size, (v) => { fx().innerGlow.size = v; });
+    slider('Size (px)', 0, 500, () => fx().innerGlow.size, (v) => { fx().innerGlow.size = v; });
     choice('Contour', contours, () => fx().innerGlow.contour ?? 'linear', (v) => { fx().innerGlow.contour = v as ContourId; });
     check('Color Overlay', () => fx().colorOverlay.enabled, (v) => { fx().colorOverlay.enabled = v; });
     multi('colorOverlay');
+    choice('Blend mode', blends, () => fx().colorOverlay.blend, (v) => { fx().colorOverlay.blend = v as BlendMode; });
     colour('Colour', () => fx().colorOverlay.color, (c) => { fx().colorOverlay.color = c; });
     slider('Opacity (%)', 0, 100, () => Math.round(fx().colorOverlay.opacity * 100), (v) => { fx().colorOverlay.opacity = v / 100; });
     check('Gradient Overlay', () => fx().gradientOverlay.enabled, (v) => { fx().gradientOverlay.enabled = v; });
@@ -128,6 +137,7 @@ export class LayerStyleDialog extends Dialog {
     // Changing either end makes the overlay two colours again (a many-stop gradient from PSD or .asl, 36.8, is dropped).
     colour('From', () => fx().gradientOverlay.from, (c) => { fx().gradientOverlay.from = c; delete fx().gradientOverlay.stops; });
     colour('To', () => fx().gradientOverlay.to, (c) => { fx().gradientOverlay.to = c; delete fx().gradientOverlay.stops; });
+    choice('Blend mode', blends, () => fx().gradientOverlay.blend, (v) => { fx().gradientOverlay.blend = v as BlendMode; });
     slider('Opacity (%)', 0, 100, () => Math.round(fx().gradientOverlay.opacity * 100), (v) => { fx().gradientOverlay.opacity = v / 100; });
     slider('Angle (\u00b0)', -180, 180, () => fx().gradientOverlay.angle, (v) => { fx().gradientOverlay.angle = v; });
     slider('Scale (%)', 10, 150, () => Math.round(fx().gradientOverlay.scale * 100), (v) => { fx().gradientOverlay.scale = v / 100; });
@@ -151,9 +161,11 @@ export class LayerStyleDialog extends Dialog {
       });
       patternPick.value = want;
     });
+    choice('Blend mode', blends, () => fx().patternOverlay.blend, (v) => { fx().patternOverlay.blend = v as BlendMode; });
     slider('Opacity (%)', 0, 100, () => Math.round(fx().patternOverlay.opacity * 100), (v) => { fx().patternOverlay.opacity = v / 100; });
     slider('Scale (%)', 10, 1000, () => Math.round(fx().patternOverlay.scale * 100), (v) => { fx().patternOverlay.scale = v / 100; });
     check('Satin', () => fx().satin.enabled, (v) => { fx().satin.enabled = v; });
+    choice('Blend mode', blends, () => fx().satin.blend, (v) => { fx().satin.blend = v as BlendMode; });
     colour('Colour', () => fx().satin.color, (c) => { fx().satin.color = c; });
     slider('Opacity (%)', 0, 100, () => Math.round(fx().satin.opacity * 100), (v) => { fx().satin.opacity = v / 100; });
     slider('Angle (\u00b0)', -180, 180, () => fx().satin.angle, (v) => { fx().satin.angle = v; });
@@ -171,8 +183,10 @@ export class LayerStyleDialog extends Dialog {
     slider('Altitude (\u00b0)', 0, 90, () => fx().bevel.altitude, (v) => { fx().bevel.altitude = v; });
     check('Use Global Light', () => !!fx().bevel.useGlobal, (v) => { fx().bevel.useGlobal = v; });
     choice('Gloss Contour', contours, () => fx().bevel.gloss ?? 'linear', (v) => { fx().bevel.gloss = v as ContourId; });
+    choice('Highlight mode', blends, () => fx().bevel.highlightBlend, (v) => { fx().bevel.highlightBlend = v as BlendMode; });
     colour('Highlight', () => fx().bevel.highlight, (c) => { fx().bevel.highlight = c; });
     slider('Highlight opacity (%)', 0, 100, () => Math.round(fx().bevel.highlightOpacity * 100), (v) => { fx().bevel.highlightOpacity = v / 100; });
+    choice('Shadow mode', blends, () => fx().bevel.shadowBlend, (v) => { fx().bevel.shadowBlend = v as BlendMode; });
     colour('Shadow', () => fx().bevel.shadow, (c) => { fx().bevel.shadow = c; });
     slider('Shadow opacity (%)', 0, 100, () => Math.round(fx().bevel.shadowOpacity * 100), (v) => { fx().bevel.shadowOpacity = v / 100; });
     const bc = (): BevelContour => (fx().bevel.contour ??= { enabled: false, id: 'linear', range: 0.5 }), bt = (): BevelTexture => (fx().bevel.texture ??= { enabled: false, pattern: 'builtin:checker', scale: 1, depth: 1, invert: false });
@@ -211,7 +225,7 @@ export class LayerStyleDialog extends Dialog {
     this.layerId = layer.id;
     this.applied = false;
     this.adopt(layer.effects ?? this.baseline());
-    this.blending = { blendIf: structuredClone(layer.blendIf ?? BLEND_IF_IDENTITY), knockout: layer.knockout ?? 'none', channels: layer.blendChannels ? [...layer.blendChannels] : [true, true, true] };
+    this.blending = { blendIf: structuredClone(layer.blendIf ?? BLEND_IF_IDENTITY), knockout: layer.knockout ?? 'none', channels: layer.blendChannels ? [...layer.blendChannels] : [true, true, true], blend: layer.blend, opacity: layer.opacity, fill: layer.fill ?? 1 };
     if (focus && focus !== 'blending') this.fx[focus].enabled = true;
     this.light = { ...(this.engine.current?.doc.globalLight ?? DEFAULT_GLOBAL_LIGHT) };
     for (const sync of this.syncs) sync();
@@ -292,6 +306,6 @@ export class LayerStyleDialog extends Dialog {
     const whole = this.assembled(), id = this.layerId, fx = effectsActive(whole) ? whole : null, cur = this.engine.current?.doc.globalLight ?? DEFAULT_GLOBAL_LIGHT;
     const light = this.light.angle !== cur.angle || this.light.altitude !== cur.altitude ? { ...this.light } : null;
     this.close();
-    if (id) { this.engine.applyStyleAndLight(id, fx, light, { blendIf: this.blending.blendIf, knockout: this.blending.knockout, channels: this.blending.channels }); this.onApplied?.(fx ? structuredClone(fx) : null); }
+    if (id) { this.engine.applyStyleAndLight(id, fx, light, { blendIf: this.blending.blendIf, knockout: this.blending.knockout, channels: this.blending.channels, general: { blend: this.blending.blend, opacity: this.blending.opacity, fill: this.blending.fill } }); this.onApplied?.(fx ? structuredClone(fx) : null); }
   }
 }

@@ -64,6 +64,11 @@ export class StylesPanel {
       this.engine.applyLayerStyle(p.effects);
       this.sync();
     });
+    this.grid.addEventListener('dblclick', (e) => {
+      const tile = (e.target as HTMLElement).closest<HTMLElement>('.cv-style-tile[data-id]');
+      const p = tile ? this.presets.find((x) => x.id === tile.dataset.id) : undefined;
+      if (p) void this.rename(p);
+    });
     for (const ev of ['doc', 'history', 'active', 'projects'] as const) engine.on(ev, () => this.sync());
     this.sync();
   }
@@ -76,6 +81,15 @@ export class StylesPanel {
     const id = `style-${Date.now().toString(36)}-${(this.serial++).toString(36)}`;
     this.presets = [...this.presets, { id, name: name.trim() || `Style ${this.presets.length + 1}`, effects: structuredClone(fx) }];
     this.selected = id;
+    savePresets(this.presets);
+    this.sync();
+  }
+
+  /** Double-click a tile to rename its style. */
+  private async rename(p: StylePreset): Promise<void> {
+    const name = await promptName('Rename Style', p.name, 'Rename');
+    if (name === null || !name.trim() || name.trim() === p.name) return;
+    this.presets = this.presets.map((x) => (x.id === p.id ? { ...x, name: name.trim() } : x));
     savePresets(this.presets);
     this.sync();
   }

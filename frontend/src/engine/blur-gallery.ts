@@ -93,8 +93,8 @@ export interface GallerySettings {
   radialAmount: number; radialMethod: 'spin' | 'zoom'; radialQuality: 'draft' | 'good' | 'best'; radialX: number; radialY: number;
   surfaceRadius: number; surfaceThreshold: number;
   pins: number; pin1x: number; pin1y: number; pin1blur: number; pin2x: number; pin2y: number; pin2blur: number; pin3x: number; pin3y: number; pin3blur: number; pin4x: number; pin4y: number; pin4blur: number;
-  irisBlur: number; irisX: number; irisY: number; irisRx: number; irisRy: number; irisAngle: number; irisFeather: number;
-  tiltBlur: number; tiltY: number; tiltAngle: number; tiltFocus: number; tiltTransition: number;
+  irisBlur: number; irisX: number; irisY: number; irisRx: number; irisRy: number; irisAngle: number; irisFeather: number; irisRound?: number;
+  tiltBlur: number; tiltX?: number; tiltY: number; tiltAngle: number; tiltFocus: number; tiltTransition: number;
   pathSpeed: number; pathTaper: number; pathSx: number; pathSy: number; pathBx: number; pathBy: number; pathEx: number; pathEy: number;
 }
 
@@ -107,8 +107,8 @@ export function runGallery(kind: GalleryKind, g: GallerySettings, src: ImageData
       const all: FieldPin[] = [{ x: g.pin1x, y: g.pin1y, blur: g.pin1blur }, { x: g.pin2x, y: g.pin2y, blur: g.pin2blur }, { x: g.pin3x, y: g.pin3y, blur: g.pin3blur }, { x: g.pin4x, y: g.pin4y, blur: g.pin4blur }];
       return fieldBlur(src, all.slice(0, Math.max(1, Math.min(4, Math.round(g.pins)))), scale);
     }
-    case 'irisBlur': return irisBlur(src, g.irisBlur, g.irisX, g.irisY, g.irisRx, g.irisRy, g.irisAngle, g.irisFeather, scale);
-    case 'tiltShift': return tiltShift(src, g.tiltBlur, g.tiltY, g.tiltAngle, g.tiltFocus, g.tiltTransition, scale);
+    case 'irisBlur': return irisBlur(src, g.irisBlur, g.irisX, g.irisY, g.irisRx, g.irisRy, g.irisAngle, g.irisFeather, scale, g.irisRound);
+    case 'tiltShift': return tiltShift(src, g.tiltBlur, g.tiltY, g.tiltAngle, g.tiltFocus, g.tiltTransition, scale, g.tiltX);
     case 'pathBlur': return pathBlur(src, g.pathSpeed, [g.pathSx, g.pathSy], [g.pathBx, g.pathBy], [g.pathEx, g.pathEy], g.pathTaper, scale);
   }
 }
@@ -127,21 +127,22 @@ export function fieldBlur(img: ImageData, pins: FieldPin[], scale = 1): ImageDat
 
 /** Iris Blur: sharp inside the focus (the ellipse's inner `feather` fraction), rising to `blur` at the ellipse's edge
  *  and beyond; the ellipse centred at (cx, cy) with radii rx and ry (percent of width and height), turned by `angle`. */
-export function irisBlur(img: ImageData, blur: number, cx: number, cy: number, rx: number, ry: number, angle: number, feather: number, scale = 1): ImageData {
+export function irisBlur(img: ImageData, blur: number, cx: number, cy: number, rx: number, ry: number, angle: number, feather: number, scale = 1, roundness = 100): ImageData {
+  const rd = clamp01((Number.isFinite(roundness) ? roundness : 100) / 100), pw = 2 + (1 - rd) * 6;
   const w = img.width, h = img.height, X = (cx / 100) * w, Y = (cy / 100) * h, RX = Math.max(1, (rx / 100) * w), RY = Math.max(1, (ry / 100) * h);
   const a = (angle * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a), inner = clamp01(feather / 100), max = Math.max(0.5, blur * scale);
   return variableBlur(img, max, (x, y) => {
-    const dx = x - X, dy = y - Y, u = (dx * c + dy * s) / RX, v = (-dx * s + dy * c) / RY, e = Math.sqrt(u * u + v * v);
+    const dx = x - X, dy = y - Y, u = (dx * c + dy * s) / RX, v = (-dx * s + dy * c) / RY, e = rd >= 1 ? Math.sqrt(u * u + v * v) : (Math.abs(u) ** pw + Math.abs(v) ** pw) ** (1 / pw);
     return max * clamp01((e - inner) / Math.max(1e-3, 1 - inner));
   });
 }
 
 /** Tilt-Shift: sharp within `focus` percent of the height either side of a line through `cy` at `angle`, rising over
  *  `transition` percent to `blur`. */
-export function tiltShift(img: ImageData, blur: number, cy: number, angle: number, focus: number, transition: number, scale = 1): ImageData {
-  const w = img.width, h = img.height, Y = (cy / 100) * h, a = (angle * Math.PI) / 180, nx = -Math.sin(a), ny = Math.cos(a);
+export function tiltShift(img: ImageData, blur: number, cy: number, angle: number, focus: number, transition: number, scale = 1, cx = 50): ImageData {
+  const w = img.width, h = img.height, X = ((Number.isFinite(cx) ? cx : 50) / 100) * w, Y = (cy / 100) * h, a = (angle * Math.PI) / 180, nx = -Math.sin(a), ny = Math.cos(a);
   const f = (focus / 100) * h, t = Math.max(1, (transition / 100) * h), max = Math.max(0.5, blur * scale);
-  return variableBlur(img, max, (x, y) => max * clamp01((Math.abs((x - w / 2) * nx + (y - Y) * ny) - f) / t));
+  return variableBlur(img, max, (x, y) => max * clamp01((Math.abs((x - X) * nx + (y - Y) * ny) - f) / t));
 }
 
 /** Path Blur: each pixel blurred along the direction of a curved path (start, bend and end, percent of the image) at

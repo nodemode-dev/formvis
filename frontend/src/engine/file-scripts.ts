@@ -47,11 +47,11 @@ function bakeable(l: Layer): boolean {
  *  and group left out, the mask staying on the layer to cut the baked pixels as it cut the style), the effects then
  *  cleared. The layer's fill and opacity stay on it, so the look is unchanged. Returns the patches by id and how many
  *  type, shape or fill layers were rasterized on the way. */
-export function bakeEffects(doc: Doc, work: Renderer): { patches: Map<ID, Partial<Layer>>; rasterized: number } {
+export function bakeEffects(doc: Doc, work: Renderer, only?: ReadonlySet<ID>): { patches: Map<ID, Partial<Layer>>; rasterized: number } {
   const patches = new Map<ID, Partial<Layer>>();
   let rasterized = 0;
   for (const l of doc.layers) {
-    if (!bakeable(l) || !effectsActive(l.effects)) continue;
+    if (!bakeable(l) || !effectsActive(l.effects) || (only && !only.has(l.id))) continue;
     const alone: Layer = { ...l, parentId: null, clipId: null, visible: true, opacity: 1, blend: 'normal', blendIf: null, knockout: 'none', mask: null, vectorMask: null };
     const out = renderDoc(work, { ...doc, layers: [alone] });
     const r = new Raster(out.width, out.height);

@@ -168,6 +168,8 @@
 .cv-comp-state { grid-template-columns: 14px minmax(0, 1fr); }
 .cv-comp-mark { width: 12px; height: 12px; box-sizing: border-box; border: 1px solid var(--border-color); border-radius: 2px; cursor: pointer; }
 .cv-comp-row.is-active .cv-comp-mark { background: var(--accent-color); border-color: var(--accent-color); }
+.cv-comp-row.has-warning .cv-comp-name { color: var(--warn); }
+.cv-comp-row.has-warning .cv-comp-name::after { content: " (layers deleted)"; }
 .cv-comp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cv-comp-edit { min-width: 0; width: 100%; height: 20px; box-sizing: border-box; font: inherit; color: var(--text-primary); background: var(--bg-primary); border: 1px solid var(--accent-color); border-radius: 2px; }
 .cv-comp-twist { display: grid; place-items: center; width: 18px; height: 18px; padding: 0; border: 0; background: none; color: inherit; cursor: pointer; }

@@ -1,6 +1,6 @@
 # formvis commands
 
-Generated from the window's command catalogue (1106 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1130 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
@@ -10,15 +10,15 @@ Generated from the window's command catalogue (1106 commands) by `./formvis agen
 - Generate: 2
 - Help: 3
 - Image: 88
-- Layer: 234
+- Layer: 237
 - Paint: 1
 - Paths: 9
 - Select: 35
-- Tool options: 269
+- Tool options: 286
 - Tools: 51
 - Type: 26
 - View: 68
-- Window: 88
+- Window: 92
 
 ## Edit
 
@@ -541,6 +541,7 @@ Generated from the window's command catalogue (1106 commands) by `./formvis agen
 | `rasterize-fill` | Rasterize Fill Content |  | Turns a fill layer into pixels. (changes the picture) |
 | `rasterize-shape` | Rasterize Shape |  | Turns a shape layer into pixels. (changes the picture) |
 | `rasterize-smart` | Rasterize Smart Object |  | Turns a smart object into pixels. (changes the picture) |
+| `rasterize-style` | Layer Style |  | Draws the layer style of the selected layers into their pixels and clears the style. (changes the picture) |
 | `rasterize-type` | Rasterize Type |  | Turns a text layer into pixels. (changes the picture) |
 | `rasterize-vmask` | Vector Mask |  | Turns the vector mask into a pixel mask. (changes the picture) |
 | `relight.apply` | Apply Relight |  | Adds a Relight layer above the active layer, lit by a Look or by the lights given, rendered at full size on this computer; one history step. (changes the picture) |
@@ -568,6 +569,7 @@ Generated from the window's command catalogue (1106 commands) by `./formvis agen
 | `shapes-merge` | Merge Shape Components |  | Merges shape components into one path. (changes the picture) |
 | `shapes-subtract` | Subtract Front Shape |  | Cuts the front shape out of the one behind. (changes the picture) |
 | `shapes-unite` | Unite Shapes |  | Unites the selected shape layers into one shape. (changes the picture) |
+| `show-all-layers` | Show All Layers |  | Shows every hidden layer in the document as one history step. (changes the picture) |
 | `show-only-layer` | Show Only This Layer |  | Hides every other layer so only the active one (and the folders holding it) shows; run it again on the same layer to bring the others back. Alt-click an eye does the same. (changes the picture) |
 | `smart-convert-to-layers` | Convert to Layers |  | Replaces the active smart object with a pixel layer holding its source at its current placement, without the smart filters. (changes the picture) |
 | `smart-convert-to-linked` | Convert to Linked... |  | Saves an embedded smart object as a PNG file and links the layer to it. (changes the picture) |
@@ -604,6 +606,7 @@ Generated from the window's command catalogue (1106 commands) by `./formvis agen
 | `style-satin` | Satin... |  | Opens Layer Style at Satin. (changes the picture) |
 | `style-stroke` | Stroke... |  | Opens Layer Style at Stroke. (changes the picture) |
 | `toggle-filter-mask` | Toggle Filter Mask |  | Disables or enables the smart filter mask. (changes the picture) |
+| `toggle-layer-effects` | Toggle Layer Effects |  | Shows or hides the layer style of the selected layers only. (changes the picture) |
 | `toggle-mask` | Toggle Mask |  | Disables or enables the layer mask. (changes the picture) |
 | `ungroup` | Ungroup Layers |  | Dissolves the selected folder and keeps its layers. (changes the picture) |
 | `update-linked` | Update Modified Content |  | Updates linked smart objects whose files changed. (changes the picture) |
@@ -758,13 +761,18 @@ Generated from the window's command catalogue (1106 commands) by `./formvis agen
 | `tool.options.backgroundEraser.size` | Background Eraser: Size |  | Sets Size for the Background Eraser tool. |
 | `tool.options.backgroundEraser.symmetry` | Background Eraser: Symmetry |  | Sets Symmetry for the Background Eraser tool. |
 | `tool.options.backgroundEraser.tolerance` | Background Eraser: Tolerance |  | Sets Tolerance for the Background Eraser tool. |
+| `tool.options.brush.adjustForZoom` | Brush: Adjust for zoom |  | Sets Adjust for zoom for the Brush tool. |
 | `tool.options.brush.airbrush` | Brush: Airbrush |  | Sets Airbrush for the Brush tool. |
 | `tool.options.brush.angle` | Brush: Angle |  | Sets Angle for the Brush tool. |
+| `tool.options.brush.angleJitter` | Brush: Angle jitter |  | Sets Angle jitter for the Brush tool. |
+| `tool.options.brush.catchUpOnStrokeEnd` | Brush: Catch-up on stroke end |  | Sets Catch-up on stroke end for the Brush tool. |
+| `tool.options.brush.count` | Brush: Count |  | Sets Count for the Brush tool. |
 | `tool.options.brush.flow` | Brush: Flow |  | Sets Flow for the Brush tool. |
 | `tool.options.brush.hardness` | Brush: Hardness |  | Sets Hardness for the Brush tool. |
 | `tool.options.brush.minFlow` | Brush: Min flow |  | Sets Min flow for the Brush tool. |
 | `tool.options.brush.minSize` | Brush: Min size |  | Sets Min size for the Brush tool. |
 | `tool.options.brush.mode` | Brush: Mode |  | Sets Mode for the Brush tool. |
+| `tool.options.brush.noise` | Brush: Noise |  | Sets Noise for the Brush tool. |
 | `tool.options.brush.opacity` | Brush: Opacity |  | Sets Opacity for the Brush tool. |
 | `tool.options.brush.preset` | Brush: Preset |  | Sets Preset for the Brush tool. |
 | `tool.options.brush.pressureCurve` | Brush: Pressure curve |  | Sets Pressure curve for the Brush tool. |
@@ -772,9 +780,15 @@ Generated from the window's command catalogue (1106 commands) by `./formvis agen
 | `tool.options.brush.pressureOpacity` | Brush: Pressure: opacity |  | Sets Pressure: opacity for the Brush tool. |
 | `tool.options.brush.pressureSize` | Brush: Pressure: size |  | Sets Pressure: size for the Brush tool. |
 | `tool.options.brush.quickShape` | Brush: Quick Shape |  | Sets Quick Shape for the Brush tool. |
+| `tool.options.brush.roundness` | Brush: Roundness |  | Sets Roundness for the Brush tool. |
+| `tool.options.brush.scatter` | Brush: Scatter |  | Sets Scatter for the Brush tool. |
 | `tool.options.brush.size` | Brush: Size |  | Sets Size for the Brush tool. |
+| `tool.options.brush.sizeJitter` | Brush: Size jitter |  | Sets Size jitter for the Brush tool. |
 | `tool.options.brush.smoothing` | Brush: Smoothing |  | Sets Smoothing for the Brush tool. |
+| `tool.options.brush.smoothingMode` | Brush: Smoothing mode |  | Sets Smoothing mode for the Brush tool. |
+| `tool.options.brush.spacing` | Brush: Spacing |  | Sets Spacing for the Brush tool. |
 | `tool.options.brush.symmetry` | Brush: Symmetry |  | Sets Symmetry for the Brush tool. |
+| `tool.options.brush.wetEdges` | Brush: Wet edges |  | Sets Wet edges for the Brush tool. |
 | `tool.options.bucket.antiAlias` | Paint Bucket: Anti-alias |  | Sets Anti-alias for the Paint Bucket tool. |
 | `tool.options.bucket.contiguous` | Paint Bucket: Contiguous |  | Sets Contiguous for the Paint Bucket tool. |
 | `tool.options.bucket.mode` | Paint Bucket: Mode |  | Sets Mode for the Paint Bucket tool. |
@@ -887,6 +901,7 @@ Generated from the window's command catalogue (1106 commands) by `./formvis agen
 | `tool.options.marquee.width` | Marquee: Width |  | Sets Width for the Marquee tool. |
 | `tool.options.marquee.width2` | Marquee: Width |  | Sets Width for the Marquee tool. |
 | `tool.options.mixer.cleanTheBrushAfterEachStroke` | Mixer Brush: Clean the brush after each stroke |  | Sets Clean the brush after each stroke for the Mixer Brush tool. |
+| `tool.options.mixer.flow` | Mixer Brush: Flow |  | Sets Flow for the Mixer Brush tool. |
 | `tool.options.mixer.hardness` | Mixer Brush: Hardness |  | Sets Hardness for the Mixer Brush tool. |
 | `tool.options.mixer.load` | Mixer Brush: Load |  | Sets Load for the Mixer Brush tool. |
 | `tool.options.mixer.loadTheBrushAfterEachStroke` | Mixer Brush: Load the brush after each stroke |  | Sets Load the brush after each stroke for the Mixer Brush tool. |
@@ -931,11 +946,16 @@ Generated from the window's command catalogue (1106 commands) by `./formvis agen
 | `tool.options.patternStamp.symmetry` | Pattern Stamp: Symmetry |  | Sets Symmetry for the Pattern Stamp tool. |
 | `tool.options.pen.autoAddDelete` | Pen: Auto Add/Delete |  | Sets Auto Add/Delete for the Pen tool. |
 | `tool.options.pen.mode` | Pen: Mode |  | Sets Mode for the Pen tool. |
+| `tool.options.pencil.adjustForZoom` | Pencil: Adjust for zoom |  | Sets Adjust for zoom for the Pencil tool. |
 | `tool.options.pencil.autoErase` | Pencil: Auto Erase |  | Sets Auto Erase for the Pencil tool. |
+| `tool.options.pencil.catchUpOnStrokeEnd` | Pencil: Catch-up on stroke end |  | Sets Catch-up on stroke end for the Pencil tool. |
+| `tool.options.pencil.mode` | Pencil: Mode |  | Sets Mode for the Pencil tool. |
 | `tool.options.pencil.opacity` | Pencil: Opacity |  | Sets Opacity for the Pencil tool. |
 | `tool.options.pencil.pressureCurve` | Pencil: Pressure curve |  | Sets Pressure curve for the Pencil tool. |
 | `tool.options.pencil.quickShape` | Pencil: Quick Shape |  | Sets Quick Shape for the Pencil tool. |
 | `tool.options.pencil.size` | Pencil: Size |  | Sets Size for the Pencil tool. |
+| `tool.options.pencil.smoothing` | Pencil: Smoothing |  | Sets Smoothing for the Pencil tool. |
+| `tool.options.pencil.smoothingMode` | Pencil: Smoothing mode |  | Sets Smoothing mode for the Pencil tool. |
 | `tool.options.pencil.symmetry` | Pencil: Symmetry |  | Sets Symmetry for the Pencil tool. |
 | `tool.options.quickSelect.sampleAllLayers` | Quick Selection: Sample all layers |  | Sets Sample all layers for the Quick Selection tool. |
 | `tool.options.quickSelect.selection` | Quick Selection: Selection |  | Sets Selection for the Quick Selection tool. |
@@ -1189,7 +1209,11 @@ Generated from the window's command catalogue (1106 commands) by `./formvis agen
 | `arrange-tile` | Tile |  | Picks the layout that fits the number of open documents: two side by side, 3-up for three, 4-up for four and 6-up for five or more. |
 | `assistant` | Assistant |  | Shows or hides the Assistant panel. |
 | `benchmark` | Performance Benchmark... |  | Opens the performance benchmark. |
+| `brush-harder` | Increase Brush Hardness |  | Makes the paint brush 25 percent harder. |
 | `brush-settings` | Brush Settings... | F5 | Opens Brush Settings. |
+| `brush-size-down` | Decrease Brush Size |  | Makes the paint brush one step smaller, the step growing with the size. |
+| `brush-size-up` | Increase Brush Size |  | Makes the paint brush one step larger, the step growing with the size. |
+| `brush-softer` | Decrease Brush Hardness |  | Makes the paint brush 25 percent softer. |
 | `check-for-updates` | Check for Updates... |  | Asks the update server whether a newer formvis is available and offers to install it and restart; says so when this build has no update key. |
 | `copy-error-log` | Copy Error Log |  | Copies the error log to the clipboard. |
 | `delete-frame` | Delete Frame |  | Deletes the current animation frame. (changes the picture) |

@@ -32,8 +32,8 @@ export function defaultFilterSettings() {
       radialAmount: 10, radialMethod: 'spin' as 'spin' | 'zoom', radialQuality: 'good' as 'draft' | 'good' | 'best', radialX: 50, radialY: 50,
       surfaceRadius: 5, surfaceThreshold: 15,
       pins: 2, pin1x: 30, pin1y: 50, pin1blur: 0, pin2x: 70, pin2y: 50, pin2blur: 15, pin3x: 50, pin3y: 20, pin3blur: 8, pin4x: 50, pin4y: 80, pin4blur: 8,
-      irisBlur: 15, irisX: 50, irisY: 50, irisRx: 30, irisRy: 30, irisAngle: 0, irisFeather: 50,
-      tiltBlur: 15, tiltY: 50, tiltAngle: 0, tiltFocus: 10, tiltTransition: 20,
+      irisBlur: 15, irisX: 50, irisY: 50, irisRx: 30, irisRy: 30, irisAngle: 0, irisFeather: 50, irisRound: 100,
+      tiltBlur: 15, tiltX: 50, tiltY: 50, tiltAngle: 0, tiltFocus: 10, tiltTransition: 20,
       pathSpeed: 30, pathTaper: 0, pathSx: 20, pathSy: 70, pathBx: 50, pathBy: 30, pathEx: 80, pathEy: 70,
     } as GallerySettings,
     lib: libAllDefaults() as Partial<Record<LibKind, LibValues>>,
@@ -122,7 +122,7 @@ export class FilterPanel extends Dialog {
   constructor(private readonly engine: Engine) {
     super('Filter', 440);
     const s = this.s;
-    const gbRadius = sliderRow('Radius (px)', 0.1, 100, 0.1, (v) => { s.radius = v; this.schedule(); }, { max: 250 });
+    const gbRadius = sliderRow('Radius (px)', 0.1, 100, 0.1, (v) => { s.radius = v; this.schedule(); }, { max: 1000 });
     this.section('gaussianBlur', [gbRadius.el], () => gbRadius.set(s.radius));
     const mbAngle = sliderRow('Angle (\u00b0)', -90, 90, 1, (v) => { s.angle = v; this.schedule(); });
     const mbDistance = sliderRow('Distance (px)', 1, 500, 1, (v) => { s.distance = v; this.schedule(); }, { max: 2000 });
@@ -134,7 +134,7 @@ export class FilterPanel extends Dialog {
     const lcDistortion = sliderRow('Distortion', -100, 100, 1, (v) => { s.distortion = v; this.schedule(); });
     this.section('lensCorrection', [lcDistortion.el, el('<p class="cv-note">Positive values correct barrel distortion, negative values pincushion.</p>')], () => lcDistortion.set(s.distortion));
     const usAmount = sliderRow('Amount (%)', 1, 500, 1, (v) => { s.usmAmount = v; this.schedule(); });
-    const usRadius = sliderRow('Radius (px)', 0.1, 100, 0.1, (v) => { s.usmRadius = v; this.schedule(); }, { max: 250 });
+    const usRadius = sliderRow('Radius (px)', 0.1, 100, 0.1, (v) => { s.usmRadius = v; this.schedule(); }, { max: 1000 });
     const usThreshold = sliderRow('Threshold (levels)', 0, 255, 1, (v) => { s.threshold = v; this.schedule(); });
     this.section('unsharpMask', [usAmount.el, usRadius.el, usThreshold.el], () => { usAmount.set(s.usmAmount); usRadius.set(s.usmRadius); usThreshold.set(s.threshold); });
     const lensR = sliderRow('Radius (px)', 1, 100, 1, (v) => { s.lensRadius = v; this.schedule(); });
@@ -163,9 +163,9 @@ export class FilterPanel extends Dialog {
       ...([1, 2, 3, 4] as const).flatMap((i) => [gs(`Pin ${i} X (%)`, 0, 100, 1, `pin${i}x`), gs(`Pin ${i} Y (%)`, 0, 100, 1, `pin${i}y`), gs(`Pin ${i} Blur (px)`, 0, 500, 1, `pin${i}blur`)])],
       'Each pin sets the blur at its place; between pins the blur blends by distance.');
     group('irisBlur', [gs('Blur (px)', 0, 500, 1, 'irisBlur'), gs('Center X (%)', 0, 100, 1, 'irisX'), gs('Center Y (%)', 0, 100, 1, 'irisY'),
-      gs('Radius X (%)', 1, 100, 1, 'irisRx'), gs('Radius Y (%)', 1, 100, 1, 'irisRy'), gs('Angle (\u00b0)', -90, 90, 1, 'irisAngle'), gs('Sharp area (%)', 0, 99, 1, 'irisFeather')],
+      gs('Radius X (%)', 1, 100, 1, 'irisRx'), gs('Radius Y (%)', 1, 100, 1, 'irisRy'), gs('Angle (\u00b0)', -90, 90, 1, 'irisAngle'), gs('Sharp area (%)', 0, 99, 1, 'irisFeather'), gs('Roundness (%)', 0, 100, 1, 'irisRound')],
       'Sharp inside the sharp area, rising to the full blur at the ellipse\'s edge.');
-    group('tiltShift', [gs('Blur (px)', 0, 500, 1, 'tiltBlur'), gs('Center Y (%)', 0, 100, 1, 'tiltY'), gs('Angle (\u00b0)', -90, 90, 1, 'tiltAngle'),
+    group('tiltShift', [gs('Blur (px)', 0, 500, 1, 'tiltBlur'), gs('Center X (%)', 0, 100, 1, 'tiltX'), gs('Center Y (%)', 0, 100, 1, 'tiltY'), gs('Angle (\u00b0)', -90, 90, 1, 'tiltAngle'),
       gs('Focus (% of height)', 0, 50, 1, 'tiltFocus'), gs('Transition (% of height)', 1, 50, 1, 'tiltTransition')]);
     group('pathBlur', [gs('Speed (px)', 0, 500, 1, 'pathSpeed'), gs('Taper (%)', 0, 100, 1, 'pathTaper'), gs('Start X (%)', 0, 100, 1, 'pathSx'), gs('Start Y (%)', 0, 100, 1, 'pathSy'),
       gs('Bend X (%)', 0, 100, 1, 'pathBx'), gs('Bend Y (%)', 0, 100, 1, 'pathBy'), gs('End X (%)', 0, 100, 1, 'pathEx'), gs('End Y (%)', 0, 100, 1, 'pathEy')],

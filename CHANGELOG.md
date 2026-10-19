@@ -4,6 +4,19 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.88.1 · 2026-10-19
+
+### Added
+
+- Brush: type two digits quickly for an exact opacity (4 then 5 is 45%), Shift+digits set Flow; Shift while dragging snaps to 45 degrees; Caps Lock shows the precise crosshair; Smoothing has Pulled string, Catch-up on stroke end and Adjust for zoom (also on the Pencil); the cursor follows the tip's roundness and angle and briefly shows the hardness; the options bar reaches roundness, spacing, jitter, scatter, count, noise and wet edges; Window > Brush Size commands. Mixer Brush has Flow; the Pencil has Mode.
+- Layer Style: a blend mode for every effect; Blending Options set the layer's mode, opacity and fill; sizes up to 500 px; Cove - Shallow and Sawtooth 2 contours; Layer > Rasterize > Layer Style for one layer; Layer > Layer Style > Hide Effects for one layer; rename styles in the Styles panel.
+- Filters: Tilt-Shift centre position, Iris Blur roundness, Gaussian Blur and Unsharp Mask radius up to 1,000.
+- Layers: clicking an eye on one of several selected layers shows or hides them all; Layer > Show All Layers and the Layers menu's Hide, Show Only and Show All; layer comps say when layers they recorded were deleted.
+
+### Fixed
+
+- The Brush follows Preferences > Cursors (it drew its own ring before).
+
 ## 1.88.0 · 2026-10-19
 
 ### Added

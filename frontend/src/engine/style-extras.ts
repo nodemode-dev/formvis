@@ -5,7 +5,7 @@ import type { LayerEffects } from './types';
  *  alone, Cone makes a ring, Ring Double two rings, and so on. Global Light is the document's one light: effects
  *  marked Use Global Light take its angle (and Bevel its altitude) instead of their own, so they all move together. */
 
-export type ContourId = 'linear' | 'cone' | 'coneInverted' | 'gaussian' | 'halfRound' | 'ring' | 'ringDouble' | 'rollingSlope' | 'roundedSteps' | 'sawtooth' | 'coveDeep';
+export type ContourId = 'linear' | 'cone' | 'coneInverted' | 'gaussian' | 'halfRound' | 'ring' | 'ringDouble' | 'rollingSlope' | 'roundedSteps' | 'sawtooth' | 'coveDeep' | 'coveShallow' | 'sawtooth2';
 
 const frac = (x: number): number => x - Math.floor(x);
 const smooth = (t: number): number => t * t * (3 - 2 * t);
@@ -15,6 +15,7 @@ export const CONTOURS: ReadonlyArray<{ id: ContourId; label: string; f: (t: numb
   { id: 'cone', label: 'Cone', f: (t) => 1 - Math.abs(2 * t - 1) },
   { id: 'coneInverted', label: 'Cone - Inverted', f: (t) => Math.abs(2 * t - 1) },
   { id: 'coveDeep', label: 'Cove - Deep', f: (t) => t * t * t },
+  { id: 'coveShallow', label: 'Cove - Shallow', f: (t) => t * t },
   { id: 'gaussian', label: 'Gaussian', f: smooth },
   { id: 'halfRound', label: 'Half Round', f: (t) => Math.sqrt(Math.max(0, 1 - (1 - t) * (1 - t))) },
   { id: 'ring', label: 'Ring', f: (t) => Math.sin(Math.PI * t) ** 2 },
@@ -22,6 +23,7 @@ export const CONTOURS: ReadonlyArray<{ id: ContourId; label: string; f: (t: numb
   { id: 'rollingSlope', label: 'Rolling Slope - Descending', f: (t) => Math.min(1, Math.max(0, t + 0.12 * Math.sin(2 * Math.PI * t))) },
   { id: 'roundedSteps', label: 'Rounded Steps', f: (t) => Math.min(1, (Math.floor(t * 4) + smooth(frac(t * 4))) / 4) },
   { id: 'sawtooth', label: 'Sawtooth 1', f: (t) => (t >= 1 ? 1 : frac(t * 2)) },
+  { id: 'sawtooth2', label: 'Sawtooth 2', f: (t) => (t >= 1 ? 1 : frac(t * 4)) },
 ];
 
 const luts = new Map<ContourId, Uint8Array>();

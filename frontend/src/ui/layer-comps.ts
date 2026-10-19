@@ -3,7 +3,7 @@ import type { LayerComp } from '../engine/types';
 import { el, patchList, q, setHidden, setText } from './dom';
 import { icon } from './icons';
 
-type Row = { key: string; id: string; name: string; comment: string };
+type Row = { key: string; id: string; name: string; comment: string; missing: number };
 
 /** The Layer Comps panel (Window > Layer Comps, DEV_PLAN 33.3 part b): "Last Document State" on top, then one
  *  fixed-height row per comp. The square on the left marks the active comp and applies one when clicked; a double
@@ -96,7 +96,8 @@ export class LayerCompsPanel {
       const a = b.dataset.act;
       b.disabled = !d || (a === 'previous' || a === 'next' ? comps.length === 0 : a === 'update' || a === 'delete' ? !picked : false);
     });
-    const list: Row[] = comps.map((c) => ({ key: c.id, id: c.id, name: c.name, comment: c.comment }));
+    const have = new Set((d?.layers ?? []).map((l) => l.id));
+    const list: Row[] = comps.map((c) => ({ key: c.id, id: c.id, name: c.name, comment: c.comment, missing: Object.keys(c.layers).filter((k) => !have.has(k)).length }));
     for (const id of [...this.open]) if (!comps.some((c) => c.id === id)) this.open.delete(id);
     patchList<Row>(this.rows, list, {
       key: (r) => r.key,
@@ -113,7 +114,10 @@ export class LayerCompsPanel {
   private fill(row: HTMLElement, r: Row, active: string | null, picked: string | null): void {
     row.dataset.id = r.id;
     setText(q(row, '.cv-comp-name'), r.name);
-    setText(q(row, '.cv-comp-comment'), r.comment || 'No comment.');
+    const warn = r.missing ? `${r.missing} layer${r.missing === 1 ? '' : 's'} recorded in this comp ${r.missing === 1 ? 'was' : 'were'} deleted. Update the comp to drop the warning.` : '';
+    setText(q(row, '.cv-comp-comment'), warn ? `${r.comment || 'No comment.'}\n${warn}` : r.comment || 'No comment.');
+    row.title = warn;
+    row.classList.toggle('has-warning', !!warn);
     row.classList.toggle('is-active', r.id === active);
     row.classList.toggle('is-open', this.open.has(r.id));
     row.classList.toggle('is-selected', r.id === picked);

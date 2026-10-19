@@ -1646,11 +1646,11 @@ export class Engine {
   }
 
   /** The Layer Style dialog's OK: the layer's effects and, when it changed, the document's Global Light, one step. */
-  applyStyleAndLight(id: ID, effects: LayerEffects | null, light: GlobalLight | null, blending: { blendIf: BlendIf | null; knockout: 'none' | 'shallow' | 'deep'; channels?: [boolean, boolean, boolean] } | null = null): void {
+  applyStyleAndLight(id: ID, effects: LayerEffects | null, light: GlobalLight | null, blending: { blendIf: BlendIf | null; knockout: 'none' | 'shallow' | 'deep'; channels?: [boolean, boolean, boolean]; general?: { blend: BlendMode; opacity: number; fill: number } } | null = null): void {
     this.edit('Layer Style', (p) => {
       if (light) this.setGlobalLight(light);
       this.setLayerEffects(id, effects);
-      if (blending) p.updateLayer(id, { blendIf: blendIfActive(blending.blendIf) ? blending.blendIf : null, knockout: blending.knockout, blendChannels: blending.channels?.some((on) => !on) ? [...blending.channels] : null });
+      if (blending) p.updateLayer(id, { blendIf: blendIfActive(blending.blendIf) ? blending.blendIf : null, knockout: blending.knockout, blendChannels: blending.channels?.some((on) => !on) ? [...blending.channels] : null, ...(blending.general ? { blend: blending.general.blend, opacity: clamp(blending.general.opacity, 0, 1), fill: clamp(blending.general.fill, 0, 1) } : {}) });
       return true;
     });
   }
@@ -3127,6 +3127,36 @@ export class Engine {
     return count;
   }
 
+  /** Layer > Rasterize > Layer Style: the style of each selected layer drawn into its pixels. One step; returns the layers baked. */
+  rasterizeLayerStyle(): number {
+    let count = 0;
+    this.edit('Rasterize Layer Style', (p) => {
+      const ids = new Set<ID>(p.selectedIds.size ? p.selectedIds : p.activeId ? [p.activeId] : []);
+      const { patches } = FS.bakeEffects(p.doc, this.work, ids);
+      if (!patches.size) { this.notice('The selected layers have no shown layer style to rasterize.'); return false; }
+      for (const [id, patch] of patches) p.updateLayer(id, patch);
+      count = patches.size;
+    });
+    return count;
+  }
+
+  /** Hides or shows the layer style of each selected layer, without touching the others. One step. */
+  setLayerEffectsHidden(hidden: boolean): void {
+    this.edit(hidden ? 'Hide Layer Effects' : 'Show Layer Effects', (p) => {
+      const ids = new Set<ID>(p.selectedIds.size ? p.selectedIds : p.activeId ? [p.activeId] : []);
+      const layers = p.doc.layers.map((l) => {
+        const fx = l.effects;
+        if (!ids.has(l.id) || !effectsPresent(fx) || !!fx.hidden === hidden) return l;
+        const next = { ...fx };
+        if (hidden) next.hidden = true; else delete next.hidden;
+        return { ...l, effects: next };
+      });
+      if (layers.every((l, i) => l === p.doc.layers[i])) return false;
+      p.setLayers(layers);
+      return true;
+    });
+  }
+
   /** File > Scripts > Flatten All Masks (30.1): every layer mask and vector mask multiplied into its layer's pixels and
    *  removed; a type, shape or fill layer that carries one is rasterized. One step; returns the masks applied. */
   flattenAllMasks(): number {
@@ -3165,6 +3195,16 @@ export class Engine {
     if (!l) return;
     const was = l.visible;
     this.edit(was ? 'Hide Layer' : 'Show Layer', (p) => { p.updateLayer(id, { visible: !was }); });
+  }
+
+  /** Show All Layers: every layer shown, as one step. */
+  showAllLayers(): void {
+    this.edit('Show All Layers', (p) => {
+      let changed = false;
+      for (const l of p.doc.layers) if (!l.visible) { p.updateLayer(l.id, { visible: true }); changed = true; }
+      this.soloed.delete(p.id);
+      return changed;
+    });
   }
 
   /** Layer > Hide Layers or Show Layers: every selected layer hidden, or shown, as one step. */
@@ -3236,9 +3276,11 @@ export class Engine {
     if (!p || !l || this.stroke) return null;
     this.settle();
     const next = !l.visible;
-    p.history.begin(next ? 'Show Layer' : 'Hide Layer', p.snapshot());
+    const many = p.selectedIds.size > 1 && p.selectedIds.has(id);
+    p.history.begin(many ? (next ? 'Show Layers' : 'Hide Layers') : next ? 'Show Layer' : 'Hide Layer', p.snapshot());
     this.swipeOpen = p;
-    p.updateLayer(id, { visible: next });
+    if (many) { for (const sid of p.selectedIds) if (p.layer(sid)?.visible !== next) p.updateLayer(sid, { visible: next }); }
+    else p.updateLayer(id, { visible: next });
     this.emit('doc', null);
     this.emit('render', null);
     return next;
