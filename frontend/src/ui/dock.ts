@@ -104,6 +104,8 @@ export class Dock {
   }
 
   isShown(id: string): boolean { return !this.state.hidden.includes(id); }
+  /** The arrangement as it stands, for Window > Workspace > New Workspace. */
+  get layout(): { order: string[]; hidden: string[] } { return { order: [...this.state.order], hidden: [...this.state.hidden] }; }
   /** Shown and holding a tab (a group whose tabs all moved away is absent). */
   private present(id: string): boolean { return this.isShown(id) && !this.section(id)?.classList.contains('is-empty'); }
   /** Re-lays out the columns (tabs moved between groups). */

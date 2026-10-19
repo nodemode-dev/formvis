@@ -125,8 +125,8 @@ import { LargePictureError, IMAGE_ACCEPT, PROJECT_ACCEPT, RAW_FILE, decodeFrames
 import { addFontFace, familyOfFile, loadSystemFonts } from './ui/fonts';
 import { deserialize, giantTiles, serialize } from './io/project-io';
 import { AboutDialog, BenchmarkDialog, NewCanvasDialog, OpenDialog, SettingsDialog, ShortcutsDialog } from './ui/app-dialogs';
-import { CHECKER_CELL, FONT_PREVIEWS, applyPrefs, checkerPair, loadPrefs, savePrefs, updatePrefs, type Prefs } from './ui/prefs';
-import { THEMES, readChoice } from './ui/themes';
+import { CHECKER_CELL, FONT_PREVIEWS, applyPrefs, applyUiFontSize, checkerPair, loadPrefs, savePrefs, updatePrefs, type Prefs } from './ui/prefs';
+import { THEMES, readChoice, setTheme } from './ui/themes';
 import { installOptionMemory } from './ui/option-memory';
 import { chooseRenderer, detectedName, gpuStartFailedLastTime, markGpuStarted, markGpuStarting, probeGpu, type GpuProbe } from './gpu/probe';
 import { GpuDisplay, type ScreenDisplay } from './gpu/display';
@@ -359,6 +359,14 @@ export function startApp(): void {
   const setScreen = (s: Screen): void => { screen = s; applyScreen(); };
   const railDouble = (): boolean => stored('formvis.railDouble') === '1';
   const applyRail = (): void => { q(root, '.cv-rail').classList.toggle('is-double', railDouble()); window.dispatchEvent(new Event('resize')); };
+  // Right-to-left layout: the document's direction flips the rail, the dock and the menu bar to the other side.
+  const rtl = (): boolean => stored('formvis.rtl') === '1';
+  const applyRtl = (): void => { if (document.documentElement.dir !== (rtl() ? 'rtl' : 'ltr')) { document.documentElement.dir = rtl() ? 'rtl' : 'ltr'; window.dispatchEvent(new Event('resize')); } };
+  // The pasteboard around the picture: the theme's own, or a fixed grey (View > Pasteboard).
+  const PASTEBOARDS: Record<string, string> = { default: '', black: '#000000', dark: '#303030', mid: '#808080', light: '#c8c8c8' };
+  const pasteboard = (): string => { const v = stored('formvis.pasteboard') ?? 'default'; return v in PASTEBOARDS ? v : 'default'; };
+  const applyPasteboard = (): void => { const c = PASTEBOARDS[pasteboard()]; if (c) setStyleVar(root, '--pasteboard', c); else root.style.removeProperty('--pasteboard'); };
+  const pasteboardCmd = (id: string, label: string, key: string) => ({ id, label, checked: () => pasteboard() === key, run: () => { store('formvis.pasteboard', key); applyPasteboard(); } });
   commands.add(
     { id: 'quick-mask', label: 'Edit in Quick Mask Mode', keys: ['Q'], checked: () => engine.quickMask, enabled: () => !!engine.current, run: () => engine.toggleQuickMask() },
     { id: 'screen-standard', label: 'Standard Screen Mode', checked: () => screen === 'standard', run: () => setScreen('standard') },
@@ -367,10 +375,18 @@ export function startApp(): void {
     { id: 'screen-next', label: 'Change Screen Mode', keys: ['F'], run: () => setScreen(screen === 'standard' ? 'menu' : screen === 'menu' ? 'full' : 'standard') },
     { id: 'toggle-panels', label: 'Show or Hide Panels', keys: ['Tab'], checked: () => !panelsHidden, run: () => { panelsHidden = !panelsHidden; applyScreen(); } },
     { id: 'rail-columns', label: 'Tools in Two Columns', checked: railDouble, run: () => { store('formvis.railDouble', railDouble() ? '0' : '1'); applyRail(); } },
+    { id: 'interface-rtl', label: 'Right-to-Left Layout', checked: rtl, run: () => { store('formvis.rtl', rtl() ? '0' : '1'); applyRtl(); } },
+    pasteboardCmd('pasteboard-default', 'Pasteboard: Theme Default', 'default'),
+    pasteboardCmd('pasteboard-black', 'Pasteboard: Black', 'black'),
+    pasteboardCmd('pasteboard-dark', 'Pasteboard: Dark Grey', 'dark'),
+    pasteboardCmd('pasteboard-mid', 'Pasteboard: Medium Grey', 'mid'),
+    pasteboardCmd('pasteboard-light', 'Pasteboard: Light Grey', 'light'),
   );
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && screen === 'full') { setScreen('standard'); e.preventDefault(); } }, true);
   engine.on('options', () => q(root, '.cv-rail [data-cmd="quick-mask"]').classList.toggle('is-on', engine.quickMask));
   applyRail();
+  applyPasteboard();
+  applyRtl();
   applyPrefs(engine, loadPrefs());
   const stage = new Stage(q(root, '.cv-stage'), engine);
   q(root, '.cv-stage').addEventListener('contextmenu', (e) => {
@@ -399,6 +415,7 @@ export function startApp(): void {
   const applyUiPrefs = (pr: Prefs): void => {
     Stage.prefs = { cell: CHECKER_CELL[pr.checkerSize], zoomWheel: pr.zoomWheel, rulerUnits: pr.rulerUnits, gridColor: pr.gridColor, guideColor: pr.guideColor };
     applyChecker(pr);
+    applyUiFontSize(pr);
     PropertiesColumn.narrowCollapse = pr.narrowCollapse;
     stage.restyle();
     window.dispatchEvent(new Event('resize'));
@@ -489,7 +506,7 @@ export function startApp(): void {
   if (dock.collapsed) syncDockWidth(true);
   // The title bar's tools (Phase 21): theme, command search, workspaces, Lock Workspace.
   enhanceAllSelects();   // every dropdown as the glass list (the owner's walkthrough)
-  new TitleTools(q(root, '.cv-titlebar'), {
+  const titleTools = new TitleTools(q(root, '.cv-titlebar'), {
     commands,
     arrange: (w) => { dock.arrange(w.order, w.hidden); store('formvis.propsCol', w.propsColumn ? 'shown' : 'hidden'); syncPropsCol(); },
     locked: () => dock.locked,
@@ -2225,6 +2242,24 @@ export function startApp(): void {
 
   /** The last few documents closed, kept whole in memory so File > Reopen Closed Tab brings one back as it was. */
   const closedTabs: RecoveryRecord[] = [];
+  /** Next Document and Previous Document walk the tab strip, wrapping at the ends. */
+  function stepDocument(by: number): void {
+    const list = engine.projects, n = list.length;
+    if (n < 2) return;
+    const at = Math.max(0, list.findIndex((q) => q.id === engine.current?.id));
+    engine.switchTo(list[(at + by + n) % n].id);
+  }
+  /** Window > Theme > Sync with System: follows the system's light or dark scheme while it is on. */
+  const THEME_SYNC_KEY = 'formvis.themeSync';
+  const systemScheme = window.matchMedia('(prefers-color-scheme: light)');
+  function applySystemTheme(): void {
+    if (stored(THEME_SYNC_KEY) !== '1') return;
+    const current = readChoice().theme, isLight = !!THEMES[current]?.light;
+    if (systemScheme.matches && !isLight) setTheme('light');
+    else if (!systemScheme.matches && isLight) setTheme('studio');
+  }
+  systemScheme.addEventListener('change', applySystemTheme);
+  applySystemTheme();
   async function rememberClosed(p: ReturnType<typeof engine.addProject>): Promise<void> {
     if (p.doc.layers.some((l) => l.tiled)) return;
     try {
@@ -2942,6 +2977,22 @@ export function startApp(): void {
         if (p) engine.switchTo(p.id); else closedTabs.push(r);
       },
     },
+    { id: 'new-workspace', label: 'New Workspace...', run: async () => {
+      const name = await promptName('New Workspace', '', 'Save');
+      if (!name?.trim()) return;
+      const l = dock.layout;
+      titleTools.addCustom(name, l.order, l.hidden, stored('formvis.propsCol') !== 'hidden');
+      toast(`Workspace "${name.trim()}" saved.`);
+    } },
+    { id: 'delete-workspace', label: 'Delete Workspace', enabled: () => titleTools.isCustom(titleTools.currentId()), run: async () => {
+      const id = titleTools.currentId(), w = titleTools.all().find((x) => x.id === id);
+      if (!w || !titleTools.isCustom(id)) return;
+      if (await confirmAction('Delete Workspace', `Delete the workspace "${w.label}"?`, 'Delete', true)) titleTools.removeCustom(id);
+    } },
+    { id: 'workspace-pixelart', label: 'Pixel Art Workspace', run: () => { const w = titleTools.all().find((x) => x.id === 'pixelart'); if (w) titleTools.choose(w.id); } },
+    { id: 'next-document', label: 'Next Document', keys: ['Mod+Tab'], enabled: () => engine.projects.length > 1, run: () => stepDocument(1) },
+    { id: 'previous-document', label: 'Previous Document', keys: ['Shift+Mod+Tab'], enabled: () => engine.projects.length > 1, run: () => stepDocument(-1) },
+    { id: 'theme-sync-system', label: 'Sync Theme with System', checked: () => stored(THEME_SYNC_KEY) === '1', run: () => { store(THEME_SYNC_KEY, stored(THEME_SYNC_KEY) === '1' ? '0' : '1'); applySystemTheme(); } },
     { id: 'undo', label: () => { const h = engine.current?.history; return h?.canUndo ? `Undo ${h.undoName}` : 'Undo'; }, keys: ['Mod+Z'], enabled: () => !!engine.current?.history.canUndo, run: () => engine.undo() },
     { id: 'redo', label: () => { const h = engine.current?.history; return h?.canRedo ? `Redo ${h.redoName}` : 'Redo'; }, keys: ['Shift+Mod+Z', 'Mod+Y'], enabled: () => !!engine.current?.history.canRedo, run: () => engine.redo() },
     { id: 'compare-documents', label: 'Compare with...', enabled: () => !!engine.current && engine.projects.length > 1, run: () => dialogs.compare.show() },
@@ -3685,9 +3736,9 @@ export function startApp(): void {
     { label: 'Generate', items: ['generate-panel', '-', 'generate-image', 'generative-fill', 'generative-expand', '-', 'generate-remove', 'content-fill-workspace', 'content-fill', 'remove-wires', '-', 'remove-bg', 'remove-bg-lite', '-', 'upscale-2x', 'upscale-4x', 'new-relight-layer', '-', 'comfyui-run', 'send-comfyui', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode'])] },
     { label: 'View', items: [{ label: 'Proof Setup', items: ['proof-setup', '-', 'proof-preset-monitor', 'proof-preset-cmyk', 'proof-preset-cyan', 'proof-preset-magenta', 'proof-preset-yellow', 'proof-preset-black', 'proof-preset-cmy', '-', 'proof-preset-protanopia', 'proof-preset-deuteranopia'] }, 'proof-colors', 'gamut-warning', 'preview-32', '-', 'zoom-in', 'zoom-out', 'fit', 'fit-layers', 'fit-artboard', 'actual', '-', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'pattern-preview', 'pixel-art-preview', 'par-correction', 'transform-controls', 'toggle-task-bar', '-',
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'guide-layout', 'guides-from-shape', 'clear-guides'] }, { label: 'Show', items: ['toggle-show-slices', 'layer-based-slice', 'slice-options', 'delete-slice', 'clear-slices'] }, '-',
-      { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'toggle-panels', 'rail-columns'] },
+      { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'toggle-panels', 'rail-columns', 'interface-rtl', { label: 'Pasteboard', items: ['pasteboard-default', 'pasteboard-black', 'pasteboard-dark', 'pasteboard-mid', 'pasteboard-light'] }] },
     { label: 'Plugins', items: () => { const ids = pluginHost.commandIds(); return ['manage-plugins', ...(ids.length ? ['-', ...ids] : [])]; } },
-    { label: 'Window', items: [{ label: 'Arrange', items: ['new-window', 'float-window', 'float-all-windows', '-', 'arrange-tabs','arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-4up', 'arrange-6up', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.connect.open', 'terminal.toggle', 'terminal.new', 'script-console', 'brush-settings', 'paragraph-styles', 'character-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-properties-col', 'merge-columns', '-', 'reset-panels'] },
+    { label: 'Window', items: [{ label: 'Arrange', items: ['new-window', 'float-window', 'float-all-windows', '-', 'arrange-tabs','arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-4up', 'arrange-6up', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.connect.open', 'terminal.toggle', 'terminal.new', 'script-console', 'brush-settings', 'paragraph-styles', 'character-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-properties-col', 'merge-columns', '-', { label: 'Workspace', items: ['workspace-pixelart', '-', 'new-workspace', 'delete-workspace'] }, 'reset-panels', '-', 'next-document', 'previous-document', '-', 'theme-sync-system'] },
     { label: 'Help', items: ['help', 'whats-new', '-', 'shortcuts', 'copy-error-log', 'benchmark', 'record-performance', '-', 'check-for-updates', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);
@@ -3826,13 +3877,23 @@ export function startApp(): void {
       // chosen from the same group; Shift with it cycles the group.
       const group = toolsForKey(k), at = group.findIndex((t) => t.id === engine.tool);
       if (e.shiftKey) { if (group.length > 1) engine.setTool(group[(at + 1) % group.length].id); }
-      else if (at < 0) { const g = toolGroups().find((x) => x.key === k); engine.setTool(g ? slotTool(g, engine.tool).id : group[0].id); }
+      else if (at < 0) { const prev = engine.tool; const g = toolGroups().find((x) => x.key === k); engine.setTool(g ? slotTool(g, engine.tool).id : group[0].id); if (engine.tool !== prev) spring = { code: e.code, prev, at: performance.now() }; }
     }
     else return;
     e.preventDefault();
   });
-  window.addEventListener('keyup', (e) => { if (e.code === 'Space') stage.setSpace(false); });
-  window.addEventListener('blur', () => stage.setSpace(false));
+  // Spring-loaded tool keys: a tool letter held past a moment lends its tool, and the tool before it returns on release.
+  let spring: { code: string; prev: typeof engine.tool; at: number } | null = null;
+  const SPRING_HOLD_MS = 400;
+  window.addEventListener('keyup', (e) => {
+    if (e.code === 'Space') stage.setSpace(false);
+    if (spring && spring.code === e.code) {
+      const s = spring;
+      spring = null;
+      if (performance.now() - s.at >= SPRING_HOLD_MS) engine.setTool(s.prev);
+    }
+  });
+  window.addEventListener('blur', () => { stage.setSpace(false); spring = null; });
 
   document.addEventListener('paste', (e) => {
     const target = e.target instanceof Element ? e.target : null;
@@ -3978,7 +4039,7 @@ export function startApp(): void {
     applyRelight: (content) => relight.apply(content),
   });
   (window as unknown as { formvis: unknown }).formvis = { catalogue };
-  if (import.meta.env.DEV) Object.assign((window as unknown as { formvis: object }).formvis, { engine, commands, actions, animation: dialogs.animation, colour: colourView });
+  if (import.meta.env.DEV) Object.assign((window as unknown as { formvis: object }).formvis, { engine, commands, actions, agents, animation: dialogs.animation, colour: colourView });
 
   // Session restore (1.52.4): every open document is kept on this device (a copy per document, rewritten when it
   // changes, is saved, or moves library entry) with the tab order and the active tab, and reopens at the next start.

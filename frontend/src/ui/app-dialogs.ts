@@ -13,7 +13,7 @@ import { icon } from './icons';
 import { brandMark } from './brand';
 import { THEMES, readChoice, setAccent, setIntensity, setTheme, themeSwatchesHtml } from './themes';
 import { toast } from './toast';
-import { CHECKER_COLORS, CHECKER_SIZES, ENGINE_CHOICES, PAINT_CURSORS, RECOVERY_CHOICES, RULER_UNITS, loadPrefs, recalled, remembered, savePrefs, type CheckerColors, type CheckerSize, type EngineDevice, type PaintCursor, type Prefs, type RulerUnits } from './prefs';
+import { CHECKER_COLORS, CHECKER_SIZES, ENGINE_CHOICES, PAINT_CURSORS, PRESSURE_CURVES, RAW_WB_CHOICES, RECOVERY_CHOICES, RULER_UNITS, UI_FONT_SIZES, loadPrefs, recalled, remembered, savePrefs, type CheckerColors, type CheckerSize, type EngineDevice, type PaintCursor, type Prefs, type PressureCurve, type RulerUnits, type UiFontSize } from './prefs';
 import { RENDERER_CHOICES, type GpuRenderer } from '../gpu/probe';
 import { checkRow, selectRow, sliderRow } from './panels/controls';
 
@@ -400,6 +400,11 @@ export class SettingsDialog extends Dialog {
   private readonly whatsNewRow = checkRow('Show What\'s New once after an update', (v) => this.change({ whatsNewAuto: v }));
   /* The other sections (the owner's walkthrough), each acting on something real. */
   private readonly wheelRow = checkRow('Zoom with Scroll Wheel', (v) => this.change({ zoomWheel: v }));
+  private readonly recentFontsRow = sliderRow('Recent fonts listed first', 0, 20, 1, (v) => this.change({ recentFontCount: v }));
+  private readonly rawWbRow = selectRow('Default White Balance', RAW_WB_CHOICES, (v) => this.change({ rawWb: v as Prefs['rawWb'] }));
+  private readonly rawBitsRow = selectRow('Default Depth', [['8', '8 Bits/Channel'], ['16', '16 Bits/Channel']], (v) => this.change({ rawBits: v === '16' ? 16 : 8 }));
+  private readonly curveRow = selectRow('Pen Pressure Curve', PRESSURE_CURVES, (v) => this.change({ pressureCurve: v as PressureCurve }));
+  private readonly fontSizeRow = selectRow('Interface Text Size', UI_FONT_SIZES, (v) => this.change({ uiFontSize: v as UiFontSize }));
   private readonly firstSnapRow = checkRow('Automatically Create First Snapshot', (v) => this.change({ autoFirstSnapshot: v }));
   private readonly snapMemRow = sliderRow('Snapshot memory (MB)', 64, 8192, 64, (v) => this.change({ snapshotMB: v }));
   private readonly narrowRow = checkRow('Show the side column as icons in a narrow window', (v) => this.change({ narrowCollapse: v }));
@@ -463,14 +468,14 @@ export class SettingsDialog extends Dialog {
     reset.addEventListener('click', () => { void confirmAction('Reset all preferences?', 'Every preference, the panel arrangement and the tools shown go back to how formvis comes; your documents and library are kept. formvis reloads.', 'Reset').then((ok) => { if (!ok) return; for (const k of Object.keys(localStorage)) if (k.startsWith('formvis.') || k === 'nodemode_ui_settings') localStorage.removeItem(k); location.reload(); }); });
     add('General', this.homeRow.el, this.homeCloseRow.el, this.whatsNewRow.el, reset, el('<p class="cv-note">The Home screen covers the canvas area. At launch it shows while no document is open; closing the last document leaves the empty workspace with its panels unless the second choice is on. The brand mark at the top left opens it at any time; Esc leaves it. What\'s New (Help menu) lists the recent additions, each with a Show Me button; with the third choice on it opens once after an update.</p>'));
     this.intensityRow.set(Math.round((readChoice().intensity ?? 1) * 100));
-    add('Interface', row, accentRow, this.intensityRow.el, el('<p class="cv-note">Theme and accent are shared with NodeMode on this device. Intensity sets how strongly the accent tints what it marks; 100% is the design\'s.</p>'));
+    add('Interface', row, accentRow, this.intensityRow.el, this.fontSizeRow.el, el('<p class="cv-note">Theme and accent are shared with NodeMode on this device. Intensity sets how strongly the accent tints what it marks; 100% is the design\'s. Text size scales the interface\'s text.</p>'));
     add('Performance', this.budgetNote, this.redrawRow.el,
       el('<h3 class="cv-prefs-sub">Graphics Processor Settings</h3>'), this.gpuNameRow(), this.gpuUseRow.el, this.gpuFiltersRow.el, this.rendererRow.el, this.gpuMemoryRow.el, this.gpuMode,
       el('<p class="cv-note">Automatic uses WebGPU (Metal on macOS, Direct3D 12 on Windows), then WebGL2 (as on Linux), on a hardware graphics processor, and the CPU otherwise; a software GPU is slower than the CPU renderer, so Automatic does not use one. If the graphics processor fails to start, formvis turns this off and says so. The canvas draws on the graphics processor; a document using something it does not draw yet draws on the CPU, and the status bar says why.</p>'),
       el('<h3 class="cv-prefs-sub">Engine</h3>'), this.engineRow.el, this.engineMode,
       el('<p class="cv-note">Where the engine runs its models (Remove Background, and the local models that follow). Automatic uses CUDA on an NVIDIA graphics processor, Core ML (Metal) on a Mac, and the CPU otherwise; a choice this machine cannot run falls back to the CPU, and the line above says why.</p>'));
     add('Workspace', this.lockRow.el, this.narrowRow.el, el('<p class="cv-note">Locked, panels are neither dragged nor resized. In a window too narrow for the canvas beside the open side column, it shows as its icons until there is room (your choice is kept).</p>'));
-    add('Tools', this.wheelRow.el, el('<p class="cv-note">On, the wheel zooms about the pointer and Ctrl or Cmd with the wheel scrolls; off, the other way round.</p>'));
+    add('Tools', this.wheelRow.el, this.curveRow.el, el('<p class="cv-note">On, the wheel zooms about the pointer and Ctrl or Cmd with the wheel scrolls; off, the other way round. The pressure curve is how a pen\'s pressure maps to size, flow and opacity in every brush; a brush\'s own options can change it for the session.</p>'));
     add('History & Cache', this.statesRow.el, this.memoryRow.el, this.memoryAutoRow.el, el('<p class="cv-note">History States is how many steps undo keeps (50 is a common default; up to 1000); history memory caps what those steps may hold, and the oldest steps go first when either is reached. A browser app cannot reserve system memory as a desktop app can, so this is the part formvis controls. Turning off region redraws repaints the whole canvas on each stroke, slower but useful if painting ever draws out of place.</p>'),
       this.firstSnapRow.el, this.snapMemRow.el, el('<p class="cv-note">Each document keeps itself as opened, the History Brush\'s first source; snapshots, that one included, share this memory.</p>'));
     this.restoreBox.addEventListener('change', () => this.change({ restoreSession: this.restoreBox.checked }));
@@ -488,6 +493,8 @@ export class SettingsDialog extends Dialog {
     library.append(this.libNow, libRow, pathRow, moveRow, this.libApply, el('<p class="cv-note">The library can live in any folder, a synced one (iCloud Drive, Dropbox, OneDrive, Google Drive) included. If a project changed in that folder since you opened it, from another device or window, saving keeps that version and saves yours beside it as a conflict copy.</p>'));
     add('File Handling', library, mismatch, restore, el('<p class="cv-note">Every open document is kept on this device, in its tab order, and opens again at the next start, saved or not. Off, only unsaved work is kept, and formvis asks after a crash.</p>'), this.recoveryRow.el, el('<p class="cv-note">Unsaved documents are kept on this device so they can be recovered after a crash; this is how soon after a change that happens.</p>'));
     add('Cursors', this.cursorRow.el, this.crossRow.el, el('<p class="cv-note">How painting tools show where they paint: the tip\'s outline at its size, a crosshair alone, or a small ring.</p>'));
+    add('Type', this.recentFontsRow.el, el('<p class="cv-note">The fonts you used last are listed first in the font menus, newest first; 0 lists none first.</p>'));
+    add('Camera Raw Defaults', this.rawWbRow.el, this.rawBitsRow.el, el('<p class="cv-note">What the Camera Raw dialog starts with each time a camera RAW file opens.</p>'));
     add('Transparency & Gamut', this.checkerSizeRow.el, this.checkerColorsRow.el, el(`<p class="cv-note">${t('The checkerboard shown behind transparent pixels. None shows it plain; Match Theme uses the light checkerboard in light themes and the dark one in dark themes.')}</p>`));
     add('Language', this.languageRow.el, el('<p class="cv-note">The language of the whole interface. Names you give layers and documents stay as you wrote them.</p>'));
     add('Units & Rulers', this.rulerRow.el, el('<p class="cv-note">The rulers\' unit; inches, centimetres and millimetres follow the document\'s resolution, percent its width and height.</p>'));
@@ -583,6 +590,11 @@ export class SettingsDialog extends Dialog {
     this.gpuMemoryRow.set(this.prefs.gpuMemoryMB);
     this.engineRow.set(this.prefs.engineDevice);
     this.wheelRow.set(this.prefs.zoomWheel);
+    this.curveRow.set(this.prefs.pressureCurve);
+    this.recentFontsRow.set(this.prefs.recentFontCount);
+    this.rawWbRow.set(this.prefs.rawWb);
+    this.rawBitsRow.set(String(this.prefs.rawBits));
+    this.fontSizeRow.set(this.prefs.uiFontSize);
     this.firstSnapRow.set(this.prefs.autoFirstSnapshot);
     this.snapMemRow.set(this.prefs.snapshotMB);
     this.narrowRow.set(this.prefs.narrowCollapse);

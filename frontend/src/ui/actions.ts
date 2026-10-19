@@ -9,7 +9,7 @@ const isMode = (v: unknown): v is DocMode => typeof v === 'string' && DOC_MODES.
  *  change with its numbers, or Fit Image with its box. Actions are kept in this browser's storage and move between
  *  machines as JSON. */
 
-export type ActionStep =
+type StepKind =
   | { kind: 'command'; id: string; label: string }
   | { kind: 'filter'; filter: string; label: string; settings: Record<string, unknown>; ask?: boolean }
   | { kind: 'stop'; label: string; message: string; allowContinue: boolean }
@@ -19,6 +19,8 @@ export type ActionStep =
   | { kind: 'canvasSize'; label: string; w: number; h: number; dx: number; dy: number; fill: RGB | null; fromW?: number; fromH?: number }
   | { kind: 'fitImage'; label: string; w: number; h: number; enlarge: boolean }
   | { kind: 'conditionalMode'; label: string; from: DocMode[]; to: DocMode };
+/** `off`: the step is left out when the action plays. */
+export type ActionStep = StepKind & { off?: boolean };
 /** `relative`: size steps follow each document, Image Size as the same proportion and Canvas Size as the same pixels
  *  added, using the size each step was recorded from. */
 export interface Action { name: string; steps: ActionStep[]; relative?: boolean }
@@ -68,7 +70,7 @@ export function actionsFrom(value: unknown): Action[] {
   const list = Array.isArray(value) ? value : [value];
   return list.flatMap((a) => {
     if (!a || typeof a !== 'object' || typeof (a as Action).name !== 'string' || !Array.isArray((a as Action).steps)) return [];
-    const steps = (a as Action).steps.map(stepFrom).filter((x): x is ActionStep => x !== null);
+    const steps = (a as Action).steps.map((x) => { const s = stepFrom(x); if (s && (x as { off?: unknown }).off === true) s.off = true; return s; }).filter((x): x is ActionStep => x !== null);
     return [{ name: (a as Action).name.slice(0, 80) || 'Action', steps, ...((a as Action).relative === true ? { relative: true } : {}) }];
   });
 }
@@ -107,6 +109,7 @@ export class Actions {
     this.playing = true;
     try {
       for (let i = 0; i < a.steps.length; i++) {
+        if (a.steps[i].off) continue;
         const r = await run(a.steps[i]);
         if (r !== true) return { done: i, failed: a.steps[i].label, stopped: r === 'stopped' };
       }

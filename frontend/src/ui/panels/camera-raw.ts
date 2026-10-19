@@ -1,6 +1,7 @@
 import { api, type RawWhiteBalance } from '../../io/api';
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
+import { loadPrefs } from '../prefs';
 import { selectRow, sliderRow } from './controls';
 
 /** What the person chose in Camera Raw: the white balance applied at the RAW stage and the bit depth to open at. */
@@ -38,8 +39,9 @@ export class CameraRawDialog extends Dialog {
       if (this.isOpen) { resolve(null); return; }
       this.file = file;
       this.settle = resolve;
-      this.wb.wb = 'as_shot'; this.wb.temperature = 0; this.wb.tint = 0; this.bits = 8;
-      this.preset.set('as_shot'); this.temperature.set(0); this.tint.set(0); this.depth.set('8');
+      const d = loadPrefs();   // Preferences > Camera Raw Defaults
+      this.wb.wb = d.rawWb; this.wb.temperature = 0; this.wb.tint = 0; this.bits = d.rawBits;
+      this.preset.set(d.rawWb); this.temperature.set(0); this.tint.set(0); this.depth.set(String(d.rawBits));
       setText(this.note, `${file.name}: preview at half size; Open develops the whole picture.`);
       this.open();
       this.schedule(0);

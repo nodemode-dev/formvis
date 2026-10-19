@@ -19,6 +19,16 @@ const box = (checked = false): HTMLInputElement => el<HTMLInputElement>(`<input 
 const num = (value: string, min: number, max: number): HTMLInputElement => el<HTMLInputElement>(`<input class="cv-input" type="number" min="${min}" max="${max}" step="1" value="${value}">`);
 const heading = (text: string): HTMLElement => el(`<p class="cv-note"><strong>${text}</strong></p>`);
 
+const IMAGE_EXTS = IMAGE_ACCEPT.split(',').filter((t) => t.startsWith('.'));
+/** The pictures in a chosen folder: only those directly in it, or those in every folder below it too. */
+export function folderImages(all: File[], subfolders: boolean): File[] {
+  return all.filter((f) => {
+    const depth = (f.webkitRelativePath || f.name).split('/').length - 2, dot = f.name.lastIndexOf('.');
+    return (subfolders || depth <= 0) && dot > 0 && IMAGE_EXTS.includes(f.name.slice(dot).toLowerCase());
+  });
+}
+export const folderInput = (): HTMLInputElement => { const i = el<HTMLInputElement>('<input type="file" multiple hidden>'); i.setAttribute('webkitdirectory', ''); return i; };
+
 /** The Image Processor: one source, one destination, three file types and an optional action and copyright. */
 export class ImageProcessorDialog extends Dialog {
   private readonly file = el<HTMLInputElement>(`<input type="file" multiple accept="${IMAGE_ACCEPT}" hidden>`);
@@ -43,14 +53,21 @@ export class ImageProcessorDialog extends Dialog {
   private readonly pick = el<HTMLSelectElement>('<select class="cv-input"></select>');
   private readonly copyright = el<HTMLInputElement>('<input class="cv-input" type="text" placeholder="Copyright Info" spellcheck="false">');
   private files: File[] = [];
+  private readonly folder = folderInput();
+  private readonly subfolders = box();
+  private inFolder: File[] = [];
 
   constructor(private readonly store: Actions, private readonly run: (o: ImageProcessorOptions) => Promise<void>) {
     super('Image Processor', 480);
     this.body.appendChild(heading('1. Select the images to process'));
-    const row = el('<div class="cv-welcome-actions"></div>'), choose = el<HTMLButtonElement>('<button class="cv-btn" type="button">Choose images...</button>');
+    const row = el('<div class="cv-welcome-actions"></div>'), choose = el<HTMLButtonElement>('<button class="cv-btn" type="button">Choose images...</button>'), chooseDir = el<HTMLButtonElement>('<button class="cv-btn" type="button">Choose folder...</button>');
     choose.addEventListener('click', () => this.file.click());
-    row.appendChild(choose);
-    this.body.append(row, this.chosen, this.file);
+    chooseDir.addEventListener('click', () => this.folder.click());
+    row.append(choose, chooseDir);
+    this.body.append(row, this.chosen, this.file, this.folder);
+    this.field('Include All Sub-folders', this.subfolders);
+    this.folder.addEventListener('change', () => { this.inFolder = [...(this.folder.files ?? [])]; this.folder.value = ''; this.files = folderImages(this.inFolder, this.subfolders.checked); this.sync(); });
+    this.subfolders.addEventListener('change', () => { if (this.inFolder.length) { this.files = folderImages(this.inFolder, this.subfolders.checked); this.sync(); } });
     this.field('Use Open Images', this.useOpen);
     this.body.appendChild(heading('2. Select the destination'));
     this.body.appendChild(el('<p class="cv-note">Each type goes into its own folder (JPEG, PSD, TIFF). In the browser the results download as one zip; in the desktop app they are written to a named folder in the exports folder.</p>'));
@@ -76,11 +93,11 @@ export class ImageProcessorDialog extends Dialog {
     this.field('Copyright Info', this.copyright);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('Run', 'primary', () => void this.go());
-    this.file.addEventListener('change', () => { this.files = [...(this.file.files ?? [])]; this.file.value = ''; this.sync(); });
+    this.file.addEventListener('change', () => { this.files = [...(this.file.files ?? [])]; this.inFolder = []; this.file.value = ''; this.sync(); });
     this.remember([this.pick]);   // every setting; the action is chosen from the list as it stands
   }
 
-  show(): void { this.files = []; this.sync(); this.open(); }
+  show(): void { this.files = []; this.inFolder = []; this.sync(); this.open(); }
 
   private sync(): void {
     const n = this.store.list.length;

@@ -14,7 +14,7 @@ Generated from the engine's catalogue by `./formvis agents sync`; do not edit by
 - Painting and generating: `fill`, `generative_fill`, `generate_image`, `remove_background`
 - Colour, filters and looks: `add_adjustment`, `apply_filter`, `set_adjustment`, `color_match`, `add_film_layer`
 - History: `undo`, `redo`
-- Other: `timeline_get`, `timeline_create`, `timeline_delete`, `timeline_set`, `timeline_go_to`, `timeline_clip`, `timeline_split`, `timeline_keyframe`, `timeline_transition`, `timeline_frame_image`, `timeline_render`
+- Other: `timeline_get`, `timeline_create`, `timeline_delete`, `timeline_set`, `timeline_go_to`, `timeline_clip`, `timeline_split`, `timeline_keyframe`, `timeline_transition`, `timeline_frame_image`, `timeline_render`, `select_mask`, `list_settings`, `set_settings`, `ui_inspect`
 
 ## get_document
 
@@ -484,5 +484,37 @@ Note: read-only.
 The layers as a tree, bottom to top, each with id, name, kind, visible and its children (a focused view of get_document's layers, without the document details). Use when you need the layer ids and nesting without the other document details.
 
 - no parameters
+
+Note: read-only.
+
+## select_mask
+
+Makes the selection from a layer: its pixels (transparency), its layer mask, or its vector mask. Defaults to the active layer and replaces the selection. Use when a layer's pixels or mask should become the selection.
+
+- `id`: string; A layer id from get_document.
+- `source`: string (transparency | mask | vector); default "transparency"
+- `invert`: boolean; default false
+- `mode`: string (replace | add | subtract | intersect); default "replace"
+
+## list_settings
+
+The window's simple settings (numbers, on-off choices and short texts in Preferences) with their current values. Use when you need to know how the window is set up before changing it.
+
+- no parameters
+
+Note: read-only.
+
+## set_settings
+
+Changes simple settings by name, as list_settings names them. A value must be the same kind as the current one. The person is asked first. Use when a simple setting in Preferences should change.
+
+- `values`: object; required; Setting names and their new values.
+
+## ui_inspect
+
+Describes parts of the formvis window: for each element matching a CSS selector, its tag, id, text, whether it is visible, disabled or pressed, and its box in window pixels. Use when you need to know what a button, panel or dialog in the window shows or whether it is enabled.
+
+- `selector`: string; required
+- `limit`: integer; default 10
 
 Note: read-only.

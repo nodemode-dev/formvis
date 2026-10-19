@@ -1,6 +1,6 @@
 # formvis commands
 
-Generated from the window's command catalogue (1059 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1071 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
@@ -16,8 +16,8 @@ Generated from the window's command catalogue (1059 commands) by `./formvis agen
 - Tool options: 269
 - Tools: 51
 - Type: 26
-- View: 46
-- Window: 73
+- View: 52
+- Window: 79
 
 ## Edit
 
@@ -1095,10 +1095,16 @@ Generated from the window's command catalogue (1059 commands) by `./formvis agen
 | `gamut-warning` | Gamut Warning | Shift+Mod+Y | Turns the gamut warning on or off. |
 | `guide-layout` | New Guide Layout... |  | Opens New Guide Layout: columns and rows with gutters inside margins, placed as guides in one step. (changes the picture) |
 | `guides-from-shape` | New Guides From Shape |  | Places guides on the four edges of the active shape layer, or of the selection. |
+| `interface-rtl` | Right-to-Left Layout |  | Mirrors the window for right-to-left reading: the toolbar, the panels and the menu bar swap sides. The choice is kept. |
 | `layer-based-slice` | New Layer Based Slice |  | Adds a slice over the visible pixels of the active layer, tied to that layer. (changes the picture) |
 | `lock-guides` | Lock Guides | Alt+Mod+; | Locks or unlocks guides so they cannot be dragged. |
 | `new-guide` | New Guide... |  | Opens the New Guide dialog to place a guide at a position. (changes the picture) |
 | `par-correction` | Pixel Aspect Ratio Correction |  | Shows or hides the pixel aspect correction, which stretches the canvas and the Navigator preview by the pixel shape; tools and the pointer keep working in document pixels. |
+| `pasteboard-black` | Pasteboard: Black |  | Makes the pasteboard around the picture black. |
+| `pasteboard-dark` | Pasteboard: Dark Grey |  | Makes the pasteboard around the picture dark grey. |
+| `pasteboard-default` | Pasteboard: Theme Default |  | Gives the pasteboard around the picture the colour of the current theme. |
+| `pasteboard-light` | Pasteboard: Light Grey |  | Makes the pasteboard around the picture light grey. |
+| `pasteboard-mid` | Pasteboard: Medium Grey |  | Makes the pasteboard around the picture medium grey. |
 | `pattern-preview` | Pattern Preview |  | Shows or hides eight copies of the document around it, to check that a tile repeats. |
 | `pixel-art-preview` | Pixel Art Preview |  | Shows or hides a crisp, nearest-neighbour view of the document at every zoom. |
 | `pixel-grid` | Pixel Grid |  | Shows or hides the pixel grid at high zoom. |
@@ -1153,6 +1159,7 @@ Generated from the window's command catalogue (1059 commands) by `./formvis agen
 | `check-for-updates` | Check for Updates... |  | Asks the update server whether a newer formvis is available and offers to install it and restart; says so when this build has no update key. |
 | `copy-error-log` | Copy Error Log |  | Copies the error log to the clipboard. |
 | `delete-frame` | Delete Frame |  | Deletes the current animation frame. (changes the picture) |
+| `delete-workspace` | Delete Workspace |  | Deletes the saved workspace chosen in the title bar and returns to Essentials; the built-in workspaces cannot be deleted. |
 | `float-all-windows` | Float All in Windows |  | Gives every open document a floating window of its own. |
 | `float-window` | Float in Window |  | Detaches a view of the current document into a floating window inside the app, with its own zoom, pan and rotation; drag its title to move it and its edges to resize it. |
 | `glyphs` | Glyphs |  | Opens Glyphs, a grid of Unicode characters to add to a type layer. |
@@ -1165,6 +1172,8 @@ Generated from the window's command catalogue (1059 commands) by `./formvis agen
 | `merge-columns` | Merge Panel Columns |  | Merges the panel columns into one. |
 | `new-frame` | New Frame |  | Adds a frame to the frame animation. (changes the picture) |
 | `new-window` | New Window for Document |  | Opens a second view of the current document, titled name (2), as a tile with its own zoom, pan and rotation; edits show in both views. |
+| `new-workspace` | New Workspace... |  | Asks for a name and saves the panel arrangement as it is now, which of them show and in what order, as a workspace in the title bar list. |
+| `next-document` | Next Document | Mod+Tab | Switches to the next open document in the tab strip, wrapping from the last to the first. |
 | `panel-adjustments` | Adjustments |  | Shows or hides the Adjustments panel. |
 | `panel-brushes` | Brushes |  | Shows or hides the Brushes panel. |
 | `panel-character` | Character |  | Shows or hides the Character panel. |
@@ -1194,6 +1203,7 @@ Generated from the window's command catalogue (1059 commands) by `./formvis agen
 | `pref-home-last-close` | Show Home Screen When the Last Document Closes |  | Turns the Home screen after the last document closes on or off (Preferences > General); off, closing the last document leaves the empty workspace. |
 | `pref-home-launch` | Show Home Screen at Launch |  | Turns the Home screen at launch on or off (Preferences > General); on shows it while no document is open at start. |
 | `pref-whats-new-auto` | Show What's New Once After an Update |  | Turns on or off opening What's New once after an update (Preferences > General). |
+| `previous-document` | Previous Document | Shift+Mod+Tab | Switches to the previous open document in the tab strip, wrapping from the first to the last. |
 | `record-performance` | Record Performance... |  | Records 10 seconds of real use and reports what took the time: canvas draws, engine events, input handlers, pixel reads and uploads, frame gaps. |
 | `reset-panels` | Reset Panels |  | Restores the default panel layout. |
 | `script-console` | Script Console... |  | Opens the Script Console, a log with a one-line input that runs JavaScript with formvis.run to run any catalogue command, formvis.commands to list them and formvis.api, the plugin API. |
@@ -1205,7 +1215,9 @@ Generated from the window's command catalogue (1059 commands) by `./formvis agen
 | `shortcuts` | Keyboard Shortcuts... | Alt+Shift+Mod+K Shift+/ | Opens the Keyboard Shortcuts editor. |
 | `terminal.new` | New Terminal |  | Opens a new terminal tab. |
 | `terminal.toggle` | Terminal | Mod+J | Shows or hides the terminal dock. |
+| `theme-sync-system` | Sync Theme with System |  | Follows the system light or dark scheme: the theme becomes Light when the system is light and Studio Dark when it is dark, and changes live with the system. |
 | `tool-preset-apply` | Apply Tool Preset |  | Applies a saved tool preset by name: switches to its tool and sets its options. |
 | `tool-presets` | Tool Presets |  | Opens Tool Presets, saved sets of a tool's options. |
 | `tween-frames` | Tween... |  | Opens the Tween dialog to add in-between frames. (changes the picture) |
 | `whats-new` | What's New... |  | Opens What's New: the additions of the current and recent releases, each with a Show Me button that runs its command. |
+| `workspace-pixelart` | Pixel Art Workspace |  | Arranges the panels for pixel work: swatches and navigator first, then layers, the timeline and history. |

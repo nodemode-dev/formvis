@@ -143,7 +143,8 @@
 .cv-frame.drop-before { box-shadow: inset 3px 0 0 var(--accent-color); }
 .cv-frame.drop-after { box-shadow: inset -3px 0 0 var(--accent-color); }
 .cv-steps { max-height: 180px; overflow-y: auto; }
-.cv-step-row { grid-template-columns: 24px minmax(0, 1fr) auto; }
+.cv-step-row { grid-template-columns: 16px 24px minmax(0, 1fr) auto; }
+.cv-step-row.is-off .cv-step-label { opacity: 0.5; text-decoration: line-through; }
 .cv-step-row.is-picked { background: var(--bg-tertiary); }
 .cv-step-n { color: var(--text-muted); font-size: var(--fs-11); }
 .cv-step-label { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

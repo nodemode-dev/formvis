@@ -17,6 +17,7 @@ export const WORKSPACES: readonly Workspace[] = [
   { id: 'painting', label: 'Painting', order: ['swatches', 'navigator', 'generate', 'layers', 'history', 'timeline'], hidden: ['timeline'], propsColumn: true },
   { id: 'graphic', label: 'Graphic and Web', order: ['layers', 'swatches', 'navigator', 'generate', 'history', 'timeline'], hidden: ['navigator', 'generate', 'timeline'], propsColumn: true },
   { id: 'motion', label: 'Motion', order: ['layers', 'timeline', 'navigator', 'generate', 'swatches', 'history'], hidden: ['swatches', 'generate'], propsColumn: true },
+  { id: 'pixelart', label: 'Pixel Art', order: ['swatches', 'navigator', 'layers', 'timeline', 'history', 'generate'], hidden: ['generate'], propsColumn: true },
 ];
 /** A workspace saved under an earlier name. */
 const RENAMED: Record<string, string> = { typography: 'graphic' };
@@ -28,8 +29,75 @@ export interface TitleToolsDeps {
   setLocked: (on: boolean) => void;
 }
 
+const CUSTOM_KEY = 'formvis.customWorkspaces';
+function loadCustom(): Workspace[] {
+  try {
+    const raw: unknown = JSON.parse(localStorage.getItem(CUSTOM_KEY) ?? '[]');
+    return Array.isArray(raw) ? raw.filter((w): w is Workspace => !!w && typeof w.id === 'string' && typeof w.label === 'string' && Array.isArray(w.order) && Array.isArray(w.hidden)) : [];
+  } catch { return []; }
+}
+function saveCustom(list: Workspace[]): void { try { localStorage.setItem(CUSTOM_KEY, JSON.stringify(list)); } catch { /* this session only */ } }
+
 export class TitleTools {
   readonly root = el('<div class="cv-title-tools"></div>');
+  private ws!: HTMLSelectElement;
+  private readonly customGroup = el<HTMLOptGroupElement>('<optgroup label="Custom"></optgroup>');
+  private custom: Workspace[] = loadCustom();
+
+  /** The workspaces saved by name, then the built-in ones. */
+  all(): Workspace[] { return [...WORKSPACES, ...this.custom]; }
+  isCustom(id: string): boolean { return this.custom.some((w) => w.id === id); }
+  currentId(): string { return this.ws.value; }
+
+  /** Window > Workspace > a name: the same as choosing it in the title bar. */
+  choose(id: string): void {
+    const w = this.all().find((x) => x.id === id);
+    if (!w) return;
+    this.ws.value = id;
+    try { localStorage.setItem('formvis.workspace', id); } catch { /* this session only */ }
+    this.d.arrange(w);
+  }
+
+  /** Window > Workspace > New Workspace: keeps the dock as it stands under a name, and selects it. */
+  addCustom(label: string, order: string[], hidden: string[], propsColumn: boolean): void {
+    const name = label.trim();
+    if (!name) return;
+    const same = this.custom.find((w) => w.label.toLowerCase() === name.toLowerCase());
+    if (same) { same.order = order; same.hidden = hidden; same.propsColumn = propsColumn; }
+    else this.custom.push({ id: `custom-${Date.now().toString(36)}`, label: name, order, hidden, propsColumn });
+    saveCustom(this.custom);
+    this.syncCustom();
+    const w = same ?? this.custom[this.custom.length - 1];
+    this.ws.value = w.id;
+    try { localStorage.setItem('formvis.workspace', w.id); } catch { /* this session only */ }
+  }
+
+  /** Window > Workspace > Delete Workspace: removes a saved workspace and returns to Essentials. */
+  removeCustom(id: string): boolean {
+    if (!this.isCustom(id)) return false;
+    this.custom = this.custom.filter((w) => w.id !== id);
+    saveCustom(this.custom);
+    this.syncCustom();
+    if (this.ws.value === id || !this.ws.value) {
+      this.ws.value = 'essentials';
+      try { localStorage.setItem('formvis.workspace', 'essentials'); } catch { /* this session only */ }
+      const w = WORKSPACES[0];
+      this.d.arrange(w);
+    }
+    return true;
+  }
+
+  /** The Custom group's options follow the list: existing ones are kept, so the open list does not rebuild. */
+  private syncCustom(): void {
+    const have = new Map(Array.from(this.customGroup.children).map((o) => [(o as HTMLOptionElement).value, o as HTMLOptionElement]));
+    for (const [id, o] of have) if (!this.custom.some((w) => w.id === id)) o.remove();
+    for (const w of this.custom) {
+      const o = have.get(w.id);
+      if (o) { if (o.textContent !== w.label) o.textContent = w.label; }
+      else { const n = document.createElement('option'); n.value = w.id; n.textContent = w.label; this.customGroup.appendChild(n); }
+    }
+  }
+
   private readonly results = el('<div class="cv-search-results" role="listbox"></div>');
   private readonly pop = el('<div class="cv-search-pop" hidden><input class="cv-search-input" type="search" placeholder="Search commands" aria-label="Search commands"></div>');
   private picked = 0;
@@ -42,9 +110,13 @@ export class TitleTools {
     const syncTheme = (): void => { const light = readChoice().theme === 'light'; theme.innerHTML = icon(light ? 'moon' : 'sun', 17); theme.setAttribute('aria-pressed', String(light)); };
     theme.addEventListener('click', () => { setTheme(readChoice().theme === 'light' ? 'studio' : 'light'); syncTheme(); });
     syncTheme();
+    document.addEventListener('nm:ui-settings-changed', syncTheme);
+    this.ws = ws;
+    ws.appendChild(this.customGroup);
+    this.syncCustom();
     try { const saved = localStorage.getItem('formvis.workspace') ?? 'essentials'; ws.value = RENAMED[saved] ?? saved; } catch { /* essentials */ }
     ws.addEventListener('change', () => {
-      const w = WORKSPACES.find((x) => x.id === ws.value);
+      const w = this.all().find((x) => x.id === ws.value);
       if (!w) return;
       try { localStorage.setItem('formvis.workspace', w.id); } catch { /* this session only */ }
       d.arrange(w);

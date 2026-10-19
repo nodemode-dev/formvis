@@ -2,6 +2,13 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Four agent tools: select_mask, list_settings, set_settings, ui_inspect · _v1.87.8 (app/routers/mcp.py)
+
+CLOSE_GAPS P21. Only additions; the catalogue goes from 56 to 60 tools, none in CORE, each with its USE_WHEN line.
+
+- `select_mask` (transparency, layer mask or vector mask as the selection, invert, mode, optional layer); `list_settings` (the scalar preferences); `set_settings` (validates the name and type, asks the person first, then saves and applies through the window's preferences so values stay in range); `ui_inspect` (a CSS selector and a limit: tag, id, text, label, visible, disabled, pressed and box for each match).
+- Measured through the window: select_mask on a 200 x 120 document answered "Selected from Background's transparency: 200 by 120 at 0, 0", the mask source on a layer with none "Background has no layer mask."; set_settings took History States from 100 to 50 and refused a string and an unknown name; ui_inspect on "button" found 3,003 and returned 3. Not done: a ui_screenshot tool.
+
 ## The Relight runtime installs from the app; MoGe-2 runs through it · _v1.87.7 (app/localgen/relight_runtime.py, app/localgen/relight_scene.py, app/localgen/relight_split.py)
 
 CLOSE_GAPS D39, the owner's audit: the model file already downloaded from Local models (checked: a real 141 MB download reached ready), but nothing installed the Python packages MoGe-2 needs, and a frozen engine cannot take them.

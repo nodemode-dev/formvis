@@ -24,7 +24,34 @@ export interface Prefs { language: Lang; profileMismatch: MismatchPref; colour: 
   /** Type > Font Preview Size (36.31): each family drawn in its own face in the font menus at this size, or plain. */
   fontPreview: FontPreview;
   /** Edit > Toolbar (36.22): the tool rail's groups of tool ids, in order, and the tools kept in Extra Tools; null is the built-in layout. */
-  toolbar: ToolbarPref | null }
+  toolbar: ToolbarPref | null;
+  /** Preferences > Tools: the pen pressure curve every pressure-sensitive brush starts with. */
+  pressureCurve: PressureCurve;
+  /** Preferences > Interface: the size of the interface's text. */
+  uiFontSize: UiFontSize;
+  /** Preferences > Type: how many recently used fonts the font menus list first, and the fonts used, newest first. */
+  recentFontCount: number; recentFonts: string[];
+  /** Preferences > Camera Raw Defaults: the white balance and bit depth the Camera Raw dialog starts with. */
+  rawWb: 'as_shot' | 'auto' | 'daylight'; rawBits: 8 | 16 }
+export const RAW_WB_CHOICES: ReadonlyArray<readonly ['as_shot' | 'auto' | 'daylight', string]> = [['as_shot', 'As Shot'], ['auto', 'Auto'], ['daylight', 'Daylight']];
+export type PressureCurve = 'linear' | 'soft' | 'firm' | 's';
+export const PRESSURE_CURVES: ReadonlyArray<readonly [PressureCurve, string]> = [['linear', 'Linear'], ['soft', 'Soft'], ['firm', 'Firm'], ['s', 'S curve']];
+export const PRESSURE_POINTS: Record<PressureCurve, number[] | null> = { linear: null, soft: [0, 0.35, 0.6, 0.8, 1], firm: [0, 0.1, 0.3, 0.6, 1], s: [0, 0.1, 0.5, 0.9, 1] };
+export type UiFontSize = 'small' | 'default' | 'large' | 'larger';
+export const UI_FONT_SIZES: ReadonlyArray<readonly [UiFontSize, string]> = [['small', 'Small'], ['default', 'Default'], ['large', 'Large'], ['larger', 'Larger']];
+export const UI_FONT_SCALE: Record<UiFontSize, number> = { small: 0.9, default: 1, large: 1.15, larger: 1.3 };
+/** The interface language for a first launch: the system's first language formvis has, else English. */
+export function systemLang(): Lang {
+  try {
+    for (const raw of navigator.languages ?? [navigator.language]) {
+      const l = raw.replace('_', '-'), base = l.split('-')[0].toLowerCase();
+      if (isLang(l)) return l;
+      const hit = ({ pt: 'pt-BR', zh: 'zh-CN', no: 'nb' } as Record<string, Lang>)[base] ?? (isLang(base) ? base : null);
+      if (hit) return hit;
+    }
+  } catch { /* English */ }
+  return 'en';
+}
 export interface ToolbarPref { groups: string[][]; hidden: string[] }
 export type FontPreview = 'none' | 'small' | 'medium' | 'large' | 'extra' | 'huge';
 export const FONT_PREVIEWS: readonly FontPreview[] = ['none', 'small', 'medium', 'large', 'extra', 'huge'];
@@ -54,7 +81,7 @@ export const ENGINE_CHOICES: ReadonlyArray<readonly [EngineDevice, string]> = [[
 export const DEFAULT_PREFS: Prefs = { language: 'en', profileMismatch: 'convert', colour: DEFAULT_COLOUR, colourPresets: [], shortcuts: {}, restoreSession: true, agentsAllowed: false, comfyuiUrl: 'http://127.0.0.1:8188', nodemodeUrl: 'http://localhost:8000', historyStates: 100, historyMB: 256, historyAuto: true, regionRedraws: true, recoverySeconds: 20, autoShowHome: true, useGpu: true, gpuFilters: true, renderer: 'auto', gpuMemoryMB: 1024, engineDevice: 'auto',
   zoomWheel: false, autoFirstSnapshot: true, snapshotMB: 768, narrowCollapse: true, paintCursor: 'tip', cursorCrosshair: false,
   checkerSize: 'medium', checkerColors: 'auto', checkerTheme: true, rulerUnits: 'px', guideColor: '', gridColor: '', gridSpacing: 100, gridSubdivisions: 4,
-  homeOnLastClose: false, whatsNewAuto: true, whatsNewSeen: '', toolOptions: {}, dialogValues: {}, spellWords: [], measureDataPoints: [...DEFAULT_MEASURE_POINTS], fontPreview: 'medium', toolbar: null };
+  homeOnLastClose: false, whatsNewAuto: true, whatsNewSeen: '', toolOptions: {}, dialogValues: {}, spellWords: [], measureDataPoints: [...DEFAULT_MEASURE_POINTS], fontPreview: 'medium', toolbar: null, pressureCurve: 'linear', uiFontSize: 'default', recentFontCount: 5, recentFonts: [], rawWb: 'as_shot', rawBits: 8 };
 export const RECOVERY_CHOICES: ReadonlyArray<readonly [string, string]> = [['10', '10 seconds'], ['20', '20 seconds'], ['60', '1 minute'], ['300', '5 minutes'], ['600', '10 minutes']];
 const KEY = 'formvis.prefs';
 
@@ -97,7 +124,7 @@ export function loadPrefs(): Prefs {
   try {
     const r = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<Record<keyof Prefs, unknown>>;
     return {
-      language: isLang(r.language) ? r.language : DEFAULT_PREFS.language,   // any of the 26 (36.32)
+      language: isLang(r.language) ? r.language : systemLang(),   // any of the 26 (36.32); at the first launch, the system's
       historyStates: Math.round(num(r.historyStates, 1, 1000, DEFAULT_PREFS.historyStates)),
       historyMB: Math.round(num(r.historyMB, 16, 4096, DEFAULT_PREFS.historyMB)),
       historyAuto: typeof r.historyAuto === 'boolean' ? r.historyAuto : DEFAULT_PREFS.historyAuto,   // 1.61.3
@@ -141,6 +168,12 @@ export function loadPrefs(): Prefs {
       measureDataPoints: Array.isArray(r.measureDataPoints) ? MEASURE_POINTS.filter((n) => (r.measureDataPoints as unknown[]).includes(n)) : [...DEFAULT_MEASURE_POINTS],
       fontPreview: FONT_PREVIEWS.find((v) => v === r.fontPreview) ?? DEFAULT_PREFS.fontPreview,
       toolbar: cleanToolbar(r.toolbar),
+      pressureCurve: PRESSURE_CURVES.some(([k]) => k === r.pressureCurve) ? r.pressureCurve as PressureCurve : DEFAULT_PREFS.pressureCurve,
+      uiFontSize: UI_FONT_SIZES.some(([k]) => k === r.uiFontSize) ? r.uiFontSize as UiFontSize : DEFAULT_PREFS.uiFontSize,
+      recentFontCount: Math.round(num(r.recentFontCount, 0, 20, DEFAULT_PREFS.recentFontCount)),
+      recentFonts: Array.isArray(r.recentFonts) ? r.recentFonts.filter((f): f is string => typeof f === 'string' && f.length > 0 && f.length <= 120).slice(0, 20) : [],
+      rawWb: RAW_WB_CHOICES.find(([k]) => k === r.rawWb)?.[0] ?? DEFAULT_PREFS.rawWb,
+      rawBits: r.rawBits === 16 ? 16 : 8,
     };
   } catch { return { ...DEFAULT_PREFS }; }
 }
@@ -166,10 +199,19 @@ export function updatePrefs(patch: Partial<Prefs>): Prefs {
   return p;
 }
 
+let appliedCurve: PressureCurve | null = null;
+
+/** Scales the interface's font-size tokens (--fs-9 to --fs-18) to the chosen size. */
+export function applyUiFontSize(p: Prefs): void {
+  const k = UI_FONT_SCALE[p.uiFontSize], s = document.documentElement.style;
+  for (const n of [9, 10, 11, 12, 13, 14, 16, 18]) { if (k === 1) s.removeProperty(`--fs-${n}`); else s.setProperty(`--fs-${n}`, `${Math.round(n * k * 10) / 10}px`); }
+}
+
 /** Puts the engine-side preferences into effect; the recovery delay is read by the app when it schedules a save. */
 export function applyPrefs(engine: Engine, p: Prefs): void {
   engine.setHistoryLimits(p.historyStates, p.historyAuto ? null : p.historyMB * 1024 * 1024);   // automatic: from the memory budget (1.61.3)
   engine.dirtyRendering = p.regionRedraws;
+  if (p.pressureCurve !== appliedCurve) { appliedCurve = p.pressureCurve; engine.pressureCurve = PRESSURE_POINTS[p.pressureCurve]; }   // only when the choice changes, so a tool's own pick is not undone by another setting
   engine.autoFirstSnapshot = p.autoFirstSnapshot;
   engine.snapshotByteLimit = p.snapshotMB * 1024 * 1024;
   engine.view = { ...engine.view, gridSpacing: p.gridSpacing, gridSubdivisions: p.gridSubdivisions };

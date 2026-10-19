@@ -1,5 +1,12 @@
 import { TEXT_FONTS } from '../engine';
-import { loadPrefs, type FontPreview } from './prefs';
+import { loadPrefs, updatePrefs, type FontPreview } from './prefs';
+
+/** Keeps `family` as the newest recently used font (Preferences > Type); nothing is written when it is already first. */
+export function rememberFont(family: string): void {
+  const p = loadPrefs();
+  if (!family || p.recentFonts[0] === family) return;
+  updatePrefs({ recentFonts: [family, ...p.recentFonts.filter((f) => f !== family)].slice(0, 20) });
+}
 
 const PREVIEW_PX: Record<FontPreview, number> = { none: 0, small: 11, medium: 13, large: 16, extra: 20, huge: 28 };
 
@@ -61,8 +68,10 @@ export const familyOfFile = (file: string): string => file.replace(/\.(ttf|otf|w
 /** The families the font menu offers: the defaults first, then every other family found, alphabetically. */
 export function fontFamilies(): string[] {
   detected ??= COMMON.filter(installed);
-  const rest = [...new Set([...detected, ...system, ...added])].filter((f) => !TEXT_FONTS.includes(f)).sort((a, b) => a.localeCompare(b));
-  return [...TEXT_FONTS, ...rest];
+  const all = [...new Set([...detected, ...system, ...added])].filter((f) => !TEXT_FONTS.includes(f));
+  const p = loadPrefs(), recent = p.recentFonts.filter((f) => all.includes(f) || TEXT_FONTS.includes(f)).slice(0, p.recentFontCount);
+  const rest = all.filter((f) => !recent.includes(f)).sort((a, b) => a.localeCompare(b));
+  return [...new Set([...recent, ...TEXT_FONTS, ...rest])];
 }
 
 /** Whether formvis runs as the desktop app (the Tauri shell's web view). */

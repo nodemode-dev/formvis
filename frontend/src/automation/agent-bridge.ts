@@ -5,6 +5,7 @@ import { LIMITS } from '../engine/types';
 import { decodeImage } from '../io/images';
 import { VIDEO_PROPS, type VideoProp, type VideoTimeline } from '../engine/video-timeline';
 import { localFill, localInpaint, localModels, localUpscale, modelReady, runLocal } from '../io/local-gen';
+import { applyPrefs, loadPrefs, savePrefs, updatePrefs, type Prefs } from '../ui/prefs';
 
 /** Outside agents in the window (1.52.1): while Allow outside agents is on (Preferences > Plugins), the window collects
  *  MCP tool calls from the engine and runs them here, each change an ordinary undoable step. Generative calls cost the
@@ -19,6 +20,7 @@ export interface AgentDeps {
   renderVideo?(c: { format: 'mp4' | 'gif' | 'png'; from: number; to: number; scale: number }): Promise<Blob | null>;
 }
 
+const settingsOf = (p: Prefs): Record<string, string | number | boolean> => Object.fromEntries(Object.entries(p).filter(([, v]) => typeof v === 'number' || typeof v === 'boolean' || (typeof v === 'string' && v.length <= 60))) as Record<string, string | number | boolean>;
 const text = (t: string, data?: Record<string, unknown>): McpResult => ({ content: [{ type: 'text', text: t }], ...(data ? { structuredContent: data } : {}) });
 const fail = (t: string): McpResult => ({ content: [{ type: 'text', text: t }], isError: true });
 const sleep = (ms: number): Promise<void> => new Promise((ok) => setTimeout(ok, ms));
@@ -490,6 +492,51 @@ export class AgentBridge {
           for (const l of doc.layers) (nodes.get(l.parentId ?? '')?.children ?? roots).push(nodes.get(l.id) as Node);
           const data = { activeLayerId: doc.activeLayerId, layers: roots };
           return text(JSON.stringify(data), data);
+        }
+        case 'select_mask': {
+          const src = str('source') || 'transparency', mode = str('mode') || 'replace';
+          if (!['transparency', 'mask', 'vector'].includes(src) || !['replace', 'add', 'subtract', 'intersect'].includes(mode)) return fail('source is transparency, mask or vector; mode is replace, add, subtract or intersect.');
+          if (str('id')) e.selectLayer(layerOf().id);
+          const l = e.activeLayer;
+          if (!l) return fail('There is no layer: call get_document.');
+          if (src === 'mask' && !l.mask) return fail(`${l.name} has no layer mask.`);
+          if (src === 'vector' && !l.vectorMask) return fail(`${l.name} has no vector mask.`);
+          e.loadSelection({ channel: src as 'transparency' }, a.invert === true, mode as 'replace');
+          const s = e.current?.selection;
+          return s ? text(`Selected from ${l.name}'s ${src}: ${s.w} by ${s.h} at ${s.x}, ${s.y}.`, { x: s.x, y: s.y, width: s.w, height: s.h }) : fail(`${l.name}'s ${src} selects nothing.`);
+        }
+        case 'list_settings': {
+          const values = settingsOf(loadPrefs());
+          return text(JSON.stringify(values), { settings: values });
+        }
+        case 'set_settings': {
+          const want = a.values && typeof a.values === 'object' ? a.values as Record<string, unknown> : {}, have = settingsOf(loadPrefs()), patch: Record<string, unknown> = {};
+          for (const [k, v] of Object.entries(want)) {
+            if (!(k in have)) return fail(`${k} is not a simple setting: call list_settings for the names.`);
+            if (typeof v !== typeof have[k] || (typeof v === 'number' && !Number.isFinite(v))) return fail(`${k} takes a ${typeof have[k]}.`);
+            patch[k] = v;
+          }
+          if (!Object.keys(patch).length) return fail('Give at least one setting in values.');
+          if (!await this.deps.ask('An agent asks to change settings', Object.entries(patch).map(([k, v]) => `${k}: ${String(have[k])} to ${String(v)}`).join('; '))) return fail('The person declined the change.');
+          updatePrefs(patch as Partial<Prefs>);
+          const now = loadPrefs();
+          savePrefs(now);   // loadPrefs keeps each value in its range
+          applyPrefs(e, now);
+          const after = settingsOf(now);
+          return text(`Changed ${Object.keys(patch).join(', ')}.`, { settings: Object.fromEntries(Object.keys(patch).map((k) => [k, after[k]])) });
+        }
+        case 'ui_inspect': {
+          let found: Element[];
+          try { found = Array.from(document.querySelectorAll(str('selector'))); } catch { return fail('selector is not a valid CSS selector.'); }
+          const shown = found.slice(0, Math.max(1, Math.min(50, Math.round(num('limit', 10)))));
+          const items = shown.map((n) => {
+            const r = n.getBoundingClientRect(), s = getComputedStyle(n), btn = n as HTMLButtonElement;
+            return { tag: n.tagName.toLowerCase(), id: n.id || undefined, text: (n.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 120), label: n.getAttribute('aria-label') || n.getAttribute('title') || undefined,
+              visible: r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none', disabled: btn.disabled === true || n.getAttribute('aria-disabled') === 'true',
+              pressed: n.getAttribute('aria-pressed') === 'true' || n.getAttribute('aria-checked') === 'true' || n.getAttribute('aria-selected') === 'true',
+              x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) };
+          });
+          return text(`${found.length} element${found.length === 1 ? '' : 's'} match${found.length === 1 ? 'es' : ''}${found.length > items.length ? `, the first ${items.length} shown` : ''}: ${JSON.stringify(items)}`, { count: found.length, elements: items });
         }
         default: return fail(`formvis has no tool named ${name}.`);
       }

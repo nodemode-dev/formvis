@@ -7,6 +7,7 @@ import { el, patchList, q, setChecked, setDisabled, setHidden, setText } from '.
 import type { ActionStep } from '../actions';
 import { toast } from '../toast';
 import { isLibKind, libHasDialog } from '../../engine/filter-library';
+import { folderImages, folderInput } from './image-processor-dialog';
 
 const asks = (s: ActionStep): boolean => (s.kind === 'filter' && !(isLibKind(s.filter) && !libHasDialog(s.filter))) || (s.kind === 'adjustment' && !s.layer);
 
@@ -32,6 +33,7 @@ export class ActionsDialog extends Dialog {
   private readonly stopText = el<HTMLInputElement>('<input class="cv-input" type="text" placeholder="Message for a stop" spellcheck="false">');
   private readonly stopGo = el<HTMLInputElement>('<input type="checkbox" checked>');
   private readonly deleteStepBtn: HTMLButtonElement;
+  private readonly moveBtns: HTMLButtonElement[];
   private picked = -1;
   private readonly follow = el<HTMLInputElement>('<input type="checkbox">');
   private readonly note = el('<p class="cv-note"></p>');
@@ -49,13 +51,23 @@ export class ActionsDialog extends Dialog {
     const go = el('<label class="cv-step-go"></label>');
     go.append(this.stopGo, document.createTextNode(' Allow Continue'));
     stops.append(this.stopText, insert, go, this.deleteStepBtn);
-    this.body.appendChild(stops);
+    const moves = el('<div class="cv-welcome-actions cv-step-tools"></div>');
+    const mover = (label: string, run: () => void): HTMLButtonElement => {
+      const b = el<HTMLButtonElement>('<button class="cv-btn cv-btn-ghost" type="button"></button>');
+      setText(b, label);
+      b.addEventListener('click', run);
+      moves.appendChild(b);
+      return b;
+    };
+    this.moveBtns = [mover('Step Up', () => this.moveStep(-1)), mover('Step Down', () => this.moveStep(1)), mover('Action Up', () => this.moveAction(-1)), mover('Action Down', () => this.moveAction(1)), mover('Rename', () => this.rename())];
+    this.body.append(stops, moves);
     insert.addEventListener('click', () => this.insertStop());
     this.deleteStepBtn.addEventListener('click', () => this.deleteStep());
     this.steps.addEventListener('click', (e) => {
       const t = e.target as HTMLElement, row = t.closest<HTMLElement>('.cv-step-row'), a = this.selected();
       if (!row || !a) return;
       const i = Number(row.dataset.key);
+      if (t.classList.contains('cv-step-on') && a.steps[i]) { if ((t as HTMLInputElement).checked) delete a.steps[i].off; else a.steps[i].off = true; this.store.save(); }
       if (t.closest('.cv-step-ask')) {
         // Pausing for input: the step's dialog opens during playback, with its recorded settings to adjust.
         const s = a.steps[i];
@@ -82,6 +94,7 @@ export class ActionsDialog extends Dialog {
     this.body.append(row, this.note, this.file);
     this.button('Close', 'primary', () => this.close());
     this.pick.addEventListener('change', () => { this.picked = -1; this.sync(); });
+    this.name.addEventListener('input', () => this.sync());
     this.follow.addEventListener('change', () => {
       const a = this.selected();
       if (!a) return;
@@ -103,7 +116,7 @@ export class ActionsDialog extends Dialog {
     patchList<ActionStep>(this.steps, list, {
       key: (s) => String(list.indexOf(s)),
       create: (s) => {
-        const row = el('<div class="cv-list-row cv-step-row" role="option"><span class="cv-step-n"></span><span class="cv-step-label"></span><button class="cv-btn cv-btn-ghost cv-step-ask" type="button" title="Open this step\'s dialog during playback">Dialog</button></div>');
+        const row = el('<div class="cv-list-row cv-step-row" role="option"><input class="cv-step-on" type="checkbox" title="Include this step when the action plays" aria-label="Include step"><span class="cv-step-n"></span><span class="cv-step-label"></span><button class="cv-btn cv-btn-ghost cv-step-ask" type="button" title="Open this step\'s dialog during playback">Dialog</button></div>');
         row.dataset.key = String(list.indexOf(s));
         this.fillStep(row, s, list.indexOf(s));
         return row;
@@ -113,6 +126,12 @@ export class ActionsDialog extends Dialog {
     setText(this.stepsEmpty, !a ? 'No actions yet. Name one and press Record.' : 'No steps yet. Press Record to add some.');
     setHidden(this.stepsEmpty, list.length > 0);
     setDisabled(this.deleteStepBtn, this.picked < 0);
+    const ai = Number(this.pick.value);
+    setDisabled(this.moveBtns[0], this.picked < 1);
+    setDisabled(this.moveBtns[1], this.picked < 0 || this.picked >= list.length - 1);
+    setDisabled(this.moveBtns[2], !a || ai < 1);
+    setDisabled(this.moveBtns[3], !a || ai >= this.store.list.length - 1);
+    setDisabled(this.moveBtns[4], !a || !this.name.value.trim());
     setChecked(this.follow, !!a?.relative);
     setDisabled(this.follow, !a);
     setDisabled(this.playBtn, !a?.steps.length);
@@ -124,6 +143,8 @@ export class ActionsDialog extends Dialog {
 
   private fillStep(row: HTMLElement, s: ActionStep, i: number): void {
     setText(q(row, '.cv-step-n'), `${i + 1}.`);
+    setChecked(q<HTMLInputElement>(row, '.cv-step-on'), !s.off);
+    row.classList.toggle('is-off', !!s.off);
     setText(q(row, '.cv-step-label'), s.kind === 'stop' ? `Stop: ${s.message || 'pause'}${s.allowContinue ? '' : ' (ends here)'}` : s.label);
     const can = asks(s), ask = q<HTMLButtonElement>(row, '.cv-step-ask');
     setHidden(ask, !can);
@@ -141,6 +162,37 @@ export class ActionsDialog extends Dialog {
     this.store.save();
     this.stopText.value = '';
     this.picked = at;
+    this.sync();
+  }
+
+  /** Step Up and Step Down: the picked step trades places with its neighbour. */
+  private moveStep(d: number): void {
+    const a = this.selected(), to = this.picked + d;
+    if (!a || this.picked < 0 || to < 0 || to >= a.steps.length) return;
+    [a.steps[this.picked], a.steps[to]] = [a.steps[to], a.steps[this.picked]];
+    this.store.save();
+    this.picked = to;
+    this.sync();
+  }
+
+  /** Action Up and Action Down: the chosen action trades places with its neighbour in the list. */
+  private moveAction(d: number): void {
+    const list = this.store.list, i = Number(this.pick.value), to = i + d;
+    if (!list[i] || to < 0 || to >= list.length) return;
+    [list[i], list[to]] = [list[to], list[i]];
+    this.store.save();
+    this.pick.value = String(to);
+    this.sync();
+    this.pick.value = String(to);
+  }
+
+  /** Rename: the text in the New action box becomes the chosen action's name. */
+  private rename(): void {
+    const a = this.selected(), name = this.name.value.trim().slice(0, 80);
+    if (!a || !name) return;
+    a.name = name;
+    this.name.value = '';
+    this.store.save();
     this.sync();
   }
 
@@ -214,23 +266,30 @@ export class BatchDialog extends Dialog {
   private readonly file = el<HTMLInputElement>(`<input type="file" multiple accept="${IMAGE_ACCEPT}" hidden>`);
   private readonly chosen = el('<p class="cv-note"></p>');
   private files: File[] = [];
+  private readonly folder = folderInput();
+  private readonly subfolders = el<HTMLInputElement>('<input type="checkbox">');
+  private inFolder: File[] = [];
 
   constructor(private readonly store: Actions, private readonly run: (a: Action, files: File[], format: 'png' | 'jpg', quality: number) => Promise<void>) {
     super('Batch', 440);
     this.field('Action', this.pick);
-    const row = el('<div class="cv-welcome-actions"></div>'), choose = el<HTMLButtonElement>('<button class="cv-btn" type="button">Choose images...</button>');
+    const row = el('<div class="cv-welcome-actions"></div>'), choose = el<HTMLButtonElement>('<button class="cv-btn" type="button">Choose images...</button>'), chooseDir = el<HTMLButtonElement>('<button class="cv-btn" type="button">Choose folder...</button>');
     choose.addEventListener('click', () => this.file.click());
-    row.appendChild(choose);
-    this.body.append(row, this.chosen, this.file);
+    chooseDir.addEventListener('click', () => this.folder.click());
+    row.append(choose, chooseDir);
+    this.body.append(row, this.chosen, this.file, this.folder);
+    this.field('Include All Sub-folders', this.subfolders);
+    this.folder.addEventListener('change', () => { this.inFolder = [...(this.folder.files ?? [])]; this.folder.value = ''; this.files = folderImages(this.inFolder, this.subfolders.checked); this.sync(); });
+    this.subfolders.addEventListener('change', () => { if (this.inFolder.length) { this.files = folderImages(this.inFolder, this.subfolders.checked); this.sync(); } });
     this.field('Save as', this.format);
     this.field('JPEG quality', this.quality);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('Run', 'primary', () => void this.go());
-    this.file.addEventListener('change', () => { this.files = [...(this.file.files ?? [])]; this.file.value = ''; this.sync(); });
+    this.file.addEventListener('change', () => { this.files = [...(this.file.files ?? [])]; this.inFolder = []; this.file.value = ''; this.sync(); });
     this.remember([this.pick]);   // the format and the JPEG quality; the action is chosen from the list as it stands
   }
 
-  show(): void { this.files = []; this.sync(); this.open(); }
+  show(): void { this.files = []; this.inFolder = []; this.sync(); this.open(); }
 
   private sync(): void {
     syncOptions(this.pick, this.store.list.map(titled));

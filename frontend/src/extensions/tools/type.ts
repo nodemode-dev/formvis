@@ -1,6 +1,6 @@
 import { TEXT_ANTIALIAS, type Engine, type TextSpec } from '../../engine';
 import { OT_FEATURES, featureOn, featuresKnown, featuresOf, withFeature } from '../../engine/opentype';
-import { canListSystemFonts, fontFamilies, loadSystemFonts } from '../../ui/fonts';
+import { canListSystemFonts, fontFamilies, loadSystemFonts, rememberFont } from '../../ui/fonts';
 import type { Pt } from '../../engine';
 import { dashed, toolHost, type Tool } from '../registry';
 
@@ -35,6 +35,7 @@ function featureSource(e: Engine): TextSpec {
 
 export function setType(e: Engine, patch: Partial<TextSpec>): void {
   e.textSettings = { ...e.textSettings, ...patch };
+  if (patch.family) rememberFont(patch.family);
   e.emit('options', null);
   document.dispatchEvent(new CustomEvent('cv:type-settings'));
   // (1.50.4, the tool audit): the selected type layer takes the style too, when the Type tool is in

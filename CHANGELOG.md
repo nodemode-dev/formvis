@@ -4,6 +4,16 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.87.8 · 2026-10-19
+
+### Added
+
+- Workspaces: a Pixel Art workspace, Window > Workspace > New Workspace and Delete Workspace for your own arrangements.
+- Window > Next Document and Previous Document (Mod+Tab and Shift+Mod+Tab where the system allows); Theme follows the system's light or dark setting; View > Pasteboard colour; a right-to-left interface; hold a tool's key to use it for a moment and return to the previous tool on release.
+- Preferences: the interface starts in the system's language; Interface Text Size; Pen Pressure Curve for every brush; recent fonts listed first; Camera Raw defaults for white balance and bit depth.
+- Actions: switch single steps off, move steps and actions up and down, rename actions; Batch and Image Processor take a whole folder, with or without its sub-folders.
+- Agents: four new tools (select from transparency or a mask, list and change settings with your permission, and inspect the window's controls).
+
 ## 1.87.7 · 2026-10-19
 
 ### Added

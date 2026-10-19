@@ -1,6 +1,6 @@
 # Command map
 
-Generated from the window's command catalogue (1059 commands: 8 action, 731 command, 269 option, 51 tool) by `./formvis agents sync`; do not edit by hand.
+Generated from the window's command catalogue (1071 commands: 8 action, 743 command, 269 option, 51 tool) by `./formvis agents sync`; do not edit by hand.
 
 Every command is registered in `frontend/src/app.ts` (hand-written), `frontend/src/automation/catalogue.ts` (`tool.select.*`, `tool.options.*` and the seven actions) or by a plug-in; its words are in `frontend/src/automation/command-meta.ts`. A command with no words is reported missing and `./formvis counts --commands --check` fails.
 
@@ -18,9 +18,9 @@ Every command is registered in `frontend/src/app.ts` (hand-written), `frontend/s
 | Tool options | 269 | `tool-builder` | `tool.options.artHistory.hardness`, `tool.options.artHistory.opacity`, `tool.options.artHistory.pressureCurve`, `tool.options.artHistory.size` |
 | Tools | 51 | `tool-builder` | `tool.select.artHistory`, `tool.select.artboard`, `tool.select.backgroundEraser`, `tool.select.brush` |
 | Type | 26 | `tool-builder` | `add-font-files`, `add-web-font`, `character-styles`, `check-spelling` |
-| View | 46 | `ui-builder` | `actual`, `clear-guides`, `clear-slices`, `delete-slice` |
-| Window | 73 | `ui-builder` | `about`, `action-stop`, `actions`, `agent.claude.open` |
+| View | 52 | `ui-builder` | `actual`, `clear-guides`, `clear-slices`, `delete-slice` |
+| Window | 79 | `ui-builder` | `about`, `action-stop`, `actions`, `agent.claude.open` |
 
 ## Id families
 
-`tool` 322, `filter` 83, `new` 45, `adj` 27, `export` 25, `panel` 25, `layer` 24, `select` 16, `stack` 14, `transform` 12, `pick` 11, `proof` 11, `style` 11, `video` 10, `delete` 9, `par` 9, `toggle` 9, `distribute` 8, `mode` 8, `smart` 8, `mask` 7, `rasterize` 7, `vmask` 7, `align` 6, `arrange` 6, `font` 6, `load` 6, `paste` 6, `save` 6, `type` 6, `add` 5, `auto` 5, `clear` 5, `convert` 5, `edit` 5, `fill` 5, `measure` 5, `script` 5, `shape` 5, `shapes` 5
+`tool` 322, `filter` 83, `new` 46, `adj` 27, `export` 25, `panel` 25, `layer` 24, `select` 16, `stack` 14, `transform` 12, `pick` 11, `proof` 11, `style` 11, `delete` 10, `video` 10, `par` 9, `toggle` 9, `distribute` 8, `mode` 8, `smart` 8, `mask` 7, `rasterize` 7, `vmask` 7, `align` 6, `arrange` 6, `font` 6, `load` 6, `paste` 6, `save` 6, `type` 6, `add` 5, `auto` 5, `clear` 5, `convert` 5, `edit` 5, `fill` 5, `measure` 5, `pasteboard` 5, `script` 5, `shape` 5

@@ -174,6 +174,14 @@ TOOLS = [
           {"commands": {"type": "array", "minItems": 1, "maxItems": 50, "items": {"type": "object", "properties": {"id": {"type": "string", "maxLength": 120}, "params": {"type": "object"}}, "required": ["id"], "additionalProperties": False}}}, ["commands"], destructive=True),
     _tool("get_selection", "The selection: its bounds in pixels (x, y, width, height), or none when nothing is selected.", {}, read=True, idempotent=True),
     _tool("get_layer_tree", "The layers as a tree, bottom to top, each with id, name, kind, visible and its children (a focused view of get_document's layers, without the document details).", {}, read=True, idempotent=True),
+    _tool("select_mask", "Makes the selection from a layer: its pixels (transparency), its layer mask, or its vector mask. Defaults to the active layer and replaces the selection.",
+          {"id": _ID, "source": {"type": "string", "enum": ["transparency", "mask", "vector"], "default": "transparency"}, "invert": {"type": "boolean", "default": False},
+           "mode": {"type": "string", "enum": ["replace", "add", "subtract", "intersect"], "default": "replace"}}),
+    _tool("list_settings", "The window's simple settings (numbers, on-off choices and short texts in Preferences) with their current values.", {}, read=True, idempotent=True),
+    _tool("set_settings", "Changes simple settings by name, as list_settings names them. A value must be the same kind as the current one. The person is asked first.",
+          {"values": {"type": "object", "description": "Setting names and their new values."}}, ["values"], idempotent=True),
+    _tool("ui_inspect", "Describes parts of the formvis window: for each element matching a CSS selector, its tag, id, text, whether it is visible, disabled or pressed, and its box in window pixels.",
+          {"selector": {"type": "string", "maxLength": 200}, "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10}}, ["selector"], read=True, idempotent=True),
 ]
 USE_WHEN = {
     "get_document": "you need the document's size, mode, layer ids or documents before any edit.",
@@ -232,6 +240,10 @@ USE_WHEN = {
     "run_commands": "several commands belong together and should undo as one step.",
     "get_selection": "you need the selection's bounds before filling, cropping or generating.",
     "get_layer_tree": "you need the layer ids and nesting without the other document details.",
+    "select_mask": "a layer's pixels or mask should become the selection.",
+    "list_settings": "you need to know how the window is set up before changing it.",
+    "set_settings": "a simple setting in Preferences should change.",
+    "ui_inspect": "you need to know what a button, panel or dialog in the window shows or whether it is enabled.",
 }
 for _t in TOOLS:
     _t["description"] += f" Use when {USE_WHEN[_t['name']]}"
