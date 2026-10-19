@@ -89,6 +89,21 @@ export function addPathResources(psd: ArrayBuffer, set: PathSet | null, w: numbe
   return out.buffer;
 }
 
+/** A PSD or PSB with the document's ICC profile added as image resource 1039, which readers use to tag the pixels. */
+export function addIccResource(psd: ArrayBuffer, icc: Uint8Array | null): ArrayBuffer {
+  if (!icc?.length || icc.length > 1_000_000) return psd;
+  const b = new Uint8Array(psd), at = resourcesAt(b), len = new DataView(psd).getUint32(at), head = [0x38, 0x42, 0x49, 0x4d, ...u16(1039), 0, 0, ...u32(icc.length)];
+  const extra = new Uint8Array(head.length + icc.length + (icc.length % 2));
+  extra.set(head, 0);
+  extra.set(icc, head.length);
+  const out = new Uint8Array(b.length + extra.length);
+  out.set(b.subarray(0, at + 4 + len), 0);
+  out.set(extra, at + 4 + len);
+  out.set(b.subarray(at + 4 + len), at + 4 + len + extra.length);
+  new DataView(out.buffer).setUint32(at, len + extra.length);
+  return out.buffer;
+}
+
 /** The saved paths and Work Path in a PSD or PSB, in pixels of `w` by `h`; empty when there are none. */
 export function readPathResources(psd: ArrayBuffer, w: number, h: number): NamedPath[] {
   const b = new Uint8Array(psd), dv = new DataView(psd), at = resourcesAt(b), end = at + 4 + dv.getUint32(at), out: NamedPath[] = [];

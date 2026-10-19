@@ -7,19 +7,23 @@ import { toBase64 } from './icc-read';
 /** Paper sizes in inches, portrait. */
 export const PAPERS: ReadonlyArray<readonly [id: string, label: string, w: number, h: number]> = [
   ['letter', 'Letter', 8.5, 11], ['legal', 'Legal', 8.5, 14], ['a4', 'A4', 8.27, 11.69], ['a3', 'A3', 11.69, 16.54], ['tabloid', 'Tabloid', 11, 17],
+  ['a5', 'A5', 5.83, 8.27], ['4x6', '4 x 6 in', 4, 6], ['5x7', '5 x 7 in', 5, 7], ['8x10', '8 x 10 in', 8, 10], ['custom', 'Custom', 0, 0],
 ];
 
 /** What File > Print... asks for. Position and sizes are in inches; scale is a percentage. */
 export interface PrintSettings {
   paper: string; landscape: boolean; center: boolean; top: number; left: number; scale: number; fit: boolean; selectedArea: boolean;
   cornerMarks: boolean; centerMarks: boolean; regMarks: boolean; description: boolean; labels: boolean;
-  handling: 'printer' | 'formvis'; profile: string; intent: string; bpc: boolean;
+  /** Functions: the page mirrored (Emulsion Down) and the picture inverted (Negative); the Custom paper's size in inches. */
+  emulsionDown: boolean; negative: boolean; customW: number; customH: number;
+  handling: 'printer' | 'formvis' | 'none'; profile: string; intent: string; bpc: boolean;
 }
 
 /** The settings Print... last used, which Print One Copy prints with; the dialog keeps this current. */
 export const printSettings: PrintSettings = {
   paper: 'letter', landscape: false, center: true, top: 0, left: 0, scale: 100, fit: false, selectedArea: false,
   cornerMarks: false, centerMarks: false, regMarks: false, description: false, labels: false,
+  emulsionDown: false, negative: false, customW: 8.5, customH: 11,
   handling: 'printer', profile: '', intent: 'relative', bpc: true,
 };
 
@@ -55,14 +59,30 @@ export function drawMarks(ctx: CanvasRenderingContext2D, k: number, L: PrintLayo
 }
 
 /** The whole page, image and marks, on white at `k` pixels to the inch: what Save as PDF encodes. */
-export function renderPage(engine: Engine, s: PrintSettings, image: CanvasImageSource, L: PrintLayout, k = 300): HTMLCanvasElement {
-  const c = document.createElement('canvas');
-  c.width = Math.round(L.paperW * k); c.height = Math.round(L.paperH * k);
+export function renderPage(engine: Engine, s: PrintSettings, image: CanvasImageSource, L: PrintLayout, k = 300, into?: HTMLCanvasElement): HTMLCanvasElement {
+  const c = into ?? document.createElement('canvas'), pw = Math.round(L.paperW * k), ph = Math.round(L.paperH * k);
+  if (c.width !== pw) c.width = pw;
+  if (c.height !== ph) c.height = ph;
   const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+  if (s.emulsionDown) { ctx.translate(c.width, 0); ctx.scale(-1, 1); }
   ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(image, L.x * k, L.y * k, L.width * k, L.height * k);
+  ctx.drawImage(s.negative ? inverted(image as CanvasImageSource & { width: number; height: number }) : image, L.x * k, L.y * k, L.width * k, L.height * k);
   drawMarks(ctx, k, L, s, docName(engine), engine.current?.doc.meta?.description ?? '');
+  ctx.restore();
+  return c;
+}
+
+/** The picture inverted, on a new canvas (Negative). */
+function inverted(src: CanvasImageSource & { width: number; height: number }): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = src.width; c.height = src.height;
+  const g = c.getContext('2d') as CanvasRenderingContext2D;
+  g.drawImage(src, 0, 0);
+  g.globalCompositeOperation = 'difference';
+  g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
   return c;
 }
 
@@ -73,7 +93,8 @@ export interface PrintLayout { paperW: number; paperH: number; width: number; he
 /** The paper, the printed image's size (its pixels over the document's dpi, times the scale) and where it sits, all in inches. */
 export function printLayout(s: PrintSettings, pxW: number, pxH: number, dpi: number): PrintLayout {
   const paper = PAPERS.find((p) => p[0] === s.paper) ?? PAPERS[0];
-  const paperW = s.landscape ? paper[3] : paper[2], paperH = s.landscape ? paper[2] : paper[3];
+  const pw = paper[0] === 'custom' ? Math.max(1, s.customW) : paper[2], ph = paper[0] === 'custom' ? Math.max(1, s.customH) : paper[3];
+  const paperW = s.landscape ? ph : pw, paperH = s.landscape ? pw : ph;
   const inW = pxW / Math.max(1, dpi), inH = pxH / Math.max(1, dpi);
   const scale = s.fit ? Math.min(paperW / inW, paperH / inH) : Math.max(0.01, s.scale / 100);
   const width = inW * scale, height = inH * scale;
@@ -135,7 +156,8 @@ async function managedImage(engine: Engine, src: HTMLCanvasElement, s: PrintSett
   return src;
 }
 
-function placePage(engine: Engine, s: PrintSettings, canvas: HTMLCanvasElement, L: PrintLayout): void {
+function placePage(engine: Engine, s: PrintSettings, picture: HTMLCanvasElement, L: PrintLayout): void {
+  const canvas = s.negative ? inverted(picture) : picture;
   canvas.style.cssText = `position:absolute;left:${L.x}in;top:${L.y}in;width:${L.width}in;height:${L.height}in;`;
   const marks = document.createElement('canvas'), k = 300;
   marks.width = Math.round(L.paperW * k); marks.height = Math.round(L.paperH * k);
@@ -150,7 +172,7 @@ function placePage(engine: Engine, s: PrintSettings, canvas: HTMLCanvasElement, 
   style.textContent = `#fv-print{display:none}@page{size:${L.paperW}in ${L.paperH}in;margin:0}` +
     `@media print{html,body{margin:0!important;padding:0!important;background:#fff!important;overflow:visible!important}` +
     `body>*:not(#fv-print):not(style){display:none!important}` +
-    `#fv-print{display:block!important;position:relative;width:${L.paperW}in;height:${L.paperH}in;overflow:hidden}}`;
+    `#fv-print{display:block!important;position:relative;width:${L.paperW}in;height:${L.paperH}in;overflow:hidden${s.emulsionDown ? ';transform:scaleX(-1)' : ''}}}`;
   document.head.appendChild(style);
   document.body.appendChild(host);
   try { window.print(); } finally { host.remove(); style.remove(); }

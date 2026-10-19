@@ -27,6 +27,8 @@ export interface LayerExportSettings {
   artboards: boolean;
   /** Layer Comps to Files: one file per layer comp (the flattened document with each comp applied). */
   comps?: boolean;
+  /** Only these layers, artboards or comps; every one when left out or empty. */
+  ids?: ID[];
 }
 
 export const DEFAULT_LAYER_EXPORT: LayerExportSettings = { prefix: '', visibleOnly: true, format: 'png', quality: 90, trim: false, icc: true, folder: '', artboards: false };
@@ -98,7 +100,8 @@ export async function layerFiles(engine: Engine, set: LayerExportSettings, engin
   const p = engine.current;
   if (!p) return { files: [], skipped: 0 };
   const prefix = set.prefix.trim() || p.name.replace(/\.[A-Za-z0-9]{1,8}$/, '') || 'Untitled';
-  const jobs = set.artboards ? engine.artboards(p).map((a) => ({ id: a.id, name: a.name })) : exportableLayers(p.doc, set.visibleOnly);
+  const only = set.ids?.length ? new Set(set.ids) : null;
+  const jobs = (set.artboards ? engine.artboards(p).map((a) => ({ id: a.id, name: a.name })) : exportableLayers(p.doc, set.visibleOnly)).filter((j) => !only || only.has(j.id));
   const files: Array<{ name: string; blob: Blob }> = [];
   let skipped = 0;
   for (const [i, j] of jobs.entries()) {

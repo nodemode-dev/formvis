@@ -26,7 +26,7 @@ export class PathStore {
 }
 
 /** The retouch kinds a path stroke can run. */
-export type PathRetouchKind = 'heal' | 'healBrush' | 'clone' | 'blur' | 'sharpen' | 'dodge' | 'burn' | 'sponge';
+export type PathRetouchKind = 'heal' | 'healBrush' | 'clone' | 'blur' | 'sharpen' | 'dodge' | 'burn' | 'sponge' | 'patternStamp' | 'historyBrush' | 'colorReplace';
 
 /** What the path methods need of the Engine. */
 export interface PathHost {
@@ -52,7 +52,7 @@ export interface PathHost {
   stroker: {
     dynamics: BrushDynamics;
     mode: 'paint' | 'erase';
-    begin(pt: Pt, pressure: number): boolean;
+    begin(pt: Pt, pressure: number, aliased?: boolean): boolean;
     beginRetouch(kind: PathRetouchKind, pt: Pt): boolean;
     to(pt: Pt, pressure: number): void;
     end(): void;
@@ -110,6 +110,14 @@ export function endPathEdit(host: PathHost): void {
   if (!p) return;
   host.store.gesture = null;
   p.history.end(host.store.gestureWork ? { ...p.snapshot(), paths: structuredClone(pathSet(host, p)) } : p.snapshot());
+  host.refresh();
+}
+
+export function cancelPathEdit(host: PathHost): void {
+  const p = host.store.gesture;
+  if (!p) return;
+  host.store.gesture = null;
+  p.history.abort();
   host.refresh();
 }
 
@@ -267,17 +275,17 @@ export function strokePathWith(host: PathHost, tool: StrokeTool, simulatePressur
   if (!host.paintable(p.activeLayer)) { host.notice('Select a pixel layer to stroke on.'); return; }
   const runs = vp.subpaths.map((sp) => samplePath(sp, 2)).filter((pts) => pts.length > 1);
   if (!runs.length) return;
-  const st = host.stroker, brush = tool === 'brush' || tool === 'eraser', savedDyn = st.dynamics, savedMode = st.mode;
+  const st = host.stroker, brush = tool === 'brush' || tool === 'eraser' || tool === 'pencil', savedDyn = st.dynamics, savedMode = st.mode;
   if (brush) {
     st.mode = tool === 'eraser' ? 'erase' : 'paint';
     if (simulatePressure && !st.dynamics.size.enabled) st.dynamics = { ...savedDyn, size: pressureOption(0.02) };
   }
-  const kind = ({ clone: 'clone', healBrush: 'healBrush', spotHealing: 'heal', dodge: 'dodge', burn: 'burn', sponge: 'sponge', blur: 'blur', sharpen: 'sharpen' } as const)[tool as Exclude<StrokeTool, 'brush' | 'eraser'>];
+  const kind = ({ clone: 'clone', healBrush: 'healBrush', spotHealing: 'heal', dodge: 'dodge', burn: 'burn', sponge: 'sponge', blur: 'blur', sharpen: 'sharpen', patternStamp: 'patternStamp', historyBrush: 'historyBrush', colorReplace: 'colorReplace' } as const)[tool as Exclude<StrokeTool, 'brush' | 'eraser' | 'pencil'>];
   p.history.begin('Stroke Path', p.snapshot());
   try {
     for (const pts of runs) {
       const pressure = (i: number): number => (simulatePressure ? Math.max(0.01, Math.sin((Math.PI * i) / (pts.length - 1))) : 1);
-      const ok = brush ? st.begin(pts[0], pressure(0)) : st.beginRetouch(kind, pts[0]);
+      const ok = brush ? st.begin(pts[0], pressure(0), tool === 'pencil') : st.beginRetouch(kind, pts[0]);
       if (!ok) break;
       for (let i = 1; i < pts.length; i++) st.to(pts[i], pressure(i));
       st.end();

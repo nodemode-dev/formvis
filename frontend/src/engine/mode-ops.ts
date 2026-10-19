@@ -12,6 +12,7 @@ import { deriveRegion, deriveWhole, renderRegion, type DeriveTables } from './de
 import { decodeLab, labFromFloats, labFromRgba, labToSrgb, renderLab } from './lab';
 import { applyDuotoneLut, curveAt, DUOTONE_COUNT, duotoneLut } from './duotone';
 import { splitChannels } from './multichannel';
+import { bitmapPixels, indexedPixels, INDEXED_DEFAULTS, type BitmapMethod, type Halftone, type IndexedChoice } from './quantize';
 import { liveText, textKey } from './text';
 import { rasterFromDeep } from './deep';
 import type { PixelPatch } from './history';
@@ -212,7 +213,10 @@ export function setCmykTables(host: ModeHost, p: Project, lut: Lut4, inLut: Lut3
   if (p === host.current) { host.fgInk = inkOf(host.fgc, inLut); host.bgInk = inkOf(host.bgc, inLut); host.emit('colors'); }
 }
 
-export function convertMode(host: ModeHost, mode: DocMode, opts: { dither?: boolean; colors?: number } = {}): boolean {
+/** The conversion dialog's choices: Bitmap `method` and `halftone`; Indexed Color `indexed` (a boolean `dither` stays the old Diffusion on or off). */
+export interface ModeOpts { /** Grayscale: the red, green and blue weights of the grey (8-bit pixels); absent is the luminosity weights. */ grayWeights?: readonly [number, number, number]; dither?: boolean; colors?: number; method?: BitmapMethod; halftone?: Halftone; indexed?: Partial<IndexedChoice> }
+
+export function convertMode(host: ModeHost, mode: DocMode, opts: ModeOpts = {}): boolean {
   const p = host.current;
   if (!p || (p.doc.mode ?? 'rgb') === mode || mode === 'cmyk' || (p.doc.mode === 'cmyk' && mode !== 'multichannel') || mode === 'lab' || p.doc.mode === 'lab' || (p.doc.mode === 'multichannel' && mode !== 'rgb')) return false;
   if (mode === 'duotone') return false;   // reached through setDuotone, from Grayscale only
@@ -272,7 +276,8 @@ export function convertMode(host: ModeHost, mode: DocMode, opts: { dither?: bool
     if (pp.doc.duotone) pp.doc = { ...pp.doc, duotone: undefined };   // back to Grayscale (or on) drops the inks
     if (mode === 'rgb') { pp.doc = { ...pp.doc, mode: 'rgb', palette: undefined }; return true; }
     if (mode === 'grayscale') {
-      const gray = (c: RGB): RGB => { const v = Math.round(0.299 * c.r + 0.587 * c.g + 0.114 * c.b); return { r: v, g: v, b: v }; };
+      const [wr, wg, wb] = opts.grayWeights ?? [0.299, 0.587, 0.114];
+      const gray = (c: RGB): RGB => { const v = Math.round(wr * c.r + wg * c.g + wb * c.b); return { r: v, g: v, b: v }; };
       const layers = pp.doc.layers.map((l) => {
         if (!l.raster || l.isGroup) return l;
         if (l.channels?.mode === 'rgb' && l.channels.n === 3 && (pp.doc.depth ?? 8) > 8) {
@@ -285,60 +290,35 @@ export function convertMode(host: ModeHost, mode: DocMode, opts: { dither?: bool
           return { ...l, ...patch };
         }
         const r = l.raster.clone(), d = r.ctx.getImageData(0, 0, r.width, r.height);
-        for (let i = 0; i < d.data.length; i += 4) { const v = Math.round(0.299 * d.data[i] + 0.587 * d.data[i + 1] + 0.114 * d.data[i + 2]); d.data[i] = d.data[i + 1] = d.data[i + 2] = v; }
+        for (let i = 0; i < d.data.length; i += 4) { const v = Math.round(wr * d.data[i] + wg * d.data[i + 1] + wb * d.data[i + 2]); d.data[i] = d.data[i + 1] = d.data[i + 2] = v; }
         r.ctx.putImageData(d, 0, 0);
         r.touch();
         const patch: Partial<Layer> = { raster: r };
         if (l.text && liveText(l)) patch.text = { ...l.text, color: gray(l.text.color), rendered: textKey(r) };
         if (l.vector) patch.vector = { ...l.vector, fill: l.vector.fill ? gray(l.vector.fill) : null, stroke: l.vector.stroke ? { ...l.vector.stroke, color: gray(l.vector.stroke.color) } : null };
-        if (l.shape) { const sh = l.shape as Record<string, unknown>, v = 0.299 * Number(sh.red) + 0.587 * Number(sh.green) + 0.114 * Number(sh.blue); patch.shape = { ...l.shape, red: v, green: v, blue: v }; }
+        if (l.shape) { const sh = l.shape as Record<string, unknown>, v = wr * Number(sh.red) + wg * Number(sh.green) + wb * Number(sh.blue); patch.shape = { ...l.shape, red: v, green: v, blue: v }; }
         return { ...l, ...patch };
       });
       pp.doc = { ...pp.doc, layers, mode: 'grayscale', palette: undefined };
       return true;
     }
     if (!flat) return false;
-    const src = ctxOf(flat).getImageData(0, 0, W, H), d = src.data, out = new ImageData(W, H), o = out.data;
-    let palette: RGB[] | undefined;
+    const src = ctxOf(flat).getImageData(0, 0, W, H), d = src.data, out = new ImageData(W, H);
+    let palette: RGB[] | undefined, transparentIndex: number | undefined;
     if (mode === 'bitmap') {
-      // Over white, as grey, then black or white: at 50 percent, or diffusing each pixel's error (Floyd-Steinberg).
-      const g = new Float32Array(W * H);
-      for (let i = 0; i < g.length; i++) { const a = d[i * 4 + 3] / 255; g[i] = (0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2]) * a + 255 * (1 - a); }
-      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-        const i = y * W + x, v = g[i] < 128 ? 0 : 255, e = g[i] - v;
-        o[i * 4] = o[i * 4 + 1] = o[i * 4 + 2] = v; o[i * 4 + 3] = 255;
-        if (opts.dither) {
-          if (x + 1 < W) g[i + 1] += (e * 7) / 16;
-          if (y + 1 < H) { if (x > 0) g[i + W - 1] += (e * 3) / 16; g[i + W] += (e * 5) / 16; if (x + 1 < W) g[i + W + 1] += e / 16; }
-        }
-      }
+      // Over white, as grey, then black or white (engine/quantize.ts): 50 percent, pattern or diffusion dither, or a halftone screen.
+      const method = opts.method ?? (opts.dither ? 'diffusion' : 'threshold');
+      out.data.set(bitmapPixels(d, W, H, method, pp.doc.resolution || 72, opts.halftone ?? { lpi: 53, angle: 45, shape: 'round' }));
     } else {
-      palette = paletteFor(d, Math.max(2, Math.min(256, opts.colors ?? 256)));
-      const cache = new Map<number, RGB>(), near = (r: number, gg: number, b: number): RGB => {
-        const k = ((r >> 3) << 10) | ((gg >> 3) << 5) | (b >> 3);
-        let q = cache.get(k);
-        if (!q) { let bd = Infinity; for (const c of palette as RGB[]) { const dd = (c.r - r) ** 2 + (c.g - gg) ** 2 + (c.b - b) ** 2; if (dd < bd) { bd = dd; q = c; } } cache.set(k, q as RGB); }
-        return q as RGB;
-      };
-      const f = new Float32Array(d.length);
-      for (let i = 0; i < d.length; i++) f[i] = d[i];
-      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-        const i = (y * W + x) * 4;
-        if (d[i + 3] < 128) { o[i + 3] = 0; continue; }
-        const r = Math.max(0, Math.min(255, f[i])), gg = Math.max(0, Math.min(255, f[i + 1])), b = Math.max(0, Math.min(255, f[i + 2])), q = near(r, gg, b);
-        o[i] = q.r; o[i + 1] = q.g; o[i + 2] = q.b; o[i + 3] = 255;
-        if (opts.dither) for (let k = 0; k < 3; k++) {
-          const e = [r - q.r, gg - q.g, b - q.b][k];
-          if (x + 1 < W) f[i + 4 + k] += (e * 7) / 16;
-          if (y + 1 < H) { if (x > 0) f[i + (W - 1) * 4 + k] += (e * 3) / 16; f[i + W * 4 + k] += (e * 5) / 16; if (x + 1 < W) f[i + (W + 1) * 4 + k] += e / 16; }
-        }
-      }
+      const choice: IndexedChoice = { ...INDEXED_DEFAULTS, colors: opts.colors ?? 256, dither: opts.dither ? 'diffusion' : 'none', amount: opts.dither ? 100 : INDEXED_DEFAULTS.amount, ...opts.indexed };
+      const res = indexedPixels(d, W, H, choice, paletteFor);
+      out.data.set(res.pixels); palette = res.palette; transparentIndex = res.transparentIndex;
     }
     const r = new Raster(W, H);
     r.ctx.putImageData(out, 0, 0);
     r.touch();
     const l = newLayer(mode === 'bitmap' ? 'Background' : 'Index', pp.doc, { raster: r });
-    pp.doc = { ...pp.doc, layers: [l], mode, palette };
+    pp.doc = { ...pp.doc, layers: [l], mode, palette, transparentIndex };
     pp.activeId = l.id;
     return true;
   });

@@ -9,7 +9,7 @@ import { ExportDialog } from './ui/panels/export-dialog';
 import { LayerExportDialog } from './ui/panels/layer-export-dialog';
 import { DataSetsDialog, DefineVariablesDialog } from './ui/panels/variables-dialog';
 import { ArtboardPdfDialog, type ArtboardPdfSettings } from './ui/panels/artboard-pdf-dialog';
-import { DEFAULT_LAYER_EXPORT, dataSetFiles, layerCompFiles, layerFiles, selectedLayerFiles, type LayerExportSettings } from './io/layer-export';
+import { DEFAULT_LAYER_EXPORT, dataSetFiles, layerCompFiles, layerFiles, safeName, selectedLayerFiles, type LayerExportSettings } from './io/layer-export';
 import { loadExportPrefs } from './io/export-prefs';
 import { ExportPrefsDialog } from './ui/panels/export-prefs-dialog';
 import { GuideDialog } from './ui/panels/guide-dialog';
@@ -18,6 +18,7 @@ import { CornersDialog } from './ui/panels/corners-dialog';
 import { ClippingPathDialog } from './ui/panels/clipping-path-dialog';
 import { CreateShapeDialog } from './ui/panels/create-shape-dialog';
 import { StrokePathDialog } from './ui/panels/stroke-path-dialog';
+import { MakeSelectionDialog } from './ui/panels/make-selection-dialog';
 import { DuplicateLayerDialog, FindLayersDialog, LockLayersDialog, NewGroupDialog, NewLayerDialog } from './ui/panels/layer-dialogs';
 import { MattingDialog } from './ui/panels/matting-dialog';
 import { ChannelOptionsDialog, LoadSelectionDialog, SaveSelectionDialog, loadSources } from './ui/panels/selection-dialogs';
@@ -34,7 +35,7 @@ import { SPACES, convertPixels, iccProfile, type SpaceId } from './engine/icc';
 import { embedJpeg, embedPng } from './io/embed-icc';
 import { withResolution } from './engine/dpi';
 import { dpxBlob } from './io/dpx';
-import { exportLayout, engineWrites, exportMeta, exportName, exportSize, formatOptions, PROFILELESS, sizedSettings, type ExportSettings } from './io/export-presets';
+import { dropsAlpha, exportLayout, engineWrites, fidelityNotes, exportMeta, exportName, exportSize, formatOptions, PROFILELESS, sizedSettings, type ExportSettings } from './io/export-presets';
 import { pnmDeepBlob } from './io/pnm';
 import { PARAM_KINDS } from './engine/adjust-params';
 import { APPLY_MODES, type ApplyMode } from './engine/apply-image';
@@ -198,7 +199,7 @@ import { headerResolution } from './io/image-size';
 import { ConditionalModeDialog, SOURCE_MODES } from './ui/panels/conditional-mode-dialog';
 import { HdrToningDialog } from './ui/panels/hdr-toning';
 import { Preview32Dialog } from './ui/panels/preview32-dialog';
-import { AssignProfileDialog, ConvertProfileDialog, ProfileMismatchDialog, ProofSetupDialog, convertDocumentDeep, type Space } from './ui/panels/colour-dialogs';
+import { AssignProfileDialog, ConvertProfileDialog, ProfileInfoDialog, ProfileMismatchDialog, ProofSetupDialog, convertDocumentDeep, type Space } from './ui/panels/colour-dialogs';
 import { embeddedProfile, exifColourSpace, fromBase64, isSrgbName, profileName, toBase64 } from './io/icc-read';
 import { toolHost } from './extensions/registry';
 import { Viewport } from './engine/viewport';
@@ -882,7 +883,9 @@ export function startApp(): void {
         let largeAsked = false;
         let pagesAsked = false;
         let rawPick: RawChoice | null = null;
+        openStopped = false;
         for (const f of images) {
+          if (openStopped) break;
           if (/\.png$/i.test(f.name)) { const n = await apngFrames(f).catch(() => 0); if (n > 1) toast(`${f.name} is an animated PNG of ${n} frames; only the first frame was opened.`, 'info'); }
           // A single camera RAW opens into Camera Raw first (DEV_PLAN 36.21): Cancel does not open it; 16 Bits/Channel opens a 16-bit document.
           if (RAW_FILE.test(f.name) && images.length === 1) {
@@ -938,7 +941,17 @@ export function startApp(): void {
                   if (mp && engine.openDeepLayers(f.name.replace(/\.[^.]+$/, ''), mp.width, mp.height, mp.parts.map((q) => ({ name: q.name, x: q.x, y: q.y, deep: { mode: 'rgb', n: 3, width: q.width, height: q.height, data: q.data } })))) continue;
                 }
                 const d = await api.decodeDeep(f, f.name), name = f.name.replace(/\.[^.]+$/, ''), ppi = (await headerResolution(f)) ?? undefined;
-                if (d.depth === 32) { engine.openDeep(name, { mode: 'rgb', n: 3, width: d.width, height: d.height, data: d.data as Float32Array }, 32, ppi); continue; }
+                if (d.depth === 32) {
+                  let px = d.data as Float32Array;
+                  // Color Settings: an OpenEXR read as ACEScg is moved to the working linear space, its colours kept.
+                  if (/\.exr$/i.test(f.name) && loadPrefs().colour.exrAcescg) {
+                    const m = await api.linearMatrix({ source: { id: 'builtin:acescg' }, dest: null });
+                    px = new Float32Array(px);
+                    for (let i = 0; i < px.length; i += 4) { const r = px[i], g = px[i + 1], b = px[i + 2]; for (let c = 0; c < 3; c++) px[i + c] = m[c][0] * r + m[c][1] * g + m[c][2] * b; }
+                  }
+                  engine.openDeep(name, { mode: 'rgb', n: 3, width: d.width, height: d.height, data: px }, 32, ppi);
+                  continue;
+                }
                 if (d.depth === 16) { engine.openDeep(name, deepFromU16(d.data as Uint16Array, d.width, d.height), 16, ppi); continue; }
               } catch { /* opened at 8 bits as before */ }
             }
@@ -950,10 +963,12 @@ export function startApp(): void {
             // A JPEG with no profile but the EXIF ColorSpace tag set to sRGB says what it is: opened as sRGB without asking.
             if (!icc && noDoc() && decoded.length === 0 && (await exifColourSpace(f).catch(() => null)) !== 1) {
               const assumed = await missingProfile(f.name);
+              if (openStopped) continue;
               if (assumed) { try { const raw = await decodeImage(f, f.name, true); raw.profile = assumed; decoded.push(raw); continue; } catch { /* decoded as before */ } }
             }
             if (icc && !isSrgbName(pname)) {
               const pref = loadPrefs().profileMismatch, how = pref === 'ask' ? await colourDialogs.mismatch.ask(f.name, pname) : pref;
+              if (how === 'cancel') { openStopped = true; continue; }
               // Kept only when the image opens as its own document: placed into an open document, it is converted.
               if ((how === 'keep' || how === 'discard') && noDoc() && decoded.length === 0) {
                 try { const raw = await decodeImage(f, f.name, true); if (how === 'keep') raw.profile = { name: pname, icc: toBase64(icc) }; decoded.push(raw); continue; } catch { /* decoded as before */ }
@@ -1192,22 +1207,28 @@ export function startApp(): void {
       } catch (err) { toast(message(err), 'error'); }
     });
   }
-  async function exportAsOne(s: ExportSettings, suffix?: string, folder = ''): Promise<void> {
+  /** `io.layerId` exports that layer alone instead of the composite; `io.sink` takes the finished file (and the picture it
+   *  was encoded from) instead of delivering it; `io.quiet` skips the busy state and the notices, for the live preview. */
+  interface ExportIo { layerId?: string; sink?: (blob: Blob, name: string, view?: ReturnType<typeof createSurface>) => void; quiet?: boolean }
+  async function exportAsOne(s: ExportSettings, suffix?: string, folder = '', io: ExportIo = {}): Promise<void> {
     const p = engine.current;
     if (!p) return;
-    engine.settle();
-    await engine.task(async () => {
+    if (!io.quiet) engine.settle();
+    const say = (text: string): void => { if (!io.quiet) toast(text, 'info'); };
+    const give = async (blob: Blob, name: string, view?: ReturnType<typeof createSurface>): Promise<void> => { if (io.sink) io.sink(blob, name, view); else await deliver(blob, name, folder); };
+    await (io.quiet ? (fn: () => Promise<void>) => fn() : (fn: () => Promise<void>) => engine.task(fn))(async () => {
       try {
         if (s.format === 'dpx') {
-          const dpx = await dpxBlob(engine, s);
-          if (dpx) { if (s.scale !== 100 || s.size === 'fit' || s.size === 'frame' || s.canvas) toast('DPX is written at the document\'s own size.', 'info'); await deliver(dpx, exportName(p.name, s, suffix)); }
+          const dpx = io.layerId ? null : await dpxBlob(engine, s);
+          if (dpx) { if (s.scale !== 100 || s.size === 'fit' || s.size === 'frame' || s.canvas) say('DPX is written at the document\'s own size.'); await give(dpx, exportName(p.name, s, suffix)); }
           return;
         }
         if (s.format === 'pnm') {
-          const deep = await pnmDeepBlob(engine, s);
-          if (deep) { if (s.scale !== 100 || s.size === 'fit' || s.size === 'frame' || s.canvas) toast('A 16-bit PNM file is written at the document\'s own size.', 'info'); await deliver(deep, exportName(p.name, s, suffix)); return; }
-        } else if ((p.doc.depth ?? 8) > 8 && (s.format === 'qoi' || s.format === 'tga' || s.format === 'ico')) toast(`${s.format.toUpperCase()} holds 8 bits a channel, so the ${p.doc.depth}-bit picture is written at 8 bits.`, 'info');
-        const base = await engine.exportBlob('image/png');
+          const deep = io.layerId ? null : await pnmDeepBlob(engine, s);
+          if (deep) { if (s.scale !== 100 || s.size === 'fit' || s.size === 'frame' || s.canvas) say('A 16-bit PNM file is written at the document\'s own size.'); await give(deep, exportName(p.name, s, suffix)); return; }
+        } else if ((p.doc.depth ?? 8) > 8 && (s.format === 'qoi' || s.format === 'tga' || s.format === 'ico')) say(`${s.format.toUpperCase()} holds 8 bits a channel, so the ${p.doc.depth}-bit picture is written at 8 bits.`);
+        const alone = io.layerId ? engine.renderLayerAlone(io.layerId) : null;
+        const base = alone ? await toBlob(alone, 'image/png') : await engine.exportBlob('image/png');
         if (!base) return;
         // By Scale, Fit Within or a Frame (1.51.8): a frame's margins are transparent, or white in JPEG.
         const bmp = await createImageBitmap(base), L = exportLayout(bmp.width, bmp.height, s), z = { w: L.w, h: L.h }, c = createSurface(z.w, z.h), x = ctxOf(c);
@@ -1232,7 +1253,21 @@ export function startApp(): void {
         } else if (space !== 'srgb') { const img = x.getImageData(0, 0, z.w, z.h); convertPixels(img.data, 'srgb', space); x.putImageData(img, 0, 0); }
         const tagged = !!own || !!listed || space !== 'srgb', keep = s.embed !== false && s.format !== 'pdf' && (tagged || s.format !== 'webp') ? icc : null;
         const viaEngine = engineWrites(s) || (s.format === 'webp' && tagged && !!keep);
-        if (PROFILELESS.has(s.format) && (own || listed || space !== 'srgb')) toast(`${s.format.toUpperCase()} carries no colour profile; the pixels are written in ${listed ? label : own ? 'the document\'s profile' : SPACES[space].label}.`, 'info');
+        if (PROFILELESS.has(s.format) && (own || listed || space !== 'srgb')) say(`${s.format.toUpperCase()} carries no colour profile; the pixels are written in ${listed ? label : own ? 'the document\'s profile' : SPACES[space].label}.`);
+        if (!io.quiet) {
+          // What the flat file lost or changed, in one notice: depth, ink, transparency, lossy encoding, resolution.
+          let clear = false;
+          if (dropsAlpha(s)) {
+            const probe = await createImageBitmap(base), k = Math.min(1, 1024 / Math.max(probe.width, probe.height)), pc = createSurface(Math.max(1, Math.round(probe.width * k)), Math.max(1, Math.round(probe.height * k))), px = ctxOf(pc);
+            px.imageSmoothingEnabled = false;
+            px.drawImage(probe, 0, 0, pc.width, pc.height);
+            probe.close();
+            const d = px.getImageData(0, 0, pc.width, pc.height).data;
+            for (let i = 3; i < d.length && !clear; i += 4) if (d[i] < 255) clear = true;
+          }
+          const lost = fidelityNotes(s, p.doc, clear);
+          if (lost.length) say(lost.join(' '));
+        }
         const blob = viaEngine ? await api.encode(await toBlob(c), (s.format === 'jpg' ? 'jpeg' : s.format) as 'avif' | 'tiff' | 'pdf' | 'webp', s.quality, p.doc.resolution ?? 72, keep, formatOptions(s))
           : s.format === 'png' ? await withResolution(keep ? await embedPng(await toBlob(c, 'image/png'), keep, label) : await toBlob(c, 'image/png'), p.doc.resolution ?? 72)
           : s.format === 'jpg' ? await withResolution(keep ? await embedJpeg(await toBlob(c, 'image/jpeg', s.quality / 100), keep) : await toBlob(c, 'image/jpeg', s.quality / 100), p.doc.resolution ?? 72)
@@ -1243,9 +1278,35 @@ export function startApp(): void {
         // Metadata (36.29): the document's File Info, none, or only the Copyright and Contact texts.
         const meta = exportMeta(s, p.doc.meta);
         const labelled = metaWritable(meta) ? await withXmp(blob, s.format, meta, new Date(), ai) : ai ? await withAiLabel(blob, s.format, ai) : blob;
-        await deliver(s.promptMeta && s.format === 'png' ? await withGenerationText(labelled, p.doc.layers) : labelled, exportName(p.name, s, suffix), folder);
-      } catch (err) { toast(message(err), 'error'); }
+        await give(s.promptMeta && s.format === 'png' ? await withGenerationText(labelled, p.doc.layers) : labelled, exportName(p.name, s, suffix), c);
+      } catch (err) { if (io.sink) io.sink(new Blob([]), ''); else toast(message(err), 'error'); }
     });
+  }
+  /** Export As preview: the file the settings would write, encoded off to the side (nothing is delivered), as its bytes,
+   *  name and the picture it holds; null when the export fails. */
+  async function exportPreview(s: ExportSettings, layerId?: string): Promise<{ blob: Blob; name: string; view?: ReturnType<typeof createSurface> } | null> {
+    let got: { blob: Blob; name: string; view?: ReturnType<typeof createSurface> } | null = null;
+    await exportAsOne(sizedSettings(s)[0].s, sizedSettings(s)[0].suffix, '', { quiet: true, ...(layerId ? { layerId } : {}), sink: (blob, name, view) => { if (name) got = { blob, name, view }; } });
+    return got;
+  }
+  /** Layer > Export As: the Export As settings applied to each selected layer (the active one when none is) drawn alone,
+   *  named for the layer; several layers go as one zip in the browser. */
+  async function exportLayersAs(all: ExportSettings): Promise<void> {
+    const p = engine.current;
+    if (!p) return;
+    const ids = (p.selectedIds.size ? [...p.selectedIds] : p.activeId ? [p.activeId] : []).filter((id) => { const l = p.layer(id); return !!l && !l.isGroup && !!l.raster; });
+    if (!ids.length) { toast('Select a pixel layer to export.', 'info'); return; }
+    const files: Array<{ name: string; blob: Blob }> = [], taken = new Set<string>();
+    for (const id of ids) {
+      const l = p.layer(id)!;
+      let base = safeName(l.name), n = 1;
+      while (taken.has(base.toLowerCase())) base = `${safeName(l.name)} ${++n}`;
+      taken.add(base.toLowerCase());
+      for (const one of sizedSettings({ ...all, fileName: base })) await exportAsOne(one.s, one.suffix, '', { layerId: id, sink: (blob, name) => { if (name) files.push({ name, blob }); } });
+    }
+    if (!files.length) { toast('The selected layers could not be exported.', 'error'); return; }
+    if (files.length === 1) { await deliver(files[0].blob, files[0].name); return; }
+    await deliver(await zipFiles(files), `${stripExt(p.name)} layers.zip`);
   }
 
   /** File > Export > Selection as Mask PNG: the selection as a document-sized grey picture, white selected, black not, feathered edges kept. */
@@ -1270,7 +1331,7 @@ export function startApp(): void {
   }
 
   /** File > Export > Radiance HDR and OpenEXR from a 32-bit document (1.53.9): linear floats, as they are. */
-  async function exportWide(kind: 'hdr' | 'exr'): Promise<void> {
+  async function exportWide(kind: 'hdr' | 'exr' | 'pfm', exr: Record<string, unknown> | null = null): Promise<void> {
     const p = engine.current;
     if (!p) return;
     try {
@@ -1285,7 +1346,7 @@ export function startApp(): void {
         deep = { width: flat.width, height: flat.height, data: d };
       }
       if ('error' in deep) throw new Error(deep.error);
-      await deliver(await api.encodeDeep(deep.data, deep.width, deep.height, kind), `${(p.name || 'Untitled').replace(/\.[^.]+$/, '')}.${kind}`);
+      await deliver(await api.encodeDeep(deep.data, deep.width, deep.height, kind, null, exr), `${(p.name || 'Untitled').replace(/\.[^.]+$/, '')}.${kind}`);
     } catch (err) { toast(`Export failed: ${err instanceof Error ? err.message : String(err)}`); }
   }
 
@@ -1372,8 +1433,12 @@ export function startApp(): void {
     if (c.rgbPolicy === 'off') return null;
     const working = await workingRgb();
     if (!c.askMissing) return working;
-    return (await colourSettingsDialogs.missing.ask(file, working?.name ?? 'sRGB IEC61966-2.1')) === 'assume' ? working : null;
+    const how = await colourSettingsDialogs.missing.ask(file, working?.name ?? 'sRGB IEC61966-2.1');
+    if (how === 'cancel') openStopped = true;
+    return how === 'assume' ? working : null;
   }
+  /** Set when a colour prompt is cancelled: the files still queued are not opened. */
+  let openStopped = false;
   /** Color Settings' working CMYK or gray as a document profile: the shipped press profile or the listed one. */
   async function workingSpace(kind: 'cmyk' | 'gray'): Promise<DocProfile> {
     const ref = loadPrefs().colour[kind], id = ref.startsWith('id:') ? ref.slice(3) : kind === 'gray' ? 'builtin:gray-g22' : null;
@@ -1390,11 +1455,13 @@ export function startApp(): void {
     const c = loadPrefs().colour, policy = kind === 'cmyk' ? c.cmykPolicy : c.grayPolicy, unmanaged = kind === 'cmyk' ? working : null;
     if (policy === 'off') return { profile: unmanaged, convert: false };
     if (!embedded) {
-      if (kind === 'gray' && c.askMissing) return { profile: (await colourSettingsDialogs.missing.ask(file, working.name)) === 'assume' ? working : null, convert: false };
+      if (kind === 'gray' && c.askMissing) { const how = await colourSettingsDialogs.missing.ask(file, working.name); if (how === 'cancel') openStopped = true; return { profile: how === 'assume' ? working : null, convert: false }; }
       return { profile: working, convert: false };
     }
     if (embedded.icc === working.icc || embedded.name === working.name) return { profile: embedded, convert: false };
-    const how = c.askMismatch ? await colourDialogs.mismatch.ask(file, embedded.name, working.name) : policy === 'convert' ? 'convert' : 'keep';
+    const asked = c.askMismatch ? await colourDialogs.mismatch.ask(file, embedded.name, working.name) : policy === 'convert' ? 'convert' : 'keep';
+    if (asked === 'cancel') openStopped = true;
+    const how = asked === 'cancel' ? 'keep' : asked;
     return how === 'keep' ? { profile: embedded, convert: false } : how === 'convert' ? { profile: working, convert: true } : { profile: unmanaged, convert: false };
   }
   /** CMYK ink (four bytes a pixel, then alpha) converted between press profiles by LittleCMS at the Color Settings intent. */
@@ -1619,7 +1686,7 @@ export function startApp(): void {
           : await (async () => { const png = await engine.exportBlob('image/png'); return png ? api.encode(png, kind, Math.round(quality * 100), p.doc.resolution ?? 72, kind === 'pdf' ? null : prof?.bytes ?? null) : null; })();
         // A document with its own profile (1.53.5) carries it into the PNG and JPEG, embedded as Export As embeds it;
         // TIFF, AVIF and WebP take it in the engine's encode, and 16-bit files as they are written.
-        const own = !deep && blob && (kind === 'png' || kind === 'jpg') ? p.doc.profile : undefined;
+        const own = !deep && blob && (kind === 'png' || kind === 'jpg') ? p.doc.profile ?? { name: SPACES.srgb.label, icc: toBase64(iccProfile('srgb')) } : undefined;
         const tagged = blob && own ? (kind === 'png' ? await embedPng(blob, fromBase64(own.icc), own.name) : await embedJpeg(blob, fromBase64(own.icc))) : blob;
         if (tagged) await deliver(await withXmp(tagged, kind, p.doc.meta), `${p.name}.${kind === 'tiff' ? 'tif' : kind}`);   // File Info as XMP (29.2)
       } catch (err) { toast(message(err), 'error'); }
@@ -1774,6 +1841,14 @@ export function startApp(): void {
     if (o.tiff.on) jobs.push({ dir: 'TIFF', ext: 'tif', fit: o.tiff, make: async () => {
       const png = await engine.exportBlob('image/png');
       return png ? withXmp(await api.encode(png, 'tiff', 100, here().doc.resolution ?? 72), 'tiff', here().doc.meta) : null;   // the engine's TIFF is LZW-compressed; the LZW box is kept for the dialog's sake
+    } });
+    if (o.png.on) jobs.push({ dir: 'PNG', ext: 'png', fit: o.png, make: async () => {
+      const png = await engine.exportBlob('image/png');
+      return png ? withXmp(png, 'png', here().doc.meta) : null;
+    } });
+    if (o.webp.on) jobs.push({ dir: 'WebP', ext: 'webp', fit: o.webp, make: async () => {
+      const webp = await engine.exportBlob('image/webp', o.webp.quality / 100);
+      return webp ? withXmp(webp, 'webp', here().doc.meta) : null;
     } });
     await engine.task(async () => {
       const out: Array<{ dir: string; name: string; blob: Blob }> = [], problems: string[] = [], used = new Set<string>();
@@ -2049,7 +2124,7 @@ export function startApp(): void {
     engine.settle();
     await engine.task(async () => {
       try {
-        const { files, skipped } = set.comps ? { files: await layerCompFiles(engine, set, !!caps), skipped: 0 } : await layerFiles(engine, set, !!caps);
+        const { files, skipped } = set.comps ? { files: await layerCompFiles(engine, set, !!caps, set.ids ?? []), skipped: 0 } : await layerFiles(engine, set, !!caps);
         if (!files.length) { toast(set.comps ? 'There are no layer comps to export.' : set.artboards ? 'There are no artboards to export.' : 'There are no layers to export.', 'info'); return; }
         const what = set.comps ? 'comp' : set.artboards ? 'artboard' : 'layer', n = `${files.length} ${what}${files.length === 1 ? '' : 's'}`, left = skipped ? ` (${skipped} with nothing to write skipped)` : '';
         if (caps?.desktop) {
@@ -2139,11 +2214,12 @@ export function startApp(): void {
     trim: { type: 'boolean', description: 'Cut each layer to its visible pixels. Layers only.' },
     icc: { type: 'boolean', description: 'Embed the ICC profile; true when left out.' },
     folder: { type: 'string', description: 'Desktop app: the folder made inside the exports folder.' },
+    selected_only: { type: 'boolean', description: 'Only the selected layers (the active one when none is selected). Layers only.' },
   };
   function layerExportRun(artboards: boolean, a?: Record<string, unknown>, comps = false): void {
     if (!a || !Object.keys(a).length) { dialogs.layerExport.show(artboards, comps); return; }
     const d = DEFAULT_LAYER_EXPORT, f = String(a.format ?? d.format) as LayerExportSettings['format'];
-    void exportLayerFiles({ artboards, comps, prefix: String(a.prefix ?? ''), format: ['png', 'jpg', 'tiff', 'webp', 'psd'].includes(f) ? f : d.format, quality: Number(a.quality ?? d.quality), visibleOnly: a.visible_only === undefined ? d.visibleOnly : a.visible_only === true, trim: a.trim === true, icc: a.icc === undefined ? d.icc : a.icc === true, folder: String(a.folder ?? '') });
+    void exportLayerFiles({ artboards, comps, prefix: String(a.prefix ?? ''), format: ['png', 'jpg', 'tiff', 'webp', 'psd'].includes(f) ? f : d.format, quality: Number(a.quality ?? d.quality), visibleOnly: a.visible_only === undefined ? d.visibleOnly : a.visible_only === true, trim: a.trim === true, icc: a.icc === undefined ? d.icc : a.icc === true, folder: String(a.folder ?? ''), ...(a.selected_only === true && !artboards && !comps ? { ids: (() => { const c = engine.current; const ids = c ? (c.selectedIds.size ? [...c.selectedIds] : c.activeId ? [c.activeId] : []) : []; return ids.length ? ids : ['none']; })() } : {}) });
   }
 
   /** File > Export > OpenRaster (1.51.7): layers, groups, positions, opacity, visibility and blend modes, for any
@@ -2197,6 +2273,9 @@ export function startApp(): void {
     engine.settle();
     if (p.doc.mode === 'cmyk' && !psb) { await exportCmykPsd(); return; }
     if (p.doc.mode === 'lab' && !psb) { await exportLabPsd(); return; }
+    // A PSD holds 30000 pixels a side and 2 GB; a larger document goes out as a PSB, which holds 300000 and 4 EB.
+    const rasters = p.doc.layers.filter((l) => l.raster).length + 1;
+    if (!psb && (p.doc.width > 30000 || p.doc.height > 30000 || p.doc.width * p.doc.height * 4 * rasters > 4e9)) { psb = true; toast('This document is too large for a PSD, so it is written as a PSB.', 'info'); }
     await engine.task(async () => {
       try {
         const flat = engine.flattened();
@@ -2647,7 +2726,7 @@ export function startApp(): void {
     fileInfo: new FileInfoDialog(engine),
     scaleEffects: new ScaleEffectsDialog(engine),
     fill: new FillDialog(engine, () => commands.run('content-fill')),
-    exportAs: new ExportDialog(engine, (s) => void exportAs(s)),
+    exportAs: new ExportDialog(engine, (s) => void exportAs(s), (s) => void exportLayersAs(s), exportPreview),
     exportPrefs: new ExportPrefsDialog(() => !!caps?.desktop),
     print: new PrintDialog(engine, (s) => { printDocument(engine, s); fireEvent('print'); }, (pdf, name) => { void deliver(pdf, name); }),
     layerExport: new LayerExportDialog(engine, () => !!caps?.desktop, (s) => void exportLayerFiles(s)),
@@ -2666,6 +2745,7 @@ export function startApp(): void {
     clippingPath: new ClippingPathDialog(engine),
     createShape: new CreateShapeDialog(engine),
     strokePath: new StrokePathDialog(engine),
+    makeSelection: new MakeSelectionDialog(engine),
     newLayer: new NewLayerDialog(engine),
     duplicateLayer: new DuplicateLayerDialog(engine),
     newGroup: new NewGroupDialog(engine),
@@ -2780,6 +2860,7 @@ export function startApp(): void {
   const tiffPages = new TiffPagesDialog(engine);
   const openAs = new OpenAsDialog((f) => importFiles([f]));
   const colourView = new ColourView(engine);   // colour management (1.53.5)
+  colourView.onProof = (label) => status.setProof(label);
   const hdrToning = new HdrToningDialog();   // 1.53.9
   const focusAreaDialog = new FocusAreaDialog(engine);   // 1.57.6
   const photomergeDialog = new MergeDialog(engine, 'panorama'), hdrMergeDialog = new MergeDialog(engine, 'hdr');   // 1.58.2
@@ -2804,7 +2885,7 @@ export function startApp(): void {
       } catch (err) { toast(message(err), 'error'); return false; }
     },
   };
-  const colourDialogs = { assign: new AssignProfileDialog(engine, (pr) => cmykLutFor(pr), () => convertDialog.show()), convert: convertDialog, proof: new ProofSetupDialog(colourView), mismatch: new ProfileMismatchDialog() };
+  const colourDialogs = { assign: new AssignProfileDialog(engine, (pr) => cmykLutFor(pr), () => convertDialog.show()), convert: convertDialog, proof: new ProofSetupDialog(colourView), mismatch: new ProfileMismatchDialog(), info: new ProfileInfoDialog(engine) };
   const preview32 = new Preview32Dialog(colourView);
   void pluginHost.loadAll();
   document.body.appendChild(assistant.el);
@@ -2906,6 +2987,7 @@ export function startApp(): void {
     { id: 'quick-export', label: 'Quick Export', enabled: has, run: () => void quickExport() },
     { id: 'export-preferences', label: 'Export Preferences...', run: () => dialogs.exportPrefs.show() },
     { id: 'layer-quick-export-png', label: 'Quick Export as PNG', enabled: () => !!engine.current?.activeId, run: () => void quickExportLayers() },
+    { id: 'layer-export-as', label: 'Export As...', enabled: () => !!engine.current?.activeId, run: () => dialogs.exportAs.show(true) },
     { id: 'save-for-web', label: 'Save for Web (Legacy)...', enabled: has, run: () => { engine.settle(); dialogs.saveForWeb.show(); } },
     { id: 'script-events', label: 'Script Events Manager...', run: () => dialogs.scriptEvents.show() },
     { id: 'print', label: 'Print...', keys: ['Mod+P'], enabled: has, run: () => dialogs.print.show() },
@@ -2936,8 +3018,12 @@ export function startApp(): void {
     { id: 'show-layer-edges', label: 'Show Layer Edges', checked: () => extraOn('layerEdges'), run: () => setExtra('layerEdges', !extraOn('layerEdges')) },
     { id: 'show-all-extras', label: 'Show All', run: () => { setAllExtras(true); engine.setView({ guides: true, grid: true, slices: true }); } },
     { id: 'show-no-extras', label: 'Show None', run: () => { setAllExtras(false); engine.setView({ guides: false, grid: false, slices: false }); } },
-    { id: 'delete-slice', label: 'Delete Slice', enabled: () => !!engine.current?.doc.slices?.some((s) => s.id === engine.activeSlice), run: () => { engine.deleteActiveSlice(); } },
-    { id: 'clear-slices', label: 'Clear Slices', enabled: () => !!engine.current?.doc.slices?.length, run: () => engine.clearSlices() },
+    { id: 'delete-slice', label: 'Delete Slice', enabled: () => !engine.view.slicesLocked && !!engine.current?.doc.slices?.some((s) => s.id === engine.activeSlice), run: () => { engine.deleteActiveSlice(); } },
+    { id: 'clear-slices', label: 'Clear Slices', enabled: () => !engine.view.slicesLocked && !!engine.current?.doc.slices?.length, run: () => engine.clearSlices() },
+    { id: 'lock-slices', label: () => (engine.view.slicesLocked ? 'Unlock Slices' : 'Lock Slices'), enabled: has, run: () => engine.setView({ slicesLocked: !engine.view.slicesLocked }) },
+    { id: 'toggle-auto-slices', label: () => (engine.view.autoSlices ? 'Hide Auto Slices' : 'Show Auto Slices'), enabled: has, run: () => engine.setView({ autoSlices: !engine.view.autoSlices }) },
+    { id: 'slices-from-guides', label: 'Slices From Guides', enabled: () => !engine.view.slicesLocked && !!engine.current?.doc.guides?.length, run: () => { if (!engine.slicesFromGuides()) toast('Add a guide first.'); } },
+    { id: 'divide-slice', label: 'Divide Slice...', enabled: () => !engine.view.slicesLocked && !!engine.current?.doc.slices?.some((s) => s.id === engine.activeSlice), run: async () => { (await import('./ui/slice-divide')).openDivideSlice(engine); } },
     { id: 'slice-options', label: 'Slice Options...', enabled: () => !!engine.current?.doc.slices?.some((s) => s.id === engine.activeSlice), run: async () => { (await import('./ui/slice-options')).openSliceOptions(engine); } },
     { id: 'layer-based-slice', label: 'New Layer Based Slice', enabled: () => !!engine.current?.activeLayer, run: () => { if (engine.addLayerSlice() && !engine.view.slices) engine.setView({ slices: true }); } },
     { id: 'new-guide', label: 'New Guide...', enabled: has, run: () => dialogs.guide.show() },
@@ -3126,8 +3212,9 @@ export function startApp(): void {
     {
       id: 'image-processor', label: 'Image Processor...', enabled: () => true,
       params: {
-        types: { type: 'string', description: 'Comma list of jpg, psd, tiff; jpg when left out.' },
+        types: { type: 'string', description: 'Comma list of jpg, psd, tiff, png, webp; jpg when left out.' },
         quality: { type: 'integer', min: 0, max: 12, description: 'JPEG quality 0 to 12; 10 when left out.' },
+        webp_quality: { type: 'integer', min: 1, max: 100, description: 'WebP quality 1 to 100; 85 when left out.' },
         max_w: { type: 'integer', min: 1, description: 'Resize to Fit width in pixels, with max_h.' },
         max_h: { type: 'integer', min: 1, description: 'Resize to Fit height in pixels, with max_w.' },
         action: { type: 'string', description: 'Name of an action to run on each image.' },
@@ -3141,6 +3228,7 @@ export function startApp(): void {
           files: [], useOpen: true, action: x, copyright: String(a.copyright ?? '').trim(),
           jpeg: { ...fit, on: t.includes('jpg') || t.includes('jpeg'), quality: Math.min(12, Math.max(0, Math.round(Number(a.quality ?? 10)))), srgb: true },
           psd: { ...fit, on: t.includes('psd') }, tiff: { ...fit, on: t.includes('tif'), lzw: true },
+          png: { ...fit, on: t.includes('png') }, webp: { ...fit, on: t.includes('webp'), quality: Math.min(100, Math.max(1, Math.round(Number(a.webp_quality ?? 85)))) },
         });
         return undefined;
       },
@@ -3262,23 +3350,23 @@ export function startApp(): void {
     { id: 'fill-dialog', label: 'Fill...', keys: ['Shift+F5'], enabled: pixel, run: () => dialogs.fill.show() },
     { id: 'content-fill-workspace', label: 'Content-Aware Fill...', enabled: () => pixel() && selected(), run: () => dialogs.contentFill.show() },
     { id: 'remove-wires', label: 'Remove Wires and Cables', enabled: pixel, run: () => { void engine.task(async () => { await new Promise((r) => requestAnimationFrame(() => window.setTimeout(r, 0))); engine.removeWires(); }); } },
-    { id: 'transform-warp', label: 'Warp', enabled: pixel, run: (a) => { engine.setTool('move'); engine.beginMeshWarp(typeof a?.grid === 'number' ? a.grid : engine.meshWarpGrid); } },
-    { id: 'warp-split-h', label: 'Split Warp Horizontally', enabled: () => !!engine.meshWarpEdit, run: () => { engine.splitMeshWarp('h', engine.meshSplitPoint()); } },
-    { id: 'warp-split-v', label: 'Split Warp Vertically', enabled: () => !!engine.meshWarpEdit, run: () => { engine.splitMeshWarp('v', engine.meshSplitPoint()); } },
-    { id: 'warp-split-cross', label: 'Split Warp Crosswise', enabled: () => !!engine.meshWarpEdit, run: () => { engine.splitMeshWarp('cross', engine.meshSplitPoint()); } },
+    { id: 'transform-warp', label: 'Warp', enabled: pixel, run: (a) => { engine.setTool('move'); if (engine.beginMeshWarp(typeof a?.grid === 'number' ? a.grid : engine.meshWarpGrid) && typeof a?.style === 'string') engine.setMeshWarpPreset({ style: a.style as 'custom', ...(typeof a.bend === 'number' ? { bend: a.bend } : {}), ...(typeof a.horizontal === 'number' ? { horizontal: a.horizontal } : {}), ...(typeof a.vertical === 'number' ? { vertical: a.vertical } : {}), ...(a.orientation === 'vertical' ? { orientation: 'vertical' as const } : {}) }); } },
+    { id: 'warp-split-h', label: 'Split Warp Horizontally', enabled: () => !!engine.meshWarpEdit, run: (a) => { engine.splitMeshWarp('h', typeof a?.x === 'number' && typeof a?.y === 'number' ? { x: a.x, y: a.y } : engine.meshSplitPoint()); } },
+    { id: 'warp-split-v', label: 'Split Warp Vertically', enabled: () => !!engine.meshWarpEdit, run: (a) => { engine.splitMeshWarp('v', typeof a?.x === 'number' && typeof a?.y === 'number' ? { x: a.x, y: a.y } : engine.meshSplitPoint()); } },
+    { id: 'warp-split-cross', label: 'Split Warp Crosswise', enabled: () => !!engine.meshWarpEdit, run: (a) => { engine.splitMeshWarp('cross', typeof a?.x === 'number' && typeof a?.y === 'number' ? { x: a.x, y: a.y } : engine.meshSplitPoint()); } },
     { id: 'warp-remove-split', label: 'Remove Warp Split', enabled: () => !!engine.meshWarpEdit, run: () => { engine.removeMeshWarpSplit(); } },
     { id: 'transform-again', label: 'Again', keys: ['Shift+Mod+T'], enabled: () => engine.canTransformAgain, run: () => { engine.transformAgain(); } },
     { id: 'transform-again-copy', label: 'Transform Again on a Copy', keys: ['Alt+Shift+Mod+T'], enabled: () => engine.canTransformAgain, run: () => { engine.transformAgain(true); } },
-    { id: 'transform-scale', label: 'Scale', enabled: () => !!engine.activeLayer && !engine.floatingSelection, run: () => engine.beginTransformMode('scale') },
-    { id: 'transform-rotate', label: 'Rotate', enabled: () => !!engine.activeLayer && !engine.floatingSelection, run: () => engine.beginTransformMode('rotate') },
-    { id: 'transform-skew', label: 'Skew', enabled: () => !!engine.activeLayer, run: () => { engine.beginDistortMode('skew'); } },
-    { id: 'transform-distort', label: 'Distort', enabled: () => !!engine.activeLayer, run: () => { engine.beginDistortMode('distort'); } },
-    { id: 'transform-perspective', label: 'Perspective', enabled: () => !!engine.activeLayer, run: () => { engine.beginDistortMode('perspective'); } },
-    { id: 'layer-rotate-180', label: 'Rotate 180°', enabled: () => !!engine.activeLayer && !engine.distortEdit, run: () => { engine.rotateLayers(2); } },
-    { id: 'layer-rotate-90-cw', label: 'Rotate 90° Clockwise', enabled: () => !!engine.activeLayer && !engine.distortEdit, run: () => { engine.rotateLayers(1); } },
-    { id: 'layer-rotate-90-ccw', label: 'Rotate 90° Counter Clockwise', enabled: () => !!engine.activeLayer && !engine.distortEdit, run: () => { engine.rotateLayers(3); } },
+    { id: 'transform-scale', label: 'Scale', enabled: () => (!!engine.activeLayer || engine.pathTarget) && !engine.floatingSelection, run: () => engine.beginTransformMode('scale') },
+    { id: 'transform-rotate', label: 'Rotate', enabled: () => (!!engine.activeLayer || engine.pathTarget) && !engine.floatingSelection, run: () => engine.beginTransformMode('rotate') },
+    { id: 'transform-skew', label: 'Skew', enabled: () => !!engine.activeLayer || engine.pathTarget, run: () => { engine.beginDistortMode('skew'); } },
+    { id: 'transform-distort', label: 'Distort', enabled: () => !!engine.activeLayer || engine.pathTarget, run: () => { engine.beginDistortMode('distort'); } },
+    { id: 'transform-perspective', label: 'Perspective', enabled: () => !!engine.activeLayer || engine.pathTarget, run: () => { engine.beginDistortMode('perspective'); } },
+    { id: 'layer-rotate-180', label: 'Rotate 180°', enabled: () => (!!engine.activeLayer || engine.pathTarget) && !engine.distortEdit, run: () => { engine.rotateLayers(2); } },
+    { id: 'layer-rotate-90-cw', label: 'Rotate 90° Clockwise', enabled: () => (!!engine.activeLayer || engine.pathTarget) && !engine.distortEdit, run: () => { engine.rotateLayers(1); } },
+    { id: 'layer-rotate-90-ccw', label: 'Rotate 90° Counter Clockwise', enabled: () => (!!engine.activeLayer || engine.pathTarget) && !engine.distortEdit, run: () => { engine.rotateLayers(3); } },
     { id: 'perspective-warp', label: 'Perspective Warp', enabled: pixel, run: () => { engine.setTool('move'); if (engine.beginPerspectiveWarp()) toast('Layout: drag to draw planes over the picture and fit their corners to it. Then choose Warp in the options bar and move the corners. Enter applies, Escape cancels.'); } },
-    { id: 'puppet-warp', label: 'Puppet Warp', enabled: pixel, run: () => { engine.setTool('move'); if (engine.beginPuppetWarp()) toast('Click to place pins, drag them to bend the layer, Alt-click to remove one. Enter applies, Escape cancels.'); } },
+    { id: 'puppet-warp', label: 'Puppet Warp', enabled: pixel, run: (a) => { engine.setTool('move'); if (engine.beginPuppetWarp() && a) engine.setPuppetOpts({ ...(a.mode === 'normal' || a.mode === 'distort' || a.mode === 'rigid' ? { mode: a.mode } : {}), ...(a.density === 'fewer' || a.density === 'normal' || a.density === 'more' ? { density: a.density } : {}), ...(typeof a.expansion === 'number' ? { expansion: a.expansion } : {}), ...(typeof a.showMesh === 'boolean' ? { showMesh: a.showMesh } : {}) }); if (engine.puppetEdit) toast('Click to place pins, drag them to bend the layer, Alt-click to remove one. Enter applies, Escape cancels.'); } },
     { id: 'filter-liquify', label: 'Liquify...', keys: ['Shift+Mod+X'], enabled: pixel, run: () => dialogs.liquify.show() },
     { id: 'filter-neural', label: 'Neural Filters...', enabled: pixel, run: () => dialogs.neural.show() },
     { id: 'filter-wide-angle', label: 'Adaptive Wide Angle...', enabled: pixel, run: () => dialogs.wideAngle.show() },
@@ -3472,8 +3560,8 @@ export function startApp(): void {
     { id: 'link-mask', label: () => (layer()?.mask?.linked === false ? 'Link Layer Mask' : 'Unlink Layer Mask'), enabled: () => !!layer()?.mask, run: () => engine.toggleMaskLink() },
     { id: 'clip', label: () => (layer()?.clipId ? 'Release Clipping Mask' : 'Create Clipping Mask'), keys: ['Alt+Mod+G'], enabled: () => !!layer() && !layer()?.isGroup, run: () => engine.toggleClip() },
     { id: 'merge', label: () => ((engine.current?.selectedIds.size ?? 0) > 1 ? 'Merge Layers' : layer()?.isGroup ? 'Merge Group' : 'Merge Down'), keys: ['Mod+E'], enabled: () => !!layer(), run: () => engine.mergeLayers() },
-    { id: 'flip-layer-h', label: 'Flip Layer Horizontal', enabled: withPixels, run: () => engine.flipLayers(true) },
-    { id: 'flip-layer-v', label: 'Flip Layer Vertical', enabled: withPixels, run: () => engine.flipLayers(false) },
+    { id: 'flip-layer-h', label: 'Flip Layer Horizontal', enabled: () => withPixels() || engine.pathTarget, run: () => engine.flipLayers(true) },
+    { id: 'flip-layer-v', label: 'Flip Layer Vertical', enabled: () => withPixels() || engine.pathTarget, run: () => engine.flipLayers(false) },
     { id: 'forward', label: 'Bring Forward', keys: ['Mod+]'], enabled: () => !!layer(), run: () => engine.moveActive(1) },
     { id: 'backward', label: 'Send Backward', keys: ['Mod+['], enabled: () => !!layer(), run: () => engine.moveActive(-1) },
     // Layer and Select operations (1.64.8, DEV_PLAN 27.5).
@@ -3891,7 +3979,7 @@ export function startApp(): void {
     if (!p || !l || l.isGroup || l.adjustment) return false;
     return p.maskTarget && l.mask ? !!l.mask.raster : !!l.raster;
   };
-  const ADJUST_KEYS: Partial<Record<string, string[]>> = { curves: ['Mod+M'], levels: ['Mod+L'], hsv: ['Mod+U'] };
+  const ADJUST_KEYS: Partial<Record<string, string[]>> = { curves: ['Mod+M'], levels: ['Mod+L'], hsv: ['Mod+U'], colorBalance: ['Mod+B'], blackWhite: ['Alt+Shift+Mod+B'] };
   const FILTERS: FilterKind[] = ['develop', 'gaussianBlur', 'lensBlur', 'motionBlur', 'radialBlur', 'surfaceBlur', 'fieldBlur', 'irisBlur', 'tiltShift', 'pathBlur', 'addNoise', 'lensCorrection', 'smartSharpen', 'shakeReduction', 'unsharpMask'];
 
   commands.add(
@@ -3921,7 +4009,7 @@ export function startApp(): void {
     },
     { id: 'purge-all', label: 'All', enabled: () => !!engine.clipboard || engine.projects.some((q) => q.history.steps.names.length > 0), run: () => { void confirmAction('Purge everything?', 'This clears the clipboard and the undo and redo history of every open document, keeping their current states and snapshots. It cannot be undone.', 'Purge', true).then((ok) => { if (ok) { engine.purgeClipboard(); toast(`Purged the clipboard and ${engine.purgeHistories(true)} history steps.`); } }); } },
     { id: 'stroke-dialog', label: 'Stroke...', enabled: () => pixel() && (selected() || !!engine.activeLayer?.raster), run: () => dialogs.stroke.show() },
-    { id: 'transform', label: () => (engine.canTransformSelection || engine.floatingSelection ? 'Transform Selection' : 'Transform Layer'), keys: ['Mod+T'], enabled: () => !!engine.activeLayer && !engine.floatingSelection, run: () => engine.transformCommand() },
+    { id: 'transform', label: () => (engine.pathTarget ? 'Free Transform Path' : engine.canTransformSelection || engine.floatingSelection ? 'Transform Selection' : 'Transform Layer'), keys: ['Mod+T'], enabled: () => (!!engine.activeLayer || engine.pathTarget) && !engine.floatingSelection, run: () => engine.transformCommand() },
     { id: 'transform-copy', label: 'Free Transform a Copy', keys: ['Alt+Mod+T'], enabled: () => !!engine.activeLayer && !engine.floatingSelection, run: () => { engine.transformCopy(); } },
     { id: 'content-fill', label: 'Quick Content-Aware Fill', keys: ['Shift+Backspace'], enabled: () => pixel() && selected(), run: () => { void engine.task(async () => { await new Promise((r) => requestAnimationFrame(() => window.setTimeout(r, 0))); engine.contentAwareFill(); }); } },
     { id: 'generative-fill', label: 'Generative Fill...', enabled: () => selected(), run: (a) => void dialogs.generative.show('fill', 2, typeof a?.prompt === 'string' ? { prompt: a.prompt } : undefined) },   // the Contextual Task Bar passes the prompt it holds (undeclared: agents and the menus open the dialog)
@@ -3933,7 +4021,8 @@ export function startApp(): void {
     { id: 'boxes-copy', label: 'Copy Box Rows', enabled: () => !!engine.current?.doc.boxes?.length, run: () => { const d = engine.current?.doc; void navigator.clipboard?.writeText(boxesText(d?.boxes, d ? { width: d.width, height: d.height } : undefined)).then(() => toast('Copied the box rows.'), () => toast('The clipboard is not available.', 'error')); } },
     { id: 'boxes-clear', label: 'Clear Boxes', enabled: () => !!engine.current?.doc.boxes?.length, run: () => engine.clearBoxes() },
     { id: 'generate-remove', label: 'Remove / Repair', icon: 'tRemove', enabled: pixel, run: () => { if (selected()) commands.run('content-fill'); else { engine.setTool('remove'); toast('The Remove tool is on: paint over what to take out.'); } } },
-    { id: 'path-selection', label: 'Make Selection from Path', keys: ['Mod+Enter'], enabled: () => !!engine.workPath, run: () => engine.pathToSelection() },
+    { id: 'path-selection', label: 'Make Selection from Path', keys: ['Mod+Enter'], enabled: () => !!engine.workPath, params: { feather: { type: 'number', min: 0, max: 250, description: 'Feather radius in pixels; 0 when left out.' }, antialias: { type: 'boolean', description: 'Anti-aliased edge; true when left out.' }, operation: { type: 'string', enum: ['replace', 'add', 'subtract', 'intersect'], description: 'How the new selection meets the current one; replace when left out.' } }, run: (a) => { if (a && (a.feather !== undefined || a.antialias !== undefined || a.operation !== undefined)) engine.pathToSelectionWith(typeof a.feather === 'number' ? a.feather : 0, a.antialias !== false, (['add', 'subtract', 'intersect'].includes(String(a.operation)) ? a.operation : 'replace') as 'replace' | 'add' | 'subtract' | 'intersect'); else engine.pathToSelection(); } },
+    { id: 'path-selection-dialog', label: 'Make Selection from Path...', enabled: () => !!engine.workPath, run: () => dialogs.makeSelection.show() },
     { id: 'selection-to-work-path', label: 'Make Work Path from Selection', enabled: selected, params: { tolerance: { type: 'number', min: 0.1, max: 20, description: 'How far in pixels the path may stray from the selection\'s edge; the saved Convert to Shape tolerance (1.5 at first) when left out.' } }, run: (a) => { engine.selectionToWorkPath(typeof a?.tolerance === 'number' ? a.tolerance : undefined); } },
     { id: 'fill-path', label: 'Fill Path', enabled: () => !!engine.workPath && pixel(), run: () => engine.fillPath() },
     { id: 'fill-path-dialog', label: 'Fill Path...', enabled: () => !!engine.workPath && pixel(), run: () => dialogs.fill.show('path') },
@@ -3997,6 +4086,45 @@ export function startApp(): void {
     { id: 'toggle-filter-mask', label: () => (engine.current?.activeLayer?.smart?.filterMaskEnabled === false ? 'Enable Smart Filter Mask' : 'Disable Smart Filter Mask'), enabled: () => !!engine.current?.activeLayer?.smart?.filterMask, run: () => engine.toggleSmartFilterMask() },
     ...STACK_MODES.map((m) => ({ id: `stack-mode-${m.id}`, label: m.label, checked: () => engine.stackMode === m.id, enabled: () => engine.stackMode !== null, run: () => { engine.setStackMode(m.id); } })),
     { id: 'delete-filter-mask', label: 'Delete Smart Filter Mask', enabled: () => !!engine.current?.activeLayer?.smart?.filterMask, run: () => engine.deleteSmartFilterMask() },
+    {
+      id: 'new-shape-layer', label: 'Shape Layer', enabled: has,
+      params: {
+        kind: { type: 'string', enum: ['rectangle', 'ellipse', 'triangle', 'polygon', 'star', 'line', 'arrow', 'heart'], description: 'The shape; rectangle when left out.' },
+        x: { type: 'number', description: 'Left edge in document pixels; a quarter of the width when left out.' },
+        y: { type: 'number', description: 'Top edge in document pixels; a quarter of the height when left out.' },
+        width: { type: 'number', min: 1, description: 'Width in pixels (a line or arrow\'s run); half the width when left out.' },
+        height: { type: 'number', min: 0, description: 'Height in pixels; half the height when left out.' },
+        fill: { type: 'string', description: 'Fill colour as #rrggbb, or "none"; the foreground colour when left out.' },
+        stroke: { type: 'string', description: 'Stroke colour as #rrggbb; no stroke when left out.' },
+        stroke_width: { type: 'number', min: 0.5, max: 200, description: 'Stroke width in pixels; 3 when left out.' },
+        stroke_dash: { type: 'string', enum: ['solid', 'dashed', 'dotted'], description: 'Stroke type; solid when left out.' },
+        stroke_align: { type: 'string', enum: ['inside', 'center', 'outside'], description: 'Stroke alignment; center when left out.' },
+        cap: { type: 'string', enum: ['butt', 'round', 'square'], description: 'Stroke line caps; round when left out.' },
+        join: { type: 'string', enum: ['miter', 'round', 'bevel'], description: 'Stroke corners; round when left out.' },
+        corner_radius: { type: 'number', min: 0, max: 500, description: 'Corner radius in pixels for a rectangle, triangle, polygon or star; 0 when left out.' },
+        sides: { type: 'integer', min: 3, max: 100, description: 'Sides of a polygon or points of a star; the Shape tool value when left out.' },
+        star_inset: { type: 'number', min: 1, max: 99, description: 'Star indent in percent; the Shape tool value when left out.' },
+        gradient: { type: 'string', enum: ['linear', 'radial', 'angle'], description: 'Fill the shape with a gradient from the fill colour to gradient_end; a solid fill when left out.' },
+        gradient_angle: { type: 'number', min: -180, max: 180, description: 'Gradient angle in degrees; 0 when left out.' },
+        gradient_end: { type: 'string', description: 'Gradient end colour as #rrggbb; the background colour when left out.' },
+      },
+      run: (a) => {
+        const p = engine.current;
+        if (!p) return;
+        const n = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+        const colour = (v: unknown): { r: number; g: number; b: number } | undefined => { if (typeof v !== 'string' || !/^#[0-9a-f]{6}$/i.test(v)) return undefined; const k = parseInt(v.slice(1), 16); return { r: (k >> 16) & 255, g: (k >> 8) & 255, b: k & 255 }; };
+        const pick = <T extends string>(v: unknown, set: readonly T[]): T | undefined => set.find((s) => s === v);
+        const kind = pick(a?.kind, ['rectangle', 'ellipse', 'triangle', 'polygon', 'star', 'line', 'arrow', 'heart'] as const) ?? 'rectangle', line = kind === 'line' || kind === 'arrow';
+        const w = Math.max(1, n(a?.width, Math.round(p.doc.width / 2))), h = line ? 0 : Math.max(1, n(a?.height, Math.round(p.doc.height / 2)));
+        const fill = a?.fill === 'none' ? null : colour(a?.fill), stroke = colour(a?.stroke);
+        engine.newShapeLayer({
+          kind, x: n(a?.x, Math.round(p.doc.width / 4)), y: n(a?.y, Math.round(p.doc.height / 4)), w, h, fill: fill === undefined ? undefined : fill, stroke, strokeWidth: n(a?.stroke_width, 3),
+          strokeDash: pick(a?.stroke_dash, ['solid', 'dashed', 'dotted'] as const), strokeAlign: pick(a?.stroke_align, ['inside', 'center', 'outside'] as const), cap: pick(a?.cap, ['butt', 'round', 'square'] as const), join: pick(a?.join, ['miter', 'round', 'bevel'] as const),
+          cornerRadius: n(a?.corner_radius, 0), sides: typeof a?.sides === 'number' ? Math.round(a.sides) : undefined, starInset: typeof a?.star_inset === 'number' ? a.star_inset : undefined,
+          gradient: pick(a?.gradient, ['linear', 'radial', 'angle'] as const), gradientAngle: n(a?.gradient_angle, 0), gradientEnd: colour(a?.gradient_end),
+        });
+      },
+    },
     { id: 'new-shape-path', label: 'New Shape Layer from Path', enabled: () => !!engine.workPath?.subpaths.some((s) => s.anchors.length > 1), run: () => engine.newShapeFromPath() },
     { id: 'apply-redactions', label: 'Apply Redactions', enabled: () => !!engine.current?.doc.layers.some((l) => l.vector && /^Redaction \d+$/.test(l.name)), run: () => { const n = engine.applyRedactions(); if (n) toast(`Redacted: the boxes burned into ${n} layer${n === 1 ? '' : 's'}.`); } },   // 1.60.3
     { id: 'shape-color', label: 'Shape Color from Foreground', enabled: () => !!engine.current?.activeLayer?.vector, run: () => engine.recolorShape() },
@@ -4075,6 +4203,7 @@ export function startApp(): void {
     { id: 'mode-cmyk', label: 'CMYK Color...', enabled: () => has() && ['rgb', 'cmyk', 'lab'].includes(engine.current?.doc.mode ?? 'rgb'), checked: () => engine.current?.doc.mode === 'cmyk', run: () => { if (engine.current?.doc.mode === 'cmyk') return; void ((engine.current?.doc.depth ?? 8) > 8 ? downTo(16) : toRgbFirst().then((rgb) => (rgb ? downTo(8) : false))).then((ok) => { if (ok) modeDialog.show('cmyk'); }); } },
     { id: 'mode-grayscale', label: 'Grayscale', enabled: has, checked: () => engine.current?.doc.mode === 'grayscale', run: () => { const m = engine.current?.doc.mode; if (engine.current?.doc.depth === 16 && m !== 'grayscale') void toGray(); else if (m === 'lab') engine.setGrayFromLab(); else if (m === 'cmyk') void toRgbFirst().then((ok) => { if (ok) engine.convertMode('grayscale'); }); else engine.convertMode('grayscale'); } },
     { id: 'mode-duotone', label: 'Duotone...', enabled: () => has() && ['grayscale', 'duotone'].includes(engine.current?.doc.mode ?? 'rgb'), checked: () => engine.current?.doc.mode === 'duotone', run: () => dialogs.duotone.show() },   // 31.3a
+    { id: 'mode-grayscale-from', label: 'Grayscale From Channels...', enabled: () => has() && ['rgb', 'indexed', 'grayscale'].includes(engine.current?.doc.mode ?? 'rgb') && (engine.current?.doc.depth ?? 8) === 8, run: () => modeDialog.show('grayscale') },
     { id: 'mode-bitmap', label: 'Bitmap...', enabled: has, checked: () => engine.current?.doc.mode === 'bitmap', run: () => void toRgbFirst().then((rgb) => (rgb ? downTo(8) : false)).then((ok) => { if (ok) modeDialog.show('bitmap'); }) },
     { id: 'mode-multichannel', label: 'Multichannel', enabled: () => has() && (engine.current?.doc.depth ?? 8) === 8 && engine.current?.doc.mode !== 'lab', checked: () => engine.current?.doc.mode === 'multichannel', run: () => { engine.convertMode('multichannel'); } },   // 31.3b
     { id: 'mode-indexed', label: 'Indexed Color...', enabled: has, checked: () => engine.current?.doc.mode === 'indexed', run: () => void toRgbFirst().then((rgb) => (rgb ? downTo(8) : false)).then((ok) => { if (ok) modeDialog.show('indexed'); }) },
@@ -4085,9 +4214,14 @@ export function startApp(): void {
     { id: 'depth-32', label: '32 Bits/Channel', enabled: has, checked: () => engine.current?.doc.depth === 32, run: () => void toDeeper(32) },   // 1.53.9; every mode 1.57.8
     { id: 'export-hdr', label: 'Radiance HDR...', enabled: () => !!engine.current, run: () => void exportWide('hdr') },
     { id: 'export-exr', label: 'OpenEXR...', enabled: () => !!engine.current, run: () => void exportWide('exr') },
+    { id: 'export-pfm', label: 'Float PFM...', enabled: () => !!engine.current, run: () => void exportWide('pfm') },
+    { id: 'export-exr-half', label: 'OpenEXR Half Float...', enabled: () => !!engine.current, run: () => void exportWide('exr', { compression: 'zip', half: true }) },
+    { id: 'export-exr-piz', label: 'OpenEXR PIZ...', enabled: () => !!engine.current, run: () => void exportWide('exr', { compression: 'piz' }) },
+    { id: 'export-exr-none', label: 'OpenEXR Uncompressed...', enabled: () => !!engine.current, run: () => void exportWide('exr', { compression: 'none' }) },
     // Colour management (1.53.5, H2). Proof Colors has no key by default: Mod+Y is Redo here.
     { id: 'assign-profile', label: 'Assign Profile...', enabled: has, run: () => void colourDialogs.assign.show() },
     { id: 'convert-profile', label: 'Convert to Profile...', enabled: has, run: () => void colourDialogs.convert.show() },
+    { id: 'profile-info', label: 'Profile Info...', enabled: has, run: () => void colourDialogs.info.show() },
     { id: 'proof-setup', label: 'Proof Setup...', enabled: has, run: () => void colourDialogs.proof.show() },
     ...PROOF_KINDS.map(([kind, name]): Command => ({ id: `proof-preset-${kind}`, label: name, enabled: has, checked: () => colourView.proof && colourView.preset === kind, run: () => colourView.usePreset(kind) })),
     { id: 'proof-colors', label: 'Proof Colors', enabled: () => has() && (!!colourView.setup || !!colourView.preset), checked: () => colourView.proof, run: () => { colourView.proof = !colourView.proof; if (!colourView.proof) colourView.gamut = false; void colourView.refresh(); } },
@@ -4103,7 +4237,7 @@ export function startApp(): void {
         } catch { /* cancelled with Escape */ }
       },
     },
-    { id: 'gamut-warning', label: 'Gamut Warning', keys: ['Shift+Mod+Y'], enabled: () => has() && !!colourView.setup, checked: () => colourView.gamut, run: () => { colourView.gamut = !colourView.gamut; if (colourView.gamut) colourView.proof = true; void colourView.refresh(); } },
+    { id: 'gamut-warning', label: 'Gamut Warning', keys: ['Shift+Mod+Y'], enabled: () => has() && (!!colourView.setup || !!colourView.preset), checked: () => colourView.gamut, run: () => { colourView.gamut = !colourView.gamut; if (colourView.gamut) colourView.proof = true; void colourView.refresh(); } },
     {
       id: 'calculations', label: 'Calculations...', enabled: has,
       params: {
@@ -4153,22 +4287,22 @@ export function startApp(): void {
   const drawnFirst = ['filter-flame', 'filter-pictureFrame', 'filter-tree'];
   const menus: MenuDef[] = [
     { label: 'File', items: () => ['new', 'new-from-clipboard', 'open', 'open-as', 'import', 'import-notes', 'import-video', 'create-video-timeline', 'place-embedded', 'place-linked', 'place-3d', 'open-svg-layers', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.slice(0, 10).map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'save-copy', 'revert', 'earlier-states', 'download-project', 'package', '-',
-      { label: 'Export', items: ['quick-export', 'export-as', 'export-preferences', 'save-for-web', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-tiff-layers', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'export-paths-ai', 'assemble-tiles', '-', 'export-layers', 'export-layer-comps', 'export-selection-mask', 'generate-image-assets', 'image-assets-on-save', 'export-luts', 'export-artboards-files', 'export-data-sets', 'export-artboards'] },
+      { label: 'Export', items: ['quick-export', 'export-as', 'export-preferences', 'save-for-web', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-tiff-layers', 'export-hdr', 'export-exr', 'export-exr-half', 'export-exr-piz', 'export-exr-none', 'export-pfm', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'export-paths-ai', 'assemble-tiles', '-', 'export-layers', 'export-layer-comps', 'export-selection-mask', 'generate-image-assets', 'image-assets-on-save', 'export-luts', 'export-artboards-files', 'export-data-sets', 'export-artboards'] },
       { label: 'Automate', items: ['actions', 'action-stop', 'batch', 'create-droplet', '-', 'fit-image', 'conditional-mode-change', 'contact-sheet', 'crop-straighten-photos', 'photomerge', 'merge-hdr'] },
       { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'image-processor', 'script-events', 'load-files-stack', 'stack-statistics', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'reopen-closed-tab', 'close-all', 'close-others'] },
     { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', { label: 'Snapshot', items: ['new-snapshot', 'new-snapshot-merged', 'new-snapshot-layer'] }, '-', 'fade', 'compare-documents', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', 'pick-screen-colour', '-',
       { label: 'Purge', items: ['purge-clipboard', 'purge-undo', 'purge-histories', 'clean-working-files', 'free-helper-models', 'purge-all'] }, { label: 'History Log', items: ['save-history-log', 'clear-history-log'] }, 'reset-tool', 'reset-all-tools', '-',
       { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg', 'fill-fg-keep', 'fill-bg-keep', 'fill-history'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-', 'auto-align-layers', 'auto-blend-layers', '-',
-      'fill-path-dialog', 'stroke-path-dialog', '-', 'transform', 'transform-copy', { label: 'Transform', items: ['transform-again', '-', 'transform-scale', 'transform-rotate', 'transform-skew', 'transform-distort', 'transform-perspective', 'transform-warp', 'warp-split-h', 'warp-split-v', 'warp-split-cross', 'warp-remove-split', '-', 'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw', '-', 'flip-layer-h', 'flip-layer-v'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', 'define-brush', 'define-custom-shape', { label: 'Presets', items: ['preset-manager', '-', 'swatches-load', 'swatches-save'] }, '-', 'assign-profile', 'convert-profile', 'colour.settings', '-', 'customize-toolbar', 'shortcuts', 'settings'] },
+      'fill-path-dialog', 'stroke-path-dialog', '-', 'transform', 'transform-copy', { label: 'Transform', items: ['transform-again', '-', 'transform-scale', 'transform-rotate', 'transform-skew', 'transform-distort', 'transform-perspective', 'transform-warp', 'warp-split-h', 'warp-split-v', 'warp-split-cross', 'warp-remove-split', '-', 'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw', '-', 'flip-layer-h', 'flip-layer-v'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', 'define-brush', 'define-custom-shape', { label: 'Presets', items: ['preset-manager', '-', 'swatches-load', 'swatches-save'] }, '-', 'assign-profile', 'convert-profile', 'profile-info', 'colour.settings', '-', 'customize-toolbar', 'shortcuts', 'settings'] },
     { label: 'Image', items: [
       'apply-image', 'calculations', { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'desaturate', 'replace-color', 'equalize'] }, '-',
       'auto-tone', 'auto-contrast', 'auto-color', '-',
-      { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-duotone', 'mode-indexed', 'mode-multichannel', 'color-table', 'mode-rgb', 'mode-cmyk', 'mode-lab', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
+      { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-grayscale-from', 'mode-duotone', 'mode-indexed', 'mode-multichannel', 'color-table', 'mode-rgb', 'mode-cmyk', 'mode-lab', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
       'image-size', 'canvas-size', { label: 'Pixel Aspect Ratio', items: ['par-square', 'par-d1-ntsc', 'par-d1-pal', 'par-d1-ntsc-wide', 'par-d1-pal-wide', 'par-anamorphic', 'par-hdv', 'par-dvcpro-hd', '-', 'par-custom'] }, { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'trim', 'reveal-all', 'trap', '-', 'frequency-separation', 'duplicate-image', '-', { label: 'Variables', items: ['variables-define', 'data-sets-import', 'data-set-apply'] }, '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }, '-', { label: 'Analysis', items: ['measure-scale', 'measure-record', 'measure-data-points', 'measure-scale-marker', 'measure-log'] }] },
     { label: 'Layer', items: [
-      { label: 'New', items: ['new-layer-dialog', 'new-type-layer', 'new-dodge-burn-layer', 'layer-from-background', 'background-from-layer', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard-dialog', 'artboard-from-group', 'artboard-from-layers-dialog', 'frame-from-layers', '-', 'duplicate', 'layer-via-cut', '-', 'new-relight-layer'] }, 'artboard-options', '-',
+      { label: 'New', items: ['new-layer-dialog', 'new-type-layer', 'new-shape-layer', 'new-dodge-burn-layer', 'layer-from-background', 'background-from-layer', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard-dialog', 'artboard-from-group', 'artboard-from-layers-dialog', 'frame-from-layers', '-', 'duplicate', 'layer-via-cut', '-', 'new-relight-layer'] }, 'artboard-options', '-',
       { label: 'New Fill Layer', items: ['new-fill-solid', 'new-fill-gradient', 'new-fill-pattern'] }, { label: 'Video Layers', items: ['video-layer-from-file', 'video-layer-blank', '-', 'video-insert-blank-frame', 'video-duplicate-frame', 'video-delete-frame', '-', 'video-restore-frame', 'video-restore-all', 'video-replace-footage', 'video-interpret-footage', 'video-rasterize'] },{ label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'edit-relight', 'layer-content-options', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, '-',
-      'duplicate-dialog', { label: 'Delete', items: ['delete-layer', 'delete-hidden'] }, 'rename', 'layer-quick-export-png', '-',
+      'duplicate-dialog', { label: 'Delete', items: ['delete-layer', 'delete-hidden'] }, 'rename', 'layer-quick-export-png', 'layer-export-as', '-',
       { label: 'Layer Style', items: ['style-blending', 'style-bevel', 'style-stroke', 'style-inner-shadow', 'style-inner-glow', 'style-satin', 'style-color-overlay', 'style-gradient-overlay', 'style-pattern-overlay', 'style-outer-glow', 'style-drop-shadow', '-',
         'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'global-light', 'create-layers', 'hide-all-effects', 'toggle-layer-effects', 'scale-effects'] },
       { label: '3D', items: ['extrude-3d', 'place-3d', '-', 'panorama-view', 'panorama-apply-view'] },
@@ -4187,7 +4321,7 @@ export function startApp(): void {
       'merge', 'merge-visible', 'stamp-visible', 'frequency-separation', 'stamp-down', 'flatten', '-', 'show-only-layer', 'show-all-layers', { label: 'Color Label', items: ['layer-label-none', '-', ...LAYER_LABELS.map((c) => `layer-label-${c}`)] }, '-',
       { label: 'Matting', items: ['matting-decontaminate', 'matting-defringe', 'matting-black', 'matting-white'] }] },
     { label: 'Select', items: ['select-all', 'deselect', 'reselect', 'inverse', 'convert-to-shape', 'convert-to-shape-tolerance', 'selection-to-work-path', '-', 'select-all-layers', 'deselect-layers', 'find-layers', 'isolate-layers', '-', 'color-range', 'focus-area', 'select-subject', 'select-sky', 'select-object', { label: 'Subject and Sky Options', items: ['auto-select-sample-all', 'sky-sensitivity', 'sky-softness'] }, 'select-and-mask', '-', 'layer-pixels', 'mask-black', '-',
-      { label: 'Modify', items: ['expand', 'contract', 'feather', 'border', 'smooth'] }, 'grow', 'similar', '-', 'transform-selection', 'select-float', 'select-drop', '-', 'quick-mask', '-', 'load-selection', 'load-luminosity', 'load-selection-vector-mask', 'save-selection', { label: 'Channel', items: ['new-channel', 'duplicate-channel', 'channel-options', '-', 'channel-up', 'channel-down'] }, 'path-selection', 'delete-path'] },
+      { label: 'Modify', items: ['expand', 'contract', 'feather', 'border', 'smooth'] }, 'grow', 'similar', '-', 'transform-selection', 'select-float', 'select-drop', '-', 'quick-mask', '-', 'load-selection', 'load-luminosity', 'load-selection-vector-mask', 'save-selection', { label: 'Channel', items: ['new-channel', 'duplicate-channel', 'channel-options', '-', 'channel-up', 'channel-down'] }, 'path-selection', 'path-selection-dialog', 'delete-path'] },
     { label: 'Filter', items: ['filter-last', '-', 'filter-filterGallery', 'filter-develop', 'filter-wide-angle', 'filter-lensCorrection', 'filter-liquify', 'filter-vanishing-point', 'filter-neural', '-',
       { label: 'Blur', items: filterGroup('Blur', ['filter-average', 'filter-gaussianBlur', 'filter-lensBlur', 'filter-motionBlur', 'filter-radialBlur', 'filter-surfaceBlur']) },
       { label: 'Blur Gallery', items: ['filter-fieldBlur', 'filter-irisBlur', 'filter-tiltShift', 'filter-pathBlur', 'filter-spinBlur'] },
@@ -4202,8 +4336,8 @@ export function startApp(): void {
       { label: '3D', items: ['normal-map', 'bump-map', 'height-from-normal'] }, '-', 'remove-bg', 'remove-bg-lite'] },
     // Generate: the generative commands in one place (the Generate panel, models, fill, repair, size, relight, and the ComfyUI and NodeMode links).
     { label: 'Generate', items: ['generate-panel', '-', 'generate-image', 'new-canvas-model-preset', 'generative-fill', 'generative-expand', '-', 'boxes-tool', 'boxes-from-selection', 'boxes-copy', 'boxes-clear', '-', 'generate-remove', 'content-fill-workspace', 'content-fill', 'remove-wires', '-', 'remove-bg', 'remove-bg-lite', '-', 'upscale-2x', 'upscale-4x', 'compute-depth-map', { label: 'Depth Map', items: ['depth-map-from-layer', 'depth-map-recompute', 'depth-map-show', '-', 'depth-map-flatten', 'depth-map-nearer', 'depth-map-farther', 'depth-map-smooth', 'depth-map-snap'] }, 'new-relight-layer', '-', 'comfyui-run', 'send-comfyui', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode'])] },
-    { label: 'View', items: [{ label: 'Proof Setup', items: ['proof-setup', '-', 'proof-preset-monitor', 'proof-preset-cmyk', 'proof-preset-cyan', 'proof-preset-magenta', 'proof-preset-yellow', 'proof-preset-black', 'proof-preset-cmy', '-', 'proof-preset-protanopia', 'proof-preset-deuteranopia'] }, 'proof-colors', 'gamut-warning', 'preview-32', '-', 'zoom-in', 'zoom-out', 'fit', 'fit-layers', 'fit-artboard', 'actual', 'print-size', '-', 'toggle-extras', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'pattern-preview', 'pixel-art-preview', 'par-correction', 'transform-controls', 'toggle-task-bar', '-',
-      { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'guide-layout', 'guides-from-shape', 'clear-guides'] }, 'snap', { label: 'Snap To', items: ['snap-all', '-', 'snap-guides', 'snap-grid', 'snap-layers', 'snap-bounds'] }, { label: 'Show', items: ['show-all-extras', 'show-no-extras', '-', 'show-selection-edges', 'selection-display-tint', 'show-layer-edges', 'show-smart-guides', 'show-comfy-dot', 'show-notes', 'show-counts', 'toggle-show-slices', 'layer-based-slice', 'slice-options', 'delete-slice', 'clear-slices'] }, '-',
+    { label: 'View', items: [{ label: 'Proof Setup', items: ['proof-setup', '-', 'proof-preset-monitor', 'proof-preset-macrgb', 'proof-preset-internet', 'proof-preset-cmyk', 'proof-preset-cyan', 'proof-preset-magenta', 'proof-preset-yellow', 'proof-preset-black', 'proof-preset-cmy', '-', 'proof-preset-protanopia', 'proof-preset-deuteranopia'] }, 'proof-colors', 'gamut-warning', 'preview-32', '-', 'zoom-in', 'zoom-out', 'fit', 'fit-layers', 'fit-artboard', 'actual', 'print-size', '-', 'toggle-extras', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'pattern-preview', 'pixel-art-preview', 'par-correction', 'transform-controls', 'toggle-task-bar', '-',
+      { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'guide-layout', 'guides-from-shape', 'clear-guides'] }, 'snap', { label: 'Snap To', items: ['snap-all', '-', 'snap-guides', 'snap-grid', 'snap-layers', 'snap-bounds'] }, { label: 'Show', items: ['show-all-extras', 'show-no-extras', '-', 'show-selection-edges', 'selection-display-tint', 'show-layer-edges', 'show-smart-guides', 'show-comfy-dot', 'show-notes', 'show-counts', 'toggle-show-slices', 'toggle-auto-slices', 'lock-slices', 'layer-based-slice', 'slices-from-guides', 'slice-options', 'divide-slice', 'delete-slice', 'clear-slices'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'os-full-screen', 'toggle-panels', 'rail-columns', 'interface-rtl', { label: 'Pasteboard', items: ['pasteboard-default', 'pasteboard-black', 'pasteboard-dark', 'pasteboard-mid', 'pasteboard-light'] }, { label: 'Theme', items: Object.keys(THEMES).map((tid) => `theme-${tid}`) }] },
     { label: 'Plugins', items: () => { const ids = pluginHost.commandIds(); return ['manage-plugins', ...(ids.length ? ['-', ...ids] : [])]; } },
     { label: 'Window', items: [{ label: 'Arrange', items: ['new-window', 'float-window', 'float-all-windows', 'arrange-cascade', '-', 'arrange-tabs','arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-4up', 'arrange-6up', 'arrange-tile', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.connect.open', 'agent.connect.copy-claude-code', 'agent.connect.copy-claude-desktop', 'terminal.toggle', 'terminal.new', 'script-console', 'brush-settings', { label: 'Brush Size', items: ['brush-size-up', 'brush-size-down', 'brush-harder', 'brush-softer'] }, 'paragraph-styles', 'character-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-channels', 'panel-color', 'panel-tools', 'panel-properties-col', 'merge-columns', 'toggle-dock-panels', '-', { label: 'Workspace', items: ['workspace-pixelart', '-', 'new-workspace', 'delete-workspace'] }, 'reset-panels', '-', 'next-document', 'previous-document', '-', 'theme-sync-system', 'next-appearance', 'interface-darken', 'interface-lighten', '-', 'reload-window'] },

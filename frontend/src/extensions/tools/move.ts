@@ -1,5 +1,7 @@
-import { HANDLES, contains, corners, unitPoint, type DragMode, type Transform } from '../../engine';
+import { HANDLES, contains, corners, tracePath, unitPoint, type DragMode, type Transform } from '../../engine';
 import { meshSurfacePoint, type P2 } from '../../engine/mesh-warp';
+import { WARP_STYLES } from '../../engine/text';
+import type { WarpStyle } from '../../engine/types';
 import { digitOf, type OptionSpec, type Tool, type ToolContext, type ToolPointer } from '../registry';
 
 const HANDLE_PX = 7; // screen points within which a handle is hit
@@ -11,6 +13,7 @@ function editable(ctx: ToolContext): Transform | null {
   // A layer placed by the video timeline's Position keyframes has its box where it is seen (1.59.9); the engine takes
   // the pointer back by the same offset, so the edit itself is in the layer's own coordinates.
   const seen = (id: string, t: Transform): Transform => { if (!p) return t; const o = e.keyedOffset(p, id); return o.dx || o.dy ? { ...t, x: t.x + o.dx, y: t.y + o.dy } : t; };
+  if (e.pathTransform) return e.pathTransform.draft;
   if (te) return te.group || te.mask ? te.draft : seen(te.layerId, te.draft);
   const gb = e.groupBox();
   if (gb) return gb;
@@ -54,7 +57,7 @@ function warpPoint(ctx: ToolContext, p: ToolPointer): number | null {
   return best;
 }
 function distortCorner(ctx: ToolContext, p: ToolPointer): number | null {
-  const e = ctx.engine, v = ctx.view(), d = e.distortEdit;
+  const e = ctx.engine, v = ctx.view(), d = e.distortEdit ?? (e.pathTransform?.corners ? { corners: e.pathTransform.corners } : null);
   let pts: Array<{ x: number; y: number }>;
   if (d) pts = d.corners;
   else {
@@ -118,7 +121,7 @@ const DISTORT_HINTS = {
 export const moveTool: Tool = {
   id: 'move', label: 'Move', key: 'V', order: 10,
   icon: () => 'tMove',
-  hint: (eng) => (eng.distortEdit ? DISTORT_HINTS[eng.distortEdit.mode] : eng.transformConstraint === 'scale' ? 'Scale · Drag a handle to scale · Shift keeps or frees the proportions · Alt scales from the center · Enter or Escape ends' : eng.transformConstraint === 'rotate' ? 'Rotate · Drag a handle or outside the box to turn · Shift turns by 15° · Enter or Escape ends' : eng.floatingSelection ? 'Transform Selection · Drag to move · Handles resize · Outside a corner rotates · Shift constrains · Enter applies · Escape cancels' : 'Drag to move · Drag inside a selection to move its pixels, Alt to duplicate them · Handles resize · Outside a corner rotates · Shift constrains · Alt resizes from the center · Cmd or Ctrl picks the layer under the pointer · Arrows nudge · 1-0 set layer opacity'),
+  hint: (eng) => (eng.distortEdit ? DISTORT_HINTS[eng.distortEdit.mode] : eng.pathTransform?.dmode ? DISTORT_HINTS[eng.pathTransform.dmode] : eng.anyTransformPending ? (eng.pathTransform ? 'Free Transform Path' : 'Free Transform') + ' · Drag a handle to scale, outside a corner to turn, inside to move · Type values in the bar · Shift constrains · Alt from the center · Cmd or Ctrl skips snapping · Enter applies · Escape cancels' : eng.transformConstraint === 'scale' ? 'Scale · Drag a handle to scale · Shift keeps or frees the proportions · Alt scales from the center · Enter or Escape ends' : eng.transformConstraint === 'rotate' ? 'Rotate · Drag a handle or outside the box to turn · Shift turns by 15° · Enter or Escape ends' : eng.floatingSelection ? 'Transform Selection · Drag to move · Handles resize · Outside a corner rotates · Shift constrains · Enter applies · Escape cancels' : 'Drag to move · Drag inside a selection to move its pixels, Alt to duplicate them · Handles resize · Outside a corner rotates · Shift constrains · Alt resizes from the center · Cmd or Ctrl picks the layer under the pointer · Arrows nudge · 1-0 set layer opacity'),
   cursor(ctx, p) {
     if (!p) return 'default';
     if (ctx.engine.meshWarpEdit) ctx.engine.meshWarpAim = { x: p.doc.x, y: p.doc.y };
@@ -131,6 +134,16 @@ export const moveTool: Tool = {
   down(ctx, p) {
     if (p.button !== 0) return;
     const e = ctx.engine;
+    if (e.pathTransform) {
+      if (e.pathTransform.corners) {
+        const c = distortCorner(ctx, p);
+        if (c !== null) { cornerDrag = c; distortFrom = { start: { ...p.doc }, corners: e.pathTransform.corners.map((q) => ({ ...q })) }; }
+        return;
+      }
+      const m = hit(ctx, p);
+      if (m) e.continuePathTransform(m, p.doc);
+      return;
+    }
     if (e.perspectiveEdit) {
       const c = perspectiveCorner(ctx, p);
       if (c) { perspDrag = c; return; }
@@ -141,6 +154,7 @@ export const moveTool: Tool = {
     if (e.puppetEdit) {
       const hitPin = puppetPin(ctx, p);
       if (p.alt) { if (hitPin !== null) e.removePuppetPin(hitPin); return; }
+      if (hitPin !== null) e.selectPuppetPin(hitPin);
       pinDrag = hitPin ?? e.addPuppetPin(p.doc);
       return;
     }
@@ -157,9 +171,10 @@ export const moveTool: Tool = {
       else { marquee = { a: { ...p.doc }, b: { ...p.doc }, sa: { ...p.screen }, add: p.shift }; return; }
     }
     const m = hit(ctx, p);
-    if (m) e.beginTransform(m, p.doc);
+    if (m) e.continueTransform(m, p.doc);
   },
   move(ctx, p) {
+    if (ctx.engine.pathTransform && cornerDrag === null) { ctx.engine.updatePathTransform(p.doc, p.shift, p.alt); return; }
     if (marquee) { marquee.b = { ...p.doc }; ctx.engine.emit('overlay', null); return; }
     if (perspDrag) { ctx.engine.movePerspectiveCorner(perspDrag.plane, perspDrag.corner, p.doc, snapDoc(ctx)); return; }
     if (planeStart) { planeEnd = p.doc; ctx.engine.emit('overlay', null); return; }
@@ -178,9 +193,10 @@ export const moveTool: Tool = {
       ctx.engine.movePixelsBy(dx, dy);
       return;
     }
-    ctx.engine.updateTransform(p.doc, p.shift, p.alt);
+    ctx.engine.updateTransform(p.doc, p.shift, p.alt, p.mod);
   },
   up(ctx, p) {
+    if (ctx.engine.pathTransform) { cornerDrag = null; distortFrom = null; ctx.engine.releasePathTransform(); return; }
     if (marquee) {
       const m = marquee;
       marquee = null;
@@ -205,21 +221,28 @@ export const moveTool: Tool = {
     if (ctx.engine.meshWarpEdit || ctx.engine.puppetEdit) return;
     if (cornerDrag !== null) { cornerDrag = null; distortFrom = null; return; }
     if (pixelStart) { pixelStart = null; ctx.engine.endPixelMove(); return; }
-    ctx.engine.endTransform();
+    ctx.engine.releaseTransform();
   },
   cancel(ctx) {
+    if (ctx.engine.pathTransform) { cornerDrag = null; distortFrom = null; ctx.engine.cancelPathTransformDrag(); return; }
     if (marquee) { marquee = null; ctx.engine.emit('overlay', null); return; }
     if (perspDrag || planeStart) { perspDrag = null; planeStart = planeEnd = null; ctx.engine.emit('overlay', null); return; }
     if (pinDrag !== null) { pinDrag = null; return; }
     if (warpDrag !== null) { warpDrag = null; return; }
     if (cornerDrag !== null) { cornerDrag = null; distortFrom = null; return; }
     if (pixelStart) { pixelStart = null; ctx.engine.cancelPixelMove(); return; }
-    ctx.engine.cancelTransform();
+    ctx.engine.cancelTransformDrag();
   },
   keydown(ctx, e) {
     const eng = ctx.engine;
     if (e.metaKey || e.ctrlKey) return false;
     const step = e.shiftKey ? 10 : 1;
+    if (eng.anyTransformPending) {
+      if (e.key === 'Enter') { eng.applyPendingTransform(); eng.endTransformMode(); return true; }
+      if (e.key === 'Escape') { eng.cancelPendingTransform(); eng.endTransformMode(); return true; }
+      const arrow: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+      if (arrow[e.key]) { eng.nudgePending(arrow[e.key][0], arrow[e.key][1]); return true; }
+    }
     if (e.key === 'ArrowLeft') { eng.nudge(-step, 0); return true; }
     if (e.key === 'ArrowRight') { eng.nudge(step, 0); return true; }
     if (e.key === 'ArrowUp') { eng.nudge(0, -step); return true; }
@@ -244,6 +267,14 @@ export const moveTool: Tool = {
   },
   overlay(ctx, g) {
     const e = ctx.engine;
+    if (e.pathTransform && e.workPath) {
+      const v = ctx.view(), pal = ctx.paint();
+      g.save();
+      g.lineWidth = 1.5;
+      g.strokeStyle = pal.accent;
+      g.stroke(tracePath(e.workPath, (q) => v.toScreen(q)));
+      g.restore();
+    }
     if (marquee) {
       const v = ctx.view(), pal = ctx.paint(), a = v.toScreen(marquee.a), b = v.toScreen(marquee.b);
       g.save();
@@ -297,10 +328,24 @@ export const moveTool: Tool = {
       g.save();
       g.lineWidth = 1;
       g.strokeStyle = pal.accent;
+      const mesh = e.puppetMesh();
+      if (mesh) {
+        g.globalAlpha = 0.55;
+        g.beginPath();
+        for (let j = 0; j < mesh.ny; j++) for (let i = 0; i < mesh.nx; i++) {
+          const a = v.toScreen({ x: mesh.pts[j * mesh.nx + i][0], y: mesh.pts[j * mesh.nx + i][1] });
+          if (i + 1 < mesh.nx) { const b = v.toScreen({ x: mesh.pts[j * mesh.nx + i + 1][0], y: mesh.pts[j * mesh.nx + i + 1][1] }); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); }
+          if (j + 1 < mesh.ny) { const b = v.toScreen({ x: mesh.pts[(j + 1) * mesh.nx + i][0], y: mesh.pts[(j + 1) * mesh.nx + i][1] }); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); }
+          if (i + 1 < mesh.nx && j + 1 < mesh.ny) { const b = v.toScreen({ x: mesh.pts[(j + 1) * mesh.nx + i + 1][0], y: mesh.pts[(j + 1) * mesh.nx + i + 1][1] }); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); }
+        }
+        g.stroke();
+        g.globalAlpha = 1;
+      }
       pe.to.forEach(([x, y], i) => {
         const s = v.toScreen({ x, y }), f = v.toScreen({ x: pe.from[i][0], y: pe.from[i][1] });
         g.setLineDash([3, 3]); g.beginPath(); g.moveTo(f.x, f.y); g.lineTo(s.x, s.y); g.stroke(); g.setLineDash([]);
-        g.fillStyle = pal.handle; g.beginPath(); g.arc(s.x, s.y, 5, 0, Math.PI * 2); g.fill(); g.stroke();
+        g.fillStyle = pal.handle; g.beginPath(); g.arc(s.x, s.y, i === pe.sel ? 6.5 : 5, 0, Math.PI * 2); g.fill(); g.stroke();
+        if (i === pe.sel) { g.beginPath(); g.arc(s.x, s.y, 2, 0, Math.PI * 2); g.fillStyle = pal.accent; g.fill(); }
       });
       g.restore();
     }
@@ -325,7 +370,7 @@ export const moveTool: Tool = {
       for (const [x, y] of mw.points) { const s = v.toScreen({ x, y }); g.fillRect(s.x - 3.5, s.y - 3.5, 7, 7); g.strokeRect(s.x - 3.5, s.y - 3.5, 7, 7); }
       g.restore();
     }
-    const dd = e.distortEdit;
+    const dd = e.distortEdit ?? (e.pathTransform?.corners ? { corners: e.pathTransform.corners } : null);
     if (dd) {
       const v = ctx.view(), pal = ctx.paint(), cs = dd.corners.map((c) => v.toScreen(c));
       g.save();
@@ -357,12 +402,14 @@ export const moveTool: Tool = {
   },
   options(e) {
     const t = (): Transform | null => {
+      if (e.pathTransform) return e.pathTransform.draft;
       if (e.transformEdit) return e.transformEdit.draft;
       const l = e.activeLayer;
       return l && l.raster ? l.transform : null;
     };
     // The transform's fields stay while its controls are shown, after the pointer is released, so a value can be typed.
     const editing = (): boolean => {
+      if (e.pathTransform) return !e.pathTransform.corners;
       if (e.transformEdit) return true;
       const l = e.activeLayer;
       return e.showTransformControls && !!l && !!l.raster && !l.isGroup && !e.distortEdit && !e.meshWarpEdit && !e.puppetEdit && !e.perspectiveEdit && !e.floatingSelection;
@@ -383,15 +430,29 @@ export const moveTool: Tool = {
       { kind: 'number', label: 'Y', priority: 80, get: () => t()?.y ?? null, set: (v) => e.setLayerTransform({ y: v }, 'Move Layer'), when: editing },
       { kind: 'number', label: 'W', priority: 80, min: 1, get: () => t()?.w ?? null, set: (v) => e.resizeLayerTo(v, true), when: editing },
       { kind: 'number', label: 'H', priority: 80, min: 1, get: () => t()?.h ?? null, set: (v) => e.resizeLayerTo(v, false), when: editing },
-      { kind: 'number', label: 'Scale', priority: 75, unit: '%', min: 1, get: () => { const l = e.activeLayer, tt = t(); return l?.raster && tt ? (tt.w / l.raster.width) * 100 : null; }, set: (v) => e.scaleLayerTo(v), when: editing },
+      { kind: 'number', label: 'Scale', priority: 75, unit: '%', min: 1, get: () => { const l = e.activeLayer, tt = t(); return e.anyTransformPending ? e.pendingScalePercent : l?.raster && tt ? (tt.w / l.raster.width) * 100 : null; }, set: (v) => e.scaleLayerTo(v), when: editing },
+      { kind: 'button', label: 'Apply transform', priority: 95, run: () => e.applyPendingTransform(), when: () => e.anyTransformPending },
+      { kind: 'button', label: 'Cancel transform', priority: 92, run: () => e.cancelPendingTransform(), when: () => e.anyTransformPending },
       { kind: 'number', label: 'Angle', priority: 75, unit: '\u00b0', get: () => t()?.rotation ?? null, set: (v) => e.setLayerTransform({ rotation: v }, 'Rotate Layer'), when: editing },
       { kind: 'segment', label: 'Sampling', priority: 50, choices: [{ id: 'nearest', label: 'Nearest' }, { id: 'smooth', label: 'Smooth' }, { id: 'high', label: 'High quality' }], get: () => t()?.sampling ?? 'high', set: (v) => e.setLayerTransform({ sampling: v as Transform['sampling'] }), when: editing },
       { kind: 'select', label: 'Warp grid', priority: 30, choices: [3, 4, 5, 6].map((n) => ({ id: String(n), label: `${n} x ${n}` })), get: () => String(e.meshWarpGrid), set: (v: string) => { e.meshWarpGrid = Number(v) || 4; e.emit('options', null); }, when: editing },
+      { kind: 'select', label: 'Warp style', priority: 70, choices: [{ id: 'custom', label: 'Custom' }, ...WARP_STYLES.map(([id, label]) => ({ id, label }))], get: () => e.meshWarpPreset.style, set: (v: string) => { e.setMeshWarpPreset({ style: v as WarpStyle | 'custom' }); }, when: () => !!e.meshWarpEdit },
+      { kind: 'segment', label: 'Warp direction', priority: 40, choices: [{ id: 'horizontal', label: 'Horizontal' }, { id: 'vertical', label: 'Vertical' }], get: () => e.meshWarpPreset.orientation, set: (v: string) => { e.setMeshWarpPreset({ orientation: v === 'vertical' ? 'vertical' : 'horizontal' }); }, when: () => !!e.meshWarpEdit && e.meshWarpPreset.style !== 'custom' },
+      { kind: 'number', label: 'Bend', priority: 65, unit: '%', min: -100, max: 100, get: () => e.meshWarpPreset.bend, set: (v) => { e.setMeshWarpPreset({ bend: Math.max(-100, Math.min(100, v)) }); }, when: () => !!e.meshWarpEdit && e.meshWarpPreset.style !== 'custom' },
+      { kind: 'number', label: 'Horizontal distortion', priority: 45, unit: '%', min: -100, max: 100, get: () => e.meshWarpPreset.horizontal, set: (v) => { e.setMeshWarpPreset({ horizontal: Math.max(-100, Math.min(100, v)) }); }, when: () => !!e.meshWarpEdit && e.meshWarpPreset.style !== 'custom' },
+      { kind: 'number', label: 'Vertical distortion', priority: 45, unit: '%', min: -100, max: 100, get: () => e.meshWarpPreset.vertical, set: (v) => { e.setMeshWarpPreset({ vertical: Math.max(-100, Math.min(100, v)) }); }, when: () => !!e.meshWarpEdit && e.meshWarpPreset.style !== 'custom' },
+      { kind: 'select', label: 'Puppet mode', priority: 75, choices: [{ id: 'rigid', label: 'Rigid' }, { id: 'normal', label: 'Normal' }, { id: 'distort', label: 'Distort' }], get: () => e.puppetOpts.mode, set: (v: string) => e.setPuppetOpts({ mode: v === 'normal' || v === 'distort' ? v : 'rigid' }), when: () => !!e.puppetEdit },
+      { kind: 'select', label: 'Puppet density', priority: 55, choices: [{ id: 'fewer', label: 'Fewer points' }, { id: 'normal', label: 'Normal' }, { id: 'more', label: 'More points' }], get: () => e.puppetOpts.density, set: (v: string) => e.setPuppetOpts({ density: v === 'fewer' || v === 'more' ? v : 'normal' }), when: () => !!e.puppetEdit },
+      { kind: 'number', label: 'Expansion', priority: 55, unit: 'px', min: -40, max: 40, get: () => e.puppetOpts.expansion, set: (v) => e.setPuppetOpts({ expansion: v }), when: () => !!e.puppetEdit },
+      { kind: 'toggle', label: 'Show mesh', priority: 60, get: () => e.puppetOpts.showMesh, set: (v) => e.setPuppetOpts({ showMesh: v }), when: () => !!e.puppetEdit },
+      { kind: 'number', label: 'Pin rotation', priority: 50, unit: '°', min: -180, max: 180, get: () => { const w = e.puppetEdit; return w && w.sel >= 0 ? w.rot[w.sel] : null; }, set: (v) => e.setPuppetPin({ rot: v }), when: () => !!e.puppetEdit && e.puppetEdit.sel >= 0 },
+      { kind: 'number', label: 'Pin depth', priority: 50, min: -10, max: 10, get: () => { const w = e.puppetEdit; return w && w.sel >= 0 ? w.depth[w.sel] : null; }, set: (v) => e.setPuppetPin({ depth: v }), when: () => !!e.puppetEdit && e.puppetEdit.sel >= 0 },
       { kind: 'button', label: 'Flip horizontal', priority: 40, icon: 'flipH', run: () => e.flipLayers(true), when: editing },
       { kind: 'button', label: 'Flip vertical', priority: 40, icon: 'flipV', run: () => e.flipLayers(false), when: editing },
       { kind: 'segment', label: 'Perspective Warp', priority: 70, choices: [{ id: 'layout', label: 'Layout' }, { id: 'warp', label: 'Warp' }], get: () => e.perspectiveEdit?.phase ?? 'layout', set: (v) => e.setPerspectivePhase(v as 'layout' | 'warp'), when: () => !!e.perspectiveEdit },
       { kind: 'button', label: 'Straighten verticals', priority: 40, run: () => e.straightenPerspective(true), when: () => e.perspectiveEdit?.phase === 'warp' },
       { kind: 'button', label: 'Level horizontals', priority: 40, run: () => e.straightenPerspective(false), when: () => e.perspectiveEdit?.phase === 'warp' },
+      { kind: 'button', label: 'Auto straighten', priority: 42, run: () => e.straightenPerspective(null), when: () => e.perspectiveEdit?.phase === 'warp' },
       { kind: 'button', label: 'Apply', priority: 90, run: () => e.applyPerspectiveWarp(), when: () => !!e.perspectiveEdit },
       { kind: 'button', label: 'Cancel', priority: 85, run: () => e.cancelPerspectiveWarp(), when: () => !!e.perspectiveEdit },
     ];

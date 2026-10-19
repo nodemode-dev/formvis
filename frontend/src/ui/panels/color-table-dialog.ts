@@ -1,7 +1,8 @@
 import type { Engine } from '../../engine';
 import type { RGB } from '../../engine/types';
 import { Dialog } from '../dialogs';
-import { selectRow, type Row } from './controls';
+import { systemMac, systemWindows, webSafe } from '../../engine/palettes';
+import { numberRow, selectRow, type Row } from './controls';
 
 const COLS = 16, CELLS = 256, SWATCH = 20;
 const hex = (c: RGB): string => '#' + [c.r, c.g, c.b].map((v) => v.toString(16).padStart(2, '0')).join('');
@@ -23,22 +24,7 @@ function spectrum(): RGB[] {
     return ([{ r: 255, g: up, b: 0 }, { r: down, g: 255, b: 0 }, { r: 0, g: 255, b: up }, { r: 0, g: down, b: 255 }, { r: up, g: 0, b: 255 }, { r: 255, g: 0, b: down }] as RGB[])[k % 6];
   });
 }
-const cube = (): RGB[] => { const o: RGB[] = []; for (let r = 0; r < 6; r++) for (let g = 0; g < 6; g++) for (let b = 0; b < 6; b++) o.push({ r: r * 51, g: g * 51, b: b * 51 }); return o; };
-/** System (Mac OS): the 6 by 6 by 6 colour cube then 40 greys, an approximation of the classic 8-bit system table. */
-function systemMac(): RGB[] {
-  const o = cube();
-  for (let i = 0; o.length < CELLS; i++) { const v = clamp(((i + 1) / 41) * 255); o.push({ r: v, g: v, b: v }); }
-  return o;
-}
-/** System (Windows): the 16 VGA colours, the 6 by 6 by 6 colour cube and 24 greys, an approximation of the Windows 8-bit table. */
-function systemWindows(): RGB[] {
-  const vga = [0x000000, 0x800000, 0x008000, 0x808000, 0x000080, 0x800080, 0x008080, 0xc0c0c0, 0x808080, 0xff0000, 0x00ff00, 0xffff00, 0x0000ff, 0xff00ff, 0x00ffff, 0xffffff];
-  const o: RGB[] = vga.map((n) => ({ r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 }));
-  o.push(...cube());
-  for (let i = 0; o.length < CELLS; i++) { const v = clamp(((i + 1) / 25) * 255); o.push({ r: v, g: v, b: v }); }
-  return o;
-}
-const TABLES: Record<string, () => RGB[]> = { black: blackBody, gray: grayscale, spectrum, mac: systemMac, windows: systemWindows };
+const TABLES: Record<string, () => RGB[]> = { black: blackBody, gray: grayscale, spectrum, mac: systemMac, windows: systemWindows, web: webSafe };
 
 /** Reads a .act colour table: 768 bytes of RGB, optionally a 16-bit count and a 16-bit transparent index (772 bytes). */
 export function parseAct(buf: ArrayBuffer): RGB[] | null {
@@ -68,13 +54,16 @@ export class ColorTableDialog extends Dialog {
   private readonly file: HTMLInputElement;
   private readonly note: HTMLElement;
   private editing = -1;
+  private clear = -1;
+  private readonly clearRow: Row<number> & { input: HTMLInputElement };
 
   constructor(private readonly engine: Engine) {
     super('Color Table', 16 * SWATCH + 15 + 2 * 24 + 8);
-    this.tableRow = selectRow('Table', [['custom', 'Custom'], ['black', 'Black Body'], ['gray', 'Grayscale'], ['spectrum', 'Spectrum'], ['mac', 'System (Mac OS)'], ['windows', 'System (Windows)']], (v) => {
+    this.tableRow = selectRow('Table', [['custom', 'Custom'], ['black', 'Black Body'], ['gray', 'Grayscale'], ['spectrum', 'Spectrum'], ['mac', 'System (Mac OS)'], ['windows', 'System (Windows)'], ['web', 'Web']], (v) => {
       const make = TABLES[v];
       if (make) { this.pal = make(); this.draw(); }
     });
+    this.clearRow = numberRow('Transparent index (-1 for none)', -1, 255, 1, (v) => { this.clear = Math.max(-1, Math.min(255, Math.round(v))); this.note.textContent = this.info(); });
     this.grid = document.createElement('div');
     this.grid.style.cssText = `display:grid;grid-template-columns:repeat(${COLS},${SWATCH}px);grid-auto-rows:${SWATCH}px;gap:1px;margin:8px 0;width:max-content`;
     for (let i = 0; i < CELLS; i++) {
@@ -90,11 +79,11 @@ export class ColorTableDialog extends Dialog {
     this.file = document.createElement('input'); this.file.type = 'file'; this.file.accept = '.act'; this.file.hidden = true;
     this.file.addEventListener('change', () => { const f = this.file.files?.[0]; this.file.value = ''; if (f) void this.load(f); });
     this.note = document.createElement('p'); this.note.className = 'cv-note'; this.note.style.cssText = 'min-height:1.4em;margin:0';
-    this.body.append(this.tableRow.el, this.grid, this.note, this.picker, this.file);
+    this.body.append(this.tableRow.el, this.grid, this.clearRow.el, this.note, this.picker, this.file);
     this.button('Load...', 'ghost', () => this.file.click());
     this.button('Save...', 'ghost', () => this.save());
     this.button('Cancel', 'ghost', () => this.close());
-    this.okBtn = this.button('OK', 'primary', () => { const p = this.pal.map((c) => ({ ...c })); this.close(); this.engine.setPalette(p); });
+    this.okBtn = this.button('OK', 'primary', () => { const p = this.pal.map((c) => ({ ...c })); this.close(); this.engine.setPalette(p, this.clear >= 0 && this.clear < p.length ? this.clear : null); });
   }
 
   show(): void {
@@ -102,12 +91,14 @@ export class ColorTableDialog extends Dialog {
     const cur = this.engine.current?.doc.palette;
     if (!cur || this.engine.current?.doc.mode !== 'indexed') return;
     this.pal = cur.map((c) => ({ ...c }));
+    this.clear = this.engine.current?.doc.transparentIndex ?? -1;
+    this.clearRow.set(this.clear);
     this.tableRow.set('custom');
     this.draw();
     this.open(this.okBtn);
   }
 
-  private info(): string { return `${this.pal.length} colors`; }
+  private info(): string { return `${this.pal.length} colors${this.clear >= 0 && this.clear < this.pal.length ? `, entry ${this.clear} transparent` : ''}`; }
   private paint(i: number): void {
     const c = this.cells[i], e = this.pal[i];
     c.disabled = !e; c.style.background = e ? hex(e) : 'transparent'; c.style.cursor = e ? 'pointer' : 'default';

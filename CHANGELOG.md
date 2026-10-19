@@ -4,6 +4,19 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.89.0 · 2026-10-19
+
+### Added
+
+- Adjustments and modes: a Gradient Map stop editor and dither; Curves pencil, smooth and eyedroppers; sample sizes; saved presets per adjustment; Shadows and Highlights clipping; an HDR Toning curve; Match Color controls; tetrahedral Color Lookup; Bitmap halftone screens and dither methods; Indexed palettes, forced colours, transparency and dither amount; Grayscale From Channels.
+- Colour management: ProPhoto, ACEScg, Rec. 2020 and more built-in profiles; Legacy Macintosh RGB and Internet Standard RGB proofs; a gamut warning threshold and a proof badge in the status bar; Edit > Profile Info; Cancel on profile prompts; sRGB tags on exports; EXR as ACEScg; .3dl LUTs.
+- Transform: Free Transform waits for Apply or Cancel with numeric entry, handle resizes snap, and the Transform commands work on paths; Warp presets on pixel layers and split commands; Puppet Warp mode, density, expansion, pin rotation and depth with a mesh; Perspective Warp auto straighten; Liquify Smooth, density, rate and mesh size; Layer > New > Shape Layer, gradient shape fills, stroke caps and joins, corner radius handles on the canvas, Make Selection from Path options.
+- Export: a live preview and real size in Export As; Layer > Export As; PNG interlace, EXR compression, half float and channels, PFM, TIFF compression and BigTIFF, WebP lossless, grey and progressive JPEG, grey and CMYK PDF; PSD guides, notes and ICC profile, and PSB for very large documents; safer saves; Save for Web colour reduction, dither, presets and HTML; a print preview with marks; slice styles, Divide and Lock Slices; Camera Raw settings as .xmp.
+
+### Fixed
+
+- A saved shape's dash and stroke alignment are kept on load; Save for Web's GIF colour count and dither now apply.
+
 ## 1.88.9 · 2026-10-19
 
 ### Added

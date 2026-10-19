@@ -110,7 +110,7 @@ export function gradientMapKernel(settings: unknown): Kernel {
   const rgb = (v: unknown, fallback: number): number[] => { const c = record(v); return [finite(c.red, fallback), finite(c.green, fallback), finite(c.blue, fallback)]; };
   const shadows = rgb(r.shadows, 0), highlights = rgb(r.highlights, 1);
   const [from, to] = r.reversed === true ? [highlights, shadows] : [shadows, highlights];
-  const ramp = new Uint8Array(256 * 3);
+  const ramp = new Float32Array(256 * 3), dither = r.dither === true;
   const stops = Array.isArray(r.stops) ? r.stops.map((s) => ({ at: clamp(finite(record(s).at, 0), 0, 1), c: rgb(s, 0) })).sort((a, b) => a.at - b.at) : [];
   if (stops.length >= 2) {
     const list = r.reversed === true ? stops.map((s) => ({ at: 1 - s.at, c: s.c })).reverse() : stops;
@@ -119,10 +119,21 @@ export function gradientMapKernel(settings: unknown): Kernel {
       let k = 1;
       while (k < list.length - 1 && list[k].at < t) k++;
       const a = list[k - 1], b = list[k], f = b.at > a.at ? clamp((t - a.at) / (b.at - a.at), 0, 1) : 1;
-      for (let c = 0; c < 3; c++) ramp[level * 3 + c] = Math.round(255 * clamp(a.c[c] + (b.c[c] - a.c[c]) * f, 0, 1));
+      for (let c = 0; c < 3; c++) ramp[level * 3 + c] = dither ? 255 * clamp(a.c[c] + (b.c[c] - a.c[c]) * f, 0, 1) : Math.round(255 * clamp(a.c[c] + (b.c[c] - a.c[c]) * f, 0, 1));
     }
   } else for (let level = 0; level < 256; level++) {
-    for (let c = 0; c < 3; c++) ramp[level * 3 + c] = Math.round(255 * clamp(from[c] + ((to[c] - from[c]) * level) / 255, 0, 1));
+    for (let c = 0; c < 3; c++) ramp[level * 3 + c] = dither ? 255 * clamp(from[c] + ((to[c] - from[c]) * level) / 255, 0, 1) : Math.round(255 * clamp(from[c] + ((to[c] - from[c]) * level) / 255, 0, 1));
+  }
+  if (dither) {
+    return (px, ctx) => {
+      const w = ctx?.width ?? 0;
+      for (let i = 0, j = 0; i < px.length; i += 4, j++) {
+        if (px[i + 3] === 0) continue;
+        const y = Math.min(255, 0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2]), lo = Math.floor(y), hi = Math.min(255, lo + 1), f = y - lo;
+        const x = w ? j % w : j, row = w ? Math.floor(j / w) : 0, h = ((x * 374761393 + row * 668265263) ^ (x * 1274126177)) >>> 0, u = (h & 1023) / 1023, v = ((h >>> 10) & 1023) / 1023, noise = u + v - 1;
+        for (let c = 0; c < 3; c++) px[i + c] = Math.max(0, Math.min(255, Math.round(ramp[lo * 3 + c] + (ramp[hi * 3 + c] - ramp[lo * 3 + c]) * f + noise)));
+      }
+    };
   }
   return (px) => {
     for (let i = 0; i < px.length; i += 4) {

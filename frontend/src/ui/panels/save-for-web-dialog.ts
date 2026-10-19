@@ -6,9 +6,15 @@ import { withXmp } from '../../io/xmp';
 import { SFW_METADATA, sfwMeta, type SfwMetadata } from '../../io/export-presets';
 import { metaWritable } from '../../engine';
 import { api } from '../../io/api';
-import { Dialog } from '../dialogs';
+import { embedJpeg, embedPng } from '../../io/embed-icc';
+import { iccProfile } from '../../engine/icc';
+import { DITHERS, PALETTES, matteOf, reduceColours, type DitherKind } from '../../io/sfw-reduce';
+import { SFW_BUILTIN, SFW_DEFAULT, cfgFrom, loadLast, loadUserPresets, saveLast, type SfwCfg, type SfwFormat, type SfwPreset } from '../../io/sfw-presets';
+import { slicesHtml, type HtmlCell } from '../../io/sfw-html';
+import { autoSlices, readingOrder } from '../../extensions/tools/slice';
+import { Dialog, promptName } from '../dialogs';
 import { el, setText } from '../dom';
-import { checkRow, selectRow, sliderRow } from './controls';
+import { checkRow, colorRow, selectRow, sliderRow } from './controls';
 
 const BOX_W = 280, BOX_H = 200;
 type View = 'original' | 'optimized' | '2up' | '4up';
@@ -16,9 +22,8 @@ const VIEWS: ReadonlyArray<readonly [View, string]> = [['original', 'Original'],
 /** Download speeds in kilobits a second. */
 const SPEEDS: ReadonlyArray<readonly [string, string]> = [['28.8', '28.8 Kbps Modem'], ['56.6', '56.6 Kbps Dial-up'], ['128', '128 Kbps Dual ISDN'], ['256', '256 Kbps Cable'], ['512', '512 Kbps Cable'], ['1500', '1.5 Mbps T1'], ['10000', '10 Mbps Broadband']];
 /** The settings one optimized pane encodes with. */
-interface Cfg { fmt: Fmt; quality: number; colors: number; dither: 'none' | 'diffusion'; transparency: boolean }
-
-type Fmt = 'jpeg' | 'png24' | 'png8' | 'gif' | 'webp' | 'wbmp';
+type Cfg = SfwCfg;
+type Fmt = SfwFormat;
 const EXT: Record<Fmt, string> = { jpeg: 'jpg', png24: 'png', png8: 'png', gif: 'gif', webp: 'webp', wbmp: 'wbmp' };
 const LABEL: Record<Fmt, string> = { jpeg: 'JPEG', png24: 'PNG-24', png8: 'PNG-8', gif: 'GIF', webp: 'WebP', wbmp: 'WBMP' };
 
@@ -54,9 +59,12 @@ function toBlob(c: HTMLCanvasElement, type: string, quality?: number): Promise<B
  *  really encoded result, decoded again), a format and quality, and an export of the whole image or of every slice
  *  into a zip. All the DOM is built once; changes only touch text, values, canvas pixels and the hidden flag. */
 export class SaveForWebDialog extends Dialog {
-  private cfg: Cfg = { fmt: 'jpeg', quality: 80, colors: 256, dither: 'diffusion', transparency: true };
+  private cfg: Cfg = { ...SFW_DEFAULT };
   private get fmt(): Fmt { return this.cfg.fmt; }
-  private scope: 'whole' | 'slices' = 'whole';
+  private scope: 'whole' | 'slices' | 'active' | 'html' = 'whole';
+  private presets: SfwPreset[] = [...SFW_BUILTIN];
+  /** The colours the last encoded GIF or PNG-8 pane really used, by pane. */
+  private used: Array<number | null> = [null, null, null, null];
   private view: View = 'optimized';
   private metaMode: SfwMetadata = 'copyright';
   private kbps = 56.6;
@@ -76,12 +84,21 @@ export class SaveForWebDialog extends Dialog {
   private readonly sizeRow = sliderRow('Image size (%)', 10, 400, 1, (v) => { this.pct = Math.round(v); this.schedule(); }, { min: 1, max: 1000 });
   private readonly format = selectRow('Format', [['jpeg', 'JPEG'], ['png24', 'PNG-24'], ['png8', 'PNG-8'], ['gif', 'GIF'], ['webp', 'WebP'], ['wbmp', 'WBMP']], (v) => { this.cfg = { ...this.cfg, fmt: v as Fmt }; this.sync(); this.schedule(); });
   private readonly qRow = sliderRow('Quality', 0, 100, 1, (v) => { this.cfg = { ...this.cfg, quality: v }; this.schedule(); });
-  private readonly colorsRow = sliderRow('Colors', 2, 256, 1, (v) => { this.cfg = { ...this.cfg, colors: Math.round(v) }; this.schedule(); });
-  private readonly ditherRow = selectRow('Dither', [['none', 'No Dither'], ['diffusion', 'Diffusion']], (v) => { this.cfg = { ...this.cfg, dither: v as Cfg['dither'] }; this.schedule(); });
-  private readonly transRow = checkRow('Transparency', (v) => { this.cfg = { ...this.cfg, transparency: v }; this.schedule(); });
+  private readonly colorsRow = sliderRow('Colors', 2, 256, 1, (v) => { this.cfg = { ...this.cfg, colors: Math.round(v) }; this.sync(); this.schedule(); });
+  private readonly paletteRow = selectRow('Color reduction', PALETTES.map(([k, t]) => [k, t] as const), (v) => { this.cfg = { ...this.cfg, palette: v as Cfg['palette'] }; this.sync(); this.schedule(); });
+  private readonly ditherRow = selectRow('Dither', DITHERS.map(([k, t]) => [k, t] as const), (v) => { this.cfg = { ...this.cfg, dither: v as DitherKind }; this.sync(); this.schedule(); });
+  private readonly amountRow = sliderRow('Dither amount (%)', 0, 100, 1, (v) => { this.cfg = { ...this.cfg, ditherAmount: Math.round(v) }; this.sync(); this.schedule(); });
+  private readonly transRow = checkRow('Transparency', (v) => { this.cfg = { ...this.cfg, transparency: v }; this.sync(); this.schedule(); });
+  private readonly matteRow = colorRow('Matte', (hex) => { this.cfg = { ...this.cfg, matte: hex }; this.sync(); this.schedule(); });
+  private readonly progRow = checkRow('Progressive', (v) => { this.cfg = { ...this.cfg, progressive: v }; this.sync(); this.schedule(); });
+  private readonly interRow = checkRow('Interlaced', (v) => { this.cfg = { ...this.cfg, interlace: v }; this.sync(); this.schedule(); });
+  private readonly iccRow = checkRow('Embed Color Profile', (v) => { this.cfg = { ...this.cfg, embedProfile: v }; this.sync(); this.schedule(); });
+  private readonly presetRow = selectRow('Preset', [['custom', 'Custom'], ...SFW_BUILTIN.map((p) => [p.id, p.name] as const)], (v) => { const p = this.presets.find((x) => x.id === v); if (p) { this.cfg = { ...p.cfg }; this.sync(); this.schedule(); } });
   private readonly metaRow = selectRow('Metadata', SFW_METADATA, (v) => { this.metaMode = v as SfwMetadata; this.sync(); this.schedule(); });
   private readonly speedRow = selectRow('Download speed', SPEEDS, (v) => { this.kbps = Number(v); this.schedule(); });
-  private readonly scopeRow = selectRow('Export', [['whole', 'Whole image'], ['slices', 'All slices']], (v) => { this.scope = v as 'whole' | 'slices'; });
+  private readonly scopeRow = selectRow('Export', [['whole', 'Whole image'], ['slices', 'All user slices'], ['active', 'Selected slice'], ['html', 'HTML and images']], (v) => { this.scope = v as typeof this.scope; });
+  private readonly presetSave = el<HTMLButtonElement>('<button class="cv-prefs-tab" type="button">Save preset...</button>');
+  private readonly presetDel = el<HTMLButtonElement>('<button class="cv-prefs-tab" type="button">Delete preset</button>');
 
   constructor(private readonly engine: Engine, private readonly deliver: (blob: Blob, name: string) => Promise<void>) {
     super('Save for Web (Legacy)', 620);
@@ -93,7 +110,13 @@ export class SaveForWebDialog extends Dialog {
       grid.append(pane);
       this.drag(i);
     });
-    this.body.append(strip, grid, this.format.el, this.sizeRow.el, this.qRow.el, this.colorsRow.el, this.ditherRow.el, this.transRow.el, this.metaRow.el, this.speedRow.el, this.scopeRow.el, this.status);
+    const presetBar = el('<div style="display: flex; gap: 4px; justify-content: flex-end"></div>');
+    presetBar.append(this.presetSave, this.presetDel);
+    this.presetSave.addEventListener('click', () => { void this.savePreset(); });
+    this.presetDel.addEventListener('click', () => this.deletePreset());
+    this.body.append(strip, grid, this.presetRow.el, presetBar, this.format.el, this.sizeRow.el, this.qRow.el, this.progRow.el, this.colorsRow.el, this.paletteRow.el, this.ditherRow.el, this.amountRow.el, this.transRow.el, this.matteRow.el, this.interRow.el, this.iccRow.el, this.metaRow.el, this.speedRow.el, this.scopeRow.el, this.status);
+    this.cfg = loadLast();
+    for (const p of loadUserPresets()) this.addPreset(p);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('Save...', 'primary', () => { void this.save(); });
   }
@@ -148,9 +171,11 @@ export class SaveForWebDialog extends Dialog {
     this.speedRow.set(String(this.kbps));
     this.metaRow.set(this.metaMode);
     const has = (p.doc.slices?.length ?? 0) > 0;
-    const opt = this.scopeRow.el.querySelector('option[value="slices"]') as HTMLOptionElement | null;
-    if (opt) opt.disabled = !has;
-    if (!has) this.scope = 'whole';
+    for (const v of ['slices', 'active', 'html']) {
+      const opt = this.scopeRow.el.querySelector(`option[value="${v}"]`) as HTMLOptionElement | null;
+      if (opt) opt.disabled = !has || (v === 'active' && !p.doc.slices?.some((s) => s.id === this.engine.activeSlice));
+    }
+    if (!has || (this.scope === 'active' && !p.doc.slices?.some((s) => s.id === this.engine.activeSlice))) this.scope = 'whole';
     this.scopeRow.set(this.scope);
     this.sync();
     this.layout();
@@ -166,6 +191,7 @@ export class SaveForWebDialog extends Dialog {
 
   close(): void {
     window.clearTimeout(this.timer);
+    saveLast(this.cfg, this.presets);
     this.token++;
     this.release();
     super.close();
@@ -181,13 +207,55 @@ export class SaveForWebDialog extends Dialog {
     this.sizeRow.set(this.pct);
     this.qRow.set(this.cfg.quality);
     this.colorsRow.set(this.cfg.colors);
+    this.paletteRow.set(this.cfg.palette);
     this.ditherRow.set(this.cfg.dither);
+    this.amountRow.set(this.cfg.ditherAmount);
     this.transRow.set(this.cfg.transparency);
-    const lossy = this.fmt === 'jpeg' || this.fmt === 'webp', indexed = this.fmt === 'png8' || this.fmt === 'gif';
+    this.matteRow.set(this.cfg.matte);
+    this.progRow.set(this.cfg.progressive);
+    this.interRow.set(this.cfg.interlace);
+    this.iccRow.set(this.cfg.embedProfile);
+    const lossy = this.fmt === 'jpeg' || this.fmt === 'webp', indexed = this.fmt === 'png8' || this.fmt === 'gif', c = this.cfg;
     this.qRow.el.hidden = !lossy;
+    this.progRow.el.hidden = this.fmt !== 'jpeg';
     this.colorsRow.el.hidden = !indexed;
+    this.paletteRow.el.hidden = !indexed;
     this.ditherRow.el.hidden = !indexed;
+    this.amountRow.el.hidden = !indexed || c.dither === 'none';
     this.transRow.el.hidden = !(indexed || this.fmt === 'png24');
+    this.matteRow.el.hidden = this.fmt === 'wbmp' || this.fmt === 'webp' || (this.fmt !== 'jpeg' && c.transparency);
+    this.interRow.el.hidden = this.fmt !== 'png24';
+    this.iccRow.el.hidden = this.fmt !== 'jpeg' && this.fmt !== 'png24' && this.fmt !== 'png8';
+    this.presetRow.set(this.presets.find((p) => JSON.stringify(cfgFrom(p.cfg)) === JSON.stringify(cfgFrom(c)))?.id ?? 'custom');
+    const mine = this.presets.find((p) => p.id === (this.presetRow.el.querySelector('select') as HTMLSelectElement).value);
+    this.presetDel.hidden = !mine || mine.builtin;
+  }
+
+  /** A preset in the list: its option is added to the select, never the select rebuilt. */
+  private addPreset(p: SfwPreset): void {
+    this.presets.push(p);
+    const o = document.createElement('option');
+    o.value = p.id; o.textContent = p.name;
+    this.presetRow.el.querySelector('select')?.append(o);
+  }
+
+  private async savePreset(): Promise<void> {
+    const name = await promptName('Save preset', LABEL[this.cfg.fmt], 'Save');
+    if (!name) return;
+    const same = this.presets.find((p) => !p.builtin && p.name === name);
+    if (same) same.cfg = { ...this.cfg };
+    else this.addPreset({ id: `u${Date.now().toString(36)}`, name, builtin: false, cfg: { ...this.cfg } });
+    saveLast(this.cfg, this.presets);
+    this.sync();
+  }
+
+  private deletePreset(): void {
+    const sel = this.presetRow.el.querySelector('select') as HTMLSelectElement, p = this.presets.find((x) => x.id === sel.value);
+    if (!p || p.builtin) return;
+    this.presets = this.presets.filter((x) => x !== p);
+    sel.querySelector(`option[value="${p.id}"]`)?.remove();
+    saveLast(this.cfg, this.presets);
+    this.sync();
   }
 
   /** One pane's picture at 100 percent, offset by the shared pan (kept inside the picture's own overhang). */
@@ -221,37 +289,56 @@ export class SaveForWebDialog extends Dialog {
 
   /** Encodes a canvas with the given settings. PNG-8 is a true indexed PNG (io/png8.ts); the File Info chosen under
    *  Metadata is written as XMP into PNG, JPEG and WebP (GIF and a palette-free path carry none). */
-  private async encode(c: HTMLCanvasElement, cfg: Cfg = this.cfg, real = false): Promise<Blob | null> {
+  private async encode(c: HTMLCanvasElement, cfg: Cfg = this.cfg, real = false, slot = -1): Promise<Blob | null> {
     let blob: Blob | null;
+    const onMatte = (): HTMLCanvasElement => {
+      const m = document.createElement('canvas'), mc = m.getContext('2d');
+      m.width = c.width; m.height = c.height;
+      if (mc) { mc.fillStyle = cfg.matte; mc.fillRect(0, 0, m.width, m.height); mc.drawImage(c, 0, 0); }
+      return m;
+    };
+    if (slot >= 0) this.used[slot] = null;
     switch (cfg.fmt) {
       case 'wbmp': {
         // The preview is the same 1-bit picture as a PNG (browsers cannot show WBMP); the saved file is the engine's.
         const png = await toBlob(real ? c : wbmpPreview(c), 'image/png');
         return real && png ? api.encode(png, 'wbmp') : png;
       }
-      case 'jpeg': blob = await toBlob(c, 'image/jpeg', cfg.quality / 100); break;
-      case 'webp': blob = await toBlob(c, 'image/webp', cfg.quality / 100); break;
-      case 'gif': {
-        const ctx = c.getContext('2d');
-        if (!ctx) return null;
-        const data = ctx.getImageData(0, 0, c.width, c.height);
-        const bytes = encodeGif([{ data, delayMs: 0 }], c.width, c.height);
-        return new Blob([bytes as BlobPart], { type: 'image/gif' });
+      case 'jpeg': {
+        const flat = onMatte();
+        blob = null;
+        if (cfg.progressive) {
+          try { const png = await toBlob(flat, 'image/png'); blob = png ? await api.encode(png, 'jpeg', cfg.quality, 72, null, { progressive: true }) : null; } catch { blob = null; }
+        }
+        blob = blob ?? await toBlob(flat, 'image/jpeg', cfg.quality / 100);
+        break;
       }
+      case 'webp': blob = await toBlob(c, 'image/webp', cfg.quality / 100); break;
+      case 'gif':
       case 'png8': {
         const ctx = c.getContext('2d');
         if (!ctx) return null;
         const d = ctx.getImageData(0, 0, c.width, c.height);
-        blob = new Blob([(await encodePng8({ data: d.data, width: c.width, height: c.height }, { colors: cfg.colors, dither: cfg.dither, transparency: cfg.transparency })) as BlobPart], { type: 'image/png' });
+        const r = reduceColours(d.data, c.width, c.height, { palette: cfg.palette, colors: cfg.colors, dither: cfg.dither, amount: cfg.ditherAmount, transparency: cfg.transparency, matte: matteOf(cfg.matte) });
+        if (slot >= 0) this.used[slot] = r.used;
+        if (cfg.fmt === 'gif') {
+          const bytes = encodeGif([{ data: new ImageData(r.data as Uint8ClampedArray<ArrayBuffer>, c.width, c.height), delayMs: 0 }], c.width, c.height);
+          return new Blob([bytes as BlobPart], { type: 'image/gif' });
+        }
+        blob = new Blob([(await encodePng8({ data: r.data, width: c.width, height: c.height }, { colors: cfg.colors, dither: 'none', transparency: cfg.transparency, matte: matteOf(cfg.matte) })) as BlobPart], { type: 'image/png' });
         break;
       }
       default: {
-        if (cfg.transparency) { blob = await toBlob(c, 'image/png'); break; }
-        const m = document.createElement('canvas'), mc = m.getContext('2d');
-        m.width = c.width; m.height = c.height;
-        if (mc) { mc.fillStyle = '#ffffff'; mc.fillRect(0, 0, m.width, m.height); mc.drawImage(c, 0, 0); }
-        blob = await toBlob(m, 'image/png');
+        const src = cfg.transparency ? c : onMatte();
+        blob = await toBlob(src, 'image/png');
+        if (blob && cfg.interlace && real) {
+          try { blob = await api.encode(blob, 'png', 90, 72, null, { interlace: true }); } catch { /* the plain PNG stands */ }
+        }
       }
+    }
+    if (blob && cfg.embedProfile && (cfg.fmt === 'jpeg' || cfg.fmt === 'png24' || cfg.fmt === 'png8')) {
+      const icc = iccProfile('srgb');
+      blob = cfg.fmt === 'jpeg' ? await embedJpeg(blob, icc) : await embedPng(blob, icc, 'sRGB');
     }
     const meta = sfwMeta(this.metaMode, this.engine.current?.doc.meta);
     return blob && metaWritable(meta) ? withXmp(blob, cfg.fmt === 'jpeg' ? 'jpg' : cfg.fmt === 'png24' || cfg.fmt === 'png8' ? 'png' : cfg.fmt, meta) : blob;
@@ -260,7 +347,7 @@ export class SaveForWebDialog extends Dialog {
   private caption(i: number, cfg: Cfg, blob: Blob): void {
     const secs = (blob.size * 8) / (this.kbps * 1000), time = secs < 1 ? 'under 1 sec' : `${secs < 10 ? secs.toFixed(1) : Math.round(secs)} sec`;
     setText(this.caps[i]!, `${LABEL[cfg.fmt]} · ${size(blob.size)} · ${time} at ${this.kbps} Kbps`);
-    setText(this.details[i]!, cfg.fmt === 'jpeg' || cfg.fmt === 'webp' ? `Quality ${cfg.quality}` : cfg.fmt === 'png24' ? 'Lossless' : cfg.fmt === 'wbmp' ? '1 bit, black and white' : `${cfg.colors} colors, ${cfg.dither === 'none' ? 'no dither' : 'diffusion dither'}${cfg.transparency ? ', transparency' : ''}`);
+    setText(this.details[i]!, cfg.fmt === 'jpeg' || cfg.fmt === 'webp' ? `Quality ${cfg.quality}` : cfg.fmt === 'png24' ? 'Lossless' : cfg.fmt === 'wbmp' ? '1 bit, black and white' : `${this.used[i] ?? cfg.colors} of ${cfg.colors} colors used, ${PALETTES.find(([k]) => k === cfg.palette)?.[1] ?? ''}, ${cfg.dither === 'none' ? 'no dither' : `${DITHERS.find(([k]) => k === cfg.dither)?.[1].toLowerCase()} dither ${cfg.ditherAmount}%`}${cfg.transparency ? ', transparency' : ''}`);
   }
 
   private async refresh(token: number): Promise<void> {
@@ -268,7 +355,7 @@ export class SaveForWebDialog extends Dialog {
     if (!flat || flat.width < 1 || flat.height < 1) return;
     const vs = this.variants(), want = this.panes.map((p, i) => !p.hidden && (i > 0 || this.view !== 'optimized'));
     const sized = this.sized(flat);
-    const blobs = await Promise.all(vs.map((v, k) => (want[k + 1] ? this.encode(sized, v) : Promise.resolve(null))));
+    const blobs = await Promise.all(vs.map((v, k) => (want[k + 1] ? this.encode(sized, v, false, k + 1) : Promise.resolve(null))));
     if (token !== this.token) return;
     const bmps = await Promise.all(blobs.map((b) => (b ? createImageBitmap(b) : Promise.resolve(null))));
     if (token !== this.token) { bmps.forEach((b) => b?.close()); return; }
@@ -295,7 +382,37 @@ export class SaveForWebDialog extends Dialog {
     setText(this.status, 'Saving...');
     try {
       const slices = p.doc.slices ?? [];
-      if (this.scope === 'slices' && slices.length) {
+      if (this.scope === 'html' && slices.length) {
+        const k = this.pct / 100, sc = (v: number): number => Math.round(v * k);
+        const cells: Array<HtmlCell & { sx: number; sy: number; sw: number; sh: number }> = [];
+        const place = (r: { x: number; y: number; w: number; h: number }, extra: { url?: string; alt?: string; name?: string }): void => {
+          const x = sc(r.x), y = sc(r.y), w = Math.max(1, sc(r.x + r.w) - x), h = Math.max(1, sc(r.y + r.h) - y);
+          cells.push({ x, y, w, h, file: `images/${base}_${String(cells.length + 1).padStart(2, '0')}.${ext}`, ...extra, sx: r.x, sy: r.y, sw: r.w, sh: r.h });
+        };
+        for (const s of readingOrder(slices)) place(s, { ...(s.url ? { url: s.url } : {}), ...(s.alt ? { alt: s.alt } : {}), ...(s.name ? { name: s.name } : {}) });
+        for (const a of autoSlices(p.doc)) place(a, {});
+        const files: { name: string; blob: Blob }[] = [];
+        for (const cell of cells) {
+          const c = document.createElement('canvas');
+          c.width = cell.w; c.height = cell.h;
+          const cx = c.getContext('2d');
+          if (cx) cx.imageSmoothingQuality = 'high';
+          cx?.drawImage(flat, cell.sx, cell.sy, cell.sw, cell.sh, 0, 0, c.width, c.height);
+          const b = await this.encode(c, this.cfg, true);
+          if (b) files.push({ name: cell.file, blob: b });
+        }
+        files.push({ name: `${base}.html`, blob: new Blob([slicesHtml(base, sc(p.doc.width), sc(p.doc.height), cells)], { type: 'text/html' }) });
+        await this.deliver(await zipFiles(files), `${base} web.zip`);
+      } else if (this.scope === 'active' && slices.some((s) => s.id === this.engine.activeSlice)) {
+        const s = slices.find((x) => x.id === this.engine.activeSlice)!, c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round((s.w * this.pct) / 100)); c.height = Math.max(1, Math.round((s.h * this.pct) / 100));
+        const cx = c.getContext('2d');
+        if (cx) cx.imageSmoothingQuality = 'high';
+        cx?.drawImage(flat, s.x, s.y, s.w, s.h, 0, 0, c.width, c.height);
+        const b = await this.encode(c, this.cfg, true);
+        if (!b) { setText(this.status, 'The slice could not be encoded.'); return; }
+        await this.deliver(b, `${base}_${s.name || String(readingOrder(slices).findIndex((x) => x.id === s.id) + 1).padStart(2, '0')}.${ext}`);
+      } else if (this.scope === 'slices' && slices.length) {
         const order = [...slices].sort((a, b) => a.y - b.y || a.x - b.x);
         const files: { name: string; blob: Blob }[] = [];
         for (let i = 0; i < order.length; i++) {

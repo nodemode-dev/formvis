@@ -20,8 +20,10 @@ export const proofTerms = (s: ProofSetup): { intent: Intent; bpc: boolean } => (
 /** The standard built-in proof presets (DEV_PLAN 31.7), beside Custom. The working CMYK ones simulate the working CMYK
  *  profile and show only some inks (a plate is a grey image of that ink's coverage, CMY leaves K out); the two colour
  *  blindness ones are Vienot 1999 (Brettel 1997 for the dichromat's confusion lines) in linear RGB. */
-export type ProofKind = 'monitor' | 'cmyk' | 'cyan' | 'magenta' | 'yellow' | 'black' | 'cmy' | 'protanopia' | 'deuteranopia';
-export const PROOF_KINDS: Array<[ProofKind, string]> = [['monitor', 'Monitor RGB'], ['cmyk', 'Working CMYK'], ['cyan', 'Working Cyan Plate'], ['magenta', 'Working Magenta Plate'], ['yellow', 'Working Yellow Plate'], ['black', 'Working Black Plate'], ['cmy', 'Working CMY Plates'], ['protanopia', 'Color Blindness - Protanopia-type'], ['deuteranopia', 'Color Blindness - Deuteranopia-type']];
+export type ProofKind = 'monitor' | 'macrgb' | 'internet' | 'cmyk' | 'cyan' | 'magenta' | 'yellow' | 'black' | 'cmy' | 'protanopia' | 'deuteranopia';
+/** The RGB presets that simulate a built-in device: Legacy Macintosh RGB is gamma 1.8, Internet Standard RGB is sRGB. */
+const DEVICE: Partial<Record<ProofKind, string>> = { macrgb: 'builtin:macrgb', internet: 'builtin:srgb' };
+export const PROOF_KINDS: Array<[ProofKind, string]> = [['monitor', 'Monitor RGB'], ['macrgb', 'Legacy Macintosh RGB (Gamma 1.8)'], ['internet', 'Internet Standard RGB (sRGB)'], ['cmyk', 'Working CMYK'], ['cyan', 'Working Cyan Plate'], ['magenta', 'Working Magenta Plate'], ['yellow', 'Working Yellow Plate'], ['black', 'Working Black Plate'], ['cmy', 'Working CMY Plates'], ['protanopia', 'Color Blindness - Protanopia-type'], ['deuteranopia', 'Color Blindness - Deuteranopia-type']];
 const PLATE: Partial<Record<ProofKind, number>> = { cyan: 0, magenta: 1, yellow: 2, black: 3 };
 /** Vienot, Brettel and Mollon 1999: the dichromat's colours as a 3x3 on linear sRGB (rows R, G, B). */
 const CVD: Partial<Record<ProofKind, number[]>> = {
@@ -86,6 +88,8 @@ export class ColourView {
   presets: ProofPreset[] = [];
   proof = false;
   gamut = false;
+  /** Gamut Warning's threshold: a colour the proof device moves by more delta E than this is flagged. */
+  gamutDelta = 3;
   /** 32-bit Preview Options: exposure in stops and display gamma for a 32-bit document's view. */
   exposure = 0;
   gamma = 1;
@@ -99,6 +103,7 @@ export class ColourView {
 
   constructor(private readonly engine: Engine) {
     try { this.setup = cleanSetup(JSON.parse(localStorage.getItem(KEY) ?? 'null')); } catch { /* none kept */ }
+    try { const d = Number(localStorage.getItem(`${KEY}.delta`)); if (d >= 0.1 && d <= 50) this.gamutDelta = d; } catch { /* default */ }
     try {
       const list = JSON.parse(localStorage.getItem(PRESETS) ?? '[]') as unknown;
       if (Array.isArray(list)) this.presets = list.flatMap((x: { id?: unknown; name?: unknown; setup?: unknown }) => { const setup = cleanSetup(x?.setup); return setup && typeof x.id === 'string' && typeof x.name === 'string' && x.name.trim() ? [{ id: x.id, name: x.name.trim().slice(0, 60), setup }] : []; }).slice(0, 50);
@@ -122,6 +127,20 @@ export class ColourView {
     void this.refresh();
   }
 
+  /** Sets Gamut Warning's threshold in delta E (0.1 to 50) and redraws; kept for the next session. */
+  setGamutDelta(v: number): void {
+    this.gamutDelta = Math.max(0.1, Math.min(50, Number.isFinite(v) ? v : 3));
+    try { localStorage.setItem(`${KEY}.delta`, String(this.gamutDelta)); } catch { /* kept for this session */ }
+    void this.refresh();
+  }
+
+  /** What the view is proofing, for the badge on the canvas: the device or preset's name, or null when Proof Colors is off. */
+  proofLabel(): string | null {
+    if (!this.proof) return null;
+    if (this.preset) return PROOF_KINDS.find(([k]) => k === this.preset)?.[1] ?? null;
+    return this.setup?.name || null;
+  }
+
   saveSetup(s: ProofSetup): void { this.setup = s; try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* kept for this session */ } }
 
   savePresets(list: ProofPreset[]): void { this.presets = list; try { localStorage.setItem(PRESETS, JSON.stringify(list)); } catch { /* kept for this session */ } }
@@ -143,13 +162,18 @@ export class ColourView {
     return this.work;
   }
 
+  /** Called with the proof device's name (or null) whenever the view is refreshed: the status bar badge. */
+  onProof: ((label: string | null) => void) | null = null;
+
   async refresh(): Promise<void> {
+    this.onProof?.(this.engine.current ? this.proofLabel() : null);
     // CMYK and Lab documents (1.57.8): the canvas shows their sRGB rendition, so that is the source proofed.
     const p = this.engine.current, rendered = p?.doc.mode === 'cmyk' || p?.doc.mode === 'lab', prof = rendered ? undefined : p?.doc.profile, kind = this.proof ? this.preset : null;
     const plate = kind === 'cyan' || kind === 'magenta' || kind === 'yellow' || kind === 'black' || kind === 'cmy', cvd = kind === 'protanopia' || kind === 'deuteranopia';
-    const s = kind === 'cmyk' ? ({ id: this.work?.id ?? '', name: 'Working CMYK', intent: 'relative', bpc: true } as ProofSetup) : kind ? null : this.setup, proofing = this.proof && (!!s || !!kind);
+    const device = kind ? DEVICE[kind] : undefined;
+    const s = kind === 'cmyk' ? ({ id: this.work?.id ?? '', name: 'Working CMYK', intent: 'relative', bpc: true } as ProofSetup) : device ? ({ id: device, name: PROOF_KINDS.find(([k]) => k === kind)?.[1] ?? '', intent: 'relative', bpc: true } as ProofSetup) : kind ? null : this.setup, proofing = this.proof && (!!s || !!kind);
     const c = loadPrefs().colour, monitor = c.useDisplay && this.display?.icc && !this.display.managed ? this.display.icc : null, terms = proofing && s ? proofTerms(s) : null;
-    const key = p ? `${prof ? `${prof.icc.length}:${prof.icc.slice(-64)}` : 'srgb'}|${proofing && s && terms ? `${s.id}:${terms.intent}:${terms.bpc}` : ''}|${kind ?? ''}:${c.cmyk}|${proofing && this.gamut}|${monitor ? `${monitor.length}:${monitor.slice(-64)}:${c.intent}:${c.bpc}` : ''}` : '';
+    const key = p ? `${prof ? `${prof.icc.length}:${prof.icc.slice(-64)}` : 'srgb'}|${proofing && s && terms ? `${s.id}:${terms.intent}:${terms.bpc}` : ''}|${kind ?? ''}:${c.cmyk}|${proofing && this.gamut ? this.gamutDelta : false}|${monitor ? `${monitor.length}:${monitor.slice(-64)}:${c.intent}:${c.bpc}` : ''}` : '';
     const pv = p?.doc.depth === 32 && (this.exposure !== 0 || this.gamma !== 1), vkey = pv ? `${key}|p${this.exposure}:${this.gamma}` : key, raw = kind === 'monitor';
     if (vkey === this.key) return;
     this.key = vkey;
@@ -164,7 +188,7 @@ export class ColourView {
       if (plate && work) lut = plateLut(await api.rgbCmykLut({ id: work.id }, prof ? { icc: prof.icc } : null), kind);
       else if (raw || (pv && !prof && !proofing && !monitor)) lut = lutOf(65, (r, g, b) => [r, g, b]);
       else {
-        lut = await api.colourLut({ source: prof ? { icc: prof.icc } : null, dest: monitor ? { icc: monitor } : null, proof: proofId ? { id: proofId } : null, intent: c.intent, proofIntent: terms?.intent ?? 'relative', bpc: terms?.bpc ?? c.bpc, gamut: proofing && this.gamut && !cvd });
+        lut = await api.colourLut({ source: prof ? { icc: prof.icc } : null, dest: monitor ? { icc: monitor } : null, proof: proofId ? { id: proofId } : null, intent: c.intent, proofIntent: terms?.intent ?? 'relative', bpc: terms?.bpc ?? c.bpc, gamut: proofing && this.gamut && !cvd, gamutDelta: this.gamutDelta });
         if (cvd) lut = colourBlindLut(lut, kind);
       }
       if (pv) lut = previewLut(lut, this.exposure, this.gamma);

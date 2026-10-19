@@ -124,7 +124,7 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
     else if (ch?.mode === 'rgb') { const name = `${l.id}.deep16`; files.push({ name, blob: new Blob([deepToU16(ch.data).buffer as ArrayBuffer]) }); r.deepFile = name; r.deepWidth = ch.width; r.deepHeight = ch.height; }
     else if (ch?.mode === 'cmyk') { const name = `${l.id}.cmyk32`; files.push({ name, blob: new Blob([new Float32Array(ch.data).buffer as ArrayBuffer]) }); r.inkFile = name; r.inkWidth = ch.width; r.inkHeight = ch.height; }
     else if (ch?.mode === 'lab') { const name = `${l.id}.lab32`; files.push({ name, blob: new Blob([new Float32Array(ch.data).buffer as ArrayBuffer]) }); r.inkFile = name; r.inkWidth = ch.width; r.inkHeight = ch.height; }
-    if (l.vector) r.vector = { fill: l.vector.fill, stroke: l.vector.stroke ?? null, origin: l.vector.origin, subpaths: pathData(l.vector.path)?.subpaths ?? [] };
+    if (l.vector) r.vector = { fill: l.vector.fill, stroke: l.vector.stroke ?? null, ...(l.vector.gradient ? { gradient: l.vector.gradient } : {}), origin: l.vector.origin, subpaths: pathData(l.vector.path)?.subpaths ?? [] };
     if (l.fillContent && l.raster) r.fillContent = structuredClone(l.fillContent);
     if (l.relight && l.raster) r.relight = structuredClone(l.relight);
     if (l.vectorMask) r.vectorMask = { enabled: l.vectorMask.enabled, linked: l.vectorMask.linked, inverted: l.vectorMask.inverted, subpaths: pathData(l.vectorMask.path)?.subpaths ?? [] };
@@ -266,9 +266,17 @@ function generationFrom(raw: unknown): GenerationInfo | null {
 function vectorFrom(raw: unknown): Layer['vector'] {
   if (!raw || typeof raw !== 'object') return null;
   const o = obj(raw), path = pathFrom(o), origin = obj(o.origin), fill = colorFrom(o.fill), s = obj(o.stroke), color = colorFrom(s.color);
-  const stroke = color && finite(s.width) && s.width > 0 ? { color, width: Math.min(1000, s.width) } : null;
+  const pick = <T extends string>(v: unknown, set: readonly T[]): T | undefined => set.find((x) => x === v);
+  const stroke = color && finite(s.width) && s.width > 0 ? {
+    color, width: Math.min(1000, s.width), dash: pick(s.dash, ['solid', 'dashed', 'dotted'] as const), align: pick(s.align, ['inside', 'center', 'outside'] as const),
+    cap: pick(s.cap, ['butt', 'round', 'square'] as const), join: pick(s.join, ['miter', 'round', 'bevel'] as const), miter: finite(s.miter) ? Math.max(1, Math.min(10, s.miter)) : undefined,
+  } : null;
+  if (stroke) for (const k of ['dash', 'align', 'cap', 'join', 'miter'] as const) if (stroke[k] === undefined) delete stroke[k];
+  const gr = obj(o.gradient), gtype = pick(gr.type, ['linear', 'radial', 'angle'] as const);
+  const stops = Array.isArray(gr.stops) ? gr.stops.slice(0, 32).flatMap((raw) => { const q = obj(raw), c = colorFrom(q.color); return c && finite(q.at) ? [{ at: Math.max(0, Math.min(1, q.at)), color: c, ...(finite(q.alpha) ? { alpha: Math.max(0, Math.min(1, q.alpha)) } : {}) }] : []; }) : [];
+  const gradient = gtype && stops.length >= 2 && fill ? { type: gtype, angle: finite(gr.angle) ? gr.angle : 0, stops } : null;
   if (!path || !finite(origin.x) || !finite(origin.y) || (!fill && !stroke)) return null;
-  return { path, fill, stroke, origin: { x: origin.x, y: origin.y } };
+  return { path, fill, stroke, ...(gradient ? { gradient } : {}), origin: { x: origin.x, y: origin.y } };
 }
 
 export async function deserialize(manifest: Json, fetchImage: (name: string) => Promise<Blob>, read: BandReader | null = null): Promise<{ doc: Doc; activeId: ID | null; paths: PathSet | null; timeline: Timeline | null }> {

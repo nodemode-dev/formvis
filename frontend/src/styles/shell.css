@@ -286,6 +286,7 @@ body { font-size: var(--fs-12); line-height: 1.35; }
 .cv-st-engine { min-width: 150px; white-space: nowrap; }
 .cv-st-gpu { min-width: 84px; }
 .cv-st-mem { min-width: 140px; }
+.cv-st-proof { width: 170px; flex: none; overflow: hidden; text-overflow: ellipsis; color: var(--accent-color); }
 .cv-st-hint { flex: 1 1 0; min-width: 0; text-align: right; overflow: hidden; text-overflow: ellipsis; }
 
 /* ── Phase 21, step 1b: the tool column as the target's (UI_SPEC.md section 5, measured from s20): lavender glows

@@ -49,6 +49,7 @@ export class ColorSettingsDialog extends Dialog {
   private readonly bpcRow: Row<boolean>;
   private readonly ditherRow: Row<boolean>;
   private readonly displayRow: Row<boolean>;
+  private readonly exrRow: Row<boolean>;
   private readonly displayNote = el('<p class="cv-note"></p>');
   private readonly tac = readout('Total ink limit');
   private readonly black = readout('Black ink limit');
@@ -75,6 +76,7 @@ export class ColorSettingsDialog extends Dialog {
     this.bpcRow = checkRow('Use Black Point Compensation', (v) => set({ bpc: v }));
     this.ditherRow = checkRow('Use Dither (8-bit/channel)', (v) => set({ dither: v }));
     this.displayRow = checkRow('Draw the canvas through the monitor profile', (v) => set({ useDisplay: v }));
+    this.exrRow = checkRow('Open OpenEXR files as ACEScg', (v) => set({ exrAcescg: v }));
     const save = el<HTMLButtonElement>('<button class="cv-btn" type="button">Save Preset</button>');
     this.deleteBtn = el<HTMLButtonElement>('<button class="cv-btn" type="button">Delete Preset</button>');
     save.addEventListener('click', () => this.savePreset());
@@ -82,7 +84,7 @@ export class ColorSettingsDialog extends Dialog {
     const manage = el('<div class="cv-field"><span></span><div class="cv-row-actions"></div></div>');
     (manage.lastElementChild as HTMLElement).append(this.nameInput, save, this.deleteBtn);
     this.body.append(this.presetRow.el, heading('Working Spaces'), this.rgbRow.el, this.cmykRow.el, this.grayRow.el,
-      heading('Color Management Policies'), this.policyRows.rgb.el, this.policyRows.cmyk.el, this.policyRows.gray.el, this.askMismatch.el, this.askMissing.el,
+      heading('Color Management Policies'), this.policyRows.rgb.el, this.policyRows.cmyk.el, this.policyRows.gray.el, this.askMismatch.el, this.askMissing.el, this.exrRow.el,
       heading('Conversion Options'), this.engineRow.el, this.intentRow.el, this.bpcRow.el, this.ditherRow.el,
       heading('Display'), this.displayRow.el, this.displayNote,
       heading('CMYK Profile'), this.tac.el, this.black.el, this.generation.el, this.doc, manage, this.note);
@@ -141,6 +143,7 @@ export class ColorSettingsDialog extends Dialog {
     this.engineRow.set('lcms'); this.intentRow.set(s.intent); this.bpcRow.set(s.bpc); this.ditherRow.set(s.dither);
     const monitor = this.view()?.display ?? null;
     this.displayRow.set(s.useDisplay);
+    this.exrRow.set(s.exrAcescg);
     for (const i of this.displayRow.el.querySelectorAll('input')) i.disabled = !monitor?.icc;
     setText(this.displayNote, displayLine(monitor, s.useDisplay));
     this.deleteBtn.disabled = !this.saved.some((x) => x.id === this.presetId);

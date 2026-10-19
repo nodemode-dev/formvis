@@ -7,7 +7,9 @@ import { IMAGE_ACCEPT, PROJECT_ACCEPT } from '../io/images';
 import { PRESET_ACCEPT } from './panels/preset-manager-dialog';
 import { VERSION } from '../version';
 import { comboOf, formatKeys, type Commands } from './commands';
-import { LIMITS } from '../engine/types';
+import { LIMITS, type RGB } from '../engine/types';
+import type { BitmapMethod, DitherKind, ForcedKind, HalftoneShape, PaletteKind } from '../engine/quantize';
+import { parseAct } from './panels/color-table-dialog';
 import { Dialog, confirmAction } from './dialogs';
 import { el, patchList, q, setClass, setDisabled, setHidden, setText, setValue } from './dom';
 import { languages, onLanguage, setLanguage, t, type Lang } from './i18n';
@@ -959,14 +961,25 @@ export class UpdateDialog extends Dialog {
 
 /** Image > Mode > Bitmap... and Indexed Color... (1.50.2): the choices for the conversion. */
 export class ModeDialog extends Dialog {
-  private readonly method = el<HTMLSelectElement>('<select class="cv-input" aria-label="Method"><option value="threshold">50% Threshold</option><option value="dither">Diffusion Dither</option></select>');
+  private readonly method = el<HTMLSelectElement>('<select class="cv-input" aria-label="Method"><option value="threshold">50% Threshold</option><option value="pattern">Pattern Dither</option><option value="diffusion">Diffusion Dither</option><option value="halftone">Halftone Screen</option></select>');
+  private readonly lpi = el<HTMLInputElement>('<input class="cv-input" type="number" min="1" max="999" value="53" aria-label="Frequency">');
+  private readonly angle = el<HTMLInputElement>('<input class="cv-input" type="number" min="-180" max="180" value="45" aria-label="Angle">');
+  private readonly shape = el<HTMLSelectElement>('<select class="cv-input" aria-label="Shape"><option value="round">Round</option><option value="ellipse">Ellipse</option><option value="line">Line</option><option value="square">Square</option><option value="cross">Cross</option><option value="diamond">Diamond</option></select>');
   private readonly colors = el<HTMLInputElement>('<input class="cv-input" type="number" min="2" max="256" value="256" aria-label="Colors">');
-  private readonly dither = el<HTMLInputElement>('<input type="checkbox" aria-label="Dither">');
+  private readonly palette = el<HTMLSelectElement>('<select class="cv-input" aria-label="Palette"><option value="adaptive">Local (Adaptive)</option><option value="exact">Exact</option><option value="perceptual">Local (Perceptual)</option><option value="selective">Local (Selective)</option><option value="uniform">Uniform</option><option value="web">Web</option><option value="mac">System (Mac OS)</option><option value="windows">System (Windows)</option><option value="custom">Custom (.act file)</option></select>');
+  private readonly actFile = el<HTMLInputElement>('<input class="cv-input" type="file" accept=".act" aria-label="Palette file">');
+  private readonly forced = el<HTMLSelectElement>('<select class="cv-input" aria-label="Forced"><option value="none">None</option><option value="bw">Black and White</option><option value="primaries">Primaries</option><option value="web">Web</option></select>');
+  private readonly transparency = el<HTMLInputElement>('<input type="checkbox" aria-label="Transparency" checked>');
+  private readonly matte = el<HTMLInputElement>('<input type="color" value="#ffffff" aria-label="Matte">');
+  private readonly dither = el<HTMLSelectElement>('<select class="cv-input" aria-label="Dither"><option value="none">None</option><option value="diffusion">Diffusion</option><option value="pattern">Pattern</option><option value="noise">Noise</option></select>');
+  private readonly amount = el<HTMLInputElement>('<input class="cv-input" type="number" min="0" max="100" value="75" aria-label="Amount">');
+  private custom: RGB[] | null = null;
   private readonly profile = el<HTMLSelectElement>('<select class="cv-input" aria-label="Profile"></select>');
   private readonly intent = el<HTMLSelectElement>('<select class="cv-input" aria-label="Intent"><option value="perceptual">Perceptual</option><option value="relative" selected>Relative Colorimetric</option><option value="saturation">Saturation</option><option value="absolute">Absolute Colorimetric</option></select>');
   private readonly bpc = el<HTMLInputElement>('<input type="checkbox" aria-label="Use Black Point Compensation" checked>');
   private readonly note = el('<p class="cv-note" role="status"></p>');
-  private kind: 'bitmap' | 'indexed' | 'cmyk' = 'bitmap';
+  private readonly gray = el<HTMLSelectElement>('<select class="cv-input" aria-label="Grayscale from"><option value="luma">Luminosity (red 30, green 59, blue 11 percent)</option><option value="rec709">Rec. 709 luminance</option><option value="average">Average of the channels</option><option value="red">Red channel</option><option value="green">Green channel</option><option value="blue">Blue channel</option></select>');
+  private kind: 'bitmap' | 'indexed' | 'cmyk' | 'grayscale' = 'bitmap';
   /** Image > Mode > CMYK Color (1.54.0): the app converts through the engine with the chosen profile. */
   onCmyk: ((profileId: string, profileName: string, intent: string, bpc: boolean) => Promise<void>) | null = null;
 
@@ -981,16 +994,43 @@ export class ModeDialog extends Dialog {
         void this.onCmyk?.(this.profile.value, name, this.intent.value, this.bpc.checked);
         return;
       }
-      const ok = this.kind === 'bitmap'
-        ? this.engine.convertMode('bitmap', { dither: this.method.value === 'dither' })
-        : this.engine.convertMode('indexed', { colors: Math.max(2, Math.min(256, Math.round(Number(this.colors.value) || 256))), dither: this.dither.checked });
+      if (this.kind === 'grayscale') {
+        const w = { luma: [0.299, 0.587, 0.114], rec709: [0.2126, 0.7152, 0.0722], average: [1 / 3, 1 / 3, 1 / 3], red: [1, 0, 0], green: [0, 1, 0], blue: [0, 0, 1] }[this.gray.value] as [number, number, number];
+        if (this.engine.convertMode('grayscale', { grayWeights: w }) || !this.engine.current) this.close();
+        return;
+      }
+      if (this.kind === 'indexed' && this.palette.value === 'custom' && !this.custom) { setText(this.note, 'Choose a .act colour table file for the Custom palette.'); return; }
+      const num = (e: HTMLInputElement, lo: number, hi: number, def: number): number => Math.max(lo, Math.min(hi, Number.isFinite(parseFloat(e.value)) ? parseFloat(e.value) : def));
+      const hex = this.matte.value, ok = this.kind === 'bitmap'
+        ? this.engine.convertMode('bitmap', { method: this.method.value as BitmapMethod, halftone: { lpi: num(this.lpi, 1, 999, 53), angle: num(this.angle, -180, 180, 45), shape: this.shape.value as HalftoneShape } })
+        : this.engine.convertMode('indexed', { colors: Math.round(num(this.colors, 2, 256, 256)), indexed: {
+          palette: this.palette.value as PaletteKind, custom: this.custom ?? undefined, forced: this.forced.value as ForcedKind, transparency: this.transparency.checked,
+          matte: { r: parseInt(hex.slice(1, 3), 16), g: parseInt(hex.slice(3, 5), 16), b: parseInt(hex.slice(5, 7), 16) }, dither: this.dither.value as DitherKind, amount: num(this.amount, 0, 100, 75),
+        } });
       if (ok || !this.engine.current) this.close();
     });
+    this.actFile.addEventListener('change', () => {
+      const f = this.actFile.files?.[0];
+      if (!f) return;
+      void f.arrayBuffer().then((b) => { this.custom = parseAct(b); setText(this.note, this.custom ? `${this.custom.length} colors loaded.` : 'Not a colour table (.act) file.'); });
+    });
+    const screen = (): void => { const halftone = this.kind === 'bitmap' && this.method.value === 'halftone'; for (const r of this.screenRows) setHidden(r, !halftone); };
+    this.method.addEventListener('change', screen);
+    this.palette.addEventListener('change', () => setHidden(this.actRow, this.palette.value !== 'custom'));
   }
 
-  show(kind: 'bitmap' | 'indexed' | 'cmyk'): void {
+  private readonly screenRows: HTMLElement[] = [rowOf('Frequency (lines per inch)', this.lpi), rowOf('Angle (degrees)', this.angle), rowOf('Shape', this.shape)];
+  private readonly actRow = rowOf('Colour table', this.actFile);
+
+  show(kind: 'bitmap' | 'indexed' | 'cmyk' | 'grayscale'): void {
     this.kind = kind;
-    this.setTitle(kind === 'bitmap' ? 'Bitmap' : kind === 'indexed' ? 'Indexed Color' : 'CMYK Color');
+    this.setTitle(kind === 'bitmap' ? 'Bitmap' : kind === 'indexed' ? 'Indexed Color' : kind === 'grayscale' ? 'Grayscale' : 'CMYK Color');
+    if (kind === 'grayscale') {
+      setText(this.note, '');
+      this.body.replaceChildren(el('<p class="cv-dialog-note">Each layer is made grey from the weights of its red, green and blue channels. A deeper or CMYK document uses Image > Mode > Grayscale.</p>'), rowOf('Grayscale from', this.gray), this.note);
+      this.open();
+      return;
+    }
     if (kind === 'cmyk') {
       setText(this.note, '');
       this.body.replaceChildren(el('<p class="cv-dialog-note">Every pixel layer is converted to ink through the profile, exactly, by the engine; tools that do not know ink yet wait until Mode > RGB Color.</p>'), rowOf('Profile', this.profile), rowOf('Intent', this.intent), rowOf('Use Black Point Compensation', this.bpc), this.note);
@@ -998,8 +1038,12 @@ export class ModeDialog extends Dialog {
       void this.listProfiles();
       return;
     }
-    this.body.replaceChildren(el(`<p class="cv-dialog-note">${kind === 'bitmap' ? 'The image is flattened, then made black and white.' : 'The image is flattened, then made of a palette of at most 256 colours: every colour when there are that few, else the ones that best represent it.'}</p>`),
-      kind === 'bitmap' ? rowOf('Method', this.method) : rowOf('Colors', this.colors), ...(kind === 'indexed' ? [rowOf('Dither', this.dither)] : []));
+    setText(this.note, '');
+    this.body.replaceChildren(el(`<p class="cv-dialog-note">${kind === 'bitmap' ? 'The image is flattened, then made black and white. A halftone screen sets its dots by the document resolution.' : 'The image is flattened, then made of a palette of at most 256 colours: every colour when there are that few, else the ones that best represent it.'}</p>`),
+      ...(kind === 'bitmap' ? [rowOf('Method', this.method), ...this.screenRows]
+        : [rowOf('Palette', this.palette), this.actRow, rowOf('Colors', this.colors), rowOf('Forced colours', this.forced), rowOf('Transparency', this.transparency), rowOf('Matte', this.matte), rowOf('Dither', this.dither), rowOf('Amount (percent)', this.amount)]), this.note);
+    for (const r of this.screenRows) setHidden(r, this.method.value !== 'halftone');
+    setHidden(this.actRow, this.palette.value !== 'custom');
     this.open();
   }
 

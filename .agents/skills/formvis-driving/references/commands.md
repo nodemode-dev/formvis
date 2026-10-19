@@ -1,23 +1,23 @@
 # formvis commands
 
-Generated from the window's command catalogue (1289 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1325 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
 - Edit: 74
-- File: 84
+- File: 88
 - Filter: 86
 - Generate: 6
 - Help: 3
-- Image: 97
-- Layer: 241
+- Image: 99
+- Layer: 243
 - Paint: 1
-- Paths: 10
+- Paths: 11
 - Select: 42
-- Tool options: 359
+- Tool options: 380
 - Tools: 53
 - Type: 49
-- View: 87
+- View: 93
 - Window: 97
 
 ## Edit
@@ -67,7 +67,7 @@ Generated from the window's command catalogue (1289 commands) by `./formvis agen
 | `perspective-warp` | Perspective Warp |  | Starts Perspective Warp. (changes the picture) |
 | `pick-screen-colour` | Pick Colour from Screen |  | Picks the colour of any pixel on the screen, outside the window too, as the foreground colour. |
 | `preset-manager` | Preset Manager... |  | Opens the Preset Manager to rename, delete, load and save brushes, swatches, gradients, patterns and custom shapes. (changes the picture) |
-| `puppet-warp` | Puppet Warp |  | Starts Puppet Warp with pins on the layer. (changes the picture) |
+| `puppet-warp` | Puppet Warp |  | Starts Puppet Warp with pins on the layer; mode (rigid, normal, distort), density (fewer, normal, more), expansion in pixels and showMesh set its options. (changes the picture) |
 | `purge-all` | All |  | Clears the clipboard and the history of every open document after asking. (changes the picture) |
 | `purge-clipboard` | Clipboard |  | Clears formvis's internal clipboard. (changes the picture) |
 | `purge-histories` | Histories |  | Clears the undo and redo history of every open document after asking, keeping their states and snapshots. (changes the picture) |
@@ -92,12 +92,12 @@ Generated from the window's command catalogue (1289 commands) by `./formvis agen
 | `transform-rotate` | Rotate |  | Starts a Rotate transform. (changes the picture) |
 | `transform-scale` | Scale |  | Starts a Scale transform. (changes the picture) |
 | `transform-skew` | Skew |  | Starts a Skew transform. (changes the picture) |
-| `transform-warp` | Warp |  | Starts a Warp transform on the layer. (changes the picture) |
+| `transform-warp` | Warp |  | Starts a Warp transform on the layer; style (arc, arch, bulge, flag, wave, fish, rise, fisheye, inflate, squeeze, twist and the others), bend, horizontal, vertical and orientation start it from a preset. (changes the picture) |
 | `undo` | Undo | Mod+Z | Steps back one history step. (changes the picture) |
 | `warp-remove-split` | Remove Warp Split |  | Removes the Warp grid row or column added last, never the border lines. (changes the picture) |
-| `warp-split-cross` | Split Warp Crosswise |  | Adds a row and a column to the Warp grid in the middle of its largest cell. (changes the picture) |
-| `warp-split-h` | Split Warp Horizontally |  | Adds a row to the Warp grid in the middle of its largest cell, leaving the picture unchanged. (changes the picture) |
-| `warp-split-v` | Split Warp Vertically |  | Adds a column to the Warp grid in the middle of its largest cell, leaving the picture unchanged. (changes the picture) |
+| `warp-split-cross` | Split Warp Crosswise |  | Adds a row and a column to the Warp grid at the document point x, y (else where the pointer last was, else the middle of the largest cell). (changes the picture) |
+| `warp-split-h` | Split Warp Horizontally |  | Adds a row to the Warp grid at the document point x, y (else where the pointer last was, else the middle of the largest cell), leaving the picture unchanged. (changes the picture) |
+| `warp-split-v` | Split Warp Vertically |  | Adds a column to the Warp grid at the document point x, y (else where the pointer last was, else the middle of the largest cell), leaving the picture unchanged. (changes the picture) |
 
 ## File
 
@@ -125,6 +125,9 @@ Generated from the window's command catalogue (1289 commands) by `./formvis agen
 | `export-avif` | Export AVIF |  | Exports the flattened picture as AVIF. (asks first) |
 | `export-data-sets` | Data Sets as Files... |  | Applies each data set in turn and exports the flattened document as <doc>_<dataset>.png (or jpg, psd by the format param), all in one zip; the document ends as it started. (asks first) |
 | `export-exr` | OpenEXR... |  | Exports an OpenEXR file. (asks first) |
+| `export-exr-half` | OpenEXR Half Float... |  | Exports an OpenEXR file with 16-bit half float channels and ZIP compression. (asks first) |
+| `export-exr-none` | OpenEXR Uncompressed... |  | Exports an OpenEXR file with no compression. (asks first) |
+| `export-exr-piz` | OpenEXR PIZ... |  | Exports an OpenEXR file with PIZ compression, lossless and quick on grainy pictures. (asks first) |
 | `export-gif` | Export GIF... |  | Opens the GIF dialog and exports an animated GIF. (asks first) |
 | `export-hdr` | Radiance HDR... |  | Exports a Radiance HDR file. (asks first) |
 | `export-jpg` | Export JPEG... | Alt+Shift+Mod+S | Opens the JPEG quality dialog, then exports a JPEG. (asks first) |
@@ -135,6 +138,7 @@ Generated from the window's command catalogue (1289 commands) by `./formvis agen
 | `export-ora` | Export OpenRaster... |  | Exports an OpenRaster file that keeps layers. (asks first) |
 | `export-paths-ai` | Paths to AI File... |  | Writes the document paths to an .ai file. (asks first) |
 | `export-pdf` | Export PDF |  | Exports the picture as a PDF. (asks first) |
+| `export-pfm` | Float PFM... |  | Exports a colour float PFM file in linear light. (asks first) |
 | `export-png` | Export PNG | Shift+Mod+E | Exports the flattened picture as a PNG. (asks first) |
 | `export-preferences` | Export Preferences... |  | Opens Export Preferences: the Quick Export format, quality, prompt and recipe in PNG files, and the folder. |
 | `export-psb` | Export PSB (Large Document)... |  | Exports a large document (PSB). (asks first) |
@@ -307,11 +311,11 @@ Generated from the window's command catalogue (1289 commands) by `./formvis agen
 
 | Id | Name | Keys | Does |
 | --- | --- | --- | --- |
-| `adj-blackWhite` | Black & White... |  | Opens Black & White and applies it to the pixels of the active layer. (changes the picture) |
+| `adj-blackWhite` | Black & White... | Alt+Shift+Mod+B | Opens Black & White and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-brightnessContrast` | Brightness/Contrast... |  | Opens Brightness/Contrast and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-channelMixer` | Channel Mixer... |  | Opens Channel Mixer and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-clarity` | Clarity... |  | Opens Clarity and applies it to the pixels of the active layer. (changes the picture) |
-| `adj-colorBalance` | Color Balance... |  | Opens Color Balance and applies it to the pixels of the active layer. (changes the picture) |
+| `adj-colorBalance` | Color Balance... | Mod+B | Opens Color Balance and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-colorLookup` | Color Lookup... |  | Opens Color Lookup and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-curves` | Curves... | Mod+M | Opens Curves and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-dehaze` | Dehaze... |  | Opens Dehaze and applies it to the pixels of the active layer. (changes the picture) |
@@ -378,6 +382,7 @@ Generated from the window's command catalogue (1289 commands) by `./formvis agen
 | `mode-cmyk` | CMYK Color... |  | Opens the CMYK conversion. (changes the picture) |
 | `mode-duotone` | Duotone... |  | Opens Duotone options: one to four inks overprinted on a grayscale document. (changes the picture) |
 | `mode-grayscale` | Grayscale |  | Converts the document to grayscale. (changes the picture) |
+| `mode-grayscale-from` | Grayscale From Channels... |  | Opens the Grayscale conversion that picks how grey is made: luminosity, Rec. 709, the average, or one channel. (changes the picture) |
 | `mode-indexed` | Indexed Color... |  | Opens the Indexed Color conversion. (changes the picture) |
 | `mode-lab` | Lab Color |  | Converts the document to Lab colour. (changes the picture) |
 | `mode-multichannel` | Multichannel |  | Converts the document to Multichannel: grey spot channels with ink colours, shown overprinted on white. (changes the picture) |
@@ -391,6 +396,7 @@ Generated from the window's command catalogue (1289 commands) by `./formvis agen
 | `par-dvcpro-hd` | DVCPRO HD 1080 (1.5) |  | Sets the pixel aspect ratio to DVCPRO HD 1080 (1.5). (changes the picture) |
 | `par-hdv` | HDV 1080 (1.33) |  | Sets the pixel aspect ratio to HDV 1080 (1.33). (changes the picture) |
 | `par-square` | Square (1) |  | Sets the pixel aspect ratio to square (1). (changes the picture) |
+| `profile-info` | Profile Info... |  | Opens Profile Info, which shows the picture profile or a chosen profile file: name, colour space, device class, connection space, version and ink limit. |
 | `remove-bg` | Remove Background |  | Removes the background of the active layer with the neural model. (changes the picture) |
 | `remove-bg-lite` | Remove Background (Lightweight) |  | Removes the background with the lightweight model. (changes the picture) |
 | `replace-color` | Replace Color... |  | Opens Replace Color. (changes the picture) |
@@ -481,6 +487,7 @@ Generated from the window's command catalogue (1289 commands) by `./formvis agen
 | `layer-comp-previous` | Previous Layer Comp |  | Applies the previous layer comp, wrapping. (changes the picture) |
 | `layer-comp-update` | Update Layer Comp |  | Re-records the active layer comp from the layers now. (changes the picture) |
 | `layer-content-options` | Layer Content Options... |  | Opens the content options of a fill layer. (changes the picture) |
+| `layer-export-as` | Export As... |  | Opens Export As for each selected layer (the active one when none is selected) drawn alone, with format, quality, size, matte and a live preview and size estimate. (asks first) |
 | `layer-from-background` | Layer from Background... |  | Opens the dialog that turns the Background into a normal layer. (changes the picture) |
 | `layer-label-blue` | Blue |  | Labels the selected layers blue in the Layers panel. (changes the picture) |
 | `layer-label-gray` | Gray |  | Labels the selected layers gray in the Layers panel. (changes the picture) |
@@ -551,6 +558,7 @@ Generated from the window's command catalogue (1289 commands) by `./formvis agen
 | `new-layer` | New Layer |  | Adds an empty layer above the active one. (changes the picture) |
 | `new-layer-dialog` | Layer... | Shift+Mod+N | Opens the New Layer dialog with name, colour and mode. (changes the picture) |
 | `new-relight-layer` | Relight Layer... |  | Adds a Relight layer that lights what lies beneath it with virtual lights, on this computer. (changes the picture) |
+| `new-shape-layer` | Shape Layer |  | Adds a shape layer from a kind (rectangle, ellipse, triangle, polygon, star, line, arrow, heart), a box, fill and stroke colours, stroke width, type, alignment, caps and corners, corner radius, sides or star points, and an optional gradient fill with its angle and end colour. (changes the picture) |
 | `new-type-layer` | Type Layer |  | Adds a type layer from text, position, size, colour, orientation and an optional paragraph box; with no text it starts typing on the canvas. (changes the picture) |
 | `panorama-apply-view` | Apply View to Panorama |  | Projects the current panorama edit view back onto its source panorama as a new layer named Panorama edit, one undo step. (changes the picture) |
 | `panorama-view` | Spherical Panorama... |  | Opens the active document, taken as an equirectangular picture, as a sphere you turn by dragging, with yaw, pitch and field of view; Edit View makes the current view a new document. (changes the picture) |
@@ -702,7 +710,8 @@ Generated from the window's command catalogue (1289 commands) by `./formvis agen
 | `fill-path-dialog` | Fill Path... |  | Opens Fill Path. (changes the picture) |
 | `new-path` | New Path |  | Starts a new empty path. (changes the picture) |
 | `new-shape-path` | New Shape Layer from Path |  | Makes a shape layer from the current path. (changes the picture) |
-| `path-selection` | Make Selection from Path | Mod+Enter | Makes a selection from the current path. (changes the picture) |
+| `path-selection` | Make Selection from Path | Mod+Enter | Makes a selection from the current path, with an optional feather radius, anti-alias choice and operation (replace, add, subtract, intersect). (changes the picture) |
+| `path-selection-dialog` | Make Selection from Path... |  | Opens Make Selection from Path, with Feather Radius, Anti-aliased and the operation. (changes the picture) |
 | `selection-to-work-path` | Make Work Path from Selection |  | Traces the selection's outline into the Work Path in the Paths panel, simplified within a tolerance in pixels. (changes the picture) |
 | `stroke-path` | Stroke Path |  | Strokes the path with the current brush. (changes the picture) |
 | `stroke-path-dialog` | Stroke Path... |  | Opens Stroke Path. (changes the picture) |
@@ -999,15 +1008,26 @@ Generated from the window's command catalogue (1289 commands) by `./formvis agen
 | `tool.options.move.angle` | Move: Angle |  | Sets Angle for the Move tool. |
 | `tool.options.move.autoSelect` | Move: Auto-Select |  | Sets Auto-Select for the Move tool. |
 | `tool.options.move.autoSelectTarget` | Move: Auto-Select Target |  | Sets Auto-Select Target for the Move tool. |
+| `tool.options.move.bend` | Move: Bend |  | Sets Bend for the Move tool. |
+| `tool.options.move.expansion` | Move: Expansion |  | Sets Expansion for the Move tool. |
 | `tool.options.move.h` | Move: H |  | Sets H for the Move tool. |
+| `tool.options.move.horizontalDistortion` | Move: Horizontal distortion |  | Sets Horizontal distortion for the Move tool. |
 | `tool.options.move.keepProportions` | Move: Keep proportions |  | Sets Keep proportions for the Move tool. |
 | `tool.options.move.perspectiveWarp` | Move: Perspective Warp |  | Sets Perspective Warp for the Move tool. |
+| `tool.options.move.pinDepth` | Move: Pin depth |  | Sets Pin depth for the Move tool. |
+| `tool.options.move.pinRotation` | Move: Pin rotation |  | Sets Pin rotation for the Move tool. |
+| `tool.options.move.puppetDensity` | Move: Puppet density |  | Sets Puppet density for the Move tool. |
+| `tool.options.move.puppetMode` | Move: Puppet mode |  | Sets Puppet mode for the Move tool. |
 | `tool.options.move.sampling` | Move: Sampling |  | Sets Sampling for the Move tool. |
 | `tool.options.move.scale` | Move: Scale |  | Sets Scale for the Move tool. |
+| `tool.options.move.showMesh` | Move: Show mesh |  | Sets Show mesh for the Move tool. |
 | `tool.options.move.showTransformControls` | Move: Show Transform Controls |  | Sets Show Transform Controls for the Move tool. |
 | `tool.options.move.snap` | Move: Snap |  | Sets Snap for the Move tool. |
+| `tool.options.move.verticalDistortion` | Move: Vertical distortion |  | Sets Vertical distortion for the Move tool. |
 | `tool.options.move.w` | Move: W |  | Sets W for the Move tool. |
+| `tool.options.move.warpDirection` | Move: Warp direction |  | Sets Warp direction for the Move tool. |
 | `tool.options.move.warpGrid` | Move: Warp grid |  | Sets Warp grid for the Move tool. |
+| `tool.options.move.warpStyle` | Move: Warp style |  | Sets Warp style for the Move tool. |
 | `tool.options.move.x` | Move: X |  | Sets X for the Move tool. |
 | `tool.options.move.y` | Move: Y |  | Sets Y for the Move tool. |
 | `tool.options.objectSelect.antiAlias` | Object Selection: Anti-alias |  | Sets Anti-alias for the Object Selection tool. |
@@ -1072,12 +1092,17 @@ Generated from the window's command catalogue (1289 commands) by `./formvis agen
 | `tool.options.selectionBrush.symmetryX` | Selection Brush: Symmetry X |  | Sets Symmetry X for the Selection Brush tool. |
 | `tool.options.selectionBrush.symmetryY` | Selection Brush: Symmetry Y |  | Sets Symmetry Y for the Selection Brush tool. |
 | `tool.options.shape.align` | Shape: Align |  | Sets Align for the Shape tool. |
+| `tool.options.shape.caps` | Shape: Caps |  | Sets Caps for the Shape tool. |
 | `tool.options.shape.cornerRadius` | Shape: Corner radius |  | Sets Corner radius for the Shape tool. |
+| `tool.options.shape.corners` | Shape: Corners |  | Sets Corners for the Shape tool. |
 | `tool.options.shape.customShape` | Shape: Custom shape |  | Sets Custom shape for the Shape tool. |
 | `tool.options.shape.fill` | Shape: Fill |  | Sets Fill for the Shape tool. |
+| `tool.options.shape.gradient` | Shape: Gradient |  | Sets Gradient for the Shape tool. |
+| `tool.options.shape.gradientAngle` | Shape: Gradient angle |  | Sets Gradient angle for the Shape tool. |
 | `tool.options.shape.headLength` | Shape: Head length |  | Sets Head length for the Shape tool. |
 | `tool.options.shape.headWidth` | Shape: Head width |  | Sets Head width for the Shape tool. |
 | `tool.options.shape.indent` | Shape: Indent |  | Sets Indent for the Shape tool. |
+| `tool.options.shape.miterLimit` | Shape: Miter limit |  | Sets Miter limit for the Shape tool. |
 | `tool.options.shape.mode` | Shape: Mode |  | Sets Mode for the Shape tool. |
 | `tool.options.shape.points` | Shape: Points |  | Sets Points for the Shape tool. |
 | `tool.options.shape.shape` | Shape: Shape |  | Sets Shape for the Shape tool. |
@@ -1087,6 +1112,11 @@ Generated from the window's command catalogue (1289 commands) by `./formvis agen
 | `tool.options.shape.strokeType` | Shape: Stroke Type |  | Sets Stroke Type for the Shape tool. |
 | `tool.options.shape.weight` | Shape: Weight |  | Sets Weight for the Shape tool. |
 | `tool.options.shape.width` | Shape: Width |  | Sets Width for the Shape tool. |
+| `tool.options.slice.height` | Slice: Height |  | Sets Height for the Slice tool. |
+| `tool.options.slice.lockSlices` | Slice: Lock Slices |  | Sets Lock Slices for the Slice tool. |
+| `tool.options.slice.showAutoSlices` | Slice: Show Auto Slices |  | Sets Show Auto Slices for the Slice tool. |
+| `tool.options.slice.style` | Slice: Style |  | Sets Style for the Slice tool. |
+| `tool.options.slice.width` | Slice: Width |  | Sets Width for the Slice tool. |
 | `tool.options.smear.hardness` | Smear: Hardness |  | Sets Hardness for the Smear tool. |
 | `tool.options.smear.mode` | Smear: Mode |  | Sets Mode for the Smear tool. |
 | `tool.options.smear.pressureCurve` | Smear: Pressure curve |  | Sets Pressure curve for the Smear tool. |
@@ -1261,6 +1291,7 @@ Generated from the window's command catalogue (1289 commands) by `./formvis agen
 | `clear-slices` | Clear Slices |  | Removes every user slice. (changes the picture) |
 | `delete-slice` | Delete Slice |  | Removes the selected user slice and keeps the others. (changes the picture) |
 | `depth-map-show` | Show Depth Map |  | Shows the Depth Map layer alone on the canvas, or the picture again. |
+| `divide-slice` | Divide Slice... |  | Cuts the selected slice into equal slices across and down. (changes the picture) |
 | `fit` | Fit on Screen | Mod+0 | Zooms so the picture fits the window. |
 | `fit-artboard` | Fit Artboard on Screen |  | Zooms so the artboard holding the active layer fills the window. |
 | `fit-layers` | Fit Layer(s) on Screen |  | Zooms so the selected layers' content fills the window. |
@@ -1270,6 +1301,7 @@ Generated from the window's command catalogue (1289 commands) by `./formvis agen
 | `interface-rtl` | Right-to-Left Layout |  | Mirrors the window for right-to-left reading: the toolbar, the panels and the menu bar swap sides. The choice is kept. |
 | `layer-based-slice` | New Layer Based Slice |  | Adds a slice over the visible pixels of the active layer, tied to that layer. (changes the picture) |
 | `lock-guides` | Lock Guides | Alt+Mod+; | Locks or unlocks guides so they cannot be dragged. |
+| `lock-slices` | Lock Slices |  | Locks or unlocks the slices so the Slice and Slice Select tools cannot add, move, resize or delete them. |
 | `new-guide` | New Guide... |  | Opens the New Guide dialog to place a guide at a position. (changes the picture) |
 | `os-full-screen` | Full Screen | F11 | Puts the whole window into the operating system full screen, or leaves it. |
 | `par-correction` | Pixel Aspect Ratio Correction |  | Shows or hides the pixel aspect correction, which stretches the canvas and the Navigator preview by the pixel shape; tools and the pointer keep working in document pixels. |
@@ -1289,6 +1321,8 @@ Generated from the window's command catalogue (1289 commands) by `./formvis agen
 | `proof-preset-cmyk` | Working CMYK |  | Previews the picture as the working CMYK profile prints it and turns Proof Colors on. |
 | `proof-preset-cyan` | Working Cyan Plate |  | Shows the working CMYK cyan plate as a grey image and turns Proof Colors on. |
 | `proof-preset-deuteranopia` | Color Blindness - Deuteranopia-type |  | Simulates deuteranopia, green-blind colour vision, and turns Proof Colors on. |
+| `proof-preset-internet` | Internet Standard RGB (sRGB) |  | Previews the picture as a standard sRGB screen shows it and turns Proof Colors on. |
+| `proof-preset-macrgb` | Legacy Macintosh RGB (Gamma 1.8) |  | Previews the picture on an older Macintosh screen, gamma 1.8, and turns Proof Colors on. |
 | `proof-preset-magenta` | Working Magenta Plate |  | Shows the working CMYK magenta plate as a grey image and turns Proof Colors on. |
 | `proof-preset-monitor` | Monitor RGB |  | Shows the picture with its colour numbers sent to the screen as they are, without the profile conversion, and turns Proof Colors on. |
 | `proof-preset-protanopia` | Color Blindness - Protanopia-type |  | Simulates protanopia, red-blind colour vision, and turns Proof Colors on. |
@@ -1309,6 +1343,7 @@ Generated from the window's command catalogue (1289 commands) by `./formvis agen
 | `show-selection-edges` | Show Selection Edges |  | Shows or hides the marching outline of the selection. |
 | `show-smart-guides` | Smart Guides |  | Turns the alignment lines drawn while moving or transforming on or off; snapping itself is kept. |
 | `slice-options` | Slice Options... |  | Opens the active slice's name, URL, alt text and exact position and size for editing. (changes the picture) |
+| `slices-from-guides` | Slices From Guides |  | Replaces the user slices with one slice per cell between the guides. (changes the picture) |
 | `snap` | Snap | Shift+Mod+; | Turns snapping on or off for moving and transforming; the Snap To choices are kept. |
 | `snap-all` | Snap To All |  | Turns every Snap To target on, or all off when they are all on. |
 | `snap-bounds` | Snap To Document Bounds |  | Turns snapping to the document edges and centre on or off. |
@@ -1332,6 +1367,7 @@ Generated from the window's command catalogue (1289 commands) by `./formvis agen
 | `theme-studio` | Theme: Studio Dark |  | Switches the window to the Studio Dark theme; nothing in the window is rebuilt. |
 | `theme-terminal` | Theme: Terminal Green |  | Switches the window to the Terminal Green theme; nothing in the window is rebuilt. |
 | `theme-violet` | Theme: Violet Haze |  | Switches the window to the Violet Haze theme; nothing in the window is rebuilt. |
+| `toggle-auto-slices` | Toggle Auto Slices |  | Shows or hides the dashed auto slices that fill the space between user slices. |
 | `toggle-dock-panels` | Toggle Dock Panels | Shift+Tab | Shows or hides the panel column and the properties column, and keeps the toolbar and the options bar. |
 | `toggle-extras` | Toggle Extras |  | Turns every canvas helper on or off at once: notes, counts, selection edges and layer edges. |
 | `toggle-grid` | Toggle Grid | Mod+' | Shows or hides the grid. |

@@ -1,6 +1,22 @@
 import { cornerAt, type VectorPath } from './paths';
 import { customShapePath } from './custom-shapes';
-import type { Pt, Rect } from './types';
+import type { Ctx2D } from './surface';
+import type { Pt, Rect, ShapeGradient } from './types';
+
+/** A shape's gradient fill as a canvas gradient over the shape's bounds `b`: linear runs corner to corner along its angle,
+ *  radial reaches the bounds' corners from the centre, angle sweeps round the centre starting at its angle. */
+export function shapeGradient(c: Ctx2D, g: ShapeGradient, b: Rect): CanvasGradient {
+  const cx = b.x + b.w / 2, cy = b.y + b.h / 2, a = (g.angle * Math.PI) / 180;
+  let out: CanvasGradient;
+  if (g.type === 'radial') out = c.createRadialGradient(cx, cy, 0, cx, cy, Math.max(1, Math.hypot(b.w, b.h) / 2));
+  else if (g.type === 'angle') out = c.createConicGradient(a, cx, cy);
+  else {
+    const half = (Math.abs(Math.cos(a)) * b.w + Math.abs(Math.sin(a)) * b.h) / 2 || 1, dx = Math.cos(a) * half, dy = Math.sin(a) * half;
+    out = c.createLinearGradient(cx - dx, cy - dy, cx + dx, cy + dy);
+  }
+  for (const s of [...g.stops].sort((p, q) => p.at - q.at)) out.addColorStop(Math.min(1, Math.max(0, s.at)), `rgba(${s.color.r}, ${s.color.g}, ${s.color.b}, ${s.alpha ?? 1})`);
+  return out;
+}
 
 /** Parametric shapes for the Shape tool, ported from NodeMode's formvis studio (`studio/pixel/shapes.ts`, the owner's
  *  own build, MIT): regular polygons, stars, arrows and the parametric heart. There they fill a tile store; here

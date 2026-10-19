@@ -17,6 +17,7 @@ class LutRequest(BaseModel):
     bpc: bool = True
     proofIntent: str = "relative"
     gamut: bool = False
+    gamutDelta: float = 3.0
 
 
 @router.get("/profiles")
@@ -43,7 +44,7 @@ def describe_profile(file: UploadFile = File(...)) -> dict:
 @router.post("/lut")
 def build_lut(req: LutRequest) -> Response:
     try:
-        data = colour.lut(req.source, req.dest, req.proof, req.intent, req.bpc, req.proofIntent, req.gamut)
+        data = colour.lut(req.source, req.dest, req.proof, req.intent, req.bpc, req.proofIntent, req.gamut, req.gamutDelta)
     except colour.ColourError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     n_in, n_out, grid = colour.lut_shape(req.source, req.dest)

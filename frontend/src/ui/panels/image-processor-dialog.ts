@@ -11,6 +11,8 @@ export interface ImageProcessorOptions {
   jpeg: ImageProcessorFit & { on: boolean; quality: number; srgb: boolean };
   psd: ImageProcessorFit & { on: boolean };
   tiff: ImageProcessorFit & { on: boolean; lzw: boolean };
+  png: ImageProcessorFit & { on: boolean };
+  webp: ImageProcessorFit & { on: boolean; quality: number };
   action: Action | null;
   copyright: string;
 }
@@ -49,6 +51,15 @@ export class ImageProcessorDialog extends Dialog {
   private readonly tiffFit = box();
   private readonly tiffW = num('', 1, 30000);
   private readonly tiffH = num('', 1, 30000);
+  private readonly pngOn = box();
+  private readonly pngFit = box();
+  private readonly pngW = num('', 1, 30000);
+  private readonly pngH = num('', 1, 30000);
+  private readonly webpOn = box();
+  private readonly webpQuality = num('85', 1, 100);
+  private readonly webpFit = box();
+  private readonly webpW = num('', 1, 30000);
+  private readonly webpH = num('', 1, 30000);
   private readonly runAction = box();
   private readonly pick = el<HTMLSelectElement>('<select class="cv-input"></select>');
   private readonly copyright = el<HTMLInputElement>('<input class="cv-input" type="text" placeholder="Copyright Info" spellcheck="false">');
@@ -70,7 +81,7 @@ export class ImageProcessorDialog extends Dialog {
     this.subfolders.addEventListener('change', () => { if (this.inFolder.length) { this.files = folderImages(this.inFolder, this.subfolders.checked); this.sync(); } });
     this.field('Use Open Images', this.useOpen);
     this.body.appendChild(heading('2. Select the destination'));
-    this.body.appendChild(el('<p class="cv-note">Each type goes into its own folder (JPEG, PSD, TIFF). In the browser the results download as one zip; in the desktop app they are written to a named folder in the exports folder.</p>'));
+    this.body.appendChild(el('<p class="cv-note">Each type goes into its own folder (JPEG, PSD, TIFF, PNG, WebP). In the browser the results download as one zip; in the desktop app they are written to a named folder in the exports folder.</p>'));
     this.body.appendChild(heading('3. File type'));
     this.field('Save as JPEG', this.jpegOn);
     this.field('Quality (0 to 12)', this.jpegQuality);
@@ -87,6 +98,15 @@ export class ImageProcessorDialog extends Dialog {
     this.field('Resize to Fit', this.tiffFit);
     this.field('W (px)', this.tiffW);
     this.field('H (px)', this.tiffH);
+    this.field('Save as PNG', this.pngOn);
+    this.field('Resize to Fit', this.pngFit);
+    this.field('W (px)', this.pngW);
+    this.field('H (px)', this.pngH);
+    this.field('Save as WebP', this.webpOn);
+    this.field('Quality (1 to 100)', this.webpQuality);
+    this.field('Resize to Fit', this.webpFit);
+    this.field('W (px)', this.webpW);
+    this.field('H (px)', this.webpH);
     this.body.appendChild(heading('4. Preferences'));
     this.field('Run Action', this.runAction);
     this.field('Action', this.pick);
@@ -119,11 +139,13 @@ export class ImageProcessorDialog extends Dialog {
       jpeg: { ...fit(this.jpegFit, this.jpegW, this.jpegH), on: this.jpegOn.checked, quality: Math.min(12, Math.max(0, Math.round(Number(this.jpegQuality.value) || 0))), srgb: this.jpegSrgb.checked },
       psd: { ...fit(this.psdFit, this.psdW, this.psdH), on: this.psdOn.checked },
       tiff: { ...fit(this.tiffFit, this.tiffW, this.tiffH), on: this.tiffOn.checked, lzw: this.tiffLzw.checked },
+      png: { ...fit(this.pngFit, this.pngW, this.pngH), on: this.pngOn.checked },
+      webp: { ...fit(this.webpFit, this.webpW, this.webpH), on: this.webpOn.checked, quality: Math.min(100, Math.max(1, Math.round(Number(this.webpQuality.value) || 85))) },
       action: this.runAction.checked ? this.store.list[Number(this.pick.value)] ?? null : null,
       copyright: this.copyright.value.trim(),
     };
     if (!o.useOpen && !o.files.length) { setText(this.chosen, 'Choose images, or tick Use Open Images.'); return; }
-    if (!o.jpeg.on && !o.psd.on && !o.tiff.on) { setText(this.chosen, 'Tick at least one file type.'); return; }
+    if (!o.jpeg.on && !o.psd.on && !o.tiff.on && !o.png.on && !o.webp.on) { setText(this.chosen, 'Tick at least one file type.'); return; }
     if (this.runAction.checked && !o.action) { setText(this.chosen, 'Record an action first.'); return; }
     this.close();
     await this.run(o);

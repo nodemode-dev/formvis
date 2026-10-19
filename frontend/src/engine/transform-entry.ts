@@ -1,11 +1,11 @@
 import type { ID, Pt, Rect, Transform, Layer, Mask } from './types';
-import { placement, invert, mul, transformBounds, integral } from './geometry';
+import { placement, invert, mul, transformBounds, integral, unitPoint } from './geometry';
 import type { Mat } from './geometry';
 import { createSurface, ctxOf } from './surface';
 import type { Raster, Surface } from './surface';
 import type { SelectionMask } from './selection';
 import { hierarchy } from './tree';
-import { dragged } from './transform';
+import { dragged, HANDLES } from './transform';
 import type { DragMode } from './transform';
 import { cornersOf, carried, distortUsable, warpRaster, cropWarp, visibleBounds, maskEdgeTone } from './distort';
 import type { Warped } from './distort';
@@ -15,7 +15,7 @@ import type { Project } from './project';
 export type DistortMode = 'distort' | 'skew' | 'perspective';
 export interface DistortedMask { warped: Warped | null; placement: Transform | null }
 
-export interface TransformEditState { project: Project; layerId: ID; original: Transform; draft: Transform; mode: DragMode; start: Pt; mask: boolean; group: { box: Transform; originals: Map<ID, Transform> } | null }
+export interface TransformEditState { project: Project; layerId: ID; original: Transform; draft: Transform; mode: DragMode; start: Pt; mask: boolean; group: { box: Transform; originals: Map<ID, Transform> } | null; base?: Transform }
 export interface DistortEditState { project: Project; layerId: ID; box: Transform; members: ID[] | null; corners: Pt[]; mode: DistortMode; smart?: { R: Raster; t: Transform; margin: number; start: Pt[] }; previews: Map<ID, { pixels: Warped | null; mask: DistortedMask | null }> }
 export interface WarpDrag { project: Project; layerId: ID; stroke: WarpStroke; surface: Surface; image: ImageData }
 export interface SelectionShift { project: Project; dx: number; dy: number }
@@ -35,6 +35,8 @@ export interface EntryHost {
   snapping: boolean;
   lockRatio: boolean;
   snapMove(p: Project, id: ID, t: Transform, moving?: ReadonlySet<ID>): Transform;
+  snapEdges(p: Project, box: Rect, skip: (id: ID) => boolean): Pt | null;
+  pendingDraft(): Transform | null;
   clearSnapGuides(): void;
   setLayerTransform(patch: Partial<Transform>, label: string): void;
   smartStart(l: Layer): { R: Raster; t: Transform; margin: number; corners: Pt[] } | null;
@@ -154,16 +156,24 @@ export function beginTransform(host: EntryHost, mode: DragMode, start: Pt): Tran
   return { project: p, layerId: cur.id, original: copyTransform(box), draft: copyTransform(box), mode, start: pt, mask: maskAlone, group: null };
 }
 
-export function updateTransform(host: EntryHost, te: TransformEditState, pt: Pt, shift: boolean, alt: boolean): void {
+export function updateTransform(host: EntryHost, te: TransformEditState, pt: Pt, shift: boolean, alt: boolean, bypass = false): void {
   let now = pt;
   if (!te.group && !te.mask) {
     const ko = host.keyedOffset(te.project, te.layerId);
     now = { x: pt.x - ko.dx, y: pt.y - ko.dy };
   }
-  let next = dragged(te.original, te.start, now, te.mode, host.lockRatio, shift, alt);
-  if (te.mode.kind === 'move' && host.snapping) {
+  const from = te.base ?? te.original;
+  let next = dragged(from, te.start, now, te.mode, host.lockRatio, shift, alt);
+  if (te.mode.kind === 'move' && host.snapping && !bypass) {
     const moving = te.group ? new Set<ID>(te.group.originals.keys()) : undefined;
     next = host.snapMove(te.project, te.layerId, next, moving);
+  } else if (te.mode.kind === 'resize' && host.snapping && !bypass && !te.mask && from.rotation % 360 === 0 && next.rotation % 360 === 0) {
+    const h = HANDLES[te.mode.handle];
+    const at = unitPoint(next, h.x, h.y);
+    const off = -1e9;
+    const moving = te.group ? new Set<ID>(te.group.originals.keys()) : new Set<ID>([te.layerId]);
+    const d = host.snapEdges(te.project, { x: h.x === 0.5 ? off : at.x, y: h.y === 0.5 ? off : at.y, w: 0, h: 0 }, (id) => moving.has(id));
+    if (d) next = dragged(from, te.start, { x: now.x + (h.x === 0.5 ? 0 : d.x), y: now.y + (h.y === 0.5 ? 0 : d.y) }, te.mode, host.lockRatio, shift, alt);
   } else {
     host.clearSnapGuides();
   }
@@ -477,7 +487,7 @@ export function resizeLayerTo(host: EntryHost, value: number, width: boolean): v
   if (!p) return;
   const l = p.activeLayer;
   if (!resizable(l) || !(value > 0) || !Number.isFinite(value)) return;
-  const t = l.transform;
+  const t = host.pendingDraft() ?? l.transform;
   const cx = t.x + t.w / 2;
   const cy = t.y + t.h / 2;
   let nw = t.w;

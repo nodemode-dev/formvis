@@ -11,7 +11,12 @@ export class PrintDialog extends Dialog {
   private readonly s: PrintSettings = printSettings;
   private readonly note = el('<p class="cv-note"></p>');
   private readonly sheet = el<HTMLElement>('<div class="cv-print-sheet" style="position:relative;margin:6px auto;background:#fff;border:1px solid currentColor;box-sizing:content-box"></div>');
-  private readonly mark = el<HTMLElement>('<div style="position:absolute;background:#7a8aa0;opacity:.85"></div>');
+  private readonly preview = el<HTMLCanvasElement>('<canvas aria-label="Page preview" style="position:absolute;left:0;top:0;width:100%;height:100%"></canvas>');
+  private thumb: { key: string; canvas: HTMLCanvasElement } | null = null;
+  private readonly customW = numberRow('Paper width (in)', 1, 100, 0.1, (v) => { this.s.customW = v; this.refresh(); });
+  private readonly customH = numberRow('Paper height (in)', 1, 100, 0.1, (v) => { this.s.customH = v; this.refresh(); });
+  private readonly emulsion = checkRow('Emulsion Down', (v) => { this.s.emulsionDown = v; this.refresh(); });
+  private readonly negative = checkRow('Negative', (v) => { this.s.negative = v; this.refresh(); });
   private readonly paper = selectRow('Paper size', PAPERS.map((p) => [p[0], p[1]] as const), (v) => { this.s.paper = v; this.refresh(); });
   private readonly orient = selectRow('Orientation', [['portrait', 'Portrait'], ['landscape', 'Landscape']], (v) => { this.s.landscape = v === 'landscape'; this.refresh(); });
   private readonly center = checkRow('Center Image', (v) => { this.s.center = v; this.refresh(); });
@@ -20,12 +25,12 @@ export class PrintDialog extends Dialog {
   private readonly scale = numberRow('Scale (%)', 1, 10000, 1, (v) => { this.s.scale = v; this.refresh(); });
   private readonly fit = checkRow('Scale to Fit Media', (v) => { this.s.fit = v; this.refresh(); });
   private readonly area = checkRow('Print Selected Area', (v) => { this.s.selectedArea = v; this.refresh(); });
-  private readonly corner = checkRow('Corner Crop Marks', (v) => { this.s.cornerMarks = v; });
-  private readonly centre = checkRow('Center Crop Marks', (v) => { this.s.centerMarks = v; });
-  private readonly reg = checkRow('Registration Marks', (v) => { this.s.regMarks = v; });
-  private readonly desc = checkRow('Description', (v) => { this.s.description = v; });
-  private readonly labels = checkRow('Labels', (v) => { this.s.labels = v; });
-  private readonly handling = selectRow('Color Handling', [['printer', 'Printer Manages Colors'], ['formvis', 'formvis Manages Colors']], (v) => { this.s.handling = v === 'formvis' ? 'formvis' : 'printer'; this.refresh(); });
+  private readonly corner = checkRow('Corner Crop Marks', (v) => { this.s.cornerMarks = v; this.refresh(); });
+  private readonly centre = checkRow('Center Crop Marks', (v) => { this.s.centerMarks = v; this.refresh(); });
+  private readonly reg = checkRow('Registration Marks', (v) => { this.s.regMarks = v; this.refresh(); });
+  private readonly desc = checkRow('Description', (v) => { this.s.description = v; this.refresh(); });
+  private readonly labels = checkRow('Labels', (v) => { this.s.labels = v; this.refresh(); });
+  private readonly handling = selectRow('Color Handling', [['printer', 'Printer Manages Colors'], ['formvis', 'formvis Manages Colors'], ['none', 'No Color Management']], (v) => { this.s.handling = v === 'formvis' ? 'formvis' : v === 'none' ? 'none' : 'printer'; this.refresh(); });
   private readonly profile = selectRow('Printer Profile', [['', 'Choose a profile']], (v) => { this.s.profile = v; });
   private readonly intent = selectRow('Rendering Intent', INTENTS.map(([v, t]) => [v, t] as const), (v) => { this.s.intent = v; });
   private readonly bpc = checkRow('Black Point Compensation', (v) => { this.s.bpc = v; });
@@ -33,9 +38,10 @@ export class PrintDialog extends Dialog {
 
   constructor(private readonly engine: Engine, private readonly onPrint: (s: PrintSettings) => void, private readonly onPdf: (pdf: Blob, name: string) => void = () => undefined) {
     super('Print', 440);
-    this.sheet.appendChild(this.mark);
-    this.body.append(this.sheet, this.paper.el, this.orient.el, this.center.el, this.top.el, this.left.el, this.fit.el, this.scale.el, this.area.el,
+    this.sheet.appendChild(this.preview);
+    this.body.append(this.sheet, this.paper.el, this.customW.el, this.customH.el, this.orient.el, this.center.el, this.top.el, this.left.el, this.fit.el, this.scale.el, this.area.el,
       el('<p class="cv-note">Printing Marks</p>'), this.corner.el, this.centre.el, this.reg.el, this.desc.el, this.labels.el,
+      el('<p class="cv-note">Functions</p>'), this.emulsion.el, this.negative.el,
       el('<p class="cv-note">Color Management</p>'), this.handling.el, this.profile.el, this.intent.el, this.bpc.el, this.note);
     void this.fillProfiles();
     this.button('Cancel', 'ghost', () => this.close());
@@ -78,6 +84,7 @@ export class PrintDialog extends Dialog {
     this.center.set(this.s.center); this.top.set(this.s.top); this.left.set(this.s.left);
     this.scale.set(this.s.scale); this.fit.set(this.s.fit); this.area.set(this.s.selectedArea);
     this.corner.set(this.s.cornerMarks); this.centre.set(this.s.centerMarks); this.reg.set(this.s.regMarks); this.desc.set(this.s.description); this.labels.set(this.s.labels);
+    this.customW.set(this.s.customW); this.customH.set(this.s.customH); this.emulsion.set(this.s.emulsionDown); this.negative.set(this.s.negative);
     this.handling.set(this.s.handling); this.profile.set(this.s.profile); this.intent.set(this.s.intent); this.bpc.set(this.s.bpc);
     this.open(this.printBtn);
     this.refresh();
@@ -97,8 +104,21 @@ export class PrintDialog extends Dialog {
     const reg = printRegion(this.engine, eff) ?? { x: 0, y: 0, w: d.width, h: d.height };
     const L = printLayout(eff, reg.w, reg.h, d.resolution || 72);
     setText(this.note, `Print size: ${L.width.toFixed(2)} in wide by ${L.height.toFixed(2)} in high (${Math.round(L.scale * 100)}% at ${d.resolution || 72} dpi)`);
-    const k = 160 / Math.max(L.paperW, L.paperH);
+    const k = 220 / Math.max(L.paperW, L.paperH);
     this.sheet.style.width = `${L.paperW * k}px`; this.sheet.style.height = `${L.paperH * k}px`;
-    Object.assign(this.mark.style, { left: `${L.x * k}px`, top: `${L.y * k}px`, width: `${L.width * k}px`, height: `${L.height * k}px` });
+    this.customW.el.hidden = this.customH.el.hidden = this.s.paper !== 'custom';
+    renderPage(this.engine, eff, this.thumbFor(reg), L, 40, this.preview);
+  }
+
+  /** The printed region as a small picture for the page preview, kept while the region is the same and redrawn when the document changes. */
+  private thumbFor(reg: { x: number; y: number; w: number; h: number }): HTMLCanvasElement {
+    const p = this.engine.current, key = `${p?.id}:${reg.x},${reg.y},${reg.w},${reg.h}:${p?.history.revision ?? 0}`;
+    if (this.thumb?.key === key) return this.thumb.canvas;
+    const f = Math.min(1, 480 / Math.max(reg.w, reg.h)), c = this.thumb?.canvas ?? document.createElement('canvas');
+    c.width = Math.max(1, Math.round(reg.w * f)); c.height = Math.max(1, Math.round(reg.h * f));
+    const flat = this.engine.flattened(), g = c.getContext('2d');
+    if (flat && g) { g.imageSmoothingQuality = 'high'; g.drawImage(flat as CanvasImageSource, reg.x, reg.y, reg.w, reg.h, 0, 0, c.width, c.height); }
+    this.thumb = { key, canvas: c };
+    return c;
   }
 }

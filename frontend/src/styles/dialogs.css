@@ -24,6 +24,8 @@
 .cv-size-checks { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); align-items: center; min-width: 0; }
 .cv-size-checks label { display: inline-flex; align-items: center; gap: var(--space-1); }
 .cv-size-checks input { margin: 0; accent-color: var(--accent-color); }
+.cv-export-preview { display: block; height: 180px; overflow: hidden; border: 1px solid var(--border-light); border-radius: var(--radius-sm); background: var(--bg-input); }
+.cv-export-preview canvas { display: block; width: 100%; height: 100%; }
 .cv-liquify-tools { flex-wrap: wrap; }
 .cv-grad-bar, .cv-grad-strip { display: block; width: 560px; max-width: 100%; border-radius: var(--radius-sm); }
 .cv-grad-bar { height: 28px; border: 1px solid var(--border-color); }
@@ -168,6 +170,12 @@
 .cv-savechanges .cv-note { margin: 0; padding-bottom: 14px; border-bottom: 1px solid var(--line-2); color: var(--text-secondary); font-size: 14px; }
 .cv-dialog-foot .cv-btn-apart { margin-right: auto; }
 .cv-adjust-preview { display: inline-flex; align-items: center; gap: var(--space-2); height: 34px; color: var(--text-secondary); font-size: 14px; cursor: pointer; }
+.cv-stop-list { display: flex; flex-direction: column; gap: var(--space-1); }
+.cv-stop-row { display: grid; grid-template-columns: minmax(0, 1fr) 44px 52px 28px; align-items: center; gap: var(--space-2); color: var(--text-muted); font-size: var(--fs-12); }
+.cv-stop-row[hidden] { display: none; }
+.cv-stop-strip { display: block; width: 100%; height: 18px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); }
+.cv-preset-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: var(--space-2); }
+.cv-preset-row .cv-input { min-width: 0; }
 
 /* New Document's previews fit their cards; a hidden select stays hidden whatever else applies (the stray line). */
 .cv-nd-thumb { overflow: hidden; padding: 4px; }

@@ -53,24 +53,42 @@ def _binding_decode(data: bytes) -> "np.ndarray | None":
         return None
 
 
-def _binding_encode(img: np.ndarray) -> "bytes | None":
-    """`img` (BGR or BGRA or one plane, float32) as EXR bytes through the OpenEXR binding."""
+EXR_COMPRESSIONS = {"none": "NO_COMPRESSION", "rle": "RLE_COMPRESSION", "zips": "ZIPS_COMPRESSION", "zip": "ZIP_COMPRESSION", "piz": "PIZ_COMPRESSION",
+                    "pxr24": "PXR24_COMPRESSION", "b44": "B44_COMPRESSION", "b44a": "B44A_COMPRESSION", "dwaa": "DWAA_COMPRESSION", "dwab": "DWAB_COMPRESSION"}
+
+
+def _binding_encode(img: np.ndarray, opts: "dict | None" = None) -> "bytes | None":
+    """`img` (BGR or BGRA or one plane, float32) as EXR bytes through the OpenEXR binding. `opts`: `compression` (a key of
+    EXR_COMPRESSIONS, ZIP by default), `half` for 16-bit float channels, `channels` rgba, rgb, ya or y."""
     try:
         import os
         import tempfile
         import OpenEXR
+        opts = opts or {}
         px = np.ascontiguousarray(img, dtype=np.float32)
-        if px.ndim == 3 and px.shape[2] >= 3:
-            px = np.ascontiguousarray(px[:, :, [2, 1, 0] + ([3] if px.shape[2] >= 4 else [])])
+        want = str(opts.get("channels", "")).lower()
+        if px.ndim == 3 and px.shape[2] >= 3 and want not in ("y", "ya"):
+            px = np.ascontiguousarray(px[:, :, [2, 1, 0] + ([3] if px.shape[2] >= 4 and want != "rgb" else [])])
             name = "RGBA" if px.shape[2] == 4 else "RGB"
         else:
-            px = np.ascontiguousarray(px.reshape(px.shape[:2]))
-            name = "Y"
-        header = {"compression": OpenEXR.ZIP_COMPRESSION, "type": OpenEXR.scanlineimage}
+            if px.ndim == 3 and px.shape[2] >= 3:
+                luma = px[:, :, 2] * 0.2126 + px[:, :, 1] * 0.7152 + px[:, :, 0] * 0.0722
+                px = np.stack([luma, px[:, :, 3]], axis=2) if px.shape[2] >= 4 and want == "ya" else luma
+            elif px.ndim == 3:
+                px = px.reshape(px.shape[:2])
+            px = np.ascontiguousarray(px)
+            name = "Y" if px.ndim == 2 else "YA"
+        if opts.get("half"):
+            px = px.astype(np.float16)
+        packed = {name: px}
+        if name == "YA":
+            packed = {"Y": np.ascontiguousarray(px[:, :, 0]), "A": np.ascontiguousarray(px[:, :, 1])}
+        kind = EXR_COMPRESSIONS.get(str(opts.get("compression", "zip")).lower(), "ZIP_COMPRESSION")
+        header = {"compression": getattr(OpenEXR, kind), "type": OpenEXR.scanlineimage}
         fd, path = tempfile.mkstemp(suffix=".exr")
         os.close(fd)
         try:
-            with OpenEXR.File(header, {name: px}) as f:
+            with OpenEXR.File(header, packed) as f:
                 f.write(path)
             with open(path, "rb") as fh:
                 return fh.read()
@@ -80,9 +98,13 @@ def _binding_encode(img: np.ndarray) -> "bytes | None":
         return None
 
 
-def _encode_worker(img: np.ndarray, q: "mp.Queue[object]") -> None:
+def _encode_worker(arg: tuple, q: "mp.Queue[object]") -> None:
     os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "1"
+    img, opts = arg
     try:
+        if opts:
+            q.put(_binding_encode(img, opts))   # a chosen compression, half float or channel set: only the binding writes those
+            return
         import cv2
         try:
             ok, out = cv2.imencode(".exr", np.ascontiguousarray(img))
@@ -190,7 +212,7 @@ def decode_exr_parts(data: bytes) -> dict | None:
     return out if isinstance(out, dict) else None
 
 
-def encode_exr(img: np.ndarray) -> bytes | None:
-    """`img` (BGRA float32) as EXR bytes, or None when the child could not write it."""
-    out = _run(_encode_worker, img)
+def encode_exr(img: np.ndarray, opts: dict | None = None) -> bytes | None:
+    """`img` (BGRA float32) as EXR bytes, or None when the child could not write it. `opts` as `_binding_encode` takes."""
+    out = _run(_encode_worker, (img, opts or {}))
     return out if isinstance(out, (bytes, bytearray)) else None

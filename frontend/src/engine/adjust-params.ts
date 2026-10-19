@@ -1,4 +1,4 @@
-import { defaultDevelopState, developImage } from './develop';
+import { defaultDevelopState, defaultGrading, developImage } from './develop';
 import type { Kernel } from './kernels';
 import { gpuFilters } from './gpu-filters';
 import type { RGB } from './types';
@@ -121,6 +121,27 @@ export function parseCube(text: string): { size: number; data: Float32Array; min
   return { size, data: new Float32Array(values), min, max };
 }
 
+type Cube = { size: number; data: Float32Array; min: number[]; max: number[] };
+
+/** A table sampled with tetrahedral interpolation: the cell is split into six tetrahedra by the order of the fractions. */
+function cubeTetra(c: Cube, r: number, g: number, b: number): [number, number, number] {
+  const N = c.size, at = (x: number, k: number): number => Math.min(N - 1, Math.max(0, ((x - c.min[k]) / (c.max[k] - c.min[k] || 1)) * (N - 1)));
+  const p = [at(r, 0), at(g, 1), at(b, 2)], i = p.map((v) => Math.min(N - 2, Math.floor(v))), fr = p[0] - i[0], fg = p[1] - i[1], fb = p[2] - i[2];
+  const node = (dr: number, dg: number, db: number, ch: number): number => c.data[((i[2] + db) * N * N + (i[1] + dg) * N + (i[0] + dr)) * 3 + ch];
+  const out: [number, number, number] = [0, 0, 0];
+  for (let ch = 0; ch < 3; ch++) {
+    const v = (a: number, bb: number, cc: number): number => node(a, bb, cc, ch), c0 = v(0, 0, 0), c7 = v(1, 1, 1);
+    out[ch] = fr >= fg
+      ? fg >= fb ? c0 + fr * (v(1, 0, 0) - c0) + fg * (v(1, 1, 0) - v(1, 0, 0)) + fb * (c7 - v(1, 1, 0))
+        : fr >= fb ? c0 + fr * (v(1, 0, 0) - c0) + fb * (v(1, 0, 1) - v(1, 0, 0)) + fg * (c7 - v(1, 0, 1))
+          : c0 + fb * (v(0, 0, 1) - c0) + fr * (v(1, 0, 1) - v(0, 0, 1)) + fg * (c7 - v(1, 0, 1))
+      : fb >= fg ? c0 + fb * (v(0, 0, 1) - c0) + fg * (v(0, 1, 1) - v(0, 0, 1)) + fr * (c7 - v(0, 1, 1))
+        : fb >= fr ? c0 + fg * (v(0, 1, 0) - c0) + fb * (v(0, 1, 1) - v(0, 1, 0)) + fr * (c7 - v(0, 1, 1))
+          : c0 + fg * (v(0, 1, 0) - c0) + fr * (v(1, 1, 0) - v(0, 1, 0)) + fb * (c7 - v(1, 1, 0));
+  }
+  return out;
+}
+
 /** A .cube table sampled with trilinear interpolation. */
 function cubeSample(c: { size: number; data: Float32Array; min: number[]; max: number[] }, r: number, g: number, b: number): [number, number, number] {
   const N = c.size, at = (x: number, k: number): number => Math.min(N - 1, Math.max(0, ((x - c.min[k]) / (c.max[k] - c.min[k] || 1)) * (N - 1)));
@@ -150,6 +171,22 @@ function developSlice(tone: Partial<Record<string, number>>, detail: Partial<Rec
     const out = developImage(new ImageData(new Uint8ClampedArray(px), ctx.width, ctx.height), s, 1 / Math.max(1e-6, ctx.unitsPerPixel));
     for (let i = 0; i < px.length; i += 4) { px[i] = out.data[i]; px[i + 1] = out.data[i + 1]; px[i + 2] = out.data[i + 2]; }
   };
+}
+
+/** Black and white clip: the darkest and brightest `black` and `white` fractions of the opaque pixels (by luminance) go to
+ *  0 and 255, and every channel is stretched between the two levels they bound. */
+function clipLevels(px: Uint8ClampedArray, black: number, white: number): void {
+  if (!(black > 0) && !(white > 0)) return;
+  const bins = new Float64Array(256);
+  let total = 0;
+  for (let i = 0; i < px.length; i += 4) if (px[i + 3]) { bins[Math.round(lum(px[i], px[i + 1], px[i + 2]))]++; total++; }
+  if (!total) return;
+  let lo = 0, hi = 255, acc = 0;
+  while (lo < 254 && acc + bins[lo] <= black * total) acc += bins[lo++];
+  acc = 0;
+  while (hi > lo + 1 && acc + bins[hi] <= white * total) acc += bins[hi--];
+  const k = 255 / (hi - lo);
+  for (let i = 0; i < px.length; i += 4) for (let c = 0; c < 3; c++) px[i + c] = (px[i + c] - lo) * k;
 }
 
 const SELECTIVE = ['reds', 'yellows', 'greens', 'cyans', 'blues', 'magentas', 'whites', 'neutrals', 'blacks'] as const;
@@ -290,7 +327,8 @@ export const PARAM_ADJUSTMENTS: Record<ParamKind, ParamAdjustment> = {
     // No groups: the panel hides grouped controls unless a groupBy selector names their group; the labels say which is which.
     params: [range('shadowAmount', 'Shadows Amount', 0, 100, 35), range('shadowTone', 'Shadows Tone', 0, 100, 50), range('shadowRadius', 'Shadows Radius', 0, 2500, 30),
       range('highlightAmount', 'Highlights Amount', 0, 100, 0), range('highlightTone', 'Highlights Tone', 0, 100, 50), range('highlightRadius', 'Highlights Radius', 0, 2500, 30),
-      range('color', 'Color', -100, 100, 20), range('midtone', 'Midtone', -100, 100, 0)],
+      range('color', 'Color', -100, 100, 20), range('midtone', 'Midtone', -100, 100, 0),
+      range('blackClip', 'Black Clip %', 0, 20, 0, 0.01), range('whiteClip', 'White Clip %', 0, 20, 0, 0.01)],
     kernel: (v) => (px, ctx) => {
       if (!ctx) return;
       const scale = 1 / Math.max(1e-6, ctx.unitsPerPixel), w = ctx.width, h = ctx.height;
@@ -309,15 +347,25 @@ export const PARAM_ADJUSTMENTS: Record<ParamKind, ParamAdjustment> = {
         const [nr, ng, nb] = relight(r, g, b, cl(L2), 1 + col * (ws + wh));
         px[i] = Math.round(cl(nr) * 255); px[i + 1] = Math.round(cl(ng) * 255); px[i + 2] = Math.round(cl(nb) * 255);
       }
+      clipLevels(px, n(v, 'blackClip') / 100, n(v, 'whiteClip') / 100);
     },
   },
   hdrToning: {
     label: 'HDR Toning',
     params: [range('radius', 'Radius', 1, 500, 15), range('strength', 'Strength', 10, 400, 52),
       range('gamma', 'Gamma', 10, 200, 100), range('exposure', 'Exposure', -500, 500, 0), range('detail', 'Detail', -100, 300, 30),
-      range('vibrance', 'Vibrance', -100, 100, 0), range('saturation', 'Saturation', -100, 100, 20)],
+      range('vibrance', 'Vibrance', -100, 100, 0), range('saturation', 'Saturation', -100, 100, 20),
+      range('shadow', 'Shadow', -100, 100, 0), range('highlight', 'Highlight', -100, 100, 0),
+      range('curveShadows', 'Toning curve shadows', -50, 50, 0), range('curveMid', 'Toning curve midtones', -50, 50, 0), range('curveHighlights', 'Toning curve highlights', -50, 50, 0)],
     kernel: (v) => (px, ctx) => {
       if (!ctx) return;
+      const sh = n(v, 'shadow') / 100, hi = n(v, 'highlight') / 100, ks = [n(v, 'curveShadows'), n(v, 'curveMid'), n(v, 'curveHighlights')].map((d) => d / 100);
+      const toning = ks.some((d) => d !== 0), knots = [0, 0.25 + ks[0], 0.5 + ks[1], 0.75 + ks[2], 1];
+      const tone = (x: number): number => {
+        // Catmull-Rom through the five knots at 0, 1/4, 1/2, 3/4 and 1.
+        const t = cl(x) * 4, i = Math.min(3, Math.floor(t)), f = t - i, p0 = knots[Math.max(0, i - 1)], p1 = knots[i], p2 = knots[i + 1], p3 = knots[Math.min(4, i + 2)];
+        return cl(p1 + 0.5 * f * (p2 - p0 + f * (2 * p0 - 5 * p1 + 4 * p2 - p3 + f * (3 * (p1 - p2) + p3 - p0))));
+      };
       // Local adaptation: luminance split into a base (its blur) and detail; the base's range compressed by Strength,
       // detail raised by Detail, then Exposure (stops, in hundredths) and Gamma, colour kept by relighting.
       const base = blurredLum(px, ctx.width, ctx.height, n(v, 'radius') / Math.max(1e-6, ctx.unitsPerPixel));
@@ -326,7 +374,9 @@ export const PARAM_ADJUSTMENTS: Record<ParamKind, ParamAdjustment> = {
       for (let i = 0, j = 0; i < px.length; i += 4, j++) {
         const r = px[i] / 255, g = px[i + 1] / 255, b = px[i + 2] / 255, L = Math.max(1e-4, lum(r, g, b)), B = Math.max(1e-4, base[j]);
         const lb = Math.log(B), ld = Math.log(L) - lb, mean = Math.log(0.45);
-        const L2 = cl((Math.exp(mean + (lb - mean) / (1 + strength) + ld * detail) * expo) ** (1 / gamma));
+        let L2 = cl((Math.exp(mean + (lb - mean) / (1 + strength) + ld * detail) * expo) ** (1 / gamma));
+        if (sh || hi) L2 = cl(L2 + 0.35 * sh * L2 * (1 - L2) ** 2 + 0.35 * hi * L2 ** 2 * (1 - L2));
+        if (toning) L2 = tone(L2);
         const s0 = (Math.max(r, g, b) - Math.min(r, g, b)), s = sat * (1 + vib * (1 - s0));
         const [nr, ng, nb] = relight(r, g, b, L2, s);
         px[i] = Math.round(cl(nr) * 255); px[i + 1] = Math.round(cl(ng) * 255); px[i + 2] = Math.round(cl(nb) * 255);
@@ -336,22 +386,39 @@ export const PARAM_ADJUSTMENTS: Record<ParamKind, ParamAdjustment> = {
   colorLookup: {
     label: 'Color Lookup',
     params: [{ key: 'look', label: 'Look', kind: 'select', options: [['warm', 'Warm'], ['cool', 'Cool'], ['tealOrange', 'Teal and Orange'], ['bleach', 'Bleach Bypass'], ['fade', 'Faded Film'], ['mono', 'Warm Mono'], ['cross', 'Cross Process'], ['night', 'Night']], def: 'warm' },
-      { key: 'cube', label: '3D LUT file', kind: 'text', def: '' }, { key: 'cubeName', label: 'File', kind: 'text', def: '' }],
+      { key: 'cube', label: '3D LUT file', kind: 'text', def: '' }, { key: 'cubeName', label: 'File', kind: 'text', def: '' },
+      { key: 'interp', label: 'Interpolation', kind: 'select', options: [['trilinear', 'Trilinear'], ['tetrahedral', 'Tetrahedral']], def: 'trilinear' }, { key: 'dither', label: 'Dither', kind: 'check', def: false }],
     kernel: (v) => {
-      // A loaded .cube file wins over the built-in look; an unreadable one leaves the image as it is.
-      const text = String(v.cube ?? '');
-      if (text) { const c = parseCube(text); return c ? perPixel((r, g, b) => cubeSample(c, r, g, b)) : () => undefined; }
-      const f = LOOKS[String(v.look)] ?? LOOKS.warm;
-      return perPixel(f);
+      // A loaded .cube or .3dl file wins over the built-in look; an unreadable one leaves the image as it is.
+      const text = String(v.cube ?? ''), dither = v.dither === true;
+      let f = LOOKS[String(v.look)] ?? LOOKS.warm;
+      if (text) {
+        const c = parseCube(text);
+        if (!c) return () => undefined;
+        const sample = v.interp === 'tetrahedral' ? cubeTetra : cubeSample;
+        f = (r, g, b) => sample(c, r, g, b);
+      }
+      if (!dither) return perPixel(f);
+      return (px, ctx) => {
+        const w = ctx?.width || 1;
+        for (let i = 0, j = 0; i < px.length; i += 4, j++) {
+          const [r, g, b] = f(px[i] / 255, px[i + 1] / 255, px[i + 2] / 255), x = j % w, y = Math.floor(j / w), h = ((x * 374761393 + y * 668265263) ^ (x * 1274126177)) >>> 0, noise = (h & 1023) / 1023 + ((h >>> 10) & 1023) / 1023 - 1;
+          px[i] = Math.max(0, Math.min(255, Math.round(cl(r) * 255 + noise))); px[i + 1] = Math.max(0, Math.min(255, Math.round(cl(g) * 255 + noise))); px[i + 2] = Math.max(0, Math.min(255, Math.round(cl(b) * 255 + noise)));
+        }
+      };
     },
   },
   develop: {
     label: 'Develop',
     params: [range('exposure', 'Exposure', -500, 500), range('contrast', 'Contrast', -100, 100), range('highlights', 'Highlights', -100, 100), range('shadows', 'Shadows', -100, 100), range('whites', 'Whites', -100, 100), range('blacks', 'Blacks', -100, 100),
       range('temperature', 'Temperature', -100, 100), range('tint', 'Tint', -100, 100), range('vibrance', 'Vibrance', -100, 100), range('saturation', 'Saturation', -100, 100),
-      range('texture', 'Texture', -100, 100), range('clarity', 'Clarity', -100, 100), range('dehaze', 'Dehaze', -100, 100), range('vignette', 'Vignette', 0, 100)],
+      range('texture', 'Texture', -100, 100), range('clarity', 'Clarity', -100, 100), range('dehaze', 'Dehaze', -100, 100), range('vignette', 'Vignette', 0, 100),
+      ...(['shadows', 'midtones', 'highlights', 'global'] as const).flatMap((w) => [range(`grade${w}H`, `Grading ${w} hue`, 0, 360), range(`grade${w}S`, `Grading ${w} saturation`, 0, 100), range(`grade${w}L`, `Grading ${w} luminance`, -100, 100)]),
+      range('gradeBlending', 'Grading blending', 0, 100, 50), range('gradeBalance', 'Grading balance', -100, 100)],
     kernel: (v) => {
       const s = defaultDevelopState();
+      for (const w of ['shadows', 'midtones', 'highlights', 'global'] as const) s.grading = { ...defaultGrading(), ...s.grading, [w]: { h: n(v, `grade${w}H`), s: n(v, `grade${w}S`), l: n(v, `grade${w}L`) } };
+      s.grading = { ...defaultGrading(), ...s.grading, blending: n(v, 'gradeBlending'), balance: n(v, 'gradeBalance') };
       for (const k of ['exposure', 'contrast', 'highlights', 'shadows', 'whites', 'blacks', 'temperature', 'tint', 'vibrance', 'saturation', 'dehaze', 'vignette'] as const) s.tone[k] = n(v, k);
       s.detail.clarity = n(v, 'clarity');
       s.detail.texture = n(v, 'texture');

@@ -1,15 +1,16 @@
 import type { Engine, ID } from '../../engine';
-import { clearFreeze, dabField, fieldIsZero, freezeAt, invertFreeze, liquifyImage, makeField, meshFromJson, meshToJson, paintFreeze, pushField, pushLeftField, resetField, type LiquifyField, type LiquifyTool } from '../../engine/liquify';
+import { clearFreeze, dabField, fieldIsZero, freezeAt, invertFreeze, liquifyImage, makeField, meshFromJson, meshToJson, paintFreeze, pushField, pushLeftField, rateScale, resetField, resizeField, smoothField, type LiquifyField, type LiquifyTool } from '../../engine/liquify';
 import { FACE_SLIDERS, faceField, noFaceChange, type Face, type FaceSettings, type FaceSlider } from '../../engine/face-liquify';
 import { faceReady, findFaces } from '../../io/local-gen';
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
 import { paint } from '../palette';
 import { toast } from '../toast';
-import { checkRow, sliderRow, type Row } from './controls';
+import { checkRow, selectRow, sliderRow, type Row } from './controls';
 
 const PW = 640, PH = 440;
-const TOOLS: ReadonlyArray<readonly [LiquifyTool, string]> = [['warp', 'Forward Warp'], ['pushLeft', 'Push Left'], ['reconstruct', 'Reconstruct'], ['twirlCW', 'Twirl Clockwise'], ['twirlCCW', 'Twirl Counterclockwise'], ['pucker', 'Pucker'], ['bloat', 'Bloat'], ['freeze', 'Freeze Mask'], ['thaw', 'Thaw Mask']];
+const TOOLS: ReadonlyArray<readonly [LiquifyTool, string]> = [['warp', 'Forward Warp'], ['pushLeft', 'Push Left'], ['reconstruct', 'Reconstruct'], ['twirlCW', 'Twirl Clockwise'], ['twirlCCW', 'Twirl Counterclockwise'], ['pucker', 'Pucker'], ['bloat', 'Bloat'], ['smooth', 'Smooth'], ['freeze', 'Freeze Mask'], ['thaw', 'Thaw Mask']];
+const MESH_SIZES = [2, 4, 8, 16];
 
 /** Filter > Liquify (Shift+Mod+X): the active layer in a preview, brushed with Forward Warp,
  *  Reconstruct, Twirl either way, Pucker or Bloat; Restore All clears the field; OK applies once as a Liquify step,
@@ -20,6 +21,9 @@ export class LiquifyDialog extends Dialog {
   private tool: LiquifyTool = 'warp';
   private size = 100;
   private pressure = 50;
+  private density = 50;
+  private rate = 100;
+  private cell = 4;
   private liq: LiquifyField | null = null;
   /** Face-Aware Liquify (1.56.7): the faces the engine found, the sliders, and the note under them. */
   private faces: Face[] = [];
@@ -48,6 +52,9 @@ export class LiquifyDialog extends Dialog {
   private readonly toolButtons: HTMLButtonElement[] = [];
   private readonly sizeRow: Row<number>;
   private readonly pressureRow: Row<number>;
+  private readonly densityRow: Row<number>;
+  private readonly rateRow: Row<number>;
+  private readonly meshRow: Row<string>;
 
   constructor(private readonly engine: Engine) {
     super('Liquify', PW + 48);
@@ -61,6 +68,9 @@ export class LiquifyDialog extends Dialog {
     }
     this.sizeRow = sliderRow('Brush size (px)', 1, 600, 1, (v) => { this.size = v; this.draw(); });
     this.pressureRow = sliderRow('Brush pressure (%)', 1, 100, 1, (v) => { this.pressure = v; });
+    this.densityRow = sliderRow('Brush density', 0, 100, 1, (v) => { this.density = v; });
+    this.rateRow = sliderRow('Brush rate', 1, 100, 1, (v) => { this.rate = v; });
+    this.meshRow = selectRow('Mesh size (px)', MESH_SIZES.map((n) => [String(n), String(n)] as const), (v) => this.setCell(Number(v)));
     const restore = el('<button class="cv-btn" type="button">Restore All</button>') as HTMLButtonElement;
     restore.addEventListener('click', () => { if (this.liq) { this.snap(); resetField(this.liq); this.render(); } });
     const maskNone = el('<button class="cv-btn cv-btn-ghost" type="button">Mask None</button>') as HTMLButtonElement;
@@ -90,7 +100,7 @@ export class LiquifyDialog extends Dialog {
     faceBar.append(findFaces, resetFace);
     const grid = el('<div style="display: grid; grid-template-columns: 1fr 1fr; column-gap: 16px"></div>');
     for (const [k, label] of FACE_SLIDERS) { const r = sliderRow(label, -100, 100, 1, (v) => { this.faceSet[k] = v; this.render(); }); this.faceRows.set(k, r); grid.appendChild(r.el); }
-    this.body.append(bar, this.canvas, this.sizeRow.el, this.pressureRow.el, penRow.el, actions, faceBar, this.faceNote, grid);
+    this.body.append(bar, this.canvas, this.sizeRow.el, this.densityRow.el, this.pressureRow.el, this.rateRow.el, this.meshRow.el, penRow.el, actions, faceBar, this.faceNote, grid);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     this.onClose = () => this.release();
@@ -111,7 +121,7 @@ export class LiquifyDialog extends Dialog {
     this.engine.settle();
     this.src = l.raster.read();
     this.layerId = l.id;
-    this.liq = makeField(this.src.width, this.src.height);
+    this.liq = makeField(this.src.width, this.src.height, this.cell);
     this.undoStack = []; this.redoStack = []; this.syncUndo();
     this.faces = []; this.faceSet = noFaceChange(); for (const r of this.faceRows.values()) r.set(0); setText(this.faceNote, 'Find faces to shape them with the sliders.');
     this.scale = Math.min(1, PW / this.src.width, PH / this.src.height);
@@ -119,6 +129,9 @@ export class LiquifyDialog extends Dialog {
     this.oy = Math.floor((PH - this.src.height * this.scale) / 2);
     this.sizeRow.set(this.size);
     this.pressureRow.set(this.pressure);
+    this.densityRow.set(this.density);
+    this.rateRow.set(this.rate);
+    this.meshRow.set(String(this.cell));
     this.syncTools();
     this.render();
     this.open();
@@ -145,6 +158,16 @@ export class LiquifyDialog extends Dialog {
       void file.text().then((t) => { if (this.liq) this.snap(); if (this.liq && meshFromJson(this.liq, t)) this.render(); else toast('That mesh was saved for a layer of another size, or is not a liquify mesh.'); });
     });
     input.click();
+  }
+
+  /** Mesh Size: the field is kept on cells of this many pixels; strokes so far carry over, Undo Stroke starts afresh. */
+  private setCell(cell: number): void {
+    if (!MESH_SIZES.includes(cell) || cell === this.cell) return;
+    this.cell = cell;
+    if (!this.liq || !this.src) return;
+    this.liq = resizeField(this.liq, this.src.width, this.src.height, cell);
+    this.undoStack = []; this.redoStack = []; this.syncUndo();
+    this.render();
   }
 
   private syncTools(): void { TOOLS.forEach(([id], i) => this.toolButtons[i].classList.toggle('is-active', id === this.tool)); }
@@ -186,12 +209,14 @@ export class LiquifyDialog extends Dialog {
   private dab(pt: { x: number; y: number }): void {
     const f = this.liq;
     if (!f) return;
-    const s = Math.min(1, (this.pressure / 100) * (this.usePen ? this.penNow : 1)), alt = this.altDown, r = this.size / 2;
+    const moving = this.tool === 'warp' || this.tool === 'pushLeft', dn = this.density;
+    const s = Math.min(1, (this.pressure / 100) * (this.usePen ? this.penNow : 1) * (moving ? 1 : rateScale(this.rate))), alt = this.altDown, r = this.size / 2;
     const flip: Partial<Record<LiquifyTool, LiquifyTool>> = { twirlCW: 'twirlCCW', twirlCCW: 'twirlCW', pucker: 'bloat', bloat: 'pucker' };
-    if (this.tool === 'warp') { if (this.last) pushField(f, this.last.x, this.last.y, alt ? 2 * this.last.x - pt.x : pt.x, alt ? 2 * this.last.y - pt.y : pt.y, r, s); }
-    else if (this.tool === 'pushLeft') { if (this.last) pushLeftField(f, this.last.x, this.last.y, pt.x, pt.y, r, s, alt); }
-    else if (this.tool === 'freeze' || this.tool === 'thaw') paintFreeze(f, pt.x, pt.y, r, s, (this.tool === 'thaw') !== alt);
-    else dabField(f, ((alt ? flip[this.tool] : undefined) ?? this.tool) as Exclude<LiquifyTool, 'warp' | 'freeze' | 'thaw'>, pt.x, pt.y, r, s);
+    if (this.tool === 'warp') { if (this.last) pushField(f, this.last.x, this.last.y, alt ? 2 * this.last.x - pt.x : pt.x, alt ? 2 * this.last.y - pt.y : pt.y, r, s, dn); }
+    else if (this.tool === 'pushLeft') { if (this.last) pushLeftField(f, this.last.x, this.last.y, pt.x, pt.y, r, s, alt, dn); }
+    else if (this.tool === 'smooth') smoothField(f, pt.x, pt.y, r, s, dn);
+    else if (this.tool === 'freeze' || this.tool === 'thaw') paintFreeze(f, pt.x, pt.y, r, s, (this.tool === 'thaw') !== alt, dn);
+    else dabField(f, ((alt ? flip[this.tool] : undefined) ?? this.tool) as Exclude<LiquifyTool, 'warp' | 'pushLeft' | 'smooth' | 'freeze' | 'thaw'>, pt.x, pt.y, r, s, dn);
     this.last = pt;
     this.render();
   }

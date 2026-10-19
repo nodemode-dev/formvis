@@ -12,8 +12,11 @@ export const FORMAT_OPTIONS: Readonly<Partial<Record<ExportFormat, ReadonlyArray
   ico: [['mixed', 'PNG for 256, BMP for smaller'], ['png', 'PNG for every size']],
   bmp: [['32', '32-bit with alpha'], ['24', '24-bit, on white']],
   fits: [['rgb', 'Three planes (red, green, blue)'], ['gray', 'One grey plane']],
-  png: [['6', 'Compression level 6 (default)'], ['0', 'Level 0, none (fastest)'], ['3', 'Level 3, fast'], ['9', 'Level 9, smallest'], ['9o', 'Level 9 with the best filters']],
-  jpg: [['420', 'Chroma 4:2:0 (smallest)'], ['422', 'Chroma 4:2:2'], ['444', 'Chroma 4:4:4 (no subsampling)']],
+  png: [['6', 'Compression level 6 (default)'], ['0', 'Level 0, none (fastest)'], ['3', 'Level 3, fast'], ['9', 'Level 9, smallest'], ['9o', 'Level 9 with the best filters'], ['i', 'Interlaced (Adam7), level 6']],
+  jpg: [['420', 'Chroma 4:2:0 (smallest)'], ['422', 'Chroma 4:2:2'], ['444', 'Chroma 4:4:4 (no subsampling)'], ['420p', 'Progressive, 4:2:0'], ['gray', 'Grayscale, one channel']],
+  webp: [['lossy', 'Lossy, at the quality below'], ['lossless', 'Lossless']],
+  tiff: [['lzw', 'LZW (default)'], ['none', 'None (baseline, largest)'], ['packbits', 'PackBits'], ['deflate', 'Deflate (ZIP)'], ['deflate-big', 'BigTIFF, Deflate'], ['none-big', 'BigTIFF, uncompressed'], ['gray', 'Grayscale with alpha, LZW'], ['gray-opaque', 'Grayscale, flattened on white']],
+  pdf: [['rgb', 'RGB on white'], ['black', 'RGB on black'], ['gray', 'Grayscale on white'], ['cmyk', 'CMYK on white (simple conversion)']],
 };
 export const ICO_SIZES: readonly number[] = [16, 24, 32, 48, 64, 128, 256];
 export const DEFAULT_ICO_SIZES: readonly number[] = [16, 32, 48, 256];
@@ -74,7 +77,7 @@ export const clampSettings = (s: ExportSettings): ExportSettings => ({
   ...(s.size === 'fit' || s.size === 'frame' ? { size: s.size, boxW: box(s.boxW), boxH: box(s.boxH) } : {}),
   ...(s.aiLabel === 'generated' || s.aiLabel === 'edited' ? { aiLabel: s.aiLabel } : {}),
   ...(s.format === 'dpx' ? { dpxBits: ([8, 10, 12, 16] as const).find((b) => b === Number(s.dpxBits)) ?? 10, dpxTransfer: DPX_TRANSFERS.find(([t]) => t === s.dpxTransfer)?.[0] ?? 'log' } : {}),
-  ...(FORMAT_OPTIONS[s.format] && !((s.format === 'png' || s.format === 'jpg') && !FORMAT_OPTIONS[s.format]?.some(([v], i) => i > 0 && v === s.option)) ? { option: FORMAT_OPTIONS[s.format]?.find(([v]) => v === s.option)?.[0] ?? FORMAT_OPTIONS[s.format]?.[0][0] } : {}),
+  ...(FORMAT_OPTIONS[s.format] && !((s.format === 'png' || s.format === 'jpg' || s.format === 'webp' || s.format === 'tiff' || s.format === 'pdf') && !FORMAT_OPTIONS[s.format]?.some(([v], i) => i > 0 && v === s.option)) ? { option: FORMAT_OPTIONS[s.format]?.find(([v]) => v === s.option)?.[0] ?? FORMAT_OPTIONS[s.format]?.[0][0] } : {}),
   ...(s.format === 'ico' ? { icoSizes: icoSizesOf(s.icoSizes) } : {}),
   ...(s.canvas ? { canvas: true, canvasW: box(s.canvasW), canvasH: box(s.canvasH) } : {}),
   ...(s.canvas && Number.isInteger(s.canvasAnchor) && (s.canvasAnchor as number) >= 0 && (s.canvasAnchor as number) <= 8 && s.canvasAnchor !== 4 ? { canvasAnchor: s.canvasAnchor } : {}),
@@ -139,12 +142,32 @@ export function formatOptions(s: ExportSettings): Record<string, unknown> {
   if (s.format === 'ico') return { sizes: icoSizesOf(s.icoSizes), png: o === 'png' };
   if (s.format === 'bmp') return { bits: o === '24' ? 24 : 32 };
   if (s.format === 'fits') return { planes: o === 'gray' ? 'gray' : 'rgb' };
-  if (s.format === 'png') return { level: Number.parseInt(o ?? '6', 10), optimize: o === '9o' };
-  if (s.format === 'jpg') return { subsampling: o };
+  if (s.format === 'png') return o === 'i' ? { level: 6, interlace: true } : { level: Number.parseInt(o ?? '6', 10), optimize: o === '9o' };
+  if (s.format === 'jpg') return o === 'gray' ? { subsampling: '420', gray: true } : o === '420p' ? { subsampling: '420', progressive: true } : { subsampling: o };
+  if (s.format === 'webp') return { lossless: o === 'lossless' };
+  if (s.format === 'tiff') {
+    const c = o ?? 'lzw';
+    if (c.startsWith('gray')) return { gray: true, compression: 'lzw', alpha: c === 'gray' };
+    return { compression: c.replace('-big', ''), bigtiff: c.endsWith('-big') };
+  }
+  if (s.format === 'pdf') return o === 'black' ? { background: 'black' } : o === 'gray' || o === 'cmyk' ? { mode: o } : {};
   return {};
 }
+/** Formats that write no alpha channel with these settings: transparency is laid on a matte. */
+export const dropsAlpha = (s: ExportSettings): boolean => s.format === 'jpg' || s.format === 'pdf' || s.format === 'wbmp' || (s.format === 'bmp' && s.option === '24') || (s.format === 'tga' && !!s.option?.startsWith('24')) || (s.format === 'tiff' && s.option === 'gray-opaque');
+/** What a flat export changed or lost, one short sentence each: depth, ink, alpha, lossy encoding and resolution. The depth
+ *  sentence for QOI, TGA and ICO is said elsewhere. `clear` is whether the picture has see-through pixels. */
+export function fidelityNotes(s: ExportSettings, doc: { depth?: number; mode?: string; resolution?: number }, clear: boolean): string[] {
+  const name = s.format === 'jpg' ? 'JPEG' : s.format.toUpperCase(), out: string[] = [];
+  if ((doc.depth ?? 8) > 8 && !['qoi', 'tga', 'ico'].includes(s.format)) out.push(`${name} is written at 8 bits a channel here; the ${doc.depth}-bit picture is reduced.`);
+  if (doc.mode === 'cmyk' || doc.mode === 'lab') out.push(`The ${doc.mode === 'cmyk' ? 'CMYK' : 'Lab'} picture is converted to RGB for ${name}.`);
+  if (clear && dropsAlpha(s)) out.push(`${name} keeps no transparency; clear areas are laid on ${s.format === 'pdf' && s.option === 'black' ? 'black' : s.format === 'wbmp' ? 'white and thresholded' : 'white'}.`);
+  if (s.format === 'jpg' || s.format === 'avif' || (s.format === 'webp' && s.option !== 'lossless')) out.push(`${name} is lossy; written at quality ${s.quality}.`);
+  if (['qoi', 'pnm', 'tga', 'ico', 'fits', 'wbmp', 'dpx'].includes(s.format) && (doc.resolution ?? 72) !== 72) out.push(`${name} has no resolution field; the document's ${doc.resolution} ppi is not recorded.`);
+  return out;
+}
 /** PNG and JPEG are written by the browser unless a compression level or a chroma subsampling other than the default is chosen. */
-export const engineWrites = (s: ExportSettings): boolean => ENGINE_FORMATS.has(s.format) || (s.format === 'png' && !!s.option && s.option !== '6') || (s.format === 'jpg' && !!s.option && s.option !== '420');
+export const engineWrites = (s: ExportSettings): boolean => ENGINE_FORMATS.has(s.format) || (s.format === 'png' && !!s.option && s.option !== '6') || (s.format === 'jpg' && !!s.option && s.option !== '420') || (s.format === 'webp' && s.option === 'lossless');
 const box = (v: unknown): number => Math.round(Math.min(30000, Math.max(1, Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : 1080)));
 
 /** Where the picture goes in the exported image: the image's size, and the rectangle the picture is drawn into. */

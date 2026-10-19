@@ -7,7 +7,7 @@
  *  smoothstep falloff from the brush centre. */
 
 export interface LiquifyField { gw: number; gh: number; cell: number; d: Float32Array; freeze?: Float32Array }
-export type LiquifyTool = 'warp' | 'pushLeft' | 'reconstruct' | 'twirlCW' | 'twirlCCW' | 'pucker' | 'bloat' | 'freeze' | 'thaw';
+export type LiquifyTool = 'warp' | 'pushLeft' | 'reconstruct' | 'twirlCW' | 'twirlCCW' | 'pucker' | 'bloat' | 'smooth' | 'freeze' | 'thaw';
 
 export function makeField(w: number, h: number, cell = 4): LiquifyField {
   const gw = Math.ceil(w / cell) + 1, gh = Math.ceil(h / cell) + 1;
@@ -15,6 +15,29 @@ export function makeField(w: number, h: number, cell = 4): LiquifyField {
 }
 
 const smooth = (t: number): number => { const x = Math.min(1, Math.max(0, t)); return x * x * (3 - 2 * x); };
+
+/** The brush's falloff from its centre (`t` is 1 at the centre, 0 at the edge) at Brush Density `density` (0 to 100,
+ *  50 the plain smooth falloff): above 50 the middle holds full strength and the edge narrows; below 50 the brush
+ *  peaks at the centre and fades sooner. */
+export function falloff(t: number, density = 50): number {
+  const d = Math.min(100, Math.max(0, density));
+  if (d >= 50) return smooth(t / (1 - ((d - 50) / 50) * 0.9));
+  return Math.pow(smooth(t), 1 + ((50 - d) / 50) * 2);
+}
+
+/** Brush Rate: how fast a stationary tool builds up, 0 to 100 (100 the full strength at every repeat). */
+export const rateScale = (rate: number): number => Math.min(100, Math.max(1, rate)) / 100;
+
+/** A field on a different cell size (Mesh Size), the displacements and freeze read bilinearly from `f`. */
+export function resizeField(f: LiquifyField, w: number, h: number, cell: number): LiquifyField {
+  const g = makeField(w, h, cell), o: [number, number] = [0, 0];
+  for (let gy = 0; gy < g.gh; gy++) for (let gx = 0; gx < g.gw; gx++) {
+    fieldAt(f, gx * cell, gy * cell, o);
+    g.d[(gy * g.gw + gx) * 2] = o[0]; g.d[(gy * g.gw + gx) * 2 + 1] = o[1];
+  }
+  if (f.freeze) { g.freeze = new Float32Array(g.gw * g.gh); for (let gy = 0; gy < g.gh; gy++) for (let gx = 0; gx < g.gw; gx++) g.freeze[gy * g.gw + gx] = freezeAt(f, gx * cell, gy * cell); }
+  return g;
+}
 
 /** Displacement at an image point, bilinear over the cell grid. */
 export function fieldAt(f: LiquifyField, x: number, y: number, out: [number, number]): void {
@@ -27,22 +50,22 @@ export function fieldAt(f: LiquifyField, x: number, y: number, out: [number, num
 
 /** Visits every grid node within `radius` of (cx, cy) with its falloff weight, less its freeze (1.56.5, the parity
  *  plan's M3: Freeze Mask holds what it covers still under every tool, Reconstruct included). */
-function eachNode(f: LiquifyField, cx: number, cy: number, radius: number, visit: (i: number, px: number, py: number, w: number) => void, ignoreFreeze = false): void {
+function eachNode(f: LiquifyField, cx: number, cy: number, radius: number, visit: (i: number, px: number, py: number, w: number) => void, ignoreFreeze = false, density = 50): void {
   const r = Math.max(2, radius);
   const x0 = Math.max(0, Math.floor((cx - r) / f.cell)), y0 = Math.max(0, Math.floor((cy - r) / f.cell));
   const x1 = Math.min(f.gw - 1, Math.ceil((cx + r) / f.cell)), y1 = Math.min(f.gh - 1, Math.ceil((cy + r) / f.cell));
   for (let gy = y0; gy <= y1; gy++) for (let gx = x0; gx <= x1; gx++) {
     const px = gx * f.cell, py = gy * f.cell, dist = Math.hypot(px - cx, py - cy) / r, n = gy * f.gw + gx;
     const free = ignoreFreeze || !f.freeze ? 1 : 1 - f.freeze[n];
-    if (dist < 1 && free > 0) visit(n * 2, px, py, smooth(1 - dist) * free);
+    if (dist < 1 && free > 0) visit(n * 2, px, py, falloff(1 - dist, density) * free);
   }
 }
 
 /** Freeze Mask and Thaw Mask: paint the freeze up or down under the brush by strength. */
-export function paintFreeze(f: LiquifyField, cx: number, cy: number, radius: number, strength: number, thaw: boolean): void {
+export function paintFreeze(f: LiquifyField, cx: number, cy: number, radius: number, strength: number, thaw: boolean, density = 50): void {
   if (!f.freeze) f.freeze = new Float32Array(f.gw * f.gh);
   const s = Math.min(1, Math.max(0.02, strength)), m = f.freeze;
-  eachNode(f, cx, cy, radius, (i, _x, _y, w) => { const n = i / 2; m[n] = Math.min(1, Math.max(0, m[n] + (thaw ? -1 : 1) * w * s)); }, true);
+  eachNode(f, cx, cy, radius, (i, _x, _y, w) => { const n = i / 2; m[n] = Math.min(1, Math.max(0, m[n] + (thaw ? -1 : 1) * w * s)); }, true, density);
 }
 
 /** The freeze mask cleared, or inverted (Mask Options: None, Invert All). */
@@ -58,17 +81,17 @@ export function freezeAt(f: LiquifyField, x: number, y: number): number {
 }
 
 /** Forward Warp, as in the source: the drag from a to b is added under the brush, scaled by strength (0 to 1). */
-export function pushField(f: LiquifyField, ax: number, ay: number, bx: number, by: number, radius: number, strength: number): void {
+export function pushField(f: LiquifyField, ax: number, ay: number, bx: number, by: number, radius: number, strength: number, density = 50): void {
   const dx = bx - ax, dy = by - ay, s = Math.min(1, Math.max(0.02, strength));
   if (!dx && !dy) return;
-  eachNode(f, ax, ay, radius, (i, _x, _y, w) => { f.d[i] += dx * w * s; f.d[i + 1] += dy * w * s; });
+  eachNode(f, ax, ay, radius, (i, _x, _y, w) => { f.d[i] += dx * w * s; f.d[i + 1] += dy * w * s; }, false, density);
 }
 
 /** Push Left (36.4): pixels move to the left of the drag (dragging up pushes them left), or to its
  *  right with `right` (Alt). The drag turned a quarter turn, then added as Forward Warp adds it. */
-export function pushLeftField(f: LiquifyField, ax: number, ay: number, bx: number, by: number, radius: number, strength: number, right = false): void {
+export function pushLeftField(f: LiquifyField, ax: number, ay: number, bx: number, by: number, radius: number, strength: number, right = false, density = 50): void {
   const dx = bx - ax, dy = by - ay, k = right ? -1 : 1;
-  pushField(f, ax, ay, ax + dy * k, ay - dx * k, radius, strength);
+  pushField(f, ax, ay, ax + dy * k, ay - dx * k, radius, strength, density);
 }
 
 /** A liquify mesh as JSON (36.4), for Save Mesh and Load Mesh: the grid, its displacements and the freeze. */
@@ -92,7 +115,7 @@ export function meshFromJson(f: LiquifyField, text: string): boolean {
 }
 
 /** One dab of a stationary tool at (cx, cy): Reconstruct, Twirl either way, Pucker or Bloat. */
-export function dabField(f: LiquifyField, tool: Exclude<LiquifyTool, 'warp' | 'freeze' | 'thaw'>, cx: number, cy: number, radius: number, strength: number): void {
+export function dabField(f: LiquifyField, tool: Exclude<LiquifyTool, 'warp' | 'pushLeft' | 'smooth' | 'freeze' | 'thaw'>, cx: number, cy: number, radius: number, strength: number, density = 50): void {
   const s = Math.min(1, Math.max(0.02, strength));
   eachNode(f, cx, cy, radius, (i, px, py, w) => {
     const k = w * s;
@@ -105,7 +128,20 @@ export function dabField(f: LiquifyField, tool: Exclude<LiquifyTool, 'warp' | 'f
     // Sampling from cx + (nx, ny) instead of cx + (vx, vy): D = q - source.
     f.d[i] = px - (cx + nx);
     f.d[i + 1] = py - (cy + ny);
-  });
+  }, false, density);
+}
+
+/** The Smooth tool: the displacement under the brush eased toward the mean of its four neighbours, so a pushed
+ *  region relaxes into a gentler one without returning to the original. Frozen nodes stay. */
+export function smoothField(f: LiquifyField, cx: number, cy: number, radius: number, strength: number, density = 50): void {
+  const s = Math.min(1, Math.max(0.02, strength)), keep: Array<[number, number, number]> = [];
+  const mean = (n: number, c: number): number => {
+    const gx = n % f.gw, gy = Math.floor(n / f.gw);
+    const l = gx > 0 ? n - 1 : n, r = gx < f.gw - 1 ? n + 1 : n, u = gy > 0 ? n - f.gw : n, d = gy < f.gh - 1 ? n + f.gw : n;
+    return (f.d[l * 2 + c] + f.d[r * 2 + c] + f.d[u * 2 + c] + f.d[d * 2 + c]) / 4;
+  };
+  eachNode(f, cx, cy, radius, (i, _x, _y, w) => { const k = Math.min(1, w * s); keep.push([i, f.d[i] + (mean(i / 2, 0) - f.d[i]) * k, f.d[i + 1] + (mean(i / 2, 1) - f.d[i + 1]) * k]); }, false, density);
+  for (const [i, x, y] of keep) { f.d[i] = x; f.d[i + 1] = y; }
 }
 
 export function resetField(f: LiquifyField): void { f.d.fill(0); }

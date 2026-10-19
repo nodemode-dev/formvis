@@ -9,7 +9,7 @@ import numpy as np
 from PIL import Image, ImageCms, ImageOps
 
 from app.core import config
-from app.services import camera_profiles, cin, dcp, dpx, fits, ico, pnm, qoi, raw_develop, tga, wbmp
+from app.services import camera_profiles, cin, dcp, dpx, fits, ico, png_write, pnm, qoi, raw_develop, tga, wbmp
 
 Image.MAX_IMAGE_PIXELS = config.MAX_PIXELS
 
@@ -383,6 +383,35 @@ def _own_encode(rgba: np.ndarray, fmt: str, options: dict) -> bytes:
         raise DecodeError(str(exc)) from exc
 
 
+TIFF_COMPRESSIONS = {"none": ("raw", None), "packbits": ("packbits", "packbits"), "lzw": ("tiff_lzw", "lzw"), "deflate": ("tiff_adobe_deflate", "zlib")}
+
+
+def _tiff(rgba: Image.Image, o: dict, dpi: int, icc: bytes | None) -> bytes:
+    """A TIFF from 8-bit RGBA. Options: `compression` none, packbits, lzw (the default) or deflate; `bigtiff`; `gray`
+    for one grey channel; `alpha` false to flatten on white and drop the channel."""
+    name = str(o.get("compression", "lzw")).lower()
+    if name not in TIFF_COMPRESSIONS:
+        raise DecodeError(f"Unknown TIFF compression {name}.")
+    pil, tf = TIFF_COMPRESSIONS[name]
+    keep = o.get("alpha", True) is not False
+    gray = bool(o.get("gray"))
+    img = rgba if keep else _flat_white(rgba)
+    if gray:
+        img = img.convert("LA" if keep else "L")
+        icc = None   # an RGB profile does not describe a grey file
+    out = io.BytesIO()
+    if o.get("bigtiff"):
+        import tifffile
+        if name in ("lzw", "packbits"):
+            raise DecodeError("BigTIFF is written uncompressed or with Deflate.")
+        tags = [(34675, "B", len(icc), icc, True)] if icc else []
+        tifffile.imwrite(out, np.asarray(img), bigtiff=True, photometric="minisblack" if gray else "rgb", extrasamples=["unassalpha"] if keep else None,
+                         compression=tf, resolution=(dpi, dpi), resolutionunit="inch", extratags=tags)
+    else:
+        img.save(out, "TIFF", compression=pil, dpi=(dpi, dpi), **({"icc_profile": icc} if icc else {}))
+    return out.getvalue()
+
+
 def encode(png: bytes, fmt: str, quality: int = 90, dpi: int = 72, icc: bytes | None = None, options: dict | None = None) -> bytes:
     """Re-encodes a PNG from the editor: TIFF (LZW, alpha kept), PDF (one page at `dpi`, flattened on white, since PDF
     images carry no alpha here), WebP or AVIF (at `quality`, alpha kept). `icc`, an ICC profile the pixels are already
@@ -426,11 +455,16 @@ def encode(png: bytes, fmt: str, quality: int = 90, dpi: int = 72, icc: bytes | 
         return out.getvalue()
     if fmt == "png":
         level = max(0, min(9, int((options or {}).get("level", 6))))
+        if (options or {}).get("interlace"):
+            return png_write.write(np.asarray(rgba), dpi, icc, level)
         rgba.save(out, "PNG", compress_level=level, optimize=bool((options or {}).get("optimize")), dpi=(dpi, dpi), **extra)
         return out.getvalue()
     if fmt == "jpeg":
         sub = {"444": 0, "422": 1, "420": 2}.get(str((options or {}).get("subsampling", "420")), 2)
-        _flat_white(rgba).save(out, "JPEG", quality=q, subsampling=sub, dpi=(dpi, dpi), **extra)
+        flat = _flat_white(rgba)
+        if (options or {}).get("gray"):
+            flat, extra = flat.convert("L"), {}   # a grey picture carries no RGB profile
+        flat.save(out, "JPEG", quality=q, subsampling=sub, progressive=bool((options or {}).get("progressive")), dpi=(dpi, dpi), **extra)
         return out.getvalue()
     if fmt == "dpx":
         wide = np.asarray(rgba, dtype=np.uint16) * 257
@@ -442,13 +476,25 @@ def encode(png: bytes, fmt: str, quality: int = 90, dpi: int = 72, icc: bytes | 
         # An 8-bit palette PNG (1.87.3, D23): at most 256 colours with transparency kept in the palette (tRNS).
         rgba.quantize(colors=256, method=Image.Quantize.FASTOCTREE, dither=Image.Dither.FLOYDSTEINBERG).save(out, "PNG", optimize=True, dpi=(dpi, dpi))
     elif fmt == "tiff":
-        rgba.save(out, "TIFF", compression="tiff_lzw", dpi=(dpi, dpi), **extra)
+        return _tiff(rgba, options or {}, dpi, icc)
     elif fmt == "pdf":
-        flat = Image.new("RGB", rgba.size, (255, 255, 255))
+        o = options or {}
+        back = str(o.get("background", "white")).lower()
+        if back not in ("white", "black"):
+            raise DecodeError("The PDF background must be white or black.")
+        flat = Image.new("RGB", rgba.size, (255, 255, 255) if back == "white" else (0, 0, 0))
         flat.paste(rgba, mask=rgba.getchannel("A"))
+        mode = str(o.get("mode", "rgb")).lower()
+        if mode not in ("rgb", "gray", "cmyk"):
+            raise DecodeError("The PDF colour mode must be rgb, gray or cmyk.")
+        flat = flat.convert({"rgb": "RGB", "gray": "L", "cmyk": "CMYK"}[mode])
         flat.save(out, "PDF", resolution=float(max(1, dpi)))
     elif fmt == "webp":
-        rgba.save(out, "WEBP", quality=q, method=4, **extra)
+        o = options or {}
+        if o.get("lossless"):
+            rgba.save(out, "WEBP", lossless=True, quality=max(q, 1), method=4, exact=bool(o.get("exact")), **extra)
+        else:
+            rgba.save(out, "WEBP", quality=q, method=4, **extra)
     else:
         rgba.save(out, "AVIF", quality=q, **extra)
     return out.getvalue()

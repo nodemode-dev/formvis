@@ -5,7 +5,7 @@ import { deepFromRaster } from '../../engine/deep';
 import { iccProfile } from '../../engine/icc';
 import { loadPrefs } from '../prefs';
 import { api, ApiError } from '../../io/api';
-import { toBase64 } from '../../io/icc-read';
+import { embeddedProfile, toBase64 } from '../../io/icc-read';
 import { PROOF_KINDS, type ColourView, type Intent, type ProofSetup } from '../colour';
 import { displayLine } from '../colour-display';
 import { Dialog } from '../dialogs';
@@ -79,9 +79,13 @@ async function profileOf(choice: string, label: string): Promise<DocProfile | nu
 export class AssignProfileDialog extends Dialog {
   private readonly sel = el<HTMLSelectElement>('<select class="cv-input" aria-label="Profile"></select>');
   private readonly note = el('<p class="cv-note" role="status"></p>');
+  private readonly file = el<HTMLInputElement>('<input type="file" accept=".icc,.icm" hidden data-role="assign-load-profile">');
   constructor(private readonly engine: Engine, private readonly tables: CmykTables, private readonly convert: () => Promise<void>) {
     super('Assign Profile', 460);
-    this.body.append(el('<p class="cv-note">The numbers stay; how they look changes. Use Convert to Profile to keep the look.</p>'), row('Profile', this.sel), this.note);
+    const load = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Load Profile...</button>');
+    load.addEventListener('click', () => this.file.click());
+    this.file.addEventListener('change', () => void this.load());
+    this.body.append(el('<p class="cv-note">The numbers stay; how they look changes. Use Convert to Profile to keep the look.</p>'), row('Profile', this.sel), load, this.file, this.note);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => void this.ok());
     this.remember();
@@ -89,10 +93,22 @@ export class AssignProfileDialog extends Dialog {
   async show(): Promise<void> {
     // Lab (1.57.9): its colours are absolute, so a profile is given to them by converting into it.
     if (this.engine.current?.doc.mode === 'lab') { await this.convert(); return; }
-    options(this.sel, this.engine.current?.doc.mode === 'cmyk' ? await cmykChoices() : await rgbChoices()); setText(this.note, ''); this.open();
+    await this.list(); setText(this.note, ''); this.open();
+  }
+  private async list(pick?: string): Promise<void> {
+    const mode = this.engine.current?.doc.mode;
+    const items = mode === 'cmyk' ? await cmykChoices() : mode === 'grayscale' ? await grayChoices() : await rgbChoices();
+    options(this.sel, mode === 'cmyk' ? items : [['none', "Don't Color Manage This Document"], ...items]);
+    if (pick && items.some(([v]) => v === pick)) this.sel.value = pick;
+  }
+  private async load(): Promise<void> {
+    const f = this.file.files?.[0]; this.file.value = '';
+    if (!f) return;
+    try { const p = await api.addColourProfile(f); await this.list(`id:${p.id}`); setText(this.note, `Added ${p.name}.`); } catch (err) { setText(this.note, msg(err)); }
   }
   private async ok(): Promise<void> {
     try {
+      if (this.sel.value === 'none' && this.engine.current?.doc.mode !== 'cmyk') { this.engine.assignProfile(null); this.close(); return; }
       const profile = await profileOf(this.sel.value, this.sel.selectedOptions[0]?.textContent ?? '');
       if (this.engine.current?.doc.mode === 'cmyk') {
         // CMYK (1.57.9): the inks stay and are shown through the new press's tables, fetched first; one step.
@@ -184,6 +200,7 @@ export class ProofSetupDialog extends Dialog {
   private readonly file = el<HTMLInputElement>('<input type="file" accept=".icc,.icm" hidden data-role="load-profile">');
   private readonly paper = el<HTMLInputElement>('<input type="checkbox" aria-label="Simulate Paper Color">');
   private readonly ink = el<HTMLInputElement>('<input type="checkbox" aria-label="Simulate Black Ink">');
+  private readonly delta = el<HTMLInputElement>('<input class="cv-input" type="number" min="0.1" max="50" step="0.1" aria-label="Gamut Warning threshold in delta E">');
   private readonly presetSel = el<HTMLSelectElement>('<select class="cv-input" aria-label="Preset"></select>');
   private readonly presetName = el<HTMLInputElement>('<input class="cv-input" type="text" maxlength="60" placeholder="Preset name" aria-label="Preset name">');
   private readonly deleteBtn = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Delete Preset</button>');
@@ -203,12 +220,13 @@ export class ProofSetupDialog extends Dialog {
     const manage = el('<div class="cv-dialog-row"><span></span></div>');
     manage.append(this.presetName, save, this.deleteBtn);
     this.body.append(row('Preset', this.presetSel), manage, row('Device to Simulate', this.sel), load, this.file, row('Rendering Intent', this.intent), row('Black Point Compensation', this.bpc),
-      row('Simulate Paper Color', this.paper), row('Simulate Black Ink', this.ink), this.monitor, this.note);
+      row('Simulate Paper Color', this.paper), row('Simulate Black Ink', this.ink), row('Gamut Warning threshold (delta E)', this.delta), this.monitor, this.note);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.ok());
   }
   async show(): Promise<void> {
     await this.list(this.colour.setup?.id); setText(this.note, '');
+    this.delta.value = String(this.colour.gamutDelta);
     const s = this.colour.setup;
     if (s) this.apply(s);
     this.terms();
@@ -275,6 +293,7 @@ export class ProofSetupDialog extends Dialog {
   }
   private ok(): void {
     const pick = this.presetSel.value, kind = PROOF_KINDS.find(([k]) => `k:${k}` === pick)?.[0] ?? null;
+    if (Number(this.delta.value) !== this.colour.gamutDelta && this.delta.value) this.colour.setGamutDelta(Number(this.delta.value));
     if (kind) { this.colour.usePreset(kind); this.close(); return; }
     this.colour.preset = null;
     const setup = this.current();
@@ -289,39 +308,86 @@ export class ProofSetupDialog extends Dialog {
 /** Embedded Profile Mismatch (1.53.5), when Preferences asks: keep it, convert to sRGB, or discard it. */
 export class ProfileMismatchDialog extends Dialog {
   private readonly info = el('<p class="cv-note"></p>');
-  private answer: ((v: 'keep' | 'convert' | 'discard') => void) | null = null;
+  private answer: ((v: 'keep' | 'convert' | 'discard' | 'cancel') => void) | null = null;
   constructor() {
     super('Embedded Profile Mismatch', 480);
     this.body.append(this.info);
+    this.button('Cancel', 'ghost', () => this.done('cancel'));
     this.button('Discard', 'ghost', () => this.done('discard'));
     this.button('Use Embedded Profile', 'ghost', () => this.done('keep'));
     this.button('Convert to Working Space', 'primary', () => this.done('convert'));
   }
-  ask(file: string, profile: string, working = 'sRGB IEC61966-2.1'): Promise<'keep' | 'convert' | 'discard'> {
+  ask(file: string, profile: string, working = 'sRGB IEC61966-2.1'): Promise<'keep' | 'convert' | 'discard' | 'cancel'> {
     setText(this.info, `${file} has an embedded profile, ${profile}, that does not match the working space, ${working}.`);
     this.open();
     return new Promise((res) => { this.answer = res; });
   }
-  private done(v: 'keep' | 'convert' | 'discard'): void { const a = this.answer; this.answer = null; this.close(); a?.(v); }
-  close(): void { if (this.answer) { const a = this.answer; this.answer = null; a('convert'); } super.close(); }
+  private done(v: 'keep' | 'convert' | 'discard' | 'cancel'): void { const a = this.answer; this.answer = null; this.close(); a?.(v); }
+  close(): void { if (this.answer) { const a = this.answer; this.answer = null; a('cancel'); } super.close(); }
 }
 
 /** Missing Profile (DEV_PLAN 28.2), when Color Settings asks: a picture with no profile is read in the working space, or
  *  left as its numbers, unmanaged. */
 export class MissingProfileDialog extends Dialog {
   private readonly info = el('<p class="cv-note"></p>');
-  private answer: ((v: 'assume' | 'leave') => void) | null = null;
+  private answer: ((v: 'assume' | 'leave' | 'cancel') => void) | null = null;
   constructor() {
     super('Missing Profile', 480);
     this.body.append(this.info);
+    this.button('Cancel', 'ghost', () => this.done('cancel'));
     this.button('Leave as Is (Don\'t Color Manage)', 'ghost', () => this.done('leave'));
     this.button('Assume Working Space', 'primary', () => this.done('assume'));
   }
-  ask(file: string, working: string): Promise<'assume' | 'leave'> {
+  ask(file: string, working: string): Promise<'assume' | 'leave' | 'cancel'> {
     setText(this.info, `${file} has no embedded profile. Assume the working space, ${working}, or leave its numbers unmanaged.`);
     this.open();
     return new Promise((res) => { this.answer = res; });
   }
-  private done(v: 'assume' | 'leave'): void { const a = this.answer; this.answer = null; this.close(); a?.(v); }
-  close(): void { if (this.answer) { const a = this.answer; this.answer = null; a('assume'); } super.close(); }
+  private done(v: 'assume' | 'leave' | 'cancel'): void { const a = this.answer; this.answer = null; this.close(); a?.(v); }
+  close(): void { if (this.answer) { const a = this.answer; this.answer = null; a('cancel'); } super.close(); }
+}
+
+/** Edit > Profile Info: what the document's profile (or a chosen picture's or .icc file's) says about itself. */
+export class ProfileInfoDialog extends Dialog {
+  private readonly fields = new Map<string, HTMLElement>();
+  private readonly file = el<HTMLInputElement>('<input type="file" accept=".icc,.icm,.png,.jpg,.jpeg,.webp" hidden data-role="info-profile-file">');
+  private readonly note = el('<p class="cv-note" role="status"></p>');
+  private readonly source = el('<p class="cv-note"></p>');
+  constructor(private readonly engine: Engine) {
+    super('Profile Info', 460);
+    const choose = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Choose File...</button>');
+    choose.addEventListener('click', () => this.file.click());
+    this.file.addEventListener('change', () => void this.fromFile());
+    this.body.append(this.source);
+    for (const k of ['Name', 'Colour space', 'Device class', 'Connection space', 'Version', 'Size', 'Total ink', 'Copyright']) {
+      const out = el('<span></span>');
+      this.fields.set(k, out);
+      this.body.append(row(k, out));
+    }
+    this.body.append(choose, this.file, this.note);
+    this.button('Close', 'primary', () => this.close());
+  }
+  async show(): Promise<void> {
+    const prof = this.engine.current?.doc.profile ?? null;
+    await this.fill(prof ? { icc: prof.icc } : { id: 'builtin:srgb' }, prof ? `This document: ${prof.name}` : 'This document has no profile; it is read as sRGB.');
+    this.open();
+  }
+  private async fill(ref: { icc?: string; id?: string }, source: string): Promise<void> {
+    setText(this.note, '');
+    try {
+      const i = await api.profileInfo(ref), put = (k: string, v: string): void => setText(this.fields.get(k) as HTMLElement, v);
+      setText(this.source, source);
+      put('Name', i.name); put('Colour space', i.space); put('Device class', i.deviceClass ?? 'Not stated'); put('Connection space', i.pcs ?? 'Not stated');
+      put('Version', i.version ?? 'Not stated'); put('Size', i.size ? `${(i.size / 1024).toFixed(1)} KB` : 'Not stated'); put('Total ink', i.tac === null ? 'Not applicable' : `${i.tac}%`);
+      put('Copyright', i.copyright ?? 'Not stated');
+    } catch (err) { setText(this.note, msg(err)); }
+  }
+  private async fromFile(): Promise<void> {
+    const f = this.file.files?.[0]; this.file.value = '';
+    if (!f) return;
+    const head = new Uint8Array(await f.slice(0, 40).arrayBuffer());
+    const icc = String.fromCharCode(...head.subarray(36, 40)) === 'acsp' ? new Uint8Array(await f.arrayBuffer()) : await embeddedProfile(f).catch(() => null);
+    if (!icc) { setText(this.note, `${f.name} has no embedded colour profile.`); return; }
+    await this.fill({ icc: toBase64(icc) }, `File: ${f.name}`);
+  }
 }

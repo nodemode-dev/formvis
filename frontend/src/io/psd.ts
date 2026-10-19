@@ -5,7 +5,8 @@ import {
 import { fromPsdAdjustment, toPsdAdjustment } from './psd-adjust';
 import { artboardFromData, blendIfActive, type BlendIf, type DocSlice, type LayerComp } from '../engine/types';
 import { windingArea } from '../engine/custom-shapes';
-import { addPathResources, readPathResources } from './psd-paths';
+import { addIccResource, addPathResources, readPathResources } from './psd-paths';
+import { fromBase64 } from './icc-read';
 import { buildXmp, metaFromXmp } from './xmp';
 import { metaWritable } from '../engine/doc-meta';
 import type { PathSet, SubPath } from '../engine/paths';
@@ -738,5 +739,12 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
   if (doc.pixelAspect && doc.pixelAspect !== 1) psd.imageResources = { ...(psd.imageResources ?? {}), pixelAspectRatio: { aspect: doc.pixelAspect } };   // Pixel Aspect Ratio (35.4 part b)
   const ppi = doc.resolution && doc.resolution >= 1 && doc.resolution <= 65535 ? doc.resolution : 72;   // image resource 1005
   psd.imageResources = { ...(psd.imageResources ?? {}), resolutionInfo: { horizontalResolution: ppi, horizontalResolutionUnit: 'PPI', widthUnit: 'Inches', verticalResolution: ppi, verticalResolutionUnit: 'PPI', heightUnit: 'Inches' } };
-  return { bytes: addPathResources(writePsd(psd, { generateThumbnail: maximize, psb }), paths, doc.width, doc.height), notes };
+  const guideList = (doc.guides ?? []).filter((g) => Number.isFinite(g.at) && g.at >= 0);
+  if (guideList.length) psd.imageResources = { ...(psd.imageResources ?? {}), gridAndGuidesInformation: { guides: guideList.map((g) => ({ location: Math.round(g.at * 2) / 2, direction: g.axis === 'y' ? 'horizontal' as const : 'vertical' as const })) } };   // 1032, in pixels
+  const noteList = (doc.notes ?? []).filter((n) => n.text.trim());
+  if (noteList.length) psd.annotations = noteList.map((n) => ({ type: 'text' as const, open: false, iconLocation: { left: Math.round(n.x), top: Math.round(n.y), right: Math.round(n.x) + 18, bottom: Math.round(n.y) + 18 }, popupLocation: { left: Math.round(n.x) + 20, top: Math.round(n.y), right: Math.round(n.x) + 220, bottom: Math.round(n.y) + 120 }, color: { r: 255, g: 220, b: 0 }, author: '', name: '', date: '', data: n.text }));   // text notes (Anno)
+  if (doc.globalLight) psd.imageResources = { ...(psd.imageResources ?? {}), globalAngle: Math.round(doc.globalLight.angle), globalAltitude: Math.round(doc.globalLight.altitude) };   // 1037 and 1049
+  let icc: Uint8Array | null = null;
+  try { icc = doc.profile ? fromBase64(doc.profile.icc) : null; } catch { notes.push('The document\'s colour profile could not be read, so the PSD carries none.'); }
+  return { bytes: addIccResource(addPathResources(writePsd(psd, { generateThumbnail: maximize, psb }), paths, doc.width, doc.height), icc), notes };
 }

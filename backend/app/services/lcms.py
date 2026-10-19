@@ -87,6 +87,10 @@ def _need() -> ctypes.CDLL:
         lib.cmsBuildParametricToneCurve.restype = c_void_p
         lib.cmsBuildParametricToneCurve.argtypes = [c_void_p, c_int, POINTER(c_double)]
         lib.cmsFreeToneCurve.argtypes = [c_void_p]
+        lib.cmsBuildTabulatedToneCurve16.restype = c_void_p
+        lib.cmsBuildTabulatedToneCurve16.argtypes = [c_void_p, c_uint32, c_void_p]
+        lib.cmsCreateRGBProfile.restype = c_void_p
+        lib.cmsCreateRGBProfile.argtypes = [c_void_p, c_void_p, c_void_p]
         lib.cmsCreateGrayProfile.restype = c_void_p
         lib.cmsCreateGrayProfile.argtypes = [c_void_p, c_void_p]
         lib.cmsSaveProfileToMem.restype = c_int
@@ -157,7 +161,33 @@ GRAYS = {
     "builtin:gray-g22": ("Gray Gamma 2.2", 2.2),
     "builtin:gray-g18": ("Gray Gamma 1.8", 1.8),
     "builtin:gray-srgb": ("Gray sRGB Curve", None),
+    "builtin:sgray": ("sGray", None),
+    "builtin:gray-dg20": ("Dot Gain 20%", "dotgain"),
 }
+
+D65 = (0.3127, 0.3290)
+D50 = (0.3457, 0.3585)
+SRGB_PRIMARIES = ((0.64, 0.33), (0.30, 0.60), (0.15, 0.06))
+# id: (name, primaries, white point, curve) with a curve of a gamma, "srgb" or "rec709"
+RGBS = {
+    "builtin:prophoto": ("ProPhoto RGB", ((0.7347, 0.2653), (0.1596, 0.8404), (0.0366, 0.0001)), D50, 1.8),
+    "builtin:linear-srgb": ("sRGB Linear", SRGB_PRIMARIES, D65, 1.0),
+    "builtin:acescg": ("ACEScg", ((0.713, 0.293), (0.165, 0.830), (0.128, 0.044)), (0.32168, 0.33767), 1.0),
+    "builtin:rec2020": ("Rec. 2020", ((0.708, 0.292), (0.170, 0.797), (0.131, 0.046)), D65, "rec709"),
+    "builtin:macrgb": ("Macintosh RGB (Gamma 1.8)", ((0.625, 0.340), (0.280, 0.595), (0.155, 0.070)), D65, 1.8),
+}
+
+
+def _curve(lib: ctypes.CDLL, kind: object) -> int:
+    if kind == "srgb":
+        return lib.cmsBuildParametricToneCurve(None, 4, (c_double * 5)(2.4, 1 / 1.055, 0.055 / 1.055, 1 / 12.92, 0.04045))
+    if kind == "rec709":
+        return lib.cmsBuildParametricToneCurve(None, 4, (c_double * 5)(1 / 0.45, 1 / 1.099, 0.099 / 1.099, 1 / 4.5, 0.081))
+    if kind == "dotgain":
+        # Murray-Davies: ink coverage a = 1 - v, printed area a + 0.8 a (1 - a), reflectance one minus that
+        table = (ctypes.c_uint16 * 1024)(*[min(65535, round(65535 * (0.2 * v + 0.8 * v * v))) for v in (i / 1023 for i in range(1024))])
+        return lib.cmsBuildTabulatedToneCurve16(None, 1024, table)
+    return lib.cmsBuildGamma(None, float(kind))   # type: ignore[arg-type]
 
 
 def builtin(pid: str) -> bytes:
@@ -179,14 +209,25 @@ def builtin(pid: str) -> bytes:
             lib.cmsCloseProfile(h)
     if pid in GRAYS:
         name, gamma = GRAYS[pid]
-        if gamma is None:
-            params = (c_double * 5)(2.4, 1 / 1.055, 0.055 / 1.055, 1 / 12.92, 0.04045)
-            curve = lib.cmsBuildParametricToneCurve(None, 4, params)
-        else:
-            curve = lib.cmsBuildGamma(None, gamma)
+        curve = _curve(lib, "srgb" if gamma is None else gamma)
         white = (c_double * 3)(0.3457, 0.3585, 1.0)
         h = lib.cmsCreateGrayProfile(white, curve)
         lib.cmsFreeToneCurve(curve)
+        try:
+            _label(h, name)
+            return _save(h)
+        finally:
+            lib.cmsCloseProfile(h)
+    if pid in RGBS:
+        name, prim, wp, kind = RGBS[pid]
+        white = (c_double * 3)(wp[0], wp[1], 1.0)
+        prims = (c_double * 9)(*[v for xy in prim for v in (xy[0], xy[1], 1.0)])
+        curve = _curve(lib, kind)
+        curves = (c_void_p * 3)(curve, curve, curve)
+        h = lib.cmsCreateRGBProfile(white, prims, curves)
+        lib.cmsFreeToneCurve(curve)
+        if not h:
+            raise LcmsError("LittleCMS could not build that profile.")
         try:
             _label(h, name)
             return _save(h)

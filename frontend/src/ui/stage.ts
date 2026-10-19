@@ -593,7 +593,7 @@ export class Stage {
       g.save(); g.lineWidth = 1; g.strokeStyle = pal.accent;
       g.beginPath(); g.moveTo(c[0].x + 0.5, c[0].y + 0.5); for (let i = 1; i < 4; i++) g.lineTo(c[i].x + 0.5, c[i].y + 0.5); g.closePath(); g.stroke(); g.restore();
     }
-    if (this.engine.view.slices && this.tool()?.id !== 'slice' && p.doc.slices?.length) drawSlices(g, p.doc.slices, v.panX, v.panY, v.zoom, pal.accent, this.engine.activeSlice, p.doc);
+    if (this.engine.view.slices && this.tool()?.id !== 'slice' && p.doc.slices?.length) drawSlices(g, p.doc.slices, v.panX, v.panY, v.zoom, pal.accent, this.engine.activeSlice, p.doc, this.engine.view.autoSlices);
     this.tool()?.overlay?.(this.ctx, g);
     const ring = this.engine.sampleRing;
     if (ring) {

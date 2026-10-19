@@ -9,13 +9,16 @@ export class ColorMatchDialog extends Dialog {
   private readonly to = el<HTMLSelectElement>('<select class="cv-input" aria-label="Match to"><option value="beneath">What is beneath it</option><option value="around">What is around it</option></select>');
   private readonly amount = el<HTMLInputElement>('<input type="range" min="0" max="100" step="1" value="100" aria-label="Amount">');
   private readonly amountText = el('<span class="cv-note"></span>');
+  readonly luminance = el<HTMLInputElement>('<input type="range" min="0" max="200" step="1" value="100" aria-label="Luminance">');
+  readonly intensity = el<HTMLInputElement>('<input type="range" min="0" max="200" step="1" value="100" aria-label="Color Intensity">');
+  readonly neutralize = el<HTMLInputElement>('<input type="checkbox" aria-label="Neutralize">');
   private readonly note = el('<p class="cv-note" role="status"></p>');
 
   constructor(private readonly engine: Engine) {
     super('Color Match', 400);
     const row = (label: string, ...c: HTMLElement[]): HTMLElement => { const r = el(`<label class="cv-dialog-row"><span>${label}</span></label>`); r.append(...c); return r; };
     this.amount.addEventListener('input', () => setText(this.amountText, `${this.amount.value}%`));
-    this.body.append(row('Match to', this.to), row('Amount', this.amount, this.amountText), this.note);
+    this.body.append(row('Match to', this.to), row('Amount', this.amount, this.amountText), row('Luminance', this.luminance), row('Color Intensity', this.intensity), row('Neutralize', this.neutralize), this.note);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('Apply', 'primary', () => this.apply());
     this.remember();
@@ -38,7 +41,7 @@ export class ColorMatchDialog extends Dialog {
   private apply(): void {
     const id = this.target();
     if (!id) return;
-    if (this.engine.colorMatch(id, this.to.value === 'around' ? 'around' : 'beneath', Number(this.amount.value) / 100)) this.close();
+    if (this.engine.colorMatch(id, this.to.value === 'around' ? 'around' : 'beneath', Number(this.amount.value) / 100, { luminance: Number(this.luminance.value), intensity: Number(this.intensity.value), neutralize: this.neutralize.checked })) this.close();
     else setText(this.note, 'That layer cannot be matched: see the message.');
   }
 }

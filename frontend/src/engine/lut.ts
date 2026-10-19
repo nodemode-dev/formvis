@@ -76,6 +76,7 @@ export function viewLut3(lut: ColourLut): Uint8Array {
 
 export function adjustmentLut3(adj: Adjustment): Uint8Array | null {
   if (!LUT3_KINDS.has(adj.kind)) return null;
+  if ((adj.data.gradientMapSettings as { dither?: boolean } | undefined)?.dither === true || (adj.data.params as { dither?: boolean } | undefined)?.dither === true) return null;
   const hit = cache3.get(adj.data);
   if (hit !== undefined) return hit;
   const kernel = adj.kind === 'hsv' ? hsvKernel(hsvFromData(adj.data)) : adjustmentKernel(adj);

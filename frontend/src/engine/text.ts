@@ -239,7 +239,7 @@ const warpActive = (w: TextWarp | null | undefined): w is TextWarp => !!w && (w.
 /** Where a point of the text's box goes, in coordinates from -1 to 1 across and down it. The shapes are this build's
  *  own formulas for each of the styles (the arc and shell bends, flag and wave ripples, fisheye, inflate and
  *  squeeze swells, twist); Horizontal and Vertical Distortion then taper the box like a perspective. */
-function warpPoint(w: TextWarp, u0: number, v0: number): [number, number] {
+export function warpPoint(w: TextWarp, u0: number, v0: number): [number, number] {
   const vert = w.orientation === 'vertical', u = vert ? v0 : u0, v = vert ? u0 : v0, b = w.bend / 100;
   let x = u, y = v;
   const curve = 1 - u * u, r = Math.hypot(u, v);

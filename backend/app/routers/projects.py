@@ -127,12 +127,23 @@ def _disk_path(raw: str, kinds: tuple[str, ...], reading: bool) -> Path:
 
 
 def _write_atomic(target: Path, blob: bytes) -> None:
-    """Written beside the target first, then renamed over it, so a failed save never leaves half a file."""
+    """Written beside the target first, flushed to disk, then renamed over it, then the folder is flushed, so a failed save
+    or a power cut never leaves half a file."""
     fd, tmp_name = tempfile.mkstemp(dir=target.parent, suffix=".tmp")
     try:
         with os.fdopen(fd, "wb") as handle:
             handle.write(blob)
+            handle.flush()
+            os.fsync(handle.fileno())
         os.replace(tmp_name, target)
+        try:
+            dir_fd = os.open(target.parent, os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+        except OSError:
+            pass   # a platform that cannot open a folder (Windows) skips the folder flush
     except BaseException:
         Path(tmp_name).unlink(missing_ok=True)
         raise

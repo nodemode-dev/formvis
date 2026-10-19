@@ -11,6 +11,7 @@ import { lensBlur, lensBlurMargin, shakeMargin, shakeReduce, smartSharpen, smart
 import { estimateShake } from '../../engine/shake';
 import { runGallery, type GallerySettings } from '../../engine/blur-gallery';
 import { LIBRARY, isLibKind, libAllDefaults, libApron, libFilter, libImageParams, libMargin, libPathParams, libValues, runLib, type LibColors, type LibFrame, type LibImage, type LibKind, type LibParam, type LibPath, type LibValue, type LibValues } from '../../engine/filter-library';
+import { crsXmp, developFromXmp } from '../../io/crs-xmp';
 import { HSL_BANDS, autoWhiteBalance, bandOf, buildCurveLut, defaultCalibration, defaultGeometry, defaultGrading, defaultNoise, defaultOptics, defaultParametric, defaultPointColor, defaultVignetteShape, hslToRgb, whiteBalanceFor, type CalibrationState, type CurveChannel, type CurvePoint,type DevelopState, type GeometryState, type GradingState, type HslBand, type HslBandState, type OpticsState, type ParametricState, type PointColorState } from '../../engine/develop';
 import { curveGraph } from './curve-graph';
 import { GalleryView } from './gallery-view';
@@ -255,6 +256,27 @@ export class FilterPanel extends Dialog {
     const darkDehaze = checkRow('Dehaze by dark channel (positive Dehaze)', (v) => { D().dehazeDark = v; this.schedule(); });
     devNodes.splice(dehazeEl ? devNodes.indexOf(dehazeEl) + 1 : devNodes.length, 0, darkDehaze.el);
     devSync.push(() => darkDehaze.set(D().dehazeDark === true));
+    // Settings files (.xmp): the Develop state written to one, or read back from one into the controls.
+    const settingsRow = el<HTMLElement>('<div style="display:flex;gap:6px"><button class="cv-btn" type="button">Load Settings...</button><button class="cv-btn" type="button">Save Settings...</button></div>');
+    const [loadBtn, saveBtn] = Array.from(settingsRow.querySelectorAll('button'));
+    loadBtn!.addEventListener('click', () => {
+      const pick = document.createElement('input');
+      pick.type = 'file'; pick.accept = '.xmp,application/rdf+xml,text/xml';
+      pick.addEventListener('change', () => {
+        const file = pick.files?.[0];
+        if (!file) return;
+        void file.text().then((text) => { s.develop = developFromXmp(text); for (const f of devSync) f(); this.schedule(); }).catch((err: unknown) => toast(err instanceof Error ? err.message : 'The settings could not be read.', 'error'));
+      });
+      pick.click();
+    });
+    saveBtn!.addEventListener('click', () => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([crsXmp(D())], { type: 'application/rdf+xml' }));
+      a.download = 'Camera Raw Settings.xmp';
+      a.click();
+      window.setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    });
+    devNodes.splice(1, 0, settingsRow);
     // White balance: As Shot clears Temperature and Tint, Auto takes the picture's mean colour as the neutral, and the
     // eyedropper (where the window has one) reads a neutral off the screen; a moved slider makes the choice Custom.
     const setWb = (temperature: number, tint: number): void => { D().tone.temperature = temperature; D().tone.tint = tint; for (const f of devSync) f(); };

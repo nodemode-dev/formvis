@@ -115,6 +115,35 @@ export function addSlice(host: GuideHost, r: { x: number; y: number; w: number; 
 export function removeSlice(host: GuideHost, id: string): void { setSlices(host, 'Delete Slice', (s) => s.filter((x) => x.id !== id)); }
 export function clearSlices(host: GuideHost): void { setSlices(host, 'Clear Slices', () => []); }
 
+/** Slice Select > Divide: one slice cut into `across` by `down` equal slices (whole pixels, the last absorbing the remainder). */
+export function divideSlice(host: GuideHost, id: string, across: number, down: number): boolean {
+  const cols = Math.max(1, Math.min(64, Math.round(across))), rows = Math.max(1, Math.min(64, Math.round(down)));
+  const src = host.current?.doc.slices?.find((s) => s.id === id);
+  if (!src || (cols === 1 && rows === 1) || src.w < cols || src.h < rows) return false;
+  const stamp = Date.now().toString(36);
+  const cut = (len: number, n: number, i: number): [number, number] => { const a = Math.round((len * i) / n), b = Math.round((len * (i + 1)) / n); return [a, b - a]; };
+  const parts: DocSlice[] = [];
+  for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+    const [dx, w] = cut(src.w, cols, i), [dy, h] = cut(src.h, rows, j);
+    parts.push({ id: `sl${stamp}${j * cols + i}`, name: src.name ? `${src.name}_${j * cols + i + 1}` : '', x: src.x + dx, y: src.y + dy, w, h, ...(src.url ? { url: src.url } : {}), ...(src.alt ? { alt: src.alt } : {}) });
+  }
+  setSlices(host, 'Divide Slice', (list) => list.flatMap((s) => (s.id === id ? parts : [s])));
+  host.setActiveSlice(parts[0]!.id);
+  return true;
+}
+
+/** View > Slices From Guides: the canvas cut along every guide into user slices, replacing the existing ones; false without a guide. */
+export function slicesFromGuides(host: GuideHost): boolean {
+  const d = host.current?.doc;
+  if (!d?.guides?.length) return false;
+  const cuts = (axis: 'x' | 'y', max: number): number[] => [...new Set([0, max, ...d.guides!.filter((g) => g.axis === axis).map((g) => Math.min(max, Math.max(0, Math.round(g.at))))])].sort((a, b) => a - b);
+  const xs = cuts('x', d.width), ys = cuts('y', d.height), stamp = Date.now().toString(36), made: DocSlice[] = [];
+  for (let j = 0; j < ys.length - 1; j++) for (let i = 0; i < xs.length - 1; i++) made.push({ id: `sl${stamp}${made.length}`, name: '', x: xs[i]!, y: ys[j]!, w: xs[i + 1]! - xs[i]!, h: ys[j + 1]! - ys[j]! });
+  if (made.length < 2) return false;
+  setSlices(host, 'Slices From Guides', () => made);
+  return true;
+}
+
 /** Changes a slice's name, link, alt text or rectangle (whole pixels, kept inside the canvas) as one undo step. */
 export function updateSlice(host: GuideHost, id: string, patch: Partial<Omit<DocSlice, 'id'>>, step = 'Slice Options'): void {
   const d = host.current?.doc;

@@ -1,4 +1,5 @@
 import { pathActions } from './path-actions';
+import { cornerWidgetCancel, cornerWidgetDown, cornerWidgetMove, cornerWidgetOverlay, cornerWidgetUp } from './corner-widgets';
 import { PATH_OPS, tracePath, type Anchor, type PathOp, type Pt, type SubPath, type VectorPath } from '../../engine';
 import type { Tool } from '../registry';
 
@@ -50,10 +51,12 @@ export const pathSelectTool: Tool = {
     ...pathActions(),
   ],
   down(ctx, p) {
+    if (cornerWidgetDown(ctx, p)) return;
     const vp = ctx.engine.workPath;
     if (p.button !== 0 || !vp) return;
     const hit = subpathAt(vp, p.doc, 5 / ctx.view().zoom);
     chosen = hit;
+    ctx.engine.pathComponents = hit === null ? [] : [hit];
     drag = null;
     ctx.engine.emit('options', null);
     if (hit === null) { ctx.engine.emit('overlay', null); return; }
@@ -62,10 +65,12 @@ export const pathSelectTool: Tool = {
     if (p.alt) vp.subpaths.splice(hit + 1, 0, copy(vp.subpaths[hit]));
     const at = p.alt ? hit + 1 : hit;
     chosen = at;
+    ctx.engine.pathComponents = [at];
     drag = { from: p.doc, start: vp.subpaths[at].anchors.map((a) => ({ ...a })) };
     ctx.engine.emit('overlay', null);
   },
   move(ctx, p) {
+    if (cornerWidgetMove(ctx, p)) return;
     const vp = ctx.engine.workPath;
     if (!drag || chosen === null || !vp?.subpaths[chosen]) return;
     const dx = p.doc.x - drag.from.x, dy = p.doc.y - drag.from.y;
@@ -73,12 +78,14 @@ export const pathSelectTool: Tool = {
     ctx.engine.setWorkPath(vp);
   },
   up(ctx) {
+    if (cornerWidgetUp(ctx)) return;
     const vp = ctx.engine.workPath;
     if (drag && vp) ctx.engine.setWorkPath(vp);
     drag = null;
     ctx.engine.endPathEdit();
   },
   cancel(ctx) {
+    cornerWidgetCancel(ctx);
     const vp = ctx.engine.workPath;
     if (drag && vp && chosen !== null && vp.subpaths[chosen]) { vp.subpaths[chosen].anchors = drag.start; ctx.engine.setWorkPath(vp); }
     drag = null;
@@ -108,6 +115,7 @@ export const pathSelectTool: Tool = {
     return true;
   },
   overlay(ctx, gx) {
+    cornerWidgetOverlay(ctx, gx);
     const vp = ctx.engine.workPath;
     if (!vp) return;
     const v = ctx.view(), pal = ctx.paint();

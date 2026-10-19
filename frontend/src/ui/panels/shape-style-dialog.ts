@@ -1,4 +1,4 @@
-import type { Engine, RGB } from '../../engine';
+import type { Engine, RGB, ShapeGradient } from '../../engine';
 import { Dialog } from '../dialogs';
 import { el, setStyleVar, setText } from '../dom';
 
@@ -14,9 +14,17 @@ export class ShapeStyleDialog extends Dialog {
   private readonly align = el<HTMLSelectElement>('<select class="cv-input"><option value="inside">Inside</option><option value="center">Center</option><option value="outside">Outside</option></select>');
   private readonly fillSwatch = el('<span class="cv-shape-swatch" aria-hidden="true"></span>');
   private readonly strokeSwatch = el('<span class="cv-shape-swatch" aria-hidden="true"></span>');
+  private readonly gradMode = el<HTMLSelectElement>('<select class="cv-input"><option value="none">None (solid)</option><option value="linear">Linear</option><option value="radial">Radial</option><option value="angle">Angle</option></select>');
+  private readonly gradAngle = el<HTMLInputElement>('<input class="cv-input" type="number" min="-180" max="180" step="1" value="0">');
+  private readonly gradSwatch = el('<span class="cv-shape-swatch" aria-hidden="true"></span>');
+  private readonly cap = el<HTMLSelectElement>('<select class="cv-input"><option value="round">Round</option><option value="butt">Butt</option><option value="square">Square</option></select>');
+  private readonly join = el<HTMLSelectElement>('<select class="cv-input"><option value="round">Round</option><option value="miter">Miter</option><option value="bevel">Bevel</option></select>');
+  private readonly miter = el<HTMLInputElement>('<input class="cv-input" type="number" min="1" max="10" step="0.5" value="4">');
   private readonly note = el('<p class="cv-note"></p>');
   private fill: RGB = { r: 0, g: 0, b: 0 };
   private stroke: RGB = { r: 0, g: 0, b: 0 };
+  private gradEnd: RGB = { r: 255, g: 255, b: 255 };
+  private kept: ShapeGradient['stops'] | null = null;
 
   constructor(private readonly engine: Engine) {
     super('Shape Fill and Stroke', 400);
@@ -31,7 +39,18 @@ export class ShapeStyleDialog extends Dialog {
     this.field('Stroke width', this.width);
     this.field('Stroke type', this.dash);
     this.field('Stroke align', this.align);
+    this.field('Stroke caps', this.cap);
+    this.field('Stroke corners', this.join);
+    this.field('Miter limit', this.miter);
+    this.field('Gradient fill', this.gradMode);
+    this.field('Gradient angle', this.gradAngle);
+    const endRow = el('<div class="cv-shape-row"></div>'), endBtn = el<HTMLButtonElement>('<button class="cv-btn cv-btn-ghost" type="button">Use background</button>');
+    endBtn.addEventListener('click', () => { this.gradEnd = { ...this.engine.bg }; this.kept = null; this.paint(); });
+    endRow.append(this.gradSwatch, endBtn);
+    this.field('Gradient end', endRow);
     this.body.appendChild(this.note);
+    this.gradMode.addEventListener('change', () => this.paint());
+    this.join.addEventListener('change', () => this.paint());
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     this.fillMode.addEventListener('change', () => this.paint());
@@ -48,6 +67,15 @@ export class ShapeStyleDialog extends Dialog {
     this.width.value = String(v.stroke?.width ?? 4);
     this.dash.value = v.stroke?.dash ?? 'solid';
     this.align.value = v.stroke?.align ?? 'center';
+    this.cap.value = v.stroke?.cap ?? 'round';
+    this.join.value = v.stroke?.join ?? 'round';
+    this.miter.value = String(v.stroke?.miter ?? 4);
+    const g = v.gradient;
+    this.gradMode.value = g ? g.type : 'none';
+    this.gradAngle.value = String(g?.angle ?? 0);
+    this.gradEnd = g ? { ...g.stops[g.stops.length - 1].color } : { ...this.engine.bg };
+    if (g) this.fill = { ...g.stops[0].color };
+    this.kept = g && g.stops.length > 2 ? g.stops.map((s) => ({ ...s, color: { ...s.color } })) : null;
     this.paint();
     this.open();
   }
@@ -55,17 +83,25 @@ export class ShapeStyleDialog extends Dialog {
   private paint(): void {
     setStyleVar(this.fillSwatch, '--swatch', this.fillMode.value === 'color' ? css(this.fill) : 'transparent');
     setStyleVar(this.strokeSwatch, '--swatch', this.strokeMode.value === 'color' ? css(this.stroke) : 'transparent');
+    setStyleVar(this.gradSwatch, '--swatch', css(this.gradEnd));
     this.width.disabled = this.strokeMode.value !== 'color';
     this.dash.disabled = this.width.disabled;
     this.align.disabled = this.width.disabled;
+    this.cap.disabled = this.width.disabled;
+    this.join.disabled = this.width.disabled;
+    this.miter.disabled = this.width.disabled || this.join.value !== 'miter';
+    this.gradAngle.disabled = this.fillMode.value !== 'color' || this.gradMode.value === 'none';
+    this.gradMode.disabled = this.fillMode.value !== 'color';
     setText(this.note, 'Use foreground takes the current foreground colour.');
   }
 
   private apply(): void {
     const w = Math.min(1000, Math.max(1, Math.round(Number(this.width.value) || 1)));
-    const fill = this.fillMode.value === 'color' ? { ...this.fill } : null, stroke = this.strokeMode.value === 'color' ? { color: { ...this.stroke }, width: w, dash: this.dash.value as 'solid' | 'dashed' | 'dotted', align: this.align.value as 'inside' | 'center' | 'outside' } : null;
+    const fill = this.fillMode.value === 'color' ? { ...this.fill } : null, stroke = this.strokeMode.value === 'color' ? { color: { ...this.stroke }, width: w, dash: this.dash.value as 'solid' | 'dashed' | 'dotted', align: this.align.value as 'inside' | 'center' | 'outside', cap: this.cap.value as 'butt' | 'round' | 'square', join: this.join.value as 'miter' | 'round' | 'bevel', miter: Math.min(10, Math.max(1, Number(this.miter.value) || 4)) } : null;
     if (!fill && !stroke) { setText(this.note, 'A shape needs a fill, a stroke or both.'); return; }
+    const style: { fill: RGB | null; stroke: typeof stroke; gradient?: ShapeGradient } = { fill, stroke };
+    if (fill && this.gradMode.value !== 'none') style.gradient = { type: this.gradMode.value as ShapeGradient['type'], angle: Math.min(180, Math.max(-180, Number(this.gradAngle.value) || 0)), stops: this.kept ? this.kept.map((s, i) => (i === 0 ? { ...s, color: { ...fill } } : s)) : [{ at: 0, color: { ...fill } }, { at: 1, color: { ...this.gradEnd } }] };
     this.close();
-    this.engine.setShapeStyle({ fill, stroke });
+    this.engine.setShapeStyle(style);
   }
 }

@@ -60,9 +60,19 @@ export class ExportDialog extends Dialog {
   private readonly metaNote = el('<p class="cv-note"></p>');
   private readonly nameInput = el('<input class="cv-input" type="text" maxlength="60" placeholder="Preset name">') as HTMLInputElement;
   private readonly deleteBtn: HTMLButtonElement;
+  // Live preview and size estimate: the file the settings would write, encoded after a short pause and drawn into one canvas.
+  private readonly previewBox = el('<div class="cv-export-preview" role="img" aria-label="Preview of the exported file"><canvas></canvas></div>');
+  private readonly previewCanvas = this.previewBox.firstElementChild as HTMLCanvasElement;
+  private readonly previewNote = el('<p class="cv-note" role="status"></p>');
+  private readonly zoomRow: Row<string>;
+  private zoom = 'fit';
+  private seq = 0;
+  private timer = 0;
+  private layers = false;
 
-  constructor(private readonly engine: Engine, private readonly run: (s: ExportSettings) => void) {
+  constructor(private readonly engine: Engine, private readonly run: (s: ExportSettings) => void, private readonly runLayers: (s: ExportSettings) => void, private readonly preview: (s: ExportSettings, layerId?: string) => Promise<{ blob: Blob; name: string; view?: CanvasImageSource } | null>) {
     super('Export As', 420);
+    this.zoomRow = selectRow('Preview', [['fit', 'Fit'], ['100', 'Actual pixels (centre)']], (v) => { this.zoom = v; this.queue(); });
     this.presetRow = selectRow('Preset', [], (v) => this.pick(v));
     this.formatRow = selectRow('Format', EXPORT_FORMATS, (v) => { this.s = clampSettings({ ...this.s, format: v as ExportFormat }); this.custom(); });
     this.qualityRow = sliderRow('Quality (%)', 1, 100, 1, (v) => { this.s = clampSettings({ ...this.s, quality: v }); this.custom(); });
@@ -112,20 +122,59 @@ export class ExportDialog extends Dialog {
     this.deleteBtn.addEventListener('click', () => this.deletePreset());
     const manage = el('<div class="cv-field"><span></span><div class="cv-row-actions"></div></div>');
     (manage.lastElementChild as HTMLElement).append(this.nameInput, save, this.deleteBtn);
-    this.body.append(this.presetRow.el, this.fileField, this.formatRow.el, this.qualityRow.el, this.sizeRow.el, this.scaleRow.el, this.boxRow, this.canvasRow.el, this.canvasBox, this.anchorRow.el, this.fillRow.el, this.matteRow.el, this.profileRow.el, this.intentRow.el, this.bpcRow.el, this.embedRow.el, this.dpxBitsRow.el, this.dpxTransferRow.el, this.optionRow.el, this.icoRow, this.labelRow.el, this.promptRow.el, this.metaRow.el, this.copyrightField, this.contactField, this.metaNote, this.sizesHead, this.sizesList, this.sizeNote, manage);
+    this.body.append(this.previewBox, this.previewNote, this.zoomRow.el, this.presetRow.el, this.fileField, this.formatRow.el, this.qualityRow.el, this.sizeRow.el, this.scaleRow.el, this.boxRow, this.canvasRow.el, this.canvasBox, this.anchorRow.el, this.fillRow.el, this.matteRow.el, this.profileRow.el, this.intentRow.el, this.bpcRow.el, this.embedRow.el, this.dpxBitsRow.el, this.dpxTransferRow.el, this.optionRow.el, this.icoRow, this.labelRow.el, this.promptRow.el, this.metaRow.el, this.copyrightField, this.contactField, this.metaNote, this.sizesHead, this.sizesList, this.sizeNote, manage);
     this.button('Cancel', 'ghost', () => this.close());
-    this.button('Export', 'primary', () => { this.close(); this.run({ ...this.s }); });
+    this.button('Export', 'primary', () => { this.close(); (this.layers ? this.runLayers : this.run)({ ...this.s }); });
     // The settings in use (not only the saved presets) and the preset chosen are kept across sessions.
     const kept = recalled('Export As', 'settings');
     if (typeof kept === 'string') { try { this.s = clampSettings(JSON.parse(kept) as ExportSettings); this.presetId = String(recalled('Export As', 'preset') ?? ''); } catch { /* the defaults */ } }
   }
 
-  show(): void {
+  /** Opens for the picture, or for the selected layers (`layers`), each exported alone. */
+  show(layers = false): void {
     if (this.isOpen || !this.engine.current) return;
+    this.layers = layers;
+    this.setTitle(layers ? 'Export Layer As' : 'Export As');
     this.load();
     this.sync();
     this.open();
     void this.listProfiles();
+  }
+
+  /** Re-encodes the preview 350 ms after the last change; an older answer that arrives late is dropped. */
+  private queue(): void {
+    window.clearTimeout(this.timer);
+    const seq = ++this.seq;
+    this.timer = window.setTimeout(() => void this.render(seq), 350);
+  }
+
+  private async render(seq: number): Promise<void> {
+    const p = this.engine.current;
+    if (!this.isOpen || !p) return;
+    const lay = this.layers ? p.activeId ?? undefined : undefined, first = sizedSettings(this.s)[0].s, L = exportLayout(p.doc.width, p.doc.height, first);
+    if (L.w * L.h > 40e6) { setText(this.previewNote, `${L.w} x ${L.h} px is too large to preview here; the size is known after the export.`); return; }
+    let r: Awaited<ReturnType<ExportDialog['preview']>> = null;
+    try { r = await this.preview(this.s, lay); } catch { r = null; }
+    if (seq !== this.seq || !this.isOpen) return;
+    if (!r || !r.blob.size) { setText(this.previewNote, 'This export cannot be previewed with these settings.'); return; }
+    let src: CanvasImageSource | undefined = r.view, w = 0, h = 0;
+    try { const b = await createImageBitmap(r.blob); src = b; } catch { /* formats the browser cannot show: the picture it was encoded from */ }
+    if (seq !== this.seq || !this.isOpen) return;
+    if (src) { w = 'width' in src ? Number(src.width) : 0; h = 'height' in src ? Number(src.height) : 0; }
+    const kb = r.blob.size / 1024, size = kb >= 1024 ? `${(kb / 1024).toFixed(2)} MB` : `${kb.toFixed(kb < 10 ? 1 : 0)} KB`;
+    setText(this.previewNote, `${size} · ${L.w} x ${L.h} px · ${r.name}${this.s.sizes && this.s.sizes.length > 1 ? ' (first size)' : ''}`);
+    if (!src || !w || !h) return;
+    // The canvas keeps the size of its box; the picture is drawn centred in it, so nothing around it moves.
+    const cv = this.previewCanvas, bw = Math.max(40, this.previewBox.clientWidth - 2), bh = Math.max(40, this.previewBox.clientHeight - 2), fit = this.zoom === 'fit';
+    if (cv.width !== bw) cv.width = bw;
+    if (cv.height !== bh) cv.height = bh;
+    const x = cv.getContext('2d');
+    if (!x) return;
+    x.clearRect(0, 0, bw, bh);
+    x.imageSmoothingQuality = 'high';
+    if (fit) { const k = Math.min(1, bw / w, bh / h), dw = Math.max(1, Math.round(w * k)), dh = Math.max(1, Math.round(h * k)); x.drawImage(src, Math.floor((bw - dw) / 2), Math.floor((bh - dh) / 2), dw, dh); }
+    else { const cw = Math.min(w, bw), ch = Math.min(h, bh); x.drawImage(src, Math.floor((w - cw) / 2), Math.floor((h - ch) / 2), cw, ch, Math.floor((bw - cw) / 2), Math.floor((bh - ch) / 2), cw, ch); }
+    if (src instanceof ImageBitmap) src.close();
   }
 
   /** The RGB profiles on this computer join the built-in ones, patched in place so the row keeps its nodes. */
@@ -279,6 +328,7 @@ export class ExportDialog extends Dialog {
     this.deleteBtn.disabled = !this.saved.some((x) => x.id === this.presetId);
     if (doc) { const z = exportLayout(doc.width, doc.height, sizedSettings(s)[0].s), many = sizes.length > 1; setText(this.sizeNote, `${many ? `${sizes.length} files, first ` : ''}${z.w} x ${z.h} px · ${exportName(this.engine.current?.name ?? 'Untitled', s, sizes[0]?.suffix)}${s.format === 'pdf' && s.profile ? ' · converted; PDF carries no profile' : ''}`); }
     if (doc && s.aiLabel && ['avif', 'tiff', 'pdf'].includes(s.format)) setText(this.sizeNote, `${this.sizeNote.textContent ?? ''} · AVIF, TIFF and PDF do not carry the AI label yet.`);
+    this.queue();
     remembered('Export As', 'settings', JSON.stringify({ ...s, fileName: undefined }));
     remembered('Export As', 'preset', this.presetId);
   }

@@ -16,7 +16,7 @@ from app.services import camera_profiles, cin, dpx, fits, imaging, pnm, raw_deve
 router = APIRouter(tags=["io"])
 #: Every file type the app writes: pictures, projects, video, deep formats, archives, tables, presets and scripts.
 EXPORT_TYPES = ("png", "jpg", "jpeg", "webp", "avif", "tif", "tiff", "bmp", "gif", "pdf", "svg", "ai", "eps", "qoi", "tga", "ico", "dpx",
-                "pbm", "pgm", "ppm", "pnm", "pam", "exr", "hdr", "psd", "psb", "ora", "fvd", "fmv", "formvis", "mp4", "webm", "zip",
+                "pbm", "pgm", "ppm", "pnm", "pam", "exr", "hdr", "pfm", "psd", "psb", "ora", "fvd", "fmv", "formvis", "mp4", "webm", "zip",
                 "cube", "3dl", "csp", "look", "lut", "json", "csv", "txt", "atn", "abr", "grd", "aco", "ase", "act", "pat", "csh",
                 "asl", "sh", "fits", "wbmp")
 EXPORT_NAME = re.compile(r"^[^/\\:*?\"<>|\x00-\x1f]{1,160}\.(" + "|".join(EXPORT_TYPES) + r")$", re.IGNORECASE)
@@ -132,23 +132,37 @@ def exr_parts(file: UploadFile = File(...)) -> Response:
 
 
 @router.post("/encode-deep")
-def encode_deep(file: UploadFile = File(...), width: int = Form(...), height: int = Form(...), format: str = Form("png"), icc: UploadFile | None = File(default=None), icc_name: str = Form("")) -> Response:
+def encode_deep(file: UploadFile = File(...), width: int = Form(...), height: int = Form(...), format: str = Form("png"), icc: UploadFile | None = File(default=None), icc_name: str = Form(""), options: str = Form("")) -> Response:
     """A 16-bit PNG or TIFF from RGBA, 16 bits a channel, little-endian (1.53.6, H1). `icc`, when sent, is embedded in
-    the 16-bit PNG (iCCP) and TIFF (tag 34675), the profile the pixels are in."""
+    the 16-bit PNG (iCCP) and TIFF (tag 34675), the profile the pixels are in. `options` for EXR: compression (none, rle,
+    zips, zip, piz, pxr24, b44, b44a, dwaa, dwab), half (16-bit float) and channels (rgba, rgb, ya, y)."""
     import cv2
     import numpy as np
-    if format not in ("png", "tiff", "hdr", "exr", "tiff32"):
-        raise HTTPException(status_code=422, detail="Deep export is 16-bit PNG or TIFF, or 32-bit Radiance HDR, OpenEXR or TIFF.")
+    try:
+        opts = json.loads(options) if options else {}
+        if not isinstance(opts, dict):
+            raise ValueError
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="The format options must be a JSON object.") from exc
+    if format not in ("png", "tiff", "hdr", "exr", "tiff32", "pfm"):
+        raise HTTPException(status_code=422, detail="Deep export is 16-bit PNG or TIFF, or 32-bit Radiance HDR, OpenEXR, PFM or TIFF.")
     raw = file.file.read()
-    wide = format in ("hdr", "exr", "tiff32")   # 32 bits (1.53.9): float, linear light
+    wide = format in ("hdr", "exr", "tiff32", "pfm")   # 32 bits (1.53.9): float, linear light
     if width <= 0 or height <= 0 or len(raw) != width * height * (16 if wide else 8):
         raise HTTPException(status_code=422, detail="The pixels do not match the size given.")
     img = np.frombuffer(raw, "<f4" if wide else "<u2").reshape(height, width, 4)
+    if format == "pfm":   # colour PFM: three little-endian floats a pixel, rows bottom to top, no alpha
+        return Response(f"PF\n{width} {height}\n-1.0\n".encode("ascii") + np.ascontiguousarray(img[::-1, :, :3]).astype("<f4").tobytes(), media_type="image/x-portable-floatmap")
     if format == "hdr":   # Radiance holds no alpha
         ok, out = cv2.imencode(".hdr", cv2.cvtColor(np.ascontiguousarray(img[..., :3]), cv2.COLOR_RGB2BGR))
     elif format == "exr":
         from app.services import contained
-        data = contained.encode_exr(cv2.cvtColor(np.ascontiguousarray(img), cv2.COLOR_RGBA2BGRA))
+        if str(opts.get("compression", "zip")).lower() not in contained.EXR_COMPRESSIONS or str(opts.get("channels", "rgba")).lower() not in ("rgba", "rgb", "ya", "y"):
+            raise HTTPException(status_code=422, detail="Unknown OpenEXR compression or channel set.")
+        keep = {k: opts[k] for k in ("compression", "half", "channels") if k in opts}
+        if str(keep.get("compression", "zip")).lower() == "zip" and not keep.get("half") and keep.get("channels", "rgba") == "rgba":
+            keep = {}
+        data = contained.encode_exr(cv2.cvtColor(np.ascontiguousarray(img), cv2.COLOR_RGBA2BGRA), keep)
         if data is None:
             raise HTTPException(status_code=500, detail="The OpenEXR file could not be written.")
         return Response(data, media_type="image/x-exr")
@@ -701,7 +715,8 @@ def export(file: UploadFile = File(...), name: str = Form(...), folder: str = Fo
     while target.exists():
         target = folder / f"{Path(base).stem} {number}{Path(base).suffix}"
         number += 1
-    target.write_bytes(file.file.read())
+    from app.routers.projects import _write_atomic
+    _write_atomic(target, file.file.read())
     return {"path": str(target)}
 
 

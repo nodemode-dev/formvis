@@ -449,7 +449,7 @@ export function snapDelta(host: MoveHost, p: Project, box: Rect, skip: (l: Layer
   return { x: sx ? sx.shift : 0, y: sy ? sy.shift : 0 };
 }
 
-export function sampleOriginal(host: MoveHost, pt: Pt, composite: boolean): [number, number, number] | null {
+export function sampleOriginal(host: MoveHost, pt: Pt, composite: boolean, radius = 0): [number, number, number] | null {
   let ctx: Ctx2D;
   let x: number;
   let y: number;
@@ -478,6 +478,13 @@ export function sampleOriginal(host: MoveHost, pt: Pt, composite: boolean): [num
     h = t.raster.height;
   }
   if (x < 0 || y < 0 || x >= w || y >= h) return null;
+  if (radius > 0) {
+    const xa = Math.max(0, x - radius), ya = Math.max(0, y - radius), xb = Math.min(w - 1, x + radius), yb = Math.min(h - 1, y + radius);
+    const px = ctx.getImageData(xa, ya, xb - xa + 1, yb - ya + 1).data;
+    let r = 0, g = 0, b = 0, n = 0;
+    for (let i = 0; i < px.length; i += 4) if (px[i + 3] > 0) { r += px[i]; g += px[i + 1]; b += px[i + 2]; n++; }
+    return n ? [r / n / 255, g / n / 255, b / n / 255] : null;
+  }
   const d = ctx.getImageData(x, y, 1, 1).data;
   if (d[3] === 0) return null;
   return [d[0] / 255, d[1] / 255, d[2] / 255];

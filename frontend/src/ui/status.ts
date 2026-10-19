@@ -21,7 +21,8 @@ export class StatusBar {
     root.insertAdjacentHTML('beforeend',
       '<input class="cv-st-zoom" type="text" inputmode="decimal" spellcheck="false" autocomplete="off" aria-label="Zoom percent" title="Zoom: type a percent and press Enter">' +
       '<span class="cv-st-dims"></span>' +
-      `<span class="cv-st-busy">${icon('loading', 12)}</span><span class="cv-st-engine"></span><span class="cv-st-gpu"></span><span class="cv-st-mem" title="Pixels formvis holds, of what this computer allows it"></span><span class="cv-st-hint"></span>`);
+      `<span class="cv-st-busy">${icon('loading', 12)}</span><span class="cv-st-engine"></span><span class="cv-st-gpu"></span><span class="cv-st-mem" title="Pixels formvis holds, of what this computer allows it"></span><span class="cv-st-proof"></span><span class="cv-st-hint"></span>`);
+    this.proof = q(root, '.cv-st-proof');
     this.mem = q(root, '.cv-st-mem');   // 1.60.2, DEV_PLAN 26.1
     for (const k of ['doc', 'history', 'projects'] as const) engine.on(k, () => this.syncMemory());
     this.zoom = q(root, '.cv-st-zoom');
@@ -118,6 +119,13 @@ export class StatusBar {
     const raw = this.engineRaw, m = /^Engine (\d\S*)( · desktop)?$/.exec(raw);
     setText(this.engineState, m ? `${t('Engine')} ${m[1]}${m[2] ? ` · ${t('desktop')}` : ''}` : t(raw));
     setTitle(this.engineState, raw === 'Engine offline' ? t(SERVICE_NOTE) : '');
+  }
+
+  private readonly proof: HTMLElement;
+  /** The badge naming the proof device while Proof Colors is on (empty otherwise); the slot keeps its width. */
+  setProof(label: string | null): void {
+    setText(this.proof, label ? `${t('Proof')}: ${label}` : '');
+    setTitle(this.proof, label ? `${t('Proof Colors is on')}: ${label}` : '');
   }
 
   private readonly mem: HTMLElement;

@@ -89,6 +89,7 @@ def profiles() -> list[dict]:
             out.append({"id": digest, **info, "file": path.name, "added": d == profile_dirs()[0], "shipped": d == shipped_dir()})
     if lcms.available():
         out += [{"id": pid, "name": name, "space": "GRAY", "file": "", "added": False, "shipped": False, "builtin": True} for pid, (name, _g) in lcms.GRAYS.items()]
+        out += [{"id": pid, "name": spec[0], "space": "RGB", "file": "", "added": False, "shipped": False, "builtin": True} for pid, spec in lcms.RGBS.items()]
     return sorted(out, key=lambda p: (p["space"] != "RGB", p["name"].lower()))
 
 
@@ -163,11 +164,13 @@ def _grid() -> Image.Image:
 
 
 def lut(source: dict | None, dest: dict | None = None, proof: dict | None = None, intent: str = "relative",
-        bpc: bool = True, proof_intent: str = "relative", gamut: bool = False) -> bytes:
+        bpc: bool = True, proof_intent: str = "relative", gamut: bool = False, gamut_delta: float = GAMUT_DELTA_E) -> bytes:
     """A GRID^3 RGB table (r slowest, b fastest) from `source` to `dest` (sRGB when none), through `proof` when given;
-    with `gamut`, GRID^3 more bytes, 255 where the proof device moves the colour further than GAMUT_DELTA_E."""
+    with `gamut`, GRID^3 more bytes, 255 where the proof device moves the colour further than `gamut_delta` (GAMUT_DELTA_E)."""
     if intent not in INTENTS or proof_intent not in INTENTS:
         raise ColourError("Unknown rendering intent.")
+    if not 0.1 <= gamut_delta <= 50:
+        raise ColourError("The gamut warning threshold is between 0.1 and 50 delta E.")
     src, src_mode = _profile(source)
     dst, dst_mode = _profile(dest)
     if src_mode != "RGB" or dst_mode != "RGB":
@@ -186,7 +189,7 @@ def lut(source: dict | None, dest: dict | None = None, proof: dict | None = None
             t = ImageCms.buildTransform(src, dst, "RGB", "RGB", renderingIntent=INTENTS[intent], flags=flags)
         out = np.asarray(ImageCms.applyTransform(grid, t)).reshape(-1, 3).astype(np.uint8).tobytes()
         if proof and gamut:
-            out += _gamut(grid, src, prf, MODES[describe(_raw(proof))["space"]], proof_intent, flags)
+            out += _gamut(grid, src, prf, MODES[describe(_raw(proof))["space"]], proof_intent, flags, gamut_delta)
     except ImageCms.PyCMSError as exc:
         raise ColourError(f"LittleCMS could not build that transform: {exc}") from exc
     return out
@@ -302,7 +305,7 @@ def _raw(ref: dict) -> bytes:
     return base64.b64decode(ref["icc"]) if ref.get("icc") else _find(str(ref["id"]))
 
 
-def _gamut(grid, src, prf, prf_mode, proof_intent, flags) -> bytes:
+def _gamut(grid, src, prf, prf_mode, proof_intent, flags, delta: float = GAMUT_DELTA_E) -> bytes:
     lab = ImageCms.ImageCmsProfile(ImageCms.createProfile("LAB"))
     to_lab = ImageCms.buildTransform(src, lab, "RGB", "LAB", renderingIntent=INTENTS["relative"])
     to_dev = ImageCms.buildTransform(src, prf, "RGB", prf_mode, renderingIntent=INTENTS[proof_intent], flags=flags)
@@ -310,7 +313,7 @@ def _gamut(grid, src, prf, prf_mode, proof_intent, flags) -> bytes:
     a = np.asarray(ImageCms.applyTransform(grid, to_lab)).reshape(-1, 3).astype(np.float64)
     b = np.asarray(ImageCms.applyTransform(ImageCms.applyTransform(grid, to_dev), dev_lab)).reshape(-1, 3).astype(np.float64)
     d = np.sqrt(((a[:, 0] - b[:, 0]) * 100 / 255) ** 2 + (a[:, 1] - b[:, 1]) ** 2 + (a[:, 2] - b[:, 2]) ** 2)
-    return np.where(d > GAMUT_DELTA_E, 255, 0).astype(np.uint8).tobytes()
+    return np.where(d > delta, 255, 0).astype(np.uint8).tobytes()
 
 
 DEEP_CHANNELS = {"RGB": 3, "CMYK": 4, "LAB": 3}
@@ -377,6 +380,14 @@ def profile_info(ref: dict | None) -> dict:
     data = _ref_bytes(ref, "builtin:srgb")
     info = describe(data)
     out = {"name": info["name"], "space": info["space"], "tac": None, "blackLimit": None, "blackAtMid": None, "generation": None}
+    try:
+        head = ImageCms.ImageCmsProfile(io.BytesIO(data)).profile
+        classes = {"mntr": "Display", "scnr": "Input", "prtr": "Output", "abst": "Abstract", "spac": "Colour space", "link": "Device link", "nmcl": "Named colour"}
+        cls = str(head.device_class or "").strip()
+        out.update(deviceClass=classes.get(cls, cls or "Unknown"), pcs=str(head.connection_space or "").strip() or None, version=str(head.version) if head.version else None,
+                   copyright=(head.copyright or "").strip() or None, size=len(data))
+    except Exception:
+        out.update(deviceClass=None, pcs=None, version=None, copyright=None, size=len(data))
     if info["space"] != "CMYK":
         return out
     try:

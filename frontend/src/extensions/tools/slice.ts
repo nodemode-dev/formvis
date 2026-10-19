@@ -1,5 +1,5 @@
 import type { DocSlice, Pt, Rect } from '../../engine';
-import { type Tool } from '../registry';
+import { type Tool, type ToolContext } from '../registry';
 
 /** The slices in reading order (top to bottom, then left to right), which is how they are numbered. */
 export const readingOrder = (list: readonly DocSlice[]): DocSlice[] => [...list].sort((a, b) => a.y - b.y || a.x - b.x);
@@ -25,9 +25,9 @@ export function autoSlices(doc: { width: number; height: number; slices?: readon
 }
 
 /** Draws user slices as solid rectangles with their numbers, and the auto slices dashed and dim beneath; the screen position is pan + document position * zoom. */
-export function drawSlices(g: CanvasRenderingContext2D, list: readonly DocSlice[], panX: number, panY: number, zoom: number, color: string, active: string | null = null, docSize: { width: number; height: number } | null = null): void {
+export function drawSlices(g: CanvasRenderingContext2D, list: readonly DocSlice[], panX: number, panY: number, zoom: number, color: string, active: string | null = null, docSize: { width: number; height: number } | null = null, showAuto = true): void {
   g.save();
-  if (docSize && list.length) {
+  if (docSize && list.length && showAuto) {
     g.globalAlpha = 0.5;
     g.setLineDash([3, 3]);
     g.strokeStyle = color;
@@ -55,27 +55,72 @@ export function drawSlices(g: CanvasRenderingContext2D, list: readonly DocSlice[
   g.restore();
 }
 
-/** The rectangle being dragged, in document coordinates, or null. */
-let drag: { start: Pt; now: Pt; square: boolean; move?: DocSlice } | null = null;
+/** Which sides of a slice a resize drag moves. */
+interface Edge { l: boolean; r: boolean; t: boolean; b: boolean }
+interface SliceDrag { start: Pt; now: Pt; square: boolean; move?: DocSlice; edge?: Edge }
 
-function rectOf(d: { start: Pt; now: Pt; square: boolean; move?: DocSlice }): Rect {
-  if (d.move) return { x: d.move.x + d.now.x - d.start.x, y: d.move.y + d.now.y - d.start.y, w: d.move.w, h: d.move.h };
-  let dx = d.now.x - d.start.x, dy = d.now.y - d.start.y;
-  if (d.square) { const m = Math.max(Math.abs(dx), Math.abs(dy)); dx = Math.sign(dx || 1) * m; dy = Math.sign(dy || 1) * m; }
+/** The rectangle being dragged, in document coordinates, or null. */
+let drag: SliceDrag | null = null;
+/** The Slice tool draws new slices; the Slice Select tool (a mode of the same key) selects, moves and resizes them. */
+let mode: 'slice' | 'select' = 'slice';
+/** The Slice tool's Style: free, a fixed aspect ratio (width : height) or a fixed size in pixels. */
+let style: 'normal' | 'ratio' | 'size' = 'normal';
+const fixed = { rw: 1, rh: 1, w: 100, h: 100 };
+const HANDLE = 6;
+
+function rectOf(d: SliceDrag): Rect {
+  const dx0 = d.now.x - d.start.x, dy0 = d.now.y - d.start.y;
+  if (d.move && d.edge) {
+    const s = d.move, e = d.edge, x = s.x + (e.l ? dx0 : 0), y = s.y + (e.t ? dy0 : 0);
+    const r = s.x + s.w + (e.r ? dx0 : 0), b = s.y + s.h + (e.b ? dy0 : 0);
+    return { x: Math.min(x, r - 1), y: Math.min(y, b - 1), w: Math.max(1, r - Math.min(x, r - 1)), h: Math.max(1, b - Math.min(y, b - 1)) };
+  }
+  if (d.move) return { x: d.move.x + dx0, y: d.move.y + dy0, w: d.move.w, h: d.move.h };
+  let dx = dx0, dy = dy0;
+  if (style === 'size') { dx = fixed.w * (dx0 < 0 ? -1 : 1); dy = fixed.h * (dy0 < 0 ? -1 : 1); }
+  else if (style === 'ratio' && fixed.rw > 0 && fixed.rh > 0) dy = Math.sign(dy0 || 1) * Math.abs(dx0) * (fixed.rh / fixed.rw);
+  else if (d.square) { const m = Math.max(Math.abs(dx), Math.abs(dy)); dx = Math.sign(dx || 1) * m; dy = Math.sign(dy || 1) * m; }
   return { x: Math.min(d.start.x, d.start.x + dx), y: Math.min(d.start.y, d.start.y + dy), w: Math.abs(dx), h: Math.abs(dy) };
+}
+
+/** The sides of `s` the screen point is on (corners give two), within a few pixels, or null. */
+function edgeAt(ctx: ToolContext, s: DocSlice, screen: Pt): Edge | null {
+  const v = ctx.view(), a = v.toScreen({ x: s.x, y: s.y }), b = v.toScreen({ x: s.x + s.w, y: s.y + s.h });
+  if (screen.x < a.x - HANDLE || screen.x > b.x + HANDLE || screen.y < a.y - HANDLE || screen.y > b.y + HANDLE) return null;
+  const e = { l: Math.abs(screen.x - a.x) <= HANDLE, r: Math.abs(screen.x - b.x) <= HANDLE, t: Math.abs(screen.y - a.y) <= HANDLE, b: Math.abs(screen.y - b.y) <= HANDLE };
+  return e.l || e.r || e.t || e.b ? e : null;
 }
 
 export const sliceTool: Tool = {
   id: 'slice', label: 'Slice', key: 'C', order: 46,
   icon: () => 'tCrop',
-  hint: () => 'Drag a rectangle to add a slice · Shift makes it square · Slices are numbered in reading order',
-  cursor: () => 'crosshair',
+  variants: (e) => [
+    { id: 'slice', label: 'Slice', icon: 'tCrop', active: () => mode === 'slice', pick: () => { mode = 'slice'; e.emit('options', null); e.emit('overlay', null); } },
+    { id: 'select', label: 'Slice Select', icon: 'tCrop', active: () => mode === 'select', pick: () => { mode = 'select'; e.emit('options', null); e.emit('overlay', null); } },
+  ],
+  hint: (e) => (e.view.slicesLocked ? 'Slices are locked · View > Lock Slices unlocks them'
+    : mode === 'select' ? 'Click a slice to select it · Drag it to move · Drag an edge or corner to resize · Delete removes it'
+    : 'Drag a rectangle to add a slice · Shift makes it square · Slices are numbered in reading order'),
+  cursor: (ctx, p) => {
+    if (ctx.engine.view.slicesLocked) return 'not-allowed';
+    if (mode === 'slice') return 'crosshair';
+    const s = ctx.engine.current?.doc.slices?.find((x) => x.id === ctx.engine.activeSlice), e = s && p ? edgeAt(ctx, s, p.screen) : null;
+    if (!e) return 'default';
+    return (e.l && e.t) || (e.r && e.b) ? 'nwse-resize' : (e.r && e.t) || (e.l && e.b) ? 'nesw-resize' : e.l || e.r ? 'ew-resize' : 'ns-resize';
+  },
   down(ctx, p) {
-    if (p.button !== 0 || !ctx.engine.current) return;
-    // Slice Select: a press inside an existing slice (the topmost) selects it and a drag moves it; a press outside every slice starts a new one.
-    const hit = [...(ctx.engine.current.doc.slices ?? [])].reverse().find((s) => p.doc.x >= s.x && p.doc.x < s.x + s.w && p.doc.y >= s.y && p.doc.y < s.y + s.h);
-    if (hit) ctx.engine.activeSlice = hit.id;
-    drag = { start: p.doc, now: p.doc, square: p.shift, ...(hit ? { move: hit } : {}) };
+    if (p.button !== 0 || !ctx.engine.current || ctx.engine.view.slicesLocked) return;
+    const list = ctx.engine.current.doc.slices ?? [];
+    if (mode === 'slice') {
+      drag = { start: p.doc, now: p.doc, square: p.shift };
+    } else {
+      // Slice Select: an edge of the selected slice resizes it; a press inside a slice (the topmost) selects it and a drag moves it; empty canvas selects none.
+      const cur = list.find((s) => s.id === ctx.engine.activeSlice), edge = cur ? edgeAt(ctx, cur, p.screen) : null;
+      const hit = edge ? cur : [...list].reverse().find((s) => p.doc.x >= s.x && p.doc.x < s.x + s.w && p.doc.y >= s.y && p.doc.y < s.y + s.h);
+      if (!hit) { ctx.engine.activeSlice = null; ctx.engine.emit('overlay', null); ctx.engine.emit('options', null); return; }
+      ctx.engine.activeSlice = hit.id;
+      drag = { start: p.doc, now: p.doc, square: false, move: hit, ...(edge ? { edge } : {}) };
+    }
     ctx.engine.emit('overlay', null);
     ctx.engine.emit('options', null);
   },
@@ -90,7 +135,8 @@ export const sliceTool: Tool = {
     const r = rectOf(drag), moved = drag.move;
     drag = null;
     if (moved) {
-      if (r.x !== moved.x || r.y !== moved.y) ctx.engine.updateSlice(moved.id, { x: r.x, y: r.y }, 'Move Slice');
+      if (r.w !== moved.w || r.h !== moved.h) ctx.engine.updateSlice(moved.id, { x: r.x, y: r.y, w: r.w, h: r.h }, 'Resize Slice');
+      else if (r.x !== moved.x || r.y !== moved.y) ctx.engine.updateSlice(moved.id, { x: r.x, y: r.y }, 'Move Slice');
     } else if (ctx.engine.addSlice(r)) {
       const made = ctx.engine.current?.doc.slices?.at(-1);
       if (made) ctx.engine.activeSlice = made.id;
@@ -100,7 +146,7 @@ export const sliceTool: Tool = {
   },
   keydown(ctx, e) {
     if (e.key === 'Escape' && drag) { drag = null; ctx.engine.emit('overlay', null); return true; }
-    if ((e.key === 'Delete' || e.key === 'Backspace') && !drag && !e.metaKey && !e.ctrlKey && !e.altKey) return ctx.engine.deleteActiveSlice();
+    if ((e.key === 'Delete' || e.key === 'Backspace') && !drag && !e.metaKey && !e.ctrlKey && !e.altKey) return ctx.engine.view.slicesLocked ? false : ctx.engine.deleteActiveSlice();
     return false;
   },
   cancel(ctx) { drag = null; ctx.engine.emit('overlay', null); },
@@ -108,7 +154,7 @@ export const sliceTool: Tool = {
     const p = ctx.engine.current;
     if (!p) return;
     const v = p.viewport, pal = ctx.paint();
-    drawSlices(g, p.doc.slices ?? [], v.panX, v.panY, v.zoom, pal.accent, ctx.engine.activeSlice, p.doc);
+    drawSlices(g, p.doc.slices ?? [], v.panX, v.panY, v.zoom, pal.accent, ctx.engine.activeSlice, p.doc, ctx.engine.view.autoSlices);
     if (drag) {
       const r = rectOf(drag), a = ctx.view().toScreen({ x: r.x, y: r.y }), b = ctx.view().toScreen({ x: r.x + r.w, y: r.y + r.h });
       g.save();
@@ -119,9 +165,15 @@ export const sliceTool: Tool = {
     }
   },
   options: (e) => [
-    { kind: 'title', text: 'Slice' },
+    { kind: 'title', text: mode === 'select' ? 'Slice Select' : 'Slice' },
+    { kind: 'select', label: 'Style', choices: [{ id: 'normal', label: 'Normal' }, { id: 'ratio', label: 'Fixed Aspect Ratio' }, { id: 'size', label: 'Fixed Size' }], get: () => style, set: (id) => { style = id === 'ratio' || id === 'size' ? id : 'normal'; e.emit('options', null); }, when: () => mode === 'slice' },
+    { kind: 'number', label: 'Width', min: 1, max: 10000, step: 1, get: () => (style === 'size' ? fixed.w : fixed.rw), set: (v) => { if (style === 'size') fixed.w = Math.max(1, Math.round(v)); else fixed.rw = Math.max(0.01, v); }, when: () => mode === 'slice' && style !== 'normal' },
+    { kind: 'number', label: 'Height', min: 1, max: 10000, step: 1, get: () => (style === 'size' ? fixed.h : fixed.rh), set: (v) => { if (style === 'size') fixed.h = Math.max(1, Math.round(v)); else fixed.rh = Math.max(0.01, v); }, when: () => mode === 'slice' && style !== 'normal' },
     { kind: 'readout', label: 'Slices', get: () => String(e.current?.doc.slices?.length ?? 0) },
-    { kind: 'button', label: 'Delete Slice', icon: 'close', run: () => { e.deleteActiveSlice(); }, when: () => !!e.current?.doc.slices?.some((s) => s.id === e.activeSlice) },
-    { kind: 'button', label: 'Clear Slices', icon: 'close', run: () => e.clearSlices() },
+    { kind: 'toggle', label: 'Show Auto Slices', get: () => e.view.autoSlices, set: (v) => e.setView({ autoSlices: v }) },
+    { kind: 'toggle', label: 'Lock Slices', get: () => e.view.slicesLocked, set: (v) => e.setView({ slicesLocked: v }) },
+    { kind: 'button', label: 'Slices From Guides', icon: 'tCrop', run: () => { e.slicesFromGuides(); }, when: () => mode === 'slice' && !e.view.slicesLocked && !!e.current?.doc.guides?.length },
+    { kind: 'button', label: 'Delete Slice', icon: 'close', run: () => { e.deleteActiveSlice(); }, when: () => !e.view.slicesLocked && !!e.current?.doc.slices?.some((s) => s.id === e.activeSlice) },
+    { kind: 'button', label: 'Clear Slices', icon: 'close', run: () => e.clearSlices(), when: () => !e.view.slicesLocked },
   ],
 };

@@ -28,7 +28,7 @@ export interface GenerativeStatus { configured: boolean; source: 'environment' |
 /** A generation provider beside fal (1.58.4, L7): OpenAI, Google, Black Forest Labs or Ideogram. */
 export interface ProviderStatus { id: string; name: string; model: string; fill: boolean; configured: boolean; source: 'environment' | 'settings' | null }
 
-export interface ProfileInfo { name: string; space: string; tac: number | null; blackLimit: number | null; blackAtMid: number | null; generation: string | null }
+export interface ProfileInfo { name: string; space: string; tac: number | null; blackLimit: number | null; blackAtMid: number | null; generation: string | null; deviceClass?: string | null; pcs?: string | null; version?: string | null; copyright?: string | null; size?: number }
 
 export class ApiError extends Error {
   constructor(message: string, readonly status: number) { super(message); }
@@ -338,9 +338,9 @@ export const api = {
     const frames = head.frames.map((f) => { const blob = new Blob([buf.slice(at, at + f.length)], { type: 'image/png' }); at += f.length; return { delay: f.delay, blob }; });
     return { width: head.width, height: head.height, plays: head.plays, frames };
   },
-  async encodeDeep(data: Uint16Array | Float32Array, width: number, height: number, format: 'png' | 'tiff' | 'hdr' | 'exr' | 'tiff32', icc: { bytes: Uint8Array; name: string } | null = null): Promise<Blob> {
+  async encodeDeep(data: Uint16Array | Float32Array, width: number, height: number, format: 'png' | 'tiff' | 'hdr' | 'exr' | 'tiff32' | 'pfm', icc: { bytes: Uint8Array; name: string } | null = null, options: Record<string, unknown> | null = null): Promise<Blob> {
     const raw = data instanceof Float32Array ? new Float32Array(data) : new Uint16Array(data);
-    const body = form({ width: String(width), height: String(height), format, ...(icc ? { icc_name: icc.name } : {}) }, [{ name: 'pixels.raw', blob: new Blob([raw]) }], 'file');
+    const body = form({ width: String(width), height: String(height), format, ...(icc ? { icc_name: icc.name } : {}), ...(options ? { options: JSON.stringify(options) } : {}) }, [{ name: 'pixels.raw', blob: new Blob([raw]) }], 'file');
     if (icc) body.append('icc', new Blob([icc.bytes as Uint8Array<ArrayBuffer>], { type: 'application/vnd.iccprofile' }), 'profile.icc');
     return (await request('/io/encode-deep', { method: 'POST', body })).blob();
   },
@@ -363,7 +363,7 @@ export const api = {
     const r = await request('/color/linear-matrix', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req) });
     return ((await r.json()) as { matrix: number[][] }).matrix;
   },
-  async colourLut(req: { source?: { icc?: string; id?: string } | null; dest?: { icc?: string; id?: string } | null; proof?: { id?: string; icc?: string } | null; intent?: string; proofIntent?: string; bpc?: boolean; gamut?: boolean }): Promise<ColourLut> {
+  async colourLut(req: { source?: { icc?: string; id?: string } | null; dest?: { icc?: string; id?: string } | null; proof?: { id?: string; icc?: string } | null; intent?: string; proofIntent?: string; bpc?: boolean; gamut?: boolean; gamutDelta?: number }): Promise<ColourLut> {
     const r = await request('/color/lut', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req) });
     if (Number(r.headers.get('X-In') ?? 3) !== 3 || Number(r.headers.get('X-Out') ?? 3) !== 3) throw new ApiError('This conversion is between ink and RGB profiles; it runs on the pixels, not as an RGB table.', 422);
     return lutFrom(await r.arrayBuffer(), Number(r.headers.get('X-Grid') ?? 33), r.headers.get('X-Gamut') === '1');

@@ -2,6 +2,7 @@ import { allCustomShapes, hexOf, type Pt } from '../../engine';
 import { boxedShapePath, linePath } from '../../engine/shape-paths';
 import { dashed, type Tool } from '../registry';
 import { dragRect } from './marquee';
+import { cornerWidgetCancel, cornerWidgetDown, cornerWidgetMove, cornerWidgetOverlay, cornerWidgetUp } from './corner-widgets';
 
 let draft: { anchor: Pt; point: Pt; shiftAtPress: boolean; altAtPress: boolean; square: boolean; center: boolean } | null = null;
 
@@ -23,9 +24,11 @@ export const shapeTool: Tool = {
   cursor: () => 'crosshair',
   down(ctx, p) {
     if (p.button !== 0 || !ctx.engine.current) return;
+    if (cornerWidgetDown(ctx, p)) return;
     draft = { anchor: p.doc, point: p.doc, shiftAtPress: p.shift, altAtPress: p.alt, square: false, center: false };
   },
   move(ctx, p) {
+    if (cornerWidgetMove(ctx, p)) return;
     if (!draft) return;
     draft.point = p.doc;
     draft.square = p.shift && !draft.shiftAtPress;
@@ -33,6 +36,7 @@ export const shapeTool: Tool = {
     ctx.engine.emit('overlay', null);
   },
   up(ctx) {
+    if (cornerWidgetUp(ctx)) return;
     const d = draft;
     draft = null;
     ctx.engine.emit('overlay', null);
@@ -51,8 +55,9 @@ export const shapeTool: Tool = {
     ctx.engine.emit('tool', null);
     return true;
   },
-  cancel(ctx) { draft = null; ctx.engine.emit('overlay', null); },
+  cancel(ctx) { cornerWidgetCancel(ctx); draft = null; ctx.engine.emit('overlay', null); },
   overlay(ctx, g) {
+    cornerWidgetOverlay(ctx, g);
     if (!draft) return;
     const r = dragRect(draft.anchor, draft.point, draft.square, draft.center), v = ctx.view(), s = ctx.engine.shapeSettings;
     if ((s.kind !== 'rectangle' && s.kind !== 'ellipse') || (s.kind === 'rectangle' && s.smoothCorners && s.cornerRadius > 0)) {
@@ -95,6 +100,11 @@ export const shapeTool: Tool = {
       // Stroke Type and Align (1.52.8, the tool audit).
       { kind: 'select', label: 'Stroke Type', priority: 50, choices: [{ id: 'solid', label: 'Solid' }, { id: 'dashed', label: 'Dashed' }, { id: 'dotted', label: 'Dotted' }], get: () => s.strokeDash, set: (v: string) => set({ strokeDash: v as typeof s.strokeDash }), when: () => s.mode !== 'path' && s.stroke !== 'none' },
       { kind: 'select', label: 'Align', priority: 40, choices: [{ id: 'inside', label: 'Inside' }, { id: 'center', label: 'Center' }, { id: 'outside', label: 'Outside' }], get: () => s.strokeAlign, set: (v: string) => set({ strokeAlign: v as typeof s.strokeAlign }), when: () => s.mode !== 'path' && s.stroke !== 'none' },
+      { kind: 'select', label: 'Caps', priority: 30, choices: [{ id: 'round', label: 'Round' }, { id: 'butt', label: 'Butt' }, { id: 'square', label: 'Square' }], get: () => s.strokeCap, set: (v: string) => set({ strokeCap: v as typeof s.strokeCap }), when: () => s.mode !== 'path' && s.stroke !== 'none' },
+      { kind: 'select', label: 'Corners', priority: 30, choices: [{ id: 'round', label: 'Round' }, { id: 'miter', label: 'Miter' }, { id: 'bevel', label: 'Bevel' }], get: () => s.strokeJoin, set: (v: string) => set({ strokeJoin: v as typeof s.strokeJoin }), when: () => s.mode !== 'path' && s.stroke !== 'none' },
+      { kind: 'range', label: 'Miter limit', priority: 25, min: 1, max: 10, get: () => s.strokeMiter, set: (v: number) => set({ strokeMiter: v }), when: () => s.mode !== 'path' && s.stroke !== 'none' && s.strokeJoin === 'miter' },
+      { kind: 'select', label: 'Gradient', priority: 60, choices: [{ id: 'off', label: 'Off' }, { id: 'linear', label: 'Linear' }, { id: 'radial', label: 'Radial' }, { id: 'angle', label: 'Angle' }], get: () => s.gradient, set: (v: string) => set({ gradient: v as typeof s.gradient }), when: () => s.mode !== 'path' && s.fill !== 'none' },
+      { kind: 'range', label: 'Gradient angle', priority: 55, min: -180, max: 180, unit: 'deg', get: () => s.gradientAngle, set: (v: number) => set({ gradientAngle: Math.round(v) }), when: () => s.mode !== 'path' && s.fill !== 'none' && s.gradient !== 'off' },
       { kind: 'segment', label: 'Shape', priority: 95, choices: KINDS.map((k) => ({ id: k, label: k[0].toUpperCase() + k.slice(1) })), get: () => s.kind, set: (v) => { s.kind = v as typeof s.kind; e.emit('options', null); e.emit('tool', null); } },
       // Each kind's own settings: built once with the bar, shown while that kind is chosen.
       { kind: 'range', label: 'Corner radius', priority: 75, min: 0, max: 500, unit: 'px', get: () => s.cornerRadius, set: (v: number) => set({ cornerRadius: v }), when: () => rounds(s.kind) },
