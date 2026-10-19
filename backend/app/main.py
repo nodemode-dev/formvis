@@ -38,8 +38,6 @@ undo.clear()   # nothing kept outlives the session that made it
 from app.routers import bands  # noqa: E402  (pictures written a band at a time, 1.61.2, DEV_PLAN 26.4)
 app.include_router(bands.router)
 bands.clear()
-from app.routers import seam as _seam  # noqa: E402  (1.55.4)
-app.include_router(_seam.router, prefix="/api/seam")   # Content-Aware Scale (1.55.4, M4)
 app.include_router(generative.router, prefix="/api/generative")
 app.include_router(nodemode.router)   # Send to NodeMode, standalone (1.50.8); its prefix is its own
 app.include_router(comfyui.router)   # Send to ComfyUI (1.50.9); its prefix is its own

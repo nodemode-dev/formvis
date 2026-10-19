@@ -16,7 +16,7 @@ Prefixes are set in `backend/app/main.py` unless the router sets its own.
 | `/api/generative` | `routers/generative.py` | fal providers, local models |
 | `/mcp`, `/api/mcp/*` | `routers/mcp.py` | the MCP server and window bridge (see `agent-bridge`) |
 | `/api/large`, `/api/bands`, `/api/undo` | `large.py`, `bands.py`, `undo.py` | giant pictures and the undo tile store |
-| `/api/video`, `/api/merge`, `/api/remove`, `/api/seam` | `video.py`, `merge.py`, `remove_find.py`, `seam.py` | video render, Photomerge and HDR merge, find and remove, Content-Aware Scale |
+| `/api/video`, `/api/merge`, `/api/remove` | `video.py`, `merge.py`, `remove_find.py` | video render, Photomerge and HDR merge, find and remove |
 | own prefixes | `nodemode.py`, `comfyui.py`, `llm.py`, `plugins.py` | Send to NodeMode and ComfyUI, prompt improvement, plugins |
 
 ## Adding an endpoint
