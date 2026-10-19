@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use tauri::{Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent};
-use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
+use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_updater::UpdaterExt;
@@ -238,32 +238,6 @@ async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
     app.restart()
 }
 
-/// Offers an update when the app is configured to verify them: needs a non-empty updater "pubkey".
-fn check_for_updates(handle: tauri::AppHandle) {
-    if !updater_configured(&handle) {
-        return;
-    }
-    tauri::async_runtime::spawn(async move {
-        let Ok(updater) = handle.updater() else { return };
-        let Ok(Some(update)) = updater.check().await else { return };
-        let accepted = handle
-            .dialog()
-            .message(format!("formvis {} is available. Install it and restart?", update.version))
-            .title("Update available")
-            .buttons(MessageDialogButtons::OkCancel)
-            .blocking_show();
-        if accepted && update.download_and_install(|_, _| {}, || {}).await.is_ok() {
-            // The page settles unsaved documents and writes its recovery copies first; confirm_exit restarts after.
-            handle.state::<RestartAfterExit>().0.store(true, Ordering::SeqCst);
-            if !ask_page_to_quit(&handle) {
-                open_exit_gate(&handle);
-                kill_backend(&handle);
-                handle.restart();
-            }
-        }
-    });
-}
-
 /// The font families installed on this computer, sorted and without duplicates, for the Type tool's font list. The
 /// desktop web views (WebKit on macOS and Linux, WebView2 on Windows) have no Local Font Access API, so the shell reads
 /// the system's font folders with fontdb (pure Rust, MIT) and the page asks for them with invoke('system_fonts').
@@ -421,7 +395,6 @@ fn main() {
                             .disable_drag_drop_handler()
                             .build();
                         close_splash(&handle);
-                        check_for_updates(handle.clone());
                     }
                     None => {
                         close_splash(&handle);

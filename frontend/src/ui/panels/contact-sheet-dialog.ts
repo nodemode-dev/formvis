@@ -53,7 +53,7 @@ export class ContactSheetDialog extends Dialog {
     actions.append(pick);
     choose.append(actions, this.picker);
     this.body.append(choose, this.openImages.el, this.source, el('<p class="cv-note">Document</p>'), this.units.el, this.width.el, this.height.el, this.ppi.el, this.modeRow.el, this.depthRow.el, this.flat.el,
-      el('<p class="cv-note">Thumbnails</p>'), this.place.el, this.columns.el, this.rows.el, this.spacing.el, this.vertical.el, this.horizontal.el, this.turn.el, this.caption.el, this.fontPick.el, this.font.el);
+      el('<p class="cv-note">Thumbnails</p>'), this.place.el, this.columns.el, this.rows.el, this.spacing.el, this.vertical.el, this.horizontal.el, this.turn.el, this.caption.el, this.fontPick.el, this.fontFileRow(), this.font.el);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => { void this.apply(); });
     this.width.set(2480); this.height.set(3508); this.ppi.set(300); this.flat.set(false);
@@ -62,6 +62,28 @@ export class ContactSheetDialog extends Dialog {
     this.units.set('px'); this.place.set('across'); this.fontPick.set('Inter'); this.openImages.set(false); this.modeRow.set('rgb'); this.depthRow.set('8');
     this.remember();
     this.sync();
+  }
+
+  /** Caption font from a file: a TTF, OTF, WOFF or WOFF2 loaded for this session and added to the caption fonts. */
+  private fontFileRow(): HTMLElement {
+    const row = el<HTMLElement>('<div class="cv-field"><span>Caption font file</span><div class="cv-row-actions"><button type="button" class="cv-btn">Choose Font File...</button><input type="file" accept=".ttf,.otf,.woff,.woff2" hidden></div></div>');
+    const input = row.querySelector('input') as HTMLInputElement;
+    (row.querySelector('button') as HTMLButtonElement).addEventListener('click', () => input.click());
+    input.addEventListener('change', () => {
+      const f = input.files?.[0];
+      input.value = '';
+      if (!f) return;
+      const family = f.name.replace(/\.[^.]+$/, '').replace(/[^\w .-]/g, '').trim().slice(0, 40) || 'Sheet font';
+      void f.arrayBuffer().then((buf) => new FontFace(family, buf).load()).then((face) => {
+        document.fonts.add(face);
+        const sel = this.fontPick.el.querySelector('select') as HTMLSelectElement;
+        if (![...sel.options].some((o) => o.value === family)) sel.append(new Option(family, family));
+        this.fontPick.set(family);
+        this.family = family;
+        setText(this.source, `Caption font ${family} loaded.`);
+      }).catch(() => setText(this.source, `${f.name} is not a font file the browser can read.`));
+    });
+    return row;
   }
 
   /** Page units: the width and height keep their physical size and are shown in the new unit. */

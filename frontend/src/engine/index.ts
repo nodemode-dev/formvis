@@ -28,7 +28,7 @@ import type { RelightContent } from './relight';
 import { History, type HistoryEntry, type PixelPatch, type Snapshot } from './history';
 import { restrictPatches, type RgbTarget } from './channel-target';
 import { alphaPlane, alphaRaster, planeMask, rasterMask } from './alpha-target';
-import { Renderer, renderDoc, type LayerOverride } from './renderer';
+import { Renderer, dropHalved, halvedBytes, renderDoc, type LayerOverride } from './renderer';
 import { applyDuotoneLut, curveAt, DUOTONE_COUNT, duotoneLut, type Duotone } from './duotone';
 import { compositeChannels, splitChannels } from './multichannel';
 import { PixelStroke, dropSpareSurfaces, sameBytes, spareBytes, strokeWindowFrom, warmStrokeSurfaces } from './stroke';
@@ -1202,6 +1202,45 @@ export class Engine {
     this.emit('viewport', null);
     this.emit('tool', null);
     this.refresh();
+    this.scheduleRelease();
+  }
+
+  /** Preferences > Performance: seconds after the shown document changes before the render caches kept for the others are
+   *  freed (0 keeps them). */
+  backgroundReleaseSec = 30;
+  private releaseTimer: ReturnType<typeof setTimeout> | null = null;
+  private scheduleRelease(): void {
+    if (this.releaseTimer) clearTimeout(this.releaseTimer);
+    this.releaseTimer = null;
+    if (!(this.backgroundReleaseSec > 0) || this.projects.length < 2) return;
+    this.releaseTimer = setTimeout(() => {
+      this.releaseTimer = null;
+      if (this.stroke || this.busyWith) { this.scheduleRelease(); return; }
+      this.releaseBackgroundCaches();
+    }, this.backgroundReleaseSec * 1000);
+  }
+  /** Frees the render caches held for the documents not shown (halved display copies, layer-effect results) and the scratch
+   *  surfaces; the shown document draws them again as it needs them. Returns the bytes freed. */
+  releaseBackgroundCaches(): number {
+    const keep = new Set<ID>(), shown = this.current;
+    let freed = 0;
+    for (const l of shown?.doc.layers ?? []) keep.add(l.id);
+    for (const p of this.projects) {
+      if (p === shown) continue;
+      for (const l of p.doc.layers) { if (l.raster) freed += dropHalved(l.raster); if (l.mask?.raster) freed += dropHalved(l.mask.raster); }
+    }
+    return freed + this.display.release(keep) + this.work.release(keep);
+  }
+  /** What the render caches hold now, in bytes: halved copies of the documents not shown and of the shown one, layer-effect
+   *  results, scratch surfaces. */
+  cacheUse(): { background: number; shown: number; effects: number; scratch: number } {
+    const shown = this.current;
+    let background = 0, shownBytes = 0;
+    for (const p of this.projects) for (const l of p.doc.layers) {
+      const n = (l.raster ? halvedBytes(l.raster) : 0) + (l.mask?.raster ? halvedBytes(l.mask.raster) : 0);
+      if (p === shown) shownBytes += n; else background += n;
+    }
+    return { background, shown: shownBytes, effects: this.display.effectCacheUse().bytes + this.work.effectCacheUse().bytes, scratch: this.display.scratchBytes() + this.work.scratchBytes() };
   }
 
   closeProject(id: string): void {
@@ -2263,7 +2302,8 @@ export class Engine {
     if (!p || !l || !name) { this.notice('A variable needs a name and a layer.'); return false; }
     if (v.kind === 'text' && !liveText(l)) { this.notice('Text Replacement needs a type layer.'); return false; }
     if (v.kind === 'pixels' && (l.isGroup || l.adjustment || l.text || l.shape || l.smart)) { this.notice('Pixel Replacement needs a pixel layer.'); return false; }
-    const entry: DocVariable = { name, layer: l.id, kind: v.kind, ...(v.kind === 'pixels' ? { method: v.method ?? 'fit' } : {}) };
+    const align = typeof v.align === 'number' && Number.isInteger(v.align) && v.align >= 0 && v.align <= 8 && v.align !== 4 ? { align: v.align } : {};
+    const entry: DocVariable = { name, layer: l.id, kind: v.kind, ...(v.kind === 'pixels' ? { method: v.method ?? 'fit', ...align, ...(v.clip === false ? { clip: false } : {}) } : {}) };
     return this.edit('Define Variable', (pp) => { pp.doc = { ...pp.doc, variables: [...(pp.doc.variables ?? []).filter((x) => x.name !== name), entry] }; return true; });
   }
 
@@ -2291,8 +2331,9 @@ export class Engine {
         const f = files.get(c.file);
         if (!f) { this.notice(`Image not supplied: ${c.file}`); continue; }
         try {
-          const bmp = await createImageBitmap(f), t = l.transform, r = new Raster(p.doc.width, p.doc.height), q = VR.placeInBox(bmp.width, bmp.height, t.x, t.y, t.w, t.h, c.method);
-          r.ctx.save(); r.ctx.beginPath(); r.ctx.rect(t.x, t.y, t.w, t.h); r.ctx.clip();
+          const bmp = await createImageBitmap(f), t = l.transform, r = new Raster(p.doc.width, p.doc.height), q = VR.placeInBox(bmp.width, bmp.height, t.x, t.y, t.w, t.h, c.method, c.align);
+          r.ctx.save();
+          if (c.clip) { r.ctx.beginPath(); r.ctx.rect(t.x, t.y, t.w, t.h); r.ctx.clip(); }
           r.ctx.drawImage(bmp, q.x, q.y, q.w, q.h);
           r.ctx.restore(); bmp.close(); r.touch();
           pixels.set(l.id, r);

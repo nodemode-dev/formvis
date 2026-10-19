@@ -7,9 +7,9 @@ import { el, patchList, q, setChecked, setDisabled, setHidden, setText } from '.
 import type { ActionStep } from '../actions';
 import { toast } from '../toast';
 import { isLibKind, libHasDialog } from '../../engine/filter-library';
-import { folderImages, folderInput } from './image-processor-dialog';
+import { folderImages, folderInput, OutFolderRow } from './image-processor-dialog';
 
-const asks = (s: ActionStep): boolean => (s.kind === 'filter' && !(isLibKind(s.filter) && !libHasDialog(s.filter))) || (s.kind === 'adjustment' && !s.layer);
+export const asks = (s: ActionStep): boolean => (s.kind === 'filter' && !(isLibKind(s.filter) && !libHasDialog(s.filter))) || (s.kind === 'adjustment' && !s.layer);
 
 /** Keeps a select's options in step with `labels`, changing only what differs. */
 function syncOptions(sel: HTMLSelectElement, labels: string[]): void {
@@ -405,9 +405,11 @@ export class ActionsDialog extends Dialog {
 }
 
 /** File > Batch: plays an action on each chosen image and exports the results in one zip. */
+export type BatchFormat = 'png' | 'jpg' | 'webp' | 'tiff' | 'psd';
+
 export class BatchDialog extends Dialog {
   private readonly pick = el<HTMLSelectElement>('<select class="cv-input"></select>');
-  private readonly format = el<HTMLSelectElement>('<select class="cv-input"><option value="png">PNG</option><option value="jpg">JPEG</option></select>');
+  private readonly format = el<HTMLSelectElement>('<select class="cv-input"><option value="png">PNG</option><option value="jpg">JPEG</option><option value="webp">WebP</option><option value="tiff">TIFF</option><option value="psd">PSD</option></select>');
   private readonly quality = el<HTMLInputElement>('<input class="cv-input" type="number" min="1" max="100" step="1" value="92">');
   private readonly template = el<HTMLInputElement>('<input class="cv-input" type="text" value="{name}" maxlength="120" spellcheck="false" aria-label="File name template">');
   private readonly serial = el<HTMLInputElement>('<input class="cv-input" type="number" min="0" max="999999" step="1" value="1">');
@@ -417,8 +419,9 @@ export class BatchDialog extends Dialog {
   private readonly folder = folderInput();
   private readonly subfolders = el<HTMLInputElement>('<input type="checkbox">');
   private inFolder: File[] = [];
+  private readonly outRow = new OutFolderRow();
 
-  constructor(private readonly store: Actions, private readonly run: (a: Action, files: File[], format: 'png' | 'jpg', quality: number, template: string, serial: number) => Promise<void>) {
+  constructor(private readonly store: Actions, private readonly run: (a: Action, files: File[], format: BatchFormat, quality: number, template: string, serial: number, out: FileSystemDirectoryHandle | null) => Promise<void>) {
     super('Batch', 440);
     this.field('Action', this.pick);
     const row = el('<div class="cv-welcome-actions"></div>'), choose = el<HTMLButtonElement>('<button class="cv-btn" type="button">Choose images...</button>'), chooseDir = el<HTMLButtonElement>('<button class="cv-btn" type="button">Choose folder...</button>');
@@ -433,25 +436,26 @@ export class BatchDialog extends Dialog {
     this.field('JPEG quality', this.quality);
     this.field('File name ({name}, {serial}, {date})', this.template);
     this.field('Starting serial', this.serial);
+    this.body.append(this.outRow.el);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('Run', 'primary', () => void this.go());
     this.file.addEventListener('change', () => { this.files = [...(this.file.files ?? [])]; this.inFolder = []; this.file.value = ''; this.sync(); });
     this.remember([this.pick]);   // the format and the JPEG quality; the action is chosen from the list as it stands
   }
 
-  show(): void { this.files = []; this.inFolder = []; this.sync(); this.open(); }
+  show(): void { this.files = []; this.inFolder = []; this.outRow.reset(); this.sync(); this.open(); }
 
   private sync(): void {
     syncOptions(this.pick, this.store.list.map(titled));
-    setText(this.chosen, this.files.length ? `${this.files.length} image${this.files.length === 1 ? '' : 's'} chosen. Each opens, plays the action and is exported; the results download as one zip.` : 'Choose the images to process.');
+    setText(this.chosen, this.files.length ? `${this.files.length} image${this.files.length === 1 ? '' : 's'} chosen. Each opens, plays the action and is exported; the results go into the folder chosen below, or download as one zip.` : 'Choose the images to process.');
   }
 
   private async go(): Promise<void> {
     const a = this.store.list[Number(this.pick.value)];
     if (!a || !this.files.length) { setText(this.chosen, !a ? 'Record an action first.' : 'Choose the images to process.'); return; }
-    const files = this.files, format = this.format.value === 'jpg' ? 'jpg' : 'png', q = Math.min(100, Math.max(1, Number(this.quality.value) || 92)) / 100;
+    const files = this.files, format = (['jpg', 'webp', 'tiff', 'psd'] as const).find((f) => f === this.format.value) ?? 'png', q = Math.min(100, Math.max(1, Number(this.quality.value) || 92)) / 100;
     this.close();
-    await this.run(a, files, format, q, this.template.value, Math.max(0, Math.floor(Number(this.serial.value) || 0)));
+    await this.run(a, files, format, q, this.template.value, Math.max(0, Math.floor(Number(this.serial.value) || 0)), this.outRow.handle);
   }
 }
 

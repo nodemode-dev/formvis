@@ -4,8 +4,9 @@ import { saveTemplates, templates } from '../io/prompt-templates';
 import { recipes } from '../io/comfy';
 import { comfyuiProbeText } from './panels/send-to';
 import { LocalModelsSection } from './panels/local-models';
-import { ApiKeysSection, ComfyAuthSection, HuggingFaceToken, LocalFilesSection, ModelFolderSection, RecipesSection, RenderingSection, SkinsSection, TemplateFiles, UpdatesSection } from './panels/connection-settings';
+import { ApiKeysSection, ComfyAuthSection, HuggingFaceToken, LlmRows, LocalFilesSection, ModelFolderSection, RecipesSection, RenderingSection, SettingsLocationSection, SkinsSection, TemplateFiles, UpdatesSection } from './panels/connection-settings';
 import { IMAGE_ACCEPT, PROJECT_ACCEPT } from '../io/images';
+import { RAW_SHARPEN_AMOUNTS, RAW_SHARPEN_CHOICES, type RawSharpen, type RawSharpenAmount } from '../io/raw-sharpen';
 import { PRESET_ACCEPT } from './panels/preset-manager-dialog';
 import { VERSION } from '../version';
 import { comboOf, formatKeys, type Commands } from './commands';
@@ -21,7 +22,7 @@ import { brandMark } from './brand';
 import { THEMES, readChoice, setAccent, setIntensity, setTheme, themeSwatchesHtml } from './themes';
 import { toast } from './toast';
 import { INTERPOLATIONS, LINE_STYLES, type LineStyle } from './prefs';
-import { CHECKER_COLORS, CHECKER_SIZES, ENGINE_CHOICES, PAINT_CURSORS, PRESSURE_CURVES, RAW_WB_CHOICES, RECOVERY_CHOICES, RULER_UNITS, UI_FONT_SIZES, loadPrefs, recalled, remembered, savePrefs, type CheckerColors, type CheckerSize, type EngineDevice, type PaintCursor, type Prefs, type PressureCurve, type RulerUnits, type UiFontSize } from './prefs';
+import { CHECKER_COLORS, CHECKER_SIZES, ENGINE_CHOICES, PAINT_CURSORS, PRESSURE_CURVES, RAW_WB_CHOICES, RECOVERY_CHOICES, RULER_UNITS, UI_FONT_SIZES, UI_SCALES, loadPrefs, recalled, remembered, savePrefs, setUiScale, uiScaleChoice, type CheckerColors, type CheckerSize, type EngineDevice, type PaintCursor, type Prefs, type PressureCurve, type RulerUnits, type UiFontSize } from './prefs';
 import { POWER_CHOICES, RENDERER_CHOICES, type GpuPower, type GpuRenderer } from '../gpu/probe';
 import { checkRow, selectRow, sliderRow } from './panels/controls';
 import { PagePrefsRows } from './panels/page-prefs';
@@ -480,8 +481,14 @@ export class SettingsDialog extends Dialog {
   private readonly rawSmartRow = checkRow('Open as a Smart Object', (v) => this.change({ rawSmart: v }));
   private readonly rawAskRow = checkRow('Show the Camera Raw dialog on open', (v) => this.change({ rawAsk: v }));
   private readonly rawPpiRow = sliderRow('Resolution (ppi, 0 keeps the file\'s)', 0, 600, 1, (v) => this.change({ rawPpi: v }));
+  private readonly rawSpaceRow = selectRow('Color Space (16 Bits/Channel)', [['srgb', 'sRGB'], ['prophoto', 'ProPhoto RGB']], (v) => this.change({ rawWide: v === 'prophoto' }));
+  private readonly rawSharpenRow = selectRow('Sharpen For', RAW_SHARPEN_CHOICES, (v) => this.change({ rawSharpen: v as RawSharpen }));
+  private readonly rawSharpenAmountRow = selectRow('Sharpen Amount', RAW_SHARPEN_AMOUNTS, (v) => this.change({ rawSharpenAmount: v as RawSharpenAmount }));
+  private readonly autoShowPanelsRow = checkRow('Auto-Show Hidden Panels', (v) => this.change({ autoShowPanels: v }));
   private readonly curveRow = selectRow('Pen Pressure Curve', PRESSURE_CURVES, (v) => this.change({ pressureCurve: v as PressureCurve }));
   private readonly fontSizeRow = selectRow('Interface Text Size', UI_FONT_SIZES, (v) => this.change({ uiFontSize: v as UiFontSize }));
+  private readonly scaleRow = selectRow('Interface Scale', UI_SCALES, (v) => setUiScale(v));
+  private readonly releaseRow = sliderRow('Free background document caches after (seconds, 0 keeps them)', 0, 600, 5, (v) => this.change({ backgroundReleaseSec: v }));
   private readonly animationsRow = checkRow('Enable animations', (v) => this.change({ animations: v }));
   private readonly pressureRow = checkRow('Use tablet pressure, tilt and twist', (v) => this.change({ usePressure: v }));
   private readonly firstSnapRow = checkRow('Automatically Create First Snapshot', (v) => this.change({ autoFirstSnapshot: v }));
@@ -579,13 +586,13 @@ export class SettingsDialog extends Dialog {
     reset.addEventListener('click', () => { void confirmAction('Reset all preferences?', 'Every preference, the panel arrangement and the tools shown go back to how formvis comes; your documents and library are kept. formvis reloads.', 'Reset').then((ok) => { if (!ok) return; for (const k of Object.keys(localStorage)) if (k.startsWith('formvis.') || k === 'nodemode_ui_settings') localStorage.removeItem(k); location.reload(); }); });
     add('General', this.homeRow.el, this.homeCloseRow.el, this.whatsNewRow.el, this.animZoomRow.el, this.zoomResizesRow.el, this.systemPickerRow.el, this.beepRow.el, this.interpolationRow.el, reset, el('<p class="cv-note">Image Interpolation is the resampling the Image Size dialog starts with. Beep When Done sounds a short tone when a job that ran longer than two seconds ends. Zoom Resizes Windows sizes a floating document window to the picture when its zoom changes. Animated Zoom eases Zoom In, Zoom Out and the Zoom tool\'s clicks over a fraction of a second. Use the system color picker opens the computer\'s own picker for the foreground and background swatches instead of formvis\'s. The Home screen covers the canvas area. At launch it shows while no document is open; closing the last document leaves the empty workspace with its panels unless the second choice is on. The brand mark at the top left opens it at any time; Esc leaves it. What\'s New (Help menu) lists the recent additions, each with a Show Me button; with the third choice on it opens once after an update.</p>'));
     this.intensityRow.set(Math.round((readChoice().intensity ?? 1) * 100));
-    add('Interface', row, accentRow, this.intensityRow.el, this.fontSizeRow.el, this.animationsRow.el, this.canvasColourRow.el, el('<p class="cv-note">Canvas Color is the pasteboard around the picture (the same as View > Pasteboard). Theme and accent are shared with NodeMode on this device. Intensity sets how strongly the accent tints what it marks; 100% is the design\'s. Text size scales the interface\'s text.</p>'));
-    add('Performance', this.budgetNote, this.memoryLimitRow.el, this.effectCacheRow.el, this.cacheLevelsRow.el, this.redrawRow.el, this.reuseRow.el, this.previewRow.el,
+    add('Interface', row, accentRow, this.intensityRow.el, this.fontSizeRow.el, this.scaleRow.el, this.animationsRow.el, this.canvasColourRow.el, el('<p class="cv-note">Canvas Color is the pasteboard around the picture (the same as View > Pasteboard). Theme and accent are shared with NodeMode on this device. Intensity sets how strongly the accent tints what it marks; 100% is the design\'s. Text size scales the interface\'s text.</p>'));
+    add('Performance', this.budgetNote, this.memoryLimitRow.el, this.effectCacheRow.el, this.releaseRow.el, this.cacheLevelsRow.el, this.redrawRow.el, this.reuseRow.el, this.previewRow.el,
       el('<h3 class="cv-prefs-sub">Graphics Processor Settings</h3>'), this.gpuNameRow(), this.gpuUseRow.el, this.gpuFiltersRow.el, this.rendererRow.el, this.gpuMemoryRow.el, this.gpuPowerRow.el, this.lowLatencyRow.el, this.gpuMode,
       el('<p class="cv-note">Automatic uses WebGPU (Metal on macOS, Direct3D 12 on Windows), then WebGL2 (as on Linux), on a hardware graphics processor, and the CPU otherwise; a software GPU is slower than the CPU renderer, so Automatic does not use one. If the graphics processor fails to start, formvis turns this off and says so. The canvas draws on the graphics processor; a document using something it does not draw yet draws on the CPU, and the status bar says why.</p>'),
       el('<h3 class="cv-prefs-sub">Engine</h3>'), this.engineRow.el, this.engineMode,
       el('<p class="cv-note">Where the engine runs its models (Remove Background, and the local models that follow). Automatic uses CUDA on an NVIDIA graphics processor, Core ML (Metal) on a Mac, and the CPU otherwise; a choice this machine cannot run falls back to the CPU, and the line above says why.</p>'));
-    add('Workspace', this.lockRow.el, this.narrowRow.el, this.rememberLayoutRow.el, this.floatDockingRow.el, el('<p class="cv-note">With Enable Floating Document Window Docking, dragging a floating window by its title bar onto the tab bar docks it back to its tab; off, windows only return by their close button or Consolidate All to Tabs. Locked, panels are neither dragged nor resized. In a window too narrow for the canvas beside the open side column, it shows as its icons until there is room (your choice is kept).</p>'));
+    add('Workspace', this.lockRow.el, this.narrowRow.el, this.rememberLayoutRow.el, this.floatDockingRow.el, this.autoShowPanelsRow.el, el('<p class="cv-note">With Auto-Show Hidden Panels, panels hidden with Tab show again while the pointer rests at the window\'s left edge (the tools) or right edge (the panels). With Enable Floating Document Window Docking, dragging a floating window by its title bar onto the tab bar docks it back to its tab; off, windows only return by their close button or Consolidate All to Tabs. Locked, panels are neither dragged nor resized. In a window too narrow for the canvas beside the open side column, it shows as its icons until there is room (your choice is kept).</p>'));
     add('Tools', this.wheelRow.el, this.curveRow.el, this.pressureRow.el, this.tooltipsRow.el, this.shiftToolRow.el, this.zoomCentreRow.el, el('<p class="cv-note">Show Tool Tips off hides the hover hints on buttons and tools. With Use Shift Key for Tool Switch off, pressing a tool\'s letter again cycles its group instead of Shift with the letter. Zoom Clicked Point to Center moves the point you click with the Zoom tool to the middle of the view. On, the wheel zooms about the pointer and Ctrl or Cmd with the wheel scrolls; off, the other way round. The pressure curve is how a pen\'s pressure maps to size, flow and opacity in every brush; a brush\'s own options can change it for the session.</p>'));
     add('History & Cache', this.statesRow.el, this.memoryRow.el, this.memoryAutoRow.el, el('<p class="cv-note">History States is how many steps undo keeps (50 is a common default; up to 1000); history memory caps what those steps may hold, and the oldest steps go first when either is reached. A browser app cannot reserve system memory as a desktop app can, so this is the part formvis controls. Turning off region redraws repaints the whole canvas on each stroke, slower but useful if painting ever draws out of place.</p>'),
       this.firstSnapRow.el, this.snapMemRow.el, el('<p class="cv-note">Each document keeps itself as opened, the History Brush\'s first source; snapshots, that one included, share this memory.</p>'));
@@ -607,7 +614,7 @@ export class SettingsDialog extends Dialog {
     add('History Log', this.historyLogRow.el, el('<p class="cv-note">On, every new history step is written down with its time and document, on this device. Edit > History Log saves it as a text file or clears it.</p>'));
     add('Cursors', this.cursorRow.el, this.crossRow.el, ...this.pageRows.cursors, el('<p class="cv-note">How painting tools show where they paint: the tip\'s outline at its size, a crosshair alone, or a small ring.</p>'));
     add('Type', this.recentFontsRow.el, ...this.pageRows.type, el('<p class="cv-note">The fonts you used last are listed first in the font menus, newest first; 0 lists none first.</p>'));
-    add('Camera Raw Defaults', this.rawAskRow.el, this.rawWbRow.el, this.rawBitsRow.el, this.rawPpiRow.el, this.rawToneRow.el, this.rawSmartRow.el, el('<p class="cv-note">What the Camera Raw dialog starts with each time a camera RAW file opens. Resolution, Auto Tone and Smart Object apply to the 8 bits/channel document it opens.</p>'));
+    add('Camera Raw Defaults', this.rawAskRow.el, this.rawWbRow.el, this.rawBitsRow.el, this.rawSpaceRow.el, this.rawSharpenRow.el, this.rawSharpenAmountRow.el, this.rawPpiRow.el, this.rawToneRow.el, this.rawSmartRow.el, el('<p class="cv-note">What the Camera Raw dialog starts with each time a camera RAW file opens. Resolution, Auto Tone and Smart Object apply to the 8 bits/channel document it opens. The color space applies at 16 Bits/Channel (an 8-bit document is sRGB). Sharpen For applies an Unsharp Mask sized for the screen, glossy paper or matte paper as the file opens.</p>'));
     const gamutField = el('<label class="cv-field"><span>Gamut Warning</span></label>');
     this.gamutColor.addEventListener('input', () => this.change({ gamutColor: this.gamutColor.value }));
     gamutField.append(this.gamutColor);
@@ -634,14 +641,14 @@ export class SettingsDialog extends Dialog {
     save.addEventListener('click', () => void this.saveLlm(false));
     forget.addEventListener('click', () => void this.saveLlm(true));
     check.addEventListener('click', () => void this.checkLlm());
-    lm.append(lmRow('Address', this.llmUrl), lmRow('Model', this.llmModel, this.llmModels), lmRow('API key', this.llmKey), lmButtons, this.llmNote);
+    lm.append(this.llmRows.el, lmRow('Address', this.llmUrl), lmRow('Model', this.llmModel, this.llmModels), lmRow('API key', this.llmKey), lmButtons, this.llmNote);
     const tp = el('<div class="cv-panel-section cv-templates"><span class="cv-refs-title">Prompt templates</span></div>');
     const tButtons = el('<div class="cv-improve"></div>');
     const tNew = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">New</button>'), tSave = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Save</button>'), tDel = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Delete</button>');
     tButtons.append(tNew, tSave, tDel);
     this.tplPick.addEventListener('change', () => this.showTemplate());
     tNew.addEventListener('click', () => { const list = templates(); let n = 1; while (list.some((t) => t.name === `Template ${n}`)) n++; list.push({ name: `Template ${n}`, text: '' }); saveTemplates(list); this.fillTemplates(`Template ${n}`); });
-    tSave.addEventListener('click', () => { const list = templates(), i = list.findIndex((t) => t.name === this.tplPick.value), name = this.tplName.value.trim() || this.tplPick.value; if (i >= 0) list[i] = { name, text: this.tplText.value }; saveTemplates(list); this.fillTemplates(name); setText(this.tplNote, 'Saved.'); });
+    tSave.addEventListener('click', () => { const list = templates(), i = list.findIndex((t) => t.name === this.tplPick.value), name = this.tplName.value.trim() || this.tplPick.value; if (i >= 0) list[i] = { ...list[i], name, text: this.tplText.value }; saveTemplates(list); this.fillTemplates(name); setText(this.tplNote, 'Saved.'); });
     tDel.addEventListener('click', () => { const list = templates().filter((t) => t.name !== this.tplPick.value); saveTemplates(list.length ? list : templates()); this.fillTemplates(); });
     const tFiles = new TemplateFiles(() => this.tplPick.value, this.tplNote, (name) => this.fillTemplates(name));
     tp.append(lmRow('Template', this.tplPick), lmRow('Name', this.tplName), this.tplText, tButtons, tFiles.el, this.tplNote);
@@ -649,7 +656,8 @@ export class SettingsDialog extends Dialog {
     this.agents.addEventListener('change', () => { this.change({ agentsAllowed: this.agents.checked }); window.dispatchEvent(new CustomEvent('formvis:agents', { detail: this.agents.checked })); });
     const ag = el('<label class="cv-dialog-row"><span>Allow outside agents (MCP)</span></label>');
     ag.append(this.agents);
-    const agNote = el('<p class="cv-note">Lets Claude Code, Claude Desktop or another MCP client work in the open document; each change is an undoable step, and anything that costs money asks you first. Claude Code: <code>claude mcp add --transport http formvis http://127.0.0.1:8190/mcp</code>. Claude Desktop: a server whose command is <code>./formvis mcp</code> in the formvis folder.</p>');
+    const agNote = el('<p class="cv-note">Lets Claude Code, Claude Desktop or another MCP client work in the open document; each change is an undoable step, and anything that costs money asks you first. Claude Code: <code>claude mcp add --transport http formvis <span class="cv-mcp-url">http://127.0.0.1:8190/mcp</span></code>. Claude Desktop: a server whose command is <code>./formvis mcp</code> in the formvis folder. The control port is the engine\'s own port, chosen when the engine starts (FORMVIS_PORT, 8190 unless set): <span class="cv-mcp-port">8190</span>. It cannot change while formvis runs.</p>');
+    this.mcpUrlNode = agNote.querySelector('.cv-mcp-url'); this.mcpPortNode = agNote.querySelector('.cv-mcp-port');
     add('Enhanced Controls', ...this.pageRows.enhanced);
     add('Plugins', this.keysNote, ...this.pageRows.plugins, nm, this.nodemodeNote, cu, this.comfyuiNote, this.comfyAuth.el, this.recipesList.el, lm, tp, ag, agNote, this.apiKeys.el, this.modelFolder.el, this.hfToken.el, this.localModels.el, this.localFiles.el, this.updates.el);
     const wrap = el('<div class="cv-prefs"></div>');
@@ -665,6 +673,7 @@ export class SettingsDialog extends Dialog {
     this.accent.addEventListener('input', () => { setAccent(this.accent.value); this.sync(); });
     this.sections.get('Performance')?.append(this.rendering.el);
     this.sections.get('Interface')?.append(this.skins.el);
+    this.sections.get('General')?.append(this.location.el);
     void this.skins.reload();
     this.showSection('General');
   }
@@ -714,6 +723,7 @@ export class SettingsDialog extends Dialog {
     this.gpuMemoryRow.set(this.prefs.gpuMemoryMB);
     this.memoryLimitRow.set(this.prefs.memoryLimitMB);
     this.effectCacheRow.set(this.prefs.effectCacheMB);
+    this.releaseRow.set(this.prefs.backgroundReleaseSec);
     this.cacheLevelsRow.set(this.prefs.cacheLevels);
     this.pageRows.set(this.prefs);
     this.gpuPowerRow.set(this.prefs.gpuPower);
@@ -726,8 +736,10 @@ export class SettingsDialog extends Dialog {
     this.rawBitsRow.set(String(this.prefs.rawBits));
     this.historyLogRow.set(this.prefs.historyLog);
     this.placeTransformRow.set(this.prefs.placeTransform);
+    this.rawSpaceRow.set(this.prefs.rawWide ? 'prophoto' : 'srgb'); this.rawSharpenRow.set(this.prefs.rawSharpen); this.rawSharpenAmountRow.set(this.prefs.rawSharpenAmount); this.autoShowPanelsRow.set(this.prefs.autoShowPanels);
     this.rawAskRow.set(this.prefs.rawAsk); this.rawToneRow.set(this.prefs.rawAutoTone); this.rawSmartRow.set(this.prefs.rawSmart); this.rawPpiRow.set(this.prefs.rawPpi);
     this.fontSizeRow.set(this.prefs.uiFontSize);
+    this.scaleRow.set(uiScaleChoice());
     this.animationsRow.set(this.prefs.animations);
     this.pressureRow.set(this.prefs.usePressure);
     this.firstSnapRow.set(this.prefs.autoFirstSnapshot);
@@ -807,6 +819,17 @@ export class SettingsDialog extends Dialog {
   private readonly libApply = el<HTMLButtonElement>('<button class="cv-btn" type="button">Use this folder</button>');
   private libDefault = '';
   private readonly agents = el<HTMLInputElement>('<input type="checkbox" aria-label="Allow outside agents">');
+  private mcpUrlNode: Element | null = null;
+  private mcpPortNode: Element | null = null;
+  /** The engine's real MCP address and port, from the engine itself (the port is set when it starts). */
+  private async showControlPort(): Promise<void> {
+    try {
+      const r = (await (await fetch('/api/mcp/registration')).json()) as { url?: string };
+      if (!r.url) return;
+      if (this.mcpUrlNode) setText(this.mcpUrlNode as HTMLElement, r.url);
+      if (this.mcpPortNode) setText(this.mcpPortNode as HTMLElement, new URL(r.url).port || '80');
+    } catch { /* the engine is not reachable; the note keeps its default */ }
+  }
   private readonly localModels = new LocalModelsSection();   // 1.52.9
   private readonly comfyAuth = new ComfyAuthSection();
   private readonly modelFolder = new ModelFolderSection();
@@ -814,8 +837,9 @@ export class SettingsDialog extends Dialog {
   private readonly apiKeys = new ApiKeysSection();
   private readonly localFiles = new LocalFilesSection();
   /** Help > Check for Updates, connected by the app. */
-  checkUpdates: (() => void) | null = null;
-  private readonly updates = new UpdatesSection(() => this.checkUpdates?.(), VERSION);
+  checkUpdates: (() => Promise<string>) | null = null;
+  private readonly location = new SettingsLocationSection();
+  private readonly updates = new UpdatesSection(() => this.checkUpdates?.() ?? Promise.resolve('Updates are checked in the desktop app.'), VERSION);
   /** The tile engine switch and Reload Window, connected by the app. */
   applyTiled: ((on: boolean) => void) | null = null;
   restartWindow: (() => void) | null = null;
@@ -829,7 +853,8 @@ export class SettingsDialog extends Dialog {
   private readonly llmModel = el<HTMLInputElement>('<input class="cv-input" type="text" aria-label="Language model" spellcheck="false" list="cv-llm-models" placeholder="llama3.2">');
   private readonly llmModels = el('<datalist id="cv-llm-models"></datalist>');
   private readonly llmKey = el<HTMLInputElement>('<input class="cv-input" type="password" aria-label="Language model key" autocomplete="off" spellcheck="false">');
-  private readonly llmNote = el('<p class="cv-note cv-llm-note" role="status">Any service with the OpenAI-compatible API: Ollama (http://localhost:11434/v1) or LM Studio (http://localhost:1234/v1) on this computer, or OpenAI, OpenRouter and others with a key. The engine keeps the key and never shows it.</p>');
+  private readonly llmNote = el('<p class="cv-note cv-llm-note" role="status">Any service with the OpenAI-compatible chat API, at the address you type: a model on this computer or a hosted one with your key. Add as many rows as you like and pick the one in use. The engine keeps each key and never shows it.</p>');
+  private readonly llmRows = new LlmRows({ url: this.llmUrl, model: this.llmModel, key: this.llmKey }, (t) => setText(this.llmNote, t));
   private readonly tplPick = el<HTMLSelectElement>('<select class="cv-input" aria-label="Prompt template"></select>');
   private readonly tplName = el<HTMLInputElement>('<input class="cv-input" type="text" aria-label="Template name" maxlength="80">');
   private readonly tplText = el<HTMLTextAreaElement>('<textarea class="cv-input" rows="4" aria-label="Template text"></textarea>');
@@ -839,18 +864,14 @@ export class SettingsDialog extends Dialog {
     const s = await api.llmStatus();
     if (!s) { setText(this.llmNote, 'The formvis engine is offline: Improve Prompt needs it.'); return; }
     setText(this.keysNote, s.store === 'system' ? 'API keys (fal, the language model) are kept in your system\'s password store.' : 'API keys (fal, the language model) are kept in a file on this computer only you can read: no system password store was found.');
-    if (document.activeElement !== this.llmUrl) this.llmUrl.value = s.baseUrl;
-    if (document.activeElement !== this.llmModel) this.llmModel.value = s.model;
-    this.llmKey.value = '';
-    this.llmKey.placeholder = s.hasKey ? 'Saved (type to replace)' : 'Optional for a service on this computer';
+    this.llmRows.show(s);
   }
 
   private async saveLlm(forgetKey: boolean): Promise<void> {
     try {
-      const s = await api.llmSave(this.llmUrl.value.trim(), this.llmModel.value.trim(), forgetKey ? null : this.llmKey.value.trim() || null, forgetKey);
-      this.llmKey.value = '';
-      this.llmKey.placeholder = s.hasKey ? 'Saved (type to replace)' : 'Optional for a service on this computer';
+      const s = await this.llmRows.save(forgetKey);
       setText(this.llmNote, forgetKey ? 'Key forgotten.' : `Saved: ${s.model} at ${s.baseUrl}.`);
+      void this.apiKeys.refresh();
     } catch (err) { setText(this.llmNote, err instanceof Error ? err.message : 'Could not save.'); }
   }
 
@@ -905,10 +926,12 @@ export class SettingsDialog extends Dialog {
     if (document.activeElement !== this.nodemodeUrl) setValue(this.nodemodeUrl, this.prefs.nodemodeUrl);
     if (document.activeElement !== this.comfyuiUrl) setValue(this.comfyuiUrl, this.prefs.comfyuiUrl);
     void this.loadLlm();
+    void this.showControlPort();
     void this.localModels.refresh();
     void this.comfyAuth.refresh();
     void this.modelFolder.refresh();
     void this.hfToken.refresh();
+    void this.location.refresh();
     void this.apiKeys.refresh();
     void this.localFiles.refresh();
     this.recipesList.refresh();

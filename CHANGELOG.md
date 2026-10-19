@@ -4,6 +4,23 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.89.9 · 2026-10-19
+
+### Changed
+
+- Folder plugins run in their own sealed worker: no access to the window, the network or storage, only the permitted plugin API. Plugin document calls now return promises.
+- The desktop app checks for updates from the page at start (still off until a signing key is set).
+
+### Added
+
+- Preferences: Camera Raw colour space and Sharpen For, panels that show at the window edges while hidden, Interface Scale, larger interface text everywhere, freeing memory of background documents, update settings, the settings folder and its override.
+- Keys and presets: your own language model services with vision on or off, keys a service refuses are flagged, template and recipe folders, brush sets saved and loaded, reordering presets.
+- Agents: open as a layer or replace, reference layers, distort and warp by numbers, export to TIFF, TGA, DPX, BMP, EXR and HDR or back to the opened file, CMYK documents, menu paths, quit with confirmation, idle sessions end, a folders list in Agent Connect.
+- Command line: a headless window, action files in batches, serve tokens, more JSON-lines methods.
+- Automate: an Actions panel, Photomerge as masked layers, output folders for Image Processor and batches, TGA and DPX output, Contact Sheet font files, Define Variables align and clip, saving a ComfyUI graph as a recipe.
+- Files: PSD type style runs, EXIF in PSD, TIFF and PNG, alpha channels in layered TIFF, PSD and TIFF from Batch, Image Asset variants.
+- Assistant: Auto, Ask or Refuse per tool; free sizes in the Generate panel.
+
 ## 1.89.8 · 2026-10-19
 
 ### Fixed

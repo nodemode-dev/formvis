@@ -78,9 +78,37 @@ function uniqueName(name: string, used: Set<string>): string {
   return out;
 }
 
+/** A default variant: every asset name without a size of its own is also written at this scale, with the suffix after its name. */
+export interface AssetVariant { pct: number; suffix: string }
+
+/** Variants from a typed list such as `100, 200@2x, 3x`: a number with `x` (times) or `%` or neither (percent), then an
+ *  optional suffix; a scale other than 100 percent with no suffix gets `@2x` style. Repeats and out-of-range scales are dropped. */
+export function parseVariants(text: string): AssetVariant[] {
+  const out: AssetVariant[] = [], seen = new Set<number>();
+  for (const part of text.split(/[,;\n]/)) {
+    const m = /^\s*(\d+(?:\.\d+)?)\s*(x|%)?\s*(\S*)\s*$/i.exec(part);
+    if (!m) continue;
+    const pct = Math.round((m[2]?.toLowerCase() === 'x' ? Number(m[1]) * 100 : Number(m[1])) * 100) / 100;
+    if (!(pct >= 1 && pct <= 1600) || seen.has(pct)) continue;
+    seen.add(pct);
+    const suffix = m[3] ? m[3].replace(/[\\/:*?"<>|]/g, '') : pct === 100 ? '' : `@${Number((pct / 100).toFixed(2))}x`;
+    out.push({ pct, suffix });
+  }
+  return out.slice(0, 8);
+}
+
+const VARIANTS_KEY = 'formvis.assetVariants';
+export function loadVariantText(): string { try { return localStorage.getItem(VARIANTS_KEY) ?? ''; } catch { return ''; } }
+export function saveVariantText(text: string): void { try { localStorage.setItem(VARIANTS_KEY, text); } catch { /* storage is blocked; the variants last this session only */ } }
+
+function withVariant(spec: AssetSpec, v: AssetVariant): AssetSpec {
+  const dot = spec.name.lastIndexOf('.');
+  return { ...spec, name: `${spec.name.slice(0, dot)}${v.suffix}${spec.name.slice(dot)}`, size: v.pct === 100 ? null : { kind: 'scale', pct: v.pct } };
+}
+
 /** Every layer or folder whose name parses to asset specs, drawn alone (a folder with its contents), trimmed, scaled to
- *  each spec and encoded. */
-export async function assetFiles(engine: Engine, engineUp: boolean): Promise<Array<{ name: string; blob: Blob }>> {
+ *  each spec and encoded; a spec with no size of its own is written once per default variant when there are any. */
+export async function assetFiles(engine: Engine, engineUp: boolean, variants: readonly AssetVariant[] = parseVariants(loadVariantText())): Promise<Array<{ name: string; blob: Blob }>> {
   const p = engine.current, files: Array<{ name: string; blob: Blob }> = [], used = new Set<string>();
   if (!p) return files;
   for (const l of p.doc.layers) {
@@ -89,7 +117,7 @@ export async function assetFiles(engine: Engine, engineUp: boolean): Promise<Arr
     if (!specs.length) continue;
     const img = l.isGroup ? engine.renderGroupAlone(l.id) : engine.renderLayerAlone(l.id), cut = img ? trimSurface(img) : null;
     if (!cut) continue;
-    for (const spec of specs) files.push({ name: uniqueName(spec.name, used), blob: await encodeAsset(cut, spec, engineUp) });
+    for (const base of specs) for (const spec of base.size || !variants.length ? [base] : variants.map((v) => withVariant(base, v))) files.push({ name: uniqueName(spec.name, used), blob: await encodeAsset(cut, spec, engineUp) });
   }
   return files;
 }

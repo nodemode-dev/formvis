@@ -42,6 +42,13 @@ def depth_map(picture: Image.Image) -> Image.Image:
     return img.resize((width, height), Image.Resampling.BICUBIC)
 
 
+def encode16(values: np.ndarray) -> bytes:
+    """Depth 0..1 as a 16-bit grey PNG, near bright (65535) and far dark (0)."""
+    out = io.BytesIO()
+    Image.fromarray(np.clip(values * 65535.0 + 0.5, 0, 65535).astype("<u2")).save(out, "PNG")
+    return out.getvalue()
+
+
 def depth_values(picture: Image.Image, width: int, height: int) -> np.ndarray:
     field = Image.fromarray(_normalised(picture), "F").resize((width, height), Image.Resampling.BICUBIC)
     return np.clip(np.asarray(field, np.float32), 0.0, 1.0)
@@ -63,6 +70,10 @@ async def depth_local(image: UploadFile = File(...), fmt: str = "png", width: in
         w, h = (width, height) if 0 < width <= 16384 and 0 < height <= 16384 else picture.size
         values = await run_in_threadpool(depth_values, picture, w, h)
         return Response(values.astype("<f4").tobytes(), media_type="application/octet-stream", headers={"X-Depth-Width": str(w), "X-Depth-Height": str(h)})
+    if fmt == "png16":
+        w, h = (width, height) if 0 < width <= 16384 and 0 < height <= 16384 else picture.size
+        values = await run_in_threadpool(depth_values, picture, w, h)
+        return Response(encode16(values), media_type="image/png")
     result = await run_in_threadpool(depth_map, picture)
     out = io.BytesIO()
     result.save(out, "PNG")

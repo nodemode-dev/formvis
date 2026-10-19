@@ -14,15 +14,19 @@ export class ReferencePicker {
     this.list.addEventListener('change', () => this.limit());   // once, not on every refresh
   }
 
-  /** Lists the document's pixel layers, none chosen. */
+  /** Lists the document's pixel layers; those flagged as references (up to four) start chosen. */
   refresh(forFal = false): void {
     const layers = this.engine.current?.doc.layers.filter((l) => l.raster && !l.isGroup && !l.adjustment) ?? [];
+    let flagged = 0;
     this.list.replaceChildren(...layers.slice().reverse().map((l) => {
       const row = el('<label class="cv-refs-row"><input type="checkbox"><span></span></label>');
-      (row.querySelector('input') as HTMLInputElement).value = l.id;
+      const box = row.querySelector('input') as HTMLInputElement;
+      box.value = l.id;
+      if (l.reference && flagged < 4) { box.checked = true; flagged++; }
       setText(row.querySelector('span') as HTMLElement, l.name);
       return row;
     }));
+    this.limit();
     this.forFal(forFal);
   }
 

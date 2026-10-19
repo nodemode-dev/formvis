@@ -44,9 +44,10 @@ Note: read-only.
 
 ## new_document
 
-Opens a new document of width x height pixels, or of an aspect and size class (a model-friendly size, sides in steps of 16: size_class 1k is about 1024 on the longer side, 2k about 2048, 4k about 4096). Width and height win when given; with no size at all the document is 1920 by 1080. mode (rgb, grayscale, lab) and depth (8, 16 or 32 bits a channel) set the colour mode and bit depth; background is white, transparent, black or a colour #rrggbb. CMYK has a dialog: run_command mode-cmyk. Use when there is nothing open, or the person wants a blank canvas of a size.
+Opens a new document of width x height pixels, or of an aspect and size class (a model-friendly size, sides in steps of 16: size_class 1k is about 1024 on the longer side, 2k about 2048, 4k about 4096). Width and height win when given; with no size at all the document is 1920 by 1080. mode (rgb, grayscale, lab, cmyk) and depth (8, 16 or 32 bits a channel) set the colour mode and bit depth; background is white, transparent, black or a colour #rrggbb. cmyk converts with no dialog through profile (default: the shipped CMYK profile; else a profile id or name from the Convert to Profile list) and the intent in the colour preferences. Use when there is nothing open, or the person wants a blank canvas of a size.
 
-- `mode`: string (rgb | grayscale | lab); default "rgb"
+- `mode`: string (rgb | grayscale | lab | cmyk); default "rgb"
+- `profile`: string; default "default"; For cmyk: default, or a CMYK profile id or name.
 - `depth`: integer (8 | 16 | 32); default 8
 - `width`: integer
 - `height`: integer
@@ -74,10 +75,11 @@ Adds an empty layer above the active one and makes it active; returns its id. Us
 
 ## set_layer
 
-Changes a layer's name, visibility, opacity (0 to 1), blend mode or locks (locks: pixels, position, transparency, all; true locks, false unlocks, left out stays), or makes it the active layer. Use when a layer should be renamed, hidden, faded, blended, or made the active one.
+Changes a layer's name, visibility, opacity (0 to 1), blend mode, reference flag (the generation dialogs' References list starts with flagged layers chosen) or locks (locks: pixels, position, transparency, all; true locks, false unlocks, left out stays), or makes it the active layer. Use when a layer should be renamed, hidden, faded, blended, or made the active one.
 
 - `id`: string; required; A layer id from get_document.
 - `name`: string
+- `reference`: boolean
 - `visible`: boolean
 - `opacity`: number
 - `blend`: string
@@ -107,13 +109,15 @@ Adds an adjustment layer (for example curves, levels, hsv, exposure, splitToning
 
 ## place_image
 
-Places a PNG, JPEG or WebP image as a new layer at x, y, at its own size unless scale (percent) or fit is given: fit contain or cover sizes it to the document and centres it, center centres it at its size, smart_object makes it a smart object so it can be scaled without loss. From path, an absolute path to a file, or data, base64. Use when another picture file should join the document as a layer.
+Places a PNG, JPEG, WebP or SVG image as a new layer at x, y, at its own size unless scale (percent) or fit is given: fit contain or cover sizes it to the document and centres it, center centres it at its size, smart_object makes it a smart object so it can be scaled without loss. An SVG is drawn to pixels at svg_width pixels across (its own width when left out). reference true flags the layer as a reference picture: the generation dialogs' References list starts with it chosen. From path, an absolute path to a file, or data, base64. Use when another picture file should join the document as a layer.
 
+- `reference`: boolean; default false
+- `svg_width`: integer; For an SVG: the width in pixels it is drawn at.
 - `scale`: number; Percent of the image's own size.
 - `fit`: string (none | contain | cover); default "none"
 - `center`: boolean; default false
 - `smart_object`: boolean; default false
-- `path`: string; Absolute path to a .png, .jpg, .jpeg or .webp file; use this for files on disk.
+- `path`: string; Absolute path to a .png, .jpg, .jpeg, .webp or .svg file; use this for files on disk.
 - `data`: string; Base64 image data, when there is no file.
 - `name`: string
 - `x`: number; default 0
@@ -180,27 +184,36 @@ Removes the active layer's background on this computer, keeping the subject (a m
 
 ## open_file
 
-Opens a picture (PNG, JPEG, WebP, AVIF, GIF, TIFF, HEIC, QOI, TGA, ICO (its largest size), PBM, PGM, PPM, PAM, camera raw) or a project (.fvd, .fmv, .psd, .psb, .ora) from an absolute path as a new document. Use when the person gives a path to a picture or project to work on.
+Opens a picture (PNG, JPEG, WebP, AVIF, GIF, TIFF, HEIC, QOI, TGA, ICO (its largest size), PBM, PGM, PPM, PAM, camera raw, SVG drawn to pixels at svg_width) or a project (.fvd, .fmv, .psd, .psb, .ora) from an absolute path as a new document. into replace opens a picture in place of the active document (its unsaved changes are discarded), into layer adds it as a layer of the active document (as place_image does; reference true flags it as a reference picture). The file is remembered, so save_project or export_image with no path writes the document back to it. Use when the person gives a path to a picture or project to work on.
 
 - `path`: string; required; Absolute path, e.g. /Users/me/Pictures/beach.jpg
+- `into`: string (document | replace | layer); default "document"
+- `svg_width`: integer; For an SVG: the width in pixels it is drawn at.
+- `reference`: boolean; default false
 
 ## save_project
 
-Saves the document as a formvis project (.fvd: layers, masks, adjustments and text stay editable) at an absolute path. A file already there is kept unless overwrite is true. Use when the work should be kept with layers still editable.
+Saves the document as a formvis project (.fvd: layers, masks, adjustments and text stay editable) at an absolute path. With no path it writes back to the .fvd the active document was opened from with open_file (replacing it). A file already there is kept unless overwrite is true. Use when the work should be kept with layers still editable.
 
-- `path`: string; required; Absolute path ending .fvd
+- `path`: string; Absolute path ending .fvd; left out, the file the document was opened from.
 - `overwrite`: boolean; default false; Replace a file already at the path. Without it an existing file is not touched.
 
 Note: replaces or removes.
 
 ## export_image
 
-Writes the document to an absolute path by the path's extension: PNG, JPEG or WebP as it looks (scale applies), or with every layer kept as .psd, .psb (a document past 30000 pixels a side) or .ora (RGB and grayscale documents; scale does not apply). A file already there is kept unless overwrite is true. Use when a flat PNG, JPEG or WebP is the deliverable.
+Writes the document to an absolute path by the path's extension: PNG, JPEG or WebP as it looks (scale applies), or with every layer kept as .psd, .psb (a document past 30000 pixels a side) or .ora (RGB and grayscale documents; scale does not apply). Also .tif or .tiff (flat, or with every layer kept when layers is true), .tga, .dpx and .bmp (flat, scale applies), and .exr or .hdr (linear light float, at the document's size; a 32-bit document keeps its values). With no path it writes back to the file the active document was opened from with open_file, replacing it. A file already there is kept unless overwrite is true. Use when a flat PNG, JPEG or WebP is the deliverable.
 
-- `path`: string; required; Absolute path ending .png, .jpg, .webp, .psd, .psb or .ora
+- `path`: string; Absolute path ending .png, .jpg, .webp, .psd, .psb, .ora, .tif, .tiff, .tga, .dpx, .bmp, .exr or .hdr; left out, the file the document was opened from.
 - `quality`: number; default 0.92
 - `scale`: number; default 1; Writes the picture at this factor of its size; the document is not changed.
 - `overwrite`: boolean; default false; Replace a file already at the path. Without it an existing file is not touched.
+- `layers`: boolean; default false; For a TIFF: keep every layer.
+- `dpi`: integer; default 72; The resolution written into a TIFF, TGA, DPX or BMP.
+- `metadata`: string (keep | none); default "keep"; none leaves out the document's AI label metadata from a PNG, JPEG or WebP.
+- `exr_compression`: string (zip | piz | none); default "zip"; For an .exr.
+- `half`: boolean; default false; For an .exr: 16-bit half floats.
+- `options`: object; Format settings as the export dialog names them, for a TIFF, TGA, DPX or BMP, for example {compression: deflate}.
 
 Note: replaces or removes.
 
@@ -270,7 +283,7 @@ Flips the whole document horizontally or vertically. Use when the whole document
 
 ## transform_layer
 
-Moves, scales, rotates or flips a layer (id from get_document): x and y are its new top-left in pixels, scale a percentage, rotation degrees. Use when a layer should be moved, scaled, rotated or flipped.
+Moves, scales, rotates or flips a layer (id from get_document): x and y are its new top-left in pixels, scale a percentage, rotation degrees. Then, one of distort (the four corners it is pulled to: perspective and free distortion) or warp (a bend such as arc, wave or fisheye); both resample the pixels, apply as one step and need a pixel layer or a smart object. Use when a layer should be moved, scaled, rotated or flipped.
 
 - `id`: string; required; A layer id from get_document.
 - `x`: number
@@ -278,6 +291,8 @@ Moves, scales, rotates or flips a layer (id from get_document): x and y are its 
 - `scale`: number
 - `rotation`: number
 - `flip`: string (horizontal | vertical)
+- `distort`: object; corners: the layer's top left, top right, bottom right and bottom left corners moved to these points in document pixels (convex, in order, none crossing).
+- `warp`: object; A preset bend laid over the layer: style, bend and horizontal and vertical distortion in percent (-100 to 100).
 
 ## rasterize_layer
 
@@ -508,7 +523,7 @@ Note: replaces or removes.
 
 ## list_commands
 
-Lists formvis's commands: every menu and palette action, each as id, label, when (what it is for) and params (what it takes). Narrow it with group (a menu or family such as Filter or Layer) or text (words from the label, id or description); an unfiltered list is capped, so filter first. Use when the typed tools do not cover what the person asked and you need to find the formvis command that does.
+Lists formvis's commands: every menu and palette action, each as id, label, menu (its path in the menu bar, such as Filter > Blur > Gaussian Blur, which ui_menu_invoke takes), when (what it is for) and params (what it takes). Narrow it with group (a menu or family such as Filter or Layer) or text (words from the label, id or description); an unfiltered list is capped, so filter first. Use when the typed tools do not cover what the person asked and you need to find the formvis command that does.
 
 - `group`: string
 - `text`: string
@@ -685,7 +700,7 @@ Note: replaces or removes.
 
 ## ui_set
 
-Sets named parts of the window in one call: tool (a tool id), zoom (1 is 100 percent), centre ({x, y} document pixels to bring to the middle), rotation (degrees of view rotation), theme (a theme name), panels (shown or hidden), foreground and background (#rrggbb) and mask_target (edit the active layer's mask instead of its pixels). A field it does not have is refused by name. Use when the tool, zoom, view centre, rotation, theme, panels, colours or mask target should change.
+Sets named parts of the window in one call: tool (a tool id), zoom (1 is 100 percent), centre ({x, y} document pixels to bring to the middle), rotation (degrees of view rotation), theme (a theme name), panels (shown or hidden), foreground and background (#rrggbb), mask_target (edit the active layer's mask instead of its pixels), eyedropper ({size: 1 for a point sample or the side of an average (3, 5, 11, 31, 51, 101), sample: current, below, all, below-flat or all-flat, ring: show the sample ring}), crop_overlay ({kind: the Crop tool's composition guide, show: auto, always or never}) and dock_layout (a workspace by name or id, such as Essentials or Photography; ui_state lists them). A field it does not have is refused by name. Use when the tool, zoom, view centre, rotation, theme, panels, colours or mask target should change.
 
 - `tool`: string
 - `zoom`: number
@@ -696,6 +711,9 @@ Sets named parts of the window in one call: tool (a tool id), zoom (1 is 100 per
 - `foreground`: string; #rrggbb
 - `background`: string; #rrggbb
 - `mask_target`: boolean
+- `eyedropper`: object
+- `crop_overlay`: object
+- `dock_layout`: string
 
 ## ui_dialog
 
@@ -726,9 +744,10 @@ Note: replaces or removes.
 
 ## ui_window
 
-The formvis window itself: size reports its size and focus, resize sets it (the desktop app's window only; a browser tab refuses), focus asks for focus, fullscreen toggles full screen. Use when the window's size should be read or changed, or it should take focus or full screen.
+The formvis window itself: size reports its size and focus, resize sets it (the desktop app's window only; a browser tab refuses), focus asks for focus, fullscreen toggles full screen, quit closes formvis (confirm must be true; the person approves it, and is asked about each document with unsaved changes; a browser tab only ends by saying it can be closed). Use when the window's size should be read or changed, or it should take focus or full screen.
 
-- `action`: string (size | resize | focus | fullscreen); required
+- `action`: string (size | resize | focus | fullscreen | quit); required
+- `confirm`: boolean; default false
 - `width`: integer
 - `height`: integer
 

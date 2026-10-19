@@ -56,6 +56,10 @@ export class AgentConnect {
     <div class="ft-connect-section"><span class="ft-connect-label">Connect an agent</span>
       <div class="ft-connect-bar"><button type="button" class="cv-btn cv-btn-ghost" data-copy="claude_code" title="Copies the claude mcp add line">Copy Claude Code line</button>
       <button type="button" class="cv-btn cv-btn-ghost" data-copy="claude_desktop" title="Copies the mcpServers JSON with this copy's path">Copy Claude Desktop JSON</button></div></div>
+    <div class="ft-connect-section"><span class="ft-connect-label">Folders agents may use</span>
+      <textarea class="cv-input ft-connect-roots" rows="3" spellcheck="false" aria-label="Folders agents may use, one absolute path per line" placeholder="One absolute folder per line"></textarea>
+      <div class="ft-connect-bar"><button type="button" class="cv-btn cv-btn-ghost ft-connect-roots-save">Save folders</button><span class="ft-connect-roots-note ft-connect-empty" role="status"></span></div>
+      <p class="ft-connect-empty">Agents may open, place, save and export only inside these folders. Leave it empty to allow any folder except the system's own.</p></div>
     <div class="ft-connect-section is-feed"><div class="ft-connect-bar"><span class="ft-connect-label">Activity</span>
       <label class="ft-connect-follow"><input type="checkbox" class="ft-connect-follow-on"><span>Follow Agent</span></label>
       <button type="button" class="cv-btn cv-btn-ghost ft-connect-stop" title="Cancel the steps waiting for approval">${icon('close', 14)}<span>Stop</span></button></div>
@@ -71,6 +75,8 @@ export class AgentConnect {
   private readonly feed = q(this.el, '.ft-connect-feed');
   private readonly noFeed = q(this.el, '.ft-connect-feed-empty');
   private readonly follow = q<HTMLInputElement>(this.el, '.ft-connect-follow-on');
+  private readonly roots = q<HTMLTextAreaElement>(this.el, '.ft-connect-roots');
+  private readonly rootsNote = q(this.el, '.ft-connect-roots-note');
   private readonly entries: Entry[] = [];
   private agents: Agent[] = [];
   private socket: WebSocket | null = null;
@@ -83,12 +89,33 @@ export class AgentConnect {
     for (const b of Array.from(this.el.querySelectorAll<HTMLButtonElement>('[data-copy]'))) b.addEventListener('click', () => void copyRegistration(b.dataset.copy === 'claude_desktop' ? 'claude_desktop' : 'claude_code'));
     this.follow.addEventListener('change', () => keep(this.follow.checked));
     this.master.addEventListener('change', () => this.switchAgents(this.master.checked));
+    q(this.el, '.ft-connect-roots-save').addEventListener('click', () => void this.saveRoots());
     this.connect();
   }
 
   isOpen(): boolean { return !this.el.hidden; }
 
-  toggle(open = !this.isOpen()): void { setHidden(this.el, !open); }
+  toggle(open = !this.isOpen()): void {
+    setHidden(this.el, !open);
+    if (open) void this.loadRoots();
+  }
+
+  private async loadRoots(): Promise<void> {
+    try {
+      const lim = await (await fetch('/api/agents/limits')).json() as { roots?: string[] };
+      const text = (lim.roots ?? []).join('\n');
+      if (this.roots.value !== text && document.activeElement !== this.roots) this.roots.value = text;
+    } catch { setText(this.rootsNote, 'The engine is not answering.'); }
+  }
+
+  private async saveRoots(): Promise<void> {
+    const roots = this.roots.value.split('\n').map((s) => s.trim()).filter(Boolean);
+    try {
+      const res = await fetch('/api/agents/limits', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roots }) });
+      if (res.ok) setText(this.rootsNote, roots.length ? `Agents are kept to ${roots.length} folder${roots.length === 1 ? '' : 's'}.` : 'Any folder except the system\'s own.');
+      else setText(this.rootsNote, ((await res.json()) as { detail?: string }).detail ?? 'Not saved.');
+    } catch { setText(this.rootsNote, 'The engine is not answering.'); }
+  }
 
   private switchAgents(on: boolean): void {
     void post('/enabled', { enabled: on });

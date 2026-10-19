@@ -90,6 +90,9 @@ export class GeneratePanel {
   private readonly prompt: HTMLTextAreaElement;
   private readonly model: HTMLSelectElement;
   private readonly size: HTMLSelectElement;
+  private readonly custom: HTMLElement;
+  private readonly cw: HTMLInputElement;
+  private readonly ch: HTMLInputElement;
   private readonly go: HTMLButtonElement;
   private readonly goLabel: HTMLElement;
   private readonly status: HTMLElement;
@@ -120,6 +123,7 @@ export class GeneratePanel {
           <textarea class="cv-input cv-genp-prompt" rows="3" spellcheck="true" data-t-ph="Describe the image to generate" data-t-aria="Prompt"></textarea>
           <label class="cv-genp-row"><span data-t="Model"></span><select class="cv-input cv-genp-model" data-t-aria="Model"><option value="fal" data-key="fal">FLUX1.1 [pro] (fal)</option></select></label>
           <label class="cv-genp-row"><span data-t="Size"></span><select class="cv-input cv-genp-size" data-t-aria="Size"></select></label>
+          <div class="cv-genp-row cv-genp-custom" hidden><span></span><div class="cv-genp-wh"><input class="cv-input cv-genp-cw" type="number" min="256" max="2048" step="16" value="1024" data-t-aria="Width"><input class="cv-input cv-genp-ch" type="number" min="256" max="2048" step="16" value="1024" data-t-aria="Height"></div></div>
           <button class="cv-genp-go" type="button">${icon('generate', 14)}<span class="cv-genp-golabel"></span></button>
           <p class="cv-note cv-genp-status" role="status"></p>
         </div>
@@ -151,7 +155,10 @@ export class GeneratePanel {
     this.prompt = q<HTMLTextAreaElement>(b, '.cv-genp-prompt');
     this.model = q<HTMLSelectElement>(b, '.cv-genp-model');
     this.size = q<HTMLSelectElement>(b, '.cv-genp-size');
-    this.go = q<HTMLButtonElement>(b, '.cv-genp-go');
+    this.custom = q(b, '.cv-genp-custom');
+    this.cw = q<HTMLInputElement>(b, '.cv-genp-cw');
+    this.ch = q<HTMLInputElement>(b, '.cv-genp-ch');
+    this.go =q<HTMLButtonElement>(b, '.cv-genp-go');
     this.goLabel = q(b, '.cv-genp-golabel');
     this.status = q(b, '.cv-genp-status');
     this.hint = q(b, '.cv-genp-hint');
@@ -160,9 +167,15 @@ export class GeneratePanel {
     this.keyMsg = q(b, '.cv-genp-keymsg');
 
     // Size: the picture's own, then the shapes above.
-    this.size.append(el('<option value="doc"></option>'), ...SIZES.map(([id, label]) => { const o = el<HTMLOptionElement>(`<option value="${id}"></option>`); o.dataset.t = label; return o; }));
+    const customOpt = el<HTMLOptionElement>('<option value="custom"></option>');
+    customOpt.dataset.t = 'Custom width and height';
+    this.size.append(el('<option value="doc"></option>'), ...SIZES.map(([id, label]) => { const o = el<HTMLOptionElement>(`<option value="${id}"></option>`); o.dataset.t = label; return o; }), customOpt);
     const savedSize = recalled(NAME, 'size');
     if (typeof savedSize === 'string' && [...this.size.options].some((o) => o.value === savedSize)) this.size.value = savedSize;
+    const savedWh = recalled(NAME, 'custom');
+    const whParts = typeof savedWh === 'string' ? savedWh.split('x').map(Number) : [];
+    if (whParts.length === 2) { this.cw.value = String(this.side(whParts[0])); this.ch.value = String(this.side(whParts[1])); }
+    setHidden(this.custom, this.size.value !== 'custom');
     const savedModel = recalled(NAME, 'model');
     this.chosen = typeof savedModel === 'string' ? savedModel : null;
 
@@ -192,7 +205,11 @@ export class GeneratePanel {
     this.go.addEventListener('click', () => void this.generate());
     this.prompt.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void this.generate(); } });
     this.model.addEventListener('change', () => { this.chosen = this.model.value; remembered(NAME, 'model', this.model.value); this.opts.forModel(this.model.value); });
-    this.size.addEventListener('change', () => remembered(NAME, 'size', this.size.value));
+    this.size.addEventListener('change', () => { remembered(NAME, 'size', this.size.value); setHidden(this.custom, this.size.value !== 'custom'); });
+    for (const f of [this.cw, this.ch]) {
+      f.addEventListener('change', () => { f.value = String(this.side(Number(f.value))); remembered(NAME, 'custom', `${this.side(Number(this.cw.value))}x${this.side(Number(this.ch.value))}`); });
+      f.addEventListener('keydown', (e) => e.stopPropagation());
+    }
     this.keyList.addEventListener('click', (e) => { const btn = e.target instanceof Element ? e.target.closest<HTMLButtonElement>('.cv-genp-save') : null; const row = btn?.closest<HTMLElement>('[data-key]'); if (row) void this.saveKey(row); });
     this.keyList.addEventListener('keydown', (e) => { if (e.key !== 'Enter' || !(e.target instanceof HTMLInputElement)) return; const row = e.target.closest<HTMLElement>('[data-key]'); if (row) { e.preventDefault(); void this.saveKey(row); } });
 
@@ -251,8 +268,15 @@ export class GeneratePanel {
     this.go.classList.toggle('is-busy', this.busy);
   }
 
-  /** The shape asked for: the picture's own (undefined), or one of the presets. */
+  /** One side of a custom size: a multiple of 16 from 256 to 2048, the range every local model takes. */
+  private side(v: unknown): number {
+    const n = typeof v === 'number' && Number.isFinite(v) ? v : 1024;
+    return Math.min(2048, Math.max(256, Math.round(n / 16) * 16));
+  }
+
+  /** The shape asked for: the picture's own (undefined), a preset, or the custom width and height. */
   private asked(): { width: number; height: number } | undefined {
+    if (this.size.value === 'custom') return { width: this.side(Number(this.cw.value)), height: this.side(Number(this.ch.value)) };
     const s = SIZES.find(([id]) => id === this.size.value);
     return s ? { width: s[2], height: s[3] } : undefined;
   }

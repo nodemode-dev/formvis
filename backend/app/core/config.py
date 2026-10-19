@@ -90,6 +90,13 @@ def data_dir() -> Path:
     return _ensure(path)
 
 
+def data_dir_source() -> str:
+    """Why data_dir() is where it is: "override" (--user-data-dir or FORMVIS_DATA_DIR), "portable" or "default"."""
+    if os.environ.get("FORMVIS_DATA_DIR"):
+        return "override"
+    return "portable" if portable_dir() else "default"
+
+
 def default_projects_dir() -> Path:
     return data_dir() / "Projects"
 

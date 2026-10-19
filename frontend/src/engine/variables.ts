@@ -48,7 +48,7 @@ export function buildDataSets(text: string, delimiter = ''): { names: string[]; 
 export type VariableChange =
   | { kind: 'visibility'; layer: ID; visible: boolean }
   | { kind: 'text'; layer: ID; content: string }
-  | { kind: 'pixels'; layer: ID; file: string; method: NonNullable<DocVariable['method']> };
+  | { kind: 'pixels'; layer: ID; file: string; method: NonNullable<DocVariable['method']>; align: number; clip: boolean };
 
 const TRUE = new Set(['true', '1', 'yes', 'on', 'visible', 'show']);
 
@@ -62,15 +62,16 @@ export function planFor(doc: Doc, set: DataSet): VariableChange[] {
     const value = set.values[v.name];
     if (v.kind === 'visibility') out.push({ kind: 'visibility', layer: l.id, visible: TRUE.has(value.trim().toLowerCase()) });
     else if (v.kind === 'text') { if (l.text && !l.isGroup) out.push({ kind: 'text', layer: l.id, content: value }); }
-    else if (!l.isGroup && !l.text && !l.adjustment && !l.shape && value.trim()) out.push({ kind: 'pixels', layer: l.id, file: value.trim(), method: v.method ?? 'fit' });
+    else if (!l.isGroup && !l.text && !l.adjustment && !l.shape && value.trim()) out.push({ kind: 'pixels', layer: l.id, file: value.trim(), method: v.method ?? 'fit', align: v.align ?? 4, clip: v.clip !== false });
   }
   return out;
 }
 
 /** Where an image of w x h lands inside the box (bx, by, bw, bh) by a placement method; `clip` is true when it overflows. */
-export function placeInBox(w: number, h: number, bx: number, by: number, bw: number, bh: number, method: NonNullable<DocVariable['method']>): { x: number; y: number; w: number; h: number } {
+export function placeInBox(w: number, h: number, bx: number, by: number, bw: number, bh: number, method: NonNullable<DocVariable['method']>, align = 4): { x: number; y: number; w: number; h: number } {
   if (method === 'conform') return { x: bx, y: by, w: bw, h: bh };
-  if (method === 'asis') return { x: bx + (bw - w) / 2, y: by + (bh - h) / 2, w, h };
+  const fx = (align % 3) / 2, fy = Math.floor(align / 3) / 2;
+  if (method === 'asis') return { x: bx + (bw - w) * fx, y: by + (bh - h) * fy, w, h };
   const s = method === 'fill' ? Math.max(bw / w, bh / h) : Math.min(bw / w, bh / h);
-  return { x: bx + (bw - w * s) / 2, y: by + (bh - h * s) / 2, w: w * s, h: h * s };
+  return { x: bx + (bw - w * s) * fx, y: by + (bh - h * s) * fy, w: w * s, h: h * s };
 }

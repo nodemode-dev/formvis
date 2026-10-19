@@ -1,5 +1,5 @@
 import { api, ApiError } from '../../io/api';
-import { fillPlaceholders, templates } from '../../io/prompt-templates';
+import { fillPlaceholders, syncTemplates, usableTemplates } from '../../io/prompt-templates';
 import { el, setHidden, setText } from '../dom';
 import { PromptHistory } from './prompt-history';
 
@@ -30,12 +30,15 @@ export class PromptImprover {
     this.undo.addEventListener('click', () => { if (this.original !== null) { this.history.set(this.original); this.original = null; setHidden(this.undo, true); setText(this.note, 'Restored.'); } });
     this.field.addEventListener('input', () => { this.original = null; setHidden(this.undo, true); });
     this.refresh(preferred);
+    void syncTemplates().then(() => this.refresh(this.template.value || preferred));
   }
 
   /** The templates, the preferred one chosen. */
   refresh(preferred?: string): void {
     const was = preferred ?? this.template.value;
-    this.template.replaceChildren(...templates().map((t) => { const o = document.createElement('option'); o.value = t.name; o.textContent = t.name; return o; }));
+    const names = usableTemplates().map((t) => t.name);
+    if (names.length === this.template.options.length && names.every((n, i) => this.template.options[i].value === n)) { if (names.includes(was)) this.template.value = was; return; }
+    this.template.replaceChildren(...usableTemplates().map((t) => { const o = document.createElement('option'); o.value = t.name; o.textContent = t.name; return o; }));
     if ([...this.template.options].some((o) => o.value === was)) this.template.value = was;
     this.original = null; setHidden(this.undo, true); setText(this.note, '');
   }
@@ -43,7 +46,7 @@ export class PromptImprover {
   private async improve(): Promise<void> {
     const prompt = this.field.value.trim();
     if (!prompt) { setText(this.note, 'Write a prompt to improve first.'); return; }
-    const t = templates().find((x) => x.name === this.template.value);
+    const t = usableTemplates().find((x) => x.name === this.template.value);
     this.go.disabled = true;
     setText(this.note, 'Improving...');
     try {

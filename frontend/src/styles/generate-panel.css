@@ -15,6 +15,8 @@
 .cv-genp-prompt { width: 100%; height: auto; min-height: 54px; padding: 6px var(--space-2); resize: vertical; line-height: 1.4; font-family: inherit; }
 .cv-genp-row { display: grid; grid-template-columns: 40px minmax(0, 1fr); align-items: center; gap: var(--space-2); color: var(--text-secondary); font-size: var(--fs-12); }
 .cv-genp-row .cv-input { width: 100%; }
+.cv-genp-custom[hidden] { display: none; }
+.cv-genp-wh { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
 .cv-genp-go { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 var(--space-3); border: 1px solid var(--cta-bg); border-radius: var(--radius-md); background: var(--cta-bg); color: var(--cta-text); font: inherit; font-size: var(--fs-13); font-weight: 600; cursor: pointer; }
 .cv-genp-go:hover { background: var(--cta-bg-hover); }
 .cv-genp-go.is-busy { border-color: var(--line-3); background: var(--surface-2); color: var(--text-primary); }

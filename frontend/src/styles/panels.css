@@ -186,6 +186,12 @@
 .cv-steps-empty[hidden] { display: none; }
 .cv-action-buttons { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: var(--space-2); max-height: 220px; overflow-y: auto; }
 .cv-action-buttons[hidden] { display: none; }
+.cv-actions-panel .cv-list[hidden] { display: none; }
+.cv-actions-panel .cv-list { margin: 0 var(--space-3); max-height: 180px; overflow-y: auto; }
+.cv-actions-panel .cv-actions-grid { margin: 0 var(--space-3) var(--space-2); }
+.cv-actions-name { flex: 1 1 80px; min-width: 0; }
+.cv-actions-mode { display: inline-flex; align-items: center; gap: var(--space-1); margin-left: auto; font-size: var(--fs-12); color: var(--text-secondary); cursor: pointer; }
+.cv-action-row .cv-action-meta { color: var(--text-muted); font-size: var(--fs-11); }
 .cv-action-btn { --cv-btn-tint: var(--bg-tertiary); display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 40px; padding: var(--space-2); border: 1px solid var(--border-color); border-left: 4px solid var(--cv-btn-tint); border-radius: var(--radius-sm); background: var(--bg-secondary); color: var(--text-primary); font-size: var(--fs-12); text-align: left; cursor: pointer; }
 .cv-action-btn:hover { background: var(--bg-tertiary); }
 .cv-action-btn-name { max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

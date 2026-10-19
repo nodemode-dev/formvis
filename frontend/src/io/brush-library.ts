@@ -155,3 +155,46 @@ export async function importAbr(engine: Engine, file: File): Promise<{ added: nu
   engine.applyBrushPreset(made[0]);
   return { added: made.length, kept };
 }
+
+const tipToText = (d: Uint8Array): string => { let s = ''; for (let i = 0; i < d.length; i += 0x8000) s += String.fromCharCode(...d.subarray(i, i + 0x8000)); return btoa(s); };
+
+/** The saved and imported brushes (not the built-in ones) as a list that JSON holds: a sampled tip's pixels as base64. */
+export function brushesToJson(): unknown[] {
+  return importedBrushPresets.map((p) => (p.tip ? { ...p, tip: { w: p.tip.w, h: p.tip.h, data: tipToText(p.tip.data) } } : { ...p }));
+}
+
+/** Adds brushes written by brushesToJson, each under a new id; entries that are not well formed are skipped. Returns how many. */
+export async function addBrushesFromJson(raw: unknown): Promise<number> {
+  if (!Array.isArray(raw)) return 0;
+  const stamp = Date.now().toString(36), made: BrushPreset[] = [];
+  raw.forEach((r, i) => {
+    const o = r && typeof r === 'object' ? (r as Record<string, unknown>) : null;
+    if (!o || typeof o.name !== 'string' || !o.name.trim() || !o.dynamics || typeof o.dynamics !== 'object') return;
+    const num = (v: unknown, lo: number, hi: number, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d);
+    const base: BrushPreset = { ...(o as unknown as BrushPreset), id: `set-${stamp}-${i}`, name: o.name.slice(0, 80), description: typeof o.description === 'string' ? o.description.slice(0, 200) : '', diameter: num(o.diameter, 1, 5000, 40), hardness: num(o.hardness, 0, 1, 1), opacity: num(o.opacity, 0.01, 1, 1) };
+    const t = o.tip && typeof o.tip === 'object' ? (o.tip as Record<string, unknown>) : null;
+    if (t) {
+      const w = Math.round(num(t.w, 0, 2500, 0)), h = Math.round(num(t.h, 0, 2500, 0));
+      let data: Uint8Array | null = null;
+      try { if (typeof t.data === 'string') { const b = atob(t.data); data = new Uint8Array(b.length); for (let k = 0; k < b.length; k++) data[k] = b.charCodeAt(k); } } catch { data = null; }
+      if (!w || !h || !data || data.length !== w * h) return;
+      base.tip = { w, h, data };
+    } else delete base.tip;
+    made.push(base);
+  });
+  if (!made.length) return 0;
+  const list = [...importedBrushPresets, ...made];
+  setImportedBrushPresets(list);
+  await save(list);
+  return made.length;
+}
+
+/** Moves a saved or imported brush one place up or down among the saved ones. */
+export async function stepBrushPreset(id: string, by: -1 | 1): Promise<boolean> {
+  const i = importedBrushPresets.findIndex((p) => p.id === id), j = i + by;
+  if (i < 0 || j < 0 || j >= importedBrushPresets.length) return false;
+  const list = [...importedBrushPresets];
+  [list[i], list[j]] = [list[j], list[i]];
+  setImportedBrushPresets(list);
+  return save(list);
+}

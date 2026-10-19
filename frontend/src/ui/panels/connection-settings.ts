@@ -1,8 +1,8 @@
-import { api, type ComfyAuth, type ModelsFolder } from '../../io/api';
-import { addRecipe, apiWorkflow, RECIPE_FAMILIES, recipeFamily, recipes, removeRecipe, type RecipeFamily } from '../../io/comfy';
-import { saveTemplates, templateFromMarkdown, templateToMarkdown, templates } from '../../io/prompt-templates';
+import { api, type ComfyAuth, type LlmRow, type LlmStatus, type ModelsFolder } from '../../io/api';
+import { addRecipe, apiWorkflow, RECIPE_FAMILIES, recipeFamily, recipes, removeRecipe, syncRecipeFolder, type RecipeFamily } from '../../io/comfy';
+import { folderTemplateCount, saveTemplates, syncTemplates, templateFromMarkdown, templateToMarkdown, templates } from '../../io/prompt-templates';
 import { el, patchList, setHidden, setText, setValue } from '../dom';
-import { loadPrefs } from '../prefs';
+import { loadPrefs, setUpdateAtStart, updateAtStart } from '../prefs';
 import { THEMES, applyTheme, readChoice, registerSkins } from '../themes';
 
 const row = (label: string, ...c: HTMLElement[]): HTMLElement => { const r = el('<label class="cv-dialog-row"><span></span></label>'); setText(r.querySelector('span'), label); r.append(...c); return r; };
@@ -136,11 +136,18 @@ export class RecipesSection {
       this.groups.set(family, { box, title: box.querySelector('summary') as HTMLElement, list });
     }
     const add = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Add workflow</button>'), bar = el('<div class="cv-improve"></div>');
-    bar.append(add, this.input);
+    const open = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost" title="Workflow files in this folder are kept as recipes">Open folder</button>');
+    bar.append(add, open, this.input);
     this.el.append(bar, this.note);
     add.addEventListener('click', () => this.input.click());
+    open.addEventListener('click', () => void syncRecipeFolder().then((r) => {
+      if (!r) { setText(this.note, 'The formvis engine is offline: the recipes folder needs it.'); return; }
+      this.refresh();
+      return api.revealPath(r.folder);
+    }).catch((err) => setText(this.note, failure(err, 'Could not open the folder.'))));
     this.input.addEventListener('change', () => void this.read());
     this.refresh();
+    void syncRecipeFolder().then((r) => { if (r?.added) this.refresh(); });
   }
 
   refresh(): void {
@@ -215,7 +222,12 @@ export class TemplateFiles {
 
   constructor(private readonly selected: () => string, private readonly note: HTMLElement, private readonly changed: (name: string) => void) {
     const imp = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Import</button>'), exp = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Export</button>');
-    this.el.append(imp, exp, this.input);
+    const open = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost" title="Markdown files in this folder add templates, and one named like a kept template replaces it">Open folder</button>');
+    this.el.append(imp, exp, open, this.input);
+    open.addEventListener('click', () => void syncTemplates().then((folder) => {
+      setText(this.note, folder ? `${folderTemplateCount()} template file${folderTemplateCount() === 1 ? '' : 's'} in the folder. Front matter: name, use: improve, for: model names.` : 'The formvis engine is offline: the folder needs it.');
+      if (folder) return api.revealPath(folder);
+    }).catch((err) => setText(this.note, failure(err, 'Could not open the folder.'))));
     imp.addEventListener('click', () => this.input.click());
     this.input.addEventListener('change', () => void this.read());
     exp.addEventListener('click', () => this.write());
@@ -324,12 +336,47 @@ export class RenderingSection {
 export class UpdatesSection {
   readonly el = el('<div class="cv-panel-section cv-updates"><span class="cv-refs-title">Updates</span></div>');
 
-  constructor(run: () => void, version: string) {
+  private readonly status = el('<p class="cv-note" role="status"></p>');
+
+  constructor(run: () => Promise<string> | void, version: string) {
     const check = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Check now</button>'), bar = el('<div class="cv-improve"></div>');
+    const start = el<HTMLInputElement>('<input type="checkbox" aria-label="Check for updates when formvis starts">');
     bar.append(check);
-    this.el.append(el('<p class="cv-note"></p>'), bar);
-    setText(this.el.querySelector('.cv-note'), `This is formvis ${version}. The desktop app looks for a new version when it starts and asks before installing; nothing is installed without your yes. A portable copy opens the releases page instead.`);
-    check.addEventListener('click', run);
+    this.el.append(el('<p class="cv-note"></p>'), row('Check for updates when formvis starts', start), bar, this.status);
+    setText(this.el.querySelector('.cv-note'), `This is formvis ${version}. The desktop app can look for a new version when it starts and asks before installing: Restart and update closes formvis once your documents are settled, and nothing is installed without your yes. Updates stay off in a build that carries no signing key (this one until the owner adds his): Check now then says so. A portable copy opens the releases page instead.`);
+    start.checked = updateAtStart();
+    start.addEventListener('change', () => { setUpdateAtStart(start.checked); setText(this.status, start.checked ? 'formvis will look for an update at each start of the desktop app.' : 'formvis will not look for updates by itself; Check now still works.'); });
+    check.addEventListener('click', () => {
+      setText(this.status, 'Checking...');
+      Promise.resolve(run()).then((text) => setText(this.status, text || ''), (err) => setText(this.status, failure(err, 'Could not check for updates.')));
+    });
+  }
+}
+
+/** Preferences > General: where formvis keeps its data (the engine's data folder: documents, skins, plugins, logs) and why
+ *  it is there, with Open folder. The folder is set by the --user-data-dir command-line flag or the FORMVIS_DATA_DIR
+ *  environment variable, read when the engine starts; a portable copy keeps it beside the program. Window preferences live
+ *  in the web view's own storage on this device. */
+export class SettingsLocationSection {
+  readonly el = el('<div class="cv-panel-section cv-settings-location"><span class="cv-refs-title">Settings location</span></div>');
+  private readonly path = el<HTMLInputElement>('<input class="cv-input" type="text" readonly aria-label="Data folder" spellcheck="false">');
+  private readonly note = el('<p class="cv-note" role="status"></p>');
+  private folder = '';
+
+  constructor() {
+    const open = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Open folder</button>'), bar = el('<div class="cv-improve"></div>');
+    bar.append(open);
+    this.el.append(row('Data folder', this.path), bar, this.note);
+    open.addEventListener('click', () => { if (this.folder) void api.revealPath(this.folder).catch((err) => setText(this.note, failure(err, 'Could not open the folder.'))); });
+  }
+
+  async refresh(): Promise<void> {
+    const caps = await api.capabilities();
+    if (!caps) { setText(this.note, 'The formvis engine is offline: the data folder is known only to it.'); return; }
+    this.folder = caps.dataDir;
+    if (this.path.value !== caps.dataDir) this.path.value = caps.dataDir;
+    const why = caps.dataDirSource === 'override' ? 'Set by the --user-data-dir flag or the FORMVIS_DATA_DIR variable.' : caps.dataDirSource === 'portable' || caps.switches?.portable ? 'Portable copy: kept beside the program.' : 'The default place. Start formvis with --user-data-dir FOLDER, or set FORMVIS_DATA_DIR, to keep it elsewhere; a file named portable beside the program keeps it with the program.';
+    setText(this.note, `${why} Window preferences (this page, theme, panels) are kept in the web view's storage on this device.`);
   }
 }
 
@@ -371,31 +418,106 @@ export class HuggingFaceToken {
   }
 }
 
-/** Preferences > Plugins > API keys: fal and any other provider the engine lists, each with whether a key is kept, where,
- *  its last four characters, a link to get one (fal) and Clear. The group collapses; rows are built once and patched. */
+/** Preferences > Plugins > Language model: the models the person typed in (name, address, model, whether it reads pictures,
+ *  an optional key), one in use for Improve Prompt and the assistant. The editor fields belong to the dialog; this holds the
+ *  list, the name and picture choice, New and Remove. The select is built once and its options are patched. */
+export class LlmRows {
+  readonly el = el('<div class="cv-llm-rows"></div>');
+  readonly name = el<HTMLInputElement>('<input class="cv-input" type="text" aria-label="Language model name" maxlength="80" spellcheck="false" placeholder="A name for this row">');
+  readonly vision = el<HTMLInputElement>('<input type="checkbox" aria-label="This model reads pictures">');
+  private readonly pick = el<HTMLSelectElement>('<select class="cv-input" aria-label="Saved language models"></select>');
+  private rows: LlmRow[] = [];
+  private adding = false;
+
+  constructor(private readonly fields: { url: HTMLInputElement; model: HTMLInputElement; key: HTMLInputElement }, private readonly say: (text: string) => void) {
+    const add = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">New</button>'), del = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Remove</button>'), bar = el('<div class="cv-improve"></div>');
+    bar.append(add, del);
+    this.el.append(row('Saved models', this.pick), bar, row('Name', this.name), row('Reads pictures', this.vision));
+    this.name.addEventListener('keydown', (e) => e.stopPropagation());
+    this.pick.addEventListener('change', () => void this.use());
+    add.addEventListener('click', () => {
+      this.adding = true;
+      this.pick.selectedIndex = -1;
+      for (const f of [this.name, this.fields.url, this.fields.model, this.fields.key]) f.value = '';
+      this.vision.checked = false;
+      this.fields.url.focus();
+    });
+    del.addEventListener('click', () => void this.remove());
+  }
+
+  show(s: LlmStatus): void {
+    this.rows = s.rows;
+    patch(this.pick, s.rows, {
+      key: (r) => r.id,
+      create: () => document.createElement('option'),
+      update: (node, r) => { const o = node as HTMLOptionElement; o.value = r.id; setText(o, r.name === r.model ? r.model : `${r.name} · ${r.model}`); },
+    });
+    if (this.adding && !s.rows.some((r) => r.id === this.pick.value)) { this.pick.selectedIndex = -1; return; }
+    this.adding = false;
+    if (this.pick.value !== s.active) this.pick.value = s.active;
+    const r = s.rows.find((x) => x.id === s.active);
+    if (document.activeElement !== this.name) this.name.value = r?.name ?? '';
+    this.vision.checked = !!r?.vision;
+    if (document.activeElement !== this.fields.url) this.fields.url.value = r?.baseUrl ?? '';
+    if (document.activeElement !== this.fields.model) this.fields.model.value = r?.model ?? '';
+    this.fields.key.value = '';
+    this.fields.key.placeholder = r?.hasKey ? 'Saved (type to replace)' : 'Optional for a service on this computer';
+  }
+
+  private async use(): Promise<void> {
+    try { this.adding = false; this.show(await api.llmUseRow(this.pick.value)); this.say(`Using ${this.name.value}.`); } catch (err) { this.say(failure(err, 'Could not switch.')); }
+  }
+
+  private async remove(): Promise<void> {
+    const id = this.adding ? '' : this.pick.value;
+    if (!id) return;
+    try { this.show(await api.llmDeleteRow(id)); this.say('Removed.'); } catch (err) { this.say(failure(err, 'Could not remove.')); }
+  }
+
+  /** Keeps the fields as a new row (after New, or when none is kept yet) or as the row shown; the new row is put in use. */
+  async save(forgetKey: boolean): Promise<LlmStatus> {
+    const id = this.adding || !this.rows.length ? null : this.pick.value, before = new Set(this.rows.map((r) => r.id));
+    let s = await api.llmSaveRow(id, { name: this.name.value.trim(), baseUrl: this.fields.url.value.trim(), model: this.fields.model.value.trim(), vision: this.vision.checked }, forgetKey ? null : this.fields.key.value.trim() || null, forgetKey);
+    const made = s.rows.find((r) => !before.has(r.id));
+    if (made && s.active !== made.id) s = await api.llmUseRow(made.id);
+    this.adding = false;
+    this.show(s);
+    return s;
+  }
+}
+
+const KEY_LINKS: Readonly<Record<string, string>> = { fal: 'https://fal.ai/dashboard/keys', openai: 'https://platform.openai.com/api-keys', google: 'https://aistudio.google.com/apikey', bfl: 'https://dashboard.bfl.ai/api', ideogram: 'https://ideogram.ai/manage-api' };
+
+/** Preferences > Plugins > API keys: fal, the providers already in formvis and the language model rows, each with whether a
+ *  key is kept, where, its last four characters, whether the service refused it, a link to get one and Clear. The group
+ *  collapses; rows are built once and patched. */
 export class ApiKeysSection {
   readonly el = el('<details class="cv-panel-section cv-api-keys" open><summary class="cv-refs-title">API keys</summary></details>');
   private readonly list = el('<div class="cv-api-keys-list"></div>');
   private readonly note = el('<p class="cv-note" role="status">Keys are kept in your system\'s password store; only the last four characters are shown here.</p>');
-  private rows: Array<{ id: string; name: string; configured: boolean; source: string | null; last4: string }> = [];
+  private rows: Array<{ id: string; name: string; configured: boolean; source: string | null; last4: string; refused: boolean }> = [];
+  private llm = new Map<string, LlmRow>();
 
   constructor() {
     this.el.append(this.list, this.note);
   }
 
   async refresh(): Promise<void> {
-    const [fal, others] = await Promise.all([api.generativeStatus(), api.providers()]);
-    this.rows = [...(fal ? [{ id: 'fal', name: 'fal', configured: fal.configured, source: fal.source, last4: fal.last4 ?? '' }] : []), ...others.map((p) => ({ id: p.id, name: p.name, configured: p.configured, source: p.source, last4: p.last4 ?? '' }))];
+    const [fal, others, lm] = await Promise.all([api.generativeStatus(), api.providers(), api.llmStatus()]);
+    this.llm = new Map((lm?.rows ?? []).map((r) => [`llm:${r.id}`, r]));
+    this.rows = [...(fal ? [{ id: 'fal', name: 'fal', configured: fal.configured, source: fal.source, last4: fal.last4 ?? '', refused: !!fal.refused }] : []), ...others.map((p) => ({ id: p.id, name: p.name, configured: p.configured, source: p.source, last4: p.last4 ?? '', refused: !!p.refused })),
+      ...(lm?.rows ?? []).map((r) => ({ id: `llm:${r.id}`, name: r.name, configured: r.hasKey, source: 'settings', last4: '', refused: false }))];
     patch(this.list, this.rows, {
       key: (r) => r.id,
       create: (r) => {
         const line = el('<div class="cv-plugins-row"><span></span><a class="cv-btn cv-btn-ghost" target="_blank" rel="noopener" hidden>Get a key</a><button type="button" class="cv-btn cv-btn-ghost">Clear</button></div>');
-        if (r.id === 'fal') { const a = line.querySelector('a') as HTMLAnchorElement; a.href = 'https://fal.ai/dashboard/keys'; setHidden(a, false); }
+        const link = KEY_LINKS[r.id];
+        if (link) { const a = line.querySelector('a') as HTMLAnchorElement; a.href = link; setHidden(a, false); }
         (line.querySelector('button') as HTMLButtonElement).addEventListener('click', () => void this.clear(r.id, r.name));
         return line;
       },
       update: (node, r) => {
-        setText(node.querySelector('span'), `${r.name}: ${r.configured ? `key kept${r.last4 ? `, ends ${r.last4}` : ''}${r.source === 'environment' ? ' (set in the environment)' : ''}` : 'no key'}`);
+        setText(node.querySelector('span'), `${r.name}: ${r.configured ? `key kept${r.last4 ? `, ends ${r.last4}` : ''}${r.source === 'environment' ? ' (set in the environment)' : ''}${r.refused ? ', refused by the service: replace it' : ''}` : 'no key'}`);
         const b = node.querySelector('button') as HTMLButtonElement;
         b.disabled = !r.configured || r.source === 'environment';
       },
@@ -403,7 +525,11 @@ export class ApiKeysSection {
   }
 
   private async clear(id: string, name: string): Promise<void> {
-    try { if (id === 'fal') await api.forgetGenerativeKey(); else await api.forgetProviderKey(id); setText(this.note, `${name} key cleared.`); } catch (err) { setText(this.note, failure(err, 'Could not clear the key.')); }
+    try {
+      const row = this.llm.get(id);
+      if (row) await api.llmSaveRow(row.id, row, null, true); else if (id === 'fal') await api.forgetGenerativeKey(); else await api.forgetProviderKey(id);
+      setText(this.note, `${name} key cleared.`);
+    } catch (err) { setText(this.note, failure(err, 'Could not clear the key.')); }
     await this.refresh();
   }
 }

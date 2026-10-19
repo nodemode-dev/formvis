@@ -59,6 +59,12 @@ def read(request: Request) -> dict:
     return agents.state() | {"activity": agents.activity()}
 
 
+@router.get("/tool-policies")
+def tool_policies(request: Request, client: str = "assistant") -> dict:
+    require_local(request)
+    return {"client": client, "policies": agents.tool_policies(client)}
+
+
 @router.get("/activity")
 def feed(request: Request, limit: int = 100) -> list[dict]:
     require_local(request)

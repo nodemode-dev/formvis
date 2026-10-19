@@ -1,4 +1,4 @@
-import type { BlendMode as PsdBlend, Layer as PsdLayer, LayerEffectsInfo, LinkedFile, PatternInfo, Psd, UnitsValue, VectorContent } from 'ag-psd';
+import type { BlendMode as PsdBlend, Layer as PsdLayer, LayerEffectsInfo, LinkedFile, PatternInfo, Psd, TextStyle, TextStyleRun, UnitsValue, VectorContent } from 'ag-psd';
 import {
   Raster, boundsOf, docTransform, effectsPresent, integral, liveText, newLayer, placement, applyMat, uid, type BlendMode, type Doc, type ID, type Layer, type Surface, invert, mul, toBlob, type Pt, defaultEffects, patternById, addPattern, projectPatterns, createSurface, ctxOf, type LayerEffects, renderText, textKey, TEXT_FONTS, type TextSpec, ADJUSTMENT_LABELS, hsvFromData, type WarpStyle,
 } from '../engine';
@@ -6,9 +6,12 @@ import { fromPsdAdjustment, toPsdAdjustment } from './psd-adjust';
 import { fromPsdSmartFilters } from './psd-filters';
 import { artboardFromData, blendIfActive, type BlendIf, type DocSlice, type LayerComp } from '../engine/types';
 import { windingArea } from '../engine/custom-shapes';
-import { addIccResource, addPathResources, clippingPathName, readPathResources, resourceBlocks } from './psd-paths';
+import { addIccResource, addPathResources, addResourceBytes, block as resourceBlock, clippingPathName, readPathResources, resourceBlocks } from './psd-paths';
 import { addExtraChannels, readExtraChannels, readIccProfile } from './psd-channels';
-import { fromBase64 } from './icc-read';
+import { fromBase64, toBase64 } from './icc-read';
+import { cameraFromTiff, exifBlockOf } from './exif';
+import { cleanRuns, runsStyled, styleSegments } from '../engine/opentype';
+import type { FeatureRun } from '../engine/types';
 import { buildMergedXmp, metaFromXmp } from './xmp';
 import { metaWritable } from '../engine/doc-meta';
 import type { PathSet, SubPath } from '../engine/paths';
@@ -314,6 +317,40 @@ function familyOf(psName: string): { family: string; bold: boolean; italic: bool
   return { family: known?.[0] ?? guess ?? psName, bold: /bold/i.test(psName), italic: /italic|oblique/i.test(psName) };
 }
 
+/** Per-range type attributes as the PSD's style runs: each piece of the text carries a whole style, the layer's own with
+ *  the run's attributes laid over it. Null when no run sets an attribute. */
+function toPsdStyleRuns(t: TextSpec, k: number): TextStyleRun[] | null {
+  if (!runsStyled(t.runs)) return null;
+  return styleSegments(null, t.runs, 0, t.content.length).map((s) => {
+    const a = s.attrs, size = a.size ?? t.size, family = a.family ?? t.family;
+    const style: TextStyle = { font: { name: PS_FONT[family] ?? family.replace(/\s+/g, '') }, fontSize: size * k, fauxBold: a.bold ?? t.bold, fauxItalic: a.italic ?? t.italic, fillColor: a.color ?? t.color,
+      autoLeading: false, leading: size * t.lineHeight * k, tracking: a.tracking ?? t.tracking, autoKerning: t.kerning !== 'none', ...(a.baselineShift ? { baselineShift: a.baselineShift * k } : {}) };
+    return { length: s.to - s.from, style };
+  });
+}
+
+/** A PSD text layer's style runs as formvis runs: what each piece sets that the layer's own style does not. */
+function fromPsdStyleRuns(list: TextStyleRun[] | undefined, spec: TextSpec, scale: number, length: number): FeatureRun[] {
+  if (!list || list.length < 2) return [];
+  const out: Array<Record<string, unknown>> = [], num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+  let at = 0;
+  for (const r of list) {
+    const s = r.style ?? {}, a: Record<string, unknown> = {}, face = s.font?.name ? familyOf(s.font.name) : null;
+    if (face && face.family !== spec.family) a.family = face.family;
+    if (s.fontSize !== undefined) { const size = Math.round(s.fontSize * scale * 100) / 100; if (size !== spec.size) a.size = size; }
+    const bold = !!s.fauxBold || !!face?.bold, italic = !!s.fauxItalic || !!face?.italic;
+    if (face && bold !== spec.bold) a.bold = bold;
+    if (face && italic !== spec.italic) a.italic = italic;
+    const c = s.fillColor as Record<string, number> | undefined, col = c && typeof c.r === 'number' ? { r: Math.round(c.r), g: Math.round(c.g), b: Math.round(c.b) } : c && typeof c.fr === 'number' ? { r: Math.round(c.fr * 255), g: Math.round(c.fg * 255), b: Math.round(c.fb * 255) } : null;
+    if (col && (col.r !== spec.color.r || col.g !== spec.color.g || col.b !== spec.color.b)) a.color = col;
+    if (s.tracking !== undefined && Math.round(num(s.tracking)) !== spec.tracking) a.tracking = Math.round(num(s.tracking));
+    if (num(s.baselineShift)) a.baselineShift = Math.round(num(s.baselineShift) * scale * 100) / 100;
+    out.push({ ...a, start: at, end: at + r.length, on: [], off: [] });
+    at += r.length;
+  }
+  return cleanRuns(out, length);
+}
+
 /** Where the sections of a PSD or PSB start, from its header; null when the header is not one or is cut short. */
 function psdSections(buf: ArrayBuffer): { big: boolean; cmStart: number; resStart: number; resEnd: number; layerStart: number } | null {
   if (buf.byteLength < 38) return null;
@@ -479,6 +516,12 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
   else if (colorMode === 2) notes.push('This Indexed Color file has no colour table that formvis could read; it opened as RGB.');
   const icc = readIccProfile(buffer);
   if (icc) { doc.profile = icc; kept.push(`Colour profile ${icc.name}.`); }
+  const exifRes = blocks.get(1058);
+  if (exifRes && exifRes.length >= 8 && exifRes.length <= 64000) {
+    const camera = cameraFromTiff(exifRes);
+    doc.meta = { ...(doc.meta ?? {}), exif: toBase64(exifRes), ...(camera && !doc.meta?.camera ? { camera } : {}) };
+    kept.push('Exif block.');
+  }
   const gAngle = psd.imageResources?.globalAngle, gAlt = psd.imageResources?.globalAltitude;
   if (typeof gAngle === 'number' && (gAngle !== 120 || (typeof gAlt === 'number' && gAlt !== 30))) { doc.globalLight = { angle: gAngle, altitude: typeof gAlt === 'number' ? gAlt : 30 }; kept.push(`Global light ${gAngle} degrees.`); }
   if (psd.imageResources?.resolutionInfo) kept.push(`Resolution ${doc.resolution} ppi.`);
@@ -604,7 +647,8 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
       const tx = pl.text;
       if (tx && typeof tx.text === 'string' && raster) {
         // PSD type opens as editable formvis type: the file's pixels until it is edited, then formvis's.
-        const st = tx.style ?? {}, m = tx.transform ?? [1, 0, 0, 1, 0, 0], scale = Math.hypot(m[2] ?? 0, m[3] ?? 1) || 1, face = familyOf(st.font?.name ?? 'ArialMT');
+        const longest = (tx.styleRuns?.length ?? 0) > 1 ? tx.styleRuns?.reduce((a, r) => (r.length > a.length ? r : a)) : undefined;   // the style most of the text has is the layer's own; the other runs differ from it
+        const st = { ...(tx.style ?? {}), ...(longest?.style ?? {}) }, m = tx.transform ?? [1, 0, 0, 1, 0, 0], scale = Math.hypot(m[2] ?? 0, m[3] ?? 1) || 1, face = familyOf(st.font?.name ?? 'ArialMT');
         const col = st.fillColor as Record<string, number> | undefined, just = tx.paragraphStyle?.justification;
         const size = Math.max(1, Math.round((st.fontSize ?? 12) * scale * 100) / 100);
         const spec: TextSpec = { content: tx.text.replace(/\r/g, '\n'), family: face.family, size, color: col && typeof col.r === 'number' ? { r: Math.round(col.r), g: Math.round(col.g), b: Math.round(col.b) } : col && typeof col.fr === 'number' ? { r: Math.round(col.fr * 255), g: Math.round(col.fg * 255), b: Math.round(col.fb * 255) } : { r: 0, g: 0, b: 0 },
@@ -630,7 +674,8 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
         if (warped && wp) spec.warp = { style: wp.style as WarpStyle, orientation: wp.rotate === 'vertical' ? 'vertical' : 'horizontal', bend: Math.max(-100, Math.min(100, num(wp.value))), horizontal: Math.max(-100, Math.min(100, num(wp.perspective))), vertical: Math.max(-100, Math.min(100, num(wp.perspectiveOther))) };
         else if (wp?.style && wp.style !== 'none') notes.push(`"${name}" has ${wp.style} warped type, which formvis does not have; it edits it as unwarped type.`);
         layer.text = { ...spec, rendered: textKey(raster) };
-        if ((tx.styleRuns?.length ?? 0) > 1) notes.push(`"${name}" mixes type styles; formvis keeps the first for the whole text.`);
+        const styled = fromPsdStyleRuns(tx.styleRuns, spec, scale, tx.text.length);
+        if (styled.length) layer.text = { ...layer.text, runs: styled };
       }
       if (pl.effects) { const fx = fromPsdEffects(pl.effects, psd.patterns, name, notes); if (fx) layer.effects = fx; }
       // Blend Interior Effects as Group and Layer Mask Hides Effects belong to the layer style; they are kept when it has one.
@@ -784,7 +829,8 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
       const t = l.text, r = renderText(t), pm = placement(l.transform, l.raster.width, l.raster.height);
       const ax = t.align === 'center' ? r.raster.width / 2 : t.align === 'right' ? r.raster.width - r.pad : r.pad, at = applyMat(pm, ax * (l.raster.width / r.raster.width), r.baseline * (l.raster.height / r.raster.height));
       const k = Math.hypot(pm[2], pm[3]) * (l.raster.height / r.raster.height) || 1;
-      out.text = { text: t.content.replace(/\n/g, '\r'), transform: [pm[0] / k * (l.raster.width / r.raster.width), pm[1] / k * (l.raster.width / r.raster.width), pm[2] / k * (l.raster.height / r.raster.height), pm[3] / k * (l.raster.height / r.raster.height), at.x, at.y],
+      const styleRuns = toPsdStyleRuns(t, k);
+      out.text = { ...(styleRuns ? { styleRuns } : {}), text: t.content.replace(/\n/g, '\r'), transform: [pm[0] / k * (l.raster.width / r.raster.width), pm[1] / k * (l.raster.width / r.raster.width), pm[2] / k * (l.raster.height / r.raster.height), pm[3] / k * (l.raster.height / r.raster.height), at.x, at.y],
         style: { font: { name: PS_FONT[t.family] ?? t.family.replace(/\s+/g, '') }, fontSize: t.size * k, fauxBold: t.bold, fauxItalic: t.italic, fillColor: t.color, autoLeading: false, leading: t.size * t.lineHeight * k, tracking: t.tracking, autoKerning: t.kerning !== 'none' },   // tracking and kerning written (36.9), as the reader takes them
         // Justify is the format's justify-left (every line but a paragraph's last spread; that one left); a box is area text.
         antiAlias: t.antialias === 'windows' ? 'platform' : t.antialias === 'windows-lcd' ? 'platformLCD' : t.antialias ?? 'smooth', paragraphStyle: { justification: t.align === 'justify' ? 'justify-left' : t.align }, shapeType: t.box ? 'box' : 'point', ...(t.box ? { boxBounds: [0, 0, t.box.w * k, t.box.h * k] } : {}), ...(t.direction === 'vertical' ? { orientation: 'vertical' } : {}) };
@@ -889,5 +935,7 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
   try { icc = doc.profile ? fromBase64(doc.profile.icc) : null; } catch { notes.push('The document\'s colour profile could not be read, so the PSD carries none.'); }
   const alphas = doc.alphas ?? [];
   if (alphas.length > 50) notes.push('A PSD holds at most 56 channels; the alpha channels after the first 50 are left out.');
-  return { bytes: addExtraChannels(addIccResource(addPathResources(writePsd(psd, { generateThumbnail: maximize, psb }), paths, doc.width, doc.height), icc), alphas), notes };
+  const exif = metaWritable(doc.meta) ? exifBlockOf(doc.meta) : null;
+  const withExif = (bytes: ArrayBuffer): ArrayBuffer => (exif && exif.length <= 64000 ? addResourceBytes(bytes, resourceBlock(1058, '', exif)) : bytes);   // image resource 1058, the Exif block
+  return { bytes: withExif(addExtraChannels(addIccResource(addPathResources(writePsd(psd, { generateThumbnail: maximize, psb }), paths, doc.width, doc.height), icc), alphas)), notes };
 }

@@ -7,7 +7,7 @@ import { readGgr, readGrd, writeGrd } from '../../io/grd';
 import { readCsh, writeCsh } from '../../io/csh';
 import { addPattern, allPatterns, removePattern, renamePattern } from '../../engine/patterns';
 import { createSurface, ctxOf } from '../../engine/surface';
-import { importAbr, removeImportedBrush, renameImportedBrush } from '../../io/brush-library';
+import { addBrushesFromJson, brushesToJson, importAbr, removeImportedBrush, renameImportedBrush, stepBrushPreset } from '../../io/brush-library';
 import { readPat, writePat } from '../../io/pat';
 import { parseAco, parseAse, writeAco, writeAse } from '../../io/swatch-files';
 import { Dialog, promptName } from '../dialogs';
@@ -20,7 +20,7 @@ export type Kind ='brushes' | 'swatches' | 'gradients' | 'patterns' | 'shapes';
 interface Item { id: string; label: string; builtin: boolean }
 
 const KINDS: ReadonlyArray<{ id: Kind; label: string; accept: string }> = [
-  { id: 'brushes', label: 'Brushes', accept: '.abr,image/*' },
+  { id: 'brushes', label: 'Brushes', accept: '.abr,.json,application/json,image/*' },
   { id: 'swatches', label: 'Swatches', accept: '.aco,.ase' },
   { id: 'gradients', label: 'Gradients', accept: '.json,.grd,.ggr,application/json' },
   { id: 'patterns', label: 'Patterns', accept: '.pat' },
@@ -49,6 +49,8 @@ export class PresetManagerDialog extends Dialog {
   private readonly aseBtn: HTMLButtonElement;
   private readonly grdBtn: HTMLButtonElement;
   private readonly cshBtn: HTMLButtonElement;
+  private readonly upBtn: HTMLButtonElement;
+  private readonly downBtn: HTMLButtonElement;
   private items: Item[] = [];
 
   constructor(
@@ -72,6 +74,8 @@ export class PresetManagerDialog extends Dialog {
     this.type.addEventListener('change', () => this.refresh());
     this.list.addEventListener('change', () => this.sync());
     this.renameBtn = this.button('Rename', 'ghost', () => this.rename());
+    this.upBtn = this.button('Move Up', 'ghost', () => void this.step(-1));
+    this.downBtn = this.button('Move Down', 'ghost', () => void this.step(1));
     this.deleteBtn = this.button('Delete', 'danger', () => void this.remove());
     this.loadBtn = this.button('Load...', 'ghost', () => this.load());
     this.saveBtn = this.button('Save Set...', 'ghost', () => void this.saveSet());
@@ -125,8 +129,32 @@ export class PresetManagerDialog extends Dialog {
     setHidden(this.aseBtn, this.kind !== 'swatches');
     setHidden(this.grdBtn, this.kind !== 'gradients');
     setHidden(this.cshBtn, this.kind !== 'shapes');
-    this.saveBtn.disabled = this.kind === 'brushes';
-    this.saveBtn.title = this.kind === 'brushes' ? 'Brush sets cannot be saved yet.' : '';
+    setHidden(this.upBtn, this.kind === 'patterns' || this.kind === 'shapes');
+    setHidden(this.downBtn, this.kind === 'patterns' || this.kind === 'shapes');
+    this.saveBtn.title = this.kind === 'brushes' ? 'Writes the brushes you saved or imported, with their tips, as a .json file.' : '';
+    this.sync();
+  }
+
+  /** Moves the selected preset of your own one place; brushes, swatches and gradients keep the order. */
+  private async step(by: -1 | 1): Promise<void> {
+    const it = this.selected()[0];
+    if (!it || it.builtin) return;
+    if (this.kind === 'brushes') await stepBrushPreset(it.id, by);
+    else if (this.kind === 'swatches') {
+      const all = [...this.swatches.all()], i = Number(it.id), j = i + by;
+      if (j < 0 || j >= all.length) return;
+      [all[i], all[j]] = [all[j], all[i]];
+      this.swatches.setAll(all);
+    } else if (this.kind === 'gradients') {
+      const list = [...customGradients], i = list.findIndex((g) => g.id === it.id), j = i + by;
+      if (i < 0 || j < 0 || j >= list.length) return;
+      [list[i], list[j]] = [list[j], list[i]];
+      setCustomGradients(list);
+      this.keepGradients();
+    }
+    this.refresh();
+    const at = this.items.findIndex((x) => (this.kind === 'swatches' ? x.id === String(Number(it.id) + by) : x.id === it.id));
+    if (at >= 0) this.list.options[at].selected = true;
     this.sync();
   }
 
@@ -139,6 +167,9 @@ export class PresetManagerDialog extends Dialog {
     const sel = this.selected(), mine = sel.filter((s) => !s.builtin);
     this.renameBtn.disabled = sel.length !== 1 || mine.length !== 1;
     this.deleteBtn.disabled = mine.length === 0;
+    const own = this.items.filter((x) => !x.builtin), at = own.findIndex((x) => x.id === sel[0]?.id);
+    this.upBtn.disabled = sel.length !== 1 || mine.length !== 1 || at <= 0;
+    this.downBtn.disabled = sel.length !== 1 || mine.length !== 1 || at < 0 || at >= own.length - 1;
   }
 
   private rename(): void {
@@ -221,6 +252,10 @@ export class PresetManagerDialog extends Dialog {
   }
 
   private async loadFile(kind: Kind, f: File): Promise<number> {
+    if (kind === 'brushes' && /\.json$/i.test(f.name)) {
+      const raw = JSON.parse(await f.text()) as unknown;
+      return addBrushesFromJson(raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as { brushes?: unknown }).brushes : raw);
+    }
     if (kind === 'brushes') return (await importAbr(this.engine, f)).added;
     if (kind === 'swatches') {
       const bytes = new Uint8Array(await f.arrayBuffer());
@@ -276,13 +311,14 @@ export class PresetManagerDialog extends Dialog {
   /** Called with the settings an imported bundle carried (keyboard shortcuts, shortcut sets, menu choices), after they are kept. */
   onSettings: ((s: { shortcuts: Record<string, string[]> }) => void) | null = null;
 
-  /** Edit > Presets > Export Presets: the swatches, gradients, custom shapes and patterns of your own, and the keyboard
-   *  and menu choices, in one file (brush sets are imported from their own files and are not part of it). */
+  /** Edit > Presets > Export Presets: the brushes, swatches, gradients, custom shapes and patterns of your own, and the
+   *  keyboard and menu choices, in one file. Built-in presets are not written; they are in every copy. */
   async exportAll(): Promise<void> {
     try {
       const builtin = new Set(CUSTOM_SHAPES.map((s) => s.id)), p = loadPrefs();
       const bundle = {
         format: 'formvis-presets', version: 1,
+        brushes: brushesToJson(),
         swatches: this.swatches.all(),
         gradients: customGradients.filter((g) => g.id !== 'edited'),
         shapes: allCustomShapes().filter((s) => !builtin.has(s.id)).map((s) => ({ label: s.label, d: s.d })),
@@ -290,7 +326,7 @@ export class PresetManagerDialog extends Dialog {
         settings: { shortcuts: p.shortcuts, shortcutSets: p.shortcutSets, menuHidden: p.menuHidden, menuColors: p.menuColors },
       };
       await this.deliver(new Blob([JSON.stringify(bundle)], { type: 'application/json' }), 'formvis-presets.json');
-      toast(`Exported ${bundle.swatches.length} swatches, ${bundle.gradients.length} gradients, ${bundle.shapes.length} shapes and ${bundle.patterns.length} patterns.`);
+      toast(`Exported ${bundle.brushes.length} brushes, ${bundle.swatches.length} swatches, ${bundle.gradients.length} gradients, ${bundle.shapes.length} shapes and ${bundle.patterns.length} patterns.`);
     } catch (err) { toast(message(err), 'error'); }
   }
 
@@ -328,6 +364,7 @@ export class PresetManagerDialog extends Dialog {
         addPattern(o.name, s); patterns += 1;
       }
       if (patterns) await this.keepPatterns();
+      const brushes = await addBrushesFromJson(raw.brushes);
       let tail = '';
       const st = withSettings && raw.settings && typeof raw.settings === 'object' ? (raw.settings as Record<string, unknown>) : null;
       if (st) {
@@ -340,7 +377,7 @@ export class PresetManagerDialog extends Dialog {
         this.onSettings?.({ shortcuts });
         tail = ', and the keyboard and menu settings';
       }
-      toast(`Imported ${colours.length} swatches, ${grads.length} gradients, ${shapes} shapes and ${patterns} patterns${tail}.`);
+      toast(`Imported ${brushes} brushes, ${colours.length} swatches, ${grads.length} gradients, ${shapes} shapes and ${patterns} patterns${tail}.`);
       this.refresh();
     } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
   }
@@ -373,7 +410,12 @@ export class PresetManagerDialog extends Dialog {
           else await this.deliver(new Blob([JSON.stringify(mine, null, 2)], { type: 'application/json' }), 'Custom Shapes.json');
           break;
         }
-        case 'brushes': break;
+        case 'brushes': {
+          const list = brushesToJson();
+          if (!list.length) { toast('There are no brushes of your own to save.', 'info'); return; }
+          await this.deliver(new Blob([JSON.stringify({ format: 'formvis-brushes', version: 1, brushes: list })], { type: 'application/json' }), 'Brushes.json');
+          break;
+        }
       }
     } catch (err) { toast(message(err), 'error'); }
   }

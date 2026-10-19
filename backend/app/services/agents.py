@@ -112,6 +112,13 @@ def policy_of(name: str) -> str:
     return _policies.get(name, "ask")
 
 
+def tool_policies(client: str) -> dict[str, str]:
+    """The per-tool policies kept for one client under the key `client:tool` (the in-app assistant keeps its table here)."""
+    _load()
+    head = client + ":"
+    return {k[len(head):]: v for k, v in _policies.items() if k.startswith(head) and len(k) > len(head)}
+
+
 def state() -> dict:
     _load()
     clients = []
@@ -133,9 +140,14 @@ def touch(name: str, version: str = "") -> None:
     c["last_seen"] = time.time()
 
 
+SESSION_IDLE = 1800.0   # seconds without a call after which a session is dropped and the client is known by its clientInfo again
+_idle_at: dict[str, float] = {}
+
+
 def open_session(name: str, version: str) -> str:
     sid = uuid.uuid4().hex
     _sessions[sid] = (name, version)
+    _idle_at[sid] = time.monotonic()
     touch(name, version)
     _push_state()
     return sid
@@ -143,12 +155,17 @@ def open_session(name: str, version: str) -> str:
 
 def close_session(sid: str) -> None:
     _sessions.pop(sid, None)
+    _idle_at.pop(sid, None)
 
 
 def identity(sid: str | None, info: dict | None, fallback: str) -> tuple[str, str]:
-    """The client's name and version: its session's, else the clientInfo sent with the request, else the fallback."""
+    """The client's name and version: its session's (dropped after SESSION_IDLE seconds without a call), else the clientInfo sent with the request, else the fallback."""
     if sid and sid in _sessions:
-        return _sessions[sid]
+        if time.monotonic() - _idle_at.get(sid, 0.0) > SESSION_IDLE:
+            close_session(sid)
+        else:
+            _idle_at[sid] = time.monotonic()
+            return _sessions[sid]
     if isinstance(info, dict) and str(info.get("name") or "").strip():
         return str(info["name"]).strip()[:80], str(info.get("version") or "")[:40]
     return (fallback.strip()[:80] or "unknown agent"), ""

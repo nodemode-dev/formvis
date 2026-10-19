@@ -625,7 +625,12 @@ other modes and depths its menu items are off, with the reason as their tooltip.
   commands (`--group Filter` narrows by menu), `./formvis cli describe <id>` says what one does and what it takes,
   and `./formvis cli run <id> key=value ...` runs it in the open window as an undoable step. A command whose result
   undo cannot reverse (a file overwritten, say) runs only with `--yes`.
-- The window has to be open (`./formvis boot`) and outside agents allowed (Preferences > Plugins). Exact actions take
+- The window has to be open (`./formvis boot`) and outside agents allowed (Preferences > Plugins), or add `--headless` to
+  `list`, `describe`, `run`, `process`, `batch`, `droplet`, `serve` or `convert`: a window with no screen (Playwright's Chromium,
+  as `./formvis bench` uses) is started for that run, allows agents for itself only, and is closed when the command ends.
+  `./formvis headless` keeps one up until Ctrl-C. It needs Playwright and its Chromium (`python3 -m pip install playwright`,
+  `python3 -m playwright install chromium`); the page is the one the engine serves after `./formvis serve`, else the dev page
+  (`FORMVIS_WINDOW_URL`). Commands that only read or convert flat files need no window at all. Exact actions take
   values: `filter.apply kind=gaussianBlur radius=8`, `adjust.apply kind=levels`, `select.rect x=0 y=0 width=200
   height=100`, `layer.set opacity=0.5`, and `paint.stroke` along a list of points.
 - The same list is what agents read with `list_commands` and `describe_command` and run with `run_command` and
@@ -639,7 +644,16 @@ other modes and depths its menu items are off, with the reason as their tooltip.
   droplet file (`.fvdrop`, JSON: `{"kind":"formvis-droplet","version":1,"action":"Sepia","output":{"format":"jpg","quality":80,
   "out":"done","suffix":"-s","recursive":true,"inPlace":false}}`); `./formvis cli droplet Sepia.fvdrop a.jpg folder/` runs it
   (`./formvis cli droplet Sepia --format jpg --data Sepia.fvdrop` writes one from a terminal). The window has to be open to
-  play the action.
+  play the action (or add `--headless`). Folders given to a droplet or to `process` are expanded to the pictures in them.
+- `./formvis cli process a.jpg folder/ --out done --format psd` writes each result as `png`, `jpg`, `webp`, `tiff`, or with the
+  layers kept as `psd`, `psb`, `ora` or `fvd`. `--atn Set.atn` loads an actions file in the window and plays every action in it
+  on each picture (`--action NAME` plays only that one); `--new '{"width":800,"height":600,"background":"white","name":"card"}'`
+  starts from a new document instead of a file; `--run id key=value` and `--steps FILE.json` run commands in between, and
+  `--verbose` prints each step's answer. A result that would replace its source needs `--in-place`.
+- `./formvis cli convert in out` goes through the engine for flat pictures (`--options '{"bits":24,"rle":true}'` passes the
+  writer's choices, such as TGA bit depth and run length; DPX, TIFF and the rest take what their writers list). A `.psd`,
+  `.psb`, `.ora` or `.fvd` file on either side keeps its layers and is done by a window: `./formvis cli convert a.psd a.ora
+  --headless`. Layered output stops at those four formats; EXR, layered TIFF and missing-font warnings are not there.
 - No window needed: `./formvis cli stack`, `contact`, `fit`, `photomerge` and `hdr` do the same jobs on files directly
   (stack statistics with `--mode mean|median|minimum|maximum|range|stddev|variance|summation` and `--align`; contact sheets
   with page units, order, caption font and grayscale; Fit Image with `--resample`; Photomerge and Merge to HDR through the
@@ -647,18 +661,27 @@ other modes and depths its menu items are off, with the reason as their tooltip.
 
 ### The JSON-lines session
 
-- `./formvis cli serve [--root DIR]` reads one JSON request per line on standard input and answers one line each on standard
+- `./formvis cli serve [--root DIR] [--token TEXT] [--headless]` reads one JSON request per line on standard input and answers one line each on standard
   output: `{"id":1,"method":"command.run","params":{"id":"filter.apply","params":{"kind":"gaussianBlur","radius":4}}}` gives
   `{"id":1,"ok":true,"result":{...}}`, or `{"id":1,"ok":false,"error":"..."}`. A line may be 16 MB at most.
-- Methods: `ping`, `version`, `commands.list`, `command.describe`, `command.run`, `batch` (`commands`: a list of `{id, params}`;
+- Methods: `ping`, `version`, `commands.list`, `command.describe`, `command.run`, `batch` (`commands`: a list of `{id, params}`,
+  or `{method, params}` steps that call any other method of this list in order, each its own undo step, answered one by one;
   `stopOnError` true by default, which runs them as one undo step and stops at the first failure; false runs every step and
-  answers each one), `doc.new`, `doc.open`, `doc.place`, `doc.save`, `doc.export`, `doc.inspect`, `doc.close`, `file.info`,
-  `file.convert`, `jobs.list`, `jobs.cancel`, `tool.call` (`name`, `arguments`: any MCP tool) and `shutdown`.
+  answers each one), `doc.list` (the open documents), `doc.new`, `doc.open`, `doc.place`, `doc.save`, `doc.export`, `doc.inspect`,
+  `doc.close`, `doc.exportLayers`, `doc.exportDataSets`, `doc.importDataSets` (the last three take the params of the
+  `export-layers`, `export-data-sets` and `data-sets-import` commands), `file.info`, `file.convert`, `jobs.list`, `jobs.cancel`,
+  `tool.call` (`name`, `arguments`: any MCP tool) and `shutdown`.
 - `image.stack`, `image.contact`, `image.fit`, `image.photomerge` and `image.hdr` run without a window:
   `{"id":2,"method":"image.stack","params":{"inputs":["a.jpg","b.jpg"],"mode":"mean","out":"s.png"}}`; the options are the
   command's flags with underscores for dashes.
 - With `--root DIR` every `path`, `output_path`, `inputs` and `out` outside DIR is refused. The `doc.*` and command methods act
-  on the open window; there is no token, so run the session only where the engine's own address is trusted.
+  on the open window (or a headless one). With `--token TEXT`, or `FORMVIS_SERVE_TOKEN` in the environment, every request must
+  carry `"token":"TEXT"` or it is refused; without one, run the session only where the engine's own address is trusted.
+- `./formvis mcp` is the same server over MCP's stdio transport. `--headless` starts a window with no screen when none is open
+  and closes it when the client goes; `--root DIR` (repeatable) confines the file tools' `path` and `output_path` to DIR, and
+  `--read-root DIR` adds folders that may be read but not written; a call outside them is refused before it reaches the engine.
+  The server declares `tools.listChanged` and sends `notifications/tools/list_changed` when the engine's tool count changes or
+  the engine comes back.
 
 ## Script Console
 

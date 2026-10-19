@@ -133,6 +133,21 @@ export class UiControl {
 
   private menuItems(def: MenuDef): MenuItem[] { return typeof def.items === 'function' ? def.items() : def.items; }
 
+  /** Each command id in the menu bar with its path ("Filter > Blur > Gaussian Blur"); the first place a command appears. */
+  menuPaths(): Map<string, string> {
+    const out = new Map<string, string>();
+    const walk = (items: MenuItem[], trail: string[]): void => {
+      for (const i of trimMenu(items)) {
+        if (i === '-') continue;
+        if (typeof i === 'object') { walk(i.items, [...trail, i.label]); continue; }
+        const cmd = this.env.commands.get(i);
+        if (!out.has(i)) out.set(i, [...trail, cmd ? this.env.commands.label(cmd) : i].join(' > '));
+      }
+    };
+    for (const m of this.env.menus()) walk(this.menuItems(m), [m.label]);
+    return out;
+  }
+
   /** The items a path names ("Filter > Blur"): the menu's, or a submenu's; null when a step has no match. */
   private level(path: string[]): MenuItem[] | null {
     const same = (a: string, b: string): boolean => a.trim().toLowerCase() === b.trim().toLowerCase();
@@ -183,7 +198,7 @@ export class UiControl {
   }
 
   async set(a: Record<string, unknown>): Promise<McpResult> {
-    const e = this.env.engine, known = ['tool', 'zoom', 'centre', 'rotation', 'theme', 'panels', 'foreground', 'background', 'mask_target'];
+    const e = this.env.engine, known = ['tool', 'zoom', 'centre', 'rotation', 'theme', 'panels', 'foreground', 'background', 'mask_target', 'eyedropper', 'crop_overlay', 'dock_layout'];
     const bad = Object.keys(a).filter((k) => !known.includes(k));
     if (bad.length) return fail(`ui_set has no field ${bad.join(', ')}: use ${known.join(', ')}.`);
     if (!known.some((k) => a[k] !== undefined)) return fail(`Give at least one of ${known.join(', ')}.`);
@@ -222,6 +237,32 @@ export class UiControl {
     if (typeof a.mask_target === 'boolean') {
       if (!e.current?.activeLayer?.mask && a.mask_target) return fail('The active layer has no mask to edit: set_mask adds one first.');
       e.setMaskTarget(a.mask_target); done.push(a.mask_target ? 'editing the mask' : 'editing the layer');
+    }
+    if (a.eyedropper && typeof a.eyedropper === 'object') {
+      const o = a.eyedropper as { size?: unknown; sample?: unknown; ring?: unknown };
+      if (typeof o.size === 'number') { e.eyedropperSize = Math.max(1, Math.min(101, Math.round(o.size))); done.push(`eyedropper size ${e.eyedropperSize}`); }
+      if (typeof o.sample === 'string') {
+        if (!['current', 'below', 'all', 'below-flat', 'all-flat'].includes(o.sample)) return fail(`eyedropper.sample is current, below, all, below-flat or all-flat, not ${o.sample}.`);
+        e.eyedropperSample = o.sample as typeof e.eyedropperSample; done.push(`eyedropper sample ${o.sample}`);
+      }
+      if (typeof o.ring === 'boolean') { e.showsSampleRing = o.ring; done.push(`sample ring ${o.ring ? 'on' : 'off'}`); }
+      e.emit('options', null);
+    }
+    if (a.crop_overlay && typeof a.crop_overlay === 'object') {
+      const o = a.crop_overlay as { kind?: unknown; show?: unknown }, items = (getTool('crop')?.options?.(e) ?? []) as Array<{ label?: string; set?: (v: string) => void }>;
+      for (const [field, label] of [['kind', 'Overlay'], ['show', 'Show overlay']] as const) {
+        const v = o[field], item = items.find((x) => x.label === label);
+        if (typeof v !== 'string') continue;
+        if (!item?.set) return fail('The Crop tool\'s overlay settings are not available in this window.');
+        item.set(v); done.push(`crop overlay ${field} ${v}`);
+      }
+    }
+    if (typeof a.dock_layout === 'string') {
+      const box = document.querySelector<HTMLSelectElement>('.cv-tt-select'), want = a.dock_layout.trim().toLowerCase();
+      const hit = box ? Array.from(box.options).find((o) => o.value.toLowerCase() === want || (o.textContent ?? '').trim().toLowerCase() === want) : undefined;
+      if (!box || !hit) return fail(`No workspace is named ${a.dock_layout}: use one of ${box ? Array.from(box.options).map((o) => o.value).join(', ') : 'none (the title bar is not shown)'}.`);
+      if (box.value !== hit.value) { box.value = hit.value; box.dispatchEvent(new Event('change')); }
+      done.push(`dock layout ${hit.value}`);
     }
     return text(`Set ${done.join(', ')}.`, { set: done });
   }
@@ -368,9 +409,16 @@ export class UiControl {
     return text(`Sent ${sent.join(', ')} to ${target.tagName.toLowerCase()}${target.className && typeof target.className === 'string' ? `.${target.className.split(' ')[0]}` : ''}.`, { sent });
   }
 
-  async window(action: string, width: number | undefined, height: number | undefined): Promise<McpResult> {
+  async window(action: string, width: number | undefined, height: number | undefined, confirm = false): Promise<McpResult> {
     const size = (): Record<string, unknown> => ({ width: window.innerWidth, height: window.innerHeight, outerWidth: window.outerWidth, outerHeight: window.outerHeight, focused: document.hasFocus() });
     if (action === 'size') return text(JSON.stringify(size()), size());
+    if (action === 'quit') {
+      const unsaved = this.env.engine.projects.filter((q) => q.modified).map((q) => q.name);
+      if (!confirm) return fail(`quit closes formvis${unsaved.length ? ` and asks the person about ${unsaved.length} document${unsaved.length === 1 ? '' : 's'} with unsaved changes (${unsaved.join(', ')})` : ''}. Call ui_window with action quit and confirm true if that is what the person wants.`);
+      if (!this.env.commands.get('exit')) return fail('Quit is not available in this window.');
+      window.setTimeout(() => { void this.env.commands.call('exit'); }, 50);
+      return text(`Quitting formvis${unsaved.length ? `: the person is asked about ${unsaved.join(', ')} first` : ''}. A browser tab only ends by saying it can be closed.`, { quitting: true, unsaved });
+    }
     if (action === 'focus') { window.focus(); document.querySelector<HTMLElement>('.cv-stage')?.focus?.(); return text(`The window ${document.hasFocus() ? 'has' : 'was asked for'} focus.`, size()); }
     if (action === 'fullscreen') { const c = this.env.commands.get('os-full-screen'); if (!c) return fail('Full screen is not available in this window.'); await this.env.commands.call('os-full-screen'); return text('Toggled full screen.', size()); }
     if (action === 'resize') {
@@ -385,6 +433,6 @@ export class UiControl {
       const now = size();
       return now.width === before.width && now.height === before.height ? fail('The window did not change size: a browser tab cannot be resized by a page, only the desktop app\'s window can.') : text(`The window is ${now.width} by ${now.height}.`, now);
     }
-    return fail('action is size, resize, focus or fullscreen.');
+    return fail('action is size, resize, focus, fullscreen or quit.');
   }
 }

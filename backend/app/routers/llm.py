@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Form, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
 
+from app.core import config
 from app.routers.terminal import require_local
 from app.services import llm
 
@@ -23,7 +24,45 @@ def status() -> dict:
 
 @router.post("/settings")
 def settings(base_url: str = Form(...), model: str = Form(...), key: str | None = Form(None), forget_key: bool = Form(False)) -> dict:
-    return _run(llm.save, base_url, model, key, forget_key)
+    s = _run(llm.save, base_url, model, key, forget_key)
+    return {k: s[k] for k in ("configured", "baseUrl", "model", "hasKey", "store")}
+
+
+@router.post("/rows")
+def add_row(name: str = Form(""), base_url: str = Form(...), model: str = Form(...), vision: bool = Form(False), key: str | None = Form(None)) -> dict:
+    return _run(llm.save_row, None, name, base_url, model, vision, key, False)
+
+
+@router.put("/rows/{row_id}")
+def change_row(row_id: str, name: str = Form(""), base_url: str = Form(...), model: str = Form(...), vision: bool = Form(False), key: str | None = Form(None), forget_key: bool = Form(False)) -> dict:
+    return _run(llm.save_row, row_id, name, base_url, model, vision, key, forget_key)
+
+
+@router.post("/rows/{row_id}/use")
+def use_row(row_id: str) -> dict:
+    return _run(llm.use_row, row_id)
+
+
+@router.delete("/rows/{row_id}")
+def delete_row(row_id: str) -> dict:
+    return _run(llm.delete_row, row_id)
+
+
+@router.get("/templates")
+def template_files(request: Request) -> dict:
+    """The Markdown files in the data folder's prompt-templates folder (made on first use): a file named like a kept
+    template overrides it. The window reads them and parses the front matter."""
+    require_local(request)
+    folder = config.data_dir() / "prompt-templates"
+    folder.mkdir(parents=True, exist_ok=True)
+    files = []
+    for f in sorted(folder.glob("*.md"))[:100]:
+        try:
+            if f.stat().st_size <= 64_000:
+                files.append({"file": f.name, "text": f.read_text(encoding="utf-8", errors="replace")})
+        except OSError:
+            continue
+    return {"folder": str(folder), "files": files}
 
 
 @router.get("/models")

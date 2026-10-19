@@ -127,7 +127,15 @@ export class Actions {
 
   get recording(): Action | null { return this.active; }
 
-  save(): void { try { localStorage.setItem(KEY, JSON.stringify(this.list)); } catch { /* storage unavailable: actions last this session */ } }
+  private readonly listeners = new Set<() => void>();
+
+  /** Calls `fn` after every change that is saved (a recorded step, an edit, a removal); returns how to stop. */
+  onChange(fn: () => void): () => void { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; }
+
+  save(): void {
+    try { localStorage.setItem(KEY, JSON.stringify(this.list)); } catch { /* storage unavailable: actions last this session */ }
+    for (const fn of this.listeners) fn();
+  }
 
   /** Starts recording a new action named `name`. */
   start(name: string): Action { const a: Action = { name: name.slice(0, 80), steps: [] }; this.list.push(a); this.active = a; this.save(); return a; }

@@ -71,7 +71,8 @@ export class CameraRawDialog extends Dialog {
       this.settle = resolve;
       const d = loadPrefs();   // Preferences > Camera Raw Defaults
       this.reset(d.rawWb);
-      this.bits = d.rawBits; this.wb.space = 'srgb'; this.depth.set(String(d.rawBits));
+      const wide = d.rawBits === 16 && d.rawWide;
+      this.bits = d.rawBits; this.wb.space = wide ? 'prophoto' : 'srgb'; this.depth.set(wide ? '16w' : String(d.rawBits));
       setText(this.note, `${file.name}: preview at half size; Open develops the whole picture.`);
       setText(this.info, '');
       this.open();

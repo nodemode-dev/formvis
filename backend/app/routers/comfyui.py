@@ -3,15 +3,18 @@ Load Image (as Mask) nodes list them. GET /system_stats says whether ComfyUI run
 takes each image, into a formvis subfolder, replacing an earlier send of the same name."""
 
 import json
+import re
 import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, Response, UploadFile
 
+from app.core import config
 from app.routers.terminal import require_local
 from app.services import comfyui_auth, outbound
 
@@ -65,6 +68,56 @@ def auth_save(request: Request, mode: str = Form("none"), user: str = Form(""), 
         raise HTTPException(status_code=exc.status, detail=str(exc))
 
 
+RECIPE_NAME = re.compile(r"[\w ().-]{1,100}")
+
+
+def _recipe_dir() -> Path:
+    folder = config.data_dir() / "recipes"
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
+
+
+def _recipe_file(name: str) -> Path:
+    name = name[:-5] if name.lower().endswith(".json") else name
+    if not RECIPE_NAME.fullmatch(name) or name.startswith("."):
+        raise HTTPException(status_code=400, detail="That is not a name a recipe can be kept under.")
+    return _recipe_dir() / f"{name}.json"
+
+
+@router.get("/recipe-files")
+def recipe_files(request: Request) -> dict:
+    """The workflows kept as files in the data folder's recipes folder (made on first use)."""
+    require_local(request)
+    files = []
+    for f in sorted(_recipe_dir().glob("*.json"))[:100]:
+        try:
+            if f.stat().st_size <= 500_000:
+                files.append({"name": f.stem, "text": f.read_text(encoding="utf-8", errors="replace")})
+        except OSError:
+            continue
+    return {"folder": str(_recipe_dir()), "files": files}
+
+
+@router.put("/recipe-files/{name}")
+async def recipe_file_put(name: str, request: Request) -> dict:
+    require_local(request)
+    body = await request.body()
+    if len(body) > 500_000:
+        raise HTTPException(status_code=413, detail="A recipe is 500 KB at most.")
+    path = _recipe_file(name)
+    temp = path.with_suffix(".tmp")
+    temp.write_bytes(body)
+    temp.replace(path)
+    return {"ok": True}
+
+
+@router.delete("/recipe-files/{name}")
+def recipe_file_delete(name: str, request: Request) -> dict:
+    require_local(request)
+    _recipe_file(name).unlink(missing_ok=True)
+    return {"ok": True}
+
+
 @router.get("/status")
 def status(target: str) -> dict:
     """Whether ComfyUI answers at `target`, and its version when it says."""
@@ -79,6 +132,22 @@ def status(target: str) -> dict:
     system = stats.get("system") if isinstance(stats, dict) else None
     version = system.get("comfyui_version") if isinstance(system, dict) else None
     return {"running": True, **({"version": str(version)[:40]} if version else {})}
+
+
+@router.get("/graph")
+def last_graph(target: str) -> dict:
+    """The graph of the newest job ComfyUI ran, in the API format its history keeps, to save as a recipe. 404 when it has run nothing."""
+    base = _base(target)
+    try:
+        with _request(base + "/history?max_items=1", timeout=10) as r:
+            hist = json.loads(r.read() or b"{}")
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        raise outbound.unreachable("ComfyUI", base, "Preferences > Plugins", exc)
+    for entry in reversed(list(hist.values())) if isinstance(hist, dict) else []:
+        prompt = entry.get("prompt") if isinstance(entry, dict) else None
+        if isinstance(prompt, list) and len(prompt) > 2 and isinstance(prompt[2], dict) and prompt[2]:
+            return {"workflow": json.dumps(prompt[2])}
+    raise HTTPException(status_code=404, detail="ComfyUI has not run a graph yet. Queue the graph in ComfyUI once, then save it here.")
 
 
 def _get_json(base: str, path: str, timeout: float):

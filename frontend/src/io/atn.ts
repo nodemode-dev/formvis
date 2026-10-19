@@ -145,6 +145,13 @@ function stepFor(it: Item): ActionStep | null {
     if (radius === null || !(radius > 0)) return null;
     return { kind: 'filter', filter: 'gaussianBlur', label, settings: { radius: Math.min(250, Math.max(0.1, radius)) } };
   }
+  if (it.event === 'ImgS') {
+    const w = get('Wdth'), h = get('Hght'), res = get('Rslt');
+    const px = (v: Val | undefined): number | null => (isUnit(v) ? v.value : typeof v === 'number' ? v : null);
+    const wv = px(w), hv = px(h), rv = px(res);
+    if (wv === null || hv === null || !(wv >= 1) || !(hv >= 1) || (isUnit(w) && w.unit !== '#Pxl') || (isUnit(h) && h.unit !== '#Pxl')) return null;
+    return { kind: 'imageSize', label, w: Math.round(wv), h: Math.round(hv), sampling: 'bicubic', res: rv !== null && rv >= 1 ? rv : 72 };
+  }
   return null;
 }
 
@@ -216,6 +223,7 @@ function itemFor(s: ActionStep): Uint8Array | null {
   if (s.kind === 'command' && (s.id === 'flip-canvas-h' || s.id === 'flip-canvas-v')) { head('Flip', true); descriptor(o, 'null', [['Axis', ['enum', 'Ornt', s.id === 'flip-canvas-h' ? 'Hrzn' : 'Vrtc']]]); return o.bytes(); }
   if (s.kind === 'stop') { head('Stop', true); descriptor(o, 'null', [['Msge', ['TEXT', s.message]], ['Cntn', ['bool', s.allowContinue]]]); return o.bytes(); }
   if (s.kind === 'filter' && s.filter === 'gaussianBlur' && typeof s.settings.radius === 'number') { head('GsnB', true); descriptor(o, 'null', [['Rds ', ['UntF', '#Pxl', s.settings.radius]]]); return o.bytes(); }
+  if (s.kind === 'imageSize') { head('ImgS', true); descriptor(o, 'null', [['Wdth', ['UntF', '#Pxl', s.w]], ['Hght', ['UntF', '#Pxl', s.h]], ['Rslt', ['UntF', '#Rsl', s.res]]]); return o.bytes(); }
   return null;
 }
 

@@ -41,6 +41,19 @@ function halvingsFor(factor: number): number {
 export const renderCache = { levels: 6, effectBytes: 256 * 1048576, prefix: true };
 const surfaceBytes = (s: Surface): number => s.width * s.height * 4;
 
+/** Bytes the raster's halved display copies hold. */
+export function halvedBytes(r: Raster): number {
+  let n = 0;
+  for (const s of halfCache.get(r)?.levels.values() ?? []) n += surfaceBytes(s);
+  return n;
+}
+/** Frees the raster's halved display copies (they are drawn again when it is next shown small); returns the bytes freed. */
+export function dropHalved(r: Raster): number {
+  const n = halvedBytes(r);
+  if (n) { for (const s of halfCache.get(r)!.levels.values()) { s.width = 1; s.height = 1; } halfCache.delete(r); }
+  return n;
+}
+
 /** The raster's canvas halved `level` times, each step drawn from the one before; `scale` says how much smaller it is. */
 function halved(r: Raster, level: number): { surface: Surface; scale: number } {
   const scale = 2 ** level;
@@ -179,6 +192,25 @@ export class Renderer {
   private fxBytes = 0;
   /** What the layer-effect cache holds now: entries and bytes. */
   effectCacheUse(): { entries: number; bytes: number } { return { entries: this.fxCache.size, bytes: this.fxBytes }; }
+  /** What the scratch surfaces hold now: the stack-reuse prefix, the scratch slots and the clip surfaces, in bytes. */
+  scratchBytes(): number {
+    let n = this.prefixCache ? surfaceBytes(this.prefixCache.surface) : 0;
+    for (const s of this.slots) if (s) n += surfaceBytes(s.s);
+    for (const s of this.clipPool.values()) n += surfaceBytes(s.s);
+    return n;
+  }
+  /** Frees the effect results of layers outside `keep` and every scratch surface (all are made again when a picture is
+   *  drawn); returns the bytes freed. */
+  release(keep: ReadonlySet<ID>): number {
+    let freed = this.scratchBytes();
+    for (const [id, e] of this.fxCache) if (!keep.has(id)) { this.fxCache.delete(id); this.fxBytes -= e.bytes; freed += e.bytes; }
+    for (const s of this.slots) if (s) { s.s.width = 1; s.s.height = 1; }
+    this.slots.length = 0;
+    for (const s of this.clipPool.values()) { s.s.width = 1; s.s.height = 1; }
+    this.clipPool.clear();
+    if (this.prefixCache) { this.prefixCache.surface.width = 1; this.prefixCache.surface.height = 1; this.prefixCache = null; }
+    return freed;
+  }
   private trimEffectCache(room: number): void {
     for (const [id, e] of this.fxCache) {
       if (this.fxBytes + room <= renderCache.effectBytes && this.fxCache.size < 256) break;

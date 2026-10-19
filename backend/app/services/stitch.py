@@ -307,8 +307,8 @@ def register(imgs: list[np.ndarray], projection: str, ref: int = 0) -> tuple[lis
     return out, mats, info
 
 
-def compose(imgs: list[np.ndarray], mats: list[np.ndarray], limit: int = 12000) -> tuple[np.ndarray, np.ndarray]:
-    """The placed pictures on one canvas, feathered where they overlap: (BGRA canvas, per-picture coverage count)."""
+def _canvas(imgs: list[np.ndarray], mats: list[np.ndarray], limit: int) -> tuple[np.ndarray, int, int]:
+    """(the shift into canvas pixels, canvas width, canvas height) that holds every placed picture."""
     corners = []
     for im, m in zip(imgs, mats):
         ys, xs = np.nonzero(im[..., 3] > 0)
@@ -323,7 +323,39 @@ def compose(imgs: list[np.ndarray], mats: list[np.ndarray], limit: int = 12000) 
     w, h = int(y0[0] - x0[0]), int(y0[1] - x0[1])
     k = min(1.0, limit / max(w, h), (60e6 / max(1, w * h)) ** 0.5)
     shift = np.array([[k, 0, -x0[0] * k], [0, k, -x0[1] * k], [0, 0, 1.0]])
-    w, h = max(1, round(w * k)), max(1, round(h * k))
+    return shift, max(1, round(w * k)), max(1, round(h * k))
+
+
+def _weight(im: np.ndarray, mm: np.ndarray, w: int, h: int) -> tuple[np.ndarray, np.ndarray]:
+    """(the picture warped onto the canvas as BGR, its feather weight there: distance to its edge, 0 outside it)."""
+    valid = (im[..., 3] > 0).astype(np.uint8)
+    dist = cv2.distanceTransform(cv2.erode(valid, np.ones((3, 3), np.uint8)), cv2.DIST_L2, 3).astype(np.float32)
+    px = cv2.warpPerspective(im[..., :3], mm, (w, h), flags=cv2.INTER_LINEAR)
+    wt = cv2.warpPerspective((np.minimum(dist, 64.0) + 1e-3 * valid).astype(np.float32), mm, (w, h), flags=cv2.INTER_LINEAR) * (cv2.warpPerspective(valid, mm, (w, h), flags=cv2.INTER_NEAREST) > 0)
+    return px, wt
+
+
+def compose_layers(imgs: list[np.ndarray], mats: list[np.ndarray], limit: int = 12000) -> tuple[list[np.ndarray], list[np.ndarray]]:
+    """Each placed picture on its own canvas-sized layer: (BGRA layers, seam masks). A mask is 255 where its picture has
+    the most weight of all (so the masks tile the canvas, one picture each), softened a little across the seam."""
+    shift, w, h = _canvas(imgs, mats, limit)
+    warped, weights = [], []
+    for im, m in zip(imgs, mats):
+        px, wt = _weight(im, shift @ m, w, h)
+        alpha = (cv2.warpPerspective((im[..., 3] > 0).astype(np.uint8) * 255, shift @ m, (w, h), flags=cv2.INTER_LINEAR))
+        warped.append(np.dstack([px, alpha]))
+        weights.append(wt)
+    best = np.argmax(np.stack(weights), axis=0)
+    masks = []
+    for k, wt in enumerate(weights):
+        hard = ((best == k) & (wt > 0)).astype(np.uint8) * 255
+        masks.append(cv2.GaussianBlur(hard, (0, 0), 1.5))
+    return warped, masks
+
+
+def compose(imgs: list[np.ndarray], mats: list[np.ndarray], limit: int = 12000) -> tuple[np.ndarray, np.ndarray]:
+    """The placed pictures on one canvas, feathered where they overlap: (BGRA canvas, per-picture coverage count)."""
+    shift, w, h = _canvas(imgs, mats, limit)
     acc = np.zeros((h, w, 3), np.float32)
     wsum = np.zeros((h, w), np.float32)
     cover = np.zeros((h, w), np.uint8)

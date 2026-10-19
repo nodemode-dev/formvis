@@ -110,6 +110,23 @@ def panorama(images: list[bytes], layout: str, crop: bool, distortion: bool = Fa
     return _finish(rgba, cover, crop), len(kept), notes
 
 
+def panorama_layers(images: list[bytes], layout: str, distortion: bool = False, vignette: bool = False) -> dict:
+    """Photomerge as layers: each photo warped onto the shared canvas with a seam mask, the masks tiling the canvas. Every
+    layout registers the photos in stitch.py (Auto as the spherical projection), since the stitcher gives only the joined picture."""
+    from ..services import stitch
+    imgs = [_read(d)[0] for d in images]
+    four = [np.dstack([i, np.full(i.shape[:2], 255, np.uint8)]) for i in imgs]
+    four, notes = stitch.prepare(four, 0, distortion, vignette, _vignette_gains)
+    placed, mats, _ = stitch.register(four, "spherical" if layout == "auto" else layout, 0)
+    warped, masks = stitch.compose_layers(placed, mats)
+    out = []
+    for layer, mask in zip(warped, masks):
+        buf = io.BytesIO()
+        Image.fromarray(np.ascontiguousarray(mask), "L").save(buf, "PNG")
+        out.append({"png": _png(layer), "mask": base64.b64encode(buf.getvalue()).decode()})
+    return {"width": int(warped[0].shape[1]), "height": int(warped[0].shape[0]), "layers": out, "notes": notes}
+
+
 def _ghost_weight(lin: list[np.ndarray], times: np.ndarray, base: int, strength: float) -> np.ndarray:
     """Where the exposures disagree about the light: for each photo that is well exposed beside the base photo, the
     difference of their radiance estimates in stops; a pixel is a ghost when any exceeds a threshold that falls from
@@ -173,10 +190,16 @@ def hdr(images: list[bytes], align: bool = True, times: list[float] | None = Non
 
 
 @router.post("/panorama")
-async def panorama_route(file: list[UploadFile] = File(...), layout: str = Form("auto"), crop: bool = Form(False), distortion: bool = Form(False), vignette: bool = Form(False)) -> Response:
+async def panorama_route(file: list[UploadFile] = File(...), layout: str = Form("auto"), crop: bool = Form(False), distortion: bool = Form(False), vignette: bool = Form(False), layers: bool = Form(False)) -> Response:
     if len(file) < 2:
         raise HTTPException(422, "Photomerge needs at least two overlapping photos.")
     data = [await f.read() for f in file]
+    if layers:
+        try:
+            made = await run_in_threadpool(panorama_layers, data, layout, distortion, vignette)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        return Response(json.dumps(made), media_type="application/json")
     try:
         png, kept, notes = await run_in_threadpool(panorama, data, layout, crop, distortion, vignette)
     except ValueError as exc:

@@ -10,8 +10,12 @@ import { el, q, setText } from '../ui/dom';
 import { icon } from '../ui/icons';
 import { sliderRow } from '../ui/panels/controls';
 
-/* Plugin folders. plugins/<id>/plugin.json names an ES module (main) in the engine's data folder; the window imports it
- * and calls activate(formvis). API version 1, the object a plugin receives (each part needs its permission in plugin.json):
+/* Plugin folders. plugins/<id>/plugin.json names an ES module (main) in the engine's data folder. Its code runs in a
+ * dedicated Worker (plugin-worker.ts) with no window, no document and no network, and calls activate(formvis); the object
+ * it receives sends messages that fromWorker and dispatch below answer after the permission check. API version 1, the
+ * object a plugin receives (each part needs its permission in plugin.json). Document and pixel calls return promises; a
+ * panel's render(ui) describes controls (ui.text, button, slider, checkbox, select) that the window builds; a tool's
+ * overlay(g, view) is recorded and replayed from a fixed set of canvas calls; storage reads are local to the worker:
  *
  *   formvis.apiVersion, formvis.plugin {id, name, version}
  *   documents    formvis.documents.list() / active() / get(id) / create({width, height, name})
@@ -42,7 +46,11 @@ export interface FolderPlugin { id: string; manifest: Manifest | null; error: st
 export interface PluginImage { width: number; height: number; data: Uint8ClampedArray }
 type Values = Record<string, number | boolean | string>;
 interface ParamSpec { id: string; label: string; type: 'number' | 'boolean' | 'select'; min: number; max: number; step: number; default: number | boolean | string; choices: Array<{ id: string; label: string }> }
-interface FilterSpec { id: string; label: string; params: ParamSpec[]; cpu?: (image: ImageData, values: Values) => ImageData | void; glsl?: string }
+interface FilterSpec { id: string; label: string; params: ParamSpec[]; cpu?: (image: ImageData, values: Values) => ImageData | void | Promise<ImageData | void>; glsl?: string }
+type Fn = (...a: unknown[]) => unknown;
+type Api = Record<string, Record<string, Fn>>;
+interface PanelState { body: HTMLElement; nodes: Map<string, { el: HTMLElement; set(v: unknown): void }> }
+interface OverlayState { ops: unknown[][]; key: string; busy: boolean }
 interface FieldSpec { id: string; label: string; type: 'number' | 'boolean' | 'select' | 'text'; min?: number; max?: number; step?: number; default?: number | boolean | string; choices?: Array<{ id: string; label: string }> }
 
 interface Running {
@@ -51,7 +59,16 @@ interface Running {
   errors: string[];
   filters: Map<string, FilterSpec>;
   counts: { filters: number; panels: number; tools: number; sources: number; commands: number };
-  deactivate?: () => unknown;
+  /** The Worker the plugin's code runs in, the calls waiting on it, and what the window keeps for it. */
+  worker: Worker | null;
+  onReady: ((error?: string) => void) | null;
+  calls: Map<number, { ok: (v: unknown) => void; no: (e: Error) => void; timer: number }>;
+  seq: number;
+  api: Api | null;
+  panels: Map<string, PanelState>;
+  evFns: Map<string, () => void>;
+  overlays: Map<string, OverlayState>;
+  inflight: Set<Promise<unknown>>;
 }
 
 export interface PanelHost { add(id: string, label: string): HTMLElement | null; remove(id: string): void }
@@ -67,6 +84,10 @@ export interface ModuleDeps {
 const APPROVED = 'formvis.plugins.folders.on';
 const SIDE_LIMIT = 200_000;
 const ACTIVATE_MS = 5000;
+const FILTER_MS = 30_000, SOURCE_MS = 60_000, OVERLAY_MS = 2000, PANEL_NODES = 200;
+interface OverlayView { zoom: number; toScreen(p: { x: number; y: number }): { x: number; y: number } }
+const OVERLAY_PROPS = new Set(['fillStyle', 'strokeStyle', 'lineWidth', 'font', 'globalAlpha', 'textAlign']);
+const OVERLAY_CALLS = new Set(['beginPath', 'closePath', 'moveTo', 'lineTo', 'rect', 'arc', 'stroke', 'fill', 'fillRect', 'strokeRect', 'fillText', 'strokeText', 'setLineDash', 'save', 'restore']);
 const EVENTS = { doc: 'doc', selection: 'selection', active: 'active', history: 'history', projects: 'projects', tool: 'tool' } as const;
 const rect = (v: unknown): { x: number; y: number; w: number; h: number } | null => {
   const b = v as { x?: number; y?: number; w?: number; h?: number } | undefined;
@@ -187,7 +208,7 @@ export class FolderPlugins {
     const row = this.cache.get(id) ?? (await api.pluginFolders()).find((r) => r.id === id);
     if (!row?.manifest) { this.d.note(row?.error ?? `There is no plugin ${id}.`, 'error'); return; }
     const m = row.manifest;
-    if (!(await this.d.confirm(`Turn on ${m.name}?`, `This plugin's code runs inside formvis with these permissions: ${m.permissions.join(', ') || 'none'}. Turn on only plugins you trust.`, 'Turn On'))) { this.onChange(); return; }
+    if (!(await this.d.confirm(`Turn on ${m.name}?`, `This plugin's code runs in its own isolated worker, with no access to the page, and reaches formvis only through these permissions: ${m.permissions.join(', ') || 'none'}.`, 'Turn On'))) { this.onChange(); return; }
     this.setApproved(id, this.stamp(m));
     await this.load(row);
   }
@@ -215,17 +236,22 @@ export class FolderPlugins {
     const m = row.manifest;
     if (!m) return;
     this.unload(m.id);
-    const p: Running = { manifest: m, off: [], errors: [], filters: new Map(), counts: { filters: 0, panels: 0, tools: 0, sources: 0, commands: 0 } };
+    const p: Running = { manifest: m, off: [], errors: [], filters: new Map(), counts: { filters: 0, panels: 0, tools: 0, sources: 0, commands: 0 }, worker: null, calls: new Map(), seq: 0, api: null, panels: new Map(), evFns: new Map(), overlays: new Map(), inflight: new Set(), onReady: null };
     this.running.set(m.id, p);
     this.onChange();
     try {
       const code = await api.pluginFolderFile(m.id, m.main);
-      const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
-      let mod: { activate?: (f: unknown) => unknown; deactivate?: () => unknown };
-      try { mod = await import(/* @vite-ignore */ url) as typeof mod; } finally { URL.revokeObjectURL(url); }
-      if (typeof mod.activate !== 'function') throw new Error('The module must export an activate(formvis) function.');
-      p.deactivate = mod.deactivate;
-      await Promise.race([Promise.resolve(mod.activate(this.apiFor(p))), new Promise((_, no) => setTimeout(() => no(new Error('activate took more than 5 seconds.')), ACTIVATE_MS))]);
+      const host = this.apiFor(p) as Api;
+      p.api = host;
+      const w = new Worker(new URL('./plugin-worker.ts', import.meta.url), { type: 'module', name: `plugin-${m.id}` });
+      p.worker = w;
+      w.onmessage = (ev: MessageEvent) => { void this.fromWorker(p, ev.data as Record<string, unknown>); };
+      w.onerror = (ev) => { this.fail(p, ev.message || 'The plugin worker failed.'); };
+      const ready = new Promise<void>((ok, no) => { p.onReady = (error) => { if (error) no(new Error(error)); else ok(); }; });
+      const store = m.permissions.includes('storage') ? Object.fromEntries((host.storage.keys() as string[]).map((k) => [k, host.storage.get(k)])) : null;
+      w.postMessage({ k: 'init', code, plugin: { id: m.id, name: m.name, version: m.version }, storage: store });
+      await Promise.race([ready, new Promise((_, no) => setTimeout(() => no(new Error('activate took more than 5 seconds.')), ACTIVATE_MS))]);
+      await Promise.all([...p.inflight]);
     } catch (e) {
       this.fail(p, e instanceof Error ? e.message : String(e));
       this.d.note(`${m.name}: ${p.errors[p.errors.length - 1]}`, 'error');
@@ -236,9 +262,178 @@ export class FolderPlugins {
   }
 
   private stop(p: Running, call = true): void {
-    if (call && p.deactivate) this.guard(p, 'deactivate', p.deactivate);
+    const w = p.worker;
+    if (call && w) void this.callIn(p, 'deactivate', [], 1500).catch(() => { /* none exported */ }).finally(() => this.halt(p, w));
+    else this.halt(p, w);
     for (const f of p.off.splice(0).reverse()) { try { f(); } catch { /* the plugin is going anyway */ } }
     this.running.delete(p.manifest.id);
+  }
+
+  /** Ends the plugin's Worker and answers every call still waiting on it. */
+  private halt(p: Running, w: Worker | null = p.worker): void {
+    w?.terminate();
+    if (p.worker === w) p.worker = null;
+    for (const c of p.calls.values()) { window.clearTimeout(c.timer); c.no(new Error('The plugin has stopped.')); }
+    p.calls.clear();
+  }
+
+  /** Runs a function the plugin registered, inside its Worker; ms of 0 waits for as long as the plugin takes (a dialog it opened). */
+  private callIn(p: Running, target: string, args: unknown[], ms = 0): Promise<unknown> {
+    const w = p.worker;
+    if (!w) return Promise.reject(new Error('The plugin is not running.'));
+    return new Promise((ok, no) => {
+      const id = ++p.seq;
+      const timer = ms ? window.setTimeout(() => { p.calls.delete(id); this.fail(p, `${target} took more than ${ms / 1000} seconds and the plugin was stopped.`); this.halt(p, w); no(new Error(`${target} timed out.`)); }, ms) : 0;
+      p.calls.set(id, { ok, no, timer });
+      w.postMessage({ k: 'call', id, target, args });
+    });
+  }
+
+  /** Sends the plugin an event or a pointer point and does not wait for an answer. */
+  private tell(p: Running, target: string, args: unknown[]): void { p.worker?.postMessage({ k: 'call', id: 0, target, args }); }
+
+  private async fromWorker(p: Running, m: Record<string, unknown>): Promise<void> {
+    switch (m.k) {
+      case 'ready': p.onReady?.(typeof m.error === 'string' ? m.error : undefined); return;
+      case 'fail': this.fail(p, String(m.text ?? 'Script error')); return;
+      case 'reply': {
+        const c = p.calls.get(Number(m.id));
+        if (!c) return;
+        p.calls.delete(Number(m.id)); window.clearTimeout(c.timer);
+        if (typeof m.error === 'string' && m.error) c.no(new Error(m.error)); else c.ok(m.result);
+        return;
+      }
+      case 'rpc': {
+        const id = Number(m.id), w = p.worker;
+        const reply = (result?: unknown, error?: string): void => {
+          try { w?.postMessage({ k: 'reply', id, result, error }); } catch { w?.postMessage({ k: 'reply', id, error: 'The answer could not be sent to the plugin.' }); }
+        };
+        const job = (async () => this.dispatch(p, String(m.op), (m.args ?? {}) as Record<string, unknown>))();
+        p.inflight.add(job);
+        try { reply(await job); } catch (e) { reply(undefined, e instanceof Error ? e.message : String(e)); } finally { p.inflight.delete(job); }
+        return;
+      }
+      default: return;
+    }
+  }
+
+  /** The requests a plugin's code may make. Each goes through the same permission checks as before; nothing here hands over a window object. */
+  private async dispatch(p: Running, op: string, a: Record<string, unknown>): Promise<unknown> {
+    const api = p.api!;
+    const doc = (d: unknown): unknown => { const x = d as { id: string; name: string; width: number; height: number; activeLayerId: string | null } | null; return x ? { id: x.id, name: x.name, width: x.width, height: x.height, activeLayerId: x.activeLayerId } : null; };
+    const id = String(a.id ?? '');
+    switch (op) {
+      case 'documents.list': return api.documents.list();
+      case 'documents.active': return doc(api.documents.active());
+      case 'documents.get': return doc(api.documents.get(id));
+      case 'documents.create': return doc(api.documents.create(a.o));
+      case 'doc': return this.docCall(p, id, String(a.m), Array.isArray(a.a) ? a.a : []);
+      case 'filters.register':
+        api.filters.register({ id, label: a.label, params: a.params, glsl: typeof a.glsl === 'string' ? a.glsl : undefined,
+          cpu: a.cpu ? (img: unknown, values: unknown) => { const i = img as ImageData; return this.callIn(p, `filter:${id}`, [{ width: i.width, height: i.height, data: i.data }, values], FILTER_MS).then((r) => asImageData(r)); } : undefined });
+        return true;
+      case 'filters.apply': return api.filters.apply(id, a.values);
+      case 'filters.list': return api.filters.list();
+      case 'panels.register':
+        api.panels.register({ id, label: a.label, render: (body: HTMLElement) => { p.panels.set(id, { body, nodes: new Map() }); void this.callIn(p, `panel:${id}`, []).catch((e: unknown) => this.fail(p, `panel ${id}: ${e instanceof Error ? e.message : String(e)}`)); } });
+        return true;
+      case 'panel.add': case 'panel.set': case 'panel.remove': case 'panel.clear': return this.panelOp(p, op, a);
+      case 'tools.register': {
+        const has = (a.has ?? {}) as Record<string, boolean>, st: OverlayState = { ops: [], key: '', busy: false };
+        p.overlays.set(id, st);
+        const point = (m: string) => (pt: unknown) => { st.key = ''; this.tell(p, `tool:${id}:${m}`, [pt]); };
+        api.tools.register({ id, label: a.label, hint: a.hint, down: has.down ? point('down') : undefined, move: has.move ? point('move') : undefined, up: has.up ? point('up') : undefined,
+          overlay: has.overlay ? (g: unknown, view: unknown) => this.overlay(p, id, st, g as CanvasRenderingContext2D, view as OverlayView) : undefined });
+        return true;
+      }
+      case 'sources.register':
+        if (a.ok) api.sources.register({ id, label: a.label, generate: (arg: unknown) => this.callIn(p, `src:${id}`, [arg], SOURCE_MS) });
+        return true;
+      case 'events.on': { const name = String(a.name); if (!p.evFns.has(name)) p.evFns.set(name, api.events.on(name, () => this.tell(p, 'event', [name])) as () => void); return true; }
+      case 'events.off': { const name = String(a.name); p.evFns.get(name)?.(); p.evFns.delete(name); return true; }
+      case 'storage.set': api.storage.set(String(a.k), a.v); return true;
+      case 'storage.remove': api.storage.remove(String(a.k)); return true;
+      case 'storage.clear': api.storage.clear(); return true;
+      case 'ui.toast': api.ui.toast(String(a.text ?? ''), a.kind); return true;
+      case 'ui.confirm': return api.ui.confirm(String(a.title ?? ''), String(a.text ?? ''), a.ok);
+      case 'ui.prompt': return api.ui.prompt(String(a.title ?? ''), a.value, a.ok);
+      case 'ui.form': return api.ui.form(String(a.title ?? ''), a.fields);
+      case 'ui.dialog': return api.ui.dialog({ title: a.title, content: typeof a.content === 'string' ? a.content : undefined, buttons: a.buttons });
+      case 'commands.register':
+        if (a.ok) api.commands.register({ id, label: a.label, keys: a.keys, run: () => this.callIn(p, `cmd:${id}`, []) });
+        return true;
+      default: throw new Error(`Unknown request ${op}.`);
+    }
+  }
+
+  private async docCall(p: Running, id: string, m: string, a: unknown[]): Promise<unknown> {
+    this.need(p, 'documents');
+    const pr = this.d.engine.projects.find((x) => x.id === id);
+    if (!pr) throw new Error('That document is closed.');
+    const d = this.docApi(p, pr);
+    if (m === 'selection.get' || m === 'selection.set') return (d.selection as Record<string, Fn>)[m.slice(10)](...a);
+    if (!['layers', 'activate', 'flatten', 'getPixels', 'setPixels', 'newLayer'].includes(m)) throw new Error(`Unknown request ${m}.`);
+    const out = await (d[m] as Fn)(...a);
+    return m === 'activate' ? true : out;
+  }
+
+  /** A panel is built here from what the plugin describes: text, buttons, sliders, check boxes and lists, made once and updated in place. */
+  private panelOp(p: Running, op: string, a: Record<string, unknown>): boolean {
+    const panel = String(a.panel), st = p.panels.get(panel);
+    if (!st) throw new Error('That panel is not open.');
+    if (op === 'panel.clear') { st.nodes.clear(); st.body.replaceChildren(); return true; }
+    if (op === 'panel.remove') { st.nodes.get(String(a.id))?.el.remove(); st.nodes.delete(String(a.id)); return true; }
+    if (op === 'panel.set') { st.nodes.get(String(a.id))?.set(a.value); return true; }
+    const n = (a.node ?? {}) as Record<string, unknown>, key = String(n.id), label = String(n.label ?? '').slice(0, 80), tell = (...v: unknown[]) => this.tell(p, `ui:${panel}:${key}`, v);
+    if (st.nodes.size >= PANEL_NODES) throw new Error(`A panel may hold ${PANEL_NODES} controls.`);
+    let node: { el: HTMLElement; set(v: unknown): void };
+    if (n.kind === 'button') {
+      const b = el<HTMLButtonElement>('<button class="cv-btn cv-btn-ghost" type="button"></button>');
+      setText(b, label); b.addEventListener('click', () => tell());
+      node = { el: b, set: (v) => setText(b, String(v).slice(0, 80)) };
+    } else if (n.kind === 'slider') {
+      const row = sliderRow(label, Number(n.min ?? 0), Number(n.max ?? 100), Number(n.step ?? 1), (v) => tell(v), { def: Number(n.value ?? 0) });
+      row.set(Number(n.value ?? 0));
+      node = { el: row.el, set: (v) => row.set(Number(v)) };
+    } else if (n.kind === 'checkbox') {
+      const box = el<HTMLInputElement>('<input type="checkbox">'), row = el('<label class="cv-field"><span></span></label>');
+      box.checked = !!n.value; box.setAttribute('aria-label', label); setText(q(row, 'span'), label); row.appendChild(box);
+      box.addEventListener('change', () => tell(box.checked));
+      node = { el: row, set: (v) => { box.checked = !!v; } };
+    } else if (n.kind === 'select') {
+      const sel = el<HTMLSelectElement>('<select class="cv-input"></select>'), row = el('<label class="cv-field"><span></span></label>');
+      for (const c of Array.isArray(n.choices) ? n.choices as Array<{ id: string; label: string }> : []) { const o = document.createElement('option'); o.value = String(c.id); o.textContent = String(c.label); sel.appendChild(o); }
+      sel.value = String(n.value ?? ''); sel.setAttribute('aria-label', label); setText(q(row, 'span'), label); row.appendChild(sel);
+      sel.addEventListener('change', () => tell(sel.value));
+      node = { el: row, set: (v) => { sel.value = String(v); } };
+    } else {
+      const t = el('<p class="cv-note"></p>');
+      setText(t, String(n.value ?? '').slice(0, 2000));
+      node = { el: t, set: (v) => setText(t, String(v).slice(0, 2000)) };
+    }
+    st.nodes.set(key, node); st.body.appendChild(node.el);
+    return true;
+  }
+
+  /** Draws the last list of drawing steps the plugin's overlay produced, from a fixed set of canvas calls; asks for a new list when the view or the tool state moved. */
+  private overlay(p: Running, id: string, st: OverlayState, g: CanvasRenderingContext2D, view: OverlayView): void {
+    const o = view.toScreen({ x: 0, y: 0 }), ex = view.toScreen({ x: 1, y: 0 }), ey = view.toScreen({ x: 0, y: 1 });
+    const m = [o.x, o.y, ex.x - o.x, ex.y - o.y, ey.x - o.x, ey.y - o.y], key = `${view.zoom}|${m.join(',')}`;
+    g.save();
+    try {
+      const to = g as unknown as Record<string, unknown>;
+      for (const op of st.ops) {
+        const name = String(op[0]);
+        if (name.startsWith('=')) { const prop = name.slice(1), v = op[1]; if (OVERLAY_PROPS.has(prop) && (typeof v === 'string' || typeof v === 'number')) to[prop] = typeof v === 'string' ? v.slice(0, 120) : v; }
+        else if (OVERLAY_CALLS.has(name)) (to[name] as Fn).apply(g, op.slice(1).map((x) => typeof x === 'string' ? x.slice(0, 200) : x));
+      }
+    } catch { /* a bad step ends the drawing */ }
+    g.restore();
+    if (key === st.key || st.busy) return;
+    st.busy = true; st.key = key;
+    void this.callIn(p, `tool:${id}:overlay`, [{ zoom: view.zoom, m }], OVERLAY_MS)
+      .then((r) => { st.ops = Array.isArray(r) ? (r as unknown[]).filter(Array.isArray).slice(0, 4000) as unknown[][] : []; }, () => { st.ops = []; })
+      .finally(() => { st.busy = false; this.d.engine.emit('tool', null); });
   }
 
   unload(id: string): void { const p = this.running.get(id); if (p) { this.stop(p); this.onChange(); } }
@@ -320,7 +515,7 @@ export class FolderPlugins {
   }
 
   /** The active pixel layer through a plugin filter, inside the selection when there is one; one undo step. */
-  private applyFilter(p: Running, f: FilterSpec, given: Values): boolean {
+  private async applyFilter(p: Running, f: FilterSpec, given: Values): Promise<boolean> {
     const e = this.d.engine, pr = e.current, l = pr?.activeLayer;
     if (!pr || !l) throw new Error('No document or layer is open.');
     const values = this.values(f.params, given), W = pr.doc.width, H = pr.doc.height;
@@ -331,7 +526,7 @@ export class FolderPlugins {
       for (const s of f.params) if (s.type !== 'select') uniforms[s.id] = Number(values[s.id]);
       out = runGlsl(src, f.glsl, uniforms);
     }
-    if (!out && f.cpu) out = f.cpu(new ImageData(new Uint8ClampedArray(src.data), W, H), values);
+    if (!out && f.cpu) out = await f.cpu(new ImageData(new Uint8ClampedArray(src.data), W, H), values);
     if (!out) throw new Error(f.glsl ? 'WebGL2 is not available and the filter has no cpu function.' : 'The filter returned no image.');
     const res = out as ImageData, mask = pr.selection;
     if (res.width !== W || res.height !== H) throw new Error('A filter must return an image of the same size.');
@@ -401,7 +596,7 @@ export class FolderPlugins {
         p.off.push(() => p.filters.delete(id));
         this.addCommand(p, this.cid(p, 'filter', id), `${f.label}...`, [], async () => {
           const v = f.params.length ? await this.form(f.label, f.params.map((s) => ({ ...s }))) : {};
-          if (v) this.applyFilter(p, f, v);
+          if (v) await this.applyFilter(p, f, v);
         }, () => !!e.current?.activeLayer);
       },
       apply: (id: string, values?: Values) => { this.need(p, 'filters'); const f = p.filters.get(id); if (!f) throw new Error(`There is no filter ${id}.`); return this.applyFilter(p, f, values ?? {}); },

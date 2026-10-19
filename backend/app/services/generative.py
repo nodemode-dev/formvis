@@ -76,9 +76,18 @@ def _file_clear() -> None:
         pass
 
 
+#: Set when the service refused the key in use; a new key or Clear lifts it.
+_refused: set[str] = set()
+
+
+def _print(key: str) -> str:
+    import hashlib
+    return hashlib.sha256(key.encode()).hexdigest()
+
+
 def status() -> dict:
     key, source = _key()
-    return {"configured": source is not None, "source": source, "last4": key[-4:] if key and len(key) >= 8 else "", "store": secrets.where()["store"], "fillModel": FILL_MODEL, "eraseModel": ERASE_MODEL, "upscaleModel": UPSCALE_MODEL}
+    return {"configured": source is not None, "source": source, "last4": key[-4:] if key and len(key) >= 8 else "", "refused": bool(key and _print(key) in _refused), "store": secrets.where()["store"], "fillModel": FILL_MODEL, "eraseModel": ERASE_MODEL, "upscaleModel": UPSCALE_MODEL}
 
 
 def save_key(key: str) -> dict:
@@ -113,6 +122,7 @@ def _post(model: str, body: dict, key: str) -> dict:
     )
     try:
         with urllib.request.urlopen(request, timeout=180) as response:
+            _refused.discard(_print(key))
             return json.loads(response.read())
     except urllib.error.HTTPError as exc:
         detail: object = ""
@@ -123,6 +133,7 @@ def _post(model: str, body: dict, key: str) -> dict:
         if isinstance(detail, list):
             detail = "; ".join(str(d.get("msg", d)) if isinstance(d, dict) else str(d) for d in detail)
         if exc.code in (401, 403):
+            _refused.add(_print(key))
             raise GenerativeError("fal rejected the API key. Change it in Generative Fill.", 401) from exc
         if exc.code == 402:
             raise GenerativeError("fal needs credit on this account before it can generate.", 402) from exc

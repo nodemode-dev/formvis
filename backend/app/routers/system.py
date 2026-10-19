@@ -158,6 +158,7 @@ def capabilities() -> dict:
         "pixelBudget": config.MAX_PIXELS, "memory": config.total_memory(),   # the largest document, from this computer's memory (1.53.4)
         "compute": compute.current(),
         "dataDir": str(config.data_dir()),
+        "dataDirSource": config.data_dir_source(),
         "switches": runtime.switches(),
         "logFile": str(runtime.log_path(config.data_dir())),
         "runtime": {"python": platform.python_version(), "system": f"{platform.system()} {platform.release()}".strip(), "machine": platform.machine()},

@@ -66,24 +66,25 @@ TOOLS = [
           {"max_size": {"type": "integer", "minimum": 64, "maximum": 2048, "default": 1024}, "view": {"type": "string", "enum": ["document", "editor", "layer"], "default": "document"},
            "id": {"type": "string", "description": "A layer id from get_document; for view layer."}, "x": {"type": "integer"}, "y": {"type": "integer"}, "width": {"type": "integer", "minimum": 1}, "height": {"type": "integer", "minimum": 1},
            "format": {"type": "string", "enum": ["png", "jpeg"], "default": "png"}, "quality": {"type": "number", "minimum": 0.1, "maximum": 1, "default": 0.9}}, read=True, idempotent=True),
-    _tool("new_document", "Opens a new document of width x height pixels, or of an aspect and size class (a model-friendly size, sides in steps of 16: size_class 1k is about 1024 on the longer side, 2k about 2048, 4k about 4096). Width and height win when given; with no size at all the document is 1920 by 1080. mode (rgb, grayscale, lab) and depth (8, 16 or 32 bits a channel) set the colour mode and bit depth; background is white, transparent, black or a colour #rrggbb. CMYK has a dialog: run_command mode-cmyk.",
-          {"mode": {"type": "string", "enum": ["rgb", "grayscale", "lab"], "default": "rgb"}, "depth": {"type": "integer", "enum": [8, 16, 32], "default": 8}, "width": {"type": "integer", "minimum": 1, "maximum": 30000}, "height": {"type": "integer", "minimum": 1, "maximum": 30000},
+    _tool("new_document", "Opens a new document of width x height pixels, or of an aspect and size class (a model-friendly size, sides in steps of 16: size_class 1k is about 1024 on the longer side, 2k about 2048, 4k about 4096). Width and height win when given; with no size at all the document is 1920 by 1080. mode (rgb, grayscale, lab, cmyk) and depth (8, 16 or 32 bits a channel) set the colour mode and bit depth; background is white, transparent, black or a colour #rrggbb. cmyk converts with no dialog through profile (default: the shipped CMYK profile; else a profile id or name from the Convert to Profile list) and the intent in the colour preferences.",
+          {"mode": {"type": "string", "enum": ["rgb", "grayscale", "lab", "cmyk"], "default": "rgb"}, "profile": {"type": "string", "maxLength": 120, "default": "default", "description": "For cmyk: default, or a CMYK profile id or name."}, "depth": {"type": "integer", "enum": [8, 16, 32], "default": 8}, "width": {"type": "integer", "minimum": 1, "maximum": 30000}, "height": {"type": "integer", "minimum": 1, "maximum": 30000},
            "aspect": {"type": "string", "enum": ["1:1", "4:3", "3:4", "3:2", "2:3", "16:9", "9:16", "21:9", "5:4", "4:5"]}, "size_class": {"type": "string", "enum": ["1k", "2k", "4k"], "default": "1k"},
            "name": {"type": "string", "maxLength": 120}, "background": {"type": "string", "pattern": "^(white|transparent|black|#[0-9a-fA-F]{6})$", "default": "white", "description": "white, transparent, black or #rrggbb"}}),
     _tool("select","Changes the selection: a rectangle or ellipse (x, y, width, height in pixels) combined by mode, or all, none, or invert.", {"shape": {"type": "string", "enum": ["rectangle", "ellipse", "all", "none", "invert"]},
           "x": {"type": "number"}, "y": {"type": "number"}, "width": {"type": "number", "minimum": 1}, "height": {"type": "number", "minimum": 1},
           "mode": {"type": "string", "enum": ["replace", "add", "subtract", "intersect"], "default": "replace"}}, ["shape"]),
     _tool("add_layer", "Adds an empty layer above the active one and makes it active; returns its id.", {"name": {"type": "string", "maxLength": 120}}),
-    _tool("set_layer", "Changes a layer's name, visibility, opacity (0 to 1), blend mode or locks (locks: pixels, position, transparency, all; true locks, false unlocks, left out stays), or makes it the active layer.", {"id": _ID, "name": {"type": "string", "maxLength": 120},
+    _tool("set_layer", "Changes a layer's name, visibility, opacity (0 to 1), blend mode, reference flag (the generation dialogs' References list starts with flagged layers chosen) or locks (locks: pixels, position, transparency, all; true locks, false unlocks, left out stays), or makes it the active layer.", {"id": _ID, "name": {"type": "string", "maxLength": 120}, "reference": {"type": "boolean"},
           "visible": {"type": "boolean"}, "opacity": {"type": "number", "minimum": 0, "maximum": 1}, "blend": {"type": "string"}, "active": {"type": "boolean"},
           "locks": {"type": "object", "properties": {"pixels": {"type": "boolean"}, "position": {"type": "boolean"}, "transparency": {"type": "boolean"}, "all": {"type": "boolean"}}, "additionalProperties": False}}, ["id"], idempotent=True),
     _tool("delete_layer", "Deletes a layer (undoable).", {"id": _ID}, ["id"], destructive=True),
     _tool("fill", "Fills the selection (or the whole active layer when nothing is selected) with a colour.", {"color": {"type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "description": "#rrggbb"}}, ["color"]),
     _tool("add_adjustment", "Adds an adjustment layer (for example curves, levels, hsv, exposure, splitToning, halation, glow) with optional parameters.",
           {"kind": {"type": "string"}, "params": {"type": "object", "description": "The adjustment's parameters, as its Properties show them."}}, ["kind"]),
-    _tool("place_image", "Places a PNG, JPEG or WebP image as a new layer at x, y, at its own size unless scale (percent) or fit is given: fit contain or cover sizes it to the document and centres it, center centres it at its size, smart_object makes it a smart object so it can be scaled without loss. From path, an absolute path to a file, or data, base64.",
-          {"scale": {"type": "number", "minimum": 1, "maximum": 1000, "description": "Percent of the image's own size."}, "fit": {"type": "string", "enum": ["none", "contain", "cover"], "default": "none"},
-           "center": {"type": "boolean", "default": False}, "smart_object": {"type": "boolean", "default": False}, "path": {"type": "string", "description": "Absolute path to a .png, .jpg, .jpeg or .webp file; use this for files on disk."},
+    _tool("place_image", "Places a PNG, JPEG, WebP or SVG image as a new layer at x, y, at its own size unless scale (percent) or fit is given: fit contain or cover sizes it to the document and centres it, center centres it at its size, smart_object makes it a smart object so it can be scaled without loss. An SVG is drawn to pixels at svg_width pixels across (its own width when left out). reference true flags the layer as a reference picture: the generation dialogs' References list starts with it chosen. From path, an absolute path to a file, or data, base64.",
+          {"reference": {"type": "boolean", "default": False}, "svg_width": {"type": "integer", "minimum": 1, "maximum": 30000, "description": "For an SVG: the width in pixels it is drawn at."},
+           "scale": {"type": "number", "minimum": 1, "maximum": 1000, "description": "Percent of the image's own size."}, "fit": {"type": "string", "enum": ["none", "contain", "cover"], "default": "none"},
+           "center": {"type": "boolean", "default": False}, "smart_object": {"type": "boolean", "default": False}, "path": {"type": "string", "description": "Absolute path to a .png, .jpg, .jpeg, .webp or .svg file; use this for files on disk."},
            "data": {"type": "string", "description": "Base64 image data, when there is no file."}, "name": {"type": "string", "maxLength": 120},
            "x": {"type": "number", "default": 0}, "y": {"type": "number", "default": 0}}),
     _tool("undo", "Steps back through the document's history.", {"steps": {"type": "integer", "minimum": 1, "maximum": 100, "default": 1}}),
@@ -102,13 +103,18 @@ TOOLS = [
           {"scale": {"type": "integer", "enum": [2, 4], "default": 2}, "model": {"type": "string", "enum": ["auto", "local", "fal"], "default": "auto"}}, open=True),
     _tool("remove_background", "Removes the active layer's background on this computer, keeping the subject (a mask on the layer; undoable).", {}),
     # Files, read and written by the engine at absolute paths (~ is expanded).
-    _tool("open_file", "Opens a picture (PNG, JPEG, WebP, AVIF, GIF, TIFF, HEIC, QOI, TGA, ICO (its largest size), PBM, PGM, PPM, PAM, camera raw) or a project (.fvd, .fmv, .psd, .psb, .ora) from an absolute path as a new document.",
-          {"path": {"type": "string", "description": "Absolute path, e.g. /Users/me/Pictures/beach.jpg"}}, ["path"]),
-    _tool("save_project", "Saves the document as a formvis project (.fvd: layers, masks, adjustments and text stay editable) at an absolute path. A file already there is kept unless overwrite is true.",
-          {"path": {"type": "string", "description": "Absolute path ending .fvd"}, "overwrite": _OVERWRITE}, ["path"], destructive=True),
-    _tool("export_image", "Writes the document to an absolute path by the path's extension: PNG, JPEG or WebP as it looks (scale applies), or with every layer kept as .psd, .psb (a document past 30000 pixels a side) or .ora (RGB and grayscale documents; scale does not apply). A file already there is kept unless overwrite is true.",
-          {"path": {"type": "string", "description": "Absolute path ending .png, .jpg, .webp, .psd, .psb or .ora"}, "quality": {"type": "number", "minimum": 0.1, "maximum": 1, "default": 0.92},
-           "scale": {"type": "number", "minimum": 0.05, "maximum": 4, "default": 1, "description": "Writes the picture at this factor of its size; the document is not changed."}, "overwrite": _OVERWRITE}, ["path"], destructive=True),
+    _tool("open_file", "Opens a picture (PNG, JPEG, WebP, AVIF, GIF, TIFF, HEIC, QOI, TGA, ICO (its largest size), PBM, PGM, PPM, PAM, camera raw, SVG drawn to pixels at svg_width) or a project (.fvd, .fmv, .psd, .psb, .ora) from an absolute path as a new document. into replace opens a picture in place of the active document (its unsaved changes are discarded), into layer adds it as a layer of the active document (as place_image does; reference true flags it as a reference picture). The file is remembered, so save_project or export_image with no path writes the document back to it.",
+          {"path": {"type": "string", "description": "Absolute path, e.g. /Users/me/Pictures/beach.jpg"}, "into": {"type": "string", "enum": ["document", "replace", "layer"], "default": "document"},
+           "svg_width": {"type": "integer", "minimum": 1, "maximum": 30000, "description": "For an SVG: the width in pixels it is drawn at."}, "reference": {"type": "boolean", "default": False}}, ["path"]),
+    _tool("save_project", "Saves the document as a formvis project (.fvd: layers, masks, adjustments and text stay editable) at an absolute path. With no path it writes back to the .fvd the active document was opened from with open_file (replacing it). A file already there is kept unless overwrite is true.",
+          {"path": {"type": "string", "description": "Absolute path ending .fvd; left out, the file the document was opened from."}, "overwrite": _OVERWRITE}, [], destructive=True),
+    _tool("export_image", "Writes the document to an absolute path by the path's extension: PNG, JPEG or WebP as it looks (scale applies), or with every layer kept as .psd, .psb (a document past 30000 pixels a side) or .ora (RGB and grayscale documents; scale does not apply). Also .tif or .tiff (flat, or with every layer kept when layers is true), .tga, .dpx and .bmp (flat, scale applies), and .exr or .hdr (linear light float, at the document's size; a 32-bit document keeps its values). With no path it writes back to the file the active document was opened from with open_file, replacing it. A file already there is kept unless overwrite is true.",
+          {"path": {"type": "string", "description": "Absolute path ending .png, .jpg, .webp, .psd, .psb, .ora, .tif, .tiff, .tga, .dpx, .bmp, .exr or .hdr; left out, the file the document was opened from."}, "quality": {"type": "number", "minimum": 0.1, "maximum": 1, "default": 0.92},
+           "scale": {"type": "number", "minimum": 0.05, "maximum": 4, "default": 1, "description": "Writes the picture at this factor of its size; the document is not changed."}, "overwrite": _OVERWRITE,
+           "layers": {"type": "boolean", "default": False, "description": "For a TIFF: keep every layer."}, "dpi": {"type": "integer", "minimum": 1, "maximum": 9600, "default": 72, "description": "The resolution written into a TIFF, TGA, DPX or BMP."},
+           "metadata": {"type": "string", "enum": ["keep", "none"], "default": "keep", "description": "none leaves out the document's AI label metadata from a PNG, JPEG or WebP."},
+           "exr_compression": {"type": "string", "enum": ["zip", "piz", "none"], "default": "zip", "description": "For an .exr."}, "half": {"type": "boolean", "default": False, "description": "For an .exr: 16-bit half floats."},
+           "options": {"type": "object", "description": "Format settings as the export dialog names them, for a TIFF, TGA, DPX or BMP, for example {compression: deflate}."}}, [], destructive=True),
     _tool("switch_document", "Makes an open document the one tools act on, by its id from get_document's documents.", {"id": _ID}, ["id"], idempotent=True),
     _tool("close_document", "Closes an open document by its id from get_document's documents (the active one when id is left out) without asking about unsaved changes: they are discarded, so save_project first to keep them. The person can bring the tab back with Reopen Closed Tab.",
           {"id": {"type": "string", "description": "A document id from get_document's documents."}}, destructive=True),
@@ -124,9 +130,15 @@ TOOLS = [
     _tool("crop", "Crops the document to a rectangle in pixels.", {"x": {"type": "integer"}, "y": {"type": "integer"}, "width": {"type": "integer", "minimum": 1}, "height": {"type": "integer", "minimum": 1}}, ["x", "y", "width", "height"], destructive=True),
     _tool("flip_canvas", "Flips the whole document horizontally or vertically.", {"direction": {"type": "string", "enum": ["horizontal", "vertical"]}}, ["direction"]),
     # Layers.
-    _tool("transform_layer", "Moves, scales, rotates or flips a layer (id from get_document): x and y are its new top-left in pixels, scale a percentage, rotation degrees.",
+    _tool("transform_layer", "Moves, scales, rotates or flips a layer (id from get_document): x and y are its new top-left in pixels, scale a percentage, rotation degrees. Then, one of distort (the four corners it is pulled to: perspective and free distortion) or warp (a bend such as arc, wave or fisheye); both resample the pixels, apply as one step and need a pixel layer or a smart object.",
           {"id": _ID, "x": {"type": "number"}, "y": {"type": "number"}, "scale": {"type": "number", "minimum": 1, "maximum": 1000}, "rotation": {"type": "number", "minimum": -360, "maximum": 360},
-           "flip": {"type": "string", "enum": ["horizontal", "vertical"]}}, ["id"]),
+           "flip": {"type": "string", "enum": ["horizontal", "vertical"]},
+           "distort": {"type": "object", "description": "corners: the layer's top left, top right, bottom right and bottom left corners moved to these points in document pixels (convex, in order, none crossing).", "properties": {"corners": {"type": "array", "minItems": 4, "maxItems": 4,
+               "items": {"type": "object", "properties": {"x": {"type": "number", "minimum": -1000000, "maximum": 1000000}, "y": {"type": "number", "minimum": -1000000, "maximum": 1000000}}, "required": ["x", "y"], "additionalProperties": False}}}, "required": ["corners"], "additionalProperties": False},
+           "warp": {"type": "object", "description": "A preset bend laid over the layer: style, bend and horizontal and vertical distortion in percent (-100 to 100).", "properties": {
+               "style": {"type": "string", "enum": ["arc", "arcLower", "arcUpper", "arch", "bulge", "shellLower", "shellUpper", "flag", "wave", "fish", "rise", "fisheye", "inflate", "squeeze", "twist"]},
+               "bend": {"type": "number", "minimum": -100, "maximum": 100, "default": 50}, "horizontal": {"type": "number", "minimum": -100, "maximum": 100, "default": 0}, "vertical": {"type": "number", "minimum": -100, "maximum": 100, "default": 0},
+               "orientation": {"type": "string", "enum": ["horizontal", "vertical"], "default": "horizontal"}, "grid": {"type": "integer", "minimum": 3, "maximum": 6, "default": 4}}, "required": ["style"], "additionalProperties": False}}, ["id"]),
     _tool("rasterize_layer", "Turns a text, shape or smart-object layer into pixels, so filters and painting apply to it.", {"id": _ID}, ["id"]),
     _tool("duplicate_layer", "Duplicates a layer above itself; returns the copy's id.", {"id": _ID, "name": {"type": "string", "maxLength": 120}}, ["id"]),
     _tool("move_layer", "Moves a layer above or below another in the stack.", {"id": _ID, "target": _ID, "where": {"type": "string", "enum": ["above", "below"], "default": "above"}}, ["id", "target"]),
@@ -190,7 +202,7 @@ TOOLS = [
     _tool("timeline_render", "Renders the video timeline to an absolute path: .mp4 (H.264), .gif, or .zip (numbered PNG frames); every frame, or from to to (frames, to excluded); scale 1, 0.5 or 0.25. A file already there is kept unless overwrite is true.",
           {"path": {"type": "string", "description": "Absolute path ending .mp4, .gif or .zip"}, "from": {"type": "integer", "minimum": 0}, "to": {"type": "integer", "minimum": 1},
            "scale": {"type": "number", "enum": [1, 0.5, 0.25], "default": 1}, "overwrite": _OVERWRITE}, ["path"], destructive=True),
-    _tool("list_commands", "Lists formvis's commands: every menu and palette action, each as id, label, when (what it is for) and params (what it takes). Narrow it with group (a menu or family such as Filter or Layer) or text (words from the label, id or description); an unfiltered list is capped, so filter first.",
+    _tool("list_commands", "Lists formvis's commands: every menu and palette action, each as id, label, menu (its path in the menu bar, such as Filter > Blur > Gaussian Blur, which ui_menu_invoke takes), when (what it is for) and params (what it takes). Narrow it with group (a menu or family such as Filter or Layer) or text (words from the label, id or description); an unfiltered list is capped, so filter first.",
           {"group": {"type": "string", "maxLength": 80}, "text": {"type": "string", "maxLength": 120}, "enabled": {"type": "boolean", "description": "true lists only the commands that can run right now, false only those that cannot; each row says enabled, mutates, its keys and, when disabled, disabledReason (and needsDocument when no document is open)."}}, read=True, idempotent=True),
     _tool("describe_command", "One command in full: its label, group, description, when to use it, params with types and defaults, and whether it changes the document or is risky (cannot be undone).",
           {"id": {"type": "string", "maxLength": 120, "description": "A command id from list_commands."}}, ["id"], read=True, idempotent=True),
@@ -235,10 +247,13 @@ TOOLS = [
           {"path": {"type": "string", "maxLength": 200, "default": ""}, "depth": {"type": "integer", "minimum": 1, "maximum": 4, "default": 1}}, read=True, idempotent=True),
     _tool("ui_menu_invoke", "Runs a menu item by its path from the menu bar, such as Edit > Undo or Filter > Blur > Gaussian Blur, as a person clicking it would (a dialog may open: ui_dialog answers it). params are the command's params as describe_command lists them. A command marked risky waits for the person's approval.",
           {"path": {"type": "string", "maxLength": 200, "description": "Menu labels joined with > ending at the item."}, "params": {"type": "object"}}, ["path"], destructive=True),
-    _tool("ui_set", "Sets named parts of the window in one call: tool (a tool id), zoom (1 is 100 percent), centre ({x, y} document pixels to bring to the middle), rotation (degrees of view rotation), theme (a theme name), panels (shown or hidden), foreground and background (#rrggbb) and mask_target (edit the active layer's mask instead of its pixels). A field it does not have is refused by name.",
+    _tool("ui_set", "Sets named parts of the window in one call: tool (a tool id), zoom (1 is 100 percent), centre ({x, y} document pixels to bring to the middle), rotation (degrees of view rotation), theme (a theme name), panels (shown or hidden), foreground and background (#rrggbb), mask_target (edit the active layer's mask instead of its pixels), eyedropper ({size: 1 for a point sample or the side of an average (3, 5, 11, 31, 51, 101), sample: current, below, all, below-flat or all-flat, ring: show the sample ring}), crop_overlay ({kind: the Crop tool's composition guide, show: auto, always or never}) and dock_layout (a workspace by name or id, such as Essentials or Photography; ui_state lists them). A field it does not have is refused by name.",
           {"tool": {"type": "string", "maxLength": 60}, "zoom": {"type": "number", "minimum": 0.01, "maximum": 64}, "centre": {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}}, "required": ["x", "y"], "additionalProperties": False},
            "rotation": {"type": "number", "minimum": -360, "maximum": 360}, "theme": {"type": "string", "maxLength": 60}, "panels": {"type": "boolean"}, "foreground": {"type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "description": "#rrggbb"},
-           "background": {"type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "description": "#rrggbb"}, "mask_target": {"type": "boolean"}}, idempotent=True),
+           "background": {"type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "description": "#rrggbb"}, "mask_target": {"type": "boolean"},
+           "eyedropper": {"type": "object", "properties": {"size": {"type": "integer", "enum": [1, 3, 5, 11, 31, 51, 101]}, "sample": {"type": "string", "enum": ["current", "below", "all", "below-flat", "all-flat"]}, "ring": {"type": "boolean"}}, "additionalProperties": False},
+           "crop_overlay": {"type": "object", "properties": {"kind": {"type": "string", "enum": ["thirds", "grid", "diagonal", "triangle", "golden", "spiral"]}, "show": {"type": "string", "enum": ["auto", "always", "never"]}}, "additionalProperties": False},
+           "dock_layout": {"type": "string", "maxLength": 60}}, idempotent=True),
     _tool("ui_dialog", "Lists, fills in and answers the dialog that is open in the window. action list shows each open dialog's title, message, fields (name, kind, value, range or options) and buttons; set puts values into fields (a field's name from list, or its number as in Name #2); confirm presses the primary button; cancel closes it; button presses the button of that name. An open dialog blocks edits until it is answered.",
           {"action": {"type": "string", "enum": ["list", "set", "confirm", "cancel"], "default": "list"}, "fields": {"type": "object", "description": "Field names and their new values (text, number, true or false for a checkbox, or an option's name)."},
            "button": {"type": "string", "maxLength": 60}}),
@@ -251,8 +266,8 @@ TOOLS = [
            "delay_ms": {"type": "integer", "minimum": 0, "maximum": 100, "default": 4, "description": "Pause after each event."}, "keep_down": {"type": "boolean", "default": False}}, ["events"], destructive=True),
     _tool("ui_key", "Presses keys in the window as a person would, to whatever has focus: keys are combos such as Mod+Z, Shift+Tab, Escape, Enter or B (Mod is Ctrl, or Cmd on a Mac); text types characters into the focused text field or dialog field.",
           {"keys": {"type": "array", "minItems": 1, "maxItems": 50, "items": {"type": "string", "maxLength": 40}}, "text": {"type": "string", "maxLength": 2000}}, destructive=True),
-    _tool("ui_window", "The formvis window itself: size reports its size and focus, resize sets it (the desktop app's window only; a browser tab refuses), focus asks for focus, fullscreen toggles full screen.",
-          {"action": {"type": "string", "enum": ["size", "resize", "focus", "fullscreen"]}, "width": {"type": "integer", "minimum": 400, "maximum": 10000}, "height": {"type": "integer", "minimum": 300, "maximum": 10000}}, ["action"]),
+    _tool("ui_window", "The formvis window itself: size reports its size and focus, resize sets it (the desktop app's window only; a browser tab refuses), focus asks for focus, fullscreen toggles full screen, quit closes formvis (confirm must be true; the person approves it, and is asked about each document with unsaved changes; a browser tab only ends by saying it can be closed).",
+          {"action": {"type": "string", "enum": ["size", "resize", "focus", "fullscreen", "quit"]}, "confirm": {"type": "boolean", "default": False}, "width": {"type": "integer", "minimum": 400, "maximum": 10000}, "height": {"type": "integer", "minimum": 300, "maximum": 10000}}, ["action"]),
     _tool("control_call", "Calls a window control by its protocol name with raw params, the same as the typed tool: ui.inspect, ui.state, ui.screenshot, ui.menu.list, ui.menu.invoke, ui.set, ui.dialog, ui.pointer, ui.key, window, app.open (open_file), app.save (save_project), app.export (export_image) and app.roots (file_roots). params are checked against that tool's schema.",
           {"method": {"type": "string", "enum": list(CONTROL_METHODS)}, "params": {"type": "object", "default": {}}}, ["method"], destructive=True),
     _tool("file_roots", "The folders agents may read and write files in (the person sets them), and the caps on one reply: the most characters of text and bytes of one picture a tool returns. With no folders set, any folder outside the system's own is allowed.",
@@ -650,9 +665,12 @@ async def _ask(name: str, args: dict, timeout: float) -> dict | None:
 # Files at absolute paths (1.53.3): read and written here, the window doing the picture's part.
 _PICTURES = {".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif", ".tif", ".tiff", ".heic", ".heif", ".bmp", ".qoi", ".tga", ".ico", ".pbm", ".pgm", ".ppm", ".pnm", ".pam", ".dng", ".cr2", ".cr3", ".nef", ".arw", ".raf", ".orf", ".rw2"}
 _PROJECTS = {".fvd", ".fmv", ".psd", ".psb", ".ora"}
-_EXPORTS = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".psd": "psd", ".psb": "psb", ".ora": "ora"}
+_EXPORTS = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".psd": "psd", ".psb": "psb", ".ora": "ora",
+            ".tif": "tiff", ".tiff": "tiff", ".tga": "tga", ".dpx": "dpx", ".bmp": "bmp", ".exr": "exr", ".hdr": "hdr"}
+_ENCODED = {"tiff", "tga", "dpx", "bmp"}   # the window sends a PNG and the engine writes these
 _MAX_OPEN = 512 * 1024 * 1024
-_FILES = {"open_file": (_PICTURES | _PROJECTS, True), "place_image": ({".png", ".jpg", ".jpeg", ".webp"}, True), "glb_place": ({".glb", ".gltf"}, True), "glb_info": ({".glb", ".gltf"}, True), "timeline_render": ({".mp4", ".gif", ".zip"}, False),
+_opened: dict[str, str] = {}   # document id: the file open_file read it from, for writing back to it
+_FILES = {"open_file": (_PICTURES | _PROJECTS | {".svg"}, True), "place_image": ({".png", ".jpg", ".jpeg", ".webp", ".svg"}, True), "glb_place": ({".glb", ".gltf"}, True), "glb_info": ({".glb", ".gltf"}, True), "timeline_render": ({".mp4", ".gif", ".zip"}, False),
           "save_project": ({".fvd"}, False), "export_image": (set(_EXPORTS), False), "export_mask": ({".png"}, False), "export_layer": ({".png"}, False)}   # tool: the suffixes it takes, whether it reads
 
 
@@ -854,7 +872,7 @@ async def _run(name: str, args: dict) -> dict:
         if name == "file_roots":
             lim = agents.limits()
             env = [r for r in os.environ.get("FORMVIS_AGENT_ROOTS", "").split(os.pathsep) if r.strip()]
-            data = {"roots": env or lim["roots"], "restricted": bool(env or lim["roots"]), "system_folders_refused": _system_roots(), "text_chars": lim["text_chars"], "image_bytes": lim["image_bytes"], "request_bytes": MAX_BODY, "reply_bytes": MAX_REPLY}
+            data = {"roots": env or lim["roots"], "restricted": bool(env or lim["roots"]), "system_folders_refused": _system_roots(), "text_chars": lim["text_chars"], "image_bytes": lim["image_bytes"], "request_bytes": MAX_BODY, "reply_bytes": MAX_REPLY, "calls_per_client": MAX_PER_CLIENT, "idle_session_seconds": int(agents.SESSION_IDLE), "consent_seconds": 180}
             said = f"Agents may use files inside {', '.join(data['roots'])} only." if data["restricted"] else "No folders are set, so agents may use any folder except the system's own."
             return {"content": [{"type": "text", "text": f"{said} A reply carries at most {data['text_chars']:,} characters of text and {data['image_bytes']:,} bytes of one picture."}], "structuredContent": data}
         if name == "file_info":
@@ -878,7 +896,11 @@ async def _run(name: str, args: dict) -> dict:
             if path.stat().st_size > _MAX_OPEN:
                 return _fail(f"{path.name} is larger than 512 MB.")
             data = base64.b64encode(await asyncio.to_thread(path.read_bytes)).decode()
-            return await _call("__open", {"name": path.name, "data": data})
+            out = await _call("__open", {"name": path.name, "data": data, **{k: args[k] for k in ("into", "svg_width", "reference") if k in args}})
+            opened = (out.get("structuredContent") or {}).get("id") if not out.get("isError") and args.get("into") != "layer" else None
+            if isinstance(opened, str):
+                _opened[opened] = str(path)
+            return out
         if name == "place_image" and args.get("path"):
             path = _path(args.get("path"), _FILES[name][0], True)
             if path.stat().st_size > _MAX_OPEN:
@@ -914,11 +936,24 @@ async def _run(name: str, args: dict) -> dict:
             return {"content": [{"type": "text", "text": f"Wrote {path} ({len(blob):,} bytes)."}], "structuredContent": {"path": str(path), "bytes": len(blob)}}
         if name in ("save_project", "export_image"):
             path = _path(args.get("path"), _FILES[name][0], False, args.get("overwrite"))
-            out = await _call("__project" if name == "save_project" else "__export", {} if name == "save_project" else {"type": _EXPORTS[path.suffix.lower()], "quality": args.get("quality", 0.92), "scale": args.get("scale", 1)})
+            kind = _EXPORTS.get(path.suffix.lower(), "")
+            ask: dict = {}
+            if name == "export_image":
+                wire = "image/png" if kind in _ENCODED and not (kind == "tiff" and args.get("layers")) else "tiff-layers" if kind == "tiff" else kind
+                ask = {"type": wire, "quality": args.get("quality", 0.92), "scale": args.get("scale", 1), **{k: args[k] for k in ("metadata", "exr_compression", "half") if k in args}}
+                if args.get("layers") and kind != "tiff":
+                    return _fail("layers is for a TIFF: .psd, .psb and .ora keep layers by themselves, and the other formats are flat.")
+            out = await _call("__project" if name == "save_project" else "__export", ask)
             data = (out.get("structuredContent") or {}).get("data") if not out.get("isError") else None
             if not data:
                 return out if out.get("isError") else _fail("formvis gave nothing to write.")
             blob = base64.b64decode(data)
+            if name == "export_image" and kind in _ENCODED and not args.get("layers"):
+                from app.services import imaging
+                try:
+                    blob = await asyncio.to_thread(imaging.encode, blob, kind, int(round(float(args.get("quality", 0.92)) * 100)), int(args.get("dpi", 72)), None, dict(args.get("options") or {}))
+                except imaging.DecodeError as exc:
+                    return _fail(str(exc))
             await asyncio.to_thread(path.write_bytes, blob)
             return {"content": [{"type": "text", "text": f"Wrote {path} ({len(blob):,} bytes)."}], "structuredContent": {"path": str(path), "bytes": len(blob)}}
     except ValueError as exc:
@@ -962,6 +997,8 @@ async def _risk(name: str, args: dict) -> str | None:
     """Why a call cannot be undone (a file written, or a catalogue command marked risky); None when Undo covers it."""
     if name in agents.RISKY_TOOLS and (name != "convert_file" or args.get("overwrite") is True):   # a new file replaces nothing
         return f"{name} {agents.RISKY_TOOLS[name]} at {args.get('output_path') or args.get('path', 'a path')}, which Undo cannot restore"
+    if name == "ui_window" and args.get("action") == "quit":
+        return "ui_window quit closes formvis, which Undo cannot reverse"
     ids = [args.get("id")] if name == "run_command" else [c.get("id") for c in args.get("commands") or [] if isinstance(c, dict)] if name == "run_commands" else []
     if name == "ui_menu_invoke":   # the menu path names a command; it is judged as run_command would judge it
         found = await _call("__menu_id", {"path": args.get("path", "")})
@@ -972,6 +1009,20 @@ async def _risk(name: str, args: dict) -> str | None:
         if not out.get("isError") and meta.get("risky"):
             return f"the command {meta.get('label') or cid} is marked risky: Undo cannot reverse it"
     return None
+
+
+async def _write_back(name: str) -> str:
+    """The file the active document was opened from, for a save or export with no path; a ValueError says what to do when there is none."""
+    seen = (await _call("ping", {})).get("structuredContent") or {}
+    path = _opened.get(seen.get("active") or "")
+    if not path:
+        raise ValueError("Give a path: the active document was not opened from a file with open_file, so there is no file to write back to.")
+    suffix = Path(path).suffix.lower()
+    if name == "save_project" and suffix != ".fvd":
+        raise ValueError(f"The active document came from {Path(path).name}, which save_project cannot write (it writes .fvd). Call export_image with no path to write it back as a picture, or give a .fvd path.")
+    if name == "export_image" and suffix not in _EXPORTS:
+        raise ValueError(f"The active document came from {Path(path).name}, which export_image cannot write. Give a path ending in one of {', '.join(sorted(_EXPORTS))}.")
+    return path
 
 
 async def _agent_call(client: str, name: str, args: dict) -> dict:
@@ -989,6 +1040,12 @@ async def _agent_call(client: str, name: str, args: dict) -> dict:
         agents.end(entry, "denied", refusal)
         return _fail(refusal)
     try:
+        if name in ("save_project", "export_image") and not args.get("path"):
+            try:
+                args = {**args, "path": await _write_back(name), "overwrite": True}
+            except ValueError as exc:
+                agents.end(entry, "error", str(exc))
+                return _fail(str(exc))
         refusal = _refused(name, args)
         if refusal:
             agents.end(entry, "error", refusal)

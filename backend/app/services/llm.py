@@ -9,6 +9,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 from pathlib import Path
 
 from app.core import config
@@ -45,54 +46,163 @@ def _write(s: dict) -> None:
     os.chmod(path, 0o600)
 
 
-def _file_key() -> str | None:
-    return _settings().get("key") or None
+DEFAULT_ROW = "default"
+MAX_ROWS = 20
 
 
-def _file_clear() -> None:
-    s = _settings()
-    if "key" in s:
-        s.pop("key")
+def _rows(s: dict | None = None) -> list[dict]:
+    """The language model rows the person typed in: an id, a name, an address, a model and whether it reads pictures.
+    A settings file from before the rows is one row, "default"."""
+    s = _settings() if s is None else s
+    rows = [r for r in s.get("rows") or [] if isinstance(r, dict) and r.get("id") and r.get("baseUrl") and r.get("model")]
+    if not rows and s.get("baseUrl") and s.get("model"):
+        rows = [{"id": DEFAULT_ROW, "name": s["model"], "baseUrl": s["baseUrl"], "model": s["model"], "vision": True}]
+    return rows
+
+
+def _active(s: dict | None = None) -> dict:
+    s = _settings() if s is None else s
+    rows = _rows(s)
+    return next((r for r in rows if r["id"] == s.get("active")), rows[0] if rows else {})
+
+
+def _secret_name(row_id: str) -> str:
+    return "llm" if row_id == DEFAULT_ROW else f"llm-{row_id}"
+
+
+def _file_funcs(row_id: str):
+    def read() -> str | None:
+        s = _settings()
+        return (s.get("key") if row_id == DEFAULT_ROW else (s.get("keys") or {}).get(row_id)) or None
+
+    def clear() -> None:
+        s = _settings()
+        if row_id == DEFAULT_ROW and "key" in s:
+            s.pop("key")
+            _write(s)
+        elif (s.get("keys") or {}).pop(row_id, None) is not None:
+            _write(s)
+
+    def write(key: str) -> None:
+        s = _settings()
+        if row_id == DEFAULT_ROW:
+            s["key"] = key
+        else:
+            s["keys"] = {**(s.get("keys") or {}), row_id: key}
         _write(s)
+    return read, clear, write
 
 
-def _file_write(key: str) -> None:
-    s = _settings()
-    s["key"] = key
-    _write(s)
+def _row_key(row_id: str) -> str | None:
+    """A row's key: from the password store, a file copy moved there first (1.52.5); or the file where there is none."""
+    read, clear, _ = _file_funcs(row_id)
+    return secrets.get(_secret_name(row_id), read, clear)
 
 
 def _key() -> str | None:
-    """The key: from the password store, a file copy moved there first (1.52.5); or the file where there is none."""
-    return secrets.get("llm", _file_key, _file_clear)
+    row = _active()
+    return _row_key(row["id"]) if row else None
 
 
 def status() -> dict:
     s = _settings()
-    return {"configured": bool(s.get("baseUrl") and s.get("model")), "baseUrl": s.get("baseUrl", ""), "model": s.get("model", ""), "hasKey": bool(_key()), "store": secrets.where()["store"]}
+    rows = _rows(s)
+    act = _active(s)
+    return {"configured": bool(act), "baseUrl": act.get("baseUrl", ""), "model": act.get("model", ""), "vision": bool(act.get("vision")), "active": act.get("id", ""), "hasKey": bool(act and _row_key(act["id"])),
+            "rows": [{"id": r["id"], "name": r.get("name") or r["model"], "baseUrl": r["baseUrl"], "model": r["model"], "vision": bool(r.get("vision")), "hasKey": bool(_row_key(r["id"]))} for r in rows],
+            "store": secrets.where()["store"]}
 
 
-def save(base_url: str, model: str, key: str | None = None, forget_key: bool = False) -> dict:
+def _check(base_url: str, model: str, key: str | None, forget_key: bool) -> tuple[str, str]:
     parsed = urllib.parse.urlparse(base_url.strip())
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
-        raise LlmError("The address must be an http:// or https:// address, such as http://localhost:11434/v1 for Ollama.", 422)
+        raise LlmError("The address must be an http:// or https:// address, such as http://localhost:11434/v1 for a model on this computer.", 422)
     model = model.strip()
     if not model or len(model) > 200:
         raise LlmError("Name the model to use.", 422)
-    s = _settings()
-    s["baseUrl"], s["model"] = base_url.strip().rstrip("/"), model
     if key is not None and key.strip() and not forget_key and (len(key.strip()) > 512 or any(c.isspace() for c in key.strip())):
         raise LlmError("That does not look like an API key.", 422)
-    _write(s)
+    return base_url.strip().rstrip("/"), model
+
+
+def _keep_key(row_id: str, key: str | None, forget_key: bool) -> None:
+    _, clear, write = _file_funcs(row_id)
     if forget_key:
-        secrets.delete("llm", _file_clear)
+        secrets.delete(_secret_name(row_id), clear)
     elif key is not None and key.strip():
-        secrets.put("llm", key.strip(), _file_write, _file_clear)
+        secrets.put(_secret_name(row_id), key.strip(), write, clear)
+
+
+def save(base_url: str, model: str, key: str | None = None, forget_key: bool = False) -> dict:
+    """The older single-row form: changes the active row, or makes the first one."""
+    base_url, model = _check(base_url, model, key, forget_key)
+    s = _settings()
+    act = _active(s)
+    rid = act.get("id", DEFAULT_ROW)
+    row = {**act, "id": rid, "name": act.get("name") if act.get("name") and act.get("name") != act.get("model") else model, "baseUrl": base_url, "model": model, "vision": bool(act.get("vision", True))}
+    s["rows"] = [row if r["id"] == rid else r for r in _rows(s)] if act else [row]
+    s["active"] = rid
+    s["baseUrl"], s["model"] = base_url, model
+    _write(s)
+    _keep_key(rid, key, forget_key)
+    return status()
+
+
+def save_row(row_id: str | None, name: str, base_url: str, model: str, vision: bool, key: str | None = None, forget_key: bool = False) -> dict:
+    """Adds a row (no id) or changes one; it becomes the one in use when it is the first."""
+    base_url, model = _check(base_url, model, key, forget_key)
+    s = _settings()
+    rows = _rows(s)
+    if row_id is None:
+        if len(rows) >= MAX_ROWS:
+            raise LlmError(f"At most {MAX_ROWS} language models are kept. Remove one first.", 422)
+        row_id = uuid.uuid4().hex[:10]
+    elif not any(r["id"] == row_id for r in rows):
+        raise LlmError("That language model is not in the list.", 404)
+    row = {"id": row_id, "name": name.strip()[:80] or model, "baseUrl": base_url, "model": model, "vision": bool(vision)}
+    s["rows"] = [row if r["id"] == row_id else r for r in rows] if any(r["id"] == row_id for r in rows) else rows + [row]
+    if not s.get("active") or not any(r["id"] == s["active"] for r in s["rows"]):
+        s["active"] = row_id
+    act = _active(s)
+    s["baseUrl"], s["model"] = act["baseUrl"], act["model"]
+    _write(s)
+    _keep_key(row_id, key, forget_key)
+    return status()
+
+
+def use_row(row_id: str) -> dict:
+    s = _settings()
+    rows = _rows(s)
+    if not any(r["id"] == row_id for r in rows):
+        raise LlmError("That language model is not in the list.", 404)
+    s["rows"], s["active"] = rows, row_id
+    act = _active(s)
+    s["baseUrl"], s["model"] = act["baseUrl"], act["model"]
+    _write(s)
+    return status()
+
+
+def delete_row(row_id: str) -> dict:
+    s = _settings()
+    rows = _rows(s)
+    if not any(r["id"] == row_id for r in rows):
+        raise LlmError("That language model is not in the list.", 404)
+    _, clear, _w = _file_funcs(row_id)
+    secrets.delete(_secret_name(row_id), clear)
+    s = _settings()
+    s["rows"] = [r for r in rows if r["id"] != row_id]
+    if s.get("active") == row_id:
+        s["active"] = s["rows"][0]["id"] if s["rows"] else ""
+    act = _active(s)
+    s["baseUrl"], s["model"] = act.get("baseUrl", ""), act.get("model", "")
+    if row_id == DEFAULT_ROW:
+        s.pop("key", None)
+    _write(s)
     return status()
 
 
 def _call(path: str, body: dict | None = None, timeout: float = 120) -> dict:
-    s = _settings()
+    s = _active()
     if not s.get("baseUrl") or not s.get("model"):
         raise LlmError("Set a language model first, in Preferences > Plugins.", 428)
     key = _key()
@@ -118,7 +228,7 @@ def chat(messages: list, tools: list) -> dict:
     model's message (its text and any tool calls). The key stays here."""
     if not isinstance(messages, list) or not 0 < len(messages) <= 200:
         raise LlmError("The conversation is empty or too long.", 400)
-    body = {"model": _settings().get("model"), "messages": _budget_pictures(messages), "temperature": 0.3, "max_tokens": 1200,
+    body = {"model": _active().get("model"), "messages": _budget_pictures(messages, MAX_PICTURES if _active().get("vision") else 0), "temperature": 0.3, "max_tokens": 1200,
             **({"tools": tools, "tool_choice": "auto"} if tools else {})}
     reply = _call("/chat/completions", body, timeout=180)
     choices = reply.get("choices") or []
@@ -136,12 +246,12 @@ MAX_PICTURES = 4
 MAX_PICTURE_BYTES = 1_500_000
 
 
-def _budget_pictures(messages: list) -> list:
-    """The pictures one request may carry: the newest MAX_PICTURES, each under MAX_PICTURE_BYTES as a data address; the
-    rest become a line of text, so the service is never sent more than the budget."""
+def _budget_pictures(messages: list, limit: int = MAX_PICTURES) -> list:
+    """The pictures one request may carry: the newest `limit` (none for a model that does not read pictures), each under
+    MAX_PICTURE_BYTES as a data address; the rest become a line of text, so the service is never sent more than the budget."""
     parts = [(i, j) for i, m in enumerate(messages) if isinstance(m, dict) and isinstance(m.get("content"), list)
              for j, p in enumerate(m["content"]) if isinstance(p, dict) and p.get("type") == "image_url"]
-    keep = set(parts[-MAX_PICTURES:])
+    keep = set(parts[-limit:]) if limit > 0 else set()
     out = []
     for i, m in enumerate(messages):
         if isinstance(m, dict) and isinstance(m.get("content"), list):
@@ -237,7 +347,7 @@ def improve(prompt: str, instructions: str) -> str:
     prompt, instructions = prompt.strip(), instructions.strip()
     if not prompt:
         raise LlmError("Write a prompt to improve first.", 400)
-    body = {"model": _settings().get("model"), "temperature": 0.7, "max_tokens": 600,
+    body = {"model": _active().get("model"), "temperature": 0.7, "max_tokens": 600,
             "messages": [{"role": "system", "content": f"{instructions[:8000]}\n\n{RULE}"}, {"role": "user", "content": prompt[:4000]}]}
     choices = _call("/chat/completions", body).get("choices") or []
     text = str(((choices[0] if choices else {}).get("message") or {}).get("content") or "").strip()

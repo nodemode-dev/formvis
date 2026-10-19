@@ -30,18 +30,32 @@ export async function apiWorkflow(json: string, target: string, file = 'That fil
 }
 
 /** Keeps a workflow as a choice (a same-named one is replaced); its problem, or null. */
-export function addRecipe(name: string, json: string): string | null {
+export function addRecipe(name: string, json: string, mirror = true): string | null {
   const problem = workflowProblem(json, name);
   if (problem) return problem;
   if (json.length > 500_000) return `${name} is too large to keep (500 KB at most).`;
   const kept = name.replace(/\.json$/i, '');
   const list = recipes().filter((r) => r.name !== kept).concat([{ name: kept, json }]);
   try { localStorage.setItem(KEY, JSON.stringify(list.slice(-40))); } catch { return 'There is no room left to keep it.'; }
+  if (mirror) void api.recipeFileSave(kept, json).catch(() => { /* the copy in the browser is kept */ });
   return null;
 }
 
 export function removeRecipe(name: string): void {
   try { localStorage.setItem(KEY, JSON.stringify(recipes().filter((r) => r.name !== name))); } catch { /* nothing kept */ }
+  void api.recipeFileDelete(name).catch(() => { /* it was not a file */ });
+}
+
+/** Reads the data folder's recipes folder: workflows there that are not kept yet are added (the folder is where recipes live, the
+ *  browser keeps a copy). Returns the folder's path and whether anything was added. */
+export async function syncRecipeFolder(): Promise<{ folder: string; added: number } | null> {
+  const r = await api.recipeFiles();
+  if (!r) return null;
+  const have = new Set(recipes().map((x) => x.name)), inFolder = new Set(r.files.map((f) => f.name));
+  for (const x of recipes()) if (!inFolder.has(x.name)) void api.recipeFileSave(x.name, x.json).catch(() => { /* kept in the browser only */ });
+  let added = 0;
+  for (const f of r.files) if (!have.has(f.name) && addRecipe(f.name, f.text, false) === null) added++;
+  return { folder: r.folder, added };
 }
 
 export type RecipeFamily = 'fill' | 'image' | 'text' | 'other';

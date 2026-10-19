@@ -42,13 +42,11 @@ void main() {
   panels.register({
     id: 'info',
     label: 'Sample',
-    render(container) {
-      const line = document.createElement('p');
-      line.className = 'cv-note';
-      container.appendChild(line);
-      const show = () => {
-        const doc = documents.active();
-        line.textContent = doc ? `${doc.name}: ${doc.width} by ${doc.height}, ${doc.layers().length} layers. Edits seen: ${storage.get('edits', 0)}.` : 'No document is open.';
+    render(ui) {
+      const line = ui.text('');
+      const show = async () => {
+        const doc = await documents.active();
+        line.set(doc ? `${doc.name}: ${doc.width} by ${doc.height}, ${(await doc.layers()).length} layers. Edits seen: ${storage.get('edits', 0)}.` : 'No document is open.');
       };
       show();
       events.on('doc', show);
@@ -84,7 +82,7 @@ void main() {
     id: 'swatch',
     label: 'Sample: New Swatch Layer',
     async run() {
-      const doc = documents.active();
+      const doc = await documents.active();
       if (!doc) return;
       const v = await ui.form('Swatch', [
         { id: 'size', label: 'Size', type: 'number', min: 8, max: 256, step: 1, default: 64 },
@@ -93,7 +91,7 @@ void main() {
       if (!v) return;
       const n = Math.min(v.size, doc.width, doc.height);
       const data = new Uint8ClampedArray(n * n * 4).fill(255);
-      doc.newLayer({ width: n, height: n, data }, { name: v.name, x: 0, y: 0 });
+      await doc.newLayer({ width: n, height: n, data }, { name: v.name, x: 0, y: 0 });
     },
   });
 }

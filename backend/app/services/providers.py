@@ -85,11 +85,21 @@ def _key(pid: str) -> tuple[str | None, str | None]:
     return (value, "settings") if value else (None, None)
 
 
+#: Keys a service refused, as (provider, digest of the key); a different key is not in it, so a new key lifts the flag.
+_refused: set[tuple[str, str]] = set()
+
+
+def _print(pid: str) -> tuple[str, str] | None:
+    import hashlib
+    key = _key(pid)[0]
+    return (pid, hashlib.sha256(key.encode()).hexdigest()) if key else None
+
+
 def status() -> list[dict]:
     rows = []
     for pid, s in PROVIDERS.items():
         key, source = _key(pid)
-        rows.append({"id": pid, "name": s["name"], "model": s["model"], "fill": s["fill"], "configured": source is not None, "source": source, "last4": key[-4:] if key and len(key) >= 8 else ""})
+        rows.append({"id": pid, "name": s["name"], "model": s["model"], "fill": s["fill"], "configured": source is not None, "source": source, "last4": key[-4:] if key and len(key) >= 8 else "", "refused": _print(pid) in _refused})
     return rows
 
 
@@ -113,6 +123,7 @@ def _request(pid: str, url: str, data: bytes | None, headers: dict, method: str 
     req = urllib.request.Request(url, data=data, method=method, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=180) as r:
+            _refused.discard(_print(pid))
             return r.read()
     except urllib.error.HTTPError as exc:
         detail = ""
@@ -122,6 +133,9 @@ def _request(pid: str, url: str, data: bytes | None, headers: dict, method: str 
         except Exception:  # noqa: BLE001 - the body is optional detail only
             pass
         if exc.code in (401, 403):
+            p = _print(pid)
+            if p:
+                _refused.add(p)
             raise GenerativeError(f"{name} rejected the API key. Change it in Generate Image.", 401) from exc
         if exc.code == 402:
             raise GenerativeError(f"{name} needs credit on this account before it can generate.", 402) from exc

@@ -4,6 +4,7 @@ import { renderCache } from '../engine/renderer';
 import { api } from '../io/api';
 import { gamutWarning } from '../engine/colour-lut';
 import { slicePrefs } from '../extensions/tools/slice';
+import type { RawSharpen, RawSharpenAmount } from '../io/raw-sharpen';
 import { isLang, type Lang } from './i18n/langs';
 import type { GpuPower, GpuRenderer } from '../gpu/probe';
 import { DEFAULT_COLOUR, cleanColour, cleanPresets, type ColourPreset, type ColourSettings, type MismatchPref } from './colour-settings';
@@ -12,7 +13,7 @@ import { DEFAULT_COLOUR, cleanColour, cleanPresets, type ColourPreset, type Colo
  *  something real: History States and history memory are the undo limits every project uses; region redraws decide
  *  whether a brush stroke repaints only what it changed; the recovery delay is how soon after a change unsaved work is
  *  kept for crash recovery. The graphics processor settings choose the renderer (Phase 18). */
-export interface Prefs extends PagePrefs { language: Lang; profileMismatch: MismatchPref; colour: ColourSettings; colourPresets: ColourPreset[]; shortcuts: Record<string, string[]>; restoreSession: boolean; agentsAllowed: boolean; comfyuiUrl: string; nodemodeUrl: string; historyStates: number; historyMB: number; historyAuto: boolean; memoryLimitMB: number; effectCacheMB: number; cacheLevels: number; regionRedraws: boolean; layerReuse: boolean; fullPreviews: boolean; recoverySeconds: number; autoShowHome: boolean; useGpu: boolean; gpuFilters: boolean; renderer: GpuRenderer; gpuMemoryMB: number; gpuPower: GpuPower; lowLatency: boolean; engineDevice: EngineDevice;
+export interface Prefs extends PagePrefs { language: Lang; profileMismatch: MismatchPref; colour: ColourSettings; colourPresets: ColourPreset[]; shortcuts: Record<string, string[]>; restoreSession: boolean; agentsAllowed: boolean; comfyuiUrl: string; nodemodeUrl: string; historyStates: number; historyMB: number; historyAuto: boolean; memoryLimitMB: number; effectCacheMB: number; backgroundReleaseSec: number; cacheLevels: number; regionRedraws: boolean; layerReuse: boolean; fullPreviews: boolean; recoverySeconds: number; autoShowHome: boolean; useGpu: boolean; gpuFilters: boolean; renderer: GpuRenderer; gpuMemoryMB: number; gpuPower: GpuPower; lowLatency: boolean; engineDevice: EngineDevice;
   /* The sections (the owner's walkthrough): Tools, History & Cache, Workspace, Cursors, Transparency & Gamut,
      Units & Rulers, Guides & Grid; every one acts on something real. */
   zoomWheel: boolean; autoFirstSnapshot: boolean; snapshotMB: number; narrowCollapse: boolean; rememberLayout: boolean;
@@ -42,6 +43,10 @@ export interface Prefs extends PagePrefs { language: Lang; profileMismatch: Mism
   rawAutoTone: boolean; rawSmart: boolean; rawPpi: number;
   /** Show the Camera Raw dialog when a camera RAW opens; off opens it at once with the defaults above. */
   rawAsk: boolean;
+  /** Camera Raw Defaults: the colour space a 16-bit RAW opens in, and the output sharpening applied as it opens. */
+  rawWide: boolean; rawSharpen: RawSharpen; rawSharpenAmount: RawSharpenAmount;
+  /** Preferences > Workspace: with panels hidden (Tab), the pointer at the window's left or right edge shows them again. */
+  autoShowPanels: boolean;
   /** Preferences > History Log: each new history step is written to the log (Edit > History Log saves it). */
   historyLog: boolean;
   /** Preferences > File Handling: a picture placed or dropped into an open document starts in Free Transform. */
@@ -139,10 +144,10 @@ export const checkerPair = (choice: CheckerColors, themeLight: boolean, custom: 
 export type EngineDevice = 'auto' | 'metal' | 'cuda' | 'dml' | 'cpu';
 export const ENGINE_CHOICES: ReadonlyArray<readonly [EngineDevice, string]> = [['auto', 'Automatic'], ['metal', 'Metal (Core ML)'], ['cuda', 'CUDA'], ['dml', 'DirectML (Windows GPU)'], ['cpu', 'CPU']];
 
-export const DEFAULT_PREFS: Prefs = { language: 'en', profileMismatch: 'convert', colour: DEFAULT_COLOUR, colourPresets: [], shortcuts: {}, restoreSession: true, agentsAllowed: false, comfyuiUrl: 'http://127.0.0.1:8188', nodemodeUrl: 'http://localhost:8000', historyStates: 100, historyMB: 256, historyAuto: true, memoryLimitMB: 0, effectCacheMB: 256, cacheLevels: 6, regionRedraws: true, layerReuse: true, fullPreviews: false, recoverySeconds: 20, autoShowHome: true, useGpu: true, gpuFilters: true, renderer: 'auto', gpuMemoryMB: 1024, gpuPower: 'high-performance', lowLatency: false, engineDevice: 'auto',
+export const DEFAULT_PREFS: Prefs = { language: 'en', profileMismatch: 'convert', colour: DEFAULT_COLOUR, colourPresets: [], shortcuts: {}, restoreSession: true, agentsAllowed: false, comfyuiUrl: 'http://127.0.0.1:8188', nodemodeUrl: 'http://localhost:8000', historyStates: 100, historyMB: 256, historyAuto: true, memoryLimitMB: 0, effectCacheMB: 256, backgroundReleaseSec: 30, cacheLevels: 6, regionRedraws: true, layerReuse: true, fullPreviews: false, recoverySeconds: 20, autoShowHome: true, useGpu: true, gpuFilters: true, renderer: 'auto', gpuMemoryMB: 1024, gpuPower: 'high-performance', lowLatency: false, engineDevice: 'auto',
   zoomWheel: false, autoFirstSnapshot: true, snapshotMB: 768, narrowCollapse: true, rememberLayout: true, paintCursor: 'tip', cursorCrosshair: false,
   checkerSize: 'medium', checkerColors: 'auto', checkerTheme: true, rulerUnits: 'px', guideColor: '', gridColor: '', gridSpacing: 100, gridSubdivisions: 4,
-  homeOnLastClose: false, whatsNewAuto: true, whatsNewSeen: '', toolOptions: {}, dialogValues: {}, spellWords: [], measureDataPoints: [...DEFAULT_MEASURE_POINTS], fontPreview: 'medium', toolbar: null, pressureCurve: 'linear', uiFontSize: 'default', recentFontCount: 5, recentFonts: [], rawWb: 'as_shot', rawBits: 8, rawAutoTone: false, rawSmart: false, rawAsk: true, rawPpi: 0, historyLog: false, placeTransform: true, animatedZoom: true, systemPicker: false, zoomResizes: false, beepWhenDone: false, interpolation: 'high', floatDocking: true, showTooltips: true, shiftToolSwitch: true, zoomClickCentre: false, lowerExtension: true, recentFileCount: 20, gamutColor: '#808080', gamutOpacity: 100, guideStyle: 'solid', gridStyle: 'solid', sliceColor: '', sliceNumbers: true, shortcutSets: {}, menuHidden: [], menuColors: {}, animations: true, usePressure: true, ...PAGE_DEFAULTS };
+  homeOnLastClose: false, whatsNewAuto: true, whatsNewSeen: '', toolOptions: {}, dialogValues: {}, spellWords: [], measureDataPoints: [...DEFAULT_MEASURE_POINTS], fontPreview: 'medium', toolbar: null, pressureCurve: 'linear', uiFontSize: 'default', recentFontCount: 5, recentFonts: [], rawWb: 'as_shot', rawBits: 8, rawAutoTone: false, rawSmart: false, rawAsk: true, rawPpi: 0, rawWide: false, rawSharpen: 'none', rawSharpenAmount: 'standard', autoShowPanels: true, historyLog: false, placeTransform: true, animatedZoom: true, systemPicker: false, zoomResizes: false, beepWhenDone: false, interpolation: 'high', floatDocking: true, showTooltips: true, shiftToolSwitch: true, zoomClickCentre: false, lowerExtension: true, recentFileCount: 20, gamutColor: '#808080', gamutOpacity: 100, guideStyle: 'solid', gridStyle: 'solid', sliceColor: '', sliceNumbers: true, shortcutSets: {}, menuHidden: [], menuColors: {}, animations: true, usePressure: true, ...PAGE_DEFAULTS };
 export const RECOVERY_CHOICES: ReadonlyArray<readonly [string, string]> = [['10', '10 seconds'], ['20', '20 seconds'], ['60', '1 minute'], ['300', '5 minutes'], ['600', '10 minutes']];
 const KEY = 'formvis.prefs';
 
@@ -213,6 +218,7 @@ export function loadPrefs(): Prefs {
       historyAuto: typeof r.historyAuto === 'boolean' ? r.historyAuto : DEFAULT_PREFS.historyAuto,   // 1.61.3
       memoryLimitMB: r.memoryLimitMB === 0 ? 0 : Math.round(num(r.memoryLimitMB, 512, 65536, DEFAULT_PREFS.memoryLimitMB)),   // 0 is automatic (PC-AU-0155)
       effectCacheMB: Math.round(num(r.effectCacheMB, 16, 4096, DEFAULT_PREFS.effectCacheMB)),
+      backgroundReleaseSec: r.backgroundReleaseSec === 0 ? 0 : Math.round(num(r.backgroundReleaseSec, 5, 3600, DEFAULT_PREFS.backgroundReleaseSec)),
       cacheLevels: Math.round(num(r.cacheLevels, 0, 8, DEFAULT_PREFS.cacheLevels)),
       regionRedraws: typeof r.regionRedraws === 'boolean' ? r.regionRedraws : DEFAULT_PREFS.regionRedraws,
       layerReuse: typeof r.layerReuse === 'boolean' ? r.layerReuse : DEFAULT_PREFS.layerReuse,
@@ -268,6 +274,10 @@ export function loadPrefs(): Prefs {
       rawAutoTone: r.rawAutoTone === true,
       rawSmart: r.rawSmart === true,
       rawAsk: r.rawAsk !== false,
+      rawWide: r.rawWide === true,
+      rawSharpen: r.rawSharpen === 'screen' || r.rawSharpen === 'glossy' || r.rawSharpen === 'matte' ? r.rawSharpen : 'none',
+      rawSharpenAmount: r.rawSharpenAmount === 'low' || r.rawSharpenAmount === 'high' ? r.rawSharpenAmount : 'standard',
+      autoShowPanels: r.autoShowPanels !== false,
       historyLog: r.historyLog === true,
       placeTransform: r.placeTransform !== false,
       animatedZoom: r.animatedZoom !== false, systemPicker: r.systemPicker === true, zoomResizes: r.zoomResizes === true, beepWhenDone: r.beepWhenDone === true, interpolation: INTERPOLATIONS.some(([k]) => k === r.interpolation) ? r.interpolation as ResampleMethod : 'high', floatDocking: r.floatDocking !== false, showTooltips: r.showTooltips !== false, shiftToolSwitch: r.shiftToolSwitch !== false, zoomClickCentre: r.zoomClickCentre === true, lowerExtension: r.lowerExtension !== false,
@@ -312,10 +322,58 @@ export function updatePrefs(patch: Partial<Prefs>): Prefs {
 
 let appliedCurve: PressureCurve | null = null;
 
-/** Scales the interface's font-size tokens (--fs-9 to --fs-18) to the chosen size. */
+/** Scales the interface's font-size tokens (--fs-9 to --fs-18) to the chosen size, and the rules that still write a size in
+ *  pixels with them. */
 export function applyUiFontSize(p: Prefs): void {
   const k = UI_FONT_SCALE[p.uiFontSize], s = document.documentElement.style;
   for (const n of [9, 10, 11, 12, 13, 14, 16, 18]) { if (k === 1) s.removeProperty(`--fs-${n}`); else s.setProperty(`--fs-${n}`, `${Math.round(n * k * 10) / 10}px`); }
+  scalePxFonts(k);
+}
+
+let pxFontSheet: HTMLStyleElement | null = null;
+let pxFontFactor = 1;
+/** The style rules with a literal pixel font size get the same factor from one generated sheet that follows them, made
+ *  again only when the factor changes (the sheet itself is left out of the walk). */
+function scalePxFonts(k: number): void {
+  if (k === pxFontFactor) return;
+  pxFontFactor = k;
+  if (!pxFontSheet) { if (k === 1) return; pxFontSheet = document.createElement('style'); pxFontSheet.dataset.role = 'ui-font-scale'; document.head.appendChild(pxFontSheet); }
+  const walk = (rules: CSSRuleList): string => {
+    let out = '';
+    for (const r of Array.from(rules)) {
+      if (r instanceof CSSStyleRule) {
+        const m = /^(\d+(?:\.\d+)?)px$/.exec(r.style.getPropertyValue('font-size'));
+        if (m && r.selectorText) out += `${r.selectorText}{font-size:${Math.round(parseFloat(m[1]) * k * 10) / 10}px}`;
+      } else if (r instanceof CSSMediaRule) { const inner = walk(r.cssRules); if (inner) out += `@media ${r.media.mediaText}{${inner}}`; }
+      else if (r instanceof CSSSupportsRule) { const inner = walk(r.cssRules); if (inner) out += `@supports ${r.conditionText}{${inner}}`; }
+    }
+    return out;
+  };
+  let css = '';
+  if (k !== 1) for (const sheet of Array.from(document.styleSheets)) {
+    if (sheet.ownerNode === pxFontSheet) continue;
+    try { css += walk(sheet.cssRules); } catch { /* a sheet from another origin cannot be read */ }
+  }
+  pxFontSheet.textContent = css;
+}
+
+/** Interface scale: the whole window under CSS zoom on the root, kept on this device (the View > Interface Zoom commands
+ *  use the same key). */
+export const UI_SCALES: ReadonlyArray<readonly [string, string]> = [['0.8', '80%'], ['0.9', '90%'], ['1', '100%'], ['1.1', '110%'], ['1.25', '125%'], ['1.5', '150%'], ['1.75', '175%'], ['2', '200%']];
+export function uiScaleChoice(): string {
+  try { const v = localStorage.getItem('formvis.uiZoom') ?? '1'; return UI_SCALES.some(([k]) => k === v) ? v : '1'; } catch { return '1'; }
+}
+export function setUiScale(v: string): void {
+  try { localStorage.setItem('formvis.uiZoom', v); } catch { /* kept for this session only */ }
+  window.dispatchEvent(new Event('formvis:ui-zoom'));
+}
+
+/** Preferences > Plugins > Updates: whether the desktop app looks for a new version when it starts (on unless turned off). */
+export function updateAtStart(): boolean {
+  try { return localStorage.getItem('formvis.updateAtStart') !== '0'; } catch { return true; }
+}
+export function setUpdateAtStart(on: boolean): void {
+  try { localStorage.setItem('formvis.updateAtStart', on ? '1' : '0'); } catch { /* kept for this session only */ }
 }
 
 let appliedScratch: string | null = null;
@@ -334,6 +392,7 @@ export function applyPrefs(engine: Engine, p: Prefs): void {
   renderCache.prefix = p.layerReuse;
   renderCache.effectBytes = p.effectCacheMB * 1048576;
   engine.setMemoryLimit(p.memoryLimitMB * 1048576);
+  engine.backgroundReleaseSec = p.backgroundReleaseSec;
   engine.setHistoryLimits(p.historyStates, p.historyAuto ? null : p.historyMB * 1024 * 1024);   // automatic: from the memory budget (1.61.3)
   engine.dirtyRendering = p.regionRedraws;
   previewMode.full = p.fullPreviews;

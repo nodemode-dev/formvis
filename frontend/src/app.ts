@@ -1,3 +1,4 @@
+import { sharpenRaw8, sharpenRawDeep } from './io/raw-sharpen';
 import { ErrorLog } from './ui/errors';
 import { FillDialog } from './ui/panels/fill-dialog';
 import { FadeDialog } from './ui/panels/fade-dialog';
@@ -40,6 +41,7 @@ import { SPACES, convertPixels, iccProfile, type SpaceId } from './engine/icc';
 import { embedJpeg, embedPng } from './io/embed-icc';
 import { withResolution } from './engine/dpi';
 import { dpxBlob } from './io/dpx';
+import { pickOutFolder, writeFolder } from './io/out-folder';
 import { dropsAlpha, exportLayout, engineWrites, fidelityNotes, exportMeta, exportName, exportSize, formatOptions, PROFILELESS, sizedSettings, type ExportSettings } from './io/export-presets';
 import { pnmDeepBlob } from './io/pnm';
 import { PARAM_KINDS } from './engine/adjust-params';
@@ -64,6 +66,7 @@ import { LayerCompsPanel } from './ui/layer-comps';
 import { StylesPanel } from './ui/styles-panel';
 import { createPresetPanels } from './ui/preset-panels';
 import { createMorePanels } from './ui/more-panels';
+import { createActionsPanel } from './ui/actions-panel';
 import { ModifierKeysPanel } from './ui/modifier-keys';
 import { MeasurementLogPanel } from './ui/measurement-log';
 import { StopDialog } from './ui/panels/stop-dialog';
@@ -81,7 +84,7 @@ import { ActionsDialog, BatchDialog, DropletDialog } from './ui/panels/actions-d
 import { LensBatchDialog, type LensBatchOptions } from './ui/panels/lens-batch-dialog';
 import { ImageProcessorDialog, type ImageProcessorOptions } from './ui/panels/image-processor-dialog';
 import { zipFiles } from './io/zip';
-import { assetFiles } from './io/image-assets';
+import { assetFiles, loadVariantText, parseVariants, saveVariantText } from './io/image-assets';
 import { isPsdFile, readPsdFile, readPsdFlat, reportText, writePsdFile } from './io/psd';
 import { isKraFile, readKra } from './io/kra';
 import { isPdnFile, readPdn } from './io/pdn';
@@ -146,7 +149,7 @@ import { AboutDialog, BenchmarkDialog, NewCanvasDialog, OpenDialog, ReportIssueD
 import { HistoryLog } from './ui/history-log';
 import { extraOn, extrasOn, selectionTintOn, setAllExtras, setExtra, setExtras, setSelectionTint } from './ui/view-extras';
 import { installNumberFields } from './ui/number-fields';
-import { CHECKER_CELL, FONT_PREVIEWS, applyPrefs, applyUiFontSize, checkerPair, DEFAULT_PREFS, loadPrefs, resendScratch, savePrefs, updatePrefs, type Prefs } from './ui/prefs';
+import { CHECKER_CELL, FONT_PREVIEWS, applyPrefs, applyUiFontSize, checkerPair, DEFAULT_PREFS, loadPrefs, resendScratch, savePrefs, updateAtStart, updatePrefs, type Prefs } from './ui/prefs';
 import { THEMES, readChoice, setTheme } from './ui/themes';
 import { installOptionMemory } from './ui/option-memory';
 import { chooseRenderer, detectedName, gpuStartFailedLastTime, markGpuStarted, markGpuStarting, probeGpu, type GpuProbe } from './gpu/probe';
@@ -403,6 +406,15 @@ export function startApp(): void {
     root.classList.toggle('is-panels-hidden', panelsHidden || screen === 'full');
     window.dispatchEvent(new Event('resize'));
   };
+  // Preferences > Workspace > Auto-Show Hidden Panels: with the panels hidden, the pointer at the window's left or right edge shows the tools or the panels over the canvas until it leaves them.
+  document.addEventListener('pointermove', (e) => {
+    const hidden = root.classList.contains('is-panels-hidden');
+    if (!hidden && !root.classList.contains('is-peek-left') && !root.classList.contains('is-peek-right')) return;
+    const on = hidden && loadPrefs().autoShowPanels, over = (e.target as Element | null)?.closest('.cv-rail, .cv-props-col, .cv-layers');
+    const left = on && (e.clientX <= 4 || (root.classList.contains('is-peek-left') && !!over && e.clientX < window.innerWidth / 2));
+    const right = on && !left && (e.clientX >= window.innerWidth - 4 || (root.classList.contains('is-peek-right') && !!over && e.clientX > window.innerWidth / 2));
+    root.classList.toggle('is-peek-left', left); root.classList.toggle('is-peek-right', right);
+  });
   // The OS window's full screen: Full Screen Mode asks for it and leaves it, F11 toggles it on its own; the picture
   // is refitted to the new size, and leaving by the OS (Esc) leaves the mode too.
   let dockHidden = false, railHidden = stored('formvis.railHidden') === '1', optionsHidden = stored('formvis.optionsHidden') === '1';
@@ -474,6 +486,7 @@ export function startApp(): void {
   applyPasteboard();
   applyRtl();
   applyUiZoom();
+  window.addEventListener('formvis:ui-zoom', applyUiZoom);   // Preferences > Interface > Interface Scale
   applyPrefs(engine, loadPrefs());
   const stage = new Stage(q(root, '.cv-stage'), engine);
   q(root, '.cv-stage').addEventListener('contextmenu', (e) => {
@@ -586,6 +599,7 @@ export function startApp(): void {
   new StylesPanel(q(root, '.cv-layers'), engine, (blob, name) => deliver(blob, name));   // Window > Styles (DEV_PLAN 35.3 part b)
   createPresetPanels(q(root, '.cv-layers'), engine, () => savePatterns());   // Window > Gradients, Patterns, Shapes (DEV_PLAN 35.3 part c)
   createMorePanels(q(root, '.cv-layers'), engine, (id) => { void catalogue.runCommand(id).then((r) => { if (!r.ok) toast(r.error ?? 'That could not run now.', 'error'); }); });   // Window > Adjustments, Notes, Histogram (DEV_PLAN 36.17)
+  const actionsPanel = createActionsPanel(q(root, '.cv-layers'));
   new ModifierKeysPanel(q(root, '.cv-layers'));   // Window > Modifier Keys (DEV_PLAN 35.3 part c)
   new MeasurementLogPanel(q(root, '.cv-layers'), engine, (blob, name) => deliver(blob, name));   // Window > Measurement Log
   // Groups made by detaching a tab (1.49.2) come back where they were: made (empty) before the dock reads its
@@ -1000,14 +1014,14 @@ export function startApp(): void {
           if (/\.png$/i.test(f.name)) { const n = await apngFrames(f).catch(() => 0); if (n > 1) toast(`${f.name} is an animated PNG of ${n} frames; only the first frame was opened.`, 'info'); }
           // A single camera RAW opens into Camera Raw first (DEV_PLAN 36.21): Cancel does not open it; 16 Bits/Channel opens a 16-bit document.
           if (RAW_FILE.test(f.name) && images.length === 1) {
-            rawPick = loadPrefs().rawAsk ? await cameraRaw.ask(f) : { wb: { wb: loadPrefs().rawWb, temperature: 0, tint: 0 }, bits: loadPrefs().rawBits };
+            rawPick = loadPrefs().rawAsk ? await cameraRaw.ask(f) : { wb: { wb: loadPrefs().rawWb, temperature: 0, tint: 0, ...(loadPrefs().rawBits === 16 && loadPrefs().rawWide ? { space: 'prophoto' as const } : {}) }, bits: loadPrefs().rawBits };
             if (!rawPick) continue;
             if (rawPick.bits === 16) {
-              try { const d = await api.decodeRaw16(f, f.name, rawPick.wb); engine.openDeep(stripExt(f.name), deepFromU16(d.data, d.width, d.height)); if (d.profile === 'prophoto') engine.assignProfile({ name: 'ProPhoto RGB', icc: toBase64(await api.colourProfileBytes('builtin:prophoto')) }); } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
+              try { const d = await api.decodeRaw16(f, f.name, rawPick.wb); engine.openDeep(stripExt(f.name), sharpenRawDeep(deepFromU16(d.data, d.width, d.height), loadPrefs().rawSharpen, loadPrefs().rawSharpenAmount)); if (d.profile === 'prophoto') engine.assignProfile({ name: 'ProPhoto RGB', icc: toBase64(await api.colourProfileBytes('builtin:prophoto')) }); } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
               rawPick = null;
               continue;
             }
-            try { const img = await decodeImage(f, f.name, false, rawPick.wb), ppi = loadPrefs().rawPpi; decoded.push(ppi ? { ...img, resolution: ppi } : img); } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
+            try { const img = sharpenRaw8(await decodeImage(f, f.name, false, rawPick.wb), loadPrefs().rawSharpen, loadPrefs().rawSharpenAmount), ppi = loadPrefs().rawPpi; decoded.push(ppi ? { ...img, resolution: ppi } : img); } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
             continue;
           }
           // A Lab TIFF opened as a new document is a Lab document (1.58.1), tried before the page count (which refuses it).
@@ -1179,11 +1193,14 @@ export function startApp(): void {
   }
 
   /** Image Assets (36.14): the zip of every layer named like hero.png; `quiet` (on save) says nothing when none are named. */
-  async function generateAssets(quiet: boolean): Promise<void> {
+  async function generateAssets(quiet: boolean, toFolder = false): Promise<void> {
     const p = engine.current;
     if (!p) return;
+    const into = toFolder ? await pickOutFolder() : null;
+    if (toFolder && !into) { toast('Choosing a folder needs a browser that can write to one; Generate Image Assets downloads a zip instead.', 'info'); }
     const files = await assetFiles(engine, !!caps);
     if (!files.length) { if (!quiet) toast('No layer names hold an asset name such as hero.png.', 'info'); return; }
+    if (into) { await writeFolder(into, files); toast(`Wrote ${files.length} image asset${files.length === 1 ? '' : 's'} into ${into.name}.`, 'info'); return; }
     const folder = `${stripExt(p.name)}-assets`;
     if (!await deliverFile(await zipFiles(files.map((f) => ({ name: `${folder}/${f.name}`, blob: f.blob }))), `${folder}.zip`)) return;
     toast(`Generated ${files.length} image asset${files.length === 1 ? '' : 's'}.`, 'info');
@@ -2064,7 +2081,7 @@ export function startApp(): void {
   }
 
   /** Batch: each file opens as a document, plays the action, is exported and closed; the results download as one zip. */
-  async function runBatch(x: Action, files: File[], format: 'png' | 'jpg', quality: number, template = '{name}', serial = 1): Promise<void> {
+  async function runBatch(x: Action, files: File[], format: import('./ui/panels/actions-dialogs').BatchFormat, quality: number, template = '{name}', serial = 1, folder: FileSystemDirectoryHandle | null = null): Promise<void> {
     await engine.task(async () => {
       const out: Array<{ name: string; blob: Blob }> = [], problems: string[] = [], used = new Set<string>();
       let count = 0;
@@ -2075,16 +2092,23 @@ export function startApp(): void {
           if (r.stopped) { engine.closeProject(p.id); problems.push(`stopped at ${f.name}`); break; }
           if (r.failed) problems.push(`${f.name} stopped at ${r.failed}`);
           engine.settle();
-          const blob = await engine.exportBlob(format === 'png' ? 'image/png' : 'image/jpeg', quality);
-          const base = batchName(template, f.name.replace(/\.[^.]+$/, '') || 'image', serial + count++);
-          let name = `${base}.${format}`;
-          for (let k = 2; used.has(name); k++) name = `${base} ${k}.${format}`;
+          let blob: Blob | null;
+          if (format === 'psd') {
+            const flat = engine.flattened();
+            blob = flat ? new Blob([(await writePsdFile(p.doc, flat, false, engine.pathsOf(p), loadExportPrefs().maximizePsd)).bytes], { type: 'image/vnd.adobe.photoshop' }) : null;
+          } else if (format === 'tiff') {
+            const png = await engine.exportBlob('image/png');
+            blob = png ? await withXmp(await api.encode(png, 'tiff', 100, p.doc.resolution ?? 72), 'tiff', p.doc.meta) : null;
+          } else blob = await engine.exportBlob(format === 'png' ? 'image/png' : format === 'webp' ? 'image/webp' : 'image/jpeg', quality);
+          const base = batchName(template, f.name.replace(/\.[^.]+$/, '') || 'image', serial + count++), ext = format === 'tiff' ? 'tif' : format;
+          let name = `${base}.${ext}`;
+          for (let k = 2; used.has(name); k++) name = `${base} ${k}.${ext}`;
           used.add(name);
           if (blob) out.push({ name, blob });
           engine.closeProject(p.id);
         } catch (err) { problems.push(`${f.name}: ${message(err)}`); }
       }
-      if (out.length) await deliver(await zipFiles(out), `${x.name} batch.zip`);
+      if (out.length) { if (folder) await writeFolder(folder, out); else await deliver(await zipFiles(out), `${x.name} batch.zip`); }
       if (problems.length) toast(`Batch finished ${out.length} of ${files.length}. ${problems.join('. ')}.`, 'error');
       else toast(`Batch finished all ${files.length} image${files.length === 1 ? '' : 's'}.`);
     });
@@ -2111,7 +2135,7 @@ export function startApp(): void {
           engine.closeProject(p.id);
         } catch (err) { problems.push(`${f.name}: ${message(err)}`); }
       }
-      if (out.length) await deliver(await zipFiles(out), 'Lens Correction batch.zip');
+      if (out.length) { if (o.out) await writeFolder(o.out, out); else await deliver(await zipFiles(out), 'Lens Correction batch.zip'); }
       if (problems.length) toast(`Lens Correction finished ${out.length} of ${files.length}. ${problems.join('. ')}.`, 'error');
       else toast(`Lens Correction finished all ${files.length} image${files.length === 1 ? '' : 's'}.`);
     });
@@ -2159,6 +2183,11 @@ export function startApp(): void {
       const webp = await engine.exportBlob('image/webp', o.webp.quality / 100);
       return webp ? withXmp(webp, 'webp', here().doc.meta) : null;
     } });
+    if (o.tga.on) jobs.push({ dir: 'TGA', ext: 'tga', fit: o.tga, make: async () => {
+      const png = await engine.exportBlob('image/png');
+      return png ? api.encode(png, 'tga', 100, here().doc.resolution ?? 72, null, { bits: o.tga.option.startsWith('24') ? 24 : 32, rle: o.tga.option.endsWith('rle') }) : null;
+    } });
+    if (o.dpx.on) jobs.push({ dir: 'DPX', ext: 'dpx', fit: o.dpx, make: () => dpxBlob(engine, { format: 'dpx', quality: 100, scale: 100, dpxBits: o.dpx.bits, dpxTransfer: 'log' }) });
     await engine.task(async () => {
       const out: Array<{ dir: string; name: string; blob: Blob }> = [], problems: string[] = [], used = new Set<string>();
       outer: for (const f of sources) for (const j of jobs) {
@@ -2183,7 +2212,8 @@ export function startApp(): void {
         } catch (err) { problems.push(`${f.name}: ${message(err)}`); } finally { if (id) engine.closeProject(id); }
       }
       if (out.length) {
-        if (caps?.desktop) { for (const f of out) await api.exportFile(f.blob, f.name, `Image Processor ${f.dir}`); }   // one folder level: the export route refuses separators
+        if (o.out) await writeFolder(o.out, out);
+        else if (caps?.desktop) { for (const f of out) await api.exportFile(f.blob, f.name, `Image Processor ${f.dir}`); }   // one folder level: the export route refuses separators
         else await deliver(await zipFiles(out.map((f) => ({ name: `${f.dir}/${f.name}`, blob: f.blob }))), 'Image Processor.zip');
       }
       if (problems.length) toast(`Image Processor wrote ${out.length} file${out.length === 1 ? '' : 's'}. ${problems.join('. ')}.`, 'error');
@@ -2887,23 +2917,27 @@ export function startApp(): void {
 
   /** Help > Check for Updates (desktop app): says what the shell's check found; for a new version, installs it and
    *  restarts once the person agrees and every unsaved document is settled. */
-  async function checkUpdates(): Promise<void> {
+  async function checkUpdates(quiet = false): Promise<string> {
+    if (!hasPanels()) { const text = 'Updates are checked in the desktop app; this page runs in a browser.'; if (!quiet) toast(text, 'info'); return text; }
     let report;
-    try { report = await checkForUpdate(); } catch (err) { toast(`Could not check for updates: ${message(err)}`, 'error'); return; }
-    if (report.status !== 'available') { toast(report.message, report.status === 'failed' ? 'error' : 'info'); return; }
+    try { report = await checkForUpdate(); } catch (err) { const text = `Could not check for updates: ${message(err)}`; if (!quiet) toast(text, 'error'); return text; }
+    if (report.status !== 'available') { if (!quiet) toast(report.message, report.status === 'failed' ? 'error' : 'info'); return report.message; }
     if ((await api.capabilities())?.switches?.portable) {
-      toast(`Version ${report.version ?? ''} is available. This portable copy does not update itself; the releases page is opening.`, 'info');
+      const text = `Version ${report.version ?? ''} is available. This portable copy does not update itself; the releases page is opening.`;
+      toast(text, 'info');
       window.open('https://github.com/nodemode-ai/formvis/releases', '_blank', 'noopener');
-      return;
+      return text;
     }
     const again = !!report.version && stored(SKIPPED_UPDATE_KEY) === report.version;
+    if (quiet && again) return report.message;
     const choice = await dialogs.update.ask(`${report.message}${again ? ' You skipped this version earlier.' : ''} Restart and update formvis?`, report.notes ?? null);
-    if (choice === 'skip') { if (report.version) store(SKIPPED_UPDATE_KEY, report.version); toast(`Skipped version ${report.version ?? ''}; Help > Check for Updates offers it again.`, 'info'); return; }
-    if (choice === 'later') return;
-    if (engine.busyWith) { toast(`Wait for ${engine.busyWith} to finish, then check for updates again.`, 'info'); return; }
-    if (!(await settleUnsaved())) return;
+    if (choice === 'skip') { if (report.version) store(SKIPPED_UPDATE_KEY, report.version); toast(`Skipped version ${report.version ?? ''}; Help > Check for Updates offers it again.`, 'info'); return report.message; }
+    if (choice === 'later') return report.message;
+    if (engine.busyWith) { toast(`Wait for ${engine.busyWith} to finish, then check for updates again.`, 'info'); return report.message; }
+    if (!(await settleUnsaved())) return report.message;
     await finalSave();
     try { await installUpdate(); } catch (err) { toast(message(err), 'error'); }
+    return report.message;
   }
 
   const imageInput = el<HTMLInputElement>(`<input type="file" multiple accept="${IMAGE_ACCEPT}" data-role="import-images" hidden>`);
@@ -3073,7 +3107,7 @@ export function startApp(): void {
       run: (id, params) => commands.get(id)?.run(params),
       keyTaken: (combo) => { const c = commands.forCombo(combo); return c ? commands.label(c) : ''; },
     }),
-    batch: new BatchDialog(actions, (x, f, fmt, q, t, s) => runBatch(x, f, fmt, q, t, s)),
+    batch: new BatchDialog(actions, (x, f, fmt, q, t, s, out) => runBatch(x, f, fmt, q, t, s, out)),
     droplet: new DropletDialog(actions, (o) => makeDroplet(o)),
     lensBatch: new LensBatchDialog((o, f) => runLensBatch(o, f)),
     imageProcessor: new ImageProcessorDialog(actions, (o) => imageProcessor(o)),
@@ -3164,6 +3198,7 @@ export function startApp(): void {
     contentFill: new ContentFillDialog(engine),
     gradientEditor: new GradientEditor(engine),
   };
+  actionsPanel.bind(actions, { play: (x) => playAction(x), options: () => dialogs.actions.show() });
   dialogs.presetManager.onSettings = ({ shortcuts }) => {
     commands.resetKeys();
     for (const [id, keys] of Object.entries(shortcuts)) commands.setKeys(id, keys);
@@ -3176,7 +3211,8 @@ export function startApp(): void {
   const abrInput = el<HTMLInputElement>('<input type="file" accept=".abr,image/*" data-role="import-brushes" hidden>');
   document.body.appendChild(abrInput);
   dialogs.settings.workspaceLock = { get: () => dock.locked, set: (on) => { dock.locked = on; } };   // Preferences > Workspace
-  dialogs.settings.checkUpdates = () => void checkUpdates();   // Preferences > Plugins > Updates
+  dialogs.settings.checkUpdates = () => checkUpdates();   // Preferences > Plugins > Updates
+  if (hasPanels() && updateAtStart()) window.setTimeout(() => void checkUpdates(true), 8000);   // the shell no longer asks by itself
   dialogs.settings.applyTiled = (on) => { engine.tiledDocuments = on; };   // Preferences > Performance > Rendering
   dialogs.settings.restartWindow = () => void commands.run('reload-window');
   dialogs.settings.canvasColour = { get: pasteboard, set: (k) => { store('formvis.pasteboard', k); applyPasteboard(); } };   // Preferences > Interface
@@ -3638,7 +3674,7 @@ export function startApp(): void {
         engine.trap(trapPixels(Number(a.width), unit, p.doc.resolution));
       },
     },
-    { id: 'actions', label: 'Actions...', keys: ['Alt+F9'], run: () => dialogs.actions.show() },
+    { id: 'actions', label: 'Actions...', run: () => dialogs.actions.show() },
     { id: 'script-console', label: 'Script Console...', run: () => scriptConsole.show() },
     { id: 'console-log', label: 'Console...', run: () => consoleLog.show() },
     { id: 'earlier-states', label: 'Earlier States...', run: () => void earlierStates.show() },
@@ -3780,14 +3816,25 @@ export function startApp(): void {
     {
       id: 'export-to-file', label: 'Export to File', enabled: has,
       params: {
-        format: { type: 'string', description: 'png, jpg, webp or tiff; png when left out.' },
+        format: { type: 'string', description: 'png, jpg, webp or tiff for the flat picture; psd, psb, ora or fvd keeps the layers; png when left out.' },
         quality: { type: 'number', min: 0, max: 100, description: 'Quality for jpg and webp; 92 when left out.' },
         name: { type: 'string', description: 'The file name; the document name when left out.' },
       },
       run: async (a) => {
         const p = engine.current, f = String(a?.format ?? 'png').toLowerCase(), kind = f === 'jpeg' ? 'jpg' : f === 'tif' ? 'tiff' : f;
         if (!p) return undefined;
-        if (kind !== 'png' && kind !== 'jpg' && kind !== 'webp' && kind !== 'tiff') throw new Error('format must be png, jpg, webp or tiff.');
+        if (kind === 'psd' || kind === 'psb' || kind === 'ora' || kind === 'fvd') {
+          engine.settle();
+          const flat = engine.flattened();
+          if (!flat) throw new Error('Nothing to export.');
+          if (kind !== 'ora' && kind !== 'fvd' && (p.doc.mode === 'cmyk' || p.doc.mode === 'lab')) throw new Error(`A ${p.doc.mode} document goes out as a PSD from File > Export; convert it to RGB first (mode-rgb).`);
+          let layered: Blob;
+          if (kind === 'ora') layered = (await writeOra(p.doc, flat, (l) => engine.renderLayerAlone(l.id))).blob;
+          else if (kind === 'fvd') { const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p)); layered = await api.package(manifest, files); }
+          else layered = new Blob([(await writePsdFile(p.doc, flat, kind === 'psb', engine.pathsOf(p), loadExportPrefs().maximizePsd)).bytes]);
+          return { path: await api.exportFile(layered, typeof a?.name === 'string' && a.name ? a.name : `${p.name}.${kind}`) };
+        }
+        if (kind !== 'png' && kind !== 'jpg' && kind !== 'webp' && kind !== 'tiff') throw new Error('format must be png, jpg, webp, tiff, psd, psb, ora or fvd.');
         const blob = await imageBlob(kind, (typeof a?.quality === 'number' ? a.quality : 92) / 100);
         if (!blob) throw new Error('The picture could not be encoded.');
         return { path: await api.exportFile(blob, typeof a?.name === 'string' && a.name ? a.name : `${p.name}.${kind}`) };
@@ -3832,6 +3879,8 @@ export function startApp(): void {
         layer: { type: 'string', description: 'Layer id or name the variable is bound to; the active layer when left out.' },
         kind: { type: 'string', description: 'visibility, text (type layers) or pixels (pixel layers).' },
         method: { type: 'string', description: 'For pixels: fit, fill, asis or conform; fit when left out.' },
+        align: { type: 'integer', min: 0, max: 8, description: 'For pixels: where the picture sits in the layer\'s box, 0 top left to 8 bottom right; 4 (the centre) when left out.' },
+        clip: { type: 'boolean', description: 'For pixels: clip the picture to the layer\'s box; true when left out.' },
       },
       run: (a) => {
         if (!a || !Object.keys(a).length) { dialogs.defineVariables.show(); return undefined; }
@@ -3839,7 +3888,7 @@ export function startApp(): void {
         const l = p?.doc.layers.find((x) => x.id === ref) ?? p?.doc.layers.find((x) => x.name === ref);
         if (!l || (k !== 'visibility' && k !== 'text' && k !== 'pixels')) { toast('Give a layer and a kind: visibility, text or pixels.'); return undefined; }
         const m = String(a?.method ?? 'fit').toLowerCase(), method = m === 'fill' || m === 'asis' || m === 'conform' ? m : 'fit';
-        return engine.defineVariable({ name: String(a?.name ?? l.name), layer: l.id, kind: k, method });
+        return engine.defineVariable({ name: String(a?.name ?? l.name), layer: l.id, kind: k, method, align: typeof a?.align === 'number' ? a.align : undefined, clip: a?.clip === false ? false : undefined });
       },
     },
     {
@@ -3879,7 +3928,7 @@ export function startApp(): void {
     {
       id: 'image-processor', label: 'Image Processor...', enabled: () => true,
       params: {
-        types: { type: 'string', description: 'Comma list of jpg, psd, tiff, png, webp; jpg when left out.' },
+        types: { type: 'string', description: 'Comma list of jpg, psd, tiff, png, webp, tga, dpx; jpg when left out.' },
         quality: { type: 'integer', min: 0, max: 12, description: 'JPEG quality 0 to 12; 10 when left out.' },
         webp_quality: { type: 'integer', min: 1, max: 100, description: 'WebP quality 1 to 100; 85 when left out.' },
         max_w: { type: 'integer', min: 1, description: 'Resize to Fit width in pixels, with max_h.' },
@@ -3896,6 +3945,7 @@ export function startApp(): void {
           jpeg: { ...fit, on: t.includes('jpg') || t.includes('jpeg'), quality: Math.min(12, Math.max(0, Math.round(Number(a.quality ?? 10)))), srgb: true },
           psd: { ...fit, on: t.includes('psd') }, tiff: { ...fit, on: t.includes('tif'), lzw: true },
           png: { ...fit, on: t.includes('png') }, webp: { ...fit, on: t.includes('webp'), quality: Math.min(100, Math.max(1, Math.round(Number(a.webp_quality ?? 85)))) },
+          tga: { ...fit, on: t.includes('tga'), option: '32rle' }, dpx: { ...fit, on: t.includes('dpx'), bits: 10 },
         });
         return undefined;
       },
@@ -4001,6 +4051,7 @@ export function startApp(): void {
         ...SOURCE_PARAMS,
         layout: { type: 'string', enum: ['auto', 'perspective', 'cylindrical', 'collage', 'reposition'], description: 'How the photos are joined; auto when left out.' },
         crop: { type: 'boolean', description: 'Crop to the largest rectangle the photos fill (else the edges stay transparent).' },
+        layers: { type: 'boolean', description: 'Open one layer per photo, each with a seam mask, instead of one joined picture.' },
         vignette: { type: 'boolean', description: 'Vignette Removal; needs photos of one size.' },
         distortion: { type: 'boolean', description: 'Geometric Distortion Correction.' },
       },
@@ -4214,7 +4265,7 @@ export function startApp(): void {
     ...ALL_PANELS.map((pn) => pn.id === 'timeline'
       // Window > Timeline (1.59.8), as Photon's: the frames panel beside a frame animation, else the panel under the canvas.
       ? { id: 'panel-timeline', label: pn.label, checked: () => (engine.timeline.frames.length ? dock.isShown('timeline') : vtl.isOpen), run: () => { if (engine.timeline.frames.length) dock.toggle('timeline'); else vtl.toggleOpen(); } }
-      : { id: `panel-${pn.id}`, label: pn.label, ...(pn.id === 'layers' ? { keys: ['F7'] } : {}), checked: () => dock.isShown(pn.id), run: () => dock.toggle(pn.id) }),
+      : { id: `panel-${pn.id}`, label: pn.label, ...(pn.id === 'layers' ? { keys: ['F7'] } : pn.id === 'actions' ? { keys: ['Alt+F9'] } : {}), checked: () => dock.isShown(pn.id), run: () => dock.toggle(pn.id) }),
     { id: 'merge-columns', label: 'Merge Panel Columns', checked: () => dock.merged, run: () => { if (dock.merged) dock.separate(); else dock.merge(); } },
     { id: 'panel-float', label: 'Float Panel', params: { panel: { type: 'string', description: 'The panel group id (navigator, swatches, layers, timeline, history, properties, brushes and the rest of the Window list) or a tab id inside a group.' }, x: { type: 'number', description: 'Left edge in pixels; where it last stood when left out.' }, y: { type: 'number', description: 'Top edge in pixels.' }, w: { type: 'number', description: 'Width in pixels.' }, h: { type: 'number', description: 'Height in pixels.' } },
       run: (a) => { const id = panelGroupId(a?.panel); const n = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined); if (!id || !dock.float(id, { x: n(a?.x), y: n(a?.y), w: n(a?.w), h: n(a?.h) })) toast('No panel with that id.', 'error'); } },
@@ -4322,6 +4373,14 @@ export function startApp(): void {
     { id: 'export-layers', label: 'Layers to Files...', enabled: has, params: LAYER_EXPORT_PARAMS, run: (a) => layerExportRun(false, a) },
     { id: 'export-selection-mask', label: 'Selection as Mask PNG', enabled: selected, run: () => void exportSelectionMask() },
     { id: 'generate-image-assets', label: 'Generate Image Assets', enabled: has, run: () => generateAssets(false) },
+    { id: 'generate-image-assets-folder', label: 'Generate Image Assets to Folder...', enabled: has, run: () => generateAssets(false, true) },
+    { id: 'image-asset-variants', label: 'Image Asset Default Variants...', run: async () => {
+      const text = await promptName('Default variants: scales such as 100, 200@2x, 3x (blank for none)', loadVariantText(), 'Save');
+      if (text === null) return;
+      const list = parseVariants(text);
+      saveVariantText(list.map((v) => `${v.pct}${v.suffix ? ` ${v.suffix}` : ''}`).join(', '));
+      toast(list.length ? `Every asset name without a size is also written at ${list.map((v) => `${v.pct}%`).join(', ')}.` : 'Image assets are written once, at their own size.', 'info');
+    } },
     { id: 'image-assets-on-save', label: 'Image Assets on Save', enabled: has, checked: () => !!engine.current?.doc.assetsOnSave, run: () => engine.setAssetsOnSave(!engine.current?.doc.assetsOnSave) },
     {
       id: 'measure-scale', label: 'Set Measurement Scale...', enabled: has,
@@ -5276,7 +5335,16 @@ export function startApp(): void {
     // Image > Mode and Layer > Flatten Image (1.50.2, the owner's walkthrough).
     { id: 'mode-rgb', label: 'RGB Color', enabled: has, checked: () => (engine.current?.doc.mode ?? 'rgb') === 'rgb', run: () => { if (askModeOptions('rgb')) return; const m = engine.current?.doc.mode; if (m === 'cmyk' || m === 'lab') void toRgbFirst(); else engine.convertMode('rgb'); } },
     { id: 'mode-lab', label: 'Lab Color', enabled: () => has() && ['rgb', 'lab'].includes(engine.current?.doc.mode ?? 'rgb'), checked: () => engine.current?.doc.mode === 'lab', run: () => { if (askModeOptions('lab')) return; if (engine.current?.doc.mode !== 'lab') void downTo(16).then((ok) => { if (!ok) return; if (engine.current?.doc.depth === 16) void deepMode('lab', 'lab', null); else engine.setLab(); }); } },
-    { id: 'mode-cmyk', label: 'CMYK Color...', enabled: () => has() && ['rgb', 'cmyk', 'lab'].includes(engine.current?.doc.mode ?? 'rgb'), checked: () => engine.current?.doc.mode === 'cmyk', run: () => { if (engine.current?.doc.mode === 'cmyk') return; void ((engine.current?.doc.depth ?? 8) > 8 ? downTo(16) : toRgbFirst().then((rgb) => (rgb ? downTo(8) : false))).then((ok) => { if (ok) modeDialog.show('cmyk'); }); } },
+    { id: 'mode-cmyk', label: 'CMYK Color...', enabled: () => has() && ['rgb', 'cmyk', 'lab'].includes(engine.current?.doc.mode ?? 'rgb'), checked: () => engine.current?.doc.mode === 'cmyk', params: { profile: { type: 'string', description: 'default for the shipped CMYK profile, or a CMYK profile id or name: converts at once with no dialog. Left out, the CMYK dialog opens.' } }, run: (a) => { if (engine.current?.doc.mode === 'cmyk') return; void ((engine.current?.doc.depth ?? 8) > 8 ? downTo(16) : toRgbFirst().then((rgb) => (rgb ? downTo(8) : false))).then(async (ok) => {
+      if (!ok) return;
+      if (typeof a?.profile !== 'string') { modeDialog.show('cmyk'); return; }
+      try {
+        const all = (await api.colourProfiles()).profiles.filter((x) => x.space === 'CMYK'), pick = a.profile === 'default' ? (all.find((x) => x.shipped) ?? all[0]) : all.find((x) => x.id === a.profile || x.name === a.profile);
+        if (!pick) { toast(t('No CMYK profile was found. Load one in View > Proof Setup.'), 'error'); return; }
+        const c = loadPrefs().colour, profile = await cmykProfileOf(pick.id, pick.name);
+        if (engine.current?.doc.depth === 16) await deepMode('cmyk', `id:${pick.id}`, profile, c.intent, c.bpc); else await toCmyk(profile, c.intent, c.bpc);
+      } catch (err) { toast(message(err), 'error'); }
+    }); } },
     { id: 'mode-grayscale', label: 'Grayscale', enabled: has, checked: () => engine.current?.doc.mode === 'grayscale', run: () => { if (askModeOptions('gray')) return; const m = engine.current?.doc.mode; if (engine.current?.doc.depth === 16 && m !== 'grayscale') void toGray(); else if (m === 'lab') engine.setGrayFromLab(); else if (m === 'cmyk') void toRgbFirst().then((ok) => { if (ok) engine.convertMode('grayscale'); }); else engine.convertMode('grayscale'); } },
     { id: 'mode-duotone', label: 'Duotone...', enabled: () => has() && ['grayscale', 'duotone'].includes(engine.current?.doc.mode ?? 'rgb'), checked: () => engine.current?.doc.mode === 'duotone', run: () => dialogs.duotone.show() },   // 31.3a
     { id: 'mode-grayscale-from', label: 'Grayscale From Channels...', enabled: () => has() && ['rgb', 'indexed', 'grayscale'].includes(engine.current?.doc.mode ?? 'rgb') && (engine.current?.doc.depth ?? 8) === 8, run: () => modeDialog.show('grayscale') },
@@ -5392,7 +5460,7 @@ export function startApp(): void {
   const drawnFirst = ['filter-flame', 'filter-pictureFrame', 'filter-tree'];
   const menus: MenuDef[] = [
     { label: 'File', items: () => ['new', 'new-from-clipboard', 'open', 'open-as', 'import', 'import-folder', 'import-notes', 'import-video', 'create-video-timeline', 'place-embedded', 'place-linked', 'place-3d', 'open-svg-layers', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.slice(0, loadPrefs().recentFileCount).map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'save-copy', 'revert', 'earlier-states', 'download-project', 'package', '-',
-      { label: 'Export', items: ['quick-export', 'export-as', 'export-preferences', 'save-for-web', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-tiff-layers', 'export-hdr', 'export-exr', 'export-exr-half', 'export-exr-piz', 'export-exr-none', 'export-pfm', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'export-paths-ai', 'assemble-tiles', '-', 'export-layers', 'export-layer-comps', 'export-selection-mask', 'generate-image-assets', 'image-assets-on-save', 'export-luts', 'export-artboards-files', 'export-data-sets', 'export-artboards'] },
+      { label: 'Export', items: ['quick-export', 'export-as', 'export-preferences', 'save-for-web', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-tiff-layers', 'export-hdr', 'export-exr', 'export-exr-half', 'export-exr-piz', 'export-exr-none', 'export-pfm', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'export-paths-ai', 'assemble-tiles', '-', 'export-layers', 'export-layer-comps', 'export-selection-mask', 'generate-image-assets', 'generate-image-assets-folder', 'image-asset-variants', 'image-assets-on-save', 'export-luts', 'export-artboards-files', 'export-data-sets', 'export-artboards'] },
       { label: 'Automate', items: ['actions', 'action-stop', 'insert-conditional', 'insert-action-step', 'action-options', '-', 'load-actions', 'export-actions-atn', '-', 'batch', 'create-droplet', '-', 'lens-correction-batch', 'fit-image', 'conditional-mode-change', 'contact-sheet', 'crop-straighten-photos', 'photomerge', 'merge-hdr'] },
       { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'script-browse', 'image-processor', 'script-events', 'load-files-stack', 'stack-statistics', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'reopen-closed-tab', 'close-all', 'close-others', 'close-tabs-right', 'pin-tab', '-', 'exit'] },
     { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', 'peek-original', 'compare-split', 'cancel-job', { label: 'Snapshot', items: ['new-snapshot', 'new-snapshot-merged', 'new-snapshot-layer'] }, '-', 'fade', 'compare-documents', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', 'pick-screen-colour', 'cycle-tool-mode', '-',

@@ -3,9 +3,9 @@ import { defaultLensFix, type LensFix } from '../../engine/filters';
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
 import { checkRow, selectRow, sliderRow } from './controls';
-import { folderImages, folderInput } from './image-processor-dialog';
+import { folderImages, folderInput, OutFolderRow } from './image-processor-dialog';
 
-export interface LensBatchOptions { distortion: number; lensFix: LensFix; format: 'same' | 'png' | 'jpg'; quality: number; template: string }
+export interface LensBatchOptions { distortion: number; lensFix: LensFix; format: 'same' | 'png' | 'jpg'; quality: number; template: string; out?: FileSystemDirectoryHandle | null }
 
 /** File > Automate > Lens Correction: the Lens Correction settings applied to every chosen picture or folder, each saved as
  *  its own type (or PNG or JPEG) into one zip. */
@@ -17,6 +17,7 @@ export class LensBatchDialog extends Dialog {
   private files: File[] = [];
   private inFolder: File[] = [];
   private subfolders = true;
+  private readonly outRow = new OutFolderRow();
 
   constructor(private readonly run: (o: LensBatchOptions, files: File[]) => Promise<void>) {
     super('Lens Correction', 440);
@@ -35,23 +36,23 @@ export class LensBatchDialog extends Dialog {
     const sub = checkRow('Include All Sub-folders', (v) => { this.subfolders = v; if (this.inFolder.length) { this.files = folderImages(this.inFolder, v); this.sync(); } });
     sub.set(true);
     this.body.append(row, this.chosen, this.file, this.folder, sub.el);
-    this.body.append(selectRow('Save as', [['same', 'Same as source'], ['png', 'PNG'], ['jpg', 'JPEG']], (v) => { o.format = v as LensBatchOptions['format']; }).el);
+    this.body.append(selectRow('Save as', [['same', 'Same as source'], ['png', 'PNG'], ['jpg', 'JPEG']], (v) => { o.format = v as LensBatchOptions['format']; }).el, this.outRow.el);
     this.folder.addEventListener('change', () => { this.inFolder = [...(this.folder.files ?? [])]; this.folder.value = ''; this.files = folderImages(this.inFolder, this.subfolders); this.sync(); });
     this.file.addEventListener('change', () => { this.files = [...(this.file.files ?? [])]; this.inFolder = []; this.file.value = ''; this.sync(); });
     this.button('Cancel', 'ghost', () => this.close());
     this.button('Run', 'primary', () => void this.go());
   }
 
-  show(): void { this.files = []; this.inFolder = []; this.sync(); this.open(); }
+  show(): void { this.files = []; this.inFolder = []; this.outRow.reset(); this.sync(); this.open(); }
 
   private sync(): void {
-    setText(this.chosen, this.files.length ? `${this.files.length} image${this.files.length === 1 ? '' : 's'} chosen. Each opens, is corrected and saved; the results download as one zip.` : 'Choose the images, or a folder, to correct.');
+    setText(this.chosen, this.files.length ? `${this.files.length} image${this.files.length === 1 ? '' : 's'} chosen. Each opens, is corrected and saved; the results go into the folder chosen below, or download as one zip.` : 'Choose the images, or a folder, to correct.');
   }
 
   private async go(): Promise<void> {
     if (!this.files.length) { setText(this.chosen, 'Choose the images to correct.'); return; }
     const files = this.files;
     this.close();
-    await this.run(structuredClone(this.o), files);
+    await this.run({ ...structuredClone(this.o), out: this.outRow.handle }, files);
   }
 }

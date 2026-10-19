@@ -27,6 +27,7 @@ export const DOCK_PANELS: readonly DockPanel[] = [
   { id: 'clone-source', label: 'Clone Source', selector: 'section.cv-clone-source' },
   { id: 'reference', label: 'Reference', selector: 'section.cv-reference' },
   { id: 'comfyui', label: 'ComfyUI', selector: 'section.cv-comfyui' },
+  { id: 'actions', label: 'Actions', selector: 'section.cv-actions-panel' },
 ];
 /** The side column's panel groups (Phase 21), movable like the dock's: any panel may live in either column. */
 export const SIDE_PANELS: readonly DockPanel[] = [
@@ -46,7 +47,7 @@ const KEY = 'formvis.dock';
 const HEIGHTS_KEY = 'formvis.dock.heights';
 const FLOATS_KEY = 'formvis.dock.floats';
 /** The Essentials default: Navigator, Swatches and Layers shown; Timeline and History in Window. */
-const DEFAULT: DockState = { order: DOCK_PANELS.map((p) => p.id), hidden: ['generate', 'timeline', 'history', 'info', 'layer-comps', 'styles', 'gradients', 'patterns', 'shapes', 'measurement-log', 'modifier-keys', 'adjustments', 'notes', 'histogram', 'clone-source', 'reference', 'comfyui'], side: [...DEFAULT_SIDE] };
+const DEFAULT: DockState = { order: DOCK_PANELS.map((p) => p.id), hidden: ['generate', 'timeline', 'history', 'info', 'layer-comps', 'styles', 'gradients', 'patterns', 'shapes', 'measurement-log', 'modifier-keys', 'adjustments', 'notes', 'histogram', 'clone-source', 'reference', 'comfyui', 'actions'], side: [...DEFAULT_SIDE] };
 
 function load(): DockState {
   try {

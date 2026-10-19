@@ -4,32 +4,36 @@
   ./formvis cli list [text] [--group name]   the catalogue: id, label, when to use it
   ./formvis cli describe <id> [kind=name]    one command: what it does, its parameters (kind= picks a filter or adjustment)
   ./formvis cli run <id> key=value ... [--yes]   runs it in the open window as an undoable step
-  ./formvis cli process <input|folder...> [--in DIR] [--recursive] [--action NAME] [--run id key=value ...] [--steps FILE.json] [--format png|jpg|webp|tiff]
-                        [--quality N] [--out DIR] [--suffix TEXT] [--in-place] [--verbose] [--yes]   file in, file out: each picture is
-                        opened, edited, exported and closed (batch is the same command)
-  ./formvis cli droplet <action-name> [--format ...] [--quality N] [--to DIR] [--suffix TEXT] [--recursive] [--data FILE.fvdrop] [--out DIR] [--name FILE]
+  ./formvis cli process <input|folder...> [--in DIR] [--recursive] [--action NAME] [--atn FILE.atn] [--new JSON] [--run id key=value ...] [--steps FILE.json]
+                        [--format png|jpg|webp|tiff|psd|psb|ora|fvd] [--quality N] [--out DIR] [--suffix TEXT] [--in-place] [--verbose] [--yes]   file in, file out:
+                        each picture is opened, edited, exported and closed (batch is the same command)
+  ./formvis cli droplet <action-name> [--atn FILE.atn] [--format ...] [--quality N] [--to DIR] [--suffix TEXT] [--recursive] [--data FILE.fvdrop] [--out DIR] [--name FILE]
                         writes a script (and a .cmd twin) that runs the action over dropped files; --data also saves the choices as a droplet file
   ./formvis cli droplet FILE.fvdrop <pictures|folders...>   runs a saved droplet over those files
   ./formvis cli stack|contact|fit|photomerge|hdr <files...>   no window needed (see cli_offline.py): image stack statistics, contact sheet, Fit Image, Photomerge, Merge to HDR
   ./formvis cli info <file...> [--json]   size, colour mode, depth, resolution, profile and layers of a file; no window needed
   ./formvis cli convert <in> <out> | <in...> --to FORMAT [--out DIR] [--quality 0.1-1] [--dpi N] [--page N] [--options JSON] [--overwrite]
-                        a picture file to another format through the engine; no window needed
+                        a picture file to another format through the engine; no window needed. A .psd .psb .ora .fvd file in or out keeps its
+                        layers and goes through a window (add --headless)
   ./formvis cli jobs [list [--active]] | cancel <id> | cancel --all   the engine's background jobs
-  ./formvis cli serve [--root DIR]   a JSON-lines session on stdin and stdout: {"id":1,"method":"command.run","params":{...}}
+  ./formvis cli serve [--root DIR] [--token TEXT]   a JSON-lines session on stdin and stdout: {"id":1,"method":"command.run","params":{...}}
   ./formvis cli version   the version, build and the engine's address
 
 Each subcommand takes --help. A command marked risky (undo cannot reverse it) is run only with --yes. The engine's address:
 FORMVIS_URL, or http://127.0.0.1:8190. Editing commands need the window open (./formvis boot) and outside agents allowed
-(Preferences > Plugins); info, convert and jobs need only the engine."""
+(Preferences > Plugins), or --headless on list, describe, run, process, batch, droplet, serve and convert, which starts a window with no
+screen for that run (./formvis headless) and closes it after; info, convert of flat pictures and jobs need only the engine."""
 
 HELP = {
     "list": "list [text] [--group name]\n  The command catalogue: id, label, when to use it. Needs the window to have been open once.",
     "describe": "describe <id> [kind=name]\n  One command: what it does, its parameters. kind= picks a filter or adjustment.",
     "run": "run <id> key=value ... [--yes]\n  Runs one command in the open window as an undoable step. A risky command needs --yes.",
-    "process": "process <input|folder...> [--in DIR] [--recursive] [--action NAME] [--run id key=value ...] [--steps FILE.json] [--format png|jpg|webp|tiff]\n"
-               "        [--quality N] [--out DIR] [--suffix TEXT] [--in-place] [--verbose] [--yes]\n  Each picture is opened in the window, edited, exported and closed. Folders give the pictures in them (--recursive goes deeper).\n"
-               "  --steps takes a JSON list of {\"id\": ..., \"params\": {...}}. A result that would replace its source is refused unless --in-place.",
-    "droplet": "droplet <action-name> [--format png|jpg|webp|tiff] [--quality N] [--to DIR] [--suffix TEXT] [--recursive] [--data FILE.fvdrop] [--out DIR] [--name FILE]\n"
+    "process": "process <input|folder...> [--in DIR] [--recursive] [--action NAME] [--atn FILE.atn] [--new JSON] [--run id key=value ...] [--steps FILE.json]\n"
+               "        [--format png|jpg|webp|tiff|psd|psb|ora|fvd] [--quality N] [--out DIR] [--suffix TEXT] [--in-place] [--verbose] [--headless] [--yes]\n  Each picture is opened in the window, edited, exported and closed. Folders give the pictures in them (--recursive goes deeper).\n"
+               "  --steps takes a JSON list of {\"id\": ..., \"params\": {...}}. A result that would replace its source is refused unless --in-place.\n"
+               "  --atn loads an actions file and plays every action in it (only --action NAME when given) on each picture. --new '{\"width\":800,\"height\":600,\"background\":\"white\",\"name\":\"card\"}'\n"
+               "  starts from a new document instead of a file. --verbose prints each step's answer. --headless uses a window with no screen (started and closed for the run).",
+    "droplet": "droplet <action-name> [--atn FILE.atn] [--format png|jpg|webp|tiff|psd|psb|ora|fvd] [--quality N] [--to DIR] [--suffix TEXT] [--recursive] [--data FILE.fvdrop] [--out DIR] [--name FILE]\n"
                "  Writes a script (and a .cmd twin) that runs the action over files dropped on it. --to is the folder the results go to; --out is where the script is written.\n"
                "  --data FILE.fvdrop saves the action and these choices as a droplet file and makes the script run it.\n"
                "droplet FILE.fvdrop <pictures|folders...>\n  Runs a saved droplet over the pictures and folders given.",
@@ -41,12 +45,14 @@ HELP = {
     "hdr": "hdr <files...> [--no-align] [--times 1/60,1/15,...] [--depth 32|16|8] [--out FILE]\n  Bracketed exposures merged by the engine into a Radiance .hdr (32) or a tone-mapped PNG (16 or 8); needs no window.",
     "info": "info <file...> [--json]\n  Size, colour mode, depth, resolution, profile and layers of a picture or project (.fvd .fmv .ora .psd .psb). Needs only the engine.",
     "convert": "convert <in> <out>\n  convert <in...> --to FORMAT [--out DIR]\n  [--quality 0.1-1] [--dpi N] [--page N] [--options JSON] [--overwrite]\n"
-               "  A picture file to another format through the engine (png jpg webp avif tif bmp qoi tga ico pdf ppm pgm pbm pnm dpx fits wbmp). One flat picture; needs only the engine.",
+               "  A picture file to another format through the engine (png jpg webp avif tif bmp qoi tga ico pdf ppm pgm pbm pnm dpx fits wbmp). One flat picture; needs only the engine.\n"
+               "  --options takes the writer's choices as JSON, for example tga {\"bits\":24,\"rle\":true}. A .psd .psb .ora or .fvd file in or out keeps its layers and needs a window (--headless).",
     "jobs": "jobs [list [--active]] | cancel <id> | cancel --all\n  The engine's background jobs (local generation, upscaling) and agent calls now running.",
-    "serve": "serve [--root DIR]\n  A JSON-lines session: one request per line on stdin, one answer per line on stdout. Request {\"id\":1,\"method\":\"...\",\"params\":{}};\n"
+    "serve": "serve [--root DIR] [--token TEXT] [--headless]\n  A JSON-lines session: one request per line on stdin, one answer per line on stdout. Request {\"id\":1,\"method\":\"...\",\"params\":{}};\n"
              "  answer {\"id\":1,\"ok\":true,\"result\":...} or {\"id\":1,\"ok\":false,\"error\":\"...\"}. Methods: ping, version, commands.list, command.describe,\n"
-             "  command.run, batch {commands, stopOnError}, doc.new, doc.open, doc.place, doc.save, doc.export, doc.inspect, doc.close, file.info, file.convert,\n"
-             "  jobs.list, jobs.cancel, tool.call {name, arguments}, shutdown. With --root DIR, paths outside DIR are refused.\n"
+             "  command.run, batch {commands, stopOnError}, doc.list, doc.new, doc.open, doc.place, doc.save, doc.export, doc.inspect, doc.close, doc.exportLayers,\n"
+             "  doc.exportDataSets, doc.importDataSets, file.info, file.convert, jobs.list, jobs.cancel, tool.call {name, arguments}, shutdown.\n"
+             "  With --root DIR, paths outside DIR are refused. With --token TEXT (or FORMVIS_SERVE_TOKEN) each request must carry \"token\":\"TEXT\".\n"
              "  image.stack, image.contact, image.fit, image.photomerge, image.hdr {inputs: [paths], option: value ...} need no window (options are the command's flags,\n"
              "  underscores for dashes: {\"inputs\":[\"a.jpg\",\"b.jpg\"],\"mode\":\"mean\",\"out\":\"s.png\"}).",
     "version": "version\n  The version, the build (git commit when there is one), the Python in use and the engine's address and version.",
@@ -54,9 +60,13 @@ HELP = {
 PICTURE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif", ".tif", ".tiff", ".heic", ".heif", ".bmp", ".qoi", ".tga", ".ico", ".pbm", ".pgm", ".ppm", ".pnm", ".pam",
                     ".dng", ".cr2", ".cr3", ".nef", ".arw", ".raf", ".orf", ".rw2", ".psd", ".psb", ".ora", ".fvd", ".fmv"}
 CONVERT_TO = {"png": ".png", "jpg": ".jpg", "jpeg": ".jpg", "webp": ".webp", "avif": ".avif", "tif": ".tif", "tiff": ".tif", "bmp": ".bmp", "qoi": ".qoi", "tga": ".tga", "ico": ".ico",
-              "pdf": ".pdf", "ppm": ".ppm", "pgm": ".pgm", "pbm": ".pbm", "pnm": ".pnm", "dpx": ".dpx", "fits": ".fits", "wbmp": ".wbmp"}
+              "pdf": ".pdf", "ppm": ".ppm", "pgm": ".pgm", "pbm": ".pbm", "pnm": ".pnm", "dpx": ".dpx", "fits": ".fits", "wbmp": ".wbmp",
+              "psd": ".psd", "psb": ".psb", "ora": ".ora", "fvd": ".fvd"}
+LAYERED = (".psd", ".psb", ".ora", ".fvd", ".fmv")
+WINDOW_OUT = {"png", "jpg", "webp", "tiff", "psd", "psb", "ora", "fvd"}
 
 import base64
+import hmac
 import json
 import os
 import shutil
@@ -281,17 +291,31 @@ def split_flags(args: list[str], valued: tuple[str, ...], switches: tuple[str, .
     return rest, flags, runs
 
 
-def process_one(path: str, flags: dict, runs: list[list[str]]) -> str:
+def open_source(path: str | None, spec: dict, yes: bool) -> None:
+    """The window opens the document: a new one from spec, a layered file by its path (layers kept), any other picture by its bytes."""
+    if path is None or os.path.splitext(path)[1].lower() in LAYERED:
+        ok, said, _data = tool("new_document", spec) if path is None else tool("open_file", {"path": os.path.abspath(os.path.expanduser(path))})
+        if not ok:
+            raise RuntimeError(said)
+        return
+    with open(path, "rb") as f:
+        data = base64.b64encode(f.read()).decode()
+    command_result("open-image-data", {"name": os.path.basename(path), "data": data}, yes)
+
+
+def process_one(path: str | None, flags: dict, runs: list[list[str]]) -> str:
+    """One picture in, one file out. path None is --new: a document made from the JSON in flags["new"] (width, height, background, name, ...)."""
     fmt = flags.get("format", "png").lower().lstrip(".")
     fmt = {"jpeg": "jpg", "tif": "tiff"}.get(fmt, fmt)
-    if fmt not in ("png", "jpg", "webp", "tiff"):
-        raise RuntimeError("format must be png, jpg, webp or tiff.")
+    if fmt not in WINDOW_OUT:
+        raise RuntimeError("format must be " + ", ".join(sorted(WINDOW_OUT)) + ".")
     yes = bool(flags.get("yes"))
-    stem = os.path.splitext(os.path.basename(path))[0]
+    spec = flags.get("new") or {}
+    stem = os.path.splitext(os.path.basename(path))[0] if path else str(spec.get("name") or "New")
     name = f"{stem}{flags.get('suffix', '')}.{fmt}"
-    out_dir = flags.get("out") or os.path.dirname(os.path.abspath(path))
+    out_dir = flags.get("out") or (os.path.dirname(os.path.abspath(path)) if path else os.getcwd())
     target = os.path.join(out_dir, name)
-    if os.path.abspath(target) == os.path.abspath(path) and not flags.get("in-place"):
+    if path and os.path.abspath(target) == os.path.abspath(path) and not flags.get("in-place"):
         raise RuntimeError(f"the result would replace {path}. Give --out DIR or --suffix TEXT, or --in-place if replacing it is meant.")
     steps = [(g[0], pairs(g[1:])) for g in runs]
     if flags.get("steps"):
@@ -301,20 +325,20 @@ def process_one(path: str, flags: dict, runs: list[list[str]]) -> str:
             steps += [(s["id"], s.get("params") or {}) for s in listed]
         except (OSError, ValueError, KeyError, TypeError) as exc:
             raise RuntimeError(f"--steps {flags['steps']} must be a JSON list of {{\"id\": ..., \"params\": {{...}}}}: {exc}") from exc
-    with open(path, "rb") as f:
-        data = base64.b64encode(f.read()).decode()
-    command_result("open-image-data", {"name": os.path.basename(path), "data": data}, yes)
+    open_source(path, spec, yes)
     try:
         for cid, params in steps:
-            command_result(cid, params, yes)
+            returned = command_result(cid, params, yes)
             if flags.get("verbose"):
-                print(f"  {cid}: {STEP['said'] or 'done'}")
-        if flags.get("action"):
-            command_result("play-action", {"name": flags["action"]}, yes)
+                print(f"  {cid}: {STEP['said'] or 'done'}" + (f" {json.dumps(returned)}" if returned else ""))
+        for played in flags.get("_play") or ([flags["action"]] if flags.get("action") else []):
+            command_result("play-action", {"name": played}, yes)
+            if flags.get("verbose"):
+                print(f"  action {played}: played")
         params = {"format": fmt, "name": name}
         if "quality" in flags:
             params["quality"] = value_of(flags["quality"])
-        made = command_result("export-to-file", params, yes).get("path")
+        made = command_result("export-to-file", params, True).get("path")   # the output file is what the person asked for; --yes is for the steps
     finally:
         try:
             command_result("close-document", {}, True)
@@ -345,18 +369,34 @@ def expand_inputs(words: list[str], recursive: bool) -> list[str]:
 
 
 def process_cmd(args: list[str]) -> int:
-    files, flags, runs = split_flags(args, ("--action", "--format", "--quality", "--out", "--suffix", "--in", "--steps", "--run"), ("--yes", "--in-place", "--verbose", "--recursive"))
+    files, flags, runs = split_flags(args, ("--action", "--format", "--quality", "--out", "--suffix", "--in", "--steps", "--run", "--atn", "--new"), ("--yes", "--in-place", "--verbose", "--recursive"))
     files = expand_inputs(files + ([flags["in"]] if flags.get("in") else []), bool(flags.get("recursive")))
+    if flags.get("new"):
+        spec = value_of(flags["new"])
+        if not isinstance(spec, dict):
+            print("--new takes a JSON object, for example --new '{\"width\":800,\"height\":600,\"background\":\"#ffffff\",\"name\":\"card\"}'.", file=sys.stderr)
+            return 2
+        flags["new"] = spec
+        files = [None]
     if not files:
         print("Give one or more picture files or a folder, for example: ./formvis cli process a.jpg b.jpg --action Sepia --format png --out done", file=sys.stderr)
         return 2
+    if flags.get("atn"):
+        try:
+            with open(os.path.expanduser(flags["atn"]), "rb") as f:
+                loaded = command_result("load-actions", {"atn_base64": base64.b64encode(f.read()).decode()}, bool(flags.get("yes"))).get("loaded") or []
+        except (OSError, RuntimeError) as exc:
+            print(f"--atn {flags['atn']}: {exc}", file=sys.stderr)
+            return 1
+        flags["_play"] = [flags["action"]] if flags.get("action") else loaded
+        print(f"{flags['atn']}: {len(loaded)} action{'' if len(loaded) == 1 else 's'} loaded ({', '.join(loaded)})")
     failed = 0
     for path in files:
         try:
-            print(f"{path} -> {process_one(path, flags, runs)}")
+            print(f"{path or '(new document)'} -> {process_one(path, flags, runs)}")
         except (RuntimeError, OSError) as exc:
             failed += 1
-            print(f"{path}: failed. {exc}", file=sys.stderr)
+            print(f"{path or '(new document)'}: failed. {exc}", file=sys.stderr)
     return 1 if failed else 0
 
 
@@ -413,15 +453,15 @@ def droplet_run(path: str, words: list[str]) -> int:
 
 
 def droplet_cmd(args: list[str]) -> int:
-    words, flags, _ = split_flags(args, ("--format", "--out", "--name", "--quality", "--suffix", "--data", "--to"), ("--recursive", "--in-place"))
+    words, flags, _ = split_flags(args, ("--format", "--out", "--name", "--quality", "--suffix", "--data", "--to", "--atn"), ("--recursive", "--in-place"))
     if words and words[0].lower().endswith(".fvdrop") and os.path.isfile(words[0]):
         return droplet_run(words[0], words[1:])
     if not words:
         print("Give the action name, for example: ./formvis cli droplet Sepia --format jpg, or a droplet file and pictures: ./formvis cli droplet Sepia.fvdrop a.jpg b.jpg", file=sys.stderr)
         return 2
     action, fmt = " ".join(words), flags.get("format", "png")
-    if fmt.lower().lstrip(".") not in ("png", "jpg", "jpeg", "webp", "tif", "tiff"):
-        print("format must be png, jpg, webp or tiff.", file=sys.stderr)
+    if fmt.lower().lstrip(".") not in WINDOW_OUT | {"jpeg", "tif"}:
+        print("format must be " + ", ".join(sorted(WINDOW_OUT)) + ".", file=sys.stderr)
         return 2
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     quoted = "'" + action.replace("'", "'\\''") + "'"
@@ -439,7 +479,7 @@ def droplet_cmd(args: list[str]) -> int:
         win_line = f"python setup\\cli.py droplet \"{target}\" %*\r\n"
         print(f"Wrote {target}. Run it with: ./formvis cli droplet {target} <pictures or folders>")
     else:
-        extra = f"{' --quality ' + flags['quality'] if 'quality' in flags else ''}{' --out ' + chr(39) + flags['to'] + chr(39) if flags.get('to') else ''}{' --suffix ' + chr(39) + flags['suffix'] + chr(39) if flags.get('suffix') else ''}{' --recursive' if flags.get('recursive') else ''}"
+        extra = f"{' --quality ' + flags['quality'] if 'quality' in flags else ''}{' --out ' + chr(39) + flags['to'] + chr(39) if flags.get('to') else ''}{' --suffix ' + chr(39) + flags['suffix'] + chr(39) if flags.get('suffix') else ''}{' --recursive' if flags.get('recursive') else ''}{' --atn ' + chr(39) + os.path.abspath(os.path.expanduser(flags['atn'])) + chr(39) if flags.get('atn') else ''}"
         launcher = f"exec ./formvis cli process \"$@\" --action {quoted} --format {fmt}{extra}\n"
         win_line = f"python setup\\cli.py process %* --action \"{action.replace(chr(34), chr(39))}\" --format {fmt}{extra.replace(chr(39), chr(34))}\r\n"
     with open(sh, "w") as f:
@@ -484,6 +524,32 @@ def info_cmd(args: list[str]) -> int:
     return 1 if failed else 0
 
 
+def convert_window(src: str, dst: str, extra: dict) -> str:
+    """A layered file in or out (psd psb ora fvd): the window, headless or not, opens src and writes dst with the layers kept; a flat output (png jpg webp tiff) is the flattened picture."""
+    src, dst = os.path.abspath(os.path.expanduser(src)), os.path.abspath(os.path.expanduser(dst))
+    fmt = {"jpeg": "jpg", "tif": "tiff"}.get(os.path.splitext(dst)[1].lower().lstrip("."), os.path.splitext(dst)[1].lower().lstrip("."))
+    if fmt not in WINDOW_OUT:
+        raise RuntimeError(f"a layered input converts to {', '.join(sorted(WINDOW_OUT))} only, not {fmt}.")
+    if os.path.exists(dst) and not extra.get("overwrite"):
+        raise RuntimeError(f"{dst} already exists; --overwrite replaces it.")
+    open_source(src, {}, True)
+    try:
+        params: dict = {"format": fmt, "name": os.path.basename(dst)}
+        if "quality" in extra:
+            params["quality"] = round(float(extra["quality"]) * 100) if float(extra["quality"]) <= 1 else extra["quality"]
+        made = command_result("export-to-file", params, True).get("path")
+    finally:
+        try:
+            command_result("close-document", {}, True)
+        except RuntimeError:
+            pass
+    if not made:
+        raise RuntimeError("The window did not report where it saved the file.")
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    shutil.move(made, dst)
+    return f"{dst} ({os.path.getsize(dst):,} bytes, {fmt})"
+
+
 def convert_cmd(args: list[str]) -> int:
     files, flags, _ = split_flags(args, ("--to", "--out", "--quality", "--dpi", "--page", "--options"), ("--overwrite",))
     extra: dict = {}
@@ -514,6 +580,13 @@ def convert_cmd(args: list[str]) -> int:
         return 2
     failed = 0
     for src, dst in jobs:
+        if os.path.splitext(src)[1].lower() in LAYERED or os.path.splitext(dst)[1].lower() in (".psd", ".psb", ".ora", ".fvd"):
+            try:
+                print(f"{src} -> {convert_window(src, dst, extra)}")
+            except (RuntimeError, OSError) as exc:
+                failed += 1
+                print(f"{src}: failed. {exc}", file=sys.stderr)
+            continue
         ok, said, _data = tool("convert_file", {"path": os.path.abspath(os.path.expanduser(src)), "output_path": os.path.abspath(os.path.expanduser(dst)), **extra})
         if ok:
             print(f"{src} -> {said.removeprefix('Wrote ')}")
@@ -595,6 +668,7 @@ def outside_root(root: str | None, params: dict) -> str | None:
     return None
 
 
+COMMAND_METHODS = {"doc.exportLayers": "export-layers", "doc.exportDataSets": "export-data-sets", "doc.importDataSets": "data-sets-import"}
 OFFLINE_METHODS = {"image.stack": "stack", "image.contact": "contact", "image.fit": "fit", "image.photomerge": "photomerge", "image.hdr": "hdr"}
 
 
@@ -651,6 +725,24 @@ def serve_request(method: str, params: dict, root: str | None):
         steps = params.get("commands")
         if not isinstance(steps, list) or not steps:
             raise RuntimeError("batch takes commands: a list of {id, params}.")
+        if any(isinstance(s, dict) and "method" in s for s in steps):   # protocol methods mixed in: run in order, each its own undo step
+            results = []
+            for step in steps:
+                label = {"method": step["method"]} if isinstance(step, dict) and "method" in step else {"id": step.get("id") if isinstance(step, dict) else None}
+                try:
+                    if "method" in label:
+                        if step["method"] in ("batch", "shutdown"):
+                            raise RuntimeError(f"{step['method']} cannot be a step of a batch.")
+                        result = serve_request(str(step["method"]), step.get("params") or {}, root)
+                    else:
+                        result = {"message": "", "returned": command_result(str(step.get("id", "")), step.get("params") or {}, bool(params.get("yes")))}
+                        result["message"] = STEP["said"]
+                    results.append({**label, "ok": True, "result": result})
+                except RuntimeError as exc:
+                    results.append({**label, "ok": False, "error": str(exc)})
+                    if params.get("stopOnError", True):
+                        break
+            return {"ran": len(results), "results": results}
         if params.get("stopOnError", True):
             ok, said, data = tool("run_commands", {"commands": steps})
             if not ok:
@@ -664,6 +756,12 @@ def serve_request(method: str, params: dict, root: str | None):
             except RuntimeError as exc:
                 results.append({"id": step.get("id"), "ok": False, "error": str(exc)})
         return {"ran": len(results), "results": results}
+    if method == "doc.list":
+        ok, said, data = tool("ping", {})
+        return {"documents": (data or {}).get("documents", []), "active": (data or {}).get("active")}
+    if method in COMMAND_METHODS:
+        returned = command_result(COMMAND_METHODS[method], {k: v for k, v in params.items() if k != "yes"}, bool(params.get("yes")))
+        return {"message": STEP["said"], "returned": returned}
     if method in OFFLINE_METHODS:
         return offline_request(OFFLINE_METHODS[method], params, root)
     if method == "tool.call":
@@ -686,11 +784,12 @@ def serve_request(method: str, params: dict, root: str | None):
 
 
 def serve_cmd(args: list[str]) -> int:
-    words, flags, _ = split_flags(args, ("--root",), ())
+    words, flags, _ = split_flags(args, ("--root", "--token"), ())
     if words:
-        print("serve takes only --root DIR.", file=sys.stderr)
+        print("serve takes only --root DIR and --token TEXT.", file=sys.stderr)
         return 2
     root = os.path.realpath(os.path.expanduser(flags["root"])) if flags.get("root") else None
+    token = flags.get("token") or os.environ.get("FORMVIS_SERVE_TOKEN") or ""
 
     def reply(rid, **body) -> None:
         sys.stdout.write(json.dumps({"id": rid, **body}, ensure_ascii=False) + "\n")
@@ -708,6 +807,9 @@ def serve_cmd(args: list[str]) -> int:
                 raise ValueError
         except ValueError:
             reply(None, ok=False, error='Each line is one JSON object: {"id": 1, "method": "ping", "params": {}}.')
+            continue
+        if token and not hmac.compare_digest(str(req.get("token", "")).encode(), token.encode()):
+            reply(req.get("id"), ok=False, error='This session needs its token: add "token": "..." to each request.')
             continue
         if req["method"] == "shutdown":
             reply(req.get("id"), ok=True, result={"bye": True})
@@ -745,6 +847,18 @@ def main(argv: list[str]) -> int:
     if "--help" in rest or "-h" in rest:
         print("./formvis cli " + HELP["process" if sub == "batch" else sub])
         return 0
+    if "--headless" in rest and sub in ("list", "describe", "run", "process", "batch", "droplet", "serve", "convert"):
+        import headless as window_host
+        rest = [a for a in rest if a != "--headless"]
+        try:
+            held = window_host.ensure()
+        except RuntimeError as exc:
+            print(exc, file=sys.stderr)
+            return 1
+        try:
+            return COMMANDS[sub](rest)
+        finally:
+            window_host.release(held)
     return COMMANDS[sub](rest)
 
 

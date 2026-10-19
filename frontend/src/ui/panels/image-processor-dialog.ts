@@ -1,7 +1,8 @@
 import { IMAGE_ACCEPT } from '../../io/images';
+import { outFolderAvailable, pickOutFolder } from '../../io/out-folder';
 import type { Action, Actions } from '../actions';
 import { Dialog } from '../dialogs';
-import { el, setText } from '../dom';
+import { el, q, setHidden, setText } from '../dom';
 
 /** File > Scripts > Image Processor (DEV_PLAN 30.2): what the dialog hands the runner. */
 export interface ImageProcessorFit { on: boolean; w: number; h: number }
@@ -13,9 +14,14 @@ export interface ImageProcessorOptions {
   tiff: ImageProcessorFit & { on: boolean; lzw: boolean };
   png: ImageProcessorFit & { on: boolean };
   webp: ImageProcessorFit & { on: boolean; quality: number };
+  tga: ImageProcessorFit & { on: boolean; option: string };
+  dpx: ImageProcessorFit & { on: boolean; bits: 8 | 10 | 12 | 16 };
   action: Action | null;
   copyright: string;
+  out?: FileSystemDirectoryHandle | null;
 }
+
+export const TGA_TYPES: ReadonlyArray<readonly [string, string]> = [['32rle', '32-bit, run-length'], ['32', '32-bit with alpha'], ['24rle', '24-bit, run-length, on white'], ['24', '24-bit, on white']];
 
 const box = (checked = false): HTMLInputElement => el<HTMLInputElement>(`<input type="checkbox"${checked ? ' checked' : ''}>`);
 const num = (value: string, min: number, max: number): HTMLInputElement => el<HTMLInputElement>(`<input class="cv-input" type="number" min="${min}" max="${max}" step="1" value="${value}">`);
@@ -30,6 +36,29 @@ export function folderImages(all: File[], subfolders: boolean): File[] {
   });
 }
 export const folderInput = (): HTMLInputElement => { const i = el<HTMLInputElement>('<input type="file" multiple hidden>'); i.setAttribute('webkitdirectory', ''); return i; };
+
+/** A Choose output folder button and the name of the folder chosen; the row is hidden where the browser has no folder picker,
+ *  and the results then download as one zip. */
+export class OutFolderRow {
+  readonly el = el('<div class="cv-welcome-actions"><button class="cv-btn" type="button">Choose output folder...</button><span class="cv-note"></span></div>');
+  handle: FileSystemDirectoryHandle | null = null;
+  private readonly note = q(this.el, '.cv-note');
+
+  constructor() {
+    setHidden(this.el, !outFolderAvailable());
+    q(this.el, 'button').addEventListener('click', () => void this.choose());
+    this.reset();
+  }
+
+  private async choose(): Promise<void> {
+    const h = await pickOutFolder();
+    if (!h) return;
+    this.handle = h;
+    setText(this.note, `Writing into ${h.name}.`);
+  }
+
+  reset(): void { this.handle = null; setText(this.note, 'No folder chosen: the results download as one zip.'); }
+}
 
 /** The Image Processor: one source, one destination, three file types and an optional action and copyright. */
 export class ImageProcessorDialog extends Dialog {
@@ -60,6 +89,17 @@ export class ImageProcessorDialog extends Dialog {
   private readonly webpFit = box();
   private readonly webpW = num('', 1, 30000);
   private readonly webpH = num('', 1, 30000);
+  private readonly tgaOn = box();
+  private readonly tgaType = el<HTMLSelectElement>(`<select class="cv-input">${TGA_TYPES.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select>`);
+  private readonly tgaFit = box();
+  private readonly tgaW = num('', 1, 30000);
+  private readonly tgaH = num('', 1, 30000);
+  private readonly dpxOn = box();
+  private readonly dpxBits = el<HTMLSelectElement>('<select class="cv-input"><option value="10">10-bit</option><option value="8">8-bit</option><option value="12">12-bit</option><option value="16">16-bit</option></select>');
+  private readonly dpxFit = box();
+  private readonly dpxW = num('', 1, 30000);
+  private readonly dpxH = num('', 1, 30000);
+  private readonly outRow = new OutFolderRow();
   private readonly runAction = box();
   private readonly pick = el<HTMLSelectElement>('<select class="cv-input"></select>');
   private readonly copyright = el<HTMLInputElement>('<input class="cv-input" type="text" placeholder="Copyright Info" spellcheck="false">');
@@ -81,7 +121,8 @@ export class ImageProcessorDialog extends Dialog {
     this.subfolders.addEventListener('change', () => { if (this.inFolder.length) { this.files = folderImages(this.inFolder, this.subfolders.checked); this.sync(); } });
     this.field('Use Open Images', this.useOpen);
     this.body.appendChild(heading('2. Select the destination'));
-    this.body.appendChild(el('<p class="cv-note">Each type goes into its own folder (JPEG, PSD, TIFF, PNG, WebP). In the browser the results download as one zip; in the desktop app they are written to a named folder in the exports folder.</p>'));
+    this.body.appendChild(el('<p class="cv-note">Each type goes into its own folder (JPEG, PSD, TIFF, PNG, WebP, TGA, DPX). In the browser the results go into the folder you choose, or download as one zip; in the desktop app they are written to a named folder in the exports folder.</p>'));
+    this.body.appendChild(this.outRow.el);
     this.body.appendChild(heading('3. File type'));
     this.field('Save as JPEG', this.jpegOn);
     this.field('Quality (0 to 12)', this.jpegQuality);
@@ -107,6 +148,16 @@ export class ImageProcessorDialog extends Dialog {
     this.field('Resize to Fit', this.webpFit);
     this.field('W (px)', this.webpW);
     this.field('H (px)', this.webpH);
+    this.field('Save as TGA', this.tgaOn);
+    this.field('TGA type', this.tgaType);
+    this.field('Resize to Fit', this.tgaFit);
+    this.field('W (px)', this.tgaW);
+    this.field('H (px)', this.tgaH);
+    this.field('Save as DPX', this.dpxOn);
+    this.field('DPX bit depth', this.dpxBits);
+    this.field('Resize to Fit', this.dpxFit);
+    this.field('W (px)', this.dpxW);
+    this.field('H (px)', this.dpxH);
     this.body.appendChild(heading('4. Preferences'));
     this.field('Run Action', this.runAction);
     this.field('Action', this.pick);
@@ -117,7 +168,7 @@ export class ImageProcessorDialog extends Dialog {
     this.remember([this.pick]);   // every setting; the action is chosen from the list as it stands
   }
 
-  show(): void { this.files = []; this.inFolder = []; this.sync(); this.open(); }
+  show(): void { this.files = []; this.inFolder = []; this.outRow.reset(); this.sync(); this.open(); }
 
   private sync(): void {
     const n = this.store.list.length;
@@ -141,11 +192,14 @@ export class ImageProcessorDialog extends Dialog {
       tiff: { ...fit(this.tiffFit, this.tiffW, this.tiffH), on: this.tiffOn.checked, lzw: this.tiffLzw.checked },
       png: { ...fit(this.pngFit, this.pngW, this.pngH), on: this.pngOn.checked },
       webp: { ...fit(this.webpFit, this.webpW, this.webpH), on: this.webpOn.checked, quality: Math.min(100, Math.max(1, Math.round(Number(this.webpQuality.value) || 85))) },
+      tga: { ...fit(this.tgaFit, this.tgaW, this.tgaH), on: this.tgaOn.checked, option: this.tgaType.value },
+      dpx: { ...fit(this.dpxFit, this.dpxW, this.dpxH), on: this.dpxOn.checked, bits: ([8, 10, 12, 16] as const).find((b) => b === Number(this.dpxBits.value)) ?? 10 },
       action: this.runAction.checked ? this.store.list[Number(this.pick.value)] ?? null : null,
       copyright: this.copyright.value.trim(),
+      out: this.outRow.handle,
     };
     if (!o.useOpen && !o.files.length) { setText(this.chosen, 'Choose images, or tick Use Open Images.'); return; }
-    if (!o.jpeg.on && !o.psd.on && !o.tiff.on && !o.png.on && !o.webp.on) { setText(this.chosen, 'Tick at least one file type.'); return; }
+    if (!o.jpeg.on && !o.psd.on && !o.tiff.on && !o.png.on && !o.webp.on && !o.tga.on && !o.dpx.on) { setText(this.chosen, 'Tick at least one file type.'); return; }
     if (this.runAction.checked && !o.action) { setText(this.chosen, 'Record an action first.'); return; }
     this.close();
     await this.run(o);

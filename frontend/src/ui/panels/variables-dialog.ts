@@ -16,6 +16,10 @@ export class DefineVariablesDialog extends Dialog {
   private readonly names = {} as Record<DocVariable['kind'], HTMLInputElement>;
   private readonly nameRows = {} as Record<DocVariable['kind'], HTMLElement>;
   private readonly methodRow: Row<string>;
+  private readonly alignRow: Row<string>;
+  private readonly clipRow: Row<boolean>;
+  private align = 4;
+  private clip = true;
   private readonly want: Record<DocVariable['kind'], boolean> = { visibility: false, text: false, pixels: false };
   private method: NonNullable<DocVariable['method']> = 'fit';
 
@@ -36,7 +40,10 @@ export class DefineVariablesDialog extends Dialog {
     };
     const vis = mk('visibility', 'Visibility'), txt = mk('text', 'Text Replacement'), pix = mk('pixels', 'Pixel Replacement');
     this.methodRow = selectRow('Method', [['fit', 'Fit'], ['fill', 'Fill'], ['asis', 'As Is'], ['conform', 'Conform']], (v) => { this.method = v as NonNullable<DocVariable['method']>; });
-    this.body.append(this.layerRow, ...vis, ...txt, ...pix, this.methodRow.el);
+    this.alignRow = selectRow('Alignment', [['4', 'Centre'], ['0', 'Top left'], ['1', 'Top'], ['2', 'Top right'], ['3', 'Left'], ['5', 'Right'], ['6', 'Bottom left'], ['7', 'Bottom'], ['8', 'Bottom right']], (v) => { this.align = Number(v); });
+    this.clipRow = checkRow('Clip to Bounding Box', (v) => { this.clip = v; });
+    this.clipRow.set(true);
+    this.body.append(this.layerRow, ...vis, ...txt, ...pix, this.methodRow.el, this.alignRow.el, this.clipRow.el);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     this.remember([this.layerSel, ...Object.values(this.names)]);
@@ -65,6 +72,8 @@ export class DefineVariablesDialog extends Dialog {
     this.methodRow.el.classList.toggle('is-off', !ok.pixels || !this.want.pixels);
     for (const i of this.methodRow.el.querySelectorAll('select')) i.disabled = !ok.pixels || !this.want.pixels;
     this.methodRow.set(this.method);
+    const off = !ok.pixels || !this.want.pixels;
+    for (const r of [this.alignRow, this.clipRow]) { r.el.classList.toggle('is-off', off); for (const i of r.el.querySelectorAll('select, input')) (i as HTMLSelectElement | HTMLInputElement).disabled = off; }
   }
 
   private apply(): void {
@@ -73,7 +82,7 @@ export class DefineVariablesDialog extends Dialog {
     this.close();
     for (const kind of ['visibility', 'text', 'pixels'] as const) {
       if (!this.want[kind]) continue;
-      this.engine.defineVariable({ name: this.names[kind].value.trim() || l.name, layer: l.id, kind, ...(kind === 'pixels' ? { method: this.method } : {}) });
+      this.engine.defineVariable({ name: this.names[kind].value.trim() || l.name, layer: l.id, kind, ...(kind === 'pixels' ? { method: this.method, align: this.align, clip: this.clip } : {}) });
     }
   }
 }

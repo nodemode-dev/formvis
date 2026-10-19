@@ -15,6 +15,9 @@ const PLAN = ' The user asked to see a plan first. Do not call any tool now. Rep
 const SETTINGS_KEY = 'formvis.assistant';
 const IDLE_MS = 800;
 const AGENT_LIVE_S = 60;
+const POLICY_CLIENT = 'assistant';
+const POLICY_WORDS: Array<{ value: 'allow' | 'ask' | 'deny'; label: string }> = [{ value: 'allow', label: 'Auto' }, { value: 'ask', label: 'Ask' }, { value: 'deny', label: 'Refuse' }];
+const ASK_BY_DEFAULT = new Set(['save_project', 'export_image', 'timeline_render', 'convert_file', 'open_file', 'close_document', 'delete_layer', 'flatten_image', 'resize_image', 'resize_canvas', 'crop', 'delete_snapshot', 'set_settings']);
 
 /** The assistant's own settings, kept in this browser: the tools it may not call, and whether and how pictures are sent. */
 interface Settings { excluded: string[]; vision: boolean; pictures: number; side: number; chatsKept: number; maxCalls: number }
@@ -109,7 +112,8 @@ export class AssistantPanel {
   private baseTitle = '';
   private agentTimer = 0;
   private chatRows = new Map<string, ChatRow>();
-  private toolBoxes = new Map<string, HTMLInputElement>();
+  private toolBoxes = new Map<string, HTMLSelectElement>();
+  private policies = new Map<string, string>();
   private toolsLoaded = false;
   private status: { baseUrl: string; model: string } | null = null;
   private readonly privacy = el('<p class="cv-assistant-notice cv-assistant-privacy" role="note"></p>');
@@ -161,6 +165,7 @@ export class AssistantPanel {
     if (on) {
       this.input.focus();
       void this.refreshStatus();
+      void this.loadPolicies();
       void this.watchAgents();
       this.agentTimer = window.setInterval(() => void this.watchAgents(), 5000);
     }
@@ -177,7 +182,7 @@ export class AssistantPanel {
   /** The tool list, pictures and idle rules in one folded section, built once. */
   private buildSettings(): HTMLElement {
     const box = el('<details class="cv-assistant-settings"><summary>Tools and pictures</summary></details>');
-    const tools = el('<div class="cv-assistant-tools-wrap"><span class="cv-assistant-small">Tools the assistant may not call (ticked tools are excluded)</span></div>');
+    const tools = el('<div class="cv-assistant-tools-wrap"><span class="cv-assistant-small">What the assistant may do with each tool: Auto runs it, Ask shows the call and waits, Refuse leaves it out</span></div>');
     tools.append(this.toolList);
     box.addEventListener('toggle', () => { if ((box as HTMLDetailsElement).open) void this.loadTools(); });
     const vision = el('<label class="cv-check"><span>Send pictures of the document to the model</span></label>');
@@ -209,27 +214,75 @@ export class AssistantPanel {
     return box;
   }
 
-  /** The tool names from the engine, as checkboxes made once; ticking one saves the list. */
+  /** What the assistant does with a tool: Refuse when excluded, else the saved policy, else Ask for the steps that overwrite files or change the whole picture. */
+  private policyOf(name: string): 'allow' | 'ask' | 'deny' {
+    if (this.settings.excluded.includes(name)) return 'deny';
+    const p = this.policies.get(name);
+    return p === 'allow' || p === 'ask' || p === 'deny' ? p : ASK_BY_DEFAULT.has(name) ? 'ask' : 'allow';
+  }
+
+  /** The saved per-tool policies, from the agent policy store (the same file Agent Connect keeps). */
+  private async loadPolicies(): Promise<void> {
+    try {
+      const r = await fetch(`/api/agents/tool-policies?client=${POLICY_CLIENT}`);
+      if (!r.ok) return;
+      const body = await r.json() as { policies?: Record<string, string> };
+      this.policies = new Map(Object.entries(body.policies ?? {}));
+      for (const [name, sel] of this.toolBoxes) if (sel.value !== this.policyOf(name)) sel.value = this.policyOf(name);
+    } catch { /* the engine is not answering: the defaults hold */ }
+  }
+
+  private savePolicy(name: string, policy: string): void {
+    this.policies.set(name, policy);
+    const rest = this.settings.excluded.filter((n) => n !== name);
+    this.settings = { ...this.settings, excluded: policy === 'deny' ? [...rest, name] : rest };
+    storeSettings(this.settings);
+    void fetch('/api/agents/policy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client: `${POLICY_CLIENT}:${name}`, policy }) }).catch(() => undefined);
+  }
+
+  /** The per-tool table from the engine's tool list, made once: a policy select on each row. */
   private async loadTools(): Promise<void> {
     if (this.toolsLoaded) return;
     try {
       const { tools } = await llmCall<{ tools: Array<{ name: string; description: string }> }>('/tools');
       this.toolsLoaded = true;
       for (const t of tools) {
-        const box = el<HTMLInputElement>('<input type="checkbox">'), lab = el<HTMLLabelElement>('<label class="cv-check cv-assistant-tool"><span></span></label>');
+        const sel = el<HTMLSelectElement>(`<select class="cv-select" aria-label="Policy for ${t.name}">${POLICY_WORDS.map((w) => `<option value="${w.value}">${w.label}</option>`).join('')}</select>`);
+        const lab = el<HTMLLabelElement>('<label class="cv-assistant-tool"><span></span></label>');
         setText(lab.querySelector('span'), t.name);
         setTitle(lab, t.description);
-        box.checked = this.settings.excluded.includes(t.name);
-        box.addEventListener('change', () => {
-          const rest = this.settings.excluded.filter((n) => n !== t.name);
-          this.settings = { ...this.settings, excluded: box.checked ? [...rest, t.name] : rest };
-          storeSettings(this.settings);
-        });
-        lab.prepend(box);
-        this.toolBoxes.set(t.name, box);
+        sel.value = this.policyOf(t.name);
+        sel.addEventListener('change', () => this.savePolicy(t.name, sel.value));
+        lab.append(sel);
+        this.toolBoxes.set(t.name, sel);
         this.toolList.append(lab);
       }
+      await this.loadPolicies();
     } catch (err) { setText(this.toolList, err instanceof Error ? err.message : 'The tool list could not be read.'); }
+  }
+
+  /** Ask: the canonical call is shown on the step's card with Allow and Refuse, and the turn waits; null when allowed, else what the model is told. */
+  private async gate(name: string, args: Record<string, unknown>, row: StepRow): Promise<string | null> {
+    const policy = this.policyOf(name);
+    if (policy === 'deny') return `The tool ${name} is set to Refuse in the assistant's tool table, so it was not run. Use another tool or tell the person what is needed.`;
+    if (policy !== 'ask') return null;
+    const canon = el('<p class="cv-assistant-canon"></p>'), acts = el('<div class="cv-assistant-plan-bar"></div>');
+    const yes = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-primary">Allow</button>'), no = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Refuse</button>');
+    acts.append(yes, no);
+    setText(canon, `${name}(${JSON.stringify(args).slice(0, 300)})`);
+    row.el.append(canon, acts);
+    setText(row.status, 'Waiting for you');
+    this.attention();
+    this.log.scrollTop = this.log.scrollHeight;
+    const verdict = await new Promise<boolean>((done) => {
+      yes.addEventListener('click', () => done(true));
+      no.addEventListener('click', () => done(false));
+      const poll = window.setInterval(() => { if (this.stopped) { window.clearInterval(poll); done(false); } }, 200);
+      for (const b of [yes, no]) b.addEventListener('click', () => window.clearInterval(poll));
+    });
+    setDisabled(yes, true); setDisabled(no, true);
+    setHidden(acts, true);
+    return verdict ? null : `The person refused ${name} on its card, so it was not run. Do not retry it; ask what they want instead.`;
   }
 
   private async refreshStatus(): Promise<void> {
@@ -417,8 +470,7 @@ export class AssistantPanel {
           if (!over) calls++;
           const result: McpResult = this.stopped ? { content: [{ type: 'text', text: 'Stopped by the user.' }], isError: true }
             : over ? { content: [{ type: 'text', text: `The limit of ${maxCalls} tool calls for this turn is reached, so ${call.name} was not run. Tell the person what is done and what is left.` }], isError: true }
-            : this.settings.excluded.includes(call.name) ? { content: [{ type: 'text', text: `The tool ${call.name} is excluded in the assistant's settings, so it was not run. Use another tool or tell the person what is needed.` }], isError: true }
-              : await this.bridge.run(call.name, args);
+            : await this.runGated(call.name, args, row);
           const parts: string[] = [];
           for (const x of result.content) {
             if (x.type === 'text') { parts.push(x.text); continue; }
@@ -452,6 +504,13 @@ export class AssistantPanel {
       this.undoTurn.disabled = !this.turn || !this.engine.projects.some((x) => x.history.steps.current > (this.turn?.depths.get(x.id) ?? Infinity));
       void this.persist();
     }
+  }
+
+  private async runGated(name: string, args: Record<string, unknown>, row: StepRow): Promise<McpResult> {
+    const refused = await this.gate(name, args, row);
+    if (refused) return { content: [{ type: 'text', text: refused }], isError: true };
+    setText(row.status, STATUS_WORDS.running);
+    return await this.bridge.run(name, args);
   }
 
   /** One model step through the engine: the excluded tools are left out of the request, and the tokens the service reports are added up. */

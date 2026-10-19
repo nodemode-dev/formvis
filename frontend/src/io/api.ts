@@ -7,6 +7,7 @@ export interface Capabilities { pixelBudget?: number; memory?: number;
   decode: { heic: boolean; tiff: boolean; engine: string; raw?: boolean; rawEngine?: string };
   removeBackground: { ml: boolean; lite: boolean; default: 'ml' | 'lite' | null; model: string };
   dataDir: string;
+  dataDirSource?: 'override' | 'portable' | 'default';
   switches?: { portable: boolean; noComfy: boolean; tiles: string; logLevel: string };
   logFile?: string;
   runtime?: { python: string; system: string; machine: string };
@@ -37,9 +38,11 @@ export interface ModelsFolder { active: string; saved: string; env: string; rest
 export interface OutputItem { name: string; path: string; modified: number; size: number; kind: string }
 /** Marks the calls that read or write files by path (1.87.0): the engine answers them only for formvis's own window. */
 const LOCAL = { 'X-Formvis': '1' };
-export interface GenerativeStatus { configured: boolean; source: 'environment' | 'settings' | null; last4?: string; fillModel: string; eraseModel: string; upscaleModel: string }
+export interface GenerativeStatus { configured: boolean; source: 'environment' | 'settings' | null; last4?: string; refused?: boolean; fillModel: string; eraseModel: string; upscaleModel: string }
 /** A generation provider beside fal (1.58.4, L7): OpenAI, Google, Black Forest Labs or Ideogram. */
-export interface ProviderStatus { id: string; name: string; model: string; fill: boolean; configured: boolean; source: 'environment' | 'settings' | null; last4?: string }
+export interface ProviderStatus { id: string; name: string; model: string; fill: boolean; configured: boolean; source: 'environment' | 'settings' | null; last4?: string; refused?: boolean }
+export interface LlmRow { id: string; name: string; baseUrl: string; model: string; vision: boolean; hasKey: boolean }
+export interface LlmStatus { configured: boolean; baseUrl: string; model: string; vision: boolean; active: string; hasKey: boolean; rows: LlmRow[]; store: 'system' | 'file' }
 export interface HfToken { hasKey: boolean; last4: string; store: 'system' | 'file' }
 export interface ModelsScan { scanned: number; linked: string[]; ready: string[] }
 export interface LocalFiles { dataDir: string; folders: Array<{ id: string; label: string; path: string; files: number; bytes: number }>; unreferenced: { files: number; bytes: number } }
@@ -203,12 +206,29 @@ export const api = {
   },
 
   /** Prompt improvement (1.51.5): the language model's settings (never its key), its models, and a rewrite. */
-  async llmStatus(): Promise<{ configured: boolean; baseUrl: string; model: string; hasKey: boolean; store: 'system' | 'file' } | null> {
-    try { return (await (await request('/llm/status')).json()) as { configured: boolean; baseUrl: string; model: string; hasKey: boolean; store: 'system' | 'file' }; } catch { return null; }
+  async llmStatus(): Promise<LlmStatus | null> {
+    try { return (await (await request('/llm/status')).json()) as LlmStatus; } catch { return null; }
   },
+  /** Custom language model rows: add (no id) or change one, make one the model in use, remove one. */
+  async llmSaveRow(id: string | null, row: { name: string; baseUrl: string; model: string; vision: boolean }, key: string | null, forgetKey = false): Promise<LlmStatus> {
+    const body = form({ name: row.name, base_url: row.baseUrl, model: row.model, vision: row.vision ? 'true' : 'false', ...(key ? { key } : {}), ...(id && forgetKey ? { forget_key: 'true' } : {}) });
+    return (await (await request(id ? `/llm/rows/${encodeURIComponent(id)}` : '/llm/rows', { method: id ? 'PUT' : 'POST', body })).json()) as LlmStatus;
+  },
+  async llmUseRow(id: string): Promise<LlmStatus> { return (await (await request(`/llm/rows/${encodeURIComponent(id)}/use`, { method: 'POST' })).json()) as LlmStatus; },
+  async llmDeleteRow(id: string): Promise<LlmStatus> { return (await (await request(`/llm/rows/${encodeURIComponent(id)}`, { method: 'DELETE' })).json()) as LlmStatus; },
   async llmSave(baseUrl: string, model: string, key: string | null, forgetKey = false): Promise<{ configured: boolean; baseUrl: string; model: string; hasKey: boolean }> {
     return (await (await request('/llm/settings', { method: 'POST', body: form({ base_url: baseUrl, model, ...(key ? { key } : {}), ...(forgetKey ? { forget_key: 'true' } : {}) }) })).json()) as { configured: boolean; baseUrl: string; model: string; hasKey: boolean };
   },
+  /** The Markdown files in the data folder's prompt-templates folder, and the folder's path. */
+  async promptTemplateFiles(): Promise<{ folder: string; files: Array<{ file: string; text: string }> } | null> {
+    try { return (await (await request('/llm/templates')).json()) as { folder: string; files: Array<{ file: string; text: string }> }; } catch { return null; }
+  },
+  /** Workflows kept as files in the data folder's recipes folder: list, keep one, remove one. */
+  async recipeFiles(): Promise<{ folder: string; files: Array<{ name: string; text: string }> } | null> {
+    try { return (await (await request('/comfyui/recipe-files')).json()) as { folder: string; files: Array<{ name: string; text: string }> }; } catch { return null; }
+  },
+  async recipeFileSave(name: string, text: string): Promise<void> { await request(`/comfyui/recipe-files/${encodeURIComponent(name)}`, { method: 'PUT', body: text }); },
+  async recipeFileDelete(name: string): Promise<void> { await request(`/comfyui/recipe-files/${encodeURIComponent(name)}`, { method: 'DELETE' }); },
   async llmModels(): Promise<string[]> { return ((await (await request('/llm/models')).json()) as { models: string[] }).models; },
   async improvePrompt(prompt: string, instructions: string): Promise<string> {
     return ((await (await request('/llm/improve', { method: 'POST', body: form({ prompt, instructions }) })).json()) as { prompt: string }).prompt;
@@ -287,6 +307,11 @@ export const api = {
   /** Send to ComfyUI (1.50.9): whether ComfyUI answers at `target`, and its version. */
   async comfyuiStatus(target: string): Promise<{ running: boolean; version?: string; detail?: string } | null> {
     try { return (await (await request(`/comfyui/status?target=${encodeURIComponent(target)}`)).json()) as { running: boolean; version?: string; detail?: string }; } catch { return null; }
+  },
+
+  /** The graph of the newest job ComfyUI ran (API format, as text); throws the engine's reason when it has run none. */
+  async comfyuiGraph(target: string): Promise<string> {
+    return ((await (await request(`/comfyui/graph?target=${encodeURIComponent(target)}`)).json()) as { workflow: string }).workflow;
   },
 
   /** Sign-in for the user's own ComfyUI server: the mode, user name and header name (never the secret). */
@@ -564,6 +589,14 @@ export const api = {
     let notes = {};
     try { notes = JSON.parse(r.headers.get('X-Photomerge-Notes') ?? '{}'); } catch { notes = {}; }
     return { png: await r.blob(), stitched: r.headers.get('X-Photos-Stitched') ?? '', notes };
+  },
+  /** Photomerge as layers: each photo warped onto the shared canvas (PNG with alpha) with its seam mask (grey PNG); the
+   *  masks tile the canvas, so the layers with their masks rebuild the joined picture. */
+  async mergePanoramaLayers(files: Array<{ name: string; blob: Blob }>, layout: 'auto' | 'reposition' | 'perspective' | 'cylindrical' | 'collage', fix: { distortion?: boolean; vignette?: boolean } = {}): Promise<{ width: number; height: number; layers: Array<{ png: Blob; mask: Blob }>; notes: { k1?: number; vignette?: string } }> {
+    const r = await request('/merge/panorama', { method: 'POST', body: form({ layout, layers: 'true', distortion: String(!!fix.distortion), vignette: String(!!fix.vignette) }, files.map((f) => ({ name: f.name, blob: f.blob })), 'file') });
+    const d = (await r.json()) as { width: number; height: number; layers: Array<{ png: string; mask: string }>; notes: { k1?: number; vignette?: string } };
+    const blob = (b64: string): Blob => { const s = atob(b64), a = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) a[i] = s.charCodeAt(i); return new Blob([a], { type: 'image/png' }); };
+    return { width: d.width, height: d.height, notes: d.notes, layers: d.layers.map((l) => ({ png: blob(l.png), mask: blob(l.mask) })) };
   },
   /** File > Automate > Merge to HDR (1.58.2): the exposures merged by the engine into linear light (RGB floats), with
    *  the exposure times used and where they came from. */

@@ -3,7 +3,7 @@ import { cleanMeta, metaWritable, MAX_EXIF_BYTES, MAX_XMP_RAW_CHARS, type Camera
 import { crc32 } from './embed-icc';
 import { SOURCE, type AiLabel } from './ai-label';
 import { VERSION } from '../version';
-import { cameraFromTiff, exposureText, isoOfExifDate, rationalOf, roundText } from './exif';
+import { cameraFromTiff, exifBlockOf, exifForTiff, exposureText, isoOfExifDate, rationalOf, roundText } from './exif';
 
 /** File Info as standard XMP (DEV_PLAN 29.2). The packet carries Dublin Core (dc:title, dc:creator, dc:description,
  *  dc:subject, dc:rights), xmp:Rating, xmp:CreateDate and ModifyDate, xmpRights:Marked and WebStatement,
@@ -239,24 +239,26 @@ function webpWith(b: Uint8Array, xmp: Uint8Array, exif?: Uint8Array | null): Uin
 }
 
 /** TIFF: tag 700 (XMP) added to the first directory; the packet and the rewritten directory go at the end of the file. */
-function tiffWith(b: Uint8Array, xmp: Uint8Array): Uint8Array {
+function tiffWith(b: Uint8Array, xmp: Uint8Array, exif: Uint8Array | null = null): Uint8Array {
   const le = b[0] === 0x49 && b[1] === 0x49;
   if (b.length < 16 || (!le && !(b[0] === 0x4d && b[1] === 0x4d))) throw new Error('Not a TIFF file.');
   const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
   if (dv.getUint16(2, le) !== 42) return b;
   const ifd = dv.getUint32(4, le), n = dv.getUint16(ifd, le), next = dv.getUint32(ifd + 2 + n * 12, le);
-  const pad = b.length & 1, dataAt = b.length + pad, ifdAt = dataAt + xmp.length + (xmp.length & 1);
+  const pad = b.length & 1, dataAt = b.length + pad, exifAt = dataAt + xmp.length + (xmp.length & 1), ex = le && exif ? exifForTiff(exif, exifAt) : null, ifdAt = exifAt + (ex && exif ? exif.length + (exif.length & 1) : 0);
+  const taken = new Set([700, ...(ex?.entries.map((x) => x.tag) ?? [])]);
   const entries: Array<{ tag: number; bytes: Uint8Array }> = [];
-  for (let i = 0; i < n; i++) { const o = ifd + 2 + i * 12, tag = dv.getUint16(o, le); if (tag !== 700) entries.push({ tag, bytes: b.subarray(o, o + 12) }); }
+  for (let i = 0; i < n; i++) { const o = ifd + 2 + i * 12, tag = dv.getUint16(o, le); if (!taken.has(tag)) entries.push({ tag, bytes: b.subarray(o, o + 12) }); }
   const mine = new Uint8Array(12), mv = new DataView(mine.buffer);
   mv.setUint16(0, 700, le); mv.setUint16(2, 1, le); mv.setUint32(4, xmp.length, le); mv.setUint32(8, dataAt, le);
   entries.push({ tag: 700, bytes: mine });
+  for (const x of ex?.entries ?? []) { const e = new Uint8Array(12), ev = new DataView(e.buffer); ev.setUint16(0, x.tag, true); ev.setUint16(2, x.type, true); ev.setUint32(4, x.count, true); e.set(x.value, 8); entries.push({ tag: x.tag, bytes: e }); }   // Exif's Make, Model and directory pointers
   entries.sort((x, y) => x.tag - y.tag);
   const dir = new Uint8Array(2 + entries.length * 12 + 4), dd = new DataView(dir.buffer);
   dd.setUint16(0, entries.length, le);
   entries.forEach((e, i) => dir.set(e.bytes, 2 + i * 12));
   dd.setUint32(2 + entries.length * 12, next, le);
-  const out = join([b, new Uint8Array(pad), xmp, new Uint8Array(xmp.length & 1), dir]);
+  const out = join([b, new Uint8Array(pad), xmp, new Uint8Array(xmp.length & 1), ...(ex && exif ? [ex.bytes, new Uint8Array(exif.length & 1)] : []), dir]);
   new DataView(out.buffer).setUint32(4, ifdAt, le);
   return out;
 }
@@ -270,8 +272,8 @@ export async function withXmp(blob: Blob, format: string, meta: DocMeta | undefi
   const f = format === 'jpeg' ? 'jpg' : format === 'tif' ? 'tiff' : format;
   if (f !== 'png' && f !== 'jpg' && f !== 'webp' && f !== 'tiff') return blob;
   const xmp = new TextEncoder().encode(buildMergedXmp(meta, now, ai ?? meta.aiLabel)), b = new Uint8Array(await blob.arrayBuffer());
-  const exif = meta.exif ? fromB64(meta.exif) : null;
-  const out = f === 'png' ? pngWith(b, xmp, exif) : f === 'jpg' ? jpegWith(b, xmp, exif) : f === 'webp' ? webpWith(b, xmp, exif) : tiffWith(b, xmp);
+  const exif = exifBlockOf(meta);   // the picture's own block, else one built from the camera record
+  const out = f === 'png' ? pngWith(b, xmp, exif) : f === 'jpg' ? jpegWith(b, xmp, exif) : f === 'webp' ? webpWith(b, xmp, exif) : tiffWith(b, xmp, exif);
   return new Blob([out as BlobPart], { type: blob.type });
 }
 

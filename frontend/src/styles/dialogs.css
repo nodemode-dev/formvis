@@ -227,6 +227,11 @@
 .cv-chip.is-drag { opacity: 0.5; cursor: grabbing; }
 .cv-chip.is-over { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .cv-chip-menu { display: flex; flex-wrap: wrap; gap: 4px; }
+.cv-chips { position: relative; }
+.cv-chip-pick { position: absolute; left: 0; top: 100%; z-index: var(--z-menu); display: flex; flex-direction: column; min-width: 180px; max-width: 100%; max-height: 160px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2, var(--bg-input)); }
+.cv-chip-pick[hidden] { display: none; }
+.cv-chip-pick .cv-btn { justify-content: flex-start; text-align: left; }
+.cv-chip-pick .is-active { border-color: var(--accent); }
 .cv-cs { margin: 6px 0; }
 .cv-cs > summary { cursor: pointer; font-size: 12px; color: var(--text-muted); }
 /* Earlier generated results and the run log (Generate Image). */
@@ -280,6 +285,9 @@
 .cv-assistant-settings { font-size: 12px; }
 .cv-assistant-settings summary { cursor: pointer; }
 .cv-assistant-small { font-size: 11px; color: var(--text-muted, #999); }
+.cv-assistant-tool { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.cv-assistant-tool .cv-select { width: 72px; flex: none; }
+.cv-assistant-canon { font-family: var(--font-mono, monospace); word-break: break-all; }
 .cv-assistant-tools { max-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; margin: 4px 0; }
 .cv-assistant-nums { display: flex; gap: 8px; margin-top: 4px; }
 .cv-assistant-nums label { display: flex; flex-direction: column; gap: 2px; flex: 1; font-size: 11px; }

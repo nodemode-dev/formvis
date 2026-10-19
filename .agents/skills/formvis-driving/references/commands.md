@@ -1,11 +1,11 @@
 # formvis commands
 
-Generated from the window's command catalogue (1547 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1550 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
 - Edit: 105
-- File: 99
+- File: 101
 - Filter: 93
 - Generate: 6
 - Help: 5
@@ -18,7 +18,7 @@ Generated from the window's command catalogue (1547 commands) by `./formvis agen
 - Tools: 53
 - Type: 66
 - View: 98
-- Window: 146
+- Window: 147
 
 ## Edit
 
@@ -181,14 +181,16 @@ Generated from the window's command catalogue (1547 commands) by `./formvis agen
 | `export-selection-mask` | Selection as Mask PNG |  | Writes the selection as a grey PNG the size of the document, white where selected, black elsewhere, with feathered edges kept. (asks first) |
 | `export-tiff` | Export TIFF |  | Exports the picture as TIFF. (asks first) |
 | `export-tiff-layers` | TIFF with Layers... |  | Exports the picture as a TIFF that carries its layers in the PSD layer block; the TIFF Options prompt offers to discard the layers instead, or pass layers true or false to skip it. (asks first) |
-| `export-to-file` | Export to File |  | Encodes the flattened picture as png, jpg, webp or tiff and writes it to the exports folder. (asks first) |
+| `export-to-file` | Export to File |  | Encodes the flattened picture as png, jpg, webp or tiff, or the layers as psd, psb, ora or fvd, and writes it to the exports folder. (asks first) |
 | `export-webp` | Export WebP |  | Exports the flattened picture as WebP. (asks first) |
 | `file-info` | File Info... | Alt+Shift+Mod+I | Opens File Info (title, author, description, rating, keywords, copyright), or sets the fields given as title, author, author_title, description, rating, description_writer, keywords, copyright_status, copyright_notice and copyright_url at once as one step; the fields travel in the project and are written as XMP into PNG, JPEG, TIFF, WebP and PSD exports. (changes the picture) |
 | `fit-image` | Fit Image... |  | Scales the picture to fit within a width and height with its proportions kept (resample high, smooth or nearest, optionally never enlarging); without parameters it opens the dialog. (changes the picture) |
 | `generate-image` | Generate Image... |  | Opens Generate Image. (changes the picture) |
 | `generate-image-assets` | Generate Image Assets |  | Writes a zip holding a <document>-assets folder of image files for every layer or folder whose name holds an asset name such as hero.png, or a list like 200% big.png, small.jpg60%, 64x? icon.png, each trimmed and scaled to its size. (asks first) |
+| `generate-image-assets-folder` | Generate Image Assets to Folder... |  | Writes the image files for every layer or folder named like hero.png straight into a folder the person chooses, instead of a zip; needs a browser that can write to a folder. (asks first) |
+| `image-asset-variants` | Image Asset Default Variants... |  | Sets the default variants for Generate Image Assets: a list of scales such as 100, 200@2x, 3x; every asset name without a size of its own is written once per variant, with the suffix after its name. (changes the picture) |
 | `image-assets-on-save` | Image Assets on Save |  | Turns Image Assets on or off for this document; while on, File > Save also regenerates the image files for every layer named like hero.png and delivers them as a zip. (changes the picture) |
-| `image-processor` | Image Processor... |  | Saves chosen files or the open images as JPEG, PSD and TIFF at a maximum size, optionally after an action and with a copyright notice, each type in its own folder. |
+| `image-processor` | Image Processor... |  | Saves chosen files or the open images as JPEG, PSD, TIFF, PNG, WebP, TGA and DPX at a maximum size, optionally after an action and with a copyright notice, each type in its own folder; the dialog can write them into a folder you choose where the browser allows it. |
 | `import` | Import Images... | Shift+Mod+O | Opens the file picker to place images as layers. (changes the picture) |
 | `import-folder` | Import Images from Folder... |  | Opens the folder picker and places every picture in the chosen folder as a layer, in name order. (changes the picture) |
 | `import-notes` | Import Notes... |  | Opens the file picker to add the text notes of a PSD, or the paragraphs of a text file, to the document as notes. (changes the picture) |
@@ -208,7 +210,7 @@ Generated from the window's command catalogue (1547 commands) by `./formvis agen
 | `open-image-data` | Open Image Data |  | Opens base64 picture bytes with a file name as a new document. (changes the picture) |
 | `open-svg-layers` | Open SVG as Layers... |  | Opens an SVG file as a new document with one editable shape layer per drawable element; with the svg parameter it reads that SVG text instead of asking for a file. (changes the picture) |
 | `package` | Package... |  | Saves the document and the files of its linked smart objects together in one zip, the packaged document pointing at the copies under Links. (changes the picture) |
-| `photomerge` | Photomerge... |  | Stitches files or the open documents (documents true) into a panorama (Auto, Perspective, Cylindrical, Collage or Reposition) with optional crop, vignette and lens distortion correction; without parameters it opens the dialog. (changes the picture) |
+| `photomerge` | Photomerge... |  | Stitches files or the open documents (documents true) into a panorama (Auto, Perspective, Cylindrical, Collage or Reposition) with optional crop, vignette and lens distortion correction, or (layers true) as one layer per photo with seam masks; without parameters it opens the dialog. (changes the picture) |
 | `pin-tab` | Pin Tab |  | Pins or unpins the current document tab: a pinned tab moves to the front, loses its close button and is kept by Close All and Close Others. |
 | `place-3d` | Place 3D Model... |  | Opens a file picker for a glTF or GLB model and places it as a layer. (changes the picture) |
 | `place-embedded` | Place Embedded... |  | Places an image file as an embedded smart object. (changes the picture) |
@@ -443,7 +445,7 @@ Generated from the window's command catalogue (1547 commands) by `./formvis agen
 | `measure-scale-marker` | Place Scale Marker... |  | Places a scale bar with a text label as a new pixel layer at the bottom left, sized from the measurement scale. (changes the picture) |
 | `merge-channels` | Merge Channels... |  | Opens a new RGB document from three greys, one each for red, green and blue, taken from open documents or their channels. (changes the picture) |
 | `mode-bitmap` | Bitmap... |  | Opens the Bitmap conversion. (changes the picture) |
-| `mode-cmyk` | CMYK Color... |  | Opens the CMYK conversion. (changes the picture) |
+| `mode-cmyk` | CMYK Color... |  | Opens the CMYK conversion; with params profile (default for the shipped CMYK profile, else a profile id or name) it converts at once with no dialog, using the colour preferences intent. (changes the picture) |
 | `mode-convert` | Convert Mode... |  | Opens Convert Mode: change to RGB Color, Grayscale or Lab Color with a chosen profile, rendering intent, black point compensation and dither. (changes the picture) |
 | `mode-duotone` | Duotone... |  | Opens Duotone options: one to four inks overprinted on a grayscale document. (changes the picture) |
 | `mode-grayscale` | Grayscale |  | Converts the document to grayscale. (changes the picture) |
@@ -475,7 +477,7 @@ Generated from the window's command catalogue (1547 commands) by `./formvis agen
 | `trim` | Trim... |  | Opens Trim to cut away transparent or same-colour edges. (changes the picture) |
 | `upscale-2x` | Upscale 2x... |  | Opens the dialog that enlarges the picture two times. |
 | `upscale-4x` | Upscale 4x... |  | Opens the dialog that enlarges the picture four times. |
-| `variables-define` | Define Variable... |  | Binds a named variable to a layer: its visibility, a type layer's text, or a pixel layer's image (placed fit, fill, as is or conformed to the layer bounds). |
+| `variables-define` | Define Variable... |  | Binds a named variable to a layer: its visibility, a type layer's text, or a pixel layer's image (placed fit, fill, as is or conformed to the layer bounds, aligned to one of nine anchors, clipped to the bounds or not). |
 
 ### adjust.apply parameters
 
@@ -1559,7 +1561,7 @@ Generated from the window's command catalogue (1547 commands) by `./formvis agen
 | --- | --- | --- | --- |
 | `about` | About formvis |  | Opens the About dialog. |
 | `action-stop` | Stop Recording |  | Stops recording an action. |
-| `actions` | Actions... | Alt+F9 | Opens the Actions panel to record and play steps. |
+| `actions` | Actions... |  | Opens the Actions panel to record and play steps. |
 | `agent.claude.open` | Claude Code |  | Shows or hides the Claude Code panel. |
 | `agent.connect.copy-claude-code` | Copy Claude Code Connect Line |  | Copies the claude mcp add line that registers formvis in Claude Code. |
 | `agent.connect.copy-claude-desktop` | Copy Claude Desktop Connect JSON |  | Copies the mcpServers JSON, with this copy of formvis installed path, for Claude Desktop settings. |
@@ -1612,6 +1614,7 @@ Generated from the window's command catalogue (1547 commands) by `./formvis agen
 | `next-document` | Next Document | Mod+Tab | Switches to the next open document in the tab strip, wrapping from the last to the first. |
 | `notices` | Notices... |  | Opens the list of the notices shown so far, newest first, with the time and a count for repeats; Clear empties it. |
 | `open-plugins-folder` | Open Plugins Folder |  | Shows the plugins folder in the system file manager. |
+| `panel-actions` | Actions | Alt+F9 | Shows or hides the Actions panel (Alt+F9): the actions as a list or as coloured buttons, with Record, Stop, Play and the steps of the chosen action. |
 | `panel-activate` | Activate Panel |  | Shows a panel if it is hidden, opens it if folded, brings a floating one to the front and, given a tab id, puts that tab in front of its group; params panel. |
 | `panel-adjustments` | Adjustments |  | Shows or hides the Adjustments panel. |
 | `panel-brushes` | Brushes |  | Shows or hides the Brushes panel. |
@@ -1619,7 +1622,7 @@ Generated from the window's command catalogue (1547 commands) by `./formvis agen
 | `panel-character` | Character |  | Shows or hides the Character panel. |
 | `panel-clone-source` | Clone Source |  | Shows or hides the Clone Source panel. |
 | `panel-color` | Color | F6 | Shows the Color picker, opening its panel group if it is hidden. |
-| `panel-comfyui` | ComfyUI |  | Shows or hides the ComfyUI panel, ComfyUI's own page inside the window. |
+| `panel-comfyui` | ComfyUI |  | Shows or hides the ComfyUI panel, ComfyUI's own page inside the window, with a Save graph bar that keeps the graph ComfyUI ran last as a recipe (new, or replacing one) and reports the nodes and models ComfyUI lacks. |
 | `panel-dock` | Dock Panel |  | Returns a floating panel to its place in its column; params panel. |
 | `panel-float` | Float Panel |  | Lifts a panel out of its column into a window of its own that can be moved and resized; params panel (group id or tab id), x, y, w, h. Where it stands is remembered. |
 | `panel-generate` | Generate |  | Shows or hides the Generate panel. |

@@ -1,11 +1,14 @@
-import { Raster, SelectionMask, createSurface, ctxOf, toBlob, type BlendMode, type Engine, type Surface } from '../engine';
+import { Raster, SelectionMask, createSurface, ctxOf, toBlob, type BlendMode, type Engine, type Pt, type Surface } from '../engine';
+import { distortUsable } from '../engine/distort';
 import { api, whenServiceUp } from '../io/api';
 import { PARAM_KINDS } from '../engine/adjust-params';
 import { BOX_KINDS, MAX_BOXES, boxWarnings, boxesText } from '../engine/boxes';
 import { LIMITS, type BoxKind } from '../engine/types';
-import { decodeImage } from '../io/images';
+import { decodeImage, rasteriseSvg, svgSize } from '../io/images';
 import { writePsdFile } from '../io/psd';
 import { writeOra } from '../io/ora';
+import { writeLayeredTiff } from '../io/layered-tiff';
+import { composeDeep, srgbToLinear } from '../engine/deep';
 import { ADJUST_PRESET_STORE, GRADIENT_PRESETS, GRAIN_PRESETS, PHOTO_FILTERS } from '../engine/adjust-presets';
 import { VIDEO_PROPS, type VideoProp, type VideoTimeline } from '../engine/video-timeline';
 import { depthReady, localDepth, localFill, localInpaint, localModels, localUpscale, modelReady, runLocal } from '../io/local-gen';
@@ -105,7 +108,7 @@ interface BackgroundRun { job: string; command: string; status: 'running' | 'don
 const background = new Map<string, BackgroundRun>();
 let backgroundCount = 0;
 
-async function catalogueTool(name: string, a: Record<string, unknown>, hasDocument = true): Promise<McpResult> {
+async function catalogueTool(name: string, a: Record<string, unknown>, hasDocument = true, menus?: () => Map<string, string>): Promise<McpResult> {
   if (name === 'command_job') {
     const want = typeof a.job === 'string' ? a.job : '';
     if (want && !background.has(want)) return fail(`No background command has the job ${want}: call command_job with no job to list them.`);
@@ -119,7 +122,8 @@ async function catalogueTool(name: string, a: Record<string, unknown>, hasDocume
     const found = cat.listCommands({ ...(typeof a.group === 'string' && a.group ? { group: a.group } : {}), ...(typeof a.text === 'string' && a.text ? { text: a.text } : {}) });
     const all = a.enabled === true ? found.filter((c) => c.enabled !== false) : a.enabled === false ? found.filter((c) => c.enabled === false) : found;
     const why = hasDocument ? 'Not available in this state: it may need a selection, a pixel layer or another colour mode (describe_command says what it is for).' : 'Needs an open document: call new_document or open_file first.';
-    const shown = all.slice(0, LIST_CAP).map((c) => ({ id: c.id, label: c.label, ...(c.group ? { group: c.group } : {}), ...(c.when ? { when: c.when } : {}), ...(c.params !== undefined ? { params: c.params } : {}), ...(c.risky ? { risky: true } : {}), ...(c.mutates !== undefined ? { mutates: c.mutates } : {}), ...(c.keys?.length ? { keys: c.keys } : {}), ...(c.enabled !== undefined ? { enabled: c.enabled } : {}), ...(c.enabled === false ? { disabledReason: why, ...(hasDocument ? {} : { needsDocument: true }) } : {}) }));
+    const paths = menus?.() ?? new Map<string, string>();
+    const shown = all.slice(0, LIST_CAP).map((c) => ({ id: c.id, label: c.label, ...(paths.has(c.id) ? { menu: paths.get(c.id) } : {}), ...(c.group ? { group: c.group } : {}), ...(c.when ? { when: c.when } : {}), ...(c.params !== undefined ? { params: c.params } : {}), ...(c.risky ? { risky: true } : {}), ...(c.mutates !== undefined ? { mutates: c.mutates } : {}), ...(c.keys?.length ? { keys: c.keys } : {}), ...(c.enabled !== undefined ? { enabled: c.enabled } : {}), ...(c.enabled === false ? { disabledReason: why, ...(hasDocument ? {} : { needsDocument: true }) } : {}) }));
     const data = { total: all.length, commands: shown };
     return text(`${all.length} command${all.length === 1 ? '' : 's'}${all.length > shown.length ? `, the first ${shown.length} shown: narrow with group or text` : ''}. ${brief(shown)}`, data);
   }
@@ -222,19 +226,31 @@ export class AgentBridge {
         if (!made) return fail(`A ${nw} by ${nh} document is outside what formvis allows (30,000 pixels a side, ${Math.round(LIMITS.pixels / 1_000_000)} megapixels on this computer).`);
         const cat = catalogueOf();
         if ((mode !== 'rgb' || depth !== 8) && !cat) return fail(`${NO_CATALOGUE} The document was opened as 8-bit RGB.`);
-        if (mode !== 'rgb') { const r = await cat!.runCommand(`mode-${mode}`, {}); if (!r.ok) return fail(`The document was opened, but ${mode} mode failed: ${r.error ?? 'no reason given'}.`); }
+        if (mode !== 'rgb') {
+          const r = await cat!.runCommand(`mode-${mode}`, mode === 'cmyk' ? { profile: str('profile') || 'default' } : {});
+          if (!r.ok) return fail(`The document was opened, but ${mode} mode failed: ${r.error ?? 'no reason given'}.`);
+          for (let i = 0; mode === 'cmyk' && i < 600 && (e.current?.doc.mode !== 'cmyk' || e.busyWith); i++) await sleep(25);
+          if (mode === 'cmyk' && e.current?.doc.mode !== 'cmyk') return fail('The document was opened, but it could not become CMYK: the engine service may not be running or has no CMYK profile (View > Proof Setup).');
+        }
         if (depth !== 8) { const r = await cat!.runCommand(`depth-${depth}`, {}); if (!r.ok) return fail(`The document was opened, but ${depth} bits failed: ${r.error ?? 'no reason given'}.`); }
         const d = e.current?.doc;
         return text(`Opened a ${d?.width} by ${d?.height} ${d?.mode ?? 'rgb'} document at ${d?.depth ?? 8} bits.`, { width: d?.width, height: d?.height, mode: d?.mode ?? 'rgb', depth: d?.depth ?? 8 });
       }
       if (name === '__open') {   // open_file: the engine read the file at its path (1.53.3)
-        const bytes = Uint8Array.from(atob(str('data')), (c) => c.charCodeAt(0)), file = new File([bytes], str('name'));
+        const bytes = Uint8Array.from(atob(str('data')), (c) => c.charCodeAt(0)), file = new File([bytes], str('name')), was = p?.id, into = str('into');
+        if (into === 'layer' || into === 'replace') {
+          if (!p) return fail(`into ${into} needs an open document: call new_document or open_file first, or leave into out to open the picture as a new document.`);
+          if (/\.(fmv|fvd|psd|psb|ora)$/i.test(file.name)) return fail(`into ${into} takes a picture, not a project: open ${file.name} without into.`);
+        }
+        if (into === 'layer') return await this.run('place_image', { data: str('data'), name: file.name.replace(/\.[^.]+$/, '').slice(0, 120), ...(a.svg_width !== undefined ? { svg_width: a.svg_width } : {}), ...(a.reference === true ? { reference: true } : {}) });
         if (/\.(fmv|psd|psb|ora)$/i.test(file.name)) { if (!this.deps.openFile) return fail('formvis cannot open projects for agents here.'); await this.deps.openFile(file); }
+        else if (/\.svg$/i.test(file.name)) e.openImage(await rasteriseSvg(file, file.name, Math.round(num('svg_width', (await svgSize(file))?.width ?? 1024))));
         else e.openImage(await decodeImage(file, file.name));
+        if (into === 'replace' && was && e.current && e.current.id !== was) e.closeProject(was);
         const q = e.current;
         return text(q ? `Opened ${file.name}: ${q.doc.width} by ${q.doc.height}, ${q.doc.layers.length} layer${q.doc.layers.length === 1 ? '' : 's'}.` : `Could not open ${file.name}.`, q ? { id: q.id, width: q.doc.width, height: q.doc.height } : undefined);
       }
-      if (name === 'list_commands' || name === 'describe_command' || name === 'run_command' || name === 'run_commands' || name === 'command_job') return await catalogueTool(name, a, !!p);
+      if (name === 'list_commands' || name === 'describe_command' || name === 'run_command' || name === 'run_commands' || name === 'command_job') return await catalogueTool(name, a, !!p, this.deps.ui ? () => this.deps.ui!.menuPaths() : undefined);
       if (PACK_TOOLS.has(name)) return await packTool(e, name, a);
       if (name === 'set_status') {
         if (!this.deps.status) return fail('The status bar is not available here.');
@@ -317,7 +333,7 @@ export class AgentBridge {
         if (name === 'ui_dialog') return await ui.dialog(shown('action') || 'list', a.fields && typeof a.fields === 'object' ? a.fields as Record<string, unknown> : undefined, shown('button') || undefined);
         if (name === 'ui_pointer') return await ui.pointer(Array.isArray(a.events) ? a.events as Array<Record<string, unknown>> : [], num('delay_ms', 4), a.keep_down === true);
         if (name === 'ui_key') return await ui.key(Array.isArray(a.keys) ? a.keys.filter((k): k is string => typeof k === 'string') : undefined, shown('text') || undefined);
-        if (name === 'ui_window') return await ui.window(shown('action'), typeof a.width === 'number' ? a.width : undefined, typeof a.height === 'number' ? a.height : undefined);
+        if (name === 'ui_window') return await ui.window(shown('action'), typeof a.width === 'number' ? a.width : undefined, typeof a.height === 'number' ? a.height : undefined, a.confirm === true);
         return fail(`formvis has no tool named ${name}.`);
       }
       if (!p) return fail('No document is open: call new_document or open_file first.');
@@ -330,7 +346,7 @@ export class AgentBridge {
             history: { steps: e.historySteps.names.length, done: e.historySteps.current, canUndo: p.history.canUndo, canRedo: p.history.canRedo, last: e.historySteps.current ? e.historySteps.names[e.historySteps.current - 1] : null },
             documents: e.projects.map((q) => ({ id: q.id, name: q.name, active: q === p, width: q.doc.width, height: q.doc.height, layers: q.doc.layers.length, modified: q.modified })),
             layers: d.layers.map((l) => ({ id: l.id, name: l.name, kind: l.isGroup ? 'group' : l.adjustment ? `adjustment:${l.adjustment.kind}` : l.fillContent ? `fill:${l.fillContent.kind}` : l.text ? 'text' : l.shape ? 'shape' : l.smart ? 'smart object' : 'pixels',
-              visible: l.visible !== false, opacity: l.opacity, blend: l.blend ?? 'normal', parentId: l.parentId ?? null })) };
+              visible: l.visible !== false, opacity: l.opacity, blend: l.blend ?? 'normal', parentId: l.parentId ?? null, ...(l.reference ? { reference: true } : {}) })) };
           return text(JSON.stringify(data), data);
         }
         case 'get_image': {
@@ -375,6 +391,7 @@ export class AgentBridge {
           if (typeof a.visible === 'boolean' && a.visible !== (l.visible !== false)) e.toggleVisibility(l.id);
           if (typeof a.opacity === 'number') e.setOpacity(Math.min(1, Math.max(0, a.opacity)));
           if (typeof a.blend === 'string') e.setBlend(a.blend as BlendMode);
+          if (typeof a.reference === 'boolean' && a.reference !== (l.reference === true)) e.edit('Reference Layer', (q) => { q.updateLayer(l.id, { reference: a.reference as boolean }); });
           if (a.locks && typeof a.locks === 'object') {
             const lk = a.locks as Record<string, unknown>, patch: Record<string, boolean> = {};
             for (const k of ['pixels', 'position', 'transparency', 'all']) if (typeof lk[k] === 'boolean') patch[k] = lk[k] as boolean;
@@ -399,11 +416,18 @@ export class AgentBridge {
           return text(`Added ${l?.name} (id ${id}).`, { id });
         }
         case 'place_image': {
-          const bytes = Uint8Array.from(atob(str('data')), (c) => c.charCodeAt(0)), bmp = await createImageBitmap(new Blob([bytes]));
-          const r = new Raster(bmp.width, bmp.height); r.ctx.drawImage(bmp, 0, 0); bmp.close(); r.touch();
+          const bytes = Uint8Array.from(atob(str('data')), (c) => c.charCodeAt(0));
+          let r: Raster;
+          if (/<svg\b/i.test(new TextDecoder().decode(bytes.subarray(0, 4096)))) {
+            const blob = new Blob([bytes], { type: 'image/svg+xml' }), size = await svgSize(blob), img = await rasteriseSvg(blob, str('name') || 'Image', Math.round(num('svg_width', size?.width ?? 1024)));
+            r = Raster.from(img.source, img.width, img.height);
+          } else {
+            const bmp = await createImageBitmap(new Blob([bytes]));
+            r = new Raster(bmp.width, bmp.height); r.ctx.drawImage(bmp, 0, 0); bmp.close(); r.touch();
+          }
           let placed: string | undefined, smartFailed = '';
           await inOneStep(e, 'Place', async () => {
-            e.insertRasterLayer(r, str('name') || 'Placed Image', Math.round(num('x', 0)), Math.round(num('y', 0)), {}, 'Place');
+            e.insertRasterLayer(r, str('name') || 'Placed Image', Math.round(num('x', 0)), Math.round(num('y', 0)), a.reference === true ? { reference: true } : {}, 'Place');
             placed = e.activeLayer?.id;
             if (placed && (typeof a.scale === 'number' || a.fit === 'contain' || a.fit === 'cover')) {
               const k = typeof a.scale === 'number' ? a.scale : Math.min(1000, Math.max(1, (a.fit === 'cover' ? Math.max : Math.min)(p.doc.width / r.width, p.doc.height / r.height) * 100));
@@ -536,8 +560,30 @@ export class AgentBridge {
             const { bytes, notes } = await writePsdFile(p.doc, flat, kind === 'psb', e.pathsOf(p), true);
             return text(`The layered picture, ${p.doc.layers.length} layers.${notes.length ? ` ${notes.join(' ')}` : ''}`, { data: await b64(new Blob([bytes])) });
           }
+          if (str('type') === 'tiff-layers') {
+            e.settle();
+            const flat = e.flattened();
+            if (!flat) return fail('Nothing to export.');
+            const { blob, notes } = await writeLayeredTiff(p.doc, flat, e.pathsOf(p));
+            return text(`The layered TIFF, ${p.doc.layers.length} layers.${notes.length ? ` ${notes.join(' ')}` : ''}`, { data: await b64(blob) });
+          }
+          if (str('type') === 'exr' || str('type') === 'hdr') {
+            e.settle();
+            let deep: { width: number; height: number; data: Float32Array } | { error: string };
+            if (p.doc.depth === 32) deep = composeDeep(p.doc);
+            else {
+              const flat = e.flattened();
+              if (!flat) return fail('Nothing to export.');
+              const img = ctxOf(flat).getImageData(0, 0, flat.width, flat.height), d = new Float32Array(img.data.length);
+              for (let i = 0; i < d.length; i += 4) { for (let c = 0; c < 3; c++) d[i + c] = srgbToLinear(img.data[i + c] / 255); d[i + 3] = img.data[i + 3] / 255; }
+              deep = { width: flat.width, height: flat.height, data: d };
+            }
+            if ('error' in deep) return fail(deep.error);
+            const kind = str('type') as 'exr' | 'hdr', blob = await api.encodeDeep(deep.data, deep.width, deep.height, kind, null, kind === 'exr' ? { compression: str('exr_compression') || 'zip', half: a.half === true } : null);
+            return text(`The ${kind} picture, ${deep.width} by ${deep.height}.`, { data: await b64(blob), width: deep.width, height: deep.height });
+          }
           const t = (['image/png', 'image/jpeg', 'image/webp'].includes(str('type')) ? str('type') : 'image/png') as 'image/png';
-          const q = Math.min(1, Math.max(0.1, num('quality', 0.92))), sc = Math.min(4, Math.max(0.05, num('scale', 1)));
+          const q = Math.min(1, Math.max(0.1, num('quality', 0.92))), sc = Math.min(4, Math.max(0.05, num('scale', 1))), label = str('metadata') === 'none' ? async (_e: Engine, b: Blob, _t: string): Promise<Blob> => b : labelExport;
           if (sc !== 1) {
             const flat = e.flattened();
             if (!flat) return fail('Nothing to export.');
@@ -545,10 +591,10 @@ export class AgentBridge {
             if (str('type') === 'image/jpeg') { oc.fillStyle = '#ffffff'; oc.fillRect(0, 0, out.width, out.height); }
             oc.imageSmoothingQuality = 'high';
             oc.drawImage(flat as CanvasImageSource, 0, 0, out.width, out.height);
-            return text(`The picture at ${out.width} by ${out.height}.`, { data: await b64(await labelExport(e, await toBlob(out, t, str('type') === 'image/png' || !str('type') ? undefined : q), t)), width: out.width, height: out.height });
+            return text(`The picture at ${out.width} by ${out.height}.`, { data: await b64(await label(e, await toBlob(out, t, str('type') === 'image/png' || !str('type') ? undefined : q), t)), width: out.width, height: out.height });
           }
           const blob = await e.exportBlob(t, q);
-          return blob ? text('The picture.', { data: await b64(await labelExport(e, blob, t)) }) : fail('Nothing to export.');
+          return blob ? text('The picture.', { data: await b64(await label(e, blob, t)) }) : fail('Nothing to export.');
         }
         case 'switch_document': {
           if (!e.projects.some((q) => q.id === str('id'))) return fail(`No open document has the id ${str('id')}: see documents in get_document.`);
@@ -578,6 +624,11 @@ export class AgentBridge {
         // Layers.
         case 'transform_layer': {
           const l = layerOf(); e.selectLayer(l.id);
+          if (a.distort !== undefined && a.warp !== undefined) return fail('Give distort or warp, not both: one transform at a time.');
+          const cs = a.distort && typeof a.distort === 'object' ? (a.distort as { corners?: unknown }).corners : undefined;
+          const corners = Array.isArray(cs) ? cs.map((c) => (c && typeof (c as Pt).x === 'number' && typeof (c as Pt).y === 'number' ? { x: (c as Pt).x, y: (c as Pt).y } : null)) : [];
+          if (a.distort !== undefined && (corners.length !== 4 || corners.some((c) => !c))) return fail('distort.corners is four {x, y} points in document pixels: top left, top right, bottom right, bottom left.');
+          if (a.distort !== undefined && !distortUsable(corners as Pt[])) return fail('Those corners cross or collapse. Keep them in order (top left, top right, bottom right, bottom left) with no side crossing another.');
           if (typeof a.scale === 'number') e.scaleLayerTo(a.scale);
           const patch: Record<string, number> = {};
           if (typeof a.x === 'number') patch.x = a.x;
@@ -585,6 +636,24 @@ export class AgentBridge {
           if (typeof a.rotation === 'number') patch.rotation = a.rotation;
           if (Object.keys(patch).length) e.setLayerTransform(patch, 'Transform Layer');
           if (a.flip === 'horizontal' || a.flip === 'vertical') e.flipLayers(a.flip === 'horizontal');
+          const tool = e.tool;
+          if (a.distort !== undefined) {
+            if (!e.beginDistortMode('distort') || !e.distortEdit) return fail(`${l.name} cannot be distorted: it needs to be a pixel layer or a smart object (rasterize_layer first), with no other transform under way.`);
+            e.distortEdit.corners = corners as Pt[];
+            e.applyDistort();
+            e.setTool(tool);
+          }
+          if (a.warp !== undefined) {
+            const w = (a.warp && typeof a.warp === 'object' ? a.warp : {}) as Record<string, unknown>;
+            e.setTool('move');
+            if (!e.beginMeshWarp(typeof w.grid === 'number' ? w.grid : undefined)) return fail(`${l.name} cannot be warped: it needs to be a pixel layer or a smart object (rasterize_layer first), with no other transform under way.`);
+            if (typeof w.style === 'string' && !e.setMeshWarpPreset({ style: w.style as 'arc', ...(typeof w.bend === 'number' ? { bend: w.bend } : {}), ...(typeof w.horizontal === 'number' ? { horizontal: w.horizontal } : {}), ...(typeof w.vertical === 'number' ? { vertical: w.vertical } : {}), ...(w.orientation === 'vertical' ? { orientation: 'vertical' as const } : {}) })) {
+              e.cancelMeshWarp(); e.setTool(tool);
+              return fail(`The warp ${w.style} was not applied: the style is not known or that bend would fold the picture. Lower bend, horizontal or vertical.`);
+            }
+            e.applyMeshWarp();
+            e.setTool(tool);
+          }
           const t = e.current?.layer(l.id)?.transform;
           return text(`${l.name} is at ${Math.round(t?.x ?? 0)}, ${Math.round(t?.y ?? 0)}, ${Math.round(t?.w ?? 0)} by ${Math.round(t?.h ?? 0)}.`);
         }

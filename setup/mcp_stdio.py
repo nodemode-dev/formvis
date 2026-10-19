@@ -7,12 +7,20 @@ is started (1.53.3).
 
   ./formvis mcp --attach   never start the engine: with none running, only ping is offered, and the client is told
                            (notifications/tools/list_changed) once the engine answers. FORMVIS_MCP_ATTACH=1 does the same.
+  ./formvis mcp --headless a window with no screen is started when none is open (./formvis headless) and closed when the client
+                           goes away, so edits run with nothing on screen
+  ./formvis mcp --root DIR   (repeatable) file tools may read and write inside DIR only; --read-root DIR (repeatable) adds
+                           folders that may be read but not written; a call outside them is refused here, before the engine
   ./formvis mcp --where    print the launcher's path and the config to paste into a client, then exit
-  ./formvis mcp --version  print the version, then exit"""
+  ./formvis mcp --version  print the version, then exit
+
+The server declares tools.listChanged, and tells the client (notifications/tools/list_changed) when the engine's tool count
+changes or the engine comes back."""
 
 import json
 import os
 import sys
+import threading
 import urllib.error
 import urllib.request
 
@@ -27,6 +35,85 @@ PING_ONLY = [{"name": "ping", "description": "Reports whether formvis is running
 
 TOOLSET = os.environ.get("FORMVIS_MCP_TOOLS", "")   # "core": the 31 most used tools, for clients that cap their tools (Cursor)
 _session = ""   # the engine's Mcp-Session-Id from initialize, which ties later calls to the client's name
+ROOTS: list[str] = []   # --root: folders the file tools may read and write
+READ_ROOTS: list[str] = []   # --read-root: folders they may only read
+WRITES = {"save_project", "export_image", "export_mask", "export_layer", "timeline_render"}   # tools whose path is written; output_path always is
+_out = threading.Lock()
+_watching = False
+
+
+def emit(text: str) -> None:
+    with _out:
+        sys.stdout.write(text + "\n")
+        sys.stdout.flush()
+
+
+def inside(path: str, folders: list[str]) -> bool:
+    real = os.path.realpath(os.path.expanduser(path))
+    for folder in folders:
+        try:
+            if os.path.commonpath([real, folder]) == folder:
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def outside_roots(msg: dict) -> str | None:
+    """Why a tools/call is refused for its file paths under --root and --read-root; None when it is fine or no roots were given."""
+    if not (ROOTS or READ_ROOTS) or msg.get("method") != "tools/call":
+        return None
+    params = msg.get("params") or {}
+    args = params.get("arguments") or {}
+    for key in ("path", "output_path"):
+        value = args.get(key)
+        if not isinstance(value, str) or not value.strip():
+            continue
+        writing = key == "output_path" or params.get("name") in WRITES
+        if not inside(value, ROOTS if writing else ROOTS + READ_ROOTS):
+            return f"{key} {value} is outside the folders this server may {'write' if writing else 'read'} ({', '.join(ROOTS if writing else ROOTS + READ_ROOTS) or 'none'})."
+    return None
+
+
+def watch_tools() -> None:
+    """Once per session: a thread that tells the client the tool list changed when the engine's tool count does."""
+    global _watching
+    if _watching:
+        return
+    _watching = True
+
+    def count() -> int | None:
+        try:
+            with urllib.request.urlopen(URL.rsplit("/mcp", 1)[0] + "/api/mcp/status", timeout=3) as r:
+                return json.loads(r.read().decode()).get("tools")
+        except (urllib.error.URLError, OSError, ValueError):
+            return None
+
+    def loop() -> None:
+        import time
+        last = count()
+        while True:
+            time.sleep(5)
+            now = count()
+            if now is not None and last is not None and now != last:
+                emit(json.dumps({"jsonrpc": "2.0", "method": "notifications/tools/list_changed"}))
+            if now is not None:
+                last = now
+
+    threading.Thread(target=loop, daemon=True).start()
+
+
+def with_list_changed(msg: dict, body: str) -> str:
+    """The engine's initialize and discover answers, with tools.listChanged declared (this transport sends the notification)."""
+    if msg.get("method") not in ("initialize", "server/discover"):
+        return body
+    try:
+        answer = json.loads(body)
+        answer["result"]["capabilities"].setdefault("tools", {})["listChanged"] = True
+    except (ValueError, KeyError, TypeError, AttributeError):
+        return body
+    watch_tools()
+    return json.dumps(answer)
 
 
 def forward(line: str) -> str | None:
@@ -35,6 +122,9 @@ def forward(line: str) -> str | None:
         msg = json.loads(line)
     except ValueError:
         return json.dumps({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}})
+    refused = outside_roots(msg)
+    if refused:
+        return json.dumps({"jsonrpc": "2.0", "id": msg.get("id"), "result": {"content": [{"type": "text", "text": refused}], "isError": True}}) if msg.get("id") is not None else None
     version = ((msg.get("params") or {}).get("_meta") or {}).get("io.modelcontextprotocol/protocolVersion") or (msg.get("params") or {}).get("protocolVersion") or "2025-11-25"
     headers = {"Content-Type": "application/json", "Accept": "application/json", "MCP-Protocol-Version": version}
     if _session:
@@ -60,7 +150,7 @@ def forward(line: str) -> str | None:
         _down, _changed = False, True
     if msg.get("id") is None:
         return None   # a notification: no reply
-    return body.strip() or None
+    return with_list_changed(msg, body.strip()) if body.strip() else None
 
 
 def offline(msg: dict, version: str) -> str | None:
@@ -123,8 +213,19 @@ def start_engine() -> bool:
 def main() -> None:
     global ATTACH, _changed
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    for flag in sys.argv[1:]:
-        if flag == "--attach":
+    headless, args, i = False, sys.argv[1:], 0
+    while i < len(args):
+        flag = args[i]
+        i += 1
+        if flag in ("--root", "--read-root"):
+            if i >= len(args):
+                print(f"{flag} needs a folder.", file=sys.stderr)
+                sys.exit(2)
+            (ROOTS if flag == "--root" else READ_ROOTS).append(os.path.realpath(os.path.expanduser(args[i])))
+            i += 1
+        elif flag == "--headless":
+            headless = True
+        elif flag == "--attach":
             ATTACH = True
         elif flag == "--where":
             launcher = os.path.join(root, "formvis.bat" if os.name == "nt" else "formvis")
@@ -139,18 +240,41 @@ def main() -> None:
                 print("formvis unknown")
             return
         else:
-            print(f"{flag}: not an option. ./formvis mcp takes --attach, --where and --version.", file=sys.stderr)
+            print(f"{flag}: not an option. ./formvis mcp takes --attach, --headless, --root, --read-root, --where and --version.", file=sys.stderr)
             sys.exit(2)
-    for line in sys.stdin:
-        if not line.strip():
-            continue
-        out = forward(line)
-        if _changed:
-            _changed = False
-            sys.stdout.write(json.dumps({"jsonrpc": "2.0", "method": "notifications/tools/list_changed"}) + "\n")
-        if out:
-            sys.stdout.write(out + "\n")
-            sys.stdout.flush()
+    held = None
+    if headless:
+        held = start_headless()
+    try:
+        for line in sys.stdin:
+            if not line.strip():
+                continue
+            out = forward(line)
+            if _changed:
+                _changed = False
+                emit(json.dumps({"jsonrpc": "2.0", "method": "notifications/tools/list_changed"}))
+            if out:
+                emit(out)
+    finally:
+        if held is not None:
+            import headless as window_host
+            window_host.release(held)
+
+
+def start_headless():
+    """The engine started if need be, then a window with no screen when none is open; None when none was needed or it could not start (said on stderr)."""
+    import headless as window_host
+    try:
+        urllib.request.urlopen(URL.rsplit("/mcp", 1)[0] + "/api/version", timeout=2).close()
+    except (urllib.error.URLError, OSError):
+        if not start_engine():
+            print("[formvis mcp] --headless: the engine is not running and could not be started.", file=sys.stderr, flush=True)
+            return None
+    try:
+        return window_host.ensure()
+    except RuntimeError as exc:
+        print(f"[formvis mcp] --headless: {exc}", file=sys.stderr, flush=True)
+        return None
 
 
 if __name__ == "__main__":
