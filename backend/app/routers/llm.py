@@ -121,5 +121,5 @@ def chat_delete(chat_id: str, request: Request) -> dict:
 
 
 @router.post("/improve")
-async def improve(prompt: str = Form(...), instructions: str = Form("")) -> dict:
-    return {"prompt": await run_in_threadpool(_run, llm.improve, prompt, instructions)}
+async def improve(prompt: str = Form(...), instructions: str = Form(""), picture: str = Form("")) -> dict:
+    return await run_in_threadpool(_run, llm.improve, prompt, instructions, picture)

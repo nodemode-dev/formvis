@@ -1,5 +1,6 @@
 import { clamp, type Pt, type Rect } from './types';
 import { gaussianBlur, gaussianMargin } from './filters';
+import type { GpuSmudge } from './gpu-filters';
 
 /** Retouching for formvis, written from published methods. Spot Healing picks a source patch whose surrounding ring
  *  best matches the spot's own ring (least squared difference), then heals it as in Poisson image editing (Perez,
@@ -734,6 +735,14 @@ export class WarpStroke {
   private sinceDab = 0;
   /** Smudge's paint on the brush: a square of 2 radius + 1 pixels a side around the dab centre, premultiplied. */
   private paint: Float32Array | null = null;
+  /** Smudge on the GPU: the dabs of each move run there and the changed rectangle comes back into `pixels`; any failure drops to the CPU path. */
+  private gpu: GpuSmudge | null = null;
+
+  /** Moves a Smudge stroke's dabs onto `session` (holding a copy of `pixels`); the CPU path takes over if it ever fails. */
+  useGpu(session: GpuSmudge | null): void { this.gpu = this.mode === 'smudge' ? session : null; }
+
+  /** Frees the GPU session, if any. */
+  release(): void { this.gpu?.close(); this.gpu = null; }
 
   /** Smudge Length: 1 keeps the paint as far as Strength allows, 0 lets it take on the canvas fully at every dab. */
   private readonly length: number;
@@ -761,16 +770,20 @@ export class WarpStroke {
     if (!this.pointer) {
       this.pointer = { x: point.x, y: point.y };
       this.lastDab = { x: point.x, y: point.y };
-      if (this.mode === 'smudge') this.pickUp(point);
+      if (this.mode === 'smudge') {
+        this.pickUp(point);
+        if (this.gpu && !(this.paint && this.gpu.setPaint(this.paint, 2 * this.radius + 1))) this.release();
+      }
       return null;
     }
     const from = this.pointer, dx = point.x - from.x, dy = point.y - from.y, length = Math.hypot(dx, dy);
     this.pointer = { x: point.x, y: point.y };
     if (!(length > 0)) return null;
     let along = this.gap - this.sinceDab, minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const batch: Pt[] = [], onGpu = !!this.gpu;
     while (along <= length) {
       const at = { x: from.x + (dx * along) / length, y: from.y + (dy * along) / length };
-      if (this.mode === 'smudge') this.deposit(at); else this.displace(this.lastDab as Pt, at);
+      if (this.mode === 'smudge') { if (onGpu) batch.push(at); else this.deposit(at); } else this.displace(this.lastDab as Pt, at);
       this.lastDab = at;
       this.points.push(at);
       const reach = this.radius + 2;
@@ -782,6 +795,15 @@ export class WarpStroke {
     if (minX === Infinity) return null;
     const x = Math.max(0, Math.floor(minX)), y = Math.max(0, Math.floor(minY));
     const w = Math.min(this.width, Math.ceil(maxX)) - x, h = Math.min(this.height, Math.ceil(maxY)) - y;
+    if (batch.length && this.gpu) {
+      const lay = this.strength * this.pressure;
+      if (!(this.gpu.dabs(batch, this.radius, this.diameter / 2, this.hardness, lay, 1 - lay * this.length) && (!(w > 0 && h > 0) || this.gpu.read({ x, y, w, h }, this.pixels)))) {
+        // The canvas bytes are still those from before this move: the paint is picked up again here and the move is redone on the CPU.
+        this.release();
+        this.pickUp(batch[0]);
+        for (const at of batch) this.deposit(at);
+      }
+    }
     return w > 0 && h > 0 ? { x, y, w, h } : null;
   }
 

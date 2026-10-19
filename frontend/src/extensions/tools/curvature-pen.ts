@@ -1,6 +1,7 @@
 import { tracePath, type Pt, type SubPath, type VectorPath } from '../../engine';
 import { smoothAnchors } from '../../engine/curve-fit';
 import type { Tool } from '../registry';
+import { badgeCursor } from './cursor-badges';
 
 /** The path being drawn: the clicked points, which of them are corners, and the subpath they make. */
 let active: { points: Pt[]; corners: Set<number>; sp: SubPath } | null = null;
@@ -17,7 +18,7 @@ export const curvaturePenTool: Tool = {
   id: 'curvaturePen', label: 'Curvature Pen', key: 'P', order: 77.6,
   icon: () => 'tCurvaturePen',
   hint: () => 'Click to place points; the curve runs smoothly through them · Alt-click for a corner · drag a point to move it · double-click a point to toggle corner · click the first point to close · Enter ends',
-  cursor: () => 'crosshair',
+  cursor: () => badgeCursor('curvaturePen'),
   down(ctx, p) {
     if (p.button !== 0 || !ctx.engine.current) return;
     const vp: VectorPath = ctx.engine.workPath ?? { subpaths: [] }, v = ctx.view();

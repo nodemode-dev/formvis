@@ -1,11 +1,15 @@
 /** WebAssembly filter plug-ins, ABI v1 (docs/WASM_PLUGINS.md): the manifest a plug-in declares, the limits a module
  *  must keep, and the parameter values passed to its filter. Pure functions: the worker and the page both use them. */
 
+import { WASM_ALPHAS, WASM_FORMATS, WASM_MODELS, type WasmAlpha, type WasmFormat, type WasmModel } from './wasm-abi2';
+
 export const WASM_ABI = 1;
+export const WASM_ABI_V2 = 2;
 export const WASM_MAX_MODULE = 1 << 20;
 export const WASM_PAGE = 65536;
 export const WASM_PROGRESS = ['env', 'progress'] as const;
-export const WASM_REQUIRED = ['alloc', 'filter', 'abi_version'] as const;
+export const WASM_REQUIRED = ['alloc', 'abi_version'] as const;
+export const WASM_ENTRY: Record<number, string> = { 1: 'filter', 2: 'filter2' };
 
 export interface WasmLimits { ms: number; memoryMb: number }
 export const WASM_DEFAULT_LIMITS: WasmLimits = { ms: 10000, memoryMb: 256 };
@@ -17,11 +21,13 @@ export type WasmParam =
   | { readonly key: string; readonly label: string; readonly kind: 'range'; readonly min: number; readonly max: number; readonly step: number; readonly def: number }
   | { readonly key: string; readonly label: string; readonly kind: 'select'; readonly options: ReadonlyArray<readonly [string, string]>; readonly def: string }
   | { readonly key: string; readonly label: string; readonly kind: 'check'; readonly def: boolean };
-export interface WasmManifest { readonly abi: number; readonly id: string; readonly name: string; readonly version: string; readonly author: string; readonly description: string; readonly reach: number; readonly params: readonly WasmParam[] }
+/** `formats`, `models` and `alpha` are the ABI v2 fields; a v1 manifest reads as u8, rgb and alpha passed through. */
+export interface WasmManifest { readonly abi: number; readonly id: string; readonly name: string; readonly version: string; readonly author: string; readonly description: string; readonly reach: number; readonly params: readonly WasmParam[]; readonly formats: readonly WasmFormat[]; readonly models: readonly WasmModel[]; readonly alpha: WasmAlpha }
 
 export type WasmJob =
   | { kind: 'inspect'; bytes: ArrayBuffer; memoryMb: number }
-  | { kind: 'run'; bytes: ArrayBuffer; memoryMb: number; width: number; height: number; pixels: ArrayBuffer; params: number[] };
+  | { kind: 'run'; bytes: ArrayBuffer; memoryMb: number; width: number; height: number; pixels: ArrayBuffer; params: number[] }
+  | { kind: 'run2'; bytes: ArrayBuffer; memoryMb: number; width: number; height: number; samples: ArrayBuffer; params: number[]; desc: number[] };
 export type WasmReply =
   | { kind: 'progress'; percent: number }
   | { kind: 'schema'; text: string | null }
@@ -39,7 +45,8 @@ const num = (v: unknown, name: string): number => { if (typeof v !== 'number' ||
 export function parseManifest(raw: unknown): WasmManifest {
   if (!raw || typeof raw !== 'object') throw new Error('The plug-in schema is not a JSON object.');
   const o = raw as Record<string, unknown>;
-  if (o.abi !== WASM_ABI) throw new Error(`The schema asks for ABI ${String(o.abi)}; this formvis speaks ABI ${WASM_ABI}.`);
+  if (o.abi !== WASM_ABI && o.abi !== WASM_ABI_V2) throw new Error(`The schema asks for ABI ${String(o.abi)}; this formvis speaks ABI ${WASM_ABI} and ${WASM_ABI_V2}.`);
+  const abi = o.abi;
   const id = text(o.id, 40);
   if (!/^[a-z0-9][a-z0-9-]{0,39}$/.test(id)) throw new Error('The schema id must be lower case letters, digits and hyphens.');
   const name = text(o.name, 60);
@@ -66,7 +73,15 @@ export function parseManifest(raw: unknown): WasmManifest {
     throw new Error(`Parameter ${key} has an unknown kind; use range, select or check.`);
   });
   const reach = typeof o.reach === 'number' && Number.isFinite(o.reach) ? Math.max(0, Math.min(512, Math.ceil(o.reach))) : 0;
-  return { abi: WASM_ABI, id, name, version: text(o.version, 24) || '0', author: text(o.author, 60), description: text(o.description, 300), reach, params };
+  const pick = <T extends string>(v: unknown, all: readonly T[], fallback: readonly T[], what: string): readonly T[] => {
+    if (abi === WASM_ABI || v === undefined) return fallback;
+    const got = Array.isArray(v) ? v.filter((x): x is T => all.includes(x as T)) : [];
+    if (!got.length || got.length !== (v as unknown[]).length) throw new Error(`The schema's ${what} must be a list of: ${all.join(', ')}.`);
+    return [...new Set(got)];
+  };
+  const formats = pick(o.formats, WASM_FORMATS, ['u8'], 'formats'), models = pick(o.models, WASM_MODELS, ['rgb'], 'models');
+  const alpha: WasmAlpha = abi === WASM_ABI || o.alpha === undefined ? 'pass' : WASM_ALPHAS.includes(o.alpha as WasmAlpha) ? o.alpha as WasmAlpha : (() => { throw new Error(`The schema's alpha must be one of: ${WASM_ALPHAS.join(', ')}.`); })();
+  return { abi, id, name, version: text(o.version, 24) || '0', author: text(o.author, 60), description: text(o.description, 300), reach, params, formats, models, alpha };
 }
 
 export function wasmDefaults(m: WasmManifest): WasmValues {
@@ -142,4 +157,5 @@ export function wasmCheckModule(mod: WebAssembly.Module): void {
   const ex = WebAssembly.Module.exports(mod);
   if (!ex.some((e) => e.name === 'memory' && e.kind === 'memory')) throw new Error('The module does not export memory.');
   for (const n of WASM_REQUIRED) if (!ex.some((e) => e.name === n && e.kind === 'function')) throw new Error(`The module does not export ${n}.`);
+  if (!Object.values(WASM_ENTRY).some((n) => ex.some((e) => e.name === n && e.kind === 'function'))) throw new Error(`The module does not export ${WASM_ENTRY[1]} (ABI 1) or ${WASM_ENTRY[2]} (ABI 2).`);
 }

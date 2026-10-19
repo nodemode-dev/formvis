@@ -1,4 +1,5 @@
 import type { OptionSpec, Tool } from '../registry';
+import { badgeCursor } from './cursor-badges';
 
 const opts = { pupil: 50, darken: 50 };
 
@@ -8,7 +9,7 @@ export const redEyeTool: Tool = {
   id: 'redEye', label: 'Red Eye', key: 'J', order: 57.8,
   icon: () => 'tRedEye',
   hint: () => 'Click the red of a pupil',
-  cursor: () => 'crosshair',
+  cursor: () => badgeCursor('redEye'),
   down(ctx, p) { if (p.button === 0) ctx.engine.redEye(p.doc, opts.pupil, opts.darken); },
   options: (e): OptionSpec[] => [
     { kind: 'title', text: 'Red Eye' },

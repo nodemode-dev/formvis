@@ -4,7 +4,7 @@ import { saveTemplates, templates } from '../io/prompt-templates';
 import { recipes } from '../io/comfy';
 import { comfyuiProbeText } from './panels/send-to';
 import { LocalModelsSection } from './panels/local-models';
-import { ApiKeysSection, ComfyAuthSection, HuggingFaceToken, LlmRows, LocalFilesSection, ModelFolderSection, RecipesSection, RenderingSection, SettingsLocationSection, SkinsSection, TemplateFiles, UpdatesSection } from './panels/connection-settings';
+import { ApiKeysSection, ComfyAuthSection, HuggingFaceToken, LlmRows, LocalFilesSection, ModelFolderSection, PluginsFolderSection, RecipesSection, RenderingSection, SettingsLocationSection, SkinsSection, TemplateFiles, UpdatesSection } from './panels/connection-settings';
 import { IMAGE_ACCEPT, PROJECT_ACCEPT } from '../io/images';
 import { RAW_SHARPEN_AMOUNTS, RAW_SHARPEN_CHOICES, type RawSharpen, type RawSharpenAmount } from '../io/raw-sharpen';
 import { PRESET_ACCEPT } from './panels/preset-manager-dialog';
@@ -28,7 +28,7 @@ import { FRAME_PACING } from '../gpu/frame-trace';
 import { TILE_SIZES } from '../engine/tiled';
 import { checkRow, numberRow, selectRow, sliderRow, type Row } from './panels/controls';
 import { PagePrefsRows } from './panels/page-prefs';
-import { SIZES } from './panels/generate-panel';
+import { SIZES } from './panels/generate-image';
 
 /** New Document presets by category (Phase 21, UI_SPEC.md section 4, the target's s02 to s14): name, width, height in
  *  pixels and resolution in ppi; common sizes for each kind of work (the Web set as the target lists it). */
@@ -698,7 +698,7 @@ export class SettingsDialog extends Dialog {
     const agNote = el('<p class="cv-note">Lets Claude Code, Claude Desktop or another MCP client work in the open document; each change is an undoable step, and anything that costs money asks you first. Claude Code: <code>claude mcp add --transport http formvis <span class="cv-mcp-url">http://127.0.0.1:8190/mcp</span></code>. Claude Desktop: a server whose command is <code>./formvis mcp</code> in the formvis folder. The control port is the engine\'s own port, chosen when the engine starts (FORMVIS_PORT, 8190 unless set): <span class="cv-mcp-port">8190</span>. It cannot change while formvis runs.</p>');
     this.mcpUrlNode = agNote.querySelector('.cv-mcp-url'); this.mcpPortNode = agNote.querySelector('.cv-mcp-port');
     add('Enhanced Controls', ...this.pageRows.enhanced);
-    add('Plugins', this.keysNote, ...this.pageRows.plugins, nm, this.nodemodeNote, cu, this.comfyuiNote, this.comfyAuth.el, this.recipesList.el, lm, tp, ag, agNote, this.apiKeys.el, this.modelFolder.el, this.hfToken.el, this.localModels.el, this.localFiles.el, this.updates.el);
+    add('Plugins', this.keysNote, ...this.pageRows.plugins, nm, this.nodemodeNote, cu, this.comfyuiNote, this.comfyAuth.el, this.recipesList.el, lm, tp, ag, agNote, this.apiKeys.el, this.modelFolder.el, this.pluginsFolder.el, this.hfToken.el, this.localModels.el, this.localFiles.el, this.updates.el);
     const wrap = el('<div class="cv-prefs"></div>');
     wrap.append(this.nav, pages);
     this.body.appendChild(wrap);
@@ -749,7 +749,9 @@ export class SettingsDialog extends Dialog {
     } catch (err) { setText(this.libNow, err instanceof Error ? err.message : 'The library could not move there.'); }
   }
 
-  show(section?: string): void {
+  show(section?: string, live = false): void {
+    this.scrim.classList.toggle('cv-scrim-through', live);
+    this.scrim.classList.toggle('cv-scrim-side', live);
     this.prefs = loadPrefs();
     void this.refreshLibrary();
     this.statesRow.set(this.prefs.historyStates);
@@ -887,6 +889,7 @@ export class SettingsDialog extends Dialog {
   private readonly localModels = new LocalModelsSection();   // 1.52.9
   private readonly comfyAuth = new ComfyAuthSection();
   private readonly modelFolder = new ModelFolderSection();
+  readonly pluginsFolder = new PluginsFolderSection();
   private readonly hfToken = new HuggingFaceToken();
   private readonly apiKeys = new ApiKeysSection();
   private readonly localFiles = new LocalFilesSection();
@@ -984,6 +987,7 @@ export class SettingsDialog extends Dialog {
     void this.localModels.refresh();
     void this.comfyAuth.refresh();
     void this.modelFolder.refresh();
+    void this.pluginsFolder.refresh();
     void this.hfToken.refresh();
     void this.location.refresh();
     void this.apiKeys.refresh();

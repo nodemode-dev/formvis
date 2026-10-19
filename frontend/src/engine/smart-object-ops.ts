@@ -13,7 +13,7 @@ import { deformNow, transformOf } from './smart-deform';
 import { computeStack, type StackMode } from './stack-modes';
 import { fadeImages } from './fade';
 import * as LS from './layer-structure';
-import { docTransform, newLayer, uid, type Doc, type ID, type Layer, type Pt, type SmartDeform, type SmartFilter, type SmartLink, type SmartObject } from './types';
+import { docTransform, newLayer, uid, type Doc, type ID, type Layer, type NestedContents, type Pt, type SmartDeform, type SmartFilter, type SmartLink, type SmartObject } from './types';
 import type { Surface } from './surface';
 
 /** The smart object state the Engine keeps. */
@@ -47,6 +47,8 @@ export interface SmartObjectHost {
   task<T>(fn: () => Promise<T>): Promise<T>;
   settle(): void;
   flattened(): Surface | null;
+  /** A document composited at its own size, for a nested smart object's contents. */
+  render(doc: Doc): Surface;
   emit(what: 'doc' | 'projects' | 'history'): void;
   /** A render `r` carried through a stored Warp, Puppet Warp or Perspective Warp, trimmed to what shows; null when it does nothing. */
   deformRender(p: Project, r: Raster, d: SmartDeform): Warped | null;
@@ -116,12 +118,49 @@ export function renderSmart(host: SmartObjectHost, source: Raster, filters: Smar
 
 /** Layer > Convert to Smart Object: keeps the layer's pixels as the untouched source of a smart object. */
 export function convertToSmartObject(host: SmartObjectHost): void {
+  const p0 = host.current, picked = p0 ? p0.doc.layers.filter((x) => p0.selectedIds.has(x.id)) : [];
+  const live = (x: Layer): boolean => x.isGroup || !!x.adjustment || !!x.text || !!x.shape || !!x.vector || !!x.smart || !!x.fillContent;
+  const one = picked.length === 1 ? picked[0] : p0?.activeLayer && !picked.length ? p0.activeLayer : null;
+  if (picked.length > 1 ? picked.some(live) : !!one && (one.isGroup || !!one.adjustment || !!one.text || !!one.shape || !!one.vector)) { nestIntoSmartObject(host, picked.length ? picked : one ? [one] : []); return; }
   const sel = host.current ? host.current.doc.layers.filter((x) => host.current?.selectedIds.has(x.id) && !x.isGroup && !x.adjustment && !x.smart && !!x.raster) : [];
   if (sel.length > 1) { stackToSmartObject(host, sel); return; }
   host.edit('Convert to Smart Object', (p) => {
     const l = p.activeLayer;
     if (!l || l.isGroup || l.adjustment || l.smart || !l.raster) { host.notice('Select a pixel layer to convert.'); return false; }
     p.updateLayer(l.id, { smart: { source: l.raster, filters: [] }, text: null, shape: null, fillContent: null });
+  });
+}
+
+/** A smart object's contents copied: pixels, masks, filters and any smart object inside cloned, layer ids kept. */
+export function cloneKeepIds(layers: readonly Layer[]): Layer[] {
+  return layers.map((l) => ({ ...l, raster: l.raster ? l.raster.clone() : null, mask: l.mask ? { ...l.mask, raster: l.mask.raster ? l.mask.raster.clone() : null } : null, ...(l.smart ? { smart: cloneSmart(l.smart) } : {}) }));
+}
+
+export function cloneNested(n: NestedContents): NestedContents { return { ...n, layers: cloneKeepIds(n.layers) }; }
+
+export function cloneSmart(sm: SmartObject): SmartObject {
+  return { ...sm, source: sm.source.clone(), filters: structuredClone(sm.filters), warp: sm.warp ? structuredClone(sm.warp) : sm.warp, warpAt: sm.warpAt ? structuredClone(sm.warpAt) : sm.warpAt, filterMask: sm.filterMask ? sm.filterMask.clone() : sm.filterMask, stack: sm.stack ? { ...sm.stack, sources: sm.stack.sources.map((r) => r.clone()) } : sm.stack, nested: sm.nested ? cloneNested(sm.nested) : sm.nested };
+}
+
+/** Convert to Smart Object for groups, adjustment, shape, type and smart object layers (alone or with others): the
+ *  chosen layers, their folders' contents with them, become a layered document of their own inside one smart object,
+ *  every layer kept live there. One step. */
+function nestIntoSmartObject(host: SmartObjectHost, picked: Layer[]): void {
+  host.edit('Convert to Smart Object', (p) => {
+    const all = p.doc.layers, take = new Set(picked.map((x) => x.id));
+    for (let grew = true; grew;) { grew = false; for (const l of all) if (!take.has(l.id) && l.parentId && take.has(l.parentId)) { take.add(l.id); grew = true; } }
+    const inner = all.filter((l) => take.has(l.id));
+    if (inner.some((l) => l.tiled || l.video)) { host.notice('Layers past 268 megapixels and video layers cannot go inside a smart object yet.'); return false; }
+    if (!inner.some((l) => !l.isGroup && !l.adjustment)) { host.notice('An adjustment layer or an empty folder needs layers to work on: select it with them.'); return false; }
+    const layers = cloneKeepIds(inner).map((l) => ({ ...l, parentId: l.parentId && take.has(l.parentId) ? l.parentId : null, clipId: l.clipId && take.has(l.clipId) ? l.clipId : null }));
+    const W = p.doc.width, H = p.doc.height, nested: NestedContents = { width: W, height: H, resolution: p.doc.resolution, layers };
+    const src = Raster.from(host.render({ id: uid(), width: W, height: H, resolution: p.doc.resolution, layers }), W, H);
+    const roots = picked.filter((x) => !x.parentId || !take.has(x.parentId)), head = roots[roots.length - 1] ?? picked[picked.length - 1];
+    const made = newLayer(head.name, p.doc, { raster: src.clone(), smart: { source: src, filters: [], nested }, parentId: head.parentId && !take.has(head.parentId) ? head.parentId : null });
+    const at = Math.max(...inner.map((l) => all.indexOf(l))), next: Layer[] = [];
+    all.forEach((l, i) => { if (!take.has(l.id)) next.push(l); if (i === at) next.push(made); });
+    p.setLayers(host.normalizeClips(next));
+    host.focus(p, made.id);
   });
 }
 
@@ -164,7 +203,7 @@ export function newSmartObjectViaCopy(host: SmartObjectHost): void {
   host.edit('New Smart Object via Copy', (p) => {
     const l = p.activeLayer;
     if (!l?.smart) { host.notice('Select a smart object to copy.'); return false; }
-    const sm = l.smart, own = { ...sm, source: sm.source.clone(), filters: structuredClone(sm.filters), warp: sm.warp ? structuredClone(sm.warp) : sm.warp, warpAt: sm.warpAt ? structuredClone(sm.warpAt) : sm.warpAt, filterMask: sm.filterMask ? sm.filterMask.clone() : sm.filterMask };
+    const own = cloneSmart(l.smart);
     const copy = LS.cloneLayer(l, { name: `${l.name} copy`.slice(0, 255), smart: own, link: undefined });
     const at = p.doc.layers.findIndex((x) => x.id === l.id);
     const next = [...p.doc.layers.slice(0, at + 1), copy, ...p.doc.layers.slice(at + 1)];
@@ -179,7 +218,16 @@ export function smartToLayers(host: SmartObjectHost): void {
   host.edit('Convert to Layers', (p) => {
     const l = p.activeLayer;
     if (!l?.smart || !l.raster) { host.notice('Select a smart object to convert.'); return false; }
-    const src = l.smart.source, warp = smartWarpNow(l), live = deformNow(l);
+    const src = l.smart.source, warp = smartWarpNow(l), live = deformNow(l), nest = l.smart.nested;
+    const t0 = l.transform, home = !!nest && !warp && !live && !l.smart.filters.length && nest.width === p.doc.width && nest.height === p.doc.height && Math.abs(t0.x) + Math.abs(t0.y) < 0.5 && Math.abs(t0.w - nest.width) + Math.abs(t0.h - nest.height) < 0.5 && !t0.rotation && !t0.flipX && !t0.flipY && !l.mask && l.opacity === 1 && l.blend === 'normal' && !l.effects;
+    if (nest && home) {
+      const ids = new Map(nest.layers.map((x) => [x.id, uid()] as const));
+      const back = cloneKeepIds(nest.layers).map((x) => ({ ...x, id: ids.get(x.id) as ID, parentId: x.parentId ? ids.get(x.parentId) ?? null : l.parentId, clipId: x.clipId ? ids.get(x.clipId) ?? null : null }));
+      const at = p.doc.layers.findIndex((x) => x.id === l.id);
+      p.setLayers(host.normalizeClips([...p.doc.layers.slice(0, at), ...back, ...p.doc.layers.slice(at + 1)]));
+      host.focus(p, back[back.length - 1].id);
+      return;
+    }
     if (live) {
       const w = host.deformRender(p, src, { ...live, base: mul(live.base, translation(live.pad, live.pad)), pad: 0 });
       if (!w) return false;
@@ -219,7 +267,7 @@ export function resetDeform(host: SmartObjectHost): boolean {
 export function replaceContents(host: SmartObjectHost, source: Raster): boolean {
   const p = host.current, l = p?.activeLayer;
   if (!p || !l?.smart) { host.notice('Select a smart object to replace its contents.'); return false; }
-  return restackSoon(host, p, l.id, source, null, 'Replace Contents', null, { stack: null });
+  return restackSoon(host, p, l.id, source, null, 'Replace Contents', null, { stack: null, nested: null });
 }
 
 /** File > Place Linked: `raster` as a new smart object, centred, linked to a file through `link`. */
@@ -357,7 +405,12 @@ export function restack(host: SmartObjectHost, p: Project, id: ID, source: Raste
 export function editContents(host: SmartObjectHost): Project | null {
   const p = host.current, l = p?.activeLayer;
   if (!p || !l?.smart) { host.notice('Select a smart object to edit its contents.'); return null; }
-  const src = l.smart.source, base: Doc = { id: uid(), width: src.width, height: src.height, resolution: p.doc.resolution, layers: [] };
+  const src = l.smart.source, nest = l.smart.nested, base: Doc = { id: uid(), width: src.width, height: src.height, resolution: p.doc.resolution, layers: [] };
+  if (nest?.layers.length) {
+    const layers = cloneKeepIds(nest.layers), child = host.addProject({ ...base, width: nest.width, height: nest.height, resolution: nest.resolution ?? base.resolution, layers }, `${l.name} contents`, layers[layers.length - 1].id);
+    host.store.links.set(child, { parent: p, layerId: l.id });
+    return child;
+  }
   const copy = new Raster(src.width, src.height);
   copy.ctx.drawImage(src.canvas, 0, 0);
   const layer = { ...newLayer('Layer 1', base), raster: copy };
@@ -387,7 +440,8 @@ export function updateContents(host: SmartObjectHost): boolean {
   host.settle();
   const flat = host.flattened();
   if (!flat) { host.notice('These contents have nothing visible to put back.'); return false; }
-  const ok = restackSoon(host, target.parent, target.layer.id, Raster.from(flat, flat.width, flat.height), null, 'Update Smart Object');
+  const nested: NestedContents | null = target.layer.smart?.nested ? { width: child.doc.width, height: child.doc.height, resolution: child.doc.resolution, layers: cloneKeepIds(child.doc.layers) } : null;
+  const ok = restackSoon(host, target.parent, target.layer.id, Raster.from(flat, flat.width, flat.height), null, 'Update Smart Object', null, nested ? { nested } : null);
   if (ok) { child.history.markSaved(); host.emit('projects'); host.emit('history'); }
   return ok;
 }

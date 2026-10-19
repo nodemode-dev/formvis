@@ -38,6 +38,23 @@ def require_local(request: Request) -> None:
         raise HTTPException(status_code=403, detail="Only the formvis window may use the terminals.")
 
 
+MAX_SOCKETS = 24   # WebSockets open at once across terminals, agent activity and the Claude Code panel
+_sockets = 0
+
+
+def take_socket() -> bool:
+    global _sockets
+    if _sockets >= MAX_SOCKETS:
+        return False
+    _sockets += 1
+    return True
+
+
+def release_socket() -> None:
+    global _sockets
+    _sockets = max(0, _sockets - 1)
+
+
 class OpenBody(BaseModel):
     cols: int = Field(100, ge=10, le=500)
     rows: int = Field(30, ge=4, le=200)
@@ -101,10 +118,14 @@ async def attach(ws: WebSocket, sid: str) -> None:
     if not origin_ok(ws.headers.get("origin"), ws.headers.get("host")):
         await ws.close(code=4403)
         return
+    if not take_socket():
+        await ws.close(code=4429)
+        return
     await ws.accept()
     try:
         session = terminal.get(sid)
     except KeyError:
+        release_socket()
         await ws.close(code=4404)
         return
     queue: asyncio.Queue = asyncio.Queue()
@@ -142,5 +163,6 @@ async def attach(ws: WebSocket, sid: str) -> None:
     except WebSocketDisconnect:
         pass
     finally:
+        release_socket()
         sender.cancel()
         session.subscribers.discard(queue)

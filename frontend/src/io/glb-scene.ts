@@ -1,6 +1,6 @@
 /** 3D object layers (U2): a glTF or GLB model posed, lit and framed, then rendered to pixels at the document's size.
  *  Drawn with three.js (MIT), loaded only when first used. The posed model of a layer placed in this session is kept
- *  here by layer id, so glb_edit can pose it again; a saved project keeps the pixels only. */
+ *  here by layer id, so glb_edit can pose it again; a saved project also keeps the model and pose (Doc.glb). */
 type Three = typeof import('three');
 type Obj = import('three').Object3D;
 
@@ -110,3 +110,55 @@ export async function renderModel(model: GlbModel, v: GlbView, w: number, h: num
 
 export interface PlacedGlb { bytes: ArrayBuffer; name: string; view: GlbView; info: GlbInfo; depthId?: string }
 export const placedGlb = new Map<string, PlacedGlb>();
+
+/** What a saved document keeps of a 3D layer (Doc.glb, by layer id): the model's own bytes in base64 and its pose, so
+ *  glb_edit and the 3D panel can pose it again after the file is reopened. */
+export interface GlbKept { name: string; view: object; data: string; depthId?: string }
+export const GLB_KEEP_CHARS = 40_000_000;
+const encoded = new WeakMap<ArrayBuffer, string>();
+
+export function glbEncode(bytes: ArrayBuffer): string {
+  const hit = encoded.get(bytes);
+  if (hit) return hit;
+  const u = new Uint8Array(bytes), parts: string[] = [];
+  for (let i = 0; i < u.length; i += 0x8000) parts.push(String.fromCharCode(...u.subarray(i, i + 0x8000)));
+  const text = btoa(parts.join(''));
+  encoded.set(bytes, text);
+  return text;
+}
+
+export function glbDecode(data: string): ArrayBuffer {
+  const bin = atob(data), u = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+  return u.buffer;
+}
+
+export const glbKeep = (g: Pick<PlacedGlb, 'bytes' | 'name' | 'view'>): GlbKept => ({ name: g.name, view: g.view, data: glbEncode(g.bytes) });
+
+/** `doc` with the 3D layer `id` kept (or `kept` null: forgotten); unchanged when the document would hold too much model data. */
+export function glbWith<D extends { glb?: Readonly<Record<string, GlbKept>> }>(doc: D, id: string, kept: GlbKept | null): D {
+  const rest = { ...(doc.glb ?? {}) };
+  if (kept) rest[id] = kept; else delete rest[id];
+  if (Object.values(rest).reduce((n, k) => n + k.data.length, 0) > GLB_KEEP_CHARS) return doc;
+  return { ...doc, glb: Object.keys(rest).length ? rest : undefined };
+}
+
+/** The kept 3D layers read back from a saved document: only layers that still exist, poses held to their limits, models of sane size. */
+export function glbKeptFrom(raw: unknown, ids: ReadonlySet<string>): Record<string, GlbKept> {
+  const out: Record<string, GlbKept> = {};
+  if (!raw || typeof raw !== 'object') return out;
+  let total = 0;
+  for (const [id, v] of Object.entries(raw as Record<string, unknown>).slice(0, 64)) {
+    const o = (v ?? {}) as Record<string, unknown>;
+    if (!ids.has(id) || typeof o.data !== 'string' || !o.data || typeof o.name !== 'string' || total + o.data.length > GLB_KEEP_CHARS) continue;
+    total += o.data.length;
+    out[id] = { name: o.name.slice(0, 120), view: cleanView(GLB_VIEW, (o.view ?? {}) as Partial<Record<keyof GlbView, unknown>>), data: o.data };
+  }
+  return out;
+}
+
+/** A kept layer made live again: its model read from the saved bytes. */
+export async function glbRestore(k: GlbKept): Promise<PlacedGlb> {
+  const bytes = glbDecode(k.data), m = await loadModel(bytes.slice(0));
+  return { bytes, name: k.name, view: cleanView(GLB_VIEW, k.view as Partial<Record<keyof GlbView, unknown>>), info: m.info, ...(k.depthId ? { depthId: k.depthId } : {}) };
+}

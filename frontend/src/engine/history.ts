@@ -2,6 +2,7 @@ import type { Doc, ID } from './types';
 import type { Raster } from './surface';
 import type { TiledRaster } from './tiled';
 import type { SelectionMask } from './selection';
+import { shrinkPatch } from './patch-shrink';
 
 /** paths: a copy of the document's paths, carried only by path edits' steps (their undo and redo restore it; other
  *  steps leave paths as they are, since drawing with the Pen is not itself a step). */
@@ -71,6 +72,7 @@ export class History {
     this.pending = null;
     const hooked = History.onStepEnd ? History.onStepEnd(this, p.before, p.patches) : null;
     if (hooked) snap = { ...hooked, ...(snap.video !== undefined ? { video: snap.video } : {}), ...(snap.frames !== undefined ? { frames: snap.frames } : {}) };   // the timelines kept (1.59.5, 1.59.8)
+    if (p.patches.length) { const kept = p.patches.flatMap(shrinkPatch); p.patches.length = 0; p.patches.push(...kept); }
     const framesSame = p.before.frames === undefined || JSON.stringify(p.before.frames) === JSON.stringify(snap.frames);
     // A step that changed nothing is dropped; a path edit's step (it carries the paths) counts when the paths changed,
     // and a timeline edit's (it carries the video timeline, 1.59.5) when the timeline changed.

@@ -1,4 +1,4 @@
-import type { GpuFilterRunner } from '../engine/gpu-filters';
+import type { GpuFilterRunner, GpuSmudge } from '../engine/gpu-filters';
 import { BAND_CENTER, BAND_WIDTH, HSL_BANDS, bandOf, buildCurveLut, colorActive, curvesActive, vignetteShapeOf, type DevelopState } from '../engine/develop';
 import { threeBoxWidths } from '../engine/filters';
 
@@ -86,6 +86,33 @@ void main() {
     acc += s.rgb * 255.0 * al; a += al;
   }
   if (a > 1e-4) o = vec4(floor(acc / a + 0.5) / 255.0, floor(a * 255.0 + 0.5) / 255.0); else o = vec4(0.0);
+}`;
+
+/** Smudge (WarpStroke.deposit), one dab. The brush weight as WarpStroke.weight; t0 the canvas bytes, t1 the paint floats (side x side). */
+const SM_WEIGHT = `uniform vec2 u_at; uniform float u_half, u_hard, u_lay, u_take; uniform int u_r; uniform ivec2 u_c;
+float weightOf(float u) {
+  if (u >= 1.0) return 0.0;
+  if (u <= u_hard) return 1.0;
+  return 0.5 + 0.5 * cos(3.14159265358979 * (u - u_hard) / (1.0 - u_hard));
+}
+`;
+/** The paint after the dab: it takes on the canvas beneath by weight times take. Drawn over the side x side paint texture. */
+const FS_SMUDGE_PAINT = `${SM_WEIGHT}void main() {
+  ivec2 k = ivec2(gl_FragCoord.xy), q = u_c + k - ivec2(u_r), sz = textureSize(t0, 0); vec4 p = texelFetch(t1, k, 0);
+  if (q.x < 0 || q.y < 0 || q.x >= sz.x || q.y >= sz.y) { o = p; return; }
+  float w = weightOf(length(vec2(q) + 0.5 - u_at) / u_half);
+  if (w <= 0.0) { o = p; return; }
+  vec4 under = floor(texelFetch(t0, q, 0) * 255.0 + 0.5);
+  o = p + (under - p) * w * u_take;
+}`;
+/** The canvas after the dab: the paint laid down by weight times lay, rounded to a byte. Drawn over the canvas inside a scissor. */
+const FS_SMUDGE_CANVAS = `${SM_WEIGHT}void main() {
+  ivec2 q = ivec2(gl_FragCoord.xy), k = q - u_c + ivec2(u_r); int side = 2 * u_r + 1; vec4 s = texelFetch(t0, q, 0);
+  if (k.x < 0 || k.y < 0 || k.x >= side || k.y >= side) { o = s; return; }
+  float w = weightOf(length(vec2(q) + 0.5 - u_at) / u_half);
+  if (w <= 0.0) { o = s; return; }
+  vec4 under = floor(s * 255.0 + 0.5), p = texelFetch(t1, k, 0);
+  o = floor(under + (p - under) * w * u_lay + 0.5) / 255.0;
 }`;
 
 /** Develop's per-pixel pass (developPass), tone then colour mixer then the curve table; t1 is the 256 entry table. */
@@ -419,6 +446,76 @@ export class GlFilters implements GpuFilterRunner {
         this.readBack(out, new Uint8Array(res.data.buffer));
       } finally { this.free(input, out, fld); }
       return res;
+    });
+  }
+
+  /** A Smudge stroke on the GPU: the layer's premultiplied bytes live in a texture for the whole stroke, the paint in a
+   *  float texture; each dab is one pass over the paint and one over the canvas inside a scissor, then the square is copied
+   *  back. One session at a time: opening another closes the previous. The paint needs float targets (RGBA32F). */
+  private closeSmudge: (() => void) | null = null;
+
+  smudge(pixels: Uint8ClampedArray, w: number, h: number): GpuSmudge | null {
+    if (this.floatType !== 'f32') return null;
+    this.closeSmudge?.();
+    return this.guard(w, h, () => {
+      const gl = this.gl;
+      const cv = this.tex(w, h, 'u8', new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength)), cv2 = this.tex(w, h, 'u8');
+      let pa: Tex | null = null, pb: Tex | null = null, side = 0, open = true;
+      const freePaint = (): void => { if (pa) this.free(pa); if (pb) this.free(pb); pa = pb = null; };
+      const close = (): void => {
+        if (!open) return;
+        open = false; freePaint(); this.free(cv, cv2);
+        if (this.closeSmudge === close) this.closeSmudge = null;
+      };
+      this.closeSmudge = close;
+      const fail = (e: unknown): false => { this.lastError = String(e instanceof Error ? e.message : e); return false; };
+      return {
+        setPaint: (paint, s) => {
+          if (!open || !this.ok || s < 1 || s > this.maxSize) return false;
+          try {
+            freePaint(); side = s;
+            const t = gl.createTexture()!;
+            gl.bindTexture(gl.TEXTURE_2D, t);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, s, s, 0, gl.RGBA, gl.FLOAT, paint);
+            for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]] as const) gl.texParameteri(gl.TEXTURE_2D, k, v);
+            pa = { t, w: s, h: s }; pb = this.tex(s, s, 'float');
+            return true;
+          } catch (e) { return fail(e); }
+        },
+        dabs: (at, radius, half, hard, lay, take) => {
+          if (!open || !this.ok || !pa || !pb || side !== 2 * radius + 1) return false;
+          try {
+            const pp = this.program('smudgePaint', FS_SMUDGE_PAINT), pc = this.program('smudgeCanvas', FS_SMUDGE_CANVAS);
+            for (const d of at) {
+              const cx = Math.round(d.x), cy = Math.round(d.y), x0 = Math.max(0, cx - radius), y0 = Math.max(0, cy - radius), x1 = Math.min(w - 1, cx + radius), y1 = Math.min(h - 1, cy + radius);
+              if (x1 < x0 || y1 < y0) continue;
+              const set = (g: WebGL2RenderingContext, loc: Loc): void => {
+                g.uniform2f(loc('u_at'), d.x, d.y); g.uniform1f(loc('u_half'), half); g.uniform1f(loc('u_hard'), hard);
+                g.uniform1f(loc('u_lay'), lay); g.uniform1f(loc('u_take'), take); g.uniform1i(loc('u_r'), radius); g.uniform2i(loc('u_c'), cx, cy);
+              };
+              this.pass(pp, pb, [cv, pa], set);
+              gl.enable(gl.SCISSOR_TEST); gl.scissor(x0, y0, x1 - x0 + 1, y1 - y0 + 1);
+              try { this.pass(pc, cv2, [cv, pa], set); } finally { gl.disable(gl.SCISSOR_TEST); }
+              [pa, pb] = [pb, pa];
+              gl.bindTexture(gl.TEXTURE_2D, cv.t);
+              gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, x0, y0, x0, y0, x1 - x0 + 1, y1 - y0 + 1);
+            }
+            return true;
+          } catch (e) { return fail(e); }
+        },
+        read: (r, into) => {
+          if (!open || !this.ok || r.w < 1 || r.h < 1) return false;
+          try {
+            const buf = new Uint8Array(r.w * r.h * 4);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, cv.t, 0);
+            gl.readPixels(r.x, r.y, r.w, r.h, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+            for (let y = 0; y < r.h; y++) into.set(buf.subarray(y * r.w * 4, (y + 1) * r.w * 4), ((r.y + y) * w + r.x) * 4);
+            return true;
+          } catch (e) { return fail(e); }
+        },
+        close,
+      };
     });
   }
 

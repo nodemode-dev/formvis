@@ -10,7 +10,7 @@ import { ReferenceChips } from './reference-chips';
 import { CropStitchSettings } from './crop-stitch-settings';
 import { withCropStitch } from '../../io/crop-stitch-run';
 import { comfyReadiness, resolveReferenceTokens, stoppable, stoppableFill } from './generate-image';
-import { PromptImprover } from './prompt-improver';
+import { PromptImprover, areaView } from './prompt-improver';
 import { GenerationOptions } from './generation-options';
 
 type Mode = 'fill' | 'expand' | 'upscale';
@@ -49,6 +49,8 @@ export class GenerativeDialog extends Dialog {
   private picked = false;   // the person chose the model (1.58.5); until then the default is fal with a key, else local
   private readonly influence = el<HTMLInputElement>('<input type="range" min="0" max="100" step="1" value="40" aria-label="Influence">');
   private readonly influenceRow = el('<label class="cv-dialog-row" title="How much the area under the selection shapes the result (0: none)"><span>Influence</span></label>');
+  private readonly refine = el<HTMLInputElement>('<input type="checkbox" aria-label="Refine">');
+  private readonly refineRow = el('<label class="cv-check" title="Run the selection through the model again without a new fill: the influence goes to 85 and an empty prompt asks for the same picture, polished"><span>Refine what the selection covers</span></label>');
   private readonly improver: PromptImprover;
   private readonly opts = new GenerationOptions();
   private readonly scope = el<HTMLSelectElement>('<select class="cv-input" aria-label="Upscale scope"><option value="new">Whole picture, as a new document</option><option value="here">Whole picture, in this document</option><option value="selection">The selection, as a layer</option></select>');
@@ -70,12 +72,16 @@ export class GenerativeDialog extends Dialog {
     this.influenceRow.append(this.influence);
     this.influence.addEventListener('input', () => { this.influence.dataset.set = '1'; });
     this.body.appendChild(this.influenceRow);
+    this.refine.addEventListener('change', () => { if (this.refine.checked && Number(this.influence.value) < 85) { this.influence.value = '85'; this.influence.dataset.set = '1'; } });
+    this.refineRow.prepend(this.refine);
+    this.body.appendChild(this.refineRow);
     this.refs = new ReferencePicker(engine);
     this.body.appendChild(this.refs.el);
     this.body.appendChild(this.prompt);
     this.chips = new ReferenceChips(this.refs, this.prompt);
     this.body.appendChild(this.chips.el);
     this.improver = new PromptImprover(this.prompt, 'Fill a selection');
+    this.improver.view = areaView(engine, true);
     this.body.appendChild(this.improver.el);
     this.body.appendChild(this.opts.el);
     this.prompt.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.defaultPrevented) { e.preventDefault(); void this.generate(); } });
@@ -207,6 +213,7 @@ export class GenerativeDialog extends Dialog {
     this.opts.forModel(this.lamaHere || this.upscaleHere ? 'lama' : this.model.value);
     this.refs.forFal(!this.comfy);
     setHidden(this.influenceRow, !local);
+    setHidden(this.refineRow, !local);
     if (this.lamaHere) {
       setHidden(this.keyRow, true); setHidden(this.forget, true); setHidden(this.refs.el, true); setHidden(this.influenceRow, true);
       setText(this.state, 'LaMa runs on this computer, on any machine: no key, no cost. It fills from what surrounds the selection and takes no prompt; the result is masked to the selection.');
@@ -270,10 +277,10 @@ export class GenerativeDialog extends Dialog {
     }
     const local = this.local;
     if (local) {
-      const prompt = this.prompt.value, mode = this.mode, e = this.engine, influence = Number(this.influence.value) / 100, { seed, negative } = this.opts.request();
+      const prompt = this.prompt.value, mode = this.mode, e = this.engine, refine = this.refine.checked, influence = Math.max(refine ? 0.85 : 0, Number(this.influence.value) / 100), { seed, negative, steps, guidance } = this.opts.request();
       const margins = { left: Number(this.margin.left.value), top: Number(this.margin.top.value), right: Number(this.margin.right.value), bottom: Number(this.margin.bottom.value) };
       this.close();
-      const fill = stoppableFill((stopped) => localFill(local.id, prompt, influence, (r) => this.heard(r), undefined, { seed, negative, cancelled: stopped, onSeed: (s) => this.opts.used(s) }));
+      const fill = stoppableFill((stopped) => localFill(local.id, prompt, influence, (r) => this.heard(r), undefined, { seed, negative, steps, guidance, refine, cancelled: stopped, onSeed: (s) => this.opts.used(s) }));
       if (mode === 'expand') await e.task(() => e.generativeExpand(margins, prompt, fill));
       else await e.task(() => e.generativeFill(prompt, fill));
       return;

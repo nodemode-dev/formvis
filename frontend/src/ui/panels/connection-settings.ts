@@ -115,6 +115,40 @@ export class ModelFolderSection {
   }
 }
 
+/** Preferences > Plugins > Plug-ins folder: one more folder of plugin folders, read only, listed with the data folder's.
+ *  Each plugin there still asks for approval on enable and runs in its sealed worker. Reload Plugins picks up a change. */
+export class PluginsFolderSection {
+  readonly el = el('<div class="cv-panel-section cv-plugins-folder"><span class="cv-refs-title">Plug-ins folder</span></div>');
+  private readonly path = el<HTMLInputElement>('<input class="cv-input" type="text" aria-label="Plug-ins folder path" placeholder="Full folder path, or empty for the data folder only" spellcheck="false" maxlength="1024">');
+  private readonly note = el('<p class="cv-note" role="status" style="min-height: 2.8em"></p>');
+  onSaved: () => void = () => {};
+
+  constructor() {
+    const use = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Use this folder</button>'), clear = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Data folder only</button>');
+    const buttons = el('<div class="cv-improve"></div>');
+    buttons.append(use, clear);
+    this.el.append(row('Folder', this.path), buttons, this.note);
+    use.addEventListener('click', () => void this.save(this.path.value));
+    clear.addEventListener('click', () => void this.save(''));
+    this.path.addEventListener('keydown', (e) => e.stopPropagation());
+  }
+
+  private show(f: { path: string; data: string }): void {
+    if (document.activeElement !== this.path) setValue(this.path, f.path);
+    setText(this.note, f.path ? `Plugin folders in ${f.path} are listed with the ones in ${f.data}; a folder of the same name in the data folder wins. The chosen folder is only read.` : `Plugin folders are read from ${f.data}.`);
+  }
+
+  async refresh(): Promise<void> {
+    const f = await api.pluginsExtraFolder();
+    if (!f) { setText(this.note, 'The formvis engine is offline: the plug-ins folder needs it.'); return; }
+    this.show(f);
+  }
+
+  private async save(path: string): Promise<void> {
+    try { this.show(await api.pluginsExtraFolderSave(path)); this.onSaved(); } catch (err) { setText(this.note, failure(err, 'Could not use that folder.')); }
+  }
+}
+
 /** Preferences > Plugins > Recipes: the ComfyUI workflows kept as choices (Generative Fill, Generate Image), grouped by what
  *  they take in, each group collapsible with its count, with Remove and Add. Groups and rows are built once and patched. */
 export class RecipesSection {

@@ -156,8 +156,32 @@ export function invertKernel(): Kernel {
   };
 }
 
+/** Set by the app: runs one filter by id on a copy of the pixels at `scale` view pixels per document pixel. */
+export const filterLayerHook: { run: ((kind: string, settings: Record<string, unknown>, src: ImageData, scale: number) => ImageData) | null } = { run: null };
+
+/** A filter layer: the filter in `data.filter` with `data.settings` run on everything beneath. The last run is kept, so a
+ *  redraw with the same pixels below does not run the filter again. */
+function filterKernel(data: Json): Kernel | null {
+  const kind = typeof data.filter === 'string' ? data.filter : '', settings = record(data.settings);
+  if (!kind) return null;
+  let key = '', last: Uint8ClampedArray | null = null;
+  return (px, ctx) => {
+    const run = filterLayerHook.run;
+    if (!run || !ctx || ctx.width * ctx.height * 4 !== px.length) return;
+    let h = 2166136261;
+    for (let i = 0; i < px.length; i += 4) h = Math.imul(h ^ (px[i] | (px[i + 1] << 8) | (px[i + 2] << 16) | (px[i + 3] << 24)), 16777619);
+    const scale = ctx.unitsPerPixel > 0 ? 1 / ctx.unitsPerPixel : 1, id = `${ctx.width}x${ctx.height}@${scale.toFixed(4)}#${h >>> 0}`;
+    if (id !== key || !last) {
+      last = new Uint8ClampedArray(run(kind, settings, new ImageData(new Uint8ClampedArray(px), ctx.width, ctx.height), scale).data);
+      key = id;
+    }
+    if (last.length === px.length) px.set(last);
+  };
+}
+
 export function adjustmentKernel(adj: Adjustment | null): Kernel | null {
   if (!adj) return null;
+  if (adj.kind === 'filter') return filterKernel(adj.data);
   if (adj.kind === 'levels') return levelsKernel(adj.data.levels);
   if (adj.kind === 'curves') return curvesKernel(adj.data.curves);
   if (adj.kind === 'exposure') return exposureKernel(adj.data.exposureSettings);

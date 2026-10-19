@@ -6,10 +6,12 @@ folder's bands directory, emptied when the engine starts."""
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
 import struct
 import uuid
 import zlib
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -64,8 +66,37 @@ async def begin(request: Request, width: int, height: int, ppi: float = 72.0, na
         _chunk(f, b"iCCP", label + b"\x00\x00" + zlib.compress(icc))
     ppm = max(1, round(ppi / 0.0254))
     _chunk(f, b"pHYs", struct.pack(">IIB", ppm, ppm, 1))
-    _open[key] = {"f": f, "z": zlib.compressobj(6), "w": width, "h": height, "rows": 0, "path": path, "last": np.zeros(width * 4, np.uint8)}
+    _open[key] = new_session(f, width, height, path)
     return {"key": key}
+
+
+PIECE = 1 << 20   # filtered bytes a pool thread deflates at a time
+
+
+def new_session(f, width: int, height: int, path: Path) -> dict:
+    """A picture's writer state: the deflate stream is made of independent pieces (raw deflate, each ended on a byte
+    boundary), so a band's pieces are compressed on several threads and joined; the stream's checksum runs on."""
+    return {"f": f, "adler": 1, "head": True, "w": width, "h": height, "rows": 0, "path": path, "last": np.zeros(width * 4, np.uint8)}
+
+
+_pool: ThreadPoolExecutor | None = None
+
+
+def _deflate(piece: bytes) -> bytes:
+    z = zlib.compressobj(6, zlib.DEFLATED, -15)
+    return z.compress(piece) + z.flush(zlib.Z_SYNC_FLUSH)
+
+
+def _pieces(lines: bytes, row: int) -> list[bytes]:
+    n = len(lines) // row
+    per = max(1, min(n, PIECE // row + 1))
+    return [lines[i * row:(i + per if i + per < n else n) * row] for i in range(0, n, per)]
+
+
+def _finish(s: dict) -> None:
+    """The stream's last block, its checksum, and the PNG's end chunk."""
+    _chunk(s["f"], b"IDAT", (b"\x78\x9c" if s["head"] else b"") + b"\x03\x00" + struct.pack(">I", s["adler"]))
+    _chunk(s["f"], b"IEND", b"")
 
 
 def _write(s: dict, body: bytes) -> None:
@@ -76,12 +107,19 @@ def _write(s: dict, body: bytes) -> None:
     if s["rows"] + n > s["h"]:
         raise HTTPException(400, "More rows than the picture has.")
     rows = np.frombuffer(body, np.uint8).reshape(n, row)
-    above = np.vstack([s["last"][None, :], rows[:-1]])
-    up = (rows.astype(np.int16) - above).astype(np.uint8)   # PNG's Up filter, modulo 256
-    lines = np.hstack([np.full((n, 1), 2, np.uint8), up])   # filter type 2 before each row
-    packed = s["z"].compress(lines.tobytes())
-    if packed:
-        _chunk(s["f"], b"IDAT", packed)
+    lines = np.empty((n, row + 1), np.uint8)
+    lines[:, 0] = 2   # filter type 2 before each row
+    np.subtract(rows[0], s["last"], out=lines[0, 1:])   # PNG's Up filter, modulo 256
+    np.subtract(rows[1:], rows[:-1], out=lines[1:, 1:])
+    raw = lines.tobytes()
+    global _pool
+    if _pool is None:
+        _pool = ThreadPoolExecutor(max_workers=max(1, min(4, os.cpu_count() or 1)))
+    parts = list(_pool.map(_deflate, _pieces(raw, row + 1)))
+    s["adler"] = zlib.adler32(raw, s["adler"])
+    packed = (b"\x78\x9c" if s["head"] else b"") + b"".join(parts)
+    s["head"] = False
+    _chunk(s["f"], b"IDAT", packed)
     s["last"] = rows[-1].copy()
     s["rows"] += n
 
@@ -189,10 +227,7 @@ async def end(key: str) -> Response:
     if s["rows"] != s["h"]:
         raise HTTPException(400, f"{s['rows']} of {s['h']} rows were sent.")
     _open.pop(key, None)
-    tail = s["z"].flush()
-    if tail:
-        _chunk(s["f"], b"IDAT", tail)
-    _chunk(s["f"], b"IEND", b"")
+    _finish(s)
     s["f"].close()
     data = await asyncio.to_thread(s["path"].read_bytes)
     s["path"].unlink(missing_ok=True)

@@ -83,9 +83,10 @@ async function followJob(id: string, status: (text: string) => void, cancelled: 
 
 /** Generative Fill's and Expand's generator on a local model: the area the fill covers sent as the picture to start
  *  from, at `influence` (how much it shapes the result); formvis then masks the result to the selection. */
-export function localFill(model: string, prompt: string, influence: number, heard: (r: LocalResult) => void, status?: (text: string) => void, extra: { seed?: number; negative?: string; cancelled?: () => boolean; onSeed?: (seed: number | undefined) => void } = {}): (image: Blob, mask: Blob) => Promise<Blob> {
+export function localFill(model: string, prompt: string, influence: number, heard: (r: LocalResult) => void, status?: (text: string) => void, extra: { seed?: number; negative?: string; steps?: number; guidance?: number; refine?: boolean; cancelled?: () => boolean; onSeed?: (seed: number | undefined) => void } = {}): (image: Blob, mask: Blob) => Promise<Blob> {
   return withCropStitch(async (image) => {
-    const r = await runLocal({ generator: model, prompt: prompt.trim() || 'the surrounding scene, continued seamlessly', size: 'source', count: 1, ...(extra.negative ? { negative: extra.negative } : {}), options: { image: { png: await b64(image) }, imageStrength: influence, ...(extra.seed !== undefined ? { seed: extra.seed } : {}) } }, status, extra.cancelled);
+    const empty = extra.refine ? 'the same picture with the same content, refined: cleaner detail and texture' : 'the surrounding scene, continued seamlessly';
+    const r = await runLocal({ generator: model, prompt: prompt.trim() || empty, size: 'source', count: 1, ...(extra.negative ? { negative: extra.negative } : {}), options: { image: { png: await b64(image) }, imageStrength: influence, ...(extra.seed !== undefined ? { seed: extra.seed } : {}), ...(extra.steps !== undefined ? { steps: extra.steps } : {}), ...(extra.guidance !== undefined ? { guidance: extra.guidance } : {}) } }, status, extra.cancelled);
     extra.onSeed?.(r.settings[0]?.seed ?? extra.seed);
     heard(r);
     return r.pictures[0];

@@ -1,6 +1,7 @@
 import type { Anchor, Pt } from '../../engine';
 import { tracePath } from '../../engine';
 import type { Tool } from '../registry';
+import { badgeCursor } from './cursor-badges';
 import { pathActions } from './path-actions';
 import { pick } from './direct-select';
 
@@ -14,7 +15,7 @@ export const convertPointTool: Tool = {
   icon: () => 'tConvertPoint',
   options: () => [{ kind: 'title', text: 'Convert Point' }, ...pathActions()],
   hint: () => 'Click a smooth point to make it a corner · Drag from a point to pull out smooth handles · Drag a handle to move it alone',
-  cursor: () => 'default',
+  cursor: () => badgeCursor('convertPoint'),
   down(ctx, p) {
     const vp = ctx.engine.workPath;
     if (p.button !== 0 || !vp) return;

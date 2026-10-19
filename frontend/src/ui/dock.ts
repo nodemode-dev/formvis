@@ -90,8 +90,8 @@ export class Dock {
       head.classList.add('cv-dock-grip');
       head.addEventListener('pointerdown', (e) => {
         if (e.button !== 0 || this.locked || (e.target as HTMLElement).closest('[data-cmd]')) return;
-        // A tab in a panel group of several drags itself (PanelGroup); the Layers group's tabs cannot yet, so it moves whole.
-        if (section?.classList.contains('cv-group') && (e.target as HTMLElement).closest('.cv-group-tab') && section.querySelectorAll('.cv-group-tab').length > 1) return;
+        // A tab in any panel group drags itself onto another group's header (PanelGroup); the grip and the bare header move the group.
+        if (section?.classList.contains('cv-group') && (e.target as HTMLElement).closest('.cv-group-tab')) return;
         if (this.floats[p.id]) return;   // a floating panel moves by its own bar
         // The pointer is captured only once the drag moves (move), so a plain click still reaches a tab in the header.
         this.drag = { id: p.id, startY: e.clientY, moving: false, target: -1, col: 'dock' };

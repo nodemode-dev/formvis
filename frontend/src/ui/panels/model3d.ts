@@ -1,7 +1,7 @@
 import { Raster, type Engine } from '../../engine';
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
-import { GLB_VIEW, cleanView, loadModel, placedGlb } from '../../io/glb-scene';
+import { GLB_VIEW, cleanView, glbKeep, glbWith, loadModel, placedGlb } from '../../io/glb-scene';
 
 type Three = typeof import('three');
 interface View { turn: number; tilt: number; size: number; lightDir: number; lightHeight: number; strength: number; ambient: number; color: string }
@@ -117,8 +117,13 @@ export class Model3DDialog extends Dialog {
       const layer = new Raster(W, H);
       layer.ctx.drawImage(canvas, 0, 0, W, H);
       layer.touch();
-      this.engine.insertRasterLayer(layer, `3D: ${this.name}`, 0, 0, {}, 'Place 3D Model');
-      const id = this.engine.activeLayer?.id, bytes = this.bytes, name = this.name, v = this.view;
+      const bytes = this.bytes, name = this.name, v = this.view;
+      this.engine.edit('Place 3D Model', (pp) => {
+        this.engine.insertRasterLayer(layer, `3D: ${name}`, 0, 0, {}, 'Place 3D Model');
+        const kept = this.engine.activeLayer?.id;
+        if (kept && bytes) pp.doc = glbWith(pp.doc, kept, glbKeep({ bytes, name, view: cleanView(GLB_VIEW, v) }));
+      });
+      const id = this.engine.activeLayer?.id;
       if (id && bytes) void loadModel(bytes.slice(0)).then((m) => placedGlb.set(id, { bytes, name, view: cleanView(GLB_VIEW, v), info: m.info })).catch(() => undefined);
       this.close();
     } finally { r.dispose(); r.forceContextLoss(); }

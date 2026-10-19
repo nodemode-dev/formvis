@@ -60,4 +60,9 @@ export const hi: Record<string, string> = {
   'Auto-Blend Layers': 'परतें अपने आप मिलाएँ', 'Blend Method': 'मिश्रण विधि', 'Panorama': 'पैनोरमा', 'Stack Images': 'चित्र स्टैक करें',
   'Halo Control': 'हेलो नियंत्रण', 'Seamless Tones and Colors': 'सहज टोन और रंग', 'Measurement Log': 'माप लॉग',
   'Apply Pending Edit': 'लंबित संपादन लागू करें', 'Cancel Pending Edit': 'लंबित संपादन रद्द करें',
+  'Auto-Align Layers': 'परतें अपने आप संरेखित करें', 'Projection': 'प्रक्षेपण', 'Reference Layer': 'संदर्भ परत', 'Registration': 'मिलान',
+  'Bottom-most': 'सबसे नीचे की', 'Middle': 'बीच की', 'Top-most': 'सबसे ऊपर की', 'Spherical': 'गोलाकार', 'Multiband (new layer)': 'बहु-बैंड (नई परत)',
+  'Depth Map Layer (Stack Images)': 'गहराई मानचित्र परत (चित्र स्टैक)',
+  'Fill transparent edges (Content-Aware Fill)': 'पारदर्शी किनारे भरें (सामग्री-जागरूक भराव)',
+  'Follow tone changes across the overlap': 'ओवरलैप में टोन के बदलाव का अनुसरण करें',
 };

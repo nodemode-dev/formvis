@@ -1,4 +1,4 @@
-import { defaultDevelopState, defaultGrading, developImage } from './develop';
+import { defaultDevelopState, defaultGrading, depthSource, developImage } from './develop';
 import type { Kernel } from './kernels';
 import { gpuFilters } from './gpu-filters';
 import type { RGB } from './types';
@@ -438,8 +438,22 @@ export const PARAM_ADJUSTMENTS: Record<ParamKind, ParamAdjustment> = {
   },
   dehaze: {
     label: 'Dehaze',
-    params: [range('dehaze', 'Dehaze', -100, 100)],
-    kernel: (v) => developSlice({ dehaze: n(v, 'dehaze') }, {}),
+    params: [
+      range('dehaze', 'Dehaze', -100, 100),
+      { key: 'method', label: 'Haze from', kind: 'select', options: [['heuristic', 'Colour and tone'], ['dark', 'Dark channel'], ['depth', 'Depth map']], def: 'heuristic' },
+      range('density', 'Density', 0, 100, 50), range('sky', 'Protect sky', 0, 100, 0),
+    ],
+    kernel: (v) => {
+      const method = v.method === 'dark' || v.method === 'depth' ? v.method : 'heuristic';
+      if (method === 'heuristic') return developSlice({ dehaze: n(v, 'dehaze') }, {});
+      const s = defaultDevelopState();
+      s.tone.dehaze = n(v, 'dehaze'); s.dehazeDark = method === 'dark'; s.dehazeDepth = method === 'depth'; s.dehazeDensity = n(v, 'density'); s.dehazeSky = n(v, 'sky');
+      return (px, ctx) => {
+        if (!ctx || !s.tone.dehaze) return;
+        const out = developImage(new ImageData(new Uint8ClampedArray(px), ctx.width, ctx.height), s, 1 / Math.max(1e-6, ctx.unitsPerPixel), 7, method === 'depth' ? depthSource.read?.(ctx) ?? null : null);
+        for (let i = 0; i < px.length; i += 4) { px[i] = out.data[i]; px[i + 1] = out.data[i + 1]; px[i + 2] = out.data[i + 2]; }
+      };
+    },
   },
   texture: {
     label: 'Texture',
@@ -549,8 +563,8 @@ export const PARAM_ADJUSTMENTS: Record<ParamKind, ParamAdjustment> = {
   filmLook: {
     label: 'Film Look',
     params: [{ key: 'stock', label: 'Stock', kind: 'select', options: FILM_STOCK_OPTIONS, def: 'portrait400' }, range('strength', 'Strength', 0, 100, 100), range('grain', 'Grain', 0, 100, 40), range('grainSize', 'Grain size', 1, 8, 1.5, 0.1), range('seed', 'Seed', 0, 9999, 1),
-      { key: 'points', label: 'Curve points', kind: 'text', def: '' }],
-    kernel: (v) => filmKernel(v.stock, n(v, 'strength'), n(v, 'grain'), n(v, 'grainSize'), v.points, n(v, 'seed') * 7 + 3),
+      { key: 'points', label: 'Curve points', kind: 'text', def: '' }, range('tonalShadows', 'Tonal contrast: shadows', -100, 100, 0), range('tonalMidtones', 'Tonal contrast: midtones', -100, 100, 0), range('tonalHighlights', 'Tonal contrast: highlights', -100, 100, 0)],
+    kernel: (v) => filmKernel(v.stock, n(v, 'strength'), n(v, 'grain'), n(v, 'grainSize'), v.points, n(v, 'seed') * 7 + 3, [n(v, 'tonalShadows'), n(v, 'tonalMidtones'), n(v, 'tonalHighlights')]),
   },
   // Effects pack: the colour channels displaced against each other, as a live adjustment layer.
   chromaticShift: {

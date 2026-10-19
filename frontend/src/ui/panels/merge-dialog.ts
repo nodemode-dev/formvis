@@ -13,6 +13,7 @@ export class MergeDialog extends Dialog {
   private files: File[] = [];
   private layout: 'auto' | 'reposition' | 'perspective' | 'cylindrical' | 'collage' = 'auto';
   private crop = false;
+  private fill = false;
   private distortion = false;
   private vignette = false;
   private asLayers = false;
@@ -43,11 +44,12 @@ export class MergeDialog extends Dialog {
     });
     const layout = selectRow('Layout', [['auto', 'Auto'], ['perspective', 'Perspective'], ['cylindrical', 'Cylindrical'], ['collage', 'Collage'], ['reposition', 'Reposition']], (v) => { this.layout = v as MergeDialog['layout']; });
     const crop = checkRow('Crop to the picture', (v) => { this.crop = v; });
+    const fill = checkRow('Fill transparent edges (Content-Aware Fill)', (v) => { this.fill = v; });
     const vig = checkRow('Vignette Removal', (v) => { this.vignette = v; });
     const geo = checkRow('Geometric Distortion Correction', (v) => { this.distortion = v; });
     this.panoRows = el('<div></div>');
     const layers = checkRow('Photos as masked layers', (v) => { this.asLayers = v; });
-    this.panoRows.append(layout.el, crop.el, layers.el, vig.el, geo.el, el('<p class="cv-dialog-note">Photos as masked layers opens one layer per photo, each with a seam mask, instead of one joined picture (Crop is not used then). Auto finds where the photos meet and projects them onto a sphere; Perspective keeps straight lines straight for a narrow view; Cylindrical bends the photos onto a cylinder for a wide one; Collage only moves, turns and scales them; Reposition moves and turns. Vignette Removal needs photos of one size. Distortion correction straightens the lens bend the overlaps show.</p>'));
+    this.panoRows.append(layout.el, crop.el, fill.el, layers.el, vig.el, geo.el, el('<p class="cv-dialog-note">Photos as masked layers opens one layer per photo, each with a seam mask, instead of one joined picture (Crop and Fill are not used then). Fill transparent edges paints the empty corners and gaps of the joined picture from the photo around them. Auto finds where the photos meet and projects them onto a sphere; Perspective keeps straight lines straight for a narrow view; Cylindrical bends the photos onto a cylinder for a wide one; Collage only moves, turns and scales them; Reposition moves and turns. Vignette Removal needs photos of one size. Distortion correction straightens the lens bend the overlaps show.</p>'));
     this.panoRows.hidden = mode !== 'panorama';
     const align = checkRow('Attempt to Automatically Align Source Images', (v) => { this.align = v; });
     this.hdrRows = el('<div></div>');
@@ -63,7 +65,7 @@ export class MergeDialog extends Dialog {
     align.set(true); ghost.set(0); bits.set('32'); method.set('exposure'); exposure.set(0); gamma.set(1); syncTone();
     const intro = mode === 'panorama' ? 'Choose two or more overlapping photos, or add the open documents.' : 'Choose two or more exposures of the same scene; their exposure times come from the photos\' EXIF, or are worked out from the photos.';
     this.body.append(el(`<p class="cv-dialog-note">${intro}</p>`), choose, open, this.input, this.picked, this.panoRows, this.hdrRows, this.note);
-    layout.set('auto'); crop.set(false); layers.set(false); vig.set(false); geo.set(false);
+    layout.set('auto'); crop.set(false); fill.set(false); layers.set(false); vig.set(false); geo.set(false);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => void this.apply());
     this.remember([this.input]);   // the layout and the crop; the photos themselves are chosen each time
@@ -78,7 +80,7 @@ export class MergeDialog extends Dialog {
     this.files = files;
     const shown = { ghost: this.ghost, depth: this.depth, method: this.method, exposure: this.exposure, gamma: this.gamma };
     this.layout = (['auto', 'perspective', 'cylindrical', 'collage', 'reposition'] as const).find((l) => l === o.layout) ?? 'auto';
-    this.crop = o.crop === true; this.asLayers = o.layers === true; this.vignette = o.vignette === true; this.distortion = o.distortion === true;
+    this.crop = o.crop === true; this.fill = o.fill === true; this.asLayers = o.layers === true; this.vignette = o.vignette === true; this.distortion = o.distortion === true;
     this.align = o.align !== false;
     this.times.value = typeof o.times === 'string' ? o.times.split(',').map((t) => { const [top, bottom] = t.split('/'); return bottom ? String(Number(top) / Number(bottom)) : t.trim(); }).join(',') : '';
     this.depth = o.depth === 16 || o.depth === 8 ? o.depth : 32;
@@ -117,6 +119,10 @@ export class MergeDialog extends Dialog {
         const r = await api.mergePanorama(files.map((f) => ({ name: f.name, blob: f })), this.layout, this.crop, { distortion: this.distortion, vignette: this.vignette }), bmp = await createImageBitmap(r.png);
         this.close();
         this.engine.openImage({ source: bmp, width: bmp.width, height: bmp.height, name: 'Panorama' });
+        if (this.fill && !this.crop) {
+          await new Promise((res) => requestAnimationFrame(() => window.setTimeout(res, 0)));
+          if (!(await this.engine.task(async () => this.engine.fillTransparentWithContent()))) this.engine.notice('No transparent edges were left to fill.');
+        }
         const [kept, given] = r.stitched.split('/');
         if (kept && given && kept !== given) this.engine.notice(`${kept} of the ${given} photos could be joined; the others did not overlap enough.`);
         else if (this.distortion || this.vignette) this.engine.notice([this.distortion ? (r.notes.k1 ? `Lens distortion corrected (k1 ${r.notes.k1}).` : 'No lens distortion found.') : '', this.vignette && r.notes.vignette ? `Vignette: ${r.notes.vignette}.` : ''].filter(Boolean).join(' '));

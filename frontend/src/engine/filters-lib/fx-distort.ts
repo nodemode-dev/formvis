@@ -2,7 +2,7 @@ import type { LibValues } from '../filter-library';
 import { clamp01, ease, fractal, grain, isOn, menu, num, opt, sampleInto, slider, slopes, soften, steepness, surfaceAt, tick, type FxDef, type Plate } from './gallery-fx';
 
 /** The feature size of each Glass texture, in texture pixels. */
-const GLASS: Record<string, number> = { frosted: 5, blocks: 26, canvas: 4, tinyLens: 10, ribbed: 12, reeded: 22, wavy: 40, pebbled: 16 };
+const GLASS: Record<string, number> = { frosted: 5, blocks: 26, canvas: 4, tinyLens: 10, ribbed: 12, reeded: 22, wavy: 40, pebbled: 16, sheen: 30 };
 
 /** The height (0 to 1) of a Glass texture at (u, v), in texture pixels. */
 function glassAt(kind: string, u: number, v: number): number {
@@ -13,6 +13,7 @@ function glassAt(kind: string, u: number, v: number): number {
   if (kind === 'ribbed') return Math.sin(fu * Math.PI * 2) * 0.5 + 0.5;
   if (kind === 'reeded') { const a = fu * 2 - 1; return Math.sqrt(Math.max(0, 1 - a * a)); }
   if (kind === 'wavy') return Math.sin((u / s + 0.35 * Math.sin(v / s * 2.3)) * Math.PI * 2) * 0.5 + 0.5;
+  if (kind === 'sheen') return clamp01(0.5 + 0.34 * Math.sin((u / s + 0.5 * Math.sin(v / s * 0.9)) * Math.PI * 2) + 0.16 * (fractal(u / (s * 4), v / 2, 1631, 2) - 0.5) * 2);
   if (kind === 'pebbled') {
     const wu = fractal(u / (s * 2), v / (s * 2), 1611, 1) - 0.5, wv = fractal(u / (s * 2), v / (s * 2), 1621, 1) - 0.5;
     const pu = (u + wu * s * 1.6) / s, pv = (v + wv * s * 1.6) / s, a = (pu - Math.floor(pu)) * 2 - 1, b = (pv - Math.floor(pv)) * 2 - 1;
@@ -61,7 +62,7 @@ export const DISTORT_FX: readonly FxDef[] = [
   },
   {
     key: 'glass', label: 'Glass', category: 'Distort',
-    params: [slider('distortion', 0, 20, 5), slider('smoothness', 1, 15, 3), menu('texture', ['frosted', 'blocks', 'canvas', 'tinyLens', 'ribbed', 'reeded', 'wavy', 'pebbled']), slider('scaling', 50, 200, 100), tick('invert')],
+    params: [slider('distortion', 0, 20, 5), slider('smoothness', 1, 15, 3), menu('texture', ['frosted', 'blocks', 'canvas', 'tinyLens', 'ribbed', 'reeded', 'wavy', 'pebbled', 'sheen']), slider('scaling', 50, 200, 100), tick('invert')],
     reach: (v, k) => (1.5 * num(v, 'distortion') + 1) * k + 3 * glassSoft(v, k) + 3,
     paint: (p, v) => {
       const kind = opt(v, 'texture'), unit = 100 / num(v, 'scaling'), dist = num(v, 'distortion'), sign = isOn(v, 'invert') ? -1 : 1;

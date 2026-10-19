@@ -199,6 +199,11 @@ export const api = {
   async pluginFolders(): Promise<Array<{ id: string; manifest: PluginManifest | null; error: string | null }>> { try { return (await (await request('/plugins/folders')).json()) as Array<{ id: string; manifest: PluginManifest | null; error: string | null }>; } catch { return []; } },
   async pluginFolderFile(id: string, path: string): Promise<string> { return (await request(`/plugins/folders/${encodeURIComponent(id)}/${path.split('/').map(encodeURIComponent).join('/')}`)).text(); },
   async removePluginFolder(id: string): Promise<void> { await request(`/plugins/folders/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
+  /** The extra plug-ins folder chosen in Preferences (read only), and the data folder's own. */
+  async pluginsExtraFolder(): Promise<{ path: string; data: string } | null> { try { return (await (await request('/plugins/extra-folder')).json()) as { path: string; data: string }; } catch { return null; } },
+  async pluginsExtraFolderSave(path: string): Promise<{ path: string; data: string }> {
+    return (await (await request('/plugins/extra-folder', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path }) })).json()) as { path: string; data: string };
+  },
 
   /** The assistant (1.52.2): one step of the conversation; the model's text and its tool calls. */
   async assistantStep(messages: unknown[], tools = true): Promise<{ content: string; tool_calls: Array<{ id: string; name: string; arguments: string }> }> {
@@ -230,8 +235,10 @@ export const api = {
   async recipeFileSave(name: string, text: string): Promise<void> { await request(`/comfyui/recipe-files/${encodeURIComponent(name)}`, { method: 'PUT', body: text }); },
   async recipeFileDelete(name: string): Promise<void> { await request(`/comfyui/recipe-files/${encodeURIComponent(name)}`, { method: 'DELETE' }); },
   async llmModels(): Promise<string[]> { return ((await (await request('/llm/models')).json()) as { models: string[] }).models; },
-  async improvePrompt(prompt: string, instructions: string): Promise<string> {
-    return ((await (await request('/llm/improve', { method: 'POST', body: form({ prompt, instructions }) })).json()) as { prompt: string }).prompt;
+  /** The prompt rewritten; with `picture` (a data address of the area it is for) a model row that reads pictures sees it too (`seen`), and `restored` names the @img tokens the model dropped and the engine put back. */
+  async improvePrompt(prompt: string, instructions: string, picture = ''): Promise<{ prompt: string; restored: string[]; seen: boolean }> {
+    const r = (await (await request('/llm/improve', { method: 'POST', body: form({ prompt, instructions, ...(picture ? { picture } : {}) }) })).json()) as { prompt: string; restored?: string[]; seen?: boolean };
+    return { prompt: r.prompt, restored: r.restored ?? [], seen: r.seen === true };
   },
 
   /** Edit > Generate Image (1.51.2): a picture from a prompt alone through fal, or (1.58.4) through another provider,
@@ -619,8 +626,8 @@ export const api = {
     return (await r.json()).photos;
   },
   /** Edit > Auto-Blend Layers (DEV_PLAN 32.1): a grey mask PNG (base64) per layer and RGB tone gains per layer. */
-  async mergeBlend(layers: Blob[], method: string, seamless: boolean, halo = 0, depth = false): Promise<{ masks: string[]; tones: number[][]; depth?: string; blended?: string }> {
-    const r = await request('/merge/blend', { method: 'POST', body: form({ method, seamless: String(seamless), halo: String(halo), depth: String(depth) }, layers.map((b, i) => ({ name: `layer${i}.png`, blob: b })), 'file') });
+  async mergeBlend(layers: Blob[], method: string, seamless: boolean, halo = 0, depth = false, spatial = true): Promise<{ masks: string[]; tones: number[][]; fields?: Array<{ w: number; h: number; data: number[] } | null>; depth?: string; blended?: string }> {
+    const r = await request('/merge/blend', { method: 'POST', body: form({ method, seamless: String(seamless), halo: String(halo), depth: String(depth), spatial: String(spatial) }, layers.map((b, i) => ({ name: `layer${i}.png`, blob: b })), 'file') });
     return await r.json();
   },
   /** A Lab TIFF or PSD as Lab layers (1.58.1): each layer's L, a, b and alpha as floats in the window's encoding;

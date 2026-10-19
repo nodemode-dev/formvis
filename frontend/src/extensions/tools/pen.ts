@@ -1,5 +1,6 @@
 import { anchorNear, cornerAt, nearestSegment, splitSegment, tracePath, type Anchor, type Pt, type SubPath, type VectorPath } from '../../engine';
 import type { Tool, ToolContext } from '../registry';
+import { badgeCursor } from './cursor-badges';
 
 let active: SubPath | null = null;
 let pulling: Anchor | null = null;
@@ -41,7 +42,7 @@ export const penTool: Tool = {
   id: 'pen', label: 'Pen', key: 'P', order: 77,
   icon: () => 'tPen',
   hint: () => 'Click for corner points, drag for curves · Click the first point to close · Enter ends an open path, Backspace removes the last point · Between paths, click the path to add a point or a point to delete it · Ctrl+Enter makes a selection',
-  cursor: () => 'crosshair',
+  cursor: () => badgeCursor('pen'),
   options: (e) => [
     { kind: 'title', text: 'Pen' },
     // Mode and Auto Add/Delete (1.52.8, the tool audit).

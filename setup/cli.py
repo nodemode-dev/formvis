@@ -5,7 +5,7 @@
   ./formvis cli describe <id> [kind=name]    one command: what it does, its parameters (kind= picks a filter or adjustment)
   ./formvis cli run <id> key=value ... [--yes]   runs it in the open window as an undoable step
   ./formvis cli process <input|folder...> [--in DIR] [--recursive] [--action NAME] [--atn FILE.atn] [--new JSON] [--run id key=value ...] [--steps FILE.json]
-                        [--format png|jpg|webp|tiff|psd|psb|ora|fvd] [--quality N] [--out DIR] [--suffix TEXT] [--in-place] [--verbose] [--yes]   file in, file out:
+                        [--format png|jpg|webp|tiff|tiff-layers|tga|dpx|psd|psb|ora|fvd] [--options JSON] [--quality N] [--out DIR] [--suffix TEXT] [--in-place] [--verbose] [--yes]   file in, file out:
                         each picture is opened, edited, exported and closed (batch is the same command)
   ./formvis cli droplet <action-name> [--atn FILE.atn] [--format ...] [--quality N] [--to DIR] [--suffix TEXT] [--recursive] [--data FILE.fvdrop] [--out DIR] [--name FILE]
                         writes a script (and a .cmd twin) that runs the action over dropped files; --data also saves the choices as a droplet file
@@ -30,7 +30,7 @@ HELP = {
     "describe": "describe <id> [kind=name]\n  One command: what it does, its parameters. kind= picks a filter or adjustment.",
     "run": "run <id> key=value ... [--yes]\n  Runs one command in the open window as an undoable step. A risky command needs --yes.",
     "process": "process <input|folder...> [--in DIR] [--recursive] [--action NAME] [--atn FILE.atn] [--new JSON] [--run id key=value ...] [--steps FILE.json]\n"
-               "        [--format png|jpg|webp|tiff|psd|psb|ora|fvd] [--quality N] [--out DIR] [--suffix TEXT] [--in-place] [--verbose] [--headless] [--yes]\n  Each picture is opened in the window, edited, exported and closed. Folders give the pictures in them (--recursive goes deeper).\n"
+               "        [--format png|jpg|webp|tiff|tiff-layers|tga|dpx|psd|psb|ora|fvd] [--options JSON] [--quality N] [--out DIR] [--suffix TEXT] [--in-place] [--verbose] [--headless] [--yes]\n  --options: tga {\"bits\":24,\"rle\":true}, dpx {\"bits\":10,\"transfer\":\"log\"}. tiff-layers writes a .tif that carries the layers.\n  Each picture is opened in the window, edited, exported and closed. Folders give the pictures in them (--recursive goes deeper).\n"
                "  --steps takes a JSON list of {\"id\": ..., \"params\": {...}}. A result that would replace its source is refused unless --in-place.\n"
                "  --atn loads an actions file and plays every action in it (only --action NAME when given) on each picture. --new '{\"width\":800,\"height\":600,\"background\":\"white\",\"name\":\"card\"}'\n"
                "  starts from a new document instead of a file. --verbose prints each step's answer. --headless uses a window with no screen (started and closed for the run).",
@@ -47,13 +47,14 @@ HELP = {
     "info": "info <file...> [--json]\n  Size, colour mode, depth, resolution, profile and layers of a picture or project (.fvd .fmv .ora .psd .psb). Needs only the engine.",
     "convert": "convert <in> <out>\n  convert <in...> --to FORMAT [--out DIR]\n  [--quality 0.1-1] [--dpi N] [--page N] [--options JSON] [--overwrite]\n"
                "  A picture file to another format through the engine (png jpg webp avif tif bmp qoi tga ico pdf ppm pgm pbm pnm dpx fits wbmp). One flat picture; needs only the engine.\n"
-               "  --options takes the writer's choices as JSON, for example tga {\"bits\":24,\"rle\":true}. A .psd .psb .ora or .fvd file in or out keeps its layers and needs a window (--headless).",
+               "  --options takes the writer's choices as JSON, for example tga {\"bits\":24,\"rle\":true}, dpx {\"bits\":10,\"transfer\":\"log\"}. A .psd .psb .ora or .fvd file in or out keeps its layers and needs a window (--headless).\n"
+               "  A layered input to tga or dpx writes the flattened picture with those choices; a .tif out with --options '{\"layers\":true}' writes a TIFF that carries the layers.",
     "jobs": "jobs [list [--active]] | cancel <id> | cancel --all\n  The engine's background jobs (local generation, upscaling) and agent calls now running.",
-    "serve": "serve [--root DIR] [--token TEXT] [--headless]\n  A JSON-lines session: one request per line on stdin, one answer per line on stdout. Request {\"id\":1,\"method\":\"...\",\"params\":{}};\n"
+    "serve": "serve [--root DIR] [--token TEXT] [--auth-seconds N] [--headless]\n  A JSON-lines session: one request per line on stdin, one answer per line on stdout. Request {\"id\":1,\"method\":\"...\",\"params\":{}};\n"
              "  answer {\"id\":1,\"ok\":true,\"result\":...} or {\"id\":1,\"ok\":false,\"error\":\"...\"}. Methods: ping, version, commands.list, command.describe,\n"
              "  command.run, batch {commands, stopOnError}, doc.list, doc.new, doc.open, doc.place, doc.save, doc.export, doc.inspect, doc.close, doc.exportLayers,\n"
              "  doc.exportDataSets, doc.importDataSets, file.info, file.convert, jobs.list, jobs.cancel, tool.call {name, arguments}, shutdown.\n"
-             "  With --root DIR, paths outside DIR are refused. With --token TEXT (or FORMVIS_SERVE_TOKEN) each request must carry \"token\":\"TEXT\".\n"
+             "  With --root DIR, paths outside DIR are refused. With --token TEXT (or FORMVIS_SERVE_TOKEN) each request must carry \"token\":\"TEXT\"; no request with the token within --auth-seconds (30 when left out) closes the session.\n"
              "  image.stack, image.contact, image.fit, image.photomerge, image.hdr {inputs: [paths], option: value ...} need no window (options are the command's flags,\n"
              "  underscores for dashes: {\"inputs\":[\"a.jpg\",\"b.jpg\"],\"mode\":\"mean\",\"out\":\"s.png\"}).",
     "version": "version\n  The version, the build (git commit when there is one), the Python in use and the engine's address and version.",
@@ -64,7 +65,8 @@ CONVERT_TO = {"png": ".png", "jpg": ".jpg", "jpeg": ".jpg", "webp": ".webp", "av
               "pdf": ".pdf", "ppm": ".ppm", "pgm": ".pgm", "pbm": ".pbm", "pnm": ".pnm", "dpx": ".dpx", "fits": ".fits", "wbmp": ".wbmp",
               "psd": ".psd", "psb": ".psb", "ora": ".ora", "fvd": ".fvd"}
 LAYERED = (".psd", ".psb", ".ora", ".fvd", ".fmv")
-WINDOW_OUT = {"png", "jpg", "webp", "tiff", "psd", "psb", "ora", "fvd"}
+WINDOW_OUT = {"png", "jpg", "webp", "tiff", "tiff-layers", "tga", "dpx", "psd", "psb", "ora", "fvd"}
+WINDOW_EXT = {"tiff-layers": "tif"}
 
 import base64
 import hmac
@@ -73,6 +75,7 @@ import os
 import shutil
 import stat
 import sys
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -321,7 +324,7 @@ def process_one(path: str | None, flags: dict, runs: list[list[str]]) -> str:
     yes = bool(flags.get("yes"))
     spec = flags.get("new") or {}
     stem = os.path.splitext(os.path.basename(path))[0] if path else str(spec.get("name") or "New")
-    name = f"{stem}{flags.get('suffix', '')}.{fmt}"
+    name = f"{stem}{flags.get('suffix', '')}.{WINDOW_EXT.get(fmt, fmt)}"
     out_dir = flags.get("out") or (os.path.dirname(os.path.abspath(path)) if path else os.getcwd())
     target = os.path.join(out_dir, name)
     if path and os.path.abspath(target) == os.path.abspath(path) and not flags.get("in-place"):
@@ -347,6 +350,8 @@ def process_one(path: str | None, flags: dict, runs: list[list[str]]) -> str:
         params = {"format": fmt, "name": name}
         if "quality" in flags:
             params["quality"] = value_of(flags["quality"])
+        if flags.get("options"):
+            params["options"] = value_of(flags["options"])
         made = command_result("export-to-file", params, True).get("path")   # the output file is what the person asked for; --yes is for the steps
     finally:
         try:
@@ -378,7 +383,7 @@ def expand_inputs(words: list[str], recursive: bool) -> list[str]:
 
 
 def process_cmd(args: list[str]) -> int:
-    files, flags, runs = split_flags(args, ("--action", "--format", "--quality", "--out", "--suffix", "--in", "--steps", "--run", "--atn", "--new"), ("--yes", "--in-place", "--verbose", "--recursive"))
+    files, flags, runs = split_flags(args, ("--action", "--format", "--quality", "--out", "--suffix", "--in", "--steps", "--run", "--atn", "--new", "--options"), ("--yes", "--in-place", "--verbose", "--recursive"))
     files = expand_inputs(files + ([flags["in"]] if flags.get("in") else []), bool(flags.get("recursive")))
     if flags.get("new"):
         spec = value_of(flags["new"])
@@ -537,6 +542,9 @@ def convert_window(src: str, dst: str, extra: dict) -> str:
     """A layered file in or out (psd psb ora fvd): the window, headless or not, opens src and writes dst with the layers kept; a flat output (png jpg webp tiff) is the flattened picture."""
     src, dst = os.path.abspath(os.path.expanduser(src)), os.path.abspath(os.path.expanduser(dst))
     fmt = {"jpeg": "jpg", "tif": "tiff"}.get(os.path.splitext(dst)[1].lower().lstrip("."), os.path.splitext(dst)[1].lower().lstrip("."))
+    options = dict(extra.get("options") or {})
+    if fmt == "tiff" and options.pop("layers", False) is True:
+        fmt = "tiff-layers"
     if fmt not in WINDOW_OUT:
         raise RuntimeError(f"a layered input converts to {', '.join(sorted(WINDOW_OUT))} only, not {fmt}.")
     if os.path.exists(dst) and not extra.get("overwrite"):
@@ -544,6 +552,8 @@ def convert_window(src: str, dst: str, extra: dict) -> str:
     open_source(src, {}, True)
     try:
         params: dict = {"format": fmt, "name": os.path.basename(dst)}
+        if options and fmt in ("tga", "dpx"):
+            params["options"] = options
         if "quality" in extra:
             params["quality"] = round(float(extra["quality"]) * 100) if float(extra["quality"]) <= 1 else extra["quality"]
         made = command_result("export-to-file", params, True).get("path")
@@ -589,7 +599,8 @@ def convert_cmd(args: list[str]) -> int:
         return 2
     failed = 0
     for src, dst in jobs:
-        if os.path.splitext(src)[1].lower() in LAYERED or os.path.splitext(dst)[1].lower() in (".psd", ".psb", ".ora", ".fvd"):
+        layered_tiff = os.path.splitext(dst)[1].lower() in (".tif", ".tiff") and (extra.get("options") or {}).get("layers") is True
+        if os.path.splitext(src)[1].lower() in LAYERED or os.path.splitext(dst)[1].lower() in (".psd", ".psb", ".ora", ".fvd") or layered_tiff:
             try:
                 print(f"{src} -> {convert_window(src, dst, extra)}")
             except (RuntimeError, OSError) as exc:
@@ -793,16 +804,32 @@ def serve_request(method: str, params: dict, root: str | None):
 
 
 def serve_cmd(args: list[str]) -> int:
-    words, flags, _ = split_flags(args, ("--root", "--token"), ())
+    words, flags, _ = split_flags(args, ("--root", "--token", "--auth-seconds"), ())
     if words:
-        print("serve takes only --root DIR and --token TEXT.", file=sys.stderr)
+        print("serve takes only --root DIR, --token TEXT and --auth-seconds N.", file=sys.stderr)
         return 2
     root = os.path.realpath(os.path.expanduser(flags["root"])) if flags.get("root") else None
     token = flags.get("token") or os.environ.get("FORMVIS_SERVE_TOKEN") or ""
+    try:
+        deadline = float(flags.get("auth-seconds") or 30)
+    except ValueError:
+        print("--auth-seconds takes a number of seconds.", file=sys.stderr)
+        return 2
+    authed = threading.Event()
 
     def reply(rid, **body) -> None:
         sys.stdout.write(json.dumps({"id": rid, **body}, ensure_ascii=False) + "\n")
         sys.stdout.flush()
+
+    def expire() -> None:
+        if not authed.is_set():
+            reply(None, ok=False, error=f"No request carried the token within {deadline:g} seconds; the session is closed.")
+            os._exit(1)
+
+    if token:
+        timer = threading.Timer(deadline, expire)
+        timer.daemon = True
+        timer.start()
 
     for line in sys.stdin:
         if not line.strip():
@@ -820,6 +847,7 @@ def serve_cmd(args: list[str]) -> int:
         if token and not hmac.compare_digest(str(req.get("token", "")).encode(), token.encode()):
             reply(req.get("id"), ok=False, error='This session needs its token: add "token": "..." to each request.')
             continue
+        authed.set()
         if req["method"] == "shutdown":
             reply(req.get("id"), ok=True, result={"bye": True})
             return 0

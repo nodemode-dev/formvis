@@ -29,6 +29,8 @@ import { MergeChannelsDialog } from './ui/panels/merge-channels-dialog';
 import { GlobalLightDialog, ScaleEffectsDialog } from './ui/panels/style-dialogs';
 import { LiquifyDialog } from './ui/panels/liquify-dialog';
 import { runLiquifySmart } from './engine/liquify';
+import { filterLayerHook } from './engine/kernels';
+import { depthSource } from './engine/develop';
 import { runWideAngleSmart } from './engine/wide-angle';
 import { SelectMaskDialog } from './ui/panels/select-mask-dialog';
 import { ContentFillDialog } from './ui/panels/content-fill-dialog';
@@ -659,7 +661,8 @@ export function startApp(): void {
     setLocked: (on) => { dock.locked = on; },
   });
   dock.locked = dock.locked;
-  const panelGroupId = (v: unknown): string | null => (typeof v !== 'string' ? null : ALL_PANELS.some((p) => p.id === v) ? v : PanelGroup.ofTab(v)?.id ?? null);
+  const dockIdOfGroup = (gid: string): string | null => ALL_PANELS.find((p) => p.id === gid || p.selector.endsWith(`.cv-${gid}`))?.id ?? null;
+  const panelGroupId = (v: unknown): string | null => (typeof v !== 'string' ? null : ALL_PANELS.some((p) => p.id === v) ? v : dockIdOfGroup(PanelGroup.ofTab(v)?.id ?? ''));
   const captionButtons = new CaptionButtons(q(root, '.cv-titlebar'), () => stored('formvis.customTitleBar') === '1');
   const comfyDot = new ComfyDot(q(root, '.cv-brand'),() => loadPrefs().comfyuiUrl, () => (stored('formvis.comfyDot') ?? (loadPrefs().comfyuiUrl !== DEFAULT_PREFS.comfyuiUrl ? '1' : '0')) === '1');
   new Rail(q(root, '.cv-rail'), engine);
@@ -3424,6 +3427,7 @@ export function startApp(): void {
       },
     }),
   });
+  dialogs.settings.pluginsFolder.onSaved = () => { void folderPlugins.reloadAll().then((n) => toast(`Plugins reloaded: ${n} running.`)); };
   // Window > Script Console (DEV_PLAN 36.7): the plugin API under the identity 'console', no wider than a plugin's.
   const scriptConsole = new ScriptConsoleDialog({ api: () => pluginHost.apiFor('console'), agentBusy: () => agents.agentBusy });
   const consoleLog = new ConsoleLogDialog({
@@ -3669,7 +3673,7 @@ export function startApp(): void {
     { id: 'show-comfy-dot', label: 'ComfyUI Connection', checked: () => comfyDot.active, run: () => { store('formvis.comfyDot', comfyDot.active ? '0' : '1'); comfyDot.sync(); } },
     { id: 'snap-all', label: 'Snap To All', checked: () => snapOptions.guides && snapOptions.grid && snapOptions.layers && snapOptions.bounds, run: () => { const all = !(snapOptions.guides && snapOptions.grid && snapOptions.layers && snapOptions.bounds); for (const k of ['guides', 'grid', 'layers', 'bounds'] as const) snapOptions[k] = all; snapSave(); } },
     { id: 'toggle-grid', label: () => (engine.view.grid ? 'Hide Grid' : 'Show Grid'), keys: ["Mod+'"], enabled: has, run: () => engine.setView({ grid: !engine.view.grid }) },
-    { id: 'grid-settings', label: 'Grid Settings...', run: () => dialogs.settings.show('Guides & Grid') },
+    { id: 'grid-settings', label: 'Grid Settings...', run: () => dialogs.settings.show('Guides & Grid', true) },
     { id: 'lock-guides', label: () => (engine.view.guidesLocked ? 'Unlock Guides' : 'Lock Guides'), keys: ['Alt+Mod+;'], enabled: has, run: () => engine.setView({ guidesLocked: !engine.view.guidesLocked }) },
     { id: 'clear-guides', label: 'Clear Guides', enabled: () => !!engine.current?.doc.guides?.length, run: () => engine.clearGuides() },
     { id: 'edit-selected-guides', label: 'Edit Selected Guides...', enabled: () => engine.selectedGuides.length > 0, run: () => dialogs.editGuides.show() },
@@ -3711,7 +3715,7 @@ export function startApp(): void {
         const text = pathsToAi(set, p.doc.width, p.doc.height, one ? one.id : 'all');
         void deliver(new Blob([text], { type: 'application/postscript' }), `${stripExt(p.name)}.ai`);
       } },
-    { id: 'assistant', label: 'Assistant', run: () => assistant.toggle() },   // 1.52.2
+    { id: 'assistant', label: 'Assistant', keys: ['Alt+Mod+J'], checked: () => !assistant.el.hidden, run: () => assistant.toggle() },   // 1.52.2
     { id: 'terminal.toggle', label: 'Terminal', keys: ['Mod+J'], checked: () => termDock.isOpen(), run: () => termDock.toggle() },   // DEV_PLAN 28.5
     { id: 'terminal.new', label: 'New Terminal', run: () => void termDock.newTerminal() },
     { id: 'agent.claude.open', label: 'Claude Code', checked: () => claudePanel.isOpen(), run: () => claudePanel.toggle() },
@@ -3913,9 +3917,10 @@ export function startApp(): void {
     {
       id: 'export-to-file', label: 'Export to File', enabled: has,
       params: {
-        format: { type: 'string', description: 'png, jpg, webp or tiff for the flat picture; psd, psb, ora or fvd keeps the layers; png when left out.' },
+        format: { type: 'string', description: 'png, jpg, webp, tiff, tga or dpx for the flat picture; tiff-layers, psd, psb, ora or fvd keeps the layers; png when left out.' },
         quality: { type: 'number', min: 0, max: 100, description: 'Quality for jpg and webp; 92 when left out.' },
         name: { type: 'string', description: 'The file name; the document name when left out.' },
+        options: { type: 'object', description: 'tga: bits (24 or 32, 32 when left out) and rle (true or false). dpx: bits (8, 10, 12 or 16, 10 when left out) and transfer (linear, density or log, log when left out).' },
       },
       run: async (a) => {
         const p = engine.current, f = String(a?.format ?? 'png').toLowerCase(), kind = f === 'jpeg' ? 'jpg' : f === 'tif' ? 'tiff' : f;
@@ -3931,7 +3936,30 @@ export function startApp(): void {
           else layered = new Blob([(await writePsdFile(p.doc, flat, kind === 'psb', engine.pathsOf(p), loadExportPrefs().maximizePsd)).bytes]);
           return { path: await api.exportFile(layered, typeof a?.name === 'string' && a.name ? a.name : `${p.name}.${kind}`) };
         }
-        if (kind !== 'png' && kind !== 'jpg' && kind !== 'webp' && kind !== 'tiff') throw new Error('format must be png, jpg, webp, tiff, psd, psb, ora or fvd.');
+        const fileName = typeof a?.name === 'string' && a.name ? a.name : `${p.name}.${kind === 'tiff-layers' ? 'tif' : kind}`;
+        if (kind === 'tiff-layers') {
+          engine.settle();
+          const flat = engine.flattened();
+          if (!flat) throw new Error('Nothing to export.');
+          return { path: await api.exportFile((await writeLayeredTiff(p.doc, flat, engine.pathsOf(p))).blob, fileName) };
+        }
+        if (kind === 'tga' || kind === 'dpx') {
+          const o = a?.options && typeof a.options === 'object' ? a.options as Record<string, unknown> : {};
+          if (kind === 'dpx') {
+            const bits = Number(o.bits ?? 10), transfer = String(o.transfer ?? 'log');
+            if (![8, 10, 12, 16].includes(bits)) throw new Error('options.bits for dpx must be 8, 10, 12 or 16.');
+            if (transfer !== 'linear' && transfer !== 'density' && transfer !== 'log') throw new Error('options.transfer for dpx must be linear, density or log.');
+            const dpx = await dpxBlob(engine, { format: 'dpx', quality: 100, scale: 100, dpxBits: bits as 8 | 10 | 12 | 16, dpxTransfer: transfer });
+            if (!dpx) throw new Error('The picture could not be encoded.');
+            return { path: await api.exportFile(dpx, fileName) };
+          }
+          const bits = Number(o.bits ?? 32);
+          if (bits !== 24 && bits !== 32) throw new Error('options.bits for tga must be 24 or 32.');
+          const png = await imageBlob('png', 1);
+          if (!png) throw new Error('The picture could not be encoded.');
+          return { path: await api.exportFile(await api.encode(png, 'tga', 100, p.doc.resolution ?? 72, null, { bits, rle: o.rle === true }), fileName) };
+        }
+        if (kind !== 'png' && kind !== 'jpg' && kind !== 'webp' && kind !== 'tiff') throw new Error('format must be png, jpg, webp, tiff, tiff-layers, tga, dpx, psd, psb, ora or fvd.');
         const blob = await imageBlob(kind, (typeof a?.quality === 'number' ? a.quality : 92) / 100);
         if (!blob) throw new Error('The picture could not be encoded.');
         return { path: await api.exportFile(blob, typeof a?.name === 'string' && a.name ? a.name : `${p.name}.${kind}`) };
@@ -4148,6 +4176,7 @@ export function startApp(): void {
         ...SOURCE_PARAMS,
         layout: { type: 'string', enum: ['auto', 'perspective', 'cylindrical', 'collage', 'reposition'], description: 'How the photos are joined; auto when left out.' },
         crop: { type: 'boolean', description: 'Crop to the largest rectangle the photos fill (else the edges stay transparent).' },
+        fill: { type: 'boolean', description: 'Fill the transparent edges and gaps of the joined picture by Content-Aware Fill; off when left out, not used with layers.' },
         layers: { type: 'boolean', description: 'Open one layer per photo, each with a seam mask, instead of one joined picture.' },
         vignette: { type: 'boolean', description: 'Vignette Removal; needs photos of one size.' },
         distortion: { type: 'boolean', description: 'Geometric Distortion Correction.' },
@@ -4170,12 +4199,13 @@ export function startApp(): void {
       } : {
         method: { type: 'string' as const, enum: ['panorama', 'stack', 'multiband'], description: 'Blend method: panorama (soft seams), stack (sharpest layer, for focus stacking) or multiband (a pyramid blend into a new layer); panorama when left out.' },
         seamless: { type: 'boolean' as const, description: 'Seamless Tones and Colors: match each layer\'s tones to the reference; on when left out.' },
+        spatial: { type: 'boolean' as const, description: 'With seamless: follow how the tone difference changes across the overlap (a smooth gain field) instead of one gain per layer; on when left out.' },
         halo: { type: 'number' as const, min: 0, max: 100, description: 'Halo Control for stack: 0 is the soft default, higher keeps the transitions on the sharp edges.' },
         depth: { type: 'boolean' as const, description: 'Stack: add a hidden Depth Map layer showing which layer is sharpest where; off when left out.' },
       }) as NonNullable<Command['params']>,
       run: (a?: Record<string, unknown>) => import('./ui/panels/align-blend-dialog').then(async (m) => {
         if (!a || !Object.keys(a).length) { m.AlignBlendDialog.get(engine, mode).show(); return undefined; }
-        return { message: await m.AlignBlendDialog.execute(engine, mode, { projection: a.projection === undefined ? undefined : String(a.projection), method: a.method === undefined ? undefined : String(a.method), seamless: a.seamless === undefined ? true : !!a.seamless, vignette: !!a.vignette, distortion: !!a.distortion, registration: a.registration === undefined ? undefined : String(a.registration), reference: a.reference === undefined ? undefined : String(a.reference), halo: typeof a.halo === 'number' ? a.halo : undefined, depth: !!a.depth }) };
+        return { message: await m.AlignBlendDialog.execute(engine, mode, { projection: a.projection === undefined ? undefined : String(a.projection), method: a.method === undefined ? undefined : String(a.method), seamless: a.seamless === undefined ? true : !!a.seamless, spatial: a.spatial === undefined ? true : !!a.spatial, vignette: !!a.vignette, distortion: !!a.distortion, registration: a.registration === undefined ? undefined : String(a.registration), reference: a.reference === undefined ? undefined : String(a.reference), halo: typeof a.halo === 'number' ? a.halo : undefined, depth: !!a.depth }) };
       }),
     })),
     {
@@ -5359,10 +5389,7 @@ export function startApp(): void {
     { id: 'layer-comp-next', label: 'Next Layer Comp', enabled: () => !!engine.current?.doc.comps?.length, run: () => engine.nextLayerComp(1) },
     { id: 'layer-comp-previous', label: 'Previous Layer Comp', enabled: () => !!engine.current?.doc.comps?.length, run: () => engine.nextLayerComp(-1) },
     { id: 'edit-text', label: 'Edit Type...', enabled: () => engine.liveText(engine.current?.activeLayer), run: () => { const id = engine.current?.activeId; if (id) dialogs.text.showEdit(id); } },
-    { id: 'convert-smart', label: 'Convert to Smart Object', enabled: () => { const l = engine.current?.activeLayer; return !!l && !l.adjustment && !l.smart && (l.isGroup ? !!engine.current?.doc.layers.some((x) => x.parentId === l.id) : !!l.raster); }, run: () => {
-      if (engine.current?.activeLayer?.isGroup) engine.mergeLayers();
-      engine.convertToSmartObject();
-    } },
+    { id: 'convert-smart', label: 'Convert to Smart Object', enabled: () => { const l = engine.current?.activeLayer; return !!l && ((engine.current?.selectedIds.size ?? 0) > 1 || (l.isGroup ? !!engine.current?.doc.layers.some((x) => x.parentId === l.id) : !l.adjustment && !l.smart && !!l.raster)); }, run: () => { engine.convertToSmartObject(); } },
     { id: 'rasterize', label: 'Rasterize Layer', enabled: () => { const l = engine.current?.activeLayer; return !!l && (!!l.smart || !!l.vector || !!l.shape || !!l.fillContent || liveText(l)); }, run: () => engine.rasterizeLayer() },
     { id: 'smart-filters', label: 'Smart Filters...', enabled: () => !!engine.current?.activeLayer?.smart, run: () => dialogs.smartFilters.show() },
     { id: 'smart-warp-reset', label: 'Reset Warp', enabled: () => !!engine.current?.activeLayer?.smart?.deform, run: () => { engine.resetSmartDeform(); } },
@@ -5506,7 +5533,16 @@ export function startApp(): void {
     ...(['left', 'hcenter', 'right', 'top', 'vcenter', 'bottom', 'hspace', 'vspace'] as const).map((k) => ({ id: `distribute-${k}`, label: `Distribute ${{ left: 'Left Edges', hcenter: 'Horizontal Centers', right: 'Right Edges', top: 'Top Edges', vcenter: 'Vertical Centers', bottom: 'Bottom Edges', hspace: 'Horizontal Spacing', vspace: 'Vertical Spacing' }[k]}`, enabled: () => (engine.current?.selectedIds.size ?? 0) > (engine.alignTo === 'auto' ? 2 : 1), run: () => engine.distributeLayers(k) })),
     ...ADJUSTMENT_KINDS.map((kind) => ({ id: `adj-${kind}`, label: `${ADJUSTMENT_LABELS[kind]}...`, keys: ADJUST_KEYS[kind], enabled: hasTargetPixels, run: () => dialogs.adjust.openForImage(kind) })),
     ...ADJUSTMENT_KINDS.map((kind) => ({ id: `new-adj-${kind}`, label: `New ${ADJUSTMENT_LABELS[kind]} Layer...`, enabled: has, run: () => { const id = engine.addAdjustmentLayer(kind); if (id) dialogs.adjust.openForLayer(id, true); } })),
-    { id: 'edit-adjustment', label: 'Edit Adjustment...', enabled: () => !!layer()?.adjustment, run: () => { const l = layer(); if (l?.adjustment) dialogs.adjust.openForLayer(l.id); } },
+    { id: 'edit-adjustment', label: 'Edit Adjustment...', enabled: () => !!layer()?.adjustment && layer()?.adjustment?.kind !== 'filter', run: () => { const l = layer(); if (l?.adjustment) dialogs.adjust.openForLayer(l.id); } },
+    { id: 'new-filter-layer', label: 'New Filter Layer', enabled: has, params: { filter: { type: 'string', required: true, description: 'The id of any filter, such as gaussianBlur, motionBlur, addNoise, unsharpMask or a library filter like emboss or oilPaint.' }, settings: { type: 'object', description: 'The filter settings by key, as the Filter dialog names them (radius, angle, distance, amount); left out keys take their defaults.' } },
+      run: (a) => {
+        const kind = typeof a?.filter === 'string' ? a.filter : '';
+        if (!(kind in FILTER_LABELS)) return { id: null, error: `${kind || 'No filter'} is not a filter id.` };
+        const id = engine.addFilterLayer(kind, FILTER_LABELS[kind as FilterKind], a?.settings && typeof a.settings === 'object' ? a.settings as Record<string, unknown> : {});
+        return { id };
+      } },
+    { id: 'set-filter-layer', label: 'Set Filter Layer', enabled: () => layer()?.adjustment?.kind === 'filter', params: { settings: { type: 'object', required: true, description: 'The filter settings to change by key; the other keys stay as they were.' } },
+      run: (a) => ({ applied: !!a?.settings && typeof a.settings === 'object' && engine.setFilterLayerSettings(a.settings as Record<string, unknown>) }) },
     { id: 'new-fill-solid', label: 'Solid Color...', enabled: has, run: () => dialogs.fillLayer.showNew('solid') },
     { id: 'new-fill-gradient', label: 'Gradient...', enabled: has, run: () => dialogs.fillLayer.showNew('gradient') },
     { id: 'new-fill-pattern', label: 'Pattern...', enabled: has, run: () => dialogs.fillLayer.showNew('pattern') },
@@ -5668,7 +5704,7 @@ export function startApp(): void {
       { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-grayscale-from', 'mode-duotone', 'mode-indexed', 'mode-multichannel', 'color-table', 'mode-rgb', 'mode-cmyk', 'mode-lab', 'mode-convert', '-', 'split-channels', 'merge-channels', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
       'image-size', 'canvas-size', { label: 'Pixel Aspect Ratio', items: ['par-square', 'par-d1-ntsc', 'par-d1-pal', 'par-d1-ntsc-wide', 'par-d1-pal-wide', 'par-anamorphic', 'par-hdv', 'par-dvcpro-hd', '-', 'par-custom'] }, { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'perspective-crop', 'trim', 'reveal-all', 'trap', '-', 'frequency-separation', 'duplicate-image', '-', { label: 'Variables', items: ['variables-define', 'data-sets-import', 'data-set-apply'] }, '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }, '-', { label: 'Analysis', items: ['measure-scale', 'measure-ruler', 'measure-color-sampler', { label: 'Color Samplers', items: ['sampler-add', 'sampler-move', 'sampler-delete', 'sampler-clear'] }, 'measure-count', { label: 'Count Groups', items: ['count-new-group', 'count-set-group'] }, 'measure-record', 'measure-record-features', 'measure-data-points', 'measure-scale-marker', 'measure-log'] }] },
     { label: 'Layer', items: [
-      { label: 'New', items: ['new-layer-dialog', 'new-type-layer', 'new-shape-layer', 'new-dodge-burn-layer', 'layer-from-background', 'background-from-layer', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard-dialog', 'artboard-from-group', 'artboard-from-layers-dialog', 'frame-from-layers', '-', 'duplicate', 'layer-via-cut', '-', 'new-relight-layer'] }, 'artboard-options', '-',
+      { label: 'New', items: ['new-layer-dialog', 'new-type-layer', 'new-shape-layer', 'new-dodge-burn-layer', 'layer-from-background', 'background-from-layer', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard-dialog', 'artboard-from-group', 'artboard-from-layers-dialog', 'frame-from-layers', '-', 'duplicate', 'layer-via-cut', '-', 'new-relight-layer', 'new-filter-layer', 'set-filter-layer'] }, 'artboard-options', '-',
       { label: 'New Fill Layer', items: ['new-fill-solid', 'new-fill-gradient', 'new-fill-pattern'] }, 'new-fill-adjustment', { label: 'Video Layers', items: ['video-layer-from-file', 'video-layer-blank', '-', 'video-insert-blank-frame', 'video-duplicate-frame', 'video-delete-frame', '-', 'video-restore-frame', 'video-reload-frame', 'video-restore-all', 'video-show-altered', 'video-replace-footage', 'video-interpret-footage', 'video-rasterize'] },{ label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'edit-relight', 'layer-content-options', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, { label: 'Film Pack', items: ['film-apply-look', 'new-adj-filmLook', 'new-adj-chromaticShift', '-', 'film-copy-points', 'film-paste-points'] }, { label: 'EU AI Label', items: ['ai-label-add', 'ai-label-remove', 'ai-label-info'] }, '-',
       'duplicate-dialog', 'copy-layers', 'paste-layers', 'copy-layers-to-document', { label: 'Delete', items: ['delete-layer', 'delete-hidden'] }, 'rename', 'layer-quick-export-png', 'layer-export-as', '-',
       { label: 'Layer Style', items: ['style-blending', 'style-bevel', 'style-stroke', 'style-inner-shadow', 'style-inner-glow', 'style-satin', 'style-color-overlay', 'style-gradient-overlay', 'style-pattern-overlay', 'style-outer-glow', 'style-drop-shadow', '-',
@@ -5796,6 +5832,17 @@ export function startApp(): void {
     const s ={ ...defaultFilterSettings(), ...(settings as Partial<FilterPanelSettings>) }, seed = typeof settings.seed === 'number' ? settings.seed : 0;
     return runFilterOffThread(kind as FilterKind, s, 1, seed, src) ?? Promise.resolve(runFilter(kind as FilterKind, s, seed, src, 1));
   };
+  depthSource.read = (c) => {
+    const p = engine.current, dl = engine.depthLayer();
+    if (!p || !dl?.raster || dl.raster.width !== p.doc.width || dl.raster.height !== p.doc.height) return null;
+    const grey = dl.raster.read().data, DW = dl.raster.width, DH = dl.raster.height, out = new Uint8Array(c.width * c.height);
+    for (let y = 0; y < c.height; y++) {
+      const sy = Math.min(DH - 1, Math.max(0, Math.floor(c.originY + (y + 0.5) * c.unitsPerPixel)));
+      for (let x = 0; x < c.width; x++) out[y * c.width + x] = grey[(sy * DW + Math.min(DW - 1, Math.max(0, Math.floor(c.originX + (x + 0.5) * c.unitsPerPixel)))) * 4];
+    }
+    return out;
+  };
+  filterLayerHook.run = (kind, settings, src, scale) => isWasmKind(kind) || kind === 'liquify' || kind === 'wideangle' ? src : runFilter(kind as FilterKind, { ...defaultFilterSettings(), ...(settings as Partial<FilterPanelSettings>) }, typeof settings.seed === 'number' ? settings.seed : 0, src, scale);
   engine.smartFilterRunner = (kind, settings, src) => kind === 'liquify' ? runLiquifySmart(settings, src) : kind === 'wideangle' ? runWideAngleSmart(settings, src) : isWasmKind(kind) ? src : runFilter(kind as FilterKind, { ...defaultFilterSettings(), ...(settings as Partial<FilterPanelSettings>) }, typeof settings.seed === 'number' ? settings.seed : 0, src, 1);
   document.addEventListener('cv:type', (e) => {
     const d = (e as CustomEvent<{ layerId?: string; x?: number; y?: number; box?: { w: number; h: number } }>).detail;
@@ -5804,7 +5851,9 @@ export function startApp(): void {
   });
   root.addEventListener('cv:edit-adjustment', (e) => {
     const id = (e as CustomEvent<string>).detail;
-    if (typeof id === 'string') dialogs.adjust.openForLayer(id);
+    if (typeof id !== 'string') return;
+    if (engine.current?.doc.layers.find((x) => x.id === id)?.adjustment?.kind === 'filter') toast('A filter layer takes its settings from Set Filter Layer.');
+    else dialogs.adjust.openForLayer(id);
   });
   root.addEventListener('cv:mask-properties', () => { commands.run('panel-activate', { panel: 'properties' }); });
 

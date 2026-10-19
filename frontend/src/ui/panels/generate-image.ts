@@ -10,8 +10,17 @@ import { t } from '../i18n';
 import { loadPrefs } from '../prefs';
 import { ReferencePicker } from './references';
 import { ReferenceChips } from './reference-chips';
-import { PromptImprover } from './prompt-improver';
+import { PromptImprover, areaView } from './prompt-improver';
 import { GenerationOptions } from './generation-options';
+
+/** The shapes Generate offers beside the picture's own: name, words, pixels (multiples of 16, within every local model's range). */
+export const SIZES: ReadonlyArray<readonly [string, string, number, number]> = [
+  ['1:1', 'Square 1:1 (1024 x 1024)', 1024, 1024],
+  ['4:3', 'Landscape 4:3 (1152 x 896)', 1152, 896],
+  ['3:4', 'Portrait 3:4 (896 x 1152)', 896, 1152],
+  ['16:9', 'Wide 16:9 (1344 x 768)', 1344, 768],
+  ['9:16', 'Tall 9:16 (768 x 1344)', 768, 1344],
+];
 
 /** One model Generate Image can use: its value in the picker, its words, and why it cannot be chosen when it cannot. */
 export interface GenerationModel { value: string; label: string; disabled: boolean; reason: string }
@@ -141,11 +150,15 @@ export interface GenerationRequest {
   providers: readonly ProviderStatus[];
   /** The pixel size to ask for; the document's own when absent. */
   size?: { width: number; height: number };
+  /** Where the picture lands: a layer of the open document (the default) or a new document of its own size. */
+  target?: 'layer' | 'document';
   /** The layers sent as references to a ComfyUI workflow. */
   references?: () => Promise<Array<{ name: string; blob: Blob }>>;
   /** Seed (fal and models on this computer) and negative prompt (this computer); the seed used comes back through `onSeed`. */
   seed?: number;
   negative?: string;
+  steps?: number;
+  guidance?: number;
   onSeed?: (seed: number | undefined) => void;
   /** Called when stopGenerations stops this run, so the caller can say so. */
   onStop?: () => void;
@@ -205,7 +218,8 @@ export async function addKeptResult(engine: Engine, id: number): Promise<boolean
 }
 
 async function generateOnce(engine: Engine, req: GenerationRequest): Promise<boolean> {
-  if (!engine.current) engine.newDocument(req.size?.width ?? 1024, req.size?.height ?? 1024, 'Generated', 'white');
+  const fresh = !engine.current;
+  if (fresh) engine.newDocument(req.size?.width ?? 1024, req.size?.height ?? 1024, 'Generated', 'white');
   const p = engine.current;
   if (!p) return false;
   const W = p.doc.width, H = p.doc.height, w = req.size?.width ?? W, h = req.size?.height ?? H, { choice } = req, prompt = withBoxes(req.prompt, p.doc);   // the layout boxes follow the words, one line each
@@ -217,7 +231,7 @@ async function generateOnce(engine: Engine, req: GenerationRequest): Promise<boo
   if (choice.startsWith('local:')) {
     // On this computer: the shape asked within the model's 2048 pixels, in multiples of 16.
     const k = Math.min(1, 2048 / Math.max(w, h)), lw = Math.max(256, Math.round((w * k) / 16) * 16), lh = Math.max(256, Math.round((h * k) / 16) * 16);
-    const r = await runLocal({ generator: choice, prompt, size: `${lw}x${lh}`, count: 1, ...(req.negative ? { negative: req.negative } : {}), ...(req.seed !== undefined ? { options: { seed: req.seed } } : {}) }, req.status, req.stopped);
+    const r = await runLocal({ generator: choice, prompt, size: `${lw}x${lh}`, count: 1, ...(req.negative ? { negative: req.negative } : {}), ...(req.seed !== undefined || req.steps !== undefined || req.guidance !== undefined ? { options: { ...(req.seed !== undefined ? { seed: req.seed } : {}), ...(req.steps !== undefined ? { steps: req.steps } : {}), ...(req.guidance !== undefined ? { guidance: req.guidance } : {}) } } : {}) }, req.status, req.stopped);
     req.heard?.(r);
     blob = r.pictures[0];
     generation = r.settings[0];
@@ -244,6 +258,7 @@ async function generateOnce(engine: Engine, req: GenerationRequest): Promise<boo
     blob = (await runToResults(loadPrefs().comfyuiUrl, recipe.json, refs.map((r) => ({ name: r.name, kind: 'reference' })), refs.map((r, i) => ({ name: `ref${i}.png`, blob: r.blob })), said, req.status, req.stopped))[0];
   }
   if (req.stopped() || engine.current !== p) return false;
+  if (req.target === 'document' && !fresh) engine.newDocument(w, h, 'Generated', 'transparent');
   await placeResult(engine, blob, w, h, generation);
   kept.unshift({ id: ++serial, time: Date.now(), prompt: req.prompt, choice, width: w, height: h, blob, generation });
   if (kept.length > KEPT_LIMIT) kept.length = KEPT_LIMIT;
@@ -257,6 +272,10 @@ export class GenerateImageDialog extends Dialog {
   private readonly prompt = el<HTMLTextAreaElement>('<textarea class="cv-input" rows="3" aria-label="Prompt" placeholder="Describe the image"></textarea>');
   private readonly model = el<HTMLSelectElement>('<select class="cv-input" aria-label="Model"></select>');
   private readonly status = el('<p class="cv-note cv-gen-status" role="status"></p>');
+  private readonly size = el<HTMLSelectElement>('<select class="cv-input" aria-label="Size"></select>');
+  private readonly cw = el<HTMLInputElement>('<input class="cv-input" type="number" min="256" max="2048" step="16" value="1024" aria-label="Width" hidden>');
+  private readonly ch = el<HTMLInputElement>('<input class="cv-input" type="number" min="256" max="2048" step="16" value="1024" aria-label="Height" hidden>');
+  private readonly target = el<HTMLSelectElement>('<select class="cv-input" aria-label="Result"><option value="layer">Result: a layer of this picture</option><option value="document">Result: a new document</option></select>');
   private busy = false;
   private readonly refs: ReferencePicker;
   private readonly chips: ReferenceChips;
@@ -283,12 +302,18 @@ export class GenerateImageDialog extends Dialog {
     this.chips = new ReferenceChips(this.refs, this.prompt);
     this.model.addEventListener('change', () => { this.picked = true; this.refs.forFal(this.model.value === 'fal'); this.opts.forModel(this.model.value); this.keyFor(); });
     this.improver = new PromptImprover(this.prompt, 'Richer detail');
+    this.improver.view = areaView(engine, false);
     this.keyButton.addEventListener('click', () => {
       const pr = this.chosenProvider();
       if (pr?.configured && !this.changing) { this.changing = true; this.keyFor(); this.keyInput.focus(); } else void this.saveKey();
     });
     this.keyRow.append(this.keyInput, this.keyButton);
-    this.body.append(this.prompt, this.improver.el, row, this.opts.el, this.keyRow, this.refs.el, this.chips.el, this.status, this.hist, this.logBox);
+    this.size.replaceChildren(...[['doc', 'Size: the picture\'s own'], ...SIZES.map(([id, label]) => [id, label]), ['custom', 'Custom width and height']].map(([v, label]) => { const o = document.createElement('option'); o.value = v; o.textContent = label; return o; }));
+    this.size.addEventListener('change', () => { const c = this.size.value !== 'custom'; this.cw.hidden = c; this.ch.hidden = c; });
+    for (const f of [this.cw, this.ch]) f.addEventListener('change', () => { f.value = String(this.side(Number(f.value))); });
+    const shape = el('<div class="cv-dialog-row"></div>');
+    shape.append(this.size, this.cw, this.ch, this.target);
+    this.body.append(this.prompt, this.improver.el, row, shape, this.opts.el, this.keyRow, this.refs.el, this.chips.el, this.status, this.hist, this.logBox);
     this.hist.addEventListener('click', (ev) => {
       const b = (ev.target as HTMLElement).closest<HTMLButtonElement>('button[data-id]');
       if (!b) return;
@@ -385,6 +410,16 @@ export class GenerateImageDialog extends Dialog {
   /** A local model's notice (Krea 2's licence) and the filter's warning, shown with its picture. */
   heard: (r: { notice?: string; warning?: string; notes: string[] }) => void = () => {};
 
+  /** One side of a custom size: a multiple of 16 from 256 to 2048, the range every local model takes. */
+  private side(v: number): number { return Math.min(2048, Math.max(256, Math.round((Number.isFinite(v) ? v : 1024) / 16) * 16)); }
+
+  /** The shape asked for: the picture's own (undefined), a preset, or the custom width and height. */
+  private asked(): { width: number; height: number } | undefined {
+    if (this.size.value === 'custom') return { width: this.side(Number(this.cw.value)), height: this.side(Number(this.ch.value)) };
+    const s = SIZES.find(([id]) => id === this.size.value);
+    return s ? { width: s[2], height: s[3] } : undefined;
+  }
+
   private async generate(): Promise<void> {
     const prompt = this.prompt.value.trim();
     if (this.busy) return;
@@ -393,7 +428,7 @@ export class GenerateImageDialog extends Dialog {
     this.stopped = false;
     try {
       // The same generation the Generate panel runs; a new layer at the document's size (a new document when none is open).
-      const added = await runGeneration(this.engine, { prompt, choice: this.model.value, providers: this.providers, references: () => this.chips.ordered(), ...this.opts.request(), onSeed: (s) => this.opts.used(s), onStop: () => { this.stopped = true; setText(this.status, 'Stopped.'); }, status: (text) => setText(this.status, text), stopped: () => this.stopped, heard: (r) => this.heard(r) });
+      const added = await runGeneration(this.engine, { prompt, choice: this.model.value, providers: this.providers, size: this.asked(), target: this.target.value === 'document' ? 'document' : 'layer', references: () => this.chips.ordered(), ...this.opts.request(), onSeed: (s) => this.opts.used(s), onStop: () => { this.stopped = true; setText(this.status, 'Stopped.'); }, status: (text) => setText(this.status, text), stopped: () => this.stopped, heard: (r) => this.heard(r) });
       if (!added) return;
       this.close();
       this.toast('The generated image was added as a layer.');

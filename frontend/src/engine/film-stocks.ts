@@ -79,8 +79,9 @@ function noise(x: number, y: number, seed: number): number {
 const gauss = (x: number, y: number, seed: number): number => Math.sqrt(-2 * Math.log(Math.max(1e-9, noise(x, y, seed)))) * Math.cos(2 * Math.PI * noise(x, y, seed + 101));
 
 /** The Film Look kernel. `strength` and `grain` are 0 to 100; `grainSize` is in document pixels. */
-export function filmKernel(stockId: unknown, strength: number, grain: number, grainSize: number, rawPoints: unknown, seed: number): Kernel {
+export function filmKernel(stockId: unknown, strength: number, grain: number, grainSize: number, rawPoints: unknown, seed: number, tonal: readonly [number, number, number] = [0, 0, 0]): Kernel {
   const stock = filmStock(stockId), table = curveTable(curvePoints(stockId, rawPoints)), k = Math.min(1, Math.max(0, strength / 100));
+  const tone = tonal.map((t) => Math.min(1, Math.max(-1, (Number.isFinite(t) ? t : 0) / 100))), tonalOn = tone.some((t) => t !== 0), CENTRE = [0.15, 0.5, 0.85];
   const amp = (grain / 100) * 14 * Math.sqrt(stock.iso / 400), size = Math.max(0.5, grainSize);
   return (px, ctx) => {
     if (k <= 0) return;
@@ -92,6 +93,12 @@ export function filmKernel(stockId: unknown, strength: number, grain: number, gr
       r = l + (r - l) * stock.sat; g = l + (g - l) * stock.sat; b = l + (b - l) * stock.sat;
       const hw = Math.min(1, Math.max(0, (l - 0.35) / 0.5)), sw = 1 - hw;
       r += stock.shadow[0] * sw + stock.highlight[0] * hw; g += stock.shadow[1] * sw + stock.highlight[1] * hw; b += stock.shadow[2] * sw + stock.highlight[2] * hw;
+      if (tonalOn) {
+        for (let band = 0; band < 3; band++) {
+          const w = Math.max(0, 1 - Math.abs(l - CENTRE[band]) / 0.35) * tone[band] * 0.9;
+          if (w) { r += w * (r - CENTRE[band]); g += w * (g - CENTRE[band]); b += w * (b - CENTRE[band]); }
+        }
+      }
       let R = r * 255, G = g * 255, B = b * 255;
       if (amp > 0 && W > 0) {
         const gx = Math.floor((ox + (j % W) * up) / size), gy = Math.floor((oy + Math.floor(j / W) * up) / size), mid = 0.35 + 0.65 * 4 * l * (1 - l);

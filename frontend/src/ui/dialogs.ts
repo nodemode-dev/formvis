@@ -45,6 +45,7 @@ export class Dialog {
     q(this.scrim, '[data-close]').title = t('Close');
     q(this.scrim, '[data-close]').addEventListener('click', () => this.close());
     this.scrim.addEventListener('pointerdown', (e) => { if (e.target === this.scrim) this.close(); });
+    this.bindMove(frame);
     this.scrim.addEventListener('keydown', (e) => {
       e.stopPropagation();
       if (e.key === 'Escape') { e.preventDefault(); this.close(); }
@@ -62,6 +63,44 @@ export class Dialog {
 
   /** Undo of settled field values, Tab through the fields and Alt+Cancel as Reset, once for every dialog. */
   private readonly fieldHistory: DialogHistory;
+
+  /** Where each dialog was left, as an offset from the centre, kept on this device. */
+  private static spots: Record<string, { x: number; y: number }> = (() => {
+    try { const s = JSON.parse(localStorage.getItem('formvis.dialogSpots') ?? '{}') as Record<string, { x?: unknown; y?: unknown }>; const out: Record<string, { x: number; y: number }> = {}; for (const [k, v] of Object.entries(s)) if (typeof v?.x === 'number' && typeof v.y === 'number') out[k] = { x: v.x, y: v.y }; return out; } catch { return {}; }
+  })();
+
+  private frameOffset = { x: 0, y: 0 };
+
+  /** Puts the frame at an offset from the centre, kept so its title bar stays on screen. */
+  private moveFrame(frame: HTMLElement, x: number, y: number): void {
+    const was = this.frameOffset, r = frame.getBoundingClientRect();
+    if (!r.width) return;
+    const left = r.left - was.x, top = r.top - was.y;
+    const nx = Math.min(Math.max(x, 48 - r.width - left), window.innerWidth - 48 - left), ny = Math.min(Math.max(y, -top), window.innerHeight - 44 - top);
+    this.frameOffset = { x: nx, y: ny };
+    Dialog.spots[this.english] = { x: nx, y: ny };
+    frame.style.translate = nx || ny ? `${nx}px ${ny}px` : '';
+  }
+
+  /** The title bar drags the dialog; the next opening finds it where it was left. */
+  private bindMove(frame: HTMLElement): void {
+    const head = q<HTMLElement>(this.scrim, '.cv-dialog-head');
+    head.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || (e.target as HTMLElement).closest('button')) return;
+      const at = { ...(Dialog.spots[this.english] ?? { x: 0, y: 0 }) }, sx = e.clientX, sy = e.clientY;
+      head.setPointerCapture(e.pointerId);
+      const move = (ev: PointerEvent): void => this.moveFrame(frame, at.x + ev.clientX - sx, at.y + ev.clientY - sy);
+      const up = (): void => {
+        head.removeEventListener('pointermove', move);
+        head.removeEventListener('pointerup', up);
+        head.removeEventListener('pointercancel', up);
+        try { localStorage.setItem('formvis.dialogSpots', JSON.stringify(Dialog.spots)); } catch { /* this session only */ }
+      };
+      head.addEventListener('pointermove', move);
+      head.addEventListener('pointerup', up);
+      head.addEventListener('pointercancel', up);
+    });
+  }
 
   get isOpen(): boolean { return !this.scrim.hidden; }
   setTitle(title: string): void { this.english = title; setText(this.title, t(title)); }
@@ -171,6 +210,8 @@ export class Dialog {
     this.lastFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     document.getElementById('overlay-root')?.appendChild(this.scrim);
     this.scrim.hidden = false;
+    const spot = Dialog.spots[this.english];
+    if (spot) this.moveFrame(q<HTMLElement>(this.scrim, '.cv-dialog'), spot.x, spot.y);
     openCount++;
     openStack.push(this.fieldHistory);
     this.fieldHistory.start();

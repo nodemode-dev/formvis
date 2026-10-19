@@ -60,4 +60,9 @@ export const ar: Record<string, string> = {
   'Auto-Blend Layers': 'دمج الطبقات تلقائيًا', 'Blend Method': 'طريقة الدمج', 'Panorama': 'بانوراما', 'Stack Images': 'تكديس الصور',
   'Halo Control': 'التحكم في الهالة', 'Seamless Tones and Colors': 'نغمات وألوان سلسة', 'Measurement Log': 'سجل القياسات',
   'Apply Pending Edit': 'تطبيق التعديل المعلق', 'Cancel Pending Edit': 'إلغاء التعديل المعلق',
+  'Auto-Align Layers': 'محاذاة الطبقات تلقائيًا', 'Projection': 'الإسقاط', 'Reference Layer': 'الطبقة المرجعية', 'Registration': 'المطابقة',
+  'Bottom-most': 'الأدنى', 'Middle': 'الأوسط', 'Top-most': 'الأعلى', 'Spherical': 'كروي', 'Multiband (new layer)': 'متعدد النطاقات (طبقة جديدة)',
+  'Depth Map Layer (Stack Images)': 'طبقة خريطة العمق (تكديس الصور)',
+  'Fill transparent edges (Content-Aware Fill)': 'ملء الحواف الشفافة (التعبئة حسب المحتوى)',
+  'Follow tone changes across the overlap': 'تتبع تغيّر النغمات عبر منطقة التداخل',
 };

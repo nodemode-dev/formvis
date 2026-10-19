@@ -11,6 +11,10 @@ import { cornersOf, carried, distortUsable, warpRaster, cropWarp, visibleBounds,
 import type { Warped } from './distort';
 import { WarpStroke, premultiply, unpremultiply } from './retouch';
 import type { Project } from './project';
+import { gpuFilters } from './gpu-filters';
+
+/** A Smudge brush at least this many pixels across runs its dabs on the GPU when a runner is registered. */
+const GPU_SMUDGE_MIN_DIAMETER = 48;
 
 export type DistortMode = 'distort' | 'skew' | 'perspective';
 export interface DistortedMask { warped: Warped | null; placement: Transform | null }
@@ -433,7 +437,11 @@ export function beginWarp(host: EntryHost, mode: 'smudge' | 'liquify', pt: Pt): 
     ctx.fillRect(pt.x - r, pt.y - r, r * 2, r * 2);
   }
   const image = ctx.getImageData(0, 0, W, H);
-  const stroke = new WarpStroke(premultiply(image.data), W, H, mode, host.brush.diameter, host.brush.hardness, host.brush.opacity, mode === 'smudge' ? host.smudge.length / 100 : 1);
+  const pm = premultiply(image.data);
+  const stroke = new WarpStroke(pm, W, H, mode, host.brush.diameter, host.brush.hardness, host.brush.opacity, mode === 'smudge' ? host.smudge.length / 100 : 1);
+  if (mode === 'smudge' && host.brush.diameter >= GPU_SMUDGE_MIN_DIAMETER) {
+    try { stroke.useGpu(gpuFilters()?.smudge?.(pm, W, H) ?? null); } catch { /* the CPU smudges */ }
+  }
   const drag: WarpDrag = { project: p, layerId: target.layer.id, stroke, surface, image };
   const first = stroke.append(pt);
   if (first) syncRect(drag, first);
@@ -448,6 +456,7 @@ export function warpTo(host: EntryHost, w: WarpDrag, pt: Pt, pressure = 1): void
 }
 
 export function cancelWarp(host: EntryHost, w: WarpDrag): void {
+  w.stroke.release();
   const snap = w.project.history.abort();
   if (snap) {
     w.project.doc = snap.doc;

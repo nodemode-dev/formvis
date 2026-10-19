@@ -455,7 +455,32 @@ def _guided(guide: np.ndarray, src: np.ndarray, r: int, eps: float) -> np.ndarra
     return box(a) * guide + box(mp - a * mi)
 
 
-def _multiband(layers: list, seams: list, tones: list | None) -> str:
+def _tone_field(ref: tuple[np.ndarray, np.ndarray], layer: tuple[np.ndarray, np.ndarray], flat: list[float]) -> np.ndarray | None:
+    """A smooth gain field (BGR, a coarse grid of at most 32 cells on the long side) that brings `layer` to the tones of
+    `ref`: the log of their ratio where both have well-exposed pixels, averaged per cell, smoothed by a Gaussian over
+    the cells (normalized convolution), and pulled toward the layer's flat gain `flat` (BGR) where the overlap is thin.
+    Gains are held between 0.5 and 2. None when the two share too little."""
+    import cv2
+    h, w = ref[0].shape[:2]
+    ok = ref[1] & layer[1] & (ref[0].min(axis=2) > 10) & (ref[0].max(axis=2) < 245) & (layer[0].min(axis=2) > 10) & (layer[0].max(axis=2) < 245)
+    if ok.sum() < 100:
+        return None
+    k = 32.0 / max(w, h)
+    gw, gh = max(2, round(w * k)), max(2, round(h * k))
+    lr = np.log(np.maximum(ref[0].astype(np.float32), 1.0) / np.maximum(layer[0].astype(np.float32), 1.0))
+    m = ok.astype(np.float32)
+    cov = cv2.resize(m, (gw, gh), interpolation=cv2.INTER_AREA)
+    num = cv2.resize(lr * m[..., None], (gw, gh), interpolation=cv2.INTER_AREA)
+    blur = lambda a, s: cv2.GaussianBlur(a, (0, 0), s, borderType=cv2.BORDER_REPLICATE)
+    cf, nf, cw, nw = blur(cov, 1.0), blur(num, 1.0), blur(cov, 5.0), blur(num, 5.0)
+    near = nf / np.maximum(cf, 1e-4)[..., None]
+    far = (nw + 0.05 * np.log(np.asarray(flat, np.float32))) / (cw[..., None] + 0.05)
+    a = (cf / (cf + 0.05))[..., None]
+    field = a * near + (1 - a) * far
+    return np.exp(np.clip(field, -np.log(2.0), np.log(2.0))).astype(np.float32)
+
+
+def _multiband(layers: list, seams: list, tones: list | None, fields: list | None = None) -> str:
     """Multiband blend (Burt and Adelson, 1983) of aligned layers: each layer's Laplacian pyramid is mixed with the
     Gaussian pyramid of its seam mask, band by band, so wide bands cross the seam softly and fine detail changes at it.
     Pixels outside a layer are first filled from its nearest real pixel so the dark border does not leak into a band.
@@ -472,7 +497,9 @@ def _multiband(layers: list, seams: list, tones: list | None) -> str:
             lut = np.zeros((int(lab.max()) + 1, 3), np.float32)
             lut[lab[v]] = f[v]
             f = lut[lab]
-        if tones is not None:
+        if fields is not None and fields[k] is not None:
+            f = f * cv2.resize(fields[k], (w, h), interpolation=cv2.INTER_LINEAR)
+        elif tones is not None:
             f = f * np.asarray(tones[k][::-1], np.float32)
         g = [f]
         wp = [seams[k].astype(np.float32)]
@@ -496,13 +523,15 @@ def _multiband(layers: list, seams: list, tones: list | None) -> str:
     return base64.b64encode(buf.getvalue()).decode()
 
 
-def blend(images: list[bytes], method: str, seamless: bool, halo: int = 0, depth: bool = False) -> dict:
+def blend(images: list[bytes], method: str, seamless: bool, halo: int = 0, depth: bool = False, spatial: bool = True) -> dict:
     """Per-layer masks (0-255 PNGs) where each pixel comes from one layer with smooth transitions: Stack Images picks
     the layer with the most local Laplacian energy (its choice cleaned with a median so lone pixels do not flip layers),
     Panorama the layer farthest from its own edge (a seam mid-overlap). Halo (0 to 100, Stack Images) swaps the plain
     blur of each choice for a guided filter that follows the edges of the picked-pixel composite, so a sharp edge keeps
     the layer that has it and its blurred neighbour does not bleed over. Seamless Tones returns per-layer RGB gains
-    matching each layer's overlap with the reference (the median ratio of its mid-tones). With depth, `depth` is a grey
+    matching each layer's overlap with the reference (the median ratio of its mid-tones); with `spatial` they are also
+    given as `fields`, a smooth gain field per layer (see `_tone_field`) that follows how the ratio changes across the
+    overlap, with the flat gains as its fallback. With depth, `depth` is a grey
     PNG of which layer is sharpest at each point, 0 for the first layer and 255 for the last. Multiband takes the
     Panorama seams and returns `blended`, a Laplacian pyramid blend of the layers (see `_multiband`)."""
     import cv2
@@ -548,8 +577,12 @@ def blend(images: list[bytes], method: str, seamless: bool, halo: int = 0, depth
         else:
             tones.append([1.0, 1.0, 1.0])
     out: dict = {"masks": masks, "tones": tones}
+    fields: list[np.ndarray | None] | None = None
+    if seamless and spatial:
+        fields = [None] + [_tone_field(layers[0], lay, tones[i + 1][::-1]) for i, lay in enumerate(layers[1:])]
+        out["fields"] = [None if f is None else {"w": int(f.shape[1]), "h": int(f.shape[0]), "data": [round(float(x), 4) for x in f[..., ::-1].ravel()]} for f in fields]
     if method == "multiband":
-        out["blended"] = _multiband(layers, hard, tones if seamless else None)
+        out["blended"] = _multiband(layers, hard, tones if seamless else None, fields)
     if depth:
         out["depth"] = encode(sum(wt / total * (i / max(1, len(layers) - 1)) for i, wt in enumerate(wts)))
     return out
@@ -619,8 +652,8 @@ async def photos_route(file: UploadFile = File(...)) -> dict:
 
 
 @router.post("/blend")
-async def blend_route(file: list[UploadFile] = File(...), method: str = Form("panorama"), seamless: bool = Form(False), halo: int = Form(0), depth: bool = Form(False)) -> dict:
+async def blend_route(file: list[UploadFile] = File(...), method: str = Form("panorama"), seamless: bool = Form(False), halo: int = Form(0), depth: bool = Form(False), spatial: bool = Form(True)) -> dict:
     if len(file) < 2:
         raise HTTPException(422, "Auto-Blend Layers needs at least two layers.")
     data = [await f.read() for f in file]
-    return await run_in_threadpool(blend, data, method, seamless, max(0, min(100, halo)), depth)
+    return await run_in_threadpool(blend, data, method, seamless, max(0, min(100, halo)), depth, spatial)

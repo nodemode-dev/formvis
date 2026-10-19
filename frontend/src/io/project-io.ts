@@ -6,10 +6,11 @@ import { readDuotone, type Duotone } from '../engine/duotone';
 import {
   Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid, type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsPresent, effectsFromData, liveText, textFromData, paragraphStylesFrom, characterStylesFrom,smartFiltersFrom, pathSetData, pathSetFrom, pathData, pathFrom, type PathSet, type RGB, timelineData, timelineFrom, type Timeline, addPattern, patternById, projectPatterns, SelectionMask, type AlphaChannel,
 } from '../engine';
-import { artboardFromData, LAYER_LABELS, type LayerLabel, type SmartStack } from '../engine/types';
+import { artboardFromData, LAYER_LABELS, type LayerLabel, type NestedContents, type SmartStack } from '../engine/types';
 import { deformFrom } from '../engine/smart-deform';
 import { isStackMode } from '../engine/stack-modes';
 import { cleanMeta } from '../engine/doc-meta';
+import { glbKeptFrom } from './glb-scene';
 import { fillContentFrom } from '../engine/fill-layers';
 import { relightFrom } from '../engine/relight';
 import { alphaGrey, nextAlphaName } from '../engine/alphas';
@@ -21,7 +22,7 @@ export const FORMAT = 'com.nodemode.formvis';
 export const FORMAT_VERSION = 1;
 
 type Json = Record<string, unknown>;
-const KINDS: Record<string, AdjustmentKind> = { 'Hue/Saturation': 'hsv', Levels: 'levels', Curves: 'curves', Exposure: 'exposure', 'Gradient Map': 'gradientMap', Grain: 'grain', ...Object.fromEntries(PARAM_KINDS.map((k) => [PARAM_ADJUSTMENTS[k].label, k])) };
+const KINDS: Record<string, AdjustmentKind> = { 'Hue/Saturation': 'hsv', Levels: 'levels', Curves: 'curves', Exposure: 'exposure', 'Gradient Map': 'gradientMap', Grain: 'grain', Filter: 'filter', ...Object.fromEntries(PARAM_KINDS.map((k) => [PARAM_ADJUSTMENTS[k].label, k])) };
 const KIND_LABELS = Object.fromEntries(Object.entries(KINDS).map(([label, kind]) => [kind, label])) as Record<AdjustmentKind, string>;
 const obj = (v: unknown): Json => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Json) : {});
 const num = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d);
@@ -115,7 +116,8 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
   // Every pixel plane is handed to the encoder at once, which takes its own copy of the bitmap on the spot; with no
   // await before the last one is started, the whole manifest reads one state and the document may change at once.
   const encodes: Promise<void>[] = [];
-  const put = (name: string, made: Promise<Blob>): void => {
+  const nests: Promise<void>[] = [];
+  const put =(name: string, made: Promise<Blob>): void => {
     const part: FilePart = { name, blob: new Blob() };
     files.push(part);
     encodes.push(made.then((b) => { part.blob = b; }));
@@ -172,6 +174,11 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
         put(mn, toBlob(l.smart.filterMask.canvas));
         r.smartFilterMaskFile = mn;
       }
+      const inner = l.smart.nested;
+      if (inner) {
+        const prefix = `${l.id}.n.`;
+        nests.push(serialize({ id: uid(), width: inner.width, height: inner.height, resolution: inner.resolution ?? doc.resolution, layers: inner.layers }, null).then((s) => { for (const f of s.files) files.push({ name: prefix + f.name, blob: f.blob }); r.smartNested = s.manifest; }));
+      }
     }
     if (l.parentId) r.parentID = l.parentId;
     if (l.isGroup) r.isGroup = true;
@@ -219,7 +226,7 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
     }
   }
   const manifest: Json = { format: FORMAT, version: FORMAT_VERSION, ...(doc.depth ? { depth: doc.depth } : {}), colorSpace: doc.profile?.name ?? 'sRGB', ...(doc.profile ? { profile: { name: doc.profile.name, icc: doc.profile.icc } } : {}), resolution: doc.resolution, documentID: doc.id, width: doc.width, height: doc.height, layers, ...(doc.guides?.length ? { guides: doc.guides.map((g) => ({ axis: g.axis, at: g.at, ...(g.color ? { color: g.color } : {}), ...(g.board ? { board: g.board } : {}) })) } : {}), ...(doc.pixelAspect && doc.pixelAspect !== 1 ? { pixelAspect: doc.pixelAspect } : {}), ...(doc.measureScale ? { measureScale: doc.measureScale } : {}), ...(doc.measurements?.length ? { measurements: doc.measurements } : {}), ...(doc.slices?.length ? { slices: doc.slices.map((s) => ({ id: s.id, name: s.name, x: s.x, y: s.y, w: s.w, h: s.h, ...(s.layer ? { layer: s.layer } : {}), ...(s.url ? { url: s.url } : {}), ...(s.alt ? { alt: s.alt } : {}), ...(s.kind === 'none' ? { kind: 'none' } : {}), ...(s.target ? { target: s.target } : {}), ...(s.message ? { message: s.message } : {}), ...(s.cell ? { cell: s.cell } : {}), ...(s.bg ? { bg: s.bg } : {}) })) } : {}), ...(doc.mode && doc.mode !== 'rgb' ? { mode: doc.mode } : {}), ...(doc.mode === 'duotone' && doc.duotone ? { duotone: doc.duotone } : {}), ...(mcRecords.length ? { multichannel: mcRecords } : {}), ...(doc.palette?.length ? { palette: doc.palette.map((c) => [c.r, c.g, c.b]) } : {}),
-     ...(doc.notes?.length ? { notes: doc.notes.map((n) => ({ id: n.id, x: n.x, y: n.y, text: n.text })) } : {}), ...(doc.comps?.length ? { comps: JSON.parse(JSON.stringify(doc.comps)), activeComp: doc.activeComp ?? null } : {}), ...(doc.countGroups?.length ? { countGroups: doc.countGroups.map((g) => ({ id: g.id, name: g.name, color: g.color, ...(g.hidden ? { hidden: true } : {}) })) } : {}), ...(doc.counts?.length ? { counts: doc.counts.map((c) => ({ x: c.x, y: c.y, ...(c.g ? { g: c.g } : {}) })) } : {}), ...(doc.boxes?.length ? { boxes: doc.boxes.map((b) => ({ ...b })) } : {}), ...(doc.globalLight ? { globalLight: { angle: doc.globalLight.angle, altitude: doc.globalLight.altitude } } : {}), ...(doc.stylePresets?.length ? { stylePresets: JSON.parse(JSON.stringify(doc.stylePresets)) } : {}), ...(doc.characterStyles?.length ? { characterStyles: doc.characterStyles.map((s) => ({ ...s, ...(s.color ? { color: { ...s.color } } : {}), ...(s.features ? { features: [...s.features] } : {}) })) } : {}), ...(doc.paragraphStyles?.length ? { paragraphStyles: doc.paragraphStyles.map((s) => ({ ...s, color: { ...s.color } })) } :{}), ...(doc.meta ? { meta: { ...doc.meta, ...(doc.meta.keywords ? { keywords: [...doc.meta.keywords] } : {}), ...(doc.meta.camera ? { camera: { ...doc.meta.camera } } : {}) } } : {}),
+     ...(doc.notes?.length ? { notes: doc.notes.map((n) => ({ id: n.id, x: n.x, y: n.y, text: n.text })) } : {}), ...(doc.comps?.length ? { comps: JSON.parse(JSON.stringify(doc.comps)), activeComp: doc.activeComp ?? null } : {}), ...(doc.countGroups?.length ? { countGroups: doc.countGroups.map((g) => ({ id: g.id, name: g.name, color: g.color, ...(g.hidden ? { hidden: true } : {}) })) } : {}), ...(doc.counts?.length ? { counts: doc.counts.map((c) => ({ x: c.x, y: c.y, ...(c.g ? { g: c.g } : {}) })) } : {}), ...(doc.boxes?.length ? { boxes: doc.boxes.map((b) => ({ ...b })) } : {}), ...(doc.globalLight ? { globalLight: { angle: doc.globalLight.angle, altitude: doc.globalLight.altitude } } : {}), ...(doc.glb && Object.keys(glbKeptFrom(doc.glb, new Set(doc.layers.map((l) => l.id)))).length ? { glb: glbKeptFrom(doc.glb, new Set(doc.layers.map((l) => l.id))) } : {}), ...(doc.stylePresets?.length ? { stylePresets: JSON.parse(JSON.stringify(doc.stylePresets)) } : {}), ...(doc.characterStyles?.length ? { characterStyles: doc.characterStyles.map((s) => ({ ...s, ...(s.color ? { color: { ...s.color } } : {}), ...(s.features ? { features: [...s.features] } : {}) })) } : {}), ...(doc.paragraphStyles?.length ? { paragraphStyles: doc.paragraphStyles.map((s) => ({ ...s, color: { ...s.color } })) } :{}), ...(doc.meta ? { meta: { ...doc.meta, ...(doc.meta.keywords ? { keywords: [...doc.meta.keywords] } : {}), ...(doc.meta.camera ? { camera: { ...doc.meta.camera } } : {}) } } : {}),
      ...(doc.variables?.length ? { variables: doc.variables.map((v) => ({ ...v })) } : {}), ...(doc.dataSets?.length ? { dataSets: doc.dataSets.map((d) => ({ name: d.name, values: { ...d.values } })) } : {}), ...(doc.activeDataSet ? { activeDataSet: doc.activeDataSet } : {}) };
   if (activeId && doc.layers.some((l) => l.id === activeId)) manifest.activeLayerID = activeId;
   const shut = (doc.collapsed ?? []).filter((id) => doc.layers.some((l) => l.id === id && l.isGroup));
@@ -253,6 +260,7 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
   if (alphas.length) manifest.alphas = alphas;
   let encoded = 0;
   await Promise.all(encodes.map((e) => e.then(() => step?.(++encoded, encodes.length))));
+  await Promise.all(nests);
   return { manifest, files };
 }
 
@@ -354,6 +362,13 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
   await Promise.all(records.map(async (r) => { const n = str(r.deepFile); if (n) { const b = await (await fetchImage(n)).arrayBuffer(); deeps.set(n, n.endsWith('.deep32') ? new Float32Array(b) : new Uint16Array(b)); } }));
   const inks = new Map<string, Float32Array>();
   await Promise.all(records.map(async (r) => { const n = str(r.inkFile); if (n) inks.set(n, new Float32Array(await (await fetchImage(n)).arrayBuffer())); }));
+  const nestedById = new Map<string, NestedContents>();
+  await Promise.all(records.map(async (r) => {
+    const inner = obj(r.smartNested), id = str(r.id);
+    if (!id || !Array.isArray(inner.layers)) return;
+    const d = await deserialize(inner, (n) => fetchImage(`${id}.n.${n}`));
+    nestedById.set(id, { width: d.doc.width, height: d.doc.height, resolution: d.doc.resolution, layers: [...d.doc.layers] });
+  }));
   const stackFrom = (raw: unknown): SmartStack | null => {
     const o = obj(raw), list = Array.isArray(o.files) ? o.files : [];
     const pics = list.map((n) => bitmaps.get(typeof n === 'string' ? n : ''));
@@ -380,7 +395,7 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
     const sw = obj(r.smart), warpPts = Array.isArray(sw.warp) && sw.warp.length === 4 && sw.warp.every((q) => finite(obj(q).x) && finite(obj(q).y)) ? (sw.warp as Array<{ x: number; y: number }>).map((q) => ({ x: q.x, y: q.y })) : null;
     const fmImage = bitmaps.get(str(r.smartFilterMaskFile) ?? ''), fmOk = !!fmImage && !!sourceImage && fmImage.width === sourceImage.width && fmImage.height === sourceImage.height;
     const lk = obj(sw.link), link = str(lk.id) && str(lk.name) && finite(lk.size) && finite(lk.lastModified) ? { id: str(lk.id) as string, name: str(lk.name) as string, size: lk.size as number, lastModified: lk.lastModified as number, ...(typeof lk.path === 'string' && lk.path ? { path: lk.path.slice(0, 1024) } : {}) } : null;
-    const smart = raster && sourceImage ? { source: Raster.from(sourceImage, sourceImage.width, sourceImage.height), filters: smartFiltersFrom(r.smart), stack: stackFrom(r.smartStack), warp: warpPts, warpAt: warpPts && sw.warpAt ? transformFrom(sw.warpAt, raster.width, raster.height) : null, deform: deformFrom(sw.deform, sw.deform && obj(sw.deform).at ? transformFrom(obj(sw.deform).at, raster.width, raster.height) : null), filterMask: fmOk && fmImage ? Raster.from(fmImage, fmImage.width, fmImage.height) : null, filterMaskEnabled: sw.filterMaskEnabled !== false, link } : null;
+    const smart = raster && sourceImage ? { source: Raster.from(sourceImage, sourceImage.width, sourceImage.height), filters: smartFiltersFrom(r.smart), stack: stackFrom(r.smartStack), warp: warpPts, warpAt: warpPts && sw.warpAt ? transformFrom(sw.warpAt, raster.width, raster.height) : null, deform: deformFrom(sw.deform, sw.deform && obj(sw.deform).at ? transformFrom(obj(sw.deform).at, raster.width, raster.height) : null), filterMask: fmOk && fmImage ? Raster.from(fmImage, fmImage.width, fmImage.height) : null, filterMaskEnabled: sw.filterMaskEnabled !== false, link, ...(nestedById.has(str(r.id) ?? '') ? { nested: nestedById.get(str(r.id) ?? '') } : {}) } : null;
     const maskPicture = bitmaps.get(str(r.maskFile) ?? '');
     const mask: Mask | null = maskPicture
       ? { raster: grayToMask(maskPicture), enabled: r.maskEnabled !== false, linked: r.maskLinked !== false, placement: r.maskPlacement ? transformFrom(r.maskPlacement, maskPicture.width, maskPicture.height) : null, ...(typeof r.maskDensity === 'number' ? { density: r.maskDensity } : {}), ...(typeof r.maskFeather === 'number' ? { feather: r.maskFeather } : {}) }
@@ -436,6 +451,7 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
     return [{ id: o.id, name: typeof o.name === 'string' ? o.name : '', x, y, w, h, ...(typeof o.layer === 'string' ? { layer: o.layer } : {}), ...(typeof o.url === 'string' ? { url: o.url } : {}), ...(typeof o.alt === 'string' ? { alt: o.alt } : {}), ...(o.kind === 'none' ? { kind: 'none' as const } : {}), ...(typeof o.target === 'string' && o.target ? { target: o.target.slice(0, 40) } : {}), ...(typeof o.message === 'string' && o.message ? { message: o.message.slice(0, 500) } : {}), ...(typeof o.cell === 'string' && o.cell ? { cell: o.cell.slice(0, 2000) } : {}), ...(typeof o.bg === 'string' && /^#[0-9a-fA-F]{6}$/.test(o.bg) ? { bg: o.bg } : {}) }];
   }).slice(0, 1000);
   const glo =obj(manifest.globalLight), globalLight = finite(glo.angle) && finite(glo.altitude) ? { angle: Math.max(-180, Math.min(180, glo.angle)), altitude: Math.max(0, Math.min(90, glo.altitude)) } : null;
+  const glb = glbKeptFrom(manifest.glb, new Set(layers.map((l) => l.id)));
   const stylePresets = (Array.isArray(manifest.stylePresets) ? manifest.stylePresets : []).slice(0, 500).flatMap((s: unknown) => {
     const o = obj(s), fx = effectsFromData(o.effects);
     return typeof o.id === 'string' && typeof o.name === 'string' && fx ? [{ id: o.id, name: o.name, effects: fx, ...(typeof o.group === 'string' ? { group: o.group } : {}) }] : [];
@@ -489,7 +505,7 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
       bmp.close();
     } catch { /* a channel that cannot be read is left out */ }
   }
-  return { timeline: timelineFrom(manifest.timeline), paths: pathSetFrom(manifest.paths, manifest.activePath, manifest.workPath), doc: { ...profileFrom(manifest.profile), ...(manifest.depth === 16 || manifest.depth === 32 ? { depth: manifest.depth as 16 | 32 } : {}), id: str(manifest.documentID) ?? uid(), width, height, resolution: num(manifest.resolution, 72), layers, ...(Array.isArray(manifest.collapsedFolders) && manifest.collapsedFolders.some((id) => layers.some((l) => l.id === id && l.isGroup)) ? { collapsed: (manifest.collapsedFolders as unknown[]).filter((id): id is string => typeof id === 'string' && layers.some((l) => l.id === id && l.isGroup)) } : {}), ...(notes.length ? { notes } : {}), ...(comps.length ? { comps, activeComp: comps.some((c) => c.id === manifest.activeComp) ? (manifest.activeComp as string) : null } : {}), ...(counts.length ? { counts } : {}), ...(countGroups.length ? { countGroups } : {}), ...(boxes.length ? { boxes } : {}), ...(mode ? { mode } : {}), ...(mode === 'indexed' && palette.length ? { palette } : {}), ...(mode === 'duotone' && readDuotone(manifest.duotone) ? { duotone: readDuotone(manifest.duotone) as Duotone } : {}), ...(mode === 'multichannel' && mcChannels.length ? { multichannel: { channels: mcChannels } } : {}), ...(guides.length ? { guides } : {}), ...(num(manifest.pixelAspect, 1) !== 1 && num(manifest.pixelAspect, 1) > 0 ? { pixelAspect: num(manifest.pixelAspect, 1) } : {}), ...(measureScale ? { measureScale } : {}), ...(measurements.length ? { measurements } : {}), ...(slices.length ? { slices } : {}),...(globalLight ? { globalLight } : {}), ...(stylePresets.length ? { stylePresets } : {}), ...(styles.length ? { paragraphStyles: styles } : {}), ...(charStyles.length ? { characterStyles: charStyles } : {}),...(alphas.length ? { alphas } : {}), ...variablesFrom(manifest, records.map((r) => str(r.id))), ...(fileInfo ? { meta: fileInfo } : {}) }, activeId: str(manifest.activeLayerID) };
+  return { timeline: timelineFrom(manifest.timeline), paths: pathSetFrom(manifest.paths, manifest.activePath, manifest.workPath), doc: { ...profileFrom(manifest.profile), ...(manifest.depth === 16 || manifest.depth === 32 ? { depth: manifest.depth as 16 | 32 } : {}), id: str(manifest.documentID) ?? uid(), width, height, resolution: num(manifest.resolution, 72), layers, ...(Array.isArray(manifest.collapsedFolders) && manifest.collapsedFolders.some((id) => layers.some((l) => l.id === id && l.isGroup)) ? { collapsed: (manifest.collapsedFolders as unknown[]).filter((id): id is string => typeof id === 'string' && layers.some((l) => l.id === id && l.isGroup)) } : {}), ...(notes.length ? { notes } : {}), ...(comps.length ? { comps, activeComp: comps.some((c) => c.id === manifest.activeComp) ? (manifest.activeComp as string) : null } : {}), ...(counts.length ? { counts } : {}), ...(countGroups.length ? { countGroups } : {}), ...(boxes.length ? { boxes } : {}), ...(mode ? { mode } : {}), ...(mode === 'indexed' && palette.length ? { palette } : {}), ...(mode === 'duotone' && readDuotone(manifest.duotone) ? { duotone: readDuotone(manifest.duotone) as Duotone } : {}), ...(mode === 'multichannel' && mcChannels.length ? { multichannel: { channels: mcChannels } } : {}), ...(guides.length ? { guides } : {}), ...(num(manifest.pixelAspect, 1) !== 1 && num(manifest.pixelAspect, 1) > 0 ? { pixelAspect: num(manifest.pixelAspect, 1) } : {}), ...(measureScale ? { measureScale } : {}), ...(measurements.length ? { measurements } : {}), ...(slices.length ? { slices } : {}),...(globalLight ? { globalLight } : {}), ...(Object.keys(glb).length ? { glb } : {}), ...(stylePresets.length ? { stylePresets } : {}), ...(styles.length ? { paragraphStyles: styles } : {}), ...(charStyles.length ? { characterStyles: charStyles } : {}),...(alphas.length ? { alphas } : {}), ...variablesFrom(manifest, records.map((r) => str(r.id))), ...(fileInfo ? { meta: fileInfo } : {}) }, activeId: str(manifest.activeLayerID) };
 }
 
 /** Variables, data sets and the active data set from a manifest (29.9), checked; a variable whose layer is gone is dropped. */

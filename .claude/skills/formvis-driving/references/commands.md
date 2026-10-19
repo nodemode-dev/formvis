@@ -1,6 +1,6 @@
 # formvis commands
 
-Generated from the window's command catalogue (1577 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1597 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
@@ -10,11 +10,11 @@ Generated from the window's command catalogue (1577 commands) by `./formvis agen
 - Generate: 6
 - Help: 5
 - Image: 121
-- Layer: 269
+- Layer: 271
 - Paint: 1
 - Paths: 12
 - Select: 44
-- Tool options: 449
+- Tool options: 467
 - Tools: 53
 - Type: 66
 - View: 101
@@ -26,7 +26,7 @@ Generated from the window's command catalogue (1577 commands) by `./formvis agen
 | --- | --- | --- | --- |
 | `apply-edit` | Apply Pending Edit | Enter | Applies what the tool in use is holding, as Return does: a crop, a warp, a floating selection, a polygon lasso. Bound to Return and movable in Keyboard Shortcuts. (changes the picture) |
 | `auto-align-layers` | Auto-Align Layers... |  | Aligns the selected layers to a reference layer (bottom, middle or top) by matching their features (or, with registration intensity, by image correlation), with perspective, cylindrical, spherical, collage (move, turn and scale) or reposition projection, vignette removal and lens distortion correction. (changes the picture) |
-| `auto-blend-layers` | Auto-Blend Layers... |  | Adds layer masks that blend the selected layers into a panorama or a focus stack, with halo control and an optional depth map layer, or a multiband (pyramid) blend into a new layer. (changes the picture) |
+| `auto-blend-layers` | Auto-Blend Layers... |  | Adds layer masks that blend the selected layers into a panorama or a focus stack, with halo control and an optional depth map layer, or a multiband (pyramid) blend into a new layer; Seamless Tones follows how the tone difference changes across the overlap (a smooth gain field, spatial false for one gain per layer). (changes the picture) |
 | `cancel-edit` | Cancel Pending Edit | Escape | Cancels what the tool in use is holding, as Escape does. Bound to Escape and movable in Keyboard Shortcuts. |
 | `cancel-job` | Cancel Background Job |  | Stops the running background job, such as a filter on a large layer, and keeps the document as it was. (changes the picture) |
 | `clean-working-files` | Working Files |  | Deletes the stored recovery copies of documents that are no longer open and the closed tabs kept for Reopen Closed Tab, and says how much space came back. (changes the picture) |
@@ -184,7 +184,7 @@ Generated from the window's command catalogue (1577 commands) by `./formvis agen
 | `export-selection-mask` | Selection as Mask PNG |  | Writes the selection as a grey PNG the size of the document, white where selected, black elsewhere, with feathered edges kept. (asks first) |
 | `export-tiff` | Export TIFF |  | Exports the picture as TIFF. (asks first) |
 | `export-tiff-layers` | TIFF with Layers... |  | Exports the picture as a TIFF that carries its layers in the PSD layer block; the TIFF Options prompt offers to discard the layers instead, or pass layers true or false to skip it. (asks first) |
-| `export-to-file` | Export to File |  | Encodes the flattened picture as png, jpg, webp or tiff, or the layers as psd, psb, ora or fvd, and writes it to the exports folder. (asks first) |
+| `export-to-file` | Export to File |  | Encodes the flattened picture as png, jpg, webp, tiff, tga or dpx, or the layers as tiff-layers, psd, psb, ora or fvd, and writes it to the exports folder. (asks first) |
 | `export-webp` | Export WebP |  | Exports the flattened picture as WebP. (asks first) |
 | `file-info` | File Info... | Alt+Shift+Mod+I | Opens File Info (title, author, description, rating, keywords, copyright), or sets the fields given as title, author, author_title, description, rating, description_writer, keywords, copyright_status, copyright_notice and copyright_url at once as one step; the fields travel in the project and are written as XMP into PNG, JPEG, TIFF, WebP and PSD exports. (changes the picture) |
 | `fit-image` | Fit Image... |  | Scales the picture to fit within a width and height with its proportions kept (resample high, smooth or nearest, optionally never enlarging); without parameters it opens the dialog. (changes the picture) |
@@ -213,7 +213,7 @@ Generated from the window's command catalogue (1577 commands) by `./formvis agen
 | `open-image-data` | Open Image Data |  | Opens base64 picture bytes with a file name as a new document. (changes the picture) |
 | `open-svg-layers` | Open SVG as Layers... |  | Opens an SVG file as a new document with one editable shape layer per drawable element; with the svg parameter it reads that SVG text instead of asking for a file. (changes the picture) |
 | `package` | Package... |  | Saves the document and the files of its linked smart objects together in one zip, as a formvis project pointing at the copies under Links, or as a PSD or PSB beside them. Pass format fvd, psd or psb to skip the dialog. (changes the picture) |
-| `photomerge` | Photomerge... |  | Stitches files or the open documents (documents true) into a panorama (Auto, Perspective, Cylindrical, Collage or Reposition) with optional crop, vignette and lens distortion correction, or (layers true) as one layer per photo with seam masks; without parameters it opens the dialog. (changes the picture) |
+| `photomerge` | Photomerge... |  | Stitches files or the open documents (documents true) into a panorama (Auto, Perspective, Cylindrical, Collage or Reposition) with optional crop, vignette and lens distortion correction, or (layers true) as one layer per photo with seam masks, or (fill true) with the transparent edges and gaps filled by Content-Aware Fill; without parameters it opens the dialog. (changes the picture) |
 | `pin-tab` | Pin Tab |  | Pins or unpins the current document tab: a pinned tab moves to the front, loses its close button and is kept by Close All and Close Others. |
 | `place-3d` | Place 3D Model... |  | Opens a file picker for a glTF or GLB model and places it as a layer. (changes the picture) |
 | `place-embedded` | Place Embedded... |  | Places an image file as an embedded smart object. (changes the picture) |
@@ -653,6 +653,7 @@ Generated from the window's command catalogue (1577 commands) by `./formvis agen
 | `new-fill-gradient` | Gradient... |  | Adds a gradient fill layer. (changes the picture) |
 | `new-fill-pattern` | Pattern... |  | Adds a pattern fill layer. (changes the picture) |
 | `new-fill-solid` | Solid Color... |  | Adds a solid colour fill layer. (changes the picture) |
+| `new-filter-layer` | New Filter Layer |  | Adds a filter layer that runs any filter on everything below it, limited by its mask, Limit, opacity and blend mode. (changes the picture) |
 | `new-folder` | New Folder |  | Adds a layer folder. (changes the picture) |
 | `new-folder-dialog` | Group... |  | Opens the New Group dialog. (changes the picture) |
 | `new-layer` | New Layer |  | Adds an empty layer above the active one. (changes the picture) |
@@ -697,6 +698,7 @@ Generated from the window's command catalogue (1577 commands) by `./formvis agen
 | `select-layer-up-add` | Add Forward Layer to Selection | Alt+Shift+] | Adds the layer above the active one to the layer selection and makes it active. (changes the picture) |
 | `select-linked` | Select Linked Layers |  | Selects the layers linked to the active one. |
 | `send-back` | Send to Back | Shift+Mod+[ | Moves the layer to the bottom. (changes the picture) |
+| `set-filter-layer` | Set Filter Layer |  | Changes the settings of the active filter layer by key. (changes the picture) |
 | `shape-color` | Shape Color from Foreground |  | Sets the shape fill from the foreground colour. (changes the picture) |
 | `shape-corners` | Corner Radii... |  | Opens the corner radii of a rectangle shape. (changes the picture) |
 | `shape-style` | Shape Fill and Stroke... |  | Opens the shape fill and stroke dialog. (changes the picture) |
@@ -897,6 +899,7 @@ Generated from the window's command catalogue (1577 commands) by `./formvis agen
 | Id | Name | Keys | Does |
 | --- | --- | --- | --- |
 | `tool.options.artHistory.hardness` | Art History Brush: Hardness |  | Sets Hardness for the Art History Brush tool. |
+| `tool.options.artHistory.maskPaint` | Art History Brush: Mask paint |  | Sets Mask paint for the Art History Brush tool. |
 | `tool.options.artHistory.opacity` | Art History Brush: Opacity |  | Sets Opacity for the Art History Brush tool. |
 | `tool.options.artHistory.pressureCurve` | Art History Brush: Pressure curve |  | Sets Pressure curve for the Art History Brush tool. |
 | `tool.options.artHistory.pressureOpacity` | Art History Brush: Pressure: opacity |  | Sets Pressure: opacity for the Art History Brush tool. |
@@ -913,6 +916,7 @@ Generated from the window's command catalogue (1577 commands) by `./formvis agen
 | `tool.options.artboard.width` | Artboard: Width |  | Sets Width for the Artboard tool. |
 | `tool.options.backgroundEraser.hardness` | Background Eraser: Hardness |  | Sets Hardness for the Background Eraser tool. |
 | `tool.options.backgroundEraser.limits` | Background Eraser: Limits |  | Sets Limits for the Background Eraser tool. |
+| `tool.options.backgroundEraser.maskPaint` | Background Eraser: Mask paint |  | Sets Mask paint for the Background Eraser tool. |
 | `tool.options.backgroundEraser.protectForegroundColor` | Background Eraser: Protect Foreground Color |  | Sets Protect Foreground Color for the Background Eraser tool. |
 | `tool.options.backgroundEraser.sampling` | Background Eraser: Sampling |  | Sets Sampling for the Background Eraser tool. |
 | `tool.options.backgroundEraser.size` | Background Eraser: Size |  | Sets Size for the Background Eraser tool. |
@@ -933,6 +937,7 @@ Generated from the window's command catalogue (1577 commands) by `./formvis agen
 | `tool.options.brush.flow` | Brush: Flow |  | Sets Flow for the Brush tool. |
 | `tool.options.brush.hardness` | Brush: Hardness |  | Sets Hardness for the Brush tool. |
 | `tool.options.brush.importMode` | Brush: Import mode |  | Sets Import mode for the Brush tool. |
+| `tool.options.brush.maskPaint` | Brush: Mask paint |  | Sets Mask paint for the Brush tool. |
 | `tool.options.brush.minFlow` | Brush: Min flow |  | Sets Min flow for the Brush tool. |
 | `tool.options.brush.minSize` | Brush: Min size |  | Sets Min size for the Brush tool. |
 | `tool.options.brush.mode` | Brush: Mode |  | Sets Mode for the Brush tool. |
@@ -969,6 +974,7 @@ Generated from the window's command catalogue (1577 commands) by `./formvis agen
 | `tool.options.bucket.tolerance` | Paint Bucket: Tolerance |  | Sets Tolerance for the Paint Bucket tool. |
 | `tool.options.burn.exposure` | Burn: Exposure |  | Sets Exposure for the Burn tool. |
 | `tool.options.burn.hardness` | Burn: Hardness |  | Sets Hardness for the Burn tool. |
+| `tool.options.burn.maskPaint` | Burn: Mask paint |  | Sets Mask paint for the Burn tool. |
 | `tool.options.burn.pressureCurve` | Burn: Pressure curve |  | Sets Pressure curve for the Burn tool. |
 | `tool.options.burn.pressureOpacity` | Burn: Pressure: opacity |  | Sets Pressure: opacity for the Burn tool. |
 | `tool.options.burn.pressureSize` | Burn: Pressure: size |  | Sets Pressure: size for the Burn tool. |
@@ -988,6 +994,7 @@ Generated from the window's command catalogue (1577 commands) by `./formvis agen
 | `tool.options.cloneStamp.flow` | Clone Stamp: Flow |  | Sets Flow for the Clone Stamp tool. |
 | `tool.options.cloneStamp.hardness` | Clone Stamp: Hardness |  | Sets Hardness for the Clone Stamp tool. |
 | `tool.options.cloneStamp.invertOverlay` | Clone Stamp: Invert Overlay |  | Sets Invert Overlay for the Clone Stamp tool. |
+| `tool.options.cloneStamp.maskPaint` | Clone Stamp: Mask paint |  | Sets Mask paint for the Clone Stamp tool. |
 | `tool.options.cloneStamp.mode` | Clone Stamp: Mode |  | Sets Mode for the Clone Stamp tool. |
 | `tool.options.cloneStamp.opacity` | Clone Stamp: Opacity |  | Sets Opacity for the Clone Stamp tool. |
 | `tool.options.cloneStamp.overlayMode` | Clone Stamp: Overlay mode |  | Sets Overlay mode for the Clone Stamp tool. |
@@ -1005,6 +1012,7 @@ Generated from the window's command catalogue (1577 commands) by `./formvis agen
 | `tool.options.cloneStamp.symmetryX` | Clone Stamp: Symmetry X |  | Sets Symmetry X for the Clone Stamp tool. |
 | `tool.options.cloneStamp.symmetryY` | Clone Stamp: Symmetry Y |  | Sets Symmetry Y for the Clone Stamp tool. |
 | `tool.options.colorReplace.hardness` | Color Replacement: Hardness |  | Sets Hardness for the Color Replacement tool. |
+| `tool.options.colorReplace.maskPaint` | Color Replacement: Mask paint |  | Sets Mask paint for the Color Replacement tool. |
 | `tool.options.colorReplace.mode` | Color Replacement: Mode |  | Sets Mode for the Color Replacement tool. |
 | `tool.options.colorReplace.opacity` | Color Replacement: Opacity |  | Sets Opacity for the Color Replacement tool. |
 | `tool.options.colorReplace.pressureCurve` | Color Replacement: Pressure curve |  | Sets Pressure curve for the Color Replacement tool. |
@@ -1055,6 +1063,7 @@ Generated from the window's command catalogue (1577 commands) by `./formvis agen
 | `tool.options.crop.w` | Crop: W |  | Sets W for the Crop tool. |
 | `tool.options.dodge.exposure` | Dodge: Exposure |  | Sets Exposure for the Dodge tool. |
 | `tool.options.dodge.hardness` | Dodge: Hardness |  | Sets Hardness for the Dodge tool. |
+| `tool.options.dodge.maskPaint` | Dodge: Mask paint |  | Sets Mask paint for the Dodge tool. |
 | `tool.options.dodge.pressureCurve` | Dodge: Pressure curve |  | Sets Pressure curve for the Dodge tool. |
 | `tool.options.dodge.pressureOpacity` | Dodge: Pressure: opacity |  | Sets Pressure: opacity for the Dodge tool. |
 | `tool.options.dodge.pressureSize` | Dodge: Pressure: size |  | Sets Pressure: size for the Dodge tool. |
@@ -1069,6 +1078,7 @@ Generated from the window's command catalogue (1577 commands) by `./formvis agen
 | `tool.options.eraser.eraseToHistory` | Eraser: Erase to History |  | Sets Erase to History for the Eraser tool. |
 | `tool.options.eraser.flow` | Eraser: Flow |  | Sets Flow for the Eraser tool. |
 | `tool.options.eraser.hardness` | Eraser: Hardness |  | Sets Hardness for the Eraser tool. |
+| `tool.options.eraser.maskPaint` | Eraser: Mask paint |  | Sets Mask paint for the Eraser tool. |
 | `tool.options.eraser.mode` | Eraser: Mode |  | Sets Mode for the Eraser tool. |
 | `tool.options.eraser.opacity` | Eraser: Opacity |  | Sets Opacity for the Eraser tool. |
 | `tool.options.eraser.pressureCurve` | Eraser: Pressure curve |  | Sets Pressure curve for the Eraser tool. |
@@ -1101,6 +1111,7 @@ Generated from the window's command catalogue (1577 commands) by `./formvis agen
 | `tool.options.healingBrush.aligned` | Healing Brush: Aligned |  | Sets Aligned for the Healing Brush tool. |
 | `tool.options.healingBrush.diffusion` | Healing Brush: Diffusion |  | Sets Diffusion for the Healing Brush tool. |
 | `tool.options.healingBrush.hardness` | Healing Brush: Hardness |  | Sets Hardness for the Healing Brush tool. |
+| `tool.options.healingBrush.maskPaint` | Healing Brush: Mask paint |  | Sets Mask paint for the Healing Brush tool. |
 | `tool.options.healingBrush.mode` | Healing Brush: Mode |  | Sets Mode for the Healing Brush tool. |
 | `tool.options.healingBrush.opacity` | Healing Brush: Opacity |  | Sets Opacity for the Healing Brush tool. |
 | `tool.options.healingBrush.pattern` | Healing Brush: Pattern |  | Sets Pattern for the Healing Brush tool. |
@@ -1114,6 +1125,7 @@ Generated from the window's command catalogue (1577 commands) by `./formvis agen
 | `tool.options.healingBrush.symmetryX` | Healing Brush: Symmetry X |  | Sets Symmetry X for the Healing Brush tool. |
 | `tool.options.healingBrush.symmetryY` | Healing Brush: Symmetry Y |  | Sets Symmetry Y for the Healing Brush tool. |
 | `tool.options.historyBrush.hardness` | History Brush: Hardness |  | Sets Hardness for the History Brush tool. |
+| `tool.options.historyBrush.maskPaint` | History Brush: Mask paint |  | Sets Mask paint for the History Brush tool. |
 | `tool.options.historyBrush.opacity` | History Brush: Opacity |  | Sets Opacity for the History Brush tool. |
 | `tool.options.historyBrush.pressureCurve` | History Brush: Pressure curve |  | Sets Pressure curve for the History Brush tool. |
 | `tool.options.historyBrush.pressureOpacity` | History Brush: Pressure: opacity |  | Sets Pressure: opacity for the History Brush tool. |
@@ -1150,6 +1162,7 @@ Generated from the window's command catalogue (1577 commands) by `./formvis agen
 | `tool.options.mixer.hardness` | Mixer Brush: Hardness |  | Sets Hardness for the Mixer Brush tool. |
 | `tool.options.mixer.load` | Mixer Brush: Load |  | Sets Load for the Mixer Brush tool. |
 | `tool.options.mixer.loadTheBrushAfterEachStroke` | Mixer Brush: Load the brush after each stroke |  | Sets Load the brush after each stroke for the Mixer Brush tool. |
+| `tool.options.mixer.maskPaint` | Mixer Brush: Mask paint |  | Sets Mask paint for the Mixer Brush tool. |
 | `tool.options.mixer.mix` | Mixer Brush: Mix |  | Sets Mix for the Mixer Brush tool. |
 | `tool.options.mixer.opacity` | Mixer Brush: Opacity |  | Sets Opacity for the Mixer Brush tool. |
 | `tool.options.mixer.pressureCurve` | Mixer Brush: Pressure curve |  | Sets Pressure curve for the Mixer Brush tool. |
@@ -1208,6 +1221,7 @@ Generated from the window's command catalogue (1577 commands) by `./formvis agen
 | `tool.options.patternStamp.aligned` | Pattern Stamp: Aligned |  | Sets Aligned for the Pattern Stamp tool. |
 | `tool.options.patternStamp.angle` | Pattern Stamp: Angle |  | Sets Angle for the Pattern Stamp tool. |
 | `tool.options.patternStamp.hardness` | Pattern Stamp: Hardness |  | Sets Hardness for the Pattern Stamp tool. |
+| `tool.options.patternStamp.maskPaint` | Pattern Stamp: Mask paint |  | Sets Mask paint for the Pattern Stamp tool. |
 | `tool.options.patternStamp.opacity` | Pattern Stamp: Opacity |  | Sets Opacity for the Pattern Stamp tool. |
 | `tool.options.patternStamp.pattern` | Pattern Stamp: Pattern |  | Sets Pattern for the Pattern Stamp tool. |
 | `tool.options.patternStamp.pressureCurve` | Pattern Stamp: Pressure curve |  | Sets Pressure curve for the Pattern Stamp tool. |
@@ -1223,6 +1237,7 @@ Generated from the window's command catalogue (1577 commands) by `./formvis agen
 | `tool.options.pencil.adjustForZoom` | Pencil: Adjust for zoom |  | Sets Adjust for zoom for the Pencil tool. |
 | `tool.options.pencil.autoErase` | Pencil: Auto Erase |  | Sets Auto Erase for the Pencil tool. |
 | `tool.options.pencil.catchUpOnStrokeEnd` | Pencil: Catch-up on stroke end |  | Sets Catch-up on stroke end for the Pencil tool. |
+| `tool.options.pencil.maskPaint` | Pencil: Mask paint |  | Sets Mask paint for the Pencil tool. |
 | `tool.options.pencil.mode` | Pencil: Mode |  | Sets Mode for the Pencil tool. |
 | `tool.options.pencil.opacity` | Pencil: Opacity |  | Sets Opacity for the Pencil tool. |
 | `tool.options.pencil.pressureCurve` | Pencil: Pressure curve |  | Sets Pressure curve for the Pencil tool. |
@@ -1245,6 +1260,7 @@ Generated from the window's command catalogue (1577 commands) by `./formvis agen
 | `tool.options.remove.collectStrokesEnterFills` | Remove: Collect strokes (Enter fills) |  | Sets Collect strokes (Enter fills) for the Remove tool. |
 | `tool.options.remove.hardness` | Remove: Hardness |  | Sets Hardness for the Remove tool. |
 | `tool.options.remove.lamaWhenDownloadedNewLayer` | Remove: LaMa when downloaded (new layer) |  | Sets LaMa when downloaded (new layer) for the Remove tool. |
+| `tool.options.remove.maskPaint` | Remove: Mask paint |  | Sets Mask paint for the Remove tool. |
 | `tool.options.remove.opacity` | Remove: Opacity |  | Sets Opacity for the Remove tool. |
 | `tool.options.remove.sample` | Remove: Sample |  | Sets Sample for the Remove tool. |
 | `tool.options.remove.size` | Remove: Size |  | Sets Size for the Remove tool. |
@@ -1254,6 +1270,7 @@ Generated from the window's command catalogue (1577 commands) by `./formvis agen
 | `tool.options.rotateView.rotationAngle` | Rotate View: Rotation Angle |  | Sets Rotation Angle for the Rotate View tool. |
 | `tool.options.ruler.useMeasurementScale` | Ruler: Use Measurement Scale |  | Sets Use Measurement Scale for the Ruler tool. |
 | `tool.options.selectionBrush.hardness` | Selection Brush: Hardness |  | Sets Hardness for the Selection Brush tool. |
+| `tool.options.selectionBrush.maskPaint` | Selection Brush: Mask paint |  | Sets Mask paint for the Selection Brush tool. |
 | `tool.options.selectionBrush.pressureCurve` | Selection Brush: Pressure curve |  | Sets Pressure curve for the Selection Brush tool. |
 | `tool.options.selectionBrush.pressureOpacity` | Selection Brush: Pressure: opacity |  | Sets Pressure: opacity for the Selection Brush tool. |
 | `tool.options.selectionBrush.pressureSize` | Selection Brush: Pressure: size |  | Sets Pressure: size for the Selection Brush tool. |
@@ -1289,6 +1306,7 @@ Generated from the window's command catalogue (1577 commands) by `./formvis agen
 | `tool.options.slice.style` | Slice: Style |  | Sets Style for the Slice tool. |
 | `tool.options.slice.width` | Slice: Width |  | Sets Width for the Slice tool. |
 | `tool.options.smear.hardness` | Smear: Hardness |  | Sets Hardness for the Smear tool. |
+| `tool.options.smear.maskPaint` | Smear: Mask paint |  | Sets Mask paint for the Smear tool. |
 | `tool.options.smear.mode` | Smear: Mode |  | Sets Mode for the Smear tool. |
 | `tool.options.smear.pressureCurve` | Smear: Pressure curve |  | Sets Pressure curve for the Smear tool. |
 | `tool.options.smear.pressureOpacity` | Smear: Pressure: opacity |  | Sets Pressure: opacity for the Smear tool. |
@@ -1303,6 +1321,7 @@ Generated from the window's command catalogue (1577 commands) by `./formvis agen
 | `tool.options.smear.tool` | Smear: Tool |  | Sets Tool for the Smear tool. |
 | `tool.options.sponge.flow` | Sponge: Flow |  | Sets Flow for the Sponge tool. |
 | `tool.options.sponge.hardness` | Sponge: Hardness |  | Sets Hardness for the Sponge tool. |
+| `tool.options.sponge.maskPaint` | Sponge: Mask paint |  | Sets Mask paint for the Sponge tool. |
 | `tool.options.sponge.mode` | Sponge: Mode |  | Sets Mode for the Sponge tool. |
 | `tool.options.sponge.pressureCurve` | Sponge: Pressure curve |  | Sets Pressure curve for the Sponge tool. |
 | `tool.options.sponge.pressureOpacity` | Sponge: Pressure: opacity |  | Sets Pressure: opacity for the Sponge tool. |
@@ -1315,6 +1334,7 @@ Generated from the window's command catalogue (1577 commands) by `./formvis agen
 | `tool.options.sponge.symmetryY` | Sponge: Symmetry Y |  | Sets Symmetry Y for the Sponge tool. |
 | `tool.options.sponge.vibrance` | Sponge: Vibrance |  | Sets Vibrance for the Sponge tool. |
 | `tool.options.spotHealing.hardness` | Spot Healing: Hardness |  | Sets Hardness for the Spot Healing tool. |
+| `tool.options.spotHealing.maskPaint` | Spot Healing: Mask paint |  | Sets Mask paint for the Spot Healing tool. |
 | `tool.options.spotHealing.mode` | Spot Healing: Mode |  | Sets Mode for the Spot Healing tool. |
 | `tool.options.spotHealing.opacity` | Spot Healing: Opacity |  | Sets Opacity for the Spot Healing tool. |
 | `tool.options.spotHealing.sampleAllLayers` | Spot Healing: Sample All Layers |  | Sets Sample All Layers for the Spot Healing tool. |
@@ -1495,7 +1515,7 @@ Generated from the window's command catalogue (1577 commands) by `./formvis agen
 | `fit-layers` | Fit Layer(s) on Screen |  | Zooms so the selected layers' content fills the window. |
 | `flip-view-h` | Flip Horizontal |  | Mirrors the view of the document left to right, for this document only; the pixels are not changed and the pointer still lands on the right pixel. |
 | `gamut-warning` | Gamut Warning | Shift+Mod+Y | Turns the gamut warning on or off. |
-| `grid-settings` | Grid Settings... |  | Opens Preferences on Guides & Grid: the grid colour with presets, line style, opacity, spacing and subdivisions, with Restore Defaults. |
+| `grid-settings` | Grid Settings... |  | Opens Preferences on Guides & Grid at the side, with the canvas still usable through it so the grid changes live: the grid colour with presets, line style, opacity, spacing and subdivisions, with Restore Defaults. |
 | `guide-layout` | New Guide Layout... |  | Opens New Guide Layout: columns and rows with gutters inside margins, placed as guides in one step. (changes the picture) |
 | `guides-from-shape` | New Guides From Shape |  | Places guides on the edges, the centre or both of the active shape layer or of the selection; the source, edges and centre can be chosen. |
 | `guides-from-shape-centre` | New Guides From Shape Centre |  | Places one vertical and one horizontal guide through the centre of the active shape layer, or of the selection. |
@@ -1604,7 +1624,7 @@ Generated from the window's command catalogue (1577 commands) by `./formvis agen
 | `arrange-tile` | Tile |  | Picks the layout that fits the number of open documents: two side by side, 3-up for three, 4-up for four and 6-up for five or more. |
 | `arrange-tile-h` | Tile All Horizontally |  | Tiles every open document stacked in rows of equal height, however many are open; the active one is the live Stage and the rest are read-only view tiles. |
 | `arrange-tile-v` | Tile All Vertically |  | Tiles every open document side by side in columns of equal width, however many are open; the active one is the live Stage and the rest are read-only view tiles. |
-| `assistant` | Assistant |  | Shows or hides the Assistant panel. |
+| `assistant` | Assistant | Alt+Mod+J | Shows or hides the Assistant panel. |
 | `benchmark` | Performance Benchmark... |  | Opens the performance benchmark. |
 | `brush-harder` | Increase Brush Hardness |  | Makes the paint brush 25 percent harder. |
 | `brush-settings` | Brush Settings... | F5 | Opens Brush Settings. |

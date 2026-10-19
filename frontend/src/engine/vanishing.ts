@@ -103,12 +103,12 @@ export function pasteInPerspective(dst: ImageData, src: ImageData, p: PlaneMap, 
 
 /** One stamp dab: around image point (cx, cy) within `radius` pixels, the picture `from` (the image as it was when
  *  the stroke began) copied from the plane point `offset` behind, through the plane, softened by `hardness`. */
-export function stampInPerspective(dst: ImageData, from: ImageData, p: PlaneMap, cx: number, cy: number, radius: number, hardness: number, offset: P2): void {
+export function stampInPerspective(dst: ImageData, from: ImageData, p: PlaneMap, cx: number, cy: number, radius: number, hardness: number, offset: P2, opacity = 1): void {
   const r = Math.max(1, radius), x0 = Math.max(0, Math.floor(cx - r)), y0 = Math.max(0, Math.floor(cy - r)), x1 = Math.min(dst.width, Math.ceil(cx + r)), y1 = Math.min(dst.height, Math.ceil(cy + r)), s = [0, 0, 0, 0];
   for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
     const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy) / r;
     if (d >= 1) continue;
-    const k = d <= hardness ? 1 : 1 - (d - hardness) / Math.max(1e-6, 1 - hardness);
+    const k = (d <= hardness ? 1 : 1 - (d - hardness) / Math.max(1e-6, 1 - hardness)) * opacity;
     const [u, v] = toPlane(p, x + 0.5, y + 0.5), [sx, sy] = toImage(p, u - offset[0], v - offset[1]);
     if (sample(from, sx, sy, s)) over(dst.data, (y * dst.width + x) * 4, s, k);
   }

@@ -9,10 +9,11 @@ import type { Kernel, KernelContext } from './kernels';
  *  Settings keep the field names and layouts formvis's project files use, including dictionaries stored as alternating
  *  key and value arrays. */
 
-export const ADJUSTMENT_LABELS: Record<AdjustmentKind, string> = {
+/** The label of every adjustment kind; a filter layer's label is there to read but is not listed, as it is no adjustment dialog's kind. */
+export const ADJUSTMENT_LABELS = Object.defineProperty({
   hsv: 'Hue/Saturation', levels: 'Levels', curves: 'Curves', exposure: 'Exposure', gradientMap: 'Gradient Map', grain: 'Grain',
   ...(Object.fromEntries(PARAM_KINDS.map((k) => [k, PARAM_ADJUSTMENTS[k].label])) as Record<ParamKind, string>),
-};
+} as Record<Exclude<AdjustmentKind, 'filter'>, string>, 'filter', { value: 'Filter', enumerable: false }) as Record<AdjustmentKind, string>;
 export const ADJUSTMENT_KINDS: AdjustmentKind[] = ['hsv', 'levels', 'curves', 'exposure', 'gradientMap', 'grain', ...PARAM_KINDS];
 
 export const COLOR_RANGES = ['Master', 'Reds', 'Yellows', 'Greens', 'Cyans', 'Blues', 'Magentas'] as const;

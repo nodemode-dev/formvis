@@ -104,7 +104,10 @@ export class LayersPanel {
   /** The active layer the list last scrolled to. */
   private revealed: ID | null = null;
   private renaming: ID | null = null;
-  private drag: { id: ID; ids: ID[]; startY: number; pointerId: number; started: boolean; wasSelected: boolean; target: { id: ID; where: Where } | null; maskFrom: ID | null; tabTarget: string | null } | null = null;
+  private drag: { id: ID; ids: ID[]; startY: number; pointerId: number; started: boolean; wasSelected: boolean; target: { id: ID; where: Where } | null; maskFrom: ID | null; tabTarget: string | null; src: string } | null = null;
+  /** The document tab a layer drag has rested on, and the timer that shows that document so the drop lands in it. */
+  private spring: { key: string; timer: ReturnType<typeof setTimeout> } | null = null;
+  private clearSpring(): void { if (this.spring) { clearTimeout(this.spring.timer); this.spring = null; } }
   private swipe: { visible: boolean; pointerId: number } | null = null;
   /** Layers whose effect rows are open, and the effect row being dragged to another layer. */
   private readonly fxOpen = new Set<ID>();
@@ -414,8 +417,9 @@ export class LayersPanel {
     const state = this.painted.get(row) ?? { pixels: '', mask: '' };
     const vk = vm ? `${this.vectorKey(vm)}:${vm.enabled}:${vm.inverted}:${p.doc.width}x${p.doc.height}` : 'none';
     if (state.vmask !== vk) { if (vm) this.drawVectorThumb(q<HTMLCanvasElement>(row, '.cv-layer-vmask'), vm, p.doc.width, p.doc.height); state.vmask = vk; }
-    const pk = l.raster && !l.isGroup ? `${l.raster.id}:${l.raster.version}` : 'none';
-    if (state.pixels !== pk) { this.drawThumb(q<HTMLCanvasElement>(row, '.cv-layer-thumb'), l.isGroup ? null : l.raster, false); state.pixels = pk; }
+    const tr = l.transform, framed = !tr.rotation && !l.isGroup;
+    const pk = l.raster && !l.isGroup ? `${l.raster.id}:${l.raster.version}${framed ? `:${p.doc.width}x${p.doc.height}:${tr.x},${tr.y},${tr.w},${tr.h},${tr.flipX},${tr.flipY}` : ''}` : 'none';
+    if (state.pixels !== pk) { this.drawThumb(q<HTMLCanvasElement>(row, '.cv-layer-thumb'), l.isGroup ? null : l.raster, false, framed ? { w: p.doc.width, h: p.doc.height, t: tr } : undefined); state.pixels = pk; }
     const mk = l.mask ? `${l.mask.raster?.id ?? 'full'}:${l.mask.raster?.version ?? 0}` : 'none';
     if (state.mask !== mk) { if (l.mask) this.drawThumb(q<HTMLCanvasElement>(row, '.cv-layer-mask'), l.mask.raster, true); state.mask = mk; }
     this.painted.set(row, state);
@@ -491,12 +495,33 @@ export class LayersPanel {
     g.drawImage(cov.surface as CanvasImageSource, x, y, w, h);
   }
 
-  private drawThumb(c: HTMLCanvasElement, r: Raster | null, mask: boolean): void {
+  private drawThumb(c: HTMLCanvasElement, r: Raster | null, mask: boolean, doc?: { w: number; h: number; t: Layer['transform'] }): void {
     const g = c.getContext('2d');
     if (!g) return;
     const pal = paint();
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.clearRect(0, 0, THUMB, THUMB);
+    if (doc && !mask && doc.w > 0 && doc.h > 0) {
+      // The canvas shape is the frame: the checker fills only the canvas rectangle and the layer sits where it lies in it.
+      const k = Math.min(THUMB / doc.w, THUMB / doc.h), fw = doc.w * k, fh = doc.h * k, ox = (THUMB - fw) / 2, oy = (THUMB - fh) / 2, cell = 6;
+      g.save();
+      g.beginPath();
+      g.rect(ox, oy, fw, fh);
+      g.clip();
+      g.fillStyle = pal.checkerA;
+      g.fillRect(ox, oy, fw, fh);
+      g.fillStyle = pal.checkerB;
+      for (let y = 0; y < THUMB; y += cell) for (let x = (y / cell) % 2 ? 0 : cell; x < THUMB; x += cell * 2) g.fillRect(x, y, cell, cell);
+      if (r) {
+        const t = doc.t;
+        g.imageSmoothingQuality = 'medium';
+        g.translate(ox + (t.x + t.w / 2) * k, oy + (t.y + t.h / 2) * k);
+        g.scale(t.flipX ? -1 : 1, t.flipY ? -1 : 1);
+        g.drawImage(r.canvas as CanvasImageSource, (-t.w * k) / 2, (-t.h * k) / 2, Math.max(1, t.w * k), Math.max(1, t.h * k));
+      }
+      g.restore();
+      return;
+    }
     if (mask) {
       g.fillStyle = pal.antsA;
       g.fillRect(0, 0, THUMB, THUMB);
@@ -705,7 +730,7 @@ export class LayersPanel {
       } else if (t.closest('.cv-layer-thumb')) this.engine.setMaskTarget(false);
       const ids = p.selectedIds.has(id) ? [...p.selectedIds] : [id];
       const maskFrom = e.altKey && t.closest('.cv-layer-mask') && p.layer(id)?.mask ? id : null;
-      this.drag = { id, ids: maskFrom ? [id] : ids, startY: e.clientY, pointerId: e.pointerId, started: false, wasSelected: wasSelected && !mod && !e.shiftKey, target: null, maskFrom, tabTarget: null };
+      this.drag = { id, ids: maskFrom ? [id] : ids, startY: e.clientY, pointerId: e.pointerId, started: false, wasSelected: wasSelected && !mod && !e.shiftKey, target: null, maskFrom, tabTarget: null, src: p.id };
     });
     rows.addEventListener('pointermove', (e) => {
       const fd = this.fxDrag;
@@ -738,7 +763,13 @@ export class LayersPanel {
       // A row dragged onto another project's tab copies the layer there.
       const hit = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
       const tab = hit?.closest<HTMLElement>('.cv-tab') ?? null, slot = hit?.closest<HTMLElement>('.cv-tabs > [data-cmd="new"]') ?? null;
-      const key = d.maskFrom ? null : slot ? 'new' : tab?.dataset.key && tab.dataset.key !== this.engine.current?.id ? tab.dataset.key : null;
+      const cur = this.engine.current?.id ?? null, away = !!cur && cur !== d.src, over = tab?.dataset.key ?? null;
+      const key = d.maskFrom ? null : slot ? 'new' : away && over !== d.src ? cur : over && over !== cur ? over : null;
+      if (!d.maskFrom && !slot && over && over !== cur && this.spring?.key !== over) {
+        this.clearSpring();
+        const timer = setTimeout(() => { this.spring = null; if (this.drag === d) this.engine.switchTo(over); }, 650);
+        this.spring = { key: over, timer };
+      } else if (!over || over === cur || slot) this.clearSpring();
       d.tabTarget = key;
       this.showTabDrop(key);
       if (key) { d.target = null; this.showDrop(null); return; }
@@ -780,12 +811,13 @@ export class LayersPanel {
       const d = this.drag;
       if (!d || d.pointerId !== e.pointerId) return;
       this.drag = null;
+      this.clearSpring();
       setClass(rows, 'is-copy-drag', false);
       this.showDrop(null);
       if (rows.hasPointerCapture(e.pointerId)) rows.releasePointerCapture(e.pointerId);
-      if (cancel) return;
       this.showTabDrop(null);
-      if (d.started && d.tabTarget === 'new') this.engine.copyLayersToNewDocument(d.ids);
+      if (cancel || (d.started && !d.tabTarget && this.engine.current?.id !== d.src)) { this.engine.switchTo(d.src); return; }
+      if (d.started && d.tabTarget === 'new') { if (this.engine.current?.id !== d.src) this.engine.switchTo(d.src); this.engine.copyLayersToNewDocument(d.ids); }
       else if (d.started && d.tabTarget) this.engine.copyLayersToProject(d.ids, d.tabTarget, e.shiftKey);
       else if (d.started && d.target) {
         if (d.maskFrom) this.engine.copyMask(d.maskFrom, d.target.id);

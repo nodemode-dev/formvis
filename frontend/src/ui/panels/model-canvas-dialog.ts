@@ -2,7 +2,7 @@ import type { Engine } from '../../engine';
 import { localModels } from '../../io/local-gen';
 import { Dialog } from '../dialogs';
 import { el, patchList, setText } from '../dom';
-import { SIZES } from './generate-panel';
+import { SIZES } from './generate-image';
 
 interface Family { value: string; label: string; sizes: Array<{ value: string; label: string; width: number; height: number }> }
 

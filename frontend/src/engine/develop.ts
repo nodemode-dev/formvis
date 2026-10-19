@@ -88,6 +88,10 @@ export interface DevelopState {
   dehazeDark?: boolean;
   /** 0 to 100: with the dark channel Dehaze, how much a bright smooth region near the airlight (sky) is held back to the original. */
   dehazeSky?: number;
+  /** With Dehaze: take the haze from a depth map (far is hazier) instead of the dark channel. Needs a depth passed to developImage. */
+  dehazeDepth?: boolean;
+  /** 0 to 100 (50 when absent): how thick the haze is taken to be, with the dark channel or depth Dehaze. */
+  dehazeDensity?: number;
   /** Shape of the Effects vignette (tone.vignette); its defaults reproduce the plain vignette. */
   vignette?: VignetteShape;
 }
@@ -105,7 +109,11 @@ export interface VignetteShape {
 export const defaultVignetteShape = (): VignetteShape => ({ midpoint: 30, feather: 50, roundness: 100 });
 export const vignetteShapeOf = (s: DevelopState): VignetteShape => ({ ...defaultVignetteShape(), ...s.vignette });
 
-const darkDehazeOn = (s: DevelopState): boolean => s.dehazeDark === true && s.tone.dehaze !== 0;
+/** Set by the app: the Depth Map layer's grey (near bright) at each pixel of a render whose top left is at (originX, originY)
+ *  in document units, or null when the document has none of its size. */
+export const depthSource: { read: ((c: { width: number; height: number; originX: number; originY: number; unitsPerPixel: number }) => Uint8Array | null) | null } = { read: null };
+
+const darkDehazeOn = (s: DevelopState): boolean => (s.dehazeDark === true || s.dehazeDepth === true) && s.tone.dehaze !== 0;
 const vignetteExtras = (s: DevelopState): boolean => s.tone.vignette !== 0 && ((s.vignette?.protect ?? 0) > 0 || (s.vignette?.color ?? '') !== '');
 const hexRgb = (hex: string): [number, number, number] => {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
@@ -794,8 +802,8 @@ function windowed(a: Float32Array, w: number, h: number, r: number, min: boolean
  *  patch minimum of the least channel); the transmission is 1 - 0.95 x amount x the dark channel of the picture over A,
  *  smoothed; the scene is (I - A) / max(t, 0.15) + A. `amount` is 0 to 1; the patch radius follows the preview scale.
  *  A negative `amount` adds haze instead: the picture mixed toward the same airlight by up to 70 percent. */
-function darkDehaze(src: ImageData, amount: number, scale: number, sky = 0): ImageData {
-  const { width: w, height: h, data: d } = src, n = w * h, r = Math.max(1, Math.round(7 * scale));
+function darkDehaze(src: ImageData, amount: number, scale: number, sky = 0, depth: Uint8Array | null = null, density = 0.5): ImageData {
+  const { width: w, height: h, data: d } = src, n = w * h, r = Math.max(1, Math.round(7 * scale)), thick = Math.max(0, density) * 2;
   const least = new Float32Array(n);
   for (let i = 0; i < n; i++) least[i] = Math.min(d[i * 4], d[i * 4 + 1], d[i * 4 + 2]) / 255;
   const dark = windowed(least, w, h, r, true), bins = new Uint32Array(256);
@@ -806,8 +814,9 @@ function darkDehaze(src: ImageData, amount: number, scale: number, sky = 0): Ima
   for (let i = 0; i < n; i++) if (Math.round(dark[i] * 255) >= cut) { ar += d[i * 4]; ag += d[i * 4 + 1]; ab += d[i * 4 + 2]; cnt++; }
   const A = [Math.max(1, ar / cnt), Math.max(1, ag / cnt), Math.max(1, ab / cnt)];
   if (amount < 0) {
-    const out = new ImageData(w, h), o = out.data, t = 1 - 0.7 * clamp01(-amount);
+    const out = new ImageData(w, h), o = out.data;
     for (let i = 0; i < n; i++) {
+      const t = depth ? 1 - 0.7 * clamp01(-amount * thick * (1 - depth[i] / 255)) : 1 - 0.7 * clamp01(-amount * thick);
       for (let c = 0; c < 3; c++) o[i * 4 + c] = clamp255(d[i * 4 + c] * t + A[c] * (1 - t));
       o[i * 4 + 3] = d[i * 4 + 3];
     }
@@ -815,7 +824,9 @@ function darkDehaze(src: ImageData, amount: number, scale: number, sky = 0): Ima
   }
   const norm = new Float32Array(n);
   for (let i = 0; i < n; i++) norm[i] = Math.min(d[i * 4] / A[0], d[i * 4 + 1] / A[1], d[i * 4 + 2] / A[2]);
-  const t = windowed(windowed(norm, w, h, r, true).map((v) => 1 - 0.95 * clamp01(amount) * Math.min(1, v)), w, h, r, false);
+  const t = depth
+    ? Float32Array.from({ length: n }, (_, i) => Math.exp(-2.5 * thick * clamp01(amount) * (1 - depth[i] / 255)))
+    : windowed(windowed(norm, w, h, r, true).map((v) => 1 - 0.95 * clamp01(amount * thick) * Math.min(1, v)), w, h, r, false);
   const out = new ImageData(w, h), o = out.data;
   const keep = sky > 0 ? windowed(norm, w, h, r, true) : null, skyK = clamp01(sky);
   for (let i = 0; i < n; i++) {
@@ -907,11 +918,11 @@ export function sharpenPass(img: ImageData, amount: number, radius: number, deta
 /** The whole Develop filter on `src`, in the develop studio's order: the per-pixel pass, then calibration and colour
  *  grading, then clarity, texture and sharpening, then optics and geometry. `scale` shrinks the detail radii for a
  *  scaled preview. Panels at their defaults are skipped, so a state without them renders as before. */
-export function developImage(src: ImageData, state: DevelopState, scale = 1, seed = 7): ImageData {
+export function developImage(src: ImageData, state: DevelopState, scale = 1, seed = 7, depth: Uint8Array | null = null): ImageData {
   let img = new ImageData(src.width, src.height);
   const nr = noiseOf(state);
   if (noiseActive(nr)) src = reduceNoiseImage(src, { strength: nr.luminance / 10, preserve: nr.detail, color: nr.color, sharpen: nr.contrast, jpeg: false }, scale);
-  if (darkDehazeOn(state)) developPass(darkDehaze(src, state.tone.dehaze / 100, scale, (state.dehazeSky ?? 0) / 100).data, img.data, src.width, src.height, { ...state, tone: { ...state.tone, dehaze: 0 } }, seed);
+  if (darkDehazeOn(state)) developPass(darkDehaze(src, state.tone.dehaze / 100, scale, (state.dehazeSky ?? 0) / 100, state.dehazeDepth === true && depth?.length === src.width * src.height ? depth : null, (state.dehazeDensity ?? 50) / 100).data, img.data, src.width, src.height, { ...state, tone: { ...state.tone, dehaze: 0 } }, seed);
   else developPass(src.data, img.data, src.width, src.height, state, seed);
   const grading = gradingOf(state), calibration = calibrationOf(state), optics = opticsOf(state), geometry = geometryOf(state), parametric = parametricOf(state);
   if (parametricActive(parametric)) {

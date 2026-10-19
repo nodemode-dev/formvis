@@ -54,9 +54,10 @@ export class PanelGroup {
   setMenu(items: () => string[]): void { this.menu = items; setHidden(this.root.querySelector('.cv-group-more') as HTMLElement, false); }
 
   constructor(host: HTMLElement, readonly id: string, list: readonly GroupTab[], label: string) {
-    this.root = el(`<section class="cv-${id} cv-group" aria-label="${label}"><div class="cv-panel-head cv-group-head"><span class="cv-group-grip" title="Drag to move the group" aria-hidden="true">${icon('grip', 14)}</span><div class="cv-group-tabs" role="tablist"></div><span></span><button class="cv-group-more" type="button" data-cmd="panel-menu" title="Panel menu" aria-label="Panel menu" hidden>${icon('more3', 16)}</button><button class="cv-group-min" type="button" data-cmd="minimise" title="Minimise" aria-label="Minimise">${icon('minus', 12)}</button></div><div class="cv-group-body"></div></section>`);
+    this.root = el(`<section class="cv-${id} cv-group" aria-label="${label}"><div class="cv-panel-head cv-group-head"><span class="cv-group-grip" title="Drag to move the group" aria-hidden="true">${icon('grip', 14)}</span><div class="cv-group-tabs" role="tablist"></div><button class="cv-group-over" type="button" title="More tabs" aria-label="More tabs" aria-haspopup="menu" hidden>${icon('chevronDown', 12)}</button><span></span><button class="cv-group-more" type="button" data-cmd="panel-menu" title="Panel menu" aria-label="Panel menu" hidden>${icon('more3', 16)}</button><button class="cv-group-min" type="button" data-cmd="minimise" title="Minimise" aria-label="Minimise">${icon('minus', 12)}</button></div><div class="cv-group-body"></div></section>`);
     const strip = this.root.querySelector('.cv-group-tabs') as HTMLElement, body = this.root.querySelector('.cv-group-body') as HTMLElement;
     const more = this.root.querySelector('.cv-group-more') as HTMLElement;
+    (this.root.querySelector('.cv-group-over') as HTMLElement).addEventListener('click', (e) => this.openOverflow(e.currentTarget as HTMLElement));
     more.addEventListener('click', () => { const ids = this.menu?.() ?? []; if (ids.length) PanelGroup.menuHost?.(more, ids); });
     this.root.dataset.group = id;
     PanelGroup.all.set(id, this);
@@ -76,13 +77,46 @@ export class PanelGroup {
 
   fitTabs(): void {
     const strip = this.root.querySelector('.cv-group-tabs') as HTMLElement;
+    const chev = this.root.querySelector('.cv-group-over') as HTMLElement;
+    const full = strip.clientWidth + (chev.hidden ? 0 : chev.offsetWidth + 6);
     if (!strip.clientWidth) return;
+    for (const c of strip.children) c.classList.remove('is-over');
+    const width = (): number => [...strip.children].reduce((w, c) => w + (c as HTMLElement).scrollWidth, 0) + Math.max(0, strip.children.length - 1) * 2;
     for (const step of ['', 'is-compact', 'is-tight']) {
       strip.classList.remove('is-compact', 'is-tight');
       if (step) strip.classList.add(step);
-      const need = [...strip.children].reduce((w, c) => w + (c as HTMLElement).scrollWidth, 0) + Math.max(0, strip.children.length - 1) * 2;
-      if (need <= strip.clientWidth + 0.5) return;
+      if (width() <= full + 0.5) { if (!chev.hidden) setHidden(chev, true); return; }
     }
+    // Still too wide at the tightest lettering: the last inactive tabs leave the strip and wait in the chevron menu.
+    const room = full - 32;
+    let need = width();
+    for (let i = strip.children.length - 1; i >= 0 && need > room; i--) {
+      const c = strip.children[i] as HTMLElement;
+      if (c.classList.contains('is-active')) continue;
+      need -= c.scrollWidth + 2;
+      c.classList.add('is-over');
+    }
+    if (chev.hidden) setHidden(chev, false);
+  }
+
+  private openOverflow(anchor: HTMLElement): void {
+    document.querySelector('.cv-group-overmenu')?.remove();
+    const menu = el('<div class="cv-group-overmenu" role="menu"></div>');
+    for (const [tid, v] of this.tabs) {
+      if (!v.btn.classList.contains('is-over')) continue;
+      const b = el<HTMLButtonElement>('<button type="button" role="menuitem"></button>');
+      setText(b, t(v.label));
+      b.addEventListener('click', () => { close(); this.show(tid); this.fitTabs(); });
+      menu.appendChild(b);
+    }
+    const r = anchor.getBoundingClientRect();
+    menu.style.top = `${r.bottom + 4}px`;
+    menu.style.left = `${Math.max(4, r.left)}px`;
+    document.body.appendChild(menu);
+    const away = (ev: Event): void => { if (!menu.contains(ev.target as Node)) close(); };
+    const key = (ev: KeyboardEvent): void => { if (ev.key === 'Escape') close(); };
+    function close(): void { menu.remove(); document.removeEventListener('pointerdown', away, true); document.removeEventListener('keydown', key, true); }
+    setTimeout(() => { document.addEventListener('pointerdown', away, true); document.addEventListener('keydown', key, true); }, 0);
   }
 
   get current(): string { return this.active; }
@@ -117,7 +151,7 @@ export class PanelGroup {
   private static justDragged = false;
   /** Dragging a tab (in a group of several: a single tab's group moves whole, by the dock) onto another group's header. */
   private tabDrag(e: PointerEvent, tid: string, btn: HTMLButtonElement): void {
-    if (e.button !== 0 || this.tabs.size < 2) return;
+    if (e.button !== 0) return;
     const x0 = e.clientX, y0 = e.clientY;
     let ghost: HTMLElement | null = null, target: PanelGroup | null = null;
     const over = (ev: PointerEvent): PanelGroup | null => {
@@ -132,7 +166,7 @@ export class PanelGroup {
       const t = over(ev);
       // A full group (7 tabs) says so and takes nothing.
       if (t !== target) { target?.root.classList.remove('is-tab-target', 'is-tab-full'); target = t; target?.root.classList.add(t?.full ? 'is-tab-full' : 'is-tab-target'); }
-      PanelGroup.onGapHint?.(t ? null : ev.clientX, ev.clientY);   // over a gap: New group here
+      if (this.tabs.size > 1) PanelGroup.onGapHint?.(t ? null : ev.clientX, ev.clientY);   // over a gap: New group here
     };
     const up = (ev: PointerEvent): void => {
       PanelGroup.onGapHint?.(null, 0);
@@ -142,7 +176,7 @@ export class PanelGroup {
       target?.root.classList.remove('is-tab-target', 'is-tab-full');
       if (ghost) PanelGroup.justDragged = true;
       if (ghost && target) { if (!target.full) { PanelGroup.moveTab(tid, this, target); PanelGroup.saveHomes(); } }
-      else if (ghost && PanelGroup.onDetach?.(tid, this, ev.clientX, ev.clientY)) PanelGroup.saveHomes();
+      else if (ghost && this.tabs.size > 1 && PanelGroup.onDetach?.(tid, this, ev.clientX, ev.clientY)) PanelGroup.saveHomes();
     };
     document.addEventListener('pointermove', move, true);
     document.addEventListener('pointerup', up, true);
@@ -202,6 +236,7 @@ export class PanelGroup {
       setHidden(t.body, !on);
     }
     if (remember) saveState(this.id, { tab: id });
+    if (!(this.root.querySelector('.cv-group-over') as HTMLElement).hidden) requestAnimationFrame(() => this.fitTabs());
     this.onTab?.(id);
   }
 

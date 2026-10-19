@@ -76,12 +76,10 @@ function boxSmooth(img: ImageData, r: number): ImageData {
  *  own edges (a joint bilateral filter, window up to 9 px, spatial weight by distance). */
 function snapSmooth(src: ImageData, guide: ImageData, r: number): ImageData {
   const w = src.width, h = src.height, s = src.data, g = guide.data, out = new ImageData(new Uint8ClampedArray(s), w, h), o = out.data;
-  const R = Math.min(r, 9), sigmaS = Math.max(1, R / 2), inv2s = 1 / (2 * sigmaS * sigmaS), inv2r = 1 / (2 * 20 * 20);
-  const lum = new Float32Array(w * h);
-  for (let p = 0; p < w * h; p++) lum[p] = 0.299 * g[p * 4] + 0.587 * g[p * 4 + 1] + 0.114 * g[p * 4 + 2];
+  const R = Math.min(r, 9), sigmaS = Math.max(1, R / 2), inv2s = 1 / (2 * sigmaS * sigmaS), inv2r = 1 / (2 * 16 * 16);
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      const c = lum[y * w + x];
+      const q = (y * w + x) * 4, cr = g[q], cg = g[q + 1], cb = g[q + 2];
       let acc = 0, wt = 0;
       for (let dy = -R; dy <= R; dy++) {
         const yy = y + dy;
@@ -89,8 +87,8 @@ function snapSmooth(src: ImageData, guide: ImageData, r: number): ImageData {
         for (let dx = -R; dx <= R; dx++) {
           const xx = x + dx;
           if (xx < 0 || xx >= w) continue;
-          const dl = lum[yy * w + xx] - c, k = Math.exp(-(dx * dx + dy * dy) * inv2s - dl * dl * inv2r);
-          acc += s[(yy * w + xx) * 4] * k; wt += k;
+          const n = (yy * w + xx) * 4, dr = g[n] - cr, dg = g[n + 1] - cg, db = g[n + 2] - cb, k = Math.exp(-(dx * dx + dy * dy) * inv2s - (dr * dr + dg * dg + db * db) * inv2r);
+          acc += s[n] * k; wt += k;
         }
       }
       const v = Math.round(acc / wt), i = (y * w + x) * 4;

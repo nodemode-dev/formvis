@@ -1,7 +1,26 @@
+import type { Engine } from '../../engine';
 import { api, ApiError } from '../../io/api';
 import { fillPlaceholders, syncTemplates, usableTemplates } from '../../io/prompt-templates';
 import { el, setHidden, setText } from '../dom';
 import { PromptHistory } from './prompt-history';
+
+/** The area a prompt is for as a small JPEG data address: the selection's box when `selection` and one is made, else the
+ *  whole picture; empty with no document. At most 512 pixels on a side. */
+export function areaView(engine: Engine, selection: boolean): () => Promise<string> {
+  return async () => {
+    const p = engine.current, flat = engine.flattened();
+    if (!p || !flat) return '';
+    const sel = selection ? p.selection : null, sx = sel ? sel.x : 0, sy = sel ? sel.y : 0, sw = sel ? sel.w : p.doc.width, sh = sel ? sel.h : p.doc.height;
+    const k = Math.min(1, 512 / Math.max(sw, sh)), c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(sw * k)); c.height = Math.max(1, Math.round(sh * k));
+    const g = c.getContext('2d');
+    if (!g) return '';
+    g.fillStyle = '#ffffff';
+    g.fillRect(0, 0, c.width, c.height);
+    g.drawImage(flat as CanvasImageSource, sx, sy, sw, sh, 0, 0, c.width, c.height);
+    return c.toDataURL('image/jpeg', 0.8);
+  };
+}
 
 /** Improve Prompt (1.51.5): a template, Improve and Restore beside a prompt, rewriting it through the language model
  *  set in Preferences > Plugins; Restore puts the original back. */
@@ -14,6 +33,8 @@ export class PromptImprover {
   private readonly stepBack = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost" title="Undo the last change to the prompt (Ctrl+Z)" aria-label="Undo prompt" disabled>Undo</button>');
   private readonly stepOn = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost" title="Redo (Ctrl+Shift+Z)" aria-label="Redo prompt" disabled>Redo</button>');
   private original: string | null = null;
+  /** The area the prompt is for as a data address, sent when the language model row reads pictures; empty when none. */
+  view: (() => Promise<string>) | null = null;
   /** The field's own undo stack: typing, Improve, Restore and prompts set from outside. */
   readonly history: PromptHistory;
 
@@ -50,11 +71,12 @@ export class PromptImprover {
     this.go.disabled = true;
     setText(this.note, 'Improving...');
     try {
-      const better = await api.improvePrompt(prompt, fillPlaceholders(t?.text ?? '', { prompt }));
+      const picture = this.view ? await this.view().catch(() => '') : '';
+      const better = await api.improvePrompt(prompt, fillPlaceholders(t?.text ?? '', { prompt }), picture);
       this.original = this.field.value;
-      this.history.set(better);
+      this.history.set(better.prompt);
       setHidden(this.undo, false);
-      setText(this.note, 'Improved.');
+      setText(this.note, `Improved${better.seen ? ' with a look at the area' : ''}${better.restored.length ? `; put back ${better.restored.join(', ')}` : ''}.`);
     } catch (err) {
       setText(this.note, err instanceof ApiError ? err.message : 'The formvis engine is offline (./formvis boot).');
     } finally { this.go.disabled = false; }

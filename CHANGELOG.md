@@ -4,6 +4,24 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.90.5 · 2026-10-19
+
+### Added
+
+- Smart objects can hold groups, adjustment, shape and type layers, which stay editable inside, and can nest.
+- Filter layers: any filter as a live layer over everything beneath it (by command for now).
+- Dehaze by depth map with a density control; depth edges snap by colour; Path Blur and Lens Blur at high bit depth.
+- Photomerge can fill its transparent edges with Content-Aware Fill; Auto-Blend Seamless Tones matches tones across the overlap.
+- Plug-ins: a WebAssembly interface for 16 and 32-bit, CMYK and grey data, an extra plug-ins folder, a sheen glass texture, Film Look tonal contrast, 3D scenes kept with the document.
+- Export to TGA, DPX and layered TIFF from commands and the command line; .atn Invert and Unsharp Mask steps.
+- Generation: Improve looks at the picture with a vision model row, size and result choices, Refine, steps and CFG presets for local models.
+- Layers: drag rows onto a document tab and wait to switch to it; thumbnails framed by the canvas; tab strips overflow into a menu; dialogs can be moved and reopen where left; brush mask paint colour; tool cursor badges.
+
+### Changed
+
+- Smudge runs on the GPU for large brushes; undo keeps only the changed parts of large edits; giant PNG bands deflate in parallel.
+- Agent and terminal connections are capped; a serve session must authenticate in time.
+
 ## 1.90.4 · 2026-10-19
 
 ### Added

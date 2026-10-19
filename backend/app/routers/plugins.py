@@ -8,6 +8,7 @@ import shutil
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request, Response
+from pydantic import BaseModel
 
 from app.core import config
 
@@ -43,16 +44,30 @@ TYPES = {".js": "text/javascript", ".mjs": "text/javascript", ".json": "applicat
 FOLDER_MAX = 1024 * 1024
 
 
-def _folder(fid: str):
+def _extra() -> Path | None:
+    """The plug-ins folder the person chose in Preferences (plugins_extra.json in the data folder), read only; None when
+    none is chosen or it is gone. Plugin folders in the data folder win over ones of the same name here."""
+    try:
+        raw = json.loads((config.data_dir() / "plugins_extra.json").read_text(encoding="utf-8")).get("path", "")
+    except (OSError, ValueError, AttributeError):
+        return None
+    path = Path(raw).expanduser() if isinstance(raw, str) and raw.strip() else None
+    return path if path and path.is_absolute() and path.is_dir() else None
+
+
+def _folder(fid: str, write: bool = False):
     if not FOLDER_ID.match(fid):
         raise HTTPException(status_code=422, detail="A plugin folder's name is lower-case letters, digits, dots, dashes and underscores.")
-    return _dir() / fid
+    own, extra = _dir() / fid, _extra()
+    if write or own.is_dir() or extra is None or not (extra / fid).is_dir():
+        return own
+    return extra / fid
 
 
-def _inside(fid: str, rel: str):
+def _inside(fid: str, rel: str, write: bool = False):
     if not FILE_PATH.match(rel) or ".." in rel.split("/") or Path(rel).suffix.lower() not in TYPES:
         raise HTTPException(status_code=422, detail="That file name is not allowed in a plugin folder.")
-    root = _folder(fid).resolve()
+    root = _folder(fid, write).resolve()
     path = (root / rel).resolve()
     if root not in path.parents:
         raise HTTPException(status_code=422, detail="That file name is not allowed in a plugin folder.")
@@ -88,12 +103,47 @@ def _manifest(folder: Path) -> tuple[dict | None, str | None]:
 
 @router.get("/folders")
 def list_folders() -> list[dict]:
-    out = []
-    for d in sorted(_dir().iterdir()):
-        if d.is_dir() and FOLDER_ID.match(d.name):
-            manifest, error = _manifest(d)
-            out.append({"id": d.name, "manifest": manifest, "error": error})
+    out, seen, extra = [], set(), _extra()
+    for base, chosen in ((_dir(), False), (extra, True)):
+        if base is None:
+            continue
+        try:
+            found = sorted(base.iterdir())
+        except OSError:
+            continue
+        for d in found:
+            if d.is_dir() and FOLDER_ID.match(d.name) and d.name not in seen:
+                seen.add(d.name)
+                manifest, error = _manifest(d)
+                out.append({"id": d.name, "manifest": manifest, "error": error, "chosen": chosen})
     return out
+
+
+class ExtraBody(BaseModel):
+    path: str = ""
+
+
+@router.get("/extra-folder")
+def get_extra_folder() -> dict:
+    """The plug-ins folder chosen in Preferences, besides the one in the data folder (empty when none)."""
+    extra = _extra()
+    return {"path": str(extra) if extra else "", "data": str(_dir())}
+
+
+@router.put("/extra-folder")
+def set_extra_folder(body: ExtraBody) -> dict:
+    """Chooses a folder whose subfolders (each plugin.json beside its module) are listed with the data folder's; empty clears it.
+    The folder is only read: a plugin there still asks the person's approval before it runs, in its sealed worker."""
+    raw = body.path.strip()
+    target = config.data_dir() / "plugins_extra.json"
+    if not raw:
+        target.unlink(missing_ok=True)
+        return {"path": "", "data": str(_dir())}
+    path = Path(raw).expanduser()
+    if not path.is_absolute() or not path.is_dir():
+        raise HTTPException(status_code=400, detail="Give the full path of a folder that exists.")
+    target.write_text(json.dumps({"path": str(path)}), encoding="utf-8")
+    return {"path": str(path), "data": str(_dir())}
 
 
 @router.get("/folders/{fid}/{rel:path}")
@@ -106,7 +156,7 @@ def read_folder_file(fid: str, rel: str) -> Response:
 
 @router.put("/folders/{fid}/{rel:path}")
 async def write_folder_file(fid: str, rel: str, request: Request) -> dict:
-    path = _inside(fid, rel)
+    path = _inside(fid, rel, True)
     body = await request.body()
     if not body or len(body) > FOLDER_MAX:
         raise HTTPException(status_code=422, detail="A plugin file is at most 1 MB.")
@@ -117,7 +167,7 @@ async def write_folder_file(fid: str, rel: str, request: Request) -> dict:
 
 @router.delete("/folders/{fid}")
 def remove_folder(fid: str) -> dict:
-    folder = _folder(fid)
+    folder = _folder(fid, True)
     if folder.is_dir():
         shutil.rmtree(folder)
     return {"removed": fid}

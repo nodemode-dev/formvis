@@ -4866,7 +4866,7 @@ export class Engine {
     const pick: { layer: Layer; target: Target; raster: Raster | TiledRaster; local: Mat } = lt
       ? { layer: al, target: 'pixels', raster: lt, local: placement(al.transform, lt.width, lt.height) }
       : this.target(p) as NonNullable<ReturnType<Engine['target']>>;
-    const white = pick.target === 'mask' && ((luminance(this.fg) >= 0.5) !== (this.brushMode === 'erase'));
+    const white = pick.target === 'mask' && ((this.maskPaint === 'follow' ? luminance(this.fg) >= 0.5 : this.maskPaint === 'white') !== (this.brushMode === 'erase'));
     // Lock Transparency: paint only where the layer has pixels (source-atop); the Eraser then paints the background
     // colour, since it may not make pixels transparent.
     const keepAlpha = pick.target !== 'mask' && !!p.activeLayer?.locks?.transparency;
@@ -7570,6 +7570,8 @@ export class Engine {
   uiHooks: { gradientEditor?: () => void; importBrushes?: () => void; brushPicker?: (x: number, y: number) => void; guideMenu?: (x: number, y: number) => void } = {};
   /** What a plain right-click does on a painting tool: a right-drag always sizes the tip; a click opens the Brush Preset picker when this is 'picker'. */
   brushRightClick: 'resize' | 'picker' = 'resize';
+  /** Painting a mask: white reveals, black hides, or follow the foreground colour (light paints white). */
+  maskPaint: 'follow' | 'white' | 'black' = 'follow';
   /** The shape tools' settings. mode (1.49.8, the owner's tool list): a shape layer, the work path, or
    *  pixels on the active layer; fill and stroke each the foreground, the background or none, and the stroke's width. */
   shapeSettings: { kind: 'rectangle' | 'ellipse' | PathShapeKind; cornerRadius: number; smoothCorners: boolean; mode: 'shape' | 'path' | 'pixels'; fill: 'fg' | 'bg' | 'none'; stroke: 'fg' | 'bg' | 'none'; strokeWidth: number; strokeDash: 'solid' | 'dashed' | 'dotted'; strokeAlign: 'inside' | 'center' | 'outside'; strokeCap: 'butt' | 'round' | 'square'; strokeJoin: 'miter' | 'round' | 'bevel'; strokeMiter: number; gradient: 'off' | 'linear' | 'radial' | 'angle'; gradientAngle: number; gradientEnd: RGB | null } & PathShapeOptions =
@@ -8487,9 +8489,9 @@ export class Engine {
 
   /** Auto-Align and Auto-Blend Layers (DEV_PLAN 32.1), one undo step for every layer: a pixel layer is drawn alone at the
    *  document's size, moved by `matrix` (3x3 row-major, its pixels to the document's, by an inverse map with bilinear
-   *  sampling), multiplied by the RGB `gain`, and put back with the document transform; `mask` (a grey image) becomes its
+   *  sampling), multiplied by the RGB `gain` (or by `field`, a coarse grid of RGB gains over the document sampled bilinearly), and put back with the document transform; `mask` (a grey image) becomes its
    *  layer mask. Layers that are not plain pixel layers are skipped. */
-  applyLayerEdits(items: Array<{ id: ID; matrix?: number[]; gain?: number[]; mask?: CanvasImageSource }>, undoName: string): boolean {
+  applyLayerEdits(items: Array<{ id: ID; matrix?: number[]; gain?: number[]; field?: { w: number; h: number; data: number[] }; mask?: CanvasImageSource }>, undoName: string): boolean {
     const p = this.current;
     if (!p) return false;
     const W = p.doc.width, H = p.doc.height, done: Array<{ id: ID; raster: Raster | null; mask: ReturnType<typeof LM.maskFromImage> | null }> = [];
@@ -8497,8 +8499,8 @@ export class Engine {
       const l = p.layer(it.id);
       if (!l || !l.raster || l.isGroup || l.adjustment || l.text || l.shape || l.smart) continue;
       let raster: Raster | null = null;
-      const m = it.matrix, g = it.gain;
-      const moved = !!m && m.some((v, i) => Math.abs(v - (i % 4 === 0 ? 1 : 0)) > 1e-9), toned = !!g && g.some((v) => Math.abs(v - 1) > 1e-6);
+      const m = it.matrix, g = it.gain, fld = it.field && it.field.w > 0 && it.field.h > 0 && it.field.data.length === it.field.w * it.field.h * 3 ? it.field : null;
+      const moved = !!m && m.some((v, i) => Math.abs(v - (i % 4 === 0 ? 1 : 0)) > 1e-9), toned = !!fld || (!!g && g.some((v) => Math.abs(v - 1) > 1e-6));
       if (moved || toned) {
         const src = ctxOf(this.renderLayerAlone(it.id)).getImageData(0, 0, W, H), out = new ImageData(W, H), sd = src.data, od = out.data;
         let inv = [1, 0, 0, 0, 1, 0, 0, 0, 1];
@@ -8507,10 +8509,16 @@ export class Engine {
           if (Math.abs(det) < 1e-12) continue;
           inv = [A, B, C, f * gg - d * i, a * i - c * gg, c * d - a * f, d * h - e * gg, b * gg - a * h, a * e - b * d].map((v) => v / det);
         }
-        const gr = g?.[0] ?? 1, gg2 = g?.[1] ?? 1, gb = g?.[2] ?? 1;
+        let gr = g?.[0] ?? 1, gg2 = g?.[1] ?? 1, gb = g?.[2] ?? 1;
         for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
           const px = x + 0.5, py = y + 0.5, z = inv[6] * px + inv[7] * py + inv[8];
           const o = (y * W + x) * 4;
+          if (fld) {
+            const u = Math.min(fld.w - 1, Math.max(0, px / W * fld.w - 0.5)), v = Math.min(fld.h - 1, Math.max(0, py / H * fld.h - 0.5)), u0 = Math.floor(u), v0 = Math.floor(v), u1 = Math.min(fld.w - 1, u0 + 1), v1 = Math.min(fld.h - 1, v0 + 1), tu = u - u0, tv = v - v0;
+            const at = (cx: number, cy: number, ch: number): number => fld.data[(cy * fld.w + cx) * 3 + ch];
+            const samp = (ch: number): number => (at(u0, v0, ch) * (1 - tu) + at(u1, v0, ch) * tu) * (1 - tv) + (at(u0, v1, ch) * (1 - tu) + at(u1, v1, ch) * tu) * tv;
+            gr = samp(0); gg2 = samp(1); gb = samp(2);
+          }
           if (Math.abs(z) < 1e-12) continue;
           const sx = (inv[0] * px + inv[1] * py + inv[2]) / z - 0.5, sy = (inv[3] * px + inv[4] * py + inv[5]) / z - 0.5;
           const x0 = Math.floor(sx), y0 = Math.floor(sy), fx = sx - x0, fy = sy - y0;
@@ -8568,6 +8576,35 @@ export class Engine {
       id = layer.id;
     });
     return id;
+  }
+
+  /** A filter layer: the filter runs on everything beneath it, limited by its mask and Limit, at the layer's opacity and
+   *  blend mode. Selection becomes its mask, as for an adjustment layer. */
+  addFilterLayer(filter: string, label: string, settings: Record<string, unknown>): ID | null {
+    let id: ID | null = null;
+    this.edit(`New ${label} Filter Layer`, (p) => {
+      const sel = p.selection;
+      let mask: Mask | undefined;
+      if (sel) {
+        const r = new Raster(p.doc.width, p.doc.height);
+        r.ctx.drawImage(sel.surface(), sel.x, sel.y);
+        r.touch();
+        mask = { raster: r, enabled: true, linked: true, placement: null };
+      }
+      const layer = newLayer(label, p.doc, { adjustment: { kind: 'filter', data: { ...defaultAdjustmentData('filter'), filter, settings: structuredClone(settings) } }, parentId: this.parentForNew(p), ...(mask ? { mask } : {}) });
+      this.insertAboveActive(p, layer);
+      if (mask) { p.maskTarget = true; p.selection = null; }
+      id = layer.id;
+    });
+    return id;
+  }
+
+  /** Changes the settings of the filter layer `id` (or the active one); the keys given replace the old ones. */
+  setFilterLayerSettings(settings: Record<string, unknown>, id?: ID): boolean {
+    const p = this.current, l = id ? p?.doc.layers.find((x) => x.id === id) : p?.activeLayer;
+    if (!p || !l?.adjustment || l.adjustment.kind !== 'filter') { this.notice('Select a filter layer.'); return false; }
+    const data = { ...l.adjustment.data, settings: { ...((l.adjustment.data.settings as Record<string, unknown> | undefined) ?? {}), ...structuredClone(settings) } };
+    return this.edit(`Edit ${l.name}`, (pp) => { pp.updateLayer(l.id, { adjustment: { kind: 'filter', data } }); return true; });
   }
 
   /** Layer > New Fill Layer (1.66.0): a fill layer over the whole canvas above the active layer, named by its
@@ -8936,6 +8973,29 @@ export class Engine {
     const out = new Raster(W, H);
     out.ctx.putImageData(img, 0, 0);
     p.updateLayer(l.id, { raster: out, transform: docTransform(W, H), mask: l.mask ? { ...l.mask, placement: l.mask.placement ?? l.transform } : null, shape: null });
+  }
+
+  /** Photomerge's edge fill: every transparent pixel of the active pixel layer (alpha under 250) is filled by Content-Aware
+   *  Fill from the picture around it, as one step. False when nothing is transparent or nothing opaque is left to copy. */
+  fillTransparentWithContent(): boolean {
+    const p0 = this.current, l0 = p0?.activeLayer;
+    if (!p0 || !l0?.raster || !this.paintable(l0)) return false;
+    return this.edit('Content-Aware Fill', (p) => {
+      const l = p.layer(l0.id), r = l?.raster;
+      if (!l || !r) return false;
+      const img = r.read(), mask = new Uint8Array(r.width * r.height);
+      let open = 0;
+      for (let i = 0; i < mask.length; i++) if (img.data[i * 4 + 3] < 250) { mask[i] = 1; open++; }
+      if (!open) return false;
+      const pm = premultiply(img.data);
+      if (!contentFill(pm, mask, r.width, r.height, null, FILL_DEFAULTS)) return false;
+      const out = new ImageData(r.width, r.height);
+      unpremultiply(pm, out.data);
+      const nr = new Raster(r.width, r.height);
+      nr.write(out);
+      p.updateLayer(l.id, { raster: nr });
+      return true;
+    });
   }
 
   /** Perspective Crop: the quad `quad` (top-left, top-right, bottom-right, bottom-left, in document pixels) becomes the
@@ -9404,6 +9464,7 @@ export class Engine {
       task: (fn) => this.task(fn),
       settle: () => this.settle(),
       flattened: () => this.flattened(),
+      render: (doc) => renderDoc(this.work, doc),
       emit: (what) => this.emit(what, null),
     };
   }
@@ -10324,6 +10385,7 @@ export class Engine {
     const w = this.warpState;
     if (!w) return;
     this.warpState = null;
+    w.stroke.release();
     TC.commitWarpStroke(this.commitHost, { project: w.project, layerId: w.layerId, stroke: w.stroke, surface: { canvas: w.surface } });
   }
 

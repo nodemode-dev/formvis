@@ -2,6 +2,7 @@ import { cornerAt, type Pt, type SubPath, type VectorPath } from '../../engine';
 import { simplify, smoothAnchors } from '../../engine/curve-fit';
 import { EdgeMap, liveWire, snapToEdge } from '../../engine/livewire';
 import type { Tool, ToolContext } from '../registry';
+import { badgeCursor } from './cursor-badges';
 
 let stroke: Pt[] | null = null;
 let chain: SubPath | null = null;
@@ -23,7 +24,7 @@ export const freeformPenTool: Tool = {
   id: 'freeformPen', label: 'Freeform Pen', key: 'P', order: 77.5,
   icon: () => 'tFreeformPen',
   hint: () => 'Drag to draw a path freehand · end near the start to close it · Alt-click for straight segments · Curve Fit sets how closely it follows · Magnetic hugs the edges within Width',
-  cursor: () => 'crosshair',
+  cursor: () => badgeCursor('freeformPen'),
   options: () => [
     { kind: 'title', text: 'Freeform Pen' },
     { kind: 'range', label: 'Curve fit', min: 0.5, max: 10, step: 0.5, unit: 'px', get: () => fit.px, set: (v: number) => { fit.px = v; } },

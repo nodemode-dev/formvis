@@ -1,4 +1,5 @@
-import { parseManifest, wasmCheckBytes, wasmParamArray, wasmValues, WASM_DEFAULT_LIMITS, WASM_LIMIT_RANGE, type WasmJob, type WasmLimits, type WasmManifest, type WasmReply, type WasmValues } from './wasm-plugin';
+import { parseManifest, wasmCheckBytes, wasmParamArray, wasmValues, WASM_ABI_V2, WASM_DEFAULT_LIMITS, WASM_LIMIT_RANGE, type WasmJob, type WasmLimits, type WasmManifest, type WasmReply, type WasmValues } from './wasm-plugin';
+import { imageFromPlane, planeFromImage, wasmDescriptor, wasmLayout, wasmPack, wasmPick, wasmSampleBytes, wasmUnpack, type WasmModel, type WasmPlane } from './wasm-abi2';
 
 /** The page side of the WebAssembly plug-in system: runs a module in a fresh Worker under a time limit, keeps the
  *  installed plug-ins in the browser's storage and loads them at startup. */
@@ -61,11 +62,26 @@ export async function inspectWasm(bytes: ArrayBuffer, sidecar?: string | null, l
 
 /** The plug-in's filter run on `src` (8 bit RGBA, straight alpha). Rejects on a time-out, a cancel or a plug-in error. */
 export async function runWasmFilter(entry: WasmEntry, values: WasmValues, src: ImageData, opts: WasmRunOptions = {}): Promise<ImageData> {
+  if (entry.manifest.abi === WASM_ABI_V2) return imageFromPlane(await runWasmPlane(entry, values, planeFromImage(src), 'rgb', 8, opts));
   const limits = opts.limits ?? wasmLimits(), bytes = entry.bytes.slice(0), pixels = new Uint8ClampedArray(src.data).buffer as ArrayBuffer;
   const job: WasmJob = { kind: 'run', bytes, memoryMb: limits.memoryMb, width: src.width, height: src.height, pixels, params: wasmParamArray(entry.manifest, wasmValues(entry.manifest, values)) };
   const r = await work(job, [bytes, pixels], opts, limits);
   if (r.kind !== 'done') throw new Error('The plug-in gave no picture.');
   return new ImageData(new Uint8ClampedArray(r.pixels), src.width, src.height);
+}
+
+/** An ABI v2 plug-in run on a plane of floats (16 bit, 32 bit, CMYK, Lab, one channel, with or without alpha) in the format the plug-in declares. */
+export async function runWasmPlane(entry: WasmEntry, values: WasmValues, plane: WasmPlane, model: WasmModel, depth: 8 | 16 | 32, opts: WasmRunOptions = {}): Promise<WasmPlane> {
+  const m = entry.manifest;
+  if (m.abi !== WASM_ABI_V2) throw new Error(`${m.name} speaks ABI 1 and takes only 8 bit RGBA pictures.`);
+  const pick = wasmPick(m, model, depth);
+  if ('error' in pick) throw new Error(pick.error);
+  const limits = opts.limits ?? wasmLimits(), lay = wasmLayout(m, plane, model, pick.format, depth), bytes = entry.bytes.slice(0), samples = wasmPack(plane, lay);
+  const job: WasmJob = { kind: 'run2', bytes, memoryMb: limits.memoryMb, width: plane.width, height: plane.height, samples, params: wasmParamArray(m, wasmValues(m, values)), desc: [...wasmDescriptor(lay, plane.width)] };
+  const r = await work(job, [bytes, samples], opts, limits);
+  if (r.kind !== 'done') throw new Error('The plug-in gave no picture.');
+  if (r.pixels.byteLength !== wasmSampleBytes(lay, plane.width, plane.height)) throw new Error('The plug-in returned a different amount of data.');
+  return wasmUnpack(r.pixels, plane, lay, m.alpha);
 }
 
 const DB = 'formvis-wasm-plugins', STORE = 'plugins';

@@ -1,5 +1,5 @@
 import type { Engine } from '../../engine';
-import { wasmPlugins, runWasmFilter, setWasmLimits, wasmLimits, type WasmEntry } from '../../engine/wasm-plugin-host';
+import { wasmPlugins, runWasmFilter, runWasmPlane, setWasmLimits, wasmLimits, type WasmEntry } from '../../engine/wasm-plugin-host';
 import { wasmDefaults, wasmKind, wasmValues, WASM_LIMIT_RANGE, type WasmValues } from '../../engine/wasm-plugin';
 import { Dialog } from '../dialogs';
 import { el, patchList, q, setDisabled, setHidden, setText, setValue } from '../dom';
@@ -144,6 +144,11 @@ export async function applyWasm(engine: Engine, entry: WasmEntry, values: WasmVa
   const p = engine.current, l = p?.activeLayer;
   if (l?.smart && !(p?.maskTarget && l.mask)) { engine.addSmartFilter(wasmKind(entry.manifest.id), { values: clean }); return true; }
   try {
+    const ch = l?.channels;
+    if (ch && entry.manifest.abi === 2 && p) {
+      const out = await runWasmPlane(entry, clean, { n: ch.n, alpha: true, width: ch.width, height: ch.height, data: ch.data }, ch.mode, p.doc.depth ?? 8, opts);
+      return engine.applyDeepFilter(entry.manifest.name, (d) => ({ ...d, data: out.data }));
+    }
     return await engine.applyImageEditAsync(entry.manifest.name, (src) => runWasmFilter(entry, clean, src, opts), entry.manifest.reach, (src) => src, 4);
   } catch (err) {
     engine.setPreview(null);

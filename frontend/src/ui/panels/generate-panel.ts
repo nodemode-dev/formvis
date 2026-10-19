@@ -6,7 +6,7 @@ import { onLanguage, t } from '../i18n';
 import { PanelGroup } from '../panel-group';
 import { BoxesSection } from '../boxes-panel';
 import { loadPrefs, recalled, remembered, updatePrefs } from '../prefs';
-import { fillModelPicker, generationModels, runGeneration } from './generate-image';
+import { SIZES, fillModelPicker, generationModels, runGeneration } from './generate-image';
 import { comfyuiStatusText, nodemodeStatusText } from './send-to';
 import { GenerationOptions } from './generation-options';
 import { PromptHistory } from './prompt-history';
@@ -45,15 +45,6 @@ const ACTS: readonly Act[] = [
   { key: 'run', cmd: 'comfyui-run', label: 'Run ComfyUI Workflow...', icon: 'genPlug', group: 'conn', tip: 'Runs a workflow saved from ComfyUI with Export (API) on this picture.' },
   { key: 'tocomfy', cmd: 'send-comfyui', label: 'Send to ComfyUI...', icon: 'send', group: 'conn', tip: 'Sends the picture, a layer or the selection to ComfyUI.' },
   { key: 'tonode', cmd: 'send-nodemode', label: 'Send to NodeMode...', icon: 'genNodes', group: 'conn', tip: 'Sends the picture, a layer or the selection to NodeMode.' },
-];
-
-/** The shapes Generate offers beside the picture's own: name, words, pixels (multiples of 16, within every local model's range). */
-export const SIZES: ReadonlyArray<readonly [string, string, number, number]> = [
-  ['1:1', 'Square 1:1 (1024 x 1024)', 1024, 1024],
-  ['4:3', 'Landscape 4:3 (1152 x 896)', 1152, 896],
-  ['3:4', 'Portrait 3:4 (896 x 1152)', 896, 1152],
-  ['16:9', 'Wide 16:9 (1344 x 768)', 1344, 768],
-  ['9:16', 'Tall 9:16 (768 x 1344)', 768, 1344],
 ];
 
 const FOLDS = 'formvis.generatePanel';

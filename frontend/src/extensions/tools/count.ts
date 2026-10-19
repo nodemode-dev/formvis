@@ -1,5 +1,6 @@
 import type { Pt, RGB } from '../../engine';
 import type { OptionSpec, Tool } from '../registry';
+import { badgeCursor } from './cursor-badges';
 
 const NEAR = 10;
 let drag: { i: number; from: Pt; start: Pt; moved: boolean } | null = null;
@@ -11,7 +12,7 @@ export const countTool: Tool = {
   id: 'count', label: 'Count', key: 'I', order: 80.8,
   icon: () => 'tCount',
   hint: () => 'Click to count · Drag a mark to move it · Alt-click a mark to remove it · New Group in the bar starts another count',
-  cursor: () => 'crosshair',
+  cursor: () => badgeCursor('count'),
   down(ctx, p) {
     const e = ctx.engine, counts = e.current?.doc.counts ?? [], groups = e.current?.doc.countGroups ?? [];
     if (p.button !== 0 || !e.current) return;

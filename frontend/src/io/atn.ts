@@ -109,7 +109,7 @@ function readItem(r: Reader): Item {
   return { enabled, event, name, desc };
 }
 
-const SIMPLE: Record<string, string> = { Invr: 'invert', Dstt: 'desaturate', Fltn: 'flatten', MrgV: 'merge-visible', Mrg2: 'merge-down', Dplc: 'duplicate', Dslc: 'deselect' };
+const SIMPLE: Record<string, string> = { Invr: 'invert', Dstt: 'desaturate', Fltn: 'flatten', MrgV: 'merge-visible', Mrg2: 'merge-down', Dplc: 'duplicate', Dslc: 'deselect', Invs: 'inverse' };
 
 /** The step an item stands for, or null when formvis has no equivalent. */
 function stepFor(it: Item): ActionStep | null {
@@ -144,6 +144,12 @@ function stepFor(it: Item): ActionStep | null {
     const radius = isUnit(rds) ? rds.value : typeof rds === 'number' ? rds : null;
     if (radius === null || !(radius > 0)) return null;
     return { kind: 'filter', filter: 'gaussianBlur', label, settings: { radius: Math.min(250, Math.max(0.1, radius)) } };
+  }
+  if (it.event === 'UnsM') {
+    const num = (v: Val | undefined): number | null => (isUnit(v) ? v.value : typeof v === 'number' ? v : null);
+    const amount = num(get('Amnt')), radius = num(get('Rds ')), threshold = num(get('Thsh')) ?? 0;
+    if (amount === null || radius === null || !(amount > 0) || !(radius > 0)) return null;
+    return { kind: 'filter', filter: 'unsharpMask', label, settings: { usmAmount: Math.min(500, Math.max(1, amount)), usmRadius: Math.min(1000, Math.max(0.1, radius)), threshold: Math.min(255, Math.max(0, Math.round(threshold))) } };
   }
   if (it.event === 'ImgS') {
     const w = get('Wdth'), h = get('Hght'), res = get('Rslt');
@@ -197,7 +203,7 @@ class Out {
   bytes(): Uint8Array { return Uint8Array.from(this.parts); }
 }
 
-type Field = ['enum', string, string] | ['TEXT', string] | ['bool', boolean] | ['UntF', string, number] | ['sel'];
+type Field = ['enum', string, string] | ['TEXT', string] | ['bool', boolean] | ['UntF', string, number] | ['long', number] | ['sel'];
 
 function descriptor(o: Out, classId: string, fields: Array<[string, Field]>): void {
   o.unicode('').id(classId).u32(fields.length);
@@ -207,11 +213,12 @@ function descriptor(o: Out, classId: string, fields: Array<[string, Field]>): vo
     else if (f[0] === 'TEXT') o.ascii('TEXT').unicode(f[1]);
     else if (f[0] === 'bool') o.ascii('bool').u8(f[1] ? 1 : 0);
     else if (f[0] === 'UntF') o.ascii('UntF').ascii(f[1]).f64(f[2]);
+    else if (f[0] === 'long') o.ascii('long').u32(f[1]);
     else o.ascii('obj ').u32(1).ascii('Enmr').unicode('').id('Chnl').id('Chnl').id('fsel');
   }
 }
 
-const SIMPLE_BACK: Record<string, string> = { invert: 'Invr', desaturate: 'Dstt', flatten: 'Fltn', 'merge-visible': 'MrgV', 'merge-down': 'Mrg2', duplicate: 'Dplc', deselect: 'Dslc' };
+const SIMPLE_BACK: Record<string, string> = { invert: 'Invr', desaturate: 'Dstt', flatten: 'Fltn', 'merge-visible': 'MrgV', 'merge-down': 'Mrg2', duplicate: 'Dplc', deselect: 'Dslc', inverse: 'Invs' };
 
 /** The bytes of one event item for `s`, or null when .atn has no event formvis can write for it. */
 function itemFor(s: ActionStep): Uint8Array | null {
@@ -223,6 +230,11 @@ function itemFor(s: ActionStep): Uint8Array | null {
   if (s.kind === 'command' && (s.id === 'flip-canvas-h' || s.id === 'flip-canvas-v')) { head('Flip', true); descriptor(o, 'null', [['Axis', ['enum', 'Ornt', s.id === 'flip-canvas-h' ? 'Hrzn' : 'Vrtc']]]); return o.bytes(); }
   if (s.kind === 'stop') { head('Stop', true); descriptor(o, 'null', [['Msge', ['TEXT', s.message]], ['Cntn', ['bool', s.allowContinue]]]); return o.bytes(); }
   if (s.kind === 'filter' && s.filter === 'gaussianBlur' && typeof s.settings.radius === 'number') { head('GsnB', true); descriptor(o, 'null', [['Rds ', ['UntF', '#Pxl', s.settings.radius]]]); return o.bytes(); }
+  if (s.kind === 'filter' && s.filter === 'unsharpMask' && typeof s.settings.usmAmount === 'number' && typeof s.settings.usmRadius === 'number') {
+    head('UnsM', true);
+    descriptor(o, 'null', [['Amnt', ['UntF', '#Prc', s.settings.usmAmount]], ['Rds ', ['UntF', '#Pxl', s.settings.usmRadius]], ['Thsh', ['long', Math.round(Number(s.settings.threshold) || 0)]]]);
+    return o.bytes();
+  }
   if (s.kind === 'imageSize') { head('ImgS', true); descriptor(o, 'null', [['Wdth', ['UntF', '#Pxl', s.w]], ['Hght', ['UntF', '#Pxl', s.h]], ['Rslt', ['UntF', '#Rsl', s.res]]]); return o.bytes(); }
   return null;
 }

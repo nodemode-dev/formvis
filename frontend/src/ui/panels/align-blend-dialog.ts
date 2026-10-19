@@ -5,7 +5,7 @@ import { el, setText } from '../dom';
 import { checkRow, selectRow, sliderRow } from './controls';
 
 export type AlignBlendMode = 'align' | 'blend';
-export interface AlignBlendOptions { projection?: string; method?: string; seamless?: boolean; vignette?: boolean; reference?: string; distortion?: boolean; registration?: string; halo?: number; depth?: boolean }
+export interface AlignBlendOptions { projection?: string; method?: string; seamless?: boolean; vignette?: boolean; reference?: string; distortion?: boolean; registration?: string; halo?: number; depth?: boolean; spatial?: boolean }
 /** A layer's radial gain from the engine: centre and radius in layer pixels, and the gain at 64 steps of r from 0 to 1. */
 interface VignetteGain { cx: number; cy: number; radius: number; lut: number[] }
 
@@ -22,6 +22,7 @@ export class AlignBlendDialog extends Dialog {
   private registration = 'features';
   private halo = 0;
   private depth = false;
+  private spatial = true;
   private readonly note = el('<p class="cv-dialog-note" role="status" style="min-height: 1.4em"></p>');
 
   static get(engine: Engine, mode: AlignBlendMode): AlignBlendDialog {
@@ -95,7 +96,7 @@ export class AlignBlendDialog extends Dialog {
       const refName = o.reference === 'top' ? 'top-most' : o.reference === 'middle' ? 'middle' : 'bottom-most';
       return ok ? `Aligned ${ids.length - 1} layer${ids.length > 2 ? 's' : ''} to the ${refName}.${vig}${lensNote}` : 'Nothing was aligned.';
     }
-    const r = await api.mergeBlend(blobs, o.method ?? 'panorama', !!o.seamless, o.halo ?? 0, !!o.depth);
+    const r = await api.mergeBlend(blobs, o.method ?? 'panorama', !!o.seamless, o.halo ?? 0, !!o.depth, o.spatial !== false);
     if (o.method === 'multiband' && r.blended && engine.current) {
       const W = engine.current.doc.width, H = engine.current.doc.height, bmp = await createImageBitmap(await (await fetch(`data:image/png;base64,${r.blended}`)).blob()), raster = new Raster(W, H);
       raster.ctx.drawImage(bmp, 0, 0, W, H);
@@ -105,7 +106,7 @@ export class AlignBlendDialog extends Dialog {
     }
     const masks: ImageBitmap[] = [];
     for (const m of r.masks) masks.push(await createImageBitmap(await (await fetch(`data:image/png;base64,${m}`)).blob()));
-    const ok = engine.applyLayerEdits(ids.map((id, i) => ({ id, mask: masks[i], gain: o.seamless ? r.tones[i] : undefined })), 'Auto-Blend Layers');
+    const ok = engine.applyLayerEdits(ids.map((id, i) => ({ id, mask: masks[i], gain: o.seamless ? r.tones[i] : undefined, field: o.seamless ? r.fields?.[i] ?? undefined : undefined })), 'Auto-Blend Layers');
     if (ok && r.depth && engine.current) {
       const W = engine.current.doc.width, H = engine.current.doc.height, bmp = await createImageBitmap(await (await fetch(`data:image/png;base64,${r.depth}`)).blob()), raster = new Raster(W, H);
       raster.ctx.drawImage(bmp, 0, 0, W, H);
@@ -128,10 +129,11 @@ export class AlignBlendDialog extends Dialog {
     } else {
       const meth = selectRow('Blend Method', [['panorama', 'Panorama'], ['stack', 'Stack Images'], ['multiband', 'Multiband (new layer)']], (v) => { this.method = v; });
       const tone = checkRow('Seamless Tones and Colors', (v) => { this.seamless = v; });
+      const spatial = checkRow('Follow tone changes across the overlap', (v) => { this.spatial = v; });
       const halo = sliderRow('Halo Control', 0, 100, 1, (v) => { this.halo = v; });
       const depth = checkRow('Depth Map Layer (Stack Images)', (v) => { this.depth = v; });
-      this.body.append(el('<p class="cv-dialog-note">Adds a layer mask to each selected layer. Panorama joins overlapping layers along soft seams; Stack Images keeps the sharpest layer at each point. Halo Control, for Stack Images, makes the transitions follow the sharp edges so a blurred neighbour does not bleed over them. Depth Map Layer adds a hidden grey layer showing which layer is sharpest where. Multiband mixes the layers band by band along the Panorama seams (a Laplacian pyramid blend) into a new layer and leaves the sources as they are.</p>'), meth.el, tone.el, halo.el, depth.el, this.note);
-      meth.set('panorama'); tone.set(true); halo.set(0); depth.set(false);
+      this.body.append(el('<p class="cv-dialog-note">Adds a layer mask to each selected layer. Panorama joins overlapping layers along soft seams; Stack Images keeps the sharpest layer at each point. Halo Control, for Stack Images, makes the transitions follow the sharp edges so a blurred neighbour does not bleed over them. Depth Map Layer adds a hidden grey layer showing which layer is sharpest where. Multiband mixes the layers band by band along the Panorama seams (a Laplacian pyramid blend) into a new layer and leaves the sources as they are. Seamless Tones matches each layer to the reference; with the tone-change option the gain varies smoothly across the picture where the overlap shows it varies, instead of one gain for the whole layer.</p>'), meth.el, tone.el, spatial.el, halo.el, depth.el, this.note);
+      meth.set('panorama'); tone.set(true); spatial.set(true); halo.set(0); depth.set(false);
     }
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => void this.apply());
@@ -142,7 +144,7 @@ export class AlignBlendDialog extends Dialog {
   private async apply(): Promise<void> {
     setText(this.note, this.mode === 'align' ? 'Aligning...' : 'Blending...');
     try {
-      const msg = await AlignBlendDialog.execute(this.engine, this.mode, { projection: this.projection, method: this.method, seamless: this.seamless, vignette: this.vignette, reference: this.reference, distortion: this.distortion, registration: this.registration, halo: this.halo, depth: this.depth });
+      const msg = await AlignBlendDialog.execute(this.engine, this.mode, { projection: this.projection, method: this.method, seamless: this.seamless, vignette: this.vignette, reference: this.reference, distortion: this.distortion, registration: this.registration, halo: this.halo, depth: this.depth, spatial: this.spatial });
       this.close();
       this.engine.notice(msg);
     } catch (err) { setText(this.note, err instanceof Error ? err.message : 'The engine could not do this.'); }

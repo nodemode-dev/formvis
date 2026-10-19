@@ -342,13 +342,19 @@ def models() -> list[str]:
     return [str(m.get("id")) for m in data if isinstance(m, dict) and m.get("id")][:200]
 
 
-def improve(prompt: str, instructions: str) -> str:
-    """`prompt` rewritten by the model under `instructions` (a prompt template)."""
+def improve(prompt: str, instructions: str, picture: str = "") -> dict:
+    """`prompt` rewritten by the model under `instructions` (a prompt template). With `picture` (a data address of the
+    area the prompt is for) and a model row marked as reading pictures, the model sees it too. The @img tokens of the
+    prompt stay: any the model dropped are put back at the end and named in `restored`."""
     prompt, instructions = prompt.strip(), instructions.strip()
     if not prompt:
         raise LlmError("Write a prompt to improve first.", 400)
+    seen = picture.startswith("data:image/") and len(picture) <= MAX_PICTURE_BYTES and bool(_active().get("vision"))
+    keep = "\n\nKeep every @img token such as @img1 exactly as written." if re.search(r"@img\d+", prompt, re.I) else ""
+    look = "\n\nThe picture is the area the prompt is for: describe what belongs there and do not invent what it contradicts." if seen else ""
+    user = [{"type": "text", "text": prompt[:4000]}, {"type": "image_url", "image_url": {"url": picture}}] if seen else prompt[:4000]
     body = {"model": _active().get("model"), "temperature": 0.7, "max_tokens": 600,
-            "messages": [{"role": "system", "content": f"{instructions[:8000]}\n\n{RULE}"}, {"role": "user", "content": prompt[:4000]}]}
+            "messages": [{"role": "system", "content": f"{instructions[:8000]}{keep}{look}\n\n{RULE}"}, {"role": "user", "content": user}]}
     choices = _call("/chat/completions", body).get("choices") or []
     text = str(((choices[0] if choices else {}).get("message") or {}).get("content") or "").strip()
     for prefix in ("prompt:", "rewritten prompt:", "improved prompt:"):
@@ -357,4 +363,8 @@ def improve(prompt: str, instructions: str) -> str:
     text = text.strip().strip('"').strip("\u201c\u201d").strip()
     if not text:
         raise LlmError("The model answered with nothing.", 502)
-    return text[:4000]
+    text = text[:3900]
+    lost = [t for t in dict.fromkeys(re.findall(r"@img\d+", prompt, re.I)) if t.lower() not in text.lower()]
+    if lost:
+        text = f"{text} {' '.join(lost)}"
+    return {"prompt": text, **({"restored": lost} if lost else {}), **({"seen": True} if seen else {})}

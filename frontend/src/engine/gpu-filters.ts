@@ -19,6 +19,18 @@ export interface GpuFilterRunner {
   develop(src: ImageData, state: DevelopState, seed: number): ImageData | null;
   /** The image resampled through a Liquify displacement field (liquifyImage), or null when the GPU cannot. */
   liquify(src: ImageData, field: { gw: number; gh: number; cell: number; d: Float32Array }, scale: number, outW: number, outH: number): ImageData | null;
+  /** A Smudge stroke over premultiplied bytes held on the GPU (the dabs run there, the changed rectangle is read back); null when the GPU cannot. */
+  smudge?(pixels: Uint8ClampedArray, w: number, h: number): GpuSmudge | null;
+}
+
+export interface GpuSmudge {
+  /** Loads the brush's paint: side x side premultiplied floats, as WarpStroke picks it up. */
+  setPaint(paint: Float32Array, side: number): boolean;
+  /** Lays the dabs in order at the given centres (the same weight, lay and take as WarpStroke.deposit); false on any failure. */
+  dabs(at: ReadonlyArray<{ x: number; y: number }>, radius: number, half: number, hardness: number, lay: number, take: number): boolean;
+  /** Copies the pixel rectangle back into `into` (the stroke's premultiplied bytes, same width). */
+  read(rect: { x: number; y: number; w: number; h: number }, into: Uint8ClampedArray): boolean;
+  close(): void;
 }
 
 let runner: GpuFilterRunner | null = null;

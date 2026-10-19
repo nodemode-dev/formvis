@@ -1,0 +1,23 @@
+# formvis WebAssembly filter plug-in, ABI v2. The sample: Channel Gain.
+#
+# Build (once: rustup target add wasm32-unknown-unknown):
+#   cargo build --release --target wasm32-unknown-unknown
+# The result is target/wasm32-unknown-unknown/release/channel_gain.wasm. In formvis, open Filter > Plug-ins
+# (WebAssembly) > Manage and choose Install. ABI v2 is described at the top of src/lib.rs and in docs/WASM_PLUGINS.md.
+
+[package]
+name = "channel-gain"
+version = "1.0.0"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[profile.release]
+opt-level = "z"
+lto = true
+panic = "abort"
+codegen-units = 1
+strip = true

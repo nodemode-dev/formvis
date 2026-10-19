@@ -2,7 +2,7 @@ import { Raster, type Engine } from '../engine';
 import type { McpResult } from './agent-bridge';
 import { FILM_STOCKS, curvePoints, filmStock, pointsText, type CurvePoint } from '../engine/film-stocks';
 import { withAiLabel, SOURCE, type AiLabel } from '../io/ai-label';
-import { GLB_LIMITS, GLB_VIEW, cleanView, loadModel, placedGlb, renderModel, type GlbView } from '../io/glb-scene';
+import { GLB_LIMITS, GLB_VIEW, cleanView, glbKeep, glbRestore, glbWith, loadModel, placedGlb, renderModel, type GlbKept, type GlbView, type PlacedGlb } from '../io/glb-scene';
 
 /** The bundled plugins' MCP tools (U2): EU AI label, Film pack and 3D object layers. The window half of ailabel_add,
  *  ailabel_remove, ailabel_info, film_looks, film_apply_look, film_add_point, film_copy_points, film_paste_points,
@@ -190,13 +190,24 @@ const patchOf = (a: Record<string, unknown>): Partial<Record<keyof GlbView, unkn
 const bytesOf = (data: string): ArrayBuffer => { const u = Uint8Array.from(atob(data), (c) => c.charCodeAt(0)); return u.buffer; };
 const viewJson = (v: GlbView): Record<string, unknown> => ({ turn: v.turn, tilt: v.tilt, roll: v.roll, size: v.size, x: v.x, y: v.y, z: v.z, fov: v.fov, light_direction: v.lightDir, light_height: v.lightHeight, light_strength: v.strength, ambient: v.ambient, room_light: v.room, shadow: v.shadow, light_color: v.color });
 
+/** The posed model of a 3D layer: from this session, else read back from the bytes the document kept. */
+async function placedOf(p: NonNullable<Engine['current']>, id: string): Promise<PlacedGlb | undefined> {
+  const have = placedGlb.get(id);
+  if (have) return have;
+  const k = p.doc.glb?.[id];
+  if (!k || !p.layer(id)) return undefined;
+  const g = await glbRestore(k as GlbKept);
+  placedGlb.set(id, g);
+  return g;
+}
+
 async function glbTool(e: Engine, name: string, a: Record<string, unknown>): Promise<McpResult> {
   const p = e.current as NonNullable<Engine['current']>, str = (k: string): string => (typeof a[k] === 'string' ? a[k] as string : '');
   try {
     if (name === 'glb_info') {
       if (str('id')) {
-        const g = placedGlb.get(str('id'));
-        if (!g || !p.layer(str('id'))) return fail(`${str('id')} is not a 3D layer placed in this session: its pose is kept only until the window closes. Give path to the model file instead, or glb_place it again.`);
+        const g = await placedOf(p, str('id'));
+        if (!g || !p.layer(str('id'))) return fail(`${str('id')} is not a 3D layer placed from a model. Give path to the model file instead, or glb_place it again.`);
         return text(`${g.name}: ${g.info.meshes} meshes, ${g.info.triangles} triangles. Pose ${JSON.stringify(viewJson(g.view))}`, { name: g.name, info: g.info, view: viewJson(g.view), ...(g.depthId ? { depth_layer: g.depthId } : {}) });
       }
       if (!str('data')) return fail('Give path (an absolute path to a .glb or .gltf file) or the id of a 3D layer from glb_place.');
@@ -210,9 +221,10 @@ async function glbTool(e: Engine, name: string, a: Record<string, unknown>): Pro
       const canvas = await renderModel(model, view, W, H), r = new Raster(W, H);
       r.ctx.drawImage(canvas, 0, 0, W, H); r.touch();
       let id = '', depthId = '';
-      e.edit('Place 3D Model', () => {
+      e.edit('Place 3D Model', (pp) => {
         e.insertRasterLayer(r, `3D: ${label}`, 0, 0, {}, 'Place 3D Model');
         id = e.activeLayer?.id ?? '';
+        if (id) pp.doc = glbWith(pp.doc, id, glbKeep({ bytes, name: label, view }));
       });
       if (a.depth === true) {
         const dc = await renderModel(model, view, W, H, 'depth'), d = new Raster(W, H);
@@ -225,8 +237,8 @@ async function glbTool(e: Engine, name: string, a: Record<string, unknown>): Pro
       placedGlb.set(id, { bytes, name: label, view, info: model.info, ...(depthId ? { depthId } : {}) });
       return text(`Placed ${label} as layer ${id} (${model.info.triangles} triangles)${depthId ? `; its depth map is layer ${depthId}` : ''}. glb_edit poses it again while this window stays open.`, { id, ...(depthId ? { depth_layer: depthId } : {}), info: model.info, view: viewJson(view) });
     }
-    const id = str('id'), g = placedGlb.get(id), l = p.layer(id);
-    if (!g || !l) return fail(`${id || 'No id'} is not a 3D layer placed in this session (glb_place makes one; its pose is kept until the window closes).`);
+    const id = str('id'), g = await placedOf(p, id), l = p.layer(id);
+    if (!g || !l) return fail(`${id || 'No id'} is not a 3D layer placed from a model (glb_place makes one; the document keeps the model and its pose).`);
     const keys = Object.keys(patchOf(a)).filter((k) => patchOf(a)[k as keyof GlbView] !== undefined);
     if (!keys.length && a.depth !== true) return fail(`Give at least one of ${Object.keys(GLB_LIMITS).join(', ')}, light_color or depth. Ranges: ${Object.entries(GLB_LIMITS).map(([k, v]) => `${k} ${v[0]} to ${v[1]}`).join('; ')}.`);
     const view = cleanView(g.view, patchOf(a)), model = await loadModel(g.bytes.slice(0)), canvas = await renderModel(model, view, W, H);
@@ -234,8 +246,9 @@ async function glbTool(e: Engine, name: string, a: Record<string, unknown>): Pro
     img.ctx.drawImage(canvas, 0, 0, W, H);
     const data = img.ctx.getImageData(0, 0, W, H);
     let ok = false;
-    e.edit('Edit 3D Model', () => {
+    e.edit('Edit 3D Model', (pp) => {
       ok = e.replaceLayerPixels(id, data, 'Edit 3D Model');
+      if (ok) pp.doc = glbWith(pp.doc, id, glbKeep({ bytes: g.bytes, name: g.name, view }));
     });
     if (!ok) return fail('The 3D layer could not be re-posed: it must still be a pixel layer of the document\'s size.');
     g.view = view;

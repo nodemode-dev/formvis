@@ -7,7 +7,7 @@ import json
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
-from app.routers.terminal import origin_ok, require_local
+from app.routers.terminal import origin_ok, release_socket, require_local, take_socket
 from app.services import claude_code
 
 router = APIRouter(prefix="/api/agent/claude", tags=["agent"])
@@ -77,6 +77,9 @@ async def stream(ws: WebSocket) -> None:
     if not origin_ok(ws.headers.get("origin"), ws.headers.get("host")):
         await ws.close(code=4403)
         return
+    if not take_socket():
+        await ws.close(code=4429)
+        return
     await ws.accept()
     queue: asyncio.Queue = asyncio.Queue()
     claude_code.AGENT.subscribers.add(queue)
@@ -95,5 +98,6 @@ async def stream(ws: WebSocket) -> None:
     except WebSocketDisconnect:
         pass
     finally:
+        release_socket()
         sender.cancel()
         claude_code.AGENT.subscribers.discard(queue)

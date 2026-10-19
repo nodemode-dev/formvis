@@ -42,6 +42,8 @@ export class VanishingPointDialog extends Dialog {
   private stampSource: P2 | null = null;
   private stroke: { from: ImageData; offset: P2; last: P2 } | null = null;
   private brush = 40;
+  private hardness = 0.5;
+  private stampOpacity = 1;
   private drag: { corner: number } | { grab: P2; at: P2 } | null = null;
 
   constructor(private readonly engine: Engine) {
@@ -54,6 +56,8 @@ export class VanishingPointDialog extends Dialog {
     }
     const size = sliderRow('Paste size (% of the plane)', 5, 100, 1, (v) => { this.pasteSize = v / 100; this.resizePaste(); });
     const brush = sliderRow('Stamp brush (px)', 2, 300, 1, (v) => { this.brush = v; });
+    const hard = sliderRow('Stamp hardness (%)', 0, 100, 1, (v) => { this.hardness = v / 100; });
+    const flow = sliderRow('Stamp opacity (%)', 1, 100, 1, (v) => { this.stampOpacity = v / 100; });
     const add = el('<button class="cv-btn cv-btn-ghost" type="button">New plane</button>') as HTMLButtonElement;
     add.addEventListener('click', () => { this.commitPaste(); this.addPlane({ corners: [], plane: null }); this.setTool('create'); });
     const child = el('<button class="cv-btn cv-btn-ghost" type="button">Connected plane</button>') as HTMLButtonElement;
@@ -65,8 +69,8 @@ export class VanishingPointDialog extends Dialog {
     const estimate = el('<button class="cv-btn cv-btn-ghost" type="button">Estimate focal length</button>') as HTMLButtonElement;
     estimate.addEventListener('click', () => { this.focalPx = null; this.rebuildChildren(); this.syncPlanes(); this.render(); });
     planeBar.append(estimate);
-    this.body.append(bar, this.view, this.planeRow.el, planeBar, this.angleRow.el, this.depthRow.el, this.focalRow.el, this.source.el, size.el, brush.el, this.note);
-    size.set(40); brush.set(40); this.angleRow.set(0); this.depthRow.set(0); this.focalRow.set(50);
+    this.body.append(bar, this.view, this.planeRow.el, planeBar, this.angleRow.el, this.depthRow.el, this.focalRow.el, this.source.el, size.el, brush.el, hard.el, flow.el, this.note);
+    size.set(40); brush.set(40); hard.set(50); flow.set(100); this.angleRow.set(0); this.depthRow.set(0); this.focalRow.set(50);
     this.view.addEventListener('pointerdown', (e) => this.down(e));
     this.view.addEventListener('pointermove', (e) => this.move(e));
     this.view.addEventListener('pointerup', () => { this.drag = null; this.stroke = null; this.render(); });
@@ -251,7 +255,7 @@ export class VanishingPointDialog extends Dialog {
 
   private dab(pt: P2): void {
     if (!this.work || !this.plane || !this.stroke) return;
-    stampInPerspective(this.work, this.stroke.from, this.plane, pt[0], pt[1], this.brush / 2, 0.5, this.stroke.offset);
+    stampInPerspective(this.work, this.stroke.from, this.plane, pt[0], pt[1], this.brush / 2, this.hardness, this.stroke.offset, this.stampOpacity);
     (this.workCanvas.getContext('2d') as CanvasRenderingContext2D).putImageData(this.work, 0, 0, Math.floor(pt[0] - this.brush), Math.floor(pt[1] - this.brush), this.brush * 2 + 2, this.brush * 2 + 2);
     this.render();
   }
