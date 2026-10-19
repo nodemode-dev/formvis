@@ -9,7 +9,7 @@ OPT = ".cv-opt-group:not([hidden]) .cv-opt"
 def test_delete_cropped_pixels_trims_or_keeps(page):
     page.evaluate(SETUP)
     box = page.locator(OPT, has_text="Delete Cropped Pixels").locator("input")
-    assert box.is_checked()                                               # on by default, as Photoshop's
+    assert box.is_checked()                                               # on by default
     page.evaluate("window.formvis.engine.straightenCrop({ x: 50, y: 0, w: 100, h: 100 }, 0, false)")
     assert page.evaluate(LAYER) == [100, 100, 0]                          # trimmed to the canvas
     assert page.evaluate("window.formvis.engine.revealAll()") is False      # nothing left beyond it

@@ -497,7 +497,7 @@ export const de: Record<string, string> = {
   'Paste from': 'Einfügen aus',
   'Paste size (% of the plane)': 'Einfügegröße (% der Ebene)',
   'Patchwork': 'Patchwork',
-  'Paths to Illustrator': 'Pfade nach Illustrator',
+  'Paths to AI File': 'Pfade als AI-Datei',
   'Pattern Overlay': 'Musterüberlagerung',
   'Performance Benchmark': 'Leistungs-Benchmark',
   'Photo': 'Foto',

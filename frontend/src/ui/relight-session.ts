@@ -12,6 +12,7 @@ import { t } from './i18n';
 import { checkRow, colorRow, selectRow, sliderRow, type Row } from './panels/controls';
 
 const PREVIEW_SIDE = 1280;
+let mogeNoted = false;   // the Depth Anything fallback is explained once per run of the app
 const USER_LOOKS = 'formvis.relight.looks';
 const TYPE_ICON: Record<RelightType, string> = { point: 'lightPoint', spot: 'lightSpot', sun: 'sun', area: 'lightArea', strip: 'lightStrip', ring: 'lightRing' };
 const hex = (c: { r: number; g: number; b: number }): string => `#${[c.r, c.g, c.b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
@@ -164,6 +165,7 @@ export class RelightSession {
       for (let i = 3; i < sp.albedo.length; i += 4) sp.albedo[i] = this.proxy.base[i];
       this.proxy = { ...this.proxy, albedo: sp.albedo, split: { shading: sp.shading, residual: sp.residual, gain: levelGain(sp.level), subject: sp.subject, texture: sp.texture }, normals: sp.normals, scene: !!sp.depth, geo: splitGeometry(sp, pw, ph, this.proxy.geo) };
       this.splitUsed = sp.engine;
+      this.noteMoge(sp);
       setText(note, sp.engine === 'marigold' ? t('Old light removed with Marigold: Original lighting now sets how much of it stays.') : t(this.engines.regions === 'parts' ? 'Old light removed per material (skin, hair, clothes, scene) with the subject\'s own detail kept: Original lighting sets how much of it stays.' : 'Old light removed by colour regions with the subject\'s own detail kept: Original lighting sets how much of it stays.'));
       this.schedule();
     } catch { setText(note, t('The photo\'s own light could not be separated, so new light is added on top.')); }
@@ -177,6 +179,31 @@ export class RelightSession {
       this.content.split = 'marigold';
       const f = this.full;
       if (f && this.proxy) await this.loadSplit(new ImageData(new Uint8ClampedArray(f.data), f.w, f.h), this.proxy.geo.width, this.proxy.geo.height);
+    } catch { setText(note, t('The download could not start. Is the engine running?')); }
+    btn.disabled = false;
+  }
+
+  /** Said once: the scene's shape came from Depth Anything's depth because MoGe-2 is not usable, with a way to install it. */
+  private noteMoge(sp: LightSplit): void {
+    const e = this.engines;
+    if (mogeNoted || !e || e.moge !== false || sp.geometry !== 'slope') return;
+    mogeNoted = true;
+    const note = q(this.panel, '.cv-relight-moge-note'), btn = q<HTMLButtonElement>(this.panel, '.cv-relight-moge');
+    setText(note, e.mogeModel ? t('The scene\'s shape came from Depth Anything because MoGe-2 cannot run yet: the engine needs the packages in backend/requirements_relight.txt.') : t('The scene\'s shape came from Depth Anything. MoGe-2 (Microsoft, MIT) gives better depth, normals and camera.'));
+    setHidden(note, false);
+    setHidden(btn, !!e.mogeModel);
+  }
+
+  private async getMoge(): Promise<void> {
+    const btn = q<HTMLButtonElement>(this.panel, '.cv-relight-moge'), note = q(this.panel, '.cv-relight-moge-note');
+    btn.disabled = true;
+    try {
+      if (await installModel('moge-2-vits-normal', (text) => setText(note, text))) {
+        setHidden(btn, true);
+        setText(note, t('MoGe-2 is downloaded. It also needs the packages in backend/requirements_relight.txt in the engine; the next Relight uses it once they are there.'));
+        const f = this.full;
+        if (f && this.proxy) await this.loadSplit(new ImageData(new Uint8ClampedArray(f.data), f.w, f.h), this.proxy.geo.width, this.proxy.geo.height);
+      }
     } catch { setText(note, t('The download could not start. Is the engine running?')); }
     btn.disabled = false;
   }
@@ -567,7 +594,12 @@ export class RelightSession {
     parts.title = t('MediaPipe selfie multiclass (Apache-2.0) and YuNet (MIT): skin, hair, clothes and faces are shaded each on their own, so the subject keeps its detail.');
     parts.addEventListener('click', () => { void this.getParts(); });
     const splitNote = el('<p class="cv-relight-split cv-note"></p>');
-    scene.prepend(splitRow.el, splitNote, parts, mg);
+    const mogeNote = el('<p class="cv-relight-moge-note cv-note" role="status" hidden></p>');
+    const moge = el<HTMLButtonElement>('<button class="cv-relight-btn cv-relight-moge" type="button" hidden></button>');
+    setText(moge, t('Download MoGe-2'));
+    moge.title = t('MoGe-2 small by Microsoft (MIT): depth, surface normals and the camera from one picture, used for Relight\'s scene.');
+    moge.addEventListener('click', () => { void this.getMoge(); });
+    scene.prepend(splitRow.el, splitNote, parts, mg, mogeNote, moge);
     scene.append(orig.el, delight.el, ambient.el, shine.el, shadows.el, roomOrig.el, roomLight.el, roomShadows.el, roomDepth.el);
     return root;
   }

@@ -17,7 +17,7 @@
     { "prompt": "Which rendering intent should I use to convert an sRGB photo to FOGRA39 for print?", "better_fit": "formvis-colour-science" },
     { "prompt": "Explain how a Gaussian blur works.", "better_fit": "none, a general question" },
     { "prompt": "Write a Python script that resizes every JPEG in a folder.", "better_fit": "none, a script unrelated to formvis" },
-    { "prompt": "Add a new filter to Photoshop through a UXP plugin.", "better_fit": "none, a different product" },
+    { "prompt": "Add a new filter to a different image editor through a UXP plugin.", "better_fit": "none, a different product" },
     { "prompt": "Make a YouTube thumbnail with the title Launch Day using formvis.", "better_fit": "formvis-driving" },
     { "prompt": "Review my React app's z-index problems and suggest a scale.", "better_fit": "none, a different codebase" }
   ]

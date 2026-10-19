@@ -2,7 +2,36 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number runs 1 to 9, then the middle one rises (1.50.9, then 1.51.x).
 
-The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
+The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
+
+## 1.87.5 · 2026-10-19
+
+### Removed
+
+- Image > Content-Aware Scale and its seam-carving engine route (/api/seam). Use Image > Generative Expand to widen a picture; a warp-based Content-Aware Scale will replace it.
+
+### Added
+
+- Develop: a Parametric Curve (Shadows, Darks, Lights, Highlights and three splits), Defringe under Optics, Point Color, and every section folds and has its own Reset.
+- Layer > Frequency Separation splits a layer into a blurred Low Frequency layer and a High Frequency layer in Linear Light, in one step.
+- Transform a Copy (Alt+Mod+T); Layer > Shape > Copy and Paste Shape Style; Paths > Clipping Path (saved with the project); a click with a Shape tool asks for the shape's size; the Move tool's Warp grid size (3 to 6); Enter with the Pen in Shape mode makes the shape layer; Alt-click a segment with Direct Selection selects its whole subpath; Shift locks the axis while dragging a distort corner; the shape style dialog keeps dashed strokes and their alignment.
+- Type: Crisp, Strong, Windows and Windows LCD anti-aliasing; Hyphenate; a Language per type layer; Type > Add Font Files and Add Web Font (for this session); Type > Load Default Type Styles; Font Preview Size Huge; Mod+Shift+. and , change the type size by 2 (with Alt, by 10).
+- Painting symmetry for the Brush, Pencil and Eraser: Vertical, Horizontal, Both axes or Radial (3, 4, 6 or 8) about the document's centre; a Pressure curve (Linear, Soft, Firm, S curve) for pen pressure; Alt-click with the Brush picks the foreground colour.
+- Animated GIF and WebP files open as one layer per frame with a frame animation in the Timeline, keeping each frame's delay and the loop count, so Export GIF writes them back animated.
+- Preferences > Plugins > Local models has cards for the sky model and the Relight depth model, a Remove button on every simple model, and a Download source setting (upstream, a mirror or a custom address). Select > Sky offers to download its model; Relight says once when it falls back to a simpler depth and offers the model.
+- File Info lists the settings each generated picture was made with (prompt, seed, steps, LoRAs), kept on its layer and saved in the project.
+
+### Changed
+
+- NOTICE.md lists every crate, Python package and native library the app ships, with the required credits and where the LGPL sources are; the licence texts are in a new licenses/ folder that every installer carries.
+- File > Export > Paths to AI File (was named after another product); messages, notes and comments throughout name file formats rather than other products.
+
+### Fixed
+
+- Desktop app: GIF, MP4, WebM, PNG sequences, OpenRaster, PSB, HDR, EXR, paths, every zip (Package, Image Assets, Artboards, Batch, Data Sets, Save for Web slices), LUTs, presets, actions, Measurement CSV and droplets are written again (they stopped with "Invalid export file name."); a failed Image Assets write on save is reported.
+- Color Settings' CMYK and Gray policies (Preserve, Convert, Off, and the ask-when-opening choices) apply when a CMYK or gray file opens; gray PNG, JPEG, TIFF and WebP files open as Grayscale documents.
+- Artboards to PDF: Include ICC profile works, embedding the document's RGB profile for every page.
+- Local generation keeps its settings when the picture enters the document (they were deleted with the engine's copy).
 
 ## 1.87.4 · 2026-10-19
 
@@ -392,7 +421,7 @@ The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries 
 ### Fixed
 
 - OpenEXR files open and export again with OpenCV builds that ship no EXR codec.
-- Ctrl+J (Cmd+J) is Layer via Copy while a layer is open, as in Photoshop; it toggles the terminal otherwise or when the terminal has focus.
+- Ctrl+J (Cmd+J) is Layer via Copy while a layer is open, as is usual; it toggles the terminal otherwise or when the terminal has focus.
 - The History panel's History Brush column no longer overlaps the row below.
 - Browser tests brought up to date with 16- and 32-bit painting, giant-document budgets, the Gradient Editor's strips, Image > Mode and the dock Timeline; the LaMa tests skip when the model is not installed.
 
@@ -505,7 +534,7 @@ The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries 
 ### Added
 
 - Window > Gradients, Patterns and Shapes panels: preset tiles that pick the Gradient tool's gradient, the Pattern Stamp's pattern or the Shape tool's custom shape in one click.
-- Custom shapes export as Photoshop `.csh`; Tool Presets export and import as a file.
+- Custom shapes export as `.csh`; Tool Presets export and import as a file.
 - Slices are kept in PSD both ways, and auto slices are drawn around the user slices.
 - View > Pixel Aspect Ratio Correction now stretches the canvas itself, with every tool working in document pixels.
 - View > Fit Layer(s) on Screen and Fit Artboard on Screen; View > Guides > New Guide Layout and New Guides From Shape.
@@ -524,7 +553,7 @@ The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries 
 
 ### Added
 
-- The Styles panel exports every style as a Photoshop `.asl` file.
+- The Styles panel exports every style as an `.asl` file.
 - Record Measurements also keeps the selection's gray value (mean, minimum, maximum), integrated density and centroid; Select Data Points offers them as columns, off by default.
 
 ### Changed
@@ -536,7 +565,7 @@ The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries 
 
 ### Added
 
-- The Styles panel loads Photoshop `.asl` style files (and formvis style JSON): drop shadow, inner shadow, outer and inner glow, stroke, colour and gradient overlay, satin and bevel come across.
+- The Styles panel loads `.asl` style files (and formvis style JSON): drop shadow, inner shadow, outer and inner glow, stroke, colour and gradient overlay, satin and bevel come across.
 - OpenType features are read from each font: the Glyphs dialog shows only the alternates the font has, and the Type options mark features the font lacks.
 - Image > Analysis > Select Data Points: choose which columns the Measurement Log and its CSV show (Circularity added, off by default); Record Measurements still keeps every value.
 
@@ -549,7 +578,7 @@ The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries 
 - Layer > Video Layers > Interpret Footage: a video layer's own frame rate, how many times it loops, and whether its alpha is straight, ignored or premultiplied with a matte; the clip lengthens to match, kept in `.fmv`.
 - The Styles panel shows each style as a swatch.
 - The selected slice is highlighted, with corner handles.
-- The Preset Manager exports gradients as Photoshop `.grd` and swatches as `.ase`, and loads Photoshop `.csh` custom shapes.
+- The Preset Manager exports gradients as `.grd` and swatches as `.ase`, and loads `.csh` custom shapes.
 
 ## 1.70.5 · 2026-10-14
 
@@ -612,14 +641,14 @@ The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries 
 
 - Window > Arrange: 2-up Vertical and Horizontal, 3-up, 4-up and 6-up show the other open documents as live views beside the canvas (a click makes one the active document), and Consolidate All to Tabs goes back.
 - Image > Calculations takes either source from another open document of the same size, and shows a small live preview of the result.
-- The Preset Manager loads Photoshop `.grd` gradients (noise gradients skipped) and GIMP `.ggr` gradients.
+- The Preset Manager loads `.grd` gradients (noise gradients skipped) and `.ggr` gradients.
 
 ## 1.69.8 · 2026-10-14
 
 ### Added
 
 - Paint.NET `.pdn` files open with their layers, names, visibility, opacity and blend modes (the thumbnail as one layer when the layers cannot be read).
-- Affinity `.af`, `.afphoto`, `.afdesign` and `.afpub` files open as the preview they carry; their layers are not readable.
+- `.af`, `.afphoto`, `.afdesign` and `.afpub` files open as the preview they carry; their layers are not readable.
 - Layer > Type > Type on Arc and Type on Circle: live, editable type set along an arc or a circle around the selection or the document's centre.
 - Window > Arrange: Match Zoom, Match Location, Match Rotation and Match All across the open documents.
 
@@ -630,13 +659,13 @@ The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries 
 - Video layers are saved in `.fmv` projects with their painted frames and their original footage, Render Video draws each layer's own frame at every time, and Layer > Video Layers > Replace Footage swaps the clip.
 - `./formvis cli process`: images in, the commands or an action run on each in the open window, files out (PNG, JPEG, WebP or TIFF) beside the inputs or in a folder.
 - `./formvis cli droplet` and File > Automate > Create Droplet: a script that runs an action on the files dropped on it.
-- Krita `.kra` files open with their paint layers, groups, opacity, visibility and blend modes.
+- `.kra` files open with their paint layers, groups, opacity, visibility and blend modes.
 
 ## 1.69.6 · 2026-10-14
 
 ### Added
 
-- Layered TIFF: TIFFs saved by Photoshop with layers open as layers, and File > Export > TIFF with Layers writes one that Photoshop and formvis read back.
+- Layered TIFF: TIFFs saved with layers open as layers, and File > Export > TIFF with Layers writes one that other layered-TIFF readers and formvis read back.
 - Layer > Video Layers: New Video Layer from File, New Blank Video Layer, Insert Blank Frame, Duplicate Frame, Delete Frame, Restore Frame, Restore All Frames and Rasterize; each frame can be painted, and the timeline shows the frame at the playhead.
 - Window > Glyphs: a font's characters by Unicode block, with recently used ones, inserted into the selected type layer.
 - Window > Tool Presets: named snapshots of a tool's options, applied again in one click.
@@ -645,7 +674,7 @@ The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries 
 
 ### Added
 
-- Edit > Presets > Preset Manager: brushes, swatches, gradients, patterns and custom shapes listed by type, renamed, deleted, loaded and saved as sets; Load Swatches and Save Swatches read Photoshop `.aco` and Adobe `.ase` and write `.aco`.
+- Edit > Presets > Preset Manager: brushes, swatches, gradients, patterns and custom shapes listed by type, renamed, deleted, loaded and saved as sets; Load Swatches and Save Swatches read `.aco` and `.ase` and write `.aco`.
 - View > Pattern Preview: the document drawn again around itself, to check that a tile repeats cleanly.
 - View > Pixel Art Preview: the document drawn with hard pixel edges at every zoom.
 - Image > Analysis: Set Measurement Scale, Record Measurements (area, perimeter, size, ruler length and angle, count, in the scale's units), Place Scale Marker and the Measurement Log with CSV export; the scale and the records are saved in the project.
@@ -671,7 +700,7 @@ The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries 
 
 ### Added
 
-- The Actions panel imports Photoshop `.atn` files: Invert, Desaturate, Flatten, Merge Visible, Merge Down, Duplicate, Select All, Deselect, Flip Canvas and Gaussian Blur become steps, and the note names the steps with no formvis equivalent.
+- The Actions panel imports `.atn` files: Invert, Desaturate, Flatten, Merge Visible, Merge Down, Duplicate, Select All, Deselect, Flip Canvas and Gaussian Blur become steps, and the note names the steps with no formvis equivalent.
 - File > Scripts > Script Events Manager: an action runs when formvis starts or when a document is made, opened, saved, closed, exported or printed.
 - File > Automate > Conditional Mode Change: converts to a target mode only from the chosen source modes, and is recorded into actions.
 
@@ -680,7 +709,7 @@ The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries 
 ### Added
 
 - File > Export > Color Lookup Tables: the visible adjustment layers recorded as a 3D LUT in CUBE, 3DL and CSP, at 17, 33 or 65 points a side.
-- File > Export > Paths to Illustrator: the document's paths written as an Illustrator `.ai` file, one group per path.
+- File > Export > Paths to AI File: the document's paths written as an `.ai` file, one group per path.
 - File > Place Embedded, beside Place Linked: a picture placed as an embedded smart object.
 - File > Package: the project file and every linked file it uses, gathered into one zip with a `Links` folder.
 
@@ -726,7 +755,7 @@ The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries 
 
 - Layer > Layer Comps: New, Apply, Update, Delete, Next and Previous. A comp keeps each layer's visibility, position and appearance, and is saved with the project. The Layer Comps panel follows.
 - Image > Variables: visibility, text and pixel replacement variables, data sets imported from CSV or tab-separated text, and Apply Data Set. The Define and Data Sets dialogs follow.
-- Photoshop pattern files (.pat): import and export.
+- Pattern files (.pat): import and export.
 
 ## 1.68.4 · 2026-10-14
 
@@ -803,7 +832,7 @@ The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries 
 
 ### Added
 
-- Brushes behave as in Photoshop through the whole stroke: Flow lays the same build-up at any spacing, Opacity can follow pen pressure or Fade with each pixel kept at the highest opacity reached in the stroke (a hard press over a light one goes darker, repeated light presses never pass the light value), Fade on size, opacity and flow, and the start of a stroke eases in instead of jumping. The Brush tool starts with size following pen pressure, and the options bar has a pressure-for-opacity toggle.
+- Brushes behave as is usual through the whole stroke: Flow lays the same build-up at any spacing, Opacity can follow pen pressure or Fade with each pixel kept at the highest opacity reached in the stroke (a hard press over a light one goes darker, repeated light presses never pass the light value), Fade on size, opacity and flow, and the start of a stroke eases in instead of jumping. The Brush tool starts with size following pen pressure, and the options bar has a pressure-for-opacity toggle.
 - The desktop app reads the monitor's colour profile and draws the canvas through it (Linux, macOS, Windows); the browser build says it assumes an sRGB display.
 - DNG camera profiles (`.dcp`) in Develop and on Camera Raw import, with a Profile choice.
 - Proof Setup presets (profile, intent, black point compensation, paper and ink) and colour export presets.
@@ -939,18 +968,18 @@ The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries 
 
 ### Added
 
-- Layer > New Fill Layer > Solid Color..., Gradient... and Pattern..., as Photoshop's: a layer of one colour, a gradient or a pattern that covers the whole canvas and stays editable. It is made at once, in the foreground colour, the Gradient tool's gradient or the Pattern Stamp's pattern, with a dialog over it whose every change shows on the canvas: the name, and the colour; or the gradient, Style (Linear, Radial, Angle, Reflected, Diamond), Angle, Scale, Reverse, Dither and Align with Layer; or the pattern, Angle, Scale and Link with Layer. OK keeps it as one New Fill Layer step; Cancel takes it back, leaving nothing to redo. It comes with Photoshop's layer mask as the target, revealing all, or made from the selection, which an aligned gradient or a linked pattern then fits; painting it paints the mask.
+- Layer > New Fill Layer > Solid Color..., Gradient... and Pattern...: a layer of one colour, a gradient or a pattern that covers the whole canvas and stays editable. It is made at once, in the foreground colour, the Gradient tool's gradient or the Pattern Stamp's pattern, with a dialog over it whose every change shows on the canvas: the name, and the colour; or the gradient, Style (Linear, Radial, Angle, Reflected, Diamond), Angle, Scale, Reverse, Dither and Align with Layer; or the pattern, Angle, Scale and Link with Layer. OK keeps it as one New Fill Layer step; Cancel takes it back, leaving nothing to redo. It comes with a layer mask as the target, revealing all, or made from the selection, which an aligned gradient or a linked pattern then fits; painting it paints the mask.
 - Layer > Layer Content Options... shows that dialog again for a fill layer, as does a double-click on its thumbnail, and changes it as one Modify Fill Layer step; on an adjustment layer it shows the adjustment's settings.
-- A fill layer stays endless, as Photoshop's: moved or transformed, it is drawn again over the canvas and its mask moves instead; Canvas Size and Image Size draw it again at the new size. Filters, adjustments and warps say how to change it instead (Layer Content Options, its mask, or rasterizing it), and painting its own content asks to rasterize it first.
+- A fill layer stays endless: moved or transformed, it is drawn again over the canvas and its mask moves instead; Canvas Size and Image Size draw it again at the new size. Filters, adjustments and warps say how to change it instead (Layer Content Options, its mask, or rasterizing it), and painting its own content asks to rasterize it first.
 - Layer > Rasterize > Rasterize Fill Content turns the selected fill layers into pixel layers, keeping their masks; Rasterize Layer and All Layers include them.
-- Projects keep fill layers live, and PSD files carry them both ways as Photoshop's Solid Color, Gradient and Pattern fill layers: a gradient with its stops, style, angle, scale, Reverse, Dither and Align with Layer; a pattern with its pattern, which the PSD's patterns hold. A pattern fill's scale and angle, which the PSD writer cannot keep, are noted on saving.
+- Projects keep fill layers live, and PSD files carry them both ways as Solid Color, Gradient and Pattern fill layers: a gradient with its stops, style, angle, scale, Reverse, Dither and Align with Layer; a pattern with its pattern, which the PSD's patterns hold. A pattern fill's scale and angle, which the PSD writer cannot keep, are noted on saving.
 - Fill layers work in 16-bit, 32-bit, Lab and CMYK documents, their floats or inks taken from each drawing; in CMYK the dialog's preview shows the fill as its inks will. Agents' get_document names their kind (fill:solid, fill:gradient or fill:pattern).
 
 ## 1.65.9 · 2026-10-08
 
 ### Added
 
-- Edit > Search... (Ctrl+K) finds any command or tool from a few letters of its name in order (gblur for Gaussian Blur), as Photoshop's Search does: the twelve best are listed with where each sits in the menus and its keys, names matching before menu paths; the arrow keys and Enter, or a click, run one, and a command that cannot run now shows dimmed; with nothing typed, what was last run from it comes first.
+- Edit > Search... (Ctrl+K) finds any command or tool from a few letters of its name in order (gblur for Gaussian Blur): the twelve best are listed with where each sits in the menus and its keys, names matching before menu paths; the arrow keys and Enter, or a click, run one, and a command that cannot run now shows dimmed; with nothing typed, what was last run from it comes first.
 
 ### Fixed
 
@@ -960,9 +989,9 @@ The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries 
 
 ### Added
 
-- File > Save a Copy... (Alt+Ctrl+S) saves a copy of the document to the library under another name, with Layers, or flattened into one layer without them, as Photoshop's; the document in its tab keeps its name, its library file and its unsaved changes.
-- File > Revert puts back the document as last saved, read again from the library into the same tab, as one step that Undo takes back (with its paths and timeline), as Photoshop's; F12 in the desktop app, where browsers keep F12 for their developer tools.
-- File > Close All and Close Others close every document, or every one but the current, in turn: each with unsaved changes is brought forward and asked about, with Apply to All when more are waiting, and Cancel stops there. Close Others is Alt+Ctrl+P; in the desktop app Close All is Alt+Ctrl+W, as Photoshop's, and Close Tab keeps Ctrl+W.
+- File > Save a Copy... (Alt+Ctrl+S) saves a copy of the document to the library under another name, with Layers, or flattened into one layer without them; the document in its tab keeps its name, its library file and its unsaved changes.
+- File > Revert puts back the document as last saved, read again from the library into the same tab, as one step that Undo takes back (with its paths and timeline); F12 in the desktop app, where browsers keep F12 for their developer tools.
+- File > Close All and Close Others close every document, or every one but the current, in turn: each with unsaved changes is brought forward and asked about, with Apply to All when more are waiting, and Cancel stops there. Close Others is Alt+Ctrl+P; in the desktop app Close All is Alt+Ctrl+W, and Close Tab keeps Ctrl+W.
 - File > Automate > Fit Image... resamples the image, its proportions kept, to fit within a width and a height in pixels, with Don't Enlarge, as one step; actions record it with its box, so Batch fits every file to it.
 
 ### Fixed
@@ -973,25 +1002,25 @@ The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries 
 
 ### Added
 
-- Edit > Toggle Last State (Alt+Ctrl+Z) undoes the last step, or brings back the one just undone, as Photoshop's.
+- Edit > Toggle Last State (Alt+Ctrl+Z) undoes the last step, or brings back the one just undone.
 - Edit > Paste Special: Paste in Place (Shift+Ctrl+V) puts the clipboard where it was copied from; Paste Into (Alt+Shift+Ctrl+V) pastes it as a new layer centred on the selection with a canvas-sized layer mask showing it only inside the selection, unlinked so the picture moves behind it; Paste Outside does the same with the mask showing it only outside. The selection becomes the mask. Pictures copied in other apps paste the same way.
-- Edit > Stroke... strokes the selection's edge, or with no selection the edge of the layer's pixels: Width, Color, Location (Inside, Center, Outside), Mode, Opacity and Preserve Transparency, as Photoshop's dialog. A whole width on a straight edge is crisp; corners outside are rounded; a selection on the canvas's border is stroked inside it.
+- Edit > Stroke... strokes the selection's edge, or with no selection the edge of the layer's pixels: Width, Color, Location (Inside, Center, Outside), Mode, Opacity and Preserve Transparency. A whole width on a straight edge is crisp; corners outside are rounded; a selection on the canvas's border is stroked inside it.
 
 ## 1.65.6 · 2026-10-08
 
 ### Added
 
-- Edit > Transform > Again (Shift+Ctrl+T in the desktop app, where browsers keep that key) repeats the last transform, as Photoshop's: the same move, scale, turn, flip or distortion applied again in the same place, so a layer turned about a point keeps turning about it. Alt+Shift+Ctrl+T repeats it on a copy of the selected layers, for step and repeat. A move, a handle's scale or turn, the options bar's values, a flip and a Skew, Distort or Perspective all count.
+- Edit > Transform > Again (Shift+Ctrl+T in the desktop app, where browsers keep that key) repeats the last transform: the same move, scale, turn, flip or distortion applied again in the same place, so a layer turned about a point keeps turning about it. Alt+Shift+Ctrl+T repeats it on a copy of the selected layers, for step and repeat. A move, a handle's scale or turn, the options bar's values, a flip and a Skew, Distort or Perspective all count.
 - Edit > Transform > Scale and Rotate: the Move tool's handles only scale, or every handle and the space outside the box turn the layer, until Enter or Escape (the status bar says which).
 - Edit > Transform > Skew, Distort and Perspective: the free distort with handles at its corners and the middles of its sides; Skew slides a side along itself and a corner along one of its sides, Distort moves either anywhere, Perspective moves a corner and the other corner of that side apart; switching between them keeps the shape; Enter applies, as a step named after the mode.
 - Edit > Transform > Rotate 180°, Rotate 90° Clockwise and Rotate 90° Counter Clockwise turn the selected layer, or the selected layers together, about their centre without resampling; the flips are in the same submenu. The quarter turns can be recorded in actions.
-- Edit > Transform Layer, Free Transform, stands above the Transform submenu as in Photoshop.
+- Edit > Transform Layer, Free Transform, stands above the Transform submenu as is usual.
 
 ## 1.65.5 · 2026-10-08
 
 ### Added
 
-- Image > Auto Tone (Shift+Ctrl+L), Auto Contrast (Alt+Shift+Ctrl+L) and Auto Color (Shift+Ctrl+B), as Photoshop's: Levels set from the active layer's own histogram, each channel stretched, the three stretched together so colours keep their balance, or each channel stretched with neutral midtones. Within a selection the selected part's histogram sets them and only that part changes.
+- Image > Auto Tone (Shift+Ctrl+L), Auto Contrast (Alt+Shift+Ctrl+L) and Auto Color (Shift+Ctrl+B): Levels set from the active layer's own histogram, each channel stretched, the three stretched together so colours keep their balance, or each channel stretched with neutral midtones. Within a selection the selected part's histogram sets them and only that part changes.
 - Image > Adjustments > Desaturate (Shift+Ctrl+U) turns the layer grey at each pixel's lightness; Equalize spreads its tones evenly from black to white; Replace Color... changes the colours clicked in the picture (Shift-click adds one, Alt-click takes one away, or pick it in Color) by Hue, Saturation and Lightness, with Fuzziness for how close counts, a box showing what is chosen, a Result colour you can also pick, and a live preview.
 - Image > Image Rotation > Arbitrary... turns the canvas by any angle, clockwise or counter clockwise: the canvas grows to hold it, the Background's new corners take the background colour, and alpha channels and the selection turn with it.
 - Image > Crop cuts the canvas to the selection's bounds.
@@ -1002,7 +1031,7 @@ The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries 
 
 ### Added
 
-- Layer > Combine Shapes, as Photoshop's: with several shape layers selected, Unite Shapes, Subtract Front Shape, Intersect Shape Areas and Exclude Overlapping Shapes make them one shape layer, the front shapes joining the back one with that operation and staying editable; with one shape layer of several outlines, its outlines after the first take the operation. Merge Shape Components bakes the operations into plain outlines. Shapes moved, scaled or turned combine where they are.
+- Layer > Combine Shapes: with several shape layers selected, Unite Shapes, Subtract Front Shape, Intersect Shape Areas and Exclude Overlapping Shapes make them one shape layer, the front shapes joining the back one with that operation and staying editable; with one shape layer of several outlines, its outlines after the first take the operation. Merge Shape Components bakes the operations into plain outlines. Shapes moved, scaled or turned combine where they are.
 - Layer > New > Artboard... asks for the new artboard's name, size and background; Layer > New > Artboard from Group... makes a folder an artboard over its contents, named and sized as you like.
 - Layer > New > Frame from Layers puts each selected layer in a frame fitted to its pixels, as the Frame tool makes them.
 
@@ -1014,18 +1043,18 @@ The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries 
 
 ### Added
 
-- Layer > Link Layers links the selected layers so they move together, as Photoshop's linked layers do: dragging, nudging or transforming one moves the others, and a position lock on any of them stops the move. With linked layers selected it reads Unlink Layers. Layers duplicated together are linked to each other, not to the layers they copy.
+- Layer > Link Layers links the selected layers so they move together: dragging, nudging or transforming one moves the others, and a position lock on any of them stops the move. With linked layers selected it reads Unlink Layers. Layers duplicated together are linked to each other, not to the layers they copy.
 - Layer > Select Linked Layers adds every layer linked to the selected ones to the selection.
 - Layer > Lock Layers (Ctrl+/, Cmd+/ on a Mac) sets Transparency, Image, Position and All for all the selected layers at once; with a folder selected it is Lock All Layers in Group, for every layer in it.
-- The Layers panel marks linked layers with a chain and locked layers with a lock (dimmed when only part is locked), and its foot starts with Link Layers, as Photoshop's does. The layers' context menu has Link Layers and Select Linked Layers.
-- Links are saved in `.fmv` projects and travel to and from Photoshop as its linked layers.
+- The Layers panel marks linked layers with a chain and locked layers with a lock (dimmed when only part is locked), and its foot starts with Link Layers. The layers' context menu has Link Layers and Select Linked Layers.
+- Links are saved in `.fmv` projects and travel to and from PSD files as linked layers.
 
 ## 1.65.2 · 2026-10-07
 
 ### Added
 
-- Bevel & Emboss has Photoshop's Technique (Smooth, Chisel Hard or Chisel Soft), its Stroke Emboss style, which raises the layer's stroke, and its two elements: Contour, the bevel's profile through a curve over a range, and Texture, a pattern pressed into the surface at a scale and a depth, inverted or not.
-- Layer > Layer Style lists Blending Options and every effect, as Photoshop's does; each opens the Layer Style dialog at that effect and turns it on.
+- Bevel & Emboss has Technique (Smooth, Chisel Hard or Chisel Soft), its Stroke Emboss style, which raises the layer's stroke, and its two elements: Contour, the bevel's profile through a curve over a range, and Texture, a pattern pressed into the surface at a scale and a depth, inverted or not.
+- Layer > Layer Style lists Blending Options and every effect; each opens the Layer Style dialog at that effect and turns it on.
 - Layer > Layer Style > Global Light sets the document's light, the angle and altitude that every effect using Global Light shares.
 - Layer > Layer Style > Create Layers turns the active layer's style into layers of their own that look the same: drop shadows, outer glows and outside strokes below the layer; overlays, satin, inner shadows and glows, inside strokes and an inner bevel clipped to it above; other bevels and center strokes above it, unclipped. The layer keeps no style.
 - Layer > Layer Style > Hide All Effects hides every layer's style without removing it, and Show All Effects brings them back; the Layers panel strikes out the fx mark of a hidden style. Hidden styles stay hidden in `.fmv` projects and PSD files.
@@ -1033,7 +1062,7 @@ The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries 
 
 ### Changed
 
-- A PSD layer style switched off in Photoshop now opens hidden, where formvis left it out, and Bevel & Emboss keeps Chisel Hard, Chisel Soft and Stroke Emboss both ways, where formvis drew and wrote Smooth and Inner Bevel. A bevel's Contour and Texture are not read from or written to PSD files yet, and formvis says so when it meets one.
+- A PSD layer style switched off in the file now opens hidden, where formvis left it out, and Bevel & Emboss keeps Chisel Hard, Chisel Soft and Stroke Emboss both ways, where formvis drew and wrote Smooth and Inner Bevel. A bevel's Contour and Texture are not read from or written to PSD files yet, and formvis says so when it meets one.
 
 ## 1.65.1 · 2026-10-07
 
@@ -1059,7 +1088,7 @@ The four agent fixes and the count come from a bug bounty run on 6 and 7 October
 
 ### Added
 
-- Select > Reselect brings back the selection the last Deselect dropped. It has no key yet; Keyboard Shortcuts can give it Photoshop's Shift+Ctrl+D.
+- Select > Reselect brings back the selection the last Deselect dropped. It has no key yet; Keyboard Shortcuts can give it Shift+Ctrl+D.
 - Select > Grow and Select > Similar add the pixels within the Magic Wand's Tolerance of the colours selected: those touching the selection (Grow) or anywhere in the picture (Similar), sampled from the layer or all layers as the Magic Wand's options say.
 - Select > Transform Selection puts the Move tool's handles on the selection's outline alone, leaving the pixels where they are; Enter applies it as one step and Escape cancels.
 - Select > Convert to Shape makes a shape layer in the foreground colour from the selection's outline, smoothed, its corners kept and its holes cut.
@@ -1069,7 +1098,7 @@ The four agent fixes and the count come from a bug bounty run on 6 and 7 October
 
 ### Added
 
-- Layer > Layer Mask follows Photoshop's: Reveal All and Hide All (whatever is selected), Reveal Selection and Hide Selection, and From Transparency, which turns the layer's transparency into its mask and makes its pixels opaque, the picture unchanged.
+- Layer > Layer Mask offers Reveal All and Hide All (whatever is selected), Reveal Selection and Hide Selection, and From Transparency, which turns the layer's transparency into its mask and makes its pixels opaque, the picture unchanged.
 - Layer > Mask All Objects finds the objects in the layer on this computer and adds, above it, a folder holding an empty folder for each object, masked to that object, ready for adjustments; the picture stays as it was.
 - Layer > Matting: Color Decontaminate (Amount and Radius, by the layer's mask, else its transparency), Defringe (Width), Remove Black Matte and Remove White Matte, each one step on the active layer's pixels.
 - Layer > Rasterize: Type, Shape, Smart Object and Layer for the selected layers of that kind, and All Layers for every type, shape and smart object layer in the document.
@@ -1093,8 +1122,8 @@ The four agent fixes and the count come from a bug bounty run on 6 and 7 October
 
 ### Changed
 
-- The Layer menu follows Photoshop's order: Arrange, Align, Distribute and Flip come before Merge Down, Merge Visible and Flatten Image, which end the menu. In a window 900 pixels tall the menu now scrolls to its last rows.
-- Mod+J's command is named Layer via Copy wherever it shows, as in Photoshop; without a selection it still duplicates the layer.
+- The Layer menu follows the usual order: Arrange, Align, Distribute and Flip come before Merge Down, Merge Visible and Flatten Image, which end the menu. In a window 900 pixels tall the menu now scrolls to its last rows.
+- Mod+J's command is named Layer via Copy wherever it shows; without a selection it still duplicates the layer.
 
 ### Fixed
 
@@ -1125,18 +1154,18 @@ The four agent fixes and the count come from a bug bounty run on 6 and 7 October
 ### Added
 
 - Edit > Fade (Shift+Mod+F): right after a filter, an adjustment, a fill or a brush stroke on a layer's pixels, fade its result back toward what was there, with an opacity and any of the 27 blend modes, previewed live; one undo step named after what it fades. In 8-bit RGB documents.
-- Filter > Last Filter (Mod+F, Photoshop's long-standing key; Keyboard Shortcuts can move it to Alt+Mod+F, its current one): the first item of the Filter menu repeats the last filter you applied, with the same settings, and shows its name.
+- Filter > Last Filter (Mod+F, a long-standing key; Keyboard Shortcuts can move it to Alt+Mod+F, its current one): the first item of the Filter menu repeats the last filter you applied, with the same settings, and shows its name.
 - Filter > Blur Gallery > Spin Blur: blurs along arcs around a centre, inside an ellipse whose size, rotation and blur angle you set; it previews live, works as a smart filter, records in actions, and can be applied by agents.
 
 ## 1.64.3 · 2026-10-07
 
 ### Added
 
-- Filter > Render: Flame (six flame types along the path you choose, or an arc low in the picture when there is none), Picture Frame (sixteen frames) and Tree (19 kinds of tree), listed first in the submenu as in Photoshop. Each has a Randomize for its arrangement, previews live, works as a smart filter, records in actions (Flame with its path, so the action still plays after the path is gone), and can be applied by agents.
+- Filter > Render: Flame (six flame types along the path you choose, or an arc low in the picture when there is none), Picture Frame (sixteen frames) and Tree (19 kinds of tree), listed first in the submenu. Each has a Randomize for its arrangement, previews live, works as a smart filter, records in actions (Flame with its path, so the action still plays after the path is gone), and can be applied by agents.
 
 ### Changed
 
-- Clouds, Fibers, Flame, Picture Frame and Tree now work on a new, empty layer, which is given pixels for them, as Photoshop draws clouds or a tree onto a new layer (in 8-bit RGB documents). Filters that change the pixels already there, Difference Clouds, Lens Flare and Lighting Effects among them, still need some.
+- Clouds, Fibers, Flame, Picture Frame and Tree now work on a new, empty layer, which is given pixels for them (in 8-bit RGB documents). Filters that change the pixels already there, Difference Clouds, Lens Flare and Lighting Effects among them, still need some.
 
 ## 1.64.2 · 2026-10-07
 
@@ -1154,14 +1183,14 @@ The four agent fixes and the count come from a bug bounty run on 6 and 7 October
 
 ### Added
 
-- Filter > Distort: Displace (with any open document as the map), Pinch, Polar Coordinates, Ripple, Shear, Spherize, Twirl, Wave (with Randomize) and ZigZag. As in Photoshop, they work around the selection's bounds, or the whole canvas without one.
+- Filter > Distort: Displace (with any open document as the map), Pinch, Polar Coordinates, Ripple, Shear, Spherize, Twirl, Wave (with Randomize) and ZigZag. As is usual, they work around the selection's bounds, or the whole canvas without one.
 - Filter > Pixelate: Color Halftone, Crystallize, Facet, Fragment, Mezzotint, Mosaic and Pointillize (its dots sit on the background colour).
 - Like the filters before them, each previews live, works as a smart filter, records in actions, and can be applied by agents.
 
 ### Fixed
 
 - Filters with a dialog now work on a smart object from the Filter menu: they're added as smart filters. Before, formvis asked to rasterize the object instead. Editing a smart filter from the Smart Filters window had the same problem and now works too.
-- Offset now wraps inside the selection, or inside the canvas without one, as Photoshop's does. It used to wrap around the whole layer.
+- Offset now wraps inside the selection, or inside the canvas without one. It used to wrap around the whole layer.
 - De-Interlace's odd and even lines, and Reduce Noise's JPEG grid, now line up with the document, even on a layer that has been moved.
 
 ## 1.64.0 · 2026-10-07
@@ -1173,7 +1202,7 @@ The four agent fixes and the count come from a bug bounty run on 6 and 7 October
 
 ### Changed
 
-- The Blur, Noise and Sharpen submenus list their filters alphabetically, as Photoshop does, and Noise now comes before Sharpen.
+- The Blur, Noise and Sharpen submenus list their filters alphabetically, and Noise now comes before Sharpen.
 - In the Actions window, the Dialog toggle no longer shows on steps for filters that have no dialog.
 
 ## 1.63.0 · 2026-10-03
@@ -1249,7 +1278,7 @@ The four agent fixes and the count come from a bug bounty run on 6 and 7 October
 
 ### Fixed
 
-- On a Mac, `./formvis install` left out six Python packages formvis needs, so formvis's engine could not start, and with it local generation, Photoshop and TIFF files, and API keys in the system password store. Run `./formvis install` once to add them.
+- On a Mac, `./formvis install` left out six Python packages formvis needs, so formvis's engine could not start, and with it local generation, PSD and TIFF files, and API keys in the system password store. Run `./formvis install` once to add them.
 
 ## 1.61.9 · 2026-10-03
 
@@ -1379,13 +1408,13 @@ Very large documents, first step (the register's M5).
 
 ### Added
 
-- Fades with black or white in the timeline (Add Transition, Fade to), as Photoshop's Fade With Black and Fade With White: the clip turns to that colour at its edge instead of becoming transparent. Agents can ask for them too.
+- Fades with black or white in the timeline (Add Transition, Fade to): the clip turns to that colour at its edge instead of becoming transparent. Agents can ask for them too.
 
 ## 1.59.9 · 2026-10-02
 
 ### Changed
 
-- Moving a layer whose position is animated (dragging it with the Move tool, or the arrow keys) keys its new place at the playhead, as Photoshop does, in one undo step; its box and handles show where the layer is seen at that moment.
+- Moving a layer whose position is animated (dragging it with the Move tool, or the arrow keys) keys its new place at the playhead, in one undo step; its box and handles show where the layer is seen at that moment.
 
 ## 1.59.8 · 2026-10-02
 
@@ -1472,7 +1501,7 @@ Video (the parity plan's L1, the last open row).
 ### Known
 
 - Video needs ffmpeg installed (macOS: brew install ffmpeg; Windows: winget install ffmpeg), or FORMVIS_FFMPEG set to it; formvis does not bundle it.
-- A clip arrives as frames on layers, as Photoshop's Video Frames to Layers does; a single layer that plays a clip is not offered.
+- A clip arrives as frames on layers; a single layer that plays a clip is not offered.
 
 ## 1.58.8 · 2026-10-02
 
@@ -1559,7 +1588,7 @@ Photomerge and Merge to HDR (the parity plan's L6, first part).
 
 ### Known
 
-- Photoshop's Perspective, Cylindrical and Collage layouts are not offered (the OpenCV build used does not expose them).
+- The Perspective, Cylindrical and Collage layouts are not offered (the OpenCV build used does not expose them).
 
 ## 1.58.1 · 2026-10-01
 
@@ -1586,7 +1615,7 @@ CMYK and Lab: 16 and 32 bits, proofing and HDR exports (DEV_PLAN 22.11).
 
 ### Added
 
-- 16 Bits/Channel in CMYK and Lab documents, as Photoshop's: they stay CMYK or Lab, and Export TIFF writes 16-bit CMYK (with its profile) or 16-bit CIELab.
+- 16 Bits/Channel in CMYK and Lab documents: they stay CMYK or Lab, and Export TIFF writes 16-bit CMYK (with its profile) or 16-bit CIELab.
 - 32 Bits/Channel from any document: CMYK and Lab go through RGB first, Bitmap through Grayscale, Indexed Color through RGB.
 - Proof Setup, Proof Colors and Gamut Warning in CMYK and Lab documents.
 - Export Radiance HDR and OpenEXR from any document; below 32 bits they hold the picture as linear light.
@@ -1611,7 +1640,7 @@ Select > Sky and Select > Focus Area (the parity plan's L5).
 ### Added
 
 - Select > Sky: a sky model on this computer selects the sky, soft at its edges (176 MB, MIT, from Preferences > Plugins > Local models).
-- Select > Focus Area: selects the in-focus parts of the picture from local sharpness, with In-Focus Range, Image Noise Level and Soften Edge and a live preview, as Photoshop's.
+- Select > Focus Area: selects the in-focus parts of the picture from local sharpness, with In-Focus Range, Image Noise Level and Soften Edge and a live preview.
 
 ## 1.57.5 · 2026-10-01
 
@@ -1620,7 +1649,7 @@ Grayscale at every depth and from every mode (DEV_PLAN 22.11).
 ### Added
 
 - Image > Mode > Grayscale in 16-bit documents (keeping 16 bits) and 32-bit documents (luminance in linear light, light above white kept). Every command now works in 16-bit documents.
-- Grayscale from a Lab document takes its Lightness, as Photoshop does.
+- Grayscale from a Lab document takes its Lightness.
 - Grayscale, Bitmap and Indexed Color from CMYK documents, and Bitmap, Indexed Color and CMYK Color from Lab documents, going through RGB first.
 
 ## 1.57.4 · 2026-10-01
@@ -1633,18 +1662,18 @@ Remove finds people and distractions (the parity plan's M1).
 
 ## 1.57.3 · 2026-10-01
 
-The modes Photoshop withholds, and the ones to check, closed (DEV_PLAN 22.11).
+The modes that were withheld, and the ones to check, closed (DEV_PLAN 22.11).
 
 ### Added
 
 - Image > Mode > Indexed Color, Bitmap and CMYK Color from 16- and 32-bit documents: the document comes down to 8 bits first, from 32 bits through HDR Toning, then the mode's own dialog. Lab Color from 16-bit documents converts from their 16-bit values; from 32 bits it comes down to 16 first.
-- Every blend mode in 32-bit documents. The modes Photoshop offers at 32 bits keep light above white; the others blend in the visible range, and light above white is kept wherever only one of the two layers covers a pixel.
+- Every blend mode in 32-bit documents. The modes offered at 32 bits keep light above white; the others blend in the visible range, and light above white is kept wherever only one of the two layers covers a pixel.
 - Exposure and HDR Toning in CMYK and Lab documents, and Channel Mixer in Lab documents, with the same results as in RGB.
 - Assign Profile, Convert to Profile, Proof Setup, Proof Colors and Gamut Warning in 32-bit documents; Convert to Profile converts linear light exactly through the two profiles' primaries, light above white included.
 
 ### Fixed
 
-- 1.57.1's note listed Darker Color and Lighter Color among the blend modes Photoshop offers at 32 bits; Adobe's list is Normal, Dissolve, Darken, Multiply, Lighten, Linear Dodge (Add), Difference, Hue, Saturation, Color and Luminosity. formvis offers all of them.
+- 1.57.1's note listed Darker Color and Lighter Color among the blend modes offered at 32 bits; the right list is Normal, Dissolve, Darken, Multiply, Lighten, Linear Dodge (Add), Difference, Hue, Saturation, Color and Luminosity. formvis offers all of them.
 
 ### Known
 
@@ -1665,7 +1694,7 @@ The last of the mode gates decided (DEV_PLAN 22.10).
 
 ### Added
 
-- 32-bit documents gain groups, layer and folder masks, clipping masks, layer styles and blend modes, composed in linear light with light above white kept: Normal, Dissolve, Darken, Multiply, Lighten, Linear Dodge (Add), Difference, Darker Color and Lighter Color, the modes Photoshop offers at 32 bits. The canvas and exports show the linear composite, clipped at white on screen.
+- 32-bit documents gain groups, layer and folder masks, clipping masks, layer styles and blend modes, composed in linear light with light above white kept: Normal, Dissolve, Darken, Multiply, Lighten, Linear Dodge (Add), Difference, Darker Color and Lighter Color, the modes offered at 32 bits. The canvas and exports show the linear composite, clipped at white on screen.
 
 ### Fixed
 
@@ -1694,11 +1723,11 @@ The remaining mode gates (DEV_PLAN 22.10), and Lab's colour adjustments.
 ### Added
 
 - 32-bit documents: painting, the retouching tools and the filters not yet on the float model now work. Pixels an operation leaves alone keep their values exactly, light above white included; changed pixels take the new colour in linear light and keep their old light where the change is small. What still waits is named in the menus: groups, masks, clipping, layer styles, blend modes and adjustment layers other than Exposure, Unsharp Mask and Add Noise, the other colour modes, and profiles and proofs.
-- Lab documents: Hue/Saturation, Black and White, Color Balance and the other colour adjustments, with the same results as in RGB; Levels, Curves, Invert and Posterize act on Lightness, a and b themselves. Channel Mixer, Exposure and HDR Toning still wait, as in Photoshop's Lab.
+- Lab documents: Hue/Saturation, Black and White, Color Balance and the other colour adjustments, with the same results as in RGB; Levels, Curves, Invert and Posterize act on Lightness, a and b themselves. Channel Mixer, Exposure and HDR Toning still wait.
 
 ### Known
 
-- In 32-bit documents, painting a colour the screen already shows for light above white (white over a bright highlight) leaves that light as it was; Photoshop would set it to white.
+- In 32-bit documents, painting a colour the screen already shows for light above white (white over a bright highlight) leaves that light as it was and does not set it to white.
 
 ## 1.56.7 · 2026-10-01
 
@@ -1718,7 +1747,7 @@ Lab documents, second part (DEV_PLAN 22.9).
 
 ### Added
 
-- Levels and Curves layers in Lab documents, on Lightness, a and b, as Photoshop's.
+- Levels and Curves layers in Lab documents, on Lightness, a and b.
 - Blend modes in Lab documents: they look as they do in RGB, the result kept in Lab.
 - Export TIFF from a Lab document writes a Lab TIFF (8-bit CIELab, laid on white).
 
@@ -1744,7 +1773,7 @@ Lab documents, first part (DEV_PLAN 22.9).
 
 ### Added
 
-- Image > Mode > Lab Color: an 8-bit RGB document converts to CIE Lab (D50, as Photoshop's Lab) held as floats, and back to RGB Color exactly. Painting, text, shapes, fills, filters and the other tools work in it, the pixels they leave alone keeping their Lab exactly. The Channels panel shows Lab, Lightness, a and b; Info reads L, a and b; project files keep the Lab values.
+- Image > Mode > Lab Color: an 8-bit RGB document converts to CIE Lab (D50) held as floats, and back to RGB Color exactly. Painting, text, shapes, fills, filters and the other tools work in it, the pixels they leave alone keeping their Lab exactly. The Channels panel shows Lab, Lightness, a and b; Info reads L, a and b; project files keep the Lab values.
 
 ### Known
 
@@ -1756,7 +1785,7 @@ The Art History Brush (the parity plan's L4, second part, which closes the row w
 
 ### Added
 
-- The Art History Brush (Y, with the History Brush): paints stylised strokes in the colours of the History Brush's source snapshot, so brushing over a picture turns it into a painted version of itself. Ten styles as Photoshop's (Tight and Loose, Short, Medium and Long, Dab, and four curls), strokes a quarter of the brush wide and running along the picture's contours, and Tolerance to leave alone the parts already close to the source.
+- The Art History Brush (Y, with the History Brush): paints stylised strokes in the colours of the History Brush's source snapshot, so brushing over a picture turns it into a painted version of itself. Ten styles (Tight and Loose, Short, Medium and Long, Dab, and four curls), strokes a quarter of the brush wide and running along the picture's contours, and Tolerance to leave alone the parts already close to the source.
 
 ### Changed
 
@@ -1926,11 +1955,11 @@ Blend If and Knockout (the parity plan's M2, DEV_PLAN 23.1).
 ### Added
 
 - Layer Style > Blending Options: Knockout (None, Shallow, Deep) punches the layer's silhouette through what lies below, down to the Background or to the bottom of its group, the layer's own pixels showing at their Fill; Blend If shows the layer only where this layer's value and the underlying composite's value fall inside each range, on Gray or one channel, each end feathered between its two values (the split slider), as eight sliders.
-- Both travel in PSD files (Photoshop's blending ranges and knockout flag) and in projects. On the GPU renderers such a document is drawn by the CPU compositor until the GPU port is checked on real hardware.
+- Both travel in PSD files (blending ranges and the knockout flag) and in projects. On the GPU renderers such a document is drawn by the CPU compositor until the GPU port is checked on real hardware.
 
 ### Known
 
-- One channel or Gray per layer rather than Photoshop's three channel pairs at once; Photoshop keeps one knockout flag, so a Deep knockout written to PSD reads back as Shallow.
+- One channel or Gray per layer rather than three channel pairs at once; PSD files keep one knockout flag, so a Deep knockout written to PSD reads back as Shallow.
 
 ## 1.54.4 · 2026-09-30
 
@@ -1996,7 +2025,7 @@ The parity plan's H1, fourth part: 32-bit documents.
 
 ### Added
 
-- Radiance HDR, OpenEXR and 32-bit float TIFF open as 32-bit documents, linear light and unbounded, as Photoshop keeps them; Image > Mode > 32 Bits/Channel converts 8 and 16 bits up (linearised); converting down asks for HDR Toning, Exposure and Gamma.
+- Radiance HDR, OpenEXR and 32-bit float TIFF open as 32-bit documents, linear light and unbounded; Image > Mode > 32 Bits/Channel converts 8 and 16 bits up (linearised); converting down asks for HDR Toning, Exposure and Gamma.
 - At 32 bits the Exposure adjustment works in linear light, unclamped, as do moving, flips, canvas and image size, and Gaussian Blur; File > Export > Radiance HDR and OpenEXR, and Export TIFF as 32-bit float; the project keeps 32-bit layers as floats. What would clip past white (painting, Levels, Curves, Unsharp Mask, Add Noise, colour profiles) waits, and says so.
 
 ### Changed
@@ -2112,12 +2141,12 @@ Sprint 1 of the parity plan (the v12 comparison): foundations.
 
 ## 1.52.8 · 2026-09-29
 
-### Changed: the Pen and the shape stroke against Photoshop's bars (the tool audit's last items)
+### Changed: the Pen and the shape stroke options (the tool audit's last items)
 
 - The Pen has a Mode: Path as before, or Shape, where closing a path makes it a shape layer with the Shape tool's fill and stroke.
 - The Pen's Auto Add/Delete (on, as before): clicking a path adds a point and clicking a point deletes it; off, a click starts a new path.
 - A shape's stroke has a Stroke Type (Solid, Dashed, Dotted) and an Align (Inside, Center, Outside), in shape layers and in Pixels mode; an open path's stroke stays centred.
-- With these, the comparison of the tools' option bars with Photoshop's is complete.
+- With these, the audit of the tools' option bars is complete.
 
 ## 1.52.7 · 2026-09-29
 
@@ -2201,7 +2230,7 @@ Sprint 1 of the parity plan (the v12 comparison): foundations.
 
 ### Added: OpenRaster files
 
-- File > Open reads OpenRaster (.ora) files, the layered format of Krita, GIMP and MyPaint: layers and groups, their positions, opacity, visibility and blend modes. A blend mode formvis does not have opens as Normal, and it says which.
+- File > Open reads OpenRaster (.ora) files, the layered format of other painting apps: layers and groups, their positions, opacity, visibility and blend modes. A blend mode formvis does not have opens as Normal, and it says which.
 - File > Export > OpenRaster writes them. Text, shapes, smart objects, masked or transformed layers go as they look; adjustment layers have no OpenRaster form and are left out, said so.
 - SVG files were already placed as layers (File > Place); a test now keeps it so.
 
@@ -2224,12 +2253,12 @@ Sprint 1 of the parity plan (the v12 comparison): foundations.
 
 ## 1.51.4 · 2026-09-28
 
-### Changed: Blur, Sharpen and Smudge against Photoshop's bars
+### Changed: Blur, Sharpen and Smudge option bars
 
 - Blur and Sharpen: Mode (Normal, Darken, Lighten, Hue, Saturation, Color, Luminosity) and Sample All Layers.
 - Sharpen: Protect Detail, on by default: edges sharpen without halos or speckle.
 - Smudge: Sample All Layers (onto an empty layer too) and Finger Painting (the foreground colour dragged from where the stroke starts).
-- The Smear tool's choice of Liquify, Blur, Sharpen or Smudge is labelled Tool; Mode is the blend, as in Photoshop.
+- The Smear tool's choice of Liquify, Blur, Sharpen or Smudge is labelled Tool; Mode is the blend.
 
 ### Added: reference layers for ComfyUI workflows
 
@@ -2242,7 +2271,7 @@ Sprint 1 of the parity plan (the v12 comparison): foundations.
 
 - Layer > Color Match matches a layer's colours to what is beneath it, or to what is around it, without changing its pixels: it adds a Curves layer clipped to it. Useful when a generated result comes back a shade off.
 - The amount is that layer's opacity, changed any time in the Layers panel (0% as the layer came, 100% fully matched). Run it again, from the layer or its Color Match layer, to match afresh; it updates rather than adds.
-- Saved with the project and in Photoshop files, as any adjustment layer.
+- Saved with the project and in PSD files, as any adjustment layer.
 
 ## 1.51.2 · 2026-09-28
 
@@ -2281,9 +2310,9 @@ Sprint 1 of the parity plan (the v12 comparison): foundations.
 
 ## 1.50.7 · 2026-09-28
 
-### Changed: tools against Photoshop's bars (audit, part 4)
+### Changed: tool option bars (audit, part 4)
 
-- Dodge and Burn: Protect Tones, on by default as Photoshop's: brightness changes and the colour is kept, where it washed toward white.
+- Dodge and Burn: Protect Tones, on by default: brightness changes and the colour is kept, where it washed toward white.
 - Sponge: Vibrance, on by default: vivid colours are kept from clipping as they saturate.
 - Eyedropper: Sample (Current Layer, Current & Below, All Layers).
 - Zoom: 100% and Fill Screen in the bar.
@@ -2291,10 +2320,10 @@ Sprint 1 of the parity plan (the v12 comparison): foundations.
 
 ## 1.50.6 · 2026-09-28
 
-### Changed: tools against Photoshop's bars (audit, part 3)
+### Changed: tool option bars (audit, part 3)
 
 - Clone Stamp: Sample is Current Layer, Current & Below or All Layers (it was an all-layers switch), as the Healing Brush's; Mode and Flow in the bar.
-- Gradient: Transparency (the stops' own transparency honoured, or every stop opaque) and Method (Perceptual, Linear or Classic, the colours blended as Photoshop blends them); Classic stays the default, so gradients are as they were.
+- Gradient: Transparency (the stops' own transparency honoured, or every stop opaque) and Method (Perceptual, Linear or Classic, the colours blended in the usual way); Classic stays the default, so gradients are as they were.
 - Still to come from the audit: Pen, the Shape tools, Dodge, Burn and Sponge, Blur, Sharpen and Smudge, the Eyedropper and Zoom.
 
 ## 1.50.5 · 2026-09-28
@@ -2308,12 +2337,12 @@ Sprint 1 of the parity plan (the v12 comparison): foundations.
 
 ## 1.50.4 · 2026-09-28
 
-### Changed: tools against Photoshop's bars (audit, parts 1 and 2)
+### Changed: tool option bars (audit, parts 1 and 2)
 
 - Brush: Airbrush, so paint builds while the pointer rests.
-- Type: Anti-aliasing (None, Sharp, Smooth) and a Color swatch; the bar's font, size, style, alignment, anti-aliasing, leading, tracking and kerning now restyle the selected type layer, as Photoshop's (they changed only text being typed).
+- Type: Anti-aliasing (None, Sharp, Smooth) and a Color swatch; the bar's font, size, style, alignment, anti-aliasing, leading, tracking and kerning now restyle the selected type layer (they changed only text being typed).
 - Magic Wand: sample sizes to 101 by 101; Select Subject and Select and Mask in the bar.
-- Audited and matching Photoshop: Paint Bucket, Move, Crop, Spot Healing, Healing Brush.
+- Audited, no change needed: Paint Bucket, Move, Crop, Spot Healing, Healing Brush.
 - Still to come: the Clone Stamp's Mode, Flow and three-way Sample; the Gradient's Transparency and Method.
 
 ## 1.50.3 · 2026-09-28
@@ -2325,9 +2354,9 @@ Sprint 1 of the parity plan (the v12 comparison): foundations.
 - The AI tests no longer skip on a freshly started engine: it finds its AI extras without loading them.
 - The Properties icon was rebuilt on nearly every action (a flash); a test now watches ten common actions for any rebuild.
 
-### Changed: tools against Photoshop's bars (audit, part 1)
+### Changed: tool option bars (audit, part 1)
 
-- Brush: Mode is Photoshop's (Normal, Behind, Clear and the blend modes), no longer Paint/Erase; Smoothing; Angle.
+- Brush: Mode lists Normal, Behind, Clear and the blend modes, no longer Paint/Erase; Smoothing; Angle.
 - Only blend modes that truly draw are offered, in the Brush and the Paint Bucket (1.49.10's bucket list offered some that painted as Normal).
 - Eraser: Block mode, Flow, and Erase to History.
 - Type: Font Style (Regular, Italic, Bold, Bold Italic) and Warp Text in the bar.
@@ -2336,11 +2365,11 @@ Sprint 1 of the parity plan (the v12 comparison): foundations.
 
 ## 1.50.2 · 2026-09-28
 
-### Fixed: tools refused layers Photoshop's take
+### Fixed: tools refused layers they should take
 
 - The Paint Bucket fills a new empty layer (it said "Select a pixel layer first"); the Magic Wand and Quick Selection treat an empty layer as transparent.
-- Type, shape and smart-object layers ask "Rasterize this layer?" before being painted, as Photoshop's (they were painted over silently, losing their editability).
-- An adjustment layer paints its mask, as Photoshop's (it was refused); a group says it is a group.
+- Type, shape and smart-object layers ask "Rasterize this layer?" before being painted (they were painted over silently, losing their editability).
+- An adjustment layer paints its mask (it was refused); a group says it is a group.
 
 ### Fixed: no scrollbars anywhere
 
@@ -2370,14 +2399,14 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Fixed
 
-- Object Selection's hover shows a light wash and an outline, as Photoshop's (the orange tint turned a blue object grey).
+- Object Selection's hover shows a light wash and an outline (the orange tint turned a blue object grey).
 
 ## 1.49.10 · 2026-09-27
 
 ### Added: selection and fill gaps from your list
 
 - Object Selection: drag a box to select the object in it; rest the pointer to see the object it finds, tinted, before clicking (Highlight on Hover can be turned off).
-- Quick Selection: New, Add and Subtract in the bar; New turns to Add after its first stroke, as Photoshop's; Shift adds and Alt subtracts from any of them.
+- Quick Selection: New, Add and Subtract in the bar; New turns to Add after its first stroke; Shift adds and Alt subtracts from any of them.
 - Paint Bucket: fill with a pattern as well as the foreground colour, and a blend Mode.
 
 ## 1.49.9 · 2026-09-27
@@ -2390,14 +2419,14 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Changed
 
-- Blur, Sharpen and Smudge have no shortcut (as Photoshop's): R is Rotate View's.
+- Blur, Sharpen and Smudge have no shortcut: R is Rotate View's.
 
 ## 1.49.8 · 2026-09-27
 
 ### Added: vector tools from your list
 
 - Triangle shape (in the Shape group).
-- Mode in the shape tools' bar, as Photoshop's: Shape (a layer), Path (adds the outline to the work path), or Pixels (paints it into the active layer).
+- Mode in the shape tools' bar: Shape (a layer), Path (adds the outline to the work path), or Pixels (paints it into the active layer).
 - Fill and Stroke in the bar: each the foreground, the background or none, and the stroke's width; stroked rectangles and ellipses are vector layers.
 
 ### Fixed
@@ -2409,11 +2438,11 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Added: type tools from your list
 
-- Paragraph text: drag a box with the Type tool; the text wraps inside it as you type and is clipped at its bottom, as Photoshop's.
+- Paragraph text: drag a box with the Type tool; the text wraps inside it as you type and is clipped at its bottom.
 - Justify: spreads every wrapped line to the box's width; a paragraph's last line stays left.
 - Vertical Type (in the Type group): upright characters stacked top to bottom, each line a column from right to left; typed in a vertical editor.
 - Horizontal Type Mask and Vertical Type Mask: type, then Ctrl or Cmd+Enter: the text becomes a selection, with no layer; a red tint while typing.
-- Photoshop files keep paragraph boxes, justification and vertical type.
+- PSD files keep paragraph boxes, justification and vertical type.
 
 ## 1.49.6 · 2026-09-27
 
@@ -2448,7 +2477,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Added: selection tools from your list
 
-- Magnetic Lasso (in the Lasso group): click an edge and move along it; the line follows the strongest edge nearby and fastens points as it goes; click to fasten one; close by clicking near the start, double-clicking or Enter; Backspace removes the last point. Width, Contrast and Frequency, as Photoshop's.
+- Magnetic Lasso (in the Lasso group): click an edge and move along it; the line follows the strongest edge nearby and fastens points as it goes; click to fasten one; close by clicking near the start, double-clicking or Enter; Backspace removes the last point. Width, Contrast and Frequency.
 - Single Row Marquee and Single Column Marquee (in the Marquee group): a click selects the one-pixel row or column across the document; Shift adds, Alt takes away.
 - Selection Brush (in the Object Selection group, W): paint the selection with the brush's size and hardness, Alt to take away; tinted while painting, one step per stroke.
 
@@ -2509,7 +2538,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 - The panel columns reach the title bar; the side column lies over the canvas (collapsing or expanding never moves it; fitting leaves it out) and shows as icons in a narrow window. No panel covers another; notifications sit over the canvas; the Color tab always paints.
 - The toolbar: sub-tools in the flyouts (Elliptical Marquee, Polygonal Lasso, Sharpen, Liquify Brush, the eight shapes, Eraser); icons at the target's weight; Quick Mask (Q); screen modes (F) and Tab to hide panels; two columns (»); the History Brush (Y), painting back the document as opened or a chosen snapshot; the Frame tool (K), which an imported image fills; Edit Toolbar (•••).
 - Docking: panels move between the two columns and tabs between groups; the columns merge and separate (Window); the side column's width is dragged by its edge.
-- Preferences in Photoshop's sections: General, Interface, Workspace, Tools, History & Cache, File Handling, Performance, Cursors, Transparency & Gamut, Units & Rulers, Guides & Grid, each setting acting on something real.
+- Preferences in sections: General, Interface, Workspace, Tools, History & Cache, File Handling, Performance, Cursors, Transparency & Gamut, Units & Rulers, Guides & Grid, each setting acting on something real.
 
 ### Not verified yet
 
@@ -2520,10 +2549,10 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Changed: from your walkthrough of 1.47.0 and your two screenshots
 
-- Tool icons redrawn as Photoshop's pictures in thin lines (a four-way Move arrow, a lasso loop, a bandage, a stamp, a drop, a lollipop, a pen nib), the column at the target's density with dashes between tool families, the active tool lavender.
-- The options bar starts with the tool's icon; the Move bar is the target's: Auto-Select, Auto-Select Target (Layer or Group), Show Transform Controls, Snap and icon-only align and distribute buttons. Its transform fields appear while you transform, as Photoshop's.
+- Tool icons redrawn as pictures in thin lines (a four-way Move arrow, a lasso loop, a bandage, a stamp, a drop, a lollipop, a pen nib), the column at the target's density with dashes between tool families, the active tool lavender.
+- The options bar starts with the tool's icon; the Move bar is the target's: Auto-Select, Auto-Select Target (Layer or Group), Show Transform Controls, Snap and icon-only align and distribute buttons. Its transform fields appear while you transform.
 - Menus have a tick column only where a tick can show, and the target's translucent look.
-- Brushes: the tip is an editor (drag its handles to turn or flatten it); presets in folders with a search, grid or list, each drawn with its shape and size; Load... reads Photoshop .abr brushes; a Brush Settings tab. A Flat angled preset.
+- Brushes: the tip is an editor (drag its handles to turn or flatten it); presets in folders with a search, grid or list, each drawn with its shape and size; Load... reads .abr brushes; a Brush Settings tab. A Flat angled preset.
 - Both side columns collapse to a strip of icons («); an icon opens its panel beside the strip.
 - Panel groups resize by dragging between them; Layers takes what is left.
 - Channels is a working tab: view one channel or hide some, Cmd-click one to load it as a selection.
@@ -2548,8 +2577,8 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Added
 
-- Layer Fill, as Photoshop's: the pixels fade, the layer styles do not; kept in projects and PSD.
-- Layer locks, as Photoshop's: transparency, image pixels, position, all, honoured by the tools; kept in projects and PSD.
+- Layer Fill: the pixels fade, the layer styles do not; kept in projects and PSD.
+- Layer locks: transparency, image pixels, position, all, honoured by the tools; kept in projects and PSD.
 - 25 more browser tests and 2 unit tests: 533 in all, besides the native renderer's.
 
 ### Not verified yet
@@ -2623,7 +2652,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Added
 
-- Camera RAW import: DNG, CR2, CR3, NEF, ARW, RAF, ORF, RW2 and other RAW files are developed by the engine (LibRaw) with the camera's white balance and open into Develop, as Photoshop opens them into Camera Raw.
+- Camera RAW import: DNG, CR2, CR3, NEF, ARW, RAF, ORF, RW2 and other RAW files are developed by the engine (LibRaw) with the camera's white balance and open into Develop.
 - 5 more tests (4 backend, 1 browser): 486 in all.
 
 ## 1.38.0 · 2026-09-25
@@ -2695,7 +2724,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Added
 
-- Type: Tracking (in thousandths of an em, as in Photoshop) and Kerning (Metrics or 0) in the Type tool's options, kept in projects and read from Photoshop files.
+- Type: Tracking (in thousandths of an em) and Kerning (Metrics or 0) in the Type tool's options, kept in projects and read from PSD files.
 - The font menu offers the fonts found on this machine, and in Chromium browsers "Load system fonts..." lists every installed font (with your permission).
 - 6 more tests (browser): 414 in all.
 
@@ -2932,7 +2961,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Added
 
-- Preferences (Ctrl+,), with sections as in Photoshop: Interface (theme, accent), Performance (History States, the memory undo may hold, region redraws while painting) and File Handling (how soon unsaved work is kept for recovery). Every setting acts on formvis, is kept on this device and takes effect at once.
+- Preferences (Ctrl+,), with sections: Interface (theme, accent), Performance (History States, the memory undo may hold, region redraws while painting) and File Handling (how soon unsaved work is kept for recovery). Every setting acts on formvis, is kept on this device and takes effect at once.
 - 1 more test (browser): 275 in all.
 
 ### Changed
@@ -2950,7 +2979,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Added
 
-- The Crop tool's Delete Cropped Pixels, on by default as in Photoshop: cropping trims pixel layers to the canvas. Turn it off to keep cropped pixels beyond the canvas, where Image > Reveal All brings them back (the only behaviour before 1.0.0).
+- The Crop tool's Delete Cropped Pixels, on by default: cropping trims pixel layers to the canvas. Turn it off to keep cropped pixels beyond the canvas, where Image > Reveal All brings them back (the only behaviour before 1.0.0).
 - 1 more test (browser): 269 in all.
 
 ### Changed
@@ -2986,8 +3015,8 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Added
 
-- Menus have submenus, opened beside their rows, and scroll within the window with the scrollbar hidden; the menus are grouped as Photoshop's (File > Export, Layer > New Adjustment Layer, Filter > Blur and others).
-- The tool rail groups tools as Photoshop's toolbar does: one slot per group showing the last tool used, a flyout on press and hold or right-click, Shift with the key cycling the group.
+- Menus have submenus, opened beside their rows, and scroll within the window with the scrollbar hidden; the menus are grouped as is usual (File > Export, Layer > New Adjustment Layer, Filter > Blur and others).
+- The tool rail groups tools: one slot per group showing the last tool used, a flyout on press and hold or right-click, Shift with the key cycling the group.
 - The options bar scrolls sideways by wheel and shows chevrons where settings lie past its ends.
 - Settings dialogs for Fill Path (contents, mode, opacity, feather, anti-aliasing), Stroke Path (the tool, Simulate Pressure), New Layer (name, mode, opacity, clipping to the layer below), New Group (name) and Duplicate Layer (name); the quick forms stay on their buttons and shortcuts.
 - Tool options: Magic Wand Anti-alias; Marquee Feather and Style (Normal, Fixed Ratio, Fixed Size); Lasso Feather; Gradient Mode and Dither.
@@ -3048,7 +3077,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Added
 
-- Adjustment layers go into PSD files as live Photoshop adjustment layers (fifteen kinds, with masks, opacity, blend and clipping), and Photoshop adjustment layers open as live formvis ones. Grain and Develop, which Photoshop has no layer for, are reported and left out.
+- Adjustment layers go into PSD files as live adjustment layers (fifteen kinds, with masks, opacity, blend and clipping), and PSD adjustment layers open as live formvis ones. Grain and Develop, which PSD has no layer for, are reported and left out.
 - File > Export PSB (Large Document); .psb files open.
 - 16 more tests (15 unit, 1 browser): 211 in all.
 
@@ -3056,7 +3085,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Added
 
-- Import Photoshop brushes (.abr, versions 1, 2 and 6 to 10) from the Brush tool: their sampled tips become presets, kept between sessions, and brushes paint with them.
+- Import .abr brushes (versions 1, 2 and 6 to 10) from the Brush tool: their sampled tips become presets, kept between sessions, and brushes paint with them.
 - 7 more tests (4 unit, 1 backend, 2 browser): 195 in all.
 
 ### Changed
@@ -3071,7 +3100,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Added
 
-- Filter > Shake Reduction: estimates the camera shake's blur trace from the image and removes it; the trace's angle and length, Smoothing and Amount can be adjusted. The trace is straight; Photoshop also finds curved ones.
+- Filter > Shake Reduction: estimates the camera shake's blur trace from the image and removes it; the trace's angle and length, Smoothing and Amount can be adjusted. The trace is straight; curved ones are not found.
 - 5 more tests (4 unit, 1 browser): 188 in all.
 
 ## 0.88.0 · 2026-09-23
@@ -3170,7 +3199,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Changed
 
-- Snapping measures each layer's visible pixels, as Photoshop does, instead of its whole bounds, so painted layers snap by what you see.
+- Snapping measures each layer's visible pixels instead of its whole bounds, so painted layers snap by what you see.
 
 ## 0.77.0 · 2026-09-23
 
@@ -3199,7 +3228,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Added
 
-- The Gradient tool draws all five of Photoshop's types (Linear, Radial, Angle, Reflected, Diamond) and offers gradient presets: Foreground to Background, Foreground to Transparent, Black, White, Spectrum, Copper, Chrome, and Foreground, Background, Foreground.
+- The Gradient tool draws all five types (Linear, Radial, Angle, Reflected, Diamond) and offers gradient presets: Foreground to Background, Foreground to Transparent, Black, White, Spectrum, Copper, Chrome, and Foreground, Background, Foreground.
 - Edit > Fill (Shift+F5): Contents (foreground, background, any colour, Content-Aware, pattern, black, 50% grey, white), Mode, Opacity and Preserve Transparency.
 - 12 more tests (5 unit, 7 browser): 98 in all.
 
@@ -3265,7 +3294,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Added
 
-- All 27 of Photoshop's layer blend modes: Dissolve, Linear Burn, Darker Color, Lighter Color, Vivid Light, Linear Light, Pin Light, Hard Mix, Subtract and Divide join the seventeen, and travel through PSD.
+- All 27 layer blend modes: Dissolve, Linear Burn, Darker Color, Lighter Color, Vivid Light, Linear Light, Pin Light, Hard Mix, Subtract and Divide join the seventeen, and travel through PSD.
 - Eleven adjustments, as adjustment layers and on the image: Brightness/Contrast, Vibrance, Color Balance, Black & White, Photo Filter, Channel Mixer, Invert, Posterize, Threshold, Selective Color and Develop.
 - Layer > Align (six edges and centres) and Distribute (six, plus horizontal and vertical spacing), measured on visible pixels.
 - Select > Feather (Shift+F6), Border and Smooth.
@@ -3295,13 +3324,13 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Added
 
-- Editable type travels to and from Photoshop: PSD export writes type layers as Photoshop type, and PSD import opens Photoshop type as editable formvis type.
+- Editable type travels to and from PSD files: export writes type layers as PSD type, and import opens PSD type as editable formvis type.
 
 ## 0.62.0 · 2026-09-21
 
 ### Added
 
-- Layer styles travel to and from Photoshop: PSD export writes them as editable Photoshop layer effects, patterns included, and PSD import turns Photoshop's effects into editable formvis styles.
+- Layer styles travel to and from PSD files: export writes them as editable layer effects, patterns included, and import turns the effects into editable formvis styles.
 
 ## 0.61.0 · 2026-09-21
 
@@ -3387,7 +3416,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 ### Added
 
 - Actions pause for input: Insert Stop shows a message with Continue or Stop, and a filter or image adjustment step can open its dialog during playback with the recorded settings to adjust.
-- Smart objects travel to and from PSD as Photoshop smart objects, their originals embedded.
+- Smart objects travel to and from PSD as smart objects, their originals embedded.
 
 ## 0.52.0 · 2026-09-21
 
@@ -3421,7 +3450,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 ### Added
 
 - Shape layers take a fill, a stroke centred on the outline, or both: Layer > Shape Fill and Stroke, or double-click the shape badge. A path of open lines becomes a stroked vector line.
-- PSD export writes shape layers as Photoshop shapes with their fill and stroke, and PSD import turns Photoshop shapes back into editable shape layers.
+- PSD export writes shape layers as shapes with their fill and stroke, and PSD import turns shapes back into editable shape layers.
 - A GIF encoder, the groundwork for frame animation.
 
 ### Fixed
@@ -3476,7 +3505,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 - The Healing Brush: Alt-click a source and paint; on release the copied texture blends into its surroundings' tone.
 - The Patch tool: draw around a flaw, then drag the selection onto clean texture to patch it.
 - J selects the healing tools and Shift+J cycles Spot Healing, Healing Brush and Patch.
-- Open layered Photoshop files (.psd) and export to them (File > Export PSD), keeping layers, folders, masks, clipping, opacity, blend modes and visibility.
+- Open layered PSD files (.psd) and export to them (File > Export PSD), keeping layers, folders, masks, clipping, opacity, blend modes and visibility.
 
 ## 0.41.0 · 2026-09-21
 
@@ -3547,7 +3576,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Added
 
-- Four more blend modes, Soft Light, Hard Light, Exclusion and Linear Dodge (Add), with the list now in Photoshop's order.
+- Four more blend modes, Soft Light, Hard Light, Exclusion and Linear Dodge (Add), with the list now in the usual order.
 - Filter > Unsharp Mask, with Amount, Radius and Threshold, previewed without freezing the window.
 
 ### Fixed
@@ -3842,7 +3871,7 @@ Free distort; Smear's Blur on masks; ants that follow a floating selection; Laye
 
 ### Added
 
-- Color picker: clicking the foreground or background swatch opens a Photoshop-style picker with a saturation and brightness field, a hue strip, new and current swatches, and RGB and hex entry. Click the canvas while it is open to sample a color.
+- Color picker: clicking the foreground or background swatch opens a picker with a saturation and brightness field, a hue strip, new and current swatches, and RGB and hex entry. Click the canvas while it is open to sample a color.
 
 ### Known gaps
 

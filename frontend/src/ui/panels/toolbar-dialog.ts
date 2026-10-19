@@ -7,7 +7,7 @@ import { t as tr } from '../i18n';
 import { updatePrefs, loadPrefs } from '../prefs';
 import { TOOLBAR_EVENT, resolveLayout, type ToolLayout } from '../tool-groups';
 
-/** Edit > Toolbar (36.22), Photoshop's Customize Toolbar: the rail's groups in order on the left, Extra Tools on the right.
+/** Edit > Toolbar (36.22), Customize Toolbar: the rail's groups in order on the left, Extra Tools on the right.
  *  A row is dragged (pointer events) within a group, to another group, to the drop zone for a new group at the end, or across
  *  to Extra Tools to hide it. The rows are the model: the layout is read back from them on Done, and a drag moves the
  *  existing row node in place. */

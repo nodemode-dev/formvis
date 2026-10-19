@@ -1,4 +1,4 @@
-# Layer Fill (Photoshop's): the layer's pixels fade, its styles do not; not Edit > Fill, which test_fill.py covers.
+# Layer Fill: the layer's pixels fade, its styles do not; not Edit > Fill, which test_fill.py covers.
 SQUARE = """async () => {
   const e = window.formvis.engine, E = await import('/src/engine/index.ts');
   e.newDocument(200, 100, 'F', 'white'); e.addLayer(); e.fg = { r: 30, g: 160, b: 30 };

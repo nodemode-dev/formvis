@@ -56,7 +56,7 @@ def test_a_file_written_as_other_apps_write_them_opens(page, tmp_path):
 <image version="0.0.5" w="80" h="50" xres="72" yres="72"><stack>
   <layer name="Glow" src="data/glow.png" x="10" y="5" opacity="0.6" composite-op="svg:screen"/>
   <stack name="Scene" opacity="1" isolation="auto">
-    <layer name="Odd" src="data/odd.png" x="0" y="0" composite-op="krita:strange"/>
+    <layer name="Odd" src="data/odd.png" x="0" y="0" composite-op="other:strange"/>
     <layer name="Sky" src="data/sky.png" x="0" y="0" visibility="hidden"/>
   </stack>
   <layer name="Paper" src="data/paper.png" x="0" y="0"/>
@@ -78,4 +78,4 @@ def test_a_file_written_as_other_apps_write_them_opens(page, tmp_path):
     assert got["scene"] and got["glow"] == ["screen", 0.6, 10, 5] and got["skyHidden"], got
     px = page.evaluate("Array.from(window.formvis.engine.flattened().getContext('2d').getImageData(15, 8, 1, 1).data).slice(0, 3)")
     assert px[1] > 120 and px[0] > 200, px                                                   # green screened over white paper
-    page.wait_for_function("() => [...document.querySelectorAll('.cv-toast')].some((t) => t.textContent.includes('krita:strange'))")
+    page.wait_for_function("() => [...document.querySelectorAll('.cv-toast')].some((t) => t.textContent.includes('other:strange'))")

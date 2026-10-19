@@ -14,7 +14,7 @@ export const quickSelectTool: Tool = {
   icon: () => 'tQuickSelect',
   hint: () => 'Drag over an area to select it; the selection grows to similar color and stops at edges \u00b7 Alt-drag subtracts \u00b7 [ ] size',
   cursor: () => 'none',
-  // New, Add and Subtract (1.49.10, the owner's tool list), as Photoshop's: New makes a fresh selection, then turns to
+  // New, Add and Subtract (1.49.10, the owner's tool list): New makes a fresh selection, then turns to
   // Add for the strokes after it; Shift adds and Alt subtracts from any of them.
   down(ctx, p) {
     if (p.button !== 0) return;

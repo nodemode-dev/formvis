@@ -37,7 +37,7 @@ export function textLayerAt(host: TextHost, pt: Pt): ID | null {
   return null;
 }
 
-/** Type Mask, as Photoshop's: the text rendered and placed as a layer would be, its coverage made the selection; one
+/** Type Mask: the text rendered and placed as a layer would be, its coverage made the selection; one
  *  step, no layer. */
 export async function createTextSelection(host: TextHost, at: Pt, spec: TextSpec): Promise<void> {
   const p = host.current;
@@ -46,7 +46,7 @@ export async function createTextSelection(host: TextHost, at: Pt, spec: TextSpec
   const r = renderText(spec), w = r.raster.width, h = r.raster.height, colW = spec.size * spec.lineHeight;
   const x = Math.round(spec.box ? at.x : spec.direction === 'vertical' ? at.x - (w - r.pad - colW / 2) : at.x - (spec.align === 'center' ? w / 2 : spec.align === 'right' ? w - r.pad : r.pad));
   const y = Math.round(spec.box ? at.y : spec.direction === 'vertical' ? at.y - r.pad : at.y - r.baseline);
-  // Only what lies on the canvas is selected, as Photoshop keeps a selection within it (1.49.7 let it run past).
+  // Only what lies on the canvas is selected (1.49.7 let it run past).
   const x0 = Math.max(0, x), y0 = Math.max(0, y), x1 = Math.min(p.doc.width, x + w), y1 = Math.min(p.doc.height, y + h);
   if (x1 <= x0 || y1 <= y0) { host.notice('The type lies outside the canvas.'); return; }
   const cw = x1 - x0, ch = y1 - y0, d = r.raster.ctx.getImageData(x0 - x, y0 - y, cw, ch).data, a = new Uint8Array(cw * ch);

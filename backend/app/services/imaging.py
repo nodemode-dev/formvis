@@ -247,6 +247,38 @@ def pages(data: bytes, filename: str) -> list[dict]:
         raise DecodeError(f"Could not read {filename or 'the image'}: {exc}") from exc
 
 
+MAX_ANIMATION_FRAMES = 500
+
+
+def frames(data: bytes, filename: str) -> dict | None:
+    """The frames of an animated GIF or WebP, each composited onto the whole canvas (GIF disposal and WebP blending are
+    Pillow's), as PNGs with the file's delay in milliseconds. `plays` is how often it plays, 0 for forever. None for
+    a file of one frame or any other format, which opens as one picture."""
+    if Path(filename).suffix.lower() not in (".gif", ".webp"):
+        return None
+    try:
+        with Image.open(io.BytesIO(data)) as image:
+            count = getattr(image, "n_frames", 1)
+            if image.format not in ("GIF", "WEBP") or count < 2:
+                return None
+            _check(image.width, image.height)
+            if count > MAX_ANIMATION_FRAMES or count * image.width * image.height > config.MAX_PIXELS:
+                raise DecodeError(f"{filename or 'The animation'} has {count} frames of {image.width} by {image.height}; formvis opens up to {MAX_ANIMATION_FRAMES} frames within {config.MAX_PIXELS // 1_000_000} megapixels in all.")
+            loop = image.info.get("loop")
+            plays = (0 if loop == 0 else loop + 1 if loop else 1) if image.format == "GIF" else int(loop or 0)
+            out = []
+            for i in range(count):
+                image.seek(i)
+                buf = io.BytesIO()
+                image.convert("RGBA").save(buf, format="PNG", compress_level=1)
+                out.append({"png": buf.getvalue(), "delay": int(image.info.get("duration", 0) or 0)})
+            return {"width": image.width, "height": image.height, "plays": plays, "frames": out}
+    except DecodeError:
+        raise
+    except Exception as exc:
+        raise DecodeError(f"Could not read {filename or 'the animation'}: {exc}") from exc
+
+
 def decode_to_png(data: bytes, filename: str, page: int = 0, camera_profile: str = "auto", wb: str = "as_shot", temperature: float = 0.0, tint: float = 0.0, half: bool = False) -> tuple[bytes, int, int]:
     suffix = Path(filename).suffix.lower()
     if suffix in RAW_SUFFIXES:

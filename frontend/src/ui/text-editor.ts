@@ -17,6 +17,7 @@ export class TextEditor {
       e.stopPropagation();
       if (e.key === 'Escape') { e.preventDefault(); this.cancel(); }
       else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void this.commit(); }
+      else if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.code === 'Period' || e.code === 'Comma')) { e.preventDefault(); this.nudgeSize(e.code === 'Period' ? 1 : -1, e.altKey ? 10 : 2); }
     });
     engine.on('viewport', () => this.place());
     engine.on('tool', () => { if (engine.tool !== 'type') void this.commit(); });
@@ -74,10 +75,18 @@ export class TextEditor {
     this.box.blur();
   }
 
+  /** Type size shortcuts: Ctrl or Cmd with Shift and . or , grows or shrinks the size by 2 (Alt: 10), for the text being typed. */
+  private nudgeSize(dir: 1 | -1, step: number): void {
+    const e = this.engine;
+    e.textSettings = { ...e.textSettings, size: Math.min(2000, Math.max(1, Math.round(e.textSettings.size) + dir * step)) };
+    e.emit('options', null);
+    document.dispatchEvent(new CustomEvent('cv:type-settings'));
+  }
+
   private restyle(): void {
     const s = this.session, t = this.engine.textSettings;
     if (!s) return;
-    s.spec = { ...s.spec, family: t.family, size: t.size, align: t.align, bold: t.bold, italic: t.italic, lineHeight: t.lineHeight, tracking: t.tracking, kerning: t.kerning };
+    s.spec = { ...s.spec, antialias: t.antialias, hyphenate: t.hyphenate, language: t.language, family: t.family, size: t.size, align: t.align, bold: t.bold, italic: t.italic, lineHeight: t.lineHeight, tracking: t.tracking, kerning: t.kerning };
     this.place();
   }
 

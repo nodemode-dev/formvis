@@ -171,7 +171,7 @@ export class ImageSizeDialog extends Dialog {
   }
 }
 
-/** File > Automate > Fit Image (1.65.8), Photoshop's: a width and a height in pixels to constrain the image within, and
+/** File > Automate > Fit Image (1.65.8): a width and a height in pixels to constrain the image within, and
  *  Don't Enlarge; OK resamples it to fit with its proportions kept (engine.fitImage), and Actions record the box. The
  *  box offered is the last one used, at first the image's own size. */
 export class FitImageDialog extends Dialog {

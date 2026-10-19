@@ -497,7 +497,7 @@ export const es: Record<string, string> = {
   'Paste from': 'Pegar desde',
   'Paste size (% of the plane)': 'Tamaño de pegado (% del plano)',
   'Patchwork': 'Patchwork',
-  'Paths to Illustrator': 'Trazados a Illustrator',
+  'Paths to AI File': 'Trazados a archivo AI',
   'Pattern Overlay': 'Superposición de motivo',
   'Performance Benchmark': 'Prueba de rendimiento',
   'Photo': 'Foto',

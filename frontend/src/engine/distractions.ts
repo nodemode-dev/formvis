@@ -1,4 +1,4 @@
-/** Remove Distractions: Wires and Cables, written for formvis. Photoshop finds these with a trained model; here the
+/** Remove Distractions: Wires and Cables, written for formvis. A trained model could find these; here the
  *  classic route: a morphological black-hat (the image's closing, a max then a min over a square, less the image)
  *  lifts thin dark lines up to twice `radius` wide while broad dark shapes cancel out; its threshold gives candidate
  *  pixels, and only connected pieces that are long and thin (a long bounding box with little area for its length) are

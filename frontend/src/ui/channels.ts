@@ -4,7 +4,7 @@ import { composeFloat } from '../engine/compose-float';
 import { el, patchList, q, setHidden, setText } from './dom';
 import { icon } from './icons';
 
-/** Channels, as Photoshop's and the target's tab (Phase 21, the owner's walkthrough): RGB, Red, Green and Blue, each
+/** Channels, the panel's tab (Phase 21, the owner's walkthrough): RGB, Red, Green and Blue, each
  *  with an eye and its own greyscale thumbnail. A click on a channel shows it alone in grey, on RGB the composite; an
  *  eye hides a channel from the composite. Only the view changes, never the pixels: the document's canvases are
  *  filtered (selection outlines and guides are drawn apart and keep their colours). Cmd- or Ctrl-click loads the
@@ -14,12 +14,12 @@ type Ch = 'rgb' | 'r' | 'g' | 'b' | 'cmyk' | 'c' | 'm' | 'y' | 'k' | 'lab' | 'll
 const ROWS: ReadonlyArray<{ id: Ch; label: string }> = [{ id: 'rgb', label: 'RGB' }, { id: 'r', label: 'Red' }, { id: 'g', label: 'Green' }, { id: 'b', label: 'Blue' },
   { id: 'cmyk', label: 'CMYK' }, { id: 'c', label: 'Cyan' }, { id: 'm', label: 'Magenta' }, { id: 'y', label: 'Yellow' }, { id: 'k', label: 'Black' },
   { id: 'lab', label: 'Lab' }, { id: 'll', label: 'Lightness' }, { id: 'la', label: 'a' }, { id: 'lb', label: 'b' }];
-/** The Lab rows (1.56.4): Lightness, a and b as greys, a and b mid-grey where neutral, as Photoshop shows them. */
+/** The Lab rows (1.56.4): Lightness, a and b as greys, a and b mid-grey where neutral. */
 const LAB_CH: Record<'ll' | 'la' | 'lb', 0 | 1 | 2> = { ll: 0, la: 1, lb: 2 };
 const isLabRow = (id: Ch): id is 'lab' | 'll' | 'la' | 'lb' => id === 'lab' || id in LAB_CH;
 const INK: Record<'c' | 'm' | 'y' | 'k', 0 | 1 | 2 | 3> = { c: 0, m: 1, y: 2, k: 3 };
 const isInk = (id: Ch): id is 'c' | 'm' | 'y' | 'k' => id in INK;
-/** A Cmd- or Ctrl-click's selection mode, as Photoshop's: Shift adds, Alt subtracts, both intersect. */
+/** A Cmd- or Ctrl-click's selection mode: Shift adds, Alt subtracts, both intersect. */
 const clickMode = (e: MouseEvent): SelectionMode => (e.shiftKey && e.altKey ? 'intersect' : e.shiftKey ? 'add' : e.altKey ? 'subtract' : 'replace');
 
 export class ChannelsPanel {

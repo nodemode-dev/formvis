@@ -1,5 +1,5 @@
 import { pathActions } from './path-actions';
-import { tracePath, type Anchor, type Pt } from '../../engine';
+import { nearestSegment, tracePath, type Anchor, type Pt } from '../../engine';
 import type { Tool, ToolContext } from '../registry';
 
 type Part = 'anchor' | 'in' | 'out';
@@ -26,7 +26,7 @@ const allAnchors = (ctx: ToolContext): Anchor[] => ctx.engine.workPath?.subpaths
 const live = (ctx: ToolContext): Set<Anchor> => { const all = new Set(allAnchors(ctx)); chosen = new Set([...chosen].filter((a) => all.has(a))); return chosen; };
 const moveBy = (a: Anchor, s: Anchor, dx: number, dy: number): void => { a.x = s.x + dx; a.y = s.y + dy; a.inX = s.inX + dx; a.inY = s.inY + dy; a.outX = s.outX + dx; a.outY = s.outY + dy; };
 
-/** Direct Selection (A), as Photoshop's: click a point to select it (Shift adds or removes), or drag across empty canvas
+/** Direct Selection (A): click a point to select it (Shift adds or removes), or drag across empty canvas
  *  to select the points in a box; drag a selected point to move them all with their handles; drag a handle to reshape
  *  the curve (a smooth point's other handle swings round to stay in line), Alt-drag a handle to break it from its
  *  partner; Alt-drag a point to pull out a pair of smooth handles, corner or not. Arrows nudge the selected points. */
@@ -34,14 +34,19 @@ export const directSelectTool: Tool = {
   id: 'directSelect', label: 'Direct Selection', key: 'A', order: 76,
   icon: () => 'tDirectSelect',
   options: () => [{ kind: 'title', text: 'Direct Selection' }, ...pathActions()],
-  hint: () => 'Click a point to select it, Shift to add, or drag a box · Drag points to move them, handles to reshape · Alt-drag a point to pull out handles, a handle to break it · Arrows nudge',
+  hint: () => 'Click a point to select it, Shift to add, or drag a box · Drag points to move them, handles to reshape · Alt-drag a point to pull out handles, a handle to break it · Alt-click a segment to select its whole path · Arrows nudge',
   cursor: () => 'default',
   down(ctx, p) {
     const vp = ctx.engine.workPath;
     if (p.button !== 0 || !vp) return;
     const v = ctx.view(), hit = pick(allAnchors(ctx), v.toScreen(p.doc), (q) => v.toScreen(q));
     const sel = live(ctx);
-    if (!hit) { box = { from: p.doc, to: p.doc, add: p.shift }; if (!p.shift) sel.clear(); ctx.engine.emit('overlay', null); return; }
+    if (!hit) {
+      // Alt-click on a segment selects the whole subpath.
+      const seg = p.alt ? nearestSegment(vp, v.toScreen(p.doc), (q) => v.toScreen(q)) : null;
+      if (seg && seg.d <= NEAR) { if (!p.shift) sel.clear(); for (const a of seg.sp.anchors) sel.add(a); ctx.engine.emit('overlay', null); return; }
+      box = { from: p.doc, to: p.doc, add: p.shift }; if (!p.shift) sel.clear(); ctx.engine.emit('overlay', null); return;
+    }
     if (hit.part === 'anchor') {
       if (p.shift) { if (sel.has(hit.anchor)) sel.delete(hit.anchor); else sel.add(hit.anchor); }
       else if (!sel.has(hit.anchor)) { sel.clear(); sel.add(hit.anchor); }
@@ -121,7 +126,7 @@ export const directSelectTool: Tool = {
         gx.beginPath(); gx.moveTo(s.x, s.y); gx.lineTo(h.x, h.y); gx.stroke();
         gx.beginPath(); gx.arc(h.x, h.y, 2.5, 0, Math.PI * 2); gx.fillStyle = pal.accent; gx.fill();
       }
-      gx.fillStyle = chosen.has(a) ? pal.accent : pal.handle;   // selected filled, as Photoshop's
+      gx.fillStyle = chosen.has(a) ? pal.accent : pal.handle;   // selected filled
       gx.fillRect(Math.round(s.x) - 3, Math.round(s.y) - 3, 6, 6);
       gx.strokeRect(Math.round(s.x) - 3.5, Math.round(s.y) - 3.5, 7, 7);
     }

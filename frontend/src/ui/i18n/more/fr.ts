@@ -497,7 +497,7 @@ export const fr: Record<string, string> = {
   'Paste from': 'Coller depuis',
   'Paste size (% of the plane)': 'Taille du collage (% du plan)',
   'Patchwork': 'Patchwork',
-  'Paths to Illustrator': 'Tracés vers Illustrator',
+  'Paths to AI File': 'Tracés vers un fichier AI',
   'Pattern Overlay': 'Incrustation de motif',
   'Performance Benchmark': 'Test de performance',
   'Photo': 'Photo',

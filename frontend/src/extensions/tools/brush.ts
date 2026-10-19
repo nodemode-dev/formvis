@@ -1,10 +1,22 @@
 import { BLEND_MODES, canvasBlend } from '../../engine';
-import { clamp, type Pt } from '../../engine';
-import { allBrushPresets, identityOption, pressureOption } from '../../engine/brush-dynamics';
-import { digitOf, type Tool } from '../registry';
+import { clamp, type Engine, type Pt } from '../../engine';
+import { allBrushPresets, identityOption, pressureOption, type SymmetryMode } from '../../engine/brush-dynamics';
+import { digitOf, type OptionSpec, type Tool } from '../registry';
 import { holdEnd, holdMove, holdStart, quickShapeOption, quickShapeSnapped } from './quick-shape';
 
 let hoverPt: Pt | null = null;
+
+const CURVES: Record<string, number[] | null> = { linear: null, soft: [0, 0.35, 0.6, 0.8, 1], firm: [0, 0.1, 0.3, 0.6, 1], s: [0, 0.1, 0.5, 0.9, 1] };
+const symKey = (e: Engine): string => (e.brushSymmetry.mode === 'radial' ? 'r' + e.brushSymmetry.count : e.brushSymmetry.mode);
+const curveKey = (e: Engine): string => Object.keys(CURVES).find((k) => JSON.stringify(CURVES[k]) === JSON.stringify(e.pressureCurve)) ?? 'linear';
+
+/** Symmetry and pressure curve choices, shared by the Brush, Pencil and Eraser. */
+export function symmetryOptions(e: Engine): OptionSpec[] {
+  return [
+    { kind: 'select', label: 'Symmetry', priority: 35, choices: [['off', 'Off'], ['vertical', 'Vertical'], ['horizontal', 'Horizontal'], ['both', 'Both axes'], ['r3', 'Radial 3'], ['r4', 'Radial 4'], ['r6', 'Radial 6'], ['r8', 'Radial 8']].map(([id, label]) => ({ id, label })), get: () => symKey(e), set: (v: string) => { e.brushSymmetry = v.startsWith('r') ? { ...e.brushSymmetry, mode: 'radial', count: Number(v.slice(1)) } : { ...e.brushSymmetry, mode: v as SymmetryMode }; e.emit('options', null); } },
+    { kind: 'select', label: 'Pressure curve', priority: 12, choices: [['linear', 'Linear'], ['soft', 'Soft'], ['firm', 'Firm'], ['s', 'S curve']].map(([id, label]) => ({ id, label })), get: () => curveKey(e), set: (v: string) => { e.pressureCurve = CURVES[v] ?? null; e.emit('options', null); } },
+  ];
+}
 
 let airbrush = false, airTimer = 0, smoothing = 0, steady: { x: number; y: number } | null = null, last: import('../registry').ToolPointer | null = null;
 
@@ -13,11 +25,13 @@ export const brushTool: Tool = {
   icon: (e) => (e.brushMode === 'erase' ? 'tEraser' : 'tBrush'),
   hint: (e) => (e.brushMode === 'erase' ? 'Drag to erase' : 'Drag to paint') + ' · Shift-click draws a line from the last point · [ ] size · Shift+[ ] hardness · 1-0 opacity · E eraser · B brush · Space pans',
   cursor: () => 'none',
-  // Smoothing (1.50.3, the tool audit), as Photoshop's: the stroke follows a steadied point that trails the pointer, and
+  // Smoothing (1.50.3, the tool audit): the stroke follows a steadied point that trails the pointer, and
   // catches up to where it is released.
   // Airbrush (1.50.4): while the button is held, paint keeps building where the pointer rests (every 60 ms).
   down(ctx, p) {
     if (p.button !== 0) return;
+    // Alt held: a temporary eyedropper, the colour under the pointer becomes the foreground
+    if (p.alt) { const c = ctx.engine.sampleColor(p.doc); if (c) ctx.engine.setColors(c); return; }
     hoverPt = p.doc; steady = { ...p.doc }; last = p;
     if (ctx.engine.beginStroke(p.doc, p.shift, p.pressure, p.pose)) {
       holdStart(p.doc, !airbrush);   // Quick Shape (36.5); not with the Airbrush, whose paint builds where the pointer rests
@@ -80,9 +94,10 @@ export const brushTool: Tool = {
     { kind: 'title', text: 'Brush' },
     { kind: 'toggle', label: 'Airbrush', priority: 40, get: () => airbrush, set: (v) => { airbrush = v; e.emit('options', null); } },
     quickShapeOption(e),
+    ...symmetryOptions(e),
     { kind: 'range', label: 'Smoothing', priority: 30, min: 0, max: 100, unit: '%', get: () => smoothing, set: (v: number) => { smoothing = Math.max(0, Math.min(100, Math.round(v))); e.emit('options', null); } },
     { kind: 'range', label: 'Angle', priority: 25, min: -180, max: 180, unit: '\u00b0', get: () => Math.round(e.brushShape.angle), set: (v: number) => { e.brushShape = { ...e.brushShape, angle: Math.max(-180, Math.min(180, Math.round(v))) }; e.emit('options', null); } },
-    // Photoshop's Mode: Normal, Behind, Clear and the blend modes the canvas truly draws (Paint/Erase was formvis's own;
+    // Mode: Normal, Behind, Clear and the blend modes the canvas truly draws (Paint/Erase was formvis's own;
     // erasing is the Eraser's).
     { kind: 'select', label: 'Mode', priority: 70, choices: [{ id: 'normal', label: 'Normal' }, { id: 'behind', label: 'Behind' }, { id: 'clear', label: 'Clear' }, ...BLEND_MODES.filter((m) => m.id !== 'normal' && canvasBlend(m.id)).map((m) => ({ id: m.id, label: m.label }))], get: () => e.brushBlend, set: (v: string) => e.setBrushBlend(v as typeof e.brushBlend) },
     { kind: 'range', label: 'Size', priority: 90, min: 1, max: 1000, unit: 'px', get: () => e.brush.diameter, set: (v) => e.setBrush({ diameter: v }) },

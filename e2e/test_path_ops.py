@@ -43,7 +43,7 @@ def ops_bar(page):
 
 
 @pytest.mark.parametrize("op", list(CASES))
-def test_each_operation_fills_as_photoshop_does(page, op):
+def test_each_operation_fills_as_the_psd_format_does(page, op):
     s = page.evaluate(SETUP)
     page.mouse.click(s[0] + 140 * s[2], s[1] + 80 * s[2])      # choose the second square
     # The path operations' bar (it alone has Combine): the selection tools' Mode has its own Subtract and Intersect, and

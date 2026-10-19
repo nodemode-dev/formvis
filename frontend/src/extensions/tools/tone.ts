@@ -4,7 +4,7 @@ import { brushKeys, brushOptions, drawBrushCursor } from './brush-common';
 
 let hover: Pt | null = null;
 
-/** Dodge, Burn and Sponge share O, as in Photoshop; each reveals a toned copy of the layer where it is brushed, and a
+/** Dodge, Burn and Sponge share O; each reveals a toned copy of the layer where it is brushed, and a
  *  new stroke over the same area tones it further. */
 function toneTool(id: 'dodge' | 'burn' | 'sponge', label: string, order: number, hint: string): Tool {
   return {

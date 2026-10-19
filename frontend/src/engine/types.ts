@@ -19,7 +19,7 @@ export type BlendMode =
   | 'linear-dodge' | 'soft-light' | 'hard-light' | 'exclusion'
   | 'dissolve' | 'linear-burn' | 'darker-color' | 'lighter-color' | 'vivid-light' | 'linear-light' | 'pin-light' | 'hard-mix' | 'subtract' | 'divide';
 
-/** Photoshop's menu order, all 27 of its layer modes, grouped darken, lighten, contrast, inversion, component.
+/** The usual menu order, all 27 layer modes of the PSD format, grouped darken, lighten, contrast, inversion, component.
  *  Linear Dodge (Add) is the canvas's `lighter`; the ten the canvas lacks are blended per pixel (`blend.ts`). */
 export const BLEND_MODES: ReadonlyArray<{ id: BlendMode; label: string }> = [
   { id: 'normal', label: 'Normal' }, { id: 'dissolve', label: 'Dissolve' },
@@ -43,16 +43,19 @@ export function samplingFromLabel(label: unknown): Sampling { return (Object.key
 
 export interface Transform { x: number; y: number; w: number; h: number; rotation: number; flipX: boolean; flipY: boolean; sampling: Sampling }
 export interface Mask { raster: Raster | null; enabled: boolean; linked: boolean; placement: Transform | null }
-/** A vector mask (1.66.1, Photoshop's): a path in document pixels showing the layer only inside it, or only outside it
+/** A vector mask (1.66.1): a path in document pixels showing the layer only inside it, or only outside it
  *  when `inverted`, its edge anti-aliased; with no outlines it shows all, or inverted hides all (Hide All). Linked, it
  *  moves and transforms with the layer; canvas changes carry it either way. */
 export interface VectorMask { path: import('./paths').VectorPath; enabled: boolean; linked: boolean; inverted: boolean }
 export type AdjustmentKind = 'hsv' | 'levels' | 'curves' | 'exposure' | 'gradientMap' | 'grain' | import('./adjust-params').ParamKind;
 export interface Adjustment { kind: AdjustmentKind; data: Record<string, unknown> }
-/** Photoshop's layer locks (the target's Lock row): transparency (paint only where there are pixels), image pixels
+/** Layer locks (the Lock row): transparency (paint only where there are pixels), image pixels
  *  (no painting, filling or filtering), position (no moving or transforming), all (every one of them). */
 export interface FrameSpec { x: number; y: number; w: number; h: number; shape: 'rect' | 'ellipse' }
 export interface LayerLocks { transparency?: boolean; pixels?: boolean; position?: boolean; all?: boolean }
+
+/** What made a picture generated on this computer: the prompt, seed, steps, LoRAs and the full parameters text. */
+export interface GenerationInfo { prompt?: string; seed?: number; steps?: number; model?: string; sampler?: string; guidance?: number; loras?: Array<{ file: string; scale: number }>; parameters?: string }
 export interface Layer {
   readonly id: ID;
   /** Layer styles drawn beneath the layer; absent or null for none. */
@@ -91,7 +94,7 @@ export interface Layer {
   parentId: ID | null;
   isGroup: boolean;
   opacity: number;
-  /** Fill (Photoshop's): the layer's own pixels at this share of its opacity, its layer styles at the full opacity;
+  /** Fill: the layer's own pixels at this share of its opacity, its layer styles at the full opacity;
    *  absent is 1. On an adjustment layer it acts as opacity does. */
   fill?: number;
   /** A folder drawn isolated even in Normal at full opacity (PSD's Normal group, as against Pass Through); a folder
@@ -101,10 +104,12 @@ export interface Layer {
   label?: LayerLabel;
   /** Absent is unlocked. */
   locks?: LayerLocks;
+  /** The settings a local model made this picture with; saved in the project, shown in File Info. */
+  generation?: GenerationInfo;
   /** Layer > Link Layers (1.65.3): layers holding the same link move and transform together; a link one layer holds
    *  alone links nothing. Absent is unlinked. */
   link?: ID;
-  /** A frame (the Frame tool, K, as Photoshop's): a folder whose mask is this shape; an image placed in it covers it. */
+  /** A frame (the Frame tool, K): a folder whose mask is this shape; an image placed in it covers it. */
   frame?: FrameSpec | null;
   /** A fill layer's content (1.66.0); `raster` is its rendering over the whole canvas, drawn again when it changes. */
   fillContent?: FillContent | null;
@@ -117,10 +122,10 @@ export interface Layer {
   adjustment: Adjustment | null;
   shape: Record<string, unknown> | null;
 }
-/** Layer > New Fill Layer (1.66.0), as Photoshop's: a solid colour; a gradient (its stops resolved to colours, laid
+/** Layer > New Fill Layer (1.66.0): a solid colour; a gradient (its stops resolved to colours, laid
  *  out across the canvas, or across what the layer's mask shows when `align`, at `angle` degrees, `scale` and `offset`
  *  as fractions of that frame); or a pattern (`scale` a fraction, `angle` degrees, its origin at the frame's corner
- *  when `link`, moved by `phase` pixels). Photoshop's own fields, so they travel in PSD files. */
+ *  when `link`, moved by `phase` pixels). The PSD format's own fields, so they travel in PSD files. */
 export type FillContent =
   | { kind: 'solid'; color: RGB }
   | { kind: 'gradient'; stops: FillStop[]; style: 'linear' | 'radial' | 'angle' | 'reflected' | 'diamond'; angle: number; scale: number; reverse: boolean; dither: boolean; align: boolean; offset: Pt }
@@ -140,9 +145,9 @@ export function artboardFromData(raw: unknown): Artboard | null {
 }
 
 export interface Guide { axis: 'x' | 'y'; at: number }
-/** A note pinned to the document (the Note tool, 1.49.6), and the Count tool's marks: saved with it, as Photoshop's. */
+/** A note pinned to the document (the Note tool, 1.49.6), and the Count tool's marks: saved with it. */
 export interface DocNote { id: ID; x: number; y: number; text: string }
-/** A document's colour mode (1.50.2, the owner's walkthrough), as Photoshop's: RGB, Grayscale (8-bit grey), Bitmap (1-bit
+/** A document's colour mode (1.50.2, the owner's walkthrough): RGB, Grayscale (8-bit grey), Bitmap (1-bit
  *  black and white) or Indexed Color (a palette of at most 256). Absent means RGB. */
 export type DocMode = 'rgb' | 'grayscale' | 'bitmap' | 'indexed' | 'cmyk' | 'lab' | 'duotone' | 'multichannel';
 /** Blend If ranges, 0 to 255: [blackStart, blackEnd, whiteStart, whiteEnd] for this layer and for the underlying
@@ -161,7 +166,7 @@ export interface DocProfile { name: string; icc: string }
 export interface ChannelPixels { mode: 'rgb' | 'cmyk' | 'lab'; n: 3 | 4; width: number; height: number; data: Float32Array }
 /** The RGB kind of ChannelPixels, as 16- and 32-bit documents hold it. */
 export type DeepPixels = ChannelPixels;
-/** A Layer Comp (Photoshop's): per layer, any of visibility, position and appearance, plus a name and comment. */
+/** A Layer Comp: per layer, any of visibility, position and appearance, plus a name and comment. */
 export interface LayerComp {
   id: ID; name: string; comment: string; useVisibility: boolean; usePosition: boolean; useAppearance: boolean;
   layers: Record<ID, { visible?: boolean; x?: number; y?: number; opacity?: number; blend?: BlendMode; fill?: number; effects?: unknown; effectsHidden?: boolean }>;
@@ -213,7 +218,7 @@ export function newLayer(name: string, size: { width: number; height: number }, 
  *  down and to the right. */
 export interface DropShadowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; angle: number; distance: number; size: number; contour?: ContourId; useGlobal?: boolean }
 export interface OuterGlowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; size: number; contour?: ContourId }
-/** `position`: Outside (the default, drawn beneath), Inside or Center (drawn over the layer, as Photoshop draws them). */
+/** `position`: Outside (the default, drawn beneath), Inside or Center (drawn over the layer). */
 export interface StrokeEffect { enabled: boolean; color: RGB; opacity: number; size: number; position?: 'outside' | 'inside' | 'center' }
 export interface InnerShadowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; angle: number; distance: number; size: number; contour?: ContourId; useGlobal?: boolean }
 export interface InnerGlowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; size: number; contour?: ContourId }
@@ -250,10 +255,10 @@ export interface BevelTexture { enabled: boolean; pattern: string; scale: number
  *  kept inside the silhouette as a silky shading; `invert` shades where they agree instead. */
 export interface SatinEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; angle: number; distance: number; size: number; invert: boolean }
 /** Pattern Overlay: pattern `pattern` (an id) tiled from the layer's top-left corner at `scale`, kept to its silhouette,
- *  beneath the other overlays as in Photoshop. */
+ *  beneath the other overlays. */
 export interface PatternOverlayEffect { enabled: boolean; pattern: string; opacity: number; blend: BlendMode; scale: number }
 export interface LayerEffects { dropShadow: DropShadowEffect; outerGlow: OuterGlowEffect; stroke: StrokeEffect; innerShadow: InnerShadowEffect; innerGlow: InnerGlowEffect; colorOverlay: ColorOverlayEffect; gradientOverlay: GradientOverlayEffect; bevel: BevelEffect; satin: SatinEffect; patternOverlay: PatternOverlayEffect; extra?: EffectExtras; hidden?: boolean }
-/** More instances of the effects Photoshop allows several of (up to ten in all, so nine here), drawn after the main
+/** More instances of the effects a PSD can hold several of (up to ten in all, so nine here), drawn after the main
  *  one, each above the last. */
 export interface EffectExtras { dropShadow?: DropShadowEffect[]; stroke?: StrokeEffect[]; innerShadow?: InnerShadowEffect[]; colorOverlay?: ColorOverlayEffect[]; gradientOverlay?: GradientOverlayEffect[] }
 export type MultiEffect = keyof EffectExtras;
@@ -264,7 +269,7 @@ export function instances<K extends MultiEffect>(fx: LayerEffects, k: K): Array<
   return [fx[k], ...((fx.extra?.[k] as Array<LayerEffects[K]> | undefined) ?? [])];
 }
 
-/** Photoshop's starting values: a 75% multiplied black shadow at 120 degrees, 5 px away and 5 px soft; a 75% screened
+/** The usual starting values: a 75% multiplied black shadow at 120 degrees, 5 px away and 5 px soft; a 75% screened
  *  pale yellow glow of 5 px; a 3 px black outside stroke. All off. */
 export function defaultEffects(): LayerEffects {
   return {
@@ -349,14 +354,15 @@ export function effectsFromData(raw: unknown): LayerEffects | null {
 /** A type layer's text and how it is set. `size` is in document pixels; `lineHeight` multiplies it from one baseline
  *  to the next. `rendered` pairs the spec with the raster it was drawn into (id and version): once the pixels are
  *  edited the pair breaks and the layer is plain pixels, as painting on type rasterizes it. */
-/** `tracking`: extra space between characters in thousandths of an em, as Photoshop measures it; `kerning`: the font's
+/** `tracking`: extra space between characters in thousandths of an em; `kerning`: the font's
  *  own pair kerning ('metrics') or none ('none'). */
 /** box: paragraph text's box, wrapped to its width and clipped at its height (absent: point text); direction: vertical
  *  type stacks upright characters top to bottom in columns from right to left (1.49.7, the owner's tool list). */
-/** antialias (1.50.4, the tool audit): Photoshop's method, of those formvis renders truly: None (every edge pixel on or
+/** antialias (1.50.4, the tool audit): the method, of those formvis renders truly: None (every edge pixel on or
  *  off), Sharp (steeper edges) or Smooth (absent). */
 /** features (DEV_PLAN 32.6b): OpenType feature tags turned on ('smcp'), and '-liga' or '-calt' for a default feature off. */
-export interface TextSpec { features?: string[] | null; antialias?: 'none' | 'sharp' | 'smooth'; box?: { w: number; h: number } | null; direction?: 'horizontal' | 'vertical'; content: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right' | 'justify'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning; warp?: TextWarp | null; onPath?: TextPath | null; style?: ID | null; charStyle?: ID | null; rendered?: string }
+/** hyphenate: paragraph text breaks a word that does not fit at a syllable-like point with a hyphen; language: a BCP 47 tag the canvas shapes the text for. */
+export interface TextSpec { hyphenate?: boolean; language?: string; features?: string[] | null; antialias?: 'none' | 'sharp' | 'crisp' | 'strong' | 'smooth' | 'windows-lcd' | 'windows'; box?: { w: number; h: number } | null; direction?: 'horizontal' | 'vertical'; content: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right' | 'justify'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning; warp?: TextWarp | null; onPath?: TextPath | null; style?: ID | null; charStyle?: ID | null; rendered?: string }
 /** A character style (DEV_PLAN 32.6c): only the fields it sets override the type layer's own; the layer links it by `TextSpec.charStyle`. */
 export interface CharacterStyle { id: ID; name: string; family?: string; size?: number; color?: RGB; bold?: boolean; italic?: boolean; tracking?: number; features?: string[] }
 /** A paragraph style (Window > Paragraph Styles): a named set of type settings kept in the document; type layers linked
@@ -366,7 +372,7 @@ export interface ParagraphStyle { id: ID; name: string; family: string; size: nu
  *  the layer), where the text starts along it (Start Offset, a percentage of its length), and the frame's size. */
 export interface TextPath { points: Pt[]; offset: number; frame: { w: number; h: number } }
 export type TextKerning = 'metrics' | 'none';
-/** Warp Text, as Photoshop's: a style, its orientation, and Bend, Horizontal and Vertical Distortion (-100 to 100). */
+/** Warp Text: a style, its orientation, and Bend, Horizontal and Vertical Distortion (-100 to 100). */
 export type WarpStyle = 'arc' | 'arcLower' | 'arcUpper' | 'arch' | 'bulge' | 'shellLower' | 'shellUpper' | 'flag' | 'wave' | 'fish' | 'rise' | 'fisheye' | 'inflate' | 'squeeze' | 'twist';
 export interface TextWarp { style: WarpStyle; orientation: 'horizontal' | 'vertical'; bend: number; horizontal: number; vertical: number }
 
@@ -398,7 +404,7 @@ export function smartFiltersFrom(raw: unknown): SmartFilter[] {
 
 /** A shape layer: a path with a fill colour, a stroke centred on it, or both. `origin` is where its raster was
  *  rendered, so a later move of the layer can carry the path along. */
-/** dash and align (1.52.8, the tool audit), as Photoshop's stroke options: solid, dashed or dotted; inside, centred
+/** dash and align (1.52.8, the tool audit), the stroke options: solid, dashed or dotted; inside, centred
  *  on or outside the path (an open path is always centred). */
 export interface ShapeStroke { color: RGB; width: number; dash?: 'solid' | 'dashed' | 'dotted'; align?: 'inside' | 'center' | 'outside' }
 export interface ShapeStyle { fill: RGB | null; stroke: ShapeStroke | null }

@@ -2,6 +2,61 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Gray files decoded with their profile · _v1.87.5 (app/routers/io.py)
+
+CLOSE_GAPS D37. Only additions.
+
+- `io.py` `decode_gray` (`POST /api/io/decode-gray`, after `decode_cmyk`): the gray and alpha bytes of an 8-bit L or LA file and its embedded profile when it is a GRAY profile; 204 for 16-bit, multi-page or not gray.
+
+## Model routes: remove, download sources, the Relight depth model's state · _v1.87.5 (app/localgen/model_manager.py, app/localgen/relight_split.py)
+
+CLOSE_GAPS D36, D39 and D42. Only additions apart from one dictionary line.
+
+- `model_manager.py`: `DELETE /api/models/{model}` removes a model's files and sidecars (409 for the generation models managed elsewhere, the safety filter, or one downloading); `GET /api/models/sources` (`{models: {id: {mode, url}}}`) and `PUT /api/models/{model}/source` with `SourceBody` (`mode` upstream, mirror or custom; 400 for a missing or non-http(s) URL, 404 for an unknown model) write `sources.json`, which `source_for` already read. The line `"license": "CreativeML Open RAIL++-M", "downloadGB": 5.2}` gained a following entry.
+- `relight_split.py` `/engines` also answers `moge` and `mogeModel` (`_moge_ready`).
+- Measured on a scratch engine: the sky model downloaded (176 MB, checksum checked) and DELETE left it not ready; DELETE on a managed model 409; PUT mirror wrote `{"skyseg":{"mode":"mirror","url":"https://mirror.example.com/m/"}}` and the next download went to the mirror host; PUT upstream reset it.
+
+## NOTICE.md replaced with the owner's reviewed version · _v1.87.5 (NOTICE.md)
+
+The owner's licence review (2026-10-19, against `src-tauri/Cargo.lock`, a clean install of both requirements files, the wheels' native libraries and the shipped npm packages) supplied a complete NOTICE.md (817 lines), used as given (it replaced the 235-line file: new rows for fontdb, @tauri-apps/api and onnx, OpenEXR moved into Distributed, and the sections for the shell's crates, the engine's Python packages, native libraries in the wheels, required credits, LGPL source with the written offer, the Linux AppImage and keeping the file current). Changed by hand after: the shell row names tauri-plugin-single-instance, a table "Added with tauri-plugin-single-instance (1.87.4)" lists its 33 crates with their licences from `cargo metadata`, and the DNG specification row names the document without its publisher. The FreeType credit's year 2026 matches 2.14.3 (packaged in April 2026). New beside it: `licenses/` (233 files, 4.6 MB: python/ 49 distributions, python-ml/ 50, npm/ 10, onnxruntime-ThirdPartyNotices.txt, and the crate pages rust-src-tauri.html (598 crates) and rust-formvis-render.html (139) made with cargo-about 0.9.2), `setup/collect_licenses.py` that regenerates it, `src-tauri/about.toml` and `about.hbs`, and `"resources": { "../licenses": "licenses" },` added to `bundle` in `tauri.conf.json` (checked with `cargo check`, which copied the folder; no full `tauri build` run). flatbuffers, antlr4-python3-runtime and cuda-toolkit carry no licence file in their wheels or sources, so they are listed, not invented.
+
+## /api/seam removed · _v1.87.5 (app/routers/seam.py deleted, app/main.py)
+
+The owner's patent review: seam carving falls under US 7,477,800 (active until about 2027-03-06) and the skin-tone protection under US 8,290,300 (until about 2031-05-12).
+
+- Deleted `app/routers/seam.py` (140 lines: `_energy`, `_seam`, `_remove`, `_insert`, `carve_width`, `carve`, `skin_mask`, `POST /content-aware-scale`, `PROTECT = 1_000_000.0`, `MAX_PIXELS = 12_000_000`). Its full text is in git: `git show v1.87.4:backend/app/routers/seam.py`.
+- `main.py` removed:
+
+```python
+from app.routers import seam as _seam  # noqa: E402  (1.55.4)
+app.include_router(_seam.router, prefix="/api/seam")   # Content-Aware Scale (1.55.4, M4)
+```
+
+- The frontend's `engine/neural.ts` `skinMask()` and Skin Smoothing stay: not seam-based. Tests named for seams test tile edges, not seam carving.
+- Warnings for future work: no gradient-domain (Poisson) blending after the adaptive Content-Aware Fill (US 8,861,868, claim 1); no live fill of the vacated area during the Content-Aware Move drag (US 9,575,641, claim 1).
+
+## Animation frames route · _v1.87.5 (app/services/imaging.py, app/routers/io.py)
+
+CLOSE_GAPS D38. Only additions.
+
+- `imaging.py` `MAX_ANIMATION_FRAMES = 500`, `frames(data, filename)`: a GIF or WebP of two or more frames, each seeked and converted to RGBA (Pillow applies disposal and blending), as PNGs with width, height, plays and per-frame delays; None for one frame; refused past 500 frames or the megapixel limit in total. `io.py` `POST /api/io/frames` (`animation_frames`): a 4-byte length, a JSON header, then the PNGs, as /exr-parts answers.
+- Measured: GIF delays 100/250/400 and plays 0; WebP the same delays and plays 3; GIF with no loop block plays 1; one frame answers `{count: 1}`.
+
+## Every export type allowed in the desktop app; Artboards to PDF embeds the profile · _v1.87.5 (app/routers/io.py, app/services/pdf_icc.py)
+
+CLOSE_GAPS D35 and D41.
+
+- `io.py` `EXPORT_TYPES`: one tuple of the 51 extensions the window writes (png, jpg, jpeg, webp, avif, tif, tiff, bmp, gif, pdf, svg, ai, eps, qoi, tga, ico, dpx, pbm, pgm, ppm, pnm, pam, exr, hdr, psd, psb, ora, fvd, fmv, formvis, mp4, webm, zip, cube, 3dl, csp, look, lut, json, csv, txt, atn, abr, grd, aco, ase, act, pat, csh, asl, sh); `EXPORT_NAME` and `OUTPUT_KINDS` are built from it, so /io/export, /io/write-path and /io/outputs agree. Replaced:
+
+```python
+EXPORT_NAME = re.compile(r"^[^/\\:*?\"<>|\x00-\x1f]{1,160}\.(png|jpg|jpeg|fvd|fmv|formvis|webp|tif|tiff|pdf|avif|dpx|psd|qoi|pbm|pgm|ppm|pam|tga|ico)$", re.IGNORECASE)
+OUTPUT_KINDS = (".png", ".jpg", ".jpeg", ".webp", ".avif", ".tif", ".tiff", ".pdf", ".psd", ".psb", ".fvd", ".fmv", ".gif", ".qoi", ".tga",
+                ".ico", ".dpx", ".pbm", ".pgm", ".ppm", ".pam", ".exr", ".mp4", ".zip", ".svg")
+```
+
+- `pdf_icc.py` `embed_rgb_profile(pdf, icc)`: rewrites Pillow's PDF with the profile as one ICCBased stream that every page image uses (JPEG and JPEG 2000 layouts). `io.py` `pdf_pages` reads the profile once, embeds an RGB one and answers `X-ICC: embedded` or `skipped`. Replaced: the docstring's ``to JPEG at 100 when the engine's Pillow has no JPEG 2000). `icc` is checked and then not embedded: Pillow's PDF`` and `writer carries no profile."""`, `ImageCms.ImageCmsProfile(io.BytesIO(icc.file.read()))`, `return Response(out.getvalue(), media_type="application/pdf")`.
+- Measured on a desktop-mode scratch engine: 31 export names 200 (before, the old pattern refused gif, mp4, webm, ora, psb, hdr, exr, ai, zip, cube, 3dl, csp, json, csv, txt, atn, abr, grd, aco, ase, pat and sh); exe, bat, js, html, `.hidden.png`, `../../evil.exe`, `a:b.png`, no extension and `a.png.exe` 400; `../../x.png` lands inside Exports. PDF: ICCBased 0 to 2, profile bytes once, `qpdf --check` clean, a Lab profile skipped.
+
 ## Profiles in 16-bit and banded exports · _v1.87.4 (app/routers/io.py, app/routers/bands.py)
 
 CLOSE_GAPS D14 remainder.

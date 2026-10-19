@@ -497,7 +497,7 @@ export const hu: Record<string, string> = {
   'Paste from': 'Beillesztés innen',
   'Paste size (% of the plane)': 'Beillesztés mérete (a sík %-a)',
   'Patchwork': 'Foltvarrás',
-  'Paths to Illustrator': 'Útvonalak az Illustratorba',
+  'Paths to AI File': 'Útvonalak AI-fájlba',
   'Pattern Overlay': 'Mintás fedés',
   'Performance Benchmark': 'Teljesítménymérés',
   'Photo': 'Fotó',

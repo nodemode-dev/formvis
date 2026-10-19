@@ -64,7 +64,7 @@ export const cloneTool: Tool = {
     { kind: 'title', text: 'Clone Stamp' },
     { kind: 'segment', label: 'Source', priority: 75, choices: [0, 1, 2, 3, 4].map((i) => ({ id: String(i), label: String(i + 1) })), get: () => String(e.cloneSlot), set: (v: string) => e.selectCloneSlot(Number(v)) },
     { kind: 'toggle', label: 'Aligned', priority: 60, get: () => e.retouch.cloneAligned, set: (v) => { e.retouch.cloneAligned = v; e.cloneOffset = null; e.emit('options', null); } },
-    // Photoshop's Mode, Flow and Sample (1.50.6, the tool audit; Sample was an all-layers toggle).
+    // Mode, Flow and Sample (1.50.6, the tool audit; Sample was an all-layers toggle).
     { kind: 'select', label: 'Mode', priority: 70, choices: BLEND_MODES.filter((m) => canvasBlend(m.id)).map((m) => ({ id: m.id, label: m.label })), get: () => e.retouch.cloneBlend, set: (v: string) => { e.retouch.cloneBlend = v as typeof e.retouch.cloneBlend; e.emit('options', null); } },
     { kind: 'range', label: 'Flow', priority: 85, min: 1, max: 100, unit: '%', get: () => Math.round(e.retouch.cloneFlow * 100), set: (v: number) => { e.retouch.cloneFlow = Math.max(0.01, Math.min(1, v / 100)); e.emit('options', null); } },
     { kind: 'select', label: 'Sample', priority: 60, choices: [{ id: 'current', label: 'Current Layer' }, { id: 'below', label: 'Current & Below' }, { id: 'all', label: 'All Layers' }], get: () => e.retouch.cloneSample, set: (v: string) => { e.retouch.cloneSample = v as typeof e.retouch.cloneSample; e.emit('options', null); } },

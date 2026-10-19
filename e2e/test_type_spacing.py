@@ -20,7 +20,7 @@ def test_saved_text_reads_back_tracking_and_kerning_with_defaults_for_older_proj
     r = page.evaluate("""async () => { const T = await import('/src/engine/text.ts'), E = await import('/src/engine/index.ts'), ras = new E.Raster(4, 4);
       return { old: T.textFromData({ content: 'Hi' }, ras), now: T.textFromData({ content: 'Hi', tracking: 99999, kerning: 'none' }, ras) }; }""")
     assert r["old"]["tracking"] == 0 and r["old"]["kerning"] == "metrics"
-    assert r["now"]["tracking"] == 10000 and r["now"]["kerning"] == "none"      # clamped to Photoshop's range
+    assert r["now"]["tracking"] == 10000 and r["now"]["kerning"] == "none"      # clamped to the range
 
 
 def test_the_font_menu_offers_this_machines_fonts_and_the_system_list(page):

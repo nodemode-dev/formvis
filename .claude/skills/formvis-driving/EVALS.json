@@ -17,7 +17,7 @@
     { "prompt": "Which rendering intent should I use to convert an sRGB image to FOGRA39 for print?", "better_fit": "formvis-colour-science" },
     { "prompt": "Write a Python script that resizes every JPEG in a folder.", "better_fit": "none, a script rather than formvis" },
     { "prompt": "Explain how Gaussian blur works.", "better_fit": "none, a question with no editing" },
-    { "prompt": "Retouch this portrait in Photoshop.", "better_fit": "none, a different application" },
+    { "prompt": "Retouch this portrait in a different image editor.", "better_fit": "none, a different application" },
     { "prompt": "Bump the formvis version and write the release notes.", "better_fit": "formvis-harness" },
     { "prompt": "Why does the formvis engine fail to start in the backend tests?", "better_fit": "formvis-harness" }
   ]

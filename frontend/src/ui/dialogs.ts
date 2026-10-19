@@ -232,7 +232,7 @@ export function askSaveChanges(name: string): Promise<'save' | 'discard' | 'canc
   return saveChangesDialog.ask(name, false).then((a) => a.choice);
 }
 
-/** The same with Apply to All (Close All and Close Others, 1.65.8, as Photoshop's): `all` when it was ticked, so the
+/** The same with Apply to All (Close All and Close Others, 1.65.8): `all` when it was ticked, so the
  *  answer stands for the documents after this one. */
 export function askSaveChangesAll(name: string): Promise<{ choice: 'save' | 'discard' | 'cancel'; all: boolean }> {
   saveChangesDialog ??= new SaveChanges();

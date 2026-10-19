@@ -1,6 +1,6 @@
 import { deepFromU16, deepToU16 } from '../engine/deep';
 import { parseComps } from '../engine/layer-comps';
-import type { ChannelPixels, DeepPixels } from '../engine/types';
+import type { ChannelPixels, DeepPixels, GenerationInfo } from '../engine/types';
 import { readDuotone, type Duotone } from '../engine/duotone';
 import {
   Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid, type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsPresent, effectsFromData, liveText, textFromData, paragraphStylesFrom, characterStylesFrom,smartFiltersFrom, pathSetData, pathSetFrom, pathData, pathFrom, type PathSet, type RGB, timelineData, timelineFrom, type Timeline, addPattern, patternById, projectPatterns, SelectionMask, type AlphaChannel,
@@ -170,6 +170,7 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
     if (l.label) r.label = l.label;
     if (l.locks && Object.values(l.locks).some(Boolean)) r.locks = { ...l.locks };
     if (l.link) r.linkID = l.link;
+    if (l.generation) r.generation = structuredClone(l.generation);
     if (l.frame) r.frame = { ...l.frame };
     if (l.blend !== 'normal') r.blendMode = blendLabel(l.blend);
   if (effectsPresent(l.effects)) r.effects = structuredClone(l.effects);
@@ -237,6 +238,26 @@ const colorFrom = (raw: unknown): RGB | null => {
   const c = obj(raw);
   return finite(c.r) && finite(c.g) && finite(c.b) ? { r: Math.min(255, Math.max(0, c.r)), g: Math.min(255, Math.max(0, c.g)), b: Math.min(255, Math.max(0, c.b)) } : null;
 };
+
+/** A layer's generation settings read back, checked; null when nothing usable is there. */
+function generationFrom(raw: unknown): GenerationInfo | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = obj(raw), out: GenerationInfo = {};
+  const text = (v: unknown, max: number): string | undefined => (typeof v === 'string' && v ? v.slice(0, max) : undefined);
+  const prompt = text(o.prompt, 5000), model = text(o.model, 200), sampler = text(o.sampler, 100), parameters = text(o.parameters, 20000);
+  if (prompt) out.prompt = prompt;
+  if (model) out.model = model;
+  if (sampler) out.sampler = sampler;
+  if (parameters) out.parameters = parameters;
+  if (typeof o.seed === 'number' && Number.isFinite(o.seed)) out.seed = o.seed;
+  if (typeof o.steps === 'number' && Number.isFinite(o.steps)) out.steps = o.steps;
+  if (typeof o.guidance === 'number' && Number.isFinite(o.guidance)) out.guidance = o.guidance;
+  if (Array.isArray(o.loras)) {
+    const loras = o.loras.slice(0, 32).map(obj).filter((l) => typeof l.file === 'string' && l.file && typeof l.scale === 'number' && Number.isFinite(l.scale)).map((l) => ({ file: String(l.file).slice(0, 300), scale: l.scale as number }));
+    if (loras.length) out.loras = loras;
+  }
+  return Object.keys(out).length ? out : null;
+}
 
 /** A shape layer read back, checked: a path, a render origin, and a fill, a stroke or both. */
 function vectorFrom(raw: unknown): Layer['vector'] {
@@ -329,6 +350,7 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
       ...(r.frame && typeof r.frame === 'object' ? (() => { const f = r.frame as Record<string, unknown>; return { frame: { x: num(f.x, 0), y: num(f.y, 0), w: Math.max(2, num(f.w, 2)), h: Math.max(2, num(f.h, 2)), shape: f.shape === 'ellipse' ? 'ellipse' as const : 'rect' as const } }; })() : {}),
       ...(r.locks && typeof r.locks === 'object' ? (() => { const k = r.locks as Record<string, unknown>, out = Object.fromEntries((['transparency', 'pixels', 'position', 'all'] as const).filter((n) => k[n] === true).map((n) => [n, true])); return Object.keys(out).length ? { locks: out } : {}; })() : {}),
       ...(str(r.linkID) ? { link: (str(r.linkID) as string).slice(0, 120) } : {}),
+      ...(generationFrom(r.generation) ? { generation: generationFrom(r.generation) as GenerationInfo } : {}),
       blend: blendFromLabel(r.blendMode), effects: effectsFromData(r.effects), text: textFromData(r.text, raster), smart, ...(r.video && raster ? { video: videoFrom(r.video) } : {}), vector, mask, clipId: str(r.maskSourceID), adjustment: kind ? { kind, data: adj } : null, shape: r.shape ? obj(r.shape) : null, ...(r.extrude3d && typeof r.extrude3d === 'object' ? { extrude3d: r.extrude3d } : {}),
       ...(r.isGroup === true && !str(r.parentID) && r.artboard ? { artboard: artboardFromData(r.artboard) } : {}),
       ...(raster && r.fillContent ? { fillContent: fillContentFrom(r.fillContent) } : {}),

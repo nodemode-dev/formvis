@@ -1,7 +1,7 @@
 /** Perspective Warp (1.55.6, the parity plan's M4): planes laid out on the picture as quads, then their corners moved;
  *  each plane carries the picture by the homography from its layout quad to its warped quad. A pixel inside a warped
  *  quad takes that plane's map; a pixel outside every quad takes the map of the nearest one, so the whole picture
- *  follows, as Photoshop's does. Quads are corner lists in order top-left, top-right, bottom-right, bottom-left. */
+ *  follows. Quads are corner lists in order top-left, top-right, bottom-right, bottom-left. */
 
 export type P2 = [number, number];
 export type Quad = [P2, P2, P2, P2];

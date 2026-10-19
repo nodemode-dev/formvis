@@ -7,7 +7,7 @@ export class EdgeMap {
   /** cost per pixel: low on strong edges (never zero), high elsewhere. */
   constructor(readonly width: number, readonly height: number, readonly cost: Float32Array, readonly strength: Float32Array) {}
 
-  /** From RGBA pixels. Contrast (0..1, Photoshop's percentage) is the weakest edge that counts: a gradient below it is
+  /** From RGBA pixels. Contrast (0..1, a percentage) is the weakest edge that counts: a gradient below it is
    *  no edge at all; above it strength rises to full at four times the threshold. */
   static fromRGBA(data: Uint8ClampedArray, width: number, height: number, contrast = 0.1): EdgeMap {
     const n = width * height, lum = new Float32Array(n), strength = new Float32Array(n), cost = new Float32Array(n);

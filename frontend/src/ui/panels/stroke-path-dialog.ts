@@ -3,7 +3,7 @@ import { Dialog } from '../dialogs';
 import { el } from '../dom';
 import { checkRow, selectRow, sliderRow } from './controls';
 
-/** Paths > Stroke Path, as Photoshop's dialog has it: the Tool to stroke with, at that tool's current settings, and
+/** Paths > Stroke Path: the Tool to stroke with, at that tool's current settings, and
  *  Simulate Pressure, which tapers the stroke thin, thick, thin. Both are kept for next time. */
 export class StrokePathDialog extends Dialog {
   private tool: StrokeTool = 'brush';

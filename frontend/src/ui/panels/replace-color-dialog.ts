@@ -8,7 +8,7 @@ const BOX_W = 320, BOX_H = 160;
 const hex = (c: RGB): string => `#${[c.r, c.g, c.b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
 const fromHex = (h: string): RGB => ({ r: parseInt(h.slice(1, 3), 16), g: parseInt(h.slice(3, 5), 16), b: parseInt(h.slice(5, 7), 16) });
 
-/** Image > Adjustments > Replace Color (1.65.5), as Photoshop's: click the image to sample the colour to replace
+/** Image > Adjustments > Replace Color (1.65.5): click the image to sample the colour to replace
  *  (Shift-click adds one, Alt-click takes one away) or pick it in Color; Fuzziness widens what counts as close, the box
  *  showing what is chosen in grey at one fixed size; Hue, Saturation and Lightness set the replacement, Result showing
  *  the first colour replaced (picking a Result sets them). The layer previews live; OK is one step. */

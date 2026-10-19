@@ -1,6 +1,5 @@
 //! How large a document the machine can hold, in place of a fixed pixel cap (the web build's 100 MP). The renderer may
-//! use 60 percent of the machine's memory (Photoshop's default is 70 percent of what is available, so this leaves
-//! more), and a document pixel costs 16 bytes at most: its layer tile, the two textures the blend alternates between,
+//! use 60 percent of the machine's memory, and a document pixel costs 16 bytes at most: its layer tile, the two textures the blend alternates between,
 //! and the display's copy, each 4 bytes. wgpu does not report the graphics processor's own memory, so the budget is the
 //! system's RAM; on machines with separate video memory the tiles also live there, which this does not yet measure.
 

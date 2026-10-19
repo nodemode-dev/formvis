@@ -74,7 +74,7 @@ export const zhCN: Record<string, string> = {
   'Offset': '偏移', 'Oil Paint': '油画', 'Oldstyle Figures': '旧式数字', 'Opacity (%)': '不透明度 (%)', 'Open': '打开', 'Open Image Data': '开放图像数据', 'Open as': '打开为', 'OpenEXR': 'OpenEXR',
   'OpenType Features': 'OpenType 功能', 'Ordinals': '序数', 'Orientation': '方向', 'Ornaments': '装饰', 'Outer Glow': '外发光', 'Output To': '输出到', 'Output black': '输出黑场', 'Output channel': '输出通道',
   'Output white': '输出白场', 'Paint Daubs': '涂抹棒', 'Painting': '绘画', 'Painting Cursors': '绘画光标', 'Palette Knife': '调色刀', 'Panels Sheet': '面板表', 'Paper size': '纸张大小',
-  'Paste from': '粘贴自', 'Paste size (% of the plane)': '粘贴大小 (平面的 %)', 'Patchwork': '拼缀图', 'Paths to Illustrator': '路径到 Illustrator', 'Pattern Overlay': '图案叠加',
+  'Paste from': '粘贴自', 'Paste size (% of the plane)': '粘贴大小 (平面的 %)', 'Patchwork': '拼缀图', 'Paths to AI File': '路径到 AI 文件', 'Pattern Overlay': '图案叠加',
   'Performance Benchmark': '性能基准', 'Photo': '照片', 'Photo Filter': '照片滤镜', 'Photocopy': '复印', 'Photography': '摄影', 'Picture Frame': '相框', 'Pin Light': '点光', 'Pinch': '挤压',
   'Pixel': '像素', 'Place': '置入', 'Plaster': '塑料效果', 'Plastic Wrap': '塑料包装', 'Play': '播放', 'Play Action': '播放动作', 'Play Animation': '播放动画', 'Plus': '加号', 'Point Radius (%)': '点半径 (%)',
   'Pointillize': '点状化', 'Polar Coordinates': '极坐标', 'Position': '位置', 'Position X (%)': '位置 X (%)', 'Poster Edges': '海报边缘', 'Posterize': '色调分离', 'Preserve': '保留',

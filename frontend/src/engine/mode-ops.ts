@@ -121,7 +121,7 @@ export function setLab(host: ModeHost): boolean {
   });
 }
 
-/** Image > Mode > Grayscale from Lab (1.57.5): each layer's grey from its Lightness alone, as Photoshop takes it,
+/** Image > Mode > Grayscale from Lab (1.57.5): each layer's grey from its Lightness alone,
  *  the sRGB grey of that lightness exactly; the document leaves Lab for 8-bit Grayscale. */
 export function setGrayFromLab(host: ModeHost): boolean {
   const p = host.current;
@@ -347,7 +347,7 @@ export function convertMode(host: ModeHost, mode: DocMode, opts: { dither?: bool
 }
 
 /** A palette of at most `n` colours for RGBA pixels: every colour when there are that few (Exact), else median cut over
- *  a sample (Adaptive), as Photoshop's Indexed Color chooses. */
+ *  a sample (Adaptive), as Indexed Color chooses. */
 function paletteFor(d: Uint8ClampedArray, n: number): RGB[] {
   const seen = new Map<number, RGB>();
   for (let i = 0; i < d.length && seen.size <= n; i += 4) if (d[i + 3] >= 128) { const k = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2]; if (!seen.has(k)) seen.set(k, { r: d[i], g: d[i + 1], b: d[i + 2] }); }

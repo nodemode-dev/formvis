@@ -6,7 +6,7 @@ import { selectRow, sliderRow } from './controls';
 /** What the person chose in Camera Raw: the white balance applied at the RAW stage and the bit depth to open at. */
 export type RawChoice = { wb: RawWhiteBalance; bits: 8 | 16 };
 
-/** Camera Raw on open (DEV_PLAN 36.21): a camera RAW file opens here first, as Photoshop opens it into Camera Raw. The
+/** Camera Raw on open (DEV_PLAN 36.21): a camera RAW file opens here first, into Camera Raw. The
  *  preview is the engine's half-size decode with the white balance set (rawpy's user_wb multipliers), so it is fast;
  *  Open resolves with the choice and the app does the full decode, Cancel (or closing) resolves null and the file is
  *  not opened. The rest of Develop (curve, colour mixer, grading, optics, geometry) follows on the opened layer. */

@@ -1,4 +1,5 @@
 import { Raster, type Engine } from '../../engine';
+import type { GenerationInfo } from '../../engine/types';
 import { api, ApiError, type GenerativeStatus, type ProviderStatus } from '../../io/api';
 import { recipes, runToResults } from '../../io/comfy';
 import { localModels, runLocal } from '../../io/local-gen';
@@ -75,12 +76,14 @@ export async function runGeneration(engine: Engine, req: GenerationRequest): Pro
   const W = p.doc.width, H = p.doc.height, w = req.size?.width ?? W, h = req.size?.height ?? H, { prompt, choice } = req;
   const hint = req.keyHint ?? { fal: t('Add a fal API key first, in Edit > Generative Fill.'), provider: (name: string) => t(`Add a ${name} API key first, above.`) };
   let blob: Blob;
+  let generation: GenerationInfo | undefined;
   if (choice.startsWith('local:')) {
     // On this computer: the shape asked within the model's 2048 pixels, in multiples of 16.
     const k = Math.min(1, 2048 / Math.max(w, h)), lw = Math.max(256, Math.round((w * k) / 16) * 16), lh = Math.max(256, Math.round((h * k) / 16) * 16);
     const r = await runLocal({ generator: choice, prompt, size: `${lw}x${lh}`, count: 1 }, req.status, req.stopped);
     req.heard?.(r);
     blob = r.pictures[0];
+    generation = r.settings[0];
   } else if (choice.startsWith('provider:')) {
     const pr = req.providers.find((x) => `provider:${x.id}` === choice);
     if (!pr) throw new Error(t('That provider is not available.'));
@@ -105,11 +108,11 @@ export async function runGeneration(engine: Engine, req: GenerationRequest): Pro
   r.ctx.drawImage(bitmap, 0, 0, w, h);   // scaled to the shape asked
   bitmap.close();
   r.touch();
-  engine.insertRasterLayer(r, 'Generated Image', Math.round((W - w) / 2), Math.round((H - h) / 2), {}, 'Generate Image');
+  engine.insertRasterLayer(r, 'Generated Image', Math.round((W - w) / 2), Math.round((H - h) / 2), generation ? { generation } : {}, 'Generate Image');
   return true;
 }
 
-/** Edit > Generate Image (1.51.2), as Photoshop's: a picture from a prompt alone, as a new layer at the document's size
+/** Edit > Generate Image (1.51.2): a picture from a prompt alone, as a new layer at the document's size
  *  (a new 1024 by 1024 document when none is open), with FLUX1.1 [pro] on fal, OpenAI, Google, Black Forest Labs or
  *  Ideogram with their own keys (1.58.4), a kept ComfyUI workflow, or a model on this computer. */
 export class GenerateImageDialog extends Dialog {

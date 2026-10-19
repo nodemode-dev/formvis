@@ -1,4 +1,4 @@
-/** File Info (DEV_PLAN 29.2): the descriptive metadata a document carries, Photoshop's File > File Info fields. Pure data
+/** File Info (DEV_PLAN 29.2): the descriptive metadata a document carries, the File > File Info fields. Pure data
  *  and rules, no DOM; the dialog, the project file, the XMP writer and reader and the tab all read it from here. */
 
 export type CopyrightStatus = 'unknown' | 'copyrighted' | 'public';
@@ -107,6 +107,6 @@ export function mergeMeta(cur: DocMeta | undefined, patch: MetaPatch, now: strin
   return Object.keys(merged).length ? merged : undefined;
 }
 
-/** The copyright symbol Photoshop puts before the title in the document tab when the status is Copyrighted. */
+/** The copyright symbol put before the title in the document tab when the status is Copyrighted. */
 export const COPYRIGHT_MARK = '©';
 export const tabName = (name: string, m: DocMeta | undefined): string => (m?.copyright === 'copyrighted' ? `${COPYRIGHT_MARK} ${name}` : name);

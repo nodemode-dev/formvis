@@ -3,7 +3,7 @@ import { WARP_STYLES } from '../../engine/text';
 import { Dialog } from '../dialogs';
 import { selectRow, sliderRow } from './controls';
 
-/** Type > Warp Text, Photoshop's dialog: a Style (None removes the warp), Horizontal or Vertical, and Bend, Horizontal
+/** Type > Warp Text: a Style (None removes the warp), Horizontal or Vertical, and Bend, Horizontal
  *  and Vertical Distortion. OK re-renders the type layer with the warp as one undo step; the text stays editable. */
 export class WarpTextDialog extends Dialog {
   private id: string | null = null;

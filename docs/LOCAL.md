@@ -9,7 +9,7 @@ replaces an outside program or a model too large for the test machine, and says 
 | Capability | Verified |
 |---|---|
 | Color Match, film looks (Split Toning, Halation, Glow, Grain presets, Light Leak, Frame) | e2e/test_color_match.py, e2e/test_film_looks.py |
-| OpenRaster open and export; Photoshop files; export sizes and the AI label | e2e/test_openraster.py, e2e/test_export_size_label.py |
+| OpenRaster open and export; PSD files; export sizes and the AI label | e2e/test_openraster.py, e2e/test_export_size_label.py |
 | Place 3D Model (three.js is part of formvis) | e2e/test_place_3d.py |
 | Very large pictures (reduced, region, tiles; Assemble Tiles) | tests/test_large.py, e2e/test_large_picture.py |
 | Session restore; API keys in the system's password store; plugins; the MCP server for outside agents | e2e/test_session_restore.py, tests/test_secrets.py, e2e/test_plugins.py, tests/test_mcp.py |

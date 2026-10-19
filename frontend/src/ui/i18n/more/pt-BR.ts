@@ -497,7 +497,7 @@ export const ptBR: Record<string, string> = {
   'Paste from': 'Colar de',
   'Paste size (% of the plane)': 'Tamanho da colagem (% do plano)',
   'Patchwork': 'Patchwork',
-  'Paths to Illustrator': 'Caminhos para o Illustrator',
+  'Paths to AI File': 'Caminhos para arquivo AI',
   'Pattern Overlay': 'Sobreposição de padrão',
   'Performance Benchmark': 'Teste de desempenho',
   'Photo': 'Foto',

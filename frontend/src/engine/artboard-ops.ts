@@ -48,8 +48,8 @@ export function nextArtboardName(host: ArtboardHost): string {
   return `Artboard ${n}`;
 }
 
-/** Layer > New > Artboard: at `nextArtboardRect` unless `rect` is given, the canvas widened to hold it as
- *  Photoshop's grows, named `name` or Artboard N. White by default. One step. */
+/** Layer > New > Artboard: at `nextArtboardRect` unless `rect` is given, the canvas widened to hold it,
+ *  named `name` or Artboard N. White by default. One step. */
 export function newArtboard(host: ArtboardHost, rect: { x: number; y: number; w: number; h: number } | null = null, background: RGB | null = { r: 255, g: 255, b: 255 }, name?: string): ID | null {
   const p = host.current, r = rect ?? nextArtboardRect(host);
   if (!p || !r) return null;

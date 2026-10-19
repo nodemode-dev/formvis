@@ -25,7 +25,7 @@ export function subpathAt(vp: VectorPath, at: Pt, reach: number): number | null 
 }
 
 /** Path Selection (A, with Direct Selection): click a subpath to choose it whole, drag to move it, Alt-drag to move a
- *  copy, Delete to remove it, and the arrow keys to nudge it (Shift for 10 px), as Photoshop's black arrow does; the
+ *  copy, Delete to remove it, and the arrow keys to nudge it (Shift for 10 px); the
  *  points themselves are Direct Selection's. */
 export const pathSelectTool: Tool = {
   id: 'pathSelect', label: 'Path Selection', key: 'A', order: 75.5,
@@ -115,7 +115,7 @@ export const pathSelectTool: Tool = {
     gx.lineWidth = 1.5;
     gx.strokeStyle = pal.accent;
     gx.stroke(tracePath(vp, (q) => v.toScreen(q)));
-    // The chosen subpath's points show solid, as Photoshop shows a path selected whole.
+    // The chosen subpath's points show solid when a path is selected whole.
     const sp = chosen !== null ? vp.subpaths[chosen] : null;
     if (sp) {
       gx.fillStyle = pal.accent;

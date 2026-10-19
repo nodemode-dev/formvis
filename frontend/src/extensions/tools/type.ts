@@ -1,4 +1,4 @@
-import type { Engine, TextSpec } from '../../engine';
+import { TEXT_ANTIALIAS, type Engine, type TextSpec } from '../../engine';
 import { OT_FEATURES, featureOn, featuresKnown, featuresOf, withFeature } from '../../engine/opentype';
 import { canListSystemFonts, fontFamilies, loadSystemFonts } from '../../ui/fonts';
 import type { Pt } from '../../engine';
@@ -16,7 +16,9 @@ function fontChoices(current: string): Array<{ id: string; label: string }> {
 }
 
 /** Changes the Type settings, shows them in the options bar, and restyles text being typed. */
-const STYLE_KEYS = ['family', 'size', 'bold', 'italic', 'align', 'antialias', 'lineHeight', 'tracking', 'kerning', 'features'] as const;
+const STYLE_KEYS = ['family', 'size', 'bold', 'italic', 'align', 'antialias', 'lineHeight', 'tracking', 'kerning', 'features', 'hyphenate', 'language'] as const;
+
+const LANGUAGES: Array<[string, string]> = [['', 'Default'], ['en-US', 'English'], ['de', 'German'], ['fr', 'French'], ['es', 'Spanish'], ['ja', 'Japanese'], ['zh-CN', 'Chinese (Simplified)'], ['zh-TW', 'Chinese (Traditional)'], ['ko', 'Korean'], ['ar', 'Arabic'], ['he', 'Hebrew']];
 
 /** The OpenType menu (DEV_PLAN 32.6b): each feature marked on or off, a pick toggling it for new text and the selected type layer. */
 function featureChoices(e: Engine): Array<{ id: string; label: string }> {
@@ -86,7 +88,9 @@ export const typeTool: Tool = {
         }
         setType(e, { features: withFeature(e.textSettings.features, v, !featureOn(e.textSettings.features, v)) });
       } },
-    { kind: 'select', label: 'Anti-aliasing', priority: 40, choices: [{ id: 'none', label: 'None' }, { id: 'sharp', label: 'Sharp' }, { id: 'smooth', label: 'Smooth' }], get: () => e.textSettings.antialias ?? 'smooth', set: (v: string) => setType(e, { antialias: v === 'none' || v === 'sharp' ? v : 'smooth' }) },
+    { kind: 'select', label: 'Anti-aliasing', priority: 40, choices: [{ id: 'none', label: 'None' }, { id: 'sharp', label: 'Sharp' }, { id: 'crisp', label: 'Crisp' }, { id: 'strong', label: 'Strong' }, { id: 'smooth', label: 'Smooth' }, { id: 'windows-lcd', label: 'Windows LCD' }, { id: 'windows', label: 'Windows' }], get: () => e.textSettings.antialias ?? 'smooth', set: (v: string) => setType(e, { antialias: TEXT_ANTIALIAS.find((m) => m === v) ?? 'smooth' }) },
+    { kind: 'toggle', label: 'Hyphenate', priority: 25, get: () => !!e.textSettings.hyphenate, set: (v) => setType(e, { hyphenate: v }) },
+    { kind: 'select', label: 'Language', priority: 22, choices: LANGUAGES.map(([id, label]) => ({ id, label })), get: () => e.textSettings.language ?? '', set: (v: string) => setType(e, { language: v || undefined }) },
     { kind: 'color', label: 'Color', priority: 88, get: () => e.fg, set: (c) => { e.fg = c; e.emit('options', null); const l = e.activeLayer; if (l?.text) void e.updateTextLayer(l.id, { ...l.text, color: e.fg }); } },
     { kind: 'button', label: 'Warp Text...', priority: 30, run: () => toolHost.run('warp-text') },
   ],

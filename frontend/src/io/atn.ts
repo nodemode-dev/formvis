@@ -1,6 +1,6 @@
 import type { Action, ActionStep } from '../ui/actions';
 
-/** Photoshop .atn action files: a big-endian stream of actions, each a list of events with an optional descriptor.
+/** .atn action files: a big-endian stream of actions, each a list of events with an optional descriptor.
  *  Only events with a formvis equivalent become steps; the rest are named in `unsupported`. */
 
 interface Enum { kind: 'enum'; type: string; value: string }

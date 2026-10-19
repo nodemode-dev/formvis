@@ -1,8 +1,8 @@
 import type { ChannelPixels } from './types';
 
-/** Lab on the one model (1.56.4, DEV_PLAN 22.9): CIE L*a*b* with the D50 white Photoshop's Lab uses, from and to the
+/** Lab on the one model (1.56.4, DEV_PLAN 22.9): CIE L*a*b* with the D50 white of 8-bit Lab, from and to the
  *  document's sRGB through the Bradford-adapted sRGB matrix (the ICC sRGB profile's colorants and the inverse). The
- *  floats hold L / 100, (a + 128) / 255 and (b + 128) / 255, so 0.5 is neutral on a and b as on Photoshop's 8-bit
+ *  floats hold L / 100, (a + 128) / 255 and (b + 128) / 255, so 0.5 is neutral on a and b as in 8-bit
  *  Lab. Renditions and conversions both use the formulas, the sRGB encoding through a 16,384-step table. */
 
 const toLinear = (v: number): number => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);

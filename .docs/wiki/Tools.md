@@ -16,7 +16,7 @@ A tool is a self-registering module: it declares its key, icon, hint, cursor, po
 
 ## Contract
 
-- Register through `registerBuiltinTools`; ids are unique, and tools may share a key (the healing tools share J, the pens P, the selection arrows A). Tools that share a key form one slot on the rail, as Photoshop's toolbar groups them (`ui/tool-groups.ts`), in the order of their `order`; the first is the slot's default.
+- Register through `registerBuiltinTools`; ids are unique, and tools may share a key (the healing tools share J, the pens P, the selection arrows A). Tools that share a key form one slot on the rail (`ui/tool-groups.ts`), in the order of their `order`; the first is the slot's default.
 - Change documents only through `Engine` methods; never touch the DOM.
 - Draw overlays in CSS pixels on the `CanvasRenderingContext2D` you are given, using colors from `ctx.paint()`.
 - Options are declarative `OptionSpec` entries; the options bar owns their DOM. It builds each tool's bar once, so a row that applies only sometimes (a shape kind's own settings) is listed always with a `when` condition, and is shown or hidden in place.

@@ -10,6 +10,8 @@ export class ShapeStyleDialog extends Dialog {
   private readonly fillMode = el<HTMLSelectElement>('<select class="cv-input"><option value="color">Colour</option><option value="none">None</option></select>');
   private readonly strokeMode = el<HTMLSelectElement>('<select class="cv-input"><option value="none">None</option><option value="color">Colour</option></select>');
   private readonly width = el<HTMLInputElement>('<input class="cv-input" type="number" min="1" max="1000" step="1" value="4">');
+  private readonly dash = el<HTMLSelectElement>('<select class="cv-input"><option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option></select>');
+  private readonly align = el<HTMLSelectElement>('<select class="cv-input"><option value="inside">Inside</option><option value="center">Center</option><option value="outside">Outside</option></select>');
   private readonly fillSwatch = el('<span class="cv-shape-swatch" aria-hidden="true"></span>');
   private readonly strokeSwatch = el('<span class="cv-shape-swatch" aria-hidden="true"></span>');
   private readonly note = el('<p class="cv-note"></p>');
@@ -27,6 +29,8 @@ export class ShapeStyleDialog extends Dialog {
     this.field('Fill', row(this.fillMode, this.fillSwatch, () => { this.fill = { ...this.engine.fg }; this.fillMode.value = 'color'; this.paint(); }));
     this.field('Stroke', row(this.strokeMode, this.strokeSwatch, () => { this.stroke = { ...this.engine.fg }; this.strokeMode.value = 'color'; this.paint(); }));
     this.field('Stroke width', this.width);
+    this.field('Stroke type', this.dash);
+    this.field('Stroke align', this.align);
     this.body.appendChild(this.note);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
@@ -42,6 +46,8 @@ export class ShapeStyleDialog extends Dialog {
     this.fillMode.value = v.fill ? 'color' : 'none';
     this.strokeMode.value = v.stroke ? 'color' : 'none';
     this.width.value = String(v.stroke?.width ?? 4);
+    this.dash.value = v.stroke?.dash ?? 'solid';
+    this.align.value = v.stroke?.align ?? 'center';
     this.paint();
     this.open();
   }
@@ -50,12 +56,14 @@ export class ShapeStyleDialog extends Dialog {
     setStyleVar(this.fillSwatch, '--swatch', this.fillMode.value === 'color' ? css(this.fill) : 'transparent');
     setStyleVar(this.strokeSwatch, '--swatch', this.strokeMode.value === 'color' ? css(this.stroke) : 'transparent');
     this.width.disabled = this.strokeMode.value !== 'color';
-    setText(this.note, 'The stroke is centred on the outline. Use foreground takes the current foreground colour.');
+    this.dash.disabled = this.width.disabled;
+    this.align.disabled = this.width.disabled;
+    setText(this.note, 'Use foreground takes the current foreground colour.');
   }
 
   private apply(): void {
     const w = Math.min(1000, Math.max(1, Math.round(Number(this.width.value) || 1)));
-    const fill = this.fillMode.value === 'color' ? { ...this.fill } : null, stroke = this.strokeMode.value === 'color' ? { color: { ...this.stroke }, width: w } : null;
+    const fill = this.fillMode.value === 'color' ? { ...this.fill } : null, stroke = this.strokeMode.value === 'color' ? { color: { ...this.stroke }, width: w, dash: this.dash.value as 'solid' | 'dashed' | 'dotted', align: this.align.value as 'inside' | 'center' | 'outside' } : null;
     if (!fill && !stroke) { setText(this.note, 'A shape needs a fill, a stroke or both.'); return; }
     this.close();
     this.engine.setShapeStyle({ fill, stroke });

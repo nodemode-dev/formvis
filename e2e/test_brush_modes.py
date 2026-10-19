@@ -1,4 +1,4 @@
-# The Brush's Mode as Photoshop's (1.50.3, the tool audit): blend modes, Behind and Clear; only modes that truly draw.
+# The Brush's Mode (1.50.3, the tool audit): blend modes, Behind and Clear; only modes that truly draw.
 SETUP = """(mode) => { const e = window.formvis.engine; e.newDocument(200, 60, 'M', 'transparent'); e.addLayer(); const c = e.activeLayer.raster ? e.activeLayer.raster.ctx : null;
   e.fg = { r: 90, g: 140, b: 200 }; e.setBucket({ source: 'fg', mode: 'normal', tolerance: 0 }); e.paintBucket({ x: 10, y: 10 });                 // the layer mid-blue
   e.activeLayer.raster.ctx.clearRect(150, 0, 50, 60); e.activeLayer.raster.touch();                                                              // but empty at the right

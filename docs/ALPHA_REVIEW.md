@@ -13,10 +13,10 @@ to look at, what is known not to work yet, and how to report what you find.
 
 ## What to review
 
-1. Everyday editing against what you do in Photoshop: open, layers and masks, selections, brushes, adjustments,
-   filters, type, shapes and paths, transform, export. Note anything that behaves differently from Photoshop without
-   saying why.
-2. Files: open your own PSD, TIFF, RAW, EXR and PNG files; save to PSD and reopen in Photoshop. Layer structure,
+1. Everyday editing against what you do in your usual editor: open, layers and masks, selections, brushes, adjustments,
+   filters, type, shapes and paths, transform, export. Note anything that behaves differently from your usual editor
+   without saying why.
+2. Files: open your own PSD, TIFF, RAW, EXR and PNG files; save to PSD and reopen them in your usual editor. Layer structure,
    blend modes, masks, type and smart objects are the things to check.
 3. Large pictures: work at your usual sizes and note where it slows. Known: at 8000 by 6000 a 10 px Gaussian Blur
    and a full redraw are over our targets.
@@ -39,5 +39,5 @@ to look at, what is known not to work yet, and how to report what you find.
 
 ## How to report
 
-For each finding: what you did (the menu path or tool), what you expected (what Photoshop does, if that is the
+For each finding: what you did (the menu path or tool), what you expected (what your usual editor does, if that is the
 reference), what happened, the file if it matters, and Help > Copy Error Log if anything failed. Screenshots help.

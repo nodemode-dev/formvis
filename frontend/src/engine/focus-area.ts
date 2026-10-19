@@ -1,4 +1,4 @@
-/** Select > Focus Area (1.57.6, the parity plan's L5), as Photoshop's: the in-focus parts of a picture, found from
+/** Select > Focus Area (1.57.6, the parity plan's L5): the in-focus parts of a picture, found from
  *  local sharpness. Each pixel's sharpness is the Laplacian of its brightness; their local energy (a box average over
  *  about an eightieth of the picture) less the noise floor, as a share of the picture's sharp end (its 99th
  *  percentile), is kept above a threshold the In-Focus Range sets (higher keeps more); small specks are dropped and

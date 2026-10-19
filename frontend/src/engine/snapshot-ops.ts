@@ -47,7 +47,7 @@ export function openingSnapshot(host: SnapshotHost, p: Project): void {
   host.store.lists.set(p, [{ id: uid(), name: p.name, state: { doc: copyDoc(p.doc), activeId: p.activeId, selection: p.selection } }]);
 }
 
-/** The History Brush's source, as Photoshop's: a snapshot chosen in the History panel, or the document's first. */
+/** The History Brush's source: a snapshot chosen in the History panel, or the document's first. */
 export function historyBrushSourceId(host: SnapshotHost): ID | null {
   const p = host.current, list = p ? host.store.lists.get(p) ?? [] : [];
   return (list.find((x) => x.id === host.historyBrushSource) ?? list[0])?.id ?? null;
@@ -90,7 +90,7 @@ export function takeSnapshot(host: SnapshotHost, name?: string): void {
   const list = host.store.lists.get(p) ?? [], need = docBytes(p.doc), used = list.reduce((a, x) => a + docBytes(x.state.doc), 0), mb = (b: number): number => Math.ceil(b / 1048576);
   if (used + need > host.snapshotByteLimit) { host.notice(`A snapshot of this document needs ${mb(need)} MB, and snapshots already keep ${mb(used)} MB of the ${mb(host.snapshotByteLimit)} MB they may use. Delete one first.`); return; }
   if (!host.room(need, 'A snapshot')) return;   // its copy of every pixel (1.60.5)
-  // Numbered as Photoshop's: the opening snapshot bears the document's name, so the first taken is Snapshot 1.
+  // Numbering: the opening snapshot bears the document's name, so the first taken is Snapshot 1.
   let n = list.filter((x) => /^Snapshot \d+$/.test(x.name)).length + 1;
   while (list.some((x) => x.name === `Snapshot ${n}`)) n += 1;
   const given = name?.trim().slice(0, 100);

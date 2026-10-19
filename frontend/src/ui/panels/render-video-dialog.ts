@@ -4,7 +4,7 @@ import { el, setText } from '../dom';
 
 export interface RenderChoice { format: 'mp4' | 'gif' | 'png'; from: number; to: number; scale: number }
 
-/** File > Export > Render Video (1.59.6, DEV_PLAN 25.4), as Photoshop's and Photon Studio's: the video timeline
+/** File > Export > Render Video (1.59.6, DEV_PLAN 25.4): the video timeline
  *  rendered as an H.264 MP4, a GIF or a picture sequence (numbered PNGs in a zip); every frame or a range (From and
  *  To, frames counted from 0, To excluded); at the document's size, half, or a quarter. Rows built once. */
 export class RenderVideoDialog extends Dialog {

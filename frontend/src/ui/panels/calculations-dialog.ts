@@ -17,7 +17,7 @@ function fill(s: HTMLSelectElement, options: ReadonlyArray<readonly [string, str
 
 const enable = (root: HTMLElement, on: boolean): void => { for (const i of Array.from(root.querySelectorAll('input, select'))) (i as HTMLInputElement).disabled = !on; };
 
-/** Image > Calculations (31.2b, 1.68.2), as Photoshop's: Source 1 and Source 2 (a layer or Merged, a channel, Invert), a
+/** Image > Calculations (31.2b, 1.68.2): Source 1 and Source 2 (a layer or Merged, a channel, Invert), a
  *  blending mode with Opacity, Scale and Offset (live for Add and Subtract only), an optional alpha channel as Mask, and
  *  a Result: a new channel, a new document or the selection. Every row is there from the first frame, so the dialog keeps
  *  one size; rows that do not apply are disabled. A small live preview of the result (31.2c), and either source may come from another open document of the same size. */

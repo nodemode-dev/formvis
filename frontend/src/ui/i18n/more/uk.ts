@@ -497,7 +497,7 @@ export const uk: Record<string, string> = {
   'Paste from': 'Вставити з',
   'Paste size (% of the plane)': 'Розмір вставки (% площини)',
   'Patchwork': 'Клаптикове шиття',
-  'Paths to Illustrator': 'Контури в Illustrator',
+  'Paths to AI File': 'Контури у файл AI',
   'Pattern Overlay': 'Накладання візерунка',
   'Performance Benchmark': 'Тест продуктивності',
   'Photo': 'Фото',

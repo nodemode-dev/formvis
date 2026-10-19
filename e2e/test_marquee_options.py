@@ -15,7 +15,7 @@ def opt(page, label):
 
 def test_marquee_feather_style_and_anti_alias(page):
     s = page.evaluate(SETUP)
-    assert not opt(page, "Anti-alias").is_visible()                       # rectangles only: no Anti-alias, as Photoshop
+    assert not opt(page, "Anti-alias").is_visible()                       # rectangles only: no Anti-alias
     page.evaluate("window.formvis.engine.update({ marqueeKind: 'ellipse' })")
     assert opt(page, "Anti-alias").is_visible()
     page.evaluate("window.formvis.engine.update({ marqueeKind: 'rectangle' })")

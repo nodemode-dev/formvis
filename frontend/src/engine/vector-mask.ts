@@ -3,7 +3,7 @@ import { fillVector, mapPath, type VectorPath } from './paths';
 import { createSurface, ctxOf, type Surface } from './surface';
 import type { Layer, Transform, VectorMask } from './types';
 
-/* Vector masks (Layer > Vector Mask, 1.66.1, Photoshop's). Their paths are kept in document pixels: a linked one follows
+/* Vector masks (Layer > Vector Mask, 1.66.1). Their paths are kept in document pixels: a linked one follows
    its layer's moves and transforms, and every change of the canvas carries them all. */
 
 /** Whether a path has an outline that encloses anything. */

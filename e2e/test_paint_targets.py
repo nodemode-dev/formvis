@@ -1,4 +1,4 @@
-# Tools take the layers Photoshop's take (1.50.2, the owner's walkthrough: the Paint Bucket refused a selected layer).
+# Which layers the tools take (1.50.2, the owner's walkthrough: the Paint Bucket refused a selected layer).
 DLG = ".cv-scrim:not([hidden]) .cv-dialog"
 
 

@@ -68,7 +68,7 @@ export function dragRect(a: Pt, b: Pt, square: boolean, center: boolean): Rect {
 
 const inside = (ctx: ToolContext, p: ToolPointer): boolean => { const s = ctx.engine.current?.selection; return !!s && s.valueAt(Math.floor(p.doc.x), Math.floor(p.doc.y)) >= 128; };
 
-/** The marquee's rectangle for its Style, as Photoshop's options bar sets it: as dragged (Normal); held to the width to
+/** The marquee's rectangle for its Style, as the options bar sets it: as dragged (Normal); held to the width to
  *  height ratio, growing from the press or, with Alt, from its centre (Fixed Ratio); or the set size placed at the
  *  pointer, so dragging moves it (Fixed Size). */
 function styledRect(e: Engine, d: { anchor: Pt; point: Pt; square: boolean; center: boolean }): Rect {
@@ -95,7 +95,7 @@ export const marqueeTool: Tool = {
     const e = ctx.engine;
     if (!e.current || p.button !== 0) return;
     const mode = modeFor(e, p);
-    // Single Row and Single Column Marquee (the owner's tool list), as Photoshop's: a click selects the one-pixel row or
+    // Single Row and Single Column Marquee (the owner's tool list): a click selects the one-pixel row or
     // column across the document, Shift adding and Alt taking away.
     if (e.marqueeKind === 'row' || e.marqueeKind === 'column') {
       const W = e.current.doc.width, H = e.current.doc.height, row = e.marqueeKind === 'row';

@@ -40,7 +40,7 @@ export function moveGuide(host: GuideHost, index: number, at: number): void {
 
 export function removeGuide(host: GuideHost, index: number): void { setGuides(host, 'Delete Guide', (g) => g.filter((_, i) => i !== index)); }
 
-/** View > New Guide Layout (27.11): `columns` and `rows` with gutters inside margins, as Photoshop lays them out:
+/** View > New Guide Layout (27.11): `columns` and `rows` with gutters inside margins:
  *  guides at the margins and at both edges of every gutter (a gutter of 0 puts one guide between cells). `clear`
  *  replaces the existing guides. One undo step. */
 export function guideLayout(host: GuideHost, o: { columns: number; rows: number; gutterX: number; gutterY: number; margin: { top: number; left: number; bottom: number; right: number }; clear: boolean }): void {

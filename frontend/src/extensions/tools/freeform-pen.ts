@@ -7,7 +7,7 @@ const fit = { px: 2 };
 const CLOSE = 8;
 
 /** Freeform Pen (P, with the Pen): drag to draw a path freehand. On release the stroke is thinned to the points that
- *  shape it (Curve Fit, in screen pixels, as Photoshop's is) and becomes a smooth subpath through them, closed when it
+ *  shape it (Curve Fit, in screen pixels) and becomes a smooth subpath through them, closed when it
  *  ends near where it began. Each stroke adds a subpath to the selected path, or starts a Work Path. */
 export const freeformPenTool: Tool = {
   id: 'freeformPen', label: 'Freeform Pen', key: 'P', order: 77.5,

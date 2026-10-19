@@ -103,13 +103,13 @@ import { DEFAULT_GLOBAL_LIGHT, scaledEffects, type GlobalLight } from './style-e
 export { CONTOURS, DEFAULT_GLOBAL_LIGHT, withGlobalLight, type ContourId, type GlobalLight } from './style-extras';
 import { mergeMeta, type DocMeta, type MetaPatch } from './doc-meta';
 export { COPYRIGHT_STATUSES, META_TEXT, cleanMeta, metaWritable, mergeMeta, parseKeywords, sameMeta, tabName, type CameraData, type CopyrightStatus, type DocMeta } from './doc-meta';
-import { UPRIGHT, allBrushPresets, defaultShape, noDynamics, pressureOption, shapeActive, type BrushDynamics, type BrushPreset, type BrushShape, type PenPose } from './brush-dynamics';
+import { UPRIGHT, allBrushPresets, defaultShape, noDynamics, noSymmetry, pressureOption, shapeActive, type BrushSymmetry, type BrushDynamics, type BrushPreset, type BrushShape, type PenPose } from './brush-dynamics';
 import { DEFAULT_PATH_SHAPE, boxedShapePath, linePath, type PathShapeKind, type PathShapeOptions } from './shape-paths';
 import { markupPath, type MarkupKind } from './markup';
 import { allCustomShapes } from './custom-shapes';
 import { traceAlpha } from './trace-outline';
 export { CUSTOM_SHAPES, allCustomShapes, addCustomShape, loadCustomShapes } from './custom-shapes';
-import { FILL_DEFAULTS, WarpStroke, contentFill, diffusionFill, ringVariance, SMOOTH_RING_VARIANCE, fillTransparent, healFromSource, premultiply, scaleHealCorrection, spotHeal, unpremultiply, type FillOptions, type HealBlend, type HealMode, type HealSample } from './retouch';
+import { FILL_DEFAULTS, WarpStroke, contentFill, diffusionFill, frequencySplit, ringVariance, SMOOTH_RING_VARIANCE, fillTransparent, healFromSource, premultiply, scaleHealCorrection, spotHeal, unpremultiply, type FillOptions, type HealBlend, type HealMode, type HealSample } from './retouch';
 import { dissolveNoise } from './blend';
 import { LUT3_N, adjustmentLut, adjustmentLut3 } from './lut';
 import { decontaminate } from './select-mask';
@@ -134,7 +134,7 @@ export { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, COLOR_RANGES, defaultAdjustmentDat
 export type { ColorRange, GrainSettings, HsvSettings } from './adjust';
 export { addNoise, gaussianBlur, gaussianMargin, histogram, lensDistort, motionBlur, motionMargin, unsharpMask } from './filters';
 export { defaultDevelopState, developImage, type DevelopState } from './develop';
-export { TEXT_FONTS, defaultText, fontCss, liveText, paragraphStylesFrom, characterStylesFrom, charStyleOf, withCharStyle, styleOf, textFromData, textKey, textMetrics, renderText, withStyle } from './text';
+export { TEXT_ANTIALIAS, TEXT_FONTS, defaultText, fontCss, liveText, paragraphStylesFrom, characterStylesFrom, charStyleOf, withCharStyle, styleOf, textFromData, textKey, textMetrics, renderText, withStyle } from './text';
 export { addPattern, allPatterns, patternById, projectPatterns, type Pattern } from './patterns';
 export { FRAME_DELAYS, captureFrame, frameLayers, timelineData, timelineFrom, type Frame, type FrameLayer, type Timeline } from './timeline';
 export { anchorNear, cornerAt, nearestSegment, pathBounds, pathData, pathFrom, pathSetData, pathSetFrom, splitSegment, tracePath, type Anchor, type NamedPath, type PathSet, type SubPath, type VectorPath } from './paths';
@@ -149,7 +149,7 @@ export interface EngineEvents {
 export interface BrushSettings { diameter: number; hardness: number; opacity: number; tip?: SampledTip | null }
 /** `deep`: linear-light floats of an OpenEXR or Radiance HDR, of which `source` is the 8-bit rendition; a layer placed
  *  into a 16 or 32 bit document keeps them at that depth. `resolution`: the file's own ppi. */
-export interface ImportedImage { source: CanvasImageSource; width: number; height: number; name: string; profile?: DocProfile; meta?: DocMeta; resolution?: number; deep?: DeepPixels }
+export interface ImportedImage { source: CanvasImageSource; width: number; height: number; name: string; profile?: DocProfile; mode?: DocMode; meta?: DocMeta; resolution?: number; deep?: DeepPixels }
 type Target = 'pixels' | 'mask';
 type Settings = Pick<Engine, 'selectionMode' | 'marqueeKind' | 'lassoKind' | 'showPixelGrid' | 'showTransformControls' | 'autoSelect' | 'autoSelectTarget' | 'lockRatio'>;
 
@@ -195,7 +195,7 @@ export function cornerRadiiOf(style: Record<string, unknown>): number[] | null {
   return Array.isArray(r) && r.length === 4 && r.every((v) => typeof v === 'number' && Number.isFinite(v) && v >= 0) ? (r as number[]).slice() : null;
 }
 
-/** The Background Eraser's settings (Photoshop's): Tolerance, Sampling, Limits (contiguous or not), Protect Foreground. */
+/** The Background Eraser's settings: Tolerance, Sampling, Limits (contiguous or not), Protect Foreground. */
 export interface BgEraseOpts { tolerance: number; sampling: 'continuous' | 'once'; contiguous: boolean; protectForeground: boolean }
 
 export class Engine {
@@ -205,10 +205,10 @@ export class Engine {
   readonly docViews = new DocViews();
   tool: ToolId = 'move';
   brush: BrushSettings = { diameter: 40, hardness: 1, opacity: 1 };
-  /** The Brush and Eraser's Flow (0.01 to 1), as Photoshop's options bar has it: how much paint each dab lays down.
+  /** The Brush and Eraser's Flow (0.01 to 1), in the options bar: how much paint each dab lays down.
    *  Kept apart from `brush`, which the retouch tools spread into their own strokes. */
   brushFlow = 1;
-  /** The Crop tool's Delete Cropped Pixels: on by default, as Photoshop's (its Crop page and CreativeLive agree); off,
+  /** The Crop tool's Delete Cropped Pixels: on by default, as is usual; off,
    *  cropped pixels stay beyond the canvas and Image > Reveal All brings them back. */
   cropDeletePixels = true;
   /** Preferences > Performance: History States (steps kept for undo, 1 to 1000) and the memory history may hold. Each
@@ -228,7 +228,11 @@ export class Engine {
   brushDynamics: BrushDynamics = { ...noDynamics(), size: pressureOption(0.1) };
   /** Brush Settings (Window > Brush Settings): tip shape, shape dynamics, scattering, texture and dual brush. */
   brushShape: BrushShape = defaultShape();
-  /** The preset last applied, for the options bar; cleared by nothing, since changing a value is Photoshop's way too. */
+  /** Painting symmetry for the Brush, Pencil and Eraser; the centre follows the document unless set. */
+  brushSymmetry: BrushSymmetry = noSymmetry();
+  /** The pen pressure response: sampled output at even input steps, null for a straight line. */
+  pressureCurve: number[] | null = null;
+  /** The preset last applied, for the options bar; cleared by nothing, since changing a value keeps the preset named. */
   brushPresetId: string | null = null;
 
   /** Size, hardness, opacity and dynamics from a preset. */
@@ -242,12 +246,11 @@ export class Engine {
     this.setBrush({ diameter: preset.diameter, hardness: preset.hardness, opacity: preset.opacity, tip: preset.tip ?? null });
   }
   brushMode: 'paint' | 'erase' = 'paint';
-  /** The Brush's Mode, as Photoshop's (1.50.3, the tool audit): a blend mode, or Behind (only where the layer is empty)
+  /** The Brush's Mode (1.50.3, the tool audit): a blend mode, or Behind (only where the layer is empty)
    *  or Clear (the paint erases). Only the modes the canvas truly draws are offered (canvasBlend). */
   brushBlend: BlendMode | 'behind' | 'clear' = 'normal';
   setBrushBlend(m: BlendMode | 'behind' | 'clear'): void { this.brushBlend = m; this.emit('options', null); }
-  /** The foreground and background, kept to the document's mode (greys, black and white, or the palette), as
-   *  Photoshop's pickers are. */
+  /** The foreground and background, kept to the document's mode (greys, black and white, or the palette). */
   private fgc: RGB = { r: 0, g: 0, b: 0 };
   private bgc: RGB = { r: 255, g: 255, b: 255 };
   /** In a CMYK document (1.54.2), the ink behind each colour: set from the picker's C, M, Y and K, or read through the
@@ -282,13 +285,13 @@ export class Engine {
   }
   selectionMode: SelectionMode = 'replace';
   marqueeKind: 'rectangle' | 'ellipse' | 'row' | 'column' = 'rectangle';
-  /** The Marquee's Feather (pixels) and Style, as Photoshop's options bar has them: Normal, Fixed Ratio (width to
+  /** The Marquee's Feather (pixels) and Style, in the options bar: Normal, Fixed Ratio (width to
    *  height) or Fixed Size (pixels). */
   marqueeFeather = 0;
   marqueeStyle: 'normal' | 'ratio' | 'size' = 'normal';
   marqueeRatio = { w: 1, h: 1 };
   marqueeSize = { w: 64, h: 64 };
-  /** The Lasso's Feather (pixels), kept apart from the Marquee's as Photoshop keeps each tool's. */
+  /** The Lasso's Feather (pixels), kept apart from the Marquee's: each tool keeps its own. */
   lassoFeather = 0;
   lassoKind: 'freehand' | 'polygonal' | 'magnetic' = 'freehand';
   wand = { tolerance: 32, contiguous: true, sampleAll: false, sampleSize: 0, antialias: true };
@@ -296,7 +299,7 @@ export class Engine {
   showPixelGrid = true;
   showTransformControls = true;
   autoSelect = false;
-  /** Auto-Select's target, as Photoshop's: the layer under the pointer, or the top-most folder holding it. */
+  /** Auto-Select's target: the layer under the pointer, or the top-most folder holding it. */
   autoSelectTarget: 'layer' | 'group' = 'layer';
   lockRatio = true;
   transformEdit: TE.TransformEditState | null = null;
@@ -307,10 +310,10 @@ export class Engine {
   private readonly work = new Renderer();
   private stroke: { project: Project; layerId: ID; target: Target; s: PixelStroke; heal?: HealMode | 'remove'; healFrom?: Pt; quick?: Raster; meet?: SelectionMask | null } | null = null;
 
-  /** Quick Mask (Q), as Photoshop's: the Brush and Eraser paint the selection itself, white adding to it and black
+  /** Quick Mask (Q): the Brush and Eraser paint the selection itself, white adding to it and black
    *  taking away (the Eraser the other way), shown as a red tint where nothing is selected. Each stroke becomes the new
-   *  selection in its own history step, so undo gives back the one before. No selection means all is selected, as
-   *  Photoshop's, so painting black begins one. */
+   *  selection in its own history step, so undo gives back the one before. No selection means all is selected, so
+   *  painting black begins one. */
   quickMask = false;
   toggleQuickMask(): void {
     if (this.stroke || !this.current) return;
@@ -745,7 +748,7 @@ export class Engine {
     return p;
   }
 
-  /** Photoshop's Automatically Create First Snapshot: each document keeps itself as opened, the History Brush's first
+  /** Automatically Create First Snapshot: each document keeps itself as opened, the History Brush's first
    *  source, within the snapshots' memory budget (past it, none is taken and the brush says so). */
   autoFirstSnapshot = true;
   /** Rotate View (R; 1.49.9, the owner's tool list): turns the view, not the image, normalised to -180..180. */
@@ -929,7 +932,7 @@ export class Engine {
   cursorPrefs: { paint: 'tip' | 'precise' | 'standard'; crosshair: boolean } = { paint: 'tip', crosshair: false };
   private openingSnapshot(p: Project): void { SN.openingSnapshot(this.snapshotHost, p); }
 
-  /** Frame layers (the Frame tool, K; not the Timeline's frames), as Photoshop's: a folder named Frame N whose mask is the frame's rectangle or ellipse;
+  /** Frame layers (the Frame tool, K; not the Timeline's frames): a folder named Frame N whose mask is the frame's rectangle or ellipse;
    *  one undo step; it is selected, so an image imported next goes into it and covers it (insertImages). */
   frameShape: 'rect' | 'ellipse' = 'rect';
   newFrameLayer(r: { x: number; y: number; w: number; h: number }, shape: 'rect' | 'ellipse' = this.frameShape): ID | null {
@@ -951,7 +954,7 @@ export class Engine {
     return made;
   }
 
-  /** The History Brush's source, as Photoshop's: a snapshot chosen in the History panel, or the document's first. */
+  /** The History Brush's source: a snapshot chosen in the History panel, or the document's first. */
   /** The History panel's source column for Edit > Fill with History: a history row index (0 the starting point, k the
    *  state after k steps), or null for the oldest kept step. The History Brush keeps its snapshot source below. */
   historySourceIndex: number | null = null;
@@ -1009,7 +1012,7 @@ export class Engine {
     this.emit('history', null);
   }
 
-  /** File > Revert (1.65.8, as Photoshop's): the current document as last saved, read back by the app, in
+  /** File > Revert (1.65.8): the current document as last saved, read back by the app, in
    *  place of what it holds now as one Revert step that also carries its paths and timeline, so Undo brings every change
    *  back; the tab, its name and the view stay (fitted again when the size differs), and it counts as saved. */
   revertTo(doc: Doc, activeId: ID | null, paths: PathSet | null, timeline: Timeline | null): boolean {
@@ -1298,7 +1301,7 @@ export class Engine {
 
   redo(): void { this.historyOp('redo'); }
 
-  /** Edit > Toggle Last State (1.65.7), as Photoshop's: undoes the last step, or redoes the one just undone. */
+  /** Edit > Toggle Last State (1.65.7): undoes the last step, or redoes the one just undone. */
   toggleLastState(): void { if (this.current?.history.canRedo) this.redo(); else this.undo(); }
 
   private redoNow(): void {
@@ -1405,11 +1408,11 @@ export class Engine {
   setBucket(patch: Partial<Engine['bucket']>): void { this.bucket = { ...this.bucket, ...patch }; this.emit('options', null); }
   /** Dodge and Burn lighten and darken, weighted to a tonal range by Exposure; Sponge moves colour away from or toward
    *  its own grey by Flow. */
-  /** protectTones and vibrance (1.50.7, the tool audit), on by default as Photoshop's: Dodge and Burn change brightness
+  /** protectTones and vibrance (1.50.7, the tool audit), on by default: Dodge and Burn change brightness
    *  and keep the colour, easing it toward grey only as far as keeps it from clipping; the Sponge saturates the least
    *  saturated most, so nothing clips. */
   tone: { range: 'shadows' | 'midtones' | 'highlights'; exposure: number; spongeMode: 'desaturate' | 'saturate'; flow: number; protectTones: boolean; vibrance: boolean } = { range: 'midtones', exposure: 0.5, spongeMode: 'desaturate', flow: 0.5, protectTones: true, vibrance: true };
-  /** The Eyedropper's Sample (1.50.7), as Photoshop's: the active layer, it and those below, or everything shown. */
+  /** The Eyedropper's Sample (1.50.7): the active layer, it and those below, or everything shown. */
   eyedropperSample: HealSample = 'all';
   setTone(patch: Partial<Engine['tone']>): void { this.tone = { ...this.tone, ...patch }; this.emit('options', null); }
   setColors(fg?: RGB, bg?: RGB): void {
@@ -1619,7 +1622,7 @@ export class Engine {
 
   /** Layer > Layer Style: sets or clears a pixel layer's effects as one undo step; nothing is recorded when the
    *  effects are unchanged. */
-  /** The document's Global Light (Photoshop's Layer > Layer Style > Global Light), shared by effects that use it. */
+  /** The document's Global Light (Layer > Layer Style > Global Light), shared by effects that use it. */
   setGlobalLight(light: GlobalLight): void {
     const next = { angle: clamp(Math.round(light.angle), -180, 180), altitude: clamp(Math.round(light.altitude), 0, 90) };
     this.edit('Global Light', (p) => {
@@ -1685,10 +1688,10 @@ export class Engine {
   textLayerAt(pt: Pt): ID | null { return TX.textLayerAt(this.textHost, pt); }
 
   /** A new type layer: the click point `at` is where the first line's baseline starts (its centre or end when the text
-   *  is centred or right-aligned), as with Photoshop's point type. */
+   *  is centred or right-aligned), as point type does. */
   /** The Type tool's mask kinds (Horizontal and Vertical Type Mask): typing makes a selection, not a layer. */
   typeMask = false;
-  /** Type Mask, as Photoshop's: the text rendered and placed as a layer would be, its coverage made the selection; one
+  /** Type Mask: the text rendered and placed as a layer would be, its coverage made the selection; one
    *  step, no layer. */
   async createTextSelection(at: Pt, spec: TextSpec): Promise<void> { return TX.createTextSelection(this.textHost, at, spec); }
 
@@ -1762,6 +1765,19 @@ export class Engine {
     const list = p.doc.paragraphStyles ?? [], id = uid(), style = styleOf(t, id, name?.trim() || `Paragraph Style ${list.length + 1}`);
     this.edit('New Paragraph Style', (pp) => { pp.doc = { ...pp.doc, paragraphStyles: [...list, style] }; pp.updateLayer(l.id, { text: { ...t, style: id } }); });
     return id;
+  }
+
+  /** Type > Load Default Type Styles: Heading 1, Heading 2, Body and Caption added as paragraph styles of the document,
+   *  those whose name it already has left alone; one step. Returns how many were added. */
+  loadDefaultTypeStyles(): number {
+    const p = this.current;
+    if (!p) return 0;
+    const list = p.doc.paragraphStyles ?? [], base = defaultText();
+    const defs: Array<[string, Partial<TextSpec>]> = [['Heading 1', { size: 48, bold: true, lineHeight: 1.1 }], ['Heading 2', { size: 32, bold: true, lineHeight: 1.15 }], ['Body', { size: 16, lineHeight: 1.5 }], ['Caption', { size: 12, italic: true, lineHeight: 1.3 }]];
+    const add = defs.filter(([name]) => !list.some((s) => s.name === name)).map(([name, v]) => styleOf({ ...base, ...v }, uid(), name));
+    if (!add.length) { this.notice('The default type styles are already in this document.'); return 0; }
+    this.edit('Load Default Type Styles', (pp) => { pp.doc = { ...pp.doc, paragraphStyles: [...list, ...add] }; });
+    return add.length;
   }
 
   /** Apply a paragraph style to the selected type layer: its settings, the layer's own text, warp and path kept. */
@@ -2159,7 +2175,7 @@ export class Engine {
     return t;
   }
 
-  /** The current frame keeps what the layers show now, as Photoshop's does while it is selected. */
+  /** The current frame keeps what the layers show now while it is selected. */
   private syncFrame(p: Project): void {
     const t = this.timelineOf(p), f = t.frames.find((x) => x.id === t.current);
     if (f) f.state = captureFrame(p.doc);
@@ -2187,7 +2203,7 @@ export class Engine {
 
   /** Timeline > New Frame: a copy of the selected frame after it, selected. With no frames yet, frame 1 is the layers
    *  as they are, and the copy is frame 2. */
-  /** Create Frame Animation (1.59.8), as Photoshop's: one frame, the document as it is; refused beside a video timeline
+  /** Create Frame Animation (1.59.8): one frame, the document as it is; refused beside a video timeline
    *  or an animation already begun. */
   startFrameAnimation(): boolean { return FR.startFrameAnimation(this.frameHost); }
 
@@ -2220,7 +2236,7 @@ export class Engine {
   get video(): VideoTimeline | null { return VD.video(this.videoHost); }
 
   /** Timeline > Create Video Timeline: `fps` frames a second for `seconds`, a track per layer; refused while the
-   *  document has a frame animation or a video timeline already (Photoshop's two modes are one or the other). */
+   *  document has a frame animation or a video timeline already (the two modes are one or the other). */
   createVideoTimeline(fps = 30, seconds = 5): boolean { return VD.createVideoTimeline(this.videoHost, fps, seconds); }
 
   /** Delete Timeline (the video one), a step. */
@@ -2235,12 +2251,12 @@ export class Engine {
    *  into the engine, which the MCP tools share). False when the layer has no clip. */
   fadeClip(id: ID, frames: number, inn: boolean, out: boolean, color: FadeColor | null = null): boolean { return VD.fadeClip(this.videoHost, id, frames, inn, out, color); }
 
-  /** Cross Fade, as Photoshop's: layer `id`'s clip with the clip that starts or ends within it and overlaps it most
+  /** Cross Fade: layer `id`'s clip with the clip that starts or ends within it and overlaps it most
    *  (one covering it whole, a background, is no partner), over their overlap, fading only the upper of the two (in
    *  when it starts later, out when it ends first) so the picture never dips. Null when done, else why not. */
   crossFade(id: ID): string | null { return VD.crossFade(this.videoHost, id); }
 
-  /** Split at a frame, as Photoshop's Split at Playhead: layer `id`'s clip ends at `frame`, and a copy of the layer
+  /** Split at a frame (Split at Playhead): layer `id`'s clip ends at `frame`, and a copy of the layer
    *  carries on from it with the rest of the clip and the same keyframes. The copy's id, or null when `frame` is not
    *  inside the clip. */
   splitClip(id: ID, frame: number): ID | null { return VD.splitClip(this.videoHost, id, frame); }
@@ -2482,6 +2498,24 @@ export class Engine {
     this.edit('Shape Style', (p) => this.reshape(p, l.id, shiftPath(v.path, dx, dy), structuredClone(style)));
   }
 
+  /** The look copied by Layer > Copy Shape Fill and Stroke, kept for Paste Shape Fill and Stroke. */
+  shapeStyleClip: ShapeStyle | null = null;
+
+  copyShapeStyle(): boolean {
+    const v = this.current?.activeLayer?.vector;
+    if (!v) { this.notice('Select a shape layer first.'); return false; }
+    this.shapeStyleClip = structuredClone({ fill: v.fill, stroke: v.stroke ?? null });
+    return true;
+  }
+
+  pasteShapeStyle(): boolean {
+    const l = this.current?.activeLayer;
+    if (!this.shapeStyleClip) { this.notice('Copy a shape fill and stroke first.'); return false; }
+    if (!l?.vector) { this.notice('Select a shape layer first.'); return false; }
+    this.setShapeStyle(structuredClone(this.shapeStyleClip));
+    return true;
+  }
+
   /** A shape layer's outline where its pixels are now: its path, drawn at `origin`, carried through the layer's placement
    *  (a move, scale, turn or flip). */
   private placedPath(l: Layer): VectorPath | null {
@@ -2506,7 +2540,7 @@ export class Engine {
     return subpaths.length ? mapPath({ subpaths }, (q) => ({ x: x0 + q.x / k, y: y0 + q.y / k })) : null;
   }
 
-  /** Layer > Combine Shapes (1.65.4), as Photoshop's: with several shape layers selected, the front ones' outlines join
+  /** Layer > Combine Shapes (1.65.4): with several shape layers selected, the front ones' outlines join
    *  the back one's, each taking `op` (Unite Shapes keeps their own), and the front layers go; with one, its outlines
    *  after the first take `op`. Merge Shape Components ('merge') unites them and bakes every operation into plain
    *  outlines. The back layer keeps its fill, stroke, mask and style. One step. */
@@ -2537,7 +2571,7 @@ export class Engine {
   private pathsChanged(p: Project): void { PA.pathsChanged(this.pathHost, p); }
 
   /** The current document's paths, the Work Path among them, and which one is selected. Paths live with the document
-   *  and save with the project, outside undo, as in Photoshop. */
+   *  and save with the project, outside undo. */
   get paths(): PathSet { return PA.pathsOfCurrent(this.pathHost); }
 
   /** The selected path, which the Pen, Direct Selection and the path commands work on; null when none is selected. */
@@ -2555,6 +2589,7 @@ export class Engine {
 
   /** Renames a path; naming the Work Path saves it, so it stays when a new one is drawn. */
   renamePath(id: ID, name: string): void { PA.renamePath(this.pathHost, id, name); }
+  setClippingPath(id: ID | null, flatness = 0): boolean { return PA.setClippingPath(this.pathHost, id, flatness); }
 
   /** Paths > Delete Path: removes the selected path, or the one given. */
   deletePath(id?: ID): void { PA.deletePath(this.pathHost, id); }
@@ -2574,7 +2609,7 @@ export class Engine {
   /** Edit > Stroke Path: the path traced in the foreground colour as wide as the brush, within any selection. */
   strokePath(): void { PA.strokePath(this.pathHost); }
 
-  /** Stroke Path with its settings, as Photoshop's dialog has them: each subpath stroked with `tool` at its current
+  /** Stroke Path with its dialog's settings: each subpath stroked with `tool` at its current
    *  settings, following the curves; Simulate Pressure runs the pressure from nothing at each end to full in the middle
    *  (thin, thick, thin), and when the brush's size does not follow pressure it does so for this stroke. One step. */
   strokePathWith(tool: StrokeTool, simulatePressure: boolean): void { PA.strokePathWith(this.pathHost, tool, simulatePressure); }
@@ -3000,8 +3035,8 @@ export class Engine {
   /** The first free name of the form Artboard N. */
   nextArtboardName(): string { return AB.nextArtboardName(this.artboardHost); }
 
-  /** Layer > New > Artboard: at `nextArtboardRect` unless `rect` is given, the canvas widened to hold it as
-   *  Photoshop's grows, named `name` or Artboard N. White by default. One step. */
+  /** Layer > New > Artboard: at `nextArtboardRect` unless `rect` is given, the canvas widened to hold it,
+   *  named `name` or Artboard N. White by default. One step. */
   newArtboard(rect: { x: number; y: number; w: number; h: number } | null = null, background: RGB | null = { r: 255, g: 255, b: 255 }, name?: string): ID | null { return AB.newArtboard(this.artboardHost, rect, background, name); }
 
   /** Layer > New > Artboard from Layers: the selected top-level layers moved into a new artboard fitted to their
@@ -3165,6 +3200,23 @@ export class Engine {
     r.ctx.drawImage(flat as CanvasImageSource, 0, 0);
     r.touch();
     this.insertRasterLayer(r, 'Stamp Visible', 0, 0, {}, 'Stamp Visible');
+    return true;
+  }
+
+  /** Frequency Separation: what the canvas shows, split at `radius` px into a Low Frequency layer (colour and tone, the
+   *  blurred picture) and above it a High Frequency layer (the detail, in Linear Light), so that the two together look
+   *  as the picture did; each can be retouched alone. Both go above the active layer in one step. */
+  frequencySeparation(radius = 8): boolean {
+    const flat = this.current ? this.flattened() : null;
+    if (!this.current || !flat) return false;
+    const { low, high } = frequencySplit(ctxOf(flat).getImageData(0, 0, flat.width, flat.height), clamp(radius, 0.5, 100));
+    const put = (img: ImageData): Raster => { const r = new Raster(flat.width, flat.height); r.write(img, 0, 0); return r; };
+    this.edit('Frequency Separation', (p) => {
+      const parentId = this.parentForNew(p);
+      const lo = { ...newLayer('Low Frequency', p.doc, { raster: put(low), parentId }), transform: docTransform(flat.width, flat.height) };
+      this.insertAboveActive(p, lo);
+      this.insertAboveActive(p, { ...newLayer('High Frequency', p.doc, { raster: put(high), parentId }), transform: docTransform(flat.width, flat.height), blend: 'linear-light' as BlendMode });
+    });
     return true;
   }
 
@@ -3413,7 +3465,7 @@ export class Engine {
     });
   }
 
-  /** Select and Mask's OK: the refined selection (`data`, 0 to 255 over the whole canvas) sent to Photoshop's outputs:
+  /** Select and Mask's OK: the refined selection (`data`, 0 to 255 over the whole canvas) sent to its outputs:
    *  the selection itself, a layer mask on the active layer (replacing one it has), a new layer of the selected
    *  pixels, or a new layer (a duplicate) with it as a mask. One step; outputs other than the selection deselect. */
   applyRefinedSelection(data: Uint8Array, output: 'selection' | 'mask' | 'layer' | 'layerMask', decontam = 0): void {
@@ -3433,7 +3485,7 @@ export class Engine {
         this.addMask(false);
         if (output === 'layerMask' && original && original !== p.activeLayer?.id) p.updateLayer(original, { visible: false });
       }
-      // Decontaminate Colors, on a new layer's own pixels (as Photoshop, only for output to a new layer): the refined
+      // Decontaminate Colors, on a new layer's own pixels (only for output to a new layer): the refined
       // mask read in the layer's coordinates, which needs the layer unrotated, unflipped and unscaled.
       if (decontam > 0 && (output === 'layer' || output === 'layerMask')) {
         const l = p.activeLayer, r = l?.raster, t = l?.transform;
@@ -3528,7 +3580,7 @@ export class Engine {
 
   toggleMaskLink(): void { LM.toggleMaskLink(this.maskHost); }
 
-  /** Layer > Vector Mask (1.66.1, Photoshop's): Reveal All and Hide All give the active layer an empty vector mask
+  /** Layer > Vector Mask (1.66.1): Reveal All and Hide All give the active layer an empty vector mask
    *  showing or hiding all of it, Current Path one from the selected path (the layer showing inside it). One step. */
   addVectorMask(kind: 'reveal' | 'hide' | 'path'): boolean {
     const p0 = this.current, l0 = p0?.activeLayer, path = kind === 'path' ? this.workPath : null;
@@ -3555,7 +3607,7 @@ export class Engine {
     });
   }
 
-  /** Layer > Rasterize > Vector Mask (1.66.1, Photoshop's): the vector mask drawn into the layer mask, made for it if
+  /** Layer > Rasterize > Vector Mask (1.66.1): the vector mask drawn into the layer mask, made for it if
    *  there is none, and kept where both hid; a disabled vector mask is dropped unchanged. One step. */
   rasterizeVectorMask(): boolean {
     const p0 = this.current, l0 = p0?.activeLayer;
@@ -3641,7 +3693,7 @@ export class Engine {
 
   /** Image > Image Rotation > Arbitrary (1.65.5): every layer turned `deg` degrees clockwise (counter-clockwise when
    *  negative) about the canvas's centre, the canvas grown to hold the turned canvas; the Background, when there is
-   *  one, is redrawn canvas-sized over the background colour, which fills the corners the turn opens, as Photoshop's.
+   *  one, is redrawn canvas-sized over the background colour, which fills the corners the turn opens.
    *  Alpha channels and the selection turn with it. Whole quarter turns go to `rotateCanvas`. One step. */
   rotateCanvasBy(deg: number): boolean {
     const p0 = this.current;
@@ -3835,8 +3887,8 @@ export class Engine {
     return q;
   }
 
-  /** Whether a layer can take paint, as Photoshop decides (1.50.2, the owner's walkthrough: tools refused layers
-   *  Photoshop paints): a group says so; a locked layer says why; an adjustment layer paints its mask, and a fill layer
+  /** Whether a layer can take paint (1.50.2, the owner's walkthrough: tools refused layers that should
+   *  take paint): a group says so; a locked layer says why; an adjustment layer paints its mask, and a fill layer
    *  its mask when that is the target (1.66.0); a type, shape, fill or smart-object layer asks to be rasterized first
    *  (and is, on OK, so the next action paints). A refusal's own message stands alone: the caller's generic one is held
    *  back (lockedAt). */
@@ -3859,7 +3911,7 @@ export class Engine {
     }
     return true;
   }
-  /** Asks to rasterize a layer before painting on it (the app shows Photoshop's question); resolves true on OK. */
+  /** Asks to rasterize a layer before painting on it (the app shows the usual question); resolves true on OK. */
   askRasterize: ((name: string, kind: string) => Promise<boolean>) | null = null;
   private asking = false;
 
@@ -3886,7 +3938,7 @@ export class Engine {
   private target(p: Project): { layer: Layer; target: Target; raster: Raster; local: Mat } | null {
     const l0 = p.activeLayer;
     if (!this.paintable(l0)) return null;
-    // An adjustment layer paints its mask, as Photoshop's (made, revealing all, when it has none).
+    // An adjustment layer paints its mask (made, revealing all, when it has none).
     if (l0.adjustment && !l0.mask) p.updateLayer(l0.id, { mask: { raster: null, enabled: true, linked: true, placement: null } });
     const la = p.layer(l0.id) as Layer, target: Target = la.adjustment || (p.maskTarget && la.mask) ? 'mask' : 'pixels';
     const raster = target === 'mask' ? this.ensureMask(p, la) : this.ensurePixels(p, la);
@@ -3896,7 +3948,7 @@ export class Engine {
   }
 
   /** opts (1.49.5, the owner's tool list): aliased paints hard pixel-exact dabs (the Pencil); autoErase paints the
-   *  background colour when the stroke starts on the foreground colour (Photoshop's Pencil); name names the step. */
+   *  background colour when the stroke starts on the foreground colour (the Pencil's Auto Erase); name names the step. */
   beginStroke(pt: Pt, shift: boolean, pressure = 1, pose: PenPose = UPRIGHT, opts: { aliased?: boolean; square?: boolean; autoErase?: boolean; name?: string } = {}): boolean {
     if (!this.deepPaintOk()) return false;   // 16 bits: Brush, Pencil and Eraser paint (1.53.8)
     const p = this.current;
@@ -3929,7 +3981,7 @@ export class Engine {
       : this.target(p) as NonNullable<ReturnType<Engine['target']>>;
     const white = pick.target === 'mask' && ((luminance(this.fg) >= 0.5) !== (this.brushMode === 'erase'));
     // Lock Transparency: paint only where the layer has pixels (source-atop); the Eraser then paints the background
-    // colour, as Photoshop's does, since it may not make pixels transparent.
+    // colour, since it may not make pixels transparent.
     const keepAlpha = pick.target !== 'mask' && !!p.activeLayer?.locks?.transparency;
     const op: GlobalCompositeOperation = pick.target === 'mask' ? (white ? 'source-over' : 'destination-out') : keepAlpha ? 'source-atop' : this.brushMode === 'erase' ? 'destination-out' : this.brushBlend === 'behind' ? 'destination-over' : this.brushBlend === 'clear' ? 'destination-out' : compositeOp(this.brushBlend);
     let color = pick.target === 'mask' ? { r: 255, g: 255, b: 255 } : keepAlpha && this.brushMode === 'erase' ? this.bg : this.fg;
@@ -3942,6 +3994,8 @@ export class Engine {
     }
     const s = new PixelStroke(pick.raster, pick.local, { ...this.brush, color, bg: { ...this.bg }, flow: this.brushFlow, aliased: !!opts.aliased || !!opts.square, square: !!opts.square, dabColor: this.tool === 'mixer' && pick.target !== 'mask' && this.brushMode !== 'erase' ? this.mixerSourceFor(p, pick.raster as Raster, pick.local) : null }, op, p.selection);
     s.dynamics = structuredClone(this.brushDynamics);
+    if (this.pressureCurve) for (const o of [s.dynamics.size, s.dynamics.flow, s.dynamics.opacity]) for (const sn of o.sensors) if (sn.id === 'pressure' && !sn.curve) sn.curve = this.pressureCurve;
+    if (this.brushSymmetry.mode !== 'off') s.symmetry = { ...this.brushSymmetry, cx: p.doc.width / 2, cy: p.doc.height / 2 };
     // Brush Settings (tip shape, shape dynamics, scattering, texture, dual brush); inactive, the stroke is as before.
     if (!opts.aliased) s.setShape(this.brushShape, this.brushShape.texture.on ? (patternById(this.brushShape.texture.pattern) ?? allPatterns()[0])?.surface ?? null : null);
     this.stroke = { project: p, layerId: pick.layer.id, target: pick.target, s };
@@ -3965,7 +4019,7 @@ export class Engine {
     this.strokeShow();
   }
 
-  /** The Airbrush's tick (1.50.4, the tool audit), as Photoshop's: another dab where the pointer rests, building up. */
+  /** The Airbrush's tick (1.50.4, the tool audit): another dab where the pointer rests, building up. */
   airbrushTick(pressure = 1): void {
     const st = this.stroke;
     if (!st) return;
@@ -4158,7 +4212,7 @@ export class Engine {
     q.redo = redo;
   }
 
-  /** Edit > Stroke (1.65.7), as Photoshop's: a band `width` pixels wide along the selection's edge (with no selection,
+  /** Edit > Stroke (1.65.7): a band `width` pixels wide along the selection's edge (with no selection,
    *  along the edge of the active layer's pixels, each taken at half coverage), inside it, centred on it or outside it,
    *  each pixel covered as far as its centre lies within the band (the distance to the nearest pixel across the edge,
    *  less half a pixel), so a whole width on a straight edge is crisp; worked out over the edge's bounds grown by the
@@ -4205,7 +4259,7 @@ export class Engine {
     return SelectionMask.cropped(region.x, region.y, region.w, region.h, out);
   }
 
-  /** Fill Path with its settings, as Photoshop's dialog has them: the path's inside (its operations applied),
+  /** Fill Path with its dialog's settings: the path's inside (its operations applied),
    *  anti-aliased or not and feathered by `feather` pixels, within any selection, filled as Edit > Fill fills
    *  (contents, mode, opacity, Preserve Transparency), as one Fill Path step. */
   fillPathWith(contents: { color: RGB } | { patternId: ID } | { history: true }, blend: BlendMode, opacity: number, preserve: boolean, feather: number, antialias: boolean): void {
@@ -4234,7 +4288,7 @@ export class Engine {
 
   fill(which: 'fg' | 'bg'): void { PO.fill(this.paintHost, which); }
 
-  /** The Background Eraser (E; 1.49.5, the owner's tool list), as Photoshop's: erases, within the brush, the pixels of
+  /** The Background Eraser (E; 1.49.5, the owner's tool list): erases, within the brush, the pixels of
    *  the active layer whose colour is within Tolerance of the colour sampled under the brush's centre (at every dab, or
    *  once at the start), feathered by the brush's hardness; Contiguous keeps to the matching pixels joined to the centre;
    *  Protect Foreground Color keeps the foreground's; the selection bounds it. The whole stroke is one step. */
@@ -4319,7 +4373,7 @@ export class Engine {
     b.touched = unionRect(b.touched, { x: x0, y: y0, w, h });
   }
 
-  /** The Magic Eraser (E; 1.49.5, the owner's tool list), as Photoshop's: the area the Magic Wand would select at a
+  /** The Magic Eraser (E; 1.49.5, the owner's tool list): the area the Magic Wand would select at a
    *  point (with the eraser's own Tolerance, Contiguous and Sample All Layers) made transparent on the active layer, the
    *  selection left as it was; one step. */
   magicErase(pt: Pt, settings: { tolerance: number; contiguous: boolean; sampleAll: boolean }): void {
@@ -4847,7 +4901,7 @@ export class Engine {
     else {
       const l = p.activeLayer;
       if (!l) { this.notice('Select a layer first.'); return; }
-      surface = createSurface(W, H);   // an empty layer is transparent (1.50.2), as Photoshop's
+      surface = createSurface(W, H);   // an empty layer is transparent (1.50.2)
       if (l.raster) {
         const c = ctxOf(surface);
         setMat(c, placement(l.transform, l.raster.width, l.raster.height));
@@ -4997,10 +5051,10 @@ export class Engine {
 
   get canTransformAgain(): boolean { return !!this.lastTransform && !!this.activeLayer && !this.floatSel && !this.distortEdit && !this.meshWarpEdit && !this.puppetEdit && !this.perspectiveEdit; }
 
-  /** Edit > Transform > Again (1.65.6), as Photoshop's: the last transform's own matrix, in document space, applied
+  /** Edit > Transform > Again (1.65.6): the last transform's own matrix, in document space, applied
    *  again to what is selected now, so a turn about a point keeps turning about it: a box change through `following`,
    *  a flip as the same flip, a distortion's perspective through `againQuad`; with `copy` on a duplicate of the
-   *  selected layers (Photoshop's Alt+Shift+Ctrl+T). One Transform Again step. */
+   *  selected layers (Alt+Shift+Mod+T). One Transform Again step. */
   transformAgain(copy = false): boolean {
     const last = this.lastTransform, l = this.activeLayer;
     if (!this.canTransformAgain || !last || !l) { if (!last) this.notice('There is no transform to repeat yet.'); return false; }
@@ -5166,13 +5220,16 @@ export class Engine {
     return inside ? { ...a } : undefined;
   }
 
-  beginMeshWarp(): boolean {
+  /** Edit > Transform > Warp: points per side of the starting grid, 3 to 6 (Warp > Grid). */
+  meshWarpGrid = 4;
+
+  beginMeshWarp(grid = this.meshWarpGrid): boolean {
     const p = this.current, l = p?.activeLayer;
     if (!p || !l || this.stroke || this.transformEdit || this.distortEdit || this.meshWarpEdit || this.perspectiveEdit) return false;
     if (l.vector || l.smart || l.fillContent || l.isGroup || l.adjustment || !l.raster) { this.notice('Warp works on a pixel layer. Rasterize shape layers, fill layers and smart objects first.'); return false; }
     this.settle();
     this.meshWarpAim = null;
-    const r = l.raster, c = cornersOf(l.transform), gw = 4, gh = 4, points: P2[] = [];
+    const r = l.raster, c = cornersOf(l.transform), gw = Math.max(3, Math.min(6, Math.round(grid) || 4)), gh = gw, points: P2[] = [];
     for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) {
       const u = i / (gw - 1), v = j / (gh - 1), top = { x: c[0].x + (c[1].x - c[0].x) * u, y: c[0].y + (c[1].y - c[0].y) * u }, bot = { x: c[3].x + (c[2].x - c[3].x) * u, y: c[3].y + (c[2].y - c[3].y) * u };
       points.push([top.x + (bot.x - top.x) * v, top.y + (bot.y - top.y) * v]);
@@ -5525,7 +5582,7 @@ export class Engine {
     return { dx: tr.keys.x?.length ? valueAt(tr.keys.x, vt.current, l.transform.x) - l.transform.x : 0, dy: tr.keys.y?.length ? valueAt(tr.keys.y, vt.current, l.transform.y) - l.transform.y : 0 };
   }
 
-  /** A move keyed (1.59.9), as Photoshop's: a layer whose Position X or Y has keyframes moves by keying its new place at
+  /** A move keyed (1.59.9): a layer whose Position X or Y has keyframes moves by keying its new place at
    *  the playhead (an axis without keyframes moves the layer itself), all one step named `name`. False when the layer
    *  has no Position keyframes, for the caller to move it as ever. */
   keyMove(id: ID, dx: number, dy: number, name: string): boolean {
@@ -5590,7 +5647,7 @@ export class Engine {
   }
 
   /** Layer > Align: several layers or folders align to the bounds of them all; one aligns to the selection, or to
-   *  the canvas when nothing is selected. Visible pixels decide each one's edges, as in Photoshop. */
+   *  the canvas when nothing is selected. Visible pixels decide each one's edges. */
   alignLayers(edge: 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom'): void {
     const p = this.current;
     if (!p || this.stroke) return;
@@ -5650,7 +5707,7 @@ export class Engine {
     try { return fn(); } finally { p.doc = doc; }
   }
 
-  /** The Eyedropper's Sample Size, as Photoshop's options bar has it: 1 is Point Sample, otherwise the side of the
+  /** The Eyedropper's Sample Size, in the options bar: 1 is Point Sample, otherwise the side of the
    *  square averaged (3, 5, 11, 31, 51 or 101). */
   eyedropperSize = 1;
 
@@ -5696,7 +5753,7 @@ export class Engine {
     if (!images.length) return;
     if (!this.current) {
       const f = images[0];
-      this.addProject({ id: uid(), width: f.width, height: f.height, resolution: f.resolution ?? 72, layers: [], ...(f.profile ? { profile: f.profile } : {}), ...(f.meta ? { meta: f.meta } : {}) }, stripExt(f.name));   // its embedded profile kept (1.53.5), its File Info (29.2)
+      this.addProject({ id: uid(), width: f.width, height: f.height, resolution: f.resolution ?? 72, layers: [], ...(f.profile ? { profile: f.profile } : {}), ...(f.mode ? { mode: f.mode } : {}), ...(f.meta ? { meta: f.meta } : {}) }, stripExt(f.name));   // its embedded profile kept (1.53.5), its File Info (29.2), a grayscale file's mode
     }
     this.edit(images.length > 1 ? 'Import Images' : 'Import Image', (p) => {
       let pixels = p.doc.layers.reduce((n, l) => n + (l.raster ? l.raster.width * l.raster.height : 0), 0), added = 0;
@@ -5708,7 +5765,7 @@ export class Engine {
         pixels += img.width * img.height;
         const c = at ?? { x: p.doc.width / 2, y: p.doc.height / 2 };
         const act = p.activeLayer, parentId = act ? (act.isGroup ? act.id : act.parentId) : null;
-        // Into a frame, the image covers it, centred, as Photoshop fills a frame; elsewhere it lands at its own size.
+        // Into a frame, the image covers it, centred; elsewhere it lands at its own size.
         const fr = parentId ? p.layer(parentId)?.frame : null, cover = fr ? Math.max(fr.w / img.width, fr.h / img.height) : 1;
         const depth = p.doc.depth ?? 8, channels = img.deep && !fr && (!p.doc.mode || p.doc.mode === 'rgb') ? (depth === 32 ? img.deep : depth === 16 ? deepToned(img.deep, 0, 1) : null) : null;
         const layer = newLayer(stripExt(img.name), p.doc, {
@@ -5742,18 +5799,18 @@ export class Engine {
    *  for an older request is dropped. */
   private previewToken = 0;
   gradient: PO.GradientDrag | null = null;
-  /** The Gradient tool's settings: Shape, Colors (style), Reverse, Opacity, and Mode and Dither as Photoshop's options
-   *  bar has them (Dither off by default here: no source fetched gives Photoshop's default). */
-  /** transparency and method (1.50.6, the tool audit), as Photoshop's: the stops' own transparency honoured or not;
+  /** The Gradient tool's settings: Shape, Colors (style), Reverse, Opacity, and Mode and Dither from the options
+   *  bar (Dither off by default). */
+  /** transparency and method (1.50.6, the tool audit): the stops' own transparency honoured or not;
    *  the colours blended in sRGB (Classic, as before), linear light (Linear) or OKLab (Perceptual). */
   gradientSettings: { shape: GradientType; style: string; reversed: boolean; opacity: number; blend: BlendMode; dither: boolean; transparency: boolean; method: 'classic' | 'linear' | 'perceptual' } = { shape: 'linear', style: 'transparent', reversed: false, opacity: 1, blend: 'normal', dither: false, transparency: true, method: 'classic' };
   /** Dialogs a tool's options can open; the app fills these in, since tools only see the engine. */
   uiHooks: { gradientEditor?: () => void; importBrushes?: () => void } = {};
-  /** The shape tools' settings. mode (1.49.8, the owner's tool list), as Photoshop's: a shape layer, the work path, or
+  /** The shape tools' settings. mode (1.49.8, the owner's tool list): a shape layer, the work path, or
    *  pixels on the active layer; fill and stroke each the foreground, the background or none, and the stroke's width. */
   shapeSettings: { kind: 'rectangle' | 'ellipse' | PathShapeKind; cornerRadius: number; mode: 'shape' | 'path' | 'pixels'; fill: 'fg' | 'bg' | 'none'; stroke: 'fg' | 'bg' | 'none'; strokeWidth: number; strokeDash: 'solid' | 'dashed' | 'dotted'; strokeAlign: 'inside' | 'center' | 'outside' } & PathShapeOptions =
     { kind: 'rectangle', cornerRadius: 0, mode: 'shape', fill: 'fg', stroke: 'none', strokeWidth: 3, strokeDash: 'solid', strokeAlign: 'center', ...DEFAULT_PATH_SHAPE };
-  /** The Pen's Mode and Auto Add/Delete (1.52.8, the tool audit), as Photoshop's: a path, or a shape layer made from
+  /** The Pen's Mode and Auto Add/Delete (1.52.8, the tool audit): a path, or a shape layer made from
    *  each path closed; clicking a path adds a point and clicking a point deletes it, unless turned off. */
   penSettings = { mode: 'path' as 'path' | 'shape', autoAddDelete: true };
 
@@ -5778,7 +5835,7 @@ export class Engine {
     const path = line ? linePath(kind as 'line' | 'arrow', a, b, st) : boxedShapePath(kind as 'polygon' | 'star' | 'heart' | 'custom' | 'triangle' | 'rectangle' | 'ellipse', rect, st);
     const name = { rectangle: 'Rectangle', ellipse: 'Ellipse', triangle: 'Triangle', polygon: 'Polygon', star: 'Star', line: 'Line', arrow: 'Arrow', heart: 'Heart', custom: 'Custom Shape' }[kind];
     if (st.mode === 'path') {
-      // Path: the outline joins the work path (one undoable edit when there is one), as Photoshop's.
+      // Path: the outline joins the work path (one undoable edit when there is one).
       const vp = this.workPath;
       this.beginPathEdit();
       this.setWorkPath({ subpaths: [...(vp?.subpaths ?? []), ...path.subpaths] });
@@ -5821,7 +5878,7 @@ export class Engine {
 
   removeGuide(index: number): void { GD.removeGuide(this.guideHost, index); }
 
-  /** View > New Guide Layout (27.11): `columns` and `rows` with gutters inside margins, as Photoshop lays them out:
+  /** View > New Guide Layout (27.11): `columns` and `rows` with gutters inside margins, laid out:
    *  guides at the margins and at both edges of every gutter (a gutter of 0 puts one guide between cells). `clear`
    *  replaces the existing guides. One undo step. */
   guideLayout(o: { columns: number; rows: number; gutterX: number; gutterY: number; margin: { top: number; left: number; bottom: number; right: number }; clear: boolean }): void { GD.guideLayout(this.guideHost, o); }
@@ -6543,7 +6600,7 @@ export class Engine {
     });
   }
 
-  /** Content-Aware Scale (1.55.4, M4): the layer's pixels replaced at a new size, its box resized in place. */
+  /** A pixel layer's pixels replaced at a new size, its box resized in place (Adaptive Wide Angle). */
   rescaleLayerPixels(id: ID, image: ImageData, undoName: string): boolean {
     const p = this.current, l = p?.layer(id);
     if (!p || !l || !l.raster || l.isGroup || l.adjustment || l.text || l.shape || l.smart) { this.notice('Only a pixel layer can take new pixels.'); return false; }
@@ -6574,8 +6631,8 @@ export class Engine {
     return id;
   }
 
-  /** Layer > New Fill Layer (1.66.0, Photoshop's): a fill layer over the whole canvas above the active layer, named as
-   *  Photoshop names them, with Photoshop's default layer mask (revealing all, or with a selection only it, the
+  /** Layer > New Fill Layer (1.66.0): a fill layer over the whole canvas above the active layer, named by its
+   *  kind, with the usual default layer mask (revealing all, or with a selection only it, the
    *  selection used up) as the target, so painting it paints the mask. One New Fill Layer step; the dialog that follows
    *  sets its content into that step (amendNewFill) or takes it back (dropNewFill). */
   newFillLayer(content: FillContent): ID | null {
@@ -6803,7 +6860,7 @@ export class Engine {
     return this.resizeCanvas(r.w, r.h, -r.x, -r.y, null, 'Reveal All');
   }
 
-  /** The Crop tool's W × H × Resolution, as Photoshop's: the crop as `straightenCrop` makes it, then the result
+  /** The Crop tool's W × H × Resolution: the crop as `straightenCrop` makes it, then the result
    *  resampled to exactly `width` by `height` pixels at `resolution` ppi, as one Crop step (history steps nest). */
   cropToSize(rect: Rect, angleDeg: number, contentAware: boolean, width: number, height: number, resolution: number): boolean {
     const p = this.current, w = Math.round(width), h = Math.round(height);
@@ -6853,11 +6910,11 @@ export class Engine {
   }
 
   /** Content-aware fill of the canvas the bottom visible pixel layer does not reach; that layer becomes canvas-sized. */
-  /** The Crop tool's Delete Cropped Pixels, as Photoshop's option has it: after the crop, each pixel layer reaching past
+  /** The Crop tool's Delete Cropped Pixels option: after the crop, each pixel layer reaching past
    *  the canvas keeps only what lies on it. The layer is drawn through its own placement onto a canvas-sized raster, so
    *  an unscaled, unturned layer at whole pixels is copied exactly and a scaled or turned one is resampled once to what
    *  shows; a mask that followed the layer is pinned where it was. Smart objects, type, shapes, adjustments and folders
-   *  are left whole (Photoshop does not delete pixels inside smart objects either). */
+   *  are left whole (pixels inside smart objects are never deleted). */
   private deleteCroppedPixels(p: Project): void {
     const W = p.doc.width, H = p.doc.height;
     for (const l of p.doc.layers) {
@@ -6941,7 +6998,7 @@ export class Engine {
 
   resampleImage(width: number, height: number, sampling: Transform['sampling'], resolution: number): boolean { return DS.resampleImage(this.sizeHost, width, height, sampling, resolution); }
 
-  /** File > Automate > Fit Image (1.65.8, as Photoshop's): the image resampled, its proportions kept, to
+  /** File > Automate > Fit Image (1.65.8): the image resampled, its proportions kept, to
    *  fit within `width` by `height` pixels, smaller or (with `enlarge`) larger, as one Fit Image step at the same
    *  resolution. True when it fits afterwards, resized or not; `quiet` keeps one that already fits from saying so. */
   fitImage(width: number, height: number, enlarge = true, quiet = false): boolean {
@@ -7062,7 +7119,7 @@ export class Engine {
 
   pasteClipboard(): boolean { return SO.pasteClipboard(this.selectHost); }
 
-  /** Edit > Paste Special > Paste Into and Paste Outside (1.65.7), as Photoshop's: formvis's own clipboard, or `image`
+  /** Edit > Paste Special > Paste Into and Paste Outside (1.65.7): formvis's own clipboard, or `image`
    *  from another app, pasted as a new layer centred on the selection's bounds, with a layer mask the size of the
    *  canvas showing it only inside the selection (or only outside it), unlinked so the picture can be moved behind it;
    *  the selection is used up. One step. */
@@ -7479,7 +7536,7 @@ export class Engine {
     if (style.kind === 'Ellipse') c.ellipse(r.width / 2, r.height / 2, r.width / 2, r.height / 2, 0, 0, Math.PI * 2);
     else {
       // Live corners: four radii (top left, top right, bottom right, bottom left) when set, else one for all; each is
-      // held to half the shorter side, as Photoshop holds them.
+      // held to half the shorter side.
       const cap = Math.min(r.width, r.height) / 2, radii = cornerRadiiOf(style);
       c.roundRect(0, 0, r.width, r.height, radii ? radii.map((v) => Math.min(v, cap)) : Math.min(Number(style.cornerRadius) || 0, cap));
     }
@@ -7499,7 +7556,7 @@ export class Engine {
 
   /** Clone Source: where a document point's source moves once scaled, rotated and flipped about `pivot` (the sample
    *  point), as a matrix taking source pixels to where they are painted from; null when all are neutral. Painting at
-   *  50 percent paints the source at half size, as Photoshop's W and H do. */
+   *  50 percent paints the source at half size, as the panel's W and H do. */
   private cloneTransform(pivot: Pt): Mat | null {
     const r = this.retouch, s = Math.min(1000, Math.max(1, r.cloneScale)) / 100;
     if (s === 1 && !(r.cloneAngle % 360) && !r.cloneFlipH && !r.cloneFlipV) return null;
@@ -7508,12 +7565,12 @@ export class Engine {
   }
   cloneSource: Pt | null = null;
   cloneOffset: Pt | null = null;
-  /** The Clone Source panel's five sources, as Photoshop's (Adobe's "Clone Source panel"; Breathing Color): Alt-click
+  /** The Clone Source panel's five sources: Alt-click
    *  sets the chosen slot's source, and each slot keeps its own point, scale, angle and flips, restored on choosing it. */
   cloneSlots: Array<{ source: Pt; scale: number; angle: number; flipH: boolean; flipV: boolean } | null> = [null, null, null, null, null];
   cloneSlot = 0;
   /** The overlay: Show Overlay; Clipped (on by default) keeps it to the brush, off shows the whole source as a stroke
-   *  would copy it; its opacity; Auto Hide hides it while painting (KelbyOne's Planet Photoshop; Ben Willmore). */
+   *  would copy it; its opacity; Auto Hide hides it while painting. */
   cloneOverlay = { show: true, clipped: true, opacity: 1, autoHide: false };
   private cloneFullCache: { key: string; image: Surface } | null = null;
   private warpState: TE.WarpDrag | null = null;
@@ -7677,7 +7734,7 @@ export class Engine {
         texture = { surface: t, dx: off.x, dy: off.y };
       }
     } else if (kind === 'blur') {
-      // Sample All Layers (1.51.4, the tool audit): the composite blurred, painted into the active layer, as Photoshop's.
+      // Sample All Layers (1.51.4, the tool audit): the composite blurred, painted into the active layer.
       const sigma = clamp(this.brush.diameter / 10, 1.5, 30), all = this.retouch.smearSampleAll && !onMask;
       texture = { surface: onMask ? this.maskBlurSample(p, l0, sigma) : all ? blurred(renderDoc(this.work, p.doc), sigma) : this.layerSample(p, l0, sigma), dx: 0, dy: 0 };
     } else if (kind === 'sharpen') {
@@ -7688,7 +7745,7 @@ export class Engine {
     } else if (kind === 'dodge' || kind === 'burn' || kind === 'sponge') texture = { surface: this.toned(this.layerSample(p, l0), kind), dx: 0, dy: 0 };
     else if (kind === 'patternStamp') {
       // The Pattern Stamp (1.49.5, the owner's tool list): the pattern tiled across the document, anchored to it, so
-      // strokes line up (Photoshop's Aligned).
+      // strokes line up (Aligned).
       const pat = patternById(this.patternStampPattern) ?? allPatterns()[0];
       if (!pat) { this.notice('No pattern to paint with.'); return false; }
       const W = p.doc.width, H = p.doc.height, tile = createSurface(W, H), c = ctxOf(tile), fill = c.createPattern(pat.surface as CanvasImageSource, 'repeat');
@@ -7708,7 +7765,7 @@ export class Engine {
     p.history.begin({ heal: 'Spot Healing', remove: 'Remove', clone: 'Clone Stamp', healBrush: 'Healing Brush', blur: 'Blur', sharpen: 'Sharpen', dodge: 'Dodge', burn: 'Burn', sponge: 'Sponge', historyBrush: 'History Brush', artHistory: 'Art History Brush', patternStamp: 'Pattern Stamp' }[kind], p.snapshot());
     const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
     const white = { r: 255, g: 255, b: 255 };
-    // The Clone Stamp's Flow and Mode (1.50.6, the tool audit), as Photoshop's bar; Lock Transparency keeps precedence.
+    // The Clone Stamp's Flow and Mode (1.50.6, the tool audit), from the options bar; Lock Transparency keeps precedence.
     const style = kind === 'heal' || kind === 'remove' ? { ...this.brush, opacity: 0.45, color: white } : kind === 'clone' ? { ...this.brush, color: white, flow: this.retouch.cloneFlow } : { ...this.brush, color: white };
     const op: GlobalCompositeOperation = pick.target !== 'mask' && l0.locks?.transparency ? 'source-atop' : pick.target === 'mask' ? 'source-over'
       : kind === 'clone' ? compositeOp(this.retouch.cloneBlend) : kind === 'blur' || kind === 'sharpen' ? compositeOp(this.retouch.smearBlend) : 'source-over';
@@ -7873,7 +7930,7 @@ export class Engine {
   }
 
   /** Patch: heals the selected area of the active pixel layer from the area (dx, dy) document pixels away, blended to
-   *  meet the selection's edge, as one undo step. Destination (Photoshop's Patch: Destination) copies the selection
+   *  meet the selection's edge, as one undo step. Destination (Patch: Destination) copies the selection
    *  onto the area it is dragged to instead: the same work on the moved selection with the drag reversed, and the
    *  selection ends there. Transparent keeps what is under the patch and adds only the source's detail (its high
    *  pass). Content-Aware heals, then rebuilds a band along the seam by content-aware fill, so the edge is
@@ -8060,6 +8117,21 @@ export class Engine {
     return this.addProject({ ...base, ...(img.profile ? { profile: img.profile } : {}), ...(img.meta ? { meta: img.meta } : {}), layers: [layer] }, img.name.replace(/\.[^.]+$/, '') || 'Image', layer.id);   // an embedded profile kept (1.53.5)
   }
 
+  /** A new document for an animation opened from a file: a layer per frame (Frame 1 at the bottom) and a frame
+   *  animation whose frame n shows layer n alone, with the file's delay and `plays` (0 forever). */
+  openFrameAnimation(name: string, width: number, height: number, plays: number, frames: Array<{ source: CanvasImageSource; delay: number }>): Project | null {
+    if (!frames.length || !this.sizeOk(width, height)) return null;
+    const base: Doc = { id: uid(), width, height, resolution: 72, layers: [] };
+    const layers = frames.map((f, i) => newLayer(`Frame ${i + 1}`, base, { raster: Raster.from(f.source, width, height), visible: i === 0 }));
+    const p = this.addProject({ ...base, layers }, name, layers[0].id);
+    const list: Frame[] = frames.map((f, i) => ({
+      id: uid(), delay: Math.min(60000, Math.max(0, Math.round(f.delay))),
+      state: Object.fromEntries(layers.map((l, j) => [l.id, { visible: i === j, opacity: 1, x: l.transform.x, y: l.transform.y, fx: null }])),
+    }));
+    this.setTimelineFor(p, { frames: list, current: list[0].id, loops: Math.min(65535, Math.max(0, Math.round(plays))) });
+    return p;
+  }
+
   /** File > Scripts > Load Files into Stack and Statistics (30.4): one new document holding every image as a layer at the
    *  top left (the first file at the bottom), sized to the largest; as a smart object stack when `smart` or a mode is set. */
   loadStack(imgs: ImportedImage[], opts: { smart: boolean; mode: StackMode }): Project | null {
@@ -8177,7 +8249,7 @@ export class Engine {
     return true;
   }
 
-  /** Content-Aware Move (J; 1.49.9, the owner's tool list), as Photoshop's: the selected pixels (their soft edges kept)
+  /** Content-Aware Move (J; 1.49.9, the owner's tool list): the selected pixels (their soft edges kept)
    *  placed dx, dy away; in Move mode the hole they leave filled from around it (the Content-Aware Fill's fill), in
    *  Extend mode the original kept; the selection goes with them. One step. */
   contentAwareMove(dx: number, dy: number, mode: 'move' | 'extend' = 'move'): void {
@@ -8212,7 +8284,7 @@ export class Engine {
     if (this.current === p0 && p0.selection === sel0) { p0.selection = SelectionMask.cropped(sel0.x + dx, sel0.y + dy, sel0.w, sel0.h, sel0.data); this.emit('selection', null); }
   }
 
-  /** Red Eye (J; 1.49.9, the owner's tool list), as Photoshop's: at a click near a red pupil, the red area joined to it
+  /** Red Eye (J; 1.49.9, the owner's tool list): at a click near a red pupil, the red area joined to it
    *  (reached from the nearest red pixel within a few pixels, and no wider than Pupil Size allows) darkened to a
    *  neutral by Darken Amount. One step; nothing red near the click leaves the image as it was. */
   redEye(pt: Pt, pupil = 50, darken = 50): void {
@@ -8437,6 +8509,19 @@ export class Engine {
     this.setTool('move');
   }
 
+  /** Edit > Free Transform a Copy (Alt+Mod+T): the layer (or the selection's pixels) copied in place, then the copy takes
+   *  the Move tool's handles, so the original stays as it was. */
+  transformCopy(): boolean {
+    const p = this.current, l = p?.activeLayer;
+    if (!p || !l || this.floatSel || this.floatingSelection) return false;
+    this.endTransformMode();
+    this.layerViaCopy();
+    this.settle();
+    if (!this.showTransformControls) this.update({ showTransformControls: true });
+    this.setTool('move');
+    return true;
+  }
+
   beginSelectionTransform(): boolean {
     if (!this.current || !this.canTransformSelection) return false;
     const fs = PM.beginSelectionTransform(this.moveHost);
@@ -8616,7 +8701,7 @@ export class Engine {
     this.emit('projects', null); this.emit('options', null);
   }
 
-  /** Layer > Flatten Image, as Photoshop's: the visible image as one Background layer (hidden layers are discarded).
+  /** Layer > Flatten Image: the visible image as one Background layer (hidden layers are discarded).
    *  One step. */
   flattenImage(): boolean {
     const p = this.current, flat = this.flattened();
@@ -8632,7 +8717,7 @@ export class Engine {
     });
   }
 
-  /** Image > Mode (1.50.2, the owner's walkthrough), as Photoshop's: RGB; Grayscale (each layer to its luminance, type,
+  /** Image > Mode (1.50.2, the owner's walkthrough): RGB; Grayscale (each layer to its luminance, type,
    *  shapes and vectors kept editable with their colours made grey); Bitmap (flattened, then black and white by a 50
    *  percent threshold or diffusion dither); Indexed Color (flattened, then to a palette: exact at 256 colours or fewer,
    *  else adaptive by median cut, optionally dithered). New pixels throughout, so one undo restores the old ones. */
@@ -8725,7 +8810,7 @@ export class Engine {
     return r;
   }
 
-  /** Fill layers kept over the whole canvas at the end of every step (1.66.0), as Photoshop's are endless: one moved,
+  /** Fill layers kept over the whole canvas at the end of every step (1.66.0), endless: one moved,
    *  transformed or left short by a canvas change is drawn again over the canvas at its place, its mask staying where
    *  the change took it; one whose content, canvas or laying-out mask changed is drawn again. True when one was. */
   private pinFills(p: Project): boolean {
@@ -8759,7 +8844,7 @@ export class Engine {
    *  whose layers convert from their 16-bit floats; 32 bits come down to 16 first (app.ts). */
   setLab(): boolean { return MO.setLab(this.modeHost); }
 
-  /** Image > Mode > Grayscale from Lab (1.57.5): each layer's grey from its Lightness alone, as Photoshop takes it,
+  /** Image > Mode > Grayscale from Lab (1.57.5): each layer's grey from its Lightness alone,
    *  the sRGB grey of that lightness exactly; the document leaves Lab for 8-bit Grayscale. */
   setGrayFromLab(): boolean { return MO.setGrayFromLab(this.modeHost); }
 
@@ -8779,7 +8864,7 @@ export class Engine {
    *  the formulas; `depth` 16 for a 16-bit file. */
   openLabLayers(name: string, width: number, height: number, layers: ReadonlyArray<{ name: string; x: number; y: number; channels: ChannelPixels; opacity: number; visible: boolean }>, depth: 8 | 16): Project { return MO.openLabLayers(this.modeHost, name, width, height, layers, depth); }
 
-  /** File > Import > Video Frames to Layers (1.58.9, L1), as Photoshop's: a new document of the clip's frames, one
+  /** File > Import > Video Frames to Layers (1.58.9, L1): a new document of the clip's frames, one
    *  layer each named Frame 1, Frame 2 and on (the first at the bottom); with `animate`, a frame animation in which
    *  each frame shows its own layer alone for `delayMs`, the first frame showing. */
   openFrames(name: string, width: number, height: number, frames: Raster[], delayMs: number, animate: boolean): Project {
@@ -8802,7 +8887,7 @@ export class Engine {
     const p = this.current, from = p?.doc.depth ?? 8;
     if (!p || from === depth) return false;
     if (p.doc.mode === 'cmyk' || p.doc.mode === 'lab') {
-      // CMYK and Lab (1.57.8): their ink and Lab values are floats already, so 16 bits (as Photoshop's) changes only how
+      // CMYK and Lab (1.57.8): their ink and Lab values are floats already, so 16 bits changes only how
       // files keep them; 32 bits needs RGB (app.ts brings the document there first).
       if (depth === 32) return false;
       return this.edit(`${depth} Bits/Channel`, (pp) => { pp.doc = { ...pp.doc, depth }; return true; });
@@ -8896,7 +8981,7 @@ export class Engine {
 }
 
 
-/** A gradient's stops blended in Photoshop's Method: Classic as they are (sRGB); Linear in linear light; Perceptual in
+/** A gradient's stops blended by Method: Classic as they are (sRGB); Linear in linear light; Perceptual in
  *  OKLab. The canvas blends in sRGB only, so each segment is divided into 24 steps worked out in the chosen space. */
 function gradientMethod<T extends { at: number; rgb: RGB; alpha: number }>(stops: T[], method: 'classic' | 'linear' | 'perceptual'): T[] {
   if (method === 'classic' || stops.length < 2) return stops;
@@ -8949,7 +9034,7 @@ function withinNeighbours(orig: ImageData, sharp: ImageData): ImageData {
   return out;
 }
 
-/** A shape's stroke (1.52.8), as Photoshop's options: solid, dashed (4 widths on, 2 off, square ends) or dotted (round
+/** A shape's stroke (1.52.8), its options: solid, dashed (4 widths on, 2 off, square ends) or dotted (round
  *  dots 2 widths apart); centred on the path, inside it (clipped to the shape) or outside it (the shape cut away). An open
  *  path is always centred: it has no inside. Round joins keep corners smooth. */
 function strokeShape(c: Ctx2D, shape: Path2D, s: ShapeStroke, closed: boolean): void {

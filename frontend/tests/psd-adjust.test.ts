@@ -39,7 +39,7 @@ describe('adjustment layers to and from PSD', () => {
     expect(got.bands.Blues).toEqual({ falloffStart: 190, rangeStart: 215, rangeEnd: 250, falloffEnd: 275 });
   });
 
-  it('refuses kinds Photoshop has no layer for', () => {
+  it('refuses kinds the PSD format has no layer for', () => {
     expect(toPsdAdjustment({ kind: 'grain', data: {} })).toBeNull();
     expect(toPsdAdjustment({ kind: 'develop', data: {} })).toBeNull();
     expect(fromPsdAdjustment({ type: 'color lookup' } as never)).toBeNull();

@@ -3,7 +3,7 @@ import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
 import { checkRow } from './controls';
 
-/** File > Save a Copy (1.65.8), Photoshop's: the copy's name in the library, and Layers (unticked, the picture flattened
+/** File > Save a Copy (1.65.8): the copy's name in the library, and Layers (unticked, the picture flattened
  *  into one layer); Save hands both to `save`, which keeps the copy and leaves the document in its tab as it is. */
 export class SaveCopyDialog extends Dialog {
   private layered = true;

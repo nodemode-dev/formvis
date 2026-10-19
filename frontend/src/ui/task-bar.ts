@@ -7,7 +7,7 @@ import { onLanguage, t } from './i18n';
 import { PopupMenu } from './menu';
 
 /** The Contextual Task Bar: a small pill floating over the canvas that puts the next likely steps in front of the
- *  person, as Photoshop's does. With a selection it offers Generative Fill with a prompt, Remove, Invert, Feather and
+ *  person. With a selection it offers Generative Fill with a prompt, Remove, Invert, Feather and
  *  Deselect; with a picture and no selection, Select Subject, Remove Background, Generate Image, Generative Expand,
  *  Upscale and Relight; with no document, Generate Image and New Document. Every button runs the command the menus
  *  run, so what is off here is off there, with the reason as its tooltip. Built once: a change of state hides and shows

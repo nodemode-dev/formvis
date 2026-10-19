@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 // A command's keys must be written as comboOf writes a key press (Alt, Shift, Mod, then the key), or no press can ever
-// match them (1.53.4: Photoshop's Keyboard Shortcuts key was first written Mod+Alt+Shift+K).
+// match them (1.53.4: the Keyboard Shortcuts key was first written Mod+Alt+Shift+K).
 const sources = import.meta.glob(['../**/*.ts', '!../**/*.test.ts'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
 const ORDER: Record<string, number> = { Alt: 0, Shift: 1, Mod: 2 };
 

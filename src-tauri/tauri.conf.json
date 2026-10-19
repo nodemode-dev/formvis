@@ -28,9 +28,10 @@
     "targets": "all",
     "category": "GraphicsAndDesign",
     "shortDescription": "Layered image editor",
- "longDescription": "formvis is a layered image editor in the NodeMode design system: layers, folders, masks, clipping, blend modes, selections, painting, and its own .fmv project files.",
+ "longDescription": "formvis is a layered image editor in the NodeMode design system: layers, folders, masks, clipping, blend modes, selections, painting, and its own .fvd project files.",
  "copyright": "Copyright 2026 nodemode-ai.",
     "externalBin": ["binaries/formvis-engine"],
+    "resources": { "../licenses": "licenses" },
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
     "macOS": {
       "minimumSystemVersion": "12.0",

@@ -67,6 +67,59 @@ export interface DevelopState {
   optics?: OpticsState;
   geometry?: GeometryState;
   calibration?: CalibrationState;
+  parametric?: ParametricState;
+  pointColor?: PointColorState;
+}
+
+/** Point Color: a colour picked from the picture (a hex string; empty for none) and how far around it the change reaches
+ *  (`range`, 0 to 100 percent of the hue wheel's 90 degrees, and as much of the saturation and lightness range), then the
+ *  hue (-100 to 100, up to 60 degrees), saturation and luminance (-100 to 100) shifts given to the colours that match. */
+export interface PointColorState { color: string; range: number; h: number; s: number; l: number }
+export const defaultPointColor = (): PointColorState => ({ color: '', range: 50, h: 0, s: 0, l: 0 });
+export const pointColorOf = (s: DevelopState): PointColorState => ({ ...defaultPointColor(), ...s.pointColor });
+export const pointColorActive = (p: PointColorState): boolean => /^#[0-9a-f]{6}$/i.test(p.color) && (p.h !== 0 || p.s !== 0 || p.l !== 0);
+
+/** Point Color on `img` in place: each pixel's closeness to the picked colour (hue distance, then saturation and lightness
+ *  distance, each against the range, with a cosine falloff) scales the shifts it receives. Greys have no hue and are left alone. */
+export function pointColorPass(img: ImageData, pc: PointColorState): void {
+  const n = parseInt(pc.color.slice(1), 16), [h0, s0, l0] = rgbToHsl((n >> 16) & 255, (n >> 8) & 255, n & 255), d = img.data;
+  const reach = Math.max(0.05, pc.range / 100), hueW = 90 * reach, satW = 0.6 * reach + 0.1, lumW = 0.6 * reach + 0.1;
+  const falloff = (dist: number, width: number): number => (dist >= width ? 0 : 0.5 + 0.5 * Math.cos(Math.PI * dist / width));
+  for (let i = 0; i < d.length; i += 4) {
+    const [h, s, l] = rgbToHsl(d[i], d[i + 1], d[i + 2]);
+    if (s < 0.02) continue;
+    let dh = Math.abs(h - h0);
+    if (dh > 180) dh = 360 - dh;
+    const w = falloff(dh, hueW) * falloff(Math.abs(s - s0), satW) * falloff(Math.abs(l - l0), lumW);
+    if (w <= 0) continue;
+    const [r, g, b] = hslToRgb(h + pc.h * 0.6 * w, clamp01(s * (1 + (pc.s / 100) * w)), shiftLightness(l, (pc.l / 100) * 0.5 * w));
+    d[i] = r; d[i + 1] = g; d[i + 2] = b;
+  }
+}
+
+/** Parametric curve: how far each of the four tone zones (shadows, darks, lights, highlights; -100 to 100) is raised or
+ *  lowered, with the split points between them (percent of the range) that set where one zone hands over to the next. */
+export interface ParametricState { shadows: number; darks: number; lights: number; highlights: number; split1: number; split2: number; split3: number }
+export const defaultParametric = (): ParametricState => ({ shadows: 0, darks: 0, lights: 0, highlights: 0, split1: 25, split2: 50, split3: 75 });
+export const parametricOf = (s: DevelopState): ParametricState => ({ ...defaultParametric(), ...s.parametric });
+export const parametricActive = (p: ParametricState): boolean => p.shadows !== 0 || p.darks !== 0 || p.lights !== 0 || p.highlights !== 0;
+
+/** The 256 entry table of a parametric curve: each zone is a raised-cosine bump centred between its split points, so the
+ *  zones overlap smoothly and a zone at 100 moves its centre by a fifth of the range. */
+export function buildParametricLut(p: ParametricState): Uint8Array {
+  const a = clamp01(p.split1 / 100), b = clamp01(Math.max(p.split2, p.split1 + 1) / 100), c = clamp01(Math.max(p.split3, p.split2 + 1, p.split1 + 2) / 100);
+  const centres = [a / 2, (a + b) / 2, (b + c) / 2, (c + 1) / 2], halfW = [Math.max(a, 0.05), Math.max(b - a, 0.05) + 0.1, Math.max(c - b, 0.05) + 0.1, Math.max(1 - c, 0.05)];
+  const amounts = [p.shadows, p.darks, p.lights, p.highlights], lut = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) {
+    const x = i / 255;
+    let shift = 0;
+    for (let k = 0; k < 4; k++) {
+      const d = Math.abs(x - centres[k]) / (halfW[k] * 1.5);
+      if (d < 1) shift += (amounts[k] / 100) * 0.2 * (0.5 + 0.5 * Math.cos(Math.PI * d));
+    }
+    lut[i] = Math.round(clamp01(x + shift) * 255);
+  }
+  return lut;
 }
 
 export interface GradeWheel { h: number; s: number }
@@ -75,7 +128,7 @@ export interface GradeWheel { h: number; s: number }
 export interface GradingState { shadows: GradeWheel; midtones: GradeWheel; highlights: GradeWheel; global: GradeWheel; blending: number; balance: number }
 /** Optics: Distortion (-100 to 100, as Lens Correction), Chromatic Aberration (-100 to 100, red and blue channels
  *  scaled apart), Vignetting (-100 to 100, positive brightens the corners) and its Midpoint (0 to 100). */
-export interface OpticsState { distortion: number; chromatic: number; vignetting: number; midpoint: number }
+export interface OpticsState { distortion: number; chromatic: number; vignetting: number; midpoint: number; defringe?: number }
 /** Geometry: Vertical and Horizontal perspective (-100 to 100), Rotate (-10 to 10 degrees), Scale (50 to 150 percent),
  *  Offset X and Y (-100 to 100, percent of half the image). */
 export interface GeometryState { vertical: number; horizontal: number; rotate: number; scale: number; offsetX: number; offsetY: number }
@@ -83,7 +136,7 @@ export interface GeometryState { vertical: number; horizontal: number; rotate: n
 export interface CalibrationState { shadowTint: number; redHue: number; redSat: number; greenHue: number; greenSat: number; blueHue: number; blueSat: number }
 
 export const defaultGrading = (): GradingState => ({ shadows: { h: 0, s: 0 }, midtones: { h: 0, s: 0 }, highlights: { h: 0, s: 0 }, global: { h: 0, s: 0 }, blending: 50, balance: 0 });
-export const defaultOptics = (): OpticsState => ({ distortion: 0, chromatic: 0, vignetting: 0, midpoint: 50 });
+export const defaultOptics = (): OpticsState => ({ distortion: 0, chromatic: 0, vignetting: 0, midpoint: 50, defringe: 0 });
 export const defaultGeometry = (): GeometryState => ({ vertical: 0, horizontal: 0, rotate: 0, scale: 100, offsetX: 0, offsetY: 0 });
 export const defaultCalibration = (): CalibrationState => ({ shadowTint: 0, redHue: 0, redSat: 0, greenHue: 0, greenSat: 0, blueHue: 0, blueSat: 0 });
 export const gradingOf = (s: DevelopState): GradingState => ({ ...defaultGrading(), ...s.grading });
@@ -152,12 +205,12 @@ export function detailActive(d: DetailState): boolean {
 /** True when the state holds only what `developPass` does (tone, colour mixer, curves): the stages after it (grading,
  *  calibration, clarity, texture, sharpening, optics, geometry) are all at their defaults. The GPU runs only these. */
 export function developPerPixelOnly(s: DevelopState): boolean {
-  return !detailActive(s.detail) && !gradingActive(gradingOf(s)) && !calibrationActive(calibrationOf(s)) && !opticsActive(opticsOf(s)) && !geometryActive(geometryOf(s));
+  return !detailActive(s.detail) && !parametricActive(parametricOf(s)) && !pointColorActive(pointColorOf(s)) && !gradingActive(gradingOf(s)) && !calibrationActive(calibrationOf(s)) && !opticsActive(opticsOf(s)) && !geometryActive(geometryOf(s));
 }
 
 export function stateActive(s: DevelopState): boolean {
   return toneActive(s.tone) || colorActive(s.color) || curvesActive(s.curves) || detailActive(s.detail)
-    || gradingActive(gradingOf(s)) || calibrationActive(calibrationOf(s)) || opticsActive(opticsOf(s)) || geometryActive(geometryOf(s));
+    || parametricActive(parametricOf(s)) || pointColorActive(pointColorOf(s)) || gradingActive(gradingOf(s)) || calibrationActive(calibrationOf(s)) || opticsActive(opticsOf(s)) || geometryActive(geometryOf(s));
 }
 
 // ------------------------------------------------------------ primitives
@@ -208,7 +261,7 @@ export function hslToRgb(h: number, s: number, l: number): [number, number, numb
   ];
 }
 
-/** Photoshop-style lightness shift: positive lifts toward white, negative
+/** Lightness shift: positive lifts toward white, negative
  *  scales toward black (never crushes hue). delta in -1..1. */
 function shiftLightness(l: number, delta: number): number {
   const d = Math.max(-1, Math.min(1, delta));
@@ -543,7 +596,31 @@ export function clarityPass(img: ImageData, amount: number, scale = 1): ImageDat
 
 const gradingActive = (g: GradingState): boolean => [g.shadows, g.midtones, g.highlights, g.global].some((w) => w.s !== 0);
 const calibrationActive = (c: CalibrationState): boolean => Object.values(c).some((v) => v !== 0);
-const opticsActive = (o: OpticsState): boolean => o.distortion !== 0 || o.chromatic !== 0 || o.vignetting !== 0;
+const opticsActive = (o: OpticsState): boolean => o.distortion !== 0 || o.chromatic !== 0 || o.vignetting !== 0 || (o.defringe ?? 0) !== 0;
+
+/** Defringe: on pixels within two pixels of a strong luminance edge whose colour is purple or green and fairly
+ *  saturated, pulls the colour toward the pixel's own luminance by `amount` percent. */
+export function defringePass(src: ImageData, amount: number): ImageData {
+  const { width: w, height: h } = src, s = src.data, out = new ImageData(new Uint8ClampedArray(s), w, h), d = out.data, k = clamp01(amount / 100);
+  if (!k) return out;
+  const luma = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) luma[i] = (0.299 * s[i * 4] + 0.587 * s[i * 4 + 1] + 0.114 * s[i * 4 + 2]) / 255;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const p = y * w + x, i = p * 4;
+    let edge = 0;
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+      const xx = x + dx, yy = y + dy;
+      if (xx >= 0 && yy >= 0 && xx < w && yy < h) edge = Math.max(edge, Math.abs(luma[yy * w + xx] - luma[p]));
+    }
+    if (edge < 0.15) continue;
+    const [hue, sat] = rgbToHsl(s[i], s[i + 1], s[i + 2]);
+    const fringe = Math.max(hueWeight(hue, 290, 80), hueWeight(hue, 120, 80)) * smoothstep(0.15, 0.4, sat) * smoothstep(0.15, 0.4, edge);
+    if (fringe <= 0) continue;
+    const y0 = luma[p] * 255, f = fringe * k;
+    for (let c = 0; c < 3; c++) d[i + c] = clamp255(Math.round(s[i + c] + (y0 - s[i + c]) * f));
+  }
+  return out;
+}
 const geometryActive = (g: GeometryState): boolean => g.vertical !== 0 || g.horizontal !== 0 || g.rotate !== 0 || g.scale !== 100 || g.offsetX !== 0 || g.offsetY !== 0;
 
 /** Calibration, then colour grading, on every pixel. Calibration turns and saturates colours by how much each belongs to
@@ -593,6 +670,7 @@ function sampleChannel(d: Uint8ClampedArray, w: number, h: number, x: number, y:
  *  falloff starting at Midpoint). */
 function opticsPass(src: ImageData, o: OpticsState): ImageData {
   let img = o.distortion ? lensDistort(src, o.distortion) : src;
+  if (o.defringe) img = defringePass(img, o.defringe);
   const { width: w, height: h } = img, cx = (w - 1) / 2, cy = (h - 1) / 2, rmax = Math.hypot(cx, cy) || 1;
   if (o.chromatic || o.vignetting) {
     const out = new ImageData(new Uint8ClampedArray(img.data), w, h), d = img.data, od = out.data, k = (o.chromatic / 100) * 0.006;
@@ -632,7 +710,13 @@ function geometryPass(src: ImageData, g: GeometryState): ImageData {
 export function developImage(src: ImageData, state: DevelopState, scale = 1, seed = 7): ImageData {
   let img = new ImageData(src.width, src.height);
   developPass(src.data, img.data, src.width, src.height, state, seed);
-  const grading = gradingOf(state), calibration = calibrationOf(state), optics = opticsOf(state), geometry = geometryOf(state);
+  const grading = gradingOf(state), calibration = calibrationOf(state), optics = opticsOf(state), geometry = geometryOf(state), parametric = parametricOf(state);
+  if (parametricActive(parametric)) {
+    const lut = buildParametricLut(parametric), d = img.data;
+    for (let i = 0; i < d.length; i += 4) { d[i] = lut[d[i]]; d[i + 1] = lut[d[i + 1]]; d[i + 2] = lut[d[i + 2]]; }
+  }
+  const point = pointColorOf(state);
+  if (pointColorActive(point)) pointColorPass(img, point);
   if (gradingActive(grading) || calibrationActive(calibration)) gradePass(img, grading, calibration);
   const d = state.detail;
   if (d.clarity) img = clarityPass(img, d.clarity, scale);

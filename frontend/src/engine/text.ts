@@ -21,7 +21,8 @@ const CANVAS_TRACKING = typeof CanvasRenderingContext2D !== 'undefined' && 'lett
 /** Sets a context's font, kerning and, where the canvas can, tracking, as `renderText` draws with them. */
 function setType(c: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, t: TextSpec): void {
   c.font = fontCss(t);
-  const k = c as unknown as { fontKerning?: string; letterSpacing?: string };
+  const k = c as unknown as { fontKerning?: string; letterSpacing?: string; lang?: string };
+  if (t.language && 'lang' in c) k.lang = t.language;
   if ('fontKerning' in c) k.fontKerning = t.kerning === 'none' ? 'none' : 'normal';
   if (CANVAS_TRACKING) k.letterSpacing = `${trackingPx(t)}px`;
 }
@@ -110,6 +111,20 @@ export function renderPlain(t: TextSpec): TextRender {
   return { raster, baseline: pad + ascent, pad };
 }
 
+/** Where a word that does not fit after `lead` may break with a hyphen: the largest cut of two to length-2 letters that
+ *  fits, preferring one between a vowel and a consonant (a syllable end); 0 where the word is short or nothing fits. */
+function hyphenAt(c: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, t: TextSpec, lead: string, w: string, max: number): number {
+  if (w.length < 5 || !/^\p{L}+$/u.test(w)) return 0;
+  const vowel = (ch: string): boolean => /[aeiouyáàâäéèêëíîïóôöúûüåæø]/i.test(ch);
+  let any = 0;
+  for (let k = w.length - 2; k >= 2; k--) {
+    if (lineWidth(c, t, `${lead}${w.slice(0, k)}-`) > max) continue;
+    if (!any) any = k;
+    if (vowel(w[k - 1]) && !vowel(w[k])) return k;
+  }
+  return any;
+}
+
 /** Words to lines no wider than `max`, each paragraph (a line break) on its own, its last line marked. */
 function wrapLines(c: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, t: TextSpec, content: string, max: number): Array<{ text: string; last: boolean }> {
   const out: Array<{ text: string; last: boolean }> = [];
@@ -118,11 +133,13 @@ function wrapLines(c: CanvasRenderingContext2D | OffscreenCanvasRenderingContext
     for (let w of para.split(' ')) {
       const trial = cur ? `${cur} ${w}` : w;
       if (lineWidth(c, t, trial) <= max) { cur = trial; continue; }
+      const cut = t.hyphenate ? hyphenAt(c, t, cur ? `${cur} ` : '', w, max) : 0;
+      if (cut) { out.push({ text: `${cur ? `${cur} ` : ''}${w.slice(0, cut)}-`, last: false }); w = w.slice(cut); cur = ''; }
       if (cur) { out.push({ text: cur, last: false }); cur = ''; }
       while (w.length > 1 && lineWidth(c, t, w) > max) {
         let k = w.length - 1;
-        while (k > 1 && lineWidth(c, t, w.slice(0, k)) > max) k -= 1;
-        out.push({ text: w.slice(0, k), last: false });
+        while (k > 1 && lineWidth(c, t, w.slice(0, k) + (t.hyphenate ? '-' : '')) > max) k -= 1;
+        out.push({ text: w.slice(0, k) + (t.hyphenate ? '-' : ''), last: false });
         w = w.slice(k);
       }
       cur = w;
@@ -281,11 +298,32 @@ export function renderText(t: TextSpec): TextRender {
   return antialiased(warpActive(t.warp) ? warpRender(plain, t.warp) : plain, t.antialias);
 }
 
-/** The anti-aliasing method on the rendered edges: None thresholds them at half; Sharp steepens them. */
+export const TEXT_ANTIALIAS = ['none', 'sharp', 'crisp', 'strong', 'smooth', 'windows-lcd', 'windows'] as const;
+
+/** The anti-aliasing method on the rendered edges: None thresholds them at half; Sharp steepens them about half
+ *  coverage; Crisp steepens them less and centres them a little lower; Strong steepens and lowers the centre, so the
+ *  letters read heavier; Windows applies a coverage gamma, as ClearType-less grayscale text has; Windows LCD first
+ *  averages each pixel's coverage with its horizontal neighbours (the three-tap filter of LCD text) and then the gamma.
+ *  The pixels stay grayscale, so LCD text has the filter and not colour fringes. */
 function antialiased(r: TextRender, how: TextSpec['antialias']): TextRender {
   if (!how || how === 'smooth') return r;
-  const c = r.raster.ctx, img = c.getImageData(0, 0, r.raster.width, r.raster.height), d = img.data;
-  for (let i = 3; i < d.length; i += 4) { const a = d[i]; if (a === 0 || a === 255) continue; d[i] = how === 'none' ? (a >= 128 ? 255 : 0) : Math.max(0, Math.min(255, Math.round((a - 128) * 2 + 128))); }
+  const w = r.raster.width, h = r.raster.height;
+  const c = r.raster.ctx, img = c.getImageData(0, 0, w, h), d = img.data;
+  if (how === 'windows-lcd') {
+    const src = new Uint8ClampedArray(w * h);
+    for (let i = 0; i < w * h; i++) src[i] = d[i * 4 + 3];
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const o = y * w + x; d[o * 4 + 3] = Math.round(((x > 0 ? src[o - 1] : 0) + src[o] + (x < w - 1 ? src[o + 1] : 0)) / 3); }
+  }
+  const shape = (a: number): number => {
+    switch (how) {
+      case 'none': return a >= 128 ? 255 : 0;
+      case 'crisp': return (a - 112) * 1.5 + 128;
+      case 'strong': return (a - 96) * 2 + 128;
+      case 'windows': case 'windows-lcd': return 255 * Math.pow(a / 255, 0.8);
+      default: return (a - 128) * 2 + 128;
+    }
+  };
+  for (let i = 3; i < d.length; i += 4) { const a = d[i]; if (a === 0 || (a === 255 && how !== 'windows-lcd')) continue; d[i] = Math.max(0, Math.min(255, Math.round(shape(a)))); }
   c.putImageData(img, 0, 0);
   r.raster.touch();
   return r;
@@ -384,8 +422,10 @@ export function textFromData(raw: unknown, raster: Raster | null): TextSpec | nu
     align: o.align === 'center' || o.align === 'right' || o.align === 'justify' ? o.align : 'left', bold: o.bold === true, italic: o.italic === true,
     ...(o.box && typeof o.box === 'object' ? (() => { const b = o.box as Record<string, unknown>; const w = num(b.w, 0, 0, 30000), h = num(b.h, 0, 0, 30000); return w >= 1 && h >= 1 ? { box: { w, h } } : {}; })() : {}),
     ...(o.direction === 'vertical' ? { direction: 'vertical' as const } : {}),
-    ...(o.antialias === 'none' || o.antialias === 'sharp' ? { antialias: o.antialias } : {}),
+    ...(TEXT_ANTIALIAS.some((m) => m === o.antialias) && o.antialias !== 'smooth' ? { antialias: o.antialias as TextSpec['antialias'] } : {}),
     ...(cleanFeatures(o.features).length ? { features: cleanFeatures(o.features) } : {}),
+    ...(o.hyphenate === true ? { hyphenate: true } : {}),
+    ...(typeof o.language === 'string' && /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(o.language) ? { language: o.language } : {}),
     lineHeight: num(o.lineHeight, d.lineHeight, 0.5, 4), tracking: Math.round(num(o.tracking, 0, -1000, 10000)), kerning: o.kerning === 'none' ? 'none' : 'metrics',
     warp: warpFrom(o.warp), onPath: pathFrom(o.onPath), style: typeof o.style === 'string' && o.style ? o.style : null,
     ...(typeof o.charStyle === 'string' && o.charStyle ? { charStyle: o.charStyle } : {}),

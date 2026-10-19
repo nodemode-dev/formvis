@@ -2,7 +2,7 @@ import type { Engine } from '../../engine';
 import { Dialog } from '../dialogs';
 import { el } from '../dom';
 
-/** Image > Trim: what to trim away, as Photoshop offers it. */
+/** Image > Trim: what to trim away. */
 export class TrimDialog extends Dialog {
   private readonly basis = el<HTMLSelectElement>('<select class="cv-input"><option value="transparent">Transparent pixels</option><option value="topLeft">Top left pixel colour</option><option value="bottomRight">Bottom right pixel colour</option></select>');
 

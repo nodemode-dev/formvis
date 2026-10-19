@@ -124,13 +124,6 @@ function json(body: unknown): RequestInit {
 }
 
 export const api = {
-  /** Content-Aware Scale (1.55.4, M4): the layer's PNG, a target size, skin protection and an optional protect mask
-   *  PNG (white protects) go to the engine's seam carver; the carved PNG comes back. */
-  async contentAwareScale(image: Blob, width: number, height: number, skin: boolean, mask: Blob | null): Promise<Blob> {
-    const body = form({ width: String(width), height: String(height), skin: skin ? 'true' : 'false' }, [{ name: 'layer.png', blob: image }], 'file');
-    if (mask) body.append('mask', mask, 'mask.png');
-    return (await request('/seam/content-aware-scale', { method: 'POST', body })).blob();
-  },
   /** A font file's bytes (DEV_PLAN 32.6b): the engine finds the family's file on this computer, for OpenType features. */
   async fontFile(family: string, bold: boolean, italic: boolean): Promise<ArrayBuffer> {
     const res = await request(`/fonts/file?family=${encodeURIComponent(family)}&bold=${bold ? 1 : 0}&italic=${italic ? 1 : 0}`);
@@ -285,6 +278,16 @@ export const api = {
     let at = 4 + n;
     const parts = head.parts.map((p) => { const len = p.width * p.height * 4; const data = new Float32Array(buf.slice(at, at + len * 4)); at += len * 4; return { ...p, data }; });
     return { width: head.width, height: head.height, parts };
+  },
+  /** An animated GIF or WebP's frames, each composited onto the whole canvas, with the delay in milliseconds and how often
+   *  it plays (0 forever); null for a file of one frame, which opens as one picture. */
+  async imageFrames(file: Blob, name: string): Promise<{ width: number; height: number; plays: number; frames: Array<{ delay: number; blob: Blob }> } | null> {
+    const buf = await (await request('/io/frames', { method: 'POST', body: form({}, [{ name, blob: file }], 'file') })).arrayBuffer();
+    const n = new DataView(buf).getUint32(0, true), head = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, n))) as { count: number; width: number; height: number; plays: number; frames: Array<{ delay: number; length: number }> };
+    if (head.count < 2) return null;
+    let at = 4 + n;
+    const frames = head.frames.map((f) => { const blob = new Blob([buf.slice(at, at + f.length)], { type: 'image/png' }); at += f.length; return { delay: f.delay, blob }; });
+    return { width: head.width, height: head.height, plays: head.plays, frames };
   },
   async encodeDeep(data: Uint16Array | Float32Array, width: number, height: number, format: 'png' | 'tiff' | 'hdr' | 'exr' | 'tiff32', icc: { bytes: Uint8Array; name: string } | null = null): Promise<Blob> {
     const raw = data instanceof Float32Array ? new Float32Array(data) : new Uint16Array(data);
@@ -486,6 +489,13 @@ export const api = {
     if (r.status === 204) return null;
     const width = Number(r.headers.get('X-Width')), height = Number(r.headers.get('X-Height')), iccLen = Number(r.headers.get('X-Profile-Bytes') ?? 0), b = new Uint8Array(await r.arrayBuffer());
     return { width, height, ink: b.slice(0, width * height * 5), icc: iccLen ? b.slice(width * height * 5, width * height * 5 + iccLen) : null };
+  },
+  /** An 8-bit grayscale file as stored (gray and alpha bytes) with its gray profile, or null when the file is not 8-bit gray. */
+  async decodeGray(file: Blob, name: string): Promise<{ width: number; height: number; px: Uint8Array; icc: Uint8Array | null } | null> {
+    const r = await request('/io/decode-gray', { method: 'POST', body: form({}, [{ name, blob: file }], 'file') });
+    if (r.status === 204) return null;
+    const width = Number(r.headers.get('X-Width')), height = Number(r.headers.get('X-Height')), iccLen = Number(r.headers.get('X-Profile-Bytes') ?? 0), b = new Uint8Array(await r.arrayBuffer()), n = width * height * 2;
+    return { width, height, px: b.slice(0, n), icc: iccLen ? b.slice(n, n + iccLen) : null };
   },
   /** A 16-bit CMYK or Lab TIFF (1.57.8): 16-bit values from 0 to 65535 (inks; or L, then a and b in the window's
    *  encoding, half for neutral), written by the engine with tifffile; a CMYK file carries `icc`. */

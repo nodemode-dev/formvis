@@ -26,8 +26,8 @@ export interface Prefs { language: Lang; profileMismatch: MismatchPref; colour: 
   /** Edit > Toolbar (36.22): the tool rail's groups of tool ids, in order, and the tools kept in Extra Tools; null is the built-in layout. */
   toolbar: ToolbarPref | null }
 export interface ToolbarPref { groups: string[][]; hidden: string[] }
-export type FontPreview = 'none' | 'small' | 'medium' | 'large' | 'extra';
-export const FONT_PREVIEWS: readonly FontPreview[] = ['none', 'small', 'medium', 'large', 'extra'];
+export type FontPreview = 'none' | 'small' | 'medium' | 'large' | 'extra' | 'huge';
+export const FONT_PREVIEWS: readonly FontPreview[] = ['none', 'small', 'medium', 'large', 'extra', 'huge'];
 /** Every data point Record Measurements can show, in log order, and the ones on by default. */
 export const MEASURE_POINTS: readonly string[] = ['Label', 'Scale', 'Area', 'Perimeter', 'Length', 'Angle', 'Count', 'W', 'H', 'Gray Value', 'Min Gray', 'Max Gray', 'Integrated Density', 'Centroid X', 'Centroid Y', 'Circularity'];
 export const DEFAULT_MEASURE_POINTS: readonly string[] = ['Label', 'Scale', 'Area', 'Perimeter', 'Length', 'Angle', 'Count', 'W', 'H'];

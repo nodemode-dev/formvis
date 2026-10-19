@@ -80,7 +80,7 @@ export class StylesPanel {
     this.sync();
   }
 
-  /** Export Styles: every style as one Photoshop .asl through the app's download helper. */
+  /** Export Styles: every style as one .asl through the app's download helper. */
   private async exportAll(): Promise<void> {
     if (!this.presets.length) return;
     const bytes = writeAsl(this.presets.map((p) => ({ name: p.name, effects: p.effects })));

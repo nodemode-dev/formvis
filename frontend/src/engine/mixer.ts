@@ -1,6 +1,6 @@
 import type { RGB } from './types';
 
-/** The Mixer Brush (1.56.2, the parity plan's L4), as Photoshop's: a wet brush that picks up the paint under it and
+/** The Mixer Brush (1.56.2, the parity plan's L4): a wet brush that picks up the paint under it and
  *  mixes it with the paint it carries. Each dab the tip picks up the canvas's colour under it by Wet; the colour it
  *  lays is the reservoir's and the picked-up paint's, mixed by Mix; the reservoir drains as it paints, at a rate set
  *  by Load, so a long stroke ends in picked-up paint alone. Load the brush after each stroke refills the reservoir

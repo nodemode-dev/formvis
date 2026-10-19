@@ -2,7 +2,7 @@ import type { RGB } from './types';
 
 /** Multichannel mode (DEV_PLAN 31.3 part b): a document that is a set of grey spot channels, each with an ink colour,
  *  shown overprinted on white. This module is pixel maths only, on RGBA byte arrays; the engine wraps the grey planes
- *  in Rasters. A channel's grey is as Photoshop shows it: black (0) is full ink, white (255) is none. */
+ *  in Rasters. A channel's grey is read as ink: black (0) is full ink, white (255) is none. */
 export interface SplitChannel { name: string; color: RGB; solidity: number; grey: Uint8ClampedArray }
 
 const INKS = {

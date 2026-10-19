@@ -238,7 +238,7 @@ export function strokeDeep(deep: DeepPixels, before: ImageData, after: ImageData
 export function srgbToLinear(v: number): number { return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }
 export function linearToSrgb(v: number): number { return v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055; }
 
-/** 16-bit (encoded) pixels to 32-bit (linear), and back with Photoshop's Exposure and Gamma (1.53.9). */
+/** 16-bit (encoded) pixels to 32-bit (linear), and back with Exposure and Gamma (1.53.9). */
 export function deepToLinear(d: DeepPixels): DeepPixels {
   const out = new Float32Array(d.data);
   for (let i = 0; i < out.length; i++) if (i % 4 !== 3) out[i] = srgbToLinear(out[i]);

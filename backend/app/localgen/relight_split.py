@@ -338,7 +338,13 @@ router = APIRouter(prefix="/api/relight", tags=["relight"])
 def engines() -> dict:
     return {"marigold": marigold_ready(), "marigoldModels": models_ready(), "marigoldRuntime": runtime_ready(), "classic": True,
             "regions": "parts" if model_manager.ready(PARTS) else "colour", "faces": model_manager.ready("yunet-face"),
-            "license": "CreativeML Open RAIL++-M", "downloadGB": 5.2}
+            "license": "CreativeML Open RAIL++-M", "downloadGB": 5.2,
+            "moge": _moge_ready(), "mogeModel": model_manager.ready("moge-2-vits-normal")}
+
+
+def _moge_ready() -> bool:
+    from . import relight_scene
+    return relight_scene.moge_ready()
 
 
 @router.post("/split")

@@ -53,6 +53,6 @@ def test_the_dialog_views_brush_and_decontaminate(page):
     page.locator(DLG + " .cv-field", has_text="Refine Edge Brush").locator("input").check()
     assert page.evaluate("document.querySelector('.cv-mask-canvas').classList.contains('is-brush')")
     page.locator(DLG + " .cv-field", has_text="Decontaminate Colors").locator("input").check()
-    assert page.locator(DLG + " .cv-field", has_text="Output To").locator("select").input_value() == "layerMask"   # as Photoshop: to a new layer
+    assert page.locator(DLG + " .cv-field", has_text="Output To").locator("select").input_value() == "layerMask"   # to a new layer
     page.keyboard.press("Escape")
     assert errors == [], errors

@@ -82,7 +82,7 @@ export function renderFill(c: FillContent, W: number, H: number, frame: Rect): R
   return r;
 }
 
-/** A fill layer's default name, as Photoshop's: Color Fill, Gradient Fill or Pattern Fill. */
+/** A fill layer's default name: Color Fill, Gradient Fill or Pattern Fill. */
 export const fillName = (c: FillContent): string => (c.kind === 'solid' ? 'Color Fill' : c.kind === 'gradient' ? 'Gradient Fill' : 'Pattern Fill');
 
 /** A fill read back from saved data, every field checked and clamped; null when it is not one. */

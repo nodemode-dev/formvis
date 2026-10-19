@@ -567,7 +567,7 @@ export class Renderer {
         }), po.opacity * opacity, compositeOp(po.blend), 'Pattern Fill', true);
       }
       for (const go of instances(fx, 'gradientOverlay')) if (go.enabled && go.opacity > 0) {
-        // Beneath Color Overlay, as in Photoshop: the gradient spans the layer's bounds, kept to its silhouette.
+        // Beneath Color Overlay: the gradient spans the layer's bounds, kept to its silhouette.
         const cx = bounds.x + bounds.w / 2 - bx, cy = bounds.y + bounds.h / 2 - by, a = (go.angle * Math.PI) / 180, [c0, c1] = go.reverse ? [go.to, go.from] : [go.from, go.to];
         lay(kept((c) => {
           let grad: CanvasGradient;
@@ -589,7 +589,7 @@ export class Renderer {
       for (const co of instances(fx, 'colorOverlay')) if (co.enabled && co.opacity > 0) lay(kept((c) => { c.fillStyle = css(co.color); c.fillRect(0, 0, bw, bh); }), co.opacity * opacity, compositeOp(co.blend), 'Color Fill', true);
       const sa = fx.satin;
       if (sa.enabled && sa.opacity > 0) {
-        // Satin, between Color Overlay and Inner Glow as Photoshop stacks it.
+        // Satin, between Color Overlay and Inner Glow.
         const a = sil.c.getImageData(bx, by, bw, bh).data, n = bw * bh, A = new Float32Array(n);
         for (let i = 0; i < n; i++) A[i] = a[i * 4 + 3] / 255;
         const rad = (sa.angle * Math.PI) / 180, ox = Math.round(Math.cos(rad) * sa.distance * scale), oy = Math.round(-Math.sin(rad) * sa.distance * scale);

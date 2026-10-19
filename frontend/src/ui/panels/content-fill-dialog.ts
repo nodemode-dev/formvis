@@ -9,7 +9,7 @@ const PW = 640, PH = 440;
 type Sampling = 'auto' | 'rectangular' | 'custom';
 type Output = 'current' | 'new' | 'duplicate';
 
-/** Edit > Content-Aware Fill, Photoshop's workspace: the document with the sampling area tinted green and the area
+/** Edit > Content-Aware Fill: the document with the sampling area tinted green and the area
  *  to fill red. Sampling Area is Auto (around the selection), Rectangular (a box around it) or Custom (painted here,
  *  Alt to erase); Show Result fills the preview so the choice can be judged; Output To the current layer, a new layer
  *  or a duplicate. OK fills at full resolution through Engine.contentAwareFillWith. The preview keeps one size. */

@@ -4,7 +4,7 @@ import { brushKeys, brushOptions, drawBrushCursor } from './brush-common';
 
 let hover: Pt | null = null;
 
-/** The Selection Brush (W), as Photoshop's (the owner's tool list): paint to add to the selection, Alt to take away,
+/** The Selection Brush (W; the owner's tool list): paint to add to the selection, Alt to take away,
  *  with the Brush's size and hardness (a soft brush paints a soft edge); the area not selected shows tinted while
  *  painting, marching ants after. Each stroke is one step. */
 export const selectionBrushTool: Tool = {

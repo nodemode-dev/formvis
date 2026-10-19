@@ -25,14 +25,20 @@ export class LocalModelsSection {
   private readonly ddcolor = el('<div class="cv-local-card" data-model="ddcolor-tiny"></div>');
   private readonly styles = el('<div class="cv-local-card" data-model="fast-style"></div>');
   private readonly yunet = el('<div class="cv-local-card" data-model="yunet-face"></div>');
+  private readonly sky = el('<div class="cv-local-card" data-model="skyseg"></div>');
+  private readonly moge = el('<div class="cv-local-card" data-model="moge-2-vits-normal"></div>');
+  private readonly source = el('<div class="cv-local-card" data-model="sources"></div>');
   private job: string | null = null;
+  private sourcesBuilt = false;
+  private sourceSaved: Json = {};
+  private sourceShow: (() => void) | null = null;
 
   constructor() {
-    this.el.append(el('<p class="cv-note">Models that run here, with no key and no cost: they appear in Generate Image, and Krea 2 in Generative Fill. They are large, and each licence is shown for you to accept before anything downloads.</p>'), this.lama, this.depth, this.ddcolor, this.styles, this.yunet, this.upscaler, this.krea, this.klein, this.library);
+    this.el.append(el('<p class="cv-note">Models that run here, with no key and no cost: they appear in Generate Image, and Krea 2 in Generative Fill. They are large, and each licence is shown for you to accept before anything downloads.</p>'), this.lama, this.depth, this.ddcolor, this.styles, this.yunet, this.sky, this.moge, this.upscaler, this.krea, this.klein, this.library, this.source);
   }
 
   async refresh(): Promise<void> {
-    try { await Promise.all([this.showDownload(this.lama, 'lama-inpaint', 'LaMa inpainting', 'Download LaMa', 'about 208 MB', 'Generative Fill and Expand on any computer, with no prompt, key or cost: it fills from what surrounds the selection. Apache-2.0.'), this.showDownload(this.depth, 'depth-anything-v2-small', 'Depth Anything V2 Small', 'Download Depth Anything', 'about 99 MB', 'Depth from one picture for the Neural Filters\' Depth Blur, on any computer. The Small checkpoint, Apache-2.0.'), this.showDownload(this.ddcolor, 'ddcolor-tiny', 'DDColor-tiny', 'Download DDColor', 'about 135 MB', 'Colour for black-and-white pictures in the Neural Filters, on any computer; the picture\'s own light is kept. Apache-2.0.'), this.showDownload(this.styles, 'fast-style', 'Style Transfer presets', 'Download the styles', 'about 34 MB', 'Five preset styles (Mosaic, Candy, Rain Princess, Udnie, Pointilism) for the Neural Filters, the ONNX model zoo\'s fast neural style models, on any computer. BSD-3-Clause.'), this.showDownload(this.yunet, 'yunet-face', 'YuNet face finder', 'Download the face finder', 'about 232 KB', 'Finds faces and their eyes, nose and mouth for Face-Aware Liquify, on any computer. OpenCV Zoo, MIT.'), this.showUpscaler(), this.showKrea(), this.showKlein(), this.showLibrary()]); }
+    try { await Promise.all([this.showDownload(this.lama, 'lama-inpaint', 'LaMa inpainting', 'Download LaMa', 'about 208 MB', 'Generative Fill and Expand on any computer, with no prompt, key or cost: it fills from what surrounds the selection. Apache-2.0.'), this.showDownload(this.depth, 'depth-anything-v2-small', 'Depth Anything V2 Small', 'Download Depth Anything', 'about 99 MB', 'Depth from one picture for the Neural Filters\' Depth Blur, on any computer. The Small checkpoint, Apache-2.0.'), this.showDownload(this.ddcolor, 'ddcolor-tiny', 'DDColor-tiny', 'Download DDColor', 'about 135 MB', 'Colour for black-and-white pictures in the Neural Filters, on any computer; the picture\'s own light is kept. Apache-2.0.'), this.showDownload(this.styles, 'fast-style', 'Style Transfer presets', 'Download the styles', 'about 34 MB', 'Five preset styles (Mosaic, Candy, Rain Princess, Udnie, Pointilism) for the Neural Filters, the ONNX model zoo\'s fast neural style models, on any computer. BSD-3-Clause.'), this.showDownload(this.yunet, 'yunet-face', 'YuNet face finder', 'Download the face finder', 'about 232 KB', 'Finds faces and their eyes, nose and mouth for Face-Aware Liquify, on any computer. OpenCV Zoo, MIT.'), this.showDownload(this.sky, 'skyseg', 'Sky segmentation', 'Download the sky model', 'about 176 MB', 'Finds the sky for Select > Sky, on any computer. U-2-Net sky model, MIT.'), this.showMoge(), this.showSources(), this.showUpscaler(), this.showKrea(), this.showKlein(), this.showLibrary()]); }
     catch { this.krea.replaceChildren(el('<p class="cv-note">The formvis engine is offline: local models need it.</p>')); }
   }
 
@@ -62,8 +68,50 @@ export class LocalModelsSection {
     const get = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-primary"></button>'); setText(get, button);
     get.disabled = !m || !!m.ready;
     get.addEventListener('click', () => void (async () => { try { const j = await api(`/models/${id}/download`, { method: 'POST' }); await this.follow(j.job_id, note, () => void this.showDownload(card, id, name, button, size, what)); } catch (err) { setText(note, err instanceof Error ? err.message : 'Could not start the download.'); } })());
-    const row = el('<div class="cv-improve"></div>'); row.append(get);
+    const remove = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Remove</button>');
+    setHidden(remove, !m?.ready);
+    remove.addEventListener('click', () => void (async () => { try { await api(`/models/${id}`, { method: 'DELETE' }); await this.showDownload(card, id, name, button, size, what); } catch (err) { setText(note, err instanceof Error ? err.message : 'Could not remove it.'); } })());
+    const row = el('<div class="cv-improve"></div>'); row.append(get, remove);
     card.replaceChildren(state, info, row, note);
+  }
+
+  /** MoGe-2 small (Microsoft, MIT): the depth, normals and camera Relight builds its scene from; the model downloads
+   *  here and the engine also needs the packages in backend/requirements_relight.txt. */
+  private async showMoge(): Promise<void> {
+    await this.showDownload(this.moge, 'moge-2-vits-normal', 'MoGe-2 small', 'Download MoGe-2', 'a small download', 'Depth, surface normals and the camera from one picture, for Relight\'s scene; without it Relight falls back to Depth Anything. Microsoft, MIT. Also needs backend/requirements_relight.txt in the engine.');
+    try {
+      const e = await api('/relight/engines');
+      if (e.mogeModel && !e.moge) this.moge.append(el('<p class="cv-note">The model is here, but the engine lacks its Python packages (torch and moge): install backend/requirements_relight.txt to use it.</p>'));
+    } catch { /* the engine's other cards say it is offline */ }
+  }
+
+  /** Where each model downloads from (a mirror, or a custom address), kept in the model folder's sources.json. Built
+   *  once; a refresh only fills it in. */
+  private async showSources(): Promise<void> {
+    const [all, s] = await Promise.all([api('/models') as unknown as Promise<Json[]>, api('/models/sources')]);
+    const saved = (s.models ?? {}) as Json;
+    if (!this.sourcesBuilt) {
+      this.sourcesBuilt = true;
+      const pick = el<HTMLSelectElement>('<select class="cv-input" aria-label="Model to set the download source for"></select>');
+      const mode = el<HTMLSelectElement>('<select class="cv-input" aria-label="Download source"><option value="upstream">Original address</option><option value="mirror">A mirror (folder holding the files)</option><option value="custom">One custom address</option></select>');
+      const url = el<HTMLInputElement>('<input class="cv-input" type="url" aria-label="Mirror or custom address" placeholder="https://mirror.example.com/models" spellcheck="false">');
+      const save = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Save</button>');
+      const note = el('<p class="cv-note cv-local-note" role="status"></p>');
+      const show = () => { const c = (this.sourceSaved[pick.value] ?? {}) as Json; mode.value = c.mode ?? 'upstream'; url.value = c.url ?? ''; setHidden(url, mode.value === 'upstream'); };
+      pick.addEventListener('change', () => { show(); setText(note, ''); });
+      mode.addEventListener('change', () => setHidden(url, mode.value === 'upstream'));
+      save.addEventListener('click', () => void (async () => {
+        try { const r = await api(`/models/${encodeURIComponent(pick.value)}/source`, { method: 'PUT', body: JSON.stringify({ mode: mode.value, url: mode.value === 'upstream' ? null : url.value.trim() }) }); this.sourceSaved[pick.value] = r; setText(note, mode.value === 'upstream' ? 'Downloads use the original address.' : 'Saved: the next download of this model uses it. Every file is still checked against its checksum.'); }
+        catch (err) { setText(note, err instanceof Error ? err.message : 'Could not save it.'); }
+      })());
+      const row = el('<div class="cv-improve"></div>'); row.append(pick, mode, url, save);
+      this.source.append(el('<p class="cv-local-state">Download source</p>'), el('<p class="cv-note">Fetch a model from a mirror (the address of a folder holding its files, the file name added) or from one custom address, in place of the original. Every file is checked against its checksum either way.</p>'), row, note);
+      this.sourceShow = show;
+    }
+    this.sourceSaved = saved;
+    const pick = this.source.querySelector('select') as HTMLSelectElement;
+    if (pick.options.length !== all.length) { const keep = pick.value; pick.replaceChildren(...all.map((m) => { const o = document.createElement('option'); o.value = String(m.id); o.textContent = String(m.name ?? m.id); return o; })); if (keep) pick.value = keep; }
+    this.sourceShow?.();
   }
 
   /** Real-ESRGAN x4plus (1.53.1): Image > Upscale on this computer; BSD-3-Clause, so no licence to accept. */

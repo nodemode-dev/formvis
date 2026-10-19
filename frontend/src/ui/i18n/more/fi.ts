@@ -497,7 +497,7 @@ export const fi: Record<string, string> = {
   'Paste from': 'Liitä lähteestä',
   'Paste size (% of the plane)': 'Liitoskoko (% tasosta)',
   'Patchwork': 'Tilkkutäkki',
-  'Paths to Illustrator': 'Polut Illustratoriin',
+  'Paths to AI File': 'Polut AI-tiedostoon',
   'Pattern Overlay': 'Kuvion päällekkäisyys',
   'Performance Benchmark': 'Suorituskykymittaus',
   'Photo': 'Valokuva',

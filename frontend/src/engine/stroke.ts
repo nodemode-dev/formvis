@@ -4,7 +4,7 @@ import { TiledRaster } from './tiled';
 import type { SelectionMask } from './selection';
 import type { PixelPatch } from './history';
 import type { Pt, Rect, RGB } from './types';
-import { UPRIGHT, computeOption, shapeActive, type BrushDynamics, type BrushShape, type PenPose } from './brush-dynamics';
+import { UPRIGHT, computeOption, shapeActive, symmetryPoints, type BrushSymmetry, type BrushDynamics, type BrushShape, type PenPose } from './brush-dynamics';
 import type { SampledTip } from './abr';
 import { StrokeBuffer, TipAlpha, levelOf } from './dab-buffer';
 
@@ -354,11 +354,19 @@ export class PixelStroke {
     this.lastPressure = pr;
   }
 
+  /** Painting symmetry: every dab is repeated at the points symmetryPoints gives; null paints as before. */
+  symmetry: BrushSymmetry | null = null;
+
   private dab(p: Pt, pressure = 1): void {
+    this.dabAt(p, pressure);
+    if (this.symmetry) for (const q of symmetryPoints(p, this.symmetry)) this.dabAt(q, pressure);
+    this.steps += 1;
+  }
+
+  private dabAt(p: Pt, pressure: number): void {
     if (this.style.aliased) this.aliasedDab(p, pressure);
     else if (this.shape) this.shapedDab(p, pressure);
     else this.plainDab(p, pressure);
-    this.steps += 1;
   }
 
   private infoFor(pressure: number): { pressure: number; fade: number } { return { pressure, fade: this.steps }; }

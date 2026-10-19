@@ -74,7 +74,7 @@ export const ja: Record<string, string> = {
   'Offset': 'オフセット', 'Oil Paint': '油彩', 'Oldstyle Figures': 'オールドスタイル数字', 'Opacity (%)': '不透明度 (%)', 'Open': '開く', 'Open Image Data': 'オープンイメージデータ', 'Open as': '形式を指定して開く', 'OpenEXR': 'OpenEXR',
   'OpenType Features': 'OpenType 機能', 'Ordinals': '序数', 'Orientation': '方向', 'Ornaments': '装飾', 'Outer Glow': '光彩 (外側)', 'Output To': '出力先', 'Output black': '出力 (黒)', 'Output channel': '出力チャンネル',
   'Output white': '出力 (白)', 'Paint Daubs': '粗いパステル', 'Painting': 'ペイント', 'Painting Cursors': 'ペイントカーソル', 'Palette Knife': 'パレットナイフ', 'Panels Sheet': 'パネルシート', 'Paper size': '用紙サイズ',
-  'Paste from': '貼り付け元', 'Paste size (% of the plane)': '貼り付けサイズ (平面の %)', 'Patchwork': 'パッチワーク', 'Paths to Illustrator': 'パスを Illustrator に', 'Pattern Overlay': 'パターンオーバーレイ',
+  'Paste from': '貼り付け元', 'Paste size (% of the plane)': '貼り付けサイズ (平面の %)', 'Patchwork': 'パッチワーク', 'Paths to AI File': 'パスを AI ファイルに', 'Pattern Overlay': 'パターンオーバーレイ',
   'Performance Benchmark': 'パフォーマンスベンチマーク', 'Photo': '写真', 'Photo Filter': 'フォトフィルター', 'Photocopy': 'コピー', 'Photography': '写真', 'Picture Frame': '額縁', 'Pin Light': 'ピンライト', 'Pinch': 'つまむ',
   'Pixel': 'ピクセル', 'Place': '配置', 'Plaster': 'プラスター', 'Plastic Wrap': 'ラップ', 'Play': '再生', 'Play Action': 'アクションを再生', 'Play Animation': 'アニメーションを再生', 'Plus': 'プラス', 'Point Radius (%)': '点の半径 (%)',
   'Pointillize': '点描', 'Polar Coordinates': '座標変換', 'Position': '位置', 'Position X (%)': '位置 X (%)', 'Poster Edges': 'ポスターエッジ','Posterize': 'ポスタリゼーション', 'Preserve': '保持',

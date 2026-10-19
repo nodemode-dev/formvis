@@ -56,7 +56,7 @@ export class HistoryPanel {
     this.rows.addEventListener('click', (e) => {
       const row = (e.target as HTMLElement).closest<HTMLElement>('.cv-history-row');
       if (!row) return;
-      // The brush column, as Photoshop's: sets the History Brush's source without reverting to the snapshot.
+      // The brush column: sets the History Brush's source without reverting to the snapshot.
       if ((e.target as HTMLElement).closest('.cv-hb-source') && row.dataset.snap) { this.engine.setHistoryBrushSource(row.dataset.snap); return; }
       // The same column on a step row: the state Edit > Fill with History paints from (marking the oldest again clears it).
       if ((e.target as HTMLElement).closest('.cv-hs-source') && !row.dataset.snap) { const i = Number(row.dataset.index); this.engine.setHistorySourceIndex(i === 0 || this.engine.historySourceIndex === i ? null : i); return; }

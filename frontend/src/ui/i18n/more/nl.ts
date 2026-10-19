@@ -497,7 +497,7 @@ export const nl: Record<string, string> = {
   'Paste from': 'Plakken uit',
   'Paste size (% of the plane)': 'Plakgrootte (% van het vlak)',
   'Patchwork': 'Patchwork',
-  'Paths to Illustrator': 'Paden naar Illustrator',
+  'Paths to AI File': 'Paden naar AI-bestand',
   'Pattern Overlay': 'Patroonbedekking',
   'Performance Benchmark': 'Prestatiebenchmark',
   'Photo': 'Foto',

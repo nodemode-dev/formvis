@@ -3,7 +3,7 @@
 export interface SheetSettings {
   width: number; height: number;
   columns: number; rows: number;
-  /** Auto-spacing: a small even gap, as Photoshop's default; otherwise `vertical` and `horizontal` pixels. */
+  /** Auto-spacing: a small even gap by default; otherwise `vertical` and `horizontal` pixels. */
   auto: boolean; vertical: number; horizontal: number;
   /** Room kept under each cell for its caption (0 when there are none). */
   caption: number;

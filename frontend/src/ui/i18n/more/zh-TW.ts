@@ -74,7 +74,7 @@ export const zhTW: Record<string, string> = {
   'Offset': '位移', 'Oil Paint': '油畫', 'Oldstyle Figures': '舊式數字', 'Opacity (%)': '不透明度 (%)', 'Open': '開啟', 'Open Image Data': '開放影像資料', 'Open as': '開啟為', 'OpenEXR': 'OpenEXR',
   'OpenType Features': 'OpenType 功能', 'Ordinals': '序數', 'Orientation': '方向', 'Ornaments': '裝飾', 'Outer Glow': '外光暈', 'Output To': '輸出至', 'Output black': '輸出黑色', 'Output channel': '輸出色版',
   'Output white': '輸出白色', 'Paint Daubs': '塗抹繪畫', 'Painting': '繪畫', 'Painting Cursors': '繪畫游標', 'Palette Knife': '調色刀', 'Panels Sheet': '面板表', 'Paper size': '紙張大小',
-  'Paste from': '貼上自', 'Paste size (% of the plane)': '貼上大小 (平面的 %)', 'Patchwork': '拼貼', 'Paths to Illustrator': '路徑至 Illustrator', 'Pattern Overlay': '圖樣疊加',
+  'Paste from': '貼上自', 'Paste size (% of the plane)': '貼上大小 (平面的 %)', 'Patchwork': '拼貼', 'Paths to AI File': '路徑至 AI 檔案', 'Pattern Overlay': '圖樣疊加',
   'Performance Benchmark': '效能基準', 'Photo': '相片', 'Photo Filter': '相片濾鏡', 'Photocopy': '影印', 'Photography': '攝影', 'Picture Frame': '相框', 'Pin Light': '小光源', 'Pinch': '擠壓',
   'Pixel': '像素', 'Place': '置入', 'Plaster': '塑膠效果', 'Plastic Wrap': '保鮮膜包裝', 'Play': '播放', 'Play Action': '播放動作', 'Play Animation': '播放動畫', 'Plus': '加號', 'Point Radius (%)': '點半徑 (%)',
   'Pointillize': '點狀化', 'Polar Coordinates': '極座標', 'Position': '位置', 'Position X (%)': '位置 X (%)', 'Poster Edges': '海報邊緣', 'Posterize': '色調分離', 'Preserve': '保留',

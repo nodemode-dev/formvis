@@ -497,7 +497,7 @@ export const cs: Record<string, string> = {
   'Paste from': 'Vložit z',
   'Paste size (% of the plane)': 'Velikost vložení (% roviny)',
   'Patchwork': 'Patchwork',
-  'Paths to Illustrator': 'Cesty do Illustratoru',
+  'Paths to AI File': 'Cesty do souboru AI',
   'Pattern Overlay': 'Překryv vzorkem',
   'Performance Benchmark': 'Test výkonu',
   'Photo': 'Fotografie',

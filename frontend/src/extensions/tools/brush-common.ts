@@ -1,13 +1,13 @@
 import type { Engine, Pt } from '../../engine';
 import type { OptionSpec, ToolContext } from '../registry';
-import { brushTool } from './brush';
+import { brushTool, symmetryOptions } from './brush';
 
 export function drawBrushCursor(ctx: ToolContext, g: CanvasRenderingContext2D, pt: Pt | null): void {
   const at = ctx.engine.tipDrag?.at ?? pt;
   if (!at) return;
   const v = ctx.view(), pal = ctx.paint(), c = v.toScreen(at);
   const r = Math.max(0.5, (ctx.engine.brush.diameter * v.zoom) / 2), how = ctx.engine.cursorPrefs;
-  // Preferences > Cursors, as Photoshop's: the tip's outline (Normal Brush Tip), a crosshair alone (Precise), or a small
+  // Preferences > Cursors: the tip's outline (Normal Brush Tip), a crosshair alone (Precise), or a small
   // ring (Standard); Show Crosshair in Brush Tip adds one inside the outline. Each is drawn twice, dark over light.
   const ring = (radius: number): void => { for (const [color, off] of [[pal.antsA, 0], [pal.antsB, 1]] as const) { g.strokeStyle = color; g.beginPath(); g.arc(c.x, c.y, radius + off, 0, Math.PI * 2); g.stroke(); } };
   const cross = (arm: number): void => { for (const [color, off] of [[pal.antsB, 1], [pal.antsA, 0]] as const) { g.strokeStyle = color; g.lineWidth = 1 + off; g.beginPath(); g.moveTo(c.x - arm, c.y); g.lineTo(c.x + arm, c.y); g.moveTo(c.x, c.y - arm); g.lineTo(c.x, c.y + arm); g.stroke(); } g.lineWidth = 1; };
@@ -25,6 +25,7 @@ export function brushOptions(e: Engine, strength = 'Opacity'): OptionSpec[] {
   return [
     { kind: 'range', label: 'Size', priority: 90, min: 1, max: 1000, unit: 'px', get: () => e.brush.diameter, set: (v) => e.setBrush({ diameter: v }) },
     { kind: 'range', label: 'Hardness', priority: 80, min: 0, max: 100, unit: '%', get: () => Math.round(e.brush.hardness * 100), set: (v) => e.setBrush({ hardness: v / 100 }) },
-    { kind: 'range', label: strength, priority: 95, min: 1, max: 100, unit: '%', get: () => Math.round(e.brush.opacity * 100), set: (v) => e.setBrush({ opacity: v / 100 }) }
+    { kind: 'range', label: strength, priority: 95, min: 1, max: 100, unit: '%', get: () => Math.round(e.brush.opacity * 100), set: (v) => e.setBrush({ opacity: v / 100 }) },
+    ...symmetryOptions(e)
   ];
 }

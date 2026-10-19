@@ -14,7 +14,12 @@ from app.core import config
 from app.services import camera_profiles, dpx, fits, imaging, pnm
 
 router = APIRouter(tags=["io"])
-EXPORT_NAME = re.compile(r"^[^/\\:*?\"<>|\x00-\x1f]{1,160}\.(png|jpg|jpeg|fvd|fmv|formvis|webp|tif|tiff|pdf|avif|dpx|psd|qoi|pbm|pgm|ppm|pam|tga|ico)$", re.IGNORECASE)
+#: Every file type the app writes: pictures, projects, video, deep formats, archives, tables, presets and scripts.
+EXPORT_TYPES = ("png", "jpg", "jpeg", "webp", "avif", "tif", "tiff", "bmp", "gif", "pdf", "svg", "ai", "eps", "qoi", "tga", "ico", "dpx",
+                "pbm", "pgm", "ppm", "pnm", "pam", "exr", "hdr", "psd", "psb", "ora", "fvd", "fmv", "formvis", "mp4", "webm", "zip",
+                "cube", "3dl", "csp", "look", "lut", "json", "csv", "txt", "atn", "abr", "grd", "aco", "ase", "act", "pat", "csh",
+                "asl", "sh")
+EXPORT_NAME = re.compile(r"^[^/\\:*?\"<>|\x00-\x1f]{1,160}\.(" + "|".join(EXPORT_TYPES) + r")$", re.IGNORECASE)
 EXPORT_FOLDER = re.compile(r"^[^/\\:*?\"<>|\x00-\x1f. ][^/\\:*?\"<>|\x00-\x1f]{0,99}$")
 
 
@@ -488,6 +493,35 @@ def decode_cmyk(file: UploadFile = File(...)) -> Response:
     return Response(px + icc, media_type="application/octet-stream", headers={"X-Width": str(w), "X-Height": str(h), "X-Profile-Bytes": str(len(icc))})
 
 
+@router.post("/decode-gray")
+def decode_gray(file: UploadFile = File(...)) -> Response:
+    """An 8-bit grayscale picture as it is stored: the gray byte and alpha byte of every pixel, then the embedded profile
+    when it is a gray one (X-Profile-Bytes long, 0 when none). 204 when the file is not 8-bit gray, so the usual decode
+    goes on."""
+    from PIL import Image, ImageOps, UnidentifiedImageError
+    from app.services import colour
+    data = file.file.read()
+    try:
+        with Image.open(io.BytesIO(data)) as img:
+            if img.mode not in ("L", "LA") or getattr(img, "n_frames", 1) > 1:
+                return Response(status_code=204)
+            w, h = img.size
+            if w > 30000 or h > 30000 or w * h > config.MAX_PIXELS:
+                raise HTTPException(status_code=413, detail="The picture is larger than formvis edits in one piece.")
+            icc = img.info.get("icc_profile") or b""
+            la = ImageOps.exif_transpose(img).convert("LA")
+            w, h = la.size
+            px = np.asarray(la, np.uint8).reshape(h * w, 2)
+    except (UnidentifiedImageError, OSError, ValueError):
+        return Response(status_code=204)
+    try:
+        if icc and colour.describe(icc)["space"] != "GRAY":
+            icc = b""
+    except colour.ColourError:
+        icc = b""
+    return Response(px.tobytes() + icc, media_type="application/octet-stream", headers={"X-Width": str(w), "X-Height": str(h), "X-Profile-Bytes": str(len(icc))})
+
+
 @router.post("/encode-cmyk")
 def encode_cmyk(file: UploadFile = File(...), width: int = Form(...), height: int = Form(...), format: str = Form("tiff"), quality: int = Form(90), dpi: int = Form(72), icc: UploadFile | None = File(default=None)) -> Response:
     """A CMYK TIFF or JPEG from C, M, Y, K and alpha bytes (1.54.0): alpha lays the ink over paper, the profile embedded."""
@@ -539,6 +573,22 @@ def decode(file: UploadFile = File(...), page: int = Form(0), camera_profile: st
     return Response(content=png, media_type="image/png", headers={"X-Width": str(width), "X-Height": str(height)})
 
 
+@router.post("/frames")
+def animation_frames(file: UploadFile = File(...)) -> Response:
+    """The frames of an animated GIF or WebP. The body is a 4-byte little-endian length, that many bytes of JSON
+    ({count, width, height, plays, frames: [{delay, length}]}, delay in milliseconds, plays 0 for forever), then every
+    frame's PNG in order. A file of one frame, or any other format, has the JSON {count: 1} alone."""
+    try:
+        res = imaging.frames(file.file.read(), file.filename or "")
+    except imaging.DecodeError as exc:
+        raise HTTPException(status_code=415, detail=str(exc)) from exc
+    if res is None:
+        head = json.dumps({"count": 1}).encode()
+        return Response(len(head).to_bytes(4, "little") + head, media_type="application/octet-stream")
+    head = json.dumps({"count": len(res["frames"]), "width": res["width"], "height": res["height"], "plays": res["plays"], "frames": [{"delay": f["delay"], "length": len(f["png"])} for f in res["frames"]]}).encode()
+    return Response(len(head).to_bytes(4, "little") + head + b"".join(f["png"] for f in res["frames"]), media_type="application/octet-stream")
+
+
 @router.post("/camera-profiles")
 def camera_profile_list(file: UploadFile = File(...)) -> dict:
     """The camera a RAW file came from and the DNG camera profiles in the profile folders that are made for it (Develop's
@@ -554,16 +604,20 @@ def camera_profile_list(file: UploadFile = File(...)) -> dict:
 def pdf_pages(file: list[UploadFile] = File(...), dpi: int = Form(72), jpeg: bool = Form(False), quality: int = Form(90), icc: UploadFile | None = File(default=None)) -> Response:
     """One multipage PDF (DEV_PLAN 29.4, Artboards to PDF): a page per PNG, in the order sent, each at its own size in
     points from `dpi`. Flattened on white. Encoding: JPEG at `quality`, or lossless (JPEG 2000 reversible, falling back
-    to JPEG at 100 when the engine's Pillow has no JPEG 2000). `icc` is checked and then not embedded: Pillow's PDF
-    writer carries no profile."""
+    to JPEG at 100 when the engine's Pillow has no JPEG 2000). `icc`, an RGB profile, becomes the ICCBased colour space
+    of every page image (header X-ICC: embedded); another kind of profile is not carried (X-ICC: skipped)."""
     from PIL import Image, ImageCms
     if not file or len(file) > 200:
         raise HTTPException(status_code=422, detail="Send between 1 and 200 pages.")
+    profile_bytes = b""
     if icc is not None:
+        profile_bytes = icc.file.read()
         try:
-            ImageCms.ImageCmsProfile(io.BytesIO(icc.file.read()))
+            rgb_profile = ImageCms.ImageCmsProfile(io.BytesIO(profile_bytes)).profile.xcolor_space.strip() == "RGB"
         except Exception as exc:
             raise HTTPException(status_code=422, detail="The colour profile could not be read.") from exc
+        if not rgb_profile:
+            profile_bytes = b""
     pages = []
     for part in file:
         try:
@@ -591,7 +645,17 @@ def pdf_pages(file: list[UploadFile] = File(...), dpi: int = Form(72), jpeg: boo
         out = io.BytesIO()
         rgb = [p.convert("RGB") for p in pages]
         rgb[0].save(out, "PDF", save_all=True, append_images=rgb[1:], resolution=res, quality=100)
-    return Response(out.getvalue(), media_type="application/pdf")
+    document, state = out.getvalue(), {"X-ICC": "skipped"} if icc is not None else {}
+    if profile_bytes:
+        from app.services import pdf_icc
+
+        try:
+            tagged, count = pdf_icc.embed_rgb_profile(document, profile_bytes)
+        except ValueError:
+            tagged, count = document, 0
+        if count:
+            document, state = tagged, {"X-ICC": "embedded"}
+    return Response(document, media_type="application/pdf", headers=state)
 
 
 @router.post("/export")
@@ -620,8 +684,7 @@ DISK_KINDS = (".fvd", ".fmv", ".formvis", ".canvasor", ".comp", ".zip", ".psd", 
               ".webp", ".avif", ".gif", ".bmp", ".tif", ".tiff", ".heic", ".heif", ".qoi", ".tga", ".ico", ".pbm", ".pgm", ".ppm",
               ".pnm", ".pam", ".exr", ".hdr", ".dpx", ".fits", ".fit", ".fts", ".svg", ".pdf", ".dng", ".cr2", ".cr3", ".nef",
               ".arw", ".raf", ".orf", ".rw2")
-OUTPUT_KINDS = (".png", ".jpg", ".jpeg", ".webp", ".avif", ".tif", ".tiff", ".pdf", ".psd", ".psb", ".fvd", ".fmv", ".gif", ".qoi", ".tga",
-                ".ico", ".dpx", ".pbm", ".pgm", ".ppm", ".pam", ".exr", ".mp4", ".zip", ".svg")
+OUTPUT_KINDS = tuple(f".{t}" for t in EXPORT_TYPES)
 
 
 @router.post("/read-path")

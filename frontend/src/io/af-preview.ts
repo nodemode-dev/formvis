@@ -3,7 +3,7 @@ import { Raster, newLayer, uid, type Doc, type ID } from '../engine';
 /** .af, .afphoto, .afdesign and .afpub files (DEV_PLAN 34.6): a proprietary, undocumented container that starts with the
  *  bytes 00 FF 4B 41. Its layers sit in a compressed file system formvis does not read; what it can read is the preview
  *  image (a PNG, in some versions a JPEG) embedded in the file, which opens as one layer. */
-export const isAffinityFile = (f: File): boolean => /\.(af|afphoto|afdesign|afpub)$/i.test(f.name);
+export const isAfFile = (f: File): boolean => /\.(af|afphoto|afdesign|afpub)$/i.test(f.name);
 
 const PNG_SIG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
@@ -46,7 +46,7 @@ function findImages(b: Uint8Array): { blob: Blob }[] {
   return found;
 }
 
-export async function readAffinity(file: File): Promise<{ doc: Doc; notes: string[]; activeId: ID | null; paths: null }> {
+export async function readAf(file: File): Promise<{ doc: Doc; notes: string[]; activeId: ID | null; paths: null }> {
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (!matchesAt(bytes, 0, [0x00, 0xff, 0x4b, 0x41])) throw new Error('That is not an .af, .afphoto, .afdesign or .afpub file.');
   let best: ImageBitmap | null = null;

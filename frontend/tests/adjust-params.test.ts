@@ -31,7 +31,7 @@ describe('parametric adjustments', () => {
     expect(apply('colorBalance', { midtonesCR: 50, preserve: false })).toEqual([255, 100, 50]);
   });
 
-  it('are the identity at their defaults where Photoshop is', () => {
+  it('are the identity at their defaults where the usual ones are', () => {
     for (const k of ['brightnessContrast', 'vibrance', 'colorBalance', 'channelMixer', 'selectiveColor'] as ParamKind[]) {
       expect(apply(k, {}, [37, 142, 211])).toEqual([37, 142, 211]);
     }

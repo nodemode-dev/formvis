@@ -1,6 +1,6 @@
 import type { DataSet, Doc, DocVariable, ID } from './types';
 
-/** Variables and Data Sets (DEV_PLAN 29.9): the parsing of Photoshop's CSV or tab-separated data sets and the plan of
+/** Variables and Data Sets (DEV_PLAN 29.9): the parsing of CSV or tab-separated data sets and the plan of
  *  changes one data set makes to a document. No DOM, no engine: the engine applies the plan. */
 
 /** Rows of fields from CSV or tab-separated text: quoted fields, doubled quotes, newlines inside quotes, a BOM dropped. */

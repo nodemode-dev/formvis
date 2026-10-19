@@ -17,7 +17,7 @@ export function loadSavedGradients(): void {
   setCustomGradients(gradientsFromJson(raw));
 }
 
-/** The Gradient Editor, as Photoshop has it: start from any preset; a Solid gradient's stops are edited on the strip
+/** The Gradient Editor: start from any preset; a Solid gradient's stops are edited on the strip
  *  under the bar (click to add, drag to move, drag well below or Delete to remove) with the selected stop's colour,
  *  opacity and location; a Noise gradient has Roughness and Randomize. New saves it by name; OK makes it the Gradient
  *  tool's gradient. Every row keeps its place; rows that do not apply are disabled. */

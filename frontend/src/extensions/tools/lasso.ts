@@ -4,7 +4,7 @@ import { dashed, type Tool, type ToolContext } from '../registry';
 import { modeFor, modeSegment, nudgeSelectionKey } from './select-common';
 import { EdgeMap, liveWire, snapToEdge } from '../../engine/livewire';
 
-/* The Magnetic Lasso (1.49.4, the owner's tool list), as Photoshop's: the segment from the last fastening point to the
+/* The Magnetic Lasso (1.49.4, the owner's tool list): the segment from the last fastening point to the
    pointer follows the strongest edge within Width; points fasten themselves as the trace grows (Frequency), and a
    click fastens one; Contrast is the weakest edge that counts. The edge map is made once per trace from the image. */
 const mag = { width: 10, contrast: 10, frequency: 57 };
@@ -78,7 +78,7 @@ export const lassoTool: Tool = {
     const first = ctx.view().toScreen(pts[0]);
     // Closing: a double-click, a click on the start, or (Magnetic) a click that snaps to the start (the start itself was
     // snapped onto the edge, so it need not be where the first click landed).
-    const home = Math.max(3, mag.width * 0.6);   // near the start, in document pixels, as Photoshop closes near it
+    const home = Math.max(3, mag.width * 0.6);   // near the start, in document pixels
     const snapsHome = e.lassoKind === 'magnetic' && !!edges && ((q) => Math.hypot(q.x - pts[0].x, q.y - pts[0].y) <= home)(snapToEdge(edges, p.doc, mag.width));
     if (p.clicks >= 2 || snapsHome || Math.hypot(first.x - p.screen.x, first.y - p.screen.y) <= (e.lassoKind === 'magnetic' ? 8 : 6)) { commit(ctx); return; }
     if (e.lassoKind === 'magnetic') { trace(ctx, p.doc); pts.push(...live.slice(1)); live = []; fasteners.push(pts.length - 1); e.emit('overlay', null); return; }   // a click fastens
@@ -127,7 +127,7 @@ export const lassoTool: Tool = {
     dashed(ctx, g, () => {
       screen.forEach((q, i) => (i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y)));
     });
-    if (ctx.engine.lassoKind === 'magnetic') {   // the fastening points, as Photoshop's small squares
+    if (ctx.engine.lassoKind === 'magnetic') {   // the fastening points, small squares
       const pal = ctx.paint();
       g.save(); g.fillStyle = pal.handle; g.strokeStyle = pal.antsA;
       for (const i of fasteners) { const q = v.toScreen(pts[i]); g.fillRect(Math.round(q.x) - 2.5, Math.round(q.y) - 2.5, 5, 5); g.strokeRect(Math.round(q.x) - 2.5, Math.round(q.y) - 2.5, 5, 5); }

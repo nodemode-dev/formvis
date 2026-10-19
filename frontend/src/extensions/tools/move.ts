@@ -150,7 +150,7 @@ export const moveTool: Tool = {
     const sel = e.current?.selection;
     if (sel && sel.valueAt(Math.floor(p.doc.x), Math.floor(p.doc.y)) >= 128 && e.beginPixelMove(p.alt)) { pixelStart = { x: p.doc.x, y: p.doc.y }; return; }
     if (p.mod || e.autoSelect) {
-      // Auto-Select Target Group selects the top-most folder holding the layer, as Photoshop's.
+      // Auto-Select Target Group selects the top-most folder holding the layer.
       let id = e.layerAt(p.doc);
       if (id && e.autoSelectTarget === 'group') { const doc = e.current?.doc; let l = doc?.layers.find((x) => x.id === id); while (l?.parentId) { const up = doc?.layers.find((x) => x.id === l?.parentId); if (!up) break; l = up; } if (l) id = l.id; }
       if (id) e.selectLayer(id);
@@ -165,7 +165,13 @@ export const moveTool: Tool = {
     if (planeStart) { planeEnd = p.doc; ctx.engine.emit('overlay', null); return; }
     if (pinDrag !== null) { ctx.engine.movePuppetPin(pinDrag, p.doc); return; }
     if (warpDrag !== null) { ctx.engine.moveMeshWarpPoint(warpDrag, p.doc); return; }
-    if (cornerDrag !== null && distortFrom) { ctx.engine.moveDistortHandle(cornerDrag, distortFrom.corners, p.doc.x - distortFrom.start.x, p.doc.y - distortFrom.start.y); return; }
+    if (cornerDrag !== null && distortFrom) {
+      // Shift locks the corner to the horizontal or vertical axis, whichever it has travelled further along.
+      let dx = p.doc.x - distortFrom.start.x, dy = p.doc.y - distortFrom.start.y;
+      if (p.shift) { if (Math.abs(dx) >= Math.abs(dy)) dy = 0; else dx = 0; }
+      ctx.engine.moveDistortHandle(cornerDrag, distortFrom.corners, dx, dy);
+      return;
+    }
     if (pixelStart) {
       let dx = p.doc.x - pixelStart.x, dy = p.doc.y - pixelStart.y;
       if (p.shift) { if (Math.abs(dx) >= Math.abs(dy)) dy = 0; else dx = 0; }
@@ -379,6 +385,7 @@ export const moveTool: Tool = {
       { kind: 'number', label: 'Scale', priority: 75, unit: '%', min: 1, get: () => { const l = e.activeLayer, tt = t(); return l?.raster && tt ? (tt.w / l.raster.width) * 100 : null; }, set: (v) => e.scaleLayerTo(v), when: editing },
       { kind: 'number', label: 'Angle', priority: 75, unit: '\u00b0', get: () => t()?.rotation ?? null, set: (v) => e.setLayerTransform({ rotation: v }, 'Rotate Layer'), when: editing },
       { kind: 'segment', label: 'Sampling', priority: 50, choices: [{ id: 'nearest', label: 'Nearest' }, { id: 'smooth', label: 'Smooth' }, { id: 'high', label: 'High quality' }], get: () => t()?.sampling ?? 'high', set: (v) => e.setLayerTransform({ sampling: v as Transform['sampling'] }), when: editing },
+      { kind: 'select', label: 'Warp grid', priority: 30, choices: [3, 4, 5, 6].map((n) => ({ id: String(n), label: `${n} x ${n}` })), get: () => String(e.meshWarpGrid), set: (v: string) => { e.meshWarpGrid = Number(v) || 4; e.emit('options', null); }, when: editing },
       { kind: 'button', label: 'Flip horizontal', priority: 40, icon: 'flipH', run: () => e.flipLayers(true), when: editing },
       { kind: 'button', label: 'Flip vertical', priority: 40, icon: 'flipV', run: () => e.flipLayers(false), when: editing },
       { kind: 'segment', label: 'Perspective Warp', priority: 70, choices: [{ id: 'layout', label: 'Layout' }, { id: 'warp', label: 'Warp' }], get: () => e.perspectiveEdit?.phase ?? 'layout', set: (v) => e.setPerspectivePhase(v as 'layout' | 'warp'), when: () => !!e.perspectiveEdit },

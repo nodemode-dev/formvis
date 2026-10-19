@@ -497,7 +497,7 @@ export const pl: Record<string, string> = {
   'Paste from': 'Wklej z',
   'Paste size (% of the plane)': 'Rozmiar wklejenia (% płaszczyzny)',
   'Patchwork': 'Patchwork',
-  'Paths to Illustrator': 'Ścieżki do programu Illustrator',
+  'Paths to AI File': 'Ścieżki do pliku AI',
   'Pattern Overlay': 'Nakładka deseniu',
   'Performance Benchmark': 'Test wydajności',
   'Photo': 'Zdjęcie',

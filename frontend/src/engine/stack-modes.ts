@@ -1,5 +1,5 @@
 /** Smart object stack modes (DEV_PLAN 33.1): per-pixel, per-channel statistics over a stack of same-size RGBA rasters,
- *  as Photoshop's Layer > Smart Objects > Stack Mode. Pure pixel maths, no DOM. */
+ *  as in Layer > Smart Objects > Stack Mode. Pure pixel maths, no DOM. */
 
 export type StackMode = 'none' | 'entropy' | 'kurtosis' | 'maximum' | 'mean' | 'median' | 'minimum' | 'range' | 'skewness' | 'stddev' | 'summation' | 'variance' | 'majority';
 

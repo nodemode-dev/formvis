@@ -4,7 +4,7 @@ import { lassoTool } from './lasso';
 
 let drag: { start: Pt; now: Pt } | null = null, mode: 'move' | 'extend' = 'move';
 
-/** Content-Aware Move (J), as Photoshop's (the owner's tool list): draw a selection as with the Lasso (or use any), then
+/** Content-Aware Move (J; the owner's tool list): draw a selection as with the Lasso (or use any), then
  *  drag it; in Move mode the selected pixels go there and the hole they leave is filled from around it; in Extend mode
  *  the original stays. The selection goes with them; one step. */
 export const contentAwareMoveTool: Tool = {

@@ -3,7 +3,7 @@ import { api } from './api';
 import { encodeGif } from './gif';
 import { trimSurface } from './layer-export';
 
-/** File > Export > Generate Image Assets (DEV_PLAN 29.5 part b): layer names in Photoshop's asset syntax become files.
+/** File > Export > Generate Image Assets (DEV_PLAN 29.5 part b): layer names in the usual asset syntax become files.
  *  A name is a comma separated list of specs, each an optional size, a file name with an extension and an optional
  *  quality, as in `200% big.png, small.jpg60%` or `64x? icon.png`. */
 

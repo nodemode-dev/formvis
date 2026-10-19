@@ -87,7 +87,7 @@ const sizeId = (ctx: ToolContext | null, e: { activeLayer: { isGroup?: boolean; 
   return a ? PRESETS.find((s) => s.w === a.w && s.h === a.h)?.id ?? 'custom' : 'custom';
 };
 
-/** The Artboard tool (36.27), V with the Move tool as Photoshop's: drag on empty canvas to make an artboard, click an
+/** The Artboard tool (36.27), V with the Move tool: drag on empty canvas to make an artboard, click an
  *  artboard's name to select it, drag inside to move it with its contents, the eight handles to resize it and a side's
  *  "+" to add one of the same size beside it. Everything in progress is drawn on the overlay; the engine is touched once,
  *  when the drag ends. */

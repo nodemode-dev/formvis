@@ -497,7 +497,7 @@ export const ru: Record<string, string> = {
   'Paste from': 'Вставить из',
   'Paste size (% of the plane)': 'Размер вставки (% плоскости)',
   'Patchwork': 'Лоскутное шитьё',
-  'Paths to Illustrator': 'Контуры в Illustrator',
+  'Paths to AI File': 'Контуры в файл AI',
   'Pattern Overlay': 'Перекрытие узором',
   'Performance Benchmark': 'Тест производительности',
   'Photo': 'Фото',

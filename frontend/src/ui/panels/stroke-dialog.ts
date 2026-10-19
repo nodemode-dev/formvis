@@ -5,7 +5,7 @@ import { checkRow, colorRow, numberRow, selectRow, sliderRow } from './controls'
 type Location = 'inside' | 'center' | 'outside';
 const hex = (c: { r: number; g: number; b: number }): string => `#${[c.r, c.g, c.b].map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
 
-/** Edit > Stroke (1.65.7), as Photoshop lays it out: Width and Color, Location (Inside, Center, Outside), then Mode,
+/** Edit > Stroke (1.65.7): Width and Color, Location (Inside, Center, Outside), then Mode,
  *  Opacity and Preserve Transparency. The colour starts at the foreground's; the rest are kept for next time. OK
  *  strokes the selection's edge, or with no selection the layer's. */
 export class StrokeDialog extends Dialog {

@@ -11,7 +11,7 @@ const TITLES: Record<Kind, string> = { solid: 'Solid Color', gradient: 'Gradient
 const hex = (c: RGB): string => `#${[c.r, c.g, c.b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
 const rgbOf = (h: string): RGB => ({ r: parseInt(h.slice(1, 3), 16) || 0, g: parseInt(h.slice(3, 5), 16) || 0, b: parseInt(h.slice(5, 7), 16) || 0 });
 
-/** Layer > New Fill Layer and Layer Content Options on a fill layer (1.66.0): Photoshop's Solid Color, Gradient Fill and
+/** Layer > New Fill Layer and Layer Content Options on a fill layer (1.66.0): the Solid Color, Gradient Fill and
  *  Pattern Fill dialogs in one, its rows for the fill's kind chosen before it shows, so it opens at its size. Each
  *  change shows on the canvas at once without being recorded (engine.previewFill); OK records it, a new layer's making
  *  and setting as one step; Cancel leaves the layer as it was, or takes a new one back. */

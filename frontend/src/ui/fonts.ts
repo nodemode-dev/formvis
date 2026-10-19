@@ -1,7 +1,7 @@
 import { TEXT_FONTS } from '../engine';
 import { loadPrefs, type FontPreview } from './prefs';
 
-const PREVIEW_PX: Record<FontPreview, number> = { none: 0, small: 11, medium: 13, large: 16, extra: 20 };
+const PREVIEW_PX: Record<FontPreview, number> = { none: 0, small: 11, medium: 13, large: 16, extra: 20, huge: 28 };
 
 /** Type > Font Preview Size (36.31): a font menu entry drawn in its own family at the chosen size, or plain when the
  *  preview is off. Only the option's inline style changes, so menus are not rebuilt. Chromium draws option fonts on
@@ -41,10 +41,27 @@ export function installed(family: string): boolean {
   return GENERICS.some((g) => width(`${quoted}, ${g}`) !== width(g));
 }
 
+const added: string[] = [];
+
+/** Registers a font the person brings (SC-ED-0179, PC-AU-0143) under `family` from a font file's bytes or a web address
+ *  (CORS permitting) and lists it in the font menus; the family is returned. Rejects where the file is not a font. */
+export async function addFontFace(family: string, source: ArrayBuffer | string): Promise<string> {
+  const name = family.replace(/["\\]/g, '').trim();
+  if (!name) throw new Error('A font family name is needed.');
+  const face = new FontFace(name, typeof source === 'string' ? `url("${source.replace(/["\\]/g, '')}")` : source);
+  await face.load();
+  document.fonts.add(face);
+  if (!added.includes(name)) added.push(name);
+  return name;
+}
+
+/** The family a font file's name suggests: the name without its extension, hyphens and underscores as spaces. */
+export const familyOfFile = (file: string): string => file.replace(/\.(ttf|otf|woff2?)$/i, '').replace(/[-_]+/g, ' ').trim();
+
 /** The families the font menu offers: the defaults first, then every other family found, alphabetically. */
 export function fontFamilies(): string[] {
   detected ??= COMMON.filter(installed);
-  const rest = [...new Set([...detected, ...system])].filter((f) => !TEXT_FONTS.includes(f)).sort((a, b) => a.localeCompare(b));
+  const rest = [...new Set([...detected, ...system, ...added])].filter((f) => !TEXT_FONTS.includes(f)).sort((a, b) => a.localeCompare(b));
   return [...TEXT_FONTS, ...rest];
 }
 

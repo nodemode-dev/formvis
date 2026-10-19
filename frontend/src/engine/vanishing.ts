@@ -1,6 +1,6 @@
 import { applyH, convexQuadTLTRBRBL, homography, invertH, type H, type P2, type Quad } from './perspective';
 
-/** Filter > Vanishing Point (1.58.3, the parity plan's L6), as Photoshop's: a perspective plane from four corners
+/** Filter > Vanishing Point (1.58.3, the parity plan's L6): a perspective plane from four corners
  *  (top left, top right, bottom right, bottom left), the unit square mapped onto it, so a point on the plane has
  *  plane coordinates (u, v) from 0 to 1. Pasting places a picture on a rectangle of the plane and draws it in the
  *  plane's perspective; the stamp clones by a fixed offset in plane coordinates, so what it copies shrinks and grows

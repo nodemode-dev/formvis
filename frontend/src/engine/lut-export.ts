@@ -31,7 +31,7 @@ export function sampleLut(doc: LutDoc, size: number): Float32Array {
   return out;
 }
 
-/** Adobe and Resolve .cube: r varies fastest. */
+/** .cube: r varies fastest. */
 export function cubeText(lut: Float32Array, size: number, title: string): string {
   const lines = [`TITLE "${title.replace(/"/g, "'")}"`, `LUT_3D_SIZE ${size}`, ''];
   for (let p = 0; p < size * size * size; p++) lines.push(`${lut[p * 3].toFixed(6)} ${lut[p * 3 + 1].toFixed(6)} ${lut[p * 3 + 2].toFixed(6)}`);
@@ -49,7 +49,7 @@ export function threeDlText(lut: Float32Array, size: number): string {
   return lines.join('\n') + '\n';
 }
 
-/** Rising Sun / Resolve .csp, 3D with identity 1D pre-luts; r varies fastest. */
+/** .csp, 3D with identity 1D pre-luts; r varies fastest. */
 export function cspText(lut: Float32Array, size: number): string {
   const lines = ['CSPLUTV100', '3D', '', '2', '0.0 1.0', '0.0 1.0', '2', '0.0 1.0', '0.0 1.0', '2', '0.0 1.0', '0.0 1.0', '', `${size} ${size} ${size}`];
   for (let p = 0; p < size * size * size; p++) lines.push(`${lut[p * 3].toFixed(6)} ${lut[p * 3 + 1].toFixed(6)} ${lut[p * 3 + 2].toFixed(6)}`);

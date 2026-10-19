@@ -4,7 +4,7 @@ import { numberRow, selectRow } from './controls';
 
 const enterTo = (input: HTMLInputElement, run: () => void): void => input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); run(); } });
 
-/** View > New Guide: Horizontal or Vertical at a position in pixels, as in Photoshop. */
+/** View > New Guide: Horizontal or Vertical at a position in pixels. */
 export class GuideDialog extends Dialog {
   private axis: 'x' | 'y' = 'y';
   private readonly orient = selectRow('Orientation', [['y', 'Horizontal'], ['x', 'Vertical']], (v) => { this.axis = v as 'x' | 'y'; });

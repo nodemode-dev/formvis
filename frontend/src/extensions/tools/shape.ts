@@ -36,6 +36,8 @@ export const shapeTool: Tool = {
     draft = null;
     ctx.engine.emit('overlay', null);
     if (!d) return;
+    // A click without a drag asks for the size in the Create Shape dialog.
+    if (Math.hypot(d.point.x - d.anchor.x, d.point.y - d.anchor.y) < 3) { document.dispatchEvent(new CustomEvent('cv:create-shape', { detail: { x: Math.round(d.anchor.x), y: Math.round(d.anchor.y) } })); return; }
     // One entry by mode (a shape layer, the work path, or pixels) with the bar's fill and stroke (1.49.8).
     const r = dragRect(d.anchor, d.point, d.square, d.center);
     ctx.engine.drawShape(d.anchor, lineLike(ctx.engine.shapeSettings.kind) ? snapped(d) : d.point, r);

@@ -79,7 +79,7 @@ export class StatusBar {
     this.mem.classList.toggle('is-high', u > b * 0.85);
   }
 
-  /** The GPU mode in use, as Photoshop's status bar shows it; the reason is its tooltip. */
+  /** The GPU mode in use, shown in the status bar; the reason is its tooltip. */
   setGpu(text: string, reason: string): void { this.gpuRaw = text; this.gpuWhy = reason; this.showGpu(); }
 
   /** "GPU: WebGPU" as the word GPU translated, a colon, then the mode (CPU is translated, an API name is not). */

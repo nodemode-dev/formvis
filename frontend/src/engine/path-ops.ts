@@ -119,7 +119,7 @@ export function pathsChanged(host: PathHost, p: Project): void {
 }
 
 /** The current document's paths, the Work Path among them, and which one is selected. Paths live with the document
- *  and save with the project, outside undo, as in Photoshop. */
+ *  and save with the project, outside undo. */
 export function pathsOfCurrent(host: PathHost): PathSet {
   const p = host.current;
   if (!p) return { list: [], active: null };
@@ -204,6 +204,19 @@ export function renamePath(host: PathHost, id: ID, name: string): void {
   pathsChanged(host, p);
 }
 
+/** Paths > Clipping Path: marks a saved path (not the Work Path) as the document's clipping path with a flatness in
+ *  pixels, or clears the mark with null. Only one path carries it. Paths live outside undo. */
+export function setClippingPath(host: PathHost, id: ID | null, flatness = 0): boolean {
+  const p = host.current;
+  if (!p) return false;
+  const set = pathSet(host, p), n = id ? set.list.find((x) => x.id === id) : null;
+  if (id && (!n || n.work || n.shape || n.mask)) return false;
+  for (const x of set.list) delete x.clipping;
+  if (n) n.clipping = Math.max(0, Math.min(100, Number.isFinite(flatness) ? Math.round(flatness * 10) / 10 : 0));
+  pathsChanged(host, p);
+  return true;
+}
+
 /** Paths > Delete Path: removes the selected path, or the one given. */
 export function deletePath(host: PathHost, id?: ID): void {
   const p = host.current;
@@ -245,7 +258,7 @@ export function strokePath(host: PathHost): void {
   });
 }
 
-/** Stroke Path with its settings, as Photoshop's dialog has them: each subpath stroked with `tool` at its current
+/** Stroke Path with its settings, as the dialog has them: each subpath stroked with `tool` at its current
  *  settings, following the curves; Simulate Pressure runs the pressure from nothing at each end to full in the middle
  *  (thin, thick, thin), and when the brush's size does not follow pressure it does so for this stroke. One step. */
 export function strokePathWith(host: PathHost, tool: StrokeTool, simulatePressure: boolean): void {

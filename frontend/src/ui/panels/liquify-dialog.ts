@@ -11,7 +11,7 @@ import { sliderRow, type Row } from './controls';
 const PW = 640, PH = 440;
 const TOOLS: ReadonlyArray<readonly [LiquifyTool, string]> = [['warp', 'Forward Warp'], ['pushLeft', 'Push Left'], ['reconstruct', 'Reconstruct'], ['twirlCW', 'Twirl Clockwise'], ['twirlCCW', 'Twirl Counterclockwise'], ['pucker', 'Pucker'], ['bloat', 'Bloat'], ['freeze', 'Freeze Mask'], ['thaw', 'Thaw Mask']];
 
-/** Filter > Liquify (Shift+Mod+X), Photoshop's workspace: the active layer in a preview, brushed with Forward Warp,
+/** Filter > Liquify (Shift+Mod+X): the active layer in a preview, brushed with Forward Warp,
  *  Reconstruct, Twirl either way, Pucker or Bloat; Restore All clears the field; OK applies once as a Liquify step,
  *  Cancel leaves the layer untouched. The field is kept at the layer's full resolution and the preview is resampled
  *  from the original pixels each frame, so strokes never soften one another. The preview keeps one size whatever

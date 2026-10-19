@@ -3,7 +3,7 @@ import { uid, type ID, type Pt, type Rect } from './types';
 /** Vector paths drawn with the Pen tool, in document pixels: sub-paths of anchors, each holding the control handles of
  *  the cubic Bezier segments arriving at it (`in`) and leaving it (`out`). A corner's handles sit on the anchor. */
 export interface Anchor { x: number; y: number; inX: number; inY: number; outX: number; outY: number }
-/** How a subpath joins those before it, as Photoshop's path operations do; none is combine. */
+/** How a subpath joins those before it, as path operations do; none is combine. */
 export type PathOp = 'combine' | 'subtract' | 'intersect' | 'exclude';
 export const PATH_OPS: readonly PathOp[] = ['combine', 'subtract', 'intersect', 'exclude'];
 export interface SubPath { anchors: Anchor[]; closed: boolean; op?: PathOp }
@@ -163,12 +163,12 @@ export function splitSegment(sp: SubPath, index: number, t: number): Anchor {
 
 /** A document's paths: at most one temporary Work Path and any number of named ones, and which is selected. `shape`
  *  marks the active layer's own outline (a shape's, or with `mask` its vector mask's), listed but not saved here. */
-export interface NamedPath { id: ID; name: string; path: VectorPath; work: boolean; shape?: boolean; mask?: boolean }
+export interface NamedPath { id: ID; name: string; path: VectorPath; work: boolean; shape?: boolean; mask?: boolean; clipping?: number }
 export interface PathSet { list: NamedPath[]; active: ID | null }
 
 /** A document's paths as project-file data; null when there are none. A named path saves even when empty. */
-export function pathSetData(set: PathSet | null): { list: Array<{ id: ID; name: string; work: boolean; subpaths: unknown[] }>; active: ID | null } | null {
-  const list = (set?.list ?? []).map((n) => ({ id: n.id, name: n.name, work: n.work, subpaths: pathData(n.path)?.subpaths ?? [] })).filter((n) => !n.work || n.subpaths.length);
+export function pathSetData(set: PathSet | null): { list: Array<{ id: ID; name: string; work: boolean; subpaths: unknown[]; clipping?: number }>; active: ID | null } | null {
+  const list = (set?.list ?? []).map((n) => ({ id: n.id, name: n.name, work: n.work, subpaths: pathData(n.path)?.subpaths ?? [], ...(n.clipping !== undefined && !n.work ? { clipping: n.clipping } : {}) })).filter((n) => !n.work || n.subpaths.length);
   return list.length ? { list, active: set?.active && list.some((n) => n.id === set.active) ? set.active : null } : null;
 }
 
@@ -181,7 +181,7 @@ export function pathSetFrom(raw: unknown, active: unknown, legacy: unknown): Pat
       const o = r as Record<string, unknown>, path = pathFrom(o) ?? { subpaths: [] }, work = o.work === true;
       if (work && (!path.subpaths.length || list.some((n) => n.work))) continue;
       const id = typeof o.id === 'string' && o.id && !list.some((n) => n.id === o.id) ? o.id.slice(0, 64) : uid();
-      list.push({ id, name: typeof o.name === 'string' && o.name.trim() ? o.name.trim().slice(0, 80) : 'Path', path, work });
+      list.push({ id, name: typeof o.name === 'string' && o.name.trim() ? o.name.trim().slice(0, 80) : 'Path', path, work, ...(!work && typeof o.clipping === 'number' && Number.isFinite(o.clipping) ? { clipping: Math.max(0, Math.min(100, o.clipping)) } : {}) });
     }
   } else {
     const path = pathFrom(legacy);

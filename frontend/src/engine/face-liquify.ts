@@ -1,6 +1,6 @@
 import type { LiquifyField } from './liquify';
 
-/** Face-Aware Liquify (1.56.7, the parity plan's M3), as Photoshop's Face-Aware sliders: a face's five landmarks
+/** Face-Aware Liquify (1.56.7, the parity plan's M3), with Face-Aware sliders: a face's five landmarks
  *  (engine YuNet: the eyes, the nose tip, the mouth corners, and its box) place smooth local warps on Liquify's own
  *  displacement grid, recomputed from the sliders each time one moves, so they never compound. Sizes scale with the
  *  distance between the eyes. Positive values enlarge, raise, widen or smile. Eye Tilt, Eye Width, Upper and Lower

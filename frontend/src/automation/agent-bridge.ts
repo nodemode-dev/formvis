@@ -451,12 +451,12 @@ export class AgentBridge {
           const locals = (await localModels()).filter((m) => m.ready), fal = !!(await api.generativeStatus())?.configured;
           const local = want === 'auto' ? locals.find((m) => m.id === 'local:krea-2') ?? locals[0] : want === 'fal' ? undefined : locals.find((m) => m.id === `local:${want}`);
           if (want !== 'auto' && want !== 'fal' && !local) return fail(`${want} is not installed: Preferences > Plugins > Local models.`);
-          let blob: Blob, used: string, notice = '';
+          let blob: Blob, used: string, notice = '', generation: import('../engine/types').GenerationInfo | undefined;
           if (local) {
             const W = p.doc.width, H = p.doc.height, k = Math.min(1, 2048 / Math.max(W, H));
             const r = await runLocal({ generator: local.id, prompt, size: `${Math.max(256, Math.round(W * k / 16) * 16)}x${Math.max(256, Math.round(H * k / 16) * 16)}`, count: 1 });
             if (r.notice) { notice = ` ${r.notice}`; this.deps.note(r.notice); }
-            blob = r.pictures[0]; used = `${local.label} on this computer`;
+            blob = r.pictures[0]; generation = r.settings[0]; used = `${local.label} on this computer`;
           } else {
             if (!fal) return fail('Nothing can generate from a prompt here yet: install Krea 2 or FLUX.2 [klein] in Preferences > Plugins > Local models (Apple silicon or an NVIDIA GPU), or add a fal key in Edit > Generate Image.');
             if (!await this.deps.ask('An agent asks to run Generate Image', `Prompt: "${prompt}". This runs on fal and costs money.`)) return fail('The person declined Generate Image on fal.');
@@ -464,7 +464,7 @@ export class AgentBridge {
           }
           const bmp = await createImageBitmap(blob), r = new Raster(p.doc.width, p.doc.height);
           r.ctx.drawImage(bmp, 0, 0, p.doc.width, p.doc.height); bmp.close(); r.touch();
-          e.insertRasterLayer(r, 'Generated Image', 0, 0, {}, 'Generate Image');
+          e.insertRasterLayer(r, 'Generated Image', 0, 0, generation ? { generation } : {}, 'Generate Image');
           return text(`Generated with ${used}; the result is a new layer (id ${e.activeLayer?.id}).${notice}`, { id: e.activeLayer?.id });
         }
         case 'upscale': {

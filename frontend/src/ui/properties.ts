@@ -240,7 +240,7 @@ export class PropertiesColumn {
 
   /** Brushes as the target's (s20): the tip and Size and Hardness; a search and a grid or list of the presets in
    *  folders (formvis's own, and those loaded from .abr files), each drawn with its size, the chosen one marked; the stroke
-   *  preview; Load... (Photoshop .abr brushes) and Brush Settings. A Brush Settings tab holds the tip's spacing, angle
+   *  preview; Load... (.abr brushes) and Brush Settings. A Brush Settings tab holds the tip's spacing, angle
    *  and roundness, the units of the full dialog. */
   private brushes(run: (cmd: string) => void): void {
     const e = this.engine;

@@ -4,7 +4,7 @@ import { numberRow } from './controls';
 
 const enterTo = (input: HTMLInputElement, run: () => void): void => input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); run(); } });
 
-/** Layer > Matting > Defringe and Color Decontaminate, as Photoshop's dialogs ask: a width, or an amount and radius. */
+/** Layer > Matting > Defringe and Color Decontaminate: a width, or an amount and radius. */
 export class MattingDialog extends Dialog {
   private kind: 'defringe' | 'decontaminate' = 'defringe';
   private readonly width = numberRow('Width (px)', 1, 200, 1, () => undefined);

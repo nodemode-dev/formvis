@@ -72,7 +72,7 @@ export class TextDialog extends Dialog {
 
   private fill(t: TextSpec): void {
     this.content.value = t.content;
-    // A font outside the list (a system font, or one from a Photoshop file) is added, not replaced with Inter.
+    // A font outside the list (a system font, or one from a PSD file) is added, not replaced with Inter.
     if (![...this.family.options].some((o) => o.value === t.family)) this.family.append(new Option(t.family, t.family));
     this.family.value = t.family;
     this.tracking = t.tracking;

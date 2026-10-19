@@ -497,7 +497,7 @@ export const da: Record<string, string> = {
   'Paste from': 'Indsæt fra',
   'Paste size (% of the plane)': 'Indsætningsstørrelse (% af planet)',
   'Patchwork': 'Patchwork',
-  'Paths to Illustrator': 'Baner til Illustrator',
+  'Paths to AI File': 'Baner til AI-fil',
   'Pattern Overlay': 'Mønsteroverlejring',
   'Performance Benchmark': 'Ydeevnetest',
   'Photo': 'Foto',

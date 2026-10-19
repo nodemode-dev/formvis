@@ -74,7 +74,7 @@ export const ko: Record<string, string> = {
   'Offset': '오프셋', 'Oil Paint': '유화', 'Oldstyle Figures': '올드스타일 숫자', 'Opacity (%)': '불투명도 (%)', 'Open': '열기', 'Open Image Data': '오픈 이미지 데이터', 'Open as': '다음 형식으로 열기', 'OpenEXR': 'OpenEXR',
   'OpenType Features': 'OpenType 기능', 'Ordinals': '서수', 'Orientation': '방향', 'Ornaments': '장식', 'Outer Glow': '외부 광선', 'Output To': '출력 대상', 'Output black': '출력 검정', 'Output channel': '출력 채널',
   'Output white': '출력 흰색', 'Paint Daubs': '페인트 덥스', 'Painting': '페인팅', 'Painting Cursors': '페인팅 커서', 'Palette Knife': '팔레트 나이프', 'Panels Sheet': '패널 시트', 'Paper size': '용지 크기',
-  'Paste from': '붙여넣을 위치', 'Paste size (% of the plane)': '붙여넣기 크기 (평면의 %)', 'Patchwork': '패치워크', 'Paths to Illustrator': '패스를 Illustrator로', 'Pattern Overlay': '패턴 오버레이',
+  'Paste from': '붙여넣을 위치', 'Paste size (% of the plane)': '붙여넣기 크기 (평면의 %)', 'Patchwork': '패치워크', 'Paths to AI File': '패스를 AI 파일로', 'Pattern Overlay': '패턴 오버레이',
   'Performance Benchmark': '성능 벤치마크', 'Photo': '사진', 'Photo Filter': '포토 필터', 'Photocopy': '복사', 'Photography': '사진', 'Picture Frame': '액자', 'Pin Light': '핀 라이트', 'Pinch': '핀치',
   'Pixel': '픽셀', 'Place': '가져오기', 'Plaster': '석고 효과', 'Plastic Wrap': '플라스틱 포장', 'Play': '재생', 'Play Action': '액션 재생', 'Play Animation': '애니메이션 재생', 'Plus': '더하기', 'Point Radius (%)': '점 반경 (%)',
   'Pointillize': '점묘화', 'Polar Coordinates': '극좌표', 'Position': '위치', 'Position X (%)': '위치 X (%)', 'Poster Edges': '포스터 가장자리', 'Posterize': '포스터화', 'Preserve': '유지',

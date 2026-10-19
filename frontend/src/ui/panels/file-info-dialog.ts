@@ -1,9 +1,10 @@
 import { COPYRIGHT_STATUSES, META_TEXT, type CameraData, type CopyrightStatus, type Engine } from '../../engine';
+import type { GenerationInfo } from '../../engine/types';
 import { Dialog } from '../dialogs';
 import { el, q, setText, setValue } from '../dom';
 import { selectRow } from './controls';
 
-/** File > File Info (DEV_PLAN 29.2), Photoshop's metadata dialog: the document's title, author, description, rating,
+/** File > File Info (DEV_PLAN 29.2), the metadata dialog: the document's title, author, description, rating,
  *  keywords and copyright, the camera's record of a photo, read only, and the created and modified dates. OK sets what
  *  changed as one History step called File Info. Every row exists from the first frame, so the dialog keeps one size
  *  whatever the document holds; the values are filled in before it opens. */
@@ -29,6 +30,10 @@ const cameraText = (c: CameraData | undefined): Record<keyof CameraData, string>
   iso: c?.iso ?? '', focalLength: c?.focalLength ? `${c.focalLength} mm` : '', dateTaken: formatDate(c?.dateTaken),
 });
 
+/** A generated picture's settings as plain lines: the full parameters text when kept, else the fields. */
+const generationText = (g: GenerationInfo): string => g.parameters
+  ?? [g.prompt ? `Prompt: ${g.prompt}` : '', g.seed !== undefined ? `Seed: ${g.seed}` : '', g.steps !== undefined ? `Steps: ${g.steps}` : '', g.loras?.length ? `LoRAs: ${g.loras.map((l) => `${l.file} ${l.scale}`).join(', ')}` : ''].filter(Boolean).join('\n');
+
 const CAMERA_ROWS: ReadonlyArray<readonly [keyof CameraData, string]> = [['make', 'Make'], ['model', 'Model'], ['lens', 'Lens'], ['exposure', 'Exposure'], ['aperture', 'Aperture'], ['iso', 'ISO'], ['focalLength', 'Focal Length'], ['dateTaken', 'Date Taken']];
 
 type FieldKey = 'title' | 'author' | 'authorTitle' | 'descriptionWriter' | 'keywords' | 'notice' | 'url';
@@ -39,6 +44,7 @@ export class FileInfoDialog extends Dialog {
     descriptionWriter: input('Description Writer', META_TEXT.descriptionWriter), keywords: input('Keywords', 2000), notice: input('Copyright Notice', META_TEXT.notice), url: input('Copyright Info URL', META_TEXT.url),
   };
   private readonly description = el<HTMLElement>(`<label class="cv-field cv-meta-top"><span>Description</span><textarea class="cv-input cv-meta-desc" maxlength="${META_TEXT.description}" aria-label="Description"></textarea></label>`);
+  private readonly generated = el<HTMLElement>('<label class="cv-field cv-meta-top"><span>Generation Settings</span><textarea class="cv-input cv-meta-desc cv-meta-generated" readonly aria-label="Generation Settings" placeholder="No picture in this document was generated on this computer."></textarea></label>');
   private readonly rating = selectRow('Rating', [['0', 'None'], ['1', '1 Star'], ['2', '2 Stars'], ['3', '3 Stars'], ['4', '4 Stars'], ['5', '5 Stars']], () => undefined);
   private readonly status = selectRow('Copyright Status', COPYRIGHT_STATUSES.map(([v, t]) => [v, t] as const), () => undefined);
   private readonly camera = new Map<keyof CameraData, HTMLElement>();
@@ -62,7 +68,7 @@ export class FileInfoDialog extends Dialog {
     dates.append(this.created, this.modified);
     this.body.append(
       this.fields.title, this.fields.author, this.fields.authorTitle, this.description, this.rating.el, this.fields.descriptionWriter, this.fields.keywords,
-      head('Copyright'), this.status.el, this.fields.notice, this.fields.url, cameraHead, pairs, dates);
+      head('Copyright'), this.status.el, this.fields.notice, this.fields.url, head('Generated Pictures'), this.generated, cameraHead, pairs, dates);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
   }
@@ -75,6 +81,7 @@ export class FileInfoDialog extends Dialog {
     set('title', m?.title ?? ''); set('author', m?.author ?? ''); set('authorTitle', m?.authorTitle ?? ''); set('descriptionWriter', m?.descriptionWriter ?? '');
     set('keywords', (m?.keywords ?? []).join(', ')); set('notice', m?.notice ?? ''); set('url', m?.url ?? '');
     q<HTMLTextAreaElement>(this.description, 'textarea').value = m?.description ?? '';
+    q<HTMLTextAreaElement>(this.generated, 'textarea').value = p.doc.layers.filter((l) => l.generation).map((l) => `${l.name}\n${generationText(l.generation as GenerationInfo)}`).join('\n\n');
     this.rating.set(String(m?.rating ?? 0));
     this.status.set(m?.copyright ?? 'unknown');
     const text = cameraText(m?.camera);

@@ -9,7 +9,7 @@ export interface AlignBlendOptions { projection?: string; method?: string; seaml
 /** A layer's radial gain from the engine: centre and radius in layer pixels, and the gain at 64 steps of r from 0 to 1. */
 interface VignetteGain { cx: number; cy: number; radius: number; lut: number[] }
 
-/** Edit > Auto-Align Layers and Auto-Blend Layers (DEV_PLAN 32.1), as Photoshop's, on the selected pixel layers (the
+/** Edit > Auto-Align Layers and Auto-Blend Layers (DEV_PLAN 32.1), on the selected pixel layers (the
  *  bottom-most is the reference). The engine finds the transforms or the masks; both land as one undo step. */
 export class AlignBlendDialog extends Dialog {
   private static readonly made = new WeakMap<Engine, Partial<Record<AlignBlendMode, AlignBlendDialog>>>();

@@ -46,7 +46,7 @@ def test_locked_transparency_paints_only_where_there_are_pixels(page):
     assert page.evaluate(STROKE, {"r": 0, "g": 0, "b": 255}) is True
     assert page.evaluate(PX, [100, 50]) == [0, 0, 255, 255]                             # the square repainted
     assert page.evaluate(PX, [40, 50])[3] == 0                                          # the empty part stays empty
-    # The Eraser may not make pixels transparent here: it paints the background colour, as Photoshop's.
+    # The Eraser may not make pixels transparent here: it paints the background colour.
     page.evaluate("window.formvis.engine.setColors(undefined, { r: 255, g: 255, b: 255 }); window.formvis.engine.setBrushMode('erase')")
     page.evaluate(STROKE, {"r": 0, "g": 0, "b": 0})
     assert page.evaluate(PX, [100, 50]) == [255, 255, 255, 255] and page.evaluate(PX, [40, 50])[3] == 0

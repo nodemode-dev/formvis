@@ -1,4 +1,4 @@
-# The tool audit against Photoshop's bars (1.50.3): the Eraser's Block, Flow and Erase to History; the Brush's Smoothing
+# The tool audit of the option bars (1.50.3): the Eraser's Block, Flow and Erase to History; the Brush's Smoothing
 # and Angle; Type's Font Style and Warp Text; Select and Mask on the selection tools.
 PX = "([x, y]) => Array.from(window.formvis.engine.activeLayer.raster.ctx.getImageData(x, y, 1, 1).data)"
 

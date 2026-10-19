@@ -167,7 +167,7 @@ export function maskEdgeTone(r: Raster): number {
 export type DistortMode = 'distort' | 'skew' | 'perspective';
 
 /** The corners after dragging handle `handle` by (dx, dy) from `from` (handles 0 to 3 the corners in handle order, 4
- *  to 7 the middles of the top, right, bottom and left sides), as Photoshop's modes drag them: Distort moves a corner
+ *  to 7 the middles of the top, right, bottom and left sides), as each mode drags them: Distort moves a corner
  *  or a side freely; Skew moves a corner along one of its two sides, whichever the drag follows more, and slides a side
  *  along itself; Perspective moves a corner so and the other corner of that side as far the opposite way, its sides
  *  sliding as in Skew. */
@@ -190,7 +190,7 @@ export function distortDragged(from: readonly Pt[], handle: number, dx: number, 
 }
 
 /** Edit > Transform > Again for a distortion (1.65.6): `corners` taken through the perspective, in document space,
- *  that took corners `from` to `to`, as Photoshop repeats a transform's own matrix; null when `from` cannot be
+ *  that took corners `from` to `to`, as a repeat applies a transform's own matrix; null when `from` cannot be
  *  inverted. */
 export function againQuad(from: readonly Pt[], to: readonly Pt[], corners: readonly Pt[]): Pt[] | null {
   const back = inverse3(homography(from)), on = homography(to);

@@ -10,7 +10,7 @@ const NEAR = 7;
 const reshape = (a: NonNullable<typeof active>, closed: boolean): void => { a.sp.anchors = smoothAnchors(a.points, closed, a.corners); };
 
 /** Curvature Pen (P, with the Pen): click to place points and the curve passes smoothly through all of them, reshaping
- *  as points are added, as Photoshop's does; Alt-click places a corner. Click the first point to close the path; Enter
+ *  as points are added; Alt-click places a corner. Click the first point to close the path; Enter
  *  or Escape ends it open; Backspace takes back the last point. */
 export const curvaturePenTool: Tool = {
   id: 'curvaturePen', label: 'Curvature Pen', key: 'P', order: 77.6,

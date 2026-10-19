@@ -1,8 +1,38 @@
 /** Local image generation in the window (1.52.9): the engine's local models (Krea 2 Turbo, FLUX.2 [klein] 4B, their
  *  checkpoints, local ONNX folders), a job run to its pictures (progress polled, Cancel stopping it in the engine),
  *  each picture fetched and the engine's copy removed, and the generator Generative Fill and Expand call. */
+import type { GenerationInfo } from '../engine/types';
+
 export interface LocalModel { id: string; label: string; ready: boolean; reason: string | null; fromPicture: boolean; influence: number }
-export interface LocalResult { pictures: Blob[]; notes: string[]; notice?: string; warning?: string }
+export interface LocalResult { pictures: Blob[]; notes: string[]; notice?: string; warning?: string; /** Each picture's settings, taken from the job's record (or the PNG's own text) before the engine's copy goes. */ settings: Array<GenerationInfo | undefined> }
+
+/** The settings a job's record holds for one picture; the PNG's "parameters" text when the record has no more than that. */
+export async function settingsOf(record: Record<string, unknown>, blob: Blob): Promise<GenerationInfo | undefined> {
+  const out: GenerationInfo = {};
+  if (typeof record.prompt === 'string' && record.prompt) out.prompt = record.prompt;
+  if (typeof record.seed === 'number') out.seed = record.seed;
+  if (typeof record.steps === 'number') out.steps = record.steps;
+  if (typeof record.sampler === 'string') out.sampler = record.sampler;
+  if (typeof record.guidance === 'number') out.guidance = record.guidance;
+  if (typeof record.parameters === 'string' && record.parameters) out.parameters = record.parameters;
+  if (Array.isArray(record.loras)) out.loras = (record.loras as Array<{ file?: unknown; scale?: unknown }>).filter((l) => typeof l.file === 'string' && typeof l.scale === 'number').map((l) => ({ file: String(l.file), scale: Number(l.scale) }));
+  if (!out.parameters) {
+    const b = new Uint8Array(await blob.arrayBuffer());
+    if (b.length > 33 && b[1] === 0x50) {
+      const v = new DataView(b.buffer, b.byteOffset, b.byteLength), dec = new TextDecoder('latin1');
+      for (let at = 8; at + 12 <= b.length;) {
+        const len = v.getUint32(at), type = dec.decode(b.subarray(at + 4, at + 8));
+        if (type === 'tEXt' || type === 'iTXt') {
+          const body = b.subarray(at + 8, at + 8 + len), zero = body.indexOf(0);
+          if (zero > 0 && dec.decode(body.subarray(0, zero)) === 'parameters') out.parameters = new TextDecoder('utf-8').decode(type === 'tEXt' ? body.subarray(zero + 1) : body.subarray(zero + 5));
+        }
+        if (type === 'IDAT' || type === 'IEND') break;
+        at += 12 + len;
+      }
+    }
+  }
+  return Object.keys(out).length ? out : undefined;
+}
 
 async function ask(path: string, init?: RequestInit): Promise<Response> {
   let r: Response;
@@ -35,10 +65,15 @@ async function followJob(id: string, status: (text: string) => void, cancelled: 
     if (cancelled()) { try { await ask(`/jobs/${id}`, { method: 'DELETE' }); } catch { /* ended */ } throw new Error('Cancelled.'); }
     const j = await (await ask(`/jobs/${id}`)).json() as { status: string; progress?: number; message?: string; error?: string; result?: { media: Array<{ url: string }>; notes?: string[]; notice?: string; warning?: string } };
     if (j.status === 'done' && j.result) {
-      const pictures: Blob[] = [];
-      for (const m of j.result.media) { pictures.push(await (await ask(m.url.replace(/^\/api/, ''))).blob()); void ask(m.url.replace(/^\/api/, ''), { method: 'DELETE' }).catch(() => undefined); }
+      const pictures: Blob[] = [], settings: Array<GenerationInfo | undefined> = [];
+      for (const m of j.result.media) {
+        const blob = await (await ask(m.url.replace(/^\/api/, ''))).blob();
+        pictures.push(blob);
+        settings.push(await settingsOf(m as Record<string, unknown>, blob).catch(() => undefined));   // taken before the engine's copy and record go
+        void ask(m.url.replace(/^\/api/, ''), { method: 'DELETE' }).catch(() => undefined);
+      }
       if (!pictures.length) throw new Error(j.result.notes?.join(' ') || 'The model made no picture.');
-      return { pictures, notes: j.result.notes ?? [], notice: j.result.notice, warning: j.result.warning };
+      return { pictures, settings, notes: j.result.notes ?? [], notice: j.result.notice, warning: j.result.warning };
     }
     if (j.status === 'error' || j.status === 'failed' || j.status === 'cancelled') throw new Error(j.error || j.message || 'The local model stopped.');
     status(`${j.message ?? 'Generating on this computer'}${typeof j.progress === 'number' ? ` (${Math.round(j.progress * 100)}%)` : ''}`);
@@ -109,7 +144,7 @@ export async function installModel(id: string, status: (text: string) => void): 
   }
 }
 
-export interface RelightEngines { marigold: boolean; marigoldModels: boolean; marigoldRuntime: boolean; classic: boolean; regions: 'parts' | 'colour'; faces: boolean; license: string; downloadGB: number }
+export interface RelightEngines { marigold: boolean; marigoldModels: boolean; marigoldRuntime: boolean; classic: boolean; regions: 'parts' | 'colour'; faces: boolean; license: string; downloadGB: number; moge: boolean; mogeModel: boolean }
 export interface LightSplit {
   engine: 'marigold' | 'classic'; width: number; height: number; albedo: Uint8ClampedArray; shading: Float32Array; residual: Float32Array; normals: Float32Array | null;
   depth: Float32Array | null; mask: Uint8Array | null; subject: Float32Array | null; texture: Float32Array | null; level: number | null; geometry: string | null;

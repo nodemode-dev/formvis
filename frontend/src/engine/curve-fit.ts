@@ -3,7 +3,7 @@ import type { Pt } from './types';
 
 /** Curves through points, for the Freeform and Curvature Pens. `simplify` is Ramer-Douglas-Peucker: keep the point
  *  farthest from the chord when it is farther than `tolerance`, and recurse on both halves, so a freehand stroke's
- *  hundreds of samples come down to the few that shape it (Photoshop's Curve Fit). `smoothAnchors` turns points into
+ *  hundreds of samples come down to the few that shape it (Curve Fit). `smoothAnchors` turns points into
  *  Bezier anchors whose curve passes through every one of them, the uniform Catmull-Rom spline written as cubic
  *  segments: each smooth point's handles lie along the line from its previous to its next neighbour, a sixth of that
  *  distance to either side, so the curve turns smoothly there. Corners, and the ends of an open run, keep their

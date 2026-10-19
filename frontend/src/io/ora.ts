@@ -1,7 +1,7 @@
 import { Raster, docTransform, effectsActive, newLayer, uid, placement, createSurface, ctxOf, toBlob, type BlendMode, type Doc, type ID, type Layer, type Surface } from '../engine';
 import { unzip, zipFiles } from './zip';
 
-/** OpenRaster (.ora, 1.51.7, the capability plan): the open layered format of Krita, GIMP and MyPaint, written and read
+/** OpenRaster (.ora, 1.51.7, the capability plan): the open layered format of several painting apps, written and read
  *  from its public specification. A ZIP: "mimetype" first and uncompressed, stack.xml (the layers, topmost first,
  *  groups as nested stacks), a PNG per layer, mergedimage.png and a thumbnail. formvis's groups are pass-through, as
  *  isolation="auto"; adjustment layers have no OpenRaster form and are left out, said so. */

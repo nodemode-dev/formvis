@@ -1,4 +1,4 @@
-# Color modes as Photoshop's (1.50.2, the owner's walkthrough: Color Mode offered RGB alone).
+# Color modes (1.50.2, the owner's walkthrough: Color Mode offered RGB alone).
 SCENE = """async () => { const e = window.formvis.engine; e.newDocument(200, 100, 'M', 'white'); const c = e.activeLayer.raster.ctx;
   const g = c.createLinearGradient(0, 0, 200, 0); g.addColorStop(0, 'rgb(220,30,30)'); g.addColorStop(0.5, 'rgb(40,160,60)'); g.addColorStop(1, 'rgb(30,60,210)');
   c.fillStyle = g; c.fillRect(0, 0, 200, 100); e.activeLayer.raster.touch();

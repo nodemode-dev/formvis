@@ -56,6 +56,23 @@ export async function decodeHdr(file: Blob, name: string): Promise<ImportedImage
   return { source: rasterFromDeep(deep, true).canvas as CanvasImageSource, width: d.width, height: d.height, name, deep };
 }
 
+export interface DecodedFrames { width: number; height: number; plays: number; frames: Array<{ source: ImportedImage['source']; delay: number }> }
+
+/** An animated GIF or WebP's frames from the engine, or null for a file of one frame or with the engine not running (it
+ *  then opens as the browser shows it, frame 1). */
+export async function decodeFrames(file: Blob, name: string): Promise<DecodedFrames | null> {
+  let got: Awaited<ReturnType<typeof api.imageFrames>>;
+  try { got = await api.imageFrames(file, name); } catch (err) {
+    if (!(await serviceReady())) return null;
+    throw err;
+  }
+  if (!got) return null;
+  if (got.width > LIMITS.side || got.height > LIMITS.side || got.width * got.height * got.frames.length > LIMITS.pixels) throw new Error(`${name} exceeds the 30,000 px side or ${Math.round(LIMITS.pixels / 1_000_000)}-megapixel limit.`);
+  const frames: DecodedFrames['frames'] = [];
+  for (const f of got.frames) frames.push({ source: await bitmapOf(f.blob), delay: f.delay });
+  return { width: got.width, height: got.height, plays: got.plays, frames };
+}
+
 export async function decodeImage(file: Blob, name: string, raw = false, rawWb?: RawWhiteBalance): Promise<ImportedImage> {
   if (HDR_FILE.test(name)) { const { deep: _deep, ...flat } = await decodeHdr(file, name); return flat; }
   const size = await headerSize(file);

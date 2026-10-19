@@ -11,7 +11,7 @@ import { lensBlur, lensBlurMargin, shakeMargin, shakeReduce, smartSharpen, smart
 import { estimateShake } from '../../engine/shake';
 import { runGallery, type GallerySettings } from '../../engine/blur-gallery';
 import { LIBRARY, isLibKind, libAllDefaults, libApron, libFilter, libImageParams, libMargin, libPathParams, libValues, runLib, type LibColors, type LibFrame, type LibImage, type LibKind, type LibParam, type LibPath, type LibValue, type LibValues } from '../../engine/filter-library';
-import { HSL_BANDS, buildCurveLut, defaultCalibration, defaultGeometry, defaultGrading, defaultOptics, type CalibrationState, type CurveChannel, type DevelopState, type GeometryState, type GradingState, type HslBand, type HslBandState, type OpticsState } from '../../engine/develop';
+import { HSL_BANDS, buildCurveLut, defaultCalibration, defaultGeometry, defaultGrading, defaultOptics, defaultParametric, defaultPointColor, type CalibrationState, type CurveChannel, type DevelopState, type GeometryState, type GradingState, type HslBand, type HslBandState, type OpticsState, type ParametricState, type PointColorState } from '../../engine/develop';
 import { curveGraph } from './curve-graph';
 import { GalleryView } from './gallery-view';
 
@@ -141,7 +141,7 @@ export class FilterPanel extends Dialog {
     const lensB = sliderRow('Specular brightness', 0, 100, 1, (v) => { s.lensBrightness = v; this.schedule(); });
     const lensT = sliderRow('Specular threshold', 0, 255, 1, (v) => { s.lensThreshold = v; this.schedule(); });
     // Radial and Surface Blur, and the Blur Gallery. Positions are percentages of the image, set here with sliders
-    // (Photoshop places the gallery's pins and handles on the canvas). Every control reads and writes s.gallery when
+    // (the gallery's pins and handles are not on the canvas). Every control reads and writes s.gallery when
     // used, never a copy taken now, so loaded settings are what is edited.
     type G = FilterPanelSettings['gallery'];
     const gv = <K extends keyof G>(k: K): G[K] => s.gallery[k];
@@ -236,6 +236,12 @@ export class FilterPanel extends Dialog {
     const curveSel = selectRow('Channel', [['rgb', 'RGB'], ['r', 'Red'], ['g', 'Green'], ['b', 'Blue']], (v) => { curveCh = v as CurveChannel; graph.draw(); });
     devNodes.push(el('<p class="cv-note">Point Curve</p>'), curveSel.el, graph.el);
     devSync.push(() => { curveSel.set(curveCh); graph.draw(); });
+    const para = (): ParametricState => (D().parametric ??= defaultParametric());
+    devNodes.push(el('<p class="cv-note">Parametric Curve</p>'));
+    for (const [label, key] of [['Highlights', 'highlights'], ['Lights', 'lights'], ['Darks', 'darks'], ['Shadows', 'shadows']] as const) slide(`Curve ${label}`, -100, 100, 1, () => para()[key], (v) => { para()[key] = v; });
+    slide('Split Shadows/Darks', 5, 90, 1, () => para().split1, (v) => { para().split1 = v; });
+    slide('Split Darks/Lights', 10, 95, 1, () => para().split2, (v) => { para().split2 = v; });
+    slide('Split Lights/Highlights', 15, 98, 1, () => para().split3, (v) => { para().split3 = v; });
     let band: 'master' | HslBand = 'master';
     const bandState = (): HslBandState => (band === 'master' ? D().color.master : D().color.bands[band]);
     const mixH = sliderRow('Hue', -180, 180, 1, (v) => { bandState().h = v; this.schedule(); });
@@ -262,6 +268,7 @@ export class FilterPanel extends Dialog {
     slide('Chromatic Aberration', -100, 100, 1, () => optics().chromatic, (v) => { optics().chromatic = v; });
     slide('Vignetting', -100, 100, 1, () => optics().vignetting, (v) => { optics().vignetting = v; });
     slide('Midpoint', 0, 100, 1, () => optics().midpoint, (v) => { optics().midpoint = v; });
+    slide('Defringe', 0, 100, 1, () => optics().defringe ?? 0, (v) => { optics().defringe = v; });
     devNodes.push(el('<p class="cv-note">Geometry</p>'));
     slide('Vertical', -100, 100, 1, () => geometry().vertical, (v) => { geometry().vertical = v; });
     slide('Horizontal', -100, 100, 1, () => geometry().horizontal, (v) => { geometry().horizontal = v; });
@@ -274,6 +281,36 @@ export class FilterPanel extends Dialog {
     for (const [p, name] of [['red', 'Red'], ['green', 'Green'], ['blue', 'Blue']] as const) {
       slide(`${name} Primary Hue`, -100, 100, 1, () => calib()[`${p}Hue`], (v) => { calib()[`${p}Hue`] = v; });
       slide(`${name} Primary Saturation`, -100, 100, 1, () => calib()[`${p}Sat`], (v) => { calib()[`${p}Sat`] = v; });
+    }
+    const point = (): PointColorState => (D().pointColor ??= defaultPointColor());
+    const pointPick = colorRow('Colour', (v) => { point().color = v; this.schedule(); });
+    devNodes.push(el('<p class="cv-note">Point Color</p>'), pointPick.el);
+    devSync.push(() => pointPick.set(/^#[0-9a-f]{6}$/i.test(point().color) ? point().color : '#ff0000'));
+    slide('Point Range', 0, 100, 1, () => point().range, (v) => { point().range = v; });
+    slide('Point Hue', -100, 100, 1, () => point().h, (v) => { point().h = v; });
+    slide('Point Saturation', -100, 100, 1, () => point().s, (v) => { point().s = v; });
+    slide('Point Luminance', -100, 100, 1, () => point().l, (v) => { point().l = v; });
+    // Each panel heading folds its controls away and carries a Reset that returns just that panel to its defaults.
+    const toneKeys = (keys: Array<keyof DevelopState['tone']>) => (): void => { for (const k of keys) D().tone[k] = defaultDevelopState().tone[k]; };
+    const resets: Record<string, () => void> = {
+      Light: toneKeys(['exposure', 'contrast', 'highlights', 'shadows', 'whites', 'blacks']), Colour: toneKeys(['temperature', 'tint', 'vibrance', 'saturation']),
+      Effects: toneKeys(['dehaze', 'vignette', 'grain']), Detail: () => { D().detail = defaultDevelopState().detail; }, 'Point Curve': () => { D().curves = defaultDevelopState().curves; },
+      'Parametric Curve': () => { D().parametric = defaultParametric(); }, 'Colour Mixer': () => { D().color = defaultDevelopState().color; }, 'Colour Grading': () => { D().grading = defaultGrading(); },
+      'Point Color': () => { D().pointColor = defaultPointColor(); }, Optics: () => { D().optics = defaultOptics(); }, Geometry: () => { D().geometry = defaultGeometry(); }, Calibration: () => { D().calibration = defaultCalibration(); },
+    };
+    let folds: HTMLElement[] = [];
+    for (const node of devNodes) {
+      const reset = node.tagName === 'P' ? resets[node.textContent ?? ''] : undefined;
+      if (!reset) { if (node.tagName === 'P' || !folds) continue; folds.push(node); continue; }
+      const group = (folds = []);
+      const title = node.textContent ?? '', open = el<HTMLButtonElement>(`<button class="cv-btn" type="button" aria-expanded="true">${title}</button>`);
+      const clear = el<HTMLButtonElement>(`<button class="cv-btn" type="button" aria-label="Reset ${title}">Reset</button>`);
+      node.textContent = '';
+      node.classList.add('cv-develop-head');
+      node.style.cssText = 'display:flex;gap:6px;margin-top:10px';
+      node.append(open, clear);
+      open.addEventListener('click', () => { const hide = open.getAttribute('aria-expanded') === 'true'; open.setAttribute('aria-expanded', String(!hide)); for (const g of group) setHidden(g, hide); });
+      clear.addEventListener('click', () => { reset(); for (const f of devSync) f(); this.schedule(); });
     }
     this.section('develop', devNodes, () => { for (const f of devSync) f(); });
     this.previewRow = checkRow('Preview', (v) => { this.preview = v; this.schedule(0); });

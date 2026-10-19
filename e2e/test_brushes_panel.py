@@ -44,4 +44,4 @@ def test_the_brush_settings_tab_sets_the_tip(page):
     assert got == {"s": 60, "r": 40}, got
     page.locator(".cv-props-col .cv-group-tab", has_text="Brushes").first.click()
     assert page.locator(f"{PANEL} [data-act='load']").is_visible()
-    assert page.locator(f"{PANEL} input[type=file]").get_attribute("accept") == ".abr"   # Photoshop brushes
+    assert page.locator(f"{PANEL} input[type=file]").get_attribute("accept") == ".abr"   # .abr brushes

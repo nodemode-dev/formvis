@@ -36,7 +36,7 @@ def test_a_custom_ring_keeps_its_hole_on_canvas_and_through_psd(page, tmp_path):
     psd = psd_tools.PSDImage.open(io.BytesIO(data))
     ring = [l for l in psd if l.name == "Ring 1"][0]
     ops = [sp.operation for sp in ring.vector_mask.paths]
-    assert ops == [1, 2], ops    # Photoshop numbers: 1 combine, 2 subtract
+    assert ops == [1, 2], ops    # PSD numbers: 1 combine, 2 subtract
     f = tmp_path / "Shapes.psd"
     f.write_bytes(data)
     n = page.evaluate("window.formvis.engine.projects.length")

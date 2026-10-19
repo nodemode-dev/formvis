@@ -10,7 +10,7 @@ const run = (mode: BlendMode, opacity = 1, dst = px(100, 150, 200, 255), src = p
 };
 
 describe('blend modes', () => {
-  it('lists all 27 of Photoshop modes once, in its order', () => {
+  it('lists all 27 PSD modes once, in the usual order', () => {
     expect(BLEND_MODES).toHaveLength(27);
     expect(new Set(BLEND_MODES.map((m) => m.id)).size).toBe(27);
     expect(BLEND_MODES[0].id).toBe('normal');

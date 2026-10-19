@@ -25,7 +25,7 @@ export function loadSources(p: Project): Array<[string, string]> {
 
 const select = (html = ''): HTMLSelectElement => el<HTMLSelectElement>(`<select class="cv-input">${html}</select>`);
 
-/** Select > Save Selection, as Photoshop's dialog: the document, a new channel or one to change, its name and how. */
+/** Select > Save Selection: the document, a new channel or one to change, its name and how. */
 export class SaveSelectionDialog extends Dialog {
   private readonly doc = select();
   private readonly channel = select();
@@ -76,7 +76,7 @@ export class SaveSelectionDialog extends Dialog {
   }
 }
 
-/** Select > Load Selection, as Photoshop's dialog: the document and channel, Invert, and how it joins the selection. */
+/** Select > Load Selection: the document and channel, Invert, and how it joins the selection. */
 export class LoadSelectionDialog extends Dialog {
   private readonly doc = select();
   private readonly channel = select();
@@ -128,7 +128,7 @@ export class LoadSelectionDialog extends Dialog {
 
 const hex2 = (v: number): string => v.toString(16).padStart(2, '0');
 
-/** Channels > Channel Options, as Photoshop's dialog: name, what the colour indicates, the colour and its opacity. */
+/** Channels > Channel Options: name, what the colour indicates, the colour and its opacity. */
 export class ChannelOptionsDialog extends Dialog {
   private id = '';
   private readonly name = el<HTMLInputElement>('<input class="cv-input" type="text" maxlength="200" spellcheck="false" aria-label="Channel name">');

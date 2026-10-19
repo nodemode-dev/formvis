@@ -24,6 +24,6 @@ def test_a_dropped_raw_file_is_developed_and_opens_develop(page):
       const w = x1 - x0 + 1, h = y1 - y0 + 1, at = (x, y) => Array.from(c.getImageData(x0 + x, y0 + y, 1, 1).data); return { w, h, left: at(8, h >> 1), right: at(w - 8, h >> 1) }; }""")
     assert (px["w"], px["h"]) == (64, 48), px
     assert px["left"][0] > 200 and px["left"][2] < 150 and px["right"][2] > 200 and px["right"][0] < 150, px   # red left, blue right
-    # As Photoshop opens a RAW file into Camera Raw, formvis opens it into Develop.
+    # formvis opens a RAW file into Develop.
     page.wait_for_function("[...document.querySelectorAll('.cv-scrim:not([hidden]) .cv-note')].some((n) => n.textContent === 'Point Curve')", timeout=10000)
     page.keyboard.press("Escape")

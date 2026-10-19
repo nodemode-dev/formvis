@@ -19,7 +19,7 @@ const box = (checked = false): HTMLInputElement => el<HTMLInputElement>(`<input 
 const num = (value: string, min: number, max: number): HTMLInputElement => el<HTMLInputElement>(`<input class="cv-input" type="number" min="${min}" max="${max}" step="1" value="${value}">`);
 const heading = (text: string): HTMLElement => el(`<p class="cv-note"><strong>${text}</strong></p>`);
 
-/** Photoshop's Image Processor: one source, one destination, three file types and an optional action and copyright. */
+/** The Image Processor: one source, one destination, three file types and an optional action and copyright. */
 export class ImageProcessorDialog extends Dialog {
   private readonly file = el<HTMLInputElement>(`<input type="file" multiple accept="${IMAGE_ACCEPT}" hidden>`);
   private readonly useOpen = box();

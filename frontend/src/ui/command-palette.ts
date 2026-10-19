@@ -50,7 +50,7 @@ interface Hit { key: string; label: string; meta: string; icon: string; enabled:
 
 const SHOWN = 12;
 
-/** Edit > Search (Mod+K; 1.65.9, after Photoshop's Search): every command, with where it sits in the
+/** Edit > Search (Mod+K; 1.65.9): every command, with where it sits in the
  *  menus and its keys, and every tool, ranked by `fuzzyScore` as the query is typed (on its name, or 10 behind on its
  *  name and menu path together, so "blur" puts Blur before Average; a tool a little ahead); the twelve
  *  best are listed, Up and Down choose, Enter or a click runs one (a disabled one shows, dimmed, and does not run), and

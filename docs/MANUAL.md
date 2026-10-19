@@ -275,9 +275,7 @@ ask it questions.
   adds a Curves layer clipped to it, whose opacity is the amount.
 - Filters (Filter menu) include blurs, sharpening, noise, lens correction and the gallery's artistic filters; on a
   smart object they stay editable.
-- Image > Content-Aware Scale changes a layer's width or height by removing or adding the least important seams,
-  so the parts that matter keep their shape; tick Protect skin tones or Protect the selection to keep those whole. It
-  goes from a quarter to twice the size in one step. Image > Image Rotation turns the whole canvas by 90 or 180
+- Image > Image Rotation turns the whole canvas by 90 or 180
   degrees without resampling a pixel, or by any angle with Arbitrary..., the canvas growing to hold it and the
   Background's new corners filled with the background colour. Image > Crop cuts the canvas to the selection's bounds;
   Image > Duplicate... makes a copy of the document in a new tab, in one layer with Duplicate Merged Layers Only.

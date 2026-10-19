@@ -497,7 +497,7 @@ export const sv: Record<string, string> = {
   'Paste from': 'Klistra in från',
   'Paste size (% of the plane)': 'Inklistringsstorlek (% av planet)',
   'Patchwork': 'Lappteknik',
-  'Paths to Illustrator': 'Banor till Illustrator',
+  'Paths to AI File': 'Banor till AI-fil',
   'Pattern Overlay': 'Mönsteröverlagring',
   'Performance Benchmark': 'Prestandatest',
   'Photo': 'Foto',

@@ -6,7 +6,7 @@ import { unzip } from './zip';
  *  anything else opens as the merged image. */
 export const isKraFile = (f: File): boolean => /\.kra$/i.test(f.name) || f.type === 'application/x-krita';
 
-const FROM_KRITA = new Map<string, BlendMode>([
+const FROM_KRA = new Map<string, BlendMode>([
   ['normal', 'normal'], ['multiply', 'multiply'], ['screen', 'screen'], ['overlay', 'overlay'], ['darken', 'darken'], ['lighten', 'lighten'],
   ['dodge', 'color-dodge'], ['burn', 'color-burn'], ['diff', 'difference'], ['hard_light', 'hard-light'], ['soft_light', 'soft-light'],
   ['soft_light_svg', 'soft-light'], ['soft_light_pegtop_delphi', 'soft-light'], ['hue', 'hue'], ['saturation', 'saturation'], ['color', 'color'],
@@ -111,8 +111,8 @@ export async function readKra(file: File): Promise<{ doc: Doc; notes: string[]; 
       const read = readTiles(data);
       if (!read) { notRgba8 = true; continue; }
       if (!read.tiles.length) continue;
-      const op = e.getAttribute('compositeop') ?? 'normal', blend = FROM_KRITA.get(op) ?? 'normal';
-      if (!FROM_KRITA.has(op)) notes.add(`${op} is not a blend mode formvis has; those layers open as Normal.`);
+      const op = e.getAttribute('compositeop') ?? 'normal', blend = FROM_KRA.get(op) ?? 'normal';
+      if (!FROM_KRA.has(op)) notes.add(`${op} is not a blend mode formvis has; those layers open as Normal.`);
       let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
       for (const t of read.tiles) { x0 = Math.min(x0, t.x); y0 = Math.min(y0, t.y); x1 = Math.max(x1, t.x + read.tw); y1 = Math.max(y1, t.y + read.th); }
       const w = x1 - x0, h = y1 - y0;

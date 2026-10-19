@@ -1,6 +1,6 @@
 import { createSurface, ctxOf, type Surface } from './surface';
 
-/** The Art History Brush (1.56.3, the parity plan's L4), as Photoshop's: stylised strokes in the colours of a
+/** The Art History Brush (1.56.3, the parity plan's L4): stylised strokes in the colours of a
  *  source state (the History Brush's snapshot), so painting over a picture turns it into a painted version of itself.
  *  The strokes are laid over the whole layer as the stroke starts, each in the source's colour where it begins and
  *  running along the picture's contours (across its brightness gradient); the brush then reveals them where it paints,

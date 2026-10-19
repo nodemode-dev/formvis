@@ -497,7 +497,7 @@ export const nb: Record<string, string> = {
   'Paste from': 'Lim inn fra',
   'Paste size (% of the plane)': 'Innlimingsstørrelse (% av planet)',
   'Patchwork': 'Lappeteppe',
-  'Paths to Illustrator': 'Baner til Illustrator',
+  'Paths to AI File': 'Baner til AI-fil',
   'Pattern Overlay': 'Mønsteroverlegg',
   'Performance Benchmark': 'Ytelsestest',
   'Photo': 'Foto',

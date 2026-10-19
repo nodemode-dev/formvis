@@ -1,6 +1,6 @@
 import { gaussianBlur } from './filters';
 
-/** The rest of Photoshop's blurs (the "Blur filters" row): Radial Blur (Spin and Zoom) and Surface Blur, and the Blur
+/** The rest of the blurs (the "Blur filters" row): Radial Blur (Spin and Zoom) and Surface Blur, and the Blur
  *  Gallery's Field, Iris, Tilt-Shift and Path Blur. Field, Iris and Tilt-Shift give each pixel its own blur radius and
  *  take it from a stack of Gaussian blurs at a few radii, interpolated between the two nearest; Path blurs each pixel
  *  along the path's direction nearest to it. Positions are percentages of the image, so a scaled preview matches. */

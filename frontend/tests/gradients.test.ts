@@ -5,7 +5,7 @@ import { GRADIENT_PRESETS, GRADIENT_TYPES, colorAt, diamondFill, presetById, ref
 const fg = { r: 10, g: 20, b: 30 }, bg = { r: 200, g: 210, b: 220 };
 
 describe('gradients', () => {
-  it('offers Photoshop five types and presets that keep the two old choices', () => {
+  it('offers the five usual types and presets that keep the two old choices', () => {
     expect(GRADIENT_TYPES.map((t) => t.id)).toEqual(['linear', 'radial', 'angle', 'reflected', 'diamond']);
     expect(presetById('background').label).toBe('Foreground to Background');
     expect(presetById('transparent').label).toBe('Foreground to Transparent');

@@ -20,7 +20,7 @@ describe('export presets', () => {
     expect(got).toEqual([{ id: 'u1', name: 'Mine', format: 'avif', quality: 55, scale: 150, builtin: false }]);
   });
 
-  it('names and sizes follow Photoshop', () => {
+  it('names and sizes follow the usual presets', () => {
     expect(exportName('Shot', { format: 'png', quality: 100, scale: 100 })).toBe('Shot.png');
     expect(exportName('Shot', { format: 'png', quality: 100, scale: 200 })).toBe('Shot@2x.png');
     expect(exportName('Shot', { format: 'webp', quality: 80, scale: 50 })).toBe('Shot@0.5x.webp');

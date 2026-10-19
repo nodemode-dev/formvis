@@ -43,7 +43,7 @@ Adding an endpoint: put it in the router for its area (prefixes are set in `back
 A project is `manifest.json` plus `images/`. formvis writes `com.nodemode.formvis` version 1, still reads the former `.formvis` identifier (`app/core/legacy.py`), NodeMode canvasor's `com.nodemode.canvasor` version 1, and `.comp` projects at versions 1 to 7 (recognised by their reverse-DNS `.project` id, held to full validation; never written). File extension is `.fmv`; `.formvis` from before 0.90.0 still opens. Field names and value labels are verbatim from the NodeMode format.
 
 - `transform`: `origin` `[x, y]`, `size` `[w, h]`, `rotation` in degrees, `flipX`, `flipY`, `sampling` label (`Nearest`, `Smooth`, `High quality`).
-- `blendMode` labels: Photoshop's order, from `BLEND_MODES` in `frontend/src/engine/types.ts` (`blendFromLabel`, `blendLabel` convert). Never rename a label.
+- `blendMode` labels: the PSD order, from `BLEND_MODES` in `frontend/src/engine/types.ts` (`blendFromLabel`, `blendLabel` convert). Never rename a label.
 - Masks are grayscale PNGs where white shows; in memory the value sits in the alpha channel.
 - `adjustment` and `shape` records survive verbatim, including fields formvis does not use.
 - `fillContent` describes a fill layer whose pixels, as drawn, are its `imageFile`; the reader checks and clamps every field (`fillContentFrom` in `engine/fill-layers.ts`) and drops it from a layer without pixels.

@@ -54,6 +54,24 @@ export const noDynamics = (): BrushDynamics => ({ size: identityOption(), flow: 
 export interface PenPose { tiltX: number; tiltY: number; twist: number }
 export const UPRIGHT: PenPose = { tiltX: 0, tiltY: 0, twist: 0 };
 
+/** Painting symmetry: each dab is repeated about an axis through (cx, cy). 'vertical' mirrors left to right,
+ *  'horizontal' top to bottom, 'both' makes four, 'radial' turns the dab `count` times about the centre. */
+export type SymmetryMode = 'off' | 'vertical' | 'horizontal' | 'both' | 'radial';
+export interface BrushSymmetry { mode: SymmetryMode; count: number; cx: number; cy: number }
+export const noSymmetry = (): BrushSymmetry => ({ mode: 'off', count: 6, cx: 0, cy: 0 });
+
+/** The extra dab centres for a dab at p; empty when the symmetry is off. */
+export function symmetryPoints(p: { x: number; y: number }, s: BrushSymmetry | null | undefined): { x: number; y: number }[] {
+  if (!s || s.mode === 'off') return [];
+  const mx = 2 * s.cx - p.x, my = 2 * s.cy - p.y;
+  if (s.mode === 'vertical') return [{ x: mx, y: p.y }];
+  if (s.mode === 'horizontal') return [{ x: p.x, y: my }];
+  if (s.mode === 'both') return [{ x: mx, y: p.y }, { x: p.x, y: my }, { x: mx, y: my }];
+  const n = Math.max(2, Math.min(32, Math.round(s.count))), out: { x: number; y: number }[] = [], dx = p.x - s.cx, dy = p.y - s.cy;
+  for (let i = 1; i < n; i++) { const a = (i * 2 * Math.PI) / n, c = Math.cos(a), sn = Math.sin(a); out.push({ x: s.cx + dx * c - dy * sn, y: s.cy + dx * sn + dy * c }); }
+  return out;
+}
+
 /** Brush Settings beyond size, hardness and pressure (the comparison's "Brush and eraser" row): Brush Tip
  *  Shape's angle, roundness and spacing; Shape Dynamics' jitters and their controls (the stroke's direction, the pen's
  *  tilt or its rotation); Scattering; Texture (a pattern cutting into each dab's paint); and Dual Brush (a second round

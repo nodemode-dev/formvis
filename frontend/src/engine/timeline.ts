@@ -1,7 +1,7 @@
 import { effectsFromData, uid, type Doc, type ID, type Layer, type LayerEffects } from './types';
 import { videoFrom, type VideoTimeline } from './video-timeline';
 
-/** Frame animation, as in Photoshop's frame timeline: each frame keeps every layer's visibility, opacity and
+/** Frame animation: each frame keeps every layer's visibility, opacity and
  *  position, and a delay. The pixels are shared by all frames. */
 /** `fx`: the layer's style in this frame, so frames can differ in style too; absent in frames saved before 0.59. */
 /** `fill` (1.59.2): the layer's Fill Opacity in this state, as the video timeline animates it; absent before. */

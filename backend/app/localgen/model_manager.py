@@ -606,5 +606,54 @@ def set_source(model: str, mode: str, url: str | None) -> dict:
     return data[model]
 
 
+@router.delete("/{model}")
+def remove_model(model: str):
+    """Delete a downloaded model's files from the model folder (those managed by the Krea 2 and klein cards have their own)."""
+    if model not in MODELS:
+        raise HTTPException(404, "Unknown model")
+    if MODELS[model].get("consent") or model == "nsfw-filter":
+        raise HTTPException(409, "This model is removed from its own card")
+    if model in _downloading:
+        raise HTTPException(409, "This model is downloading")
+    with _lock:
+        for name in MODELS[model]["files"]:
+            path = ROOT / name
+            path.unlink(missing_ok=True)
+            path.with_suffix(path.suffix + ".json").unlink(missing_ok=True)
+            parent = path.parent
+            while parent != ROOT and ROOT in parent.parents:
+                try:
+                    parent.rmdir()
+                except OSError:
+                    break
+                parent = parent.parent
+    return {"model": model, "ready": ready(model)}
+
+
+class SourceBody(BaseModel):
+    mode: str = "upstream"
+    url: str | None = Field(default=None, max_length=2048)
+
+
+@router.get("/sources")
+def get_sources():
+    """Where each model is fetched from: only the models given a mirror or a custom URL are listed."""
+    return {"models": {key: value for key, value in _sources().items() if key in MODELS and isinstance(value, dict)}}
+
+
+@router.put("/{model}/source")
+def put_source(model: str, body: SourceBody):
+    """Fetch this model from its upstream URL, from a mirror (a base the file name is appended to) or from a custom URL."""
+    if model not in MODELS:
+        raise HTTPException(404, "Unknown model")
+    url = (body.url or "").strip() or None
+    if url and not url.lower().startswith(("https://", "http://")):
+        raise HTTPException(400, "The address starts with https://")
+    try:
+        return set_source(model, body.mode, url if body.mode != "upstream" else None)
+    except ValueError as err:
+        raise HTTPException(400, str(err))
+
+
 def pin_for(name: str) -> str | None:
     return PINNED.get(name)

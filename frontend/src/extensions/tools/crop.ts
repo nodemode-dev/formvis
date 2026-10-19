@@ -17,7 +17,7 @@ const RATIOS: ReadonlyArray<{ id: string; label: string; value: number | 'origin
 ];
 /** The id of the ratio in force. */
 let ratioId = 'free';
-/** W × H × Resolution, as Photoshop's Crop menu has it: the size the crop is resampled to, in a unit, at a resolution
+/** W × H × Resolution, as the Crop menu has it: the size the crop is resampled to, in a unit, at a resolution
  *  in ppi (inches and centimetres become pixels through it). Saved crop presets live on this device. */
 type SizeUnit = 'px' | 'in' | 'cm';
 const size: { w: number; h: number; unit: SizeUnit; res: number } = { w: 0, h: 0, unit: 'px', res: 72 };
@@ -271,7 +271,7 @@ export const cropTool: Tool = {
   },
   keydown(ctx, e) {
     if (e.key === 'Enter' && (frame || quad)) { commit(ctx.engine); return true; }
-    // With a frame showing, O cycles the overlays and Shift+O flips Triangle and Golden Spiral, as in Photoshop; with
+    // With a frame showing, O cycles the overlays and Shift+O flips Triangle and Golden Spiral; with
     // none, O is left to pick the Dodge group as usual.
     if ((e.key === 'o' || e.key === 'O') && frame && !e.metaKey && !e.ctrlKey && !e.altKey) {
       if (e.shiftKey) { if (ORIENTED.has(overlayKind)) overlayOrient = (overlayOrient + 1) % 4; }

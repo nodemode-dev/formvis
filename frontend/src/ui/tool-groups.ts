@@ -1,7 +1,7 @@
 import type { Engine, ToolId } from '../engine';
 import { toolList, type Tool } from '../extensions/registry';
 
-/** Tool groups as Photoshop's toolbar has them: the tools that share a shortcut key share one slot (M the marquees, J
+/** Tool groups in the toolbar: the tools that share a shortcut key share one slot (M the marquees, J
  *  the healing tools, P the pens), in the order of their first tool. Each slot shows the tool last chosen from it, which
  *  its key also picks; the choice is kept with the preferences. */
 

@@ -74,7 +74,7 @@ export const gradientTool: Tool = {
       { kind: 'button', label: 'Edit', priority: 60, icon: 'gradient', run: () => e.uiHooks.gradientEditor?.() },
       { kind: 'toggle', label: 'Reverse', priority: 70, get: () => e.gradientSettings.reversed, set: (v) => set(() => { e.gradientSettings.reversed = v; }) },
       { kind: 'toggle', label: 'Dither', priority: 40, get: () => e.gradientSettings.dither, set: (v) => set(() => { e.gradientSettings.dither = v; }) },
-      // Transparency and Method (1.50.6, the tool audit), as Photoshop's bar.
+      // Transparency and Method (1.50.6, the tool audit).
       { kind: 'toggle', label: 'Transparency', priority: 45, get: () => e.gradientSettings.transparency, set: (v) => set(() => { e.gradientSettings.transparency = v; }) },
       { kind: 'select', label: 'Method', priority: 40, choices: [{ id: 'perceptual', label: 'Perceptual' }, { id: 'linear', label: 'Linear' }, { id: 'classic', label: 'Classic' }], get: () => e.gradientSettings.method, set: (v: string) => set(() => { e.gradientSettings.method = v as 'classic' | 'linear' | 'perceptual'; }) },
       { kind: 'select', label: 'Mode', priority: 75, choices: BLEND_MODES.filter((m) => canvasBlend(m.id)).map((m) => ({ id: m.id, label: m.label })), get: () => e.gradientSettings.blend, set: (v) => set(() => { e.gradientSettings.blend = v as BlendMode; }) },

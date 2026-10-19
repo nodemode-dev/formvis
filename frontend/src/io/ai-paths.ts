@@ -3,10 +3,10 @@ import type { Anchor, PathSet, SubPath } from '../engine/paths';
 
 const num = (v: number): string => String(Math.round(v * 1000) / 1000);
 
-/** Paths as an Adobe Illustrator 3 style PostScript file (what Photoshop's Paths to Illustrator writes): one group per
- *  named path, points in document pixels read as points with y flipped to Illustrator's upward axis. Shape and mask
- *  entries are skipped. `which` is 'all' or the id of the one path to write. */
-export function pathsToIllustrator(set: PathSet, width: number, height: number, which: 'all' | ID): string {
+/** Paths as a version 3 .ai PostScript file: one group per named path, points in document pixels read as points with
+ *  y flipped to the format's upward axis. Shape and mask entries are skipped. `which` is 'all' or the id of the one
+ *  path to write. */
+export function pathsToAi(set: PathSet, width: number, height: number, which: 'all' | ID): string {
   const W = Math.round(width), H = Math.round(height);
   const fy = (y: number): number => H - y;
   const out: string[] = [

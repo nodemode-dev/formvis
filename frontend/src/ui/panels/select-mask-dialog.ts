@@ -10,7 +10,7 @@ const PW = 640, PH = 440;
 type View = 'onionSkin' | 'marchingAnts' | 'overlay' | 'onBlack' | 'onWhite' | 'blackWhite' | 'onLayers';
 type Output = 'selection' | 'mask' | 'layer' | 'layerMask';
 
-/** Select > Select and Mask (Alt+Mod+R), Photoshop's workspace: the image with the selection shown as Overlay, On
+/** Select > Select and Mask (Alt+Mod+R): the image with the selection shown as Overlay, On
  *  Black, On White or Black & White; Radius, Smooth, Feather, Contrast and Shift Edge; Output To the selection, a
  *  layer mask, a new layer or a new layer with a mask. The preview is refined at its own scale and OK refines at full
  *  resolution. The preview keeps one size, so the dialog never resizes. */
@@ -60,7 +60,7 @@ export class SelectMaskDialog extends Dialog {
     const brushRow = checkRow('Refine Edge Brush (paint on the preview)', (v) => { this.brushOn = v; this.canvas.classList.toggle('is-brush', v); });
     const sizeRow = sliderRow('Brush Size (px)', 2, 200, 1, (v) => { this.brushSize = v; });
     const outRow = selectRow('Output To', [['selection', 'Selection'], ['mask', 'Layer Mask'], ['layer', 'New Layer'], ['layerMask', 'New Layer with Layer Mask']], (v) => { this.output = v as Output; });
-    // Decontaminate Colors: as in Photoshop, it writes new pixels, so it outputs to a new layer.
+    // Decontaminate Colors: it writes new pixels, so it outputs to a new layer.
     const deconRow = checkRow('Decontaminate Colors', (v) => {
       this.decon = v;
       if (v && (this.output === 'selection' || this.output === 'mask')) { this.output = 'layerMask'; outRow.set(this.output); }

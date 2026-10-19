@@ -44,13 +44,14 @@ export class ArtboardPdfDialog extends Dialog {
     if (document.activeElement !== this.nameInput) setValue(this.nameInput, s.name);
     this.encodingRow.set(s.jpeg ? 'jpeg' : 'zip');
     this.qualityRow.set(s.quality);
-    this.iccRow.set(false);
+    const profiled = !!p?.doc.profile;
+    this.iccRow.set(profiled && s.icc);
     this.contentsRow.set(s.contentsOnly);
     this.qualityRow.el.classList.toggle('is-off', !s.jpeg);
     for (const i of this.qualityRow.el.querySelectorAll('input')) i.disabled = !s.jpeg;
-    this.iccRow.el.classList.add('is-off');
-    for (const i of this.iccRow.el.querySelectorAll('input')) i.disabled = true;
+    this.iccRow.el.classList.toggle('is-off', !profiled);
+    for (const i of this.iccRow.el.querySelectorAll('input')) i.disabled = !profiled;
     const n = p ? this.engine.artboards(p).length : 0;
-    setText(this.note, n ? `${n} page${n === 1 ? '' : 's'}, in the Layers order, at ${p?.doc.resolution ?? 72} dpi. The ICC profile is not carried by this PDF writer yet.` : 'This document has no artboards.');
+    setText(this.note, n ? `${n} page${n === 1 ? '' : 's'}, in the Layers order, at ${p?.doc.resolution ?? 72} dpi.${profiled ? '' : ' This document has no colour profile to include.'}` : 'This document has no artboards.');
   }
 }

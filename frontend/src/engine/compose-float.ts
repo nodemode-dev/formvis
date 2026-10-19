@@ -12,7 +12,7 @@ import { effectsActive } from './types';
 
 /** Compositing in the mode (1.55.5, DEV_PLAN 22.5): the document composed on the one float model, for 16-bit, 32-bit
  *  and CMYK documents alike. Every separable blend mode runs per channel on the channel values (for CMYK on
- *  paper-white values, 1 minus ink, so Multiply darkens as Photoshop's CMYK does), with opacity and fill, the layer's
+ *  paper-white values, 1 minus ink, so Multiply darkens as CMYK ink does), with opacity and fill, the layer's
  *  own mask, its folders' masks, clipping to a base layer, and adjustment layers with a transfer (Levels, Curves,
  *  Invert, Posterize, Brightness/Contrast, Exposure) applied per channel under their masks. Every other adjustment
  *  and the non-separable modes (Hue, Saturation, Color, Luminosity, Darker and Lighter Color) run through the
@@ -54,7 +54,7 @@ export const SEPARABLE_FLOAT: Partial<Record<BlendMode, Sep>> = {
   'linear-dodge': (b, s) => clamp01(b + s),
 };
 
-/** At 32 bits (1.57.1) values are linear light and may pass 1: the modes Photoshop offers there, unclamped. Darker and
+/** At 32 bits (1.57.1) values are linear light and may pass 1: the modes usually offered there, unclamped. Darker and
  *  Lighter Color and Dissolve also work; the rest wait and are named. */
 const LINEAR_FLOAT: Partial<Record<BlendMode, Sep>> = {
   normal: (_b, s) => s,

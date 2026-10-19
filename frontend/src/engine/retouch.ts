@@ -1,4 +1,5 @@
 import { clamp, type Pt, type Rect } from './types';
+import { gaussianBlur, gaussianMargin } from './filters';
 
 /** Retouching for formvis, written from published methods. Spot Healing picks a source patch whose surrounding ring
  *  best matches the spot's own ring (least squared difference), then heals it as in Poisson image editing (Perez,
@@ -364,7 +365,7 @@ export function spotHeal(rgba: Uint8ClampedArray, coverage: Uint8Array, W: numbe
   return true;
 }
 
-/** Content-Aware Fill's adaptation settings (Photoshop's workspace): how far a candidate patch may be recoloured toward
+/** Content-Aware Fill's adaptation settings: how far a candidate patch may be recoloured toward
  *  the known pixels around the target (colour: 0 None, 1 Default, 2 High, 3 Very High), turned (rotation: 0 None to 4
  *  Full), scaled (0.8 to 1.25) or flipped left to right before it is compared and copied. */
 export interface FillOptions { color: number; rotation: number; scale: boolean; mirror: boolean }
@@ -814,4 +815,21 @@ export class WarpStroke {
       }
     }
   }
+}
+
+/** Frequency separation of `img`: `low` is the picture blurred by `radius` (colour and tone), `high` holds the detail
+ *  as (picture - low) / 2 + 128, so that `high` over `low` in Linear Light reproduces the picture (to within a level). */
+export function frequencySplit(img: ImageData, radius: number): { low: ImageData; high: ImageData } {
+  const { width: w, height: ht } = img, m = gaussianMargin(Math.max(0.1, radius)), pw = w + 2 * m, padded = new ImageData(pw, ht + 2 * m);
+  for (let y = 0; y < padded.height; y++) {
+    const sy = clamp(y - m, 0, ht - 1);
+    for (let x = 0; x < pw; x++) { const si = (sy * w + clamp(x - m, 0, w - 1)) * 4, di = (y * pw + x) * 4; for (let c = 0; c < 4; c++) padded.data[di + c] = img.data[si + c]; }
+  }
+  const blurred = gaussianBlur(padded, Math.max(0.1, radius)), low = new ImageData(w, ht), high = new ImageData(w, ht), s = img.data, l = low.data, h = high.data;
+  for (let y = 0; y < ht; y++) l.set(blurred.data.subarray(((y + m) * pw + m) * 4, ((y + m) * pw + m + w) * 4), y * w * 4);
+  for (let i = 0; i < s.length; i += 4) {
+    for (let c = 0; c < 3; c++) h[i + c] = clamp(Math.round((s[i + c] - l[i + c]) / 2 + 128), 0, 255);
+    h[i + 3] = s[i + 3];
+  }
+  return { low, high };
 }

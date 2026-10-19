@@ -24,7 +24,7 @@ const KINDS = [
 ] as const;
 type KindId = (typeof KINDS)[number]['id'];
 type LayersTab = 'layers' | 'channels' | 'paths';
-/** The Lock row's toggles (Photoshop's order). */
+/** The Lock row's toggles. */
 const LOCKS = [
   { id: 'transparency', title: 'transparent pixels', icon: 'canvasGrid' },
   { id: 'pixels', title: 'image pixels', icon: 'paintbrush' },
@@ -38,7 +38,7 @@ const sizeOf = (l: Layer): string => {
 };
 const kindOf = (l: Layer): KindId => (l.adjustment || l.fillContent ? 'adjustment' : l.text ? 'type' : l.vector ? 'shape' : l.smart ? 'smart' : 'pixel');
 
-/** The blend modes in Photoshop's groups (the target's list, s21), as <optgroup>s; any mode not named falls in Other. */
+/** The blend modes in their groups (s21), as <optgroup>s; any mode not named falls in Other. */
 const BLEND_GROUPS: ReadonlyArray<[string, readonly string[]]> = [
   ['Basic', ['normal', 'dissolve']],
   ['Darken', ['darken', 'multiply', 'color-burn', 'linear-burn', 'darker-color']],
@@ -135,7 +135,7 @@ export class LayersPanel {
       e.preventDefault();
       commitFill((parseFloat(this.fill.value) || 0) + (e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 10 : 1));
     });
-    // Photoshop's Opacity and Fill: a chevron beside the field opens one shared slider popover under it, and the label
+    // Opacity and Fill: a chevron beside the field opens one shared slider popover under it, and the label
     // scrubs (press and drag sideways, Shift ten times faster). Both drive the engine's live edit (begin, live, end), begun
     // on the first change and ended on release, so a whole drag is one undo step. Nodes are updated in place, never rebuilt.
     type Live = { field: HTMLInputElement; btn: HTMLButtonElement; pct: () => number; begin: () => void; live: (v: number) => void; end: () => void; editing: boolean };
@@ -230,7 +230,7 @@ export class LayersPanel {
       });
     }
     // The panel menu, by the tab shown: the Layers panel's commands, or the Paths panel's.
-    this.group.setMenu(() => this.group.current === 'paths' ? ['new-path', 'delete-path', '-', 'fill-path-dialog', 'stroke-path-dialog'] : this.group.current === 'channels' ? [] : ['new-layer', 'duplicate-dialog', 'delete-layer', '-', 'new-folder', 'group', '-', 'merge', '-', 'layer-style', 'convert-smart', 'rasterize']);
+    this.group.setMenu(() => this.group.current === 'paths' ? ['new-path', 'delete-path', '-', 'fill-path-dialog', 'stroke-path-dialog', '-', 'clipping-path'] : this.group.current === 'channels' ? [] : ['new-layer', 'duplicate-dialog', 'delete-layer', '-', 'new-folder', 'group', '-', 'merge', '-', 'layer-style', 'convert-smart', 'rasterize']);
     for (const k of ['doc', 'active', 'projects', 'history'] as const) engine.on(k, () => this.queue());
     this.bindRows();
     this.render();
@@ -421,7 +421,7 @@ export class LayersPanel {
     setValue(this.kind, this.kinds.size === 1 ? [...this.kinds][0] : 'all');
   }
 
-  /** The Paths panel's section becomes the group's Paths tab (Layers | Channels | Paths, as Photoshop's). */
+  /** The Paths panel's section becomes the group's Paths tab (Layers | Channels | Paths). */
   adoptPaths(section: HTMLElement): void {
     this.paths = section;
     const toggle = section.querySelector<HTMLButtonElement>('.cv-paths-toggle'), body = section.querySelector<HTMLElement>('.cv-paths-body');

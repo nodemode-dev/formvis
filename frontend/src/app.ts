@@ -13,6 +13,8 @@ import { DEFAULT_LAYER_EXPORT, dataSetFiles, layerCompFiles, layerFiles, type La
 import { GuideDialog } from './ui/panels/guide-dialog';
 import { ArtboardDialog, NewArtboardDialog } from './ui/panels/artboard-dialog';
 import { CornersDialog } from './ui/panels/corners-dialog';
+import { ClippingPathDialog } from './ui/panels/clipping-path-dialog';
+import { CreateShapeDialog } from './ui/panels/create-shape-dialog';
 import { StrokePathDialog } from './ui/panels/stroke-path-dialog';
 import { DuplicateLayerDialog, FindLayersDialog, LockLayersDialog, NewGroupDialog, NewLayerDialog } from './ui/panels/layer-dialogs';
 import { MattingDialog } from './ui/panels/matting-dialog';
@@ -71,11 +73,11 @@ import { assetFiles } from './io/image-assets';
 import { isPsdFile, readPsdFile, readPsdFlat, writePsdFile } from './io/psd';
 import { isKraFile, readKra } from './io/kra';
 import { isPdnFile, readPdn } from './io/pdn';
-import { isAffinityFile, readAffinity } from './io/affinity';
+import { isAfFile, readAf } from './io/af-preview';
 import { readLayeredTiff, writeLayeredTiff } from './io/layered-tiff';
 import { isOraFile, readOraFile, writeOra } from './io/ora';
 import { withAiLabel } from './io/ai-label';
-import { pathsToIllustrator } from './io/ai-paths';
+import { pathsToAi } from './io/ai-paths';
 import { svgToShapes } from './io/svg-layers';
 import { withXmp } from './io/xmp';
 import { FileInfoDialog } from './ui/panels/file-info-dialog';
@@ -99,7 +101,7 @@ import { registerBuiltinTools } from './extensions/tools';
 import { HostLink } from './host';
 import { api, onServiceChange, serviceDown, type Capabilities, type CmykPsd, type OpenedProject } from './io/api';
 import { PROJECT_FILTER, baseName, checkForUpdate, chooseOpenPaths, chooseSavePath, confirmExit, folderOf, hasPanels, installUpdate, isDiskPath, listenShell } from './io/disk';
-import { findToRemove, localInpaint, modelReady, skyMask, skyReady } from './io/local-gen';
+import { findToRemove, installModel, localInpaint, modelReady, skyMask, skyReady } from './io/local-gen';
 import { FocusAreaDialog } from './ui/panels/focus-area-dialog';
 import { MergeDialog } from './ui/panels/merge-dialog';
 import { ScriptEventsDialog } from './ui/panels/script-events-dialog';
@@ -118,8 +120,8 @@ import { VanishingPointDialog } from './ui/panels/vanishing-dialog';
 import { VideoImportDialog } from './ui/panels/video-dialog';
 import { VideoTimelinePanel } from './ui/video-timeline';
 import { RenderVideoDialog, type RenderChoice } from './ui/panels/render-video-dialog';
-import { LargePictureError, IMAGE_ACCEPT, PROJECT_ACCEPT, RAW_FILE, decodeHdr, decodeImage, isImageFile, isProjectFile } from './io/images';
-import { loadSystemFonts } from './ui/fonts';
+import { LargePictureError, IMAGE_ACCEPT, PROJECT_ACCEPT, RAW_FILE, decodeFrames, decodeHdr, decodeImage, isImageFile, isProjectFile } from './io/images';
+import { addFontFace, familyOfFile, loadSystemFonts } from './ui/fonts';
 import { deserialize, giantTiles, serialize } from './io/project-io';
 import { AboutDialog, BenchmarkDialog, NewCanvasDialog, OpenDialog, SettingsDialog, ShortcutsDialog } from './ui/app-dialogs';
 import { CHECKER_CELL, FONT_PREVIEWS, applyPrefs, checkerPair, loadPrefs, savePrefs, updatePrefs, type Prefs } from './ui/prefs';
@@ -193,7 +195,6 @@ import { AdjustPanel } from './ui/panels/adjust-panel';
 import { FILTER_LABELS, FilterPanel, type FilterKind, runFilter, defaultFilterSettings, type FilterPanelSettings, filterMargin } from './ui/panels/filter-panel';
 import { LIBRARY, isLibKind, libDefaults, libHasDialog, libInGroup, type LibGroup } from './engine/filter-library';
 import { NeuralFiltersDialog } from './ui/panels/neural-dialog';
-import { ContentAwareScaleDialog } from './ui/panels/content-aware-scale';
 import { WideAngleDialog } from './ui/panels/wide-angle-dialog';
 import { AmountDialog, CanvasSizeDialog, FitImageDialog, ImageSizeDialog } from './ui/panels/size-dialogs';
 import { ContactSheetDialog } from './ui/panels/contact-sheet-dialog';
@@ -324,7 +325,7 @@ export function startApp(): void {
   const pickMenu = new PopupMenu(commands, null, true);
   toolHost.run = (id) => { commands.run(id); };   // a tool's bar runs commands (the path actions)
   PanelGroup.menuHost = (anchor, ids) => { panelMenu.setItems(ids); const r = anchor.getBoundingClientRect(); panelMenu.openAt(r.right, r.bottom + 4); };
-  // Screen modes and panels, as Photoshop's (the owner's walkthrough): Standard, Full Screen with Menu Bar (no tabs or
+  // Screen modes and panels (the owner's walkthrough): Standard, Full Screen with Menu Bar (no tabs or
   // status bar), Full Screen (the canvas alone, on black; Esc leaves it); F cycles them; Tab shows or hides the panels.
   // The rail: Quick Mask (Q) below the colours, and its one or two columns (the » at its top), remembered.
   // The compact layout (1.58.7, L12): under 720 pixels the rail, the panels and the side column are sheets over the
@@ -464,7 +465,7 @@ export function startApp(): void {
     store(CUSTOM, JSON.stringify(keep));
   };
   PanelGroup.onMoved = () => { dropEmptyGroups(); dock.refresh(); props.relayout(); };
-  // A tab released over a column's gap becomes a new group there, as Photoshop's; the marker says so while dragging.
+  // A tab released over a column's gap becomes a new group there; the marker says so while dragging.
   PanelGroup.onGapHint = (x, y) => { if (x === null) dock.hideGap(); else dock.showGap(x, y, 'New group'); };
   PanelGroup.onDetach = (tid, from, x, y) => {
     const at = dock.gapAt(x, y);
@@ -508,19 +509,21 @@ export function startApp(): void {
     } catch { /* storage unavailable: Home lists the exports folder only */ }
   }
 
-  async function deliver(blob: Blob, name: string): Promise<void> {
+  /** Hands a file over (save panel in the desktop app, a download in the browser); false when nothing was written. */
+  async function deliver(blob: Blob, name: string): Promise<void> { await deliverFile(blob, name); }
+
+  async function deliverFile(blob: Blob, name: string): Promise<boolean> {
     if (caps?.desktop && hasPanels()) {
       // The desktop app asks where an export goes (1.87.0, CLOSE_GAPS P01); Cancel writes nothing.
       const ext = (/\.([A-Za-z0-9]+)$/.exec(name)?.[1] ?? '').toLowerCase();
       let path: string | null = null, panel = true;
       try { path = await chooseSavePath('Export', name, ext ? [{ name: ext.toUpperCase(), extensions: [ext] }] : []); } catch { panel = false; }
       if (panel) {
-        if (!path) return;
-        try { const written = await api.writePath(path, blob); noteOutput(written); toast(`Saved ${written}`); fireEvent('export'); } catch (err) { toast(message(err), 'error'); }
-        return;
+        if (!path) return false;
+        try { const written = await api.writePath(path, blob); noteOutput(written); toast(`Saved ${written}`); fireEvent('export'); return true; } catch (err) { toast(message(err), 'error'); return false; }
       }
     }
-    if (caps?.desktop) { const written = await api.exportFile(blob, name); noteOutput(written); toast(`Saved to ${written}`); fireEvent('export'); return; }
+    if (caps?.desktop) { const written = await api.exportFile(blob, name); noteOutput(written); toast(`Saved to ${written}`); fireEvent('export'); return true; }
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -531,6 +534,7 @@ export function startApp(): void {
     a.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 60000);
     fireEvent('export');
+    return true;
   }
 
   /** A project from the engine read into a document, its giant layers through the engine's bands (1.62.8), for Open
@@ -634,7 +638,7 @@ export function startApp(): void {
   brand.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); home.show(); } });
 
   // Graphics processor (Phase 18.1): a start that never finished last time turns Use Graphics Processor off, as
-  // Photoshop does after a driver crash; then the GPU is probed and the renderer chosen and shown.
+  // after a driver crash; then the GPU is probed and the renderer chosen and shown.
   let gpuProbe: GpuProbe = { webgpu: null, webgl2: null }, gpuProbed = false;
   // The screen display for the chosen API, on that API's own canvas (a canvas takes one kind of context); a failed
   // start or a lost device is remembered per API, so losing WebGPU does not rule out WebGL2.
@@ -698,12 +702,12 @@ export function startApp(): void {
             const { doc, notes } = await readOraFile(f);
             engine.addProject(doc, f.name.replace(/\.ora$/i, ''), null);
             if (notes.length) toast(notes.join(' '), 'info');
-          } else if (isKraFile(f)) {   // Krita (DEV_PLAN 34.5 part a)
+          } else if (isKraFile(f)) {   // .kra (DEV_PLAN 34.5 part a)
             const { doc, notes, activeId } = await readKra(f);
             engine.addProject(doc, f.name.replace(/\.kra$/i, ''), activeId);
             if (notes.length) toast(notes.join(' '), 'info');
-          } else if (isAffinityFile(f)) {   // Affinity preview (DEV_PLAN 34.6)
-            const { doc, notes, activeId } = await readAffinity(f);
+          } else if (isAfFile(f)) {   // .afphoto preview (DEV_PLAN 34.6)
+            const { doc, notes, activeId } = await readAf(f);
             engine.addProject(doc, f.name.replace(/\.(af|afphoto|afdesign|afpub)$/i, ''), activeId);
             if (notes.length) toast(notes.join(' '), 'info');
           } else if (isPdnFile(f)) {   // Paint.NET (DEV_PLAN 34.5 part b)
@@ -720,7 +724,7 @@ export function startApp(): void {
             if (paths) engine.setPathsOf(opened, paths);
             if (notes.length) toast(notes.join(' '), 'info');
           } else {
-            const layered = /\.tiff?$/i.test(f.name) ? await readLayeredTiff(f) : null;   // a TIFF with Photoshop layers (34.2)
+            const layered = /\.tiff?$/i.test(f.name) ? await readLayeredTiff(f) : null;   // a TIFF with PSD layers (34.2)
             if (layered) {
               const opened = engine.addProject(layered.doc, f.name.replace(/\.tiff?$/i, ''), layered.activeId);
               if (layered.paths) engine.setPathsOf(opened, layered.paths);
@@ -747,7 +751,7 @@ export function startApp(): void {
     });
   }
 
-  /** The document as a TIFF carrying its Photoshop layers (DEV_PLAN 34.2). */
+  /** The document as a TIFF carrying its PSD layers (DEV_PLAN 34.2). */
   async function exportLayeredTiff(): Promise<void> {
     engine.settle();
     const p = engine.current;
@@ -795,10 +799,25 @@ export function startApp(): void {
           }
           // A Lab TIFF opened as a new document is a Lab document (1.58.1), tried before the page count (which refuses it).
           if (/\.tiff?$/i.test(f.name) && !engine.current && decoded.length === 0) { const lab = await api.decodeLab(f, f.name).catch(() => null); if (lab) { openLab(f.name.replace(/\.[^.]+$/, ''), lab); continue; } }
+          // An animated GIF or WebP opens as a layer per frame with a frame animation; one frame opens as a picture.
+          if (/\.(gif|webp)$/i.test(f.name) && !engine.current && decoded.length === 0) {
+            try {
+              const anim = await decodeFrames(f, f.name);
+              if (anim) {
+                engine.openFrameAnimation(stripExt(f.name), anim.width, anim.height, anim.plays, anim.frames);
+                toast(`${f.name} opened as ${anim.frames.length} frames. File > Export GIF saves the animation.`, 'info');
+                continue;
+              }
+            } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); continue; }
+          }
           // A TIFF with several pages asks how to open them (1.53.4).
           if (/\.(tiff?|ico)$/i.test(f.name) && !pagesAsked) { try { const pages = await api.imagePages(f, f.name); if (pages.length > 1) { pagesAsked = true; tiffPages.show(f, pages); continue; } } catch { /* decoded as before */ } }
           if (/\.(jpe?g|tiff?)$/i.test(f.name) && !engine.current && decoded.length === 0) {
             try { const c = await api.decodeCmyk(f, f.name); if (c) { await openCmyk(f.name.replace(/\.[^.]+$/, ''), c); continue; } } catch (err) { if (serviceDown()) { /* the engine service is not running: opened as RGB below */ } else { toast(message(err), 'error'); continue; } }
+          }
+          // An 8-bit grayscale picture opens as a Grayscale document under the Gray policy (Color Settings).
+          if (/\.(png|jpe?g|tiff?|webp)$/i.test(f.name) && !engine.current && decoded.length === 0) {
+            try { const gray = await openGray(f); if (gray) { decoded.push(gray); continue; } } catch (err) { if (!serviceDown()) { toast(`${f.name}: ${message(err)}`, 'error'); continue; } }
           }
           // An OpenEXR or Radiance HDR placed into an open document is a layer at the document's depth: the engine decodes it
           // as floats, the layer keeps them in a 16 or 32 bit document and is clipped to 8 bits otherwise.
@@ -832,7 +851,7 @@ export function startApp(): void {
             }
             if (icc && !isSrgbName(pname)) {
               const pref = loadPrefs().profileMismatch, how = pref === 'ask' ? await colourDialogs.mismatch.ask(f.name, pname) : pref;
-              // Kept only when the image opens as its own document: placed into an open document, it is converted (as Photoshop places).
+              // Kept only when the image opens as its own document: placed into an open document, it is converted.
               if ((how === 'keep' || how === 'discard') && !engine.current && decoded.length === 0) {
                 try { const raw = await decodeImage(f, f.name, true); if (how === 'keep') raw.profile = { name: pname, icc: toBase64(icc) }; decoded.push(raw); continue; } catch { /* decoded as before */ }
               } else toast(`${f.name} was converted from its embedded profile, ${pname}, to sRGB, the working space.`);
@@ -850,7 +869,7 @@ export function startApp(): void {
           const custom = !!rawPick && (rawPick.wb.wb !== 'as_shot' || !!rawPick.wb.temperature || !!rawPick.wb.tint);
           if (file && layer) rawLayers.set(layer.id, { file, profile: custom ? 'none' : 'auto', ...(rawPick ? { wb: rawPick.wb } : {}) });
         }
-        // A single camera RAW opens into Develop, as Photoshop opens RAW files into Camera Raw.
+        // A single camera RAW opens into Develop first.
         if (decoded.length === 1 && RAW_FILE.test(decoded[0].name)) commands.run('filter-develop');
       });
     }
@@ -860,7 +879,7 @@ export function startApp(): void {
   async function save(saveAs: boolean): Promise<boolean> {
     const ok = await saveCore(saveAs);
     if (ok) fireEvent('save');
-    if (ok && !saveAs && engine.current?.doc.assetsOnSave) await generateAssets(true).catch(() => { /* the save itself succeeded */ });
+    if (ok && !saveAs && engine.current?.doc.assetsOnSave) await generateAssets(true).catch((err) => { toast(`The project was saved, but its image assets were not written. ${message(err)}`, 'error'); });
     return ok;
   }
 
@@ -870,7 +889,7 @@ export function startApp(): void {
     if (!p) return;
     const files = await assetFiles(engine, !!caps);
     if (!files.length) { if (!quiet) toast('No layer names hold an asset name such as hero.png.', 'info'); return; }
-    await deliver(await zipFiles(files), `${stripExt(p.name)}-assets.zip`);
+    if (!await deliverFile(await zipFiles(files), `${stripExt(p.name)}-assets.zip`)) return;
     toast(`Generated ${files.length} image asset${files.length === 1 ? '' : 's'}.`, 'info');
   }
 
@@ -974,7 +993,7 @@ export function startApp(): void {
     });
   }
 
-  /** File > Revert (F12 in the desktop app; 1.65.8, as Photoshop's): the library's copy of the document read back into
+  /** File > Revert (F12 in the desktop app; 1.65.8): the library's copy of the document read back into
    *  its tab as one step that Undo takes back (engine.revertTo). */
   async function revert(): Promise<void> {
     const p = engine.current, name = p?.libraryName, file = p?.filePath;
@@ -1029,7 +1048,7 @@ export function startApp(): void {
   }
 
   /** File > Export As: the composite scaled by the settings, then encoded (PNG, JPEG and WebP by the browser, JPEG
-   *  flattened on white; AVIF, TIFF and PDF by the engine), named as Photoshop names scaled exports. */
+   *  flattened on white; AVIF, TIFF and PDF by the engine), named with the usual suffix for scaled exports. */
   async function exportAs(all: ExportSettings): Promise<void> {
     // Several sizes (36.29): one file for each, named with the entry's suffix.
     for (const one of sizedSettings(all)) await exportAsOne(one.s, one.suffix);
@@ -1194,6 +1213,52 @@ export function startApp(): void {
     if (!c.askMissing) return working;
     return (await colourSettingsDialogs.missing.ask(file, working?.name ?? 'sRGB IEC61966-2.1')) === 'assume' ? working : null;
   }
+  /** Color Settings' working CMYK or gray as a document profile: the shipped press profile or the listed one. */
+  async function workingSpace(kind: 'cmyk' | 'gray'): Promise<DocProfile> {
+    const ref = loadPrefs().colour[kind], id = ref.startsWith('id:') ? ref.slice(3) : kind === 'gray' ? 'builtin:gray-g22' : null;
+    const hit = id ? (await api.colourProfiles().catch(() => null))?.profiles.find((x) => x.id === id) : null;
+    if (id && (hit || kind === 'gray')) return cmykProfileOf(id, hit?.name ?? 'Gray Gamma 2.2');
+    const d = await api.defaultCmykProfile();
+    if (!d) throw new Error('No CMYK profile is available: add one in View > Proof Setup > Load Profile.');
+    return cmykProfileOf(d.id, d.name);
+  }
+  /** A CMYK or gray picture at open (Color Settings): the profile the document carries and whether its numbers convert
+   *  from the embedded profile. Off ignores the embedded profile; Preserve keeps it; Convert goes to the working space;
+   *  Ask When Opening asks on a mismatch, and for a gray picture with no profile. */
+  async function openPolicy(kind: 'cmyk' | 'gray', file: string, embedded: DocProfile | null, working: DocProfile): Promise<{ profile: DocProfile | null; convert: boolean }> {
+    const c = loadPrefs().colour, policy = kind === 'cmyk' ? c.cmykPolicy : c.grayPolicy, unmanaged = kind === 'cmyk' ? working : null;
+    if (policy === 'off') return { profile: unmanaged, convert: false };
+    if (!embedded) {
+      if (kind === 'gray' && c.askMissing) return { profile: (await colourSettingsDialogs.missing.ask(file, working.name)) === 'assume' ? working : null, convert: false };
+      return { profile: working, convert: false };
+    }
+    if (embedded.icc === working.icc || embedded.name === working.name) return { profile: embedded, convert: false };
+    const how = c.askMismatch ? await colourDialogs.mismatch.ask(file, embedded.name, working.name) : policy === 'convert' ? 'convert' : 'keep';
+    return how === 'keep' ? { profile: embedded, convert: false } : how === 'convert' ? { profile: working, convert: true } : { profile: unmanaged, convert: false };
+  }
+  /** CMYK ink (four bytes a pixel, then alpha) converted between press profiles by LittleCMS at the Color Settings intent. */
+  async function convertInk5(ink: Uint8Array, w: number, h: number, from: DocProfile, to: DocProfile): Promise<Uint8Array> {
+    const n = w * h, four = new Uint8Array(n * 4);
+    for (let i = 0; i < n; i++) four.set(ink.subarray(i * 5, i * 5 + 4), i * 4);
+    const out = await api.convertInk(four, w, h, from.icc, to.icc, loadPrefs().colour.intent), res = new Uint8Array(ink);
+    for (let i = 0; i < n; i++) res.set(out.subarray(i * 4, i * 4 + 4), i * 5);
+    return res;
+  }
+  /** An 8-bit gray picture opened as a Grayscale document under the Gray policy (Color Settings); null when it is not 8-bit gray. */
+  async function openGray(f: File): Promise<ImportedImage | null> {
+    const g = await api.decodeGray(f, f.name);
+    if (!g) return null;
+    const working = await workingSpace('gray'), embedded = g.icc ? { name: profileName(g.icc) || 'Embedded gray profile', icc: toBase64(g.icc) } : null, o = await openPolicy('gray', f.name, embedded, working), c = loadPrefs().colour;
+    const n = g.width * g.height, img = new ImageData(g.width, g.height);
+    const fl = new Float32Array(n * 4);
+    for (let i = 0; i < n; i++) { const x = g.px[i * 2] / 255; fl[i * 4] = x; fl[i * 4 + 1] = x; fl[i * 4 + 2] = x; fl[i * 4 + 3] = g.px[i * 2 + 1] / 255; }
+    const v: Float32Array = o.convert && embedded && o.profile ? (await api.convertDeep(fl, g.width, g.height, 'rgb', embedded.icc, o.profile.icc, { intent: c.intent, bpc: c.bpc, dither: false, bits: 8 })).data : fl;
+    for (let i = 0; i < n * 4; i++) img.data[i] = Math.round(v[i] * 255);
+    const r = new Raster(g.width, g.height);
+    r.ctx.putImageData(img, 0, 0); r.touch();
+    const resolution = (await headerResolution(f)) ?? undefined;
+    return { source: r.canvas as CanvasImageSource, width: g.width, height: g.height, name: f.name, mode: 'grayscale', ...(o.profile ? { profile: o.profile } : {}), ...(resolution ? { resolution } : {}) };
+  }
   async function toCmyk(profile: DocProfile, intent: string, bpc: boolean): Promise<void> {
     const p = engine.current;
     if (!p || p.doc.mode === 'cmyk') return;
@@ -1228,10 +1293,11 @@ export function startApp(): void {
     });
   }
   async function openCmyk(name: string, file: { width: number; height: number; ink: Uint8Array; icc: Uint8Array | null }): Promise<void> {
-    let profile: DocProfile | null = file.icc ? { name: profileName(file.icc) || 'Embedded CMYK profile', icc: toBase64(file.icc) } : null;
-    if (!profile) { const d = await api.defaultCmykProfile(); if (!d) throw new Error('No CMYK profile is available: add one in View > Proof Setup > Load Profile.'); profile = await cmykProfileOf(d.id, d.name); }
+    const embedded: DocProfile | null = file.icc ? { name: profileName(file.icc) || 'Embedded CMYK profile', icc: toBase64(file.icc) } : null, working = await workingSpace('cmyk');
+    const o = await openPolicy('cmyk', name, embedded, working), profile = o.profile ?? working;
+    const ink = o.convert && embedded ? await convertInk5(file.ink, file.width, file.height, embedded, profile) : file.ink;
     const t = await cmykLutFor(profile);
-    engine.openChannels(name, channelsFromU8(file.ink, file.width, file.height), profile, t.out, t.in);
+    engine.openChannels(name, channelsFromU8(ink, file.width, file.height), profile, t.out, t.in);
     if (!file.icc) toast(`${name} has no embedded profile; ${profile.name} is assumed.`);
   }
   /** A CMYK PSD opened with its layers' ink (1.56.1, DEV_PLAN 22.8). */
@@ -1241,10 +1307,11 @@ export function startApp(): void {
   }
 
   async function openCmykPsd(name: string, d: CmykPsd): Promise<void> {
-    let profile: DocProfile | null = d.icc ? { name: profileName(d.icc) || 'Embedded CMYK profile', icc: toBase64(d.icc) } : null;
-    if (!profile) { const def = await api.defaultCmykProfile(); if (!def) throw new Error('No CMYK profile is available: add one in View > Proof Setup > Load Profile.'); profile = await cmykProfileOf(def.id, def.name); }
+    const embedded: DocProfile | null = d.icc ? { name: profileName(d.icc) || 'Embedded CMYK profile', icc: toBase64(d.icc) } : null, working = await workingSpace('cmyk');
+    const o = await openPolicy('cmyk', name, embedded, working), profile = o.profile ?? working;
+    const inks = await Promise.all(d.layers.map((l) => (o.convert && embedded ? convertInk5(l.ink, l.width, l.height, embedded, profile) : Promise.resolve(l.ink))));
     const t = await cmykLutFor(profile);
-    engine.openChannelLayers(name, d.width, d.height, d.layers.map((l) => ({ name: l.name, x: l.left, y: l.top, channels: channelsFromU8(l.ink, l.width, l.height), opacity: l.opacity / 255, visible: l.visible, blend: l.blend })), profile, t.out, t.in);
+    engine.openChannelLayers(name, d.width, d.height, d.layers.map((l, i) => ({ name: l.name, x: l.left, y: l.top, channels: channelsFromU8(inks[i], l.width, l.height), opacity: l.opacity / 255, visible: l.visible, blend: l.blend })), profile, t.out, t.in);
     if (!d.icc) toast(`${name} has no embedded profile; ${profile.name} is assumed.`);
   }
 
@@ -1280,7 +1347,7 @@ export function startApp(): void {
   }
 
   /** Export TIFF from a Lab document (1.56.6, DEV_PLAN 22.9): the Lab composite laid on white (a Lab TIFF holds no
-   *  transparency here), 8 bits a channel as Photoshop's Lab TIFF, written by the engine's Pillow. */
+   *  transparency here), 8 bits a channel as the usual Lab TIFF, written by the engine's Pillow. */
   async function exportLabTiff(): Promise<void> {
     const p = engine.current;
     if (!p || p.doc.mode !== 'lab') return;
@@ -1755,7 +1822,7 @@ export function startApp(): void {
     toast(`Defined the custom shape "${name}". Choose it in the Shape tool's Custom shape list.`);
   }
 
-  /** Edit > Import Patterns: Photoshop .pat files (several at once), each pattern joining the library. */
+  /** Edit > Import Patterns: .pat files (several at once), each pattern joining the library. */
   function importPatterns(): void {
     const input = document.createElement('input');
     input.type = 'file'; input.accept = '.pat'; input.multiple = true;
@@ -1778,7 +1845,7 @@ export function startApp(): void {
     input.click();
   }
 
-  /** Edit > Export Patterns: every pattern you defined or imported, in one Photoshop .pat file. */
+  /** Edit > Export Patterns: every pattern you defined or imported, in one .pat file. */
   async function exportPatterns(): Promise<void> {
     const mine = allPatterns().filter((q) => !q.builtin);
     if (!mine.length) { toast('There are no patterns of your own to export. Define one with Edit > Define Pattern first.', 'info'); return; }
@@ -1916,8 +1983,8 @@ export function startApp(): void {
     void exportLayerFiles({ artboards, comps, prefix: String(a.prefix ?? ''), format: ['png', 'jpg', 'tiff', 'webp', 'psd'].includes(f) ? f : d.format, quality: Number(a.quality ?? d.quality), visibleOnly: a.visible_only === undefined ? d.visibleOnly : a.visible_only === true, trim: a.trim === true, icc: a.icc === undefined ? d.icc : a.icc === true, folder: String(a.folder ?? '') });
   }
 
-  /** File > Export > OpenRaster (1.51.7): layers, groups, positions, opacity, visibility and blend modes, for Krita,
-   *  GIMP and MyPaint. */
+  /** File > Export > OpenRaster (1.51.7): layers, groups, positions, opacity, visibility and blend modes, for any
+   *  painting app that reads the open format. */
   /** File > Export > Assemble Tiles (1.52.7): the open tiles of a large picture, each as it looks now, put back together
    *  by the engine into one full-size PNG, strip by strip, downloaded straight from it (never held in this page). */
   async function assembleTiles(): Promise<void> {
@@ -2027,7 +2094,14 @@ export function startApp(): void {
   async function selectSky(): Promise<void> {
     const p = engine.current, flat = engine.flattened();
     if (!p || !flat) return;
-    if (!(await skyReady())) { toast('Select > Sky needs the sky model (176 MB, MIT): download it in Preferences > Plugins > Local models.', 'error'); return; }
+    if (!(await skyReady())) {
+      if (!(await confirmAction('Download the sky model?', 'Select > Sky needs the sky model (176 MB, MIT). It downloads once and runs on this computer. It can also be removed or reinstalled in Preferences > Plugins > Local models.', 'Download'))) return;
+      toast('Downloading the sky model...');
+      let failure = '';
+      try { if (!(await installModel('skyseg', (text) => { failure = text; }))) { toast(`${failure || 'The sky model did not download.'} Try again from Preferences > Plugins > Local models.`, 'error'); dialogs.settings.show('Plugins'); return; } }
+      catch { toast('The sky model could not start downloading. Is the engine running?', 'error'); return; }
+      if (engine.current !== p) return;
+    }
     await engine.task(async () => {
       try {
         const W = p.doc.width, H = p.doc.height, bitmap = await createImageBitmap(await skyMask(await toBlob(flat)));
@@ -2121,7 +2195,7 @@ export function startApp(): void {
     return !engine.projects.includes(p);
   }
 
-  /** File > Close All and Close Others (1.65.8, as Photoshop's): every document, or every one but `keep`, closed in
+  /** File > Close All and Close Others (1.65.8): every document, or every one but `keep`, closed in
    *  turn as Close Tab closes it; one with unsaved changes is brought forward and asked about, with Apply to All when
    *  more are waiting, and Cancel stops there. */
   async function closeMany(keep: string | null, onlyUnsaved = false): Promise<void> {
@@ -2294,7 +2368,6 @@ export function startApp(): void {
     colorTable: new ColorTableDialog(engine),
     applyImage: new ApplyImageDialog(engine),
     neural: new NeuralFiltersDialog(engine),
-    contentAwareScale: new ContentAwareScaleDialog(engine),
     wideAngle: new WideAngleDialog(engine),
     canvasSize: new CanvasSizeDialog(engine),
     imageSize: new ImageSizeDialog(engine),
@@ -2332,6 +2405,8 @@ export function startApp(): void {
     replaceColor: new ReplaceColorDialog(engine),
     calculations: new CalculationsDialog(engine),
     corners: new CornersDialog(engine),
+    clippingPath: new ClippingPathDialog(engine),
+    createShape: new CreateShapeDialog(engine),
     strokePath: new StrokePathDialog(engine),
     newLayer: new NewLayerDialog(engine),
     duplicateLayer: new DuplicateLayerDialog(engine),
@@ -2348,7 +2423,7 @@ export function startApp(): void {
   const abrInput = el<HTMLInputElement>('<input type="file" accept=".abr" data-role="import-brushes" hidden>');
   document.body.appendChild(abrInput);
   dialogs.settings.workspaceLock = { get: () => dock.locked, set: (on) => { dock.locked = on; } };   // Preferences > Workspace
-  // Photoshop's question before painting a type, shape or smart-object layer (1.50.2): rasterize it, or leave it.
+  // The usual question before painting a type, shape or smart-object layer (1.50.2): rasterize it, or leave it.
   engine.askRasterize = (name, kind) => confirmAction(`Rasterize this ${kind}?`, `"${name}" must be rasterized before it can be painted on. Its ${kind === 'type layer' ? 'text' : kind === 'Smart Object' ? 'contents' : 'shape'} will no longer be editable.`, 'Rasterize');
   const noteDialog = new NoteDialog(engine);
   const modeDialog = new ModeDialog(engine);
@@ -2557,7 +2632,7 @@ export function startApp(): void {
     { id: 'layer-based-slice', label: 'New Layer Based Slice', enabled: () => !!engine.current?.activeLayer, run: () => { if (engine.addLayerSlice() && !engine.view.slices) engine.setView({ slices: true }); } },
     { id: 'new-guide', label: 'New Guide...', enabled: has, run: () => dialogs.guide.show() },
     { id: 'export-psd', label: 'Export PSD...', enabled: has, run: () => void exportPsd() },
-    { id: 'export-paths-ai', label: 'Paths to Illustrator...', enabled: () => has() && engine.paths.list.some((p) => !p.shape && !p.mask),
+    { id: 'export-paths-ai', label: 'Paths to AI File...', enabled: () => has() && engine.paths.list.some((p) => !p.shape && !p.mask),
       params: { path: { type: 'string', description: 'Name of one path to write; all paths when left out.' } },
       run: (a) => {
         const p = engine.current;
@@ -2565,14 +2640,14 @@ export function startApp(): void {
         const set = engine.paths, want = a?.path ? String(a.path) : '';
         const one = want ? set.list.find((n) => n.name === want && !n.shape && !n.mask) : undefined;
         if (want && !one) { toast(`No path named "${want}".`, 'info'); return; }
-        const text = pathsToIllustrator(set, p.doc.width, p.doc.height, one ? one.id : 'all');
+        const text = pathsToAi(set, p.doc.width, p.doc.height, one ? one.id : 'all');
         void deliver(new Blob([text], { type: 'application/postscript' }), `${stripExt(p.name)}.ai`);
       } },
     { id: 'assistant', label: 'Assistant', run: () => assistant.toggle() },   // 1.52.2
     { id: 'terminal.toggle', label: 'Terminal', keys: ['Mod+J'], checked: () => termDock.isOpen(), run: () => termDock.toggle() },   // DEV_PLAN 28.5
     { id: 'terminal.new', label: 'New Terminal', run: () => void termDock.newTerminal() },
     { id: 'agent.claude.open', label: 'Claude Code', checked: () => claudePanel.isOpen(), run: () => claudePanel.toggle() },
-    { id: 'help', label: 'formvis Help', keys: ['F1'], run: () => help.show() },   // 1.52.3, as Photoshop's F1
+    { id: 'help', label: 'formvis Help', keys: ['F1'], run: () => help.show() },   // 1.52.3
     { id: 'whats-new', label: 'What\'s New...', run: () => whatsNew.show() },
     { id: 'pref-home-launch', label: 'Show Home Screen at Launch', checked: () => loadPrefs().autoShowHome, run: () => { updatePrefs({ autoShowHome: !loadPrefs().autoShowHome }); home.sync(); } },
     { id: 'pref-home-last-close', label: 'Show Home Screen When the Last Document Closes', checked: () => loadPrefs().homeOnLastClose, run: () => { updatePrefs({ homeOnLastClose: !loadPrefs().homeOnLastClose }); home.sync(); } },
@@ -2806,7 +2881,7 @@ export function startApp(): void {
     { id: 'fill-dialog', label: 'Fill...', keys: ['Shift+F5'], enabled: pixel, run: () => dialogs.fill.show() },
     { id: 'content-fill-workspace', label: 'Content-Aware Fill...', enabled: () => pixel() && selected(), run: () => dialogs.contentFill.show() },
     { id: 'remove-wires', label: 'Remove Wires and Cables', enabled: pixel, run: () => { void engine.task(async () => { await new Promise((r) => requestAnimationFrame(() => window.setTimeout(r, 0))); engine.removeWires(); }); } },
-    { id: 'transform-warp', label: 'Warp', enabled: pixel, run: () => { engine.setTool('move'); engine.beginMeshWarp(); } },
+    { id: 'transform-warp', label: 'Warp', enabled: pixel, run: (a) => { engine.setTool('move'); engine.beginMeshWarp(typeof a?.grid === 'number' ? a.grid : engine.meshWarpGrid); } },
     { id: 'warp-split-h', label: 'Split Warp Horizontally', enabled: () => !!engine.meshWarpEdit, run: () => { engine.splitMeshWarp('h', engine.meshSplitPoint()); } },
     { id: 'warp-split-v', label: 'Split Warp Vertically', enabled: () => !!engine.meshWarpEdit, run: () => { engine.splitMeshWarp('v', engine.meshSplitPoint()); } },
     { id: 'warp-split-cross', label: 'Split Warp Crosswise', enabled: () => !!engine.meshWarpEdit, run: () => { engine.splitMeshWarp('cross', engine.meshSplitPoint()); } },
@@ -2864,7 +2939,6 @@ export function startApp(): void {
     { id: 'select-object', label: 'Object in Selection', enabled: selected, run: () => void selectSubject(true) },
     { id: 'select-and-mask', label: 'Select and Mask...', keys: ['Alt+Mod+R'], enabled: selected, run: () => dialogs.selectMask.show() },
     { id: 'rotate-180', label: '180°', enabled: has, run: () => engine.rotateCanvas(2) },
-    { id: 'content-aware-scale', label: 'Content-Aware Scale...', enabled: pixel, run: () => dialogs.contentAwareScale.show() },
     { id: 'rotate-90-cw', label: '90° Clockwise', enabled: has, run: () => engine.rotateCanvas(1) },
     { id: 'rotate-90-ccw', label: '90° Counter Clockwise', enabled: has, run: () => engine.rotateCanvas(3) },
     { id: 'flip-canvas-h', label: 'Flip Canvas Horizontal', enabled: has, run: () => engine.flipCanvas(true) },
@@ -3033,6 +3107,7 @@ export function startApp(): void {
     ...Array.from({ length: 10 }, (_, i) => ({ id: `pick-layer-${i}`, label: () => engine.current?.layer(picked[i] ?? '')?.name ?? '', enabled: () => i < picked.length, run: () => { const id = picked[i]; if (id) engine.selectLayer(id); } })),
     { id: 'background-from-layer', label: 'Background from Layer', enabled: () => pixel() && !engine.backgroundLayer(), run: () => { engine.backgroundFromLayer(); } },
     { id: 'stamp-visible', label: 'Stamp Visible', keys: ['Alt+Shift+Mod+E'], enabled: () => !!engine.current?.doc.layers.length, run: () => { engine.stampVisible(); } },
+    { id: 'frequency-separation', label: 'Frequency Separation', enabled: () => !!engine.current?.doc.layers.length, run: () => { engine.frequencySeparation(); } },
     { id: 'stamp-down', label: 'Stamp Down', keys: ['Alt+Mod+E'], enabled: () => !!layer(), run: () => { engine.stampDown(); } },
     { id: 'show-only-layer', label: 'Show Only This Layer', enabled: () => !!layer(), run: () => { const l = layer(); if (l) engine.soloLayer(l.id); } },
     { id: 'merge-visible', label: 'Merge Visible', enabled: () => (engine.current?.doc.layers.length ?? 0) > 1, run: () => engine.mergeVisible() },
@@ -3126,11 +3201,12 @@ export function startApp(): void {
     { id: 'pixel-art-preview', label: 'Pixel Art Preview', checked: () => engine.view.pixelArt, run: () => engine.setView({ pixelArt: !engine.view.pixelArt }) },
     { id: 'transform-controls', label: 'Transform Controls', checked: () => engine.showTransformControls, run: () => engine.update({ showTransformControls: !engine.showTransformControls }) },
     { id: 'customize-toolbar', label: 'Toolbar...', run: () => openToolbarDialog(engine) },   // Edit > Toolbar (36.22)
-    { id: 'shortcuts', label: 'Keyboard Shortcuts...', keys: ['Alt+Shift+Mod+K', 'Shift+/'], run: () => dialogs.shortcuts.show() },   // Photoshop's key; Edit and Help menus
+    { id: 'shortcuts', label: 'Keyboard Shortcuts...', keys: ['Alt+Shift+Mod+K', 'Shift+/'], run: () => dialogs.shortcuts.show() },   // Edit and Help menus
     { id: 'search', label: 'Search...', keys: ['Mod+K'], run: () => dialogs.palette.show() },
     { id: 'about', label: 'About formvis', run: () => dialogs.about.show(caps) },
     { id: 'brush-settings', label: 'Brush Settings...', keys: ['F5'], run: () => dialogs.brushSettings.show() },
     { id: 'paragraph-styles', label: 'Paragraph Styles...', run: () => dialogs.paragraphStyles.show() },
+    { id: 'load-default-type-styles', label: 'Load Default Type Styles', enabled: has, run: () => { engine.loadDefaultTypeStyles(); } },
     { id: 'character-styles', label: 'Character Styles...', run: () => dialogs.characterStyles.show() },
     { id: 'glyphs', label: 'Glyphs', run: () => dialogs.glyphs.show() },
     { id: 'tool-presets', label: 'Tool Presets', run: () => dialogs.toolPresets.show() },
@@ -3166,7 +3242,25 @@ export function startApp(): void {
     { id: 'resolve-missing-fonts', label: 'Resolve Missing Fonts...', enabled: has, run: () => { if (!dialogs.missingFonts.show()) toast('No missing fonts in the type layers.', 'info'); } },
     { id: 'type-work-path', label: 'Create Work Path', enabled: () => engine.liveText(engine.current?.activeLayer), run: () => { engine.typeToWorkPath(); } },
     { id: 'type-to-shape', label: 'Convert to Shape', enabled: () => engine.liveText(engine.current?.activeLayer), run: () => { engine.typeToShape(); } },
-    ...FONT_PREVIEWS.map((v) => ({ id: `font-preview-${v}`, label: v === 'none' ? 'None' : v === 'extra' ? 'Extra Large' : v[0].toUpperCase() + v.slice(1), checked: () => loadPrefs().fontPreview === v, run: () => { updatePrefs({ fontPreview: v }); engine.emit('options', null); } })),   // Type > Font Preview Size (36.31)
+    ...FONT_PREVIEWS.map((v) => ({ id: `font-preview-${v}`, label: v === 'none' ? 'None' : v === 'extra' ? 'Extra Large' : v === 'huge' ? 'Huge' : v[0].toUpperCase() + v.slice(1), checked: () => loadPrefs().fontPreview === v, run: () => { updatePrefs({ fontPreview: v }); engine.emit('options', null); } })),   // Type > Font Preview Size (36.31)
+    { id: 'add-font-files', label: 'Add Font Files...', run: () => {
+      const input = document.createElement('input');
+      input.type = 'file'; input.accept = '.ttf,.otf,.woff,.woff2'; input.multiple = true;
+      input.addEventListener('change', () => void (async () => {
+        const names: string[] = [];
+        for (const f of Array.from(input.files ?? [])) {
+          try { names.push(await addFontFace(familyOfFile(f.name), await f.arrayBuffer())); } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
+        }
+        if (names.length) { engine.emit('options', null); toast(`Added ${names.join(', ')} to the font menus.`, 'info'); }
+      })());
+      input.click();
+    } },
+    { id: 'add-web-font', label: 'Add Web Font...', params: { url: { type: 'string', description: 'Address of a font file (ttf, otf, woff or woff2) the server allows pages to load.' }, family: { type: 'string', description: 'The family name to list it under.' } },
+      run: async (a) => {
+        const url = typeof a?.url === 'string' ? a.url.trim() : '', family = typeof a?.family === 'string' ? a.family.trim() : '';
+        if (!url || !family) { toast('Give the font file address and a family name.', 'error'); return; }
+        try { await addFontFace(family, url); engine.emit('options', null); toast(`Added ${family} to the font menus.`, 'info'); } catch (err) { toast(`${family}: ${message(err)}`, 'error'); }
+      } },
     { id: 'update-all-text', label: 'Update All Text Layers', enabled: has, run: async () => { const n = await engine.updateAllTextLayers(); toast(`Updated ${n} text layer${n === 1 ? '' : 's'}.`, 'info'); } },
     { id: 'type-features', label: 'OpenType Features', enabled: () => engine.liveText(engine.current?.activeLayer), params: { features: { type: 'string', description: 'Comma list of OpenType tags to turn on (liga, dlig, calt, salt, swsh, onum, titl, ornm, ordn, frac, smcp); -liga or -calt turns that default feature off; none clears them; left out, the features stay as they are.' } },
       run: async (a) => {
@@ -3259,10 +3353,11 @@ export function startApp(): void {
     { id: 'purge-histories', label: 'Histories', enabled: () => !!engine.current && engine.historySteps.names.length > 0, run: () => { void confirmAction('Purge histories?', 'This clears the undo and redo history of this document, keeping its current state and snapshots. It cannot be undone.', 'Purge', true).then((ok) => { if (ok) toast(`Purged ${engine.purgeHistories(false)} history steps.`); }); } },
     { id: 'purge-all', label: 'All', enabled: () => !!engine.clipboard || engine.projects.some((q) => q.history.steps.names.length > 0), run: () => { void confirmAction('Purge everything?', 'This clears the clipboard and the undo and redo history of every open document, keeping their current states and snapshots. It cannot be undone.', 'Purge', true).then((ok) => { if (ok) { engine.purgeClipboard(); toast(`Purged the clipboard and ${engine.purgeHistories(true)} history steps.`); } }); } },
     { id: 'stroke-dialog', label: 'Stroke...', enabled: () => pixel() && (selected() || !!engine.activeLayer?.raster), run: () => dialogs.stroke.show() },
-    { id: 'transform', label: () => (engine.canTransformSelection || engine.floatingSelection ? 'Transform Selection' : 'Transform Layer'), keys: ['Alt+Mod+T', 'Mod+T'], enabled: () => !!engine.activeLayer && !engine.floatingSelection, run: () => engine.transformCommand() },
+    { id: 'transform', label: () => (engine.canTransformSelection || engine.floatingSelection ? 'Transform Selection' : 'Transform Layer'), keys: ['Mod+T'], enabled: () => !!engine.activeLayer && !engine.floatingSelection, run: () => engine.transformCommand() },
+    { id: 'transform-copy', label: 'Free Transform a Copy', keys: ['Alt+Mod+T'], enabled: () => !!engine.activeLayer && !engine.floatingSelection, run: () => { engine.transformCopy(); } },
     { id: 'content-fill', label: 'Quick Content-Aware Fill', keys: ['Shift+Backspace'], enabled: () => pixel() && selected(), run: () => { void engine.task(async () => { await new Promise((r) => requestAnimationFrame(() => window.setTimeout(r, 0))); engine.contentAwareFill(); }); } },
     { id: 'generative-fill', label: 'Generative Fill...', enabled: () => selected(), run: (a) => void dialogs.generative.show('fill', 2, typeof a?.prompt === 'string' ? { prompt: a.prompt } : undefined) },   // the Contextual Task Bar passes the prompt it holds (undeclared: agents and the menus open the dialog)
-    { id: 'generate-image', label: 'Generate Image...', enabled: () => true, run: () => void generateImage.show() },   // 1.51.2, as Photoshop's Edit menu
+    { id: 'generate-image', label: 'Generate Image...', enabled: () => true, run: () => void generateImage.show() },   // 1.51.2, in the Edit menu
     { id: 'generate-panel', label: 'Generate Panel', run: () => { if (dock.collapsed) dock.setCollapsed(false); if (!dock.isShown('generate')) dock.toggle('generate'); generatePanel.reveal(); } },
     { id: 'generate-remove', label: 'Remove / Repair', icon: 'tRemove', enabled: pixel, run: () => { if (selected()) commands.run('content-fill'); else { engine.setTool('remove'); toast('The Remove tool is on: paint over what to take out.'); } } },
     { id: 'path-selection', label: 'Make Selection from Path', keys: ['Mod+Enter'], enabled: () => !!engine.workPath, run: () => engine.pathToSelection() },
@@ -3271,6 +3366,7 @@ export function startApp(): void {
     { id: 'stroke-path', label: 'Stroke Path', enabled: () => !!engine.workPath && pixel(), run: () => engine.strokePath() },
     { id: 'stroke-path-dialog', label: 'Stroke Path...', enabled: () => !!engine.workPath && pixel(), run: () => dialogs.strokePath.show() },
     { id: 'delete-path', label: 'Delete Path', enabled: () => !!engine.workPath, run: () => engine.deletePath() },
+    { id: 'clipping-path', label: 'Clipping Path...', enabled: () => !!engine.current, run: () => dialogs.clippingPath.show() },
     { id: 'new-path', label: 'New Path', enabled: () => !!engine.current, run: () => engine.newPath() },
     { id: 'layer-style', label: 'Layer Style...', enabled: () => pixel(), run: () => dialogs.layerStyle.show() },
     {
@@ -3328,6 +3424,8 @@ export function startApp(): void {
     { id: 'apply-redactions', label: 'Apply Redactions', enabled: () => !!engine.current?.doc.layers.some((l) => l.vector && /^Redaction \d+$/.test(l.name)), run: () => { const n = engine.applyRedactions(); if (n) toast(`Redacted: the boxes burned into ${n} layer${n === 1 ? '' : 's'}.`); } },   // 1.60.3
     { id: 'shape-color', label: 'Shape Color from Foreground', enabled: () => !!engine.current?.activeLayer?.vector, run: () => engine.recolorShape() },
     { id: 'shape-style', label: 'Shape Fill and Stroke...', enabled: () => !!engine.current?.activeLayer?.vector, run: () => dialogs.shapeStyle.show() },
+    { id: 'shape-style-copy', label: 'Copy Shape Fill and Stroke', enabled: () => !!engine.current?.activeLayer?.vector, run: () => { engine.copyShapeStyle(); } },
+    { id: 'shape-style-paste', label: 'Paste Shape Fill and Stroke', enabled: () => !!engine.current?.activeLayer?.vector && !!engine.shapeStyleClip, run: () => { engine.pasteShapeStyle(); } },
     { id: 'shape-corners', label: 'Corner Radii...', enabled: () => { const s = engine.current?.activeLayer?.shape; return !!s && s.kind !== 'Ellipse'; }, run: () => dialogs.corners.show() },
     { id: 'copy-layer-style', label: 'Copy Layer Style', enabled: () => effectsPresent(engine.current?.activeLayer?.effects), run: () => engine.copyLayerStyle() },
     { id: 'paste-layer-style', label: 'Paste Layer Style', enabled: () => pixel() && engine.canPasteLayerStyle, run: () => engine.pasteLayerStyle() },
@@ -3365,7 +3463,7 @@ export function startApp(): void {
     { id: 'color-match', label: 'Color Match...', enabled: () => { const l = engine.activeLayer; return !!l && (!!l.raster && !l.adjustment || (l.name === 'Color Match' && !!l.clipId)); }, run: () => colorMatch.show() },   // 1.51.3
     { id: 'canvas-size', label: 'Canvas Size...', keys: ['Alt+Mod+C'], enabled: has, run: () => dialogs.canvasSize.show() },
     { id: 'image-size', label: 'Image Size...', keys: ['Alt+Mod+I'], enabled: has, run: () => dialogs.imageSize.show() },
-    // Image > Mode and Layer > Flatten Image (1.50.2, the owner's walkthrough), as Photoshop's.
+    // Image > Mode and Layer > Flatten Image (1.50.2, the owner's walkthrough).
     { id: 'mode-rgb', label: 'RGB Color', enabled: has, checked: () => (engine.current?.doc.mode ?? 'rgb') === 'rgb', run: () => { const m = engine.current?.doc.mode; if (m === 'cmyk' || m === 'lab') void toRgbFirst(); else engine.convertMode('rgb'); } },
     { id: 'mode-lab', label: 'Lab Color', enabled: () => has() && ['rgb', 'lab'].includes(engine.current?.doc.mode ?? 'rgb'), checked: () => engine.current?.doc.mode === 'lab', run: () => { if (engine.current?.doc.mode !== 'lab') void downTo(16).then((ok) => { if (!ok) return; if (engine.current?.doc.depth === 16) void deepMode('lab', 'lab', null); else engine.setLab(); }); } },
     { id: 'mode-cmyk', label: 'CMYK Color...', enabled: () => has() && ['rgb', 'cmyk', 'lab'].includes(engine.current?.doc.mode ?? 'rgb'), checked: () => engine.current?.doc.mode === 'cmyk', run: () => { if (engine.current?.doc.mode === 'cmyk') return; void ((engine.current?.doc.depth ?? 8) > 8 ? downTo(16) : toRgbFirst().then((rgb) => (rgb ? downTo(8) : false))).then((ok) => { if (ok) modeDialog.show('cmyk'); }); } },
@@ -3381,7 +3479,7 @@ export function startApp(): void {
     { id: 'depth-32', label: '32 Bits/Channel', enabled: has, checked: () => engine.current?.doc.depth === 32, run: () => void toDeeper(32) },   // 1.53.9; every mode 1.57.8
     { id: 'export-hdr', label: 'Radiance HDR...', enabled: () => !!engine.current, run: () => void exportWide('hdr') },
     { id: 'export-exr', label: 'OpenEXR...', enabled: () => !!engine.current, run: () => void exportWide('exr') },
-    // Colour management (1.53.5, H2). Proof Colors has no key by default: Photoshop's Ctrl+Y is Redo here.
+    // Colour management (1.53.5, H2). Proof Colors has no key by default: Mod+Y is Redo here.
     { id: 'assign-profile', label: 'Assign Profile...', enabled: has, run: () => void colourDialogs.assign.show() },
     { id: 'convert-profile', label: 'Convert to Profile...', enabled: has, run: () => void colourDialogs.convert.show() },
     { id: 'proof-setup', label: 'Proof Setup...', enabled: has, run: () => void colourDialogs.proof.show() },
@@ -3443,12 +3541,12 @@ export function startApp(): void {
     { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', '-', 'fade', 'compare-documents', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', '-',
       { label: 'Purge', items: ['purge-clipboard', 'purge-histories', 'purge-all'] }, '-',
       { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-', 'auto-align-layers', 'auto-blend-layers', '-',
-      'fill-path-dialog', 'stroke-path-dialog', '-', 'transform', { label: 'Transform', items: ['transform-again', '-', 'transform-scale', 'transform-rotate', 'transform-skew', 'transform-distort', 'transform-perspective', 'transform-warp', 'warp-split-h', 'warp-split-v', 'warp-split-cross', 'warp-remove-split', '-', 'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw', '-', 'flip-layer-h', 'flip-layer-v'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', 'define-brush', 'define-custom-shape', { label: 'Presets', items: ['preset-manager', '-', 'swatches-load', 'swatches-save'] }, '-', 'assign-profile', 'convert-profile', 'colour.settings', '-', 'customize-toolbar', 'shortcuts', 'settings'] },
+      'fill-path-dialog', 'stroke-path-dialog', '-', 'transform', 'transform-copy', { label: 'Transform', items: ['transform-again', '-', 'transform-scale', 'transform-rotate', 'transform-skew', 'transform-distort', 'transform-perspective', 'transform-warp', 'warp-split-h', 'warp-split-v', 'warp-split-cross', 'warp-remove-split', '-', 'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw', '-', 'flip-layer-h', 'flip-layer-v'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', 'define-brush', 'define-custom-shape', { label: 'Presets', items: ['preset-manager', '-', 'swatches-load', 'swatches-save'] }, '-', 'assign-profile', 'convert-profile', 'colour.settings', '-', 'customize-toolbar', 'shortcuts', 'settings'] },
     { label: 'Image', items: [
       'apply-image', 'calculations', { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'desaturate', 'replace-color', 'equalize'] }, '-',
       'auto-tone', 'auto-contrast', 'auto-color', '-',
       { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-duotone', 'mode-indexed', 'mode-multichannel', 'color-table', 'mode-rgb', 'mode-cmyk', 'mode-lab', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
-      'image-size', 'canvas-size', { label: 'Pixel Aspect Ratio', items: ['par-square', 'par-d1-ntsc', 'par-d1-pal', 'par-d1-ntsc-wide', 'par-d1-pal-wide', 'par-anamorphic', 'par-hdv', '-', 'par-custom'] }, 'content-aware-scale', { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'trim', 'reveal-all', 'trap', '-', 'duplicate-image', '-', { label: 'Variables', items: ['variables-define', 'data-sets-import', 'data-set-apply'] }, '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }, '-', { label: 'Analysis', items: ['measure-scale', 'measure-record', 'measure-data-points', 'measure-scale-marker', 'measure-log'] }] },
+      'image-size', 'canvas-size', { label: 'Pixel Aspect Ratio', items: ['par-square', 'par-d1-ntsc', 'par-d1-pal', 'par-d1-ntsc-wide', 'par-d1-pal-wide', 'par-anamorphic', 'par-hdv', '-', 'par-custom'] }, { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'trim', 'reveal-all', 'trap', '-', 'duplicate-image', '-', { label: 'Variables', items: ['variables-define', 'data-sets-import', 'data-set-apply'] }, '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }, '-', { label: 'Analysis', items: ['measure-scale', 'measure-record', 'measure-data-points', 'measure-scale-marker', 'measure-log'] }] },
     { label: 'Layer', items: [
       { label: 'New', items: ['new-layer-dialog', 'layer-from-background', 'background-from-layer', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard-dialog', 'artboard-from-group', 'artboard-from-layers', 'frame-from-layers', '-', 'duplicate', 'layer-via-cut', '-', 'new-relight-layer'] }, 'artboard-options', '-',
       { label: 'New Fill Layer', items: ['new-fill-solid', 'new-fill-gradient', 'new-fill-pattern'] }, { label: 'Video Layers', items: ['video-layer-from-file', 'video-layer-blank', '-', 'video-insert-blank-frame', 'video-duplicate-frame', 'video-delete-frame', '-', 'video-restore-frame', 'video-restore-all', 'video-replace-footage', 'video-interpret-footage', 'video-rasterize'] },{ label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'edit-relight', 'layer-content-options', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, '-',
@@ -3458,7 +3556,7 @@ export function startApp(): void {
       { label: '3D', items: ['extrude-3d', 'place-3d', '-', 'panorama-view', 'panorama-apply-view'] },
       { label: 'Smart Objects', items: ['convert-smart', 'smart-new-via-copy', 'smart-convert-to-layers', 'edit-contents', 'replace-contents', 'smart-export-contents', { label: 'Stack Mode', items: STACK_MODES.map((m) => `stack-mode-${m.id}`) }, '-', 'smart-convert-to-linked', 'update-linked', 'relink', 'embed-linked', 'smart-reveal-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
       { label: 'Smart Filter', items: ['smart-filters-disable', 'smart-filters-clear'] },
-      { label: 'Rasterize', items: ['rasterize-type', 'rasterize-shape', 'rasterize-fill', 'rasterize-smart', 'rasterize-vmask', '-', 'rasterize', 'rasterize-all'] }, { label: 'Type', items: ['check-spelling', 'find-replace-text', 'paste-lorem-ipsum', '-', 'convert-point-text', 'convert-paragraph-text', '-', 'type-work-path', 'type-to-shape', '-', 'update-all-text', 'resolve-missing-fonts', '-', { label: 'Font Preview Size', items: FONT_PREVIEWS.map((v) => `font-preview-${v}`) }, '-', 'type-on-arc', 'type-on-circle'] }, 'edit-text', 'warp-text', 'type-on-path', { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners', '-', 'apply-redactions'] }, '-',
+      { label: 'Rasterize', items: ['rasterize-type', 'rasterize-shape', 'rasterize-fill', 'rasterize-smart', 'rasterize-vmask', '-', 'rasterize', 'rasterize-all'] }, { label: 'Type', items: ['check-spelling', 'find-replace-text', 'paste-lorem-ipsum', '-', 'convert-point-text', 'convert-paragraph-text', '-', 'type-work-path', 'type-to-shape', '-', 'update-all-text', 'resolve-missing-fonts', 'load-default-type-styles', 'add-font-files', 'add-web-font', '-', { label: 'Font Preview Size', items: FONT_PREVIEWS.map((v) => `font-preview-${v}`) }, '-', 'type-on-arc', 'type-on-circle'] }, 'edit-text', 'warp-text', 'type-on-path', { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-style-copy', 'shape-style-paste', 'shape-corners', '-', 'apply-redactions'] }, '-',
       { label: 'Layer Mask', items: ['mask-reveal-all', 'mask-hide-all', 'mask-reveal-selection', 'mask-hide-selection', 'mask-from-transparency', '-', 'delete-mask', 'apply-mask', '-', 'toggle-mask', 'link-mask'] },
       { label: 'Vector Mask', items: ['vmask-reveal-all', 'vmask-hide-all', 'vmask-current-path', 'vmask-delete', '-', 'vmask-enable', 'vmask-link', 'vmask-invert'] }, 'clip', 'mask-all-objects', '-',
       'group', 'ungroup', 'move-out', 'hide-layers', '-',
@@ -3468,7 +3566,7 @@ export function startApp(): void {
       { label: 'Distribute', items: ['distribute-left', 'distribute-hcenter', 'distribute-right', '-', 'distribute-top', 'distribute-vcenter', 'distribute-bottom', '-', 'distribute-hspace', 'distribute-vspace'] },
       { label: 'Flip', items: ['flip-layer-h', 'flip-layer-v'] }, '-',
       'lock-transparency', 'lock-layers', '-', 'link-layers', 'select-linked', '-',
-      'merge', 'merge-visible', 'stamp-visible', 'stamp-down', 'flatten', '-', 'show-only-layer', { label: 'Color Label', items: ['layer-label-none', '-', ...LAYER_LABELS.map((c) => `layer-label-${c}`)] }, '-',
+      'merge', 'merge-visible', 'stamp-visible', 'frequency-separation', 'stamp-down', 'flatten', '-', 'show-only-layer', { label: 'Color Label', items: ['layer-label-none', '-', ...LAYER_LABELS.map((c) => `layer-label-${c}`)] }, '-',
       { label: 'Matting', items: ['matting-decontaminate', 'matting-defringe', 'matting-black', 'matting-white'] }] },
     { label: 'Select', items: ['select-all', 'deselect', 'reselect', 'inverse', 'convert-to-shape', '-', 'select-all-layers', 'deselect-layers', 'find-layers', 'isolate-layers', '-', 'color-range', 'focus-area', 'select-subject', 'select-sky', 'select-object', 'select-and-mask', '-', 'layer-pixels', 'mask-black', '-',
       { label: 'Modify', items: ['expand', 'contract', 'feather', 'border', 'smooth'] }, 'grow', 'similar', '-', 'transform-selection', '-', 'quick-mask', '-', 'load-selection', 'load-luminosity', 'load-selection-vector-mask', 'save-selection', { label: 'Channel', items: ['new-channel', 'duplicate-channel', 'channel-options', '-', 'channel-up', 'channel-down'] }, 'path-selection', 'delete-path'] },
@@ -3503,7 +3601,7 @@ export function startApp(): void {
   }
   contextMenu.setItems(['duplicate-dialog', 'delete-layer', 'rename', 'edit-text', 'warp-text', '-',
     { label: 'Smart Objects', items: ['convert-smart', 'smart-new-via-copy', 'smart-convert-to-layers', 'smart-export-contents', { label: 'Stack Mode', items: STACK_MODES.map((m) => `stack-mode-${m.id}`) }, 'rasterize', 'edit-contents', 'replace-contents', '-', 'smart-convert-to-linked', 'update-linked', 'relink', 'embed-linked', 'smart-reveal-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
-    { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners', '-', 'apply-redactions'] },
+    { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-style-copy', 'shape-style-paste', 'shape-corners', '-', 'apply-redactions'] },
     { label: 'Layer Style', items: ['layer-style', '-', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style'] },
     { label: 'Layer Comps', items: ['layer-comp-new', 'layer-comp-apply', 'layer-comp-update', 'layer-comp-delete', '-', 'layer-comp-next', 'layer-comp-previous'] }, '-',
     { label: 'Layer Mask', items: ['add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask'] }, 'clip', 'link-layers', 'select-linked', '-', 'group', 'ungroup', 'move-out', 'merge', 'merge-visible', '-', 'layer-pixels']);
@@ -3552,6 +3650,7 @@ export function startApp(): void {
   root.addEventListener('cv:edit-layer-style', () => dialogs.layerStyle.show());
   root.addEventListener('cv:smart-filters', () => dialogs.smartFilters.show());
   root.addEventListener('cv:shape-style', () => dialogs.shapeStyle.show());
+  document.addEventListener('cv:create-shape', (e) => { const d = (e as CustomEvent<{ x: number; y: number }>).detail; if (d) dialogs.createShape.show({ x: d.x, y: d.y }); });
   root.addEventListener('cv:fill-options', (e) => dialogs.fillLayer.showEdit((e as CustomEvent<string>).detail));
   root.addEventListener('cv:relight-edit', (e) => { void relight.begin((e as CustomEvent<string>).detail); });
   engine.smartFilterMargin = (kind, settings) => filterMargin(kind as FilterKind, { ...defaultFilterSettings(), ...(settings as Partial<FilterPanelSettings>) });
@@ -3613,7 +3712,7 @@ export function startApp(): void {
       if (!e.repeat || /^(undo|redo|zoom-in|zoom-out)$/.test(cmd.id)) commands.run(cmd.id);
       return;
     }
-    // Escape deselects, as Photoshop's does, once no tool, menu or dialog has used it and the focus is on the canvas or the toolbar.
+    // Escape deselects once no tool, menu or dialog has used it and the focus is on the canvas or the toolbar.
     if (e.key === 'Escape' && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && selected() && (!target || target === document.body || !!target.closest('.cv-stage, .cv-rail'))) { e.preventDefault(); commands.run('deselect'); return; }
     if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
     const k = e.code.startsWith('Key') ? e.code.slice(3) : '';
@@ -3624,7 +3723,7 @@ export function startApp(): void {
     else if (k === 'M' && e.shiftKey) { engine.setTool('marquee'); engine.update({ marqueeKind: engine.marqueeKind === 'rectangle' ? 'ellipse' : 'rectangle' }); }
     else if (k === 'L' && e.shiftKey) { engine.setTool('lasso'); engine.update({ lassoKind: engine.lassoKind === 'freehand' ? 'polygonal' : engine.lassoKind === 'polygonal' ? 'magnetic' : 'freehand' }); }
     else if (toolForKey(k)) {
-      // A letter picks its slot's tool (the one last chosen from its group, as Photoshop's does), keeping one already
+      // A letter picks its slot's tool (the one last chosen from its group), keeping one already
       // chosen from the same group; Shift with it cycles the group.
       const group = toolsForKey(k), at = group.findIndex((t) => t.id === engine.tool);
       if (e.shiftKey) { if (group.length > 1) engine.setTool(group[(at + 1) % group.length].id); }
@@ -3736,7 +3835,7 @@ export function startApp(): void {
   void api.capabilities().then(applyCaps);
   // The service started (or stopped) later: the window re-checks on focus while it is down, and takes the new report.
   onServiceChange(() => { void api.capabilities().then(applyCaps); });
-  // The desktop app lists the installed fonts from the shell at once (no permission is asked there, as in Photoshop);
+  // The desktop app lists the installed fonts from the shell at once (no permission is asked there);
   // a browser keeps "Load system fonts..." in the Type tool, since Local Font Access asks the user first.
   if ('__TAURI_INTERNALS__' in window) void loadSystemFonts().then((f) => { if (f) engine.emit('options', null); });
 
@@ -3753,7 +3852,7 @@ export function startApp(): void {
   // 36.19, the browser build: these commands need the engine service (library, video, AI models, the terminal and
   // agents, ComfyUI and NodeMode, LittleCMS conversions). With it not running they are off, with a title saying why.
   const ENGINE_ONLY = new Set<string>(['save', 'save-as', 'save-copy', 'open', 'revert', 'export-tiff', 'export-pdf', 'export-avif', 'convert-profile', 'mode-cmyk',
-    'remove-bg', 'remove-bg-lite', 'select-subject', 'select-object', 'content-aware-scale', 'generative-fill', 'generate-image', 'generative-expand', 'upscale-2x', 'upscale-4x', 'assistant',
+    'remove-bg', 'remove-bg-lite', 'select-subject', 'select-object', 'generative-fill', 'generate-image', 'generative-expand', 'upscale-2x', 'upscale-4x', 'assistant',
     'terminal.toggle', 'terminal.new', 'agent.claude.open', 'send-nodemode', 'send-comfyui', 'comfyui-run', 'photomerge', 'merge-hdr', 'manage-plugins',
     'import-video', 'video-layer-from-file', 'video-replace-footage', 'export-mp4', 'render-video']);
   // Relight lights the 8-bit RGB picture beneath it (its shader reads and writes 8-bit RGBA), so other modes and depths say why it waits.

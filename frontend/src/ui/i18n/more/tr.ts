@@ -497,7 +497,7 @@ export const tr: Record<string, string> = {
   'Paste from': 'Şuradan yapıştır',
   'Paste size (% of the plane)': 'Yapıştırma boyutu (düzlemin %)',
   'Patchwork': 'Yama İşi',
-  'Paths to Illustrator': 'Yolları Illustrator\'a',
+  'Paths to AI File': 'Yolları AI dosyasına',
   'Pattern Overlay': 'Desen Bindirme',
   'Performance Benchmark': 'Performans Karşılaştırması',
   'Photo': 'Fotoğraf',

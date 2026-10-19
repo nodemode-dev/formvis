@@ -297,8 +297,8 @@ export class ProfileMismatchDialog extends Dialog {
     this.button('Use Embedded Profile', 'ghost', () => this.done('keep'));
     this.button('Convert to Working Space', 'primary', () => this.done('convert'));
   }
-  ask(file: string, profile: string): Promise<'keep' | 'convert' | 'discard'> {
-    setText(this.info, `${file} has an embedded profile, ${profile}, that does not match the working space, sRGB IEC61966-2.1.`);
+  ask(file: string, profile: string, working = 'sRGB IEC61966-2.1'): Promise<'keep' | 'convert' | 'discard'> {
+    setText(this.info, `${file} has an embedded profile, ${profile}, that does not match the working space, ${working}.`);
     this.open();
     return new Promise((res) => { this.answer = res; });
   }

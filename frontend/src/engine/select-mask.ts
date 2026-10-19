@@ -1,6 +1,6 @@
 import { boxMean, refineMatte } from './matte';
 
-/** Select and Mask's Global Refinements, in Photoshop's order: Radius pulls the selection's edge onto the image's
+/** Select and Mask's Global Refinements, in the dialog's order: Radius pulls the selection's edge onto the image's
  *  own edges within that distance (the guided filter Remove Background already uses, `matte.ts`), Smooth rounds off
  *  a jagged outline, Feather softens it, Contrast hardens it again, and Shift Edge grows or shrinks it. Masks and
  *  guides hold 0 to 1 per pixel, row by row; distances are in document pixels, shrunk by `scale` for a preview. */

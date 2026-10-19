@@ -4,10 +4,10 @@ import { toolHost } from '../registry';
 import { dashed, type Tool } from '../registry';
 import { modeFor, modeSegment, nudgeSelectionKey } from './select-common';
 
-/** The Object Selection tool (Photoshop's, W): click an object to select it, Shift-click to add another, Alt-click to
+/** The Object Selection tool (W): click an object to select it, Shift-click to add another, Alt-click to
  *  take one away. The engine's SAM 2.1 encodes the image once and answers each click in about a tenth of a second; the
  *  image is sent again only when its pixels change (the key is a hash of them) or the engine no longer holds it. With
- *  Sample All Layers off, only the active layer is looked at, as in Photoshop. */
+ *  Sample All Layers off, only the active layer is looked at. */
 
 let sampleAll = true;
 let sentKey = '';
@@ -67,7 +67,7 @@ async function selectWith(engine: Engine, points: Array<[number, number, 0 | 1]>
   });
 }
 
-/* Box mode and the hover highlight (1.49.10, the owner's tool list), as Photoshop's: a drag draws a box and selects the
+/* Box mode and the hover highlight (1.49.10, the owner's tool list): a drag draws a box and selects the
    object in it; resting the pointer shows the object under it, tinted, before any click. */
 let draft: { from: Pt; to: Pt; mode: SelectionMode } | null = null;
 /** The hover mask under the pointer at press time; a click that does not become a drag uses it without asking the model. */
@@ -103,7 +103,7 @@ function showHover(engine: Engine, at: Pt): void {
       if (seq !== hoverSeq || engine.current !== p) return;
       if (!data || engine.tool !== 'objectSelect' || draft) { highlight = null; return; }
       const W = p.doc.width, H = p.doc.height, c = createSurface(W, H), g = ctxOf(c), img = g.createImageData(W, H);
-      // A light wash with the object's outline, as Photoshop marks it (an orange tint turned a blue object grey, 1.49.10).
+      // A light wash with the object's outline (an orange tint turned a blue object grey, 1.49.10).
       const on = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < W && y < H && data[y * W + x] >= 128;
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
         if (!on(x, y)) continue;

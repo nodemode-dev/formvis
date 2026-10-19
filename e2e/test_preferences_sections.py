@@ -19,7 +19,7 @@ def number(page, label, value):
     f.fill(str(value)); f.press("Enter"); f.dispatch_event("change")
 
 
-def test_photoshops_sections_each_act_on_something_real(page):
+def test_the_usual_sections_each_act_on_something_real(page):
     try:
         page.evaluate("window.formvis.engine.newDocument(400, 300, 'P', 'transparent')")
         page.evaluate("window.formvis.commands.run('settings')")

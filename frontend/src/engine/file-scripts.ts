@@ -6,7 +6,7 @@ import { visibleBounds } from './distort';
 import { renderDoc, type Renderer } from './renderer';
 import { vectorCoverage } from './vector-mask';
 
-/** File > Scripts (DEV_PLAN 30.1): Photoshop's Delete All Empty Layers, Flatten All Layer Effects and Flatten All
+/** File > Scripts (DEV_PLAN 30.1): Delete All Empty Layers, Flatten All Layer Effects and Flatten All
  *  Masks as pure planners over a document. Each returns the layer changes; the engine applies them as one step. */
 
 /** The patch that turns a live type, shape, fill or smart-object layer into plain pixels, looking as it does now. */

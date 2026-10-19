@@ -75,7 +75,7 @@ export function warpedSmart(r: Raster, margin: number, source: Raster, warp: Pt[
 }
 
 /** A smart filter mask applied: where the mask (alpha, source-sized) is clear the unfiltered source shows, where it
- *  is full the filtered render; the padding past the source shows the filters, as Photoshop's mask is white there. */
+ *  is full the filtered render; the padding past the source shows the filters, as the mask is white there. */
 export function maskFilters(filtered: ImageData, source: Raster, m: number, mask: Raster | null): ImageData {
   if (!mask) return filtered;
   const W = filtered.width, H = filtered.height, plain = createSurface(W, H), pc = ctxOf(plain), mk = createSurface(W, H), mc = ctxOf(mk);

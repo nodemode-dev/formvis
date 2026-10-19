@@ -32,7 +32,7 @@ export const penTool: Tool = {
   cursor: () => 'crosshair',
   options: (e) => [
     { kind: 'title', text: 'Pen' },
-    // Mode and Auto Add/Delete (1.52.8, the tool audit), as Photoshop's bar.
+    // Mode and Auto Add/Delete (1.52.8, the tool audit).
     { kind: 'segment', label: 'Mode', choices: [{ id: 'shape', label: 'Shape' }, { id: 'path', label: 'Path' }], get: () => e.penSettings.mode, set: (v: string) => { e.penSettings.mode = v === 'shape' ? 'shape' : 'path'; e.emit('options', null); } },
     { kind: 'toggle', label: 'Auto Add/Delete', get: () => e.penSettings.autoAddDelete, set: (v: boolean) => { e.penSettings.autoAddDelete = v; e.emit('options', null); } },
     { kind: 'button', label: 'Make Selection', run: () => { active = null; e.pathToSelection(); } },
@@ -96,6 +96,14 @@ export const penTool: Tool = {
   cancel(ctx) { pulling = null; ctx.engine.endPathEdit(); },
   keydown(ctx, e) {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { active = null; ctx.engine.pathToSelection(); return true; }
+    if (e.key === 'Enter' && active && active.anchors.length > 1 && ctx.engine.penSettings.mode === 'shape') {   // Shape mode: Enter turns an open polyline into a shape layer
+      const sp = active, vp = workPath(ctx);
+      active = null;
+      vp.subpaths.splice(vp.subpaths.indexOf(sp), 1);
+      ctx.engine.setWorkPath(vp);
+      ctx.engine.shapeFromPath({ subpaths: [sp] });
+      return true;
+    }
     if ((e.key === 'Enter' || e.key === 'Escape') && active) { active = null; ctx.engine.emit('overlay', null); return true; }
     if ((e.key === 'Backspace' || e.key === 'Delete') && active) {
       const vp = workPath(ctx);
