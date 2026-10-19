@@ -4,7 +4,7 @@ import {
   type RelightContent, type RelightGeometry, type RelightLight, type RelightPatternKind, type RelightType, type SplitMaps,
 } from '../engine/relight';
 import { renderRelight } from '../gpu/relight-gl';
-import { depthReady, installModel, localDepthValues, relightEngines, relightSplit, type LightSplit, type RelightEngines } from '../io/local-gen';
+import { depthReady, installModel, installRelightRuntime, localDepthValues, relightEngines, relightSplit, type LightSplit, type RelightEngines } from '../io/local-gen';
 import { setRelightHost } from '../extensions/tools/relight';
 import { el, q, setClass, setHidden, setText } from './dom';
 import { icon } from './icons';
@@ -189,21 +189,33 @@ export class RelightSession {
     if (mogeNoted || !e || e.moge !== false || sp.geometry !== 'slope') return;
     mogeNoted = true;
     const note = q(this.panel, '.cv-relight-moge-note'), btn = q<HTMLButtonElement>(this.panel, '.cv-relight-moge');
-    setText(note, e.mogeModel ? t('The scene\'s shape came from Depth Anything because MoGe-2 cannot run yet: the engine needs the packages in backend/requirements_relight.txt.') : t('The scene\'s shape came from Depth Anything. MoGe-2 (Microsoft, MIT) gives better depth, normals and camera.'));
+    setText(note, e.mogeModel ? t('The scene\'s shape came from Depth Anything because MoGe-2 cannot run yet: it needs its Python runtime (torch and moge). PyTorch is large, about 1 to 2 GB on a CPU-only computer.') : t('The scene\'s shape came from Depth Anything. MoGe-2 (Microsoft, MIT) gives better depth, normals and camera.'));
+    setText(btn, e.mogeModel ? t('Install the Relight runtime') : t('Download MoGe-2'));
     setHidden(note, false);
-    setHidden(btn, !!e.mogeModel);
+    setHidden(btn, false);
   }
 
   private async getMoge(): Promise<void> {
     const btn = q<HTMLButtonElement>(this.panel, '.cv-relight-moge'), note = q(this.panel, '.cv-relight-moge-note');
     btn.disabled = true;
     try {
-      if (await installModel('moge-2-vits-normal', (text) => setText(note, text))) {
-        setHidden(btn, true);
-        setText(note, t('MoGe-2 is downloaded. It also needs the packages in backend/requirements_relight.txt in the engine; the next Relight uses it once they are there.'));
-        const f = this.full;
-        if (f && this.proxy) await this.loadSplit(new ImageData(new Uint8ClampedArray(f.data), f.w, f.h), this.proxy.geo.width, this.proxy.geo.height);
+      const modelHere = !!this.engines?.mogeModel;
+      if (!modelHere && !(await installModel('moge-2-vits-normal', (text) => setText(note, text)))) { btn.disabled = false; return; }
+      if (this.engines) this.engines = { ...this.engines, mogeModel: true };
+      if ((await relightEngines())?.moge !== true) {
+        if (!modelHere) {
+          setText(btn, t('Install the Relight runtime'));
+          setText(note, t('MoGe-2 is downloaded. It needs its Python runtime (torch and moge) to run. PyTorch is large, about 1 to 2 GB on a CPU-only computer; install it when you are ready.'));
+          btn.disabled = false;
+          return;
+        }
+        if (!(await installRelightRuntime((text) => setText(note, text)))) { btn.disabled = false; return; }
       }
+      this.engines = await relightEngines();
+      setHidden(btn, true);
+      setText(note, t('MoGe-2 is ready. The next Relight uses it.'));
+      const f = this.full;
+      if (f && this.proxy) await this.loadSplit(new ImageData(new Uint8ClampedArray(f.data), f.w, f.h), this.proxy.geo.width, this.proxy.geo.height);
     } catch { setText(note, t('The download could not start. Is the engine running?')); }
     btn.disabled = false;
   }

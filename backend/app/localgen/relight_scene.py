@@ -50,39 +50,49 @@ def moge_ready() -> bool:
     if not model_manager.ready(MOGE):
         return False
     try:
-        import importlib.util
-        return importlib.util.find_spec("moge") is not None and importlib.util.find_spec("torch") is not None
+        from . import relight_runtime
+        return relight_runtime.engine_has_moge() or relight_runtime.installed()
     except Exception:
         return False
 
 
-def _moge_scene(rgb: np.ndarray) -> tuple | None:
-    """MoGe-2 small in one pass at the grid: normals in Relight's frame (x right, y down, z toward the viewer), metric
-    depth (inf where it is unsure, such as sky) and the focal length as a fraction of the image width."""
+def _moge_raw(small: np.ndarray) -> dict:
+    """MoGe-2's normals, depth and intrinsics for a uint8 RGB picture: in this process when the engine has the
+    packages, else in the Relight runtime's Python."""
     global _moge
-    if not moge_ready():
-        return None
-    try:
+    from . import relight_runtime
+    if relight_runtime.engine_has_moge():
         import torch
         from moge.model.v2 import MoGeModel
 
         if _moge is None:
             _moge = MoGeModel.from_pretrained(str(model_manager.model_file(MOGE_FILE))).eval()
+        with torch.inference_mode():
+            out = _moge.infer(torch.from_numpy(small.astype(np.float32) / 255).permute(2, 0, 1), use_fp16=False)
+        return {k: out[k].cpu().numpy() for k in ("normal", "depth", "intrinsics")}
+    return relight_runtime.infer(small, str(model_manager.model_file(MOGE_FILE)))
+
+
+def _moge_scene(rgb: np.ndarray) -> tuple | None:
+    """MoGe-2 small in one pass at the grid: normals in Relight's frame (x right, y down, z toward the viewer), metric
+    depth (inf where it is unsure, such as sky) and the focal length as a fraction of the image width."""
+    if not moge_ready():
+        return None
+    try:
         h, w = rgb.shape[:2]
         k = MOGE_SHORT / min(h, w)
         small = cv2.resize(rgb, (max(14, round(w * k)), max(14, round(h * k))), interpolation=cv2.INTER_AREA)
-        with torch.inference_mode():
-            out = _moge.infer(torch.from_numpy(small.astype(np.float32) / 255).permute(2, 0, 1), use_fp16=False)
-        n = out["normal"].cpu().numpy().astype(np.float32)
+        out = _moge_raw(small)
+        n = out["normal"].astype(np.float32)
         n = np.stack([n[..., 0], n[..., 1], -n[..., 2]], -1)
         n = cv2.resize(n, (w, h), interpolation=cv2.INTER_LINEAR)
         n = n / np.maximum(np.linalg.norm(n, axis=-1, keepdims=True), 1e-6)
-        z = out["depth"].cpu().numpy().astype(np.float32)
+        z = out["depth"].astype(np.float32)
         ok = np.isfinite(z) & (z > 0)
         z = np.where(ok, z, 0).astype(np.float32)
         z = cv2.resize(z, (w, h), interpolation=cv2.INTER_LINEAR)
         ok = cv2.resize(ok.astype(np.float32), (w, h), interpolation=cv2.INTER_LINEAR) > 0.99
-        fx = float(out["intrinsics"].cpu().numpy()[0, 0])
+        fx = float(out["intrinsics"][0, 0])
         return n, z, ok.astype(np.float32), fx
     except Exception:
         return None

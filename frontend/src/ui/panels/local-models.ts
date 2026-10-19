@@ -61,27 +61,46 @@ export class LocalModelsSection {
   }
 
   /** A model with no licence to accept (1.53.2: LaMa), downloaded here. */
-  private async showDownload(card: HTMLElement, id: string, name: string, button: string, size: string, what: string): Promise<void> {
+  private async showDownload(card: HTMLElement, id: string, name: string, button: string, size: string, what: string, after?: () => Promise<void>): Promise<void> {
     const all = await api('/models') as unknown as Json[], m = all.find((x) => x.id === id);
     const state = el('<p class="cv-local-state" role="status"></p>'), note = el('<p class="cv-note cv-local-note" role="status"></p>'), info = el('<p class="cv-note"></p>');
     setText(state, m?.ready ? `${name}: downloaded, ready.` : `${name}: not downloaded (${size}).`); setText(info, what);
     const get = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-primary"></button>'); setText(get, button);
     get.disabled = !m || !!m.ready;
-    get.addEventListener('click', () => void (async () => { try { const j = await api(`/models/${id}/download`, { method: 'POST' }); await this.follow(j.job_id, note, () => void this.showDownload(card, id, name, button, size, what)); } catch (err) { setText(note, err instanceof Error ? err.message : 'Could not start the download.'); } })());
+    get.addEventListener('click', () => void (async () => { try { const j = await api(`/models/${id}/download`, { method: 'POST' }); await this.follow(j.job_id, note, () => void this.showDownload(card, id, name, button, size, what, after).then(after)); } catch (err) { setText(note, err instanceof Error ? err.message : 'Could not start the download.'); } })());
     const remove = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Remove</button>');
     setHidden(remove, !m?.ready);
-    remove.addEventListener('click', () => void (async () => { try { await api(`/models/${id}`, { method: 'DELETE' }); await this.showDownload(card, id, name, button, size, what); } catch (err) { setText(note, err instanceof Error ? err.message : 'Could not remove it.'); } })());
+    remove.addEventListener('click', () => void (async () => { try { await api(`/models/${id}`, { method: 'DELETE' }); await this.showDownload(card, id, name, button, size, what, after); await after?.(); } catch (err) { setText(note, err instanceof Error ? err.message : 'Could not remove it.'); } })());
     const row = el('<div class="cv-improve"></div>'); row.append(get, remove);
     card.replaceChildren(state, info, row, note);
   }
 
   /** MoGe-2 small (Microsoft, MIT): the depth, normals and camera Relight builds its scene from; the model downloads
-   *  here and the engine also needs the packages in backend/requirements_relight.txt. */
+   *  here, and its Python packages (torch and moge) install into a runtime of their own as a job. */
   private async showMoge(): Promise<void> {
-    await this.showDownload(this.moge, 'moge-2-vits-normal', 'MoGe-2 small', 'Download MoGe-2', 'a small download', 'Depth, surface normals and the camera from one picture, for Relight\'s scene; without it Relight falls back to Depth Anything. Microsoft, MIT. Also needs backend/requirements_relight.txt in the engine.');
+    await this.showDownload(this.moge, 'moge-2-vits-normal', 'MoGe-2 small', 'Download MoGe-2', 'about 141 MB', 'Depth, surface normals and the camera from one picture, for Relight\'s scene; without it Relight falls back to Depth Anything. Microsoft, MIT. It also needs a Python runtime (torch and moge), installed here from the button below.', () => this.showMogeRuntime());
+    await this.showMogeRuntime();
+  }
+
+  private async showMogeRuntime(): Promise<void> {
     try {
       const e = await api('/relight/engines');
-      if (e.mogeModel && !e.moge) this.moge.append(el('<p class="cv-note">The model is here, but the engine lacks its Python packages (torch and moge): install backend/requirements_relight.txt to use it.</p>'));
+      if (!e.mogeModel) return;
+      if (e.moge) { this.moge.append(el('<p class="cv-local-state" role="status">The Relight runtime is ready: Relight uses MoGe-2.</p>')); return; }
+      const r = await api('/relight/runtime');
+      const info = el('<p class="cv-note"></p>'), note = el('<p class="cv-note cv-local-note" role="status"></p>');
+      setText(info, `The model is here, but its Python runtime is not. It installs torch and moge into a folder of their own beside the models. ${r.sizeNote ?? 'PyTorch is large: about 1 to 2 GB on a CPU-only computer.'}`);
+      const get = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-primary">Install the Relight runtime</button>');
+      const stop = this.cancelButton(note); setHidden(stop, true);
+      const follow = async (job: string): Promise<void> => {
+        get.disabled = true; setHidden(stop, false);
+        await this.follow(job, note, () => { if (note.textContent === 'Installed.') void this.showMoge(); else { get.disabled = false; setHidden(stop, true); } });
+      };
+      stop.addEventListener('click', () => { get.disabled = false; setHidden(stop, true); });
+      get.addEventListener('click', () => void (async () => { try { const j = await api('/relight/runtime/install', { method: 'POST' }); await follow(j.job_id); } catch (err) { get.disabled = false; setText(note, err instanceof Error ? err.message : 'Could not start the install.'); } })());
+      const row = el('<div class="cv-improve"></div>'); row.append(get, stop);
+      this.moge.append(info, row, note);
+      if (r.job) void follow(r.job);
     } catch { /* the engine's other cards say it is offline */ }
   }
 

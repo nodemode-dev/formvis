@@ -347,6 +347,19 @@ def _moge_ready() -> bool:
     return relight_scene.moge_ready()
 
 
+@router.get("/runtime")
+def runtime_status() -> dict:
+    from . import relight_runtime
+    return relight_runtime.status()
+
+
+@router.post("/runtime/install", status_code=202)
+def runtime_install() -> dict:
+    """Torch and the moge package in an environment of their own under the models folder, as a job."""
+    from . import relight_runtime
+    return relight_runtime.start()
+
+
 @router.post("/split")
 async def split(image: UploadFile = File(...), engine: str = "auto", width: int = 0, height: int = 0) -> Response:
     if engine not in ("auto", "marigold", "classic"):

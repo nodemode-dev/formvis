@@ -144,6 +144,18 @@ export async function installModel(id: string, status: (text: string) => void): 
   }
 }
 
+/** Relight's Python runtime for MoGe-2 (torch and moge in an environment of its own), installed as a job and followed. */
+export async function installRelightRuntime(status: (text: string) => void): Promise<boolean> {
+  const job = (await (await ask('/relight/runtime/install', { method: 'POST' })).json() as { job_id: string }).job_id;
+  for (;;) {
+    await new Promise((ok) => setTimeout(ok, 800));
+    const j = await (await ask(`/jobs/${job}`)).json() as { status: string; message?: string; error?: string; progress?: number };
+    if (j.status === 'done') return true;
+    if (['error', 'failed', 'cancelled'].includes(j.status)) { status(j.error || j.message || 'The install stopped.'); return false; }
+    status(`${j.message ?? 'Installing'}${typeof j.progress === 'number' ? ` (${Math.round(j.progress * 100)}%)` : ''}`);
+  }
+}
+
 export interface RelightEngines { marigold: boolean; marigoldModels: boolean; marigoldRuntime: boolean; classic: boolean; regions: 'parts' | 'colour'; faces: boolean; license: string; downloadGB: number; moge: boolean; mogeModel: boolean }
 export interface LightSplit {
   engine: 'marigold' | 'classic'; width: number; height: number; albedo: Uint8ClampedArray; shading: Float32Array; residual: Float32Array; normals: Float32Array | null;
