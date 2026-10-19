@@ -1,12 +1,22 @@
 import { BLEND_MODES, allPatterns, canvasBlend } from '../../engine';
-import type { Tool } from '../registry';
+import { digitOpacity, type Tool } from '../registry';
 
 export const bucketTool: Tool = {
   id: 'bucket', label: 'Paint Bucket', key: 'G', order: 71,
   icon: () => 'tBucket',
   hint: (e) => `Click to fill the area of similar color with ${e.bucket.source === 'pattern' ? 'the pattern' : 'the foreground color'} \u00b7 Tolerance sets how similar \u00b7 Stays inside the selection`,
   cursor: () => 'crosshair',
-  down(ctx, p) { if (p.button === 0) ctx.engine.paintBucket(p.doc); },
+  down(ctx, p) {
+    if (p.button !== 0) return;
+    if (p.alt) { const c = ctx.engine.sampleColor(p.doc); if (c) ctx.engine.setColors(c); return; }
+    ctx.engine.paintBucket(p.doc);
+  },
+  keydown(ctx, e) {
+    const v = e.metaKey || e.ctrlKey ? null : digitOpacity(e);
+    if (v === null) return false;
+    ctx.engine.setBucket({ opacity: v });
+    return true;
+  },
   options: (e) => [
     { kind: 'title', text: 'Paint Bucket' },
     // Source, Pattern and Mode (1.49.10, the owner's tool list).

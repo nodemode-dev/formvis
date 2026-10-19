@@ -8,7 +8,7 @@ import { checkRow, selectRow, sliderRow } from './controls';
 
 const PW = 640, PH = 440;
 type View = 'onionSkin' | 'marchingAnts' | 'overlay' | 'onBlack' | 'onWhite' | 'blackWhite' | 'onLayers';
-type Output = 'selection' | 'mask' | 'layer' | 'layerMask';
+type Output = 'selection' | 'mask' | 'layer' | 'layerMask' | 'document' | 'documentMask';
 
 /** Select > Select and Mask (Alt+Mod+R): the image with the selection shown as Overlay, On
  *  Black, On White or Black & White; Radius, Smooth, Feather, Contrast and Shift Edge; Output To the selection, a
@@ -28,6 +28,9 @@ export class SelectMaskDialog extends Dialog {
   private mask: Float32Array | null = null;
   /** The Refine Edge brush's painted region at preview size (0 to 1), and Decontaminate Colors. */
   private region: Float32Array | null = null;
+  private adds: Float32Array | null = null;
+  private subs: Float32Array | null = null;
+  private kind: 'refine' | 'add' | 'subtract' = 'refine';
   private brushOn = false;
   private brushSize = 30;
   private painting = false;
@@ -40,14 +43,30 @@ export class SelectMaskDialog extends Dialog {
     const region = this.region;
     if (!region) return;
     const b = this.canvas.getBoundingClientRect(), px = ((e.clientX - b.left) / b.width) * PW - this.ox, py = ((e.clientY - b.top) / b.height) * PH - this.oy;
-    const r = Math.max(1, (this.brushSize / 2) * this.scale);
+    const r = Math.max(1, (this.brushSize / 2) * this.scale), adds = this.adds, subs = this.subs;
+    // Refine Edge marks the band to work out again (Alt erases the marks); Add and Subtract paint the result itself (Alt swaps them).
+    const kind = this.kind === 'refine' ? (e.altKey ? 'erase' : 'refine') : (this.kind === 'add') !== e.altKey ? 'add' : 'subtract';
     for (let y = Math.max(0, Math.floor(py - r)); y <= Math.min(this.ph - 1, Math.ceil(py + r)); y++) {
       for (let x = Math.max(0, Math.floor(px - r)); x <= Math.min(this.pw - 1, Math.ceil(px + r)); x++) {
         const d = Math.hypot(x - px, y - py) / r;
-        if (d < 1) { const i = y * this.pw + x; region[i] = Math.max(region[i], 1 - d * d); }
+        if (d >= 1) continue;
+        const i = y * this.pw + x, w = 1 - d * d;
+        if (kind === 'refine') region[i] = Math.max(region[i], w);
+        else if (kind === 'erase') region[i] = Math.max(0, region[i] - w);
+        else if (adds && subs) {
+          if (kind === 'add') { adds[i] = Math.max(adds[i], w); subs[i] *= 1 - w; } else { subs[i] = Math.max(subs[i], w); adds[i] *= 1 - w; }
+        }
       }
     }
     this.render();
+  }
+
+  /** The refined edge with the Add and Subtract strokes laid over it (the arrays at the same size as `m`). */
+  private stroked(m: Float32Array, adds: Float32Array | null, subs: Float32Array | null): Float32Array {
+    if (!adds || !subs || !(adds.some((v) => v > 0) || subs.some((v) => v > 0))) return m;
+    const out = new Float32Array(m.length);
+    for (let i = 0; i < m.length; i++) out[i] = Math.max(m[i] * (1 - subs[i]), adds[i]);
+    return out;
   }
   private frame = 0;
   private readonly canvas = el(`<canvas class="cv-mask-canvas" width="${PW}" height="${PH}"></canvas>`) as HTMLCanvasElement;
@@ -60,9 +79,13 @@ export class SelectMaskDialog extends Dialog {
     const smartRow = checkRow('Smart Radius (wide where the picture is busy, narrow on hard edges)', (v) => { this.s = { ...this.s, smart: v }; this.render(); });
     const edgeRow = checkRow('Show Edge (tint the band Radius works in)', (v) => { this.showEdge = v; this.render(); });
     // The Refine Edge brush: while on, painting on the preview marks where the edge is worked out again from the image.
-    const brushRow = checkRow('Refine Edge Brush (paint on the preview)', (v) => { this.brushOn = v; this.canvas.classList.toggle('is-brush', v); });
+    const brushRow = selectRow('Brush (paint on the preview; Alt does the opposite)', [['off', 'Off'], ['refine', 'Refine Edge'], ['add', 'Add to Selection'], ['subtract', 'Subtract from Selection']], (v) => {
+      this.brushOn = v !== 'off';
+      if (v !== 'off') this.kind = v as 'refine' | 'add' | 'subtract';
+      this.canvas.classList.toggle('is-brush', this.brushOn);
+    });
     const sizeRow = sliderRow('Brush Size (px)', 2, 200, 1, (v) => { this.brushSize = v; });
-    const outRow = selectRow('Output To', [['selection', 'Selection'], ['mask', 'Layer Mask'], ['layer', 'New Layer'], ['layerMask', 'New Layer with Layer Mask']], (v) => { this.output = v as Output; });
+    const outRow = selectRow('Output To', [['selection', 'Selection'], ['mask', 'Layer Mask'], ['layer', 'New Layer'], ['layerMask', 'New Layer with Layer Mask'], ['document', 'New Document'], ['documentMask', 'New Document with Layer Mask']], (v) => { this.output = v as Output; });
     // Decontaminate Colors: it writes new pixels, so it outputs to a new layer.
     const deconRow = checkRow('Decontaminate Colors', (v) => {
       this.decon = v;
@@ -70,7 +93,7 @@ export class SelectMaskDialog extends Dialog {
     });
     const amountRow = sliderRow('Amount (%)', 0, 100, 1, (v) => { this.deconAmount = v; });
     this.body.append(this.canvas, viewRow.el, edgeRow.el, ...rows.map((x) => x.r.el), smartRow.el, brushRow.el, sizeRow.el, deconRow.el, amountRow.el, outRow.el);
-    this.syncRows = () => { smartRow.set(!!this.s.smart); edgeRow.set(this.showEdge); viewRow.set(this.view); outRow.set(this.output); for (const { k, r } of rows) r.set(this.s[k]); brushRow.set(this.brushOn); sizeRow.set(this.brushSize); deconRow.set(this.decon); amountRow.set(this.deconAmount); };
+    this.syncRows = () => { smartRow.set(!!this.s.smart); edgeRow.set(this.showEdge); viewRow.set(this.view); outRow.set(this.output); for (const { k, r } of rows) r.set(this.s[k]); brushRow.set(this.brushOn ? this.kind : 'off'); sizeRow.set(this.brushSize); deconRow.set(this.decon); amountRow.set(this.deconAmount); };
     this.canvas.addEventListener('pointerdown', (e) => { if (!this.brushOn) return; this.painting = true; this.canvas.setPointerCapture(e.pointerId); this.paint(e); });
     this.canvas.addEventListener('pointermove', (e) => { if (this.painting) this.paint(e); });
     const stop = (e: PointerEvent): void => { this.painting = false; if (this.canvas.hasPointerCapture(e.pointerId)) this.canvas.releasePointerCapture(e.pointerId); };
@@ -104,6 +127,8 @@ export class SelectMaskDialog extends Dialog {
     const md = mc.getImageData(0, 0, this.pw, this.ph).data;
     this.mask = new Float32Array(this.pw * this.ph);
     this.region = new Float32Array(this.pw * this.ph);
+    this.adds = new Float32Array(this.pw * this.ph);
+    this.subs = new Float32Array(this.pw * this.ph);
     for (let i = 0; i < this.mask.length; i++) this.mask[i] = md[i * 4 + 3] / 255;
     this.syncRows();
     this.render();
@@ -116,7 +141,7 @@ export class SelectMaskDialog extends Dialog {
       this.frame = 0;
       const img = this.image, guide = this.guide, mask = this.mask, g = this.canvas.getContext('2d');
       if (!img || !guide || !mask || !g) return;
-      const m0 = refineSelection(mask, guide, this.pw, this.ph, this.s, this.scale), m = this.region ? refineRegion(m0, guide, this.region, this.pw, this.ph, this.s.radius, this.scale) : m0;
+      const m0 = refineSelection(mask, guide, this.pw, this.ph, this.s, this.scale), m = this.stroked(this.region ? refineRegion(m0, guide, this.region, this.pw, this.ph, this.s.radius, this.scale) : m0, this.adds, this.subs);
       const out = new ImageData(this.pw, this.ph), d = out.data, s = img.data;
       const checker = (i: number): number => ((((i % this.pw) >> 3) + ((Math.floor(i / this.pw)) >> 3)) % 2 ? 204 : 255);
       for (let i = 0; i < m.length; i++) {
@@ -153,7 +178,7 @@ export class SelectMaskDialog extends Dialog {
 
   private apply(): void {
     const p = this.engine.current, sel = p?.selection, flat = this.engine.flattened(), s = { ...this.s }, output = this.output;
-    const region = this.region, pw = this.pw, ph = this.ph, scale = this.scale, decon = this.decon ? this.deconAmount : 0;
+    const adds = this.adds, subs = this.subs, region = this.region, pw = this.pw, ph = this.ph, scale = this.scale, decon = this.decon ? this.deconAmount : 0;
     this.close();
     if (!p || !sel || !flat) return;
     const W = p.doc.width, H = p.doc.height, guide = levelsOf(ctxOf(flat).getImageData(0, 0, W, H), true), mask = new Float32Array(W * H);
@@ -165,8 +190,13 @@ export class SelectMaskDialog extends Dialog {
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) full[y * W + x] = region[Math.min(ph - 1, Math.floor(y * scale)) * pw + Math.min(pw - 1, Math.floor(x * scale))];
       m = refineRegion(m, guide, full, W, H, s.radius, 1);
     }
+    if (adds && subs && (adds.some((v) => v > 0) || subs.some((v) => v > 0))) {
+      const up = (a: Float32Array): Float32Array => { const f = new Float32Array(W * H); for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) f[y * W + x] = a[Math.min(ph - 1, Math.floor(y * scale)) * pw + Math.min(pw - 1, Math.floor(x * scale))]; return f; };
+      m = this.stroked(m, up(adds), up(subs));
+    }
     const data = new Uint8Array(W * H);
     for (let i = 0; i < data.length; i++) data[i] = Math.round(Math.min(1, Math.max(0, m[i])) * 255);
-    this.engine.applyRefinedSelection(data, output, decon);
+    if (output === 'document' || output === 'documentMask') this.engine.applyRefinedToDocument(data, output === 'documentMask');
+    else this.engine.applyRefinedSelection(data, output, decon);
   }
 }

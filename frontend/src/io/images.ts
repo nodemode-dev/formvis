@@ -1,4 +1,6 @@
 import { headerResolution, headerSize, implausibleSize } from './image-size';
+import { headerPalette } from './palette-header';
+import { jpegExtras } from './jpeg-resources';
 import { FORMER_PROJECT_EXTENSIONS } from './legacy';
 import { LIMITS, type ImportedImage } from '../engine';
 import { deepFromU16, deepToLinear, rasterFromDeep } from '../engine/deep';
@@ -201,5 +203,7 @@ export async function decodeImage(file: Blob, name: string, raw = false, rawWb?:
   }
   const meta = await readFileMeta(file);   // File Info and the camera's record (29.2)
   const resolution = RAW_FILE.test(name) ? null : await headerResolution(file);
-  return { source, width: source.width, height: source.height, name, ...(meta ? { meta } : {}), ...(resolution ? { resolution } : {}) };
+  const table = /\.(png|bmp)$/i.test(name) && !server ? await headerPalette(file) : null;
+  const jpeg = /\.jpe?g$/i.test(name) ? await jpegExtras(file) : null;
+  return { source, width: source.width, height: source.height, name, ...(meta ? { meta } : {}), ...(resolution ? { resolution } : {}), ...(jpeg?.guides.length ? { guides: jpeg.guides } : {}), ...(jpeg?.truncated ? { warning: `${name} ends before its last data: the part that could be read opened, the rest is missing.` } : {}), ...(table ? { palette: table.colors, ...(table.transparent >= 0 ? { transparentIndex: table.transparent } : {}) } : {}) };
 }

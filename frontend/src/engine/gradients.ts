@@ -15,7 +15,7 @@ export interface GradientStop { at: number; color: RGB | 'fg' | 'bg'; alpha: num
 /** Separate opacity stops (with their own midpoints), as .grd files carry them. When a preset has them, `stops` are its colour stops
  *  (their `alpha` kept only as the opacity at that spot, for readers that know nothing of opacity stops). */
 export interface OpacityStop { at: number; alpha: number; mid?: number }
-export interface GradientPreset { id: string; label: string; stops: GradientStop[]; opacityStops?: OpacityStop[] }
+export interface GradientPreset { id: string; label: string; stops: GradientStop[]; opacityStops?: OpacityStop[]; group?: string }
 
 export const clampMid = (m: number | undefined): number => (typeof m === 'number' && Number.isFinite(m) ? Math.min(0.95, Math.max(0.05, m)) : 0.5);
 /** The midpoint curve: t' = t ^ (log 0.5 / log m), so t' is 0.5 at t = m. */
@@ -56,7 +56,7 @@ export function gradientsFromJson(raw: unknown): GradientPreset[] {
       const q = s && typeof s === 'object' ? (s as Record<string, unknown>) : null;
       return q ? [{ at: n(q.at, 0, 1, 0), alpha: n(q.alpha, 0, 1, 1), ...(typeof q.mid === 'number' ? { mid: n(q.mid, 0.05, 0.95, 0.5) } : {}) } as OpacityStop] : [];
     }) : [];
-    return stops.length >= 2 ? [{ id: o.id, label: o.label.trim().slice(0, 60), stops, ...(ops.length ? { opacityStops: ops } : {}) }] : [];
+    return stops.length >= 2 ? [{ id: o.id, label: o.label.trim().slice(0, 60), stops, ...(ops.length ? { opacityStops: ops } : {}), ...(typeof o.group === 'string' && o.group.trim() ? { group: o.group.trim().slice(0, 40) } : {}) }] : [];
   });
 }
 
@@ -124,7 +124,7 @@ export function reflectStops<T extends { at: number }>(stops: T[]): T[] {
 }
 
 /** The colour at `t` (0 to 1) along resolved stops, straight RGBA. */
-export function colorAt(stops: Array<{ at: number; rgb: RGB; alpha: number }>, t: number): [number, number, number, number] {
+export function colorAt(stops: Array<{ at: number; rgb: RGB; alpha: number; mid?: number }>, t: number): [number, number, number, number] {
   if (!stops.length) return [0, 0, 0, 0];
   const x = Math.min(1, Math.max(0, t));
   let i = 0;
@@ -132,7 +132,7 @@ export function colorAt(stops: Array<{ at: number; rgb: RGB; alpha: number }>, t
   const a = stops[i], b = stops[Math.min(stops.length - 1, i + 1)];
   if (x <= a.at || a === b) return [a.rgb.r, a.rgb.g, a.rgb.b, a.alpha * 255];
   if (x >= b.at) return [b.rgb.r, b.rgb.g, b.rgb.b, b.alpha * 255];
-  const f = (x - a.at) / (b.at - a.at);
+  const f = midCurve((x - a.at) / (b.at - a.at), a.mid);
   return [a.rgb.r + (b.rgb.r - a.rgb.r) * f, a.rgb.g + (b.rgb.g - a.rgb.g) * f, a.rgb.b + (b.rgb.b - a.rgb.b) * f, (a.alpha + (b.alpha - a.alpha) * f) * 255];
 }
 

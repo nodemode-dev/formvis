@@ -25,12 +25,13 @@ export const shapeTool: Tool = {
   down(ctx, p) {
     if (p.button !== 0 || !ctx.engine.current) return;
     if (cornerWidgetDown(ctx, p)) return;
-    draft = { anchor: p.doc, point: p.doc, shiftAtPress: p.shift, altAtPress: p.alt, square: false, center: false };
+    const at = ctx.engine.snapPoint(p.doc);
+    draft = { anchor: at, point: at, shiftAtPress: p.shift, altAtPress: p.alt, square: false, center: false };
   },
   move(ctx, p) {
     if (cornerWidgetMove(ctx, p)) return;
     if (!draft) return;
-    draft.point = p.doc;
+    draft.point = ctx.engine.snapPoint(p.doc);
     draft.square = p.shift && !draft.shiftAtPress;
     draft.center = p.alt && !draft.altAtPress;
     ctx.engine.emit('overlay', null);
@@ -39,6 +40,7 @@ export const shapeTool: Tool = {
     if (cornerWidgetUp(ctx)) return;
     const d = draft;
     draft = null;
+    ctx.engine.snapPoint({ x: 0, y: 0 }, true);
     ctx.engine.emit('overlay', null);
     if (!d) return;
     // A click without a drag asks for the size in the Create Shape dialog.

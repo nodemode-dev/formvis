@@ -517,7 +517,7 @@ export class Stage {
       const major = Math.max(1, vw.gridSpacing), sub = major / Math.max(1, vw.gridSubdivisions);
       for (const [step, alpha] of [[sub, 0.35], [major, 0.9]] as const) {
         if (step * v.zoom < 4) continue;
-        g.globalAlpha = alpha;
+        g.globalAlpha = alpha * Stage.prefs.gridOpacity / 100;
         g.strokeStyle = Stage.prefs.gridColor || pal.grid;
         g.setLineDash(LINE_DASH[Stage.prefs.gridStyle]);
         g.beginPath();
@@ -581,7 +581,7 @@ export class Stage {
   /** A major tick step in document pixels at least 60 screen pixels apart, from 1, 2, 5 and their powers of ten. */
   /** Preferences the stage draws with (set by the app from Preferences): the checkerboard's cell, what the wheel does,
    *  the rulers' units, and the grid's and guides' colours ('' is the theme's). */
-  static prefs: { cell: number; zoomWheel: boolean; rulerUnits: 'px' | 'in' | 'cm' | 'mm' | '%' | 'col'; gridColor: string; guideColor: string; gridStyle: LineStyle; guideStyle: LineStyle } = { cell: 8, zoomWheel: false, rulerUnits: 'px', gridColor: '', guideColor: '', gridStyle: 'solid', guideStyle: 'solid' };
+  static prefs: { cell: number; zoomWheel: boolean; rulerUnits: 'px' | 'in' | 'cm' | 'mm' | '%' | 'col'; gridColor: string; guideColor: string; gridStyle: LineStyle; guideStyle: LineStyle; gridOpacity: number } = { cell: 8, zoomWheel: false, rulerUnits: 'px', gridColor: '', guideColor: '', gridStyle: 'solid', guideStyle: 'solid', gridOpacity: 100 };
   /** Preferences > Cursors, Enhanced Controls and Units & Rulers: Other Cursors precise, trackpad pinch and rotate, touch gestures, and a column plus its gutter in millimeters. */
   static controls = { preciseOther: false, pinch: true, rotate: false, touch: true, colMm: 19.2, colWidthMm: 15, penEraser: true };
 
@@ -617,6 +617,10 @@ export class Stage {
     this.host.classList.toggle('is-turned', !!deg);
   }
 
+  /** The ruler zero point of each open document, in document pixels; dragged from the rulers' corner, reset by a double-click there. */
+  private static readonly rulerOrigins = new WeakMap<object, Pt>();
+  static rulerOrigin(project: object | null | undefined): Pt { return (project && Stage.rulerOrigins.get(project)) || { x: 0, y: 0 }; }
+
   static rulerStep(zoom: number): number {
     for (let k = 0; k < 8; k++) for (const m of [1, 2, 5]) { const s = m * 10 ** k; if (s * zoom >= 60) return s; }
     return 1e8;
@@ -631,7 +635,7 @@ export class Stage {
     const p = this.engine.current as NonNullable<Engine['current']>, v = p.viewport, pal = paint(), d = this.dpr;
     // Preferences > Units & Rulers: each ruler in the chosen unit (the document's resolution; percent of its side), its
     // ticks at round steps of that unit.
-    const res = p.doc.resolution || 72, u = Stage.prefs.rulerUnits;
+    const res = p.doc.resolution || 72, u = Stage.prefs.rulerUnits, origin = Stage.rulerOrigin(p);
     for (const [c, horiz] of [[this.rulerH, true], [this.rulerV, false]] as const) {
       const k = u === 'in' ? res : u === 'cm' ? res / 2.54 : u === 'mm' ? res / 25.4 : u === 'col' ? (res / 25.4) * Stage.controls.colMm : u === '%' ? (horiz ? p.doc.width : p.doc.height) / 100 : 1;
       const zk = v.zoom * k, step = Stage.rulerStep(zk), minor = step * zk >= 150 ? step / 10 : step / 5;
@@ -647,9 +651,9 @@ export class Stage {
       g.lineWidth = 1;
       g.beginPath();
       if (horiz) { g.moveTo(0, RULER - 0.5); g.lineTo(len, RULER - 0.5); } else { g.moveTo(RULER - 0.5, 0); g.lineTo(RULER - 0.5, len); }
-      const first = Math.floor(-pan / zk / minor) * minor;
-      for (let t = first; t * zk + pan <= len; t += minor) {
-        const s = Math.round(t * zk + pan) + 0.5, isMajor = Math.abs(t / step - Math.round(t / step)) < 1e-6, tick = isMajor ? RULER : RULER / 3;
+      const o0 = (horiz ? origin.x : origin.y) / k, first = Math.floor((-pan / zk - o0) / minor) * minor;
+      for (let t = first; (t + o0) * zk + pan <= len; t += minor) {
+        const s = Math.round((t + o0) * zk + pan) + 0.5, isMajor = Math.abs(t / step - Math.round(t / step)) < 1e-6, tick = isMajor ? RULER : RULER / 3;
         if (horiz) { g.moveTo(s, RULER - tick); g.lineTo(s, RULER); } else { g.moveTo(RULER - tick, s); g.lineTo(RULER, s); }
         if (isMajor) {
           const label = String(Math.round(t));
@@ -853,7 +857,7 @@ export class Stage {
     const screen = Stage.unturn((e.clientX - r.left) * kx, (e.clientY - r.top) * ky, r.width * kx, r.height * ky, v?.rotation ?? 0, Stage.parOf(this.engine), !!v?.flipped);
     const pen = 'pointerType' in e && (e as PointerEvent).pointerType === 'pen';
     return { doc: v ? v.toDoc(screen.x, screen.y) : screen, screen, button: e.button, shift: e.shiftKey || stickyModifiers.active('shift'), alt: e.altKey || stickyModifiers.active('alt'), mod: (isMac ? e.metaKey : e.ctrlKey) || stickyModifiers.active('mod'), clicks, pressure: Stage.pressureOf(e, pen),
-      pose: pen && Stage.usePressure ? { tiltX: (e as PointerEvent).tiltX || 0, tiltY: (e as PointerEvent).tiltY || 0, twist: (e as PointerEvent).twist || 0 } : undefined };
+      pose: pen && Stage.usePressure ? { tiltX: (e as PointerEvent).tiltX || 0, tiltY: (e as PointerEvent).tiltY || 0, twist: (e as PointerEvent).twist || 0, wheel: Math.max(0, Math.min(1, (((e as PointerEvent).tangentialPressure || 0) + 1) / 2)) } : undefined };
   }
 
   /** Drag out of a ruler to place a guide: the top ruler makes horizontal guides, the left one vertical guides. The
@@ -866,8 +870,25 @@ export class Stage {
       const doc = v ? v.toDoc(s.x, s.y) : { x: sx, y: sy };
       return { doc, inside: sx >= 0 && sy >= 0 && sx <= b.width && sy <= b.height && (axis === 'y' ? sy > RULER : sx > RULER) };
     };
+    let zero = false;
+    const corner = (e: MouseEvent): boolean => { const b = this.rect ?? this.host.getBoundingClientRect(); return e.clientX - b.left < RULER && e.clientY - b.top < RULER; };
+    const setZero = (e: MouseEvent): void => {
+      const pr = this.engine.current;
+      if (!pr) return;
+      const b = this.rect ?? this.host.getBoundingClientRect(), v = pr.viewport, s = Stage.unturn(e.clientX - b.left, e.clientY - b.top, b.width, b.height, v.rotation ?? 0, Stage.parOf(this.engine), !!v.flipped), d = v.toDoc(s.x, s.y);
+      Stage.rulerOrigins.set(pr, { x: Math.round(d.x), y: Math.round(d.y) });
+      this.renderRulers();
+    };
+    r.addEventListener('dblclick', (e) => {
+      const pr = this.engine.current;
+      if (!pr || !corner(e)) return;
+      Stage.rulerOrigins.delete(pr);
+      this.renderRulers();
+    });
     r.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0 || !this.engine.current || this.engine.view.guidesLocked) return;
+      if (e.button !== 0 || !this.engine.current) return;
+      if (corner(e)) { e.preventDefault(); r.setPointerCapture(e.pointerId); id = e.pointerId; zero = true; setZero(e); return; }
+      if (this.engine.view.guidesLocked) return;
       e.preventDefault();
       r.setPointerCapture(e.pointerId);
       id = e.pointerId;
@@ -876,17 +897,20 @@ export class Stage {
       this.engine.emit('overlay', null);
     });
     r.addEventListener('pointermove', (e) => {
+      if (zero && id === e.pointerId) { setZero(e); return; }
       const d = this.engine.guideDraft;
       if (id !== e.pointerId || !d) return;
-      const p = at(e).doc;
-      d.at = axis === 'x' ? p.x : p.y;
+      const p = at(e).doc, far = -1e9, sp = this.engine.snapPoint(axis === 'x' ? { x: p.x, y: far } : { x: far, y: p.y });
+      d.at = axis === 'x' ? sp.x : sp.y;
       this.engine.emit('overlay', null);
     });
     const end = (e: PointerEvent, cancel: boolean): void => {
       if (id !== e.pointerId) return;
       id = null;
+      if (zero) { zero = false; return; }
       const d = this.engine.guideDraft, where = at(e);
       this.engine.guideDraft = null;
+      this.engine.snapPoint({ x: 0, y: 0 }, true);
       if (!cancel && d && where.inside) { if (!this.engine.view.guides) this.engine.setView({ guides: true }); this.engine.addGuide(axis, d.at); }
       else this.engine.emit('overlay', null);
     };

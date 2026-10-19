@@ -1,4 +1,4 @@
-import type { Engine, Pt } from '../../engine';
+import type { Engine, Pt, Surface } from '../../engine';
 import { dashed, type OptionSpec, type Tool } from '../registry';
 import { lassoTool } from './lasso';
 
@@ -6,15 +6,20 @@ let drag: { start: Pt; now: Pt; pending?: boolean } | null = null, mode: 'move' 
 /** Transform On Drop: the drop waits here (nothing is filled or moved yet) while scale, angle and flips are set; Enter applies. */
 let pend: { dx: number; dy: number; scale: number; angle: number; flipH: boolean; flipV: boolean; sel: unknown } | null = null;
 
+/** The moved pixels, drawn once after the drop (off the drop's own turn); the hole they leave is filled only when applied. */
+let preview: { for: unknown; image: Surface | null } | null = null;
+
 function pending(e: Engine): typeof pend {
   if (pend && e.current?.selection !== pend.sel) pend = null;
+  if (!pend) preview = null;
   return pend;
 }
 
 function apply(e: Engine): void {
   const d = pending(e);
   pend = null;
-  if (d) e.contentAwareMove(d.dx, d.dy, mode, { scale: d.scale, angle: d.angle, flipH: d.flipH, flipV: d.flipV });
+  preview = null;
+  if (d) void e.contentAwareMove(d.dx, d.dy, mode, { scale: d.scale, angle: d.angle, flipH: d.flipH, flipV: d.flipV });
   e.emit('options', null);
   e.emit('overlay', null);
 }
@@ -50,9 +55,12 @@ export const contentAwareMoveTool: Tool = {
       if (!dx && !dy) return;
       if (ctx.engine.retouch.moveTransform) {
         pend = { dx, dy, scale: 100, angle: 0, flipH: false, flipV: false, sel: ctx.engine.current?.selection };
+        const mine = pend, e = ctx.engine;
+        preview = { for: mine, image: null };
+        setTimeout(() => { if (pend === mine && preview?.for === mine) { preview.image = e.moveDropPreview(); e.emit('overlay', null); } }, 0);
         ctx.engine.emit('options', null);
         ctx.engine.emit('overlay', null);
-      } else ctx.engine.contentAwareMove(dx, dy, mode);
+      } else void ctx.engine.contentAwareMove(dx, dy, mode);
       return;
     }
     lassoTool.up?.(ctx, p);
@@ -76,12 +84,21 @@ export const contentAwareMoveTool: Tool = {
       return v.toScreen({ x: cx + rx * cs - ry * sn, y: cy + rx * sn + ry * cs });
     };
     const c = [pt(0, 0), pt(sel.w, 0), pt(sel.w, sel.h), pt(0, sel.h)];
+    if (pd && preview?.image) {
+      const o = pt(0, 0), ex = pt(1, 0), ey = pt(0, 1);
+      g.save();
+      g.globalAlpha = 0.85;
+      g.transform(ex.x - o.x, ex.y - o.y, ey.x - o.x, ey.y - o.y, o.x, o.y);
+      g.drawImage(preview.image as CanvasImageSource, 0, 0);
+      g.restore();
+    }
     dashed(ctx, g, () => { g.moveTo(c[0].x + 0.5, c[0].y + 0.5); for (let i = 1; i < 4; i++) g.lineTo(c[i].x + 0.5, c[i].y + 0.5); g.closePath(); });
   },
   options: (e): OptionSpec[] => [
     { kind: 'title', text: 'Content-Aware Move' },
     { kind: 'segment', label: 'Mode', choices: [{ id: 'move', label: 'Move' }, { id: 'extend', label: 'Extend' }], get: () => mode, set: (v) => { mode = v as 'move' | 'extend'; e.emit('options', null); } },
     { kind: 'number', label: 'Structure', min: 1, max: 7, step: 1, get: () => e.retouch.moveStructure, set: (v: number) => { e.retouch.moveStructure = Math.round(Math.min(7, Math.max(1, v))); e.emit('options', null); }, when: () => mode === 'move' },
+    { kind: 'select', label: 'Blend', choices: [{ id: 'none', label: 'None' }, { id: 'edge', label: 'Edge' }, { id: 'all', label: 'All' }], get: () => e.retouch.moveBlend, set: (v: string) => { e.retouch.moveBlend = v === 'edge' || v === 'all' ? v : 'none'; e.emit('options', null); } },
     { kind: 'number', label: 'Color', min: 0, max: 10, step: 1, get: () => e.retouch.moveColor, set: (v: number) => { e.retouch.moveColor = Math.round(Math.min(10, Math.max(0, v))); e.emit('options', null); } },
     { kind: 'toggle', label: 'Sample All Layers', get: () => e.retouch.moveSampleAll, set: (v: boolean) => { e.retouch.moveSampleAll = v; e.emit('options', null); } },
     { kind: 'toggle', label: 'Transform On Drop', get: () => e.retouch.moveTransform, set: (v: boolean) => { e.retouch.moveTransform = v; if (!v) pend = null; e.emit('options', null); e.emit('overlay', null); } },

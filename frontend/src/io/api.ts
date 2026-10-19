@@ -1,6 +1,6 @@
 import { lutFrom, lut4From, lut3x4From, type ColourLut, type Lut4, type Lut3x4 } from '../engine/colour-lut';
-export interface ExrLayout { width: number; height: number; parts: Array<{ part: number; name: string; groups: Array<{ key: string; label: string; channels: number }> }>; crypto: Array<{ name: string; objects: string[] }> }
-export type ExrPick = { part: number; key: string } | { crypto: string; object: string };
+export interface ExrLayout { width: number; height: number; /** The stereo views, when the file holds more than one. */ views?: string[]; parts: Array<{ part: number; name: string; groups: Array<{ key: string; label: string; channels: number; view?: string }> }>; crypto: Array<{ name: string; objects: string[] }> }
+export type ExrPick = { part: number; key: string } | { crypto: string; object: string } | { sum: Array<{ part: number; key: string }>; name: string };
 export interface Capabilities { pixelBudget?: number; memory?: number;
   name: string; version: string;
   desktop: boolean;
@@ -114,11 +114,11 @@ export type RawWhiteBalance = { wb: 'as_shot' | 'auto' | 'daylight'; temperature
 
 /** The RAW-stage develop controls the engine applies in linear light: Exposure in stops, Noise Reduction 0 to 100, highlight
  *  recovery, the black point, and Shadows, Highlights, Clarity, Texture and Dehaze from -100 to 100. */
-export type RawDevelop = { exposure: number; recovery: 'clip' | 'unclip' | 'blend' | 'rebuild'; noise: number; blackPoint: 'as_shot' | 'auto'; shadows: number; highlights: number; clarity: number; texture: number; dehaze: number };
-export const RAW_DEVELOP_ZERO: RawDevelop = { exposure: 0, recovery: 'clip', noise: 0, blackPoint: 'as_shot', shadows: 0, highlights: 0, clarity: 0, texture: 0, dehaze: 0 };
+export type RawDevelop = { exposure: number; recovery: 'clip' | 'unclip' | 'blend' | 'rebuild'; noise: number; blackPoint: 'as_shot' | 'auto'; shadows: number; highlights: number; clarity: number; texture: number; dehaze: number; kelvin: number; look: boolean };
+export const RAW_DEVELOP_ZERO: RawDevelop = { exposure: 0, recovery: 'clip', noise: 0, blackPoint: 'as_shot', shadows: 0, highlights: 0, clarity: 0, texture: 0, dehaze: 0, kelvin: 0, look: false };
 
 /** What the engine reads from a camera RAW file's bytes (POST /io/raw-info). */
-export type RawInfo = { kind: string; make: string; model: string; rawWidth: number; rawHeight: number; width: number; height: number; cfa: string; colors: number; whiteBalance: number[]; orientation: number; baselineExposure: number | null; blackLevel: number[]; whiteLevel: number };
+export type RawInfo = { kind: string; make: string; model: string; rawWidth: number; rawHeight: number; width: number; height: number; cfa: string; colors: number; whiteBalance: number[]; orientation: number; baselineExposure: number | null; blackLevel: number[]; whiteLevel: number; gainMaps?: number; kelvin?: number | null };
 
 /** The decode route's form fields for `raw`; none when it is the plain as-shot decode, so the engine's defaults stand. */
 function rawFields(raw?: RawWhiteBalance): Record<string, string> {

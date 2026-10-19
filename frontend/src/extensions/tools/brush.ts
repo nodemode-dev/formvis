@@ -1,6 +1,6 @@
 import { BLEND_MODES } from '../../engine';
 import { clamp, type Engine, type Pt } from '../../engine';
-import { allBrushPresets, identityOption, pressureOption, type SymmetryMode } from '../../engine/brush-dynamics';
+import { abrImport, allBrushPresets, identityOption, pressureOption, type SymmetryMode } from '../../engine/brush-dynamics';
 import { digitOf, type OptionSpec, type Tool } from '../registry';
 import { holdEnd, holdMove, holdStart, quickShapeOption, quickShapeSnapped } from './quick-shape';
 import { cursorState, drawBrushCursor } from './brush-common';
@@ -75,6 +75,14 @@ export function pressureSizeOption(e: Engine): OptionSpec {
 export function pressureOpacityOption(e: Engine): OptionSpec {
   return { kind: 'toggle', label: 'Pressure: opacity', priority: 20, get: () => !!e.brushDynamics.opacity?.enabled, set: (v) => { e.alwaysPressure.opacity = v; e.brushDynamics.opacity = v ? pressureOption(0.2) : identityOption(); e.brushPresetId = null; e.emit('options', null); } };
 }
+
+/** The smoothing settings as one object, for Brush Settings to read and set. */
+export const smoothingState = {
+  get value(): number { return smoothing; }, set value(v: number) { smoothing = Math.max(0, Math.min(100, Math.round(v))); },
+  get mode(): 'trail' | 'string' { return smoothMode; }, set mode(v: 'trail' | 'string') { smoothMode = v; },
+  get catchUp(): boolean { return catchUp; }, set catchUp(v: boolean) { catchUp = v; },
+  get zoomAdjust(): boolean { return zoomAdjust; }, set zoomAdjust(v: boolean) { zoomAdjust = v; },
+};
 
 /** Smoothing and its modes, shared by the Brush and the Pencil. */
 export function smoothingOptions(e: Engine): OptionSpec[] {
@@ -175,6 +183,8 @@ export const brushTool: Tool = {
     { kind: 'select', label: 'Preset', priority: 45, choices: [{ id: '', label: 'Custom' }, ...allBrushPresets().map((b) => ({ id: b.id, label: b.name }))], live: () => [{ id: '', label: 'Custom' }, ...allBrushPresets().map((b) => ({ id: b.id, label: b.name }))], get: () => e.brushPresetId ?? '', set: (id) => { const b = allBrushPresets().find((x) => x.id === id); if (b) e.applyBrushPreset(b); else { e.brushPresetId = null; e.setBrush({ tip: null }); } } },
     { kind: 'select', label: 'Right-click', priority: 10, choices: [{ id: 'resize', label: 'Resize only' }, { id: 'picker', label: 'Preset picker' }], get: () => e.brushRightClick, set: (v: string) => { e.brushRightClick = v === 'picker' ? 'picker' : 'resize'; e.emit('options', null); } },
     { kind: 'button', label: 'Import Brushes', priority: 10, icon: 'upload', run: () => e.uiHooks.importBrushes?.() },
+    { kind: 'select', label: 'Import mode', priority: 9, choices: [{ id: 'add', label: 'Add to the brushes' }, { id: 'replace', label: 'Replace earlier imports' }], get: () => (abrImport.replace ? 'replace' : 'add'), set: (v: string) => { abrImport.replace = v === 'replace'; e.emit('options', null); } },
+    { kind: 'toggle', label: 'Select first on import', priority: 9, get: () => abrImport.select, set: (v) => { abrImport.select = v; e.emit('options', null); } },
     pressureSizeOption(e),
     { kind: 'range', label: 'Min size', priority: 15, min: 0, max: 100, unit: '%', get: () => Math.round((e.brushDynamics.size.enabled ? e.brushDynamics.size.min : 0.2) * 100), set: (v) => { if (e.brushDynamics.size.enabled) e.brushDynamics.size = pressureOption(v / 100); e.brushPresetId = null; e.emit('options', null); } },
     { kind: 'toggle', label: 'Pressure: flow', priority: 20, get: () => e.brushDynamics.flow.enabled, set: (v) => { e.brushDynamics.flow = v ? pressureOption(e.brushDynamics.flow.enabled ? e.brushDynamics.flow.min : 0.2) : identityOption(); e.brushPresetId = null; e.emit('options', null); } },

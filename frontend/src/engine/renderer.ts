@@ -1,7 +1,7 @@
 import { distanceField, resizeMask } from './filters';
 import { blendPixels } from './blend';
 import { patternById } from './patterns';
-import { CONTOURS, applyContour, contourLut, withGlobalLight, type ContourId } from './style-extras';
+import { applyContour, contourCurve, contourLut, withGlobalLight, type ContourId } from './style-extras';
 import { canvasBlend, compositeOp, instances, type BlendMode, type Doc, type ID, type Layer, type Sampling, type Transform, effectsActive, type LayerEffects, type RGB, type Rect, type BlendIf, blendIfActive, type BevelContour, type BevelTexture, type Pt } from './types';
 import { distanceSquared } from './matting';
 import { createSurface, ctxOf, rasterOf, sizeSurface, type Ctx2D, type Raster, type Surface } from './surface';
@@ -91,6 +91,8 @@ export interface RenderJob {
   ignoreFolderMasks?: boolean;
   /** Folders being drawn on their own surface by an enclosing render; they are not isolated again inside it. */
   handled?: ReadonlySet<ID>;
+  /** Clip bases whose clipped layers are being drawn on their own surface by an enclosing render (Blend Clipped Layers as Group). */
+  inClip?: ReadonlySet<ID>;
   /** The display's frame: the layers below the lowest layer with an override are kept as one picture between frames. */
   reuse?: boolean;
 }
@@ -158,7 +160,7 @@ function chiselHeight(A: Float32Array, w: number, h: number, bv: LayerEffects['b
  *  of the height and flat past it. For a smooth bevel `half` names the side of the edge (where the height crosses
  *  0.5) that is seen: that half carries the whole curve, and the other half keeps its slope, shifted to meet it. */
 function contourHeight(H: Float32Array, c: BevelContour, half: 'inner' | 'outer' | null): void {
-  const curve = CONTOURS.find((x) => x.id === c.id)?.f ?? ((t: number) => t), span = Math.min(1, Math.max(0.01, c.range));
+  const curve = contourCurve(c.id) ?? ((t: number) => t), span = Math.min(1, Math.max(0.01, c.range));
   const shape = (t: number): number => curve(Math.min(1, Math.max(0, t) / span));
   if (!half) { for (let i = 0; i < H.length; i++) H[i] = shape(H[i]); return; }
   const meet = half === 'inner' ? 0.5 * shape(0) : 0.5 * shape(1);
@@ -254,6 +256,7 @@ export class Renderer {
       if (split < 0 && ov.has(l.id)) { if (l.isGroup) return null; split = i; }
     }
     if (split < 1 || ancestors(map, entries[split].layer).some((g) => groupIsolated(g))) return null;
+    if (entries.some((e) => e.layer.blendClipped)) return null;
     const sig: unknown[] = [W, H, ...job.view, job.background ?? '', job.quality ?? '', this.fastEffects, job.ignoreFolderMasks === true, job.doc.width, job.doc.height, job.doc.globalLight, split];
     for (let i = 0; i < split; i++) {
       const l = entries[i].layer;
@@ -296,7 +299,7 @@ export class Renderer {
     for (const e of entries) map.set(e.layer.id, e.layer);
     const clipCache = new Map<ID, Surface | null>();
     if (this.clipPool.size > 24) this.clipPool.clear();
-    const backed = new Set<ID>(), isoDone = new Set<ID>();
+    const backed = new Set<ID>(), isoDone = new Set<ID>(), clipDone = new Set<ID>();
     // An artboard's background, once, in document space, just below whatever it holds.
     const backdrop = (a: Layer): void => {
       if (backed.has(a.id) || !a.artboard || job.handled) return;
@@ -326,6 +329,12 @@ export class Renderer {
       const iso = ancestors(map, layer).reverse().find((g) => groupIsolated(g) && !job.handled?.has(g.id));
       if (iso) {
         if (!isoDone.has(iso.id)) { isoDone.add(iso.id); this.isolatedFolder(job, ctx, iso, W, H); }
+        continue;
+      }
+      // Blend Clipped Layers as Group: the base and the layers clipped to it are composited on their own, once, at the base.
+      const cg = layer.clipId ? map.get(layer.clipId) : layer.blendClipped ? layer : undefined;
+      if (cg?.blendClipped && !cg.isGroup && !cg.adjustment && !job.inClip?.has(cg.id)) {
+        if (!clipDone.has(cg.id)) { clipDone.add(cg.id); this.clippedGroup(job, ctx, cg, map, W, H); }
         continue;
       }
       const ov = job.overrides?.get(layer.id);
@@ -437,6 +446,31 @@ export class Renderer {
     ctx.putImageData(dst, box.x, box.y);
   }
 
+  /** A clip base with Blend Clipped Layers as Group: it and the layers clipped to it rendered together on a clear
+   *  surface (the base in Normal at full opacity, each clipped layer in its own mode against the group), which is then
+   *  drawn onto `ctx` at the base's opacity and in the base's mode. */
+  private clippedGroup(job: RenderJob, ctx: Ctx2D, base: Layer, map: ReadonlyMap<ID, Layer>, W: number, H: number): void {
+    const ov = job.overrides?.get(base.id), opacity = ov?.opacity ?? base.opacity, mode = ov?.blend ?? base.blend;
+    if (ov?.hidden || !(opacity > 0)) return;
+    const inClip = new Set<ID>(job.inClip ?? []);
+    inClip.add(base.id);
+    const into = this.slot(40 + inClip.size, W, H);
+    const ids = new Set<ID>([base.id]);
+    for (const l of map.values()) if (l.clipId === base.id) ids.add(l.id);
+    const only = new Set<ID>(job.only ? [...ids].filter((id) => job.only?.has(id)) : ids);
+    const overrides = new Map<ID, LayerOverride>(job.overrides ?? []);
+    overrides.set(base.id, { ...(ov ?? {}), opacity: 1, blend: 'normal' });
+    this.render({ ...job, target: into.s, only, background: null, inClip, overrides, reuse: false });
+    if (canvasBlend(mode)) {
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = opacity;
+      ctx.globalCompositeOperation = compositeOp(mode);
+      ctx.drawImage(into.s, 0, 0);
+      ctx.restore();
+    } else this.pixelBlend(ctx, into, mode, opacity, IDENTITY, into.s, job.view, W, H);
+  }
+
   /** An isolated folder (opacity below full or a blend mode of its own, or a Normal PSD group): its layers rendered
    *  together on a clear surface, which is then drawn onto `ctx` at the folder's opacity and in its mode. */
   private isolatedFolder(job: RenderJob, ctx: Ctx2D, g: Layer, W: number, H: number): void {
@@ -473,7 +507,7 @@ export class Renderer {
    *  layer until its pixels, transform, mask or effects change. */
   private effectParts(layer: Layer, fx: LayerEffects, src: Surface, t: Transform, own: MaskInfo | null, maskPlacement: Transform | null, docW: number, docH: number, exact = false): FxPart[] {
     const r = layer.raster, mk = layer.mask, fast = this.fastEffects && !exact;
-    const key = JSON.stringify([r?.id ?? null, r?.version ?? 0, t, mk ? [mk.raster?.id ?? null, mk.raster?.version ?? 0, mk.enabled, maskPlacement ?? mk.placement, mk.density ?? 100, mk.feather ?? 0] : null, fx, docW, docH, fast]);
+    const key = JSON.stringify([r?.id ?? null, r?.version ?? 0, t, mk ? [mk.raster?.id ?? null, mk.raster?.version ?? 0, mk.enabled, maskPlacement ?? mk.placement, mk.density ?? 100, mk.feather ?? 0] : null, fx, docW, docH, fast, layer.transparencyShapes === false]);
     const hit = exact ? undefined : this.fxCache.get(layer.id);
     if (hit && hit.key === key) return hit.parts;
     const d = fx.dropShadow, g = fx.outerGlow, k = fx.stroke, is = fx.innerShadow, ig = fx.innerGlow;
@@ -491,6 +525,14 @@ export class Renderer {
       sil.c.clearRect(0, 0, rw, rh);
       sil.c.restore();
       this.draw(sil.c, src, mul(view, lm), t.sampling, 1, 'source-over', 'high');
+      if (layer.transparencyShapes === false) {
+        sil.c.save();
+        setMat(sil.c, mul(view, lm));
+        sil.c.globalCompositeOperation = 'destination-over';
+        sil.c.fillStyle = '#000';
+        sil.c.fillRect(0, 0, src.width, src.height);
+        sil.c.restore();
+      }
       if (own && fx.layerMaskHides !== false) this.cover(sil.c, own, view, rw, rh);
       const local = { x: (placed.x - region.x) * k, y: (placed.y - region.y) * k, w: placed.w * k, h: placed.h * k };
       for (const phase of ['below', 'above'] as const) {

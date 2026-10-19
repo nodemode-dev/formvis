@@ -190,7 +190,7 @@ class Reader {
 const BLENDS: [RegExp, BlendMode | null][] = [
   [/Multiply/i, 'multiply'], [/Additive/i, 'linear-dodge'], [/ColorBurn/i, 'color-burn'], [/ColorDodge/i, 'color-dodge'],
   [/Overlay/i, 'overlay'], [/Difference/i, 'difference'], [/Lighten/i, 'lighten'], [/Darken/i, 'darken'], [/Screen/i, 'screen'],
-  [/Reflect|Glow|Negation|Xor/i, null], [/Normal/i, 'normal'],
+  [/Reflect/i, 'reflect'], [/Glow/i, 'glow'], [/Negation/i, 'negation'], [/Xor/i, 'xor'], [/Normal/i, 'normal'],
 ];
 
 interface PdnLayer { name: string; visible: boolean; opacity: number; blend: BlendMode; w: number; h: number; stride: number; len: number; px: Uint8Array | null }

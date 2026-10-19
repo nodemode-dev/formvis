@@ -307,7 +307,16 @@
 .cv-swatch-edit .cv-input { flex: 1 1 70px; min-width: 0; }
 .cv-swatch-hint { display: flex; align-items: center; gap: 6px; margin: 10px 0 0; color: var(--text-muted); font-size: 12px; }
 /* Color */
-.cv-color-page { display: flex; gap: 8px; height: 150px; }
+.cv-color-page { display: flex; flex-direction: column; gap: 8px; }
+.cv-color-pick { display: flex; gap: 8px; height: 150px; }
+.cv-color-fields { display: grid; grid-template-columns: 14px 1fr 44px; align-items: center; gap: 4px 6px; }
+.cv-color-chips { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; }
+.cv-color-chip { width: 28px; height: 20px; padding: 0; border: 1px solid color-mix(in srgb, var(--text-primary) 25%, transparent); border-radius: 3px; cursor: pointer; }
+.cv-color-chip[aria-pressed="true"] { outline: 2px solid var(--cta-bg); outline-offset: 1px; }
+.cv-color-fields > span { color: var(--text-muted); font-size: 11px; }
+.cv-color-fields input[type="range"] { min-width: 0; width: 100%; }
+.cv-color-fields .cv-input { min-width: 0; width: 100%; height: var(--ctl-md); }
+.cv-color-hex { grid-column: 2 / -1; }
 .cv-color-sv { flex: 1; min-width: 0; height: 100%; border-radius: 6px; cursor: crosshair; }
 .cv-color-hue { width: 14px; height: 100%; border-radius: 4px; cursor: ns-resize; }
 

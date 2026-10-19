@@ -5,7 +5,52 @@ import type { LayerEffects } from './types';
  *  alone, Cone makes a ring, Ring Double two rings, and so on. Global Light is the document's one light: effects
  *  marked Use Global Light take its angle (and Bevel its altitude) instead of their own, so they all move together. */
 
-export type ContourId = 'linear' | 'cone' | 'coneInverted' | 'gaussian' | 'halfRound' | 'ring' | 'ringDouble' | 'rollingSlope' | 'roundedSteps' | 'sawtooth' | 'coveDeep' | 'coveShallow' | 'sawtooth2';
+export type ContourId = 'linear' | 'cone' | 'coneInverted' | 'gaussian' | 'halfRound' | 'ring' | 'ringDouble' | 'rollingSlope' | 'roundedSteps' | 'sawtooth' | 'coveDeep' | 'coveShallow' | 'sawtooth2' | `custom:${string}`;
+
+/** A custom contour is its points in the id, `custom:x,y;x,y;...` with x and y from 0 to 1, so it is saved with the style. */
+export type ContourPoint = { x: number; y: number };
+export function customContourId(pts: ReadonlyArray<ContourPoint>): ContourId {
+  const r = (v: number): number => Math.round(Math.min(1, Math.max(0, v)) * 1000) / 1000;
+  return `custom:${[...pts].sort((a, b) => a.x - b.x).map((p) => `${r(p.x)},${r(p.y)}`).join(';')}`;
+}
+export function customContourPoints(id: string | null | undefined): ContourPoint[] | null {
+  if (!id || !id.startsWith('custom:')) return null;
+  const pts: ContourPoint[] = [];
+  for (const part of id.slice(7).split(';')) {
+    const [x, y] = part.split(',').map(Number);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    pts.push({ x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) });
+  }
+  if (pts.length < 2 || pts.length > 32) return null;
+  return pts.sort((a, b) => a.x - b.x);
+}
+/** The curve through the points: monotone cubic, so it never overshoots between two points; flat past the first and last. */
+function customCurve(pts: ContourPoint[]): (t: number) => number {
+  const n = pts.length, d: number[] = [], m: number[] = new Array(n).fill(0);
+  for (let i = 0; i < n - 1; i++) d.push((pts[i + 1].y - pts[i].y) / Math.max(1e-6, pts[i + 1].x - pts[i].x));
+  m[0] = d[0]; m[n - 1] = d[n - 2];
+  for (let i = 1; i < n - 1; i++) m[i] = d[i - 1] * d[i] <= 0 ? 0 : (d[i - 1] + d[i]) / 2;
+  for (let i = 0; i < n - 1; i++) {
+    if (d[i] === 0) { m[i] = 0; m[i + 1] = 0; continue; }
+    const a = m[i] / d[i], b = m[i + 1] / d[i], s = a * a + b * b;
+    if (s > 9) { const k = 3 / Math.sqrt(s); m[i] = k * a * d[i]; m[i + 1] = k * b * d[i]; }
+  }
+  return (t) => {
+    if (t <= pts[0].x) return pts[0].y;
+    if (t >= pts[n - 1].x) return pts[n - 1].y;
+    let i = 0;
+    while (i < n - 2 && t > pts[i + 1].x) i++;
+    const h = Math.max(1e-6, pts[i + 1].x - pts[i].x), u = (t - pts[i].x) / h, u2 = u * u, u3 = u2 * u;
+    return (2 * u3 - 3 * u2 + 1) * pts[i].y + (u3 - 2 * u2 + u) * h * m[i] + (-2 * u3 + 3 * u2) * pts[i + 1].y + (u3 - u2) * h * m[i + 1];
+  };
+}
+/** The function a contour id stands for (a preset or a custom curve); null when unknown. */
+export function contourCurve(id: string | null | undefined): ((t: number) => number) | null {
+  if (!id) return null;
+  const pts = customContourPoints(id);
+  if (pts) return customCurve(pts);
+  return CONTOURS.find((x) => x.id === id)?.f ?? null;
+}
 
 const frac = (x: number): number => x - Math.floor(x);
 const smooth = (t: number): number => t * t * (3 - 2 * t);
@@ -31,12 +76,13 @@ const luts = new Map<ContourId, Uint8Array>();
 /** A 256-entry table taking coverage 0 to 255 through the contour; null for Linear or an unknown id. */
 export function contourLut(id: ContourId | undefined | null): Uint8Array | null {
   if (!id || id === 'linear') return null;
-  const c = CONTOURS.find((x) => x.id === id);
-  if (!c) return null;
+  const f = contourCurve(id);
+  if (!f) return null;
   let t = luts.get(id);
   if (!t) {
     t = new Uint8Array(256);
-    for (let i = 0; i < 256; i++) t[i] = Math.round(Math.min(1, Math.max(0, c.f(i / 255))) * 255);
+    for (let i = 0; i < 256; i++) t[i] = Math.round(Math.min(1, Math.max(0, f(i / 255))) * 255);
+    if (luts.size > 200) luts.clear();
     luts.set(id, t);
   }
   return t;
@@ -49,7 +95,7 @@ export function applyContour(data: Uint8ClampedArray, id: ContourId | undefined 
   for (let i = 3; i < data.length; i += 4) data[i] = lut[data[i]];
 }
 
-export const isContour = (v: unknown): v is ContourId => typeof v === 'string' && CONTOURS.some((c) => c.id === v);
+export const isContour = (v: unknown): v is ContourId => typeof v === 'string' && (CONTOURS.some((c) => c.id === v) || customContourPoints(v) !== null);
 
 export interface GlobalLight { angle: number; altitude: number }
 export const DEFAULT_GLOBAL_LIGHT: GlobalLight = { angle: 120, altitude: 30 };

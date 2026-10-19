@@ -8,6 +8,7 @@ import { SelectionMask } from './selection';
 import type { Project } from './project';
 import { byId, hierarchy, isDescendant } from './tree';
 import { diamondFill, reflectStops } from './gradients';
+import { PIXEL_BLENDS, blendPixels } from './blend';
 import { fromGray, resizeMask, toGray } from './filters';
 
 export type Target = 'pixels' | 'mask';
@@ -143,6 +144,13 @@ function render(host: PaintHost, g: GradientDrag): void {
   ctx.globalCompositeOperation = 'source-over';
   ctx.clearRect(0, 0, w, h);
   ctx.putImageData(g.base, 0, 0);
+  if (!isMask && PIXEL_BLENDS.has(host.gradient.blend)) {
+    const dst = ctx.getImageData(0, 0, w, h);
+    blendPixels(dst.data, ctxOf(tmp).getImageData(0, 0, w, h).data, host.gradient.blend, Math.max(0, Math.min(1, host.gradient.opacity)), (i) => [i % w, Math.floor(i / w)]);
+    ctx.putImageData(dst, 0, 0);
+    ctx.restore();
+    return;
+  }
   ctx.globalAlpha = Math.max(0, Math.min(1, host.gradient.opacity));
   ctx.globalCompositeOperation = isMask ? 'source-over' : compositeOp(host.gradient.blend);
   ctx.drawImage(tmp, 0, 0);

@@ -21,7 +21,7 @@ import { icon } from './icons';
 import { brandMark } from './brand';
 import { THEMES, readChoice, setAccent, setIntensity, setTheme, themeSwatchesHtml } from './themes';
 import { toast } from './toast';
-import { INTERPOLATIONS, LINE_STYLES, type LineStyle } from './prefs';
+import { DEFAULT_PREFS, INTERPOLATIONS, LINE_STYLES, type LineStyle } from './prefs';
 import { CHECKER_COLORS, CHECKER_SIZES, ENGINE_CHOICES, PAINT_CURSORS, PRESSURE_CURVES, RAW_WB_CHOICES, RECOVERY_CHOICES, RULER_UNITS, UI_FONT_SIZES, UI_SCALES, loadPrefs, recalled, remembered, savePrefs, setUiScale, uiScaleChoice, type CheckerColors, type CheckerSize, type EngineDevice, type PaintCursor, type Prefs, type PressureCurve, type RulerUnits, type UiFontSize } from './prefs';
 import { POWER_CHOICES, RENDERER_CHOICES, type GpuPower, type GpuRenderer } from '../gpu/probe';
 import { checkRow, selectRow, sliderRow } from './panels/controls';
@@ -506,6 +506,20 @@ export class SettingsDialog extends Dialog {
   private readonly rulerRow = selectRow('Rulers', RULER_UNITS, (v) => this.change({ rulerUnits: v as RulerUnits }));
   private readonly gridEveryRow = sliderRow('Gridline Every (px)', 2, 1000, 1, (v) => this.change({ gridSpacing: v }));
   private readonly subdivRow = sliderRow('Subdivisions', 1, 32, 1, (v) => this.change({ gridSubdivisions: v }));
+  private readonly gridOpacityRow = sliderRow('Grid opacity (%)', 5, 100, 1, (v) => this.change({ gridOpacity: v }));
+  private readonly noticeSecondsRow = sliderRow('Notice stays (seconds, 0 is automatic)', 0, 30, 1, (v) => this.change({ noticeSeconds: v }));
+  private readonly gridResetRow = (() => {
+    const row = el('<div class="cv-dialog-row"><span></span><button type="button" class="cv-btn cv-btn-ghost">Restore Defaults</button></div>');
+    (row.querySelector('button') as HTMLButtonElement).addEventListener('click', () => {
+      const d = DEFAULT_PREFS;
+      this.change({ guideColor: d.guideColor, gridColor: d.gridColor, guideStyle: d.guideStyle, gridStyle: d.gridStyle, gridSpacing: d.gridSpacing, gridSubdivisions: d.gridSubdivisions, gridOpacity: d.gridOpacity });
+      this.gridEveryRow.set(d.gridSpacing); this.subdivRow.set(d.gridSubdivisions); this.gridOpacityRow.set(d.gridOpacity);
+      this.guideStyleRow.set(d.guideStyle); this.gridStyleRow.set(d.gridStyle);
+      const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent-color').trim() || '#f97316';
+      this.guideColor.value = accent; this.gridColor.value = '#808080';
+    });
+    return row;
+  })();
   private readonly guideColor = el<HTMLInputElement>('<input class="cv-input" type="color" aria-label="Guide color">');
   private readonly gridColor = el<HTMLInputElement>('<input class="cv-input" type="color" aria-label="Grid color">');
   private readonly animZoomRow = checkRow('Animated Zoom', (v) => this.change({ animatedZoom: v }));
@@ -586,7 +600,7 @@ export class SettingsDialog extends Dialog {
     reset.addEventListener('click', () => { void confirmAction('Reset all preferences?', 'Every preference, the panel arrangement and the tools shown go back to how formvis comes; your documents and library are kept. formvis reloads.', 'Reset').then((ok) => { if (!ok) return; for (const k of Object.keys(localStorage)) if (k.startsWith('formvis.') || k === 'nodemode_ui_settings') localStorage.removeItem(k); location.reload(); }); });
     add('General', this.homeRow.el, this.homeCloseRow.el, this.whatsNewRow.el, this.animZoomRow.el, this.zoomResizesRow.el, this.systemPickerRow.el, this.beepRow.el, this.interpolationRow.el, reset, el('<p class="cv-note">Image Interpolation is the resampling the Image Size dialog starts with. Beep When Done sounds a short tone when a job that ran longer than two seconds ends. Zoom Resizes Windows sizes a floating document window to the picture when its zoom changes. Animated Zoom eases Zoom In, Zoom Out and the Zoom tool\'s clicks over a fraction of a second. Use the system color picker opens the computer\'s own picker for the foreground and background swatches instead of formvis\'s. The Home screen covers the canvas area. At launch it shows while no document is open; closing the last document leaves the empty workspace with its panels unless the second choice is on. The brand mark at the top left opens it at any time; Esc leaves it. What\'s New (Help menu) lists the recent additions, each with a Show Me button; with the third choice on it opens once after an update.</p>'));
     this.intensityRow.set(Math.round((readChoice().intensity ?? 1) * 100));
-    add('Interface', row, accentRow, this.intensityRow.el, this.fontSizeRow.el, this.scaleRow.el, this.animationsRow.el, this.canvasColourRow.el, el('<p class="cv-note">Canvas Color is the pasteboard around the picture (the same as View > Pasteboard). Theme and accent are shared with NodeMode on this device. Intensity sets how strongly the accent tints what it marks; 100% is the design\'s. Text size scales the interface\'s text.</p>'));
+    add('Interface', row, accentRow, this.intensityRow.el, this.fontSizeRow.el, this.scaleRow.el, this.animationsRow.el, this.noticeSecondsRow.el, this.canvasColourRow.el, el('<p class="cv-note">Canvas Color is the pasteboard around the picture (the same as View > Pasteboard). Theme and accent are shared with NodeMode on this device. Intensity sets how strongly the accent tints what it marks; 100% is the design\'s. Text size scales the interface\'s text.</p>'));
     add('Performance', this.budgetNote, this.memoryLimitRow.el, this.effectCacheRow.el, this.releaseRow.el, this.cacheLevelsRow.el, this.redrawRow.el, this.reuseRow.el, this.previewRow.el,
       el('<h3 class="cv-prefs-sub">Graphics Processor Settings</h3>'), this.gpuNameRow(), this.gpuUseRow.el, this.gpuFiltersRow.el, this.rendererRow.el, this.gpuMemoryRow.el, this.gpuPowerRow.el, this.lowLatencyRow.el, this.gpuMode,
       el('<p class="cv-note">Automatic uses WebGPU (Metal on macOS, Direct3D 12 on Windows), then WebGL2 (as on Linux), on a hardware graphics processor, and the CPU otherwise; a software GPU is slower than the CPU renderer, so Automatic does not use one. If the graphics processor fails to start, formvis turns this off and says so. The canvas draws on the graphics processor; a document using something it does not draw yet draws on the CPU, and the status bar says why.</p>'),
@@ -622,7 +636,7 @@ export class SettingsDialog extends Dialog {
     this.scratchClean.addEventListener('click', () => { this.scratch?.clean(); setTimeout(() => void this.refreshScratch(), 400); });
     add('Scratch Disks', this.pageRows.scratch.el, this.scratchInfo, this.scratchClean, el('<p class="cv-note">formvis keeps recovery copies of open documents and closed tabs in this device\'s storage, the way a desktop editor uses a scratch disk. Clean Working Files removes the copies of documents that are no longer open; open documents are not touched. Layer effect and display caches are set in Performance.</p>'));    add('Language', this.languageRow.el, el('<p class="cv-note">The language of the whole interface. Names you give layers and documents stay as you wrote them.</p>'));
     add('Units & Rulers', this.rulerRow.el, ...this.pageRows.units, el('<p class="cv-note">The rulers\' unit; inches, centimetres and millimetres follow the document\'s resolution, percent its width and height.</p>'));
-    add('Guides & Grid', this.colorRow('Guides', this.guideColor, 'guideColor'), this.guideStyleRow.el, this.colorRow('Grid', this.gridColor, 'gridColor'), this.gridStyleRow.el, this.gridEveryRow.el, this.subdivRow.el, this.colorRow('Slices', this.sliceColor, 'sliceColor'), this.sliceNumbersRow.el, el('<p class="cv-note">The colour and line style of guides and the grid, and the colour of slice lines and whether their numbers show.</p>'));
+    add('Guides & Grid', this.colorRow('Guides', this.guideColor, 'guideColor'), this.guideStyleRow.el, this.colorRow('Grid', this.gridColor, 'gridColor'), this.gridStyleRow.el, this.gridEveryRow.el, this.subdivRow.el, this.gridOpacityRow.el, this.gridResetRow, this.colorRow('Slices', this.sliceColor, 'sliceColor'), this.sliceNumbersRow.el, el('<p class="cv-note">The colour and line style of guides and the grid, and the colour of slice lines and whether their numbers show.</p>'));
     // Plugins (1.50.8): the other apps formvis sends to; NodeMode first.
     this.nodemodeCheck.addEventListener('click', () => void this.checkNodeMode());
     this.nodemodeUrl.addEventListener('change', () => { const v = this.nodemodeUrl.value.trim(); if (/^https?:\/\/./.test(v)) { this.change({ nodemodeUrl: v }); void this.checkNodeMode(); } else setText(this.nodemodeNote, 'An address starts with http:// or https://, such as http://localhost:8000.'); });
@@ -754,7 +768,7 @@ export class SettingsDialog extends Dialog {
     this.rulerRow.set(this.prefs.rulerUnits);
     this.languageRow.set(this.prefs.language);
     this.gridEveryRow.set(this.prefs.gridSpacing);
-    this.subdivRow.set(this.prefs.gridSubdivisions);
+    this.subdivRow.set(this.prefs.gridSubdivisions); this.gridOpacityRow.set(this.prefs.gridOpacity); this.noticeSecondsRow.set(this.prefs.noticeSeconds);
     const css = getComputedStyle(document.documentElement);
     this.guideColor.value = this.prefs.guideColor || (css.getPropertyValue('--accent-color').trim() || '#f97316');
     this.gridColor.value = this.prefs.gridColor || '#808080';

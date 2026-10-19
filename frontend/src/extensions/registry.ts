@@ -79,6 +79,17 @@ export function digitOf(e: KeyboardEvent): number | null {
   return m ? Number(m[1]) : null;
 }
 
+let quickDigit: { d: number; at: number } | null = null;
+/** The opacity (0.01 to 1) a top-row digit asks for: 1 to 9 are 10 to 90 percent, 0 is 100; a second digit within 700 ms
+ *  makes an exact value (4 then 5 is 45). Null for any other key or with Shift or Alt held. */
+export function digitOpacity(e: KeyboardEvent): number | null {
+  const digit = digitOf(e);
+  if (digit === null || e.shiftKey || e.altKey) return null;
+  const now = performance.now(), first = quickDigit && now - quickDigit.at < 700 ? quickDigit.d : null;
+  quickDigit = first === null ? { d: digit, at: now } : null;
+  return first === null ? (digit === 0 ? 1 : digit / 10) : Math.max(0.01, Math.min(100, first * 10 + digit) / 100);
+}
+
 /** Marching ants: one traced path stroked twice in alternating colours, the dashes offset by the animation phase. */
 export function dashed(ctx: ToolContext, g: CanvasRenderingContext2D, trace: () => void): void {
   const pal = ctx.paint(), phase = ctx.antsPhase();

@@ -16,6 +16,7 @@ export const pencilTool: Tool = {
   cursor: () => 'none',
   down(ctx, p) {
     if (p.button !== 0) return;
+    if (p.alt) { const c = ctx.engine.sampleColor(p.doc); if (c) ctx.engine.setColors(c); return; }
     hover = p.doc; origin = p.shift ? null : { ...p.doc }; smoothStart(p.doc);
     ctx.engine.setBrushMode('paint');
     if (ctx.engine.beginStroke(p.doc, p.shift, p.pressure, p.pose, { aliased: true, autoErase, name: 'Pencil' })) holdStart(p.doc);

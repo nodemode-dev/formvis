@@ -2,7 +2,7 @@ import { api, RAW_DEVELOP_ZERO, type RawDevelop, type RawInfo, type RawWhiteBala
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
 import { loadPrefs } from '../prefs';
-import { selectRow, sliderRow, type Row } from './controls';
+import { checkRow, selectRow, sliderRow, type Row } from './controls';
 
 /** The summary line the dialog shows for a RAW: camera, sensor, CFA pattern, white balance multipliers, orientation, baseline exposure. */
 export function rawSummary(i: RawInfo): string {
@@ -23,8 +23,11 @@ export type RawChoice = { wb: RawWhiteBalance; bits: 8 | 16 };
 export class CameraRawDialog extends Dialog {
   private readonly canvas = el<HTMLCanvasElement>('<canvas class="cv-raw-preview" aria-label="Preview"></canvas>');
   private readonly note = el('<p class="cv-note" role="status"></p>');
-  private readonly preset = selectRow('White Balance', [['as_shot', 'As Shot'], ['auto', 'Auto'], ['daylight', 'Daylight']], (v) => { this.wb.wb = v as RawWhiteBalance['wb']; this.schedule(); });
+  private readonly preset = selectRow('White Balance', [['as_shot', 'As Shot'], ['auto', 'Auto'], ['daylight', 'Daylight']], (v) => { this.wb.wb = v as RawWhiteBalance['wb']; this.dev.kelvin = 0; this.kelvin.set(this.shotKelvin); this.schedule(); });
   private readonly temperature = sliderRow('Temperature', -100, 100, 1, (v) => { this.wb.temperature = v; this.schedule(); });
+  private readonly kelvin = sliderRow('Temperature (K)', 2000, 15000, 50, (v) => { this.dev.kelvin = v === this.shotKelvin ? 0 : v; this.schedule(); }, { max: 50000 });
+  private readonly look = checkRow('Camera Look (fit to embedded preview)', (v) => { this.dev.look = v; this.schedule(); });
+  private shotKelvin = 0;
   private readonly tint = sliderRow('Tint', -100, 100, 1, (v) => { this.wb.tint = v; this.schedule(); });
   private readonly depth = selectRow('Depth', [['8', '8 Bits/Channel'], ['16', '16 Bits/Channel'], ['16w', '16 Bits/Channel, ProPhoto RGB']], (v) => { this.bits = v === '8' ? 8 : 16; this.wb.space = v === '16w' ? 'prophoto' : 'srgb'; });
   private readonly dev: RawDevelop = { ...RAW_DEVELOP_ZERO };
@@ -39,7 +42,7 @@ export class CameraRawDialog extends Dialog {
 
   constructor() {
     super('Camera Raw', 460);
-    const slider = (key: Exclude<keyof RawDevelop, 'recovery' | 'blackPoint'>, label: string, min: number, max: number, step: number): void => {
+    const slider = (key: Exclude<keyof RawDevelop, 'recovery' | 'blackPoint' | 'kelvin' | 'look'>, label: string, min: number, max: number, step: number): void => {
       const row = sliderRow(label, min, max, step, (v) => { this.dev[key] = v; this.schedule(); });
       this.devRows.push({ key, row });
     };
@@ -56,7 +59,8 @@ export class CameraRawDialog extends Dialog {
     slider('texture', 'Texture', -100, 100, 1);
     slider('dehaze', 'Dehaze', -100, 100, 1);
     slider('noise', 'Noise Reduction', 0, 100, 1);
-    this.body.append(this.canvas, this.preset.el, this.temperature.el, this.tint.el, ...this.devRows.map((r) => r.row.el), this.depth.el, this.info, this.note);
+    this.kelvin.el.hidden = true;
+    this.body.append(this.canvas, this.preset.el, this.temperature.el, this.kelvin.el, this.tint.el, ...this.devRows.map((r) => r.row.el), this.look.el, this.depth.el, this.info, this.note);
     this.button('Reset to As Shot', 'ghost', () => this.reset('as_shot')).classList.add('cv-btn-apart');
     this.button('Cancel', 'ghost', () => this.close());
     this.button('Open', 'primary', () => this.finish({ wb: this.choice(), bits: this.bits }));
@@ -70,6 +74,7 @@ export class CameraRawDialog extends Dialog {
       this.file = file;
       this.settle = resolve;
       const d = loadPrefs();   // Preferences > Camera Raw Defaults
+      this.shotKelvin = 0; this.kelvin.el.hidden = true; this.temperature.el.hidden = false;
       this.reset(d.rawWb);
       const wide = d.rawBits === 16 && d.rawWide;
       this.bits = d.rawBits; this.wb.space = wide ? 'prophoto' : 'srgb'; this.depth.set(wide ? '16w' : String(d.rawBits));
@@ -77,7 +82,14 @@ export class CameraRawDialog extends Dialog {
       setText(this.info, '');
       this.open();
       this.schedule(0);
-      void api.rawInfo(file, file.name).then((i) => { if (this.file === file && this.isOpen) setText(this.info, rawSummary(i)); }, () => undefined);
+      void api.rawInfo(file, file.name).then((i) => {
+        if (this.file !== file || !this.isOpen) return;
+        setText(this.info, rawSummary(i));
+        this.shotKelvin = i.kelvin ?? 0;
+        this.kelvin.el.hidden = !this.shotKelvin;
+        this.temperature.el.hidden = !!this.shotKelvin;
+        if (this.shotKelvin) this.kelvin.set(this.dev.kelvin || this.shotKelvin);
+      }, () => undefined);
     });
   }
 
@@ -86,7 +98,9 @@ export class CameraRawDialog extends Dialog {
     this.wb.wb = wb; this.wb.temperature = 0; this.wb.tint = 0;
     this.preset.set(wb); this.temperature.set(0); this.tint.set(0);
     Object.assign(this.dev, RAW_DEVELOP_ZERO);
-    for (const { key, row } of this.devRows) (row as Row<number | string>).set(RAW_DEVELOP_ZERO[key]);
+    for (const { key, row } of this.devRows) (row as Row<number | string>).set(RAW_DEVELOP_ZERO[key] as number | string);
+    this.look.set(false);
+    if (this.shotKelvin) this.kelvin.set(this.shotKelvin);
     if (this.isOpen) this.schedule(0);
   }
 

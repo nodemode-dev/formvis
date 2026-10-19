@@ -173,12 +173,18 @@ def _profiled(raw, profile: dcp.Dcp, half: bool = False) -> np.ndarray:
 RAW_WB_MODES = ("as_shot", "auto", "daylight")
 
 
-def _wb_kwargs(raw, wb: str, temperature: float, tint: float) -> dict:
+def _wb_kwargs(raw, wb: str, temperature: float, tint: float, kelvin: float = 0.0) -> dict:
     """The white balance LibRaw develops with (DEV_PLAN 36.21), applied to the sensor values before demosaicing and
     colour, not to the 8-bit picture afterwards. As shot with no Temperature or Tint is LibRaw's camera white balance,
     exactly as before. Otherwise `user_wb` multipliers: the as-shot, daylight or gray-world (auto) multipliers, then
     Temperature (positive is warmer: red up, blue down, up to 0.8 stop at 100) and Tint (positive is magenta: green
-    down, up to 0.5 stop at 100)."""
+    down, up to 0.5 stop at 100). A `kelvin` above zero sets the temperature in Kelvin instead (raw_develop.kelvin_multipliers),
+    with Tint on top; a file without a colour matrix keeps the relative route."""
+    if kelvin > 0:
+        mult = raw_develop.kelvin_multipliers(raw, kelvin)
+        if mult is not None:
+            magenta = 2.0 ** (-0.5 * tint / 100.0)
+            return {"user_wb": [mult[0], mult[1] * magenta, mult[2], mult[1] * magenta]}
     if wb == "as_shot" and not temperature and not tint:
         return {"use_camera_wb": True}
     if wb == "auto":
@@ -237,7 +243,7 @@ def _raw(data: bytes, filename: str, camera_profile: str = "auto", wb: str = "as
         raise DecodeError(f"{filename} is a camera RAW file, and the engine's RAW decoder (rawpy) is not installed.")
     wb, temperature, tint, _ = _raw_args(wb, temperature, tint, 8)
     develop = develop or {}
-    custom = wb != "as_shot" or bool(temperature) or bool(tint) or raw_develop.active(develop)
+    custom = wb != "as_shot" or bool(temperature) or bool(tint) or raw_develop.active(develop) or bool(develop.get("kelvin")) or bool(develop.get("look"))
     chosen = None
     if custom and camera_profile not in ("none", "", "auto"):
         raise DecodeError("A camera profile works with the as-shot white balance and no RAW-stage develop controls; set White Balance to As Shot and the controls to zero to use one.")
@@ -261,7 +267,7 @@ def _raw(data: bytes, filename: str, camera_profile: str = "auto", wb: str = "as
                     if camera_profile != "auto":
                         raise DecodeError(f"The camera profile could not be used: {exc}") from exc
             if rgb is None:
-                rgb = raw_develop.develop(raw, _wb_kwargs(raw, wb, temperature, tint), develop, half, 8, rawpy)
+                rgb = raw_develop.develop(raw, _wb_kwargs(raw, wb, temperature, tint, develop.get("kelvin", 0.0)), develop, half, 8, rawpy, "srgb", raw_develop.gain_maps(data))
     except DecodeError:
         raise
     except Exception as exc:
@@ -281,7 +287,7 @@ def raw_deep(data: bytes, filename: str, wb: str = "as_shot", temperature: float
     wb, temperature, tint, _ = _raw_args(wb, temperature, tint, 16)
     try:
         with rawpy.imread(io.BytesIO(data)) as raw:
-            rgb = raw_develop.develop(raw, _wb_kwargs(raw, wb, temperature, tint), develop or {}, half, 16, rawpy, space)
+            rgb = raw_develop.develop(raw, _wb_kwargs(raw, wb, temperature, tint, (develop or {}).get("kelvin", 0.0)), develop or {}, half, 16, rawpy, space, raw_develop.gain_maps(data))
     except DecodeError:
         raise
     except Exception as exc:
@@ -379,6 +385,20 @@ def frames(data: bytes, filename: str) -> dict | None:
         raise DecodeError(f"Could not read {filename or 'the animation'}: {exc}") from exc
 
 
+def _truncated_jpeg(data: bytes) -> "tuple[bytes, int, int] | None":
+    """The rows of a JPEG whose stream ends early, the rest left grey; None when nothing can be read."""
+    from PIL import ImageFile
+    ImageFile.LOAD_TRUNCATED_IMAGES = True
+    try:
+        with Image.open(io.BytesIO(data)) as image:
+            _plausible(image, len(data))
+            return _png(image)
+    except Exception:
+        return None
+    finally:
+        ImageFile.LOAD_TRUNCATED_IMAGES = False
+
+
 def decode_to_png(data: bytes, filename: str, page: int = 0, camera_profile: str = "auto", wb: str = "as_shot", temperature: float = 0.0, tint: float = 0.0, half: bool = False, develop: dict | None = None) -> tuple[bytes, int, int]:
     suffix = Path(filename).suffix.lower()
     if is_raw(data, filename):
@@ -415,6 +435,10 @@ def decode_to_png(data: bytes, filename: str, page: int = 0, camera_profile: str
         raise
     except Exception as exc:
         label = filename or "the image"
+        if data[:2] == b"\xff\xd8":
+            kept = _truncated_jpeg(data)
+            if kept is not None:
+                return kept
         if suffix in HEIF_SUFFIXES and sips_available():
             try:
                 return _sips(data, suffix)

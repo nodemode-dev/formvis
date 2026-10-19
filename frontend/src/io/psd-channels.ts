@@ -10,7 +10,7 @@ const CHANNELS_AT = 12, DEPTH_AT = 22, MODE_AT = 24;
 /** Colour channels per colour mode: bitmap, grey, indexed, RGB, CMYK, multichannel (as stored), duotone, Lab. */
 const BASE: Record<number, number> = { 0: 1, 1: 1, 2: 1, 3: 3, 4: 4, 8: 1, 9: 3 };
 
-const pascals = (d: Uint8Array): string[] => {
+export const pascals = (d: Uint8Array): string[] => {
   const out: string[] = [];
   for (let o = 0; o < d.length;) {
     const n = d[o];
@@ -22,7 +22,7 @@ const pascals = (d: Uint8Array): string[] => {
 };
 
 /** Image resource 1045: a run of Unicode strings, each its length in characters then UTF-16 big-endian units. */
-const unicodeNames = (d: Uint8Array): string[] => {
+export const unicodeNames = (d: Uint8Array): string[] => {
   const out: string[] = [], dv = new DataView(d.buffer, d.byteOffset, d.byteLength);
   for (let o = 0; o + 4 <= d.length;) {
     const n = dv.getUint32(o);
@@ -35,10 +35,10 @@ const unicodeNames = (d: Uint8Array): string[] => {
   return out;
 };
 
-interface Display { color?: { r: number; g: number; b: number }; opacity?: number; kind: number }
+export interface Display { color?: { r: number; g: number; b: number }; opacity?: number; kind: number }
 
 /** Image resource 1077: a version, then per channel a colour space, four 16-bit components, an opacity in percent and a kind. */
-const displayInfo = (d: Uint8Array): Display[] => {
+export const displayInfo = (d: Uint8Array): Display[] => {
   const out: Display[] = [], dv = new DataView(d.buffer, d.byteOffset, d.byteLength);
   for (let o = 4; o + 14 <= d.length; o += 14) {
     const space = dv.getUint16(o), kind = d[o + 12];

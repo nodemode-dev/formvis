@@ -5,6 +5,7 @@ import { brushKeys, brushOptions, drawBrushCursor } from './brush-common';
 
 let hover: Pt | null = null;
 let picking = false;
+const OVERLAY_MODES = [['source-over', 'Normal'], ['multiply', 'Multiply'], ['screen', 'Screen'], ['overlay', 'Overlay'], ['lighten', 'Lighten'], ['darken', 'Darken'], ['difference', 'Difference']].map(([id, label]) => ({ id, label }));
 
 export const cloneTool: Tool = {
   id: 'cloneStamp', label: 'Clone Stamp', key: 'S', order: 60,
@@ -28,7 +29,7 @@ export const cloneTool: Tool = {
     // source where a stroke would copy it. Option (picking a source) hides it, and Auto Hide does while painting.
     if (hover && !picking && ov.show && !(ov.autoHide && e.stroking)) {
       if (ov.clipped) {
-        const pv = e.clonePreview(hover, v.zoom * (window.devicePixelRatio || 1));
+        const pv = e.cloneOverlayBlended(hover, v.zoom * (window.devicePixelRatio || 1));
         if (pv) {
           const c = v.toScreen(hover), size = e.brush.diameter * v.zoom;
           g.save();
@@ -43,6 +44,7 @@ export const cloneTool: Tool = {
           const o = v.toScreen({ x: 0, y: 0 }), ex = v.toScreen({ x: 1, y: 0 }), ey = v.toScreen({ x: 0, y: 1 }), t = g.getTransform();
           g.save();
           g.globalAlpha = ov.opacity;
+          g.globalCompositeOperation = ov.blend;
           if (ov.invert) g.filter = 'invert(1)';
           setMat(g, mul(mul([t.a, t.b, t.c, t.d, t.e, t.f], [ex.x - o.x, ex.y - o.y, ey.x - o.x, ey.y - o.y, o.x, o.y]), full.m));
           g.drawImage(full.image, 0, 0);
@@ -78,6 +80,7 @@ export const cloneTool: Tool = {
     { kind: 'toggle', label: 'Show Overlay', priority: 30, get: () => e.cloneOverlay.show, set: (v) => { e.cloneOverlay.show = v; e.emit('options', null); e.emit('overlay', null); } },
     { kind: 'toggle', label: 'Clipped', priority: 20, get: () => e.cloneOverlay.clipped, set: (v) => { e.cloneOverlay.clipped = v; e.emit('options', null); e.emit('overlay', null); }, when: () => e.cloneOverlay.show },
     { kind: 'range', label: 'Overlay opacity', priority: 22, min: 0, max: 100, unit: '%', get: () => Math.round(e.cloneOverlay.opacity * 100), set: (v) => { e.cloneOverlay.opacity = v / 100; e.emit('options', null); e.emit('overlay', null); }, when: () => e.cloneOverlay.show },
+    { kind: 'select', label: 'Overlay mode', priority: 17, choices: OVERLAY_MODES, get: () => e.cloneOverlay.blend, set: (v: string) => { e.setCloneOverlay({ blend: v as GlobalCompositeOperation }); }, when: () => e.cloneOverlay.show },
     { kind: 'toggle', label: 'Invert Overlay', priority: 16, get: () => e.cloneOverlay.invert, set: (v) => { e.cloneOverlay.invert = v; e.emit('options', null); e.emit('overlay', null); }, when: () => e.cloneOverlay.show },
     { kind: 'toggle', label: 'Auto Hide', priority: 18, get: () => e.cloneOverlay.autoHide, set: (v) => { e.cloneOverlay.autoHide = v; e.emit('options', null); e.emit('overlay', null); }, when: () => e.cloneOverlay.show },
     ...brushOptions(e)

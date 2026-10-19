@@ -1,6 +1,6 @@
 import type { Engine } from '../engine';
 import { parseAbr, type SampledTip } from '../engine/abr';
-import { brushGroupOf, defaultShape, importedBrushPresets, presetFromTip, setImportedBrushPresets, type BrushPreset, type BrushShape } from '../engine/brush-dynamics';
+import { abrImport, brushGroupOf, defaultShape, importedBrushPresets, presetFromTip, setImportedBrushPresets, type BrushPreset, type BrushShape } from '../engine/brush-dynamics';
 
 /** Imported brushes: .abr files read for their sampled tips, each tip a preset in the Brush tool's list, kept in
  *  IndexedDB (tips can run to megabytes, past what localStorage holds) so they survive a reload. */
@@ -148,11 +148,11 @@ export async function importAbr(engine: Engine, file: File): Promise<{ added: nu
   }
   const base = file.name.replace(/\.abr$/i, ''), brushes = parseAbr(await file.arrayBuffer(), base);
   if (!brushes.length) return { added: 0, kept: true };
-  const stamp = Date.now().toString(36), made = brushes.map((b, i) => ({ ...presetFromTip(`abr-${stamp}-${i}`, b.name, b.tip, b.spacing * 100), group: base.slice(0, 60) || 'Imported Brushes' }));
-  const list = [...importedBrushPresets, ...made];
+  const stamp = Date.now().toString(36), root = base.slice(0, 60) || 'Imported Brushes', made = brushes.map((b, i) => ({ ...presetFromTip(`abr-${stamp}-${i}`, b.name, b.tip, b.spacing * 100), group: (b.folder ? `${root}/${b.folder}` : root).slice(0, 200) }));
+  const list = [...(abrImport.replace ? importedBrushPresets.filter((p) => !p.id.startsWith('abr-')) : importedBrushPresets), ...made];
   setImportedBrushPresets(list);
   const kept = await save(list);
-  engine.applyBrushPreset(made[0]);
+  if (abrImport.select) engine.applyBrushPreset(made[0]);
   return { added: made.length, kept };
 }
 

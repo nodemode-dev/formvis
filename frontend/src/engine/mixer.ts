@@ -21,10 +21,11 @@ export function mixerStart(prev: MixerState | null, fg: RGB, s: MixerSettings): 
 }
 
 /** The colour source for one stroke: `sample` reads the canvas under a dab (null where it is empty). */
-export function mixerSource(state: MixerState, s: MixerSettings, sample: (x: number, y: number) => RGB | null): (x: number, y: number) => RGB {
-  const wet = Math.max(0, Math.min(1, s.wet / 100)), mix = Math.max(0, Math.min(1, s.mix / 100)), reach = Math.max(1, s.load) * 8;
+export function mixerSource(state: MixerState, s: MixerSettings, sample: (x: number, y: number) => RGB | null): (x: number, y: number, kept?: { wet: number; mix: number }) => RGB {
+  const wet0 = Math.max(0, Math.min(1, s.wet / 100)), mix0 = Math.max(0, Math.min(1, s.mix / 100)), reach = Math.max(1, s.load) * 8;
   let last: { x: number; y: number } | null = null;
-  return (x, y) => {
+  return (x, y, kept) => {
+    const wet = wet0 * (kept?.wet ?? 1), mix = mix0 * (kept?.mix ?? 1);
     const under = sample(x, y);
     if (under) state.picked = mixRgb(state.picked, under, wet);
     const share = 1 - (1 - mix) * state.level;

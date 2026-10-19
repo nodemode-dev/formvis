@@ -1,6 +1,6 @@
 # formvis commands
 
-Generated from the window's command catalogue (1550 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1563 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
@@ -9,15 +9,15 @@ Generated from the window's command catalogue (1550 commands) by `./formvis agen
 - Filter: 93
 - Generate: 6
 - Help: 5
-- Image: 114
+- Image: 118
 - Layer: 268
 - Paint: 1
 - Paths: 12
-- Select: 43
-- Tool options: 438
+- Select: 44
+- Tool options: 445
 - Tools: 53
 - Type: 66
-- View: 98
+- View: 99
 - Window: 147
 
 ## Edit
@@ -472,6 +472,10 @@ Generated from the window's command catalogue (1550 commands) by `./formvis agen
 | `rotate-90-ccw` | 90° Counter Clockwise |  | Rotates the whole image 90 degrees counter clockwise. (changes the picture) |
 | `rotate-90-cw` | 90° Clockwise |  | Rotates the whole image 90 degrees clockwise. (changes the picture) |
 | `rotate-arbitrary` | Arbitrary... |  | Opens the dialog that rotates the whole image by any angle. (changes the picture) |
+| `sampler-add` | Add Color Sampler |  | Places a Color Sampler point (ten at most) at document x and y, or the middle of the picture when left out; its colour shows in the Info panel as RGB and ink together. (changes the picture) |
+| `sampler-clear` | Clear Color Samplers |  | Removes every Color Sampler point from the document. (changes the picture) |
+| `sampler-delete` | Delete Color Sampler |  | Removes one Color Sampler point by its number; the last one when no index is given. (changes the picture) |
+| `sampler-move` | Move Color Sampler |  | Moves a Color Sampler point, found by the number the Info panel shows; params index, x, y. (changes the picture) |
 | `split-channels` | Split Channels |  | Opens one grey document for each colour channel of the picture and for each alpha or spot channel. (changes the picture) |
 | `trap` | Trap... |  | Overlaps CMYK colours where they meet so press misregistration shows no gap; lighter inks spread under darker ones, black does not. (changes the picture) |
 | `trim` | Trim... |  | Opens Trim to cut away transparent or same-colour edges. (changes the picture) |
@@ -827,7 +831,7 @@ Generated from the window's command catalogue (1550 commands) by `./formvis agen
 | `duplicate-channel` | Duplicate Channel |  | Copies a channel. (changes the picture) |
 | `expand` | Expand by 1 px... |  | Expands the selection by the given pixels, or opens Expand when none are given. (changes the picture) |
 | `feather` | Feather... | Shift+F6 | Softens the selection edge by the given radius, or opens Feather when none is given. (changes the picture) |
-| `focus-area` | Focus Area... |  | Opens Focus Area to select what is in focus. (changes the picture) |
+| `focus-area` | Focus Area... |  | Selects what is in focus; with range, noise, soften, mode or sampleAll it runs at once, without them it opens the Focus Area dialog. (changes the picture) |
 | `grow` | Grow |  | Grows the selection over similar neighbouring colours. (changes the picture) |
 | `inverse` | Inverse | Shift+Mod+I | Inverts the selection. (changes the picture) |
 | `layer-pixels` | Layer's Pixels |  | Selects the layer's non-transparent pixels. (changes the picture) |
@@ -857,6 +861,7 @@ Generated from the window's command catalogue (1550 commands) by `./formvis agen
 | `sky-softness` | Sky Edge Softness... |  | Asks for the edge softness Select Sky feathers by. |
 | `smooth` | Smooth... |  | Opens Smooth to round the selection corners. (changes the picture) |
 | `transform-selection` | Transform Selection |  | Starts transforming the selection outline. (changes the picture) |
+| `transform-selection-numeric` | Transform Selection Numerically... |  | Skews, puts in perspective, distorts to four corners or carries the selection outline through a matrix about a reference point, from numbers (ref, moveX, moveY, scaleX, scaleY, angle, skewH, skewV, perspH, perspV, matrix, quad); without arguments it opens the dialog. (changes the picture) |
 
 ### select.ellipse parameters
 
@@ -920,6 +925,7 @@ Generated from the window's command catalogue (1550 commands) by `./formvis agen
 | `tool.options.brush.flipY` | Brush: Flip Y |  | Sets Flip Y for the Brush tool. |
 | `tool.options.brush.flow` | Brush: Flow |  | Sets Flow for the Brush tool. |
 | `tool.options.brush.hardness` | Brush: Hardness |  | Sets Hardness for the Brush tool. |
+| `tool.options.brush.importMode` | Brush: Import mode |  | Sets Import mode for the Brush tool. |
 | `tool.options.brush.minFlow` | Brush: Min flow |  | Sets Min flow for the Brush tool. |
 | `tool.options.brush.minSize` | Brush: Min size |  | Sets Min size for the Brush tool. |
 | `tool.options.brush.mode` | Brush: Mode |  | Sets Mode for the Brush tool. |
@@ -934,6 +940,7 @@ Generated from the window's command catalogue (1550 commands) by `./formvis agen
 | `tool.options.brush.rightClick` | Brush: Right-click |  | Sets Right-click for the Brush tool. |
 | `tool.options.brush.roundness` | Brush: Roundness |  | Sets Roundness for the Brush tool. |
 | `tool.options.brush.scatter` | Brush: Scatter |  | Sets Scatter for the Brush tool. |
+| `tool.options.brush.selectFirstOnImport` | Brush: Select first on import |  | Sets Select first on import for the Brush tool. |
 | `tool.options.brush.size` | Brush: Size |  | Sets Size for the Brush tool. |
 | `tool.options.brush.sizeJitter` | Brush: Size jitter |  | Sets Size jitter for the Brush tool. |
 | `tool.options.brush.smoothing` | Brush: Smoothing |  | Sets Smoothing for the Brush tool. |
@@ -976,6 +983,7 @@ Generated from the window's command catalogue (1550 commands) by `./formvis agen
 | `tool.options.cloneStamp.invertOverlay` | Clone Stamp: Invert Overlay |  | Sets Invert Overlay for the Clone Stamp tool. |
 | `tool.options.cloneStamp.mode` | Clone Stamp: Mode |  | Sets Mode for the Clone Stamp tool. |
 | `tool.options.cloneStamp.opacity` | Clone Stamp: Opacity |  | Sets Opacity for the Clone Stamp tool. |
+| `tool.options.cloneStamp.overlayMode` | Clone Stamp: Overlay mode |  | Sets Overlay mode for the Clone Stamp tool. |
 | `tool.options.cloneStamp.overlayOpacity` | Clone Stamp: Overlay opacity |  | Sets Overlay opacity for the Clone Stamp tool. |
 | `tool.options.cloneStamp.pressureCurve` | Clone Stamp: Pressure curve |  | Sets Pressure curve for the Clone Stamp tool. |
 | `tool.options.cloneStamp.pressureOpacity` | Clone Stamp: Pressure: opacity |  | Sets Pressure: opacity for the Clone Stamp tool. |
@@ -1003,6 +1011,7 @@ Generated from the window's command catalogue (1550 commands) by `./formvis agen
 | `tool.options.colorReplace.tolerance` | Color Replacement: Tolerance |  | Sets Tolerance for the Color Replacement tool. |
 | `tool.options.colorSampler.sampleSize` | Color Sampler: Sample Size |  | Sets Sample Size for the Color Sampler tool. |
 | `tool.options.contentAwareMove.angle` | Content-Aware Move: Angle |  | Sets Angle for the Content-Aware Move tool. |
+| `tool.options.contentAwareMove.blend` | Content-Aware Move: Blend |  | Sets Blend for the Content-Aware Move tool. |
 | `tool.options.contentAwareMove.color` | Content-Aware Move: Color |  | Sets Color for the Content-Aware Move tool. |
 | `tool.options.contentAwareMove.flipHorizontal` | Content-Aware Move: Flip horizontal |  | Sets Flip horizontal for the Content-Aware Move tool. |
 | `tool.options.contentAwareMove.flipVertical` | Content-Aware Move: Flip vertical |  | Sets Flip vertical for the Content-Aware Move tool. |
@@ -1070,11 +1079,13 @@ Generated from the window's command catalogue (1550 commands) by `./formvis agen
 | `tool.options.freeformPen.curveFit` | Freeform Pen: Curve fit |  | Sets Curve fit for the Freeform Pen tool. |
 | `tool.options.gradient.colors` | Gradient: Colors |  | Sets Colors for the Gradient tool. |
 | `tool.options.gradient.dither` | Gradient: Dither |  | Sets Dither for the Gradient tool. |
+| `tool.options.gradient.liveFillLayer` | Gradient: Live Fill Layer |  | Sets Live Fill Layer for the Gradient tool. |
 | `tool.options.gradient.method` | Gradient: Method |  | Sets Method for the Gradient tool. |
 | `tool.options.gradient.mode` | Gradient: Mode |  | Sets Mode for the Gradient tool. |
 | `tool.options.gradient.opacity` | Gradient: Opacity |  | Sets Opacity for the Gradient tool. |
 | `tool.options.gradient.reverse` | Gradient: Reverse |  | Sets Reverse for the Gradient tool. |
 | `tool.options.gradient.shape` | Gradient: Shape |  | Sets Shape for the Gradient tool. |
+| `tool.options.gradient.smoothness` | Gradient: Smoothness |  | Sets Smoothness for the Gradient tool. |
 | `tool.options.gradient.transparency` | Gradient: Transparency |  | Sets Transparency for the Gradient tool. |
 | `tool.options.hand.scrollAllWindows` | Hand: Scroll All Windows |  | Sets Scroll All Windows for the Hand tool. |
 | `tool.options.healingBrush.aligned` | Healing Brush: Aligned |  | Sets Aligned for the Healing Brush tool. |
@@ -1221,8 +1232,9 @@ Generated from the window's command catalogue (1550 commands) by `./formvis agen
 | `tool.options.quickSelect.size` | Quick Selection: Size |  | Sets Size for the Quick Selection tool. |
 | `tool.options.redEye.darkenAmount` | Red Eye: Darken Amount |  | Sets Darken Amount for the Red Eye tool. |
 | `tool.options.redEye.pupilSize` | Red Eye: Pupil Size |  | Sets Pupil Size for the Red Eye tool. |
+| `tool.options.remove.collectStrokesEnterFills` | Remove: Collect strokes (Enter fills) |  | Sets Collect strokes (Enter fills) for the Remove tool. |
 | `tool.options.remove.hardness` | Remove: Hardness |  | Sets Hardness for the Remove tool. |
-| `tool.options.remove.lamaNewLayer` | Remove: LaMa (new layer) |  | Sets LaMa (new layer) for the Remove tool. |
+| `tool.options.remove.lamaWhenDownloadedNewLayer` | Remove: LaMa when downloaded (new layer) |  | Sets LaMa when downloaded (new layer) for the Remove tool. |
 | `tool.options.remove.opacity` | Remove: Opacity |  | Sets Opacity for the Remove tool. |
 | `tool.options.remove.sample` | Remove: Sample |  | Sets Sample for the Remove tool. |
 | `tool.options.remove.size` | Remove: Size |  | Sets Size for the Remove tool. |
@@ -1538,6 +1550,7 @@ Generated from the window's command catalogue (1550 commands) by `./formvis agen
 | `snap-grid` | Snap To Grid |  | Turns snapping to the visible grid on or off. |
 | `snap-guides` | Snap To Guides |  | Turns snapping to visible guides on or off. |
 | `snap-layers` | Snap To Layers |  | Turns snapping to the edges and centres of other visible layers on or off. |
+| `snap-selection` | Snap To Selection |  | Turns snapping to the edges and centre of the current selection on or off. |
 | `snap-slices` | Snap To Slices |  | Turns snapping to the edges of shown slices on or off. |
 | `task-bar-pin` | Pin Task Bar |  | Pins the Contextual Task Bar where it stands, or lets it follow the selection again. |
 | `task-bar-reset` | Reset Task Bar Position |  | Puts the Contextual Task Bar back at the bottom centre of the canvas. |

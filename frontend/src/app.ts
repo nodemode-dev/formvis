@@ -36,7 +36,7 @@ import { convertToLinked, linkedFiles, pickLinkSource, placeEmbedded, placeLinke
 import { importAbr, loadImportedBrushes, addSampledBrush, moveBrushPreset, removeImportedBrush, renameBrushGroup, renameImportedBrush, saveBrushPreset } from './io/brush-library';
 import { allBrushPresets, importedBrushPresets } from './engine/brush-dynamics';
 import { BrushPicker } from './ui/brush-picker';
-import { snapOptions } from './engine/pixel-move';
+import { snapHold, snapOptions } from './engine/pixel-move';
 import { SPACES, convertPixels, iccProfile, type SpaceId } from './engine/icc';
 import { embedJpeg, embedPng } from './io/embed-icc';
 import { withResolution } from './engine/dpi';
@@ -53,6 +53,7 @@ import { TrapDialog, trapPixels } from './ui/panels/trap-dialog';
 import { FrequencyDialog } from './ui/panels/frequency-dialog';
 import type { TrapUnit } from './ui/panels/trap-dialog';
 import { ColorRangeDialog } from './ui/panels/color-range-dialog';
+import { SelectionTransformDialog } from './ui/panels/selection-transform-dialog';
 import { ArbitraryRotationDialog, DuplicateImageDialog } from './ui/panels/image-dialogs';
 import { ReplaceColorDialog } from './ui/panels/replace-color-dialog';
 import { CalculationsDialog } from './ui/panels/calculations-dialog';
@@ -189,6 +190,7 @@ import { Model3DDialog } from './ui/panels/model3d';
 import { Extrude3DDialog } from './ui/panels/extrude3d-dialog';
 import { PanoramaDialog } from './ui/panels/panorama-dialog';
 import { AgentConfirmDialog } from './ui/panels/agent-confirm';
+import { PsdReportDialog } from './ui/panels/psd-report-dialog';
 import { AgentBridge } from './automation/agent-bridge';
 import { UiControl } from './automation/ui-control';
 import { attachCatalogue, catalogue } from './automation/catalogue';
@@ -527,7 +529,7 @@ export function startApp(): void {
   };
   const historyLog = new HistoryLog(engine);
   const applyUiPrefs = (pr: Prefs): void => {
-    Stage.prefs = { cell: CHECKER_CELL[pr.checkerSize], zoomWheel: pr.zoomWheel, rulerUnits: pr.rulerUnits, gridColor: pr.gridColor, guideColor: pr.guideColor, gridStyle: pr.gridStyle, guideStyle: pr.guideStyle };
+    Stage.prefs = { cell: CHECKER_CELL[pr.checkerSize], zoomWheel: pr.zoomWheel, rulerUnits: pr.rulerUnits, gridColor: pr.gridColor, guideColor: pr.guideColor, gridStyle: pr.gridStyle, guideStyle: pr.guideStyle, gridOpacity: pr.gridOpacity };
     Object.assign(Stage.controls, { preciseOther: pr.cursorOther === 'precise', pinch: pr.pinchZoom, rotate: pr.trackpadRotate, touch: pr.touchGestures, colMm: pr.colWidth + pr.gutter, colWidthMm: pr.colWidth });
     applyChecker(pr);
     applyTooltips(pr.showTooltips);
@@ -882,7 +884,7 @@ export function startApp(): void {
     syncGpu();
   })();
 
-  async function openFiles(files: File[]): Promise<void> {
+  async function openFiles(files: File[], interactive = false): Promise<void> {
     await engine.task(async () => {
       for (const f of files) {
         try {
@@ -907,7 +909,9 @@ export function startApp(): void {
             if (cmykPsd) { await openCmykPsd(f.name.replace(/\.(ps[db]|psdt)$/i, ''), cmykPsd); continue; }
             const labPsd = await api.decodeLab(f, f.name).catch(() => null);   // 1.58.1
             if (labPsd) { openLab(f.name.replace(/\.(ps[db]|psdt)$/i, ''), labPsd); continue; }
-            const { doc, notes, activeId, paths, report } = await readPsdFile(f).catch(() => readPsdFlat(f, (b) => api.decode(b, b.name)));   // a damaged file opens flat
+            const { doc, notes, activeId, paths, report } = await readPsdFile(f, files).catch(() => readPsdFlat(f, (b) => api.decode(b, b.name)));   // a damaged file opens flat
+            // A PSD opened by hand shows its conversion report as a sheet with Cancel and Import; agents and batches get the toast below.
+            if (interactive && (report.approximated.length || report.dropped.length) && !(await psdReportDialog.ask(f.name, report))) { openStopped = true; continue; }
             // A profile other than sRGB follows the Color Settings policy like a PNG or JPEG: kept, converted to sRGB, dropped, or asked.
             let how: 'keep' | 'convert' | 'discard' = 'keep';
             if (doc.profile && !isSrgbName(doc.profile.name) && (doc.depth ?? 8) === 8) {
@@ -922,7 +926,8 @@ export function startApp(): void {
             }
             if (paths) engine.setPathsOf(opened, paths);
             // The conversion report is told, never asked: an agent or a batch opening a PSD must not wait on a sheet.
-            if (report.dropped.length) toast(reportText(report), 'info');
+            if (interactive && (report.approximated.length || report.dropped.length)) { /* told in the sheet */ }
+            else if (report.dropped.length) toast(reportText(report), 'info');
             else if (notes.length) toast(notes.join(' '), 'info');
           } else {
             const layered = /\.tiff?$/i.test(f.name) ? await readLayeredTiff(f) : null;   // a TIFF with PSD layers (34.2)
@@ -997,7 +1002,7 @@ export function startApp(): void {
     const images = files.filter((f) => !isProjectFile(f) && isImageFile(f));
     const presets = files.filter((f) => !isProjectFile(f) && !isImageFile(f) && presetKindOf(f.name));
     const skipped = files.length - projects.length - images.length - presets.length;
-    if (projects.length) await openFiles(projects);
+    if (projects.length) await openFiles(projects, true);
     if (presets.length) await dialogs.presetManager.loadPresetFiles(presets);
     const fresh = how === 'documents', noDoc = (): boolean => fresh || !engine.current;
     if (fresh && images.length > 1) { for (const f of images) await importFiles([f], at, how); }
@@ -1151,6 +1156,7 @@ export function startApp(): void {
         }
         engine.insertImages(decoded, fresh ? undefined : at, fresh);
         if (tgaAlpha && decoded.length === 1) engine.addAlphaFromGrey(tgaAlpha);
+        for (const img of decoded) if (img.warning) toast(img.warning, 'info');
         for (const img of decoded) {
           const file = RAW_FILE.test(img.name) ? images.find((f) => f.name === img.name) : undefined, layer = file ? [...(engine.current?.doc.layers ?? [])].reverse().find((l) => l.name === stripExt(img.name)) : undefined;
           // A white balance chosen in Camera Raw is kept with the layer (for this session); the engine applies no camera profile with it.
@@ -2688,7 +2694,7 @@ export function startApp(): void {
   engine.warmRemove = () => {
     if (Date.now() - lamaWarmAt < 5 * 60_000) return;
     lamaWarmAt = Date.now();
-    void warmLama().then((ok) => { if (!ok) lamaWarmAt = 0; });
+    void warmLama().then((ok) => { engine.removeModelReady = ok; if (!ok) lamaWarmAt = Date.now() - 4.5 * 60_000; engine.emit('options', null); });
   };
   engine.removeBrushFill = async (area) => {
     if (!(await modelReady('lama-inpaint'))) { toast('LaMa is not downloaded (Preferences > Plugins > Local models), so Remove used the patch fill.'); engine.removeFillLocal(area); return; }
@@ -2851,6 +2857,9 @@ export function startApp(): void {
     const saved = JSON.parse(stored('formvis.snap') ?? 'null') as Partial<typeof snapOptions> | null;
     if (saved) for (const k of Object.keys(snapOptions) as (keyof typeof snapOptions)[]) if (typeof saved[k] === 'boolean') snapOptions[k] = saved[k] as boolean;
   } catch { /* the defaults: everything on */ }
+  window.addEventListener('keydown', (e) => { if (e.key === 'Control') snapHold.off = true; });
+  window.addEventListener('keyup', (e) => { if (e.key === 'Control') snapHold.off = false; });
+  window.addEventListener('blur', () => { snapHold.off = false; });
   // The theme one step darker (-1) or lighter (1) by its background, or null at the end of the range.
   function themeStep(dir: 1 | -1): string | null {
     const lum = (id: string): number => { const h = (THEMES[id]?.vars['--bg-primary'] ?? '#000000').replace('#', ''); const n = parseInt(h.length === 3 ? h.replace(/./g, '$&$&') : h, 16) || 0; return 0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255); };
@@ -3101,6 +3110,7 @@ export function startApp(): void {
     trap: new TrapDialog(engine),
     frequency: new FrequencyDialog(engine),
     colorRange: new ColorRangeDialog(engine),
+    selectionTransform: new SelectionTransformDialog(engine),
     actions: new ActionsDialog(actions, {
       play: (x) => playAction(x), save: (b, n) => deliver(b, n),
       menu: () => commands.all().filter((c) => c.id !== 'play-action').map((c) => ({ id: c.id, label: commands.label(c) })).sort((a, b) => a.label.localeCompare(b.label)),
@@ -3168,7 +3178,7 @@ export function startApp(): void {
     globalLight: new GlobalLightDialog(engine),
     fileInfo: new FileInfoDialog(engine),
     scaleEffects: new ScaleEffectsDialog(engine),
-    fill: new FillDialog(engine, () => commands.run('content-fill')),
+    fill: new FillDialog(engine),
     exportAs: new ExportDialog(engine, (s) => void exportAs(s), (s) => void exportLayersAs(s), exportPreview),
     exportPrefs: new ExportPrefsDialog(() => !!caps?.desktop),
     print: new PrintDialog(engine, (s) => { printDocument(engine, s); fireEvent('print'); }, (pdf, name) => { void deliver(pdf, name); }),
@@ -3273,6 +3283,7 @@ export function startApp(): void {
   const panorama = new PanoramaDialog(engine, (t) => toast(t));
   // Outside agents over MCP (1.52.1): the window runs their calls while Preferences > Plugins allows it.
   const agentConfirm = new AgentConfirmDialog();
+  const psdReportDialog = new PsdReportDialog();
   // Allow, asked in the window when an agent first calls (1.53.3), is the same setting as Preferences > Plugins.
   const agents = new AgentBridge(engine, {
     ask: (title, text) => agentConfirm.ask(title, text), note: (t) => toast(t, 'info'),
@@ -3569,6 +3580,7 @@ export function startApp(): void {
     { id: 'snap-layers', label: 'Snap To Layers', checked: () => snapOptions.layers, run: () => snapSet('layers', !snapOptions.layers) },
     { id: 'snap-bounds', label: 'Snap To Document Bounds', checked: () => snapOptions.bounds, run: () => snapSet('bounds', !snapOptions.bounds) },
     { id: 'snap-slices', label: 'Snap To Slices', checked: () => snapOptions.slices, run: () => snapSet('slices', !snapOptions.slices) },
+    { id: 'snap-selection', label: 'Snap To Selection', checked: () => snapOptions.selection, run: () => snapSet('selection', !snapOptions.selection) },
     { id: 'show-smart-guides', label: 'Smart Guides', checked: () => snapOptions.smart, run: () => snapSet('smart', !snapOptions.smart) },
     { id: 'show-comfy-dot', label: 'ComfyUI Connection', checked: () => comfyDot.active, run: () => { store('formvis.comfyDot', comfyDot.active ? '0' : '1'); comfyDot.sync(); } },
     { id: 'snap-all', label: 'Snap To All', checked: () => snapOptions.guides && snapOptions.grid && snapOptions.layers && snapOptions.bounds, run: () => { const all = !(snapOptions.guides && snapOptions.grid && snapOptions.layers && snapOptions.bounds); for (const k of ['guides', 'grid', 'layers', 'bounds'] as const) snapOptions[k] = all; snapSave(); } },
@@ -4294,7 +4306,19 @@ export function startApp(): void {
     { id: 'auto-select-sample-all', label: 'Sample All Layers', checked: () => engine.autoSel.sampleAll, run: () => engine.setAutoSel({ sampleAll: !engine.autoSel.sampleAll }) },
     { id: 'sky-sensitivity', label: 'Sky Sensitivity...', run: () => void (async () => { const v = await promptName('Sky Sensitivity (0 to 100, 50 keeps the model as it is)', String(engine.autoSel.skySensitivity), 'Set'); if (v !== null && v.trim() !== '' && Number.isFinite(Number(v))) engine.setAutoSel({ skySensitivity: Math.max(0, Math.min(100, Number(v))) }); })() },
     { id: 'sky-softness', label: 'Sky Edge Softness...', run: () => void (async () => { const v = await promptName('Sky Edge Softness in pixels (0 to 250)', String(engine.autoSel.skySoftness), 'Set'); if (v !== null && v.trim() !== '' && Number.isFinite(Number(v))) engine.setAutoSel({ skySoftness: Math.max(0, Math.min(250, Number(v))) }); })() },
-    { id: 'focus-area', label: 'Focus Area...', enabled: () => !!engine.current, run: () => focusAreaDialog.show() },
+    { id: 'focus-area', label: 'Focus Area...', enabled: () => !!engine.current,
+      params: {
+        ...AUTO_SELECT_PARAMS,
+        range: { type: 'number', min: 0, max: 100, description: 'In-Focus Range: higher keeps more; 50 when left out.' },
+        noise: { type: 'number', min: 0, max: 100, description: 'Image Noise Level; 20 when left out.' },
+        soften: { type: 'boolean', description: 'Soften Edge; on when left out.' },
+      },
+      run: (a) => {
+        if (a && ['mode', 'sampleAll', 'range', 'noise', 'soften'].some((k) => a[k] !== undefined)) {
+          if (typeof a.sampleAll === 'boolean') engine.setAutoSel({ sampleAll: a.sampleAll });
+          engine.selectFocusArea({ ...(typeof a.range === 'number' ? { range: a.range } : {}), ...(typeof a.noise === 'number' ? { noise: a.noise } : {}), ...(typeof a.soften === 'boolean' ? { soften: a.soften } : {}) }, selectModeOf(a));
+        } else focusAreaDialog.show();
+      } },
     { id: 'select-object', label: 'Object in Selection', enabled: selected, params: AUTO_SELECT_PARAMS, run: (a) => void selectSubject(true, a) },
     { id: 'select-and-mask', label: 'Select and Mask...', keys: ['Alt+Mod+R'], enabled: selected, run: () => dialogs.selectMask.show() },
     { id: 'rotate-180', label: '180°', enabled: has, run: () => engine.rotateCanvas(2) },
@@ -4427,6 +4451,44 @@ export function startApp(): void {
     },
     { id: 'measure-ruler', label: 'Ruler Tool', enabled: has, run: () => engine.setTool('ruler') },
     { id: 'measure-color-sampler', label: 'Color Sampler Tool', enabled: has, run: () => engine.setTool('colorSampler') },
+    {
+      id: 'sampler-add', label: 'Add Color Sampler', enabled: has,
+      params: { x: { type: 'number', description: 'Document x in pixels.' }, y: { type: 'number', description: 'Document y in pixels.' } },
+      run: (a) => {
+        const m = engine.measure, d = engine.current?.doc;
+        if (!m || !d) return { index: null };
+        if (m.samplers.length >= 10) { toast('Ten samplers at most.', 'info'); return { index: null }; }
+        const x = Number(a?.x), y = Number(a?.y);
+        m.samplers.push({ x: Math.floor(Math.min(d.width - 1, Math.max(0, Number.isFinite(x) ? x : d.width / 2))) + 0.5, y: Math.floor(Math.min(d.height - 1, Math.max(0, Number.isFinite(y) ? y : d.height / 2))) + 0.5 });
+        engine.measureChanged();
+        return { index: m.samplers.length };
+      },
+    },
+    {
+      id: 'sampler-move', label: 'Move Color Sampler', enabled: () => !!engine.measure?.samplers.length,
+      params: { index: { type: 'number', description: 'The sampler number as the Info panel shows it, from 1.' }, x: { type: 'number', description: 'New document x in pixels.' }, y: { type: 'number', description: 'New document y in pixels.' } },
+      run: (a) => {
+        const m = engine.measure, d = engine.current?.doc, i = Math.round(Number(a?.index)) - 1, x = Number(a?.x), y = Number(a?.y);
+        if (!m || !d || !m.samplers[i] || !Number.isFinite(x) || !Number.isFinite(y)) { toast('Name a sampler and a position.', 'info'); return { changed: false }; }
+        m.samplers[i] = { x: Math.floor(Math.min(d.width - 1, Math.max(0, x))) + 0.5, y: Math.floor(Math.min(d.height - 1, Math.max(0, y))) + 0.5 };
+        engine.measureChanged();
+        return { changed: true };
+      },
+    },
+    {
+      id: 'sampler-delete', label: 'Delete Color Sampler', enabled: () => !!engine.measure?.samplers.length,
+      params: { index: { type: 'number', description: 'The sampler number as the Info panel shows it, from 1; the last one when left out.' } },
+      run: (a) => {
+        const m = engine.measure;
+        if (!m?.samplers.length) return { changed: false };
+        const i = a?.index === undefined ? m.samplers.length - 1 : Math.round(Number(a.index)) - 1;
+        if (!m.samplers[i]) { toast('No such sampler.', 'info'); return { changed: false }; }
+        m.samplers.splice(i, 1);
+        engine.measureChanged();
+        return { changed: true };
+      },
+    },
+    { id: 'sampler-clear', label: 'Clear Color Samplers', enabled: () => !!engine.measure?.samplers.length, run: () => { const m = engine.measure; if (m) { m.samplers.length = 0; engine.measureChanged(); } } },
     { id: 'measure-count', label: 'Count Tool', enabled: has, run: () => engine.setTool('count') },
     {
       id: 'count-new-group', label: 'New Count Group', enabled: has,
@@ -4550,6 +4612,15 @@ export function startApp(): void {
     { id: 'grow', label: 'Grow', enabled: selected, run: () => engine.growSelection(true) },
     { id: 'similar', label: 'Similar', enabled: selected, run: () => engine.growSelection(false) },
     { id: 'transform-selection', label: 'Transform Selection', enabled: () => selected() && !engine.floatingSelection, run: () => { engine.beginOutlineTransform(); } },
+    { id: 'transform-selection-numeric', label: 'Transform Selection Numerically...', enabled: () => selected() && !engine.floatingSelection,
+      run: (a) => {
+        const n = (k: string): number | undefined => (typeof a?.[k] === 'number' ? (a[k] as number) : undefined);
+        const keys = ['ref', 'moveX', 'moveY', 'scaleX', 'scaleY', 'angle', 'skewH', 'skewV', 'perspH', 'perspV'] as const;
+        const q = Array.isArray(a?.quad) && a.quad.length === 4 ? (a.quad as Array<{ x: number; y: number }>).map((c) => ({ x: Number(c.x), y: Number(c.y) })) : undefined;
+        const m = Array.isArray(a?.matrix) && a.matrix.length === 6 ? (a.matrix as unknown[]).map(Number) : undefined;
+        if (q || m || keys.some((k) => n(k) !== undefined)) engine.transformSelectionBy({ ref: n('ref'), moveX: n('moveX'), moveY: n('moveY'), scaleX: n('scaleX'), scaleY: n('scaleY'), angle: n('angle'), skewH: n('skewH'), skewV: n('skewV'), perspH: n('perspH'), perspV: n('perspV'), quad: q, matrix: m, smooth: a?.smooth !== false });
+        else dialogs.selectionTransform.show();
+      } },
     { id: 'select-float', label: 'Float Selected Pixels', enabled: () => selected() && engine.canTransformSelection, run: () => { engine.beginSelectionTransform(); } },
     { id: 'select-drop', label: 'Drop Floating Pixels', enabled: () => engine.floatingSelection, run: () => { engine.commitSelectionTransform(); } },
     { id: 'convert-to-shape', label: 'Convert to Shape', enabled: selected, params: { tolerance: { type: 'number', min: 0.1, max: 20, description: 'How far in pixels the outline may stray from the selection\'s edge when simplified; the saved Tolerance (1.5 at first) when left out.' } }, run: (a) => engine.selectionToShape(typeof a?.tolerance === 'number' ? a.tolerance : undefined) },
@@ -4635,6 +4706,10 @@ export function startApp(): void {
         fuzziness: { type: 'number', min: 0, max: 200, description: 'How far from the colour, hue or depth limits still counts; 40 when left out.' },
         invert: { type: 'boolean', description: 'Select everything else.' },
         combine: { type: 'string', enum: ['new', 'add', 'subtract', 'intersect'], description: 'How the result meets the selection; new when left out (kept within the selection).' },
+        localized: { type: 'boolean', description: 'Localized Color Clusters for sampled colors: the colour counts only near x, y.' },
+        spread: { type: 'number', min: 0, max: 100, description: 'Localized Color Clusters Range: percent of the picture diagonal over which the colour fades out; 50 when left out.' },
+        x: { type: 'number', description: 'Localized: the document x where the colour was taken.' },
+        y: { type: 'number', description: 'Localized: the document y where the colour was taken.' },
         far_limit: { type: 'number', min: 0, max: 255, description: 'Depth mode: the farthest depth value (dark is far) to include; 128 when left out.' },
         near_limit: { type: 'number', min: 0, max: 255, description: 'Depth mode: the nearest depth value (bright is near) to include; 255 when left out.' },
       },
@@ -4642,7 +4717,7 @@ export function startApp(): void {
         const mode = COLOR_RANGE_MODES.find(([id]) => id === a?.mode)?.[0] ?? 'sampled', m = /^#?([0-9a-f]{6})$/i.exec(String(a?.color ?? '')), n = parseInt(m?.[1] ?? '0', 16);
         if (mode === 'sampled' && !m) throw new Error('color must be #rrggbb for sampled colors.');
         const combine = a?.combine === 'new' ? 'replace' : a?.combine === 'add' || a?.combine === 'subtract' || a?.combine === 'intersect' ? a.combine : undefined;
-        engine.selectColorRange({ mode, plus: mode === 'sampled' ? [{ r: n >> 16, g: (n >> 8) & 255, b: n & 255 }] : [], minus: [], fuzziness: typeof a?.fuzziness === 'number' ? a.fuzziness : 40, invert: a?.invert === true, combine, lo: typeof a?.far_limit === 'number' ? a.far_limit : 128, hi: typeof a?.near_limit === 'number' ? a.near_limit : 255 });
+        engine.selectColorRange({ mode, plus: mode === 'sampled' ? [{ r: n >> 16, g: (n >> 8) & 255, b: n & 255 }] : [], minus: [], fuzziness: typeof a?.fuzziness === 'number' ? a.fuzziness : 40, invert: a?.invert === true, combine, localized: a?.localized === true, spread: typeof a?.spread === 'number' ? a.spread : 50, at: [{ x: typeof a?.x === 'number' ? a.x : 0, y: typeof a?.y === 'number' ? a.y : 0 }], lo: typeof a?.far_limit === 'number' ? a.far_limit : 128, hi: typeof a?.near_limit === 'number' ? a.near_limit : 255 });
         const s = engine.current?.selection;
         return s ? { selected: true, x: s.x, y: s.y, w: s.w, h: s.h } : { selected: false };
       } },
@@ -5471,7 +5546,7 @@ export function startApp(): void {
       'apply-image', 'calculations', { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'desaturate', 'replace-color', 'equalize', 'equalize-layer-from-selection'] }, '-',
       'auto-tone', 'auto-contrast', 'auto-color', '-',
       { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-grayscale-from', 'mode-duotone', 'mode-indexed', 'mode-multichannel', 'color-table', 'mode-rgb', 'mode-cmyk', 'mode-lab', 'mode-convert', '-', 'split-channels', 'merge-channels', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
-      'image-size', 'canvas-size', { label: 'Pixel Aspect Ratio', items: ['par-square', 'par-d1-ntsc', 'par-d1-pal', 'par-d1-ntsc-wide', 'par-d1-pal-wide', 'par-anamorphic', 'par-hdv', 'par-dvcpro-hd', '-', 'par-custom'] }, { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'trim', 'reveal-all', 'trap', '-', 'frequency-separation', 'duplicate-image', '-', { label: 'Variables', items: ['variables-define', 'data-sets-import', 'data-set-apply'] }, '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }, '-', { label: 'Analysis', items: ['measure-scale', 'measure-ruler', 'measure-color-sampler', 'measure-count', { label: 'Count Groups', items: ['count-new-group', 'count-set-group'] }, 'measure-record', 'measure-data-points', 'measure-scale-marker', 'measure-log'] }] },
+      'image-size', 'canvas-size', { label: 'Pixel Aspect Ratio', items: ['par-square', 'par-d1-ntsc', 'par-d1-pal', 'par-d1-ntsc-wide', 'par-d1-pal-wide', 'par-anamorphic', 'par-hdv', 'par-dvcpro-hd', '-', 'par-custom'] }, { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'trim', 'reveal-all', 'trap', '-', 'frequency-separation', 'duplicate-image', '-', { label: 'Variables', items: ['variables-define', 'data-sets-import', 'data-set-apply'] }, '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }, '-', { label: 'Analysis', items: ['measure-scale', 'measure-ruler', 'measure-color-sampler', { label: 'Color Samplers', items: ['sampler-add', 'sampler-move', 'sampler-delete', 'sampler-clear'] }, 'measure-count', { label: 'Count Groups', items: ['count-new-group', 'count-set-group'] }, 'measure-record', 'measure-data-points', 'measure-scale-marker', 'measure-log'] }] },
     { label: 'Layer', items: [
       { label: 'New', items: ['new-layer-dialog', 'new-type-layer', 'new-shape-layer', 'new-dodge-burn-layer', 'layer-from-background', 'background-from-layer', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard-dialog', 'artboard-from-group', 'artboard-from-layers-dialog', 'frame-from-layers', '-', 'duplicate', 'layer-via-cut', '-', 'new-relight-layer'] }, 'artboard-options', '-',
       { label: 'New Fill Layer', items: ['new-fill-solid', 'new-fill-gradient', 'new-fill-pattern'] }, 'new-fill-adjustment', { label: 'Video Layers', items: ['video-layer-from-file', 'video-layer-blank', '-', 'video-insert-blank-frame', 'video-duplicate-frame', 'video-delete-frame', '-', 'video-restore-frame', 'video-reload-frame', 'video-restore-all', 'video-show-altered', 'video-replace-footage', 'video-interpret-footage', 'video-rasterize'] },{ label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'edit-relight', 'layer-content-options', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, { label: 'Film Pack', items: ['film-apply-look', 'new-adj-filmLook', 'new-adj-chromaticShift', '-', 'film-copy-points', 'film-paste-points'] }, { label: 'EU AI Label', items: ['ai-label-add', 'ai-label-remove', 'ai-label-info'] }, '-',
@@ -5494,7 +5569,7 @@ export function startApp(): void {
       'merge', 'merge-visible', 'stamp-visible', 'frequency-separation', 'stamp-down', 'flatten', '-', 'show-only-layer', 'show-all-layers', { label: 'Color Label', items: ['layer-label-none', '-', ...LAYER_LABELS.map((c) => `layer-label-${c}`)] }, '-',
       { label: 'Matting', items: ['matting-decontaminate', 'matting-defringe', 'matting-black', 'matting-white'] }] },
     { label: 'Select', items: ['select-all', 'deselect', 'reselect', 'inverse', 'convert-to-shape', 'convert-to-shape-tolerance', 'selection-to-work-path', '-', 'select-all-layers', 'deselect-layers', 'find-layers', 'isolate-layers', '-', 'color-range', 'focus-area', 'select-subject', 'select-sky', 'select-object', { label: 'Subject and Sky Options', items: ['auto-select-sample-all', 'sky-sensitivity', 'sky-softness'] }, 'select-and-mask', '-', 'layer-pixels', 'mask-black', '-',
-      { label: 'Modify', items: ['expand', 'contract', 'feather', 'border', 'smooth'] }, 'grow', 'similar', '-', 'transform-selection', 'select-float', 'select-drop', '-', 'quick-mask', '-', 'load-selection', 'load-luminosity', 'load-selection-vector-mask', 'save-selection', { label: 'Channel', items: ['new-channel', 'new-spot-channel', 'duplicate-channel', 'channel-options', '-', 'channel-up', 'channel-down'] }, 'path-selection', 'path-selection-dialog', 'delete-path'] },
+      { label: 'Modify', items: ['expand', 'contract', 'feather', 'border', 'smooth'] }, 'grow', 'similar', '-', 'transform-selection', 'transform-selection-numeric', 'select-float', 'select-drop', '-', 'quick-mask', '-', 'load-selection', 'load-luminosity', 'load-selection-vector-mask', 'save-selection', { label: 'Channel', items: ['new-channel', 'new-spot-channel', 'duplicate-channel', 'channel-options', '-', 'channel-up', 'channel-down'] }, 'path-selection', 'path-selection-dialog', 'delete-path'] },
     { label: 'Filter', items: ['filter-last', 'filter-convert-smart', '-', 'filter-filterGallery', 'filter-develop', 'filter-wide-angle', 'filter-lensCorrection', 'filter-liquify', 'filter-vanishing-point', 'filter-neural', '-',
       { label: 'Blur', items: filterGroup('Blur', ['filter-average', 'filter-gaussianBlur', 'filter-lensBlur', 'filter-motionBlur', 'filter-radialBlur', 'filter-surfaceBlur']) },
       { label: 'Blur Gallery', items: ['filter-fieldBlur', 'filter-irisBlur', 'filter-tiltShift', 'filter-pathBlur', 'filter-spinBlur'] },
@@ -5511,7 +5586,7 @@ export function startApp(): void {
     // Generate: the generative commands in one place (the Generate panel, models, fill, repair, size, relight, and the ComfyUI and NodeMode links).
     { label: 'Generate', items: ['generate-panel', '-', 'generate-image', 'new-canvas-model-preset', 'generative-fill', 'generative-expand', '-', 'boxes-tool', 'boxes-from-selection', 'boxes-copy', 'boxes-clear', '-', 'generate-remove', 'content-fill-workspace', 'content-fill', 'remove-wires', '-', 'remove-bg', 'remove-bg-lite', '-', 'upscale-2x', 'upscale-4x', 'compute-depth-map', { label: 'Depth Map', items: ['depth-map-from-layer', 'depth-map-recompute', 'depth-map-show', '-', 'depth-map-flatten', 'depth-map-nearer', 'depth-map-farther', 'depth-map-smooth', 'depth-map-snap'] }, 'new-relight-layer', '-', 'comfyui-run', 'send-comfyui', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode'])] },
     { label: 'View', items: [{ label: 'Proof Setup', items: ['proof-setup', '-', 'proof-preset-monitor', 'proof-preset-macrgb', 'proof-preset-internet', 'proof-preset-cmyk', 'proof-preset-cyan', 'proof-preset-magenta', 'proof-preset-yellow', 'proof-preset-black', 'proof-preset-cmy', '-', 'proof-preset-protanopia', 'proof-preset-deuteranopia'] }, 'proof-colors', 'gamut-warning', 'preview-32', '-', 'zoom-in', 'zoom-out', 'fit', 'fit-layers', 'fit-artboard', 'actual', 'print-size', 'flip-view-h', 'canvas-scrollbars', 'no-tool', '-', 'toggle-extras', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'pattern-preview', 'pixel-art-preview', 'par-correction', 'transform-controls', 'toggle-task-bar', '-',
-      { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'guide-layout', 'guides-from-shape', 'guides-from-shape-centre', 'edit-selected-guides', 'clear-guides', 'clear-artboard-guides'] }, 'snap', { label: 'Snap To', items: ['snap-all', '-', 'snap-guides', 'snap-grid', 'snap-layers', 'snap-bounds', 'snap-slices'] }, { label: 'Show', items: ['show-all-extras', 'show-no-extras', '-', 'show-selection-edges', 'selection-display-tint', 'show-layer-edges', 'show-artboard-guides', 'show-target-path','show-smart-guides', 'show-comfy-dot', 'show-notes', 'show-counts', 'show-brush-preview', 'show-mesh', 'show-edit-pins', '-', 'show-extras-options', '-', 'toggle-show-slices', 'toggle-auto-slices', 'lock-slices', 'layer-based-slice', 'slices-from-guides', 'slice-options', 'divide-slice', 'delete-slice', 'clear-slices'] }, '-',
+      { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'guide-layout', 'guides-from-shape', 'guides-from-shape-centre', 'edit-selected-guides', 'clear-guides', 'clear-artboard-guides'] }, 'snap', { label: 'Snap To', items: ['snap-all', '-', 'snap-guides', 'snap-grid', 'snap-layers', 'snap-bounds', 'snap-slices', 'snap-selection'] }, { label: 'Show', items: ['show-all-extras', 'show-no-extras', '-', 'show-selection-edges', 'selection-display-tint', 'show-layer-edges', 'show-artboard-guides', 'show-target-path','show-smart-guides', 'show-comfy-dot', 'show-notes', 'show-counts', 'show-brush-preview', 'show-mesh', 'show-edit-pins', '-', 'show-extras-options', '-', 'toggle-show-slices', 'toggle-auto-slices', 'lock-slices', 'layer-based-slice', 'slices-from-guides', 'slice-options', 'divide-slice', 'delete-slice', 'clear-slices'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'os-full-screen', 'toggle-panels', 'rail-columns', 'interface-rtl', 'interface-zoom-in', 'interface-zoom-out', 'interface-zoom-reset', 'custom-title-bar', 'menus-in-window', { label: 'Pasteboard', items: ['pasteboard-default', 'pasteboard-black', 'pasteboard-dark', 'pasteboard-mid', 'pasteboard-light'] }] },
     { label: 'Plugins', items: () => { const ids = [...pluginHost.commandIds(), ...folderPlugins.commandIds()]; return ['manage-plugins', 'reload-plugins', 'open-plugins-folder', ...(ids.length && loadPrefs().showExtPanels ? ['-', ...ids] : [])]; } },
     { label: 'Window', items: [{ label: 'Arrange', items: ['new-window', 'float-window', 'float-all-windows', 'arrange-cascade', '-', 'arrange-tabs','arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-3up-v', 'arrange-3up-h', 'arrange-4up', 'arrange-6up', 'arrange-tile-v', 'arrange-tile-h', 'arrange-tile', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.connect.open', 'agent.connect.copy-claude-code', 'agent.connect.copy-claude-desktop', 'terminal.toggle', 'terminal.new', 'script-console', 'brush-settings', { label: 'Brush Size', items: ['brush-size-up', 'brush-size-down', 'brush-harder', 'brush-softer'] }, { label: 'Brush Presets', items: ['save-brush-preset', 'rename-brush-preset', 'delete-brush-preset', 'move-brush-preset', 'rename-brush-group', '-', 'set-brush', 'get-brush'] }, 'paragraph-styles', 'character-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-channels', 'panel-color', 'panel-tools', 'panel-options', 'panel-properties-col', 'merge-columns', 'toggle-dock-panels', '-', 'panel-float', 'panel-dock', 'panel-activate', 'panel-group', '-', { label: 'Workspace', items: ['workspace-pixelart', '-', 'new-workspace', 'delete-workspace'] }, 'reset-panels', '-', 'next-document', 'previous-document', 'notices', '-', { label: 'Theme', items: Object.keys(THEMES).map((tid) => `theme-${tid}`) }, 'theme-sync-system', 'next-appearance', 'interface-darken', 'interface-lighten', '-', 'reload-window', 'developer-tools'] },

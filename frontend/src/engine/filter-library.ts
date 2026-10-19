@@ -35,7 +35,7 @@ export type LibValue = number | string | boolean | number[] | LibImage | LibPath
 export type LibValues = Record<string, LibValue>;
 export type LibColor = readonly [number, number, number];
 export interface LibSize { readonly w: number; readonly h: number }
-export interface LibFrame { readonly area: Rect; readonly canvas: Rect; readonly doc?: LibSize }
+export interface LibFrame { readonly area: Rect; readonly canvas: Rect; readonly doc?: LibSize; /** The margin the layer was grown by for this run, in layer pixels. */ readonly margin?: number }
 export interface LibColors { readonly fg: LibColor; readonly bg: LibColor }
 
 export type LibParam =

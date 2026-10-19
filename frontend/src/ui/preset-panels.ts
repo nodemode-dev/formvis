@@ -28,6 +28,8 @@ interface PresetKind<T> {
   rename?(t: T, name: string): void | Promise<unknown>;
   /** A custom item's group, edited in the foot's group field. */
   group?: { get(t: T): string; set(t: T, group: string): void | Promise<unknown> };
+  /** Moves a custom item one place earlier (-1) or later (1) among the items of its group. */
+  move?(t: T, dir: -1 | 1): void | Promise<unknown>;
 }
 
 /** The shared body of the Gradients, Patterns and Shapes panels (Window menu, DEV_PLAN 35.3 part c): a head with a count,
@@ -40,6 +42,8 @@ class PresetPanel<T> {
   private selected: string | null = null;
   private readonly nameIn: HTMLInputElement;
   private readonly groupIn: HTMLInputElement;
+  private readonly earlier: HTMLButtonElement;
+  private readonly later: HTMLButtonElement;
 
   constructor(root: HTMLElement, private readonly kind: PresetKind<T>, engine: Engine) {
     root.insertAdjacentHTML('beforeend',
@@ -48,6 +52,8 @@ class PresetPanel<T> {
       `<div class="cv-styles-grid" role="listbox" aria-label="${kind.title}"></div>` +
       `<div class="cv-panel-foot"><input class="cv-input cv-preset-name" type="text" maxlength="80" placeholder="Name" aria-label="Name of the selected item" data-act="name" hidden>` +
       `<input class="cv-input cv-preset-group" type="text" maxlength="40" placeholder="Group" aria-label="Group of the selected item" data-act="group" hidden>` +
+      `<button class="cv-icon-btn" type="button" data-act="earlier" title="Move earlier" aria-label="Move earlier" hidden>&lt;</button>` +
+      `<button class="cv-icon-btn" type="button" data-act="later" title="Move later" aria-label="Move later" hidden>&gt;</button>` +
       `<button class="cv-icon-btn" type="button" data-act="add" hidden></button>` +
       `<button class="cv-icon-btn" type="button" data-act="delete" title="Delete the selected custom item" aria-label="Delete">${icon('delete', 16)}</button></div></section>`);
     const section = q(root, `section.cv-${kind.id}`);
@@ -60,6 +66,16 @@ class PresetPanel<T> {
     if (kind.add) { addBtn.hidden = false; addBtn.innerHTML = icon('plus', 16); addBtn.title = kind.add.label; addBtn.setAttribute('aria-label', kind.add.label); addBtn.addEventListener('click', () => { kind.add?.run(); this.sync(); }); }
     this.nameIn.hidden = !kind.rename;
     this.groupIn.hidden = !kind.group;
+    this.earlier = q<HTMLButtonElement>(section, '[data-act="earlier"]');
+    this.later = q<HTMLButtonElement>(section, '[data-act="later"]');
+    for (const [b, dir] of [[this.earlier, -1], [this.later, 1]] as const) {
+      b.hidden = !kind.move;
+      b.addEventListener('click', () => {
+        const t = this.current();
+        if (!t || this.kind.builtin(t)) return;
+        void Promise.resolve(this.kind.move?.(t, dir)).then(() => this.sync());
+      });
+    }
     for (const i of [this.nameIn, this.groupIn]) i.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') i.blur(); });
     this.nameIn.addEventListener('change', () => {
       const t = this.current();
@@ -102,15 +118,25 @@ class PresetPanel<T> {
     if (this.groupIn.disabled !== off) this.groupIn.disabled = off;
     if (document.activeElement !== this.nameIn) { const v = cur && !off ? this.kind.label(cur) : ''; if (this.nameIn.value !== v) this.nameIn.value = v; }
     if (document.activeElement !== this.groupIn) { const v = cur && !off && this.kind.group ? this.kind.group.get(cur) : ''; if (this.groupIn.value !== v) this.groupIn.value = v; }
-    patchList<T>(this.grid, [...items], {
-      key: (t) => this.kind.key(t),
-      create: (t) => {
+    const grp = (t: T): string => this.kind.group?.get(t) ?? '';
+    const names = [...new Set(items.map(grp))].sort((a, b) => (a === '' ? -1 : b === '' ? 1 : 0));
+    const entries: Array<{ head: string } | { t: T }> = [];
+    for (const n of names) {
+      if (n) entries.push({ head: n });
+      for (const t of items) if (grp(t) === n) entries.push({ t });
+    }
+    patchList(this.grid, entries, {
+      key: (x) => ('head' in x ? `\u0001${x.head}` : this.kind.key(x.t)),
+      create: (x) => {
+        if ('head' in x) { const h = el('<div class="cv-sw-group" role="presentation"></div>'); setText(h, x.head); return h; }
         const tile = el('<button class="cv-style-tile" type="button" role="option"><canvas class="cv-style-swatch cv-preset-swatch" width="48" height="48" aria-hidden="true"></canvas><span class="cv-style-name"></span></button>');
-        this.fill(tile, t);
+        this.fill(tile, x.t);
         return tile;
       },
-      update: (tile, t) => this.fill(tile, t),
+      update: (node, x) => { if ('head' in x) setText(node, x.head); else this.fill(node, x.t); },
     });
+    const moveOff = off || !this.kind.move;
+    for (const b of [this.earlier, this.later]) if (b.disabled !== moveOff) b.disabled = moveOff;
   }
 
   private fill(tile: HTMLElement, t: T): void {
@@ -167,6 +193,19 @@ export function createPresetPanels(root: HTMLElement, engine: Engine, keepPatter
       },
     },
     rename: (p, name) => { const c = customGradients.find((x) => x.id === p.id); if (c) { c.label = name.slice(0, 60); saveGradients(); } },
+    group: {
+      get: (p) => p.group ?? '',
+      set: (p, g) => { const c = customGradients.find((x) => x.id === p.id), n = g.trim().slice(0, 40); if (!c) return; if (n) c.group = n; else delete c.group; saveGradients(); },
+    },
+    move: (p, dir) => {
+      const list = customGradients.slice(), i = list.findIndex((x) => x.id === p.id), g = list[i]?.group ?? '';
+      let j = i + dir;
+      while (j >= 0 && j < list.length && (list[j].group ?? '') !== g) j += dir;
+      if (i < 0 || j < 0 || j >= list.length) return;
+      [list[i], list[j]] = [list[j], list[i]];
+      setCustomGradients(list);
+      saveGradients();
+    },
   }, engine);
   new PresetPanel<Pattern>(root, {
     id: 'patterns', title: 'Patterns', glyph: 'layers',

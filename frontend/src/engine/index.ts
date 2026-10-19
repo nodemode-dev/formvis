@@ -43,6 +43,8 @@ import { againQuad, carried, cornersOf, cropWarp, distortDragged, distortUsable,
 import { withResolution } from './dpi';
 import { antialiasMask, enhanceEdge, levelsKernel, sensitivityMask, wandMask } from './kernels';
 import { depthWeight, hueWeight, type ColorRangeOptions } from './color-range';
+import { selectionQuad, warpSelection, type SelectionWarp } from './selection-warp';
+import { DEFAULT_FOCUS, focusArea, type FocusSettings } from './focus-area';
 import { Project } from './project';
 import { DocViews, type DocView, type FloatRect } from './doc-views';
 import { computeStack, type StackMode } from './stack-modes';
@@ -71,7 +73,7 @@ import * as PA from './path-ops';
 import * as TX from './text-ops';
 import * as VD from './video-ops';
 import * as TE from './transform-entry';
-import { type DocMode, BLEND_MODES, LAYER_BLEND_MODES, canvasBlend, LIMITS, setPixelLimit, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartDeform, type SmartDeformData, type SmartFilter, type SmartLink, type SmartObject, type ShapeStroke, type ShapeStyle, type FootageInterpretation, effectsFromData, type Artboard, artboardFromData, type AlphaChannel, effectsPresent } from './types';
+import { type DocMode, BLEND_MODES, LAYER_BLEND_MODES, canvasBlend, LIMITS, setPixelLimit, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartDeform, type SmartDeformData, type SmartFilter, type SmartLink, type SmartObject, type ShapeGradient, type ShapeStroke, type ShapeStyle, type FootageInterpretation, effectsFromData, type Artboard, artboardFromData, type AlphaChannel, effectsPresent } from './types';
 import { allPatterns, patternById } from './patterns';
 import { addFillStop, fillFrame, fillFromLine, fillLine, fillName, renderFill, type GradientFill } from './fill-layers';
 import type { FillContent, VectorMask, WarpStyle } from './types';
@@ -111,7 +113,7 @@ import { applyH, convexQuadTLTRBRBL, homography as quadHomography, perspectiveIm
 import { findWires } from './distractions';
 import type { SampledTip } from './abr';
 import { DEFAULT_GLOBAL_LIGHT, scaledEffects, type GlobalLight } from './style-extras';
-export { CONTOURS, DEFAULT_GLOBAL_LIGHT, withGlobalLight, type ContourId, type GlobalLight } from './style-extras';
+export { CONTOURS, DEFAULT_GLOBAL_LIGHT, contourCurve, customContourId, customContourPoints, withGlobalLight, type ContourId, type ContourPoint, type GlobalLight } from './style-extras';
 import { mergeMeta, type DocMeta, type MetaPatch } from './doc-meta';
 export { COPYRIGHT_STATUSES, META_TEXT, cleanMeta, customLines, metaWritable, mergeMeta, parseCustom, parseKeywords, sameMeta, tabName, type CameraData, type CopyrightStatus, type DocMeta } from './doc-meta';
 import { UPRIGHT, allBrushPresets, computeOption, defaultShape, mergeShape, noDynamics, noSymmetry, pressureOption, shapeActive, type BrushSymmetry, type BrushDynamics, type BrushPreset, type BrushShape, type PenPose } from './brush-dynamics';
@@ -121,8 +123,9 @@ import { allCustomShapes } from './custom-shapes';
 import { traceAlpha } from './trace-outline';
 export { CUSTOM_SHAPES, allCustomShapes, addCustomShape, loadCustomShapes } from './custom-shapes';
 import { replaceColours } from './color-replace';
-import { FILL_DEFAULTS, WarpStroke, contentFill, diffusionFill, frequencySplit, ringVariance, SMOOTH_RING_VARIANCE, fillTransparent, healFromSource, premultiply, scaleHealCorrection, spotHeal, unpremultiply, type FillOptions, type HealBlend, type HealMode, type HealSample } from './retouch';
-import { EXTRA_BLENDS, PIXEL_BLENDS, dissolveNoise } from './blend';
+import { fillOffThread } from './retouch-jobs';
+import { FILL_DEFAULTS, WarpStroke, contentFill, diffusionFill, featherEdge, frequencySplit, ringVariance, SMOOTH_RING_VARIANCE, fillTransparent, healFromSource, premultiply, scaleHealCorrection, spotHeal, unpremultiply, type FillOptions, type HealBlend, type HealMode, type HealSample } from './retouch';
+import { EXTRA_BLENDS, PIXEL_BLENDS, blendPixels, dissolveNoise } from './blend';
 import { LUT3_N, adjustmentLut, adjustmentLut3 } from './lut';
 import { decontaminate } from './select-mask';
 import { alphaToMask, defringe, distanceSquared, removeMatte } from './matting';
@@ -163,7 +166,7 @@ export interface EngineEvents {
 export interface BrushSettings { diameter: number; hardness: number; opacity: number; tip?: SampledTip | null }
 /** `deep`: linear-light floats of an OpenEXR or Radiance HDR, of which `source` is the 8-bit rendition; a layer placed
  *  into a 16 or 32 bit document keeps them at that depth. `resolution`: the file's own ppi. */
-export interface ImportedImage { source: CanvasImageSource; width: number; height: number; name: string; profile?: DocProfile; mode?: DocMode; meta?: DocMeta; resolution?: number; deep?: DeepPixels }
+export interface ImportedImage { source: CanvasImageSource; width: number; height: number; name: string; profile?: DocProfile; mode?: DocMode; meta?: DocMeta; resolution?: number; deep?: DeepPixels; /** An indexed file's colour table: it opens as an Indexed Color document with its single layer as the Background. */ palette?: readonly RGB[]; transparentIndex?: number; /** Guides the file carries (a JPEG's image resources). */ guides?: readonly Guide[]; /** A notice the open raises, such as a cut-off file. */ warning?: string }
 type Target = 'pixels' | 'mask';
 type Settings = Pick<Engine, 'selectionMode' | 'marqueeKind' | 'lassoKind' | 'showPixelGrid' | 'showTransformControls' | 'autoSelect' | 'autoSelectTarget' | 'lockRatio'>;
 
@@ -1905,6 +1908,7 @@ export class Engine {
       const own = vecFor(l, o?.transform), folders = own.length ? [...(fchains.get(l.parentId ?? null) ?? []), ...own] : fchains.get(l.parentId ?? null);
       if (folders && l.clipId) return { reason: 'a clipped layer with a vector mask or inside a masked folder' };
       if (visible && (blendIfActive(l.blendIf) || (l.knockout && l.knockout !== 'none') || l.blendChannels?.some((on) => !on))) return { reason: 'Blend If, Knockout or channel restrictions' };
+      if (visible && (l.blendClipped || l.transparencyShapes === false)) return { reason: 'Blend Clipped Layers as Group or Transparency Shapes Layer off' };
       const mask = maskFor(l, o);
       let clip: GpuClipSpec | undefined;
       if (l.clipId) {
@@ -1972,6 +1976,16 @@ export class Engine {
     });
   }
 
+  /** The Styles panel's saved styles kept in the open document, so they travel with the file; one step called Style Presets. */
+  setStylePresets(list: ReadonlyArray<{ id: string; name: string; effects: LayerEffects; group?: string }>): boolean {
+    return this.edit('Style Presets', (p) => {
+      if (JSON.stringify(p.doc.stylePresets ?? []) === JSON.stringify(list)) return false;
+      const { stylePresets: _gone, ...rest } = p.doc;
+      p.doc = list.length ? { ...rest, stylePresets: structuredClone(list) as typeof list } : rest;
+      return true;
+    });
+  }
+
   /** File > File Info (29.2): the fields named in `patch` set on the document's metadata as one step called File Info;
    *  false, and no step, when nothing changes. The camera's record and the created date are not set from here. */
   setMeta(patch: MetaPatch): boolean {
@@ -1985,11 +1999,11 @@ export class Engine {
   }
 
   /** The Layer Style dialog's OK: the layer's effects and, when it changed, the document's Global Light, one step. */
-  applyStyleAndLight(id: ID, effects: LayerEffects | null, light: GlobalLight | null, blending: { blendIf: BlendIf | null; knockout: 'none' | 'shallow' | 'deep'; channels?: [boolean, boolean, boolean]; general?: { blend: BlendMode; opacity: number; fill: number } } | null = null): void {
+  applyStyleAndLight(id: ID, effects: LayerEffects | null, light: GlobalLight | null, blending: { blendIf: BlendIf | null; knockout: 'none' | 'shallow' | 'deep'; channels?: [boolean, boolean, boolean]; clipGroup?: boolean; shapes?: boolean; general?: { blend: BlendMode; opacity: number; fill: number } } | null = null): void {
     this.edit('Layer Style', (p) => {
       if (light) this.setGlobalLight(light);
       this.setLayerEffects(id, effects);
-      if (blending) p.updateLayer(id, { blendIf: blendIfActive(blending.blendIf) ? blending.blendIf : null, knockout: blending.knockout, blendChannels: blending.channels?.some((on) => !on) ? [...blending.channels] : null, ...(blending.general ? { blend: blending.general.blend, opacity: clamp(blending.general.opacity, 0, 1), fill: clamp(blending.general.fill, 0, 1) } : {}) });
+      if (blending) p.updateLayer(id, { blendIf: blendIfActive(blending.blendIf) ? blending.blendIf : null, knockout: blending.knockout, blendChannels: blending.channels?.some((on) => !on) ? [...blending.channels] : null, ...(blending.clipGroup !== undefined ? { blendClipped: blending.clipGroup ? true : undefined } : {}), ...(blending.shapes !== undefined ? { transparencyShapes: blending.shapes ? undefined : false } : {}), ...(blending.general ? { blend: blending.general.blend, opacity: clamp(blending.general.opacity, 0, 1), fill: clamp(blending.general.fill, 0, 1) } : {}) });
       return true;
     });
   }
@@ -2842,17 +2856,30 @@ export class Engine {
 
   /** File > Open SVG as Layers (DEV_PLAN 34.4): one shape layer per entry, in order, each outline still editable. insertRasterLayer
    *  records its own undo step, so each layer is one step. Returns the number of layers made. */
-  addShapeLayers(shapes: Array<{ name: string; path: VectorPath; fill: RGB | null; stroke: ShapeStroke | null; opacity?: number }>, dropEmptyBase = false): number {
+  addShapeLayers(shapes: Array<{ name: string; path: VectorPath; fill: RGB | null; stroke: ShapeStroke | null; opacity?: number; gradient?: ShapeGradient; blend?: BlendMode; groups?: Array<{ key: number; name: string; blend?: BlendMode }> }>, dropEmptyBase = false): number {
     // Rendered first, then inserted in one edit, so the whole SVG is one undo step.
-    const made = shapes.flatMap((s) => { const look: ShapeStyle = { fill: s.fill, stroke: s.stroke }, r = this.renderShape(s.path, look); return r ? [{ s, look, r }] : []; });
+    const made = shapes.flatMap((s) => { const look: ShapeStyle = { fill: s.fill, stroke: s.stroke, ...(s.gradient ? { gradient: s.gradient } : {}) }, r = this.renderShape(s.path, look); return r ? [{ s, look, r }] : []; });
     if (!made.length) return 0;
     this.edit('Open SVG as Layers', (p) => {
       // A new document's blank base layer (34.4f) is removed when asked: only a pixel layer with nothing painted.
       const painted = (d: Uint8ClampedArray): boolean => { for (let i = 3; i < d.length; i += 4) if (d[i]) return true; return false; };
       const blank = dropEmptyBase ? p.doc.layers.filter((l) => !l.isGroup && !l.vector && !l.text && !l.adjustment && !l.smart && (!l.raster || !painted(l.raster.read().data))) : [];
+      const folders = new Map<number, ID>();
       for (const { s, look, r } of made) {
-        const base = newLayer(s.name, p.doc, { raster: r.raster, parentId: this.parentForNew(p), opacity: s.opacity ?? 1 });
-        this.insertAboveActive(p, { ...base, transform: { ...docTransform(r.raster.width, r.raster.height), x: r.x, y: r.y }, vector: { path: s.path, fill: look.fill, stroke: look.stroke, origin: { x: r.x, y: r.y } } });
+        let parentId = this.parentForNew(p);
+        // SVG groups become folders, made when their first shape arrives, nested as the groups are.
+        for (const g of s.groups ?? []) {
+          let id = folders.get(g.key);
+          if (!id) {
+            const folder = newLayer(g.name, p.doc, { isGroup: true, parentId, ...(g.blend ? { blend: g.blend } : {}) });
+            this.insertAboveActive(p, folder);
+            id = folder.id;
+            folders.set(g.key, id);
+          }
+          parentId = id;
+        }
+        const base = newLayer(s.name, p.doc, { raster: r.raster, parentId, opacity: s.opacity ?? 1, ...(s.blend ? { blend: s.blend } : {}) });
+        this.insertAboveActive(p, { ...base, transform: { ...docTransform(r.raster.width, r.raster.height), x: r.x, y: r.y }, vector: { path: s.path, fill: look.fill, stroke: look.stroke, ...(look.gradient ? { gradient: look.gradient } : {}), origin: { x: r.x, y: r.y } } });
       }
       if (blank.length) { const gone = new Set(blank.map((l) => l.id)); p.setLayers(p.doc.layers.filter((l) => !gone.has(l.id))); }
     });
@@ -4202,6 +4229,30 @@ export class Engine {
     });
   }
 
+  /** Select and Mask's New Document outputs: what the document shows inside the refined selection (`data`, 0 to 255 over
+   *  the whole canvas) in a new document the size of the selection, as transparent pixels or, with `withMask`, whole
+   *  pixels under a layer mask. */
+  applyRefinedToDocument(data: Uint8Array, withMask: boolean): boolean {
+    const p0 = this.current, flat = this.flattened();
+    if (!p0 || !flat || data.length !== p0.doc.width * p0.doc.height) return false;
+    const sel = SelectionMask.cropped(0, 0, p0.doc.width, p0.doc.height, data);
+    if (!sel) { this.notice('Nothing is selected after refining.'); return false; }
+    const r = sel.rect, px = ctxOf(flat).getImageData(r.x, r.y, r.w, r.h);
+    const q = this.newDocument(r.w, r.h, `${p0.name} refined`, 'transparent', p0.doc.resolution);
+    if (!q) return false;
+    this.edit(withMask ? 'Select and Mask to New Document with Layer Mask' : 'Select and Mask to New Document', (pq) => {
+      const l = pq.activeLayer;
+      if (!l) return false;
+      if (!l.raster) l.raster = new Raster(r.w, r.h);
+      if (!withMask) for (let i = 0; i < sel.data.length; i++) px.data[i * 4 + 3] = Math.round(px.data[i * 4 + 3] * sel.data[i] / 255);
+      l.raster.ctx.putImageData(px, 0, 0);
+      l.raster.touch();
+      if (withMask) { pq.selection = new SelectionMask(0, 0, r.w, r.h, sel.data); this.addMask(false); pq.selection = null; }
+      return true;
+    });
+    return true;
+  }
+
   addMask(hide = false, fromSelection = true): void { LM.addMask(this.maskHost, hide, fromSelection); }
 
   /** Layer > Layer Mask > From Transparency: the layer's alpha becomes its mask and its pixels opaque. One step. */
@@ -4814,7 +4865,19 @@ export class Engine {
     }
     // Remove with LaMa: the stroke's footprint (grown by two pixels) is sent to the local model instead of the patch
     // fill, when the layer sits unscaled on the document; the white footprint is undone first.
-    if (st.heal === 'remove' && this.retouch.removeLama && this.removeBrushFill && st.target === 'pixels') {
+    // Collect strokes: the footprint is kept (red on the picture) and the stroke undone; Enter fills all of it as one job.
+    if (st.heal === 'remove' && this.retouch.removeCollect && st.target === 'pixels') {
+      const r = st.s.layer, cov = st.s.coverageAlpha(), keep = this.removePending;
+      const into = keep && keep.project === st.project && keep.layerId === st.layerId && keep.mask.length === cov.length ? keep.mask : new Uint8Array(cov.length);
+      for (let i = 0; i < cov.length; i++) if (cov[i] > 0) into[i] = 255;
+      this.removePending = { project: st.project, layerId: st.layerId, width: r.width, height: r.height, mask: into, version: (keep?.version ?? 0) + 1 };
+      this.stroke = st;
+      this.cancelStroke();
+      this.emit('options', null);
+      this.emit('overlay', null);
+      return;
+    }
+    if (st.heal === 'remove' && this.retouch.removeLama && this.removeModelReady && this.removeBrushFill && st.target === 'pixels') {
       const r = st.s.layer, dw = st.project.doc.width, dh = st.project.doc.height, t = st.project.layer(st.layerId)?.transform;
       if (r.width === dw && r.height === dh && t && t.x === 0 && t.y === 0 && t.w === dw && t.h === dh && !t.rotation) {
         const cov = st.s.coverageAlpha(), hole0 = new Uint8Array(dw * dh);
@@ -4955,16 +5018,22 @@ export class Engine {
         sc.setTransform(1, 0, 0, 1, 0, 0);
       } else {
         if (pat) { const cp = sc.createPattern(pat.surface, 'repeat'); if (cp) { const k = Math.max(1, Math.min(1000, opts.patternScale ?? 100)) / 100; cp.setTransform(new DOMMatrix().translate(-rect.x, -rect.y).rotate(opts.patternAngle ?? 0).scale(k)); sc.fillStyle = cp; } }
-        else if ('color' in contents) { sc.fillStyle = rgbCss(contents.color); rec.f = { color: contents.color, blend, opacity, preserve: preserveTransparency, w: rect.w, h: rect.h, cover }; }
+        else if ('color' in contents) { sc.fillStyle = rgbCss(contents.color); if (!PIXEL_BLENDS.has(blend)) rec.f = { color: contents.color, blend, opacity, preserve: preserveTransparency, w: rect.w, h: rect.h, cover }; }
         sc.fillRect(0, 0, rect.w, rect.h);
       }
       if (cover) { sc.globalCompositeOperation = 'destination-in'; sc.drawImage(cover, 0, 0); }
       const orig = createSurface(rect.w, rect.h), out = createSurface(rect.w, rect.h), oc = ctxOf(out);
       ctxOf(orig).putImageData(raster.read(rect.x, rect.y, rect.w, rect.h), 0, 0);
       oc.drawImage(orig, 0, 0);
-      oc.globalAlpha = opacity;
-      oc.globalCompositeOperation = compositeOp(blend);
-      oc.drawImage(s, 0, 0);
+      if (PIXEL_BLENDS.has(blend)) {
+        const dst = oc.getImageData(0, 0, rect.w, rect.h), top = sc.getImageData(0, 0, rect.w, rect.h);
+        blendPixels(dst.data, top.data, blend, opacity, (i) => [rect.x + (i % rect.w), rect.y + Math.floor(i / rect.w)]);
+        oc.putImageData(dst, 0, 0);
+      } else {
+        oc.globalAlpha = opacity;
+        oc.globalCompositeOperation = compositeOp(blend);
+        oc.drawImage(s, 0, 0);
+      }
       if (preserveTransparency) { oc.globalAlpha = 1; oc.globalCompositeOperation = 'destination-in'; oc.drawImage(orig, 0, 0); }
       rc.clearRect(rect.x, rect.y, rect.w, rect.h);
       rc.drawImage(out, rect.x, rect.y);
@@ -5837,21 +5906,30 @@ export class Engine {
     let src = comp;
     if (scale < 1) { src = createSurface(w, h); ctxOf(src).drawImage(comp as CanvasImageSource, 0, 0, w, h); }
     const d = ctxOf(src).getImageData(0, 0, w, h).data, out = new Uint8Array(w * h), f = Math.max(1, o.fuzziness), k = 1 / Math.sqrt(3);
-    const near = (list: RGB[], r: number, g: number, b: number): number => {
-      let best = Infinity;
-      for (const c of list) { const dr = r - c.r, dg = g - c.g, db = b - c.b, dist = Math.sqrt(dr * dr + dg * dg + db * db) * k; if (dist < best) best = dist; }
-      return list.length ? Math.max(0, 1 - best / f) : 0;
+    // Localized Color Clusters: a sample counts only near where it was taken, fading to nothing `spread` percent of the diagonal away.
+    const local = !!o.localized && !!o.at && o.at.length === o.plus.length, reach = ((o.spread ?? 50) / 100) * Math.hypot(W, H) + 1;
+    const near = (list: RGB[], r: number, g: number, b: number, px = 0, py = 0, at?: Pt[]): number => {
+      let best = 0;
+      list.forEach((c, n) => {
+        const dr = r - c.r, dg = g - c.g, db = b - c.b, dist = Math.sqrt(dr * dr + dg * dg + db * db) * k;
+        let v = Math.max(0, 1 - dist / f);
+        if (at && v > 0) v *= Math.max(0, 1 - Math.hypot(px - at[n].x, py - at[n].y) / reach);
+        if (v > best) best = v;
+      });
+      return best;
     };
     let any = false;
+    const gflags = o.mode === 'gamut' ? this.viewTransform?.lut.gamut : undefined, gn = this.viewTransform?.lut.grid ?? 1, gg = gn * gn, gs = (gn - 1) / 255;
     for (let i = 0, j = 0; i < out.length; i++, j += 4) {
       const r = d[j], g = d[j + 1], b = d[j + 2], L = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
       const sx = scale < 1 ? Math.floor((i % w) / scale) : i % w, sy = scale < 1 ? Math.floor(Math.floor(i / w) / scale) : Math.floor(i / w);
-      let v = o.mode === 'sampled' ? Math.max(0, near(o.plus, r, g, b) - near(o.minus, r, g, b))
+      let v = o.mode === 'sampled' ? Math.max(0, near(o.plus, r, g, b, sx, sy, local ? o.at : undefined) - near(o.minus, r, g, b))
         : o.mode === 'highlights' ? Math.min(1, Math.max(0, (L - 0.55) / 0.2))
         : o.mode === 'shadows' ? Math.min(1, Math.max(0, (0.45 - L) / 0.2))
         : o.mode === 'midtones' ? Math.min(1, Math.max(0, 1 - Math.abs(L - 0.5) / 0.3))
         : o.mode === 'luminosity' ? depthWeight(L * 255, dlo, dhi, o.fuzziness)
         : o.mode === 'depth' ? (depth ? depthWeight(depth[(Math.min(H - 1, sy) * W + Math.min(W - 1, sx)) * 4], dlo, dhi, o.fuzziness) : 0)
+        : o.mode === 'gamut' ? (gflags && gflags[Math.round(r * gs) * gg + Math.round(g * gs) * gn + Math.round(b * gs)] ? 1 : 0)
         : hueWeight(o.mode, r, g, b, o.fuzziness);
       if (o.invert) v = 1 - v;
       if (p.selection && (!o.combine || o.combine === 'replace')) v *= p.selection.valueAt(sx, sy) / 255;
@@ -5861,10 +5939,21 @@ export class Engine {
     return { mask: out, w, h, any };
   }
 
+  /** Select > Focus Area without the dialog: the in-focus part of what autoSelSource gives, met with the selection by `mode`. */
+  selectFocusArea(s: Partial<FocusSettings>, mode: SelectionMode = this.selectionMode): boolean {
+    const flat = this.autoSelSource();
+    if (!flat) return false;
+    const img = ctxOf(flat).getImageData(0, 0, flat.width, flat.height), m = focusArea(img, { ...DEFAULT_FOCUS, ...s });
+    if (!m.some((v) => v >= 128)) { this.notice('Nothing in focus was found; raise the In-Focus Range.'); return false; }
+    this.applySelection(SelectionMask.cropped(0, 0, img.width, img.height, m), mode, 'Focus Area');
+    return true;
+  }
+
   selectColorRange(o: ColorRangeOptions): void {
     const r = this.colorRangeMask(o);
     if (!r) return;
     if (o.mode === 'depth' && !this.depthLayer()) { this.notice('This document has no Depth Map layer. Compute Depth Map first.'); return; }
+    if (o.mode === 'gamut' && !this.viewTransform?.lut.gamut) { this.notice('Out Of Gamut needs View > Proof Colors on with a proof profile; none is on.'); return; }
     if (!r.any) { this.notice('No pixels matched; nothing was selected.'); return; }
     this.applySelection(SelectionMask.cropped(0, 0, r.w, r.h, r.mask), o.combine ?? 'replace', 'Color Range');
   }
@@ -5993,7 +6082,7 @@ export class Engine {
     const s = this.selectionShift, sel = s?.project.selection;
     if (!s) return;
     if (sel && this.snapping && (dx || dy)) {
-      const d = PM.snapDelta(this.moveHost, s.project, { x: sel.x + dx, y: sel.y + dy, w: sel.w, h: sel.h }, () => false);
+      const d = PM.snapDelta(this.moveHost, s.project, { x: sel.x + dx, y: sel.y + dy, w: sel.w, h: sel.h }, () => false, false);
       if (d) { dx += d.x; dy += d.y; }
     } else this.snapGuides = null;
     TE.updateSelectionShift(this.entryHost, s, dx, dy);
@@ -7275,9 +7364,10 @@ export class Engine {
 
   insertImages(images: ImportedImage[], at?: Pt, asNew = false): void {
     if (!images.length) return;
-    if (asNew || !this.current) {
+    const created = asNew || !this.current;
+    if (created) {
       const f = images[0];
-      this.addProject({ id: uid(), width: f.width, height: f.height, resolution: f.resolution ?? 72, layers: [], ...(f.profile ? { profile: f.profile } : {}), ...(f.mode ? { mode: f.mode } : {}), ...(f.meta ? { meta: f.meta } : {}) }, stripExt(f.name));   // its embedded profile kept (1.53.5), its File Info (29.2), a grayscale file's mode
+      this.addProject({ id: uid(), width: f.width, height: f.height, resolution: f.resolution ?? 72, layers: [], ...(f.profile ? { profile: f.profile } : {}), ...(f.mode ? { mode: f.mode } : {}), ...(f.palette ? { mode: 'indexed' as const, palette: f.palette, ...(f.transparentIndex !== undefined ? { transparentIndex: f.transparentIndex } : {}) } : {}), ...(f.guides?.length ? { guides: f.guides } : {}), ...(f.meta ? { meta: f.meta } : {}) }, stripExt(f.name));   // its embedded profile kept (1.53.5), its File Info (29.2), a grayscale file's mode, an indexed file's colour table, a JPEG's guides
     }
     this.edit(images.length > 1 ? 'Import Images' : 'Import Image', (p) => {
       let pixels = p.doc.layers.reduce((n, l) => n + (l.raster ? l.raster.width * l.raster.height : 0), 0), added = 0;
@@ -7292,7 +7382,7 @@ export class Engine {
         // Into a frame, the image covers it, centred; elsewhere it lands at its own size.
         const fr = parentId ? p.layer(parentId)?.frame : null, cover = fr ? Math.max(fr.w / img.width, fr.h / img.height) : 1;
         const depth = p.doc.depth ?? 8, channels = img.deep && !fr && (!p.doc.mode || p.doc.mode === 'rgb') ? (depth === 32 ? img.deep : depth === 16 ? deepToned(img.deep, 0, 1) : null) : null;
-        const layer = newLayer(stripExt(img.name), p.doc, {
+        const layer = newLayer(created && img.palette && img.transparentIndex === undefined ? 'Background' : stripExt(img.name), p.doc, {
           raster: Raster.from(img.source, img.width, img.height), parentId, ...(channels ? { channels } : {}),
           transform: fr
             ? { ...docTransform(img.width, img.height), x: fr.x + (fr.w - img.width * cover) / 2, y: fr.y + (fr.h - img.height * cover) / 2, w: img.width * cover, h: img.height * cover }
@@ -7327,7 +7417,7 @@ export class Engine {
    *  bar (Dither off by default). */
   /** transparency and method (1.50.6, the tool audit): the stops' own transparency honoured or not;
    *  the colours blended in sRGB (Classic, as before), linear light (Linear) or OKLab (Perceptual). */
-  gradientSettings: { shape: GradientType; style: string; reversed: boolean; opacity: number; blend: BlendMode; dither: boolean; transparency: boolean; method: 'classic' | 'linear' | 'perceptual' } = { shape: 'linear', style: 'transparent', reversed: false, opacity: 1, blend: 'normal', dither: false, transparency: true, method: 'classic' };
+  gradientSettings: { shape: GradientType; style: string; reversed: boolean; opacity: number; blend: BlendMode; dither: boolean; transparency: boolean; method: 'classic' | 'linear' | 'perceptual' | 'smooth'; smoothness: number; live: boolean } = { shape: 'linear', style: 'transparent', reversed: false, opacity: 1, blend: 'normal', dither: false, transparency: true, method: 'classic', smoothness: 100, live: false };
   /** Dialogs a tool's options can open; the app fills these in, since tools only see the engine. */
   uiHooks: { gradientEditor?: () => void; importBrushes?: () => void; brushPicker?: (x: number, y: number) => void; guideMenu?: (x: number, y: number) => void } = {};
   /** What a plain right-click does on a painting tool: a right-drag always sizes the tip; a click opens the Brush Preset picker when this is 'picker'. */
@@ -7584,7 +7674,7 @@ export class Engine {
       return { x: snap(b.x) + shift, y: snap(b.y) + shift, w: snap(b.w), h: snap(b.h) };
     };
     const canvas = local({ x: 0, y: 0, w: p.doc.width, h: p.doc.height });
-    return { area: p.selection ? local(p.selection.rect) : canvas, canvas, doc: { w: p.doc.width, h: p.doc.height } };
+    return { area: p.selection ? local(p.selection.rect) : canvas, canvas, doc: { w: p.doc.width, h: p.doc.height }, ...(shift > 0 ? { margin: shift } : {}) };
   }
 
   previewImageEdit(run: (src: ImageData, scale: number, frame?: LibFrame) => ImageData | Promise<ImageData>, grow = 0, maxPixels = 2_000_000): void { const a = this.alphaTargeted(); if (a) { this.previewAlphaEdit(a, run); return; } ++this.previewToken; IE.previewImageEdit(this.editHost, run, grow, maxPixels); }
@@ -8883,7 +8973,7 @@ export class Engine {
       luminance: (c) => luminance(c),
       css: (c, a) => rgbCss(c, a),
       gradient: { shape: st.shape, opacity: st.opacity, blend: st.blend, dither: st.dither },
-      gradientStops: (fg, bg) => gradientMethod(resolveStops(this.gradientPreset(), fg, bg, st.reversed).map((x) => (st.transparency ? x : { ...x, alpha: 1 })), st.method),
+      gradientStops: (fg, bg) => gradientMethod(resolveStops(this.gradientPreset(), fg, bg, st.reversed).map((x) => (st.transparency ? x : { ...x, alpha: 1 })), st.method, st.smoothness / 100),
       positionLocked: (id) => this.locked(id ? this.current?.layer(id) ?? null : this.activeLayer, 'position'),
       linkedOf: (p) => this.withLinked(p),
       keyMove: (id, dx, dy, label) => this.keyMove(id, dx, dy, label),
@@ -9107,6 +9197,7 @@ export class Engine {
       regionEdit: (label, apply) => this.regionEdit(label, apply),
       tint: (rect, css, cover) => this.tint(rect, css, cover),
       bg: this.bg,
+      quickMask: this.quickMask,
       luminance: (c) => luminance(c),
       composite: (p) => renderDoc(this.work, p.doc),
       renderInto: (p, target, view) => this.work.render({ doc: p.doc, target, view, quality: 'high' }),
@@ -9322,7 +9413,7 @@ export class Engine {
     this.insertRasterLayer(this.shapeRaster(style, r.w, r.h), kind, r.x, r.y, { shape: style }, kind);
   }
 
-  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSample: HealSample; cloneBlend: BlendMode; cloneFlow: number; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify'; smearBlend: BlendMode; smearSampleAll: boolean; blurRadius: number; protectDetail: boolean; fingerPainting: boolean; smudgeBelow: boolean; smudgeLength: number; toneSample: HealSample; removeSample: HealSample; removeLama: boolean; cloneScaleY: number | null; replaceTolerance: number; replaceMode: 'color' | 'hue' | 'saturation' | 'luminosity'; replaceSampling: 'once' | 'swatch'; moveStructure: number; moveColor: number; moveSampleAll: boolean; moveTransform: boolean; cloneScale: number; cloneAngle: number; cloneFlipH: boolean; cloneFlipV: boolean; patchMode: 'normal' | 'contentAware'; patchFrom: 'source' | 'destination'; patchTransparent: boolean; patchDiffusion: number; patchStructure: number; patchColor: number; healDiffusion: number; healBlendMode: HealBlend; spotBlendMode: HealBlend; healSample: HealSample; spotSampleAll: boolean; patchSampleAll: boolean; healSource: 'sampled' | 'pattern'; healPattern: ID | null; patchPattern: ID | null } = { healMode: 'contentAware', cloneAligned: true, cloneSample: 'current', cloneBlend: 'normal', cloneFlow: 1, smearMode: 'blur', smearBlend: 'normal', smearSampleAll: false, blurRadius: 0, protectDetail: true, fingerPainting: false, smudgeBelow: false, smudgeLength: 100, toneSample: 'current', removeSample: 'current', removeLama: false, cloneScaleY: null, replaceTolerance: 30, replaceMode: 'color', replaceSampling: 'once', moveStructure: 7, moveColor: 0, moveSampleAll: false, moveTransform: false, cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false, patchMode: 'normal', patchFrom: 'source', patchTransparent: false, patchDiffusion: 7, patchStructure: 5, patchColor: 10, healDiffusion: 7, healBlendMode: 'normal', spotBlendMode: 'normal', healSample: 'current', spotSampleAll: false, patchSampleAll: false, healSource: 'sampled', healPattern: null, patchPattern: null };
+  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSample: HealSample; cloneBlend: BlendMode; cloneFlow: number; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify'; smearBlend: BlendMode; smearSampleAll: boolean; blurRadius: number; protectDetail: boolean; fingerPainting: boolean; smudgeBelow: boolean; smudgeLength: number; toneSample: HealSample; removeSample: HealSample; removeLama: boolean; removeCollect: boolean; cloneScaleY: number | null; replaceTolerance: number; replaceMode: 'color' | 'hue' | 'saturation' | 'luminosity'; replaceSampling: 'once' | 'swatch'; moveStructure: number; moveColor: number; moveSampleAll: boolean; moveTransform: boolean; moveBlend: 'none' | 'edge' | 'all'; cloneScale: number; cloneAngle: number; cloneFlipH: boolean; cloneFlipV: boolean; patchMode: 'normal' | 'contentAware'; patchFrom: 'source' | 'destination'; patchTransparent: boolean; patchDiffusion: number; patchStructure: number; patchColor: number; healDiffusion: number; healBlendMode: HealBlend; spotBlendMode: HealBlend; healSample: HealSample; spotSampleAll: boolean; patchSampleAll: boolean; healSource: 'sampled' | 'pattern'; healPattern: ID | null; patchPattern: ID | null } = { healMode: 'contentAware', cloneAligned: true, cloneSample: 'current', cloneBlend: 'normal', cloneFlow: 1, smearMode: 'blur', smearBlend: 'normal', smearSampleAll: false, blurRadius: 0, protectDetail: true, fingerPainting: false, smudgeBelow: false, smudgeLength: 100, toneSample: 'current', removeSample: 'current', removeLama: true, removeCollect: false, cloneScaleY: null, replaceTolerance: 30, replaceMode: 'color', replaceSampling: 'once', moveStructure: 7, moveColor: 0, moveSampleAll: false, moveTransform: false, moveBlend: 'none', cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false, patchMode: 'normal', patchFrom: 'source', patchTransparent: false, patchDiffusion: 7, patchStructure: 5, patchColor: 10, healDiffusion: 7, healBlendMode: 'normal', spotBlendMode: 'normal', healSample: 'current', spotSampleAll: false, patchSampleAll: false, healSource: 'sampled', healPattern: null, patchPattern: null };
 
   /** Clone Source: where a document point's source moves once scaled, rotated and flipped about `pivot` (the sample
    *  point), as a matrix taking source pixels to where they are painted from; null when all are neutral. Painting at
@@ -9337,11 +9428,11 @@ export class Engine {
   cloneOffset: Pt | null = null;
   /** The Clone Source panel's five sources: Alt-click
    *  sets the chosen slot's source, and each slot keeps its own point, scale, angle and flips, restored on choosing it. */
-  cloneSlots: Array<{ source: Pt; scale: number; scaleY?: number | null; angle: number; flipH: boolean; flipV: boolean } | null> = [null, null, null, null, null];
+  cloneSlots: Array<{ source: Pt; scale: number; scaleY?: number | null; angle: number; flipH: boolean; flipV: boolean; layerId?: ID } | null> = [null, null, null, null, null];
   cloneSlot = 0;
   /** The overlay: Show Overlay; Clipped (on by default) keeps it to the brush, off shows the whole source as a stroke
    *  would copy it; its opacity; Auto Hide hides it while painting. */
-  cloneOverlay = { show: true, clipped: true, opacity: 1, autoHide: false, invert: false };
+  cloneOverlay: { show: boolean; clipped: boolean; opacity: number; autoHide: boolean; invert: boolean; blend: GlobalCompositeOperation } = { show: true, clipped: true, opacity: 1, autoHide: false, invert: false, blend: 'source-over' };
   private cloneFullCache: { key: string; image: Surface } | null = null;
   private warpState: TE.WarpDrag | null = null;
 
@@ -9352,7 +9443,7 @@ export class Engine {
     this.cloneSource = { x: pt.x, y: pt.y };
     this.cloneOffset = null;
     const r = this.retouch;
-    this.cloneSlots[this.cloneSlot] = { source: { x: pt.x, y: pt.y }, scale: r.cloneScale, scaleY: r.cloneScaleY, angle: r.cloneAngle, flipH: r.cloneFlipH, flipV: r.cloneFlipV };
+    this.cloneSlots[this.cloneSlot] = { source: { x: pt.x, y: pt.y }, scale: r.cloneScale, scaleY: r.cloneScaleY, angle: r.cloneAngle, flipH: r.cloneFlipH, flipV: r.cloneFlipV, layerId: this.current?.activeLayer?.id };
     this.emit('overlay', null);
     this.emit('options', null);
   }
@@ -9373,7 +9464,7 @@ export class Engine {
   }
 
   /** The Clone Source panel's overlay settings: assigns the given fields and redraws the overlay. */
-  setCloneOverlay(patch: Partial<{ show: boolean; clipped: boolean; opacity: number; autoHide: boolean; invert: boolean }>): void {
+  setCloneOverlay(patch: Partial<{ show: boolean; clipped: boolean; opacity: number; autoHide: boolean; invert: boolean; blend: GlobalCompositeOperation }>): void {
     Object.assign(this.cloneOverlay, patch);
     this.emit('overlay', null);
     this.emit('options', null);
@@ -9393,13 +9484,13 @@ export class Engine {
     const p = this.current, l = p?.activeLayer, sp = this.clonePoint(at);
     if (!p || !l || !sp) return null;
     // Current Layer, Current & Below or All Layers (1.50.6, the tool audit), as the Healing Brush's Sample.
-    const all = this.retouch.cloneSample !== 'current', key = [this.retouch.cloneSample, l.id, p.history.revision, p.id].join('|');
+    const all = this.retouch.cloneSample !== 'current', sl = all ? l : this.cloneSourceLayer(p, l), key = [this.retouch.cloneSample, sl.id, p.history.revision, p.id].join('|');
     if (this.cloneFullCache?.key !== key) {
-      const image = all ? this.healSampleSurface(p, l, this.retouch.cloneSample) : l.raster ? l.raster.canvas : null;
+      const image = all ? this.healSampleSurface(p, l, this.retouch.cloneSample) : sl.raster ? sl.raster.canvas : null;
       if (!image) return null;
       this.cloneFullCache = { key, image };
     }
-    const place = all || !l.raster ? [1, 0, 0, 1, 0, 0] as Mat : placement(l.transform, l.raster.width, l.raster.height);
+    const place = all || !sl.raster ? [1, 0, 0, 1, 0, 0] as Mat : placement(sl.transform, sl.raster.width, sl.raster.height);
     const m = mul(mul(translation(at.x - sp.x, at.y - sp.y), this.cloneTransform(sp) ?? [1, 0, 0, 1, 0, 0]), place);
     return { image: this.cloneFullCache.image, m };
   }
@@ -9420,14 +9511,14 @@ export class Engine {
     const p = this.current, l = p?.activeLayer, sp = this.clonePoint(at);
     if (!p || !l || !sp || this.stroke) return null;
     const d = this.brush.diameter, side = clamp(Math.ceil(d * scale), 1, 1024);
-    const r0 = this.retouch, key = [sp.x.toFixed(2), sp.y.toFixed(2), d, this.brush.hardness, side, r0.cloneSample, l.id, p.history.revision, r0.cloneScale, r0.cloneScaleY, r0.cloneAngle, r0.cloneFlipH, r0.cloneFlipV].join('|');
+    const r0 = this.retouch, sl = r0.cloneSample === 'current' ? this.cloneSourceLayer(p, l) : l, key = [sp.x.toFixed(2), sp.y.toFixed(2), d, this.brush.hardness, side, r0.cloneSample, sl.id, p.history.revision, r0.cloneScale, r0.cloneScaleY, r0.cloneAngle, r0.cloneFlipH, r0.cloneFlipV].join('|');
     if (this.clonePreviewCache?.key === key) return this.clonePreviewCache.surface;
     const s = createSurface(side, side), c = ctxOf(s), per = side / d, tm = this.cloneTransform(sp);
     const view = mul(mul(scaling(per, per), translation(d / 2 - sp.x, d / 2 - sp.y)), tm ?? [1, 0, 0, 1, 0, 0]);
     if (this.retouch.cloneSample !== 'current') this.work.render({ doc: p.doc, target: s, view, quality: 'medium', ...(this.retouch.cloneSample === 'below' ? { overrides: this.belowOverrides(p, l) } : {}) });
-    else if (l.raster) {
-      setMat(c, mul(view, placement(l.transform, l.raster.width, l.raster.height)));
-      c.drawImage(l.raster.canvas as CanvasImageSource, 0, 0);
+    else if (sl.raster) {
+      setMat(c, mul(view, placement(sl.transform, sl.raster.width, sl.raster.height)));
+      c.drawImage(sl.raster.canvas as CanvasImageSource, 0, 0);
       c.setTransform(1, 0, 0, 1, 0, 0);
     }
     const rad = side / 2, hard = clamp(this.brush.hardness, 0, 0.999), fade = c.createRadialGradient(rad, rad, 0, rad, rad, rad);
@@ -9439,6 +9530,23 @@ export class Engine {
     c.fillRect(0, 0, side, side);
     c.globalCompositeOperation = 'source-over';
     this.clonePreviewCache = { key, surface: s };
+    return s;
+  }
+
+  /** The brush-sized overlay in the Source Overlay's blend mode: the stamp preview laid over the active layer's own pixels
+   *  under the brush with that mode, kept to the brush's shape. The plain preview in Normal mode. */
+  cloneOverlayBlended(at: Pt, scale: number): Surface | null {
+    const pv = this.clonePreview(at, scale), p = this.current, l = p?.activeLayer, mode = this.cloneOverlay.blend;
+    if (!pv || !p || !l?.raster || mode === 'source-over') return pv;
+    const side = pv.width, d = this.brush.diameter, per = side / d, s = createSurface(side, side), c = ctxOf(s);
+    setMat(c, mul(mul(scaling(per, per), translation(d / 2 - at.x, d / 2 - at.y)), placement(l.transform, l.raster.width, l.raster.height)));
+    c.drawImage(l.raster.canvas as CanvasImageSource, 0, 0);
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.globalCompositeOperation = mode;
+    c.drawImage(pv as CanvasImageSource, 0, 0);
+    c.globalCompositeOperation = 'destination-in';
+    c.drawImage(pv as CanvasImageSource, 0, 0);
+    c.globalCompositeOperation = 'source-over';
     return s;
   }
 
@@ -9494,7 +9602,7 @@ export class Engine {
       const off = pattern ? { x: 0, y: 0 } : this.cloneStrokeOffset(pt);
       if (!off) { this.notice(`Alt-click to set where ${kind === 'clone' ? 'Clone Stamp' : 'the Healing Brush'} copies from.`); return false; }
       if (!pattern) this.cloneOffset = off;
-      texture = { surface: pattern ?? (kind === 'healBrush' ? this.healSampleSurface(p, l0, this.retouch.healSample) : this.healSampleSurface(p, l0, this.retouch.cloneSample)), dx: off.x, dy: off.y };
+      texture = { surface: pattern ?? (kind === 'healBrush' ? this.healSampleSurface(p, l0, this.retouch.healSample) : this.cloneSampleSurface(p, l0)), dx: off.x, dy: off.y };
       const m = !pattern && this.cloneSource ? this.cloneTransform(this.cloneSource) : null;
       if (m) {
         const t = createSurface(texture.surface.width, texture.surface.height), tc = ctxOf(t);
@@ -9502,6 +9610,13 @@ export class Engine {
         tc.drawImage(texture.surface, 0, 0);
         tc.setTransform(1, 0, 0, 1, 0, 0);
         texture = { surface: t, dx: off.x, dy: off.y };
+      }
+      // Pattern Preview: the picture repeats past its edges, so the source wraps there too (the offset is folded into a
+      // shifted copy of the sample, so the stroke reads it without an offset).
+      if (kind === 'clone' && this.view.patternPreview) {
+        const W = texture.surface.width, H = texture.surface.height, wx = ((texture.dx % W) + W) % W, wy = ((texture.dy % H) + H) % H, t = createSurface(W, H), tc = ctxOf(t);
+        for (let j = 0; j <= 1; j++) for (let i = 0; i <= 1; i++) tc.drawImage(texture.surface as CanvasImageSource, i * W - wx, j * H - wy);
+        texture = { surface: t, dx: 0, dy: 0 };
       }
     } else if (kind === 'blur') {
       // Sample All Layers (1.51.4, the tool audit): the composite blurred, painted into the active layer.
@@ -9630,6 +9745,17 @@ export class Engine {
   /** The healing brushes' Sample (Font Bundles' Healing Brush and Spot Healing tutorials; SLR Lounge), in document
    *  space: the active layer alone, it and the layers under it (every layer above hidden, except the folders it sits
    *  in), or every layer shown. */
+  /** The layer the chosen Clone Source slot copies from in Current Layer mode: the one active when its source was set,
+   *  while that layer still exists with pixels; the active layer otherwise. */
+  private cloneSourceLayer(p: Project, l: Layer): Layer {
+    const id = this.cloneSlots[this.cloneSlot]?.layerId, src = id && id !== l.id ? p.doc.layers.find((x) => x.id === id) : null;
+    return src?.raster && !src.isGroup ? src : l;
+  }
+
+  private cloneSampleSurface(p: Project, l: Layer): Surface {
+    return this.retouch.cloneSample === 'current' ? this.layerSample(p, this.cloneSourceLayer(p, l)) : this.healSampleSurface(p, l, this.retouch.cloneSample);
+  }
+
   private healSampleSurface(p: Project, l: Layer, sample: HealSample): Surface {
     if (sample === 'current') return this.layerSample(p, l);
     if (sample === 'all') return renderDoc(this.work, p.doc);
@@ -9827,8 +9953,59 @@ export class Engine {
 
   /** The Remove tool's release: what the stroke covered, grown by two pixels so its soft edge goes too, rebuilt by
    *  content-aware fill (PatchMatch-style patch copying) from the rest of the layer. */
-  private removePatch(s: PixelStroke): ReturnType<PixelStroke['commit']> {
-    const r = s.layer, W = r.width, H = r.height, before = r.read(), cov = s.coverageAlpha(), hole0 = new Uint8Array(W * H);
+  private removePatch(s: PixelStroke): ReturnType<PixelStroke['commit']> { return this.removeFill(s.layer, s.coverageAlpha()); }
+
+  /** The strokes Remove holds while Collect Strokes is on (raster space of one layer), the red tint drawn over them, and
+   *  whether the LaMa model is on this computer (the window asks). */
+  removePending: { project: Project; layerId: ID; width: number; height: number; mask: Uint8Array; version: number } | null = null;
+  removeModelReady = false;
+  private removeTintCache: { version: number; image: Surface } | null = null;
+
+  private removePendingLive(): NonNullable<Engine['removePending']> | null {
+    const k = this.removePending, p = this.current;
+    if (k && (!p || k.project !== p || p.activeLayer?.id !== k.layerId || p.activeLayer.raster?.width !== k.width || p.activeLayer.raster?.height !== k.height)) { this.removePending = null; return null; }
+    return k;
+  }
+
+  /** The collected strokes as a red image and the matrix placing it on the document; null with none held. */
+  removePendingView(): { image: Surface; m: Mat } | null {
+    const k = this.removePendingLive(), l = this.current?.activeLayer;
+    if (!k || !l?.raster) return null;
+    if (this.removeTintCache?.version !== k.version) {
+      const s = createSurface(k.width, k.height), img = new ImageData(k.width, k.height);
+      for (let i = 0; i < k.mask.length; i++) if (k.mask[i]) { img.data[i * 4] = 230; img.data[i * 4 + 1] = 40; img.data[i * 4 + 2] = 40; img.data[i * 4 + 3] = 140; }
+      ctxOf(s).putImageData(img, 0, 0);
+      this.removeTintCache = { version: k.version, image: s };
+    }
+    return { image: (this.removeTintCache as { image: Surface }).image, m: placement(l.transform, k.width, k.height) };
+  }
+
+  /** Enter: everything collected is filled as one job, by LaMa when its model is here and the layer sits unscaled on the
+   *  document, else by the patch fill in the layer. Returns false with nothing collected. */
+  removeCommit(): boolean {
+    const k = this.removePendingLive(), p = this.current;
+    if (!k || !p) return false;
+    this.removePending = null;
+    this.emit('options', null);
+    this.emit('overlay', null);
+    const dw = p.doc.width, dh = p.doc.height, t = p.layer(k.layerId)?.transform;
+    if (this.retouch.removeLama && this.removeModelReady && this.removeBrushFill && k.width === dw && k.height === dh && t && t.x === 0 && t.y === 0 && t.w === dw && t.h === dh && !t.rotation) {
+      void this.removeBrushFill(new SelectionMask(0, 0, dw, dh, resizeMask(k.mask, dw, dh, 2)));
+      return true;
+    }
+    this.regionEdit('Remove', ({ raster, target }) => { if (target === 'pixels') this.removeFill(raster, k.mask); });
+    return true;
+  }
+
+  removeDiscard(): void {
+    if (!this.removePending) return;
+    this.removePending = null;
+    this.emit('options', null);
+    this.emit('overlay', null);
+  }
+
+  private removeFill(r: Raster, cov: Uint8Array): ReturnType<PixelStroke['commit']> {
+    const W = r.width, H = r.height, before = r.read(), hole0 = new Uint8Array(W * H);
     // Sample (Current & Below, All Layers): the fill is worked out on those layers' pixels and laid on only over the hole.
     const p = this.current, l = p?.activeLayer, sample = this.retouch.removeSample;
     const other = sample !== 'current' && p && l ? this.rasterSpace(this.healSampleSurface(p, l, sample), l, W, H) : null;
@@ -10258,7 +10435,49 @@ export class Engine {
   /** Content-Aware Move (J; 1.49.9, the owner's tool list): the selected pixels (their soft edges kept)
    *  placed dx, dy away; in Move mode the hole they leave filled from around it (the Content-Aware Fill's fill), in
    *  Extend mode the original kept; the selection goes with them. One step. */
-  contentAwareMove(dx: number, dy: number, mode: 'move' | 'extend' = 'move', xf: { scale: number; angle: number; flipH: boolean; flipV: boolean } | null = null): void {
+  async contentAwareMove(dx: number, dy: number, mode: 'move' | 'extend' = 'move', xf: { scale: number; angle: number; flipH: boolean; flipV: boolean } | null = null): Promise<void> {
+    const p0 = this.current, l0 = p0?.activeLayer ?? null;
+    // Background job: the hole's fill is worked out in a worker while the window stays usable; the result is laid on
+    // only when the picture and the selection are as they were at the drop. Without a worker it is done at once.
+    if (p0?.selection && mode === 'move' && l0?.raster && this.paintable(l0) && !(p0.maskTarget && l0.mask) && !this.alphaTargeted()) {
+      const W = l0.raster.width, H = l0.raster.height, cov = this.coverageFor(p0, l0, 'pixels', W, H);
+      if (cov) {
+        const src = this.retouch.moveSampleAll ? this.rasterSpace(this.healSampleSurface(p0, l0, 'all'), l0, W, H) : l0.raster.read(), hole = new Uint8Array(W * H);
+        for (let i = 0; i < hole.length; i++) hole[i] = cov[i * 4 + 3] ? 1 : 0;
+        const rotation = Math.min(4, Math.floor(((7 - Math.min(7, Math.max(1, this.retouch.moveStructure))) * 4) / 6));
+        const run = fillOffThread(premultiply(src.data), hole, W, H, { color: 0, rotation, scale: false, mirror: false }), rev = p0.history.revision, sel = p0.selection;
+        if (run) {
+          const out = await this.task(() => run);
+          if (this.current !== p0 || p0.history.revision !== rev || p0.selection !== sel) { this.notice('The picture changed while Content-Aware Move was working, so the move was dropped.'); return; }
+          this.contentAwareMoveNow(dx, dy, mode, xf, out === undefined ? null : out ?? false);
+          return;
+        }
+      }
+    }
+    this.contentAwareMoveNow(dx, dy, mode, xf, null);
+  }
+
+  /** After a Content-Aware Move drop that waits for Transform On Drop: the selected pixels alone (the selection's size, its
+   *  softness as their alpha), to show where they will land. The hole they leave is not filled here; it is filled when the
+   *  move is applied. */
+  moveDropPreview(): Surface | null {
+    const p = this.current, l = p?.activeLayer, sel = p?.selection;
+    if (!p || !l?.raster || !sel) return null;
+    const s = createSurface(sel.w, sel.h), c = ctxOf(s);
+    if (this.retouch.moveSampleAll) {
+      c.drawImage(this.healSampleSurface(p, l, 'all') as CanvasImageSource, -sel.x, -sel.y);
+    } else {
+      setMat(c, mul(translation(-sel.x, -sel.y), placement(l.transform, l.raster.width, l.raster.height)));
+      c.drawImage(l.raster.canvas as CanvasImageSource, 0, 0);
+      c.setTransform(1, 0, 0, 1, 0, 0);
+    }
+    c.globalCompositeOperation = 'destination-in';
+    c.drawImage(sel.surface() as CanvasImageSource, 0, 0);
+    c.globalCompositeOperation = 'source-over';
+    return s;
+  }
+
+  private contentAwareMoveNow(dx: number, dy: number, mode: 'move' | 'extend', xf: { scale: number; angle: number; flipH: boolean; flipV: boolean } | null, filled: Uint8ClampedArray | false | null): void {
     const p0 = this.current;
     if (!p0?.selection) { this.notice('Make a selection, then drag it where it should go.'); return; }
     if (!this.paintable(p0.activeLayer)) { this.notice('Select a pixel layer first.'); return; }
@@ -10279,7 +10498,8 @@ export class Engine {
         // Structure (1 to 7) is how strictly the fill follows the surrounding patterns: 7 copies them as they are, lower
         // values let the fill try turned candidates too. Applied once, on release.
         const rotation = Math.min(4, Math.floor(((7 - Math.min(7, Math.max(1, this.retouch.moveStructure))) * 4) / 6));
-        if (contentFill(pm, hole, W, H, null, { color: 0, rotation, scale: false, mirror: false })) unpremultiply(pm, out.data);
+        if (filled) unpremultiply(filled, out.data);
+        else if (filled === null && contentFill(pm, hole, W, H, null, { color: 0, rotation, scale: false, mirror: false })) unpremultiply(pm, out.data);
       }
       if (sampleAll) {
         const hm = new Uint8Array(W * H);
@@ -10299,7 +10519,10 @@ export class Engine {
       };
       // Color (0 to 10): the moved pixels shift by that tenth of the difference between their average colour and the
       // average colour of the ring around where they land, one offset per channel.
-      const shift = [0, 0, 0], colour = Math.min(10, Math.max(0, this.retouch.moveColor)) / 10;
+      // Blend Edge fades the moved pixels' own edge over a few pixels; Blend All fades it wider and takes at least half
+      // of the colour shift. Both are plain alpha ramps and a flat colour offset, nothing is solved across the seam.
+      const bl = this.retouch.moveBlend, edge = featherEdge(cov, W, H, bl === 'edge' ? 3 : bl === 'all' ? Math.max(4, Math.min(24, Math.round(Math.min(sel0.w, sel0.h) / 4))) : 0);
+      const shift = [0, 0, 0], colour = Math.max(bl === 'all' ? 0.5 : 0, Math.min(10, Math.max(0, this.retouch.moveColor)) / 10);
       if (colour > 0) {
         const dm = new Uint8Array(W * H), mean = [0, 0, 0], ring = [0, 0, 0];
         let nm = 0, nr = 0, bx0 = W, by0 = H, bx1 = -1, by1 = -1;
@@ -10321,7 +10544,7 @@ export class Engine {
       // The moved pixels over what is there, by the selection's coverage.
       if (neutral) {
         for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-          const i = y * W + x, a = cov[i * 4 + 3] / 255;
+          const i = y * W + x, a = edge[i] / 255;
           if (!a) continue;
           const tx = x + ox, ty = y + oy;
           if (tx < 0 || ty < 0 || tx >= W || ty >= H) continue;
@@ -10344,7 +10567,7 @@ export class Engine {
           for (let j = 0; j < 2; j++) for (let i2 = 0; i2 < 2; i2++) {
             const X = x0 + i2, Y = y0 + j;
             if (X < 0 || Y < 0 || X >= W || Y >= H) continue;
-            const k = (Y * W + X) * 4, w = (i2 ? wx : 1 - wx) * (j ? wy : 1 - wy) * (cov[k + 3] / 255) * (src.data[k + 3] / 255);
+            const k = (Y * W + X) * 4, w = (i2 ? wx : 1 - wx) * (j ? wy : 1 - wy) * (edge[Y * W + X] / 255) * (src.data[k + 3] / 255);
             sa += w; cr += w * src.data[k]; cg += w * src.data[k + 1]; cb += w * src.data[k + 2];
           }
           if (sa <= 0) continue;
@@ -10417,7 +10640,7 @@ export class Engine {
   /** The Content-Aware Fill workspace's OK: fills the selection on the active layer, sampling only from `allowDoc`
    *  (1 where sampling is allowed, over the whole canvas) when given, and sends the result to the current layer, a
    *  new layer holding only the filled pixels (for an upright, unscaled layer), or a duplicate of the layer. One step. */
-  contentAwareFillWith(allowDoc: Uint8Array | null, output: 'current' | 'new' | 'duplicate', options: FillOptions = FILL_DEFAULTS, sampleAll = false): void {
+  contentAwareFillWith(allowDoc: Uint8Array | null, output: 'current' | 'new' | 'duplicate', options: FillOptions = FILL_DEFAULTS, sampleAll = false, areaDoc: Uint8Array | null = null, channel = 3): void {
     const p0 = this.current;
     if (!p0?.selection) { this.notice('Content-Aware Fill needs a selection.'); return; }
     if (!this.paintable(p0.activeLayer)) { this.notice('Select a pixel layer first.'); return; }
@@ -10427,20 +10650,27 @@ export class Engine {
       if (mode === 'duplicate') this.duplicateLayers();
       const l = p.activeLayer as Layer, r = l.raster;
       if (!r) return false;
-      const cov = this.coverageFor(p, l, 'pixels', r.width, r.height);
+      let cov = this.coverageFor(p, l, 'pixels', r.width, r.height);
       if (!cov) return false;
-      let allow: Uint8Array | null = null;
-      if (allowDoc && allowDoc.length === p.doc.width * p.doc.height) {
+      // A document-sized 0 or 1 map as the layer sees it.
+      const toLayer = (m: Uint8Array): Uint8Array => {
         const doc = createSurface(p.doc.width, p.doc.height), dc = ctxOf(doc), di = dc.createImageData(p.doc.width, p.doc.height);
-        for (let i = 0; i < allowDoc.length; i++) di.data[i * 4 + 3] = allowDoc[i] ? 255 : 0;
+        for (let i = 0; i < m.length; i++) di.data[i * 4 + 3] = m[i] ? 255 : 0;
         dc.putImageData(di, 0, 0);
         const local = createSurface(r.width, r.height), lc = ctxOf(local);
         setMat(lc, invert(placement(l.transform, r.width, r.height)));
         lc.imageSmoothingEnabled = false;
         lc.drawImage(doc, 0, 0);
-        const ld = lc.getImageData(0, 0, r.width, r.height).data;
-        allow = new Uint8Array(r.width * r.height);
-        for (let i = 0; i < allow.length; i++) allow[i] = ld[i * 4 + 3] >= 128 ? 1 : 0;
+        const ld = lc.getImageData(0, 0, r.width, r.height).data, out = new Uint8Array(r.width * r.height);
+        for (let i = 0; i < out.length; i++) out[i] = ld[i * 4 + 3] >= 128 ? 1 : 0;
+        return out;
+      };
+      const allow = allowDoc && allowDoc.length === p.doc.width * p.doc.height ? toLayer(allowDoc) : null;
+      // The fill area edited in the workspace (lasso adds and subtracts) replaces the selection's, keeping its softness where they overlap.
+      if (areaDoc && areaDoc.length === p.doc.width * p.doc.height) {
+        const area = toLayer(areaDoc), soft = new Uint8ClampedArray(cov.length);
+        for (let i = 0; i < area.length; i++) if (area[i]) { soft[i * 4 + 3] = cov[i * 4 + 3] || 255; }
+        cov = soft;
       }
       // Sample All Layers: the fill is worked out on everything shown and laid onto this layer over the hole only.
       const own = r.read(), src = sampleAll ? this.rasterSpace(this.healSampleSurface(p, l, 'all'), l, r.width, r.height) : own, pm = premultiply(src.data), hole = new Uint8Array(r.width * r.height);
@@ -10449,6 +10679,11 @@ export class Engine {
       const out = new ImageData(r.width, r.height);
       unpremultiply(pm, out.data);
       const blended = this.blendThrough(src, out, cov), result = sampleAll ? this.layHeal(own, blended, hole.map((v) => (v ? 255 : 0)), 1) : blended;
+      // Channel (0 red, 1 green, 2 blue; 3 all): only that colour channel takes the fill, the others keep the layer's values.
+      if (channel >= 0 && channel < 3) for (let i = 0; i < hole.length; i++) {
+        if (!hole[i] || own.data[i * 4 + 3] === 0) continue;
+        for (let c = 0; c < 3; c++) if (c !== channel) result.data[i * 4 + c] = own.data[i * 4 + c];
+      }
       if (mode === 'new') {
         const only = new ImageData(r.width, r.height);
         for (let i = 0; i < hole.length; i++) if (hole[i]) only.data.set(result.data.subarray(i * 4, i * 4 + 4), i * 4);
@@ -10689,6 +10924,20 @@ export class Engine {
     const fs = PM.beginOutlineTransform(this.moveHost);
     this.floatSel = fs;
     return !!fs;
+  }
+
+  /** Select > Transform Selection Numerically: the outline skewed, put in perspective, distorted to four corners or
+   *  carried through a matrix about a reference point (engine/selection-warp.ts), as one step. */
+  transformSelectionBy(o: SelectionWarp): boolean {
+    const p = this.current, sel = p?.selection;
+    if (!p || !sel) { this.notice('Make a selection first.'); return false; }
+    this.settle();
+    const quad = selectionQuad(sel.rect, o);
+    if (!distortUsable(quad)) { this.notice('That transform folds the selection over or collapses it; use smaller skew or perspective.'); return false; }
+    const next = warpSelection(sel, quad, p.doc.width, p.doc.height, o.smooth !== false);
+    if (!next) { this.notice('Nothing of the selection is left inside the picture.'); return false; }
+    this.applySelection(next, 'replace', 'Transform Selection');
+    return true;
   }
 
   /** Unpremultiplied RGB (0 to 1) of the original pixels under a document point, read from the same source the Levels
@@ -11138,8 +11387,21 @@ export class Engine {
 
 /** A gradient's stops blended by Method: Classic as they are (sRGB); Linear in linear light; Perceptual in
  *  OKLab. The canvas blends in sRGB only, so each segment is divided into 24 steps worked out in the chosen space. */
-function gradientMethod<T extends { at: number; rgb: RGB; alpha: number }>(stops: T[], method: 'classic' | 'linear' | 'perceptual'): T[] {
+function gradientMethod<T extends { at: number; rgb: RGB; alpha: number }>(stops: T[], method: 'classic' | 'linear' | 'perceptual' | 'smooth', smoothness = 1): T[] {
   if (method === 'classic' || stops.length < 2) return stops;
+  if (method === 'smooth') {
+    // Each segment eases in and out: t is moved toward smoothstep by the smoothness amount, the colour mixed in sRGB.
+    const k = Math.max(0, Math.min(1, smoothness)), ease = (t: number): number => t + (t * t * (3 - 2 * t) - t) * k, sm: T[] = [];
+    for (let i = 0; i < stops.length - 1; i++) {
+      const a = stops[i], b = stops[i + 1];
+      for (let j = 0; j < 24; j++) {
+        const t = j / 24, e = ease(t);
+        sm.push({ ...a, at: a.at + (b.at - a.at) * t, rgb: { r: Math.round(a.rgb.r + (b.rgb.r - a.rgb.r) * e), g: Math.round(a.rgb.g + (b.rgb.g - a.rgb.g) * e), b: Math.round(a.rgb.b + (b.rgb.b - a.rgb.b) * e) }, alpha: a.alpha + (b.alpha - a.alpha) * e });
+      }
+    }
+    sm.push(stops[stops.length - 1]);
+    return sm;
+  }
   const lin = (v: number): number => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
   const enc = (v: number): number => Math.round(255 * Math.max(0, Math.min(1, v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055)));
   const toLab = (c: RGB): [number, number, number] => {

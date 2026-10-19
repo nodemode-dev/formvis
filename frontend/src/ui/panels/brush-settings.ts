@@ -1,6 +1,7 @@
 import { allPatterns, type Engine } from '../../engine';
 import { defaultShape, mergeShape, type BrushShape } from '../../engine/brush-dynamics';
-import { airbrushState } from '../../extensions/tools/brush';
+import { airbrushState, smoothingState } from '../../extensions/tools/brush';
+import { drawBrushStroke, previewOfEngine } from '../brush-stroke-preview';
 import { Dialog } from '../dialogs';
 import { el } from '../dom';
 import { recalled, remembered } from '../prefs';
@@ -10,6 +11,8 @@ import { pressureCurveRow } from './pressure-curve';
 
 type Row = { el: HTMLElement; sync: () => void };
 
+const CONTROLS: ReadonlyArray<readonly [string, string]> = [['off', 'Off'], ['pressure', 'Pen Pressure'], ['fade', 'Fade'], ['tilt', 'Pen Tilt'], ['rotation', 'Rotation'], ['wheel', 'Stylus Wheel']];
+
 /** Window > Brush Settings (F5), the panel for the Brush's tip and its dynamics: Brush Tip Shape, Shape
  *  Dynamics, Scattering, Texture, Dual Brush, Color Dynamics, Transfer, Noise and Wet Edges. It edits the engine's brush shape live, so the next stroke uses it;
  *  each change replaces the shape, so a stroke already under way keeps what it started with. Reset puts every setting
@@ -18,6 +21,7 @@ export class BrushSettingsDialog extends Dialog {
   private readonly rows: Row[] = [];
   private saveShape: () => void = () => undefined;
   private newPreset: NewBrushPresetDialog | null = null;
+  private redraw: () => void = () => undefined;
 
   constructor(private readonly engine: Engine) {
     super('Brush Settings', 440);
@@ -58,6 +62,14 @@ export class BrushSettingsDialog extends Dialog {
       if (sec) check(`Lock ${t}`, () => (s().locks ?? []).includes(sec), (on) => put({ locks: [...(s().locks ?? []).filter((x) => x !== sec), ...(on ? [sec] : [])] }));
     };
 
+    // A stroke drawn with the brush as it is set, redrawn in place after any change in the dialog.
+    const live = el<HTMLCanvasElement>('<canvas class="cv-brush-live" width="400" height="84" aria-label="Brush preview" style="display:block;width:100%;max-width:400px;height:84px;color:var(--text-primary);border:1px solid var(--border-color);border-radius:var(--radius-sm);background:var(--bg-primary)"></canvas>');
+    this.body.append(live);
+    let queued = 0;
+    this.redraw = (): void => { if (queued) return; queued = requestAnimationFrame(() => { queued = 0; drawBrushStroke(live, previewOfEngine(this.engine)); }); };
+    this.body.addEventListener('input', this.redraw);
+    this.body.addEventListener('change', this.redraw);
+
     heading('Brush Tip Shape', 'tip');
     slide('Angle (\u00b0)', -180, 180, 1, () => s().angle, (v) => put({ angle: v }));
     slide('Roundness (%)', 1, 100, 1, () => s().roundness, (v) => put({ roundness: v }));
@@ -68,21 +80,21 @@ export class BrushSettingsDialog extends Dialog {
 
     heading('Shape Dynamics', 'shapeDynamics');
     slide('Size Jitter (%)', 0, 100, 1, () => s().sizeJitter, (v) => put({ sizeJitter: v }));
-    pick('Size Control', [['off', 'Off'], ['pressure', 'Pen Pressure'], ['fade', 'Fade'], ['tilt', 'Pen Tilt'], ['rotation', 'Rotation']], () => s().sizeControl ?? 'off', (v) => put({ sizeControl: v as NonNullable<BrushShape['sizeControl']> }));
+    pick('Size Control', [['off', 'Off'], ['pressure', 'Pen Pressure'], ['fade', 'Fade'], ['tilt', 'Pen Tilt'], ['rotation', 'Rotation'], ['wheel', 'Stylus Wheel']], () => s().sizeControl ?? 'off', (v) => put({ sizeControl: v as NonNullable<BrushShape['sizeControl']> }));
     slide('Minimum Diameter (%)', 0, 100, 1, () => s().minDiameter ?? 0, (v) => put({ minDiameter: v }));
     slide('Tilt Scale (%)', 0, 400, 1, () => s().tiltScale ?? 100, (v) => put({ tiltScale: v }));
     check('Flip X Jitter', () => !!s().flipXJitter, (v) => put({ flipXJitter: v }));
     check('Flip Y Jitter', () => !!s().flipYJitter, (v) => put({ flipYJitter: v }));
     check('Brush Projection (turn and flatten the tip with the pen tilt)', () => !!s().projection, (v) => put({ projection: v }));
     slide('Angle Jitter (%)', 0, 100, 1, () => s().angleJitter, (v) => put({ angleJitter: v }));
-    pick('Angle Control', [['off', 'Off'], ['fade', 'Fade'], ['direction', 'Direction'], ['initial', 'Initial Direction'], ['tilt', 'Pen Tilt'], ['rotation', 'Rotation']], () => s().angleControl, (v) => put({ angleControl: v as BrushShape['angleControl'] }));
+    pick('Angle Control', [['off', 'Off'], ['fade', 'Fade'], ['direction', 'Direction'], ['initial', 'Initial Direction'], ['tilt', 'Pen Tilt'], ['rotation', 'Rotation'], ['wheel', 'Stylus Wheel']], () => s().angleControl, (v) => put({ angleControl: v as BrushShape['angleControl'] }));
     slide('Roundness Jitter (%)', 0, 100, 1, () => s().roundnessJitter, (v) => put({ roundnessJitter: v }));
-    pick('Roundness Control', [['off', 'Off'], ['fade', 'Fade'], ['tilt', 'Pen Tilt'], ['rotation', 'Rotation']], () => s().roundnessControl, (v) => put({ roundnessControl: v as BrushShape['roundnessControl'] }));
+    pick('Roundness Control', [['off', 'Off'], ['fade', 'Fade'], ['tilt', 'Pen Tilt'], ['rotation', 'Rotation'], ['wheel', 'Stylus Wheel']], () => s().roundnessControl, (v) => put({ roundnessControl: v as BrushShape['roundnessControl'] }));
     slide('Minimum Roundness (%)', 1, 100, 1, () => s().minRoundness, (v) => put({ minRoundness: v }));
 
     heading('Scattering', 'scattering');
     slide('Scatter (%)', 0, 1000, 1, () => s().scatter, (v) => put({ scatter: v }));
-    pick('Scatter Control', [['off', 'Off'], ['pressure', 'Pen Pressure'], ['fade', 'Fade']], () => s().scatterControl ?? 'off', (v) => put({ scatterControl: v as 'off' | 'pressure' | 'fade' }));
+    pick('Scatter Control', [['off', 'Off'], ['pressure', 'Pen Pressure'], ['fade', 'Fade'], ['wheel', 'Stylus Wheel']], () => s().scatterControl ?? 'off', (v) => put({ scatterControl: v as 'off' | 'pressure' | 'fade' | 'wheel' }));
     check('Both Axes', () => s().bothAxes, (v) => put({ bothAxes: v }));
     slide('Count', 1, 16, 1, () => s().count, (v) => put({ count: v }));
     slide('Count Jitter (%)', 0, 100, 1, () => s().countJitter, (v) => put({ countJitter: v }));
@@ -97,6 +109,11 @@ export class BrushSettingsDialog extends Dialog {
     slide('Brightness', -100, 100, 1, () => s().texture.brightness ?? 0, (v) => put({ texture: { ...s().texture, brightness: v } }));
     slide('Contrast', -100, 100, 1, () => s().texture.contrast ?? 0, (v) => put({ texture: { ...s().texture, contrast: v } }));
     check('Invert Texture', () => !!s().texture.invert, (v) => put({ texture: { ...s().texture, invert: v } }));
+    pick('Mode', [['multiply', 'Multiply (cut by the dark)'], ['subtract', 'Subtract'], ['darken', 'Darken'], ['height', 'Height (lift the light)']], () => s().texture.mode ?? 'multiply', (v) => put({ texture: { ...s().texture, mode: (['subtract', 'darken', 'height'].includes(v) ? v : 'multiply') as NonNullable<BrushShape['texture']['mode']> } }));
+    check('Texture Each Tip (every dab takes its own place in the pattern)', () => !!s().texture.eachTip, (v) => put({ texture: { ...s().texture, eachTip: v } }));
+    slide('Depth Jitter (%)', 0, 100, 1, () => s().texture.depthJitter ?? 0, (v) => put({ texture: { ...s().texture, depthJitter: v } }));
+    pick('Depth Control', [['off', 'Off'], ['pressure', 'Pen Pressure'], ['fade', 'Fade'], ['wheel', 'Stylus Wheel']], () => s().texture.depthControl ?? 'off', (v) => put({ texture: { ...s().texture, depthControl: (['pressure', 'fade', 'wheel'].includes(v) ? v : 'off') as NonNullable<BrushShape['texture']['depthControl']> } }));
+    slide('Minimum Depth (%)', 0, 100, 1, () => s().texture.minDepth ?? 0, (v) => put({ texture: { ...s().texture, minDepth: v } }));
 
     heading('Dual Brush', 'dual');
     const du = (): BrushShape['dual'] => s().dual, putDual = (patch: Partial<BrushShape['dual']>): void => put({ dual: { ...du(), ...patch } });
@@ -121,7 +138,7 @@ export class BrushSettingsDialog extends Dialog {
     check('Color Dynamics', () => cd().on, (v) => put({ color: { ...cd(), on: v } }));
     check('Apply Per Tip (off: one colour for the stroke)', () => cd().perTip !== false, (v) => put({ color: { ...cd(), perTip: v } }));
     slide('Foreground/Background Jitter (%)', 0, 100, 1, () => cd().fgBg, (v) => put({ color: { ...cd(), fgBg: v } }));
-    pick('Foreground/Background Control', [['off', 'Off'], ['pressure', 'Pen Pressure'], ['fade', 'Fade']], () => cd().fgBgControl ?? 'off', (v) => put({ color: { ...cd(), fgBgControl: v === 'pressure' || v === 'fade' ? v : 'off' } }));
+    pick('Foreground/Background Control', [['off', 'Off'], ['pressure', 'Pen Pressure'], ['fade', 'Fade'], ['wheel', 'Stylus Wheel']], () => cd().fgBgControl ?? 'off', (v) => put({ color: { ...cd(), fgBgControl: v === 'pressure' || v === 'fade' || v === 'wheel' ? v : 'off' } }));
     slide('Hue Jitter (%)', 0, 100, 1, () => cd().hue, (v) => put({ color: { ...cd(), hue: v } }));
     slide('Saturation Jitter (%)', 0, 100, 1, () => cd().saturation, (v) => put({ color: { ...cd(), saturation: v } }));
     slide('Brightness Jitter (%)', 0, 100, 1, () => cd().brightness, (v) => put({ color: { ...cd(), brightness: v } }));
@@ -131,7 +148,11 @@ export class BrushSettingsDialog extends Dialog {
     check('Transfer', () => tr().on, (v) => put({ transfer: { ...tr(), on: v } }));
     slide('Opacity Jitter (%)', 0, 100, 1, () => tr().opacity, (v) => put({ transfer: { ...tr(), opacity: v } }));
     slide('Flow Jitter (%)', 0, 100, 1, () => tr().flow, (v) => put({ transfer: { ...tr(), flow: v } }));
-    pick('Control', [['off', 'Off'], ['pressure', 'Pen Pressure'], ['fade', 'Fade'], ['tilt', 'Pen Tilt'], ['rotation', 'Rotation']], () => tr().control, (v) => put({ transfer: { ...tr(), control: (['pressure', 'fade', 'tilt', 'rotation'].includes(v) ? v : 'off') as BrushShape['transfer']['control'] } }));
+    pick('Control', CONTROLS, () => tr().control, (v) => put({ transfer: { ...tr(), control: (CONTROLS.some((c) => c[0] === v) ? v : 'off') as BrushShape['transfer']['control'] } }));
+    slide('Wetness Jitter (%, Mixer Brush)', 0, 100, 1, () => tr().wetJitter ?? 0, (v) => put({ transfer: { ...tr(), wetJitter: v } }));
+    pick('Wetness Control', CONTROLS, () => tr().wetControl ?? 'off', (v) => put({ transfer: { ...tr(), wetControl: (CONTROLS.some((c) => c[0] === v) ? v : 'off') as NonNullable<BrushShape['transfer']['wetControl']> } }));
+    slide('Mix Jitter (%, Mixer Brush)', 0, 100, 1, () => tr().mixJitter ?? 0, (v) => put({ transfer: { ...tr(), mixJitter: v } }));
+    pick('Mix Control', CONTROLS, () => tr().mixControl ?? 'off', (v) => put({ transfer: { ...tr(), mixControl: (CONTROLS.some((c) => c[0] === v) ? v : 'off') as NonNullable<BrushShape['transfer']['mixControl']> } }));
     slide('Fade Steps (dabs, for every Fade control)', 1, 1000, 1, () => tr().fadeSteps ?? 100, (v) => put({ transfer: { ...tr(), fadeSteps: v } }));
 
     heading('Brush Pose', 'pose');
@@ -142,6 +163,12 @@ export class BrushSettingsDialog extends Dialog {
     slide('Rotation (°)', 0, 359, 1, () => po().rotation, (v) => putPose({ rotation: v }));
     check('Override Pressure', () => po().usePressure, (v) => putPose({ usePressure: v }));
     slide('Pressure (%)', 0, 100, 1, () => po().pressure, (v) => putPose({ pressure: v }));
+
+    heading('Smoothing');
+    slide('Smoothing (%)', 0, 100, 1, () => smoothingState.value, (v) => { smoothingState.value = v; this.engine.emit('options', null); });
+    pick('Smoothing Mode', [['trail', 'Trailing point'], ['string', 'Pulled string']], () => smoothingState.mode, (v) => { smoothingState.mode = v === 'string' ? 'string' : 'trail'; this.engine.emit('options', null); });
+    check('Catch-up on Stroke End', () => smoothingState.catchUp, (v) => { smoothingState.catchUp = v; this.engine.emit('options', null); });
+    check('Adjust for Zoom', () => smoothingState.zoomAdjust, (v) => { smoothingState.zoomAdjust = v; this.engine.emit('options', null); });
 
     heading('Build-up');
     check('Airbrush (paint builds up while the pointer rests)', () => airbrushState.on, (v) => { airbrushState.on = v; this.engine.emit('options', null); });
@@ -165,7 +192,7 @@ export class BrushSettingsDialog extends Dialog {
 
   private saveCurve(v: number[] | null): void { remembered('Brush Settings', 'curve', JSON.stringify(v)); }
 
-  private sync(): void { for (const r of this.rows) r.sync(); }
+  private sync(): void { for (const r of this.rows) r.sync(); this.redraw(); }
 
   show(): void {
     if (this.isOpen) return;

@@ -1,4 +1,5 @@
 import type { SampledTip } from './abr';
+import { proceduralTip, type ProceduralKind } from './procedural-tips';
 
 /** Brush dynamics and presets, ported from NodeMode's formvis studio (`studio/paint/dynamics.ts` and `preset.ts`,
  *  nodemode_dev v8.73.1, the owner's build, MIT). A brush parameter is modulated by sensors, each mapped through a
@@ -51,7 +52,7 @@ export const noDynamics = (): BrushDynamics => ({ size: identityOption(), flow: 
 
 /** The pen's pose with a sample: tilt in degrees each way from upright (-90 to 90) and barrel rotation (twist, 0 to
  *  359), as pointer events report them; a mouse is upright with no twist. */
-export interface PenPose { tiltX: number; tiltY: number; twist: number }
+export interface PenPose { tiltX: number; tiltY: number; twist: number; /** The stylus wheel (a pen's tangential pressure) from 0 to 1; a pen without one reports 0.5, a mouse has none. */ wheel?: number }
 export const UPRIGHT: PenPose = { tiltX: 0, tiltY: 0, twist: 0 };
 
 /** Painting symmetry: each dab is repeated about an axis through (cx, cy). 'vertical' mirrors left to right,
@@ -79,18 +80,21 @@ export function symmetryPoints(p: { x: number; y: number }, s: BrushSymmetry | n
 export interface BrushShape {
   angle: number; roundness: number; spacing: number | null;
   sizeJitter: number; angleJitter: number; roundnessJitter: number; minRoundness: number;
-  angleControl: 'off' | 'direction' | 'initial' | 'tilt' | 'rotation' | 'fade'; roundnessControl: 'off' | 'tilt' | 'rotation' | 'fade';
+  angleControl: 'off' | 'direction' | 'initial' | 'tilt' | 'rotation' | 'fade' | 'wheel'; roundnessControl: 'off' | 'tilt' | 'rotation' | 'fade' | 'wheel';
   /** What shrinks the dab: the pen's pressure, the fade over the first dabs, the pen's tilt (scaled by `tiltScale`, percent)
    *  or its barrel rotation. `minDiameter` (percent of the size) is the least any jitter or control may leave. */
-  sizeControl?: 'off' | 'pressure' | 'fade' | 'tilt' | 'rotation'; minDiameter?: number; tiltScale?: number;
+  sizeControl?: 'off' | 'pressure' | 'fade' | 'tilt' | 'rotation' | 'wheel'; minDiameter?: number; tiltScale?: number;
   /** Each dab mirrored at random across its own axes; Brush Projection turns and flattens the tip with the pen's tilt. */
   flipXJitter?: boolean; flipYJitter?: boolean; projection?: boolean;
   /** The tip mirrored across its own axes, before the angle turns it; it shows on a tip that is not symmetric. */
   flipX?: boolean; flipY?: boolean;
   scatter: number; bothAxes: boolean; count: number; countJitter: number;
   /** What shrinks the scatter spread: the pen's pressure (harder, tighter) or the fade over the stroke's first dabs. */
-  scatterControl?: 'off' | 'pressure' | 'fade';
-  texture: { on: boolean; pattern: string; scale: number; depth: number; invert?: boolean; brightness?: number; contrast?: number };
+  scatterControl?: 'off' | 'pressure' | 'fade' | 'wheel';
+  /** Texture: `mode` says how the pattern meets the stroke (Multiply cuts by the pattern's darkness, Subtract takes it
+   *  away, Darken keeps the lesser, Height lifts light areas); `depthJitter` varies the depth from dab to dab, `minDepth`
+   *  is the depth `depthControl` falls to, and `eachTip` gives every dab its own place in the pattern. */
+  texture: { on: boolean; pattern: string; scale: number; depth: number; invert?: boolean; brightness?: number; contrast?: number; mode?: 'multiply' | 'subtract' | 'darken' | 'height'; depthJitter?: number; minDepth?: number; depthControl?: 'off' | 'pressure' | 'fade' | 'wheel'; eachTip?: boolean };
   /** The dual brush's marks: by default laid with the main dabs, scattered by its own Scatter and Count; with `spacing`
    *  (percent of its size) laid along the stroke at their own interval. Its tip is a round one of its own hardness,
    *  roundness, angle and flips, or the main (sampled) tip; Multiply keeps the main paint where marks fall, Subtract cuts it there. */
@@ -99,10 +103,11 @@ export interface BrushShape {
    *  background, and its hue, saturation and brightness varied (jitters, 0-100). Purity (-100 to 100) shifts the saturation
    *  of every dab; `fgBgControl` takes the foreground/background mix from pen pressure or the fade instead of chance;
    *  `perTip` false picks one colour for the whole stroke. */
-  color: { on: boolean; fgBg: number; hue: number; saturation: number; brightness: number; purity?: number; perTip?: boolean; fgBgControl?: 'off' | 'pressure' | 'fade' };
+  color: { on: boolean; fgBg: number; hue: number; saturation: number; brightness: number; purity?: number; perTip?: boolean; fgBgControl?: 'off' | 'pressure' | 'fade' | 'wheel' };
   /** Transfer: each dab's opacity and flow varied (jitters, 0-100), or following a control (pen pressure, the fade over
-   *  `fadeSteps` dabs, the pen's tilt or its barrel rotation). */
-  transfer: { on: boolean; opacity: number; flow: number; control: 'off' | 'pressure' | 'fade' | 'tilt' | 'rotation'; fadeSteps?: number };
+   *  `fadeSteps` dabs, the pen's tilt, its barrel rotation or its wheel). The Mixer Brush also takes `wetJitter` and
+   *  `mixJitter` (0-100, how far a dab's Wet and Mix fall short of their settings) and a control for each. */
+  transfer: { on: boolean; opacity: number; flow: number; control: 'off' | 'pressure' | 'fade' | 'tilt' | 'rotation' | 'wheel'; fadeSteps?: number; wetJitter?: number; mixJitter?: number; wetControl?: 'off' | 'pressure' | 'fade' | 'tilt' | 'rotation' | 'wheel'; mixControl?: 'off' | 'pressure' | 'fade' | 'tilt' | 'rotation' | 'wheel' };
   /** Noise roughens the tip's soft edge; Wet Edges makes its centre lighter than its rim (watercolour). */
   noise: boolean; wetEdges: boolean;
   /** Brush Pose: the pen's tilt, barrel rotation and pressure held at fixed values while `on`, whatever the pointer reports. */
@@ -156,6 +161,9 @@ export let importedBrushPresets: BrushPreset[] = [];
 export function setImportedBrushPresets(list: BrushPreset[]): void { importedBrushPresets = list; }
 export const allBrushPresets = (): BrushPreset[] => [...BUILTIN_BRUSH_PRESETS, ...importedBrushPresets];
 
+/** How an .abr import meets the brushes already kept: Replace drops the earlier imports first (saved brushes stay), Select makes the first new brush the current one. */
+export const abrImport = { replace: false, select: true };
+
 /** The folder a preset is listed in: its own group, else General for the first six built-ins and Imported for the rest. */
 export function brushGroupOf(p: BrushPreset): string {
   return p.group ?? (BUILTIN_BRUSH_PRESETS.some((b) => b.id === p.id) ? 'General Brushes' : 'Imported Brushes');
@@ -166,6 +174,11 @@ export function presetFromTip(id: string, name: string, tip: SampledTip, spacing
   const set: { spacing?: number } = spacing !== undefined && Number.isFinite(spacing) && Math.round(spacing) !== 25 ? { spacing: Math.min(1000, Math.max(1, Math.round(spacing))) } : {};
   return { id, name, description: `Imported sampled tip, ${tip.w} x ${tip.h} px${set.spacing ? `, spacing ${set.spacing}%` : ''}.`, diameter: Math.min(1000, Math.max(tip.w, tip.h)), hardness: 1, opacity: 1, dynamics: { size: pressureOption(0.15), flow: identityOption(), opacity: identityOption() }, tip, ...set };
 }
+
+const generated = (kind: ProceduralKind, name: string, diameter: number, spacing: number, shape?: Partial<BrushShape>): BrushPreset => ({
+  id: `proc-${kind}`, group: 'Procedural Brushes', name, description: `A generated ${name.toLowerCase()} tip.`, diameter, hardness: 1, opacity: 1, spacing, tip: proceduralTip(kind),
+  dynamics: { size: pressureOption(0.4), flow: identityOption(), opacity: identityOption() }, ...(shape ? { shape } : {}),
+});
 
 /** NodeMode's built-in painting presets, as formvis's brush can hold them (Ink's speed sensor, Pencil's tilted tip and
  *  scatter, Marker's chisel and Blender's smudge have no counterpart here yet and are left out of those presets). */
@@ -189,6 +202,15 @@ export const BUILTIN_BRUSH_PRESETS: BrushPreset[] = [
   { id: 'fx-sparkle', group: 'Special Effects Brushes', name: 'Sparkle', description: 'Soft glints of varied size.', diameter: 16, hardness: 0.4, opacity: 1, spacing: 160, dynamics: noDynamics(), shape: { scatter: 220, count: 2, sizeJitter: 80 } },
   { id: 'fx-grass', group: 'Special Effects Brushes', name: 'Grass', description: 'Thin blades fanned in every direction.', diameter: 40, hardness: 0.9, opacity: 1, spacing: 60, roundness: 12, dynamics: { size: pressureOption(0.5), flow: identityOption(), opacity: identityOption() }, shape: { angleJitter: 100, scatter: 80, count: 3, sizeJitter: 30 } },
   { id: 'fx-dry-spray', group: 'Special Effects Brushes', name: 'Spray', description: 'A fine spray of grains around a soft core.', diameter: 70, hardness: 0.1, opacity: 1, spacing: 40, flow: 0.5, dynamics: noDynamics(), shape: { scatter: 150, count: 6, sizeJitter: 40 } },
+  generated('chalk', 'Chalk stick', 40, 14),
+  generated('spatter', 'Spatter', 80, 60, { angleJitter: 100 }),
+  generated('bristle', 'Bristle', 56, 10),
+  generated('charcoal', 'Charcoal grain', 52, 12),
+  generated('leaf', 'Leaf', 48, 90, { angleControl: 'direction' }),
+  generated('grass', 'Grass blades', 56, 70, { angleJitter: 12 }),
+  generated('sponge', 'Sponge', 60, 25),
+  generated('star', 'Star', 36, 120, { angleJitter: 100, sizeJitter: 30 }),
+  generated('rake', 'Rake', 60, 8, { angleControl: 'direction' }),
 ];
 
 /** Reads a stored preset list, keeping only well-formed entries with values clamped to the brush's ranges. */

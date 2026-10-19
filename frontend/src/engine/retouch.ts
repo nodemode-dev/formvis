@@ -23,6 +23,35 @@ export const HEAL_BLENDS: ReadonlyArray<{ id: HealBlend; label: string }> = [
   { id: 'darken', label: 'Darken' }, { id: 'lighten', label: 'Lighten' }, { id: 'color', label: 'Color' }, { id: 'luminosity', label: 'Luminosity' },
 ];
 
+/** The alpha of an RGBA coverage with its edge faded inward over `r` pixels (a box-blurred copy of the alpha, read as a ramp
+ *  that is 0 at the edge and 1 `r` pixels inside; the image border does not fade). `r` of 0 is the alpha as it is. */
+export function featherEdge(rgba: Uint8ClampedArray, w: number, h: number, r: number): Uint8Array {
+  const a = new Uint8Array(w * h);
+  for (let i = 0; i < a.length; i++) a[i] = rgba[i * 4 + 3];
+  if (r < 1) return a;
+  const f = new Float32Array(w * h), g = new Float32Array(w * h), n = 2 * r + 1;
+  for (let y = 0; y < h; y++) {
+    const o = y * w;
+    let s = 0;
+    for (let k = -r; k <= r; k++) s += a[o + Math.min(w - 1, Math.max(0, k))];
+    for (let x = 0; x < w; x++) {
+      f[o + x] = s / n;
+      s += a[o + Math.min(w - 1, x + r + 1)] - a[o + Math.max(0, x - r)];
+    }
+  }
+  for (let x = 0; x < w; x++) {
+    let s = 0;
+    for (let k = -r; k <= r; k++) s += f[Math.min(h - 1, Math.max(0, k)) * w + x];
+    for (let y = 0; y < h; y++) {
+      g[y * w + x] = s / n;
+      s += f[Math.min(h - 1, y + r + 1) * w + x] - f[Math.max(0, y - r) * w + x];
+    }
+  }
+  const out = new Uint8Array(w * h);
+  for (let i = 0; i < out.length; i++) out[i] = Math.round(Math.min(a[i], Math.min(1, Math.max(0, (g[i] / 255 - 0.5) * 2)) * 255));
+  return out;
+}
+
 /** Straight RGBA to premultiplied, 8 bits per channel. */
 export function premultiply(rgba: Uint8ClampedArray): Uint8ClampedArray {
   const out = new Uint8ClampedArray(rgba.length);

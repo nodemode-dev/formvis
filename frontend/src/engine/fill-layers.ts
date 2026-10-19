@@ -70,7 +70,7 @@ export function renderFill(c: FillContent, W: number, H: number, frame: Rect): R
     r.touch();
     return r;
   }
-  const stops = c.stops.map((s) => ({ at: clamp(s.at, 0, 1), rgb: s.color, alpha: clamp(s.alpha, 0, 1) })).sort((a, b) => a.at - b.at);
+  const stops = c.stops.map((s) => ({ at: clamp(s.at, 0, 1), rgb: s.color, alpha: clamp(s.alpha, 0, 1), mid: s.mid })).sort((a, b) => a.at - b.at);
   const N = 4096, lut = new Float32Array(N * 4);
   for (let i = 0; i < N; i++) lut.set(colorAt(stops, i / (N - 1)), i * 4);
   const at = gradientPosition(c.style, c.angle, c.scale, c.reverse, c.offset, frame), img = new ImageData(W, H), d = img.data;
@@ -120,7 +120,7 @@ export function fillContentFrom(raw: unknown): FillContent | null {
   const pt = (v: unknown, lo: number, hi: number): Pt => { const q = (v ?? {}) as Record<string, unknown>; return { x: n(q.x, lo, hi, 0), y: n(q.y, lo, hi, 0) }; };
   if (o.kind === 'solid' && o.color && typeof o.color === 'object') return { kind: 'solid', color: rgb(o.color) };
   if (o.kind === 'gradient' && Array.isArray(o.stops)) {
-    const stops: FillStop[] = o.stops.slice(0, 64).flatMap((s) => (s && typeof s === 'object' ? [{ at: n((s as FillStop).at, 0, 1, 0), color: rgb((s as FillStop).color), alpha: n((s as FillStop).alpha, 0, 1, 1) }] : []));
+    const stops: FillStop[] = o.stops.slice(0, 64).flatMap((s) => (s && typeof s === 'object' ? [{ at: n((s as FillStop).at, 0, 1, 0), color: rgb((s as FillStop).color), alpha: n((s as FillStop).alpha, 0, 1, 1), ...(typeof (s as FillStop).mid === 'number' ? { mid: n((s as FillStop).mid, 0.05, 0.95, 0.5) } : {}) }] : []));
     const style = (['linear', 'radial', 'angle', 'reflected', 'diamond'] as const).find((x) => x === o.style) ?? 'linear';
     return stops.length >= 2 ? { kind: 'gradient', stops, style, angle: n(o.angle, -360, 360, 90), scale: n(o.scale, 0.1, 1.5, 1), reverse: o.reverse === true, dither: o.dither === true, align: o.align !== false, offset: pt(o.offset, -10, 10) } : null;
   }

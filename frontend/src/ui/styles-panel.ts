@@ -31,8 +31,11 @@ function loadPresets(): StylePreset[] {
   } catch { return []; }
 }
 
+let docSink: ((list: readonly StylePreset[]) => void) | null = null;
+
 function savePresets(list: readonly StylePreset[]): void {
   try { localStorage.setItem(KEY, JSON.stringify(list)); } catch { /* storage unavailable: the styles last for this session */ }
+  docSink?.(list);
 }
 
 /** The Styles panel (Window > Styles, DEV_PLAN 35.3 part b): a grid of saved layer styles. A tile shows the style's name;
@@ -89,8 +92,19 @@ export class StylesPanel {
       const p = tile ? this.presets.find((x) => x.id === tile.dataset.id) : undefined;
       if (p) void this.rename(p);
     });
+    docSink = (list) => { engine.setStylePresets(list); };
     for (const ev of ['doc', 'history', 'active', 'projects'] as const) engine.on(ev, () => this.sync());
     this.sync();
+  }
+
+  /** The styles saved in the open file join the panel's list when the panel does not have them yet. */
+  private mergeDoc(): void {
+    const saved = this.engine.current?.doc.stylePresets;
+    if (!saved?.length) return;
+    const have = new Set(this.presets.map((p) => p.id)), add = saved.filter((p) => !have.has(p.id));
+    if (!add.length) return;
+    this.presets = [...this.presets, ...structuredClone(add) as StylePreset[]];
+    try { localStorage.setItem(KEY, JSON.stringify(this.presets)); } catch { /* the styles last for this session */ }
   }
 
   private async create(): Promise<void> {
@@ -210,6 +224,7 @@ export class StylesPanel {
   }
 
   private sync(): void {
+    this.mergeDoc();
     const l = this.engine.current?.activeLayer, can = !!l && !l.isGroup && !l.adjustment;
     const groups = [...new Set(this.presets.flatMap((p) => (p.group ? [p.group] : [])))].sort();
     if (this.filter && !groups.includes(this.filter)) this.filter = '';

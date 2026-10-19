@@ -2,15 +2,15 @@
  *  for the layout. Two families exist. Versions 1 and 2: a count, then each brush's type and size; sampled
  *  brushes (type 2) carry spacing, a name (version 2), bounds, depth and pixels, raw or PackBits-compressed by row.
  *  Versions 6 to 10: a subversion, then 8BIM sections; 'samp' holds the sampled tips, each a length, a key and header
- *  (47 bytes to skip for subversion 1, 301 for subversion 2), bounds, depth, a compression flag and pixels. Computed
- *  (round, parametric) brushes and the 'desc' section's other settings are not read; a tip takes the name its descriptor entry gives, else
+ *  (47 bytes to skip for subversion 1, 301 for subversion 2), bounds, depth, a compression flag and pixels. The 'desc' section's
+ *  folders give each brush its path, and its computed (round, parametric) brushes become soft tips; a tip takes the name its descriptor entry gives, else
  *  one made from the file. The 'desc' section is walked for each sampled brush's Spcn (spacing in percent), matched to its tip by the
  *  tip's key (the text at the start of its record); a tip with none keeps 25 percent.
  *  A tip's grey is the paint: 255 paints fully, 0 not at all. */
 
 export interface SampledTip { w: number; h: number; data: Uint8Array }
 /** `spacing` is a fraction of the tip's diameter: 0.25 is the file's 25 percent. */
-export interface AbrBrush { name: string; tip: SampledTip; spacing: number }
+export interface AbrBrush { name: string; tip: SampledTip; spacing: number; /** The folders it sat in, outermost first, joined by a slash. */ folder?: string }
 
 class Reader {
   pos = 0;
@@ -86,8 +86,10 @@ function readOld(r: Reader, version: number, base: string): AbrBrush[] {
 
 /** Each sampled brush's spacing (a fraction of its diameter) in a 'desc' section, by its sampledData key. The
  *  descriptor tree is walked for objects holding both; a value of a type not known ends the walk, keeping what was found. */
-function readDescSpacing(r: Reader): { spacing: Map<string, number>; names: Map<string, string> } {
-  const found = new Map<string, number>(), names = new Map<string, string>();
+interface Computed { id: string; name: string; diameter: number; hardness: number; angle: number; roundness: number; spacing: number }
+
+function readDescSpacing(r: Reader): { spacing: Map<string, number>; names: Map<string, string>; folders: Map<string, string[]>; computed: Computed[] } {
+  const found = new Map<string, number>(), names = new Map<string, string>(), folders = new Map<string, string[]>(), computed: Computed[] = [], leaves = new WeakMap<object, string[]>();
   const id = (): string => { const n = r.u32(); let s = ''; for (let i = 0; i < (n || 4); i++) s += String.fromCharCode(r.u8()); return s; };
   const text = (): string => { const n = r.u32(); let s = ''; for (let i = 0; i < n; i++) { const c = r.u16(); if (c) s += String.fromCharCode(c); } return s; };
   const double = (): number => { const x = r.v.getFloat64(r.pos); r.skip(8); return x; };
@@ -100,6 +102,21 @@ function readDescSpacing(r: Reader): { spacing: Map<string, number>; names: Map<
         if (typeof vals.sampledData === 'string' && typeof vals.Spcn === 'number') found.set(vals.sampledData.trim(), Math.min(10, Math.max(0.01, vals.Spcn / 100)));
         const inner = vals.Brsh as Record<string, unknown> | undefined;
         if (typeof vals['Nm  '] === 'string' && inner && typeof inner.sampledData === 'string' && vals['Nm  '].trim()) names.set(inner.sampledData.trim(), vals['Nm  '].trim().slice(0, 60));
+        const label = typeof vals['Nm  '] === 'string' ? vals['Nm  '].trim().slice(0, 60) : '';
+        if (Array.isArray(inner)) {
+          // A folder: the tips and computed brushes inside it, nested folders already walked, take its name at the front of their path.
+          const ids: string[] = [];
+          for (const it of inner) if (it && typeof it === 'object') ids.push(...(leaves.get(it) ?? []));
+          leaves.set(vals, ids);
+          if (label) for (const k of ids) folders.set(k, [label, ...(folders.get(k) ?? [])]);
+        } else if (inner && typeof inner === 'object') {
+          if (typeof inner.sampledData === 'string') leaves.set(vals, [inner.sampledData.trim()]);
+          else if (typeof inner.Dmtr === 'number' && label) {
+            const num = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d), id = `computed:${computed.length}`;
+            computed.push({ id, name: label, diameter: num(inner.Dmtr, 20), hardness: num(inner.Hrdn, 100), angle: num(inner.Angl, 0), roundness: num(inner.Rndn, 100), spacing: num(inner.Spcn, 25) });
+            leaves.set(vals, [id]);
+          }
+        }
         return vals;
       }
       case 'VlLs': { const items: unknown[] = []; for (let n = r.u32(); n > 0; n--) items.push(value(String.fromCharCode(r.u8(), r.u8(), r.u8(), r.u8()))); return items; }
@@ -118,12 +135,24 @@ function readDescSpacing(r: Reader): { spacing: Map<string, number>; names: Map<
   try {
     if (r.u32() === 16) value('Objc');
   } catch { /* the rest keeps the default spacing */ }
-  return { spacing: found, names };
+  return { spacing: found, names, folders, computed };
+}
+
+/** A computed (round or elliptical) brush as a soft tip: full inside `hardness` percent of the radius, fading to nothing at the
+ *  rim, squeezed to `roundness` percent and turned by `angle` degrees. At most 400 pixels across. */
+function computedTip(c: Computed): SampledTip {
+  const size = Math.max(2, Math.min(400, Math.round(c.diameter))), R = size / 2, hard = Math.max(0, Math.min(1, c.hardness / 100)), round = Math.max(0.01, Math.min(1, c.roundness / 100));
+  const a = (-c.angle * Math.PI) / 180, ca = Math.cos(a), sa = Math.sin(a), data = new Uint8Array(size * size);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const dx = x + 0.5 - R, dy = y + 0.5 - R, u = dx * ca + dy * sa, v = (-dx * sa + dy * ca) / round, d = Math.hypot(u, v) / R;
+    data[y * size + x] = d >= 1 ? 0 : d <= hard ? 255 : Math.round(255 * (1 - (d - hard) / Math.max(0.001, 1 - hard)));
+  }
+  return { w: size, h: size, data };
 }
 
 function readSections(r: Reader, sub: number, base: string): AbrBrush[] {
   const out: AbrBrush[] = [], keys: string[] = [];
-  let spacings = new Map<string, number>(), called = new Map<string, string>();
+  let spacings = new Map<string, number>(), called = new Map<string, string>(), placed = new Map<string, string[]>(), round: Computed[] = [];
   while (r.left >= 12) {
     const sig = String.fromCharCode(r.u8(), r.u8(), r.u8(), r.u8()), key = String.fromCharCode(r.u8(), r.u8(), r.u8(), r.u8()), len = r.u32();
     if (sig !== '8BIM') break;
@@ -140,10 +169,18 @@ function readSections(r: Reader, sub: number, base: string): AbrBrush[] {
         if (data) { out.push({ name: `${base} ${out.length + 1}`, tip: { w: right - left, h: bottom - top, data }, spacing: 0.25 }); keys.push(tipKey.trim()); }
         r.pos = next;
       }
-    } else if (key === 'desc') ({ spacing: spacings, names: called } = readDescSpacing(r));
+    } else if (key === 'desc') ({ spacing: spacings, names: called, folders: placed, computed: round } = readDescSpacing(r));
     r.pos = end;
   }
-  out.forEach((b, i) => { b.spacing = spacings.get(keys[i]) ?? b.spacing; b.name = called.get(keys[i]) ?? b.name; });
+  out.forEach((b, i) => {
+    b.spacing = spacings.get(keys[i]) ?? b.spacing; b.name = called.get(keys[i]) ?? b.name;
+    const path = placed.get(keys[i]);
+    if (path?.length) b.folder = path.join('/');
+  });
+  for (const c of round) {
+    const path = placed.get(c.id);
+    out.push({ name: c.name, tip: computedTip(c), spacing: Math.min(10, Math.max(0.01, c.spacing / 100)), ...(path?.length ? { folder: path.join('/') } : {}) });
+  }
   return out;
 }
 

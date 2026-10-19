@@ -3,6 +3,8 @@ import { el } from './dom';
 import { composeChannels } from '../engine/channels';
 import { composeFloat } from '../engine/compose-float';
 import { decodeLab } from '../engine/lab';
+import { inkOf } from '../engine/colour-lut';
+import { printable } from './panels/color-picker';
 import { PanelGroup } from './panel-group';
 import { armMeasures } from '../extensions/tools/ruler';
 
@@ -59,6 +61,8 @@ export class InfoPanel {
     return [px.data[i], px.data[i + 1], px.data[i + 2], px.data[i + 3]];
   }
 
+  private tables: Awaited<ReturnType<typeof printable>> = null;
+  private tablesAsked = false;
   private ink: { data: Float32Array; w: number; h: number } | null = null;
   private inkAt(pt: Pt): string | null {
     const p = this.engine.current;
@@ -98,7 +102,16 @@ export class InfoPanel {
       if (arm) { const a = armMeasures(r, arm); rows.push(['Protractor', `L2 ${(a.length * k).toFixed(1)} ${units}  between ${a.between.toFixed(1)}\u00b0`]); }
     }
     const size = e.measureOpts.sampleSize;
-    for (const [i, s] of (m?.samplers ?? []).entries()) rows.push([`#${i + 1}`, size > 1 ? rgb(this.colorAt(s, size)) : at(s)]);
+    if (m?.samplers.length && !this.tablesAsked) { this.tablesAsked = true; void printable().then((t) => { this.tables = t; this.soon(); }); }
+    // A sampler reads RGB and ink together: the working CMYK profile gives the ink of an RGB document.
+    const both = (pt: Pt): string => {
+      const c = this.colorAt(pt, size), base = rgb(c), ink = size === 1 ? this.inkAt(pt) : null, t = this.tables;
+      if (ink) return `${base}  ${ink}`;
+      if (!c || c[3] === 0 || !t || p?.doc.mode === 'cmyk' || p?.doc.mode === 'lab') return base;
+      const k = inkOf({ r: c[0], g: c[1], b: c[2] }, t.inn), pc = (v: number): string => `${Math.round(Math.min(1, Math.max(0, v)) * 100)}%`;
+      return `${base}  C ${pc(k[0])}  M ${pc(k[1])}  Y ${pc(k[2])}  K ${pc(k[3])}`;
+    };
+    for (const [i, s] of (m?.samplers ?? []).entries()) rows.push([`#${i + 1}`, both(s)]);
     const html = rows.map(([k, v]) => `<div class="cv-info-row"><span class="cv-info-key">${k}</span><span class="cv-info-val">${v}</span></div>`).join('');
     if (this.body.innerHTML !== html) this.body.innerHTML = html;
   }

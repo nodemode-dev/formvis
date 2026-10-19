@@ -1,4 +1,4 @@
-import { createSurface, ctxOf, type Engine } from '../../engine';
+import { SelectionMask, createSurface, ctxOf, type Engine } from '../../engine';
 import { FILL_DEFAULTS, contentFill, premultiply, unpremultiply, type FillOptions } from '../../engine/retouch';
 import { Dialog } from '../dialogs';
 import { el } from '../dom';
@@ -8,6 +8,7 @@ import { checkRow, selectRow, sliderRow } from './controls';
 const PW = 640, PH = 440;
 type Sampling = 'auto' | 'rectangular' | 'custom';
 type Output = 'current' | 'new' | 'duplicate';
+type FillTool = 'brush' | 'lassoAdd' | 'lassoSub' | 'hand';
 
 /** Edit > Content-Aware Fill: the document with the sampling area tinted green and the area
  *  to fill red. Sampling Area is Auto (around the selection), Rectangular (a box around it) or Custom (painted here,
@@ -32,6 +33,18 @@ export class ContentFillDialog extends Dialog {
   private result: ImageData | null = null;
   private frame = 0;
   private painting = false;
+  private tool: FillTool = 'brush';
+  private channel = 3;
+  private zoom = 1;
+  private panX = 0;
+  private panY = 0;
+  private pan: { cx: number; cy: number; px: number; py: number } | null = null;
+  private lasso: Array<[number, number]> | null = null;
+  /** The fill area's lasso edits, in document pixels, applied in order over the selection. */
+  private edits: Array<{ add: boolean; pts: Array<[number, number]> }> = [];
+  private hole0: Uint8Array | null = null;
+  private selRef: SelectionMask | null = null;
+  private readonly buf = createSurface(PW, PH);
   private readonly canvas = el(`<canvas class="cv-fill-canvas" width="${PW}" height="${PH}"></canvas>`) as HTMLCanvasElement;
   private readonly brushRow = sliderRow('Brush size (px)', 4, 200, 1, (v) => { this.brush = v; });
 
@@ -46,15 +59,26 @@ export class ContentFillDialog extends Dialog {
     const mirrorRow = checkRow('Mirror', (v) => { this.opts = { ...this.opts, mirror: v }; this.refresh(); });
     const modeRow = selectRow('Sampling Brush', [['add', 'Add to sampling area'], ['subtract', 'Subtract from sampling area']], (v) => { this.subtract = v === 'subtract'; });
     const allRow = checkRow('Sample All Layers', (v) => { this.sampleAll = v; });
-    this.body.append(this.canvas, samplingRow.el, modeRow.el, this.brushRow.el, colorRow.el, rotRow.el, scaleRow.el, mirrorRow.el, resultRow.el, allRow.el, outRow.el);
+    const toolRow = selectRow('Tool', [['brush', 'Sampling brush'], ['lassoAdd', 'Fill area lasso: add'], ['lassoSub', 'Fill area lasso: subtract'], ['hand', 'Hand']], (v) => { this.tool = v as FillTool; this.canvas.style.cursor = this.cursor(); });
+    const channelRow = selectRow('Channel', [['3', 'All (RGB)'], ['0', 'Red only'], ['1', 'Green only'], ['2', 'Blue only']], (v) => { this.channel = Number(v); this.refresh(); });
+    const bar = el('<div class="cv-fill-tools"><button class="cv-btn" type="button" data-act="in" title="Zoom in">Zoom in</button><button class="cv-btn" type="button" data-act="out" title="Zoom out">Zoom out</button><button class="cv-btn" type="button" data-act="fit" title="Fit the preview in the window">Fit</button><button class="cv-btn" type="button" data-act="reset" title="Put the fill area back to the selection">Reset fill area</button></div>');
+    bar.addEventListener('click', (e) => {
+      const act = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-act]')?.dataset.act : undefined;
+      if (act === 'in') this.zoomBy(1.5, PW / 2, PH / 2);
+      else if (act === 'out') this.zoomBy(1 / 1.5, PW / 2, PH / 2);
+      else if (act === 'fit') { this.zoom = 1; this.panX = 0; this.panY = 0; this.refresh(false); }
+      else if (act === 'reset') { this.edits = []; this.rebuildHole(); }
+    });
+    this.body.append(this.canvas, bar, toolRow.el, samplingRow.el, modeRow.el, this.brushRow.el, colorRow.el, rotRow.el, scaleRow.el, mirrorRow.el, channelRow.el, resultRow.el, allRow.el, outRow.el);
     this.sync = () => {
+      toolRow.set(this.tool); channelRow.set(String(this.channel));
       modeRow.set(this.subtract ? 'subtract' : 'add'); allRow.set(this.sampleAll);
       samplingRow.set(this.sampling); outRow.set(this.output); resultRow.set(this.showResult); this.brushRow.set(this.brush); this.syncBrush();
       colorRow.set(String(this.opts.color)); rotRow.set(String(this.opts.rotation)); scaleRow.set(this.opts.scale); mirrorRow.set(this.opts.mirror);
     };
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
-    this.onClose = () => { if (this.frame) cancelAnimationFrame(this.frame); this.frame = 0; this.image = null; this.hole = null; this.allow = null; this.result = null; };
+    this.onClose = () => { if (this.frame) cancelAnimationFrame(this.frame); this.frame = 0; this.image = null; this.hole = null; this.hole0 = null; this.selRef = null; this.edits = []; this.lasso = null; this.pan = null; this.allow = null; this.result = null; };
     this.bindCanvas();
     this.remember();
   }
@@ -83,6 +107,10 @@ export class ContentFillDialog extends Dialog {
     const md = mc.getImageData(0, 0, this.pw, this.ph).data;
     this.hole = new Uint8Array(this.pw * this.ph);
     for (let i = 0; i < this.hole.length; i++) this.hole[i] = md[i * 4 + 3] >= 128 ? 1 : 0;
+    this.hole0 = this.hole.slice();
+    this.selRef = sel;
+    this.edits = []; this.lasso = null; this.zoom = 1; this.panX = 0; this.panY = 0; this.tool = 'brush'; this.channel = 3;
+    this.canvas.style.cursor = this.cursor();
     this.rebuildAllow();
     this.sync();
     this.open();
@@ -105,7 +133,8 @@ export class ContentFillDialog extends Dialog {
   }
 
   private bindCanvas(): void {
-    const c = this.canvas, at = (e: PointerEvent): [number, number] => { const r = c.getBoundingClientRect(); return [((e.clientX - r.left) / r.width) * PW - this.ox, ((e.clientY - r.top) / r.height) * PH - this.oy]; };
+    const c = this.canvas, raw = (e: { clientX: number; clientY: number }): [number, number] => { const r = c.getBoundingClientRect(); return [((e.clientX - r.left) / r.width) * PW, ((e.clientY - r.top) / r.height) * PH]; };
+    const at = (e: PointerEvent): [number, number] => { const [x, y] = raw(e); return [(x - this.panX) / this.zoom - this.ox, (y - this.panY) / this.zoom - this.oy]; };
     const paint = (e: PointerEvent): void => {
       const a = this.allow, hole = this.hole;
       if (!a || !hole || this.sampling !== 'custom') return;
@@ -115,11 +144,88 @@ export class ContentFillDialog extends Dialog {
       }
       this.refresh(false);
     };
-    c.addEventListener('pointerdown', (e) => { if (e.button !== 0 || this.sampling !== 'custom') return; c.setPointerCapture(e.pointerId); this.painting = true; paint(e); });
-    c.addEventListener('pointermove', (e) => { if (this.painting) paint(e); });
-    const end = (e: PointerEvent): void => { if (c.hasPointerCapture(e.pointerId)) c.releasePointerCapture(e.pointerId); if (this.painting) { this.painting = false; this.refresh(); } };
+    c.addEventListener('pointerdown', (e) => {
+      const hand = this.tool === 'hand' || e.button === 1;
+      if (hand) { const [x, y] = raw(e); c.setPointerCapture(e.pointerId); this.pan = { cx: x, cy: y, px: this.panX, py: this.panY }; c.style.cursor = 'grabbing'; return; }
+      if (e.button !== 0) return;
+      if (this.tool === 'lassoAdd' || this.tool === 'lassoSub') { c.setPointerCapture(e.pointerId); this.lasso = [at(e)]; this.refresh(false); return; }
+      if (this.sampling !== 'custom') return;
+      c.setPointerCapture(e.pointerId); this.painting = true; paint(e);
+    });
+    c.addEventListener('pointermove', (e) => {
+      if (this.pan) { const [x, y] = raw(e); this.panX = this.pan.px + x - this.pan.cx; this.panY = this.pan.py + y - this.pan.cy; this.clampPan(); this.refresh(false); return; }
+      if (this.lasso) { this.lasso.push(at(e)); this.refresh(false); return; }
+      if (this.painting) paint(e);
+    });
+    c.addEventListener('wheel', (e) => { e.preventDefault(); const [x, y] = raw(e); this.zoomBy(e.deltaY < 0 ? 1.2 : 1 / 1.2, x, y); }, { passive: false });
+    const end = (e: PointerEvent): void => {
+      if (c.hasPointerCapture(e.pointerId)) c.releasePointerCapture(e.pointerId);
+      if (this.pan) { this.pan = null; c.style.cursor = this.cursor(); return; }
+      if (this.lasso) {
+        const pts = this.lasso;
+        this.lasso = null;
+        if (pts.length >= 3) { this.edits.push({ add: this.tool === 'lassoAdd', pts: pts.map(([x, y]) => [x / this.scale, y / this.scale]) }); this.rebuildHole(); } else this.refresh(false);
+        return;
+      }
+      if (this.painting) { this.painting = false; this.refresh(); }
+    };
     c.addEventListener('pointerup', end);
     c.addEventListener('pointercancel', end);
+  }
+
+  private cursor(): string { return this.tool === 'hand' ? 'grab' : 'crosshair'; }
+
+  private clampPan(): void {
+    this.panX = Math.min(0, Math.max(PW - PW * this.zoom, this.panX));
+    this.panY = Math.min(0, Math.max(PH - PH * this.zoom, this.panY));
+  }
+
+  /** Zooms the preview by `k` (1 to 8 times) about the canvas point (x, y), which stays where it is. */
+  private zoomBy(k: number, x: number, y: number): void {
+    const z = Math.min(8, Math.max(1, this.zoom * k)), f = z / this.zoom;
+    this.panX = x - (x - this.panX) * f; this.panY = y - (y - this.panY) * f;
+    this.zoom = z;
+    this.clampPan();
+    this.refresh(false);
+  }
+
+  /** The fill area at preview scale: the selection's, then each lasso edit in turn (adds fill, subtracts clear). */
+  private rebuildHole(): void {
+    const h0 = this.hole0, hole = this.hole, a = this.allow;
+    if (!h0 || !hole) return;
+    const s = createSurface(this.pw, this.ph), c = ctxOf(s), img = c.createImageData(this.pw, this.ph);
+    for (let i = 0; i < h0.length; i++) img.data[i * 4 + 3] = h0[i] ? 255 : 0;
+    c.putImageData(img, 0, 0);
+    for (const ed of this.edits) {
+      c.globalCompositeOperation = ed.add ? 'source-over' : 'destination-out';
+      c.fillStyle = '#fff';
+      c.beginPath();
+      ed.pts.forEach(([x, y], i) => { if (i) c.lineTo(x * this.scale, y * this.scale); else c.moveTo(x * this.scale, y * this.scale); });
+      c.closePath();
+      c.fill();
+    }
+    const d = c.getImageData(0, 0, this.pw, this.ph).data;
+    for (let i = 0; i < hole.length; i++) { hole[i] = d[i * 4 + 3] >= 128 ? 1 : 0; if (a && hole[i]) a[i] = 0; }
+    this.rebuildAllow();
+  }
+
+  /** The edited fill area at document size (1 inside), or null while nothing was edited. */
+  private areaDoc(w: number, h: number): Uint8Array | null {
+    const sel = this.selRef;
+    if (!this.edits.length || !sel) return null;
+    const s = createSurface(w, h), c = ctxOf(s);
+    c.drawImage(sel.surface() as CanvasImageSource, sel.x, sel.y);
+    for (const ed of this.edits) {
+      c.globalCompositeOperation = ed.add ? 'source-over' : 'destination-out';
+      c.fillStyle = '#fff';
+      c.beginPath();
+      ed.pts.forEach(([x, y], i) => { if (i) c.lineTo(x, y); else c.moveTo(x, y); });
+      c.closePath();
+      c.fill();
+    }
+    const d = c.getImageData(0, 0, w, h).data, out = new Uint8Array(w * h);
+    for (let i = 0; i < out.length; i++) out[i] = d[i * 4 + 3] >= 128 ? 1 : 0;
+    return out;
   }
 
   /** Redraws on the next frame; `fill` also recomputes the result preview when Show Result is on. */
@@ -134,22 +240,38 @@ export class ContentFillDialog extends Dialog {
         const pm = premultiply(img.data);
         if (contentFill(pm, hole, this.pw, this.ph, this.sampling === 'auto' ? null : allow, this.opts)) { const r = new ImageData(this.pw, this.ph); unpremultiply(pm, r.data); this.result = r; }
       }
-      const base = this.showResult && this.result ? this.result : img, out = new ImageData(this.pw, this.ph), d = out.data, s = base.data;
+      const base = this.showResult && this.result ? this.result : img, out = new ImageData(this.pw, this.ph), d = out.data, s = base.data, ch = this.channel;
       for (let i = 0; i < hole.length; i++) {
         const k = i * 4, tint = this.showResult ? 0 : hole[i] ? 1 : allow[i] ? 2 : 0;
+        if (this.showResult && this.result && hole[i] && ch < 3) { for (let j = 0; j < 3; j++) d[k + j] = j === ch ? s[k + j] : img.data[k + j]; d[k + 3] = 255; continue; }
         d[k] = tint === 1 ? Math.round(s[k] * 0.5 + 127) : tint === 2 ? Math.round(s[k] * 0.65) : s[k];
         d[k + 1] = tint === 1 ? Math.round(s[k + 1] * 0.5) : tint === 2 ? Math.round(s[k + 1] * 0.65 + 89) : s[k + 1];
         d[k + 2] = tint === 1 ? Math.round(s[k + 2] * 0.5) : tint === 2 ? Math.round(s[k + 2] * 0.65) : s[k + 2];
         d[k + 3] = 255;
       }
+      ctxOf(this.buf).putImageData(out, 0, 0);
+      g.setTransform(1, 0, 0, 1, 0, 0);
       g.clearRect(0, 0, PW, PH);
-      g.putImageData(out, this.ox, this.oy);
+      g.imageSmoothingEnabled = this.zoom === 1;
+      g.setTransform(this.zoom, 0, 0, this.zoom, this.panX, this.panY);
+      g.drawImage(this.buf as CanvasImageSource, 0, 0, this.pw, this.ph, this.ox, this.oy, this.pw, this.ph);
+      const path = this.lasso;
+      if (path && path.length > 1) {
+        g.lineWidth = 1 / this.zoom;
+        g.strokeStyle = this.tool === 'lassoSub' ? '#ff5a5a' : '#ffffff';
+        g.setLineDash([4 / this.zoom, 3 / this.zoom]);
+        g.beginPath();
+        path.forEach(([x, y], i) => { if (i) g.lineTo(x + this.ox, y + this.oy); else g.moveTo(x + this.ox, y + this.oy); });
+        g.stroke();
+        g.setLineDash([]);
+      }
+      g.setTransform(1, 0, 0, 1, 0, 0);
     });
   }
 
   private apply(): void {
     const p = this.engine.current, a = this.allow, sampling = this.sampling, output = this.output, s = this.scale, pw = this.pw, ph = this.ph;
-    const opts = { ...this.opts }, all = this.sampleAll;
+    const opts = { ...this.opts }, all = this.sampleAll, channel = this.channel, area = p ? this.areaDoc(p.doc.width, p.doc.height) : null;
     this.close();
     if (!p) return;
     let allowDoc: Uint8Array | null = null;
@@ -158,6 +280,6 @@ export class ContentFillDialog extends Dialog {
       allowDoc = new Uint8Array(W * H);
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) allowDoc[y * W + x] = a[Math.min(ph - 1, Math.floor(y * s)) * pw + Math.min(pw - 1, Math.floor(x * s))];
     }
-    this.engine.contentAwareFillWith(allowDoc, output, opts, all);
+    this.engine.contentAwareFillWith(allowDoc, output, opts, all, area, channel);
   }
 }

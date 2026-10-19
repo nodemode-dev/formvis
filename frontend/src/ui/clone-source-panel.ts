@@ -1,6 +1,6 @@
 import type { Engine } from '../engine';
 import { clamp } from '../engine';
-import { checkRow, numberRow } from './panels/controls';
+import { checkRow, numberRow, selectRow } from './panels/controls';
 import { q } from './dom';
 import { icon } from './icons';
 
@@ -47,7 +47,8 @@ export function createCloneSourcePanel(root: HTMLElement, engine: Engine): void 
   const clipped = checkRow('Clipped', (v) => engine.setCloneOverlay({ clipped: v }));
   const autoHide = checkRow('Auto Hide', (v) => engine.setCloneOverlay({ autoHide: v }));
   const invert = checkRow('Invert', (v) => engine.setCloneOverlay({ invert: v }));
-  over.append(show.el, opacity.el, clipped.el, invert.el, autoHide.el);
+  const blend = selectRow('Overlay Mode', [['source-over', 'Normal'], ['multiply', 'Multiply'], ['screen', 'Screen'], ['overlay', 'Overlay'], ['lighten', 'Lighten'], ['darken', 'Darken'], ['difference', 'Difference']], (v) => engine.setCloneOverlay({ blend: v as GlobalCompositeOperation }));
+  over.append(show.el, opacity.el, blend.el, clipped.el, invert.el, autoHide.el);
 
   const sync = (): void => {
     const rt = engine.retouch, ov = engine.cloneOverlay, src = engine.cloneSource;
@@ -63,9 +64,9 @@ export function createCloneSourcePanel(root: HTMLElement, engine: Engine): void 
     scale.set(rt.cloneScale); scaleY.set(rt.cloneScaleY ?? rt.cloneScale); link.set(rt.cloneScaleY === null); angle.set(rt.cloneAngle);
     flipH.set(rt.cloneFlipH); flipV.set(rt.cloneFlipV);
     show.set(ov.show); opacity.set(Math.round(ov.opacity * 100));
-    clipped.set(ov.clipped); autoHide.set(ov.autoHide); invert.set(ov.invert);
+    clipped.set(ov.clipped); autoHide.set(ov.autoHide); invert.set(ov.invert); blend.set(ov.blend);
     const off = !ov.show;
-    for (const row of [opacity, clipped, invert, autoHide]) {
+    for (const row of [opacity, blend, clipped, invert, autoHide]) {
       const inp = row.el.querySelector('input');
       if (inp && inp.disabled !== off) inp.disabled = off;
     }

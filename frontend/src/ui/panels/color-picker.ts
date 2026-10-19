@@ -1,9 +1,10 @@
 import type { Engine, RGB } from '../../engine';
-import { inkOf, renditionOf, type Ink } from '../../engine/colour-lut';
+import { inkOf, renditionOf, type Ink, type Lut3x4, type Lut4 } from '../../engine/colour-lut';
+import { api } from '../../io/api';
 import { labToSrgb, srgbToLab } from '../../engine/lab';
 import { Dialog } from '../dialogs';
 import { el, setHidden } from '../dom';
-import { numberRow } from './controls';
+import { checkRow, numberRow } from './controls';
 import { loadPrefs } from '../prefs';
 
 const FIELD = 200, STRIP = 18;
@@ -68,6 +69,13 @@ function colourFrom(strip: Axis, sv: number, xv: number, yv: number): RGB {
 const labDist = (p: RGB, q: RGB): number => { const a = srgbToLab(p.r, p.g, p.b), b = srgbToLab(q.r, q.g, q.b); return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]); };
 const snapWeb = (c: RGB): RGB => ({ r: Math.round(c.r / 51) * 51, g: Math.round(c.g / 51) * 51, b: Math.round(c.b / 51) * 51 });
 
+/** The working CMYK profile's tables, fetched once, for the out-of-gamut test in an RGB document; null when the engine has none. */
+let printTables: Promise<{ out: Lut4; inn: Lut3x4 } | null> | null = null;
+export function printable(): Promise<{ out: Lut4; inn: Lut3x4 } | null> {
+  printTables ??= api.defaultCmykProfile().then(async (d) => (d ? { out: await api.cmykLut({ id: d.id }), inn: await api.rgbCmykLut({ id: d.id }) } : null)).catch(() => { printTables = null; return null; });
+  return printTables;
+}
+
 function parseHex(text: string): RGB | null {
   let t = text.trim();
   if (t.startsWith('#')) t = t.slice(1);
@@ -98,6 +106,9 @@ export class ColorPickerDialog extends Dialog {
   private readonly radios = new Map<Axis, HTMLInputElement>();
   private readonly gamutWarn = el<HTMLButtonElement>('<button class="cv-btn cv-btn-ghost" type="button" title="Out of gamut for printing: click for the closest printable colour" hidden>Out of gamut</button>');
   private readonly webWarn = el<HTMLButtonElement>('<button class="cv-btn cv-btn-ghost" type="button" title="Not a web-safe colour: click for the closest one" hidden>Not web safe</button>');
+  private onlyWeb = false;
+  private readonly webRow = checkRow('Only Web Colors', (v) => { this.onlyWeb = v; if (v) this.setRgb(this.rgb()); });
+  private tables: { out: Lut4; inn: Lut3x4 } | null = null;
 
   /** A numeric row for one component with the radio that makes it the strip's axis. */
   private axisRow(a: Axis, max: number, min = 0): HTMLElement {
@@ -156,12 +167,16 @@ export class ColorPickerDialog extends Dialog {
     comps.append(this.axisRow('h', 359), this.axisRow('s', 100), this.axisRow('v', 100), this.axisRow('r', 255), this.axisRow('g', 255), this.axisRow('b', 255), this.axisRow('l', 100), this.axisRow('a', 127, -128), this.axisRow('k', 127, -128), ...this.inks.map((r) => r.el));
     const wrap = el<HTMLElement>('<div class="cv-pick"></div>');
     wrap.append(this.sbField, this.strip, side, comps);
-    this.body.append(wrap, el<HTMLElement>('<p class="cv-note">Click the canvas to sample a color. The radio beside a component makes the strip run along it.</p>'));
+    this.body.append(wrap, this.webRow.el, el<HTMLElement>('<p class="cv-note">Click the canvas to sample a color. The radio beside a component makes the strip run along it.</p>'));
     this.button('Cancel', 'ghost', () => this.close());
     this.button('Add to Swatches', 'ghost', () => document.dispatchEvent(new CustomEvent('cv-add-swatch', { detail: hexOf(this.rgb()) })));
     if ('EyeDropper' in window) this.button('Pick from Screen', 'ghost', () => void this.fromScreen());
     this.button('OK', 'primary', () => this.commit());
-    this.gamutWarn.addEventListener('click', () => { const p = this.engine.current; if (this.ink && p?.cmykLut) this.setRgb(renditionOf(this.ink, p.cmykLut)); });
+    this.gamutWarn.addEventListener('click', () => {
+      const p = this.engine.current, t = this.tables;
+      if (this.ink && p?.cmykLut) this.setRgb(renditionOf(this.ink, p.cmykLut));
+      else if (t) this.setRgb(renditionOf(inkOf(this.rgb(), t.inn), t.out));
+    });
     this.webWarn.addEventListener('click', () => this.setRgb(snapWeb(this.rgb())));
     this.drag(this.sbField, (x, y) => this.place(axisValue(this.axis, this.rgb(), this.hsv.h), x, 1 - y));
     this.drag(this.strip, (_x, y) => {
@@ -178,7 +193,17 @@ export class ColorPickerDialog extends Dialog {
       if (e.key === 'Enter') { e.preventDefault(); this.hex.blur(); }
     });
     document.addEventListener('cv-pick-color', (e) => this.show((e as CustomEvent).detail === 'bg' ? 'bg' : 'fg'));
+    // Every colour field in a dialog, the text options and the effect rows opens this picker rather than the browser's own.
+    document.addEventListener('click', (e) => {
+      const t = e.target;
+      if (!(t instanceof HTMLInputElement) || t.type !== 'color' || t === this.system || t.disabled || t.classList.contains('cv-color-input') || loadPrefs().systemPicker || this.isOpen) return;
+      e.preventDefault();
+      this.show('fg', t);
+    }, true);
   }
+
+  /** The colour field being edited when the picker was opened from one (a dialog, the text options, an effect row). */
+  private source: HTMLInputElement | null = null;
 
   /** Preferences > General > Color Picker: the system's own picker, one hidden input kept for it. */
   private readonly system = Object.assign(document.createElement('input'), { type: 'color' });
@@ -198,18 +223,22 @@ export class ColorPickerDialog extends Dialog {
     try { s.showPicker(); } catch { s.click(); }
   }
 
-  show(which: 'fg' | 'bg'): void {
+  show(which: 'fg' | 'bg', field?: HTMLInputElement): void {
     if (this.isOpen) return;
-    if (loadPrefs().systemPicker) { this.systemPick(which); return; }
+    if (!field && loadPrefs().systemPicker) { this.systemPick(which); return; }
     this.which = which;
-    this.current = { ...(which === 'fg' ? this.engine.fg : this.engine.bg) };
+    this.source = field ?? null;
+    this.current = field ? parseHex(field.value) ?? { r: 0, g: 0, b: 0 } : { ...(which === 'fg' ? this.engine.fg : this.engine.bg) };
     this.hsv = toHsv(this.current, 0);
-    const p = this.engine.current, cmyk = p?.doc.mode === 'cmyk' && !!p.cmykLut && !!p.cmykIn;
+    const p = this.engine.current, cmyk = !field && p?.doc.mode === 'cmyk' && !!p.cmykLut && !!p.cmykIn;
     this.ink = cmyk ? [...(which === 'fg' ? this.engine.fgInk : this.engine.bgInk)] as Ink : null;
     for (const r of this.inks) setHidden(r.el, !cmyk);
-    this.setTitle(which === 'fg' ? 'Foreground Color' : 'Background Color');
+    this.webRow.set(this.onlyWeb);
+    if (!cmyk && !this.tables) void printable().then((t) => { this.tables = t; if (this.isOpen) this.sync(); });
+    this.setTitle(field ? field.getAttribute('aria-label') || field.closest('label')?.querySelector('span')?.textContent || 'Color' : which === 'fg' ? 'Foreground Color' : 'Background Color');
     this.sync();
     this.open();
+    if (field) return;
     this.scrim.classList.add('cv-scrim-through');
     const onDown = (e: PointerEvent): void => {
       const target = e.target as Element | null;
@@ -249,6 +278,7 @@ export class ColorPickerDialog extends Dialog {
       this.sampler = null;
     }
     this.endSampleDrag();
+    this.source = null;
     this.scrim.classList.remove('cv-scrim-through');
     super.close();
   }
@@ -266,7 +296,7 @@ export class ColorPickerDialog extends Dialog {
 
   /** Take a new HSV (from a field or strip drag), refresh the ink in a CMYK document, and redraw. */
   private applyHsv(next: HSV): void {
-    this.hsv = next;
+    this.hsv = this.onlyWeb ? toHsv(snapWeb(toRgb(next)), next.h) : next;
     const p = this.engine.current;
     if (this.ink && p?.cmykIn) this.ink = inkOf(this.rgb(), p.cmykIn);
     this.sync();
@@ -274,7 +304,8 @@ export class ColorPickerDialog extends Dialog {
 
   private setRgb(c: RGB): void {
     const ch = (n: number): number => Math.min(255, Math.max(0, Math.round(Number.isFinite(n) ? n : 0)));
-    this.hsv = toHsv({ r: ch(c.r), g: ch(c.g), b: ch(c.b) }, this.hsv.h);
+    const next = { r: ch(c.r), g: ch(c.g), b: ch(c.b) };
+    this.hsv = toHsv(this.onlyWeb ? snapWeb(next) : next, this.hsv.h);
     const p = this.engine.current;
     if (this.ink && p?.cmykIn) this.ink = inkOf(this.rgb(), p.cmykIn);
     this.sync();
@@ -290,8 +321,14 @@ export class ColorPickerDialog extends Dialog {
   }
 
   private commit(): void {
-    const c = this.rgb();
+    const c = this.rgb(), f = this.source;
     this.close();
+    if (f) {
+      f.value = hexOf(c);
+      f.dispatchEvent(new Event('input', { bubbles: true }));
+      f.dispatchEvent(new Event('change', { bubbles: true }));
+      return;
+    }
     if (this.ink) { this.engine.setInk(this.which, this.ink); return; }
     if (this.which === 'fg') this.engine.setColors(c);
     else this.engine.setColors(undefined, c);
@@ -383,7 +420,8 @@ export class ColorPickerDialog extends Dialog {
     for (const [a, row] of this.axisRows) if (document.activeElement !== row.input) row.set(shown[a]);
     for (const [a, r] of this.radios) r.checked = a === this.axis;
     const p = this.engine.current;
-    setHidden(this.gamutWarn, !(this.ink && p?.cmykLut && p.cmykIn && labDist(c, renditionOf(inkOf(c, p.cmykIn), p.cmykLut)) > 3));
+    const t = this.tables, outside = this.ink && p?.cmykLut && p.cmykIn ? labDist(c, renditionOf(inkOf(c, p.cmykIn), p.cmykLut)) > 3 : !this.ink && !!t && labDist(c, renditionOf(inkOf(c, t.inn), t.out)) > 3;
+    setHidden(this.gamutWarn, !outside);
     setHidden(this.webWarn, [c.r, c.g, c.b].every((n) => n % 51 === 0));
     if (this.ink) this.inks.forEach((r, k) => r.set(Math.round(this.ink![k] * 100)));
     if (document.activeElement !== this.hex) this.hex.value = hexOf(c);

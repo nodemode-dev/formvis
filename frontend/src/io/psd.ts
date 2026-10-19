@@ -1,6 +1,6 @@
 import type { BlendMode as PsdBlend, Layer as PsdLayer, LayerEffectsInfo, LinkedFile, PatternInfo, Psd, TextStyle, TextStyleRun, UnitsValue, VectorContent } from 'ag-psd';
 import {
-  Raster, boundsOf, docTransform, effectsPresent, integral, liveText, newLayer, placement, applyMat, uid, type BlendMode, type Doc, type ID, type Layer, type Surface, invert, mul, toBlob, type Pt, defaultEffects, patternById, addPattern, projectPatterns, createSurface, ctxOf, type LayerEffects, renderText, textKey, TEXT_FONTS, type TextSpec, ADJUSTMENT_LABELS, hsvFromData, type WarpStyle,
+  Raster, boundsOf, docTransform, effectsPresent, integral, liveText, newLayer, placement, applyMat, uid, type BlendMode, type Doc, type ID, type Layer, type SmartLink, type Surface, invert, mul, toBlob, type Pt, defaultEffects, patternById, addPattern, projectPatterns, createSurface, ctxOf, type LayerEffects, renderText, textKey, TEXT_FONTS, type TextSpec, ADJUSTMENT_LABELS, hsvFromData, type WarpStyle,
 } from '../engine';
 import { fromPsdAdjustment, toPsdAdjustment } from './psd-adjust';
 import { fromPsdSmartFilters } from './psd-filters';
@@ -8,6 +8,7 @@ import { artboardFromData, blendIfActive, type BlendIf, type DocSlice, type Laye
 import { windingArea } from '../engine/custom-shapes';
 import { addIccResource, addPathResources, addResourceBytes, block as resourceBlock, clippingPathName, readPathResources, resourceBlocks } from './psd-paths';
 import { addExtraChannels, readExtraChannels, readIccProfile } from './psd-channels';
+import { readPsdChannelMode } from './psd-modes';
 import { fromBase64, toBase64 } from './icc-read';
 import { cameraFromTiff, exifBlockOf } from './exif';
 import { cleanRuns, runsStyled, styleSegments } from '../engine/opentype';
@@ -487,9 +488,43 @@ function cropToCanvas(c: HTMLCanvasElement, left: number, top: number, W: number
   return { canvas: out, left: x0, top: y0 };
 }
 
-export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string[]; activeId: ID | null; paths: PathSet | null; report: PsdReport }> {
+/** True where the pixels cover the whole canvas and none is clear (read in strips; a canvas over 64 megapixels is not scanned). */
+function coversOpaque(c: HTMLCanvasElement, left: number, top: number, W: number, H: number): boolean {
+  if (left > 0 || top > 0 || left + c.width < W || top + c.height < H || W * H > 64_000_000) return false;
+  const ctx = c.getContext('2d');
+  if (!ctx) return false;
+  for (let y = Math.max(0, -top); y < Math.max(0, -top) + H; y += 256) {
+    const rows = Math.min(256, Math.max(0, -top) + H - y), d = ctx.getImageData(Math.max(0, -left), y, W, rows).data;
+    for (let i = 3; i < d.length; i += 4) if (d[i] !== 255) return false;
+  }
+  return true;
+}
+
+const baseName = (p: string): string => p.split(/[\\/]/).pop() ?? p;
+
+/** The file a linked smart object points at: one of the files opened with the PSD that has its name, or, in the desktop
+ *  app where the PSD's disk path is known, the file at the stored relative path from the PSD's folder. */
+async function resolveLinked(lf: NonNullable<Psd['linkedFiles']>[number], psdFile: File, siblings: readonly File[]): Promise<File | null> {
+  const want = baseName(lf.linkedFile?.relativePath || lf.linkedFile?.name || lf.name).toLowerCase();
+  if (!want) return null;
+  const hit = siblings.find((s) => s !== psdFile && s.name.toLowerCase() === want);
+  if (hit) return hit;
+  const at = Reflect.get(psdFile, 'path');
+  const rel = lf.linkedFile?.relativePath;
+  if (typeof at !== 'string' || !at || !rel || !('__TAURI_INTERNALS__' in window)) return null;
+  const parts = at.split(/[\\/]/).slice(0, -1);
+  for (const seg of rel.split(/[\\/]/)) { if (seg === '..') parts.pop(); else if (seg && seg !== '.') parts.push(seg); }
+  try {
+    const res = await fetch(`/api/file?path=${encodeURIComponent(parts.join('/'))}`);
+    return res.ok ? new File([await res.blob()], baseName(rel), { type: res.headers.get('Content-Type') ?? '' }) : null;
+  } catch { return null; }
+}
+
+export async function readPsdFile(file: File, siblings: readonly File[] = []): Promise<{ doc: Doc; notes: string[]; activeId: ID | null; paths: PathSet | null; report: PsdReport }> {
   const { readPsd } = await import('ag-psd');
   const buffer = await file.arrayBuffer();
+  const chanMode = readPsdChannelMode(buffer, psdResolution(buffer));
+  if (chanMode) return { doc: chanMode.doc, notes: chanMode.notes, activeId: chanMode.activeId, paths: null, report: reportOf(1, [], chanMode.notes) };
   let psd: Psd, cut: 'merged' | 'layers' | null = null;
   try { psd = readPsd(buffer, { skipThumbnail: true }); if (mergedIsShort(buffer)) cut = 'merged'; } catch (err) {
     // A file cut short loses its merged image first, then its last layers; what is whole still reads.
@@ -500,8 +535,15 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
     }
   }
   // Smart objects' embedded contents, decoded before the layers are built.
-  const contents = new Map<string, Raster | null>();
-  for (const lf of psd.linkedFiles ?? []) if (lf.data) contents.set(lf.id, await decodeLinked(lf.data, readPsd));
+  const contents = new Map<string, Raster | null>(), linkOfFile = new Map<string, SmartLink>(), unresolved = new Map<string, string>();
+  for (const lf of psd.linkedFiles ?? []) {
+    if (lf.data) { contents.set(lf.id, await decodeLinked(lf.data, readPsd)); continue; }
+    // A linked (not embedded) smart object: its file is found among the files opened with the PSD, else beside it on disk in the desktop app.
+    const found = await resolveLinked(lf, file, siblings);
+    const raster = found ? await decodeLinked(new Uint8Array(await found.arrayBuffer()), readPsd).catch(() => null) : null;
+    if (found && raster) { contents.set(lf.id, raster); linkOfFile.set(lf.id, { id: uid(), name: found.name, size: found.size, lastModified: found.lastModified }); }
+    else unresolved.set(lf.id, lf.linkedFile?.relativePath || lf.linkedFile?.name || lf.name);
+  }
   const fileInfo = psd.imageResources?.xmpMetadata ? metaFromXmp(psd.imageResources.xmpMetadata) : null;   // File Info (29.2): the XMP image resource
   const parRead = psd.imageResources?.pixelAspectRatio?.aspect;   // Pixel Aspect Ratio (35.4 part b)
   const doc: Doc = { id: uid(), width: psd.width, height: psd.height, resolution: psdResolution(buffer) ?? 72, layers: [], ...(fileInfo ? { meta: fileInfo } : {}), ...(typeof parRead === 'number' && parRead > 0 && parRead !== 1 ? { pixelAspect: parRead } : {}) };
@@ -540,6 +582,38 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
     if (!links.has(g)) links.set(g, uid());
     return { link: links.get(g) as ID };
   };
+  const closedGroups: ID[] = [];
+  const maskOf = (mk: PsdLayer['mask']): Layer['mask'] | null => {
+    if (!mk?.canvas || !mk.canvas.width || !mk.canvas.height) return null;
+    // PSD masks are grey; formvis's are white with the level in alpha.
+    const mw = mk.canvas.width, mh = mk.canvas.height, grey = mk.canvas.getContext('2d')?.getImageData(0, 0, mw, mh);
+    if (!grey) return null;
+    const img = new ImageData(mw, mh);
+    for (let i = 0; i < img.data.length; i += 4) { img.data[i] = img.data[i + 1] = img.data[i + 2] = 255; img.data[i + 3] = grey.data[i]; }
+    let mr = new Raster(mw, mh), rw = mw, rh = mh, mx = mk.left ?? 0, my = mk.top ?? 0;
+    mr.write(img);
+    const outside = mk.defaultColor === 255 ? 255 : 0;
+    if (maskEdgeTone(mr) !== outside) {
+      // The file's default colour shows past the mask's pixels; formvis shows the tone of the mask's edge, so a ring of it is added.
+      const ring = new ImageData(mw + 2, mh + 2);
+      for (let i = 0; i < ring.data.length; i += 4) { ring.data[i] = ring.data[i + 1] = ring.data[i + 2] = 255; ring.data[i + 3] = outside; }
+      mr = new Raster(mw + 2, mh + 2);
+      mr.ctx.putImageData(ring, 0, 0);
+      mr.ctx.putImageData(img, 1, 1);
+      mr.touch();
+      rw = mw + 2; rh = mh + 2; mx -= 1; my -= 1;
+    }
+    const dens = typeof mk.userMaskDensity === 'number' && mk.userMaskDensity < 1 ? Math.round(mk.userMaskDensity * 100) : 0, feather = typeof mk.userMaskFeather === 'number' && mk.userMaskFeather > 0 ? mk.userMaskFeather : 0;
+    return { raster: mr, enabled: !mk.disabled, linked: true, placement: { ...docTransform(rw, rh), x: mx, y: my }, ...(dens ? { density: dens } : {}), ...(feather ? { feather } : {}) };
+  };
+  const vectorMaskOf = (pl: PsdLayer): Layer['vectorMask'] | null => {
+    const vm = pl.vectorMask;
+    if (!vm?.paths?.length) return null;
+    const path = fromPsdOutlines(vm.paths);
+    if (!path.subpaths.length) return null;
+    const vmd = pl.realMask ?? pl.mask, vd = typeof vmd?.vectorMaskDensity === 'number' && vmd.vectorMaskDensity < 1 ? Math.round(vmd.vectorMaskDensity * 100) : 0, vfe = typeof vmd?.vectorMaskFeather === 'number' && vmd.vectorMaskFeather > 0 ? vmd.vectorMaskFeather : 0;
+    return { path, enabled: !vm.disable, linked: !vm.notLink, inverted: !!vm.invert, ...(vd ? { density: vd } : {}), ...(vfe ? { feather: vfe } : {}) };
+  };
   const walk = (children: PsdLayer[] | undefined, parentId: ID | null): void => {
     let base: Layer | null = null;
     for (const pl of children ?? []) {
@@ -550,6 +624,11 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
         const through = !pl.blendMode || pl.blendMode === 'pass through', gblend = through ? 'normal' : FROM_PSD.get(pl.blendMode as PsdBlend) ?? 'normal';
         if (!through && !FROM_PSD.has(pl.blendMode as PsdBlend)) notes.push(`"${name}" uses ${pl.blendMode}, which formvis does not have; it opened as Normal.`);
         const group = newLayer(name, doc, { isGroup: true, parentId, visible: !pl.hidden, opacity: pl.opacity ?? 1, blend: gblend, ...(!through && gblend === 'normal' ? { isolate: true } : {}), ...linkOf(pl), ...labelOf(pl), ...(!parentId ? fromPsdArtboard(pl) : {}) });
+        const gmask = maskOf(pl.mask), gvec = vectorMaskOf(pl);
+        if (gmask) group.mask = gmask;
+        if (gvec) group.vectorMask = gvec;
+        if (pl.effects) { const gfx = fromPsdEffects(pl.effects, psd.patterns, name, notes); if (gfx) group.effects = gfx; }
+        if (pl.opened === false) closedGroups.push(group.id);
         walk(pl.children, group.id);
         psdIds.set(pl, group.id);
         layers.push(group); // after its children, where formvis keeps a folder's entry
@@ -580,30 +659,8 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
       if (pl.transparencyShapesLayer === false) notes.push(`"${name}" has Transparency Shapes Layer off, which formvis does not do; it opened with it on.`);
       const layer = adj ? newLayer(name, doc, { adjustment: adj, parentId, visible: !pl.hidden, opacity: pl.opacity ?? 1, blend, ...fill, ...advanced })
         : newLayer(name, doc, { raster, parentId, transform: { ...docTransform(w, h), x: drawn ? 0 : atX, y: drawn ? 0 : atY }, visible: !pl.hidden, opacity: pl.opacity ?? 1, blend, ...fill, ...advanced, ...(fillSpec ? { fillContent: fillSpec } : {}) });
-      const mk = pl.mask;
-      if (mk?.canvas && mk.canvas.width && mk.canvas.height) {
-        // PSD masks are grey; formvis's are white with the level in alpha.
-        const mw = mk.canvas.width, mh = mk.canvas.height, grey = mk.canvas.getContext('2d')?.getImageData(0, 0, mw, mh);
-        if (grey) {
-          const img = new ImageData(mw, mh);
-          for (let i = 0; i < img.data.length; i += 4) { img.data[i] = img.data[i + 1] = img.data[i + 2] = 255; img.data[i + 3] = grey.data[i]; }
-          let mr = new Raster(mw, mh), rw = mw, rh = mh, mx = mk.left ?? 0, my = mk.top ?? 0;
-          mr.write(img);
-          const outside = mk.defaultColor === 255 ? 255 : 0;
-          if (maskEdgeTone(mr) !== outside) {
-            // The file's default colour shows past the mask's pixels; formvis shows the tone of the mask's edge, so a ring of it is added.
-            const ring = new ImageData(mw + 2, mh + 2);
-            for (let i = 0; i < ring.data.length; i += 4) { ring.data[i] = ring.data[i + 1] = ring.data[i + 2] = 255; ring.data[i + 3] = outside; }
-            mr = new Raster(mw + 2, mh + 2);
-            mr.ctx.putImageData(ring, 0, 0);
-            mr.ctx.putImageData(img, 1, 1);
-            mr.touch();
-            rw = mw + 2; rh = mh + 2; mx -= 1; my -= 1;
-          }
-          const dens = typeof mk.userMaskDensity === 'number' && mk.userMaskDensity < 1 ? Math.round(mk.userMaskDensity * 100) : 0, feather = typeof mk.userMaskFeather === 'number' && mk.userMaskFeather > 0 ? mk.userMaskFeather : 0;
-          layer.mask = { raster: mr, enabled: !mk.disabled, linked: true, placement: { ...docTransform(rw, rh), x: mx, y: my }, ...(dens ? { density: dens } : {}), ...(feather ? { feather } : {}) };
-        }
-      }
+      const made = maskOf(pl.mask);
+      if (made) layer.mask = made;
       const vm = pl.vectorMask, vf = pl.vectorFill, vs = pl.vectorStroke;
       if (vm?.paths?.length && (vf?.type === 'color' || vs?.strokeEnabled)) {
         // A PSD shape opens as a formvis shape layer: its pixels as saved, its outline editable again.
@@ -621,13 +678,8 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
         if (path.subpaths.length && (fill || stroke)) layer.vector = { path, fill, stroke, origin: { x: pl.left ?? 0, y: pl.top ?? 0 } };
       } else if (vm?.paths?.length) {
         // A vector mask on a pixel layer (Layer > Vector Mask): kept as formvis's own, with its invert, link and disable flags.
-        const path = fromPsdOutlines(vm.paths);
-        if (path.subpaths.length) layer.vectorMask = { path, enabled: !vm.disable, linked: !vm.notLink, inverted: !!vm.invert };
-      }
-      const vmd = pl.realMask ?? pl.mask;
-      if (layer.vectorMask && vmd) {
-        const vd = typeof vmd.vectorMaskDensity === 'number' && vmd.vectorMaskDensity < 1 ? Math.round(vmd.vectorMaskDensity * 100) : 0, vfe = typeof vmd.vectorMaskFeather === 'number' && vmd.vectorMaskFeather > 0 ? vmd.vectorMaskFeather : 0;
-        if (vd || vfe) layer.vectorMask = { ...layer.vectorMask, ...(vd ? { density: vd } : {}), ...(vfe ? { feather: vfe } : {}) };
+        const vmask = vectorMaskOf(pl);
+        if (vmask) layer.vectorMask = vmask;
       }
       const plc = pl.placedLayer;
       if (plc) {
@@ -635,14 +687,15 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
         // saved until it is next re-rendered.
         const source = contents.get(plc.id) ?? null, t8 = plc.nonAffineTransform ?? plc.transform;
         if (source && t8?.length === 8 && t8.every((v) => Number.isFinite(v))) {
-          layer.smart = { source, filters: [], warp: [0, 2, 4, 6].map((k) => ({ x: t8[k], y: t8[k + 1] })), warpAt: layer.transform };
+          layer.smart = { source, filters: [], warp: [0, 2, 4, 6].map((k) => ({ x: t8[k], y: t8[k + 1] })), warpAt: layer.transform, ...(linkOfFile.has(plc.id) ? { link: linkOfFile.get(plc.id) } : {}) };
           if (plc.filter?.list?.length) {
             // Smart filters come in as the live stack when every one of them maps; the pixels stay as saved until the next render.
             const got = fromPsdSmartFilters(plc.filter.list, plc.filter.enabled !== false, (m) => FROM_PSD.get(m as PsdBlend));
             if ('filters' in got) { layer.smart.filters = got.filters; kept.push(`"${name}" has ${got.filters.length} editable smart filter${got.filters.length === 1 ? '' : 's'}.`); }
             else notes.push(`"${name}" has smart filters formvis does not have (${got.missing.join(', ')}); the stack stays applied in its pixels and is not editable here.`);
           }
-        } else notes.push(`"${name}" is a smart object whose contents formvis cannot read; it opened as pixels.`);
+        } else if (unresolved.has(plc.id)) notes.push(`"${name}" is linked to ${unresolved.get(plc.id)}, which was not found with the PSD (open it together with the PSD to link it); it opened as pixels.`);
+        else notes.push(`"${name}" is a smart object whose contents formvis cannot read; it opened as pixels.`);
       }
       const tx = pl.text;
       if (tx && typeof tx.text === 'string' && raster) {
@@ -684,6 +737,11 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
         if (pl.layerMaskAsGlobalMask === false) layer.effects.layerMaskHides = false;
       }
       Object.assign(layer, fromPsdBlending(pl));
+      // The file's Background layer is the bottom one, opaque over the whole canvas; it opens locked, as there.
+      if (!parentId && !layers.length && name === 'Background' && src && raster && !pl.mask && !pl.text && !pl.placedLayer && !pl.clipping && !fillSpec && (pl.opacity ?? 1) === 1 && blend === 'normal' && coversOpaque(src, atX, atY, doc.width, doc.height)) {
+        layer.locks = { ...(layer.locks ?? {}), all: true };
+        kept.push('Locked Background layer.');
+      }
       if (pl.clipping && base) layer.clipId = base.id;
       else base = layer;
       psdIds.set(pl, layer.id);
@@ -691,6 +749,7 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
     }
   };
   walk(psd.children, null);
+  if (closedGroups.length) doc.collapsed = closedGroups;
   // Layer Comps (33.3 part d): the document's list, then each layer's per-comp settings. Captured info bits are
   // 1 visibility, 2 position, 4 appearance; a position offset is relative to the layer's own position.
   const lc = psd.imageResources?.layerComps;

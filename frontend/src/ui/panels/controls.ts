@@ -7,15 +7,19 @@ export interface Row<T> { el: HTMLElement; set(v: T): void }
 
 export const fmt = (v: number): string => String(Number(v.toFixed(3)));
 
-export function sliderRow(label: string, min: number, max: number, step: number, onInput: (v: number) => void, limits: { min?: number; max?: number; def?: number } = {}): Row<number> {
+export function sliderRow(label: string, min: number, max: number, step: number, onInput: (v: number) => void, limits: { min?: number; max?: number; def?: number; log?: boolean } = {}): Row<number> {
   const lo = limits.min ?? min, hi = limits.max ?? max;
-  const root = el(`<div class="cv-field cv-slider"><span></span><div class="cv-slider-ctl"><input type="range" min="${min}" max="${max}" step="${step}"><input class="cv-num" type="number" min="${lo}" max="${hi}" step="${step}"></div></div>`);
+  // Logarithmic: the track runs 0 to 1000 and a position maps to min * (max / min) ^ (position / 1000), so small values get room.
+  const log = limits.log === true && min > 0 && max > min;
+  const toPos = (v: number): number => (log ? Math.round((1000 * Math.log(clamp(v, min, max) / min)) / Math.log(max / min)) : v);
+  const fromPos = (p: number): number => (log ? clamp(Number((min * Math.pow(max / min, p / 1000)).toPrecision(3)), min, max) : p);
+  const root = el(`<div class="cv-field cv-slider"><span></span><div class="cv-slider-ctl"><input type="range" min="${log ? 0 : min}" max="${log ? 1000 : max}" step="${log ? 1 : step}"><input class="cv-num" type="number" min="${lo}" max="${hi}" step="${step}"></div></div>`);
   setText(q(root, 'span'), label);
   const range = q(root, 'input[type="range"]') as HTMLInputElement;
   const box = q(root, 'input.cv-num') as HTMLInputElement;
   range.setAttribute('aria-label', label); box.setAttribute('aria-label', `${label} value`);   // named for assistive technology (1.53.4)
   range.addEventListener('input', () => {
-    const v = range.valueAsNumber;
+    const v = fromPos(range.valueAsNumber);
     box.value = fmt(v);
     onInput(v);
   });
@@ -24,13 +28,13 @@ export function sliderRow(label: string, min: number, max: number, step: number,
     if (!Number.isFinite(raw)) return;
     const v = clamp(raw, lo, hi);
     box.value = fmt(v);
-    range.value = String(v);
+    range.value = String(toPos(v));
     onInput(v);
   });
   box.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); box.blur(); } });
   if (limits.def !== undefined) {
     const def = limits.def;
-    q(root, 'span').addEventListener('dblclick', () => { range.value = String(def); box.value = fmt(def); onInput(def); });
+    q(root, 'span').addEventListener('dblclick', () => { range.value = String(toPos(def)); box.value = fmt(def); onInput(def); });
     q(root, 'span').title = 'Double-click to reset';
   }
   // Scrubbable label: a horizontal drag on the label moves the value across the slider's span in about 250 px; Shift is ten times faster, Alt ten times finer.
@@ -42,14 +46,14 @@ export function sliderRow(label: string, min: number, max: number, step: number,
     if (!scrub || e.pointerId !== scrub.id) return;
     const dx = e.clientX - scrub.x;
     if (!scrub.on) { if (Math.abs(dx) < 3) return; scrub.on = true; }
-    const per = ((max - min) / 250) * (e.shiftKey ? 10 : e.altKey ? 0.1 : 1);
-    range.value = String(clamp(Number((Math.round((scrub.v + dx * per) / step) * step).toFixed(6)), min, max));
+    const per = ((log ? 1000 : max - min) / 250) * (e.shiftKey ? 10 : e.altKey ? 0.1 : 1);
+    range.value = log ? String(clamp(Math.round(scrub.v + dx * per), 0, 1000)) : String(clamp(Number((Math.round((scrub.v + dx * per) / step) * step).toFixed(6)), min, max));
     range.dispatchEvent(new Event('input', { bubbles: true }));
   });
   const endScrub = (e: PointerEvent): void => { if (lab.hasPointerCapture(e.pointerId)) lab.releasePointerCapture(e.pointerId); scrub = null; };
   lab.addEventListener('pointerup', endScrub);
   lab.addEventListener('pointercancel', endScrub);
-  return { el: root, set(v) { range.value = String(v); setValue(box, fmt(v)); } };
+  return { el: root, set(v) { range.value = String(toPos(v)); setValue(box, fmt(v)); } };
 }
 
 /** With `onHover`, the choices show as the hover-preview menu: the value under the pointer or arrow keys, null when it closes. */

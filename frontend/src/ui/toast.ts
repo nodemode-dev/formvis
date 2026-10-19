@@ -1,5 +1,6 @@
 import { el } from './dom';
 import { icon } from './icons';
+import { loadPrefs } from './prefs';
 
 const timers = new WeakMap<Element, number>();
 
@@ -67,7 +68,7 @@ export function toast(text: string, kind: 'info' | 'error' = 'info', opts: Notic
   const root = document.getElementById('toast-root');
   if (!root) return;
   watchPointer(root);
-  const actions = opts.actions ?? [], ms = opts.ms ?? (actions.length ? 10000 : kind === 'error' ? 6000 : 3600), cls = `cv-toast${kind === 'error' ? ' is-error' : ''}`;
+  const actions = opts.actions ?? [], ms = opts.ms ?? (actions.length ? 10000 : loadPrefs().noticeSeconds * 1000 || (kind === 'error' ? 6000 : 3600)), cls = `cv-toast${kind === 'error' ? ' is-error' : ''}`;
   const arm = (n: Element): void => { window.clearTimeout(timers.get(n)); if (ms > 0) timers.set(n, window.setTimeout(() => n.remove(), ms)); };
   const same = Array.from(root.children).find((n) => (n as HTMLElement).dataset.text === text && n.className === cls && !actions.length && !actionsOf.has(n));
   if (same) { arm(same); return; }

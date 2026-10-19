@@ -1,4 +1,4 @@
-import { BLEND_MODES, CONTOURS, DEFAULT_GLOBAL_LIGHT, MAX_EXTRA, MULTI_EFFECTS, defaultEffects, effectsActive, effectsFromData, instances, withGlobalLight, type BevelContour, type BevelTexture, type BlendMode, type ContourId, type EffectExtras, type Engine, type GlobalLight, type LayerEffects, type MultiEffect, type RGB, allPatterns } from '../../engine';
+import { BLEND_MODES, CONTOURS, DEFAULT_GLOBAL_LIGHT, contourCurve, customContourId, customContourPoints, type ContourPoint, MAX_EXTRA, MULTI_EFFECTS, defaultEffects, effectsActive, effectsFromData, instances, withGlobalLight, type BevelContour, type BevelTexture, type BlendMode, type ContourId, type EffectExtras, type Engine, type GlobalLight, type LayerEffects, type MultiEffect, type RGB, allPatterns } from '../../engine';
 import { BLEND_IF_IDENTITY, type BlendIf, type StrokeGradient } from '../../engine/types';
 import { Dialog } from '../dialogs';
 import { el } from '../dom';
@@ -24,7 +24,7 @@ export class LayerStyleDialog extends Dialog {
   private sel = {} as Record<MultiEffect, number>;
   private layerId: string | null = null;
   private applied = false;
-  private blending: { blendIf: BlendIf; knockout: 'none' | 'shallow' | 'deep'; channels: [boolean, boolean, boolean]; blend: BlendMode; opacity: number; fill: number } = { blendIf: structuredClone(BLEND_IF_IDENTITY), knockout: 'none', channels: [true, true, true], blend: 'normal', opacity: 1, fill: 1 };
+  private blending: { blendIf: BlendIf; knockout: 'none' | 'shallow' | 'deep'; channels: [boolean, boolean, boolean]; clipGroup: boolean; shapes: boolean; blend: BlendMode; opacity: number; fill: number } = { blendIf: structuredClone(BLEND_IF_IDENTITY), knockout: 'none', channels: [true, true, true], clipGroup: false, shapes: true, blend: 'normal', opacity: 1, fill: 1 };
   private readonly syncs: Array<() => void> = [];
 
   constructor(private readonly engine: Engine) {
@@ -48,11 +48,14 @@ export class LayerStyleDialog extends Dialog {
     };
     const choice = (label: string, options: Array<[string, string]>, get: () => string, set: (v: string) => void): void => {
       const select = el<HTMLSelectElement>(`<select class="cv-input">${options.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select>`);
-      select.addEventListener('change', () => { set(select.value); this.changed(); });
+      const curved = options === contours;
+      const editor = curved ? this.contourEditor(get, (id) => { set(id); this.changed(); }) : null;
+      select.addEventListener('change', () => { set(select.value === 'custom' ? customContourId([{ x: 0, y: 0 }, { x: 0.5, y: 0.5 }, { x: 1, y: 1 }]) : select.value); editor?.sync(); this.changed(); });
       this.field(label, select);
-      this.syncs.push(() => { select.value = get(); });
+      if (editor) this.field(`${label} curve`, editor.el);
+      this.syncs.push(() => { const v = get(); select.value = v.startsWith('custom:') ? 'custom' : v; editor?.sync(); });
     };
-    const contours = CONTOURS.map((c) => [c.id, c.label] as [string, string]);
+    const contours: Array<[string, string]> = [...CONTOURS.map((c) => [c.id, c.label] as [string, string]), ['custom', 'Custom curve']];
     const blends = BLEND_MODES.map((m) => [m.id, m.label] as [string, string]);
     // Instances: each multi effect's controls edit the selected instance, since this.fx[k] is that very object.
     const multi = (k: MultiEffect): void => {
@@ -111,7 +114,9 @@ export class LayerStyleDialog extends Dialog {
       slider(t(`${label}: ${name}`), 0, 255, () => bl().blendIf[side][k], (v) => { const r = bl().blendIf[side]; r[k] = v; if (k === 0 && r[1] < v) r[1] = v; if (k === 1 && r[0] > v) r[0] = v; if (k === 2 && r[3] < v) r[3] = v; if (k === 3 && r[2] > v) r[2] = v; });
     }
     check('Blend Interior Effects as Group', () => !!fx().blendInterior, (v) => { if (v) fx().blendInterior = true; else delete fx().blendInterior; });
-    check('Layer Mask Hides Effects', () => fx().layerMaskHides !== false, (v) => { if (v) delete fx().layerMaskHides; else fx().layerMaskHides = false; });
+    check('Blend Clipped Layers as Group', () => bl().clipGroup, (v) => { bl().clipGroup = v; });
+    check('Transparency Shapes Layer', () => bl().shapes, (v) => { bl().shapes = v; });
+    check('Layer Mask Hides Effects',() => fx().layerMaskHides !== false, (v) => { if (v) delete fx().layerMaskHides; else fx().layerMaskHides = false; });
     check('Drop Shadow', () => fx().dropShadow.enabled, (v) => { fx().dropShadow.enabled = v; });
     multi('dropShadow');
     choice('Blend mode', blends, () => fx().dropShadow.blend, (v) => { fx().dropShadow.blend = v as BlendMode; });
@@ -276,6 +281,64 @@ export class LayerStyleDialog extends Dialog {
     this.onClose = () => { if (!this.applied) this.engine.previewLayerEffects(null); };
   }
 
+  /** The custom contour editor shared by every contour row: points on a curve, dragged in place, a click on empty
+   *  ground adds one, a double click removes one. Its points live in the contour id, so they save with the style. */
+  private contourEditor(get: () => string, put: (id: ContourId) => void): { el: HTMLCanvasElement; sync: () => void } {
+    const S = 160, canvas = el<HTMLCanvasElement>(`<canvas class="cv-contour-edit" width="${S}" height="${S}" style="width:${S}px;height:${S}px;touch-action:none;cursor:crosshair"></canvas>`);
+    const g = canvas.getContext('2d');
+    let pts: ContourPoint[] = [], drag = -1;
+    const px = (p: ContourPoint): [number, number] => [4 + p.x * (S - 8), S - 4 - p.y * (S - 8)];
+    const hit = (e: PointerEvent): number => {
+      const r = canvas.getBoundingClientRect();
+      const x = ((e.clientX - r.left) / r.width) * S, y = ((e.clientY - r.top) / r.height) * S;
+      return pts.findIndex((p) => { const [a, b] = px(p); return Math.hypot(a - x, b - y) <= 7; });
+    };
+    const at = (e: PointerEvent): ContourPoint => {
+      const r = canvas.getBoundingClientRect();
+      return { x: Math.min(1, Math.max(0, (((e.clientX - r.left) / r.width) * S - 4) / (S - 8))), y: Math.min(1, Math.max(0, 1 - (((e.clientY - r.top) / r.height) * S - 4) / (S - 8))) };
+    };
+    const draw = (): void => {
+      if (!g) return;
+      const css = getComputedStyle(canvas);
+      const pick = (name: string, fallback: string): string => css.getPropertyValue(name).trim() || fallback;
+      g.clearRect(0, 0, S, S);
+      g.fillStyle = pick('--bg-tertiary', '#222127'); g.fillRect(0, 0, S, S);
+      g.strokeStyle = pick('--border-light', '#34333a'); g.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) { const v = 4 + (i / 4) * (S - 8); g.beginPath(); g.moveTo(v, 4); g.lineTo(v, S - 4); g.moveTo(4, v); g.lineTo(S - 4, v); g.stroke(); }
+      const f = pts.length >= 2 ? contourCurve(customContourId(pts)) : null;
+      g.strokeStyle = pick('--accent-color', '#f97316'); g.lineWidth = 2; g.beginPath();
+      for (let i = 0; i <= 64; i++) { const t = i / 64, [x, y] = px({ x: t, y: Math.min(1, Math.max(0, f ? f(t) : t)) }); if (i) g.lineTo(x, y); else g.moveTo(x, y); }
+      g.stroke();
+      g.fillStyle = pick('--text-primary', '#f7f7f7');
+      for (const p of pts) { const [x, y] = px(p); g.beginPath(); g.arc(x, y, 4, 0, Math.PI * 2); g.fill(); }
+    };
+    const commit = (): void => { put(customContourId(pts)); draw(); };
+    canvas.addEventListener('pointerdown', (e) => {
+      const i = hit(e);
+      if (i >= 0) drag = i;
+      else if (pts.length < 32) { pts.push(at(e)); pts.sort((a, b) => a.x - b.x); drag = hit(e); commit(); }
+      canvas.setPointerCapture(e.pointerId);
+    });
+    canvas.addEventListener('pointermove', (e) => {
+      if (drag < 0) return;
+      const p = at(e), lo = drag > 0 ? pts[drag - 1].x + 0.002 : 0, hi = drag < pts.length - 1 ? pts[drag + 1].x - 0.002 : 1;
+      pts[drag] = { x: Math.min(hi, Math.max(lo, p.x)), y: p.y };
+      commit();
+    });
+    canvas.addEventListener('pointerup', () => { drag = -1; });
+    canvas.addEventListener('dblclick', (e) => {
+      const i = hit(e as unknown as PointerEvent);
+      if (i >= 0 && pts.length > 2) { pts.splice(i, 1); commit(); }
+    });
+    const sync = (): void => {
+      const own = customContourPoints(get());
+      const row = canvas.parentElement;
+      if (row) row.style.display = own ? '' : 'none';
+      if (own && drag < 0) { pts = own; draw(); }
+    };
+    return { el: canvas, sync };
+  }
+
   /** Opens on the active layer; with `focus`, scrolled to that section and, for an effect, the effect turned on. */
   show(focus?: StyleSection): void {
     const layer = this.engine.current?.activeLayer;
@@ -283,7 +346,7 @@ export class LayerStyleDialog extends Dialog {
     this.layerId = layer.id;
     this.applied = false;
     this.adopt(layer.effects ?? this.baseline());
-    this.blending = { blendIf: structuredClone(layer.blendIf ?? BLEND_IF_IDENTITY), knockout: layer.knockout ?? 'none', channels: layer.blendChannels ? [...layer.blendChannels] : [true, true, true], blend: layer.blend, opacity: layer.opacity, fill: layer.fill ?? 1 };
+    this.blending = { blendIf: structuredClone(layer.blendIf ?? BLEND_IF_IDENTITY), knockout: layer.knockout ?? 'none', channels: layer.blendChannels ? [...layer.blendChannels] : [true, true, true], clipGroup: layer.blendClipped === true, shapes: layer.transparencyShapes !== false, blend: layer.blend, opacity: layer.opacity, fill: layer.fill ?? 1 };
     if (focus && focus !== 'blending') this.fx[focus].enabled = true;
     this.light = { ...(this.engine.current?.doc.globalLight ?? DEFAULT_GLOBAL_LIGHT) };
     for (const sync of this.syncs) sync();
@@ -317,7 +380,7 @@ export class LayerStyleDialog extends Dialog {
   /** The styles the Styles panel has saved, as it keeps them. */
   private savedStyles(): Array<{ id: string; name: string; effects: unknown }> {
     try {
-      const r = JSON.parse(localStorage.getItem('formvis.stylePresets') ?? '[]') as unknown;
+      const r = [...(JSON.parse(localStorage.getItem('formvis.stylePresets') ?? '[]') as unknown[]), ...(this.engine.current?.doc.stylePresets ?? [])].filter((p, i, a) => !!p && a.findIndex((q) => (q as { id?: string }).id === (p as { id?: string }).id) === i) as unknown;
       return Array.isArray(r) ? r.filter((p): p is { id: string; name: string; effects: unknown } => !!p && typeof p.id === 'string' && typeof p.name === 'string') : [];
     } catch { return []; }
   }
@@ -372,6 +435,6 @@ export class LayerStyleDialog extends Dialog {
     const whole = this.assembled(), id = this.layerId, fx = effectsActive(whole) ? whole : null, cur = this.engine.current?.doc.globalLight ?? DEFAULT_GLOBAL_LIGHT;
     const light = this.light.angle !== cur.angle || this.light.altitude !== cur.altitude ? { ...this.light } : null;
     this.close();
-    if (id) { this.engine.applyStyleAndLight(id, fx, light, { blendIf: this.blending.blendIf, knockout: this.blending.knockout, channels: this.blending.channels, general: { blend: this.blending.blend, opacity: this.blending.opacity, fill: this.blending.fill } }); this.onApplied?.(fx ? structuredClone(fx) : null); }
+    if (id) { this.engine.applyStyleAndLight(id, fx, light, { blendIf: this.blending.blendIf, knockout: this.blending.knockout, channels: this.blending.channels, clipGroup: this.blending.clipGroup, shapes: this.blending.shapes, general: { blend: this.blending.blend, opacity: this.blending.opacity, fill: this.blending.fill } }); this.onApplied?.(fx ? structuredClone(fx) : null); }
   }
 }

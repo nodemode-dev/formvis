@@ -188,7 +188,23 @@ def _crypto_names(parts) -> dict:
     return out
 
 
+def _view_of(part, key: str) -> "tuple[str, str]":
+    """The stereo view a channel belongs to and its name without the view prefix. A multi-view file prefixes every view
+    but the default one (left.diffuse.R); a multi-part file names the view in each part's `view` attribute."""
+    def text(v) -> str:
+        return v.decode("utf-8", "replace") if isinstance(v, (bytes, bytearray)) else str(v)
+    mv = [text(v) for v in (part.header.get("multiView") or [])]
+    for v in mv:
+        if key.startswith(v + "."):
+            return v, key[len(v) + 1:]
+    own = part.header.get("view")
+    if own:
+        return text(own), key
+    return (mv[0] if mv else ""), key
+
+
 def _group_label(part, key: str) -> str:
+    key = _view_of(part, key)[1]
     if "." in key:
         return key.rsplit(".", 1)[0]
     return (part.name() or "Beauty") if key in ("RGBA", "RGB") else key
@@ -246,14 +262,44 @@ def _inspect_worker(arg, q: "mp.Queue[object]") -> None:
                     carriers.add(key)
                     continue
                 shape = np.asarray(ch.pixels).shape
-                groups.append({"key": key, "label": _group_label(p, key), "channels": int(shape[2]) if len(shape) == 3 else 1})
+                groups.append({"key": key, "label": _group_label(p, key), "channels": int(shape[2]) if len(shape) == 3 else 1, "view": _view_of(p, key)[0]})
             listing.append({"part": i, "name": p.name() or f"Part {i + 1}", "groups": groups})
         if picks is None:
-            q.put({"width": x1 - x0 + 1, "height": y1 - y0 + 1, "parts": listing,
+            seen = [g["view"] for lp in listing for g in lp["groups"]]
+            views = list(dict.fromkeys(v for v in seen if v)) if len(set(seen)) > 1 else []
+            q.put({"width": x1 - x0 + 1, "height": y1 - y0 + 1, "parts": listing, "views": views,
                    "crypto": [{"name": n, "objects": sorted(o)[:MAX_MATTES]} for n, o in sets.items()]})
             return
         out, meta = [], []
+
+        def rgba(i: int, key: str):
+            ch = parts[i].channels.get(key) if 0 <= i < len(parts) else None
+            if ch is None:
+                return None
+            px = np.asarray(ch.pixels, dtype=np.float32)
+            if px.ndim == 2:
+                px = np.stack([px, px, px], axis=2)
+            if px.shape[2] == 2:
+                px = np.dstack([px, np.zeros(px.shape[:2], np.float32)])
+            if px.shape[2] == 3:
+                px = np.dstack([px, np.ones(px.shape[:2], np.float32)])
+            return px[:, :, :4]
+
         for pick in picks[:MAX_PARTS]:
+            if "sum" in pick:
+                # A beauty precomp: the light groups added together in linear light, opaque.
+                found = [(int(s.get("part", 0)), rgba(int(s.get("part", 0)), str(s.get("key")))) for s in (pick["sum"] if isinstance(pick["sum"], list) else [])[:MAX_PARTS] if isinstance(s, dict)]
+                found = [(i, s) for i, s in found if s is not None]
+                if len(found) < 2 or any(s.shape != found[0][1].shape for _, s in found):
+                    continue
+                total = np.zeros(found[0][1].shape, np.float32)
+                for _, s in found:
+                    total[:, :, :3] += s[:, :, :3]
+                total[:, :, 3] = 1.0
+                bi = found[0][0]
+                meta.append({"name": str(pick.get("name") or "Beauty")[:60], "width": total.shape[1], "height": total.shape[0], "x": boxes[bi][0] - x0, "y": boxes[bi][1] - y0})
+                out.append(np.ascontiguousarray(total))
+                continue
             if "crypto" in pick:
                 objects = sets.get(str(pick["crypto"]), {})
                 obj = str(pick.get("object", ""))
@@ -278,7 +324,8 @@ def _inspect_worker(arg, q: "mp.Queue[object]") -> None:
                 px = np.dstack([px, np.zeros(px.shape[:2], np.float32)])
             if px.shape[2] == 3:
                 px = np.dstack([px, np.ones(px.shape[:2], np.float32)])
-            meta.append({"name": _group_label(parts[i], str(pick.get("key"))),"width": px.shape[1], "height": px.shape[0], "x": boxes[i][0] - x0, "y": boxes[i][1] - y0})
+            view = _view_of(parts[i], str(pick.get("key")))[0]
+            meta.append({"name": (f"{view} " if view else "") + _group_label(parts[i], str(pick.get("key"))), "width": px.shape[1], "height": px.shape[0], "x": boxes[i][0] - x0, "y": boxes[i][1] - y0})
             out.append(np.ascontiguousarray(px[:, :, :4]))
         q.put({"count": len(meta), "width": x1 - x0 + 1, "height": y1 - y0 + 1, "parts": meta, "pixels": out})
     except Exception:

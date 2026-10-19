@@ -102,8 +102,24 @@ export interface GallerySettings {
   pathDrawn?: boolean; pathLines?: LibPath | null;
 }
 
+/** Pin positions and iris radii are percents of the layer itself, not of the image grown by the blur's margin: the settings
+ *  are restated as percents of the grown image, so changing the blur never moves a pin. */
+function pinsOnLayer(g: GallerySettings, src: ImageData, scale: number, frame?: LibFrame | null): GallerySettings {
+  const m = Math.round((frame?.margin ?? 0) * scale), W = src.width, H = src.height;
+  if (m <= 0 || W <= 2 * m || H <= 2 * m) return g;
+  const fx = (W - 2 * m) / W, fy = (H - 2 * m) / H, ox = (m / W) * 100, oy = (m / H) * 100, out = { ...g } as unknown as Record<string, number | undefined>;
+  const at = (kx: string, ky: string): void => { const x = out[kx], y = out[ky]; if (typeof x === 'number') out[kx] = ox + x * fx; if (typeof y === 'number') out[ky] = oy + y * fy; };
+  const size = (kx: string, ky: string): void => { const x = out[kx], y = out[ky]; if (typeof x === 'number') out[kx] = x * fx; if (typeof y === 'number') out[ky] = y * fy; };
+  for (const n of ['pin1', 'pin2', 'pin3', 'pin4']) at(`${n}x`, `${n}y`);
+  at('irisX', 'irisY'); size('irisRx', 'irisRy');
+  for (const n of ['iris2', 'iris3']) { at(`${n}x`, `${n}y`); size(`${n}rx`, `${n}ry`); }
+  for (const [x, y] of [['pathSx', 'pathSy'], ['pathBx', 'pathBy'], ['pathEx', 'pathEy']]) at(x, y);
+  return out as unknown as GallerySettings;
+}
+
 /** One gallery filter on `src`, pixel distances scaled by `scale` for a scaled preview. */
-export function runGallery(kind: GalleryKind, g: GallerySettings, src: ImageData, scale: number, frame?: LibFrame | null): ImageData {
+export function runGallery(kind: GalleryKind, g0: GallerySettings, src: ImageData, scale: number, frame?: LibFrame | null): ImageData {
+  const g = kind === 'fieldBlur' || kind === 'irisBlur' || kind === 'pathBlur' ? pinsOnLayer(g0, src, scale, frame) : g0;
   switch (kind) {
     case 'radialBlur': return radialBlur(src, g.radialAmount, g.radialMethod, g.radialX, g.radialY, g.radialQuality);
     case 'surfaceBlur': return surfaceBlur(src, g.surfaceRadius * scale, g.surfaceThreshold);

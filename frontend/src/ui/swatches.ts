@@ -53,6 +53,8 @@ export class SwatchesPanel {
   private readonly sv: HTMLCanvasElement;
   private readonly hue: HTMLCanvasElement;
   private hsv: [number, number, number] = [0, 0, 0];
+  private fields!: HTMLElement;
+  private editBg = false;
 
   constructor(host: HTMLElement, private readonly engine: Engine) {
     this.list = loadEntries();
@@ -68,18 +70,74 @@ export class SwatchesPanel {
     const hint = swatches.querySelector('.cv-swatch-hint') as HTMLElement;
     hint.innerHTML = `${icon('plus', 12)}<span>Alt-click sets the background. Double-click names, groups or moves. Right-click removes.</span>`;
     hint.title = 'Click sets the foreground, Alt-click the background; double-click to name, group or reorder a swatch; right-click removes a swatch; + adds the foreground.';
-    const color = el('<div class="cv-color-page"><canvas class="cv-color-sv" aria-label="Saturation and brightness"></canvas><canvas class="cv-color-hue" aria-label="Hue"></canvas></div>');
+    const color = el(`<div class="cv-color-page"><div class="cv-color-pick"><canvas class="cv-color-sv" aria-label="Saturation and brightness"></canvas><canvas class="cv-color-hue" aria-label="Hue"></canvas></div><div class="cv-color-fields"><div class="cv-color-chips"><button class="cv-color-chip" type="button" data-chip="fg" title="Edit the foreground color" aria-label="Foreground color" aria-pressed="true"></button><button class="cv-color-chip" type="button" data-chip="bg" title="Edit the background color" aria-label="Background color" aria-pressed="false"></button><button class="cv-btn cv-btn-ghost" type="button" data-swap title="Swap foreground and background" aria-label="Swap foreground and background">${icon('swap', 12)}</button></div>${['H', 'S', 'B'].map((k, i) => `<span>${k}</span><input type="range" min="0" max="${i ? 100 : 360}" step="1" data-hsb="${i}" aria-label="${['Hue', 'Saturation', 'Brightness'][i]}"><input class="cv-input" type="number" min="0" max="${i ? 100 : 360}" step="1" data-hsbn="${i}" aria-label="${['Hue', 'Saturation', 'Brightness'][i]} value">`).join('')}<span>#</span><input class="cv-input cv-color-hex" type="text" maxlength="7" spellcheck="false" aria-label="Hex color" data-hex></div></div>`);
+    this.fields = color;
     this.sv = color.querySelector('.cv-color-sv') as HTMLCanvasElement;
     // Repainted whenever it gains a size: shown while minimised or before layout, it used to stay blank.
     new ResizeObserver(() => { if (this.sv.clientWidth) this.paintColor(); }).observe(this.sv);
     this.hue = color.querySelector('.cv-color-hue') as HTMLCanvasElement;
     this.group = new PanelGroup(host, 'swatches', [{ id: 'swatches', label: 'Swatches', body: swatches }, { id: 'color', label: 'Color', body: color }], 'Swatches and Color');
     this.group.onTab = () => requestAnimationFrame(() => this.paintColor());
-    this.group.setMenu(() => ['swatch-add', 'swatches-reset']);
+    this.group.setMenu(() => ['swatch-add', 'swatches-reset', '-', 'swatches-load', 'swatches-save']);
     this.renderGrid();
     this.bindColor();
-    engine.on('colors', () => { this.hsv = toHsv(engine.fg); this.paintColor(); });
-    this.hsv = toHsv(engine.fg);
+    this.bindFields();
+    engine.on('colors', () => { this.pull(); this.paintColor(); });
+    this.pull();
+  }
+
+  private target(): RGB { return this.editBg ? this.engine.bg : this.engine.fg; }
+  private push(c: RGB): void { if (this.editBg) this.engine.setColors(undefined, c); else this.engine.setColors(c); }
+
+  /** Reads the colour being edited into the square, the sliders, the hex field and the two chips, in place. */
+  private pull(): void {
+    const c = this.target(), h = toHsv(c);
+    // A grey keeps the hue the person last chose.
+    this.hsv = h[1] === 0 || h[2] === 0 ? [this.hsv[0], h[1], h[2]] : h;
+    const q = <T extends HTMLElement>(s: string): T => this.fields.querySelector(s) as T;
+    const vals = [Math.round(this.hsv[0]), Math.round(this.hsv[1] * 100), Math.round(this.hsv[2] * 100)];
+    for (let i = 0; i < 3; i++) {
+      const r = q<HTMLInputElement>(`[data-hsb="${i}"]`), n = q<HTMLInputElement>(`[data-hsbn="${i}"]`);
+      if (r.value !== String(vals[i])) r.value = String(vals[i]);
+      if (document.activeElement !== n && n.value !== String(vals[i])) n.value = String(vals[i]);
+    }
+    const hx = q<HTMLInputElement>('[data-hex]');
+    if (document.activeElement !== hx) hx.value = hex(c);
+    q<HTMLElement>('[data-chip="fg"]').style.background = hex(this.engine.fg);
+    q<HTMLElement>('[data-chip="bg"]').style.background = hex(this.engine.bg);
+  }
+
+  private bindFields(): void {
+    const q = <T extends HTMLElement>(s: string): T => this.fields.querySelector(s) as T;
+    const setHsb = (i: number, v: number): void => {
+      if (!Number.isFinite(v)) return;
+      const next: [number, number, number] = [this.hsv[0], this.hsv[1], this.hsv[2]];
+      next[i] = i === 0 ? Math.min(360, Math.max(0, v)) : Math.min(100, Math.max(0, v)) / 100;
+      this.hsv = next;
+      this.push(fromHsv(next[0] >= 360 ? 359.99 : next[0], next[1], next[2]));
+    };
+    for (let i = 0; i < 3; i++) {
+      q<HTMLInputElement>(`[data-hsb="${i}"]`).addEventListener('input', (e) => { const v = (e.target as HTMLInputElement).valueAsNumber; setHsb(i, v); });
+      const n = q<HTMLInputElement>(`[data-hsbn="${i}"]`);
+      n.addEventListener('change', () => setHsb(i, n.valueAsNumber));
+      n.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') n.blur(); });
+    }
+    const hx = q<HTMLInputElement>('[data-hex]');
+    const commit = (): void => {
+      const t = hx.value.trim().replace(/^#?/, '#').toLowerCase();
+      const full = /^#[0-9a-f]{3}$/.test(t) ? `#${t[1]}${t[1]}${t[2]}${t[2]}${t[3]}${t[3]}` : t;
+      if (HEX.test(full)) this.push(rgb(full)); else hx.value = hex(this.target());
+    };
+    hx.addEventListener('change', commit);
+    hx.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') { commit(); hx.blur(); } });
+    for (const which of ['fg', 'bg'] as const) {
+      q<HTMLElement>(`[data-chip="${which}"]`).addEventListener('click', () => {
+        this.editBg = which === 'bg';
+        for (const w of ['fg', 'bg']) q<HTMLElement>(`[data-chip="${w}"]`).setAttribute('aria-pressed', String(w === which));
+        this.pull(); this.paintColor();
+      });
+    }
+    q<HTMLElement>('[data-swap]').addEventListener('click', () => this.engine.swapColors());
   }
 
   /** Brings one of this group's tabs to the front (Window > Color). */
@@ -172,8 +230,8 @@ export class SwatchesPanel {
       cv.addEventListener('pointermove', (e) => { if (down) at(e); });
       cv.addEventListener('pointerup', () => { down = false; });
     };
-    drag(this.sv, (x, y) => { this.hsv = [this.hsv[0], x, 1 - y]; this.engine.setColors(fromHsv(...this.hsv)); });
-    drag(this.hue, (_x, y) => { this.hsv = [y * 359.99, this.hsv[1], this.hsv[2]]; this.engine.setColors(fromHsv(...this.hsv)); });
+    drag(this.sv, (x, y) => { this.hsv = [this.hsv[0], x, 1 - y]; this.push(fromHsv(...this.hsv)); });
+    drag(this.hue, (_x, y) => { this.hsv = [y * 359.99, this.hsv[1], this.hsv[2]]; this.push(fromHsv(...this.hsv)); });
   }
 
   private paintColor(): void {

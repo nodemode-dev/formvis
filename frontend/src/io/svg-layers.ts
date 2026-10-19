@@ -1,12 +1,15 @@
 import type { Anchor, SubPath, VectorPath } from '../engine/paths';
-import type { RGB } from '../engine/types';
+import type { BlendMode, RGB, ShapeGradient } from '../engine/types';
 
 /** File > Open SVG as Layers (DEV_PLAN 34.4): an SVG read into one editable shape per drawable element, in document
  *  order, with group transforms and the viewBox folded into the outlines. Opacity, dash arrays (as dashed or dotted),
- *  use and symbol, and text (as point type) are carried; a gradient fill becomes its first stop's colour. Clip paths,
- *  masks, images and patterns are counted as skipped. */
+ *  use and symbol, and text (as point type) are carried; a linear or radial gradient fill is kept as the shape's
+ *  gradient (its first stop's colour stays as the fallback fill), a group of two or more elements or with an id becomes
+ *  a folder, and mix-blend-mode becomes the layer's blend mode. Clip paths, masks, images and patterns are counted as
+ *  skipped. */
 
-export interface SvgShape { name: string; path: VectorPath; fill: RGB | null; stroke: { color: RGB; width: number; dash?: 'solid' | 'dashed' | 'dotted' } | null; opacity: number }
+export interface SvgGroup { key: number; name: string; blend?: BlendMode }
+export interface SvgShape { name: string; path: VectorPath; fill: RGB | null; stroke: { color: RGB; width: number; dash?: 'solid' | 'dashed' | 'dotted' } | null; opacity: number; gradient?: ShapeGradient; blend?: BlendMode; /** The folders it sits in, outermost first. */ groups?: SvgGroup[] }
 /** A text element (34.4d), to become a point type layer with its baseline at (x, y) in document pixels. */
 export interface SvgText { content: string; x: number; y: number; size: number; family: string; color: RGB; align: 'left' | 'center' | 'right'; bold: boolean; italic: boolean; opacity: number }
 export interface SvgLayers { width: number; height: number; shapes: SvgShape[]; texts: SvgText[]; skipped: number }
@@ -261,7 +264,9 @@ export function svgToShapes(text: string): SvgLayers {
     return o;
   };
 
-  const walk = (el: Element, parent: Mat, inherited: Paint): void => {
+  const BLENDS: Record<string, BlendMode> = { multiply: 'multiply', screen: 'screen', overlay: 'overlay', darken: 'darken', lighten: 'lighten', 'color-dodge': 'color-dodge', 'color-burn': 'color-burn', 'hard-light': 'hard-light', 'soft-light': 'soft-light', difference: 'difference', exclusion: 'exclusion', hue: 'hue', saturation: 'saturation', color: 'color', luminosity: 'luminosity' };
+  let groupKey = 0;
+  const walk = (el: Element, parent: Mat, inherited: Paint, groups: SvgGroup[] = []): void => {
     const tag = el.localName.toLowerCase();
     if (SKIPPED.has(tag)) { skipped++; return; }
     if (IGNORED.has(tag)) return;
@@ -292,8 +297,16 @@ export function svgToShapes(text: string): SvgLayers {
       });
       return;
     }
+    const blend = BLENDS[(st['mix-blend-mode'] ?? '').trim().toLowerCase()];
     if (tag === 'g' || tag === 'svg' || tag === 'a' || tag === 'switch') {
-      for (const child of Array.from(el.children)) walk(child, m, paint);
+      const id = tag === 'g' ? el.getAttribute('id')?.trim() : '';
+      let inside = groups;
+      if (tag === 'g' && (id || Array.from(el.children).length >= 2)) {
+        let name = id ? id.slice(0, 60) : '';
+        if (!name) { const c = (counts.get('group') ?? 0) + 1; counts.set('group', c); name = `group ${c}`; }
+        inside = [...groups, { key: ++groupKey, name, ...(blend ? { blend } : {}) }];
+      }
+      for (const child of Array.from(el.children)) walk(child, m, paint, inside);
       return;
     }
     const a = (k: string): number => { const n = parseFloat(el.getAttribute(k) ?? ''); return Number.isFinite(n) ? n : 0; };
@@ -321,7 +334,7 @@ export function svgToShapes(text: string): SvgLayers {
       if (!target || active.has(target)) { skipped++; return; }
       const um = mul(m, [1, 0, 0, 1, a('x'), a('y')]);
       active.add(target);
-      if (target.localName.toLowerCase() === 'symbol') { for (const child of Array.from(target.children)) walk(child, um, paint); } else walk(target, um, paint);
+      if (target.localName.toLowerCase() === 'symbol') { for (const child of Array.from(target.children)) walk(child, um, paint, groups); } else walk(target, um, paint, groups);
       active.delete(target);
       return;
     } else return;
@@ -343,7 +356,8 @@ export function svgToShapes(text: string): SvgLayers {
     const id = el.getAttribute('id');
     let name = id && id.trim() ? id.trim().slice(0, 60) : '';
     if (!name) { const c = (counts.get(tag) ?? 0) + 1; counts.set(tag, c); name = `${tag} ${c}`; }
-    shapes.push({ name, path, fill, stroke, opacity });
+    const gradient = fill ? gradientOf(paint.fill, m) : null;
+    shapes.push({ name, path, fill, stroke, opacity, ...(gradient ? { gradient } : {}), ...(blend ? { blend } : {}), ...(groups.length ? { groups } : {}) });
   };
 
   // Ids, for use references and gradient links; the guard stops a use that reaches itself.
@@ -366,6 +380,47 @@ export function svgToShapes(text: string): SvgLayers {
     if (!ref) return parseColor(v);
     const first = stopColor(byId.get(ref[1]), 0);
     return parseColor(first ?? v);
+  }
+  /** A gradient attribute, looked up through the href chain. */
+  const gradAttr = (g: Element | undefined, k: string, hops = 0): string | null => {
+    if (!g || hops > 4) return null;
+    const own = g.getAttribute(k);
+    if (own !== null) return own;
+    const href = g.getAttribute('href') ?? g.getAttribute('xlink:href') ?? '';
+    return href.startsWith('#') ? gradAttr(byId.get(href.slice(1)), k, hops + 1) : null;
+  };
+  const gradStops = (g: Element | undefined, hops = 0): ShapeGradient['stops'] => {
+    if (!g || hops > 4) return [];
+    const own = Array.from(g.children).filter((c) => c.localName.toLowerCase() === 'stop');
+    if (!own.length) {
+      const href = g.getAttribute('href') ?? g.getAttribute('xlink:href') ?? '';
+      return href.startsWith('#') ? gradStops(byId.get(href.slice(1)), hops + 1) : [];
+    }
+    let last = 0;
+    return own.flatMap((s) => {
+      const decl = (k: string): string | null => { const d = new RegExp(`(?:^|;)\\s*${k}\\s*:\\s*([^;]+)`, 'i').exec(s.getAttribute('style') ?? ''); return d ? d[1].trim() : s.getAttribute(k); };
+      const off = decl('offset') ?? s.getAttribute('offset') ?? '0', n = parseFloat(off);
+      last = Math.max(last, Math.min(1, Math.max(0, Number.isFinite(n) ? (off.trim().endsWith('%') ? n / 100 : n) : 0)));
+      const color = parseColor(decl('stop-color') ?? '#000000'), op = parseFloat(decl('stop-opacity') ?? '1');
+      return color ? [{ at: last, color, ...(Number.isFinite(op) && op < 1 ? { alpha: Math.max(0, op) } : {}) }] : [];
+    });
+  };
+  /** A linear or radial gradient paint as the shape's gradient: a linear one's direction goes through the gradient
+   *  transform and the element's matrix to an angle; the stops, their opacity and the href links are carried. */
+  function gradientOf(v: string, m: Mat): ShapeGradient | null {
+    const ref = /^\s*url\(\s*['"]?#([^'")\s]+)['"]?\s*\)/i.exec(v);
+    const g = ref ? byId.get(ref[1]) : undefined, kind = g?.localName.toLowerCase();
+    if (!g || (kind !== 'lineargradient' && kind !== 'radialgradient')) return null;
+    const stops = gradStops(g);
+    if (!stops.length) return null;
+    if (kind === 'radialgradient') return { type: 'radial', angle: 0, stops };
+    const val = (k: string, d: number): number => { const s = gradAttr(g, k); const n = s === null ? NaN : parseFloat(s); return Number.isFinite(n) ? (s!.trim().endsWith('%') ? n / 100 : n) : d; };
+    let dx = val('x2', 1) - val('x1', 0), dy = val('y2', 0) - val('y1', 0);
+    const gt = parseTransform(gradAttr(g, 'gradientTransform'));
+    [dx, dy] = [gt[0] * dx + gt[2] * dy, gt[1] * dx + gt[3] * dy];
+    [dx, dy] = [m[0] * dx + m[2] * dy, m[1] * dx + m[3] * dy];
+    if (Math.abs(dx) + Math.abs(dy) < 1e-9) return null;
+    return { type: 'linear', angle: Math.round((Math.atan2(dy, dx) * 180) / Math.PI * 100) / 100, stops };
   }
 
   walk(root, base, { fill: 'black', stroke: 'none', sw: 1, op: 1, fo: 1, so: 1, dash: 'none', family: 'sans-serif', size: 16, weight: 'normal', fstyle: 'normal', anchor: 'start' });

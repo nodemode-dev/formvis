@@ -20,7 +20,7 @@ import { StrokeBuffer, TipAlpha, levelOf } from './dab-buffer';
 /** `flow` (0 to 1, default 1) is Flow: how much paint a quarter of the diameter of travel lays down, whatever
  *  the spacing, so paint builds within a stroke as dabs overlap, up to `opacity`, which caps the stroke as a whole. */
 /** aliased (the Pencil): dabs are pixel-exact circles, every pixel painted fully or not at all. */
-export interface StrokeStyle { square?: boolean; bg?: RGB; aliased?: boolean; diameter: number; hardness: number; opacity: number; color: RGB; tip?: SampledTip | null; flow?: number; dabColor?: ((x: number, y: number) => RGB | null) | null }
+export interface StrokeStyle { square?: boolean; bg?: RGB; aliased?: boolean; diameter: number; hardness: number; opacity: number; color: RGB; tip?: SampledTip | null; flow?: number; dabColor?: ((x: number, y: number, share?: { wet: number; mix: number }) => RGB | null) | null }
 
 /** A sampled tip (from an .abr file) as the brush's colour with the tip's greys as alpha, its longer side `sizePx`. */
 function sampledTip(sizePx: number, tip: SampledTip, color: RGB): Surface {
@@ -325,12 +325,15 @@ export class PixelStroke {
       this.dualAspect = own ? this.tipAspect : { x: 1, y: 1 };
     }
     if (shape.texture.on && pattern) {
-      const w = pattern.width, h = pattern.height, t = createSurface(w, h), c = ctxOf(t), src = ctxOf(pattern).getImageData(0, 0, w, h), out = c.createImageData(w, h), depth = shape.texture.depth / 100;
+      const tx0 = shape.texture, perDab = !!tx0.eachTip || (tx0.depthJitter ?? 0) > 0 || (tx0.depthControl ?? 'off') !== 'off';
+      if (perDab) { if (tx0.eachTip) this.cutLayer = takeSurface(this.raster.width, this.raster.height); else this.depthLayer = takeSurface(this.raster.width, this.raster.height); }
+      const keep = !!tx0.eachTip, w = pattern.width, h = pattern.height, t = createSurface(w, h), c = ctxOf(t), src = ctxOf(pattern).getImageData(0, 0, w, h), out = c.createImageData(w, h), depth = perDab ? 1 : shape.texture.depth / 100;
       const tx = shape.texture, gain = (tx.contrast ?? 0) >= 0 ? 1 / (1 - 0.99 * ((tx.contrast ?? 0) / 100)) : 1 + (tx.contrast ?? 0) / 100, lift = (tx.brightness ?? 0) / 100;
       for (let i = 0; i < src.data.length; i += 4) {
         let lum = (0.299 * src.data[i] + 0.587 * src.data[i + 1] + 0.114 * src.data[i + 2]) / 255;
         lum = Math.min(1, Math.max(0, (lum - 0.5) * gain + 0.5 + lift));
-        out.data[i + 3] = Math.round(255 * depth * (tx.invert ? lum : 1 - lum));
+        const cutUnit = tx.invert ? lum : 1 - lum;
+        out.data[i + 3] = Math.round(255 * (keep ? 1 - cutUnit : depth * cutUnit));
       }
       c.putImageData(out, 0, 0);
       this.textureTile = t;
@@ -445,6 +448,7 @@ export class PixelStroke {
       c.globalAlpha = 1;
     }
     this.wetMark(this.toWin, p.x, p.y, rx, ry);
+    this.textureMark(p.x, p.y, Math.max(rx, ry), pressure);
     this.pending = unionRect(this.pending, hit);
     this.touched = unionRect(this.touched, hit);
   }
@@ -459,6 +463,83 @@ export class PixelStroke {
     c.fillStyle = '#000';
     c.beginPath(); c.ellipse(cx, cy, Math.max(0.1, rx * 0.55), Math.max(0.1, ry * 0.55), 0, 0, Math.PI * 2); c.fill();
   }
+  /** Texture laid dab by dab (Texture Each Tip, Depth Jitter or a Depth control): each dab's disc of the pattern, at that
+   *  dab's depth and place, gathered over the stroke; compose cuts the paint by it. */
+  private cutLayer: Surface | null = null;
+  private cutPat: CanvasPattern | null = null;
+  private texTemp: Surface | null = null;
+  private depthLayer: Surface | null = null;
+  private textureMark(x: number, y: number, r: number, pressure: number): void {
+    const L = this.cutLayer ?? this.depthLayer, tx = this.shape?.texture;
+    if (!L || !tx || !this.textureTile) return;
+    const c = ctxOf(L);
+    const ctl = tx.depthControl ?? 'off', lo = (tx.minDepth ?? 0) / 100, hi = tx.depth / 100;
+    const v = ctl === 'pressure' ? pressure : ctl === 'fade' ? 1 - Math.min(1, this.steps / this.fadeLen) : ctl === 'wheel' ? (this.pose.wheel ?? 1) : 1;
+    const depth = Math.max(0, Math.min(1, (lo + (hi - lo) * Math.max(0, Math.min(1, v))) * (1 - ((tx.depthJitter ?? 0) / 100) * this.rnd())));
+    c.save();
+    setMat(c, this.toWin);
+    c.beginPath();
+    c.arc(x, y, Math.max(0.5, r), 0, Math.PI * 2);
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    if (this.cutLayer) {
+      // Texture Each Tip: this dab keeps its paint where its own place in the pattern is light, to the depth set; dabs add up.
+      this.cutPat ??= c.createPattern(this.textureTile, 'repeat');
+      if (!this.cutPat) { c.restore(); return; }
+      const k = tx.scale / 100, m = mul(this.toWin, [k, 0, 0, k, this.rnd() * this.textureTile.width * k, this.rnd() * this.textureTile.height * k]);
+      this.cutPat.setTransform(new DOMMatrix([m[0], m[1], m[2], m[3], m[4], m[5]]));
+      c.globalAlpha = 1 - depth;
+      c.fillStyle = '#000';
+      c.fill();
+      c.globalAlpha = 1;
+      c.fillStyle = this.cutPat;
+      c.fill();
+    } else {
+      // Depth Jitter or a Depth control: the depth map takes this dab's depth where it falls, the latest dab winning.
+      c.clip();
+      c.clearRect(0, 0, c.canvas.width, c.canvas.height);
+      c.globalAlpha = depth;
+      c.fillStyle = '#000';
+      c.fillRect(0, 0, c.canvas.width, c.canvas.height);
+    }
+    c.restore();
+  }
+
+  /** The texture applied to the stroke's coverage drawn in `c` over `win`: the pattern's cut (the dab-by-dab layer, or the
+   *  pattern tiled at Scale across the window) taken from the coverage by the texture's mode. */
+  private cutTexture(c: Ctx2D, win: Rect): void {
+    const tx = (this.shape as BrushShape).texture, mode = tx.mode ?? 'multiply';
+    let cut: Surface | null = this.cutLayer;
+    const keep = !!cut;
+    if (!cut) {
+      const pat = c.createPattern(this.textureTile as Surface, 'repeat');
+      if (!pat) return;
+      const k = tx.scale / 100, m = mul(this.toWin, [k, 0, 0, k, 0, 0]);
+      pat.setTransform(new DOMMatrix([m[0], m[1], m[2], m[3], m[4], m[5]]));
+      if (mode === 'multiply' && !this.depthLayer) {
+        c.globalCompositeOperation = 'destination-out';
+        c.fillStyle = pat;
+        c.fillRect(win.x, win.y, win.w, win.h);
+        return;
+      }
+      this.texTemp ??= takeSurface(this.ww, this.wh);
+      const t = ctxOf(this.texTemp);
+      openFrame(t, win);
+      t.fillStyle = pat;
+      t.fillRect(win.x, win.y, win.w, win.h);
+      if (this.depthLayer) { t.globalCompositeOperation = 'destination-in'; t.drawImage(this.depthLayer, 0, 0); }
+      t.restore();
+      cut = this.texTemp;
+    }
+    if (mode === 'multiply') { c.globalCompositeOperation = keep ? 'destination-in' : 'destination-out'; c.drawImage(cut, 0, 0); return; }
+    const paint = c.getImageData(win.x, win.y, win.w, win.h), cutPx = ctxOf(cut).getImageData(win.x, win.y, win.w, win.h).data, d = paint.data, half = tx.depth / 200;
+    for (let i = 3; i < d.length; i += 4) {
+      const a = d[i] / 255, t = keep ? 1 - cutPx[i] / 255 : cutPx[i] / 255;
+      if (a === 0) continue;
+      const out = mode === 'subtract' ? a - t : mode === 'darken' ? Math.min(a, 1 - t) : a + half - t;
+      d[i] = Math.round(255 * Math.max(0, Math.min(1, out)));
+    }
+    c.putImageData(paint, win.x, win.y);
+  }
   private transfer: BrushShape['transfer'] | null = null;
   private recolor: Surface | null = null;
 
@@ -471,19 +552,36 @@ export class PixelStroke {
     else if (t.control === 'fade') k *= 1 - Math.min(1, this.steps / this.fadeLen);
     else if (t.control === 'tilt') k *= 1 - Math.min(90, Math.hypot(this.pose.tiltX, this.pose.tiltY)) / 90;
     else if (t.control === 'rotation') k *= 1 - (((this.pose.twist % 360) + 360) % 360) / 360;
+    else if (t.control === 'wheel') k *= Math.max(0, Math.min(1, this.pose.wheel ?? 1));
     return Math.max(0, k);
+  }
+
+  /** What a dab keeps of the Mixer Brush's Wet and Mix settings: Transfer's wetness and mix jitters (a random share
+   *  lost) and their controls (pressure, fade, tilt, rotation or the stylus wheel); 1 each when Transfer is off. */
+  private mixShare(pressure: number): { wet: number; mix: number } {
+    const t = this.transfer;
+    if (!t) return { wet: 1, mix: 1 };
+    const by = (c: string | undefined): number => {
+      if (c === 'pressure') return Math.max(0, Math.min(1, pressure));
+      if (c === 'fade') return 1 - Math.min(1, this.steps / this.fadeLen);
+      if (c === 'tilt') return 1 - Math.min(90, Math.hypot(this.pose.tiltX, this.pose.tiltY)) / 90;
+      if (c === 'rotation') return 1 - (((this.pose.twist % 360) + 360) % 360) / 360;
+      if (c === 'wheel') return Math.max(0, Math.min(1, this.pose.wheel ?? 1));
+      return 1;
+    };
+    return { wet: (1 - Math.random() * ((t.wetJitter ?? 0) / 100)) * by(t.wetControl), mix: (1 - Math.random() * ((t.mixJitter ?? 0) / 100)) * by(t.mixControl) };
   }
 
   /** The tip for this dab: from the style's colour source when it has one (the Mixer Brush, 1.56.2), else coloured by
    *  Color Dynamics (towards the background, hue, saturation and brightness varied), else the stroke's own. */
   private dabTip(x = NaN, y = NaN): Surface {
-    const own = this.style.dabColor && !Number.isNaN(x) ? this.style.dabColor(x, y) : null;
+    const own = this.style.dabColor && !Number.isNaN(x) ? this.style.dabColor(x, y, this.mixShare(this.curPressure)) : null;
     if (own) return this.tinted(own.r, own.g, own.b);
     const cd = this.colorDyn;
     if (!cd) return this.tip;
     if (cd.perTip === false && this.strokeRgb) return this.tinted(...this.strokeRgb);
     const fg = this.style.color, bg = this.style.bg ?? fg, ctl = cd.fgBgControl ?? 'off';
-    const t = ctl === 'pressure' ? (1 - this.curPressure) * (cd.fgBg / 100) : ctl === 'fade' ? Math.min(1, this.steps / this.fadeLen) * (cd.fgBg / 100) : Math.random() * (cd.fgBg / 100);
+    const t = ctl === 'pressure' ? (1 - this.curPressure) * (cd.fgBg / 100) : ctl === 'fade' ? Math.min(1, this.steps / this.fadeLen) * (cd.fgBg / 100) : ctl === 'wheel' ? (1 - (this.pose.wheel ?? 1)) * (cd.fgBg / 100) : Math.random() * (cd.fgBg / 100);
     let [h, sat, v] = toHsv(fg.r + (bg.r - fg.r) * t, fg.g + (bg.g - fg.g) * t, fg.b + (bg.b - fg.b) * t);
     h = (h + (Math.random() * 2 - 1) * (cd.hue / 100) * 0.5 + 1) % 1;
     sat = Math.max(0, Math.min(1, sat + (Math.random() * 2 - 1) * (cd.saturation / 100)));
@@ -553,6 +651,7 @@ export class PixelStroke {
       else if (sctl === 'fade') sizeK *= 1 - Math.min(1, this.steps / this.fadeLen);
       else if (sctl === 'tilt') sizeK *= 1 - Math.min(1, (tilt * (sh.tiltScale ?? 100)) / 9000);
       else if (sctl === 'rotation') sizeK *= 1 - (((pose.twist % 360) + 360) % 360) / 360;
+      else if (sctl === 'wheel') sizeK *= Math.max(0, Math.min(1, pose.wheel ?? 1));
       const r = base * Math.max((sh.minDiameter ?? 0) / 100, sizeK);
       let angle = sh.angle;
       if (sh.angleControl === 'direction') angle += this.dir;
@@ -560,16 +659,18 @@ export class PixelStroke {
       else if (sh.angleControl === 'rotation') angle += pose.twist;
       else if (sh.angleControl === 'initial') angle += this.dir0 ?? this.dir;
       else if (sh.angleControl === 'fade') angle += Math.min(1, this.steps / this.fadeLen) * 360;
+      else if (sh.angleControl === 'wheel') angle += (pose.wheel ?? 0) * 360;
       angle += (rnd() * 2 - 1) * (sh.angleJitter / 100) * 180;
       let round = sh.roundness / 100;
       if (sh.roundnessControl === 'tilt') round *= 1 - tilt / 90;
       else if (sh.roundnessControl === 'rotation') round *= 1 - (((pose.twist % 360) + 360) % 360) / 360;
       else if (sh.roundnessControl === 'fade') round *= 1 - Math.min(1, this.steps / this.fadeLen);
+      else if (sh.roundnessControl === 'wheel') round *= Math.max(0, Math.min(1, pose.wheel ?? 1));
       round *= 1 - (sh.roundnessJitter / 100) * rnd();
       if (sh.projection && tilt > 0) { angle += (Math.atan2(pose.tiltY, pose.tiltX) * 180) / Math.PI; round *= 1 - 0.75 * (tilt / 90); }
       if (varied) round = Math.max(sh.minRoundness / 100, round);
       round = Math.max(0.01, Math.min(1, round));
-      const sc = sh.scatterControl ?? 'off', spread = (sh.scatter / 100) * base * 2 * (sc === 'pressure' ? Math.max(0, Math.min(1, pressure)) : sc === 'fade' ? 1 - Math.min(1, this.steps / this.fadeLen) : 1);
+      const sc = sh.scatterControl ?? 'off', spread = (sh.scatter / 100) * base * 2 * (sc === 'pressure' ? Math.max(0, Math.min(1, pressure)) : sc === 'fade' ? 1 - Math.min(1, this.steps / this.fadeLen) : sc === 'wheel' ? Math.max(0, Math.min(1, pose.wheel ?? 1)) : 1);
       let x = p.x, y = p.y;
       if (spread > 0) {
         if (sh.bothAxes) { x += (rnd() * 2 - 1) * spread; y += (rnd() * 2 - 1) * spread; }
@@ -587,6 +688,7 @@ export class PixelStroke {
         c.globalAlpha = 1;
       }
       this.wetMark(at, 0, 0, rx, ry);
+      this.textureMark(x, y, Math.max(rx, ry), pressure);
       if (this.dualPaint && this.dualTip) {
         if (!sh.dual.spacing) this.layDual(x, y);
         else if (k === 0) this.walkDual(p);
@@ -656,16 +758,7 @@ export class PixelStroke {
       openFrame(c, win);
       c.drawImage(this.paint, 0, 0);
       if (this.dualPaint) { c.globalCompositeOperation = this.shape?.dual.mode === 'subtract' ? 'destination-out' : 'destination-in'; c.drawImage(this.dualPaint, 0, 0); }
-      if (this.textureTile && this.shape) {
-        const pat = c.createPattern(this.textureTile, 'repeat');
-        if (pat) {
-          const k = this.shape.texture.scale / 100, m = mul(this.toWin, [k, 0, 0, k, 0, 0]);
-          pat.setTransform(new DOMMatrix([m[0], m[1], m[2], m[3], m[4], m[5]]));
-          c.globalCompositeOperation = 'destination-out';
-          c.fillStyle = pat;
-          c.fillRect(win.x, win.y, win.w, win.h);
-        }
-      }
+      if (this.textureTile && this.shape) this.cutTexture(c, win);
       if (this.wetInner) { c.globalCompositeOperation = 'destination-out'; c.globalAlpha = 0.45; c.drawImage(this.wetInner, 0, 0); c.globalAlpha = 1; }   // the middle lighter, the rim full
       c.restore();
       coverage = this.shaped;
@@ -763,6 +856,13 @@ export class PixelStroke {
     giveSurface(this.shaped);
     giveSurface(this.wetInner);
     this.wetInner = null;
+    giveSurface(this.cutLayer);
+    giveSurface(this.texTemp);
+    giveSurface(this.depthLayer);
+    this.depthLayer = null;
+    this.cutLayer = null;
+    this.texTemp = null;
+    this.cutPat = null;
     this.dualPaint = null;
     this.shaped = null;
   }

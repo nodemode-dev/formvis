@@ -380,7 +380,9 @@ export function cancelSelectionTransform(host: MoveHost, fs: FloatingSelection):
 }
 
 /** View > Snap and Snap To: the master switch and the four targets, each on its own (the app keeps them). */
-export const snapOptions = { on: true, guides: true, grid: true, layers: true, bounds: true, smart: true, slices: true };
+export const snapOptions = { on: true, guides: true, grid: true, layers: true, bounds: true, smart: true, slices: true, selection: true };
+/** Set while Control is held: snapping steps aside for that drag without changing the choices. */
+export const snapHold = { off: false };
 
 export function snapMove(host: MoveHost, p: Project, id: ID, t: Transform, moving?: ReadonlySet<ID>): Transform {
   const layer = p.layer(id);
@@ -392,8 +394,8 @@ export function snapMove(host: MoveHost, p: Project, id: ID, t: Transform, movin
 /** The shift that snaps `box` (a moving rectangle in document pixels) to the guides, grid, document bounds and other
  *  layers' edges within 6 screen pixels, drawing the smart guides; null when nothing is near or snapping is off.
  *  `skip` names layers that move with the box. */
-export function snapDelta(host: MoveHost, p: Project, box: Rect, skip: (l: Layer) => boolean): Pt | null {
-  if (!snapOptions.on) { host.setSnapGuides(null); return null; }
+export function snapDelta(host: MoveHost, p: Project, box: Rect, skip: (l: Layer) => boolean, aroundSelection = true): Pt | null {
+  if (!snapOptions.on || snapHold.off) { host.setSnapGuides(null); return null; }
   const tol = 6 / (p.viewport.zoom || 1);
   const xc: number[] = snapOptions.bounds ? [0, p.doc.width / 2, p.doc.width] : [];
   const yc: number[] = snapOptions.bounds ? [0, p.doc.height / 2, p.doc.height] : [];
@@ -409,6 +411,8 @@ export function snapDelta(host: MoveHost, p: Project, box: Rect, skip: (l: Layer
   if (snapOptions.guides && host.view.guides && p.doc.guides) {
     for (const g of p.doc.guides) if (!g.board || host.view.artboardGuides) (g.axis === 'x' ? xc : yc).push(g.at);
   }
+  const sel = p.selection;
+  if (snapOptions.selection && aroundSelection && sel && sel.w > 0 && sel.h > 0) { xc.push(sel.x, sel.x + sel.w / 2, sel.x + sel.w); yc.push(sel.y, sel.y + sel.h / 2, sel.y + sel.h); }
   if (snapOptions.slices && host.view.slices && p.doc.slices) {
     for (const s of p.doc.slices) { xc.push(s.x, s.x + s.w); yc.push(s.y, s.y + s.h); }
   }

@@ -20,6 +20,7 @@ export interface SelectHost {
   regionEdit(label: string, apply: (a: { raster: Raster; target: Target; rect: Rect; cover: Surface | null }) => void): void;
   tint(rect: Rect, css: string, cover: Surface | null): Surface;
   readonly bg: RGB;
+  readonly quickMask?: boolean;
   luminance(c: RGB): number;
   composite(p: Project): Surface;
   renderInto(p: Project, target: Surface, view: Mat): void;
@@ -151,7 +152,10 @@ export function magicWand(host: SelectHost, pt: Pt, mode: SelectionMode): void {
   if (x < 0 || y < 0 || x >= w || y >= h) return;
   const o = host.wand;
   let rgba: Uint8ClampedArray;
-  if (o.sampleAll) {
+  if (host.quickMask) {
+    rgba = new Uint8ClampedArray(w * h * 4);
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { const k = (j * w + i) * 4, v = p.selection ? p.selection.valueAt(i, j) : 255; rgba[k] = rgba[k + 1] = rgba[k + 2] = v; rgba[k + 3] = 255; }
+  } else if (o.sampleAll) {
     rgba = ctxOf(host.composite(p)).getImageData(0, 0, w, h).data;
   } else {
     const layer = p.activeLayer;

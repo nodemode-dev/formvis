@@ -10,9 +10,13 @@ const BOX_W = 320, BOX_H = 200;
 export class ColorRangeDialog extends Dialog {
   private plus: RGB[] = [];
   private minus: RGB[] = [];
+  private at: Array<{ x: number; y: number }> = [];
+  private readonly local = el<HTMLInputElement>('<input type="checkbox">');
+  private readonly spread = el<HTMLInputElement>('<input class="cv-input" type="number" min="0" max="100" step="1" value="50">');
   private readonly pick = el<HTMLSelectElement>(`<select class="cv-input">${COLOR_RANGE_MODES.map(([id, label]) => `<option value="${id}">${label}</option>`).join('')}</select>`);
   private readonly combine = el<HTMLSelectElement>('<select class="cv-input"><option value="replace">New Selection</option><option value="add">Add to Selection</option><option value="subtract">Subtract from Selection</option><option value="intersect">Intersect with Selection</option></select>');
   private readonly tool = el<HTMLSelectElement>('<select class="cv-input"><option value="set">Sample</option><option value="add">Add to Sample</option><option value="remove">Subtract from Sample</option></select>');
+  private readonly view = el<HTMLSelectElement>('<select class="cv-input"><option value="selection">Selection</option><option value="image">Image</option><option value="matte-black">Black Matte</option><option value="matte-white">White Matte</option><option value="quick">Quick Mask</option></select>');
   private readonly farLimit = el<HTMLInputElement>('<input class="cv-input" type="number" min="0" max="255" step="1" value="128" disabled>');
   private readonly nearLimit = el<HTMLInputElement>('<input class="cv-input" type="number" min="0" max="255" step="1" value="255" disabled>');
   private readonly fuzz = el<HTMLInputElement>('<input class="cv-input" type="number" min="0" max="200" step="1" value="40">');
@@ -30,6 +34,13 @@ export class ColorRangeDialog extends Dialog {
     this.field('Depth Near Limit', this.nearLimit);
     this.field('Eyedropper', this.tool);
     this.field('Combine', this.combine);
+    this.field('Selection Preview', this.view);
+    this.view.addEventListener('input', () => this.refresh());
+    const loc = el<HTMLLabelElement>('<label class="cv-check"></label>');
+    loc.append(this.local, document.createTextNode(' Localized Color Clusters'));
+    this.field('', loc);
+    this.field('Range (%)', this.spread);
+    for (const c of [this.local, this.spread]) c.addEventListener('input', () => this.refresh());
     const inv = el<HTMLLabelElement>('<label class="cv-check"></label>');
     inv.append(this.invert, document.createTextNode(' Invert'));
     this.field('', inv);
@@ -43,13 +54,13 @@ export class ColorRangeDialog extends Dialog {
 
   private options(): Parameters<Engine['colorRangeMask']>[0] {
     const mode = COLOR_RANGE_MODES.find(([id]) => id === this.pick.value)?.[0] ?? ('sampled' as ColorRangeMode), n = (f: HTMLInputElement): number => Math.min(255, Math.max(0, Number(f.value) || 0));
-    return { mode, plus: this.plus, minus: this.minus, fuzziness: Math.min(200, Math.max(0, Number(this.fuzz.value) || 0)), invert: this.invert.checked, combine: this.combine.value as SelectionMode, lo: n(this.farLimit), hi: n(this.nearLimit) };
+    return { mode, plus: this.plus, minus: this.minus, localized: this.local.checked, spread: Math.min(100, Math.max(0, Number(this.spread.value) || 0)), at: this.at, fuzziness: Math.min(200, Math.max(0, Number(this.fuzz.value) || 0)), invert: this.invert.checked, combine: this.combine.value as SelectionMode, lo: n(this.farLimit), hi: n(this.nearLimit) };
   }
 
   /** Test hook as much as a user path: sample a colour as a click would. */
-  sample(rgb: RGB, how: 'set' | 'add' | 'remove'): void {
-    if (how === 'set') { this.plus = [rgb]; this.minus = []; }
-    else if (how === 'add') this.plus.push(rgb);
+  sample(rgb: RGB, how: 'set' | 'add' | 'remove', at: { x: number; y: number } = { x: 0, y: 0 }): void {
+    if (how === 'set') { this.plus = [rgb]; this.at = [at]; this.minus = []; }
+    else if (how === 'add') { this.plus.push(rgb); this.at.push(at); }
     else this.minus.push(rgb);
     if (this.pick.value !== 'sampled') this.pick.value = 'sampled';
     this.refresh();
@@ -64,8 +75,21 @@ export class ColorRangeDialog extends Dialog {
       c.fillStyle = '#000000';
       c.fillRect(0, 0, BOX_W, BOX_H);
       if (!r) return;
-      const img = new ImageData(r.w, r.h);
-      for (let i = 0; i < r.mask.length; i++) { const v = r.mask[i], o = i * 4; img.data[o] = v; img.data[o + 1] = v; img.data[o + 2] = v; img.data[o + 3] = 255; }
+      const img = new ImageData(r.w, r.h), view = this.view.value, flat = view === 'selection' ? null : this.engine.flattened();
+      let base: Uint8ClampedArray | null = null;
+      if (flat) {
+        const tmp = document.createElement('canvas');
+        tmp.width = r.w; tmp.height = r.h;
+        const tc = tmp.getContext('2d');
+        if (tc) { tc.drawImage(flat as CanvasImageSource, 0, 0, r.w, r.h); base = tc.getImageData(0, 0, r.w, r.h).data; }
+      }
+      for (let i = 0; i < r.mask.length; i++) {
+        const v = r.mask[i], o = i * 4;
+        if (!base) { img.data[o] = v; img.data[o + 1] = v; img.data[o + 2] = v; img.data[o + 3] = 255; continue; }
+        const a = v / 255, tint = view === 'matte-black' ? [0, 0, 0] : view === 'matte-white' ? [255, 255, 255] : view === 'quick' ? [255, 0, 0] : null, k = view === 'image' ? 1 : view === 'quick' ? 1 - a * 0.5 : a;
+        for (let c = 0; c < 3; c++) img.data[o + c] = tint ? base[o + c] * k + tint[c] * (1 - k) : base[o + c];
+        img.data[o + 3] = 255;
+      }
       c.putImageData(img, Math.floor((BOX_W - r.w) / 2), Math.floor((BOX_H - r.h) / 2));
     });
   }
@@ -81,9 +105,9 @@ export class ColorRangeDialog extends Dialog {
       if (e.button !== 0 || !stage || e.target !== stage || !p) return;
       e.preventDefault();
       e.stopPropagation();
-      const b = stage.getBoundingClientRect(), v = p.viewport, rgb = this.engine.sampleOriginal({ x: (e.clientX - b.left - v.panX) / v.zoom, y: (e.clientY - b.top - v.panY) / v.zoom }, true);
+      const b = stage.getBoundingClientRect(), v = p.viewport, at = { x: (e.clientX - b.left - v.panX) / v.zoom, y: (e.clientY - b.top - v.panY) / v.zoom }, rgb = this.engine.sampleOriginal(at, true);
       // sampleOriginal gives channels from 0 to 1.
-      if (rgb) this.sample({ r: Math.round(rgb[0] * 255), g: Math.round(rgb[1] * 255), b: Math.round(rgb[2] * 255) }, e.shiftKey ? 'add' : e.altKey ? 'remove' : (this.tool.value as 'set' | 'add' | 'remove'));
+      if (rgb) this.sample({ r: Math.round(rgb[0] * 255), g: Math.round(rgb[1] * 255), b: Math.round(rgb[2] * 255) }, e.shiftKey ? 'add' : e.altKey ? 'remove' : (this.tool.value as 'set' | 'add' | 'remove'), at);
     };
     window.addEventListener('pointerdown', handler, true);
     this.handler = handler;

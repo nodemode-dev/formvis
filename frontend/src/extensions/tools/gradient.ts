@@ -1,8 +1,8 @@
-import { BLEND_MODES, canvasBlend, type BlendMode, type Pt } from '../../engine';
+import { BLEND_MODES, type BlendMode, type Pt } from '../../engine';
 import { GRADIENT_TYPES, allGradients, clampMid, type GradientType } from '../../engine/gradients';
 import type { GradientFill } from '../../engine/fill-layers';
 import type { ID, Rect } from '../../engine/types';
-import type { Tool, ToolContext } from '../registry';
+import { digitOpacity, type Tool, type ToolContext } from '../registry';
 
 /** Which end of the pending gradient is being dragged. */
 let drag: 'start' | 'end' | null = null;
@@ -11,7 +11,7 @@ let dragStop: number | null = null;
 let dragMid: number | null = null;
 
 /** A drag on the active Gradient Fill layer: its line as it was when the drag began, and the content as it is now. */
-interface FillDrag { id: ID; content: GradientFill; frame: Rect; start: Pt; end: Pt; what: 'start' | 'end' | 'new' | 'stop'; stop: number }
+interface FillDrag { id: ID; content: GradientFill; frame: Rect; start: Pt; end: Pt; what: 'start' | 'end' | 'new' | 'stop' | 'mid'; stop: number }
 let fillDrag: FillDrag | null = null;
 
 /** Where along the line (0 at the start, 1 at the end) the stop at stored position `at` is shown. */
@@ -48,12 +48,16 @@ function alongLine(ctx: ToolContext, gr: { start: Pt; end: Pt }, d: Pt, rev = ct
 }
 
 /** What is under screen point s on a Gradient Fill layer's line: an end, a stop (not for Angle) or the line itself. */
-function fillHit(ctx: ToolContext, t: FillDrag, s: Pt): { kind: 'start' | 'end' | 'stop' | 'line'; i: number; t: number } | null {
+function fillHit(ctx: ToolContext, t: FillDrag, s: Pt): { kind: 'start' | 'end' | 'stop' | 'mid' | 'line'; i: number; t: number } | null {
   if (near(ctx, t.end, s)) return { kind: 'end', i: -1, t: 1 };
   if (near(ctx, t.start, s)) return { kind: 'start', i: -1, t: 0 };
   if (t.content.style === 'angle') return null;
   const stops = t.content.stops;
   for (let i = 0; i < stops.length; i++) { const q = lineSpot(ctx, t, shownAt(ctx, stops[i].at, t.content.reverse), 13); if (Math.hypot(q.x - s.x, q.y - s.y) <= 7) return { kind: 'stop', i, t: stops[i].at }; }
+  for (let i = 0; i < stops.length - 1; i++) {
+    const m = stops[i].at + (stops[i + 1].at - stops[i].at) * clampMid(stops[i].mid), q = lineSpot(ctx, t, shownAt(ctx, m, t.content.reverse), 13);
+    if (Math.hypot(q.x - s.x, q.y - s.y) <= 6) return { kind: 'mid', i, t: m };
+  }
   const a = ctx.view().toScreen(t.start), b = ctx.view().toScreen(t.end), dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
   if (l2 < 1) return null;
   const u = ((s.x - a.x) * dx + (s.y - a.y) * dy) / l2;
@@ -69,6 +73,11 @@ function fillMove(ctx: ToolContext, f: FillDrag, d: Pt, shift: boolean): void {
     const st = f.content.stops, lo = f.stop > 0 ? st[f.stop - 1].at : 0, hi = f.stop < st.length - 1 ? st[f.stop + 1].at : 1;
     const at = Math.min(hi, Math.max(lo, Math.round(alongLine(ctx, f, d, f.content.reverse) * 1000) / 1000));
     next = { ...f.content, stops: st.map((s, i) => (i === f.stop ? { ...s, at } : s)) };
+  } else if (f.what === 'mid') {
+    const st = f.content.stops, a = st[f.stop]?.at ?? 0, b = st[f.stop + 1]?.at ?? 1;
+    if (b <= a) return;
+    const mid = Math.round(clampMid((alongLine(ctx, f, d, f.content.reverse) - a) / (b - a)) * 1000) / 1000;
+    next = { ...f.content, stops: st.map((s, i) => (i === f.stop ? { ...s, mid } : s)) };
   } else {
     const lin = f.content.style === 'linear', base = f.what === 'start' ? f.end : f.start;
     if (f.what === 'start' && !lin) next = e.gradientFillAlong(f.content, f.frame, d, { x: f.end.x + d.x - f.start.x, y: f.end.y + d.y - f.start.y });
@@ -107,6 +116,12 @@ function fillOverlay(ctx: ToolContext, g: CanvasRenderingContext2D): void {
     g.strokeStyle = pal.accent; g.stroke();
   }
   if (t.content.style !== 'angle') {
+    const all = t.content.stops;
+    for (let i = 0; i < all.length - 1; i++) {
+      const q = lineSpot(ctx, t, shownAt(ctx, all[i].at + (all[i + 1].at - all[i].at) * clampMid(all[i].mid), t.content.reverse), 13);
+      g.beginPath(); g.moveTo(q.x, q.y - 5); g.lineTo(q.x + 5, q.y); g.lineTo(q.x, q.y + 5); g.lineTo(q.x - 5, q.y); g.closePath();
+      g.fillStyle = pal.handle; g.fill(); g.strokeStyle = pal.accent; g.stroke();
+    }
     for (const st of t.content.stops) {
       const at = shownAt(ctx, st.at, t.content.reverse), c = lineSpot(ctx, t, at, 13), r = lineSpot(ctx, t, at, 0);
       g.beginPath(); g.moveTo(r.x, r.y); g.lineTo(c.x, c.y); g.strokeStyle = pal.antsA; g.stroke();
@@ -132,6 +147,7 @@ export const gradientTool: Tool = {
         if (p.mod) { e.setFillContent(ft.id, { ...ft.content, stops: st.map((s, i) => (i === hit.i ? { ...s, color: { r: e.fg.r, g: e.fg.g, b: e.fg.b } } : s)) }); return; }
         fillDrag = { ...f, what: 'stop', stop: hit.i }; return;
       }
+      if (hit?.kind === 'mid') { fillDrag = { ...f, what: 'mid', stop: hit.i }; return; }
       if (hit?.kind === 'start' || hit?.kind === 'end') { fillDrag = { ...f, what: hit.kind }; return; }
       if (hit?.kind === 'line') {
         const r = e.gradientFillAddStop(ft.content, ft.content.reverse ? 1 - hit.t : hit.t);
@@ -175,12 +191,16 @@ export const gradientTool: Tool = {
     const fd = fillDrag;
     fillDrag = null;
     if (fd) { ctx.engine.setFillContent(fd.id, fd.content); return; }
+    const drew = drag !== null;
     drag = null; dragStop = null; dragMid = null;
     const gr = ctx.engine.gradient;
-    if (gr && Math.hypot(gr.end.x - gr.start.x, gr.end.y - gr.start.y) < 1) ctx.engine.cancelGradient();
+    if (gr && Math.hypot(gr.end.x - gr.start.x, gr.end.y - gr.start.y) < 1) { ctx.engine.cancelGradient(); return; }
+    if (gr && drew && ctx.engine.gradientSettings.live) ctx.engine.gradientAsFillLayer();
   },
   keydown(ctx, ev) {
     if (fillDrag && ev.key === 'Escape') { ctx.engine.previewFill(null); fillDrag = null; return true; }
+    const dv = ev.metaKey || ev.ctrlKey ? null : digitOpacity(ev);
+    if (dv !== null) { ctx.engine.gradientSettings.opacity = dv; ctx.engine.renderGradient(); ctx.engine.emit('options', null); return true; }
     if (!ctx.engine.gradient || ev.metaKey || ev.ctrlKey) return false;
     if (ev.key === 'Enter') { ctx.engine.commitGradient(); return true; }
     if (ev.key === 'Escape') { ctx.engine.cancelGradient(); return true; }
@@ -225,12 +245,14 @@ export const gradientTool: Tool = {
       { kind: 'select', label: 'Colors', priority: 95, choices: allGradients().map((p) => ({ id: p.id, label: p.label })), live: () => allGradients().map((p) => ({ id: p.id, label: p.label })), get: () => e.gradientSettings.style, set: (v) => set(() => { e.gradientSettings.style = v; }) },
       { kind: 'button', label: 'Edit', priority: 60, icon: 'gradient', run: () => e.uiHooks.gradientEditor?.() },
       { kind: 'button', label: 'As Fill Layer', priority: 55, icon: 'gradient', run: () => { e.gradientAsFillLayer(); } },
+      { kind: 'toggle', label: 'Live Fill Layer', priority: 50, get: () => e.gradientSettings.live, set: (v) => set(() => { e.gradientSettings.live = v; }) },
       { kind: 'toggle', label: 'Reverse', priority: 70, get: () => e.gradientSettings.reversed, set: (v) => set(() => { e.gradientSettings.reversed = v; }) },
       { kind: 'toggle', label: 'Dither', priority: 40, get: () => e.gradientSettings.dither, set: (v) => set(() => { e.gradientSettings.dither = v; }) },
       // Transparency and Method (1.50.6, the tool audit).
       { kind: 'toggle', label: 'Transparency', priority: 45, get: () => e.gradientSettings.transparency, set: (v) => set(() => { e.gradientSettings.transparency = v; }) },
-      { kind: 'select', label: 'Method', priority: 40, choices: [{ id: 'perceptual', label: 'Perceptual' }, { id: 'linear', label: 'Linear' }, { id: 'classic', label: 'Classic' }], get: () => e.gradientSettings.method, set: (v: string) => set(() => { e.gradientSettings.method = v as 'classic' | 'linear' | 'perceptual'; }) },
-      { kind: 'select', label: 'Mode', priority: 75, choices: BLEND_MODES.filter((m) => canvasBlend(m.id)).map((m) => ({ id: m.id, label: m.label })), get: () => e.gradientSettings.blend, set: (v) => set(() => { e.gradientSettings.blend = v as BlendMode; }) },
+      { kind: 'select', label: 'Method', priority: 40, choices: [{ id: 'perceptual', label: 'Perceptual' }, { id: 'linear', label: 'Linear' }, { id: 'classic', label: 'Classic' }, { id: 'smooth', label: 'Smooth' }], get: () => e.gradientSettings.method, set: (v: string) => set(() => { e.gradientSettings.method = v as 'classic' | 'linear' | 'perceptual' | 'smooth'; }) },
+      { kind: 'range', label: 'Smoothness', priority: 35, min: 0, max: 100, unit: '%', get: () => e.gradientSettings.smoothness, set: (v: number) => set(() => { e.gradientSettings.smoothness = Math.round(Math.min(100, Math.max(0, v))); }) },
+      { kind: 'select', label: 'Mode', priority: 75, choices: BLEND_MODES.map((m) => ({ id: m.id, label: m.label })), get: () => e.gradientSettings.blend, set: (v) => set(() => { e.gradientSettings.blend = v as BlendMode; }) },
       { kind: 'range', label: 'Opacity', priority: 95, min: 1, max: 100, unit: '%', get: () => Math.round(e.gradientSettings.opacity * 100), set: (v: number) => set(() => { e.gradientSettings.opacity = v / 100; }) },
     ];
   },

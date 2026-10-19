@@ -1,4 +1,5 @@
 import { blurDeep, motionBlurDeep, noiseDeep, surfaceBlurDeep, unsharpDeep } from '../../engine/deep';
+import { deepLibFilter } from '../../engine/deep-filters';
 import type { DeepPixels } from '../../engine/types';
 import { addNoise, defaultLensFix, gaussianBlur, gaussianMargin, lensCorrect, motionBlur, motionMargin, randomSeed, runFilterOffThread, unsharpMask, defaultDevelopState, developImage, type Engine, type LensFix } from '../../engine';
 import { ScopesView } from './scopes-view';
@@ -146,8 +147,7 @@ export class FilterPanel extends Dialog {
       if (!p || !l || !r || p.maskTarget) return null;
       const w = r.width, h = r.height;
       if (this.kind === 'spinBlur') return { t: l.transform, w, h, ref: this.engine.filterFrame(p, l.transform, w, h).area };
-      const g = !p.selection && !l.mask && !l.locks?.transparency ? Math.ceil(this.grow()) : 0;
-      return { t: l.transform, w, h, ref: { x: -g, y: -g, w: w + 2 * g, h: h + 2 * g } };
+      return { t: l.transform, w, h, ref: { x: 0, y: 0, w, h } };
     },
   });
 
@@ -170,7 +170,7 @@ export class FilterPanel extends Dialog {
   constructor(private readonly engine: Engine) {
     super('Filter', 440);
     const s = this.s;
-    const gbRadius = sliderRow('Radius (px)', 0.1, 100, 0.1, (v) => { s.radius = v; this.schedule(); }, { max: 1000 });
+    const gbRadius = sliderRow('Radius (px)', 0.1, 100, 0.1, (v) => { s.radius = v; this.schedule(); }, { max: 1000, log: true });
     this.section('gaussianBlur', [gbRadius.el], () => gbRadius.set(s.radius));
     const mbAngle = sliderRow('Angle (\u00b0)', -90, 90, 1, (v) => { s.angle = v; this.schedule(); });
     const mbDistance = sliderRow('Distance (px)', 1, 500, 1, (v) => { s.distance = v; this.schedule(); }, { max: 2000 });
@@ -187,9 +187,12 @@ export class FilterPanel extends Dialog {
     const lcMidpoint = sliderRow('Vignette Midpoint', 0, 100, 1, (v) => { fix().midpoint = v; this.schedule(); });
     const lcVertical = sliderRow('Vertical Perspective', -100, 100, 1, (v) => { fix().vertical = v; this.schedule(); });
     const lcHorizontal = sliderRow('Horizontal Perspective', -100, 100, 1, (v) => { fix().horizontal = v; this.schedule(); });
+    const lcAngle = sliderRow('Angle (°)', -45, 45, 0.1, (v) => { fix().angle = v; this.schedule(); });
+    const lcScale = sliderRow('Scale (%)', 50, 150, 1, (v) => { fix().scale = v; this.schedule(); });
+    const lcAuto = checkRow('Auto Scale Image', (v) => { fix().autoScale = v; this.schedule(); });
     const lcEdge = selectRow('Edge', [['transparent', 'Transparency'], ['extend', 'Edge Extension'], ['black', 'Black Color'], ['white', 'White Color']], (v) => { fix().edge = v as LensFix['edge']; this.schedule(); });
-    this.section('lensCorrection', [lcDistortion.el, lcRc.el, lcBy.el, lcVignette.el, lcMidpoint.el, lcVertical.el, lcHorizontal.el, lcEdge.el, el('<p class="cv-note">Positive Distortion corrects barrel distortion, negative pincushion. Fringe sliders shift the red and blue channels against green.</p>')],
-      () => { const f = fix(); lcDistortion.set(s.distortion); lcRc.set(f.caRc); lcBy.set(f.caBy); lcVignette.set(f.vignette); lcMidpoint.set(f.midpoint); lcVertical.set(f.vertical); lcHorizontal.set(f.horizontal); lcEdge.set(f.edge); });
+    this.section('lensCorrection', [lcDistortion.el, lcRc.el, lcBy.el, lcVignette.el, lcMidpoint.el, lcVertical.el, lcHorizontal.el, lcAngle.el, lcScale.el, lcAuto.el, lcEdge.el, el('<p class="cv-note">Positive Distortion corrects barrel distortion, negative pincushion. Fringe sliders shift the red and blue channels against green. Auto Scale enlarges the picture just enough to hide the corners the Angle leaves empty.</p>')],
+      () => { const f = fix(); lcAngle.set(f.angle ?? 0); lcScale.set(f.scale ?? 100); lcAuto.set(!!f.autoScale); lcDistortion.set(s.distortion); lcRc.set(f.caRc); lcBy.set(f.caBy); lcVignette.set(f.vignette); lcMidpoint.set(f.midpoint); lcVertical.set(f.vertical); lcHorizontal.set(f.horizontal); lcEdge.set(f.edge); });
     const usAmount = sliderRow('Amount (%)', 1, 500, 1, (v) => { s.usmAmount = v; this.schedule(); });
     const usRadius = sliderRow('Radius (px)', 0.1, 100, 0.1, (v) => { s.usmRadius = v; this.schedule(); }, { max: 1000 });
     const usThreshold = sliderRow('Threshold (levels)', 0, 255, 1, (v) => { s.threshold = v; this.schedule(); });
@@ -855,7 +858,7 @@ export class FilterPanel extends Dialog {
     const p = this.engine.current;
     if (!p || ((p.doc.depth ?? 8) === 8 && p.doc.mode !== 'cmyk')) return false;
     const s = { ...this.s, ...(settings as Partial<typeof this.s>) }, seed = this.seed, ceiling = p.doc.depth === 32 ? Infinity : 1;
-    const deep = kind === 'gaussianBlur' ? (d: DeepPixels): DeepPixels => blurDeep(d, s.radius) : kind === 'unsharpMask' ? (d: DeepPixels): DeepPixels => unsharpDeep(d, s.usmAmount, s.usmRadius, s.threshold, ceiling) : kind === 'addNoise' ? (d: DeepPixels): DeepPixels => noiseDeep(d, s.amount, s.gaussian, s.monochromatic, seed, ceiling) : kind === 'motionBlur' ? (d: DeepPixels): DeepPixels => motionBlurDeep(d, s.angle, s.distance) : kind === 'surfaceBlur' ? (d: DeepPixels): DeepPixels => surfaceBlurDeep(d, s.gallery.surfaceRadius, s.gallery.surfaceThreshold) : null;
+    const deep = kind === 'gaussianBlur' ? (d: DeepPixels): DeepPixels => blurDeep(d, s.radius) : kind === 'unsharpMask' ? (d: DeepPixels): DeepPixels => unsharpDeep(d, s.usmAmount, s.usmRadius, s.threshold, ceiling) : kind === 'addNoise' ? (d: DeepPixels): DeepPixels => noiseDeep(d, s.amount, s.gaussian, s.monochromatic, seed, ceiling) : kind === 'motionBlur' ? (d: DeepPixels): DeepPixels => motionBlurDeep(d, s.angle, s.distance) : kind === 'surfaceBlur' ? (d: DeepPixels): DeepPixels => surfaceBlurDeep(d, s.gallery.surfaceRadius, s.gallery.surfaceThreshold) : isLibKind(kind) ? deepLibFilter(kind, libValues(kind, (s.lib as Record<string, unknown> | undefined)?.[kind]), ceiling) : null;
     if (!deep) return false;
     this.engine.applyDeepFilter(FILTER_LABELS[kind], deep);
     return true;

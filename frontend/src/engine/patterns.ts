@@ -1,5 +1,6 @@
 import { createSurface, ctxOf, type Ctx2D, type Surface } from './surface';
 import { uid, type ID } from './types';
+import { PROCEDURAL_TEXTURES, textureGrey } from './procedural-tips';
 
 /** Patterns for Pattern Overlay: a few built in, drawn here, and those defined with Edit > Define Pattern. Styles
  *  refer to a pattern by id; projects carry the patterns their styles use, so they open the same elsewhere. */
@@ -21,6 +22,13 @@ function seed(): void {
   builtin('builtin:dots', 'Dots', 12, (c, n) => { c.fillStyle = '#ffffff'; c.fillRect(0, 0, n, n); c.fillStyle = '#000000'; c.beginPath(); c.arc(n / 2, n / 2, 3, 0, Math.PI * 2); c.fill(); });
   builtin('builtin:stripes', 'Stripes', 16, (c, n) => { c.fillStyle = '#ffffff'; c.fillRect(0, 0, n, n); c.fillStyle = '#000000'; c.fillRect(0, 0, n, n / 2); });
   builtin('builtin:grid', 'Grid', 16, (c, n) => { c.fillStyle = '#ffffff'; c.fillRect(0, 0, n, n); c.fillStyle = '#808080'; c.fillRect(0, 0, n, 1); c.fillRect(0, 0, 1, n); });
+  for (const [kind, name, size] of PROCEDURAL_TEXTURES) {
+    builtin(`builtin:${kind}`, name, size, (c, n) => {
+      const img = c.createImageData(n, n);
+      for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { const g = Math.round(textureGrey(kind, x, y, n)), i = (y * n + x) * 4; img.data[i] = g; img.data[i + 1] = g; img.data[i + 2] = g; img.data[i + 3] = 255; }
+      c.putImageData(img, 0, 0);
+    });
+  }
 }
 
 /** Patterns that arrived inside an opened project: they render its styles but do not join the library. */

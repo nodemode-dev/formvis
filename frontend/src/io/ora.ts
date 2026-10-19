@@ -1,4 +1,5 @@
 import { Raster, docTransform, effectsActive, newLayer, uid, placement, createSurface, ctxOf, toBlob, type BlendMode, type Doc, type ID, type Layer, type Surface } from '../engine';
+import type { LayerLocks } from '../engine/types';
 import { unzip, zipFiles } from './zip';
 
 /** OpenRaster (.ora, 1.51.7, the capability plan): the open layered format of several painting apps, written and read
@@ -64,14 +65,20 @@ export async function readOraFile(file: File): Promise<{ doc: Doc; notes: string
   const doc: Doc = { id: uid(), width: W, height: H, resolution: Number(image.getAttribute('xres')) || 72, layers: [] }, notes = new Set<string>(), layers: Layer[] = [];
   const picture = async (name: string): Promise<ImageBitmap | null> => { const b = parts.get(name); return b ? createImageBitmap(new Blob([new Uint8Array(b)], { type: 'image/png' })) : null; };
   const num = (e: Element, a: string, d: number): number => { const v = Number(e.getAttribute(a)); return e.hasAttribute(a) && Number.isFinite(v) ? v : d; };
+  // edit-locked is Lock All; alpha-locked (alpha-preserve) is Lock Transparent Pixels.
+  const locksOf = (e: Element): { locks?: LayerLocks } => {
+    const all = e.getAttribute('edit-locked') === 'true', alpha = e.getAttribute('alpha-locked') === 'true' || e.getAttribute('alpha-preserve') === 'true';
+    return all || alpha ? { locks: { ...(all ? { all: true } : {}), ...(alpha ? { transparency: true } : {}) } } : {};
+  };
   const walk = async (stack: Element, parentId: ID | null): Promise<void> => {
     for (const e of [...stack.children].reverse()) {   // bottom first, as formvis keeps them
       const name = e.getAttribute('name') || (e.tagName === 'stack' ? 'Group' : 'Layer'), opacity = Math.min(1, Math.max(0, num(e, 'opacity', 1))), visible = e.getAttribute('visibility') !== 'hidden';
       if (e.tagName === 'stack') {
-        const group = newLayer(name, doc, { isGroup: true, parentId, visible, opacity });
+        const gop = e.getAttribute('composite-op') ?? 'svg:src-over', gblend = FROM_ORA.get(gop) ?? 'normal';
+        if (!FROM_ORA.has(gop)) notes.add(`${gop} is not a blend mode formvis has; those groups open as Normal.`);
+        const group = newLayer(name, doc, { isGroup: true, parentId, visible, opacity, blend: gblend, ...(e.getAttribute('isolation') === 'isolate' && gblend === 'normal' ? { isolate: true } : {}), ...locksOf(e) });
         await walk(e, group.id);
         layers.push(group);   // after its children
-        if ((e.getAttribute('composite-op') ?? 'svg:src-over') !== 'svg:src-over' && e.getAttribute('isolation') === 'isolate') notes.add('Groups with their own blend mode open as pass-through groups.');
         continue;
       }
       if (e.tagName !== 'layer') continue;
@@ -81,7 +88,7 @@ export async function readOraFile(file: File): Promise<{ doc: Doc; notes: string
       raster.ctx.drawImage(bmp, 0, 0); bmp.close(); raster.touch();
       const op = e.getAttribute('composite-op') ?? 'svg:src-over', blend = FROM_ORA.get(op) ?? 'normal';
       if (!FROM_ORA.has(op)) notes.add(`${op} is not a blend mode formvis has; those layers open as Normal.`);
-      layers.push(newLayer(name, doc, { raster, parentId, visible, opacity, blend, transform: { ...docTransform(raster.width, raster.height), x: num(e, 'x', 0), y: num(e, 'y', 0) } }));
+      layers.push(newLayer(name, doc, { raster, parentId, visible, opacity, blend, ...locksOf(e), transform: { ...docTransform(raster.width, raster.height), x: num(e, 'x', 0), y: num(e, 'y', 0) } }));
     }
   };
   const top = image.querySelector(':scope > stack');

@@ -480,8 +480,8 @@ export const PARAM_ADJUSTMENTS: Record<ParamKind, ParamAdjustment> = {
   },
   glow: {
     label: 'Glow',
-    params: [range('amount', 'Amount', 0, 100, 35), range('radius', 'Radius', 1, 200, 24), range('threshold', 'Threshold', 0, 100, 60)],
-    kernel: (v) => bloom(n(v, 'amount') / 100, n(v, 'radius'), n(v, 'threshold') / 100, null),
+    params: [range('amount', 'Amount', 0, 100, 35), range('radius', 'Radius', 1, 200, 24), range('threshold', 'Threshold', 0, 100, 60), range('warmth', 'Warmth', -100, 100, 0), range('diffusion', 'Diffusion', 0, 100, 0)],
+    kernel: (v) => bloom(n(v, 'amount') / 100, n(v, 'radius'), n(v, 'threshold') / 100, null, n(v, 'warmth'), n(v, 'diffusion')),
   },
   gaussianBlur: {
     label: 'Gaussian Blur',
@@ -605,16 +605,19 @@ function normalisePixels(px: Uint8ClampedArray, toMean: boolean, each: boolean, 
 
 /** Halation and Glow: what is brighter than `threshold` blurred by `radius` document pixels (three box passes, close to
  *  a Gaussian), tinted (Halation) or in its own colour (Glow), and screened back over the picture by `amount`. */
-function bloom(amount: number, radius: number, threshold: number, tint: [number, number, number] | null): Kernel {
+function bloom(amount: number, radius: number, threshold: number, tint: [number, number, number] | null, warmth = 0, diffusion = 0): Kernel {
   return (px, ctx) => {
     if (!ctx || amount <= 0) return;
     const W = ctx.width, H = ctx.height, r = Math.max(1, Math.round(radius / Math.max(1e-6, ctx.unitsPerPixel) / 2));
-    const ch = [new Float32Array(W * H), new Float32Array(W * H), new Float32Array(W * H)];
+    const ch = [new Float32Array(W * H), new Float32Array(W * H), new Float32Array(W * H)], warm = warmth / 100;
     for (let i = 0, j = 0; j < W * H; i += 4, j++) {
       const R = px[i] / 255, G = px[i + 1] / 255, B = px[i + 2] / 255, over = Math.max(0, lum(R, G, B) - threshold) / Math.max(1e-3, 1 - threshold);
-      if (tint) { ch[0][j] = over * tint[0]; ch[1][j] = over * tint[1]; ch[2][j] = over * tint[2]; } else { ch[0][j] = R * over; ch[1][j] = G * over; ch[2][j] = B * over; }
+      if (tint) { ch[0][j] = over * tint[0]; ch[1][j] = over * tint[1]; ch[2][j] = over * tint[2]; } else { ch[0][j] = R * over * (1 + 0.5 * warm); ch[1][j] = G * over; ch[2][j] = B * over * (1 - 0.5 * warm); }
     }
+    const wide = diffusion > 0 ? ch.map((c) => Float32Array.from(c)) : null;
+    if (wide) for (const c of wide) for (let pass = 0; pass < 3; pass++) boxBlur(c, W, H, r * 3);
     for (const c of ch) for (let pass = 0; pass < 3; pass++) boxBlur(c, W, H, r);
+    if (wide) { const d = Math.min(1, diffusion / 100) * 0.7; for (let k = 0; k < 3; k++) for (let j = 0; j < W * H; j++) ch[k][j] = ch[k][j] * (1 - d) + wide[k][j] * d * 1.6; }
     for (let i = 0, j = 0; j < W * H; i += 4, j++) for (let k = 0; k < 3; k++) {
       const base = px[i + k] / 255, add = Math.min(1, ch[k][j] * amount * 1.6);
       px[i + k] = Math.round((1 - (1 - base) * (1 - add)) * 255);   // screen

@@ -4,6 +4,19 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.90.0 · 2026-10-19
+
+### Added
+
+- Selection: Transform Selection by numbers and by its corners, Focus Area and Color Range with settings, out-of-gamut and localized Color Range, the Refine Edge brush applied to the document.
+- Brushes: nine procedural tips, wheel rotation, texture depth and each-tip texture, transfer settings, ABR brushes in their own group, a live stroke preview, number keys for opacity.
+- Colour: Fill in every blend mode and Content-Aware from Fill, gradient smoothness and live preview, the printable colour from the gamut warning, a colour page in Swatches, four colour samplers in Info.
+- Retouch: Remove fills in the background; Content-Aware Move adapts colour and rotation.
+- Camera Raw: white balance in Kelvin, the camera's own look, DNG lens shading maps, Lens Correction angle and scale, Glow warmth and diffusion.
+- Files: PSD colour modes, masks and linked files with a report, palette headers, JPEG guides and cut-off JPEGs, more PDN modes, ORA isolated groups, SVG shapes as shape layers, named EXR parts.
+- Effects: a contour editor, blend clipped layers as a group, transparency shapes layers, style presets in the document, deep-colour filters, larger slider ranges.
+- View: ruler origin, grid opacity, snap to the selection, how long notices stay.
+
 ## 1.89.9 · 2026-10-19
 
 ### Changed

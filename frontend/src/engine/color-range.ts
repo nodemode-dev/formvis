@@ -10,16 +10,21 @@ export interface ColorRangeOptions {
   fuzziness: number;
   invert: boolean;
   combine?: SelectionMode;
+  /** Localized Color Clusters: each `plus` colour counts only near its point in `at` (document pixels, one a colour),
+   *  fading out `spread` percent (0 to 100) of the picture's diagonal away. */
+  localized?: boolean;
+  spread?: number;
+  at?: Array<{ x: number; y: number }>;
   lo?: number;
   hi?: number;
 }
 
 export const HUE_FAMILIES = { reds: 0, yellows: 60, greens: 120, cyans: 180, blues: 240, magentas: 300 } as const;
-export type ColorRangeMode = 'sampled' | 'highlights' | 'midtones' | 'shadows' | 'skin' | 'depth' | 'luminosity' | keyof typeof HUE_FAMILIES;
+export type ColorRangeMode = 'sampled' | 'highlights' | 'midtones' | 'shadows' | 'skin' | 'depth' | 'luminosity' | 'gamut' | keyof typeof HUE_FAMILIES;
 
 export const COLOR_RANGE_MODES: ReadonlyArray<readonly [ColorRangeMode, string]> = [
   ['sampled', 'Sampled Colors'], ['reds', 'Reds'], ['yellows', 'Yellows'], ['greens', 'Greens'], ['cyans', 'Cyans'], ['blues', 'Blues'], ['magentas', 'Magentas'],
-  ['highlights', 'Highlights'], ['midtones', 'Midtones'], ['shadows', 'Shadows'], ['skin', 'Skin Tones'], ['depth', 'Depth'], ['luminosity', 'Luminosity Range'],
+  ['highlights', 'Highlights'], ['midtones', 'Midtones'], ['shadows', 'Shadows'], ['skin', 'Skin Tones'], ['gamut', 'Out Of Gamut'], ['depth', 'Depth'], ['luminosity', 'Luminosity Range'],
 ];
 
 /** Hue (degrees), saturation and value of a colour, 0 to 255 channels. */
@@ -35,7 +40,7 @@ const hueGap = (a: number, b: number): number => { const d = Math.abs(a - b) % 3
 
 /** How much a hue family or skin tone takes a pixel, 0 to 1: whole within 15 degrees of the family's centre, falling off
  *  over 15 degrees plus 0.3 of Fuzziness; greys and near blacks are no colour at all. */
-export function hueWeight(mode: Exclude<ColorRangeMode, 'sampled' | 'highlights' | 'midtones' | 'shadows' | 'depth' | 'luminosity'>, r: number, g: number, b: number, fuzziness: number): number {
+export function hueWeight(mode: Exclude<ColorRangeMode, 'sampled' | 'highlights' | 'midtones' | 'shadows' | 'depth' | 'luminosity' | 'gamut'>, r: number, g: number, b: number, fuzziness: number): number {
   const { h, s, v } = hsvOf(r, g, b), ramp = 15 + Math.max(0, fuzziness) * 0.3;
   if (mode === 'skin') {
     const hue = clamp01(1 - (hueGap(h, 22) - 14) / ramp);

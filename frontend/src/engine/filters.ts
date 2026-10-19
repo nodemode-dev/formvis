@@ -216,12 +216,19 @@ export function lensDistort(img: ImageData, distortion: number): ImageData {
 /** The rest of Lens Correction: lateral chromatic aberration (red/cyan and blue/yellow fringes, -100 to 100, up to 1 percent
  *  of the radius), a vignette (-100 to 100, lightens the corners when positive, from Midpoint outward), vertical and
  *  horizontal perspective (-100 to 100, a keystone of up to 40 percent across the frame), and what the edges show. */
-export interface LensFix { caRc: number; caBy: number; vignette: number; midpoint: number; vertical: number; horizontal: number; edge: 'transparent' | 'extend' | 'black' | 'white' }
-export const defaultLensFix = (): LensFix => ({ caRc: 0, caBy: 0, vignette: 0, midpoint: 50, vertical: 0, horizontal: 0, edge: 'transparent' });
+export interface LensFix { caRc: number; caBy: number; vignette: number; midpoint: number; vertical: number; horizontal: number; edge: 'transparent' | 'extend' | 'black' | 'white'; angle?: number; scale?: number; autoScale?: boolean }
+export const defaultLensFix = (): LensFix => ({ caRc: 0, caBy: 0, vignette: 0, midpoint: 50, vertical: 0, horizontal: 0, edge: 'transparent', angle: 0, scale: 100, autoScale: false });
+
+/** The zoom Lens Correction applies: Scale in percent, times (with Auto Scale) the least enlargement that leaves no empty corner after turning `angle` degrees. */
+export function lensZoom(fix: LensFix, w: number, h: number): number {
+  const t = Math.abs(fix.angle ?? 0) * Math.PI / 180, wide = Math.max(w / h, h / w);
+  return ((fix.scale ?? 100) / 100) * (fix.autoScale && t ? Math.cos(t) + Math.sin(t) * wide : 1);
+}
 
 /** Lens Correction with Distortion and the settings of `fix`; with `fix` at rest it is `lensDistort`. */
 export function lensCorrect(img: ImageData, distortion: number, fix: LensFix): ImageData {
-  const idle = !fix.caRc && !fix.caBy && !fix.vignette && !fix.vertical && !fix.horizontal;
+  const turn = ((fix.angle ?? 0) * Math.PI) / 180, zoom = lensZoom(fix, img.width, img.height), cr = Math.cos(turn), sr = Math.sin(turn);
+  const idle = !fix.caRc && !fix.caBy && !fix.vignette && !fix.vertical && !fix.horizontal && !turn && zoom === 1;
   if (idle && fix.edge === 'transparent') return lensDistort(img, distortion);
   const { width: w, height: h } = img;
   const k = (distortion / 100) * 0.35, src = premultiply(img.data), dst = new Float32Array(src.length);
@@ -236,6 +243,7 @@ export function lensCorrect(img: ImageData, distortion: number, fix: LensFix): I
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       let dx = x + 0.5 - cx, dy = y + 0.5 - cy;
+      if (turn || zoom !== 1) { const ux = dx / zoom, uy = dy / zoom; dx = ux * cr + uy * sr; dy = uy * cr - ux * sr; }
       dx *= 1 + va * (dy / cy);
       dy *= 1 + ha * ((x + 0.5 - cx) / cx);
       const s = 1 - (k * (dx * dx + dy * dy)) / halfDiagonal2, o = (y * w + x) * 4;
