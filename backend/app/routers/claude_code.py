@@ -7,7 +7,7 @@ import json
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
-from app.routers.terminal import document_folder, origin_ok, release_socket, require_local, take_socket
+from app.routers.terminal import document_folder, origin_ok, release_socket, require_local, server_port, take_socket
 from app.services import claude_code, terminal
 
 router = APIRouter(prefix="/api/agent/claude", tags=["agent"])
@@ -45,7 +45,7 @@ def window_status(request: Request, fresh: bool = False) -> dict:
 def start(body: StartBody, request: Request) -> dict:
     require_local(request)
     try:
-        return claude_code.start(body.mode, body.fresh)
+        return claude_code.start(body.mode, body.fresh, server_port(request))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     except LookupError as exc:

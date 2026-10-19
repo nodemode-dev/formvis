@@ -6,6 +6,7 @@ folder's bands directory, emptied when the engine starts."""
 from __future__ import annotations
 
 import asyncio
+import base64
 import os
 import shutil
 import struct
@@ -17,6 +18,7 @@ from pathlib import Path
 import numpy as np
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, Response
+from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
 from app.core import config
@@ -373,8 +375,8 @@ async def begin_psd(request: Request, width: int, height: int, ppi: float = 72.0
     """Opens a flat PSD (PSB with `psb`) of `width` by `height` RGBA pixels, 8 bits, merged picture only: the file keeps its
     channels one after another, so each is spooled to a file of its own as rows arrive (split on the thread pool) and the
     four are joined behind the header at the end; neither side holds the picture. A body of ICC profile bytes is embedded."""
-    if not (1 <= width <= 65535 and 1 <= height <= 65535) or (not psb and max(width, height) > 30000):
-        raise HTTPException(400, "Sides must be 1 to 30,000 pixels for a PSD, 65,535 for a PSB.")
+    if not (1 <= width <= 300000 and 1 <= height <= 300000) or (not psb and max(width, height) > 30000):
+        raise HTTPException(400, "Sides must be 1 to 30,000 pixels for a PSD, 300,000 for a PSB.")
     icc = await request.body()
     if len(icc) > 1_000_000:
         raise HTTPException(400, "The colour profile is too large.")
@@ -424,3 +426,171 @@ async def end_psd(key: str) -> FileResponse:
     _psds.pop(key, None)
     await asyncio.to_thread(_psd_finish, s)
     return FileResponse(s["path"], media_type="image/vnd.adobe.photoshop", background=_gone(s["path"]))
+
+
+PSD_BLEND = {"normal": b"norm", "darken": b"dark", "multiply": b"mul ", "color-burn": b"idiv", "lighten": b"lite", "screen": b"scrn", "color-dodge": b"div ",
+             "linear-dodge": b"lddg", "overlay": b"over", "soft-light": b"sLit", "hard-light": b"hLit", "difference": b"diff", "exclusion": b"smud", "hue": b"hue ",
+             "saturation": b"sat ", "color": b"colr", "luminosity": b"lum ", "dissolve": b"diss", "linear-burn": b"lbrn", "darker-color": b"dkCl", "lighter-color": b"lgCl",
+             "vivid-light": b"vLit", "linear-light": b"lLit", "pin-light": b"pLit", "hard-mix": b"hMix", "subtract": b"fsub", "divide": b"fdiv", "pass": b"pass"}
+
+
+class LayerSpec(BaseModel):
+    """One record of a layered PSD: a layer with pixels, or a folder's marker (`section` 3 begins a folder, 1 or 2 ends it open or closed)."""
+    name: str = Field("Layer", max_length=255)
+    left: int = Field(0, ge=-300000, le=300000)
+    top: int = Field(0, ge=-300000, le=300000)
+    width: int = Field(0, ge=0, le=300000)
+    height: int = Field(0, ge=0, le=300000)
+    opacity: float = Field(1.0, ge=0, le=1)
+    blend: str = "normal"
+    visible: bool = True
+    clipping: bool = False
+    section: int = Field(0, ge=0, le=3)
+
+
+class LayeredBody(BaseModel):
+    layers: list[LayerSpec] = Field(max_length=10000)
+    icc: str | None = None
+
+
+def _psdl_tag(key: bytes, data: bytes) -> bytes:
+    data += b"\0" * (-len(data) % 4)
+    return b"8BIM" + key + struct.pack(">I", len(data)) + data
+
+
+def _psdl_record(sp: LayerSpec, sizes: list[int], psb: bool) -> bytes:
+    pixels = sp.section == 0 and sp.width > 0 and sp.height > 0
+    rect = (sp.top, sp.left, sp.top + sp.height, sp.left + sp.width) if pixels else (0, 0, 0, 0)
+    out = struct.pack(">iiiiH", *rect, 4)
+    for cid, n in zip((-1, 0, 1, 2), sizes):
+        out += struct.pack(">hQ" if psb else ">hI", cid, n)
+    out += b"8BIM" + PSD_BLEND.get(sp.blend, b"norm") + struct.pack(">BBBB", round(sp.opacity * 255), 1 if sp.clipping else 0, 8 | (0 if sp.visible else 2), 0)
+    raw = sp.name.encode("latin-1", "replace")[:255]
+    uni = sp.name.encode("utf-16-be")
+    extra = struct.pack(">II", 0, 0) + bytes([len(raw)]) + raw + b"\0" * (-(1 + len(raw)) % 4) + _psdl_tag(b"luni", struct.pack(">I", len(uni) // 2) + uni)
+    if sp.section:
+        extra += _psdl_tag(b"lsct", struct.pack(">I", sp.section) + b"8BIM" + (b"norm" if sp.section == 3 else PSD_BLEND.get(sp.blend, b"pass")))
+    return out + struct.pack(">I", len(extra)) + extra
+
+
+@router.post("/psdl")
+async def begin_layered(body: LayeredBody, width: int, height: int, ppi: float = 72.0, psb: bool = False) -> dict[str, str]:
+    """Opens a layered PSD (PSB with `psb`) written in parts: every layer with pixels gets four spools (alpha, red, green, blue)
+    that its rows fill band by band at `/psdl/[key]/[index]`, the merged picture's rows go to `/psdl/[key]`, and `/end` joins them
+    behind the header and the layer records, raw (no channel is ever held whole). `layers` run bottom to top as in the file."""
+    if not (1 <= width <= 300000 and 1 <= height <= 300000) or (not psb and max(width, height) > 30000):
+        raise HTTPException(400, "Sides must be 1 to 30,000 pixels for a PSD, 300,000 for a PSB.")
+    if not psb and any(max(sp.width, sp.height) > 30000 for sp in body.layers):
+        raise HTTPException(400, "A layer past 30,000 pixels needs a PSB.")
+    try:
+        icc = base64.b64decode(body.icc) if body.icc else b""
+    except ValueError:
+        raise HTTPException(400, "The colour profile is not base64.") from None
+    if len(icc) > 1_000_000:
+        raise HTTPException(400, "The colour profile is too large.")
+    key = uuid.uuid4().hex
+    path = _dir() / f"{key}.psd"
+    spools = {i: [open(path.with_suffix(f".{i}{c}"), "wb") for c in "argb"] for i, sp in enumerate(body.layers) if sp.section == 0 and sp.width > 0 and sp.height > 0}
+    _psds[key] = {"w": width, "h": height, "rows": 0, "path": path, "ppi": ppi, "icc": icc, "psb": psb, "layers": body.layers, "lrows": dict.fromkeys(spools, 0),
+                  "lspools": spools, "spools": [open(path.with_suffix("." + c), "wb") for c in "rgba"]}
+    return {"key": key}
+
+
+def _psdl_put(s: dict, index: int, body: bytes) -> int:
+    sp: LayerSpec = s["layers"][index]
+    spools = s["lspools"].get(index)
+    if spools is None:
+        raise HTTPException(400, "That layer has no pixels.")
+    row = sp.width * 4
+    if len(body) % row:
+        raise HTTPException(400, "Not a whole number of rows.")
+    n = len(body) // row
+    if s["lrows"][index] + n > sp.height:
+        raise HTTPException(400, "More rows than the layer has.")
+    px = np.frombuffer(body, np.uint8).reshape(n, sp.width, 4)
+    list(_workers().map(lambda c: spools[c].write(px[:, :, 3 if c == 0 else c - 1].tobytes()), range(4)))
+    s["lrows"][index] += n
+    return s["lrows"][index]
+
+
+def _psdl_finish(s: dict) -> None:
+    layers: list[LayerSpec] = s["layers"]
+    psb, wide = s["psb"], 8 if s["psb"] else 4
+    for f in s["spools"]:
+        f.close()
+    for group in s["lspools"].values():
+        for f in group:
+            f.close()
+    records, parts = [], []
+    for i, sp in enumerate(layers):
+        if i in s["lspools"]:
+            sizes = [2 + sp.width * sp.height] * 4
+            parts.append([(s["path"].with_suffix(f".{i}{c}"), sizes[0] - 2) for c in "argb"])
+        else:
+            sizes = [2] * 4
+            parts.append([])
+        records.append(_psdl_record(sp, sizes, psb))
+    body_len = sum(2 + n for group in parts for _, n in group) + 8 * sum(1 for p in parts if not p)
+    info = 2 + sum(len(r) for r in records) + body_len
+    pad = info % 2
+    if not psb and info > 0xFFFFFFFF - (1 << 20):
+        raise HTTPException(413, "The layers pass the 4 GB a PSD holds; save it as PSB.")
+    head = _psd_head(s)
+    with open(s["path"], "wb") as out:
+        out.write(head[:len(head) - (wide + 2)])
+        out.write(struct.pack(">Q" if psb else ">I", wide + info + pad + 4))
+        out.write(struct.pack(">Q" if psb else ">I", info + pad))
+        out.write(struct.pack(">h", -len(layers)))
+        for r in records:
+            out.write(r)
+        for group in parts:
+            if not group:
+                out.write((struct.pack(">H", 0)) * 4)
+                continue
+            for part, n in group:
+                out.write(struct.pack(">H", 0))
+                with open(part, "rb") as src:
+                    shutil.copyfileobj(src, out, 1 << 22)
+                part.unlink(missing_ok=True)
+        out.write(b"\0" * pad + struct.pack(">I", 0))
+        out.write(struct.pack(">H", 0))
+        for c in "rgba":
+            part = s["path"].with_suffix("." + c)
+            with open(part, "rb") as src:
+                shutil.copyfileobj(src, out, 1 << 22)
+            part.unlink(missing_ok=True)
+
+
+@router.post("/psdl/{key}/end")
+async def end_layered(key: str) -> FileResponse:
+    """Joins the layers and the merged picture behind the header and sends the file from disk; refused if rows are missing."""
+    s = _psds.get(key)
+    if s is None or "lspools" not in s:
+        raise HTTPException(404, "No layered picture is being written under that key.")
+    short = [i for i, sp in enumerate(s["layers"]) if i in s["lspools"] and s["lrows"][i] != sp.height]
+    if short:
+        raise HTTPException(400, f"Layer {short[0]} is missing rows.")
+    if s["rows"] != s["h"]:
+        raise HTTPException(400, f"{s['rows']} of {s['h']} merged rows were sent.")
+    _psds.pop(key, None)
+    await asyncio.to_thread(_psdl_finish, s)
+    return FileResponse(s["path"], media_type="image/vnd.adobe.photoshop", background=_gone(s["path"]))
+
+
+@router.post("/psdl/{key}/{index}")
+async def put_layer(key: str, index: int, request: Request) -> dict[str, int]:
+    """The next rows of layer `index` (RGBA, top first, a whole number of rows of that layer's width)."""
+    s = _psds.get(key)
+    if s is None or "lspools" not in s or not (0 <= index < len(s["layers"])):
+        raise HTTPException(404, "No such layer is being written under that key.")
+    return {"rows": await asyncio.to_thread(_psdl_put, s, index, await request.body())}
+
+
+@router.post("/psdl/{key}")
+async def put_merged(key: str, request: Request) -> dict[str, int]:
+    """The next rows of the merged picture (RGBA, top first, the document's width)."""
+    s = _psds.get(key)
+    if s is None or "lspools" not in s:
+        raise HTTPException(404, "No layered picture is being written under that key.")
+    await asyncio.to_thread(_psd_put, s, await request.body())
+    return {"rows": s["rows"]}

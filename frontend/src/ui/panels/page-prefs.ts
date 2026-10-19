@@ -40,7 +40,7 @@ export class PagePrefsRows {
   private readonly rotate = checkRow('Trackpad Rotate Gesture', (v) => this.change({ trackpadRotate: v }));
   private readonly accel = sliderRow('Scrubby Slider Acceleration (%)', 0, 100, 5, (v) => this.change({ scrubAccel: v }));
   private readonly touch = checkRow('Touch Gestures', (v) => this.change({ touchGestures: v }));
-  private readonly extPanels = checkRow('Show Extension Panels (plug-in commands in the Plugins menu)', (v) => this.change({ showExtPanels: v }));
+  private readonly extPanels = checkRow('Show Extension Panels (plug-in commands in the Plugins menu and plug-in panels in the dock)', (v) => { this.change({ showExtPanels: v }); window.dispatchEvent(new CustomEvent('formvis:ext-panels', { detail: v })); });
   private readonly tipHardness = checkRow('Right-Drag Up and Down Sets Brush Hardness', (v) => this.change({ tipHardness: v }));
   private readonly snapPx = checkRow('Snap Vector Tools and Transforms to Pixel Grid', (v) => this.change({ snapVectorPx: v }));
   private readonly readout = checkRow('Show Transformation Values', (v) => this.change({ transformReadout: v }));

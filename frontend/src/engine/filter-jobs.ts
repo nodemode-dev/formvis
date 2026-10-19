@@ -40,8 +40,8 @@ function start(): Worker | null {
 }
 
 /** The filter run in the worker, or null when there is none; `src` is left as it is. */
-export function runFilterOffThread(kind: FilterKind, settings: FilterSettings, scale: number, seed: number, src: ImageData, frame?: LibFrame | null): Promise<ImageData> | null {
-  const onGpu = runFilterOnGpu(kind, settings, scale, seed, src, frame?.canvas ?? null);   // 36.10: a registered GPU runner takes what it can
+export function runFilterOffThread(kind: FilterKind, settings: FilterSettings, scale: number, seed: number, src: ImageData, frame?: LibFrame | null, cpu = false): Promise<ImageData> | null {
+  const onGpu = cpu ? null : runFilterOnGpu(kind, settings, scale, seed, src, frame?.canvas ?? null);   // 36.10: a registered GPU runner takes what it can; `cpu` asks for the exact CPU result
   if (onGpu) return Promise.resolve(onGpu);
   const w = start();
   if (!w) return null;

@@ -38,7 +38,7 @@ def list_plugins() -> list[dict]:
 # and serves files, so every path is checked to stay inside the plugin's own folder.
 FOLDER_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{0,59}$")
 FILE_PATH = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.-]{0,59}(/[A-Za-z0-9][A-Za-z0-9 _.-]{0,59}){0,3}$")
-PERMISSIONS = {"documents", "pixels", "filters", "panels", "tools", "sources", "events", "storage", "ui", "commands"}
+PERMISSIONS = {"documents", "pixels", "filters", "panels", "tools", "sources", "events", "storage", "ui", "commands", "formats", "frames"}
 TYPES = {".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json", ".css": "text/css",
          ".glsl": "text/plain", ".txt": "text/plain", ".md": "text/plain", ".png": "image/png", ".svg": "image/svg+xml"}
 FOLDER_MAX = 1024 * 1024

@@ -35,6 +35,7 @@
     "allow-check-for-update",
     "allow-install-update",
     "allow-set-display-server",
-    "allow-system-fonts-english"
+    "allow-system-fonts-english",
+    "allow-ui-zoom"
   ]
 }

@@ -2,7 +2,7 @@ import type { GpuFilterRunner, GpuSmudge, LensGatherInput } from '../engine/gpu-
 import type { GpuEffectJob, GpuEffectRunner } from '../engine/gpu-effects';
 import type { Surface } from '../engine/surface';
 import type { Rect } from '../engine/types';
-import { BAND_CENTER, BAND_WIDTH, HSL_BANDS, bandOf, buildCurveLut, buildParametricLut, colorActive, curvesActive, parametricActive, parametricOf, vignetteShapeOf, type DevelopState } from '../engine/develop';
+import { BAND_CENTER, BAND_WIDTH, HSL_BANDS, bandOf, buildCurveLut, buildParametricLut, calibrationActive, calibrationOf, colorActive, curvesActive, gradingActive, gradingOf, hslToRgb, parametricActive, parametricOf, pointColorActive, pointColorOf, rgbToHsl, toneProcessOf, vignetteShapeOf, type DevelopState } from '../engine/develop';
 import { threeBoxWidths } from '../engine/filters';
 import { frameTrace } from './frame-trace';
 
@@ -123,6 +123,7 @@ const FS_SMUDGE_CANVAS = `${SM_WEIGHT}void main() {
 const FS_DEVELOP = `${MIX}
 uniform uint u_seed; uniform float u_offset, u_exp, u_cont, u_high, u_shad, u_white, u_black, u_temp, u_tint, u_vib, u_sat, u_dehz, u_vig, u_grain;
 uniform bool u_hasColor, u_hasCurve, u_hasPara, u_colorize; uniform vec3 u_master; uniform vec3 u_vigp; uniform vec3 u_band[8]; uniform vec2 u_bandc[8];
+uniform vec2 u_tp[4]; uniform bool u_hasPc, u_hasCal, u_hasGrade; uniform vec3 u_pc0, u_pcw, u_pcd, u_calh, u_cals, u_gts, u_gtm, u_gth, u_gtg; uniform vec4 u_gl; uniform vec2 u_gpv; uniform float u_calt;
 float c01(float x) { return clamp(x, 0.0, 1.0); }
 vec3 c01(vec3 x) { return clamp(x, 0.0, 1.0); }
 float sstep(float e0, float e1, float x) { float t = c01((x - e0) / (e1 - e0)); return t * t * (3.0 - 2.0 * t); }
@@ -146,6 +147,7 @@ vec3 hslToRgb(float h, float s, float l) {
   return c01(vec3(hue2rgb(p, q, hn + 1.0 / 3.0), hue2rgb(p, q, hn), hue2rgb(p, q, hn - 1.0 / 3.0)));
 }
 float shiftL(float l, float delta) { float d = clamp(delta, -1.0, 1.0); return d >= 0.0 ? c01(l + (1.0 - l) * d) : c01(l + l * d); }
+float bellW(float d, float w) { return d >= w ? 0.0 : 0.5 + 0.5 * cos(3.14159265358979 * d / w); }
 float hueW(float h, float center, float width) {
   float diff = abs(h - center); if (diff > 180.0) diff = 360.0 - diff;
   float half_ = max(5.0, width / 2.0), fall = max(12.0, half_ * 0.65);
@@ -167,20 +169,20 @@ void main() {
   if (u_offset != 0.0) v += u_offset / 100.0;
   if (u_exp != 0.0) { float m = pow(2.0, u_exp / 100.0); v *= m; luma *= m; }
   if (u_shad != 0.0) {
-    float k = u_shad / 100.0, mask = 1.0 - sstep(0.0, 0.65, luma);
-    if (k > 0.0) v += (1.0 - v) * mask * k * 0.75; else v += v * mask * k * 0.75;
+    float k = u_shad / 100.0, mask = 1.0 - sstep(0.0, u_tp[0].x, luma);
+    if (k > 0.0) v += (1.0 - v) * mask * k * u_tp[0].y; else v += v * mask * k * u_tp[0].y;
   }
   if (u_high != 0.0) {
-    float k = u_high / 100.0, boost = sstep(0.3, 1.0, luma) * k * 0.8, ln = k > 0.0 ? luma + (1.0 - luma) * boost : luma + luma * boost;
+    float k = u_high / 100.0, boost = sstep(u_tp[1].x, 1.0, luma) * k * u_tp[1].y, ln = k > 0.0 ? luma + (1.0 - luma) * boost : luma + luma * boost;
     v *= ln / max(1e-5, luma); luma = ln;
   }
   if (u_white != 0.0) {
-    float k = u_white / 100.0, boost = sstep(0.45, 1.0, luma) * k * 1.2, ln = k > 0.0 ? luma + (1.0 - luma) * boost : luma + luma * boost;
+    float k = u_white / 100.0, boost = sstep(u_tp[2].x, 1.0, luma) * k * u_tp[2].y, ln = k > 0.0 ? luma + (1.0 - luma) * boost : luma + luma * boost;
     v *= ln / max(1e-5, luma); luma = ln;
   }
   if (u_black != 0.0) {
-    float k = u_black / 100.0, mask = 1.0 - sstep(0.0, 0.35, luma);
-    if (k > 0.0) v += (1.0 - v) * mask * k * 0.8; else v += v * mask * k * 0.8;
+    float k = u_black / 100.0, mask = 1.0 - sstep(0.0, u_tp[3].x, luma);
+    if (k > 0.0) v += (1.0 - v) * mask * k * u_tp[3].y; else v += v * mask * k * u_tp[3].y;
   }
   if (u_cont != 0.0) v = (v - 0.5) * (1.0 + u_cont / 100.0) + 0.5;
   v = c01(v);
@@ -236,6 +238,31 @@ void main() {
   if (u_hasPara) {
     ivec3 j = ivec3(clamp(floor(v * 255.0 + 0.5), 0.0, 255.0));
     v = vec3(texelFetch(t1, ivec2(j.r, 1), 0).r, texelFetch(t1, ivec2(j.g, 1), 0).g, texelFetch(t1, ivec2(j.b, 1), 0).b);
+  }
+  v = floor(v * 255.0 + 0.5) / 255.0;
+  if (u_hasPc) {
+    vec3 hsl = rgbToHsl(v);
+    if (hsl.y >= 0.02) {
+      float dh = abs(hsl.x - u_pc0.x); if (dh > 180.0) dh = 360.0 - dh;
+      float w = bellW(dh, u_pcw.x) * bellW(abs(hsl.y - u_pc0.y), u_pcw.y) * bellW(abs(hsl.z - u_pc0.z), u_pcw.z);
+      if (w > 0.0) v = floor(hslToRgb(hsl.x + u_pcd.x * 0.6 * w, c01(hsl.y * (1.0 + (u_pcd.y / 100.0) * w)), shiftL(hsl.z, (u_pcd.z / 100.0) * 0.5 * w)) * 255.0 + 0.5) / 255.0;
+    }
+  }
+  if (u_hasCal || u_hasGrade) {
+    if (u_hasCal) {
+      vec3 hsl = rgbToHsl(v);
+      float wR = hueW(hsl.x, 0.0, 120.0), wG = hueW(hsl.x, 120.0, 120.0), wB = hueW(hsl.x, 240.0, 120.0);
+      v = hslToRgb(hsl.x + (wR * u_calh.x + wG * u_calh.y + wB * u_calh.z) * 0.3, c01(hsl.y * (1.0 + (wR * u_cals.x + wG * u_cals.y + wB * u_cals.z) / 100.0)), hsl.z);
+      if (u_calt != 0.0) { float k = (u_calt / 100.0) * pow(1.0 - hsl.z, 2.0) * 20.0 / 255.0; v.r += k; v.b += k; v.g -= k; }
+    }
+    if (u_hasGrade) {
+      float L = lumaOf(v), wd = u_gpv.x, pv = u_gpv.y;
+      float wS = sstep(pv + wd, pv - wd, L), wH = sstep(pv - wd, pv + wd, L), wM = 1.0 - sstep(0.0, wd, abs(L - pv));
+      vec3 n = v + u_gts * wS + u_gtm * wM + u_gth * wH + u_gtg;
+      float lift = ((u_gl.x * wS + u_gl.y * wM + u_gl.z * wH + u_gl.w) / 100.0) * 0.4;
+      v = n + (L - lumaOf(n) + lift);
+    }
+    v = floor(c01(v) * 255.0 + 0.5) / 255.0;
   }
   o = vec4(v, s.a);
 }`;
@@ -786,6 +813,25 @@ export class GlFilters implements GpuFilterRunner, GpuEffectRunner {
         gl.uniform3f(loc('u_vigp'), vs.midpoint, vs.feather, vs.roundness);
         gl.uniform3fv(loc('u_band'), HSL_BANDS.flatMap((k) => { const b = bandOf(state.color, k); return [b.h, b.s, b.l]; }));
         gl.uniform2fv(loc('u_bandc'), HSL_BANDS.flatMap((k) => [BAND_CENTER[k], BAND_WIDTH[k]]));
+        const tp = toneProcessOf(state);
+        gl.uniform2fv(loc('u_tp'), [tp.shadEdge, tp.shadGain, tp.highLo, tp.highGain, tp.whiteLo, tp.whiteGain, tp.blackEdge, tp.blackGain]);
+        const pc = pointColorOf(state), hasPc = pointColorActive(pc), grade = gradingOf(state), hasGrade = gradingActive(grade), cal = calibrationOf(state), hasCal = calibrationActive(cal);
+        gl.uniform1i(loc('u_hasPc'), hasPc ? 1 : 0); gl.uniform1i(loc('u_hasCal'), hasCal ? 1 : 0); gl.uniform1i(loc('u_hasGrade'), hasGrade ? 1 : 0);
+        if (hasPc) {
+          const n = parseInt(pc.color.slice(1), 16), [h0, s0, l0] = rgbToHsl((n >> 16) & 255, (n >> 8) & 255, n & 255), reach = Math.max(0.05, pc.range / 100);
+          gl.uniform3f(loc('u_pc0'), h0, s0, l0); gl.uniform3f(loc('u_pcw'), 90 * reach, 0.6 * reach + 0.1, 0.6 * reach + 0.1); gl.uniform3f(loc('u_pcd'), pc.h, pc.s, pc.l);
+        }
+        if (hasCal) { gl.uniform3f(loc('u_calh'), cal.redHue, cal.greenHue, cal.blueHue); gl.uniform3f(loc('u_cals'), cal.redSat, cal.greenSat, cal.blueSat); gl.uniform1f(loc('u_calt'), cal.shadowTint); }
+        if (hasGrade) {
+          const tint = (w: { h: number; s: number }): [number, number, number] => {
+            if (!w.s) return [0, 0, 0];
+            const [r, g, b] = hslToRgb(w.h, 1, 0.5), k = (w.s / 100) * 0.3;
+            return [(r / 255 - 0.5) * k, (g / 255 - 0.5) * k, (b / 255 - 0.5) * k];
+          };
+          gl.uniform3fv(loc('u_gts'), tint(grade.shadows)); gl.uniform3fv(loc('u_gtm'), tint(grade.midtones)); gl.uniform3fv(loc('u_gth'), tint(grade.highlights)); gl.uniform3fv(loc('u_gtg'), tint(grade.global));
+          gl.uniform4f(loc('u_gl'), grade.shadows.l ?? 0, grade.midtones.l ?? 0, grade.highlights.l ?? 0, grade.global.l ?? 0);
+          gl.uniform2f(loc('u_gpv'), 0.15 + (grade.blending / 100) * 0.35, 0.5 - (grade.balance / 100) * 0.25);
+        }
       }, table ?? undefined);
     } finally { if (table) this.free(table); }
   }

@@ -43,14 +43,14 @@ def test_the_dialog_views_brush_and_decontaminate(page):
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.evaluate("window.formvis.engine.newDocument(120, 80, 'M', 'white'); window.formvis.engine.selectAll()")
     assert page.evaluate("window.formvis.commands.run('select-and-mask')")
-    views = page.locator(DLG + " .cv-field", has_text="View").locator("select")
+    views = page.locator(DLG + " .cv-field", has=page.get_by_text("View", exact=True)).locator("select")
     values = views.evaluate("(s) => [...s.options].map((o) => o.value)")
     assert values == ["onionSkin", "marchingAnts", "overlay", "onBlack", "onWhite", "blackWhite", "onLayers"], values
     for v in values:
         views.select_option(v)
         page.wait_for_timeout(60)
     assert page.evaluate("(() => { const c = document.querySelector('.cv-mask-canvas'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; return d.some((x, i) => i % 4 === 3 && x > 0); })()")
-    page.locator(DLG + " .cv-field", has_text="Refine Edge Brush").locator("input").check()
+    page.locator(DLG + " .cv-field", has_text="Brush (paint").locator("select").select_option("refine")
     assert page.evaluate("document.querySelector('.cv-mask-canvas').classList.contains('is-brush')")
     page.locator(DLG + " .cv-field", has_text="Decontaminate Colors").locator("input").check()
     assert page.locator(DLG + " .cv-field", has_text="Output To").locator("select").input_value() == "layerMask"   # to a new layer

@@ -122,6 +122,10 @@ export class FilterPanel extends Dialog {
   private clipView = false;
   private done = false;
   private timer = 0;
+  private settle = 0;
+  private held = false;
+  private docked = false;
+  private readonly livePixels = 40_000_000;
   private readonly sections = new Map<FilterKind, { node: HTMLElement; sync: () => void }>();
   private readonly previewRow: Row<boolean>;
   private readonly shot: FilterPreview;
@@ -402,6 +406,44 @@ export class FilterPanel extends Dialog {
       window.setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     });
     devNodes.splice(1, 0, settingsRow);
+    // Snapshots: named copies of the whole state, kept between sessions (so they serve as presets too); a row puts its settings back, Delete drops it.
+    const SNAPS = 'formvis.developSnapshots', snaps: Array<{ name: string; state: DevelopState }> = [];
+    try {
+      const saved: unknown = JSON.parse(localStorage.getItem(SNAPS) ?? '[]');
+      if (Array.isArray(saved)) for (const x of saved.slice(0, 50)) if (x && typeof x.name === 'string' && x.state && typeof x.state === 'object') snaps.push({ name: x.name, state: x.state as DevelopState });
+    } catch { /* no stored snapshots */ }
+    const keepSnaps = (): void => { try { localStorage.setItem(SNAPS, JSON.stringify(snaps)); } catch { /* storage is off */ } };
+    const snapList = el<HTMLElement>('<div class="cv-develop-snaps" style="display:grid;gap:4px"></div>');
+    const snapRow = (snap: { name: string; state: DevelopState }): void => {
+      const row = el<HTMLElement>('<div style="display:flex;gap:6px"><button class="cv-btn" type="button" style="flex:1"></button><button class="cv-btn" type="button">Delete</button></div>');
+      const [use, drop] = Array.from(row.querySelectorAll('button'));
+      setText(use!, snap.name);
+      use!.addEventListener('click', () => { s.develop = JSON.parse(JSON.stringify(snap.state)) as DevelopState; for (const f of devSync) f(); this.schedule(0); });
+      drop!.addEventListener('click', () => { snaps.splice(snaps.indexOf(snap), 1); keepSnaps(); row.remove(); });
+      snapList.append(row);
+    };
+    for (const snap of snaps) snapRow(snap);
+    const snapAdd = el<HTMLButtonElement>('<button class="cv-btn" type="button" title="Keep the current settings as a snapshot you can come back to.">Add Snapshot</button>');
+    snapAdd.addEventListener('click', () => {
+      if (snaps.length >= 50) return;
+      const next = Math.max(0, ...snaps.map((x) => Number(/^Snapshot (\d+)$/.exec(x.name)?.[1] ?? 0))) + 1;
+      const snap = { name: `Snapshot ${next}`, state: JSON.parse(JSON.stringify(s.develop)) as DevelopState };
+      snaps.push(snap); keepSnaps(); snapRow(snap);
+    });
+    devNodes.splice(2, 0, snapAdd, snapList);
+    const dockRow = checkRow('Dock to the side', (v) => { this.docked = v; this.scrim.classList.toggle('cv-scrim-docked', v); });
+    devNodes.splice(2, 0, dockRow.el);
+    devSync.push(() => dockRow.set(this.docked));
+    // Before and after: while this is held the stage shows the picture as it was; letting go brings the developed preview back.
+    const compare = el<HTMLButtonElement>('<button class="cv-btn" type="button" title="Hold to see the picture as it was before Develop.">Hold for Before</button>');
+    const showBefore = (): void => { window.clearTimeout(this.timer); window.clearTimeout(this.settle); this.engine.setPreview(null); };
+    const showAfter = (): void => this.schedule(0);
+    compare.addEventListener('pointerdown', (e) => { compare.setPointerCapture(e.pointerId); showBefore(); });
+    compare.addEventListener('pointerup', showAfter);
+    compare.addEventListener('pointercancel', showAfter);
+    compare.addEventListener('keydown', (e) => { if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) showBefore(); });
+    compare.addEventListener('keyup', (e) => { if (e.key === ' ' || e.key === 'Enter') showAfter(); });
+    devNodes.splice(3, 0, compare);
     // White balance: As Shot clears Temperature and Tint, Auto takes the picture's mean colour as the neutral, and the
     // eyedropper (where the window has one) reads a neutral off the screen; a moved slider makes the choice Custom.
     const setWb = (temperature: number, tint: number): void => { D().tone.temperature = temperature; D().tone.tint = tint; for (const f of devSync) f(); };
@@ -570,7 +612,9 @@ export class FilterPanel extends Dialog {
     slide('Scale (%)', 50, 150, 1, () => geometry().scale, (v) => { geometry().scale = v; });
     slide('Offset X', -100, 100, 1, () => geometry().offsetX, (v) => { geometry().offsetX = v; });
     slide('Offset Y', -100, 100, 1, () => geometry().offsetY, (v) => { geometry().offsetY = v; });
-    devNodes.push(el('<p class="cv-note">Calibration</p>'));
+    const processSel = selectRow('Process Version', [['2', 'Version 2 (current)'], ['1', 'Version 1 (earlier)']], (v) => { D().process = v === '1' ? 1 : 2; processSel.set(v); this.schedule(0); });
+    devNodes.push(el('<p class="cv-note">Calibration</p>'), processSel.el);
+    devSync.push(() => processSel.set(D().process === 1 ? '1' : '2'));
     slide('Shadows Tint', -100, 100, 1, () => calib().shadowTint, (v) => { calib().shadowTint = v; });
     for (const [p, name] of [['red', 'Red'], ['green', 'Green'], ['blue', 'Blue']] as const) {
       slide(`${name} Primary Hue`, -100, 100, 1, () => calib()[`${p}Hue`], (v) => { calib()[`${p}Hue`] = v; });
@@ -598,7 +642,7 @@ export class FilterPanel extends Dialog {
       Light: toneKeys(['exposure', 'contrast', 'highlights', 'shadows', 'whites', 'blacks']), Colour: toneKeys(['temperature', 'tint', 'vibrance', 'saturation']),
       Effects: () => { toneKeys(['dehaze', 'vignette', 'grain'])(); D().vignette = defaultVignetteShape(); }, Detail: () => { D().detail = defaultDevelopState().detail; }, 'Noise Reduction': () => { D().noise = defaultNoise(); }, 'Point Curve': () => { D().curves = defaultDevelopState().curves; },
       'Parametric Curve': () => { D().parametric = defaultParametric(); }, 'Colour Mixer': () => { D().color = defaultDevelopState().color; }, 'Colour Grading': () => { D().grading = defaultGrading(); },
-      'Point Color': () => { D().pointColor = defaultPointColor(); }, Optics: () => { D().optics = defaultOptics(); }, Geometry: () => { D().geometry = defaultGeometry(); }, Calibration: () => { D().calibration = defaultCalibration(); },
+      'Point Color': () => { D().pointColor = defaultPointColor(); }, Optics: () => { D().optics = defaultOptics(); }, Geometry: () => { D().geometry = defaultGeometry(); }, Calibration: () => { D().calibration = defaultCalibration(); delete D().process; },
     };
     let folds: HTMLElement[] = [];
     for (const node of devNodes) {
@@ -623,6 +667,9 @@ export class FilterPanel extends Dialog {
     this.button('Cancel', 'ghost', () => this.close());
     this.okBtn = this.button('OK', 'primary', () => this.commit());
     this.onClose = () => this.abandon();
+    this.scrim.addEventListener('pointerdown', (e) => { if (this.docked && e.target === this.scrim) e.stopImmediatePropagation(); }, true);
+    this.body.addEventListener('pointerdown', () => { this.held = true; }, true);
+    for (const type of ['pointerup', 'pointercancel']) document.addEventListener(type, () => { this.held = false; }, true);
   }
 
   private section(kind: FilterKind, nodes: HTMLElement[], sync: () => void): void {
@@ -801,6 +848,7 @@ export class FilterPanel extends Dialog {
     if (kind === 'develop') for (const i of this.profileRow.el.querySelectorAll('select')) i.disabled = true;
     this.scrim.classList.toggle('cv-scrim-through', PIN_KINDS.includes(kind));
     this.scrim.classList.toggle('cv-scrim-side', PIN_KINDS.includes(kind));
+    this.scrim.classList.toggle('cv-scrim-docked', kind === 'develop' && this.docked);
     this.open(this.okBtn);
     if (PIN_KINDS.includes(kind)) { setDialogTool(this.pins); this.pins.select(1); this.engine.emit('overlay', null); document.addEventListener('keydown', this.pinKey); }
     if (kind === 'lightingEffects') { this.scrim.classList.add('cv-scrim-through'); setDialogTool(this.lightPins); this.lightPins.select(1); this.engine.emit('overlay', null); }
@@ -882,8 +930,16 @@ export class FilterPanel extends Dialog {
 
   private grow(): number { return filterMargin(this.kind, this.s); }
 
+  /** After a Develop drag drawn on the GPU at full size, the exact CPU result swapped in once the pointer is up. */
+  private repair(): void {
+    if (!this.isOpen || !this.preview) return;
+    if (this.held) { this.settle = window.setTimeout(() => this.repair(), 150); return; }
+    this.engine.previewImageEdit((src, scale, frame) => (runFilterOffThread(this.kind, this.s, scale, this.seed, src, frame, true) ?? Promise.resolve(this.run(src, scale, frame))).then((img) => (this.clipView ? clippingView(img) : img)), this.grow(), this.livePixels);
+  }
+
   private schedule(delay = 140): void {
     window.clearTimeout(this.timer);
+    window.clearTimeout(this.settle);
     this.timer = window.setTimeout(() => {
       if (!this.isOpen) return;
       if (this.liveEdit) { this.liveEdit.change({ ...this.settingsOf(this.kind), seed: this.seed }); return; }
@@ -892,8 +948,11 @@ export class FilterPanel extends Dialog {
         if (this.kind === 'develop') void Promise.resolve(out).then((img) => this.scopes.draw(img)).catch(() => undefined);
         return this.kind === 'develop' && this.clipView ? Promise.resolve(out).then(clippingView) : out;
       };
-      if (this.preview && !this.smartTarget() && !(isLibKind(this.kind) && libFilter(this.kind).ownPreview)) this.engine.previewImageEdit((src, scale, frame) => scoped(runFilterOffThread(this.kind, this.s, scale, this.seed, src, frame) ?? this.run(src, scale, frame)), this.grow(), this.kind === 'develop' && gpuFilters() && developPerPixelOnly(this.s.develop) ? 8_000_000 : undefined);
-      else this.engine.setPreview(null);
+      const live = this.kind === 'develop' && !!gpuFilters() && developPerPixelOnly(this.s.develop);
+      if (this.preview && !this.smartTarget() && !(isLibKind(this.kind) && libFilter(this.kind).ownPreview)) {
+        this.engine.previewImageEdit((src, scale, frame) => scoped(runFilterOffThread(this.kind, this.s, scale, this.seed, src, frame) ?? this.run(src, scale, frame)), this.grow(), live ? this.livePixels : undefined);
+        if (live) this.settle = window.setTimeout(() => this.repair(), 300);
+      } else this.engine.setPreview(null);
       if (this.shot.visible) this.shot.render((src, scale, frame) => runFilterOffThread(this.kind, this.s, scale, this.seed, src, frame) ?? this.run(src, scale, frame), this.grow());
     }, delay);
   }
@@ -1043,7 +1102,7 @@ export class FilterPanel extends Dialog {
   }
 
   private abandon(): void {
-    this.scrim.classList.remove('cv-scrim-through', 'cv-scrim-side');
+    this.scrim.classList.remove('cv-scrim-through', 'cv-scrim-side', 'cv-scrim-docked');
     document.removeEventListener('keydown', this.pinKey);
     this.guideLines = [];
     this.probeFor = null;
@@ -1051,6 +1110,7 @@ export class FilterPanel extends Dialog {
     setDialogTool(null);
     this.engine.emit('overlay', null);
     window.clearTimeout(this.timer);
+    window.clearTimeout(this.settle);
     this.editing = null;
     const liveEdit = this.liveEdit;
     this.liveEdit = null;

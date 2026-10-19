@@ -12,6 +12,28 @@ export type Val =number | string | boolean | Val[] | Desc | Enum | Unit | null;
 
 const isEnum = (v: Val | undefined): v is Enum => !!v && typeof v === 'object' && !Array.isArray(v) && 'kind' in v && v.kind === 'enum';
 const isUnit = (v: Val | undefined): v is Unit => !!v && typeof v === 'object' && !Array.isArray(v) && 'kind' in v && v.kind === 'unit';
+const unitOrNumber = (v: Val | undefined): number | null => (isUnit(v) ? v.value : typeof v === 'number' ? v : null);
+
+interface FilterField { key: string; set: string; unit?: string; min: number; max: number; whole?: boolean; positive?: boolean }
+interface FilterEvent { filter: string; fields: FilterField[]; keep?: Record<string, string> }
+const pixels = (key: string, set: string, min: number, max: number, whole = false): FilterField => ({ key, set, unit: '#Pxl', min, max, positive: true, ...(whole ? { whole } : {}) });
+const count = (key: string, set: string, min: number, max: number): FilterField => ({ key, set, min, max, whole: true });
+/** Library filters whose .atn event holds plain numbers. The values sit under settings.lib as the Filter dialog keeps them;
+ *  `keep` names the choices the event cannot carry, which must stay at their default for the step to be written. */
+const LIB_EVENTS: Record<string, FilterEvent> = {
+  'Mdn ': { filter: 'median', fields: [pixels('Rds ', 'radius', 1, 100, true)] },
+  HghP: { filter: 'highPass', fields: [pixels('Rds ', 'radius', 0.1, 250)] },
+  'Mxm ': { filter: 'maximum', fields: [pixels('Rds ', 'radius', 0.2, 100)], keep: { preserve: 'squareness' } },
+  'Mnm ': { filter: 'minimum', fields: [pixels('Rds ', 'radius', 0.2, 100)], keep: { preserve: 'squareness' } },
+  DstS: { filter: 'dustAndScratches', fields: [pixels('Rds ', 'radius', 1, 100, true), count('Thsh', 'threshold', 0, 255)] },
+  Embs: { filter: 'emboss', fields: [count('Angl', 'angle', -180, 180), count('Hght', 'height', 1, 100), count('Amnt', 'amount', 1, 500)] },
+  'Msc ': { filter: 'mosaic', fields: [pixels('ClSz', 'cellSize', 2, 200, true)] },
+  Twrl: { filter: 'twirl', fields: [count('Angl', 'angle', -999, 999)] },
+  Pnch: { filter: 'pinch', fields: [count('Amnt', 'amount', -100, 100)] },
+  Sphr: { filter: 'spherize', fields: [count('Amnt', 'amount', -100, 100)], keep: { mode: 'normal' } },
+};
+const PLAIN_FILTERS: Record<string, string> = { 'Blr ': 'blur', BlrM: 'blurMore', Shrp: 'sharpen', ShrM: 'sharpenMore', ShrE: 'sharpenEdges', Dspc: 'despeckle', FndE: 'findEdges', Slrz: 'solarize' };
+const PLAIN_BACK: Record<string, string> = Object.fromEntries(Object.entries(PLAIN_FILTERS).map(([event, filter]) => [filter, event]));
 
 export class Reader {
   private readonly view: DataView;
@@ -109,7 +131,7 @@ function readItem(r: Reader): Item {
   return { enabled, event, name, desc };
 }
 
-const SIMPLE: Record<string, string> = { Invr: 'invert', Dstt: 'desaturate', Fltn: 'flatten', MrgV: 'merge-visible', Mrg2: 'merge-down', Dplc: 'duplicate', Dslc: 'deselect', Invs: 'inverse' };
+const SIMPLE: Record<string, string> = { Invr: 'invert', Dstt: 'desaturate', Fltn: 'flatten', MrgV: 'merge-visible', Mrg2: 'merge-down', Dplc: 'duplicate', Dslc: 'deselect', Invs: 'inverse', Eqlz: 'equalize' };
 
 /** The step an item stands for, or null when formvis has no equivalent. */
 function stepFor(it: Item): ActionStep | null {
@@ -157,10 +179,33 @@ function stepFor(it: Item): ActionStep | null {
     if (angle === null || dist === null || !(dist >= 1)) return null;
     return { kind: 'filter', filter: 'motionBlur', label, settings: { angle: Math.min(180, Math.max(-180, angle)), distance: Math.min(2000, dist) } };
   }
-  if (it.event === 'Mdn ' || it.event === 'HghP') {
-    const rds = get('Rds '), radius = isUnit(rds) ? rds.value : typeof rds === 'number' ? rds : null;
-    if (radius === null || !(radius > 0)) return null;
-    return it.event === 'Mdn ' ? { kind: 'filter', filter: 'median', label, settings: { radius: Math.min(100, Math.max(1, Math.round(radius))) } } : { kind: 'filter', filter: 'highPass', label, settings: { radius: Math.min(250, Math.max(0.1, radius)) } };
+  const lib = LIB_EVENTS[it.event];
+  if (lib) {
+    const values: Record<string, number> = {};
+    for (const f of lib.fields) {
+      const n = unitOrNumber(get(f.key));
+      if (n === null || !Number.isFinite(n) || (f.positive && !(n > 0))) return null;
+      const c = Math.min(f.max, Math.max(f.min, n));
+      values[f.set] = f.whole ? Math.round(c) : c;
+    }
+    return { kind: 'filter', filter: lib.filter, label, settings: { lib: { [lib.filter]: values } } };
+  }
+  if (PLAIN_FILTERS[it.event]) return { kind: 'filter', filter: PLAIN_FILTERS[it.event], label, settings: {} };
+  if (it.event === 'AdNs') {
+    const amount = unitOrNumber(get('Nose')), spread = get('Dstr'), mono = get('Mnch');
+    if (amount === null || !(amount > 0)) return null;
+    return { kind: 'filter', filter: 'addNoise', label, settings: { amount: Math.min(400, Math.max(0.1, amount)), gaussian: isEnum(spread) && spread.value.trim() === 'Gsn', monochromatic: mono === true } };
+  }
+  const adjust = (adj: string, data: Record<string, unknown>): ActionStep => ({ kind: 'adjustment', adj, label, data, layer: false });
+  if (it.event === 'BrgC') {
+    const brightness = unitOrNumber(get('Brgh')), contrast = unitOrNumber(get('Cntr'));
+    if (brightness === null || contrast === null) return null;
+    return adjust('brightnessContrast', { brightness: Math.min(150, Math.max(-150, Math.round(brightness))), contrast: Math.min(100, Math.max(-50, Math.round(contrast))), legacy: get('useLegacy') === true });
+  }
+  if (it.event === 'Pstr' || it.event === 'Thrs') {
+    const n = unitOrNumber(get(it.event === 'Pstr' ? 'Lvls' : 'Lvl '));
+    if (n === null || !Number.isFinite(n)) return null;
+    return it.event === 'Pstr' ? adjust('posterize', { levels: Math.min(255, Math.max(2, Math.round(n))) }) : adjust('threshold', { level: Math.min(255, Math.max(1, Math.round(n))) });
   }
   if (it.event === 'ImgS') {
     const w = get('Wdth'), h = get('Hght'), res = get('Rslt');
@@ -229,7 +274,7 @@ function descriptor(o: Out, classId: string, fields: Array<[string, Field]>): vo
   }
 }
 
-const SIMPLE_BACK: Record<string, string> = { invert: 'Invr', desaturate: 'Dstt', flatten: 'Fltn', 'merge-visible': 'MrgV', 'merge-down': 'Mrg2', duplicate: 'Dplc', deselect: 'Dslc', inverse: 'Invs' };
+const SIMPLE_BACK: Record<string, string> = { invert: 'Invr', desaturate: 'Dstt', flatten: 'Fltn', 'merge-visible': 'MrgV', 'merge-down': 'Mrg2', duplicate: 'Dplc', deselect: 'Dslc', inverse: 'Invs', equalize: 'Eqlz' };
 
 /** The bytes of one event item for `s`, or null when .atn has no event formvis can write for it. */
 function itemFor(s: ActionStep): Uint8Array | null {
@@ -247,7 +292,27 @@ function itemFor(s: ActionStep): Uint8Array | null {
     return o.bytes();
   }
   if (s.kind === 'filter' && s.filter === 'motionBlur' && typeof s.settings.angle === 'number' && typeof s.settings.distance === 'number') { head('MtnB', true); descriptor(o, 'null', [['Angl', ['UntF', '#Ang', s.settings.angle]], ['Dstn', ['UntF', '#Pxl', s.settings.distance]]]); return o.bytes(); }
-  if (s.kind === 'filter' && (s.filter === 'median' || s.filter === 'highPass') && typeof s.settings.radius === 'number') { head(s.filter === 'median' ? 'Mdn ' : 'HghP', true); descriptor(o, 'null', [['Rds ', ['UntF', '#Pxl', s.settings.radius]]]); return o.bytes(); }
+  const libEntry = s.kind === 'filter' ? Object.entries(LIB_EVENTS).find(([, e]) => e.filter === s.filter) : undefined;
+  if (s.kind === 'filter' && libEntry) {
+    const [event, spec] = libEntry, stored = (s.settings.lib as Record<string, unknown> | undefined)?.[spec.filter], v = (stored && typeof stored === 'object' ? stored : s.settings) as Record<string, unknown>;
+    if (!spec.fields.every((f) => typeof v[f.set] === 'number') || !Object.entries(spec.keep ?? {}).every(([k, d]) => v[k] === undefined || v[k] === d)) return null;
+    head(event, true);
+    descriptor(o, 'null', spec.fields.map((f): [string, Field] => [f.key, f.unit ? ['UntF', f.unit, v[f.set] as number] : ['long', Math.round(v[f.set] as number)]]));
+    return o.bytes();
+  }
+  if (s.kind === 'filter' && PLAIN_BACK[s.filter]) { head(PLAIN_BACK[s.filter], false); return o.bytes(); }
+  if (s.kind === 'filter' && s.filter === 'addNoise' && typeof s.settings.amount === 'number') {
+    head('AdNs', true);
+    descriptor(o, 'null', [['Nose', ['UntF', '#Prc', s.settings.amount]], ['Dstr', ['enum', 'Dstr', s.settings.gaussian === true ? 'Gsn ' : 'Unfr']], ['Mnch', ['bool', s.settings.monochromatic === true]]]);
+    return o.bytes();
+  }
+  if (s.kind === 'adjustment' && !s.layer && s.adj === 'brightnessContrast' && typeof s.data.brightness === 'number' && typeof s.data.contrast === 'number') {
+    head('BrgC', true);
+    descriptor(o, 'null', [['Brgh', ['long', Math.round(s.data.brightness)]], ['Cntr', ['long', Math.round(s.data.contrast)]], ['useLegacy', ['bool', s.data.legacy === true]]]);
+    return o.bytes();
+  }
+  if (s.kind === 'adjustment' && !s.layer && s.adj === 'posterize' && typeof s.data.levels === 'number') { head('Pstr', true); descriptor(o, 'null', [['Lvls', ['long', Math.round(s.data.levels)]]]); return o.bytes(); }
+  if (s.kind === 'adjustment' && !s.layer && s.adj === 'threshold' && typeof s.data.level === 'number') { head('Thrs', true); descriptor(o, 'null', [['Lvl ', ['long', Math.round(s.data.level)]]]); return o.bytes(); }
   if (s.kind === 'imageSize') { head('ImgS', true); descriptor(o, 'null', [['Wdth', ['UntF', '#Pxl', s.w]], ['Hght', ['UntF', '#Pxl', s.h]], ['Rslt', ['UntF', '#Rsl', s.res]]]); return o.bytes(); }
   return null;
 }

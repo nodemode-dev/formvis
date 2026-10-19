@@ -226,6 +226,8 @@ export type ToolId = 'slice' | 'move' | 'artboard' |'marquee' | 'lasso' | 'objec
 
 /** pixels follows this computer's memory (1.53.4, setPixelBudget from the engine's capabilities); 100 megapixels until known. */
 export const LIMITS: { readonly side: number; pixels: number; readonly layers: number; readonly depth: number } = { side: 30000, pixels: 100_000_000, layers: 10000, depth: 64 };
+/** The longest side of a document kept in tiles: what a PSB holds. Past LIMITS.side its layers are tiled rasters. */
+export const TILED_SIDE = 300000;
 const pixelCaps = { auto: 100_000_000, user: 0 };
 function applyPixelCaps(): void { LIMITS.pixels = pixelCaps.user > 0 ? Math.min(pixelCaps.auto, pixelCaps.user) : pixelCaps.auto; }
 export function setPixelBudget(pixels: number): void { if (Number.isFinite(pixels) && pixels >= 100_000_000) { pixelCaps.auto = Math.min(250_000_000, Math.round(pixels)); applyPixelCaps(); } }

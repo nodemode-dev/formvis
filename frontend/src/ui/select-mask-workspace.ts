@@ -10,6 +10,7 @@ import { toast } from './toast';
 
 const PREVIEW_SIDE = 1024;
 const UNDO_DEPTH = 8;
+const TEXT_INPUT = new Set(['text', 'number', 'search', 'email', 'url', 'tel', 'password']);
 type View = 'onionSkin' | 'marchingAnts' | 'overlay' | 'onBlack' | 'onWhite' | 'blackWhite' | 'onLayers';
 type Output = 'selection' | 'mask' | 'layer' | 'layerMask' | 'document' | 'documentMask';
 type Which = 'quick' | 'refine' | 'brush' | 'hand' | 'zoom';
@@ -103,7 +104,7 @@ export class SelectMaskWorkspace {
     };
     this.app.append(this.strip, this.panel);
     this.tool = this.makeTool();
-    this.engine.on('doc', () => { if (this.live && this.engine.current !== this.project) this.leave(); });
+    for (const k of ['doc', 'active', 'projects'] as const) this.engine.on(k, () => { if (this.live && this.engine.current !== this.project) this.leave(); });
   }
 
   /** Opens the workspace; false when it cannot (the caller then opens the dialog) after saying why. */
@@ -171,10 +172,11 @@ export class SelectMaskWorkspace {
 
   private readonly key = (e: KeyboardEvent): void => {
     if (!this.live) return;
-    const t = e.target as HTMLElement | null, typing = !!t && (t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && (t as HTMLInputElement).type !== 'range'));
+    const t = e.target as HTMLElement | null, typing = !!t && (t.tagName === 'TEXTAREA' || t.isContentEditable || (t.tagName === 'INPUT' && TEXT_INPUT.has((t as HTMLInputElement).type)));
     const stop = (): void => { e.preventDefault(); e.stopImmediatePropagation(); };
-    if (e.key === 'Escape') { stop(); this.leave(); return; }
     if (typing) return;
+    if (e.key === 'Escape') { stop(); this.leave(); return; }
+    if (e.key === 'Enter' && (t?.tagName === 'BUTTON' || t?.tagName === 'SELECT')) return;
     if (e.key === 'Enter') { stop(); this.commit(); return; }
     const k = e.key.toLowerCase();
     if ((e.ctrlKey || e.metaKey) && !e.altKey) {

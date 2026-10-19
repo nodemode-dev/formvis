@@ -17,7 +17,7 @@ export interface BevelDetail {
   texture?: { patternId?: string; scale: number; depth: number; invert: boolean; link: boolean };
 }
 
-function recordOrder(children: PsdLayer[] | undefined, out: Array<PsdLayer | null>): void {
+export function recordOrder(children: PsdLayer[] | undefined, out: Array<PsdLayer | null>): void {
   for (const pl of children ?? []) {
     if (pl.children) { out.push(null); recordOrder(pl.children, out); out.push(pl); } else out.push(pl);
   }

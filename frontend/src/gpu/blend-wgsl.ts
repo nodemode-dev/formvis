@@ -13,13 +13,14 @@ export const BLEND_IDS: readonly BlendMode[] = [
 export const blendIndex = (m: BlendMode): number => Math.max(0, BLEND_IDS.indexOf(m));
 
 export const COMPOSITE_WGSL = /* wgsl */ `
-struct Layer { inv: mat3x3<f32>, size: vec2<f32>, opacity: f32, mode: u32, minv: mat3x3<f32>, msize: vec2<f32>, hasMask: u32, hasClip: u32, vinv: mat3x3<f32>, biT: vec4<f32>, biU: vec4<f32>, biCh: u32, chOff: u32, lod: f32 };
+struct Layer { inv: mat3x3<f32>, size: vec2<f32>, opacity: f32, mode: u32, minv: mat3x3<f32>, msize: vec2<f32>, hasMask: u32, hasClip: u32, vinv: mat3x3<f32>, biT: vec4<f32>, biU: vec4<f32>, biCh: u32, chOff: u32, lod: f32, ko: f32 };
 @group(0) @binding(0) var backdrop: texture_2d<f32>;
 @group(0) @binding(1) var source: texture_2d<f32>;
 @group(0) @binding(2) var smp: sampler;
 @group(0) @binding(3) var<uniform> layer: Layer;
 @group(0) @binding(4) var maskTex: texture_2d<f32>;
 @group(0) @binding(5) var clipTex: texture_2d<f32>;
+@group(0) @binding(6) var koTex: texture_2d<f32>;
 
 /** A layer mask's coverage at p, as the CPU renderer applies masks: outside the mask's rectangle 1, inside its alpha. */
 fn coverage(p: vec2<f32>) -> f32 {
@@ -125,7 +126,7 @@ fn keep(o: vec4<f32>, b: vec4<f32>) -> vec4<f32> {
 
 @fragment fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
   let px = vec2<i32>(floor(pos.xy));
-  let bd = textureLoad(backdrop, px, 0);
+  var bd = textureLoad(backdrop, px, 0);
   var cov = coverage(pos.xy);
   // A clipped layer: its clipping base's coverage at this pixel (rendered by mode 102 before the layers).
   if (layer.hasClip == 1u) { cov = cov * textureLoad(clipTex, px, 0).a; }
@@ -163,13 +164,16 @@ fn keep(o: vec4<f32>, b: vec4<f32>) -> vec4<f32> {
     let t3 = round(acc * 255.0) / 255.0;
     return vec4<f32>(bd.rgb + (t3 - bd.rgb) * layer.opacity * cov, bd.a);
   }
+  let screen = (layer.chOff & 16u) != 0u;
   let q = layer.inv * vec3<f32>(pos.xy, 1.0);
-  if (q.x < 0.0 || q.y < 0.0 || q.x >= layer.size.x || q.y >= layer.size.y) { return bd; }
+  if (!screen && (q.x < 0.0 || q.y < 0.0 || q.x >= layer.size.x || q.y >= layer.size.y)) { return bd; }
   // The layer is uploaded premultiplied, as the canvas stores it, and un-premultiplied here in float: unpremultiplying
   // in 8 bits first rounds near-grey colours, which Hue then amplifies (measured: 7 levels against the CPU renderer).
-  let s0 = textureSampleLevel(source, smp, q.xy / layer.size, layer.lod);
+  // A folder or clipped group (chOff bit 16) is a finished screen-sized composite, straight alpha, read at the pixel.
+  var s0 = vec4<f32>(0.0);
+  if (screen) { s0 = textureLoad(source, px, 0); } else { s0 = textureSampleLevel(source, smp, q.xy / layer.size, layer.lod); }
   var sc = s0;
-  if (s0.a > 0.0) { sc = vec4<f32>(s0.rgb / s0.a, s0.a); }
+  if (s0.a > 0.0 && !screen) { sc = vec4<f32>(s0.rgb / s0.a, s0.a); }
   // The per-pixel modes (engine/blend.ts) read the layer through getImageData, unpremultiplied to 8 bits, and their
   // thresholds (Hard Mix, Darker and Lighter Color, Vivid Light's halves) flip on that exact input; the canvas-native
   // modes composite the premultiplied values, so they keep the float above. Each path gets its own precision.
@@ -181,6 +185,18 @@ fn keep(o: vec4<f32>, b: vec4<f32>) -> vec4<f32> {
   if (layer.biCh != 0u) {
     bif = biFactor(biValue(sc.rgb, layer.biCh), layer.biT);
     if (bd.a <= 0.0) { bif = bif * biFactor(255.0, layer.biU); } else { bif = bif * biFactor(biValue(bd.rgb, layer.biCh), layer.biU); }
+  }
+  // Knockout (chOff bit 8), as the renderer's knockout(): through the layer's coverage at its opacity (ko) what lies below
+  // is cleared, and the backdrop composite (koTex) shows through that coverage; the layer then draws at its fill.
+  if ((layer.chOff & 8u) != 0u) {
+    let a0 = sc.a * cov * bif;
+    let a1 = bd.a * (1.0 - a0 * layer.ko);
+    let kb = textureLoad(koTex, px, 0);
+    let ba = kb.a * a0;
+    let ao1 = a1 + ba * (1.0 - a1);
+    var rgb1 = vec3<f32>(0.0);
+    if (ao1 > 0.0) { rgb1 = (bd.rgb * a1 + kb.rgb * ba * (1.0 - a1)) / ao1; }
+    bd = vec4<f32>(rgb1, ao1);
   }
   let sa = sc.a * layer.opacity * cov * bif;
   if (sa <= 0.0) { return bd; }

@@ -150,6 +150,40 @@ export class PluginsFolderSection {
   }
 }
 
+/** Preferences > Plugins > Plug-ins: one switch for each plug-in file and plug-in folder. A plug-in that is off does not run;
+ *  a plug-in folder asks for approval when it is turned on, and the switch shows what was decided. Rows are made once and patched. */
+export interface PluginSwitch { id: string; name: string; on: boolean }
+export class PluginSwitchesSection {
+  readonly el = el('<div class="cv-panel-section cv-plugin-switches"><span class="cv-refs-title">Plug-ins</span></div>');
+  private readonly list = el('<div class="cv-plugin-switch-list" style="min-height: 1.8em"></div>');
+  private readonly note = el('<p class="cv-note" role="status" style="min-height: 2.8em"></p>');
+  rows: () => Promise<PluginSwitch[]> = async () => [];
+  set: (id: string, on: boolean) => Promise<void> = async () => {};
+
+  constructor() { this.el.append(this.list, this.note); }
+
+  async refresh(): Promise<void> {
+    let items: PluginSwitch[] = [];
+    try { items = await this.rows(); } catch { /* none are listed */ }
+    patch(this.list, items, {
+      key: (i) => i.id,
+      create: () => {
+        const node = el('<label class="cv-field cv-check"><span></span><input type="checkbox"></label>');
+        const box = node.querySelector('input') as HTMLInputElement;
+        box.addEventListener('change', () => { void this.set(node.dataset.key ?? '', box.checked).catch(() => {}).finally(() => void this.refresh()); });
+        return node;
+      },
+      update: (node, i) => {
+        setText(node.querySelector('span'), i.name);
+        const box = node.querySelector('input') as HTMLInputElement;
+        box.setAttribute('aria-label', i.name);
+        if (box.checked !== i.on) box.checked = i.on;
+      },
+    });
+    setText(this.note, items.length ? 'A plug-in that is off does not run and keeps no commands, panels or tools. A plug-in folder asks for approval when it is turned on.' : 'No plug-ins are installed. Put a plug-in file or a plug-in folder in the plug-ins folder, then choose Reload Plugins.');
+  }
+}
+
 /** Preferences > Plugins > Recipes: the ComfyUI workflows kept as choices (Generative Fill, Generate Image), grouped by what
  *  they take in, each group collapsible with its count, with Remove and Add. Groups and rows are built once and patched. */
 export class RecipesSection {

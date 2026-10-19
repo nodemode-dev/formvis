@@ -2,6 +2,8 @@ import json
 import os
 import sys
 
+PORT_NAME = "engine.port"
+
 
 def resource_dir() -> str:
     return getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
@@ -87,7 +89,78 @@ def sweep_stale_unpacks() -> None:
     threading.Thread(target=run, name="formvis-unpack-sweep", daemon=True).start()
 
 
+def run_mcp(argv: list[str]) -> int:
+    """`mcp` (1.90.9): the MCP stdio server of the packaged app, which the desktop binary starts when its first argument is
+    `mcp` (the AppImage or the app bundle's binary, as an agent's configuration names it). It is setup/mcp_stdio.py, packed as
+    data, pointed at the port the app's engine keeps in engine.port; with no engine running the app is started from
+    FORMVIS_LAUNCHER, which the desktop binary passes. --user-data-dir and --portable point it at the data folder of an engine
+    started with them."""
+    from app.core import config, runtime
+    argv = runtime.apply_switches(argv)
+    if "--version" in argv:
+        from app import __version__
+        print(f"formvis {__version__}")
+        return 0
+    if "--headless" in argv:
+        print("formvis mcp: --headless needs the repository launcher (./formvis mcp --headless); the packaged app has a window of its own.", file=sys.stderr)
+        return 2
+    os.environ["FORMVIS_PORT_FILE"] = str(config.data_dir() / PORT_NAME)
+    setup_path()
+    import mcp_stdio
+
+    sys.argv = ["formvis mcp", *argv]
+    mcp_stdio.main()
+    return 0
+
+
+def setup_path() -> None:
+    """Puts the packed setup scripts (data in the one-file build, ../setup beside the source) on the import path."""
+    for base in (resource_dir(), os.path.dirname(resource_dir())):
+        folder = os.path.join(base, "setup")
+        if os.path.isfile(os.path.join(folder, "mcp_stdio.py")):
+            sys.path.insert(0, folder)
+            return
+
+
+def run_agents(argv: list[str]) -> int:
+    """`agents install [claude|codex|cursor]` of the packaged app: setup/agents.py, which registers this app's own binary
+    (`mcp` as its argument) with Claude Code, Codex and Cursor."""
+    if argv and argv[0] != "install":
+        print("formvis agents: the packaged app offers install only (agents install [claude|codex|cursor] [--dry-run]).", file=sys.stderr)
+        return 2
+    setup_path()
+    import agents as agent_setup
+
+    return agent_setup.main(argv or ["install"])
+
+
+def announce_port(server, data) -> None:
+    """Keeps the port the server really listens on, with this process id, in engine.port while it runs (the desktop app
+    asks for a free port), so the packaged app's `mcp` mode finds an engine that chose its own."""
+    import threading
+    import time
+
+    def run() -> None:
+        for _ in range(600):
+            if server.started and server.servers:
+                break
+            time.sleep(0.1)
+        else:
+            return
+        try:
+            port = server.servers[0].sockets[0].getsockname()[1]
+            (data / PORT_NAME).write_text(json.dumps({"pid": os.getpid(), "port": port}), encoding="utf-8")
+        except (OSError, IndexError):
+            return
+
+    threading.Thread(target=run, name="formvis-port-file", daemon=True).start()
+
+
 def main() -> int:
+    if len(sys.argv) > 1 and sys.argv[1] == "mcp":
+        return run_mcp(sys.argv[2:])
+    if len(sys.argv) > 1 and sys.argv[1] == "agents":
+        return run_agents(sys.argv[2:])
     if "--selfcheck" in sys.argv:
         return selfcheck()
     from app.core import runtime
@@ -111,8 +184,18 @@ def main() -> int:
     from app.main import app as fastapi_app
 
     port = int(os.environ.get("FORMVIS_PORT", "0") or 0)
-    uvicorn.run(fastapi_app, host="127.0.0.1", port=port, log_level="info")
-    return 0
+    server = uvicorn.Server(uvicorn.Config(fastapi_app, host="127.0.0.1", port=port, log_level="info"))
+    data = config.data_dir()
+    announce_port(server, data)
+    try:
+        server.run()
+    finally:
+        try:
+            if json.loads((data / PORT_NAME).read_text(encoding="utf-8")).get("pid") == os.getpid():
+                (data / PORT_NAME).unlink()
+        except (OSError, ValueError, AttributeError):
+            pass
+    return 0 if server.started else 3
 
 
 if __name__ == "__main__":

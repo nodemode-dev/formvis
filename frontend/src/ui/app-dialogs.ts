@@ -4,13 +4,13 @@ import { saveTemplates, templates } from '../io/prompt-templates';
 import { recipes } from '../io/comfy';
 import { comfyuiProbeText } from './panels/send-to';
 import { LocalModelsSection } from './panels/local-models';
-import { ApiKeysSection, ComfyAuthSection, HuggingFaceToken, LlmRows, LocalFilesSection, ModelFolderSection, PluginsFolderSection, RecipesSection, RenderingSection, SettingsLocationSection, SkinsSection, TemplateFiles, UpdatesSection } from './panels/connection-settings';
+import { ApiKeysSection, ComfyAuthSection, HuggingFaceToken, LlmRows, LocalFilesSection, ModelFolderSection, PluginSwitchesSection, PluginsFolderSection, RecipesSection, RenderingSection, SettingsLocationSection, SkinsSection, TemplateFiles, UpdatesSection } from './panels/connection-settings';
 import { IMAGE_ACCEPT, PROJECT_ACCEPT } from '../io/images';
 import { RAW_SHARPEN_AMOUNTS, RAW_SHARPEN_CHOICES, type RawSharpen, type RawSharpenAmount } from '../io/raw-sharpen';
 import { PRESET_ACCEPT } from './panels/preset-manager-dialog';
 import { VERSION } from '../version';
 import { comboOf, formatKeys, type Commands } from './commands';
-import { LIMITS, type RGB } from '../engine/types';
+import { LIMITS, TILED_SIDE, type RGB } from '../engine/types';
 import type { BitmapMethod, DitherKind, ForcedKind, HalftoneShape, PaletteKind } from '../engine/quantize';
 import { parseAct } from './panels/color-table-dialog';
 import { Dialog, confirmAction, promptName } from './dialogs';
@@ -254,7 +254,8 @@ export class NewCanvasDialog extends Dialog {
     const m = NEW_MODES.find((x) => x.id === this.mode?.value) ?? NEW_MODES[2], bits = Number(this.depth?.value) || m.depths[0];
     const mb = (this.px.w * this.px.h * m.channels * bits) / 8 / (1024 * 1024);
     (this.summary.querySelector('.cv-nd-size') as HTMLElement).innerHTML = `${this.px.w} × ${this.px.h} <span>px</span>`;
-    setText(this.summary.querySelector('.cv-nd-meta') as HTMLElement, `${t(m.label)} · ${bits} ${t('bit')} · ${mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb.toFixed(1)} MB`}`);
+    const giant = this.px.w > LIMITS.side || this.px.h > LIMITS.side || this.px.w * this.px.h > LIMITS.pixels;
+    setText(this.summary.querySelector('.cv-nd-meta') as HTMLElement, `${t(m.label)} · ${bits} ${t('bit')} · ${mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb.toFixed(1)} MB`}${giant ? ` · ${t('kept in tiles: memory is used only where something is drawn')}` : ''}`);
     this.renderCards();
   }
 
@@ -298,7 +299,7 @@ export class NewCanvasDialog extends Dialog {
     if (typeof get('artboards') === 'boolean') this.artboards.checked = get('artboards') as boolean;
     const linked = get('link');
     if (typeof linked === 'boolean') { this.link.classList.toggle('is-on', linked); this.link.setAttribute('aria-pressed', String(linked)); }
-    if (w >= 1 && h >= 1 && w <= LIMITS.side && h <= LIMITS.side) { this.px = { w: Math.round(w), h: Math.round(h) }; this.picked = null; }
+    if (w >= 1 && h >= 1 && w <= TILED_SIDE && h <= TILED_SIDE) { this.px = { w: Math.round(w), h: Math.round(h) }; this.picked = null; }
     const cat = get('category');
     if (typeof cat === 'string' && PRESET_GROUPS.some((g) => g.id === cat)) this.category = cat;
     this.sync();
@@ -599,6 +600,7 @@ export class SettingsDialog extends Dialog {
   private readonly hdrRow = checkRow('High dynamic range display (32-bit documents on an HDR screen, WebGPU)', (v) => this.change({ hdrDisplay: v }));
   private readonly pacingRow = selectRow('Frame pacing', FRAME_PACING, (v) => this.change({ framePacingMs: Number(v) }));
   private readonly tileRow = selectRow('Cache tile size (giant layers made from now on)', TILE_SIZES.map((n) => [String(n), `${n} by ${n} pixels`] as const), (v) => this.change({ cacheTilePx: Number(v) }));
+  private readonly tileFromRow = sliderRow('Keep layers in tiles from (megapixels, 0 only past what one canvas holds; documents and layers made from now on)', 0, 400, 5, (v) => this.change({ tileFromMp: v }));
   private readonly threadsRow = sliderRow('Worker threads for large filters (0 is automatic)', 0, 16, 1, (v) => this.change({ workerThreads: v }));
   private readonly compositeRow = checkRow('Composite on worker threads', (v) => this.change({ workerComposite: v }));
   /** The engine's compute device (Phase 18.6): the choice, and what the engine reports it uses and why. */
@@ -635,7 +637,7 @@ export class SettingsDialog extends Dialog {
     this.intensityRow.set(Math.round((readChoice().intensity ?? 1) * 100));
     add('Interface', row, this.themeAutoRow.el, this.themeLightRow.el, this.themeDarkRow.el, accentRow, this.intensityRow.el, this.fontSizeRow.el, this.scaleRow.el, this.animationsRow.el, this.noticeSecondsRow.el, this.canvasColourRow.el, ...this.pageRows.interfaceRows,el('<p class="cv-note">Canvas Color is the pasteboard around the picture (the same as View > Pasteboard). Theme and accent are shared with NodeMode on this device. Match System Appearance switches between the light and dark theme chosen here when the appearance of the computer changes; a theme picked by hand stays until the next change of a preference or of the appearance. Intensity sets how strongly the accent tints what it marks; 100% is the design\'s. Text size scales the interface\'s text.</p>'));
     add('Performance', this.budgetNote, this.memoryLimitRow.el, this.effectCacheRow.el, this.releaseRow.el, this.releaseSizeRow.el, this.reserveRow.el, this.cacheLevelsRow.el, this.redrawRow.el, this.reuseRow.el, this.previewRow.el, ...this.pageRows.performance,
-      el('<h3 class="cv-prefs-sub">Graphics Processor Settings</h3>'), this.gpuNameRow(), this.gpuUseRow.el, this.gpuFiltersRow.el, this.rendererRow.el, this.gpuMemoryRow.el, this.gpuPowerRow.el, this.lowLatencyRow.el, this.hdrRow.el, this.pacingRow.el, this.tileRow.el, this.threadsRow.el, this.compositeRow.el, this.gpuMode,
+      el('<h3 class="cv-prefs-sub">Graphics Processor Settings</h3>'), this.gpuNameRow(), this.gpuUseRow.el, this.gpuFiltersRow.el, this.rendererRow.el, this.gpuMemoryRow.el, this.gpuPowerRow.el, this.lowLatencyRow.el, this.hdrRow.el, this.pacingRow.el, this.tileRow.el, this.tileFromRow.el, this.threadsRow.el, this.compositeRow.el, this.gpuMode,
       el('<p class="cv-note">Automatic uses WebGPU (Metal on macOS, Direct3D 12 on Windows), then WebGL2 (as on Linux), on a hardware graphics processor, and the CPU otherwise; a software GPU is slower than the CPU renderer, so Automatic does not use one. If the graphics processor fails to start, formvis turns this off and says so. The canvas draws on the graphics processor; a document using something it does not draw yet draws on the CPU, and the status bar says why.</p>'),
       el('<h3 class="cv-prefs-sub">Engine</h3>'), this.engineRow.el, this.engineMode,
       el('<p class="cv-note">Where the engine runs its models (Remove Background, and the local models that follow). Automatic uses CUDA on an NVIDIA graphics processor, Core ML (Metal) on a Mac, and the CPU otherwise; a choice this machine cannot run falls back to the CPU, and the line above says why.</p>'));
@@ -706,7 +708,7 @@ export class SettingsDialog extends Dialog {
     const agNote = el('<p class="cv-note">Lets Claude Code, Claude Desktop or another MCP client work in the open document; each change is an undoable step, and anything that costs money asks you first. Claude Code: <code>claude mcp add --transport http formvis <span class="cv-mcp-url">http://127.0.0.1:8190/mcp</span></code>. Claude Desktop: a server whose command is <code>./formvis mcp</code> in the formvis folder. The control port is the engine\'s own port, chosen when the engine starts (FORMVIS_PORT, 8190 unless set): <span class="cv-mcp-port">8190</span>. It cannot change while formvis runs.</p>');
     this.mcpUrlNode = agNote.querySelector('.cv-mcp-url'); this.mcpPortNode = agNote.querySelector('.cv-mcp-port');
     add('Enhanced Controls', ...this.pageRows.enhanced);
-    add('Plugins', this.keysNote, ...this.pageRows.plugins, nm, this.nodemodeNote, cu, this.comfyuiNote, this.comfyAuth.el, this.recipesList.el, lm, tp, ag, agNote, this.apiKeys.el, this.modelFolder.el, this.pluginsFolder.el, this.hfToken.el, this.localModels.el, this.localFiles.el, this.updates.el);
+    add('Plugins', this.keysNote, ...this.pageRows.plugins, nm, this.nodemodeNote, cu, this.comfyuiNote, this.comfyAuth.el, this.recipesList.el, lm, tp, ag, agNote, this.apiKeys.el, this.modelFolder.el, this.pluginSwitches.el, this.pluginsFolder.el, this.hfToken.el, this.localModels.el, this.localFiles.el, this.updates.el);
     const wrap = el('<div class="cv-prefs"></div>');
     wrap.append(this.nav, pages);
     this.body.appendChild(wrap);
@@ -788,6 +790,7 @@ export class SettingsDialog extends Dialog {
     this.gpuPowerRow.set(this.prefs.gpuPower);
     this.pacingRow.set(String(this.prefs.framePacingMs));
     this.tileRow.set(String(this.prefs.cacheTilePx));
+    this.tileFromRow.set(this.prefs.tileFromMp);
     this.threadsRow.set(this.prefs.workerThreads);
     this.compositeRow.set(this.prefs.workerComposite);
     this.lowLatencyRow.set(this.prefs.lowLatency);
@@ -910,6 +913,7 @@ export class SettingsDialog extends Dialog {
   private readonly comfyAuth = new ComfyAuthSection();
   private readonly modelFolder = new ModelFolderSection();
   readonly pluginsFolder = new PluginsFolderSection();
+  readonly pluginSwitches = new PluginSwitchesSection();
   private readonly hfToken = new HuggingFaceToken();
   private readonly apiKeys = new ApiKeysSection();
   private readonly localFiles = new LocalFilesSection();
@@ -1008,6 +1012,7 @@ export class SettingsDialog extends Dialog {
     void this.comfyAuth.refresh();
     void this.modelFolder.refresh();
     void this.pluginsFolder.refresh();
+    void this.pluginSwitches.refresh();
     void this.hfToken.refresh();
     void this.location.refresh();
     void this.apiKeys.refresh();

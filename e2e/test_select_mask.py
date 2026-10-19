@@ -15,8 +15,9 @@ def dialog(page):
 
 
 def set_slider(d, label, value):
-    d.locator(".cv-field", has_text=label).locator("input[type=number]").fill(str(value))
-    d.locator(".cv-field", has_text=label).locator("input[type=number]").press("Enter")
+    box = d.locator(".cv-field", has_text=label).locator("input.cv-num")
+    box.fill(str(value))
+    box.press("Enter")
 
 
 def test_output_selection_feathered(page):

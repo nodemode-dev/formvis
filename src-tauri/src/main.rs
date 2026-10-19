@@ -10,7 +10,11 @@ use tauri_plugin_shell::ShellExt;
 use tauri_plugin_updater::UpdaterExt;
 
 mod display;
+#[cfg(target_os = "linux")]
+mod integration;
 mod native;
+mod packaged;
+mod window_state;
 
 struct Backend(Mutex<Option<CommandChild>>);
 
@@ -374,6 +378,9 @@ fn set_display_server(server: String) -> Result<(), String> {
 }
 
 fn main() {
+    if let Some(code) = packaged::command_line() {
+        std::process::exit(code);
+    }
     #[cfg(windows)]
     portable_web_view_data();
     #[cfg(target_os = "linux")]
@@ -390,7 +397,9 @@ fn main() {
         .manage(ExitGate(AtomicBool::new(false)))
         .manage(RestartAfterExit(AtomicBool::new(false)))
         .manage(FoundUpdate(Mutex::new(None)))
+        .manage(window_state::Memory::default())
         .on_window_event(|window, event| {
+            window_state::track(window, event);
             // The window's close button: the page asks about unsaved documents first and exits through confirm_exit.
             if let WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" && ask_page_to_quit(window.app_handle()) {
@@ -408,6 +417,7 @@ fn main() {
             system_fonts_english,
             pick_image_path,
             display::display_profile,
+            window_state::ui_zoom,
             native::native_start,
             native::native_stop,
             native::native_doc,
@@ -426,12 +436,15 @@ fn main() {
             // A project or picture the system launched formvis with (Windows and Linux; macOS sends RunEvent::Opened).
             let launch_args: Vec<String> = std::env::args().collect();
             open_paths(&handle, paths_from_args(&launch_args, None));
-            let (mut rx, child) = app.shell()
+            let mut sidecar = app
+                .shell()
                 .sidecar("formvis-engine")
                 .expect("the formvis engine sidecar is missing; bundle its binary")
-                .env("FORMVIS_PORT", "0")
-                .spawn()
-                .expect("the formvis engine failed to spawn");
+                .env("FORMVIS_PORT", "0");
+            if let Some(path) = packaged::launcher() {
+                sidecar = sidecar.env("FORMVIS_LAUNCHER", path);
+            }
+            let (mut rx, child) = sidecar.spawn().expect("the formvis engine failed to spawn");
             *app.state::<Backend>().0.lock().unwrap() = Some(child);
 
             tauri::async_runtime::spawn(async move {
@@ -457,23 +470,32 @@ fn main() {
                         } else {
                             format!("http://127.0.0.1:{port}")
                         };
-                        let (width, height) = handle
-                            .primary_monitor()
-                            .ok()
-                            .flatten()
-                            .map(|monitor| {
-                                let logical = monitor.size().to_logical::<f64>(monitor.scale_factor());
-                                (logical.width * SCREEN_FRACTION, logical.height * SCREEN_FRACTION)
-                            })
-                            .unwrap_or(FALLBACK_SIZE);
+                        let place = window_state::load(&handle);
+                        let (width, height) = if place.width > 0.0 {
+                            (place.width, place.height)
+                        } else {
+                            handle
+                                .primary_monitor()
+                                .ok()
+                                .flatten()
+                                .map(|monitor| {
+                                    let logical = monitor.size().to_logical::<f64>(monitor.scale_factor());
+                                    (logical.width * SCREEN_FRACTION, logical.height * SCREEN_FRACTION)
+                                })
+                                .unwrap_or(FALLBACK_SIZE)
+                        };
                         let builder = WebviewWindowBuilder::new(&handle, "main", WebviewUrl::External(url.parse().unwrap()))
                             .title("formvis")
                             .inner_size(width, height)
                             .min_inner_size(MIN_SIZE.0, MIN_SIZE.1)
-                            .center()
                             // Files dropped on the window reach the page as ordinary drop events (1.86.1): Tauri's own
                             // drop handler otherwise takes them, and the Home screen and the canvas never saw a drop.
                             .disable_drag_drop_handler();
+                        let builder = if place.width > 0.0 {
+                            builder.position(place.x, place.y)
+                        } else {
+                            builder.center()
+                        };
                         // macOS: the page's title row is the title bar (traffic lights over it, the native title hidden);
                         // the lights are centred in the page's 38 px row.
                         #[cfg(target_os = "macos")]
@@ -481,8 +503,13 @@ fn main() {
                             .title_bar_style(tauri::TitleBarStyle::Overlay)
                             .hidden_title(true)
                             .traffic_light_position(tauri::LogicalPosition::new(14.0, 12.0));
-                        let _ = builder.build();
+                        if let Ok(window) = builder.build() {
+                            window_state::restore(&window, &place);
+                            window_state::watch_renderer(&window);
+                        }
                         close_splash(&handle);
+                        #[cfg(target_os = "linux")]
+                        integration::first_run(&handle);
                     }
                     None => {
                         close_splash(&handle);
@@ -501,7 +528,10 @@ fn main() {
         .expect("error while building the formvis app");
 
     app.run(|handle, event| match event {
-        RunEvent::Exit => kill_backend(handle),
+        RunEvent::Exit => {
+            window_state::flush(handle);
+            kill_backend(handle);
+        }
         // Cmd+Q, the Dock's Quit and a last window closing: the page asks about unsaved documents first.
         RunEvent::ExitRequested { api, .. } => {
             if ask_page_to_quit(handle) {

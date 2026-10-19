@@ -24,7 +24,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SKILLS = ROOT / ".claude" / "skills"
 MIRRORS = ROOT / ".agents" / "skills"
-LAUNCH = str(ROOT / "formvis")
+LAUNCH = str(ROOT / "formvis") if (ROOT / "formvis").is_file() else os.environ.get("FORMVIS_LAUNCHER") or os.environ.get("APPIMAGE") or str(ROOT / "formvis")   # a packaged app has no repository launcher: its own binary takes `mcp`
 CATALOGUE = Path(os.environ.get("FORMVIS_DATA_DIR") or Path.home() / "Formvis").expanduser() / "commands-catalogue.json"
 EMOJI = re.compile("[" + "-".join(chr(c) for c in (0x1F000, 0x1FAFF)) + chr(0x2600) + "-" + chr(0x27BF) + chr(0x2B00) + "-" + chr(0x2BFF) + chr(0xFE0F) + chr(0x200D) + "]")
 GROUP_OWNER = {
@@ -35,7 +35,7 @@ GROUP_OWNER = {
 
 
 def skill_names() -> list[str]:
-    return sorted(p.name for p in SKILLS.iterdir() if (p / "SKILL.md").is_file())
+    return sorted(p.name for p in SKILLS.iterdir() if (p / "SKILL.md").is_file()) if SKILLS.is_dir() else []
 
 
 def tools_reference() -> str:

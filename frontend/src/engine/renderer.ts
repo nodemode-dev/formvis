@@ -193,8 +193,16 @@ function textureHeight(H: Float32Array, w: number, h: number, t: BevelTexture, s
 
 export class Renderer {
   private readonly slots: Slot[] = [];
-  private readonly fxCache = new Map<ID, { key: string; parts: FxPart[]; bytes: number }>();
+  private readonly fxCache = new Map<ID, { key: string; rest: string; ver: number; parts: FxPart[]; bytes: number }>();
   private fxBytes = 0;
+  /** The GPU effect maps kept from the last build of each styled layer (up to 96 MB, oldest dropped first), so a change with a known damage rectangle rebuilds only that part. */
+  private readonly fxMaps = new Map<string, { ver: number; img: ImageData }>();
+  private fxMapBytes = 0;
+  private fxFor: { id: ID; ver: number; prev: number; rect: Rect | null } | null = null;
+  /** Effect maps built whole and rebuilt over a damaged part, and the pixels the GPU passes covered. */
+  readonly fxStats = { full: 0, partial: 0, pixels: 0 };
+  /** Whether a GPU effect map is rebuilt only over a damaged part (off until the comparison against a whole rebuild has been run). */
+  partialMaps = false;
   /** What the layer-effect cache holds now: entries and bytes. */
   effectCacheUse(): { entries: number; bytes: number } { return { entries: this.fxCache.size, bytes: this.fxBytes }; }
   /** What the scratch surfaces hold now: the stack-reuse prefix, the scratch slots and the clip surfaces, in bytes. */
@@ -207,7 +215,9 @@ export class Renderer {
   /** Frees the effect results of layers outside `keep` and every scratch surface (all are made again when a picture is
    *  drawn); returns the bytes freed. */
   release(keep: ReadonlySet<ID>): number {
-    let freed = this.scratchBytes();
+    let freed = this.scratchBytes() + this.fxMapBytes;
+    this.fxMaps.clear();
+    this.fxMapBytes = 0;
     for (const [id, e] of this.fxCache) if (!keep.has(id)) { this.fxCache.delete(id); this.fxBytes -= e.bytes; freed += e.bytes; }
     for (const s of this.slots) if (s) { s.s.width = 1; s.s.height = 1; }
     this.slots.length = 0;
@@ -513,9 +523,11 @@ export class Renderer {
    *  layer until its pixels, transform, mask or effects change. */
   private effectParts(layer: Layer, fx: LayerEffects, src: Surface, t: Transform, own: MaskInfo | null, maskPlacement: Transform | null, docW: number, docH: number, exact = false): FxPart[] {
     const r = layer.raster, mk = layer.mask, fast = this.fastEffects && !exact;
-    const key = JSON.stringify([r?.id ?? null, r?.version ?? 0, t, mk ? [mk.raster?.id ?? null, mk.raster?.version ?? 0, mk.enabled, maskPlacement ?? mk.placement, mk.density ?? 100, mk.feather ?? 0] : null, fx, docW, docH, fast, layer.transparencyShapes === false]);
+    const rest = JSON.stringify([r?.id ?? null, t, mk ? [mk.raster?.id ?? null, mk.raster?.version ?? 0, mk.enabled, maskPlacement ?? mk.placement, mk.density ?? 100, mk.feather ?? 0] : null, fx, docW, docH, fast, layer.transparencyShapes === false]);
+    const ver = r?.version ?? 0, key = `${ver}|${rest}`;
     const hit = exact ? undefined : this.fxCache.get(layer.id);
     if (hit && hit.key === key) return hit.parts;
+    this.fxFor = exact ? null : { id: layer.id, ver, prev: hit && hit.rest === rest ? hit.ver : -1, rect: null };
     const d = fx.dropShadow, g = fx.outerGlow, k = fx.stroke, is = fx.innerShadow, ig = fx.innerGlow;
     const reach = fxReach(fx) + 4;
     const lm = placement(t, src.width, src.height);
@@ -542,14 +554,21 @@ export class Renderer {
       if (own && fx.layerMaskHides !== false) this.cover(sil.c, own, view, rw, rh);
       const local = { x: (placed.x - region.x) * k, y: (placed.y - region.y) * k, w: placed.w * k, h: placed.h * k };
       this.exactFx = exact;
-      for (const phase of ['below', 'above'] as const) {
-        this.effects((s, box, alpha, op, name, kept) => {
-          const copy = createSurface(box.w, box.h);
-          ctxOf(copy).drawImage(s, 0, 0, box.w, box.h, 0, 0, box.w, box.h);
-          if (exact && kept) unkeep(copy, sil.c.getImageData(box.x, box.y, box.w, box.h).data);
-          parts.push({ s: copy, x: region.x + box.x / k, y: region.y + box.y / k, k, alpha, op, above: phase === 'above', name, kept });
-        }, sil, fx, k, 1, rw, rh, local, phase, { x: -region.x * k, y: -region.y * k });
+      const dm = this.fxFor && this.fxFor.prev >= 0 && this.fxFor.prev !== ver && r ? r.damageSince(this.fxFor.prev, ver) : null;
+      if (dm && this.fxFor) {
+        const vm = mul(view, lm), b = boundsOf([applyMat(vm, dm.x, dm.y), applyMat(vm, dm.x + dm.w, dm.y), applyMat(vm, dm.x + dm.w, dm.y + dm.h), applyMat(vm, dm.x, dm.y + dm.h)]);
+        this.fxFor.rect = integral({ x: b.x - 2, y: b.y - 2, w: b.w + 4, h: b.h + 4 });
       }
+      try {
+        for (const phase of ['below', 'above'] as const) {
+          this.effects((s, box, alpha, op, name, kept) => {
+            const copy = createSurface(box.w, box.h);
+            ctxOf(copy).drawImage(s, 0, 0, box.w, box.h, 0, 0, box.w, box.h);
+            if (exact && kept) unkeep(copy, sil.c.getImageData(box.x, box.y, box.w, box.h).data);
+            parts.push({ s: copy, x: region.x + box.x / k, y: region.y + box.y / k, k, alpha, op, above: phase === 'above', name, kept });
+          }, sil, fx, k, 1, rw, rh, local, phase, { x: -region.x * k, y: -region.y * k });
+        }
+      } finally { this.fxFor = null; }
       if (fast) {
         const ms = performance.now() - began;
         this.previewPixels = Math.round(Math.min(6_000_000, Math.max(250_000, ms > 90 ? this.previewPixels * 0.7 : ms < 25 ? this.previewPixels * 1.25 : this.previewPixels)));
@@ -560,8 +579,48 @@ export class Renderer {
     if (old) { this.fxCache.delete(layer.id); this.fxBytes -= old.bytes; }
     const bytes = parts.reduce((n, q) => n + surfaceBytes(q.s), 0);
     this.trimEffectCache(bytes);
-    if (bytes <= renderCache.effectBytes) { this.fxCache.set(layer.id, { key, parts, bytes }); this.fxBytes += bytes; }
+    if (bytes <= renderCache.effectBytes) { this.fxCache.set(layer.id, { key, rest, ver, parts, bytes }); this.fxBytes += bytes; }
     return parts;
+  }
+
+  /** A GPU effect map over `box`: whole, or, when the layer changed since the map was last made inside a known rectangle, only the part within the effect's reach of that rectangle, rebuilt over a box grown by the reach again (outside its box the silhouette reads as empty) and laid into the map kept. */
+  private mapOf(sil: Surface, box: Rect, job: GpuEffectJob): ImageData | null {
+    const f = this.fxFor;
+    if (!f || !this.partialMaps || box.w * box.h > 2_000_000) return runEffectOnGpu(sil, box, job);
+    const key = `${f.id}|${box.x},${box.y},${box.w},${box.h}|${JSON.stringify(job)}`, old = this.fxMaps.get(key);
+    let img: ImageData | null = null;
+    if (old && f.rect && old.ver === f.prev) {
+      const reach = Math.ceil((job.kind === 'cast' ? Math.abs(job.dx) + Math.abs(job.dy) + job.blur * 3 + Math.abs(job.grow) : job.kind === 'ramp' ? job.size : Math.max(job.outer, job.inner)) + 8);
+      const core = intersectRect({ x: f.rect.x - reach, y: f.rect.y - reach, w: f.rect.w + 2 * reach, h: f.rect.h + 2 * reach }, box), wide = core ? intersectRect({ x: core.x - reach, y: core.y - reach, w: core.w + 2 * reach, h: core.h + 2 * reach }, box) : null;
+      if (core && wide && core.w * core.h * 2 < box.w * box.h) {
+        const sx = box.x + (((wide.x - box.x) >> 1) << 1), sy = box.y + (((wide.y - box.y) >> 1) << 1), sub = { x: sx, y: sy, w: wide.x + wide.w - sx, h: wide.y + wide.h - sy };
+        const part = runEffectOnGpu(sil, sub, job);
+        if (part && part.width === sub.w && part.height === sub.h) {
+          img = new ImageData(new Uint8ClampedArray(old.img.data), box.w, box.h);
+          for (let y = core.y; y < core.y + core.h; y++) {
+            const from = ((y - sub.y) * sub.w + (core.x - sub.x)) * 4;
+            img.data.set(part.data.subarray(from, from + core.w * 4), ((y - box.y) * box.w + (core.x - box.x)) * 4);
+          }
+          this.fxStats.partial++;
+          this.fxStats.pixels += sub.w * sub.h;
+        }
+      }
+    }
+    if (!img) {
+      img = runEffectOnGpu(sil, box, job);
+      if (!img) return null;
+      this.fxStats.full++;
+      this.fxStats.pixels += box.w * box.h;
+    }
+    if (old) { this.fxMaps.delete(key); this.fxMapBytes -= old.img.data.length; }
+    this.fxMaps.set(key, { ver: f.ver, img });
+    this.fxMapBytes += img.data.length;
+    for (const [k, e] of this.fxMaps) {
+      if (this.fxMapBytes <= 96_000_000) break;
+      this.fxMaps.delete(k);
+      this.fxMapBytes -= e.img.data.length;
+    }
+    return img;
   }
 
   /** A layer's effects as named pictures at document resolution, below or above it (Layer Style > Create Layers, 1.65.2). */
@@ -743,7 +802,7 @@ export class Renderer {
     const css = (c: RGB): string => `rgb(${c.r},${c.g},${c.b})`;
     const lay = (s: Surface, alpha: number, op: GlobalCompositeOperation, name: string, kept = false): void => out(s, box, alpha, op, name, kept);
     const gpuMap = (job: GpuEffectJob, slotNo: number): Surface | null => {
-      const img = this.exactFx ? null : runEffectOnGpu(sil.s, box, job);
+      const img = this.exactFx ? null : this.mapOf(sil.s, box, job);
       if (!img) return null;
       const s = this.slot(slotNo, bw, bh);
       s.c.putImageData(img, 0, 0);

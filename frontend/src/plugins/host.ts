@@ -177,7 +177,17 @@ export class PluginHost {
         const W = q.doc.width, H = q.doc.height;
         if (!img || img.width !== W || img.height !== H || !(img.data instanceof Uint8ClampedArray) || img.data.length !== W * H * 4) return { error: `putPixels takes { width: ${W}, height: ${H}, data: a Uint8ClampedArray of ${W * H * 4} } (the document's size).` };
         const data = new ImageData(new Uint8ClampedArray(img.data), W, H);
-        if (args.how === 'replace' && q.activeLayer) return { result: this.engine.replaceLayerPixels(q.activeLayer.id, data, label) };
+        if (args.how === 'replace' && q.activeLayer) {
+          const mask = q.selection;
+          if (mask) {
+            const base = (this.engine.renderLayerAlone(q.activeLayer.id).getContext('2d') as CanvasRenderingContext2D).getImageData(0, 0, W, H);
+            for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+              const a = mask.valueAt(x, y) / 255, i = (y * W + x) * 4;
+              if (a < 1) for (let c = 0; c < 4; c++) data.data[i + c] = Math.round(base.data[i + c] + (data.data[i + c] - base.data[i + c]) * a);
+            }
+          }
+          return { result: this.engine.replaceLayerPixels(q.activeLayer.id, data, label) };
+        }
         const { Raster } = await import('../engine');
         const r = new Raster(W, H); r.ctx.putImageData(data, 0, 0); r.touch();
         this.engine.insertRasterLayer(r, label, 0, 0, {}, label);

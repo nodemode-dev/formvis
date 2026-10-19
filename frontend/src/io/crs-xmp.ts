@@ -40,7 +40,7 @@ const isLine = (pts: CurvePoint[]): boolean => pts.length === 2 && pts[0]!.x ===
 
 /** The .xmp text for a Develop state: only the settings that are not at their default are written. */
 export function crsXmp(state: DevelopState): string {
-  const base = defaultDevelopState(), attrs: string[] = ['crs:Version="15.0"', 'crs:ProcessVersion="11.0"', 'crs:HasSettings="True"'];
+  const base = defaultDevelopState(), attrs: string[] = ['crs:Version="15.0"', `crs:ProcessVersion="${state.process === 1 ? '5.7' : '11.0'}"`, 'crs:HasSettings="True"'];
   for (const f of FIELDS) {
     const v = f.get(state);
     if (v !== f.get(base) && Number.isFinite(v)) attrs.push(`crs:${f.attr}="${num(v / (f.scale ?? 1))}"`);
@@ -60,6 +60,8 @@ export function developFromXmp(text: string, base: DevelopState = defaultDevelop
   const out = JSON.parse(JSON.stringify(base)) as DevelopState;
   let found = false;
   for (const d of holders) {
+    const pv = Number(d.getAttributeNS(NS, 'ProcessVersion') ?? NaN);
+    if (Number.isFinite(pv) && pv < 6.7) out.process = 1;
     for (const f of FIELDS) {
       const raw = d.getAttributeNS(NS, f.attr);
       if (raw === null) continue;

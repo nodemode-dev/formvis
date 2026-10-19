@@ -101,6 +101,11 @@ function makeApi(init: Init): unknown {
       fns.set(`panel:${id}`, () => spec.render(panelUi(id)));
       return rpc('panels.register', { id, label: spec?.label });
     },
+    registerFrame: (spec: { id: string; label: string; html: string; height?: number; onMessage?: Fn }) => {
+      const id = String(spec?.id ?? '');
+      fns.set(`frame:${id}`, typeof spec?.onMessage === 'function' ? spec.onMessage : () => {});
+      return rpc('panels.frame', { id, label: spec?.label, html: String(spec?.html ?? ''), height: spec?.height }).then(() => ({ post: (message: unknown) => rpc('panel.post', { panel: id, message }) }));
+    },
   };
   const tools = {
     register: (spec: { id: string; label: string; hint?: string; down?: Fn; move?: Fn; up?: Fn; overlay?: Fn }) => {
@@ -163,7 +168,19 @@ function makeApi(init: Init): unknown {
       return rpc('commands.register', { id, label: spec?.label, keys: spec?.keys, ok: typeof spec?.run === 'function' });
     },
   };
-  return Object.freeze({ apiVersion: 1, plugin: Object.freeze({ ...init.plugin }), documents, filters, panels, tools, sources, events, storage, ui, commands });
+  const formats = {
+    register: (spec: { id: string; label?: string; extensions?: string[]; decode?: Fn; encode?: Fn }) => {
+      const id = String(spec?.id ?? '');
+      if (typeof spec?.decode === 'function') {
+        fns.set(`format:${id}:decode`, async (bytes: Uint8Array, name: string) => { const out = await spec.decode!(bytes, name); return { width: out.width, height: out.height, data: out.data }; });
+      }
+      if (typeof spec?.encode === 'function') {
+        fns.set(`format:${id}:encode`, async (image: Img) => { const out = await spec.encode!({ width: image.width, height: image.height, data: image.data }); return out instanceof Uint8Array ? out : new Uint8Array(out); });
+      }
+      return rpc('formats.register', { id, label: spec?.label, extensions: spec?.extensions, decode: typeof spec?.decode === 'function', encode: typeof spec?.encode === 'function' });
+    },
+  };
+  return Object.freeze({ apiVersion: 1, plugin: Object.freeze({ ...init.plugin }), documents, filters, panels, tools, sources, events, storage, ui, commands, formats });
 }
 
 async function start(init: Init): Promise<void> {

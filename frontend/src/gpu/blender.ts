@@ -60,7 +60,7 @@ export class GpuBlender {
       const bind = d.createBindGroup({ layout: this.pipeline.getBindGroupLayout(0), entries: [
         { binding: 0, resource: a.createView() }, { binding: 1, resource: tex.createView() },
         { binding: 2, resource: this.sampler }, { binding: 3, resource: { buffer: ub } },
-        { binding: 4, resource: blank.createView() }, { binding: 5, resource: blank.createView() },
+        { binding: 4, resource: blank.createView() }, { binding: 5, resource: blank.createView() }, { binding: 6, resource: blank.createView() },
       ] });
       const enc = d.createCommandEncoder();
       const pass = enc.beginRenderPass({ colorAttachments: [{ view: b.createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });

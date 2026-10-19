@@ -264,7 +264,7 @@ export function flipLayers(host: PaintHost, horizontal: boolean): void {
   const p = host.current;
   if (!p) return;
   const map = byId(p.doc), roots = p.doc.layers.filter((l) => p.selectedIds.has(l.id) && l.isGroup);
-  const targets = p.doc.layers.filter((l) => !l.isGroup && l.raster !== null && (p.selectedIds.has(l.id) || roots.some((g) => isDescendant(map, l.id, g.id))));
+  const targets = p.doc.layers.filter((l) => !l.isGroup && (l.raster !== null || !!l.tiled) && (p.selectedIds.has(l.id) || roots.some((g) => isDescendant(map, l.id, g.id))));
   if (targets.length === 0) return;
   let box: Rect | null = null;
   for (const l of targets) {

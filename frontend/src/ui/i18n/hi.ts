@@ -1,4 +1,4 @@
-/** Hindi, keyed by the English label. MACHINE DRAFT: written without a native speaker and needing a native review before it is relied on. Covers the menu bar and its menus (the first part of the table); parts b and c fall back to English until they are translated. */
+/** Hindi, keyed by the English label. MACHINE DRAFT: written without a native speaker and needing a native review before it is relied on. Covers the menu bar and its menus (the first part of the table); parts b and c are more/hi.ts and extra/hi.ts. */
 export const hi: Record<string, string> = {
   'File': 'फ़ाइल', 'Edit': 'संपादित करें', 'Image': 'छवि', 'Layer': 'लेयर', 'Type': 'टाइप', 'Select': 'चयन', 'Filter': 'फ़िल्टर',
   '3D': '3D', 'View': 'दृश्य', 'Plugins': 'प्लगइन', 'Window': 'विंडो', 'Help': 'सहायता',

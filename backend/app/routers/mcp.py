@@ -25,6 +25,7 @@ from fastapi.responses import StreamingResponse
 from app import __version__
 from app.services import agents
 from app.routers.mcp_pack import PACK_TOOLS, PACK_USE_WHEN
+from app.routers.terminal import server_port
 
 router = APIRouter()
 VERSIONS = ["2026-07-28", "2025-11-25"]
@@ -1124,8 +1125,11 @@ RESOURCES = [{"uri": "formvis://document", "name": "document", "title": "The ope
              {"uri": "formvis://layers", "name": "layers", "title": "The layer tree", "description": "The layers bottom to top with ids, kinds and nesting.", "mimeType": "application/json"},
              {"uri": "formvis://selection", "name": "selection", "title": "The selection", "description": "The selection's bounds in pixels, or none.", "mimeType": "application/json"},
              {"uri": "formvis://commands", "name": "commands", "title": "The command catalogue", "description": "Every menu and palette command: id, label, group, what it is for.", "mimeType": "application/json"},
-             {"uri": "formvis://jobs", "name": "jobs", "title": "Background jobs", "description": "Running and finished local jobs and the agent calls now running.", "mimeType": "application/json"}]
-_RESOURCE_TOOLS = {"formvis://document": "get_document", "formvis://layers": "get_layer_tree", "formvis://selection": "get_selection"}
+             {"uri": "formvis://jobs", "name": "jobs", "title": "Background jobs", "description": "Running and finished local jobs and the agent calls now running.", "mimeType": "application/json"},
+             {"uri": "formvis://plugins", "name": "plugins", "title": "Plug-ins", "description": "The plug-ins in the plugins folder, whether each is on and running, and the commands each added.", "mimeType": "application/json"},
+             {"uri": "formvis://history", "name": "history", "title": "Document history", "description": "The undo steps of the open document, as list_history gives them.", "mimeType": "application/json"}]
+RESOURCE_TEMPLATES = [{"uriTemplate": "formvis://command/{id}", "name": "command", "title": "One command", "description": "A menu or palette command by its id, as formvis://commands lists them: label, group, when it applies, and its parameters.", "mimeType": "application/json"}]
+_RESOURCE_TOOLS = {"formvis://document": "get_document", "formvis://layers": "get_layer_tree", "formvis://selection": "get_selection", "formvis://plugins": "list_plugins", "formvis://history": "list_history"}
 
 
 async def _read_resource(client: str, uri: str) -> tuple[str | None, str]:
@@ -1142,6 +1146,14 @@ async def _read_resource(client: str, uri: str) -> tuple[str | None, str]:
         return json.dumps({"total": len(rows), "commands": rows}), ""
     if uri == "formvis://jobs":
         return json.dumps({"jobs": _jobs_listing("all", 100)}), ""
+    if uri.startswith("formvis://command/"):
+        from app.routers import commands
+        commands._load()
+        wanted = uri[len("formvis://command/"):]
+        row = next((c for c in commands._state["commands"] if c.get("id") == wanted), None)
+        if row is None:
+            return None, f"No command {wanted}: formvis://commands lists the ids."
+        return json.dumps({k: row[k] for k in ("id", "label", "group", "when", "risky", "params") if k in row}), ""
     return None, f"No resource {uri}: resources/list gives the addresses."
 
 
@@ -1283,7 +1295,7 @@ async def mcp(request: Request) -> Response:
     elif method == "resources/list":
         out = _ok(req_id, {"resources": RESOURCES}, modern, cacheable=True)
     elif method == "resources/templates/list":
-        out = _ok(req_id, {"resourceTemplates": []}, modern, cacheable=True)
+        out = _ok(req_id, {"resourceTemplates": RESOURCE_TEMPLATES}, modern, cacheable=True)
     elif method == "resources/read":
         uri = params.get("uri")
         found, why = await _read_resource(_client_of(request, params, sid)[0], uri) if isinstance(uri, str) else (None, "Give the resource's uri from resources/list.")
@@ -1395,16 +1407,17 @@ async def bridge_stop() -> dict:
 
 
 @router.get("/api/mcp/status")
-def status() -> dict:
-    return {"live": _live(), "allowed": _allowed, "endpoint": "http://127.0.0.1:8190/mcp", "tools": len(TOOLS), "agents": agents.enabled()}
+def status(request: Request) -> dict:
+    return {"live": _live(), "allowed": _allowed, "endpoint": f"http://127.0.0.1:{server_port(request)}/mcp", "tools": len(TOOLS), "agents": agents.enabled()}
 
 
 @router.get("/api/mcp/registration")
-def registration() -> dict:
+def registration(request: Request) -> dict:
     """What to paste into a client to register this server: Claude Code's line, and Claude Desktop's config with the path
-    of the ./formvis launcher in this copy (formvis.bat on Windows)."""
-    launcher = str(config.REPO_DIR / ("formvis.bat" if os.name == "nt" else "formvis"))
-    url = f"http://127.0.0.1:{config.BACKEND_PORT}/mcp"
+    of the ./formvis launcher in this copy (formvis.bat on Windows). The packaged app names itself (the AppImage or the
+    app bundle's binary, which takes `mcp` as its first argument), and the address carries the port this engine runs on."""
+    launcher = os.environ.get("FORMVIS_LAUNCHER") or str(config.REPO_DIR / ("formvis.bat" if os.name == "nt" else "formvis"))
+    url = f"http://127.0.0.1:{server_port(request)}/mcp"
     desktop = {"mcpServers": {"formvis": {"command": launcher, "args": ["mcp"]}}}
     return {"claude_code": f"claude mcp add --transport http formvis {url}", "claude_code_launcher": f'claude mcp add formvis -- "{launcher}" mcp',
             "claude_desktop": json.dumps(desktop, indent=2), "url": url, "launcher": launcher}

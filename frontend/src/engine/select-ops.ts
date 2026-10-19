@@ -214,6 +214,10 @@ export function selectedPixels(host: SelectHost, merged: boolean): { surface: Su
       setMat(ctx, mul(shift, placement(layer.transform, layer.raster.width, layer.raster.height)));
       ctx.drawImage(layer.raster.canvas, 0, 0);
       setMat(ctx, [1, 0, 0, 1, 0, 0]);
+    } else if (layer.tiled) {   // a layer kept in tiles: its tiles over the region (1.90.9), unless some are on the engine's disk
+      const t = layer.tiled;
+      if (t.pagedIn(Math.max(0, region.x), Math.max(0, region.y), region.w, region.h)) { host.notice('Some of this layer is on the engine\'s disk; wait a moment and copy again.'); return null; }
+      t.drawTo(ctx, mul(shift, placement(layer.transform, t.width, t.height)));
     }
   }
   if (sel) {

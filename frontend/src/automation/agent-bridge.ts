@@ -223,7 +223,7 @@ export class AgentBridge {
         const paint = hex(bg), mode = str('mode') || 'rgb', depth = num('depth', 8);
         if (bg !== 'white' && bg !== 'transparent' && bg !== 'black' && !paint) return fail('background is white, transparent, black or a colour #rrggbb.');
         const made = e.newDocument(nw, nh, str('name') || 'Untitled', bg === 'transparent' ? 'transparent' : bg === 'white' ? 'white' : bg === 'black' ? { r: 0, g: 0, b: 0 } : paint ?? 'white');
-        if (!made) return fail(`A ${nw} by ${nh} document is outside what formvis allows (30,000 pixels a side, ${Math.round(LIMITS.pixels / 1_000_000)} megapixels on this computer).`);
+        if (!made) return fail(`A ${nw} by ${nh} document is outside what formvis allows (300,000 pixels a side, kept in tiles past 30,000 a side or ${Math.round(LIMITS.pixels / 1_000_000)} megapixels on this computer).`);
         const cat = catalogueOf();
         if ((mode !== 'rgb' || depth !== 8) && !cat) return fail(`${NO_CATALOGUE} The document was opened as 8-bit RGB.`);
         if (mode !== 'rgb') {

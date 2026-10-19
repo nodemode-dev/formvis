@@ -18,6 +18,7 @@ const APP_COMMANDS: &[&str] = &[
     "install_update",
     "set_display_server",
     "system_fonts_english",
+    "ui_zoom",
 ];
 
 fn main() {

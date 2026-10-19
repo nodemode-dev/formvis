@@ -25,6 +25,7 @@ import urllib.error
 import urllib.request
 
 URL = os.environ.get("FORMVIS_MCP_URL", "http://127.0.0.1:8190/mcp")
+PORT_FILE = os.environ.get("FORMVIS_PORT_FILE", "")   # the packaged app (its `mcp` mode): the engine keeps its own port here while it runs
 ATTACH = os.environ.get("FORMVIS_MCP_ATTACH", "0") == "1"
 _down = False   # attach mode: the engine did not answer the last request
 _changed = False   # attach mode: the engine answers again, so the client's tool list is stale
@@ -185,17 +186,64 @@ def offline(msg: dict, version: str) -> str | None:
     return json.dumps({"jsonrpc": "2.0", "id": rid, "result": {**result, **done}})
 
 
+def packaged_url() -> str | None:
+    """The address of the packaged app's engine while it runs: the port it wrote to engine.port, when its process is alive."""
+    if not PORT_FILE:
+        return None
+    try:
+        with open(PORT_FILE, encoding="utf-8") as f:
+            held = json.load(f)
+        port = int(held["port"])
+        if os.name == "posix":
+            os.kill(int(held["pid"]), 0)
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    return f"http://127.0.0.1:{port}/mcp"
+
+
+def start_packaged(launcher: str) -> bool:
+    """The packaged app (the AppImage, or the app bundle's binary) started detached, which starts its engine and window;
+    waits for the port the engine writes. True once the engine answers."""
+    global URL
+    import subprocess
+    import tempfile
+    import time
+    log = open(os.path.join(tempfile.gettempdir(), "formvis-engine.log"), "ab")
+    print(f"[formvis mcp] starting formvis ({launcher}); its log: {log.name}", file=sys.stderr, flush=True)
+    try:
+        subprocess.Popen([launcher], stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True, creationflags=0x208 if os.name == "nt" else 0)
+    except OSError as exc:
+        print(f"[formvis mcp] formvis could not start: {exc}", file=sys.stderr, flush=True)
+        return False
+    for _ in range(240):
+        time.sleep(0.5)
+        found = packaged_url()
+        if not found:
+            continue
+        try:
+            with urllib.request.urlopen(found.rsplit("/mcp", 1)[0] + "/api/version", timeout=2) as r:
+                if r.status == 200:
+                    URL = found
+                    return True
+        except (urllib.error.URLError, OSError):
+            continue
+    return False
+
+
 _started = False
 
 
 def start_engine() -> bool:
     """The engine started for the client (1.53.3), once: ./formvis serve when the app is built (one process, the engine
     serving it), else ./formvis boot; detached, its output to a log in the temporary folder, never to stdout (the MCP
-    channel). True once it answers. FORMVIS_MCP_AUTOSTART=0 turns this off."""
+    channel). True once it answers. FORMVIS_MCP_AUTOSTART=0 turns this off. In the packaged app (its `mcp` mode, 1.90.9)
+    the app itself is started from FORMVIS_LAUNCHER."""
     global _started
     if _started or os.environ.get("FORMVIS_MCP_AUTOSTART", "1") == "0" or os.environ.get("FORMVIS_MCP_URL"):
         return False
     _started = True
+    if PORT_FILE:
+        return bool(os.environ.get("FORMVIS_LAUNCHER")) and start_packaged(os.environ["FORMVIS_LAUNCHER"])
     import subprocess
     import tempfile
     import time
@@ -216,7 +264,7 @@ def start_engine() -> bool:
 
 
 def main() -> None:
-    global ATTACH, _changed
+    global ATTACH, _changed, URL
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     headless, args, i = False, sys.argv[1:], 0
     while i < len(args):
@@ -233,7 +281,7 @@ def main() -> None:
         elif flag == "--attach":
             ATTACH = True
         elif flag == "--where":
-            launcher = os.path.join(root, "formvis.bat" if os.name == "nt" else "formvis")
+            launcher = (os.environ.get("FORMVIS_LAUNCHER") if PORT_FILE else None) or os.path.join(root, "formvis.bat" if os.name == "nt" else "formvis")
             print(json.dumps({"launcher": launcher, "script": os.path.abspath(__file__), "url": URL, "claude_desktop": {"mcpServers": {"formvis": {"command": launcher, "args": ["mcp"]}}}}, indent=2))
             return
         elif flag == "--version":
@@ -247,6 +295,8 @@ def main() -> None:
         else:
             print(f"{flag}: not an option. ./formvis mcp takes --attach, --headless, --root, --read-root, --where and --version.", file=sys.stderr)
             sys.exit(2)
+    if PORT_FILE:
+        URL = packaged_url() or URL
     held = None
     if headless:
         held = start_headless()

@@ -94,6 +94,8 @@ export interface DevelopState {
   dehazeDensity?: number;
   /** Shape of the Effects vignette (tone.vignette); its defaults reproduce the plain vignette. */
   vignette?: VignetteShape;
+  /** Tone process: 2 (the current one, and what a state without it means) or 1 (the earlier, which reaches less far into the tones; see TONE_PROCESS). */
+  process?: 1 | 2;
 }
 
 /** Effects vignette shape: `midpoint` (0 to 100, percent of the corner distance where the fall starts), `feather` (1 to 100,
@@ -112,6 +114,15 @@ export interface VignetteShape {
 }
 export const defaultVignetteShape = (): VignetteShape => ({ midpoint: 30, feather: 50, roundness: 100 });
 export const vignetteShapeOf = (s: DevelopState): VignetteShape => ({ ...defaultVignetteShape(), ...s.vignette });
+
+/** What a tone process sets for Shadows, Highlights, Whites and Blacks: where each mask starts or ends (luminance 0 to 1)
+ *  and how hard it pushes. Process 2 is the pass as it has always been; process 1 has narrower masks and gentler gains. */
+export interface ToneProcess { shadEdge: number; shadGain: number; highLo: number; highGain: number; whiteLo: number; whiteGain: number; blackEdge: number; blackGain: number }
+export const TONE_PROCESS: Record<1 | 2, ToneProcess> = {
+  2: { shadEdge: 0.65, shadGain: 0.75, highLo: 0.3, highGain: 0.8, whiteLo: 0.45, whiteGain: 1.2, blackEdge: 0.35, blackGain: 0.8 },
+  1: { shadEdge: 0.5, shadGain: 0.6, highLo: 0.5, highGain: 0.65, whiteLo: 0.6, whiteGain: 0.9, blackEdge: 0.25, blackGain: 0.65 },
+};
+export const toneProcessOf = (s: DevelopState): ToneProcess => TONE_PROCESS[s.process === 1 ? 1 : 2];
 
 /** Set by the app: the Depth Map layer's grey (near bright) at each pixel of a render whose top left is at (originX, originY)
  *  in document units, or null when the document has none of its size. */
@@ -263,10 +274,11 @@ export function detailActive(d: DetailState): boolean {
   return d.clarity !== 0 || d.texture !== 0 || d.sharpen !== 0;
 }
 
-/** True when the state holds only what `developPass` and the parametric curve's table do (tone, colour mixer, curves): the stages after them (point colour, grading,
- *  calibration, clarity, texture, sharpening, optics, geometry) are all at their defaults. The GPU runs only these. */
+/** True when the state holds only per-pixel stages: `developPass`, the parametric curve's table, Point Color, Calibration and
+ *  Colour Grading. The stages that need neighbours or a resample (noise, dark channel dehaze, clarity, texture, sharpening,
+ *  optics, geometry) and the vignette's extras are all at their defaults. The GPU runs only these. */
 export function developPerPixelOnly(s: DevelopState): boolean {
-  return !darkDehazeOn(s) && !vignetteExtras(s) && !noiseActive(noiseOf(s)) && !detailActive(s.detail) && !pointColorActive(pointColorOf(s)) && !gradingActive(gradingOf(s)) && !calibrationActive(calibrationOf(s)) && !opticsActive(opticsOf(s)) && !geometryActive(geometryOf(s));
+  return !darkDehazeOn(s) && !vignetteExtras(s) && !noiseActive(noiseOf(s)) && !detailActive(s.detail) && !opticsActive(opticsOf(s)) && !geometryActive(geometryOf(s));
 }
 
 export function stateActive(s: DevelopState): boolean {
@@ -466,7 +478,7 @@ export function developPass(src: Uint8ClampedArray, dst: Uint8ClampedArray,
   const high = t.highlights, shad = t.shadows, white = t.whites, black = t.blacks;
   const temp = t.temperature, tint = t.tint;
   const vibrance = t.vibrance, sat = t.saturation, dehz = t.dehaze;
-  const vignette = t.vignette, grain = t.grain;
+  const vignette = t.vignette, grain = t.grain, tp = toneProcessOf(state);
 
   const hasColor = colorActive(state.color);
   const hasCurve = curvesActive(state.curves);
@@ -511,29 +523,29 @@ export function developPass(src: Uint8ClampedArray, dst: Uint8ClampedArray,
     }
     if (shad !== 0) {
       const v = shad / 100;
-      const mask = 1 - smoothstep(0, 0.65, luma);
-      if (v > 0) { r += (1 - r) * mask * v * 0.75; g += (1 - g) * mask * v * 0.75; b += (1 - b) * mask * v * 0.75; }
-      else { r += r * mask * v * 0.75; g += g * mask * v * 0.75; b += b * mask * v * 0.75; }
+      const mask = 1 - smoothstep(0, tp.shadEdge, luma);
+      if (v > 0) { r += (1 - r) * mask * v * tp.shadGain; g += (1 - g) * mask * v * tp.shadGain; b += (1 - b) * mask * v * tp.shadGain; }
+      else { r += r * mask * v * tp.shadGain; g += g * mask * v * tp.shadGain; b += b * mask * v * tp.shadGain; }
     }
     if (high !== 0) {
       const v = high / 100;
-      const boost = smoothstep(0.3, 1, luma) * v * 0.8;
+      const boost = smoothstep(tp.highLo, 1, luma) * v * tp.highGain;
       const lumaNew = v > 0 ? luma + (1 - luma) * boost : luma + luma * boost;
       const ratio = lumaNew / Math.max(1e-5, luma);
       r *= ratio; g *= ratio; b *= ratio; luma = lumaNew;
     }
     if (white !== 0) {
       const v = white / 100;
-      const boost = smoothstep(0.45, 1, luma) * v * 1.2;
+      const boost = smoothstep(tp.whiteLo, 1, luma) * v * tp.whiteGain;
       const lumaNew = v > 0 ? luma + (1 - luma) * boost : luma + luma * boost;
       const ratio = lumaNew / Math.max(1e-5, luma);
       r *= ratio; g *= ratio; b *= ratio; luma = lumaNew;
     }
     if (black !== 0) {
       const v = black / 100;
-      const mask = 1 - smoothstep(0, 0.35, luma);
-      if (v > 0) { r += (1 - r) * mask * v * 0.8; g += (1 - g) * mask * v * 0.8; b += (1 - b) * mask * v * 0.8; }
-      else { r += r * mask * v * 0.8; g += g * mask * v * 0.8; b += b * mask * v * 0.8; }
+      const mask = 1 - smoothstep(0, tp.blackEdge, luma);
+      if (v > 0) { r += (1 - r) * mask * v * tp.blackGain; g += (1 - g) * mask * v * tp.blackGain; b += (1 - b) * mask * v * tp.blackGain; }
+      else { r += r * mask * v * tp.blackGain; g += g * mask * v * tp.blackGain; b += b * mask * v * tp.blackGain; }
     }
     if (cont !== 0) {
       const f = 1 + cont / 100;
@@ -686,8 +698,8 @@ export function clarityPass(img: ImageData, amount: number, scale = 1): ImageDat
   return out;
 }
 
-const gradingActive = (g: GradingState): boolean => [g.shadows, g.midtones, g.highlights, g.global].some((w) => w.s !== 0 || (w.l ?? 0) !== 0);
-const calibrationActive = (c: CalibrationState): boolean => Object.values(c).some((v) => v !== 0);
+export const gradingActive = (g: GradingState): boolean => [g.shadows, g.midtones, g.highlights, g.global].some((w) => w.s !== 0 || (w.l ?? 0) !== 0);
+export const calibrationActive = (c: CalibrationState): boolean => Object.values(c).some((v) => v !== 0);
 const opticsActive = (o: OpticsState): boolean => o.distortion !== 0 || o.chromatic !== 0 || o.vignetting !== 0 || (o.defringe ?? 0) !== 0 || o.removeCA === true;
 
 /** Defringe: on pixels within two pixels of a strong luminance edge whose colour is purple or green and fairly

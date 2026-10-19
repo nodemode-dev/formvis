@@ -41,6 +41,7 @@ const MORE: Partial<Record<Exclude<Lang, 'en'>, () => Promise<Table>>> = {
   vi: () => import('./i18n/more/vi').then((m) => m.vi),
   el: () => import('./i18n/more/el').then((m) => m.el),
   ar: () => import('./i18n/more/ar').then((m) => m.ar),
+  hi: () => import('./i18n/more/hi').then((m) => m.hi),
   'sr-Latn': () => import('./i18n/more/sr-Latn').then((m) => m.srLatn),
 };
 /** Part c (36.32c): strings the app assembles at run time (tool hint segments, status readouts, Preferences sections). */

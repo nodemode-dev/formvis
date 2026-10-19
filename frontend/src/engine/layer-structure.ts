@@ -119,6 +119,7 @@ export function cloneLayer(l: Layer, patch: Partial<Layer> = {}): Layer {
   return {
     ...l,
     raster: l.raster ? l.raster.clone() : null,
+    ...(l.tiled ? { tiled: l.tiled.clone() } : {}),   // its own tiles, shared with the original until one is written (1.90.9)
     mask: l.mask ? { ...l.mask, raster: l.mask.raster ? l.mask.raster.clone() : null } : null,
     ...patch,
     id: uid(),

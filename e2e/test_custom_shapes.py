@@ -21,8 +21,9 @@ CAPTURE = """async () => {
 def test_a_custom_ring_keeps_its_hole_on_canvas_and_through_psd(page, tmp_path):
     s = page.evaluate("""() => { const e = window.formvis.engine; e.newDocument(200, 160, 'Shapes', 'transparent'); e.setTool('shape'); if (e.tool !== 'shape') throw new Error('tool');
       const v = e.current.viewport, b = document.querySelector('.cv-stage').getBoundingClientRect(); return [b.left + v.panX, b.top + v.panY, v.zoom]; }""")
-    bar = page.locator(".cv-opt-group:not([hidden])")
+    bar = page.locator(".cv-opt-group:not([hidden]), .cv-opt-pop")
     bar.get_by_role("button", name="Custom").click()
+    page.locator(".cv-opt-more").click()
     sel = bar.locator("select").filter(has=page.locator("option[value='ring']"))
     sel.select_option("ring")
     assert page.evaluate("[window.formvis.engine.shapeSettings.kind, window.formvis.engine.shapeSettings.custom]") == ["custom", "ring"]
@@ -40,7 +41,7 @@ def test_a_custom_ring_keeps_its_hole_on_canvas_and_through_psd(page, tmp_path):
     f = tmp_path / "Shapes.psd"
     f.write_bytes(data)
     n = page.evaluate("window.formvis.engine.projects.length")
-    page.set_input_files("input[type=file][accept*='.psd']:not([data-role])", str(f))
+    page.set_input_files("input[data-role='open-files']", str(f))
     page.wait_for_function(f"window.formvis.engine.projects.length > {n}", timeout=15000)
     assert page.evaluate("!!window.formvis.engine.current.doc.layers.find((l) => l.name === 'Ring 1' && l.vector)")
     assert page.evaluate(ALPHA, [100, 80]) == 0 and page.evaluate(ALPHA, [145, 80]) > 200
@@ -52,8 +53,8 @@ def test_each_shape_kind_shows_its_own_options(page):
     page.evaluate("(() => { const e = window.formvis.engine; e.newDocument(100, 100, 'O', 'transparent'); e.setTool('shape'); })()")
     bar = page.locator(".cv-opt-group:not([hidden])")
     # rows actually on screen (a row can lack the hidden attribute's effect if CSS overrides it, as it once did)
-    shown = lambda: page.evaluate("[...document.querySelectorAll('.cv-opt-group:not([hidden]) .cv-opt')].filter((x) => x.offsetParent !== null && getComputedStyle(x).display !== 'none').map((x) => (x.querySelector('span') || x).textContent.trim()).filter(Boolean)")
-    expect = {"Rectangle": ["Corner radius"], "Polygon": ["Sides"], "Star": ["Points", "Indent"], "Line": ["Weight"], "Arrow": ["Weight", "Head length", "Head width"], "Custom": ["Custom shape"], "Heart": []}
+    shown = lambda: page.evaluate("(document.querySelector('.cv-opt-more:not([hidden])[aria-expanded=false]')?.click(), [...document.querySelectorAll('.cv-opt-group:not([hidden]) .cv-opt, .cv-opt-pop:not([hidden]) .cv-opt')]).filter((x) => x.offsetParent !== null && getComputedStyle(x).display !== 'none').map((x) => (x.querySelector('span') || x).textContent.trim()).filter(Boolean)")
+    expect = {"Rectangle": ["Corner radius"], "Polygon": ["Corner radius", "Sides"], "Star": ["Corner radius", "Points", "Indent"], "Line": ["Weight"], "Arrow": ["Weight", "Head length", "Head width"], "Custom": ["Custom shape"], "Heart": []}
     kind_rows = {"Corner radius", "Sides", "Points", "Indent", "Weight", "Head length", "Head width", "Custom shape"}
     for kind, rows in expect.items():
         bar.get_by_role("button", name=kind, exact=True).click()

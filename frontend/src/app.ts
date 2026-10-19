@@ -92,6 +92,8 @@ import { ImageProcessorDialog, type ImageProcessorOptions } from './ui/panels/im
 import { zipFiles } from './io/zip';
 import { assetFiles, loadVariantText, parseVariants, saveVariantText } from './io/image-assets';
 import { isPsdFile, readPsdFile, readPsdFlat, reportText, writePsdFile } from './io/psd';
+import { giantPsd, readGiantPsd } from './io/psb-open';
+import { writePsdInParts } from './io/psd-parts';
 import { isKraFile, readKra } from './io/kra';
 import { isPdnFile, readPdn } from './io/pdn';
 import { isAfFile, readAf } from './io/af-preview';
@@ -156,7 +158,7 @@ import { AboutDialog, BenchmarkDialog, NewCanvasDialog, OpenDialog, ReportIssueD
 import { HistoryLog } from './ui/history-log';
 import { extraOn, extrasOn, selectionTintOn, setAllExtras, setExtra, setExtras, setSelectionTint } from './ui/view-extras';
 import { installNumberFields } from './ui/number-fields';
-import { CHECKER_CELL, FONT_PREVIEWS, applyPrefs, applyUiFontSize, autoUiScale, checkerPair, DEFAULT_PREFS, loadPrefs, resendScratch, savePrefs, updateAtStart, updatePrefs, type Prefs } from './ui/prefs';
+import { CHECKER_CELL, FONT_PREVIEWS, applyPrefs, applyUiFontSize, autoUiScale, checkerPair, DEFAULT_PREFS, loadPrefs, resendScratch, savePrefs, setShellZoom, updateAtStart, updatePrefs, type Prefs } from './ui/prefs';
 import { THEMES, readChoice, setTheme } from './ui/themes';
 import { installOptionMemory } from './ui/option-memory';
 import { chooseRenderer, detectedName, gpuStartFailedLastTime, markGpuStarted, markGpuStarting, probeGpu, type GpuProbe } from './gpu/probe';
@@ -454,10 +456,25 @@ export function startApp(): void {
   // Right-to-left layout: the document's direction flips the rail, the dock and the menu bar to the other side.
   const rtl = (): boolean => stored('formvis.rtl') === '1';
   const applyRtl = (): void => { if (document.documentElement.dir !== (rtl() ? 'rtl' : 'ltr')) { document.documentElement.dir = rtl() ? 'rtl' : 'ltr'; window.dispatchEvent(new Event('resize')); } };
-  // Interface zoom: the whole window scaled by CSS zoom on the root, kept between runs; the stage measures itself again.
+  // Interface zoom: the whole window scaled, kept between runs; the stage measures itself again. The desktop window zooms its web
+  // view through the shell (which also keeps it for the next launch); the browser, and a shell that refuses, use CSS zoom on the root.
   const UI_ZOOMS = [0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
   const uiZoom = (): number => { const raw = stored('formvis.uiZoom'); if (raw === 'auto') return autoUiScale(); const n = parseFloat(raw ?? '1'); return UI_ZOOMS.includes(n) ? n : 1; };
-  const applyUiZoom = (): void => { const z = uiZoom() === 1 ? '' : String(uiZoom()); if (document.documentElement.style.zoom !== z) { document.documentElement.style.zoom = z; window.dispatchEvent(new Event('resize')); } };
+  const cssZoom = (zoom: number): void => { const z = zoom === 1 ? '' : String(zoom); if (document.documentElement.style.zoom !== z) { document.documentElement.style.zoom = z; window.dispatchEvent(new Event('resize')); } };
+  let shellZoomed: Promise<void> = Promise.resolve();
+  const applyUiZoom = (): void => {
+    const tauri = (window as unknown as { __TAURI_INTERNALS__?: { invoke(cmd: string, args: Record<string, unknown>): Promise<unknown> } }).__TAURI_INTERNALS__;
+    if (!tauri) { cssZoom(uiZoom()); return; }
+    shellZoomed = shellZoomed.then(async () => {
+      try {
+        const held = Number(await tauri.invoke('ui_zoom', { factor: null })) || 1;
+        setShellZoom(held);
+        const want = uiZoom();
+        if (want !== held) setShellZoom(Number(await tauri.invoke('ui_zoom', { factor: want })) || want);
+        cssZoom(1);
+      } catch { setShellZoom(1); cssZoom(uiZoom()); }
+    });
+  };
   const stepUiZoom = (by: number): void => { store('formvis.uiZoom', String(UI_ZOOMS[Math.max(0, Math.min(UI_ZOOMS.length - 1, UI_ZOOMS.indexOf(uiZoom()) + by))])); applyUiZoom(); };
   // The pasteboard around the picture: the theme's own, or a fixed grey (View > Pasteboard).
   const PASTEBOARDS: Record<string, string> = { default: '', black: '#000000', dark: '#303030', mid: '#808080', light: '#c8c8c8' };
@@ -949,11 +966,13 @@ export function startApp(): void {
             engine.addProject(doc, f.name.replace(/\.pdn$/i, ''), activeId);
             if (notes.length) toast(notes.join(' '), 'info');
           } else if (isPsdFile(f)) {
-            const cmykPsd =await api.decodeCmykPsd(f, f.name).catch(() => null);
+            const giant = engine.tiledDocuments && await giantPsd(f);   // a side past 30,000 px, or more pixels than a canvas holds, with the tile engine on: read a band of rows at a time (PC-IO-0035)
+            const cmykPsd = giant ? null : await api.decodeCmykPsd(f, f.name).catch(() => null);
             if (cmykPsd) { await openCmykPsd(f.name.replace(/\.(ps[db]|psdt)$/i, ''), cmykPsd); continue; }
-            const labPsd = await api.decodeLab(f, f.name).catch(() => null);   // 1.58.1
+            const labPsd = giant ? null : await api.decodeLab(f, f.name).catch(() => null);   // 1.58.1
             if (labPsd) { openLab(f.name.replace(/\.(ps[db]|psdt)$/i, ''), labPsd); continue; }
-            const { doc, notes, activeId, paths, report } = await readPsdFile(f, files).catch(() => readPsdFlat(f, (b) => api.decode(b, b.name)));   // a damaged file opens flat
+            const job = giant ? engine.startJob(`Open ${f.name}`, 1) : null;
+            const { doc, notes, activeId, paths, report } = job ? await readGiantPsd(f, { step: (d, n) => engine.jobStep(job, d, n), stopped: () => job.cancelled }).finally(() => engine.endJob(job)) : await readPsdFile(f, files).catch(() => readPsdFlat(f, (b) => api.decode(b, b.name)));   // a damaged file opens flat
             // A PSD opened by hand shows its conversion report as a sheet with Cancel and Import; agents and batches get the toast below.
             if (interactive && (report.approximated.length || report.dropped.length) && !(await psdReportDialog.ask(f.name, report))) { openStopped = true; continue; }
             // A profile other than sRGB follows the Color Settings policy like a PNG or JPEG: kept, converted to sRGB, dropped, or asked.
@@ -2787,6 +2806,15 @@ export function startApp(): void {
     if (!psb && (p.doc.width > 30000 || p.doc.height > 30000 || p.doc.width * p.doc.height * 4 * rasters > 4e9)) { psb = true; toast('This document is too large for a PSD, so it is written as a PSB.', 'info'); }
     await engine.task(async () => {
       try {
+        if (p.doc.layers.some((l) => l.tiled) && engine.bandedExportable()) {   // a giant layered document is written in parts (SC-ED-0263)
+          const job = engine.startJob(`Export ${psb ? 'PSB' : 'PSD'}`, 1);
+          try {
+            const out = await writePsdInParts(p.doc, psb, (put) => engine.renderBands((rows) => put(rows)), { step: (d, n) => engine.jobStep(job, d, n), stopped: () => job.cancelled });
+            await deliver(out.blob, `${p.name}.${psb ? 'psb' : 'psd'}`);
+            if (out.notes.length) toast(out.notes.join(' '), 'info');
+          } finally { engine.endJob(job); }
+          return;
+        }
         const flat = engine.flattened();
         if (!flat) return;
         const { bytes, notes } = await writePsdFile(p.doc, flat, psb, engine.pathsOf(p), loadExportPrefs().maximizePsd, engine.quickMask ? p.selection : null);
@@ -3480,12 +3508,14 @@ export function startApp(): void {
   // Plugins (1.52.6): the plugins folder's plugins, each in a sandboxed frame; their commands in the Plugins menu.
   const pluginHost = new PluginHost(engine, agents, commands, (t, kind) => toast(t, kind ?? 'info'));
   // Plugin folders (plugin.json and an ES module): a side panel is a section in the dock, added and removed in place.
+  const unshownPanels = new Set<string>();
   const folderPlugins = new FolderPlugins({
     engine, commands, note: (t, kind) => toast(t, kind ?? 'info'),
     confirm: (title, text, ok) => confirmAction(title, text, ok), prompt: (title, value, ok) => promptName(title, value, ok),
     panels: () => ({
       add: (id, label) => {
         if (document.querySelector(`section.cv-${id}`)) return null;
+        if (!loadPrefs().showExtPanels) { unshownPanels.add(id); return el('<div class="cv-plugin-panel-body"></div>'); }
         const sec = el(`<section class="cv-preset-panel cv-${id}" aria-label="${label.replace(/[<>&"]/g, '')}"><div class="cv-panel-head"><span class="cv-comps-title"><span></span></span><span></span></div><div class="cv-plugin-panel-body"></div></section>`);
         setText(q(sec, '.cv-comps-title span'), label);
         q(root, '.cv-layers').appendChild(sec);
@@ -3496,6 +3526,7 @@ export function startApp(): void {
         return q(sec, '.cv-plugin-panel-body');
       },
       remove: (id) => {
+        if (unshownPanels.delete(id)) return;
         document.querySelector(`section.cv-${id}`)?.remove();
         commands.remove(`panel-${id}`);
         dock.removePanel(id); unregisterPanel(id); dock.refresh();
@@ -3503,6 +3534,12 @@ export function startApp(): void {
     }),
   });
   dialogs.settings.pluginsFolder.onSaved = () => { void folderPlugins.reloadAll().then((n) => toast(`Plugins reloaded: ${n} running.`)); };
+  window.addEventListener('formvis:ext-panels', () => { void folderPlugins.reloadAll(); });
+  dialogs.settings.pluginSwitches.rows = async () => [
+    ...(await pluginHost.list()).map((r) => ({ id: `file:${String(r.file)}`, name: String(r.file).replace(/\.js$/, ''), on: r.on === true })),
+    ...(await folderPlugins.list()).map((r) => ({ id: `folder:${String(r.id)}`, name: String(r.name ?? r.id), on: r.on === true })),
+  ];
+  dialogs.settings.pluginSwitches.set = async (id, on) => { if (id.startsWith('file:')) pluginHost.setOn(id.slice(5), on); else await folderPlugins.setOn(id.slice(7), on); };
   // Window > Script Console (DEV_PLAN 36.7): the plugin API under the identity 'console', no wider than a plugin's.
   const scriptConsole = new ScriptConsoleDialog({ api: () => pluginHost.apiFor('console'), agentBusy: () => agents.agentBusy });
   const consoleLog = new ConsoleLogDialog({

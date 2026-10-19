@@ -34,7 +34,7 @@ import { wasmHealFull } from './wasm-kernels';
 import { applyDuotoneLut, curveAt, DUOTONE_COUNT, duotoneLut, type Duotone } from './duotone';
 import { compositeChannels, splitChannels } from './multichannel';
 import { PixelStroke, dropSpareSurfaces, sameBytes, spareBytes, strokeWindowFrom, warmStrokeSurfaces } from './stroke';
-import { PREVIEW, TiledRaster } from './tiled';
+import { PREVIEW, TiledRaster, coverageOver, solidImage } from './tiled';
 import { SelectionMask, traceOutline, type SelectionMode } from './selection';
 import { selectionFeatures } from './measure-features';
 import { CANVAS_PIXELS, CANVAS_SIDE, Raster, createSurface, ctxOf, surfaceVersion, toBlob, type Surface, type Ctx2D } from './surface';
@@ -81,6 +81,7 @@ import { type DocMode, BLEND_MODES, LAYER_BLEND_MODES, canvasBlend, LIMITS, setP
 import { allPatterns, patternById } from './patterns';
 import { addFillStop, fillFrame, fillFromLine, fillLine, fillName, renderFill, type GradientFill } from './fill-layers';
 import type { FillContent, VectorMask, WarpStyle, SmartOriginal } from './types';
+import { TILED_SIDE } from './types';
 import { boxChange, followVector, hasOutline, movedVector, vectorCoverage } from './vector-mask';
 import { fitEdges } from './edge-fit';
 
@@ -144,7 +145,11 @@ export interface CalcOptions { source1: CalcSource; source2: CalcSource; mode?: 
 
 /** One entry of the GPU display's layer list (gpuLayers): a pixel layer's image, or an adjustment's lookup table applied
  *  to what is below it (per channel, 256 x 1; or 3D, 52 x 52 x 52 packed into 2704 x 52, with lut3 set). */
-export interface GpuLayerSpec { image: Surface | null; lut?: Uint8Array; lut3?: boolean; grain?: GrainParams; mask?: GpuMaskSpec; clip?: GpuClipSpec; folders?: GpuMaskSpec[]; blendIf?: GpuBlendIf; chOff?: number; /** The float pixels of a 16 or 32 bit layer (RGB, straight alpha), which a display uploads as half floats in place of the 8-bit rendition; `linear` says they are linear light (32 bit). */ deep?: ChannelPixels; linear?: boolean; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
+export interface GpuLayerSpec { image: Surface | null; lut?: Uint8Array; lut3?: boolean; grain?: GrainParams; mask?: GpuMaskSpec; clip?: GpuClipSpec; folders?: GpuMaskSpec[]; blendIf?: GpuBlendIf; chOff?: number; /** The float pixels of a 16 or 32 bit layer (RGB, straight alpha), which a display uploads as half floats in place of the 8-bit rendition; `linear` says they are linear light (32 bit). */ deep?: ChannelPixels; linear?: boolean; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode;
+  /** A folder with its own opacity or blend mode, or a clipping base with Blend Clipped Layers as Group: these layers composite alone from clear, and the result draws as one layer at this entry's opacity and blend mode. */
+  sub?: readonly GpuLayerSpec[];
+  /** Knockout: the layers that make the composite shown through this layer's coverage, and the layer's opacity without its fill. */
+  ko?: { opacity: number; back: readonly GpuLayerSpec[] } }
 /** A clipping base for the GPU: its pixels, placement and opacity, and its own mask; its coverage clips the layer. */
 export interface GpuClipSpec { image: Surface; deep?: ChannelPixels; linear?: boolean; version: number; width: number; height: number; matrix: Mat; opacity: number; mask?: GpuMaskSpec; parent?: GpuClipSpec }
 /** A layer's Blend If for the GPU: the channel tested (1 grey, 2 red, 3 green, 4 blue) and the four-point ranges of the layer and of what lies under it. */
@@ -1367,10 +1372,10 @@ export class Engine {
 
   newDocument(width: number, height: number, name = 'Untitled', fill: 'transparent' | 'white' | 'background' | RGB = 'transparent', resolution = 72): Project | null {
     this.newCount++;
-    // Past what one canvas may hold here (a side past 30,000, or more pixels than the budget) but within 65,535 a side,
-    // a tiled document (1.62.3, DEV_PLAN 26.6b): its background costs nothing until drawn into. Before 1.62.3 refused.
-    if (this.tiledDocuments && Number.isInteger(width) && Number.isInteger(height) && width >= 1 && height >= 1 && width <= 65535 && height <= 65535 &&
-        (width > LIMITS.side || height > LIMITS.side || width * height > LIMITS.pixels)) {
+    // Past what one canvas may hold here (a side past 30,000, or more pixels than the budget) but within 300,000 a side
+    // (a PSB's limit), a tiled document (1.62.3, DEV_PLAN 26.6b): its background costs nothing until drawn into.
+    if (this.tiledDocuments && Number.isInteger(width) && Number.isInteger(height) && width >= 1 && height >= 1 && width <= TILED_SIDE && height <= TILED_SIDE &&
+        (width > LIMITS.side || height > LIMITS.side || width * height > LIMITS.pixels || this.tilesByThreshold(width, height))) {
       const doc: Doc = { id: uid(), width, height, resolution: Number.isFinite(resolution) && resolution >= 1 && resolution <= 10000 ? resolution : 72, layers: [] };
       const tiled = new TiledRaster(width, height);
       tiled.onMissing = (t, key) => this.bringTile(t, key);   // a tile on disk the view wants (1.62.4)
@@ -1378,14 +1383,14 @@ export class Engine {
       else if (fill === 'background') tiled.base = [this.bg.r, this.bg.g, this.bg.b, 255];
       else if (typeof fill === 'object') tiled.base = [fill.r, fill.g, fill.b, 255];
       const layer = newLayer(fill === 'transparent' ? 'Layer 1' : 'Background', doc, { tiled });
-      this.notice(`A ${Math.round(width * height / 1e6).toLocaleString('en-US')} megapixel document is kept in tiles: it opens, zooms and pans now; painting, filters, export and undo on it come in the next releases.`);
+      this.notice(`A ${Math.round(width * height / 1e6).toLocaleString('en-US')} megapixel document is kept in tiles: the brush, pencil, eraser, Fill, Clear, Flip Layer, Copy and the filters that run in bands work on its layers, and other tools come in later releases.`);
       return this.addProject({ ...doc, layers: [layer] }, name, layer.id);
     }
     // Its layer and its display, and its opening snapshot when one will be taken (1.60.2, recounted 1.60.5).
     const px = width * height * 4, snap = this.autoFirstSnapshot && px <= this.snapshotByteLimit && (!this.memoryBudget || px <= this.memoryBudget / 4) ? px : 0;
     if (Number.isInteger(width) && Number.isInteger(height) && !this.room(px * 2 + snap, 'A new document')) return null;
     if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || width > LIMITS.side || height > LIMITS.side || width * height > LIMITS.pixels) {
-      this.notice(`Canvas sides must be 1 to 30,000 px, and the canvas at most ${Math.round(LIMITS.pixels / 1_000_000)} megapixels.`, 'error');
+      this.notice(this.tiledDocuments ? `Canvas sides must be 1 to ${TILED_SIDE.toLocaleString('en-US')} px.` : `Canvas sides must be 1 to 30,000 px, and the canvas at most ${Math.round(LIMITS.pixels / 1_000_000)} megapixels.`, 'error');
       return null;
     }
     const base: Doc = { id: uid(), width, height, resolution: Number.isFinite(resolution) && resolution >= 1 && resolution <= 10000 ? resolution : 72, layers: [] };
@@ -1929,7 +1934,7 @@ export class Engine {
   gpuLayers(view: { matrix: Mat; width: number; height: number } | null = null): { layers: GpuLayerSpec[] } | { reason: string } {
     const p = this.current;
     if (!p) return { reason: 'no document is open' };
-    const ov = this.overrides(p), layers: GpuLayerSpec[] = [], map = byId(p.doc), clips = new Map<ID, GpuClipSpec | null | 'nested'>(), fchains = new Map<ID | null, GpuMaskSpec[] | undefined>();
+    const ov = this.overrides(p), map = byId(p.doc), clips = new Map<ID, GpuClipSpec | null | 'nested'>(), fchains = new Map<ID | null, GpuMaskSpec[] | undefined>();
     for (const o of ov?.values() ?? []) if (o.patch) return { reason: 'a stroke on a large layer' };   // drawn by the CPU while it lasts (1.60.6)
     // A giant document's tiles in view go to the GPU (1.62.9, DEV_PLAN 26.6g; the CPU drew them since 1.62.3), which
     // needs the view to know which; asked without one (the bench), it stays on the CPU.
@@ -1963,7 +1968,7 @@ export class Engine {
       let parent: GpuClipSpec | undefined;
       const up = b.clipId ? map.get(b.clipId) : undefined;
       if (up) {
-        if (depth >= 8 || vecFor(up).length) return 'nested';
+        if (depth >= 8 || vecFor(up).length || up.blendClipped) return 'nested';
         if (!clips.has(up.id)) clips.set(up.id, clipOf(up.id, depth + 1));
         const pc = clips.get(up.id);
         if (pc === 'nested') return 'nested';
@@ -1971,14 +1976,42 @@ export class Engine {
         parent = pc;
       }
       const bo = ov?.get(b.id), src = bo?.source ?? b.raster.canvas, t = bo?.transform ?? b.transform;
-      return { image: src, version: bo?.source ? -1 : b.raster.version, width: src.width, height: src.height, matrix: placement(t, src.width, src.height), opacity: bo?.opacity ?? b.opacity, mask: maskFor(b, bo), parent, deep: deepOf(b, src, bo?.source), linear: p.doc.depth === 32 };
+      return { image: src, version: bo?.source ? -1 : b.raster.version, width: src.width, height: src.height, matrix: placement(t, src.width, src.height), opacity: b.blendClipped && !b.adjustment ? 1 : bo?.opacity ?? b.opacity, mask: maskFor(b, bo), parent, deep: deepOf(b, src, bo?.source), linear: p.doc.depth === 32 };
     };
+    // The layer list, whole or restricted to `only` (a Knockout's backdrop); `handled` are the folders the renderer is already inside.
+    const build = (only: ReadonlySet<ID> | null, handled: ReadonlySet<ID>, depth: number): GpuLayerSpec[] | { reason: string } => {
+    const top: GpuLayerSpec[] = [], groups = new Map<ID, GpuLayerSpec[]>(), dropped = new Set<ID>(), state = { fail: null as string | null, chain: [] as ID[] };
+    // A folder with its own opacity or blend mode, and a clipping base with Blend Clipped Layers as Group, composite their layers alone (the renderer's isolatedFolder and clippedGroup); a group opens at its first layer, where the renderer draws it.
+    const open = (list: GpuLayerSpec[], g: Layer): GpuLayerSpec[] | null => {
+      if (dropped.has(g.id)) return null;
+      const have = groups.get(g.id);
+      if (have) return have;
+      const go = ov?.get(g.id), gop = go?.opacity ?? g.opacity, gb = go?.blend ?? g.blend;
+      if (go?.hidden || !(gop > 0)) { dropped.add(g.id); return null; }
+      if (EXTRA_BLENDS.has(gb)) { state.fail = 'a folder or clipped group in Negation, Reflect, Glow or Xor mode'; return null; }
+      const sub: GpuLayerSpec[] = [];
+      groups.set(g.id, sub);
+      list.push({ image: null, sub, version: 0, width: 1, height: 1, matrix: [1, 0, 0, 1, 0, 0], opacity: gop, blend: gb });
+      return sub;
+    };
+    const place = (l: Layer): GpuLayerSpec[] | null => {
+      let list: GpuLayerSpec[] | null = top;
+      state.chain = [];
+      for (const g of ancestors(map, l).reverse()) if (groupIsolated(g) && !handled.has(g.id)) { list = open(list, g); if (!list) return null; state.chain.push(g.id); }
+      const cg = l.clipId ? map.get(l.clipId) : l.blendClipped ? l : undefined;
+      if (cg?.blendClipped && !cg.isGroup && !cg.adjustment) { list = open(list, cg); if (list) state.chain.push(cg.id); }
+      return list;
+    };
+    const prune = (list: GpuLayerSpec[]): GpuLayerSpec[] => list.filter((e) => { if (e.sub) e.sub = prune(e.sub as GpuLayerSpec[]); return !e.sub || e.sub.length > 0; });
     for (const { layer: l, visible } of hierarchy(p.doc)) {
-      // A pass-through folder is its layers in order, hidden with the folder; one with its own opacity or blend mode is
-      // composited on its own surface, which the CPU renderer does.
-      if (l.isGroup) { if (l.artboard && visible) return { reason: 'artboards' }; if (visible && groupIsolated(l)) return { reason: 'a folder with its own opacity or blend mode' }; continue; }
+      if (l.isGroup) { if (l.artboard && visible) return { reason: 'artboards' }; continue; }
       const o = ov?.get(l.id);
       if (o?.hidden || !visible) continue;
+      if (only && !only.has(l.id)) continue;
+      const layers = place(l);
+      if (state.fail) return { reason: state.fail };
+      if (!layers) continue;
+      const grouped = !!l.blendClipped && !l.clipId && !l.adjustment;
       // The masks of the folders around it, as the CPU renderer's folderMasks lists them (their pixels as they are, their
       // own placement, else the folder's), one array per parent folder so its layers share one coverage on the GPU.
       if (!fchains.has(l.parentId ?? null)) {
@@ -1989,17 +2022,16 @@ export class Engine {
       // A layer's own vector mask (1.66.1) joins its folders' masks, one array of its own.
       const own = vecFor(l, o?.transform), folders = own.length ? [...(fchains.get(l.parentId ?? null) ?? []), ...own] : fchains.get(l.parentId ?? null);
       if (folders && l.clipId) return { reason: 'a clipped layer with a vector mask or inside a masked folder' };
-      if (visible && l.knockout && l.knockout !== 'none') return { reason: 'a layer with Knockout' };
       const bif = blendIfActive(l.blendIf) ? l.blendIf as BlendIf : null;
       const blendIf: GpuBlendIf | undefined = bif ? { channel: bif.channel === 'r' ? 2 : bif.channel === 'g' ? 3 : bif.channel === 'b' ? 4 : 1, thisLayer: bif.thisLayer, underlying: bif.underlying } : undefined;
       const chOff = l.blendChannels ? l.blendChannels.reduce((s, on, i) => (on ? s : s | (1 << i)), 0) : 0;
-      if (visible && (l.blendClipped || l.transparencyShapes === false)) return { reason: 'Blend Clipped Layers as Group or Transparency Shapes Layer off' };
+      if (l.blendClipped && l.clipId) return { reason: 'Blend Clipped Layers as Group on a layer that is itself clipped' };
       const mask = maskFor(l, o);
       let clip: GpuClipSpec | undefined;
       if (l.clipId) {
         if (!clips.has(l.clipId)) clips.set(l.clipId, clipOf(l.clipId));
         const c = clips.get(l.clipId), cb = map.get(l.clipId);
-        if (c === 'nested') return { reason: 'a clipping chain more than 8 deep or with a vector mask' };
+        if (c === 'nested') return { reason: 'a clipping chain more than 8 deep, with a vector mask or under Blend Clipped Layers as Group' };
         if (cb && vecFor(cb).length) return { reason: 'a clipping base with a vector mask' };
         if (!c) continue;
         clip = c;
@@ -2032,7 +2064,8 @@ export class Engine {
         fxParts = this.display.gpuEffectParts(l, o, p.doc);
         if (!fxParts) return { reason: 'layer styles on a layer being edited' };
       }
-      if (EXTRA_BLENDS.has(o?.blend ?? l.blend)) return { reason: 'a layer in Negation, Reflect, Glow or Xor mode' };
+      if (EXTRA_BLENDS.has(grouped ? 'normal' : o?.blend ?? l.blend)) return { reason: 'a layer in Negation, Reflect, Glow or Xor mode' };
+      if (grouped && l.tiled) return { reason: 'Blend Clipped Layers as Group on a layer kept in tiles' };
       if (l.tiled && view) {   // a giant layer: its tiles in view, each its own texture (1.62.9)
         if (mask || clip || fxParts.length) return { reason: 'a mask, clipping mask or style on a layer kept in tiles' };
         this.tileSpecs(l.tiled, o?.transform ?? l.transform, (o?.opacity ?? l.opacity) * (l.fill ?? 1), o?.blend ?? l.blend, folders, view, layers);
@@ -2040,14 +2073,29 @@ export class Engine {
       }
       const img = o?.source ?? l.raster?.canvas;
       if (!img || !l.raster) continue;
-      const lop = o?.opacity ?? l.opacity;
+      const lop = grouped ? 1 : o?.opacity ?? l.opacity;
       const part = (q: NonNullable<typeof fxParts>[number]): GpuLayerSpec => ({ image: q.image, version: 0, width: q.image.width, height: q.image.height, matrix: q.matrix, opacity: q.alpha * lop, blend: q.blend });
+      // Knockout (the renderer's knockout()): shown through the layer is the Background alone (deep, or shallow outside any folder) or everything below its folder (shallow inside one).
+      let ko: GpuLayerSpec['ko'];
+      if (l.knockout && l.knockout !== 'none') {
+        if (!(lop > 0)) continue;
+        if (depth >= 3) return { reason: 'a Knockout inside a Knockout backdrop more than three deep' };
+        const below = new Set<ID>(), shallow = l.knockout === 'shallow' ? ancestors(map, l)[0] ?? null : null;
+        if (!shallow) { const bottom = p.doc.layers.find((x) => x.raster && !x.isGroup && !x.adjustment); if (bottom && bottom.id !== l.id) below.add(bottom.id); }
+        else { const gi = p.doc.layers.indexOf(shallow); for (const [i, x] of p.doc.layers.entries()) if (i < gi && !ancestors(map, x).some((g) => g.id === shallow.id)) below.add(x.id); }
+        const back = below.size ? build(below, new Set([...handled, ...state.chain]), depth + 1) : [];
+        if ('reason' in back) return back;
+        ko = { opacity: lop, back };
+      }
       for (const q of fxParts) if (!q.above) layers.push(part(q));
       const deep = deepOf(l, img, o?.source);
-      layers.push({ image: img, version: o?.source ? surfaceVersion(o.source) : l.raster.version, width: img.width, height: img.height, matrix: placement(o?.transform ?? l.transform, img.width, img.height), opacity: (o?.opacity ?? l.opacity) * (l.fill ?? 1), blend: o?.blend ?? l.blend, mask, clip, folders, blendIf, chOff: chOff || undefined, deep, linear: deep ? p.doc.depth === 32 : undefined });
+      layers.push({ image: img, version: o?.source ? surfaceVersion(o.source) : l.raster.version, width: img.width, height: img.height, matrix: placement(o?.transform ?? l.transform, img.width, img.height), opacity: lop * (l.fill ?? 1), blend: grouped ? 'normal' : o?.blend ?? l.blend, mask, clip, folders, blendIf, chOff: chOff || undefined, deep, linear: deep ? p.doc.depth === 32 : undefined, ko });
       for (const q of fxParts) if (q.above) layers.push(part(q));
     }
-    return { layers };
+    return prune(top);
+    };
+    const built = build(null, new Set<ID>(), 0);
+    return 'reason' in built ? built : { layers: built };
   }
 
   private effectPreview: { project: Project; layerId: ID; effects: LayerEffects | null } | null = null;
@@ -3713,6 +3761,11 @@ export class Engine {
   memoryBudget = 0;
   /** Preferences > Performance > Rendering: off, a size past one canvas is refused instead of kept in tiles. */
   tiledDocuments = true;
+  /** Preferences > Performance > Tile layers from (megapixels): documents and fresh layers of this many pixels or more are kept in
+   *  tiles even where one canvas would hold them (1.90.9); 0 keeps the old rule, tiles only past what one canvas holds here. */
+  tileFromMp = 0;
+  /** Whether a document of this size is kept in tiles by the tile threshold alone. */
+  tilesByThreshold(width: number, height: number): boolean { return this.tiledDocuments && this.tileFromMp > 0 && width * height >= this.tileFromMp * 1_000_000; }
 
   /** The pixels held for every open document: its layers and masks (each raster once), one document-size copy for
    *  the display, and what its undo history keeps beyond them. */
@@ -4893,7 +4946,7 @@ export class Engine {
     if (!l) return false;
     if (l.isGroup) { this.notice(`"${l.name}" is a group: choose a layer inside it.`); this.lockedAt = performance.now(); return false; }
     // A layer past 268 MP, kept in tiles (1.62.3): painting it had given it a full-size canvas the browser cannot make.
-    if (l.tiled && !allowTiled) { this.notice(`"${l.name}" is past 268 megapixels and kept in tiles: the brush, pencil and eraser paint it; this comes in a later release.`); this.lockedAt = performance.now(); return false; }
+    if (l.tiled && !allowTiled) { this.notice(`"${l.name}" is kept in tiles: the brush, pencil, eraser, Fill, Clear, Flip Layer, Copy and the filters that run in bands work on it; this comes in a later release.`); this.lockedAt = performance.now(); return false; }
     if (this.locked(l, 'pixels')) return false;
     if (l.adjustment || (l.fillContent && l.mask && this.current?.maskTarget)) return true;
     const kind = liveText(l) ? 'type layer' : l.smart ? 'Smart Object' : l.vector || l.shape ? 'shape layer' : l.fillContent ? 'fill layer' : null;
@@ -4982,7 +5035,7 @@ export class Engine {
     // the whole layer declines here, before any history step opens.
     const lt = p.activeLayer?.tiled ?? null;
     if (lt) {
-      const whole = this.tool === 'mixer' || opts.mixer ? 'The Mixer Brush' : p.maskTarget ? 'Painting a mask' : p.selection ? 'Painting inside a selection'
+      const whole = this.tool === 'mixer' || opts.mixer ? 'The Mixer Brush' : p.maskTarget ? 'Painting a mask'
         : !opts.aliased && shapeActive(this.brushShape) ? 'Brush Settings (shape and scattering, texture, dual brush, wet edges)' : null;
       if (whole) { this.notice(`${whole} on a layer kept in tiles comes in a later release; the plain brush, pencil and eraser paint it now.`); return false; }
     }
@@ -5376,6 +5429,11 @@ export class Engine {
   fill(which: 'fg' | 'bg'): void {
     const p = this.current, l = p?.activeLayer;
     if (p && l?.text && liveText(l) && !p.selection && !p.maskTarget) { void this.updateTextLayer(l.id, { ...l.text, color: { ...(which === 'fg' ? this.fg : this.bg) } }); return; }
+    if (p && l?.tiled && !p.maskTarget && !this.quickMask && !this.alphaTargeted()) {   // a layer kept in tiles: the selection or all of it, a band at a time (1.90.9)
+      const c = which === 'fg' ? this.fg : this.bg;
+      void this.bandedFilterTiled(which === 'fg' ? 'Fill with Foreground' : 'Fill with Background', (src) => solidImage(src.width, src.height, c), 0);
+      return;
+    }
     PO.fill(this.paintHost, which);
   }
 
@@ -5495,7 +5553,15 @@ export class Engine {
     }
   }
 
-  clearPixels(): void { SO.clearPixels(this.selectHost); }
+  clearPixels(): void {
+    const p = this.current, l = p?.activeLayer;
+    if (p && l?.tiled && !p.maskTarget && !this.quickMask && !this.alphaTargeted()) {   // a layer kept in tiles (1.90.9): the Background takes the background colour, any other layer goes transparent
+      const background = !l.parentId && !l.isGroup && l.name === 'Background', bg = this.bg;
+      void this.bandedFilterTiled('Clear', (src) => (background ? solidImage(src.width, src.height, bg) : solidImage(src.width, src.height, { r: 0, g: 0, b: 0 }, 0)), 0);
+      return;
+    }
+    SO.clearPixels(this.selectHost);
+  }
 
   invertPixels(): void {
     const a = this.alphaTargeted();
@@ -8128,7 +8194,7 @@ export class Engine {
     const l = p.activeLayer;
     if (!l || l.raster || l.tiled || l.isGroup || l.adjustment || l.shape || l.vector || l.smart || liveText(l)) return;
     const W = p.doc.width, H = p.doc.height;
-    if (W * H <= CANVAS_PIXELS && W <= CANVAS_SIDE && H <= CANVAS_SIDE && !p.doc.layers.some((x) => x.tiled)) return;
+    if (W * H <= CANVAS_PIXELS && W <= CANVAS_SIDE && H <= CANVAS_SIDE && !p.doc.layers.some((x) => x.tiled) && !this.tilesByThreshold(W, H)) return;
     const t = new TiledRaster(W, H);
     t.onMissing = (tr, key) => this.bringTile(tr, key);
     p.updateLayer(l.id, { tiled: t });
@@ -8148,7 +8214,8 @@ export class Engine {
     if (!p || !l || !t || this.stroke) return false;
     if (this.waiting() || !this.paintable(l, true)) return 'refused';
     if (!store) { this.notice(`${name} on a document this large needs formvis's engine running: its undo is kept on the engine's disk.`, 'error'); return 'refused'; }
-    if (p.selection || p.maskTarget) { this.notice(`${name} inside a selection or on a mask, on a layer kept in tiles, comes in a later release.`); return 'refused'; }
+    const sel = p.selection, tf = l.transform;
+    if (p.maskTarget || (sel && !(tf.x === 0 && tf.y === 0 && tf.w === t.width && tf.h === t.height && !tf.flipX && !tf.flipY && !tf.rotation))) { this.notice(`${name} ${p.maskTarget ? 'on a mask' : 'inside a selection on a moved layer'}, on a layer kept in tiles, comes in a later release.`); return 'refused'; }
     const W = t.width, H = t.height, A = Math.max(0, Math.ceil(apron)), B = Math.max(A, 16, Math.min(512, Math.floor(2_097_152 / W)));
     this.busyWith = name;
     this.notice(`${name} runs over the picture a band at a time, keeping its undo on disk; editing waits until it finishes.`);
@@ -8169,8 +8236,12 @@ export class Engine {
         if (y1 < H) src = await source(y1);   // the next band's originals, before this band is written
         await t.ensure(0, y0, W, h, store);
         for (let x0 = 0; x0 < W; x0 += 512) {
-          const w = Math.min(512, W - x0), before = t.read(x0, y0, w, h), after = new ImageData(w, h);
+          const w = Math.min(512, W - x0);
+          if (sel && (x0 + w <= sel.x || x0 >= sel.x + sel.w || y1 <= sel.y || y0 >= sel.y + sel.h)) continue;   // clear of the selection: not read, not written
+          const before = t.read(x0, y0, w, h);
+          let after = new ImageData(w, h);
           for (let yy = 0; yy < h; yy++) { const so = ((y0 - a0 + yy) * W + x0) * 4; after.data.set(out.data.subarray(so, so + w * 4), yy * w * 4); }
+          if (sel) after = IE.blendThrough(before, after, coverageOver(sel, x0, y0, w, h));   // the selection's coverage decides how much of the result lands
           if (l.locks?.transparency) for (let i = 3; i < after.data.length; i += 4) after.data[i] = before.data[i];   // Lock Transparency keeps the alpha
           if (sameBytes(before.data, after.data)) continue;
           t.write(after, x0, y0);

@@ -15,6 +15,8 @@ export interface Capabilities { pixelBudget?: number; memory?: number;
 /** The engine process's memory in bytes as the operating system counts it; a key is missing when the system does not say. */
 export interface EngineMetrics { pid: number; uptime: number; total: number; rss?: number; peak?: number; private?: number; available?: number; threads?: number; gpu?: Array<{ name: string; used: number; total: number | null; source: string }> }
 export interface LibraryItem { name: string; modified: number; size: number }
+/** One record of a layered PSD written in parts: `section` 0 a layer, 3 the marker that begins a folder, 1 or 2 its own record, open or closed. */
+export interface PsdPartSpec { name: string; left: number; top: number; width: number; height: number; opacity: number; blend: string; visible: boolean; clipping: boolean; section: 0 | 1 | 2 | 3 }
 /** A plugin folder's plugin.json as the engine checked it. */
 export interface PluginManifest { id: string; name: string; version: string; main: string; permissions: string[]; description: string; api: number }
 export interface OpenedProject { session: string; name: string; manifest: Record<string, unknown>; images: Record<string, string>; version?: string; path?: string }
@@ -547,6 +549,17 @@ export const api = {
   },
   async bandsEnd(key: string, format: 'png' | 'tiff' | 'psd' = 'png'): Promise<Blob> {
     return (await request(`/bands/${format}/${key}/end`, { method: 'POST' })).blob();
+  },
+  /** A layered PSD or PSB written in parts (SC-ED-0263): opened with every record (a folder is two, a marker that begins it and
+   *  its own at the end), each layer's rows then fed band by band, the merged picture's rows last (`layer` null), closed for the file. */
+  async psdLayersBegin(width: number, height: number, ppi: number, psb: boolean, layers: PsdPartSpec[], icc: string | null): Promise<string> {
+    return ((await (await request(`/bands/psdl?width=${width}&height=${height}&ppi=${ppi}&psb=${psb}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ layers, icc }) })).json()) as { key: string }).key;
+  },
+  async psdLayersPut(key: string, rows: Uint8ClampedArray<ArrayBuffer>, layer: number | null): Promise<void> {
+    await request(`/bands/psdl/${key}${layer === null ? '' : `/${layer}`}`, { method: 'POST', body: new Blob([rows]), headers: { 'Content-Type': 'application/octet-stream' } });
+  },
+  async psdLayersEnd(key: string): Promise<Blob> {
+    return (await request(`/bands/psdl/${key}/end`, { method: 'POST' })).blob();
   },
   /** An opened project's PNG read by the engine a band of rows at a time (1.62.8): a giant layer's, past what a browser
    *  can decode. */

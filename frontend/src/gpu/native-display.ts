@@ -47,6 +47,7 @@ export class NativeDisplay implements ScreenDisplay {
 
   unsupported(layers: readonly DisplayLayer[]): string | null {
     for (const l of layers) {
+      if (l.sub || l.ko) return 'a folder with its own opacity or blend mode, a clipped group or a Knockout, which the native renderer does not draw yet';
       if (l.lut3) return 'an adjustment uses a 3D lookup table, which the native renderer does not draw yet';
       if (l.grain) return 'a Grain adjustment layer is not drawn by the native renderer yet';
       if (l.folders?.length) return 'a layer is in a folder with a mask, which the native renderer does not draw yet';

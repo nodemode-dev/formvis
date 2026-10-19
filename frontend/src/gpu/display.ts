@@ -14,7 +14,16 @@ export interface DisplayMask { image: HTMLCanvasElement | OffscreenCanvas; versi
 export interface DisplayClip { image: HTMLCanvasElement | OffscreenCanvas; deep?: ChannelPixels; linear?: boolean; version: number; width: number; height: number; matrix: Mat; opacity: number; mask?: DisplayMask; parent?: DisplayClip }
 /** A layer's Blend If: the channel tested (1 grey, 2 red, 3 green, 4 blue) and the four-point ranges of the layer and of what is under it. */
 export interface DisplayBlendIf { channel: 1 | 2 | 3 | 4; thisLayer: readonly [number, number, number, number]; underlying: readonly [number, number, number, number] }
-export interface DisplayLayer { image: HTMLCanvasElement | OffscreenCanvas | null; lut?: Uint8Array; lut3?: boolean; grain?: GrainParams; mask?: DisplayMask; clip?: DisplayClip; folders?: DisplayMask[]; blendIf?: DisplayBlendIf; chOff?: number; deep?: ChannelPixels; linear?: boolean; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
+export interface DisplayLayer { image: HTMLCanvasElement | OffscreenCanvas | null; lut?: Uint8Array; lut3?: boolean; grain?: GrainParams; mask?: DisplayMask; clip?: DisplayClip; folders?: DisplayMask[]; blendIf?: DisplayBlendIf; chOff?: number; deep?: ChannelPixels; linear?: boolean; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode;
+  /** A folder or clipped group: these layers composite alone from clear, then draw as one layer at this entry's opacity and blend mode. */
+  sub?: readonly DisplayLayer[];
+  /** Knockout: `back` is the composite the layer shows through its coverage, `opacity` the layer's opacity without its fill. */
+  ko?: { opacity: number; back: readonly DisplayLayer[] } }
+/** The shader flags carried in chOff above the three channel bits: Knockout on, and a finished screen-sized composite as the source. */
+export const KO_FLAG = 8;
+export const SCREEN_FLAG = 16;
+/** Whether any layer in the list, or in a group or knockout backdrop inside it, satisfies the test. */
+export const anyLayer = (list: readonly DisplayLayer[], test: (l: DisplayLayer) => boolean): boolean => list.some((l) => test(l) || (l.sub ? anyLayer(l.sub, test) : false) || (l.ko ? anyLayer(l.ko.back, test) : false));
 /** The shader mode that renders a clipping base's coverage, and a folder mask's coverage (no source image). */
 export const CLIP_MODE = 102;
 export const FOLDER_MODE = 103;
@@ -148,7 +157,7 @@ export class GpuDisplay {
     return on;
   }
 
-  unsupported(layers: readonly DisplayLayer[]): string | null { return layers.some((l) => l.grain) ? 'a Grain adjustment layer is drawn by the WebGL2 display, not WebGPU' : null; }
+  unsupported(layers: readonly DisplayLayer[]): string | null { return anyLayer(layers, (l) => !!l.grain) ? 'a Grain adjustment layer is drawn by the WebGL2 display, not WebGPU' : null; }
 
   /** One frame: `view` maps document pixels to canvas pixels; `rect` is the document's visible rectangle on the canvas
    *  (x0, y0, x1, y1). Sampling is nearest from 200% zoom up, as the CPU path draws it. With `out` the frame goes to that
@@ -158,7 +167,7 @@ export class GpuDisplay {
     if (W < 1 || H < 1) return;
     this.frameNo++;
     // A frame with a deep layer (or an HDR canvas) composites in half float; every other frame stays 8-bit, as before.
-    const accFormat: GPUTextureFormat = this.hdrOn || layers.some((l) => l.deep) ? 'rgba16float' : 'rgba8unorm';
+    const accFormat: GPUTextureFormat = this.hdrOn || anyLayer(layers, (l) => !!l.deep) ? 'rgba16float' : 'rgba8unorm';
     if (!this.acc || this.acc[0].width !== W || this.acc[0].height !== H || this.acc[0].format !== accFormat) {
       this.acc?.forEach((t) => t.destroy());
       const make = (): GPUTexture => d.createTexture({ size: [W, H], format: accFormat, usage: TEX.TEXTURE_BINDING | TEX.RENDER_ATTACHMENT });
@@ -169,35 +178,51 @@ export class GpuDisplay {
     this.timer.arm(!out);
     enc.beginRenderPass({ colorAttachments: [{ view: a.createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }], ...this.timer.first() }).end();
     // Each clipping base's coverage, once per frame, into its own screen-sized texture (mode 102).
-    const clipTex = new Map<DisplayClip, GPUTexture>();
+    const clipTex = new Map<DisplayClip, GPUTexture>(), folderTex = new Map<DisplayMask[], GPUTexture>();
+    let slot = 0;
     const clipCover = (c: DisplayClip): GPUTexture => {
       const have = clipTex.get(c);
       if (have) return have;
-      const up = c.parent ? clipCover(c.parent) : null, t = this.clipTarget(clipTex.size, W, H);
+      const up = c.parent ? clipCover(c.parent) : null, t = this.clipTarget(slot++, W, H);
       this.layerPass(enc, this.blank(), t, { image: c.image, deep: c.deep, linear: c.linear, version: c.version, width: c.width, height: c.height, matrix: c.matrix, opacity: c.opacity, blend: 'normal', mask: c.mask }, CLIP_MODE, up, sampler, view, used, buffers);
       clipTex.set(c, t);
       return t;
     };
-    for (const l of layers) if (l.clip) clipCover(l.clip);
-    // Each folder chain's coverage (one pass per folder mask, each times the chain so far), into the same pool.
-    const folderTex = new Map<DisplayMask[], GPUTexture>();
-    let slot = clipTex.size;
-    for (const l of layers) {
-      if (!l.folders || folderTex.has(l.folders)) continue;
-      let prev: GPUTexture | null = null;
-      for (const mk of l.folders) {
-        const t = this.clipTarget(slot++, W, H);
-        this.layerPass(enc, this.blank(), t, { image: null, version: 0, width: 1, height: 1, matrix: [1, 0, 0, 1, 0, 0], opacity: 1, blend: 'normal', mask: mk }, FOLDER_MODE, prev, sampler, view, used, buffers);
-        prev = t;
+    // A list of layers over `a` (cleared by the caller), `b` spare; a folder, clipped group or knockout backdrop inside it runs the same way on a pair of its own from the pool, one depth down.
+    const run = (list: readonly DisplayLayer[], a: GPUTexture, b: GPUTexture, depth: number): GPUTexture => {
+      for (const l of list) if (l.clip) clipCover(l.clip);
+      // Each folder chain's coverage (one pass per folder mask, each times the chain so far), into the same pool.
+      for (const l of list) {
+        if (!l.folders || folderTex.has(l.folders)) continue;
+        let prev: GPUTexture | null = null;
+        for (const mk of l.folders) {
+          const t = this.clipTarget(slot++, W, H);
+          this.layerPass(enc, this.blank(), t, { image: null, version: 0, width: 1, height: 1, matrix: [1, 0, 0, 1, 0, 0], opacity: 1, blend: 'normal', mask: mk }, FOLDER_MODE, prev, sampler, view, used, buffers);
+          prev = t;
+        }
+        if (prev) folderTex.set(l.folders, prev);
       }
-      if (prev) folderTex.set(l.folders, prev);
-    }
-    for (const l of layers) {
-      if (l.opacity <= 0 || l.width < 1 || l.height < 1) continue;
-      const cover = l.clip ? clipTex.get(l.clip) ?? null : l.folders ? folderTex.get(l.folders) ?? null : null;
-      this.layerPass(enc, a, b, l, l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend), cover, sampler, view, used, buffers);
-      [a, b] = [b, a];
-    }
+      const alone = (inner: readonly DisplayLayer[]): GPUTexture => {
+        const [x, y] = this.subPair(depth, W, H, accFormat);
+        enc.beginRenderPass({ colorAttachments: [{ view: x.createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }] }).end();
+        return run(inner, x, y, depth + 1);
+      };
+      for (const l of list) {
+        if (l.opacity <= 0 && !l.ko) continue;
+        if (l.sub) {
+          if (!l.sub.length) continue;
+          this.layerPass(enc, a, b, l, blendIndex(l.blend), null, sampler, view, used, buffers, { screen: alone(l.sub) });
+          [a, b] = [b, a];
+          continue;
+        }
+        if (l.width < 1 || l.height < 1) continue;
+        const cover = l.clip ? clipTex.get(l.clip) ?? null : l.folders ? folderTex.get(l.folders) ?? null : null;
+        this.layerPass(enc, a, b, l, l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend), cover, sampler, view, used, buffers, l.ko ? { ko: alone(l.ko.back) } : undefined);
+        [a, b] = [b, a];
+      }
+      return a;
+    };
+    a = run(layers, a, b, 0);
     const pu = d.createBuffer({ size: 64, usage: BUF.UNIFORM | BUF.COPY_DST });
     d.queue.writeBuffer(pu, 0, new Float32Array([...rect, ...checker.a.map((v) => v / 255), 1, ...checker.b.map((v) => v / 255), 1, checker.origin[0], checker.origin[1], checker.cell, 0]));
     buffers.push(pu);
@@ -266,11 +291,11 @@ export class GpuDisplay {
   }
 
   /** One composite pass: `l` over `backdrop` into `target`, in shader `mode`, clipped by `clip` (a coverage texture). */
-  private layerPass(enc: GPUCommandEncoder, backdrop: GPUTexture, target: GPUTexture, l: DisplayLayer, mode: number, clip: GPUTexture | null, sampler: GPUSampler, view: Mat, used: Set<object>, buffers: GPUBuffer[]): void {
+  private layerPass(enc: GPUCommandEncoder, backdrop: GPUTexture, target: GPUTexture, l: DisplayLayer, mode: number, clip: GPUTexture | null, sampler: GPUSampler, view: Mat, used: Set<object>, buffers: GPUBuffer[], extra?: { screen?: GPUTexture; ko?: GPUTexture }): void {
     const d = this.device;
-    if (mode !== FOLDER_MODE) used.add(l.lut ?? (l.image as object));
-    const lod = mode < LUT_MODE ? lodFor(mul(view, l.matrix), l.width, l.height) : 0, pipe = target.format === 'rgba8unorm' ? this.composite : this.pipe('composite', target.format);
-    const tex = mode === FOLDER_MODE ? this.blank() : this.texture(l, lod > 0);
+    if (mode !== FOLDER_MODE && !extra?.screen) used.add(l.lut ?? (l.image as object));
+    const lod = mode < LUT_MODE && !extra?.screen ? lodFor(mul(view, l.matrix), l.width, l.height) : 0, pipe = target.format === 'rgba8unorm' ? this.composite : this.pipe('composite', target.format);
+    const tex = extra?.screen ?? (mode === FOLDER_MODE ? this.blank() : this.texture(l, lod > 0));
     const [ia, ib, ic, id, ie, iff] = invert(mul(view, l.matrix));
     // 224 bytes, WGSL's layout: inv (0), size (48), opacity (56), mode (60), the mask's inverse placement (64), its
     // size (112), whether there is one (120), whether the layer is clipped (124), the view's inverse (128), Blend If's
@@ -280,8 +305,9 @@ export class GpuDisplay {
     f.set([va, vb, 0, 0, vc, vd, 0, 0, ve, vf, 1, 0], 32);
     u32[15] = mode;
     if (l.blendIf) { f.set(l.blendIf.thisLayer, 44); f.set(l.blendIf.underlying, 48); u32[52] = l.blendIf.channel; }
-    u32[53] = l.chOff ?? 0;
+    u32[53] = (l.chOff ?? 0) | (extra?.ko ? KO_FLAG : 0) | (extra?.screen ? SCREEN_FLAG : 0);
     f[54] = lod;
+    f[55] = l.ko ? Math.min(1, Math.max(0, l.ko.opacity)) : 0;
     let maskTex = this.blank();
     if (l.mask) {
       const mk = l.mask, [ma, mb, mc, md, me, mf] = invert(mul(view, mk.matrix));
@@ -296,7 +322,7 @@ export class GpuDisplay {
     buffers.push(ub);
     const bind = d.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries: [
       { binding: 0, resource: backdrop.createView() }, { binding: 1, resource: tex.createView() }, { binding: 2, resource: sampler }, { binding: 3, resource: { buffer: ub } },
-      { binding: 4, resource: maskTex.createView() }, { binding: 5, resource: (clip ?? this.blank()).createView() },
+      { binding: 4, resource: maskTex.createView() }, { binding: 5, resource: (clip ?? this.blank()).createView() }, { binding: 6, resource: (extra?.ko ?? this.blank()).createView() },
     ] });
     const pass = enc.beginRenderPass({ colorAttachments: [{ view: target.createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
     pass.setPipeline(pipe);
@@ -313,6 +339,18 @@ export class GpuDisplay {
     t?.destroy();
     this.clipPool[i] = this.device.createTexture({ size: [W, H], format: 'rgba8unorm', usage: TEX.TEXTURE_BINDING | TEX.RENDER_ATTACHMENT });
     return this.clipPool[i];
+  }
+
+  /** The pair of screen-sized textures a folder, clipped group or knockout backdrop at this depth composites on, kept between frames. */
+  private subPool: GPUTexture[] = [];
+  private subPair(depth: number, W: number, H: number, format: GPUTextureFormat): [GPUTexture, GPUTexture] {
+    for (const i of [depth * 2, depth * 2 + 1]) {
+      const t = this.subPool[i];
+      if (t && t.width === W && t.height === H && t.format === format) continue;
+      t?.destroy();
+      this.subPool[i] = this.device.createTexture({ size: [W, H], format, usage: TEX.TEXTURE_BINDING | TEX.RENDER_ATTACHMENT });
+    }
+    return [this.subPool[depth * 2], this.subPool[depth * 2 + 1]];
   }
 
   /** A 1 x 1 texture bound where a layer has no mask (the binding must always be filled; the shader ignores it). */
@@ -398,6 +436,8 @@ export class GpuDisplay {
     this.cache.clear();
     this.acc?.forEach((t) => t.destroy());
     this.acc = null;
+    for (const t of this.subPool) t.destroy();
+    this.subPool = [];
     this.device.destroy();
   }
 }

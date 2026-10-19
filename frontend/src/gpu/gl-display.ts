@@ -1,6 +1,6 @@
 import { invert, mul, type Mat } from '../engine';
 import { blendIndex } from './blend-wgsl';
-import { CLIP_MODE, FOLDER_MODE, GRAIN_MODE, LUT3_MODE, LUT_MODE, type Checker, type DisplayClip, type DisplayLayer, type DisplayMask } from './display';
+import { CLIP_MODE, FOLDER_MODE, GRAIN_MODE, KO_FLAG, LUT3_MODE, LUT_MODE, SCREEN_FLAG, anyLayer, type Checker, type DisplayClip, type DisplayLayer, type DisplayMask } from './display';
 import { GlFrameTimer } from './gpu-timing';
 import type { DisplayOptions } from './probe';
 import { dirtyBox, trimResident, type UploadStats } from './residency';
@@ -23,6 +23,7 @@ uniform mat3 inv; uniform vec2 size; uniform float opacity; uniform int mode; un
 uniform sampler2D maskTex; uniform mat3 minv; uniform vec2 msize; uniform int hasMask;
 uniform sampler2D clipTex; uniform int hasClip;
 uniform mat3 vinv; uniform vec4 biT; uniform vec4 biU; uniform int biCh; uniform int chOff; uniform float lod;
+uniform sampler2D koTex; uniform float ko;
 out vec4 outColor;
 float biFactor(float v, vec4 r) {
   float lo = v < r.x ? 0.0 : v < r.y ? (v - r.x) / max(1.0, r.y - r.x) : 1.0;
@@ -124,13 +125,20 @@ void main() {
     outColor = vec4(bd.rgb + (t3 - bd.rgb) * opacity * cov, bd.a); return;
   }
   vec2 p = vec2(gl_FragCoord.x, H - gl_FragCoord.y);
+  bool screen = (chOff & 16) != 0;
   vec3 q = inv * vec3(p, 1.0);
-  if (q.x < 0.0 || q.y < 0.0 || q.x >= size.x || q.y >= size.y) { outColor = bd; return; }
-  vec4 s0 = textureLod(source, q.xy / size, lod);
-  vec4 sc = s0.a > 0.0 ? vec4(s0.rgb / s0.a, s0.a) : s0;
+  if (!screen && (q.x < 0.0 || q.y < 0.0 || q.x >= size.x || q.y >= size.y)) { outColor = bd; return; }
+  vec4 s0 = screen ? texelFetch(source, fb, 0) : textureLod(source, q.xy / size, lod);
+  vec4 sc = s0.a > 0.0 && !screen ? vec4(s0.rgb / s0.a, s0.a) : s0;
   if (mode == 1 || mode == 5 || mode == 6 || mode == 11 || (mode >= 15 && mode <= 18) || mode == 21 || mode == 22) sc = vec4(floor(sc.rgb * 255.0 + 0.5) / 255.0, sc.a);
   float bif = 1.0;
   if (biCh != 0) bif = biFactor(biValue(sc.rgb, biCh), biT) * (bd.a <= 0.0 ? biFactor(255.0, biU) : biFactor(biValue(bd.rgb, biCh), biU));
+  if ((chOff & 8) != 0) {
+    float a0 = sc.a * cov * bif, a1 = bd.a * (1.0 - a0 * ko);
+    vec4 kb = texelFetch(koTex, fb, 0);
+    float ba = kb.a * a0, ao1 = a1 + ba * (1.0 - a1);
+    bd = vec4(ao1 > 0.0 ? (bd.rgb * a1 + kb.rgb * ba * (1.0 - a1)) / ao1 : vec3(0.0), ao1);
+  }
   float sa = sc.a * opacity * cov * bif; if (sa <= 0.0) { outColor = bd; return; }
   float ab = bd.a;
   if (mode == 1) { vec3 dp = vinv * vec3(p, 1.0); outColor = dissolveNoise(int(floor(dp.x)), int(floor(dp.y))) >= sa ? bd : keep(vec4(sc.rgb, 1.0), bd); return; }
@@ -223,7 +231,7 @@ export class GlDisplay {
     const gl = this.gl, W = out ? out.W : this.canvas.width, H = out ? out.H : this.canvas.height;
     if (W < 1 || H < 1 || gl.isContextLost()) return;
     this.frameNo++;
-    const half = this.floatOk && layers.some((l) => l.deep);
+    const half = this.floatOk && anyLayer(layers, (l) => !!l.deep);
     if (!this.acc.length || this.accW !== W || this.accH !== H || this.accHalf !== half) {
       for (const a of this.acc) { gl.deleteTexture(a.tex); gl.deleteFramebuffer(a.fb); }
       this.acc = [this.target(W, H, half), this.target(W, H, half)];
@@ -244,35 +252,54 @@ export class GlDisplay {
     gl.uniform1f(u('H'), H);
     const used = new Set<object>(), filter = zoom >= 2 ? gl.NEAREST : gl.LINEAR;
     gl.uniform1i(u('clipTex'), 3);
+    gl.uniform1i(u('koTex'), 4);
     // Each clipping base's coverage, once per frame, into its own screen-sized target (mode 102).
-    const clipOut = new Map<DisplayClip, WebGLTexture>();
+    const clipOut = new Map<DisplayClip, WebGLTexture>(), folderOut = new Map<DisplayMask[], WebGLTexture>();
+    let slot = 0;
     const clipCover = (c: DisplayClip): WebGLTexture => {
       const have = clipOut.get(c);
       if (have) return have;
-      const up = c.parent ? clipCover(c.parent) : null, t = this.clipTarget(clipOut.size, W, H);
+      const up = c.parent ? clipCover(c.parent) : null, t = this.clipTarget(slot++, W, H);
       this.drawLayer({ image: c.image, deep: c.deep, linear: c.linear, version: c.version, width: c.width, height: c.height, matrix: c.matrix, opacity: c.opacity, blend: 'normal', mask: c.mask }, CLIP_MODE, up, this.blank(), t.fb, view, filter, used, u);
       clipOut.set(c, t.tex);
       return t.tex;
     };
-    for (const l of layers) if (l.clip) clipCover(l.clip);
-    const folderOut = new Map<DisplayMask[], WebGLTexture>();
-    let slot = clipOut.size;
-    for (const l of layers) {
-      if (!l.folders || folderOut.has(l.folders)) continue;
-      let prev: WebGLTexture | null = null;
-      for (const mk of l.folders) {
-        const t = this.clipTarget(slot++, W, H);
-        this.drawLayer({ image: null, version: 0, width: 1, height: 1, matrix: [1, 0, 0, 1, 0, 0], opacity: 1, blend: 'normal', mask: mk }, FOLDER_MODE, prev, this.blank(), t.fb, view, filter, used, u);
-        prev = t.tex;
+    // A list of layers over `a` (cleared by the caller), `b` spare; a folder, clipped group or knockout backdrop inside it runs the same way on a pair of its own from the pool, one depth down.
+    const run = (list: readonly DisplayLayer[], a: { tex: WebGLTexture; fb: WebGLFramebuffer }, b: { tex: WebGLTexture; fb: WebGLFramebuffer }, depth: number): { tex: WebGLTexture; fb: WebGLFramebuffer } => {
+      for (const l of list) if (l.clip) clipCover(l.clip);
+      for (const l of list) {
+        if (!l.folders || folderOut.has(l.folders)) continue;
+        let prev: WebGLTexture | null = null;
+        for (const mk of l.folders) {
+          const t = this.clipTarget(slot++, W, H);
+          this.drawLayer({ image: null, version: 0, width: 1, height: 1, matrix: [1, 0, 0, 1, 0, 0], opacity: 1, blend: 'normal', mask: mk }, FOLDER_MODE, prev, this.blank(), t.fb, view, filter, used, u);
+          prev = t.tex;
+        }
+        if (prev) folderOut.set(l.folders, prev);
       }
-      if (prev) folderOut.set(l.folders, prev);
-    }
-    for (const l of layers) {
-      if (l.opacity <= 0 || l.width < 1 || l.height < 1) continue;
-      const cover = l.clip ? clipOut.get(l.clip) ?? null : l.folders ? folderOut.get(l.folders) ?? null : null;
-      this.drawLayer(l, l.grain ? GRAIN_MODE : l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend), cover, a.tex, b.fb, view, filter, used, u);
-      [a, b] = [b, a];
-    }
+      const alone = (inner: readonly DisplayLayer[]): WebGLTexture => {
+        const [x, y] = this.subPair(depth, W, H, half);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, x.fb);
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        return run(inner, x, y, depth + 1).tex;
+      };
+      for (const l of list) {
+        if (l.opacity <= 0 && !l.ko) continue;
+        if (l.sub) {
+          if (!l.sub.length) continue;
+          this.drawLayer(l, blendIndex(l.blend), null, a.tex, b.fb, view, filter, used, u, { screen: alone(l.sub) });
+          [a, b] = [b, a];
+          continue;
+        }
+        if (l.width < 1 || l.height < 1) continue;
+        const cover = l.clip ? clipOut.get(l.clip) ?? null : l.folders ? folderOut.get(l.folders) ?? null : null;
+        this.drawLayer(l, l.grain ? GRAIN_MODE : l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend), cover, a.tex, b.fb, view, filter, used, u, l.ko ? { ko: alone(l.ko.back) } : undefined);
+        [a, b] = [b, a];
+      }
+      return a;
+    };
+    a = run(layers, a, b, 0);
     gl.useProgram(this.pres);
     const v = (n: string): WebGLUniformLocation | null => gl.getUniformLocation(this.pres, n);
     gl.uniform1i(v('img'), 0);
@@ -319,13 +346,16 @@ export class GlDisplay {
   }
 
   /** One composite pass: `l` over `backdrop` into framebuffer `fb`, in shader `mode`, clipped by `clip` (a coverage texture). */
-  private drawLayer(l: DisplayLayer, mode: number, clip: WebGLTexture | null, backdrop: WebGLTexture, fb: WebGLFramebuffer, view: Mat, filter: number, used: Set<object>, u: (n: string) => WebGLUniformLocation | null): void {
+  private drawLayer(l: DisplayLayer, mode: number, clip: WebGLTexture | null, backdrop: WebGLTexture, fb: WebGLFramebuffer, view: Mat, filter: number, used: Set<object>, u: (n: string) => WebGLUniformLocation | null, extra?: { screen?: WebGLTexture; ko?: WebGLTexture }): void {
     const gl = this.gl;
-    const noImage = mode === FOLDER_MODE || mode === GRAIN_MODE;
+    const noImage = mode === FOLDER_MODE || mode === GRAIN_MODE || !!extra?.screen;
     if (!noImage) used.add(l.lut ?? (l.image as object));
     const lod = !noImage && mode < LUT_MODE ? lodFor(mul(view, l.matrix), l.width, l.height) : 0;
     gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, noImage ? this.blank() : this.texture(l, lod > 0));
+    gl.bindTexture(gl.TEXTURE_2D, extra?.screen ?? (noImage ? this.blank() : this.texture(l, lod > 0)));
+    gl.activeTexture(gl.TEXTURE4);
+    gl.bindTexture(gl.TEXTURE_2D, extra?.ko ?? this.blank());
+    gl.activeTexture(gl.TEXTURE1);
     if (l.grain) {
       const g = l.grain;
       gl.uniform4f(u('gA'), g.strength, g.rough, g.colour, g.speckle);
@@ -345,7 +375,8 @@ export class GlDisplay {
     gl.uniform4f(u('biT'), ...(l.blendIf?.thisLayer ?? [0, 0, 255, 255]));
     gl.uniform4f(u('biU'), ...(l.blendIf?.underlying ?? [0, 0, 255, 255]));
     gl.uniform1i(u('biCh'), l.blendIf?.channel ?? 0);
-    gl.uniform1i(u('chOff'), l.chOff ?? 0);
+    gl.uniform1i(u('chOff'), (l.chOff ?? 0) | (extra?.ko ? KO_FLAG : 0) | (extra?.screen ? SCREEN_FLAG : 0));
+    gl.uniform1f(u('ko'), l.ko ? Math.min(1, Math.max(0, l.ko.opacity)) : 0);
     gl.activeTexture(gl.TEXTURE2);
     if (l.mask) {
       const mk = l.mask, [ma, mb, mc, md, me, mf] = invert(mul(view, mk.matrix));
@@ -376,6 +407,18 @@ export class GlDisplay {
     if (t) { this.gl.deleteTexture(t.tex); this.gl.deleteFramebuffer(t.fb); }
     this.clipPool[i] = { ...this.target(W, H), w: W, h: H };
     return this.clipPool[i];
+  }
+
+  /** The pair of screen-sized targets a folder, clipped group or knockout backdrop at this depth composites on, kept between frames. */
+  private subPool: { tex: WebGLTexture; fb: WebGLFramebuffer; w: number; h: number; half: boolean }[] = [];
+  private subPair(depth: number, W: number, H: number, half: boolean): [{ tex: WebGLTexture; fb: WebGLFramebuffer }, { tex: WebGLTexture; fb: WebGLFramebuffer }] {
+    for (const i of [depth * 2, depth * 2 + 1]) {
+      const t = this.subPool[i];
+      if (t && t.w === W && t.h === H && t.half === half) continue;
+      if (t) { this.gl.deleteTexture(t.tex); this.gl.deleteFramebuffer(t.fb); }
+      this.subPool[i] = { ...this.target(W, H, half), w: W, h: H, half };
+    }
+    return [this.subPool[depth * 2], this.subPool[depth * 2 + 1]];
   }
 
   /** A 1 x 1 texture bound where a layer has no mask (the shader ignores it). */
@@ -445,5 +488,7 @@ export class GlDisplay {
     this.cache.clear();
     for (const a of this.acc) { gl.deleteTexture(a.tex); gl.deleteFramebuffer(a.fb); }
     this.acc = [];
+    for (const s of this.subPool) { gl.deleteTexture(s.tex); gl.deleteFramebuffer(s.fb); }
+    this.subPool = [];
   }
 }

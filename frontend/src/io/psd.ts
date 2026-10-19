@@ -7,13 +7,14 @@ import { fromPsdSmartFilters, toPsdFilter } from './psd-filters';
 import type { NestedContents, SmartDeform, SmartOriginal } from '../engine/types';
 import { evenSpacing } from '../engine/mesh-warp';
 import { deformNow } from '../engine/smart-deform';
-import { artboardFromData, blendIfActive, type BlendIf, type DocSlice, type LayerComp } from '../engine/types';
+import { artboardFromData, blendIfActive, smartFiltersFrom, type BlendIf, type DocSlice, type LayerComp } from '../engine/types';
 import { windingArea } from '../engine/custom-shapes';
 import { addIccResource, addPathResources, addResourceBytes, block as resourceBlock, clippingPathName, readPathResources, resourceBlocks } from './psd-paths';
 import { addExtraChannels, readExtraChannels, readIccProfile } from './psd-channels';
 import { readPsdChannelMode, writeMultichannelPsd } from './psd-modes';
 import { readChannelRestrictions } from './psd-blend';
 import { readBevelDetails, type BevelDetail } from './psd-raw';
+import { ADJUSTMENT_KEY, SMART_STACK_KEY, addLayerBlocks, adjustmentFromBlock, readLayerBlocks, type OwnBlock } from './psd-own';
 import { vectorCoverage } from '../engine/vector-mask';
 import { fromBase64, toBase64 } from './icc-read';
 import { cameraFromTiff, exifBlockOf } from './exif';
@@ -776,7 +777,7 @@ export async function readPsdFile(file: File, siblings: readonly File[] = []): P
     if (!links.has(g)) links.set(g, uid());
     return { link: links.get(g) as ID };
   };
-  const closedGroups: ID[] = [], restrictions = readChannelRestrictions(buffer, psd), bevels = readBevelDetails(buffer, psd);
+  const closedGroups: ID[] = [], restrictions = readChannelRestrictions(buffer, psd), bevels = readBevelDetails(buffer, psd), ownStacks = readLayerBlocks(buffer, psd, SMART_STACK_KEY), ownAdjusts = readLayerBlocks(buffer, psd, ADJUSTMENT_KEY);
   const maskOf =(mk: PsdLayer['mask']): Layer['mask'] | null => {
     if (!mk?.canvas || !mk.canvas.width || !mk.canvas.height) return null;
     // PSD masks are grey; formvis's are white with the level in alpha.
@@ -831,7 +832,8 @@ export async function readPsdFile(file: File, siblings: readonly File[] = []): P
         continue;
       }
       if (pl.blendMode && !FROM_PSD.has(pl.blendMode) && pl.blendMode !== 'pass through') notes.push(`"${name}" uses ${pl.blendMode}, which formvis does not have; it opened as Normal.`);
-      const adj = pl.adjustment ? fromPsdAdjustment(pl.adjustment) : null;
+      const adj = pl.adjustment ? fromPsdAdjustment(pl.adjustment) : adjustmentFromBlock(ownAdjusts.get(pl));
+      if (adj && !pl.adjustment) kept.push(`"${name}" opens as the live ${ADJUSTMENT_LABELS[adj.kind]} adjustment from formvis's own block.`);
       const keptAdj = pl.adjustment && !adj ? keepPsdAdjustment(pl.adjustment) : null;
       if (keptAdj) notes.push(`"${name}" is a ${pl.adjustment?.type} adjustment, which formvis does not draw; it opened as an empty layer that keeps the adjustment's settings for a PSD saved again.`);
       // A PSD fill layer (a colour, a gradient or a pattern, with no shape's path) opens as formvis's (1.66.0).
@@ -911,6 +913,8 @@ export async function readPsdFile(file: File, siblings: readonly File[] = []): P
             if ('filters' in got) { layer.smart.filters = got.filters; kept.push(`"${name}" has ${got.filters.length} editable smart filter${got.filters.length === 1 ? '' : 's'}.`); }
             else notes.push(`"${name}" has smart filters formvis does not have (${got.missing.join(', ')}); the stack stays applied in its pixels and is not editable here.`);
           }
+          const ownStack = layer.smart.filters.length ? [] : smartFiltersFrom(ownStacks.get(pl));
+          if (ownStack.length) { layer.smart.filters = ownStack; kept.push(`"${name}" has ${ownStack.length} editable smart filter${ownStack.length === 1 ? '' : 's'} from formvis's own block.`); }
         } else if (unresolved.has(plc.id)) notes.push(`"${name}" is linked to ${unresolved.get(plc.id)}, which was not found with the PSD (open it together with the PSD to link it); it opened as pixels.`);
         else notes.push(`"${name}" is a smart object whose contents formvis cannot read; it opened as pixels.`);
       }
@@ -1067,7 +1071,7 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
   const multi = writeMultichannelPsd(doc, psb);
   if (multi) return multi;
   const { writePsd } = await import('ag-psd');
-  const notes: string[] = [], linked: LinkedFile[] = [], sources = new Map<ID, { data: Uint8Array; name: string; type: string }>(), psdPatterns: PatternInfo[] = [];
+  const notes: string[] = [], linked: LinkedFile[] = [], sources = new Map<ID, { data: Uint8Array; name: string; type: string }>(), psdPatterns: PatternInfo[] = [], own = new Map<PsdLayer, OwnBlock>();
   for (const l of doc.layers) if (l.smart) sources.set(l.id, await embedOf(l, notes));
   /** A raster drawn through `t` into a box aligned to the canvas; null when it covers nothing. */
   const placed = (r: Raster, t: Layer['transform']): { c: HTMLCanvasElement; x: number; y: number } | null => {
@@ -1105,7 +1109,13 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
     if (l.adjustment) {
       // An adjustment layer goes as a PSD one, live, with its mask, opacity, blend and clipping.
       const adjustment = toPsdAdjustment(l.adjustment);
-      if (!adjustment) { notes.push(`"${l.name}" is a ${ADJUSTMENT_LABELS[l.adjustment.kind]} adjustment, which the PSD format has no adjustment layer for; it is left out of the PSD.`); return null; }
+      if (!adjustment) {
+        const held: PsdLayer = { name: l.name, opacity: l.opacity, hidden: !l.visible, blendMode: TO_PSD[l.blend] ?? 'normal', clipping: !!l.clipId, ...tag };
+        own.set(held, { key: ADJUSTMENT_KEY, json: { adjustment: l.adjustment } });
+        maskOnto(l, held);
+        notes.push(`"${l.name}" is a ${ADJUSTMENT_LABELS[l.adjustment.kind]} adjustment, which the PSD format has no adjustment layer for; it is written as an empty layer, and formvis keeps its settings in a block of its own so it opens here as the live adjustment.`);
+        return held;
+      }
       if (l.adjustment.kind === 'hsv' && hsvFromData(l.adjustment.data as never).colorize && hsvFromData(l.adjustment.data as never).range !== 'Master') notes.push(`"${l.name}" colorizes with a colour range selected; the PSD's Colorize is the Master's, so it is written there.`);
       const out: PsdLayer = { name: l.name, opacity: l.opacity, ...(l.fill !== undefined && l.fill !== 1 ? { fillOpacity: l.fill } : {}), ...(l.locks ? { protected: { transparency: !!(l.locks.all || l.locks.transparency), composite: !!(l.locks.all || l.locks.pixels), position: !!(l.locks.all || l.locks.position) } } : {}), hidden: !l.visible, blendMode: TO_PSD[l.blend] ?? 'normal', clipping: !!l.clipId, adjustment, ...tag, ...toPsdBlending(l) };
       maskOnto(l, out);
@@ -1152,8 +1162,9 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
           customEnvelopeWarp: { meshPoints: mesh.points.map(([x, y]) => ({ x: ((x - b[4]) * b[3] - (y - b[5]) * b[2]) / det - o, y: ((y - b[5]) * b[0] - (x - b[4]) * b[1]) / det - o })) } };
       } else if (live) notes.push(`"${l.name}" has a ${live.kind === 'puppet' ? 'Puppet Warp' : live.kind === 'perspective' ? 'Perspective Warp' : 'Warp with uneven grid lines'} that the PSD's smart object cannot hold live; it is written with its pixels and the smart object's corners.`);
       const sf = l.smart.filters, listed = sf.map((f) => toPsdFilter(f, (m) => TO_PSD[m] ?? 'normal')).filter((f): f is NonNullable<typeof f> => f !== null);
+      if (sf.length && listed.length < sf.length) own.set(out, { key: SMART_STACK_KEY, json: { filters: sf } });
       if (sf.length && listed.length === sf.length && !l.smart.filterMask) out.placedLayer.filter = { enabled: true, validAtPosition: true, maskEnabled: l.smart.filterMaskEnabled !== false, maskLinked: true, maskExtendWithWhite: false, list: listed };
-      else if (sf.some((f) => f.enabled)) notes.push(`"${l.name}" keeps its smart filters applied in its pixels; in the PSD its smart object holds the original without them${l.smart.filterMask ? ' (a filter mask is not written)' : listed.length < sf.length ? ' (the PSD stack holds only filters it has a record for)' : ''}.`);
+      else if (sf.some((f) => f.enabled)) notes.push(`"${l.name}" keeps its smart filters applied in its pixels; in the PSD its smart object holds the original without them${l.smart.filterMask ? ' (a filter mask is not written)' : listed.length < sf.length ? ' (the PSD stack holds only filters it has a record for; formvis keeps the whole stack in a block of its own, so the filters stay editable when formvis opens the file again)' : ''}.`);
     }
     const v = l.vector, t = l.transform;
     if (v && l.raster) {
@@ -1270,5 +1281,5 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
   if (alphas.length > 50) notes.push('A PSD holds at most 56 channels; the alpha channels after the first 50 are left out.');
   const exif = metaWritable(doc.meta) ? exifBlockOf(doc.meta) : null;
   const withExif = (bytes: ArrayBuffer): ArrayBuffer => (exif && exif.length <= 64000 ? addResourceBytes(bytes, resourceBlock(1058, '', exif)) : bytes);   // image resource 1058, the Exif block
-  return { bytes: withExif(addExtraChannels(addIccResource(addPathResources(writePsd(psd, { generateThumbnail: maximize, psb }), paths, doc.width, doc.height), icc), alphas)), notes };
+  return { bytes: withExif(addExtraChannels(addIccResource(addPathResources(addLayerBlocks(writePsd(psd, { generateThumbnail: maximize, psb }), psd.children ?? [], own), paths, doc.width, doc.height), icc), alphas)), notes };
 }

@@ -44,7 +44,7 @@ def test_paths_panel_goes_to_psd_and_comes_back(page, tmp_path):
     f = tmp_path / "Paths.psd"
     f.write_bytes(data)
     n = page.evaluate("window.formvis.engine.projects.length")
-    page.set_input_files("input[type=file][accept*='.psd']:not([data-role])", str(f))
+    page.set_input_files("input[data-role='open-files']", str(f))
     page.wait_for_function(f"window.formvis.engine.projects.length > {n}", timeout=15000)
     back = page.evaluate("""(() => { const e = window.formvis.engine; return e.pathsOf(e.current).list.map((p) => [p.name, p.work, p.path.subpaths[0].anchors.map((a) => [Math.round(a.x), Math.round(a.y)])]); })()""")
     assert back == [["Outline", False, [[20, 20], [180, 20], [100, 90]]], ["Work Path", True, [[10, 50], [60, 70]]]], back

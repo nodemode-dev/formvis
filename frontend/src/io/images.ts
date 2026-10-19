@@ -8,6 +8,7 @@ import type { DeepPixels } from '../engine/types';
 import { createSurface, ctxOf } from '../engine/surface';
 import { api, serviceReady, type RawWhiteBalance } from './api';
 import { readFileMeta } from './xmp';
+import { decoderFor } from '../plugins/formats';
 
 const NATIVE = /\.(png|jpe?g|gif|webp|bmp|avif|svg)$/i;
 /** Camera RAW (decoded by the engine's LibRaw, then opened into Develop). */
@@ -45,7 +46,7 @@ export async function nameRawByContent(file: File): Promise<File> {
   return kind ? new File([file], `${file.name.replace(/\.[^.]*$/, '')}.${kind}`, { type: file.type, lastModified: file.lastModified }) : file;
 }
 
-export const isImageFile = (f: File): boolean => f.type.startsWith('image/') || NATIVE.test(f.name) || SERVER.test(f.name) || RAW_FILE.test(f.name) || /\.(hdr|exr)$/i.test(f.name);
+export const isImageFile = (f: File): boolean => f.type.startsWith('image/') || NATIVE.test(f.name) || SERVER.test(f.name) || RAW_FILE.test(f.name) || /\.(hdr|exr)$/i.test(f.name) || !!decoderFor(f.name);
 /** `.comp` is opened so its owners can move their work to formvis; formvis never writes it (the owner's decision, 2026-09-25). */
 export const isProjectFile = (f: File): boolean => PROJECT_ACCEPT.split(',').some((x) => f.name.toLowerCase().endsWith(x));
 
@@ -181,6 +182,14 @@ export function outOfMemory(err: unknown): boolean {
 }
 
 export async function decodeImage(file: Blob, name: string, raw = false, rawWb?: RawWhiteBalance): Promise<ImportedImage> {
+  const custom = decoderFor(name);
+  if (custom?.decode) {
+    const img = await custom.decode(new Uint8Array(await file.arrayBuffer()), name);
+    if (img.width > LIMITS.side || img.height > LIMITS.side || img.width * img.height > LIMITS.pixels) throw new Error(`${name} exceeds the 30,000 px side or ${Math.round(LIMITS.pixels / 1_000_000)}-megapixel limit.`);
+    const surface = createSurface(img.width, img.height);
+    ctxOf(surface).putImageData(new ImageData(new Uint8ClampedArray(img.data), img.width, img.height), 0, 0);
+    return { source: surface as CanvasImageSource, width: img.width, height: img.height, name };
+  }
   if (HDR_FILE.test(name)) { const { deep: _deep, ...flat } = await decodeHdr(file, name); return flat; }
   const size = await headerSize(file);
   const bomb = size ? await implausibleSize(file, size) : null;

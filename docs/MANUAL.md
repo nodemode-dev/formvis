@@ -688,6 +688,10 @@ other modes and depths its menu items are off, with the reason as their tooltip.
   `--read-root DIR` adds folders that may be read but not written; a call outside them is refused before it reaches the engine.
   The server declares `tools.listChanged` and sends `notifications/tools/list_changed` when the engine's tool count changes or
   the engine comes back.
+- The installed app has the same server without the repository: its program takes `mcp` as the first argument (`formvis mcp`,
+  or `./formvis.AppImage mcp` for the AppImage), finds the app's engine, and starts the app when none is running. `formvis agents
+  install` registers that program with Claude Code, Codex and Cursor, and Window > Agent Connect shows the same line to paste.
+  The AppImage offers once, on its first run, to add itself to the applications menu; `--remove-launcher` takes it out again.
 
 ## Script Console
 

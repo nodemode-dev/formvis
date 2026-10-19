@@ -30,7 +30,33 @@ export function tilesIn(x: number, y: number, w: number, h: number, tile: number
   return out;
 }
 
-interface Tile { canvas: Surface; ctx: Ctx2D }
+/** A selection's coverage over a rectangle of a layer that sits on the canvas unmoved, as the alpha of an image (what the
+ *  edit blend reads). */
+export function coverageOver(sel: { valueAt(x: number, y: number): number }, x: number, y: number, w: number, h: number): ImageData {
+  const out = new ImageData(w, h), d = out.data;
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) d[(j * w + i) * 4 + 3] = sel.valueAt(x + i, y + j);
+  return out;
+}
+
+/** An image of one colour at an alpha, for an edit that sets the pixels it covers (Fill, Clear). */
+export function solidImage(w: number, h: number, c: { r: number; g: number; b: number }, a = 255): ImageData {
+  const out = new ImageData(w, h), d = out.data;
+  for (let i = 0; i < d.length; i += 4) { d[i] = c.r; d[i + 1] = c.g; d[i + 2] = c.b; d[i + 3] = a; }
+  return out;
+}
+
+/** refs: how many TiledRasters hold this tile (a duplicated layer or a save's copy shares it with its source); a
+ *  holder that writes into it first takes a copy of its own (copy on write), so a shared tile is never written. */
+interface Tile { canvas: Surface; ctx: Ctx2D; refs: number }
+/** Stored tiles a clone also holds: a key goes from the store only when its last holder lets go. */
+const keyHolds = new Map<string, number>();
+const holdKey = (key: string): void => { keyHolds.set(key, (keyHolds.get(key) ?? 0) + 1); };
+const releaseKey = (key: string): boolean => {
+  const n = keyHolds.get(key) ?? 0;
+  if (n <= 0) return true;
+  if (n === 1) keyHolds.delete(key); else keyHolds.set(key, n - 1);
+  return false;
+};
 /** A tile on the engine's disk (1.62.4, DEV_PLAN 26.6c): its key in the store, and a preview at a sixteenth of its side
  *  that the view draws until the tile is back. */
 interface PagedTile { key: string; preview: Surface; w: number; h: number }
@@ -73,7 +99,7 @@ export class TiledRaster {
   /** The bytes of the tiles in memory (not their previews): what paging keeps within its share. */
   get residentBytes(): number {
     let n = 0;
-    for (const t of this.tiles.values()) n += t.canvas.width * t.canvas.height * 4;
+    for (const t of this.tiles.values()) n += (t.canvas.width * t.canvas.height * 4) / Math.max(1, t.refs);   // a shared tile is counted once across its holders
     for (const c of this.levels.values()) n += c.image.width * c.image.height * 4;   // the GPU's reduced copies (1.62.9)
     return n;
   }
@@ -92,11 +118,22 @@ export class TiledRaster {
     let t = this.tiles.get(key);
     if (!t && make) {
       const canvas = createSurface(Math.min(this.tile, this.width - tx * this.tile), Math.min(this.tile, this.height - ty * this.tile));
-      t = { canvas, ctx: ctxOf(canvas) };
+      t = { canvas, ctx: ctxOf(canvas), refs: 1 };
       if (this.base) { t.ctx.fillStyle = this.baseCss(); t.ctx.fillRect(0, 0, canvas.width, canvas.height); }   // as it read before
       this.tiles.set(key, t);
     }
-    return t ?? null;
+    return t && make ? this.owned(key, t) : t ?? null;
+  }
+
+  /** Tile `key` for writing: a shared tile is copied first and this layer holds the copy (copy on write). */
+  private owned(key: number, t: Tile): Tile {
+    if (t.refs <= 1) return t;
+    const canvas = createSurface(t.canvas.width, t.canvas.height), ctx = ctxOf(canvas);
+    ctx.drawImage(t.canvas as CanvasImageSource, 0, 0);
+    t.refs -= 1;
+    const mine: Tile = { canvas, ctx, refs: 1 };
+    this.tiles.set(key, mine);
+    return mine;
   }
 
   /** The pixels of a rectangle, as one picture would give them (transparent where nothing was drawn or past the edge). */
@@ -217,8 +254,8 @@ export class TiledRaster {
     this.paged.set(key, { key: stored, preview, w, h });
     this.tiles.delete(key);
     this.dropLevel(key);
-    t.canvas.width = 0;
-    t.canvas.height = 0;
+    t.refs -= 1;
+    if (t.refs <= 0) { t.canvas.width = 0; t.canvas.height = 0; }   // a tile another holder still has stays in memory for it
     return true;
   }
 
@@ -233,10 +270,10 @@ export class TiledRaster {
       job = store.get(p.key).then((buf) => {
         const canvas = createSurface(p.w, p.h), ctx = ctxOf(canvas);
         ctx.putImageData(new ImageData(new Uint8ClampedArray(buf), p.w, p.h), 0, 0);
-        this.tiles.set(key, { canvas, ctx });
+        this.tiles.set(key, { canvas, ctx, refs: 1 });
         this.paged.delete(key);
         this.used.set(key, ++this.clock);
-        store.drop(p.key);
+        if (releaseKey(p.key)) store.drop(p.key);
         p.preview.width = 0;
         p.preview.height = 0;
       }).finally(() => this.bringing.delete(key));
@@ -255,53 +292,44 @@ export class TiledRaster {
     await Promise.all(tilesIn(x, y, w, h, this.tile, this.cols, this.rows).map(([tx, ty]) => this.pageIn(ty * this.cols + tx, store)));
   }
 
-  /** A copy of this layer's tiles, made one tile at a time: a tile in memory is copied, a tile on disk is fetched and stored again under
-   *  a key of its own, and the copy's tiles go to disk as it fills so its share of memory stays within `share`. Edits must be held while
-   *  it runs; once it returns, the copy no longer changes whatever happens to this layer. Free it with `release`. */
-  async snapshot(store: TileStore, share: () => number): Promise<TiledRaster> {
+  /** A copy of this layer's tiles that shares every tile with it (copy on write, 1.90.9): a tile in memory is held by both
+   *  and copied by whichever writes into it first, a tile on disk is held under one key by both and dropped from the
+   *  store when the last holder lets go; no pixel is copied now and the store is not asked. The copy never changes
+   *  whatever happens to this layer. Free it with `release`. */
+  clone(): TiledRaster {
     const out = new TiledRaster(this.width, this.height, this.tile);
     out.base = this.base ? [...this.base] : null;
-    const keys = [...new Set([...this.tiles.keys(), ...this.paged.keys()])].sort((a, b) => a - b);
-    try {
-      for (const key of keys) {
-        let t = this.tiles.get(key);
-        if (!t) {
-          const p = this.paged.get(key);
-          if (p) {
-            let buf: ArrayBuffer | null = null;
-            try { buf = await store.get(p.key); } catch { buf = null; }
-            if (buf) {
-              const stored = await store.put(new Uint8Array(buf.slice(0)) as Uint8Array<ArrayBuffer>), preview = createSurface(p.preview.width, p.preview.height);
-              ctxOf(preview).drawImage(p.preview as CanvasImageSource, 0, 0);
-              out.paged.set(key, { key: stored, preview, w: p.w, h: p.h });
-              continue;
-            }
-            t = this.tiles.get(key);
-          }
-        }
-        if (!t) continue;
-        const canvas = createSurface(t.canvas.width, t.canvas.height), ctx = ctxOf(canvas);
-        ctx.drawImage(t.canvas as CanvasImageSource, 0, 0);
-        out.tiles.set(key, { canvas, ctx });
-        out.used.set(key, ++out.clock);
-        while (out.residentBytes > share()) { const k = out.leastUsed(); if (k === null || !(await out.pageOut(k, store))) break; }
-      }
-    } catch (err) { out.release(store); throw err; }
+    out.onMissing = this.onMissing;
+    for (const [key, t] of this.tiles) {
+      t.refs += 1;
+      out.tiles.set(key, t);
+      out.used.set(key, ++out.clock);
+      out.tileVersion.set(key, this.tileVersion.get(key) ?? 0);   // a shared tile reports one version to the GPU display, which keys its texture by the canvas
+    }
+    for (const [key, p] of this.paged) {
+      holdKey(p.key);
+      const preview = createSurface(p.preview.width, p.preview.height);
+      ctxOf(preview).drawImage(p.preview as CanvasImageSource, 0, 0);
+      out.paged.set(key, { key: p.key, preview, w: p.w, h: p.h });
+    }
     return out;
   }
 
-  /** A snapshot's tiles freed: the canvases emptied and the stored copies dropped. */
+  /** A copy of this layer's tiles for a save or an undo step: the same as `clone`, kept async as it was when it copied tile by tile. */
+  async snapshot(_store: TileStore, _share: () => number): Promise<TiledRaster> { return this.clone(); }
+
+  /** A snapshot's tiles let go: a tile no other holder has is emptied, and a stored tile no other holder has is dropped. */
   release(store: TileStore): void {
-    for (const t of this.tiles.values()) { t.canvas.width = 0; t.canvas.height = 0; }
+    for (const t of this.tiles.values()) { t.refs -= 1; if (t.refs <= 0) { t.canvas.width = 0; t.canvas.height = 0; } }
     this.tiles.clear();
     for (const p of this.paged.values()) { p.preview.width = 0; p.preview.height = 0; }
     this.dropAll(store);
     this.paged.clear();
   }
 
-  /** Every stored tile dropped from the store (its document closing). */
+  /** Every stored tile dropped from the store (its document closing), those a clone also holds kept for it. */
   dropAll(store: TileStore): void {
-    const keys = [...this.paged.values()].map((p) => p.key);   // in one request where the store can (1.63.0)
+    const keys = [...this.paged.values()].map((p) => p.key).filter(releaseKey);   // in one request where the store can (1.63.0)
     if (store.dropMany) { if (keys.length) store.dropMany(keys); } else for (const k of keys) store.drop(k);
     for (const key of [...this.levels.keys()]) this.dropLevel(key);
   }
@@ -368,10 +396,9 @@ export class TiledRaster {
     if (c) { c.image.width = 0; c.image.height = 0; this.levels.delete(key); }
   }
 
-  private bumpTile(tx: number, ty: number): void {
-    const key = ty * this.cols + tx;
-    this.tileVersion.set(key, (this.tileVersion.get(key) ?? 0) + 1);
-  }
+  private bumpTile(tx: number, ty: number): void { this.bumpKey(ty * this.cols + tx); }
+
+  private bumpKey(key: number): void { this.tileVersion.set(key, (this.tileVersion.get(key) ?? 0) + 1); }
 
   private baseCss(): string {
     const b = this.base ?? [0, 0, 0, 0];

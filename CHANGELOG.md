@@ -4,6 +4,30 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.90.9 · 2026-10-19
+
+### Added
+
+- Layers kept in tiles take strokes and band filters inside a selection, Fill, Clear, Flip Layer and Copy; duplicating such a layer shares its tiles until one is written; Preferences > Performance can keep layers in tiles from a size you choose (0 keeps today's limit).
+- PSD and PSB files past 30,000 pixels a side open in bands into tiled layers (raw and RLE channels at 8 or 16 bits, names, places, opacity, blend, groups, clipping and visibility kept, with a Stop button); New Document accepts up to 300,000 pixels a side; a layered PSD or PSB of a giant document is written in parts by the engine.
+- GPU display: Knockout, folders with their own opacity or blend mode, Blend Clipped Layers as Group and Transparency Shapes Layer off composite on WebGPU and WebGL2. Layer style maps can be rebuilt over the changed part of a layer only (off until enabled).
+- Camera Raw Filter: a Process Version in Calibration, saved in settings and .xmp; Point Color, Calibration and Colour Grading in the GPU pass with a full-size drag preview and the exact result on release; Dock to the side, Hold for Before and Snapshots. formvis writes its own PSD blocks for smart-filter stacks and adjustment layers the format has no record for, so its files reopen editable.
+- Hindi covers every interface string (machine drafts for review).
+- Plug-ins: file-format plug-ins, sandboxed frame panels, a switch per plug-in in Preferences > Plugins, and single-file plug-ins honour the selection. .atn files read and write about twenty more steps. MCP resources for plug-ins and history and a template per command.
+- Desktop: the packaged app's `mcp` and `agents install` arguments run its own MCP launcher and agent setup; the AppImage offers once to add itself to the applications menu; the window remembers its size, place and maximised state and follows the interface scale; on Linux a crashed web view reloads, at most twice a minute.
+- The dock's Chat tab uses the in-app MCP configuration and token like Claude Code tabs.
+
+### Changed
+
+- Select and Mask Workspace: Esc in a side-panel field only reverts that field, ticking a box no longer disables the tool keys, Enter on a button no longer applies, and any document switch leaves the workspace.
+- Browser tests follow the options bar's More panel, number fields in text mode while focused, the Export As preview row, the Open input's role and the Select and Mask brush list.
+
+### Fixed
+
+- Painting a duplicate of a layer kept in tiles no longer paints the original.
+- `/api/mcp/status` and `/api/mcp/registration` report the engine's real port.
+- .atn Median and High Pass steps keep their radius.
+
 ## 1.90.8 · 2026-10-19
 
 ### Added

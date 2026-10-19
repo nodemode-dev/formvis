@@ -1,5 +1,5 @@
 """Claude Code in the window (DEV_PLAN 28.5), as Format runs it: the person's own `claude` binary in stream-JSON mode,
-with formvis's MCP server attached from the repository's .mcp.json, its messages streamed to the window over a
+with formvis's MCP server attached by the in-app configuration (this engine's port and a per-run token), its messages streamed to the window over a
 WebSocket, and each bash call mirrored into the read-only Claude terminal. Sign-in stays Claude Code's own: nothing here
 reads or stores a credential."""
 
@@ -303,7 +303,7 @@ def mcp_config() -> str | None:
     return str(path) if path.is_file() else None
 
 
-def start(mode: str = "ask", fresh: bool = False) -> dict:
+def start(mode: str = "ask", fresh: bool = False, port: int | None = None) -> dict:
     if mode not in MODES:
         raise ValueError("The mode is ask, auto-edits or plan.")
     found = info()
@@ -322,7 +322,9 @@ def start(mode: str = "ask", fresh: bool = False) -> dict:
     args = [found["path"], "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
             "--permission-prompt-tool", "stdio", "--permission-mode", MODES[mode], "--append-system-prompt", NOTE]
     conf = mcp_config()
-    if conf:
+    if port:
+        args += ["--mcp-config", inapp_mcp_config(port), "--strict-mcp-config"]
+    elif conf:
         args += ["--mcp-config", conf]
     if AGENT.session:
         args += ["--resume", AGENT.session]
@@ -333,7 +335,7 @@ def start(mode: str = "ask", fresh: bool = False) -> dict:
     AGENT.names.clear()
     set_state("starting")
     try:
-        proc = subprocess.Popen(args, cwd=str(config.REPO_DIR), env=child_env(), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
+        proc = subprocess.Popen(args, cwd=str(config.REPO_DIR), env=child_env() | ({INAPP_VAR: agents.INAPP_TOKEN} if port else {}), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
     except OSError as exc:
         set_state("exited")
         raise RuntimeError(f"Claude Code could not start: {exc}")

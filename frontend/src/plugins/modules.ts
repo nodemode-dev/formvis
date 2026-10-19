@@ -1,5 +1,6 @@
 import type { Engine, ID, Project } from '../engine';
-import { Raster, createSurface, ctxOf } from '../engine';
+import { Raster, createSurface, ctxOf, stripExt } from '../engine';
+import { addFormat } from './formats';
 import { SelectionMask } from '../engine/selection';
 import { api, type PluginManifest } from '../io/api';
 import { getTool, registerTool, unregisterTool, type Tool } from '../extensions/registry';
@@ -29,16 +30,21 @@ import { sliderRow } from '../ui/panels/controls';
  *                glsl is a WebGL2 fragment shader (#version 300 es) with `in vec2 v_uv; uniform sampler2D u_src;
  *                uniform vec2 u_size;` and one `uniform float u_<param id>` per number or boolean param; it runs when cpu is absent
  *   panels       formvis.panels.register({id, label, render(container)})
+ *                formvis.panels.registerFrame({id, label, html, height, onMessage(m)}) -> {post(m)}, with the frames permission:
+ *                the plugin's own page in a sandboxed frame (scripts only; no network calls, but a frame can still navigate itself
+ *                to a web address, which is why it has a permission of its own); the frame talks with parent.postMessage
  *   tools        formvis.tools.register({id, label, hint, down(p), move(p), up(p), overlay(g, view)}); p = {x, y, shift, alt, mod}
  *   sources      formvis.sources.register({id, label, generate({box, doc, image}) -> image}); runs on a document's boxes
  *   events       formvis.events.on(name, fn) -> off, formvis.events.off(name, fn)  (name: doc, selection, active, history, projects, tool)
  *   storage      formvis.storage.get / set / remove / keys / clear   (JSON values, kept per plugin on this device)
  *   ui           formvis.ui.toast / confirm / prompt / form(title, fields) / dialog({title, content, buttons})
  *   commands     formvis.commands.register({id, label, keys, run})
+ *   formats      formvis.formats.register({id, label, extensions, decode(bytes, name) -> image, encode(image) -> bytes});
+ *                a decoder opens files with those extensions, an encoder adds Export As: label
  *
  * An error in a plugin is caught, kept in its error list and shown in Manage Plugins; it never reaches the app. */
 
-export const PERMISSIONS = ['documents', 'pixels', 'filters', 'panels', 'tools', 'sources', 'events', 'storage', 'ui', 'commands'] as const;
+export const PERMISSIONS = ['documents', 'pixels', 'filters', 'panels', 'tools', 'sources', 'events', 'storage', 'ui', 'commands', 'formats', 'frames'] as const;
 type Permission = typeof PERMISSIONS[number];
 
 export type Manifest = PluginManifest;
@@ -58,7 +64,7 @@ interface Running {
   off: Array<() => void>;
   errors: string[];
   filters: Map<string, FilterSpec>;
-  counts: { filters: number; panels: number; tools: number; sources: number; commands: number };
+  counts: { filters: number; panels: number; tools: number; sources: number; commands: number; formats: number };
   /** The Worker the plugin's code runs in, the calls waiting on it, and what the window keeps for it. */
   worker: Worker | null;
   onReady: ((error?: string) => void) | null;
@@ -84,7 +90,8 @@ export interface ModuleDeps {
 const APPROVED = 'formvis.plugins.folders.on';
 const SIDE_LIMIT = 200_000;
 const ACTIVATE_MS = 5000;
-const FILTER_MS = 30_000, SOURCE_MS = 60_000, OVERLAY_MS = 2000, PANEL_NODES = 200;
+const FILTER_MS = 30_000, SOURCE_MS = 60_000, FORMAT_MS = 60_000, OVERLAY_MS = 2000, PANEL_NODES = 200, FRAME_CHARS = 200_000;
+const FRAME_POLICY = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'";
 interface OverlayView { zoom: number; toScreen(p: { x: number; y: number }): { x: number; y: number } }
 const OVERLAY_PROPS = new Set(['fillStyle', 'strokeStyle', 'lineWidth', 'font', 'globalAlpha', 'textAlign']);
 const OVERLAY_CALLS = new Set(['beginPath', 'closePath', 'moveTo', 'lineTo', 'rect', 'arc', 'stroke', 'fill', 'fillRect', 'strokeRect', 'fillText', 'strokeText', 'setLineDash', 'save', 'restore']);
@@ -169,6 +176,7 @@ class PluginDialog extends Dialog {
 export class FolderPlugins {
   private readonly running = new Map<string, Running>();
   private readonly cache = new Map<string, FolderPlugin>();
+  private readonly frames = new Map<string, HTMLIFrameElement>();
   private dlg: PluginDialog | null = null;
   onChange: () => void = () => {};
 
@@ -236,7 +244,7 @@ export class FolderPlugins {
     const m = row.manifest;
     if (!m) return;
     this.unload(m.id);
-    const p: Running = { manifest: m, off: [], errors: [], filters: new Map(), counts: { filters: 0, panels: 0, tools: 0, sources: 0, commands: 0 }, worker: null, calls: new Map(), seq: 0, api: null, panels: new Map(), evFns: new Map(), overlays: new Map(), inflight: new Set(), onReady: null };
+    const p: Running = { manifest: m, off: [], errors: [], filters: new Map(), counts: { filters: 0, panels: 0, tools: 0, sources: 0, commands: 0, formats: 0 }, worker: null, calls: new Map(), seq: 0, api: null, panels: new Map(), evFns: new Map(), overlays: new Map(), inflight: new Set(), onReady: null };
     this.running.set(m.id, p);
     this.onChange();
     try {
@@ -338,6 +346,31 @@ export class FolderPlugins {
         api.panels.register({ id, label: a.label, render: (body: HTMLElement) => { p.panels.set(id, { body, nodes: new Map() }); void this.callIn(p, `panel:${id}`, []).catch((e: unknown) => this.fail(p, `panel ${id}: ${e instanceof Error ? e.message : String(e)}`)); } });
         return true;
       case 'panel.add': case 'panel.set': case 'panel.remove': case 'panel.clear': return this.panelOp(p, op, a);
+      case 'panels.frame': {
+        this.need(p, 'frames');
+        const host = this.d.panels(), pid = `plug-${p.manifest.id}-${id.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 30)}`.replace(/[._]/g, '-'), key = `${p.manifest.id}:${id}`, label = String(a.label ?? id).slice(0, 40);
+        const body = host?.add(pid, label);
+        if (!host || !body) throw new Error('Panels are not available here.');
+        const frame = document.createElement('iframe');
+        frame.setAttribute('sandbox', 'allow-scripts');
+        frame.title = label;
+        frame.style.width = '100%'; frame.style.border = '0'; frame.style.height = `${Math.min(600, Math.max(40, Number(a.height) || 160))}px`;
+        frame.srcdoc = `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${FRAME_POLICY}">${String(a.html ?? '').slice(0, FRAME_CHARS)}`;
+        const heard = (ev: MessageEvent): void => { if (ev.source === frame.contentWindow && JSON.stringify(ev.data ?? null).length <= FRAME_CHARS) this.tell(p, `frame:${id}`, [ev.data]); };
+        window.addEventListener('message', heard);
+        this.frames.set(key, frame);
+        body.appendChild(frame);
+        p.counts.panels++;
+        p.off.push(() => { window.removeEventListener('message', heard); this.frames.delete(key); host.remove(pid); });
+        return true;
+      }
+      case 'panel.post': {
+        const frame = this.frames.get(`${p.manifest.id}:${String(a.panel)}`), text = JSON.stringify(a.message ?? null);
+        if (!frame) throw new Error('That panel is not open.');
+        if (text.length > FRAME_CHARS) throw new Error(`A message to a panel may hold up to ${FRAME_CHARS.toLocaleString()} characters.`);
+        frame.contentWindow?.postMessage(JSON.parse(text), '*');
+        return true;
+      }
       case 'tools.register': {
         const has = (a.has ?? {}) as Record<string, boolean>, st: OverlayState = { ops: [], key: '', busy: false };
         p.overlays.set(id, st);
@@ -361,6 +394,11 @@ export class FolderPlugins {
       case 'ui.dialog': return api.ui.dialog({ title: a.title, content: typeof a.content === 'string' ? a.content : undefined, buttons: a.buttons });
       case 'commands.register':
         if (a.ok) api.commands.register({ id, label: a.label, keys: a.keys, run: () => this.callIn(p, `cmd:${id}`, []) });
+        return true;
+      case 'formats.register':
+        api.formats.register({ id, label: a.label, extensions: a.extensions,
+          decode: a.decode ? (bytes: Uint8Array, name: string) => this.callIn(p, `format:${id}:decode`, [bytes, name], FORMAT_MS).then((r) => { const i = asImageData(r); return { width: i.width, height: i.height, data: i.data }; }) : undefined,
+          encode: a.encode ? (image: PluginImage) => this.callIn(p, `format:${id}:encode`, [image], FORMAT_MS).then((r) => { if (!(r instanceof Uint8Array)) throw new Error('An encoder returns a Uint8Array of the file.'); return r; }) : undefined });
         return true;
       default: throw new Error(`Unknown request ${op}.`);
     }
@@ -697,6 +735,26 @@ export class FolderPlugins {
         this.addCommand(p, this.cid(p, 'cmd', spec.id), String(spec.label ?? spec.id), Array.isArray(spec.keys) ? spec.keys.map(String) : [], spec.run, () => !!e.current);
       },
     };
-    return Object.freeze({ apiVersion: 1, plugin: Object.freeze({ id: m.id, name: m.name, version: m.version }), documents: docs, filters, panels, tools, sources, events, storage, ui, commands });
+    const formats = {
+      register: (spec: { id: string; label: string; extensions: string[]; decode?: (bytes: Uint8Array, name: string) => Promise<PluginImage>; encode?: (image: PluginImage) => Promise<Uint8Array> }) => {
+        this.need(p, 'formats');
+        const id = String(spec?.id ?? '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40), label = String(spec?.label ?? spec?.id ?? '').slice(0, 60);
+        const extensions = (Array.isArray(spec?.extensions) ? spec.extensions : []).map((x) => String(x).toLowerCase().replace(/^\./, '')).filter((x) => /^[a-z0-9]{1,8}$/.test(x)).slice(0, 8);
+        if (!id || !extensions.length || (typeof spec.decode !== 'function' && typeof spec.encode !== 'function')) throw new Error('A format needs an id, extensions and a decode or encode function.');
+        const encode = typeof spec.encode === 'function' ? spec.encode : null;
+        p.off.push(addFormat({ id: `${m.id}:${id}`, label, extensions, decode: typeof spec.decode === 'function' ? spec.decode : null, encode }));
+        p.counts.formats++;
+        if (encode) {
+          this.addCommand(p, this.cid(p, 'format', id), `Export As: ${label}...`, [], async () => {
+            const pr = e.current, flat = pr ? e.flattenedOf(pr) : null;
+            if (!pr || !flat) { this.d.note('Open a document to export.', 'error'); return; }
+            const bytes = await encode(toImage(flat)), url = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: 'application/octet-stream' })), link = document.createElement('a');
+            link.href = url; link.download = `${stripExt(pr.name)}.${extensions[0]}`; link.click();
+            window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+          }, () => !!e.current);
+        }
+      },
+    };
+    return Object.freeze({ apiVersion: 1, plugin: Object.freeze({ id: m.id, name: m.name, version: m.version }), documents: docs, filters, panels, tools, sources, events, storage, ui, commands, formats });
   }
 }

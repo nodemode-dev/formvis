@@ -60,7 +60,7 @@ def test_adjustment_layers_go_to_psd_and_psb_and_come_back(page, tmp_path):
     f = tmp_path / "Adj.psd"
     f.write_bytes(data)
     count = page.evaluate("window.formvis.engine.projects.length")
-    page.set_input_files("input[type=file][accept*='.psd']:not([data-role])", str(f))
+    page.set_input_files("input[data-role='open-files']", str(f))
     page.wait_for_function(f"window.formvis.engine.projects.length > {count}", timeout=20000)
     got = page.evaluate("(() => { const ls = window.formvis.engine.current.doc.layers; return ls.map((l) => l.adjustment ? l.adjustment.kind + (l.mask ? '+mask' : '') : 'pixels'); })()")
     assert got == ["pixels", "brightnessContrast", "levels", "invert+mask"], got
