@@ -2,7 +2,7 @@ import { applyLut, inkOf, renditionOf, type ColourLut, type Ink, type Lut3x4, ty
 import { composeChannels, labGreyValue, rasterFromChannels, strokeChannels, strokeLabChannel } from './channels';
 import { trapInk } from './trap';
 import { Viewport as ViewLimits } from './viewport';
-import { deriveFlat, deriveRegion, deriveWhole, renderRegion, type DeriveTables } from './derive';
+import { deriveFlat, deriveRuns, deriveRegion, deriveWhole, renderRegion, type DeriveTables } from './derive';
 import { sameImage, solidFillPixels, type SolidFill } from './fill-recipe';
 import { DEFAULT_MIXER, mixerSource, mixerStart, windowSampler, type MixerSettings, type MixerState } from './mixer';
 import { artHistoryTexture, type ArtStyle } from './art-history';
@@ -64,6 +64,7 @@ import { diffRegions } from './image-diff';
 import * as DS from './document-size';
 import { borderCoverage, borderFill, type BorderMode } from './canvas-border';
 import * as AB from './artboard-ops';
+import { artboardCover, artboardFill } from './artboard-gpu';
 import * as GD from './guides-ops';
 import * as PR from './profile-ops';
 import * as NT from './notes-ops';
@@ -112,7 +113,7 @@ import { APPLY_CHANNELS, APPLY_COVERAGE_CHANNELS, APPLY_MODES, applyImagePixels,
 import { averageImage } from './filters-lib/blur';
 import type { LibFrame, LibImage, LibPath } from './filter-library';
 import type { FilterKind, FilterSettings } from './filter-jobs';
-import { POOL_FROM, bandPlan, bandPoolReady, bandPoolSize, runBandOnPool } from './band-pool';
+import { POOL_FROM, bandPlan, bandPoolReady, bandPoolSize, bandsShared, runBandOnPool, runSharedBandOnPool } from './band-pool';
 import { sharpenSample } from './filters-more';
 import { clampMid, colorAt, diamondFill, presetById, reflectStops, resolveStops, type GradientPreset, type GradientType } from './gradients';
 import { convexQuad, evenSpacing, meshForward, meshSurfacePoint, meshWarpImage, removeSplit, splitGrid, type P2 } from './mesh-warp';
@@ -2039,10 +2040,26 @@ export class Engine {
       return list;
     };
     const prune = (list: GpuLayerSpec[]): GpuLayerSpec[] => list.filter((e) => { if (e.sub) e.sub = prune(e.sub as GpuLayerSpec[]); return !e.sub || e.sub.length > 0; });
+    const backed = new Set<ID>();
+    // An artboard's background as the renderer lays it once, below whatever the board holds, and its clip as one more folder mask.
+    const backdrop = (a: Layer): { reason: string } | null => {
+      if (backed.has(a.id) || !a.artboard) return null;
+      backed.add(a.id);
+      if (depth > 0) return { reason: 'an artboard inside a Knockout backdrop' };
+      const f = artboardFill(a.artboard);
+      if (f) top.push({ image: f.image, version: 0, width: f.width, height: f.height, matrix: f.matrix, opacity: 1, blend: 'normal' });
+      return null;
+    };
+    const boardMask = (a: Artboard): GpuMaskSpec[] => {
+      const c = artboardCover(a, p.doc.width, p.doc.height);
+      if (!c) { state.fail = 'an artboard in a document past 64 megapixels'; return []; }
+      return [c];
+    };
     for (const { layer: l, visible } of hierarchy(p.doc)) {
-      if (l.isGroup) { if (l.artboard && visible) return { reason: 'artboards' }; continue; }
+      if (l.isGroup) { if (l.artboard && visible) { const r = backdrop(l); if (r) return r; } continue; }
       const o = ov?.get(l.id);
       if (o?.hidden || !visible) continue;
+      for (const g of ancestors(map, l)) { const r = backdrop(g); if (r) return r; }
       if (only && !only.has(l.id)) continue;
       const layers = place(l);
       if (state.fail) return { reason: state.fail };
@@ -2052,7 +2069,8 @@ export class Engine {
       // own placement, else the folder's), one array per parent folder so its layers share one coverage on the GPU.
       if (!fchains.has(l.parentId ?? null)) {
         const chain = ancestors(map, l).flatMap((g) => [...(g.mask?.enabled && g.mask.raster ? [{ image: g.mask.raster.canvas, version: g.mask.raster.version, width: g.mask.raster.width, height: g.mask.raster.height,
-          matrix: placement(g.mask.placement ?? g.transform, g.mask.raster.width, g.mask.raster.height) }] : []), ...vecFor(g)]);
+          matrix: placement(g.mask.placement ?? g.transform, g.mask.raster.width, g.mask.raster.height) }] : []), ...vecFor(g), ...(g.artboard ? boardMask(g.artboard) : [])]);
+        if (state.fail) return { reason: state.fail };
         fchains.set(l.parentId ?? null, chain.length ? chain : undefined);
       }
       // A layer's own vector mask (1.66.1) joins its folders' masks, one array of its own.
@@ -2582,7 +2600,7 @@ export class Engine {
 
   /** The new pixels, place and name of type layer `id` set to `spec`, rendered but not applied, so several layers can
    *  change in one undo step (Find and Replace Text, Update All Text Layers). Null when the layer is not live type. */
-  private async textPatch(p: Project, id: ID, spec: TextSpec, styles: readonly CharacterStyle[] | undefined = p.doc.characterStyles): Promise<Partial<Layer> | null> { return TX.textPatch(this.textHost, p, id, spec, styles); }
+  private async textPatch(p: Project, id: ID, spec: TextSpec, styles: readonly CharacterStyle[] | undefined = p.doc.characterStyles): Promise<Partial<Layer> | null> { return TX.textPatch(this.textHost, p, id, spec, styles, undefined, true); }
 
   /** Find and Replace Text: replaces matches in the content of every live type layer (or only the active one) and
    *  returns the number of replacements, all as one undo step. */
@@ -3702,6 +3720,7 @@ export class Engine {
       clipCoverage: (doc, baseId) => this.work.clipCoverageOf(doc, baseId),
       renderOnly: (doc, target, view, only) => this.work.render({ doc, target, view, only, quality: 'high', ignoreFolderMasks: true }),
       deleteMask: () => this.deleteMask(false),
+      mergeBanded: (name, only, removed, anchorId, layerName) => this.mergeBanded(name, only, removed, anchorId, layerName),
     };
   }
 
@@ -4449,6 +4468,15 @@ export class Engine {
 
   /** Layer > Merge Visible: hidden layers stay; each artboard merges on its own. One step. */
   mergeVisible(): void {
+    const q = this.current;
+    if (q && this.tiledPastCanvas(q)) {
+      const shown = q.doc.layers.filter((l) => l.visible);
+      if (shown.length < 2) { this.notice('Merge Visible needs two visible layers.'); return; }
+      if (q.doc.layers.some((l) => l.isGroup)) { this.notice('Merge Visible on a document with folders, past 268 megapixels, comes in a later release.'); return; }
+      const ids = new Set(shown.map((l) => l.id));
+      void this.mergeBanded('Merge Visible', ids, ids, shown[0].id, shown[0].name);
+      return;
+    }
     this.edit('Merge Visible', (p) => {
       const map = byId(p.doc), board = (l: Layer | undefined): boolean => !!l?.isGroup && !l.parentId && !!l.artboard;
       const shown = new Set(hierarchy(p.doc).filter((e) => e.visible).map((e) => e.layer.id));
@@ -4955,13 +4983,24 @@ export class Engine {
     return { ...p.doc, id: uid(), layers: [layer] };
   }
 
+  /** Duplicate's Merged Layers Only on a document past one canvas (1.91.2): the picture rendered in bands into one tiled
+   *  layer of a new document, as Flatten Image makes it, the source untouched. */
+  private async duplicateMergedBanded(name: string): Promise<Project | null> {
+    const p = this.current;
+    if (!p) return null;
+    const tiled = await this.flattenToTiles('Duplicate');
+    if (!tiled) return null;
+    const layer = newLayer('Background', p.doc, { tiled });
+    return this.addProject({ ...p.doc, id: uid(), layers: [layer] }, name.trim().slice(0, 200) || `${p.name} copy`, layer.id);
+  }
+
   /** Image > Duplicate (1.65.5): a new document holding a copy of this one, its layers' pixels and masks copied (or,
    *  `merged`, the picture as Flatten Image makes it, in one layer), named `name`, with its paths and, unmerged, its
    *  timeline. */
   duplicateDocument(name: string, merged = false): Project | null {
     const p = this.current;
     if (!p) return null;
-    if (merged && p.doc.layers.some((l) => l.tiled) && (p.doc.width * p.doc.height > CANVAS_PIXELS || p.doc.width > CANVAS_SIDE || p.doc.height > CANVAS_SIDE)) { this.notice('A document past 268 megapixels cannot be flattened into a copy yet; duplicate it with its layers.'); return null; }
+    if (merged && this.tiledPastCanvas(p)) { void this.duplicateMergedBanded(name); return null; }
     this.settle();
     const title = name.trim().slice(0, 200) || `${p.name} copy`, flat = merged ? this.mergedDoc() : null;
     let doc: Doc, active: ID | null = p.activeId;
@@ -8208,8 +8247,8 @@ export class Engine {
     if (!this.room((N + 1) * (B + 2 * A) * W * 4 * 3 + W * H * 4, name)) return 'refused';
     this.preview = null;
     const sel = p.selection, m = sel ? mul(invert(placement(l.transform, W, H)), translation(sel.x, sel.y)) : null, f0 = this.filterFrame(p, l.transform, W, H);
-    const write = async (q: { y0: number; y1: number; a0: number; src: ImageData; out: Promise<ImageData | null> }): Promise<void> => {
-      const out = (await q.out) ?? run(q.src, this.bandFrame(f0, q.a0)), y0 = q.y0, h = q.y1 - y0;
+    const write = async (q: { y0: number; y1: number; a0: number; src: () => ImageData; out: Promise<ImageData | null> }): Promise<void> => {
+      const out = (await q.out) ?? run(q.src(), this.bandFrame(f0, q.a0)), y0 = q.y0, h = q.y1 - y0;
       if (!this.projects.includes(p)) return;
       let cov: Uint8ClampedArray | null = null;
       if (sel && m) { const s = createSurface(W, h), c = ctxOf(s); setMat(c, mul(translation(0, -y0), m)); c.drawImage(sel.surface(), 0, 0); cov = c.getImageData(0, 0, W, h).data; }
@@ -8230,15 +8269,19 @@ export class Engine {
     const jb = this.startJob(name);
     let stopped = false;
     try {
-      const queue: { y0: number; y1: number; a0: number; src: ImageData; out: Promise<ImageData | null> }[] = [];
-      const plan = bandPlan(H, A, B);
-      let written = 0;
+      const queue: { y0: number; y1: number; a0: number; src: () => ImageData; out: Promise<ImageData | null> }[] = [];
+      const plan = bandPlan(H, A, B), vp = p.viewport, at = vp.toDoc(vp.centerX, vp.height / 2), li = invert(placement(l.transform, W, H)), centre = li[1] * at.x + li[3] * at.y + li[5];
+      const order = [...plan].sort((a, b) => Math.abs((a.y0 + a.y1) / 2 - centre) - Math.abs((b.y0 + b.y1) / 2 - centre));   // the bands nearest the view's centre first
+      let snap: ImageData | null = r.ctx.getImageData(0, 0, W, H), sab: SharedArrayBuffer | null = null;
+      if (bandsShared()) { try { sab = new SharedArrayBuffer(W * H * 4); new Uint8ClampedArray(sab).set(snap.data); snap = null; } catch { sab = null; } }
+      const rows = (a0: number, a1: number): ImageData => new ImageData(sab ? new Uint8ClampedArray(sab, a0 * W * 4, (a1 - a0) * W * 4).slice() : snap!.data.slice(a0 * W * 4, a1 * W * 4), W, a1 - a0);
+      let written = 0, rank = 0;
       this.jobStep(jb, 0, plan.length);
-      for (const b of plan) {
+      for (const b of order) {
         if (jb.cancelled) break;
-        const src = r.ctx.getImageData(0, b.a0, W, b.a1 - b.a0);
-        queue.push({ y0: b.y0, y1: b.y1, a0: b.a0, src, out: runBandOnPool(job.kind, job.settings, job.seed, src, this.bandFrame(f0, b.a0)) });
-        while (queue.length > N && !jb.cancelled) { await write(queue.shift()!); this.jobStep(jb, ++written); }   // band j is written once band j + 1 is sent
+        const frame = this.bandFrame(f0, b.a0), out = sab ? runSharedBandOnPool(job.kind, job.settings, job.seed, sab, W, b.a0, b.a1, frame, rank++) : runBandOnPool(job.kind, job.settings, job.seed, rows(b.a0, b.a1), frame, rank++, true);
+        queue.push({ y0: b.y0, y1: b.y1, a0: b.a0, src: () => rows(b.a0, b.a1), out });
+        while (queue.length > (sab ? plan.length : N) && !jb.cancelled) { await write(queue.shift()!); this.jobStep(jb, ++written); }   // shared: every band is queued at once and written in priority order; copied: band j is written once band j + 1 is sent
       }
       while (queue.length && !jb.cancelled) { await write(queue.shift()!); this.jobStep(jb, ++written); }
       stopped = jb.cancelled;
@@ -9684,7 +9727,7 @@ export class Engine {
       get current() { return e.current; },
       get textSettings() { return e.textSettings; },
       set textSettings(v) { e.textSettings = v; },
-      typeDepth: (p, raster, color) => this.typeDepth(p, raster, color),
+      typeDepth: (p, raster, color, runs) => this.typeDepth(p, raster, color, runs),
       notice: (m) => this.notice(m),
       edit: (name, fn) => this.edit(name, fn),
       applySelection: (next, mode, name) => this.applySelection(next, mode, name),
@@ -11001,6 +11044,21 @@ export class Engine {
     return true;
   }
 
+  /** Limit by depth: runs `edit` with the selection narrowed to the depth range (inside the selection when there is one),
+   *  then puts the earlier selection back. Null, with a notice, when the depth is missing or the range is empty. */
+  async limitedByDepth<T>(o: { near: number; far: number; feather: number }, run: (image: Blob, w: number, h: number) => Promise<Float32Array>, edit: () => Promise<T> | T, force = false): Promise<T | null> {
+    const p = this.current;
+    if (!p) return null;
+    const d = await this.task(() => this.ensureDocDepth(run, force));
+    if (!d || this.current !== p) return null;
+    const range = SelectionMask.cropped(0, 0, d.w, d.h, depthRangeMask(d, o.near, o.far, o.feather));
+    const before = p.selection, limit = range && before ? before.combine(range, 'intersect') : range;
+    if (!limit) { this.notice('No pixels lie in that depth range inside the selection; nothing was changed.'); return null; }
+    p.selection = limit;
+    this.emit('overlay', null);
+    try { return await edit(); } finally { if (p.selection === limit) { p.selection = before; this.emit('overlay', null); } }
+  }
+
   /** The document's depth layer: the active layer when it is named Depth Map, else the topmost layer so named. */
   depthLayer(p: Project | null = this.current): Layer | null {
     if (!p) return null;
@@ -11757,7 +11815,7 @@ export class Engine {
   /** The flattened picture rendered a band of 512 rows at a time, as `renderDoc` renders it whole (the same renderer,
    *  its view moved up by the band's top), each band's RGBA rows handed to `sink` and awaited before the next, so
    *  nothing full-size is made. */
-  async renderBands(sink: (rows: Uint8ClampedArray<ArrayBuffer>, y0: number, h: number) => Promise<void>, background: string | null = null): Promise<boolean> {
+  async renderBands(sink: (rows: Uint8ClampedArray<ArrayBuffer>, y0: number, h: number) => Promise<void>, background: string | null = null, only?: ReadonlySet<ID>): Promise<boolean> {
     const p = this.current;
     if (!p) return false;
     // About 4 megapixels a band, 16 to 512 rows, from the width (1.62.6): 16 MB at 30,000 wide, where 512 rows had been
@@ -11777,7 +11835,7 @@ export class Engine {
           // screen but wrong pixels in a file (1.62.6).
           if (store) for (const t of tiled) await t.ensure(x0, y0, w, h, store);
           c.clearRect(0, 0, S, s.height);
-          this.work.render({ doc: p.doc, target: s, view: translation(-x0, -y0), background, quality: 'high' });
+          this.work.render({ doc: p.doc, target: s, view: translation(-x0, -y0), background, quality: 'high', only });
           const part = c.getImageData(0, 0, w, h).data as Uint8ClampedArray<ArrayBuffer>;
           if (joined) for (let y = 0; y < h; y++) joined.set(part.subarray(y * w * 4, (y + 1) * w * 4), (y * W + x0) * 4);
           else rows = part;
@@ -11873,7 +11931,9 @@ export class Engine {
   /** Layer > Flatten Image: the visible image as one Background layer (hidden layers are discarded).
    *  One step. */
   flattenImage(): boolean {
-    const p = this.current, flat = this.flattened();
+    const p = this.current;
+    if (p && this.tiledPastCanvas(p)) { void this.mergeBanded('Flatten Image', null, null, null); return true; }
+    const flat = this.flattened();
     if (!p || !flat) return false;
     return this.edit('Flatten Image', (pp) => {
       const r = new Raster(pp.doc.width, pp.doc.height);
@@ -11882,6 +11942,73 @@ export class Engine {
       const l = newLayer('Background', pp.doc, { raster: r });
       pp.doc = { ...pp.doc, layers: [l] };
       pp.activeId = l.id;
+      return true;
+    });
+  }
+
+  /** Whether the document keeps a layer in tiles and is past what one canvas holds (flattening it whole is impossible). */
+  tiledPastCanvas(p: Project): boolean {
+    return p.doc.layers.some((l) => l.tiled) && (p.doc.width * p.doc.height > CANVAS_PIXELS || p.doc.width > CANVAS_SIDE || p.doc.height > CANVAS_SIDE);
+  }
+
+  /** The picture (or, with `only`, those layers) rendered band by band into a new tiled raster the size of the document
+   *  (1.91.2, SC-ED-0258): the same renderer and bands as the banded export, each band written into tiles and the
+   *  tiles past their share sent to the engine's store as it goes. Null when stopped or refused. */
+  async flattenToTiles(name: string, only?: ReadonlySet<ID>): Promise<TiledRaster | null> {
+    const p = this.current, store = this.undoStore;
+    if (!p) return null;
+    if ((p.doc.depth ?? 8) > 8 || p.doc.mode === 'cmyk' || p.doc.mode === 'lab' || this.composesFloats(p)) { this.notice(`${name} on a document this large works in 8-bit RGB, Grayscale or Indexed colour only.`); return null; }
+    if (!store) { this.notice(`${name} on a document this large needs formvis's engine running: its tiles are kept on the engine's disk.`, 'error'); return null; }
+    const W = p.doc.width, H = p.doc.height, out = new TiledRaster(W, H), jb = this.startJob(name, Math.ceil(H / Math.max(16, Math.min(512, Math.floor(4_194_304 / W)))));
+    out.onMissing = (t, key) => this.bringTile(t, key);
+    this.busyWith = name;
+    this.notice(`${name} runs over the picture a band at a time; editing waits until it finishes.`);
+    let done = 0;
+    try {
+      const ok = await this.renderBands(async (rows, y0, h) => {
+        if (jb.cancelled) throw new Error('cancelled');
+        out.write(new ImageData(rows, W, h), 0, y0);
+        this.jobStep(jb, ++done);
+        while (out.residentBytes > this.tileShare()) {
+          const key = out.leastUsed();
+          if (key === null || !(await out.pageOut(key, store))) break;
+        }
+      }, null, only);
+      return ok ? out : null;
+    } catch (err) {
+      out.dropAll(store);
+      this.notice(`${name} stopped before anything changed: ${String((err as Error)?.message ?? err)}`, 'error');
+      return null;
+    } finally {
+      this.endJob(jb);
+      this.busyWith = null;
+    }
+  }
+
+  /** Flatten Image, Merge Visible, Merge Down and Merge Layers on a document past one canvas (1.91.2): the layers in
+   *  `only` (all visible ones when null) rendered into one tiled layer, which takes the place of `anchorId` (or, with no
+   *  anchor, of every layer, as Flatten Image); `removed` go. One history step; undo brings the old layers back. */
+  async mergeBanded(name: string, only: ReadonlySet<ID> | null, removed: ReadonlySet<ID> | null, anchorId: ID | null, layerName = 'Background'): Promise<boolean> {
+    const p = this.current;
+    if (!p || this.stroke || this.waiting()) return false;
+    this.settle(this.keepFloat);
+    const tiled = await this.flattenToTiles(name, only ?? undefined);
+    if (!tiled) return false;
+    if (this.current !== p) { const store = this.undoStore; if (store) tiled.dropAll(store); return false; }
+    return this.edit(name, (pp) => {
+      const fresh = newLayer(layerName, pp.doc, { tiled });
+      if (anchorId === null) {
+        pp.doc = { ...pp.doc, layers: [fresh] };
+        pp.activeId = fresh.id;
+        return true;
+      }
+      const next: Layer[] = [];
+      for (const l of pp.doc.layers) {
+        if (l.id === anchorId) next.push(fresh);
+        else if (!removed?.has(l.id)) next.push(l);
+      }
+      pp.setLayers(this.normalizeClips(next));
+      this.focus(pp, fresh.id);
       return true;
     });
   }
@@ -11928,12 +12055,12 @@ export class Engine {
 
   /** Type at the document's depth (16 or 32 bits, CMYK, Lab): the type raster's coverage with its one colour exact in the
    *  document's own terms (engine/derive.ts `deriveFlat`), and in CMYK the rendition through the table; null at 8 bits. */
-  private typeDepth(p: Project, raster: Raster, color: RGB): { channels: ChannelPixels; raster: Raster } | null {
+  private typeDepth(p: Project, raster: Raster, color: RGB, runs?: { colors: RGB[]; index: Uint8Array }): { channels: ChannelPixels; raster: Raster } | null {
     const cmyk = p.doc.mode === 'cmyk', lab = p.doc.mode === 'lab';
     if (!cmyk && !lab && (p.doc.depth ?? 8) <= 8) return null;
     const t = cmyk ? this.deriveTables(p) : null;
     if (cmyk && (!t || !p.cmykLut)) return null;
-    const channels = deriveFlat(raster.read(), color, t, lab, p.doc.depth === 32);
+    const channels = runs ? deriveRuns(raster.read(), runs.colors, runs.index, t, lab, p.doc.depth === 32) : deriveFlat(raster.read(), color, t, lab, p.doc.depth === 32);
     return { channels, raster: cmyk && p.cmykLut ? rasterFromChannels(channels, p.cmykLut) : raster };
   }
 

@@ -1,6 +1,6 @@
 # formvis commands
 
-Generated from the window's command catalogue (1609 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1610 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
@@ -18,7 +18,7 @@ Generated from the window's command catalogue (1609 commands) by `./formvis agen
 - Tools: 53
 - Type: 66
 - View: 102
-- Window: 150
+- Window: 151
 
 ## Edit
 
@@ -1682,6 +1682,7 @@ Generated from the window's command catalogue (1609 commands) by `./formvis agen
 | `panel-close-group` | Close Panel Group |  | Closes a whole panel group, every tab in it, by hiding it; param panel is a group id or a tab id; the Window menu shows it again. |
 | `panel-color` | Color | F6 | Shows the Color picker, opening its panel group if it is hidden. |
 | `panel-comfyui` | ComfyUI |  | Shows or hides the ComfyUI panel, ComfyUI's own page inside the window, with a Save graph bar that keeps the graph ComfyUI ran last as a recipe (new, or replacing one) and reports the nodes and models ComfyUI lacks. |
+| `panel-develop` | Camera Raw |  | Opens or closes Camera Raw (the Develop filter) as a dock panel that tears off and docks back like the other panels, with its controls kept as they are. |
 | `panel-dock` | Dock Panel |  | Returns a floating panel to its place in its column; params panel. |
 | `panel-float` | Float Panel |  | Lifts a panel out of its column into a window of its own that can be moved and resized; params panel (group id or tab id), x, y, w, h. Where it stands is remembered. |
 | `panel-generate` | Generate |  | Shows or hides the Generate panel. |

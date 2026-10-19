@@ -69,6 +69,28 @@ function lineWidth(c: CanvasRenderingContext2D | OffscreenCanvasRenderingContext
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 const hScale = (t: TextSpec): number => (t.scaleX ?? 100) / 100;
 
+let keepColour: { r: number; g: number; b: number } | null = null;
+const fillOf = (c: { r: number; g: number; b: number }): string => (keepColour && (keepColour.r !== c.r || keepColour.g !== c.g || keepColour.b !== c.b) ? 'rgba(0,0,0,0)' : `rgb(${c.r},${c.g},${c.b})`);
+
+/** The colours a type spec draws in (its own, then its runs') and, per pixel, which one carries most of the coverage there,
+ *  each colour's coverage taken from the same render with the other colours left undrawn; null when it draws in one colour. */
+export function colourIndex(t: TextSpec, width: number, height: number): { colors: Array<{ r: number; g: number; b: number }>; index: Uint8Array } | null {
+  const colors: Array<{ r: number; g: number; b: number }> = [];
+  for (const c of [t.color, ...(t.runs ?? []).map((q) => q.color)]) if (c && !colors.some((q) => q.r === c.r && q.g === c.g && q.b === c.b)) colors.push({ r: c.r, g: c.g, b: c.b });
+  if (colors.length < 2) return null;
+  const index = new Uint8Array(width * height), best = new Uint8Array(width * height);
+  try {
+    colors.forEach((c, k) => {
+      keepColour = c;
+      const r = renderText(t).raster;
+      if (r.width !== width || r.height !== height) throw new Error('size');
+      const d = r.read().data;
+      for (let j = 0; j < best.length; j++) if (d[j * 4 + 3] > best[j]) { best[j] = d[j * 4 + 3]; index[j] = k; }
+    });
+  } catch { return null; } finally { keepColour = null; }
+  return { colors, index };
+}
+
 /** Sets a line's pieces from (x, y) when `draw` is on, and returns its unscaled advance. Synthetic small capitals are set
  *  as capitals at 80 percent of the size; optical kerning, and tracking where the canvas cannot space letters, set one
  *  character at a time. The common case is the canvas's own measure and fill of the whole line. */
@@ -81,7 +103,7 @@ function walk(c: Ctx, t: TextSpec, line: string, x: number, y: number, draw: boo
       for (const s of segs) {
         const st = specWith(t, s.attrs, s.features);
         setType(c, st);
-        if (draw && s.attrs.color) c.fillStyle = `rgb(${st.color.r},${st.color.g},${st.color.b})`;
+        if (draw && s.attrs.color) c.fillStyle = fillOf(st.color);
         const piece = line.slice(s.from - at, s.to - at), by = y + (t.baselineShift ?? 0) - (st.baselineShift ?? 0);
         // a run's own scale is absolute; the layer's scale is applied by the caller, so the run is set at the ratio to it
         const rx = s.attrs.scaleX ? s.attrs.scaleX / 100 / hScale(t) : 1, ry = s.attrs.scaleY ? s.attrs.scaleY / (t.scaleY ?? 100) : 1;
@@ -274,9 +296,9 @@ export function renderPlain(t: TextSpec): TextRender {
   const raster = new Raster(rw, rh), c = raster.ctx;
   setType(c, t);
   if (turned) { c.translate(rax, ray); c.rotate(rad); c.translate(-ax, -ay); }
-  c.fillStyle = `rgb(${t.color.r},${t.color.g},${t.color.b})`;
+  c.fillStyle = fillOf(t.color);
   c.textBaseline = 'alphabetic';
-  const run = (s: string, x: number, y: number, at: number | undefined, ts: TextSpec): void => {   // a run of text from x, scaled, spaced as it will measure
+  const run =(s: string, x: number, y: number, at: number | undefined, ts: TextSpec): void => {   // a run of text from x, scaled, spaced as it will measure
     c.save();
     c.translate(x, y);
     if (kx !== 1 || ky !== 1) c.scale(kx, ky);
@@ -431,7 +453,7 @@ function renderVertical(t: TextSpec): TextRender {
   const raster = new Raster(width, height), c = raster.ctx;
   setType(c, t);
   if ('letterSpacing' in c) (c as unknown as { letterSpacing: string }).letterSpacing = '0px';
-  c.fillStyle = `rgb(${t.color.r},${t.color.g},${t.color.b})`;
+  c.fillStyle = fillOf(t.color);
   c.textAlign = 'center';
   c.textBaseline = 'top';
   cols.forEach((col, i) => {
@@ -541,7 +563,7 @@ function renderPathText(t: TextSpec, tp: TextPath): TextRender {
     return { x: p.x + (q.x - p.x) * f, y: p.y + (q.y - p.y) * f, a: Math.atan2(q.y - p.y, q.x - p.x) };
   };
   setType(c, t);
-  c.fillStyle = `rgb(${t.color.r},${t.color.g},${t.color.b})`;
+  c.fillStyle = fillOf(t.color);
   c.textBaseline = tp.flip ? 'top' : 'alphabetic';
   c.textAlign = 'center';
   let d = (Math.max(0, Math.min(100, tp.offset)) / 100) * total;
@@ -550,7 +572,7 @@ function renderPathText(t: TextSpec, tp: TextPath): TextRender {
   for (const ch of t.content.replace(/\r?\n/g, ' ')) {
     const seg = styled ? styleSegments(t.features, t.runs, idx, idx + ch.length)[0] : null, st = seg ? specWith(t, seg.attrs, seg.features) : t;
     idx += ch.length;
-    if (seg) { setType(c, st); c.fillStyle = `rgb(${st.color.r},${st.color.g},${st.color.b})`; }
+    if (seg) { setType(c, st); c.fillStyle = fillOf(st.color); }
     const w = c.measureText(ch).width + (CANVAS_TRACKING ? 0 : trackingPx(st));
     if (d + w > total + 0.5) break;
     const p = at(d + w / 2);

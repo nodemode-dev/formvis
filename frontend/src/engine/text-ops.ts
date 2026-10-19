@@ -8,7 +8,7 @@ import { glyphOutlines } from './glyph-outlines';
 import { SelectionMask, type SelectionMode } from './selection';
 import { samplePath, type SubPath, type VectorPath } from './paths';
 import { traceAlpha } from './trace-outline';
-import { liveText, loadTextFont, renderText, textKey, withCharStyle } from './text';
+import { colourIndex, liveText, loadTextFont, renderText, textKey, withCharStyle } from './text';
 import type { Raster } from './surface';
 import type { ChannelPixels, CharacterStyle, ID, Layer, Pt, RGB, ShapeStyle, TextSpec } from './types';
 
@@ -16,7 +16,7 @@ import type { ChannelPixels, CharacterStyle, ID, Layer, Pt, RGB, ShapeStyle, Tex
 export interface TextHost {
   readonly current: Project | null;
   /** At 16 or 32 bits, in CMYK or in Lab: a type raster's floats with its one colour taken exactly, and in CMYK its rendition; null at 8 bits. */
-  typeDepth?(p: Project, raster: Raster, color: RGB): { channels: ChannelPixels; raster: Raster } | null;
+  typeDepth?(p: Project, raster: Raster, color: RGB, runs?: { colors: RGB[]; index: Uint8Array }): { channels: ChannelPixels; raster: Raster } | null;
   /** The Type dialog's last settings, which new text starts from. */
   textSettings: TextSpec;
   notice(text: string): void;
@@ -36,7 +36,8 @@ export interface TextHost {
  *  layer's floats take the text colour with that coverage as alpha (the colour in CMYK as its separation), instead of the
  *  floats being read back from the premultiplied 8-bit pixels. Nothing to add at 8 bits, or where runs colour letters apart. */
 function atDepth(host: TextHost, p: Project | null, spec: TextSpec, raster: Raster, deep: boolean): { raster: Raster; extra: Partial<Layer> } {
-  const d = deep && p && !spec.runs?.some((q) => q.color) ? host.typeDepth?.(p, raster, spec.color) : null;
+  const runs = deep && p && spec.runs?.some((q) => q.color) ? colourIndex(spec, raster.width, raster.height) : null;
+  const d = deep && p ? host.typeDepth?.(p, raster, spec.color, runs ?? undefined) : null;
   return d ? { raster: d.raster, extra: { channels: d.channels } } : { raster, extra: {} };
 }
 

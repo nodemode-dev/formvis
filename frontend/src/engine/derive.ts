@@ -53,6 +53,20 @@ export function deriveFlat(img: ImageData, c: { r: number; g: number; b: number 
   return { mode: one.mode, n: one.n, width: w, height: h, data: out };
 }
 
+/** A layer drawn in several flat colours (type with coloured runs): each pixel takes the colour `index` names, taken once
+ *  per colour in the document's own terms, under the 8-bit coverage as alpha; where one colour only, `deriveFlat`. */
+export function deriveRuns(img: ImageData, colors: ReadonlyArray<{ r: number; g: number; b: number }>, index: Uint8Array, t: DeriveTables | null, lab = false, linear = false): ChannelPixels {
+  const raw = new Uint8ClampedArray(colors.length * 4);
+  colors.forEach((c, k) => { raw[k * 4] = c.r; raw[k * 4 + 1] = c.g; raw[k * 4 + 2] = c.b; raw[k * 4 + 3] = 255; });
+  const one = deriveWhole(new ImageData(raw, colors.length, 1), t, lab, linear), { width: w, height: h, data: d } = img, n = one.n, S = n + 1, out = new Float32Array(w * h * S);
+  for (let j = 0, i = 3; j < w * h; j++, i += 4) {
+    const o = j * S, s = (index[j] < colors.length ? index[j] : 0) * S;
+    for (let k = 0; k < n; k++) out[o + k] = one.data[s + k];
+    out[o + n] = d[i] / 255;
+  }
+  return { mode: one.mode, n: one.n, width: w, height: h, data: out };
+}
+
 /** The region (x, y, the size of `before`) of a layer's floats brought into step with what changed there. */
 export function deriveRegion(ch: ChannelPixels, x: number, y: number, before: ImageData, after: ImageData, t: DeriveTables | null, linear = false): ChannelPixels {
   const out = new Float32Array(ch.data), S = ch.n + 1, A = ch.n, bw = before.width, bh = before.height, B = before.data, F = after.data;

@@ -18,6 +18,7 @@ export interface StructHost {
   clipCoverage(doc: Doc, baseId: ID): CanvasImageSource | null;
   renderOnly(doc: Doc, target: Surface, view: Mat, only: Set<ID>): void;
   deleteMask(): void;
+  mergeBanded?(name: string, only: ReadonlySet<ID>, removed: ReadonlySet<ID>, anchorId: ID | null, layerName?: string): Promise<boolean>;
 }
 
 const NAME_MAX = 200;
@@ -568,6 +569,10 @@ export function mergeLayers(host: StructHost): void {
   const held = layers0.filter((l) => merged.has(l.id) && (l.locks?.all || l.locks?.pixels)).length;
   if (held) {
     host.notice(held === 1 ? 'A locked layer cannot be merged. Unlock it in the Layers panel.' : `${held} locked layers cannot be merged. Unlock them in the Layers panel.`);
+    return;
+  }
+  if (host.mergeBanded && layers0.some((l) => merged.has(l.id) && l.tiled)) {
+    void host.mergeBanded(label, merged, removed, anchorId, layers0.find((l) => l.id === anchorId)?.name);
     return;
   }
   host.edit(label, (p) => {

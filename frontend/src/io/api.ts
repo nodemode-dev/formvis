@@ -804,9 +804,13 @@ export const api = {
   async fetchAsset(url: string): Promise<Blob> {
     return (await request(url.startsWith('/api') ? url.slice(4) : url)).blob();
   },
-  async removeBackground(image: Blob, method: 'auto' | 'ml' | 'lite'): Promise<{ mask: Blob; method: string }> {
-    const r = await request('/ops/remove-background', { method: 'POST', body: form({ method }, [{ name: 'layer.png', blob: image }], 'file') });
+  async removeBackground(image: Blob, method: 'auto' | 'ml' | 'lite', matting = ''): Promise<{ mask: Blob; method: string }> {
+    const r = await request('/ops/remove-background', { method: 'POST', body: form({ method, matting }, [{ name: 'layer.png', blob: image }], 'file') });
     return { mask: await r.blob(), method: r.headers.get('X-Method') ?? method };
+  },
+  /** The model files in the engine's matting folder, each with whether it can run and, if not, why. */
+  async mattingModels(): Promise<Array<{ file: string; loadable: boolean; note: string }>> {
+    try { return ((await (await request('/ops/matting-models')).json()) as { models: Array<{ file: string; loadable: boolean; note: string }> }).models; } catch { return []; }
   },
   /** Mask All Objects: the objects found in `image`, largest first, each a grey mask (base64 PNG) over its box at the
    *  working size given. */

@@ -4,6 +4,28 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.91.2 · 2026-10-19
+
+### Added
+
+- Flatten Image, Merge Down, Merge Layers, Merge Visible and Duplicate (merged layers only) work on documents past 268 MP or 32,767 px: they render in bands into one tiled layer as one undoable step.
+- Filters: a Limit by depth row (near, far, feather, fine detail); a standard or detail depth setting; the MCP tool select_by_depth.
+- Remove Background and Select Subject can run a chosen ONNX matting model from the models folder's matting folder beside U2-Net and GrabCut.
+- Camera Raw (Develop) docks as a panel that tears off and re-docks with its controls (Window > Camera Raw).
+- Generate Image: references can be added from a file without making a layer (for ComfyUI workflows).
+- Artboards draw on the GPU in the WebGL2 and WebGPU displays; Develop's Optics vignette runs in the WebGL2 Develop pass.
+- Box Blur, Motion Blur, Find Edges and Emboss run on WebGL2 with the CPU as fallback.
+- Filter bands run on the worker pool with a priority queue (bands nearest the view first), from shared memory when the window is cross-origin isolated.
+- PSD: a pattern fill layer keeps its link flag, any angle and its own scale.
+- Type with coloured runs is exact at 16 and 32 bits, CMYK and Lab.
+
+### Fixed
+
+- Merge Down and Merge Layers no longer skip layers kept in tiles.
+- Tearing a dock panel off after dragging over the side column no longer breaks the dock.
+- Flat saves of a CMYK or Lab picture to an RGB kind say that colours outside the RGB gamut are clipped.
+- e2e scenes for the gradient options and the Brushes panel follow the current UI.
+
 ## 1.91.1 · 2026-10-19
 
 ### Added

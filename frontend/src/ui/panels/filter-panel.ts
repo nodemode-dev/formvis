@@ -6,6 +6,9 @@ import { ScopesView } from './scopes-view';
 import { Dialog } from '../dialogs';
 import { el, q, setDisabled, setHidden, setText, setValue } from '../dom';
 import { toast } from '../toast';
+import { icon } from '../icons';
+import { depthLimitRows } from './depth-limit';
+import { localDepthValues } from '../../io/local-gen';
 import { recalled, remembered } from '../prefs';
 import { checkRow, colorRow, curveRow, matrixRow, selectRow, sliderRow, type Row } from './controls';
 import { defaultLensIris, lensBlurMargin, lensBlurSettings, shakeMargin, shakeReduce, smartSharpen, smartSharpenMargin, type LensIris, type SharpenRemove, type ShakeSettings } from '../../engine/filters-more';
@@ -108,6 +111,15 @@ export function filterMargin(kind: FilterKind, s: FilterPanelSettings): number {
     : kind === 'radialBlur' ? radialMargin(s.gallery.radialAmount, s.gallery.radialMethod) : isLibKind(kind) ? libMargin(kind, s.lib?.[kind]) : 0;
 }
 
+/** The Camera Raw dock panel's shell, made before the dock reads its arrangement; Develop's frame is moved into `body`. */
+export function createDevelopDock(root: HTMLElement): HTMLElement {
+  root.insertAdjacentHTML('beforeend',
+    '<section class="cv-preset-panel cv-develop-dock" aria-label="Camera Raw" hidden>' +
+    `<div class="cv-panel-head"><span class="cv-comps-title">${icon('sliders', 14)}<span>Camera Raw</span></span><span></span><span class="cv-comps-count"></span></div>` +
+    '<div class="cv-develop-host"></div></section>');
+  return q(root, '.cv-develop-host');
+}
+
 export class FilterPanel extends Dialog {
   /** Develop's histogram, waveform and vectorscope (1.53.4). */
   readonly scopes = new ScopesView();
@@ -125,9 +137,13 @@ export class FilterPanel extends Dialog {
   private settle = 0;
   private held = false;
   private docked = false;
+  private hosted = false;
+  private frameEl: HTMLElement | null = null;
+  private dockHost: { body: HTMLElement; show(): void; hide(): void } | null = null;
   private readonly livePixels = 40_000_000;
   private readonly sections = new Map<FilterKind, { node: HTMLElement; sync: () => void }>();
   private readonly previewRow: Row<boolean>;
+  private readonly depthLimit = depthLimitRows();
   private readonly shot: FilterPreview;
   private readonly okBtn: HTMLButtonElement;
   /** Develop's Profile list (DEV_PLAN 28.2): for a RAW layer the app answers with the camera profiles on this computer
@@ -433,7 +449,7 @@ export class FilterPanel extends Dialog {
       snaps.push(snap); keepSnaps(); snapRow(snap);
     });
     devNodes.splice(2, 0, snapAdd, snapList);
-    const dockRow = checkRow('Dock to the side', (v) => { this.docked = v; this.scrim.classList.toggle('cv-scrim-docked', v); });
+    const dockRow = checkRow('Dock to the side', (v) => { this.docked = v; if (this.isOpen) this.host(this.kind === 'develop' && v); });
     devNodes.splice(2, 0, dockRow.el);
     devSync.push(() => dockRow.set(this.docked));
     // Before and after: while this is held the stage shows the picture as it was; letting go brings the developed preview back.
@@ -680,7 +696,7 @@ export class FilterPanel extends Dialog {
     setHidden(this.shot.el, true);
     this.body.prepend(this.shot.el);
     this.previewRow = checkRow('Preview', (v) => { this.preview = v; this.schedule(0); });
-    this.body.append(this.previewRow.el);
+    this.body.append(this.previewRow.el, this.depthLimit.el);
     this.button('Cancel', 'ghost', () => this.close());
     this.okBtn = this.button('OK', 'primary', () => this.commit());
     this.onClose = () => this.abandon();
@@ -837,6 +853,33 @@ export class FilterPanel extends Dialog {
     } catch { /* the defaults stand */ }
   }
 
+  /** The Camera Raw dock panel (Window > Camera Raw): where Develop's frame lives while "Dock to the side" is on. */
+  attachDock(host: { body: HTMLElement; show(): void; hide(): void }): void {
+    this.dockHost = host;
+    const sec = host.body.closest('section');
+    sec?.addEventListener('keydown', (e) => {
+      if (!this.hosted) return;
+      e.stopPropagation();
+      if (e.key === 'Escape') { e.preventDefault(); this.close(); }
+    });
+  }
+
+  /** Develop's whole frame moves into the dock panel and back; its controls are never rebuilt. */
+  private host(on: boolean): void {
+    const h = this.dockHost, frame = this.frameEl ??= q<HTMLElement>(this.scrim, '.cv-dialog');
+    if (!h || on === this.hosted) return;
+    this.hosted = on;
+    this.scrim.classList.toggle('cv-scrim-hosted', on);
+    if (on) { frame.style.translate = ''; h.body.appendChild(frame); h.show(); }
+    else { this.scrim.appendChild(frame); h.hide(); }
+  }
+
+  showDocked(): void {
+    if (this.isOpen) return;
+    this.docked = true;
+    this.show('develop');
+  }
+
   show(kind: FilterKind): void {
     if (this.isOpen) return;
     const al = this.engine.current?.activeLayer;
@@ -851,7 +894,7 @@ export class FilterPanel extends Dialog {
     this.recallSettings(kind);
     this.setTitle(FILTER_LABELS[kind]);
     const lib = isLibKind(kind) ? libFilter(kind) : null;
-    q<HTMLElement>(this.scrim, '.cv-dialog').style.setProperty('--cv-dialog-w', `${lib?.width ?? 440}px`);
+    (this.frameEl ??= q<HTMLElement>(this.scrim, '.cv-dialog')).style.setProperty('--cv-dialog-w', `${lib?.width ?? 440}px`);
     setHidden(this.previewRow.el, !!lib?.ownPreview);
     setHidden(this.shot.el, !this.windowed(kind));
     if (!this.shot.el.hidden) this.shot.begin();
@@ -865,8 +908,9 @@ export class FilterPanel extends Dialog {
     if (kind === 'develop') for (const i of this.profileRow.el.querySelectorAll('select')) i.disabled = true;
     this.scrim.classList.toggle('cv-scrim-through', PIN_KINDS.includes(kind));
     this.scrim.classList.toggle('cv-scrim-side', PIN_KINDS.includes(kind));
-    this.scrim.classList.toggle('cv-scrim-docked', kind === 'develop' && this.docked);
     this.open(this.okBtn);
+    this.host(kind === 'develop' && this.docked);
+    if (this.hosted) this.okBtn.focus();
     if (PIN_KINDS.includes(kind)) { setDialogTool(this.pins); this.pins.select(1); this.engine.emit('overlay', null); document.addEventListener('keydown', this.pinKey); }
     if (kind === 'lightingEffects') { this.scrim.classList.add('cv-scrim-through'); setDialogTool(this.lightPins); this.lightPins.select(1); this.engine.emit('overlay', null); }
     this.schedule(0);
@@ -1116,11 +1160,14 @@ export class FilterPanel extends Dialog {
     if (this.smartTarget()) { this.engine.setPreview(null); this.close(); this.engine.addSmartFilter(kind, settings); return; }
     // The preview stays on the canvas until the result replaces it, computed off the main thread.
     this.close();
+    const limit = this.depthLimit.value();
+    if (limit) { void this.engine.limitedByDepth(limit, (i, w, h) => localDepthValues(i, w, h, limit.detail), () => this.applyInBackground(kind, settings), limit.detail); return; }
     void this.applyInBackground(kind, settings);
   }
 
   private abandon(): void {
-    this.scrim.classList.remove('cv-scrim-through', 'cv-scrim-side', 'cv-scrim-docked');
+    this.host(false);
+    this.scrim.classList.remove('cv-scrim-through', 'cv-scrim-side');
     document.removeEventListener('keydown', this.pinKey);
     this.guideLines = [];
     this.probeFor = null;

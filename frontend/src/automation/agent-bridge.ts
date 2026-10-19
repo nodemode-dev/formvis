@@ -11,7 +11,7 @@ import { writeLayeredTiff } from '../io/layered-tiff';
 import { composeDeep, srgbToLinear } from '../engine/deep';
 import { ADJUST_PRESET_STORE, GRADIENT_PRESETS, GRAIN_PRESETS, PHOTO_FILTERS } from '../engine/adjust-presets';
 import { VIDEO_PROPS, type VideoProp, type VideoTimeline } from '../engine/video-timeline';
-import { depthReady, localDepth, localFill, localInpaint, localModels, localUpscale, modelReady, runLocal } from '../io/local-gen';
+import { depthReady, localDepth, localDepthValues, localFill, localInpaint, localModels, localUpscale, modelReady, runLocal } from '../io/local-gen';
 import { applyPrefs, loadPrefs, savePrefs, updatePrefs, type Prefs } from '../ui/prefs';
 import { fontFamilies } from '../ui/fonts';
 import { mappedChars } from '../engine/glyph-outlines';
@@ -774,6 +774,16 @@ export class AgentBridge {
           const ok = await e.task(() => e.computeDepthMap(localDepth, { layer: l.id }));
           const dl = e.depthLayer();
           return ok && dl ? text(`Added the Depth Map layer (id ${dl.id}) read from ${l.name} alone: near is bright, far is dark.`, { id: dl.id, source: l.id }) : fail(`The depth could not be read from ${l.name}: see the formvis window for the reason.`);
+        }
+        case 'select_by_depth': {
+          if (!(await depthReady())) return fail('Depth Anything V2 Small is not downloaded: the person can download it in Preferences > Plugins > Local models (99 MB).');
+          const fine = str('quality') === 'detail';
+          const d = await e.task(() => e.ensureDocDepth((i, w, h) => localDepthValues(i, w, h, fine), fine));
+          if (!d) return fail('The depth could not be read: see the formvis window for the reason.');
+          const c = str('combine');
+          const ok = e.selectByDepth({ near: num('near', 100), far: num('far', 60), feather: num('feather', 10), mode: c === 'add' || c === 'subtract' || c === 'intersect' ? c : 'replace' });
+          const s = e.current?.selection;
+          return ok && s ? text(`Selected by depth: ${s.w} by ${s.h} at ${s.x}, ${s.y}.`) : fail('No pixels lie in that depth range.');
         }
         case 'match_edges': {
           const l = layerOf();

@@ -4,6 +4,10 @@ import { Dialog } from '../dialogs';
 import { el, setHidden } from '../dom';
 import { recalled, remembered } from '../prefs';
 import { selectRow, sliderRow } from './controls';
+import { api } from '../../io/api';
+
+/** The model choice Remove Background and Select Subject remember: '' U2-Net, 'grabcut' the lightweight engine, else a file in the matting folder. */
+export const mattingChoice = (): string => { const v = recalled('Remove Background', 'model'); return typeof v === 'string' ? v : ''; };
 
 /**
  * The Remove Background panel. Basic uses the model's subject mask as it comes; Advanced refines it against the
@@ -16,6 +20,10 @@ export class BackgroundPanel extends Dialog {
   private mask: ImageBitmap | null = null;   // the model's bitmap
   private done = false;                      // OK was pressed
   private queued = false;                    // a preview is waiting for a frame
+  /** Set by the app: reads the subject again with the chosen model; null when it failed (the app says why). */
+  rerun: ((choice: string) => Promise<ImageBitmap | null>) | null = null;
+  private seq = 0;
+  private readonly model = selectRow('Model', [['', 'U2-Net'], ['grabcut', 'GrabCut']], (v) => void this.chooseModel(v));
   private readonly quality = selectRow('Quality', [['basic', 'Basic'], ['advanced', 'Advanced']], (v) => { this.settings.quality = v as MatteSettings['quality']; this.keep(); this.sync(); this.preview(); });
   private readonly refine = sliderRow('Refine (px)', 0, 40, 1, (v) => { this.settings.refineEdges = v; this.keep(); this.preview(); });
   private readonly contrast = sliderRow('Contrast (%)', 0, 100, 1, (v) => { this.settings.matteContrast = v; this.keep(); this.preview(); });
@@ -25,7 +33,7 @@ export class BackgroundPanel extends Dialog {
     super('Remove Background', 420);
     this.body.append(
       el('<p class="cv-note">Hide the background behind a layer mask, keeping the foreground subjects. The pixels stay, so the background can be painted back at any time.</p>'),
-      this.quality.el, this.refine.el, this.contrast.el, this.shift.el,
+      this.model.el, this.quality.el, this.refine.el, this.contrast.el, this.shift.el,
     );
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.commit());
@@ -45,6 +53,32 @@ export class BackgroundPanel extends Dialog {
 
   private keep(): void { remembered('Remove Background', 'settings', JSON.stringify(this.settings)); }
 
+  /** The model list keeps its place: U2-Net and GrabCut, then the loadable files of the matting folder. */
+  private async fillModels(): Promise<void> {
+    const n = ++this.seq, files = (await api.mattingModels()).filter((m) => m.loadable);
+    if (n !== this.seq || !this.isOpen) return;
+    const sel = this.model.el.querySelector('select') as HTMLSelectElement;
+    const want: Array<readonly [string, string]> = [['', 'U2-Net'], ['grabcut', 'GrabCut'], ...files.map((m) => [m.file, m.file] as const)];
+    const choice = mattingChoice();
+    if (choice && !want.some(([v]) => v === choice)) want.push([choice, `${choice} (missing)`]);
+    while (sel.options.length > want.length) sel.remove(sel.options.length - 1);
+    want.forEach(([v, t], i) => { const o = sel.options[i] ?? sel.appendChild(document.createElement('option')); if (o.value !== v) o.value = v; if (o.textContent !== t) o.textContent = t; });
+    this.model.set(choice);
+  }
+
+  private async chooseModel(v: string): Promise<void> {
+    const hook = this.rerun, id = this.layerId;
+    if (!hook || !id) return;
+    const prev = mattingChoice(), n = ++this.seq;
+    remembered('Remove Background', 'model', v);
+    const bitmap = await hook(v);
+    if (n !== this.seq || !this.isOpen || this.layerId !== id) { bitmap?.close(); return; }
+    if (!bitmap) { remembered('Remove Background', 'model', prev); this.model.set(prev); return; }
+    this.mask?.close();
+    this.mask = bitmap;
+    this.preview();
+  }
+
   /** Open for a layer with the model's mask; a request for a layer that is no longer active releases the bitmap. */
   show(layerId: ID, mask: ImageBitmap): void {
     if (this.isOpen || this.engine.activeLayer?.id !== layerId) { mask.close(); return; }
@@ -57,7 +91,9 @@ export class BackgroundPanel extends Dialog {
     this.contrast.set(this.settings.matteContrast);
     this.shift.set(this.settings.shiftEdge);
     this.sync();
+    this.model.set(mattingChoice());
     this.open();
+    void this.fillModels();
     this.preview();
   }
 

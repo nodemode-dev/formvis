@@ -28,7 +28,7 @@ def test_search_list_view_and_its_memory(page):
         page.locator(f"{PANEL} [data-view='list']").click()
         assert page.locator(f"{PANEL} .cv-brush-list .cv-brush-name").first.is_visible()
         page.reload(); page.wait_for_function("window.formvis && window.formvis.engine")
-        assert page.locator(f"{PANEL} .cv-brush-list").count() == 1                      # remembered
+        assert page.locator(f"{PANEL} .cv-brush-list").count() >= 1 and page.locator(f"{PANEL} .cv-brush-grid").count() == 0   # remembered, one list per open folder
     finally:
         page.evaluate("localStorage.removeItem('formvis.brushView')")
 
@@ -44,4 +44,4 @@ def test_the_brush_settings_tab_sets_the_tip(page):
     assert got == {"s": 60, "r": 40}, got
     page.locator(".cv-props-col .cv-group-tab", has_text="Brushes").first.click()
     assert page.locator(f"{PANEL} [data-act='load']").is_visible()
-    assert page.locator(f"{PANEL} input[type=file]").get_attribute("accept") == ".abr"   # .abr brushes
+    assert page.locator(f"{PANEL} input[type=file]").get_attribute("accept") == ".abr,image/*"   # .abr brushes and tip images

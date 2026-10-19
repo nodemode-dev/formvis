@@ -2,6 +2,7 @@ import type { DevelopState } from './develop';
 import { developPerPixelOnly } from './develop';
 import type { FilterKind, FilterSettings } from './filter-jobs';
 import { lensBlurSettings } from './filters-more';
+import { libValues } from './filter-library';
 
 /** The seam between the engine and a GPU filter runner (DEV_PLAN 36.10). The engine never touches the DOM, so the
  *  runner, which owns a WebGL2 context, is built in gpu/filters.ts and registered here by app.ts; with none registered,
@@ -24,6 +25,10 @@ export interface GpuFilterRunner {
   smudge?(pixels: Uint8ClampedArray, w: number, h: number): GpuSmudge | null;
   /** The gather pass of Lens Blur with an iris or a depth plane, from the planes the CPU prepared; null when the GPU cannot. */
   lensGather?(p: LensGatherInput): ImageData | null;
+  boxBlur?(src: ImageData, radius: number): ImageData | null;
+  motionBlur?(src: ImageData, angleDeg: number, distance: number): ImageData | null;
+  findEdges?(src: ImageData): ImageData | null;
+  emboss?(src: ImageData, angle: number, height: number, amount: number): ImageData | null;
 }
 
 /** What lensBlur hands the GPU: the source bytes, its premultiplied linear float levels (index 0 is the picture, a level
@@ -60,6 +65,10 @@ export function runFilterOnGpu(kind: FilterKind, s: FilterSettings, scale: numbe
       catch (e) { if (e === declined) return null; throw e; }
     }
     if (kind === 'gaussianBlur') return g.gaussianBlur(src, s.radius * scale);
+    if (kind === 'motionBlur') return g.motionBlur?.(src, s.angle, s.distance * scale) ?? null;
+    if (kind === 'boxBlur') return g.boxBlur?.(src, libValues(kind, s.lib?.[kind]).radius as number * scale) ?? null;
+    if (kind === 'findEdges') return g.findEdges?.(src) ?? null;
+    if (kind === 'emboss') { const v = libValues(kind, s.lib?.[kind]); return g.emboss?.(src, v.angle as number, Math.max(1, (v.height as number) * scale), v.amount as number) ?? null; }
     if (kind === 'addNoise') return g.addNoise(src, s.amount, s.gaussian, s.monochromatic, seed);
     if (kind === 'unsharpMask') return g.unsharpMask(src, s.usmAmount, s.usmRadius * scale, s.threshold);
     if (kind === 'develop' && developPerPixelOnly(s.develop)) return g.develop(src, s.develop, 7);

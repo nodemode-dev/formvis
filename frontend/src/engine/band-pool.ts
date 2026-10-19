@@ -41,9 +41,10 @@ export function bandPoolSize(): number {
   return threadsPref > 0 ? threadsPref : Math.max(1, Math.min(cores - 1, 4));
 }
 
-function lose(slot: Slot): void {
+function lose(_slot: Slot): void {
   failed = true;
-  for (const [id, j] of [...waiting]) if (j.slot === slot) { waiting.delete(id); j.done(null); }
+  for (const [id, j] of [...waiting]) { waiting.delete(id); j.done(null); }
+  for (const q of queue.splice(0)) q.done(null);
 }
 
 function ensure(): boolean {
@@ -58,6 +59,7 @@ function ensure(): boolean {
         if (!j) return;
         waiting.delete(e.data.id); j.slot.busy--;
         j.done(new ImageData(new Uint8ClampedArray(e.data.pixels), e.data.width, e.data.height));
+        pump();
       };
       w.onerror = () => { lose(slot); for (const s of slots) s.w.terminate(); slots = []; };
       slots.push(slot);
@@ -69,15 +71,43 @@ function ensure(): boolean {
 /** Whether the pool can take bands now. */
 export function bandPoolReady(): boolean { return !failed && ensure(); }
 
-/** One band through a pool worker, or null (the caller then filters it). `src` is left as it is. */
-export function runBandOnPool(kind: FilterKind, settings: FilterSettings, seed: number, src: ImageData, frame: LibFrame | null): Promise<ImageData | null> {
-  if (failed || !ensure()) return Promise.resolve(null);
-  const slot = slots.reduce((a, b) => (b.busy < a.busy ? b : a)), id = nextId++;
-  const job: FilterJob = { id, kind, settings, scale: 1, seed, width: src.width, height: src.height, pixels: src.data.buffer.slice(0) as ArrayBuffer, frame };
-  return new Promise<ImageData | null>((resolve) => {
-    waiting.set(id, { slot, done: resolve });
+interface Queued { priority: number; seq: number; job: FilterJob; done: (img: ImageData | null) => void }
+const queue: Queued[] = [];
+const DEPTH = 2;
+let seq = 0;
+
+/** Sends the waiting band with the lowest priority number (first come first among equals) to the worker holding the
+ *  fewest, while any worker holds fewer than DEPTH. A band is therefore chosen when a worker is free, not when it was
+ *  asked for, so bands asked for later with a lower number run ahead of those still waiting. */
+function pump(): void {
+  while (queue.length && !failed) {
+    const slot = slots.reduce((a, b) => (b.busy < a.busy ? b : a));
+    if (!slot || slot.busy >= DEPTH) return;
+    let at = 0;
+    for (let i = 1; i < queue.length; i++) if (queue[i].priority < queue[at].priority || (queue[i].priority === queue[at].priority && queue[i].seq < queue[at].seq)) at = i;
+    const q = queue.splice(at, 1)[0];
+    waiting.set(q.job.id, { slot, done: q.done });
     slot.busy++;
-    try { slot.w.postMessage(job, [job.pixels]); }
-    catch { waiting.delete(id); slot.busy--; failed = true; resolve(null); }
-  });
+    try { slot.w.postMessage(q.job, q.job.shared ? [] : [q.job.pixels]); }
+    catch { waiting.delete(q.job.id); slot.busy--; failed = true; q.done(null); lose(slot); }
+  }
+}
+
+/** Whether bands can be read from a SharedArrayBuffer: the page is cross-origin isolated. */
+export const bandsShared = (): boolean => typeof SharedArrayBuffer === 'function' && (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated === true;
+
+/** One band through a pool worker, or null (the caller then filters it). With `own` the band's own buffer travels to
+ *  the worker (no copy) and `src` is empty afterwards; otherwise `src` is left as it is. A lower `priority` runs first. */
+export function runBandOnPool(kind: FilterKind, settings: FilterSettings, seed: number, src: ImageData, frame: LibFrame | null, priority = 0, own = false): Promise<ImageData | null> {
+  if (failed || !ensure()) return Promise.resolve(null);
+  const job: FilterJob = { id: nextId++, kind, settings, scale: 1, seed, width: src.width, height: src.height, pixels: own ? src.data.buffer as ArrayBuffer : src.data.buffer.slice(0) as ArrayBuffer, frame };
+  return new Promise<ImageData | null>((resolve) => { queue.push({ priority, seq: seq++, job, done: resolve }); pump(); });
+}
+
+/** A band of rows a0 to a1 of a `width`-wide RGBA picture held in a SharedArrayBuffer, which the worker reads in place
+ *  (nothing is copied or cloned to send it). The caller keeps the shared picture. Lower `priority` runs first. */
+export function runSharedBandOnPool(kind: FilterKind, settings: FilterSettings, seed: number, buf: SharedArrayBuffer, width: number, a0: number, a1: number, frame: LibFrame | null, priority = 0): Promise<ImageData | null> {
+  if (failed || !ensure()) return Promise.resolve(null);
+  const job: FilterJob = { id: nextId++, kind, settings, scale: 1, seed, width, height: a1 - a0, pixels: new ArrayBuffer(0), frame, shared: { buf, offset: a0 * width * 4, length: (a1 - a0) * width * 4 } };
+  return new Promise<ImageData | null>((resolve) => { queue.push({ priority, seq: seq++, job, done: resolve }); pump(); });
 }

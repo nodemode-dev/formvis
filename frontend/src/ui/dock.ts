@@ -29,6 +29,7 @@ export const DOCK_PANELS: readonly DockPanel[] = [
   { id: 'reference', label: 'Reference', selector: 'section.cv-reference' },
   { id: 'comfyui', label: 'ComfyUI', selector: 'section.cv-comfyui' },
   { id: 'actions', label: 'Actions', selector: 'section.cv-actions-panel' },
+  { id: 'develop', label: 'Camera Raw', selector: 'section.cv-develop-dock' },
 ];
 /** The side column's panel groups (Phase 21), movable like the dock's: any panel may live in either column. */
 export const SIDE_PANELS: readonly DockPanel[] = [
@@ -50,7 +51,7 @@ const FLOATS_KEY = 'formvis.dock.floats';
 /** A header drag's target when the pointer is past both columns: the panel floats there. */
 const FLOAT = -2;
 /** The Essentials default: Navigator, Swatches and Layers shown; Timeline and History in Window. */
-const DEFAULT: DockState = { order: DOCK_PANELS.map((p) => p.id), hidden: ['generate', 'timeline', 'history', 'info', 'layer-comps', 'styles', 'gradients', 'patterns', 'shapes', 'measurement-log', 'modifier-keys', 'adjustments', 'notes', 'histogram', 'clone-source', 'reference', 'comfyui', 'actions'], side: [...DEFAULT_SIDE] };
+const DEFAULT: DockState = { order: DOCK_PANELS.map((p) => p.id), hidden: ['generate', 'timeline', 'history', 'info', 'layer-comps', 'styles', 'gradients', 'patterns', 'shapes', 'measurement-log', 'modifier-keys', 'adjustments', 'notes', 'histogram', 'clone-source', 'reference', 'comfyui', 'actions', 'develop'], side: [...DEFAULT_SIDE] };
 
 function load(): DockState {
   try {
@@ -482,6 +483,7 @@ export class Dock {
     document.removeEventListener('pointermove', this.docMove, true);
     setHidden(this.marker, true);
     this.floatHint(null, 0, '');
+    if (this.marker.parentElement !== this.dock) this.dock.appendChild(this.marker);
     if (d?.moving && d.target === FLOAT) { this.float(d.id, { x: d.x - 40, y: d.y - 12 }); return; }
     if (!d || !d.moving || d.target < 0) return;
     this.suppressClick = true;

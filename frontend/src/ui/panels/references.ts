@@ -31,10 +31,45 @@ export class ReferencePicker {
   readonly el = el('<div class="cv-refs" role="group" aria-label="References"></div>');
   private readonly list = el('<div class="cv-refs-list"></div>');
   private readonly note = el('<p class="cv-note"></p>');
+  private readonly fileList = el('<div class="cv-refs-list cv-refs-files"></div>');
+  private readonly input = el<HTMLInputElement>('<input type="file" accept="image/*" multiple hidden aria-label="Add reference pictures from files">');
+  private readonly files = new Map<string, Blob>();
+  private seq = 0;
 
   constructor(private readonly engine: Engine) {
-    this.el.append(el('<span class="cv-refs-title">References</span>'), this.list, this.note);
+    const add = el<HTMLButtonElement>('<button class="cv-btn" type="button" title="Add a picture from a file as a reference without making it a layer">Add from file</button>');
+    this.el.append(el('<span class="cv-refs-title">References</span>'), this.list, this.fileList, add, this.input, this.note);
     this.list.addEventListener('change', () => this.limit());   // once, not on every refresh
+    this.fileList.addEventListener('change', () => this.limit());
+    add.addEventListener('click', () => this.input.click());
+    this.input.addEventListener('change', () => { const picked = Array.from(this.input.files ?? []); this.input.value = ''; void this.addFiles(picked); });
+    this.fileList.addEventListener('click', (e) => {
+      const rm = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-remove]') : null, row = rm?.closest<HTMLElement>('.cv-refs-row');
+      if (!row) return;
+      this.files.delete(row.querySelector('input')?.value ?? '');
+      row.remove();
+      this.limit();
+    });
+  }
+
+  /** Pictures from files join the list as references without becoming layers; each is kept as a PNG for this session. */
+  private async addFiles(picked: File[]): Promise<void> {
+    for (const f of picked) {
+      if (!f.type.startsWith('image/') || this.files.size >= 4) continue;
+      try {
+        const bmp = await createImageBitmap(f), s = createSurface(bmp.width, bmp.height);
+        ctxOf(s).drawImage(bmp, 0, 0);
+        bmp.close();
+        const id = `file${++this.seq}`, row = el('<label class="cv-refs-row"><input type="checkbox" checked><span></span><button class="cv-btn cv-btn-ghost" type="button" data-remove title="Remove this reference" aria-label="Remove this reference">Remove</button></label>');
+        const box = row.querySelector('input') as HTMLInputElement;
+        box.value = id;
+        setText(row.querySelector('span') as HTMLElement, f.name);
+        this.files.set(id, await toPng(s));
+        this.fileList.append(row);
+      } catch { /* a file that is not a picture is skipped */ }
+    }
+    this.limit();
+    this.fileList.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
   /** Lists the document's pixel layers; those flagged as references (up to four) start chosen. */
@@ -54,11 +89,12 @@ export class ReferencePicker {
   }
 
   forFal(on: boolean): void {
-    setText(this.note, on ? 'fal models take no references: choose a ComfyUI workflow to send them.' : 'Chosen layers go to Load Image nodes titled "formvis reference" (then 1, 2...), at most four.');
-    for (const i of this.boxes()) i.disabled = on;
+    setText(this.note, on ? 'fal models take no references: choose a ComfyUI workflow to send them.' : 'Chosen references go to Load Image nodes titled "formvis reference" (then 1, 2...), at most four.');
+    if (on) for (const i of this.boxes()) i.disabled = true;
+    else this.limit();
   }
 
-  private boxes(): HTMLInputElement[] { return [...this.list.querySelectorAll<HTMLInputElement>('input[type=checkbox]')]; }
+  private boxes(): HTMLInputElement[] { return [...this.list.querySelectorAll<HTMLInputElement>('input[type=checkbox]'), ...this.fileList.querySelectorAll<HTMLInputElement>('input[type=checkbox]')]; }
 
   private limit(): void {
     const on = this.boxes().filter((i) => i.checked);
@@ -68,11 +104,12 @@ export class ReferencePicker {
   /** The chosen layers as PNGs at the document's size, with their names. */
   async chosen(): Promise<Array<{ name: string; blob: Blob }>> {
     const p = this.engine.current;
-    if (!p) return [];
     const out: Array<{ name: string; blob: Blob }> = [];
     for (const box of this.boxes().filter((i) => i.checked && !i.disabled)) {
-      const l = p.layer(box.value);
-      if (!l?.raster) continue;
+      const kept = this.files.get(box.value);
+      if (kept) { out.push({ name: box.closest('label')?.querySelector('span')?.textContent ?? box.value, blob: kept }); continue; }
+      const l = p?.layer(box.value);
+      if (!p || !l?.raster) continue;
       const s = createSurface(p.doc.width, p.doc.height), c = ctxOf(s);
       setMat(c, placement(l.transform, l.raster.width, l.raster.height));
       c.drawImage(l.raster.canvas as CanvasImageSource, 0, 0);

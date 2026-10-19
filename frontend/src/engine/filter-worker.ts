@@ -11,7 +11,7 @@ import type { FilterJob } from './filter-jobs';
  *  and pixels move as transferred buffers rather than copies. */
 onmessage = (e: MessageEvent<FilterJob>) => {
   const job = e.data;
-  const src = new ImageData(new Uint8ClampedArray(job.pixels), job.width, job.height);
+  const src = new ImageData(job.shared ? new Uint8ClampedArray(job.shared.buf, job.shared.offset, job.shared.length).slice() : new Uint8ClampedArray(job.pixels), job.width, job.height);
   const s = job.settings;
   let out = src;
   if (isGalleryKind(job.kind)) out = runGallery(job.kind, s.gallery, src, job.scale, job.frame);

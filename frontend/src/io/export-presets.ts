@@ -172,7 +172,7 @@ function keptLoss(kind: string, name: string, doc: FlatDoc): string[] {
 export function fidelityNotes(s: ExportSettings, doc: FlatDoc, clear: boolean): string[] {
   const name = s.format === 'jpg' ? 'JPEG' : s.format.toUpperCase(), out: string[] = [];
   if ((doc.depth ?? 8) > 8 && !['qoi', 'tga', 'ico'].includes(s.format)) out.push(`${name} is written at 8 bits a channel here; the ${doc.depth}-bit picture is reduced.`);
-  if (doc.mode === 'cmyk' || doc.mode === 'lab') out.push(`The ${doc.mode === 'cmyk' ? 'CMYK' : 'Lab'} picture is converted to RGB for ${name}.`);
+  if (doc.mode === 'cmyk' || doc.mode === 'lab') out.push(`The ${doc.mode === 'cmyk' ? 'CMYK' : 'Lab'} picture is converted to RGB for ${name}; colours outside the RGB gamut are clipped to its edge.`);
   if (clear && dropsAlpha(s)) out.push(`${name} keeps no transparency; clear areas are laid on ${s.format === 'pdf' && s.option === 'black' ? 'black' : s.format === 'wbmp' ? 'white and thresholded' : 'white'}.`);
   if (s.format === 'jpg' || s.format === 'avif' || (s.format === 'webp' && s.option !== 'lossless')) out.push(`${name} is lossy; written at quality ${s.quality}.`);
   if (['qoi', 'pnm', 'tga', 'ico', 'fits', 'wbmp', 'dpx'].includes(s.format) && (doc.resolution ?? 72) !== 72) out.push(`${name} has no resolution field; the document's ${doc.resolution} ppi is not recorded.`);
@@ -186,14 +186,14 @@ export function saveCopyNotes(kind: string, doc: FlatDoc, clear: boolean, qualit
   const wide = kind === 'hdr' || kind === 'exr' || kind === 'pfm', keepsInk = cmyk && (kind === 'tiff' || kind === 'jpg'), keepsLab = lab && kind === 'tiff';
   if (wide) {
     out.push(`${name} stores linear light; the ${depth}-bit picture is written as the canvas shows it${depth < 32 ? ', so nothing brighter than white is in it' : ''}.`);
-    if (cmyk || lab) out.push(`The ${cmyk ? 'CMYK' : 'Lab'} picture is converted to RGB for ${name}.`);
+    if (cmyk || lab) out.push(`The ${cmyk ? 'CMYK' : 'Lab'} picture is converted to RGB for ${name}; colours outside the RGB gamut are clipped to its edge.`);
     if (kind !== 'exr' && clear) out.push(`${name} keeps no transparency.`);
     if ((doc.resolution ?? 72) !== 72) out.push(`${name} has no resolution field; the document's ${doc.resolution} ppi is not recorded.`);
     return [...out, ...keptLoss(kind, name, doc)];
   }
   if (depth === 32 && kind === 'png') out.push('PNG is written at 16 bits, sRGB encoded; values brighter than white are clipped.');
   else if (depth > 8 && !((kind === 'png' || kind === 'tiff') && !cmyk && !lab) && !(kind === 'tiff' && (cmyk || lab) && depth === 16) && !(depth === 32 && kind === 'tiff')) out.push(`${name} is written at 8 bits a channel; the ${depth}-bit picture is reduced.`);
-  if ((cmyk && !keepsInk) || (lab && !keepsLab)) out.push(`The ${cmyk ? 'CMYK' : 'Lab'} picture is converted to RGB for ${name}.`);
+  if ((cmyk && !keepsInk) || (lab && !keepsLab)) out.push(`The ${cmyk ? 'CMYK' : 'Lab'} picture is converted to RGB for ${name}; colours outside the RGB gamut are clipped to its edge.`);
   if (clear && (kind === 'jpg' || kind === 'pdf' || keepsInk || keepsLab)) out.push(`${name} keeps no transparency here; clear areas are laid on ${cmyk ? 'paper white' : 'white'}.`);
   if (kind === 'jpg' || kind === 'avif' || (kind === 'webp' && quality < 1)) out.push(`${name} is lossy; written at quality ${Math.round(quality * 100)}.`);
   if (cmyk && (kind === 'jpg' || kind === 'tiff')) out.push(`${name} CMYK files carry no File Info or AI label here.`);

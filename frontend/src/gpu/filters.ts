@@ -2,7 +2,7 @@ import type { GpuFilterRunner, GpuSmudge, LensGatherInput } from '../engine/gpu-
 import type { GpuEffectJob, GpuEffectRunner } from '../engine/gpu-effects';
 import type { Surface } from '../engine/surface';
 import type { Rect } from '../engine/types';
-import { BAND_CENTER, BAND_WIDTH, HSL_BANDS, bandOf, buildCurveLut, buildParametricLut, calibrationActive, calibrationOf, colorActive, curvesActive, gradingActive, gradingOf, hslToRgb, parametricActive, parametricOf, pointColorActive, pointColorOf, rgbToHsl, toneProcessOf, vignetteShapeOf, type DevelopState } from '../engine/develop';
+import { BAND_CENTER, BAND_WIDTH, HSL_BANDS, bandOf, buildCurveLut, buildParametricLut, calibrationActive, calibrationOf, colorActive, curvesActive, gradingActive, gradingOf, hslToRgb, opticsOf, opticsVignetteOnly, parametricActive, parametricOf, pointColorActive, pointColorOf, rgbToHsl, toneProcessOf, vignetteShapeOf, type DevelopState } from '../engine/develop';
 import { threeBoxWidths } from '../engine/filters';
 import { frameTrace } from './frame-trace';
 
@@ -47,6 +47,57 @@ void main() {
   if (p.a * 255.0 >= 0.5) soft = floor(p.rgb / p.a * 255.0 + 0.5);
   vec3 r = d;
   for (int i = 0; i < 3; i++) { float diff = d[i] - soft[i]; if (abs(diff) >= u_thr) r[i] = floor(clamp(d[i] + diff * u_gain, 0.0, 255.0) + 0.5); }
+  o = vec4(r / 255.0, s.a);
+}`;
+
+/** Box Blur (boxMean): one axis of the mean over the window, divided by the pixels the window holds inside the image; two axes in turn equal the square's mean. */
+const FS_BOXMEAN = `uniform int u_r; uniform ivec2 u_dir;
+void main() {
+  ivec2 c = ivec2(gl_FragCoord.xy), sz = textureSize(t0, 0); bool horiz = u_dir.x != 0;
+  int n = horiz ? sz.x : sz.y, p = horiz ? c.x : c.y, lo = max(0, p - u_r), hi = min(n, p + u_r + 1); vec4 s = vec4(0.0);
+  for (int k = lo; k < hi; k++) s += texelFetch(t0, horiz ? ivec2(k, c.y) : ivec2(c.x, k), 0);
+  o = s / float(hi - lo);
+}`;
+
+/** Motion Blur (motionBlur): the mean of u_n bilinear taps of the premultiplied floats along a line of u_dist pixels, taps outside the image zero. */
+const FS_MOTION = `uniform vec2 u_u; uniform float u_dist; uniform int u_n;
+void main() {
+  ivec2 c = ivec2(gl_FragCoord.xy), sz = textureSize(t0, 0); vec4 acc = vec4(0.0);
+  for (int s = 0; s < u_n; s++) {
+    float t = -u_dist * 0.5 + u_dist * float(s) / float(u_n - 1);
+    vec2 q = vec2(c) + u_u * t; ivec2 q0 = ivec2(floor(q)); vec2 f = q - vec2(q0);
+    for (int j = 0; j < 2; j++) for (int i = 0; i < 2; i++) {
+      ivec2 p = q0 + ivec2(i, j);
+      if (p.x < 0 || p.y < 0 || p.x >= sz.x || p.y >= sz.y) continue;
+      acc += texelFetch(t0, p, 0) * ((i == 1 ? f.x : 1.0 - f.x) * (j == 1 ? f.y : 1.0 - f.y));
+    }
+  }
+  o = acc / float(u_n);
+}`;
+
+/** Find Edges (findEdgesImage): the Sobel gradient of each colour byte, 255 less half its length; alpha kept. */
+const FS_FINDEDGES = `float at(ivec2 c, int ch) { ivec2 sz = textureSize(t0, 0); return floor(texelFetch(t0, clamp(c, ivec2(0), sz - 1), 0)[ch] * 255.0 + 0.5); }
+void main() {
+  ivec2 c = ivec2(gl_FragCoord.xy); vec4 s = texelFetch(t0, c, 0); vec3 r;
+  for (int ch = 0; ch < 3; ch++) {
+    float gx = at(c + ivec2(1, -1), ch) + 2.0 * at(c + ivec2(1, 0), ch) + at(c + ivec2(1, 1), ch) - at(c + ivec2(-1, -1), ch) - 2.0 * at(c + ivec2(-1, 0), ch) - at(c + ivec2(-1, 1), ch);
+    float gy = at(c + ivec2(-1, 1), ch) + 2.0 * at(c + ivec2(0, 1), ch) + at(c + ivec2(1, 1), ch) - at(c + ivec2(-1, -1), ch) - 2.0 * at(c + ivec2(0, -1), ch) - at(c + ivec2(1, -1), ch);
+    r[ch] = floor(clamp(255.0 - length(vec2(gx, gy)) * 0.5, 0.0, 255.0) + 0.5);
+  }
+  o = vec4(r / 255.0, s.a);
+}`;
+
+/** Emboss (embossImage): mid grey plus u_k times the bilinear byte value at the near offset less the far one, per colour channel; alpha kept. */
+const FS_EMBOSS = `uniform ivec2 u_ni, u_fi; uniform vec2 u_nt, u_ft; uniform float u_k;
+float tap(ivec2 c, int ch, ivec2 oi, vec2 t) {
+  ivec2 sz = textureSize(t0, 0), a = clamp(c + oi, ivec2(0), sz - 1), b = clamp(c + oi + 1, ivec2(0), sz - 1);
+  float v00 = floor(texelFetch(t0, ivec2(a.x, a.y), 0)[ch] * 255.0 + 0.5), v10 = floor(texelFetch(t0, ivec2(b.x, a.y), 0)[ch] * 255.0 + 0.5);
+  float v01 = floor(texelFetch(t0, ivec2(a.x, b.y), 0)[ch] * 255.0 + 0.5), v11 = floor(texelFetch(t0, ivec2(b.x, b.y), 0)[ch] * 255.0 + 0.5);
+  return (v00 * (1.0 - t.x) + v10 * t.x) * (1.0 - t.y) + (v01 * (1.0 - t.x) + v11 * t.x) * t.y;
+}
+void main() {
+  ivec2 c = ivec2(gl_FragCoord.xy); vec4 s = texelFetch(t0, c, 0); vec3 r;
+  for (int ch = 0; ch < 3; ch++) r[ch] = floor(clamp(128.0 + (tap(c, ch, u_ni, u_nt) - tap(c, ch, u_fi, u_ft)) * u_k, 0.0, 255.0) + 0.5);
   o = vec4(r / 255.0, s.a);
 }`;
 
@@ -124,6 +175,7 @@ const FS_DEVELOP = `${MIX}
 uniform uint u_seed; uniform float u_offset, u_exp, u_cont, u_high, u_shad, u_white, u_black, u_temp, u_tint, u_vib, u_sat, u_dehz, u_vig, u_grain;
 uniform bool u_hasColor, u_hasCurve, u_hasPara, u_colorize; uniform vec3 u_master; uniform vec3 u_vigp; uniform vec3 u_band[8]; uniform vec2 u_bandc[8];
 uniform vec2 u_tp[4]; uniform bool u_hasPc, u_hasCal, u_hasGrade; uniform vec3 u_pc0, u_pcw, u_pcd, u_calh, u_cals, u_gts, u_gtm, u_gth, u_gtg; uniform vec4 u_gl; uniform vec2 u_gpv; uniform float u_calt;
+uniform bool u_hasOv; uniform vec4 u_ov;
 float c01(float x) { return clamp(x, 0.0, 1.0); }
 vec3 c01(vec3 x) { return clamp(x, 0.0, 1.0); }
 float sstep(float e0, float e1, float x) { float t = c01((x - e0) / (e1 - e0)); return t * t * (3.0 - 2.0 * t); }
@@ -263,6 +315,14 @@ void main() {
       v = n + (L - lumaOf(n) + lift);
     }
     v = floor(c01(v) * 255.0 + 0.5) / 255.0;
+  }
+  if (u_hasOv) {
+    v = floor(c01(v) * 255.0 + 0.5) / 255.0;
+    float ocx = (float(sz.x) - 1.0) / 2.0, ocy = (float(sz.y) - 1.0) / 2.0, orm = max(1e-6, length(vec2(ocx, ocy))), oro = u_ov.w;
+    float osx = max(1.0, ocx * (1.0 - oro) + orm * oro), osy = max(1.0, ocy * (1.0 - oro) + orm * oro), ocorner = length(vec2(ocx / osx, ocy / osy));
+    if (ocorner == 0.0) ocorner = 1.0;
+    float orr = length(vec2((float(c.x) - ocx) / osx, (float(c.y) - ocy) / osy)) / ocorner, ofall = sstep(u_ov.x, u_ov.y, orr) * u_ov.z;
+    v = ofall > 0.0 ? v + (1.0 - v) * ofall : v * (1.0 + ofall);
   }
   o = vec4(v, s.a);
 }`;
@@ -580,6 +640,57 @@ export class GlFilters implements GpuFilterRunner, GpuEffectRunner {
     });
   }
 
+  /** `src` premultiplied into float textures a and b, `chain` leaving its answer in one of them, then back to straight bytes. */
+  private viaFloat(src: ImageData, chain: (a: Tex, b: Tex) => Tex): ImageData | null {
+    const { width: w, height: h } = src;
+    return this.guard(w, h, () => {
+      const input = this.tex(w, h, 'u8', new Uint8Array(src.data.buffer, src.data.byteOffset, src.data.byteLength)), out = this.tex(w, h, 'u8');
+      const a = this.tex(w, h, 'float'), b = this.tex(w, h, 'float'), res = new ImageData(w, h);
+      try {
+        this.pass(this.program('premul', FS_PREMUL), a, [input]);
+        this.pass(this.program('unpremul', FS_UNPREMUL), out, [chain(a, b)]);
+        this.readBack(out, new Uint8Array(res.data.buffer));
+      } finally { this.free(input, out, a, b); }
+      return res;
+    });
+  }
+
+  boxBlur(src: ImageData, radius: number): ImageData | null {
+    const r = Math.round(radius);
+    if (r < 1) return new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
+    return this.viaFloat(src, (a, b) => {
+      const box = this.program('boxMean', FS_BOXMEAN);
+      let from = a, to = b;
+      for (const dir of [[1, 0], [0, 1]] as const) {
+        this.pass(box, to, [from], (gl, loc) => { gl.uniform1i(loc('u_r'), r); gl.uniform2i(loc('u_dir'), dir[0], dir[1]); });
+        [from, to] = [to, from];
+      }
+      return from;
+    });
+  }
+
+  motionBlur(src: ImageData, angleDeg: number, distance: number): ImageData | null {
+    const theta = (angleDeg * Math.PI) / 180, count = Math.max(2, Math.min(96, Math.ceil(distance) + 1));
+    return this.viaFloat(src, (a, b) => {
+      this.pass(this.program('motion', FS_MOTION), b, [a], (gl, loc) => {
+        gl.uniform2f(loc('u_u'), Math.cos(theta), -Math.sin(theta)); gl.uniform1f(loc('u_dist'), distance); gl.uniform1i(loc('u_n'), count);
+      });
+      return b;
+    });
+  }
+
+  findEdges(src: ImageData): ImageData | null { return this.single('findEdges', FS_FINDEDGES, src); }
+
+  emboss(src: ImageData, angle: number, height: number, amount: number): ImageData | null {
+    const t = (angle * Math.PI) / 180, lx = Math.cos(t) * height, ly = -Math.sin(t) * height;
+    const near = [-lx, -ly].map((v) => [Math.floor(v), v - Math.floor(v)]), far = [lx, ly].map((v) => [Math.floor(v), v - Math.floor(v)]);
+    return this.single('emboss', FS_EMBOSS, src, (gl, loc) => {
+      gl.uniform2i(loc('u_ni'), near[0][0], near[1][0]); gl.uniform2f(loc('u_nt'), near[0][1], near[1][1]);
+      gl.uniform2i(loc('u_fi'), far[0][0], far[1][0]); gl.uniform2f(loc('u_ft'), far[0][1], far[1][1]);
+      gl.uniform1f(loc('u_k'), amount / 100);
+    });
+  }
+
   /** The silhouette canvas as an RGBA8 texture, straight alpha, row 0 the canvas's top row. */
   private canvasTex(c: Surface): Tex {
     const gl = this.gl, t = gl.createTexture()!;
@@ -817,6 +928,9 @@ export class GlFilters implements GpuFilterRunner, GpuEffectRunner {
         gl.uniform2fv(loc('u_tp'), [tp.shadEdge, tp.shadGain, tp.highLo, tp.highGain, tp.whiteLo, tp.whiteGain, tp.blackEdge, tp.blackGain]);
         const pc = pointColorOf(state), hasPc = pointColorActive(pc), grade = gradingOf(state), hasGrade = gradingActive(grade), cal = calibrationOf(state), hasCal = calibrationActive(cal);
         gl.uniform1i(loc('u_hasPc'), hasPc ? 1 : 0); gl.uniform1i(loc('u_hasCal'), hasCal ? 1 : 0); gl.uniform1i(loc('u_hasGrade'), hasGrade ? 1 : 0);
+        const op = opticsOf(state), hasOv = opticsVignetteOnly(op), ostart = (op.midpoint / 100) * 0.9;
+        gl.uniform1i(loc('u_hasOv'), hasOv ? 1 : 0);
+        if (hasOv) gl.uniform4f(loc('u_ov'), ostart, ostart + Math.max(0.002, (1 - ostart) * ((op.feather ?? 50) / 50)), (op.vignetting / 100) * 0.8, (op.roundness ?? 100) / 100);
         if (hasPc) {
           const n = parseInt(pc.color.slice(1), 16), [h0, s0, l0] = rgbToHsl((n >> 16) & 255, (n >> 8) & 255, n & 255), reach = Math.max(0.05, pc.range / 100);
           gl.uniform3f(loc('u_pc0'), h0, s0, l0); gl.uniform3f(loc('u_pcw'), 90 * reach, 0.6 * reach + 0.1, 0.6 * reach + 0.1); gl.uniform3f(loc('u_pcd'), pc.h, pc.s, pc.l);

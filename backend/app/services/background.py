@@ -115,10 +115,73 @@ def _lite(image: Image.Image) -> Image.Image:
     return Image.fromarray(soft, "L")
 
 
-def remove(data: bytes, method: str = "auto") -> tuple[bytes, str]:
+def matting_dir():
+    from app.localgen.paths import MODELS_DIR
+
+    return MODELS_DIR / "matting"
+
+
+def matting_models() -> dict:
+    """The ONNX files the person put in the matting folder, each with whether this engine can run it and, when not, why."""
+    folder, found = matting_dir(), []
+    if folder.is_dir():
+        for path in sorted(folder.iterdir(), key=lambda p: p.name.lower()):
+            if not path.is_file() or path.name.startswith(".") or path.suffix.lower() not in (".onnx", ".pth", ".pt", ".safetensors", ".ckpt"):
+                continue
+            note = "" if path.suffix.lower() == ".onnx" else "Not an ONNX file: convert the model to .onnx to use it here."
+            found.append({"file": path.name, "loadable": not note, "note": note})
+    return {"folder": str(folder), "models": found}
+
+
+def _matting_session(name: str):
+    from pathlib import Path
+
+    from app.localgen import sessions
+    from app.localgen.paths import session as onnx_session
+
+    if not name or Path(name).name != name or name.startswith("."):
+        raise BackgroundError("Choose a model file from the matting folder.")
+    path = matting_dir() / name
+    if not path.is_file():
+        raise BackgroundError(f"{name} is not in the matting folder.")
+    if path.suffix.lower() != ".onnx":
+        raise BackgroundError(f"{name} is not an ONNX file; this engine runs ONNX models only. Convert it to .onnx and put that file in the matting folder.")
+    try:
+        session = sessions.get(f"matting:{name}:{path.stat().st_mtime_ns}", lambda: onnx_session(path))
+        entry = session.get_inputs()[0]
+    except Exception as err:
+        raise BackgroundError(f"{name} could not be loaded as an ONNX model ({str(err).splitlines()[0][:160] if str(err) else 'unreadable'}).") from err
+    shape = list(entry.shape)
+    if len(shape) != 4 or shape[1] != 3:
+        raise BackgroundError(f"{name} does not take a picture as 1 x 3 x H x W, so it is not a matting model this engine can run.")
+    return session, entry.name, shape
+
+
+def _file_matte(image: Image.Image, name: str) -> Image.Image:
+    """A chosen matting model (BiRefNet, RMBG and the like exported to ONNX): the picture at the model's own size
+    (1024 when it takes any), ImageNet-normalised, and the first output read as the subject's matte."""
+    import numpy as np
+
+    session, input_name, shape = _matting_session(name)
+    h, w = (int(d) if isinstance(d, int) else 1024 for d in shape[2:])
+    x = np.asarray(image.convert("RGB").resize((w, h), Image.Resampling.BICUBIC), np.float32) / 255.0
+    x = ((x - np.array((0.485, 0.456, 0.406), np.float32)) / np.array((0.229, 0.224, 0.225), np.float32)).transpose(2, 0, 1)[None].astype(np.float32)
+    try:
+        out = np.asarray(session.run(None, {input_name: x})[0], np.float32)
+    except Exception as err:
+        raise BackgroundError(f"{name} did not run on this picture ({str(err).splitlines()[0][:160] if str(err) else 'error'}).") from err
+    out = np.squeeze(out)
+    if out.ndim != 2 or not np.isfinite(out).all():
+        raise BackgroundError(f"{name} does not return a single-channel matte, so it is not a matting model this engine can use.")
+    if out.min() < 0.0 or out.max() > 1.0:
+        out = 1.0 / (1.0 + np.exp(-np.clip(out, -30.0, 30.0)))
+    return Image.fromarray((out * 255.0 + 0.5).astype("uint8"), "L").resize(image.size, Image.Resampling.BICUBIC)
+
+
+def remove(data: bytes, method: str = "auto", matting: str = "") -> tuple[bytes, str]:
     report = available()
-    engine = report["default"] if method == "auto" else method
-    if engine not in ("ml", "lite") or not report[engine]:
+    engine = "file" if matting else (report["default"] if method == "auto" else method)
+    if engine not in ("ml", "lite", "file") or (engine != "file" and not report[engine]):
         raise Unavailable("This background engine is not installed. The engine needs ONNX Runtime (./formvis install); the lightweight engine ships with the base install.")
     try:
         with Image.open(io.BytesIO(data)) as source:
@@ -128,7 +191,7 @@ def remove(data: bytes, method: str = "auto") -> tuple[bytes, str]:
     width, height = image.size
     if width * height > config.MAX_PIXELS:
         raise BackgroundError(f"The image exceeds the {config.MAX_PIXELS // 1_000_000}-megapixel limit.")
-    mask = _ml(image) if engine == "ml" else _lite(image)
+    mask = _file_matte(image, matting) if engine == "file" else _ml(image) if engine == "ml" else _lite(image)
     if mask.size != (width, height):
         mask = mask.resize((width, height), Image.Resampling.BILINEAR)
     buffer = io.BytesIO()

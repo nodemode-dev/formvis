@@ -16,7 +16,7 @@ Generated from the engine's catalogue by `./formvis agents sync`; do not edit by
 - History: `undo`, `redo`
 - Files without the window, and jobs: `file_info`, `convert_file`, `jobs_list`, `jobs_cancel`
 - The window itself: `ui_inspect`, `ui_state`, `ui_screenshot`, `ui_menu_list`, `ui_menu_invoke`, `ui_set`, `ui_dialog`, `ui_pointer`, `ui_key`, `ui_window`, `control_call`, `file_roots`
-- Other: `close_document`, `ping`, `list_plugins`, `select_feather`, `select_grow`, `select_point`, `timeline_get`, `timeline_create`, `timeline_delete`, `timeline_set`, `timeline_go_to`, `timeline_clip`, `timeline_split`, `timeline_keyframe`, `timeline_transition`, `timeline_frame_image`, `timeline_render`, `command_job`, `select_mask`, `list_settings`, `list_fonts`, `set_settings`, `boxes_list`, `boxes_add`, `boxes_set`, `boxes_remove`, `boxes_from_selection`, `boxes_clear`, `sample_box`, `frequency_separation`, `sample_depth`, `depth_edit`, `set_crop`, `export_mask`, `list_recipes`, `set_active_layer`, `select_color`, `select_shape`, `select_range`, `sample_mean_color`, `align_layers`, `group_layers`, `set_group`, `set_mask`, `set_text`, `list_history`, `take_snapshot`, `restore_snapshot`, `delete_snapshot`, `extend_canvas`, `export_layer`, `read_log`, `list_brush_tips`, `set_brush`, `add_filter`, `set_filter`, `apply_preset`, `depth_from_layer`, `match_edges`, `realism_pass`, `compare`, `set_status`, `ailabel_add`, `ailabel_remove`, `ailabel_info`, `film_looks`, `film_apply_look`, `film_add_point`, `film_copy_points`, `film_paste_points`, `glb_place`, `glb_edit`, `glb_info`
+- Other: `close_document`, `ping`, `list_plugins`, `select_feather`, `select_grow`, `select_point`, `timeline_get`, `timeline_create`, `timeline_delete`, `timeline_set`, `timeline_go_to`, `timeline_clip`, `timeline_split`, `timeline_keyframe`, `timeline_transition`, `timeline_frame_image`, `timeline_render`, `command_job`, `select_mask`, `list_settings`, `list_fonts`, `set_settings`, `boxes_list`, `boxes_add`, `boxes_set`, `boxes_remove`, `boxes_from_selection`, `boxes_clear`, `sample_box`, `frequency_separation`, `sample_depth`, `depth_edit`, `set_crop`, `export_mask`, `list_recipes`, `set_active_layer`, `select_color`, `select_shape`, `select_range`, `sample_mean_color`, `align_layers`, `group_layers`, `set_group`, `set_mask`, `set_text`, `list_history`, `take_snapshot`, `restore_snapshot`, `delete_snapshot`, `extend_canvas`, `export_layer`, `read_log`, `list_brush_tips`, `set_brush`, `add_filter`, `set_filter`, `apply_preset`, `depth_from_layer`, `select_by_depth`, `match_edges`, `realism_pass`, `compare`, `set_status`, `ailabel_add`, `ailabel_remove`, `ailabel_info`, `film_looks`, `film_apply_look`, `film_add_point`, `film_copy_points`, `film_paste_points`, `glb_place`, `glb_edit`, `glb_info`
 
 ## get_document
 
@@ -1117,6 +1117,16 @@ Applies a named adjustment preset: the built-in grain presets by film speed (iso
 Reads the depth of one layer alone with the local Depth Anything V2 Small model and adds it as a grey layer named Depth Map (near bright, far dark). Waits until the model has finished and the layer exists, then reports its id; fails with how to download the model when it is missing. Use when the depth should come from one layer alone rather than the whole picture, and you need to know it finished.
 
 - `id`: string; A pixel layer id from get_document; the active layer when left out.
+
+## select_by_depth
+
+Selects the pixels between a far and a near depth of the document's shared depth map (read once with the local Depth Anything V2 Small model and kept with the document), softened by feather, and combines the result with the selection. Waits until the depth is read; fails with how to download the model when it is missing. Use when the foreground, the background or a slice of distance should be selected, or an edit limited to it.
+
+- `near`: number; default 100; The nearest depth to select, percent of the depth range (100 is nearest).
+- `far`: number; default 60; The farthest depth to select, percent of the depth range (0 is farthest).
+- `feather`: number; default 10; Percent of the range over which the edge fades out past each end.
+- `combine`: string (new | add | subtract | intersect); default "new"; How the result meets the current selection.
+- `quality`: string (standard | detail); default "standard"; detail reads the depth again at a larger size for finer edges; slower.
 
 ## match_edges
 

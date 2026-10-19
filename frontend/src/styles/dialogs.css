@@ -3,8 +3,7 @@
 #overlay-root > .cv-scrim.cv-scrim-through { pointer-events: none; background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
 .cv-scrim.cv-scrim-through .cv-dialog { pointer-events: auto; }
 .cv-scrim.cv-scrim-side { justify-content: flex-end; padding-right: 16px; }
-.cv-scrim.cv-scrim-docked { inset: var(--cv-titlebar-h) 0 var(--cv-status-h) 0; align-items: stretch; justify-content: flex-end; padding: 0; background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
-.cv-scrim.cv-scrim-docked .cv-dialog { max-height: none; border-radius: 0; border-width: 0 0 0 1px; }
+.cv-scrim.cv-scrim-hosted { display: none; }
 /* A dialog is at least its set width and grows to keep its button row on one line (1.86.0); only a window too narrow
    for the row wraps it. The head and body are size-contained so long text never widens the frame, only the buttons do. */
 .cv-dialog { width: fit-content; min-width: min(var(--cv-dialog-w, 440px), calc(100vw - 48px)); max-width: calc(100vw - 48px); max-height: calc(100vh - 64px); display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: var(--radius-lg); box-shadow: var(--shadow-window); }

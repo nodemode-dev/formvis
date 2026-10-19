@@ -278,8 +278,12 @@ export function detailActive(d: DetailState): boolean {
  *  Colour Grading. The stages that need neighbours or a resample (noise, dark channel dehaze, clarity, texture, sharpening,
  *  optics, geometry) and the vignette's extras are all at their defaults. The GPU runs only these. */
 export function developPerPixelOnly(s: DevelopState): boolean {
-  return !darkDehazeOn(s) && !vignetteExtras(s) && !noiseActive(noiseOf(s)) && !detailActive(s.detail) && !opticsActive(opticsOf(s)) && !geometryActive(geometryOf(s));
+  const o = opticsOf(s);
+  return !darkDehazeOn(s) && !vignetteExtras(s) && !noiseActive(noiseOf(s)) && !detailActive(s.detail) && (!opticsActive(o) || opticsVignetteOnly(o)) && !geometryActive(geometryOf(s));
 }
+
+/** Optics with only the lens vignette set: a per-pixel stage the GPU pass runs after Colour Grading. */
+export const opticsVignetteOnly = (o: OpticsState): boolean => o.vignetting !== 0 && o.distortion === 0 && o.chromatic === 0 && (o.defringe ?? 0) === 0 && o.removeCA !== true;
 
 export function stateActive(s: DevelopState): boolean {
   return toneActive(s.tone) || colorActive(s.color) || curvesActive(s.curves) || detailActive(s.detail) || noiseActive(noiseOf(s))

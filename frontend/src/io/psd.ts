@@ -13,7 +13,7 @@ import { addIccResource, addPathResources, addResourceBytes, block as resourceBl
 import { addExtraChannels, readExtraChannels, readIccProfile } from './psd-channels';
 import { readPsdChannelMode, writeMultichannelPsd } from './psd-modes';
 import { readChannelRestrictions } from './psd-blend';
-import { conformLevels, edgeContourKeys, readBevelDetails, type BevelDetail } from './psd-raw';
+import { conformLevels, edgeContourKeys, patternFillItems, readBevelDetails, readPatternFills, type BevelDetail, type PatternFillRaw } from './psd-raw';
 import { ADJUSTMENT_KEY, SMART_STACK_KEY, addLayerBlocks, adjustmentFromBlock, readLayerBlocks, type OwnBlock } from './psd-own';
 import { vectorCoverage } from '../engine/vector-mask';
 import { fromBase64, toBase64 } from './icc-read';
@@ -237,19 +237,13 @@ function psdPattern(id: ID, patterns: PatternInfo[]): PatternInfo | null {
 }
 
 /** A fill layer's content in the PSD format's terms (1.66.0): a colour, a gradient with its colour and opacity stops,
- *  or a pattern in the PSD's patterns; what the file keeps that the reader does not (a pattern fill's scale and
- *  angle) is noted. */
-function toPsdFill(c: FillContent, patterns: PatternInfo[], name: string, notes: string[]): VectorContent | null {
+ *  or a pattern in the PSD's patterns; a pattern fill's link flag, angle and scale are added to the bytes afterwards. */
+function toPsdFill(c: FillContent, patterns: PatternInfo[]): VectorContent | null {
   if (c.kind === 'solid') return { type: 'color', color: { ...c.color } };
   if (c.kind === 'gradient') return { type: 'solid', name: 'formvis', colorStops: c.stops.map((s) => ({ color: { ...s.color }, location: s.at, midpoint: 0.5 })), opacityStops: c.stops.map((s) => ({ opacity: s.alpha, location: s.at, midpoint: 0.5 })),
     style: c.style, angle: c.angle, scale: c.scale, reverse: c.reverse, dither: c.dither, align: c.align, offset: { ...c.offset } };
-  const square = Math.abs(c.angle % 90) < 1e-6, quarter = square ? (((Math.round(c.angle / 90) % 4) + 4) % 4) : 0;
-  const scaled = c.scale > 0 && (c.scale !== 1 || quarter !== 0);
-  const info = scaled ? scaledPsdPattern(c.pattern, c.scale, patterns, quarter) : psdPattern(c.pattern, patterns);
+  const info = psdPattern(c.pattern, patterns);
   if (!info) return null;
-  if (!square) notes.push(`"${name}"'s pattern angle of ${Math.round(c.angle * 100) / 100} degrees is not written to the PSD (the library that writes it has no angle field for a pattern fill, and only quarter turns can be turned into the tile); it draws the pattern unturned.`);
-  else if (c.scale !== 1 && !scaled) notes.push(`"${name}"'s pattern scale is not written to the PSD; it draws the pattern at 100 percent.`);
-  if (!c.link) notes.push(`"${name}"'s pattern goes linked with the layer, the format's default; the library's writer rejects the unlink flag (its Lnkd field is typed as an integer, so a boolean cannot be written).`);
   return { type: 'pattern', name: info.name, id: info.id, phase: { ...c.phase } };
 }
 
@@ -272,6 +266,8 @@ function scaledPsdPattern(id: ID, scale: number, patterns: PatternInfo[], quarte
   }
   return info;
 }
+
+const withPatternRaw = (f: FillContent | null, raw: Partial<PatternFillRaw> | undefined): FillContent | null => (f?.kind === 'pattern' && raw ? { ...f, ...(raw.link !== undefined ? { link: raw.link } : {}), ...(raw.angle !== undefined ? { angle: raw.angle } : {}), ...(raw.scale !== undefined ? { scale: raw.scale } : {}) } : f);
 
 /** A PSD fill layer's content as a formvis fill (1.66.0): its pattern registered from the file's patterns; null,
  *  noted, for a noise gradient or a pattern the file does not include. */
@@ -777,7 +773,7 @@ export async function readPsdFile(file: File, siblings: readonly File[] = []): P
     if (!links.has(g)) links.set(g, uid());
     return { link: links.get(g) as ID };
   };
-  const closedGroups: ID[] = [], restrictions = readChannelRestrictions(buffer, psd), bevels = readBevelDetails(buffer, psd), ownStacks = readLayerBlocks(buffer, psd, SMART_STACK_KEY), ownAdjusts = readLayerBlocks(buffer, psd, ADJUSTMENT_KEY);
+  const closedGroups: ID[] = [], restrictions = readChannelRestrictions(buffer, psd), bevels = readBevelDetails(buffer, psd), patternFills = readPatternFills(buffer, psd), ownStacks = readLayerBlocks(buffer, psd, SMART_STACK_KEY), ownAdjusts = readLayerBlocks(buffer, psd, ADJUSTMENT_KEY);
   const maskOf =(mk: PsdLayer['mask']): Layer['mask'] | null => {
     if (!mk?.canvas || !mk.canvas.width || !mk.canvas.height) return null;
     // PSD masks are grey; formvis's are white with the level in alpha.
@@ -839,7 +835,7 @@ export async function readPsdFile(file: File, siblings: readonly File[] = []): P
       // A PSD fill layer (a colour, a gradient or a pattern, with no shape's path) opens as formvis's (1.66.0).
       // A shape filled with a gradient or a pattern and not stroked is a fill layer behind a vector mask.
       const shapeFill = !!pl.vectorMask?.paths?.length && (pl.vectorFill?.type === 'solid' || pl.vectorFill?.type === 'pattern') && !pl.vectorStroke?.strokeEnabled && pl.vectorStroke?.fillEnabled !== false;
-      const fillSpec = !adj && pl.vectorFill && ((!pl.vectorMask?.paths?.length && !pl.vectorStroke) || shapeFill) ? fromPsdFill(pl.vectorFill, psd.patterns, name, notes) : null;
+      const fillSpec = !adj && pl.vectorFill && ((!pl.vectorMask?.paths?.length && !pl.vectorStroke) || shapeFill) ? withPatternRaw(fromPsdFill(pl.vectorFill, psd.patterns, name, notes), patternFills.get(pl)) : null;
       const emptyPixels = !adj && !fillSpec && (!pl.canvas || !pl.canvas.width || !pl.canvas.height);
       const drawn = fillSpec && (shapeFill || !pl.canvas || !pl.canvas.width || !pl.canvas.height) ? renderFill(fillSpec, doc.width, doc.height, { x: 0, y: 0, w: doc.width, h: doc.height }) : null;
       if (fillSpec && !drawn && (!pl.canvas || !pl.canvas.width || !pl.canvas.height)) continue;
@@ -1071,7 +1067,7 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
   const multi = writeMultichannelPsd(doc, psb);
   if (multi) return multi;
   const { writePsd } = await import('ag-psd');
-  const notes: string[] = [], linked: LinkedFile[] = [], sources = new Map<ID, { data: Uint8Array; name: string; type: string }>(), psdPatterns: PatternInfo[] = [], own = new Map<PsdLayer, OwnBlock>(), edgeKeys = new Set<PsdLayer>();
+  const notes: string[] = [], linked: LinkedFile[] = [], sources = new Map<ID, { data: Uint8Array; name: string; type: string }>(), psdPatterns: PatternInfo[] = [], own = new Map<PsdLayer, OwnBlock>(), edgeKeys = new Set<PsdLayer>(), patternRaw = new Map<PsdLayer, PatternFillRaw>();
   for (const l of doc.layers) if (l.smart) sources.set(l.id, await embedOf(l, notes));
   /** A raster drawn through `t` into a box aligned to the canvas; null when it covers nothing. */
   const placed = (r: Raster, t: Layer['transform']): { c: HTMLCanvasElement; x: number; y: number } | null => {
@@ -1213,8 +1209,9 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
     } else if (vm && (v || l.fillContent)) notes.push(`"${l.name}" is a shape or fill layer, whose vector mask the PSD keeps as its own outline; the separate vector mask is left out.`);
     if (l.fillContent) {
       // A fill layer goes as a PSD one (1.66.0): its content beside its pixels, drawn again from it on reading.
-      const vf = toPsdFill(l.fillContent, psdPatterns, l.name, notes);
+      const vf = toPsdFill(l.fillContent, psdPatterns);
       if (vf) out.vectorFill = vf;
+      if (vf?.type === 'pattern' && l.fillContent.kind === 'pattern') patternRaw.set(out, { link: l.fillContent.link !== false, angle: l.fillContent.angle, scale: l.fillContent.scale > 0 ? l.fillContent.scale : 1 });
     }
     maskOnto(l, out);
     return out;
@@ -1283,5 +1280,5 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
   if (alphas.length > 50) notes.push('A PSD holds at most 56 channels; the alpha channels after the first 50 are left out.');
   const exif = metaWritable(doc.meta) ? exifBlockOf(doc.meta) : null;
   const withExif = (bytes: ArrayBuffer): ArrayBuffer => (exif && exif.length <= 64000 ? addResourceBytes(bytes, resourceBlock(1058, '', exif)) : bytes);   // image resource 1058, the Exif block
-  return { bytes: withExif(addExtraChannels(addIccResource(addPathResources(addLayerBlocks(edgeContourKeys(conformLevels(writePsd(psd, { generateThumbnail: maximize, psb })), psd, edgeKeys), psd.children ?? [], own), paths, doc.width, doc.height), icc), alphas)), notes };
+  return { bytes: withExif(addExtraChannels(addIccResource(addPathResources(addLayerBlocks(patternFillItems(edgeContourKeys(conformLevels(writePsd(psd, { generateThumbnail: maximize, psb })), psd, edgeKeys), psd, patternRaw), psd.children ?? [], own), paths, doc.width, doc.height), icc), alphas)), notes };
 }

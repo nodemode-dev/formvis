@@ -205,9 +205,9 @@ export async function relightSplit(image: Blob, width: number, height: number, e
     bgDepth, bgNormals, focal: metric ? head.focal ?? null : null, thickness: head.thickness ?? null };
 }
 
-export async function localDepthValues(image: Blob, width: number, height: number): Promise<Float32Array> {
+export async function localDepthValues(image: Blob, width: number, height: number, detail = false): Promise<Float32Array> {
   const form = new FormData(); form.append('image', image, 'image.png');
-  const r = await ask(`/depth/local?fmt=f32&width=${width}&height=${height}`, { method: 'POST', headers: { 'x-formvis-local': '1' }, body: form });
+  const r = await ask(`/depth/local?fmt=f32&width=${width}&height=${height}${detail ? '&quality=detail' : ''}`, { method: 'POST', headers: { 'x-formvis-local': '1' }, body: form });
   const data = new Float32Array(await r.arrayBuffer());
   if (data.length !== width * height) throw new Error('The depth did not match the picture.');
   return data;

@@ -9,15 +9,20 @@ router = APIRouter(tags=["ops"])
 
 
 @router.post("/remove-background")
-def remove_background(file: UploadFile = File(...), method: str = Form("auto")) -> Response:
+def remove_background(file: UploadFile = File(...), method: str = Form("auto"), matting: str = Form("")) -> Response:
     data = file.file.read()
     try:
-        png, used = background.remove(data, method)
+        png, used = background.remove(data, method, matting)
     except background.Unavailable as exc:
         raise HTTPException(status_code=501, detail=str(exc)) from exc
     except background.BackgroundError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return Response(content=png, media_type="image/png", headers={"X-Method": used})
+
+
+@router.get("/matting-models")
+def matting_models() -> dict:
+    return background.matting_models()
 
 
 @router.post("/objects")

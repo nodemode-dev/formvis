@@ -158,7 +158,7 @@ import { AboutDialog, BenchmarkDialog, NewCanvasDialog, OpenDialog, ReportIssueD
 import { HistoryLog } from './ui/history-log';
 import { extraOn, extrasOn, selectionTintOn, setAllExtras, setExtra, setExtras, setSelectionTint } from './ui/view-extras';
 import { installNumberFields } from './ui/number-fields';
-import { CHECKER_CELL, FONT_PREVIEWS, applyPrefs, applyUiFontSize, autoUiScale, checkerPair, DEFAULT_PREFS, loadPrefs, resendScratch, savePrefs, setShellZoom, updateAtStart, updatePrefs, type Prefs } from './ui/prefs';
+import { CHECKER_CELL, FONT_PREVIEWS, applyPrefs, applyUiFontSize, autoUiScale, checkerPair, DEFAULT_PREFS, loadPrefs, remembered, resendScratch, savePrefs, setShellZoom, updateAtStart, updatePrefs, type Prefs } from './ui/prefs';
 import { THEMES, readChoice, setTheme } from './ui/themes';
 import { installOptionMemory } from './ui/option-memory';
 import { chooseRenderer, detectedName, gpuStartFailedLastTime, markGpuStarted, markGpuStarting, probeGpu, type GpuProbe } from './gpu/probe';
@@ -248,7 +248,7 @@ import { rendererFallback } from './gpu/fallback';
 import { HomeScreen } from './ui/home';
 import { ALL_PANELS, Dock, registerPanel, unregisterPanel } from './ui/dock';
 import { AdjustPanel } from './ui/panels/adjust-panel';
-import { FILTER_LABELS, FilterPanel, type FilterKind, runFilter, defaultFilterSettings, type FilterPanelSettings, filterMargin } from './ui/panels/filter-panel';
+import { FILTER_LABELS, FilterPanel, createDevelopDock, type FilterKind, runFilter, defaultFilterSettings, type FilterPanelSettings, filterMargin } from './ui/panels/filter-panel';
 import { LIBRARY, isLibKind, libDefaults, libHasDialog, libInGroup, type LibGroup } from './engine/filter-library';
 import { WasmFilterDialog, WasmPluginsDialog, applyWasm } from './ui/panels/wasm-plugins-dialog';
 import { wasmPlugins, runWasmFilter } from './engine/wasm-plugin-host';
@@ -259,7 +259,7 @@ import { AmountDialog, CanvasSizeDialog, FitImageDialog, ImageSizeDialog } from 
 import { ContactSheetDialog } from './ui/panels/contact-sheet-dialog';
 import { LoadStackDialog } from './ui/panels/load-stack-dialog';
 import { JpegDialog } from './ui/panels/jpeg-dialog';
-import { BackgroundPanel } from './ui/panels/background-panel';
+import { BackgroundPanel, mattingChoice } from './ui/panels/background-panel';
 import { ColorPickerDialog } from './ui/panels/color-picker';
 import { LiveMaskDialog } from './ui/panels/live-mask-dialog';
 import { Commands, comboOf, type Command, type CommandParam } from './ui/commands';
@@ -648,6 +648,7 @@ export function startApp(): void {
   const customGroups = (): Array<{ id: string; label: string }> => { try { const v = JSON.parse(stored(CUSTOM) ?? '[]'); return Array.isArray(v) ? v.filter((g) => g && typeof g.id === 'string' && /^g[0-9a-z]+$/.test(g.id) && typeof g.label === 'string') : []; } catch { return []; } };
   for (const g of customGroups()) { new PanelGroup(q(root, '.cv-layers'), g.id, [], g.label); registerPanel({ id: g.id, label: g.label, selector: `section.cv-${g.id}` }); }
   new InfoPanel(q(root, '.cv-layers'), engine, q(root, '.cv-stage'));   // Window > Info (1.49.6)
+  const developHost = createDevelopDock(q(root, '.cv-layers'));
   const dock = new Dock(q(root, '.cv-layers'), q(root, '.cv-props-col'));
   dockRef = dock;
   dock.onChange = () => { syncPropsCol(); props.relayout(); };
@@ -2859,18 +2860,30 @@ export function startApp(): void {
     const raster = l.raster;
     await engine.task(async () => {
       try {
-        const { mask, method: used } = await api.removeBackground(await toBlob(raster.canvas), method);
+        const choice = mattingChoice(), file = choice && choice !== 'grabcut' ? choice : '';
+        const { mask, method: used } = await api.removeBackground(await toBlob(raster.canvas), choice === 'grabcut' ? 'lite' : method, file);
         const bitmap = await createImageBitmap(mask);
         if (engine.activeLayer?.id !== l.id) { bitmap.close(); if (agent) throw new Error('The active layer changed before the mask was ready.'); return; }
-        const by = used === 'ml' ? 'ML' : 'lightweight';
+        const by = used === 'file' ? file : used === 'ml' ? 'ML' : 'lightweight';
         if (agent) {
           if (!dialogs.background.applyNow(l.id, bitmap)) throw new Error('The mask was not applied: the Remove Background dialog is open in the formvis window. Close it, then retry.');
           toast(`Background removed with the ${by} engine.`);
           return;
         }
+        dialogs.background.rerun = async (pick) => {
+          try {
+            const again = await api.removeBackground(await toBlob(raster.canvas), pick === 'grabcut' ? 'lite' : 'auto', pick && pick !== 'grabcut' ? pick : '');
+            return await createImageBitmap(again.mask);
+          } catch (err) { toast(message(err), 'error'); return null; }
+        };
         dialogs.background.show(l.id, bitmap);
-        toast(`Subject found with the ${by} engine.`);
-      } catch (err) { if (agent) throw err; toast(message(err), 'error'); }
+        toast(used === 'file' ? `Subject found with ${file}.` : `Subject found with the ${by} engine.`);
+      } catch (err) {
+        const bad = mattingChoice();
+        if (bad && bad !== 'grabcut') { remembered('Remove Background', 'model', ''); if (agent) throw new Error(`${message(err)} The model choice is back to U2-Net; retry.`); toast(`${message(err)} The model choice is back to U2-Net.`, 'error'); return; }
+        if (agent) throw err;
+        toast(message(err), 'error');
+      }
     });
   }
 
@@ -2965,7 +2978,8 @@ export function startApp(): void {
     ctxOf(crop).drawImage(flat, box.x, box.y, box.w, box.h, 0, 0, box.w, box.h);
     await engine.task(async () => {
       try {
-        const { mask, method: used } = await api.removeBackground(await toBlob(crop), 'auto');
+        const choice = mattingChoice();
+        const { mask, method: used } = await api.removeBackground(await toBlob(crop), choice === 'grabcut' ? 'lite' : 'auto', choice && choice !== 'grabcut' ? choice : '');
         const bitmap = await createImageBitmap(mask), m = createSurface(box.w, box.h), c = ctxOf(m);
         c.drawImage(bitmap, 0, 0, box.w, box.h);
         bitmap.close();
@@ -2974,7 +2988,7 @@ export function startApp(): void {
         if (engine.current !== p) return;
         if (!data.some((v) => v >= 128)) { toast('No subject was found there.'); return; }
         engine.applyAutoSelection(box.x, box.y, box.w, box.h, data, withinSelection ? 'Select Object' : 'Select Subject', { mode: withinSelection && !a?.mode ? 'replace' : selectModeOf(a) });
-        toast(`${withinSelection ? 'Object' : 'Subject'} selected with the ${used === 'ml' ? 'ML' : 'lightweight'} engine.`);
+        toast(`${withinSelection ? 'Object' : 'Subject'} selected with ${used === 'file' ? choice : `the ${used === 'ml' ? 'ML' : 'lightweight'} engine`}.`);
       } catch (err) { toast(message(err), 'error'); }
     });
   }
@@ -3617,6 +3631,7 @@ export function startApp(): void {
     });
     return done === true ? null : typeof done === 'string' ? done : 'Nothing was converted.';
   };
+  dialogs.filter.attachDock({ body: developHost, show: () => { if (!dock.isShown('develop')) dock.toggle('develop'); dock.activate('develop'); }, hide: () => { if (dock.isShown('develop')) dock.toggle('develop'); } });
   dialogs.filter.rawProfile = {
     async options() {
       const l = engine.current?.activeLayer, raw = l ? rawLayers.get(l.id) : undefined;
@@ -4546,6 +4561,7 @@ export function startApp(): void {
     ...ALL_PANELS.map((pn) => pn.id === 'timeline'
       // Window > Timeline (1.59.8), as Photon's: the frames panel beside a frame animation, else the panel under the canvas.
       ? { id: 'panel-timeline', label: pn.label, checked: () => (engine.timeline.frames.length ? dock.isShown('timeline') : vtl.isOpen), run: () => { if (engine.timeline.frames.length) dock.toggle('timeline'); else vtl.toggleOpen(); } }
+      : pn.id === 'develop' ? { id: 'panel-develop', label: pn.label, checked: () => dock.isShown('develop'), run: () => { if (dock.isShown('develop')) dialogs.filter.close(); else dialogs.filter.showDocked(); } }
       : { id: `panel-${pn.id}`, label: pn.label, ...(pn.id === 'layers' ? { keys: ['F7'] } : pn.id === 'actions' ? { keys: ['Alt+F9'] } : {}), checked: () => dock.isShown(pn.id), run: () => dock.toggle(pn.id) }),
     { id: 'merge-columns', label: 'Merge Panel Columns', checked: () => dock.merged, run: () => { if (dock.merged) dock.separate(); else dock.merge(); } },
     { id: 'panel-float', label: 'Float Panel', params: { panel: { type: 'string', description: 'The panel group id (navigator, swatches, layers, timeline, history, properties, brushes and the rest of the Window list) or a tab id inside a group.' }, x: { type: 'number', description: 'Left edge in pixels; where it last stood when left out.' }, y: { type: 'number', description: 'Top edge in pixels.' }, w: { type: 'number', description: 'Width in pixels.' }, h: { type: 'number', description: 'Height in pixels.' } },
@@ -5669,11 +5685,13 @@ export function startApp(): void {
         far: { type: 'number', min: 0, max: 100, description: 'The farthest depth to select, percent of the range (0 is farthest); 60 when left out.' },
         feather: { type: 'number', min: 0, max: 50, description: 'Percent of the range over which the selection fades out past each end; 10 when left out.' },
         combine: { type: 'string', enum: ['new', 'add', 'subtract', 'intersect'], description: 'How the result meets the selection; new when left out.' },
+        quality: { type: 'string', enum: ['standard', 'detail'], description: 'standard reads the depth at the model\'s own size; detail reads it larger and again, for finer edges, slower. standard when left out.' },
         dialog: { type: 'boolean', description: 'Open the Color Range dialog on depth instead of selecting at once.' },
       },
       run: (a) => void (async () => {
         if (!(await depthReady())) { toast('Select by Depth needs Depth Anything V2 Small (99 MB): download it in Preferences > Plugins > Local models.', 'error'); return; }
-        const d = await engine.task(() => engine.ensureDocDepth(localDepthValues));
+        const fine = a?.quality === 'detail';
+        const d = await engine.task(() => engine.ensureDocDepth((i, w, h) => localDepthValues(i, w, h, fine), fine));
         if (!d) return;
         const hasParams = typeof a?.near === 'number' || typeof a?.far === 'number' || typeof a?.feather === 'number';
         if (!hasParams && a?.dialog !== false && !a?.combine) { dialogs.colorRange.show('depth'); return; }

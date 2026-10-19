@@ -11,7 +11,7 @@ import { runFilterOnGpu } from './gpu-filters';
 
 export interface FilterSettings { radius: number; angle: number; distance: number; amount: number; gaussian: boolean; monochromatic: boolean; distortion: number; lensFix?: LensFix; usmAmount: number; usmRadius: number; threshold: number; develop: DevelopState; lensRadius: number; lensBrightness: number; lensThreshold: number; lensIris?: LensIris; smart: SmartSharpenSettings; shake: ShakeSettings; gallery: GallerySettings; lib?: Partial<Record<LibKind, LibValues>>; colors?: LibColors }
 export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection' | 'unsharpMask' | 'develop' | 'lensBlur' | 'smartSharpen' | 'shakeReduction' | GalleryKind | LibKind;
-export interface FilterJob { id: number; kind: FilterKind; settings: FilterSettings; scale: number; seed: number; width: number; height: number; pixels: ArrayBuffer; frame?: LibFrame | null }
+export interface FilterJob { id: number; kind: FilterKind; settings: FilterSettings; scale: number; seed: number; width: number; height: number; pixels: ArrayBuffer; frame?: LibFrame | null; shared?: { buf: SharedArrayBuffer; offset: number; length: number } }
 export interface FilterResult { id: number; width: number; height: number; pixels: ArrayBuffer }
 
 let worker: Worker | null = null;

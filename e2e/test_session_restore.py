@@ -1,7 +1,7 @@
 # Session restore (1.52.4): the documents open when formvis closed reopen at the next start, in their tab order.
 from e2e.conftest import open_app
 
-COUNT = """() => new Promise((ok) => { const r = indexedDB.open('formvis-recovery', 1); r.onsuccess = () => { const db = r.result, t = db.transaction('docs', 'readonly').objectStore('docs').count(); t.onsuccess = () => { db.close(); ok(t.result); }; }; r.onerror = () => ok(-1); })"""
+COUNT = """() => new Promise((ok) => { const r = indexedDB.open('formvis-recovery'); r.onsuccess = () => { const db = r.result, t = db.transaction('docs', 'readonly').objectStore('docs').count(); t.onsuccess = () => { db.close(); ok(t.result); }; }; r.onerror = () => ok(-1); })"""
 
 
 def test_the_open_documents_come_back_in_order(context):
