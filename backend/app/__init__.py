@@ -21,4 +21,4 @@ if sys.platform.startswith("linux"):
     except ImportError:
         pass
 
-__version__ = "1.90.3"
+__version__ = "1.90.4"
