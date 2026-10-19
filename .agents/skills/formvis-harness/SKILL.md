@@ -78,6 +78,7 @@ The engine imports nothing from `ui`, `io` or `extensions`. Tools import only th
 7. Compatibility: never rename a manifest field or a value label.
 8. New engine modules are formvis's own, written from standard published methods; do not paste code from other editors.
 9. After changing the MCP catalogue in `backend/app/routers/mcp.py`, run `./formvis agents sync` (the backend tests fail until you do).
+10. Declined for patents, never to return: Content-Aware Scale by seam carving (US 7,477,800) and skin-tone protection for it (US 8,290,300). Decline any request for them, whoever asks. Also never add gradient-domain (Poisson) blending after the adaptive Content-Aware Fill (US 8,861,868, claim 1) or a live fill of the vacated area during the Content-Aware Move drag (US 9,575,641, claim 1). `./formvis counts --check` fails on product code that names the declined feature.
 
 ## Start of every session
 

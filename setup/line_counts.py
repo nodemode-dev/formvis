@@ -9,7 +9,8 @@
 Counted: product code tracked by git, tests excluded: TypeScript and CSS under frontend/src, Python under backend/app
 and backend/formvis_engine.py, Rust under src-tauri/src and native (the native renderer, from 1.44.0). Figures are rounded to hundreds; a figure passes the check within
 3 percent or 100 lines of the count. The number of blend modes must be stated exactly once, as "N blend modes", and
-equal the entries of BLEND_MODES in frontend/src/engine/types.ts.
+equal the entries of BLEND_MODES in frontend/src/engine/types.ts. The check also fails on any product code that brings
+back a feature declined for patents (DECLINED below).
 """
 
 from __future__ import annotations
@@ -72,7 +73,28 @@ def check(root: Path = ROOT) -> list[str]:
     modes = blend_modes(root)
     if stated_modes != [str(modes)]:
         problems.append(f"blend modes: README states {stated_modes or 'none'}, the engine has {modes}, stated once")
-    return problems + scrollbar_problems(root)
+    return problems + scrollbar_problems(root) + declined_problems(root)
+
+
+# Declined for patents (the owner's review, 1.87.5): Content-Aware Scale by seam carving (US 7,477,800) and its skin-tone
+# protection (US 8,290,300). These words in product code mean the feature is coming back; the translation tables keep
+# their unused strings on purpose, and the frontend's Skin Smoothing (engine/neural.ts skinMask) is a separate feature.
+DECLINED = re.compile(r"content-aware-scale|contentAwareScale|ContentAwareScale|Content-Aware Scale|/api/seam|/seam/|"
+                      r"seam[ _-]?carv|carve_width|carveWidth|Protect skin tones", re.I)
+
+
+def declined_problems(root: Path = ROOT) -> list[str]:
+    """Product code that names a feature declined for patents (see DECLINED); the README check fails on any."""
+    problems = []
+    files = subprocess.run(["git", "ls-files", "frontend/src", "backend/app", "src-tauri/src", "native"], cwd=root,
+                           capture_output=True, text=True, check=True).stdout.split("\n")
+    for rel in files:
+        if not rel.endswith((".ts", ".py", ".rs", ".css", ".html")) or "/i18n/" in rel or rel.endswith(".test.ts"):
+            continue
+        for n, line in enumerate((root / rel).read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            if DECLINED.search(line):
+                problems.append(f"{rel}:{n}: declined for patents (Content-Aware Scale, seam carving, skin-tone protection)")
+    return problems
 
 
 def scrollbar_problems(root: Path = ROOT) -> list[str]:
