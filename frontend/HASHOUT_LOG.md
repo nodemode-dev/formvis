@@ -2,6 +2,42 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## View extras, Print Size, History Log, more Camera Raw defaults · _v1.87.9 (ui/view-extras.ts, ui/history-log.ts, ui/stage.ts, ui/prefs.ts, ui/app-dialogs.ts, app.ts, automation/command-meta.ts)
+
+CLOSE_GAPS P18 and P20 (PC-UI-0534, PC-UI-0536, PC-UI-0535, PC-UI-0545, PC-UI-0542, PC-UI-0550, PC-UI-0529, PC-UI-0115, PC-UI-0964, PC-UI-0977, PC-UI-1005, PC-UI-1007, PC-UI-1008 closed; PC-UI-1002 advanced).
+
+- `view-extras.ts` (new): View > Extras as a master switch, Show > Selection Edges, Layer Edges, Notes, Count, All and None (`toggle-extras`, `show-selection-edges`, `show-layer-edges`, `show-notes`, `show-counts`, `show-all-extras`, `show-no-extras`); `stage.ts` gates its drawing on them and stops the marching-ants timer while edges are hidden (replaced `      for (const n of p.doc.notes ?? []) {`, `      (p.doc.counts ?? []).forEach((c, i) => {`, `    } else if (sel || fl) {` and `    const need = (!!this.engine.current?.selection || this.engine.floatingSelection) && !REDUCED;`). `print-size` zooms to 96 / ppi.
+- `history-log.ts` (new): Preferences > History Log, Edit > History Log > Save and Clear. `prefs.ts` `rawAutoTone`, `rawSmart`, `rawPpi`, `historyLog` (replaced `  rawWb: 'as_shot' | 'auto' | 'daylight'; rawBits: 8 | 16 }`, `rawWb: 'as_shot', rawBits: 8 };` and `      rawBits: r.rawBits === 16 ? 16 : 8,` with its closing `    };`); `app-dialogs.ts` Camera Raw Defaults gains resolution, Apply Auto Tone and Open as a Smart Object (replaced `add('Camera Raw Defaults', this.rawWbRow.el, this.rawBitsRow.el, el('<p class="cv-note">What the Camera Raw dialog starts with each time a camera RAW file opens.</p>'));`); `app.ts` applies them on an 8-bit RAW open (replaced the `decoded.push(await decodeImage(f, f.name, false, rawPick.wb))` line and `if (decoded.length === 1 && RAW_FILE.test(decoded[0].name)) commands.run('filter-develop');` with its comment) and the View, Show and Purge menu lists.
+- Measured in Chromium: overlay pixels 5,742 with extras, 3,184 without (the no-helper baseline), edges back to 5,742; layer edges 2,248 to 2,432; Print Size at 144 ppi zoom 0.667; the History Log held Deselect and Select All with the document name only while on; a DNG opened at 300 ppi as a smart object with Auto Tone in its history. Not measured: notes and count toggles with marks on the canvas. Not done: arithmetic in number fields, floating panels.
+
+## Reset Tool and Reset All Tools, Simulate GPU Loss, GitHub and Report an Issue · _v1.87.9 (ui/option-memory.ts, app.ts, automation/command-meta.ts)
+
+CLOSE_GAPS P25 (PC-UI-0633, PC-UI-0634, PC-UI-0802 closed; PC-AU-0092, PC-UI-0682, PC-UI-0683, PC-UI-0960, PC-AU-0190, SC-AI-0355 advanced; PC-UI-0965, PC-AU-0169, PC-AU-0170 found present in the shell).
+
+- `option-memory.ts`: `OptionMemory { reset(toolId?) }` puts kept options back to their start-up defaults and clears them from preferences (was `export function installOptionMemory(engine: Engine): void {`, ending `engine.on('options', capture); engine.on('tool', capture); }`). `app.ts`: `const optionMemory = installOptionMemory(engine);` (was `installOptionMemory(engine);   // every tool option sticks`), `getTool` imported (was `import { toolForKey, toolsForKey } from './extensions/registry';`), commands `reset-tool`, `reset-all-tools` (Edit menu after Purge), `simulate-gpu-loss`, `help-github`, `report-issue` (Help menu; was `'record-performance', '-', 'check-for-updates', 'about'] },`).
+- Measured in Chromium: the Brush's Airbrush toggled on and kept, Reset Tool and Reset All Tools each put it back off and cleared what was kept. Simulate GPU Loss runs the display's own loss path; headless Chromium has no GPU, so it was not run. The links open the repository address the README names; not clicked.
+
+## Generate Image keeps its results and a run log; @img tokens for workflow references · _v1.87.9 (ui/panels/generate-image.ts, styles/dialogs.css)
+
+CLOSE_GAPS P23 (SC-ED-0244, SC-AI-0085 closed; SC-ED-0226, SC-AI-0081 advanced; the rows needing large models or cloud services skipped and listed in the ledger).
+
+- `generate-image.ts`: `keptResults()`, `addKeptResult()`, `placeResult()` and the dialog's `paintHistory()` keep the last 12 pictures in memory as thumbnails (patched in place, object URLs revoked on eviction): click adds one again as a layer, Shift-click restores its prompt; `runLogText()`, `clearRunLog()`, `generationLog()`, `onGenerationChange()` keep the last 200 calls (time, model, prompt, milliseconds, result) in a folded Run log with Copy and Clear; `resolveReferenceTokens(prompt, count)` turns @img1 and @img2 into the workflow's image names and refuses a token with no chosen reference. `runGeneration` now wraps `generateOnce` (was `export async function runGeneration(engine: Engine, req: GenerationRequest): Promise<boolean> {` followed by `  if (!engine.current) engine.newDocument(`). Replaced:
+
+```ts
+    blob = (await runToResults(loadPrefs().comfyuiUrl, recipe.json, refs.map((r) => ({ name: r.name, kind: 'reference' })), refs.map((r, i) => ({ name: `ref${i}.png`, blob: r.blob })), prompt, req.status, req.stopped))[0];
+  }
+  if (req.stopped() || engine.current !== p) return false;
+  const bitmap = await createImageBitmap(blob), r = new Raster(w, h);
+  r.ctx.drawImage(bitmap, 0, 0, w, h);   // scaled to the shape asked
+  bitmap.close();
+  r.touch();
+  engine.insertRasterLayer(r, 'Generated Image', Math.round((W - w) / 2), Math.round((H - h) / 2), generation ? { generation } : {}, 'Generate Image');
+  return true;
+```
+
+  and the import `import { el, patchList, setText } from '../dom';` (now with `setHidden`).
+- Measured in Chromium with the generation route mocked: 2 runs gave 2 layers and 2 decoded thumbnails, a click added a third layer, Shift-click restored "first red square"; the log read `provider:openai ok 20 ms added as a layer` and a failed entry; "put @img1 over @IMG2" with 2 references became "put image 1 over image 2", @img3 was refused.
+
 ## Actions: steps switched off, steps and actions reordered, rename; Batch and Image Processor take a folder with sub-folders; agents select from a mask, read and change settings, inspect the window · _v1.87.8 (ui/actions.ts, ui/panels/actions-dialogs.ts, ui/panels/image-processor-dialog.ts, automation/agent-bridge.ts, styles/panels.css, app.ts)
 
 CLOSE_GAPS P21 (PC-AU-0006, PC-AU-0008, PC-AU-0010, PC-AU-0024, SC-AI-0193, SC-AI-0203, SC-AI-0204 closed; PC-AU-0075 the inspect half; the MCP side is in the backend log).

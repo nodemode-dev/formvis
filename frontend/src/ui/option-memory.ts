@@ -64,7 +64,10 @@ function accepts(tool: string, spec: Kept['spec'], v: ToolOptionValue): boolean 
   return list.some((c) => c.id === v);
 }
 
-export function installOptionMemory(engine: Engine): void {
+/** What the option memory lets the rest of the app do: put one tool's options, or every tool's, back to their defaults. */
+export interface OptionMemory { reset(toolId?: string): number }
+
+export function installOptionMemory(engine: Engine): OptionMemory {
   const tools = new Map<string, Tool>(), original = new Map<string, NonNullable<Tool['options']>>(), defaults = new Map<string, ToolOptionValue>();
   let restoring = false;
 
@@ -128,4 +131,32 @@ export function installOptionMemory(engine: Engine): void {
 
   engine.on('options', capture);
   engine.on('tool', capture);
+
+  /** Put the options of one tool (or all) back to the values they had at start-up and forget the kept ones. */
+  const reset = (toolId?: string): number => {
+    let n = 0;
+    restoring = true;
+    try {
+      for (const [id, t] of tools) {
+        if (toolId && id !== toolId) continue;
+        const raw = original.get(id);
+        if (!raw) continue;
+        for (const { spec, key } of keptSpecs(t, raw.call(t, engine))) {
+          const d = defaults.get(key);
+          if (d === undefined || same(valueOf(spec), d)) continue;
+          try {
+            if (spec.kind === 'color') (spec.set as (c: RGB) => void)({ r: parseInt(String(d).slice(1, 3), 16), g: parseInt(String(d).slice(3, 5), 16), b: parseInt(String(d).slice(5, 7), 16) });
+            else (spec.set as (x: unknown) => void)(d);
+            n++;
+          } catch { /* one option that cannot be reset leaves the rest */ }
+        }
+      }
+    } finally { restoring = false; }
+    const cur = loadPrefs().toolOptions, next: typeof cur = {};
+    for (const [k, v] of Object.entries(cur)) if (toolId && k.slice(0, k.indexOf('.')) !== toolId) next[k] = v;
+    updatePrefs({ toolOptions: next });
+    engine.emit('options', null);
+    return n;
+  };
+  return { reset };
 }

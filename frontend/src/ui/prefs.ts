@@ -32,7 +32,11 @@ export interface Prefs { language: Lang; profileMismatch: MismatchPref; colour: 
   /** Preferences > Type: how many recently used fonts the font menus list first, and the fonts used, newest first. */
   recentFontCount: number; recentFonts: string[];
   /** Preferences > Camera Raw Defaults: the white balance and bit depth the Camera Raw dialog starts with. */
-  rawWb: 'as_shot' | 'auto' | 'daylight'; rawBits: 8 | 16 }
+  rawWb: 'as_shot' | 'auto' | 'daylight'; rawBits: 8 | 16;
+  /** Camera Raw Defaults: Auto Tone applied on open, the layer opened as a smart object, and the resolution (ppi) a RAW opens at; 0 keeps the file's. */
+  rawAutoTone: boolean; rawSmart: boolean; rawPpi: number;
+  /** Preferences > History Log: each new history step is written to the log (Edit > History Log saves it). */
+  historyLog: boolean }
 export const RAW_WB_CHOICES: ReadonlyArray<readonly ['as_shot' | 'auto' | 'daylight', string]> = [['as_shot', 'As Shot'], ['auto', 'Auto'], ['daylight', 'Daylight']];
 export type PressureCurve = 'linear' | 'soft' | 'firm' | 's';
 export const PRESSURE_CURVES: ReadonlyArray<readonly [PressureCurve, string]> = [['linear', 'Linear'], ['soft', 'Soft'], ['firm', 'Firm'], ['s', 'S curve']];
@@ -81,7 +85,7 @@ export const ENGINE_CHOICES: ReadonlyArray<readonly [EngineDevice, string]> = [[
 export const DEFAULT_PREFS: Prefs = { language: 'en', profileMismatch: 'convert', colour: DEFAULT_COLOUR, colourPresets: [], shortcuts: {}, restoreSession: true, agentsAllowed: false, comfyuiUrl: 'http://127.0.0.1:8188', nodemodeUrl: 'http://localhost:8000', historyStates: 100, historyMB: 256, historyAuto: true, regionRedraws: true, recoverySeconds: 20, autoShowHome: true, useGpu: true, gpuFilters: true, renderer: 'auto', gpuMemoryMB: 1024, engineDevice: 'auto',
   zoomWheel: false, autoFirstSnapshot: true, snapshotMB: 768, narrowCollapse: true, paintCursor: 'tip', cursorCrosshair: false,
   checkerSize: 'medium', checkerColors: 'auto', checkerTheme: true, rulerUnits: 'px', guideColor: '', gridColor: '', gridSpacing: 100, gridSubdivisions: 4,
-  homeOnLastClose: false, whatsNewAuto: true, whatsNewSeen: '', toolOptions: {}, dialogValues: {}, spellWords: [], measureDataPoints: [...DEFAULT_MEASURE_POINTS], fontPreview: 'medium', toolbar: null, pressureCurve: 'linear', uiFontSize: 'default', recentFontCount: 5, recentFonts: [], rawWb: 'as_shot', rawBits: 8 };
+  homeOnLastClose: false, whatsNewAuto: true, whatsNewSeen: '', toolOptions: {}, dialogValues: {}, spellWords: [], measureDataPoints: [...DEFAULT_MEASURE_POINTS], fontPreview: 'medium', toolbar: null, pressureCurve: 'linear', uiFontSize: 'default', recentFontCount: 5, recentFonts: [], rawWb: 'as_shot', rawBits: 8, rawAutoTone: false, rawSmart: false, rawPpi: 0, historyLog: false };
 export const RECOVERY_CHOICES: ReadonlyArray<readonly [string, string]> = [['10', '10 seconds'], ['20', '20 seconds'], ['60', '1 minute'], ['300', '5 minutes'], ['600', '10 minutes']];
 const KEY = 'formvis.prefs';
 
@@ -174,6 +178,10 @@ export function loadPrefs(): Prefs {
       recentFonts: Array.isArray(r.recentFonts) ? r.recentFonts.filter((f): f is string => typeof f === 'string' && f.length > 0 && f.length <= 120).slice(0, 20) : [],
       rawWb: RAW_WB_CHOICES.find(([k]) => k === r.rawWb)?.[0] ?? DEFAULT_PREFS.rawWb,
       rawBits: r.rawBits === 16 ? 16 : 8,
+      rawAutoTone: r.rawAutoTone === true,
+      rawSmart: r.rawSmart === true,
+      historyLog: r.historyLog === true,
+      rawPpi: typeof r.rawPpi === 'number' && Number.isFinite(r.rawPpi) && r.rawPpi >= 1 && r.rawPpi <= 10000 ? Math.round(r.rawPpi) : 0,
     };
   } catch { return { ...DEFAULT_PREFS }; }
 }

@@ -4,6 +4,16 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.87.9 · 2026-10-19
+
+### Added
+
+- View > Extras switches the canvas helpers together; View > Show > Selection Edges, Layer Edges, Notes, Count, All and None; View > Print Size.
+- Edit > History Log (Preferences > History Log) records each step with its document, with Save and Clear.
+- Camera Raw defaults for resolution, Apply Auto Tone and Open as a Smart Object.
+- Edit > Reset Tool and Reset All Tools; Help > Simulate GPU Loss, GitHub and Report an Issue.
+- Generate Image keeps its last 12 results to add again (Shift-click restores the prompt), a Run log of every call, and @img1, @img2 in prompts name a workflow's references.
+
 ## 1.87.8 · 2026-10-19
 
 ### Added

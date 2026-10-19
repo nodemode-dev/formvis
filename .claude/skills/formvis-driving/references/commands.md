@@ -1,13 +1,14 @@
 # formvis commands
 
-Generated from the window's command catalogue (1071 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1086 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
-- Edit: 63
+- Edit: 67
 - File: 78
 - Filter: 86
 - Generate: 2
+- Help: 3
 - Image: 88
 - Layer: 232
 - Paint: 1
@@ -16,7 +17,7 @@ Generated from the window's command catalogue (1071 commands) by `./formvis agen
 - Tool options: 269
 - Tools: 51
 - Type: 26
-- View: 52
+- View: 60
 - Window: 79
 
 ## Edit
@@ -27,6 +28,7 @@ Generated from the window's command catalogue (1071 commands) by `./formvis agen
 | `auto-blend-layers` | Auto-Blend Layers... |  | Adds layer masks that blend the selected layers into a panorama or a focus stack. (changes the picture) |
 | `clean-working-files` | Working Files |  | Deletes the stored recovery copies of documents that are no longer open and the closed tabs kept for Reopen Closed Tab, and says how much space came back. (changes the picture) |
 | `clear` | Clear Selection Pixels |  | Erases the pixels inside the selection. (changes the picture) |
+| `clear-history-log` | Clear History Log |  | Empties the history log. |
 | `colour.settings` | Color Settings... | Shift+Mod+K | Opens Color Settings: working spaces, colour management policies and conversion options. |
 | `compare-documents` | Compare with... |  | Opens Compare with: picks another open document and makes a new document with both pictures and a Differences layer in Difference blend mode, selecting where they differ. |
 | `content-fill` | Quick Content-Aware Fill | Shift+Backspace | Fills the selection from its surroundings. (changes the picture) |
@@ -65,6 +67,9 @@ Generated from the window's command catalogue (1071 commands) by `./formvis agen
 | `purge-histories` | Histories |  | Clears the undo and redo history of the current document after asking. (changes the picture) |
 | `redo` | Redo | Shift+Mod+Z Mod+Y | Steps forward one history step. (changes the picture) |
 | `remove-wires` | Remove Wires and Cables |  | Finds wires and cables and removes them. (changes the picture) |
+| `reset-all-tools` | Reset All Tools |  | Puts the options of every tool back to their defaults and forgets all the kept values. |
+| `reset-tool` | Reset Tool |  | Puts the options of the active tool back to their defaults and forgets the values kept for them. |
+| `save-history-log` | Save History Log... |  | Saves the history log (the time, document and name of each step made while Preferences > History Log was on) as a text file. |
 | `stroke-dialog` | Stroke... |  | Opens the Stroke dialog for the selection. (changes the picture) |
 | `swatch-add` | Add Foreground Color to Swatches |  | Adds the foreground colour to the Swatches panel. |
 | `swatches-load` | Load Swatches... |  | Replaces the swatches with those in an .aco or .ase file. |
@@ -272,6 +277,14 @@ Generated from the window's command catalogue (1071 commands) by `./formvis agen
 | --- | --- | --- | --- |
 | `generate-panel` | Generate Panel |  | Shows the Generate panel and puts the cursor in its prompt. |
 | `generate-remove` | Remove / Repair |  | Fills the selection from its surroundings, or switches to the Remove tool when nothing is selected. (changes the picture) |
+
+## Help
+
+| Id | Name | Keys | Does |
+| --- | --- | --- | --- |
+| `help-github` | formvis on GitHub |  | Opens the formvis project page on GitHub in the browser. |
+| `report-issue` | Report an Issue... |  | Opens a new issue page for formvis on GitHub in the browser. |
+| `simulate-gpu-loss` | Simulate GPU Device Loss |  | Acts as if the GPU device was lost, so drawing falls back to the CPU renderer for this session. |
 
 ## Image
 
@@ -1109,6 +1122,7 @@ Generated from the window's command catalogue (1071 commands) by `./formvis agen
 | `pixel-art-preview` | Pixel Art Preview |  | Shows or hides a crisp, nearest-neighbour view of the document at every zoom. |
 | `pixel-grid` | Pixel Grid |  | Shows or hides the pixel grid at high zoom. |
 | `preview-32` | 32-bit Preview Options... |  | Opens 32-bit Preview Options, exposure and gamma for how a 32-bit picture is shown. |
+| `print-size` | Print Size |  | Zooms so the picture shows at its printed size on screen, from the document resolution (96 screen pixels to the inch). |
 | `proof-colors` | Proof Colors |  | Turns Proof Colors on or off. |
 | `proof-preset-black` | Working Black Plate |  | Shows the working CMYK black plate as a grey image and turns Proof Colors on. |
 | `proof-preset-cmy` | Working CMY Plates |  | Shows the working CMYK cyan, magenta and yellow plates together, without black, and turns Proof Colors on. |
@@ -1125,9 +1139,16 @@ Generated from the window's command catalogue (1071 commands) by `./formvis agen
 | `screen-menu` | Full Screen Mode with Menu Bar |  | Full screen with the menu bar kept. |
 | `screen-next` | Change Screen Mode | F | Steps through standard, menu and full screen modes. |
 | `screen-standard` | Standard Screen Mode |  | Shows the normal window with its title bar. |
+| `show-all-extras` | Show All |  | Shows every canvas helper: guides, grid, slices, notes, counts, selection edges and layer edges. |
+| `show-counts` | Show Count |  | Shows or hides the count numbers on the canvas. |
+| `show-layer-edges` | Show Layer Edges |  | Shows or hides a box around the active layer's bounds. |
+| `show-no-extras` | Show None |  | Hides every canvas helper: guides, grid, slices, notes, counts, selection edges and layer edges. |
+| `show-notes` | Show Notes |  | Shows or hides the note markers on the canvas. |
+| `show-selection-edges` | Show Selection Edges |  | Shows or hides the marching outline of the selection. |
 | `slice-options` | Slice Options... |  | Opens the active slice's name, URL, alt text and exact position and size for editing. (changes the picture) |
 | `task-bar-pin` | Pin Task Bar |  | Pins the Contextual Task Bar where it stands, or lets it follow the selection again. |
 | `task-bar-reset` | Reset Task Bar Position |  | Puts the Contextual Task Bar back at the bottom centre of the canvas. |
+| `toggle-extras` | Toggle Extras |  | Turns every canvas helper on or off at once: notes, counts, selection edges and layer edges. |
 | `toggle-grid` | Toggle Grid | Mod+' | Shows or hides the grid. |
 | `toggle-guides` | Toggle Guides | Mod+; | Shows or hides guides. |
 | `toggle-panels` | Toggle Panels | Tab | Shows or hides every panel and the toolbar. |

@@ -1,7 +1,7 @@
 import { applyLut } from '../engine/colour-lut';
 import { LUT3_N, viewLut3 } from '../engine/lut';
 import { applyDuotoneLut, duotoneLut } from '../engine/duotone';
-import { createSurface, integral, intersectRect, sizeSurface, translation, unionRect, type AlphaChannel, type Engine, type Pt, type Rect, type Surface } from '../engine';
+import { corners, createSurface, integral, intersectRect, sizeSurface, translation, unionRect, type AlphaChannel, type Engine, type Pt, type Rect, type Surface } from '../engine';
 import type { Project } from '../engine/project';
 import { getTool, type Tool, type ToolContext, type ToolPointer, type ViewInfo } from '../extensions/registry';
 import { isMac, q, setHidden } from './dom';
@@ -15,6 +15,7 @@ const REDUCED = typeof matchMedia === 'function' && matchMedia('(prefers-reduced
 const RULER = 18;
 
 import { drawSlices } from '../extensions/tools/slice';
+import { extraShown, onExtras } from './view-extras';
 
 export class Stage {
   readonly ctx: ToolContext;
@@ -76,6 +77,7 @@ export class Stage {
     for (const k of ['viewport', 'active', 'projects'] as const) engine.on(k, () => { this.turn(); this.queue(true, true); });
     for (const k of ['overlay', 'doc'] as const) engine.on(k, () => this.turn());   // Pixel Aspect Ratio Correction or the ratio changed (35.4c); a style compare when nothing did
     for (const k of ['overlay', 'options'] as const) engine.on(k, () => this.queue(false, true));
+    onExtras(() => { this.queue(false, true); this.syncAnts(); });
     engine.on('projects', () => { this.queue(true, true); this.syncAnts(); this.syncWelcome(); this.updateCursor(); });
     engine.on('selection', () => { this.queue(false, true); this.syncAnts(); });
     engine.on('tool', () => { this.queue(false, true); this.updateCursor(); });
@@ -513,14 +515,14 @@ export class Stage {
     {
       const d = this.dpr;
       g.save(); g.setTransform(d, 0, 0, d, this.offX * d, this.offY * d);
-      for (const n of p.doc.notes ?? []) {
+      for (const n of extraShown('notes') ? p.doc.notes ?? [] : []) {
         const q = v.toScreen(n.x, n.y), on = n.id === this.engine.activeNote;
         g.fillStyle = on ? pal.accent : '#f5c542'; g.strokeStyle = pal.antsB; g.lineWidth = 1;
         g.beginPath(); g.moveTo(q.x, q.y); g.lineTo(q.x + 16, q.y); g.lineTo(q.x + 16, q.y + 11); g.lineTo(q.x + 11, q.y + 16); g.lineTo(q.x, q.y + 16); g.closePath(); g.fill(); g.stroke();
         g.beginPath(); g.moveTo(q.x + 4, q.y + 5); g.lineTo(q.x + 12, q.y + 5); g.moveTo(q.x + 4, q.y + 9); g.lineTo(q.x + 10, q.y + 9); g.strokeStyle = 'rgba(0,0,0,0.55)'; g.stroke();
       }
       g.font = '600 12px Inter, system-ui, sans-serif';
-      (p.doc.counts ?? []).forEach((c, i) => {
+      (extraShown('counts') ? p.doc.counts ?? [] : []).forEach((c, i) => {
         const q = v.toScreen(c.x, c.y);
         g.fillStyle = pal.accent; g.beginPath(); g.arc(q.x, q.y, 3, 0, Math.PI * 2); g.fill();
         g.lineWidth = 3; g.strokeStyle = pal.antsB; g.strokeText(String(i + 1), q.x + 5, q.y - 5);
@@ -546,7 +548,7 @@ export class Stage {
       // Quick Mask, or a Selection Brush stroke in progress: a red tint where nothing is selected, in place of the outline; live while a stroke paints it.
       const src = this.quickTint(p);
       if (src) { const d = this.dpr; g.setTransform(v.zoom * d, 0, 0, v.zoom * d, (v.panX + this.offX) * d, (v.panY + this.offY) * d); g.imageSmoothingEnabled = v.zoom < 1; g.drawImage(src, 0, 0); g.setTransform(1, 0, 0, 1, 0, 0); }
-    } else if (sel || fl) {
+    } else if ((sel || fl) && extraShown('selectionEdges')) {
       const shift = this.engine.outlineShift(p);
       const d = this.dpr;
       const view = new DOMMatrix([v.zoom * d, 0, 0, v.zoom * d, (v.panX + this.offX + (shift?.dx ?? 0) * v.zoom) * d, (v.panY + this.offY + (shift?.dy ?? 0) * v.zoom) * d]);
@@ -565,6 +567,12 @@ export class Stage {
     }
     g.setTransform(this.dpr, 0, 0, this.dpr, this.offX * this.dpr, this.offY * this.dpr);
     this.drawGuides(g, pal);
+    const edged = this.engine.activeLayer;
+    if (edged?.raster && edged.visible && extraShown('layerEdges')) {
+      const c = corners(edged.transform).map((u) => v.toScreen(u.x, u.y));
+      g.save(); g.lineWidth = 1; g.strokeStyle = pal.accent;
+      g.beginPath(); g.moveTo(c[0].x + 0.5, c[0].y + 0.5); for (let i = 1; i < 4; i++) g.lineTo(c[i].x + 0.5, c[i].y + 0.5); g.closePath(); g.stroke(); g.restore();
+    }
     if (this.engine.view.slices && this.tool()?.id !== 'slice' && p.doc.slices?.length) drawSlices(g, p.doc.slices, v.panX, v.panY, v.zoom, pal.accent, this.engine.activeSlice, p.doc);
     this.tool()?.overlay?.(this.ctx, g);
     const ring = this.engine.sampleRing;
@@ -593,7 +601,7 @@ export class Stage {
   }
 
   private syncAnts(): void {
-    const need = (!!this.engine.current?.selection || this.engine.floatingSelection) && !REDUCED;
+    const need = (!!this.engine.current?.selection || this.engine.floatingSelection) && !REDUCED && extraShown('selectionEdges');
     if (need && !this.antsTimer) this.antsTimer = window.setInterval(() => { this.phase = (this.phase + 1) % 8; this.queue(false, true); }, 140);
     else if (!need && this.antsTimer) { window.clearInterval(this.antsTimer); this.antsTimer = 0; }
   }

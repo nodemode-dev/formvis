@@ -4,7 +4,7 @@ import { api, ApiError, type GenerativeStatus, type ProviderStatus } from '../..
 import { recipes, runToResults } from '../../io/comfy';
 import { localModels, runLocal } from '../../io/local-gen';
 import { Dialog } from '../dialogs';
-import { el, patchList, setText } from '../dom';
+import { el, patchList, setHidden, setText } from '../dom';
 import { t } from '../i18n';
 import { loadPrefs } from '../prefs';
 import { ReferencePicker } from './references';
@@ -15,6 +15,42 @@ export interface GenerationModel { value: string; label: string; disabled: boole
 export interface GenerationModels { models: GenerationModel[]; providers: ProviderStatus[]; preferred: string; fal: GenerativeStatus | null }
 
 const PROVIDER_NAMES: Record<string, string> = { openai: 'GPT Image', google: 'Gemini image', bfl: 'FLUX1.1 [pro]', ideogram: 'Ideogram 3.0' };
+
+/** One line of the run log: a generation, whichever model ran it, with how long it took and how it ended. */
+export interface RunLogEntry { id: number; time: number; choice: string; prompt: string; ms: number; ok: boolean; note: string }
+/** One kept result: the picture a generation made, to add again as a layer without running the model again. */
+export interface KeptResult { id: number; time: number; prompt: string; choice: string; width: number; height: number; blob: Blob; generation?: GenerationInfo }
+
+const LOG_LIMIT = 200, KEPT_LIMIT = 12;
+const runLog: RunLogEntry[] = [];
+const kept: KeptResult[] = [];
+const listeners = new Set<() => void>();
+let serial = 0;
+
+export const generationLog = (): readonly RunLogEntry[] => runLog;
+export const keptResults = (): readonly KeptResult[] => kept;
+/** Calls `fn` whenever the log or the kept results change; returns the way to stop. */
+export function onGenerationChange(fn: () => void): () => void { listeners.add(fn); return () => { listeners.delete(fn); }; }
+const changed = (): void => { for (const fn of listeners) fn(); };
+
+/** The log as plain text, one line a call, oldest first. */
+export function runLogText(): string {
+  return runLog.map((e) => `${new Date(e.time).toISOString()}\t${e.choice}\t${e.ok ? 'ok' : 'failed'}\t${e.ms} ms\t${e.note}\t${e.prompt.replace(/\s+/g, ' ')}`).join('\n');
+}
+
+export function clearRunLog(): void { runLog.length = 0; changed(); }
+
+/** Replaces @img1, @img2 and on with the words "image 1", "image 2" that name the references in order, the way the
+ *  workflow is given them. Throws when a token names a reference that is not chosen. */
+export function resolveReferenceTokens(prompt: string, count: number): string {
+  return prompt.replace(/@img(\d+)\b/gi, (_m, n: string) => {
+    const k = Number(n);
+    if (k < 1 || k > count) throw new Error(t(`@img${k} names a reference that is not chosen (${count} chosen).`));
+    return `image ${k}`;
+  });
+}
+
+const hasTokens = (prompt: string): boolean => /@img\d+\b/i.test(prompt);
 
 /** The models Generate Image offers, from the one source the Generate Image dialog and the Generate panel share: fal,
  *  the providers beside it, the kept ComfyUI workflows (left out when `comfy` is false: the panel offers them only while
@@ -70,6 +106,42 @@ export interface GenerationRequest {
  *  centred. Resolves true once the layer is in, false when stopped or the document changed; otherwise throws, with words
  *  for the person. The dialog and the panel both run this. */
 export async function runGeneration(engine: Engine, req: GenerationRequest): Promise<boolean> {
+  const t0 = performance.now(), entry: RunLogEntry = { id: ++serial, time: Date.now(), choice: req.choice, prompt: req.prompt, ms: 0, ok: false, note: '' };
+  try {
+    const added = await generateOnce(engine, req);
+    entry.ok = true;
+    entry.note = added ? 'added as a layer' : 'stopped';
+    return added;
+  } catch (err) {
+    entry.note = err instanceof Error ? err.message : 'failed';
+    throw err;
+  } finally {
+    entry.ms = Math.round(performance.now() - t0);
+    runLog.push(entry);
+    if (runLog.length > LOG_LIMIT) runLog.splice(0, runLog.length - LOG_LIMIT);
+    changed();
+  }
+}
+
+/** Puts a generated picture in as the layer 'Generated Image', scaled to the shape asked and centred in the document. */
+async function placeResult(engine: Engine, blob: Blob, w: number, h: number, generation?: GenerationInfo): Promise<void> {
+  const W = engine.current?.doc.width ?? w, H = engine.current?.doc.height ?? h;
+  const bitmap = await createImageBitmap(blob), r = new Raster(w, h);
+  r.ctx.drawImage(bitmap, 0, 0, w, h);   // scaled to the shape asked
+  bitmap.close();
+  r.touch();
+  engine.insertRasterLayer(r, 'Generated Image', Math.round((W - w) / 2), Math.round((H - h) / 2), generation ? { generation } : {}, 'Generate Image');
+}
+
+/** Adds an earlier result as a new layer again, without running the model; false when it is gone or no picture is open. */
+export async function addKeptResult(engine: Engine, id: number): Promise<boolean> {
+  const k = kept.find((x) => x.id === id);
+  if (!k || !engine.current) return false;
+  await placeResult(engine, k.blob, k.width, k.height, k.generation);
+  return true;
+}
+
+async function generateOnce(engine: Engine, req: GenerationRequest): Promise<boolean> {
   if (!engine.current) engine.newDocument(req.size?.width ?? 1024, req.size?.height ?? 1024, 'Generated', 'white');
   const p = engine.current;
   if (!p) return false;
@@ -77,6 +149,8 @@ export async function runGeneration(engine: Engine, req: GenerationRequest): Pro
   const hint = req.keyHint ?? { fal: t('Add a fal API key first, in Edit > Generative Fill.'), provider: (name: string) => t(`Add a ${name} API key first, above.`) };
   let blob: Blob;
   let generation: GenerationInfo | undefined;
+  const referenced = !(choice === 'fal' || choice.startsWith('local:') || choice.startsWith('provider:'));
+  if (!referenced && hasTokens(prompt)) throw new Error(t('This model takes no references: remove the @img tokens from the prompt, or choose a ComfyUI workflow.'));
   if (choice.startsWith('local:')) {
     // On this computer: the shape asked within the model's 2048 pixels, in multiples of 16.
     const k = Math.min(1, 2048 / Math.max(w, h)), lw = Math.max(256, Math.round((w * k) / 16) * 16), lh = Math.max(256, Math.round((h * k) / 16) * 16);
@@ -101,14 +175,13 @@ export async function runGeneration(engine: Engine, req: GenerationRequest): Pro
     if (!recipe) throw new Error(t('That workflow is no longer kept: add it again in Edit > Generative Fill.'));
     req.status(t('Sending to ComfyUI...'));
     const refs = req.references ? await req.references() : [];
-    blob = (await runToResults(loadPrefs().comfyuiUrl, recipe.json, refs.map((r) => ({ name: r.name, kind: 'reference' })), refs.map((r, i) => ({ name: `ref${i}.png`, blob: r.blob })), prompt, req.status, req.stopped))[0];
+    const said = resolveReferenceTokens(prompt, refs.length);
+    blob = (await runToResults(loadPrefs().comfyuiUrl, recipe.json, refs.map((r) => ({ name: r.name, kind: 'reference' })), refs.map((r, i) => ({ name: `ref${i}.png`, blob: r.blob })), said, req.status, req.stopped))[0];
   }
   if (req.stopped() || engine.current !== p) return false;
-  const bitmap = await createImageBitmap(blob), r = new Raster(w, h);
-  r.ctx.drawImage(bitmap, 0, 0, w, h);   // scaled to the shape asked
-  bitmap.close();
-  r.touch();
-  engine.insertRasterLayer(r, 'Generated Image', Math.round((W - w) / 2), Math.round((H - h) / 2), generation ? { generation } : {}, 'Generate Image');
+  await placeResult(engine, blob, w, h, generation);
+  kept.unshift({ id: ++serial, time: Date.now(), prompt, choice, width: w, height: h, blob, generation });
+  if (kept.length > KEPT_LIMIT) kept.length = KEPT_LIMIT;
   return true;
 }
 
@@ -130,6 +203,10 @@ export class GenerateImageDialog extends Dialog {
   private readonly keyButton = el<HTMLButtonElement>('<button class="cv-btn" type="button">Save key</button>');
   private changing = false;   // a kept key being replaced
   private picked = false;     // the person chose the model (1.58.5); until then the default is fal with a key, else local
+  // Earlier results (add again, or take back their prompt) and the run log of every generation, built once and patched.
+  private readonly hist = el('<div class="cv-gen-hist" role="group" aria-label="Earlier results"></div>');
+  private readonly logBox = el('<details class="cv-gen-log"><summary>Run log</summary><pre class="cv-gen-logtext" aria-label="Run log"></pre><div class="cv-dialog-row"><button type="button" class="cv-btn cv-btn-ghost" data-act="copy">Copy log</button><button type="button" class="cv-btn cv-btn-ghost" data-act="clear">Clear log</button></div></details>');
+  private readonly thumbs = new Map<number, string>();
 
   constructor(private readonly engine: Engine, private readonly toast: (text: string) => void) {
     super('Generate Image', 420);
@@ -143,7 +220,22 @@ export class GenerateImageDialog extends Dialog {
       if (pr?.configured && !this.changing) { this.changing = true; this.keyFor(); this.keyInput.focus(); } else void this.saveKey();
     });
     this.keyRow.append(this.keyInput, this.keyButton);
-    this.body.append(this.prompt, this.improver.el, row, this.keyRow, this.refs.el, this.status);
+    this.body.append(this.prompt, this.improver.el, row, this.keyRow, this.refs.el, this.status, this.hist, this.logBox);
+    this.hist.addEventListener('click', (ev) => {
+      const b = (ev.target as HTMLElement).closest<HTMLButtonElement>('button[data-id]');
+      if (!b) return;
+      const id = Number(b.dataset.id), k = keptResults().find((x) => x.id === id);
+      if (!k) return;
+      if (ev.shiftKey) { this.prompt.value = k.prompt; this.prompt.focus(); return; }
+      void addKeptResult(this.engine, id).then((ok) => { setText(this.status, ok ? 'Added again as a layer.' : 'Open a picture first.'); });
+    });
+    this.logBox.addEventListener('click', (ev) => {
+      const act = (ev.target as HTMLElement).closest<HTMLElement>('button[data-act]')?.dataset.act;
+      if (act === 'clear') clearRunLog();
+      else if (act === 'copy') void navigator.clipboard?.writeText(runLogText()).then(() => setText(this.status, 'The run log is copied.'), () => setText(this.status, 'The run log could not be copied.'));
+    });
+    onGenerationChange(() => this.paintHistory());
+    this.paintHistory();
     this.button('Cancel', 'ghost', () => { this.stopped = true; this.close(); });
     this.button('Generate', 'primary', () => void this.generate());
     this.remember();   // the model chosen and the reference settings; the prompt and the key are text
@@ -165,6 +257,30 @@ export class GenerateImageDialog extends Dialog {
     this.stopped = false;
     this.open();
     this.prompt.focus();
+  }
+
+  /** The kept results as thumbnails and the log as text, patched in place. Click a thumbnail to add it again; Shift-click to reuse its prompt. */
+  private paintHistory(): void {
+    const results = keptResults();
+    patchList(this.hist, [...results], {
+      key: (k) => String(k.id),
+      create: (k) => {
+        const url = URL.createObjectURL(k.blob);
+        this.thumbs.set(k.id, url);
+        const b = el<HTMLButtonElement>('<button type="button" class="cv-gen-thumb"><img alt=""></button>');
+        b.dataset.id = String(k.id);
+        (b.firstElementChild as HTMLImageElement).src = url;
+        b.title = `${k.prompt}\nClick to add again; Shift-click to reuse the prompt.`;
+        b.setAttribute('aria-label', `Add again: ${k.prompt}`);
+        return b;
+      },
+      update: () => {},
+    });
+    for (const [id, url] of this.thumbs) if (!results.some((k) => k.id === id)) { URL.revokeObjectURL(url); this.thumbs.delete(id); }
+    setHidden(this.hist, results.length === 0);
+    const log = this.logBox.querySelector('pre') as HTMLElement;
+    setText(log, runLogText());
+    setHidden(this.logBox, generationLog().length === 0);
   }
 
   /** The chosen provider, when the model chosen is one of the providers beside fal. */

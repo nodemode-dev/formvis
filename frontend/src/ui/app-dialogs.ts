@@ -403,6 +403,10 @@ export class SettingsDialog extends Dialog {
   private readonly recentFontsRow = sliderRow('Recent fonts listed first', 0, 20, 1, (v) => this.change({ recentFontCount: v }));
   private readonly rawWbRow = selectRow('Default White Balance', RAW_WB_CHOICES, (v) => this.change({ rawWb: v as Prefs['rawWb'] }));
   private readonly rawBitsRow = selectRow('Default Depth', [['8', '8 Bits/Channel'], ['16', '16 Bits/Channel']], (v) => this.change({ rawBits: v === '16' ? 16 : 8 }));
+  private readonly historyLogRow = checkRow('Keep a log of history steps', (v) => this.change({ historyLog: v }));
+  private readonly rawToneRow =checkRow('Apply Auto Tone', (v) => this.change({ rawAutoTone: v }));
+  private readonly rawSmartRow = checkRow('Open as a Smart Object', (v) => this.change({ rawSmart: v }));
+  private readonly rawPpiRow = sliderRow('Resolution (ppi, 0 keeps the file\'s)', 0, 600, 1, (v) => this.change({ rawPpi: v }));
   private readonly curveRow = selectRow('Pen Pressure Curve', PRESSURE_CURVES, (v) => this.change({ pressureCurve: v as PressureCurve }));
   private readonly fontSizeRow = selectRow('Interface Text Size', UI_FONT_SIZES, (v) => this.change({ uiFontSize: v as UiFontSize }));
   private readonly firstSnapRow = checkRow('Automatically Create First Snapshot', (v) => this.change({ autoFirstSnapshot: v }));
@@ -492,9 +496,10 @@ export class SettingsDialog extends Dialog {
     const library = el('<div></div>');
     library.append(this.libNow, libRow, pathRow, moveRow, this.libApply, el('<p class="cv-note">The library can live in any folder, a synced one (iCloud Drive, Dropbox, OneDrive, Google Drive) included. If a project changed in that folder since you opened it, from another device or window, saving keeps that version and saves yours beside it as a conflict copy.</p>'));
     add('File Handling', library, mismatch, restore, el('<p class="cv-note">Every open document is kept on this device, in its tab order, and opens again at the next start, saved or not. Off, only unsaved work is kept, and formvis asks after a crash.</p>'), this.recoveryRow.el, el('<p class="cv-note">Unsaved documents are kept on this device so they can be recovered after a crash; this is how soon after a change that happens.</p>'));
+    add('History Log', this.historyLogRow.el, el('<p class="cv-note">On, every new history step is written down with its time and document, on this device. Edit > History Log saves it as a text file or clears it.</p>'));
     add('Cursors', this.cursorRow.el, this.crossRow.el, el('<p class="cv-note">How painting tools show where they paint: the tip\'s outline at its size, a crosshair alone, or a small ring.</p>'));
     add('Type', this.recentFontsRow.el, el('<p class="cv-note">The fonts you used last are listed first in the font menus, newest first; 0 lists none first.</p>'));
-    add('Camera Raw Defaults', this.rawWbRow.el, this.rawBitsRow.el, el('<p class="cv-note">What the Camera Raw dialog starts with each time a camera RAW file opens.</p>'));
+    add('Camera Raw Defaults', this.rawWbRow.el, this.rawBitsRow.el, this.rawPpiRow.el, this.rawToneRow.el, this.rawSmartRow.el, el('<p class="cv-note">What the Camera Raw dialog starts with each time a camera RAW file opens. Resolution, Auto Tone and Smart Object apply to the 8 bits/channel document it opens.</p>'));
     add('Transparency & Gamut', this.checkerSizeRow.el, this.checkerColorsRow.el, el(`<p class="cv-note">${t('The checkerboard shown behind transparent pixels. None shows it plain; Match Theme uses the light checkerboard in light themes and the dark one in dark themes.')}</p>`));
     add('Language', this.languageRow.el, el('<p class="cv-note">The language of the whole interface. Names you give layers and documents stay as you wrote them.</p>'));
     add('Units & Rulers', this.rulerRow.el, el('<p class="cv-note">The rulers\' unit; inches, centimetres and millimetres follow the document\'s resolution, percent its width and height.</p>'));
@@ -594,6 +599,8 @@ export class SettingsDialog extends Dialog {
     this.recentFontsRow.set(this.prefs.recentFontCount);
     this.rawWbRow.set(this.prefs.rawWb);
     this.rawBitsRow.set(String(this.prefs.rawBits));
+    this.historyLogRow.set(this.prefs.historyLog);
+    this.rawToneRow.set(this.prefs.rawAutoTone); this.rawSmartRow.set(this.prefs.rawSmart); this.rawPpiRow.set(this.prefs.rawPpi);
     this.fontSizeRow.set(this.prefs.uiFontSize);
     this.firstSnapRow.set(this.prefs.autoFirstSnapshot);
     this.snapMemRow.set(this.prefs.snapshotMB);

@@ -97,7 +97,7 @@ import { GenerativeDialog } from './ui/panels/generative-dialog';
 import { readPat, writePat } from './io/pat';
 import { cleanFeatures } from './engine/opentype';
 import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, LAYER_LABELS, Raster, SelectionMask,stripExt, toBlob, type ImportedImage, type Pt, effectsActive, effectsPresent, liveText, ctxOf, createSurface, type AdjustmentKind, effectsFromData, runFilterOffThread, addPattern, allPatterns, patternById, projectPatterns, randomSeed, metaWritable, addCustomShape, allCustomShapes, loadCustomShapes } from './engine';
-import { toolForKey, toolsForKey } from './extensions/registry';
+import { getTool, toolForKey, toolsForKey } from './extensions/registry';
 import { registerBuiltinTools } from './extensions/tools';
 import { HostLink } from './host';
 import { api, onServiceChange, serviceDown, type Capabilities, type CmykPsd, type OpenedProject } from './io/api';
@@ -125,6 +125,8 @@ import { LargePictureError, IMAGE_ACCEPT, PROJECT_ACCEPT, RAW_FILE, decodeFrames
 import { addFontFace, familyOfFile, loadSystemFonts } from './ui/fonts';
 import { deserialize, giantTiles, serialize } from './io/project-io';
 import { AboutDialog, BenchmarkDialog, NewCanvasDialog, OpenDialog, SettingsDialog, ShortcutsDialog } from './ui/app-dialogs';
+import { HistoryLog } from './ui/history-log';
+import { extraOn, extrasOn, setAllExtras, setExtra, setExtras } from './ui/view-extras';
 import { CHECKER_CELL, FONT_PREVIEWS, applyPrefs, applyUiFontSize, checkerPair, loadPrefs, savePrefs, updatePrefs, type Prefs } from './ui/prefs';
 import { THEMES, readChoice, setTheme } from './ui/themes';
 import { installOptionMemory } from './ui/option-memory';
@@ -412,11 +414,13 @@ export function startApp(): void {
     document.documentElement.style.setProperty('--cv-checker-a', a);
     document.documentElement.style.setProperty('--cv-checker-b', pr.checkerSize === 'none' ? a : b);
   };
+  const historyLog = new HistoryLog(engine);
   const applyUiPrefs = (pr: Prefs): void => {
     Stage.prefs = { cell: CHECKER_CELL[pr.checkerSize], zoomWheel: pr.zoomWheel, rulerUnits: pr.rulerUnits, gridColor: pr.gridColor, guideColor: pr.guideColor };
     applyChecker(pr);
     applyUiFontSize(pr);
     PropertiesColumn.narrowCollapse = pr.narrowCollapse;
+    historyLog.enable(pr.historyLog);
     stage.restyle();
     window.dispatchEvent(new Event('resize'));
   };
@@ -514,7 +518,7 @@ export function startApp(): void {
   });
   dock.locked = dock.locked;
   new Rail(q(root, '.cv-rail'), engine);
-  installOptionMemory(engine);   // every tool option sticks (DEV_PLAN 35.1), before the bar and the catalogue read the options
+  const optionMemory = installOptionMemory(engine);   // every tool option sticks (DEV_PLAN 35.1), before the bar and the catalogue read the options
   new OptionsBar(q(root, '.cv-options'), engine);
   const status = new StatusBar(q(root, '.cv-status'), engine);
   const hostLink = new HostLink(() => undefined, () => undefined);
@@ -815,7 +819,7 @@ export function startApp(): void {
               rawPick = null;
               continue;
             }
-            try { decoded.push(await decodeImage(f, f.name, false, rawPick.wb)); } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
+            try { const img = await decodeImage(f, f.name, false, rawPick.wb), ppi = loadPrefs().rawPpi; decoded.push(ppi ? { ...img, resolution: ppi } : img); } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
             continue;
           }
           // A Lab TIFF opened as a new document is a Lab document (1.58.1), tried before the page count (which refuses it).
@@ -891,8 +895,13 @@ export function startApp(): void {
           const custom = !!rawPick && (rawPick.wb.wb !== 'as_shot' || !!rawPick.wb.temperature || !!rawPick.wb.tint);
           if (file && layer) rawLayers.set(layer.id, { file, profile: custom ? 'none' : 'auto', ...(rawPick ? { wb: rawPick.wb } : {}) });
         }
-        // A single camera RAW opens into Develop first.
-        if (decoded.length === 1 && RAW_FILE.test(decoded[0].name)) commands.run('filter-develop');
+        // A single camera RAW opens into Develop first, after the Camera Raw Defaults for Auto Tone and Smart Object.
+        if (decoded.length === 1 && RAW_FILE.test(decoded[0].name)) {
+          const d = loadPrefs();
+          if (d.rawAutoTone) engine.autoAdjust('tone');
+          if (d.rawSmart && !engine.current?.activeLayer?.smart) engine.convertToSmartObject();
+          commands.run('filter-develop');
+        }
       });
     }
     if (skipped) toast(skipped === 1 ? 'One file is not an image or a project and was skipped.' : `${skipped} files are not images or projects and were skipped.`);
@@ -2723,6 +2732,13 @@ export function startApp(): void {
     { id: 'lock-guides', label: () => (engine.view.guidesLocked ? 'Unlock Guides' : 'Lock Guides'), keys: ['Alt+Mod+;'], enabled: has, run: () => engine.setView({ guidesLocked: !engine.view.guidesLocked }) },
     { id: 'clear-guides', label: 'Clear Guides', enabled: () => !!engine.current?.doc.guides?.length, run: () => engine.clearGuides() },
     { id: 'toggle-show-slices', label: () => (engine.view.slices ? 'Hide Slices' : 'Show Slices'), enabled: has, run: () => engine.setView({ slices: !engine.view.slices }) },
+    { id: 'toggle-extras', label: 'Extras', checked: extrasOn, run: () => setExtras(!extrasOn()) },
+    { id: 'show-notes', label: 'Show Notes', checked: () => extraOn('notes'), run: () => setExtra('notes', !extraOn('notes')) },
+    { id: 'show-counts', label: 'Show Count', checked: () => extraOn('counts'), run: () => setExtra('counts', !extraOn('counts')) },
+    { id: 'show-selection-edges', label: 'Show Selection Edges', checked: () => extraOn('selectionEdges'), run: () => setExtra('selectionEdges', !extraOn('selectionEdges')) },
+    { id: 'show-layer-edges', label: 'Show Layer Edges', checked: () => extraOn('layerEdges'), run: () => setExtra('layerEdges', !extraOn('layerEdges')) },
+    { id: 'show-all-extras', label: 'Show All', run: () => { setAllExtras(true); engine.setView({ guides: true, grid: true, slices: true }); } },
+    { id: 'show-no-extras', label: 'Show None', run: () => { setAllExtras(false); engine.setView({ guides: false, grid: false, slices: false }); } },
     { id: 'delete-slice', label: 'Delete Slice', enabled: () => !!engine.current?.doc.slices?.some((s) => s.id === engine.activeSlice), run: () => { engine.deleteActiveSlice(); } },
     { id: 'clear-slices', label: 'Clear Slices', enabled: () => !!engine.current?.doc.slices?.length, run: () => engine.clearSlices() },
     { id: 'slice-options', label: 'Slice Options...', enabled: () => !!engine.current?.doc.slices?.some((s) => s.id === engine.activeSlice), run: async () => { (await import('./ui/slice-options')).openSliceOptions(engine); } },
@@ -3323,6 +3339,7 @@ export function startApp(): void {
     { id: 'guide-layout', label: 'New Guide Layout...', enabled: has, run: () => { void import('./ui/panels/guide-layout').then((m) => m.openGuideLayout(engine)); } },   // 27.11
     { id: 'guides-from-shape', label: 'New Guides From Shape', enabled: () => !!engine.current?.activeLayer?.vector || !!engine.current?.selection, run: () => { if (!engine.guidesFromShape()) toast('Select a shape layer, or make a selection, to place guides from.', 'info'); } },   // 27.11
     { id: 'actual', label: 'Actual Pixels', keys: ['Mod+1'], enabled: has, run: () => engine.zoomTo(1) },
+    { id: 'print-size', label: 'Print Size', enabled: has, run: () => { const ppi = engine.current?.doc.resolution || 72; engine.zoomTo(96 / ppi); } },
     { id: 'pixel-grid', label: 'Pixel Grid', checked: () => engine.showPixelGrid, run: () => engine.update({ showPixelGrid: !engine.showPixelGrid }) },
     { id: 'pattern-preview', label: 'Pattern Preview', checked: () => engine.view.patternPreview, run: () => engine.setView({ patternPreview: !engine.view.patternPreview }) },
     { id: 'pixel-art-preview', label: 'Pixel Art Preview', checked: () => engine.view.pixelArt, run: () => engine.setView({ pixelArt: !engine.view.pixelArt }) },
@@ -3418,6 +3435,11 @@ export function startApp(): void {
     { id: 'benchmark', label: 'Performance Benchmark...', run: () => dialogs.benchmark.show() },
     { id: 'record-performance', label: 'Record Performance...', run: () => perfDialog.show() },
     { id: 'check-for-updates', label: 'Check for Updates...', enabled: hasPanels, run: () => void checkUpdates() },
+    { id: 'reset-tool', label: 'Reset Tool', run: () => { const n = optionMemory.reset(engine.tool); toast(n ? `Reset ${n} ${n === 1 ? 'option' : 'options'} of the ${getTool(engine.tool)?.label ?? 'current'} tool.` : 'This tool already has its default options.', 'info'); } },
+    { id: 'reset-all-tools', label: 'Reset All Tools', run: () => { const n = optionMemory.reset(); toast(n ? `Reset ${n} tool ${n === 1 ? 'option' : 'options'} to their defaults.` : 'Every tool already has its default options.', 'info'); } },
+    { id: 'simulate-gpu-loss', label: 'Simulate GPU Device Loss', enabled: () => !!gpuDisplay, run: () => { const d = gpuDisplay; if (d?.onLost) { d.onLost(); toast('Simulated a lost GPU device; drawing fell back.', 'info'); } } },
+    { id: 'help-github', label: 'formvis on GitHub', run: () => { window.open('https://github.com/nodemode-ai/formvis', '_blank', 'noopener'); } },
+    { id: 'report-issue', label: 'Report an Issue...', run: () => { window.open('https://github.com/nodemode-ai/formvis/issues/new', '_blank', 'noopener'); } },
     { id: 'copy-error-log', label: 'Copy Error Log', run: () => { void navigator.clipboard?.writeText(errorLog.text()).then(() => toast('Copied the error log.'), () => toast('The clipboard is not available here.', 'error')); } },
   );
 
@@ -3477,6 +3499,8 @@ export function startApp(): void {
     { id: 'paste-into', label: 'Paste Into', keys: ['Alt+Shift+Mod+V'], enabled: selected, run: () => void pasteFromMenu(false) },
     { id: 'paste-outside', label: 'Paste Outside', enabled: selected, run: () => void pasteFromMenu(true) },
     { id: 'purge-clipboard', label: 'Clipboard', enabled: () => !!engine.clipboard, run: () => { if (engine.purgeClipboard()) toast('Cleared the clipboard.'); } },
+    { id: 'save-history-log', label: 'Save History Log...', enabled: () => historyLog.count > 0, run: () => void deliverFile(new Blob([historyLog.text()], { type: 'text/plain' }), 'formvis-history-log.txt') },
+    { id: 'clear-history-log', label: 'Clear History Log', enabled: () => historyLog.count > 0, run: () => { const n = historyLog.count; historyLog.clear(); toast(`Cleared ${n} history log entries.`); } },
     { id: 'purge-histories', label: 'Histories', enabled: () => !!engine.current && engine.historySteps.names.length > 0, run: () => { void confirmAction('Purge histories?', 'This clears the undo and redo history of this document, keeping its current state and snapshots. It cannot be undone.', 'Purge', true).then((ok) => { if (ok) toast(`Purged ${engine.purgeHistories(false)} history steps.`); }); } },
     {
       id: 'clean-working-files', label: 'Working Files', enabled: () => true,
@@ -3689,7 +3713,7 @@ export function startApp(): void {
       { label: 'Automate', items: ['actions', 'action-stop', 'batch', 'create-droplet', '-', 'fit-image', 'conditional-mode-change', 'contact-sheet', 'crop-straighten-photos', 'photomerge', 'merge-hdr'] },
       { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'image-processor', 'script-events', 'load-files-stack', 'stack-statistics', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'reopen-closed-tab', 'close-all', 'close-others'] },
     { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', '-', 'fade', 'compare-documents', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', 'pick-screen-colour', '-',
-      { label: 'Purge', items: ['purge-clipboard', 'purge-histories', 'clean-working-files', 'purge-all'] }, '-',
+      { label: 'Purge', items: ['purge-clipboard', 'purge-histories', 'clean-working-files', 'purge-all'] }, { label: 'History Log', items: ['save-history-log', 'clear-history-log'] }, 'reset-tool', 'reset-all-tools', '-',
       { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-', 'auto-align-layers', 'auto-blend-layers', '-',
       'fill-path-dialog', 'stroke-path-dialog', '-', 'transform', 'transform-copy', { label: 'Transform', items: ['transform-again', '-', 'transform-scale', 'transform-rotate', 'transform-skew', 'transform-distort', 'transform-perspective', 'transform-warp', 'warp-split-h', 'warp-split-v', 'warp-split-cross', 'warp-remove-split', '-', 'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw', '-', 'flip-layer-h', 'flip-layer-v'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', 'define-brush', 'define-custom-shape', { label: 'Presets', items: ['preset-manager', '-', 'swatches-load', 'swatches-save'] }, '-', 'assign-profile', 'convert-profile', 'colour.settings', '-', 'customize-toolbar', 'shortcuts', 'settings'] },
     { label: 'Image', items: [
@@ -3734,12 +3758,12 @@ export function startApp(): void {
       { label: '3D', items: ['normal-map', 'bump-map', 'height-from-normal'] }, '-', 'remove-bg', 'remove-bg-lite'] },
     // Generate: the generative commands in one place (the Generate panel, models, fill, repair, size, relight, and the ComfyUI and NodeMode links).
     { label: 'Generate', items: ['generate-panel', '-', 'generate-image', 'generative-fill', 'generative-expand', '-', 'generate-remove', 'content-fill-workspace', 'content-fill', 'remove-wires', '-', 'remove-bg', 'remove-bg-lite', '-', 'upscale-2x', 'upscale-4x', 'new-relight-layer', '-', 'comfyui-run', 'send-comfyui', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode'])] },
-    { label: 'View', items: [{ label: 'Proof Setup', items: ['proof-setup', '-', 'proof-preset-monitor', 'proof-preset-cmyk', 'proof-preset-cyan', 'proof-preset-magenta', 'proof-preset-yellow', 'proof-preset-black', 'proof-preset-cmy', '-', 'proof-preset-protanopia', 'proof-preset-deuteranopia'] }, 'proof-colors', 'gamut-warning', 'preview-32', '-', 'zoom-in', 'zoom-out', 'fit', 'fit-layers', 'fit-artboard', 'actual', '-', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'pattern-preview', 'pixel-art-preview', 'par-correction', 'transform-controls', 'toggle-task-bar', '-',
-      { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'guide-layout', 'guides-from-shape', 'clear-guides'] }, { label: 'Show', items: ['toggle-show-slices', 'layer-based-slice', 'slice-options', 'delete-slice', 'clear-slices'] }, '-',
+    { label: 'View', items: [{ label: 'Proof Setup', items: ['proof-setup', '-', 'proof-preset-monitor', 'proof-preset-cmyk', 'proof-preset-cyan', 'proof-preset-magenta', 'proof-preset-yellow', 'proof-preset-black', 'proof-preset-cmy', '-', 'proof-preset-protanopia', 'proof-preset-deuteranopia'] }, 'proof-colors', 'gamut-warning', 'preview-32', '-', 'zoom-in', 'zoom-out', 'fit', 'fit-layers', 'fit-artboard', 'actual', 'print-size', '-', 'toggle-extras', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'pattern-preview', 'pixel-art-preview', 'par-correction', 'transform-controls', 'toggle-task-bar', '-',
+      { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'guide-layout', 'guides-from-shape', 'clear-guides'] }, { label: 'Show', items: ['show-all-extras', 'show-no-extras', '-', 'show-selection-edges', 'show-layer-edges', 'show-notes', 'show-counts', 'toggle-show-slices', 'layer-based-slice', 'slice-options', 'delete-slice', 'clear-slices'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'toggle-panels', 'rail-columns', 'interface-rtl', { label: 'Pasteboard', items: ['pasteboard-default', 'pasteboard-black', 'pasteboard-dark', 'pasteboard-mid', 'pasteboard-light'] }] },
     { label: 'Plugins', items: () => { const ids = pluginHost.commandIds(); return ['manage-plugins', ...(ids.length ? ['-', ...ids] : [])]; } },
     { label: 'Window', items: [{ label: 'Arrange', items: ['new-window', 'float-window', 'float-all-windows', '-', 'arrange-tabs','arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-4up', 'arrange-6up', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.connect.open', 'terminal.toggle', 'terminal.new', 'script-console', 'brush-settings', 'paragraph-styles', 'character-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-properties-col', 'merge-columns', '-', { label: 'Workspace', items: ['workspace-pixelart', '-', 'new-workspace', 'delete-workspace'] }, 'reset-panels', '-', 'next-document', 'previous-document', '-', 'theme-sync-system'] },
-    { label: 'Help', items: ['help', 'whats-new', '-', 'shortcuts', 'copy-error-log', 'benchmark', 'record-performance', '-', 'check-for-updates', 'about'] },
+    { label: 'Help', items: ['help', 'whats-new', '-', 'shortcuts', 'copy-error-log', 'benchmark', 'record-performance', 'simulate-gpu-loss', '-', 'help-github', 'report-issue', '-', 'check-for-updates', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);
   // The desktop app on macOS puts these menus in the system menu bar, as the target's (Phase 21); the in-window bar then hides.
