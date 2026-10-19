@@ -7,12 +7,13 @@
 // Engine class. The smart filter stack and filter mask methods stay in smart-ops.ts.
 import type { Project } from './project';
 import { Raster, createSurface, ctxOf } from './surface';
-import { applyMat, invert, mul, placement, setMat } from './geometry';
+import { applyMat, invert, mul, placement, setMat, translation } from './geometry';
 import { cropWarp, homography, project, visibleBounds, warpRaster, type Warped } from './distort';
+import { deformNow, transformOf } from './smart-deform';
 import { computeStack, type StackMode } from './stack-modes';
 import { fadeImages } from './fade';
 import * as LS from './layer-structure';
-import { docTransform, newLayer, uid, type Doc, type ID, type Layer, type Pt, type SmartFilter, type SmartLink, type SmartObject } from './types';
+import { docTransform, newLayer, uid, type Doc, type ID, type Layer, type Pt, type SmartDeform, type SmartFilter, type SmartLink, type SmartObject } from './types';
 import type { Surface } from './surface';
 
 /** The smart object state the Engine keeps. */
@@ -47,6 +48,8 @@ export interface SmartObjectHost {
   settle(): void;
   flattened(): Surface | null;
   emit(what: 'doc' | 'projects' | 'history'): void;
+  /** A render `r` carried through a stored Warp, Puppet Warp or Perspective Warp, trimmed to what shows; null when it does nothing. */
+  deformRender(p: Project, r: Raster, d: SmartDeform): Warped | null;
 }
 
 /** A smart object's pixels: its source padded by the shown filters' total reach, with each applied in order. */
@@ -176,7 +179,14 @@ export function smartToLayers(host: SmartObjectHost): void {
   host.edit('Convert to Layers', (p) => {
     const l = p.activeLayer;
     if (!l?.smart || !l.raster) { host.notice('Select a smart object to convert.'); return false; }
-    const src = l.smart.source, warp = smartWarpNow(l);
+    const src = l.smart.source, warp = smartWarpNow(l), live = deformNow(l);
+    if (live) {
+      const w = host.deformRender(p, src, { ...live, base: mul(live.base, translation(live.pad, live.pad)), pad: 0 });
+      if (!w) return false;
+      const mask = l.mask && !l.mask.placement ? { ...l.mask, placement: l.transform } : l.mask;
+      p.updateLayer(l.id, { smart: null, raster: w.raster, transform: w.t, mask });
+      return;
+    }
     if (warp) {
       const w = warpedSmart(src, 0, src, warp);
       if (!w) return false;
@@ -194,6 +204,14 @@ export function smartToLayers(host: SmartObjectHost): void {
     }
     p.updateLayer(l.id, { smart: null, raster: src.clone(), transform: { ...t, x: cx - w / 2, y: cy - h / 2, w, h }, mask });
   });
+}
+
+/** Layer > Smart Objects > Reset Warp: the active smart object drops its Warp, Puppet Warp or Perspective Warp and shows
+ *  its render where it sat before, one step. The source and the filters are untouched. */
+export function resetDeform(host: SmartObjectHost): boolean {
+  const p = host.current, l = p?.activeLayer;
+  if (!p || !l?.smart?.deform) { host.notice('Select a smart object with a Warp, Puppet Warp or Perspective Warp.'); return false; }
+  return restackSoon(host, p, l.id, null, null, 'Reset Smart Object Warp', null, { deform: null });
 }
 
 /** Layer > Smart Objects > Replace Contents: a new source for the active smart object, shown at the same scale per
@@ -295,6 +313,19 @@ export function restack(host: SmartObjectHost, p: Project, id: ID, source: Raste
     const src = source ?? l.smart.source;
     const fm = maskChange ?? { filterMask: l.smart.filterMask ?? null, filterMaskEnabled: l.smart.filterMaskEnabled !== false };
     const stack = structuredClone(filters ?? l.smart.filters), raster = rendered ?? renderSmart(host, src, stack, fm.filterMaskEnabled ? fm.filterMask : null), old = l.raster as Raster, t = l.transform;
+    const live = deformNow(l);
+    if (live) {
+      // A Warp, Puppet Warp or Perspective Warp is applied afresh to the new render; dropping it (reset) or a warp that
+      // now shows nothing puts the render back where its base sat.
+      const reset = !!extra && 'deform' in extra && !extra.deform, pad = smartMargin(host, stack);
+      const base = mul(live.base, translation(-(raster.width - (l.smart.source.width + 2 * live.pad)) / 2, -(raster.height - (l.smart.source.height + 2 * live.pad)) / 2));
+      const d: SmartDeform = { ...live, base, pad }, w = reset ? null : host.deformRender(p, raster, d);
+      const mask = l.mask && !l.mask.placement ? { ...l.mask, placement: l.transform } : l.mask;
+      const smart = { ...l.smart, ...extra, source: src, filters: stack, warp: null, warpAt: null, filterMask: fm.filterMask, filterMaskEnabled: fm.filterMaskEnabled };
+      if (w) p.updateLayer(id, { smart: { ...smart, deform: { ...d, at: w.t } }, raster: w.raster, transform: w.t, mask });
+      else p.updateLayer(id, { smart: { ...smart, deform: null }, raster, transform: transformOf(base, raster.width, raster.height, l.transform), mask });
+      return;
+    }
     const warp = smartWarpNow(l);
     if (warp) {
       // A distorted smart object warps its fresh render through its kept warp; a mask tied to its pixels is pinned

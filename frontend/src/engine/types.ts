@@ -46,7 +46,7 @@ export interface Mask { raster: Raster | null; enabled: boolean; linked: boolean
 /** A vector mask (1.66.1): a path in document pixels showing the layer only inside it, or only outside it
  *  when `inverted`, its edge anti-aliased; with no outlines it shows all, or inverted hides all (Hide All). Linked, it
  *  moves and transforms with the layer; canvas changes carry it either way. */
-export interface VectorMask { path: import('./paths').VectorPath; enabled: boolean; linked: boolean; inverted: boolean }
+export interface VectorMask { path: import('./paths').VectorPath; enabled: boolean; linked: boolean; inverted: boolean; /** Density in percent (100 or absent: as drawn) and feather in pixels (0 or absent), applied when drawn. */ density?: number; feather?: number }
 export type AdjustmentKind = 'hsv' | 'levels' | 'curves' | 'exposure' | 'gradientMap' | 'grain' | import('./adjust-params').ParamKind;
 export interface Adjustment { kind: AdjustmentKind; data: Record<string, unknown> }
 /** Layer locks (the Lock row): transparency (paint only where there are pixels), image pixels
@@ -77,7 +77,7 @@ export interface Layer {
   /** A video layer (DEV_PLAN 33.4a): one raster per frame of its clip. `original` is the footage as loaded, `frames` the
    *  current, possibly painted, frames (they share Raster objects until a frame is altered); `raster` shows the frame
    *  at the playhead and is stored back into `frames` when the playhead leaves it. */
-  video?: { frames: Raster[]; original: Raster[]; name: string; interpret?: FootageInterpretation } | null;
+  video?: { frames: Raster[]; original: Raster[]; name: string; interpret?: FootageInterpretation; /** Show Altered Video off: the footage as loaded is shown in place of the painted frames. */ unaltered?: boolean } | null;
   /** On a top-level folder, makes it an artboard: its contents shown only inside `x, y, w, h` (document pixels), over
    *  `background` (none is transparent), and exported as its own image. */
   artboard?: Artboard | null;
@@ -179,9 +179,9 @@ export interface LayerComp {
 export interface DocVariable { name: string; layer: ID; kind: 'visibility' | 'text' | 'pixels'; method?: 'fit' | 'fill' | 'asis' | 'conform' }
 /** A named row of values, one per variable name. */
 export interface DataSet { name: string; values: Record<string, string> }
-export interface Doc { /** DEV_PLAN 36.14: Image Assets on; File > Save also writes the layers named like foo.png. Absent means off. */ assetsOnSave?: boolean; /** Width over height of one pixel (35.4 part b); absent means square. */ pixelAspect?: number; measureScale?: { pixels: number; length: number; units: string }; measurements?: Array<{ id: number; label: string; scale: number; units: string; area?: number; perimeter?: number; length?: number; angle?: number; count?: number; w?: number; h?: number; gray?: number; grayMin?: number; grayMax?: number; intDen?: number; cx?: number; cy?: number }>; multichannel?: { channels: { name: string; color: RGB; solidity: number; data: Raster }[] }; duotone?: { type: 'mono' | 'duo' | 'tri' | 'quad'; inks: { name: string; color: RGB; curve: number[] }[] }; variables?: DocVariable[]; dataSets?: DataSet[]; activeDataSet?: string | null; comps?: readonly LayerComp[]; activeComp?: ID | null; depth?: 8 | 16 | 32; profile?: DocProfile; mode?: DocMode; palette?: readonly RGB[]; /** The Indexed Color entry whose pixels are clear. */ transparentIndex?: number; readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[]; guides?: readonly Guide[]; slices?: readonly DocSlice[];notes?: readonly DocNote[]; counts?: readonly { x: number; y: number; /** The count group it belongs to; absent means the first. */ g?: ID }[]; /** Count groups (the Count tool): a name and a colour each, hidden or shown. Absent means one default group. */ countGroups?: readonly CountGroup[]; boxes?: readonly DocBox[]; globalLight?: GlobalLight; paragraphStyles?: readonly ParagraphStyle[]; characterStyles?: readonly CharacterStyle[]; alphas?: readonly AlphaChannel[]; meta?: DocMeta }
+export interface Doc { /** DEV_PLAN 36.14: Image Assets on; File > Save also writes the layers named like foo.png. Absent means off. */ assetsOnSave?: boolean; /** Width over height of one pixel (35.4 part b); absent means square. */ pixelAspect?: number; measureScale?: { pixels: number; length: number; units: string }; measurements?: Array<{ id: number; label: string; scale: number; units: string; area?: number; perimeter?: number; length?: number; angle?: number; count?: number; w?: number; h?: number; gray?: number; grayMin?: number; grayMax?: number; intDen?: number; cx?: number; cy?: number }>; multichannel?: { channels: { name: string; color: RGB; solidity: number; data: Raster }[] }; duotone?: { type: 'mono' | 'duo' | 'tri' | 'quad'; inks: { name: string; color: RGB; curve: number[] }[] }; variables?: DocVariable[]; dataSets?: DataSet[]; activeDataSet?: string | null; comps?: readonly LayerComp[]; activeComp?: ID | null; /** The layers' state before the first comp was applied, for Last Document State. Not saved. */ lastState?: LayerComp; depth?: 8 | 16 | 32; profile?: DocProfile; mode?: DocMode; palette?: readonly RGB[]; /** The Indexed Color entry whose pixels are clear. */ transparentIndex?: number; readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[]; guides?: readonly Guide[]; slices?: readonly DocSlice[];notes?: readonly DocNote[]; counts?: readonly { x: number; y: number; /** The count group it belongs to; absent means the first. */ g?: ID }[]; /** Count groups (the Count tool): a name and a colour each, hidden or shown. Absent means one default group. */ countGroups?: readonly CountGroup[]; boxes?: readonly DocBox[]; globalLight?: GlobalLight; paragraphStyles?: readonly ParagraphStyle[]; characterStyles?: readonly CharacterStyle[]; alphas?: readonly AlphaChannel[]; meta?: DocMeta }
 /** An alpha channel (1.65.1): a selection saved with the document, `mask` null when nothing in it is selected. */
-export interface AlphaChannel { readonly id: ID; readonly name: string; readonly mask: SelectionMask | null; /** Channel Options: the overlay colour, its opacity in percent, and whether the colour marks the masked or the selected area. Absent means red, 50 and masked. */ readonly color?: RGB; readonly opacity?: number; readonly indicates?: 'masked' | 'selected' }
+export interface AlphaChannel { readonly id: ID; readonly name: string; readonly mask: SelectionMask | null; /** Channel Options: the overlay colour, its opacity in percent, and whether the colour marks the masked or the selected area. Absent means red, 50 and masked. */ readonly color?: RGB; readonly opacity?: number; readonly indicates?: 'masked' | 'selected'; /** A spot channel: the colour is its ink, the opacity its solidity, and the mask is how much ink lands where. */ readonly spot?: boolean }
 
 /** A user slice (Slice tool): a rectangle in document pixels with the web properties Slice Options will edit. */
 /** Interpret Footage (DEV_PLAN 33.4): how a video layer's frames are read. `fps` is the footage's own rate (the
@@ -230,23 +230,26 @@ export function newLayer(name: string, size: { width: number; height: number }, 
 /** Layer styles, drawn beneath a layer from its visible silhouette. Sizes and distances are document pixels; the drop
  *  shadow's angle is where the light comes from, in degrees counter-clockwise from the right, so 120 casts the shadow
  *  down and to the right. */
-export interface DropShadowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; angle: number; distance: number; size: number; contour?: ContourId; useGlobal?: boolean }
-export interface OuterGlowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; size: number; contour?: ContourId }
+export interface DropShadowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; angle: number; distance: number; size: number; contour?: ContourId; useGlobal?: boolean; spread?: number; noise?: number; knockout?: boolean; antiAlias?: boolean }
+/** Outer Glow: `spread` (0 to 100) grows the matte by that share of `size` before it softens; `technique` precise is a distance ramp
+ *  instead of a blur; `range` (1 to 100) is the share of the glow's strength the contour is spread over; `noise` grains its opacity. */
+export interface OuterGlowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; size: number; contour?: ContourId; spread?: number; noise?: number; technique?: 'precise'; range?: number; antiAlias?: boolean }
 /** `position`: Outside (the default, drawn beneath), Inside or Center (drawn over the layer). */
 /** A stroke's gradient fill: `from` at the start to `to` along `angle` (linear) or from the centre (radial). */
 export interface StrokeGradient { from: RGB; to: RGB; angle: number; style: 'linear' | 'radial'; reverse: boolean }
 export interface StrokeEffect { enabled: boolean; color: RGB; opacity: number; size: number; position?: 'outside' | 'inside' | 'center'; gradient?: StrokeGradient }
 /** `choke` (0 to 100) contracts the shadow's matte by that share of `size` before it softens; `noise` (0 to 100) grains its opacity. */
-export interface InnerShadowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; angle: number; distance: number; size: number; contour?: ContourId; useGlobal?: boolean; choke?: number; noise?: number }
+export interface InnerShadowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; angle: number; distance: number; size: number; contour?: ContourId; useGlobal?: boolean; choke?: number; noise?: number; antiAlias?: boolean }
 /** Inner Glow: `technique` softer (blurred) or precise (a distance ramp), `source` the edge or the centre, plus choke and noise as Inner Shadow's. */
-export interface InnerGlowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; size: number; contour?: ContourId; technique?: 'precise'; source?: 'center'; choke?: number; noise?: number }
+export interface InnerGlowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; size: number; contour?: ContourId; technique?: 'precise'; source?: 'center'; choke?: number; noise?: number; antiAlias?: boolean }
 export interface ColorOverlayEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode }
 /** A gradient across the layer's bounds, kept to its silhouette: from `from` to `to` along `angle` (degrees
  *  counter-clockwise from the right, so 90 runs bottom to top), or outward from the centre when radial; `scale` stretches
  *  it about the centre, and `reverse` swaps the ends. */
 /** Gradient Overlay. `stops` (36.8), when present, is the whole gradient (positions 0 to 1, each colour with its own
  *  alpha) and wins over `from` and `to`, which stay its two ends for the two-colour editor; editing either drops it. */
-export interface GradientOverlayEffect { enabled: boolean; from: RGB; to: RGB; opacity: number; blend: BlendMode; angle: number; style: 'linear' | 'radial'; scale: number; reverse: boolean; stops?: GradientOverlayStop[] }
+export type OverlayGradientStyle = 'linear' | 'radial' | 'angle' | 'reflected' | 'diamond';
+export interface GradientOverlayEffect { enabled: boolean; from: RGB; to: RGB; opacity: number; blend: BlendMode; angle: number; style: OverlayGradientStyle; scale: number; reverse: boolean; stops?: GradientOverlayStop[]; dither?: boolean }
 export interface GradientOverlayStop { at: number; color: RGB; alpha: number }
 /** A Gradient Overlay's stops read back safely: two to 64, positions and alphas held to 0..1, sorted. */
 export function overlayStopsFrom(raw: unknown): GradientOverlayStop[] | undefined {
@@ -264,18 +267,18 @@ export function overlayStopsFrom(raw: unknown): GradientOverlayStop[] | undefine
  *  at `altitude` degrees; slopes facing the light take the highlight, those facing away the shadow. Inner shades inside
  *  the edge, outer outside it, emboss both, pillow both with the outside pressed in, stroke the layer's stroke; `down`
  *  swaps light and dark; a chisel `technique` slopes evenly from the edge. */
-export interface BevelEffect { enabled: boolean; style: 'inner' | 'outer' | 'emboss' | 'pillow' | 'stroke'; depth: number; down: boolean; size: number; soften: number; angle: number; altitude: number; highlight: RGB; highlightOpacity: number; highlightBlend: BlendMode; shadow: RGB; shadowOpacity: number; shadowBlend: BlendMode; gloss?: ContourId; useGlobal?: boolean; technique?: 'chiselHard' | 'chiselSoft'; contour?: BevelContour; texture?: BevelTexture }
+export interface BevelEffect { enabled: boolean; style: 'inner' | 'outer' | 'emboss' | 'pillow' | 'stroke'; depth: number; down: boolean; size: number; soften: number; angle: number; altitude: number; highlight: RGB; highlightOpacity: number; highlightBlend: BlendMode; shadow: RGB; shadowOpacity: number; shadowBlend: BlendMode; gloss?: ContourId; useGlobal?: boolean; technique?: 'chiselHard' | 'chiselSoft'; contour?: BevelContour; texture?: BevelTexture; antiAlias?: boolean }
 /** Bevel & Emboss's Contour (1.65.2): the height through `id` over `range` (0.01 to 1). */
 export interface BevelContour { enabled: boolean; id: ContourId; range: number }
 /** Bevel & Emboss's Texture (1.65.2): a pattern's brightness added to the height, tiled from the layer's corner. */
-export interface BevelTexture { enabled: boolean; pattern: string; scale: number; depth: number; invert: boolean }
+export interface BevelTexture { enabled: boolean; pattern: string; scale: number; depth: number; invert: boolean; link?: boolean }
 /** Satin: the silhouette offset both ways along `angle` by `distance`, each copy softened over `size`, their difference
  *  kept inside the silhouette as a silky shading; `invert` shades where they agree instead. */
-export interface SatinEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; angle: number; distance: number; size: number; invert: boolean }
+export interface SatinEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; angle: number; distance: number; size: number; invert: boolean; contour?: ContourId; antiAlias?: boolean }
 /** Pattern Overlay: pattern `pattern` (an id) tiled from the layer's top-left corner at `scale`, kept to its silhouette,
  *  beneath the other overlays. */
-export interface PatternOverlayEffect { enabled: boolean; pattern: string; opacity: number; blend: BlendMode; scale: number }
-export interface LayerEffects { dropShadow: DropShadowEffect; outerGlow: OuterGlowEffect; stroke: StrokeEffect; innerShadow: InnerShadowEffect; innerGlow: InnerGlowEffect; colorOverlay: ColorOverlayEffect; gradientOverlay: GradientOverlayEffect; bevel: BevelEffect; satin: SatinEffect; patternOverlay: PatternOverlayEffect; extra?: EffectExtras; hidden?: boolean }
+export interface PatternOverlayEffect { enabled: boolean; pattern: string; opacity: number; blend: BlendMode; scale: number; angle?: number; link?: boolean; phaseX?: number; phaseY?: number }
+export interface LayerEffects { dropShadow: DropShadowEffect; outerGlow: OuterGlowEffect; stroke: StrokeEffect; innerShadow: InnerShadowEffect; innerGlow: InnerGlowEffect; colorOverlay: ColorOverlayEffect; gradientOverlay: GradientOverlayEffect; bevel: BevelEffect; satin: SatinEffect; patternOverlay: PatternOverlayEffect; extra?: EffectExtras; hidden?: boolean; blendInterior?: boolean; layerMaskHides?: boolean }
 /** More instances of the effects a PSD can hold several of (up to ten in all, so nine here), drawn after the main
  *  one, each above the last. */
 export interface EffectExtras { dropShadow?: DropShadowEffect[]; stroke?: StrokeEffect[]; innerShadow?: InnerShadowEffect[]; colorOverlay?: ColorOverlayEffect[]; gradientOverlay?: GradientOverlayEffect[] }
@@ -334,7 +337,7 @@ export function effectsFromData(raw: unknown): LayerEffects | null {
     innerShadow: { enabled: is.enabled === true, color: rgb(is.color, d.innerShadow.color), opacity: num(is.opacity, 0.75, 0, 1), blend: blend(is.blend, 'multiply'), angle: num(is.angle, 120, -360, 360), distance: num(is.distance, 5, 0, 1000), size: num(is.size, 5, 0, 250) },
     innerGlow: { enabled: ig.enabled === true, color: rgb(ig.color, d.innerGlow.color), opacity: num(ig.opacity, 0.75, 0, 1), blend: blend(ig.blend, 'screen'), size: num(ig.size, 5, 0, 500) },
     colorOverlay: { enabled: co.enabled === true, color: rgb(co.color, d.colorOverlay.color), opacity: num(co.opacity, 1, 0, 1), blend: blend(co.blend, 'normal') },
-    gradientOverlay: { enabled: go.enabled === true, from: rgb(go.from, d.gradientOverlay.from), to: rgb(go.to, d.gradientOverlay.to), opacity: num(go.opacity, 1, 0, 1), blend: blend(go.blend, 'normal'), angle: num(go.angle, 90, -360, 360), style: go.style === 'radial' ? 'radial' : 'linear', scale: num(go.scale, 1, 0.1, 1.5), reverse: go.reverse === true, ...(overlayStopsFrom(go.stops) ? { stops: overlayStopsFrom(go.stops) } : {}) },
+    gradientOverlay: { enabled: go.enabled === true, from: rgb(go.from, d.gradientOverlay.from), to: rgb(go.to, d.gradientOverlay.to), opacity: num(go.opacity, 1, 0, 1), blend: blend(go.blend, 'normal'), angle: num(go.angle, 90, -360, 360), style: go.style === 'radial' || go.style === 'angle' || go.style === 'reflected' || go.style === 'diamond' ? go.style : 'linear', scale: num(go.scale, 1, 0.1, 1.5), reverse: go.reverse === true, ...(overlayStopsFrom(go.stops) ? { stops: overlayStopsFrom(go.stops) } : {}) },
     patternOverlay: { enabled: po.enabled === true, pattern: typeof po.pattern === 'string' && po.pattern ? po.pattern.slice(0, 120) : 'builtin:checker', opacity: num(po.opacity, 1, 0, 1), blend: blend(po.blend, 'normal'), scale: num(po.scale, 1, 0.1, 10) },
     satin: { enabled: sa.enabled === true, color: rgb(sa.color, d.satin.color), opacity: num(sa.opacity, 0.5, 0, 1), blend: blend(sa.blend, 'multiply'), angle: num(sa.angle, 19, -360, 360), distance: num(sa.distance, 11, 0, 250), size: num(sa.size, 14, 0, 250), invert: sa.invert !== false },
     bevel: { enabled: bv.enabled === true, style: bv.style === 'outer' || bv.style === 'emboss' || bv.style === 'pillow' || bv.style === 'stroke' ? bv.style : 'inner', depth: num(bv.depth, 100, 1, 1000), down: bv.down === true, size: num(bv.size, 5, 0, 250), soften: num(bv.soften, 0, 0, 16), angle: num(bv.angle, 120, -360, 360), altitude: num(bv.altitude, 30, 0, 90), highlight: rgb(bv.highlight, d.bevel.highlight), highlightOpacity: num(bv.highlightOpacity, 0.75, 0, 1), highlightBlend: blend(bv.highlightBlend, 'screen'), shadow: rgb(bv.shadow, d.bevel.shadow), shadowOpacity: num(bv.shadowOpacity, 0.75, 0, 1), shadowBlend: blend(bv.shadowBlend, 'multiply') },
@@ -349,7 +352,7 @@ export function effectsFromData(raw: unknown): LayerEffects | null {
   if (bv.technique === 'chiselHard' || bv.technique === 'chiselSoft') fx.bevel.technique = bv.technique;
   const bc = bv.contour && typeof bv.contour === 'object' ? (bv.contour as Record<string, unknown>) : null, bt = bv.texture && typeof bv.texture === 'object' ? (bv.texture as Record<string, unknown>) : null;
   if (bc) fx.bevel.contour = { enabled: bc.enabled === true, id: isContour(bc.id) ? bc.id : 'linear', range: num(bc.range, 0.5, 0.01, 1) };
-  if (bt) fx.bevel.texture = { enabled: bt.enabled === true, pattern: typeof bt.pattern === 'string' && bt.pattern ? bt.pattern.slice(0, 120) : 'builtin:checker', scale: num(bt.scale, 1, 0.01, 10), depth: num(bt.depth, 1, -10, 10), invert: bt.invert === true };
+  if (bt) fx.bevel.texture = { enabled: bt.enabled === true, pattern: typeof bt.pattern === 'string' && bt.pattern ? bt.pattern.slice(0, 120) : 'builtin:checker', scale: num(bt.scale, 1, 0.01, 10), depth: num(bt.depth, 1, -10, 10), invert: bt.invert === true, ...(bt.link === false ? { link: false } : {}) };
   if (k.position === 'inside' || k.position === 'center') fx.stroke.position = k.position;
   const kg = k.gradient && typeof k.gradient === 'object' ? (k.gradient as Record<string, unknown>) : null;
   if (kg) fx.stroke.gradient = { from: rgb(kg.from, { r: 0, g: 0, b: 0 }), to: rgb(kg.to, { r: 255, g: 255, b: 255 }), angle: num(kg.angle, 90, -360, 360), style: kg.style === 'radial' ? 'radial' : 'linear', reverse: kg.reverse === true };
@@ -359,6 +362,21 @@ export function effectsFromData(raw: unknown): LayerEffects | null {
   }
   if (ig.technique === 'precise') fx.innerGlow.technique = 'precise';
   if (ig.source === 'center') fx.innerGlow.source = 'center';
+  if (s.knockout === true) fx.dropShadow.knockout = true;
+  if (go.dither === true) fx.gradientOverlay.dither = true;
+  if (g.technique === 'precise') fx.outerGlow.technique = 'precise';
+  if (typeof g.range === 'number' && g.range < 100) fx.outerGlow.range = num(g.range, 100, 1, 100);
+  for (const [dst, src] of [[fx.dropShadow, s], [fx.outerGlow, g]] as const) {
+    if (typeof src.spread === 'number' && src.spread > 0) dst.spread = num(src.spread, 0, 0, 100);
+    if (typeof src.noise === 'number' && src.noise > 0) dst.noise = num(src.noise, 0, 0, 100);
+  }
+  for (const [dst, src] of [[fx.dropShadow, s], [fx.outerGlow, g], [fx.innerShadow, is], [fx.innerGlow, ig], [fx.satin, sa], [fx.bevel, bv]] as const) if (src.antiAlias === true) dst.antiAlias = true;
+  const satinContour = contour(sa.contour);
+  if (satinContour) fx.satin.contour = satinContour;
+  if (typeof po.angle === 'number' && po.angle !== 0) fx.patternOverlay.angle = num(po.angle, 0, -360, 360);
+  if (po.link === false) fx.patternOverlay.link = false;
+  if (typeof po.phaseX === 'number' && po.phaseX !== 0) fx.patternOverlay.phaseX = num(po.phaseX, 0, -4096, 4096);
+  if (typeof po.phaseY === 'number' && po.phaseY !== 0) fx.patternOverlay.phaseY = num(po.phaseY, 0, -4096, 4096);
   const ex = o.extra && typeof o.extra === 'object' ? (o.extra as Record<string, unknown>) : null;
   if (ex) {
     const extra: EffectExtras = {};
@@ -374,6 +392,8 @@ export function effectsFromData(raw: unknown): LayerEffects | null {
     if (Object.keys(extra).length) fx.extra = extra;
   }
   if (o.hidden === true) fx.hidden = true;
+  if (o.blendInterior === true) fx.blendInterior = true;
+  if (o.layerMaskHides === false) fx.layerMaskHides = false;
   return effectsPresent(fx) ? fx : null;
 }
 
@@ -425,7 +445,15 @@ export interface SmartLink { id: string; name: string; size: number; lastModifie
 /** `stack` (33.1): a smart object made from several layers keeps their document-size renders, bottom first; `source` is
  *  the stack mode's result over them (the top one under None). */
 export interface SmartStack { sources: Raster[]; mode: import('./stack-modes').StackMode }
-export interface SmartObject { source: Raster; filters: SmartFilter[]; stack?: SmartStack | null; warp?: Pt[] | null; warpAt?: Transform | null; filterMask?: Raster | null; filterMaskEnabled?: boolean; link?: SmartLink | null }
+/** Warp, Puppet Warp or Perspective Warp kept as the smart object's live transform: the control data in document pixels,
+ *  applied to the render (source plus filters) afresh every time it changes. `base` maps that render's pixels to the
+ *  document before the warp, `pad` is the filter padding around the source, `at` the layer transform the last render set. */
+export type SmartDeformData =
+  | { kind: 'mesh'; gw: number; gh: number; points: Array<[number, number]>; us: number[]; vs: number[] }
+  | { kind: 'puppet'; from: Array<[number, number]>; to: Array<[number, number]>; rot: number[]; depth: number[]; mode: 'rigid' | 'normal' | 'distort'; density: 'fewer' | 'normal' | 'more'; expansion: number }
+  | { kind: 'perspective'; planes: Array<{ src: Array<[number, number]>; dst: Array<[number, number]> }> };
+export type SmartDeform = SmartDeformData & { base: readonly [number, number, number, number, number, number]; pad: number; at: Transform };
+export interface SmartObject { source: Raster; filters: SmartFilter[]; stack?: SmartStack | null; warp?: Pt[] | null; warpAt?: Transform | null; deform?: SmartDeform | null; filterMask?: Raster | null; filterMaskEnabled?: boolean; link?: SmartLink | null }
 
 /** Smart filters read back from saved data, checked. */
 export function smartFiltersFrom(raw: unknown): SmartFilter[] {

@@ -22,12 +22,13 @@ import { MakeSelectionDialog } from './ui/panels/make-selection-dialog';
 import { DuplicateLayerDialog, FindLayersDialog, LockLayersDialog, NewGroupDialog, NewLayerDialog } from './ui/panels/layer-dialogs';
 import { MattingDialog } from './ui/panels/matting-dialog';
 import { ChannelOptionsDialog, LoadSelectionDialog, SaveSelectionDialog, loadSources } from './ui/panels/selection-dialogs';
+import { MergeChannelsDialog } from './ui/panels/merge-channels-dialog';
 import { GlobalLightDialog, ScaleEffectsDialog } from './ui/panels/style-dialogs';
 import { LiquifyDialog } from './ui/panels/liquify-dialog';
 import { SelectMaskDialog } from './ui/panels/select-mask-dialog';
 import { ContentFillDialog } from './ui/panels/content-fill-dialog';
 import { GradientEditor, loadSavedGradients } from './ui/panels/gradient-editor';
-import { convertToLinked, linkedFiles, pickLinkSource, placeEmbedded, placeLinked, relink, updateLinked } from './io/links';
+import { convertToLinked, linkedFiles, pickLinkSource, placeEmbedded, placeLinked, relink, updateLinked, watchLinked } from './io/links';
 import { importAbr, loadImportedBrushes, addSampledBrush } from './io/brush-library';
 import { importedBrushPresets } from './engine/brush-dynamics';
 import { snapOptions } from './engine/pixel-move';
@@ -72,6 +73,7 @@ import { SmartFiltersDialog } from './ui/panels/smart-filters-dialog';
 import { STACK_MODES } from './engine/stack-modes';
 import { Actions, CONDITION_TESTS, RECORDABLE, batchName, type Action, type ActionStep, type ConditionTest } from './ui/actions';
 import { ActionsDialog, BatchDialog, DropletDialog } from './ui/panels/actions-dialogs';
+import { LensBatchDialog, type LensBatchOptions } from './ui/panels/lens-batch-dialog';
 import { ImageProcessorDialog, type ImageProcessorOptions } from './ui/panels/image-processor-dialog';
 import { zipFiles } from './io/zip';
 import { assetFiles } from './io/image-assets';
@@ -435,7 +437,7 @@ export function startApp(): void {
   applyPrefs(engine, loadPrefs());
   const stage = new Stage(q(root, '.cv-stage'), engine);
   q(root, '.cv-stage').addEventListener('contextmenu', (e) => {
-    if (engine.tool !== 'move') return;
+    if (['brush', 'spotHealing', 'remove', 'cloneStamp', 'smear', 'type'].includes(engine.tool) || (e.ctrlKey && e.altKey)) return;
     const pt = stage.docPoint(e.clientX, e.clientY);
     picked = pt ? engine.layersAt(pt) : [];
     if (!picked.length) return;
@@ -1887,6 +1889,33 @@ export function startApp(): void {
     });
   }
 
+  /** File > Automate > Lens Correction: each file opens, takes the Lens Correction settings, and is saved as its own type
+   *  (or PNG or JPEG); the results download as one zip. */
+  async function runLensBatch(o: LensBatchOptions, files: File[]): Promise<void> {
+    await engine.task(async () => {
+      const out: Array<{ name: string; blob: Blob }> = [], problems: string[] = [], used = new Set<string>();
+      for (const f of files) {
+        try {
+          const p = engine.openImage(await decodeImage(f, f.name));
+          const done = await dialogs.filter.applySettings('lensCorrection', { distortion: o.distortion, lensFix: structuredClone(o.lensFix) });
+          if (!done) { problems.push(`${f.name} could not be corrected`); engine.closeProject(p.id); continue; }
+          engine.settle();
+          const jpg = o.format === 'jpg' || (o.format === 'same' && /\.jpe?g$/i.test(f.name));
+          const blob = await engine.exportBlob(jpg ? 'image/jpeg' : 'image/png', o.quality / 100);
+          const base = f.name.replace(/\.[^.]+$/, '') || 'image', ext = jpg ? 'jpg' : 'png';
+          let name = `${base}.${ext}`;
+          for (let k = 2; used.has(name); k++) name = `${base} ${k}.${ext}`;
+          used.add(name);
+          if (blob) out.push({ name, blob });
+          engine.closeProject(p.id);
+        } catch (err) { problems.push(`${f.name}: ${message(err)}`); }
+      }
+      if (out.length) await deliver(await zipFiles(out), 'Lens Correction batch.zip');
+      if (problems.length) toast(`Lens Correction finished ${out.length} of ${files.length}. ${problems.join('. ')}.`, 'error');
+      else toast(`Lens Correction finished all ${files.length} image${files.length === 1 ? '' : 's'}.`);
+    });
+  }
+
   /** File > Scripts > Image Processor (DEV_PLAN 30.2): each source (chosen files, or a flattened copy of every open image)
    *  is opened afresh for each ticked type, plays the action, takes the copyright notice, is fitted and encoded, and goes
    *  into JPEG/, PSD/ or TIFF/ in one zip (browser) or in a named folder of the exports (desktop). */
@@ -2761,6 +2790,7 @@ export function startApp(): void {
     actions: new ActionsDialog(actions, { play: (x) => playAction(x), save: (b, n) => deliver(b, n) }),
     batch: new BatchDialog(actions, (x, f, fmt, q, t, s) => runBatch(x, f, fmt, q, t, s)),
     droplet: new DropletDialog(actions, (o) => makeDroplet(o)),
+    lensBatch: new LensBatchDialog((o, f) => runLensBatch(o, f)),
     imageProcessor: new ImageProcessorDialog(actions, (o) => imageProcessor(o)),
     generative: new GenerativeDialog(engine),
     layerStyle: new LayerStyleDialog(engine),
@@ -2812,6 +2842,7 @@ export function startApp(): void {
     loadSelection: new LoadSelectionDialog(engine),
     saveSelection: new SaveSelectionDialog(engine),
     channelOptions: new ChannelOptionsDialog(engine),
+    mergeChannels: new MergeChannelsDialog(engine),
     globalLight: new GlobalLightDialog(engine),
     fileInfo: new FileInfoDialog(engine),
     scaleEffects: new ScaleEffectsDialog(engine),
@@ -2956,6 +2987,7 @@ export function startApp(): void {
   const hdrToning = new HdrToningDialog();   // 1.53.9
   const focusAreaDialog = new FocusAreaDialog(engine);   // 1.57.6
   const photomergeDialog = new MergeDialog(engine, 'panorama'), hdrMergeDialog = new MergeDialog(engine, 'hdr');   // 1.58.2
+  let layerCompDialog: import('./ui/panels/layer-comp-dialog').LayerCompDialog | undefined;
   const vanishingDialog = new VanishingPointDialog(engine);   // 1.58.3
   const videoDialog = new VideoImportDialog(engine);   // 1.58.9
   const convertDialog = new ConvertProfileDialog(engine, (pr) => cmykLutFor(pr));   // CMYK's tables (1.57.9)
@@ -3062,6 +3094,7 @@ export function startApp(): void {
     { id: 'video-delete-frame', label: 'Delete Frame', enabled: () => !!engine.activeLayer?.video, run: () => { engine.deleteVideoFrame(); } },
     { id: 'video-restore-frame', label: 'Restore Frame', enabled: () => !!engine.activeLayer?.video, run: () => { engine.restoreFrame(); } },
     { id: 'video-restore-all', label: 'Restore All Frames', enabled: () => !!engine.activeLayer?.video, run: () => { engine.restoreAllFrames(); } },
+    { id: 'video-show-altered', label: 'Show Altered Video', enabled: () => !!engine.activeLayer?.video, checked: () => !engine.activeLayer?.video?.unaltered, params: { show: { type: 'boolean', description: 'true to show the painted frames, false to show the footage as loaded; toggles when left out.' } }, run: (a) => { engine.showAlteredVideo(typeof a?.show === 'boolean' ? a.show : undefined); } },
     { id: 'video-interpret-footage', label: 'Interpret Footage...', enabled: () => { const l = engine.activeLayer; return !!l?.video && !!engine.video?.tracks[l.id]; }, run: () => { void import('./ui/panels/interpret-footage').then((m) => m.openInterpretFootage(engine)); } },   // 33.4c
     { id: 'video-replace-footage', label: 'Replace Footage...', enabled: () => !!engine.activeLayer?.video, run: () => { void import('./ui/panels/video-layer-file').then((m) => m.replaceFootageFromFile(engine, toast)); } },   // 33.4b
     { id: 'video-rasterize', label: 'Rasterize Video Layer', enabled: () => !!engine.activeLayer?.video, run: () => { engine.rasterizeVideo(); } },
@@ -3219,6 +3252,7 @@ export function startApp(): void {
       },
     },
     { id: 'batch', label: 'Batch...', enabled: () => actions.list.some((x) => x.steps.length > 0), run: () => dialogs.batch.show() },
+    { id: 'lens-correction-batch', label: 'Lens Correction...', run: () => dialogs.lensBatch.show() },
     {
       id: 'create-droplet', label: 'Create Droplet...', enabled: () => actions.list.length > 0,
       params: {
@@ -3408,14 +3442,19 @@ export function startApp(): void {
       id: mode === 'align' ? 'auto-align-layers' : 'auto-blend-layers', label: mode === 'align' ? 'Auto-Align Layers...' : 'Auto-Blend Layers...',
       enabled: () => { const p = engine.current; return !!p && [...p.selectedIds].filter((id) => { const l = p.layer(id); return !!l?.raster && !l.isGroup && !l.adjustment && !l.text && !l.shape && !l.smart; }).length > 1; },
       params: (mode === 'align' ? {
-        projection: { type: 'string' as const, enum: ['auto', 'perspective', 'cylindrical', 'reposition'], description: 'Projection; auto when left out. Cylindrical is treated as perspective; reposition only moves layers.' },
+        projection: { type: 'string' as const, enum: ['auto', 'perspective', 'cylindrical', 'reposition'], description: 'Projection; auto when left out. Cylindrical finds the focal length and bends every layer onto a cylinder; reposition only moves layers.' },
+        reference: { type: 'string' as const, enum: ['bottom', 'middle', 'top'], description: 'Which selected layer stays put; bottom when left out.' },
+        vignette: { type: 'boolean' as const, description: 'Vignette Removal; off when left out.' },
+        distortion: { type: 'boolean' as const, description: 'Geometric Distortion Correction: straighten the lens bend the overlaps show; off when left out.' },
       } : {
         method: { type: 'string' as const, enum: ['panorama', 'stack'], description: 'Blend method: panorama (soft seams) or stack (sharpest layer, for focus stacking); panorama when left out.' },
         seamless: { type: 'boolean' as const, description: 'Seamless Tones and Colors: match each layer\'s tones to the reference; on when left out.' },
+        halo: { type: 'number' as const, min: 0, max: 100, description: 'Halo Control for stack: 0 is the soft default, higher keeps the transitions on the sharp edges.' },
+        depth: { type: 'boolean' as const, description: 'Stack: add a hidden Depth Map layer showing which layer is sharpest where; off when left out.' },
       }) as NonNullable<Command['params']>,
       run: (a?: Record<string, unknown>) => import('./ui/panels/align-blend-dialog').then(async (m) => {
         if (!a || !Object.keys(a).length) { m.AlignBlendDialog.get(engine, mode).show(); return undefined; }
-        return { message: await m.AlignBlendDialog.execute(engine, mode, { projection: a.projection === undefined ? undefined : String(a.projection), method: a.method === undefined ? undefined : String(a.method), seamless: a.seamless === undefined ? true : !!a.seamless }) };
+        return { message: await m.AlignBlendDialog.execute(engine, mode, { projection: a.projection === undefined ? undefined : String(a.projection), method: a.method === undefined ? undefined : String(a.method), seamless: a.seamless === undefined ? true : !!a.seamless, vignette: !!a.vignette, distortion: !!a.distortion, reference: a.reference === undefined ? undefined : String(a.reference), halo: typeof a.halo === 'number' ? a.halo : undefined, depth: !!a.depth }) };
       }),
     })),
     { id: 'merge-hdr', label: 'Merge to HDR...', run: () => hdrMergeDialog.show() },
@@ -3504,8 +3543,8 @@ export function startApp(): void {
     { id: 'puppet-warp', label: 'Puppet Warp', enabled: pixel, run: (a) => { engine.setTool('move'); if (engine.beginPuppetWarp() && a) engine.setPuppetOpts({ ...(a.mode === 'normal' || a.mode === 'distort' || a.mode === 'rigid' ? { mode: a.mode } : {}), ...(a.density === 'fewer' || a.density === 'normal' || a.density === 'more' ? { density: a.density } : {}), ...(typeof a.expansion === 'number' ? { expansion: a.expansion } : {}), ...(typeof a.showMesh === 'boolean' ? { showMesh: a.showMesh } : {}) }); if (engine.puppetEdit) toast('Click to place pins, drag them to bend the layer, Alt-click to remove one. Enter applies, Escape cancels.'); } },
     { id: 'filter-liquify', label: 'Liquify...', keys: ['Shift+Mod+X'], enabled: pixel, run: () => dialogs.liquify.show() },
     { id: 'filter-neural', label: 'Neural Filters...', enabled: pixel, run: () => dialogs.neural.show() },
-    { id: 'filter-wide-angle', label: 'Adaptive Wide Angle...', enabled: pixel, run: () => dialogs.wideAngle.show() },
-    { id: 'filter-vanishing-point', label: 'Vanishing Point...', enabled: pixel, run: () => vanishingDialog.show() },   // 1.58.3
+    { id: 'filter-wide-angle', label: 'Adaptive Wide Angle...', keys: ['Alt+Shift+Mod+A'], enabled: pixel, run: () => dialogs.wideAngle.show() },
+    { id: 'filter-vanishing-point', label: 'Vanishing Point...', keys: ['Alt+Mod+V'], enabled: pixel, run: () => vanishingDialog.show() },   // 1.58.3
     { id: 'define-pattern', label: 'Define Pattern...', enabled: () => !!engine.current, run: () => void definePattern() },
     { id: 'define-brush', label: 'Define Brush Preset...', enabled: () => !!engine.current, run: () => void defineBrush() },
     { id: 'define-custom-shape', label: 'Define Custom Shape...', enabled: () => !!engine.workPath, run: () => void defineCustomShape() },
@@ -3803,6 +3842,27 @@ export function startApp(): void {
       run: (a) => { const id = engine.newAlpha({ fill: a?.fill === 'white' ? 'white' : 'black', name: typeof a?.name === 'string' ? a.name : '' }); return id ? { channel: id } : undefined; },
     },
     {
+      id: 'new-spot-channel', label: 'New Spot Channel', enabled: has,
+      params: { name: { type: 'string', description: 'The channel name; Spot N when left out.' }, color: { type: 'string', description: 'Ink colour as #rrggbb; red when left out.' }, solidity: { type: 'number', min: 0, max: 100, description: 'How solid the ink shows on screen, in percent; 100 when left out.' }, fill: { type: 'string', enum: ['black', 'white'], description: 'Black has no ink anywhere, white has ink everywhere; black when left out.' } },
+      run: (a) => {
+        const hex = typeof a?.color === 'string' && /^#[0-9a-f]{6}$/i.test(a.color) ? a.color : null;
+        const id = engine.newAlpha({ fill: a?.fill === 'white' ? 'white' : 'black', name: typeof a?.name === 'string' ? a.name : '', spot: { color: hex ? { r: parseInt(hex.slice(1, 3), 16), g: parseInt(hex.slice(3, 5), 16), b: parseInt(hex.slice(5, 7), 16) } : undefined, solidity: a?.solidity === undefined ? undefined : Number(a.solidity) } });
+        if (id && !a) dialogs.channelOptions.show(id);
+        return id ? { channel: id } : undefined;
+      },
+    },
+    { id: 'split-channels', label: 'Split Channels', enabled: has, run: () => ({ documents: engine.splitChannels() }) },
+    {
+      id: 'merge-channels', label: 'Merge Channels...', enabled: () => (engine.alphaDocuments().length > 0),
+      params: ['red', 'green', 'blue'].reduce((o, k) => ({ ...o, [k]: { type: 'string', description: `The grey that becomes ${k}: an open document's id or name of the current size, optionally followed by | and one of its alpha channel names. All three open the dialog when left out.` } }), {}),
+      run: (a) => {
+        const docs = engine.alphaDocuments(), pick = ['red', 'green', 'blue'].map((k) => { const [d, ...c] = String(a?.[k] ?? '').split('|'), q = docs.find((x) => x.id === d || x.doc.id === d || x.name === d); return q ? { doc: q.id, channel: c.join('|') || undefined } : null; });
+        if (!a || pick.some((x) => !x)) { dialogs.mergeChannels.show(); return undefined; }
+        const q = engine.mergeChannels(pick as Array<{ doc: ID; channel?: string }>);
+        return q ? { document: q.id } : undefined;
+      },
+    },
+    {
       id: 'duplicate-channel', label: 'Duplicate Channel', enabled: () => !!engine.alphaFor(),
       params: { channel: { type: 'string', description: 'The alpha channel (id or name); the one chosen last in the Channels panel, or the last one, when left out.' }, name: { type: 'string', description: 'The copy name; "<name> copy" when left out.' } },
       run: (a) => { const c = engine.alphaFor(typeof a?.channel === 'string' ? a.channel : undefined); const id = c ? engine.duplicateAlpha(c.id, typeof a?.name === 'string' ? a.name : undefined) : null; return id ? { channel: id } : undefined; },
@@ -3814,14 +3874,15 @@ export function startApp(): void {
         name: { type: 'string', description: 'The new name.' },
         indicates: { type: 'string', enum: ['masked', 'selected'], description: 'Whether the overlay colour marks the masked or the selected areas.' },
         color: { type: 'string', description: 'Overlay colour as #rrggbb.' },
-        opacity: { type: 'number', min: 0, max: 100, description: 'Overlay opacity in percent.' },
+        opacity: { type: 'number', min: 0, max: 100, description: 'Overlay opacity in percent; the solidity of a spot channel.' },
+        spot: { type: 'boolean', description: 'True makes it a spot channel (the colour is its ink), false an alpha channel.' },
       },
       run: (a) => {
         const c = engine.alphaFor(typeof a?.channel === 'string' ? a.channel : undefined);
         if (!c) return undefined;
-        if (!a || !['name', 'indicates', 'color', 'opacity'].some((k) => a[k] !== undefined)) { dialogs.channelOptions.show(c.id); return undefined; }
+        if (!a || !['name', 'indicates', 'color', 'opacity', 'spot'].some((k) => a[k] !== undefined)) { dialogs.channelOptions.show(c.id); return undefined; }
         const hex = typeof a.color === 'string' && /^#[0-9a-f]{6}$/i.test(a.color) ? a.color : null;
-        return { changed: engine.setAlphaOptions(c.id, { name: typeof a.name === 'string' ? a.name : undefined, indicates: a.indicates === 'selected' || a.indicates === 'masked' ? a.indicates : undefined, color: hex ? { r: parseInt(hex.slice(1, 3), 16), g: parseInt(hex.slice(3, 5), 16), b: parseInt(hex.slice(5, 7), 16) } : undefined, opacity: a.opacity === undefined ? undefined : Number(a.opacity) }) };
+        return { changed: engine.setAlphaOptions(c.id, { name: typeof a.name === 'string' ? a.name : undefined, indicates: a.indicates === 'selected' || a.indicates === 'masked' ? a.indicates : undefined, color: hex ? { r: parseInt(hex.slice(1, 3), 16), g: parseInt(hex.slice(3, 5), 16), b: parseInt(hex.slice(5, 7), 16) } : undefined, opacity: a.opacity === undefined ? undefined : Number(a.opacity), spot: typeof a.spot === 'boolean' ? a.spot : undefined }) };
       },
     },
     { id: 'channel-up', label: 'Move Channel Up', enabled: () => { const c = engine.alphaFor(); return !!c && engine.current?.doc.alphas?.[0] !== c; }, run: () => { const c = engine.alphaFor(); if (c) engine.moveAlpha(c.id, -1, true); } },
@@ -3829,10 +3890,14 @@ export function startApp(): void {
     { id: 'load-luminosity', label: 'Load Luminosity', keys: ['Alt+Mod+2'], enabled: has, run: () => engine.loadLuminosity() },
     { id: 'load-selection-vector-mask', label: "Vector Mask to Selection", enabled: () => !!layer()?.vectorMask, run: () => engine.loadSelection({ channel: 'vector' }) },
     { id: 'vmask-invert', label: 'Invert Vector Mask', enabled: () => !!layer()?.vectorMask, run: () => engine.changeVectorMask('invert') },
+    { id: 'mask-invert', label: 'Invert Layer Mask', enabled: () => !!layer()?.mask, run: () => engine.invertMask() },
+    { id: 'mask-properties', label: 'Mask Properties', enabled: () => !!layer()?.mask || !!layer()?.vectorMask, params: { target: { type: 'string', enum: ['pixel', 'vector'], description: 'Which mask; the pixel mask when left out, or the vector mask when the layer has only that.' }, density: { type: 'number', min: 0, max: 100, description: 'Mask density in percent; 100 leaves the mask as painted.' }, feather: { type: 'number', min: 0, max: 250, description: 'Mask feather in pixels; 0 leaves the edges as painted.' } }, run: (a) => { const vec = a?.target === 'vector' || (a?.target !== 'pixel' && !layer()?.mask); const shape = { ...(typeof a?.density === 'number' ? { density: a.density } : {}), ...(typeof a?.feather === 'number' ? { feather: a.feather } : {}) }; if (vec) engine.setVectorMaskShape(shape); else engine.setMaskShape(shape); } },
     { id: 'isolate-layers', label: 'Isolate Layers', checked: () => layers.isolated, enabled: () => layers.isolated || (engine.current?.selectedIds.size ?? 0) > 0, run: () => layers.toggleIsolate() },
     { id: 'lock-transparency', label: 'Lock Transparent Pixels', keys: ['/'], enabled: () => (engine.current?.selectedIds.size ?? 0) > 0, run: () => engine.toggleLock('transparency') },
     { id: 'lock-layers', label: () => (folderSelected() ? 'Lock All Layers in Group...' : 'Lock Layers...'), keys: ['Mod+/'], enabled: () => (engine.current?.selectedIds.size ?? 0) > 0, run: () => dialogs.lockLayers.show(folderSelected()) },
     { id: 'link-layers', label: () => (engine.selectionLinked ? 'Unlink Layers' : 'Link Layers'), enabled: () => engine.selectionLinked || (engine.current?.selectedIds.size ?? 0) > 1, run: () => engine.linkLayers() },
+    { id: 'copy-layers', label: 'Copy Layers', enabled: () => (engine.current?.selectedIds.size ?? 0) > 0, run: () => { const n = engine.copyLayers(); if (n) toast(`Copied ${n} ${n === 1 ? 'layer' : 'layers'}.`); } },
+    { id: 'paste-layers', label: 'Paste Layers', enabled: () => !!engine.current && engine.canPasteLayers, run: () => { engine.pasteLayers(); } },
     { id: 'select-linked', label: 'Select Linked Layers', enabled: () => { const p = engine.current; return !!p && [...p.selectedIds].some((id) => { const k = p.layer(id)?.link; return !!k && p.doc.layers.some((l) => l.id !== id && l.link === k); }); }, run: () => engine.selectLinkedLayers() },
     { id: 'rasterize-all', label: 'Rasterize All Layers', enabled: () => !!engine.current?.doc.layers.some((l) => l.smart || l.text || l.vector || l.shape || l.fillContent), run: () => engine.rasterizeLayers('all') },
     { id: 'blend-next', label: 'Next Blend Mode', keys: ['Shift+='], enabled: pixel, run: () => engine.cycleBlend(true) },
@@ -4224,14 +4289,44 @@ export function startApp(): void {
       run: (a) => { engine.newLayerComp({ name: typeof a?.name === 'string' ? a.name : undefined, comment: typeof a?.comment === 'string' ? a.comment : undefined, useVisibility: a?.visibility !== false, usePosition: a?.position !== false, useAppearance: a?.appearance !== false }); },
     },
     { id: 'layer-comp-apply', label: 'Apply Layer Comp', enabled: () => !!engine.current?.doc.comps?.length, params: { id: { type: 'string', description: 'Comp id.' }, name: { type: 'string', description: 'Comp name, when no id is given.' } }, run: (a) => { const c = engine.current?.doc.comps?.find((x) => (a?.id ? x.id === a.id : x.name === a?.name)); if (c) engine.applyLayerComp(c.id); } },
-    { id: 'layer-comp-update', label: 'Update Layer Comp', enabled: () => !!engine.current?.doc.activeComp, run: () => { const id = engine.current?.doc.activeComp; if (id) engine.updateLayerComp(id); } },
+    {
+      id: 'layer-comp-update', label: 'Update Layer Comp', enabled: () => !!engine.current?.doc.activeComp,
+      params: { parts: { type: 'string', description: 'Comma list of visibility, position and appearance to re-record; all of the comp\'s own switches when left out.' } },
+      run: (a) => {
+        const id = engine.current?.doc.activeComp, parts = String(a?.parts ?? '').split(',').map((x) => x.trim()).filter((x): x is 'visibility' | 'position' | 'appearance' => x === 'visibility' || x === 'position' || x === 'appearance');
+        if (id) engine.updateLayerComp(id, parts);
+      },
+    },
+    {
+      id: 'layer-comp-options', label: 'Layer Comp Options...', enabled: () => !!engine.current?.doc.activeComp,
+      params: {
+        name: { type: 'string', description: 'New name for the active comp.' },
+        comment: { type: 'string', description: 'New comment for the active comp.' },
+        visibility: { type: 'boolean', description: 'Whether the comp keeps layer visibility.' },
+        position: { type: 'boolean', description: 'Whether the comp keeps layer x and y.' },
+        appearance: { type: 'boolean', description: 'Whether the comp keeps opacity, blend mode, fill and effects.' },
+      },
+      run: (a) => {
+        const id = engine.current?.doc.activeComp;
+        if (!id) return;
+        if (!a || !Object.keys(a).length) { void import('./ui/panels/layer-comp-dialog').then((m) => { layerCompDialog ??= new m.LayerCompDialog(engine); layerCompDialog.show(id); }); return; }
+        engine.editLayerComp(id, { name: typeof a.name === 'string' ? a.name : undefined, comment: typeof a.comment === 'string' ? a.comment : undefined, useVisibility: typeof a.visibility === 'boolean' ? a.visibility : undefined, usePosition: typeof a.position === 'boolean' ? a.position : undefined, useAppearance: typeof a.appearance === 'boolean' ? a.appearance : undefined });
+      },
+    },
+    { id: 'layer-comp-last-state', label: 'Last Document State', enabled: () => !!engine.current?.doc.activeComp, run: () => engine.clearLayerComp() },
+    { id: 'layer-comp-duplicate', label: 'Duplicate Layer Comp', enabled: () => !!engine.current?.doc.activeComp, run: () => { const id = engine.current?.doc.activeComp; if (id) engine.duplicateLayerComp(id); } },
     { id: 'layer-comp-delete', label: 'Delete Layer Comp', enabled: () => !!engine.current?.doc.activeComp, run: () => { const id = engine.current?.doc.activeComp; if (id) engine.deleteLayerComp(id); } },
     { id: 'layer-comp-next', label: 'Next Layer Comp', enabled: () => !!engine.current?.doc.comps?.length, run: () => engine.nextLayerComp(1) },
     { id: 'layer-comp-previous', label: 'Previous Layer Comp', enabled: () => !!engine.current?.doc.comps?.length, run: () => engine.nextLayerComp(-1) },
     { id: 'edit-text', label: 'Edit Type...', enabled: () => engine.liveText(engine.current?.activeLayer), run: () => { const id = engine.current?.activeId; if (id) dialogs.text.showEdit(id); } },
-    { id: 'convert-smart', label: 'Convert to Smart Object', enabled: () => { const l = engine.current?.activeLayer; return !!l?.raster && !l.isGroup && !l.adjustment && !l.smart; }, run: () => engine.convertToSmartObject() },
+    { id: 'convert-smart', label: 'Convert to Smart Object', enabled: () => { const l = engine.current?.activeLayer; return !!l && !l.adjustment && !l.smart && (l.isGroup ? !!engine.current?.doc.layers.some((x) => x.parentId === l.id) : !!l.raster); }, run: () => {
+      if (engine.current?.activeLayer?.isGroup) engine.mergeLayers();
+      engine.convertToSmartObject();
+    } },
     { id: 'rasterize', label: 'Rasterize Layer', enabled: () => { const l = engine.current?.activeLayer; return !!l && (!!l.smart || !!l.vector || !!l.shape || !!l.fillContent || liveText(l)); }, run: () => engine.rasterizeLayer() },
     { id: 'smart-filters', label: 'Smart Filters...', enabled: () => !!engine.current?.activeLayer?.smart, run: () => dialogs.smartFilters.show() },
+    { id: 'smart-warp-reset', label: 'Reset Warp', enabled: () => !!engine.current?.activeLayer?.smart?.deform, run: () => { engine.resetSmartDeform(); } },
+    { id: 'filter-convert-smart', label: 'Convert for Smart Filters', enabled: () => commands.enabled(commands.get('convert-smart') as Command), run: () => commands.run('convert-smart') },
     { id: 'smart-new-via-copy', label: 'New Smart Object via Copy', enabled: () => !!engine.current?.activeLayer?.smart, run: () => engine.newSmartObjectViaCopy() },
     { id: 'smart-convert-to-layers', label: 'Convert to Layers', enabled: () => !!engine.current?.activeLayer?.smart, run: () => engine.smartToLayers() },
     { id: 'smart-export-contents', label: 'Export Contents...', enabled: () => !!engine.current?.activeLayer?.smart, run: async () => {
@@ -4252,9 +4347,9 @@ export function startApp(): void {
     { id: 'update-linked', label: 'Update Modified Content', enabled: () => !!engine.current?.doc.layers.some((l) => l.smart?.link), run: () => { void engine.task(async () => { try { const r = await updateLinked(engine); toast(r.missing.length ? `Could not reach ${r.missing.join(', ')}. Use Relink to File.` : r.updated ? `Updated ${r.updated} linked smart object${r.updated === 1 ? '' : 's'}.` : 'Linked contents are up to date.', r.missing.length ? 'error' : undefined); } catch (err) { linkError(err); } }); } },
     { id: 'relink', label: 'Relink to File...', enabled: () => !!engine.current?.activeLayer?.smart?.link, run: () => { void (async () => { try { await relink(engine, pickOnce); } catch (err) { linkError(err); } })(); } },
     { id: 'embed-linked', label: 'Embed Linked', enabled: () => !!engine.current?.activeLayer?.smart?.link, run: () => engine.embedLinked() },
-    { id: 'smart-reveal-linked', label: 'Reveal in File Manager', enabled: () => !!engine.current?.activeLayer?.smart?.link?.path, run: () => {
+    { id: 'smart-reveal-linked', label: 'Reveal in File Manager', enabled: () => !!engine.current?.activeLayer?.smart, run: () => {
       const path = engine.current?.activeLayer?.smart?.link?.path;
-      if (!path) return;
+      if (!path) { if (engine.editContents()) toast('This source is embedded, so it opened as a document of its own.'); return; }
       void (async () => {
         try {
           const res = await fetch('/api/reveal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path }) });
@@ -4315,6 +4410,11 @@ export function startApp(): void {
     { id: 'copy-layer-style', label: 'Copy Layer Style', enabled: () => effectsPresent(engine.current?.activeLayer?.effects), run: () => engine.copyLayerStyle() },
     { id: 'paste-layer-style', label: 'Paste Layer Style', enabled: () => pixel() && engine.canPasteLayerStyle, run: () => engine.pasteLayerStyle() },
     { id: 'clear-layer-style', label: 'Clear Layer Style', enabled: () => effectsPresent(engine.current?.activeLayer?.effects), run: () => engine.clearLayerStyle() },
+    ...([['copy-style-below', 'Copy Layer Style to Layer Below', false], ['move-style-below', 'Move Layer Style to Layer Below', true]] as const).map(([id, label, move]) => ({
+      id, label,
+      enabled: () => { const p = engine.current, l = p?.activeLayer, below = p && l ? p.doc.layers[p.doc.layers.indexOf(l) - 1] : undefined; return effectsPresent(l?.effects) && !!below && !below.isGroup && !below.adjustment; },
+      run: () => { const p = engine.current, l = p?.activeLayer, below = p && l ? p.doc.layers[p.doc.layers.indexOf(l) - 1] : undefined; if (l && below && effectsPresent(l.effects)) engine.transferEffects(l.id, below.id, ['dropShadow', 'outerGlow', 'stroke', 'innerShadow', 'innerGlow', 'colorOverlay', 'gradientOverlay', 'bevel', 'satin', 'patternOverlay'], move); },
+    })),
     ...([['style-blending', 'Blending Options...', 'blending'], ['style-bevel', 'Bevel & Emboss...', 'bevel'], ['style-stroke', 'Stroke...', 'stroke'], ['style-inner-shadow', 'Inner Shadow...', 'innerShadow'], ['style-inner-glow', 'Inner Glow...', 'innerGlow'], ['style-satin', 'Satin...', 'satin'],
       ['style-color-overlay', 'Color Overlay...', 'colorOverlay'], ['style-gradient-overlay', 'Gradient Overlay...', 'gradientOverlay'], ['style-pattern-overlay', 'Pattern Overlay...', 'patternOverlay'], ['style-outer-glow', 'Outer Glow...', 'outerGlow'], ['style-drop-shadow', 'Drop Shadow...', 'dropShadow']] as const)
       .map(([id, label, section]) => ({ id, label, enabled: () => pixel(), run: () => dialogs.layerStyle.show(section) })),
@@ -4371,7 +4471,7 @@ export function startApp(): void {
     { id: 'new-relight-layer', label: 'Relight Layer...', icon: 'relight', enabled: () => has() && !relight.editing, run: () => { void relight.begin(); } },
     { id: 'filter-relight', label: 'Relight...', icon: 'relight', enabled: () => has() && !relight.editing, run: () => { void relight.begin(); } },
     { id: 'edit-relight', label: 'Edit Lighting...', icon: 'relight', enabled: () => !!layer()?.relight && !relight.editing, run: () => { const l = layer(); if (l?.relight) void relight.begin(l.id); } },
-    { id: 'layer-content-options', label: 'Layer Content Options...', enabled: () => !!layer()?.adjustment || !!layer()?.fillContent || !!layer()?.relight || !!layer()?.vector, run: () => { const l = layer(); if (l?.fillContent) dialogs.fillLayer.showEdit(l.id); else if (l?.adjustment) dialogs.adjust.openForLayer(l.id); else if (l?.relight) void relight.begin(l.id); else if (l?.vector) dialogs.shapeStyle.show(); } },
+    { id: 'layer-content-options', label: 'Layer Content Options...', enabled: () => !!layer()?.adjustment || !!layer()?.fillContent || !!layer()?.relight || !!layer()?.vector || !!layer()?.text || !!layer()?.smart, run: () => { const l = layer(); if (l?.fillContent) dialogs.fillLayer.showEdit(l.id); else if (l?.adjustment) dialogs.adjust.openForLayer(l.id); else if (l?.relight) void relight.begin(l.id); else if (l?.vector) dialogs.shapeStyle.show(); else if (l?.text) document.dispatchEvent(new CustomEvent('cv:type', { detail: { layerId: l.id } })); else if (l?.smart) engine.editContents(); } },
     { id: 'film-leak', label: 'Light Leak...', enabled: () => !!engine.current, run: () => filmLayer.show('leak') },   // 1.51.6
     { id: 'film-frame', label: 'Frame...', enabled: () => !!engine.current, run: () => filmLayer.show('frame') },
     { id: 'color-match', label: 'Color Match...', enabled: () => { const l = engine.activeLayer; return !!l && (!!l.raster && !l.adjustment || (l.name === 'Color Match' && !!l.clipId)); }, run: () => colorMatch.show() },   // 1.51.3
@@ -4451,7 +4551,7 @@ export function startApp(): void {
       },
     },
     { id: 'flatten', label: 'Flatten Image', enabled: () => (engine.current?.doc.layers.length ?? 0) > 1, run: () => { engine.flattenImage(); } },
-    ...FILTERS.map((kind) => ({ id: `filter-${kind}`, label: `${FILTER_LABELS[kind]}...`, ...(kind === 'develop' ? { keys: ['Shift+Mod+A'] } : {}), enabled: hasTargetPixels, run: () => dialogs.filter.show(kind) })),
+    ...FILTERS.map((kind) => ({ id: `filter-${kind}`, label: `${FILTER_LABELS[kind]}...`, ...(kind === 'develop' ? { keys: ['Shift+Mod+A'] } : kind === 'lensCorrection' ? { keys: ['Shift+Mod+R'] } : {}), enabled: hasTargetPixels, run: () => dialogs.filter.show(kind) })),
     ...LIBRARY.map((f) => ({ id: `filter-${f.id}`, label: libHasDialog(f.id) ? `${f.label}...` : f.label, enabled: f.fills ? () => hasTargetPixels() || engine.canGivePixels : hasTargetPixels, run: () => {
       if (libHasDialog(f.id)) { dialogs.filter.show(f.id); return; }
       const settings = { lib: { [f.id]: libDefaults(f.id) }, seed: randomSeed() };
@@ -4468,7 +4568,7 @@ export function startApp(): void {
   const menus: MenuDef[] = [
     { label: 'File', items: () => ['new', 'new-from-clipboard', 'open', 'open-as', 'import', 'import-folder', 'import-notes', 'import-video', 'create-video-timeline', 'place-embedded', 'place-linked', 'place-3d', 'open-svg-layers', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.slice(0, 10).map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'save-copy', 'revert', 'earlier-states', 'download-project', 'package', '-',
       { label: 'Export', items: ['quick-export', 'export-as', 'export-preferences', 'save-for-web', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-tiff-layers', 'export-hdr', 'export-exr', 'export-exr-half', 'export-exr-piz', 'export-exr-none', 'export-pfm', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'export-paths-ai', 'assemble-tiles', '-', 'export-layers', 'export-layer-comps', 'export-selection-mask', 'generate-image-assets', 'image-assets-on-save', 'export-luts', 'export-artboards-files', 'export-data-sets', 'export-artboards'] },
-      { label: 'Automate', items: ['actions', 'action-stop', 'insert-conditional', 'batch', 'create-droplet', '-', 'fit-image', 'conditional-mode-change', 'contact-sheet', 'crop-straighten-photos', 'photomerge', 'merge-hdr'] },
+      { label: 'Automate', items: ['actions', 'action-stop', 'insert-conditional', 'batch', 'create-droplet', '-', 'lens-correction-batch', 'fit-image', 'conditional-mode-change', 'contact-sheet', 'crop-straighten-photos', 'photomerge', 'merge-hdr'] },
       { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'image-processor', 'script-events', 'load-files-stack', 'stack-statistics', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'reopen-closed-tab', 'close-all', 'close-others'] },
     { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', 'cancel-job', { label: 'Snapshot', items: ['new-snapshot', 'new-snapshot-merged', 'new-snapshot-layer'] }, '-', 'fade', 'compare-documents', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', 'pick-screen-colour', '-',
       { label: 'Purge', items: ['purge-clipboard', 'purge-undo', 'purge-histories', 'clean-working-files', 'free-helper-models', 'purge-all'] }, { label: 'History Log', items: ['save-history-log', 'clear-history-log'] }, 'apply-edit', 'cancel-edit', 'reset-tool', 'reset-all-tools', '-',
@@ -4477,19 +4577,19 @@ export function startApp(): void {
     { label: 'Image', items: [
       'apply-image', 'calculations', { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'desaturate', 'replace-color', 'equalize'] }, '-',
       'auto-tone', 'auto-contrast', 'auto-color', '-',
-      { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-grayscale-from', 'mode-duotone', 'mode-indexed', 'mode-multichannel', 'color-table', 'mode-rgb', 'mode-cmyk', 'mode-lab', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
+      { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-grayscale-from', 'mode-duotone', 'mode-indexed', 'mode-multichannel', 'color-table', 'mode-rgb', 'mode-cmyk', 'mode-lab', '-', 'split-channels', 'merge-channels', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
       'image-size', 'canvas-size', { label: 'Pixel Aspect Ratio', items: ['par-square', 'par-d1-ntsc', 'par-d1-pal', 'par-d1-ntsc-wide', 'par-d1-pal-wide', 'par-anamorphic', 'par-hdv', 'par-dvcpro-hd', '-', 'par-custom'] }, { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'trim', 'reveal-all', 'trap', '-', 'frequency-separation', 'duplicate-image', '-', { label: 'Variables', items: ['variables-define', 'data-sets-import', 'data-set-apply'] }, '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }, '-', { label: 'Analysis', items: ['measure-scale', 'measure-ruler', 'measure-color-sampler', 'measure-count', { label: 'Count Groups', items: ['count-new-group', 'count-set-group'] }, 'measure-record', 'measure-data-points', 'measure-scale-marker', 'measure-log'] }] },
     { label: 'Layer', items: [
       { label: 'New', items: ['new-layer-dialog', 'new-type-layer', 'new-shape-layer', 'new-dodge-burn-layer', 'layer-from-background', 'background-from-layer', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard-dialog', 'artboard-from-group', 'artboard-from-layers-dialog', 'frame-from-layers', '-', 'duplicate', 'layer-via-cut', '-', 'new-relight-layer'] }, 'artboard-options', '-',
-      { label: 'New Fill Layer', items: ['new-fill-solid', 'new-fill-gradient', 'new-fill-pattern'] }, { label: 'Video Layers', items: ['video-layer-from-file', 'video-layer-blank', '-', 'video-insert-blank-frame', 'video-duplicate-frame', 'video-delete-frame', '-', 'video-restore-frame', 'video-restore-all', 'video-replace-footage', 'video-interpret-footage', 'video-rasterize'] },{ label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'edit-relight', 'layer-content-options', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, '-',
-      'duplicate-dialog', { label: 'Delete', items: ['delete-layer', 'delete-hidden'] }, 'rename', 'layer-quick-export-png', 'layer-export-as', '-',
+      { label: 'New Fill Layer', items: ['new-fill-solid', 'new-fill-gradient', 'new-fill-pattern'] }, { label: 'Video Layers', items: ['video-layer-from-file', 'video-layer-blank', '-', 'video-insert-blank-frame', 'video-duplicate-frame', 'video-delete-frame', '-', 'video-restore-frame', 'video-restore-all', 'video-show-altered', 'video-replace-footage', 'video-interpret-footage', 'video-rasterize'] },{ label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'edit-relight', 'layer-content-options', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, '-',
+      'duplicate-dialog', 'copy-layers', 'paste-layers', { label: 'Delete', items: ['delete-layer', 'delete-hidden'] }, 'rename', 'layer-quick-export-png', 'layer-export-as', '-',
       { label: 'Layer Style', items: ['style-blending', 'style-bevel', 'style-stroke', 'style-inner-shadow', 'style-inner-glow', 'style-satin', 'style-color-overlay', 'style-gradient-overlay', 'style-pattern-overlay', 'style-outer-glow', 'style-drop-shadow', '-',
-        'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'global-light', 'create-layers', 'hide-all-effects', 'toggle-layer-effects', 'scale-effects'] },
+        'copy-layer-style', 'paste-layer-style', 'clear-layer-style', 'copy-style-below', 'move-style-below', '-', 'global-light', 'create-layers', 'hide-all-effects', 'toggle-layer-effects', 'scale-effects'] },
       { label: '3D', items: ['extrude-3d', 'place-3d', '-', 'panorama-view', 'panorama-apply-view'] },
-      { label: 'Smart Objects', items: ['convert-smart', 'smart-new-via-copy', 'smart-convert-to-layers', 'edit-contents', 'replace-contents', 'smart-export-contents', { label: 'Stack Mode', items: STACK_MODES.map((m) => `stack-mode-${m.id}`) }, '-', 'smart-convert-to-linked', 'update-linked', 'relink', 'embed-linked', 'smart-reveal-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
+      { label: 'Smart Objects', items: ['convert-smart', 'smart-new-via-copy', 'smart-convert-to-layers', 'edit-contents', 'replace-contents', 'smart-export-contents', { label: 'Stack Mode', items: STACK_MODES.map((m) => `stack-mode-${m.id}`) }, '-', 'transform-warp', 'perspective-warp', 'puppet-warp', 'smart-warp-reset', '-', 'smart-convert-to-linked', 'update-linked', 'relink', 'embed-linked', 'smart-reveal-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
       { label: 'Smart Filter', items: ['smart-filters-disable', 'smart-filters-clear'] },
       { label: 'Rasterize', items: ['rasterize-type', 'rasterize-shape', 'rasterize-fill', 'rasterize-smart', 'rasterize-vmask', 'rasterize-style', '-', 'rasterize', 'rasterize-all'] }, { label: 'Type', items: ['check-spelling', 'find-replace-text', 'paste-lorem-ipsum', '-', { label: 'Orientation', items: ['type-horizontal', 'type-vertical'] }, { label: 'Language Options', items: ['language-default', 'language-east-asian', 'language-middle-eastern'] }, { label: 'Anti-Alias', items: ['none', 'sharp', 'crisp', 'strong', 'smooth', 'windows-lcd', 'windows'].map((how) => `type-aa-${how}`) }, { label: 'Style', items: ['type-all-caps', 'type-small-caps', 'type-underline', 'type-strikethrough', '-', 'reset-character', 'reset-paragraph'] }, 'convert-point-text', 'convert-paragraph-text', '-', 'type-work-path', 'type-to-shape', '-', 'update-all-text', 'resolve-missing-fonts', 'replace-missing-fonts', 'save-default-type-styles', 'load-default-type-styles', 'add-font-files', 'add-web-font', '-', { label: 'Font Preview Size', items: FONT_PREVIEWS.map((v) => `font-preview-${v}`) }, '-', 'type-on-arc', 'type-on-circle', 'type-path-flip', 'type-path-release'] }, 'edit-text', 'warp-text', 'type-on-path', { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-style-copy', 'shape-style-paste', 'shape-corners', '-', 'apply-redactions'] }, '-',
-      { label: 'Layer Mask', items: ['mask-reveal-all', 'mask-hide-all', 'mask-reveal-selection', 'mask-hide-selection', 'mask-from-transparency', '-', 'delete-mask', 'apply-mask', '-', 'toggle-mask', 'link-mask', '-', 'mask-view-alone', 'mask-view-red'] },
+      { label: 'Layer Mask', items: ['mask-reveal-all', 'mask-hide-all', 'mask-reveal-selection', 'mask-hide-selection', 'mask-from-transparency', '-', 'delete-mask', 'apply-mask', '-', 'toggle-mask', 'link-mask', 'mask-invert', 'mask-properties', '-', 'mask-view-alone', 'mask-view-red'] },
       { label: 'Vector Mask', items: ['vmask-reveal-all', 'vmask-hide-all', 'vmask-current-path', 'vmask-delete', '-', 'vmask-enable', 'vmask-link', 'vmask-invert'] }, 'clip', 'mask-all-objects', '-',
       'group', 'ungroup', 'move-out', 'hide-layers', '-',
       { label: 'Arrange', items: ['bring-front', 'forward', 'backward', 'send-back', '-', 'reverse-layers'] },
@@ -4501,8 +4601,8 @@ export function startApp(): void {
       'merge', 'merge-visible', 'stamp-visible', 'frequency-separation', 'stamp-down', 'flatten', '-', 'show-only-layer', 'show-all-layers', { label: 'Color Label', items: ['layer-label-none', '-', ...LAYER_LABELS.map((c) => `layer-label-${c}`)] }, '-',
       { label: 'Matting', items: ['matting-decontaminate', 'matting-defringe', 'matting-black', 'matting-white'] }] },
     { label: 'Select', items: ['select-all', 'deselect', 'reselect', 'inverse', 'convert-to-shape', 'convert-to-shape-tolerance', 'selection-to-work-path', '-', 'select-all-layers', 'deselect-layers', 'find-layers', 'isolate-layers', '-', 'color-range', 'focus-area', 'select-subject', 'select-sky', 'select-object', { label: 'Subject and Sky Options', items: ['auto-select-sample-all', 'sky-sensitivity', 'sky-softness'] }, 'select-and-mask', '-', 'layer-pixels', 'mask-black', '-',
-      { label: 'Modify', items: ['expand', 'contract', 'feather', 'border', 'smooth'] }, 'grow', 'similar', '-', 'transform-selection', 'select-float', 'select-drop', '-', 'quick-mask', '-', 'load-selection', 'load-luminosity', 'load-selection-vector-mask', 'save-selection', { label: 'Channel', items: ['new-channel', 'duplicate-channel', 'channel-options', '-', 'channel-up', 'channel-down'] }, 'path-selection', 'path-selection-dialog', 'delete-path'] },
-    { label: 'Filter', items: ['filter-last', '-', 'filter-filterGallery', 'filter-develop', 'filter-wide-angle', 'filter-lensCorrection', 'filter-liquify', 'filter-vanishing-point', 'filter-neural', '-',
+      { label: 'Modify', items: ['expand', 'contract', 'feather', 'border', 'smooth'] }, 'grow', 'similar', '-', 'transform-selection', 'select-float', 'select-drop', '-', 'quick-mask', '-', 'load-selection', 'load-luminosity', 'load-selection-vector-mask', 'save-selection', { label: 'Channel', items: ['new-channel', 'new-spot-channel', 'duplicate-channel', 'channel-options', '-', 'channel-up', 'channel-down'] }, 'path-selection', 'path-selection-dialog', 'delete-path'] },
+    { label: 'Filter', items: ['filter-last', 'filter-convert-smart', '-', 'filter-filterGallery', 'filter-develop', 'filter-wide-angle', 'filter-lensCorrection', 'filter-liquify', 'filter-vanishing-point', 'filter-neural', '-',
       { label: 'Blur', items: filterGroup('Blur', ['filter-average', 'filter-gaussianBlur', 'filter-lensBlur', 'filter-motionBlur', 'filter-radialBlur', 'filter-surfaceBlur']) },
       { label: 'Blur Gallery', items: ['filter-fieldBlur', 'filter-irisBlur', 'filter-tiltShift', 'filter-pathBlur', 'filter-spinBlur'] },
       { label: 'Distort', items: filterGroup('Distort', []) },
@@ -4535,8 +4635,8 @@ export function startApp(): void {
     { label: 'Smart Objects', items: ['convert-smart', 'smart-new-via-copy', 'smart-convert-to-layers', 'smart-export-contents', { label: 'Stack Mode', items: STACK_MODES.map((m) => `stack-mode-${m.id}`) }, 'rasterize', 'edit-contents', 'replace-contents', '-', 'smart-convert-to-linked', 'update-linked', 'relink', 'embed-linked', 'smart-reveal-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
     { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-style-copy', 'shape-style-paste', 'shape-corners', '-', 'apply-redactions'] },
     { label: 'Layer Style', items: ['layer-style', '-', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style'] },
-    { label: 'Layer Comps', items: ['layer-comp-new', 'layer-comp-apply', 'layer-comp-update', 'layer-comp-delete', '-', 'layer-comp-next', 'layer-comp-previous'] }, '-',
-    { label: 'Layer Mask', items: ['add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask'] }, 'clip', 'link-layers', 'select-linked', '-', 'hide-layers', 'show-only-layer', 'show-all-layers', '-', 'group', 'ungroup', 'move-out', 'merge', 'merge-visible', '-', 'layer-pixels']);
+    { label: 'Layer Comps', items: ['layer-comp-new', 'layer-comp-apply', 'layer-comp-update', 'layer-comp-options', 'layer-comp-duplicate', 'layer-comp-delete', '-', 'layer-comp-last-state', 'layer-comp-next', 'layer-comp-previous'] }, '-',
+    { label: 'Layer Mask', items: ['mask-reveal-all', 'mask-hide-all', '-', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask'] }, 'clip', 'link-layers', 'select-linked', '-', 'hide-layers', 'show-only-layer', 'show-all-layers', { label: 'Color Label', items: ['layer-label-none', '-', ...LAYER_LABELS.map((c) => `layer-label-${c}`)] }, '-', 'group', 'ungroup', 'move-out', 'merge', 'merge-visible', 'flatten', '-', 'copy-layers', 'paste-layers', 'layer-quick-export-png', 'layer-export-as', '-', 'layer-pixels']);
   new Tabs(q(root, '.cv-tab-strip'), engine, (id) => void (engine.closeSpareView(id) || requestClose(id)));   // a further view closes first; the document stays open while one remains (36.16)
 
   const zoomLabel = q(root, '.cv-zoom-label');
@@ -4585,6 +4685,7 @@ export function startApp(): void {
   document.addEventListener('cv:create-shape', (e) => { const d = (e as CustomEvent<{ x: number; y: number }>).detail; if (d) dialogs.createShape.show({ x: d.x, y: d.y }); });
   root.addEventListener('cv:fill-options', (e) => dialogs.fillLayer.showEdit((e as CustomEvent<string>).detail));
   root.addEventListener('cv:relight-edit', (e) => { void relight.begin((e as CustomEvent<string>).detail); });
+  watchLinked(engine, (names) => toast(`Updated from changed file${names.length > 1 ? 's' : ''}: ${names.join(', ')}.`));
   engine.smartFilterMargin = (kind, settings) => filterMargin(kind as FilterKind, { ...defaultFilterSettings(), ...(settings as Partial<FilterPanelSettings>) });
   void loadPatterns();
   engine.smartFilterRunnerAsync = (kind, settings, src) => {

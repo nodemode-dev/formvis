@@ -1,4 +1,4 @@
-import type { LibFilter, LibValues } from '../filter-library';
+import type { LibFilter, LibParam, LibValues } from '../filter-library';
 import { boxOf, clipBox, copyImage, type Box } from './shared';
 
 const num = (v: LibValues, k: string): number => v[k] as number;
@@ -36,7 +36,7 @@ export function spinImage(src: ImageData, o: SpinSettings, clip: Box): ImageData
 export const GALLERY_FILTERS: LibFilter[] = [
   {
     id: 'spinBlur', label: 'Spin Blur', group: 'Blur Gallery', grows: false, reach: null,
-    note: 'One spin; its centre in percent of the selection or canvas, its radii in percent of their shorter side.',
+    note: 'Up to three spins; each has its centre in percent of the selection or canvas and its radii in percent of their shorter side. Spins 2 and 3 apply only when Spins says so.',
     params: [
       { key: 'blurAngle', label: 'Blur Angle (°)', kind: 'range', min: 0, max: 360, step: 1, def: 15 },
       { key: 'x', label: 'Center X (%)', kind: 'range', min: 0, max: 100, step: 1, def: 50 },
@@ -44,10 +44,24 @@ export const GALLERY_FILTERS: LibFilter[] = [
       { key: 'radiusX', label: 'Radius X (%)', kind: 'range', min: 1, max: 100, step: 1, def: 30 },
       { key: 'radiusY', label: 'Radius Y (%)', kind: 'range', min: 1, max: 100, step: 1, def: 30 },
       { key: 'angle', label: 'Rotation (°)', kind: 'range', min: -180, max: 180, step: 1, def: 0 },
+      { key: 'spins', label: 'Spins', kind: 'range', min: 1, max: 3, step: 1, def: 1 },
+      ...([2, 3] as const).flatMap((n): LibParam[] => [
+        { key: `blurAngle${n}`, label: `Spin ${n} Blur Angle (°)`, kind: 'range', min: 0, max: 360, step: 1, def: 15 },
+        { key: `x${n}`, label: `Spin ${n} Center X (%)`, kind: 'range', min: 0, max: 100, step: 1, def: n === 2 ? 25 : 75 },
+        { key: `y${n}`, label: `Spin ${n} Center Y (%)`, kind: 'range', min: 0, max: 100, step: 1, def: 50 },
+        { key: `radiusX${n}`, label: `Spin ${n} Radius X (%)`, kind: 'range', min: 1, max: 100, step: 1, def: 15 },
+        { key: `radiusY${n}`, label: `Spin ${n} Radius Y (%)`, kind: 'range', min: 1, max: 100, step: 1, def: 15 },
+        { key: `angle${n}`, label: `Spin ${n} Rotation (°)`, kind: 'range', min: -180, max: 180, step: 1, def: 0 },
+      ]),
     ],
     run: (src, v, ctx) => {
       const a = ctx.area, short = Math.max(1, Math.min(a.w, a.h)), c = boxOf(ctx.canvas), clip = clipBox(c, src.width, src.height) ?? { x0: 0, y0: 0, x1: src.width, y1: src.height };
-      return spinImage(src, { cx: a.x + (a.w * num(v, 'x')) / 100, cy: a.y + (a.h * num(v, 'y')) / 100, rx: (short * num(v, 'radiusX')) / 100, ry: (short * num(v, 'radiusY')) / 100, angle: num(v, 'angle'), blur: num(v, 'blurAngle') }, clip);
+      let out = src;
+      for (let n = 1; n <= Math.round(num(v, 'spins')); n++) {
+        const k = n === 1 ? '' : String(n);
+        out = spinImage(out, { cx: a.x + (a.w * num(v, `x${k}`)) / 100, cy: a.y + (a.h * num(v, `y${k}`)) / 100, rx: (short * num(v, `radiusX${k}`)) / 100, ry: (short * num(v, `radiusY${k}`)) / 100, angle: num(v, `angle${k}`), blur: num(v, `blurAngle${k}`) }, clip);
+      }
+      return out;
     },
   },
 ];

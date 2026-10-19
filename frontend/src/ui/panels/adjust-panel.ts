@@ -148,7 +148,7 @@ export class AdjustPanel extends Dialog {
     d.curves = { channel: typeof cv.channel === 'string' ? cv.channel : 'RGB', channels: [0, 1, 2, 3].map((i) => pts(chans[i])) };
     if (this.kind === 'exposure') { const e = obj(d.exposureSettings); d.exposureSettings = { exposure: num(e.exposure, 0), offset: num(e.offset, 0), gamma: num(e.gamma, 1) }; }
     if (this.kind === 'gradientMap') { const g = obj(d.gradientMapSettings); d.gradientMapSettings = { shadows: g.shadows ?? { red: 0, green: 0, blue: 0 }, highlights: g.highlights ?? { red: 1, green: 1, blue: 1 }, reversed: g.reversed === true, dither: g.dither === true, ...(Array.isArray(g.stops) && g.stops.length >= 2 ? { stops: g.stops, preset: typeof g.preset === 'string' ? g.preset : '' } : {}) }; }
-    if (this.kind === 'grain') { const g = grainFromData(d); d.grainSettings = { amount: g.amount, size: g.size, roughness: g.roughness, seed: g.seed, colour: g.colour, speckle: g.speckle }; }
+    if (this.kind === 'grain') { const g = grainFromData(d); d.grainSettings = { amount: g.amount, size: g.size, roughness: g.roughness, seed: g.seed, colour: g.colour, speckle: g.speckle, look: g.look }; }
     if (isParamKind(this.kind)) d.params = paramValues(this.kind, d.params);
     this.hsv = hsvFromData(d);
     this.setTitle(this.mode === 'layer' ? `${ADJUSTMENT_LABELS[this.kind]} Layer` : ADJUSTMENT_LABELS[this.kind]);
@@ -832,6 +832,7 @@ export class AdjustPanel extends Dialog {
     const gr = (): Record<string, number> => this.data.grainSettings as Record<string, number>;
     const colour = sliderRow('Colour grain', 0, 100, 1, (v) => { gr().colour = v; this.changed(); preset.value = which(); });
     const speckle = sliderRow('Speckle', 0, 100, 1, (v) => { gr().speckle = v; this.changed(); preset.value = which(); });
+    const look = sliderRow('Look strength', 0, 100, 1, (v) => { gr().look = v; this.changed(); });
     const amount = sliderRow('Amount', 0, 100, 1, (v) => { gr().amount = v; this.changed(); preset.value = which(); });
     const size = sliderRow('Size', 0.5, 20, 0.1, (v) => { gr().size = v; this.changed(); preset.value = which(); });
     const rough = sliderRow('Roughness', 0, 100, 1, (v) => { gr().roughness = v; this.changed(); preset.value = which(); });   // the Preset row follows the sliders
@@ -845,8 +846,8 @@ export class AdjustPanel extends Dialog {
     presetRow.append(preset);
     preset.addEventListener('change', () => { const p = PRESETS.find((x) => x[0] === preset.value); if (!p) return; Object.assign(gr(), { amount: p[2], size: p[3], roughness: p[4], colour: p[5], speckle: p[6] }); this.changed(); amount.set(p[2]); size.set(p[3]); rough.set(p[4]); colour.set(p[5]); speckle.set(p[6]); });
     const which = (): string => PRESETS.find((p) => p[2] === gr().amount && p[3] === gr().size && p[4] === gr().roughness && p[5] === (gr().colour ?? 0) && p[6] === (gr().speckle ?? 0))?.[0] ?? 'custom';
-    node.append(presetRow, amount.el, size.el, rough.el, colour.el, speckle.el, reseed);
-    return { node, sync: () => { amount.set(gr().amount); size.set(gr().size); rough.set(gr().roughness); colour.set(gr().colour ?? 0); speckle.set(gr().speckle ?? 0); preset.value = which(); } };
+    node.append(presetRow, look.el, amount.el, size.el, rough.el, colour.el, speckle.el, reseed);
+    return { node, sync: () => { look.set(gr().look ?? 100); amount.set(gr().amount); size.set(gr().size); rough.set(gr().roughness); colour.set(gr().colour ?? 0); speckle.set(gr().speckle ?? 0); preset.value = which(); } };
   }
 
   /** A section from a parametric adjustment's control list. Every row exists from the start; rows of other groups

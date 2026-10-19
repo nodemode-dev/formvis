@@ -144,10 +144,12 @@ export class ImageSizeDialog extends Dialog {
   private readonly resample = selectRow('Resample', [['high', 'High quality'], ['smooth', 'Smooth'], ['nearest', 'Nearest']], (v) => { this.sampling = v as Transform['sampling']; });
   private resampling = true;
   private readonly resampleOn = checkRow('Resample image', (v) => { this.resampling = v; setHidden(this.resample.el, !v); this.keepPixels(); });
+  private scaleStyles = true;
+  private readonly styles = checkRow('Scale Styles', (v) => { this.scaleStyles = v; });
 
   constructor(private readonly engine: Engine) {
     super('Image Size', 420);
-    this.body.append(this.note, this.width.el, this.height.el, this.units.el, this.resolution.el, this.lock.el, this.resampleOn.el, this.resample.el);
+    this.body.append(this.note, this.width.el, this.height.el, this.units.el, this.resolution.el, this.lock.el, this.resampleOn.el, this.resample.el, this.styles.el);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     enterTo(this.width.input, () => this.apply());
@@ -168,6 +170,7 @@ export class ImageSizeDialog extends Dialog {
     this.resolution.set(this.res);
     this.lock.set(this.constrain);
     this.resampleOn.set(true);
+    this.styles.set(this.scaleStyles);
     setHidden(this.resample.el, false);
     this.resample.set(this.sampling);
     this.fields();
@@ -208,7 +211,7 @@ export class ImageSizeDialog extends Dialog {
 
   private apply(): void {
     const fromW = this.engine.current?.doc.width ?? this.w, fromH = this.engine.current?.doc.height ?? this.h;
-    if (this.engine.resampleImage(this.w, this.h, this.sampling, this.res)) { this.onApplied?.({ w: this.w, h: this.h, sampling: this.sampling, res: this.res, fromW, fromH }); this.close(); }
+    if (this.engine.resampleImage(this.w, this.h, this.sampling, this.res, this.scaleStyles)) { this.onApplied?.({ w: this.w, h: this.h, sampling: this.sampling, res: this.res, fromW, fromH }); this.close(); }
   }
 }
 

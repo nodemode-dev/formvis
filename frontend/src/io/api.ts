@@ -500,9 +500,11 @@ export const api = {
   },
   /** File > Automate > Photomerge (1.58.2): the photos stitched by the engine's OpenCV, transparent where none reaches
    *  (or cropped); `stitched` says how many of them the stitch kept, as "kept/given". */
-  async mergePanorama(files: File[], layout: 'auto' | 'reposition', crop: boolean): Promise<{ png: Blob; stitched: string }> {
-    const r = await request('/merge/panorama', { method: 'POST', body: form({ layout, crop: String(crop) }, files.map((f) => ({ name: f.name, blob: f })), 'file') });
-    return { png: await r.blob(), stitched: r.headers.get('X-Photos-Stitched') ?? '' };
+  async mergePanorama(files: Array<{ name: string; blob: Blob }>, layout: 'auto' | 'reposition' | 'perspective' | 'cylindrical' | 'collage', crop: boolean, fix: { distortion?: boolean; vignette?: boolean } = {}): Promise<{ png: Blob; stitched: string; notes: { k1?: number; vignette?: string } }> {
+    const r = await request('/merge/panorama', { method: 'POST', body: form({ layout, crop: String(crop), distortion: String(!!fix.distortion), vignette: String(!!fix.vignette) }, files.map((f) => ({ name: f.name, blob: f.blob })), 'file') });
+    let notes = {};
+    try { notes = JSON.parse(r.headers.get('X-Photomerge-Notes') ?? '{}'); } catch { notes = {}; }
+    return { png: await r.blob(), stitched: r.headers.get('X-Photos-Stitched') ?? '', notes };
   },
   /** File > Automate > Merge to HDR (1.58.2): the exposures merged by the engine into linear light (RGB floats), with
    *  the exposure times used and where they came from. */
@@ -514,8 +516,8 @@ export const api = {
   },
   /** Edit > Auto-Align Layers (DEV_PLAN 32.1): each layer as a document-sized PNG, bottom-most first; a 3x3 matrix per
    *  layer (row-major, layer pixels to the reference's), identity for the reference. */
-  async mergeAlign(layers: Blob[], projection: string, vignette: boolean): Promise<{ matrices: number[][]; layers: Array<{ inliers: number; kind: string }>; vignette: string }> {
-    const r = await request('/merge/align', { method: 'POST', body: form({ projection, vignette: String(vignette) }, layers.map((b, i) => ({ name: `layer${i}.png`, blob: b })), 'file') });
+  async mergeAlign(layers: Blob[], projection: string, vignette: boolean, reference = 0, distortion = false): Promise<{ matrices: number[][]; layers: Array<{ inliers: number; kind: string }>; vignette: string; warped?: Array<string | null>; lens?: { k1: number; error_before: number | null; error_after: number | null } | null; focal?: number | null }> {
+    const r = await request('/merge/align', { method: 'POST', body: form({ projection, vignette: String(vignette), reference: String(reference), distortion: String(distortion) }, layers.map((b, i) => ({ name: `layer${i}.png`, blob: b })), 'file') });
     return await r.json();
   },
   /** File > Automate > Crop and Straighten Photos (DEV_PLAN 30.3 part b): the photos found on a scan, each cut out and
@@ -525,8 +527,8 @@ export const api = {
     return (await r.json()).photos;
   },
   /** Edit > Auto-Blend Layers (DEV_PLAN 32.1): a grey mask PNG (base64) per layer and RGB tone gains per layer. */
-  async mergeBlend(layers: Blob[], method: string, seamless: boolean): Promise<{ masks: string[]; tones: number[][] }> {
-    const r = await request('/merge/blend', { method: 'POST', body: form({ method, seamless: String(seamless) }, layers.map((b, i) => ({ name: `layer${i}.png`, blob: b })), 'file') });
+  async mergeBlend(layers: Blob[], method: string, seamless: boolean, halo = 0, depth = false): Promise<{ masks: string[]; tones: number[][]; depth?: string }> {
+    const r = await request('/merge/blend', { method: 'POST', body: form({ method, seamless: String(seamless), halo: String(halo), depth: String(depth) }, layers.map((b, i) => ({ name: `layer${i}.png`, blob: b })), 'file') });
     return await r.json();
   },
   /** A Lab TIFF or PSD as Lab layers (1.58.1): each layer's L, a, b and alpha as floats in the window's encoding;

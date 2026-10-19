@@ -9,7 +9,7 @@ import type { RGB } from './types';
  *  Colour Balance weights shadows, midtones and highlights by lightness with the usual overlapping ramps; Selective
  *  Colour weights each pixel by how much it belongs to a colour family and moves its ink, relative or absolute. */
 
-export type ParamKind = 'brightnessContrast' | 'vibrance' | 'colorBalance' | 'blackWhite' | 'photoFilter' | 'channelMixer' | 'invert' | 'posterize' | 'threshold' | 'selectiveColor' | 'shadowsHighlights' | 'hdrToning' | 'colorLookup' | 'develop' | 'clarity' | 'dehaze' | 'texture' | 'light' | 'splitToning' | 'halation' | 'glow';
+export type ParamKind = 'brightnessContrast' | 'vibrance' | 'colorBalance' | 'blackWhite' | 'photoFilter' | 'channelMixer' | 'invert' | 'posterize' | 'threshold' | 'selectiveColor' | 'shadowsHighlights' | 'hdrToning' | 'colorLookup' | 'develop' | 'clarity' | 'dehaze' | 'texture' | 'light' | 'splitToning' | 'halation' | 'glow' | 'gaussianBlur' | 'motionBlur' | 'addNoise';
 
 export type ParamSpec =
   | { key: string; label: string; kind: 'range'; min: number; max: number; step: number; def: number; group?: string }
@@ -481,6 +481,62 @@ export const PARAM_ADJUSTMENTS: Record<ParamKind, ParamAdjustment> = {
     label: 'Glow',
     params: [range('amount', 'Amount', 0, 100, 35), range('radius', 'Radius', 1, 200, 24), range('threshold', 'Threshold', 0, 100, 60)],
     kernel: (v) => bloom(n(v, 'amount') / 100, n(v, 'radius'), n(v, 'threshold') / 100, null),
+  },
+  gaussianBlur: {
+    label: 'Gaussian Blur',
+    params: [range('radius', 'Radius', 0, 250, 4, 0.1)],
+    kernel: (v) => (px, ctx) => {
+      if (!ctx) return;
+      const sigma = n(v, 'radius') / Math.max(1e-6, ctx.unitsPerPixel);
+      if (sigma < 0.4) return;
+      const W = ctx.width, H = ctx.height, r = Math.max(1, Math.round((Math.sqrt(4 * sigma * sigma + 1) - 1) / 2));
+      for (let k = 0; k < 3; k++) {
+        const ch = new Float32Array(W * H);
+        for (let i = k, j = 0; j < W * H; i += 4, j++) ch[j] = px[i];
+        for (let pass = 0; pass < 3; pass++) boxBlur(ch, W, H, r);
+        for (let i = k, j = 0; j < W * H; i += 4, j++) px[i] = Math.round(ch[j]);
+      }
+    },
+  },
+  motionBlur: {
+    label: 'Motion Blur',
+    params: [range('angle', 'Angle', -180, 180, 0), range('distance', 'Distance', 1, 2000, 20)],
+    kernel: (v) => (px, ctx) => {
+      if (!ctx) return;
+      const W = ctx.width, H = ctx.height, len = n(v, 'distance') / Math.max(1e-6, ctx.unitsPerPixel);
+      if (len < 1) return;
+      const steps = Math.min(96, Math.max(2, Math.ceil(len))), a = (n(v, 'angle') * Math.PI) / 180, dx = Math.cos(a) * len / steps, dy = -Math.sin(a) * len / steps;
+      const src = new Uint8ClampedArray(px);
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        let r = 0, g = 0, b = 0;
+        for (let s = 0; s <= steps; s++) {
+          const t = s - steps / 2, sx = Math.min(W - 1, Math.max(0, Math.round(x + dx * t))), sy = Math.min(H - 1, Math.max(0, Math.round(y + dy * t))), o = (sy * W + sx) * 4;
+          r += src[o]; g += src[o + 1]; b += src[o + 2];
+        }
+        const o = (y * W + x) * 4, c = steps + 1;
+        px[o] = Math.round(r / c); px[o + 1] = Math.round(g / c); px[o + 2] = Math.round(b / c);
+      }
+    },
+  },
+  addNoise: {
+    label: 'Add Noise',
+    params: [range('amount', 'Amount', 0, 400, 12.5, 0.1), { key: 'distribution', label: 'Distribution', kind: 'select', options: [['uniform', 'Uniform'], ['gaussian', 'Gaussian']], def: 'uniform' }, { key: 'mono', label: 'Monochromatic', kind: 'check', def: false }, range('seed', 'Seed', 0, 9999, 1)],
+    kernel: (v) => (px, ctx) => {
+      if (!ctx || n(v, 'amount') <= 0) return;
+      const W = ctx.width, H = ctx.height, amp = n(v, 'amount') * 1.275, gauss = v.distribution === 'gaussian', mono = v.mono === true, seed = n(v, 'seed') * 7 + 1;
+      const hash = (x: number, y: number, s: number): number => {
+        let h = Math.imul(x | 0, 0x27d4eb2d) ^ Math.imul(y | 0, 0x165667b1) ^ Math.imul(s | 0, 0x9e3779b1);
+        h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
+        h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+        return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+      };
+      const draw = (gx: number, gy: number, s: number): number => (gauss ? Math.sqrt(-2 * Math.log(Math.max(1e-9, hash(gx, gy, s)))) * Math.cos(2 * Math.PI * hash(gx, gy, s + 101)) * amp * 0.5 : (hash(gx, gy, s) * 2 - 1) * amp);
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const gx = Math.floor(ctx.originX + x * ctx.unitsPerPixel), gy = Math.floor(ctx.originY + y * ctx.unitsPerPixel), o = (y * W + x) * 4;
+        if (mono) { const d = draw(gx, gy, seed); px[o] += d; px[o + 1] += d; px[o + 2] += d; }
+        else for (let k = 0; k < 3; k++) px[o + k] += draw(gx, gy, seed + k * 13);
+      }
+    },
   },
 
 };

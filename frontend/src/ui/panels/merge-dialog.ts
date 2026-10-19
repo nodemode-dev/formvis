@@ -1,4 +1,5 @@
 import type { Engine } from '../../engine';
+import { toBlob, type Surface } from '../../engine/surface';
 import { api } from '../../io/api';
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
@@ -9,8 +10,10 @@ import { checkRow, selectRow } from './controls';
  *  32-bit picture; either opens as a new document. Rows are built once. */
 export class MergeDialog extends Dialog {
   private files: File[] = [];
-  private layout: 'auto' | 'reposition' = 'auto';
+  private layout: 'auto' | 'reposition' | 'perspective' | 'cylindrical' | 'collage' = 'auto';
   private crop = false;
+  private distortion = false;
+  private vignette = false;
   private readonly input = el('<input type="file" accept="image/*" multiple style="display: none">') as HTMLInputElement;
   private readonly picked = el('<p class="cv-dialog-note" role="status" style="min-height: 1.4em"></p>');
   private readonly note = el('<p class="cv-dialog-note" role="status" style="min-height: 2.8em"></p>');
@@ -21,14 +24,21 @@ export class MergeDialog extends Dialog {
     const choose = el('<button class="cv-btn" type="button">Choose photos...</button>') as HTMLButtonElement;
     choose.addEventListener('click', () => this.input.click());
     this.input.addEventListener('change', () => { this.files = Array.from(this.input.files ?? []); this.describe(); });
-    const layout = selectRow('Layout', [['auto', 'Auto'], ['reposition', 'Reposition']], (v) => { this.layout = v as 'auto' | 'reposition'; });
+    const open = el('<button class="cv-btn" type="button" title="Add every open document, as it shows now">Open documents</button>') as HTMLButtonElement;
+    open.addEventListener('click', () => {
+      const docs = this.engine.projects.map((p) => ({ p, s: this.engine.flattenedOf(p) })).filter((d) => d.s);
+      void Promise.all(docs.map(async (d, i) => new File([await toBlob(d.s as Surface)], `${d.p.name || `Document ${i + 1}`}.png`, { type: 'image/png' }))).then((made) => { this.files = [...this.files, ...made]; this.describe(); });
+    });
+    const layout = selectRow('Layout', [['auto', 'Auto'], ['perspective', 'Perspective'], ['cylindrical', 'Cylindrical'], ['collage', 'Collage'], ['reposition', 'Reposition']], (v) => { this.layout = v as MergeDialog['layout']; });
     const crop = checkRow('Crop to the picture', (v) => { this.crop = v; });
+    const vig = checkRow('Vignette Removal', (v) => { this.vignette = v; });
+    const geo = checkRow('Geometric Distortion Correction', (v) => { this.distortion = v; });
     this.panoRows = el('<div></div>');
-    this.panoRows.append(layout.el, crop.el, el('<p class="cv-dialog-note">Auto finds where the photos meet and projects them onto a sphere; Reposition only moves and turns them. Perspective, Cylindrical and Collage layouts are not offered here.</p>'));
+    this.panoRows.append(layout.el, crop.el, vig.el, geo.el, el('<p class="cv-dialog-note">Auto finds where the photos meet and projects them onto a sphere; Perspective keeps straight lines straight for a narrow view; Cylindrical bends the photos onto a cylinder for a wide one; Collage only moves, turns and scales them; Reposition moves and turns. Vignette Removal needs photos of one size. Distortion correction straightens the lens bend the overlaps show.</p>'));
     this.panoRows.hidden = mode !== 'panorama';
-    const intro = mode === 'panorama' ? 'Choose two or more overlapping photos.' : 'Choose two or more exposures of the same scene; their exposure times come from the photos\' EXIF, or are worked out from the photos.';
-    this.body.append(el(`<p class="cv-dialog-note">${intro}</p>`), choose, this.input, this.picked, this.panoRows, this.note);
-    layout.set('auto'); crop.set(false);
+    const intro = mode === 'panorama' ? 'Choose two or more overlapping photos, or add the open documents.' : 'Choose two or more exposures of the same scene; their exposure times come from the photos\' EXIF, or are worked out from the photos.';
+    this.body.append(el(`<p class="cv-dialog-note">${intro}</p>`), choose, open, this.input, this.picked, this.panoRows, this.note);
+    layout.set('auto'); crop.set(false); vig.set(false); geo.set(false);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => void this.apply());
     this.remember([this.input]);   // the layout and the crop; the photos themselves are chosen each time
@@ -44,11 +54,12 @@ export class MergeDialog extends Dialog {
     setText(this.note, this.mode === 'panorama' ? 'Stitching...' : 'Merging...');
     try {
       if (this.mode === 'panorama') {
-        const r = await api.mergePanorama(files, this.layout, this.crop), bmp = await createImageBitmap(r.png);
+        const r = await api.mergePanorama(files.map((f) => ({ name: f.name, blob: f })), this.layout, this.crop, { distortion: this.distortion, vignette: this.vignette }), bmp = await createImageBitmap(r.png);
         this.close();
         this.engine.openImage({ source: bmp, width: bmp.width, height: bmp.height, name: 'Panorama' });
         const [kept, given] = r.stitched.split('/');
         if (kept && given && kept !== given) this.engine.notice(`${kept} of the ${given} photos could be joined; the others did not overlap enough.`);
+        else if (this.distortion || this.vignette) this.engine.notice([this.distortion ? (r.notes.k1 ? `Lens distortion corrected (k1 ${r.notes.k1}).` : 'No lens distortion found.') : '', this.vignette && r.notes.vignette ? `Vignette: ${r.notes.vignette}.` : ''].filter(Boolean).join(' '));
       } else {
         const r = await api.mergeHdr(files), n = r.width * r.height, data = new Float32Array(n * 4);
         for (let j = 0; j < n; j++) { data[j * 4] = r.rgb[j * 3]; data[j * 4 + 1] = r.rgb[j * 3 + 1]; data[j * 4 + 2] = r.rgb[j * 3 + 2]; data[j * 4 + 3] = 1; }

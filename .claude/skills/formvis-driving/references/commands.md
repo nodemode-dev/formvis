@@ -1,19 +1,19 @@
 # formvis commands
 
-Generated from the window's command catalogue (1347 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1369 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
 - Edit: 77
-- File: 90
-- Filter: 86
+- File: 91
+- Filter: 87
 - Generate: 6
 - Help: 5
-- Image: 104
-- Layer: 243
+- Image: 109
+- Layer: 257
 - Paint: 1
 - Paths: 11
-- Select: 42
+- Select: 43
 - Tool options: 387
 - Tools: 53
 - Type: 49
@@ -25,8 +25,8 @@ Generated from the window's command catalogue (1347 commands) by `./formvis agen
 | Id | Name | Keys | Does |
 | --- | --- | --- | --- |
 | `apply-edit` | Apply Pending Edit | Enter | Applies what the tool in use is holding, as Return does: a crop, a warp, a floating selection, a polygon lasso. Bound to Return and movable in Keyboard Shortcuts. (changes the picture) |
-| `auto-align-layers` | Auto-Align Layers... |  | Aligns the selected layers to the bottom-most one by matching their features. (changes the picture) |
-| `auto-blend-layers` | Auto-Blend Layers... |  | Adds layer masks that blend the selected layers into a panorama or a focus stack. (changes the picture) |
+| `auto-align-layers` | Auto-Align Layers... |  | Aligns the selected layers to a reference layer (bottom, middle or top) by matching their features, with perspective, true cylindrical, collage-like reposition, vignette removal and lens distortion correction. (changes the picture) |
+| `auto-blend-layers` | Auto-Blend Layers... |  | Adds layer masks that blend the selected layers into a panorama or a focus stack, with halo control and an optional depth map layer. (changes the picture) |
 | `cancel-edit` | Cancel Pending Edit | Escape | Cancels what the tool in use is holding, as Escape does. Bound to Escape and movable in Keyboard Shortcuts. |
 | `cancel-job` | Cancel Background Job |  | Stops the running background job, such as a filter on a large layer, and keeps the document as it was. (changes the picture) |
 | `clean-working-files` | Working Files |  | Deletes the stored recovery copies of documents that are no longer open and the closed tabs kept for Reopen Closed Tab, and says how much space came back. (changes the picture) |
@@ -162,6 +162,7 @@ Generated from the window's command catalogue (1347 commands) by `./formvis agen
 | `import-notes` | Import Notes... |  | Opens the file picker to add the text notes of a PSD, or the paragraphs of a text file, to the document as notes. (changes the picture) |
 | `import-video` | Video Frames to Layers... |  | Opens the dialog that turns video frames into layers. (changes the picture) |
 | `insert-conditional` | Insert Conditional... |  | Adds a conditional step to a recorded action: when the document is landscape, portrait or square, 8, 16 or 32 bit, has a selection, unsaved changes, several layers, or an active type, smart object or masked layer, it plays one named action, otherwise another. Without parameters it opens the Actions dialog. (changes the picture) |
+| `lens-correction-batch` | Lens Correction... |  | Opens the Lens Correction batch: one set of distortion, fringe, vignette, perspective and edge settings applied to chosen pictures or a folder, saved as the source type, PNG or JPEG in one zip. (asks first) |
 | `list-actions` | List Actions |  | Returns the recorded actions with their step counts and which one is recording, or one action's steps with their kind, label and on or off state. |
 | `load-files-stack` | Load Files into Stack... |  | Opens a dialog to load chosen image files as the layers of one new document, optionally as a smart object stack. (changes the picture) |
 | `merge-hdr` | Merge to HDR... |  | Opens Merge to HDR for bracketed exposures. (changes the picture) |
@@ -173,7 +174,7 @@ Generated from the window's command catalogue (1347 commands) by `./formvis agen
 | `open-image-data` | Open Image Data |  | Opens base64 picture bytes with a file name as a new document. (changes the picture) |
 | `open-svg-layers` | Open SVG as Layers... |  | Opens an SVG file as a new document with one editable shape layer per drawable element; with the svg parameter it reads that SVG text instead of asking for a file. (changes the picture) |
 | `package` | Package... |  | Saves the document and the files of its linked smart objects together in one zip. (changes the picture) |
-| `photomerge` | Photomerge... |  | Opens Photomerge to stitch images into a panorama. (changes the picture) |
+| `photomerge` | Photomerge... |  | Opens Photomerge to stitch chosen files or the open documents into a panorama (Auto, Perspective, Cylindrical, Collage or Reposition) with optional vignette and lens distortion correction. (changes the picture) |
 | `place-3d` | Place 3D Model... |  | Opens a file picker for a glTF or GLB model and places it as a layer. (changes the picture) |
 | `place-embedded` | Place Embedded... |  | Places an image file as an embedded smart object. (changes the picture) |
 | `place-linked` | Place Linked... |  | Places an image file as a linked smart object. (changes the picture) |
@@ -210,6 +211,7 @@ Generated from the window's command catalogue (1347 commands) by `./formvis agen
 | `filter-clouds` | Clouds |  | Opens the Clouds filter on the active layer. (changes the picture) |
 | `filter-colorHalftone` | Color Halftone... |  | Opens the Color Halftone filter on the active layer. (changes the picture) |
 | `filter-colorToAlpha` | Color to Alpha... |  | Opens the Color to Alpha filter on the active layer. (changes the picture) |
+| `filter-convert-smart` | Convert for Smart Filters |  | Converts the active pixel layer to a smart object so later filters stay editable smart filters. (changes the picture) |
 | `filter-crystallize` | Crystallize... |  | Opens the Crystallize filter on the active layer. (changes the picture) |
 | `filter-custom` | Custom... |  | Opens the Custom filter on the active layer. (changes the picture) |
 | `filter-deInterlace` | De-Interlace... |  | Opens the De-Interlace filter on the active layer. (changes the picture) |
@@ -237,7 +239,7 @@ Generated from the window's command catalogue (1347 commands) by `./formvis agen
 | `filter-irisBlur` | Iris Blur... |  | Opens the Iris Blur filter on the active layer. (changes the picture) |
 | `filter-last` | Last Filter | Mod+F | Repeats the last filter with its settings. (changes the picture) |
 | `filter-lensBlur` | Lens Blur... |  | Opens the Lens Blur filter on the active layer. (changes the picture) |
-| `filter-lensCorrection` | Lens Correction... |  | Opens the Lens Correction filter on the active layer. (changes the picture) |
+| `filter-lensCorrection` | Lens Correction... | Shift+Mod+R | Opens the Lens Correction filter on the active layer. (changes the picture) |
 | `filter-lensFlare` | Lens Flare... |  | Opens the Lens Flare filter on the active layer. (changes the picture) |
 | `filter-lightingEffects` | Lighting Effects... |  | Opens the Lighting Effects filter on the active layer. (changes the picture) |
 | `filter-liquify` | Liquify... | Shift+Mod+X | Opens the Liquify workspace. (changes the picture) |
@@ -279,9 +281,9 @@ Generated from the window's command catalogue (1347 commands) by `./formvis agen
 | `filter-tree` | Tree... |  | Opens the Tree filter on the active layer. (changes the picture) |
 | `filter-twirl` | Twirl... |  | Opens the Twirl filter on the active layer. (changes the picture) |
 | `filter-unsharpMask` | Unsharp Mask... |  | Opens the Unsharp Mask filter on the active layer. (changes the picture) |
-| `filter-vanishing-point` | Vanishing Point... |  | Opens Vanishing Point. (changes the picture) |
+| `filter-vanishing-point` | Vanishing Point... | Alt+Mod+V | Opens Vanishing Point. (changes the picture) |
 | `filter-wave` | Wave... |  | Opens the Wave filter on the active layer. (changes the picture) |
-| `filter-wide-angle` | Adaptive Wide Angle... |  | Opens Adaptive Wide Angle. (changes the picture) |
+| `filter-wide-angle` | Adaptive Wide Angle... | Alt+Shift+Mod+A | Opens Adaptive Wide Angle. (changes the picture) |
 | `filter-wind` | Wind... |  | Opens the Wind filter on the active layer. (changes the picture) |
 | `filter-zigZag` | ZigZag... |  | Opens the ZigZag filter on the active layer. (changes the picture) |
 | `filter.apply` | Apply Filter |  | Applies a filter with exact settings to the active layer, inside the selection if there is one. (changes the picture) |
@@ -318,6 +320,7 @@ Generated from the window's command catalogue (1347 commands) by `./formvis agen
 
 | Id | Name | Keys | Does |
 | --- | --- | --- | --- |
+| `adj-addNoise` | Add Noise... |  | Opens Noise and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-blackWhite` | Black & White... | Alt+Shift+Mod+B | Opens Black & White and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-brightnessContrast` | Brightness/Contrast... |  | Opens Brightness/Contrast and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-channelMixer` | Channel Mixer... |  | Opens Channel Mixer and applies it to the pixels of the active layer. (changes the picture) |
@@ -328,6 +331,7 @@ Generated from the window's command catalogue (1347 commands) by `./formvis agen
 | `adj-dehaze` | Dehaze... |  | Opens Dehaze and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-develop` | Develop... |  | Opens Develop and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-exposure` | Exposure... |  | Opens Exposure and applies it to the pixels of the active layer. (changes the picture) |
+| `adj-gaussianBlur` | Gaussian Blur... |  | Opens Gaussian Blur and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-glow` | Glow... |  | Opens Glow and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-gradientMap` | Gradient Map... |  | Opens Gradient Map and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-grain` | Grain... |  | Opens Grain and applies it to the pixels of the active layer. (changes the picture) |
@@ -337,6 +341,7 @@ Generated from the window's command catalogue (1347 commands) by `./formvis agen
 | `adj-invert` | Invert... |  | Opens Invert and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-levels` | Levels... | Mod+L | Opens Levels and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-light` | Light... |  | Opens Light and applies it to the pixels of the active layer. (changes the picture) |
+| `adj-motionBlur` | Motion Blur... |  | Opens Motion Blur and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-photoFilter` | Photo Filter... |  | Opens Photo Filter and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-posterize` | Posterize... |  | Opens Posterize and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-selectiveColor` | Selective Color... |  | Opens Selective Color and applies it to the pixels of the active layer. (changes the picture) |
@@ -390,6 +395,7 @@ Generated from the window's command catalogue (1347 commands) by `./formvis agen
 | `measure-ruler` | Ruler Tool |  | Picks the Ruler tool, which measures a distance and an angle, and with Alt-drag from an end a second arm and the angle between. |
 | `measure-scale` | Set Measurement Scale... |  | Sets the measurement scale: how many pixels make a logical length in chosen units. Without parameters it opens a dialog prefilled from the Ruler line. (changes the picture) |
 | `measure-scale-marker` | Place Scale Marker... |  | Places a scale bar with a text label as a new pixel layer at the bottom left, sized from the measurement scale. (changes the picture) |
+| `merge-channels` | Merge Channels... |  | Opens a new RGB document from three greys, one each for red, green and blue, taken from open documents or their channels. (changes the picture) |
 | `mode-bitmap` | Bitmap... |  | Opens the Bitmap conversion. (changes the picture) |
 | `mode-cmyk` | CMYK Color... |  | Opens the CMYK conversion. (changes the picture) |
 | `mode-duotone` | Duotone... |  | Opens Duotone options: one to four inks overprinted on a grayscale document. (changes the picture) |
@@ -417,6 +423,7 @@ Generated from the window's command catalogue (1347 commands) by `./formvis agen
 | `rotate-90-ccw` | 90° Counter Clockwise |  | Rotates the whole image 90 degrees counter clockwise. (changes the picture) |
 | `rotate-90-cw` | 90° Clockwise |  | Rotates the whole image 90 degrees clockwise. (changes the picture) |
 | `rotate-arbitrary` | Arbitrary... |  | Opens the dialog that rotates the whole image by any angle. (changes the picture) |
+| `split-channels` | Split Channels |  | Opens one grey document for each colour channel of the picture and for each alpha or spot channel. (changes the picture) |
 | `trap` | Trap... |  | Overlaps CMYK colours where they meet so press misregistration shows no gap; lighter inks spread under darker ones, black does not. (changes the picture) |
 | `trim` | Trim... |  | Opens Trim to cut away transparent or same-colour edges. (changes the picture) |
 | `upscale-2x` | Upscale 2x... |  | Opens the dialog that enlarges the picture two times. |
@@ -456,6 +463,8 @@ Generated from the window's command catalogue (1347 commands) by `./formvis agen
 | `clip` | Create Clipping Mask | Alt+Mod+G | Clips the layer to the one below. (changes the picture) |
 | `convert-smart` | Convert to Smart Object |  | Converts the layer to a smart object. (changes the picture) |
 | `copy-layer-style` | Copy Layer Style |  | Copies the layer style. |
+| `copy-layers` | Copy Layers |  | Copies the selected layers as objects, with masks, styles, live text and folder contents, for Paste Layers in any open document. |
+| `copy-style-below` | Copy Layer Style to Layer Below |  | Copies the active layer's effects onto the layer below it, replacing that layer's effects. (changes the picture) |
 | `create-layers` | Create Layers |  | Turns the layer effects into layers. (changes the picture) |
 | `delete-filter-mask` | Delete Smart Filter Mask |  | Deletes the smart filter mask. (changes the picture) |
 | `delete-hidden` | Delete Hidden Layers |  | Deletes every hidden layer. (changes the picture) (asks first) |
@@ -494,10 +503,13 @@ Generated from the window's command catalogue (1347 commands) by `./formvis agen
 | `isolate-layers` | Isolate Layers |  | Shows only the selected layers. |
 | `layer-comp-apply` | Apply Layer Comp |  | Applies a layer comp by id or name. (changes the picture) |
 | `layer-comp-delete` | Delete Layer Comp |  | Deletes the active layer comp. (changes the picture) |
+| `layer-comp-duplicate` | Duplicate Layer Comp |  | Copies the active layer comp, placed after it and named with copy. (changes the picture) |
+| `layer-comp-last-state` | Last Document State |  | Puts the layers back as they were before the first comp was applied and clears the active comp. (changes the picture) |
 | `layer-comp-new` | New Layer Comp |  | Records a layer comp of visibility, position and appearance. (changes the picture) |
 | `layer-comp-next` | Next Layer Comp |  | Applies the next layer comp, wrapping. (changes the picture) |
+| `layer-comp-options` | Layer Comp Options... |  | Changes the active layer comp's name, comment and what it keeps (visibility, position, appearance), or opens the options dialog when given none. (changes the picture) |
 | `layer-comp-previous` | Previous Layer Comp |  | Applies the previous layer comp, wrapping. (changes the picture) |
-| `layer-comp-update` | Update Layer Comp |  | Re-records the active layer comp from the layers now. (changes the picture) |
+| `layer-comp-update` | Update Layer Comp |  | Re-records the active layer comp from the layers now, or only the named parts (visibility, position, appearance). (changes the picture) |
 | `layer-content-options` | Layer Content Options... |  | Opens the content options of a fill layer. (changes the picture) |
 | `layer-export-as` | Export As... |  | Opens Export As for each selected layer (the active one when none is selected) drawn alone, with format, quality, size, matte and a live preview and size estimate. (asks first) |
 | `layer-from-background` | Layer from Background... |  | Opens the dialog that turns the Background into a normal layer. (changes the picture) |
@@ -521,6 +533,8 @@ Generated from the window's command catalogue (1347 commands) by `./formvis agen
 | `mask-from-transparency` | From Transparency |  | Turns the layer transparency into a mask. (changes the picture) |
 | `mask-hide-all` | Hide All |  | Adds a mask that hides the whole layer, or resets the existing mask to black. (changes the picture) |
 | `mask-hide-selection` | Hide Selection |  | Adds a mask hiding the selection. (changes the picture) |
+| `mask-invert` | Invert Layer Mask |  | Turns the layer mask inside out, showing what it hid. (changes the picture) |
+| `mask-properties` | Mask Properties |  | Sets the density and feather of the layer mask or vector mask. (changes the picture) |
 | `mask-reveal-all` | Reveal All |  | Adds a mask that reveals the whole layer, or resets the existing mask to white. (changes the picture) |
 | `mask-reveal-selection` | Reveal Selection |  | Adds a mask showing only the selection. (changes the picture) |
 | `mask-view-alone` | View Mask Alone |  | Shows the active layer mask alone in black and white; again returns to the image. (changes the picture) |
@@ -532,6 +546,8 @@ Generated from the window's command catalogue (1347 commands) by `./formvis agen
 | `merge` | Merge Down | Mod+E | Merges the layer into the one below. (changes the picture) |
 | `merge-visible` | Merge Visible |  | Merges every visible layer into one. (changes the picture) |
 | `move-out` | Move Out of Folder | Shift+Mod+G | Moves the layer out of its folder. (changes the picture) |
+| `move-style-below` | Move Layer Style to Layer Below |  | Moves the active layer's effects onto the layer below it and clears them here. (changes the picture) |
+| `new-adj-addNoise` | New Add Noise Layer... |  | Adds a Add Noise Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-blackWhite` | New Black & White Layer... |  | Adds a Black & White Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-brightnessContrast` | New Brightness/Contrast Layer... |  | Adds a Brightness/Contrast Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-channelMixer` | New Channel Mixer Layer... |  | Adds a Channel Mixer Layer adjustment layer; its dialog opens for the values. (changes the picture) |
@@ -542,6 +558,7 @@ Generated from the window's command catalogue (1347 commands) by `./formvis agen
 | `new-adj-dehaze` | New Dehaze Layer... |  | Adds a Dehaze Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-develop` | New Develop Layer... |  | Adds a Develop Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-exposure` | New Exposure Layer... |  | Adds a Exposure Layer adjustment layer; its dialog opens for the values. (changes the picture) |
+| `new-adj-gaussianBlur` | New Gaussian Blur Layer... |  | Adds a Gaussian Blur Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-glow` | New Glow Layer... |  | Adds a Glow Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-gradientMap` | New Gradient Map Layer... |  | Adds a Gradient Map Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-grain` | New Grain Layer... |  | Adds a Grain Layer adjustment layer; its dialog opens for the values. (changes the picture) |
@@ -551,6 +568,7 @@ Generated from the window's command catalogue (1347 commands) by `./formvis agen
 | `new-adj-invert` | New Invert Layer... |  | Adds a Invert Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-levels` | New Levels Layer... |  | Adds a Levels Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-light` | New Light Layer... |  | Adds a Light Layer adjustment layer; its dialog opens for the values. (changes the picture) |
+| `new-adj-motionBlur` | New Motion Blur Layer... |  | Adds a Motion Blur Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-photoFilter` | New Photo Filter Layer... |  | Adds a Photo Filter Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-posterize` | New Posterize Layer... |  | Adds a Posterize Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-selectiveColor` | New Selective Color Layer... |  | Adds a Selective Color Layer adjustment layer; its dialog opens for the values. (changes the picture) |
@@ -575,6 +593,7 @@ Generated from the window's command catalogue (1347 commands) by `./formvis agen
 | `panorama-apply-view` | Apply View to Panorama |  | Projects the current panorama edit view back onto its source panorama as a new layer named Panorama edit, one undo step. (changes the picture) |
 | `panorama-view` | Spherical Panorama... |  | Opens the active document, taken as an equirectangular picture, as a sphere you turn by dragging, with yaw, pitch and field of view; Edit View makes the current view a new document. (changes the picture) |
 | `paste-layer-style` | Paste Layer Style |  | Pastes the copied layer style. (changes the picture) |
+| `paste-layers` | Paste Layers |  | Pastes the layers Copy Layers kept onto the top of the current document, in place when the sizes agree, else centred. (changes the picture) |
 | `pick-layer-0` |  |  | Selects the layer in this slot from the layers under the pointer (right-click the canvas with the Move tool). |
 | `pick-layer-1` |  |  | Selects the layer in this slot from the layers under the pointer (right-click the canvas with the Move tool). |
 | `pick-layer-2` |  |  | Selects the layer in this slot from the layers under the pointer (right-click the canvas with the Move tool). |
@@ -628,6 +647,7 @@ Generated from the window's command catalogue (1347 commands) by `./formvis agen
 | `smart-filters-disable` | Disable Smart Filters |  | Turns every filter of the active smart object off, or back on when all are off. (changes the picture) |
 | `smart-new-via-copy` | New Smart Object via Copy |  | Duplicates the active smart object as a new, independent smart object above it. (changes the picture) |
 | `smart-reveal-linked` | Reveal in File Manager |  | Shows the active linked smart object's file in the system file manager. |
+| `smart-warp-reset` | Reset Warp |  | Drops the active smart object's Warp, Puppet Warp or Perspective Warp and shows its render where it sat before; the source and smart filters stay. (changes the picture) |
 | `stack-mode-entropy` | Entropy |  | Set the stack mode of a stacked smart object to Entropy (changes the picture) |
 | `stack-mode-kurtosis` | Kurtosis |  | Set the stack mode of a stacked smart object to Kurtosis (changes the picture) |
 | `stack-mode-majority` | Majority |  | Set the stack mode of a stacked smart object to Majority, the most common value (changes the picture) |
@@ -669,6 +689,7 @@ Generated from the window's command catalogue (1347 commands) by `./formvis agen
 | `video-replace-footage` | Replace Footage... |  | Swaps the active video layer's footage for a chosen clip, keeping its place on the timeline. (changes the picture) |
 | `video-restore-all` | Restore All Frames |  | Puts every frame of the video layer back to the footage as loaded. (changes the picture) |
 | `video-restore-frame` | Restore Frame |  | Puts the playhead frame back to the footage as loaded. (changes the picture) |
+| `video-show-altered` | Show Altered Video |  | Shows or hides the painted frames of the active video layer; hidden, the footage as loaded shows in their place and nothing is lost. (changes the picture) |
 | `vmask-current-path` | Current Path |  | Makes a vector mask from the current path. (changes the picture) |
 | `vmask-delete` | Delete |  | Deletes the vector mask. (changes the picture) |
 | `vmask-enable` | Disable Vector Mask |  | Disables or enables the vector mask. (changes the picture) |
@@ -754,6 +775,7 @@ Generated from the window's command catalogue (1347 commands) by `./formvis agen
 | `load-selection-vector-mask` | Vector Mask to Selection |  | Turns the layer's vector mask into a selection. (changes the picture) |
 | `mask-black` | Mask's Black Areas |  | Selects the mask's black areas. (changes the picture) |
 | `new-channel` | New Channel |  | Adds an empty channel, black or white. (changes the picture) |
+| `new-spot-channel` | New Spot Channel |  | Adds a spot channel with an ink colour and a solidity; opens Channel Options when given no parameters. (changes the picture) |
 | `quick-mask` | Edit in Quick Mask Mode | Q | Turns Quick Mask on or off; painting in it makes the selection. (changes the picture) |
 | `reselect` | Reselect |  | Brings back the last selection. (changes the picture) |
 | `save-selection` | Save Selection... |  | Opens the dialog that saves the selection to a channel. (changes the picture) |
@@ -1223,7 +1245,7 @@ Generated from the window's command catalogue (1347 commands) by `./formvis agen
 | `tool.select.markup` | Markup Tool |  | Makes the Markup tool the active tool (key I). Drag from the tail of the arrow to its tip |
 | `tool.select.marquee` | Marquee Tool |  | Makes the Marquee tool the active tool (key M). Drag a rectangle · Shift adds · Alt subtracts · Shift after starting constrains · Alt after starting grows from the centre · Drag inside to move the outline · Shift+M switches shape · A click, Escape or Cmd or Ctrl+D deselects |
 | `tool.select.mixer` | Mixer Brush Tool |  | Makes the Mixer Brush tool the active tool (key B). Drag to paint with wet paint that picks up and mixes the colours under it · [ ] size · Alt-click loads the reservoir from the canvas |
-| `tool.select.move` | Move Tool |  | Makes the Move tool the active tool (key V). Drag to move · Drag inside a selection to move its pixels, Alt to duplicate them · Handles resize · Outside a corner rotates · Shift constrains · Alt resizes from the center · Cmd or Ctrl picks the layer under the pointer · Arrows nudge · 1-0 set layer opacity |
+| `tool.select.move` | Move Tool |  | Makes the Move tool the active tool (key V). Drag to move · Drag inside a selection to move its pixels, Alt to duplicate them · Handles resize · Outside a corner rotates · Shift constrains · Alt resizes from the center · Alt-drag inside the box copies the layers · Cmd or Ctrl flips Auto-Select for the drag · Arrows nudge · 1-0 set layer opacity |
 | `tool.select.note` | Note Tool |  | Makes the Note tool the active tool (key I). Click to pin a note · Click a note to edit it · Drag it to move it · Alt-click it to delete it |
 | `tool.select.objectSelect` | Object Selection Tool |  | Makes the Object Selection tool the active tool (key W). Click an object, or drag a box round it · Shift adds · Alt subtracts · Rest the pointer to see the object it finds · The first use on an image takes a few seconds |
 | `tool.select.patch` | Patch Tool |  | Makes the Patch tool the active tool (key J). Draw around the area to fix, then drag the selection onto the area to copy from · Shift+J cycles the healing tools |

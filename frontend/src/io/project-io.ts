@@ -7,6 +7,7 @@ import {
   Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid, type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsPresent, effectsFromData, liveText, textFromData, paragraphStylesFrom, characterStylesFrom,smartFiltersFrom, pathSetData, pathSetFrom, pathData, pathFrom, type PathSet, type RGB, timelineData, timelineFrom, type Timeline, addPattern, patternById, projectPatterns, SelectionMask, type AlphaChannel,
 } from '../engine';
 import { artboardFromData, LAYER_LABELS, type LayerLabel, type SmartStack } from '../engine/types';
+import { deformFrom } from '../engine/smart-deform';
 import { isStackMode } from '../engine/stack-modes';
 import { cleanMeta } from '../engine/doc-meta';
 import { fillContentFrom } from '../engine/fill-layers';
@@ -127,7 +128,7 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
     if (l.vector) r.vector = { fill: l.vector.fill, stroke: l.vector.stroke ?? null, ...(l.vector.gradient ? { gradient: l.vector.gradient } : {}), origin: l.vector.origin, subpaths: pathData(l.vector.path)?.subpaths ?? [] };
     if (l.fillContent && l.raster) r.fillContent = structuredClone(l.fillContent);
     if (l.relight && l.raster) r.relight = structuredClone(l.relight);
-    if (l.vectorMask) r.vectorMask = { enabled: l.vectorMask.enabled, linked: l.vectorMask.linked, inverted: l.vectorMask.inverted, subpaths: pathData(l.vectorMask.path)?.subpaths ?? [] };
+    if (l.vectorMask) r.vectorMask = { enabled: l.vectorMask.enabled, linked: l.vectorMask.linked, inverted: l.vectorMask.inverted, subpaths: pathData(l.vectorMask.path)?.subpaths ?? [], ...(l.vectorMask.density !== undefined && l.vectorMask.density < 100 ? { density: l.vectorMask.density } : {}), ...(l.vectorMask.feather ? { feather: l.vectorMask.feather } : {}) };
     if (l.video && !l.isGroup) {   // 33.4b: every painted frame, and an original only where it differs from its frame
       const frameFiles: string[] = [], originals: (string | null)[] = [];
       for (const [i, f] of l.video.frames.entries()) {
@@ -155,7 +156,7 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
         }
         r.smartStack = { mode: l.smart.stack.mode, files: stackFiles };
       }
-      r.smart = { filters: l.smart.filters.map(({ id, kind, settings, enabled, blend, opacity }) => ({ id, kind, settings, enabled, ...(blend && blend !== 'normal' ? { blend } : {}), ...(opacity !== undefined && opacity < 100 ? { opacity } : {}) })), warp: l.smart.warp ?? null, warpAt: l.smart.warpAt ? transformRecord(l.smart.warpAt) : null, filterMaskEnabled: l.smart.filterMaskEnabled !== false, link: l.smart.link ? { id: l.smart.link.id, name: l.smart.link.name, size: l.smart.link.size, lastModified: l.smart.link.lastModified, ...(l.smart.link.path ? { path: l.smart.link.path } : {}) } : null };
+      r.smart = { filters: l.smart.filters.map(({ id, kind, settings, enabled, blend, opacity }) => ({ id, kind, settings, enabled, ...(blend && blend !== 'normal' ? { blend } : {}), ...(opacity !== undefined && opacity < 100 ? { opacity } : {}) })), warp: l.smart.warp ?? null, warpAt: l.smart.warpAt ? transformRecord(l.smart.warpAt) : null, deform: l.smart.deform ? { ...l.smart.deform, at: transformRecord(l.smart.deform.at) } : null, filterMaskEnabled: l.smart.filterMaskEnabled !== false, link: l.smart.link ? { id: l.smart.link.id, name: l.smart.link.name, size: l.smart.link.size, lastModified: l.smart.link.lastModified, ...(l.smart.link.path ? { path: l.smart.link.path } : {}) } : null };
       if (l.smart.filterMask) {
         const mn = `${name.replace(/\.png$/i, '')}-filtermask.png`;
         files.push({ name: mn, blob: await toBlob(l.smart.filterMask.canvas) });
@@ -230,7 +231,7 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
     const file = `alpha-${i + 1}.png`, s = createSurface(doc.width, doc.height);
     ctxOf(s).putImageData(alphaGrey(a.mask, doc.width, doc.height), 0, 0);
     files.push({ name: file, blob: await toBlob(s) });
-    alphas.push({ id: a.id, name: a.name, file, ...(a.color ? { color: [a.color.r, a.color.g, a.color.b] } : {}), ...(a.opacity !== undefined ? { opacity: a.opacity } : {}), ...(a.indicates ? { indicates: a.indicates } : {}) });
+    alphas.push({ id: a.id, name: a.name, file, ...(a.color ? { color: [a.color.r, a.color.g, a.color.b] } : {}), ...(a.opacity !== undefined ? { opacity: a.opacity } : {}), ...(a.indicates ? { indicates: a.indicates } : {}), ...(a.spot ? { spot: true } : {}) });
   }
   if (alphas.length) manifest.alphas = alphas;
   return { manifest, files };
@@ -340,7 +341,7 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
     const sw = obj(r.smart), warpPts = Array.isArray(sw.warp) && sw.warp.length === 4 && sw.warp.every((q) => finite(obj(q).x) && finite(obj(q).y)) ? (sw.warp as Array<{ x: number; y: number }>).map((q) => ({ x: q.x, y: q.y })) : null;
     const fmImage = bitmaps.get(str(r.smartFilterMaskFile) ?? ''), fmOk = !!fmImage && !!sourceImage && fmImage.width === sourceImage.width && fmImage.height === sourceImage.height;
     const lk = obj(sw.link), link = str(lk.id) && str(lk.name) && finite(lk.size) && finite(lk.lastModified) ? { id: str(lk.id) as string, name: str(lk.name) as string, size: lk.size as number, lastModified: lk.lastModified as number, ...(typeof lk.path === 'string' && lk.path ? { path: lk.path.slice(0, 1024) } : {}) } : null;
-    const smart = raster && sourceImage ? { source: Raster.from(sourceImage, sourceImage.width, sourceImage.height), filters: smartFiltersFrom(r.smart), stack: stackFrom(r.smartStack), warp: warpPts, warpAt: warpPts && sw.warpAt ? transformFrom(sw.warpAt, raster.width, raster.height) : null, filterMask: fmOk && fmImage ? Raster.from(fmImage, fmImage.width, fmImage.height) : null, filterMaskEnabled: sw.filterMaskEnabled !== false, link } : null;
+    const smart = raster && sourceImage ? { source: Raster.from(sourceImage, sourceImage.width, sourceImage.height), filters: smartFiltersFrom(r.smart), stack: stackFrom(r.smartStack), warp: warpPts, warpAt: warpPts && sw.warpAt ? transformFrom(sw.warpAt, raster.width, raster.height) : null, deform: deformFrom(sw.deform, sw.deform && obj(sw.deform).at ? transformFrom(obj(sw.deform).at, raster.width, raster.height) : null), filterMask: fmOk && fmImage ? Raster.from(fmImage, fmImage.width, fmImage.height) : null, filterMaskEnabled: sw.filterMaskEnabled !== false, link } : null;
     const maskPicture = bitmaps.get(str(r.maskFile) ?? '');
     const mask: Mask | null = maskPicture
       ? { raster: grayToMask(maskPicture), enabled: r.maskEnabled !== false, linked: r.maskLinked !== false, placement: r.maskPlacement ? transformFrom(r.maskPlacement, maskPicture.width, maskPicture.height) : null, ...(typeof r.maskDensity === 'number' ? { density: r.maskDensity } : {}), ...(typeof r.maskFeather === 'number' ? { feather: r.maskFeather } : {}) }
@@ -366,7 +367,7 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
       ...(r.isGroup === true && !str(r.parentID) && r.artboard ? { artboard: artboardFromData(r.artboard) } : {}),
       ...(raster && r.fillContent ? { fillContent: fillContentFrom(r.fillContent) } : {}),
       ...(raster && r.relight ? { relight: relightFrom(r.relight) } : {}),
-      ...(r.vectorMask && typeof r.vectorMask === 'object' ? { vectorMask: { path: pathFrom(r.vectorMask) ?? { subpaths: [] }, enabled: (r.vectorMask as Record<string, unknown>).enabled !== false, linked: (r.vectorMask as Record<string, unknown>).linked !== false, inverted: (r.vectorMask as Record<string, unknown>).inverted === true } } : {}),
+      ...(r.vectorMask && typeof r.vectorMask === 'object' ? { vectorMask: { path: pathFrom(r.vectorMask) ?? { subpaths: [] }, enabled: (r.vectorMask as Record<string, unknown>).enabled !== false, linked: (r.vectorMask as Record<string, unknown>).linked !== false, inverted: (r.vectorMask as Record<string, unknown>).inverted === true, ...(typeof (r.vectorMask as Record<string, unknown>).density === 'number' ? { density: (r.vectorMask as Record<string, unknown>).density as number } : {}), ...(typeof (r.vectorMask as Record<string, unknown>).feather === 'number' ? { feather: (r.vectorMask as Record<string, unknown>).feather as number } : {}) } } : {}),
     };
   });
   for (const b of bitmaps.values()) b.close();
@@ -434,7 +435,7 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
         const id = str(o.id), name = str(o.name);
         const col = Array.isArray(o.color) && o.color.length === 3 ? o.color.map((v) => Math.max(0, Math.min(255, Math.round(num(v, 0))))) : null;
         alphas.push({ id: id && !alphas.some((a) => a.id === id) ? id.slice(0, 120) : uid(), name: name ? name.slice(0, 200) : nextAlphaName(alphas), mask: SelectionMask.cropped(0, 0, width, height, m),
-          ...(col ? { color: { r: col[0], g: col[1], b: col[2] } } : {}), ...(typeof o.opacity === 'number' ? { opacity: Math.max(0, Math.min(100, Math.round(num(o.opacity, 50)))) } : {}), ...(o.indicates === 'selected' || o.indicates === 'masked' ? { indicates: o.indicates } : {}) });
+          ...(col ? { color: { r: col[0], g: col[1], b: col[2] } } : {}), ...(typeof o.opacity === 'number' ? { opacity: Math.max(0, Math.min(100, Math.round(num(o.opacity, 50)))) } : {}), ...(o.indicates === 'selected' || o.indicates === 'masked' ? { indicates: o.indicates } : {}), ...(o.spot === true ? { spot: true } : {}) });
       }
       bmp.close();
     } catch { /* a channel that cannot be read is left out */ }

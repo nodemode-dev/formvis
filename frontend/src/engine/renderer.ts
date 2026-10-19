@@ -287,7 +287,9 @@ export class Renderer {
       if (parts) this.drawParts(ctx, parts, job.view, opacity, false);
       const blendIf = blendIfActive(layer.blendIf) ? layer.blendIf as BlendIf : null, knock = layer.knockout && layer.knockout !== 'none' ? layer.knockout : null;
       const chans = layer.blendChannels && layer.blendChannels.some((on) => !on) ? layer.blendChannels : null;
-      if (!own && !folders.length && !base && !pixelBlend && (!styled || parts) && !blendIf && !knock && !chans && !ov?.patch) {
+      // Blend Interior Effects as Group: in a mode other than Normal, the effects drawn over the layer join it before it blends.
+      const interior = !!parts && !!(fx as LayerEffects).blendInterior && mode !== 'normal' && parts.some((p) => p.above);
+      if (!own && !folders.length && !base && !pixelBlend && (!styled || parts) && !blendIf && !knock && !chans && !ov?.patch && !interior) {
         this.draw(ctx, src, m, t.sampling, pix, op, job.quality);
         if (parts) this.drawParts(ctx, parts, job.view, opacity, true);
         continue;
@@ -312,14 +314,20 @@ export class Renderer {
       }
       if (blendIf) this.blendIf(a, ctx, blendIf, W, H);
       if (knock) this.knockout(job, ctx, a, layer, map, W, H, opacity);
+      if (interior && parts) {
+        const fill = layer.fill ?? 1;
+        if (fill < 1) { a.c.save(); a.c.setTransform(1, 0, 0, 1, 0, 0); a.c.globalCompositeOperation = 'destination-in'; a.c.globalAlpha = fill; a.c.fillStyle = '#fff'; a.c.fillRect(0, 0, W, H); a.c.restore(); }
+        this.drawParts(a.c, parts, job.view, 1, true);
+      }
       const placed = styled && !parts ? boundsOf([applyMat(m, 0, 0), applyMat(m, src.width, 0), applyMat(m, src.width, src.height), applyMat(m, 0, src.height)]) : null;
-      if (placed) this.effects(this.drawer(ctx), a, fx as LayerEffects, matScale(job.view), opacity, W, H, placed, 'below');
+      if (placed) this.effects(this.drawer(ctx), a, fx as LayerEffects, matScale(job.view), opacity, W, H, placed, 'below', applyMat(job.view, 0, 0));
       const below = chans ? ctx.getImageData(0, 0, W, H) : null;
-      if (pixelBlend) this.pixelBlend(ctx, a, mode, pix, m, src, job.view, W, H);
+      const blendAlpha = interior ? opacity : pix;
+      if (pixelBlend) this.pixelBlend(ctx, a, mode, blendAlpha, m, src, job.view, W, H);
       else {
         ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.globalAlpha = pix;
+        ctx.globalAlpha = blendAlpha;
         ctx.globalCompositeOperation = op;
         ctx.drawImage(a.s, 0, 0);
         ctx.restore();
@@ -329,8 +337,8 @@ export class Renderer {
         for (let i = 0; i < n.length; i += 4) for (let c = 0; c < 3; c++) if (!chans[c]) n[i + c] = u[i + c];
         ctx.putImageData(now, 0, 0);
       }
-      if (placed) this.effects(this.drawer(ctx), a, fx as LayerEffects, matScale(job.view), opacity, W, H, placed, 'above');
-      if (parts) this.drawParts(ctx, parts, job.view, opacity, true);
+      if (placed) this.effects(this.drawer(ctx), a, fx as LayerEffects, matScale(job.view), opacity, W, H, placed, 'above', applyMat(job.view, 0, 0));
+      if (parts && !interior) this.drawParts(ctx, parts, job.view, opacity, true);
     }
   }
 
@@ -398,7 +406,7 @@ export class Renderer {
       sil.c.clearRect(0, 0, rw, rh);
       sil.c.restore();
       this.draw(sil.c, src, mul(view, lm), t.sampling, 1, 'source-over', 'high');
-      if (own) this.cover(sil.c, own, view, rw, rh);
+      if (own && fx.layerMaskHides !== false) this.cover(sil.c, own, view, rw, rh);
       const local = { x: (placed.x - region.x) * k, y: (placed.y - region.y) * k, w: placed.w * k, h: placed.h * k };
       for (const phase of ['below', 'above'] as const) {
         this.effects((s, box, alpha, op, name, kept) => {
@@ -406,7 +414,7 @@ export class Renderer {
           ctxOf(copy).drawImage(s, 0, 0, box.w, box.h, 0, 0, box.w, box.h);
           if (exact && kept) unkeep(copy, sil.c.getImageData(box.x, box.y, box.w, box.h).data);
           parts.push({ s: copy, x: region.x + box.x / k, y: region.y + box.y / k, k, alpha, op, above: phase === 'above', name, kept });
-        }, sil, fx, k, 1, rw, rh, local, phase);
+        }, sil, fx, k, 1, rw, rh, local, phase, { x: -region.x * k, y: -region.y * k });
       }
     }
     if (exact) return parts;
@@ -467,11 +475,66 @@ export class Renderer {
    *  shadows and glows here come from canvas shadows, whose coverage at the silhouette's edge is about a half, while a
    *  contour's input runs from full at the edge to nothing at the effect's reach, so coverage is doubled (capped at
    *  full) before the curve. */
-  private contoured(s: Surface, w: number, h: number, id: ContourId | undefined): Surface {
+  private contoured(s: Surface, w: number, h: number, id: ContourId | undefined, antiAlias = false, range = 1): Surface {
     const lut = contourLut(id);
     if (!lut) return s;
-    const c = ctxOf(s), img = c.getImageData(0, 0, w, h), d = img.data;
-    for (let i = 3; i < d.length; i += 4) d[i] = lut[Math.min(255, d[i] * 2)];
+    const c = ctxOf(s), img = c.getImageData(0, 0, w, h), d = img.data, k = 2 / Math.max(0.01, range);
+    for (let i = 3; i < d.length; i += 4) d[i] = lut[Math.min(255, Math.round(d[i] * k))];
+    if (antiAlias) this.smoothAlpha(d, w, h);
+    c.putImageData(img, 0, 0);
+    return s;
+  }
+
+  /** A Gradient Overlay painted per pixel into `c` (`w` by `h`, centred at `cx, cy`, the layer's placed `bounds`): the
+   *  Linear and Radial of the canvas gradients, plus Angle (once round from `angle`), Reflected (the Linear mirrored
+   *  about the centre) and Diamond; Dither adds a one-level grain so a long ramp does not band. */
+  private pixelGradient(c: Ctx2D, go: LayerEffects['gradientOverlay'], w: number, h: number, cx: number, cy: number, bounds: Rect): void {
+    const stops = go.stops && go.stops.length >= 2 ? go.stops : [{ at: 0, color: go.from, alpha: 1 }, { at: 1, color: go.to, alpha: 1 }];
+    const lut = new Float32Array(256 * 4);
+    for (let i = 0; i < 256; i++) {
+      const t = i / 255;
+      let k = 0;
+      while (k < stops.length - 2 && t > stops[k + 1].at) k++;
+      const s0 = stops[k], s1 = stops[k + 1], f = Math.min(1, Math.max(0, (t - s0.at) / Math.max(1e-6, s1.at - s0.at)));
+      lut[i * 4] = s0.color.r + (s1.color.r - s0.color.r) * f; lut[i * 4 + 1] = s0.color.g + (s1.color.g - s0.color.g) * f; lut[i * 4 + 2] = s0.color.b + (s1.color.b - s0.color.b) * f;
+      lut[i * 4 + 3] = (s0.alpha + (s1.alpha - s0.alpha) * f) * 255;
+    }
+    const a = (go.angle * Math.PI) / 180, ux = Math.cos(a), uy = -Math.sin(a), half = Math.max(0.5, ((Math.abs(bounds.w * ux) + Math.abs(bounds.h * uy)) / 2) * go.scale), rad = Math.max(1, (Math.max(bounds.w, bounds.h) / 2) * go.scale);
+    const img = new ImageData(w, h), px = img.data;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const dx = x + 0.5 - cx, dy = y + 0.5 - cy;
+        let t: number;
+        if (go.style === 'radial') t = Math.hypot(dx, dy) / rad;
+        else if (go.style === 'reflected') t = Math.abs(dx * ux + dy * uy) / half;
+        else if (go.style === 'diamond') t = (Math.abs(dx) + Math.abs(dy)) / rad;
+        else if (go.style === 'angle') { const q = (Math.atan2(-dy, dx) - a) / (2 * Math.PI); t = q - Math.floor(q); }
+        else t = 0.5 + (dx * ux + dy * uy) / (2 * half);
+        t = Math.min(1, Math.max(0, t));
+        if (go.reverse) t = 1 - t;
+        const o = (y * w + x) * 4, l = Math.round(t * 255) * 4;
+        let n = 0;
+        if (go.dither) { let q = Math.imul(x, 374761393) ^ Math.imul(y, 668265263); q = Math.imul(q ^ (q >>> 13), 1274126177); n = (((q ^ (q >>> 16)) >>> 0) / 4294967296 - 0.5); }
+        px[o] = lut[l] + n; px[o + 1] = lut[l + 1] + n; px[o + 2] = lut[l + 2] + n; px[o + 3] = lut[l + 3];
+      }
+    }
+    c.putImageData(img, 0, 0);
+  }
+
+  /** The alpha of RGBA pixels smoothed in place by a 1-2-1 kernel across and down (a contour's Anti-aliased). */
+  private smoothAlpha(d: Uint8ClampedArray, w: number, h: number): void {
+    const a = new Float32Array(w * h), t = new Float32Array(w * h);
+    for (let i = 0; i < a.length; i++) a[i] = d[i * 4 + 3];
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) t[y * w + x] = (a[y * w + Math.max(0, x - 1)] + 2 * a[y * w + x] + a[y * w + Math.min(w - 1, x + 1)]) / 4;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) d[(y * w + x) * 4 + 3] = Math.round((t[Math.max(0, y - 1) * w + x] + 2 * t[y * w + x] + t[Math.min(h - 1, y + 1) * w + x]) / 4);
+  }
+
+  /** Satin's contour: its shading level (already 0 to 1) read through the curve, then optionally smoothed. */
+  private satinContour(s: Surface, w: number, h: number, id: ContourId | undefined, antiAlias = false): Surface {
+    if ((!id || id === 'linear') && !antiAlias) return s;
+    const c = ctxOf(s), img = c.getImageData(0, 0, w, h);
+    applyContour(img.data, id);
+    if (antiAlias) this.smoothAlpha(img.data, w, h);
     c.putImageData(img, 0, 0);
     return s;
   }
@@ -527,7 +590,7 @@ export class Renderer {
     return [paint(hiMap, bv.highlight), paint(shMap, bv.shadow)];
   }
 
-  private effects(out: (s: Surface, box: Rect, alpha: number, op: GlobalCompositeOperation, name: string, kept: boolean) => void, sil: Slot, fx: LayerEffects, scale: number, opacity: number, W: number, H: number, bounds: Rect, phase: 'below' | 'above'): void {
+  private effects(out: (s: Surface, box: Rect, alpha: number, op: GlobalCompositeOperation, name: string, kept: boolean) => void, sil: Slot, fx: LayerEffects, scale: number, opacity: number, W: number, H: number, bounds: Rect, phase: 'below' | 'above', docOrigin: Pt = { x: 0, y: 0 }): void {
     const d = fx.dropShadow, g = fx.outerGlow, k = fx.stroke, is = fx.innerShadow, ig = fx.innerGlow, co = fx.colorOverlay, bv = fx.bevel;
     const reach = fxReach(fx) * scale + 2;
     const box = intersectRect(integral({ x: bounds.x - reach, y: bounds.y - reach, w: bounds.w + 2 * reach, h: bounds.h + 2 * reach }), { x: 0, y: 0, w: W, h: H });
@@ -535,7 +598,18 @@ export class Renderer {
     const { x: bx, y: by, w: bw, h: bh } = box;
     const css = (c: RGB): string => `rgb(${c.r},${c.g},${c.b})`;
     const lay = (s: Surface, alpha: number, op: GlobalCompositeOperation, name: string, kept = false): void => out(s, box, alpha, op, name, kept);
-    const shadowOf = (color: RGB, blur: number, dx: number, dy: number): Surface => {
+    const grown = (px: number): Surface | undefined => {
+      if (!(px > 0)) return undefined;
+      const a = sil.c.getImageData(bx, by, bw, bh).data, m = new Uint8Array(bw * bh);
+      for (let i = 0; i < m.length; i++) m[i] = a[i * 4 + 3];
+      const e = resizeMask(m, bw, bh, px), img = new ImageData(bw, bh);
+      for (let i = 0; i < m.length; i++) img.data[i * 4 + 3] = e[i];
+      const g13 = this.slot(13, bw, bh);
+      g13.c.putImageData(img, 0, 0);
+      return g13.s;
+    };
+    const shadowOf = (color: RGB, blur: number, dx: number, dy: number, from?: Surface): Surface => {
+      const srcS = from ?? sil.s, sx = from ? 0 : bx, sy = from ? 0 : by;
       const out = this.slot(5, bw, bh);
       out.c.save();
       out.c.setTransform(1, 0, 0, 1, 0, 0);
@@ -549,7 +623,7 @@ export class Renderer {
         half.c.shadowBlur = blur / 2;
         half.c.shadowOffsetX = dx / 2 + far;
         half.c.shadowOffsetY = dy / 2;
-        half.c.drawImage(sil.s, bx, by, bw, bh, -far, 0, bw / 2, bh / 2);
+        half.c.drawImage(srcS, sx, sy, bw, bh, -far, 0, bw / 2, bh / 2);
         half.c.restore();
         out.c.imageSmoothingEnabled = true;
         out.c.imageSmoothingQuality = 'high';
@@ -560,7 +634,7 @@ export class Renderer {
         out.c.shadowBlur = blur;
         out.c.shadowOffsetX = dx + far;
         out.c.shadowOffsetY = dy;
-        out.c.drawImage(sil.s, bx, by, bw, bh, -far, 0, bw, bh);
+        out.c.drawImage(srcS, sx, sy, bw, bh, -far, 0, bw, bh);
       }
       out.c.restore();
       return out.s;
@@ -628,11 +702,13 @@ export class Renderer {
       const po = fx.patternOverlay, pat = po.enabled && po.opacity > 0 ? patternById(po.pattern) : null;
       if (pat) {
         // Lowest of the overlays: the pattern tiled from the layer's top-left corner, kept to its silhouette.
-        const k = po.scale * scale, ox = bounds.x - bx, oy = bounds.y - by;
+        // Link with Layer (the default) tiles from the layer's corner and turns about its centre; unlinked, from the document's.
+        const k = po.scale * scale, linked = po.link !== false, ox = (linked ? bounds.x : docOrigin.x) - bx + (po.phaseX ?? 0) * scale, oy = (linked ? bounds.y : docOrigin.y) - by + (po.phaseY ?? 0) * scale;
+        const pvx = linked ? bounds.x + bounds.w / 2 - bx : docOrigin.x - bx, pvy = linked ? bounds.y + bounds.h / 2 - by : docOrigin.y - by;
         lay(kept((c) => {
           const fill = c.createPattern(pat.surface as CanvasImageSource, 'repeat');
           if (!fill) return;
-          fill.setTransform(new DOMMatrix([k, 0, 0, k, ox, oy]));
+          fill.setTransform(new DOMMatrix().translate(pvx, pvy).rotate(-(po.angle ?? 0)).translate(-pvx, -pvy).translate(ox, oy).scale(k));
           c.fillStyle = fill;
           c.fillRect(0, 0, bw, bh);
         }), po.opacity * opacity, compositeOp(po.blend), 'Pattern Fill', true);
@@ -641,6 +717,7 @@ export class Renderer {
         // Beneath Color Overlay: the gradient spans the layer's bounds, kept to its silhouette.
         const cx = bounds.x + bounds.w / 2 - bx, cy = bounds.y + bounds.h / 2 - by, a = (go.angle * Math.PI) / 180, [c0, c1] = go.reverse ? [go.to, go.from] : [go.from, go.to];
         lay(kept((c) => {
+          if (go.dither || (go.style !== 'linear' && go.style !== 'radial')) { this.pixelGradient(c, go, bw, bh, cx, cy, bounds); return; }
           let grad: CanvasGradient;
           if (go.style === 'radial') grad = c.createRadialGradient(cx, cy, 0, cx, cy, Math.max(1, (Math.max(bounds.w, bounds.h) / 2) * go.scale));
           else {
@@ -677,7 +754,7 @@ export class Renderer {
         }
         const s = this.slot(11, bw, bh);
         s.c.putImageData(img, 0, 0);
-        lay(s.s, sa.opacity * opacity, compositeOp(sa.blend), 'Satin', true);
+        lay(this.satinContour(s.s, bw, bh, sa.contour, sa.antiAlias), sa.opacity * opacity, compositeOp(sa.blend), 'Satin', true);
       }
       if (ig.enabled && ig.opacity > 0 && ig.size > 0) {
         // Edge or Center; Softer is the blurred cast, Precise a distance ramp that holds full for `choke` of the size.
@@ -699,11 +776,11 @@ export class Renderer {
           for (let i = 3; i < px.length; i += 4) { px[i] = Math.round((a[i] * (255 - px[i])) / 255); px[i - 3] = ig.color.r; px[i - 2] = ig.color.g; px[i - 1] = ig.color.b; }
           c.putImageData(img, 0, 0);
         } else cov = castByInverse(ig.color, sz, 0, 0, hold);
-        lay(this.grained(this.contoured(cov, bw, bh, ig.contour), bw, bh, ig.noise, bx, by), ig.opacity * opacity, compositeOp(ig.blend), 'Inner Glow', true);
+        lay(this.grained(this.contoured(cov, bw, bh, ig.contour, ig.antiAlias), bw, bh, ig.noise, bx, by), ig.opacity * opacity, compositeOp(ig.blend), 'Inner Glow', true);
       }
       for (const is of instances(fx, 'innerShadow')) if (is.enabled && is.opacity > 0) {
         const rad = (is.angle * Math.PI) / 180;
-        lay(this.grained(this.contoured(castByInverse(is.color, is.size * scale, -Math.cos(rad) * is.distance * scale, Math.sin(rad) * is.distance * scale, is.size * scale * ((is.choke ?? 0) / 100)), bw, bh, is.contour), bw, bh, is.noise, bx, by), is.opacity * opacity, compositeOp(is.blend), 'Inner Shadow', true);
+        lay(this.grained(this.contoured(castByInverse(is.color, is.size * scale, -Math.cos(rad) * is.distance * scale, Math.sin(rad) * is.distance * scale, is.size * scale * ((is.choke ?? 0) / 100)), bw, bh, is.contour, is.antiAlias), bw, bh, is.noise, bx, by), is.opacity * opacity, compositeOp(is.blend), 'Inner Shadow', true);
       }
       const ring = bv.style === 'stroke' ? instances(fx, 'stroke').find((s) => s.enabled && s.size * scale > 0) : undefined;
       if (bv.enabled && bv.size > 0 && (bv.highlightOpacity > 0 || bv.shadowOpacity > 0) && (bv.style !== 'stroke' || ring)) {
@@ -715,9 +792,10 @@ export class Renderer {
           const outer = pos === 'inside' ? inside : resizeMask(inside, bw, bh, pos === 'center' ? s / 2 : s), inner = pos === 'outside' ? inside : resizeMask(inside, bw, bh, -(pos === 'inside' ? s : s / 2));
           for (let i = 0; i < n; i++) A[i] = Math.max(0, outer[i] - inner[i]) / 255;
         }
-        const [hi, sh] = this.bevelMaps(A, bw, bh, bv, scale, { x: bounds.x - bx, y: bounds.y - by });
+        const [hi, sh] = this.bevelMaps(A, bw, bh, bv, scale, bv.texture?.link === false ? { x: docOrigin.x - bx, y: docOrigin.y - by } : { x: bounds.x - bx, y: bounds.y - by });
         applyContour(hi.data, bv.gloss);
         applyContour(sh.data, bv.gloss);
+        if (bv.antiAlias) { this.smoothAlpha(hi.data, bw, bh); this.smoothAlpha(sh.data, bw, bh); }
         const named = { inner: 'Inner Bevel', outer: 'Outer Bevel', emboss: 'Emboss', pillow: 'Pillow Emboss', stroke: 'Stroke Emboss' }[bv.style];
         if (bv.highlightOpacity > 0) { const s = this.slot(9, bw, bh); s.c.putImageData(hi, 0, 0); lay(s.s, bv.highlightOpacity * opacity, compositeOp(bv.highlightBlend), `${named} Highlights`, bv.style === 'inner'); }
         if (bv.shadowOpacity > 0) { const s = this.slot(10, bw, bh); s.c.putImageData(sh, 0, 0); lay(s.s, bv.shadowOpacity * opacity, compositeOp(bv.shadowBlend), `${named} Shadows`, bv.style === 'inner'); }
@@ -738,10 +816,35 @@ export class Renderer {
       return;
     }
     for (const d of instances(fx, 'dropShadow')) if (d.enabled && d.opacity > 0) {
-      const rad = (d.angle * Math.PI) / 180;
-      lay(this.contoured(shadowOf(d.color, d.size * scale, -Math.cos(rad) * d.distance * scale, Math.sin(rad) * d.distance * scale), bw, bh, d.contour), d.opacity * opacity, compositeOp(d.blend), 'Drop Shadow');
+      // Spread grows the matte by that share of the size, the blur taking the rest; Knocks Out clears it under the layer.
+      const rad = (d.angle * Math.PI) / 180, spreadPx = d.size * scale * ((d.spread ?? 0) / 100);
+      const sh = this.grained(this.contoured(shadowOf(d.color, d.size * scale - spreadPx, -Math.cos(rad) * d.distance * scale, Math.sin(rad) * d.distance * scale, grown(spreadPx)), bw, bh, d.contour, d.antiAlias), bw, bh, d.noise, bx, by);
+      if (d.knockout) {
+        const kc = ctxOf(sh);
+        kc.save();
+        kc.setTransform(1, 0, 0, 1, 0, 0);
+        kc.globalCompositeOperation = 'destination-out';
+        kc.drawImage(sil.s, bx, by, bw, bh, 0, 0, bw, bh);
+        kc.restore();
+      }
+      lay(sh, d.opacity * opacity, compositeOp(d.blend), 'Drop Shadow');
     }
-    if (g.enabled && g.opacity > 0 && g.size > 0) lay(this.contoured(shadowOf(g.color, g.size * scale, 0, 0), bw, bh, g.contour), g.opacity * opacity, compositeOp(g.blend), 'Outer Glow');
+    if (g.enabled && g.opacity > 0 && g.size > 0) {
+      const gsz = g.size * scale, hold = gsz * ((g.spread ?? 0) / 100);
+      let cov: Surface;
+      if (g.technique === 'precise') {
+        // A distance ramp from the edge: full out to the spread, then falling to nothing at the size.
+        const a = sil.c.getImageData(bx, by, bw, bh).data, dist = distanceField((i) => a[i * 4 + 3] >= 128, bw, bh), img = new ImageData(bw, bh), px = img.data, part = contourLut(g.contour) ? 0.5 : 1;
+        for (let i = 0; i < dist.length; i++) {
+          const dd = a[i * 4 + 3] >= 128 ? 0 : Math.max(0, dist[i] - 0.5), r = dd <= hold ? 1 : Math.max(0, 1 - (dd - hold) / Math.max(1e-6, gsz - hold)), o = i * 4;
+          px[o] = g.color.r; px[o + 1] = g.color.g; px[o + 2] = g.color.b; px[o + 3] = Math.round(r * 255 * part);
+        }
+        const p5 = this.slot(5, bw, bh);
+        p5.c.putImageData(img, 0, 0);
+        cov = p5.s;
+      } else cov = shadowOf(g.color, gsz - hold, 0, 0, grown(hold));
+      lay(this.grained(this.contoured(cov, bw, bh, g.contour, g.antiAlias, (g.range ?? 100) / 100), bw, bh, g.noise, bx, by), g.opacity * opacity, compositeOp(g.blend), 'Outer Glow');
+    }
     for (const k of instances(fx, 'stroke')) if (k.enabled && k.opacity > 0 && k.size * scale > 0 && (k.position ?? 'outside') === 'outside') {
       const alpha = sil.c.getImageData(bx, by, bw, bh).data, inside = new Uint8Array(bw * bh);
       for (let i = 0; i < inside.length; i++) inside[i] = alpha[i * 4 + 3];

@@ -170,10 +170,31 @@ export function displaceImage(src: ImageData, o: { h: number; v: number; tile: b
 /** A map level's displacement in pixels at 100 percent: none at mid grey (128), and 128 either way at black and white. */
 const shift = (level: number): number => (level >= 128 ? ((level - 128) * 128) / 127 : level - 128);
 
-/** Shear: each row slid across along a curve through Top, Middle and Bottom (percent of half the frame's width). */
-export function shearImage(src: ImageData, top: number, middle: number, bottom: number, edge: Edge, area: Box): ImageData {
-  const fh = area.y1 - area.y0, half = (area.x1 - area.x0) / 2;
-  const curve = (t: number): number => (top * (2 * t - 1) * (t - 1) - middle * 4 * t * (t - 1) + bottom * t * (2 * t - 1)) / 100;
+/** The value at position t (0 to 1) of a smooth curve through flat pairs of position and value, positions rising; a
+ *  cubic through the points with slopes from each point's neighbours. */
+export function curveValue(points: readonly number[], t: number): number {
+  const n = points.length >> 1;
+  if (n === 0) return 0;
+  if (n === 1 || t <= points[0]) return points[1];
+  if (t >= points[(n - 1) * 2]) return points[(n - 1) * 2 + 1];
+  let i = 0;
+  while (i < n - 2 && t > points[(i + 1) * 2]) i++;
+  const x0 = points[i * 2], y0 = points[i * 2 + 1], x1 = points[i * 2 + 2], y1 = points[i * 2 + 3], dx = Math.max(1e-6, x1 - x0), s = (y1 - y0) / dx;
+  const slope = (k: number): number => {
+    if (k <= 0) return (points[3] - points[1]) / Math.max(1e-6, points[2] - points[0]);
+    if (k >= n - 1) return (points[(n - 1) * 2 + 1] - points[(n - 2) * 2 + 1]) / Math.max(1e-6, points[(n - 1) * 2] - points[(n - 2) * 2]);
+    const a = (points[k * 2 + 1] - points[(k - 1) * 2 + 1]) / Math.max(1e-6, points[k * 2] - points[(k - 1) * 2]), b = (points[(k + 1) * 2 + 1] - points[k * 2 + 1]) / Math.max(1e-6, points[(k + 1) * 2] - points[k * 2]);
+    return a * b <= 0 ? 0 : (2 * a * b) / (a + b);
+  };
+  const m0 = Math.max(-3 * Math.abs(s), Math.min(3 * Math.abs(s), slope(i))) * dx, m1 = Math.max(-3 * Math.abs(s), Math.min(3 * Math.abs(s), slope(i + 1))) * dx, u = (t - x0) / dx, u2 = u * u, u3 = u2 * u;
+  return (2 * u3 - 3 * u2 + 1) * y0 + (u3 - 2 * u2 + u) * m0 + (-2 * u3 + 3 * u2) * y1 + (u3 - u2) * m1;
+}
+
+/** Shear: each row slid across along a curve: the one through `points` (position down the frame, value in percent of
+ *  half the frame's width) plus the bend through Top, Middle and Bottom. */
+export function shearImage(src: ImageData, top: number, middle: number, bottom: number, edge: Edge, area: Box, points: readonly number[] = []): ImageData {
+  const fh = area.y1 - area.y0, half = (area.x1 - area.x0) / 2, free = points.length >= 4;
+  const curve = (t: number): number => (top * (2 * t - 1) * (t - 1) - middle * 4 * t * (t - 1) + bottom * t * (2 * t - 1) + (free ? curveValue(points, t) : 0)) / 100;
   return remap(src, area, edge, (x, y) => [x - curve((y - area.y0) / fh) * half, y]);
 }
 
@@ -200,7 +221,7 @@ const areaOf = (ctx: LibContext): Box => boxOf(ctx.area);
 export const DISTORT_FILTERS: LibFilter[] = [
   {
     id: 'displace', label: 'Displace', group: 'Distort', grows: false, reach: null,
-    note: 'The map is an open document: its red channel moves pixels across and its green channel up and down; mid grey moves nothing.',
+    note: 'The map is an open document, one layer of this document or a picture file: its red channel moves pixels across and its green channel up and down; mid grey moves nothing.',
     params: [
       { key: 'horizontal', label: 'Horizontal Scale (%)', kind: 'range', min: -999, max: 999, step: 1, def: 10 },
       { key: 'vertical', label: 'Vertical Scale (%)', kind: 'range', min: -999, max: 999, step: 1, def: 10 },
@@ -230,14 +251,15 @@ export const DISTORT_FILTERS: LibFilter[] = [
   },
   {
     id: 'shear', label: 'Shear', group: 'Distort', grows: false, reach: null,
-    note: 'Top, Middle and Bottom bend the line the picture shears along, in percent of half its width.',
+    note: 'Drag the points of the curve (top of the frame above, bottom below; centre is no shift), click the box to add a point, double-click a point to remove it. Top, Middle and Bottom add a bend on top of the curve, in percent of half the width.',
     params: [
+      { key: 'curve', label: 'Shear Curve', kind: 'curve', min: -100, max: 100, def: [0, 0, 0.5, 0, 1, 0] },
       { key: 'top', label: 'Top (%)', kind: 'range', min: -100, max: 100, step: 1, def: 0 },
       { key: 'middle', label: 'Middle (%)', kind: 'range', min: -100, max: 100, step: 1, def: 0 },
       { key: 'bottom', label: 'Bottom (%)', kind: 'range', min: -100, max: 100, step: 1, def: 0 },
       { key: 'undefinedAreas', label: 'Undefined Areas', kind: 'select', def: 'wrap', options: EDGES },
     ],
-    run: (src, v, ctx) => shearImage(src, num(v, 'top'), num(v, 'middle'), num(v, 'bottom'), str(v, 'undefinedAreas') === 'repeat' ? 'repeat' : 'wrap', areaOf(ctx)),
+    run: (src, v, ctx) => shearImage(src, num(v, 'top'), num(v, 'middle'), num(v, 'bottom'), str(v, 'undefinedAreas') === 'repeat' ? 'repeat' : 'wrap', areaOf(ctx), v.curve as number[]),
   },
   {
     id: 'spherize', label: 'Spherize', group: 'Distort', grows: false, reach: null,

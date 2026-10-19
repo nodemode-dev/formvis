@@ -213,6 +213,35 @@ export async function updateLinked(engine: Engine): Promise<{ updated: number; m
   return out;
 }
 
+/** Watches the linked files of the document in view every `every` ms while the window is shown: a file that changed
+ *  since it was read is re-read as one step and `onUpdated` gets the names. A file that cannot be read without asking
+ *  is left until the window is focused again. Returns the function that stops the watch. */
+export function watchLinked(engine: Engine, onUpdated: (names: string[]) => void, every = 5000): () => void {
+  const skip = new Set<string>();
+  let busy = false;
+  const tick = async (): Promise<void> => {
+    const p = engine.current;
+    if (busy || !p || document.visibilityState !== 'visible') return;
+    busy = true;
+    try {
+      const names: string[] = [];
+      for (const l of p.doc.layers) {
+        const link = l.smart?.link;
+        if (!link || skip.has(link.id)) continue;
+        let file: File;
+        try { const s = await sourceFor(link.id, link.path); if (!s) { skip.add(link.id); continue; } file = await s.getFile(); } catch { skip.add(link.id); continue; }
+        if ((file.lastModified === link.lastModified && file.size === link.size) || engine.current !== p) continue;
+        const { raster } = await read({ name: file.name, live: true, getFile: async () => file });
+        if (engine.current === p && engine.updateLinkedContents(l.id, raster, meta(link.id, file, link.path))) names.push(link.name);
+      }
+      if (names.length) onUpdated(names);
+    } catch { /* the next tick tries again */ } finally { busy = false; }
+  };
+  const clear = (): void => skip.clear(), timer = window.setInterval(() => void tick(), every);
+  window.addEventListener('focus', clear);
+  return () => { window.clearInterval(timer); window.removeEventListener('focus', clear); };
+}
+
 /** Layer > Relink to File: the active linked smart object takes a newly picked file. */
 export async function relink(engine: Engine, fallback: () => Promise<File | null>): Promise<void> {
   const l = engine.current?.activeLayer;

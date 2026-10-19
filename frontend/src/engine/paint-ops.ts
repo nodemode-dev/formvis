@@ -364,7 +364,7 @@ export function layerAt(host: PaintHost, pt: Pt): ID | null {
   for (let i = list.length - 1; i >= 0; i--) {
     const { layer, visible } = list[i];
     const r = layer.raster;
-    if (!visible || !layer.visible || layer.isGroup || !r) continue;
+    if (!visible || !layer.visible || layer.isGroup || !r || layer.locks?.all) continue;
     if (!contains(layer.transform, pt)) continue;
     const q = applyMat(invert(placement(layer.transform, r.width, r.height)), pt.x, pt.y);
     const x = Math.floor(q.x);

@@ -1,5 +1,6 @@
 import type { Engine } from '../../engine';
 import { STACK_MODES, type StackMode } from '../../engine/stack-modes';
+import { toBlob, type Surface } from '../../engine/surface';
 import { decodeImage, IMAGE_ACCEPT, isImageFile } from '../../io/images';
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
@@ -33,13 +34,18 @@ export class LoadStackDialog extends Dialog {
       this.dir.value = '';
       this.describe();
     });
+    const open = el('<button class="cv-btn" type="button" title="Add every open document, as it shows now">Open documents</button>') as HTMLButtonElement;
+    open.addEventListener('click', () => {
+      const docs = this.engine.projects.map((p) => ({ p, s: this.engine.flattenedOf(p) })).filter((d) => d.s);
+      void Promise.all(docs.map(async (d, i) => new File([await toBlob(d.s as Surface)], `${d.p.name || `Document ${i + 1}`}.png`, { type: 'image/png' }))).then((made) => { this.files = [...this.files, ...made]; this.describe(); });
+    });
     this.alignRow = checkRow('Attempt to Automatically Align Source Images', (v) => { this.align = v; });
     this.smartRow = checkRow('Create Smart Object after Loading Layers', (v) => { this.smart = v; });
     this.modeRow = selectRow('Stack Mode', STACK_MODES.filter((m) => m.id !== 'none').map((m) => [m.id, m.label] as const), (v) => { this.mode = v as StackMode; });
     this.smartRow.el.hidden = statistics;
     this.modeRow.el.hidden = !statistics;
     const intro = statistics ? 'Choose two or more images; they load as a smart object stack and the stack mode combines them.' : 'Choose two or more images; each becomes a layer of one new document.';
-    this.body.append(el(`<p class="cv-dialog-note">${intro}</p>`), browse, folder, this.input, this.dir, this.picked, this.smartRow.el, this.modeRow.el, this.alignRow.el, this.note);
+    this.body.append(el(`<p class="cv-dialog-note">${intro}</p>`), browse, folder, open, this.input, this.dir, this.picked, this.smartRow.el, this.modeRow.el, this.alignRow.el, this.note);
     this.smartRow.set(false);
     this.alignRow.set(false);
     this.modeRow.set('median');

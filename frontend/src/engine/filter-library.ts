@@ -43,6 +43,7 @@ export type LibParam =
   | { readonly key: string; readonly label: string; readonly kind: 'select'; readonly options: ReadonlyArray<readonly [string, string]>; readonly def: string }
   | { readonly key: string; readonly label: string; readonly kind: 'check'; readonly def: boolean }
   | { readonly key: string; readonly label: string; readonly kind: 'matrix'; readonly size: number; readonly min: number; readonly max: number; readonly def: readonly number[] }
+  | { readonly key: string; readonly label: string; readonly kind: 'curve'; readonly min: number; readonly max: number; readonly def: readonly number[] }
   | { readonly key: string; readonly label: string; readonly kind: 'seed'; readonly def: number }
   | { readonly key: string; readonly label: string; readonly kind: 'color'; readonly def: string }
   | { readonly key: string; readonly label: string; readonly kind: 'image'; readonly def: null }
@@ -77,7 +78,7 @@ export const libHasDialog = (kind: LibKind): boolean => libFilter(kind).params.l
 export const libInGroup = (group: LibGroup): LibFilter[] => LIBRARY.filter((f) => f.group === group);
 
 function paramDefault(p: LibParam): LibValue {
-  return p.kind === 'matrix' ? [...p.def] : p.kind === 'effects' ? structuredClone(p.def) : p.def;
+  return p.kind === 'matrix' || p.kind === 'curve' ? [...p.def] : p.kind === 'effects' ? structuredClone(p.def) : p.def;
 }
 
 export function libDefaults(kind: LibKind): LibValues {
@@ -112,6 +113,17 @@ function sanePath(v: unknown): LibPath | null {
   return total <= 400_000 ? { name: typeof m.name === 'string' ? m.name.slice(0, 200) : '', w0: m.w0 as number, h0: m.h0 as number, lines: m.lines as number[][] } : null;
 }
 
+/** A curve as flat pairs of position (0 to 1) and value: sorted, at most 16 points, the first at 0 and the last at 1. */
+function saneCurve(v: unknown, min: number, max: number, def: readonly number[]): number[] {
+  if (!Array.isArray(v) || v.length < 4 || v.length % 2 || v.length > 32 || !v.every((x) => typeof x === 'number' && Number.isFinite(x))) return [...def];
+  const pts: Array<[number, number]> = [];
+  for (let i = 0; i < v.length; i += 2) pts.push([Math.min(1, Math.max(0, v[i])), Math.min(max, Math.max(min, v[i + 1]))]);
+  pts.sort((a, b) => a[0] - b[0]);
+  pts[0][0] = 0;
+  pts[pts.length - 1][0] = 1;
+  return pts.flatMap((q) => [Math.round(q[0] * 1000) / 1000, Math.round(q[1] * 10) / 10]);
+}
+
 const BLACK: LibColor = [0, 0, 0], WHITE: LibColor = [255, 255, 255];
 
 function saneColor(v: unknown, d: LibColor): LibColor {
@@ -137,6 +149,7 @@ function sane(p: LibParam, v: unknown): LibValue {
   if (p.kind === 'path') return sanePath(v);
   if (p.kind === 'color') return typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v) ? v.toLowerCase() : p.def;
   if (p.kind === 'effects') return p.clean(v, sane);
+  if (p.kind === 'curve') return saneCurve(v, p.min, p.max, p.def);
   const arr = Array.isArray(v) ? v : p.def;
   return Array.from({ length: p.size * p.size }, (_, i) => {
     const n = Number(arr[i] ?? 0);

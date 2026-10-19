@@ -86,6 +86,11 @@
 .cv-color { width: 72px; padding: 2px; }
 .cv-histo { display: block; width: 100%; height: 96px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-primary); }
 .cv-curves { display: block; width: 256px; height: 256px; justify-self: center; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-primary); touch-action: none; cursor: crosshair; }
+.cv-shape-curve { display: block; width: 100%; max-width: 240px; aspect-ratio: 4 / 3; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-primary); touch-action: none; cursor: crosshair; }
+.cv-shape-axis { stroke: var(--border-light); stroke-width: 1; stroke-dasharray: 3 3; }
+.cv-shape-line { fill: none; stroke: var(--accent-color); stroke-width: 1.5; }
+.cv-shape-dot { fill: var(--bg-input); stroke: var(--accent-color); stroke-width: 2; cursor: grab; }
+.cv-shape-dot:focus-visible { outline: none; fill: var(--accent-color); }
 .cv-anchor-grid { display: grid; grid-template-columns: repeat(3, 28px); gap: var(--space-1); }
 .cv-anchor-grid button { width: 28px; height: 28px; padding: 0; border: 1px solid var(--border-light); border-radius: var(--radius-sm); background: var(--bg-input); cursor: pointer; }
 .cv-anchor-grid button.is-active { background: var(--accent-color); border-color: transparent; }
@@ -288,6 +293,14 @@
 .cv-fg-pane.is-pannable { cursor: grab; }
 .cv-fg-pane.is-dragging { cursor: grabbing; }
 .cv-fg-pane canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.cv-fp { display: grid; gap: var(--space-1); margin-bottom: var(--space-2); }
+.cv-fp[hidden] { display: none; }
+.cv-fp-pane { position: relative; height: 170px; overflow: hidden; border: 1px solid var(--line-2); border-radius: var(--radius-md); background: var(--bg-primary); touch-action: none; }
+.cv-fp-pane.is-pannable { cursor: grab; }
+.cv-fp-pane.is-dragging { cursor: grabbing; }
+.cv-fp-pane canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.cv-fp-bar { display: flex; align-items: center; gap: var(--space-2); height: var(--ctl); }
+.cv-fp-bar select { width: 110px; }
 .cv-fg-bar { display: flex; align-items: center; gap: var(--space-2); height: var(--ctl); }
 .cv-fg-bar select { width: 130px; }
 .cv-fg-time { color: var(--text-muted); font-size: var(--fs-11); font-variant-numeric: tabular-nums; }

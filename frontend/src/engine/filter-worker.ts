@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 import { addNoise, defaultLensFix, gaussianBlur, lensCorrect, motionBlur, unsharpMask } from './filters';
 import { developImage } from './develop';
-import { lensBlur, shakeReduce, smartSharpen } from './filters-more';
+import { lensBlurSettings, shakeReduce, smartSharpen } from './filters-more';
 import { isGalleryKind, runGallery } from './blur-gallery';
 import { isLibKind, runLib } from './filter-library';
 import type { FilterJob } from './filter-jobs';
@@ -14,7 +14,7 @@ onmessage = (e: MessageEvent<FilterJob>) => {
   const src = new ImageData(new Uint8ClampedArray(job.pixels), job.width, job.height);
   const s = job.settings;
   let out = src;
-  if (isGalleryKind(job.kind)) out = runGallery(job.kind, s.gallery, src, job.scale);
+  if (isGalleryKind(job.kind)) out = runGallery(job.kind, s.gallery, src, job.scale, job.frame);
   else if (isLibKind(job.kind)) out = runLib(job.kind, s.lib?.[job.kind], job.seed, src, job.scale, job.frame, s.colors);
   else if (job.kind === 'gaussianBlur') out = gaussianBlur(src, s.radius * job.scale);
   else if (job.kind === 'motionBlur') out = motionBlur(src, s.angle, s.distance * job.scale);
@@ -22,7 +22,7 @@ onmessage = (e: MessageEvent<FilterJob>) => {
   else if (job.kind === 'lensCorrection') out = lensCorrect(src, s.distortion, s.lensFix ?? defaultLensFix());
   else if (job.kind === 'unsharpMask') out = unsharpMask(src, s.usmAmount, s.usmRadius * job.scale, s.threshold);
   else if (job.kind === 'develop') out = developImage(src, s.develop, job.scale);
-  else if (job.kind === 'lensBlur') out = lensBlur(src, s.lensRadius * job.scale, s.lensBrightness, s.lensThreshold);
+  else if (job.kind === 'lensBlur') out = lensBlurSettings(src, s, job.scale, job.seed, job.frame?.canvas ?? null);
   else if (job.kind === 'smartSharpen') out = smartSharpen(src, s.smart, job.scale);
   else if (job.kind === 'shakeReduction') out = shakeReduce(src, s.shake, job.scale);
   const pixels = out.data.buffer as ArrayBuffer;

@@ -54,6 +54,73 @@ export function ditherImage(img: ImageData, pattern: string, levels: number, pix
   return out;
 }
 
+const KERNELS: Record<string, { div: number; taps: ReadonlyArray<readonly [number, number, number]> }> = {
+  floyd: { div: 16, taps: [[1, 0, 7], [-1, 1, 3], [0, 1, 5], [1, 1, 1]] },
+  atkinson: { div: 8, taps: [[1, 0, 1], [2, 0, 1], [-1, 1, 1], [0, 1, 1], [1, 1, 1], [0, 2, 1]] },
+  sierraLite: { div: 4, taps: [[1, 0, 2], [-1, 1, 1], [0, 1, 1]] },
+  jarvis: { div: 48, taps: [[1, 0, 7], [2, 0, 5], [-2, 1, 3], [-1, 1, 5], [0, 1, 7], [1, 1, 5], [2, 1, 3], [-2, 2, 1], [-1, 2, 3], [0, 2, 5], [1, 2, 3], [2, 2, 1]] },
+};
+
+/** Error diffusion: the picture cut into cells of `pixel` pixels, each cell's value rounded to one of `levels` steps and
+ *  its rounding error spread to the cells after it by the chosen kernel, `diffusion` percent of it. Transparent cells
+ *  take no error. Black and White works on the grey, Colour on each channel. Alpha kept. */
+export function diffuseImage(img: ImageData, kernel: string, levels: number, pixel: number, colour: boolean, diffusion: number, ink: LibColor, paper: LibColor): ImageData {
+  const out = copyImage(img), d = out.data, w = img.width, h = img.height, px = Math.max(1, Math.round(pixel)), k = KERNELS[kernel] ?? KERNELS.floyd;
+  const gw = Math.ceil(w / px), gh = Math.ceil(h / px), ch = colour ? 3 : 1, q = Math.max(1, Math.round(levels) - 1), f = Math.max(0, Math.min(1, diffusion / 100));
+  const plane = new Float32Array(gw * gh * ch), seen = new Uint32Array(gw * gh);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y * w + x) * 4;
+    if (d[i + 3] === 0) continue;
+    const g = Math.floor(y / px) * gw + Math.floor(x / px);
+    seen[g]++;
+    if (colour) for (let c = 0; c < 3; c++) plane[g * 3 + c] += d[i + c] / 255;
+    else plane[g] += luma(d[i], d[i + 1], d[i + 2]) / 255;
+  }
+  for (let g = 0; g < gw * gh; g++) if (seen[g]) for (let c = 0; c < ch; c++) plane[g * ch + c] /= seen[g];
+  for (let gy = 0; gy < gh; gy++) for (let gx = 0; gx < gw; gx++) {
+    const g = gy * gw + gx;
+    if (!seen[g]) continue;
+    for (let c = 0; c < ch; c++) {
+      const old = Math.max(0, Math.min(1, plane[g * ch + c])), now = Math.round(old * q) / q, err = (plane[g * ch + c] - now) * f;
+      plane[g * ch + c] = now;
+      for (const [dx, dy, wt] of k.taps) {
+        const nx = gx + dx, ny = gy + dy;
+        if (nx < 0 || nx >= gw || ny >= gh || !seen[ny * gw + nx]) continue;
+        plane[(ny * gw + nx) * ch + c] += (err * wt) / k.div;
+      }
+    }
+  }
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y * w + x) * 4;
+    if (d[i + 3] === 0) continue;
+    const g = Math.floor(y / px) * gw + Math.floor(x / px);
+    for (let c = 0; c < 3; c++) d[i + c] = colour ? plane[g * 3 + c] * 255 : ink[c] + (paper[c] - ink[c]) * plane[g];
+  }
+  return out;
+}
+
+/** Halftone screen: dots, diamonds or lines on a grid of `cell` pixels turned by `angle` degrees about the canvas
+ *  corner; a value lands in a step by where it sits against the spot function, so dark areas grow bigger marks. */
+export function screenImage(img: ImageData, shape: string, levels: number, cell: number, angle: number, colour: boolean, amount: number, ink: LibColor, paper: LibColor, ox: number, oy: number): ImageData {
+  const out = copyImage(img), d = out.data, w = img.width, q = Math.max(1, Math.round(levels) - 1), c0 = Math.max(2, cell), a = Math.max(0, Math.min(1, amount / 100));
+  const rad = (angle * Math.PI) / 180, ca = Math.cos(rad), sa = Math.sin(rad), soft = Math.min(0.5, 1.5 / c0);
+  const cut = (v: number, t: number): number => {
+    const s = (v / 255) * q, lo = Math.floor(s), e = Math.max(0, Math.min(1, (s - lo - (soft / 2 + t * (1 - soft))) / soft + 0.5));
+    return (s + (lo + e - s) * a) / q;
+  };
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] === 0) continue;
+    const p = i / 4, x = (p % w) + ox + 0.5, y = Math.floor(p / w) + oy + 0.5;
+    const u = (x * ca + y * sa) / c0, v = (y * ca - x * sa) / c0, fu = u - Math.floor(u) - 0.5, fv = v - Math.floor(v) - 0.5;
+    const dm = Math.abs(fu) + Math.abs(fv), rr = fu * fu + fv * fv;
+    const t = Math.max(0, Math.min(1, shape === 'halftoneLine' ? 1 - 2 * Math.abs(fu) : shape === 'halftoneDiamond' ? (dm <= 0.5 ? 1 - 2 * dm * dm : 2 * (1 - dm) * (1 - dm)) : 1 - Math.PI * rr));
+    if (colour) { for (let c = 0; c < 3; c++) d[i + c] = cut(d[i + c], t) * 255; continue; }
+    const k = cut(luma(d[i], d[i + 1], d[i + 2]), t);
+    for (let c = 0; c < 3; c++) d[i + c] = ink[c] + (paper[c] - ink[c]) * k;
+  }
+  return out;
+}
+
 const GLYPHS: string[] = [
   '.....|.....|.....|.....|.....|.....|.....',
   '.....|.....|.....|.....|.....|..#..|.....',
@@ -168,25 +235,33 @@ export function hazeImage(img: ImageData, depth: LibImage | null, invert: boolea
   return out;
 }
 
-const PATTERNS: ReadonlyArray<readonly [string, string]> = [['bayer2', 'Bayer 2 by 2'], ['bayer4', 'Bayer 4 by 4'], ['bayer8', 'Bayer 8 by 8'], ['macPatterns', 'Mac Patterns'], ['ascii', 'ASCII']];
+const PATTERNS: ReadonlyArray<readonly [string, string]> = [
+  ['bayer2', 'Bayer 2 by 2'], ['bayer4', 'Bayer 4 by 4'], ['bayer8', 'Bayer 8 by 8'], ['macPatterns', 'Mac Patterns'], ['ascii', 'ASCII'],
+  ['floyd', 'Floyd-Steinberg'], ['atkinson', 'Atkinson'], ['sierraLite', 'Sierra Lite'], ['jarvis', 'Jarvis'],
+  ['halftoneDot', 'Halftone Dots'], ['halftoneDiamond', 'Halftone Diamonds'], ['halftoneLine', 'Halftone Lines'],
+];
 
 export const DITHER_FILTERS: LibFilter[] = [
   {
     id: 'dither', label: 'Dither', group: 'Pixelate', grows: false,
-    note: 'Ink is the foreground colour and paper the background colour in Black and White.',
+    note: 'Ink is the foreground colour and paper the background colour in Black and White. Diffusion applies to the error diffusion patterns; Cell Size and Screen Angle to the halftone screens.',
     params: [
       { key: 'pattern', label: 'Pattern', kind: 'select', def: 'bayer4', options: PATTERNS },
       { key: 'mode', label: 'Colors', kind: 'select', def: 'bw', options: [['bw', 'Black and White'], ['colour', 'Colour']] },
-      { key: 'levels', label: 'Levels per Channel', kind: 'range', min: 2, max: 16, step: 1, def: 2 },
+      { key: 'levels', label: 'Tones (levels per channel)', kind: 'range', min: 2, max: 16, step: 1, def: 2 },
       { key: 'pixel', label: 'Pixel Size', kind: 'range', min: 1, max: 16, step: 1, def: 1, limit: 64 },
       { key: 'amount', label: 'Strength', kind: 'range', min: 0, max: 100, step: 1, def: 100 },
+      { key: 'diffusion', label: 'Diffusion (%)', kind: 'range', min: 0, max: 100, step: 1, def: 100 },
+      { key: 'cell', label: 'Cell Size', kind: 'range', min: 4, max: 64, step: 1, def: 8 },
+      { key: 'angle', label: 'Screen Angle (°)', kind: 'range', min: 0, max: 179, step: 1, def: 45 },
     ],
-    reach: (v, scale) => (str(v, 'pattern') === 'ascii' ? Math.ceil(8 * num(v, 'pixel') * scale) + 1 : 0),
+    reach: (v, scale) => (str(v, 'pattern') === 'ascii' ? Math.ceil(8 * num(v, 'pixel') * scale) + 1 : KERNELS[str(v, 'pattern')] ? null : 0),
     run: (src, v, ctx) => {
-      const px = num(v, 'pixel') * ctx.scale, colour = str(v, 'mode') === 'colour', ox = Math.round(ctx.canvas.x), oy = Math.round(ctx.canvas.y);
-      return str(v, 'pattern') === 'ascii'
-        ? asciiImage(src, px, colour, ctx.fg, ctx.bg, -ox, -oy)
-        : ditherImage(src, str(v, 'pattern'), num(v, 'levels'), px, colour, num(v, 'amount'), ctx.fg, ctx.bg, -ox, -oy);
+      const px = num(v, 'pixel') * ctx.scale, colour = str(v, 'mode') === 'colour', ox = Math.round(ctx.canvas.x), oy = Math.round(ctx.canvas.y), pattern = str(v, 'pattern');
+      if (pattern === 'ascii') return asciiImage(src, px, colour, ctx.fg, ctx.bg, -ox, -oy);
+      if (KERNELS[pattern]) return diffuseImage(src, pattern, num(v, 'levels'), px, colour, num(v, 'diffusion'), ctx.fg, ctx.bg);
+      if (pattern.startsWith('halftone')) return screenImage(src, pattern, num(v, 'levels'), num(v, 'cell') * ctx.scale, num(v, 'angle'), colour, num(v, 'amount'), ctx.fg, ctx.bg, -ox, -oy);
+      return ditherImage(src, pattern, num(v, 'levels'), px, colour, num(v, 'amount'), ctx.fg, ctx.bg, -ox, -oy);
     },
   },
   {

@@ -6,13 +6,15 @@ import { api } from '../../io/api';
 export function videoLayerFromFile(engine: Engine, say: (message: string) => void, replace = false): void {
   const input = document.createElement('input');
   input.type = 'file';
-  input.accept = 'video/*,.mp4,.mov,.m4v,.webm,.mkv,.avi';
+  input.accept = 'video/*,.mp4,.mov,.m4v,.webm,.mkv,.avi,.gif,.apng,image/gif,image/png,image/jpeg,image/webp';
+  input.multiple = true;
   input.style.display = 'none';
   input.addEventListener('cancel', () => input.remove());
   input.addEventListener('change', () => {
-    const file = input.files?.[0];
+    const files = Array.from(input.files ?? []).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
     input.remove();
-    if (file) void load(engine, file, say, replace);
+    if (files.length > 1 && files.every((f) => f.type.startsWith('image/'))) void loadSequence(engine, files, say, replace);
+    else if (files[0]) void load(engine, files[0], say, replace);
   });
   document.body.append(input);
   input.click();
@@ -21,6 +23,20 @@ export function videoLayerFromFile(engine: Engine, say: (message: string) => voi
 /** Layer > Video Layers > Replace Footage (DEV_PLAN 33.4b): the chosen clip becomes the active video layer's footage. */
 export function replaceFootageFromFile(engine: Engine, say: (message: string) => void): void {
   videoLayerFromFile(engine, say, true);
+}
+
+/** Several pictures in natural name order (frame2 before frame10) as the frames of one clip, 300 at most. */
+async function loadSequence(engine: Engine, files: File[], say: (message: string) => void, replace: boolean): Promise<void> {
+  say('Reading the pictures...');
+  try {
+    const rasters: Raster[] = [];
+    for (const f of files.slice(0, 300)) {
+      const bmp = await createImageBitmap(f), ras = new Raster(bmp.width, bmp.height);
+      ras.ctx.drawImage(bmp, 0, 0); bmp.close(); ras.touch(); rasters.push(ras);
+    }
+    if (replace) { say(engine.replaceFootage(rasters) ? `Footage replaced, ${rasters.length} frames.` : 'The footage could not be replaced.'); return; }
+    say(engine.addVideoLayer(files[0].name.replace(/\d*\.[^.]+$/, '') || 'Image sequence', rasters) ? `Video layer added, ${rasters.length} frames.` : 'The video layer could not be added.');
+  } catch (err) { say(err instanceof Error ? err.message : 'The pictures could not be read.'); }
 }
 
 async function load(engine: Engine, file: File, say: (message: string) => void, replace: boolean): Promise<void> {

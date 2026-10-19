@@ -89,6 +89,8 @@ export class LayerStyleDialog extends Dialog {
     for (const [side, label] of [['thisLayer', 'This Layer'], ['underlying', 'Underlying Layer']] as const) for (const [k, name] of [[0, 'black start'], [1, 'black end'], [2, 'white start'], [3, 'white end']] as const) {
       slider(t(`${label}: ${name}`), 0, 255, () => bl().blendIf[side][k], (v) => { const r = bl().blendIf[side]; r[k] = v; if (k === 0 && r[1] < v) r[1] = v; if (k === 1 && r[0] > v) r[0] = v; if (k === 2 && r[3] < v) r[3] = v; if (k === 3 && r[2] > v) r[2] = v; });
     }
+    check('Blend Interior Effects as Group', () => !!fx().blendInterior, (v) => { if (v) fx().blendInterior = true; else delete fx().blendInterior; });
+    check('Layer Mask Hides Effects', () => fx().layerMaskHides !== false, (v) => { if (v) delete fx().layerMaskHides; else fx().layerMaskHides = false; });
     check('Drop Shadow', () => fx().dropShadow.enabled, (v) => { fx().dropShadow.enabled = v; });
     multi('dropShadow');
     choice('Blend mode', blends, () => fx().dropShadow.blend, (v) => { fx().dropShadow.blend = v as BlendMode; });
@@ -97,14 +99,23 @@ export class LayerStyleDialog extends Dialog {
     slider('Angle (\u00b0)', -180, 180, () => fx().dropShadow.angle, (v) => { fx().dropShadow.angle = v; });
     check('Use Global Light', () => !!fx().dropShadow.useGlobal, (v) => { fx().dropShadow.useGlobal = v; });
     slider('Distance (px)', 0, 200, () => fx().dropShadow.distance, (v) => { fx().dropShadow.distance = v; });
+    slider('Spread (%)', 0, 100, () => fx().dropShadow.spread ?? 0, (v) => { if (v > 0) fx().dropShadow.spread = v; else delete fx().dropShadow.spread; });
     slider('Size (px)', 0, 100, () => fx().dropShadow.size, (v) => { fx().dropShadow.size = v; });
+    slider('Noise (%)', 0, 100, () => fx().dropShadow.noise ?? 0, (v) => { if (v > 0) fx().dropShadow.noise = v; else delete fx().dropShadow.noise; });
     choice('Contour', contours, () => fx().dropShadow.contour ?? 'linear', (v) => { fx().dropShadow.contour = v as ContourId; });
+    check('Anti-aliased', () => !!fx().dropShadow.antiAlias, (v) => { if (v) fx().dropShadow.antiAlias = true; else delete fx().dropShadow.antiAlias; });
+    check('Layer Knocks Out Drop Shadow', () => !!fx().dropShadow.knockout, (v) => { if (v) fx().dropShadow.knockout = true; else delete fx().dropShadow.knockout; });
     check('Outer Glow', () => fx().outerGlow.enabled, (v) => { fx().outerGlow.enabled = v; });
     choice('Blend mode', blends, () => fx().outerGlow.blend, (v) => { fx().outerGlow.blend = v as BlendMode; });
     colour('Colour', () => fx().outerGlow.color, (c) => { fx().outerGlow.color = c; });
     slider('Opacity (%)', 0, 100, () => Math.round(fx().outerGlow.opacity * 100), (v) => { fx().outerGlow.opacity = v / 100; });
+    choice('Technique', [['softer', 'Softer'], ['precise', 'Precise']], () => fx().outerGlow.technique ?? 'softer', (v) => { if (v === 'precise') fx().outerGlow.technique = 'precise'; else delete fx().outerGlow.technique; });
+    slider('Spread (%)', 0, 100, () => fx().outerGlow.spread ?? 0, (v) => { if (v > 0) fx().outerGlow.spread = v; else delete fx().outerGlow.spread; });
     slider('Size (px)', 0, 500, () => fx().outerGlow.size, (v) => { fx().outerGlow.size = v; });
+    slider('Noise (%)', 0, 100, () => fx().outerGlow.noise ?? 0, (v) => { if (v > 0) fx().outerGlow.noise = v; else delete fx().outerGlow.noise; });
     choice('Contour', contours, () => fx().outerGlow.contour ?? 'linear', (v) => { fx().outerGlow.contour = v as ContourId; });
+    check('Anti-aliased', () => !!fx().outerGlow.antiAlias, (v) => { if (v) fx().outerGlow.antiAlias = true; else delete fx().outerGlow.antiAlias; });
+    slider('Range (%)', 1, 100, () => fx().outerGlow.range ?? 100, (v) => { if (v < 100) fx().outerGlow.range = v; else delete fx().outerGlow.range; });
     check('Stroke', () => fx().stroke.enabled, (v) => { fx().stroke.enabled = v; });
     multi('stroke');
     choice('Position', [['outside', 'Outside'], ['inside', 'Inside'], ['center', 'Center']], () => fx().stroke.position ?? 'outside', (v) => { fx().stroke.position = v === 'inside' || v === 'center' ? v : 'outside'; });
@@ -130,6 +141,7 @@ export class LayerStyleDialog extends Dialog {
     slider('Size (px)', 0, 100, () => fx().innerShadow.size, (v) => { fx().innerShadow.size = v; });
     slider('Noise (%)', 0, 100, () => fx().innerShadow.noise ?? 0, (v) => { if (v > 0) fx().innerShadow.noise = v; else delete fx().innerShadow.noise; });
     choice('Contour', contours, () => fx().innerShadow.contour ?? 'linear', (v) => { fx().innerShadow.contour = v as ContourId; });
+    check('Anti-aliased', () => !!fx().innerShadow.antiAlias, (v) => { if (v) fx().innerShadow.antiAlias = true; else delete fx().innerShadow.antiAlias; });
     check('Inner Glow', () => fx().innerGlow.enabled, (v) => { fx().innerGlow.enabled = v; });
     choice('Blend mode', blends, () => fx().innerGlow.blend, (v) => { fx().innerGlow.blend = v as BlendMode; });
     colour('Colour', () => fx().innerGlow.color, (c) => { fx().innerGlow.color = c; });
@@ -140,6 +152,7 @@ export class LayerStyleDialog extends Dialog {
     slider('Size (px)', 0, 500, () => fx().innerGlow.size, (v) => { fx().innerGlow.size = v; });
     slider('Noise (%)', 0, 100, () => fx().innerGlow.noise ?? 0, (v) => { if (v > 0) fx().innerGlow.noise = v; else delete fx().innerGlow.noise; });
     choice('Contour', contours, () => fx().innerGlow.contour ?? 'linear', (v) => { fx().innerGlow.contour = v as ContourId; });
+    check('Anti-aliased', () => !!fx().innerGlow.antiAlias, (v) => { if (v) fx().innerGlow.antiAlias = true; else delete fx().innerGlow.antiAlias; });
     check('Color Overlay', () => fx().colorOverlay.enabled, (v) => { fx().colorOverlay.enabled = v; });
     multi('colorOverlay');
     choice('Blend mode', blends, () => fx().colorOverlay.blend, (v) => { fx().colorOverlay.blend = v as BlendMode; });
@@ -154,8 +167,9 @@ export class LayerStyleDialog extends Dialog {
     slider('Opacity (%)', 0, 100, () => Math.round(fx().gradientOverlay.opacity * 100), (v) => { fx().gradientOverlay.opacity = v / 100; });
     slider('Angle (\u00b0)', -180, 180, () => fx().gradientOverlay.angle, (v) => { fx().gradientOverlay.angle = v; });
     slider('Scale (%)', 10, 150, () => Math.round(fx().gradientOverlay.scale * 100), (v) => { fx().gradientOverlay.scale = v / 100; });
-    check('Radial', () => fx().gradientOverlay.style === 'radial', (v) => { fx().gradientOverlay.style = v ? 'radial' : 'linear'; });
+    choice('Style', [['linear', 'Linear'], ['radial', 'Radial'], ['angle', 'Angle'], ['reflected', 'Reflected'], ['diamond', 'Diamond']], () => fx().gradientOverlay.style, (v) => { fx().gradientOverlay.style = v === 'radial' || v === 'angle' || v === 'reflected' || v === 'diamond' ? v : 'linear'; });
     check('Reverse', () => fx().gradientOverlay.reverse, (v) => { fx().gradientOverlay.reverse = v; });
+    check('Dither', () => !!fx().gradientOverlay.dither, (v) => { if (v) fx().gradientOverlay.dither = true; else delete fx().gradientOverlay.dither; });
     check('Pattern Overlay', () => fx().patternOverlay.enabled, (v) => { fx().patternOverlay.enabled = v; });
     const patternPick = el<HTMLSelectElement>('<select class="cv-input"></select>');
     patternPick.addEventListener('change', () => { fx().patternOverlay.pattern = patternPick.value; this.changed(); });
@@ -177,6 +191,10 @@ export class LayerStyleDialog extends Dialog {
     choice('Blend mode', blends, () => fx().patternOverlay.blend, (v) => { fx().patternOverlay.blend = v as BlendMode; });
     slider('Opacity (%)', 0, 100, () => Math.round(fx().patternOverlay.opacity * 100), (v) => { fx().patternOverlay.opacity = v / 100; });
     slider('Scale (%)', 10, 1000, () => Math.round(fx().patternOverlay.scale * 100), (v) => { fx().patternOverlay.scale = v / 100; });
+    slider('Angle (°)', -180, 180, () => fx().patternOverlay.angle ?? 0, (v) => { if (v !== 0) fx().patternOverlay.angle = v; else delete fx().patternOverlay.angle; });
+    check('Link with Layer', () => fx().patternOverlay.link !== false, (v) => { if (v) delete fx().patternOverlay.link; else fx().patternOverlay.link = false; });
+    slider('Phase X (px)', -500, 500, () => fx().patternOverlay.phaseX ?? 0, (v) => { if (v !== 0) fx().patternOverlay.phaseX = v; else delete fx().patternOverlay.phaseX; });
+    slider('Phase Y (px)', -500, 500, () => fx().patternOverlay.phaseY ?? 0, (v) => { if (v !== 0) fx().patternOverlay.phaseY = v; else delete fx().patternOverlay.phaseY; });
     check('Satin', () => fx().satin.enabled, (v) => { fx().satin.enabled = v; });
     choice('Blend mode', blends, () => fx().satin.blend, (v) => { fx().satin.blend = v as BlendMode; });
     colour('Colour', () => fx().satin.color, (c) => { fx().satin.color = c; });
@@ -185,6 +203,8 @@ export class LayerStyleDialog extends Dialog {
     slider('Distance (px)', 0, 250, () => fx().satin.distance, (v) => { fx().satin.distance = v; });
     slider('Size (px)', 0, 250, () => fx().satin.size, (v) => { fx().satin.size = v; });
     check('Invert', () => fx().satin.invert, (v) => { fx().satin.invert = v; });
+    choice('Contour', contours, () => fx().satin.contour ?? 'linear', (v) => { if (v === 'linear') delete fx().satin.contour; else fx().satin.contour = v as ContourId; });
+    check('Anti-aliased', () => !!fx().satin.antiAlias, (v) => { if (v) fx().satin.antiAlias = true; else delete fx().satin.antiAlias; });
     check('Bevel & Emboss', () => fx().bevel.enabled, (v) => { fx().bevel.enabled = v; });
     choice('Style', [['inner', 'Inner Bevel'], ['outer', 'Outer Bevel'], ['emboss', 'Emboss'], ['pillow', 'Pillow Emboss'], ['stroke', 'Stroke Emboss']], () => fx().bevel.style, (v) => { fx().bevel.style = v === 'outer' || v === 'emboss' || v === 'pillow' || v === 'stroke' ? v : 'inner'; });
     choice('Technique', [['smooth', 'Smooth'], ['chiselHard', 'Chisel Hard'], ['chiselSoft', 'Chisel Soft']], () => fx().bevel.technique ?? 'smooth', (v) => { if (v === 'chiselHard' || v === 'chiselSoft') fx().bevel.technique = v; else delete fx().bevel.technique; });
@@ -196,6 +216,7 @@ export class LayerStyleDialog extends Dialog {
     slider('Altitude (\u00b0)', 0, 90, () => fx().bevel.altitude, (v) => { fx().bevel.altitude = v; });
     check('Use Global Light', () => !!fx().bevel.useGlobal, (v) => { fx().bevel.useGlobal = v; });
     choice('Gloss Contour', contours, () => fx().bevel.gloss ?? 'linear', (v) => { fx().bevel.gloss = v as ContourId; });
+    check('Gloss anti-aliased', () => !!fx().bevel.antiAlias, (v) => { if (v) fx().bevel.antiAlias = true; else delete fx().bevel.antiAlias; });
     choice('Highlight mode', blends, () => fx().bevel.highlightBlend, (v) => { fx().bevel.highlightBlend = v as BlendMode; });
     colour('Highlight', () => fx().bevel.highlight, (c) => { fx().bevel.highlight = c; });
     slider('Highlight opacity (%)', 0, 100, () => Math.round(fx().bevel.highlightOpacity * 100), (v) => { fx().bevel.highlightOpacity = v / 100; });
@@ -224,6 +245,7 @@ export class LayerStyleDialog extends Dialog {
     slider('Texture scale (%)', 1, 1000, () => Math.round((fx().bevel.texture?.scale ?? 1) * 100), (v) => { bt().scale = v / 100; });
     slider('Texture depth (%)', -1000, 1000, () => Math.round((fx().bevel.texture?.depth ?? 1) * 100), (v) => { bt().depth = v / 100; });
     check('Invert texture', () => !!fx().bevel.texture?.invert, (v) => { bt().invert = v; });
+    check('Texture link with layer', () => fx().bevel.texture?.link !== false, (v) => { if (v) delete bt().link; else bt().link = false; });
     this.button('Make Default', 'ghost', () => { this.saveDefault(); this.engine.notice('Layer style settings saved as the default.'); }).classList.add('cv-btn-apart');
     this.button('Reset to Default', 'ghost', () => this.resetToDefault());
     this.button('Cancel', 'ghost', () => this.close());

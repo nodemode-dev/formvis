@@ -50,7 +50,7 @@ export class PropertiesColumn {
 
   constructor(host: HTMLElement, private readonly engine: Engine, run: (cmd: string) => void, private readonly onLayout: () => void = () => undefined) {
     this.root = host;
-    this.properties();
+    this.properties(run);
     this.brushes(run);
     this.paragraph();
     this.character();
@@ -188,7 +188,7 @@ export class PropertiesColumn {
     host.classList.toggle('is-collapsed', PropertiesColumn.showingCollapsed);
   }
 
-  private properties(): void {
+  private properties(run: (cmd: string) => void): void {
     const e = this.engine;
     const body = el(`<div class="cv-props">
       <div class="cv-props-head"><span class="cv-props-tile"></span><span class="cv-props-name"></span></div>
@@ -197,6 +197,10 @@ export class PropertiesColumn {
       <p class="cv-props-none">Select a layer with pixels to see its placement.</p>
       <button class="cv-props-section cv-props-mask-head" type="button" aria-expanded="true" hidden>${icon('chevronDown', 12)}<span>Layer Mask</span></button>
       <div class="cv-props-transform cv-props-mask" hidden><div class="cv-props-grid"></div></div>
+      <div class="cv-props-transform cv-props-mask-acts" hidden><button class="cv-btn" type="button" data-pcmd="mask-invert">Invert</button><button class="cv-btn" type="button" data-pcmd="select-and-mask">Select and Mask...</button></div>
+      <button class="cv-props-section cv-props-vmask-head" type="button" aria-expanded="true" hidden>${icon('chevronDown', 12)}<span>Vector Mask</span></button>
+      <div class="cv-props-transform cv-props-vmask" hidden><div class="cv-props-grid"></div></div>
+      <div class="cv-props-transform cv-props-vmask-acts" hidden><button class="cv-btn" type="button" data-pcmd="vmask-invert">Invert</button></div>
       <button class="cv-props-section cv-props-doc-head" type="button" aria-expanded="true">${icon('chevronDown', 12)}<span>Document</span></button>
       <dl class="cv-props-doc"><dt>Name</dt><dd data-doc="name"></dd><dt>Size</dt><dd data-doc="size"></dd><dt>Resolution</dt><dd data-doc="res"></dd><dt>Mode</dt><dd data-doc="mode"></dd><dt>Profile</dt><dd data-doc="profile"></dd><dt>Layers</dt><dd data-doc="layers"></dd></dl>
     </div>`);
@@ -237,6 +241,23 @@ export class PropertiesColumn {
       row.appendChild(mf[k].root);
       maskBody.querySelector('.cv-props-grid')?.appendChild(row);
     }
+    const maskActs = body.querySelector('.cv-props-mask-acts') as HTMLElement;
+    const vHead = body.querySelector('.cv-props-vmask-head') as HTMLButtonElement, vBody = body.querySelector('.cv-props-vmask') as HTMLElement, vActs = body.querySelector('.cv-props-vmask-acts') as HTMLElement;
+    vHead.addEventListener('click', () => { const open = vHead.getAttribute('aria-expanded') !== 'true'; vHead.setAttribute('aria-expanded', String(open)); setHidden(vBody, !open); setHidden(vActs, !open); });
+    maskHead.addEventListener('click', () => setHidden(maskActs, maskHead.getAttribute('aria-expanded') !== 'true'));
+    const vf = { density: numField('%', 'Vector Mask Density', 0, 100, 1, (v) => e.setVectorMaskShape({ density: v })), feather: numField('px', 'Vector Mask Feather', 0, 250, 1, (v) => e.setVectorMaskShape({ feather: v })) };
+    for (const [k, lbl] of [['density', 'Density'], ['feather', 'Feather']] as const) {
+      const row = el(`<label class="cv-props-field"><span>${lbl}</span></label>`);
+      row.appendChild(vf[k].root);
+      vBody.querySelector('.cv-props-grid')?.appendChild(row);
+    }
+    for (const b of body.querySelectorAll<HTMLButtonElement>('[data-pcmd]')) {
+      b.addEventListener('click', () => {
+        const cmd = b.dataset.pcmd as string;
+        if (cmd === 'select-and-mask' && !e.current?.selection) e.loadSelection({ channel: 'mask' });
+        run(cmd);
+      });
+    }
     const tile = body.querySelector('.cv-props-tile') as HTMLElement, name = body.querySelector('.cv-props-name') as HTMLElement;
     new PanelGroup(this.root, 'properties', [{ id: 'properties', label: 'Properties', body }], 'Properties');
     onLanguage(() => { for (const r of this.refreshers) r(); });   // the heading is set in place, in the new language
@@ -257,6 +278,13 @@ export class PropertiesColumn {
       setHidden(maskBody, !mk || maskHead.getAttribute('aria-expanded') !== 'true');
       mf.density.set(mk ? mk.density ?? 100 : null);
       mf.feather.set(mk ? mk.feather ?? 0 : null);
+      setHidden(maskActs, !mk || maskHead.getAttribute('aria-expanded') !== 'true');
+      const vk = a?.vectorMask ?? null;
+      setHidden(vHead, !vk);
+      setHidden(vBody, !vk || vHead.getAttribute('aria-expanded') !== 'true');
+      setHidden(vActs, !vk || vHead.getAttribute('aria-expanded') !== 'true');
+      vf.density.set(vk ? vk.density ?? 100 : null);
+      vf.feather.set(vk ? vk.feather ?? 0 : null);
       const cur = e.current, d = cur?.doc, dash = '-';
       setText(docCell('name'), cur?.name ?? dash);
       setText(docCell('size'), d ? `${d.width} x ${d.height} px` : dash);

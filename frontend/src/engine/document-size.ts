@@ -1,4 +1,5 @@
-import { LIMITS, newLayer } from './types';
+import { LIMITS, effectsFromData, newLayer } from './types';
+import { scaledEffects } from './style-extras';
 import type { Layer, Doc, Transform, Pt } from './types';
 import { Raster } from './surface';
 import type { Project } from './project';
@@ -91,6 +92,7 @@ export function resampleImage(
   height: number,
   sampling: 'nearest' | 'smooth' | 'high',
   resolution: number,
+  scaleStyles = true,
 ): boolean {
   const project = host.current;
   if (!project) return false;
@@ -151,7 +153,8 @@ export function resampleImage(
             h: Math.max(1, Math.round(l.artboard.h * sy)),
           }
         : l.artboard;
-      return { ...l, transform, raster, channels, shape, mask, artboard };
+      const effects = scaleStyles && l.effects ? effectsFromData(scaledEffects(l.effects, k)) ?? l.effects : l.effects;
+      return { ...l, transform, raster, channels, shape, mask, artboard, ...(effects ? { effects } : {}) };
     });
     const grow = (x: number, y: number): Pt => ({ x: x * sx, y: y * sy });
     const layers = host.carryVectors(scaled, grow);

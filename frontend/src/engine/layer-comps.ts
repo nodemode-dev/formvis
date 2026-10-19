@@ -27,6 +27,38 @@ export function captureComp(doc: Doc, id: ID, opts: CompOptions = {}, base?: Lay
   return { id, name: opts.name?.trim() || base?.name || `Layer Comp ${n}`, comment: opts.comment ?? base?.comment ?? '', useVisibility, usePosition, useAppearance, layers };
 }
 
+export type CompPart = 'visibility' | 'position' | 'appearance';
+const PART_KEYS: Record<CompPart, (keyof Entry)[]> = { visibility: ['visible'], position: ['x', 'y'], appearance: ['opacity', 'blend', 'fill', 'effects', 'effectsHidden'] };
+
+/** A comp with only the named parts re-recorded from the layers as they are now; the rest of what it holds stays. */
+export function updateComp(doc: Doc, comp: LayerComp, parts: readonly CompPart[]): LayerComp {
+  const layers: LayerComp['layers'] = {};
+  for (const l of doc.layers) {
+    const old: Entry = { ...(comp.layers[l.id] ?? {}) };
+    for (const part of parts) for (const k of PART_KEYS[part]) delete old[k];
+    layers[l.id] = { ...old, ...captureEntry(l, parts.includes('visibility'), parts.includes('position'), parts.includes('appearance')) };
+  }
+  return { ...comp, layers };
+}
+
+/** Layer Comp Options: name, comment and the three switches; a part switched on is recorded from the layers as they are now. */
+export function editComp(doc: Doc, comp: LayerComp, o: CompOptions): LayerComp {
+  const flags = { useVisibility: o.useVisibility ?? comp.useVisibility, usePosition: o.usePosition ?? comp.usePosition, useAppearance: o.useAppearance ?? comp.useAppearance };
+  const fresh: CompPart[] = [];
+  if (flags.useVisibility && !comp.useVisibility) fresh.push('visibility');
+  if (flags.usePosition && !comp.usePosition) fresh.push('position');
+  if (flags.useAppearance && !comp.useAppearance) fresh.push('appearance');
+  const base = fresh.length ? updateComp(doc, comp, fresh) : comp;
+  return { ...base, ...flags, name: o.name?.trim() || comp.name, comment: o.comment ?? comp.comment };
+}
+
+/** How a comp stands against the document: layers it recorded that are gone, and layers that differ from it now. */
+export function compStatus(doc: Doc, comp: LayerComp): { missing: number; changed: number } {
+  const have = new Set(doc.layers.map((l) => l.id));
+  const next = applyComp(doc, comp);
+  return { missing: Object.keys(comp.layers).filter((k) => !have.has(k)).length, changed: next.reduce((n, l, i) => n + (l !== doc.layers[i] ? 1 : 0), 0) };
+}
+
 /** The doc's layers with a comp applied; the same array entries are kept for layers that do not change. */
 export function applyComp(doc: Doc, comp: LayerComp): Layer[] {
   return doc.layers.map((l) => {

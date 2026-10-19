@@ -561,7 +561,10 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
         if (path.subpaths.length) layer.vectorMask = { path, enabled: !vm.disable, linked: !vm.notLink, inverted: !!vm.invert };
       }
       const vmd = pl.realMask ?? pl.mask;
-      if (vm?.paths?.length && vmd && ((typeof vmd.vectorMaskDensity === 'number' && vmd.vectorMaskDensity < 1) || (vmd.vectorMaskFeather ?? 0) > 0)) notes.push(`"${name}" has a vector mask density or feather, which formvis does not read; the mask opened sharp.`);
+      if (layer.vectorMask && vmd) {
+        const vd = typeof vmd.vectorMaskDensity === 'number' && vmd.vectorMaskDensity < 1 ? Math.round(vmd.vectorMaskDensity * 100) : 0, vfe = typeof vmd.vectorMaskFeather === 'number' && vmd.vectorMaskFeather > 0 ? vmd.vectorMaskFeather : 0;
+        if (vd || vfe) layer.vectorMask = { ...layer.vectorMask, ...(vd ? { density: vd } : {}), ...(vfe ? { feather: vfe } : {}) };
+      }
       const plc = pl.placedLayer;
       if (plc) {
         // A PSD smart object opens as a formvis one: its contents the source, its corners the warp, its pixels as
@@ -703,7 +706,7 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
     for (let i = 0; i < img.data.length; i += 4) { const a = img.data[i + 3]; img.data[i] = img.data[i + 1] = img.data[i + 2] = a; img.data[i + 3] = 255; }
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.putImageData(img, 0, 0);
-    out.mask = { canvas: mp.c, left: mp.x, top: mp.y, defaultColor: maskEdgeTone(mk.raster), disabled: !mk.enabled };
+    out.mask = { canvas: mp.c, left: mp.x, top: mp.y, defaultColor: maskEdgeTone(mk.raster), disabled: !mk.enabled, ...(mk.density !== undefined && mk.density < 100 ? { userMaskDensity: mk.density / 100 } : {}), ...(mk.feather ? { userMaskFeather: mk.feather } : {}), ...(l.vectorMask?.density !== undefined && l.vectorMask.density < 100 ? { vectorMaskDensity: l.vectorMask.density / 100 } : {}), ...(l.vectorMask?.feather ? { vectorMaskFeather: l.vectorMask.feather } : {}) };
   };
   const toPsd = (l: Layer): PsdLayer | null => {
     if (l.isGroup) return { name: l.name, hidden: !l.visible, opacity: l.opacity, blendMode: groupIsolated(l) ? TO_PSD[l.blend] ?? 'normal' : 'pass through', opened: true, children: build(l.id), ...toPsdArtboard(l) };

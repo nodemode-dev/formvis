@@ -222,7 +222,7 @@ export function interpretFootage(host: VideoHost, it: FootageInterpretation): bo
   nt.length = Math.max(1, Math.ceil(n * (clean.loop ?? 1) * (clean.fps ? next.fps / clean.fps : 1) - 1e-9));
   if (nt.start + nt.length > next.duration) { if (next.workOut === next.duration) next.workOut = nt.start + nt.length; next.duration = nt.start + nt.length; }
   const v = l.video, interpret = Object.keys(clean).length ? clean : undefined;
-  p.doc = { ...p.doc, layers: p.doc.layers.map((x) => (x.id === l.id ? { ...x, video: { frames: v.frames, original: v.original, name: v.name, ...(interpret ? { interpret } : {}) } } : x)) };
+  p.doc = { ...p.doc, layers: p.doc.layers.map((x) => (x.id === l.id ? { ...x, video: { frames: v.frames, original: v.original, name: v.name, ...(interpret ? { interpret } : {}), ...(v.unaltered ? { unaltered: true } : {}) } } : x)) };
   host.setTimeline(p, { ...host.timelineOf(p), video: next });
   videoShow(host, p, next, next.current);
   p.history.end({ ...p.snapshot(), video: structuredClone(next) });
@@ -259,7 +259,7 @@ export function videoShow(host: VideoHost, p: Project, vt: VideoTimeline, t: num
       if (!v || !tr) return l;
       const i = footageFrame(v, tr, vt, t);
       if (i < 0 || i >= v.frames.length) return l;
-      const shown = footagePixels(v.frames[i], v.interpret), r = shown === v.frames[i] ? shown.clone() : shown;
+      const src = v.unaltered ? v.original[i] : v.frames[i], shown = footagePixels(src, v.interpret), r = shown === src ? shown.clone() : shown;
       host.store.shown.set(r, r.version);
       return { ...l, raster: r };
     }),
@@ -310,7 +310,7 @@ export function newBlankVideoLayer(host: VideoHost): boolean {
 
 /** One undoable change to the active video layer's frames at the playhead; `change` returns the new frame lists
  *  (`at` the frame to show after, `drop` to end the video layer) and must not alter the old ones. */
-export function videoStep(host: VideoHost, name: string, change: (v: NonNullable<Layer['video']>, i: number) => { frames: Raster[]; original: Raster[]; at?: number; drop?: boolean } | null): boolean {
+export function videoStep(host: VideoHost, name: string, change: (v: NonNullable<Layer['video']>, i: number) => { frames: Raster[]; original: Raster[]; at?: number; drop?: boolean; unaltered?: boolean } | null): boolean {
   const p = host.current, vt = video(host), l = p?.activeLayer;
   if (!p || !vt || !l?.video || host.blocked()) return false;
   const tr = vt.tracks[l.id], i = tr ? footageFrame(l.video, tr, vt, vt.current) : -1;
@@ -320,13 +320,13 @@ export function videoStep(host: VideoHost, name: string, change: (v: NonNullable
   const out = change(l.video, i);
   if (!out) return false;
   p.history.begin(name, { ...p.snapshot(), video: structuredClone(vt) });
-  const next = structuredClone(vt), nt = next.tracks[l.id], label = l.video.name, it = l.video.interpret;
+  const next = structuredClone(vt), nt = next.tracks[l.id], label = l.video.name, it = l.video.interpret, was = l.video.unaltered;
   // Footage frames to timeline frames through Interpret Footage's rate and loops (1:1 without one).
   const k = it?.fps ? next.fps / it.fps : 1;
   nt.length = Math.max(1, Math.ceil(out.frames.length * (it?.loop ?? 1) * k - 1e-9));
   if (nt.start + nt.length > next.duration) { if (next.workOut === next.duration) next.workOut = nt.start + nt.length; next.duration = nt.start + nt.length; }
   next.current = Math.min(next.duration - 1, nt.start + Math.min(Math.ceil((out.at ?? i) * k - 1e-9), nt.length - 1));
-  p.doc = { ...p.doc, layers: p.doc.layers.map((x) => (x.id === l.id ? { ...x, video: out.drop ? null : { frames: out.frames, original: out.original, name: label, ...(it ? { interpret: it } : {}) } } : x)) };
+  p.doc = { ...p.doc, layers: p.doc.layers.map((x) => (x.id === l.id ? { ...x, video: out.drop ? null : { frames: out.frames, original: out.original, name: label, ...(it ? { interpret: it } : {}), ...((out.unaltered ?? was) ? { unaltered: true } : {}) } } : x)) };
   host.setTimeline(p, { ...host.timelineOf(p), video: next });
   videoShow(host, p, next, next.current);
   p.history.end({ ...p.snapshot(), video: structuredClone(next) });
@@ -374,6 +374,14 @@ export function restoreFrame(host: VideoHost): boolean {
   });
 }
 
+/** Show Altered Video: on shows the painted frames; off shows the footage as loaded in their place, the painted frames kept. */
+export function toggleAlteredVideo(host: VideoHost, show?: boolean): boolean {
+  return videoStep(host, 'Show Altered Video', (v) => {
+    const unaltered = show === undefined ? !v.unaltered : !show;
+    return unaltered === !!v.unaltered ? null : { frames: v.frames, original: v.original, unaltered };
+  });
+}
+
 /** Restore All Frames: every frame back to the footage as loaded. */
 export function restoreAllFrames(host: VideoHost): boolean {
   return videoStep(host, 'Restore All Frames', (v) => (v.frames.every((r, k) => r === v.original[k]) ? null : { frames: v.original.slice(), original: v.original }));
@@ -393,7 +401,7 @@ export function renderVideoFrame(host: VideoHost, f: number): Surface | null {
     const v = l.video, tr = vt.tracks[l.id];
     if (!v || !tr || t === vt.current) return l;
     const i = footageFrame(v, tr, vt, t);
-    return i >= 0 && i < v.frames.length ? { ...l, raster: footagePixels(v.frames[i], v.interpret) } : l;
+    return i >= 0 && i < v.frames.length ? { ...l, raster: footagePixels(v.unaltered ? v.original[i] : v.frames[i], v.interpret) } : l;
   });
   return renderDoc(host.work, { ...p.doc, layers: frameLayers(layers, stateAt(p.doc, vt, f)) });
 }

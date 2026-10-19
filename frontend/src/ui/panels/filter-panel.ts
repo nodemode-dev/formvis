@@ -6,8 +6,8 @@ import { Dialog } from '../dialogs';
 import { el, q, setDisabled, setHidden, setText, setValue } from '../dom';
 import { toast } from '../toast';
 import { recalled, remembered } from '../prefs';
-import { checkRow, colorRow, matrixRow, selectRow, sliderRow, type Row } from './controls';
-import { lensBlur, lensBlurMargin, shakeMargin, shakeReduce, smartSharpen, smartSharpenMargin, type SharpenRemove, type ShakeSettings } from '../../engine/filters-more';
+import { checkRow, colorRow, curveRow, matrixRow, selectRow, sliderRow, type Row } from './controls';
+import { defaultLensIris, lensBlurMargin, lensBlurSettings, shakeMargin, shakeReduce, smartSharpen, smartSharpenMargin, type LensIris, type SharpenRemove, type ShakeSettings } from '../../engine/filters-more';
 import { estimateShake } from '../../engine/shake';
 import { runGallery, type GallerySettings } from '../../engine/blur-gallery';
 import { LIBRARY, isLibKind, libAllDefaults, libApron, libFilter, libImageParams, libMargin, libPathParams, libValues, runLib, type LibColors, type LibFrame, type LibImage, type LibKind, type LibParam, type LibPath, type LibValue, type LibValues } from '../../engine/filter-library';
@@ -15,6 +15,7 @@ import { crsXmp, developFromXmp } from '../../io/crs-xmp';
 import { HSL_BANDS, autoWhiteBalance, bandOf, buildCurveLut, defaultCalibration, defaultGeometry, defaultGrading, defaultNoise, defaultOptics, defaultParametric, defaultPointColor, defaultVignetteShape, hslToRgb, whiteBalanceFor, type CalibrationState, type CurveChannel, type CurvePoint,type DevelopState, type GeometryState, type GradingState, type HslBand, type HslBandState, type OpticsState, type ParametricState, type PointColorState } from '../../engine/develop';
 import { curveGraph } from './curve-graph';
 import { GalleryView } from './gallery-view';
+import { FilterPreview } from './filter-preview';
 
 export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection' | 'unsharpMask' | 'develop' | 'lensBlur' | 'smartSharpen' | 'shakeReduction'
   | 'radialBlur' | 'surfaceBlur' | 'fieldBlur' | 'irisBlur' | 'tiltShift' | 'pathBlur' | LibKind;
@@ -25,7 +26,7 @@ export const FILTER_LABELS: Record<FilterKind, string> = { gaussianBlur: 'Gaussi
 export function defaultFilterSettings() {
   return {
     radius: 1, angle: 0, distance: 10, amount: 10, gaussian: false, monochromatic: false, distortion: 0, lensFix: defaultLensFix(), usmAmount: 100, usmRadius: 1, threshold: 0, develop: defaultDevelopState(),
-    lensRadius: 15, lensBrightness: 0, lensThreshold: 255,
+    lensRadius: 15, lensBrightness: 0, lensThreshold: 255, lensIris: defaultLensIris(),
     smart: { amount: 200, radius: 1, noise: 10, remove: 'lens' as SharpenRemove, angle: 0, shadows: 0, highlights: 0 },
     shake: { angle: 0, length: 10, smoothing: 10, amount: 100 } as ShakeSettings,
     // Radial and Surface Blur, and the Blur Gallery; positions in percent of the image.
@@ -34,6 +35,7 @@ export function defaultFilterSettings() {
       surfaceRadius: 5, surfaceThreshold: 15,
       pins: 2, pin1x: 30, pin1y: 50, pin1blur: 0, pin2x: 70, pin2y: 50, pin2blur: 15, pin3x: 50, pin3y: 20, pin3blur: 8, pin4x: 50, pin4y: 80, pin4blur: 8,
       irisBlur: 15, irisX: 50, irisY: 50, irisRx: 30, irisRy: 30, irisAngle: 0, irisFeather: 50, irisRound: 100,
+      irisPins: 1, iris2x: 25, iris2y: 50, iris2rx: 15, iris2ry: 15, iris2angle: 0, iris2feather: 50, iris3x: 75, iris3y: 50, iris3rx: 15, iris3ry: 15, iris3angle: 0, iris3feather: 50,
       tiltBlur: 15, tiltX: 50, tiltY: 50, tiltAngle: 0, tiltFocus: 10, tiltTransition: 20,
       pathSpeed: 30, pathTaper: 0, pathSx: 20, pathSy: 70, pathBx: 50, pathBy: 30, pathEx: 80, pathEy: 70,
     } as GallerySettings,
@@ -53,10 +55,10 @@ export function runFilter(kind: FilterKind, s: FilterPanelSettings, seed: number
       case 'lensCorrection': return lensCorrect(src, s.distortion, s.lensFix ?? defaultLensFix());
       case 'unsharpMask': return unsharpMask(src, s.usmAmount, s.usmRadius * scale, s.threshold);
       case 'develop': return developImage(src, s.develop, scale);
-      case 'lensBlur': return lensBlur(src, s.lensRadius * scale, s.lensBrightness, s.lensThreshold);
+      case 'lensBlur': return lensBlurSettings(src, s, scale, seed, frame?.canvas ?? null);
       case 'smartSharpen': return smartSharpen(src, s.smart, scale);
       case 'shakeReduction': return shakeReduce(src, s.shake, scale);
-      case 'radialBlur': case 'surfaceBlur': case 'fieldBlur': case 'irisBlur': case 'tiltShift': case 'pathBlur': return runGallery(kind, s.gallery, src, scale);
+      case 'radialBlur': case 'surfaceBlur': case 'fieldBlur': case 'irisBlur': case 'tiltShift': case 'pathBlur': return runGallery(kind, s.gallery, src, scale, frame);
     default: return isLibKind(kind) ? runLib(kind, s.lib?.[kind], seed, src, scale, frame, s.colors) : src;
   }
 }
@@ -113,6 +115,7 @@ export class FilterPanel extends Dialog {
   private timer = 0;
   private readonly sections = new Map<FilterKind, { node: HTMLElement; sync: () => void }>();
   private readonly previewRow: Row<boolean>;
+  private readonly shot: FilterPreview;
   private readonly okBtn: HTMLButtonElement;
   /** Develop's Profile list (DEV_PLAN 28.2): for a RAW layer the app answers with the camera profiles on this computer
    *  that fit its camera, and re-develops the file with the one chosen. */
@@ -166,6 +169,12 @@ export class FilterPanel extends Dialog {
     };
     const group = (kind: FilterKind, rows: Array<{ el: HTMLElement; sync: () => void }>, note?: string): void =>
       this.section(kind, [...rows.map((r) => r.el), ...(note ? [el(`<p class="cv-note">${note}</p>`)] : [])], () => { for (const r of rows) r.sync(); });
+    const pdRow = checkRow('Use the drawn path', (v) => {
+      const lines = v ? this.engine.pathLines() : null;
+      if (v && !lines) { this.engine.notice('Draw a path with the Pen tool first.'); pdRow.set(false); return; }
+      s.gallery = { ...s.gallery, pathDrawn: v, pathLines: lines };
+      this.schedule();
+    });
     group('radialBlur', [gs('Amount', 1, 100, 1, 'radialAmount'), gsel('Blur Method', [['spin', 'Spin'], ['zoom', 'Zoom']], 'radialMethod'),
       gsel('Quality', [['draft', 'Draft'], ['good', 'Good'], ['best', 'Best']], 'radialQuality'), gs('Center X (%)', 0, 100, 1, 'radialX'), gs('Center Y (%)', 0, 100, 1, 'radialY')]);
     group('surfaceBlur', [gs('Radius (px)', 1, 100, 1, 'surfaceRadius'), gs('Threshold (levels)', 2, 255, 1, 'surfaceThreshold')]);
@@ -173,14 +182,31 @@ export class FilterPanel extends Dialog {
       ...([1, 2, 3, 4] as const).flatMap((i) => [gs(`Pin ${i} X (%)`, 0, 100, 1, `pin${i}x`), gs(`Pin ${i} Y (%)`, 0, 100, 1, `pin${i}y`), gs(`Pin ${i} Blur (px)`, 0, 500, 1, `pin${i}blur`)])],
       'Each pin sets the blur at its place; between pins the blur blends by distance.');
     group('irisBlur', [gs('Blur (px)', 0, 500, 1, 'irisBlur'), gs('Center X (%)', 0, 100, 1, 'irisX'), gs('Center Y (%)', 0, 100, 1, 'irisY'),
-      gs('Radius X (%)', 1, 100, 1, 'irisRx'), gs('Radius Y (%)', 1, 100, 1, 'irisRy'), gs('Angle (\u00b0)', -90, 90, 1, 'irisAngle'), gs('Sharp area (%)', 0, 99, 1, 'irisFeather'), gs('Roundness (%)', 0, 100, 1, 'irisRound')],
-      'Sharp inside the sharp area, rising to the full blur at the ellipse\'s edge.');
+      gs('Radius X (%)', 1, 100, 1, 'irisRx'), gs('Radius Y (%)', 1, 100, 1, 'irisRy'), gs('Angle (\u00b0)', -90, 90, 1, 'irisAngle'), gs('Sharp area (%)', 0, 99, 1, 'irisFeather'), gs('Roundness (%)', 0, 100, 1, 'irisRound'), gs('Irises', 1, 3, 1, 'irisPins'),
+      ...([2, 3] as const).flatMap((n) => [gs(`Iris ${n} Center X (%)`, 0, 100, 1, `iris${n}x`), gs(`Iris ${n} Center Y (%)`, 0, 100, 1, `iris${n}y`), gs(`Iris ${n} Radius X (%)`, 1, 100, 1, `iris${n}rx`), gs(`Iris ${n} Radius Y (%)`, 1, 100, 1, `iris${n}ry`), gs(`Iris ${n} Angle (°)`, -90, 90, 1, `iris${n}angle`), gs(`Iris ${n} Sharp area (%)`, 0, 99, 1, `iris${n}feather`)])],
+      'Sharp inside the sharp area, rising to the full blur at the ellipse\'s edge. With more than one iris, a pixel takes the least blur of any of them.');
     group('tiltShift', [gs('Blur (px)', 0, 500, 1, 'tiltBlur'), gs('Center X (%)', 0, 100, 1, 'tiltX'), gs('Center Y (%)', 0, 100, 1, 'tiltY'), gs('Angle (\u00b0)', -90, 90, 1, 'tiltAngle'),
       gs('Focus (% of height)', 0, 50, 1, 'tiltFocus'), gs('Transition (% of height)', 1, 50, 1, 'tiltTransition')]);
     group('pathBlur', [gs('Speed (px)', 0, 500, 1, 'pathSpeed'), gs('Taper (%)', 0, 100, 1, 'pathTaper'), gs('Start X (%)', 0, 100, 1, 'pathSx'), gs('Start Y (%)', 0, 100, 1, 'pathSy'),
-      gs('Bend X (%)', 0, 100, 1, 'pathBx'), gs('Bend Y (%)', 0, 100, 1, 'pathBy'), gs('End X (%)', 0, 100, 1, 'pathEx'), gs('End Y (%)', 0, 100, 1, 'pathEy')],
-      'Blurs along the path from start through the bend to end, as if moving along it.');
-    this.section('lensBlur', [lensR.el, lensB.el, lensT.el, el('<p class="cv-note">An iris-shaped blur in linear light; pixels at or above the threshold bloom into bright discs.</p>')], () => { lensR.set(s.lensRadius); lensB.set(s.lensBrightness); lensT.set(s.lensThreshold); });
+      gs('Bend X (%)', 0, 100, 1, 'pathBx'), gs('Bend Y (%)', 0, 100, 1, 'pathBy'), gs('End X (%)', 0, 100, 1, 'pathEx'), gs('End Y (%)', 0, 100, 1, 'pathEy'), { el: pdRow.el, sync: () => pdRow.set(!!s.gallery.pathDrawn) }],
+      'Blurs along the path from start through the bend to end, as if moving along it. With the drawn path, every sub-path of the active path blurs the pixels nearest to it.');
+    const ir = (): LensIris => s.lensIris ?? (s.lensIris = defaultLensIris());
+    const lensShape = selectRow('Iris Shape', [['0', 'Circle'], ['3', 'Triangle'], ['4', 'Square'], ['5', 'Pentagon'], ['6', 'Hexagon'], ['7', 'Heptagon'], ['8', 'Octagon']], (v) => { ir().blades = Number(v); this.schedule(); });
+    const lensCurve = sliderRow('Blade Curvature', 0, 100, 1, (v) => { ir().curve = v; this.schedule(); });
+    const lensRot = sliderRow('Rotation (°)', -180, 180, 1, (v) => { ir().rotation = v; this.schedule(); });
+    const lensSource = selectRow('Depth Map', [['none', 'None'], ['depthMap', 'Depth Map layer'], ['channel', 'Alpha channel'], ['transparency', 'Layer transparency']], (v) => { ir().source = v; this.pullDepth(); this.schedule(0); });
+    const lensChannel = sliderRow('Channel number', 1, 16, 1, (v) => { ir().channel = v; this.pullDepth(); this.schedule(); });
+    const lensFocal = sliderRow('Focal Distance', 0, 255, 1, (v) => { ir().focal = v; this.schedule(); });
+    const lensInvert = checkRow('Invert', (v) => { ir().invert = v; this.schedule(); });
+    const lensNoise = sliderRow('Noise Amount', 0, 100, 1, (v) => { ir().noise = v; this.schedule(); });
+    const lensDist = selectRow('Noise Distribution', [['uniform', 'Uniform'], ['gaussian', 'Gaussian']], (v) => { ir().gaussian = v === 'gaussian'; this.schedule(); });
+    const lensMono = checkRow('Monochromatic', (v) => { ir().mono = v; this.schedule(); });
+    this.section('lensBlur', [lensR.el, lensShape.el, lensCurve.el, lensRot.el, lensSource.el, lensChannel.el, lensFocal.el, lensInvert.el, lensB.el, lensT.el, lensNoise.el, lensDist.el, lensMono.el, el('<p class="cv-note">An iris-shaped blur in linear light; pixels at or above the threshold bloom into bright discs. With a depth source, the blur grows with each pixel\'s distance from the focal depth (bright is near).</p>')], () => {
+      const i = ir();
+      lensR.set(s.lensRadius); lensB.set(s.lensBrightness); lensT.set(s.lensThreshold); lensShape.set(String(i.blades)); lensCurve.set(i.curve); lensRot.set(i.rotation); lensSource.set(i.source); lensChannel.set(i.channel);
+      lensFocal.set(i.focal); lensInvert.set(i.invert); lensNoise.set(i.noise); lensDist.set(i.gaussian ? 'gaussian' : 'uniform'); lensMono.set(i.mono);
+      this.pullDepth();
+    });
     const ss = s.smart;
     const ssAmount = sliderRow('Amount (%)', 1, 500, 1, (v) => { ss.amount = v; this.schedule(); });
     const ssRadius = sliderRow('Radius (px)', 0.1, 64, 0.1, (v) => { ss.radius = v; this.schedule(); });
@@ -447,6 +473,9 @@ export class FilterPanel extends Dialog {
       clear.addEventListener('click', () => { reset(); for (const f of devSync) f(); this.schedule(); });
     }
     this.section('develop', devNodes, () => { for (const f of devSync) f(); });
+    this.shot = new FilterPreview(this.engine, () => this.schedule(0));
+    setHidden(this.shot.el, true);
+    this.body.prepend(this.shot.el);
     this.previewRow = checkRow('Preview', (v) => { this.preview = v; this.schedule(0); });
     this.body.append(this.previewRow.el);
     this.button('Cancel', 'ghost', () => this.close());
@@ -478,6 +507,7 @@ export class FilterPanel extends Dialog {
       q(node, 'button').addEventListener('click', () => put(p.key, randomSeed()));
       return { el: node, set: () => undefined };
     }
+    if (p.kind === 'curve') { const r = curveRow(p.label, p.min, p.max, (v) => put(p.key, v)); return { el: r.el, set: (v) => r.set(v as number[]) }; }
     if (p.kind === 'image') return this.imageRow(p.label, (v) => put(p.key, v));
     if (p.kind === 'path') return this.pathRow(p.label, (v) => put(p.key, v));
     if (p.kind === 'color') { const r = colorRow(p.label, (v) => put(p.key, v)); return { el: r.el, set: (v) => r.set(v as string) }; }
@@ -487,12 +517,12 @@ export class FilterPanel extends Dialog {
   }
 
   private imageRow(label: string, put: (v: LibImage | null) => void): { el: HTMLElement; set: (v: LibValue) => void } {
-    const node = el('<label class="cv-field"><span></span><select class="cv-input"></select></label>'), sel = q<HTMLSelectElement>(node, 'select');
+    const node = el('<label class="cv-field"><span></span><select class="cv-input"></select><input type="file" accept="image/*" hidden></label>'), sel = q<HTMLSelectElement>(node, 'select'), file = q<HTMLInputElement>(node, 'input');
     setText(q(node, 'span'), label);
     let kept: LibImage | null = null;
     const fill = (): void => {
-      const docs = this.engine.projects.map((p) => [p.id, p.name] as const);
-      const opts: Array<readonly [string, string]> = [['', 'Choose an open document'], ...(kept && !docs.some(([, n]) => n === kept?.name) ? [['kept', `${kept.name} (as chosen)`] as const] : []), ...docs];
+      const docs = this.engine.projects.map((p) => [p.id, p.name] as const), layers = (this.engine.current?.doc.layers ?? []).filter((l) => !l.isGroup && l.raster).map((l) => [`layer:${l.id}`, `Layer: ${l.name}`] as const);
+      const opts: Array<readonly [string, string]> = [['', 'Choose an open document'], ...(kept && !docs.some(([, n]) => n === kept?.name) ? [['kept', `${kept.name} (as chosen)`] as const] : []), ...docs, ...layers, ['file', 'Open a picture file...']];
       while (sel.options.length > opts.length) sel.remove(sel.options.length - 1);
       opts.forEach(([v, t], i) => {
         let o = sel.options[i];
@@ -501,9 +531,22 @@ export class FilterPanel extends Dialog {
         if (o.textContent !== t) o.textContent = t;
       });
     };
+    const back = (): void => { fill(); setValue(sel, kept ? (this.engine.projects.find((p) => p.name === kept?.name)?.id ?? 'kept') : ''); };
+    file.addEventListener('change', () => {
+      const f = file.files?.[0];
+      file.value = '';
+      if (!f) { back(); return; }
+      createImageBitmap(f).then((bmp) => {
+        const m = this.engine.sourceMapImage(bmp, bmp.width, bmp.height, f.name);
+        bmp.close();
+        if (m) { kept = m; put(m); }
+        back();
+      }).catch(() => back());
+    });
     sel.addEventListener('change', () => {
       if (sel.value === 'kept') return;
-      kept = sel.value ? this.engine.mapImage(sel.value) : null;
+      if (sel.value === 'file') { file.click(); return; }
+      kept = sel.value.startsWith('layer:') ? this.engine.layerMapImage(sel.value.slice(6)) : sel.value ? this.engine.mapImage(sel.value) : null;
       put(kept);
     });
     return { el: node, set: (v) => {
@@ -604,6 +647,8 @@ export class FilterPanel extends Dialog {
     const lib = isLibKind(kind) ? libFilter(kind) : null;
     q<HTMLElement>(this.scrim, '.cv-dialog').style.setProperty('--cv-dialog-w', `${lib?.width ?? 440}px`);
     setHidden(this.previewRow.el, !!lib?.ownPreview);
+    setHidden(this.shot.el, !this.windowed(kind));
+    if (!this.shot.el.hidden) this.shot.begin();
     if (kind === 'shakeReduction' && !smart) this.estimateShake(false);
     if (isLibKind(kind) && !this.sections.has(kind)) this.libSection(kind);
     if (isLibKind(kind)) for (const key of libPathParams(kind)) ((this.s.lib ??= {})[kind] ??= libValues(kind, undefined))[key] = this.engine.pathLines();
@@ -639,6 +684,12 @@ export class FilterPanel extends Dialog {
     if (ok) this.schedule(0);
   }
 
+  /** Lens Blur's depth plane read from the document for the chosen source (kept in the settings so a recorded filter and a smart filter carry it). */
+  private pullDepth(): void {
+    const i = this.s.lensIris ?? (this.s.lensIris = defaultLensIris());
+    i.depth = i.source === 'depthMap' || i.source === 'channel' ? this.engine.lensDepthPlane(i.source, i.channel) : null;
+  }
+
   private readonly shakeNote = el('<p class="cv-note"></p>');
 
   /** Shake Reduction's trace estimated from the target image (estimateShake), the sliders updated. */
@@ -661,13 +712,19 @@ export class FilterPanel extends Dialog {
 
   private completed(kind: FilterKind, settings: Record<string, unknown>): Record<string, unknown> {
     const out: Record<string, unknown> = { ...settings, colors: settings.colors ?? this.swatches() };
+    if (kind === 'lensBlur') {
+      const iris: LensIris = { ...defaultLensIris(), ...(settings.lensIris as Partial<LensIris> | undefined) };
+      iris.depth = iris.source === 'depthMap' || iris.source === 'channel' ? this.engine.lensDepthPlane(iris.source, iris.channel) : null;
+      out.lensIris = iris;
+    }
+    if (kind === 'pathBlur' && (settings.gallery as Partial<GallerySettings> | undefined)?.pathDrawn) out.gallery = { ...(settings.gallery as object), pathLines: this.engine.pathLines() };
     if (!isLibKind(kind)) return out;
     const lib = settings.lib && typeof settings.lib === 'object' ? (settings.lib as Record<string, Record<string, unknown> | undefined>) : {}, values = { ...(lib[kind] ?? {}) };
     for (const key of libImageParams(kind)) {
       const v = values[key];
       if (typeof v !== 'string') continue;
-      const doc = this.engine.projects.find((p) => p.name === v || p.id === v);
-      values[key] = doc ? this.engine.mapImage(doc.id) : null;
+      const doc = this.engine.projects.find((p) => p.name === v || p.id === v), layer = doc ? undefined : this.engine.current?.doc.layers.find((l) => l.raster && !l.isGroup && (l.id === v || l.name === v));
+      values[key] = doc ? this.engine.mapImage(doc.id) : layer ? this.engine.layerMapImage(layer.id) : null;
     }
     for (const key of libPathParams(kind)) {
       const v = values[key];
@@ -687,7 +744,12 @@ export class FilterPanel extends Dialog {
       const scoped = (out: ImageData | Promise<ImageData>): ImageData | Promise<ImageData> => { if (this.kind === 'develop') void Promise.resolve(out).then((img) => this.scopes.draw(img)).catch(() => undefined); return out; };
       if (this.preview && !this.smartTarget() && !(isLibKind(this.kind) && libFilter(this.kind).ownPreview)) this.engine.previewImageEdit((src, scale, frame) => scoped(runFilterOffThread(this.kind, this.s, scale, this.seed, src, frame) ?? this.run(src, scale, frame)), this.grow());
       else this.engine.setPreview(null);
+      if (this.shot.visible) this.shot.render((src, scale, frame) => runFilterOffThread(this.kind, this.s, scale, this.seed, src, frame) ?? this.run(src, scale, frame), this.grow());
     }, delay);
+  }
+
+  private windowed(kind: FilterKind): boolean {
+    return kind !== 'develop' && kind !== 'filterGallery' && !this.smartTarget() && !(isLibKind(kind) && (libFilter(kind).ownPreview || libFilter(kind).group === 'Blur Gallery'));
   }
 
   /** Called when the dialog applies a filter, with its kind and settings, for Actions to record it. */
@@ -737,6 +799,12 @@ export class FilterPanel extends Dialog {
   }
 
   private missingImage(kind: FilterKind, settings: Record<string, unknown>): boolean {
+    if (kind === 'pathBlur') {
+      const g = settings.gallery as Partial<GallerySettings> | undefined;
+      if (g?.pathDrawn && !g.pathLines) { this.engine.notice('Path Blur needs a drawn path: make one with the Pen tool first.'); return true; }
+      return false;
+    }
+    if (kind === 'lensBlur') { const i = settings.lensIris as Partial<LensIris> | undefined; return (i?.source === 'depthMap' || i?.source === 'channel') && !i.depth; }
     if (!isLibKind(kind)) return false;
     const values = libValues(kind, (settings.lib as Record<string, unknown> | undefined)?.[kind]), gap = libFilter(kind).params.find((p) => p.kind === 'image' && !values[p.key]), why = libFilter(kind).invalid?.(values);
     if (why) { this.engine.notice(why); return true; }

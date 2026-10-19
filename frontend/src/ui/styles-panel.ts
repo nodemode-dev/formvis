@@ -6,15 +6,28 @@ import { promptName } from './dialogs';
 import { el, patchList, q, setHidden, setText } from './dom';
 import { icon } from './icons';
 
-interface StylePreset { id: string; name: string; effects: LayerEffects }
+interface StylePreset { id: string; name: string; effects: LayerEffects; group?: string }
 
 const KEY = 'formvis.stylePresets';
+
+/** The styles Restore Default Styles puts back, each under the group Defaults, found again by its fixed id. */
+function defaultPresets(): StylePreset[] {
+  const make = (id: string, name: string, edit: (fx: LayerEffects) => void): StylePreset => { const effects = defaultEffects(); edit(effects); return { id: `default-${id}`, name, effects, group: 'Defaults' }; };
+  return [
+    make('soft-shadow', 'Soft Shadow', (fx) => { fx.dropShadow.enabled = true; fx.dropShadow.distance = 8; fx.dropShadow.size = 14; fx.dropShadow.opacity = 0.55; }),
+    make('outline', 'Outline', (fx) => { fx.stroke.enabled = true; fx.stroke.size = 4; fx.stroke.position = 'outside'; }),
+    make('glow', 'Soft Glow', (fx) => { fx.outerGlow.enabled = true; fx.outerGlow.size = 18; fx.outerGlow.spread = 20; }),
+    make('emboss', 'Emboss', (fx) => { fx.bevel.enabled = true; fx.bevel.style = 'emboss'; fx.bevel.size = 6; fx.bevel.depth = 120; }),
+    make('chrome', 'Chrome Gradient', (fx) => { fx.gradientOverlay.enabled = true; fx.gradientOverlay.style = 'reflected'; fx.gradientOverlay.from = { r: 245, g: 245, b: 250 }; fx.gradientOverlay.to = { r: 90, g: 100, b: 120 }; fx.satin.enabled = true; }),
+    make('inset', 'Inset', (fx) => { fx.innerShadow.enabled = true; fx.innerShadow.distance = 4; fx.innerShadow.size = 8; }),
+  ];
+}
 
 function loadPresets(): StylePreset[] {
   try {
     const r = JSON.parse(localStorage.getItem(KEY) ?? '[]') as unknown;
     if (!Array.isArray(r)) return [];
-    return r.filter((p): p is StylePreset => !!p && typeof p === 'object' && typeof (p as StylePreset).id === 'string' && typeof (p as StylePreset).name === 'string' && !!(p as StylePreset).effects);
+    return r.filter((p): p is StylePreset => !!p && typeof p === 'object' && typeof (p as StylePreset).id === 'string' && typeof (p as StylePreset).name === 'string' && !!(p as StylePreset).effects && ((p as StylePreset).group === undefined || typeof (p as StylePreset).group === 'string'));
   } catch { return []; }
 }
 
@@ -33,24 +46,31 @@ export class StylesPanel {
   private presets = loadPresets();
   private selected: string | null = null;
   private serial = 0;
+  private readonly groupPick: HTMLSelectElement;
+  private filter = '';
 
   constructor(root: HTMLElement, private readonly engine: Engine, private readonly deliver: (blob: Blob, name: string) => Promise<void>) {
     const btn = (cmd: string, title: string, glyph: string): string => `<button class="cv-icon-btn" type="button" data-act="${cmd}" title="${title}" aria-label="${title}">${icon(glyph, 16)}</button>`;
     root.insertAdjacentHTML('beforeend',
       `<section class="cv-styles" aria-label="Styles">` +
-      `<div class="cv-panel-head"><span class="cv-comps-title">${icon('layers', 14)}<span>Styles</span></span><span></span><span class="cv-comps-count"></span></div>` +
+      `<div class="cv-panel-head"><span class="cv-comps-title">${icon('layers', 14)}<span>Styles</span></span><select class="cv-input cv-styles-group" aria-label="Style group" title="Show one group of styles"><option value="">All styles</option></select><span class="cv-comps-count"></span></div>` +
       `<div class="cv-styles-grid" role="listbox" aria-label="Styles"></div>` +
       `<div class="cv-comps-empty">No styles yet. Use New to save the active layer's style.</div>` +
-      `<div class="cv-panel-foot"><button class="cv-icon-btn cv-styles-clear" type="button" data-act="clear" title="Clear the active layer's style" aria-label="Clear Style">Clear Style</button>${btn('delete', 'Delete the selected style', 'delete')}${btn('load', 'Load Styles (.asl or .json)', 'upload')}${btn('export', 'Export Styles (.asl)', 'download')}${btn('new', 'New style from the active layer', 'add')}</div></section>`);
+      `<div class="cv-panel-foot"><button class="cv-icon-btn cv-styles-clear" type="button" data-act="clear" title="Clear the active layer's style" aria-label="Clear Style">Clear Style</button>${btn('defaults', 'Restore the default styles', 'undo')}${btn('group', 'Put the selected style in a group', 'folder')}${btn('update', "Replace the selected style with the active layer's style", 'refresh')}${btn('delete', 'Delete the selected style', 'delete')}${btn('load','Load Styles (.asl or .json)', 'upload')}${btn('export', 'Export Styles (.asl)', 'download')}${btn('new', 'New style from the active layer', 'add')}</div></section>`);
     const section = q(root, '.cv-styles');
     this.grid = q(section, '.cv-styles-grid');
     this.empty = q(section, '.cv-comps-empty');
     this.count = q(section, '.cv-comps-count');
     this.foot = Array.from(section.querySelectorAll<HTMLButtonElement>('.cv-panel-foot [data-act]'));
+    this.groupPick = q<HTMLSelectElement>(section, '.cv-styles-group');
+    this.groupPick.addEventListener('change', () => { this.filter = this.groupPick.value; this.sync(); });
     section.querySelector('.cv-panel-foot')!.addEventListener('click', (e) => {
       const b = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-act]');
       if (!b || b.disabled) return;
       if (b.dataset.act === 'new') void this.create();
+      else if (b.dataset.act === 'defaults') this.restoreDefaults();
+      else if (b.dataset.act === 'group') void this.regroup();
+      else if (b.dataset.act === 'update') this.replaceSelected();
       else if (b.dataset.act === 'delete') this.remove();
       else if (b.dataset.act === 'load') this.load();
       else if (b.dataset.act === 'export') void this.exportAll();
@@ -79,7 +99,7 @@ export class StylesPanel {
     const name = await promptName('New Style', `Style ${this.presets.length + 1}`, 'Create');
     if (name === null) return;
     const id = `style-${Date.now().toString(36)}-${(this.serial++).toString(36)}`;
-    this.presets = [...this.presets, { id, name: name.trim() || `Style ${this.presets.length + 1}`, effects: structuredClone(fx) }];
+    this.presets = [...this.presets, { id, name: name.trim() || `Style ${this.presets.length + 1}`, effects: structuredClone(fx), ...(this.filter ? { group: this.filter } : {}) }];
     this.selected = id;
     savePresets(this.presets);
     this.sync();
@@ -152,16 +172,65 @@ export class StylesPanel {
     this.sync();
   }
 
+  /** Restore Default Styles: the built-in styles that are not in the list come back, under the group Defaults. */
+  private restoreDefaults(): void {
+    const have = new Set(this.presets.map((p) => p.id)), add = defaultPresets().filter((p) => !have.has(p.id));
+    if (add.length) {
+      this.presets = [...this.presets, ...add];
+      savePresets(this.presets);
+      this.sync();
+    }
+    this.engine.notice(add.length ? `Restored ${add.length} default style${add.length === 1 ? '' : 's'}.` : 'Every default style is already there.');
+  }
+
+  /** The selected style moved to a named group; an empty name takes it out of its group. */
+  private async regroup(): Promise<void> {
+    const p = this.presets.find((x) => x.id === this.selected);
+    if (!p) return;
+    const name = await promptName('Style Group', p.group ?? '', 'Move');
+    if (name === null) return;
+    const group = name.trim();
+    this.presets = this.presets.map((x) => {
+      if (x.id !== p.id) return x;
+      const next = { ...x };
+      if (group) next.group = group; else delete next.group;
+      return next;
+    });
+    savePresets(this.presets);
+    this.sync();
+  }
+
+  /** The selected style replaced by the active layer's style, keeping its name and group. */
+  private replaceSelected(): void {
+    const fx = this.engine.current?.activeLayer?.effects;
+    if (!this.selected || !effectsPresent(fx)) return;
+    this.presets = this.presets.map((x) => (x.id === this.selected ? { ...x, effects: structuredClone(fx) } : x));
+    savePresets(this.presets);
+    this.sync();
+  }
+
   private sync(): void {
     const l = this.engine.current?.activeLayer, can = !!l && !l.isGroup && !l.adjustment;
-    setText(this.count, this.presets.length ? String(this.presets.length) : '');
+    const groups = [...new Set(this.presets.flatMap((p) => (p.group ? [p.group] : [])))].sort();
+    if (this.filter && !groups.includes(this.filter)) this.filter = '';
+    const want = ['', ...groups];
+    while (this.groupPick.options.length > want.length) this.groupPick.remove(this.groupPick.options.length - 1);
+    want.forEach((g, i) => {
+      const o = this.groupPick.options[i] ?? this.groupPick.appendChild(document.createElement('option'));
+      if (o.value !== g) o.value = g;
+      const label = g || 'All styles';
+      if (o.textContent !== label) o.textContent = label;
+    });
+    if (this.groupPick.value !== this.filter) this.groupPick.value = this.filter;
+    const shown = this.filter ? this.presets.filter((p) => p.group === this.filter) : this.presets;
+    setText(this.count, this.presets.length ? String(shown.length === this.presets.length ? this.presets.length : `${shown.length}/${this.presets.length}`) : '');
     setHidden(this.empty, this.presets.length > 0);
     this.foot.forEach((b) => {
       const a = b.dataset.act;
-      const off = a === 'load' ? false : a === 'export' ? this.presets.length === 0 : a === 'new' ? !effectsPresent(l?.effects) : a === 'delete' ? !this.selected : !can || !effectsPresent(l?.effects);
+      const off = a === 'load' || a === 'defaults' ? false : a === 'export' ? this.presets.length === 0 : a === 'new' ? !effectsPresent(l?.effects) : a === 'delete' || a === 'group' ? !this.selected : a === 'update' ? !this.selected || !effectsPresent(l?.effects) : !can || !effectsPresent(l?.effects);
       if (b.disabled !== off) b.disabled = off;
     });
-    patchList<StylePreset>(this.grid, this.presets, {
+    patchList<StylePreset>(this.grid, shown, {
       key: (p) => p.id,
       create: (p) => {
         const tile = el('<button class="cv-style-tile" type="button" role="option"><canvas class="cv-style-swatch" width="48" height="48" aria-hidden="true"></canvas><span class="cv-style-name"></span></button>');

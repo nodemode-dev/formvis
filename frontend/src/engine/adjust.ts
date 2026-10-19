@@ -258,10 +258,10 @@ const smoothstep = (t: number): number => t * t * (3 - 2 * t);
 
 /** `colour` (0 to 100) is the share of the grain that differs per channel (0 is grey grain); `speckle` (0 to 100) adds
  *  sparse bright and dark single-pixel specks. */
-export interface GrainSettings { amount: number; size: number; roughness: number; seed: number; colour: number; speckle: number }
+export interface GrainSettings { amount: number; size: number; roughness: number; seed: number; colour: number; speckle: number; look: number }
 export function grainFromData(d: Json): GrainSettings {
   const g = record(d.grainSettings);
-  return { amount: clamp(finite(g.amount, 25), 0, 100), size: clamp(finite(g.size, 1.5), 0.5, 20), roughness: clamp(finite(g.roughness, 50), 0, 100), seed: finite(g.seed, 0) >>> 0, colour: clamp(finite(g.colour, 0), 0, 100), speckle: clamp(finite(g.speckle, 0), 0, 100) };
+  return { amount: clamp(finite(g.amount, 25), 0, 100), size: clamp(finite(g.size, 1.5), 0.5, 20), roughness: clamp(finite(g.roughness, 50), 0, 100), seed: finite(g.seed, 0) >>> 0, colour: clamp(finite(g.colour, 0), 0, 100), speckle: clamp(finite(g.speckle, 0), 0, 100), look: clamp(finite(g.look, 100), 0, 100) };
 }
 
 /** Grain: value noise on a lattice of `size` document units (smoothstep-interpolated), mixed toward per-pixel noise by
@@ -269,11 +269,11 @@ export function grainFromData(d: Json): GrainSettings {
  *  document units, so the grain stays put as the layer's pixels are rendered at any zoom. */
 export function grainKernel(g: GrainSettings): Kernel {
   return (px, ctx?: KernelContext) => {
-    const width = ctx?.width ?? 0;
-    if (!(g.amount > 0) || !width) return;
+    const width = ctx?.width ?? 0, look = clamp((g.look ?? 100) / 100, 0, 1), amount = g.amount * look;
+    if (!(amount > 0) || !width) return;
     const unit = ctx?.unitsPerPixel ?? 1, ox = ctx?.originX ?? 0, oy = ctx?.originY ?? 0, cell = g.size > 0 ? g.size : 1;
-    const strength = Math.min(1, g.amount / 100) * 0.35 * 255, rough = clamp(g.roughness / 100, 0, 1), fineSeed = (g.seed ^ 0x5bd1e995) >>> 0;
-    const colour = clamp(g.colour / 100, 0, 1), speckle = clamp(g.speckle / 100, 0, 1) * 0.14, specSeed = (g.seed ^ 0x2545f491) >>> 0;
+    const strength = Math.min(1, amount / 100) * 0.35 * 255, rough = clamp(g.roughness / 100, 0, 1), fineSeed = (g.seed ^ 0x5bd1e995) >>> 0;
+    const colour = clamp((g.colour * look) / 100, 0, 1), speckle = clamp((g.speckle * look) / 100, 0, 1) * 0.14, specSeed = (g.seed ^ 0x2545f491) >>> 0;
     const rows = px.length / 4 / width;
     for (let y = 0; y < rows; y++) {
       const v = oy + (y + 0.5) * unit, cy = Math.floor(v / cell), ty = smoothstep(v / cell - cy), fy = Math.floor(v);
@@ -290,7 +290,7 @@ export function grainKernel(g: GrainSettings): Kernel {
         const luma = Math.min(1, (0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2]) / 255);
         const weight = strength * (0.4 + 2.4 * luma * (1 - luma));
         let speck = 0;
-        if (speckle > 0) { const h = latticeValue(Math.floor(u), fy, specSeed); if (Math.abs(h) > 1 - speckle) speck = Math.sign(h) * 0.55 * 255 * Math.min(1, g.amount / 50); }
+        if (speckle > 0) { const h = latticeValue(Math.floor(u), fy, specSeed); if (Math.abs(h) > 1 - speckle) speck = Math.sign(h) * 0.55 * 255 * Math.min(1, amount / 50); }
         for (let ch = 0; ch < 3; ch++) {
           const own = colour > 0 ? at((g.seed + (ch + 1) * 0x9e3779b1) >>> 0, (fineSeed + (ch + 1) * 0x85ebca6b) >>> 0) : noise;
           px[i + ch] = Math.round(clamp(px[i + ch] + (noise + (own - noise) * colour) * weight + speck, 0, 255));
@@ -313,7 +313,7 @@ export function defaultAdjustmentData(kind: AdjustmentKind): Json {
   if (kind === 'hsv') data.hsvSettings = hsvToData(defaultHsv());
   else if (kind === 'exposure') data.exposureSettings = { exposure: 0, offset: 0, gamma: 1 };
   else if (kind === 'gradientMap') data.gradientMapSettings = { shadows: { red: 0, green: 0, blue: 0 }, highlights: { red: 1, green: 1, blue: 1 }, reversed: false };
-  else if (kind === 'grain') data.grainSettings = { amount: 25, size: 1.5, roughness: 50, seed: randomSeed(), colour: 0, speckle: 0 };
+  else if (kind === 'grain') data.grainSettings = { amount: 25, size: 1.5, roughness: 50, seed: randomSeed(), colour: 0, speckle: 0, look: 100 };
   else if (isParamKind(kind)) data.params = paramValues(kind, {});
   return data;
 }

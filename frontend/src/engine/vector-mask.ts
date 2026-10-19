@@ -38,6 +38,22 @@ export function vectorCoverage(v: VectorMask, W: number, H: number): { surface: 
   c.fillStyle = '#ffffff';
   if (filled) fillVector(c, v.path);
   if (filled && v.inverted) { c.globalCompositeOperation = 'xor'; c.fillRect(0, 0, W, H); c.globalCompositeOperation = 'source-over'; }
+  const dn = Math.min(100, Math.max(0, v.density ?? 100)) / 100, fe = Math.max(0, v.feather ?? 0);
+  if (dn < 1 || fe > 0) {
+    const o = createSurface(Math.max(1, W), Math.max(1, H)), g = ctxOf(o);
+    g.fillStyle = `rgba(255,255,255,${1 - dn})`;
+    g.fillRect(0, 0, W, H);
+    g.globalCompositeOperation = 'lighter';
+    g.globalAlpha = dn;
+    if (fe > 0) g.filter = `blur(${fe}px)`;
+    g.drawImage(s as CanvasImageSource, 0, 0);
+    g.filter = 'none';
+    g.globalAlpha = 1;
+    g.globalCompositeOperation = 'source-over';
+    const e2 = { W, H, s: o, version: ++versions };
+    made.set(v, e2);
+    return { surface: o, version: e2.version };
+  }
   const e = { W, H, s, version: ++versions };
   made.set(v, e);
   return { surface: s, version: e.version };

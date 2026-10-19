@@ -6,8 +6,9 @@ import { icon } from './icons';
 
 /** Channels, the panel's tab (Phase 21, the owner's walkthrough): RGB, Red, Green and Blue, each
  *  with an eye and its own greyscale thumbnail. A click on a channel shows it alone in grey, on RGB the composite; an
- *  eye hides a channel from the composite. Only the view changes, never the pixels: the document's canvases are
- *  filtered (selection outlines and guides are drawn apart and keep their colours). Cmd- or Ctrl-click loads the
+ *  eye hides a channel from the composite. The view is a filter on the document's canvases (selection outlines and
+ *  guides are drawn apart and keep their colours); in an 8-bit RGB document the channel clicked is also the target, so
+ *  strokes, fills and filters change only that channel (the engine's rgbTarget). Cmd- or Ctrl-click loads the
  *  channel's brightness (for RGB, its luminosity) as a selection, one undo step. The Native GPU renderer draws outside
  *  the page, where a filter cannot reach, so there the panel says the view cannot change. */
 type Ch = 'rgb' | 'r' | 'g' | 'b' | 'cmyk' | 'c' | 'm' | 'y' | 'k' | 'lab' | 'll' | 'la' | 'lb';
@@ -140,6 +141,7 @@ export class ChannelsPanel {
       ? (() => { const k = { r: [1, 0, 0], g: [0, 1, 0], b: [0, 0, 1] }[this.solo]; return [...k, 0, 0, ...k, 0, 0, ...k, 0, 0, 0, 0, 0, 1, 0]; })()
       : [this.shown.r || cmyk ? 1 : 0, 0, 0, 0, 0, 0, this.shown.g || cmyk ? 1 : 0, 0, 0, 0, 0, 0, this.shown.b || cmyk ? 1 : 0, 0, 0, 0, 0, 0, 1, 0];
     document.querySelector('#cv-channel-view feColorMatrix')?.setAttribute('values', m.join(' '));
+    this.engine.rgbTarget = this.solo && !cmyk && !lab ? [this.solo === 'r', this.solo === 'g', this.solo === 'b'] : null;
     const plain = cmyk || lab || (!this.solo && this.shown.r && this.shown.g && this.shown.b);
     this.stage.classList.toggle('has-channel-view', !plain);
     for (const row of this.root.querySelectorAll<HTMLElement>('.cv-ch-row[data-ch]')) {
@@ -153,7 +155,7 @@ export class ChannelsPanel {
     }
     const native = !!this.stage.querySelector('.cv-scene-native:not([hidden])');
     setText(this.root.querySelector('.cv-ch-note') as HTMLElement, lab ? (this.labSolo ? `The canvas shows ${ROWS.find((r) => r.id === this.labSolo)?.label} alone, as grey (a and b mid-grey where neutral); click Lab to see the colours again. The Brush, Pencil and Eraser paint it alone.` : 'Lab: Lightness, a and b as greys (a and b mid-grey where neutral). Click one to see it alone on the canvas.') : cmyk ? (this.inkSolo ? `The canvas shows ${ROWS.find((r) => r.id === this.inkSolo)?.label} alone (paper white, full ink black); the Brush, Pencil and Eraser paint it alone.` : 'Click an ink to paint it alone; ⌘- or Ctrl-click loads its light areas as a selection.')
-      : native && !plain ? 'The Native GPU renderer draws outside the page: switch the renderer in Preferences to view single channels.' : '⌘- or Ctrl-click a channel to load it as a selection.');
+      : native && !plain ? 'The Native GPU renderer draws outside the page: switch the renderer in Preferences to view single channels.' : this.solo ? `${ROWS.find((r) => r.id === this.solo)?.label} is the target: strokes, fills and filters change only this channel. Click RGB to edit all three.` : '⌘- or Ctrl-click a channel to load it as a selection.');
     this.syncAlphas();
   }
 
@@ -199,6 +201,9 @@ export class ChannelsPanel {
     const name = q(row, '.cv-ch-name'), eye = q(row, '.cv-ch-eye'), p = this.engine.current;
     if (!name.querySelector('input')) setText(name, a.name);
     row.classList.toggle('is-on', on);
+    row.classList.toggle('is-spot', !!a.spot);
+    const ink = a.spot && a.color ? `rgb(${a.color.r}, ${a.color.g}, ${a.color.b})` : '';
+    if (row.style.getPropertyValue('--ink') !== ink) { if (ink) row.style.setProperty('--ink', ink); else row.style.removeProperty('--ink'); }
     eye.classList.toggle('is-off', !on);
     if (eye.getAttribute('aria-label') !== `Show ${a.name}`) eye.setAttribute('aria-label', `Show ${a.name}`);
     const was = this.drawn.get(row);

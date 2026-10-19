@@ -372,8 +372,11 @@ export function moveActive(host: StructHost, by: 1 | -1): void {
     const ids = p.selectedIds.size > 1 ? selectedRoots(p) : [act.id];
     const rank = (id: ID): number => layers.findIndex((l) => l.id === id);
     const stuck = new Set<ID>();
+    const bottom = layers.find((l) => !l.parentId);
+    if (bottom && !bottom.isGroup && bottom.name === 'Background') stuck.add(bottom.id);
     let changed = false;
     for (const id of [...ids].sort((a, b) => by * (rank(b) - rank(a)))) {
+      if (stuck.has(id)) continue;
       const next = stepSibling(layers, id, by, stuck);
       if (next) { layers = next; changed = true; } else stuck.add(id);
     }
@@ -421,22 +424,48 @@ export function moveOutOfFolder(host: StructHost): void {
   });
 }
 
-export function copyLayerToProject(host: StructHost, id: ID, targetProjectId: string): boolean {
-  const source = host.projects.find((pr) => pr.layer(id));
+/** The selected layers with the folder contents under them, cloned, for Copy Layers; null when nothing is selected. */
+export function layersForCopy(p: Project): { layers: Layer[]; roots: ID[] } | null {
+  const roots = selectedRoots(p);
+  if (!roots.length) return null;
+  const set = new Set<ID>();
+  for (const r of roots) for (const id of subtree(p.doc.layers, r)) set.add(id);
+  return { layers: p.doc.layers.filter((l) => set.has(l.id)).map((l) => ({ ...cloneLayer(l), id: l.id })), roots };
+}
+
+/** Copies `roots` (ids in `source`, with their folder contents) into the project `targetProjectId` as one step there. `place`
+ *  'center' puts the group of them at the target's centre; 'keep' leaves their positions. */
+export function copyLayersToProject(host: StructHost, ids: readonly ID[], targetProjectId: string, place: 'center' | 'keep' = 'center'): boolean {
+  const source = host.projects.find((pr) => ids.some((i) => pr.layer(i)));
   const target = host.projects.find((pr) => pr.id === targetProjectId);
   if (!source || !target || source === target || host.busy) return false;
   host.settle();
-  const set = subtree(source.doc.layers, id);
-  const included = source.doc.layers.filter((l) => set.has(l.id));
+  const picked = source.doc.layers.filter((l) => ids.includes(l.id) && !ancestors(byId(source.doc), l).some((a) => ids.includes(a.id)));
+  const set = new Set<ID>();
+  for (const r of picked) for (const id of subtree(source.doc.layers, r.id)) set.add(id);
+  return insertCopies(host, source.doc.layers.filter((l) => set.has(l.id)), picked.map((l) => l.id), target, place);
+}
+
+/** Pastes the layers Copy Layers kept into the current project: in place when the sizes agree, else centred. */
+export function pasteLayerCopies(host: StructHost, clip: { layers: Layer[]; roots: ID[]; width: number; height: number }): boolean {
+  const target = host.current;
+  if (!target || host.busy) return false;
+  host.settle();
+  return insertCopies(host, clip.layers, clip.roots, target, clip.width === target.doc.width && clip.height === target.doc.height ? 'keep' : 'center');
+}
+
+function insertCopies(host: StructHost, included: readonly Layer[], roots: readonly ID[], target: Project, place: 'center' | 'keep'): boolean {
   const pixels = (ls: readonly Layer[]): number => ls.reduce((s, l) => s + (l.raster ? l.raster.width * l.raster.height : 0), 0);
   if (pixels(target.doc.layers) + pixels(included) > LIMITS.pixels) {
     host.notice(`The copied layers exceed this project's ${Math.round(LIMITS.pixels / 1_000_000)}-megapixel limit.`);
     return false;
   }
   const ids = new Map<ID, ID>(included.map((l) => [l.id, uid()]));
-  const head = source.layer(id)!;
-  const dx = target.doc.width / 2 - (head.transform.x + head.transform.w / 2);
-  const dy = target.doc.height / 2 - (head.transform.y + head.transform.h / 2);
+  const heads = included.filter((l) => roots.includes(l.id));
+  const x0 = Math.min(...heads.map((h) => h.transform.x)), y0 = Math.min(...heads.map((h) => h.transform.y));
+  const x1 = Math.max(...heads.map((h) => h.transform.x + h.transform.w)), y1 = Math.max(...heads.map((h) => h.transform.y + h.transform.h));
+  const dx = place === 'keep' ? 0 : target.doc.width / 2 - (x0 + x1) / 2;
+  const dy = place === 'keep' ? 0 : target.doc.height / 2 - (y0 + y1) / 2;
   const copies = included.map((l) => {
     const c = cloneLayer(l, {
       parentId: l.parentId && ids.has(l.parentId) ? ids.get(l.parentId)! : null,
@@ -451,9 +480,15 @@ export function copyLayerToProject(host: StructHost, id: ID, targetProjectId: st
   host.switchTo(target.id);
   host.edit('Copy Layers from Project', (p) => {
     p.setLayers([...p.doc.layers, ...copies]);
-    host.focus(p, ids.get(id)!);
+    const tops = roots.map((r) => ids.get(r)!);
+    host.focus(p, tops[tops.length - 1]);
+    p.selectedIds = new Set(tops);
   });
   return true;
+}
+
+export function copyLayerToProject(host: StructHost, id: ID, targetProjectId: string): boolean {
+  return copyLayersToProject(host, [id], targetProjectId);
 }
 
 export function toggleClip(host: StructHost, id?: ID): void {

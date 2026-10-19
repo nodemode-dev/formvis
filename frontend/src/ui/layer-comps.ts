@@ -1,9 +1,11 @@
 import type { Engine } from '../engine';
 import type { LayerComp } from '../engine/types';
+import { compStatus } from '../engine/layer-comps';
 import { el, patchList, q, setHidden, setText } from './dom';
 import { icon } from './icons';
+import { LayerCompDialog } from './panels/layer-comp-dialog';
 
-type Row = { key: string; id: string; name: string; comment: string; missing: number };
+type Row = { key: string; id: string; name: string; comment: string; missing: number; changed: number };
 
 /** The Layer Comps panel (Window > Layer Comps, DEV_PLAN 33.3 part b): "Last Document State" on top, then one
  *  fixed-height row per comp. The square on the left marks the active comp and applies one when clicked; a double
@@ -17,6 +19,13 @@ export class LayerCompsPanel {
   /** The row picked by a click; kept here, not in the doc. Without a valid pick the active comp is the target. */
   private selected: string | null = null;
 
+  private dialog: LayerCompDialog | null = null;
+
+  private async showDialog(id: string | null): Promise<void> {
+    this.dialog ??= new LayerCompDialog(this.engine);
+    this.dialog.show(id);
+  }
+
   private target(): string | null {
     const d = this.engine.current?.doc;
     return this.selected && d?.comps?.some((c) => c.id === this.selected) ? this.selected : d?.activeComp ?? null;
@@ -29,7 +38,7 @@ export class LayerCompsPanel {
       `<div class="cv-panel-head"><span class="cv-comps-title">${icon('layers', 14)}<span>Layer Comps</span></span><span></span><span class="cv-comps-count"></span></div>` +
       `<div class="cv-comps-list" role="listbox" aria-label="Layer Comps"><div class="cv-comp-row cv-comp-state" role="option"><span class="cv-comp-mark"></span><span class="cv-comp-name">Last Document State</span></div>` +
       `<div class="cv-comps-empty">No layer comps yet. Use New to record the current state.</div></div>` +
-      `<div class="cv-panel-foot">${btn('previous', 'Previous comp', 'chevronLeft')}${btn('next', 'Next comp', 'chevronRight')}${btn('update', 'Update the selected comp', 'refresh')}${btn('new', 'New layer comp', 'add')}${btn('delete', 'Delete the selected comp', 'delete')}</div></section>`);
+      `<div class="cv-panel-foot">${btn('previous', 'Previous comp', 'chevronLeft')}${btn('next', 'Next comp', 'chevronRight')}${btn('update', 'Update the selected comp', 'refresh')}${btn('options', 'Layer Comp Options', 'settings')}${btn('duplicate', 'Duplicate the selected comp', 'duplicate')}${btn('new', 'New layer comp', 'add')}${btn('delete', 'Delete the selected comp', 'delete')}</div></section>`);
     const section = q(root, '.cv-layer-comps');
     this.rows = q(section, '.cv-comps-list');
     this.empty = q(section, '.cv-comps-empty');
@@ -44,7 +53,9 @@ export class LayerCompsPanel {
         case 'next': this.engine.nextLayerComp(1); break;
         case 'update': if (id) this.engine.updateLayerComp(id); break;
         case 'delete': if (id) this.engine.deleteLayerComp(id); break;
-        case 'new': this.engine.newLayerComp(); break;
+        case 'new': void this.showDialog(null); break;
+        case 'options': if (id) void this.showDialog(id); break;
+        case 'duplicate': if (id) this.selected = this.engine.duplicateLayerComp(id) ?? this.selected; break;
       }
     });
     this.rows.addEventListener('click', (e) => {
@@ -94,10 +105,9 @@ export class LayerCompsPanel {
     state.classList.toggle('is-active', !active);
     this.foot.forEach((b) => {
       const a = b.dataset.act;
-      b.disabled = !d || (a === 'previous' || a === 'next' ? comps.length === 0 : a === 'update' || a === 'delete' ? !picked : false);
+      b.disabled = !d || (a === 'previous' || a === 'next' ? comps.length === 0 : a === 'update' || a === 'delete' || a === 'options' || a === 'duplicate' ? !picked : false);
     });
-    const have = new Set((d?.layers ?? []).map((l) => l.id));
-    const list: Row[] = comps.map((c) => ({ key: c.id, id: c.id, name: c.name, comment: c.comment, missing: Object.keys(c.layers).filter((k) => !have.has(k)).length }));
+    const list: Row[] = comps.map((c) => ({ key: c.id, id: c.id, name: c.name, comment: c.comment, ...(d && c.id === active ? compStatus(d, c) : { missing: d ? compStatus(d, c).missing : 0, changed: 0 }) }));
     for (const id of [...this.open]) if (!comps.some((c) => c.id === id)) this.open.delete(id);
     patchList<Row>(this.rows, list, {
       key: (r) => r.key,
@@ -114,7 +124,9 @@ export class LayerCompsPanel {
   private fill(row: HTMLElement, r: Row, active: string | null, picked: string | null): void {
     row.dataset.id = r.id;
     setText(q(row, '.cv-comp-name'), r.name);
-    const warn = r.missing ? `${r.missing} layer${r.missing === 1 ? '' : 's'} recorded in this comp ${r.missing === 1 ? 'was' : 'were'} deleted. Update the comp to drop the warning.` : '';
+    const gone = r.missing ? `${r.missing} layer${r.missing === 1 ? '' : 's'} recorded in this comp ${r.missing === 1 ? 'was' : 'were'} deleted. Update the comp to drop the warning.` : '';
+    const moved = r.changed ? `${r.changed} layer${r.changed === 1 ? '' : 's'} no longer match${r.changed === 1 ? 'es' : ''} this comp. Update the comp to keep the change, or apply it again to undo it.` : '';
+    const warn = [gone, moved].filter(Boolean).join(' ');
     setText(q(row, '.cv-comp-comment'), warn ? `${r.comment || 'No comment.'}\n${warn}` : r.comment || 'No comment.');
     row.title = warn;
     row.classList.toggle('has-warning', !!warn);

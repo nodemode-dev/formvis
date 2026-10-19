@@ -4,6 +4,18 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.89.2 · 2026-10-19
+
+### Added
+
+- Layers: pick a layer under the pointer with Ctrl+Alt+Cmd-click from any tool, a layer picker on right-click, toggle layers with Cmd/Ctrl+Shift-click, folder locks apply to their contents, Copy Layers and Paste Layers, drag several layers to another document; Alt-drag copies with Move, two digits set an exact opacity; Photomerge from open documents with Perspective, Cylindrical and Collage layouts, Auto-Align with a reference layer and lens correction, Auto-Blend halo control; layer comp options, duplicate, last document state and warnings; Show Altered Video.
+- Channels, smart objects and masks: paint, fill and filter a single colour channel; Split and Merge Channels; spot channels; Warp, Puppet Warp and Perspective Warp on smart objects stay editable; Convert for Smart Filters; Reveal embedded sources; mask Invert and Select and Mask in Properties; vector mask density and feather; blur and noise adjustment layers.
+- Styles and filters: shadow and glow spread, noise and knockout; satin contour; more gradient overlay styles; pattern angle and phase; Blend Interior Effects as Group and Layer Mask Hides Effects; copy and move single effects; Image Size scales styles; Lens Blur with blade shapes and a depth map; drawn Path Blur and several irises and spins; Lens Correction batch; dither kernels and halftone screens; Displace from a layer; a Shear curve; a zoomable filter preview; grain Look strength; three lights in Lighting Effects.
+
+### Fixed
+
+- The Move bar shows the transform fields only during a transform, so the align buttons fit again.
+
 ## 1.89.1 · 2026-10-19
 
 ### Added

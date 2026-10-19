@@ -874,6 +874,17 @@ export class Stage {
         return;
       }
       if (e.button !== 0) return;
+      // Ctrl+Alt+Cmd (Ctrl+Alt+Shift off the Mac) picks the layer under the pointer with any tool; Cmd+Shift-click with
+      // the Move tool adds or removes it from the selection.
+      if (e.ctrlKey && e.altKey && (isMac ? e.metaKey : e.shiftKey)) {
+        const hit = this.engine.layerAt(p.doc);
+        if (hit) this.engine.selectLayer(hit);
+        return;
+      }
+      if (p.mod && p.shift && !p.alt && this.tool()?.id === 'move' && !this.engine.current?.selection?.valueAt(Math.floor(p.doc.x), Math.floor(p.doc.y))) {
+        const hit = this.engine.layerAt(p.doc);
+        if (hit) { this.engine.selectLayer(hit, 'toggle'); return; }
+      }
       o.setPointerCapture(e.pointerId);
       this.dragId = e.pointerId;
       const gi = this.tool()?.id === 'move' ? this.engine.guideAt(p.screen) : null;

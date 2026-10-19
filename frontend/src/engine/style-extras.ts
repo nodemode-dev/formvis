@@ -85,5 +85,7 @@ export function scaledEffects(fx: LayerEffects, k: number): LayerEffects {
   out.satin.distance = px(out.satin.distance);
   out.satin.size = px(out.satin.size);
   out.patternOverlay.scale *= k;
+  if (out.patternOverlay.phaseX) out.patternOverlay.phaseX = px(out.patternOverlay.phaseX);
+  if (out.patternOverlay.phaseY) out.patternOverlay.phaseY = px(out.patternOverlay.phaseY);
   return out;
 }

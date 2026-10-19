@@ -107,6 +107,10 @@ function resizeCursor(t: Transform, handle: number): string {
 const fmt = (n: number): string => String(Math.round(n * 10) / 10);
 
 let pixelStart: { x: number; y: number } | null = null;
+/** An Alt-drag made a copy of the layers before the drag; Escape takes the copy away again. */
+let altCopy = false;
+/** The last opacity digit and when it was typed: a second digit within a moment makes an exact percentage. */
+let lastDigit: { d: number; at: number } | null = null;
 /** The marquee that selects layers: pressed where Auto-Select (or Cmd or Ctrl) finds no layer. */
 let marquee: { a: { x: number; y: number }; b: { x: number; y: number }; sa: { x: number; y: number }; add: boolean } | null = null;
 
@@ -121,7 +125,7 @@ const DISTORT_HINTS = {
 export const moveTool: Tool = {
   id: 'move', label: 'Move', key: 'V', order: 10,
   icon: () => 'tMove',
-  hint: (eng) => (eng.distortEdit ? DISTORT_HINTS[eng.distortEdit.mode] : eng.pathTransform?.dmode ? DISTORT_HINTS[eng.pathTransform.dmode] : eng.anyTransformPending ? (eng.pathTransform ? 'Free Transform Path' : 'Free Transform') + ' · Drag a handle to scale, outside a corner to turn, inside to move · Type values in the bar · Shift constrains · Alt from the center · Cmd or Ctrl skips snapping · Enter applies · Escape cancels' : eng.transformConstraint === 'scale' ? 'Scale · Drag a handle to scale · Shift keeps or frees the proportions · Alt scales from the center · Enter or Escape ends' : eng.transformConstraint === 'rotate' ? 'Rotate · Drag a handle or outside the box to turn · Shift turns by 15° · Enter or Escape ends' : eng.floatingSelection ? 'Transform Selection · Drag to move · Handles resize · Outside a corner rotates · Shift constrains · Enter applies · Escape cancels' : 'Drag to move · Drag inside a selection to move its pixels, Alt to duplicate them · Handles resize · Outside a corner rotates · Shift constrains · Alt resizes from the center · Cmd or Ctrl picks the layer under the pointer · Arrows nudge · 1-0 set layer opacity'),
+  hint: (eng) => (eng.distortEdit ? DISTORT_HINTS[eng.distortEdit.mode] : eng.pathTransform?.dmode ? DISTORT_HINTS[eng.pathTransform.dmode] : eng.anyTransformPending ? (eng.pathTransform ? 'Free Transform Path' : 'Free Transform') + ' · Drag a handle to scale, outside a corner to turn, inside to move · Type values in the bar · Shift constrains · Alt from the center · Cmd or Ctrl skips snapping · Enter applies · Escape cancels' : eng.transformConstraint === 'scale' ? 'Scale · Drag a handle to scale · Shift keeps or frees the proportions · Alt scales from the center · Enter or Escape ends' : eng.transformConstraint === 'rotate' ? 'Rotate · Drag a handle or outside the box to turn · Shift turns by 15° · Enter or Escape ends' : eng.floatingSelection ? 'Transform Selection · Drag to move · Handles resize · Outside a corner rotates · Shift constrains · Enter applies · Escape cancels' : 'Drag to move · Drag inside a selection to move its pixels, Alt to duplicate them · Handles resize · Outside a corner rotates · Shift constrains · Alt resizes from the center · Alt-drag inside the box copies the layers · Cmd or Ctrl flips Auto-Select for the drag · Arrows nudge · 1-0 set layer opacity'),
   cursor(ctx, p) {
     if (!p) return 'default';
     if (ctx.engine.meshWarpEdit) ctx.engine.meshWarpAim = { x: p.doc.x, y: p.doc.y };
@@ -163,14 +167,19 @@ export const moveTool: Tool = {
     if (e.distortEdit) return;
     const sel = e.current?.selection;
     if (sel && sel.valueAt(Math.floor(p.doc.x), Math.floor(p.doc.y)) >= 128 && e.beginPixelMove(p.alt)) { pixelStart = { x: p.doc.x, y: p.doc.y }; return; }
-    if (p.mod || e.autoSelect) {
-      // Auto-Select Target Group selects the top-most folder holding the layer.
+    if (!!p.mod !== e.autoSelect) {
+      // Cmd or Ctrl flips Auto-Select for the press. Auto-Select Target Group selects the top-most folder holding the layer.
       let id = e.layerAt(p.doc);
       if (id && e.autoSelectTarget === 'group') { const doc = e.current?.doc; let l = doc?.layers.find((x) => x.id === id); while (l?.parentId) { const up = doc?.layers.find((x) => x.id === l?.parentId); if (!up) break; l = up; } if (l) id = l.id; }
       if (id) e.selectLayer(id);
       else { marquee = { a: { ...p.doc }, b: { ...p.doc }, sa: { ...p.screen }, add: p.shift }; return; }
     }
     const m = hit(ctx, p);
+    if (m && m.kind === 'move' && p.alt && !e.transformEdit && e.activeLayer && !e.activeLayer.locks?.position && !e.activeLayer.locks?.all) {
+      const before = e.current?.doc.layers.length ?? 0;
+      e.duplicateLayers();
+      altCopy = (e.current?.doc.layers.length ?? 0) > before;
+    }
     if (m) e.continueTransform(m, p.doc);
   },
   move(ctx, p) {
@@ -221,6 +230,7 @@ export const moveTool: Tool = {
     if (ctx.engine.meshWarpEdit || ctx.engine.puppetEdit) return;
     if (cornerDrag !== null) { cornerDrag = null; distortFrom = null; return; }
     if (pixelStart) { pixelStart = null; ctx.engine.endPixelMove(); return; }
+    altCopy = false;
     ctx.engine.releaseTransform();
   },
   cancel(ctx) {
@@ -232,6 +242,7 @@ export const moveTool: Tool = {
     if (cornerDrag !== null) { cornerDrag = null; distortFrom = null; return; }
     if (pixelStart) { pixelStart = null; ctx.engine.cancelPixelMove(); return; }
     ctx.engine.cancelTransformDrag();
+    if (altCopy) { altCopy = false; ctx.engine.undo(); }
   },
   keydown(ctx, e) {
     const eng = ctx.engine;
@@ -248,7 +259,13 @@ export const moveTool: Tool = {
     if (e.key === 'ArrowUp') { eng.nudge(0, -step); return true; }
     if (e.key === 'ArrowDown') { eng.nudge(0, step); return true; }
     const digit = digitOf(e);
-    if (typeof digit === 'number' && digit >= 0 && !e.shiftKey && !e.altKey) { eng.setOpacity(digit === 0 ? 1 : digit / 10); return true; }
+    if (typeof digit === 'number' && digit >= 0 && !e.shiftKey && !e.altKey) {
+      const now = performance.now(), prev = lastDigit && now - lastDigit.at < 700 ? lastDigit.d : null;
+      lastDigit = { d: digit, at: now };
+      if (prev !== null && prev > 0) { lastDigit = null; eng.setOpacity((prev * 10 + digit) / 100); return true; }
+      eng.setOpacity(digit === 0 ? 1 : digit / 10);
+      return true;
+    }
     if (e.key === 'Enter' && eng.perspectiveEdit) { eng.applyPerspectiveWarp(); return true; }
     if (e.key === 'Escape' && eng.perspectiveEdit) { eng.cancelPerspectiveWarp(); return true; }
     if (e.key === 'Enter' && eng.puppetEdit) { eng.applyPuppetWarp(); return true; }
@@ -258,7 +275,7 @@ export const moveTool: Tool = {
     if (e.key === 'Enter' && eng.distortEdit) { eng.applyDistort(); return true; }
     if (e.key === 'Escape' && eng.distortEdit) { eng.cancelDistort(); return true; }
     if (e.key === 'Escape' && pixelStart) { pixelStart = null; eng.cancelPixelMove(); return true; }
-    if (e.key === 'Escape' && eng.transformEdit) { eng.cancelTransform(); return true; }
+    if (e.key === 'Escape' && eng.transformEdit) { eng.cancelTransform(); if (altCopy) { altCopy = false; eng.undo(); } return true; }
     const ended = (e.key === 'Enter' || e.key === 'Escape') && !!eng.transformConstraint;
     if (ended) eng.endTransformMode();
     if (e.key === 'Escape' && eng.floatingSelection) { eng.cancelSelectionTransform(); return true; }
@@ -407,13 +424,8 @@ export const moveTool: Tool = {
       const l = e.activeLayer;
       return l && l.raster ? l.transform : null;
     };
-    // The transform's fields stay while its controls are shown, after the pointer is released, so a value can be typed.
-    const editing = (): boolean => {
-      if (e.pathTransform) return !e.pathTransform.corners;
-      if (e.transformEdit) return true;
-      const l = e.activeLayer;
-      return e.showTransformControls && !!l && !!l.raster && !l.isGroup && !e.distortEdit && !e.meshWarpEdit && !e.puppetEdit && !e.perspectiveEdit && !e.floatingSelection;
-    };
+    // The transform's fields wait for a transform: a handle drag, a pending Free Transform or a path transform.
+    const editing = (): boolean => e.pathTransform ? !e.pathTransform.corners : !!e.transformEdit;
     return [
       { kind: 'title', text: 'Move' },
       // As the target's Move bar (Phase 21, s20): Auto-Select and its target, Show Transform Controls, Snap, then

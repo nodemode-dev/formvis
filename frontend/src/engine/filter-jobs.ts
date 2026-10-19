@@ -1,6 +1,6 @@
 import type { DevelopState } from './develop';
 import type { LensFix } from './filters';
-import type { ShakeSettings, SmartSharpenSettings } from './filters-more';
+import type { LensIris, ShakeSettings, SmartSharpenSettings } from './filters-more';
 import type { GalleryKind, GallerySettings } from './blur-gallery';
 import type { LibColors, LibFrame, LibKind, LibValues } from './filter-library';
 import { runFilterOnGpu } from './gpu-filters';
@@ -9,7 +9,7 @@ import { runFilterOnGpu } from './gpu-filters';
  *  transferred buffers. `runFilterOffThread` answers null where module workers are missing or after a failure, so the
  *  caller filters on its own. */
 
-export interface FilterSettings { radius: number; angle: number; distance: number; amount: number; gaussian: boolean; monochromatic: boolean; distortion: number; lensFix?: LensFix; usmAmount: number; usmRadius: number; threshold: number; develop: DevelopState; lensRadius: number; lensBrightness: number; lensThreshold: number; smart: SmartSharpenSettings; shake: ShakeSettings; gallery: GallerySettings; lib?: Partial<Record<LibKind, LibValues>>; colors?: LibColors }
+export interface FilterSettings { radius: number; angle: number; distance: number; amount: number; gaussian: boolean; monochromatic: boolean; distortion: number; lensFix?: LensFix; usmAmount: number; usmRadius: number; threshold: number; develop: DevelopState; lensRadius: number; lensBrightness: number; lensThreshold: number; lensIris?: LensIris; smart: SmartSharpenSettings; shake: ShakeSettings; gallery: GallerySettings; lib?: Partial<Record<LibKind, LibValues>>; colors?: LibColors }
 export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection' | 'unsharpMask' | 'develop' | 'lensBlur' | 'smartSharpen' | 'shakeReduction' | GalleryKind | LibKind;
 export interface FilterJob { id: number; kind: FilterKind; settings: FilterSettings; scale: number; seed: number; width: number; height: number; pixels: ArrayBuffer; frame?: LibFrame | null }
 export interface FilterResult { id: number; width: number; height: number; pixels: ArrayBuffer }

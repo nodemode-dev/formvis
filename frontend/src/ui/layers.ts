@@ -623,7 +623,7 @@ export class LayersPanel {
       if (rows.hasPointerCapture(e.pointerId)) rows.releasePointerCapture(e.pointerId);
       if (cancel) return;
       this.showTabDrop(null);
-      if (d.started && d.tabTarget) this.engine.copyLayerToProject(d.id, d.tabTarget);
+      if (d.started && d.tabTarget) this.engine.copyLayersToProject(d.ids, d.tabTarget, e.shiftKey);
       else if (d.started && d.target) {
         if (d.maskFrom) this.engine.copyMask(d.maskFrom, d.target.id);
         else this.engine.moveLayers(d.ids, d.target.id, d.target.where, e.altKey);

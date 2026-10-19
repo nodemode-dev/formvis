@@ -9,7 +9,7 @@ import { decodeLab, labFromFloats, labFromRgba, labToSrgb, renderLab } from './l
 import { composeFloat, setStyleDrawer } from './compose-float';
 import { deepFromRaster, deepToLinear, deepToned, rasterFromDeep, resampleDeep, strokeDeep } from './deep';
 import type { ChannelPixels, DeepPixels, DocProfile, EngineJob } from './types';
-import { applyComp, captureComp, type CompOptions } from './layer-comps';
+import { applyComp, captureComp, editComp, updateComp, type CompOptions, type CompPart } from './layer-comps';
 import { captureFrame, frameLayers, type Frame, type FrameLayer, type Timeline } from './timeline';
 import { newVideoTimeline, sampleToFrames, stateAt, valueAt, type FadeColor, type VideoTimeline } from './video-timeline';
 import { fillVector, mapPath, pathBounds, samplePath, shiftPath, tracePath, type NamedPath, type PathOp, type PathSet, type SubPath, type VectorPath } from './paths';
@@ -22,9 +22,10 @@ import type { CharacterStyle } from './types';
 import { Emitter } from './events';
 import { bumpMap, heightField, heightFromNormal, normalMap } from './normal-map';
 import * as VR from './variables';
-import type { DocVariable, LayerLabel, BoxKind, DocBox } from './types';
+import type { DocVariable, LayerLabel, BoxKind, DocBox, LayerComp } from './types';
 import type { RelightContent } from './relight';
 import { History, type HistoryEntry, type PixelPatch, type Snapshot } from './history';
+import { restrictPatches, type RgbTarget } from './channel-target';
 import { Renderer, renderDoc, type LayerOverride } from './renderer';
 import { applyDuotoneLut, curveAt, DUOTONE_COUNT, duotoneLut, type Duotone } from './duotone';
 import { compositeChannels, splitChannels } from './multichannel';
@@ -60,6 +61,7 @@ import * as NT from './notes-ops';
 import * as BX from './boxes';
 import * as SM from './smart-ops';
 import * as SOB from './smart-object-ops';
+import { deformNow, matBox } from './smart-deform';
 import * as MO from './mode-ops';
 import * as SN from './snapshot-ops';
 import * as FR from './frame-ops';
@@ -67,7 +69,7 @@ import * as PA from './path-ops';
 import * as TX from './text-ops';
 import * as VD from './video-ops';
 import * as TE from './transform-entry';
-import { type DocMode, BLEND_MODES, canvasBlend, LIMITS, setPixelLimit, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStroke, type ShapeStyle, type FootageInterpretation, effectsFromData, type Artboard, artboardFromData, type AlphaChannel, effectsPresent } from './types';
+import { type DocMode, BLEND_MODES, canvasBlend, LIMITS, setPixelLimit, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartDeform, type SmartDeformData, type SmartFilter, type SmartLink, type SmartObject, type ShapeStroke, type ShapeStyle, type FootageInterpretation, effectsFromData, type Artboard, artboardFromData, type AlphaChannel, effectsPresent } from './types';
 import { allPatterns, patternById } from './patterns';
 import { fillFrame, fillName, renderFill } from './fill-layers';
 import type { FillContent, VectorMask, WarpStyle } from './types';
@@ -121,7 +123,7 @@ import { dissolveNoise } from './blend';
 import { LUT3_N, adjustmentLut, adjustmentLut3 } from './lut';
 import { decontaminate } from './select-mask';
 import { alphaToMask, defringe, distanceSquared, removeMatte } from './matting';
-import { alphasMoved, alphasRedrawn, nextAlphaName } from './alphas';
+import { alphaGrey, alphasMoved, alphasRedrawn, nextAlphaName, nextSpotName } from './alphas';
 import { CALC_COLOR_CHANNELS, CALC_MODES, blendGreys, channelOf, invertGrey, type CalcColorChannel, type CalcMode } from './calculations';
 
 /** One Calculations source: a layer (id or name, or Merged), a channel and whether it is inverted. */
@@ -137,6 +139,7 @@ export interface GpuClipSpec { image: Surface; version: number; width: number; h
 export interface GpuMaskSpec { image: Surface; version: number; width: number; height: number; matrix: Mat }
 export type { HealMode } from './retouch';
 import type { AdjustmentKind } from './types';
+import { MULTI_EFFECTS, defaultEffects } from './types';
 export { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, COLOR_RANGES, defaultAdjustmentData, defaultHsv, grainFromData, grainKernel, hsvFromData, hsvKernel, hsvToData, randomSeed } from './adjust';
 export type { ColorRange, GrainSettings, HsvSettings } from './adjust';
 export { addNoise, defaultLensFix, gaussianBlur, gaussianMargin, histogram, lensCorrect, lensDistort, motionBlur, motionMargin, unsharpMask } from './filters';
@@ -274,6 +277,8 @@ export class Engine {
   paintChannel: 0 | 1 | 2 | 3 | null = null;
   /** In a Lab document (1.71.9), the one plane (L, a or b) a Brush, Pencil or Eraser stroke writes when it is solo. */
   paintLab: 0 | 1 | 2 | null = null;
+  /** In an 8-bit RGB document, the planes (red, green, blue) a step may change while the Channels panel targets some of them; null targets all. */
+  rgbTarget: RgbTarget | null = null;
   get fg(): RGB { return this.fgc; }
   set fg(c: RGB) { this.fgc = this.inMode(c); if (this.current?.doc.mode === 'cmyk' && this.current.cmykIn) this.fgInk = inkOf(this.fgc, this.current.cmykIn); }
   get bg(): RGB { return this.bgc; }
@@ -407,7 +412,9 @@ export class Engine {
   private lockedAt = 0;
   /** Whether a lock stops this edit to the layer, saying so once when it does. */
   private locked(l: Layer | null | undefined, what: 'pixels' | 'position'): boolean {
-    const k = l?.locks;
+    let k = l?.locks;
+    const p = this.current;
+    for (let up = l?.parentId ? p?.layer(l.parentId) : null, n = 0; up && n < 64 && !(k && (k.all || k[what])); up = up.parentId ? p?.layer(up.parentId) : null, n += 1) if (up.locks && (up.locks.all || up.locks[what])) k = up.locks;
     if (!k || !(k.all || k[what])) return false;
     this.notice(what === 'pixels' ? 'The layer’s pixels are locked. Unlock them in the Layers panel.' : 'The layer’s position is locked. Unlock it in the Layers panel.');
     this.lockedAt = performance.now();
@@ -448,27 +455,54 @@ export class Engine {
     this.edit('Apply Layer Comp', (p) => {
       const c = p.doc.comps?.find((x) => x.id === id);
       if (!c) return false;
+      const lastState = p.doc.activeComp ? p.doc.lastState : captureComp(p.doc, 'last-state', { name: 'Last Document State' });
       p.setLayers(applyComp(p.doc, c));
-      p.doc = { ...p.doc, activeComp: id };
+      p.doc = { ...p.doc, activeComp: id, lastState };
       return true;
     });
   }
-  /** Layer Comps: re-record a comp from the layers as they are now, under the comp's own switches. */
-  updateLayerComp(id: ID): void {
+  /** Layer Comps: re-record a comp from the layers as they are now, under the comp's own switches; `parts` limits it to
+   *  those of visibility, position and appearance, and the comp keeps what it recorded of the others. */
+  updateLayerComp(id: ID, parts?: readonly CompPart[]): void {
     this.edit('Update Layer Comp', (p) => {
       const c = p.doc.comps?.find((x) => x.id === id);
       if (!c) return false;
-      const next = captureComp(p.doc, id, {}, c);
+      const next = parts?.length ? updateComp(p.doc, c, parts) : captureComp(p.doc, id, {}, c);
       p.doc = { ...p.doc, comps: p.doc.comps!.map((x) => (x.id === id ? next : x)), activeComp: id };
       return true;
     });
+  }
+  /** Layer Comp Options: a comp's name, comment and the three switches; a part switched on is recorded from the layers now. */
+  editLayerComp(id: ID, opts: CompOptions): void {
+    this.edit('Layer Comp Options', (p) => {
+      const c = p.doc.comps?.find((x) => x.id === id);
+      if (!c) return false;
+      const next = editComp(p.doc, c, opts);
+      if (JSON.stringify(next) === JSON.stringify(c)) return false;
+      p.doc = { ...p.doc, comps: p.doc.comps!.map((x) => (x.id === id ? next : x)) };
+      return true;
+    });
+  }
+  /** Layer Comps: a copy of a comp, placed after it and named "<name> copy". */
+  duplicateLayerComp(id: ID): ID | null {
+    let made: ID | null = null;
+    this.edit('Duplicate Layer Comp', (p) => {
+      const list = p.doc.comps ?? [], at = list.findIndex((x) => x.id === id);
+      if (at < 0) return false;
+      made = uid();
+      const copy: LayerComp = { ...(JSON.parse(JSON.stringify(list[at])) as LayerComp), id: made, name: `${list[at].name} copy` };
+      p.doc = { ...p.doc, comps: [...list.slice(0, at + 1), copy, ...list.slice(at + 1)] };
+      return true;
+    });
+    return made;
   }
   deleteLayerComp(id: ID): void {
     this.edit('Delete Layer Comp', (p) => {
       const list = p.doc.comps ?? [];
       if (!list.some((x) => x.id === id)) return false;
       const rest = list.filter((x) => x.id !== id);
-      p.doc = { ...p.doc, comps: rest.length ? rest : undefined, activeComp: p.doc.activeComp === id ? null : p.doc.activeComp };
+      const was = p.doc.activeComp === id;
+      p.doc = { ...p.doc, comps: rest.length ? rest : undefined, activeComp: was ? null : p.doc.activeComp, lastState: was ? undefined : p.doc.lastState };
       return true;
     });
   }
@@ -480,12 +514,13 @@ export class Engine {
       return true;
     });
   }
-  /** Layer Comps, Last Document State: clear the active comp as one step. The layers keep the state they have now;
-   *  stepping back to before a comp was applied is Undo. */
+  /** Layer Comps, Last Document State: put the layers back as they were before the first comp was applied and clear
+   *  the active comp, as one step. Without that state kept (a comp just made, or a project reopened) the layers stay. */
   clearLayerComp(): void {
     this.edit('Last Document State', (p) => {
       if (!p.doc.activeComp) return false;
-      p.doc = { ...p.doc, activeComp: null };
+      if (p.doc.lastState) p.setLayers(applyComp(p.doc, p.doc.lastState));
+      p.doc = { ...p.doc, activeComp: null, lastState: undefined };
       return true;
     });
   }
@@ -1742,6 +1777,7 @@ export class Engine {
       let fxParts: ReturnType<Renderer['gpuEffectParts']> = [];
       if (effectsActive(o?.effects ?? l.effects)) {
         if (clip || folders) return { reason: 'layer styles on a clipped layer, a vector mask or inside a masked folder' };
+        if ((o?.effects ?? l.effects)?.blendInterior && (o?.blend ?? l.blend) !== 'normal') return { reason: 'layer styles blended with the layer as a group' };
         fxParts = this.display.gpuEffectParts(l, o, p.doc);
         if (!fxParts) return { reason: 'layer styles on a layer being edited' };
       }
@@ -2262,6 +2298,9 @@ export class Engine {
    *  warp applied, smart filters not), becomes a plain pixel layer keeping name, opacity, blend mode and mask: one step. */
   smartToLayers(): void { SOB.smartToLayers(this.smartObjectHost); }
 
+  /** Layer > Smart Objects > Reset Warp: the active smart object drops its stored Warp, Puppet Warp or Perspective Warp. */
+  resetSmartDeform(): boolean { return SOB.resetDeform(this.smartObjectHost); }
+
   /** The active smart object's name and source raster, for Layer > Smart Objects > Export Contents; null when none. */
   smartContents(): { name: string; raster: Raster } | null { return SM.smartContents(this.smartHost); }
 
@@ -2521,6 +2560,9 @@ export class Engine {
 
   /** Restore Frame: the playhead's frame back to the footage as loaded. */
   restoreFrame(): boolean { return VD.restoreFrame(this.videoHost); }
+
+  /** Show Altered Video: toggles (or sets, given `show`) whether the active video layer shows its painted frames or the footage as loaded. */
+  showAlteredVideo(show?: boolean): boolean { return VD.toggleAlteredVideo(this.videoHost, show); }
 
   /** Restore All Frames: every frame back to the footage as loaded. */
   restoreAllFrames(): boolean { return VD.restoreAllFrames(this.videoHost); }
@@ -2923,6 +2965,46 @@ export class Engine {
 
   /** Clear Layer Style: removes the effects from every selected layer, as one undo step. */
   clearLayerStyle(): void { this.restyle('Clear Layer Style', null); }
+
+  /** One effect (all its instances) of a layer shown or hidden, as one undo step; false when nothing changed. */
+  setEffectShown(layerId: ID, key: keyof Omit<LayerEffects, 'extra' | 'hidden' | 'blendInterior' | 'layerMaskHides'>, shown: boolean): boolean {
+    return this.edit(shown ? 'Show Effect' : 'Hide Effect', (p) => {
+      const l = p.layer(layerId);
+      if (!l?.effects) return false;
+      const fx = structuredClone(l.effects), all = [fx[key] as { enabled: boolean }, ...(((fx.extra as Record<string, unknown> | undefined)?.[key] as Array<{ enabled: boolean }> | undefined) ?? [])];
+      if (all.every((e) => e.enabled === shown)) return false;
+      for (const e of all) e.enabled = shown;
+      p.updateLayer(layerId, { effects: fx });
+      return true;
+    });
+  }
+
+  /** Copies the named effects (all instances each) of one layer onto another, or moves them (the source then reset and
+   *  off), as one undo step. The target keeps its other effects. */
+  transferEffects(fromId: ID, toId: ID, keys: ReadonlyArray<keyof Omit<LayerEffects, 'extra' | 'hidden' | 'blendInterior' | 'layerMaskHides'>>, move: boolean): boolean {
+    if (fromId === toId || !keys.length) return false;
+    return this.edit(move ? 'Move Effects' : 'Copy Effects', (p) => {
+      const from = p.layer(fromId), to = p.layer(toId);
+      if (!from || !to || !effectsPresent(from.effects) || to.isGroup || to.adjustment) return false;
+      const src = from.effects, dst = to.effects ? structuredClone(to.effects) : defaultEffects(), rest = move ? structuredClone(src) : null, blank = defaultEffects();
+      for (const key of keys) {
+        (dst as unknown as Record<string, unknown>)[key] = structuredClone(src[key]);
+        const extra = (src.extra as Record<string, unknown> | undefined)?.[key];
+        if (MULTI_EFFECTS.includes(key as never)) {
+          const next: Record<string, unknown> = { ...(dst.extra as Record<string, unknown> | undefined) };
+          if (extra) next[key] = structuredClone(extra); else delete next[key];
+          if (Object.keys(next).length) dst.extra = next as LayerEffects['extra']; else delete dst.extra;
+        }
+        if (rest) {
+          (rest as unknown as Record<string, unknown>)[key] = blank[key];
+          if (rest.extra) { const left: Record<string, unknown> = { ...(rest.extra as Record<string, unknown>) }; delete left[key]; if (Object.keys(left).length) rest.extra = left as LayerEffects['extra']; else delete rest.extra; }
+        }
+      }
+      p.updateLayer(toId, { effects: dst });
+      if (rest) p.updateLayer(fromId, { effects: effectsPresent(rest) ? rest : null });
+      return true;
+    });
+  }
 
   /** Applies `fx`, or no style, to the active or selected layers as one undo step, as Actions replay a Layer Style. */
   applyLayerStyle(fx: LayerEffects | null): boolean {
@@ -3706,6 +3788,13 @@ export class Engine {
   /** Shift+Plus and Shift+Minus with the Brush tool: its Mode stepped through Normal, Behind, Clear and the canvas blend
    *  modes, wrapping. Returns false for any other tool, which steps the layer's blend mode instead. */
   cycleToolBlend(forward: boolean): boolean {
+    if (this.tool === 'gradient') {
+      const gm = BLEND_MODES.filter((m) => canvasBlend(m.id)).map((m) => m.id), gn = gm.length, gi = Math.max(0, gm.indexOf(this.gradientSettings.blend));
+      this.gradientSettings.blend = gm[(gi + (forward ? 1 : gn - 1)) % gn];
+      this.renderGradient();
+      this.emit('options', null);
+      return true;
+    }
     if (this.tool !== 'brush') return false;
     const modes: Array<BlendMode | 'behind' | 'clear'> = ['normal', 'behind', 'clear', ...BLEND_MODES.filter((m) => m.id !== 'normal' && canvasBlend(m.id)).map((m) => m.id)];
     const n = modes.length, i = Math.max(0, modes.indexOf(this.brushBlend));
@@ -3741,6 +3830,8 @@ export class Engine {
           const slots = prev.flatMap((l, i) => (l.parentId === parent ? [i] : []));
           const sibs = slots.map((i) => prev[i]), picked = sibs.filter((l) => roots.has(l.id)), rest = sibs.filter((l) => !roots.has(l.id));
           const order = how === 'front' ? [...rest, ...picked] : [...picked, ...rest];
+          const bg = parent ? -1 : order.findIndex((l) => l.id === this.backgroundLayer()?.id);
+          if (bg > 0) order.unshift(...order.splice(bg, 1));
           slots.forEach((i, k) => { layers[i] = order[k]; });
         }
       }
@@ -3782,6 +3873,19 @@ export class Engine {
   copyMask(source: ID, target: ID): void { LM.copyMask(this.maskHost, source, target); }
 
   copyLayerToProject(id: ID, targetKey: string): boolean { return LS.copyLayerToProject(this.structHost, id, targetKey); }
+  /** Copies the layers `ids` (with folder contents) into another open document; `keep` leaves their positions, else they are centred. */
+  copyLayersToProject(ids: readonly ID[], targetKey: string, keep = false): boolean { return LS.copyLayersToProject(this.structHost, ids, targetKey, keep ? 'keep' : 'center'); }
+  private layerClip: { layers: Layer[]; roots: ID[]; width: number; height: number } | null = null;
+  get canPasteLayers(): boolean { return !!this.layerClip; }
+  /** Copy Layers: the selected layers as objects (masks, styles, live text, folder contents), kept for Paste Layers in any document. */
+  copyLayers(): number {
+    const p = this.current, got = p ? LS.layersForCopy(p) : null;
+    if (!p || !got) { this.notice('Select a layer to copy.'); return 0; }
+    this.layerClip = { ...got, width: p.doc.width, height: p.doc.height };
+    return got.roots.length;
+  }
+  /** Paste Layers: the layers Copy Layers kept, onto the top of the current document as one step. */
+  pasteLayers(): boolean { return this.layerClip ? LS.pasteLayerCopies(this.structHost, this.layerClip) : false; }
 
   toggleClip(id?: ID): void { LS.toggleClip(this.structHost, id); }
 
@@ -3946,6 +4050,8 @@ export class Engine {
   toggleMaskLink(): void { LM.toggleMaskLink(this.maskHost); }
   /** The active layer's mask density (percent) and feather (pixels); the painted mask is not changed. */
   setMaskShape(shape: { density?: number; feather?: number }): void { LM.setMaskShape(this.maskHost, shape); }
+  setVectorMaskShape(shape: { density?: number; feather?: number }): void { LM.setVectorMaskShape(this.maskHost, shape); }
+  invertMask(): void { LM.invertMask(this.maskHost); }
 
   /** Layer > Vector Mask (1.66.1): Reveal All and Hide All give the active layer an empty vector mask
    *  showing or hiding all of it, Current Path one from the selected path (the layer showing inside it). One step. */
@@ -5003,13 +5109,14 @@ export class Engine {
   }
 
   /** Channels panel New Channel: an empty alpha channel, filled `black` (nothing selected) or `white` (all selected); one step. Returns its id. */
-  newAlpha(opts: { fill?: 'black' | 'white'; name?: string } = {}): ID | null {
+  newAlpha(opts: { fill?: 'black' | 'white'; name?: string; spot?: { color?: RGB; solidity?: number } } = {}): ID | null {
     const p = this.current;
     if (!p) return null;
     const W = p.doc.width, H = p.doc.height;
     if (W > CANVAS_SIDE || H > CANVAS_SIDE || W * H > CANVAS_PIXELS) { this.notice('Alpha channels are kept only in documents within one canvas for now.'); return null; }
-    const id = uid(), name = (opts.name ?? '').trim().slice(0, 200);
-    const ok = this.edit('New Channel', (q) => { const list = q.doc.alphas ?? []; q.doc = { ...q.doc, alphas: [...list, { id, name: name || nextAlphaName(list), mask: opts.fill === 'white' ? SelectionMask.all(W, H) : null }] }; return true; });
+    const id = uid(), name = (opts.name ?? '').trim().slice(0, 200), sp = opts.spot;
+    const ink = sp ? { color: { r: clamp(Math.round(sp.color?.r ?? 255), 0, 255), g: clamp(Math.round(sp.color?.g ?? 0), 0, 255), b: clamp(Math.round(sp.color?.b ?? 0), 0, 255) }, opacity: clamp(Math.round(sp.solidity ?? 100), 0, 100), indicates: 'selected' as const, spot: true } : {};
+    const ok = this.edit(sp ? 'New Spot Channel' : 'New Channel', (q) => { const list = q.doc.alphas ?? []; q.doc = { ...q.doc, alphas: [...list, { id, name: name || (sp ? nextSpotName(list) : nextAlphaName(list)), mask: opts.fill === 'white' ? SelectionMask.all(W, H) : null, ...ink }] }; return true; });
     return ok ? id : null;
   }
 
@@ -5051,16 +5158,71 @@ export class Engine {
   }
 
   /** Channel Options: name, what the overlay colour marks, the colour and its opacity in percent; one step. */
-  setAlphaOptions(id: ID, o: { name?: string; color?: RGB; opacity?: number; indicates?: 'masked' | 'selected' }): boolean {
+  setAlphaOptions(id: ID, o: { name?: string; color?: RGB; opacity?: number; indicates?: 'masked' | 'selected'; spot?: boolean }): boolean {
     return this.edit('Channel Options', (p) => {
       const list = p.doc.alphas ?? [], a = list.find((x) => x.id === id);
       if (!a) return false;
       const name = o.name === undefined ? a.name : o.name.trim().slice(0, 200) || a.name;
-      const next: AlphaChannel = { ...a, name, color: o.color ? { r: clamp(Math.round(o.color.r), 0, 255), g: clamp(Math.round(o.color.g), 0, 255), b: clamp(Math.round(o.color.b), 0, 255) } : a.color, opacity: o.opacity === undefined ? a.opacity : clamp(Math.round(o.opacity), 0, 100), indicates: o.indicates ?? a.indicates };
-      if (next.name === a.name && next.opacity === a.opacity && next.indicates === a.indicates && JSON.stringify(next.color) === JSON.stringify(a.color)) return false;
+      const next: AlphaChannel = { ...a, name, color: o.color ? { r: clamp(Math.round(o.color.r), 0, 255), g: clamp(Math.round(o.color.g), 0, 255), b: clamp(Math.round(o.color.b), 0, 255) } : a.color, opacity: o.opacity === undefined ? a.opacity : clamp(Math.round(o.opacity), 0, 100), indicates: o.spot === undefined ? o.indicates ?? a.indicates : o.spot ? 'selected' : o.indicates ?? a.indicates, ...(o.spot === undefined ? (a.spot ? { spot: true } : {}) : o.spot ? { spot: true } : {}) };
+      if (o.spot === false) delete (next as { spot?: boolean }).spot;
+      if (next.name === a.name && next.opacity === a.opacity && next.indicates === a.indicates && !next.spot === !a.spot && JSON.stringify(next.color) === JSON.stringify(a.color)) return false;
       p.doc = { ...p.doc, alphas: list.map((x) => (x === a ? next : x)) };
       return true;
     });
+  }
+
+  /** Image > Mode > Split Channels: one grey document per colour channel of the picture (red, green and blue; the inks of CMYK; Lightness, a and b of Lab), then one per alpha or spot channel, named "<document> <channel>". Returns how many were made. */
+  splitChannels(): number {
+    const src = this.current;
+    if (!src) return 0;
+    this.settle();
+    const W = src.doc.width, H = src.doc.height, name = src.name, mode = src.doc.mode ?? 'rgb', planes: Array<[string, Uint8Array]> = [];
+    if (mode === 'multichannel') { this.notice('Split Channels works on RGB, grayscale, CMYK and Lab pictures.'); return 0; }
+    if (mode === 'cmyk' || mode === 'lab') {
+      const c = mode === 'cmyk' ? composeChannels(src.doc, src.cmykTables) : composeFloat(src.doc, 3, false);
+      if ('error' in c) { this.notice(c.error, 'error'); return 0; }
+      const n = mode === 'cmyk' ? 4 : 3, s = n + 1;
+      (mode === 'cmyk' ? ['Cyan', 'Magenta', 'Yellow', 'Black'] : ['Lightness', 'a', 'b']).forEach((label, k) => {
+        const g = new Uint8Array(W * H);
+        for (let i = 0; i < g.length; i++) {
+          const v = c.data[i * s + k], a = c.data[i * s + n];
+          g[i] = Math.round(255 * (mode === 'cmyk' ? 1 - Math.min(1, v * a) : v * a + (k === 0 ? 1 : 0.5) * (1 - a)));
+        }
+        planes.push([label, g]);
+      });
+    } else {
+      const f = this.flattened();
+      if (!f) return 0;
+      const d = ctxOf(f).getImageData(0, 0, W, H).data;
+      (mode === 'grayscale' ? [['Gray', 0]] as const : [['Red', 0], ['Green', 1], ['Blue', 2]] as const).forEach(([label, k]) => {
+        const g = new Uint8Array(W * H);
+        for (let i = 0; i < g.length; i++) g[i] = d[i * 4 + k];
+        planes.push([label, g]);
+      });
+    }
+    for (const a of src.doc.alphas ?? []) planes.push([a.name, Uint8Array.from({ length: W * H }, (_, i) => a.mask ? a.mask.valueAt(i % W, Math.floor(i / W)) : 0)]);
+    let made = 0;
+    for (const [label, g] of planes) {
+      const q = this.newDocument(W, H, `${name} ${label}`, 'white'), id = q?.doc.layers[0]?.id;
+      if (!q || !id) break;
+      const img = new ImageData(W, H);
+      for (let i = 0; i < g.length; i++) { img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = g[i]; img.data[i * 4 + 3] = 255; }
+      if (this.replaceLayerPixels(id, img, 'Split Channels')) { this.setDocumentMode('grayscale'); made++; }
+    }
+    return made;
+  }
+
+  /** Image > Mode > Merge Channels: a new RGB document whose red, green and blue are the grey of the three sources (a document's picture, or one of its alpha channels by name), all the size of the current document. Returns the new project. */
+  mergeChannels(sources: ReadonlyArray<{ doc: ID; channel?: string }>, name = 'Merged'): Project | null {
+    const cur = this.current;
+    if (!cur || sources.length !== 3) return null;
+    const grey = sources.map((s) => this.calcGrey(cur, { doc: s.doc, channel: s.channel || 'gray' }));
+    if (grey.some((g) => !g)) return null;
+    const W = cur.doc.width, H = cur.doc.height, q = this.newDocument(W, H, name.trim() || 'Merged', 'white'), id = q?.doc.layers[0]?.id;
+    if (!q || !id) return null;
+    const img = new ImageData(W, H);
+    for (let i = 0; i < W * H; i++) { for (let k = 0; k < 3; k++) img.data[i * 4 + k] = (grey[k] as Uint8Array)[i]; img.data[i * 4 + 3] = 255; }
+    return this.replaceLayerPixels(id, img, 'Merge Channels') ? q : null;
   }
 
   /** Select > Load Luminosity: the picture's brightness (Rec. 601 grey times coverage) as a selection by `mode`; one step. */
@@ -5992,17 +6154,20 @@ export class Engine {
   beginMeshWarp(grid = this.meshWarpGrid): boolean {
     const p = this.current, l = p?.activeLayer;
     if (!p || !l || this.stroke || this.transformEdit || this.distortEdit || this.meshWarpEdit || this.perspectiveEdit) return false;
-    if (l.vector || l.smart || l.fillContent || l.isGroup || l.adjustment || !l.raster) { this.notice('Warp works on a pixel layer. Rasterize shape layers, fill layers and smart objects first.'); return false; }
+    if (l.vector || l.fillContent || l.isGroup || l.adjustment || !l.raster) { this.notice('Warp works on a pixel layer or a smart object. Rasterize shape layers and fill layers first.'); return false; }
     this.settle();
+    const sb = l.smart ? this.smartBase(l) : null;
+    if (l.smart && !sb) return false;
     this.meshWarpAim = null;
-    const r = l.raster, c = cornersOf(l.transform), gw = Math.max(3, Math.min(6, Math.round(grid) || 4)), gh = gw, points: P2[] = [];
+    const cm = sb ? mul(sb.mat, translation(sb.pad, sb.pad)) : null, cw = sb ? sb.raster.width - 2 * sb.pad : 0, ch = sb ? sb.raster.height - 2 * sb.pad : 0;
+    const c = cm ? [[0, 0], [cw, 0], [cw, ch], [0, ch]].map(([x, y]) => applyMat(cm, x, y)) : cornersOf(l.transform), gw = Math.max(3, Math.min(6, Math.round(grid) || 4)), gh = gw, points: P2[] = [];
     for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) {
       const u = i / (gw - 1), v = j / (gh - 1), top = { x: c[0].x + (c[1].x - c[0].x) * u, y: c[0].y + (c[1].y - c[0].y) * u }, bot = { x: c[3].x + (c[2].x - c[3].x) * u, y: c[3].y + (c[2].y - c[3].y) * u };
       points.push([top.x + (bot.x - top.x) * v, top.y + (bot.y - top.y) * v]);
     }
-    const m = l.mask?.raster && l.mask.linked && !l.mask.placement ? l.mask.raster.read() : null;
+    const m = !sb && l.mask?.raster && l.mask.linked && !l.mask.placement ? l.mask.raster.read() : null, kept = sb?.deform?.kind === 'mesh' ? sb.deform : null;
     this.meshWarpPreset.style = 'custom';
-    this.meshWarpEdit = { project: p, layerId: l.id, gw, gh, points, us: evenSpacing(gw), vs: evenSpacing(gh), lastCol: -1, lastRow: -1, quad: c.map((q): P2 => [q.x, q.y]), source: r.read(), mask: m, preview: null };
+    this.meshWarpEdit = { project: p, layerId: l.id, gw: kept ? kept.gw : gw, gh: kept ? kept.gh : gh, points: kept ? kept.points.map((q): P2 => [q[0], q[1]]) : points, us: kept ? kept.us.slice() : evenSpacing(gw), vs: kept ? kept.vs.slice() : evenSpacing(gh), lastCol: -1, lastRow: -1, quad: c.map((q): P2 => [q.x, q.y]), source: sb ? sb.raster.read(sb.pad, sb.pad, cw, ch) : (l.raster as Raster).read(), mask: m, preview: null };
     this.emit('render', null);
     this.emit('options', null);
     return true;
@@ -6150,6 +6315,7 @@ export class Engine {
     this.dropMeshWarp();
     const p = w.project, l = p.layer(w.layerId);
     if (p !== this.current || !l) return;
+    if (l.smart) { this.commitDeform(l, { kind: 'mesh', gw: w.gw, gh: w.gh, points: w.points, us: w.us, vs: w.vs }, 'Warp'); return; }
     const full = this.meshWarped(w.source, w.points, w.gw, w.gh, 0, w.us, w.vs);
     if (!full) { this.notice('That warp folds over itself. Try smaller moves.'); return; }
     const crop = visibleBounds(full.raster), pixels = crop ? cropWarp(full, crop) : full;
@@ -6233,11 +6399,14 @@ export class Engine {
   beginPuppetWarp(): boolean {
     const p = this.current, l = p?.activeLayer;
     if (!p || !l || this.stroke || this.transformEdit || this.distortEdit || this.meshWarpEdit || this.puppetEdit || this.perspectiveEdit) return false;
-    if (l.vector || l.smart || l.fillContent || l.isGroup || l.adjustment || !l.raster) { this.notice('Puppet Warp works on a pixel layer. Rasterize shape layers, fill layers and smart objects first.'); return false; }
+    if (l.vector || l.fillContent || l.isGroup || l.adjustment || !l.raster) { this.notice('Puppet Warp works on a pixel layer or a smart object. Rasterize shape layers and fill layers first.'); return false; }
     this.settle();
-    const r = l.raster, m = placement(l.transform, r.width, r.height);
-    this.puppetOpts = { ...this.puppetOpts, expansion: 0 };
-    this.puppetEdit = { project: p, layerId: l.id, from: [], to: [], rot: [], depth: [], sel: -1, source: r.read(), expanded: null, toLocal: invert(m), box: transformBounds(l.transform), preview: null };
+    const sb = l.smart ? this.smartBase(l) : null;
+    if (l.smart && !sb) return false;
+    const r = sb ? sb.raster : l.raster, m = sb ? sb.mat : placement(l.transform, r.width, r.height), kept = sb?.deform?.kind === 'puppet' ? sb.deform : null;
+    this.puppetOpts = { ...this.puppetOpts, expansion: kept ? kept.expansion : 0, ...(kept ? { mode: kept.mode, density: kept.density } : {}) };
+    this.puppetEdit = { project: p, layerId: l.id, from: kept ? kept.from.map((q): P2 => [q[0], q[1]]) : [], to: kept ? kept.to.map((q): P2 => [q[0], q[1]]) : [], rot: kept ? kept.rot.slice() : [], depth: kept ? kept.depth.slice() : [], sel: -1, source: r.read(), expanded: null, toLocal: invert(m), box: sb ? matBox(sb.mat, r.width, r.height) : transformBounds(l.transform), preview: null };
+    if (kept) this.schedulePuppet();
     this.emit('render', null);
     this.emit('options', null);
     return true;
@@ -6303,6 +6472,7 @@ export class Engine {
     this.dropPuppet();
     const p = w.project, l = p.layer(w.layerId);
     if (p !== this.current || !l) return;
+    if (l.smart) { this.commitDeform(l, { kind: 'puppet', from: w.from, to: w.to, rot: w.rot, depth: w.depth, mode: this.puppetOpts.mode, density: this.puppetOpts.density, expansion: this.puppetOpts.expansion }, 'Puppet Warp'); return; }
     const full = this.puppetRender(w);
     if (!full) return;
     const crop = visibleBounds(full.raster), pixels = crop ? cropWarp(full, crop) : full;
@@ -6321,10 +6491,13 @@ export class Engine {
   beginPerspectiveWarp(): boolean {
     const p = this.current, l = p?.activeLayer;
     if (!p || !l || this.stroke || this.transformEdit || this.distortEdit || this.meshWarpEdit || this.puppetEdit || this.perspectiveEdit) return false;
-    if (l.vector || l.smart || l.fillContent || l.isGroup || l.adjustment || !l.raster) { this.notice('Perspective Warp works on a pixel layer. Rasterize shape layers, fill layers and smart objects first.'); return false; }
+    if (l.vector || l.fillContent || l.isGroup || l.adjustment || !l.raster) { this.notice('Perspective Warp works on a pixel layer or a smart object. Rasterize shape layers and fill layers first.'); return false; }
     this.settle();
-    const r = l.raster, m = placement(l.transform, r.width, r.height);
-    this.perspectiveEdit = { project: p, layerId: l.id, phase: 'layout', planes: [], source: r.read(), toLocal: invert(m), box: transformBounds(l.transform), preview: null };
+    const sb = l.smart ? this.smartBase(l) : null;
+    if (l.smart && !sb) return false;
+    const r = sb ? sb.raster : l.raster, m = sb ? sb.mat : placement(l.transform, r.width, r.height), kept = sb?.deform?.kind === 'perspective' ? sb.deform : null;
+    this.perspectiveEdit = { project: p, layerId: l.id, phase: kept ? 'warp' : 'layout', planes: kept ? (structuredClone(kept.planes) as unknown as Plane[]) : [], source: r.read(), toLocal: invert(m), box: sb ? matBox(sb.mat, r.width, r.height) : transformBounds(l.transform), preview: null };
+    if (kept) this.schedulePerspective();
     this.emit('render', null);
     this.emit('options', null);
     return true;
@@ -6415,6 +6588,7 @@ export class Engine {
     this.dropPerspective();
     const p = w.project, l = p.layer(w.layerId);
     if (p !== this.current || !l) return;
+    if (l.smart) { this.commitDeform(l, { kind: 'perspective', planes: w.planes }, 'Perspective Warp'); return; }
     const full = this.perspectiveRender(w);
     if (!full) return;
     const crop = visibleBounds(full.raster), pixels = crop ? cropWarp(full, crop) : full;
@@ -6422,6 +6596,43 @@ export class Engine {
   }
 
   cancelPerspectiveWarp(): void { if (this.perspectiveEdit) this.dropPerspective(); }
+
+  /** A smart object's render before any Warp, Puppet Warp or Perspective Warp: the raster, the matrix drawing it into the
+   *  document, its filter padding, and the warp stored now (re-rendered from the source when there is one). */
+  private smartBase(l: Layer): { raster: Raster; mat: Mat; pad: number; deform: SmartDeform | null } | null {
+    const sm = l.smart, r = l.raster;
+    if (!sm || !r) return null;
+    if (this.smartWarpNow(l)) { this.notice('Undo the distortion of this smart object before warping it.'); return null; }
+    const live = deformNow(l);
+    if (!live) return { raster: r, mat: placement(l.transform, r.width, r.height), pad: Math.max(0, Math.round((r.width - sm.source.width) / 2)), deform: null };
+    return { raster: this.renderSmart(sm.source, sm.filters, sm.filterMaskEnabled !== false ? sm.filterMask ?? null : null), mat: live.base, pad: live.pad, deform: live };
+  }
+
+  /** A smart object's render `r` carried through its stored Warp, Puppet Warp or Perspective Warp, trimmed to what shows;
+   *  null when the warp changes nothing or folds over itself. Warp ignores the filter padding, the others keep it. */
+  deformRender(p: Project, r: Raster, d: SmartDeform): Warped | null {
+    const box = matBox(d.base, r.width, r.height), toLocal = invert(d.base);
+    let full: Warped | null;
+    if (d.kind === 'mesh') full = this.meshWarped(r.read(d.pad, d.pad, r.width - 2 * d.pad, r.height - 2 * d.pad), d.points, d.gw, d.gh, 0, d.us, d.vs);
+    else if (d.kind === 'puppet') {
+      const keep = this.puppetOpts;
+      this.puppetOpts = { ...keep, mode: d.mode, density: d.density, expansion: d.expansion };
+      try { full = this.puppetRender({ project: p, layerId: '', from: d.from, to: d.to, rot: d.rot, depth: d.depth, sel: -1, source: r.read(), expanded: null, toLocal, box, preview: null }); } finally { this.puppetOpts = keep; }
+    } else full = this.perspectiveRender({ project: p, layerId: '', phase: 'warp', planes: d.planes as unknown as Plane[], source: r.read(), toLocal, box, preview: null });
+    const crop = full ? visibleBounds(full.raster) : null;
+    return full && crop ? cropWarp(full, crop) : full;
+  }
+
+  /** Applies a Warp, Puppet Warp or Perspective Warp to a smart object as its live transform: the control data is kept
+   *  on the object (re-editable, the source and filters untouched) and the layer shows its render, one step. */
+  private commitDeform(l: Layer, spec: SmartDeformData, label: string): boolean {
+    const p = this.current, sm = l.smart, sb = p ? this.smartBase(l) : null;
+    if (!p || !sm || !sb) return false;
+    const d = structuredClone({ ...spec, base: sb.mat, pad: sb.pad, at: l.transform }) as SmartDeform, w = this.deformRender(p, sb.raster, d);
+    if (!w) { this.notice('That warp changes nothing or folds over itself.'); return false; }
+    const mask = l.mask && !l.mask.placement ? { ...l.mask, placement: l.transform } : l.mask;
+    return this.edit(label, (q) => q.updateLayer(l.id, { raster: w.raster, transform: w.t, mask, shape: null, smart: { ...sm, warp: null, warpAt: null, deform: { ...d, at: w.t } } }));
+  }
 
   private dropPerspective(): void {
     if (this.perspectiveFrame) cancelAnimationFrame(this.perspectiveFrame);
@@ -7213,7 +7424,23 @@ export class Engine {
     const p = this.projects.find((x) => x.id === id);
     if (!p) return null;
     const full = (this.composesFloats(p) ? this.composedRendition(p)?.canvas : null) ?? renderDoc(this.work, p.doc);
-    const W = p.doc.width, H = p.doc.height, k = Math.min(1, side / Math.max(W, H)), w = Math.max(1, Math.round(W * k)), h = Math.max(1, Math.round(H * k));
+    return this.packMap(full as CanvasImageSource, p.doc.width, p.doc.height, p.name, side);
+  }
+
+  /** A map from one layer of the current document, its pixels alone at document size. */
+  layerMapImage(layerId: ID, side = 256): LibImage | null {
+    const p = this.current, l = p?.doc.layers.find((x) => x.id === layerId);
+    if (!p || !l) return null;
+    return this.packMap(this.renderLayerAlone(l.id) as CanvasImageSource, p.doc.width, p.doc.height, l.name, side);
+  }
+
+  /** A map from any picture source (a file the person chose), drawn at its own size. */
+  sourceMapImage(source: CanvasImageSource, W: number, H: number, name: string, side = 256): LibImage | null {
+    return W > 0 && H > 0 ? this.packMap(source, W, H, name, side) : null;
+  }
+
+  private packMap(full: CanvasImageSource, W: number, H: number, name: string, side: number): LibImage {
+    const k = Math.min(1, side / Math.max(W, H)), w = Math.max(1, Math.round(W * k)), h = Math.max(1, Math.round(H * k));
     const s = createSurface(w, h), c = ctxOf(s);
     c.fillStyle = '#808080';
     c.fillRect(0, 0, w, h);
@@ -7227,7 +7454,7 @@ export class Engine {
       bin += String.fromCharCode(...part);
     }
     s.width = 0; s.height = 0;
-    return { name: p.name, w0: W, h0: H, w, h, rg: btoa(bin) };
+    return { name, w0: W, h0: H, w, h, rg: btoa(bin) };
   }
 
   pathLines(which?: string | null): LibPath | null {
@@ -7956,7 +8183,7 @@ export class Engine {
     return this.resizeCanvas(r.w, r.h, -r.x, -r.y, null, 'Crop');
   }
 
-  resampleImage(width: number, height: number, sampling: Transform['sampling'], resolution: number): boolean { return DS.resampleImage(this.sizeHost, width, height, sampling, resolution); }
+  resampleImage(width: number, height: number, sampling: Transform['sampling'], resolution: number, scaleStyles = true): boolean { return DS.resampleImage(this.sizeHost, width, height, sampling, resolution, scaleStyles); }
 
   /** File > Automate > Fit Image (1.65.8): the image resampled, its proportions kept, to
    *  fit within `width` by `height` pixels, smaller or (with `enlarge`) larger, as one Fit Image step at the same
@@ -8322,6 +8549,7 @@ export class Engine {
       get smartFilterRunner() { return e.smartFilterRunner; },
       get smartFilterMargin() { return e.smartFilterMargin; },
       get smartFilterRunnerAsync() { return e.smartFilterRunnerAsync; },
+      deformRender: (p, r, d) => this.deformRender(p, r, d),
       notice: (m) => this.notice(m),
       edit: (name, fn) => this.edit(name, fn),
       editOn: (p, name, fn) => this.editOn(p, name, fn),
@@ -8427,6 +8655,7 @@ export class Engine {
       setLayerTransform: (patch, label) => this.setLayerTransform(patch, label),
       smartStart: (l) => {
         if (!l.smart || !l.raster) return null;
+        if (l.smart.deform) { this.notice('Reset the warp of this smart object before distorting it.'); return null; }
         const warp = this.smartWarpNow(l), margin = this.smartMargin(l.smart.filters);
         const R = warp ? this.renderSmart(l.smart.source, l.smart.filters, l.smart.filterMaskEnabled !== false ? l.smart.filterMask ?? null : null) : l.raster, t = warp ? docTransform(R.width, R.height) : l.transform;
         let corners = cornersOf(t);
@@ -9264,6 +9493,29 @@ export class Engine {
     return [...p.doc.layers].reverse().find((l) => !l.isGroup && !!l.raster && isDepthName(l.name)) ?? null;
   }
 
+  /** Lens Blur's depth plane: the Depth Map layer (`source` depthMap) or alpha channel number `n` (channel), grey bytes
+   *  in base64 at most `side` pixels on the long edge; null, with a notice, when the document has none. */
+  lensDepthPlane(source: string, n = 1, side = 1024): { w: number; h: number; data: string } | null {
+    const p = this.current;
+    if (!p) return null;
+    const W = p.doc.width, H = p.doc.height;
+    let grey: ImageData | null = null;
+    if (source === 'depthMap') {
+      const l = this.depthLayer(p);
+      grey = l?.raster && l.raster.width === W && l.raster.height === H ? l.raster.read() : null;
+      if (!grey) { this.notice(l ? 'The Depth Map layer must be the size of the document.' : 'This document has no Depth Map layer. Compute Depth Map first.'); return null; }
+    } else if (source === 'channel') {
+      const a = p.doc.alphas?.[Math.max(0, Math.round(n) - 1)];
+      if (!a?.mask) { this.notice(`This document has no alpha channel number ${Math.max(1, Math.round(n))}.`); return null; }
+      grey = alphaGrey(a.mask, W, H);
+    } else return null;
+    const k = Math.min(1, side / Math.max(W, H)), w = Math.max(1, Math.round(W * k)), h = Math.max(1, Math.round(H * k)), bytes = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) bytes[y * w + x] = grey.data[(Math.min(H - 1, Math.floor(((y + 0.5) * H) / h)) * W + Math.min(W - 1, Math.floor(((x + 0.5) * W) / w))) * 4];
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode(...bytes.subarray(i, i + 8192));
+    return { w, h, data: btoa(bin) };
+  }
+
   /** What the depth model reads: the document with its depth layers hidden, or with `only` alone showing (its groups stay on). */
   private depthSource(p: Project, only: ID | null): Surface | null {
     const keep = new Set<ID>();
@@ -9983,6 +10235,10 @@ export class Engine {
     const p = this.projects.find((q) => q.history === h);
     if (!p) return null;
     const pinned = this.pinFills(p);
+    const keep = this.rgbTarget;
+    if (keep && !keep.every(Boolean) && (p.doc.depth ?? 8) === 8 && (!p.doc.mode || p.doc.mode === 'rgb')) {
+      restrictPatches(patches, keep, new Set(p.doc.layers.map((l) => l.mask?.raster).filter(Boolean)));
+    }
     if (!(p.doc.mode === 'cmyk' || p.doc.mode === 'lab' || (p.doc.depth ?? 8) > 8)) return pinned ? p.snapshot() : null;
     return this.deriveChannels(p, new Map(before.doc.layers.map((l) => [l.id, l])), patches) || pinned ? p.snapshot() : null;
   });

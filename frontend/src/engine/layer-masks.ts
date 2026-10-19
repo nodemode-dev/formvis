@@ -79,6 +79,34 @@ export function setMaskShape(host: MaskHost, shape: { density?: number; feather?
   });
 }
 
+/** Properties panel: the active layer's vector mask density and feather, one undo step each. */
+export function setVectorMaskShape(host: MaskHost, shape: { density?: number; feather?: number }): void {
+  host.edit('Vector Mask Properties', (p) => {
+    const layer = p.activeLayer, v = layer?.vectorMask;
+    if (!layer || !v) return false;
+    const density = shape.density === undefined ? v.density : Math.min(100, Math.max(0, Math.round(shape.density)));
+    const feather = shape.feather === undefined ? v.feather : Math.min(250, Math.max(0, Math.round(shape.feather * 10) / 10));
+    if ((density ?? 100) === (v.density ?? 100) && (feather ?? 0) === (v.feather ?? 0)) return false;
+    p.updateLayer(layer.id, { vectorMask: { ...v, density, feather } });
+  });
+}
+
+/** Properties panel Invert: the active layer's mask raster turned inside out (white where it was black); one undo step. */
+export function invertMask(host: MaskHost): void {
+  host.edit('Invert Layer Mask', (p) => {
+    const layer = p.activeLayer, mask = layer?.mask;
+    if (!layer || !mask) return false;
+    const src = mask.raster, out = Raster.filled(src?.width ?? 1, src?.height ?? 1, '#ffffff');
+    if (src) {
+      out.ctx.globalCompositeOperation = 'destination-out';
+      out.ctx.drawImage(src.canvas as CanvasImageSource, 0, 0);
+      out.ctx.globalCompositeOperation = 'source-over';
+    } else out.ctx.clearRect(0, 0, 1, 1);
+    out.touch();
+    p.updateLayer(layer.id, { mask: { ...mask, raster: out } });
+  });
+}
+
 function layerSize(layer: Layer): { w: number; h: number } {
   if (layer.raster) return { w: layer.raster.width, h: layer.raster.height };
   return { w: Math.max(1, Math.round(layer.transform.w)), h: Math.max(1, Math.round(layer.transform.h)) };

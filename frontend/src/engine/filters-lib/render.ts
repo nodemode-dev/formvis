@@ -1,4 +1,4 @@
-import type { LibColor, LibContext, LibFilter, LibValues } from '../filter-library';
+import type { LibColor, LibContext, LibFilter, LibParam, LibValues } from '../filter-library';
 import { boxOf, clampInt, copyImage, hash01, luma, type Box } from './shared';
 
 const num = (v: LibValues, k: string): number => v[k] as number;
@@ -94,17 +94,19 @@ export interface LightSettings {
 
 const unit3 = (x: number, y: number, z: number): [number, number, number] => { const m = Math.hypot(x, y, z) || 1; return [x / m, y / m, z / m]; };
 
-/** Lighting Effects with one light: each pixel lit by its angle to a spot, point or infinite light (a spot's cone
+/** Lighting Effects with up to three lights: each pixel lit by its angle to a spot, point or infinite light (a spot's cone
  *  softened inside Hotspot, a point fading over Radius), plus Ambience; Gloss adds highlights, Metallic tints them with
  *  the surface colour, Exposure brightens or darkens; a texture channel raises a relief whose slopes catch the light.
  *  Positions are percentages of the frame; the light's height of its larger side. */
-export function lightingImage(src: ImageData, o: LightSettings, area: Box): ImageData {
+export function lightingImage(src: ImageData, o: LightSettings, area: Box, more: readonly LightSettings[] = []): ImageData {
   const { width: w, height: h } = src, s = src.data, out = copyImage(src), d = out.data;
   const fw = area.x1 - area.x0, fh = area.y1 - area.y0, size = Math.max(fw, fh);
-  const lx = area.x0 + (o.x / 100) * fw, ly = area.y0 + (o.y / 100) * fh, lz = (o.z / 100) * size, tx = area.x0 + (o.targetX / 100) * fw, ty = area.y0 + (o.targetY / 100) * fh;
-  const axis = unit3(tx - lx, ty - ly, -lz), cosCone = Math.cos((o.cone * Math.PI) / 180), cosHot = Math.cos(((o.cone * o.hotspot) / 100) * (Math.PI / 180));
-  const ea = (o.angle * Math.PI) / 180, el = (o.elevation * Math.PI) / 180, inf = unit3(Math.cos(ea) * Math.cos(el), -Math.sin(ea) * Math.cos(el), Math.sin(el));
-  const strength = o.intensity / 100, ambient = 0.35 + (o.ambience / 100) * 0.5, gain = Math.pow(2, o.exposure / 50), shininess = 8 + ((o.gloss + 100) / 200) * 120;
+  const rigs = [o, ...more].map((p) => {
+    const lx = area.x0 + (p.x / 100) * fw, ly = area.y0 + (p.y / 100) * fh, lz = (p.z / 100) * size, tx = area.x0 + (p.targetX / 100) * fw, ty = area.y0 + (p.targetY / 100) * fh;
+    const ea = (p.angle * Math.PI) / 180, el = (p.elevation * Math.PI) / 180;
+    return { p, lx, ly, lz, axis: unit3(tx - lx, ty - ly, -lz), cosCone: Math.cos((p.cone * Math.PI) / 180), cosHot: Math.cos(((p.cone * o.hotspot) / 100) * (Math.PI / 180)), inf: unit3(Math.cos(ea) * Math.cos(el), -Math.sin(ea) * Math.cos(el), Math.sin(el)), strength: p.intensity / 100 };
+  });
+  const ambient = 0.35 + (o.ambience / 100) * 0.5, gain = Math.pow(2, o.exposure / 50), shininess = 8 + ((o.gloss + 100) / 200) * 120;
   const H = o.texture === 'none' ? null : new Float32Array(w * h);
   if (H) for (let i = 0; i < H.length; i++) {
     const r = s[i * 4], g = s[i * 4 + 1], b = s[i * 4 + 2], a = s[i * 4 + 3];
@@ -112,38 +114,65 @@ export function lightingImage(src: ImageData, o: LightSettings, area: Box): Imag
     H[i] = ((o.whiteIsHigh ? v : 255 - v) / 255) * o.height;
   }
   const hAt = (x: number, y: number): number => (H ? H[clampInt(y, 0, h - 1) * w + clampInt(x, 0, w - 1)] : 0);
+  const metal = (o.metallic + 100) / 200, lit = [0, 0, 0], hi = [0, 0, 0];
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const n = unit3(hAt(x - 1, y) - hAt(x + 1, y), hAt(x, y - 1) - hAt(x, y + 1), 2);
-    let L: [number, number, number], fall = 1;
-    if (o.type === 'infinite') L = inf;
-    else {
-      L = unit3(lx - x - 0.5, ly - y - 0.5, lz);
-      if (o.type === 'spot') {
-        const c = -(L[0] * axis[0] + L[1] * axis[1] + L[2] * axis[2]);
-        fall = c <= cosCone ? 0 : c >= cosHot ? 1 : (c - cosCone) / Math.max(1e-6, cosHot - cosCone);
-      } else fall = Math.max(0, 1 - Math.hypot(lx - x, ly - y) / Math.max(1, (o.radius / 100) * size));
+    const i = (y * w + x) * 4;
+    lit[0] = lit[1] = lit[2] = ambient;
+    hi[0] = hi[1] = hi[2] = 0;
+    for (const { p, lx, ly, lz, axis, cosCone, cosHot, inf, strength } of rigs) {
+      let L: [number, number, number], fall = 1;
+      if (p.type === 'infinite') L = inf;
+      else {
+        L = unit3(lx - x - 0.5, ly - y - 0.5, lz);
+        if (p.type === 'spot') {
+          const c = -(L[0] * axis[0] + L[1] * axis[1] + L[2] * axis[2]);
+          fall = c <= cosCone ? 0 : c >= cosHot ? 1 : (c - cosCone) / Math.max(1e-6, cosHot - cosCone);
+        } else fall = Math.max(0, 1 - Math.hypot(lx - x, ly - y) / Math.max(1, (p.radius / 100) * size));
+      }
+      const diffuse = Math.max(0, n[0] * L[0] + n[1] * L[1] + n[2] * L[2]) * fall * strength * 1.6;
+      const half = unit3(L[0], L[1], L[2] + 1), spec = Math.pow(Math.max(0, n[0] * half[0] + n[1] * half[1] + n[2] * half[2]), shininess) * fall * Math.max(0, strength) * ((o.gloss + 100) / 200);
+      for (let c = 0; c < 3; c++) {
+        const light = p.color[c] / 255;
+        lit[c] += diffuse * light;
+        hi[c] += 255 * spec * (light * (1 - metal) + (s[i + c] / 255) * metal);
+      }
     }
-    const diffuse = Math.max(0, n[0] * L[0] + n[1] * L[1] + n[2] * L[2]) * fall * strength * 1.6;
-    const half = unit3(L[0], L[1], L[2] + 1), spec = Math.pow(Math.max(0, n[0] * half[0] + n[1] * half[1] + n[2] * half[2]), shininess) * fall * Math.max(0, strength) * ((o.gloss + 100) / 200);
-    const i = (y * w + x) * 4, metal = (o.metallic + 100) / 200;
-    for (let c = 0; c < 3; c++) {
-      const base = s[i + c], light = o.color[c] / 255, hi = 255 * spec * (light * (1 - metal) + (base / 255) * metal);
-      d[i + c] = (base * (ambient + diffuse * light) + hi) * gain;
-    }
+    for (let c = 0; c < 3; c++) d[i + c] = (s[i + c] * lit[c] + hi[c]) * gain;
   }
   return out;
 }
 
 const canvasOf = (ctx: LibContext): Box => boxOf(ctx.canvas);
 
-const light = (v: LibValues): LightSettings => {
-  const c = typeof v.color === 'string' && /^#[0-9a-f]{6}$/i.test(v.color) ? v.color : '#ffffff';
+const light = (v: LibValues, n = 1): LightSettings => {
+  const k = (key: string): string => (n === 1 ? key : `l${n}${key[0].toUpperCase()}${key.slice(1)}`), c = typeof v[k('color')] === 'string' && /^#[0-9a-f]{6}$/i.test(v[k('color')] as string) ? (v[k('color')] as string) : '#ffffff';
   return {
-    type: str(v, 'type'), x: num(v, 'x'), y: num(v, 'y'), z: num(v, 'z'), targetX: num(v, 'targetX'), targetY: num(v, 'targetY'), angle: num(v, 'angle'), elevation: num(v, 'elevation'),
-    color: [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)], intensity: num(v, 'intensity'), cone: num(v, 'cone'), hotspot: num(v, 'hotspot'), radius: num(v, 'radius'),
+    type: str(v, k('type')), x: num(v, k('x')), y: num(v, k('y')), z: num(v, k('z')), targetX: num(v, k('targetX')), targetY: num(v, k('targetY')), angle: num(v, k('angle')), elevation: num(v, k('elevation')),
+    color: [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)], intensity: num(v, k('intensity')), cone: num(v, k('cone')), hotspot: num(v, 'hotspot'), radius: num(v, k('radius')),
     gloss: num(v, 'gloss'), metallic: num(v, 'metallic'), exposure: num(v, 'exposure'), ambience: num(v, 'ambience'), texture: str(v, 'texture'), height: num(v, 'height'), whiteIsHigh: v.whiteIsHigh === true,
   };
 };
+
+const TYPES: ReadonlyArray<readonly [string, string]> = [['spot', 'Spot'], ['point', 'Point'], ['infinite', 'Infinite']];
+
+/** The controls of an extra light (2 or 3): its own switch, kind, colour, strength and place; Hotspot, Gloss, Metallic,
+ *  Exposure, Ambience and the texture are shared with the first light. */
+const extraLight = (n: number, on: boolean, x: number, y: number, color: string, type: string): LibParam[] => [
+  { key: `l${n}On`, label: `Light ${n} On`, kind: 'check', def: on },
+  { key: `l${n}Type`, label: `Light ${n}`, kind: 'select', def: type, options: TYPES },
+  { key: `l${n}Color`, label: `Light ${n} Color`, kind: 'color', def: color },
+  { key: `l${n}Intensity`, label: `Light ${n} Intensity`, kind: 'range', min: -100, max: 100, step: 1, def: 50 },
+  { key: `l${n}X`, label: `Light ${n} X (%)`, kind: 'range', min: 0, max: 100, step: 1, def: x },
+  { key: `l${n}Y`, label: `Light ${n} Y (%)`, kind: 'range', min: 0, max: 100, step: 1, def: y },
+  { key: `l${n}Z`, label: `Light ${n} Height (%)`, kind: 'range', min: 0, max: 200, step: 1, def: 60 },
+  { key: `l${n}TargetX`, label: `Light ${n} Target X (%)`, kind: 'range', min: 0, max: 100, step: 1, def: 50 },
+  { key: `l${n}TargetY`, label: `Light ${n} Target Y (%)`, kind: 'range', min: 0, max: 100, step: 1, def: 55 },
+  { key: `l${n}Cone`, label: `Light ${n} Cone (°)`, kind: 'range', min: 1, max: 89, step: 1, def: 45 },
+  { key: `l${n}Radius`, label: `Light ${n} Point Radius (%)`, kind: 'range', min: 1, max: 1000, step: 1, def: 80 },
+  { key: `l${n}Angle`, label: `Light ${n} Infinite Angle (°)`, kind: 'range', min: -180, max: 180, step: 1, def: n === 2 ? -45 : 45 },
+  { key: `l${n}Elevation`, label: `Light ${n} Infinite Elevation (°)`, kind: 'range', min: 0, max: 90, step: 1, def: 45 },
+];
 
 export const RENDER_FILTERS: LibFilter[] = [
   {
@@ -175,9 +204,9 @@ export const RENDER_FILTERS: LibFilter[] = [
   },
   {
     id: 'lightingEffects', label: 'Lighting Effects', group: 'Render', grows: false, reach: () => 2,
-    note: 'One light; positions in percent of the selection or canvas.',
+    note: 'Up to three lights (switch Light 2 and Light 3 on); positions in percent of the selection or canvas.',
     params: [
-      { key: 'type', label: 'Light', kind: 'select', def: 'spot', options: [['spot', 'Spot'], ['point', 'Point'], ['infinite', 'Infinite']] },
+      { key: 'type', label: 'Light', kind: 'select', def: 'spot', options: TYPES },
       { key: 'color', label: 'Color', kind: 'color', def: '#ffffff' },
       { key: 'intensity', label: 'Intensity', kind: 'range', min: -100, max: 100, step: 1, def: 75 },
       { key: 'x', label: 'Light X (%)', kind: 'range', min: 0, max: 100, step: 1, def: 25 },
@@ -197,7 +226,9 @@ export const RENDER_FILTERS: LibFilter[] = [
       { key: 'texture', label: 'Texture', kind: 'select', def: 'none', options: [['none', 'None'], ['luminance', 'Luminance'], ['red', 'Red'], ['green', 'Green'], ['blue', 'Blue'], ['alpha', 'Transparency']] },
       { key: 'height', label: 'Texture Height', kind: 'range', min: 0, max: 100, step: 1, def: 50 },
       { key: 'whiteIsHigh', label: 'White is High', kind: 'check', def: true },
+      ...extraLight(2, false, 75, 25, '#ffd9a0', 'point'),
+      ...extraLight(3, false, 50, 85, '#a0c4ff', 'point'),
     ],
-    run: (src, v, ctx) => lightingImage(src, light(v), boxOf(ctx.area)),
+    run: (src, v, ctx) => lightingImage(src, light(v), boxOf(ctx.area), [2, 3].filter((n) => v[`l${n}On`] === true).map((n) => light(v, n))),
   },
 ];

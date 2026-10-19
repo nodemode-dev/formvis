@@ -10,6 +10,14 @@ export function nextAlphaName(list: readonly AlphaChannel[]): string {
   return `Alpha ${n}`;
 }
 
+/** The first "Spot N" no channel of `list` is named. */
+export function nextSpotName(list: readonly AlphaChannel[]): string {
+  const taken = new Set(list.map((a) => a.name));
+  let n = 1;
+  while (taken.has(`Spot ${n}`)) n += 1;
+  return `Spot ${n}`;
+}
+
 /** The document's alpha channels moved with its canvas by `move` (a turn, flip or shift of each mask), as a patch for the doc. */
 export function alphasMoved(doc: Doc, move: (m: SelectionMask) => SelectionMask | null): Partial<Doc> {
   return doc.alphas?.length ? { alphas: doc.alphas.map((a) => (a.mask ? { ...a, mask: move(a.mask) } : a)) } : {};

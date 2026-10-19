@@ -2,8 +2,9 @@
 
 Photomerge stitches overlapping photos with OpenCV's Stitcher: Auto is its panorama mode (features matched, cameras
 estimated, a spherical projection, seams found, multi-band blending), Reposition its flat-scan mode (each photo moved
-and turned, not bent), the two layouts this OpenCV's bindings reach (the usual Perspective, Cylindrical and
-Collage need a warper they do not expose). The answer is RGBA: transparent where no photo reaches (the pure black
+and turned, not bent). Perspective, Cylindrical and Collage register the photos in services/stitch.py (a homography,
+a cylinder of the estimated focal length, a similarity) and feather them together; every layout can first correct
+lens distortion and vignetting. The answer is RGBA: transparent where no photo reaches (the pure black
 the stitcher leaves there, joined to the edge), or cropped to the largest rectangle the photos fill.
 
 Merge to HDR aligns the exposures (median threshold bitmaps, for photos taken by hand), recovers the camera's
@@ -61,9 +62,36 @@ def _largest_rect(mask: np.ndarray) -> tuple[int, int, int, int]:
     return best[1], best[2], best[3], best[4]
 
 
-def panorama(images: list[bytes], layout: str, crop: bool) -> tuple[bytes, int]:
+def _finish(rgba: np.ndarray, cover: np.ndarray, crop: bool) -> bytes:
+    """The RGBA canvas as PNG, cropped to the largest rectangle `cover` fills when `crop`."""
+    if crop:
+        small = cover[:: max(1, cover.shape[0] // 512), :: max(1, cover.shape[1] // 512)]
+        fy, fx = cover.shape[0] / small.shape[0], cover.shape[1] / small.shape[1]
+        x, y, w, h = _largest_rect(small)
+        x0, y0 = int(np.ceil(x * fx)), int(np.ceil(y * fy))
+        x1, y1 = int((x + w) * fx), int((y + h) * fy)
+        if x1 > x0 and y1 > y0:
+            rgba = rgba[y0:y1, x0:x1]
+    out = io.BytesIO()
+    Image.fromarray(np.ascontiguousarray(rgba), "RGBA").save(out, "PNG")
+    return out.getvalue()
+
+
+def panorama(images: list[bytes], layout: str, crop: bool, distortion: bool = False, vignette: bool = False) -> tuple[bytes, int, dict]:
+    """Photomerge. Auto and Reposition use OpenCV's stitcher; Perspective, Cylindrical and Collage register the photos
+    themselves (stitch.py) and feather them together. Distortion and vignette correct the photos first."""
     import cv2
     imgs = [_read(d)[0] for d in images]
+    notes: dict = {}
+    if distortion or vignette or layout in ("perspective", "cylindrical", "collage"):
+        from ..services import stitch
+        four = [np.dstack([i, np.full(i.shape[:2], 255, np.uint8)]) for i in imgs]
+        four, notes = stitch.prepare(four, 0, distortion, vignette, _vignette_gains)
+        if layout in ("perspective", "cylindrical", "collage"):
+            placed, mats, _ = stitch.register(four, layout, 0)
+            canvas, cover = stitch.compose(placed, mats)
+            return _finish(canvas[..., [2, 1, 0, 3]], cover, crop), len(imgs), notes
+        imgs = [np.ascontiguousarray(i[..., :3]) for i in four]
     s = cv2.Stitcher_create(cv2.Stitcher_SCANS if layout == "reposition" else cv2.Stitcher_PANORAMA)
     status, pano = s.stitch(imgs)
     if status != cv2.Stitcher_OK:
@@ -79,17 +107,7 @@ def panorama(images: list[bytes], layout: str, crop: bool) -> tuple[bytes, int]:
     edge = np.unique(np.concatenate([labels[0], labels[-1], labels[:, 0], labels[:, -1]]))
     cover = ~np.isin(labels, edge[edge > 0])
     rgba = np.dstack([pano[..., ::-1], np.where(cover, 255, 0).astype(np.uint8)])
-    if crop:
-        small = cover[:: max(1, cover.shape[0] // 512), :: max(1, cover.shape[1] // 512)]
-        fy, fx = cover.shape[0] / small.shape[0], cover.shape[1] / small.shape[1]
-        x, y, w, h = _largest_rect(small)
-        x0, y0 = int(np.ceil(x * fx)), int(np.ceil(y * fy))
-        x1, y1 = int((x + w) * fx), int((y + h) * fy)
-        if x1 > x0 and y1 > y0:
-            rgba = rgba[y0:y1, x0:x1]
-    out = io.BytesIO()
-    Image.fromarray(np.ascontiguousarray(rgba), "RGBA").save(out, "PNG")
-    return out.getvalue(), len(kept)
+    return _finish(rgba, cover, crop), len(kept), notes
 
 
 def hdr(images: list[bytes]) -> tuple[bytes, dict]:
@@ -122,15 +140,15 @@ def hdr(images: list[bytes]) -> tuple[bytes, dict]:
 
 
 @router.post("/panorama")
-async def panorama_route(file: list[UploadFile] = File(...), layout: str = Form("auto"), crop: bool = Form(False)) -> Response:
+async def panorama_route(file: list[UploadFile] = File(...), layout: str = Form("auto"), crop: bool = Form(False), distortion: bool = Form(False), vignette: bool = Form(False)) -> Response:
     if len(file) < 2:
         raise HTTPException(422, "Photomerge needs at least two overlapping photos.")
     data = [await f.read() for f in file]
     try:
-        png, kept = await run_in_threadpool(panorama, data, layout, crop)
+        png, kept, notes = await run_in_threadpool(panorama, data, layout, crop, distortion, vignette)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
-    return Response(png, media_type="image/png", headers={"X-Photos-Stitched": f"{kept}/{len(data)}"})
+    return Response(png, media_type="image/png", headers={"X-Photos-Stitched": f"{kept}/{len(data)}", "X-Photomerge-Notes": json.dumps(notes)})
 
 
 @router.post("/hdr")
@@ -247,9 +265,47 @@ def _vignette_gains(layers: list[tuple[np.ndarray, np.ndarray]], matrices: list[
     return [None if fr is None else {"cx": fr[3][0], "cy": fr[3][1], "radius": fr[3][2], "lut": table} for fr in frames]
 
 
-def align(images: list[bytes], projection: str, vignette: bool) -> dict:
+def _png(img: np.ndarray) -> str:
+    buf = io.BytesIO()
+    Image.fromarray(np.ascontiguousarray(img[..., [2, 1, 0, 3]]), "RGBA").save(buf, "PNG")
+    return base64.b64encode(buf.getvalue()).decode()
+
+
+def align(images: list[bytes], projection: str, vignette: bool, reference: int = 0, distortion: bool = False) -> dict:
+    """Edit > Auto-Align Layers. `reference` is the layer (0 = the first sent) the others are moved onto. Plain
+    Auto, Perspective and Reposition take the quick path below; Cylindrical and Geometric Distortion correction go
+    through stitch.py, which bends or straightens the layers' pixels itself and answers them as `warped` PNGs (None for
+    a layer left as it is) with the matrices to apply after, `lens` (k1 and the matching error before and after) and
+    `focal` (the cylinder's radius in pixels)."""
+    ref = min(max(reference, 0), len(images) - 1)
+    order = [ref] + [i for i in range(len(images)) if i != ref]
+    data = [images[i] for i in order]
+    if projection != "cylindrical" and not distortion:
+        res = _align_plain(data, projection, vignette)
+        back = {key: [None] * len(images) for key in ("matrices", "layers", "gains")}
+        for pos, i in enumerate(order):
+            for key in back:
+                back[key][i] = res[key][pos]
+        return {**res, **back}
+    from ..services import stitch
+    layers = [_decode(d) for d in data]
+    imgs = [np.dstack([bgr, v.astype(np.uint8) * 255]) for bgr, v in layers]
+    imgs, prep = stitch.prepare(imgs, 0, distortion, vignette, _vignette_gains)
+    placed, mats, info = stitch.register(imgs, "cylindrical" if projection == "cylindrical" else ("reposition" if projection == "reposition" else "perspective"), 0)
+    changed = projection == "cylindrical" or prep["k1"] != 0.0 or prep["vignette"] == "applied"
+    out = {"matrices": [None] * len(images), "layers": [None] * len(images), "gains": [None] * len(images), "warped": [None] * len(images)}
+    for pos, i in enumerate(order):
+        out["matrices"][i] = [float(v) for v in mats[pos].ravel()]
+        out["layers"][i] = {**info[pos], "gain": None}
+        if changed:
+            out["warped"][i] = _png(placed[pos])
+    focal = next((e["focal"] for e in info if "focal" in e), None)
+    return {**out, "vignette": prep["vignette"], "lens": {"k1": prep["k1"], "error_before": prep["error_before"], "error_after": prep["error_after"]} if distortion else None, "focal": focal}
+
+
+def _align_plain(images: list[bytes], projection: str, vignette: bool) -> dict:
     """Per-layer 3x3 matrices (row-major, layer pixels to the reference's) with SIFT (ORB if absent) features and a
-    RANSAC homography; Reposition keeps only a translation. Cylindrical is treated as Perspective. With vignette, the
+    RANSAC homography; Reposition keeps only a translation. With vignette, the
     lens's radial falloff is estimated from the aligned overlaps (_vignette_gains) and its gain tables come back as
     `gains` (None for a layer with none) for the window to apply to the layers before they are moved and blended."""
     import cv2
@@ -291,10 +347,23 @@ def align(images: list[bytes], projection: str, vignette: bool) -> dict:
     return {"matrices": out, "layers": info, "vignette": ("applied" if any(gains) else "no vignetting found") if vignette else "off", "gains": gains}
 
 
-def blend(images: list[bytes], method: str, seamless: bool) -> dict:
+def _guided(guide: np.ndarray, src: np.ndarray, r: int, eps: float) -> np.ndarray:
+    """Guided filter (box means, radius r): `src` smoothed so that its edges follow the edges of `guide`."""
+    import cv2
+    box = lambda a: cv2.boxFilter(a, cv2.CV_32F, (2 * r + 1, 2 * r + 1))
+    mi, mp = box(guide), box(src)
+    a = (box(guide * src) - mi * mp) / (box(guide * guide) - mi * mi + eps)
+    return box(a) * guide + box(mp - a * mi)
+
+
+def blend(images: list[bytes], method: str, seamless: bool, halo: int = 0, depth: bool = False) -> dict:
     """Per-layer masks (0-255 PNGs) where each pixel comes from one layer with smooth transitions: Stack Images picks
-    the layer with the most local Laplacian energy, Panorama the layer farthest from its own edge (a seam mid-overlap).
-    Seamless Tones returns per-layer RGB gains matching each layer's overlap with the reference."""
+    the layer with the most local Laplacian energy (its choice cleaned with a median so lone pixels do not flip layers),
+    Panorama the layer farthest from its own edge (a seam mid-overlap). Halo (0 to 100, Stack Images) swaps the plain
+    blur of each choice for a guided filter that follows the edges of the picked-pixel composite, so a sharp edge keeps
+    the layer that has it and its blurred neighbour does not bleed over. Seamless Tones returns per-layer RGB gains
+    matching each layer's overlap with the reference (the median ratio of its mid-tones). With depth, `depth` is a grey
+    PNG of which layer is sharpest at each point, 0 for the first layer and 255 for the last."""
     import cv2
     layers = [_decode(d) for d in images]
     h, w = layers[0][0].shape[:2]
@@ -310,31 +379,46 @@ def blend(images: list[bytes], method: str, seamless: bool) -> dict:
         score = [cv2.distanceTransform(v.astype(np.uint8), cv2.DIST_L2, 3) for v in valid]
         sigma = max(3.0, 0.01 * max(w, h))
     best = np.argmax(np.stack(score), axis=0)
-    wts = [cv2.GaussianBlur((best == i).astype(np.float32), (0, 0), sigma) * valid[i] for i in range(len(layers))]
+    if method == "stack" and len(layers) < 256:
+        best = cv2.medianBlur(best.astype(np.uint8), 5).astype(best.dtype)
+    hard = [(best == i).astype(np.float32) * valid[i] for i in range(len(layers))]
+    if method == "stack" and halo > 0:
+        picked = np.zeros((h, w), np.float32)
+        for i, (bgr, _) in enumerate(layers):
+            picked += hard[i] * cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
+        r = max(1, 5 - int(halo) // 25)
+        wts = [np.clip(_guided(picked, hard[i], r, 1e-3), 0, 1) * valid[i] for i in range(len(layers))]
+    else:
+        wts = [cv2.GaussianBlur((best == i).astype(np.float32), (0, 0), sigma) * valid[i] for i in range(len(layers))]
     total = np.maximum(sum(wts), 1e-6)
-    masks = []
-    for wt in wts:
+
+    def encode(a: np.ndarray) -> str:
         buf = io.BytesIO()
-        Image.fromarray(np.clip(wt / total * 255 + 0.5, 0, 255).astype(np.uint8), "L").save(buf, "PNG")
-        masks.append(base64.b64encode(buf.getvalue()).decode())
+        Image.fromarray(np.clip(a * 255 + 0.5, 0, 255).astype(np.uint8), "L").save(buf, "PNG")
+        return base64.b64encode(buf.getvalue()).decode()
+
+    masks = [encode(wt / total) for wt in wts]
     tones = [[1.0, 1.0, 1.0]]
     for bgr, v in layers[1:]:
-        both = v & valid[0]
+        both = v & valid[0] & (layers[0][0].min(axis=2) > 10) & (layers[0][0].max(axis=2) < 245) & (bgr.min(axis=2) > 10) & (bgr.max(axis=2) < 245)
         if seamless and both.sum() > 100:
-            g = layers[0][0][both].mean(axis=0) / np.maximum(bgr[both].mean(axis=0), 1.0)
+            g = np.exp(np.median(np.log(np.maximum(layers[0][0][both], 1.0).astype(np.float32) / np.maximum(bgr[both], 1.0)), axis=0))
             tones.append([float(x) for x in np.clip(g[::-1], 0.5, 2.0)])   # RGB
         else:
             tones.append([1.0, 1.0, 1.0])
-    return {"masks": masks, "tones": tones}
+    out: dict = {"masks": masks, "tones": tones}
+    if depth:
+        out["depth"] = encode(sum(wt / total * (i / max(1, len(layers) - 1)) for i, wt in enumerate(wts)))
+    return out
 
 
 @router.post("/align")
-async def align_route(file: list[UploadFile] = File(...), projection: str = Form("auto"), vignette: bool = Form(False)) -> dict:
+async def align_route(file: list[UploadFile] = File(...), projection: str = Form("auto"), vignette: bool = Form(False), reference: int = Form(0), distortion: bool = Form(False)) -> dict:
     if len(file) < 2:
         raise HTTPException(422, "Auto-Align Layers needs at least two layers.")
     data = [await f.read() for f in file]
     try:
-        return await run_in_threadpool(align, data, projection, vignette)
+        return await run_in_threadpool(align, data, projection, vignette, reference, distortion)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
 
@@ -392,8 +476,8 @@ async def photos_route(file: UploadFile = File(...)) -> dict:
 
 
 @router.post("/blend")
-async def blend_route(file: list[UploadFile] = File(...), method: str = Form("panorama"), seamless: bool = Form(False)) -> dict:
+async def blend_route(file: list[UploadFile] = File(...), method: str = Form("panorama"), seamless: bool = Form(False), halo: int = Form(0), depth: bool = Form(False)) -> dict:
     if len(file) < 2:
         raise HTTPException(422, "Auto-Blend Layers needs at least two layers.")
     data = [await f.read() for f in file]
-    return await run_in_threadpool(blend, data, method, seamless)
+    return await run_in_threadpool(blend, data, method, seamless, max(0, min(100, halo)), depth)
