@@ -94,7 +94,16 @@ def declined_problems(root: Path = ROOT) -> list[str]:
         for n, line in enumerate((root / rel).read_text(encoding="utf-8", errors="replace").splitlines(), 1):
             if DECLINED.search(line):
                 problems.append(f"{rel}:{n}: declined for patents (Content-Aware Scale, seam carving, skin-tone protection)")
+            if PROVIDERS_DECLINED.search(line):
+                problems.append(f"{rel}:{n}: declined provider (one cloud provider by design: fal)")
     return problems
+
+
+# Declined by the owner (1.88.3): one cloud provider by design, fal. Image or model providers other than fal are not
+# added. The language-model chat keeps its OpenAI-compatible services (Ollama, LM Studio and the like), which this
+# pattern does not name.
+PROVIDERS_DECLINED = re.compile(r"replicate\.com|api\.replicate|wavespeed|cloud\.comfy\.org|comfy[ _-]?(cloud|router|partner)|"
+                                r"toapis|byteplus|modelark|oxen\.ai|magnific|freepik", re.I)
 
 
 def scrollbar_problems(root: Path = ROOT) -> list[str]:

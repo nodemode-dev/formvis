@@ -45,7 +45,7 @@ const TOOL_WHEN: Record<string, string> = {
   directSelect: 'to edit single anchor points of a path', pen: 'to draw precise paths with anchor points', freeformPen: 'to draw a path by dragging freely',
   curvaturePen: 'to draw smooth curves with few clicks', convertPoint: 'to turn a path point between smooth and corner', type: 'to add or edit text',
   eyedropper: 'to pick a colour from the picture', colorSampler: 'to read colour values at fixed points', ruler: 'to measure distance and angle', note: 'to leave a written note on the picture',
-  markup: 'to mark areas for redaction or review', count: 'to count items by clicking them', hand: 'to pan the picture', rotateView: 'to turn the view without changing the picture', zoom: 'to zoom in or out on an area',
+  markup: 'to mark areas for redaction or review', count: 'to count items by clicking them', boxes: 'to draw layout boxes that say where things go in a generated picture', hand: 'to pan the picture', rotateView: 'to turn the view without changing the picture', zoom: 'to zoom in or out on an area',
 };
 
 const FILTER_NAMES: Record<string, string> = { gaussianBlur: 'Gaussian Blur', motionBlur: 'Motion Blur', addNoise: 'Add Noise', lensCorrection: 'Lens Correction', unsharpMask: 'Unsharp Mask', develop: 'Develop', lensBlur: 'Lens Blur', smartSharpen: 'Smart Sharpen', shakeReduction: 'Shake Reduction', radialBlur: 'Radial Blur', surfaceBlur: 'Surface Blur', fieldBlur: 'Field Blur', irisBlur: 'Iris Blur', tiltShift: 'Tilt-Shift', pathBlur: 'Path Blur', average: 'Average' };

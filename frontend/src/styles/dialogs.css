@@ -178,6 +178,19 @@
 .cv-refs-title { font-size: 12px; color: var(--text-muted); }
 .cv-refs-list { display: flex; flex-direction: column; gap: 2px; max-height: 120px; overflow-y: auto; }
 .cv-refs-row { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
+/* Reference chips under a prompt, and the crop and stitch settings. */
+.cv-chips { display: flex; flex-direction: column; gap: 4px; margin: 4px 0; }
+.cv-chips-list { display: flex; flex-wrap: wrap; gap: 4px; }
+.cv-chips-list[hidden], .cv-chip-menu[hidden] { display: none; }
+.cv-chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2, transparent); color: var(--text); font-size: 12px; cursor: grab; touch-action: none; user-select: none; }
+.cv-chip-tok { font-weight: 600; }
+.cv-chip-name { color: var(--text-muted); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-chip.is-open { border-color: var(--accent); }
+.cv-chip.is-drag { opacity: 0.5; cursor: grabbing; }
+.cv-chip.is-over { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.cv-chip-menu { display: flex; flex-wrap: wrap; gap: 4px; }
+.cv-cs { margin: 6px 0; }
+.cv-cs > summary { cursor: pointer; font-size: 12px; color: var(--text-muted); }
 /* Earlier generated results and the run log (Generate Image). */
 .cv-gen-hist { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
 .cv-gen-hist[hidden], .cv-gen-log[hidden] { display: none; }
@@ -214,6 +227,24 @@
 .cv-assistant-plan-bar { display: flex; gap: 6px; }
 .cv-assistant-plan { display: flex; align-items: center; gap: 6px; }
 .cv-assistant-foot { padding: 8px 10px; border-top: 1px solid var(--border, #333); display: flex; flex-direction: column; gap: 6px; }
+.cv-assistant-head { gap: 4px; }
+.cv-assistant-head > span { flex: 1; }
+.cv-assistant-notice { margin: 0; padding: 4px 10px; font-size: 11px; line-height: 1.4; color: var(--text-muted, #999); border-bottom: 1px solid var(--border, #333); }
+.cv-assistant-notice[hidden], .cv-assistant-chats[hidden] { display: none; }
+.cv-assistant-wait { color: var(--text, inherit); }
+.cv-assistant-usage { margin: 0; font-size: 11px; color: var(--text-muted, #999); }
+.cv-assistant-chats { max-height: 180px; overflow-y: auto; border-bottom: 1px solid var(--border, #333); }
+.cv-assistant-chat { display: flex; align-items: center; gap: 4px; padding: 2px 6px; }
+.cv-assistant-chat.is-current { background: var(--accent-soft, rgba(249,115,22,.15)); }
+.cv-assistant-chat-open { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; text-align: left; }
+.cv-assistant-chat-open strong, .cv-assistant-chat-open span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-assistant-chat-open span { font-size: 11px; color: var(--text-muted, #999); }
+.cv-assistant-settings { font-size: 12px; }
+.cv-assistant-settings summary { cursor: pointer; }
+.cv-assistant-small { font-size: 11px; color: var(--text-muted, #999); }
+.cv-assistant-tools { max-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; margin: 4px 0; }
+.cv-assistant-nums { display: flex; gap: 8px; margin-top: 4px; }
+.cv-assistant-nums label { display: flex; flex-direction: column; gap: 2px; flex: 1; font-size: 11px; }
 /* formvis Help (1.52.3). */
 .cv-help { display: grid; grid-template-columns: 190px 1fr; gap: 12px; height: min(62vh, 640px); }
 .cv-help-side { display: flex; flex-direction: column; gap: 6px; min-height: 0; }

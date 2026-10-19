@@ -152,6 +152,8 @@ import { ModeDialog } from './ui/app-dialogs';
 import { SendDialog } from './ui/panels/send-to';
 import { RunWorkflowDialog } from './ui/panels/comfyui-run';
 import { GenerateImageDialog } from './ui/panels/generate-image';
+import { ModelCanvasDialog } from './ui/panels/model-canvas-dialog';
+import { boxesText } from './engine/boxes';
 import { GeneratePanel } from './ui/panels/generate-panel';
 import { ColorMatchDialog } from './ui/panels/color-match';
 import { FilmLayerDialog } from './ui/panels/film-layer';
@@ -2597,6 +2599,7 @@ export function startApp(): void {
   const sendComfyUI = new SendDialog(engine, (t) => toast(t), 'comfyui');
   const runWorkflow = new RunWorkflowDialog(engine, (t) => toast(t));
   const generateImage = new GenerateImageDialog(engine, (t) => toast(t));
+  const modelCanvas = new ModelCanvasDialog(engine);
   const colorMatch = new ColorMatchDialog(engine);
   // A local model's notice (Krea 2's licence requires it with its pictures) and the filter's warning (1.52.9).
   const heard = (r: { notice?: string; warning?: string; notes: string[] }): void => { if (r.warning) toast(r.warning, 'error'); if (r.notice) toast(r.notice, 'info'); };
@@ -3626,7 +3629,12 @@ export function startApp(): void {
     { id: 'content-fill', label: 'Quick Content-Aware Fill', keys: ['Shift+Backspace'], enabled: () => pixel() && selected(), run: () => { void engine.task(async () => { await new Promise((r) => requestAnimationFrame(() => window.setTimeout(r, 0))); engine.contentAwareFill(); }); } },
     { id: 'generative-fill', label: 'Generative Fill...', enabled: () => selected(), run: (a) => void dialogs.generative.show('fill', 2, typeof a?.prompt === 'string' ? { prompt: a.prompt } : undefined) },   // the Contextual Task Bar passes the prompt it holds (undeclared: agents and the menus open the dialog)
     { id: 'generate-image', label: 'Generate Image...', enabled: () => true, run: () => void generateImage.show() },   // 1.51.2, in the Edit menu
+    { id: 'new-canvas-model-preset', label: 'New Canvas from Model Preset...', enabled: () => true, run: () => void modelCanvas.show() },
     { id: 'generate-panel', label: 'Generate Panel', run: () => { if (dock.collapsed) dock.setCollapsed(false); if (!dock.isShown('generate')) dock.toggle('generate'); generatePanel.reveal(); } },
+    { id: 'boxes-tool', label: 'Boxes Tool', icon: 'tBoxes', enabled: has, run: () => engine.setTool('boxes') },
+    { id: 'boxes-from-selection', label: 'Selection to Box', enabled: () => has() && selected(), run: () => { engine.boxFromSelection(); engine.setTool('boxes'); } },
+    { id: 'boxes-copy', label: 'Copy Box Rows', enabled: () => !!engine.current?.doc.boxes?.length, run: () => { const d = engine.current?.doc; void navigator.clipboard?.writeText(boxesText(d?.boxes, d ? { width: d.width, height: d.height } : undefined)).then(() => toast('Copied the box rows.'), () => toast('The clipboard is not available.', 'error')); } },
+    { id: 'boxes-clear', label: 'Clear Boxes', enabled: () => !!engine.current?.doc.boxes?.length, run: () => engine.clearBoxes() },
     { id: 'generate-remove', label: 'Remove / Repair', icon: 'tRemove', enabled: pixel, run: () => { if (selected()) commands.run('content-fill'); else { engine.setTool('remove'); toast('The Remove tool is on: paint over what to take out.'); } } },
     { id: 'path-selection', label: 'Make Selection from Path', keys: ['Mod+Enter'], enabled: () => !!engine.workPath, run: () => engine.pathToSelection() },
     { id: 'fill-path', label: 'Fill Path', enabled: () => !!engine.workPath && pixel(), run: () => engine.fillPath() },
@@ -3868,7 +3876,7 @@ export function startApp(): void {
       { label: 'Other', items: filterGroup('Other', []) },
       { label: '3D', items: ['normal-map', 'bump-map', 'height-from-normal'] }, '-', 'remove-bg', 'remove-bg-lite'] },
     // Generate: the generative commands in one place (the Generate panel, models, fill, repair, size, relight, and the ComfyUI and NodeMode links).
-    { label: 'Generate', items: ['generate-panel', '-', 'generate-image', 'generative-fill', 'generative-expand', '-', 'generate-remove', 'content-fill-workspace', 'content-fill', 'remove-wires', '-', 'remove-bg', 'remove-bg-lite', '-', 'upscale-2x', 'upscale-4x', 'new-relight-layer', '-', 'comfyui-run', 'send-comfyui', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode'])] },
+    { label: 'Generate', items: ['generate-panel', '-', 'generate-image', 'new-canvas-model-preset', 'generative-fill', 'generative-expand', '-', 'boxes-tool', 'boxes-from-selection', 'boxes-copy', 'boxes-clear', '-', 'generate-remove', 'content-fill-workspace', 'content-fill', 'remove-wires', '-', 'remove-bg', 'remove-bg-lite', '-', 'upscale-2x', 'upscale-4x', 'new-relight-layer', '-', 'comfyui-run', 'send-comfyui', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode'])] },
     { label: 'View', items: [{ label: 'Proof Setup', items: ['proof-setup', '-', 'proof-preset-monitor', 'proof-preset-cmyk', 'proof-preset-cyan', 'proof-preset-magenta', 'proof-preset-yellow', 'proof-preset-black', 'proof-preset-cmy', '-', 'proof-preset-protanopia', 'proof-preset-deuteranopia'] }, 'proof-colors', 'gamut-warning', 'preview-32', '-', 'zoom-in', 'zoom-out', 'fit', 'fit-layers', 'fit-artboard', 'actual', 'print-size', '-', 'toggle-extras', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'pattern-preview', 'pixel-art-preview', 'par-correction', 'transform-controls', 'toggle-task-bar', '-',
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'guide-layout', 'guides-from-shape', 'clear-guides'] }, 'snap', { label: 'Snap To', items: ['snap-all', '-', 'snap-guides', 'snap-grid', 'snap-layers', 'snap-bounds'] }, { label: 'Show', items: ['show-all-extras', 'show-no-extras', '-', 'show-selection-edges', 'show-layer-edges', 'show-notes', 'show-counts', 'toggle-show-slices', 'layer-based-slice', 'slice-options', 'delete-slice', 'clear-slices'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'os-full-screen', 'toggle-panels', 'rail-columns', 'interface-rtl', { label: 'Pasteboard', items: ['pasteboard-default', 'pasteboard-black', 'pasteboard-dark', 'pasteboard-mid', 'pasteboard-light'] }] },

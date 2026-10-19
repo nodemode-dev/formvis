@@ -6,6 +6,10 @@ import { addRecipe, comfyGenerator, recipes, removeRecipe } from '../../io/comfy
 import { localFill, localInpaint, localModels, localUpscale, modelReady, upscalerReady, type LocalModel } from '../../io/local-gen';
 import { loadPrefs } from '../prefs';
 import { ReferencePicker } from './references';
+import { ReferenceChips } from './reference-chips';
+import { CropStitchSettings } from './crop-stitch-settings';
+import { withCropStitch } from '../../io/crop-stitch-run';
+import { resolveReferenceTokens } from './generate-image';
 import { PromptImprover } from './prompt-improver';
 
 type Mode = 'fill' | 'expand' | 'upscale';
@@ -36,6 +40,8 @@ export class GenerativeDialog extends Dialog {
   private readonly model = el<HTMLSelectElement>('<select class="cv-input" aria-label="Model"></select>');
   private readonly modelRow = el('<label class="cv-dialog-row"><span>Model</span></label>');
   private readonly refs: ReferencePicker;
+  private chips!: ReferenceChips;
+  private readonly crop = new CropStitchSettings();
   private locals: LocalModel[] = [];
   private lama = false;
   private picked = false;   // the person chose the model (1.58.5); until then the default is fal with a key, else local
@@ -60,8 +66,11 @@ export class GenerativeDialog extends Dialog {
     this.refs = new ReferencePicker(engine);
     this.body.appendChild(this.refs.el);
     this.body.appendChild(this.prompt);
+    this.chips = new ReferenceChips(this.refs, this.prompt);
+    this.body.appendChild(this.chips.el);
     this.improver = new PromptImprover(this.prompt, 'Fill a selection');
     this.body.appendChild(this.improver.el);
+    this.body.appendChild(this.crop.el);
     this.marginRows = el('<div class="cv-panel-section"></div>');
     this.body.appendChild(this.marginRows);
     for (const [label, input] of [['Left (px)', this.margin.left], ['Top (px)', this.margin.top], ['Right (px)', this.margin.right], ['Bottom (px)', this.margin.bottom]] as const) {
@@ -107,6 +116,9 @@ export class GenerativeDialog extends Dialog {
     else { this.locals = (await localModels()).filter((m) => m.fromPicture); this.lama = await modelReady('lama-inpaint'); this.providers = (await api.providers()).filter((p) => p.fill); this.fillModels(); }   // local models (1.52.9), LaMa (1.53.2)
     this.refs.refresh(!this.model.value.startsWith('comfy:'));
     setHidden(this.refs.el, mode === 'upscale');
+    setHidden(this.chips.el, mode === 'upscale');
+    setHidden(this.crop.el, mode === 'upscale');
+    this.crop.load();
     setHidden(this.improver.el, mode === 'upscale');
     this.improver.refresh();
     if (start && mode !== 'upscale') this.prompt.value = start.prompt;
@@ -242,8 +254,11 @@ export class GenerativeDialog extends Dialog {
       if (!recipe) { setText(this.state, 'That workflow is no longer kept: add it again.'); return; }
       const prompt = this.prompt.value, mode = this.mode, e = this.engine, target = loadPrefs().comfyuiUrl;
       const margins = { left: Number(this.margin.left.value), top: Number(this.margin.top.value), right: Number(this.margin.right.value), bottom: Number(this.margin.bottom.value) };
+      const refs = await this.chips.ordered();
+      let said: string;
+      try { said = resolveReferenceTokens(prompt, refs.length); } catch (err) { setText(this.state, err instanceof Error ? err.message : 'A reference token could not be read.'); return; }
       this.close();
-      const fill = comfyGenerator(target, recipe, prompt, await this.refs.chosen());
+      const fill = withCropStitch(comfyGenerator(target, recipe, said, refs));
       if (mode === 'expand') await e.task(() => e.generativeExpand(margins, prompt, fill));
       else await e.task(() => e.generativeFill(prompt, fill));
       return;
@@ -253,7 +268,7 @@ export class GenerativeDialog extends Dialog {
       const prompt = this.prompt.value, mode = this.mode, e = this.engine, id = pr.id;
       const margins = { left: Number(this.margin.left.value), top: Number(this.margin.top.value), right: Number(this.margin.right.value), bottom: Number(this.margin.bottom.value) };
       this.close();
-      const fill = (image: Blob, mask: Blob): Promise<Blob> => api.generativeFill(image, mask, prompt, id);
+      const fill = withCropStitch((image: Blob, mask: Blob): Promise<Blob> => api.generativeFill(image, mask, prompt, id));
       if (mode === 'expand') await e.task(() => e.generativeExpand(margins, prompt, fill));
       else await e.task(() => e.generativeFill(prompt, fill));
       return;
@@ -269,7 +284,7 @@ export class GenerativeDialog extends Dialog {
     const prompt = this.prompt.value, mode = this.mode, scale = this.scale, e = this.engine;
     const margins = { left: Number(this.margin.left.value), top: Number(this.margin.top.value), right: Number(this.margin.right.value), bottom: Number(this.margin.bottom.value) };
     this.close();
-    const fill = (image: Blob, mask: Blob): Promise<Blob> => api.generativeFill(image, mask, prompt);
+    const fill = withCropStitch((image: Blob, mask: Blob): Promise<Blob> => api.generativeFill(image, mask, prompt));
     if (mode === 'upscale') await e.task(() => e.upscaleToDocument(scale, (image) => api.upscale(image, scale)));
     else if (mode === 'expand') await e.task(() => e.generativeExpand(margins, prompt, fill));
     else await e.task(() => e.generativeFill(prompt, fill));

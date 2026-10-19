@@ -43,6 +43,7 @@ import { rulerTool } from './ruler';
 import { noteTool } from './note';
 import { markupTool } from './markup';   // 1.60.3, the register's L2
 import { countTool } from './count';
+import { boxesTool } from './boxes';
 import { contentAwareMoveTool } from './content-aware-move';
 import { redEyeTool } from './red-eye';
 import { rotateViewTool } from './rotate-view';
@@ -50,5 +51,5 @@ import { artboardTool } from './artboard';
 import { relightTool } from './relight';
 
 export function registerBuiltinTools(): void {
-  for (const tool of [historyBrushTool, artHistoryTool, mixerTool, frameTool, convertPointTool, selectionBrushTool, pencilTool, eraserTool, magicEraserTool, patternStampTool, backgroundEraserTool, colorSamplerTool, rulerTool, noteTool, markupTool, countTool, contentAwareMoveTool, redEyeTool, rotateViewTool, artboardTool, moveTool, marqueeTool, lassoTool, objectSelectTool, quickSelectTool, wandTool, cropTool, sliceTool, brushTool, healTool, removeTool, healingBrushTool, patchTool, cloneTool, smearTool, dodgeTool, burnTool, spongeTool, gradientTool, bucketTool, shapeTool, pathSelectTool, directSelectTool, penTool, freeformPenTool, curvaturePenTool, typeTool, eyedropperTool, handTool, zoomTool, relightTool]) registerTool(tool);
+  for (const tool of [historyBrushTool, artHistoryTool, mixerTool, frameTool, convertPointTool, selectionBrushTool, pencilTool, eraserTool, magicEraserTool, patternStampTool, backgroundEraserTool, colorSamplerTool, rulerTool, noteTool, markupTool, countTool, boxesTool, contentAwareMoveTool, redEyeTool, rotateViewTool, artboardTool, moveTool, marqueeTool, lassoTool, objectSelectTool, quickSelectTool, wandTool, cropTool, sliceTool, brushTool, healTool, removeTool, healingBrushTool, patchTool, cloneTool, smearTool, dodgeTool, burnTool, spongeTool, gradientTool, bucketTool, shapeTool, pathSelectTool, directSelectTool, penTool, freeformPenTool, curvaturePenTool, typeTool, eyedropperTool, handTool, zoomTool, relightTool]) registerTool(tool);
 }

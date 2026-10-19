@@ -2,6 +2,18 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## One cloud provider by design: other providers declined and guarded · _v1.88.3 (setup/line_counts.py, CLAUDE.md, .claude/skills/formvis-harness/SKILL.md)
+
+The owner's P23 decisions: fal is the one cloud provider; Replicate, WaveSpeedAI, Comfy Cloud, Comfy Router, the Comfy Partner API, OpenRouter for images, ToAPIs, BytePlus ModelArk, Oxen.ai, Magnific and a WaveSpeedAI assistant provider are declined, as Content-Aware Scale was; the named hosted models are deferred until his own fal integration (he has the schemas).
+
+- `line_counts.py` `PROVIDERS_DECLINED` (replicate.com, api.replicate, wavespeed, cloud.comfy.org, comfy cloud, router or partner, toapis, byteplus, modelark, oxen.ai, magnific, freepik) checked in `declined_problems()` beside the patent pattern; the language-model chat's OpenAI-compatible services are not named by it. Checked on a scratch clone: an api.replicate.com line in a backend file gave the problem; the real tree passes (the code already holds fal alone: `localgen/providers.py` `PROVIDERS = {"fal": ...}`). Harness law 11 and `CLAUDE.md` say the same.
+- Before promising a balance check or cost display: fal's `GET https://api.fal.ai/v1/account/billing?expand=credits` returns the credit balance and currency to a key with the `billing:usage:read` permission, and `GET https://api.fal.ai/v1/models/pricing?endpoint_id=...` a model's unit price; usage line items and estimates are documented without paths in the pricing page, so check the Platform APIs reference when the integration is built.
+
+## Language-model chat: tool exclusions, saved chats, token usage, a picture budget · _v1.88.3 (app/services/llm.py, app/routers/llm.py)
+
+- `/chat` drops the tools named in `body.exclude`; `chat()` keeps at most the newest 4 pictures a request (`_budget_pictures`, an oversize one dropped) and returns the service's prompt, completion and total tokens and a `pictures` count. Saved chats live in the data folder under `chats/` with owner-only permissions, local callers only (`require_local`): a bad id is 404, a chat over 2 MB is 413, at most 100 are kept.
+- Replaced: the old body of `chat()` sent `"messages": messages` with no usage and no picture count; it now sends `_budget_pictures(messages)` and returns usage. Added `import re`, `import time` and `from app.routers.terminal import require_local`.
+
 ## Four agent tools: select_mask, list_settings, set_settings, ui_inspect · _v1.87.8 (app/routers/mcp.py)
 
 CLOSE_GAPS P21. Only additions; the catalogue goes from 56 to 60 tools, none in CORE, each with its USE_WHEN line.

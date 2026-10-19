@@ -1,7 +1,8 @@
 // Guides and slices (DEV_PLAN 36.13): the Engine's guide and slice methods, moved out of index.ts. Each takes a
 // GuideHost, the few Engine members they use, so this file never imports the Engine class.
 import type { Project } from './project';
-import type { Doc, DocNote, DocSlice, Guide, ID, Pt, Rect } from './types';
+import { carryBoxes } from './boxes';
+import type { Doc, DocBox, DocNote, DocSlice, Guide, ID, Pt, Rect } from './types';
 
 /** What the guide and slice methods need of the Engine. */
 export interface GuideHost {
@@ -147,7 +148,7 @@ export interface Carry { map: (x: number, y: number) => Pt; width: number; heigh
 /** The document's guides, slices, notes and count marks carried through `c`, as the pixels are: a guide, note or count
  *  mark that lands off the canvas goes, a slice is cut to it. Only the fields the document has are returned. */
 export function carryMarks(doc: Doc, c: Carry): Partial<Doc> {
-  const out: { guides?: Guide[]; slices?: DocSlice[]; notes?: DocNote[]; counts?: { x: number; y: number }[] } = {};
+  const out: { guides?: Guide[]; slices?: DocSlice[]; notes?: DocNote[]; counts?: { x: number; y: number }[]; boxes?: DocBox[] } = {};
   const inside = (q: Pt): boolean => q.x >= 0 && q.y >= 0 && q.x <= c.width && q.y <= c.height;
   if (doc.guides?.length) {
     out.guides = c.upright === false ? [] : doc.guides.flatMap((g) => {
@@ -166,5 +167,6 @@ export function carryMarks(doc: Doc, c: Carry): Partial<Doc> {
   }
   if (doc.notes?.length) out.notes = doc.notes.flatMap((n) => { const q = c.map(n.x, n.y); return inside(q) ? [{ ...n, x: q.x, y: q.y }] : []; });
   if (doc.counts?.length) out.counts = doc.counts.flatMap((n) => { const q = c.map(n.x, n.y); return inside(q) ? [{ x: q.x, y: q.y }] : []; });
+  if (doc.boxes?.length) out.boxes = carryBoxes(doc.boxes, c.map, c.width, c.height);
   return out;
 }

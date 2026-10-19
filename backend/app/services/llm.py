@@ -4,6 +4,8 @@ are kept in the engine's data folder, readable only by the user; the key is neve
 
 import json
 import os
+import re
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -116,13 +118,100 @@ def chat(messages: list, tools: list) -> dict:
     model's message (its text and any tool calls). The key stays here."""
     if not isinstance(messages, list) or not 0 < len(messages) <= 200:
         raise LlmError("The conversation is empty or too long.", 400)
-    body = {"model": _settings().get("model"), "messages": messages, "temperature": 0.3, "max_tokens": 1200,
+    body = {"model": _settings().get("model"), "messages": _budget_pictures(messages), "temperature": 0.3, "max_tokens": 1200,
             **({"tools": tools, "tool_choice": "auto"} if tools else {})}
-    choices = _call("/chat/completions", body, timeout=180).get("choices") or []
+    reply = _call("/chat/completions", body, timeout=180)
+    choices = reply.get("choices") or []
     message = (choices[0] if choices else {}).get("message") or {}
     calls = [c for c in (message.get("tool_calls") or []) if isinstance(c, dict) and isinstance(c.get("function"), dict)]
+    used = reply.get("usage") if isinstance(reply.get("usage"), dict) else {}
+    count = lambda k: int(used.get(k)) if isinstance(used.get(k), (int, float)) and used.get(k) >= 0 else 0
     return {"content": message.get("content") or "", "tool_calls": [{"id": str(c.get("id") or f"call_{i}"), "name": str(c["function"].get("name") or ""),
-            "arguments": str(c["function"].get("arguments") or "{}")} for i, c in enumerate(calls)]}
+            "arguments": str(c["function"].get("arguments") or "{}")} for i, c in enumerate(calls)],
+            "usage": {"prompt_tokens": count("prompt_tokens"), "completion_tokens": count("completion_tokens"), "total_tokens": count("total_tokens")},
+            "pictures": sum(1 for m in body["messages"] for p in (m.get("content") if isinstance(m, dict) and isinstance(m.get("content"), list) else []) if isinstance(p, dict) and p.get("type") == "image_url")}
+
+
+MAX_PICTURES = 4
+MAX_PICTURE_BYTES = 1_500_000
+
+
+def _budget_pictures(messages: list) -> list:
+    """The pictures one request may carry: the newest MAX_PICTURES, each under MAX_PICTURE_BYTES as a data address; the
+    rest become a line of text, so the service is never sent more than the budget."""
+    parts = [(i, j) for i, m in enumerate(messages) if isinstance(m, dict) and isinstance(m.get("content"), list)
+             for j, p in enumerate(m["content"]) if isinstance(p, dict) and p.get("type") == "image_url"]
+    keep = set(parts[-MAX_PICTURES:])
+    out = []
+    for i, m in enumerate(messages):
+        if isinstance(m, dict) and isinstance(m.get("content"), list):
+            content = []
+            for j, p in enumerate(m["content"]):
+                if isinstance(p, dict) and p.get("type") == "image_url":
+                    url = str((p.get("image_url") or {}).get("url") or "") if isinstance(p.get("image_url"), dict) else ""
+                    if (i, j) not in keep or not url.startswith("data:image/") or len(url) > MAX_PICTURE_BYTES:
+                        p = {"type": "text", "text": "[a picture left out: over the picture budget]"}
+                content.append(p)
+            m = {**m, "content": content}
+        out.append(m)
+    return out
+
+
+CHAT_LIMIT = 100
+CHAT_BYTES = 2_000_000
+
+
+def _chats() -> Path:
+    path = config.data_dir() / "chats"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _chat_file(chat_id: str) -> Path:
+    if not isinstance(chat_id, str) or not re.fullmatch(r"[a-z0-9]{8,32}", chat_id):
+        raise LlmError("That is not a saved chat.", 404)
+    return _chats() / f"{chat_id}.json"
+
+
+def chats() -> list[dict]:
+    """The saved chats, newest first: id, title, when it was last saved and how many messages it holds."""
+    out = []
+    for f in _chats().glob("*.json"):
+        try:
+            c = json.loads(f.read_text())
+            out.append({"id": f.stem, "title": str(c.get("title") or "Chat")[:80], "updated": float(c.get("updated") or 0), "messages": len(c.get("lines") or [])})
+        except (OSError, ValueError, TypeError):
+            continue
+    return sorted(out, key=lambda c: -c["updated"])
+
+
+def chat_get(chat_id: str) -> dict:
+    try:
+        return json.loads(_chat_file(chat_id).read_text())
+    except (OSError, ValueError):
+        raise LlmError("That chat is not saved.", 404)
+
+
+def chat_put(chat_id: str, chat: dict) -> dict:
+    """Saves a chat in the data folder, readable only by the user; at most CHAT_LIMIT chats are kept (the oldest go) and one is at most CHAT_BYTES."""
+    path = _chat_file(chat_id)
+    if not isinstance(chat, dict) or not isinstance(chat.get("history"), list) or not isinstance(chat.get("lines"), list):
+        raise LlmError("A chat needs its history and its lines.", 422)
+    data = json.dumps({"title": str(chat.get("title") or "Chat")[:80], "updated": time.time(), "history": chat["history"], "lines": chat["lines"], "usage": chat.get("usage") or {}})
+    if len(data.encode()) > CHAT_BYTES:
+        raise LlmError("This chat is too long to save. Start a new chat.", 413)
+    temp = path.with_suffix(".tmp")
+    fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(data)
+    os.replace(temp, path)
+    for old in chats()[CHAT_LIMIT:]:
+        _chat_file(old["id"]).unlink(missing_ok=True)
+    return {"id": chat_id}
+
+
+def chat_delete(chat_id: str) -> None:
+    _chat_file(chat_id).unlink(missing_ok=True)
 
 
 def models() -> list[str]:

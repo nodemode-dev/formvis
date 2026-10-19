@@ -20,7 +20,7 @@ import type { CharacterStyle } from './types';
 import { Emitter } from './events';
 import { bumpMap, heightField, heightFromNormal, normalMap } from './normal-map';
 import * as VR from './variables';
-import type { DocVariable, LayerLabel } from './types';
+import type { DocVariable, LayerLabel, BoxKind, DocBox } from './types';
 import type { RelightContent } from './relight';
 import { History, type HistoryEntry, type PixelPatch, type Snapshot } from './history';
 import { Renderer, renderDoc, type LayerOverride } from './renderer';
@@ -54,6 +54,7 @@ import * as AB from './artboard-ops';
 import * as GD from './guides-ops';
 import * as PR from './profile-ops';
 import * as NT from './notes-ops';
+import * as BX from './boxes';
 import * as SM from './smart-ops';
 import * as SOB from './smart-object-ops';
 import * as MO from './mode-ops';
@@ -816,6 +817,25 @@ export class Engine {
   addCount(pt: Pt): void { NT.addCount(this.noteHost, pt); }
   removeCount(i: number): void { NT.removeCount(this.noteHost, i); }
   clearCounts(): void { NT.clearCounts(this.noteHost); }
+
+  /** Layout boxes (the Boxes tool; Generate writes them into the prompt): on the document, saved with it; each change one step. */
+  activeBox: ID | null = null;
+  private get boxHost(): BX.BoxHost {
+    const self = this;
+    return {
+      get activeBox() { return self.activeBox; },
+      set activeBox(v) { self.activeBox = v; },
+      edit: (name, fn) => this.edit(name, fn),
+      selectionRect: () => this.current?.selection?.rect ?? null,
+    };
+  }
+  addBox(rect: Rect, kind: BoxKind = 'new', text = ''): ID | null { return BX.addBox(this.boxHost, rect, kind, text); }
+  setBox(id: ID, patch: Partial<Omit<DocBox, 'id'>>, name = 'Edit Box'): void { BX.setBox(this.boxHost, id, patch, name); }
+  removeBox(id: ID): void { BX.removeBox(this.boxHost, id); this.emit('overlay', null); }
+  duplicateBox(id: ID): ID | null { return BX.duplicateBox(this.boxHost, id); }
+  clearBoxes(): void { BX.clearBoxes(this.boxHost); this.emit('overlay', null); }
+  boxFromSelection(kind: BoxKind = 'new'): ID | null { return BX.boxFromSelection(this.boxHost, kind); }
+  selectBox(id: ID | null): void { if (this.activeBox === id) return; this.activeBox = id; this.emit('overlay', null); }
   /** Measurement scale and records (DEV_PLAN 31.6 part a): document-level, saved with it; each change one step. */
   setMeasureScale(pixels: number, length: number, units: string): void {
     if (!(pixels > 0) || !(length > 0)) { this.notice('The pixel length and the logical length must both be above zero.', 'info'); return; }

@@ -2,8 +2,9 @@
  *  checkpoints, local ONNX folders), a job run to its pictures (progress polled, Cancel stopping it in the engine),
  *  each picture fetched and the engine's copy removed, and the generator Generative Fill and Expand call. */
 import type { GenerationInfo } from '../engine/types';
+import { withCropStitch } from './crop-stitch-run';
 
-export interface LocalModel { id: string; label: string; ready: boolean; reason: string | null; fromPicture: boolean; influence: number }
+export interface LocalModel { id: string; label: string; ready: boolean; reason: string | null; fromPicture: boolean; influence: number; /** The sizes the model offers, "WxH", from the engine's catalogue. */ sizes: string[] }
 export interface LocalResult { pictures: Blob[]; notes: string[]; notice?: string; warning?: string; /** Each picture's settings, taken from the job's record (or the PNG's own text) before the engine's copy goes. */ settings: Array<GenerationInfo | undefined> }
 
 /** The settings a job's record holds for one picture; the PNG's "parameters" text when the record has no more than that. */
@@ -43,9 +44,9 @@ async function ask(path: string, init?: RequestInit): Promise<Response> {
 
 export async function localModels(): Promise<LocalModel[]> {
   try {
-    const { generators } = await (await ask('/generate')).json() as { generators: Array<{ id: string; label: string; kind: string; ready: boolean; reason?: string; options?: { image?: number } }> };
+    const { generators } = await (await ask('/generate')).json() as { generators: Array<{ id: string; label: string; kind: string; ready: boolean; reason?: string; sizes?: string[]; options?: { image?: number } }> };
     return generators.filter((g) => g.id.startsWith('local:') && g.kind === 'image')
-      .map((g) => ({ id: g.id, label: g.label, ready: g.ready, reason: g.reason ?? null, fromPicture: typeof g.options?.image === 'number', influence: g.options?.image ?? 0.4 }));
+      .map((g) => ({ id: g.id, label: g.label, ready: g.ready, reason: g.reason ?? null, fromPicture: typeof g.options?.image === 'number', influence: g.options?.image ?? 0.4, sizes: Array.isArray(g.sizes) ? g.sizes.filter((s) => /^\d+x\d+$/.test(s)) : [] }));
   } catch { return []; }
 }
 
@@ -83,11 +84,11 @@ async function followJob(id: string, status: (text: string) => void, cancelled: 
 /** Generative Fill's and Expand's generator on a local model: the area the fill covers sent as the picture to start
  *  from, at `influence` (how much it shapes the result); formvis then masks the result to the selection. */
 export function localFill(model: string, prompt: string, influence: number, heard: (r: LocalResult) => void, status?: (text: string) => void): (image: Blob, mask: Blob) => Promise<Blob> {
-  return async (image) => {
+  return withCropStitch(async (image) => {
     const r = await runLocal({ generator: model, prompt: prompt.trim() || 'the surrounding scene, continued seamlessly', size: 'source', count: 1, options: { image: { png: await b64(image) }, imageStrength: influence } }, status);
     heard(r);
     return r.pictures[0];
-  };
+  });
 }
 
 /** Whether a downloadable model is on this computer: 'ai-upscale' (Real-ESRGAN, 1.53.1), 'lama-inpaint' (LaMa, 1.53.2). */
@@ -214,10 +215,10 @@ export async function findToRemove(image: Blob, kind: 'people' | 'distractions')
 
 /** Generative Fill's and Expand's generator on LaMa (1.53.2): any computer's CPU, no prompt, no key. */
 export function localInpaint(): (image: Blob, mask: Blob) => Promise<Blob> {
-  return async (image, mask) => {
+  return withCropStitch(async (image, mask) => {
     const form = new FormData(); form.append('image', image, 'image.png'); form.append('mask', mask, 'mask.png');
     return (await ask('/inpaint/local', { method: 'POST', headers: { 'x-formvis-local': '1' }, body: form })).blob();
-  };
+  });
 }
 
 /** Image > Upscale's generator on this computer (1.53.1): Real-ESRGAN, the picture enlarged `scale` times. */

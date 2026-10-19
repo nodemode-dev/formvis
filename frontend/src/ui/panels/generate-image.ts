@@ -1,5 +1,6 @@
 import { Raster, type Engine } from '../../engine';
 import type { GenerationInfo } from '../../engine/types';
+import { withBoxes } from '../../engine/boxes';
 import { api, ApiError, type GenerativeStatus, type ProviderStatus } from '../../io/api';
 import { recipes, runToResults } from '../../io/comfy';
 import { localModels, runLocal } from '../../io/local-gen';
@@ -8,6 +9,7 @@ import { el, patchList, setHidden, setText } from '../dom';
 import { t } from '../i18n';
 import { loadPrefs } from '../prefs';
 import { ReferencePicker } from './references';
+import { ReferenceChips } from './reference-chips';
 import { PromptImprover } from './prompt-improver';
 
 /** One model Generate Image can use: its value in the picker, its words, and why it cannot be chosen when it cannot. */
@@ -145,7 +147,7 @@ async function generateOnce(engine: Engine, req: GenerationRequest): Promise<boo
   if (!engine.current) engine.newDocument(req.size?.width ?? 1024, req.size?.height ?? 1024, 'Generated', 'white');
   const p = engine.current;
   if (!p) return false;
-  const W = p.doc.width, H = p.doc.height, w = req.size?.width ?? W, h = req.size?.height ?? H, { prompt, choice } = req;
+  const W = p.doc.width, H = p.doc.height, w = req.size?.width ?? W, h = req.size?.height ?? H, { choice } = req, prompt = withBoxes(req.prompt, p.doc);   // the layout boxes follow the words, one line each
   const hint = req.keyHint ?? { fal: t('Add a fal API key first, in Edit > Generative Fill.'), provider: (name: string) => t(`Add a ${name} API key first, above.`) };
   let blob: Blob;
   let generation: GenerationInfo | undefined;
@@ -180,7 +182,7 @@ async function generateOnce(engine: Engine, req: GenerationRequest): Promise<boo
   }
   if (req.stopped() || engine.current !== p) return false;
   await placeResult(engine, blob, w, h, generation);
-  kept.unshift({ id: ++serial, time: Date.now(), prompt, choice, width: w, height: h, blob, generation });
+  kept.unshift({ id: ++serial, time: Date.now(), prompt: req.prompt, choice, width: w, height: h, blob, generation });
   if (kept.length > KEPT_LIMIT) kept.length = KEPT_LIMIT;
   return true;
 }
@@ -194,6 +196,7 @@ export class GenerateImageDialog extends Dialog {
   private readonly status = el('<p class="cv-note cv-gen-status" role="status"></p>');
   private busy = false;
   private readonly refs: ReferencePicker;
+  private readonly chips: ReferenceChips;
   private readonly improver: PromptImprover;
   private stopped = false;
   // The providers beside fal (1.58.4, L7): which have keys, and a key field shown when the chosen one has none.
@@ -213,6 +216,7 @@ export class GenerateImageDialog extends Dialog {
     const row = el('<label class="cv-dialog-row"><span>Model</span></label>');
     row.append(this.model);
     this.refs = new ReferencePicker(engine);
+    this.chips = new ReferenceChips(this.refs, this.prompt);
     this.model.addEventListener('change', () => { this.picked = true; this.refs.forFal(this.model.value === 'fal'); this.keyFor(); });
     this.improver = new PromptImprover(this.prompt, 'Richer detail');
     this.keyButton.addEventListener('click', () => {
@@ -220,7 +224,7 @@ export class GenerateImageDialog extends Dialog {
       if (pr?.configured && !this.changing) { this.changing = true; this.keyFor(); this.keyInput.focus(); } else void this.saveKey();
     });
     this.keyRow.append(this.keyInput, this.keyButton);
-    this.body.append(this.prompt, this.improver.el, row, this.keyRow, this.refs.el, this.status, this.hist, this.logBox);
+    this.body.append(this.prompt, this.improver.el, row, this.keyRow, this.refs.el, this.chips.el, this.status, this.hist, this.logBox);
     this.hist.addEventListener('click', (ev) => {
       const b = (ev.target as HTMLElement).closest<HTMLButtonElement>('button[data-id]');
       if (!b) return;
@@ -324,7 +328,7 @@ export class GenerateImageDialog extends Dialog {
     this.stopped = false;
     try {
       // The same generation the Generate panel runs; a new layer at the document's size (a new document when none is open).
-      const added = await runGeneration(this.engine, { prompt, choice: this.model.value, providers: this.providers, references: () => this.refs.chosen(), status: (text) => setText(this.status, text), stopped: () => this.stopped, heard: (r) => this.heard(r) });
+      const added = await runGeneration(this.engine, { prompt, choice: this.model.value, providers: this.providers, references: () => this.chips.ordered(), status: (text) => setText(this.status, text), stopped: () => this.stopped, heard: (r) => this.heard(r) });
       if (!added) return;
       this.close();
       this.toast('The generated image was added as a layer.');

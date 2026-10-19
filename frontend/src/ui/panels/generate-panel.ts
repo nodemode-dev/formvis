@@ -4,6 +4,7 @@ import { el, patchList, q, setHidden, setText, setTitle, setValue } from '../dom
 import { icon } from '../icons';
 import { onLanguage, t } from '../i18n';
 import { PanelGroup } from '../panel-group';
+import { BoxesSection } from '../boxes-panel';
 import { loadPrefs, recalled, remembered, updatePrefs } from '../prefs';
 import { fillModelPicker, generationModels, runGeneration } from './generate-image';
 import { comfyuiStatusText, nodemodeStatusText } from './send-to';
@@ -24,7 +25,7 @@ export interface GeneratePanelDeps {
   heard: (r: { notice?: string; warning?: string; notes: string[] }) => void;
 }
 
-type SecId = 'gen' | 'edit' | 'conn';
+type SecId = 'gen' | 'boxes' | 'edit' | 'conn';
 type Kind = 'comfyui' | 'nodemode';
 type Dot = 'up' | 'down' | 'unchecked';
 
@@ -45,7 +46,7 @@ const ACTS: readonly Act[] = [
 ];
 
 /** The shapes Generate offers beside the picture's own: name, words, pixels (multiples of 16, within every local model's range). */
-const SIZES: ReadonlyArray<readonly [string, string, number, number]> = [
+export const SIZES: ReadonlyArray<readonly [string, string, number, number]> = [
   ['1:1', 'Square 1:1 (1024 x 1024)', 1024, 1024],
   ['4:3', 'Landscape 4:3 (1152 x 896)', 1152, 896],
   ['3:4', 'Portrait 3:4 (896 x 1152)', 896, 1152],
@@ -59,8 +60,8 @@ const NAME = 'Generate Panel';
 function loadFolds(): Record<SecId, boolean> {
   try {
     const r = JSON.parse(localStorage.getItem(FOLDS) ?? '{}') as Partial<Record<SecId, unknown>>;
-    return { gen: r.gen !== false, edit: r.edit !== false, conn: r.conn === true };
-  } catch { return { gen: true, edit: true, conn: false }; }
+    return { gen: r.gen !== false, boxes: r.boxes !== false, edit: r.edit !== false, conn: r.conn === true };
+  } catch { return { gen: true, boxes: true, edit: true, conn: false }; }
 }
 
 function setAttr(node: Element, name: string, value: string): void { if (node.getAttribute(name) !== value) node.setAttribute(name, value); }
@@ -119,6 +120,10 @@ export class GeneratePanel {
           <p class="cv-note cv-genp-status" role="status"></p>
         </div>
       </section>
+      <section class="cv-genp-sec" data-sec="boxes">
+        <button class="cv-genp-sechead" type="button" aria-expanded="true">${icon('chevronDown', 12)}<span data-t="Boxes"></span></button>
+        <div class="cv-genp-secbody"><div class="cv-genp-boxes"></div></div>
+      </section>
       <section class="cv-genp-sec" data-sec="edit">
         <button class="cv-genp-sechead" type="button" aria-expanded="true">${icon('chevronDown', 12)}<span data-t="Edit with AI"></span></button>
         <div class="cv-genp-secbody">
@@ -174,6 +179,7 @@ export class GeneratePanel {
       q(b, a.group === 'edit' ? '.cv-genp-acts:not(.cv-genp-links)' : '.cv-genp-links').appendChild(btn);
     }
 
+    new BoxesSection(q(b, '.cv-genp-boxes'), engine, (text) => setText(this.status, text));
     this.conns = { comfyui: this.makeConn('comfyui', 'ComfyUI'), nodemode: this.makeConn('nodemode', 'NodeMode') };
     q(b, '.cv-genp-conns').append(this.conns.comfyui.root, this.conns.nodemode.root);
 

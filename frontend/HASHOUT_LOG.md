@@ -2,6 +2,49 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Boxes for region prompting: a Boxes tool, kinds, names, keys, descriptions on the canvas, selection to box, copy and clear, warnings and the crop preview, boxes follow canvas changes and save with the project · _v1.88.3 (engine/boxes.ts, extensions/tools/boxes.ts, ui/boxes-panel.ts, styles/boxes.css, engine/types.ts, engine/index.ts, engine/guides-ops.ts, io/project-io.ts, extensions/tools/index.ts, ui/icons.ts, ui/panels/generate-panel.ts, ui/panels/generate-image.ts, app.ts, automation/command-meta.ts, automation/catalogue.ts, index.html)
+
+- `engine/types.ts` gains `BoxKind` (New, Keep, Move, Remove, From reference, Text), `DocBox`, `Doc.boxes` and the tool id `boxes`; `engine/index.ts` gains `activeBox`, `addBox`, `setBox`, `removeBox`, `duplicateBox`, `clearBoxes`, `boxFromSelection`, `selectBox` (each one undo step). `engine/boxes.ts` holds the box text (`box 1 | New | x=100 y=100 w=300 h=200 | a red car`, one plain line each, no model-specific format), the warnings, the crop rect and the geometry carry (canvas size, rotations, crop).
+- The Boxes tool draws, moves and resizes boxes (one step each), Enter or a double-click opens a floating description editor at `var(--z-temp)`, arrows nudge 1 (Shift 10), Ctrl+D duplicates, Tab cycles, Delete removes. The Generate panel has a Boxes section; Generate > Boxes Tool, Box from Selection, Copy Boxes, Clear Boxes.
+- `generate-image.ts` sends the prompt with the boxes after it (`withBoxes`); the history keeps the words as typed. Measured: the mocked request body held the prompt, a heading and 3 box lines; selection 200,150,120x90 gave the same box; canvas +100 shifted x by 100; a quarter turn mapped (200,100,300,200) to (500,200,200,300); serialize and load gave 3 identical boxes; 5 moves kept the same row nodes.
+- Replaced, quoted exactly:
+  - `generate-image.ts`: `h = req.size?.height ?? H, { prompt, choice } = req;` became `h = req.size?.height ?? H, { choice } = req, prompt = withBoxes(req.prompt, p.doc);`, and `kept.unshift({ id: ++serial, time: Date.now(), prompt, choice,` became `kept.unshift({ id: ++serial, time: Date.now(), prompt: req.prompt, choice,`.
+  - `generate-panel.ts`: `type SecId = 'gen' | 'edit' | 'conn';` became `type SecId = 'gen' | 'boxes' | 'edit' | 'conn';`; `return { gen: r.gen !== false, edit: r.edit !== false, conn: r.conn === true };` and `} catch { return { gen: true, edit: true, conn: false }; }` each gained `boxes`.
+  - `guides-ops.ts`: `import type { Doc, DocNote,` became `import type { Doc, DocBox, DocNote,`; `notes?: DocNote[]; counts?: { x: number; y: number }[] } = {};` gained `; boxes?: DocBox[]`.
+  - `app.ts` Generate menu: `'generative-expand', '-',` became `'generative-expand', '-', 'boxes-tool', 'boxes-from-selection', 'boxes-copy', 'boxes-clear', '-',`.
+  - `catalogue.ts`: `boxes` words added between `count` and `hand` in `TOOL_WHEN`; `engine/index.ts`: `import type { DocVariable, LayerLabel } from './types';` gained `BoxKind, DocBox`.
+- Open: Boxes shares the I slot with Count and Note; its place in the rendered flyout was not looked at.
+
+## Crop and stitch, highres fix, reference chips with @img tokens, new canvas from a model preset, recipe presets · _v1.88.3 (engine/crop-stitch.ts, io/crop-stitch-run.ts, ui/panels/crop-stitch-settings.ts, ui/panels/reference-chips.ts, ui/panels/model-canvas-dialog.ts, io/local-gen.ts, ui/panels/generative-dialog.ts, ui/panels/generate-image.ts, ui/panels/generate-panel.ts, app.ts, automation/command-meta.ts, styles/dialogs.css)
+
+- `engine/crop-stitch.ts` holds the maths (padding, target size, multiple of, feather); `io/crop-stitch-run.ts` keeps the settings in browser storage and wraps a fill in `withCropStitch`. The Generative dialog has a Crop and stitch fold (off by default, hidden for Upscale) with shipped recipes (Small fix, Balanced, Wide context, Highres fix) and saved ones. The target size is the highres fix: the crop is scaled for the model and the result scaled back and feathered in.
+- Measured on a 2000x1500 doc, selection 200x100: off, the model got 300x200; padding 16, target 1024, multiple 8, feather 16 gave crop {31,31,238,138}, sent 1024x592, 32840 pixels stitched back (the layer's changed pixels were also 32840); padding 0, target 512, multiple 16 sent 512x256. The fal and ComfyUI routes are wrapped but were not run in the browser.
+- Reference chips (`reference-chips.ts`) in Generate Image and the Generative dialog: ticked layers become `@img1 Ref A`, `@img2 Ref B`; dragging or the chip menu (Put in prompt, Move earlier, Move later, Remove) reorders them and renumbers the tokens in the prompt (`@img1 in the style of @img3` became `@img2 in the style of @img1` after chip 3 moved first); pictures are sent in chip order. The ComfyUI route now resolves `@imgN` and names a missing reference.
+- Generate > New Canvas from Model Preset... (`new-canvas-model-preset`): `LocalModel` carries `sizes` from the `/generate` catalogue; fal uses the panel's sizes. Chose Small and 768 x 512: the new doc was 768x512 named "Small 768x512".
+- Replaced, quoted exactly:
+  - `io/local-gen.ts` `localInpaint`:
+    ```
+      return async (image, mask) => {
+        const form = new FormData(); form.append('image', image, 'image.png'); form.append('mask', mask, 'mask.png');
+        return (await ask('/inpaint/local', { method: 'POST', headers: { 'x-formvis-local': '1' }, body: form })).blob();
+      };
+    ```
+    became `return withCropStitch(async (image, mask) => { ...the same body... });`; `localFill`'s `return async (image) => {` ... `};` became `return withCropStitch(async (image) => {` ... `});`.
+  - `generative-dialog.ts`: `const fill = comfyGenerator(target, recipe, prompt, await this.refs.chosen());` became chip-ordered references, the resolved prompt and `withCropStitch(...)`; `const fill = (image: Blob, mask: Blob): Promise<Blob> => api.generativeFill(image, mask, prompt, id);` and the same line without `, id` are wrapped in `withCropStitch(...)`.
+  - `generate-image.ts`: `references: () => this.refs.chosen()` became `references: () => this.chips.ordered()`; `generate-panel.ts`: `const SIZES` became `export const SIZES`.
+- Open: picture-carrying prompt improvement (the `/improve` route takes text only) and a local file mirror of generations.
+
+## Assistant: tool exclusions, waits while you drag or type, saved chats, token counts, where the words go, other agents' notice, pictures with a budget, attention when it asks · _v1.88.3 (ui/panels/assistant.ts, styles/dialogs.css, src-tauri/capabilities/default.json)
+
+- A Tools and pictures section lists the 60 engine tools; ticked ones are kept in browser storage under `formvis.assistant`, sent as `exclude` and refused by the panel too (a forced `get_document` came back "excluded ... not run"). A step waits while the pointer is held or another field was typed in within 800 ms (held 1500 ms: it ran 43 ms after release). New chat and Chats (Open, Delete) save through the engine; the list is patched in place. Prompt, completion and total tokens are summed per chat (two replies of 100 in, 20 out read "200 in, 40 out, 240 total"); no costs, since fal's pricing route is not part of the language-model chat. A notice names the host the words go to and whether pictures go; another agent seen in `/api/agents` within 60 s is named. Pictures are off by default; on, one a turn at a longest side of 256 px. When the window is not focused and a plan or a question waits, the title flashes; the desktop calls `requestUserAttention` (permission added; the desktop path was not run).
+- Replaced, quoted exactly:
+  - `api.assistantStep(` (three call sites) became `this.step(`; `io/api.ts` `assistantStep` is now unused and kept.
+  - `const said = result.content.map((x) => (x.type === 'text' ? x.text : '[an image of the document: images cannot be passed back here]')).join('\n');` became a per-image budget loop.
+  - `if (!reply.tool_calls.length) break;` became `if (!reply.tool_calls.length) { if (/\?\s*$/.test(reply.content)) this.attention(); break; }`.
+  - `toggle(on = this.el.hidden): void { setHidden(this.el, !on); if (on) this.input.focus(); }` now also loads the status and polls agents; `head.append(close);`, `foot.append(this.input, this.planLabel, row);` and `this.el.append(head, this.log, foot);` were extended.
+  - `src-tauri/capabilities/default.json`: `"core:window:allow-request-user-attention",` added after `"core:default",`.
+- Open: the consent dialog in `app.ts` does not flash the window.
+
 ## Selection and history: Purge Undo, Fill from History, click a selected object to deselect, mode cursors, Alt straight segments in the Lasso, History Brush from a state, Feather in the tool bars · _v1.88.2 (engine/index.ts, extensions/tools/select-common.ts, marquee.ts, lasso.ts, wand.ts, object-select.ts, quick-select.ts, history-brush.ts, ui/history.ts, app.ts, automation/command-meta.ts)
 
 CLOSE_GAPS P08 (PC-EN-0504, PC-EN-0503, SC-ED-0009, PC-UI-0782, PC-UI-0706, PC-UI-0746, PC-EN-0502 closed; CO-0073 advanced; PC-UI-0412 to 0415, SC-ED-0015, PC-EN-0132 found done).

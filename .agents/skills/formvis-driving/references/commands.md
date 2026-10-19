@@ -1,21 +1,21 @@
 # formvis commands
 
-Generated from the window's command catalogue (1142 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1149 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
 - Edit: 69
-- File: 79
+- File: 80
 - Filter: 86
-- Generate: 2
+- Generate: 6
 - Help: 3
 - Image: 88
 - Layer: 237
 - Paint: 1
 - Paths: 9
 - Select: 35
-- Tool options: 292
-- Tools: 51
+- Tool options: 293
+- Tools: 52
 - Type: 30
 - View: 68
 - Window: 92
@@ -150,6 +150,7 @@ Generated from the window's command catalogue (1142 commands) by `./formvis agen
 | `load-files-stack` | Load Files into Stack... |  | Opens a dialog to load chosen image files as the layers of one new document, optionally as a smart object stack. (changes the picture) |
 | `merge-hdr` | Merge to HDR... |  | Opens Merge to HDR for bracketed exposures. (changes the picture) |
 | `new` | New Canvas... | Alt+Mod+N Mod+N | Opens the New Canvas dialog. |
+| `new-canvas-model-preset` | New Canvas from Model Preset... |  | Opens New Canvas from Model Preset, which makes a blank document at a size a chosen model family works well at. (changes the picture) |
 | `open` | Open Project... | Mod+O | Opens the library dialog to open a saved project. |
 | `open-as` | Open As... |  | Opens a dialog to read one file as a format you choose (PNG, JPEG, TIFF, Targa, DPX, Cineon, WBMP, DDS, OpenEXR, PSD and others), whatever its name or extension says; the format parameter preselects it. (changes the picture) |
 | `open-image-data` | Open Image Data |  | Opens base64 picture bytes with a file name as a new document. (changes the picture) |
@@ -278,6 +279,10 @@ Generated from the window's command catalogue (1142 commands) by `./formvis agen
 
 | Id | Name | Keys | Does |
 | --- | --- | --- | --- |
+| `boxes-clear` | Clear Boxes |  | Removes every layout box from the picture in one undo step. (changes the picture) |
+| `boxes-copy` | Copy Box Rows |  | Copies the layout boxes as plain text rows, one line per box with its kind, rectangle in pixels and description. (changes the picture) |
+| `boxes-from-selection` | Selection to Box |  | Makes a New box over the bounds of the selection and switches to the Boxes tool. (changes the picture) |
+| `boxes-tool` | Boxes Tool |  | Switches to the Boxes tool: drag on the picture to draw layout boxes, each with a kind and a description. (changes the picture) |
 | `generate-panel` | Generate Panel |  | Shows the Generate panel and puts the cursor in its prompt. |
 | `generate-remove` | Remove / Repair |  | Fills the selection from its surroundings, or switches to the Remove tool when nothing is selected. (changes the picture) |
 
@@ -763,6 +768,7 @@ Generated from the window's command catalogue (1142 commands) by `./formvis agen
 | `tool.options.backgroundEraser.size` | Background Eraser: Size |  | Sets Size for the Background Eraser tool. |
 | `tool.options.backgroundEraser.symmetry` | Background Eraser: Symmetry |  | Sets Symmetry for the Background Eraser tool. |
 | `tool.options.backgroundEraser.tolerance` | Background Eraser: Tolerance |  | Sets Tolerance for the Background Eraser tool. |
+| `tool.options.boxes.kind` | Boxes: Kind |  | Sets Kind for the Boxes tool. |
 | `tool.options.brush.adjustForZoom` | Brush: Adjust for zoom |  | Sets Adjust for zoom for the Brush tool. |
 | `tool.options.brush.airbrush` | Brush: Airbrush |  | Sets Airbrush for the Brush tool. |
 | `tool.options.brush.angle` | Brush: Angle |  | Sets Angle for the Brush tool. |
@@ -1045,6 +1051,7 @@ Generated from the window's command catalogue (1142 commands) by `./formvis agen
 | `tool.select.artHistory` | Art History Brush Tool |  | Makes the Art History Brush tool the active tool (key Y). Paint stylised strokes in the colours of the source snapshot (History panel) · [ ] size |
 | `tool.select.artboard` | Artboard Tool |  | Makes the Artboard tool the active tool (key V). Drag on empty canvas to make an artboard · Click its name to select it · Drag inside to move it with its contents · Handles resize · "+" adds one beside it |
 | `tool.select.backgroundEraser` | Background Eraser Tool |  | Makes the Background Eraser tool the active tool (key E). Drag with the centre over the colour to erase · Tolerance widens it · Protect Foreground keeps the foreground colour |
+| `tool.select.boxes` | Boxes Tool |  | Makes the Boxes tool the active tool (key I). Drag to draw a box · Click one to select it, drag to move, drag a handle to resize · Double-click or Enter to describe it · Delete, Mod+D, arrows, Tab |
 | `tool.select.brush` | Brush Tool |  | Makes the Brush tool the active tool (key B). Drag to paint · Shift-click draws a line from the last point · [ ] size · Shift+[ ] hardness · 1-0 opacity · E eraser · B brush · Space pans |
 | `tool.select.bucket` | Paint Bucket Tool |  | Makes the Paint Bucket tool the active tool (key G). Click to fill the area of similar color with the foreground color · Tolerance sets how similar · Stays inside the selection |
 | `tool.select.burn` | Burn Tool |  | Makes the Burn tool the active tool (key O). Paint to darken, most in the chosen tonal range · [ ] size |

@@ -4,6 +4,20 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.88.3 · 2026-10-19
+
+### Added
+
+- Boxes for region prompting: a Boxes tool (Generate > Boxes Tool) draws boxes of six kinds (New, Keep, Move, Remove, From reference, Text) with a description each, typed on the canvas; arrows nudge, Ctrl+D duplicates, Tab cycles, Delete removes; Box from Selection, Copy Boxes and Clear Boxes; warnings for an empty or tiny box and a crop preview; boxes follow canvas size, rotation and crop, save with the project, and go with the prompt as one plain line each.
+- Crop and stitch in the Generative dialog: the selection is cropped with padding, scaled to a target size (the highres fix), filled and feathered back in, with shipped and saved recipes.
+- Reference chips: chosen reference layers show as `@img1`, `@img2` chips that can be dragged or reordered from a menu; the prompt's tokens follow the order, and the ComfyUI route resolves them.
+- Generate > New Canvas from Model Preset... opens a canvas at one of a model's sizes.
+- Assistant: exclude tools, wait while you drag or type, saved chats (New chat, Chats), token counts per chat, a notice of where the words go and whether pictures go, a notice when another agent is connected, pictures of the document on a budget (off by default), and the window asks for attention when the assistant waits on you.
+
+### Changed
+
+- One cloud provider by design: fal. Other image or model providers are declined, as Content-Aware Scale was, and `./formvis counts --check` fails on code that adds one. Named hosted models wait for the owner's own fal integration.
+
 ## 1.88.2 · 2026-10-19
 
 ### Added
