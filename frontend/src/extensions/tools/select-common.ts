@@ -22,7 +22,7 @@ export function nudgeSelectionKey(ctx: ToolContext, e: KeyboardEvent): boolean {
 
 export function modeSegment(e: Engine): OptionSpec {
   return {
-    kind: 'segment', label: 'Mode',
+    kind: 'segment', label: 'Mode', priority: 95,
     choices: [{ id: 'replace', label: 'New' }, { id: 'add', label: 'Add' }, { id: 'subtract', label: 'Subtract' }, { id: 'intersect', label: 'Intersect' }],
     get: () => e.selectionMode,
     set: (id) => e.update({ selectionMode: id as SelectionMode })

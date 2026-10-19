@@ -21,6 +21,9 @@ export type OptionSpec = (
 ) & {
   /** Shown only while this holds (checked on each sync); the row is built once either way. */
   when?: () => boolean;
+  /** How long the control stays in a crowded options bar: the lowest is moved into the More panel first (ties: the later
+   *  one first). Default by kind: sliders, numbers, selects and segments 50, check boxes and readouts 30, buttons 20. */
+  priority?: number;
 };
 
 /** A mode of one tool listed as its own entry in the toolbar's flyout, as Photoshop lists its sub-tools (the Elliptical

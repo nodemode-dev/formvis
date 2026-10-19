@@ -1,4 +1,5 @@
 import { createSurface, ctxOf, toBlob, type Engine } from '../engine';
+import { api } from './api';
 import { encodeGif } from './gif';
 import { trimSurface } from './layer-export';
 
@@ -51,7 +52,7 @@ function targetSize(spec: AssetSpec, w: number, h: number): [number, number] {
   return [Math.max(1, Math.round(w * (s.h as number) / h)), Math.max(1, s.h as number)];
 }
 
-async function encodeAsset(src: ReturnType<typeof createSurface>, spec: AssetSpec): Promise<Blob> {
+async function encodeAsset(src: ReturnType<typeof createSurface>, spec: AssetSpec, engineUp: boolean): Promise<Blob> {
   const [w, h] = targetSize(spec, src.width, src.height), c = createSurface(w, h), x = ctxOf(c);
   x.imageSmoothingQuality = 'high';
   if (spec.format === 'jpg') { x.fillStyle = '#ffffff'; x.fillRect(0, 0, w, h); }
@@ -62,8 +63,10 @@ async function encodeAsset(src: ReturnType<typeof createSurface>, spec: AssetSpe
     const d = x.getImageData(0, 0, w, h);
     return new Blob([encodeGif([{ data: d, delayMs: 0 }], w, h)], { type: 'image/gif' });
   }
-  // png, png24 and png32 are canvas PNGs. png8 is also a full colour PNG for now (no palette quantiser yet).
-  return toBlob(c, 'image/png');
+  // png, png24 and png32 are canvas PNGs; png8 is quantised to a 256-colour palette by the engine when it is running.
+  const png = await toBlob(c, 'image/png');
+  if (spec.format === 'png8' && engineUp) { try { return await api.encode(png, 'png8'); } catch { /* the full colour PNG below */ } }
+  return png;
 }
 
 /** `name` made unique among `used`: a second use becomes `name 2.ext`, a third `name 3.ext`. */
@@ -76,7 +79,7 @@ function uniqueName(name: string, used: Set<string>): string {
 }
 
 /** Every layer whose name parses to asset specs, drawn alone, trimmed, scaled to each spec and encoded. */
-export async function assetFiles(engine: Engine, _engineUp: boolean): Promise<Array<{ name: string; blob: Blob }>> {
+export async function assetFiles(engine: Engine, engineUp: boolean): Promise<Array<{ name: string; blob: Blob }>> {
   const p = engine.current, files: Array<{ name: string; blob: Blob }> = [], used = new Set<string>();
   if (!p) return files;
   for (const l of p.doc.layers) {
@@ -85,7 +88,7 @@ export async function assetFiles(engine: Engine, _engineUp: boolean): Promise<Ar
     if (!specs.length) continue;
     const img = engine.renderLayerAlone(l.id), cut = img ? trimSurface(img) : null;
     if (!cut) continue;
-    for (const spec of specs) files.push({ name: uniqueName(spec.name, used), blob: await encodeAsset(cut, spec) });
+    for (const spec of specs) files.push({ name: uniqueName(spec.name, used), blob: await encodeAsset(cut, spec, engineUp) });
   }
   return files;
 }

@@ -5,7 +5,7 @@ import { readDuotone, type Duotone } from '../engine/duotone';
 import {
   Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid, type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsPresent, effectsFromData, liveText, textFromData, paragraphStylesFrom, characterStylesFrom,smartFiltersFrom, pathSetData, pathSetFrom, pathData, pathFrom, type PathSet, type RGB, timelineData, timelineFrom, type Timeline, addPattern, patternById, projectPatterns, SelectionMask, type AlphaChannel,
 } from '../engine';
-import { artboardFromData, type SmartStack } from '../engine/types';
+import { artboardFromData, LAYER_LABELS, type LayerLabel, type SmartStack } from '../engine/types';
 import { isStackMode } from '../engine/stack-modes';
 import { cleanMeta } from '../engine/doc-meta';
 import { fillContentFrom } from '../engine/fill-layers';
@@ -166,6 +166,8 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
     if (l.isGroup && !l.parentId && l.artboard) r.artboard = { x: l.artboard.x, y: l.artboard.y, w: l.artboard.w, h: l.artboard.h, background: l.artboard.background };
     if (l.opacity !== 1) r.opacity = l.opacity;
     if (l.fill !== undefined && l.fill !== 1) r.fill = l.fill;
+    if (l.isGroup && l.isolate) r.isolate = true;
+    if (l.label) r.label = l.label;
     if (l.locks && Object.values(l.locks).some(Boolean)) r.locks = { ...l.locks };
     if (l.link) r.linkID = l.link;
     if (l.frame) r.frame = { ...l.frame };
@@ -322,6 +324,8 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
       isGroup: r.isGroup === true,
       opacity: clamp(num(r.opacity, 1), 0, 1),
       ...(r.fill !== undefined ? { fill: clamp(num(r.fill, 1), 0, 1) } : {}),
+      ...(r.isGroup === true && r.isolate === true ? { isolate: true } : {}),
+      ...((LAYER_LABELS as readonly unknown[]).includes(r.label) ? { label: r.label as LayerLabel } : {}),
       ...(r.frame && typeof r.frame === 'object' ? (() => { const f = r.frame as Record<string, unknown>; return { frame: { x: num(f.x, 0), y: num(f.y, 0), w: Math.max(2, num(f.w, 2)), h: Math.max(2, num(f.h, 2)), shape: f.shape === 'ellipse' ? 'ellipse' as const : 'rect' as const } }; })() : {}),
       ...(r.locks && typeof r.locks === 'object' ? (() => { const k = r.locks as Record<string, unknown>, out = Object.fromEntries((['transparency', 'pixels', 'position', 'all'] as const).filter((n) => k[n] === true).map((n) => [n, true])); return Object.keys(out).length ? { locks: out } : {}; })() : {}),
       ...(str(r.linkID) ? { link: (str(r.linkID) as string).slice(0, 120) } : {}),

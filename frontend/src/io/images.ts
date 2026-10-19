@@ -1,6 +1,8 @@
-import { headerSize } from './image-size';
+import { headerResolution, headerSize } from './image-size';
 import { FORMER_PROJECT_EXTENSIONS } from './legacy';
 import { LIMITS, type ImportedImage } from '../engine';
+import { deepFromU16, deepToLinear, rasterFromDeep } from '../engine/deep';
+import type { DeepPixels } from '../engine/types';
 import { api, serviceReady, type RawWhiteBalance } from './api';
 import { readFileMeta } from './xmp';
 
@@ -43,7 +45,19 @@ export class LargePictureError extends Error {
   constructor(readonly file: Blob, readonly picture: string, readonly width: number, readonly height: number) { super(`${picture} is ${width} by ${height}, larger than formvis edits in one piece.`); }
 }
 
+const HDR_FILE = /\.(hdr|exr)$/i;
+
+/** An OpenEXR or Radiance HDR from the engine as linear floats (`deep`) with the 8-bit rendition clipped as converting the
+ *  opened picture to 8 bits does (no exposure change), so it can be placed at the depth of any document. */
+export async function decodeHdr(file: Blob, name: string): Promise<ImportedImage> {
+  const d = await api.decodeDeep(file, name);
+  const deep: DeepPixels = d.depth === 32 ? { mode: 'rgb', n: 3, width: d.width, height: d.height, data: d.data as Float32Array } : deepToLinear(deepFromU16(d.data as Uint16Array, d.width, d.height));
+  if (d.width > LIMITS.side || d.height > LIMITS.side || d.width * d.height > LIMITS.pixels) throw new Error(`${name} exceeds the 30,000 px side or ${Math.round(LIMITS.pixels / 1_000_000)}-megapixel limit.`);
+  return { source: rasterFromDeep(deep, true).canvas as CanvasImageSource, width: d.width, height: d.height, name, deep };
+}
+
 export async function decodeImage(file: Blob, name: string, raw = false, rawWb?: RawWhiteBalance): Promise<ImportedImage> {
+  if (HDR_FILE.test(name)) { const { deep: _deep, ...flat } = await decodeHdr(file, name); return flat; }
   const size = await headerSize(file);
   if (size && (size.width > LIMITS.side || size.height > LIMITS.side || size.width * size.height > LIMITS.pixels)) throw new LargePictureError(file, name, size.width, size.height);
   const server = SERVER.test(name) || RAW_FILE.test(name) || /image\/(heic|heif|tiff)/.test(file.type);
@@ -58,5 +72,6 @@ export async function decodeImage(file: Blob, name: string, raw = false, rawWb?:
     throw new Error(`${name} exceeds the 30,000 px side or ${Math.round(LIMITS.pixels / 1_000_000)}-megapixel limit.`);
   }
   const meta = await readFileMeta(file);   // File Info and the camera's record (29.2)
-  return { source, width: source.width, height: source.height, name, ...(meta ? { meta } : {}) };
+  const resolution = RAW_FILE.test(name) ? null : await headerResolution(file);
+  return { source, width: source.width, height: source.height, name, ...(meta ? { meta } : {}), ...(resolution ? { resolution } : {}) };
 }

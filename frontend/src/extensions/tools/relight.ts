@@ -116,7 +116,7 @@ export const relightTool: Tool = {
     g.restore();
   },
   options: () => [
-    { kind: 'title', text: 'Drag a light on the image, or adjust it in the Properties panel.' },
+    { kind: 'title', text: 'Relight' },
     { kind: 'button', label: 'Cancel', icon: 'close', compact: true, run: () => host?.cancel() },
     { kind: 'button', label: 'Done', icon: 'check', compact: true, run: () => host?.commit() },
   ],

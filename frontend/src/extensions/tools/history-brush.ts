@@ -21,7 +21,7 @@ export const historyBrushTool: Tool = {
   overlay(ctx, g) { drawBrushCursor(ctx, g, hover); },
   options: (e: Engine): OptionSpec[] => [
     { kind: 'title', text: 'History Brush' },
-    { kind: 'readout', label: 'Source', get: () => e.snapshots.find((s) => s.id === e.historyBrushSourceId)?.name ?? 'none (take a snapshot)' },
+    { kind: 'readout', label: 'Source', priority: 45, get: () => e.snapshots.find((s) => s.id === e.historyBrushSourceId)?.name ?? 'none (take a snapshot)' },
     ...brushOptions(e, 'Opacity'),
   ],
 };

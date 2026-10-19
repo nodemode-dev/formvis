@@ -29,6 +29,15 @@
 @media (prefers-reduced-motion: reduce) { .cv-layer.is-settling { transition: none; } }
 .cv-layer:hover { background: var(--bg-hover); }
 .cv-layer.is-selected { background: var(--bg-tertiary); }
+/* Colour labels (1.87.3): the eye column takes the label's colour. */
+.cv-layer[data-label] .cv-layer-eye { border-radius: 4px; background: color-mix(in srgb, var(--cv-label) 42%, transparent); }
+.cv-layer[data-label="red"] { --cv-label: #e5484d; }
+.cv-layer[data-label="orange"] { --cv-label: #f76b15; }
+.cv-layer[data-label="yellow"] { --cv-label: #f5d90a; }
+.cv-layer[data-label="green"] { --cv-label: #30a46c; }
+.cv-layer[data-label="blue"] { --cv-label: #3e63dd; }
+.cv-layer[data-label="violet"] { --cv-label: #8e4ec6; }
+.cv-layer[data-label="gray"] { --cv-label: #8b8d98; }
 .cv-layer.is-active { border-left-color: var(--accent-color); color: var(--text-primary); }
 .cv-layer.is-dimmed .cv-layer-thumb, .cv-layer.is-dimmed .cv-layer-name { opacity: 0.45; }
 .cv-layer-eye { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); cursor: pointer; }

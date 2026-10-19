@@ -155,16 +155,16 @@ export const marqueeTool: Tool = {
   },
   options: (e) => [
     { kind: 'title', text: 'Marquee' },
-    { kind: 'segment', label: 'Shape', choices: [{ id: 'rectangle', label: 'Rectangle' }, { id: 'ellipse', label: 'Ellipse' }, { id: 'row', label: 'Row' }, { id: 'column', label: 'Column' }], get: () => e.marqueeKind, set: (v) => e.update({ marqueeKind: v as 'rectangle' | 'ellipse' | 'row' | 'column' }) },
-    { kind: 'range', label: 'Feather', min: 0, max: 250, unit: 'px', get: () => e.marqueeFeather, set: (v: number) => { e.marqueeFeather = Math.max(0, Math.min(250, v)); e.emit('options', null); } },
-    { kind: 'toggle', label: 'Anti-alias', get: () => e.selectionAntialiased, set: (v) => { e.selectionAntialiased = v; e.emit('options', null); }, when: () => e.marqueeKind === 'ellipse' },
-    { kind: 'select', label: 'Style', choices: [{ id: 'normal', label: 'Normal' }, { id: 'ratio', label: 'Fixed Ratio' }, { id: 'size', label: 'Fixed Size' }], get: () => e.marqueeStyle, set: (v: string) => { e.marqueeStyle = v === 'ratio' || v === 'size' ? v : 'normal'; e.emit('options', null); } },
-    { kind: 'number', label: 'Width', min: 0.01, max: 1000, get: () => e.marqueeRatio.w, set: (v: number) => { e.marqueeRatio = { ...e.marqueeRatio, w: Math.max(0.01, v) }; e.emit('options', null); }, when: () => e.marqueeStyle === 'ratio' },
-    { kind: 'number', label: 'Height', min: 0.01, max: 1000, get: () => e.marqueeRatio.h, set: (v: number) => { e.marqueeRatio = { ...e.marqueeRatio, h: Math.max(0.01, v) }; e.emit('options', null); }, when: () => e.marqueeStyle === 'ratio' },
-    { kind: 'number', label: 'Width', min: 1, max: 30000, unit: 'px', get: () => e.marqueeSize.w, set: (v: number) => { e.marqueeSize = { ...e.marqueeSize, w: Math.max(1, Math.round(v)) }; e.emit('options', null); }, when: () => e.marqueeStyle === 'size' },
-    { kind: 'number', label: 'Height', min: 1, max: 30000, unit: 'px', get: () => e.marqueeSize.h, set: (v: number) => { e.marqueeSize = { ...e.marqueeSize, h: Math.max(1, Math.round(v)) }; e.emit('options', null); }, when: () => e.marqueeStyle === 'size' },
+    { kind: 'segment', label: 'Shape', priority: 45, choices: [{ id: 'rectangle', label: 'Rectangle' }, { id: 'ellipse', label: 'Ellipse' }, { id: 'row', label: 'Row' }, { id: 'column', label: 'Column' }], get: () => e.marqueeKind, set: (v) => e.update({ marqueeKind: v as 'rectangle' | 'ellipse' | 'row' | 'column' }) },
+    { kind: 'range', label: 'Feather', priority: 70, min: 0, max: 250, unit: 'px', get: () => e.marqueeFeather, set: (v: number) => { e.marqueeFeather = Math.max(0, Math.min(250, v)); e.emit('options', null); } },
+    { kind: 'toggle', label: 'Anti-alias', priority: 50, get: () => e.selectionAntialiased, set: (v) => { e.selectionAntialiased = v; e.emit('options', null); }, when: () => e.marqueeKind === 'ellipse' },
+    { kind: 'select', label: 'Style', priority: 78, choices: [{ id: 'normal', label: 'Normal' }, { id: 'ratio', label: 'Fixed Ratio' }, { id: 'size', label: 'Fixed Size' }], get: () => e.marqueeStyle, set: (v: string) => { e.marqueeStyle = v === 'ratio' || v === 'size' ? v : 'normal'; e.emit('options', null); } },
+    { kind: 'number', label: 'Width', priority: 76, min: 0.01, max: 1000, get: () => e.marqueeRatio.w, set: (v: number) => { e.marqueeRatio = { ...e.marqueeRatio, w: Math.max(0.01, v) }; e.emit('options', null); }, when: () => e.marqueeStyle === 'ratio' },
+    { kind: 'number', label: 'Height', priority: 76, min: 0.01, max: 1000, get: () => e.marqueeRatio.h, set: (v: number) => { e.marqueeRatio = { ...e.marqueeRatio, h: Math.max(0.01, v) }; e.emit('options', null); }, when: () => e.marqueeStyle === 'ratio' },
+    { kind: 'number', label: 'Width', priority: 76, min: 1, max: 30000, unit: 'px', get: () => e.marqueeSize.w, set: (v: number) => { e.marqueeSize = { ...e.marqueeSize, w: Math.max(1, Math.round(v)) }; e.emit('options', null); }, when: () => e.marqueeStyle === 'size' },
+    { kind: 'number', label: 'Height', priority: 76, min: 1, max: 30000, unit: 'px', get: () => e.marqueeSize.h, set: (v: number) => { e.marqueeSize = { ...e.marqueeSize, h: Math.max(1, Math.round(v)) }; e.emit('options', null); }, when: () => e.marqueeStyle === 'size' },
     modeSegment(e),
-    { kind: 'button', label: 'Deselect', run: () => toolHost.run('deselect'), when: () => !!e.current?.selection },
-    { kind: 'button', label: 'Select and Mask...', run: () => toolHost.run('select-and-mask') }
+    { kind: 'button', label: 'Deselect', priority: 30, run: () => toolHost.run('deselect'), when: () => !!e.current?.selection },
+    { kind: 'button', label: 'Select and Mask...', priority: 25, run: () => toolHost.run('select-and-mask') }
   ],
 };

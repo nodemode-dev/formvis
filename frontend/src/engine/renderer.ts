@@ -6,7 +6,7 @@ import { canvasBlend, compositeOp, instances, type BlendMode, type Doc, type ID,
 import { distanceSquared } from './matting';
 import { createSurface, ctxOf, rasterOf, sizeSurface, type Ctx2D, type Raster, type Surface } from './surface';
 import { translation, IDENTITY, applyMat, invert, matScale, mul, placement, scaling, setMat, boundsOf, integral, intersectRect, sameTransform, type Mat } from './geometry';
-import { ancestors, hierarchy } from './tree';
+import { ancestors, descendantIds, groupIsolated, hierarchy } from './tree';
 import { boxChange, vectorCoverage } from './vector-mask';
 import { adjustmentKernel, type Kernel } from './kernels';
 import { grainFromData, grainKernel, hsvFromData, hsvKernel } from './adjust';
@@ -70,6 +70,8 @@ export interface RenderJob {
   quality?: ImageSmoothingQuality;
   background?: string | null;
   ignoreFolderMasks?: boolean;
+  /** Folders being drawn on their own surface by an enclosing render; they are not isolated again inside it. */
+  handled?: ReadonlySet<ID>;
 }
 /** A scratch canvas and its drawing context. */
 interface Slot { s: Surface; c: Ctx2D }
@@ -200,10 +202,10 @@ export class Renderer {
     for (const e of entries) map.set(e.layer.id, e.layer);
     const clipCache = new Map<ID, Surface | null>();
     if (this.clipPool.size > 24) this.clipPool.clear();
-    const backed = new Set<ID>();
+    const backed = new Set<ID>(), isoDone = new Set<ID>();
     // An artboard's background, once, in document space, just below whatever it holds.
     const backdrop = (a: Layer): void => {
-      if (backed.has(a.id) || !a.artboard) return;
+      if (backed.has(a.id) || !a.artboard || job.handled) return;
       backed.add(a.id);
       const bg = a.artboard.background;
       if (!bg || (job.only && !job.only.has(a.id))) return;
@@ -219,6 +221,12 @@ export class Renderer {
       if (!entry.visible) continue;
       for (const g of ancestors(map, layer)) if (g.artboard) backdrop(g);
       if (job.only && !job.only.has(layer.id)) continue;
+      // A layer in an isolated folder: the folder's layers are composited on their own and blended in, once, at the first.
+      const iso = ancestors(map, layer).reverse().find((g) => groupIsolated(g) && !job.handled?.has(g.id));
+      if (iso) {
+        if (!isoDone.has(iso.id)) { isoDone.add(iso.id); this.isolatedFolder(job, ctx, iso, W, H); }
+        continue;
+      }
       const ov = job.overrides?.get(layer.id);
       if (ov?.hidden) continue;
       const opacity = ov?.opacity ?? layer.opacity;
@@ -229,7 +237,7 @@ export class Renderer {
       const vm = this.vectorOf(layer, job.doc, t), folders = [...(job.ignoreFolderMasks ? [] : this.folderMasks(map, layer, job.doc)), ...(vm ? [vm] : [])];
       const own = this.maskOf(layer, ov, t);
       const base = layer.clipId ? map.get(layer.clipId) ?? null : null;
-      if (layer.adjustment) { this.adjust(job, ctx, layer, own, folders, base, map, clipCache, W, H, pix); continue; }
+      if (layer.adjustment) { this.adjust(job, ctx, layer, own, folders, base, map, clipCache, W, H, pix, ov?.blend ?? layer.blend); continue; }
       if (layer.tiled && !layer.raster) {
         // A layer past one canvas's 2^28 pixels (1.62.3, DEV_PLAN 26.6b): its tiles drawn at its opacity, in its mode
         // when the canvas has it (Normal otherwise for now); its masks, clipping, styles, Blend If and knockout come in
@@ -311,6 +319,26 @@ export class Renderer {
     const dst = ctx.getImageData(box.x, box.y, box.w, box.h), top = a.c.getImageData(box.x, box.y, box.w, box.h), inv = invert(view);
     blendPixels(dst.data, top.data, mode, opacity, (i) => { const p = applyMat(inv, box.x + (i % box.w) + 0.5, box.y + Math.floor(i / box.w) + 0.5); return [Math.floor(p.x), Math.floor(p.y)]; });
     ctx.putImageData(dst, box.x, box.y);
+  }
+
+  /** An isolated folder (opacity below full or a blend mode of its own, or a Normal PSD group): its layers rendered
+   *  together on a clear surface, which is then drawn onto `ctx` at the folder's opacity and in its mode. */
+  private isolatedFolder(job: RenderJob, ctx: Ctx2D, g: Layer, W: number, H: number): void {
+    const ov = job.overrides?.get(g.id), opacity = ov?.opacity ?? g.opacity, mode = ov?.blend ?? g.blend;
+    if (ov?.hidden || !(opacity > 0)) return;
+    const handled = new Set<ID>(job.handled ?? []);
+    const into = this.slot(20 + handled.size, W, H);
+    handled.add(g.id);
+    const inside = descendantIds(job.doc.layers, g.id), only = new Set<ID>(job.only ? inside.filter((id) => job.only?.has(id)) : inside);
+    this.render({ ...job, target: into.s, only, background: null, handled });
+    if (canvasBlend(mode)) {
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = opacity;
+      ctx.globalCompositeOperation = compositeOp(mode);
+      ctx.drawImage(into.s, 0, 0);
+      ctx.restore();
+    } else this.pixelBlend(ctx, into, mode, opacity, IDENTITY, into.s, job.view, W, H);
   }
 
   /** Draws effect parts straight onto `ctx` at their target position. */
@@ -817,7 +845,7 @@ export class Renderer {
   /** An adjustment layer applied to what lies beneath on the target: the kernel runs on a copy of the pixels, the
    *  layer's coverage (own mask, folder masks, clip base) limits it, and each visible pixel moves toward the adjusted
    *  value by coverage times opacity. */
-  private adjust(job: RenderJob, ctx: Ctx2D, layer: Layer, own: MaskInfo | null, folders: MaskInfo[], base: Layer | null, map: ReadonlyMap<ID, Layer>, clipCache: Map<ID, Surface | null>, W: number, H: number, opacity: number): void {
+  private adjust(job: RenderJob, ctx: Ctx2D, layer: Layer, own: MaskInfo | null, folders: MaskInfo[], base: Layer | null, map: ReadonlyMap<ID, Layer>, clipCache: Map<ID, Surface | null>, W: number, H: number, opacity: number, mode: BlendMode): void {
     const kernel = kernelFor(layer.adjustment ?? null);
     if (!kernel || !(opacity > 0)) return;
     let cov: Surface | null = null;
@@ -844,6 +872,31 @@ export class Renderer {
     const inv = invert(job.view) ?? IDENTITY;
     const p0 = applyMat(inv, 0, 0), p1 = applyMat(inv, 1, 0);
     kernel(adjusted, { width: W, height: H, originX: p0.x, originY: p0.y, unitsPerPixel: Math.hypot(p1.x - p0.x, p1.y - p0.y) });
+    if (mode !== 'normal') {
+      // The adjusted pixels, at their coverage, blended onto the pixels below in the layer's mode and opacity; the
+      // alpha of what lies below is kept, as an adjustment leaves it.
+      const under = this.slot(2, W, H), top = this.slot(3, W, H), ui = under.c.createImageData(W, H), ti = top.c.createImageData(W, H);
+      for (let i = 0; i < px.length; i += 4) {
+        ui.data[i] = px[i]; ui.data[i + 1] = px[i + 1]; ui.data[i + 2] = px[i + 2]; ui.data[i + 3] = 255;
+        ti.data[i] = adjusted[i]; ti.data[i + 1] = adjusted[i + 1]; ti.data[i + 2] = adjusted[i + 2]; ti.data[i + 3] = px[i + 3] === 0 ? 0 : reach[i + 3];
+      }
+      under.c.putImageData(ui, 0, 0);
+      top.c.putImageData(ti, 0, 0);
+      if (canvasBlend(mode)) {
+        under.c.globalAlpha = opacity;
+        under.c.globalCompositeOperation = compositeOp(mode);
+        under.c.drawImage(top.s, 0, 0);
+        under.c.globalAlpha = 1;
+        under.c.globalCompositeOperation = 'source-over';
+      } else this.pixelBlend(under.c, top, mode, opacity, IDENTITY, top.s, job.view, W, H);
+      const out = under.c.getImageData(0, 0, W, H).data;
+      for (let i = 0; i < px.length; i += 4) {
+        if (px[i + 3] === 0 || reach[i + 3] === 0) continue;
+        px[i] = out[i]; px[i + 1] = out[i + 1]; px[i + 2] = out[i + 2];
+      }
+      ctx.putImageData(img, 0, 0);
+      return;
+    }
     for (let i = 0; i < px.length; i += 4) {
       if (px[i + 3] === 0 || reach[i + 3] === 0) continue;
       const f = (reach[i + 3] / 255) * opacity;

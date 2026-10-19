@@ -43,6 +43,12 @@ export class OptionsBar {
     root.appendChild(this.more);
     document.body.appendChild(this.pop);
     this.more.addEventListener('click', () => this.togglePop(this.pop.hidden === true));
+    // The panel sits at the end of the page, so Tab from the open button goes into it, not through the whole window first.
+    this.more.addEventListener('keydown', (e) => {
+      if (e.key !== 'Tab' || e.shiftKey || this.pop.hidden) return;
+      const first = Array.from(this.pop.querySelectorAll<HTMLElement>('input, select, button')).find((n) => n.offsetParent !== null);
+      if (first) { e.preventDefault(); first.focus(); }
+    });
     document.addEventListener('pointerdown', (e) => { if (!this.pop.hidden && !this.pop.contains(e.target as Node) && !this.more.contains(e.target as Node)) this.togglePop(false); }, true);
     this.pop.addEventListener('keydown', (e) => { if (e.key === 'Escape') { this.togglePop(false); this.more.focus(); } });
     let width = 0;
@@ -191,11 +197,12 @@ export class OptionsBar {
       }
       // A row that applies only sometimes (a shape kind's own settings) is built once like every row and shown or
       // hidden in place, so the bar is never rebuilt.
+      const added = Array.from(node.children).slice(before) as HTMLElement[];
       const when = spec.when;
-      if (when) {
-        const added = Array.from(node.children).slice(before) as HTMLElement[];
-        sync.push(() => { const on = when(); for (const a of added) setHidden(a, !on); });
-      }
+      if (when) sync.push(() => { const on = when(); for (const a of added) setHidden(a, !on); });
+      // How long each node stays in a crowded bar (fit): the spec's own priority, else by kind; a divider goes before its buttons.
+      const rank = spec.priority ?? (spec.kind === 'button' ? (spec.compact && spec.icon ? 15 : 20) : spec.kind === 'toggle' || spec.kind === 'readout' ? 30 : 50);
+      for (const a of added) a.dataset.pri = String(a.classList.contains('cv-opt-sep') ? rank - 0.5 : rank);
     }
     Array.from(node.children).forEach((c, i) => { (c as HTMLElement).dataset.ord = String(i); });
     return { node, sync, parked: [] };
@@ -224,9 +231,9 @@ export class OptionsBar {
   }
 
   /** The active row fitted to the bar: parked controls come back, then controls move into the More panel until the
-   *  row fits beside the More button: check boxes, buttons and dividers first (from the end), then the rest from the
-   *  end, so sizes, modes and sliders stay in the bar longest. Nodes move as built (listeners and sync functions stay);
-   *  a measure per move, only on a tool change or a width change. */
+   *  row fits beside the More button: lowest priority first (a spec's `priority`, else by kind), the later one first on
+   *  a tie, so sizes, modes and sliders stay in the bar longest and what stays keeps its order. Nodes move as built
+   *  (listeners and sync functions stay); a measure per move, only on a tool change or a width change. */
   private fit(): void {
     const g = this.groups.get(this.engine.tool);
     for (const other of this.groups.values()) if (other !== g && other.parked.length) this.unpark(other);
@@ -235,16 +242,14 @@ export class OptionsBar {
     const r = this.root, over = (): boolean => r.scrollWidth > r.clientWidth + 1;
     if (!over()) { setHidden(this.more, true); this.togglePop(false); return; }
     setHidden(this.more, false);
-    const minor = (n: HTMLElement): boolean => !!n.querySelector('input[type="checkbox"]') || n.classList.contains('cv-btn') || n.classList.contains('cv-opt-icon') || n.classList.contains('cv-opt-sep');
-    for (const firstPass of [true, false]) {
-      for (const n of (Array.from(g.node.children) as HTMLElement[]).reverse()) {
-        if (!over()) break;
-        if (n.classList.contains('cv-opt-tool') || (firstPass && !minor(n))) continue;
-        n.remove();
-        g.parked.push(n);
-      }
+    const rank = (n: HTMLElement): number => Number(n.dataset.pri ?? 50), ord = (n: HTMLElement): number => Number(n.dataset.ord);
+    const order = (Array.from(g.node.children) as HTMLElement[]).filter((n) => !n.hidden && !n.classList.contains('cv-opt-tool')).sort((a, b) => rank(a) - rank(b) || ord(b) - ord(a));
+    for (const n of order) {
+      if (!over()) break;
+      n.remove();
+      g.parked.push(n);
     }
-    g.parked.sort((a, b) => Number(a.dataset.ord) - Number(b.dataset.ord));
+    g.parked.sort((a, b) => ord(a) - ord(b));
     this.pop.append(...g.parked);
     if (!g.parked.length) setHidden(this.more, true);
   }

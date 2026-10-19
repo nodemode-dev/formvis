@@ -88,8 +88,9 @@ export function shapeActive(s: BrushShape | null | undefined): boolean {
     || s.angleControl !== 'off' || s.roundnessControl !== 'off' || s.scatter > 0 || s.count > 1 || s.countJitter > 0 || s.texture.on || s.dual.on;
 }
 
-/** A preset's tip shape (angle in degrees, roundness in percent) is optional: absent is a round tip (0, 100). */
-export interface BrushPreset { id: string; name: string; description: string; diameter: number; hardness: number; opacity: number; dynamics: BrushDynamics; tip?: SampledTip; angle?: number; roundness?: number }
+/** A preset's tip shape (angle in degrees, roundness in percent) is optional: absent is a round tip (0, 100). `spacing`
+ *  (percent of the diameter) is set when an imported tip carries one other than the 25 a tip paints at by default. */
+export interface BrushPreset { id: string; name: string; description: string; diameter: number; hardness: number; opacity: number; dynamics: BrushDynamics; tip?: SampledTip; angle?: number; roundness?: number; spacing?: number }
 
 /** Presets made from imported .abr files, kept by the app and listed after the built-ins. */
 export let importedBrushPresets: BrushPreset[] = [];
@@ -97,8 +98,9 @@ export function setImportedBrushPresets(list: BrushPreset[]): void { importedBru
 export const allBrushPresets = (): BrushPreset[] => [...BUILTIN_BRUSH_PRESETS, ...importedBrushPresets];
 
 /** A preset for an imported sampled tip: its size, full opacity, pressure on size as Hard round has it. */
-export function presetFromTip(id: string, name: string, tip: SampledTip): BrushPreset {
-  return { id, name, description: `Imported sampled tip, ${tip.w} x ${tip.h} px.`, diameter: Math.min(1000, Math.max(tip.w, tip.h)), hardness: 1, opacity: 1, dynamics: { size: pressureOption(0.15), flow: identityOption(), opacity: identityOption() }, tip };
+export function presetFromTip(id: string, name: string, tip: SampledTip, spacing?: number): BrushPreset {
+  const set: { spacing?: number } = spacing !== undefined && Number.isFinite(spacing) && Math.round(spacing) !== 25 ? { spacing: Math.min(1000, Math.max(1, Math.round(spacing))) } : {};
+  return { id, name, description: `Imported sampled tip, ${tip.w} x ${tip.h} px${set.spacing ? `, spacing ${set.spacing}%` : ''}.`, diameter: Math.min(1000, Math.max(tip.w, tip.h)), hardness: 1, opacity: 1, dynamics: { size: pressureOption(0.15), flow: identityOption(), opacity: identityOption() }, tip, ...set };
 }
 
 /** NodeMode's built-in painting presets, as formvis's brush can hold them (Ink's speed sensor, Pencil's tilted tip and

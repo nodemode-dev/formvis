@@ -22,7 +22,7 @@ export const patternStampTool: Tool = {
     const pats = allPatterns();
     return [
       { kind: 'title', text: 'Pattern Stamp' },
-      { kind: 'select', label: 'Pattern', choices: pats.map((x) => ({ id: x.id, label: x.name })), get: () => e.patternStampPattern ?? pats[0]?.id ?? '', set: (v: string) => { e.patternStampPattern = v; e.emit('options', null); } },
+      { kind: 'select', label: 'Pattern', priority: 70, choices: pats.map((x) => ({ id: x.id, label: x.name })), get: () => e.patternStampPattern ?? pats[0]?.id ?? '', set: (v: string) => { e.patternStampPattern = v; e.emit('options', null); } },
       ...brushOptions(e, 'Opacity'),
     ];
   },

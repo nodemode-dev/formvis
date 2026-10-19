@@ -333,7 +333,7 @@ export const cropTool: Tool = {
   },
   options: (e) => [
     { kind: 'title', text: 'Crop' },
-    { kind: 'segment', label: 'Ratio', choices: RATIOS.map((r) => ({ id: r.id, label: r.label })), get: () => ratioId, set: (id: string) => {
+    { kind: 'segment', label: 'Ratio', priority: 90, choices: RATIOS.map((r) => ({ id: r.id, label: r.label })), get: () => ratioId, set: (id: string) => {
       ratioId = id;
       if (id === 'size' && !sizePx()) frontImage(e);
       const ratio = ratioOf(e);
@@ -341,12 +341,12 @@ export const cropTool: Tool = {
       e.emit('options', null);
       e.emit('overlay', null);
     } },
-    { kind: 'number', label: 'W', min: 0, max: 30000, step: 0.01, get: () => size.w, set: (v: number) => { size.w = Math.max(0, v); presetId = ''; sizeChanged(e); }, when: () => ratioId === 'size' },
-    { kind: 'number', label: 'H', min: 0, max: 30000, step: 0.01, get: () => size.h, set: (v: number) => { size.h = Math.max(0, v); presetId = ''; sizeChanged(e); }, when: () => ratioId === 'size' },
-    { kind: 'segment', label: 'Unit', choices: [{ id: 'px', label: 'px' }, { id: 'in', label: 'in' }, { id: 'cm', label: 'cm' }], get: () => size.unit, set: (v: string) => { size.unit = v as SizeUnit; presetId = ''; sizeChanged(e); }, when: () => ratioId === 'size' },
-    { kind: 'number', label: 'Resolution', min: 1, max: 9600, unit: 'ppi', get: () => size.res, set: (v: number) => { size.res = Math.max(1, Math.min(9600, v)); presetId = ''; sizeChanged(e); }, when: () => ratioId === 'size' },
-    { kind: 'button', label: 'Front Image', run: () => { frontImage(e); sizeChanged(e); }, when: () => ratioId === 'size' },
-    { kind: 'select', label: 'Preset', choices: [{ id: '', label: 'Custom' }], live: () => [{ id: '', label: 'Custom' }, ...loadPresets().map((p) => ({ id: p.id, label: presetLabel(p) }))], get: () => presetId,
+    { kind: 'number', label: 'W', priority: 80, min: 0, max: 30000, step: 0.01, get: () => size.w, set: (v: number) => { size.w = Math.max(0, v); presetId = ''; sizeChanged(e); }, when: () => ratioId === 'size' },
+    { kind: 'number', label: 'H', priority: 80, min: 0, max: 30000, step: 0.01, get: () => size.h, set: (v: number) => { size.h = Math.max(0, v); presetId = ''; sizeChanged(e); }, when: () => ratioId === 'size' },
+    { kind: 'segment', label: 'Unit', priority: 70, choices: [{ id: 'px', label: 'px' }, { id: 'in', label: 'in' }, { id: 'cm', label: 'cm' }], get: () => size.unit, set: (v: string) => { size.unit = v as SizeUnit; presetId = ''; sizeChanged(e); }, when: () => ratioId === 'size' },
+    { kind: 'number', label: 'Resolution', priority: 65, min: 1, max: 9600, unit: 'ppi', get: () => size.res, set: (v: number) => { size.res = Math.max(1, Math.min(9600, v)); presetId = ''; sizeChanged(e); }, when: () => ratioId === 'size' },
+    { kind: 'button', label: 'Front Image', priority: 30, run: () => { frontImage(e); sizeChanged(e); }, when: () => ratioId === 'size' },
+    { kind: 'select', label: 'Preset', priority: 45, choices: [{ id: '', label: 'Custom' }], live: () => [{ id: '', label: 'Custom' }, ...loadPresets().map((p) => ({ id: p.id, label: presetLabel(p) }))], get: () => presetId,
       set: (v: string) => { const p = loadPresets().find((x) => x.id === v); presetId = p ? p.id : ''; if (p) { Object.assign(size, { w: p.w, h: p.h, unit: p.unit, res: p.res }); } sizeChanged(e); }, when: () => ratioId === 'size' },
     { kind: 'button', label: 'New Crop Preset', run: () => {
       if (!sizePx()) { e.notice('Enter a width and height first.'); return; }
@@ -360,14 +360,14 @@ export const cropTool: Tool = {
       presetId = '';
       e.emit('options', null);
     }, when: () => ratioId === 'size' },
-    { kind: 'readout', label: 'Size', get: () => (frame ? `${Math.round(Math.abs(frame.w))} × ${Math.round(Math.abs(frame.h))}` : '') },
-    { kind: 'range', label: 'Straighten', min: -45, max: 45, step: 0.1, unit: '°', get: () => Math.round(angle * 10) / 10, set: (v) => { angle = v; const d = e.current?.doc; if (angle && !frame && d) frame = { x: 0, y: 0, w: d.width, h: d.height }; e.emit('options', null); e.emit('overlay', null); } },
-    { kind: 'button', label: 'Level line', icon: 'rotate', run: () => { leveling = true; e.emit('tool', null); e.emit('options', null); } },
-    { kind: 'select', label: 'Overlay', choices: CROP_OVERLAYS, get: () => overlayKind, set: (v: string) => { overlayKind = (CROP_OVERLAYS.find((o) => o.id === v)?.id ?? 'thirds'); e.emit('options', null); e.emit('overlay', null); } },
-    { kind: 'toggle', label: 'Delete Cropped Pixels', get: () => e.cropDeletePixels, set: (v) => { e.cropDeletePixels = v; e.emit('options', null); } },
-    { kind: 'toggle', label: 'Content-Aware', get: () => contentAware, set: (v) => { contentAware = v; e.emit('options', null); } },
-    { kind: 'toggle', label: 'Perspective', get: () => perspective, set: (v) => { perspective = v; quad = v && frame ? quadOf(frame) : null; e.emit('options', null); e.emit('overlay', null); } },
-    { kind: 'button', label: 'Crop', icon: 'check', run: () => commit(e) },
-    { kind: 'button', label: 'Cancel', icon: 'close', run: () => { frame = null; quad = null; cornerDrag = -1; drag = null; line = null; leveling = false; angle = 0; e.emit('overlay', null); e.emit('options', null); } },
+    { kind: 'readout', label: 'Size', priority: 50, get: () => (frame ? `${Math.round(Math.abs(frame.w))} × ${Math.round(Math.abs(frame.h))}` : '') },
+    { kind: 'range', label: 'Straighten', priority: 60, min: -45, max: 45, step: 0.1, unit: '°', get: () => Math.round(angle * 10) / 10, set: (v) => { angle = v; const d = e.current?.doc; if (angle && !frame && d) frame = { x: 0, y: 0, w: d.width, h: d.height }; e.emit('options', null); e.emit('overlay', null); } },
+    { kind: 'button', label: 'Level line', priority: 35, icon: 'rotate', run: () => { leveling = true; e.emit('tool', null); e.emit('options', null); } },
+    { kind: 'select', label: 'Overlay', priority: 55, choices: CROP_OVERLAYS, get: () => overlayKind, set: (v: string) => { overlayKind = (CROP_OVERLAYS.find((o) => o.id === v)?.id ?? 'thirds'); e.emit('options', null); e.emit('overlay', null); } },
+    { kind: 'toggle', label: 'Delete Cropped Pixels', priority: 45, get: () => e.cropDeletePixels, set: (v) => { e.cropDeletePixels = v; e.emit('options', null); } },
+    { kind: 'toggle', label: 'Content-Aware', priority: 40, get: () => contentAware, set: (v) => { contentAware = v; e.emit('options', null); } },
+    { kind: 'toggle', label: 'Perspective', priority: 40, get: () => perspective, set: (v) => { perspective = v; quad = v && frame ? quadOf(frame) : null; e.emit('options', null); e.emit('overlay', null); } },
+    { kind: 'button', label: 'Crop', priority: 100, icon: 'check', run: () => commit(e) },
+    { kind: 'button', label: 'Cancel', priority: 92, icon: 'close', run: () => { frame = null; quad = null; cornerDrag = -1; drag = null; line = null; leveling = false; angle = 0; e.emit('overlay', null); e.emit('options', null); } },
   ],
 };

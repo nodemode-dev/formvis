@@ -13,7 +13,7 @@ const state = { on: true };
 let pts: Pt[] = [], anchor: Pt | null = null, timer = 0, snapped = false;
 
 export function quickShapeOption(e: Engine): OptionSpec {
-  return { kind: 'toggle', label: 'Quick Shape', get: () => state.on, set: (v) => { state.on = v; e.emit('options', null); } };
+  return { kind: 'toggle', label: 'Quick Shape', priority: 20, get: () => state.on, set: (v) => { state.on = v; e.emit('options', null); } };
 }
 
 /** True once the stroke has snapped; the tool then stops adding freehand points. */

@@ -81,7 +81,7 @@ export class LayersPanel {
       `<label class="cv-opacity" title="Opacity"><span>Opacity</span><span class="cv-num"><input class="cv-opacity-field" type="text" inputmode="numeric" value="100" aria-label="Opacity"><span class="cv-unit">%</span></span><button class="cv-slide-btn cv-slide-opacity" type="button" title="${t('Opacity slider')}" aria-label="${t('Opacity slider')}" aria-haspopup="dialog" aria-expanded="false">${icon('chevronDown', 12)}</button></label></div>` +
       `<div class="cv-layer-lockrow"><span class="cv-lock-slot"></span><span class="cv-vsep"></span><label class="cv-opacity" title="Fill: the layer's pixels, not its styles"><span>Fill</span><span class="cv-num"><input class="cv-fill-field" type="text" inputmode="numeric" value="100" aria-label="Fill"><span class="cv-unit">%</span></span><button class="cv-slide-btn cv-slide-fill" type="button" title="${t('Fill slider')}" aria-label="${t('Fill slider')}" aria-haspopup="dialog" aria-expanded="false">${icon('chevronDown', 12)}</button></label></div></div>` +
       `<div class="cv-layer-list"><div class="cv-layer-rows" role="listbox" aria-label="Layers"></div><div class="cv-drop-line"></div><div class="cv-layers-empty">No canvas open. Create one or drop images on the stage.</div></div>` +
-      `<div class="cv-panel-foot"><button class="cv-icon-btn" type="button" data-cmd="link-layers">${icon('link', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="add-mask">${icon('mask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="clip">${icon('clipMask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-folder">${icon('folder', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="duplicate">${icon('duplicate', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-layer">${icon('add', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="delete-layer">${icon('delete', 16)}</button></div></div>`);
+      `<div class="cv-panel-foot"><button class="cv-icon-btn" type="button" data-cmd="link-layers">${icon('link', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="add-mask">${icon('mask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="clip">${icon('clipMask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-folder">${icon('folder', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="duplicate">${icon('duplicate', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-layer">${icon('add', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="delete-layer-ask">${icon('delete', 16)}</button></div></div>`);
     // The Layers group is a panel group (1.49.2, the owner's walkthrough: every panel groups with any other): its Layers
     // tab is this page, Channels and Paths are adopted as tabs, and any of them can move to another group.
     this.page = root.lastElementChild as HTMLElement;
@@ -298,6 +298,7 @@ export class LayersPanel {
     setClass(row, 'is-dimmed', l.visible && !e.visible);
     setClass(row, 'is-group', l.isGroup);
     setClass(row, 'is-collapsed', collapsed);
+    if ((row.dataset.label ?? '') !== (l.label ?? '')) { if (l.label) row.dataset.label = l.label; else delete row.dataset.label; }
     setClass(row, 'is-adjust', !!l.adjustment);
     setClass(row, 'is-fill', !!l.fillContent);
     setClass(row, 'is-relight', !!l.relight);
@@ -358,11 +359,11 @@ export class LayersPanel {
 
   private syncProps(): void {
     const l = this.engine.activeLayer;
-    const pixel = !!l && !l.isGroup;
-    setDisabled(this.blend, !pixel);
-    setDisabled(this.opacity, !pixel);
-    setValue(this.blend, pixel ? (l as Layer).blend : 'normal');
-    const pct = String(Math.round((pixel ? (l as Layer).opacity : 1) * 100));
+    const pixel = !!l && !l.isGroup, mixable = !!l && !l.artboard;
+    setDisabled(this.blend, !mixable);
+    setDisabled(this.opacity, !mixable);
+    setValue(this.blend, mixable ? (l as Layer).blend : 'normal');
+    const pct = String(Math.round((mixable ? (l as Layer).opacity : 1) * 100));
     if (document.activeElement !== this.opacity) setValue(this.opacity, pct);
     setDisabled(this.fill, !pixel);
     for (const b of this.page.querySelectorAll<HTMLButtonElement>('.cv-lock-btn')) {
@@ -476,6 +477,7 @@ export class LayersPanel {
       const id = row.dataset.id as ID;
       if (t.closest('.cv-layer-eye')) {
         e.preventDefault();
+        if (e.altKey) { this.engine.soloLayer(id); return; }   // Show Only This Layer, again to bring the others back (1.87.3)
         const v = this.engine.beginVisibilitySwipe(id);
         if (v === null) return;
         this.swipe = { visible: v, pointerId: e.pointerId };

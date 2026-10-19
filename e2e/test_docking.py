@@ -99,7 +99,7 @@ def test_a_tab_detaches_into_a_new_group_that_stays_and_goes_when_emptied(page):
         page.mouse.move(lay["x"] + 100, lay["y"] - 8, steps=12)                               # over the Swatches body, above Layers
         assert page.evaluate("document.querySelector('.cv-dock-marker').dataset.label") == "New group"   # said while dragging
         page.mouse.up()
-        new = page.evaluate("[...document.querySelectorAll('.cv-layers > section')].filter((s) => /^cv-g[0-9a-z]+$/.test(s.className.split(' ')[0])).map((s) => s.className.split(' ')[0])")
+        new = page.evaluate("[...document.querySelectorAll('.cv-layers > section')].filter((s) => /^cv-g(?!enerate$)[0-9a-z]+$/.test(s.className.split(' ')[0])).map((s) => s.className.split(' ')[0])")
         assert len(new) == 1, new
         assert page.evaluate(TABS, f"section.{new[0]}") == ["Color"] and page.evaluate(TABS, "section.cv-swatches") == ["Swatches"]
         order = page.evaluate("[...document.querySelectorAll('.cv-layers > section')].filter((s) => !s.hidden && getComputedStyle(s).display !== 'none').map((s) => s.className.split(' ')[0])")

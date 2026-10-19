@@ -609,7 +609,7 @@ export const api = {
       throw err;
     }
   },
-  async encode(png: Blob, format: 'tiff' | 'pdf' | 'webp' | 'avif' | 'qoi' | 'pnm' | 'tga' | 'ico', quality = 90, dpi = 72, icc: Uint8Array | null = null, options: Record<string, unknown> | null = null): Promise<Blob> {
+  async encode(png: Blob, format: 'tiff' | 'pdf' | 'webp' | 'avif' | 'qoi' | 'pnm' | 'tga' | 'ico' | 'png8', quality = 90, dpi = 72, icc: Uint8Array | null = null, options: Record<string, unknown> | null = null): Promise<Blob> {
     const body = form({ format, quality: String(quality), dpi: String(dpi), ...(options ? { options: JSON.stringify(options) } : {}) }, [{ name: 'image.png', blob: png }], 'file');
     if (icc) body.append('icc', new Blob([icc as Uint8Array<ArrayBuffer>], { type: 'application/vnd.iccprofile' }), 'profile.icc');
     return (await request('/io/encode', { method: 'POST', body })).blob();

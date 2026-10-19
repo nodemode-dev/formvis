@@ -23,9 +23,9 @@ export const backgroundEraserTool: Tool = {
   options: (e): OptionSpec[] => [
     { kind: 'title', text: 'Background Eraser' },
     ...brushOptions(e, 'Opacity').filter((o) => !('label' in o) || o.label !== 'Opacity'),
-    { kind: 'segment', label: 'Sampling', choices: [{ id: 'continuous', label: 'Continuous' }, { id: 'once', label: 'Once' }], get: () => opts.sampling, set: (v) => { opts.sampling = v as 'continuous' | 'once'; e.emit('options', null); } },
-    { kind: 'segment', label: 'Limits', choices: [{ id: 'contiguous', label: 'Contiguous' }, { id: 'discontiguous', label: 'Discontiguous' }], get: () => (opts.contiguous ? 'contiguous' : 'discontiguous'), set: (v) => { opts.contiguous = v === 'contiguous'; e.emit('options', null); } },
-    { kind: 'range', label: 'Tolerance', min: 0, max: 255, get: () => opts.tolerance, set: (v: number) => { opts.tolerance = Math.max(0, Math.min(255, Math.round(v))); e.emit('options', null); } },
-    { kind: 'toggle', label: 'Protect Foreground Color', get: () => opts.protectForeground, set: (v) => { opts.protectForeground = v; e.emit('options', null); } },
+    { kind: 'segment', label: 'Sampling', priority: 70, choices: [{ id: 'continuous', label: 'Continuous' }, { id: 'once', label: 'Once' }], get: () => opts.sampling, set: (v) => { opts.sampling = v as 'continuous' | 'once'; e.emit('options', null); } },
+    { kind: 'segment', label: 'Limits', priority: 65, choices: [{ id: 'contiguous', label: 'Contiguous' }, { id: 'discontiguous', label: 'Discontiguous' }], get: () => (opts.contiguous ? 'contiguous' : 'discontiguous'), set: (v) => { opts.contiguous = v === 'contiguous'; e.emit('options', null); } },
+    { kind: 'range', label: 'Tolerance', priority: 80, min: 0, max: 255, get: () => opts.tolerance, set: (v: number) => { opts.tolerance = Math.max(0, Math.min(255, Math.round(v))); e.emit('options', null); } },
+    { kind: 'toggle', label: 'Protect Foreground Color', priority: 40, get: () => opts.protectForeground, set: (v) => { opts.protectForeground = v; e.emit('options', null); } },
   ],
 };

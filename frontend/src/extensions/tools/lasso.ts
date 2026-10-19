@@ -136,16 +136,16 @@ export const lassoTool: Tool = {
   },
   options: (e) => [
     { kind: 'title', text: 'Lasso' },
-    { kind: 'segment', label: 'Kind', choices: [{ id: 'freehand', label: 'Freehand' }, { id: 'polygonal', label: 'Polygonal' }, { id: 'magnetic', label: 'Magnetic' }], get: () => e.lassoKind, set: (v) => e.update({ lassoKind: v as 'freehand' | 'polygonal' | 'magnetic' }) },
-    { kind: 'range', label: 'Feather', min: 0, max: 250, unit: 'px', get: () => e.lassoFeather, set: (v: number) => { e.lassoFeather = Math.max(0, Math.min(250, v)); e.emit('options', null); } },
+    { kind: 'segment', label: 'Kind', priority: 45, choices: [{ id: 'freehand', label: 'Freehand' }, { id: 'polygonal', label: 'Polygonal' }, { id: 'magnetic', label: 'Magnetic' }], get: () => e.lassoKind, set: (v) => e.update({ lassoKind: v as 'freehand' | 'polygonal' | 'magnetic' }) },
+    { kind: 'range', label: 'Feather', priority: 70, min: 0, max: 250, unit: 'px', get: () => e.lassoFeather, set: (v: number) => { e.lassoFeather = Math.max(0, Math.min(250, v)); e.emit('options', null); } },
     ...(e.lassoKind === 'magnetic' ? [
-      { kind: 'range' as const, label: 'Width', min: 1, max: 256, unit: 'px', get: () => mag.width, set: (v: number) => { mag.width = Math.max(1, Math.min(256, Math.round(v))); e.emit('options', null); } },
-      { kind: 'range' as const, label: 'Contrast', min: 1, max: 100, unit: '%', get: () => mag.contrast, set: (v: number) => { mag.contrast = Math.max(1, Math.min(100, Math.round(v))); edges = null; e.emit('options', null); } },
-      { kind: 'range' as const, label: 'Frequency', min: 0, max: 100, unit: '', get: () => mag.frequency, set: (v: number) => { mag.frequency = Math.max(0, Math.min(100, Math.round(v))); e.emit('options', null); } },
+      { kind: 'range' as const, label: 'Width', priority: 65, min: 1, max: 256, unit: 'px', get: () => mag.width, set: (v: number) => { mag.width = Math.max(1, Math.min(256, Math.round(v))); e.emit('options', null); } },
+      { kind: 'range' as const, label: 'Contrast', priority: 62, min: 1, max: 100, unit: '%', get: () => mag.contrast, set: (v: number) => { mag.contrast = Math.max(1, Math.min(100, Math.round(v))); edges = null; e.emit('options', null); } },
+      { kind: 'range' as const, label: 'Frequency', priority: 60, min: 0, max: 100, unit: '', get: () => mag.frequency, set: (v: number) => { mag.frequency = Math.max(0, Math.min(100, Math.round(v))); e.emit('options', null); } },
     ] : []),
-    { kind: 'toggle', label: 'Anti-alias', get: () => e.selectionAntialiased, set: (v) => { e.selectionAntialiased = v; e.emit('options', null); } },
+    { kind: 'toggle', label: 'Anti-alias', priority: 40, get: () => e.selectionAntialiased, set: (v) => { e.selectionAntialiased = v; e.emit('options', null); } },
     modeSegment(e),
-    { kind: 'button', label: 'Deselect', run: () => toolHost.run('deselect'), when: () => !!e.current?.selection },
-    { kind: 'button', label: 'Select and Mask...', run: () => toolHost.run('select-and-mask') }
+    { kind: 'button', label: 'Deselect', priority: 30, run: () => toolHost.run('deselect'), when: () => !!e.current?.selection },
+    { kind: 'button', label: 'Select and Mask...', priority: 25, run: () => toolHost.run('select-and-mask') }
   ],
 };

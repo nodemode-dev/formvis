@@ -115,7 +115,7 @@ export class GeneratePanel {
           <textarea class="cv-input cv-genp-prompt" rows="3" spellcheck="true" data-t-ph="Describe the image to generate" data-t-aria="Prompt"></textarea>
           <label class="cv-genp-row"><span data-t="Model"></span><select class="cv-input cv-genp-model" data-t-aria="Model"><option value="fal" data-key="fal">FLUX1.1 [pro] (fal)</option></select></label>
           <label class="cv-genp-row"><span data-t="Size"></span><select class="cv-input cv-genp-size" data-t-aria="Size"></select></label>
-          <button class="cv-genp-go" type="button">${icon('sparkle', 14)}<span class="cv-genp-golabel"></span></button>
+          <button class="cv-genp-go" type="button">${icon('generate', 14)}<span class="cv-genp-golabel"></span></button>
           <p class="cv-note cv-genp-status" role="status"></p>
         </div>
       </section>
@@ -346,7 +346,7 @@ export class GeneratePanel {
   private makeConn(kind: Kind, name: string): Conn {
     const root = el(`<div class="cv-genp-conn" data-kind="${kind}">
       <div class="cv-genp-line"><span class="cv-genp-dot" data-state="unchecked"></span><span class="cv-genp-name">${name}</span><span class="cv-genp-state"></span></div>
-      <div class="cv-genp-keyrow"><input class="cv-input" type="url" spellcheck="false" autocomplete="off" data-t-aria="${name} address"><button class="cv-btn" type="button"><span class="cv-genp-test"></span></button></div>
+      <div class="cv-genp-keyrow"><input class="cv-input" type="url" spellcheck="false" autocomplete="off" data-t-aria="${name} address in the Generate panel"><button class="cv-btn" type="button"><span class="cv-genp-test"></span></button></div>
       <p class="cv-note cv-genp-msg" role="status"></p>
     </div>`);
     const c: Conn = { kind, name, root, dot: q(root, '.cv-genp-dot'), stateText: q(root, '.cv-genp-state'), input: q<HTMLInputElement>(root, 'input'), testBtn: q<HTMLButtonElement>(root, 'button'), testLabel: q(root, '.cv-genp-test'), msg: q(root, '.cv-genp-msg'), state: 'unchecked', busy: false };

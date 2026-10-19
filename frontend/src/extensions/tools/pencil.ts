@@ -35,7 +35,7 @@ export const pencilTool: Tool = {
   options: (e): OptionSpec[] => [
     { kind: 'title', text: 'Pencil' },
     ...brushOptions(e, 'Opacity').filter((o) => !('label' in o) || o.label !== 'Hardness'),
-    { kind: 'toggle', label: 'Auto Erase', get: () => autoErase, set: (v) => { autoErase = v; e.emit('options', null); } },
+    { kind: 'toggle', label: 'Auto Erase', priority: 40, get: () => autoErase, set: (v) => { autoErase = v; e.emit('options', null); } },
     quickShapeOption(e),
   ],
 };

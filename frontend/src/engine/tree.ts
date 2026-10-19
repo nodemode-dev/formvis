@@ -34,6 +34,10 @@ export function hierarchy(doc: Doc, topFirst = false, collapsed?: ReadonlySet<ID
 
 export const byId = (doc: Doc): Map<ID, Layer> => new Map(doc.layers.map((l) => [l.id, l] as const));
 
+/** Whether a folder is composited on its own and then blended with its opacity and mode, as against pass-through,
+ *  where its layers act on what lies below. Artboards are always pass-through. */
+export const groupIsolated = (l: Layer): boolean => l.isGroup && !l.artboard && (l.isolate === true || l.blend !== 'normal' || l.opacity < 1);
+
 /** The layer's enclosing folders, nearest first. */
 export function ancestors(map: ReadonlyMap<ID, Layer>, layer: Layer): Layer[] {
   const out: Layer[] = [];

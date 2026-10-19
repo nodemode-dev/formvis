@@ -23,8 +23,8 @@ export const removeTool: Tool = {
   options: (e) => [
     { kind: 'title', text: 'Remove' },
     ...brushOptions(e),
-    { kind: 'button', label: 'Remove Wires and Cables', icon: 'sparkle', run: () => { e.removeWires(); } },
-    { kind: 'button', label: 'Remove People', icon: 'sparkle', run: () => { void e.removeFinder?.('people'); } },
-    { kind: 'button', label: 'Remove Distractions', icon: 'sparkle', run: () => { void e.removeFinder?.('distractions'); } },
+    { kind: 'button', label: 'Remove Wires and Cables', icon: 'tRemove', run: () => { e.removeWires(); } },
+    { kind: 'button', label: 'Remove People', icon: 'tRemove', run: () => { void e.removeFinder?.('people'); } },
+    { kind: 'button', label: 'Remove Distractions', icon: 'tRemove', run: () => { void e.removeFinder?.('distractions'); } },
   ],
 };

@@ -27,6 +27,7 @@ import { importAbr, loadImportedBrushes, addSampledBrush } from './io/brush-libr
 import { importedBrushPresets } from './engine/brush-dynamics';
 import { SPACES, convertPixels, iccProfile, type SpaceId } from './engine/icc';
 import { embedJpeg, embedPng } from './io/embed-icc';
+import { withResolution } from './engine/dpi';
 import { dpxBlob } from './io/dpx';
 import { exportLayout, ENGINE_FORMATS, exportMeta, exportName, exportSize, formatOptions, PROFILELESS, sizedSettings, type ExportSettings } from './io/export-presets';
 import { pnmDeepBlob } from './io/pnm';
@@ -92,7 +93,7 @@ import { LayerStyleDialog } from './ui/panels/layer-style-dialog';
 import { GenerativeDialog } from './ui/panels/generative-dialog';
 import { readPat, writePat } from './io/pat';
 import { cleanFeatures } from './engine/opentype';
-import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, SelectionMask, stripExt, toBlob, type ImportedImage, type Pt, effectsActive, effectsPresent, liveText, ctxOf, createSurface, type AdjustmentKind, effectsFromData, runFilterOffThread, addPattern, allPatterns, patternById, projectPatterns, randomSeed, metaWritable, addCustomShape, allCustomShapes, loadCustomShapes } from './engine';
+import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, LAYER_LABELS, Raster, SelectionMask,stripExt, toBlob, type ImportedImage, type Pt, effectsActive, effectsPresent, liveText, ctxOf, createSurface, type AdjustmentKind, effectsFromData, runFilterOffThread, addPattern, allPatterns, patternById, projectPatterns, randomSeed, metaWritable, addCustomShape, allCustomShapes, loadCustomShapes } from './engine';
 import { toolForKey, toolsForKey } from './extensions/registry';
 import { registerBuiltinTools } from './extensions/tools';
 import { HostLink } from './host';
@@ -117,7 +118,7 @@ import { VanishingPointDialog } from './ui/panels/vanishing-dialog';
 import { VideoImportDialog } from './ui/panels/video-dialog';
 import { VideoTimelinePanel } from './ui/video-timeline';
 import { RenderVideoDialog, type RenderChoice } from './ui/panels/render-video-dialog';
-import { LargePictureError, IMAGE_ACCEPT, PROJECT_ACCEPT, RAW_FILE, decodeImage, isImageFile, isProjectFile } from './io/images';
+import { LargePictureError, IMAGE_ACCEPT, PROJECT_ACCEPT, RAW_FILE, decodeHdr, decodeImage, isImageFile, isProjectFile } from './io/images';
 import { loadSystemFonts } from './ui/fonts';
 import { deserialize, giantTiles, serialize } from './io/project-io';
 import { AboutDialog, BenchmarkDialog, NewCanvasDialog, OpenDialog, SettingsDialog, ShortcutsDialog } from './ui/app-dialogs';
@@ -174,6 +175,7 @@ import { composeFloat } from './engine/compose-float';
 import { channelsFromU8, channelsToU8, composeChannels, rasterBytes } from './engine/channels';
 import type { Lut3x4, Lut4 } from './engine/colour-lut';
 import type { ChannelPixels, DocMode, DocProfile, ID } from './engine/types';
+import { headerResolution } from './io/image-size';
 import { ConditionalModeDialog, SOURCE_MODES } from './ui/panels/conditional-mode-dialog';
 import { HdrToningDialog } from './ui/panels/hdr-toning';
 import { AssignProfileDialog, ConvertProfileDialog, ProfileMismatchDialog, ProofSetupDialog, convertDocumentDeep, type Space } from './ui/panels/colour-dialogs';
@@ -317,6 +319,9 @@ export function startApp(): void {
   const contextMenu = new PopupMenu(commands, null, true);
   // Panel menus (the target's •••): each group's own commands, opened below its button.
   const panelMenu = new PopupMenu(commands, null, true);
+  /** The canvas layer picker (1.87.3, CLOSE_GAPS P06): the layers under a right-click with the Move tool, top first. */
+  let picked: string[] = [];
+  const pickMenu = new PopupMenu(commands, null, true);
   toolHost.run = (id) => { commands.run(id); };   // a tool's bar runs commands (the path actions)
   PanelGroup.menuHost = (anchor, ids) => { panelMenu.setItems(ids); const r = anchor.getBoundingClientRect(); panelMenu.openAt(r.right, r.bottom + 4); };
   // Screen modes and panels, as Photoshop's (the owner's walkthrough): Standard, Full Screen with Menu Bar (no tabs or
@@ -363,6 +368,15 @@ export function startApp(): void {
   applyRail();
   applyPrefs(engine, loadPrefs());
   const stage = new Stage(q(root, '.cv-stage'), engine);
+  q(root, '.cv-stage').addEventListener('contextmenu', (e) => {
+    if (engine.tool !== 'move') return;
+    const pt = stage.docPoint(e.clientX, e.clientY);
+    picked = pt ? engine.layersAt(pt) : [];
+    if (!picked.length) return;
+    e.preventDefault();
+    pickMenu.setItems(picked.map((_, i) => `pick-layer-${i}`));
+    pickMenu.openAt(e.clientX, e.clientY);
+  });
   // Help > Record Performance (1.86.4); also `formvisPerf.record(10)` in the desktop app's Web Inspector console.
   const perfCtx = { engine, stage, gpuText: () => [...document.querySelectorAll('.cv-status *')].map((e) => e.textContent ?? '').find((s) => /^GPU:/.test(s.trim()))?.trim() ?? '?' };
   const perfDialog = new PerfDialog(perfCtx);
@@ -786,6 +800,12 @@ export function startApp(): void {
           if (/\.(jpe?g|tiff?)$/i.test(f.name) && !engine.current && decoded.length === 0) {
             try { const c = await api.decodeCmyk(f, f.name); if (c) { await openCmyk(f.name.replace(/\.[^.]+$/, ''), c); continue; } } catch (err) { if (serviceDown()) { /* the engine service is not running: opened as RGB below */ } else { toast(message(err), 'error'); continue; } }
           }
+          // An OpenEXR or Radiance HDR placed into an open document is a layer at the document's depth: the engine decodes it
+          // as floats, the layer keeps them in a 16 or 32 bit document and is clipped to 8 bits otherwise.
+          if (/\.(hdr|exr)$/i.test(f.name) && (engine.current || decoded.length > 0)) {
+            try { decoded.push(await decodeHdr(f, f.name)); } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
+            continue;
+          }
           // A 16-bit PNG or TIFF opens as a 16-bit document (1.53.6, H1).
           if (/\.(png|tiff?|hdr|exr|dpx|pbm|pgm|ppm|pnm|pam|fits|fit|fts)$/i.test(f.name) && !engine.current && decoded.length === 0) {
             const head = new Uint8Array(await f.slice(0, 26).arrayBuffer()), png16 = head[0] === 0x89 && head[24] === 16;
@@ -796,9 +816,9 @@ export function startApp(): void {
                   const mp = await api.exrParts(f, f.name).catch(() => null);
                   if (mp && engine.openDeepLayers(f.name.replace(/\.[^.]+$/, ''), mp.width, mp.height, mp.parts.map((q) => ({ name: q.name, x: q.x, y: q.y, deep: { mode: 'rgb', n: 3, width: q.width, height: q.height, data: q.data } })))) continue;
                 }
-                const d = await api.decodeDeep(f, f.name), name = f.name.replace(/\.[^.]+$/, '');
-                if (d.depth === 32) { engine.openDeep(name, { mode: 'rgb', n: 3, width: d.width, height: d.height, data: d.data as Float32Array }, 32); continue; }
-                if (d.depth === 16) { engine.openDeep(name, deepFromU16(d.data as Uint16Array, d.width, d.height)); continue; }
+                const d = await api.decodeDeep(f, f.name), name = f.name.replace(/\.[^.]+$/, ''), ppi = (await headerResolution(f)) ?? undefined;
+                if (d.depth === 32) { engine.openDeep(name, { mode: 'rgb', n: 3, width: d.width, height: d.height, data: d.data as Float32Array }, 32, ppi); continue; }
+                if (d.depth === 16) { engine.openDeep(name, deepFromU16(d.data as Uint16Array, d.width, d.height), 16, ppi); continue; }
               } catch { /* opened at 8 bits as before */ }
             }
           }
@@ -1056,8 +1076,8 @@ export function startApp(): void {
         const viaEngine = ENGINE_FORMATS.has(s.format) || (s.format === 'webp' && tagged && !!keep);
         if (PROFILELESS.has(s.format) && (own || listed || space !== 'srgb')) toast(`${s.format.toUpperCase()} carries no colour profile; the pixels are written in ${listed ? label : own ? 'the document\'s profile' : SPACES[space].label}.`, 'info');
         const blob = viaEngine ? await api.encode(await toBlob(c), s.format as 'avif' | 'tiff' | 'pdf' | 'webp', s.quality, p.doc.resolution ?? 72, keep, formatOptions(s))
-          : s.format === 'png' ? (keep ? await embedPng(await toBlob(c, 'image/png'), keep, label) : await toBlob(c, 'image/png'))
-          : s.format === 'jpg' ? (keep ? await embedJpeg(await toBlob(c, 'image/jpeg', s.quality / 100), keep) : await toBlob(c, 'image/jpeg', s.quality / 100))
+          : s.format === 'png' ? await withResolution(keep ? await embedPng(await toBlob(c, 'image/png'), keep, label) : await toBlob(c, 'image/png'), p.doc.resolution ?? 72)
+          : s.format === 'jpg' ? await withResolution(keep ? await embedJpeg(await toBlob(c, 'image/jpeg', s.quality / 100), keep) : await toBlob(c, 'image/jpeg', s.quality / 100), p.doc.resolution ?? 72)
           : await toBlob(c, 'image/webp', s.quality / 100);
         // The AI label (1.51.8), in PNG, JPEG and WebP.
         // File Info (29.2) goes in as XMP, the AI label inside the same packet; with no File Info the label is written alone.
@@ -1197,7 +1217,8 @@ export function startApp(): void {
         const rasters = new Map<ID, Raster>();
         for (const l of p.doc.layers) {
           if (!l.channels) continue;
-          const out = await api.convertPixels(channelsToU8(l.channels.data), l.channels.width, l.channels.height, 'rgb', p.doc.profile!.icc);
+          const c = loadPrefs().colour;   // Color Settings' intent and black point compensation, as 16 bits (1.87.3, D18)
+          const out = await api.convertPixels(channelsToU8(l.channels.data), l.channels.width, l.channels.height, 'rgb', p.doc.profile!.icc, '', c.intent, c.bpc);
           const r = new Raster(l.channels.width, l.channels.height), img = r.ctx.createImageData(l.channels.width, l.channels.height);
           img.data.set(out); r.ctx.putImageData(img, 0, 0); r.touch();
           rasters.set(l.id, r);
@@ -1365,7 +1386,10 @@ export function startApp(): void {
         const blob = deep ? (p.doc.depth === 32 && kind === 'tiff' ? await api.encodeDeep(deep.data, deep.width, deep.height, 'tiff32') : await api.encodeDeep(deepToU16(p.doc.depth === 32 ? deepToned({ mode: 'rgb', n: 3, ...deep }, 0, 1).data : deep.data), deep.width, deep.height, kind as 'png' | 'tiff')) : kind === 'png' || kind === 'jpg' ? await engine.exportBlob(kind === 'png' ? 'image/png' : 'image/jpeg', quality)
           : kind === 'webp' ? await engine.exportBlob('image/webp', quality)
           : await (async () => { const png = await engine.exportBlob('image/png'); return png ? api.encode(png, kind, Math.round(quality * 100), p.doc.resolution ?? 72) : null; })();
-        if (blob) await deliver(await withXmp(blob, kind, p.doc.meta), `${p.name}.${kind === 'tiff' ? 'tif' : kind}`);   // File Info as XMP (29.2)
+        // A document with its own profile (1.53.5) carries it into the PNG and JPEG, embedded as Export As embeds it.
+        const own = !deep && blob && (kind === 'png' || kind === 'jpg') ? p.doc.profile : undefined;
+        const tagged = blob && own ? (kind === 'png' ? await embedPng(blob, fromBase64(own.icc), own.name) : await embedJpeg(blob, fromBase64(own.icc))) : blob;
+        if (tagged) await deliver(await withXmp(tagged, kind, p.doc.meta), `${p.name}.${kind === 'tiff' ? 'tif' : kind}`);   // File Info as XMP (29.2)
       } catch (err) { toast(message(err), 'error'); }
     });
   }
@@ -2445,6 +2469,18 @@ export function startApp(): void {
   const withPixels = (): boolean => pixel() && !!engine.activeLayer?.raster;
   const selected = (): boolean => !!engine.current?.selection;
   const allHidden = (): boolean => { const p = engine.current; return !!p && p.selectedIds.size > 0 && [...p.selectedIds].every((id) => p.layer(id)?.visible === false); };
+  /** Forward and Backward Layer (1.87.3, CLOSE_GAPS P06): the layer above or below the active one among those the Layers
+   *  panel shows (inside closed folders skipped); Infinity goes to the top or bottom; `add` adds it to the selection. */
+  const stepLayer = (dir: number, add: boolean): void => {
+    const p = engine.current;
+    if (!p?.doc.layers.length) return;
+    const map = new Map(p.doc.layers.map((l) => [l.id, l] as const));
+    const shown = p.doc.layers.filter((l) => { for (let f = l.parentId ? map.get(l.parentId) : undefined; f; f = f.parentId ? map.get(f.parentId) : undefined) if (p.collapsed.has(f.id)) return false; return true; });
+    const i = shown.findIndex((l) => l.id === p.activeId);
+    const at = dir === Infinity ? shown.length - 1 : dir === -Infinity ? 0 : i < 0 ? shown.length - 1 : Math.max(0, Math.min(shown.length - 1, i + dir));
+    const next = shown[at];
+    if (next && next.id !== p.activeId) engine.selectLayer(next.id, add ? 'toggle' : 'replace');
+  };
   const folderSelected = (): boolean => { const p = engine.current; return !!p && [...p.selectedIds].some((id) => !!p.layer(id)?.isGroup); };
 
   commands.add(
@@ -2491,6 +2527,7 @@ export function startApp(): void {
     { id: 'lock-guides', label: () => (engine.view.guidesLocked ? 'Unlock Guides' : 'Lock Guides'), keys: ['Alt+Mod+;'], enabled: has, run: () => engine.setView({ guidesLocked: !engine.view.guidesLocked }) },
     { id: 'clear-guides', label: 'Clear Guides', enabled: () => !!engine.current?.doc.guides?.length, run: () => engine.clearGuides() },
     { id: 'toggle-show-slices', label: () => (engine.view.slices ? 'Hide Slices' : 'Show Slices'), enabled: has, run: () => engine.setView({ slices: !engine.view.slices }) },
+    { id: 'delete-slice', label: 'Delete Slice', enabled: () => !!engine.current?.doc.slices?.some((s) => s.id === engine.activeSlice), run: () => { engine.deleteActiveSlice(); } },
     { id: 'clear-slices', label: 'Clear Slices', enabled: () => !!engine.current?.doc.slices?.length, run: () => engine.clearSlices() },
     { id: 'slice-options', label: 'Slice Options...', enabled: () => !!engine.current?.doc.slices?.some((s) => s.id === engine.activeSlice), run: async () => { (await import('./ui/slice-options')).openSliceOptions(engine); } },
     { id: 'layer-based-slice', label: 'New Layer Based Slice', enabled: () => !!engine.current?.activeLayer, run: () => { if (engine.addLayerSlice() && !engine.view.slices) engine.setView({ slices: true }); } },
@@ -2746,9 +2783,9 @@ export function startApp(): void {
     { id: 'content-fill-workspace', label: 'Content-Aware Fill...', enabled: () => pixel() && selected(), run: () => dialogs.contentFill.show() },
     { id: 'remove-wires', label: 'Remove Wires and Cables', enabled: pixel, run: () => { void engine.task(async () => { await new Promise((r) => requestAnimationFrame(() => window.setTimeout(r, 0))); engine.removeWires(); }); } },
     { id: 'transform-warp', label: 'Warp', enabled: pixel, run: () => { engine.setTool('move'); engine.beginMeshWarp(); } },
-    { id: 'warp-split-h', label: 'Split Warp Horizontally', enabled: () => !!engine.meshWarpEdit, run: () => { engine.splitMeshWarp('h'); } },
-    { id: 'warp-split-v', label: 'Split Warp Vertically', enabled: () => !!engine.meshWarpEdit, run: () => { engine.splitMeshWarp('v'); } },
-    { id: 'warp-split-cross', label: 'Split Warp Crosswise', enabled: () => !!engine.meshWarpEdit, run: () => { engine.splitMeshWarp('cross'); } },
+    { id: 'warp-split-h', label: 'Split Warp Horizontally', enabled: () => !!engine.meshWarpEdit, run: () => { engine.splitMeshWarp('h', engine.meshSplitPoint()); } },
+    { id: 'warp-split-v', label: 'Split Warp Vertically', enabled: () => !!engine.meshWarpEdit, run: () => { engine.splitMeshWarp('v', engine.meshSplitPoint()); } },
+    { id: 'warp-split-cross', label: 'Split Warp Crosswise', enabled: () => !!engine.meshWarpEdit, run: () => { engine.splitMeshWarp('cross', engine.meshSplitPoint()); } },
     { id: 'warp-remove-split', label: 'Remove Warp Split', enabled: () => !!engine.meshWarpEdit, run: () => { engine.removeMeshWarpSplit(); } },
     { id: 'transform-again', label: 'Again', keys: ['Shift+Mod+T'], enabled: () => engine.canTransformAgain, run: () => { engine.transformAgain(); } },
     { id: 'transform-again-copy', label: 'Transform Again on a Copy', keys: ['Alt+Shift+Mod+T'], enabled: () => engine.canTransformAgain, run: () => { engine.transformAgain(true); } },
@@ -2935,6 +2972,8 @@ export function startApp(): void {
     { id: 'duplicate', label: 'Layer via Copy', keys: ['Mod+J'], enabled: () => !!layer(), run: () => engine.layerViaCopy() },
     { id: 'duplicate-dialog', label: 'Duplicate Layer...', enabled: () => !!layer(), run: () => dialogs.duplicateLayer.show() },
     { id: 'delete-layer', label: 'Delete Layer', enabled: () => !!layer(), run: () => void deleteLayersWithChoice() },
+    // The Layers panel's trash button asks first (1.87.3, CLOSE_GAPS P06); the Delete key and the menu do not.
+    { id: 'delete-layer-ask', label: 'Delete Layer...', enabled: () => !!layer(), run: () => { const n = engine.current?.selectedIds.size ?? 0, name = layer()?.name ?? ''; void confirmAction('Delete layer?', n > 1 ? `Delete the ${n} selected layers?` : `Delete ${name}?`, 'Delete', true).then((ok) => { if (ok) void deleteLayersWithChoice(); }); } },
     { id: 'rename', label: 'Rename Layer', enabled: () => !!layer(), run: () => { const l = layer(); if (l) layers.startRename(l.id); } },
     { id: 'group', label: 'Group Layers', keys: ['Mod+G'], enabled: () => !!layer(), run: () => engine.groupLayers() },
     { id: 'move-out', label: 'Move Out of Folder', keys: ['Shift+Mod+G'], enabled: () => !!layer()?.parentId, run: () => engine.moveOutOfFolder() },
@@ -2960,6 +2999,17 @@ export function startApp(): void {
     { id: 'delete-hidden', label: 'Delete Hidden Layers', enabled: () => !!engine.current?.doc.layers.some((l) => !l.visible), run: () => engine.deleteHiddenLayers() },
     { id: 'ungroup', label: 'Ungroup Layers', enabled: () => { const p = engine.current; return !!p && [...p.selectedIds].some((id) => { const l = p.layer(id); return !!l?.isGroup && !l.artboard; }); }, run: () => engine.ungroupLayers() },
     { id: 'hide-layers', label: () => (allHidden() ? 'Show Layers' : 'Hide Layers'), enabled: () => !!layer(), run: () => engine.setLayersVisible(allHidden()) },
+    { id: 'select-layer-up', label: 'Forward Layer', keys: ['Alt+]'], enabled: () => !!engine.current?.doc.layers.length, run: () => stepLayer(1, false) },
+    { id: 'select-layer-down', label: 'Backward Layer', keys: ['Alt+['], enabled: () => !!engine.current?.doc.layers.length, run: () => stepLayer(-1, false) },
+    { id: 'select-layer-up-add', label: 'Add Forward Layer to Selection', keys: ['Alt+Shift+]'], enabled: () => !!engine.current?.doc.layers.length, run: () => stepLayer(1, true) },
+    { id: 'select-layer-down-add', label: 'Add Backward Layer to Selection', keys: ['Alt+Shift+['], enabled: () => !!engine.current?.doc.layers.length, run: () => stepLayer(-1, true) },
+    { id: 'select-layer-top', label: 'Top Layer', keys: ['Alt+.'], enabled: () => !!engine.current?.doc.layers.length, run: () => stepLayer(Infinity, false) },
+    { id: 'select-layer-bottom', label: 'Bottom Layer', keys: ['Alt+,'], enabled: () => !!engine.current?.doc.layers.length, run: () => stepLayer(-Infinity, false) },
+    ...[null, ...LAYER_LABELS].map((c) => ({ id: `layer-label-${c ?? 'none'}`, label: c ? c[0].toUpperCase() + c.slice(1) : 'No Color', checked: () => (layer()?.label ?? null) === c, enabled: () => !!layer(), run: () => engine.setLayerLabel(c) })),
+    ...Array.from({ length: 10 }, (_, i) => ({ id: `pick-layer-${i}`, label: () => engine.current?.layer(picked[i] ?? '')?.name ?? '', enabled: () => i < picked.length, run: () => { const id = picked[i]; if (id) engine.selectLayer(id); } })),
+    { id: 'background-from-layer', label: 'Background from Layer', enabled: () => pixel() && !engine.backgroundLayer(), run: () => { engine.backgroundFromLayer(); } },
+    { id: 'stamp-visible', label: 'Stamp Visible', keys: ['Alt+Shift+Mod+E'], enabled: () => !!engine.current?.doc.layers.length, run: () => { engine.stampVisible(); } },
+    { id: 'show-only-layer', label: 'Show Only This Layer', enabled: () => !!layer(), run: () => { const l = layer(); if (l) engine.soloLayer(l.id); } },
     { id: 'merge-visible', label: 'Merge Visible', enabled: () => (engine.current?.doc.layers.length ?? 0) > 1, run: () => engine.mergeVisible() },
     { id: 'select-all-layers', label: 'All Layers', keys: ['Alt+Mod+A'], enabled: () => !!engine.current?.doc.layers.length, run: () => engine.selectAllLayers() },
     { id: 'deselect-layers', label: 'Deselect Layers', enabled: () => !!engine.current && (!!engine.current.activeId || engine.current.selectedIds.size > 0), run: () => engine.selectAllLayers(false) },
@@ -3060,11 +3110,12 @@ export function startApp(): void {
     { id: 'type-to-shape', label: 'Convert to Shape', enabled: () => engine.liveText(engine.current?.activeLayer), run: () => { engine.typeToShape(); } },
     ...FONT_PREVIEWS.map((v) => ({ id: `font-preview-${v}`, label: v === 'none' ? 'None' : v === 'extra' ? 'Extra Large' : v[0].toUpperCase() + v.slice(1), checked: () => loadPrefs().fontPreview === v, run: () => { updatePrefs({ fontPreview: v }); engine.emit('options', null); } })),   // Type > Font Preview Size (36.31)
     { id: 'update-all-text', label: 'Update All Text Layers', enabled: has, run: async () => { const n = await engine.updateAllTextLayers(); toast(`Updated ${n} text layer${n === 1 ? '' : 's'}.`, 'info'); } },
-    { id: 'type-features', label: 'OpenType Features', enabled: () => engine.liveText(engine.current?.activeLayer), params: { features: { type: 'string', description: 'Comma list of OpenType tags to turn on (liga, dlig, calt, salt, swsh, onum, titl, ornm, ordn, frac, smcp); -liga or -calt turns that default feature off; empty clears them.' } },
+    { id: 'type-features', label: 'OpenType Features', enabled: () => engine.liveText(engine.current?.activeLayer), params: { features: { type: 'string', description: 'Comma list of OpenType tags to turn on (liga, dlig, calt, salt, swsh, onum, titl, ornm, ordn, frac, smcp); -liga or -calt turns that default feature off; none clears them; left out, the features stay as they are.' } },
       run: async (a) => {
         const l = engine.current?.activeLayer;
         if (!l?.text || !engine.liveText(l)) return;
-        const list = String(a?.features ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+        if (a?.features === undefined || a.features === null) return;   // no argument: the layer's features stay as they are
+        const list = String(a.features).split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
         await engine.updateTextLayer(l.id, { ...l.text, features: cleanFeatures(list) });
       } },
     { id: 'warp-text', label: 'Warp Text...', enabled: () => engine.liveText(engine.current?.activeLayer), run: () => dialogs.warpText.show() },
@@ -3340,7 +3391,7 @@ export function startApp(): void {
       { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-duotone', 'mode-indexed', 'mode-multichannel', 'color-table', 'mode-rgb', 'mode-cmyk', 'mode-lab', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
       'image-size', 'canvas-size', { label: 'Pixel Aspect Ratio', items: ['par-square', 'par-d1-ntsc', 'par-d1-pal', 'par-d1-ntsc-wide', 'par-d1-pal-wide', 'par-anamorphic', 'par-hdv', '-', 'par-custom'] }, 'content-aware-scale', { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'trim', 'reveal-all', 'trap', '-', 'duplicate-image', '-', { label: 'Variables', items: ['variables-define', 'data-sets-import', 'data-set-apply'] }, '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }, '-', { label: 'Analysis', items: ['measure-scale', 'measure-record', 'measure-data-points', 'measure-scale-marker', 'measure-log'] }] },
     { label: 'Layer', items: [
-      { label: 'New', items: ['new-layer-dialog', 'layer-from-background', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard-dialog', 'artboard-from-group', 'artboard-from-layers', 'frame-from-layers', '-', 'duplicate', 'layer-via-cut', '-', 'new-relight-layer'] }, 'artboard-options', '-',
+      { label: 'New', items: ['new-layer-dialog', 'layer-from-background', 'background-from-layer', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard-dialog', 'artboard-from-group', 'artboard-from-layers', 'frame-from-layers', '-', 'duplicate', 'layer-via-cut', '-', 'new-relight-layer'] }, 'artboard-options', '-',
       { label: 'New Fill Layer', items: ['new-fill-solid', 'new-fill-gradient', 'new-fill-pattern'] }, { label: 'Video Layers', items: ['video-layer-from-file', 'video-layer-blank', '-', 'video-insert-blank-frame', 'video-duplicate-frame', 'video-delete-frame', '-', 'video-restore-frame', 'video-restore-all', 'video-replace-footage', 'video-interpret-footage', 'video-rasterize'] },{ label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'edit-relight', 'layer-content-options', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, '-',
       'duplicate-dialog', { label: 'Delete', items: ['delete-layer', 'delete-hidden'] }, 'rename', '-',
       { label: 'Layer Style', items: ['style-blending', 'style-bevel', 'style-stroke', 'style-inner-shadow', 'style-inner-glow', 'style-satin', 'style-color-overlay', 'style-gradient-overlay', 'style-pattern-overlay', 'style-outer-glow', 'style-drop-shadow', '-',
@@ -3358,7 +3409,7 @@ export function startApp(): void {
       { label: 'Distribute', items: ['distribute-left', 'distribute-hcenter', 'distribute-right', '-', 'distribute-top', 'distribute-vcenter', 'distribute-bottom', '-', 'distribute-hspace', 'distribute-vspace'] },
       { label: 'Flip', items: ['flip-layer-h', 'flip-layer-v'] }, '-',
       'lock-layers', '-', 'link-layers', 'select-linked', '-',
-      'merge', 'merge-visible', 'flatten', '-',
+      'merge', 'merge-visible', 'stamp-visible', 'flatten', '-', 'show-only-layer', { label: 'Color Label', items: ['layer-label-none', '-', ...LAYER_LABELS.map((c) => `layer-label-${c}`)] }, '-',
       { label: 'Matting', items: ['matting-decontaminate', 'matting-defringe', 'matting-black', 'matting-white'] }] },
     { label: 'Select', items: ['select-all', 'deselect', 'reselect', 'inverse', 'convert-to-shape', '-', 'select-all-layers', 'deselect-layers', 'find-layers', 'isolate-layers', '-', 'color-range', 'focus-area', 'select-subject', 'select-sky', 'select-object', 'select-and-mask', '-', 'layer-pixels', 'mask-black', '-',
       { label: 'Modify', items: ['expand', 'contract', 'feather', 'border', 'smooth'] }, 'grow', 'similar', '-', 'transform-selection', '-', 'quick-mask', '-', 'load-selection', 'save-selection', 'path-selection', 'delete-path'] },
@@ -3377,7 +3428,7 @@ export function startApp(): void {
     // Generate: the generative commands in one place (the Generate panel, models, fill, repair, size, relight, and the ComfyUI and NodeMode links).
     { label: 'Generate', items: ['generate-panel', '-', 'generate-image', 'generative-fill', 'generative-expand', '-', 'generate-remove', 'content-fill-workspace', 'content-fill', 'remove-wires', '-', 'remove-bg', 'remove-bg-lite', '-', 'upscale-2x', 'upscale-4x', 'new-relight-layer', '-', 'comfyui-run', 'send-comfyui', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode'])] },
     { label: 'View', items: [{ label: 'Proof Setup', items: ['proof-setup', '-', 'proof-preset-cmyk', 'proof-preset-cyan', 'proof-preset-magenta', 'proof-preset-yellow', 'proof-preset-black', 'proof-preset-cmy', '-', 'proof-preset-protanopia', 'proof-preset-deuteranopia'] }, 'proof-colors', 'gamut-warning', '-', 'zoom-in', 'zoom-out', 'fit', 'fit-layers', 'fit-artboard', 'actual', '-', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'pattern-preview', 'pixel-art-preview', 'par-correction', 'transform-controls', 'toggle-task-bar', '-',
-      { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'guide-layout', 'guides-from-shape', 'clear-guides'] }, { label: 'Show', items: ['toggle-show-slices', 'layer-based-slice', 'slice-options', 'clear-slices'] }, '-',
+      { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'guide-layout', 'guides-from-shape', 'clear-guides'] }, { label: 'Show', items: ['toggle-show-slices', 'layer-based-slice', 'slice-options', 'delete-slice', 'clear-slices'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'toggle-panels', 'rail-columns'] },
     { label: 'Plugins', items: () => { const ids = pluginHost.commandIds(); return ['manage-plugins', ...(ids.length ? ['-', ...ids] : [])]; } },
     { label: 'Window', items: [{ label: 'Arrange', items: ['new-window', 'float-window', 'float-all-windows', '-', 'arrange-tabs','arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-4up', 'arrange-6up', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.connect.open', 'terminal.toggle', 'terminal.new', 'script-console', 'brush-settings', 'paragraph-styles', 'character-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-properties-col', 'merge-columns', '-', 'reset-panels'] },

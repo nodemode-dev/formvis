@@ -22,3 +22,75 @@ export async function headerSize(file: Blob): Promise<{ width: number; height: n
   }
   return null;
 }
+
+type Reader = (at: number, len: number) => Promise<Uint8Array>;
+
+/** XResolution in pixels per inch from the first directory of a TIFF structure; `read` fetches bytes by offset. */
+async function tiffResolution(read: Reader): Promise<number | null> {
+  const head = await read(0, 8);
+  if (head.length < 8) return null;
+  const le = head[0] === 0x49 && head[1] === 0x49;
+  if (!le && !(head[0] === 0x4d && head[1] === 0x4d)) return null;
+  const hv = new DataView(head.buffer, head.byteOffset, head.byteLength);
+  if (hv.getUint16(2, le) !== 42) return null;
+  const ifd = hv.getUint32(4, le), cb = await read(ifd, 2);
+  if (cb.length < 2) return null;
+  const count = new DataView(cb.buffer, cb.byteOffset, 2).getUint16(0, le);
+  if (!count || count > 512) return null;
+  const table = await read(ifd + 2, count * 12), tv = new DataView(table.buffer, table.byteOffset, table.byteLength);
+  let unit = 2, rationalAt = -1;
+  for (let k = 0; k < count && (k + 1) * 12 <= table.length; k++) {
+    const tag = tv.getUint16(k * 12, le), type = tv.getUint16(k * 12 + 2, le);
+    if (tag === 296 && type === 3) unit = tv.getUint16(k * 12 + 8, le);
+    if (tag === 282 && type === 5) rationalAt = tv.getUint32(k * 12 + 8, le);
+  }
+  if (rationalAt < 0) return null;
+  const r = await read(rationalAt, 8);
+  if (r.length < 8) return null;
+  const rv = new DataView(r.buffer, r.byteOffset, r.byteLength);
+  const num = rv.getUint32(0, le), den = rv.getUint32(4, le);
+  if (!den || unit === 1) return null;
+  return num / den * (unit === 3 ? 2.54 : 1);
+}
+
+const inRange = (v: number | null): number | null => (v !== null && Number.isFinite(v) && v >= 1 && v <= 65535 ? Math.round(v) : null);
+
+/** A picture's print resolution in pixels per inch from its file's header: PNG pHYs, JPEG JFIF density (then Exif) and
+ *  TIFF XResolution; null where the file states none or states only a shape. */
+export async function headerResolution(file: Blob): Promise<number | null> {
+  try {
+    const b = new Uint8Array(await file.slice(0, 256 * 1024).arrayBuffer()), v = new DataView(b.buffer);
+    const at = (i: number, s: string): boolean => [...s].every((c, k) => b[i + k] === c.charCodeAt(0));
+    if (b.length >= 24 && b[0] === 0x89 && at(1, 'PNG')) {
+      let i = 8;
+      while (i + 12 <= b.length) {
+        const len = v.getUint32(i);
+        if (at(i + 4, 'IDAT') || at(i + 4, 'IEND')) return null;
+        if (at(i + 4, 'pHYs') && len >= 9) return b[i + 16] === 1 ? inRange(v.getUint32(i + 8) * 0.0254) : null;
+        i += 12 + len;
+      }
+      return null;
+    }
+    if (b.length >= 4 && b[0] === 0xff && b[1] === 0xd8) {
+      let i = 2, exif: number | null = null;
+      while (i + 4 < b.length && b[i] === 0xff) {
+        const m = b[i + 1], len = v.getUint16(i + 2);
+        if (m === 0xda) break;
+        if (m === 0xe0 && at(i + 4, 'JFIF') && len >= 16) {
+          const units = b[i + 11], x = v.getUint16(i + 12);
+          if (units === 1 || units === 2) return inRange(x * (units === 2 ? 2.54 : 1));
+        }
+        if (m === 0xe1 && exif === null && at(i + 4, 'Exif') && i + 10 + len <= b.length) {
+          const tiff = b.subarray(i + 10, i + 2 + len);
+          exif = inRange(await tiffResolution(async (o, n) => tiff.subarray(o, o + n)));
+        }
+        i += 2 + len;
+      }
+      return exif;
+    }
+    if (b.length >= 8 && ((b[0] === 0x49 && b[1] === 0x49 && b[2] === 42) || (b[0] === 0x4d && b[1] === 0x4d && b[3] === 42))) {
+      return inRange(await tiffResolution(async (o, n) => new Uint8Array(await file.slice(o, o + n).arrayBuffer())));
+    }
+  } catch { /* no resolution stated */ }
+  return null;
+}

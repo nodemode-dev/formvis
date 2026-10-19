@@ -2,7 +2,115 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
-## The options bar fits the window: a More panel · _v1.87.2 (ui/options.ts, styles/shell.css)
+## EXR and HDR placed into open documents; pictures open at their own ppi; Export As writes ppi · _v1.87.3 (io/images.ts, io/image-size.ts, engine/index.ts, app.ts)
+
+CLOSE_GAPS P04 D02, P05 D19 and D20.
+
+- `images.ts` `HDR_FILE`, `decodeHdr` (the deep route, then the document's depth); `decodeImage` routes .exr/.hdr there and stamps `resolution` from the header (not for camera raw). `image-size.ts` `tiffResolution`, `headerResolution` (PNG pHYs, JPEG JFIF then Exif, TIFF XResolution).
+- `index.ts`: `ImportedImage.resolution?` and `deep?` (was `export interface ImportedImage { source: CanvasImageSource; width: number; height: number; name: string; profile?: DocProfile; meta?: DocMeta }`); `insertImages` and `openImage` use `resolution ?? 72` (were `resolution: 72`); a placed float picture keeps its channels in a 16 or 32-bit RGB document (the layer line was `raster: Raster.from(img.source, img.width, img.height), parentId,`); `openDeep(name, deep, depth, resolution?)` (was `openDeep(name: string, deep: DeepPixels, depth: 16 | 32 = 16): Project {` with `... width: deep.width, height: deep.height, name });`).
+- `app.ts` `importFiles`: .hdr/.exr placed when a document is open; the 16-bit open passes `headerResolution(f)` (were `const d = await api.decodeDeep(f, f.name), name = f.name.replace(/\.[^.]+$/, '');`, `engine.openDeep(name, {...}, 32); continue;` and `engine.openDeep(name, deepFromU16(d.data as Uint16Array, d.width, d.height)); continue;`). `exportAsOne` PNG and JPEG through `withResolution`; replaced:
+
+```ts
+          : s.format === 'png' ? (keep ? await embedPng(await toBlob(c, 'image/png'), keep, label) : await toBlob(c, 'image/png'))
+          : s.format === 'jpg' ? (keep ? await embedJpeg(await toBlob(c, 'image/jpeg', s.quality / 100), keep) : await toBlob(c, 'image/jpeg', s.quality / 100))
+```
+
+- Measured in Chromium: an EXR and an HDR (left 0.5, right 4.0 linear) placed into an 8-bit document add a layer of 188 and 255, as opening and converting gives; in 32 bits the floats stay 0.5 and 4; Place Embedded the same. 300 dpi JPEG, PNG and TIFF open at 300. Export As PNG writes pHYs 11811 at 300 ppi, 2835 at 72; JPEG JFIF density 300. Not done: PSD resolution (image resource 1005), CMYK and Lab files, multi-part EXR placed as one layer.
+
+## Options bar priorities; Tab stays in the bar; task bar hit area and steady More · _v1.87.3 (extensions/registry.ts, ui/options.ts, styles/shell.css, extensions/tools/*)
+
+CLOSE_GAPS P03 rest (D06, D24, D25).
+
+- `registry.ts` `OptionSpec.priority?`. `options.ts` `build()` sets `data-pri` per node (default by kind: range, number, select, segment, colour 50; toggle, readout 30; button 20; compact icon 15; a divider just under its neighbour); `fit()` parks the lowest priority first (later in the row first on ties), skipping hidden `when` rows, then keeps row order; Tab from the open More button goes into the panel. Replaced in `fit()`:
+
+```ts
+    const minor = (n: HTMLElement): boolean => !!n.querySelector('input[type="checkbox"]') || n.classList.contains('cv-btn') || n.classList.contains('cv-opt-icon') || n.classList.contains('cv-opt-sep');
+    for (const firstPass of [true, false]) {
+      for (const n of (Array.from(g.node.children) as HTMLElement[]).reverse()) {
+        if (!over()) break;
+        if (n.classList.contains('cv-opt-tool') || (firstPass && !minor(n))) continue;
+        n.remove();
+        g.parked.push(n);
+      }
+    }
+    g.parked.sort((a, b) => Number(a.dataset.ord) - Number(b.dataset.ord));
+```
+
+  and in `build()` the `when` block (`const when = spec.when; if (when) { const added = ...slice(before) as HTMLElement[]; sync.push(...) }`), now `added` always computed.
+- Priorities on the painting, selection, crop, type, shape, move, bucket and gradient tools (Size, Hardness, Opacity, Flow, Mode high; Smoothing, Angle, pressure toggles, imports low).
+- `shell.css`: `.cv-app { overflow: clip }` (D06: nothing can scroll the window sideways); `.cv-opt input[type=range]` 88 px (was 104); `.cv-taskbar` a grid with `pointer-events: none` and its children and `::before` pill taking events (was `display: flex; align-items: center; gap: 2px`); `.cv-tb-set[hidden]` keeps its place with `visibility: hidden` (was `display: none` with `.cv-taskbar[hidden]`); grid areas for `.cv-tb-grip`, `.cv-tb-set`, `.cv-tb-more`.
+- Measured in Chromium at scale 2: no row of the 51 tools scrolls at 1800 or 1280; Brush at 1800 keeps Mode, Size, Hardness, Opacity, Flow; Tab 12 forward and 4 back from Flow leaves every scrollLeft at 0; More button at x 1020.9 before and after a document opens (was 777.8 then 1020.9); clicks 3 px above and below the bar reach the canvas. Not done: `e2e/test_marquee_options.py` still fails intermittently at its last Fixed Size step (cause not found); rows that appear later through `when` are not re-fitted.
+
+## Marks follow canvas changes; Move fields stay; delete one slice; Split Warp where you point · _v1.87.3 (engine/guides-ops.ts, engine/document-size.ts, engine/index.ts, extensions/tools/move.ts, extensions/tools/slice.ts, app.ts, automation/command-meta.ts)
+
+CLOSE_GAPS P05 (D04, D07, D21, D30).
+
+- D04: `guides-ops.ts` `Carry`, `carryMarks` (guides, slices, notes mapped through a point transform; guides swap axis on quarter turns; those outside the canvas dropped). `document-size.ts` `SizeHost.carryMeasure`; `resizeCanvas` and `resampleImage` carry marks. `index.ts` `markSteps`, `marksNow`, `marksMove`, `marksKeep`, `carryMeasure`, `marksBack`; `undoNow` and `redoNow` restore colour samplers and the ruler from a side map keyed to the step (they are not in the document); `rotateCanvas`, `flipCanvas`, `rotateCanvasBy`, `straightenCrop`, `cropToSize`, `perspectiveCrop`, `sizeHost` carry them. Arbitrary rotation, straighten and perspective crop drop guides. Replaced: in `rotateCanvas` `const spun = this.carryVectors(layers, (x, y) => (quarters === 1 ? { x: H - y, y: x } : quarters === 2 ? { x: W - x, y: H - y } : { x: y, y: W - x }));`; in `rotateCanvasBy` `const spun = this.carryVectors(layers, (x, y) => ({ x: c.x + (x - c.x) * cs - (y - c.y) * sn + dx, y: c.y + (x - c.x) * sn + (y - c.y) * cs + dy }));`; in `document-size.ts` `let layers = host.carryVectors(moved, (x, y) => ({ x: x + dx, y: y + dy }));` and `const layers = host.carryVectors(scaled, (x, y) => ({ x: x * sx, y: y * sy }));`; in `cropToSize` `return this.resampleImage(w, h, 'high', Math.max(1, Math.min(9600, resolution)));`.
+- D07 `move.ts`: the transform fields stay while Show Transform Controls is on for a plain pixel layer. Replaced `const editing = (): boolean => !!e.transformEdit;`, the two align and distribute `when: () => !editing()` (now `!e.transformEdit`) and the comment "the transform's own fields show only while a transform is being edited, as" another editor's.
+- D21: `removeSlice` (was `{ GD.removeSlice(this.guideHost, id); }`) also clears `activeSlice`; `deleteActiveSlice`; `slice.ts` Delete and Backspace, a Delete Slice button; command `delete-slice`.
+- D30: `meshWarpAim`, `meshSplitPoint`; `warp-split-h`, `warp-split-v`, `warp-split-cross` split at the pointer when it is on the grid.
+- Measured on a 400 x 200 document: Rotate 90 CW moves guides x100, y50, x390 to y100, x150, y390 and slice [10,20,100,40] to [140,10,40,100]; Crop {50,10,200,120} keeps guides x50, y40 and cuts the slice to [0,10,60,40]; Canvas Size 500 x 300 at (20,30) moves guides to x120, y80, x410; every case undoes exactly. X=37 and Angle 15 typed after a drag apply. Delete removes slices 3, 2, 1, 0. Split Vertical at (100,300) adds a column at u 0.167.
+
+## Show Only This Layer; Stamp Visible · _v1.87.3 (engine/index.ts, ui/layers.ts, app.ts, automation/command-meta.ts)
+
+CLOSE_GAPS P06 (SC-ED-0048, PC-EN-0059, PC-EN-0045).
+
+- `index.ts` `soloLayer(id)` and `soloed`: every layer but the target and its folders hidden in one step (a folder's own contents keep their visibility); the same call on the same layer restores what was visible before. `stampVisible()`: `flattened()` into a new layer named Stamp Visible above the active one, one step.
+- `layers.ts` `bindRows`: Alt on an eye calls `soloLayer` instead of starting a visibility swipe.
+- `app.ts`: commands `stamp-visible` (Alt+Shift+Mod+E) and `show-only-layer`, both in the Layer menu; words in `command-meta.ts`.
+- PC-UI-0817, PC-EN-0035 colour labels: `types.ts` `LAYER_LABELS`, `LayerLabel`, `Layer.label`; `project-io.ts` writes and reads `label`; `index.ts` `setLayerLabel(label)` over the selected layers, one step; `layers.ts` `updateRow` sets `data-label` in place; `panels.css` tints the eye column per label; `app.ts` commands `layer-label-none` and `layer-label-<colour>` in Layer > Color Label. Checked: red label on the row (eye column rgba 229,72,77 at 42%), kept through serialize and deserialize.
+- PC-UI-0191, PC-EN-0028 `index.ts` `backgroundFromLayer()`: the active pixel layer (as it shows) over the background colour at canvas size, keeping its id, moved to the bottom as Background; refused while a Background exists. Command `background-from-layer` in Layer > New. Checked: [Layer 1, Layer 2] became [Background, Layer 1] with the corner (255,255,255,255); Undo restores.
+- PC-UI-0824 `app.ts` command `delete-layer-ask` (confirm, then `deleteLayersWithChoice`); `layers.ts` footer trash button `data-cmd="delete-layer-ask"` (was `data-cmd="delete-layer"`). The Delete key and Layer > Delete stay direct. Checked: the button opens one dialog; Delete leaves 1 of 2 layers.
+- PC-UI-0827 canvas layer picker: `index.ts` `layersAt(pt, max)` (repeats `layerAt` with the found layers hidden in a throwaway doc copy, `withHidden`); `app.ts` `picked`, `pickMenu`, a `contextmenu` listener on `.cv-stage` for the Move tool, commands `pick-layer-0` to `pick-layer-9`; words by the `pick-layer-` family in `command-meta.ts`. Checked: right-click on a document whose top layer is empty lists Background only.
+- PC-EN-0055 `app.ts` `stepLayer(dir, add)` and commands `select-layer-up` (Alt+]), `select-layer-down` (Alt+[), `select-layer-up-add` (Alt+Shift+]), `select-layer-down-add` (Alt+Shift+[), `select-layer-top` (Alt+.), `select-layer-bottom` (Alt+,): over the layers the panel shows. Checked with real key presses: Layer 2, Layer 1, Background, Background, Layer 1, Layer 2, Background.
+- Checked in Chromium: three layers, solo the middle gives [false, true, false], again gives [true, true, true], Undo after a solo restores; Stamp Visible adds a fourth layer.
+
+## Folder and adjustment blending; locks; OpenType command; PSD groups; quick export profiles · _v1.87.3 (engine/types.ts, engine/tree.ts, engine/renderer.ts, engine/index.ts, engine/image-edit.ts, engine/layer-structure.ts, io/psd.ts, io/project-io.ts, ui/layers.ts, app.ts, extensions/tools/relight.ts, ui/panels/generate-panel.ts)
+
+CLOSE_GAPS P04 (D01, D03, D12, D13, D14, D34) and P05 (D26, D28).
+
+- D01 folders: `Layer.isolate?`; `tree.ts` `groupIsolated` (blend not Normal, opacity under 1, or `isolate`; artboards never). `renderer.ts`: `RenderJob.handled`, `Renderer.isolatedFolder` (the folder's layers on a clear surface, then blended with its opacity and mode), `isoDone`, the backdrop guard `|| job.handled`. `index.ts` `gpuLayers` falls back to the CPU for isolated folders; `overrides`, `setOpacityLive`, `setBlend`, `cycleBlend` take folders. `psd.ts` reads a group's mode (Normal sets `isolate`) and writes pass-through or the real mode; `project-io.ts` keeps `isolate`; `layers.ts` `syncProps` enables Blend and Opacity for folders. Replaced, verbatim: in `gpuLayers` `if (l.isGroup) { if (l.artboard && visible) return { reason: 'artboards' }; continue; }` with its comment "Folders are pass-through, as the CPU renderer draws them: their layers in order, hidden with the folder."; `if (l && !l.isGroup) m.set(id, ...blend: bp.mode ...)`, `if (l && !l.isGroup && l.opacity !== v)`, `if (l && !l.isGroup && l.blend !== mode)`, `if (!l || l.isGroup) return;`; in `renderer.ts` `if (backed.has(a.id) || !a.artboard) return;`, `const backed = new Set<ID>();`, `import { ancestors, hierarchy } from './tree';`, `...clipCache: Map<ID, Surface | null>, W: number, H: number, opacity: number): void {`, `this.adjust(job, ctx, layer, own, folders, base, map, clipCache, W, H, pix); continue;`; in `psd.ts` `newLayer(name, doc, { isGroup: true, parentId, visible: !pl.hidden, opacity: pl.opacity ?? 1, ...linkOf(pl), ...` and `blendMode: 'pass through', opened: true,`; in `layers.ts` `const pixel = !!l && !l.isGroup;`, `setDisabled(this.blend, !pixel);`, `setDisabled(this.opacity, !pixel);`, `setValue(this.blend, pixel ? (l as Layer).blend : 'normal');`, `const pct = String(Math.round((pixel ? (l as Layer).opacity : 1) * 100));`.
+- D03 adjustment blend: `Renderer.adjust` takes the layer's mode and blends the adjusted result over what is below; `gpuLayers` falls back to the CPU for an adjustment layer with a blend mode.
+- D12 Lock Transparency for filters: `image-edit.ts` `keepAlpha`, `alphaLocked`, used in `previewImageEdit` and `applyImageEdit`; `index.ts` `canGrow`, `bandedFilter`, `bandedFilterPool`, `bandedFilterTiled` keep alpha. Replaced: `const margined = grow > 0 && t.target === 'pixels' && !p.selection && !l.mask;`, `let res = out;`, `res = blendThrough(src, out, ci);`, `if (g > 0 && t.target === 'pixels' && !p.selection && !l.mask) {`, `const out = run(full, 1, host.frame(p, targetTransform(t.layer, t.target), w, h));`, `private canGrow(p: Project, l: Layer): boolean { return !p.selection && !l.mask && !!l.raster; }`.
+- D34 locked layers: `layer-structure.ts` `deleteLayers` keeps fully locked layers (a folder holding one counts) with a notice. Replaced the opening `const roots = selectedRoots(p);` / `if (!roots.length) return false;` / `const layers = p.doc.layers;`.
+- D13 OpenType command: with no arguments the features stay; `none` clears. Replaced `const list = String(a?.features ?? '')` and the parameter words `empty clears them.`
+- D14 quick export: PNG and JPEG embed the document's own profile. Replaced `if (blob) await deliver(await withXmp(blob, kind, p.doc.meta), ...)`.
+- D26: the Generate panel's address fields are labelled "... address in the Generate panel" (were the same as Preferences'). D28: the Relight options title reads Relight (was the hint sentence).
+- Measured in Chromium against the running app: D01 50% Multiply folder (128,127,0) (was (255,0,0)), PSD round trip unchanged; D03 Normal (55,155,205), Multiply (43,61,41), Screen (212,194,215); D12 locked blur 0 pixels outside the square (1,384 unlocked); D34 a locked layer stays with a notice; D13 `['frac','smcp']` unchanged; D14 Display P3 PNG carries iCCP "Display P3". Not done: 16/32-bit, CMYK and Lab composition (`compose-float.ts`) still treat folders as pass-through; folder masks apply per child; no control to set a Normal folder back to pass-through; quick export of 16-bit, banded, TIFF, AVIF and WebP still write no profile.
+
+## Generate result kept on a tab switch; palette PNG assets; Print One Copy words · _v1.87.3 (engine/index.ts, io/image-assets.ts, io/api.ts, automation/command-meta.ts)
+
+- D11 `fillArea`: a result arriving after another tab was chosen goes back to its own document (switches to it, says so); only a closed document drops it. Replaced: `if (this.current !== p) { this.notice(\`The document changed while generating, so the ${undoName} result was not placed.\`, 'error'); return false; }`.
+- D23 `image-assets.ts`: `encodeAsset(src, spec, engineUp)` sends png8 through the engine's new `png8` encoding (full colour PNG when the engine is down); `assetFiles` passes `engineUp` (was `_engineUp`, unused). Replaced the comment "png8 is also a full colour PNG for now (no palette quantiser yet)." and `return toBlob(c, 'image/png');`. `api.encode` takes `'png8'`.
+- D17 `ui/panels/neural-dialog.ts`: `pixelsKey(l)` (layer id, which raster, its `version`) keys the depth map, colouring and style results, so an edited layer is read again. Replaced in `show`, `ensureDepth`, `ensureColor`, `ensureStyle`: `this.depth?.layerId !== l.id`, `this.color?.layerId !== l.id`, `this.styled?.layerId !== l.id`, `this.depth?.layerId === l.id`, `{ layerId: l.id, map }`, `this.color?.layerId === l.id`, `{ layerId: l.id, pixels:`, `this.styled?.layerId === l.id`, `{ layerId: l.id, style:`. Not run here (models not installed).
+- D18 `app.ts` `cmykToRgb`: 8-bit CMYK to RGB uses Color Settings' intent and black point compensation (`loadPrefs().colour`), as the 16-bit path does. Replaced: `const out = await api.convertPixels(channelsToU8(l.channels.data), l.channels.width, l.channels.height, 'rgb', p.doc.profile!.icc);`.
+- D05 `ui/dock.ts` `DEFAULT.hidden` starts with `generate`, and `ui/titlebar-tools.ts` Essentials orders `['navigator', 'swatches', 'layers', 'generate', 'timeline', 'history']` with Generate hidden (was `order: ['navigator', 'generate', 'swatches', 'layers', 'timeline', 'history'], hidden: ['timeline', 'history']`); a saved arrangement is kept. `e2e/test_docking.py`: the new-group filter no longer matches `cv-generate` (`/^cv-g(?!enerate$)[0-9a-z]+$/`, was `/^cv-g[0-9a-z]+$/`). Dock e2e: 7 failing before, 1 after (the seven-tab test reaches a Brushes group that is built only with the Properties column, unchanged).
+- D29: Print One Copy's words say the system print dialog still opens (the label stays; the translations key on it). Replaced: `'Prints the flattened document at once with the settings Print last used, through the system print dialog.', 'Use when you want a print without going through the dialog again.'`.
+
+## Home restructured with a navigation column and pages; the sparkle icon removed · _v1.87.3 (ui/home.ts, ui/home-files.ts, styles/shell.css, ui/icons.ts, ui/task-bar.ts, ui/dock.ts, ui/panels/generate-panel.ts, extensions/tools/remove.ts)
+
+The owner: Home should be structured like the formdeck Home (structure, not theme); the three-star sparkle icon is banned everywhere.
+
+- `home.ts` `HomeScreen`: the root holds a navigation column (brand; Start, Recent, Projects, Outputs with counts; Create: New document, Open, Generate image; Preferences and Help at the foot) and a main area with four pages built once and toggled by `paint()`: Start (greeting, Open and New document, a drop zone with the formats that open and the three actions, Recent with See all, New document sizes from `PRESETS`), Recent, Projects (Library folder...), Outputs. `show(page?)`, `fill()`; one delegated click handler (`data-v` pages, `data-size` presets; `button[data-cmd]` is left to the window's own handler so a command runs once, checked: New document ran once through `engine.newDocument(w, h, name, 'white', ppi)`). A narrow window (900 px and under) shows the pages as a row instead of the column. Replaced: the constructor's centred markup (`cv-home-center`, `cv-home-brand` 38 px name, `cv-home-sub`, `cv-home-actions` with the New document and Open buttons built in a loop, `cv-home-hint`) and the single `files` browser:
+
+```ts
+    this.files = new HomeFiles({ recent: d.recent, openRecent: d.openRecent, openPath: d.openPath, removeRecent: d.removeRecent });
+    center.appendChild(this.files.root);
+    this.root.append(center);
+```
+
+- `home-files.ts`: options `fixed` (one tab), `limit` and `compact` (Start's grid of 8), `onCount` (the navigation counts); `save()` keeps the shared tab when fixed.
+- `shell.css`: the `.cv-home-center`, `.cv-home-by`, `.cv-home-actions`, `.cv-home-hint` rules and the `:first-child` and `:last-child` widths of `.cv-home-action` replaced by `.cv-home-nav*`, `.cv-home-main`, `.cv-home-page`, `.cv-home-head*`, `.cv-home-hero*`, `.cv-home-format*`, `.cv-home-section*`, `.cv-home-size*`, the narrow media query and the card look for the grid (`.cv-hf:not(.is-list) .cv-hf-open`).
+- `icons.ts`: `sparkle` removed and `generate` added (a picture frame with a drawing stroke); `magicWand` (three four-point stars on a wand) removed, it was unused. Removed:
+
+```ts
+  sparkle: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1.5l1.5 4.5 4.5 1.5-4.5 1.5L12 13.5l-1.5-4.5L6 7.5l4.5-1.5L12 1.5zM5 15l1 3 3 1-3 1-1 3-1-3-3-1 3-1 1-3zm14 0l1 3 3 1-3 1-1 3-1-3-3-1 3-1 1-3z"/></svg>`,
+  magicWand: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7.5 5.6L10 7 8.6 4.5 10 2 7.5 3.4 5 2l1.4 2.5L5 7l2.5-1.4zM19.5 15.4L17 14l1.4 2.5L17 19l2.5-1.4L22 19l-1.4-2.5L22 14l-2.5 1.4zM22 2l-2.5 1.4L17 2l1.4 2.5L17 7l2.5-1.4L22 7l-1.4-2.5L22 2zM14.37 7.29L12.71 5.63c-.39-.39-1.02-.39-1.41 0L1.29 15.63c-.39.39-.39 1.02 0 1.41l1.65 1.65c.39.39 1.02.39 1.41 0L14.37 8.71c.39-.4.39-1.03 0-1.42z"/></svg>`,
+```
+
+  Uses moved: task bar Generate, Generate Image (twice) and the Generate panel's button and dock tab to `generate`; Remove tool's Remove Wires and Cables, Remove People, Remove Distractions to `tRemove` (were `icon: 'sparkle'`).
+- Checked in Chromium at 1800 x 1110 and 1280 x 720, scale 2: counts 3, 1, 1; each page lists its files with thumbnails; Square post opens a 1080 x 1080 document and Home closes.
+ (ui/options.ts, styles/shell.css)
 
 CLOSE_GAPS P03, the owner's third issue: the Brush row was far wider than the bar and had to be scrolled.
 

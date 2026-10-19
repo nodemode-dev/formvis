@@ -4,6 +4,42 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.87.3 · 2026-10-19
+
+### Changed
+
+- Home is laid out as pages beside a navigation column: Start, Recent, Projects and Outputs (each with its count), Create (New document, Open, Generate image), Preferences and Help. Start greets you with Open and New document, a drop zone listing what opens, your recent files with See all, and one-click new document sizes (photo, square post, story, HD, 4K, A4 print at 300 ppi, web banner, app icon). Recent, Projects and Outputs are full pages with filter, sort, and thumbnails or a list.
+- The three-star sparkle icon is gone everywhere: generative commands use a new picture-and-stroke icon, the Remove tool's buttons use the Remove tool's own icon.
+- The Layers panel's trash button asks before deleting.
+- With the Move tool, right-click the canvas to pick from the layers that have pixels under the pointer.
+- Layer > New > Background from Layer turns the active layer into the Background, filled with the background colour behind it.
+- Layer > Color Label marks layers red, orange, yellow, green, blue, violet or gray in the Layers panel; labels are saved in the project.
+- Step through layers from the keyboard: Alt+] and Alt+[ select the layer above or below, with Shift to add it to the selection; Alt+. and Alt+, jump to the top and bottom layer.
+- Layer > Stamp Visible (Alt+Shift+Mod+E) adds a merged copy of everything visible as a new layer; Layer > Show Only This Layer, or Alt-click an eye, hides every other layer and the same again brings them back.
+- Essentials opens with the Layers list in full view: the Generate panel starts closed (Window > Generate opens it). A saved arrangement is kept.
+
+### Fixed
+
+- EXR and HDR pictures can be placed into an open document (they failed with "cannot identify image file"); in a 16 or 32-bit document they keep their high dynamic range.
+- Pictures open at their own resolution (a 300 ppi JPEG, PNG or TIFF opens at 300 ppi, not 72), and Export As writes the document's ppi into PNG and JPEG files.
+- Folders (groups) have their own blend mode and opacity: a folder set to Multiply at 50% composites its contents first, then blends, on the canvas and in every export; PSD groups open and save with their mode and opacity; the Layers panel's Blend and Opacity work on a selected folder.
+- Adjustment layers obey their blend mode (Multiply, Screen and the rest) on the canvas and in exports.
+- Filters respect Lock Transparency: a blur on a locked layer no longer spreads into empty pixels.
+- A layer with Lock All cannot be deleted; deleting a selection keeps the locked layers and says so.
+- OpenType Features from the command search no longer clears a type layer's features when run without settings.
+- Quick Export as PNG or JPEG embeds the document's colour profile (Display P3, Adobe RGB and others), as Export As does.
+- The options bar keeps each tool's most used settings in view (Brush keeps Mode, Size, Hardness, Opacity and Flow) and moves the rest into More first. Tab no longer scrolls the window sideways.
+- The Contextual Task Bar takes clicks only on itself, and its More button no longer jumps when a document opens.
+- Guides, slices, notes and colour samplers follow Image Rotation, Flip Canvas, Crop, Canvas Size and Image Size, and come back with Undo.
+- The Move tool's X, Y, W, H, Scale and Angle fields stay in the options bar after you release a handle, so you can type values.
+- A single slice can be deleted: Delete or Backspace with the slice selected, the Delete Slice button, or View > Show > Delete Slice.
+- Split Warp splits at the point you last pointed to on the warp grid.
+- A Generate result that arrives after you switch tabs goes into the document it was made for instead of being thrown away.
+- Image Assets named .png8 are written as real 256-colour palette PNGs.
+- Depth Blur, Colorize and Style Transfer read the layer again after it is edited instead of reusing an old result.
+- Image > Mode > RGB Color from an 8-bit CMYK document uses Color Settings' intent and black point compensation.
+- The Generate panel's address fields no longer share their names with Preferences' (screen readers could not tell them apart); Relight's options bar title reads Relight; Print One Copy's description says the system print dialog still opens.
+
 ## 1.87.2 · 2026-10-18
 
 ### Fixed

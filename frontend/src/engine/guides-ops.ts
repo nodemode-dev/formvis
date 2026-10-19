@@ -1,7 +1,7 @@
 // Guides and slices (DEV_PLAN 36.13): the Engine's guide and slice methods, moved out of index.ts. Each takes a
 // GuideHost, the few Engine members they use, so this file never imports the Engine class.
 import type { Project } from './project';
-import type { DocSlice, Guide, ID, Pt, Rect } from './types';
+import type { Doc, DocNote, DocSlice, Guide, ID, Pt, Rect } from './types';
 
 /** What the guide and slice methods need of the Engine. */
 export interface GuideHost {
@@ -137,4 +137,34 @@ export function guideAt(host: GuideHost, screen: Pt, tol = 4): number | null {
   let best: number | null = null, bestD = tol + 1;
   g.forEach((x, i) => { const d = Math.abs(x.axis === 'x' ? v.panX + x.at * v.zoom - screen.x : v.panY + x.at * v.zoom - screen.y); if (d <= tol && d < bestD) { best = i; bestD = d; } });
   return best;
+}
+
+/** A change of the canvas as the marks on it see it: where `map` puts a point of the old canvas on the new one, which is
+ *  `width` by `height`; `swap` when horizontal and vertical trade places (a quarter turn); `upright` false when no guide
+ *  can stay straight (a turn by any other angle, a perspective crop). */
+export interface Carry { map: (x: number, y: number) => Pt; width: number; height: number; swap?: boolean; upright?: boolean }
+
+/** The document's guides, slices, notes and count marks carried through `c`, as the pixels are: a guide, note or count
+ *  mark that lands off the canvas goes, a slice is cut to it. Only the fields the document has are returned. */
+export function carryMarks(doc: Doc, c: Carry): Partial<Doc> {
+  const out: { guides?: Guide[]; slices?: DocSlice[]; notes?: DocNote[]; counts?: { x: number; y: number }[] } = {};
+  const inside = (q: Pt): boolean => q.x >= 0 && q.y >= 0 && q.x <= c.width && q.y <= c.height;
+  if (doc.guides?.length) {
+    out.guides = c.upright === false ? [] : doc.guides.flatMap((g) => {
+      const q = c.map(g.axis === 'x' ? g.at : 0, g.axis === 'y' ? g.at : 0);
+      const axis: 'x' | 'y' = c.swap ? (g.axis === 'x' ? 'y' : 'x') : g.axis, at = Math.round((axis === 'x' ? q.x : q.y) * 2) / 2;
+      return at >= 0 && at <= (axis === 'x' ? c.width : c.height) ? [{ axis, at }] : [];
+    });
+  }
+  if (doc.slices?.length) {
+    out.slices = doc.slices.flatMap((s) => {
+      const q = [c.map(s.x, s.y), c.map(s.x + s.w, s.y), c.map(s.x, s.y + s.h), c.map(s.x + s.w, s.y + s.h)], xs = q.map((a) => a.x), ys = q.map((a) => a.y);
+      const x0 = Math.max(0, Math.floor(Math.min(...xs) + 1e-6)), y0 = Math.max(0, Math.floor(Math.min(...ys) + 1e-6));
+      const x1 = Math.min(c.width, Math.ceil(Math.max(...xs) - 1e-6)), y1 = Math.min(c.height, Math.ceil(Math.max(...ys) - 1e-6));
+      return x1 - x0 < 1 || y1 - y0 < 1 ? [] : [{ ...s, x: x0, y: y0, w: x1 - x0, h: y1 - y0 }];
+    });
+  }
+  if (doc.notes?.length) out.notes = doc.notes.flatMap((n) => { const q = c.map(n.x, n.y); return inside(q) ? [{ ...n, x: q.x, y: q.y }] : []; });
+  if (doc.counts?.length) out.counts = doc.counts.flatMap((n) => { const q = c.map(n.x, n.y); return inside(q) ? [{ x: q.x, y: q.y }] : []; });
+  return out;
 }

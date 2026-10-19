@@ -10,7 +10,9 @@ import { enhanceSelect } from './dropdown';
 export interface Workspace { id: string; label: string; order: string[]; hidden: string[]; propsColumn: boolean }
 export const WORKSPACES: readonly Workspace[] = [
   // The Generate panel (generative fill, models, ComfyUI and NodeMode) sits near the top of the dock in the photo and painting workspaces.
-  { id: 'essentials', label: 'Essentials', order: ['navigator', 'generate', 'swatches', 'layers', 'timeline', 'history'], hidden: ['timeline', 'history'], propsColumn: true },
+  // Essentials keeps Generate under Layers and closed (1.87.3, D05): at 1400 x 900 it pushed the Layers list out of the
+  // window. Window > Generate, the Generate menu and the task bar still reach it.
+  { id: 'essentials', label: 'Essentials', order: ['navigator', 'swatches', 'layers', 'generate', 'timeline', 'history'], hidden: ['generate', 'timeline', 'history'], propsColumn: true },
   { id: 'photography', label: 'Photography', order: ['navigator', 'generate', 'layers', 'history', 'swatches', 'timeline'], hidden: ['swatches', 'timeline'], propsColumn: true },
   { id: 'painting', label: 'Painting', order: ['swatches', 'navigator', 'generate', 'layers', 'history', 'timeline'], hidden: ['timeline'], propsColumn: true },
   { id: 'graphic', label: 'Graphic and Web', order: ['layers', 'swatches', 'navigator', 'generate', 'history', 'timeline'], hidden: ['navigator', 'generate', 'timeline'], propsColumn: true },

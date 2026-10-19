@@ -119,6 +119,7 @@ export const moveTool: Tool = {
   hint: (eng) => (eng.distortEdit ? DISTORT_HINTS[eng.distortEdit.mode] : eng.transformConstraint === 'scale' ? 'Scale · Drag a handle to scale · Shift keeps or frees the proportions · Alt scales from the center · Enter or Escape ends' : eng.transformConstraint === 'rotate' ? 'Rotate · Drag a handle or outside the box to turn · Shift turns by 15° · Enter or Escape ends' : eng.floatingSelection ? 'Transform Selection · Drag to move · Handles resize · Outside a corner rotates · Shift constrains · Enter applies · Escape cancels' : 'Drag to move · Drag inside a selection to move its pixels, Alt to duplicate them · Handles resize · Outside a corner rotates · Shift constrains · Alt resizes from the center · Cmd or Ctrl picks the layer under the pointer · Arrows nudge · 1-0 set layer opacity'),
   cursor(ctx, p) {
     if (!p) return 'default';
+    if (ctx.engine.meshWarpEdit) ctx.engine.meshWarpAim = { x: p.doc.x, y: p.doc.y };
     const m = hit(ctx, p), t = editable(ctx);
     if (!m || !t) return 'default';
     if (m.kind === 'move') return 'move';
@@ -134,7 +135,7 @@ export const moveTool: Tool = {
       if (e.perspectiveEdit.phase === 'layout') { planeStart = p.doc; planeEnd = p.doc; }
       return;
     }
-    if (e.meshWarpEdit) { warpDrag = warpPoint(ctx, p); return; }
+    if (e.meshWarpEdit) { e.meshWarpAim = { x: p.doc.x, y: p.doc.y }; warpDrag = warpPoint(ctx, p); return; }
     if (e.puppetEdit) {
       const hitPin = puppetPin(ctx, p);
       if (p.alt) { if (hitPin !== null) e.removePuppetPin(hitPin); return; }
@@ -330,32 +331,37 @@ export const moveTool: Tool = {
       const l = e.activeLayer;
       return l && l.raster ? l.transform : null;
     };
-    const editing = (): boolean => !!e.transformEdit;
+    // The transform's fields stay while its controls are shown, after the pointer is released, so a value can be typed.
+    const editing = (): boolean => {
+      if (e.transformEdit) return true;
+      const l = e.activeLayer;
+      return e.showTransformControls && !!l && !!l.raster && !l.isGroup && !e.distortEdit && !e.meshWarpEdit && !e.puppetEdit && !e.perspectiveEdit && !e.floatingSelection;
+    };
     return [
       { kind: 'title', text: 'Move' },
       // As the target's Move bar (Phase 21, s20): Auto-Select and its target, Show Transform Controls, Snap, then
-      // align and distribute; the transform's own fields show only while a transform is being edited, as Photoshop's.
-      { kind: 'toggle', label: 'Auto-Select', get: () => e.autoSelect, set: (v) => e.update({ autoSelect: v }) },
-      { kind: 'select', label: 'Auto-Select Target', choices: [{ id: 'layer', label: 'Layer' }, { id: 'group', label: 'Group' }], get: () => e.autoSelectTarget, set: (v) => e.update({ autoSelectTarget: v as 'layer' | 'group' }) },
-      { kind: 'toggle', label: 'Show Transform Controls', get: () => e.showTransformControls, set: (v) => e.update({ showTransformControls: v }) },
-      { kind: 'toggle', label: 'Snap', get: () => e.snapping, set: (v) => { e.snapping = v; e.emit('options', null); } },
-      ...(['left', 'hcenter', 'right', 'top', 'vcenter', 'bottom'] as const).map((k): OptionSpec => ({ kind: 'button', label: `Align ${ALIGN_NAMES[k]}`, icon: `align${k[0].toUpperCase()}${k.slice(1)}Edge`, run: () => e.alignLayers(k), when: () => !editing(), compact: true })),
-      ...(['hspace', 'vspace'] as const).map((k): OptionSpec => ({ kind: 'button', label: k === 'hspace' ? 'Distribute Horizontal Spacing' : 'Distribute Vertical Spacing', icon: k === 'hspace' ? 'distributeH' : 'distributeV', run: () => e.distributeLayers(k), when: () => !editing(), compact: true })),
-      { kind: 'toggle', label: 'Keep proportions', get: () => e.lockRatio, set: (v) => e.update({ lockRatio: v }), when: editing },
-      { kind: 'number', label: 'X', get: () => t()?.x ?? null, set: (v) => e.setLayerTransform({ x: v }, 'Move Layer'), when: editing },
-      { kind: 'number', label: 'Y', get: () => t()?.y ?? null, set: (v) => e.setLayerTransform({ y: v }, 'Move Layer'), when: editing },
-      { kind: 'number', label: 'W', min: 1, get: () => t()?.w ?? null, set: (v) => e.resizeLayerTo(v, true), when: editing },
-      { kind: 'number', label: 'H', min: 1, get: () => t()?.h ?? null, set: (v) => e.resizeLayerTo(v, false), when: editing },
-      { kind: 'number', label: 'Scale', unit: '%', min: 1, get: () => { const l = e.activeLayer, tt = t(); return l?.raster && tt ? (tt.w / l.raster.width) * 100 : null; }, set: (v) => e.scaleLayerTo(v), when: editing },
-      { kind: 'number', label: 'Angle', unit: '\u00b0', get: () => t()?.rotation ?? null, set: (v) => e.setLayerTransform({ rotation: v }, 'Rotate Layer'), when: editing },
-      { kind: 'segment', label: 'Sampling', choices: [{ id: 'nearest', label: 'Nearest' }, { id: 'smooth', label: 'Smooth' }, { id: 'high', label: 'High quality' }], get: () => t()?.sampling ?? 'high', set: (v) => e.setLayerTransform({ sampling: v as Transform['sampling'] }), when: editing },
-      { kind: 'button', label: 'Flip horizontal', icon: 'flipH', run: () => e.flipLayers(true), when: editing },
-      { kind: 'button', label: 'Flip vertical', icon: 'flipV', run: () => e.flipLayers(false), when: editing },
-      { kind: 'segment', label: 'Perspective Warp', choices: [{ id: 'layout', label: 'Layout' }, { id: 'warp', label: 'Warp' }], get: () => e.perspectiveEdit?.phase ?? 'layout', set: (v) => e.setPerspectivePhase(v as 'layout' | 'warp'), when: () => !!e.perspectiveEdit },
-      { kind: 'button', label: 'Straighten verticals', run: () => e.straightenPerspective(true), when: () => e.perspectiveEdit?.phase === 'warp' },
-      { kind: 'button', label: 'Level horizontals', run: () => e.straightenPerspective(false), when: () => e.perspectiveEdit?.phase === 'warp' },
-      { kind: 'button', label: 'Apply', run: () => e.applyPerspectiveWarp(), when: () => !!e.perspectiveEdit },
-      { kind: 'button', label: 'Cancel', run: () => e.cancelPerspectiveWarp(), when: () => !!e.perspectiveEdit },
+      // align and distribute; the transform's own fields show while its controls are shown or a transform is being edited.
+      { kind: 'toggle', label: 'Auto-Select', priority: 90, get: () => e.autoSelect, set: (v) => e.update({ autoSelect: v }) },
+      { kind: 'select', label: 'Auto-Select Target', priority: 60, choices: [{ id: 'layer', label: 'Layer' }, { id: 'group', label: 'Group' }], get: () => e.autoSelectTarget, set: (v) => e.update({ autoSelectTarget: v as 'layer' | 'group' }) },
+      { kind: 'toggle', label: 'Show Transform Controls', priority: 70, get: () => e.showTransformControls, set: (v) => e.update({ showTransformControls: v }) },
+      { kind: 'toggle', label: 'Snap', priority: 50, get: () => e.snapping, set: (v) => { e.snapping = v; e.emit('options', null); } },
+      ...(['left', 'hcenter', 'right', 'top', 'vcenter', 'bottom'] as const).map((k): OptionSpec => ({ kind: 'button', label: `Align ${ALIGN_NAMES[k]}`, icon: `align${k[0].toUpperCase()}${k.slice(1)}Edge`, run: () => e.alignLayers(k), when: () => !e.transformEdit, compact: true })),
+      ...(['hspace', 'vspace'] as const).map((k): OptionSpec => ({ kind: 'button', label: k === 'hspace' ? 'Distribute Horizontal Spacing' : 'Distribute Vertical Spacing', icon: k === 'hspace' ? 'distributeH' : 'distributeV', run: () => e.distributeLayers(k), when: () => !e.transformEdit, compact: true })),
+      { kind: 'toggle', label: 'Keep proportions', priority: 60, get: () => e.lockRatio, set: (v) => e.update({ lockRatio: v }), when: editing },
+      { kind: 'number', label: 'X', priority: 80, get: () => t()?.x ?? null, set: (v) => e.setLayerTransform({ x: v }, 'Move Layer'), when: editing },
+      { kind: 'number', label: 'Y', priority: 80, get: () => t()?.y ?? null, set: (v) => e.setLayerTransform({ y: v }, 'Move Layer'), when: editing },
+      { kind: 'number', label: 'W', priority: 80, min: 1, get: () => t()?.w ?? null, set: (v) => e.resizeLayerTo(v, true), when: editing },
+      { kind: 'number', label: 'H', priority: 80, min: 1, get: () => t()?.h ?? null, set: (v) => e.resizeLayerTo(v, false), when: editing },
+      { kind: 'number', label: 'Scale', priority: 75, unit: '%', min: 1, get: () => { const l = e.activeLayer, tt = t(); return l?.raster && tt ? (tt.w / l.raster.width) * 100 : null; }, set: (v) => e.scaleLayerTo(v), when: editing },
+      { kind: 'number', label: 'Angle', priority: 75, unit: '\u00b0', get: () => t()?.rotation ?? null, set: (v) => e.setLayerTransform({ rotation: v }, 'Rotate Layer'), when: editing },
+      { kind: 'segment', label: 'Sampling', priority: 50, choices: [{ id: 'nearest', label: 'Nearest' }, { id: 'smooth', label: 'Smooth' }, { id: 'high', label: 'High quality' }], get: () => t()?.sampling ?? 'high', set: (v) => e.setLayerTransform({ sampling: v as Transform['sampling'] }), when: editing },
+      { kind: 'button', label: 'Flip horizontal', priority: 40, icon: 'flipH', run: () => e.flipLayers(true), when: editing },
+      { kind: 'button', label: 'Flip vertical', priority: 40, icon: 'flipV', run: () => e.flipLayers(false), when: editing },
+      { kind: 'segment', label: 'Perspective Warp', priority: 70, choices: [{ id: 'layout', label: 'Layout' }, { id: 'warp', label: 'Warp' }], get: () => e.perspectiveEdit?.phase ?? 'layout', set: (v) => e.setPerspectivePhase(v as 'layout' | 'warp'), when: () => !!e.perspectiveEdit },
+      { kind: 'button', label: 'Straighten verticals', priority: 40, run: () => e.straightenPerspective(true), when: () => e.perspectiveEdit?.phase === 'warp' },
+      { kind: 'button', label: 'Level horizontals', priority: 40, run: () => e.straightenPerspective(false), when: () => e.perspectiveEdit?.phase === 'warp' },
+      { kind: 'button', label: 'Apply', priority: 90, run: () => e.applyPerspectiveWarp(), when: () => !!e.perspectiveEdit },
+      { kind: 'button', label: 'Cancel', priority: 85, run: () => e.cancelPerspectiveWarp(), when: () => !!e.perspectiveEdit },
     ];
   },
 };

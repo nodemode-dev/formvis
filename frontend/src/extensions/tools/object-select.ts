@@ -167,9 +167,9 @@ export const objectSelectTool: Tool = {
   keydown(ctx, e) { return nudgeSelectionKey(ctx, e); },
   options: (e) => [
     { kind: 'title', text: 'Object Selection' },
-    { kind: 'toggle', label: 'Sample All Layers', get: () => sampleAll, set: (v) => { sampleAll = v; } },
-    { kind: 'toggle', label: 'Object Finder', get: () => hoverOn, set: (v) => { hoverOn = v; hoverDownUntil = 0; if (!v) { highlight = null; hoverSeq++; clearTimeout(hoverTimer); e.emit('overlay', null); } } },
+    { kind: 'toggle', label: 'Sample All Layers', priority: 45, get: () => sampleAll, set: (v) => { sampleAll = v; } },
+    { kind: 'toggle', label: 'Object Finder', priority: 40, get: () => hoverOn, set: (v) => { hoverOn = v; hoverDownUntil = 0; if (!v) { highlight = null; hoverSeq++; clearTimeout(hoverTimer); e.emit('overlay', null); } } },
     modeSegment(e),
-    { kind: 'button', label: 'Select and Mask...', run: () => toolHost.run('select-and-mask') }
+    { kind: 'button', label: 'Select and Mask...', priority: 25, run: () => toolHost.run('select-and-mask') }
   ],
 };

@@ -10,6 +10,7 @@ import { buildXmp, metaFromXmp } from './xmp';
 import { metaWritable } from '../engine/doc-meta';
 import type { PathSet, SubPath } from '../engine/paths';
 import { maskEdgeTone } from '../engine/distort';
+import { groupIsolated } from '../engine/tree';
 import { renderFill } from '../engine/fill-layers';
 import type { FillContent } from '../engine/types';
 
@@ -311,7 +312,11 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
     for (const pl of children ?? []) {
       const name = pl.name || 'Layer', blend = (pl.blendMode && FROM_PSD.get(pl.blendMode)) ?? 'normal';
       if (pl.children) {
-        const group = newLayer(name, doc, { isGroup: true, parentId, visible: !pl.hidden, opacity: pl.opacity ?? 1, ...linkOf(pl), ...(!parentId ? fromPsdArtboard(pl) : {}) });
+        // A group's blend mode: Pass Through is formvis's folder with Normal and no isolation; any other mode, Normal
+        // included, composites the group on its own.
+        const through = !pl.blendMode || pl.blendMode === 'pass through', gblend = through ? 'normal' : FROM_PSD.get(pl.blendMode as PsdBlend) ?? 'normal';
+        if (!through && !FROM_PSD.has(pl.blendMode as PsdBlend)) notes.push(`"${name}" uses ${pl.blendMode}, which formvis does not have; it opened as Normal.`);
+        const group = newLayer(name, doc, { isGroup: true, parentId, visible: !pl.hidden, opacity: pl.opacity ?? 1, blend: gblend, ...(!through && gblend === 'normal' ? { isolate: true } : {}), ...linkOf(pl), ...(!parentId ? fromPsdArtboard(pl) : {}) });
         walk(pl.children, group.id);
         psdIds.set(pl, group.id);
         layers.push(group); // after its children, where formvis keeps a folder's entry
@@ -483,7 +488,7 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
     out.mask = { canvas: mp.c, left: mp.x, top: mp.y, defaultColor: maskEdgeTone(mk.raster), disabled: !mk.enabled };
   };
   const toPsd = (l: Layer): PsdLayer | null => {
-    if (l.isGroup) return { name: l.name, hidden: !l.visible, opacity: l.opacity, blendMode: 'pass through', opened: true, children: build(l.id), ...toPsdArtboard(l) };
+    if (l.isGroup) return { name: l.name, hidden: !l.visible, opacity: l.opacity, blendMode: groupIsolated(l) ? TO_PSD[l.blend] ?? 'normal' : 'pass through', opened: true, children: build(l.id), ...toPsdArtboard(l) };
     if (l.adjustment) {
       // An adjustment layer goes as Photoshop's, live, with its mask, opacity, blend and clipping.
       const adjustment = toPsdAdjustment(l.adjustment);

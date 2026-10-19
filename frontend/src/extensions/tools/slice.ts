@@ -77,6 +77,7 @@ export const sliceTool: Tool = {
     if (hit) ctx.engine.activeSlice = hit.id;
     drag = { start: p.doc, now: p.doc, square: p.shift, ...(hit ? { move: hit } : {}) };
     ctx.engine.emit('overlay', null);
+    ctx.engine.emit('options', null);
   },
   move(ctx, p) {
     if (!drag) return;
@@ -95,9 +96,11 @@ export const sliceTool: Tool = {
       if (made) ctx.engine.activeSlice = made.id;
     }
     ctx.engine.emit('overlay', null);
+    ctx.engine.emit('options', null);
   },
   keydown(ctx, e) {
     if (e.key === 'Escape' && drag) { drag = null; ctx.engine.emit('overlay', null); return true; }
+    if ((e.key === 'Delete' || e.key === 'Backspace') && !drag && !e.metaKey && !e.ctrlKey && !e.altKey) return ctx.engine.deleteActiveSlice();
     return false;
   },
   cancel(ctx) { drag = null; ctx.engine.emit('overlay', null); },
@@ -118,6 +121,7 @@ export const sliceTool: Tool = {
   options: (e) => [
     { kind: 'title', text: 'Slice' },
     { kind: 'readout', label: 'Slices', get: () => String(e.current?.doc.slices?.length ?? 0) },
+    { kind: 'button', label: 'Delete Slice', icon: 'close', run: () => { e.deleteActiveSlice(); }, when: () => !!e.current?.doc.slices?.some((s) => s.id === e.activeSlice) },
     { kind: 'button', label: 'Clear Slices', icon: 'close', run: () => e.clearSlices() },
   ],
 };

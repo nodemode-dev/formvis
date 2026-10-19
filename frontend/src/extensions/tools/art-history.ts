@@ -22,9 +22,9 @@ export const artHistoryTool: Tool = {
   overlay(ctx, g) { drawBrushCursor(ctx, g, hover); },
   options: (e: Engine): OptionSpec[] => [
     { kind: 'title', text: 'Art History Brush' },
-    { kind: 'readout', label: 'Source', get: () => e.snapshots.find((s) => s.id === e.historyBrushSourceId)?.name ?? 'none (take a snapshot)' },
-    { kind: 'select', label: 'Style', choices: ART_STYLES.map(([id, label]) => ({ id, label })), get: () => e.artHistory.style, set: (v) => { e.artHistory = { ...e.artHistory, style: v as ArtStyle }; } },
-    { kind: 'range', label: 'Tolerance', min: 0, max: 100, unit: '%', get: () => e.artHistory.tolerance, set: (v) => { e.artHistory = { ...e.artHistory, tolerance: v }; } },
+    { kind: 'readout', label: 'Source', priority: 45, get: () => e.snapshots.find((s) => s.id === e.historyBrushSourceId)?.name ?? 'none (take a snapshot)' },
+    { kind: 'select', label: 'Style', priority: 70, choices: ART_STYLES.map(([id, label]) => ({ id, label })), get: () => e.artHistory.style, set: (v) => { e.artHistory = { ...e.artHistory, style: v as ArtStyle }; } },
+    { kind: 'range', label: 'Tolerance', priority: 60, min: 0, max: 100, unit: '%', get: () => e.artHistory.tolerance, set: (v) => { e.artHistory = { ...e.artHistory, tolerance: v }; } },
     ...brushOptions(e, 'Opacity'),
   ],
 };

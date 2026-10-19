@@ -2,6 +2,7 @@ import { LIMITS, newLayer } from './types';
 import type { Layer, Doc, Transform, Pt } from './types';
 import { Raster } from './surface';
 import type { Project } from './project';
+import { carryMarks } from './guides-ops';
 
 type RGB = { r: number; g: number; b: number };
 
@@ -13,6 +14,7 @@ export interface SizeHost {
   fit(): void;
   css(c: RGB): string;
   carryVectors(layers: Layer[], map: (x: number, y: number) => Pt): Layer[];
+  carryMeasure(p: Project, prior: Doc, name: string, map: (x: number, y: number) => Pt): void;
   alphasShifted(doc: Doc, dx: number, dy: number, w: number, h: number): Partial<Doc>;
   alphasScaled(doc: Doc, w: number, h: number, sx: number, sy: number, smooth: boolean): Partial<Doc>;
   shapeScaled(shape: NonNullable<Layer['shape']>, k: number): NonNullable<Layer['shape']>;
@@ -66,15 +68,17 @@ export function resizeCanvas(
       mask: l.mask ? { ...l.mask, placement: l.mask.placement ? shiftBox(l.mask.placement, dx, dy) : null } : l.mask,
       artboard: l.artboard ? { ...l.artboard, x: l.artboard.x + dx, y: l.artboard.y + dy } : l.artboard,
     }));
-    let layers = host.carryVectors(moved, (x, y) => ({ x: x + dx, y: y + dy }));
+    const shift = (x: number, y: number): Pt => ({ x: x + dx, y: y + dy });
+    let layers = host.carryVectors(moved, shift);
     if (fill && (width > doc.width || height > doc.height)) {
       const raster = Raster.filled(width, height, host.css(fill));
       raster.ctx.clearRect(dx, dy, doc.width, doc.height);
       raster.touch();
       layers = [newLayer('Canvas Extension', { width, height }, { raster }), ...layers];
     }
-    p.doc = { ...doc, width, height, layers, ...host.alphasShifted(doc, dx, dy, width, height) };
+    p.doc = { ...doc, width, height, layers, ...host.alphasShifted(doc, dx, dy, width, height), ...carryMarks(doc, { map: shift, width, height }) };
     p.selection = p.selection ? p.selection.translated(dx, dy, width, height) : null;
+    host.carryMeasure(p, doc, label, shift);
     return true;
   });
   if (recorded) host.fit();
@@ -148,9 +152,11 @@ export function resampleImage(
         : l.artboard;
       return { ...l, transform, raster, channels, shape, mask, artboard };
     });
-    const layers = host.carryVectors(scaled, (x, y) => ({ x: x * sx, y: y * sy }));
-    p.doc = { ...doc, width, height, resolution, layers, ...host.alphasScaled(doc, width, height, sx, sy, smooth) };
+    const grow = (x: number, y: number): Pt => ({ x: x * sx, y: y * sy });
+    const layers = host.carryVectors(scaled, grow);
+    p.doc = { ...doc, width, height, resolution, layers, ...host.alphasScaled(doc, width, height, sx, sy, smooth), ...carryMarks(doc, { map: grow, width, height }) };
     p.selection = null;
+    host.carryMeasure(p, doc, 'Image Size', grow);
     return true;
   });
   if (recorded) host.fit();

@@ -12,8 +12,8 @@ export const magicEraserTool: Tool = {
   down(ctx, p) { if (p.button === 0) ctx.engine.magicErase(p.doc, { ...settings }); },
   options: (e): OptionSpec[] => [
     { kind: 'title', text: 'Magic Eraser' },
-    { kind: 'range', label: 'Tolerance', min: 0, max: 255, get: () => settings.tolerance, set: (v: number) => { settings.tolerance = Math.max(0, Math.min(255, Math.round(v))); e.emit('options', null); } },
-    { kind: 'toggle', label: 'Contiguous', get: () => settings.contiguous, set: (v) => { settings.contiguous = v; e.emit('options', null); } },
-    { kind: 'toggle', label: 'Sample All Layers', get: () => settings.sampleAll, set: (v) => { settings.sampleAll = v; e.emit('options', null); } },
+    { kind: 'range', label: 'Tolerance', priority: 90, min: 0, max: 255, get: () => settings.tolerance, set: (v: number) => { settings.tolerance = Math.max(0, Math.min(255, Math.round(v))); e.emit('options', null); } },
+    { kind: 'toggle', label: 'Contiguous', priority: 60, get: () => settings.contiguous, set: (v) => { settings.contiguous = v; e.emit('options', null); } },
+    { kind: 'toggle', label: 'Sample All Layers', priority: 40, get: () => settings.sampleAll, set: (v) => { settings.sampleAll = v; e.emit('options', null); } },
   ],
 };

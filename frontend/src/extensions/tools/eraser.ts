@@ -41,10 +41,10 @@ export const eraserTool: Tool = {
   overlay(ctx, g) { drawBrushCursor(ctx, g, hover); },
   options: (e): OptionSpec[] => [
     { kind: 'title', text: 'Eraser' },
-    { kind: 'segment', label: 'Mode', choices: [{ id: 'brush', label: 'Brush' }, { id: 'pencil', label: 'Pencil' }, { id: 'block', label: 'Block' }], get: () => mode, set: (v) => { mode = v as 'brush' | 'pencil' | 'block'; e.emit('options', null); } },
+    { kind: 'segment', label: 'Mode', priority: 70, choices: [{ id: 'brush', label: 'Brush' }, { id: 'pencil', label: 'Pencil' }, { id: 'block', label: 'Block' }], get: () => mode, set: (v) => { mode = v as 'brush' | 'pencil' | 'block'; e.emit('options', null); } },
     ...brushOptions(e, 'Opacity'),
-    { kind: 'range', label: 'Flow', min: 1, max: 100, unit: '%', get: () => Math.round(e.brushFlow * 100), set: (v: number) => { e.brushFlow = Math.max(0.01, Math.min(1, v / 100)); e.emit('options', null); } },
-    { kind: 'toggle', label: 'Erase to History', get: () => toHistory, set: (v) => { toHistory = v; e.emit('options', null); } },
+    { kind: 'range', label: 'Flow', priority: 85, min: 1, max: 100, unit: '%', get: () => Math.round(e.brushFlow * 100), set: (v: number) => { e.brushFlow = Math.max(0.01, Math.min(1, v / 100)); e.emit('options', null); } },
+    { kind: 'toggle', label: 'Erase to History', priority: 40, get: () => toHistory, set: (v) => { toHistory = v; e.emit('options', null); } },
     quickShapeOption(e),
   ],
 };

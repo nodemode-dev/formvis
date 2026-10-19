@@ -44,18 +44,18 @@ export const smearTool: Tool = {
   overlay(ctx, g) { drawBrushCursor(ctx, g, hover); },
   options: (e) => [
     { kind: 'title', text: 'Smear' },
-    { kind: 'segment', label: 'Tool', choices: [{ id: 'liquify', label: 'Liquify' }, { id: 'blur', label: 'Blur' }, { id: 'sharpen', label: 'Sharpen' }, { id: 'smudge', label: 'Smudge' }], get: () => e.retouch.smearMode, set: (v) => { e.retouch.smearMode = v as 'blur' | 'sharpen' | 'smudge' | 'liquify'; e.emit('options', null); e.emit('tool', null); } },
+    { kind: 'segment', label: 'Tool', priority: 80, choices: [{ id: 'liquify', label: 'Liquify' }, { id: 'blur', label: 'Blur' }, { id: 'sharpen', label: 'Sharpen' }, { id: 'smudge', label: 'Smudge' }], get: () => e.retouch.smearMode, set: (v) => { e.retouch.smearMode = v as 'blur' | 'sharpen' | 'smudge' | 'liquify'; e.emit('options', null); e.emit('tool', null); } },
     // Photoshop's options for each (1.51.4, the tool audit): Blur and Sharpen's Mode (the blend of what they paint) and
     // Sample All Layers; Sharpen's Protect Detail; Smudge's Sample All Layers and Finger Painting. (The tool choice was
     // labelled Mode; Photoshop's Mode is the blend.)
     ...(e.retouch.smearMode === 'blur' || e.retouch.smearMode === 'sharpen'
-      ? [{ kind: 'select' as const, label: 'Mode', choices: (['normal', 'darken', 'lighten', 'hue', 'saturation', 'color', 'luminosity'] as const).map((id) => ({ id, label: BLEND_MODES.find((m) => m.id === id)?.label ?? id })), get: () => e.retouch.smearBlend, set: (v: string) => { e.retouch.smearBlend = v as typeof e.retouch.smearBlend; e.emit('options', null); } }]
+      ? [{ kind: 'select' as const, label: 'Mode', priority: 70, choices: (['normal', 'darken', 'lighten', 'hue', 'saturation', 'color', 'luminosity'] as const).map((id) => ({ id, label: BLEND_MODES.find((m) => m.id === id)?.label ?? id })), get: () => e.retouch.smearBlend, set: (v: string) => { e.retouch.smearBlend = v as typeof e.retouch.smearBlend; e.emit('options', null); } }]
       : []),
     ...(e.retouch.smearMode !== 'liquify'
-      ? [{ kind: 'toggle' as const, label: 'Sample All Layers', get: () => e.retouch.smearSampleAll, set: (v: boolean) => { e.retouch.smearSampleAll = v; e.emit('options', null); } }]
+      ? [{ kind: 'toggle' as const, label: 'Sample All Layers', priority: 20, get: () => e.retouch.smearSampleAll, set: (v: boolean) => { e.retouch.smearSampleAll = v; e.emit('options', null); } }]
       : []),
-    ...(e.retouch.smearMode === 'sharpen' ? [{ kind: 'toggle' as const, label: 'Protect Detail', get: () => e.retouch.protectDetail, set: (v: boolean) => { e.retouch.protectDetail = v; e.emit('options', null); } }] : []),
-    ...(e.retouch.smearMode === 'smudge' ? [{ kind: 'toggle' as const, label: 'Finger Painting', get: () => e.retouch.fingerPainting, set: (v: boolean) => { e.retouch.fingerPainting = v; e.emit('options', null); } }] : []),
+    ...(e.retouch.smearMode === 'sharpen' ? [{ kind: 'toggle' as const, label: 'Protect Detail', priority: 40, get: () => e.retouch.protectDetail, set: (v: boolean) => { e.retouch.protectDetail = v; e.emit('options', null); } }] : []),
+    ...(e.retouch.smearMode === 'smudge' ? [{ kind: 'toggle' as const, label: 'Finger Painting', priority: 40, get: () => e.retouch.fingerPainting, set: (v: boolean) => { e.retouch.fingerPainting = v; e.emit('options', null); } }] : []),
     ...brushOptions(e, 'Strength')
   ]
 };

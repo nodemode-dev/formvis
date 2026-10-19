@@ -20,7 +20,7 @@ import type { CharacterStyle } from './types';
 import { Emitter } from './events';
 import { bumpMap, heightField, heightFromNormal, normalMap } from './normal-map';
 import * as VR from './variables';
-import type { DocVariable } from './types';
+import type { DocVariable, LayerLabel } from './types';
 import type { RelightContent } from './relight';
 import { History, type HistoryEntry, type PixelPatch, type Snapshot } from './history';
 import { Renderer, renderDoc, type LayerOverride } from './renderer';
@@ -32,7 +32,7 @@ import { SelectionMask, traceOutline, type SelectionMode } from './selection';
 import { CANVAS_PIXELS, CANVAS_SIDE, Raster, createSurface, ctxOf, toBlob, type Surface, type Ctx2D } from './surface';
 import { projectBack, type PanoramaLink } from './panorama';
 import { applyMat, boundsOf, contains, integral, intersectRect, invert, isAxisAligned, mul, placement, rotation, sameTransform, scaling, setMat, transformBounds, translation, unionRect, type Mat } from './geometry';
-import { ancestors, byId, descendantIds, hierarchy, isDescendant } from './tree';
+import { ancestors, byId, descendantIds, groupIsolated, hierarchy, isDescendant } from './tree';
 import { dragged, following, rounded, type DragMode } from './transform';
 import { againQuad, carried, cornersOf, cropWarp, distortDragged, distortUsable, maskEdgeTone, visibleBounds, warpRaster, type DistortMode, type Warped, imageCorners, homography, project, inverse3 } from './distort';
 import { withResolution } from './dpi';
@@ -103,7 +103,7 @@ import { DEFAULT_GLOBAL_LIGHT, scaledEffects, type GlobalLight } from './style-e
 export { CONTOURS, DEFAULT_GLOBAL_LIGHT, withGlobalLight, type ContourId, type GlobalLight } from './style-extras';
 import { mergeMeta, type DocMeta, type MetaPatch } from './doc-meta';
 export { COPYRIGHT_STATUSES, META_TEXT, cleanMeta, metaWritable, mergeMeta, parseKeywords, sameMeta, tabName, type CameraData, type CopyrightStatus, type DocMeta } from './doc-meta';
-import { UPRIGHT, defaultShape, noDynamics, pressureOption, shapeActive, type BrushDynamics, type BrushPreset, type BrushShape, type PenPose } from './brush-dynamics';
+import { UPRIGHT, allBrushPresets, defaultShape, noDynamics, pressureOption, shapeActive, type BrushDynamics, type BrushPreset, type BrushShape, type PenPose } from './brush-dynamics';
 import { DEFAULT_PATH_SHAPE, boxedShapePath, linePath, type PathShapeKind, type PathShapeOptions } from './shape-paths';
 import { markupPath, type MarkupKind } from './markup';
 import { allCustomShapes } from './custom-shapes';
@@ -147,7 +147,9 @@ export interface EngineEvents {
   history: null; colors: null; render: Rect | null; overlay: null; busy: boolean; notice: Notice; paths: null; timeline: null;
 }
 export interface BrushSettings { diameter: number; hardness: number; opacity: number; tip?: SampledTip | null }
-export interface ImportedImage { source: CanvasImageSource; width: number; height: number; name: string; profile?: DocProfile; meta?: DocMeta }
+/** `deep`: linear-light floats of an OpenEXR or Radiance HDR, of which `source` is the 8-bit rendition; a layer placed
+ *  into a 16 or 32 bit document keeps them at that depth. `resolution`: the file's own ppi. */
+export interface ImportedImage { source: CanvasImageSource; width: number; height: number; name: string; profile?: DocProfile; meta?: DocMeta; resolution?: number; deep?: DeepPixels }
 type Target = 'pixels' | 'mask';
 type Settings = Pick<Engine, 'selectionMode' | 'marqueeKind' | 'lassoKind' | 'showPixelGrid' | 'showTransformControls' | 'autoSelect' | 'autoSelectTarget' | 'lockRatio'>;
 
@@ -232,9 +234,11 @@ export class Engine {
   /** Size, hardness, opacity and dynamics from a preset. */
   applyBrushPreset(preset: BrushPreset): void {
     this.brushDynamics = structuredClone(preset.dynamics);
+    const hadSpacing = this.brushPresetId !== null && allBrushPresets().find((p) => p.id === this.brushPresetId)?.spacing !== undefined;
     this.brushPresetId = preset.id;
-    // The preset's tip shape, or a round tip: another preset's angle never lingers.
-    this.brushShape = { ...this.brushShape, angle: preset.angle ?? 0, roundness: preset.roundness ?? 100 };
+    // The preset's tip shape, or a round tip: another preset's angle never lingers. Its spacing too; a preset with none
+    // leaves the Brush Settings spacing alone unless the last preset had set it.
+    this.brushShape = { ...this.brushShape, angle: preset.angle ?? 0, roundness: preset.roundness ?? 100, spacing: preset.spacing ?? (hadSpacing ? null : this.brushShape.spacing) };
     this.setBrush({ diameter: preset.diameter, hardness: preset.hardness, opacity: preset.opacity, tip: preset.tip ?? null });
   }
   brushMode: 'paint' | 'erase' = 'paint';
@@ -757,6 +761,36 @@ export class Engine {
     return m;
   }
   measureChanged(): void { this.emit('overlay', null); this.emit('options', null); }
+  /** A change of the canvas carries the sampler points and the ruler line with the pixels; the marks either side of it are
+   *  kept against the document it began from, so the step's undo and redo bring them back (they are not in the document). */
+  private markSteps = new WeakMap<Doc, { name: string; after: Doc; before: { samplers: Pt[]; ruler: { a: Pt; b: Pt } | null }; then: { samplers: Pt[]; ruler: { a: Pt; b: Pt } | null } }>();
+  private marksNow(p: Project): { samplers: Pt[]; ruler: { a: Pt; b: Pt } | null } {
+    const m = this.measures.get(p);
+    return { samplers: (m?.samplers ?? []).map((s) => ({ ...s })), ruler: m?.ruler ? { a: { ...m.ruler.a }, b: { ...m.ruler.b } } : null };
+  }
+  private marksMove(p: Project, map: (x: number, y: number) => Pt, clip: boolean): void {
+    let m = this.measures.get(p);
+    if (!m) { m = { samplers: [], ruler: null }; this.measures.set(p, m); }
+    const keep = (q: Pt): boolean => !clip || (q.x >= 0 && q.y >= 0 && q.x <= p.doc.width && q.y <= p.doc.height);
+    m.samplers = m.samplers.map((s) => map(s.x, s.y)).filter(keep);
+    if (m.ruler) { const a = map(m.ruler.a.x, m.ruler.a.y), b = map(m.ruler.b.x, m.ruler.b.y); m.ruler = keep(a) || keep(b) ? { a, b } : null; }
+    this.measureChanged();
+  }
+  private marksKeep(p: Project, prior: Doc, name: string, before: { samplers: Pt[]; ruler: { a: Pt; b: Pt } | null }): void {
+    this.markSteps.set(prior, { name, after: p.doc, before, then: this.marksNow(p) });
+  }
+  carryMeasure(p: Project, prior: Doc, name: string, map: (x: number, y: number) => Pt): void {
+    const before = this.marksNow(p);
+    this.marksMove(p, map, true);
+    this.marksKeep(p, prior, name, before);
+  }
+  private marksBack(p: Project, e: { name: string; before: { doc: Doc }; after: { doc: Doc } }, undoing: boolean): void {
+    const r = this.markSteps.get(e.before.doc);
+    if (!r || (r.name !== e.name && r.after !== e.after.doc)) return;
+    const s = undoing ? r.before : r.then;
+    this.measures.set(p, { samplers: s.samplers.map((q) => ({ ...q })), ruler: s.ruler ? { a: { ...s.ruler.a }, b: { ...s.ruler.b } } : null });
+    this.measureChanged();
+  }
 
   /** Notes (the Note tool; 1.49.6, the owner's tool list): pinned to the document, saved with it; each change one step. */
   activeNote: ID | null = null;
@@ -1211,6 +1245,7 @@ export class Engine {
       q.raster.write(q.before, q.x, q.y);
     }
     this.restore(p, e.before);
+    this.marksBack(p, e, true);
     this.reconcileFrame(p, e.name === 'Select Frame');
   }
 
@@ -1227,6 +1262,7 @@ export class Engine {
     if (!e) return;
     if (!e.streamed) for (const q of e.patches) q.raster.write(q.redo ? q.redo() : q.after, q.x, q.y);   // a recipe's after is worked out again (36.18); a streamed step's are already in (1.62.7)
     this.restore(p, e.after);
+    this.marksBack(p, e, false);
     this.reconcileFrame(p, e.name === 'Select Frame');
   }
 
@@ -1466,8 +1502,9 @@ export class Engine {
       return { image: src, version: bo?.source ? -1 : b.raster.version, width: src.width, height: src.height, matrix: placement(t, src.width, src.height), opacity: bo?.opacity ?? b.opacity, mask: maskFor(b, bo) };
     };
     for (const { layer: l, visible } of hierarchy(p.doc)) {
-      // Folders are pass-through, as the CPU renderer draws them: their layers in order, hidden with the folder.
-      if (l.isGroup) { if (l.artboard && visible) return { reason: 'artboards' }; continue; }
+      // A pass-through folder is its layers in order, hidden with the folder; one with its own opacity or blend mode is
+      // composited on its own surface, which the CPU renderer does.
+      if (l.isGroup) { if (l.artboard && visible) return { reason: 'artboards' }; if (visible && groupIsolated(l)) return { reason: 'a folder with its own opacity or blend mode' }; continue; }
       const o = ov?.get(l.id);
       if (o?.hidden || !visible) continue;
       // The masks of the folders around it, as the CPU renderer's folderMasks lists them (their pixels as they are, their
@@ -1493,7 +1530,8 @@ export class Engine {
       }
       if (l.adjustment) {
         // Phase 18.5: a per-channel adjustment goes to the GPU as its proven lookup table (engine/lut.ts); others, by name,
-        // keep the document on the CPU.
+        // keep the document on the CPU, as does one with a blend mode of its own.
+        if ((o?.blend ?? l.blend) !== 'normal') return { reason: 'an adjustment layer with a blend mode' };
         const lut = adjustmentLut(l.adjustment);
         if (lut) {
           layers.push({ image: null, lut, mask, clip, folders, version: 0, width: 256, height: 1, matrix: [1, 0, 0, 1, 0, 0], opacity: (o?.opacity ?? l.opacity) * (l.fill ?? 1), blend: 'normal' });
@@ -2658,7 +2696,7 @@ export class Engine {
     const ep = this.effectPreview;
     if (ep && ep.project === p) m.set(ep.layerId, { ...(m.get(ep.layerId) ?? {}), effects: ep.effects });
     const bp = this.blendPreview;
-    if (bp && bp.project === p) for (const id of p.selectedIds) { const l = p.layer(id); if (l && !l.isGroup) m.set(id, { ...(m.get(id) ?? {}), blend: bp.mode }); }
+    if (bp && bp.project === p) for (const id of p.selectedIds) { const l = p.layer(id); if (l && !l.artboard) m.set(id, { ...(m.get(id) ?? {}), blend: bp.mode }); }
     const fp = this.fillPreview;
     if (fp && fp.project === p) m.set(fp.layerId, { ...(m.get(fp.layerId) ?? {}), source: fp.source });
     const rp = this.relightPreview;
@@ -2850,6 +2888,27 @@ export class Engine {
     });
   }
 
+  /** Layer > New > Background from Layer (1.87.3, CLOSE_GAPS P06): the active pixel layer, as it shows, over the
+   *  background colour at the canvas size, at the bottom of the stack named Background, in place of the layer. One step;
+   *  refused while a Background exists. */
+  backgroundFromLayer(): boolean {
+    const p = this.current, l = p?.activeLayer;
+    if (!p || !l || l.isGroup || l.adjustment) { this.notice('Select a pixel layer first.'); return false; }
+    if (this.backgroundLayer()) { this.notice('The document already has a Background.'); return false; }
+    const r = new Raster(p.doc.width, p.doc.height), c = this.bgc;
+    r.ctx.fillStyle = `rgb(${c.r},${c.g},${c.b})`;
+    r.ctx.fillRect(0, 0, p.doc.width, p.doc.height);
+    if (l.raster) r.ctx.drawImage(this.renderLayerAlone(l.id) as CanvasImageSource, 0, 0);
+    r.touch();
+    const id = l.id;
+    this.edit('Background from Layer', (q) => {
+      const layer = newLayer('Background', q.doc, { raster: r });
+      q.setLayers([{ ...layer, id }, ...q.doc.layers.filter((x) => x.id !== id)]);
+      this.focus(q, id);
+    });
+    return true;
+  }
+
   /** The document's artboards, top to bottom as the Layers panel lists them. */
   artboards(p: Project | null = this.current): Layer[] { return AB.artboards(this.artboardHost, p); }
 
@@ -2961,6 +3020,18 @@ export class Engine {
     return count;
   }
 
+  /** The selected layers' colour label (1.87.3), null for none; one step. */
+  setLayerLabel(label: LayerLabel | null): void {
+    this.edit('Layer Color', (p) => {
+      let changed = false;
+      for (const id of p.selectedIds.size ? p.selectedIds : p.activeId ? [p.activeId] : []) {
+        const l = p.layer(id);
+        if (l && (l.label ?? null) !== label) { p.updateLayer(id, { label: label ?? undefined }); changed = true; }
+      }
+      return changed;
+    });
+  }
+
   renameLayer(id: ID, name: string): void {
     const n = name.trim().slice(0, 200);
     if (!n || !this.current || this.current.layer(id)?.name === n) return;
@@ -2981,6 +3052,39 @@ export class Engine {
       for (const id of p.selectedIds) { const l = p.layer(id); if (l && l.visible !== visible) { p.updateLayer(id, { visible }); changed = true; } }
       return changed;
     });
+  }
+
+  /** Show Only This Layer (Alt-click an eye; 1.87.3, CLOSE_GAPS P06): every other layer hidden except the folders
+   *  holding it, as one step; the same Alt-click again brings back the visibility it had before. */
+  soloLayer(id: ID): void {
+    const p = this.current, l = p?.layer(id);
+    if (!p || !l) return;
+    const up = new Set<ID>([id, ...ancestors(byId(p.doc), l).map((a) => a.id)]), inside = new Set<ID>(l.isGroup ? descendantIds(p.doc.layers, id) : []);
+    const back = this.soloed.get(p.id), before = new Map(p.doc.layers.map((x) => [x.id, x.visible] as const));
+    const restoring = !!back && back.id === id;
+    this.edit(restoring ? 'Show All Layers' : 'Show Only This Layer', (q) => {
+      let changed = false;
+      for (const x of q.doc.layers) {
+        const want = restoring ? back.visible.get(x.id) ?? x.visible : up.has(x.id) ? true : inside.has(x.id) ? x.visible : false;
+        if (x.visible !== want) { q.updateLayer(x.id, { visible: want }); changed = true; }
+      }
+      return changed;
+    });
+    if (restoring) this.soloed.delete(p.id);
+    else this.soloed.set(p.id, { id, visible: before });
+  }
+  private readonly soloed = new Map<string, { id: ID; visible: Map<ID, boolean> }>();
+
+  /** Stamp Visible (Shift+Alt+Mod+E; 1.87.3, CLOSE_GAPS P06): what the canvas shows merged into a new layer above the
+   *  active one; every layer stays as it is. */
+  stampVisible(): boolean {
+    const flat = this.current ? this.flattened() : null;
+    if (!flat) return false;
+    const r = new Raster(flat.width, flat.height);
+    r.ctx.drawImage(flat as CanvasImageSource, 0, 0);
+    r.touch();
+    this.insertRasterLayer(r, 'Stamp Visible', 0, 0, {}, 'Stamp Visible');
+    return true;
   }
 
   beginVisibilitySwipe(id: ID): boolean | null {
@@ -3027,7 +3131,7 @@ export class Engine {
     const p = this.opacityOpen;
     if (!p) return;
     const v = clamp(value, 0, 1);
-    for (const id of p.selectedIds) { const l = p.layer(id); if (l && !l.isGroup && l.opacity !== v) p.updateLayer(id, { opacity: v }); }
+    for (const id of p.selectedIds) { const l = p.layer(id); if (l && !l.artboard && l.opacity !== v) p.updateLayer(id, { opacity: v }); }
     this.emit('doc', null);
     this.emit('render', null);
   }
@@ -3094,14 +3198,14 @@ export class Engine {
     if (this.blendPreview) this.previewBlend(null);
     this.edit('Layer Blend Mode', (p) => {
       let changed = false;
-      for (const id of p.selectedIds) { const l = p.layer(id); if (l && !l.isGroup && l.blend !== mode) { p.updateLayer(id, { blend: mode }); changed = true; } }
+      for (const id of p.selectedIds) { const l = p.layer(id); if (l && !l.artboard && l.blend !== mode) { p.updateLayer(id, { blend: mode }); changed = true; } }
       return changed;
     });
   }
 
   cycleBlend(forward: boolean): void {
     const l = this.activeLayer;
-    if (!l || l.isGroup) return;
+    if (!l || l.artboard) return;
     const n = BLEND_MODES.length, i = BLEND_MODES.findIndex((m) => m.id === l.blend);
     this.setBlend(BLEND_MODES[(i + (forward ? 1 : n - 1)) % n].id);
   }
@@ -3408,9 +3512,11 @@ export class Engine {
         mask: l.mask?.placement ? { ...l.mask, placement: turn(l.mask.placement) } : l.mask,
         ...(l.artboard ? { artboard: { ...l.artboard, ...rect(l.artboard) } } : {}),
       }));
-      const spun = this.carryVectors(layers, (x, y) => (quarters === 1 ? { x: H - y, y: x } : quarters === 2 ? { x: W - x, y: H - y } : { x: y, y: W - x }));
-      p.doc = { ...p.doc, width: quarters === 2 ? W : H, height: quarters === 2 ? H : W, layers: spun, ...alphasMoved(p.doc, (m) => m.rotated(quarters, W, H)) };
+      const to = (x: number, y: number): Pt => (quarters === 1 ? { x: H - y, y: x } : quarters === 2 ? { x: W - x, y: H - y } : { x: y, y: W - x });
+      const spun = this.carryVectors(layers, to), prior = p.doc;
+      p.doc = { ...p.doc, width: quarters === 2 ? W : H, height: quarters === 2 ? H : W, layers: spun, ...alphasMoved(p.doc, (m) => m.rotated(quarters, W, H)), ...GD.carryMarks(p.doc, { map: to, width: quarters === 2 ? W : H, height: quarters === 2 ? H : W, swap: quarters !== 2 }) };
       if (p.selection) p.selection = p.selection.rotated(quarters, W, H);
+      this.carryMeasure(p, prior, name, to);
       return true;
     });
     // The turned document stays centred where it was on screen (1.85.2): a quarter turn swaps the sides, so the view
@@ -3424,7 +3530,7 @@ export class Engine {
 
   flipCanvas(horizontal: boolean): void {
     this.edit(horizontal ? 'Flip Canvas Horizontal' : 'Flip Canvas Vertical', (p) => {
-      const W = p.doc.width, H = p.doc.height;
+      const W = p.doc.width, H = p.doc.height, prior = p.doc;
       p.setLayers(this.carryVectors(p.doc.layers.map((l) => ({
         ...l,
         transform: mirrored(l.transform, horizontal, W, H),
@@ -3433,6 +3539,9 @@ export class Engine {
       })), (x, y) => (horizontal ? { x: W - x, y } : { x, y: H - y })));
       if (p.selection) p.selection = p.selection.flipped(horizontal, W, H);
       if (p.doc.alphas?.length) p.doc = { ...p.doc, ...alphasMoved(p.doc, (m) => m.flipped(horizontal, W, H)) };
+      const flip = (x: number, y: number): Pt => (horizontal ? { x: W - x, y } : { x, y: H - y });
+      p.doc = { ...p.doc, ...GD.carryMarks(p.doc, { map: flip, width: W, height: H }) };
+      this.carryMeasure(p, prior, horizontal ? 'Flip Canvas Horizontal' : 'Flip Canvas Vertical', flip);
     });
   }
 
@@ -3469,8 +3578,10 @@ export class Engine {
         return { ...moved, raster: r, transform: docTransform(W2, H2) };
       });
       const spin = (g: Ctx2D): void => { g.translate(W2 / 2, H2 / 2); g.rotate(a); g.translate(-W / 2, -H / 2); };
-      const spun = this.carryVectors(layers, (x, y) => ({ x: c.x + (x - c.x) * cs - (y - c.y) * sn + dx, y: c.y + (x - c.x) * sn + (y - c.y) * cs + dy }));
-      p.doc = { ...p.doc, width: W2, height: H2, layers: spun, ...alphasRedrawn(p.doc, W2, H2, (g, m) => { spin(g); g.drawImage(m.surface(), m.x, m.y); }) };
+      const to = (x: number, y: number): Pt => ({ x: c.x + (x - c.x) * cs - (y - c.y) * sn + dx, y: c.y + (x - c.x) * sn + (y - c.y) * cs + dy });
+      const spun = this.carryVectors(layers, to), prior = p.doc;
+      p.doc = { ...p.doc, width: W2, height: H2, layers: spun, ...alphasRedrawn(p.doc, W2, H2, (g, m) => { spin(g); g.drawImage(m.surface(), m.x, m.y); }), ...GD.carryMarks(p.doc, { map: to, width: W2, height: H2, upright: false }) };
+      this.carryMeasure(p, prior, 'Rotate Canvas', to);
       if (p.selection) {
         const s = createSurface(W2, H2), g = ctxOf(s), sel = p.selection;
         spin(g);
@@ -4867,12 +4978,32 @@ export class Engine {
    *  curves through the points. A linked mask without a placement of its own warps with the pixels. */
   meshWarpEdit: { project: Project; layerId: ID; gw: number; gh: number; points: P2[]; us: number[]; vs: number[]; lastCol: number; lastRow: number; source: ImageData; mask: ImageData | null; preview: Warped | null } | null = null;
   private meshFrame = 0;
+  /** The last place the pointer was over the canvas while a warp is pending (the Move tool sets it), which Split Warp splits at. */
+  meshWarpAim: Pt | null = null;
+
+  /** Where Split Warp should split: `meshWarpAim` when it lies on the warp surface, else undefined (the largest cell's middle). */
+  meshSplitPoint(): Pt | undefined {
+    const w = this.meshWarpEdit, a = this.meshWarpAim;
+    if (!w || !a) return undefined;
+    const ring: P2[] = [], q: P2 = [0, 0], n = 24, gu = w.gw - 1, gv = w.gh - 1;
+    for (let k = 0; k < 4 * n; k++) {
+      const t = (k % n) / n, side = Math.floor(k / n);
+      meshSurfacePoint(w.gw, w.gh, w.points, side === 0 ? t * gu : side === 1 ? gu : side === 2 ? (1 - t) * gu : 0, side === 0 ? 0 : side === 1 ? t * gv : side === 2 ? gv : (1 - t) * gv, q);
+      ring.push([q[0], q[1]]);
+    }
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      if ((ring[i][1] > a.y) !== (ring[j][1] > a.y) && a.x < ((ring[j][0] - ring[i][0]) * (a.y - ring[i][1])) / (ring[j][1] - ring[i][1]) + ring[i][0]) inside = !inside;
+    }
+    return inside ? { ...a } : undefined;
+  }
 
   beginMeshWarp(): boolean {
     const p = this.current, l = p?.activeLayer;
     if (!p || !l || this.stroke || this.transformEdit || this.distortEdit || this.meshWarpEdit || this.perspectiveEdit) return false;
     if (l.vector || l.smart || l.fillContent || l.isGroup || l.adjustment || !l.raster) { this.notice('Warp works on a pixel layer. Rasterize shape layers, fill layers and smart objects first.'); return false; }
     this.settle();
+    this.meshWarpAim = null;
     const r = l.raster, c = cornersOf(l.transform), gw = 4, gh = 4, points: P2[] = [];
     for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) {
       const u = i / (gw - 1), v = j / (gh - 1), top = { x: c[0].x + (c[1].x - c[0].x) * u, y: c[0].y + (c[1].y - c[0].y) * u }, bot = { x: c[3].x + (c[2].x - c[3].x) * u, y: c[3].y + (c[2].y - c[3].y) * u };
@@ -5336,6 +5467,20 @@ export class Engine {
   }
 
   layerAt(pt: Pt): ID | null { return PO.layerAt(this.paintHost, pt); }
+  /** Every visible pixel layer with a pixel at `pt`, top first (1.87.3, the canvas layer picker), at most `max`. */
+  layersAt(pt: Pt, max = 10): ID[] {
+    const p = this.current, out: ID[] = [];
+    if (!p) return out;
+    const hidden = new Set<ID>();
+    for (let id = PO.layerAt(this.paintHost, pt); id && out.length < max; id = this.withHidden(p, hidden, () => PO.layerAt(this.paintHost, pt))) { out.push(id); hidden.add(id); }
+    return out;
+  }
+  /** Runs `fn` with the `hidden` layers' visibility off, restored after; nothing is recorded or drawn. */
+  private withHidden<T>(p: Project, hidden: Set<ID>, fn: () => T): T {
+    const doc = p.doc;
+    p.doc = { ...doc, layers: doc.layers.map((l) => (hidden.has(l.id) ? { ...l, visible: false } : l)) };
+    try { return fn(); } finally { p.doc = doc; }
+  }
 
   /** The Eyedropper's Sample Size, as Photoshop's options bar has it: 1 is Point Sample, otherwise the side of the
    *  square averaged (3, 5, 11, 31, 51 or 101). */
@@ -5383,7 +5528,7 @@ export class Engine {
     if (!images.length) return;
     if (!this.current) {
       const f = images[0];
-      this.addProject({ id: uid(), width: f.width, height: f.height, resolution: 72, layers: [], ...(f.profile ? { profile: f.profile } : {}), ...(f.meta ? { meta: f.meta } : {}) }, stripExt(f.name));   // its embedded profile kept (1.53.5), its File Info (29.2)
+      this.addProject({ id: uid(), width: f.width, height: f.height, resolution: f.resolution ?? 72, layers: [], ...(f.profile ? { profile: f.profile } : {}), ...(f.meta ? { meta: f.meta } : {}) }, stripExt(f.name));   // its embedded profile kept (1.53.5), its File Info (29.2)
     }
     this.edit(images.length > 1 ? 'Import Images' : 'Import Image', (p) => {
       let pixels = p.doc.layers.reduce((n, l) => n + (l.raster ? l.raster.width * l.raster.height : 0), 0), added = 0;
@@ -5397,8 +5542,9 @@ export class Engine {
         const act = p.activeLayer, parentId = act ? (act.isGroup ? act.id : act.parentId) : null;
         // Into a frame, the image covers it, centred, as Photoshop fills a frame; elsewhere it lands at its own size.
         const fr = parentId ? p.layer(parentId)?.frame : null, cover = fr ? Math.max(fr.w / img.width, fr.h / img.height) : 1;
+        const depth = p.doc.depth ?? 8, channels = img.deep && !fr && (!p.doc.mode || p.doc.mode === 'rgb') ? (depth === 32 ? img.deep : depth === 16 ? deepToned(img.deep, 0, 1) : null) : null;
         const layer = newLayer(stripExt(img.name), p.doc, {
-          raster: Raster.from(img.source, img.width, img.height), parentId,
+          raster: Raster.from(img.source, img.width, img.height), parentId, ...(channels ? { channels } : {}),
           transform: fr
             ? { ...docTransform(img.width, img.height), x: fr.x + (fr.w - img.width * cover) / 2, y: fr.y + (fr.h - img.height * cover) / 2, w: img.width * cover, h: img.height * cover }
             : { ...docTransform(img.width, img.height), x: Math.floor(c.x - img.width / 2), y: Math.floor(c.y - img.height / 2) },
@@ -5516,7 +5662,17 @@ export class Engine {
 
   /** Slice tool: a user slice on whole pixels, kept within the canvas; returns false when it has no area. */
   addSlice(r: { x: number; y: number; w: number; h: number }): boolean { return GD.addSlice(this.guideHost, r); }
-  removeSlice(id: string): void { GD.removeSlice(this.guideHost, id); }
+  removeSlice(id: string): void {
+    GD.removeSlice(this.guideHost, id);
+    if (this.activeSlice === id && !this.current?.doc.slices?.some((s) => s.id === id)) { this.activeSlice = null; this.emit('options', null); }
+  }
+  /** Delete or Backspace with the Slice tool, and Delete Slice: the selected slice goes, as one step; false when none is selected. */
+  deleteActiveSlice(): boolean {
+    const id = this.activeSlice;
+    if (!id || !this.current?.doc.slices?.some((s) => s.id === id)) return false;
+    this.removeSlice(id);
+    return true;
+  }
   clearSlices(): void { GD.clearSlices(this.guideHost); }
 
   /** The slice Slice Options edits and the Slice tool last made or clicked; not saved with the document. */
@@ -5605,7 +5761,7 @@ export class Engine {
 
   private blendThrough(src: ImageData, out: ImageData, cov: Uint8ClampedArray): ImageData { return IE.blendThrough(src, out, new ImageData(new Uint8ClampedArray(cov), src.width, src.height)); }
 
-  private canGrow(p: Project, l: Layer): boolean { return !p.selection && !l.mask && !!l.raster; }
+  private canGrow(p: Project, l: Layer): boolean { return !p.selection && !l.mask && !!l.raster && !l.locks?.transparency; }
 
   filterFrame(p: Project, t: Transform, w: number, h: number, shift = 0): LibFrame {
     const m = invert(placement(t, w, h)), snap = (v: number): number => Math.round(v * 1e6) / 1e6;
@@ -5658,6 +5814,7 @@ export class Engine {
         for (let x0 = 0; x0 < W; x0 += T) {
           const w = Math.min(T, W - x0), before = r.read(x0, y0, w, h), tile = new ImageData(w, h);
           for (let yy = 0; yy < h; yy++) { const so = ((y0 - a0 + yy) * W + x0) * 4; tile.data.set(out.data.subarray(so, so + w * 4), yy * w * 4); }
+          if (l.locks?.transparency) for (let i = 3; i < tile.data.length; i += 4) tile.data[i] = before.data[i];   // Lock Transparency keeps the alpha
           let after = tile;
           if (cov) { const ct = new Uint8ClampedArray(w * h * 4); for (let yy = 0; yy < h; yy++) { const so = (yy * W + x0) * 4; ct.set(cov.subarray(so, so + w * 4), yy * w * 4); } after = this.blendThrough(before, tile, ct); }
           if (sameBytes(before.data, after.data)) continue;
@@ -5700,6 +5857,7 @@ export class Engine {
       for (let x0 = 0; x0 < W; x0 += T) {
         const w = Math.min(T, W - x0), before = r.read(x0, y0, w, h), tile = new ImageData(w, h);
         for (let yy = 0; yy < h; yy++) { const so = ((y0 - q.a0 + yy) * W + x0) * 4; tile.data.set(out.data.subarray(so, so + w * 4), yy * w * 4); }
+        if (l.locks?.transparency) for (let i = 3; i < tile.data.length; i += 4) tile.data[i] = before.data[i];   // Lock Transparency keeps the alpha
         let after = tile;
         if (cov) { const ct = new Uint8ClampedArray(w * h * 4); for (let yy = 0; yy < h; yy++) { const so = (yy * W + x0) * 4; ct.set(cov.subarray(so, so + w * 4), yy * w * 4); } after = this.blendThrough(before, tile, ct); }
         if (sameBytes(before.data, after.data)) continue;
@@ -5806,6 +5964,7 @@ export class Engine {
         for (let x0 = 0; x0 < W; x0 += 512) {
           const w = Math.min(512, W - x0), before = t.read(x0, y0, w, h), after = new ImageData(w, h);
           for (let yy = 0; yy < h; yy++) { const so = ((y0 - a0 + yy) * W + x0) * 4; after.data.set(out.data.subarray(so, so + w * 4), yy * w * 4); }
+          if (l.locks?.transparency) for (let i = 3; i < after.data.length; i += 4) after.data[i] = before.data[i];   // Lock Transparency keeps the alpha
           if (sameBytes(before.data, after.data)) continue;
           t.write(after, x0, y0);
           const [kb, ka] = await Promise.all([store.put(new Uint8Array(before.data.buffer) as Uint8Array<ArrayBuffer>), store.put(new Uint8Array(after.data.buffer) as Uint8Array<ArrayBuffer>)]);
@@ -6471,9 +6630,12 @@ export class Engine {
     const p = this.current, w = Math.round(width), h = Math.round(height);
     if (!p || !this.sizeOk(w, h)) return false;
     p.history.begin('Crop', p.snapshot());
+    const prior = p.doc, was = this.marksNow(p);
     try {
       if (!this.straightenCrop(rect, angleDeg, contentAware)) return false;
-      return this.resampleImage(w, h, 'high', Math.max(1, Math.min(9600, resolution)));
+      const done = this.resampleImage(w, h, 'high', Math.max(1, Math.min(9600, resolution)));
+      this.marksKeep(p, prior, 'Crop', was);
+      return done;
     } finally {
       p.history.end(p.snapshot());
     }
@@ -6488,6 +6650,7 @@ export class Engine {
     if (!p0 || r.w < 1 || r.h < 1 || !this.sizeOk(r.w, r.h)) return false;
     const turn = Number.isFinite(angleDeg) ? Math.max(-45, Math.min(45, angleDeg)) : 0, c = { x: r.x + r.w / 2, y: r.y + r.h / 2 };
     return this.edit(turn ? 'Straighten and Crop' : 'Crop', (p) => {
+      const prior = p.doc, was = this.marksNow(p);
       if (turn) {
         const a = (turn * Math.PI) / 180, cs = Math.cos(a), sn = Math.sin(a);
         for (const l of p.doc.layers) {
@@ -6498,10 +6661,14 @@ export class Engine {
         }
         if (p.doc.layers.some((l) => l.vectorMask)) p.setLayers(this.carryVectors(p.doc.layers, (x, y) => ({ x: c.x + (x - c.x) * cs - (y - c.y) * sn, y: c.y + (x - c.x) * sn + (y - c.y) * cs })));
         if (p.doc.alphas?.length) p.doc = { ...p.doc, ...alphasRedrawn(p.doc, p.doc.width, p.doc.height, (g, m) => { g.translate(c.x, c.y); g.rotate(a); g.translate(-c.x, -c.y); g.drawImage(m.surface(), m.x, m.y); }) };
+        const spin = (x: number, y: number): Pt => ({ x: c.x + (x - c.x) * cs - (y - c.y) * sn, y: c.y + (x - c.x) * sn + (y - c.y) * cs });
+        p.doc = { ...p.doc, ...GD.carryMarks(p.doc, { map: spin, width: Infinity, height: Infinity, upright: false }) };
+        this.marksMove(p, spin, false);
       }
       this.resizeCanvas(r.w, r.h, -r.x, -r.y, null, 'Crop');
       if (contentAware) this.fillOpenedEdges(p);
       if (this.cropDeletePixels) this.deleteCroppedPixels(p);
+      this.marksKeep(p, prior, turn ? 'Straighten and Crop' : 'Crop', was);
       return true;
     });
   }
@@ -6574,11 +6741,15 @@ export class Engine {
       moved.set(l.id, { raster: w.raster, transform: w.t, mask, shape: null, vector: null, text: null, smart: null });
     }
     return this.edit('Perspective Crop', (p) => {
+      const prior = p.doc;
       p.doc = { ...p.doc, width: W, height: H, layers: this.carryVectors(p.doc.layers.map((l) => (moved.has(l.id) ? { ...l, ...moved.get(l.id) } : l)), (x, y) => toOut({ x, y })), ...alphasRedrawn(p.doc, W, H, (g, m) => {
         const t = { ...docTransform(m.w, m.h), x: m.x, y: m.y }, w = warpRaster(Raster.from(m.surface(), m.w, m.h), t, cornersOf(t).map(toOut), 1, true);
         if (w) { setMat(g, placement(w.t, w.raster.width, w.raster.height)); g.drawImage(w.raster.canvas, 0, 0); }
       }) };
       p.selection = null;
+      const warp = (x: number, y: number): Pt => toOut({ x, y });
+      p.doc = { ...p.doc, ...GD.carryMarks(prior, { map: warp, width: W, height: H, upright: false }) };
+      this.carryMeasure(p, prior, 'Perspective Crop', warp);
       return true;
     });
   }
@@ -7004,6 +7175,7 @@ export class Engine {
       fit: () => this.fit(),
       css: (c) => rgbCss(c),
       carryVectors: (layers, map) => this.carryVectors(layers, map),
+      carryMeasure: (p, prior, name, map) => this.carryMeasure(p, prior, name, map),
       alphasShifted: (doc, dx, dy, w, h) => alphasMoved(doc, (m) => m.translated(dx, dy, w, h)),
       alphasScaled: (doc, w, h, sx, sy, smooth) => alphasRedrawn(doc, w, h, (g, m) => { g.imageSmoothingEnabled = smooth; g.drawImage(m.surface(), m.x * sx, m.y * sy, m.w * sx, m.h * sy); }),
       shapeScaled: (shape, k) => { const radii = cornerRadiiOf(shape); return { ...shape, cornerRadius: (Number(shape.cornerRadius) || 0) * k, ...(radii ? { cornerRadii: radii.map((v) => v * k) } : {}) }; },
@@ -7695,7 +7867,7 @@ export class Engine {
 
   /** A new document holding `img` as its one layer, as Batch opens each file. */
   openImage(img: ImportedImage): Project {
-    const base: Doc = { id: uid(), width: img.width, height: img.height, resolution: 72, layers: [] };
+    const base: Doc = { id: uid(), width: img.width, height: img.height, resolution: img.resolution ?? 72, layers: [] };
     const layer = { ...newLayer('Background', base), raster: Raster.from(img.source, img.width, img.height) };
     return this.addProject({ ...base, ...(img.profile ? { profile: img.profile } : {}), ...(img.meta ? { meta: img.meta } : {}), layers: [layer] }, img.name.replace(/\.[^.]+$/, '') || 'Image', layer.id);   // an embedded profile kept (1.53.5)
   }
@@ -7799,7 +7971,12 @@ export class Engine {
       this.notice(err instanceof Error ? err.message : `${undoName} failed.`, 'error');
       return false;
     }
-    if (this.current !== p) { this.notice(`The document changed while generating, so the ${undoName} result was not placed.`, 'error'); return false; }
+    // The result goes into the document it was made for (1.87.3, D11): back to its tab when another was chosen meanwhile.
+    if (this.current !== p) {
+      if (!this.projects.includes(p)) { this.notice(`${p.name} was closed while generating, so the ${undoName} result was not placed.`, 'error'); return false; }
+      this.switchTo(p.id);
+      this.notice(`The ${undoName} result was placed in ${p.name}, the document it was made for.`);
+    }
     const bitmap = await createImageBitmap(result);
     const layer = new Raster(w, h);
     layer.ctx.imageSmoothingQuality = 'high';
@@ -8457,9 +8634,9 @@ export class Engine {
   }
 
   /** Opens 16-bit pixels as a 16-bit document (1.53.6): its layer holds them, its raster their 8-bit rendition. */
-  openDeep(name: string, deep: DeepPixels, depth: 16 | 32 = 16): Project {
+  openDeep(name: string, deep: DeepPixels, depth: 16 | 32 = 16, resolution?: number): Project {
     const raster = rasterFromDeep(deep, depth === 32);
-    const p = this.openImage({ source: raster.canvas as CanvasImageSource, width: deep.width, height: deep.height, name });
+    const p = this.openImage({ source: raster.canvas as CanvasImageSource, width: deep.width, height: deep.height, name, ...(resolution ? { resolution } : {}) });
     p.doc = { ...p.doc, depth, layers: p.doc.layers.map((l) => (l.raster && !l.isGroup ? { ...l, channels: deep } : l)) };
     this.refresh();
     return p;

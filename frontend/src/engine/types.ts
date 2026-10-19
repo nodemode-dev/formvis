@@ -9,6 +9,10 @@ export interface Pt { x: number; y: number }
 export interface Rect { x: number; y: number; w: number; h: number }
 export interface RGB { r: number; g: number; b: number }
 
+/** The Layers panel's colour labels (1.87.3, CLOSE_GAPS P06). */
+export const LAYER_LABELS = ['red', 'orange', 'yellow', 'green', 'blue', 'violet', 'gray'] as const;
+export type LayerLabel = (typeof LAYER_LABELS)[number];
+
 export type BlendMode =
   | 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | 'difference' | 'color-dodge' | 'color-burn'
   | 'hue' | 'saturation' | 'color' | 'luminosity'
@@ -90,6 +94,11 @@ export interface Layer {
   /** Fill (Photoshop's): the layer's own pixels at this share of its opacity, its layer styles at the full opacity;
    *  absent is 1. On an adjustment layer it acts as opacity does. */
   fill?: number;
+  /** A folder drawn isolated even in Normal at full opacity (PSD's Normal group, as against Pass Through); a folder
+   *  with another blend mode or less than full opacity is isolated whatever this says. Absent is pass-through. */
+  isolate?: boolean;
+  /** A colour label for finding the layer in the panel (1.87.3); absent is none. */
+  label?: LayerLabel;
   /** Absent is unlocked. */
   locks?: LayerLocks;
   /** Layer > Link Layers (1.65.3): layers holding the same link move and transform together; a link one layer holds

@@ -8,6 +8,18 @@ import { selectRow, sliderRow } from './controls';
 
 type NeuralKind = 'harmonize' | 'skinSmooth' | 'depthBlur' | 'colorize' | 'style' | 'jpeg' | 'superZoom';
 export const NEURAL_LABELS: Record<NeuralKind, string> = { harmonize: 'Harmonize', skinSmooth: 'Skin Smoothing', depthBlur: 'Depth Blur', colorize: 'Colorize', style: 'Style Transfer', jpeg: 'JPEG Artifacts Removal', superZoom: 'Super Zoom' };
+/** A layer's pixels as they are now (1.87.3, D17): its id, which raster it holds and that raster's change count, so a
+ *  depth map, colouring or style made before an edit is not reused after it. */
+const RASTER_IDS = new WeakMap<object, number>();
+let rasterCount = 0;
+function pixelsKey(l: { id: string; raster?: { version: number } | null }): string {
+  const r = l.raster;
+  if (!r) return l.id;
+  let n = RASTER_IDS.get(r);
+  if (n === undefined) { n = ++rasterCount; RASTER_IDS.set(r, n); }
+  return `${l.id}:${n}:${r.version}`;
+}
+
 const STYLES: Array<[string, string]> = [['mosaic', 'Mosaic'], ['candy', 'Candy'], ['rain-princess', 'Rain Princess'], ['udnie', 'Udnie'], ['pointilism', 'Pointilism']];
 
 /** Filter > Neural Filters (1.54.7, DEV_PLAN 23.2): a gallery of filters that run here, the first two without any
@@ -50,9 +62,9 @@ export class NeuralFiltersDialog extends Dialog {
     if (!p || !l?.raster || l.isGroup || l.adjustment) { this.engine.notice('Select a pixel layer first.'); return; }
     this.kind = kind;
     this.backdrop = this.engine.compositeBelow(l.id);
-    if (this.depth?.layerId !== l.id) this.depth = null;
-    if (this.color?.layerId !== l.id) this.color = null;
-    if (this.styled?.layerId !== l.id) this.styled = null;
+    if (this.depth?.layerId !== pixelsKey(l)) this.depth = null;
+    if (this.color?.layerId !== pixelsKey(l)) this.color = null;
+    if (this.styled?.layerId !== pixelsKey(l)) this.styled = null;
     this.showRows();
     this.open();
     void this.ensureDepth();
@@ -65,7 +77,7 @@ export class NeuralFiltersDialog extends Dialog {
    *  the model is absent. Only Depth Blur needs it. */
   private async ensureDepth(): Promise<void> {
     const l = this.engine.current?.activeLayer;
-    if (this.kind !== 'depthBlur' || !l?.raster || this.depth?.layerId === l.id || this.depthPending) return;
+    if (this.kind !== 'depthBlur' || !l?.raster || this.depth?.layerId === pixelsKey(l) || this.depthPending) return;
     this.depthPending = true;
     try {
       if (!(await depthReady())) { setText(this.note, 'Depth Blur needs Depth Anything V2 Small (99 MB, Apache-2.0): download it in Preferences > Plugins > Local models.'); return; }
@@ -75,7 +87,7 @@ export class NeuralFiltersDialog extends Dialog {
       const g = c.getContext('2d') as CanvasRenderingContext2D; g.drawImage(bmp, 0, 0);
       const d = g.getImageData(0, 0, c.width, c.height).data, map = new Uint8ClampedArray(c.width * c.height);
       for (let i = 0, j = 0; i < d.length; i += 4, j++) map[j] = d[i];
-      this.depth = { layerId: l.id, map };
+      this.depth = { layerId: pixelsKey(l), map };
       this.showRows();
       this.schedule();
     } catch (err) { setText(this.note, err instanceof Error ? err.message : 'The depth could not be read.'); }
@@ -109,14 +121,14 @@ export class NeuralFiltersDialog extends Dialog {
   private colorPending = false;
   private async ensureColor(): Promise<void> {
     const l = this.engine.current?.activeLayer;
-    if (this.kind !== 'colorize' || !l?.raster || this.color?.layerId === l.id || this.colorPending) return;
+    if (this.kind !== 'colorize' || !l?.raster || this.color?.layerId === pixelsKey(l) || this.colorPending) return;
     this.colorPending = true;
     try {
       if (!(await colorizeReady())) { setText(this.note, 'Colorize needs DDColor-tiny (135 MB, Apache-2.0): download it in Preferences > Plugins > Local models.'); return; }
       setText(this.note, 'Colouring this layer...');
       const png = await localColorize(await toBlob(l.raster.canvas)), bmp = await createImageBitmap(png), c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
       const g = c.getContext('2d') as CanvasRenderingContext2D; g.drawImage(bmp, 0, 0);
-      this.color = { layerId: l.id, pixels: g.getImageData(0, 0, c.width, c.height) };
+      this.color = { layerId: pixelsKey(l), pixels: g.getImageData(0, 0, c.width, c.height) };
       this.showRows();
       this.schedule();
     } catch (err) { setText(this.note, err instanceof Error ? err.message : 'The colour could not be read.'); }
@@ -129,14 +141,14 @@ export class NeuralFiltersDialog extends Dialog {
   private stylePending = false;
   private async ensureStyle(): Promise<void> {
     const l = this.engine.current?.activeLayer;
-    if (this.kind !== 'style' || !l?.raster || (this.styled?.layerId === l.id && this.styled.style === this.style) || this.stylePending) return;
+    if (this.kind !== 'style' || !l?.raster || (this.styled?.layerId === pixelsKey(l) && this.styled.style === this.style) || this.stylePending) return;
     this.stylePending = true;
     try {
       if (!(await styleReady())) { setText(this.note, 'Style Transfer needs the five preset models (34 MB, BSD-3-Clause): download them in Preferences > Plugins > Local models.'); return; }
       setText(this.note, 'Painting this layer in the style...');
       const png = await localStyle(await toBlob(l.raster.canvas), this.style), bmp = await createImageBitmap(png), c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
       const g = c.getContext('2d') as CanvasRenderingContext2D; g.drawImage(bmp, 0, 0);
-      this.styled = { layerId: l.id, style: this.style, pixels: g.getImageData(0, 0, c.width, c.height) };
+      this.styled = { layerId: pixelsKey(l), style: this.style, pixels: g.getImageData(0, 0, c.width, c.height) };
       this.showRows();
       this.schedule();
     } catch (err) { setText(this.note, err instanceof Error ? err.message : 'The style could not be read.'); }

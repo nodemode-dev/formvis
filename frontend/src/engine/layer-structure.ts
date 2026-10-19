@@ -234,9 +234,16 @@ export function deleteLayers(host: StructHost, bake = false): void {
     return;
   }
   host.edit('Delete Layer', (p) => {
-    const roots = selectedRoots(p);
-    if (!roots.length) return false;
     const layers = p.doc.layers;
+    const picked = selectedRoots(p);
+    const roots = picked.filter((id) => ![...subtree(layers, id)].some((x) => layers.find((l) => l.id === x)?.locks?.all));
+    if (roots.length < picked.length) {
+      const n = picked.length - roots.length;
+      host.notice(roots.length
+        ? `${n === 1 ? 'A locked layer was' : `${n} locked layers were`} kept: unlock ${n === 1 ? 'it' : 'them'} in the Layers panel to delete.`
+        : picked.length === 1 ? 'The layer is locked. Unlock it in the Layers panel to delete it.' : 'The layers are locked. Unlock them in the Layers panel to delete them.');
+    }
+    if (!roots.length) return false;
     const order = hierarchy(p.doc, true).map((r) => r.layer.id);
     const first = Math.min(...roots.map((id) => order.indexOf(id)).filter((i) => i >= 0));
     const removed = new Set<ID>();

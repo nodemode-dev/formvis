@@ -195,6 +195,21 @@ function greyIf(img: ImageData, target: Target): ImageData {
   return target === 'mask' ? toGray(img) : img;
 }
 
+/** Lock Transparency: a result keeps the colour the filter made and the alpha the layer had, pixel by pixel, as
+ *  painting does (source-atop). Sizes that differ are returned as they are. */
+export function keepAlpha(out: ImageData, src: ImageData): ImageData {
+  if (out.width !== src.width || out.height !== src.height) return out;
+  const r = new ImageData(new Uint8ClampedArray(out.data), out.width, out.height);
+  const d = r.data;
+  const s = src.data;
+  for (let i = 3; i < d.length; i += 4) d[i] = s[i];
+  return r;
+}
+
+function alphaLocked(l: Layer, target: Target): boolean {
+  return target === 'pixels' && !!l.locks?.transparency;
+}
+
 export function targetImage(host: EditHost): {
   layerId: ID;
   target: Target;
@@ -246,7 +261,8 @@ export function previewImageEdit(
     host.setPreview(null);
     return;
   }
-  const margined = grow > 0 && t.target === 'pixels' && !p.selection && !l.mask;
+  const keep = alphaLocked(t.layer, t.target);
+  const margined = grow > 0 && t.target === 'pixels' && !p.selection && !l.mask && !keep;
   const scale = Math.min(1, Math.sqrt(maxPixels / (w * h)));
   const sw = Math.max(1, Math.round(w * scale));
   const sh = Math.max(1, Math.round(h * scale));
@@ -265,13 +281,13 @@ export function previewImageEdit(
   const layer = t.layer;
   const show = (out: ImageData): void => {
     if (mine !== previewSeq) return;
-    let res = out;
+    let res = keep ? keepAlpha(out, src) : out;
     if (!margined) {
       const cov = host.coverage(p, layer, target, out.width, out.height);
       if (cov && cov.length >= out.width * out.height * 4) {
         const ci = new ImageData(out.width, out.height);
         ci.data.set(cov.subarray(0, out.width * out.height * 4));
-        res = blendThrough(src, out, ci);
+        res = blendThrough(src, res, ci);
       }
     }
     if (target === 'mask') res = fromGray(res);
@@ -317,7 +333,8 @@ export function applyImageEdit(
   const w = t.raster.width;
   const h = t.raster.height;
   const g = Math.round(grow);
-  if (g > 0 && t.target === 'pixels' && !p.selection && !l.mask) {
+  const keep = alphaLocked(t.layer, t.target);
+  if (g > 0 && t.target === 'pixels' && !p.selection && !l.mask && !keep) {
     const s = createSurface(w + 2 * g, h + 2 * g);
     const c = ctxOf(s);
     c.drawImage(t.raster.canvas, g, g);
@@ -333,7 +350,8 @@ export function applyImageEdit(
     return;
   }
   const full = greyIf(t.raster.read(), t.target);
-  const out = run(full, 1, host.frame(p, targetTransform(t.layer, t.target), w, h));
+  const made = run(full, 1, host.frame(p, targetTransform(t.layer, t.target), w, h));
+  const out = keep ? keepAlpha(made, full) : made;
   regionEdit(host, label, ({ raster, target, rect, cover }) => {
     const sub = greyIf(raster.read(rect.x, rect.y, rect.w, rect.h), target);
     commit(raster, rect, cover, target, sub, crop(out, rect));
