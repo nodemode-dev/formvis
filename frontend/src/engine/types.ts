@@ -67,6 +67,9 @@ export interface Layer {
    *  own pixels showing at its fill. */
   blendIf?: BlendIf | null;
   knockout?: 'none' | 'shallow' | 'deep';
+  /** Channel restrictions (Blending Options, Advanced): red, green and blue; a channel set false keeps what lies
+   *  below it, the layer blending only into the others. Absent or null for all three. */
+  blendChannels?: [boolean, boolean, boolean] | null;
   /** A type layer's text, while its pixels are still the rendering of it; see `liveText`. */
   text?: TextSpec | null;
   /** A smart object's original pixels and live filter stack; `raster` shows the result. */

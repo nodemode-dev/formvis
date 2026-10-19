@@ -1,12 +1,12 @@
 # formvis commands
 
-Generated from the window's command catalogue (1046 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1055 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
-- Edit: 61
-- File: 74
-- Filter: 81
+- Edit: 62
+- File: 75
+- Filter: 86
 - Generate: 2
 - Image: 88
 - Layer: 232
@@ -16,7 +16,7 @@ Generated from the window's command catalogue (1046 commands) by `./formvis agen
 - Tool options: 269
 - Tools: 51
 - Type: 26
-- View: 44
+- View: 46
 - Window: 73
 
 ## Edit
@@ -56,6 +56,7 @@ Generated from the window's command catalogue (1046 commands) by `./formvis agen
 | `patterns-export` | Export Patterns... |  | Saves your patterns as one .pat file. |
 | `patterns-import` | Import Patterns... |  | Adds the patterns from .pat files. |
 | `perspective-warp` | Perspective Warp |  | Starts Perspective Warp. (changes the picture) |
+| `pick-screen-colour` | Pick Colour from Screen |  | Picks the colour of any pixel on the screen, outside the window too, as the foreground colour. |
 | `preset-manager` | Preset Manager... |  | Opens the Preset Manager to rename, delete, load and save brushes, swatches, gradients, patterns and custom shapes. (changes the picture) |
 | `puppet-warp` | Puppet Warp |  | Starts Puppet Warp with pins on the layer. (changes the picture) |
 | `purge-all` | All |  | Clears the clipboard and the history of every open document after asking. (changes the picture) |
@@ -123,6 +124,7 @@ Generated from the window's command catalogue (1046 commands) by `./formvis agen
 | `export-png` | Export PNG | Shift+Mod+E | Exports the flattened picture as a PNG. (asks first) |
 | `export-psb` | Export PSB (Large Document)... |  | Exports a large document (PSB). (asks first) |
 | `export-psd` | Export PSD... |  | Exports the document as a layered PSD. (asks first) |
+| `export-selection-mask` | Selection as Mask PNG |  | Writes the selection as a grey PNG the size of the document, white where selected, black elsewhere, with feathered edges kept. (asks first) |
 | `export-tiff` | Export TIFF |  | Exports the picture as TIFF. (asks first) |
 | `export-tiff-layers` | TIFF with Layers... |  | Exports the picture as a TIFF that carries its layers in the PSD layer block. (asks first) |
 | `export-to-file` | Export to File |  | Encodes the flattened picture as png, jpg, webp or tiff and writes it to the exports folder. (asks first) |
@@ -176,6 +178,7 @@ Generated from the window's command catalogue (1046 commands) by `./formvis agen
 | `filter-boxBlur` | Box Blur... |  | Opens the Box Blur filter on the active layer. (changes the picture) |
 | `filter-clouds` | Clouds |  | Opens the Clouds filter on the active layer. (changes the picture) |
 | `filter-colorHalftone` | Color Halftone... |  | Opens the Color Halftone filter on the active layer. (changes the picture) |
+| `filter-colorToAlpha` | Color to Alpha... |  | Opens the Color to Alpha filter on the active layer. (changes the picture) |
 | `filter-crystallize` | Crystallize... |  | Opens the Crystallize filter on the active layer. (changes the picture) |
 | `filter-custom` | Custom... |  | Opens the Custom filter on the active layer. (changes the picture) |
 | `filter-deInterlace` | De-Interlace... |  | Opens the De-Interlace filter on the active layer. (changes the picture) |
@@ -184,6 +187,7 @@ Generated from the window's command catalogue (1046 commands) by `./formvis agen
 | `filter-differenceClouds` | Difference Clouds |  | Opens the Difference Clouds filter on the active layer. (changes the picture) |
 | `filter-diffuse` | Diffuse... |  | Opens the Diffuse filter on the active layer. (changes the picture) |
 | `filter-displace` | Displace... |  | Opens the Displace filter on the active layer. (changes the picture) |
+| `filter-dither` | Dither... |  | Opens the Dither filter on the active layer. (changes the picture) |
 | `filter-dustAndScratches` | Dust & Scratches... |  | Opens the Dust & Scratches filter on the active layer. (changes the picture) |
 | `filter-emboss` | Emboss... |  | Opens the Emboss filter on the active layer. (changes the picture) |
 | `filter-extrude` | Extrude... |  | Opens the Extrude filter on the active layer. (changes the picture) |
@@ -195,6 +199,8 @@ Generated from the window's command catalogue (1046 commands) by `./formvis agen
 | `filter-flame` | Flame... |  | Opens the Flame filter on the active layer. (changes the picture) |
 | `filter-fragment` | Fragment |  | Opens the Fragment filter on the active layer. (changes the picture) |
 | `filter-gaussianBlur` | Gaussian Blur... |  | Opens the Gaussian Blur filter on the active layer. (changes the picture) |
+| `filter-grainPlate` | Grain Plate... |  | Opens the Grain Plate filter on the active layer. (changes the picture) |
+| `filter-haze` | Haze by Depth... |  | Opens the Haze by Depth filter on the active layer. (changes the picture) |
 | `filter-highPass` | High Pass... |  | Opens the High Pass filter on the active layer. (changes the picture) |
 | `filter-hsbHsl` | HSB/HSL... |  | Opens the HSB/HSL filter on the active layer. (changes the picture) |
 | `filter-irisBlur` | Iris Blur... |  | Opens the Iris Blur filter on the active layer. (changes the picture) |
@@ -223,6 +229,7 @@ Generated from the window's command catalogue (1046 commands) by `./formvis agen
 | `filter-reduceNoise` | Reduce Noise... |  | Opens the Reduce Noise filter on the active layer. (changes the picture) |
 | `filter-relight` | Relight... |  | Starts Relight from the Filter menu: adds a Relight layer above the active layer and opens its lights. (changes the picture) |
 | `filter-ripple` | Ripple... |  | Opens the Ripple filter on the active layer. (changes the picture) |
+| `filter-scanlines` | Scanlines... |  | Opens the Scanlines filter on the active layer. (changes the picture) |
 | `filter-shakeReduction` | Shake Reduction... |  | Opens the Shake Reduction filter on the active layer. (changes the picture) |
 | `filter-shapeBlur` | Shape Blur... |  | Opens the Shape Blur filter on the active layer. (changes the picture) |
 | `filter-sharpen` | Sharpen |  | Opens the Sharpen filter on the active layer. (changes the picture) |
@@ -1091,6 +1098,7 @@ Generated from the window's command catalogue (1046 commands) by `./formvis agen
 | `pattern-preview` | Pattern Preview |  | Shows or hides eight copies of the document around it, to check that a tile repeats. |
 | `pixel-art-preview` | Pixel Art Preview |  | Shows or hides a crisp, nearest-neighbour view of the document at every zoom. |
 | `pixel-grid` | Pixel Grid |  | Shows or hides the pixel grid at high zoom. |
+| `preview-32` | 32-bit Preview Options... |  | Opens 32-bit Preview Options, exposure and gamma for how a 32-bit picture is shown. |
 | `proof-colors` | Proof Colors |  | Turns Proof Colors on or off. |
 | `proof-preset-black` | Working Black Plate |  | Shows the working CMYK black plate as a grey image and turns Proof Colors on. |
 | `proof-preset-cmy` | Working CMY Plates |  | Shows the working CMYK cyan, magenta and yellow plates together, without black, and turns Proof Colors on. |
@@ -1098,6 +1106,7 @@ Generated from the window's command catalogue (1046 commands) by `./formvis agen
 | `proof-preset-cyan` | Working Cyan Plate |  | Shows the working CMYK cyan plate as a grey image and turns Proof Colors on. |
 | `proof-preset-deuteranopia` | Color Blindness - Deuteranopia-type |  | Simulates deuteranopia, green-blind colour vision, and turns Proof Colors on. |
 | `proof-preset-magenta` | Working Magenta Plate |  | Shows the working CMYK magenta plate as a grey image and turns Proof Colors on. |
+| `proof-preset-monitor` | Monitor RGB |  | Shows the picture with its colour numbers sent to the screen as they are, without the profile conversion, and turns Proof Colors on. |
 | `proof-preset-protanopia` | Color Blindness - Protanopia-type |  | Simulates protanopia, red-blind colour vision, and turns Proof Colors on. |
 | `proof-preset-yellow` | Working Yellow Plate |  | Shows the working CMYK yellow plate as a grey image and turns Proof Colors on. |
 | `proof-setup` | Proof Setup... |  | Opens Proof Setup. |

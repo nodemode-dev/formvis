@@ -31,7 +31,7 @@ import { SPACES, convertPixels, iccProfile, type SpaceId } from './engine/icc';
 import { embedJpeg, embedPng } from './io/embed-icc';
 import { withResolution } from './engine/dpi';
 import { dpxBlob } from './io/dpx';
-import { exportLayout, ENGINE_FORMATS, exportMeta, exportName, exportSize, formatOptions, PROFILELESS, sizedSettings, type ExportSettings } from './io/export-presets';
+import { exportLayout, engineWrites, exportMeta, exportName, exportSize, formatOptions, PROFILELESS, sizedSettings, type ExportSettings } from './io/export-presets';
 import { pnmDeepBlob } from './io/pnm';
 import { PARAM_KINDS } from './engine/adjust-params';
 import { APPLY_MODES, type ApplyMode } from './engine/apply-image';
@@ -180,8 +180,9 @@ import type { ChannelPixels, DocMode, DocProfile, ID } from './engine/types';
 import { headerResolution } from './io/image-size';
 import { ConditionalModeDialog, SOURCE_MODES } from './ui/panels/conditional-mode-dialog';
 import { HdrToningDialog } from './ui/panels/hdr-toning';
+import { Preview32Dialog } from './ui/panels/preview32-dialog';
 import { AssignProfileDialog, ConvertProfileDialog, ProfileMismatchDialog, ProofSetupDialog, convertDocumentDeep, type Space } from './ui/panels/colour-dialogs';
-import { embeddedProfile, fromBase64, isSrgbName, profileName, toBase64 } from './io/icc-read';
+import { embeddedProfile, exifColourSpace, fromBase64, isSrgbName, profileName, toBase64 } from './io/icc-read';
 import { toolHost } from './extensions/registry';
 import { Viewport } from './engine/viewport';
 import { enhanceAllSelects } from './ui/dropdown';
@@ -845,7 +846,8 @@ export function startApp(): void {
           let profile: { name: string; icc: string } | undefined;
           if (/\.(png|jpe?g|webp)$/i.test(f.name)) {
             const icc = await embeddedProfile(f).catch(() => null), pname = icc ? profileName(icc) : '';
-            if (!icc && !engine.current && decoded.length === 0) {
+            // A JPEG with no profile but the EXIF ColorSpace tag set to sRGB says what it is: opened as sRGB without asking.
+            if (!icc && !engine.current && decoded.length === 0 && (await exifColourSpace(f).catch(() => null)) !== 1) {
               const assumed = await missingProfile(f.name);
               if (assumed) { try { const raw = await decodeImage(f, f.name, true); raw.profile = assumed; decoded.push(raw); continue; } catch { /* decoded as before */ } }
             }
@@ -1092,9 +1094,9 @@ export function startApp(): void {
           x.putImageData(img, 0, 0);
         } else if (space !== 'srgb') { const img = x.getImageData(0, 0, z.w, z.h); convertPixels(img.data, 'srgb', space); x.putImageData(img, 0, 0); }
         const tagged = !!own || !!listed || space !== 'srgb', keep = s.embed !== false && s.format !== 'pdf' && (tagged || s.format !== 'webp') ? icc : null;
-        const viaEngine = ENGINE_FORMATS.has(s.format) || (s.format === 'webp' && tagged && !!keep);
+        const viaEngine = engineWrites(s) || (s.format === 'webp' && tagged && !!keep);
         if (PROFILELESS.has(s.format) && (own || listed || space !== 'srgb')) toast(`${s.format.toUpperCase()} carries no colour profile; the pixels are written in ${listed ? label : own ? 'the document\'s profile' : SPACES[space].label}.`, 'info');
-        const blob = viaEngine ? await api.encode(await toBlob(c), s.format as 'avif' | 'tiff' | 'pdf' | 'webp', s.quality, p.doc.resolution ?? 72, keep, formatOptions(s))
+        const blob = viaEngine ? await api.encode(await toBlob(c), (s.format === 'jpg' ? 'jpeg' : s.format) as 'avif' | 'tiff' | 'pdf' | 'webp', s.quality, p.doc.resolution ?? 72, keep, formatOptions(s))
           : s.format === 'png' ? await withResolution(keep ? await embedPng(await toBlob(c, 'image/png'), keep, label) : await toBlob(c, 'image/png'), p.doc.resolution ?? 72)
           : s.format === 'jpg' ? await withResolution(keep ? await embedJpeg(await toBlob(c, 'image/jpeg', s.quality / 100), keep) : await toBlob(c, 'image/jpeg', s.quality / 100), p.doc.resolution ?? 72)
           : await toBlob(c, 'image/webp', s.quality / 100);
@@ -1106,6 +1108,27 @@ export function startApp(): void {
         await deliver(metaWritable(meta) ? await withXmp(blob, s.format, meta, new Date(), ai) : ai ? await withAiLabel(blob, s.format, ai) : blob, exportName(p.name, s, suffix));
       } catch (err) { toast(message(err), 'error'); }
     });
+  }
+
+  /** File > Export > Selection as Mask PNG: the selection as a document-sized grey picture, white selected, black not, feathered edges kept. */
+  async function exportSelectionMask(): Promise<void> {
+    const p = engine.current, sel = p?.selection;
+    if (!p || !sel) return;
+    const W = p.doc.width, H = p.doc.height, c = createSurface(W, H), x = ctxOf(c), img = x.createImageData(W, H);
+    for (let i = 3; i < img.data.length; i += 4) img.data[i] = 255;
+    for (let j = 0; j < sel.h; j++) {
+      const y = sel.y + j;
+      if (y < 0 || y >= H) continue;
+      for (let i = 0; i < sel.w; i++) {
+        const xx = sel.x + i;
+        if (xx < 0 || xx >= W) continue;
+        const o = (y * W + xx) * 4, v = sel.data[j * sel.w + i]!;
+        img.data[o] = v; img.data[o + 1] = v; img.data[o + 2] = v;
+      }
+    }
+    x.putImageData(img, 0, 0);
+    const blob = await toBlob(c, 'image/png');
+    if (blob) await deliver(blob, `${(p.name || 'Untitled').replace(/\.[^.]+$/, '')} selection.png`);
   }
 
   /** File > Export > Radiance HDR and OpenEXR from a 32-bit document (1.53.9): linear floats, as they are. */
@@ -2526,6 +2549,7 @@ export function startApp(): void {
     },
   };
   const colourDialogs = { assign: new AssignProfileDialog(engine, (pr) => cmykLutFor(pr), () => convertDialog.show()), convert: convertDialog, proof: new ProofSetupDialog(colourView), mismatch: new ProfileMismatchDialog() };
+  const preview32 = new Preview32Dialog(colourView);
   void pluginHost.loadAll();
   document.body.appendChild(assistant.el);
   // The terminal dock and the Claude Code panel (DEV_PLAN 28.5): the dock's grid row sits above the status bar and is
@@ -3007,6 +3031,7 @@ export function startApp(): void {
     { id: 'artboard-options', label: 'Artboard Options...', enabled: () => !!engine.current?.activeLayer?.artboard, run: () => dialogs.artboard.show() },
     { id: 'export-artboards', label: 'Export Artboards to Files', enabled: () => engine.artboards().length > 0, run: () => void exportArtboards() },
     { id: 'export-layers', label: 'Layers to Files...', enabled: has, params: LAYER_EXPORT_PARAMS, run: (a) => layerExportRun(false, a) },
+    { id: 'export-selection-mask', label: 'Selection as Mask PNG', enabled: selected, run: () => void exportSelectionMask() },
     { id: 'generate-image-assets', label: 'Generate Image Assets', enabled: has, run: () => generateAssets(false) },
     { id: 'image-assets-on-save', label: 'Image Assets on Save', enabled: has, checked: () => !!engine.current?.doc.assetsOnSave, run: () => engine.setAssetsOnSave(!engine.current?.doc.assetsOnSave) },
     {
@@ -3485,6 +3510,18 @@ export function startApp(): void {
     { id: 'proof-setup', label: 'Proof Setup...', enabled: has, run: () => void colourDialogs.proof.show() },
     ...PROOF_KINDS.map(([kind, name]): Command => ({ id: `proof-preset-${kind}`, label: name, enabled: has, checked: () => colourView.proof && colourView.preset === kind, run: () => colourView.usePreset(kind) })),
     { id: 'proof-colors', label: 'Proof Colors', enabled: () => has() && (!!colourView.setup || !!colourView.preset), checked: () => colourView.proof, run: () => { colourView.proof = !colourView.proof; if (!colourView.proof) colourView.gamut = false; void colourView.refresh(); } },
+    { id: 'preview-32', label: '32-bit Preview Options...', enabled: () => engine.current?.doc.depth === 32, run: () => preview32.show() },
+    {
+      id: 'pick-screen-colour', label: 'Pick Colour from Screen', enabled: () => 'EyeDropper' in window,
+      run: async () => {
+        const Pick = (window as unknown as { EyeDropper?: new () => { open(): Promise<{ sRGBHex: string }> } }).EyeDropper;
+        if (!Pick) { toast('Picking from the screen needs a browser with the EyeDropper API.', 'error'); return; }
+        try {
+          const hex = (await new Pick().open()).sRGBHex, v = parseInt(hex.slice(1), 16);
+          engine.setColors({ r: (v >> 16) & 255, g: (v >> 8) & 255, b: v & 255 });
+        } catch { /* cancelled with Escape */ }
+      },
+    },
     { id: 'gamut-warning', label: 'Gamut Warning', keys: ['Shift+Mod+Y'], enabled: () => has() && !!colourView.setup, checked: () => colourView.gamut, run: () => { colourView.gamut = !colourView.gamut; if (colourView.gamut) colourView.proof = true; void colourView.refresh(); } },
     {
       id: 'calculations', label: 'Calculations...', enabled: has,
@@ -3535,10 +3572,10 @@ export function startApp(): void {
   const drawnFirst = ['filter-flame', 'filter-pictureFrame', 'filter-tree'];
   const menus: MenuDef[] = [
     { label: 'File', items: () => ['new', 'open', 'import', 'import-video', 'create-video-timeline', 'place-embedded', 'place-linked', 'place-3d', 'open-svg-layers', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.slice(0, 10).map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'save-copy', 'revert', 'download-project', 'package', '-',
-      { label: 'Export', items: ['export-as', 'save-for-web', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-tiff-layers', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'export-paths-ai', 'assemble-tiles', '-', 'export-layers', 'export-layer-comps', 'generate-image-assets', 'image-assets-on-save', 'export-luts', 'export-artboards-files', 'export-data-sets', 'export-artboards'] },
+      { label: 'Export', items: ['export-as', 'save-for-web', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-tiff-layers', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'export-paths-ai', 'assemble-tiles', '-', 'export-layers', 'export-layer-comps', 'export-selection-mask', 'generate-image-assets', 'image-assets-on-save', 'export-luts', 'export-artboards-files', 'export-data-sets', 'export-artboards'] },
       { label: 'Automate', items: ['actions', 'action-stop', 'batch', 'create-droplet', '-', 'fit-image', 'conditional-mode-change', 'contact-sheet', 'crop-straighten-photos', 'photomerge', 'merge-hdr'] },
       { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'image-processor', 'script-events', 'load-files-stack', 'stack-statistics', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'close-all', 'close-others'] },
-    { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', '-', 'fade', 'compare-documents', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', '-',
+    { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', '-', 'fade', 'compare-documents', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', 'pick-screen-colour', '-',
       { label: 'Purge', items: ['purge-clipboard', 'purge-histories', 'purge-all'] }, '-',
       { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-', 'auto-align-layers', 'auto-blend-layers', '-',
       'fill-path-dialog', 'stroke-path-dialog', '-', 'transform', 'transform-copy', { label: 'Transform', items: ['transform-again', '-', 'transform-scale', 'transform-rotate', 'transform-skew', 'transform-distort', 'transform-perspective', 'transform-warp', 'warp-split-h', 'warp-split-v', 'warp-split-cross', 'warp-remove-split', '-', 'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw', '-', 'flip-layer-h', 'flip-layer-v'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', 'define-brush', 'define-custom-shape', { label: 'Presets', items: ['preset-manager', '-', 'swatches-load', 'swatches-save'] }, '-', 'assign-profile', 'convert-profile', 'colour.settings', '-', 'customize-toolbar', 'shortcuts', 'settings'] },
@@ -3584,7 +3621,7 @@ export function startApp(): void {
       { label: '3D', items: ['normal-map', 'bump-map', 'height-from-normal'] }, '-', 'remove-bg', 'remove-bg-lite'] },
     // Generate: the generative commands in one place (the Generate panel, models, fill, repair, size, relight, and the ComfyUI and NodeMode links).
     { label: 'Generate', items: ['generate-panel', '-', 'generate-image', 'generative-fill', 'generative-expand', '-', 'generate-remove', 'content-fill-workspace', 'content-fill', 'remove-wires', '-', 'remove-bg', 'remove-bg-lite', '-', 'upscale-2x', 'upscale-4x', 'new-relight-layer', '-', 'comfyui-run', 'send-comfyui', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode'])] },
-    { label: 'View', items: [{ label: 'Proof Setup', items: ['proof-setup', '-', 'proof-preset-cmyk', 'proof-preset-cyan', 'proof-preset-magenta', 'proof-preset-yellow', 'proof-preset-black', 'proof-preset-cmy', '-', 'proof-preset-protanopia', 'proof-preset-deuteranopia'] }, 'proof-colors', 'gamut-warning', '-', 'zoom-in', 'zoom-out', 'fit', 'fit-layers', 'fit-artboard', 'actual', '-', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'pattern-preview', 'pixel-art-preview', 'par-correction', 'transform-controls', 'toggle-task-bar', '-',
+    { label: 'View', items: [{ label: 'Proof Setup', items: ['proof-setup', '-', 'proof-preset-monitor', 'proof-preset-cmyk', 'proof-preset-cyan', 'proof-preset-magenta', 'proof-preset-yellow', 'proof-preset-black', 'proof-preset-cmy', '-', 'proof-preset-protanopia', 'proof-preset-deuteranopia'] }, 'proof-colors', 'gamut-warning', 'preview-32', '-', 'zoom-in', 'zoom-out', 'fit', 'fit-layers', 'fit-artboard', 'actual', '-', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'pattern-preview', 'pixel-art-preview', 'par-correction', 'transform-controls', 'toggle-task-bar', '-',
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'guide-layout', 'guides-from-shape', 'clear-guides'] }, { label: 'Show', items: ['toggle-show-slices', 'layer-based-slice', 'slice-options', 'delete-slice', 'clear-slices'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'toggle-panels', 'rail-columns'] },
     { label: 'Plugins', items: () => { const ids = pluginHost.commandIds(); return ['manage-plugins', ...(ids.length ? ['-', ...ids] : [])]; } },

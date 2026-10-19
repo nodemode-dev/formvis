@@ -1,5 +1,5 @@
 import type { Engine } from '../engine';
-import type { ColourLut, Lut3x4 } from '../engine/colour-lut';
+import { lutOf, type ColourLut, type Lut3x4 } from '../engine/colour-lut';
 import { api } from '../io/api';
 import { readDisplay, type DisplayInfo } from './colour-display';
 import { loadPrefs } from './prefs';
@@ -20,8 +20,8 @@ export const proofTerms = (s: ProofSetup): { intent: Intent; bpc: boolean } => (
 /** The standard built-in proof presets (DEV_PLAN 31.7), beside Custom. The working CMYK ones simulate the working CMYK
  *  profile and show only some inks (a plate is a grey image of that ink's coverage, CMY leaves K out); the two colour
  *  blindness ones are Vienot 1999 (Brettel 1997 for the dichromat's confusion lines) in linear RGB. */
-export type ProofKind = 'cmyk' | 'cyan' | 'magenta' | 'yellow' | 'black' | 'cmy' | 'protanopia' | 'deuteranopia';
-export const PROOF_KINDS: Array<[ProofKind, string]> = [['cmyk', 'Working CMYK'], ['cyan', 'Working Cyan Plate'], ['magenta', 'Working Magenta Plate'], ['yellow', 'Working Yellow Plate'], ['black', 'Working Black Plate'], ['cmy', 'Working CMY Plates'], ['protanopia', 'Color Blindness - Protanopia-type'], ['deuteranopia', 'Color Blindness - Deuteranopia-type']];
+export type ProofKind = 'monitor' | 'cmyk' | 'cyan' | 'magenta' | 'yellow' | 'black' | 'cmy' | 'protanopia' | 'deuteranopia';
+export const PROOF_KINDS: Array<[ProofKind, string]> = [['monitor', 'Monitor RGB'], ['cmyk', 'Working CMYK'], ['cyan', 'Working Cyan Plate'], ['magenta', 'Working Magenta Plate'], ['yellow', 'Working Yellow Plate'], ['black', 'Working Black Plate'], ['cmy', 'Working CMY Plates'], ['protanopia', 'Color Blindness - Protanopia-type'], ['deuteranopia', 'Color Blindness - Deuteranopia-type']];
 const PLATE: Partial<Record<ProofKind, number>> = { cyan: 0, magenta: 1, yellow: 2, black: 3 };
 /** Vienot, Brettel and Mollon 1999: the dichromat's colours as a 3x3 on linear sRGB (rows R, G, B). */
 const CVD: Partial<Record<ProofKind, number[]>> = {
@@ -40,6 +40,15 @@ export function colourBlindLut(lut: ColourLut, kind: ProofKind): ColourLut {
     for (let k = 0; k < 3; k++) out[i + k] = unlin(m[k * 3] * r + m[k * 3 + 1] * g + m[k * 3 + 2] * b);
   }
   return { grid: lut.grid, rgb: out };
+}
+
+/** 32-bit Preview Options: exposure in stops on linear light, then the display gamma, folded into the view table.
+ *  It works on the 8-bit rendition the canvas shows, so it never changes the document. */
+export function previewLut(lut: ColourLut, exposure: number, gamma: number): ColourLut {
+  const gain = 2 ** exposure, inv = 1 / Math.max(0.01, gamma), out = new Uint8Array(lut.rgb.length), curve = new Uint8Array(256);
+  for (let v = 0; v < 256; v++) curve[v] = Math.round(255 * Math.pow(unlin(lin(v) * gain) / 255, inv));
+  for (let i = 0; i < out.length; i++) out[i] = curve[lut.rgb[i]];
+  return { grid: lut.grid, rgb: out, gamut: lut.gamut };
 }
 
 /** A plate (grey from one ink's coverage), or the CMY inks without K, from the sRGB-to-ink table of the working CMYK. */
@@ -77,6 +86,9 @@ export class ColourView {
   presets: ProofPreset[] = [];
   proof = false;
   gamut = false;
+  /** 32-bit Preview Options: exposure in stops and display gamma for a 32-bit document's view. */
+  exposure = 0;
+  gamma = 1;
   /** The built-in preset in use (null for Custom, the saved device). */
   preset: ProofKind | null = null;
   private work: { id: string; name: string } | null = null;
@@ -100,6 +112,13 @@ export class ColourView {
   usePreset(kind: ProofKind | null): void {
     this.preset = kind;
     if (kind) this.proof = true;
+    void this.refresh();
+  }
+
+  /** Sets the 32-bit preview and redraws the view (View > 32-bit Preview Options). */
+  setPreview(exposure: number, gamma: number): void {
+    this.exposure = Math.max(-10, Math.min(10, exposure));
+    this.gamma = Math.max(0.01, Math.min(10, gamma));
     void this.refresh();
   }
 
@@ -131,9 +150,10 @@ export class ColourView {
     const s = kind === 'cmyk' ? ({ id: this.work?.id ?? '', name: 'Working CMYK', intent: 'relative', bpc: true } as ProofSetup) : kind ? null : this.setup, proofing = this.proof && (!!s || !!kind);
     const c = loadPrefs().colour, monitor = c.useDisplay && this.display?.icc && !this.display.managed ? this.display.icc : null, terms = proofing && s ? proofTerms(s) : null;
     const key = p ? `${prof ? `${prof.icc.length}:${prof.icc.slice(-64)}` : 'srgb'}|${proofing && s && terms ? `${s.id}:${terms.intent}:${terms.bpc}` : ''}|${kind ?? ''}:${c.cmyk}|${proofing && this.gamut}|${monitor ? `${monitor.length}:${monitor.slice(-64)}:${c.intent}:${c.bpc}` : ''}` : '';
-    if (key === this.key) return;
-    this.key = key;
-    if (!p || (!prof && !proofing && !monitor)) { this.engine.setViewTransform(null); return; }
+    const pv = p?.doc.depth === 32 && (this.exposure !== 0 || this.gamma !== 1), vkey = pv ? `${key}|p${this.exposure}:${this.gamma}` : key, raw = kind === 'monitor';
+    if (vkey === this.key) return;
+    this.key = vkey;
+    if (!p || (!pv && (raw || (!prof && !proofing && !monitor)))) { this.engine.setViewTransform(null); return; }
     const n = ++this.seq;
     try {
       const work = kind === 'cmyk' || plate ? await this.working(c.cmyk) : null;
@@ -142,10 +162,12 @@ export class ColourView {
       const proofId = kind === 'cmyk' && work ? work.id : s?.id;
       let lut: ColourLut;
       if (plate && work) lut = plateLut(await api.rgbCmykLut({ id: work.id }, prof ? { icc: prof.icc } : null), kind);
+      else if (raw || (pv && !prof && !proofing && !monitor)) lut = lutOf(65, (r, g, b) => [r, g, b]);
       else {
         lut = await api.colourLut({ source: prof ? { icc: prof.icc } : null, dest: monitor ? { icc: monitor } : null, proof: proofId ? { id: proofId } : null, intent: c.intent, proofIntent: terms?.intent ?? 'relative', bpc: terms?.bpc ?? c.bpc, gamut: proofing && this.gamut && !cvd });
         if (cvd) lut = colourBlindLut(lut, kind);
       }
+      if (pv) lut = previewLut(lut, this.exposure, this.gamma);
       if (n !== this.seq) return;
       this.engine.setViewTransform(!prof && !proofing && nearIdentity(lut) ? null : { lut, gamut: proofing && this.gamut && !plate && !cvd });
     } catch (err) {

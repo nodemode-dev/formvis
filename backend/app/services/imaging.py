@@ -9,7 +9,7 @@ import numpy as np
 from PIL import Image, ImageCms, ImageOps
 
 from app.core import config
-from app.services import camera_profiles, dcp, dpx, ico, pnm, qoi, tga
+from app.services import camera_profiles, dcp, dpx, fits, ico, pnm, qoi, tga
 
 Image.MAX_IMAGE_PIXELS = config.MAX_PIXELS
 
@@ -313,7 +313,30 @@ def decode_to_png(data: bytes, filename: str, page: int = 0, camera_profile: str
 
 
 ENCODINGS = {"tiff": "image/tiff", "pdf": "application/pdf", "webp": "image/webp", "avif": "image/avif", "dpx": "image/x-dpx", "png8": "image/png",
-             "qoi": "image/x-qoi", "pnm": "image/x-portable-anymap", "tga": "image/x-tga", "ico": "image/vnd.microsoft.icon"}
+             "qoi": "image/x-qoi", "pnm": "image/x-portable-anymap", "tga": "image/x-tga", "ico": "image/vnd.microsoft.icon",
+             "bmp": "image/bmp", "fits": "image/fits", "wbmp": "image/vnd.wap.wbmp", "png": "image/png", "jpeg": "image/jpeg"}
+
+
+def _flat_white(rgba: Image.Image) -> Image.Image:
+    flat = Image.new("RGB", rgba.size, (255, 255, 255))
+    flat.paste(rgba, mask=rgba.getchannel("A"))
+    return flat
+
+
+def _wbmp(rgba: Image.Image) -> bytes:
+    """A WBMP type 0 file (WAP): 1 bit a pixel, 1 for white, rows padded to whole bytes, the picture flattened on white
+    and thresholded at half grey."""
+    grey = np.asarray(_flat_white(rgba).convert("L"))
+    h, w = grey.shape
+
+    def uint(n: int) -> bytes:
+        out = [n & 0x7F]
+        n >>= 7
+        while n:
+            out.append(0x80 | (n & 0x7F))
+            n >>= 7
+        return bytes(reversed(out))
+    return b"\x00\x00" + uint(w) + uint(h) + np.packbits(grey >= 128, axis=1).tobytes()
 
 
 def _own_encode(rgba: np.ndarray, fmt: str, options: dict) -> bytes:
@@ -361,6 +384,28 @@ def encode(png: bytes, fmt: str, quality: int = 90, dpi: int = 72, icc: bytes | 
     extra = {"icc_profile": icc} if icc else {}
     if fmt in ("qoi", "pnm", "tga", "ico"):
         return _own_encode(np.asarray(rgba), fmt, options or {})
+    if fmt == "wbmp":
+        return _wbmp(rgba)
+    if fmt == "fits":
+        try:
+            return fits.write(np.asarray(rgba), (options or {}).get("planes") == "gray")
+        except fits.FitsError as exc:
+            raise DecodeError(str(exc)) from exc
+    if fmt == "bmp":
+        # 32-bit with alpha, or 24-bit on white; BMP carries no colour profile here.
+        if (options or {}).get("bits") == 24:
+            _flat_white(rgba).save(out, "BMP", dpi=(dpi, dpi))
+        else:
+            rgba.save(out, "BMP", dpi=(dpi, dpi))
+        return out.getvalue()
+    if fmt == "png":
+        level = max(0, min(9, int((options or {}).get("level", 6))))
+        rgba.save(out, "PNG", compress_level=level, optimize=bool((options or {}).get("optimize")), dpi=(dpi, dpi), **extra)
+        return out.getvalue()
+    if fmt == "jpeg":
+        sub = {"444": 0, "422": 1, "420": 2}.get(str((options or {}).get("subsampling", "420")), 2)
+        _flat_white(rgba).save(out, "JPEG", quality=q, subsampling=sub, dpi=(dpi, dpi), **extra)
+        return out.getvalue()
     if fmt == "dpx":
         wide = np.asarray(rgba, dtype=np.uint16) * 257
         try:

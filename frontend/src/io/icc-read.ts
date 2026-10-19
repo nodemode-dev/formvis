@@ -43,6 +43,33 @@ export async function embeddedProfile(file: Blob): Promise<Uint8Array | null> {
   return null;
 }
 
+/** A JPEG's EXIF ColorSpace tag (1 is sRGB, 65535 uncalibrated), or null when there is no EXIF or no tag. */
+export async function exifColourSpace(file: Blob): Promise<number | null> {
+  try {
+    const head = new Uint8Array(await file.slice(0, Math.min(file.size, 1024 * 1024)).arrayBuffer());
+    if (head[0] !== 0xff || head[1] !== 0xd8) return null;
+    const dv = new DataView(head.buffer);
+    for (let o = 2; o + 4 <= head.length && head[o] === 0xff;) {
+      const m = head[o + 1], len = dv.getUint16(o + 2);
+      if (m === 0xda) break;
+      if (m === 0xe1 && String.fromCharCode(...head.subarray(o + 4, o + 8)) === 'Exif') {
+        const t = o + 10, le = head[t] === 0x49;
+        const u16 = (p: number): number => dv.getUint16(t + p, le), u32 = (p: number): number => dv.getUint32(t + p, le);
+        const find = (ifd: number, id: number): number | null => {
+          for (let i = 0, n = u16(ifd); i < n; i++) { const e = ifd + 2 + i * 12; if (u16(e) === id) return e; }
+          return null;
+        };
+        const sub = find(u32(4), 0x8769);
+        if (sub === null) return null;
+        const e = find(u32(sub + 8), 0xa001);
+        return e === null ? null : u16(e + 8);
+      }
+      o += 2 + len;
+    }
+  } catch { return null; }
+  return null;
+}
+
 /** The profile's description ('desc' v2 or 'mluc' v4), or 'Embedded profile'. */
 export function profileName(icc: Uint8Array): string {
   try {

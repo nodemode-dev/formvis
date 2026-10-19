@@ -8,7 +8,7 @@ describe('export presets', () => {
   });
 
   it('settings are clamped and unknown formats fall back to PNG', () => {
-    expect(clampSettings({ format: 'bmp' as never, quality: 900, scale: 0 })).toEqual({ format: 'png', quality: 100, scale: 1 });
+    expect(clampSettings({ format: 'xyz' as never, quality: 900, scale: 0 })).toEqual({ format: 'png', quality: 100, scale: 1 });
     expect(clampSettings({ format: 'webp', quality: NaN, scale: 5000 })).toEqual({ format: 'webp', quality: 90, scale: 1000 });
   });
 

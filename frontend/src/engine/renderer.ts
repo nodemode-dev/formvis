@@ -270,7 +270,8 @@ export class Renderer {
       const parts = styled && !base && !folders.length && !ov?.source && !ov?.patch && !ov?.maskSource && !ov?.transform ? this.effectParts(layer, fx as LayerEffects, src, t, own, ov?.maskPlacement ?? null, job.doc.width, job.doc.height) : null;
       if (parts) this.drawParts(ctx, parts, job.view, opacity, false);
       const blendIf = blendIfActive(layer.blendIf) ? layer.blendIf as BlendIf : null, knock = layer.knockout && layer.knockout !== 'none' ? layer.knockout : null;
-      if (!own && !folders.length && !base && !pixelBlend && (!styled || parts) && !blendIf && !knock && !ov?.patch) {
+      const chans = layer.blendChannels && layer.blendChannels.some((on) => !on) ? layer.blendChannels : null;
+      if (!own && !folders.length && !base && !pixelBlend && (!styled || parts) && !blendIf && !knock && !chans && !ov?.patch) {
         this.draw(ctx, src, m, t.sampling, pix, op, job.quality);
         if (parts) this.drawParts(ctx, parts, job.view, opacity, true);
         continue;
@@ -297,6 +298,7 @@ export class Renderer {
       if (knock) this.knockout(job, ctx, a, layer, map, W, H, opacity);
       const placed = styled && !parts ? boundsOf([applyMat(m, 0, 0), applyMat(m, src.width, 0), applyMat(m, src.width, src.height), applyMat(m, 0, src.height)]) : null;
       if (placed) this.effects(this.drawer(ctx), a, fx as LayerEffects, matScale(job.view), opacity, W, H, placed, 'below');
+      const below = chans ? ctx.getImageData(0, 0, W, H) : null;
       if (pixelBlend) this.pixelBlend(ctx, a, mode, pix, m, src, job.view, W, H);
       else {
         ctx.save();
@@ -305,6 +307,11 @@ export class Renderer {
         ctx.globalCompositeOperation = op;
         ctx.drawImage(a.s, 0, 0);
         ctx.restore();
+      }
+      if (below && chans) {
+        const now = ctx.getImageData(0, 0, W, H), n = now.data, u = below.data;
+        for (let i = 0; i < n.length; i += 4) for (let c = 0; c < 3; c++) if (!chans[c]) n[i + c] = u[i + c];
+        ctx.putImageData(now, 0, 0);
       }
       if (placed) this.effects(this.drawer(ctx), a, fx as LayerEffects, matScale(job.view), opacity, W, H, placed, 'above');
       if (parts) this.drawParts(ctx, parts, job.view, opacity, true);

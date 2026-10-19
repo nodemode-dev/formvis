@@ -18,7 +18,7 @@ router = APIRouter(tags=["io"])
 EXPORT_TYPES = ("png", "jpg", "jpeg", "webp", "avif", "tif", "tiff", "bmp", "gif", "pdf", "svg", "ai", "eps", "qoi", "tga", "ico", "dpx",
                 "pbm", "pgm", "ppm", "pnm", "pam", "exr", "hdr", "psd", "psb", "ora", "fvd", "fmv", "formvis", "mp4", "webm", "zip",
                 "cube", "3dl", "csp", "look", "lut", "json", "csv", "txt", "atn", "abr", "grd", "aco", "ase", "act", "pat", "csh",
-                "asl", "sh")
+                "asl", "sh", "fits", "wbmp")
 EXPORT_NAME = re.compile(r"^[^/\\:*?\"<>|\x00-\x1f]{1,160}\.(" + "|".join(EXPORT_TYPES) + r")$", re.IGNORECASE)
 EXPORT_FOLDER = re.compile(r"^[^/\\:*?\"<>|\x00-\x1f. ][^/\\:*?\"<>|\x00-\x1f]{0,99}$")
 

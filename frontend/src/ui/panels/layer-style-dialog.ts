@@ -10,6 +10,7 @@ const fromHex = (h: string): RGB => ({ r: parseInt(h.slice(1, 3), 16), g: parseI
 /** The Layer Style submenu's items (1.65.2): the dialog's section each opens, and its first row's label. */
 const SECTIONS = { dropShadow: 'Drop Shadow', outerGlow: 'Outer Glow', stroke: 'Stroke', innerShadow: 'Inner Shadow', innerGlow: 'Inner Glow', colorOverlay: 'Color Overlay', gradientOverlay: 'Gradient Overlay', patternOverlay: 'Pattern Overlay', satin: 'Satin', bevel: 'Bevel & Emboss' } as const;
 export type StyleSection = keyof typeof SECTIONS | 'blending';
+const STYLE_DEFAULT_KEY = 'formvis.layerStyleDefault';
 
 /** Layer > Layer Style: the document's Global Light, then Drop Shadow, Outer Glow, Stroke (outside, inside or
  *  center), Inner Shadow, Inner Glow, Satin, Color Overlay, Gradient Overlay, Pattern Overlay and Bevel & Emboss for the
@@ -23,7 +24,7 @@ export class LayerStyleDialog extends Dialog {
   private sel = {} as Record<MultiEffect, number>;
   private layerId: string | null = null;
   private applied = false;
-  private blending: { blendIf: BlendIf; knockout: 'none' | 'shallow' | 'deep' } = { blendIf: structuredClone(BLEND_IF_IDENTITY), knockout: 'none' };
+  private blending: { blendIf: BlendIf; knockout: 'none' | 'shallow' | 'deep'; channels: [boolean, boolean, boolean] } = { blendIf: structuredClone(BLEND_IF_IDENTITY), knockout: 'none', channels: [true, true, true] };
   private readonly syncs: Array<() => void> = [];
 
   constructor(private readonly engine: Engine) {
@@ -76,9 +77,10 @@ export class LayerStyleDialog extends Dialog {
     const lightRowB = sliderRow('Global light altitude (\u00b0)', 0, 90, 1, (v) => { this.light = { ...this.light, altitude: v }; this.changed(); });
     this.body.append(lightRowA.el, lightRowB.el);
     this.syncs.push(() => { lightRowA.set(this.light.angle); lightRowB.set(this.light.altitude); });
-    const bl = (): { blendIf: BlendIf; knockout: 'none' | 'shallow' | 'deep' } => this.blending;
+    const bl = (): { blendIf: BlendIf; knockout: 'none' | 'shallow' | 'deep'; channels: [boolean, boolean, boolean] } => this.blending;
     this.body.appendChild(el('<p class="cv-dialog-note">Blending Options (M2): Knockout punches through what lies below; Blend If shows the layer only inside each range, each end feathered between its two values.</p>'));
     choice('Knockout', [['none', 'None'], ['shallow', 'Shallow'], ['deep', 'Deep']], () => bl().knockout, (v) => { bl().knockout = v as 'none' | 'shallow' | 'deep'; });
+    for (const [i, name] of ['Red', 'Green', 'Blue'].entries()) check(`Channel ${name}`, () => bl().channels[i], (v) => { bl().channels[i] = v; });
     choice('Blend If', [['gray', 'Gray'], ['r', 'Red'], ['g', 'Green'], ['b', 'Blue']], () => bl().blendIf.channel, (v) => { bl().blendIf.channel = v as BlendIf['channel']; });
     for (const [side, label] of [['thisLayer', 'This Layer'], ['underlying', 'Underlying Layer']] as const) for (const [k, name] of [[0, 'black start'], [1, 'black end'], [2, 'white start'], [3, 'white end']] as const) {
       slider(t(`${label}: ${name}`), 0, 255, () => bl().blendIf[side][k], (v) => { const r = bl().blendIf[side]; r[k] = v; if (k === 0 && r[1] < v) r[1] = v; if (k === 1 && r[0] > v) r[0] = v; if (k === 2 && r[3] < v) r[3] = v; if (k === 3 && r[2] > v) r[2] = v; });
@@ -195,6 +197,8 @@ export class LayerStyleDialog extends Dialog {
     slider('Texture scale (%)', 1, 1000, () => Math.round((fx().bevel.texture?.scale ?? 1) * 100), (v) => { bt().scale = v / 100; });
     slider('Texture depth (%)', -1000, 1000, () => Math.round((fx().bevel.texture?.depth ?? 1) * 100), (v) => { bt().depth = v / 100; });
     check('Invert texture', () => !!fx().bevel.texture?.invert, (v) => { bt().invert = v; });
+    this.button('Make Default', 'ghost', () => { this.saveDefault(); this.engine.notice('Layer style settings saved as the default.'); }).classList.add('cv-btn-apart');
+    this.button('Reset to Default', 'ghost', () => this.resetToDefault());
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     this.onClose = () => { if (!this.applied) this.engine.previewLayerEffects(null); };
@@ -206,11 +210,8 @@ export class LayerStyleDialog extends Dialog {
     if (!layer || layer.isGroup || layer.adjustment) { this.engine.notice('Select a pixel layer to give it a layer style.'); return; }
     this.layerId = layer.id;
     this.applied = false;
-    this.fx = structuredClone(layer.effects ?? defaultEffects());
-    delete this.fx.hidden;
-    this.blending = { blendIf: structuredClone(layer.blendIf ?? BLEND_IF_IDENTITY), knockout: layer.knockout ?? 'none' };
-    for (const k of MULTI_EFFECTS) { this.inst[k] = instances(this.fx, k); this.sel[k] = 0; (this.fx as unknown as Record<string, unknown>)[k] = this.inst[k][0]; }
-    delete this.fx.extra;
+    this.adopt(layer.effects ?? this.baseline());
+    this.blending = { blendIf: structuredClone(layer.blendIf ?? BLEND_IF_IDENTITY), knockout: layer.knockout ?? 'none', channels: layer.blendChannels ? [...layer.blendChannels] : [true, true, true] };
     if (focus && focus !== 'blending') this.fx[focus].enabled = true;
     this.light = { ...(this.engine.current?.doc.globalLight ?? DEFAULT_GLOBAL_LIGHT) };
     for (const sync of this.syncs) sync();
@@ -219,6 +220,42 @@ export class LayerStyleDialog extends Dialog {
     this.open((row?.classList.contains('cv-dialog-note') ? row.nextElementSibling : row)?.querySelector<HTMLElement>('input, select'));
     this.changed();
     if (row) this.body.scrollTop += row.getBoundingClientRect().top - this.body.getBoundingClientRect().top;
+  }
+
+  /** The dialog's working style taken from `effects`, each multi effect's instances split out. */
+  private adopt(effects: LayerEffects): void {
+    this.fx = structuredClone(effects);
+    delete this.fx.hidden;
+    for (const k of MULTI_EFFECTS) { this.inst[k] = instances(this.fx, k); this.sel[k] = 0; (this.fx as unknown as Record<string, unknown>)[k] = this.inst[k][0]; }
+    delete this.fx.extra;
+  }
+
+  /** The style a layer with none starts from: the settings saved by Make Default, else the factory ones; all off. */
+  private baseline(): LayerEffects {
+    let fx = defaultEffects();
+    try {
+      const saved = localStorage.getItem(STYLE_DEFAULT_KEY);
+      if (saved) fx = { ...fx, ...(JSON.parse(saved) as Partial<LayerEffects>) };
+    } catch { fx = defaultEffects(); }
+    for (const k of Object.keys(fx) as Array<keyof LayerEffects>) { const e = fx[k] as { enabled?: boolean } | undefined; if (e && typeof e === 'object' && 'enabled' in e) e.enabled = false; }
+    delete fx.extra;
+    return fx;
+  }
+
+  private saveDefault(): void {
+    try { localStorage.setItem(STYLE_DEFAULT_KEY, JSON.stringify(this.assembled())); } catch { return; }
+  }
+
+  /** Every effect's settings back to the default, each effect staying on or off as it was. */
+  private resetToDefault(): void {
+    const on = this.assembled(), base = this.baseline();
+    for (const k of Object.keys(base) as Array<keyof LayerEffects>) {
+      const e = base[k] as { enabled?: boolean } | undefined, was = on[k] as { enabled?: boolean } | undefined;
+      if (e && typeof e === 'object' && 'enabled' in e && was) e.enabled = !!was.enabled;
+    }
+    this.adopt(base);
+    for (const sync of this.syncs) sync();
+    this.changed();
   }
 
   /** What the preview shows: the pending light put into effects that use it, those flags then dropped so the
@@ -255,6 +292,6 @@ export class LayerStyleDialog extends Dialog {
     const whole = this.assembled(), id = this.layerId, fx = effectsActive(whole) ? whole : null, cur = this.engine.current?.doc.globalLight ?? DEFAULT_GLOBAL_LIGHT;
     const light = this.light.angle !== cur.angle || this.light.altitude !== cur.altitude ? { ...this.light } : null;
     this.close();
-    if (id) { this.engine.applyStyleAndLight(id, fx, light, { blendIf: this.blending.blendIf, knockout: this.blending.knockout }); this.onApplied?.(fx ? structuredClone(fx) : null); }
+    if (id) { this.engine.applyStyleAndLight(id, fx, light, { blendIf: this.blending.blendIf, knockout: this.blending.knockout, channels: this.blending.channels }); this.onApplied?.(fx ? structuredClone(fx) : null); }
   }
 }

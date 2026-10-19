@@ -4,6 +4,19 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.87.6 · 2026-10-19
+
+### Added
+
+- View > Proof Setup > Monitor RGB; View > 32-bit Preview Options (exposure and gamma for the view of a 32-bit document); Edit > Pick Colour from Screen (where the system offers it); a JPEG with no profile but marked sRGB in its camera data opens as sRGB without asking.
+- Filters: Pixelate > Dither (ordered patterns and ASCII, black and white or colour), Video > Scanlines, Other > Color to Alpha, Noise > Grain Plate, Render > Haze by Depth.
+- Export As writes BMP (with alpha, or 24-bit on white), FITS and WBMP; PNG has a compression level and JPEG a chroma subsampling choice; Save for Web has WBMP and an image size; File > Export > Selection as Mask PNG.
+- Layer Style: Make Default and Reset to Default, and Channels (R, G, B) to limit which channels a layer blends into.
+
+### Changed
+
+- Content-Aware Scale and its skin-tone protection stay removed for patent reasons: `./formvis counts --check` now fails if product code brings them back, and the project's agent rules decline any request for them.
+
 ## 1.87.5 · 2026-10-19
 
 ### Removed

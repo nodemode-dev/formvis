@@ -5,6 +5,7 @@ import { encodePng8 } from '../../io/png8';
 import { withXmp } from '../../io/xmp';
 import { SFW_METADATA, sfwMeta, type SfwMetadata } from '../../io/export-presets';
 import { metaWritable } from '../../engine';
+import { api } from '../../io/api';
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
 import { checkRow, selectRow, sliderRow } from './controls';
@@ -17,9 +18,21 @@ const SPEEDS: ReadonlyArray<readonly [string, string]> = [['28.8', '28.8 Kbps Mo
 /** The settings one optimized pane encodes with. */
 interface Cfg { fmt: Fmt; quality: number; colors: number; dither: 'none' | 'diffusion'; transparency: boolean }
 
-type Fmt = 'jpeg' | 'png24' | 'png8' | 'gif' | 'webp';
-const EXT: Record<Fmt, string> = { jpeg: 'jpg', png24: 'png', png8: 'png', gif: 'gif', webp: 'webp' };
-const LABEL: Record<Fmt, string> = { jpeg: 'JPEG', png24: 'PNG-24', png8: 'PNG-8', gif: 'GIF', webp: 'WebP' };
+type Fmt = 'jpeg' | 'png24' | 'png8' | 'gif' | 'webp' | 'wbmp';
+const EXT: Record<Fmt, string> = { jpeg: 'jpg', png24: 'png', png8: 'png', gif: 'gif', webp: 'webp', wbmp: 'wbmp' };
+const LABEL: Record<Fmt, string> = { jpeg: 'JPEG', png24: 'PNG-24', png8: 'PNG-8', gif: 'GIF', webp: 'WebP', wbmp: 'WBMP' };
+
+/** The 1-bit picture a WBMP file holds (flattened on white, half grey is the threshold), as black and white pixels. */
+function wbmpPreview(c: HTMLCanvasElement): HTMLCanvasElement {
+  const m = document.createElement('canvas'), mc = m.getContext('2d');
+  m.width = c.width; m.height = c.height;
+  if (!mc) return m;
+  mc.fillStyle = '#ffffff'; mc.fillRect(0, 0, m.width, m.height); mc.drawImage(c, 0, 0);
+  const d = mc.getImageData(0, 0, m.width, m.height).data;
+  for (let i = 0; i < d.length; i += 4) { const v = 0.299 * d[i]! + 0.587 * d[i + 1]! + 0.114 * d[i + 2]! >= 128 ? 255 : 0; d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255; }
+  mc.putImageData(new ImageData(d, m.width, m.height), 0, 0);
+  return m;
+}
 
 const size = (bytes: number): string => bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
@@ -59,7 +72,9 @@ export class SaveForWebDialog extends Dialog {
   private readonly panes = [0, 1, 2, 3].map((i) => el<HTMLElement>(`<div style="border: 2px solid transparent; border-radius: 4px; padding: 2px"><p class="cv-note">${i === 0 ? 'Original' : i === 1 ? 'Optimized' : `Variant ${i}`}</p></div>`));
   private readonly tabs = VIEWS.map(([v, t]) => { const b = el<HTMLButtonElement>('<button class="cv-prefs-tab" type="button" role="tab"></button>'); b.textContent = t; b.addEventListener('click', () => { this.view = v; this.layout(); this.schedule(); }); return b; });
   private readonly status = el<HTMLElement>('<p class="cv-note"></p>');
-  private readonly format = selectRow('Format', [['jpeg', 'JPEG'], ['png24', 'PNG-24'], ['png8', 'PNG-8'], ['gif', 'GIF'], ['webp', 'WebP']], (v) => { this.cfg = { ...this.cfg, fmt: v as Fmt }; this.sync(); this.schedule(); });
+  private pct = 100;
+  private readonly sizeRow = sliderRow('Image size (%)', 10, 400, 1, (v) => { this.pct = Math.round(v); this.schedule(); }, { min: 1, max: 1000 });
+  private readonly format = selectRow('Format', [['jpeg', 'JPEG'], ['png24', 'PNG-24'], ['png8', 'PNG-8'], ['gif', 'GIF'], ['webp', 'WebP'], ['wbmp', 'WBMP']], (v) => { this.cfg = { ...this.cfg, fmt: v as Fmt }; this.sync(); this.schedule(); });
   private readonly qRow = sliderRow('Quality', 0, 100, 1, (v) => { this.cfg = { ...this.cfg, quality: v }; this.schedule(); });
   private readonly colorsRow = sliderRow('Colors', 2, 256, 1, (v) => { this.cfg = { ...this.cfg, colors: Math.round(v) }; this.schedule(); });
   private readonly ditherRow = selectRow('Dither', [['none', 'No Dither'], ['diffusion', 'Diffusion']], (v) => { this.cfg = { ...this.cfg, dither: v as Cfg['dither'] }; this.schedule(); });
@@ -78,7 +93,7 @@ export class SaveForWebDialog extends Dialog {
       grid.append(pane);
       this.drag(i);
     });
-    this.body.append(strip, grid, this.format.el, this.qRow.el, this.colorsRow.el, this.ditherRow.el, this.transRow.el, this.metaRow.el, this.speedRow.el, this.scopeRow.el, this.status);
+    this.body.append(strip, grid, this.format.el, this.sizeRow.el, this.qRow.el, this.colorsRow.el, this.ditherRow.el, this.transRow.el, this.metaRow.el, this.speedRow.el, this.scopeRow.el, this.status);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('Save...', 'primary', () => { void this.save(); });
   }
@@ -163,6 +178,7 @@ export class SaveForWebDialog extends Dialog {
   /** Shows only the rows the format uses (and the metadata note); the rows themselves keep their place. */
   private sync(): void {
     this.format.set(this.cfg.fmt);
+    this.sizeRow.set(this.pct);
     this.qRow.set(this.cfg.quality);
     this.colorsRow.set(this.cfg.colors);
     this.ditherRow.set(this.cfg.dither);
@@ -193,11 +209,26 @@ export class SaveForWebDialog extends Dialog {
     this.timer = window.setTimeout(() => { void this.refresh(token); }, 150);
   }
 
+  /** The flattened picture at the chosen Image size (a percentage), or the picture itself at 100. */
+  private sized(flat: HTMLCanvasElement): HTMLCanvasElement {
+    if (this.pct === 100) return flat;
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round((flat.width * this.pct) / 100)); c.height = Math.max(1, Math.round((flat.height * this.pct) / 100));
+    const x = c.getContext('2d');
+    if (x) { x.imageSmoothingQuality = 'high'; x.drawImage(flat, 0, 0, c.width, c.height); }
+    return c;
+  }
+
   /** Encodes a canvas with the given settings. PNG-8 is a true indexed PNG (io/png8.ts); the File Info chosen under
    *  Metadata is written as XMP into PNG, JPEG and WebP (GIF and a palette-free path carry none). */
-  private async encode(c: HTMLCanvasElement, cfg: Cfg = this.cfg): Promise<Blob | null> {
+  private async encode(c: HTMLCanvasElement, cfg: Cfg = this.cfg, real = false): Promise<Blob | null> {
     let blob: Blob | null;
     switch (cfg.fmt) {
+      case 'wbmp': {
+        // The preview is the same 1-bit picture as a PNG (browsers cannot show WBMP); the saved file is the engine's.
+        const png = await toBlob(real ? c : wbmpPreview(c), 'image/png');
+        return real && png ? api.encode(png, 'wbmp') : png;
+      }
       case 'jpeg': blob = await toBlob(c, 'image/jpeg', cfg.quality / 100); break;
       case 'webp': blob = await toBlob(c, 'image/webp', cfg.quality / 100); break;
       case 'gif': {
@@ -229,14 +260,15 @@ export class SaveForWebDialog extends Dialog {
   private caption(i: number, cfg: Cfg, blob: Blob): void {
     const secs = (blob.size * 8) / (this.kbps * 1000), time = secs < 1 ? 'under 1 sec' : `${secs < 10 ? secs.toFixed(1) : Math.round(secs)} sec`;
     setText(this.caps[i]!, `${LABEL[cfg.fmt]} · ${size(blob.size)} · ${time} at ${this.kbps} Kbps`);
-    setText(this.details[i]!, cfg.fmt === 'jpeg' || cfg.fmt === 'webp' ? `Quality ${cfg.quality}` : cfg.fmt === 'png24' ? 'Lossless' : `${cfg.colors} colors, ${cfg.dither === 'none' ? 'no dither' : 'diffusion dither'}${cfg.transparency ? ', transparency' : ''}`);
+    setText(this.details[i]!, cfg.fmt === 'jpeg' || cfg.fmt === 'webp' ? `Quality ${cfg.quality}` : cfg.fmt === 'png24' ? 'Lossless' : cfg.fmt === 'wbmp' ? '1 bit, black and white' : `${cfg.colors} colors, ${cfg.dither === 'none' ? 'no dither' : 'diffusion dither'}${cfg.transparency ? ', transparency' : ''}`);
   }
 
   private async refresh(token: number): Promise<void> {
     const flat = flatCanvas(this.engine);
     if (!flat || flat.width < 1 || flat.height < 1) return;
     const vs = this.variants(), want = this.panes.map((p, i) => !p.hidden && (i > 0 || this.view !== 'optimized'));
-    const blobs = await Promise.all(vs.map((v, k) => (want[k + 1] ? this.encode(flat, v) : Promise.resolve(null))));
+    const sized = this.sized(flat);
+    const blobs = await Promise.all(vs.map((v, k) => (want[k + 1] ? this.encode(sized, v) : Promise.resolve(null))));
     if (token !== this.token) return;
     const bmps = await Promise.all(blobs.map((b) => (b ? createImageBitmap(b) : Promise.resolve(null))));
     if (token !== this.token) { bmps.forEach((b) => b?.close()); return; }
@@ -268,14 +300,16 @@ export class SaveForWebDialog extends Dialog {
         const files: { name: string; blob: Blob }[] = [];
         for (let i = 0; i < order.length; i++) {
           const s = order[i]!, c = document.createElement('canvas');
-          c.width = Math.max(1, Math.round(s.w)); c.height = Math.max(1, Math.round(s.h));
-          c.getContext('2d')?.drawImage(flat, s.x, s.y, s.w, s.h, 0, 0, c.width, c.height);
-          const b = await this.encode(c);
+          c.width = Math.max(1, Math.round((s.w * this.pct) / 100)); c.height = Math.max(1, Math.round((s.h * this.pct) / 100));
+          const cx = c.getContext('2d');
+          if (cx) cx.imageSmoothingQuality = 'high';
+          cx?.drawImage(flat, s.x, s.y, s.w, s.h, 0, 0, c.width, c.height);
+          const b = await this.encode(c, this.cfg, true);
           if (b) files.push({ name: `${base}_${String(i + 1).padStart(2, '0')}.${ext}`, blob: b });
         }
         await this.deliver(await zipFiles(files), `${base} slices.zip`);
       } else {
-        const b = await this.encode(flat);
+        const b = await this.encode(this.sized(flat), this.cfg, true);
         if (!b) { setText(this.status, 'The image could not be encoded.'); return; }
         await this.deliver(b, `${base}.${ext}`);
       }

@@ -10,6 +10,7 @@ import { RENDER_FILTERS } from './filters-lib/render';
 import { DRAWN_FILTERS } from './filters-lib/drawn';
 import { GALLERY_FILTERS } from './filters-lib/gallery';
 import { FILTER_GALLERY } from './filters-lib/filter-gallery';
+import { DITHER_FILTERS } from './filters-lib/dither';
 import type { Rect } from './types';
 
 export const LIB_IDS = [
@@ -17,7 +18,7 @@ export const LIB_IDS = [
   'sharpen', 'sharpenMore', 'sharpenEdges',
   'despeckle', 'dustAndScratches', 'median', 'reduceNoise',
   'custom', 'hsbHsl', 'highPass', 'maximum', 'minimum', 'offset',
-  'deInterlace', 'ntscColors',
+  'deInterlace', 'ntscColors', 'scanlines', 'colorToAlpha', 'dither', 'grainPlate', 'haze',
   'displace', 'pinch', 'polarCoordinates', 'ripple', 'shear', 'spherize', 'twirl', 'wave', 'zigZag',
   'colorHalftone', 'crystallize', 'facet', 'fragment', 'mezzotint', 'mosaic', 'pointillize',
   'diffuse', 'emboss', 'extrude', 'findEdges', 'oilPaint', 'solarize', 'tiles', 'traceContour', 'wind',
@@ -65,7 +66,7 @@ export interface LibFilter {
   readonly run: (src: ImageData, v: LibValues, ctx: LibContext) => ImageData;
 }
 
-export const LIBRARY: readonly LibFilter[] = [...BLUR_FILTERS, ...SHARPEN_FILTERS, ...NOISE_FILTERS, ...OTHER_FILTERS, ...VIDEO_FILTERS, ...DISTORT_FILTERS, ...PIXELATE_FILTERS, ...STYLIZE_FILTERS, ...RENDER_FILTERS, ...DRAWN_FILTERS, ...GALLERY_FILTERS, ...FILTER_GALLERY];
+export const LIBRARY: readonly LibFilter[] = [...BLUR_FILTERS, ...SHARPEN_FILTERS, ...NOISE_FILTERS, ...OTHER_FILTERS, ...VIDEO_FILTERS, ...DISTORT_FILTERS, ...PIXELATE_FILTERS, ...STYLIZE_FILTERS, ...RENDER_FILTERS, ...DRAWN_FILTERS, ...GALLERY_FILTERS, ...FILTER_GALLERY, ...DITHER_FILTERS];
 
 const BY_ID = new Map<string, LibFilter>(LIBRARY.map((f) => [f.id, f]));
 

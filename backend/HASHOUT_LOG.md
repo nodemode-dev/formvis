@@ -2,6 +2,21 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## BMP, FITS and WBMP written; PNG level and JPEG subsampling · _v1.87.6 (app/services/fits.py, app/services/imaging.py, app/routers/io.py)
+
+CLOSE_GAPS P16. Only additions.
+
+- `fits.py` `write`: a primary HDU, BITPIX 8, three planes or one grey plane, rows bottom-up, padded to 2,880 bytes. `imaging.py` `ENCODINGS`, `_flat_white`, `_wbmp`, and `encode` branches for bmp (32-bit with alpha or 24-bit on white), fits, wbmp, png (compress level, optimize) and jpeg (subsampling). `io.py` `EXPORT_TYPES` gains fits and wbmp.
+- `tests/test_api.py` `test_encode_refuses_unknown_formats_and_bad_images` used bmp as the unknown format; bmp is real now, so it sends xyz (was `data={"format": "bmp"}).status_code == 415`).
+- Measured with curl and Pillow on a scratch engine: FITS RGB plane [200,30,30] at (5,5) on a 37 x 21 picture; PNG level 0 3,218 bytes, level 9 225; JPEG 4:4:4 read back with sampling 0.
+
+## Patent guard: the declined feature cannot come back unnoticed · _v1.87.6 (setup/line_counts.py, CLAUDE.md, .claude/skills/formvis-harness/SKILL.md)
+
+The owner: Content-Aware Scale and its skin-tone protection must not come back and are declined for patents.
+
+- `line_counts.py` `DECLINED` (content-aware-scale, contentAwareScale, ContentAwareScale, Content-Aware Scale, /api/seam, /seam/, seam carving, carve_width, carveWidth, Protect skin tones) and `declined_problems()`: product code under frontend/src (not the translation tables, which keep their unused strings on purpose), backend/app, src-tauri/src and native that names it fails `./formvis counts --check`. `check()` returns it beside the scrollbar problems (was `return problems + scrollbar_problems(root)`). Checked on a scratch clone: adding `contentAwareScale` to a frontend file and "seam carving" to a backend file gave 2 problems and exit 1; the real tree passes.
+- `CLAUDE.md` and harness law 10 state the ban with the patent numbers and the two related warnings (no Poisson blending after the adaptive Content-Aware Fill; no live fill during the Content-Aware Move drag). The ledger marks PC-UI-0071, PC-UI-0937 and PC-EN-0216 declined.
+
 ## Gray files decoded with their profile · _v1.87.5 (app/routers/io.py)
 
 CLOSE_GAPS D37. Only additions.

@@ -1,7 +1,7 @@
 import { SPACES, type SpaceId } from '../engine/icc';
 import { cleanMeta, type DocMeta } from '../engine/doc-meta';
 
-export type ExportFormat = 'png' | 'jpg' | 'webp' | 'avif' | 'tiff' | 'pdf' | 'dpx' | 'qoi' | 'pnm' | 'tga' | 'ico';
+export type ExportFormat = 'png' | 'jpg' | 'webp' | 'avif' | 'tiff' | 'pdf' | 'dpx' | 'qoi' | 'pnm' | 'tga' | 'ico' | 'bmp' | 'fits' | 'wbmp';
 /** DEV_PLAN 34.1: the options the engine-written formats take, kept in `ExportSettings.option` (one choice a format) and
  *  `icoSizes`. QOI: the colourspace flag. PNM: which file of the family. TGA: 24 or 32 bits, run-length or not. ICO: PNG
  *  entries for 256 and BMP below, or PNG for every size. The first of each list is the default. */
@@ -10,11 +10,15 @@ export const FORMAT_OPTIONS: Readonly<Partial<Record<ExportFormat, ReadonlyArray
   pnm: [['ppm', 'PPM colour (P6)'], ['pgm', 'PGM grayscale (P5)'], ['pbm', 'PBM bitmap, thresholded (P4)'], ['pam', 'PAM with alpha (P7)']],
   tga: [['32', '32-bit with alpha'], ['32rle', '32-bit, run-length'], ['24', '24-bit, on white'], ['24rle', '24-bit, run-length, on white']],
   ico: [['mixed', 'PNG for 256, BMP for smaller'], ['png', 'PNG for every size']],
+  bmp: [['32', '32-bit with alpha'], ['24', '24-bit, on white']],
+  fits: [['rgb', 'Three planes (red, green, blue)'], ['gray', 'One grey plane']],
+  png: [['6', 'Compression level 6 (default)'], ['0', 'Level 0, none (fastest)'], ['3', 'Level 3, fast'], ['9', 'Level 9, smallest'], ['9o', 'Level 9 with the best filters']],
+  jpg: [['420', 'Chroma 4:2:0 (smallest)'], ['422', 'Chroma 4:2:2'], ['444', 'Chroma 4:4:4 (no subsampling)']],
 };
 export const ICO_SIZES: readonly number[] = [16, 24, 32, 48, 64, 128, 256];
 export const DEFAULT_ICO_SIZES: readonly number[] = [16, 32, 48, 256];
 /** Formats that carry no colour profile and no more than 8 bits a channel (PNM holds 16 from a 16-bit document). */
-export const PROFILELESS: ReadonlySet<ExportFormat> = new Set(['qoi', 'pnm', 'tga', 'ico']);
+export const PROFILELESS: ReadonlySet<ExportFormat> = new Set(['qoi', 'pnm', 'tga', 'ico', 'bmp', 'fits', 'wbmp']);
 export type DpxBits = 8 | 10 | 12 | 16;
 export type DpxTransfer = 'linear' | 'density' | 'log';
 export const DPX_BITS: ReadonlyArray<readonly [string, string]> = [['10', '10-bit'], ['8', '8-bit'], ['12', '12-bit'], ['16', '16-bit']];
@@ -34,11 +38,11 @@ export interface ExportSize { x: number; suffix: string }
 export const MAX_EXPORT_SIZES = 8;
 export interface ExportPreset extends ExportSettings { id: string; name: string; builtin: boolean }
 
-export const EXPORT_FORMATS: ReadonlyArray<readonly [ExportFormat, string]> = [['png', 'PNG'], ['jpg', 'JPEG'], ['webp', 'WebP'], ['avif', 'AVIF'], ['tiff', 'TIFF'], ['dpx', 'DPX'], ['qoi', 'QOI'], ['pnm', 'PNM (PBM, PGM, PPM, PAM)'], ['tga', 'TGA'], ['ico', 'ICO (Windows icon)'], ['pdf', 'PDF']];
+export const EXPORT_FORMATS: ReadonlyArray<readonly [ExportFormat, string]> = [['png', 'PNG'], ['jpg', 'JPEG'], ['webp', 'WebP'], ['avif', 'AVIF'], ['tiff', 'TIFF'], ['dpx', 'DPX'], ['qoi', 'QOI'], ['pnm', 'PNM (PBM, PGM, PPM, PAM)'], ['tga', 'TGA'], ['ico', 'ICO (Windows icon)'], ['bmp', 'BMP'], ['fits', 'FITS (astronomy)'], ['wbmp', 'WBMP (1-bit, WAP)'], ['pdf', 'PDF']];
 /** Formats whose encoder takes a quality; the others are lossless or, for PDF, carry the PNG as is. */
 export const LOSSY: ReadonlySet<ExportFormat> = new Set(['jpg', 'webp', 'avif']);
 /** Formats the engine encodes; the browser does the rest. */
-export const ENGINE_FORMATS: ReadonlySet<ExportFormat> = new Set(['avif', 'tiff', 'pdf', 'dpx', 'qoi', 'pnm', 'tga', 'ico']);
+export const ENGINE_FORMATS: ReadonlySet<ExportFormat> = new Set(['avif', 'tiff', 'pdf', 'dpx', 'qoi', 'pnm', 'tga', 'ico', 'bmp', 'fits', 'wbmp']);
 
 export const BUILTIN_EXPORT_PRESETS: ExportPreset[] = [
   { id: 'png-1x', name: 'PNG', format: 'png', quality: 100, scale: 100, builtin: true },
@@ -61,7 +65,7 @@ export const clampSettings = (s: ExportSettings): ExportSettings => ({
   ...(s.size === 'fit' || s.size === 'frame' ? { size: s.size, boxW: box(s.boxW), boxH: box(s.boxH) } : {}),
   ...(s.aiLabel === 'generated' || s.aiLabel === 'edited' ? { aiLabel: s.aiLabel } : {}),
   ...(s.format === 'dpx' ? { dpxBits: ([8, 10, 12, 16] as const).find((b) => b === Number(s.dpxBits)) ?? 10, dpxTransfer: DPX_TRANSFERS.find(([t]) => t === s.dpxTransfer)?.[0] ?? 'log' } : {}),
-  ...(FORMAT_OPTIONS[s.format] ? { option: FORMAT_OPTIONS[s.format]?.find(([v]) => v === s.option)?.[0] ?? FORMAT_OPTIONS[s.format]?.[0][0] } : {}),
+  ...(FORMAT_OPTIONS[s.format] && !((s.format === 'png' || s.format === 'jpg') && !FORMAT_OPTIONS[s.format]?.some(([v], i) => i > 0 && v === s.option)) ? { option: FORMAT_OPTIONS[s.format]?.find(([v]) => v === s.option)?.[0] ?? FORMAT_OPTIONS[s.format]?.[0][0] } : {}),
   ...(s.format === 'ico' ? { icoSizes: icoSizesOf(s.icoSizes) } : {}),
   ...(s.canvas ? { canvas: true, canvasW: box(s.canvasW), canvasH: box(s.canvasH) } : {}),
   ...(s.metadata === 'none' || s.metadata === 'copyright' ? { metadata: s.metadata } : {}),
@@ -117,8 +121,14 @@ export function formatOptions(s: ExportSettings): Record<string, unknown> {
   if (s.format === 'pnm') return { kind: o };
   if (s.format === 'tga') return { bits: o?.startsWith('24') ? 24 : 32, rle: o?.endsWith('rle') ?? false };
   if (s.format === 'ico') return { sizes: icoSizesOf(s.icoSizes), png: o === 'png' };
+  if (s.format === 'bmp') return { bits: o === '24' ? 24 : 32 };
+  if (s.format === 'fits') return { planes: o === 'gray' ? 'gray' : 'rgb' };
+  if (s.format === 'png') return { level: Number.parseInt(o ?? '6', 10), optimize: o === '9o' };
+  if (s.format === 'jpg') return { subsampling: o };
   return {};
 }
+/** PNG and JPEG are written by the browser unless a compression level or a chroma subsampling other than the default is chosen. */
+export const engineWrites = (s: ExportSettings): boolean => ENGINE_FORMATS.has(s.format) || (s.format === 'png' && !!s.option && s.option !== '6') || (s.format === 'jpg' && !!s.option && s.option !== '420');
 const box = (v: unknown): number => Math.round(Math.min(30000, Math.max(1, Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : 1080)));
 
 /** Where the picture goes in the exported image: the image's size, and the rectangle the picture is drawn into. */

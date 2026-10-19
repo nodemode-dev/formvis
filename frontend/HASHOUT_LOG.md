@@ -2,6 +2,48 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Export: BMP, FITS and WBMP, PNG compression, JPEG subsampling, Save for Web size, selection as mask · _v1.87.6 (io/export-presets.ts, io/api.ts, app.ts, ui/panels/save-for-web-dialog.ts, automation/command-meta.ts, tests/export-presets.test.ts)
+
+CLOSE_GAPS P16 (PC-IO-0079, PC-IO-0085, PC-IO-0134, PC-IO-0131, PC-IO-0076, SC-ED-0203 closed; PC-IO-0074 advanced, no interlaced PNG).
+
+- `export-presets.ts`: `ExportFormat` gains bmp, fits and wbmp; `FORMAT_OPTIONS` for bmp (32-bit with alpha or 24-bit on white), fits, png (level 0, 3, 6, 9, 9 with best filters) and jpg (4:2:0, 4:2:2, 4:4:4); `formatOptions`, `engineWrites`, `ENGINE_FORMATS`, `PROFILELESS`; `clampSettings` leaves out a PNG or JPEG option at its default (was `...(FORMAT_OPTIONS[s.format] ? { option: FORMAT_OPTIONS[s.format]?.find(([v]) => v === s.option)?.[0] ?? FORMAT_OPTIONS[s.format]?.[0][0] } : {}),`).
+- `app.ts`: `import { exportLayout, ENGINE_FORMATS, exportMeta,` became `import { exportLayout, engineWrites, exportMeta,`; `const viaEngine = ENGINE_FORMATS.has(s.format) || (s.format === 'webp' && tagged && !!keep);` uses `engineWrites(s)`; `s.format as 'avif' | 'tiff' | 'pdf' | 'webp', s.quality,` maps jpg to jpeg; `exportSelectionMask` and the `export-selection-mask` command (File > Export > Selection as Mask PNG). `api.ts` `encode` takes the new formats.
+- `save-for-web-dialog.ts`: WBMP (`wbmpPreview`, the same luminance threshold as the file) and Image size (10 to 400 percent) for the preview, whole saves and slices (`sized`, `this.pct`); `encode(c, cfg = this.cfg)` became `encode(c, cfg = this.cfg, real = false)` and the save and slice lines encode `this.sized(...)`.
+- `tests/export-presets.test.ts`: the unknown-format case used `format: 'bmp' as never`, now a real format, so it reads `format: 'xyz' as never`.
+- Measured (Export As routed to a scratch engine, files read with Pillow): 24-bit BMP 72,054 bytes with (200,30,30) at the red box; FITS grey 28,800 bytes, re-opened at 200 x 120; WBMP 3,005 bytes, 784 at 50 percent; Save for Web JPEG at 50 percent saved 100 x 60; JPEG 4:4:4 sampling 0 and 4:2:0 sampling 2; PNG level 0 3,218 bytes and level 9 225, both lossless; a feathered selection's mask reads 255 inside, 0 outside, 128 mid-feather.
+
+## Monitor RGB proof, 32-bit Preview Options, EXIF sRGB on open, pick a colour from the screen · _v1.87.6 (ui/colour.ts, ui/panels/preview32-dialog.ts, io/icc-read.ts, app.ts, automation/command-meta.ts)
+
+CLOSE_GAPS P11 (PC-UI-0506, PC-UI-0521, PC-IO-0179, PC-AU-0177 closed; PC-EN-0544, PC-IO-0170 advanced; PC-IO-0180 not done: no ACEScg profile to work from).
+
+- `colour.ts`: proof kind `'monitor'` first in `PROOF_KINDS` (was `export type ProofKind = 'cmyk' | 'cyan' | 'magenta' | 'yellow' | 'black' | 'cmy' | 'protanopia' | 'deuteranopia';` and `export const PROOF_KINDS: Array<[ProofKind, string]> = [['cmyk', 'Working CMYK'],`); `previewLut`, `ColourView.exposure`, `.gamma`, `.setPreview` fold exposure and gamma into the view table for 32-bit documents (the document is untouched). Replaced: `import type { ColourLut, Lut3x4 } from '../engine/colour-lut';` and
+
+```ts
+    if (key === this.key) return;
+    this.key = key;
+    if (!p || (!prof && !proofing && !monitor)) { this.engine.setViewTransform(null); return; }
+```
+
+- `preview32-dialog.ts` `Preview32Dialog` (Exposure, Gamma, live, Reset). `icc-read.ts` `exifColourSpace(file)`; `app.ts` opens a JPEG with no profile but EXIF ColorSpace 1 as sRGB without the missing-profile question (was `if (!icc && !engine.current && decoded.length === 0) {`, and the import `import { embeddedProfile, fromBase64,`). Commands `proof-preset-monitor`, `preview-32` (32-bit documents only), `pick-screen-colour` (the EyeDropper API, where it exists) in the View and Edit menus.
+- Measured: Monitor RGB on an sRGB document cleared the view transform; on 32-bit grey 128, exposure -1 shows 92, +1 175, gamma 2 180, defaults clear the table, and a screenshot had 162,906 pixels at 92; EXIF ColorSpace read 1, 65535 and null on three files; a stubbed EyeDropper returning #336699 set the foreground to 51,102,153. Limits: exposure acts on the 8-bit rendition, so it cannot reveal highlights above white; no Highlight Compression.
+
+## Dither, Scanlines, Color to Alpha, Grain Plate, Haze by Depth; default layer style; channel restrictions · _v1.87.6 (engine/filters-lib/dither.ts, engine/filter-library.ts, engine/types.ts, engine/renderer.ts, engine/index.ts, ui/panels/layer-style-dialog.ts)
+
+CLOSE_GAPS P12 (CO-0139, CO-0141, CO-0142, CO-0143, CO-0144, PC-UI-0690, PC-EN-0283, SC-ED-0154, SC-ED-0159, PC-EN-0469, PC-EN-0461 closed; the Grain Plate and Haze picture pickers not driven in the panel).
+
+- `dither.ts` (new), registered in `filter-library.ts` (`LIB_IDS`, `...DITHER_FILTERS`): Filter > Pixelate > Dither (Bayer 2, 4, 8, an 8 x 8 clustered pattern, ASCII; black and white or colour, 2 to 16 levels, pixel size, strength), Filter > Video > Scanlines, Filter > Other > Color to Alpha, Filter > Noise > Grain Plate, Filter > Render > Haze by Depth.
+- `types.ts` `Layer.blendChannels?` (R, G, B; `channels` was taken); `renderer.ts` restores the unticked channels from below after the layer composites (an extra `!chans` on the fast path); `index.ts` `applyStyleAndLight` takes `channels` (replaced `if (visible && (blendIfActive(l.blendIf) || (l.knockout && l.knockout !== 'none'))) return { reason: 'Blend If or Knockout' };` so channel restrictions also choose the CPU path).
+- `layer-style-dialog.ts`: Make Default and Reset to Default (`STYLE_DEFAULT_KEY` in browser storage), `adopt`, `baseline`, `saveDefault`, `resetToDefault`, and Channel R, G and B rows. Replaced: `private blending: { blendIf: BlendIf; knockout: 'none' | 'shallow' | 'deep' } = { blendIf: structuredClone(BLEND_IF_IDENTITY), knockout: 'none' };` (now with `channels`), and these lines moved from `show()` into `adopt()`:
+
+```ts
+this.fx = structuredClone(layer.effects ?? defaultEffects());
+delete this.fx.hidden;
+for (const k of MULTI_EFFECTS) { this.inst[k] = instances(this.fx, k); this.sel[k] = 0; (this.fx as unknown as Record<string, unknown>)[k] = this.inst[k][0]; }
+delete this.fx.extra;
+```
+
+- Measured: grey 128 dithers to half white in every pattern; a ramp under Bayer 8 is 0.125, 0.375, 0.625, 0.875 white by quarter; Scanlines rows 120, 120, 200, 200; Color to Alpha takes white to alpha 0 and (255,128,128) to (255,0,0,127); Haze by Depth reads 200, 100 and 2 down a black column; a layer (255,100,50) over white with Green off shows (255,255,50); a saved default Distance 40 returned after changing it to 90. Not done: channel restrictions in PSD files.
+
 ## Develop: Parametric Curve, Defringe, Point Color, folding sections; Layer > Frequency Separation · _v1.87.5 (engine/develop.ts, engine/retouch.ts, engine/index.ts, ui/panels/filter-panel.ts, app.ts, automation/command-meta.ts)
 
 CLOSE_GAPS P10 (CO-0160, CO-0170, CO-0153, SC-ED-0102 closed; CO-0164 advanced).

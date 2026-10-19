@@ -59,7 +59,7 @@ def test_encode_to_tiff_pdf_webp_and_avif(client):
 
 
 def test_encode_refuses_unknown_formats_and_bad_images(client):
-    assert client.post("/api/io/encode", files={"file": ("a.png", png_bytes(), "image/png")}, data={"format": "bmp"}).status_code == 415
+    assert client.post("/api/io/encode", files={"file": ("a.png", png_bytes(), "image/png")}, data={"format": "xyz"}).status_code == 415
     assert client.post("/api/io/encode", files={"file": ("a.png", b"junk", "image/png")}, data={"format": "tiff"}).status_code == 415
     ok = client.post("/api/io/export", files={"file": ("f", b"1", "image/tiff")}, data={"name": "out.tiff"})
     assert ok.status_code == 200

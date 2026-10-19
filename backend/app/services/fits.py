@@ -102,3 +102,25 @@ def read(data: bytes) -> tuple[np.ndarray, int]:
     if bitpix < 0:
         return np.ascontiguousarray(out), 32
     return np.rint(out * 65535.0).astype(np.uint16), 16
+
+
+def write(rgba: np.ndarray, gray: bool = False) -> bytes:
+    """A primary-HDU FITS file from 8-bit RGBA: BITPIX 8, three planes (NAXIS3 of 3) or one grey plane (Rec. 709 weights),
+    transparency flattened on white, rows bottom-up as the standard has them, the data padded to a whole block."""
+    height, width = rgba.shape[:2]
+    _check(width, height)
+    a = rgba[..., 3:4].astype(np.float32) / 255.0
+    rgb = rgba[..., :3].astype(np.float32) * a + 255.0 * (1.0 - a)
+    if gray:
+        planes = (rgb @ np.array([0.2126, 0.7152, 0.0722], np.float32))[None]
+    else:
+        planes = np.moveaxis(rgb, 2, 0)
+    data = np.ascontiguousarray(np.rint(planes[:, ::-1, :]).clip(0, 255).astype(np.uint8)).tobytes()
+    cards = ["SIMPLE  =                    T", "BITPIX  =                    8", f"NAXIS   = {2 if gray else 3:>20}",
+             f"NAXIS1  = {width:>20}", f"NAXIS2  = {height:>20}"]
+    if not gray:
+        cards.append(f"NAXIS3  = {3:>20}")
+    cards += ["COMMENT written by formvis", "END"]
+    head = "".join(c.ljust(80) for c in cards).encode("ascii")
+    head += b" " * (-len(head) % BLOCK)
+    return head + data + b"\0" * (-len(data) % BLOCK)

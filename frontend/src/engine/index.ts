@@ -1567,7 +1567,7 @@ export class Engine {
       // A layer's own vector mask (1.66.1) joins its folders' masks, one array of its own.
       const own = vecFor(l, o?.transform), folders = own.length ? [...(fchains.get(l.parentId ?? null) ?? []), ...own] : fchains.get(l.parentId ?? null);
       if (folders && l.clipId) return { reason: 'a clipped layer with a vector mask or inside a masked folder' };
-      if (visible && (blendIfActive(l.blendIf) || (l.knockout && l.knockout !== 'none'))) return { reason: 'Blend If or Knockout' };
+      if (visible && (blendIfActive(l.blendIf) || (l.knockout && l.knockout !== 'none') || l.blendChannels?.some((on) => !on))) return { reason: 'Blend If, Knockout or channel restrictions' };
       const mask = maskFor(l, o);
       let clip: GpuClipSpec | undefined;
       if (l.clipId) {
@@ -1646,11 +1646,11 @@ export class Engine {
   }
 
   /** The Layer Style dialog's OK: the layer's effects and, when it changed, the document's Global Light, one step. */
-  applyStyleAndLight(id: ID, effects: LayerEffects | null, light: GlobalLight | null, blending: { blendIf: BlendIf | null; knockout: 'none' | 'shallow' | 'deep' } | null = null): void {
+  applyStyleAndLight(id: ID, effects: LayerEffects | null, light: GlobalLight | null, blending: { blendIf: BlendIf | null; knockout: 'none' | 'shallow' | 'deep'; channels?: [boolean, boolean, boolean] } | null = null): void {
     this.edit('Layer Style', (p) => {
       if (light) this.setGlobalLight(light);
       this.setLayerEffects(id, effects);
-      if (blending) p.updateLayer(id, { blendIf: blendIfActive(blending.blendIf) ? blending.blendIf : null, knockout: blending.knockout });
+      if (blending) p.updateLayer(id, { blendIf: blendIfActive(blending.blendIf) ? blending.blendIf : null, knockout: blending.knockout, blendChannels: blending.channels?.some((on) => !on) ? [...blending.channels] : null });
       return true;
     });
   }
