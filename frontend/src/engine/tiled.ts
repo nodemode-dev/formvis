@@ -255,6 +255,50 @@ export class TiledRaster {
     await Promise.all(tilesIn(x, y, w, h, this.tile, this.cols, this.rows).map(([tx, ty]) => this.pageIn(ty * this.cols + tx, store)));
   }
 
+  /** A copy of this layer's tiles, made one tile at a time: a tile in memory is copied, a tile on disk is fetched and stored again under
+   *  a key of its own, and the copy's tiles go to disk as it fills so its share of memory stays within `share`. Edits must be held while
+   *  it runs; once it returns, the copy no longer changes whatever happens to this layer. Free it with `release`. */
+  async snapshot(store: TileStore, share: () => number): Promise<TiledRaster> {
+    const out = new TiledRaster(this.width, this.height, this.tile);
+    out.base = this.base ? [...this.base] : null;
+    const keys = [...new Set([...this.tiles.keys(), ...this.paged.keys()])].sort((a, b) => a - b);
+    try {
+      for (const key of keys) {
+        let t = this.tiles.get(key);
+        if (!t) {
+          const p = this.paged.get(key);
+          if (p) {
+            let buf: ArrayBuffer | null = null;
+            try { buf = await store.get(p.key); } catch { buf = null; }
+            if (buf) {
+              const stored = await store.put(new Uint8Array(buf.slice(0)) as Uint8Array<ArrayBuffer>), preview = createSurface(p.preview.width, p.preview.height);
+              ctxOf(preview).drawImage(p.preview as CanvasImageSource, 0, 0);
+              out.paged.set(key, { key: stored, preview, w: p.w, h: p.h });
+              continue;
+            }
+            t = this.tiles.get(key);
+          }
+        }
+        if (!t) continue;
+        const canvas = createSurface(t.canvas.width, t.canvas.height), ctx = ctxOf(canvas);
+        ctx.drawImage(t.canvas as CanvasImageSource, 0, 0);
+        out.tiles.set(key, { canvas, ctx });
+        out.used.set(key, ++out.clock);
+        while (out.residentBytes > share()) { const k = out.leastUsed(); if (k === null || !(await out.pageOut(k, store))) break; }
+      }
+    } catch (err) { out.release(store); throw err; }
+    return out;
+  }
+
+  /** A snapshot's tiles freed: the canvases emptied and the stored copies dropped. */
+  release(store: TileStore): void {
+    for (const t of this.tiles.values()) { t.canvas.width = 0; t.canvas.height = 0; }
+    this.tiles.clear();
+    for (const p of this.paged.values()) { p.preview.width = 0; p.preview.height = 0; }
+    this.dropAll(store);
+    this.paged.clear();
+  }
+
   /** Every stored tile dropped from the store (its document closing). */
   dropAll(store: TileStore): void {
     const keys = [...this.paged.values()].map((p) => p.key);   // in one request where the store can (1.63.0)

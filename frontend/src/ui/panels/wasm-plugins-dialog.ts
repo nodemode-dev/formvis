@@ -145,7 +145,7 @@ export async function applyWasm(engine: Engine, entry: WasmEntry, values: WasmVa
   if (l?.smart && !(p?.maskTarget && l.mask)) { engine.addSmartFilter(wasmKind(entry.manifest.id), { values: clean }); return true; }
   try {
     const ch = l?.channels;
-    if (ch && entry.manifest.abi === 2 && p) {
+    if (ch && entry.manifest.abi === 2 && p && !engine.alphaTargeted()) {
       const out = await runWasmPlane(entry, clean, { n: ch.n, alpha: true, width: ch.width, height: ch.height, data: ch.data }, ch.mode, p.doc.depth ?? 8, opts);
       return engine.applyDeepFilter(entry.manifest.name, (d) => ({ ...d, data: out.data }));
     }

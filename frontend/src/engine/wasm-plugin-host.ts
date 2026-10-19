@@ -1,5 +1,6 @@
 import { parseManifest, wasmCheckBytes, wasmParamArray, wasmValues, WASM_ABI_V2, WASM_DEFAULT_LIMITS, WASM_LIMIT_RANGE, type WasmJob, type WasmLimits, type WasmManifest, type WasmReply, type WasmValues } from './wasm-plugin';
-import { imageFromPlane, planeFromImage, wasmDescriptor, wasmLayout, wasmPack, wasmPick, wasmSampleBytes, wasmUnpack, type WasmModel, type WasmPlane } from './wasm-abi2';
+import { imageFromPlane, planeFromImage, wasmDescriptor, wasmLayout, wasmPack, wasmPick, wasmSampleBytes, wasmUnpack, type WasmFormat, type WasmModel, type WasmPlane } from './wasm-abi2';
+import { bandPlan } from './band-pool';
 
 /** The page side of the WebAssembly plug-in system: runs a module in a fresh Worker under a time limit, keeps the
  *  installed plug-ins in the browser's storage and loads them at startup. */
@@ -60,9 +61,63 @@ export async function inspectWasm(bytes: ArrayBuffer, sidecar?: string | null, l
   return parseManifest(json);
 }
 
+/** Pictures under this many pixels run in one piece even for a plug-in that takes bands. */
+export const WASM_BAND_FROM = 1_000_000;
+
+/** Rows per band for a plug-in that declares `bands`, or 0 when the picture runs whole: at least 64 rows and four times
+ *  the reach, and small enough that every worker gets about three bands. */
+export function wasmBandRows(m: Pick<WasmManifest, 'bands' | 'reach'>, width: number, height: number, workers = wasmWorkers()): number {
+  if (!m.bands || width * height < WASM_BAND_FROM) return 0;
+  const rows = Math.max(64, 4 * m.reach, Math.ceil(height / (workers * 3)));
+  return rows >= height ? 0 : rows;
+}
+
+export function wasmWorkers(): number {
+  const cores = typeof navigator !== 'undefined' && navigator.hardwareConcurrency ? navigator.hardwareConcurrency : 2;
+  return Math.max(1, Math.min(cores - 1, 4));
+}
+
+/** `plane` cut into bands of `rows` (each read `reach` rows past its ends), run by `one` on up to `workers` Workers at a time, and
+ *  joined: only each band's own rows are kept, so a plug-in that reads at most `reach` pixels away gives the whole-picture result. */
+export async function runWasmBands(plane: WasmPlane, reach: number, rows: number, one: (band: WasmPlane, signal: AbortSignal) => Promise<WasmPlane>, opts: WasmRunOptions = {}, workers = wasmWorkers()): Promise<WasmPlane> {
+  const S = plane.n + (plane.alpha ? 1 : 0), stride = plane.width * S, plan = bandPlan(plane.height, reach, rows), out = new Float32Array(plane.data.length);
+  const ctl = new AbortController(), pct = plan.map(() => 0);
+  const onAbort = (): void => ctl.abort();
+  if (opts.signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
+  opts.signal?.addEventListener('abort', onAbort);
+  let next = 0, failure: unknown = null;
+  const lane = async (): Promise<void> => {
+    while (!failure) {
+      const i = next++;
+      if (i >= plan.length) return;
+      const b = plan[i];
+      try {
+        const got = await one({ n: plane.n, alpha: plane.alpha, width: plane.width, height: b.a1 - b.a0, data: plane.data.subarray(b.a0 * stride, b.a1 * stride) }, ctl.signal);
+        if (got.data.length !== (b.a1 - b.a0) * stride) throw new Error('The plug-in returned a different amount of data.');
+        out.set(got.data.subarray((b.y0 - b.a0) * stride, (b.y1 - b.a0) * stride), b.y0 * stride);
+        pct[i] = 100;
+        opts.onProgress?.(Math.round(pct.reduce((a, v) => a + v, 0) / plan.length));
+      } catch (err) { failure ??= err; ctl.abort(); }
+    }
+  };
+  try { await Promise.all(Array.from({ length: Math.max(1, Math.min(workers, plan.length)) }, lane)); }
+  finally { opts.signal?.removeEventListener('abort', onAbort); }
+  if (failure) throw failure;
+  return { n: plane.n, alpha: plane.alpha, width: plane.width, height: plane.height, data: out };
+}
+
 /** The plug-in's filter run on `src` (8 bit RGBA, straight alpha). Rejects on a time-out, a cancel or a plug-in error. */
 export async function runWasmFilter(entry: WasmEntry, values: WasmValues, src: ImageData, opts: WasmRunOptions = {}): Promise<ImageData> {
   if (entry.manifest.abi === WASM_ABI_V2) return imageFromPlane(await runWasmPlane(entry, values, planeFromImage(src), 'rgb', 8, opts));
+  const rows = wasmBandRows(entry.manifest, src.width, src.height);
+  if (rows) {
+    const whole = await runWasmBands(planeFromImage(src), entry.manifest.reach, rows, async (band, signal) => planeFromImage(await runWasmFilterOnce(entry, values, imageFromPlane(band), { limits: opts.limits, signal })), opts);
+    return imageFromPlane(whole);
+  }
+  return runWasmFilterOnce(entry, values, src, opts);
+}
+
+async function runWasmFilterOnce(entry: WasmEntry, values: WasmValues, src: ImageData, opts: WasmRunOptions): Promise<ImageData> {
   const limits = opts.limits ?? wasmLimits(), bytes = entry.bytes.slice(0), pixels = new Uint8ClampedArray(src.data).buffer as ArrayBuffer;
   const job: WasmJob = { kind: 'run', bytes, memoryMb: limits.memoryMb, width: src.width, height: src.height, pixels, params: wasmParamArray(entry.manifest, wasmValues(entry.manifest, values)) };
   const r = await work(job, [bytes, pixels], opts, limits);
@@ -76,7 +131,14 @@ export async function runWasmPlane(entry: WasmEntry, values: WasmValues, plane: 
   if (m.abi !== WASM_ABI_V2) throw new Error(`${m.name} speaks ABI 1 and takes only 8 bit RGBA pictures.`);
   const pick = wasmPick(m, model, depth);
   if ('error' in pick) throw new Error(pick.error);
-  const limits = opts.limits ?? wasmLimits(), lay = wasmLayout(m, plane, model, pick.format, depth), bytes = entry.bytes.slice(0), samples = wasmPack(plane, lay);
+  const rows = wasmBandRows(m, plane.width, plane.height);
+  if (rows) return runWasmBands(plane, m.reach, rows, (band, signal) => runWasmPlaneOnce(entry, values, band, model, depth, pick.format, { limits: opts.limits, signal }), opts);
+  return runWasmPlaneOnce(entry, values, plane, model, depth, pick.format, opts);
+}
+
+async function runWasmPlaneOnce(entry: WasmEntry, values: WasmValues, plane: WasmPlane, model: WasmModel, depth: 8 | 16 | 32, format: WasmFormat, opts: WasmRunOptions): Promise<WasmPlane> {
+  const m = entry.manifest;
+  const limits = opts.limits ?? wasmLimits(), lay = wasmLayout(m, plane, model, format, depth), bytes = entry.bytes.slice(0), samples = wasmPack(plane, lay);
   const job: WasmJob = { kind: 'run2', bytes, memoryMb: limits.memoryMb, width: plane.width, height: plane.height, samples, params: wasmParamArray(m, wasmValues(m, values)), desc: [...wasmDescriptor(lay, plane.width)] };
   const r = await work(job, [bytes, samples], opts, limits);
   if (r.kind !== 'done') throw new Error('The plug-in gave no picture.');

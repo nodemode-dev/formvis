@@ -4,7 +4,7 @@ import { Reader, readDescriptor } from './atn';
 import type { Desc, Val } from './atn';
 
 /** Gradient files: .grd (version 5, an ActionDescriptor holding a list of gradients) and .ggr (text).
- *  Noise gradients have no stop form, so they are counted and skipped. Midpoints of colour and opacity stops are kept. */
+ *  Noise gradients become approximated stop gradients. Midpoints of colour and opacity stops are kept. */
 
 const newId = (): string => `grd-${Math.random().toString(36).slice(2, 10)}`;
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
@@ -86,8 +86,36 @@ function gradientFrom(g: Desc): GradientPreset | null {
   return { id: newId(), label: typeof name === 'string' && name ? name : 'Gradient', stops };
 }
 
-/** Reads a .grd (version 5). `skipped` counts the noise gradients, which have no stop form. */
-export function readGrd(buf: ArrayBuffer): { gradients: GradientPreset[]; skipped: number } {
+function labToRgb(l: number, a: number, b: number): RGB {
+  const fy = (l + 16) / 116, fx = fy + a / 500, fz = fy - b / 200, f = (t: number): number => (t * t * t > 0.008856 ? t * t * t : (t - 16 / 116) / 7.787);
+  const X = 0.95047 * f(fx), Y = f(fy), Z = 1.08883 * f(fz);
+  const lin = [3.2406 * X - 1.5372 * Y - 0.4986 * Z, -0.9689 * X + 1.8758 * Y + 0.0415 * Z, 0.0557 * X - 0.204 * Y + 1.057 * Z];
+  const [r, g, bl] = lin.map((c) => byte(255 * (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(Math.max(0, c), 1 / 2.4) - 0.055)));
+  return { r, g, b: bl };
+}
+
+/** A noise gradient as a stop gradient: the seed draws one random colour (and opacity, with Add Transparency) per
+ *  stop inside the file's per-channel minimum and maximum, in its colour model, and roughness sets how many stops. The
+ *  file's own noise function is not reproduced, so the look is approximate. */
+function noiseGradient(g: Desc): GradientPreset {
+  const name = g.items.get('Nm  '), model = enumValue(g.items.get('ClrS')), seed = num(g.items.get('RndS'), 1), rough = clamp(num(g.items.get('Smth'), 2048) / 4096, 0, 1);
+  const list = (k: string): number[] => { const v = g.items.get(k); return Array.isArray(v) ? v.map((x) => num(x as Val)) : []; };
+  const lo = list('Mnm '), hi = list('Mxm '), trans = g.items.get('ShTr') === true;
+  let s = (seed >>> 0) || 1;
+  const rnd = (): number => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const pick = (i: number, d0: number, d1: number): number => { const a = lo[i] ?? d0, b = hi[i] ?? d1; return a + (b - a) * rnd(); };
+  const count = 3 + Math.round(rough * 29), stops: GradientStop[] = [];
+  for (let i = 0; i < count; i++) {
+    const c = model === 'HSBl' ? hsbToRgb(pick(0, 0, 360), clamp(pick(1, 0, 100) / 100, 0, 1), clamp(pick(2, 0, 100) / 100, 0, 1))
+      : model === 'LbCl' ? labToRgb(pick(0, 0, 100), pick(1, -128, 127), pick(2, -128, 127))
+      : { r: byte(pick(0, 0, 100) * 2.55), g: byte(pick(1, 0, 100) * 2.55), b: byte(pick(2, 0, 100) * 2.55) };
+    stops.push({ at: i / (count - 1), color: c, alpha: trans ? clamp(pick(3, 0, 100) / 100, 0, 1) : 1 });
+  }
+  return { id: newId(), label: typeof name === 'string' && name ? name : 'Noise gradient', stops };
+}
+
+/** Reads a .grd (version 5). Noise gradients come in as approximated stop gradients and are counted in `approximated`. */
+export function readGrd(buf: ArrayBuffer): { gradients: GradientPreset[]; skipped: number; approximated: number } {
   const r = new Reader(buf);
   if (buf.byteLength < 12 || r.ascii(4) !== '8BGR') throw new Error('Not a .grd gradient file.');
   const version = r.u16();
@@ -95,15 +123,15 @@ export function readGrd(buf: ArrayBuffer): { gradients: GradientPreset[]; skippe
   r.u32();
   const root = readDescriptor(r);
   const gradients: GradientPreset[] = [];
-  let skipped = 0;
+  let approximated = 0;
   for (const item of listOf(root.items.get('GrdL'))) {
     const g = item.items.get('Grad');
     if (!isDesc(g)) continue;
-    if (enumValue(g.items.get('GrdF')) === 'ClNs') { skipped += 1; continue; }
+    if (enumValue(g.items.get('GrdF')) === 'ClNs') { gradients.push(noiseGradient(g)); approximated += 1; continue; }
     const p = gradientFrom(g);
     if (p) gradients.push(p);
   }
-  return { gradients, skipped };
+  return { gradients, skipped: 0, approximated };
 }
 
 /** Big-endian byte sink for writeGrd; descriptor keys and IDs use the 4-character form (length 0, then the code). */

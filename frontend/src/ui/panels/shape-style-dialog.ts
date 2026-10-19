@@ -83,7 +83,7 @@ export class ShapeStyleDialog extends Dialog {
     const v = this.engine.current?.activeLayer?.vector;
     if (!v) { this.engine.notice('Select a shape layer first.'); return; }
     const lv = v.live;
-    this.liveRows.forEach((r, i) => setHidden(r, !lv || (i === 1 && lv.kind !== 'star')));
+    this.liveRows.forEach((r, i) => setHidden(r, !lv || lv.kind === 'heart' || !!lv.line || (i === 1 && lv.kind !== 'star')));
     if (lv) { this.sides.value = String(lv.sides); this.inset.value = String(lv.inset); this.radius.value = String(lv.radius); }
     this.sides.disabled = lv?.kind === 'triangle';
     this.fill = v.fill ?? { ...this.engine.fg };

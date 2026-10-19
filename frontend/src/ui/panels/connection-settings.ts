@@ -3,7 +3,7 @@ import { addRecipe, apiWorkflow, RECIPE_FAMILIES, recipeFamily, recipes, removeR
 import { folderTemplateCount, saveTemplates, syncTemplates, templateFromMarkdown, templateToMarkdown, templates } from '../../io/prompt-templates';
 import { el, patchList, setHidden, setText, setValue } from '../dom';
 import { loadPrefs, setUpdateAtStart, updateAtStart } from '../prefs';
-import { THEMES, applyTheme, readChoice, registerSkins } from '../themes';
+import { DEFAULT_THEME, THEMES, applyTheme, readChoice, registerSkins, setTheme } from '../themes';
 
 const row = (label: string, ...c: HTMLElement[]): HTMLElement => { const r = el('<label class="cv-dialog-row"><span></span></label>'); setText(r.querySelector('span'), label); r.append(...c); return r; };
 /** patchList that also fills a row when it is made, so a first showing is not empty. */
@@ -301,14 +301,15 @@ export class TemplateFiles {
 export class SkinsSection {
   readonly el = el('<div class="cv-panel-section cv-skins"><span class="cv-refs-title">Skins</span></div>');
   private readonly list = el('<div class="cv-skins-list"></div>');
-  private readonly note = el('<p class="cv-note" role="status">A skin is a JSON file in the skins folder: a name, light or dark, and colours for the window\'s tokens.</p>');
+  private readonly note = el('<p class="cv-note" role="status">A skin is a JSON file in the skins folder: a name, light or dark, colours for the window\'s tokens and optional css (or a .css file of the same name). Css may not load anything (no url, @import or @font-face) or hold script; a file that does is refused with the reason, and Reset skin brings the default look back.</p>');
   private folder = '';
 
   constructor(private readonly grid: HTMLElement) {
-    const reload = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Reload skins</button>'), open = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Open folder</button>'), bar = el('<div class="cv-improve"></div>');
-    bar.append(reload, open);
+    const reload = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Reload skins</button>'), open = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Open folder</button>'), reset = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Reset skin</button>'), bar = el('<div class="cv-improve"></div>');
+    bar.append(reload, open, reset);
     this.el.append(this.list, bar, this.note);
     reload.addEventListener('click', () => void this.reload(true));
+    reset.addEventListener('click', () => { setTheme(DEFAULT_THEME); setText(this.note, 'The default look is back.'); });
     open.addEventListener('click', () => { if (this.folder) void api.revealPath(this.folder).catch((err) => setText(this.note, failure(err, 'Could not open the folder.'))); });
   }
 
@@ -326,7 +327,8 @@ export class SkinsSection {
       b.style.background = t.vars['--bg-secondary'];
       b.style.borderColor = t.vars['--border-color'];
     }
-    if (readChoice().theme.startsWith('skin-')) applyTheme();
+    const chosen = readChoice().theme;
+    if (chosen.startsWith('skin-')) { if (THEMES[chosen]) applyTheme(); else setTheme(DEFAULT_THEME); }
     patch(this.list, r.skins, {
       key: (s) => s.id,
       create: () => el('<div class="cv-plugins-row"><span></span></div>'),

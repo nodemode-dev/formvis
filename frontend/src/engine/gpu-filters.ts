@@ -1,6 +1,7 @@
 import type { DevelopState } from './develop';
 import { developPerPixelOnly } from './develop';
 import type { FilterKind, FilterSettings } from './filter-jobs';
+import { lensBlurSettings } from './filters-more';
 
 /** The seam between the engine and a GPU filter runner (DEV_PLAN 36.10). The engine never touches the DOM, so the
  *  runner, which owns a WebGL2 context, is built in gpu/filters.ts and registered here by app.ts; with none registered,
@@ -21,6 +22,15 @@ export interface GpuFilterRunner {
   liquify(src: ImageData, field: { gw: number; gh: number; cell: number; d: Float32Array }, scale: number, outW: number, outH: number): ImageData | null;
   /** A Smudge stroke over premultiplied bytes held on the GPU (the dabs run there, the changed rectangle is read back); null when the GPU cannot. */
   smudge?(pixels: Uint8ClampedArray, w: number, h: number): GpuSmudge | null;
+  /** The gather pass of Lens Blur with an iris or a depth plane, from the planes the CPU prepared; null when the GPU cannot. */
+  lensGather?(p: LensGatherInput): ImageData | null;
+}
+
+/** What lensBlur hands the GPU: the source bytes, its premultiplied linear float levels (index 0 is the picture, a level
+ *  that is the same array as index 0 was not built), the per-pixel radius, and the iris taps per tier. */
+export interface LensGatherInput {
+  w: number; h: number; src: Uint8ClampedArray; levels: Float32Array[]; rad: Float32Array; depth: boolean;
+  tiers: readonly number[]; sizes: readonly number[]; tapsFor: (count: number) => Float32Array;
 }
 
 export interface GpuSmudge {
@@ -38,10 +48,17 @@ export const setGpuFilters = (r: GpuFilterRunner | null): void => { runner = r; 
 export const gpuFilters = (): GpuFilterRunner | null => (runner && runner.ok ? runner : null);
 
 /** `kind` run on the GPU, or null where the GPU does not do it (the caller filters on the CPU). */
-export function runFilterOnGpu(kind: FilterKind, s: FilterSettings, scale: number, seed: number, src: ImageData): ImageData | null {
+export function runFilterOnGpu(kind: FilterKind, s: FilterSettings, scale: number, seed: number, src: ImageData, canvas: { x: number; y: number; w: number; h: number } | null = null): ImageData | null {
   const g = gpuFilters();
   if (!g) return null;
   try {
+    if (kind === 'lensBlur') {
+      const gl = g.lensGather, i = s.lensIris;
+      if (!gl || !i || i.noise > 0 || !(i.blades >= 3 || i.source === 'transparency' || i.depth)) return null;
+      const declined = new Error('lens gather declined');
+      try { return lensBlurSettings(src, s, scale, seed, canvas, (p) => { const r = gl.call(g, p); if (!r) throw declined; return r; }); }
+      catch (e) { if (e === declined) return null; throw e; }
+    }
     if (kind === 'gaussianBlur') return g.gaussianBlur(src, s.radius * scale);
     if (kind === 'addNoise') return g.addNoise(src, s.amount, s.gaussian, s.monochromatic, seed);
     if (kind === 'unsharpMask') return g.unsharpMask(src, s.usmAmount, s.usmRadius * scale, s.threshold);

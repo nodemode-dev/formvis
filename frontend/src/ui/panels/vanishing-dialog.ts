@@ -3,7 +3,7 @@ import type { P2, Quad } from '../../engine/perspective';
 import { connectedQuad, estimateFocal, makePlane, pasteInPerspective, rectFor, stampInPerspective, toImage, toPlane, type PlaneMap, type PlaneRect } from '../../engine/vanishing';
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
-import { selectRow, sliderRow } from './controls';
+import { checkRow, selectRow, sliderRow } from './controls';
 
 const PW = 720, PH = 480;
 type Tool = 'create' | 'edit' | 'paste' | 'stamp';
@@ -44,6 +44,7 @@ export class VanishingPointDialog extends Dialog {
   private brush = 40;
   private hardness = 0.5;
   private stampOpacity = 1;
+  private toNewLayer = false;
   private drag: { corner: number } | { grab: P2; at: P2 } | null = null;
 
   constructor(private readonly engine: Engine) {
@@ -58,6 +59,7 @@ export class VanishingPointDialog extends Dialog {
     const brush = sliderRow('Stamp brush (px)', 2, 300, 1, (v) => { this.brush = v; });
     const hard = sliderRow('Stamp hardness (%)', 0, 100, 1, (v) => { this.hardness = v / 100; });
     const flow = sliderRow('Stamp opacity (%)', 1, 100, 1, (v) => { this.stampOpacity = v / 100; });
+    const newLayer = checkRow('Render to a new layer', (v) => { this.toNewLayer = v; });
     const add = el('<button class="cv-btn cv-btn-ghost" type="button">New plane</button>') as HTMLButtonElement;
     add.addEventListener('click', () => { this.commitPaste(); this.addPlane({ corners: [], plane: null }); this.setTool('create'); });
     const child = el('<button class="cv-btn cv-btn-ghost" type="button">Connected plane</button>') as HTMLButtonElement;
@@ -69,8 +71,8 @@ export class VanishingPointDialog extends Dialog {
     const estimate = el('<button class="cv-btn cv-btn-ghost" type="button">Estimate focal length</button>') as HTMLButtonElement;
     estimate.addEventListener('click', () => { this.focalPx = null; this.rebuildChildren(); this.syncPlanes(); this.render(); });
     planeBar.append(estimate);
-    this.body.append(bar, this.view, this.planeRow.el, planeBar, this.angleRow.el, this.depthRow.el, this.focalRow.el, this.source.el, size.el, brush.el, hard.el, flow.el, this.note);
-    size.set(40); brush.set(40); hard.set(50); flow.set(100); this.angleRow.set(0); this.depthRow.set(0); this.focalRow.set(50);
+    this.body.append(bar, this.view, this.planeRow.el, planeBar, this.angleRow.el, this.depthRow.el, this.focalRow.el, this.source.el, size.el, brush.el, hard.el, flow.el, newLayer.el, this.note);
+    newLayer.set(false); size.set(40); brush.set(40); hard.set(50); flow.set(100); this.angleRow.set(0); this.depthRow.set(0); this.focalRow.set(50);
     this.view.addEventListener('pointerdown', (e) => this.down(e));
     this.view.addEventListener('pointermove', (e) => this.move(e));
     this.view.addEventListener('pointerup', () => { this.drag = null; this.stroke = null; this.render(); });
@@ -320,7 +322,11 @@ export class VanishingPointDialog extends Dialog {
     this.commitPaste();
     const work = this.work, id = this.layerId;
     this.close();
-    if (work && id) { this.engine.selectLayer(id); this.engine.applyImageEdit('Vanishing Point', () => work); }
+    if (work && id) {
+      this.engine.selectLayer(id);
+      if (this.toNewLayer) this.engine.duplicateLayers('Vanishing Point');
+      this.engine.applyImageEdit('Vanishing Point', () => work);
+    }
     this.release();
   }
 

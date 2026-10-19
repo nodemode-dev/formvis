@@ -34,16 +34,29 @@ function acoColour(space: number, w: number, x: number, y: number, z: number): s
       return labToRgb(w / 100, sg(x) / 100, sg(y) / 100);
     }
     case 8: { const g = (clamp(w, 0, 10000) / 10000) * 255; return toHex(g, g, g); }
-    default: return null;
+    case 9: return cmykToRgb(clamp(w, 0, 10000) / 10000, clamp(x, 0, 10000) / 10000, clamp(y, 0, 10000) / 10000, clamp(z, 0, 10000) / 10000);
+    default: return COLOUR_BOOKS[space] ? acoColour(2, w, x, y, z) : null;
   }
 }
 
+/** Colour book spaces (Pantone and the like): the file holds the book's own entry, which formvis does not carry, so the
+ *  four values are read as inks and the swatch is kept by its name as an approximation. */
+const COLOUR_BOOKS: Record<number, string> = { 3: 'Pantone', 4: 'Focoltone', 5: 'Trumatch', 6: 'Toyo', 10: 'HKS', 11: 'DIC' };
+
+/** A sentence for each kind of approximation among swatches just read, empty when all of them came in as they were. */
+export function swatchNotes(list: readonly SwatchItem[]): string[] {
+  const books = new Map<string, number>();
+  for (const s of list) if (s.book) books.set(s.book, (books.get(s.book) ?? 0) + 1);
+  return [...books].map(([book, n]) => `${n} ${book} colour book swatch${n === 1 ? '' : 'es'} kept by name with an approximate colour; the book's own entry is not carried.`);
+}
+
 /** One swatch as the files hold it: '#rrggbb', an optional name, and (.ase only) an optional group. */
-export interface SwatchItem { c: string; name?: string; group?: string; /** The colour as the file held it when it was not RGB, at full precision: CMYK as 0 to 1 each, Lab as L 0 to 100 then a and b, Gray as 0 to 1. */ src?: SwatchSource; /** Global, spot or process (.ase colour types); absent means process. */ kind?: 'global' | 'spot' }
+export interface SwatchItem { c: string; name?: string; group?: string; /** The colour as the file held it when it was not RGB, at full precision: CMYK as 0 to 1 each, Lab as L 0 to 100 then a and b, Gray as 0 to 1. */ src?: SwatchSource; /** Global, spot or process (.ase colour types); absent means process. */ kind?: 'global' | 'spot'; /** The colour book (Pantone and the like) the file named; the colour is then an approximation. */ book?: string }
 export interface SwatchSource { m: 'cmyk' | 'lab' | 'gray'; v: number[] }
-const item = (c: string, name: string, group?: string, src?: SwatchSource, kind?: 'global' | 'spot'): SwatchItem => ({ c, ...(name && name !== c ? { name: name.slice(0, 60) } : {}), ...(group ? { group: group.slice(0, 40) } : {}), ...(src ? { src } : {}), ...(kind ? { kind } : {}) });
+const item = (c: string, name: string, group?: string, src?: SwatchSource, kind?: 'global' | 'spot', book?: string): SwatchItem => ({ c, ...(name && name !== c ? { name: name.slice(0, 60) } : {}), ...(group ? { group: group.slice(0, 40) } : {}), ...(src ? { src } : {}), ...(kind ? { kind } : {}), ...(book ? { book } : {}) });
 const sourceOf = (space: number, w: number, x: number, y: number, z: number): SwatchSource | undefined => {
   const sg = (v: number): number => (v > 32767 ? v - 65536 : v);
+  if (space === 9) return { m: 'cmyk', v: [w, x, y, z].map((q) => clamp(q, 0, 10000) / 10000) };
   return space === 2 ? { m: 'cmyk', v: [1 - w / 65535, 1 - x / 65535, 1 - y / 65535, 1 - z / 65535] } : space === 7 ? { m: 'lab', v: [w / 100, sg(x) / 100, sg(y) / 100] } : space === 8 ? { m: 'gray', v: [clamp(w, 0, 10000) / 10000] } : undefined;
 };
 
@@ -69,7 +82,7 @@ export function parseAco(bytes: Uint8Array): SwatchItem[] {
         p += 2;
         for (let k = 0; k < n && p + 2 <= bytes.byteLength; k += 1) { const ch = dv.getUint16(p); p += 2; if (ch) name += String.fromCharCode(ch); }
       }
-      if (c) colours.push(item(c, name, undefined, src));
+      if (c) colours.push(item(c, name, undefined, src, undefined, COLOUR_BOOKS[sp]));
     }
     return { version, colours };
   };

@@ -1,6 +1,7 @@
-import type { GpuFilterRunner, GpuSmudge } from '../engine/gpu-filters';
+import type { GpuFilterRunner, GpuSmudge, LensGatherInput } from '../engine/gpu-filters';
 import { BAND_CENTER, BAND_WIDTH, HSL_BANDS, bandOf, buildCurveLut, colorActive, curvesActive, vignetteShapeOf, type DevelopState } from '../engine/develop';
 import { threeBoxWidths } from '../engine/filters';
+import { frameTrace } from './frame-trace';
 
 /** The GPU filter runner (DEV_PLAN 36.10): Threshold, Add Noise (grain), Gaussian Blur, Unsharp Mask and the per-pixel
  *  part of Develop on an offscreen WebGL2 canvas, one fragment shader per filter, float textures for the blur. The
@@ -232,6 +233,38 @@ void main() {
   o = vec4(v, s.a);
 }`;
 
+/** Lens Blur's gather, step for step as lensBlur's loop: t0 the levels stacked by slot, t1 the radius, t2 the taps (one row per tier), t3 the source bytes. */
+const FS_LENS = `uniform sampler2D t2; uniform sampler2D t3;
+uniform ivec2 u_size; uniform int u_slot[5]; uniform int u_has[5]; uniform int u_sizes[5]; uniform int u_tiers[6]; uniform bool u_depth;
+float enc(float c) { c = clamp(c, 0.0, 1.0); c = c <= 0.0031308 ? c * 12.92 : 1.055 * pow(c, 1.0 / 2.4) - 0.055; return floor(c * 255.0 + 0.5) / 255.0; }
+void main() {
+  ivec2 p = ivec2(gl_FragCoord.xy);
+  vec4 s = texelFetch(t3, p, 0);
+  float r = texelFetch(t1, p, 0).r;
+  if (r < 0.5) { o = s; return; }
+  float want = min(256.0, max(12.0, 0.9 * r * r));
+  int ti = 5;
+  for (int i = 0; i < 6; i++) if (float(u_tiers[i]) >= want) { ti = i; break; }
+  int count = u_tiers[ti];
+  float gap = (r * 1.77) / sqrt(float(count)) / 2.0;
+  int lv = 0;
+  for (int q = 1; q < 5; q++) if (float(u_sizes[q]) <= gap * 2.0 && u_has[q] == 1) lv = q;
+  int base = u_slot[lv] * u_size.y;
+  vec4 a = vec4(0.0); float ws = 0.0;
+  for (int t = 0; t < count; t++) {
+    vec3 tp = texelFetch(t2, ivec2(t, ti), 0).xyz;
+    vec2 d = -tp.xy * r;
+    ivec2 q = ivec2(floor(vec2(p) + d + 0.5));
+    if (q.x < 0 || q.y < 0 || q.x >= u_size.x || q.y >= u_size.y) { ws += tp.z; continue; }
+    float cw = tp.z;
+    if (u_depth) cw = clamp(texelFetch(t1, q, 0).r - length(d) + 1.0, 0.0, 1.0) * tp.z;
+    a += texelFetch(t0, ivec2(q.x, base + q.y), 0) * cw;
+    ws += cw;
+  }
+  if (ws <= 1e-6 || a.w <= 1e-9) { o = s; return; }
+  o = vec4(enc(a.x / a.w), enc(a.y / a.w), enc(a.z / a.w), floor(a.w / ws * 255.0 + 0.5) / 255.0);
+}`;
+
 interface Tex { t: WebGLTexture; w: number; h: number }
 type Loc = (name: string) => WebGLUniformLocation | null;
 
@@ -341,6 +374,7 @@ export class GlFilters implements GpuFilterRunner {
         if (q && this.timer) gl.endQuery(this.timer.TIME_ELAPSED_EXT);
         this.readBack(out, new Uint8Array(res.data.buffer));
         this.lastGpuMs = q && this.timer && gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE) && !gl.getParameter(this.timer.GPU_DISJOINT_EXT) ? Number(gl.getQueryParameter(q, gl.QUERY_RESULT)) / 1e6 : null;
+        frameTrace.noteGpu(key, this.lastGpuMs);
       } finally { this.free(input, out); if (q) gl.deleteQuery(q); }
       return res;
     });
@@ -516,6 +550,56 @@ export class GlFilters implements GpuFilterRunner {
         },
         close,
       };
+    });
+  }
+
+  private floatTex(w: number, h: number, fmt: 'r' | 'rgba', data: Float32Array | null): Tex {
+    const gl = this.gl, t = gl.createTexture()!;
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    if (fmt === 'r') gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, w, h, 0, gl.RED, gl.FLOAT, data);
+    else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, w, h, 0, gl.RGBA, gl.FLOAT, data);
+    for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]] as const) gl.texParameteri(gl.TEXTURE_2D, k, v);
+    return { t, w, h };
+  }
+
+  /** Lens Blur's gather over the planes lensBlur prepared, drawn in bands of rows so one draw stays short. */
+  lensGather(p: LensGatherInput): ImageData | null {
+    const { w, h } = p, slots: number[] = [0], has: number[] = [0];
+    for (let q = 1; q < p.levels.length; q++) { const own = p.levels[q] !== p.levels[0]; has.push(own ? 1 : 0); slots.push(own ? slots.length : 0); }
+    const n = slots.reduce((m, v) => Math.max(m, v), 0) + 1;
+    return this.guard(w, h * n, () => {
+      const gl = this.gl;
+      const levels = this.floatTex(w, h * n, 'rgba', null);
+      gl.bindTexture(gl.TEXTURE_2D, levels.t);
+      for (let q = 0; q < p.levels.length; q++) if (q === 0 || has[q]) gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, slots[q] * h, w, h, gl.RGBA, gl.FLOAT, p.levels[q]);
+      const rad = this.floatTex(w, h, 'r', p.rad);
+      const taps = new Float32Array(256 * p.tiers.length * 4);
+      p.tiers.forEach((count, ti) => { const t = p.tapsFor(count); for (let k = 0; k < count; k++) taps.set([t[k * 3], t[k * 3 + 1], t[k * 3 + 2], 0], (ti * 256 + k) * 4); });
+      const tapTex = this.floatTex(256, p.tiers.length, 'rgba', taps);
+      const input = this.tex(w, h, 'u8', new Uint8Array(p.src.buffer, p.src.byteOffset, p.src.byteLength)), out = this.tex(w, h, 'u8');
+      const res = new ImageData(w, h), q = this.timer ? gl.createQuery() : null;
+      try {
+        const prog = this.program('lens', FS_LENS), rows = Math.max(8, Math.floor(1_000_000 / w));
+        if (q && this.timer) gl.beginQuery(this.timer.TIME_ELAPSED_EXT, q);
+        gl.enable(gl.SCISSOR_TEST);
+        for (let y = 0; y < h; y += rows) {
+          gl.scissor(0, y, w, Math.min(rows, h - y));
+          this.pass(prog, out, [levels, rad, tapTex, input], (g, loc) => {
+            g.uniform2i(loc('u_size'), w, h);
+            g.uniform1iv(loc('u_slot'), slots); g.uniform1iv(loc('u_has'), has);
+            g.uniform1iv(loc('u_sizes'), p.sizes as number[]); g.uniform1iv(loc('u_tiers'), p.tiers as number[]);
+            g.uniform1i(loc('u_depth'), p.depth ? 1 : 0);
+          });
+          gl.finish();
+        }
+        gl.disable(gl.SCISSOR_TEST);
+        if (q && this.timer) gl.endQuery(this.timer.TIME_ELAPSED_EXT);
+        this.readBack(out, new Uint8Array(res.data.buffer));
+        this.lastGpuMs = q && this.timer && gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE) && !gl.getParameter(this.timer.GPU_DISJOINT_EXT) ? Number(gl.getQueryParameter(q, gl.QUERY_RESULT)) / 1e6 : null;
+        frameTrace.noteGpu('lens', this.lastGpuMs);
+      } finally { gl.disable(gl.SCISSOR_TEST); this.free(levels, rad, tapTex, input, out); if (q) gl.deleteQuery(q); }
+      return res;
     });
   }
 

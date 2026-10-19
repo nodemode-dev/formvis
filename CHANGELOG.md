@@ -4,6 +4,25 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.90.6 · 2026-10-19
+
+### Added
+
+- Projects keep the selection, the fonts used and, within a size you set, the undo history (File > Save As with History).
+- PSD: adjustment kinds formvis cannot draw are kept for re-saving; bevel contours and texture are read; Colorize, gradient shape fills and strokes and turned pattern fills are written.
+- Filter layers open in the filter dialog and update live; channel eyes hide CMYK and Lab inks; gradients and paste work on alpha channels.
+- Shapes: live lines, arrows and hearts, editable from Properties; Magic Wand on an alpha channel.
+- Camera Raw: vignette styles and post-crop vignette, zoom and pan in the dialog, lens correction when opening RAW files.
+- Skins may carry their own CSS (checked for safety), with Reset skin; background documents free memory sooner under pressure; an EXIF colour space tag option; documents can open as windows.
+- Save a Copy as PNG, JPEG, WebP or TIFF; numbered Open Recent; Layers to Files as layered TIFF and DPX.
+- WebAssembly plug-ins can run in bands and on alpha channels; Film Look Structure; more action steps; noise gradients from .grd files.
+
+### Changed
+
+- Documents with very large layers also save in the background.
+- Lens Blur with depth or a shaped iris runs on the GPU when available.
+- XPM colour names follow X11.
+
 ## 1.90.5 · 2026-10-19
 
 ### Added

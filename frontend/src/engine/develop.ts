@@ -105,6 +105,10 @@ export interface VignetteShape {
   color?: string;
   /** 0 to 100: how much of the fall is held back on bright pixels, so highlights keep their value. */
   protect?: number;
+  /** Paint Overlay (the plain fall), Highlight Priority (bright pixels keep their value) or Color Priority (the corners darken without losing colour). */
+  style?: 'paint' | 'highlight' | 'color';
+  /** Apply the vignette to the finished frame, after Geometry has turned, scaled or shifted the picture, rather than to the picture. */
+  postCrop?: boolean;
 }
 export const defaultVignetteShape = (): VignetteShape => ({ midpoint: 30, feather: 50, roundness: 100 });
 export const vignetteShapeOf = (s: DevelopState): VignetteShape => ({ ...defaultVignetteShape(), ...s.vignette });
@@ -114,7 +118,8 @@ export const vignetteShapeOf = (s: DevelopState): VignetteShape => ({ ...default
 export const depthSource: { read: ((c: { width: number; height: number; originX: number; originY: number; unitsPerPixel: number }) => Uint8Array | null) | null } = { read: null };
 
 const darkDehazeOn = (s: DevelopState): boolean => (s.dehazeDark === true || s.dehazeDepth === true) && s.tone.dehaze !== 0;
-const vignetteExtras = (s: DevelopState): boolean => s.tone.vignette !== 0 && ((s.vignette?.protect ?? 0) > 0 || (s.vignette?.color ?? '') !== '');
+const vignetteExtras = (s: DevelopState): boolean => s.tone.vignette !== 0 && ((s.vignette?.protect ?? 0) > 0 || (s.vignette?.color ?? '') !== '' || (s.vignette?.style ?? 'paint') !== 'paint' || vignetteAfterGeometry(s));
+const vignetteAfterGeometry = (s: DevelopState): boolean => s.vignette?.postCrop === true && geometryActive(geometryOf(s));
 const hexRgb = (hex: string): [number, number, number] => {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
   if (!m) return [0, 0, 0];
@@ -422,6 +427,35 @@ function rng(seed: number): () => number {
 
 // ------------------------------------------------------------ main pass
 
+const vigOut: [number, number, number] = [0, 0, 0];
+/** One pixel through the vignette into `vigOut`: `fall` (0 to 1) is how far into the corner it sits. Highlight Priority holds
+ *  back the fall on bright pixels; Color Priority darkens the luminance by the full mask but the colour difference only by the
+ *  mask to the power 0.9, so the corners keep a little more saturation than a plain darkening. */
+function vignetteMix(r: number, g: number, b: number, fall: number, dark: boolean, color: [number, number, number] | null, protect: number, style: 'paint' | 'highlight' | 'color'): void {
+  const prot = style === 'highlight' ? Math.max(protect, 0.7) : protect;
+  if (prot > 0) { const lum = 0.299 * r + 0.587 * g + 0.114 * b, hi = clamp01((lum - 0.45) / 0.45); fall *= 1 - prot * hi * hi * (3 - 2 * hi); }
+  if (color) { r += (color[0] - r) * fall; g += (color[1] - g) * fall; b += (color[2] - b) * fall; }
+  else if (dark) {
+    const mask = 1 - fall;
+    if (style === 'color') { const l = 0.299 * r + 0.587 * g + 0.114 * b, k = Math.pow(mask, 0.9); r = l * mask + (r - l) * k; g = l * mask + (g - l) * k; b = l * mask + (b - l) * k; }
+    else { r *= mask; g *= mask; b *= mask; }
+  } else { r += (1 - r) * fall; g += (1 - g) * fall; b += (1 - b) * fall; }
+  vigOut[0] = r; vigOut[1] = g; vigOut[2] = b;
+}
+
+/** The vignette on the finished frame (after Geometry), centred on the frame itself, so a rotated or scaled picture keeps its
+ *  vignette at the frame's corners. */
+function vignettePostPass(img: ImageData, state: DevelopState): void {
+  const w = img.width, h = img.height, d = img.data, vs = vignetteShapeOf(state), cx = w / 2, cy = h / 2, maxRadius = Math.hypot(cx, cy), vro = vs.roundness / 100;
+  const vsx = Math.max(1, cx * (1 - vro) + maxRadius * vro), vsy = Math.max(1, cy * (1 - vro) + maxRadius * vro), vcorner = Math.hypot(cx / vsx, cy / vsy) || 1;
+  const vslope = (Math.abs(state.tone.vignette) / 50) * (50 / Math.max(1, vs.feather)), vmid = vs.midpoint / 100, color = vs.color ? hexRgb(vs.color) : null, prot = clamp01((vs.protect ?? 0) / 100);
+  for (let i = 0; i < d.length; i += 4) {
+    const px = (i / 4) % w, py = Math.floor(i / 4 / w);
+    vignetteMix(d[i]! / 255, d[i + 1]! / 255, d[i + 2]! / 255, clamp01((Math.hypot((px - cx) / vsx, (py - cy) / vsy) / vcorner - vmid) * vslope), state.tone.vignette > 0, color, prot, vs.style ?? 'paint');
+    d[i] = clamp01(vigOut[0]) * 255; d[i + 1] = clamp01(vigOut[1]) * 255; d[i + 2] = clamp01(vigOut[2]) * 255;
+  }
+}
+
 /** The per-pixel develop pass: tone -> color mixer -> curves, src -> dst.
  *  Alpha passes through untouched. Deterministic (seeded grain). */
 export function developPass(src: Uint8ClampedArray, dst: Uint8ClampedArray,
@@ -446,7 +480,7 @@ export function developPass(src: Uint8ClampedArray, dst: Uint8ClampedArray,
   const maxRadius = Math.sqrt(cx * cx + cy * cy);
   const vs = vignetteShapeOf(state), vro = vs.roundness / 100, vsx = Math.max(1, cx * (1 - vro) + maxRadius * vro), vsy = Math.max(1, cy * (1 - vro) + maxRadius * vro);
   const vcorner = Math.hypot(cx / vsx, cy / vsy) || 1, vmid = vs.midpoint / 100, vslope = (Math.abs(vignette) / 50) * (50 / Math.max(1, vs.feather));
-  const vcolor = vs.color ? hexRgb(vs.color) : null, vprot = clamp01((vs.protect ?? 0) / 100);
+  const vcolor = vs.color ? hexRgb(vs.color) : null, vprot = clamp01((vs.protect ?? 0) / 100), vstyle = vs.style ?? 'paint', vlater = vignetteAfterGeometry(state);
 
   for (let i = 0; i < src.length; i += 4) {
     let r = src[i] / 255, g = src[i + 1] / 255, b = src[i + 2] / 255;
@@ -544,13 +578,10 @@ export function developPass(src: Uint8ClampedArray, dst: Uint8ClampedArray,
       }
       r = clamp01(r); g = clamp01(g); b = clamp01(b);
     }
-    if (vignette !== 0) {
+    if (vignette !== 0 && !vlater) {
       const px = (i / 4) % w, py = Math.floor(i / 4 / w);
-      let fall = clamp01((Math.hypot((px - cx) / vsx, (py - cy) / vsy) / vcorner - vmid) * vslope);
-      if (vprot > 0) { const lum = 0.299 * r + 0.587 * g + 0.114 * b, hi = clamp01((lum - 0.45) / 0.45); fall *= 1 - vprot * hi * hi * (3 - 2 * hi); }
-      if (vcolor) { r += (vcolor[0] - r) * fall; g += (vcolor[1] - g) * fall; b += (vcolor[2] - b) * fall; }
-      else if (vignette > 0) { const mask = 1 - fall; r *= mask; g *= mask; b *= mask; }
-      else { r += (1 - r) * fall; g += (1 - g) * fall; b += (1 - b) * fall; }
+      vignetteMix(r, g, b, clamp01((Math.hypot((px - cx) / vsx, (py - cy) / vsy) / vcorner - vmid) * vslope), vignette > 0, vcolor, vprot, vstyle);
+      r = vigOut[0]; g = vigOut[1]; b = vigOut[2];
     }
     if (rand) {
       const noise = (rand() - 0.5) * 2 * (grain / 200);
@@ -938,6 +969,7 @@ export function developImage(src: ImageData, state: DevelopState, scale = 1, see
   if (d.sharpen > 0) img = sharpenPass(img, d.sharpen / 100, d.sharpenRadius ?? 1.2, (d.sharpenDetail ?? 100) / 100, (d.sharpenMasking ?? 0) / 100, scale);
   if (opticsActive(optics)) img = opticsPass(img, optics);
   if (geometryActive(geometry)) img = geometryPass(img, geometry);
+  if (state.tone.vignette !== 0 && vignetteAfterGeometry(state)) vignettePostPass(img, state);
   return img;
 }
 

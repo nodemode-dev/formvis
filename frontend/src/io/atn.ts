@@ -151,6 +151,17 @@ function stepFor(it: Item): ActionStep | null {
     if (amount === null || radius === null || !(amount > 0) || !(radius > 0)) return null;
     return { kind: 'filter', filter: 'unsharpMask', label, settings: { usmAmount: Math.min(500, Math.max(1, amount)), usmRadius: Math.min(1000, Math.max(0.1, radius)), threshold: Math.min(255, Math.max(0, Math.round(threshold))) } };
   }
+  if (it.event === 'MtnB') {
+    const num = (v: Val | undefined): number | null => (isUnit(v) ? v.value : typeof v === 'number' ? v : null);
+    const angle = num(get('Angl')), dist = num(get('Dstn'));
+    if (angle === null || dist === null || !(dist >= 1)) return null;
+    return { kind: 'filter', filter: 'motionBlur', label, settings: { angle: Math.min(180, Math.max(-180, angle)), distance: Math.min(2000, dist) } };
+  }
+  if (it.event === 'Mdn ' || it.event === 'HghP') {
+    const rds = get('Rds '), radius = isUnit(rds) ? rds.value : typeof rds === 'number' ? rds : null;
+    if (radius === null || !(radius > 0)) return null;
+    return it.event === 'Mdn ' ? { kind: 'filter', filter: 'median', label, settings: { radius: Math.min(100, Math.max(1, Math.round(radius))) } } : { kind: 'filter', filter: 'highPass', label, settings: { radius: Math.min(250, Math.max(0.1, radius)) } };
+  }
   if (it.event === 'ImgS') {
     const w = get('Wdth'), h = get('Hght'), res = get('Rslt');
     const px = (v: Val | undefined): number | null => (isUnit(v) ? v.value : typeof v === 'number' ? v : null);
@@ -235,6 +246,8 @@ function itemFor(s: ActionStep): Uint8Array | null {
     descriptor(o, 'null', [['Amnt', ['UntF', '#Prc', s.settings.usmAmount]], ['Rds ', ['UntF', '#Pxl', s.settings.usmRadius]], ['Thsh', ['long', Math.round(Number(s.settings.threshold) || 0)]]]);
     return o.bytes();
   }
+  if (s.kind === 'filter' && s.filter === 'motionBlur' && typeof s.settings.angle === 'number' && typeof s.settings.distance === 'number') { head('MtnB', true); descriptor(o, 'null', [['Angl', ['UntF', '#Ang', s.settings.angle]], ['Dstn', ['UntF', '#Pxl', s.settings.distance]]]); return o.bytes(); }
+  if (s.kind === 'filter' && (s.filter === 'median' || s.filter === 'highPass') && typeof s.settings.radius === 'number') { head(s.filter === 'median' ? 'Mdn ' : 'HghP', true); descriptor(o, 'null', [['Rds ', ['UntF', '#Pxl', s.settings.radius]]]); return o.bytes(); }
   if (s.kind === 'imageSize') { head('ImgS', true); descriptor(o, 'null', [['Wdth', ['UntF', '#Pxl', s.w]], ['Hght', ['UntF', '#Pxl', s.h]], ['Rslt', ['UntF', '#Rsl', s.res]]]); return o.bytes(); }
   return null;
 }

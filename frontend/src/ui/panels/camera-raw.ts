@@ -22,6 +22,9 @@ export type RawChoice = { wb: RawWhiteBalance; bits: 8 | 16 };
  *  not opened. The rest of Develop (curve, colour mixer, grading, optics, geometry) follows on the opened layer. */
 export class CameraRawDialog extends Dialog {
   private readonly canvas = el<HTMLCanvasElement>('<canvas class="cv-raw-preview" aria-label="Preview"></canvas>');
+  private readonly view = el('<div class="cv-raw-view" style="max-height:340px;overflow:auto;cursor:grab"></div>');
+  private readonly zoom = selectRow('Zoom', [['fit', 'Fit'], ['1', '100% of the preview'], ['2', '200% (actual pixels)'], ['4', '400%']], (v) => { this.zoomTo(v); });
+  private zoomLevel = 'fit';
   private readonly note = el('<p class="cv-note" role="status"></p>');
   private readonly preset = selectRow('White Balance', [['as_shot', 'As Shot'], ['auto', 'Auto'], ['daylight', 'Daylight']], (v) => { this.wb.wb = v as RawWhiteBalance['wb']; this.dev.kelvin = 0; this.kelvin.set(this.shotKelvin); this.schedule(); });
   private readonly temperature = sliderRow('Temperature', -100, 100, 1, (v) => { this.wb.temperature = v; this.schedule(); });
@@ -59,8 +62,27 @@ export class CameraRawDialog extends Dialog {
     slider('texture', 'Texture', -100, 100, 1);
     slider('dehaze', 'Dehaze', -100, 100, 1);
     slider('noise', 'Noise Reduction', 0, 100, 1);
+    slider('distortion', 'Lens Distortion', -100, 100, 1);
+    slider('lensVignette', 'Lens Vignetting', -100, 100, 1);
+    slider('lensMidpoint', 'Lens Vignetting Midpoint', 0, 100, 1);
     this.kelvin.el.hidden = true;
-    this.body.append(this.canvas, this.preset.el, this.temperature.el, this.kelvin.el, this.tint.el, ...this.devRows.map((r) => r.row.el), this.look.el, this.depth.el, this.info, this.note);
+    this.view.append(this.canvas);
+    this.view.addEventListener('pointerdown', (e) => {
+      if (this.zoomLevel === 'fit') return;
+      const v = this.view, x = e.clientX, y = e.clientY, sl = v.scrollLeft, st = v.scrollTop;
+      v.setPointerCapture(e.pointerId);
+      v.style.cursor = 'grabbing';
+      const move = (m: PointerEvent): void => { v.scrollLeft = sl - (m.clientX - x); v.scrollTop = st - (m.clientY - y); };
+      const up = (): void => { v.removeEventListener('pointermove', move); v.removeEventListener('pointerup', up); v.removeEventListener('pointercancel', up); v.style.cursor = 'grab'; };
+      v.addEventListener('pointermove', move); v.addEventListener('pointerup', up); v.addEventListener('pointercancel', up);
+    });
+    this.view.addEventListener('wheel', (e) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const steps = ['fit', '1', '2', '4'], at = steps.indexOf(this.zoomLevel) + (e.deltaY < 0 ? 1 : -1), next = steps[Math.max(0, Math.min(steps.length - 1, at))]!;
+      this.zoom.set(next); this.zoomTo(next);
+    }, { passive: false });
+    this.body.append(this.view, this.zoom.el, this.preset.el, this.temperature.el, this.kelvin.el, this.tint.el, ...this.devRows.map((r) => r.row.el), this.look.el, this.depth.el, this.info, this.note);
     this.button('Reset to As Shot', 'ghost', () => this.reset('as_shot')).classList.add('cv-btn-apart');
     this.button('Cancel', 'ghost', () => this.close());
     this.button('Open', 'primary', () => this.finish({ wb: this.choice(), bits: this.bits }));
@@ -75,6 +97,7 @@ export class CameraRawDialog extends Dialog {
       this.settle = resolve;
       const d = loadPrefs();   // Preferences > Camera Raw Defaults
       this.shotKelvin = 0; this.kelvin.el.hidden = true; this.temperature.el.hidden = false;
+      this.zoom.set('fit'); this.zoomTo('fit');
       this.reset(d.rawWb);
       const wide = d.rawBits === 16 && d.rawWide;
       this.bits = d.rawBits; this.wb.space = wide ? 'prophoto' : 'srgb'; this.depth.set(wide ? '16w' : String(d.rawBits));
@@ -123,6 +146,17 @@ export class CameraRawDialog extends Dialog {
     this.timer = window.setTimeout(() => void this.preview(), delay);
   }
 
+  /** Fit shows the whole preview across the dialog; the others scale the same canvas in place and the box scrolls or drags. */
+  private zoomTo(level: string): void {
+    this.zoomLevel = level;
+    const fit = level === 'fit';
+    this.canvas.style.width = fit ? '100%' : `${Math.round(this.canvas.width * Number(level))}px`;
+    this.canvas.style.height = 'auto';
+    this.canvas.style.maxWidth = fit ? '100%' : 'none';
+    this.canvas.style.imageRendering = fit ? 'auto' : 'pixelated';
+    this.view.style.cursor = fit ? 'default' : 'grab';
+  }
+
   /** The half-size decode with the current white balance, drawn into the same canvas (never replaced). */
   private async preview(): Promise<void> {
     const f = this.file, n = ++this.seq;
@@ -132,10 +166,9 @@ export class CameraRawDialog extends Dialog {
       if (n !== this.seq || !this.isOpen) { bmp.close(); return; }
       if (this.canvas.width !== bmp.width) this.canvas.width = bmp.width;
       if (this.canvas.height !== bmp.height) this.canvas.height = bmp.height;
-      this.canvas.style.width = '100%';
-      this.canvas.style.height = 'auto';
       this.canvas.getContext('2d')?.drawImage(bmp, 0, 0);
       bmp.close();
+      this.zoomTo(this.zoomLevel);
     } catch (err) {
       if (n === this.seq) setText(this.note, err instanceof Error ? err.message : 'The preview could not be developed.');
     }

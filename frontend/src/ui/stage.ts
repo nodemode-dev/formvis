@@ -716,9 +716,9 @@ export class Stage {
     const c = document.createElement('canvas');
     c.width = W; c.height = H;
     const t = c.getContext('2d') as CanvasRenderingContext2D;
-    const k = a.color ?? { r: 255, g: 0, b: 0 }, op = (a.opacity ?? 50) / 100;
+    const k = a.color ?? { r: 255, g: 0, b: 0 }, op = (a.opacity ?? (a.spot ? 100 : 50)) / 100;
     t.fillStyle = `rgba(${k.r}, ${k.g}, ${k.b}, ${op})`;
-    if (a.indicates === 'selected') {
+    if (a.indicates === 'selected' || a.spot) {
       if (a.mask) { t.drawImage(a.mask.surface() as CanvasImageSource, a.mask.x, a.mask.y); t.globalCompositeOperation = 'source-in'; t.fillRect(0, 0, W, H); }
       this.alphaTints.set(a, c);
       return c;

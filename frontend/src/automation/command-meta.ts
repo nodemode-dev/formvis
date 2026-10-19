@@ -57,6 +57,7 @@ const ROWS: Record<string, Row> = {
   'render-video': ['File', 'Opens the Render Video dialog for the video timeline.', 'Use when you want to choose size and range before rendering the video timeline.', 'r'],
   'save': ['File', 'Saves the document to the library, or asks for a name the first time.', 'Use when you want your work kept as an editable project.', 'r'],
   'save-as': ['File', 'Saves the document under a new name in the library.', 'Use when you want a separate project file beside the current one.', 'r'],
+  'save-as-history': ['File', 'Saves the document under a new name with the steps behind it kept in the project, up to the history size set in preferences (64 MB when none is set).', 'Use when you want the project to reopen with its History panel and Undo intact.', 'r'],
   'save-copy': ['File', 'Saves a copy without changing which file the document belongs to.', 'Use when you want a snapshot on disk and to keep working on the original.', 'r'],
   'revert': ['File', 'Throws away changes and reopens the last saved version.', 'Use when you want to discard every unsaved change; Undo cannot bring them back.', 'mr'],
   'download-project': ['File', 'Downloads the project file through the browser.', 'Use when you want the .fvd file on your computer.', 'r'],

@@ -17,6 +17,8 @@ import { alphaGrey, nextAlphaName } from '../engine/alphas';
 import { PARAM_ADJUSTMENTS, PARAM_KINDS } from '../engine/adjust-params';
 import { api, type FilePart } from './api';
 import { TiledRaster, type TileStore } from '../engine/tiled';
+import { collectHistory, fontsUsed, type HistorySource } from './project-history';
+import type { Snapshot } from '../engine/history';
 
 export const FORMAT = 'com.nodemode.formvis';
 export const FORMAT_VERSION = 1;
@@ -110,13 +112,17 @@ async function fillTiled(t: TiledRaster, name: string, read: BandReader): Promis
   }
 }
 
-export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | null = null, timeline: Timeline | null = null, step: ((done: number, total: number) => void) | null = null): Promise<{ manifest: Json; files: FilePart[] }> {
+/** What a save may keep beside the layers: the live selection, and the steps behind the document up to `cap` bytes. */
+export interface Keep { selection?: SelectionMask | null; history?: { source: HistorySource; cap: number; steps: number } | null }
+
+export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | null = null, timeline: Timeline | null = null, step: ((done: number, total: number) => void) | null = null, keep: Keep | null = null): Promise<{ manifest: Json; files: FilePart[] }> {
   const files: FilePart[] = [], layers: Json[] = [];
   let written = 0;
   // Every pixel plane is handed to the encoder at once, which takes its own copy of the bitmap on the spot; with no
   // await before the last one is started, the whole manifest reads one state and the document may change at once.
   const encodes: Promise<void>[] = [];
   const nests: Promise<void>[] = [];
+  const giants: Array<() => Promise<void>> = [];
   const put =(name: string, made: Promise<Blob>): void => {
     const part: FilePart = { name, blob: new Blob() };
     files.push(part);
@@ -127,8 +133,9 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
     const r: Json = { id: l.id, name: l.name, isVisible: l.visible, transform: transformRecord(l.transform) };
     if (l.raster && !l.isGroup) { const name = `${l.id}.png`; put(name, toBlob(l.raster.canvas)); r.imageFile = name; }
     else if (l.tiled && !l.isGroup) {   // a giant layer, written band by band by the engine (1.62.8)
-      const name = `${l.id}.png`;
-      files.push({ name, blob: await tiledPng(l.tiled, doc.resolution ?? 72) });
+      const name = `${l.id}.png`, part: FilePart = { name, blob: new Blob() }, giant = l.tiled, ppi = doc.resolution ?? 72;
+      files.push(part);
+      giants.push(async () => { part.blob = await tiledPng(giant, ppi); });   // after the loop, so every other layer is read in the same turn
       r.imageFile = name;
       r.tiled = { width: l.tiled.width, height: l.tiled.height, base: l.tiled.base };
     }
@@ -190,6 +197,7 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
     if (l.blendChannels?.some((on) => !on)) r.blendChannels = [...l.blendChannels];
     if (l.blendClipped) r.blendClipped = true;
     if (l.transparencyShapes === false) r.transparencyShapes = false;
+    if (l.psdAdjustment) r.psdAdjustment = JSON.parse(JSON.stringify(l.psdAdjustment));
     if (l.isGroup && l.isolate) r.isolate = true;
     if (l.label) r.label = l.label;
     if (l.locks && Object.values(l.locks).some(Boolean)) r.locks = { ...l.locks };
@@ -258,9 +266,23 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
     alphas.push({ id: a.id, name: a.name, file, ...(a.color ? { color: [a.color.r, a.color.g, a.color.b] } : {}), ...(a.opacity !== undefined ? { opacity: a.opacity } : {}), ...(a.indicates ? { indicates: a.indicates } : {}), ...(a.spot ? { spot: true } : {}) });
   }
   if (alphas.length) manifest.alphas = alphas;
+  if (keep?.selection) {
+    const s = createSurface(doc.width, doc.height);
+    ctxOf(s).putImageData(alphaGrey(keep.selection, doc.width, doc.height), 0, 0);
+    put('selection.png', toBlob(s));
+    manifest.selection = { file: 'selection.png' };
+  }
+  const fonts = fontsUsed(doc);
+  if (fonts.length) manifest.fonts = fonts;
   let encoded = 0;
+  for (const g of giants) await g();
   await Promise.all(encodes.map((e) => e.then(() => step?.(++encoded, encodes.length))));
   await Promise.all(nests);
+  const kept = keep?.history ? await collectHistory(keep.history.source, keep.history.cap, keep.history.steps, (d, a, sel) => serialize(d, a, null, null, null, { selection: sel })) : null;
+  if (kept?.names.length) {
+    files.push({ name: 'history.json', blob: new Blob([JSON.stringify({ names: kept.names, states: kept.manifests })], { type: 'application/json' }) }, ...kept.files);
+    manifest.history = { file: 'history.json', steps: kept.names.length, bytes: kept.bytes };
+  }
   return { manifest, files };
 }
 
@@ -327,7 +349,28 @@ function vectorFrom(raw: unknown): Layer['vector'] {
   return { path, fill, stroke, ...(gradient ? { gradient } : {}), ...(fillPattern ? { pattern: fillPattern } : {}), ...(live ? { live } : {}), origin: { x: origin.x, y: origin.y } };
 }
 
-export async function deserialize(manifest: Json, fetchImage: (name: string) => Promise<Blob>, read: BandReader | null = null): Promise<{ doc: Doc; activeId: ID | null; paths: PathSet | null; timeline: Timeline | null }> {
+/** A project read back: the live selection and the steps behind the document when the file kept them, and the families its text uses. */
+export interface Opened { doc: Doc; activeId: ID | null; paths: PathSet | null; timeline: Timeline | null; selection?: SelectionMask | null; history?: { names: string[]; snaps: Snapshot[] } | null; fonts?: string[] }
+
+/** A selection picture of the document's size read back into a mask; null when it is empty or the wrong size. */
+async function selectionFrom(file: string | null, fetchImage: (name: string) => Promise<Blob>, w: number, h: number): Promise<SelectionMask | null> {
+  if (!file) return null;
+  try {
+    const bmp = await createImageBitmap(await fetchImage(file));
+    let mask: SelectionMask | null = null;
+    if (bmp.width === w && bmp.height === h) {
+      const s = createSurface(w, h), c = ctxOf(s);
+      c.drawImage(bmp, 0, 0);
+      const d = c.getImageData(0, 0, w, h).data, m = new Uint8Array(w * h);
+      for (let i = 0; i < m.length; i++) m[i] = Math.round((d[i * 4] * d[i * 4 + 3]) / 255);
+      mask = SelectionMask.cropped(0, 0, w, h, m);
+    }
+    bmp.close();
+    return mask;
+  } catch { return null; }
+}
+
+export async function deserialize(manifest: Json, fetchImage: (name: string) => Promise<Blob>, read: BandReader | null = null, withHistory = true): Promise<Opened> {
   // Patterns carried by the project, registered before its layers render.
   if (Array.isArray(manifest.patterns)) {
     for (const raw of manifest.patterns.slice(0, 200)) {
@@ -416,6 +459,7 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
       ...(Array.isArray(r.blendChannels) && r.blendChannels.length === 3 ? { blendChannels: [r.blendChannels[0] !== false, r.blendChannels[1] !== false, r.blendChannels[2] !== false] as [boolean, boolean, boolean] } : {}),
       ...(r.blendClipped === true ? { blendClipped: true } : {}),
       ...(r.transparencyShapes === false ? { transparencyShapes: false } : {}),
+      ...(r.psdAdjustment && typeof r.psdAdjustment === 'object' ? { psdAdjustment: r.psdAdjustment as Record<string, unknown> } : {}),
       ...(r.isGroup === true && r.isolate === true ? { isolate: true } : {}),
       ...((LAYER_LABELS as readonly unknown[]).includes(r.label) ? { label: r.label as LayerLabel } : {}),
       ...(r.frame && typeof r.frame === 'object' ? (() => { const f = r.frame as Record<string, unknown>; return { frame: { x: num(f.x, 0), y: num(f.y, 0), w: Math.max(2, num(f.w, 2)), h: Math.max(2, num(f.h, 2)), shape: f.shape === 'ellipse' ? 'ellipse' as const : 'rect' as const } }; })() : {}),
@@ -505,7 +549,22 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
       bmp.close();
     } catch { /* a channel that cannot be read is left out */ }
   }
-  return { timeline: timelineFrom(manifest.timeline), paths: pathSetFrom(manifest.paths, manifest.activePath, manifest.workPath), doc: { ...profileFrom(manifest.profile), ...(manifest.depth === 16 || manifest.depth === 32 ? { depth: manifest.depth as 16 | 32 } : {}), id: str(manifest.documentID) ?? uid(), width, height, resolution: num(manifest.resolution, 72), layers, ...(Array.isArray(manifest.collapsedFolders) && manifest.collapsedFolders.some((id) => layers.some((l) => l.id === id && l.isGroup)) ? { collapsed: (manifest.collapsedFolders as unknown[]).filter((id): id is string => typeof id === 'string' && layers.some((l) => l.id === id && l.isGroup)) } : {}), ...(notes.length ? { notes } : {}), ...(comps.length ? { comps, activeComp: comps.some((c) => c.id === manifest.activeComp) ? (manifest.activeComp as string) : null } : {}), ...(counts.length ? { counts } : {}), ...(countGroups.length ? { countGroups } : {}), ...(boxes.length ? { boxes } : {}), ...(mode ? { mode } : {}), ...(mode === 'indexed' && palette.length ? { palette } : {}), ...(mode === 'duotone' && readDuotone(manifest.duotone) ? { duotone: readDuotone(manifest.duotone) as Duotone } : {}), ...(mode === 'multichannel' && mcChannels.length ? { multichannel: { channels: mcChannels } } : {}), ...(guides.length ? { guides } : {}), ...(num(manifest.pixelAspect, 1) !== 1 && num(manifest.pixelAspect, 1) > 0 ? { pixelAspect: num(manifest.pixelAspect, 1) } : {}), ...(measureScale ? { measureScale } : {}), ...(measurements.length ? { measurements } : {}), ...(slices.length ? { slices } : {}),...(globalLight ? { globalLight } : {}), ...(Object.keys(glb).length ? { glb } : {}), ...(stylePresets.length ? { stylePresets } : {}), ...(styles.length ? { paragraphStyles: styles } : {}), ...(charStyles.length ? { characterStyles: charStyles } : {}),...(alphas.length ? { alphas } : {}), ...variablesFrom(manifest, records.map((r) => str(r.id))), ...(fileInfo ? { meta: fileInfo } : {}) }, activeId: str(manifest.activeLayerID) };
+  const selection = await selectionFrom(str(obj(manifest.selection).file), fetchImage, width, height);
+  const fonts = (Array.isArray(manifest.fonts) ? manifest.fonts : []).filter((f): f is string => typeof f === 'string' && !!f).slice(0, 200);
+  const hrec = obj(manifest.history);
+  let history: Opened['history'] = null;
+  if (withHistory && str(hrec.file)) {
+    try {
+      const stored = obj(JSON.parse(await (await fetchImage(str(hrec.file) as string)).text())), names = Array.isArray(stored.names) ? stored.names.map((n) => String(n).slice(0, 200)) : [], states = Array.isArray(stored.states) ? stored.states : [];
+      const snaps: Snapshot[] = [];
+      for (let i = 0; i < Math.min(names.length, states.length, 200); i++) {
+        const m = obj(states[i]), got = await deserialize(m, (n) => fetchImage(`h${i}.${n}`), null, false);
+        snaps.push({ doc: got.doc, activeId: got.activeId, selection: got.selection ?? null });
+      }
+      if (snaps.length && snaps.length === names.length) history = { names, snaps };
+    } catch { history = null; }
+  }
+  return { selection, fonts, history, timeline: timelineFrom(manifest.timeline), paths: pathSetFrom(manifest.paths, manifest.activePath, manifest.workPath), doc: { ...profileFrom(manifest.profile), ...(manifest.depth === 16 || manifest.depth === 32 ? { depth: manifest.depth as 16 | 32 } : {}), id: str(manifest.documentID) ?? uid(), width, height, resolution: num(manifest.resolution, 72), layers, ...(Array.isArray(manifest.collapsedFolders) && manifest.collapsedFolders.some((id) => layers.some((l) => l.id === id && l.isGroup)) ? { collapsed: (manifest.collapsedFolders as unknown[]).filter((id): id is string => typeof id === 'string' && layers.some((l) => l.id === id && l.isGroup)) } : {}), ...(notes.length ? { notes } : {}), ...(comps.length ? { comps, activeComp: comps.some((c) => c.id === manifest.activeComp) ? (manifest.activeComp as string) : null } : {}), ...(counts.length ? { counts } : {}), ...(countGroups.length ? { countGroups } : {}), ...(boxes.length ? { boxes } : {}), ...(mode ? { mode } : {}), ...(mode === 'indexed' && palette.length ? { palette } : {}), ...(mode === 'duotone' && readDuotone(manifest.duotone) ? { duotone: readDuotone(manifest.duotone) as Duotone } : {}), ...(mode === 'multichannel' && mcChannels.length ? { multichannel: { channels: mcChannels } } : {}), ...(guides.length ? { guides } : {}), ...(num(manifest.pixelAspect, 1) !== 1 && num(manifest.pixelAspect, 1) > 0 ? { pixelAspect: num(manifest.pixelAspect, 1) } : {}), ...(measureScale ? { measureScale } : {}), ...(measurements.length ? { measurements } : {}), ...(slices.length ? { slices } : {}),...(globalLight ? { globalLight } : {}), ...(Object.keys(glb).length ? { glb } : {}), ...(stylePresets.length ? { stylePresets } : {}), ...(styles.length ? { paragraphStyles: styles } : {}), ...(charStyles.length ? { characterStyles: charStyles } : {}),...(alphas.length ? { alphas } : {}), ...variablesFrom(manifest, records.map((r) => str(r.id))), ...(fileInfo ? { meta: fileInfo } : {}) }, activeId: str(manifest.activeLayerID) };
 }
 
 /** Variables, data sets and the active data set from a manifest (29.9), checked; a variable whose layer is gone is dropped. */

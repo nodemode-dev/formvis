@@ -22,7 +22,7 @@ export type WasmParam =
   | { readonly key: string; readonly label: string; readonly kind: 'select'; readonly options: ReadonlyArray<readonly [string, string]>; readonly def: string }
   | { readonly key: string; readonly label: string; readonly kind: 'check'; readonly def: boolean };
 /** `formats`, `models` and `alpha` are the ABI v2 fields; a v1 manifest reads as u8, rgb and alpha passed through. */
-export interface WasmManifest { readonly abi: number; readonly id: string; readonly name: string; readonly version: string; readonly author: string; readonly description: string; readonly reach: number; readonly params: readonly WasmParam[]; readonly formats: readonly WasmFormat[]; readonly models: readonly WasmModel[]; readonly alpha: WasmAlpha }
+export interface WasmManifest { readonly abi: number; readonly id: string; readonly name: string; readonly version: string; readonly author: string; readonly description: string; readonly reach: number; readonly params: readonly WasmParam[]; readonly formats: readonly WasmFormat[]; readonly models: readonly WasmModel[]; readonly alpha: WasmAlpha; readonly bands: boolean }
 
 export type WasmJob =
   | { kind: 'inspect'; bytes: ArrayBuffer; memoryMb: number }
@@ -81,7 +81,7 @@ export function parseManifest(raw: unknown): WasmManifest {
   };
   const formats = pick(o.formats, WASM_FORMATS, ['u8'], 'formats'), models = pick(o.models, WASM_MODELS, ['rgb'], 'models');
   const alpha: WasmAlpha = abi === WASM_ABI || o.alpha === undefined ? 'pass' : WASM_ALPHAS.includes(o.alpha as WasmAlpha) ? o.alpha as WasmAlpha : (() => { throw new Error(`The schema's alpha must be one of: ${WASM_ALPHAS.join(', ')}.`); })();
-  return { abi, id, name, version: text(o.version, 24) || '0', author: text(o.author, 60), description: text(o.description, 300), reach, params, formats, models, alpha };
+  return { abi, id, name, version: text(o.version, 24) || '0', author: text(o.author, 60), description: text(o.description, 300), reach, params, formats, models, alpha, bands: o.bands === true };
 }
 
 export function wasmDefaults(m: WasmManifest): WasmValues {

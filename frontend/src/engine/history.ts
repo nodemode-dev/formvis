@@ -222,6 +222,16 @@ export class History {
   }
   /** Every step, for dropping all a closed document keeps outside the window. */
   entries(): HistoryEntry[] { return [...this.past, ...this.future]; }
+  /** Steps read back from a project file, oldest first: `snaps` holds one state more than `names`, the last being the
+   *  document's own. They carry no pixel patches, so undo and redo swap whole states. */
+  load(names: readonly string[], snaps: readonly Snapshot[]): void {
+    if (this.depth > 0 || !names.length || snaps.length !== names.length + 1) return;
+    this.past = names.map((name, i) => ({ name, before: snaps[i], after: snaps[i + 1], patches: [], beforeRev: i, afterRev: i + 1 }));
+    this.future = [];
+    this.counter = names.length;
+    this.revision = names.length;
+    this.saved = names.length;
+  }
   /** The patches that may go to the engine's undo store, oldest first: those of past steps but the last `keep`, not yet
    *  paged (1.60.8, DEV_PLAN 26.3). */
   pageable(keep: number): PixelPatch[] {

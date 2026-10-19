@@ -240,7 +240,8 @@ def options(text: str) -> dict:
         except (TypeError, ValueError):
             return 0.0
 
-    out = {"exposure": num("exposure", -5, 5), "noise": num("noise", 0, 100), "kelvin": num("kelvin", 0, 50000), "look": bool(given.get("look"))}
+    out = {"exposure": num("exposure", -5, 5), "noise": num("noise", 0, 100), "kelvin": num("kelvin", 0, 50000), "look": bool(given.get("look")),
+           "distortion": num("distortion", -100, 100), "lensVignette": num("lensVignette", -100, 100), "lensMidpoint": num("lensMidpoint", 0, 100) if "lensMidpoint" in given else 50.0}
     for k in TONE_KEYS:
         out[k] = num(k, -100, 100)
     out["recovery"] = given.get("recovery") if given.get("recovery") in RECOVERY else "clip"
@@ -249,7 +250,27 @@ def options(text: str) -> dict:
 
 
 def active(o: dict) -> bool:
-    return bool(o) and (o["exposure"] != 0 or o["noise"] > 0 or o["recovery"] != "clip" or o["blackPoint"] != "as_shot" or any(o[k] != 0 for k in TONE_KEYS))
+    return bool(o) and (o["exposure"] != 0 or o["noise"] > 0 or o["recovery"] != "clip" or o["blackPoint"] != "as_shot" or o["distortion"] != 0 or o["lensVignette"] != 0 or any(o[k] != 0 for k in TONE_KEYS))
+
+
+def lens_correct(x: np.ndarray, distortion: float, vignette: float, midpoint: float) -> np.ndarray:
+    """Lens correction on linear RGB, before any tone step. Vignette (-100 to 100): positive lifts the corners, with the gain
+    in linear light, starting at `midpoint` percent of the corner distance. Distortion (-100 to 100): positive corrects barrel
+    (the edges are drawn outward), negative corrects pincushion; the radius is measured from the centre in half diagonals."""
+    h, w = x.shape[:2]
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    cx, cy = (w - 1) / 2.0, (h - 1) / 2.0
+    half = float(np.hypot(cx, cy)) or 1.0
+    dx, dy = (xx - cx) / half, (yy - cy) / half
+    if vignette:
+        r = np.sqrt(dx * dx + dy * dy)
+        t = np.clip((r - midpoint / 100.0) / max(1e-3, 1.0 - midpoint / 100.0), 0.0, 1.0)
+        x = x * (1.0 + (vignette / 100.0) * 1.5 * (t * t * (3.0 - 2.0 * t)))[..., None].astype(np.float32)
+    if distortion:
+        k = np.float32(distortion / 100.0 * 0.35)
+        f = 1.0 - k * (dx * dx + dy * dy)
+        x = cv2.remap(np.ascontiguousarray(x, dtype=np.float32), (cx + dx * f * half).astype(np.float32), (cy + dy * f * half).astype(np.float32), cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    return x
 
 
 def libraw_kwargs(o: dict, raw, rawpy) -> dict:
@@ -305,6 +326,8 @@ def _dehaze(x: np.ndarray, amount: float) -> np.ndarray:
 def tone(lin: np.ndarray, o: dict) -> np.ndarray:
     """Linear RGB in 0..1 through Noise Reduction, Exposure, the adaptive black point, Shadows, Highlights, Dehaze, Texture and Clarity."""
     x = lin.astype(np.float32)
+    if o["distortion"] or o["lensVignette"]:
+        x = lens_correct(x, o["distortion"], o["lensVignette"], o["lensMidpoint"])
     if o["noise"] > 0:
         x = denoise(x, o["noise"])
     if o["exposure"]:

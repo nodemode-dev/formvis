@@ -10,7 +10,7 @@ import { createSurface, ctxOf } from '../../engine/surface';
 import { defaultEffects } from '../../engine/types';
 import { addBrushesFromJson, brushesToJson, importAbr, removeImportedBrush, renameImportedBrush, stepBrushPreset } from '../../io/brush-library';
 import { readPat, writePat } from '../../io/pat';
-import { parseAco, parseAse, writeAco, writeAse } from '../../io/swatch-files';
+import { parseAco, parseAse, swatchNotes, writeAco, writeAse } from '../../io/swatch-files';
 import { Dialog, promptName } from '../dialogs';
 import { el, setHidden, setText } from '../dom';
 import { checkRow } from './controls';
@@ -286,6 +286,8 @@ export class PresetManagerDialog extends Dialog {
       const bytes = new Uint8Array(await f.arrayBuffer());
       const colours = /\.ase$/i.test(f.name) ? parseAse(bytes) : parseAco(bytes);
       if (!colours.length) throw new Error('No colours found.');
+      const approx = swatchNotes(colours);
+      if (approx.length) toast(`${f.name}: ${approx.join(' ')}`, 'info');
       this.swatches.setEntries(colours);
       return colours.length;
     }
@@ -302,12 +304,13 @@ export class PresetManagerDialog extends Dialog {
     }
     if (kind === 'gradients' && /\.(grd|ggr)$/i.test(f.name)) {
       let found: GradientPreset[];
-      let skipped = 0;
-      if (/\.grd$/i.test(f.name)) { const res = readGrd(await f.arrayBuffer()); found = res.gradients; skipped = res.skipped; }
+      let skipped = 0, approx = 0;
+      if (/\.grd$/i.test(f.name)) { const res = readGrd(await f.arrayBuffer()); found = res.gradients; skipped = res.skipped; approx = res.approximated; }
       else found = readGgr(await f.text());
       setCustomGradients([...customGradients, ...found]);
       this.keepGradients();
-      if (skipped) toast(`${f.name}: skipped ${skipped} noise ${skipped === 1 ? 'gradient' : 'gradients'}.`, 'info');
+      if (skipped) toast(`${f.name}: skipped ${skipped} ${skipped === 1 ? 'gradient' : 'gradients'}.`, 'info');
+      if (approx) toast(`${f.name}: ${approx} noise ${approx === 1 ? 'gradient is' : 'gradients are'} approximated as stop gradients.`, 'info');
       return found.length;
     }
     if (kind === 'shapes' && /\.csh$/i.test(f.name)) {

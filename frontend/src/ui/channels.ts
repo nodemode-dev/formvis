@@ -52,7 +52,14 @@ export class ChannelsPanel {
       eye.setAttribute('aria-label', `Show ${r.label}`);
       eye.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (r.id === 'cmyk' || isInk(r.id) || isLabRow(r.id)) return;
+        if (r.id === 'cmyk' || r.id === 'lab') { this.engine.setChannelsHidden([]); this.apply(); return; }
+        if (isInk(r.id) || isLabRow(r.id)) {
+          const k = isInk(r.id) ? INK[r.id] : LAB_CH[r.id as 'll' | 'la' | 'lb'], next = new Set(this.engine.channelsHidden);
+          if (!next.delete(k)) next.add(k);
+          this.engine.setChannelsHidden(next);
+          this.apply();
+          return;
+        }
         if (r.id === 'rgb') { this.shown.r = this.shown.g = this.shown.b = true; this.solo = null; }
         else { this.shown[r.id] = !this.shown[r.id]; if (this.solo === r.id && !this.shown[r.id]) this.solo = null; }
         this.apply();
@@ -161,6 +168,7 @@ export class ChannelsPanel {
     const cmyk = this.engine.current?.doc.mode === 'cmyk', lab = this.engine.current?.doc.mode === 'lab';
     if (!cmyk && this.inkSolo) { this.inkSolo = null; this.engine.paintChannel = null; this.engine.setChannelView(null); }
     if (!lab && this.labSolo) { this.labSolo = null; this.engine.paintLab = null; this.engine.setChannelView(null); }
+    if (!cmyk && !lab && this.engine.channelsHidden.size) this.engine.setChannelsHidden([]);
     const m = this.solo && !cmyk && !lab
       ? (() => { const k = { r: [1, 0, 0], g: [0, 1, 0], b: [0, 0, 1] }[this.solo], z = [0, 0, 0], c = this.engine.toolPrefs.channelsColour, solo = this.solo; return [...(c && solo !== 'r' ? z : k), 0, 0, ...(c && solo !== 'g' ? z : k), 0, 0, ...(c && solo !== 'b' ? z : k), 0, 0, 0, 0, 0, 1, 0]; })()
       : [this.shown.r || cmyk ? 1 : 0, 0, 0, 0, 0, 0, this.shown.g || cmyk ? 1 : 0, 0, 0, 0, 0, 0, this.shown.b || cmyk ? 1 : 0, 0, 0, 0, 0, 0, 1, 0];
@@ -171,8 +179,9 @@ export class ChannelsPanel {
     for (const row of this.root.querySelectorAll<HTMLElement>('.cv-ch-row[data-ch]')) {
       const id = row.dataset.ch as Ch, inkRow = id === 'cmyk' || isInk(id), labRow = isLabRow(id);
       setHidden(row, cmyk ? !inkRow : lab ? !labRow : inkRow || labRow);
-      if (labRow) { row.classList.toggle('is-on', this.labSolo ? id === this.labSolo : true); row.querySelector('.cv-ch-eye')?.classList.toggle('is-off', !!this.labSolo && id !== this.labSolo); continue; }
-      if (inkRow) { row.classList.toggle('is-on', id === 'cmyk' ? !this.inkSolo : this.inkSolo === id); row.querySelector('.cv-ch-eye')?.classList.toggle('is-off', false); continue; }
+      const hidden = this.engine.channelsHidden;
+      if (labRow) { row.classList.toggle('is-on', this.labSolo ? id === this.labSolo : true); row.querySelector('.cv-ch-eye')?.classList.toggle('is-off', id === 'lab' ? hidden.size > 0 && hidden.size >= 3 : (!!this.labSolo && id !== this.labSolo) || hidden.has(LAB_CH[id as 'll' | 'la' | 'lb'])); continue; }
+      if (inkRow) { row.classList.toggle('is-on', id === 'cmyk' ? !this.inkSolo : this.inkSolo === id); row.querySelector('.cv-ch-eye')?.classList.toggle('is-off', id === 'cmyk' ? hidden.size >= 4 : hidden.has(INK[id as 'c' | 'm' | 'y' | 'k'])); continue; }
       const visible = id === 'rgb' ? plain : this.solo ? this.solo === id : this.shown[id as 'r' | 'g' | 'b'];
       row.classList.toggle('is-on', id === 'rgb' ? !this.solo : this.solo === id);
       row.querySelector('.cv-ch-eye')?.classList.toggle('is-off', !visible);

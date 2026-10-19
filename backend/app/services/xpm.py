@@ -50,11 +50,47 @@ def _colour(value: str) -> tuple[int, int, int, int]:
     if m:
         g = round(min(100, int(m.group(1))) * 255 / 100)
         return g, g, g, 255
+    m = re.fullmatch(r"rgb:([0-9a-f]{1,4})/([0-9a-f]{1,4})/([0-9a-f]{1,4})", low)
+    if m:
+        r, g, b = (round(int(p, 16) * 255 / ((1 << (4 * len(p))) - 1)) for p in m.groups())
+        return r, g, b, 255
+    m = re.fullmatch(r"rgbi:([0-9.]+)/([0-9.]+)/([0-9.]+)", low)
+    if m:
+        r, g, b = (round(min(1.0, float(p)) * 255) for p in m.groups())
+        return r, g, b, 255
+    rgb = _x11(low)
+    return rgb[0], rgb[1], rgb[2], 255
+
+
+X11_NAMES = {
+    "gray": (190, 190, 190), "grey": (190, 190, 190), "green": (0, 255, 0), "maroon": (176, 48, 96), "purple": (160, 32, 240),
+    "lightgoldenrod": (238, 221, 130), "navyblue": (0, 0, 128), "violetred": (208, 32, 144), "lightslateblue": (132, 112, 255),
+    "mediumforestgreen": (107, 142, 35),
+}
+SHADES = (1.0, 0.932, 0.804, 0.545)
+
+
+def _x11(name: str) -> tuple[int, int, int]:
+    """An X11 colour name: the table's own values where X11 differs from the web names (gray, green, maroon, purple),
+    the web names otherwise, and the 1 to 4 shade series (gold1 to gold4) as the base colour at 100, 93, 80 and 55 percent."""
+    if name in X11_NAMES:
+        return X11_NAMES[name]
     try:
-        r, g, b = ImageColor.getrgb(low)[:3]
+        return ImageColor.getrgb(name)[:3]
     except ValueError:
-        r, g, b = 0, 0, 0
-    return r, g, b, 255
+        pass
+    m = re.fullmatch(r"(.+?)([1-4])", name)
+    if m:
+        base = _x11(m.group(1)) if m.group(1) in X11_NAMES else None
+        if base is None:
+            try:
+                base = ImageColor.getrgb(m.group(1))[:3]
+            except ValueError:
+                base = None
+        if base is not None:
+            k = SHADES[int(m.group(2)) - 1]
+            return tuple(round(c * k) for c in base)
+    return 0, 0, 0
 
 
 def _table(line: str, cpp: int) -> tuple[str, tuple[int, int, int, int]]:

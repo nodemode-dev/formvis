@@ -217,6 +217,27 @@ export function findEdgesDeep(src: DeepPixels, ceiling = 1): DeepPixels {
   return { ...src, data: out };
 }
 
+/** Solarize on floats: each colour channel above the middle is turned to its inverse; alpha is kept. */
+export function solarizeDeep(src: DeepPixels): DeepPixels {
+  const S = src.n + 1, A = src.n, out = new Float32Array(src.data);
+  for (let i = 0; i < out.length; i += S) for (let c = 0; c < A; c++) if (out[i + c] > 0.5) out[i + c] = Math.max(0, 1 - out[i + c]);
+  return { ...src, data: out };
+}
+
+/** Custom on floats: each colour channel the sum of its 5 by 5 neighbourhood times `kernel`, over `scale`, plus `offset` (in 8-bit levels); edge pixels repeat outward. */
+export function customDeep(src: DeepPixels, kernel: readonly number[], scale: number, offset: number, ceiling = 1): DeepPixels {
+  const { width: w, height: h } = src, S = src.n + 1, A = src.n, out = new Float32Array(src.data), k = 1 / Math.max(1, scale), off = offset / 255;
+  const taps: Array<[number, number, number]> = [];
+  kernel.forEach((v, i) => { if (v) taps.push([(i % 5) - 2, Math.floor(i / 5) - 2, v]); });
+  if (!taps.length) return { ...src, data: out };
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) for (let c = 0; c < A; c++) {
+    let sum = 0;
+    for (const [tx, ty, v] of taps) sum += src.data[(Math.min(h - 1, Math.max(0, y + ty)) * w + Math.min(w - 1, Math.max(0, x + tx))) * S + c] * v;
+    out[(y * w + x) * S + c] = Math.min(ceiling, Math.max(0, sum * k + off));
+  }
+  return { ...src, data: out };
+}
+
 const FIXED_SHARPEN: Record<string, [number, number, number]> = { sharpen: [50, 0.6, 0], sharpenMore: [120, 0.7, 0], sharpenEdges: [100, 1, 8] };
 
 /** The float version of library filter `kind` with its stored `values`, or null when it only runs on 8 bits. */
@@ -231,10 +252,12 @@ export function deepLibFilter(kind: string, values: Record<string, unknown>, cei
   if (kind === 'dustAndScratches' && num('radius') <= DEEP_MEDIAN_MAX) return (d) => medianDeep(d, num('radius'), num('threshold') > 0 ? (num('threshold') + 0.5) / 255 : 0);
   if (kind === 'emboss') return (d) => embossDeep(d, num('angle'), Math.max(1, num('height')), num('amount'), ceiling);
   if (kind === 'findEdges') return (d) => findEdgesDeep(d, ceiling);
+  if (kind === 'solarize') return (d) => solarizeDeep(d);
+  if (kind === 'custom' && Array.isArray(values.kernel)) return (d) => customDeep(d, values.kernel as number[], Math.max(1, num('scale')), num('offset'), ceiling);
   const fixed = FIXED_SHARPEN[kind];
   if (fixed) return (d) => unsharpDeep(d, fixed[0], fixed[1], fixed[2], ceiling);
   return null;
 }
 
 /** The library filters that run in float at depth, for the filter dialog's note and the agent's description. */
-export const DEEP_LIB_KINDS: readonly string[] = ['blur', 'blurMore', 'boxBlur', 'sharpen', 'sharpenMore', 'sharpenEdges', 'highPass', 'maximum', 'minimum', 'median', 'dustAndScratches', 'emboss', 'findEdges'];
+export const DEEP_LIB_KINDS: readonly string[] = ['blur', 'blurMore', 'boxBlur', 'sharpen', 'sharpenMore', 'sharpenEdges', 'highPass', 'maximum', 'minimum', 'median', 'dustAndScratches', 'emboss', 'findEdges', 'solarize', 'custom'];

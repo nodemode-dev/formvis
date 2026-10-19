@@ -166,6 +166,27 @@ export function fidelityNotes(s: ExportSettings, doc: { depth?: number; mode?: s
   if (['qoi', 'pnm', 'tga', 'ico', 'fits', 'wbmp', 'dpx'].includes(s.format) && (doc.resolution ?? 72) !== 72) out.push(`${name} has no resolution field; the document's ${doc.resolution} ppi is not recorded.`);
   return out;
 }
+/** What a save in one flat kind (the Save As and Save a Copy kinds, CMYK and Lab included, and the wide-range kinds HDR, EXR and PFM)
+ *  changes or drops, one short sentence each: depth, ink, alpha, lossy encoding and resolution. `clear` is whether the
+ *  picture has see-through pixels; `quality` is 0 to 1 where the kind has one. */
+export function saveCopyNotes(kind: string, doc: { depth?: number; mode?: string; resolution?: number }, clear: boolean, quality = 1): string[] {
+  const name = kind === 'jpg' ? 'JPEG' : kind === 'webp' ? 'WebP' : kind.toUpperCase(), out: string[] = [], depth = doc.depth ?? 8, cmyk = doc.mode === 'cmyk', lab = doc.mode === 'lab';
+  const wide = kind === 'hdr' || kind === 'exr' || kind === 'pfm', keepsInk = cmyk && (kind === 'tiff' || kind === 'jpg'), keepsLab = lab && kind === 'tiff';
+  if (wide) {
+    out.push(`${name} stores linear light; the ${depth}-bit picture is written as the canvas shows it${depth < 32 ? ', so nothing brighter than white is in it' : ''}.`);
+    if (cmyk || lab) out.push(`The ${cmyk ? 'CMYK' : 'Lab'} picture is converted to RGB for ${name}.`);
+    if (kind !== 'exr' && clear) out.push(`${name} keeps no transparency.`);
+    if ((doc.resolution ?? 72) !== 72) out.push(`${name} has no resolution field; the document's ${doc.resolution} ppi is not recorded.`);
+    return out;
+  }
+  if (depth === 32 && kind === 'png') out.push('PNG is written at 16 bits, sRGB encoded; values brighter than white are clipped.');
+  else if (depth > 8 && !((kind === 'png' || kind === 'tiff') && !cmyk && !lab) && !(kind === 'tiff' && (cmyk || lab) && depth === 16) && !(depth === 32 && kind === 'tiff')) out.push(`${name} is written at 8 bits a channel; the ${depth}-bit picture is reduced.`);
+  if ((cmyk && !keepsInk) || (lab && !keepsLab)) out.push(`The ${cmyk ? 'CMYK' : 'Lab'} picture is converted to RGB for ${name}.`);
+  if (clear && (kind === 'jpg' || kind === 'pdf' || keepsInk || keepsLab)) out.push(`${name} keeps no transparency here; clear areas are laid on ${cmyk ? 'paper white' : 'white'}.`);
+  if (kind === 'jpg' || kind === 'avif' || (kind === 'webp' && quality < 1)) out.push(`${name} is lossy; written at quality ${Math.round(quality * 100)}.`);
+  if (cmyk && (kind === 'jpg' || kind === 'tiff')) out.push(`${name} CMYK files carry no File Info or AI label here.`);
+  return out;
+}
 /** PNG and JPEG are written by the browser unless a compression level or a chroma subsampling other than the default is chosen. */
 export const engineWrites = (s: ExportSettings): boolean => ENGINE_FORMATS.has(s.format) || (s.format === 'png' && !!s.option && s.option !== '6') || (s.format === 'jpg' && !!s.option && s.option !== '420') || (s.format === 'webp' && s.option === 'lossless');
 const box = (v: unknown): number => Math.round(Math.min(30000, Math.max(1, Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : 1080)));

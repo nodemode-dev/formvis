@@ -50,6 +50,7 @@ export class PagePrefsRows {
   private readonly dynamicSliders =checkRow('Dynamic Color Sliders', (v) => this.change({ dynamicSliders: v }));
   private readonly border = selectRow('Canvas Border', CANVAS_BORDERS, (v) => this.change({ canvasBorder: v === 'none' || v === 'shadow' ? v : 'line' }));
   private readonly maximize = checkRow('Maximize PSD and PSB File Compatibility', (v) => saveExportPrefs({ ...loadExportPrefs(), maximizePsd: v }));
+  private readonly exifTag = checkRow('Write EXIF Color Space Tag', (v) => this.change({ exifColourTag: v }));
   private readonly askTiff = checkRow('Ask Before Saving Layered TIFF Files', (v) => this.change({ askLayeredTiff: v }));
   private readonly typeUnits = selectRow('Type Size Units', [['px', 'Pixels'], ['pt', 'Points']], (v) => this.change({ typeUnits: v === 'pt' ? 'pt' : 'px' }));
   private readonly custom: HTMLElement[];
@@ -72,7 +73,7 @@ export class PagePrefsRows {
     return [this.exportClip.el, note('Export Clipboard to the System puts what you copy on the system clipboard too, so other programs can paste it; off keeps it inside formvis.')];
   }
   get fileRows(): HTMLElement[] {
-    return [this.maximize.el, this.askTiff.el, note('Maximize PSD and PSB File Compatibility writes the flattened picture and a preview beside the layers, so readers that ignore layers still show it; off makes smaller files. With Ask Before Saving Layered TIFF Files off, Export > TIFF keeps the layers without asking.')];
+    return [this.maximize.el, this.askTiff.el, this.exifTag.el, note('Maximize PSD and PSB File Compatibility writes the flattened picture and a preview beside the layers, so readers that ignore layers still show it; off makes smaller files. With Ask Before Saving Layered TIFF Files off, Export > TIFF keeps the layers without asking. Write EXIF Color Space Tag adds the ColorSpace tag to exported JPEG, PNG, WebP and TIFF files: sRGB, or uncalibrated when the file is in another space (the profile itself is embedded as before). Metadata set to None writes no tag.')];
   }
   get transparency(): HTMLElement[] {
     return [...this.custom, note('Choose Custom in Grid Colors to use these two colors for the checkerboard.')];
@@ -97,7 +98,7 @@ export class PagePrefsRows {
     this.pinch.set(p.pinchZoom); this.rotate.set(p.trackpadRotate); this.accel.set(p.scrubAccel); this.touch.set(p.touchGestures);
     this.extPanels.set(p.showExtPanels);
     this.tipHardness.set(p.tipHardness); this.snapPx.set(p.snapVectorPx); this.readout.set(p.transformReadout); this.rollover.set(p.rolloverHighlight); this.flick.set(p.flickPan);
-    this.channelsColour.set(p.channelsColour); this.dynamicSliders.set(p.dynamicSliders); this.exportClip.set(p.exportClipboard); this.border.set(p.canvasBorder); this.askTiff.set(p.askLayeredTiff); this.typeUnits.set(p.typeUnits);
+    this.channelsColour.set(p.channelsColour); this.dynamicSliders.set(p.dynamicSliders); this.exportClip.set(p.exportClipboard); this.border.set(p.canvasBorder); this.askTiff.set(p.askLayeredTiff); this.exifTag.set(p.exifColourTag); this.typeUnits.set(p.typeUnits);
     this.maximize.set(loadExportPrefs().maximizePsd);
     void this.scratch.refresh();
   }

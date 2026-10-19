@@ -86,6 +86,9 @@ export interface Layer {
    *  Transparency Shapes Layer set false: effects and knockout are cast from the whole layer rectangle, not only its pixels. */
   blendClipped?: boolean;
   transparencyShapes?: boolean;
+  /** A PSD adjustment layer formvis cannot draw (Color Lookup), kept as the file's own settings (binary parts as
+   *  base64) so a PSD written again carries it. The layer itself is an empty pixel layer. */
+  psdAdjustment?: Record<string, unknown> | null;
   /** A type layer's text, while its pixels are still the rendering of it; see `liveText`. */
   text?: TextSpec | null;
   /** A smart object's original pixels and live filter stack; `raster` shows the result. */
@@ -516,5 +519,5 @@ export interface ShapeStyle { fill: RGB | null; stroke: ShapeStroke | null; grad
 /** The parameters a polygon, star or triangle shape layer was drawn from, with the box it was fitted to (in the path's own
  *  frame), so the sides, the star's inset and the corner radius can be changed after the fact. A hand edit of the
  *  outline drops it. */
-export interface LiveShape { kind: 'polygon' | 'star' | 'triangle'; sides: number; inset: number; radius: number; box: Rect }
+export interface LiveShape { kind: 'polygon' | 'star' | 'triangle' | 'heart' | 'line' | 'arrow'; sides: number; inset: number; radius: number; box: Rect; /** A line or arrow: its two ends, its weight and the arrow head, in document pixels. */ line?: { a: Pt; b: Pt; weight: number; headLength: number; headWidth: number } }
 export interface VectorLayer { path: import('./paths').VectorPath; fill: RGB | null; stroke?: ShapeStroke | null; gradient?: ShapeGradient | null; pattern?: ShapePattern | null; live?: LiveShape; origin: Pt }

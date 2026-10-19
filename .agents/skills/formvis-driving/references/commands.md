@@ -1,11 +1,11 @@
 # formvis commands
 
-Generated from the window's command catalogue (1597 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1598 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
 - Edit: 108
-- File: 101
+- File: 102
 - Filter: 93
 - Generate: 6
 - Help: 5
@@ -227,6 +227,7 @@ Generated from the window's command catalogue (1597 commands) by `./formvis agen
 | `revert` | Revert |  | Throws away changes and reopens the last saved version. (changes the picture) (asks first) |
 | `save` | Save | Mod+S | Saves the document to the library, or asks for a name the first time. (asks first) |
 | `save-as` | Save As... | Shift+Mod+S | Saves the document under a new name in the library. (asks first) |
+| `save-as-history` | Save As with History... |  | Saves the document under a new name with the steps behind it kept in the project, up to the history size set in preferences (64 MB when none is set). (asks first) |
 | `save-copy` | Save a Copy... | Alt+Mod+S | Saves a copy without changing which file the document belongs to. (asks first) |
 | `save-for-web` | Save for Web (Legacy)... |  | Opens Save for Web (Legacy): side-by-side original and optimized previews, a format (JPEG, PNG-24, PNG-8, GIF, WebP) and quality, and an export of the whole image or every slice as a zip. (asks first) |
 | `script-browse` | Browse... |  | Runs a JavaScript file in a sandbox with no document or network access: run(id, params) runs a catalogue command, commands() lists the ids and log(...) records a line. Without source it opens a file chooser. (changes the picture) (asks first) |

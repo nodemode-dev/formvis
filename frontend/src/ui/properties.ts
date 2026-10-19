@@ -9,7 +9,7 @@ import { typedAttrs, typedStyle } from './text-editor';
 import { icon } from './icons';
 import { PanelGroup } from './panel-group';
 import { allBrushPresets, brushGroupOf, importedBrushPresets, type BrushPreset } from '../engine/brush-dynamics';
-import { importAbr, moveBrushPreset, renameBrushGroup, renameImportedBrush, saveBrushPreset } from '../io/brush-library';
+import { importAbr, moveBrushPreset, renameBrushGroup, renameImportedBrush, saveBrushPreset, updateBrushPreset } from '../io/brush-library';
 import { promptName } from './dialogs';
 
 /** The Properties column (Phase 21, UI_SPEC.md sections 5 and 6, the target's s20): Properties (the active layer's
@@ -206,6 +206,8 @@ export class PropertiesColumn {
       <button class="cv-props-section cv-props-live-head" type="button" aria-expanded="true" hidden>${icon('chevronDown', 12)}<span>Live Content</span></button>
       <dl class="cv-props-doc cv-props-live" hidden><dt>Kind</dt><dd data-live="kind"></dd><dt>Detail</dt><dd data-live="detail"></dd></dl>
       <div class="cv-props-transform cv-props-live-acts" hidden><button class="cv-btn" type="button" data-pcmd="layer-content-options" data-live-for="fill adjustment" hidden>Edit...</button><button class="cv-btn" type="button" data-pcmd="edit-contents" data-live-for="smart" hidden>Edit Contents</button><button class="cv-btn" type="button" data-pcmd="smart-filters" data-live-for="smart" hidden>Smart Filters...</button><button class="cv-btn" type="button" data-pcmd="update-linked" data-live-for="link" hidden>Update</button><button class="cv-btn" type="button" data-pcmd="relink" data-live-for="link" hidden>Relink...</button><button class="cv-btn" type="button" data-pcmd="shape-style" data-live-for="shape" hidden>Fill and Stroke...</button><button class="cv-btn" type="button" data-pcmd="artboard-options" data-live-for="artboard" hidden>Artboard Options...</button></div>
+      <button class="cv-props-section cv-props-quick-head" type="button" aria-expanded="true" hidden>${icon('chevronDown', 12)}<span>Quick Actions</span></button>
+      <div class="cv-props-transform cv-props-quick" hidden><button class="cv-btn" type="button" data-pcmd="remove-bg" data-quick-for="pixel" hidden>Remove Background</button><button class="cv-btn" type="button" data-pcmd="select-subject" data-quick-for="pixel" hidden>Select Subject</button><button class="cv-btn" type="button" data-pcmd="convert-smart" data-quick-for="pixel" hidden>Convert to Smart Object</button><button class="cv-btn" type="button" data-pcmd="rasterize" data-quick-for="raster" hidden>Rasterize Layer</button><button class="cv-btn" type="button" data-pcmd="add-mask" data-quick-for="maskless" hidden>Add Layer Mask</button></div>
       <button class="cv-props-section cv-props-doc-head" type="button" aria-expanded="true">${icon('chevronDown', 12)}<span>Document</span></button>
       <dl class="cv-props-doc"><dt>Name</dt><dd data-doc="name"></dd><dt>Size</dt><dd data-doc="size"></dd><dt>Resolution</dt><dd data-doc="res"></dd><dt>Mode</dt><dd data-doc="mode"></dd><dt>Profile</dt><dd data-doc="profile"></dd><dt>Layers</dt><dd data-doc="layers"></dd></dl>
     </div>`);
@@ -259,9 +261,29 @@ export class PropertiesColumn {
     // Live content: what a fill layer, adjustment layer or smart object holds, with the commands that edit it.
     const liveHead = body.querySelector('.cv-props-live-head') as HTMLButtonElement, liveList = body.querySelector('.cv-props-live') as HTMLElement, liveActs = body.querySelector('.cv-props-live-acts') as HTMLElement;
     const liveOpen = (): boolean => liveHead.getAttribute('aria-expanded') === 'true';
-    liveHead.addEventListener('click', () => { liveHead.setAttribute('aria-expanded', String(!liveOpen())); setHidden(liveList, !liveOpen()); setHidden(liveActs, !liveOpen()); });
+    liveHead.addEventListener('click', () => { liveHead.setAttribute('aria-expanded', String(!liveOpen())); setHidden(liveList, !liveOpen()); setHidden(liveActs, !liveOpen()); this.refreshers.forEach((r) => r()); });
     const liveCell = (k: string): HTMLElement => liveList.querySelector(`[data-live="${k}"]`) as HTMLElement;
     const liveBtns = Array.from(liveActs.querySelectorAll<HTMLButtonElement>('[data-live-for]'));
+    const quickHead = body.querySelector('.cv-props-quick-head') as HTMLButtonElement, quickActs = body.querySelector('.cv-props-quick') as HTMLElement, quickBtns = Array.from(quickActs.querySelectorAll<HTMLButtonElement>('[data-quick-for]'));
+    quickHead.addEventListener('click', () => { quickHead.setAttribute('aria-expanded', String(quickHead.getAttribute('aria-expanded') !== 'true')); this.refreshers.forEach((r) => r()); });
+    // A live shape's own numbers, built once: the rows that fit the shape's kind are shown, the others stay hidden.
+    const shapeGrid = el('<div class="cv-props-grid cv-props-shape" hidden></div>');
+    const sf = {
+      sides: numField('', 'Sides', 3, 100, 1, (v) => e.setLiveShape(e.activeLayer?.id ?? '', { sides: v })),
+      inset: numField('%', 'Star Inset', 1, 99, 1, (v) => e.setLiveShape(e.activeLayer?.id ?? '', { inset: v })),
+      radius: numField('px', 'Corner Radius', 0, 15000, 1, (v) => e.setLiveShape(e.activeLayer?.id ?? '', { radius: v })),
+      weight: numField('px', 'Line Weight', 1, 1000, 1, (v) => e.setLiveShape(e.activeLayer?.id ?? '', { weight: v })),
+      headLength: numField('px', 'Head Length', 0, 5000, 1, (v) => e.setLiveShape(e.activeLayer?.id ?? '', { headLength: v })),
+      headWidth: numField('px', 'Head Width', 0, 5000, 1, (v) => e.setLiveShape(e.activeLayer?.id ?? '', { headWidth: v })),
+    };
+    const shapeRows = {} as Record<keyof typeof sf, HTMLElement>;
+    for (const [k, lbl] of [['sides', 'Sides'], ['inset', 'Inset'], ['radius', 'Radius'], ['weight', 'Weight'], ['headLength', 'Head L'], ['headWidth', 'Head W']] as const) {
+      const row = el(`<label class="cv-props-field"><span>${lbl}</span></label>`);
+      row.appendChild(sf[k].root);
+      shapeGrid.appendChild(row);
+      shapeRows[k] = row;
+    }
+    liveList.after(shapeGrid);
     for (const b of body.querySelectorAll<HTMLButtonElement>('[data-pcmd]')) {
       b.addEventListener('click', () => {
         const cmd = b.dataset.pcmd as string;
@@ -306,7 +328,15 @@ export class PropertiesColumn {
       setHidden(liveHead, !kinds.size);
       setHidden(liveList, !kinds.size || !liveOpen());
       setHidden(liveActs, !kinds.size || !liveOpen());
+      setHidden(shapeGrid, true);
       for (const b of liveBtns) setHidden(b, !(b.dataset.liveFor ?? '').split(' ').some((k) => kinds.has(k)));
+      const quick = new Set<string>();
+      if (l && l.raster && !l.smart && !l.vector && !l.fillContent && !l.text) quick.add('pixel');
+      if (a && (a.smart || a.vector || a.fillContent)) quick.add('raster');
+      if (a && !a.mask && !a.isGroup) quick.add('maskless');
+      for (const b of quickBtns) setHidden(b, !(b.dataset.quickFor ?? '').split(' ').some((k) => quick.has(k)));
+      setHidden(quickHead, !quick.size);
+      setHidden(quickActs, !quick.size || quickHead.getAttribute('aria-expanded') !== 'true');
       const hex = (c: { r: number; g: number; b: number }): string => `#${[c.r, c.g, c.b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
       if (a?.smart) {
         setText(liveCell('kind'), a.smart.link ? 'Linked Smart Object' : 'Smart Object');
@@ -315,8 +345,8 @@ export class PropertiesColumn {
         setText(liveCell('kind'), fc.kind === 'solid' ? 'Solid Color fill' : fc.kind === 'gradient' ? 'Gradient fill' : 'Pattern fill');
         setText(liveCell('detail'), fc.kind === 'solid' ? hex(fc.color) : fc.kind === 'gradient' ? `${fc.style}, ${fc.stops.length} stops, ${Math.round(fc.angle)} deg` : fc.pattern);
       } else if (a?.adjustment) {
-        setText(liveCell('kind'), 'Adjustment layer');
-        setText(liveCell('detail'), a.adjustment.kind);
+        setText(liveCell('kind'), a.adjustment.kind === 'filter' ? 'Filter layer' : 'Adjustment layer');
+        setText(liveCell('detail'), a.adjustment.kind === 'filter' ? String(a.adjustment.data.filter ?? 'filter') : a.adjustment.kind);
       } else if (a?.artboard && a.isGroup) {
         setText(liveCell('kind'), 'Artboard');
         setText(liveCell('detail'), `${a.artboard.w} x ${a.artboard.h} px`);
@@ -324,7 +354,13 @@ export class PropertiesColumn {
         const v = a.vector, lv = v.live, st = v.stroke;
         const fillText = v.pattern ? 'pattern fill' : v.gradient ? `${v.gradient.type} gradient fill` : v.fill ? `fill ${hex(v.fill)}` : 'no fill';
         const strokeText = st ? `${Math.round(st.width * 10) / 10} px ${st.pattern ? 'pattern' : st.gradient ? 'gradient' : hex(st.color)} stroke, ${st.align ?? 'center'}` : 'no stroke';
-        const liveText = lv ? `${lv.kind === 'star' ? `star, ${lv.sides} points, inset ${Math.round(lv.inset)}%` : lv.kind === 'triangle' ? 'triangle' : `polygon, ${lv.sides} sides`}${lv.radius ? `, corner radius ${Math.round(lv.radius)} px` : ''}` : 'path';
+        const liveText = lv ? `${lv.kind === 'star' ? `star, ${lv.sides} points, inset ${Math.round(lv.inset)}%` : lv.kind === 'triangle' ? 'triangle' : lv.kind === 'heart' ? 'heart' : lv.line ? `${lv.kind}, weight ${Math.round(lv.line.weight)} px` : `polygon, ${lv.sides} sides`}${lv.radius ? `, corner radius ${Math.round(lv.radius)} px` : ''}` : 'path';
+        const shown = { sides: lv?.kind === 'polygon' || lv?.kind === 'star', inset: lv?.kind === 'star', radius: lv?.kind === 'polygon' || lv?.kind === 'star' || lv?.kind === 'triangle', weight: !!lv?.line, headLength: lv?.kind === 'arrow', headWidth: lv?.kind === 'arrow' };
+        for (const k of Object.keys(sf) as Array<keyof typeof sf>) {
+          setHidden(shapeRows[k], !shown[k]);
+          sf[k].set(!shown[k] || !lv ? null : k === 'sides' || k === 'inset' || k === 'radius' ? lv[k] : lv.line?.[k] ?? null);
+        }
+        setHidden(shapeGrid, !lv || !liveOpen());
         setText(liveCell('kind'), lv ? 'Live shape layer' : 'Shape layer');
         setText(liveCell('detail'), `${liveText}; ${fillText}; ${strokeText}`);
       }
@@ -350,7 +386,7 @@ export class PropertiesColumn {
         <div class="cv-brush-views" role="group" aria-label="View"><button type="button" data-view="grid" title="Grid" aria-label="Grid">${icon('viewGrid', 15)}</button><button type="button" data-view="list" title="List" aria-label="List">${icon('viewList', 15)}</button></div></div>
       <div class="cv-brush-folders"></div>
       <div class="cv-brush-stroke-head"><span>Custom brush</span><span>Stroke preview</span></div><canvas class="cv-brush-stroke" aria-label="Stroke preview"></canvas>
-      <div class="cv-brush-actions"><button class="cv-btn" type="button" data-act="new" title="Save the current brush as a preset">${icon('plus', 14)}<span>New Preset</span></button><button class="cv-btn" type="button" data-act="load">${icon('folderOpen', 14)}<span>Load...</span></button><button class="cv-btn" type="button" data-act="settings">${icon('sliders', 14)}<span>Brush Settings</span></button></div>
+      <div class="cv-brush-actions"><button class="cv-btn" type="button" data-act="new" title="Save the current brush as a preset">${icon('plus', 14)}<span>New Preset</span></button><button class="cv-btn" type="button" data-act="update" title="Save the current brush over the chosen preset of your own" disabled>${icon('save', 14)}<span>Update</span></button><button class="cv-btn" type="button" data-act="load">${icon('folderOpen', 14)}<span>Load...</span></button><button class="cv-btn" type="button" data-act="settings">${icon('sliders', 14)}<span>Brush Settings</span></button></div>
     </div>`);
     const sliders = body.querySelector('.cv-brush-sliders') as HTMLElement, folders = body.querySelector('.cv-brush-folders') as HTMLElement;
     const tip = body.querySelector('.cv-brush-tip') as HTMLCanvasElement, stroke = body.querySelector('.cv-brush-stroke') as HTMLCanvasElement;
@@ -515,6 +551,10 @@ export class PropertiesColumn {
         key = ''; fill();
       })();
     });
+    const updateBtn = body.querySelector('[data-act="update"]') as HTMLButtonElement;
+    updateBtn.addEventListener('click', () => {
+      void updateBrushPreset(e, e.brushPresetId ?? '').then((r) => { if (r) e.notice(r.kept ? `Updated ${r.preset.name}.` : `Updated ${r.preset.name} for this session only: it could not be stored.`); key = ''; fill(); });
+    });
     picker.addEventListener('change', () => {
       const f = picker.files?.[0];
       picker.value = '';
@@ -557,7 +597,7 @@ export class PropertiesColumn {
         for (let i = 0; i <= 120; i++) { const t = i / 120; dab(sg, W * 0.12 + t * W * 0.76, H / 2 - Math.sin(t * Math.PI * 2) * H * 0.18, r, hard); }
       }
     };
-    this.refreshers.push(() => { for (const s of setters) s(); fill(); paintSoon(); });
+    this.refreshers.push(() => { for (const s of setters) s(); fill(); paintSoon(); const mine = !!e.brushPresetId?.startsWith('user-'); if (updateBtn.disabled === mine) updateBtn.disabled = !mine; });
   }
 
   private paragraph(): void {

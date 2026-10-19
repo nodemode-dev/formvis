@@ -113,6 +113,7 @@ export class FilterPanel extends Dialog {
   private kind: FilterKind = 'gaussianBlur';
   private readonly s = defaultFilterSettings();
   private editing: ((settings: Record<string, unknown>) => void) | null = null;
+  private liveEdit: { change: (settings: Record<string, unknown>) => void; cancel: () => void } | null = null;
   private asking: ((settings: Record<string, unknown> | null) => void) | null = null;
   private savedPreview: boolean | null = null;
   private seed = 0;
@@ -375,6 +376,10 @@ export class FilterPanel extends Dialog {
     vigClear.querySelector('button')!.addEventListener('click', () => { (D().vignette ??= defaultVignetteShape()).color = ''; vigColor.set('#000000'); this.schedule(); });
     devNodes.splice(protectEl ? devNodes.indexOf(protectEl) + 1 : devNodes.length, 0, vigColor.el, vigClear);
     devSync.push(() => vigColor.set(D().vignette?.color || '#000000'));
+    const vigStyle = selectRow('Vignette style', [['paint', 'Paint Overlay'], ['highlight', 'Highlight Priority'], ['color', 'Color Priority']], (v) => { (D().vignette ??= defaultVignetteShape()).style = v as 'paint' | 'highlight' | 'color'; this.schedule(); });
+    const vigPost = checkRow('Vignette follows the frame (post-crop)', (v) => { (D().vignette ??= defaultVignetteShape()).postCrop = v; this.schedule(); });
+    devNodes.splice(devNodes.indexOf(vigClear) + 1, 0, vigStyle.el, vigPost.el);
+    devSync.push(() => { vigStyle.set(D().vignette?.style ?? 'paint'); vigPost.set(D().vignette?.postCrop === true); });
     // Settings files (.xmp): the Develop state written to one, or read back from one into the controls.
     const settingsRow = el<HTMLElement>('<div style="display:flex;gap:6px"><button class="cv-btn" type="button">Load Settings...</button><button class="cv-btn" type="button">Save Settings...</button></div>');
     const [loadBtn, saveBtn] = Array.from(settingsRow.querySelectorAll('button'));
@@ -880,6 +885,7 @@ export class FilterPanel extends Dialog {
     window.clearTimeout(this.timer);
     this.timer = window.setTimeout(() => {
       if (!this.isOpen) return;
+      if (this.liveEdit) { this.liveEdit.change({ ...this.settingsOf(this.kind), seed: this.seed }); return; }
       // Develop's scopes follow the developed preview (1.53.4).
       const scoped = (out: ImageData | Promise<ImageData>): ImageData | Promise<ImageData> => {
         if (this.kind === 'develop') void Promise.resolve(out).then((img) => this.scopes.draw(img)).catch(() => undefined);
@@ -986,15 +992,17 @@ export class FilterPanel extends Dialog {
   }
 
   /** True when the filter should join the active smart object's stack rather than change pixels. */
-  private smartTarget(): boolean { const p = this.engine.current, l = p?.activeLayer; return !!l?.smart && !(p?.maskTarget && l.mask); }
+  private smartTarget(): boolean { const p = this.engine.current, l = p?.activeLayer; return !!this.liveEdit || (!!l?.smart && !(p?.maskTarget && l.mask)); }
 
   /** Opens `kind` with a smart filter's `settings` to change them; OK hands the new settings to `done`. The live
    *  preview is off meanwhile, since the stack already shows the filter being changed. */
-  showFor(kind: FilterKind, settings: Record<string, unknown>, done: (settings: Record<string, unknown>) => void): void {
+  showFor(kind: FilterKind, settings: Record<string, unknown>, done: (settings: Record<string, unknown>) => void, live?: { change: (settings: Record<string, unknown>) => void; cancel: () => void }): void {
     if (this.isOpen) return;
     this.savedPreview = this.preview;
     this.preview = false;
+    this.liveEdit = live ?? null;
     this.show(kind);
+    if (!this.isOpen) { this.liveEdit = null; this.preview = this.savedPreview; this.savedPreview = null; return; }
     Object.assign(this.s, structuredClone(settings));
     if (typeof settings.seed === 'number') this.seed = settings.seed;
     this.sections.get(kind)?.sync();
@@ -1043,6 +1051,9 @@ export class FilterPanel extends Dialog {
     this.engine.emit('overlay', null);
     window.clearTimeout(this.timer);
     this.editing = null;
+    const liveEdit = this.liveEdit;
+    this.liveEdit = null;
+    if (liveEdit && !this.done) liveEdit.cancel();
     if (this.asking) { const a = this.asking; this.asking = null; if (!this.done) this.engine.setPreview(null); a(null); }
     if (this.savedPreview !== null) { this.preview = this.savedPreview; this.savedPreview = null; }
     if (!this.done) this.engine.setPreview(null);

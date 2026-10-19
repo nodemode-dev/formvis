@@ -11,9 +11,12 @@ const KEEP = 20000;
 export class FrameTrace {
   on = false;
   samples: FrameSample[] = [];
+  /** The last GPU filter pass timed by a timestamp query while tracing, if the graphics processor offers the query. */
+  gpu: { name: string; ms: number } | null = null;
   private t0 = 0;
 
-  start(): void { this.samples = []; this.t0 = performance.now(); this.on = true; }
+  start(): void { this.samples = []; this.gpu = null; this.t0 = performance.now(); this.on = true; }
+  noteGpu(name: string, ms: number | null): void { if (this.on && ms !== null) this.gpu = { name, ms }; }
   stop(): void { this.on = false; }
 
   record(asked: number, drawStart: number, drawEnd: number, path: FramePath): void {
@@ -32,9 +35,9 @@ export class FrameTrace {
   /** One line for the overlay and the toast. */
   summary(last = 0): string {
     const t = this.stat('total', last), d = this.stat('draw', last);
-    if (!t.n) return 'Frame trace: no frames yet';
+    if (!t.n) return `Frame trace: no frames yet${this.gpu ? `; GPU ${this.gpu.name} ${this.gpu.ms.toFixed(1)} ms` : ''}`;
     const f = (x: number): string => x.toFixed(1);
-    return `Frame trace: ${t.n} frames, ask to drawn ${f(t.median)} ms median, ${f(t.p90)} ms 90th, ${f(t.max)} ms worst; draw ${f(d.median)} ms median`;
+    return `Frame trace: ${t.n} frames, ask to drawn ${f(t.median)} ms median, ${f(t.p90)} ms 90th, ${f(t.max)} ms worst; draw ${f(d.median)} ms median${this.gpu ? `; GPU ${this.gpu.name} ${f(this.gpu.ms)} ms` : ''}`;
   }
 
   csv(): string {

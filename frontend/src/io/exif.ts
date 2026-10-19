@@ -157,4 +157,46 @@ export function exifBlockOf(meta: { exif?: string; camera?: CameraData } | undef
   return meta.camera ? buildExifBlock(meta.camera) : null;
 }
 
+/** The Exif block with its ColorSpace tag (40961) set: 1 for sRGB, 0xFFFF (uncalibrated) for any other space. A tag already
+ *  there is changed in place; otherwise the Exif directory is rewritten at the end of the block with the tag added, its
+ *  other entries untouched (their data stays where it was). With no block a small one is made. */
+export function withColourSpaceTag(block: Uint8Array | null, srgb: boolean): Uint8Array {
+  const value = srgb ? 1 : 0xffff;
+  if (!block) {
+    const out = new Uint8Array(44), dv = new DataView(out.buffer);
+    out[0] = 0x49; out[1] = 0x49; dv.setUint16(2, 42, true); dv.setUint32(4, 8, true);
+    dv.setUint16(8, 1, true); dv.setUint16(10, 34665, true); dv.setUint16(12, 4, true); dv.setUint32(14, 1, true); dv.setUint32(18, 26, true);
+    dv.setUint16(26, 1, true); dv.setUint16(28, 40961, true); dv.setUint16(30, 3, true); dv.setUint32(32, 1, true); dv.setUint16(36, value, true);
+    return out;
+  }
+  try {
+    const le = block[0] === 0x49 && block[1] === 0x49;
+    if (!le && !(block[0] === 0x4d && block[1] === 0x4d)) return block;
+    const out = block.slice(), dv = new DataView(out.buffer);
+    if (dv.getUint16(2, le) !== 42) return block;
+    const ifd0 = dv.getUint32(4, le), n0 = dv.getUint16(ifd0, le);
+    let pointerAt = -1;
+    for (let i = 0; i < Math.min(n0, 500); i++) if (dv.getUint16(ifd0 + 2 + i * 12, le) === 34665) pointerAt = ifd0 + 2 + i * 12 + 8;
+    if (pointerAt < 0) return block;
+    const exifOff = dv.getUint32(pointerAt, le), m = Math.min(dv.getUint16(exifOff, le), 500);
+    for (let i = 0; i < m; i++) {
+      const o = exifOff + 2 + i * 12;
+      if (dv.getUint16(o, le) === 40961) { dv.setUint16(o + 2, 3, le); dv.setUint32(o + 4, 1, le); dv.setUint32(o + 8, 0, le); dv.setUint16(o + 8, value, le); return out; }
+    }
+    const at = out.length + (out.length & 1), grown = new Uint8Array(at + 2 + (m + 1) * 12 + 4), gv = new DataView(grown.buffer);
+    grown.set(out);
+    gv.setUint32(pointerAt, at, le);
+    gv.setUint16(at, m + 1, le);
+    let put = 0, placed = false;
+    for (let i = 0; i <= m; i++) {
+      const src = exifOff + 2 + put * 12, take = !placed && (put >= m || dv.getUint16(src, le) > 40961);
+      const o = at + 2 + i * 12;
+      if (take) { placed = true; gv.setUint16(o, 40961, le); gv.setUint16(o + 2, 3, le); gv.setUint32(o + 4, 1, le); gv.setUint16(o + 8, value, le); }
+      else { grown.set(out.subarray(src, src + 12), o); put++; }
+    }
+    gv.setUint32(at + 2 + (m + 1) * 12, dv.getUint32(exifOff + 2 + m * 12, le), le);
+    return grown;
+  } catch { return block; }
+}
+
 const u32le = (v: number): Uint8Array =>{ const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, v, true); return b; };

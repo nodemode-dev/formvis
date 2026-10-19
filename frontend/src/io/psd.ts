@@ -2,7 +2,7 @@ import type { BlendMode as PsdBlend, EffectContour, Layer as PsdLayer, LayerEffe
 import {
   Raster, boundsOf, docTransform, effectsPresent, integral, liveText, newLayer, placement, applyMat, uid, type BlendMode, type Doc, type ID, type Layer, type SmartLink, type Surface, invert, mul, toBlob, type Pt, defaultEffects, patternById, addPattern, projectPatterns, createSurface, ctxOf, type LayerEffects, CONTOURS, contourCurve, customContourId, customContourPoints, instances, type ContourId, renderText, textKey, TEXT_FONTS, type TextSpec, ADJUSTMENT_LABELS, hsvFromData, type WarpStyle,
 } from '../engine';
-import { fromPsdAdjustment, toPsdAdjustment } from './psd-adjust';
+import { fromPsdAdjustment, keepPsdAdjustment, restorePsdAdjustment, toPsdAdjustment } from './psd-adjust';
 import { fromPsdSmartFilters, toPsdFilter } from './psd-filters';
 import { artboardFromData, blendIfActive, type BlendIf, type DocSlice, type LayerComp } from '../engine/types';
 import { windingArea } from '../engine/custom-shapes';
@@ -10,6 +10,7 @@ import { addIccResource, addPathResources, addResourceBytes, block as resourceBl
 import { addExtraChannels, readExtraChannels, readIccProfile } from './psd-channels';
 import { readPsdChannelMode, writeMultichannelPsd } from './psd-modes';
 import { readChannelRestrictions } from './psd-blend';
+import { readBevelDetails, type BevelDetail } from './psd-raw';
 import { vectorCoverage } from '../engine/vector-mask';
 import { fromBase64, toBase64 } from './icc-read';
 import { cameraFromTiff, exifBlockOf } from './exif';
@@ -107,7 +108,7 @@ function toPsdEffects(fx: LayerEffects, patterns: PatternInfo[]): LayerEffectsIn
   if (gos.length) e.gradientOverlay = gos.map(gradientOf) as LayerEffectsInfo['gradientOverlay'];
   if (sa.enabled) e.satin = { ...on, color: sa.color, opacity: sa.opacity, blendMode: bm(sa.blend), angle: sa.angle, distance: px(sa.distance), size: px(sa.size), invert: sa.invert, ...(sa.antiAlias ? { antialiased: true } : {}), ...cn(sa.contour) };
   if (bv.enabled) e.bevel = { ...on, style: BEVEL_TO[bv.style], technique: bv.technique === 'chiselHard' ? 'chisel hard' : bv.technique === 'chiselSoft' ? 'chisel soft' : 'smooth', strength: bv.depth / 100, direction: bv.down ? 'down' : 'up', size: px(bv.size), soften: px(bv.soften), angle: bv.angle, altitude: bv.altitude, useGlobalLight: bv.useGlobal === true,
-    highlightColor: bv.highlight, highlightOpacity: bv.highlightOpacity, highlightBlendMode: bm(bv.highlightBlend), shadowColor: bv.shadow, shadowOpacity: bv.shadowOpacity, shadowBlendMode: bm(bv.shadowBlend) };
+    highlightColor: bv.highlight, highlightOpacity: bv.highlightOpacity, highlightBlendMode: bm(bv.highlightBlend), shadowColor: bv.shadow, shadowOpacity: bv.shadowOpacity, shadowBlendMode: bm(bv.shadowBlend), ...cn(bv.gloss), ...(bv.antiAlias ? { antialiasGloss: true } : {}) };
   const info = po.enabled ? psdPattern(po.pattern, patterns) : null;
   if (info) e.patternOverlay = { ...on, opacity: po.opacity, blendMode: bm(po.blend), scale: po.scale, pattern: { name: info.name, id: info.id }, align: true };
   return Object.keys(e).length ? e : null;
@@ -160,27 +161,30 @@ function toPsdFill(c: FillContent, patterns: PatternInfo[], name: string, notes:
   if (c.kind === 'solid') return { type: 'color', color: { ...c.color } };
   if (c.kind === 'gradient') return { type: 'solid', name: 'formvis', colorStops: c.stops.map((s) => ({ color: { ...s.color }, location: s.at, midpoint: 0.5 })), opacityStops: c.stops.map((s) => ({ opacity: s.alpha, location: s.at, midpoint: 0.5 })),
     style: c.style, angle: c.angle, scale: c.scale, reverse: c.reverse, dither: c.dither, align: c.align, offset: { ...c.offset } };
-  const scaled = c.scale !== 1 && c.scale > 0 && Math.abs(c.angle) < 1e-6;
-  const info = scaled ? scaledPsdPattern(c.pattern, c.scale, patterns) : psdPattern(c.pattern, patterns);
+  const square = Math.abs(c.angle % 90) < 1e-6, quarter = square ? (((Math.round(c.angle / 90) % 4) + 4) % 4) : 0;
+  const scaled = c.scale > 0 && (c.scale !== 1 || quarter !== 0);
+  const info = scaled ? scaledPsdPattern(c.pattern, c.scale, patterns, quarter) : psdPattern(c.pattern, patterns);
   if (!info) return null;
-  if (c.angle !== 0) notes.push(`"${name}"'s pattern angle is not written to the PSD (the library that writes it has no angle field for a pattern fill); it draws the pattern unturned.`);
+  if (!square) notes.push(`"${name}"'s pattern angle of ${Math.round(c.angle * 100) / 100} degrees is not written to the PSD (the library that writes it has no angle field for a pattern fill, and only quarter turns can be turned into the tile); it draws the pattern unturned.`);
   else if (c.scale !== 1 && !scaled) notes.push(`"${name}"'s pattern scale is not written to the PSD; it draws the pattern at 100 percent.`);
-  if (!c.link) notes.push(`"${name}"'s pattern goes linked with the layer, the format's default; the library's writer cannot mark it unlinked.`);
+  if (!c.link) notes.push(`"${name}"'s pattern goes linked with the layer, the format's default; the library's writer rejects the unlink flag (its Lnkd field is typed as an integer, so a boolean cannot be written).`);
   return { type: 'pattern', name: info.name, id: info.id, phase: { ...c.phase } };
 }
 
 /** A pattern tile resampled by `scale` (0.01 to 16) and added under a GUID, so a fill drawn at that scale reads back
  *  at 100 percent the same size: the file's pattern fill has no scale of its own in the writer. */
-function scaledPsdPattern(id: ID, scale: number, patterns: PatternInfo[]): PatternInfo | null {
+function scaledPsdPattern(id: ID, scale: number, patterns: PatternInfo[], quarter = 0): PatternInfo | null {
   const pat = patternById(id), k = Math.min(16, Math.max(0.01, scale));
   if (!pat) return null;
-  const tag = `${pat.id}@${k}`;
+  const tag = `${pat.id}@${k}${quarter ? `r${quarter}` : ''}`;
   let info = patterns.find((x) => (x as PatternInfo & { formvis?: string }).formvis === tag);
   if (!info) {
-    const w = Math.max(1, Math.round(pat.surface.width * k)), h = Math.max(1, Math.round(pat.surface.height * k)), c = canvas(w, h), g = c.getContext('2d') as CanvasRenderingContext2D;
+    const sw = Math.max(1, Math.round(pat.surface.width * k)), sh = Math.max(1, Math.round(pat.surface.height * k)), w = quarter % 2 ? sh : sw, h = quarter % 2 ? sw : sh, c = canvas(w, h), g = c.getContext('2d') as CanvasRenderingContext2D;
     g.imageSmoothingEnabled = k < 1;
-    g.drawImage(pat.surface as CanvasImageSource, 0, 0, w, h);
-    info = { name: `${pat.name} ${Math.round(k * 100)}%`, id: guid(), x: 0, y: 0, bounds: { x: 0, y: 0, w, h }, data: new Uint8Array(g.getImageData(0, 0, w, h).data) };
+    g.translate(w / 2, h / 2);
+    g.rotate(-quarter * Math.PI / 2);   // the fill turns counter-clockwise by its angle
+    g.drawImage(pat.surface as CanvasImageSource, -sw / 2, -sh / 2, sw, sh);
+    info = { name: `${pat.name} ${Math.round(k * 100)}%${quarter ? ` ${quarter * 90} deg` : ''}`, id: guid(), x: 0, y: 0, bounds: { x: 0, y: 0, w, h }, data: new Uint8Array(g.getImageData(0, 0, w, h).data) };
     (info as PatternInfo & { formvis?: string }).formvis = tag;
     patterns.push(info);
   }
@@ -254,7 +258,7 @@ function fromPsdBlending(pl: PsdLayer): { blendIf?: BlendIf; knockout?: 'shallow
   return out;
 }
 
-function fromPsdEffects(info: LayerEffectsInfo, patterns: PatternInfo[] | undefined, name: string, notes: string[], all = false): LayerEffects | null {
+function fromPsdEffects(info: LayerEffectsInfo, patterns: PatternInfo[] | undefined, name: string, notes: string[], all = false, detail?: BevelDetail): LayerEffects | null {
   const fx = defaultEffects(), px = (u: UnitsValue | undefined, d: number): number => (u && typeof u.value === 'number' ? u.value : d);
   const col = (c: unknown, d: { r: number; g: number; b: number }): { r: number; g: number; b: number } => {
     const o = c as Record<string, number> | null | undefined;
@@ -313,7 +317,24 @@ function fromPsdEffects(info: LayerEffectsInfo, patterns: PatternInfo[] | undefi
       highlight: col(bv.highlightColor, fx.bevel.highlight), highlightOpacity: op(bv.highlightOpacity, 0.75), highlightBlend: bm(bv.highlightBlendMode, 'screen'), shadow: col(bv.shadowColor, fx.bevel.shadow), shadowOpacity: op(bv.shadowOpacity, 0.75), shadowBlend: bm(bv.shadowBlendMode, 'multiply') };
     if (bv.useGlobalLight) fx.bevel.useGlobal = true;
     if (bv.technique === 'chisel hard' || bv.technique === 'chisel soft') fx.bevel.technique = bv.technique === 'chisel hard' ? 'chiselHard' : 'chiselSoft';
-    if (bv.useShape || bv.useTexture) notes.push(`"${name}" has a bevel with a Contour or Texture whose settings the file's reader does not give; formvis draws the bevel without them.`);
+    if (detail) {
+      const gloss = fromPsdContour(detail.gloss), edge = fromPsdContour(detail.edge);
+      if (gloss) fx.bevel.gloss = gloss;
+      if (detail.antiAlias) fx.bevel.antiAlias = true;
+      if (detail.useShape) fx.bevel.contour = { enabled: true, id: edge ?? 'linear', range: detail.range ?? 0.5 };
+      if (detail.useTexture && detail.texture) {
+        const t = detail.texture, src = patterns?.find((x) => x.id.replace(/\0+$/, '') === (t.patternId ?? '').replace(/\0+$/, ''));
+        let id = 'builtin:checker';
+        if (src?.data && src.bounds.w > 0 && src.bounds.h > 0) {
+          const w = src.bounds.w, h = src.bounds.h, surface = createSurface(w, h), img = new ImageData(w, h);
+          img.data.set(src.data.subarray(0, w * h * 4));
+          ctxOf(surface).putImageData(img, 0, 0);
+          id = `psd-${src.id}`;
+          if (!patternById(id)) { addPattern(src.name || 'Pattern', surface, id); projectPatterns.add(id); }
+        } else notes.push(`"${name}" has a bevel texture whose pattern the file does not include; formvis shows Checker in its place.`);
+        fx.bevel.texture = { enabled: true, pattern: id, scale: t.scale, depth: t.depth, invert: t.invert, ...(t.link ? {} : { link: false }) };
+      }
+    } else if (bv.useShape || bv.useTexture) notes.push(`"${name}" has a bevel with a Contour or Texture whose settings this file did not let formvis read; formvis draws the bevel without them.`);
   }
   const po = info.patternOverlay;
   if (po) {
@@ -668,7 +689,7 @@ export async function readPsdFile(file: File, siblings: readonly File[] = []): P
     if (!links.has(g)) links.set(g, uid());
     return { link: links.get(g) as ID };
   };
-  const closedGroups: ID[] = [], restrictions = readChannelRestrictions(buffer, psd);
+  const closedGroups: ID[] = [], restrictions = readChannelRestrictions(buffer, psd), bevels = readBevelDetails(buffer, psd);
   const maskOf =(mk: PsdLayer['mask']): Layer['mask'] | null => {
     if (!mk?.canvas || !mk.canvas.width || !mk.canvas.height) return null;
     // PSD masks are grey; formvis's are white with the level in alpha.
@@ -713,7 +734,7 @@ export async function readPsdFile(file: File, siblings: readonly File[] = []): P
         const gmask = maskOf(pl.mask), gvec = vectorMaskOf(pl);
         if (gmask) group.mask = gmask;
         if (gvec) group.vectorMask = gvec;
-        if (pl.effects) { const gfx = fromPsdEffects(pl.effects, psd.patterns, name, notes); if (gfx) group.effects = gfx; }
+        if (pl.effects) { const gfx = fromPsdEffects(pl.effects, psd.patterns, name, notes, false, bevels.get(pl)); if (gfx) group.effects = gfx; }
         if (pl.opened === false) closedGroups.push(group.id);
         walk(pl.children, group.id);
         psdIds.set(pl, group.id);
@@ -724,7 +745,8 @@ export async function readPsdFile(file: File, siblings: readonly File[] = []): P
       }
       if (pl.blendMode && !FROM_PSD.has(pl.blendMode) && pl.blendMode !== 'pass through') notes.push(`"${name}" uses ${pl.blendMode}, which formvis does not have; it opened as Normal.`);
       const adj = pl.adjustment ? fromPsdAdjustment(pl.adjustment) : null;
-      if (pl.adjustment && !adj) { notes.push(`"${name}" is a ${pl.adjustment.type} adjustment, which formvis does not have; formvis left it out.`); continue; }
+      const keptAdj = pl.adjustment && !adj ? keepPsdAdjustment(pl.adjustment) : null;
+      if (keptAdj) notes.push(`"${name}" is a ${pl.adjustment?.type} adjustment, which formvis does not draw; it opened as an empty layer that keeps the adjustment's settings for a PSD saved again.`);
       // A PSD fill layer (a colour, a gradient or a pattern, with no shape's path) opens as formvis's (1.66.0).
       // A shape filled with a gradient or a pattern and not stroked is a fill layer behind a vector mask.
       const shapeFill = !!pl.vectorMask?.paths?.length && (pl.vectorFill?.type === 'solid' || pl.vectorFill?.type === 'pattern') && !pl.vectorStroke?.strokeEnabled && pl.vectorStroke?.fillEnabled !== false;
@@ -748,7 +770,7 @@ export async function readPsdFile(file: File, siblings: readonly File[] = []): P
       const advanced = { ...labelOf(pl), ...(restricted ? { blendChannels: restricted } : {}), ...(pl.transparencyShapesLayer === false ? { transparencyShapes: false } : {}) };
       if (pl.channelBlendingRestrictions?.length && !restricted) notes.push(`"${name}" restricts the channels it blends into, which this file's layer records did not let formvis read; it opened with all channels.`);
       const layer = adj ? newLayer(name, doc, { adjustment: adj, parentId, visible: !pl.hidden, opacity: pl.opacity ?? 1, blend, ...fill, ...advanced })
-        : newLayer(name, doc, { raster, parentId, ...(deep ? { channels: deep } : {}), transform: { ...docTransform(w, h), x: drawn ? 0 : atX, y: drawn ? 0 : atY }, visible: !pl.hidden, opacity: pl.opacity ?? 1, blend, ...fill, ...advanced, ...(fillSpec ? { fillContent: fillSpec } : {}) });
+        : newLayer(name, doc, { raster, parentId, ...(deep ? { channels: deep } : {}), transform: { ...docTransform(w, h), x: drawn ? 0 : atX, y: drawn ? 0 : atY }, visible: !pl.hidden, opacity: pl.opacity ?? 1, blend, ...fill, ...advanced, ...(fillSpec ? { fillContent: fillSpec } : {}), ...(keptAdj ? { psdAdjustment: keptAdj } : {}) });
       const made = maskOf(pl.mask);
       if (made) layer.mask = made;
       const vm = pl.vectorMask, vf = pl.vectorFill, vs = pl.vectorStroke;
@@ -828,7 +850,7 @@ export async function readPsdFile(file: File, siblings: readonly File[] = []): P
         const styled = fromPsdStyleRuns(tx.styleRuns, spec, scale, tx.text.length);
         if (styled.length) layer.text = { ...layer.text, runs: styled };
       }
-      if (pl.effects) { const fx = fromPsdEffects(pl.effects, psd.patterns, name, notes); if (fx) layer.effects = fx; }
+      if (pl.effects) { const fx = fromPsdEffects(pl.effects, psd.patterns, name, notes, false, bevels.get(pl)); if (fx) layer.effects = fx; }
       // Blend Interior Effects as Group and Layer Mask Hides Effects belong to the layer style; they are kept when it has one.
       if (layer.effects) {
         if (pl.blendInteriorElements) layer.effects.blendInterior = true;
@@ -976,11 +998,18 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
   const toPsd = (l: Layer): PsdLayer | null => {
     const tag: Pick<PsdLayer, 'layerColor'> = l.label ? { layerColor: l.label } : {};
     if (l.isGroup) return { name: l.name, hidden: !l.visible, opacity: l.opacity, blendMode: groupIsolated(l) ? TO_PSD[l.blend] ?? 'normal' : 'pass through', opened: true, children: build(l.id), ...(effectsPresent(l.effects) ? (() => { const e = toPsdEffects(l.effects as LayerEffects, psdPatterns); return e ? { effects: e } : {}; })() : {}), ...tag, ...toPsdArtboard(l) };
+    const keptAdj = !l.adjustment && l.psdAdjustment ? restorePsdAdjustment(l.psdAdjustment) : null;
+    if (keptAdj) {
+      // An adjustment formvis cannot draw goes back as the file had it.
+      const out: PsdLayer = { name: l.name, opacity: l.opacity, ...(l.fill !== undefined && l.fill !== 1 ? { fillOpacity: l.fill } : {}), hidden: !l.visible, blendMode: TO_PSD[l.blend] ?? 'normal', clipping: !!l.clipId, adjustment: keptAdj, ...tag, ...toPsdBlending(l) };
+      maskOnto(l, out);
+      return out;
+    }
     if (l.adjustment) {
       // An adjustment layer goes as a PSD one, live, with its mask, opacity, blend and clipping.
       const adjustment = toPsdAdjustment(l.adjustment);
       if (!adjustment) { notes.push(`"${l.name}" is a ${ADJUSTMENT_LABELS[l.adjustment.kind]} adjustment, which the PSD format has no adjustment layer for; it is left out of the PSD.`); return null; }
-      if (l.adjustment.kind === 'hsv' && hsvFromData(l.adjustment.data as never).colorize) notes.push(`"${l.name}" uses Colorize, which the PSD's Hue/Saturation layer does not carry from formvis.`);
+      if (l.adjustment.kind === 'hsv' && hsvFromData(l.adjustment.data as never).colorize && hsvFromData(l.adjustment.data as never).range !== 'Master') notes.push(`"${l.name}" colorizes with a colour range selected; the PSD's Colorize is the Master's, so it is written there.`);
       const out: PsdLayer = { name: l.name, opacity: l.opacity, ...(l.fill !== undefined && l.fill !== 1 ? { fillOpacity: l.fill } : {}), ...(l.locks ? { protected: { transparency: !!(l.locks.all || l.locks.transparency), composite: !!(l.locks.all || l.locks.pixels), position: !!(l.locks.all || l.locks.position) } } : {}), hidden: !l.visible, blendMode: TO_PSD[l.blend] ?? 'normal', clipping: !!l.clipId, adjustment, ...tag, ...toPsdBlending(l) };
       maskOnto(l, out);
       return out;
@@ -1031,8 +1060,13 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
         // formvis fills by the nonzero rule, so an outline wound against the largest one is a hole; the PSD says so with
         // the subtract operation.
         out.vectorMask = { paths: psdOutlines(subpaths, moved ? t.x - v.origin.x : 0, moved ? t.y - v.origin.y : 0) };
-        out.vectorFill = { type: 'color', color: rgb(v.fill ?? v.stroke?.color ?? { r: 0, g: 0, b: 0 }) };
-        out.vectorStroke = { strokeEnabled: !!v.stroke, fillEnabled: !!v.fill, lineWidth: { units: 'Pixels', value: (v.stroke?.width ?? 1) * k }, lineCapType: 'round', lineJoinType: 'round', lineAlignment: 'center', content: { type: 'color', color: rgb(v.stroke?.color ?? v.fill ?? { r: 0, g: 0, b: 0 }) } };
+        // A shape's gradient (fill or stroke) is the format's gradient content; its stops carry their alpha as opacity stops.
+        const gradientContent = (g: ShapeGradient): VectorContent => ({ type: 'solid', name: 'formvis', colorStops: g.stops.map((s) => ({ color: rgb(s.color), location: s.at, midpoint: 0.5 })), opacityStops: g.stops.map((s) => ({ opacity: s.alpha ?? 1, location: s.at, midpoint: 0.5 })),
+          style: g.type, angle: g.angle ? -g.angle : 0, scale: 1, reverse: false, dither: false, align: true, offset: { x: 0, y: 0 } });
+        const fg = v.fill && v.gradient && v.gradient.stops.length >= 2 ? v.gradient : null, sg = v.stroke?.gradient && v.stroke.gradient.stops.length >= 2 ? v.stroke.gradient : null;
+        out.vectorFill = fg ? gradientContent(fg) : { type: 'color', color: rgb(v.fill ?? v.stroke?.color ?? { r: 0, g: 0, b: 0 }) };
+        out.vectorStroke = { strokeEnabled: !!v.stroke, fillEnabled: !!v.fill, lineWidth: { units: 'Pixels', value: (v.stroke?.width ?? 1) * k }, lineCapType: 'round', lineJoinType: 'round', lineAlignment: 'center', content: sg ? gradientContent(sg) : { type: 'color', color: rgb(v.stroke?.color ?? v.fill ?? { r: 0, g: 0, b: 0 }) } };
+        if ((v.fill && v.pattern) || (v.stroke?.pattern)) notes.push(`"${l.name}"'s pattern fill or stroke is not written to the PSD shape; it keeps its colour.`);
       }
     }
     const vm = l.vectorMask;
@@ -1113,6 +1147,8 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
   psd.imageResources = { ...(psd.imageResources ?? {}), resolutionInfo: { horizontalResolution: ppi, horizontalResolutionUnit: 'PPI', widthUnit: 'Inches', verticalResolution: ppi, verticalResolutionUnit: 'PPI', heightUnit: 'Inches' } };
   const guideList = (doc.guides ?? []).filter((g) => Number.isFinite(g.at) && g.at >= 0);
   if (guideList.length) psd.imageResources = { ...(psd.imageResources ?? {}), gridAndGuidesInformation: { guides: guideList.map((g) => ({ location: Math.round(g.at * 2) / 2, direction: g.axis === 'y' ? 'horizontal' as const : 'vertical' as const })) } };   // 1032, in pixels
+  // An artboard's own guides: its artboard data lists their places in the file's guide list.
+  guideList.forEach((g, i) => { const ab = g.board ? built.get(g.board)?.artboard : undefined; if (ab) (ab.guideIndices ??= []).push(i); });
   const noteList = (doc.notes ?? []).filter((n) => n.text.trim());
   if (noteList.length) psd.annotations = noteList.map((n) => ({ type: 'text' as const, open: false, iconLocation: { left: Math.round(n.x), top: Math.round(n.y), right: Math.round(n.x) + 18, bottom: Math.round(n.y) + 18 }, popupLocation: { left: Math.round(n.x) + 20, top: Math.round(n.y), right: Math.round(n.x) + 220, bottom: Math.round(n.y) + 120 }, color: { r: 255, g: 220, b: 0 }, author: '', name: '', date: '', data: n.text }));   // text notes (Anno)
   if (doc.globalLight) psd.imageResources = { ...(psd.imageResources ?? {}), globalAngle: Math.round(doc.globalLight.angle), globalAltitude: Math.round(doc.globalLight.altitude) };   // 1037 and 1049

@@ -563,8 +563,8 @@ export const PARAM_ADJUSTMENTS: Record<ParamKind, ParamAdjustment> = {
   filmLook: {
     label: 'Film Look',
     params: [{ key: 'stock', label: 'Stock', kind: 'select', options: FILM_STOCK_OPTIONS, def: 'portrait400' }, range('strength', 'Strength', 0, 100, 100), range('grain', 'Grain', 0, 100, 40), range('grainSize', 'Grain size', 1, 8, 1.5, 0.1), range('seed', 'Seed', 0, 9999, 1),
-      { key: 'points', label: 'Curve points', kind: 'text', def: '' }, range('tonalShadows', 'Tonal contrast: shadows', -100, 100, 0), range('tonalMidtones', 'Tonal contrast: midtones', -100, 100, 0), range('tonalHighlights', 'Tonal contrast: highlights', -100, 100, 0)],
-    kernel: (v) => filmKernel(v.stock, n(v, 'strength'), n(v, 'grain'), n(v, 'grainSize'), v.points, n(v, 'seed') * 7 + 3, [n(v, 'tonalShadows'), n(v, 'tonalMidtones'), n(v, 'tonalHighlights')]),
+      { key: 'points', label: 'Curve points', kind: 'text', def: '' }, range('tonalShadows', 'Tonal contrast: shadows', -100, 100, 0), range('tonalMidtones', 'Tonal contrast: midtones', -100, 100, 0), range('tonalHighlights', 'Tonal contrast: highlights', -100, 100, 0), range('structure', 'Structure', -100, 100, 0), range('structureSize', 'Structure size', 2, 100, 20)],
+    kernel: (v) => filmKernel(v.stock, n(v, 'strength'), n(v, 'grain'), n(v, 'grainSize'), v.points, n(v, 'seed') * 7 + 3, [n(v, 'tonalShadows'), n(v, 'tonalMidtones'), n(v, 'tonalHighlights')], n(v, 'structure'), n(v, 'structureSize')),
   },
   // Effects pack: the colour channels displaced against each other, as a live adjustment layer.
   chromaticShift: {

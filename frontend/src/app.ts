@@ -46,7 +46,7 @@ import { encodeIndexedPng } from './io/png8';
 import { withResolution } from './engine/dpi';
 import { dpxBlob } from './io/dpx';
 import { pickOutFolder, writeFolder } from './io/out-folder';
-import { dropsAlpha, exportLayout, engineWrites, fidelityNotes, exportMeta, exportName, exportSize, formatOptions, PROFILELESS, sizedSettings, type ExportSettings } from './io/export-presets';
+import { dropsAlpha, exportLayout, engineWrites, fidelityNotes, saveCopyNotes, exportMeta, exportName, exportSize, formatOptions, PROFILELESS, sizedSettings, type ExportSettings } from './io/export-presets';
 import { pnmDeepBlob } from './io/pnm';
 import { PARAM_KINDS } from './engine/adjust-params';
 import { APPLY_MODES, type ApplyMode } from './engine/apply-image';
@@ -232,6 +232,7 @@ import { HdrToningDialog } from './ui/panels/hdr-toning';
 import { Preview32Dialog } from './ui/panels/preview32-dialog';
 import { AssignProfileDialog, ConvertProfileDialog, ModeConvertDialog, ProfileInfoDialog, ProfileMismatchDialog, ProofSetupDialog, convertDocumentDeep, type Space } from './ui/panels/colour-dialogs';
 import { embeddedProfile, exifColourSpace, fromBase64, isSrgbName, profileName, toBase64 } from './io/icc-read';
+import { exifBlockOf, withColourSpaceTag } from './io/exif';
 import { toolHost } from './extensions/registry';
 import { Viewport } from './engine/viewport';
 import { enhanceAllSelects } from './ui/dropdown';
@@ -543,7 +544,7 @@ export function startApp(): void {
     Object.assign(Stage.controls, { preciseOther: pr.cursorOther === 'precise', pinch: pr.pinchZoom, rotate: pr.trackpadRotate, touch: pr.touchGestures, colMm: pr.colWidth + pr.gutter, colWidthMm: pr.colWidth, border: pr.canvasBorder });
     applyChecker(pr);
     applyTooltips(pr.showTooltips);
-    FloatViews.prefs = { zoomResize: pr.zoomResizes, docking: pr.floatDocking };
+    FloatViews.prefs = { zoomResize: pr.zoomResizes, docking: pr.floatDocking, asTabs: pr.openAsTabs };
     applyUiFontSize(pr);
     document.body.classList.toggle('animations-disabled', !pr.animations);
     Stage.usePressure = pr.usePressure;
@@ -727,8 +728,10 @@ export function startApp(): void {
   }
 
   async function openOpened(o: OpenedProject, libraryName: string | null): Promise<void> {
-    const { doc, activeId, paths, timeline } = await readOpened(o);
+    const { doc, activeId, paths, timeline, selection, history } = await readOpened(o);
     const p = engine.addProject(doc, o.name, activeId);
+    if (selection) p.selection = selection;
+    if (history) p.history.load(history.names, [...history.snaps, { doc, activeId, selection: selection ?? null }]);
     if (paths) engine.setPathsOf(p, paths);
     if (timeline) engine.setTimelineFor(p, timeline);
     engine.markSaved(p, p.name, libraryName);
@@ -1197,8 +1200,10 @@ export function startApp(): void {
       await Promise.allSettled(runs);
     }
   };
-  /** Edits wait for a save unless it runs in the background; a giant tiled layer is read band by band over time, so it always waits. */
-  const saveHolds = (p: NonNullable<typeof engine.current>): boolean => !loadPrefs().saveInBackground || p.doc.layers.some((l) => l.tiled);
+  /** Edits wait for a save unless it runs in the background; a giant tiled layer is first copied band by band (edits held for the copy only) and the copy is written. */
+  let historyOnce = false;   // File > Save As with History: the next save keeps the steps whatever the preference says
+  const historyCap = (): number => (historyOnce ? Math.max(loadPrefs().historyCapMb, 64) : loadPrefs().historyCapMb) * 1048576;
+  const saveHolds = (p: NonNullable<typeof engine.current>): boolean => !loadPrefs().saveInBackground || historyCap() > 0 || (!giantTiles.store && p.doc.layers.some((l) => l.tiled));
   const saveTask = <T>(p: NonNullable<typeof engine.current>, fn: () => Promise<T>): Promise<T> => (saveHolds(p) ? engine.lockedTask('Save', fn) : engine.task(fn));
   function save(saveAs: boolean): Promise<boolean> {
     const running = [...saving].find(([, doc]) => doc === (engine.current?.id ?? ''));
@@ -1232,10 +1237,23 @@ export function startApp(): void {
 
   /** The document written layer by layer as a stoppable job: the status line counts layers, Escape or Cancel Background Job stops it before anything is sent. */
   async function serializeJob(p: NonNullable<typeof engine.current>): ReturnType<typeof serialize> {
-    const job = engine.startJob('Save', p.doc.layers.length);
+    const job = engine.startJob('Save', p.doc.layers.length), store = giantTiles.store;
+    let copies: Array<{ release(s: NonNullable<typeof store>): void }> = [];
     try {
-      return await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p), (d, n) => { if (job.cancelled) throw new Error('The save was stopped; nothing was written.'); engine.jobStep(job, d, n); });
-    } finally { engine.endJob(job); }
+      const cap = historyCap();
+      let doc = p.doc;
+      const giants = saveHolds(p) || !store ? [] : p.doc.layers.filter((l) => l.tiled && !l.isGroup);
+      if (giants.length) {
+        const made = new Map<string, NonNullable<(typeof giants)[number]['tiled']>>();
+        copies = [...made.values()];
+        await engine.lockedTask('Save', async () => {
+          for (const l of giants) { if (job.cancelled) throw new Error('The save was stopped; nothing was written.'); made.set(l.id, await (l.tiled as NonNullable<typeof l.tiled>).snapshot(store as NonNullable<typeof store>, giantTiles.share)); copies = [...made.values()]; }
+          doc = p.doc;
+        });
+        doc = { ...doc, layers: doc.layers.map((l) => (made.has(l.id) ? { ...l, tiled: made.get(l.id) } : l)) };
+      }
+      return await serialize(doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p), (d, n) => { if (job.cancelled) throw new Error('The save was stopped; nothing was written.'); engine.jobStep(job, d, n); }, { selection: p.selection, history: cap > 0 ? { source: p, cap, steps: 100 } : null });
+    } finally { if (store) for (const c of copies) c.release(store); engine.endJob(job); historyOnce = false; }
   }
 
   async function saveCore(saveAs: boolean): Promise<boolean> {
@@ -1553,7 +1571,11 @@ export function startApp(): void {
         // File Info (29.2) goes in as XMP, the AI label inside the same packet; with no File Info the label is written alone.
         const ai = s.aiLabel && s.aiLabel !== 'none' ? s.aiLabel : p.doc.meta?.aiLabel;
         // Metadata (36.29): the document's File Info, none, or only the Copyright and Contact texts.
-        const meta = exportMeta(s, p.doc.meta);
+        let meta = exportMeta(s, p.doc.meta);
+        if (loadPrefs().exifColourTag && s.metadata !== 'none' && (s.format === 'jpg' || s.format === 'png' || s.format === 'webp' || s.format === 'tiff')) {
+          const srgbOut = own ? isSrgbName(own.name) : listed ? isSrgbName(label) : space === 'srgb';
+          meta = { ...(meta ?? {}), exif: toBase64(withColourSpaceTag(exifBlockOf(meta ?? undefined), srgbOut)) };
+        }
         const labelled = metaWritable(meta) ? await withXmp(blob, s.format, meta, new Date(), ai) : ai ? await withAiLabel(blob, s.format, ai) : blob;
         await give(s.promptMeta && s.format === 'png' ? await withGenerationText(labelled, p.doc.layers) : labelled, exportName(p.name, s, suffix), c);
       } catch (err) { if (io.sink) io.sink(new Blob([]), ''); else toast(message(err), 'error'); }
@@ -1611,6 +1633,7 @@ export function startApp(): void {
   async function exportWide(kind: 'hdr' | 'exr' | 'pfm', exr: Record<string, unknown> | null = null): Promise<void> {
     const p = engine.current;
     if (!p) return;
+    await flatLoss(kind);
     try {
       // 1.57.8: from any document; below 32 bits (and in CMYK and Lab) the picture the canvas shows, as linear light.
       let deep: { width: number; height: number; data: Float32Array } | { error: string };
@@ -1935,13 +1958,33 @@ export function startApp(): void {
     });
   }
 
-  /** True while an action plays its Save step, so the export it runs is not recorded again. */
-  let replayingSave = false;
-  async function exportImage(kind: 'png' | 'jpg' | 'webp' | 'tiff' | 'pdf' | 'avif', quality = 0.92): Promise<void> {
+  /** One notice for what a flat save in `kind` changes or drops: depth, ink, transparency, lossy encoding, resolution. */
+  async function flatLoss(kind: string, quality = 1): Promise<void> {
     const p = engine.current;
     if (!p) return;
+    try {
+      let clear = false;
+      const flat = engine.flattened();
+      if (flat) {
+        const k = Math.min(1, 1024 / Math.max(flat.width, flat.height)), pc = createSurface(Math.max(1, Math.round(flat.width * k)), Math.max(1, Math.round(flat.height * k))), px = ctxOf(pc);
+        px.imageSmoothingEnabled = false;
+        px.drawImage(flat as CanvasImageSource, 0, 0, pc.width, pc.height);
+        const d = px.getImageData(0, 0, pc.width, pc.height).data;
+        for (let i = 3; i < d.length && !clear; i += 4) if (d[i] < 255) clear = true;
+      }
+      const lost = saveCopyNotes(kind, p.doc, clear, quality);
+      if (lost.length) toast(lost.join(' '), 'info');
+    } catch { /* the notice is a courtesy; the save goes on */ }
+  }
+  /** True while an action plays its Save step, so the export it runs is not recorded again. */
+  let replayingSave = false;
+  async function exportImage(kind: 'png' | 'jpg' | 'webp' | 'tiff' | 'pdf' | 'avif', quality = 0.92, called?: string): Promise<void> {
+    const p = engine.current;
+    if (!p) return;
+    const stem = called || p.name;
     engine.settle();
     if (!replayingSave && (kind === 'png' || kind === 'jpg' || kind === 'webp')) actions.record({ kind: 'save', label: `Save as ${kind.toUpperCase()}`, format: kind, quality });
+    await flatLoss(kind, quality);
     if (p.doc.mode === 'cmyk' && (kind === 'tiff' || kind === 'jpg')) { await exportCmyk(kind, quality); return; }
     if (p.doc.mode === 'lab' && kind === 'tiff') { await exportLabTiff(); return; }
     await engine.task(async () => {
@@ -1957,7 +2000,7 @@ export function startApp(): void {
         if (!deep && kind === 'png' && engine.bandedExportable()) {
           const key = await api.bandsBegin(p.doc.width, p.doc.height, p.doc.resolution ?? 72, prof);
           await engine.renderBands((rows) => api.bandsPut(key, rows));
-          await deliver(await api.bandsEnd(key), `${p.name}.png`);
+          await deliver(await api.bandsEnd(key), `${stem}.png`);
           return;
         }
         // From 32 bits (1.53.9): TIFF stays 32-bit float; PNG is 16-bit, sRGB-encoded, brighter than white clipped.
@@ -1968,7 +2011,7 @@ export function startApp(): void {
         // TIFF, AVIF and WebP take it in the engine's encode, and 16-bit files as they are written.
         const own = !deep && blob && (kind === 'png' || kind === 'jpg') ? p.doc.profile ?? { name: SPACES.srgb.label, icc: toBase64(iccProfile('srgb')) } : undefined;
         const tagged = blob && own ? (kind === 'png' ? await embedPng(blob, fromBase64(own.icc), own.name) : await embedJpeg(blob, fromBase64(own.icc))) : blob;
-        if (tagged) await deliver(await withXmp(tagged, kind, p.doc.meta), `${p.name}.${kind === 'tiff' ? 'tif' : kind}`);   // File Info as XMP (29.2)
+        if (tagged) await deliver(await withXmp(tagged, kind, p.doc.meta), `${stem}.${kind === 'tiff' ? 'tif' : kind}`);   // File Info as XMP (29.2)
       } catch (err) { toast(message(err), 'error'); }
     });
   }
@@ -2642,8 +2685,10 @@ export function startApp(): void {
   /** Layers to Files from a person (the dialog) or an agent (any parameter given runs it at once). */
   const LAYER_EXPORT_PARAMS: Record<string, CommandParam> = {
     prefix: { type: 'string', description: 'File name prefix; the document name when left out.' },
-    format: { type: 'string', enum: ['png', 'jpg', 'tiff', 'webp', 'psd', 'bmp', 'tga'], description: 'File type; png when left out.' },
+    format: { type: 'string', enum: ['png', 'jpg', 'tiff', 'tiff-layers', 'webp', 'psd', 'bmp', 'tga', 'dpx'], description: 'File type; png when left out. tiff-layers writes each file as a TIFF holding that one layer in its layer block.' },
     quality: { type: 'integer', min: 1, max: 100, description: 'JPEG and WebP quality.' },
+    tga_bits: { type: 'integer', enum: [24, 32], description: 'TGA bits per pixel; 32 when left out.' },
+    dpx_bits: { type: 'integer', enum: [8, 10, 12, 16], description: 'DPX bits per channel; 10 when left out.' },
     visible_only: { type: 'boolean', description: 'Only layers that are shown; true when left out. Layers only.' },
     trim: { type: 'boolean', description: 'Cut each layer to its visible pixels. Layers only.' },
     icc: { type: 'boolean', description: 'Embed the ICC profile; true when left out.' },
@@ -2654,7 +2699,7 @@ export function startApp(): void {
   function layerExportRun(artboards: boolean, a?: Record<string, unknown>, comps = false): void {
     if (!a || !Object.keys(a).length) { dialogs.layerExport.show(artboards, comps); return; }
     const d = DEFAULT_LAYER_EXPORT, f = String(a.format ?? d.format) as LayerExportSettings['format'];
-    void exportLayerFiles({ artboards, comps, prefix: String(a.prefix ?? ''), format: ['png', 'jpg', 'tiff', 'webp', 'psd', 'bmp', 'tga'].includes(f) ? f : d.format, quality: Number(a.quality ?? d.quality), visibleOnly: a.visible_only === undefined ? d.visibleOnly : a.visible_only === true, trim: a.trim === true, icc: a.icc === undefined ? d.icc : a.icc === true, folder: String(a.folder ?? ''), ...(a.selected_only === true && !artboards && !comps ? { ids: (() => { const c = engine.current; const ids = c ? (c.selectedIds.size ? [...c.selectedIds] : c.activeId ? [c.activeId] : []) : []; return ids.length ? ids : ['none']; })() } : {}), ...(artboards && typeof a.names === 'string' && a.names.trim() ? { ids: (() => { const want = a.names.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean), ids = engine.artboards().filter((b) => want.includes(b.name.toLowerCase())).map((b) => b.id); return ids.length ? ids : ['none']; })() } : {}) });
+    void exportLayerFiles({ artboards, comps, prefix: String(a.prefix ?? ''), format: ['png', 'jpg', 'tiff', 'tiff-layers', 'webp', 'psd', 'bmp', 'tga', 'dpx'].includes(f) ? f : d.format, quality: Number(a.quality ?? d.quality), ...(Number(a.tga_bits) === 24 ? { tgaBits: 24 as const } : {}), ...([8, 10, 12, 16].includes(Number(a.dpx_bits)) ? { dpxBits: Number(a.dpx_bits) as 8 | 10 | 12 | 16 } : {}), visibleOnly: a.visible_only === undefined ? d.visibleOnly : a.visible_only === true, trim: a.trim === true, icc: a.icc === undefined ? d.icc : a.icc === true, folder: String(a.folder ?? ''), ...(a.selected_only === true && !artboards && !comps ? { ids: (() => { const c = engine.current; const ids = c ? (c.selectedIds.size ? [...c.selectedIds] : c.activeId ? [c.activeId] : []) : []; return ids.length ? ids : ['none']; })() } : {}), ...(artboards && typeof a.names === 'string' && a.names.trim() ? { ids: (() => { const want = a.names.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean), ids = engine.artboards().filter((b) => want.includes(b.name.toLowerCase())).map((b) => b.id); return ids.length ? ids : ['none']; })() } : {}) });
   }
 
   /** File > Export > OpenRaster (1.51.7): layers, groups, positions, opacity, visibility and blend modes, for any
@@ -3249,7 +3294,7 @@ export function startApp(): void {
     contactSheet: new ContactSheetDialog(engine),
     loadStack: new LoadStackDialog(engine, false),
     stackStatistics: new LoadStackDialog(engine, true),
-    saveCopy: new SaveCopyDialog(engine, (n, layers) => void saveCopy(n, layers)),
+    saveCopy: new SaveCopyDialog(engine, (n, layers, format, quality) => void (format === 'fvd' ? saveCopy(n, layers) : exportImage(format, quality / 100, n.replace(/[/\\:*?"<>|]/g, '-')))),
     palette: new CommandPalette(commands, () => menus, engine),
     notices: new NoticesDialog(),
     fillLayer: new FillLayerDialog(engine),
@@ -3617,7 +3662,7 @@ export function startApp(): void {
     { id: 'new', label: 'New Canvas...', keys: ['Alt+Mod+N', 'Mod+N'], run: () => dialogs.newCanvas.show() },
     { id: 'open', label: 'Open Project...', keys: ['Mod+O'], run: () => void dialogs.open.show() },
     { id: 'recent-heading', label: 'Open Recent', enabled: () => false, run: () => undefined },
-    ...Array.from({ length: 40 }, (_, i) => ({ id: `recent-${i}`, label: () => (isDiskPath(recent[i] ?? '') ? baseName(recent[i]) : recent[i] ?? ''), enabled: () => i < recent.length, run: () => { const n = recent[i]; if (n) void openLibrary(n); } })),
+    ...Array.from({ length: 40 }, (_, i) => ({ id: `recent-${i}`, label: () => (i < recent.length ? `${i + 1}. ${isDiskPath(recent[i]) ? baseName(recent[i]) : recent[i]}` : ''), enabled: () => i < recent.length, run: () => { const n = recent[i]; if (n) void openLibrary(n); } })),
     { id: 'clear-recent', label: 'Clear Recent', enabled: () => recent.length > 0, run: () => keepRecent([]) },
     { id: 'import', label: 'Import Images...', keys: ['Shift+Mod+O'], run: () => imageInput.click() },
     { id: 'import-folder', label: 'Import Images from Folder...', run: () => folderInput.click() },
@@ -3641,6 +3686,7 @@ export function startApp(): void {
     { id: 'render-video', label: 'Render Video...', enabled: () => !!engine.video, run: () => renderDialog.show() },   // 1.59.6
     { id: 'save', label: 'Save', keys: ['Mod+S'], enabled: has, run: () => void save(false) },
     { id: 'save-as', label: 'Save As...', keys: ['Shift+Mod+S'], enabled: has, run: () => void save(true) },
+    { id: 'save-as-history', label: 'Save As with History...', enabled: has, run: () => { historyOnce = true; void save(true).finally(() => { historyOnce = false; }); } },
     { id: 'save-copy', label: 'Save a Copy...', keys: ['Alt+Mod+S'], enabled: has, run: () => { engine.settle(); dialogs.saveCopy.show(); } },
     { id: 'revert', label: 'Revert', keys: '__TAURI_INTERNALS__' in window ? ['F12'] : [], enabled: () => !!(engine.current?.libraryName || engine.current?.filePath) && !!engine.current?.modified, run: () => void revert() },
     { id: 'download-project', label: 'Download Project File', enabled: has, run: () => void downloadProject() },
@@ -5550,7 +5596,7 @@ export function startApp(): void {
     { id: 'new-relight-layer', label: 'Relight Layer...', icon: 'relight', enabled: () => has() && !relight.editing, run: () => { void relight.begin(); } },
     { id: 'filter-relight', label: 'Relight...', icon: 'relight', enabled: () => has() && !relight.editing, run: () => { void relight.begin(); } },
     { id: 'edit-relight', label: 'Edit Lighting...', icon: 'relight', enabled: () => !!layer()?.relight && !relight.editing, run: () => { const l = layer(); if (l?.relight) void relight.begin(l.id); } },
-    { id: 'layer-content-options', label: 'Layer Content Options...', enabled: () => !!layer()?.adjustment || !!layer()?.fillContent || !!layer()?.relight || !!layer()?.vector || !!layer()?.text || !!layer()?.smart, run: () => { const l = layer(); if (l?.fillContent) dialogs.fillLayer.showEdit(l.id); else if (l?.adjustment) dialogs.adjust.openForLayer(l.id); else if (l?.relight) void relight.begin(l.id); else if (l?.vector) dialogs.shapeStyle.show(); else if (l?.text) document.dispatchEvent(new CustomEvent('cv:type', { detail: { layerId: l.id } })); else if (l?.smart) engine.editContents(); } },
+    { id: 'layer-content-options', label: 'Layer Content Options...', enabled: () => !!layer()?.adjustment || !!layer()?.fillContent || !!layer()?.relight || !!layer()?.vector || !!layer()?.text || !!layer()?.smart, run: () => { const l = layer(); if (l?.fillContent) dialogs.fillLayer.showEdit(l.id); else if (l?.adjustment) { if (l.adjustment.kind === 'filter') editFilterLayer(l.id); else dialogs.adjust.openForLayer(l.id); } else if (l?.relight) void relight.begin(l.id); else if (l?.vector) dialogs.shapeStyle.show(); else if (l?.text) document.dispatchEvent(new CustomEvent('cv:type', { detail: { layerId: l.id } })); else if (l?.smart) engine.editContents(); } },
     { id: 'film-leak', label: 'Light Leak...', enabled: () => !!engine.current, run: () => filmLayer.show('leak') },   // 1.51.6
     { id: 'film-frame', label: 'Frame...', enabled: () => !!engine.current, run: () => filmLayer.show('frame') },
     { id: 'film-apply-look', label: 'Apply Film Look', enabled: () => !!engine.current, params: { look: { type: 'string', description: 'A film look id (portrait400, vivid100, slide50, slide200, mono400, monoFine100, monoPush1600, cineTungsten500, cineDaylight250, faded); Portrait Negative 400 when left out.' }, strength: { type: 'number', min: 0, max: 100, description: 'How much of the look is mixed in, percent (100).' }, grain: { type: 'number', min: 0, max: 100, description: 'Grain, percent (40).' } }, run: async (a) => { const r = await packTool(engine, 'film_apply_look', { look: typeof a?.look === 'string' && a.look ? a.look : 'portrait400', ...(typeof a?.strength === 'number' ? { strength: a.strength } : {}), ...(typeof a?.grain === 'number' ? { grain: a.grain } : {}) }); if (r.isError) throw new Error(r.content[0].type === 'text' ? r.content[0].text : 'failed'); return r.structuredContent; } },
@@ -5690,7 +5736,7 @@ export function startApp(): void {
   const filterGroup = (group: LibGroup, core: string[]): string[] => [...core, ...libInGroup(group).map((f) => `filter-${f.id}`)].sort((a, b) => filterName(a).localeCompare(filterName(b)));
   const drawnFirst = ['filter-flame', 'filter-pictureFrame', 'filter-tree'];
   const menus: MenuDef[] = [
-    { label: 'File', items: () => ['new', 'new-from-clipboard', 'open', 'open-as', 'import', 'import-folder', 'import-notes', 'import-video', 'create-video-timeline', 'place-embedded', 'place-linked', 'place-3d', 'open-svg-layers', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.slice(0, loadPrefs().recentFileCount).map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'save-copy', 'revert', 'earlier-states', 'download-project', 'package', '-',
+    { label: 'File', items: () => ['new', 'new-from-clipboard', 'open', 'open-as', 'import', 'import-folder', 'import-notes', 'import-video', 'create-video-timeline', 'place-embedded', 'place-linked', 'place-3d', 'open-svg-layers', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.slice(0, loadPrefs().recentFileCount).map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'save-as-history', 'save-copy', 'revert', 'earlier-states', 'download-project', 'package', '-',
       { label: 'Export', items: ['quick-export', 'export-as', 'export-preferences', 'save-for-web', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-tiff-layers', 'export-hdr', 'export-exr', 'export-exr-half', 'export-exr-piz', 'export-exr-none', 'export-pfm', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'export-paths-ai', 'assemble-tiles', '-', 'export-layers', 'export-layer-comps', 'export-selection-mask', 'generate-image-assets', 'generate-image-assets-folder', 'image-asset-variants', 'image-assets-on-save', 'export-luts', 'export-artboards-files', 'export-data-sets', 'export-artboards'] },
       { label: 'Automate', items: ['actions', 'action-stop', 'insert-conditional', 'insert-action-step', 'action-options', '-', 'load-actions', 'export-actions-atn', '-', 'batch', 'create-droplet', '-', 'lens-correction-batch', 'fit-image', 'conditional-mode-change', 'contact-sheet', 'crop-straighten-photos', 'photomerge', 'merge-hdr'] },
       { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'script-browse', 'image-processor', 'script-events', 'load-files-stack', 'stack-statistics', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'reopen-closed-tab', 'close-all', 'close-others', 'close-tabs-right', 'pin-tab', '-', 'exit'] },
@@ -5852,9 +5898,20 @@ export function startApp(): void {
   root.addEventListener('cv:edit-adjustment', (e) => {
     const id = (e as CustomEvent<string>).detail;
     if (typeof id !== 'string') return;
-    if (engine.current?.doc.layers.find((x) => x.id === id)?.adjustment?.kind === 'filter') toast('A filter layer takes its settings from Set Filter Layer.');
+    if (engine.current?.doc.layers.find((x) => x.id === id)?.adjustment?.kind === 'filter') editFilterLayer(id);
     else dialogs.adjust.openForLayer(id);
   });
+  function editFilterLayer(id: string): void {
+    const l = engine.current?.doc.layers.find((x) => x.id === id), data = l?.adjustment?.kind === 'filter' ? l.adjustment.data : null;
+    const kind = typeof data?.filter === 'string' ? data.filter : '';
+    if (!l || !data || !kind) return;
+    if (isWasmKind(kind) || kind === 'liquify' || kind === 'wideangle') { toast('This filter has its own window; a filter layer cannot hold it.'); return; }
+    if (!engine.beginLive(`Edit ${l.name}`)) return;
+    const base = (data.settings ?? {}) as Record<string, unknown>;
+    const put = (settings: Record<string, unknown>): void => engine.updateLive((p) => p.updateLayer(id, { adjustment: { kind: 'filter', data: { ...data, settings: structuredClone(settings) } } }));
+    dialogs.filter.showFor(kind as FilterKind, base, (settings) => { put(settings); engine.commitLive(); }, { change: put, cancel: () => engine.cancelLive() });
+    if (!dialogs.filter.isOpen) engine.cancelLive();
+  }
   root.addEventListener('cv:mask-properties', () => { commands.run('panel-activate', { panel: 'properties' }); });
 
   const resizer = q(root, '.cv-resizer');
@@ -6094,7 +6151,7 @@ export function startApp(): void {
   const DEEP32_NOT = new Set<string>();
   // 36.19, the browser build: these commands need the engine service (library, video, AI models, the terminal and
   // agents, ComfyUI and NodeMode, LittleCMS conversions). With it not running they are off, with a title saying why.
-  const ENGINE_ONLY = new Set<string>(['save', 'save-as', 'save-copy', 'open', 'revert', 'export-tiff', 'export-pdf', 'export-avif', 'convert-profile', 'mode-cmyk', 'mode-convert',
+  const ENGINE_ONLY = new Set<string>(['save', 'save-as', 'save-as-history', 'save-copy', 'open', 'revert', 'export-tiff', 'export-pdf', 'export-avif', 'convert-profile', 'mode-cmyk', 'mode-convert',
     'remove-bg', 'remove-bg-lite', 'select-subject', 'select-object', 'generative-fill', 'generate-image', 'generative-expand', 'upscale-2x', 'upscale-4x', 'assistant',
     'terminal.toggle', 'terminal.new', 'agent.claude.open', 'send-nodemode', 'send-comfyui', 'comfyui-run', 'photomerge', 'merge-hdr', 'manage-plugins', 'reload-plugins', 'open-plugins-folder',
     'import-video', 'video-layer-from-file', 'video-replace-footage', 'video-reload-frame', 'export-mp4', 'render-video']);

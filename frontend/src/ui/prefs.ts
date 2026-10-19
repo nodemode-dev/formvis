@@ -18,7 +18,7 @@ import { DEFAULT_COLOUR, cleanColour, cleanPresets, type ColourPreset, type Colo
  *  something real: History States and history memory are the undo limits every project uses; region redraws decide
  *  whether a brush stroke repaints only what it changed; the recovery delay is how soon after a change unsaved work is
  *  kept for crash recovery. The graphics processor settings choose the renderer (Phase 18). */
-export interface Prefs extends PagePrefs { language: Lang; profileMismatch: MismatchPref; colour: ColourSettings; colourPresets: ColourPreset[]; shortcuts: Record<string, string[]>; restoreSession: boolean; agentsAllowed: boolean; comfyuiUrl: string; nodemodeUrl: string; historyStates: number; historyMB: number; historyAuto: boolean; memoryLimitMB: number; effectCacheMB: number; backgroundReleaseSec: number; cacheLevels: number; regionRedraws: boolean; layerReuse: boolean; fullPreviews: boolean; recoverySeconds: number; autoShowHome: boolean; useGpu: boolean; gpuFilters: boolean; renderer: GpuRenderer; gpuMemoryMB: number; gpuPower: GpuPower; lowLatency: boolean; framePacingMs: number; cacheTilePx: number; workerThreads: number; engineDevice: EngineDevice;
+export interface Prefs extends PagePrefs { language: Lang; profileMismatch: MismatchPref; colour: ColourSettings; colourPresets: ColourPreset[]; shortcuts: Record<string, string[]>; restoreSession: boolean; agentsAllowed: boolean; comfyuiUrl: string; nodemodeUrl: string; historyStates: number; historyMB: number; historyAuto: boolean; memoryLimitMB: number; effectCacheMB: number; backgroundReleaseSec: number; backgroundCacheMB: number; memoryReserveMB: number; cacheLevels: number; regionRedraws: boolean; layerReuse: boolean; fullPreviews: boolean; recoverySeconds: number; autoShowHome: boolean; useGpu: boolean; gpuFilters: boolean; renderer: GpuRenderer; gpuMemoryMB: number; gpuPower: GpuPower; lowLatency: boolean; framePacingMs: number; cacheTilePx: number; workerThreads: number; engineDevice: EngineDevice;
   /* The sections (the owner's walkthrough): Tools, History & Cache, Workspace, Cursors, Transparency & Gamut,
      Units & Rulers, Guides & Grid; every one acts on something real. */
   zoomWheel: boolean; autoFirstSnapshot: boolean; snapshotMB: number; narrowCollapse: boolean; rememberLayout: boolean; largeTabs: boolean; narrowOptions: boolean;
@@ -72,6 +72,8 @@ export interface Prefs extends PagePrefs { language: Lang; profileMismatch: Mism
   lowerExtension: boolean; recentFileCount: number;
   /** Preferences > File Handling: Save and Save As take a snapshot of the document and write it while editing goes on. */
   saveInBackground: boolean;
+  /** Preferences > File Handling: Save and Save As keep the steps behind the document in the project, up to this many megabytes (0 keeps none). */
+  historyCapMb: number;
   /** Preferences > Transparency & Gamut: the Gamut Warning's colour and its opacity in percent. */
   gamutColor: string; gamutOpacity: number;
   /** Preferences > Guides, Grid & Slices: the line styles of guides and the grid, the slice lines' colour and their numbers. */
@@ -104,14 +106,18 @@ export interface PagePrefs {
   /** Preferences > Interface: the themes marked as favourites (right-click a swatch); they come first in the picker and View > Next Favourite Theme steps through them. */
   favouriteThemes: string[];
   /** Preferences > General: Copy and Cut also put the picture on the system clipboard. */
-  exportClipboard: boolean }
+  exportClipboard: boolean;
+  /** Preferences > File Handling: an exported JPEG, PNG, WebP or TIFF carries the EXIF ColorSpace tag (sRGB, or uncalibrated for another space). */
+  exifColourTag: boolean;
+  /** Preferences > Workspace: Open Documents as Tabs; off, a document that opens (or is made) starts in a floating window. */
+  openAsTabs: boolean }
 export type CanvasBorder = 'none' | 'line' | 'shadow';
 export const CANVAS_BORDERS: ReadonlyArray<readonly [CanvasBorder, string]> = [['none', 'None'], ['line', 'Line'], ['shadow', 'Drop Shadow']];
 export type TypeUnits = 'px' | 'pt';
 export const PAGE_DEFAULTS: PagePrefs = { scratchFolder: '', cursorOnlyCross: false, cursorOther: 'standard', brushPreviewColor: '#ff0000', checkerA: '#ffffff', checkerB: '#cccccc',
   printRes: 300, screenRes: 72, colWidth: 15, gutter: 4.2,
   showExtPanels: true, smartQuotes: false, escCommit: false, placeholderText: false, pinchZoom: true, trackpadRotate: false, scrubAccel: 0, touchGestures: true,
-  tipHardness: true, snapVectorPx: false, transformReadout: true, rolloverHighlight: true, flickPan: true, channelsColour: false, canvasBorder: 'line', dynamicSliders: true, askLayeredTiff: true, typeUnits: 'px', favouriteThemes: [], exportClipboard: true };
+  tipHardness: true, snapVectorPx: false, transformReadout: true, rolloverHighlight: true, flickPan: true, channelsColour: false, canvasBorder: 'line', dynamicSliders: true, askLayeredTiff: true, typeUnits: 'px', favouriteThemes: [], exportClipboard: true, exifColourTag: false, openAsTabs: true };
 const hex = (v: unknown, d: string, blank = false): string => (typeof v === 'string' && (blank ? /^(#[0-9a-f]{6})?$/i : /^#[0-9a-f]{6}$/i).test(v) ? v : d);
 const flag = (v: unknown, d: boolean): boolean => (typeof v === 'boolean' ? v : d);
 const pageOf = (r: Partial<Record<keyof PagePrefs, unknown>>): PagePrefs => {
@@ -125,7 +131,7 @@ const pageOf = (r: Partial<Record<keyof PagePrefs, unknown>>): PagePrefs => {
     tipHardness: flag(r.tipHardness, d.tipHardness), snapVectorPx: flag(r.snapVectorPx, d.snapVectorPx), transformReadout: flag(r.transformReadout, d.transformReadout), rolloverHighlight: flag(r.rolloverHighlight, d.rolloverHighlight), flickPan: flag(r.flickPan, d.flickPan),
     channelsColour: flag(r.channelsColour, d.channelsColour), dynamicSliders: flag(r.dynamicSliders, d.dynamicSliders), canvasBorder: r.canvasBorder === 'none' || r.canvasBorder === 'shadow' ? r.canvasBorder : 'line',
     askLayeredTiff: flag(r.askLayeredTiff, d.askLayeredTiff), typeUnits: r.typeUnits === 'pt' ? 'pt' : 'px',
-    exportClipboard: flag(r.exportClipboard, d.exportClipboard),
+    exportClipboard: flag(r.exportClipboard, d.exportClipboard), exifColourTag: flag(r.exifColourTag, d.exifColourTag), openAsTabs: flag(r.openAsTabs, d.openAsTabs),
     favouriteThemes: Array.isArray(r.favouriteThemes) ? Array.from(new Set(r.favouriteThemes.filter((x): x is string => typeof x === 'string' && !!THEMES[x]))).slice(0, 30) : [],
   };
 };
@@ -182,10 +188,10 @@ export const checkerPair = (choice: CheckerColors, themeLight: boolean, custom: 
 export type EngineDevice = 'auto' | 'metal' | 'cuda' | 'dml' | 'cpu';
 export const ENGINE_CHOICES: ReadonlyArray<readonly [EngineDevice, string]> = [['auto', 'Automatic'], ['metal', 'Metal (Core ML)'], ['cuda', 'CUDA'], ['dml', 'DirectML (Windows GPU)'], ['cpu', 'CPU']];
 
-export const DEFAULT_PREFS: Prefs = { language: 'en', profileMismatch: 'convert', colour: DEFAULT_COLOUR, colourPresets: [], shortcuts: {}, restoreSession: true, agentsAllowed: false, comfyuiUrl: 'http://127.0.0.1:8188', nodemodeUrl: 'http://localhost:8000', historyStates: 100, historyMB: 256, historyAuto: true, memoryLimitMB: 0, effectCacheMB: 256, backgroundReleaseSec: 30, cacheLevels: 6, regionRedraws: true, layerReuse: true, fullPreviews: false, recoverySeconds: 20, autoShowHome: true, useGpu: true, gpuFilters: true, renderer: 'auto', gpuMemoryMB: 1024, gpuPower: 'high-performance', lowLatency: false, framePacingMs: 0, cacheTilePx: 2048, workerThreads: 0, engineDevice: 'auto',
+export const DEFAULT_PREFS: Prefs = { language: 'en', profileMismatch: 'convert', colour: DEFAULT_COLOUR, colourPresets: [], shortcuts: {}, restoreSession: true, agentsAllowed: false, comfyuiUrl: 'http://127.0.0.1:8188', nodemodeUrl: 'http://localhost:8000', historyStates: 100, historyMB: 256, historyAuto: true, memoryLimitMB: 0, effectCacheMB: 256, backgroundReleaseSec: 30, backgroundCacheMB: 512, memoryReserveMB: 256, cacheLevels: 6, regionRedraws: true, layerReuse: true, fullPreviews: false, recoverySeconds: 20, autoShowHome: true, useGpu: true, gpuFilters: true, renderer: 'auto', gpuMemoryMB: 1024, gpuPower: 'high-performance', lowLatency: false, framePacingMs: 0, cacheTilePx: 2048, workerThreads: 0, engineDevice: 'auto',
   zoomWheel: false, autoFirstSnapshot: true, snapshotMB: 768, narrowCollapse: true, rememberLayout: true, largeTabs: false, narrowOptions: false, paintCursor: 'tip', cursorCrosshair: false,
   checkerSize: 'medium', checkerColors: 'auto', checkerTheme: true, rulerUnits: 'px', guideColor: '', gridColor: '', gridSpacing: 100, gridSubdivisions: 4, gridUnit: 'px',
-  homeOnLastClose: false, whatsNewAuto: true, whatsNewSeen: '', toolOptions: {}, dialogValues: {}, spellWords: [], measureDataPoints: [...DEFAULT_MEASURE_POINTS], fontPreview: 'medium', toolbar: null, pressureCurve: 'linear', uiFontSize: 'default', recentFontCount: 5, recentFonts: [], rawWb: 'as_shot', rawBits: 8, rawAutoTone: false, rawSmart: false, rawAsk: true, rawPpi: 0, rawWide: false, rawSharpen: 'none', rawSharpenAmount: 'standard', autoShowPanels: true, historyLog: false, placeTransform: true, placeFit: true, placeSmart: false, themeAuto: false, themeLight: 'light', themeDark: 'studio', animatedZoom: true, systemPicker: false, zoomResizes: false, beepWhenDone: false, interpolation: 'high', floatDocking: true, showTooltips: true, shiftToolSwitch: true, zoomClickCentre: false, lowerExtension: true, recentFileCount: 20, saveInBackground: true, gamutColor: '#808080', gamutOpacity: 100, guideStyle: 'solid', gridStyle: 'solid', gridOpacity: 100, noticeSeconds: 0, sliceColor: '', sliceNumbers: true, shortcutSets: {}, menuHidden: [], menuColors: {}, animations: true, usePressure: true, ...PAGE_DEFAULTS };
+  homeOnLastClose: false, whatsNewAuto: true, whatsNewSeen: '', toolOptions: {}, dialogValues: {}, spellWords: [], measureDataPoints: [...DEFAULT_MEASURE_POINTS], fontPreview: 'medium', toolbar: null, pressureCurve: 'linear', uiFontSize: 'default', recentFontCount: 5, recentFonts: [], rawWb: 'as_shot', rawBits: 8, rawAutoTone: false, rawSmart: false, rawAsk: true, rawPpi: 0, rawWide: false, rawSharpen: 'none', rawSharpenAmount: 'standard', autoShowPanels: true, historyLog: false, placeTransform: true, placeFit: true, placeSmart: false, themeAuto: false, themeLight: 'light', themeDark: 'studio', animatedZoom: true, systemPicker: false, zoomResizes: false, beepWhenDone: false, interpolation: 'high', floatDocking: true, showTooltips: true, shiftToolSwitch: true, zoomClickCentre: false, lowerExtension: true, recentFileCount: 20, saveInBackground: true, historyCapMb: 0, gamutColor: '#808080', gamutOpacity: 100, guideStyle: 'solid', gridStyle: 'solid', gridOpacity: 100, noticeSeconds: 0, sliceColor: '', sliceNumbers: true, shortcutSets: {}, menuHidden: [], menuColors: {}, animations: true, usePressure: true, ...PAGE_DEFAULTS };
 export const RECOVERY_CHOICES: ReadonlyArray<readonly [string, string]> = [['10', '10 seconds'], ['20', '20 seconds'], ['60', '1 minute'], ['300', '5 minutes'], ['600', '10 minutes']];
 const KEY = 'formvis.prefs';
 
@@ -257,6 +263,8 @@ export function loadPrefs(): Prefs {
       memoryLimitMB: r.memoryLimitMB === 0 ? 0 : Math.round(num(r.memoryLimitMB, 512, 65536, DEFAULT_PREFS.memoryLimitMB)),   // 0 is automatic (PC-AU-0155)
       effectCacheMB: Math.round(num(r.effectCacheMB, 16, 4096, DEFAULT_PREFS.effectCacheMB)),
       backgroundReleaseSec: r.backgroundReleaseSec === 0 ? 0 : Math.round(num(r.backgroundReleaseSec, 5, 3600, DEFAULT_PREFS.backgroundReleaseSec)),
+      backgroundCacheMB: r.backgroundCacheMB === 0 ? 0 : Math.round(num(r.backgroundCacheMB, 16, 16384, DEFAULT_PREFS.backgroundCacheMB)),
+      memoryReserveMB: r.memoryReserveMB === 0 ? 0 : Math.round(num(r.memoryReserveMB, 16, 16384, DEFAULT_PREFS.memoryReserveMB)),
       cacheLevels: Math.round(num(r.cacheLevels, 0, 8, DEFAULT_PREFS.cacheLevels)),
       regionRedraws: typeof r.regionRedraws === 'boolean' ? r.regionRedraws : DEFAULT_PREFS.regionRedraws,
       layerReuse: typeof r.layerReuse === 'boolean' ? r.layerReuse : DEFAULT_PREFS.layerReuse,
@@ -329,6 +337,7 @@ export function loadPrefs(): Prefs {
       animatedZoom: r.animatedZoom !== false, systemPicker: r.systemPicker === true, zoomResizes: r.zoomResizes === true, beepWhenDone: r.beepWhenDone === true, interpolation: INTERPOLATIONS.some(([k]) => k === r.interpolation) ? r.interpolation as ResampleMethod : 'high', floatDocking: r.floatDocking !== false, showTooltips: r.showTooltips !== false, shiftToolSwitch: r.shiftToolSwitch !== false, zoomClickCentre: r.zoomClickCentre === true, lowerExtension: r.lowerExtension !== false,
       recentFileCount: Math.round(num(r.recentFileCount, 0, 40, DEFAULT_PREFS.recentFileCount)),
       saveInBackground: r.saveInBackground !== false,
+      historyCapMb: Math.round(num(r.historyCapMb, 0, 512, DEFAULT_PREFS.historyCapMb)),
       gamutColor: typeof r.gamutColor === 'string' && /^#[0-9a-f]{6}$/i.test(r.gamutColor) ? r.gamutColor : DEFAULT_PREFS.gamutColor,
       gamutOpacity: Math.round(num(r.gamutOpacity, 0, 100, DEFAULT_PREFS.gamutOpacity)),
       guideStyle: LINE_STYLES.some(([k]) => k === r.guideStyle) ? r.guideStyle as LineStyle : 'solid',
@@ -465,6 +474,8 @@ export function applyPrefs(engine: Engine, p: Prefs): void {
   renderCache.effectBytes = p.effectCacheMB * 1048576;
   engine.setMemoryLimit(p.memoryLimitMB * 1048576);
   engine.backgroundReleaseSec = p.backgroundReleaseSec;
+  engine.backgroundCacheBytes = p.backgroundCacheMB * 1048576;
+  engine.memoryReserveBytes = p.memoryReserveMB * 1048576;
   engine.setHistoryLimits(p.historyStates, p.historyAuto ? null : p.historyMB * 1024 * 1024);   // automatic: from the memory budget (1.61.3)
   engine.dirtyRendering = p.regionRedraws;
   previewMode.full = p.fullPreviews;

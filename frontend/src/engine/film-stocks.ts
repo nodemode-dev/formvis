@@ -1,4 +1,5 @@
 import type { Kernel } from './kernels';
+import { boxBlur } from './filters';
 
 /** Film looks (U2, the Film pack): parametric stock emulation written for formvis from standard published ideas.
  *  A stock is a tone curve (control points on 0 to 255, joined by a monotone cubic), a colour matrix (saturation and a
@@ -79,7 +80,7 @@ function noise(x: number, y: number, seed: number): number {
 const gauss = (x: number, y: number, seed: number): number => Math.sqrt(-2 * Math.log(Math.max(1e-9, noise(x, y, seed)))) * Math.cos(2 * Math.PI * noise(x, y, seed + 101));
 
 /** The Film Look kernel. `strength` and `grain` are 0 to 100; `grainSize` is in document pixels. */
-export function filmKernel(stockId: unknown, strength: number, grain: number, grainSize: number, rawPoints: unknown, seed: number, tonal: readonly [number, number, number] = [0, 0, 0]): Kernel {
+export function filmKernel(stockId: unknown, strength: number, grain: number, grainSize: number, rawPoints: unknown, seed: number, tonal: readonly [number, number, number] = [0, 0, 0], structure = 0, structureSize = 20): Kernel {
   const stock = filmStock(stockId), table = curveTable(curvePoints(stockId, rawPoints)), k = Math.min(1, Math.max(0, strength / 100));
   const tone = tonal.map((t) => Math.min(1, Math.max(-1, (Number.isFinite(t) ? t : 0) / 100))), tonalOn = tone.some((t) => t !== 0), CENTRE = [0.15, 0.5, 0.85];
   const amp = (grain / 100) * 14 * Math.sqrt(stock.iso / 400), size = Math.max(0.5, grainSize);
@@ -109,7 +110,33 @@ export function filmKernel(stockId: unknown, strength: number, grain: number, gr
       px[i + 1] = Math.round(Math.min(255, Math.max(0, px[i + 1] + (G - px[i + 1]) * k)));
       px[i + 2] = Math.round(Math.min(255, Math.max(0, px[i + 2] + (B - px[i + 2]) * k)));
     }
+    if (ctx && structure !== 0) structurePass(px, ctx.width, ctx.height, Math.max(1, Math.round(structureSize / Math.max(1e-6, up))), Math.min(1, Math.max(-1, structure / 100)) * k);
   };
+}
+
+/** Structure: the local contrast of the picture at one scale. The luminance is blurred (three box passes each way, counted
+ *  over the pixels that show), and each pixel moves away from that local mean by `amount` times its difference, most in the
+ *  midtones; every channel moves by the same amount so hue stays. A negative amount smooths towards the mean. */
+function structurePass(px: Uint8ClampedArray, W: number, H: number, radius: number, amount: number): void {
+  const n = W * H;
+  if (n === 0 || amount === 0 || px.length < n * 4) return;
+  let a = new Float32Array(n * 4), b = new Float32Array(n * 4);
+  for (let j = 0; j < n; j++) {
+    if (px[j * 4 + 3] === 0) continue;
+    a[j * 4] = 0.299 * px[j * 4] + 0.587 * px[j * 4 + 1] + 0.114 * px[j * 4 + 2];
+    a[j * 4 + 1] = 1;
+  }
+  const r = Math.min(radius, Math.max(1, Math.floor((Math.max(W, H) - 1) / 2)));
+  for (let pass = 0; pass < 3; pass++) { boxBlur(a, b, W, H, r, true); boxBlur(b, a, W, H, r, false); }
+  for (let j = 0; j < n; j++) {
+    const i = j * 4;
+    if (px[i + 3] === 0 || a[i + 1] <= 1e-6) continue;
+    const l = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2], mean = a[i] / a[i + 1], t = l / 255;
+    const d = (l - mean) * amount * 1.6 * (0.35 + 0.65 * 4 * t * (1 - t));
+    px[i] = Math.round(Math.min(255, Math.max(0, px[i] + d)));
+    px[i + 1] = Math.round(Math.min(255, Math.max(0, px[i + 1] + d)));
+    px[i + 2] = Math.round(Math.min(255, Math.max(0, px[i + 2] + d)));
+  }
 }
 
 /** The Chromatic Shift kernel (Effects pack): the colour channels displaced against each other. Lateral spreads red

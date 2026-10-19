@@ -288,13 +288,47 @@ _SKIN_VARS = ("--bg-primary", "--bg-secondary", "--bg-tertiary", "--bg-node", "-
 _SKIN_VALUE = re.compile(r"^(#[0-9a-fA-F]{3,8}|(rgb|rgba|hsl|hsla)\([0-9a-fA-F.,%\s/]{3,60}\)|[0-9a-z#(),.%\s-]{1,80})$")
 
 
+_SKIN_CSS_BANNED = ("url(", "image-set(", "image(", "element(", "paint(", "cross-fade(", "expression(", "javascript:", "behavior", "-moz-binding", "<", "\\", "src:")
+
+
+def _skin_css(text: str) -> str:
+    """The free CSS of a skin, linted: no network (url, @import, @font-face), no script, no escapes; only @media; braces balanced."""
+    if len(text) > 16_000:
+        raise ValueError("css is larger than 16 KB")
+    plain = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    low = plain.lower()
+    for bad in _SKIN_CSS_BANNED:
+        if bad in low:
+            raise ValueError(f"css may not use {bad.strip('(:') or bad}")
+    for at in re.findall(r"@([a-z-]+)", low):
+        if at != "media":
+            raise ValueError(f"css may not use @{at}")
+    depth = 0
+    for ch in plain:
+        depth += (ch == "{") - (ch == "}")
+        if depth < 0:
+            break
+    if depth != 0 or plain.count("{") != plain.count("}"):
+        raise ValueError("css braces do not match")
+    return plain.strip()
+
+
 def _read_skin(path: Path) -> dict:
-    """One skin file: a name, light or dark, and colour values for the window's tokens; anything else is refused with why."""
+    """One skin file: a name, light or dark, colour values for the window's tokens and optional free CSS (a "css" text, or a .css file of the same name); anything else is refused with why."""
     if path.stat().st_size > 20_000:
         raise ValueError("larger than 20 KB")
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict) or not isinstance(data.get("vars"), dict):
         raise ValueError("needs a \"vars\" object of token colours")
+    css = data.get("css", "")
+    sibling = path.with_suffix(".css")
+    if not css and sibling.is_file():
+        if sibling.stat().st_size > 16_000:
+            raise ValueError("css is larger than 16 KB")
+        css = sibling.read_text(encoding="utf-8")
+    if not isinstance(css, str):
+        raise ValueError("css must be text")
+    css = _skin_css(css) if css else ""
     values = {}
     for key, value in data["vars"].items():
         if key not in _SKIN_VARS:
@@ -304,7 +338,7 @@ def _read_skin(path: Path) -> dict:
         values[key] = value.strip()
     if not values:
         raise ValueError("sets no tokens")
-    return {"id": re.sub(r"[^a-z0-9-]+", "-", path.stem.lower()).strip("-") or "skin", "label": str(data.get("name") or path.stem)[:40], "light": data.get("light") is True, "version": str(data.get("version", ""))[:20], "author": str(data.get("author", ""))[:60], "vars": values}
+    return {"id": re.sub(r"[^a-z0-9-]+", "-", path.stem.lower()).strip("-") or "skin", "label": str(data.get("name") or path.stem)[:40], "light": data.get("light") is True, "version": str(data.get("version", ""))[:20], "author": str(data.get("author", ""))[:60], "vars": values, "css": css}
 
 
 @router.get("/skins")

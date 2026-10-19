@@ -2,13 +2,15 @@ import type { AdjustmentLayer as PsdAdjustment } from 'ag-psd';
 import { COLOR_RANGES, defaultAdjustmentData, defaultHsv, hsvFromData, hsvToData, type Adjustment, type AdjustmentKind } from '../engine';
 import { DEFAULT_BANDS, type ColorRange } from '../engine/adjust';
 import { isParamKind } from '../engine/adjust-params';
+import { fromBase64, toBase64 } from './icc-read';
 
 /** formvis's adjustment layers and PSD's, both ways, so a PSD keeps them live instead of dropping them. The
  *  parametric kinds map field for field; Levels and Curves by channel (the composite first, then red, green, blue);
  *  Hue/Saturation by range with each range's band as PSD's four band values; Gradient Map with every colour stop.
  *  Values are read from the project layout's nested blocks (params, levels, curves, exposureSettings,
  *  gradientMapSettings) and a read writes both the nested block and the flat fields.
- *  Grain and Develop have no PSD adjustment layer, and Hue/Saturation's Colorize is not carried. */
+ *  Colorize rides in the Master record's first four values (the flag in the high byte of the first, then hue,
+ *  saturation and lightness). Grain and Develop have no PSD adjustment layer. */
 
 type J = Record<string, unknown>;
 const num = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d);
@@ -78,6 +80,10 @@ export function toPsdAdjustment(a: Adjustment): PsdAdjustment | null {
         const adj = h.adjustments[r] ?? { hue: 0, saturation: 0, lightness: 0 }, b = h.bands[r] ?? DEFAULT_BANDS[r];
         out[PS_RANGE[r]] = { a: Math.round(b.falloffStart), b: Math.round(b.rangeStart), c: Math.round(b.rangeEnd), d: Math.round(b.falloffEnd), hue: Math.round(adj.hue), saturation: Math.round(adj.saturation), lightness: Math.round(adj.lightness) };
       }
+      if (h.colorize) {
+        const c = h.adjustments[h.range] ?? { hue: 0, saturation: 0, lightness: 0 }, m = out.master as J;
+        out.master = { ...m, a: 256, b: Math.min(360, Math.max(0, Math.round(c.hue))), c: Math.min(100, Math.max(0, Math.round(c.saturation))), d: Math.min(100, Math.max(-100, Math.round(c.lightness))) };
+      }
       return out as unknown as PsdAdjustment;
     }
     case 'gradientMap': {
@@ -88,6 +94,33 @@ export function toPsdAdjustment(a: Adjustment): PsdAdjustment | null {
     }
     default: return null;
   }
+}
+
+/** A PSD adjustment's own settings as plain data for the project file: binary parts (a Color Lookup's profile or
+ *  3D table) become base64 under a marker. */
+export function keepPsdAdjustment(p: PsdAdjustment): Record<string, unknown> {
+  const walk = (v: unknown): unknown => {
+    if (v instanceof Uint8Array) return { $b64: toBase64(v) };
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v as J).map(([k, x]) => [k, walk(x)]));
+    return v;
+  };
+  return walk(p) as Record<string, unknown>;
+}
+
+/** The PSD adjustment a project file kept, binary parts restored; null when it is not one. */
+export function restorePsdAdjustment(kept: Record<string, unknown> | null | undefined): PsdAdjustment | null {
+  if (!kept || typeof kept.type !== 'string') return null;
+  const walk = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === 'object') {
+      const o = v as J;
+      if (typeof o.$b64 === 'string') return fromBase64(o.$b64);
+      return Object.fromEntries(Object.entries(o).map(([k, x]) => [k, walk(x)]));
+    }
+    return v;
+  };
+  return walk(kept) as PsdAdjustment;
 }
 
 /** A formvis adjustment for a PSD one, or null when formvis has no such adjustment (Color Lookup and others). */
@@ -135,6 +168,12 @@ export function fromPsdAdjustment(p: PsdAdjustment): Adjustment | null {
         const adj = { hue: num(v.hue, 0), saturation: num(v.saturation, 0), lightness: num(v.lightness, 0) };
         if (adj.hue || adj.saturation || adj.lightness) s.adjustments[r] = adj;
         if (r !== 'Master') s.bands[r] = { falloffStart: num(v.a, DEFAULT_BANDS[r].falloffStart), rangeStart: num(v.b, DEFAULT_BANDS[r].rangeStart), rangeEnd: num(v.c, DEFAULT_BANDS[r].rangeEnd), falloffEnd: num(v.d, DEFAULT_BANDS[r].falloffEnd) };
+      }
+      const mc = o.master as J | undefined;
+      if (mc && (num(mc.a, 0) & 0xff00) !== 0) {
+        s.colorize = true;
+        s.range = 'Master';
+        s.adjustments.Master = { hue: Math.min(360, Math.max(0, num(mc.b, 0))), saturation: Math.min(100, Math.max(0, num(mc.c, 25))), lightness: Math.min(100, Math.max(-100, num(mc.d, 0))) };
       }
       return mk('hsv', { hsvSettings: hsvToData(s) });
     }

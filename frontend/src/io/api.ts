@@ -114,8 +114,8 @@ export type RawWhiteBalance = { wb: 'as_shot' | 'auto' | 'daylight'; temperature
 
 /** The RAW-stage develop controls the engine applies in linear light: Exposure in stops, Noise Reduction 0 to 100, highlight
  *  recovery, the black point, and Shadows, Highlights, Clarity, Texture and Dehaze from -100 to 100. */
-export type RawDevelop = { exposure: number; recovery: 'clip' | 'unclip' | 'blend' | 'rebuild'; noise: number; blackPoint: 'as_shot' | 'auto'; shadows: number; highlights: number; clarity: number; texture: number; dehaze: number; kelvin: number; look: boolean };
-export const RAW_DEVELOP_ZERO: RawDevelop = { exposure: 0, recovery: 'clip', noise: 0, blackPoint: 'as_shot', shadows: 0, highlights: 0, clarity: 0, texture: 0, dehaze: 0, kelvin: 0, look: false };
+export type RawDevelop = { exposure: number; recovery: 'clip' | 'unclip' | 'blend' | 'rebuild'; noise: number; blackPoint: 'as_shot' | 'auto'; shadows: number; highlights: number; clarity: number; texture: number; dehaze: number; kelvin: number; look: boolean; distortion: number; lensVignette: number; lensMidpoint: number };
+export const RAW_DEVELOP_ZERO: RawDevelop = { exposure: 0, recovery: 'clip', noise: 0, blackPoint: 'as_shot', shadows: 0, highlights: 0, clarity: 0, texture: 0, dehaze: 0, kelvin: 0, look: false, distortion: 0, lensVignette: 0, lensMidpoint: 50 };
 
 /** What the engine reads from a camera RAW file's bytes (POST /io/raw-info). */
 export type RawInfo = { kind: string; make: string; model: string; rawWidth: number; rawHeight: number; width: number; height: number; cfa: string; colors: number; whiteBalance: number[]; orientation: number; baselineExposure: number | null; blackLevel: number[]; whiteLevel: number; gainMaps?: number; kelvin?: number | null };
@@ -277,8 +277,8 @@ export const api = {
     try { return (await (await request('/localfiles/stats')).json()) as LocalFiles; } catch { return null; }
   },
   /** Preferences > Interface > Skins: the window skins in the data folder's skins folder, and the files refused with why. */
-  async skins(): Promise<{ folder: string; skins: Array<{ id: string; label: string; light: boolean; version: string; author: string; vars: Record<string, string> }>; errors: Array<{ file: string; error: string }> } | null> {
-    try { return (await (await request('/skins')).json()) as { folder: string; skins: Array<{ id: string; label: string; light: boolean; version: string; author: string; vars: Record<string, string> }>; errors: Array<{ file: string; error: string }> }; } catch { return null; }
+  async skins(): Promise<{ folder: string; skins: Array<{ id: string; label: string; light: boolean; version: string; author: string; vars: Record<string, string>; css?: string }>; errors: Array<{ file: string; error: string }> } | null> {
+    try { return (await (await request('/skins')).json()) as { folder: string; skins: Array<{ id: string; label: string; light: boolean; version: string; author: string; vars: Record<string, string>; css?: string }>; errors: Array<{ file: string; error: string }> }; } catch { return null; }
   },
   async localFilesClean(): Promise<{ removed: number; bytes: number }> {
     return (await (await request('/localfiles/clean', { method: 'POST' })).json()) as { removed: number; bytes: number };

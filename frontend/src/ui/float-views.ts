@@ -31,7 +31,13 @@ export class FloatViews {
     this.layer.className = 'cv-floats';
     this.layer.hidden = true;
     col.appendChild(this.layer);
-    engine.on('projects', () => this.sync());
+    let known = new Set(engine.projects.map((p) => p.id));
+    engine.on('projects', () => {
+      const fresh = engine.projects.filter((p) => !known.has(p.id));
+      known = new Set(engine.projects.map((p) => p.id));
+      if (!FloatViews.prefs.asTabs) for (const p of fresh) if (!engine.docViews.list.some((v) => v.floating && v.projectId === p.id)) this.open(p.id);
+      this.sync();
+    });
     for (const ev of ['doc', 'history'] as const) engine.on(ev, () => { this.stale = true; this.queue(); });
     engine.on('render', () => { if (this.stale) this.queue(); });
     new ResizeObserver(() => this.keepInside()).observe(col);
@@ -133,7 +139,7 @@ export class FloatViews {
   }
 
   /** Preferences > General and Workspace: Zoom Resizes Windows sizes a floating window to the picture at its new zoom (held to the column); Enable Floating Document Window Docking lets a window dropped on the tab bar go back to its tab. */
-  static prefs = { zoomResize: false, docking: true };
+  static prefs = { zoomResize: false, docking: true, asTabs: true };
 
   /** A floating window whose zoom just changed takes the size of the picture at that zoom, centred in the window. */
   private zoomFit(f: Frame): void {

@@ -13,7 +13,7 @@
 // Never call applyTheme() from a component's first render; that is a second
 // paint and the user sees both.
 
-export interface ThemeProfile { label: string; vars: Record<string, string>; light?: boolean }
+export interface ThemeProfile { label: string; vars: Record<string, string>; light?: boolean; css?: string }
 
 export const THEMES: Record<string, ThemeProfile> = {
   // The target look (Phase 21, UI_SPEC.md): surfaces, text and the pasteboard measured from the owner's screenshots;
@@ -116,9 +116,33 @@ export function applyTheme(choice: ThemeChoice = readChoice()): void {
   root.style.setProperty('--accent-intensity', String(clampIntensity(choice.intensity)));
   root.style.setProperty('--accent-tint', hexToRgba(choice.accentColor, 0.06));
   root.style.setProperty('--accent-tint-strong', hexToRgba(choice.accentColor, 0.10));
+  applySkinCss(skinEscape ? '' : theme.css ?? '');
 }
 
-export interface UserSkin { id: string; label: string; light: boolean; version: string; author: string; vars: Record<string, string> }
+/** The one style element a skin's free CSS lives in, made on first use and only rewritten when the text changes. */
+function applySkinCss(css: string): void {
+  let node = document.getElementById('fv-skin-css');
+  if (!node) {
+    if (!css) return;
+    node = document.createElement('style');
+    node.id = 'fv-skin-css';
+    document.head.append(node);
+  }
+  if (node.textContent !== css) node.textContent = css;
+}
+
+/** The reason a skin's CSS is refused, or '' when it passes: no network (url, @import, @font-face), no script, no escapes, only @media, braces balanced. The engine lints the same way. */
+export function skinCssProblem(css: string): string {
+  if (css.length > 16000) return 'css is larger than 16 KB';
+  const plain = css.replace(/\/\*[\s\S]*?\*\//g, ''), low = plain.toLowerCase();
+  for (const bad of ['url(', 'image-set(', 'image(', 'element(', 'paint(', 'cross-fade(', 'expression(', 'javascript:', 'behavior', '-moz-binding', '<', '\\', 'src:']) if (low.includes(bad)) return `css may not use ${bad}`;
+  for (const m of low.matchAll(/@([a-z-]+)/g)) if (m[1] !== 'media') return `css may not use @${m[1]}`;
+  let depth = 0;
+  for (const ch of plain) { depth += ch === '{' ? 1 : ch === '}' ? -1 : 0; if (depth < 0) break; }
+  return depth === 0 ? '' : 'css braces do not match';
+}
+
+export interface UserSkin { id: string; label: string; light: boolean; version: string; author: string; vars: Record<string, string>; css?: string }
 export const USER_SKIN_KEY = 'formvis_user_skin';
 const NAMES = ['--bg-primary', '--bg-secondary', '--bg-tertiary', '--border-color', '--border-light', '--text-primary', '--text-secondary', '--text-muted', '--canvas-bg', '--grid-color'];
 
@@ -130,7 +154,7 @@ export function registerSkins(skins: UserSkin[]): { added: string[]; removed: st
   const added = [...next].filter((id) => !(id in THEMES));
   for (const id of removed) delete THEMES[id];
   const base = THEMES[DEFAULT_THEME].vars, lightBase = THEMES.light.vars;
-  for (const s of skins) THEMES[`skin-${s.id}`] = { label: s.label, light: s.light, vars: { ...(s.light ? lightBase : base), ...s.vars } };
+  for (const s of skins) THEMES[`skin-${s.id}`] = { label: s.label, light: s.light, vars: { ...(s.light ? lightBase : base), ...s.vars }, css: s.css && !skinCssProblem(s.css) ? s.css : undefined };
   return { added, removed };
 }
 

@@ -1221,9 +1221,21 @@ export class Engine {
    *  freed (0 keeps them). */
   backgroundReleaseSec = 30;
   private releaseTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Preferences > Performance: the background documents' caches above this many bytes, and a memory reserve (bytes of the
+   *  budget kept free), are freed at once on a switch instead of after the delay (0 turns each off). */
+  backgroundCacheBytes = 0;
+  memoryReserveBytes = 0;
+  /** True when the background caches pass their threshold or the budget left free falls under the reserve. */
+  backgroundPressure(): boolean {
+    if (this.projects.length < 2) return false;
+    const c = this.cacheUse();
+    if (this.backgroundCacheBytes > 0 && c.background > this.backgroundCacheBytes) return true;
+    return this.memoryReserveBytes > 0 && this.memoryBudget > 0 && this.memoryBudget - this.memoryUse() - c.background - c.effects < this.memoryReserveBytes;
+  }
   private scheduleRelease(): void {
     if (this.releaseTimer) clearTimeout(this.releaseTimer);
     this.releaseTimer = null;
+    if (this.projects.length >= 2 && !this.stroke && !this.busyWith && this.backgroundPressure()) this.releaseBackgroundCaches();
     if (!(this.backgroundReleaseSec > 0) || this.projects.length < 2) return;
     this.releaseTimer = setTimeout(() => {
       this.releaseTimer = null;
@@ -2869,13 +2881,14 @@ export class Engine {
   }
 
   /** Re-renders shape layer `id` in `p` from `path` and `fill`. */
-  private reshape(p: Project, id: ID, path: VectorPath, style?: ShapeStyle): void {
+  private reshape(p: Project, id: ID, path: VectorPath, style?: ShapeStyle, keepTurn = false): void {
     const l = p.layer(id), v = l?.vector;
     if (!l || !v) return;
     const look = style ?? { fill: v.fill, stroke: v.stroke ?? null, gradient: v.gradient ?? null, pattern: v.pattern ?? null }, r = this.renderShape(path, look);
     if (!r) return;
     const stored = structuredClone(path);
-    p.updateLayer(id, { raster: r.raster, transform: { ...l.transform, x: r.x, y: r.y, w: r.raster.width, h: r.raster.height, rotation: 0, flipX: false, flipY: false }, vector: { path: stored, fill: look.fill, stroke: look.stroke, ...(look.gradient ? { gradient: look.gradient } : {}), ...(look.pattern ? { pattern: look.pattern } : {}), origin: { x: r.x, y: r.y } }, shape: null });
+    const turn = keepTurn ? { rotation: l.transform.rotation, flipX: l.transform.flipX, flipY: l.transform.flipY } : { rotation: 0, flipX: false, flipY: false };
+    p.updateLayer(id, { raster: r.raster, transform: { ...l.transform, x: r.x, y: r.y, w: r.raster.width, h: r.raster.height, ...turn }, vector: { path: stored, fill: look.fill, stroke: look.stroke, ...(look.gradient ? { gradient: look.gradient } : {}), ...(look.pattern ? { pattern: look.pattern } : {}), origin: { x: r.x, y: r.y } }, shape: null });
     const e = this.pathStore.shapeEdit, now = p.layer(id);
     if (e && e.project === p && e.layerId === id && now) { e.layer = now; e.path = path; }
   }
@@ -2889,7 +2902,8 @@ export class Engine {
     const path = mapPath(v.path, (q) => ({ x: t.x + (q.x + dx - o.x) * sx, y: t.y + (q.y + dy - o.y) * sy }));
     const look: ShapeStyle = { fill: v.fill, stroke: v.stroke ?? null, gradient: v.gradient ?? null, pattern: v.pattern ?? null }, r = this.renderShape(path, look);
     if (!r) return null;
-    const live = v.live ? { ...v.live, box: { x: t.x + (v.live.box.x + dx - o.x) * sx, y: t.y + (v.live.box.y + dy - o.y) * sy, w: v.live.box.w * sx, h: v.live.box.h * sy } } : null;
+    const at = (q: Pt): Pt => ({ x: t.x + (q.x + dx - o.x) * sx, y: t.y + (q.y + dy - o.y) * sy });
+    const live = v.live ? { ...v.live, box: { x: t.x + (v.live.box.x + dx - o.x) * sx, y: t.y + (v.live.box.y + dy - o.y) * sy, w: v.live.box.w * sx, h: v.live.box.h * sy }, ...(v.live.line ? { line: { ...v.live.line, a: at(v.live.line.a), b: at(v.live.line.b) } } : {}) } : null;
     return { raster: r.raster, transform: { ...t, x: r.x, y: r.y, w: r.raster.width, h: r.raster.height }, vector: { path, fill: look.fill, stroke: look.stroke, ...(look.gradient ? { gradient: look.gradient } : {}), ...(look.pattern ? { pattern: look.pattern } : {}), ...(live ? { live } : {}), origin: { x: r.x, y: r.y } }, shape: null };
   }
 
@@ -3041,17 +3055,22 @@ export class Engine {
 
   /** Changes a live polygon, star or triangle shape layer: its sides, the star's inset (percent), its corner radius. The path
    *  is rebuilt in the layer's box, the look kept. One step. */
-  setLiveShape(id: ID, to: { sides?: number; inset?: number; radius?: number }): boolean {
+  setLiveShape(id: ID, to: { sides?: number; inset?: number; radius?: number; weight?: number; headLength?: number; headWidth?: number }): boolean {
     return this.edit('Shape Properties', (p) => {
       const l = p.layer(id), v = l?.vector, lv = v?.live;
       if (!l || !v || !lv) return false;
-      const next: LiveShape = { ...lv, sides: Math.max(3, Math.min(100, Math.round(to.sides ?? lv.sides))), inset: Math.max(1, Math.min(99, to.inset ?? lv.inset)), radius: Math.max(0, Math.min(15000, to.radius ?? lv.radius)) };
-      if (next.sides === lv.sides && next.inset === lv.inset && next.radius === lv.radius) return false;
+      const ln = lv.line, num = (x: number | undefined, d: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, Number.isFinite(x) ? (x as number) : d));
+      const line = ln ? { ...ln, weight: num(to.weight, ln.weight, 1, 1000), headLength: num(to.headLength, ln.headLength, 0, 5000), headWidth: num(to.headWidth, ln.headWidth, 0, 5000) } : undefined;
+      const next: LiveShape = { ...lv, sides: Math.max(3, Math.min(100, Math.round(to.sides ?? lv.sides))), inset: Math.max(1, Math.min(99, to.inset ?? lv.inset)), radius: Math.max(0, Math.min(15000, to.radius ?? lv.radius)), ...(line ? { line } : {}) };
+      const sameLine = !ln || !line || (line.weight === ln.weight && line.headLength === ln.headLength && line.headWidth === ln.headWidth);
+      if (next.sides === lv.sides && next.inset === lv.inset && next.radius === lv.radius && sameLine) return false;
       const dx = l.transform.x - v.origin.x, dy = l.transform.y - v.origin.y, box = { ...next.box, x: next.box.x + dx, y: next.box.y + dy };
-      const path = boxedShapePath(next.kind, box, { ...this.shapeSettings, sides: next.sides, starInset: next.inset, cornerRadius: next.radius });
-      this.reshape(p, id, path, { fill: v.fill, stroke: v.stroke ?? null, gradient: v.gradient ?? null, pattern: v.pattern ?? null });
+      const moved = line ? { ...line, a: { x: line.a.x + dx, y: line.a.y + dy }, b: { x: line.b.x + dx, y: line.b.y + dy } } : undefined;
+      const path = moved && (next.kind === 'line' || next.kind === 'arrow') ? linePath(next.kind, moved.a, moved.b, { ...this.shapeSettings, weight: moved.weight, headLength: moved.headLength, headWidth: moved.headWidth })
+        : boxedShapePath(next.kind as 'polygon' | 'star' | 'heart' | 'triangle', box, { ...this.shapeSettings, sides: next.sides, starInset: next.inset, cornerRadius: next.radius });
+      this.reshape(p, id, path, { fill: v.fill, stroke: v.stroke ?? null, gradient: v.gradient ?? null, pattern: v.pattern ?? null }, true);
       const now = p.layer(id);
-      if (now?.vector) p.updateLayer(id, { vector: { ...now.vector, live: { ...next, box: { ...next.box, x: box.x, y: box.y } } } });
+      if (now?.vector) p.updateLayer(id, { vector: { ...now.vector, live: { ...next, box: { ...next.box, x: box.x, y: box.y }, ...(moved ? { line: moved } : {}) } } });
       return true;
     });
   }
@@ -3061,7 +3080,11 @@ export class Engine {
     const l = this.current?.activeLayer;
     if (!l?.vector) { this.notice('Select a shape layer first.'); return; }
     const v = l.vector, dx = l.transform.x - v.origin.x, dy = l.transform.y - v.origin.y;
-    this.edit('Shape Color', (p) => this.reshape(p, l.id, shiftPath(v.path, dx, dy), { fill: { ...this.fg }, stroke: v.stroke ?? null }));
+    this.edit('Shape Color', (p) => {
+      this.reshape(p, l.id, shiftPath(v.path, dx, dy), { fill: { ...this.fg }, stroke: v.stroke ?? null }, true);
+      const now = p.layer(l.id), lv = v.live, ln = lv?.line;
+      if (lv && now?.vector) p.updateLayer(l.id, { vector: { ...now.vector, live: { ...lv, box: { ...lv.box, x: lv.box.x + dx, y: lv.box.y + dy }, ...(ln ? { line: { ...ln, a: { x: ln.a.x + dx, y: ln.a.y + dy }, b: { x: ln.b.x + dx, y: ln.b.y + dy } } } : {}) } } });
+    });
   }
 
   /** Layer > Shape Fill and Stroke: the active shape layer's fill and stroke, as one undo step. */
@@ -3071,9 +3094,10 @@ export class Engine {
     if (!style.fill && !style.stroke && !style.gradient) { this.notice('A shape needs a fill, a stroke or both.'); return; }
     const v = l.vector, dx = l.transform.x - v.origin.x, dy = l.transform.y - v.origin.y;
     this.edit('Shape Style', (p) => {
-      this.reshape(p, l.id, shiftPath(v.path, dx, dy), structuredClone(style));
+      this.reshape(p, l.id, shiftPath(v.path, dx, dy), structuredClone(style), true);
       const now = p.layer(l.id);
-      if (v.live && now?.vector) p.updateLayer(l.id, { vector: { ...now.vector, live: { ...v.live, box: { ...v.live.box, x: v.live.box.x + dx, y: v.live.box.y + dy } } } });
+      const ln = v.live?.line;
+      if (v.live && now?.vector) p.updateLayer(l.id, { vector: { ...now.vector, live: { ...v.live, box: { ...v.live.box, x: v.live.box.x + dx, y: v.live.box.y + dy }, ...(ln ? { line: { ...ln, a: { x: ln.a.x + dx, y: ln.a.y + dy }, b: { x: ln.b.x + dx, y: ln.b.y + dy } } } : {}) } } });
     });
   }
 
@@ -3440,21 +3464,34 @@ export class Engine {
 
   /** A CMYK document with adjustment layers shown as its composed ink (1.54.4): Levels and Curves act per ink in
    *  composeChannels, and the display follows that rather than the per-layer renditions. */
-  private composedCache: { doc: Doc; r: Raster | null } | null = null;
+  private composedCache: { doc: Doc; hid: string; r: Raster | null } | null = null;
+  /** The inks (CMYK 0 to 3) or Lab planes (0 to 2) whose eyes are off in the Channels panel: the display leaves a hidden
+   *  ink out (no ink) and shows a hidden Lab plane at its middle; exports, Info and selections are not touched. */
+  readonly channelsHidden = new Set<number>();
+  setChannelsHidden(list: Iterable<number>): void {
+    const next = [...list].sort().join(','), now = [...this.channelsHidden].sort().join(',');
+    if (next === now) return;
+    this.channelsHidden.clear();
+    for (const k of list) this.channelsHidden.add(k);
+    this.emit('render', null);
+  }
   private composedRendition(p: Project): Raster | null {
-    if (this.composedCache && this.composedCache.doc === p.doc) return this.composedCache.r;
+    const hid = (p.doc.mode === 'cmyk' || p.doc.mode === 'lab') ? [...this.channelsHidden].sort().join(',') : '';
+    if (this.composedCache && this.composedCache.doc === p.doc && this.composedCache.hid === hid) return this.composedCache.r;
     let r: Raster | null = null;
     if (p.doc.mode === 'lab') {
       const c = composeFloat(p.doc, 3, false);
+      if (!('error' in c)) for (const k of this.channelsHidden) if (k < 3) for (let i = k; i < c.data.length; i += 4) c.data[i] = 0.5;
       if (!('error' in c)) { r = new Raster(c.width, c.height); const img = r.ctx.createImageData(c.width, c.height); renderLab(c.data, img.data); r.ctx.putImageData(img, 0, 0); r.touch(); }
     } else if (p.doc.depth === 32) {
       const c = composeFloat(p.doc, 3, false, null, true);
       if (!('error' in c)) r = rasterFromDeep({ mode: 'rgb', n: 3, width: c.width, height: c.height, data: c.data }, true);
     } else {
       const ink = composeChannels(p.doc, p.cmykTables);
+      if (!('error' in ink)) for (const k of this.channelsHidden) if (k < 4) for (let i = k; i < ink.data.length; i += 5) ink.data[i] = 0;
       r = 'error' in ink || !p.cmykLut ? null : rasterFromChannels({ mode: 'cmyk', n: 4, width: ink.width, height: ink.height, data: ink.data }, p.cmykLut);
     }
-    this.composedCache = { doc: p.doc, r };
+    this.composedCache = { doc: p.doc, hid, r };
     return r;
   }
 
@@ -3486,6 +3523,7 @@ export class Engine {
   /** Whether the canvas and exports show the composed floats rather than the layers' renditions (1.54.4, Lab 1.56.6):
    *  a CMYK or Lab document with a visible adjustment layer or a blend mode other than Normal. */
   private composesFloats(p: Project): boolean {
+    if (this.channelsHidden.size && p.doc.depth !== 32 && ((p.doc.mode === 'cmyk' && !!p.cmykLut) || p.doc.mode === 'lab')) return true;
     if (p.doc.depth === 32) return p.doc.layers.some((l) => l.visible && (!!l.adjustment || (!!l.blend && l.blend !== 'normal') || effectsActive(l.effects) || !!l.mask || !!l.clipId));
     return ((p.doc.mode === 'cmyk' && !!p.cmykLut) || p.doc.mode === 'lab') && p.doc.layers.some((l) => l.visible && (l.adjustment || (l.blend && l.blend !== 'normal') || effectsActive(l.effects)));
   }
@@ -7622,7 +7660,8 @@ export class Engine {
       return;
     }
     if ((kind === 'rectangle' || kind === 'ellipse') && look.fill && !look.stroke && !look.gradient && !(kind === 'rectangle' && st.smoothCorners && st.cornerRadius > 0)) { this.createShape(rect, look.fill); return; }
-    const live: LiveShape | undefined = kind === 'polygon' || kind === 'star' || kind === 'triangle' ? { kind, sides: st.sides, inset: st.starInset, radius: st.cornerRadius, box: { x: rect.x, y: rect.y, w: rect.w, h: rect.h } } : undefined;
+    const live: LiveShape | undefined = kind === 'polygon' || kind === 'star' || kind === 'triangle' || kind === 'heart' ? { kind, sides: st.sides, inset: st.starInset, radius: st.cornerRadius, box: { x: rect.x, y: rect.y, w: rect.w, h: rect.h } }
+      : line ? { kind: kind as 'line' | 'arrow', sides: st.sides, inset: st.starInset, radius: 0, box: { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) }, line: { a: { ...a }, b: { ...b }, weight: st.weight, headLength: st.headLength, headWidth: st.headWidth } } : undefined;
     this.createVectorShape(path, look, name, live);
   }
 
@@ -8230,7 +8269,15 @@ export class Engine {
    *  sees ever differ in size from those computed on, `fallback` recomputes on them there. */
   async applyImageEditAsync(name: string, run: (src: ImageData, scale: number, frame?: LibFrame) => Promise<ImageData>, grow: number, fallback: (src: ImageData, scale: number, frame?: LibFrame) => ImageData, peak = 2): Promise<boolean> {
     const alpha = this.alphaTargeted();
-    if (alpha) { this.applyAlphaEdit(alpha, name, fallback); return true; }
+    if (alpha) {
+      const pa = this.current;
+      if (!pa) return false;
+      const plane = alphaPlane(alpha.mask, pa.doc.width, pa.doc.height), docA = pa.doc;
+      const done = await this.task(() => run(plane, 1, this.alphaFrame(pa)));
+      if (this.current !== pa || pa.doc !== docA || this.alphaTargeted()?.id !== alpha.id) { this.notice(`The channel changed while ${name} ran, so it was not applied.`); return false; }
+      this.applyAlphaEdit(alpha, name, (s, k, f) => (s.width === done.width && s.height === done.height ? done : fallback(s, k, f)));
+      return true;
+    }
     if (!this.room(this.layerBytes() * peak, name)) return false;   // its caller's measured peak (1.61.1)
     const al = this.current?.activeLayer;
     if ((al?.smart || al?.vector || al?.fillContent) && !(this.current?.maskTarget && al.mask)) { this.notice(al.vector ? SHAPE_NOTICE : al.fillContent ? FILL_NOTICE : SMART_NOTICE); return false; }
@@ -9205,7 +9252,26 @@ export class Engine {
     if (this.copySelection(false)) this.clearPixels();
   }
 
-  pasteClipboard(inPlace = false): boolean { return SO.pasteClipboard(this.selectHost, inPlace); }
+  pasteClipboard(inPlace = false): boolean {
+    const a = this.alphaTargeted(), p = this.current, c = this.clipboard;
+    if (!a || !p || !c) return SO.pasteClipboard(this.selectHost, inPlace);
+    const at = SO.pastePlace(p, c, inPlace), clip = ctxOf(c.surface).getImageData(0, 0, c.w, c.h).data;
+    this.applyAlphaEdit(a, 'Paste', (src) => {
+      const out = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height), d = out.data;
+      for (let j = 0; j < c.h; j++) {
+        const y = at.y + j;
+        if (y < 0 || y >= src.height) continue;
+        for (let i = 0; i < c.w; i++) {
+          const x = at.x + i;
+          if (x < 0 || x >= src.width) continue;
+          const s = (j * c.w + i) * 4, o = (y * src.width + x) * 4, k = clip[s + 3] / 255, grey = Math.round(0.299 * clip[s] + 0.587 * clip[s + 1] + 0.114 * clip[s + 2]), v = Math.round(grey * k + d[o] * (1 - k));
+          d[o] = d[o + 1] = d[o + 2] = v;
+        }
+      }
+      return out;
+    });
+    return true;
+  }
 
   /** File > New from Clipboard: a document the size of the clipboard picture, holding it as its layer; one new tab. */
   newFromClipboard(image: { raster: Raster; name: string; resolution?: number } | null = null): boolean {
@@ -9488,6 +9554,7 @@ export class Engine {
       tint: (rect, css, cover) => this.tint(rect, css, cover),
       bg: this.bg,
       quickMask: this.quickMask,
+      alphaTarget: this.alphaTargeted(),
       luminance: (c) => luminance(c),
       composite: (p) => renderDoc(this.work, p.doc),
       renderInto: (p, target, view) => this.work.render({ doc: p.doc, target, view, quality: 'high' }),
@@ -9646,27 +9713,60 @@ export class Engine {
   }
   beginGradient(pt: Pt): boolean {
     this.gradientEdit = null;
-    if (this.alphaTargeted()) { this.notice('The gradient does not paint an alpha channel yet. Click RGB in the Channels panel, or fill the channel instead.'); return false; }
-    const g = PO.beginGradient(this.paintHost, pt);
+    const a = this.alphaTargeted(), p0 = this.current;
+    let host = this.paintHost;
+    if (a && p0?.activeLayer) {
+      const layer = { ...p0.activeLayer, id: '' } as Layer, raster = alphaRaster(a.mask, p0.doc.width, p0.doc.height);
+      host = { ...host, canPaint: () => true, target: () => ({ layer, raster, local: [1, 0, 0, 1, 0, 0], target: 'mask' as const }) };
+    }
+    const g = PO.beginGradient(host, pt);
     this.gradient = g;
+    this.gradientAlpha = g && a ? a.id : null;
+    this.showAlphaGradient();
     return !!g;
   }
 
-  updateGradient(start?: Pt, end?: Pt): void { if (this.gradient) PO.updateGradient(this.paintHost, this.gradient, start, end); }
+  /** The id of the alpha channel the gradient in hand paints; its drag works on a document-sized grey copy. */
+  private gradientAlpha: ID | null = null;
+  private alphaGradientMask(g: PO.GradientDrag): SelectionMask | null {
+    const w = g.raster.width, h = g.raster.height, shown = ctxOf(g.surface).getImageData(0, 0, w, h).data, v = new Uint8Array(w * h);
+    for (let i = 0; i < v.length; i++) v[i] = shown[i * 4];
+    return SelectionMask.cropped(0, 0, w, h, v);
+  }
+  private showAlphaGradient(): void {
+    const g = this.gradient, p = this.current, a = this.gradientAlpha && p ? p.doc.alphas?.find((x) => x.id === this.gradientAlpha) : undefined;
+    if (!g || !p || !a) return;
+    this.alphaPreview = { project: p, shown: { ...a, mask: this.alphaGradientMask(g) } };
+    this.emit('overlay', null);
+  }
 
-  renderGradient(): void { if (this.gradient) PO.updateGradient(this.paintHost, this.gradient); }
+  updateGradient(start?: Pt, end?: Pt): void { if (this.gradient) { PO.updateGradient(this.paintHost, this.gradient, start, end); this.showAlphaGradient(); } }
+
+  renderGradient(): void { if (this.gradient) { PO.updateGradient(this.paintHost, this.gradient); this.showAlphaGradient(); } }
 
   commitGradient(): void {
     const g = this.gradient;
     if (!g) return;
     this.gradient = null;
-    PO.commitGradient(this.paintHost, g);
+    const alpha = this.gradientAlpha;
+    this.gradientAlpha = null;
+    if (!alpha) { PO.commitGradient(this.paintHost, g); return; }
+    this.alphaSeq++;
+    this.alphaPreview = null;
+    const p = g.project;
+    if (Math.hypot(g.end.x - g.start.x, g.end.y - g.start.y) < 1) { PO.cancelGradient(this.paintHost, g); this.emit('overlay', null); return; }
+    const mask = this.alphaGradientMask(g);
+    p.doc = { ...p.doc, alphas: (p.doc.alphas ?? []).map((x) => (x.id === alpha ? { ...x, mask } : x)) };
+    p.history.end(p.snapshot());
+    this.refresh();
+    this.emit('overlay', null);
   }
 
   cancelGradient(): void {
     const g = this.gradient;
     if (!g) return;
     this.gradient = null;
+    if (this.gradientAlpha) { this.gradientAlpha = null; this.alphaSeq++; this.alphaPreview = null; this.emit('overlay', null); }
     PO.cancelGradient(this.paintHost, g);
   }
 

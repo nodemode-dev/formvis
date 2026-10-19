@@ -19,6 +19,8 @@ export class LayerExportDialog extends Dialog {
   private readonly visibleRow: Row<boolean>;
   private readonly formatRow: Row<string>;
   private readonly qualityRow: Row<number>;
+  private readonly tgaRow: Row<string>;
+  private readonly dpxRow: Row<string>;
   private readonly trimRow: Row<boolean>;
   private readonly iccRow: Row<boolean>;
   private readonly selectedRow: Row<boolean>;
@@ -39,6 +41,8 @@ export class LayerExportDialog extends Dialog {
     this.visibleRow = checkRow('Visible layers only', (v) => { this.s = { ...this.s, visibleOnly: v }; this.sync(); });
     this.formatRow = selectRow('File type', LAYER_FILE_FORMATS, (v) => { this.s = { ...this.s, format: v as LayerFileFormat }; this.sync(); });
     this.qualityRow = sliderRow('Quality (%)', 1, 100, 1, (v) => { this.s = { ...this.s, quality: v }; this.sync(); });
+    this.tgaRow = selectRow('TGA bits per pixel', [['32', '32 (with transparency)'], ['24', '24']], (v) => { this.s = { ...this.s, tgaBits: v === '24' ? 24 : 32 }; this.sync(); });
+    this.dpxRow = selectRow('DPX bits per channel', [['8', '8'], ['10', '10'], ['12', '12'], ['16', '16']], (v) => { this.s = { ...this.s, dpxBits: Number(v) as 8 | 10 | 12 | 16 }; this.sync(); });
     this.trimRow = checkRow('Trim layers', (v) => { this.s = { ...this.s, trim: v }; this.sync(); });
     this.iccRow = checkRow('Include ICC profile', (v) => { this.s = { ...this.s, icc: v }; this.sync(); });
     this.selectedRow = checkRow('Selected layers only', (v) => { this.selectedOnly = v; this.sync(); });
@@ -46,7 +50,7 @@ export class LayerExportDialog extends Dialog {
       const box = e.target as HTMLInputElement, key = box.closest<HTMLElement>('[data-key]')?.dataset.key;
       if (key) { if (box.checked) this.left.delete(key); else this.left.add(key); this.sync(); }
     });
-    this.body.append(this.destRow, this.prefixRow, this.visibleRow.el, this.selectedRow.el, this.pickRow, this.formatRow.el, this.qualityRow.el, this.trimRow.el, this.iccRow.el, this.note);
+    this.body.append(this.destRow, this.prefixRow, this.visibleRow.el, this.selectedRow.el, this.pickRow, this.formatRow.el, this.qualityRow.el, this.tgaRow.el, this.dpxRow.el, this.trimRow.el, this.iccRow.el, this.note);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('Export', 'primary', () => { this.close(); this.run({ ...this.s, prefix: this.s.prefix.trim(), folder: this.s.folder.trim(), ids: this.chosen(), ...(this.dir && !this.desktop() ? { dir: this.dir } : {}) }); });
     this.remember();   // the type, quality, visible-only, trim and profile; the name and folder come from the document
@@ -88,12 +92,18 @@ export class LayerExportDialog extends Dialog {
     this.visibleRow.set(s.visibleOnly);
     this.formatRow.set(s.format);
     this.qualityRow.set(s.quality);
+    this.tgaRow.set(String(s.tgaBits ?? 32));
+    this.dpxRow.set(String(s.dpxBits ?? 10));
+    this.tgaRow.el.classList.toggle('is-off', s.format !== 'tga');
+    this.dpxRow.el.classList.toggle('is-off', s.format !== 'dpx');
+    for (const i of this.tgaRow.el.querySelectorAll('select')) i.disabled = s.format !== 'tga';
+    for (const i of this.dpxRow.el.querySelectorAll('select')) i.disabled = s.format !== 'dpx';
     this.trimRow.set(s.trim);
     this.iccRow.set(s.icc);
     this.visibleRow.el.classList.toggle('is-off', boards);
     this.trimRow.el.classList.toggle('is-off', boards);
     this.qualityRow.el.classList.toggle('is-off', !LAYER_FILE_LOSSY.has(s.format));
-    const noIcc = s.format === 'psd' || s.format === 'bmp' || s.format === 'tga';
+    const noIcc = s.format === 'psd' || s.format === 'bmp' || s.format === 'tga' || s.format === 'dpx';
     this.iccRow.el.classList.toggle('is-off', noIcc);
     for (const i of this.visibleRow.el.querySelectorAll('input')) i.disabled = boards;
     for (const i of this.trimRow.el.querySelectorAll('input')) i.disabled = boards;

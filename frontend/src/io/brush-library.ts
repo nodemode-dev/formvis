@@ -64,6 +64,19 @@ export async function saveBrushPreset(engine: Engine, name: string, group = 'My 
   return { preset, kept };
 }
 
+/** Rewrites a saved preset from the brush as it is now, keeping its id, name and folder. Built-in and imported presets are left alone (null). */
+export async function updateBrushPreset(engine: Engine, id: string): Promise<{ preset: BrushPreset; kept: boolean } | null> {
+  const cur = importedBrushPresets.find((p) => p.id === id && p.id.startsWith('user-'));
+  if (!cur) return null;
+  const preset = presetFromBrush(engine, cur.id, cur.name, brushGroupOf(cur));
+  const list = importedBrushPresets.map((p) => (p.id === id ? preset : p));
+  setImportedBrushPresets(list);
+  const kept = await save(list);
+  engine.brushPresetId = preset.id;
+  engine.emit('options', null);
+  return { preset, kept };
+}
+
 /** Adds a preset made by New Brush Preset (Brush Settings) to the kept presets and selects it. */
 export async function addMadeBrushPreset(engine: Engine, preset: BrushPreset): Promise<{ kept: boolean }> {
   const list = [...importedBrushPresets, preset];

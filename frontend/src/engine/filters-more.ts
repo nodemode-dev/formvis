@@ -9,6 +9,8 @@
  *  as the point spread function, then mix by Amount. Reduce Noise gates small differences out; the fades weaken the
  *  result in the darkest and brightest tones. Alpha is kept as it was. */
 
+import type { LensGatherInput } from './gpu-filters';
+
 const toLin = new Float32Array(256);
 for (let i = 0; i < 256; i++) { const v = i / 255; toLin[i] = v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
 const toSrgb = (v: number): number => { const c = v <= 0 ? 0 : v >= 1 ? 1 : v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055; return Math.round(c * 255); };
@@ -119,7 +121,7 @@ function lensPlane(img: ImageData, o: LensOptions): Float32Array | null {
 /** Lens Blur: `radius` of the iris in pixels, `brightness` (0 to 100) lifts pixels at or above `threshold` (0 to
  *  255) before blurring. With a depth source each pixel's radius grows with its distance from the `focal` depth; the
  *  iris can be a polygon (`blades`, `curve`, `rotation`); `noise` is added where the picture is blurred. */
-export function lensBlur(img: ImageData, radius: number, brightness: number, threshold: number, given?: Partial<LensOptions>): ImageData {
+export function lensBlur(img: ImageData, radius: number, brightness: number, threshold: number, given?: Partial<LensOptions>, gather?: (p: LensGatherInput) => ImageData | null): ImageData {
   const o = { ...defaultLensOptions(), ...given }, plane = lensPlane(img, o), blades = o.blades >= 3 ? Math.min(8, Math.round(o.blades)) : 0;
   if (!plane && !blades && o.noise <= 0) return lensBlurDisc(img, radius, brightness, threshold);
   const { width: w, height: h } = img, s = img.data, n = w * h, f = new Float32Array(n * 4), boost = 1 + (brightness / 100) * 8, rad = new Float32Array(n);
@@ -134,6 +136,10 @@ export function lensBlur(img: ImageData, radius: number, brightness: number, thr
   const tapsFor = new Map<number, Float32Array>(), levels: Float32Array[] = [f];
   const topGap = (top * 1.77) / Math.sqrt(LENS_TIERS.find((t) => t >= Math.max(12, 0.9 * top * top)) ?? 256) / 2;
   for (let k = 1; k < LENS_LEVELS.length; k++) levels.push(topGap * 2 >= LENS_LEVELS[k] ? boxFloat(f, w, h, LENS_LEVELS[k]) : f);
+  if (gather && o.noise <= 0 && top >= 0.5) {
+    const done = gather({ w, h, src: s, levels, rad, depth: !!plane, tiers: LENS_TIERS, sizes: LENS_LEVELS, tapsFor: (count) => irisTaps(count, blades, o.curve, o.rotation) });
+    if (done) return done;
+  }
   const out = new ImageData(w, h), d = out.data, rng = ((seed: number) => () => { seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; })(o.seed | 0);
   const amp = (o.noise / 100) * 128, normal = (): number => Math.sqrt(-2 * Math.log(Math.max(1e-9, rng()))) * Math.cos(2 * Math.PI * rng()) * 0.5;
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
@@ -165,9 +171,9 @@ export function lensBlur(img: ImageData, radius: number, brightness: number, thr
 /** The Filter dialog's Lens Blur settings (`lensIris` holds the iris, depth and noise rows). */
 export interface LensIris { blades: number; curve: number; rotation: number; source: string; channel: number; focal: number; invert: boolean; noise: number; gaussian: boolean; mono: boolean; depth: LensDepth | null }
 export const defaultLensIris = (): LensIris => ({ blades: 0, curve: 0, rotation: 0, source: 'none', channel: 1, focal: 128, invert: false, noise: 0, gaussian: false, mono: true, depth: null });
-export function lensBlurSettings(img: ImageData, s: { lensRadius: number; lensBrightness: number; lensThreshold: number; lensIris?: LensIris }, scale: number, seed: number, canvas: { x: number; y: number; w: number; h: number } | null): ImageData {
+export function lensBlurSettings(img: ImageData, s: { lensRadius: number; lensBrightness: number; lensThreshold: number; lensIris?: LensIris }, scale: number, seed: number, canvas: { x: number; y: number; w: number; h: number } | null, gather?: (p: LensGatherInput) => ImageData | null): ImageData {
   const i = s.lensIris;
-  return lensBlur(img, s.lensRadius * scale, s.lensBrightness, s.lensThreshold, i ? { blades: i.blades, curve: i.curve, rotation: i.rotation, source: i.source, depth: i.depth, canvas, focal: i.focal, invert: i.invert, noise: i.noise, gaussian: i.gaussian, mono: i.mono, seed } : undefined);
+  return lensBlur(img, s.lensRadius * scale, s.lensBrightness, s.lensThreshold, i ? { blades: i.blades, curve: i.curve, rotation: i.rotation, source: i.source, depth: i.depth, canvas, focal: i.focal, invert: i.invert, noise: i.noise, gaussian: i.gaussian, mono: i.mono, seed } : undefined, gather);
 }
 
 function lensBlurDisc(img: ImageData, radius: number, brightness: number, threshold: number): ImageData {

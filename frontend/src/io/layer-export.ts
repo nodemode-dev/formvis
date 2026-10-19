@@ -4,17 +4,20 @@ import { api } from './api';
 import { embedJpeg, embedPng } from './embed-icc';
 import { fromBase64, profileName } from './icc-read';
 import { writePsdFile } from './psd';
+import { writeLayeredTiff } from './layered-tiff';
 
 /** File > Export > Layers to Files and Artboards to Files (DEV_PLAN 29.1): each layer (or artboard) drawn alone with
  *  its effects and mask applied, encoded through the same paths as Export As and returned as named files. */
 
-export type LayerFileFormat = 'png' | 'jpg' | 'tiff' | 'webp' | 'psd' | 'bmp' | 'tga';
-export const LAYER_FILE_FORMATS: ReadonlyArray<readonly [LayerFileFormat, string]> = [['png', 'PNG'], ['jpg', 'JPEG'], ['tiff', 'TIFF'], ['webp', 'WebP'], ['psd', 'PSD'], ['bmp', 'BMP'], ['tga', 'TGA']];
+export type LayerFileFormat = 'png' | 'jpg' | 'tiff' | 'tiff-layers' | 'webp' | 'psd' | 'bmp' | 'tga' | 'dpx';
+export const LAYER_FILE_FORMATS: ReadonlyArray<readonly [LayerFileFormat, string]> = [['png', 'PNG'], ['jpg', 'JPEG'], ['tiff', 'TIFF'], ['tiff-layers', 'TIFF with layer'], ['webp', 'WebP'], ['psd', 'PSD'], ['bmp', 'BMP'], ['tga', 'TGA'], ['dpx', 'DPX']];
+/** The file extension of a layer file type. */
+export const layerFileExt = (format: LayerFileFormat): string => (format === 'tiff' || format === 'tiff-layers' ? 'tif' : format);
 /** What a layer file of this type cannot hold, in one short sentence; empty when it keeps the picture whole. */
 export function layerFileLoss(format: LayerFileFormat, icc: boolean): string {
   if (format === 'jpg') return 'JPEG keeps no transparency (clear areas are laid on white) and is lossy.';
   if (format === 'webp') return 'WebP is lossy at the quality set.';
-  if (format === 'bmp' || format === 'tga') return `${format.toUpperCase()} carries no colour profile${icc ? ', so none is embedded' : ''}.`;
+  if (format === 'bmp' || format === 'tga' || format === 'dpx') return `${format.toUpperCase()} carries no colour profile${icc ? ', so none is embedded' : ''}.`;
   return '';
 }
 /** Formats with a quality setting. */
@@ -30,6 +33,9 @@ export interface LayerExportSettings {
   icc: boolean;
   /** Desktop app: the folder made inside the exports folder. */
   folder: string;
+  /** TGA bits per pixel (24 or 32; 32 when left out) and DPX bits per channel (8, 10, 12 or 16; 10 when left out). */
+  tgaBits?: 24 | 32;
+  dpxBits?: 8 | 10 | 12 | 16;
   /** One file per artboard instead of one per layer. */
   artboards: boolean;
   /** Layer Comps to Files: one file per layer comp (the flattened document with each comp applied). */
@@ -51,7 +57,7 @@ export function safeName(text: string, max = 60, fallback = 'layer'): string {
 
 /** The usual naming: the prefix, a four digit number counted from the top of the stack, the layer's name. */
 export function layerFileName(prefix: string, n: number, name: string, format: LayerFileFormat): string {
-  return `${safeName(prefix, 60, 'Untitled')}_${String(n).padStart(4, '0')}_${safeName(name)}.${format === 'tiff' ? 'tif' : format}`;
+  return `${safeName(prefix, 60, 'Untitled')}_${String(n).padStart(4, '0')}_${safeName(name)}.${layerFileExt(format)}`;
 }
 
 /** The layers a Layers to Files export writes, top of the stack first: pixel, type, shape, fill and smart object
@@ -86,6 +92,19 @@ export async function encodeOne(engine: Engine, s: Surface, name: string, set: L
     const { bytes } = await writePsdFile({ ...doc, width: s.width, height: s.height, layers: [one], guides: [] }, s, false, null);
     return new Blob([bytes], { type: 'image/vnd.adobe.photoshop' });
   }
+  if (set.format === 'tiff-layers') {
+    const r = new Raster(s.width, s.height);
+    r.ctx.drawImage(s as CanvasImageSource, 0, 0);
+    r.touch();
+    const one = newLayer(name, { width: s.width, height: s.height }, { raster: r, transform: docTransform(s.width, s.height) });
+    return (await writeLayeredTiff({ ...doc, width: s.width, height: s.height, layers: [one], guides: [] }, s, null)).blob;
+  }
+  if (set.format === 'dpx') {
+    if (!engineUp) throw new Error('DPX is written by the formvis engine, which is not running here. Choose PNG, JPEG or WebP.');
+    const px = ctxOf(s).getImageData(0, 0, s.width, s.height).data, u16 = new Uint16Array(px.length);
+    for (let i = 0; i < u16.length; i++) u16[i] = px[i] * 257;
+    return api.encodeDpx(u16, s.width, s.height, { bits: set.dpxBits ?? 10, transfer: 'log', name });
+  }
   if (set.format === 'jpg') {
     const c = createSurface(s.width, s.height), x = ctxOf(c);
     x.fillStyle = '#ffffff'; x.fillRect(0, 0, s.width, s.height); x.drawImage(s as CanvasImageSource, 0, 0);
@@ -100,7 +119,7 @@ export async function encodeOne(engine: Engine, s: Surface, name: string, set: L
   }
   if (set.format === 'bmp' || set.format === 'tga') {
     if (!engineUp) throw new Error(`${set.format.toUpperCase()} is written by the formvis engine, which is not running here. Choose PNG, JPEG or WebP.`);
-    return api.encode(png, set.format, 100, dpi, null, { bits: 32 });
+    return api.encode(png, set.format, 100, dpi, null, { bits: set.format === 'tga' ? set.tgaBits ?? 32 : 32 });
   }
   if (icc && own && engineUp) return api.encode(png, 'webp', set.quality, dpi, icc);
   return toBlob(s, 'image/webp', set.quality / 100);
@@ -141,7 +160,7 @@ export async function selectedLayerFiles(engine: Engine, format: LayerFileFormat
     let name = safeName(l.name), n = 1;
     while (taken.has(name.toLowerCase())) name = `${safeName(l.name)} ${++n}`;
     taken.add(name.toLowerCase());
-    files.push({ name: `${name}.${format === 'tiff' ? 'tif' : format}`, blob: await encodeOne(engine, img, l.name, set, engineUp), id: l.id });
+    files.push({ name: `${name}.${layerFileExt(format)}`, blob: await encodeOne(engine, img, l.name, set, engineUp), id: l.id });
   }
   return { files, skipped };
 }
@@ -176,7 +195,7 @@ export const DATA_SET_TEMPLATE = '{document}_{name}';
 export function dataSetFileName(template: string, documentName: string, setName: string, index: number, format: LayerFileFormat, taken: Set<string>): string {
   const text = (template.trim() || DATA_SET_TEMPLATE).replace(/\.[A-Za-z0-9]{1,5}$/, '')
     .replace(/\{document\}/gi, safeName(documentName, 60, 'Untitled')).replace(/\{name\}/gi, safeName(setName, 60, 'dataset')).replace(/\{index\}/gi, String(index).padStart(4, '0'));
-  const stem = safeName(text, 120, 'dataset'), ext = format === 'tiff' ? 'tif' : format;
+  const stem = safeName(text, 120, 'dataset'), ext = layerFileExt(format);
   let name = stem, n = 1;
   while (taken.has(`${name}.${ext}`.toLowerCase())) name = `${stem} ${++n}`;
   taken.add(`${name}.${ext}`.toLowerCase());
