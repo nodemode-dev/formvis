@@ -1,6 +1,6 @@
 # formvis commands
 
-Generated from the window's command catalogue (990 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1001 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
@@ -9,15 +9,15 @@ Generated from the window's command catalogue (990 commands) by `./formvis agent
 - Filter: 81
 - Generate: 2
 - Image: 89
-- Layer: 226
+- Layer: 229
 - Paint: 1
 - Paths: 8
-- Select: 28
+- Select: 35
 - Tool options: 232
 - Tools: 51
 - Type: 22
 - View: 44
-- Window: 72
+- Window: 73
 
 ## Edit
 
@@ -53,8 +53,8 @@ Generated from the window's command catalogue (990 commands) by `./formvis agent
 | `paste-in-place` | Paste in Place | Shift+Mod+V | Pastes at the position the pixels were copied from. (changes the picture) |
 | `paste-into` | Paste Into | Alt+Shift+Mod+V | Pastes into the selection with a mask. (changes the picture) |
 | `paste-outside` | Paste Outside |  | Pastes outside the selection with a mask. (changes the picture) |
-| `patterns-export` | Export Patterns... |  | Saves your patterns as one Photoshop .pat file. |
-| `patterns-import` | Import Patterns... |  | Adds the patterns from Photoshop .pat files. |
+| `patterns-export` | Export Patterns... |  | Saves your patterns as one .pat file. |
+| `patterns-import` | Import Patterns... |  | Adds the patterns from .pat files. |
 | `perspective-warp` | Perspective Warp |  | Starts Perspective Warp. (changes the picture) |
 | `preset-manager` | Preset Manager... |  | Opens the Preset Manager to rename, delete, load and save brushes, swatches, gradients, patterns and custom shapes. (changes the picture) |
 | `puppet-warp` | Puppet Warp |  | Starts Puppet Warp with pins on the layer. (changes the picture) |
@@ -120,10 +120,10 @@ Generated from the window's command catalogue (990 commands) by `./formvis agent
 | `export-paths-ai` | Paths to Illustrator... |  | Writes the document paths to an Illustrator .ai file. (asks first) |
 | `export-pdf` | Export PDF |  | Exports the picture as a PDF. (asks first) |
 | `export-png` | Export PNG | Shift+Mod+E | Exports the flattened picture as a PNG. (asks first) |
-| `export-psb` | Export PSB (Large Document)... |  | Exports a Photoshop large document (PSB). (asks first) |
-| `export-psd` | Export PSD... |  | Exports the document as a Photoshop PSD. (asks first) |
+| `export-psb` | Export PSB (Large Document)... |  | Exports a large document (PSB). (asks first) |
+| `export-psd` | Export PSD... |  | Exports the document as a layered PSD. (asks first) |
 | `export-tiff` | Export TIFF |  | Exports the picture as TIFF. (asks first) |
-| `export-tiff-layers` | TIFF with Layers... |  | Exports the picture as a TIFF that carries its Photoshop layers. (asks first) |
+| `export-tiff-layers` | TIFF with Layers... |  | Exports the picture as a TIFF that carries its layers in the PSD layer block. (asks first) |
 | `export-to-file` | Export to File |  | Encodes the flattened picture as png, jpg, webp or tiff and writes it to the exports folder. (asks first) |
 | `export-webp` | Export WebP |  | Exports the flattened picture as WebP. (asks first) |
 | `file-info` | File Info... | Alt+Shift+Mod+I | Opens File Info (title, author, description, rating, keywords, copyright), or sets the fields given as title, author, author_title, description, rating, description_writer, keywords, copyright_status, copyright_notice and copyright_url at once as one step; the fields travel in the project and are written as XMP into PNG, JPEG, TIFF, WebP and PSD exports. (changes the picture) |
@@ -444,6 +444,7 @@ Generated from the window's command catalogue (990 commands) by `./formvis agent
 | `link-layers` | Link Layers |  | Links the selected layers so they move together. (changes the picture) |
 | `link-mask` | Unlink Layer Mask |  | Links or unlinks the mask from its layer. (changes the picture) |
 | `lock-layers` | Lock Layers... | Mod+/ | Opens the dialog to lock pixels, position or transparency. (changes the picture) |
+| `lock-transparency` | Lock Transparent Pixels | / | Locks the transparent pixels of the selected layers, or unlocks them when every one is already locked. (changes the picture) |
 | `mask-all-objects` | Mask All Objects |  | Finds every object and gives each its own masked layer. (changes the picture) |
 | `mask-from-transparency` | From Transparency |  | Turns the layer transparency into a mask. (changes the picture) |
 | `mask-hide-all` | Hide All |  | Adds a mask that hides the whole layer. (changes the picture) |
@@ -559,6 +560,7 @@ Generated from the window's command catalogue (990 commands) by `./formvis agent
 | `stack-mode-stddev` | Standard Deviation |  | Set the stack mode of a stacked smart object to Standard Deviation (changes the picture) |
 | `stack-mode-summation` | Summation |  | Set the stack mode of a stacked smart object to Summation (changes the picture) |
 | `stack-mode-variance` | Variance |  | Set the stack mode of a stacked smart object to Variance (changes the picture) |
+| `stamp-down` | Stamp Down | Alt+Mod+E | Merges a copy of the active layer into the pixel layer below it, or copies of several selected layers into a new layer above them; the originals stay. (changes the picture) |
 | `stamp-visible` | Stamp Visible | Alt+Shift+Mod+E | Adds a new layer holding everything visible merged, above the active layer; the other layers stay as they are. (changes the picture) |
 | `style-bevel` | Bevel & Emboss... |  | Opens Layer Style at Bevel and Emboss. (changes the picture) |
 | `style-blending` | Blending Options... |  | Opens Layer Style at Blending Options. (changes the picture) |
@@ -589,6 +591,7 @@ Generated from the window's command catalogue (990 commands) by `./formvis agent
 | `vmask-delete` | Delete |  | Deletes the vector mask. (changes the picture) |
 | `vmask-enable` | Disable Vector Mask |  | Disables or enables the vector mask. (changes the picture) |
 | `vmask-hide-all` | Hide All |  | Adds a vector mask hiding everything. (changes the picture) |
+| `vmask-invert` | Invert Vector Mask |  | Swaps the shown and hidden parts of the vector mask. (changes the picture) |
 | `vmask-link` | Unlink Vector Mask |  | Links or unlinks the vector mask. (changes the picture) |
 | `vmask-reveal-all` | Reveal All |  | Adds a vector mask showing everything. (changes the picture) |
 
@@ -645,18 +648,25 @@ Generated from the window's command catalogue (990 commands) by `./formvis agent
 | Id | Name | Keys | Does |
 | --- | --- | --- | --- |
 | `border` | Border... |  | Opens Border to select a band along the edge. (changes the picture) |
+| `channel-down` | Move Channel Down |  | Moves a channel one place down the list. (changes the picture) |
+| `channel-options` | Channel Options... |  | Sets a channel name, overlay colour and opacity. (changes the picture) |
+| `channel-up` | Move Channel Up |  | Moves a channel one place up the list. (changes the picture) |
 | `color-range` | Color Range... |  | Opens Color Range. (changes the picture) |
 | `contract` | Contract by 1 px... |  | Contracts the selection by one pixel. (changes the picture) |
 | `convert-to-shape` | Convert to Shape |  | Turns the selection into a shape layer. (changes the picture) |
 | `deselect` | Deselect | Mod+D | Clears the selection. (changes the picture) |
+| `duplicate-channel` | Duplicate Channel |  | Copies a channel. (changes the picture) |
 | `expand` | Expand by 1 px... |  | Expands the selection by one pixel. (changes the picture) |
 | `feather` | Feather... | Shift+F6 | Opens Feather to soften the selection edge. (changes the picture) |
 | `focus-area` | Focus Area... |  | Opens Focus Area to select what is in focus. (changes the picture) |
 | `grow` | Grow |  | Grows the selection over similar neighbouring colours. (changes the picture) |
 | `inverse` | Inverse | Shift+Mod+I | Inverts the selection. (changes the picture) |
 | `layer-pixels` | Layer's Pixels |  | Selects the layer's non-transparent pixels. (changes the picture) |
+| `load-luminosity` | Load Luminosity | Alt+Mod+2 | Selects the picture by its brightness. (changes the picture) |
 | `load-selection` | Load Selection... |  | Opens the dialog that loads a saved selection. (changes the picture) |
+| `load-selection-vector-mask` | Vector Mask to Selection |  | Turns the layer's vector mask into a selection. (changes the picture) |
 | `mask-black` | Mask's Black Areas |  | Selects the mask's black areas. (changes the picture) |
+| `new-channel` | New Channel |  | Adds an empty channel, black or white. (changes the picture) |
 | `quick-mask` | Edit in Quick Mask Mode | Q | Turns Quick Mask on or off; painting in it makes the selection. (changes the picture) |
 | `reselect` | Reselect |  | Brings back the last selection. (changes the picture) |
 | `save-selection` | Save Selection... |  | Opens the dialog that saves the selection to a channel. (changes the picture) |
@@ -978,7 +988,7 @@ Generated from the window's command catalogue (990 commands) by `./formvis agent
 | `tool.select.remove` | Remove Tool |  | Makes the Remove tool the active tool (key J). Paint over what to remove; it is filled from its surroundings when you release · [ ] size |
 | `tool.select.rotateView` | Rotate View Tool |  | Makes the Rotate View tool the active tool (key R). Drag to turn the view · Shift for 15 degree steps · Double-click or Escape straightens it |
 | `tool.select.ruler` | Ruler Tool |  | Makes the Ruler tool the active tool (key I). Drag to measure · Drag an end to adjust · Straighten Layer levels the layer along the line |
-| `tool.select.selectionBrush` | Selection Brush Tool |  | Makes the Selection Brush tool the active tool (key W). Paint to add to the selection · Alt-paint to take away · [ ] size · Shift+[ ] hardness |
+| `tool.select.selectionBrush` | Selection Brush Tool |  | Makes the Selection Brush tool the active tool (key W). Paint to add to the selection · Alt-paint to take away · Shift+Alt-paint to keep only what is painted over the selection · [ ] size · Shift+[ ] hardness |
 | `tool.select.shape` | Shape Tool |  | Makes the Shape tool the active tool (key U). Drag to draw a rectangle (on a new shape layer) · Shift after starting keeps it square · Alt after starting grows from the center · Shift+U switches shape |
 | `tool.select.slice` | Slice Tool |  | Makes the Slice tool the active tool (key C). Drag a rectangle to add a slice · Shift makes it square · Slices are numbered in reading order |
 | `tool.select.smear` | Smear Tool |  | Makes the Smear tool the active tool. Paint to soften; another stroke over the same place softens more · The blur follows the brush size · [ ] size |
@@ -1082,6 +1092,7 @@ Generated from the window's command catalogue (990 commands) by `./formvis agent
 | `assistant` | Assistant |  | Shows or hides the Assistant panel. |
 | `benchmark` | Performance Benchmark... |  | Opens the performance benchmark. |
 | `brush-settings` | Brush Settings... | F5 | Opens Brush Settings. |
+| `check-for-updates` | Check for Updates... |  | Asks the update server whether a newer formvis is available and offers to install it and restart; says so when this build has no update key. |
 | `copy-error-log` | Copy Error Log |  | Copies the error log to the clipboard. |
 | `delete-frame` | Delete Frame |  | Deletes the current animation frame. (changes the picture) |
 | `float-all-windows` | Float All in Windows |  | Gives every open document a floating window of its own. |

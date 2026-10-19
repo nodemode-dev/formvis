@@ -83,7 +83,7 @@ export function snapshots(host: SnapshotHost): ReadonlyArray<{ id: ID; name: str
 }
 
 /** History > New Snapshot: the document as it is now, kept to return to however far the steps move on. */
-export function takeSnapshot(host: SnapshotHost): void {
+export function takeSnapshot(host: SnapshotHost, name?: string): void {
   const p = host.current;
   if (!p || host.stroke) return;
   host.settle();
@@ -93,9 +93,18 @@ export function takeSnapshot(host: SnapshotHost): void {
   // Numbered as Photoshop's: the opening snapshot bears the document's name, so the first taken is Snapshot 1.
   let n = list.filter((x) => /^Snapshot \d+$/.test(x.name)).length + 1;
   while (list.some((x) => x.name === `Snapshot ${n}`)) n += 1;
-  list.push({ id: uid(), name: `Snapshot ${n}`, state: { doc: copyDoc(p.doc), activeId: p.activeId, selection: p.selection } });
+  const given = name?.trim().slice(0, 100);
+  list.push({ id: uid(), name: given || `Snapshot ${n}`, state: { doc: copyDoc(p.doc), activeId: p.activeId, selection: p.selection } });
   host.store.lists.set(p, list);
   host.emit('history');
+}
+
+/** A snapshot given a new name (blank keeps the old one); false when there is no such snapshot. */
+export function renameSnapshot(host: SnapshotHost, id: ID, name: string): boolean {
+  const p = host.current, snap = p ? host.store.lists.get(p)?.find((x) => x.id === id) : undefined, next = name.trim().slice(0, 100);
+  if (!snap || !next) return false;
+  if (snap.name !== next) { snap.name = next; host.emit('history'); }
+  return true;
 }
 
 /** Returns the document to a snapshot as one undo step, from a fresh copy, so the snapshot stays as it was taken. */

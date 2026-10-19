@@ -112,6 +112,15 @@ export class History {
   /** Forgets the steps undone (1.66.0: a fill layer's dialog cancelled leaves no step to redo). */
   dropRedo(): void { this.future = []; }
 
+  /** Forgets the steps undone, each handed to `onDrop` so what it keeps in the engine's undo store goes too; how many went. */
+  discardRedo(): number {
+    if (this.depth > 0) return 0;
+    const gone = this.future;
+    this.future = [];
+    for (const e of gone) History.onDrop?.(e);
+    return gone.length;
+  }
+
   /** The oldest kept state and every pixel patch done since, oldest first, for rebuilding pixels as they were
    *  (Edit > Fill with History). Undone steps are excluded, since undoing already wrote their pixels back. */
   origin(from = 0): { first: Snapshot | null; patches: PixelPatch[] } {

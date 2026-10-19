@@ -46,15 +46,22 @@ def _session(key: str) -> dict:
 
 
 @router.post("/png")
-async def begin(width: int, height: int, ppi: float = 72.0) -> dict[str, str]:
-    """Opens a PNG of `width` by `height` RGBA pixels at `ppi`; rows follow, top first."""
+async def begin(request: Request, width: int, height: int, ppi: float = 72.0, name: str = "") -> dict[str, str]:
+    """Opens a PNG of `width` by `height` RGBA pixels at `ppi`; rows follow, top first. A body of ICC profile bytes, when
+    sent, is written as the file's iCCP chunk under `name`."""
     if not (1 <= width <= 65535 and 1 <= height <= 65535):
         raise HTTPException(400, "Sides must be 1 to 65,535 pixels.")
+    icc = await request.body()
+    if len(icc) > 1_000_000:
+        raise HTTPException(400, "The colour profile is too large.")
     key = uuid.uuid4().hex
     path = _dir() / f"{key}.png"
     f = open(path, "wb")
     f.write(b"\x89PNG\r\n\x1a\n")
     _chunk(f, b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0))
+    if icc:
+        label = name.encode("latin-1", "ignore").replace(b"\x00", b"")[:79] or b"ICC profile"
+        _chunk(f, b"iCCP", label + b"\x00\x00" + zlib.compress(icc))
     ppm = max(1, round(ppi / 0.0254))
     _chunk(f, b"pHYs", struct.pack(">IIB", ppm, ppm, 1))
     _open[key] = {"f": f, "z": zlib.compressobj(6), "w": width, "h": height, "rows": 0, "path": path, "last": np.zeros(width * 4, np.uint8)}

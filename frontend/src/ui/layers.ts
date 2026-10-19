@@ -2,6 +2,7 @@ import { BLEND_MODES, byId, hierarchy, type Engine, type HierarchyEntry, type ID
 import { PanelGroup } from './panel-group';
 import type { ChannelsPanel } from './channels';
 import type { LayerLocks } from '../engine/types';
+import { groupIsolated } from '../engine/tree';
 import { enhanceSelect } from './dropdown';
 import { el, isMac, patchList, q, setClass, setDisabled, setHidden, setHtml, setStyleVar, setText, setTitle, setValue } from './dom';
 import { icon } from './icons';
@@ -30,6 +31,11 @@ const LOCKS = [
   { id: 'position', title: 'position', icon: 'moveSel' },
   { id: 'all', title: 'all', icon: 'lock' },
 ] as const;
+/** A layer's size as it shows on the canvas, with its scale when it is not 100%. */
+const sizeOf = (l: Layer): string => {
+  const t = l.transform, w = l.raster?.width ?? 0, s = w ? Math.round((t.w / w) * 100) : 100;
+  return `${Math.round(t.w)} x ${Math.round(t.h)}${s !== 100 ? ` ${s}%` : ''}`;
+};
 const kindOf = (l: Layer): KindId => (l.adjustment || l.fillContent ? 'adjustment' : l.text ? 'type' : l.vector ? 'shape' : l.smart ? 'smart' : 'pixel');
 
 /** The blend modes in Photoshop's groups (the target's list, s21), as <optgroup>s; any mode not named falls in Other. */
@@ -44,7 +50,8 @@ const BLEND_GROUPS: ReadonlyArray<[string, readonly string[]]> = [
 function blendOptions(): string {
   const opt = (id: string): string => { const b = BLEND_MODES.find((m) => m.id === id); return b ? `<option value="${b.id}">${b.label}</option>` : ''; };
   const named = new Set(BLEND_GROUPS.flatMap(([, ids]) => ids)), rest = BLEND_MODES.filter((m) => !named.has(m.id));
-  return BLEND_GROUPS.map(([g, ids]) => `<optgroup label="${g}">${ids.map(opt).join('')}</optgroup>`).join('') + (rest.length ? `<optgroup label="Other">${rest.map((m) => opt(m.id)).join('')}</optgroup>` : '');
+  // Pass Through is a folder's alone: its option is built here once and shown or hidden with the selection.
+  return '<option value="pass-through" hidden>Pass Through</option>' + BLEND_GROUPS.map(([g, ids]) => `<optgroup label="${g}">${ids.map(opt).join('')}</optgroup>`).join('') + (rest.length ? `<optgroup label="Other">${rest.map((m) => opt(m.id)).join('')}</optgroup>` : '');
 }
 
 export class LayersPanel {
@@ -53,6 +60,7 @@ export class LayersPanel {
   private readonly empty: HTMLElement;
   private readonly dropLine: HTMLElement;
   private readonly blend: HTMLSelectElement;
+  private readonly passThrough: HTMLOptionElement;
   private readonly opacity: HTMLInputElement;
   private readonly fill: HTMLInputElement;
   private readonly kind: HTMLSelectElement;
@@ -66,6 +74,8 @@ export class LayersPanel {
   /** How many layers hold each link, counted at each render (1.65.3): a row shows its link when another holds it. */
   private links = new Map<ID, number>();
   private frame = 0;
+  /** The active layer the list last scrolled to. */
+  private revealed: ID | null = null;
   private renaming: ID | null = null;
   private drag: { id: ID; ids: ID[]; startY: number; pointerId: number; started: boolean; wasSelected: boolean; target: { id: ID; where: Where } | null; maskFrom: ID | null; tabTarget: string | null } | null = null;
   private swipe: { visible: boolean; pointerId: number } | null = null;
@@ -92,10 +102,16 @@ export class LayersPanel {
     this.dropLine = q(root, '.cv-drop-line');
     this.blend = q<HTMLSelectElement>(root, '.cv-blend');
     this.opacity = q<HTMLInputElement>(root, '.cv-opacity-field');
-    this.blend.addEventListener('change', () => engine.setBlend(this.blend.value as Layer['blend']));
+    this.passThrough = q<HTMLOptionElement>(root, '.cv-blend option[value="pass-through"]');
+    // On a folder, Pass Through is Normal with isolate off and Normal sets isolate on.
+    this.blend.addEventListener('change', () => {
+      const v = this.blend.value;
+      if (v === 'pass-through') engine.setBlend('normal', false);
+      else engine.setBlend(v as Layer['blend'], v === 'normal' ? true : undefined);
+    });
     // Shown as the target's grouped list (s21); a mode under the pointer or the arrow keys previews live on the canvas
     // (engine.previewBlend, no history), leaving the list restores the layer's own, and a choice is one setBlend step.
-    enhanceSelect(this.blend, { search: 'Search blend modes...', onHover: (v) => engine.previewBlend(v as Layer['blend'] | null) });
+    enhanceSelect(this.blend, { search: 'Search blend modes...', onHover: (v) => engine.previewBlend(v === 'pass-through' ? 'normal' : v as Layer['blend'] | null) });
     // Opacity as the target's numeric field: Enter or leaving it commits (one undo step); arrows step by 1, Shift by 10.
     const commit = (pct: number): void => {
       const v = Math.min(100, Math.max(0, Math.round(pct)));
@@ -200,7 +216,7 @@ export class LayersPanel {
     const slot = q(root, '.cv-lock-slot');
     slot.innerHTML = `<span class="cv-lock-label">Lock:</span>` + LOCKS.map((k) => `<button class="cv-lock-btn" type="button" data-lock="${k.id}" title="Lock ${k.title}" aria-label="Lock ${k.title}" aria-pressed="false">${icon(k.icon, 14)}</button>`).join('');
     for (const b of slot.querySelectorAll<HTMLButtonElement>('.cv-lock-btn')) {
-      b.addEventListener('click', () => { const id = b.dataset.lock as keyof LayerLocks; engine.setLocks({ [id]: !engine.activeLayer?.locks?.[id] }); });
+      b.addEventListener('click', () => engine.toggleLock(b.dataset.lock as keyof LayerLocks));
     }
     // The kind filter: the dropdown picks one kind (or all); the icons toggle kinds; the two agree.
     this.kind = q<HTMLSelectElement>(root, '.cv-kind');
@@ -276,11 +292,22 @@ export class LayersPanel {
       }
       if (moved.length) requestAnimationFrame(() => { for (const r of moved) { setClass(r, 'is-settling', true); setStyleVar(r, '--flip', '0px'); } });
     }
+    // The active layer's row scrolls into view when the active layer changes.
+    const act = p?.activeId ?? null;
+    if (act !== this.revealed) {
+      this.revealed = act;
+      const row = act ? this.rowOf(act) : null;
+      if (row) {
+        const top = row.offsetTop, bottom = top + row.offsetHeight;
+        if (top < this.list.scrollTop) this.list.scrollTop = top;
+        else if (bottom > this.list.scrollTop + this.list.clientHeight) this.list.scrollTop = bottom - this.list.clientHeight;
+      }
+    }
     this.syncProps();
   }
 
   private createRow(e: HierarchyEntry): HTMLElement {
-    const row = el(`<div class="cv-layer" role="option"><button class="cv-layer-eye" type="button" tabindex="-1" aria-label="Show or hide"><span class="cv-eye-on">${icon('eye', 14)}</span><span class="cv-eye-off">${icon('eyeOff', 14)}</span></button><span class="cv-layer-indent"></span><button class="cv-layer-disclose" type="button" tabindex="-1" aria-label="Expand or collapse"><span class="cv-open">${icon('chevronDown', 12)}</span><span class="cv-shut">${icon('chevronRight', 12)}</span></button><canvas class="cv-layer-thumb" width="${THUMB}" height="${THUMB}"></canvas><span class="cv-layer-kind"></span><canvas class="cv-layer-mask" width="${THUMB}" height="${THUMB}"></canvas><span class="cv-layer-name"><span class="cv-layer-clip">${icon('clipMask', 12)}</span><span class="cv-layer-label"></span><span class="cv-layer-size" hidden></span><span class="cv-layer-fx" hidden title="Layer style">fx</span><span class="cv-layer-smart" hidden title="Smart object: double-click for its filters">${icon('smartObject', 12)}</span><span class="cv-layer-vector" hidden title="Shape layer: double-click for its fill and stroke">${icon('penTool', 12)}</span><span class="cv-layer-linked" hidden title="Linked: moves with the layers linked to it">${icon('link', 12)}</span><span class="cv-layer-locked" hidden title="Locked">${icon('lock', 12)}</span></span></div>`);
+    const row = el(`<div class="cv-layer" role="option"><button class="cv-layer-eye" type="button" tabindex="-1" aria-label="Show or hide"><span class="cv-eye-on">${icon('eye', 14)}</span><span class="cv-eye-off">${icon('eyeOff', 14)}</span></button><span class="cv-layer-indent"></span><button class="cv-layer-disclose" type="button" tabindex="-1" aria-label="Expand or collapse"><span class="cv-open">${icon('chevronDown', 12)}</span><span class="cv-shut">${icon('chevronRight', 12)}</span></button><canvas class="cv-layer-thumb" width="${THUMB}" height="${THUMB}"></canvas><span class="cv-layer-kind"></span><canvas class="cv-layer-mask" width="${THUMB}" height="${THUMB}"></canvas><span class="cv-layer-name"><button class="cv-layer-chain" type="button" tabindex="-1" hidden aria-label="Link the mask to the layer" aria-pressed="true">${icon('link', 12)}</button><span class="cv-layer-clip">${icon('clipMask', 12)}</span><span class="cv-layer-label"></span><span class="cv-layer-size" hidden></span><span class="cv-layer-fx" hidden title="Layer style">fx</span><span class="cv-layer-smart" hidden title="Smart object: double-click for its filters">${icon('smartObject', 12)}</span><span class="cv-layer-vector" hidden title="Shape layer: double-click for its fill and stroke">${icon('penTool', 12)}</span><span class="cv-layer-linked" hidden title="Linked: moves with the layers linked to it">${icon('link', 12)}</span><span class="cv-layer-locked" hidden title="Locked">${icon('lock', 12)}</span></span></div>`);
     row.dataset.id = e.layer.id;
     this.updateRow(row, e);
     return row;
@@ -318,12 +345,18 @@ export class LayersPanel {
     setClass(row, 'is-text', this.engine.liveText(l));
     setStyleVar(row, '--depth', String(e.depth));
     if (this.renaming !== l.id) setText(q(row, '.cv-layer-label'), l.name);
-    setTitle(row, l.name);
+    setTitle(row, l.raster && !l.isGroup && !l.artboard ? `${l.name} (${sizeOf(l)})` : l.name);
     const board = l.isGroup && !l.parentId ? l.artboard : null;
     const kind = board ? 'artboard' : l.isGroup ? (collapsed ? 'folder' : 'folderOpen') : l.adjustment ? 'levels' : '';
     if (kind) setHtml(q(row, '.cv-layer-kind'), icon(kind, 16), kind);
-    setHidden(q(row, '.cv-layer-size'), !board);
-    if (board) setText(q(row, '.cv-layer-size'), `${board.w} x ${board.h}`);
+    const dims = board ? `${board.w} x ${board.h}` : active && l.raster && !l.isGroup ? sizeOf(l) : '';
+    setHidden(q(row, '.cv-layer-size'), !dims);
+    setText(q(row, '.cv-layer-size'), dims);
+    const chain = q(row, '.cv-layer-chain'), linked = l.mask?.linked !== false;
+    setHidden(chain, !l.mask);
+    chain.setAttribute('aria-pressed', String(linked));
+    setClass(chain, 'is-off', !linked);
+    setTitle(chain, linked ? 'Mask linked to the layer: click to unlink' : 'Mask unlinked: click to link');
     const state = this.painted.get(row) ?? { pixels: '', mask: '' };
     const pk = l.raster && !l.isGroup ? `${l.raster.id}:${l.raster.version}` : 'none';
     if (state.pixels !== pk) { this.drawThumb(q<HTMLCanvasElement>(row, '.cv-layer-thumb'), l.isGroup ? null : l.raster, false); state.pixels = pk; }
@@ -362,7 +395,9 @@ export class LayersPanel {
     const pixel = !!l && !l.isGroup, mixable = !!l && !l.artboard;
     setDisabled(this.blend, !mixable);
     setDisabled(this.opacity, !mixable);
-    setValue(this.blend, mixable ? (l as Layer).blend : 'normal');
+    const folder = !!l && l.isGroup && mixable;
+    setHidden(this.passThrough, !folder);
+    setValue(this.blend, !mixable ? 'normal' : folder && !groupIsolated(l as Layer) ? 'pass-through' : (l as Layer).blend);
     const pct = String(Math.round((mixable ? (l as Layer).opacity : 1) * 100));
     if (document.activeElement !== this.opacity) setValue(this.opacity, pct);
     setDisabled(this.fill, !pixel);
@@ -485,6 +520,12 @@ export class LayersPanel {
         return;
       }
       if (t.closest('.cv-layer-disclose')) return;
+      if (t.closest('.cv-layer-chain')) {
+        e.preventDefault();
+        if (this.engine.current?.activeId !== id || this.engine.current.selectedIds.size > 1) this.engine.selectLayer(id);
+        this.engine.toggleMaskLink();
+        return;
+      }
       const p = this.engine.current;
       if (!p) return;
       const mod = isMac ? e.metaKey : e.ctrlKey;
@@ -564,8 +605,31 @@ export class LayersPanel {
     rows.addEventListener('click', (e) => {
       const t = e.target as HTMLElement;
       const row = t.closest<HTMLElement>('.cv-layer');
-      if (row?.dataset.id && t.closest('.cv-layer-disclose')) this.engine.toggleCollapsed(row.dataset.id);
+      if (row?.dataset.id && t.closest('.cv-layer-disclose')) this.engine.toggleCollapsed(row.dataset.id, e.altKey);
     });
+    // The middle button drags the list: it moves with the pointer, and no auto-scroll mark opens.
+    let pan: { id: number; y: number } | null = null;
+    this.list.addEventListener('pointerdown', (e) => {
+      if (e.button !== 1) return;
+      e.preventDefault();
+      pan = { id: e.pointerId, y: e.clientY };
+      this.list.setPointerCapture(e.pointerId);
+      setClass(this.list, 'is-panning', true);
+    });
+    this.list.addEventListener('pointermove', (e) => {
+      if (!pan || pan.id !== e.pointerId) return;
+      this.list.scrollTop -= e.clientY - pan.y;
+      pan.y = e.clientY;
+    });
+    const endPan = (e: PointerEvent): void => {
+      if (!pan || pan.id !== e.pointerId) return;
+      pan = null;
+      if (this.list.hasPointerCapture(e.pointerId)) this.list.releasePointerCapture(e.pointerId);
+      setClass(this.list, 'is-panning', false);
+    };
+    this.list.addEventListener('pointerup', endPan);
+    this.list.addEventListener('pointercancel', endPan);
+    this.list.addEventListener('auxclick', (e) => { if (e.button === 1) e.preventDefault(); });
     rows.addEventListener('dblclick', (e) => {
       const t = e.target as HTMLElement;
       const row = t.closest<HTMLElement>('.cv-layer');

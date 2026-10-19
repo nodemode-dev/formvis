@@ -23,7 +23,6 @@ export class FillLayerDialog extends Dialog {
   private stops: FillStop[] = [];
   private kept: FillStop[] | null = null;
   private offset: Pt = { x: 0, y: 0 };
-  private phase: Pt = { x: 0, y: 0 };
   private frame = 0;
   private readonly name = el<HTMLInputElement>('<input class="cv-input" type="text" maxlength="200" spellcheck="false">');
   private readonly nameRow: HTMLElement;
@@ -39,11 +38,15 @@ export class FillLayerDialog extends Dialog {
   private readonly pAngle = numberRow('Angle (degrees)', -180, 180, 1, () => this.changed());
   private readonly pScale = numberRow('Scale (%)', 1, 1000, 1, () => this.changed());
   private readonly link = checkRow('Link with Layer', () => this.changed());
+  private readonly phaseX = numberRow('Offset X (px)', -100000, 100000, 1, () => this.changed());
+  private readonly phaseY = numberRow('Offset Y (px)', -100000, 100000, 1, () => this.changed());
+  private readonly snap = el<HTMLButtonElement>('<button class="cv-btn" type="button">Snap to Origin</button>');
 
   constructor(private readonly engine: Engine) {
     super('Solid Color', 380);
     this.nameRow = this.field('Name', this.name);
-    this.body.append(this.color.el, this.gradient.el, this.style.el, this.angle.el, this.scale.el, this.reverse.el, this.dither.el, this.align.el, this.pattern.el, this.pAngle.el, this.pScale.el, this.link.el);
+    this.body.append(this.color.el, this.gradient.el, this.style.el, this.angle.el, this.scale.el, this.reverse.el, this.dither.el, this.align.el, this.pattern.el, this.pAngle.el, this.pScale.el, this.link.el, this.phaseX.el, this.phaseY.el, this.snap);
+    this.snap.addEventListener('click', () => { this.phaseX.set(0); this.phaseY.set(0); this.changed(); });
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     for (const i of [this.name, this.angle.input, this.scale.input, this.pAngle.input, this.pScale.input]) i.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); this.apply(); } });
@@ -83,7 +86,7 @@ export class FillLayerDialog extends Dialog {
     setHidden(this.nameRow, !fresh);
     for (const r of [this.color.el]) setHidden(r, c.kind !== 'solid');
     for (const r of [this.gradient.el, this.style.el, this.angle.el, this.scale.el, this.reverse.el, this.dither.el, this.align.el]) setHidden(r, c.kind !== 'gradient');
-    for (const r of [this.pattern.el, this.pAngle.el, this.pScale.el, this.link.el]) setHidden(r, c.kind !== 'pattern');
+    for (const r of [this.pattern.el, this.pAngle.el, this.pScale.el, this.link.el, this.phaseX.el, this.phaseY.el, this.snap]) setHidden(r, c.kind !== 'pattern');
     if (c.kind === 'solid') this.color.set(hex(c.color));
     if (c.kind === 'gradient') {
       this.stops = c.stops;
@@ -99,7 +102,8 @@ export class FillLayerDialog extends Dialog {
       this.align.set(c.align);
     }
     if (c.kind === 'pattern') {
-      this.phase = { ...c.phase };
+      this.phaseX.set(c.phase.x);
+      this.phaseY.set(c.phase.y);
       const list = allPatterns().map((p) => [p.id, p.name] as [string, string]);
       if (!list.some(([pid]) => pid === c.pattern)) list.push([c.pattern, 'Missing pattern']);
       this.options(q<HTMLSelectElement>(this.pattern.el, 'select'), list);
@@ -131,7 +135,7 @@ export class FillLayerDialog extends Dialog {
       const style = q<HTMLSelectElement>(this.style.el, 'select').value as Extract<FillContent, { kind: 'gradient' }>['style'];
       return { kind: 'gradient', stops: this.stops, style, angle: num(this.angle.input, -180, 180, 90), scale: num(this.scale.input, 10, 150, 100) / 100, reverse: box(this.reverse), dither: box(this.dither), align: box(this.align), offset: { ...this.offset } };
     }
-    return { kind: 'pattern', pattern: q<HTMLSelectElement>(this.pattern.el, 'select').value, scale: num(this.pScale.input, 1, 1000, 100) / 100, angle: num(this.pAngle.input, -180, 180, 0), link: box(this.link), phase: { ...this.phase } };
+    return { kind: 'pattern', pattern: q<HTMLSelectElement>(this.pattern.el, 'select').value, scale: num(this.pScale.input, 1, 1000, 100) / 100, angle: num(this.pAngle.input, -180, 180, 0), link: box(this.link), phase: { x: num(this.phaseX.input, -100000, 100000, 0), y: num(this.phaseY.input, -100000, 100000, 0) } };
   }
 
   /** The canvas shows the dialog's fill, at most once a frame. */

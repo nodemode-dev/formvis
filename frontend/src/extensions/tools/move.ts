@@ -104,6 +104,8 @@ function resizeCursor(t: Transform, handle: number): string {
 const fmt = (n: number): string => String(Math.round(n * 10) / 10);
 
 let pixelStart: { x: number; y: number } | null = null;
+/** The marquee that selects layers: pressed where Auto-Select (or Cmd or Ctrl) finds no layer. */
+let marquee: { a: { x: number; y: number }; b: { x: number; y: number }; sa: { x: number; y: number }; add: boolean } | null = null;
 
 const ALIGN_NAMES = { left: 'Left Edges', hcenter: 'Horizontal Centers', right: 'Right Edges', top: 'Top Edges', vcenter: 'Vertical Centers', bottom: 'Bottom Edges' } as const;
 
@@ -152,11 +154,13 @@ export const moveTool: Tool = {
       let id = e.layerAt(p.doc);
       if (id && e.autoSelectTarget === 'group') { const doc = e.current?.doc; let l = doc?.layers.find((x) => x.id === id); while (l?.parentId) { const up = doc?.layers.find((x) => x.id === l?.parentId); if (!up) break; l = up; } if (l) id = l.id; }
       if (id) e.selectLayer(id);
+      else { marquee = { a: { ...p.doc }, b: { ...p.doc }, sa: { ...p.screen }, add: p.shift }; return; }
     }
     const m = hit(ctx, p);
     if (m) e.beginTransform(m, p.doc);
   },
   move(ctx, p) {
+    if (marquee) { marquee.b = { ...p.doc }; ctx.engine.emit('overlay', null); return; }
     if (perspDrag) { ctx.engine.movePerspectiveCorner(perspDrag.plane, perspDrag.corner, p.doc, snapDoc(ctx)); return; }
     if (planeStart) { planeEnd = p.doc; ctx.engine.emit('overlay', null); return; }
     if (pinDrag !== null) { ctx.engine.movePuppetPin(pinDrag, p.doc); return; }
@@ -170,7 +174,17 @@ export const moveTool: Tool = {
     }
     ctx.engine.updateTransform(p.doc, p.shift, p.alt);
   },
-  up(ctx) {
+  up(ctx, p) {
+    if (marquee) {
+      const m = marquee;
+      marquee = null;
+      ctx.engine.emit('overlay', null);
+      if (Math.abs(p.screen.x - m.sa.x) > 3 || Math.abs(p.screen.y - m.sa.y) > 3) {
+        const x = Math.min(m.a.x, m.b.x), y = Math.min(m.a.y, m.b.y);
+        ctx.engine.selectLayersInRect({ x, y, w: Math.abs(m.b.x - m.a.x), h: Math.abs(m.b.y - m.a.y) }, m.add || p.shift);
+      }
+      return;
+    }
     if (perspDrag) { perspDrag = null; return; }
     if (planeStart) {
       const a = planeStart, b = planeEnd ?? a, v = ctx.view(), sa = v.toScreen(a), sb = v.toScreen(b);
@@ -188,6 +202,7 @@ export const moveTool: Tool = {
     ctx.engine.endTransform();
   },
   cancel(ctx) {
+    if (marquee) { marquee = null; ctx.engine.emit('overlay', null); return; }
     if (perspDrag || planeStart) { perspDrag = null; planeStart = planeEnd = null; ctx.engine.emit('overlay', null); return; }
     if (pinDrag !== null) { pinDrag = null; return; }
     if (warpDrag !== null) { warpDrag = null; return; }
@@ -223,6 +238,15 @@ export const moveTool: Tool = {
   },
   overlay(ctx, g) {
     const e = ctx.engine;
+    if (marquee) {
+      const v = ctx.view(), pal = ctx.paint(), a = v.toScreen(marquee.a), b = v.toScreen(marquee.b);
+      g.save();
+      g.lineWidth = 1;
+      g.strokeStyle = pal.accent;
+      g.setLineDash([4, 3]);
+      g.strokeRect(Math.round(Math.min(a.x, b.x)) + 0.5, Math.round(Math.min(a.y, b.y)) + 0.5, Math.round(Math.abs(b.x - a.x)), Math.round(Math.abs(b.y - a.y)));
+      g.restore();
+    }
     if (e.transformEdit && e.snapGuides) {
       const v = ctx.view(), pal = ctx.paint();
       g.save();

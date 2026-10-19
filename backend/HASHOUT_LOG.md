@@ -2,6 +2,18 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Profiles in 16-bit and banded exports · _v1.87.4 (app/routers/io.py, app/routers/bands.py)
+
+CLOSE_GAPS D14 remainder.
+
+- `io.py` `encode_deep` takes optional `icc` and `icc_name`: a PNG gains an iCCP chunk after IHDR; a TIFF with a profile is written by tifffile (zlib, unassociated alpha, tag 34675). Without a profile the output is as before. Replaced: `def encode_deep(file: UploadFile = File(...), width: int = Form(...), height: int = Form(...), format: str = Form("png")) -> Response:`, its docstring `"""A 16-bit PNG or TIFF from RGBA, 16 bits a channel, little-endian (1.53.6, H1)."""` and `return Response(out.tobytes(), media_type={"png": "image/png", "hdr": "image/vnd.radiance", "exr": "image/x-exr"}.get(format, "image/tiff"))`.
+- `bands.py` `begin(request, width, height, ppi, name)`: a request body of ICC bytes is written as iCCP. Replaced: `async def begin(width: int, height: int, ppi: float = 72.0) -> dict[str, str]:` and `"""Opens a PNG of `width` by `height` RGBA pixels at `ppi`; rows follow, top first."""`.
+- Measured with Pillow: banded PNG with a profile carries the 588-byte source profile, without one none; 16-bit PNG uint16 with iCCP; 16-bit TIFF tag 34675, 16 bits per sample.
+
+## Other products' names out of the engine's comments · _v1.87.4 (app/routers/io.py, app/routers/merge.py, app/routers/video.py, app/services/camera_profiles.py, app/services/dcp.py, app/services/imaging.py)
+
+CLOSE_GAPS P26, the owner's rule. Comments and docstrings reworded to name the file format or specification instead of a product (for example "as the TIFF specification and Photoshop have them" is now "as the TIFF specification has them"; "Photoshop's layout" is "the PSD layout"; "the folder Adobe's converters keep theirs in" is "the shared system folder other raw converters keep theirs in"). Kept on purpose because they are identifiers the code needs: the IANA PSD media type `image/vnd.adobe.photoshop` (io.py, twice), the camera profile names matched in `PREFERRED`, and the system folder paths the shared camera profiles live in (camera_profiles.py).
+
 ## MCP arguments checked, paths confined, cancel honoured; SAM device; vignette removal · _v1.87.3 (app/routers/mcp.py, app/routers/system.py, app/routers/merge.py)
 
 CLOSE_GAPS P05 (D31, D32, D33, D22). Window side: `ui/panels/align-blend-dialog.ts` `removeVignette`, `VignetteGain`.

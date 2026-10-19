@@ -10,9 +10,9 @@ let hover: Pt | null = null;
 export const selectionBrushTool: Tool = {
   id: 'selectionBrush', label: 'Selection Brush', key: 'W', order: 41,
   icon: () => 'tSelBrush',
-  hint: () => 'Paint to add to the selection · Alt-paint to take away · [ ] size · Shift+[ ] hardness',
+  hint: () => 'Paint to add to the selection · Alt-paint to take away · Shift+Alt-paint to keep only what is painted over the selection · [ ] size · Shift+[ ] hardness',
   cursor: () => 'none',
-  down(ctx, p) { if (p.button !== 0) return; hover = p.doc; ctx.engine.beginSelectionBrushStroke(p.doc, p.alt, p.pressure, p.pose); },
+  down(ctx, p) { if (p.button !== 0) return; hover = p.doc; ctx.engine.beginSelectionBrushStroke(p.doc, p.alt && !p.shift, p.pressure, p.pose, p.alt && p.shift); },
   move(ctx, p) { hover = p.doc; ctx.engine.strokeTo(p.doc, p.pressure, p.pose); ctx.engine.emit('overlay', null); },
   up(ctx) { ctx.engine.endStroke(); },
   hover(ctx, p) { hover = p ? p.doc : null; ctx.engine.emit('overlay', null); },

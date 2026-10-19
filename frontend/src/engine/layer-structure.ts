@@ -86,6 +86,8 @@ export function selectLayer(host: StructHost, id: ID, how: 'replace' | 'toggle' 
   } else {
     p.selectedIds = new Set([id]);
     p.activeId = id;
+    const layer = p.layer(id);
+    if (layer) for (const a of ancestors(byId(p.doc), layer)) p.collapsed.delete(a.id);
   }
   p.maskTarget = false;
   host.emit('active');
@@ -336,29 +338,47 @@ export function moveLayers(
   });
 }
 
+/** One layer (with what it holds) a step past its neighbour in the same folder, or null when it cannot go that way or the
+ *  neighbour is one of the `stuck` selected layers. */
+function stepSibling(layers: readonly Layer[], id: ID, by: 1 | -1, stuck: ReadonlySet<ID>): Layer[] | null {
+  const act = layers.find((l) => l.id === id);
+  if (!act) return null;
+  const i = layers.indexOf(act);
+  let j = i + by;
+  while (j >= 0 && j < layers.length && layers[j].parentId !== act.parentId) j += by;
+  if (j < 0 || j >= layers.length || stuck.has(layers[j].id)) return null;
+  const lo = layers[Math.min(i, j)];
+  const hi = layers[Math.max(i, j)];
+  const loSet = subtree(layers, lo.id);
+  const hiSet = subtree(layers, hi.id);
+  const start = layers.findIndex((l) => loSet.has(l.id));
+  const end = layers.findIndex((l) => l.id === hi.id);
+  const seg = layers.slice(start, end + 1);
+  return [
+    ...layers.slice(0, start),
+    ...seg.filter((l) => hiSet.has(l.id)),
+    ...seg.filter((l) => loSet.has(l.id)),
+    ...layers.slice(end + 1),
+  ];
+}
+
+/** Bring Forward or Send Backward: every selected layer steps one place (the active one alone when only it is selected);
+ *  a selected layer whose neighbour in that direction is a selected layer that cannot move stays. */
 export function moveActive(host: StructHost, by: 1 | -1): void {
   host.edit('Reorder Layers', (p) => {
     const act = p.activeLayer;
     if (!act) return false;
-    const layers = p.doc.layers;
-    const i = layers.findIndex((l) => l.id === act.id);
-    let j = i + by;
-    while (j >= 0 && j < layers.length && layers[j].parentId !== act.parentId) j += by;
-    if (j < 0 || j >= layers.length) return false;
-    const lo = layers[Math.min(i, j)];
-    const hi = layers[Math.max(i, j)];
-    const loSet = subtree(layers, lo.id);
-    const hiSet = subtree(layers, hi.id);
-    const start = layers.findIndex((l) => loSet.has(l.id));
-    const end = layers.findIndex((l) => l.id === hi.id);
-    const seg = layers.slice(start, end + 1);
-    const next = [
-      ...layers.slice(0, start),
-      ...seg.filter((l) => hiSet.has(l.id)),
-      ...seg.filter((l) => loSet.has(l.id)),
-      ...layers.slice(end + 1),
-    ];
-    p.setLayers(normalizeClips(next));
+    let layers: readonly Layer[] = p.doc.layers;
+    const ids = p.selectedIds.size > 1 ? selectedRoots(p) : [act.id];
+    const rank = (id: ID): number => layers.findIndex((l) => l.id === id);
+    const stuck = new Set<ID>();
+    let changed = false;
+    for (const id of [...ids].sort((a, b) => by * (rank(b) - rank(a)))) {
+      const next = stepSibling(layers, id, by, stuck);
+      if (next) { layers = next; changed = true; } else stuck.add(id);
+    }
+    if (!changed) return false;
+    p.setLayers(normalizeClips([...layers]));
   });
 }
 
@@ -505,6 +525,11 @@ export function mergeLayers(host: StructHost): void {
     removed = merged;
     anchorId = below.id;
   }
+  const held = layers0.filter((l) => merged.has(l.id) && (l.locks?.all || l.locks?.pixels)).length;
+  if (held) {
+    host.notice(held === 1 ? 'A locked layer cannot be merged. Unlock it in the Layers panel.' : `${held} locked layers cannot be merged. Unlock them in the Layers panel.`);
+    return;
+  }
   host.edit(label, (p) => {
     const layers = p.doc.layers;
     const anchor = layers.find((l) => l.id === anchorId);
@@ -533,4 +558,74 @@ export function mergeLayers(host: StructHost): void {
     p.setLayers(normalizeClips(next));
     host.focus(p, fresh.id);
   });
+}
+
+/** Stamp Down (1.87.4): a copy of the active layer merged into the pixel layer directly below it, the layer itself kept;
+ *  with several selected, copies of them merged into one new layer above the top one, the originals kept. */
+export function stampDown(host: StructHost): boolean {
+  const p0 = host.current;
+  const act = p0?.activeLayer;
+  if (!p0 || !act) return false;
+  const layers0 = p0.doc.layers;
+  const many = p0.selectedIds.size > 1;
+  const merged = new Set<ID>();
+  let topId: ID = act.id;
+  let belowId: ID | null = null;
+  if (many) {
+    let top = -1;
+    for (const id of selectedRoots(p0)) {
+      for (const x of subtree(layers0, id)) merged.add(x);
+      top = Math.max(top, layers0.findIndex((l) => l.id === id));
+    }
+    topId = layers0[top]?.id ?? act.id;
+  } else {
+    let below: Layer | undefined;
+    for (let i = layers0.findIndex((l) => l.id === act.id) - 1; i >= 0; i--) {
+      if (layers0[i].parentId === act.parentId) { below = layers0[i]; break; }
+    }
+    if (!below || below.isGroup || !below.raster || below.adjustment || below.fillContent || below.relight || below.text || below.vector || below.smart) {
+      host.notice('Stamp Down needs a pixel layer directly below.');
+      return false;
+    }
+    if (below.locks?.all || below.locks?.pixels) {
+      host.notice('The layer below is locked. Unlock it in the Layers panel.');
+      return false;
+    }
+    for (const x of subtree(layers0, act.id)) merged.add(x);
+    merged.add(below.id);
+    belowId = below.id;
+  }
+  let done = false;
+  host.edit('Stamp Down', (p) => {
+    const layers = p.doc.layers;
+    let bounds: Rect | null = null;
+    for (const l of layers) {
+      if (merged.has(l.id) && l.raster && !l.isGroup) bounds = unionRect(bounds, transformBounds(l.transform));
+    }
+    if (!bounds) return false;
+    let r = integral(bounds);
+    if (r.w > LIMITS.side || r.h > LIMITS.side || r.w * r.h > LIMITS.pixels) {
+      r = intersectRect(r, { x: 0, y: 0, w: p.doc.width, h: p.doc.height }) ?? r;
+    }
+    const surface = createSurface(r.w, r.h);
+    host.renderOnly(p.doc, surface, translation(-r.x, -r.y), merged);
+    const raster = Raster.from(surface, r.w, r.h);
+    const transform = { ...docTransform(r.w, r.h), x: r.x, y: r.y };
+    if (belowId) {
+      const old = layers.find((l) => l.id === belowId);
+      if (!old) return false;
+      const joined = newLayer(old.name, p.doc, { raster, parentId: old.parentId, transform, label: old.label });
+      p.setLayers(normalizeClips(layers.map((l) => (l.id === belowId ? joined : l))));
+    } else {
+      const top = layers.find((l) => l.id === topId);
+      if (!top) return false;
+      const fresh = newLayer('Stamp', p.doc, { raster, parentId: top.parentId, transform });
+      const next: Layer[] = [];
+      for (const l of layers) { next.push(l); if (l.id === top.id) next.push(fresh); }
+      p.setLayers(normalizeClips(next));
+      host.focus(p, fresh.id);
+    }
+    done = true;
+  });
+  return done;
 }

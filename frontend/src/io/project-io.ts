@@ -226,7 +226,7 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
     const file = `alpha-${i + 1}.png`, s = createSurface(doc.width, doc.height);
     ctxOf(s).putImageData(alphaGrey(a.mask, doc.width, doc.height), 0, 0);
     files.push({ name: file, blob: await toBlob(s) });
-    alphas.push({ id: a.id, name: a.name, file });
+    alphas.push({ id: a.id, name: a.name, file, ...(a.color ? { color: [a.color.r, a.color.g, a.color.b] } : {}), ...(a.opacity !== undefined ? { opacity: a.opacity } : {}), ...(a.indicates ? { indicates: a.indicates } : {}) });
   }
   if (alphas.length) manifest.alphas = alphas;
   return { manifest, files };
@@ -393,7 +393,9 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
         const d = c.getImageData(0, 0, width, height).data, m = new Uint8Array(width * height);
         for (let i = 0; i < m.length; i++) m[i] = Math.round((d[i * 4] * d[i * 4 + 3]) / 255);
         const id = str(o.id), name = str(o.name);
-        alphas.push({ id: id && !alphas.some((a) => a.id === id) ? id.slice(0, 120) : uid(), name: name ? name.slice(0, 200) : nextAlphaName(alphas), mask: SelectionMask.cropped(0, 0, width, height, m) });
+        const col = Array.isArray(o.color) && o.color.length === 3 ? o.color.map((v) => Math.max(0, Math.min(255, Math.round(num(v, 0))))) : null;
+        alphas.push({ id: id && !alphas.some((a) => a.id === id) ? id.slice(0, 120) : uid(), name: name ? name.slice(0, 200) : nextAlphaName(alphas), mask: SelectionMask.cropped(0, 0, width, height, m),
+          ...(col ? { color: { r: col[0], g: col[1], b: col[2] } } : {}), ...(typeof o.opacity === 'number' ? { opacity: Math.max(0, Math.min(100, Math.round(num(o.opacity, 50)))) } : {}), ...(o.indicates === 'selected' || o.indicates === 'masked' ? { indicates: o.indicates } : {}) });
       }
       bmp.close();
     } catch { /* a channel that cannot be read is left out */ }

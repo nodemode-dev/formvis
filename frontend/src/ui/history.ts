@@ -14,6 +14,8 @@ export class HistoryPanel {
   private readonly count: HTMLElement;
   private readonly remove: HTMLButtonElement;
   private picked: string | null = null;
+  private pickedStep: number | null = null;
+  private readonly fromState: HTMLButtonElement;
 
   constructor(root: HTMLElement, private readonly engine: Engine) {
     root.insertAdjacentHTML('beforeend',
@@ -21,14 +23,30 @@ export class HistoryPanel {
       `<div class="cv-panel-head"><button class="cv-paths-toggle cv-history-toggle" type="button" aria-expanded="false"><span class="cv-paths-chevron">${icon('chevronDown', 12)}</span>${icon('undo', 14)}<span>History</span></button><span></span><span class="cv-history-count"></span></div>` +
       `<div class="cv-history-body" hidden><div class="cv-history-list" role="listbox" aria-label="History"></div>` +
       `<div class="cv-panel-foot"><button class="cv-icon-btn" type="button" data-cmd="new-snapshot" title="New snapshot" aria-label="New snapshot">${icon('camera', 16)}</button>` +
-      `<button class="cv-icon-btn cv-snapshot-delete" type="button" title="Delete the snapshot last chosen" aria-label="Delete snapshot" disabled>${icon('delete', 16)}</button></div></div></section>`);
+      `<button class="cv-icon-btn cv-state-new" type="button" title="New document from the row last chosen" aria-label="New document from state" disabled>${icon('duplicate', 16)}</button>` +
+      `<button class="cv-icon-btn cv-snapshot-delete" type="button" title="Delete the snapshot last chosen, or the step last chosen and every step after it" aria-label="Delete snapshot or state" disabled>${icon('delete', 16)}</button></div></div></section>`);
     const section = q(root, '.cv-history');
     this.rows = q(section, '.cv-history-list');
     this.body = q(section, '.cv-history-body');
     this.toggle = q<HTMLButtonElement>(section, '.cv-history-toggle');
     this.count = q(section, '.cv-history-count');
     this.remove = q<HTMLButtonElement>(section, '.cv-snapshot-delete');
-    this.remove.addEventListener('click', () => { if (this.picked) this.engine.deleteSnapshot(this.picked); this.picked = null; this.sync(); });
+    this.fromState = q<HTMLButtonElement>(section, '.cv-state-new');
+    this.remove.addEventListener('click', () => {
+      if (this.picked) { this.engine.deleteSnapshot(this.picked); this.picked = null; this.sync(); return; }
+      const at = this.pickedStep;
+      this.pickedStep = null;
+      if (at !== null && at >= 1) void this.engine.deleteHistoryState(at).then(() => this.sync());
+      this.sync();
+    });
+    this.fromState.addEventListener('click', () => {
+      const at = this.pickedStep;
+      if (at !== null) void this.engine.newDocumentFromState(at);
+    });
+    this.rows.addEventListener('dblclick', (e) => {
+      const row = (e.target as HTMLElement).closest<HTMLElement>('.cv-history-row.is-snapshot');
+      if (row && !(e.target as HTMLElement).closest('.cv-hb-source')) this.rename(row);
+    });
     this.toggle.addEventListener('click', () => {
       const open = this.toggle.getAttribute('aria-expanded') !== 'true';
       this.toggle.setAttribute('aria-expanded', String(open));
@@ -42,8 +60,12 @@ export class HistoryPanel {
       if ((e.target as HTMLElement).closest('.cv-hb-source') && row.dataset.snap) { this.engine.setHistoryBrushSource(row.dataset.snap); return; }
       // The same column on a step row: the state Edit > Fill with History paints from (marking the oldest again clears it).
       if ((e.target as HTMLElement).closest('.cv-hs-source') && !row.dataset.snap) { const i = Number(row.dataset.index); this.engine.setHistorySourceIndex(i === 0 || this.engine.historySourceIndex === i ? null : i); return; }
-      if (row.dataset.snap) { this.picked = row.dataset.snap; this.engine.revertToSnapshot(row.dataset.snap); this.sync(); return; }
-      this.engine.jumpHistory(Number(row.dataset.index));
+      if ((e.target as HTMLElement).closest('.cv-history-edit')) return;
+      if (row.dataset.snap) { this.picked = row.dataset.snap; this.pickedStep = null; this.engine.revertToSnapshot(row.dataset.snap); this.sync(); return; }
+      this.picked = null;
+      this.pickedStep = Number(row.dataset.index);
+      this.engine.jumpHistory(this.pickedStep);
+      this.sync();
     });
     for (const ev of ['history', 'projects'] as const) engine.on(ev, () => this.sync());
     this.sync();
@@ -55,12 +77,14 @@ export class HistoryPanel {
     if (this.body.hidden) return;
     const snaps: Row[] = this.engine.snapshots.map((x) => ({ key: `snap:${x.id}`, name: x.name, index: -1, snap: x.id, bytes: x.bytes }));
     if (this.picked && !snaps.some((r) => r.snap === this.picked)) this.picked = null;
-    this.remove.disabled = !this.picked;
+    if (this.pickedStep !== null && this.pickedStep > names.length) this.pickedStep = null;
+    this.remove.disabled = !this.picked && !(this.pickedStep !== null && this.pickedStep >= 1);
+    this.fromState.disabled = this.pickedStep === null || !p;
     const list: Row[] = p ? [...snaps, { key: 'start', name: p.name, index: 0 }, ...names.map((name, i) => ({ key: `${i}:${name}`, name, index: i + 1 }))] : [];
     patchList<Row>(this.rows, list, {
       key: (r) => r.key,
       create: (r) => {
-        const row = el(`<div class="cv-history-row" role="option"><span class="cv-history-icon">${icon(r.snap ? 'camera' : r.index === 0 ? 'image' : 'history', 12)}</span><span class="cv-history-name"></span>${r.snap ? `<button class="cv-hb-source" type="button" title="Paint from this snapshot with the History Brush" aria-label="History Brush source">${icon('tHistoryBrush', 13)}</button>` : `<button class="cv-hb-source cv-hs-source" type="button" title="Fill with History paints from this step" aria-label="Set history source">${icon('tHistoryBrush', 13)}</button>`}</div>`);
+        const row = el(`<div class="cv-history-row" role="option"><span class="cv-history-icon">${icon(r.snap ? 'camera' : r.index === 0 ? 'image' : 'history', 12)}</span><span class="cv-history-name"></span>${r.snap ? `<input class="cv-input cv-history-edit" type="text" maxlength="100" spellcheck="false" aria-label="Snapshot name" hidden><button class="cv-hb-source" type="button" title="Paint from this snapshot with the History Brush" aria-label="History Brush source">${icon('tHistoryBrush', 13)}</button>` : `<button class="cv-hb-source cv-hs-source" type="button" title="Fill with History paints from this step" aria-label="Set history source">${icon('tHistoryBrush', 13)}</button>`}</div>`);
         this.fill(row, r, current);
         return row;
       },
@@ -73,6 +97,25 @@ export class HistoryPanel {
       if (top < this.rows.scrollTop) this.rows.scrollTop = top;
       else if (bottom > this.rows.scrollTop + this.rows.clientHeight) this.rows.scrollTop = bottom - this.rows.clientHeight;
     }
+  }
+
+  /** Shows the snapshot row's name as a text box in place (Enter keeps it, Escape leaves it as it was). */
+  private rename(row: HTMLElement): void {
+    const id = row.dataset.snap, input = q<HTMLInputElement>(row, '.cv-history-edit'), name = q(row, '.cv-history-name');
+    if (!id || !input.hidden) return;
+    input.value = name.textContent ?? '';
+    setHidden(name, true);
+    setHidden(input, false);
+    input.focus();
+    input.select();
+    const done = (keep: boolean): void => {
+      if (input.hidden) return;
+      setHidden(input, true);
+      setHidden(name, false);
+      if (keep) this.engine.renameSnapshot(id, input.value);
+    };
+    input.onkeydown = (e) => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); done(true); } else if (e.key === 'Escape') { e.preventDefault(); done(false); } };
+    input.onblur = () => done(true);
   }
 
   private fill(row: HTMLElement, r: Row, current: number): void {

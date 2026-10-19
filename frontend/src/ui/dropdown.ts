@@ -35,7 +35,7 @@ export function enhanceSelect(select: HTMLSelectElement, opts: { search?: string
     list.textContent = '';
     for (const node of Array.from(select.children)) {
       const group = node instanceof HTMLOptGroupElement ? node : null, options = group ? Array.from(group.children) as HTMLOptionElement[] : [node as HTMLOptionElement];
-      const shown = options.filter((o) => !q || (o.textContent ?? '').toLowerCase().includes(q));
+      const shown = options.filter((o) => !o.hidden && (!q || (o.textContent ?? '').toLowerCase().includes(q)));
       if (!shown.length) continue;
       if (group && !q) list.appendChild(el(`<div class="cv-dd-head">${group.label}</div>`));
       for (const o of shown) {

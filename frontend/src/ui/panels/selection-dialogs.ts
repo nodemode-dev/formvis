@@ -19,6 +19,7 @@ export function loadSources(p: Project): Array<[string, string]> {
   const l = p.activeLayer, out = (p.doc.alphas ?? []).map((a): [string, string] => [a.id, a.name]);
   if (l && !l.isGroup && (l.raster || l.adjustment)) out.push(['transparency', `${l.name} Transparency`]);
   if (l?.mask) out.push(['mask', `${l.name} Mask`]);
+  if (l?.vectorMask) out.push(['vector', `${l.name} Vector Mask`]);
   return out;
 }
 
@@ -122,5 +123,46 @@ export class LoadSelectionDialog extends Dialog {
     if (!q || !channel) return;
     this.close();
     this.engine.loadSelection({ doc: q.id, channel }, this.inverted, this.op.value as SelectionMode);
+  }
+}
+
+const hex2 = (v: number): string => v.toString(16).padStart(2, '0');
+
+/** Channels > Channel Options, as Photoshop's dialog: name, what the colour indicates, the colour and its opacity. */
+export class ChannelOptionsDialog extends Dialog {
+  private id = '';
+  private readonly name = el<HTMLInputElement>('<input class="cv-input" type="text" maxlength="200" spellcheck="false" aria-label="Channel name">');
+  private readonly indicates = select('<option value="masked">Masked Areas</option><option value="selected">Selected Areas</option>');
+  private readonly color = el<HTMLInputElement>('<input class="cv-input cv-color" type="color" aria-label="Overlay colour">');
+  private readonly opacity = el<HTMLInputElement>('<input class="cv-input" type="number" min="0" max="100" step="1" aria-label="Opacity in percent">');
+
+  constructor(private readonly engine: Engine) {
+    super('Channel Options', 340);
+    this.field('Name', this.name);
+    this.field('Color Indicates', this.indicates);
+    this.field('Color', this.color);
+    this.field('Opacity (%)', this.opacity);
+    this.button('Cancel', 'ghost', () => this.close());
+    this.button('OK', 'primary', () => this.apply());
+    this.name.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); this.apply(); } });
+  }
+
+  show(id: string): void {
+    const a = this.engine.current?.doc.alphas?.find((x) => x.id === id);
+    if (this.isOpen || !a) return;
+    this.id = id;
+    this.name.value = a.name;
+    this.indicates.value = a.indicates ?? 'masked';
+    const k = a.color ?? { r: 255, g: 0, b: 0 };
+    this.color.value = `#${hex2(k.r)}${hex2(k.g)}${hex2(k.b)}`;
+    this.opacity.value = String(a.opacity ?? 50);
+    this.open(this.name);
+    this.name.select();
+  }
+
+  private apply(): void {
+    const v = this.color.value, n = this.opacity.valueAsNumber;
+    this.close();
+    this.engine.setAlphaOptions(this.id, { name: this.name.value, indicates: this.indicates.value as 'masked' | 'selected', color: { r: parseInt(v.slice(1, 3), 16), g: parseInt(v.slice(3, 5), 16), b: parseInt(v.slice(5, 7), 16) }, opacity: Number.isFinite(n) ? n : 50 });
   }
 }

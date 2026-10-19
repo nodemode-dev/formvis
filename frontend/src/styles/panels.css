@@ -54,6 +54,11 @@
 .cv-layer.is-group .cv-layer-kind, .cv-layer.is-adjust .cv-layer-kind { display: inline-flex; }
 .cv-layer-size { flex: none; color: var(--text-muted); font-size: 10px; font-variant-numeric: tabular-nums; }
 .cv-layer-size[hidden] { display: none; }
+.cv-layer-chain { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; padding: 0; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-muted); cursor: pointer; }
+.cv-layer-chain[hidden] { display: none; }
+.cv-layer-chain:hover { color: var(--text-primary); background: var(--bg-hover); }
+.cv-layer-chain.is-off { opacity: 0.4; }
+.cv-layer-list.is-panning, .cv-layer-list.is-panning * { cursor: grabbing; }
 .cv-layer-mask { visibility: hidden; }
 .cv-layer.has-mask .cv-layer-mask { visibility: visible; }
 .cv-layer.is-mask-target .cv-layer-mask, .cv-layer.is-pixel-target .cv-layer-thumb { border-color: var(--accent-color); }
@@ -196,6 +201,8 @@
 .cv-history-icon { display: inline-flex; color: var(--text-muted); }
 .cv-history-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .cv-history-row.is-snapshot .cv-history-name { font-weight: 500; }
+.cv-history-edit { grid-column: 2; min-width: 0; height: 20px; }
+.cv-history-edit[hidden] { display: none; }
 .cv-history-row.is-snapshot.is-picked { background: var(--bg-tertiary); }
 .cv-history-row.is-snapshot + .cv-history-row:not(.is-snapshot) { border-top: 1px solid var(--border-color); }
 
@@ -415,6 +422,7 @@
 .cv-ch-alphas:empty { display: none; }
 .cv-ch-alpha .cv-ch-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cv-ch-rename { width: 100%; height: 26px; }
+.cv-ch-alpha.is-drop { border-color: var(--accent-line); box-shadow: inset 0 2px 0 var(--accent-line); }
 .cv-ch-foot { display: flex; justify-content: flex-end; gap: var(--space-1); margin-top: auto; padding-top: 8px; }
 .cv-stage.has-channel-view .cv-scene, .cv-stage.has-channel-view .cv-scene-gpu { filter: url(#cv-channel-view); }
 /* The panel menu button (the target's •••), before the minimise button. */

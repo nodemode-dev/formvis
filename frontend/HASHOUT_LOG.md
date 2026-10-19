@@ -2,6 +2,138 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Selections and history: adjustment layers masked by the selection, larger Modify amounts, brush intersect, pattern offset, delete a history state, document from a state, named snapshots · _v1.87.4 (engine/index.ts, engine/paint-ops.ts, engine/history.ts, engine/snapshot-ops.ts, ui/history.ts, ui/icons.ts, ui/panels/fill-layer-dialog.ts, ui/panels/size-dialogs.ts, extensions/tools/selection-brush.ts, extensions/tools/marquee.ts, styles/panels.css)
+
+CLOSE_GAPS P07 and P08 (PC-UI-0231 to PC-UI-0247, PC-UI-0940, PC-EN-0494, SC-ED-0015, PC-EN-0135, SC-ED-0001, SC-ED-0022, PC-UI-0702, PC-UI-0783, PC-EN-0499, PC-EN-0500 closed; PC-UI-0412 to PC-UI-0415, PC-EN-0132, SC-ED-0208, PC-UI-0833, PC-EN-0501 advanced).
+
+- `index.ts` `addAdjustmentLayer`: an active selection becomes the layer's mask and is cleared, as fill layers do (the layer line was `const layer = newLayer(label, p.doc, { adjustment: { kind, data: defaultAdjustmentData(kind) }, parentId: this.parentForNew(p) });`). `modifySelection(kind, amount, bounds?)` takes 0.1 to 1000 for Feather and up to 1024 otherwise, with Apply effect at canvas bounds; replaced `if (!p || !sel || !(amount > 0) || amount > 500) return;`, `const pad = Math.ceil(kind === 'feather' ? amount * 1.5 : amount) + 2;`, `const region = intersectRect({ x: sel.x - pad, y: sel.y - pad, w: sel.w + 2 * pad, h: sel.h + 2 * pad }, { x: 0, y: 0, w: p.doc.width, h: p.doc.height });`, `if (!region) return;`, `for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) src[j * w + i] = sel.valueAt(region.x + i, region.y + j);`, `this.applySelection(SelectionMask.cropped(region.x, region.y, w, h, out), 'replace', kind === 'feather' ? 'Feather Selection' : kind === 'border' ? 'Border Selection' : 'Smooth Selection');`. Selection Brush intersect: `beginSelectionBrushStroke(pt, subtract, pressure, pose, intersect?)` and the stroke's `meet` (replaced `private stroke: { project: Project; layerId: ID; target: Target; s: PixelStroke; heal?: HealMode | 'remove'; healFrom?: Pt; quick?: Raster } | null = null;`, `beginSelectionBrushStroke(pt: Pt, subtract: boolean, pressure = 1, pose: PenPose = UPRIGHT): boolean {`, `return this.beginQuickMaskStroke(p, pt, pressure, pose, subtract ? 'subtract' : 'add');`, `private beginQuickMaskStroke(p: Project, pt: Pt, pressure: number, pose: PenPose, force?: 'add' | 'subtract'): boolean {`, `else if (sel) for (let y = 0; y < sel.h; y++) {`, `const white = force ? force === 'add' : luminance(this.fg) >= 0.5 !== (this.brushMode === 'erase');`, `this.stroke = { project: p, layerId: p.activeId ?? '', target: 'pixels', s, quick: r };`). `deleteHistoryState`, `newDocumentFromState`, `renameSnapshot`; `takeSnapshot(name?)` (was `takeSnapshot(): void { SN.takeSnapshot(this.snapshotHost); }`); `resizeSelection(delta, bounds?)` (was `resizeSelection(delta: number): void { PO.resizeSelection(this.paintHost, delta); }`).
+- `paint-ops.ts` `resizeSelection` works past the outline up to 1024 pixels; replaced body:
+
+```ts
+  if (!p || !p.selection || delta === 0 || Math.abs(delta) > 500) return;
+  const sel = p.selection;
+  const pad = delta > 0 ? delta : 0;
+  const x0 = Math.max(0, sel.x - pad);
+  const y0 = Math.max(0, sel.y - pad);
+  const x1 = Math.min(p.doc.width, sel.x + sel.w + pad);
+  const y1 = Math.min(p.doc.height, sel.y + sel.h + pad);
+  const w = x1 - x0;
+  const h = y1 - y0;
+  if (w <= 0 || h <= 0) return;
+  const data = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) data[y * w + x] = sel.valueAt(x0 + x, y0 + y);
+  const out = resizeMask(data, w, h, delta);
+  host.applySelection(SelectionMask.cropped(x0, y0, w, h, out), 'replace', delta > 0 ? 'Expand Selection' : 'Contract Selection');
+```
+
+- `history.ts` `discardRedo`. `snapshot-ops.ts` `takeSnapshot(host, name?)`, `renameSnapshot` (was `export function takeSnapshot(host: SnapshotHost): void {` and ``list.push({ id: uid(), name: `Snapshot ${n}`, state: { doc: copyDoc(p.doc), activeId: p.activeId, selection: p.selection } });``).
+- `ui/history.ts`: Delete State and New Document from State buttons, double-click a snapshot to rename it (`.cv-history-edit`). Replaced the footer's delete button markup, `this.remove.addEventListener('click', () => { if (this.picked) this.engine.deleteSnapshot(this.picked); this.picked = null; this.sync(); });`, `if (row.dataset.snap) { this.picked = row.dataset.snap; this.engine.revertToSnapshot(row.dataset.snap); this.sync(); return; }`, `this.engine.jumpHistory(Number(row.dataset.index));`, `this.remove.disabled = !this.picked;` and the row template (`<div class="cv-history-row" role="option">` with the History Brush source buttons, now with the rename field).
+- `fill-layer-dialog.ts` Offset X, Offset Y and Snap to Origin for patterns (replaced `private phase: Pt = { x: 0, y: 0 };`, `this.phase = { ...c.phase };`, the body append and the pattern rows' hidden loop, and `phase: { ...this.phase }` in `content()`). `size-dialogs.ts` `AmountDialog` takes 1 to 1024 with the canvas bounds option (replaced `import { el, setClass, setText } from '../dom';`, `numberRow('Amount (px)', 1, 500, 1, () => {})`, `<p class="cv-note">From 1 to 500 pixels.</p>`, `const n = Math.min(500, Math.max(1, Math.round(typed)));` and the apply lines). `selection-brush.ts`: Shift+Alt intersects (hint and `down` replaced: `ctx.engine.beginSelectionBrushStroke(p.doc, p.alt, p.pressure, p.pose)`). `marquee.ts`: Swap Width and Height for Fixed Ratio and Fixed Size, with a new `swap` icon in `icons.ts`.
+- Measured in Chromium: Invert on a 60 x 40 selection masked 2,400 px (inside 0,0,0, outside 255,255,255); pattern offset 37 saved as phase {x:37}; Expand 1000 gave 300 x 100, 1025 refused; Feather 12.5 edge alpha 135; brush intersect 20,20,100x60 to 80,30,40x40 and undo; new document from state 2 had 3 layers with the source left at step 3; delete state 2 left 1 step. Contract on a solid shape now shrinks it (25,25,50x30; before it stayed). Not verified in a browser: the Swap button and snapshot rename.
+
+## Desktop: files opened from the system, one instance, quit asks about unsaved work, Check for Updates · _v1.87.4 (src-tauri/src/main.rs, src-tauri/build.rs, src-tauri/capabilities/default.json, src-tauri/tauri.conf.json, src-tauri/Cargo.toml, io/disk.ts, app.ts, automation/command-meta.ts)
+
+CLOSE_GAPS D08, D09 and D10.
+
+- `main.rs`: state `OpenQueue`, `ExitGate`, `FoundUpdate`; helpers `updater_configured`, `open_exit_gate`, `ask_page_to_quit`, `show_main_window`, `open_paths`, `paths_from_args`; commands `take_pending_opens`, `confirm_exit`, `check_for_update`, `install_update`. The single-instance plugin is registered first and sends a second launch's files to the window; launch arguments are queued in setup; macOS `RunEvent::Opened` is handled. `CloseRequested` on main and `RunEvent::ExitRequested` hold the quit and emit `formvis://exit-requested` while the page is listening; the startup updater opens the gate before its restart. Replaced:
+
+```rust
+use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
+/// Offers an update when the app is configured to verify them: needs a non-empty updater "pubkey".
+fn check_for_updates(handle: tauri::AppHandle) {
+    let configured = handle
+        .is_some_and(|key| !key.is_empty());
+    if !configured {
+    app.run(|handle, event| {
+        if let RunEvent::Exit = event {
+            kill_backend(handle);
+```
+
+- `build.rs` passes an AppManifest of the app's 15 commands (was `fn main() { tauri_build::build() }`); the generated `permissions/autogenerated/` is ignored like `gen/`.
+- `capabilities/default.json`: the window loads its page from 127.0.0.1, which Tauri 2 treats as remote, so the capability lists `"remote": {"urls": ["http://127.0.0.1:*"]}`, `core:event:default` and an allow permission per app command. Replaced: `"permissions": ["core:default", "dialog:allow-open", "dialog:allow-save"]` and its description `"The app talks HTTP to its engine; through Tauri it asks the shell for the installed fonts and the native GPU canvas, and on macOS sets its menus in the system menu bar (core:default includes the core menu permissions); the open and save panels (1.87.0) let the person choose where projects and exports go."`.
+- `tauri.conf.json` adds a Picture file association (psd, psb, png, jpg, jpeg, tif, tiff, webp, exr, ora) after the project one (`{ "ext": ["fvd", "fmv", "formvis"], ... }` kept, its line rewritten for the comma). `Cargo.toml` adds `tauri-plugin-single-instance = "2"`.
+- `disk.ts` `listenShell`, `confirmExit`, `checkForUpdate`, `installUpdate`, `UpdateReport`. `app.ts` `settleUnsaved` (asks only about unsaved documents), `checkUpdates`, the `check-for-updates` command in the Help menu (was `'record-performance', 'about'`), the shell listener after keepModified; `closeMany(keep, onlyUnsaved = false)` (was `async function closeMany(keep: string | null): Promise<void> {` and `for (const p of engine.projects.filter((x) => x.id !== keep)) {`).
+- Checked: `cargo check` clean; a stubbed shell in Chromium opened a queued picture, added a layer on open-paths, asked "Save changes to one?" on exit-requested (Cancel kept it, Don't Save confirmed), and showed each update outcome. Not run in a real window. Not done: unsaved check before the startup auto-update restart; updates need a pubkey.
+
+## Layers: Stamp Down, marquee layer select, Lock Transparent Pixels, reveal, sizes, locks refuse merge · _v1.87.4 (engine/layer-structure.ts, engine/index.ts, extensions/tools/move.ts, ui/layers.ts, app.ts, automation/command-meta.ts, styles/panels.css)
+
+CLOSE_GAPS P06 (PC-EN-0046, PC-EN-0053, CO-0047, PC-EN-0034, PC-UI-0821, CO-0022, SC-ED-0053, SC-ED-0056 closed; CO-0045, PC-EN-0047, PC-UI-0820, PC-EN-0072, PC-UI-0822, PC-UI-0941 advanced).
+
+- `layer-structure.ts` `stampDown(host)`: one layer merges a copy into the pixel layer below (a locked or non-pixel layer below is refused); several merge into a new Stamp layer above the top one. `mergeLayers` refuses layers locked all or pixels. `stepSibling` holds the old one-layer reorder; `moveActive` steps every selected layer. Replaced body of `moveActive` (now inside `stepSibling`):
+
+```ts
+    const layers = p.doc.layers;
+    const i = layers.findIndex((l) => l.id === act.id);
+    let j = i + by;
+    while (j >= 0 && j < layers.length && layers[j].parentId !== act.parentId) j += by;
+    if (j < 0 || j >= layers.length) return false;
+    const lo = layers[Math.min(i, j)];
+    const hi = layers[Math.max(i, j)];
+    const loSet = subtree(layers, lo.id);
+    const hiSet = subtree(layers, hi.id);
+    const start = layers.findIndex((l) => loSet.has(l.id));
+    const end = layers.findIndex((l) => l.id === hi.id);
+    const seg = layers.slice(start, end + 1);
+    const next = [
+      ...layers.slice(0, start),
+      ...seg.filter((l) => hiSet.has(l.id)),
+      ...seg.filter((l) => loSet.has(l.id)),
+      ...layers.slice(end + 1),
+    ];
+    p.setLayers(normalizeClips(next));
+```
+
+- `index.ts`: `stampDown`, `selectLayersInRect(rect, add)` (visible layers with a pixel above alpha 8 in the box), `toggleLock`; `selectLayer` replace opens the ancestor folders; `toggleCollapsed(id, deep?)` (Alt-click opens or closes every folder inside). Replaced:
+
+```ts
+  toggleCollapsed(id: ID): void {
+    const p = this.current;
+    if (!p) return;
+    if (p.collapsed.has(id)) p.collapsed.delete(id);
+    else p.collapsed.add(id);
+    this.emit('doc', null);
+  }
+```
+
+- `move.ts`: with Auto-Select or Mod, a press on empty canvas draws a dashed marquee that selects the layers inside (Shift adds); `up(ctx) {` rewritten for it.
+- `layers.ts`: middle-button drag scrolls the list (`.is-panning`); the active row scrolls into view (`revealed`); rows show W x H and the scale, the tooltip too (`sizeOf`; replaced `setTitle(row, l.name);`, `setHidden(q(row, '.cv-layer-size'), !board);`, `if (board) setText(q(row, '.cv-layer-size'), \`${board.w} x ${board.h}\`);`); a mask chain button `.cv-layer-chain` in the row template; lock buttons go through `toggleLock` (was `b.addEventListener('click', () => { const id = b.dataset.lock as keyof LayerLocks; engine.setLocks({ [id]: !engine.activeLayer?.locks?.[id] }); });`); the disclose click passes Alt (was `if (row?.dataset.id && t.closest('.cv-layer-disclose')) this.engine.toggleCollapsed(row.dataset.id);`).
+- `app.ts`: commands `stamp-down` (Alt+Mod+E) and `lock-transparency` (/); Layer menu entries; Alt-click on the footer New Layer or New Folder opens its dialog (the click line was `if (b && root.contains(b) && !b.disabled) commands.run(b.dataset.cmd ?? '');`).
+- Measured in Chromium: Stamp Down turned the overlap (255,0,0,255) to (0,0,255,255) with the upper kept; marquee drags selected A+B, then C, Shift added; middle drag scrolled 0 to 42; a 19-row list scrolled 0 to 683 to the selected row; merge on locked layers kept 19 layers. Not done: Show Altered Video, extra blend modes, the name filter, the Background rule for Bring Forward.
+
+## Float composition: isolated folders and blended adjustments; Pass Through; profiles in every export · _v1.87.4 (engine/compose-float.ts, engine/index.ts, ui/layers.ts, ui/dropdown.ts, io/api.ts, app.ts)
+
+CLOSE_GAPS P06 and D14 remainder.
+
+- `compose-float.ts` `blendInto(dst, src, mode, op, cov, clipA, keep, name)` holds the per-pixel blend section moved verbatim (out to dst, tmp to src); `run(out, only, handled)` wraps the layer loop so an isolated folder (`groupIsolated`) composes its children on a clear buffer and blends with the folder's mode and opacity; an adjustment layer in a mode other than Normal runs at full strength and blends back at its opacity and mask (`pending`, `flush`). Replaced: `for (const { layer: l, visible } of hierarchy(walked)) {` with `if (!visible || l.isGroup) continue;`, and `const op = l.opacity * (drawn ? 1 : l.fill ?? 1), cov = coverageOf(l);` (now `op0`, `cov0`).
+- `index.ts` `setBlend(mode, isolate?)` sets `isolate` on folders. Replaced: `for (const id of p.selectedIds) { const l = p.layer(id); if (l && !l.artboard && l.blend !== mode) { p.updateLayer(id, { blend: mode }); changed = true; } }`.
+- `layers.ts` `blendOptions()` starts with a hidden Pass Through option, shown for folders (replaced: ``return BLEND_GROUPS.map(([g, ids]) => `<optgroup label="${g}">${ids.map(opt).join('')}</optgroup>`).join('') + (rest.length ? `<optgroup label="Other">${rest.map((m) => opt(m.id)).join('')}</optgroup>` : '');``, `this.blend.addEventListener('change', () => engine.setBlend(this.blend.value as Layer['blend']));`, `enhanceSelect(this.blend, { search: 'Search blend modes...', onHover: (v) => engine.previewBlend(v as Layer['blend'] | null) });`, `setValue(this.blend, mixable ? (l as Layer).blend : 'normal');`). `dropdown.ts` skips hidden options (was `const shown = options.filter((o) => !q || (o.textContent ?? '').toLowerCase().includes(q));`).
+- `api.ts` `encodeDeep(..., icc)`, `bandsBegin(..., icc)`; `app.ts` `exportImage` passes the document's profile (`prof`, none at 32 bits) to banded PNG, 16-bit PNG and TIFF, and through `api.encode` for TIFF, AVIF and WebP. Replaced: `const key = await api.bandsBegin(p.doc.width, p.doc.height, p.doc.resolution ?? 72);`, `: kind === 'webp' ? await engine.exportBlob('image/webp', quality)` and the `api.encode(png, kind, Math.round(quality * 100), p.doc.resolution ?? 72)` fallback.
+- Measured: 8-bit against float composition differs at most 1.04 levels over seven folder and adjustment cases (isolated Normal 0.00); Pass Through, Normal and Multiply set isolate false, true and the mode; Pillow found the 588-byte source profile in 8-bit PNG, banded PNG, 16-bit PNG, 8 and 16-bit TIFF, AVIF and WebP. Known and older: `alphaOf(clip)` reuses `tmp` when its cache misses.
+
+## PSD resolution read and written; damaged PSDs open what they can · _v1.87.4 (io/psd.ts, app.ts)
+
+CLOSE_GAPS D19 remainder and D27.
+
+- `psd.ts` `psdResolution(buf)` reads image resource 1005 (pixels per centimetre converted to ppi); `readPsdFile` sets `resolution: psdResolution(buffer) ?? 72` (was `resolution: 72,`); `writePsdFile` writes `imageResources.resolutionInfo` from `doc.resolution` (it wrote none).
+- `psd.ts` `psdSections`, `padToLayers`, `mergedIsShort`, `readPsdFlat(file, decode?)`; `readPsdFile` falls back in stages: a normal read; a layered read without the merged image ("This PSD is cut short: its layers opened, but its merged image is incomplete."); the file zero-padded to its declared layer-section length ("the layers after the cut are blank and its merged image is missing."). Replaced: `const psd = readPsd(buffer, { skipThumbnail: true });`.
+- `app.ts`: imports `readPsdFlat` (was `import { isPsdFile, readPsdFile, writePsdFile } from './io/psd';`); `openFiles` falls back to the flat merged image, then the engine's decode (was `const { doc, notes, activeId, paths } = await readPsdFile(f);`).
+- Measured on a 200 x 120 two-layer 300 ppi PSD: opens at 300; saved at 150 re-reads 150 (psd-tools reads 150.0); PSB at 220 re-reads 220. End cut by 200 bytes: 2 layers with the merged-image note; cut mid layer section: 2 layers with the blank note; 60 bytes of the layer section overwritten: one flat layer with the damaged note. Not handled: a file cut inside the layer records (no pixels survive); CMYK and Lab PSDs still open at 72 (engine routes).
+
+## Channels: new, duplicate, reorder, options; luminosity and vector mask selections · _v1.87.4 (engine/index.ts, engine/types.ts, ui/channels.ts, ui/stage.ts, ui/panels/selection-dialogs.ts, io/project-io.ts, app.ts, automation/command-meta.ts, styles/panels.css)
+
+CLOSE_GAPS P07 (PC-EN-0093, PC-EN-0094, PC-EN-0095, PC-EN-0096, PC-UI-0178, PC-EN-0104 closed; PC-EN-0103, PC-UI-0831, PC-EN-0087 advanced).
+
+- `index.ts`: `newAlpha`, `duplicateAlpha`, `moveAlpha`, `setAlphaOptions`, `loadLuminosity`, `alphaFor`; `showAlpha` makes the last-clicked channel the target; `loadSelection` takes `'vector'` (was `channel: ID | 'transparency' | 'mask' }`); `changeVectorMask` takes `'invert'` (was `change: 'delete' | 'enable' | 'link'`).
+- `types.ts` `AlphaChannel` gains `color?`, `opacity?`, `indicates?` (was `export interface AlphaChannel { readonly id: ID; readonly name: string; readonly mask: SelectionMask | null }`); `project-io.ts` saves and reads them (the save was `alphas.push({ id: a.id, name: a.name, file });`).
+- `stage.ts` `alphaTint` uses the channel's colour, opacity and indicates (was `t.fillStyle = 'rgba(255, 0, 0, 0.5)';`).
+- `channels.ts`: `onOptions`, footer New and Duplicate buttons, a per-row Options button, drag to reorder (patched in place, `.cv-ch-alpha.is-drop`). `selection-dialogs.ts` `ChannelOptionsDialog`.
+- `app.ts`: commands `new-channel`, `duplicate-channel`, `channel-up`, `channel-down`, `channel-options`, `load-luminosity` (Alt+Mod+2), `load-selection-vector-mask`, `vmask-invert`; Image menu `'apply-image', 'calculations'` (was without calculations); Select menu gains the luminosity, vector mask and a Channel submenu; `ChannelsPanel` gets `(id) => commands.run('channel-options', { channel: id })`.
+- Measured in Chromium: a white new channel holds 20,000 px of 200 x 100; duplicate gives W, W copy, Alpha 1; options colour (0,255,0), 80%, selected; drag C onto A gives C, A, B; overlay centre (0,0,255,255) after blue at 100%; luminosity on white selects 20,000 of 20,000; vector mask invert and undo; round trip keeps colour (17,34,51), 30%, selected.
+
+## Other products' names out of what people read · _v1.87.4 (docs/MANUAL.md, README.md, automation/command-meta.ts, io/grd.ts, io/psd-paths.ts, io/psd-adjust.ts, io/kra.ts, io/asl.ts, io/swatch-files.ts, io/affinity.ts, io/csh.ts, io/atn.ts, engine/abr.ts, ui/app-dialogs.ts, ui/panels/filter-panel.ts, ui/panels/tool-presets-dialog.ts, ui/panels/layer-dialogs.ts, ui/panels/whats-new-data.ts, ui/panels/merge-dialog.ts, ui/panels/preset-manager-dialog.ts, ui/panels/color-table-dialog.ts, tests/psd-paths.test.ts)
+
+CLOSE_GAPS P26 first pass, the owner's rule: every message, note and command description a person or an agent reads names the file format (PSD, PSB, .abr, .grd, .ggr, .aco, .ase, .asl, .csh, .atn, .kra, .afphoto, .act, .pat, .tpl) instead of a product. Examples of what was replaced: `'Not a Photoshop gradient file.'`, `'Not a GIMP gradient file.'`, `(only version 5, Photoshop CS and later)`, `'Not a Photoshop file.'`, `'This Krita file is not 8-bit RGBA; it opened as its merged image, one layer.'`, `'This is not a Photoshop swatch (.aco) file.'`, `'This is not an Adobe Swatch Exchange (.ase) file.'`, `'That is not an Affinity file.'`, `'This Affinity file carries no preview formvis can read.'`, `|| 'Affinity'`, `Affinity files cannot be read layer by layer;`, `'Not a Photoshop custom shape (.csh) file.'`, `'not a Photoshop actions file'`, `'not a Photoshop styles file'`, `This is not a Photoshop brush file this reader knows`, `'Not an Adobe Color Table (.act) file.'`, `(Photoshop keeps 50 by default, up to 1000)`, `. Photoshop also finds curved traces; this estimate is straight.`, `Photoshop .tpl files are not read.`, `Photoshop\'s Perspective, Cylindrical and Collage are not offered here.`, `Export writes a Photoshop .grd`, `a Photoshop .csh` (twice), `as Photoshop\'s File Info keeps them with the file`, and eight command descriptions (swatches-load, swatches-save, export-psd, export-psb, export-tiff-layers, patterns-import, patterns-export, filter-relight). The New Layer and New Group notes said colour labels and group mode and opacity were missing; they now say where to set them. Comments in psd-paths.ts, psd-adjust.ts, grd.ts, ui/dock.ts, ui/prefs.ts, ui/info.ts, ui/rail.ts, ui/stage.ts, engine/text.ts, engine/liquify.ts, engine/gradients.ts, ui/video-timeline.ts, extensions/registry.ts, tools rotate-view, mixer, bucket, art-history, smear, crop-overlays and type, and panels video-dialog, brush-settings, colour-settings-dialog, hdr-toning, vanishing-dialog, adjust-panel, merge-dialog and corners-dialog, ui/app-dialogs.ts, io/kra.ts, ui/panels/layer-dialogs.ts (its stale notes about labels and group blending too), styles/shell.css, io/pat.ts (and its error, was `'This is not a Photoshop pattern file (8BPT).'`), io/layered-tiff.ts, io/affinity.ts, gpu/probe.ts, extensions/tools/shape.ts, engine/video-timeline.ts, engine/video-ops.ts, engine/stroke.ts, engine/brush-dynamics.ts, engine/adjust-params.ts, io/xmp.ts, io/ai-label.ts, io/layer-export.ts, io/export-presets.ts, ui/panels/save-for-web-dialog.ts, image-dialogs, fill-dialog, export-dialog, conditional-mode-dialog, artboard-dialog, ui/colour.ts, io/csh.ts, io/asl.ts, color-table-dialog, io/swatch-files.ts, engine/abr.ts and tools background-eraser, color-sampler, convert-point, count, magic-eraser, note, pattern-stamp, pencil, red-eye, ruler, eraser and frame reworded the same way (colour space ids such as `adobe-rgb`, XMP property and namespace names, and the PSD media type stay) (for example "arranged as Photoshop's:" removed, "Photoshop's midpoint curve" is "The midpoint curve", "as Procreate and Photoshop on iPad" is "as tablet painting apps do"). The manual's "How does Claude Desktop connect?" search still finds its section (the Save paragraph avoids the word desktop). `tests/psd-paths.test.ts` expects `/PSD/` (was `/Photoshop/`). Kept because the code needs them: XMP namespace URIs (ns.adobe.com), the layered TIFF block signature `'Adobe Photoshop Document Data Block\0'`, the `'GIMP Gradient'` header check. Left for the next pass: comments across engine, tools and ui (about 400), psd.ts import notes (another change in flight), CHANGELOG and HASHOUT history (records, not product text).
+
 ## EXR and HDR placed into open documents; pictures open at their own ppi; Export As writes ppi · _v1.87.3 (io/images.ts, io/image-size.ts, engine/index.ts, app.ts)
 
 CLOSE_GAPS P04 D02, P05 D19 and D20.

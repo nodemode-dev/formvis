@@ -286,9 +286,11 @@ export const api = {
     const parts = head.parts.map((p) => { const len = p.width * p.height * 4; const data = new Float32Array(buf.slice(at, at + len * 4)); at += len * 4; return { ...p, data }; });
     return { width: head.width, height: head.height, parts };
   },
-  async encodeDeep(data: Uint16Array | Float32Array, width: number, height: number, format: 'png' | 'tiff' | 'hdr' | 'exr' | 'tiff32'): Promise<Blob> {
+  async encodeDeep(data: Uint16Array | Float32Array, width: number, height: number, format: 'png' | 'tiff' | 'hdr' | 'exr' | 'tiff32', icc: { bytes: Uint8Array; name: string } | null = null): Promise<Blob> {
     const raw = data instanceof Float32Array ? new Float32Array(data) : new Uint16Array(data);
-    return (await request('/io/encode-deep', { method: 'POST', body: form({ width: String(width), height: String(height), format }, [{ name: 'pixels.raw', blob: new Blob([raw]) }], 'file') })).blob();
+    const body = form({ width: String(width), height: String(height), format, ...(icc ? { icc_name: icc.name } : {}) }, [{ name: 'pixels.raw', blob: new Blob([raw]) }], 'file');
+    if (icc) body.append('icc', new Blob([icc.bytes as Uint8Array<ArrayBuffer>], { type: 'application/vnd.iccprofile' }), 'profile.icc');
+    return (await request('/io/encode-deep', { method: 'POST', body })).blob();
   },
   /** Colour management (1.53.5, H2): the profiles on this computer and added to formvis. */
   async colourProfiles(): Promise<{ profiles: Array<{ id: string; name: string; space: string; file: string; added: boolean; shipped?: boolean }>; folder: string }> {
@@ -370,8 +372,9 @@ export const api = {
     return { width: head.width, height: head.height, fps: head.fps, delayMs: head.delayMs, frames };
   },
   /** A PNG written by the engine a band of rows at a time (1.61.2, DEV_PLAN 26.4): opened, fed rows top first, closed. */
-  async bandsBegin(width: number, height: number, ppi: number): Promise<string> {
-    return ((await (await request(`/bands/png?width=${width}&height=${height}&ppi=${ppi}`, { method: 'POST' })).json()) as { key: string }).key;
+  async bandsBegin(width: number, height: number, ppi: number, icc: { bytes: Uint8Array; name: string } | null = null): Promise<string> {
+    const init: RequestInit = icc ? { method: 'POST', body: new Blob([icc.bytes as Uint8Array<ArrayBuffer>]), headers: { 'Content-Type': 'application/octet-stream' } } : { method: 'POST' };
+    return ((await (await request(`/bands/png?width=${width}&height=${height}&ppi=${ppi}${icc ? `&name=${encodeURIComponent(icc.name)}` : ''}`, init)).json()) as { key: string }).key;
   },
   async bandsPut(key: string, rows: Uint8ClampedArray<ArrayBuffer>): Promise<void> {
     // As a Blob (1.63.0): a typed-array body stayed in the page after the upload, past garbage collection (30 uploads

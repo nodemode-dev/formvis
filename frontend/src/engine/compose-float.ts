@@ -1,6 +1,6 @@
 import { dissolveNoise } from './blend';
 import { deepFromRaster, linearToSrgb, place, srgbToLinear, transferOf } from './deep';
-import { hierarchy, byId, ancestors } from './tree';
+import { hierarchy, byId, ancestors, descendantIds, groupIsolated } from './tree';
 import { placement, setMat } from './geometry';
 import { applyLut4, inkOf, type Lut3x4, type Lut4 } from './colour-lut';
 import { encodeLab, labFloatToRgb, renderLab, srgbToLab } from './lab';
@@ -16,8 +16,10 @@ import { effectsActive } from './types';
  *  own mask, its folders' masks, clipping to a base layer, and adjustment layers with a transfer (Levels, Curves,
  *  Invert, Posterize, Brightness/Contrast, Exposure) applied per channel under their masks. Every other adjustment
  *  and the non-separable modes (Hue, Saturation, Color, Luminosity, Darker and Lighter Color) run through the
- *  document's rendition (1.55.7, `viaKernel`); layer styles wait for 22.7 and say so. Groups are pass-through, as the
- *  renderer treats them. */
+ *  document's rendition (1.55.7, `viaKernel`); layer styles wait for 22.7 and say so. A folder that is isolated
+ *  (`groupIsolated`) composites its layers on a clear buffer and is then blended with its mode and opacity; any other
+ *  folder is pass-through, as the renderer treats them. An adjustment layer in a mode of its own blends its result
+ *  with that mode, at its opacity and under its masks. */
 
 type Sep = (b: number, s: number) => number;
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -201,12 +203,96 @@ export function composeFloat(doc: Doc, n: 3 | 4, paperWhite: boolean, luts: Cmyk
     clipAlpha.set(base.id, a);
     return a;
   };
+  /** The source buffer blended onto dst in the mode, at op times cov times the source's alpha. `keep` is an
+   *  adjustment's result: the pixels below are taken as opaque and their alpha is left as it was. */
+  const blendInto = (dst: Float32Array, src: Float32Array, mode: BlendMode, op: number, cov: Float32Array | null, clipA: Float32Array | null, keep: boolean, name: string): { error: string } | null => {
+    const sep = linear ? LINEAR_FLOAT[mode] : SEPARABLE_FLOAT[mode];
+    // 32 bits (1.57.3): a mode outside the linear table blends the two colours in the display range (each clipped at
+    // white, sRGB-encoded) by the 8-bit formula and comes back to linear light; light above white is kept wherever
+    // only one of the two layers covers a pixel. Every blend mode works at 32 bits this way.
+    const displayRange = linear && !sep && mode !== 'dissolve' && mode !== 'darker-color' && mode !== 'lighter-color';
+    if (!displayRange && !sep && mode !== 'dissolve' && (!nonSeparable(mode, [0, 0, 0], [0, 0, 0]) || (n === 4 && !luts))) return { error: `${name} uses ${mode}, which needs the document's colour tables in this mode.` };
+    const bv: [number, number, number] = [0, 0, 0], sv: [number, number, number] = [0, 0, 0], lab = doc.mode === 'lab';
+    for (let i = 0, j = 0; i < dst.length; i += S, j++) {
+      let as = src[i + A] * op * (cov ? cov[j] : 1) * (clipA ? clipA[j] : 1);
+      if (as <= 0) continue;
+      const ab = keep ? (dst[i + A] > 0 ? 1 : 0) : dst[i + A];
+      if (keep && ab === 0) continue;
+      if (mode === 'dissolve') { if (dissolveNoise(j % W, Math.floor(j / W)) >= as) continue; as = 1; }
+      const ao = as + ab * (1 - as), k1 = as * (1 - ab), k2 = as * ab, k3 = (1 - as) * ab;
+      if (displayRange) {
+        const enc = (v: number): number => linearToSrgb(Math.max(0, Math.min(1, v))), B = [enc(dst[i]), enc(dst[i + 1]), enc(dst[i + 2])] as [number, number, number], Sx = [enc(src[i]), enc(src[i + 1]), enc(src[i + 2])] as [number, number, number];
+        const sep8 = SEPARABLE_FLOAT[mode], rr = sep8 ? [sep8(B[0], Sx[0]), sep8(B[1], Sx[1]), sep8(B[2], Sx[2])] : (nonSeparable(mode, B, Sx) ?? Sx);
+        for (let c = 0; c < 3; c++) dst[i + c] = Math.max(0, (k1 * src[i + c] + k2 * srgbToLinear(clamp01(rr[c])) + k3 * dst[i + c]) / ao);
+      } else if (lab && mode !== 'normal' && mode !== 'dissolve') {
+        // Lab (1.56.6): the two colours' renditions blended by the RGB document's own formula, the result back in Lab.
+        const B = labFloatToRgb(dst[i], dst[i + 1], dst[i + 2]), Sx = labFloatToRgb(src[i], src[i + 1], src[i + 2]);
+        const rr = sep ? [sep(B[0], Sx[0]), sep(B[1], Sx[1]), sep(B[2], Sx[2])] : (nonSeparable(mode, B, Sx) ?? Sx);
+        const r3 = encodeLab(...srgbToLab(clamp01(rr[0]) * 255, clamp01(rr[1]) * 255, clamp01(rr[2]) * 255));
+        for (let c = 0; c < 3; c++) dst[i + c] = (k1 * src[i + c] + k2 * r3[c] + k3 * dst[i + c]) / ao;
+      } else if (sep || mode === 'dissolve') {
+        const f = sep ?? SEPARABLE_FLOAT.normal!;
+        for (let c = 0; c < A; c++) { const b = toValue(dst[i + c]), s = toValue(src[i + c]), r = f(b, s); dst[i + c] = fromValue((k1 * s + k2 * r + k3 * b) / ao); }
+      } else if (n === 4 && luts) {
+        const B = rgbOfInk(luts.out, dst, i), Sx = rgbOfInk(luts.out, src, i), r4 = [0, 0, 0, 0];
+        if (mode === 'darker-color' || mode === 'lighter-color') {
+          const takeS = mode === 'darker-color' ? lum(Sx[0], Sx[1], Sx[2]) < lum(B[0], B[1], B[2]) : lum(Sx[0], Sx[1], Sx[2]) >= lum(B[0], B[1], B[2]);
+          for (let c = 0; c < 4; c++) r4[c] = takeS ? src[i + c] : dst[i + c];
+        } else {
+          const rr = nonSeparable(mode, [B[0] / 255, B[1] / 255, B[2] / 255], [Sx[0] / 255, Sx[1] / 255, Sx[2] / 255]) ?? [Sx[0] / 255, Sx[1] / 255, Sx[2] / 255];
+          const r8 = { r: clamp01(rr[0]) * 255, g: clamp01(rr[1]) * 255, b: clamp01(rr[2]) * 255 }, after = inkOf(r8, luts.in), before = inkOf({ r: B[0], g: B[1], b: B[2] }, luts.in);
+          const w = clamp01(1 - Math.max(Math.abs(r8.r - B[0]), Math.abs(r8.g - B[1]), Math.abs(r8.b - B[2])) / KEEP_LEVELS);
+          for (let c = 0; c < 4; c++) r4[c] = clamp01(after[c] + w * (dst[i + c] - before[c]));
+        }
+        for (let c = 0; c < 4; c++) dst[i + c] = (k1 * src[i + c] + k2 * r4[c] + k3 * dst[i + c]) / ao;
+      } else {
+        for (let c = 0; c < 3; c++) { bv[c] = toValue(dst[i + c]); sv[c] = toValue(src[i + c]); }
+        const r = nonSeparable(mode, bv, sv) ?? sv;
+        for (let c = 0; c < 3; c++) dst[i + c] = fromValue((k1 * sv[c] + k2 * r[c] + k3 * bv[c]) / ao);
+      }
+      if (!keep) dst[i + A] = ao;
+    }
+    return null;
+  };
+  /** One pass over the layers `only` names (all when null) onto buf; folders in `handled` are already composited. */
+  const run = (out: Float32Array, only: ReadonlySet<ID> | null, handled: ReadonlySet<ID>): { error: string } | null => {
+  const isoDone = new Set<ID>();
+  let pending: (() => { error: string } | null) | null = null;
+  const flush = (): { error: string } | null => { const p = pending; pending = null; return p ? p() : null; };
   for (const { layer: l, visible } of hierarchy(walked)) {
+    const held = flush();
+    if (held) return held;
     if (!visible || l.isGroup) continue;
+    if (only && !only.has(l.id)) continue;
+    // A layer in an isolated folder: the folder's layers composite on a clear buffer, blended in once, at the first.
+    const iso = ancestors(map, l).reverse().find((g) => groupIsolated(g) && !handled.has(g.id));
+    if (iso) {
+      if (isoDone.has(iso.id)) continue;
+      isoDone.add(iso.id);
+      if (!(iso.opacity > 0)) continue;
+      const inside = descendantIds(walked.layers, iso.id), sub = new Set<ID>(only ? inside.filter((id) => only.has(id)) : inside), nested = new Set<ID>(handled);
+      nested.add(iso.id);
+      const fb = new Float32Array(N * S), failed = run(fb, sub, nested);
+      if (failed) return failed;
+      const clash = blendInto(out, fb, iso.blend ?? 'normal', iso.opacity, null, null, false, `"${iso.name}"`);
+      if (clash) return clash;
+      continue;
+    }
     const name = `"${l.name}"`;
     const drawn = effectsActive(l.effects) && !l.adjustment && l.raster ? styleDrawer?.(doc, l) ?? null : null;
     if (effectsActive(l.effects) && !l.adjustment && !drawn) return { error: `${name} has a layer style, which this mode's compositor cannot draw here.` };
-    const op = l.opacity * (drawn ? 1 : l.fill ?? 1), cov = coverageOf(l);
+    const op0 = l.opacity * (drawn ? 1 : l.fill ?? 1), cov0 = coverageOf(l), adjMode = l.adjustment ? l.blend ?? 'normal' : 'normal', viaMode = adjMode !== 'normal';
+    // An adjustment in a mode of its own runs at full strength and is blended back in that mode at the next layer.
+    const op = viaMode ? 1 : op0, cov = viaMode ? null : cov0;
+    if (viaMode) {
+      const below = out.slice();
+      pending = () => {
+        const adjusted = out.slice();
+        for (let i = A; i < adjusted.length; i += S) adjusted[i] = below[i] > 0 ? 1 : 0;
+        out.set(below);
+        return blendInto(out, adjusted, adjMode, op0, cov0, null, true, name);
+      };
+    }
     if (l.adjustment && linear) {
       // 32 bits (1.53.9, on this compositor since 1.57.1): Exposure is exposure in linear light, unclamped.
       const e = l.adjustment.kind === 'exposure' ? (l.adjustment.data as { exposureSettings?: { exposure?: number; offset?: number; gamma?: number } }).exposureSettings : null;
@@ -279,51 +365,14 @@ export function composeFloat(doc: Doc, n: 3 | 4, paperWhite: boolean, luts: Cmyk
     }
     const clip = l.clipId ? map.get(l.clipId) : null, clipA = clip ? alphaOf(clip) : null;
     if (l.clipId && !clipA) return { error: `${name} is clipped to a layer this compositor cannot read.` };
-    const mode = l.blend ?? 'normal', sep = linear ? LINEAR_FLOAT[mode] : SEPARABLE_FLOAT[mode];
-    // 32 bits (1.57.3): a mode outside the linear table blends the two colours in the display range (each clipped at
-    // white, sRGB-encoded) by the 8-bit formula and comes back to linear light; light above white is kept wherever
-    // only one of the two layers covers a pixel. Every blend mode works at 32 bits this way.
-    const displayRange = linear && !sep && mode !== 'dissolve' && mode !== 'darker-color' && mode !== 'lighter-color';
-    if (!displayRange && !sep && mode !== 'dissolve' && (!nonSeparable(mode, [0, 0, 0], [0, 0, 0]) || (n === 4 && !luts))) return { error: `${name} uses ${mode}, which needs the document's colour tables in this mode.` };
-    const bv: [number, number, number] = [0, 0, 0], sv: [number, number, number] = [0, 0, 0], lab = doc.mode === 'lab';
-    for (let i = 0, j = 0; i < out.length; i += S, j++) {
-      let as = tmp[i + A] * op * (cov ? cov[j] : 1) * (clipA ? clipA[j] : 1);
-      if (as <= 0) continue;
-      const ab = out[i + A];
-      if (mode === 'dissolve') { if (dissolveNoise(j % W, Math.floor(j / W)) >= as) continue; as = 1; }
-      const ao = as + ab * (1 - as), k1 = as * (1 - ab), k2 = as * ab, k3 = (1 - as) * ab;
-      if (displayRange) {
-        const enc = (v: number): number => linearToSrgb(Math.max(0, Math.min(1, v))), B = [enc(out[i]), enc(out[i + 1]), enc(out[i + 2])] as [number, number, number], Sx = [enc(tmp[i]), enc(tmp[i + 1]), enc(tmp[i + 2])] as [number, number, number];
-        const sep8 = SEPARABLE_FLOAT[mode], rr = sep8 ? [sep8(B[0], Sx[0]), sep8(B[1], Sx[1]), sep8(B[2], Sx[2])] : (nonSeparable(mode, B, Sx) ?? Sx);
-        for (let c = 0; c < 3; c++) out[i + c] = Math.max(0, (k1 * tmp[i + c] + k2 * srgbToLinear(clamp01(rr[c])) + k3 * out[i + c]) / ao);
-      } else if (lab && mode !== 'normal' && mode !== 'dissolve') {
-        // Lab (1.56.6): the two colours' renditions blended by the RGB document's own formula, the result back in Lab.
-        const B = labFloatToRgb(out[i], out[i + 1], out[i + 2]), Sx = labFloatToRgb(tmp[i], tmp[i + 1], tmp[i + 2]);
-        const rr = sep ? [sep(B[0], Sx[0]), sep(B[1], Sx[1]), sep(B[2], Sx[2])] : (nonSeparable(mode, B, Sx) ?? Sx);
-        const r3 = encodeLab(...srgbToLab(clamp01(rr[0]) * 255, clamp01(rr[1]) * 255, clamp01(rr[2]) * 255));
-        for (let c = 0; c < 3; c++) out[i + c] = (k1 * tmp[i + c] + k2 * r3[c] + k3 * out[i + c]) / ao;
-      } else if (sep || mode === 'dissolve') {
-        const f = sep ?? SEPARABLE_FLOAT.normal!;
-        for (let c = 0; c < A; c++) { const b = toValue(out[i + c]), s = toValue(tmp[i + c]), r = f(b, s); out[i + c] = fromValue((k1 * s + k2 * r + k3 * b) / ao); }
-      } else if (n === 4 && luts) {
-        const B = rgbOfInk(luts.out, out, i), Sx = rgbOfInk(luts.out, tmp, i), r4 = [0, 0, 0, 0];
-        if (mode === 'darker-color' || mode === 'lighter-color') {
-          const takeS = mode === 'darker-color' ? lum(Sx[0], Sx[1], Sx[2]) < lum(B[0], B[1], B[2]) : lum(Sx[0], Sx[1], Sx[2]) >= lum(B[0], B[1], B[2]);
-          for (let c = 0; c < 4; c++) r4[c] = takeS ? tmp[i + c] : out[i + c];
-        } else {
-          const rr = nonSeparable(mode, [B[0] / 255, B[1] / 255, B[2] / 255], [Sx[0] / 255, Sx[1] / 255, Sx[2] / 255]) ?? [Sx[0] / 255, Sx[1] / 255, Sx[2] / 255];
-          const r8 = { r: clamp01(rr[0]) * 255, g: clamp01(rr[1]) * 255, b: clamp01(rr[2]) * 255 }, after = inkOf(r8, luts.in), before = inkOf({ r: B[0], g: B[1], b: B[2] }, luts.in);
-          const w = clamp01(1 - Math.max(Math.abs(r8.r - B[0]), Math.abs(r8.g - B[1]), Math.abs(r8.b - B[2])) / KEEP_LEVELS);
-          for (let c = 0; c < 4; c++) r4[c] = clamp01(after[c] + w * (out[i + c] - before[c]));
-        }
-        for (let c = 0; c < 4; c++) out[i + c] = (k1 * tmp[i + c] + k2 * r4[c] + k3 * out[i + c]) / ao;
-      } else {
-        for (let c = 0; c < 3; c++) { bv[c] = toValue(out[i + c]); sv[c] = toValue(tmp[i + c]); }
-        const r = nonSeparable(mode, bv, sv) ?? sv;
-        for (let c = 0; c < 3; c++) out[i + c] = fromValue((k1 * sv[c] + k2 * r[c] + k3 * bv[c]) / ao);
-      }
-      out[i + A] = ao;
-    }
+    const clash = blendInto(out, tmp, l.blend ?? 'normal', op, cov, clipA, false, name);
+    if (clash) return clash;
   }
+  const last = flush();
+  if (last) return last;
+  return null;
+  };
+  const failed = run(out, null, new Set<ID>());
+  if (failed) return failed;
   return { width: W, height: H, data: out };
 }

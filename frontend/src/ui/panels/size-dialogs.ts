@@ -1,6 +1,6 @@
 import { clamp, type Engine, type RGB, type Transform } from '../../engine';
 import { Dialog } from '../dialogs';
-import { el, setClass, setText } from '../dom';
+import { el, q, setClass, setHidden, setText } from '../dom';
 import { toast } from '../toast';
 import { checkRow, numberRow, selectRow } from './controls';
 
@@ -216,11 +216,13 @@ export class FitImageDialog extends Dialog {
 
 export class AmountDialog extends Dialog {
   private expand = true;
-  private readonly amount = numberRow('Amount (px)', 1, 500, 1, () => {});
+  private readonly amount = numberRow('Amount (px)', 1, 1024, 1, () => {});
+  private readonly bounds = checkRow('Apply effect at canvas bounds', () => {});
+  private readonly range = el('<p class="cv-note">From 1 to 1024 pixels.</p>');
 
   constructor(private readonly engine: Engine) {
     super('Expand Selection', 360);
-    this.body.append(this.amount.el, el('<p class="cv-note">From 1 to 500 pixels.</p>'));
+    this.body.append(this.amount.el, this.bounds.el, this.range);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     enterTo(this.amount.input, () => this.apply());
@@ -235,6 +237,14 @@ export class AmountDialog extends Dialog {
     this.expand = expand;
     this.modify = modify;
     this.setTitle(modify ? `${modify[0].toUpperCase()}${modify.slice(1)} Selection` : expand ? 'Expand Selection' : 'Contract Selection');
+    const fine = modify === 'feather', hi = fine ? 1000 : 1024;
+    const mn = fine ? '0.1' : '1', st = fine ? '0.1' : '1';
+    if (this.amount.input.min !== mn) this.amount.input.min = mn;
+    if (this.amount.input.max !== String(hi)) this.amount.input.max = String(hi);
+    if (this.amount.input.step !== st) this.amount.input.step = st;
+    setText(this.range, fine ? 'From 0.1 to 1000 pixels.' : 'From 1 to 1024 pixels.');
+    setHidden(this.bounds.el, modify === 'border');
+    this.bounds.set(this.engine.selectionAtBounds);
     this.amount.set(modify ? this.engine.selectionAmounts[modify] : expand ? this.engine.selectionAmounts.expand : this.engine.selectionAmounts.contract);
     this.open(this.amount.input);
     this.amount.input.select();
@@ -243,12 +253,19 @@ export class AmountDialog extends Dialog {
   private apply(): void {
     const typed = Number(this.amount.input.value);
     if (!Number.isFinite(typed)) return;
-    const n = Math.min(500, Math.max(1, Math.round(typed)));
-    const m = this.modify;
-    if (m) { this.engine.selectionAmounts[m] = n; this.close(); this.engine.modifySelection(m, n); return; }
+    const m = this.modify, edge = !this.bounds.el.hidden && q<HTMLInputElement>(this.bounds.el, 'input').checked;
+    this.engine.selectionAtBounds = edge;
+    if (m) {
+      const n = m === 'feather' ? Math.min(1000, Math.max(0.1, Math.round(typed * 10) / 10)) : Math.min(1024, Math.max(1, Math.round(typed)));
+      this.engine.selectionAmounts[m] = n;
+      this.close();
+      this.engine.modifySelection(m, n, edge);
+      return;
+    }
+    const n = Math.min(1024, Math.max(1, Math.round(typed)));
     if (this.expand) this.engine.selectionAmounts.expand = n;
     else this.engine.selectionAmounts.contract = n;
     this.close();
-    this.engine.resizeSelection(this.expand ? n : -n);
+    this.engine.resizeSelection(this.expand ? n : -n, edge);
   }
 }

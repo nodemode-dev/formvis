@@ -4,6 +4,39 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.87.4 · 2026-10-19
+
+### Added
+
+- Channels panel: New Channel and Duplicate Channel buttons, drag alpha channels to reorder them, and Channel Options (name, overlay colour and opacity, masked or selected areas) from each row; the options are saved in the project.
+- Select > Load Luminosity (Alt+Mod+2) selects by brightness; Select > Load Vector Mask turns the active layer's vector mask into a selection; Layer > Vector Mask > Invert.
+- Layer > Stamp Down (Alt+Mod+E) merges a copy of the active layer into the one below, or of several selected layers into a new layer, keeping the originals.
+- With the Move tool's Auto-Select on (or Mod held), drag on empty canvas to select every layer inside the box; Shift adds.
+- Lock Transparent Pixels on the / key; with several layers selected the lock buttons lock all of them.
+- Folders offer Pass Through in the Blend list; Normal now isolates the folder.
+- A new adjustment layer made with a selection active is masked to that selection, as fill layers are.
+- History panel: Delete State removes a step and what came after it, New Document from State opens a step as its own document, and double-click a snapshot to rename it.
+- Pattern fill layers have Offset X, Offset Y and Snap to Origin.
+- Select > Modify takes up to 1024 pixels, Feather takes fractions from 0.1, and Apply effect at canvas bounds is a choice.
+- Selection Brush: Shift+Alt intersects with the current selection.
+- Rectangular Marquee: a Swap button exchanges the width and height for Fixed Ratio and Fixed Size.
+- Desktop app: pictures and projects opened from Finder, Explorer or a file manager open in the running window (a second launch hands its files over instead of starting again); quitting with unsaved documents asks first; Help > Check for Updates.
+- The Layers panel shows the active layer's size and scale, scrolls to and opens the folders around a layer selected on the canvas, scrolls with a middle-button drag, and Alt-click on a folder's triangle opens or closes every folder inside it. Alt-click on New Layer or New Folder opens its dialog.
+
+### Changed
+
+- Messages, notes, the manual and command descriptions name file formats (PSD, .abr, .aco and the rest) rather than other products.
+- Bring Forward and Send Backward move every selected layer.
+
+### Fixed
+
+- PSD files open at their own resolution and save it; a PSD cut short or damaged opens its layers, or its merged picture, with a note saying what was lost.
+- 16 and 32-bit documents composite folders in Multiply and the other modes, and adjustment layers in their blend modes, as 8-bit documents do.
+- 16-bit PNG and TIFF, very large PNG, AVIF, WebP and TIFF exports carry the document's colour profile.
+- Merge refuses layers whose pixels are locked.
+- Contract Selection shrinks a selection that fills its shape exactly (it did nothing before).
+- Desktop app: the window's own commands (fonts, open and save panels, menus, the native canvas) are allowed for the page the window loads from the local engine.
+
 ## 1.87.3 · 2026-10-19
 
 ### Changed

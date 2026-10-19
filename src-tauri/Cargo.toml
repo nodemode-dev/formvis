@@ -18,6 +18,8 @@ tauri = { version = "2", features = ["devtools"] }
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-updater = "2"
+# A second launch (a double-clicked project on Windows and Linux) hands its arguments to the running window.
+tauri-plugin-single-instance = "2"
 regex = "1"
 # tauri::generate_context! expands to code that uses serde_json, so the app crate must depend on it (Tauri's own
 # template does); without it the shell did not compile, which the first cargo check, in 1.43.0, found.

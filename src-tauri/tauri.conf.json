@@ -38,7 +38,8 @@
       "entitlements": "entitlements.plist"
     },
     "fileAssociations": [
-      { "ext": ["fvd", "fmv", "formvis"], "name": "formvis Project", "description": "formvis layered image project", "role": "Editor", "mimeType": "application/x-formvis" }
+      { "ext": ["fvd", "fmv", "formvis"], "name": "formvis Project", "description": "formvis layered image project", "role": "Editor", "mimeType": "application/x-formvis" },
+      { "ext": ["psd", "psb", "png", "jpg", "jpeg", "tif", "tiff", "webp", "exr", "ora"], "name": "Picture", "description": "Picture formvis can open", "role": "Editor" }
     ],
     "createUpdaterArtifacts": false
   },

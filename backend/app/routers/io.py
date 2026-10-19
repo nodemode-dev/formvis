@@ -120,8 +120,9 @@ def exr_parts(file: UploadFile = File(...)) -> Response:
 
 
 @router.post("/encode-deep")
-def encode_deep(file: UploadFile = File(...), width: int = Form(...), height: int = Form(...), format: str = Form("png")) -> Response:
-    """A 16-bit PNG or TIFF from RGBA, 16 bits a channel, little-endian (1.53.6, H1)."""
+def encode_deep(file: UploadFile = File(...), width: int = Form(...), height: int = Form(...), format: str = Form("png"), icc: UploadFile | None = File(default=None), icc_name: str = Form("")) -> Response:
+    """A 16-bit PNG or TIFF from RGBA, 16 bits a channel, little-endian (1.53.6, H1). `icc`, when sent, is embedded in
+    the 16-bit PNG (iCCP) and TIFF (tag 34675), the profile the pixels are in."""
     import cv2
     import numpy as np
     if format not in ("png", "tiff", "hdr", "exr", "tiff32"):
@@ -143,7 +144,23 @@ def encode_deep(file: UploadFile = File(...), width: int = Form(...), height: in
         ok, out = cv2.imencode({"png": ".png", "tiff": ".tif", "tiff32": ".tif"}[format], cv2.cvtColor(np.ascontiguousarray(img), cv2.COLOR_RGBA2BGRA))
     if not ok:
         raise HTTPException(status_code=500, detail="The 16-bit file could not be written.")
-    return Response(out.tobytes(), media_type={"png": "image/png", "hdr": "image/vnd.radiance", "exr": "image/x-exr"}.get(format, "image/tiff"))
+    data = out.tobytes()
+    profile = icc.file.read() if icc else b""
+    if len(profile) > 1_000_000:
+        raise HTTPException(status_code=422, detail="The colour profile is too large.")
+    if profile and format == "png":
+        import struct
+        import zlib
+        label = icc_name.encode("latin-1", "ignore").replace(b"\x00", b"")[:79] or b"ICC profile"
+        body = b"iCCP" + label + b"\x00\x00" + zlib.compress(profile)
+        chunk = struct.pack(">I", len(body) - 4) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
+        data = data[:33] + chunk + data[33:]   # straight after IHDR, before any data
+    elif profile and format == "tiff":
+        import tifffile
+        buf = io.BytesIO()
+        tifffile.imwrite(buf, np.ascontiguousarray(img), photometric="rgb", extrasamples=["unassalpha"], compression="zlib", extratags=[(34675, "B", len(profile), profile, True)])
+        data = buf.getvalue()
+    return Response(data, media_type={"png": "image/png", "hdr": "image/vnd.radiance", "exr": "image/x-exr"}.get(format, "image/tiff"))
 
 
 @router.post("/encode-dpx")
@@ -189,7 +206,7 @@ def _pack(meta: dict, chunks: list[bytes]) -> bytes:
 def encode_tiff16(width: int = Form(...), height: int = Form(...), space: str = Form(...), file: list[UploadFile] = File(...)) -> Response:
     """16-bit CMYK and Lab TIFFs (1.57.8), which Pillow does not write, through tifffile (BSD-3-Clause, Christoph
     Gohlke): CMYK as separated inks with the document's profile embedded; Lab as CIELab with L* over 0 to 65535 and a*
-    and b* as signed 16-bit values (a* times 256), as the TIFF specification and Photoshop have them. The window sends
+    and b* as signed 16-bit values (a* times 256), as the TIFF specification has them. The window sends
     16-bit values: inks, or L and a and b in its own encoding (a and b at half for neutral). zlib-compressed."""
     import tifffile
     parts = {f.filename: f.file.read() for f in file}
@@ -214,7 +231,7 @@ def encode_tiff16(width: int = Form(...), height: int = Form(...), space: str = 
 
 @router.post("/encode-lab-tiff")
 def encode_lab_tiff(width: int = Form(...), height: int = Form(...), file: UploadFile = File(...)) -> Response:
-    """A Lab TIFF (1.56.6, DEV_PLAN 22.9): 8-bit CIELab (photometric 8) as the TIFF specification and Photoshop have it,
+    """A Lab TIFF (1.56.6, DEV_PLAN 22.9): 8-bit CIELab (photometric 8) as the TIFF specification has it,
     L* as L * 255 / 100 and a* and b* as signed bytes. The window sends a and b offset by 128; they are turned signed
     here, since Pillow writes the bytes it is given (its own reading of such a file differs, which a spec reader's
     does not), and the file is LZW-compressed."""
@@ -261,9 +278,9 @@ def decode_lab(file: UploadFile = File(...)) -> Response:
         W, H = psd.width, psd.height
         pixel = [l for l in psd.descendants() if l.kind == "pixel" and l.width > 0 and l.height > 0]
         def from_numpy(v: np.ndarray) -> np.ndarray:
-            # Photoshop's layout stores a Lab PSD's L, a and b each over 0 to 255, a and b offset by 128; psd-tools'
+            # The PSD layout stores a Lab PSD's L, a and b each over 0 to 255, a and b offset by 128; psd-tools'
             # numpy gives them over 0 to 1, which is formvis's own encoding. (psd-tools' own Lab writer puts a* and b*
-            # signed on disk instead, which is not Photoshop's layout; such files read wrongly here.)
+            # signed on disk instead, which is not the PSD layout; such files read wrongly here.)
             return np.clip(np.asarray(v, np.float64)[..., :3], 0, 1) * 65535.0
 
         for layer in pixel:
@@ -291,7 +308,7 @@ def decode_lab(file: UploadFile = File(...)) -> Response:
             im = None
         W = H = 0
         if im is not None and im.mode == "LAB":
-            # The TIFF specification's CIELab has a* and b* signed, as formvis (1.56.6) and Photoshop write them; Pillow
+            # The TIFF specification's CIELab has a* and b* signed, as formvis (1.56.6) writes them; Pillow
             # hands the file's bytes over as they are (and writes its own files with them offset, which this reads as
             # the specification says).
             W, H = im.size
@@ -367,7 +384,7 @@ def decode_cmyk_psd(file: UploadFile = File(...)) -> Response:
 def encode_cmyk_psd(meta: str = Form(...), file: UploadFile = File(...)) -> Response:
     """A layered CMYK PSD (1.56.1), written by psd-tools: the request's `meta` names the document's size and each
     layer's name, place, size, opacity, visibility and blend mode; `file` holds the composite's C, M, Y, K and alpha
-    bytes, then each layer's, then the profile. A layer's transparency is stored as a layer mask, as Photoshop's CMYK
+    bytes, then each layer's, then the profile. A layer's transparency is stored as a layer mask, as CMYK
     documents hold no transparency band."""
     from PIL import Image
     from psd_tools import PSDImage
@@ -410,7 +427,7 @@ def encode_cmyk_psd(meta: str = Form(...), file: UploadFile = File(...)) -> Resp
 
 @router.post("/encode-lab-psd")
 def encode_lab_psd(meta: str = Form(...), file: UploadFile = File(...)) -> Response:
-    """A layered Lab PSD (DEV_PLAN 36.11, colour mode 9), written by psd-tools as Photoshop lays it out: L over 0 to 255
+    """A layered Lab PSD (DEV_PLAN 36.11, colour mode 9), written by psd-tools in the PSD layout: L over 0 to 255
     for 0 to 100, a and b over 0 to 255 with 128 for zero. `meta` names the document's size and each layer's name,
     place, size, opacity, visibility and blend mode; `file` holds the composite's L, a and b bytes (laid on white
     already), then each layer's L, a, b and alpha bytes. A layer's transparency is its transparency channel, which

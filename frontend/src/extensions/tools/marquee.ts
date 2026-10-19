@@ -163,6 +163,7 @@ export const marqueeTool: Tool = {
     { kind: 'number', label: 'Height', priority: 76, min: 0.01, max: 1000, get: () => e.marqueeRatio.h, set: (v: number) => { e.marqueeRatio = { ...e.marqueeRatio, h: Math.max(0.01, v) }; e.emit('options', null); }, when: () => e.marqueeStyle === 'ratio' },
     { kind: 'number', label: 'Width', priority: 76, min: 1, max: 30000, unit: 'px', get: () => e.marqueeSize.w, set: (v: number) => { e.marqueeSize = { ...e.marqueeSize, w: Math.max(1, Math.round(v)) }; e.emit('options', null); }, when: () => e.marqueeStyle === 'size' },
     { kind: 'number', label: 'Height', priority: 76, min: 1, max: 30000, unit: 'px', get: () => e.marqueeSize.h, set: (v: number) => { e.marqueeSize = { ...e.marqueeSize, h: Math.max(1, Math.round(v)) }; e.emit('options', null); }, when: () => e.marqueeStyle === 'size' },
+    { kind: 'button', label: 'Swap Width and Height', priority: 75, compact: true, icon: 'swap', run: () => { if (e.marqueeStyle === 'size') e.marqueeSize = { w: e.marqueeSize.h, h: e.marqueeSize.w }; else e.marqueeRatio = { w: e.marqueeRatio.h, h: e.marqueeRatio.w }; e.emit('options', null); }, when: () => e.marqueeStyle !== 'normal' },
     modeSegment(e),
     { kind: 'button', label: 'Deselect', priority: 30, run: () => toolHost.run('deselect'), when: () => !!e.current?.selection },
     { kind: 'button', label: 'Select and Mask...', priority: 25, run: () => toolHost.run('select-and-mask') }

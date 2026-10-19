@@ -24,7 +24,7 @@ const clickMode = (e: MouseEvent): SelectionMode => (e.shiftKey && e.altKey ? 'i
 
 export class ChannelsPanel {
   readonly root = el(`<section class="cv-channels" aria-label="Channels" hidden><div class="cv-ch-rows"></div><div class="cv-ch-rows cv-ch-alphas" aria-label="Alpha channels"></div><p class="cv-ch-note"></p>` +
-    `<div class="cv-ch-foot"><button class="cv-icon-btn" type="button" data-cmd="load-selection" aria-label="Load Selection">${icon('marquee', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="save-selection-channel" aria-label="Save Selection as Channel">${icon('mask', 16)}</button></div></section>`);
+    `<div class="cv-ch-foot"><button class="cv-icon-btn" type="button" data-cmd="load-selection" aria-label="Load Selection">${icon('marquee', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="save-selection-channel" aria-label="Save Selection as Channel">${icon('mask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="duplicate-channel" aria-label="Duplicate Channel">${icon('duplicate', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-channel" aria-label="New Channel">${icon('add', 16)}</button></div></section>`);
   private readonly alphaRows = this.root.querySelector('.cv-ch-alphas') as HTMLElement;
   private readonly drawn = new WeakMap<HTMLElement, { mask: SelectionMask | null; w: number; h: number }>();
   private readonly shown = { r: true, g: true, b: true };
@@ -34,7 +34,7 @@ export class ChannelsPanel {
   private readonly thumbs = new Map<Ch, HTMLCanvasElement>();
   private timer = 0;
 
-  constructor(private readonly engine: Engine, private readonly stage: HTMLElement) {
+  constructor(private readonly engine: Engine, private readonly stage: HTMLElement, private readonly onOptions: (id: string) => void = () => undefined) {
     const rows = this.root.querySelector('.cv-ch-rows') as HTMLElement;
     for (const r of ROWS) {
       const row = el<HTMLDivElement>(`<div class="cv-ch-row" role="button" tabindex="0"><button class="cv-ch-eye" type="button">${icon('eye', 15)}</button><canvas class="cv-ch-thumb" width="44" height="30"></canvas><span class="cv-ch-name"></span></div>`);
@@ -156,8 +156,21 @@ export class ChannelsPanel {
   }
 
   private alphaRow(): HTMLElement {
-    const row = el(`<div class="cv-ch-row cv-ch-alpha" role="button" tabindex="0"><button class="cv-ch-eye" type="button">${icon('eye', 15)}</button><canvas class="cv-ch-thumb" width="44" height="30"></canvas><span class="cv-ch-name"></span><button class="cv-icon-btn cv-ch-delete" type="button" title="Delete channel" aria-label="Delete channel">${icon('delete', 14)}</button></div>`);
+    const row = el(`<div class="cv-ch-row cv-ch-alpha" role="button" tabindex="0"><button class="cv-ch-eye" type="button">${icon('eye', 15)}</button><canvas class="cv-ch-thumb" width="44" height="30"></canvas><span class="cv-ch-name"></span><button class="cv-icon-btn cv-ch-options" type="button" title="Channel Options" aria-label="Channel Options">${icon('settings', 14)}</button><button class="cv-icon-btn cv-ch-delete" type="button" title="Delete channel" aria-label="Delete channel">${icon('delete', 14)}</button></div>`);
     const id = (): string => row.dataset.key ?? '';
+    q(row, '.cv-ch-options').addEventListener('click', (e) => { e.stopPropagation(); this.onOptions(id()); });
+    row.draggable = true;
+    row.addEventListener('dragstart', (e) => { e.dataTransfer?.setData('text/x-formvis-channel', id()); if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'; });
+    row.addEventListener('dragover', (e) => { if (e.dataTransfer?.types.includes('text/x-formvis-channel')) { e.preventDefault(); row.classList.add('is-drop'); } });
+    row.addEventListener('dragleave', () => row.classList.remove('is-drop'));
+    row.addEventListener('drop', (e) => {
+      row.classList.remove('is-drop');
+      const from = e.dataTransfer?.getData('text/x-formvis-channel');
+      const list = this.engine.current?.doc.alphas ?? [], to = list.findIndex((a) => a.id === id());
+      if (!from || to < 0) return;
+      e.preventDefault();
+      this.engine.moveAlpha(from, to);
+    });
     q(row, '.cv-ch-eye').addEventListener('click', (e) => { e.stopPropagation(); this.engine.showAlpha(id(), !row.classList.contains('is-on')); this.syncAlphas(); });
     q(row, '.cv-ch-delete').addEventListener('click', (e) => { e.stopPropagation(); this.engine.deleteAlpha(id()); });
     q(row, '.cv-ch-name').addEventListener('dblclick', () => this.rename(row));

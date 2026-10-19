@@ -358,20 +358,24 @@ export function layerAt(host: PaintHost, pt: Pt): ID | null {
   return null;
 }
 
-export function resizeSelection(host: PaintHost, delta: number): void {
+export function resizeSelection(host: PaintHost, delta: number, atBounds = false): void {
   const p = host.current;
-  if (!p || !p.selection || delta === 0 || Math.abs(delta) > 500) return;
+  if (!p || !p.selection || delta === 0 || Math.abs(delta) > 1024) return;
   const sel = p.selection;
-  const pad = delta > 0 ? delta : 0;
-  const x0 = Math.max(0, sel.x - pad);
-  const y0 = Math.max(0, sel.y - pad);
-  const x1 = Math.min(p.doc.width, sel.x + sel.w + pad);
-  const y1 = Math.min(p.doc.height, sel.y + sel.h + pad);
-  const w = x1 - x0;
-  const h = y1 - y0;
-  if (w <= 0 || h <= 0) return;
+  const W = p.doc.width, H = p.doc.height, m = Math.ceil(Math.abs(delta)) + 2;
+  // The working area reaches past the outline (and past the canvas) so a contraction has unselected pixels to measure
+  // from. Unless the effect applies at canvas bounds, the canvas edge pixels carry on past the canvas, so the outline
+  // does not pull away from it.
+  const x0 = sel.x - m, y0 = sel.y - m, w = sel.w + 2 * m, h = sel.h + 2 * m;
   const data = new Uint8Array(w * h);
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) data[y * w + x] = sel.valueAt(x0 + x, y0 + y);
-  const out = resizeMask(data, w, h, delta);
-  host.applySelection(SelectionMask.cropped(x0, y0, w, h, out), 'replace', delta > 0 ? 'Expand Selection' : 'Contract Selection');
+  for (let y = 0; y < h; y++) {
+    const sy = atBounds ? y0 + y : Math.min(H - 1, Math.max(0, y0 + y));
+    for (let x = 0; x < w; x++) data[y * w + x] = sel.valueAt(atBounds ? x0 + x : Math.min(W - 1, Math.max(0, x0 + x)), sy);
+  }
+  const grown = resizeMask(data, w, h, delta);
+  const cx0 = Math.max(0, x0), cy0 = Math.max(0, y0), cw = Math.min(W, x0 + w) - cx0, ch = Math.min(H, y0 + h) - cy0;
+  if (cw <= 0 || ch <= 0) return;
+  const out = new Uint8Array(cw * ch);
+  for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) out[y * cw + x] = grown[(cy0 - y0 + y) * w + cx0 - x0 + x];
+  host.applySelection(SelectionMask.cropped(cx0, cy0, cw, ch, out), 'replace', delta > 0 ? 'Expand Selection' : 'Contract Selection');
 }

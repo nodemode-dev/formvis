@@ -422,7 +422,7 @@ export class Stage {
     if (!show) return;
     const p = this.engine.current as NonNullable<Engine['current']>, v = p.viewport, pal = paint(), d = this.dpr;
     // Preferences > Units & Rulers: each ruler in the chosen unit (the document's resolution; percent of its side), its
-    // ticks at round steps of that unit, as Photoshop's.
+    // ticks at round steps of that unit.
     const res = p.doc.resolution || 72, u = Stage.prefs.rulerUnits;
     for (const [c, horiz] of [[this.rulerH, true], [this.rulerV, false]] as const) {
       const k = u === 'in' ? res : u === 'cm' ? res / 2.54 : u === 'mm' ? res / 25.4 : u === '%' ? (horiz ? p.doc.width : p.doc.height) / 100 : 1;
@@ -483,7 +483,13 @@ export class Stage {
     const c = document.createElement('canvas');
     c.width = W; c.height = H;
     const t = c.getContext('2d') as CanvasRenderingContext2D;
-    t.fillStyle = 'rgba(255, 0, 0, 0.5)';
+    const k = a.color ?? { r: 255, g: 0, b: 0 }, op = (a.opacity ?? 50) / 100;
+    t.fillStyle = `rgba(${k.r}, ${k.g}, ${k.b}, ${op})`;
+    if (a.indicates === 'selected') {
+      if (a.mask) { t.drawImage(a.mask.surface() as CanvasImageSource, a.mask.x, a.mask.y); t.globalCompositeOperation = 'source-in'; t.fillRect(0, 0, W, H); }
+      this.alphaTints.set(a, c);
+      return c;
+    }
     t.fillRect(0, 0, W, H);
     t.globalCompositeOperation = 'destination-out';
     if (a.mask) t.drawImage(a.mask.surface() as CanvasImageSource, a.mask.x, a.mask.y);
@@ -502,7 +508,7 @@ export class Stage {
     const pal = paint();
     const v = p.viewport;
     const sel = p.selection, fl = sel ? null : this.engine.floatingOutline(p);
-    // Notes and counts (1.49.6), shown whatever the tool, as Photoshop's: a note as a small sticky square (the one open
+    // Notes and counts (1.49.6), shown whatever the tool: a note as a small sticky square (the one open
     // highlighted), a count as its number by a dot, dark over light so they read on any image.
     {
       const d = this.dpr;
@@ -522,7 +528,7 @@ export class Stage {
       });
       g.restore();
     }
-    // Empty frames (the Frame tool) show their placeholder, as Photoshop's: the outline and a cross, never exported.
+    // Empty frames (the Frame tool) show their placeholder: the outline and a cross, never exported.
     for (const f of p.doc.layers) {
       if (!f.frame || !f.visible || p.doc.layers.some((c) => c.parentId === f.id)) continue;
       const r = f.frame, a = v.toScreen(r.x, r.y), b = v.toScreen(r.x + r.w, r.y + r.h), d = this.dpr;
@@ -692,7 +698,7 @@ export class Stage {
   /** Touch gestures (1.58.6, the parity plan's L12), as on a tablet: one finger works the tool; a second finger undoes
    *  whatever the first began and starts a gesture, in which the fingers' spread zooms about their midpoint, the
    *  midpoint's travel pans, and turning them turns the view once past 10 degrees (a pinch alone never turns it). A
-   *  quick tap of two fingers undoes, of three redoes, as Procreate and Photoshop on iPad. Capture-phase listeners, so
+   *  quick tap of two fingers undoes, of three redoes, as tablet painting apps do. Capture-phase listeners, so
    *  the tools never see a gesture's fingers; pens and mice pass straight through. */
   private bindTouch(): void {
     const o = this.overlay, touches = new Map<number, { x: number; y: number; x0: number; y0: number; t: number }>();

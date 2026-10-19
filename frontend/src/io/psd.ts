@@ -290,18 +290,124 @@ function familyOf(psName: string): { family: string; bold: boolean; italic: bool
   return { family: known?.[0] ?? guess ?? psName, bold: /bold/i.test(psName), italic: /italic|oblique/i.test(psName) };
 }
 
+/** Where the sections of a PSD or PSB start, from its header; null when the header is not one or is cut short. */
+function psdSections(buf: ArrayBuffer): { big: boolean; cmStart: number; resStart: number; resEnd: number; layerStart: number } | null {
+  if (buf.byteLength < 38) return null;
+  const v = new DataView(buf);
+  if (v.getUint32(0) !== 0x38425053) return null;
+  const big = v.getUint16(4) === 2, cmStart = 26, resStart = cmStart + 4 + v.getUint32(cmStart);
+  if (resStart + 4 > buf.byteLength) return null;
+  const resEnd = resStart + 4 + v.getUint32(resStart);
+  return resEnd <= buf.byteLength ? { big, cmStart, resStart, resEnd, layerStart: resEnd } : null;
+}
+
+/** The print resolution in pixels per inch from image resource 1005, or null where the file states none. */
+function psdResolution(buf: ArrayBuffer): number | null {
+  const s = psdSections(buf);
+  if (!s) return null;
+  const v = new DataView(buf);
+  for (let i = s.resStart + 4; i + 12 <= s.resEnd;) {
+    const id = v.getUint16(i + 4), nameLen = v.getUint8(i + 6), at = i + 6 + ((1 + nameLen + 1) & ~1), size = v.getUint32(at);
+    if (id === 1005 && size >= 16 && at + 8 <= s.resEnd) {
+      const ppi = v.getInt32(at + 4) / 65536 * (v.getUint16(at + 8) === 2 ? 2.54 : 1);
+      return ppi >= 1 && ppi <= 65535 ? Math.round(ppi * 100) / 100 : null;
+    }
+    i = at + 4 + ((size + 1) & ~1);
+  }
+  return null;
+}
+
+/** The file with zeros added where it ends before its layer section does, so the layers that are whole still read;
+ *  null when the file is not short that way. */
+function padToLayers(buf: ArrayBuffer): ArrayBuffer | null {
+  const s = psdSections(buf);
+  if (!s) return null;
+  const lenSize = s.big ? 8 : 4;
+  if (s.layerStart + lenSize > buf.byteLength) return null;
+  const v = new DataView(buf), end = s.layerStart + lenSize + (s.big ? Number(v.getBigUint64(s.layerStart)) : v.getUint32(s.layerStart));
+  if (end <= buf.byteLength || end - buf.byteLength > 256 * 1024 * 1024) return null;
+  const out = new Uint8Array(end);
+  out.set(new Uint8Array(buf));
+  return out.buffer;
+}
+
+/** True where the merged image at the end of a PSD is plainly cut short (raw or run-length coded data). */
+function mergedIsShort(buf: ArrayBuffer): boolean {
+  const s = psdSections(buf);
+  if (!s) return false;
+  const lenSize = s.big ? 8 : 4, v = new DataView(buf);
+  if (s.layerStart + lenSize > buf.byteLength) return false;
+  const at = s.layerStart + lenSize + (s.big ? Number(v.getBigUint64(s.layerStart)) : v.getUint32(s.layerStart));
+  if (at + 2 > buf.byteLength) return at >= buf.byteLength;
+  const channels = v.getUint16(12), height = v.getUint32(14), width = v.getUint32(18), bytes = Math.max(1, v.getUint16(22) >> 3), mode = v.getUint16(at);
+  if (mode === 0) return buf.byteLength - at - 2 < width * height * channels * bytes;
+  if (mode !== 1) return false;
+  const rows = channels * height, wide = s.big ? 4 : 2;
+  if (at + 2 + rows * wide > buf.byteLength) return true;
+  let total = 2 + rows * wide;
+  for (let i = 0; i < rows; i++) total += s.big ? v.getUint32(at + 2 + i * 4) : v.getUint16(at + 2 + i * 2);
+  return at + total > buf.byteLength;
+}
+
+/** A PSD whose layers could not be read, opened from what is left: the merged image at the end of the file, else the
+ *  one `decode` (the engine's flat reading) returns. Throws when neither can be read. */
+export async function readPsdFlat(file: File, decode?: (f: File) => Promise<Blob>): Promise<{ doc: Doc; notes: string[]; activeId: ID | null; paths: PathSet | null }> {
+  const buffer = await file.arrayBuffer(), s = psdSections(buffer), resolution = psdResolution(buffer);
+  let flat: { source: CanvasImageSource; width: number; height: number } | null = null;
+  if (s) {
+    try {
+      // The same file with an empty layer section, so the merged image after it reads on its own.
+      const v = new DataView(buffer), lenAt = s.layerStart, lenSize = s.big ? 8 : 4, layerLen = s.big ? Number(v.getBigUint64(lenAt)) : v.getUint32(lenAt);
+      const tail = lenAt + lenSize + layerLen;
+      if (tail < buffer.byteLength) {
+        const head = new Uint8Array(buffer, 0, s.layerStart), rest = new Uint8Array(buffer, tail), out = new Uint8Array(head.length + lenSize * 2 + rest.length);
+        out.set(head);
+        new DataView(out.buffer).setUint32(head.length + lenSize - 4, lenSize);   // a layer section holding only a zero layer-info length
+        out.set(rest, head.length + lenSize * 2);
+        const { readPsd } = await import('ag-psd');
+        const psd = readPsd(out.buffer, { skipThumbnail: true });
+        if (psd.canvas) flat = { source: psd.canvas, width: psd.width, height: psd.height };
+      }
+    } catch { /* the merged image is damaged too */ }
+  }
+  if (!flat && decode) {
+    try {
+      const bmp = await createImageBitmap(await decode(file));
+      flat = { source: bmp, width: bmp.width, height: bmp.height };
+    } catch { /* the engine could not read it either */ }
+  }
+  if (!flat) throw new Error('This PSD is damaged: neither its layers nor its merged image could be read.');
+  const c = canvas(flat.width, flat.height);
+  (c.getContext('2d') as CanvasRenderingContext2D).drawImage(flat.source, 0, 0);
+  const doc: Doc = { id: uid(), width: flat.width, height: flat.height, resolution: resolution ?? 72, layers: [] };
+  const layer = newLayer('Background', doc, { raster: Raster.from(c, flat.width, flat.height) });
+  const notes = ['This PSD is damaged: its layers could not be read, so it opened as one flattened layer.'];
+  if (mergedIsShort(buffer)) notes.push('The merged image is cut short too, so part of it is blank.');
+  return { doc: { ...doc, layers: [layer] }, notes, activeId: layer.id, paths: null };
+}
+
 export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string[]; activeId: ID | null; paths: PathSet | null }> {
   const { readPsd } = await import('ag-psd');
   const buffer = await file.arrayBuffer();
-  const psd = readPsd(buffer, { skipThumbnail: true });
+  let psd: Psd, cut: 'merged' | 'layers' | null = null;
+  try { psd = readPsd(buffer, { skipThumbnail: true }); if (mergedIsShort(buffer)) cut = 'merged'; } catch (err) {
+    // A file cut short loses its merged image first, then its last layers; what is whole still reads.
+    try { psd = readPsd(buffer, { skipThumbnail: true, skipCompositeImageData: true }); cut = 'merged'; } catch {
+      const padded = padToLayers(buffer);
+      if (!padded) throw err;
+      try { psd = readPsd(padded, { skipThumbnail: true, skipCompositeImageData: true }); cut = 'layers'; } catch { throw err; }
+    }
+  }
   // Smart objects' embedded contents, decoded before the layers are built.
   const contents = new Map<string, Raster | null>();
   for (const lf of psd.linkedFiles ?? []) if (lf.data) contents.set(lf.id, await decodeLinked(lf.data, readPsd));
   const fileInfo = psd.imageResources?.xmpMetadata ? metaFromXmp(psd.imageResources.xmpMetadata) : null;   // File Info (29.2): the XMP image resource
   const parRead = psd.imageResources?.pixelAspectRatio?.aspect;   // Pixel Aspect Ratio (35.4 part b)
-  const doc: Doc = { id: uid(), width: psd.width, height: psd.height, resolution: 72, layers: [], ...(fileInfo ? { meta: fileInfo } : {}), ...(typeof parRead === 'number' && parRead > 0 && parRead !== 1 ? { pixelAspect: parRead } : {}) };
+  const doc: Doc = { id: uid(), width: psd.width, height: psd.height, resolution: psdResolution(buffer) ?? 72, layers: [], ...(fileInfo ? { meta: fileInfo } : {}), ...(typeof parRead === 'number' && parRead > 0 && parRead !== 1 ? { pixelAspect: parRead } : {}) };
   const layers: Layer[] = [], notes: string[] = [], links = new Map<number, ID>(), psdIds = new Map<PsdLayer, ID>();
-  const linkOf = (pl: PsdLayer): { link?: ID } => {
+  if (cut === 'merged') notes.push('This PSD is cut short: its layers opened, but its merged image is incomplete.');
+  if (cut === 'layers') notes.push('This PSD is cut short: the layers after the cut are blank and its merged image is missing.');
+  const linkOf =(pl: PsdLayer): { link?: ID } => {
     const g = pl.linkGroup;
     if (!g || pl.linkGroupEnabled === false) return {};
     if (!links.has(g)) links.set(g, uid());
@@ -602,5 +708,7 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
   if (psdPatterns.length) psd.patterns = psdPatterns;
   if (metaWritable(doc.meta)) psd.imageResources = { ...(psd.imageResources ?? {}), xmpMetadata: buildXmp(doc.meta) };   // kept beside the layer comps   // File Info (29.2) as the XMP image resource
   if (doc.pixelAspect && doc.pixelAspect !== 1) psd.imageResources = { ...(psd.imageResources ?? {}), pixelAspectRatio: { aspect: doc.pixelAspect } };   // Pixel Aspect Ratio (35.4 part b)
+  const ppi = doc.resolution && doc.resolution >= 1 && doc.resolution <= 65535 ? doc.resolution : 72;   // image resource 1005
+  psd.imageResources = { ...(psd.imageResources ?? {}), resolutionInfo: { horizontalResolution: ppi, horizontalResolutionUnit: 'PPI', widthUnit: 'Inches', verticalResolution: ppi, verticalResolutionUnit: 'PPI', heightUnit: 'Inches' } };
   return { bytes: addPathResources(writePsd(psd, { generateThumbnail: false, psb }), paths, doc.width, doc.height), notes };
 }

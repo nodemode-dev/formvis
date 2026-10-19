@@ -305,7 +305,7 @@ export class Engine {
   private viewSize = { w: 800, h: 600 };
   private readonly display = new Renderer();
   private readonly work = new Renderer();
-  private stroke: { project: Project; layerId: ID; target: Target; s: PixelStroke; heal?: HealMode | 'remove'; healFrom?: Pt; quick?: Raster } | null = null;
+  private stroke: { project: Project; layerId: ID; target: Target; s: PixelStroke; heal?: HealMode | 'remove'; healFrom?: Pt; quick?: Raster; meet?: SelectionMask | null } | null = null;
 
   /** Quick Mask (Q), as Photoshop's: the Brush and Eraser paint the selection itself, white adding to it and black
    *  taking away (the Eraser the other way), shown as a red tint where nothing is selected. Each stroke becomes the new
@@ -323,30 +323,31 @@ export class Engine {
 
   /** The Selection Brush (W; 1.49.4, the owner's tool list): paints the selection itself, adding, or taking away with
    *  Alt, whether or not Quick Mask is on; with no selection it starts from nothing selected. One step per stroke. */
-  beginSelectionBrushStroke(pt: Pt, subtract: boolean, pressure = 1, pose: PenPose = UPRIGHT): boolean {
+  beginSelectionBrushStroke(pt: Pt, subtract: boolean, pressure = 1, pose: PenPose = UPRIGHT, intersect = false): boolean {
     const p = this.current;
     if (!p || this.stroke) return false;
     this.settle();
-    return this.beginQuickMaskStroke(p, pt, pressure, pose, subtract ? 'subtract' : 'add');
+    return this.beginQuickMaskStroke(p, pt, pressure, pose, intersect ? 'intersect' : subtract ? 'subtract' : 'add');
   }
 
-  private beginQuickMaskStroke(p: Project, pt: Pt, pressure: number, pose: PenPose, force?: 'add' | 'subtract'): boolean {
+  /** `force` 'intersect' paints the area to keep: the stroke's coverage is met with the selection as it was when it ends. */
+  private beginQuickMaskStroke(p: Project, pt: Pt, pressure: number, pose: PenPose, force?: 'add' | 'subtract' | 'intersect'): boolean {
     const { width: W, height: H } = p.doc, sel = p.selection, r = new Raster(W, H);
     p.history.begin(force ? 'Selection Brush' : 'Quick Mask', p.snapshot());
     const img = new ImageData(W, H), d = img.data;
     if (!sel && !force) d.fill(255);   // Quick Mask: no selection is all selected; the Selection Brush starts from none
-    else if (sel) for (let y = 0; y < sel.h; y++) {
+    else if (sel && force !== 'intersect') for (let y = 0; y < sel.h; y++) {
       const Y = sel.y + y;
       if (Y < 0 || Y >= H) continue;
       for (let x = 0; x < sel.w; x++) { const X = sel.x + x; if (X < 0 || X >= W) continue; const i = (Y * W + X) * 4; d[i] = d[i + 1] = d[i + 2] = 255; d[i + 3] = sel.data[y * sel.w + x]; }
     }
     ctxOf(r.canvas).putImageData(img, 0, 0);
-    const white = force ? force === 'add' : luminance(this.fg) >= 0.5 !== (this.brushMode === 'erase');
+    const white = force ? force !== 'subtract' : luminance(this.fg) >= 0.5 !== (this.brushMode === 'erase');
     const s = new PixelStroke(r, [1, 0, 0, 1, 0, 0], { ...this.brush, color: { r: 255, g: 255, b: 255 }, flow: this.brushFlow }, white ? 'source-over' : 'destination-out', null);
     s.keepWhole();   // its working surface is the live mask, read whole (1.60.6)
     s.dynamics = structuredClone(this.brushDynamics);
     s.setShape(this.brushShape, null);
-    this.stroke = { project: p, layerId: p.activeId ?? '', target: 'pixels', s, quick: r };
+    this.stroke = { project: p, layerId: p.activeId ?? '', target: 'pixels', s, quick: r, ...(force === 'intersect' ? { meet: sel } : {}) };
     s.to(pt, pressure, pose);
     s.compose();
     this.emit('selection', null);
@@ -396,6 +397,14 @@ export class Engine {
       }
       return changed;
     });
+  }
+  /** A Lock row button or the "/" key: the selected layers get this lock unless every one of them already has it, then it
+   *  comes off them all. */
+  toggleLock(kind: keyof LayerLocks): void {
+    const p = this.current;
+    if (!p) return;
+    const sel = [...p.selectedIds].map((id) => p.layer(id)).filter((l): l is Layer => !!l);
+    if (sel.length) this.setLocks({ [kind]: !sel.every((l) => l.locks?.[kind]) });
   }
   /** Layer Comps: record the layers' visibility, position and appearance as a new comp (all three on by default). */
   newLayerComp(opts: CompOptions = {}): ID | null {
@@ -1171,7 +1180,10 @@ export class Engine {
   get snapshots(): ReadonlyArray<{ id: ID; name: string; bytes: number }> { return SN.snapshots(this.snapshotHost); }
 
   /** History > New Snapshot: the document as it is now, kept to return to however far the steps move on. */
-  takeSnapshot(): void { SN.takeSnapshot(this.snapshotHost); }
+  takeSnapshot(name?: string): void { SN.takeSnapshot(this.snapshotHost, name); }
+
+  /** Gives a snapshot a name of its own (the History panel: double-click it). */
+  renameSnapshot(id: ID, name: string): boolean { return SN.renameSnapshot(this.snapshotHost, id, name); }
 
   /** Returns the document to a snapshot as one undo step, from a fresh copy, so the snapshot stays as it was taken. */
   revertToSnapshot(id: ID): void { SN.revertToSnapshot(this.snapshotHost, id); }
@@ -1197,6 +1209,41 @@ export class Engine {
     const { names, current } = p.history.steps, target = Math.max(0, Math.min(names.length, Math.round(index)));
     for (let k = current; k > target; k--) this.undo();
     for (let k = current; k < target; k++) this.redo();
+  }
+
+  /** Waits until the queued undo and redo steps have all been made. */
+  private async historyIdle(): Promise<void> {
+    for (let i = 0; i < 500 && (this.historyOps.length || this.draining); i++) await new Promise<void>((r) => setTimeout(r, 10));
+  }
+
+  /** History panel > Delete: the state at row `index` (1 is the first step) and every state after it are forgotten, the
+   *  document left as it was just before that step. False when there is no such step. */
+  async deleteHistoryState(index: number): Promise<boolean> {
+    const p = this.current;
+    if (!p || this.stroke || !Number.isInteger(index) || index < 1 || index > p.history.steps.names.length) return false;
+    this.jumpHistory(index - 1);
+    await this.historyIdle();
+    if (this.current !== p || p.history.steps.current !== index - 1) return false;
+    p.history.discardRedo();
+    this.emit('history', null);
+    return true;
+  }
+
+  /** History panel > New Document: a copy of the document as it was at row `index` (0 the start). The document itself
+   *  ends where it was; the copy opens in its own tab. */
+  async newDocumentFromState(index: number, name = ''): Promise<Project | null> {
+    const p = this.current;
+    if (!p || this.stroke || !Number.isInteger(index) || index < 0 || index > p.history.steps.names.length) return null;
+    const back = p.history.steps.current;
+    this.jumpHistory(index);
+    await this.historyIdle();
+    if (this.current !== p) return null;
+    const q = this.duplicateDocument(name || `${p.name} state ${index}`);
+    this.switchTo(p.id);
+    this.jumpHistory(back);
+    await this.historyIdle();
+    if (q) this.switchTo(q.id);
+    return q;
   }
 
   undo(): void { this.historyOp('undo'); }
@@ -2809,12 +2856,46 @@ export class Engine {
     this.emit('active', null);
   }
 
-  toggleCollapsed(id: ID): void {
+  /** Opens or closes a folder; `deep` (Alt-click on its triangle) does the same to every folder inside it. */
+  toggleCollapsed(id: ID, deep = false): void {
     const p = this.current;
     if (!p) return;
-    if (p.collapsed.has(id)) p.collapsed.delete(id);
-    else p.collapsed.add(id);
+    const open = p.collapsed.has(id);
+    const ids = deep ? [id, ...descendantIds(p.doc.layers, id).filter((x) => p.layer(x)?.isGroup)] : [id];
+    for (const x of ids) { if (open) p.collapsed.delete(x); else p.collapsed.add(x); }
     this.emit('doc', null);
+  }
+
+  /** The Move tool's marquee: the visible layers with a pixel inside the document rectangle `r` become the selection
+   *  (`add` keeps the current one), the top one active. Not a history step. */
+  selectLayersInRect(r: Rect, add = false): number {
+    const p = this.current;
+    if (!p || this.stroke) return 0;
+    this.settle();
+    const hits: Layer[] = [];
+    for (const e of hierarchy(p.doc, true)) {
+      const l = e.layer, ras = l.raster;
+      if (l.isGroup || !ras || !l.visible || !e.visible) continue;
+      const box = intersectRect(r, transformBounds(l.transform));
+      if (!box) continue;
+      const inv = invert(placement(l.transform, ras.width, ras.height));
+      const xs: number[] = [], ys: number[] = [];
+      for (const [cx, cy] of [[box.x, box.y], [box.x + box.w, box.y], [box.x, box.y + box.h], [box.x + box.w, box.y + box.h]]) { const q = applyMat(inv, cx, cy); xs.push(q.x); ys.push(q.y); }
+      const x0 = Math.max(0, Math.floor(Math.min(...xs))), y0 = Math.max(0, Math.floor(Math.min(...ys)));
+      const x1 = Math.min(ras.width, Math.ceil(Math.max(...xs))), y1 = Math.min(ras.height, Math.ceil(Math.max(...ys)));
+      if (x1 <= x0 || y1 <= y0) continue;
+      const d = ras.read(x0, y0, x1 - x0, y1 - y0).data;
+      for (let i = 3; i < d.length; i += 4) if (d[i] > 8) { hits.push(l); break; }
+    }
+    const ids = hits.map((l) => l.id);
+    if (!ids.length && !add) return 0;
+    p.selectedIds = new Set(add ? [...p.selectedIds, ...ids] : ids);
+    if (ids.length) p.activeId = ids[0];
+    p.maskTarget = false;
+    this.emit('active', null);
+    this.emit('options', null);
+    this.emit('overlay', null);
+    return ids.length;
   }
 
   private selectedRoots(p: Project): ID[] { return LS.selectedRoots(p); }
@@ -3087,6 +3168,10 @@ export class Engine {
     return true;
   }
 
+  /** Stamp Down (1.87.4): a copy of the active layer merged into the pixel layer below it, or copies of several selected
+   *  layers merged into a new layer above them; the originals stay. */
+  stampDown(): boolean { return LS.stampDown(this.structHost); }
+
   beginVisibilitySwipe(id: ID): boolean | null {
     const p = this.current;
     const l = p?.layer(id);
@@ -3194,11 +3279,20 @@ export class Engine {
     this.emit('render', null);
   }
 
-  setBlend(mode: BlendMode): void {
+  /** `isolate`, for the folders among the selection, sets Layer.isolate (false is Pass Through, true a Normal folder
+   *  composited on its own); other layers ignore it. */
+  setBlend(mode: BlendMode, isolate?: boolean): void {
     if (this.blendPreview) this.previewBlend(null);
     this.edit('Layer Blend Mode', (p) => {
       let changed = false;
-      for (const id of p.selectedIds) { const l = p.layer(id); if (l && !l.artboard && l.blend !== mode) { p.updateLayer(id, { blend: mode }); changed = true; } }
+      for (const id of p.selectedIds) {
+        const l = p.layer(id);
+        if (!l || l.artboard) continue;
+        const patch: Partial<Layer> = {};
+        if (l.blend !== mode) patch.blend = mode;
+        if (isolate !== undefined && l.isGroup && !!l.isolate !== isolate) patch.isolate = isolate;
+        if (Object.keys(patch).length) { p.updateLayer(id, patch); changed = true; }
+      }
       return changed;
     });
   }
@@ -3449,14 +3543,14 @@ export class Engine {
   }
 
   /** Layer > Vector Mask > Delete, Enable or Disable, Link or Unlink (1.66.1), on the active layer's vector mask. */
-  changeVectorMask(change: 'delete' | 'enable' | 'link'): boolean {
+  changeVectorMask(change: 'delete' | 'enable' | 'link' | 'invert'): boolean {
     const v0 = this.current?.activeLayer?.vectorMask;
     if (!v0) return false;
-    const name = change === 'delete' ? 'Delete Vector Mask' : change === 'enable' ? (v0.enabled ? 'Disable Vector Mask' : 'Enable Vector Mask') : v0.linked ? 'Unlink Vector Mask' : 'Link Vector Mask';
+    const name = change === 'delete' ? 'Delete Vector Mask' : change === 'invert' ? 'Invert Vector Mask' : change === 'enable' ? (v0.enabled ? 'Disable Vector Mask' : 'Enable Vector Mask') : v0.linked ? 'Unlink Vector Mask' : 'Link Vector Mask';
     return this.edit(name, (p) => {
       const l = p.activeLayer, v = l?.vectorMask;
       if (!l || !v) return false;
-      p.updateLayer(l.id, { vectorMask: change === 'delete' ? null : change === 'enable' ? { ...v, enabled: !v.enabled } : { ...v, linked: !v.linked } });
+      p.updateLayer(l.id, { vectorMask: change === 'delete' ? null : change === 'invert' ? { ...v, inverted: !v.inverted } : change === 'enable' ? { ...v, enabled: !v.enabled } : { ...v, linked: !v.linked } });
       return true;
     });
   }
@@ -3907,6 +4001,7 @@ export class Engine {
       st.s.commit();
       const W = st.quick.width, H = st.quick.height, d = ctxOf(st.quick.canvas).getImageData(0, 0, W, H).data, a = new Uint8Array(W * H);
       for (let i = 0; i < a.length; i++) a[i] = d[i * 4 + 3];
+      if (st.meet !== undefined) for (let i = 0; i < a.length; i++) if (a[i]) a[i] = Math.min(a[i], st.meet ? st.meet.valueAt(i % W, Math.floor(i / W)) : 0);
       st.project.selection = SelectionMask.cropped(0, 0, W, H, a);
       st.project.history.end(st.project.snapshot());
       st.s.release();
@@ -4376,11 +4471,16 @@ export class Engine {
   }
 
   /** Select > Load Selection (1.65.1): an alpha channel, or the active layer's transparency or mask, by `mode`; one step. */
-  loadSelection(source: { doc?: ID; channel: ID | 'transparency' | 'mask' }, invert = false, mode: SelectionMode = 'replace'): void {
+  loadSelection(source: { doc?: ID; channel: ID | 'transparency' | 'mask' | 'vector' }, invert = false, mode: SelectionMode = 'replace'): void {
     const p = this.current, q = source.doc ? this.alphaDocuments().find((d) => d.id === source.doc) : p;
     if (!p || !q) return;
     let m: SelectionMask | null;
-    if (source.channel === 'transparency' || source.channel === 'mask') {
+    if (source.channel === 'vector') {
+      const v = q.activeLayer?.vectorMask;
+      if (!v) return;
+      const W = q.doc.width, H = q.doc.height, cov = vectorCoverage(v, W, H);
+      m = cov ? SelectionMask.fromAlpha(0, 0, W, H, ctxOf(cov.surface).getImageData(0, 0, W, H).data) : SelectionMask.all(W, H);
+    } else if (source.channel === 'transparency' || source.channel === 'mask') {
       const l = q.activeLayer;
       if (!l) return;
       m = this.coverage(q, l, source.channel === 'mask');
@@ -4415,14 +4515,82 @@ export class Engine {
     if (n) this.edit('Rename Channel', (p) => { const list = p.doc.alphas ?? [], a = list.find((x) => x.id === id); if (!a || a.name === n) return false; p.doc = { ...p.doc, alphas: list.map((x) => (x === a ? { ...a, name: n } : x)) }; return true; });
   }
 
+  /** Channels panel New Channel: an empty alpha channel, filled `black` (nothing selected) or `white` (all selected); one step. Returns its id. */
+  newAlpha(opts: { fill?: 'black' | 'white'; name?: string } = {}): ID | null {
+    const p = this.current;
+    if (!p) return null;
+    const W = p.doc.width, H = p.doc.height;
+    if (W > CANVAS_SIDE || H > CANVAS_SIDE || W * H > CANVAS_PIXELS) { this.notice('Alpha channels are kept only in documents within one canvas for now.'); return null; }
+    const id = uid(), name = (opts.name ?? '').trim().slice(0, 200);
+    const ok = this.edit('New Channel', (q) => { const list = q.doc.alphas ?? []; q.doc = { ...q.doc, alphas: [...list, { id, name: name || nextAlphaName(list), mask: opts.fill === 'white' ? SelectionMask.all(W, H) : null }] }; return true; });
+    return ok ? id : null;
+  }
+
+  /** Duplicate Channel: a copy of alpha channel `id`, named "<name> copy" unless `name` is given, right after it; one step. */
+  duplicateAlpha(id: ID, name?: string): ID | null {
+    const copy = uid();
+    const ok = this.edit('Duplicate Channel', (p) => {
+      const list = p.doc.alphas ?? [], i = list.findIndex((x) => x.id === id);
+      if (i < 0) return false;
+      const a = list[i], n = (name ?? '').trim().slice(0, 200) || `${a.name} copy`;
+      p.doc = { ...p.doc, alphas: [...list.slice(0, i + 1), { ...a, id: copy, name: n }, ...list.slice(i + 1)] };
+      return true;
+    });
+    return ok ? copy : null;
+  }
+
+  /** Moves alpha channel `id` to `to` (an index in the channel list, clamped), or by one place with a `by` of -1 or 1; one step. */
+  moveAlpha(id: ID, to: number, relative = false): boolean {
+    return this.edit('Move Channel', (p) => {
+      const list = [...(p.doc.alphas ?? [])], i = list.findIndex((x) => x.id === id);
+      if (i < 0) return false;
+      const j = Math.max(0, Math.min(list.length - 1, relative ? i + to : to));
+      if (j === i) return false;
+      list.splice(j, 0, ...list.splice(i, 1));
+      p.doc = { ...p.doc, alphas: list };
+      return true;
+    });
+  }
+
+  /** Channel Options: name, what the overlay colour marks, the colour and its opacity in percent; one step. */
+  setAlphaOptions(id: ID, o: { name?: string; color?: RGB; opacity?: number; indicates?: 'masked' | 'selected' }): boolean {
+    return this.edit('Channel Options', (p) => {
+      const list = p.doc.alphas ?? [], a = list.find((x) => x.id === id);
+      if (!a) return false;
+      const name = o.name === undefined ? a.name : o.name.trim().slice(0, 200) || a.name;
+      const next: AlphaChannel = { ...a, name, color: o.color ? { r: clamp(Math.round(o.color.r), 0, 255), g: clamp(Math.round(o.color.g), 0, 255), b: clamp(Math.round(o.color.b), 0, 255) } : a.color, opacity: o.opacity === undefined ? a.opacity : clamp(Math.round(o.opacity), 0, 100), indicates: o.indicates ?? a.indicates };
+      if (next.name === a.name && next.opacity === a.opacity && next.indicates === a.indicates && JSON.stringify(next.color) === JSON.stringify(a.color)) return false;
+      p.doc = { ...p.doc, alphas: list.map((x) => (x === a ? next : x)) };
+      return true;
+    });
+  }
+
+  /** Select > Load Luminosity: the picture's brightness (Rec. 601 grey times coverage) as a selection by `mode`; one step. */
+  loadLuminosity(mode: SelectionMode = 'replace'): void {
+    const src = this.current ? this.flattened() : null;
+    if (!src) return;
+    const W = src.width, H = src.height, d = (src.getContext('2d') as CanvasRenderingContext2D).getImageData(0, 0, W, H).data, mask = new Uint8Array(W * H);
+    for (let i = 0, j = 0; j < mask.length; i += 4, j++) mask[j] = Math.round(((0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) * d[i + 3]) / 255);
+    this.applySelection(SelectionMask.cropped(0, 0, W, H, mask), mode, 'Load Selection');
+  }
+
   /** The alpha channels the Channels panel shows over the image in red, per document; the view only. */
   private readonly alphaViews = new WeakMap<Project, Set<ID>>();
   shownAlphas(p: Project): AlphaChannel[] { const v = this.alphaViews.get(p); return v?.size ? (p.doc.alphas ?? []).filter((a) => v.has(a.id)) : []; }
+  /** The alpha channel a channel command acts on: the one named or identified by `ref`, else the one shown last, else the last in the list. */
+  alphaFor(ref?: string): AlphaChannel | undefined {
+    const p = this.current, list = p?.doc.alphas ?? [];
+    if (!p || !list.length) return undefined;
+    if (ref) return list.find((a) => a.id === ref || a.name === ref);
+    const last = [...(this.alphaViews.get(p) ?? [])].pop();
+    return list.find((a) => a.id === last) ?? list[list.length - 1];
+  }
   /** `id` shown or hidden over the image; null with `on` false hides them all. */
   showAlpha(id: ID | null, on: boolean): void {
     const p = this.current;
     if (!p) return;
     const v = this.alphaViews.get(p) ?? new Set<ID>();
+    if (id !== null && on && v.has(id) && [...v].pop() !== id) v.delete(id);   // the one clicked last is the one channel commands act on
     if (id === null ? !v.size : v.has(id) === on) return;
     if (id === null) v.clear(); else if (on) v.add(id); else v.delete(id);
     this.alphaViews.set(p, v);
@@ -5631,6 +5799,8 @@ export class Engine {
 
   clipboard: { surface: Surface; x: number; y: number; w: number; h: number; stamp: string } | null = null;
   selectionAmounts = { expand: 1, contract: 1, feather: 5, border: 4, smooth: 2 };
+  /** Select > Modify "Apply effect at canvas bounds", kept between uses. */
+  selectionAtBounds = false;
 
   /** View > Rulers, Guides, Grid and Lock Guides; the grid's spacing and subdivisions in document pixels. */
   view = { rulers: false, guides: true, slices: false, grid: false, guidesLocked: false, gridSpacing: 100, gridSubdivisions: 4, patternPreview: false, pixelArt: false, parCorrection: false };
@@ -6388,8 +6558,17 @@ export class Engine {
     const label = ADJUSTMENT_LABELS[kind];
     let id: ID | null = null;
     this.edit(`New ${label} Layer`, (p) => {
-      const layer = newLayer(label, p.doc, { adjustment: { kind, data: defaultAdjustmentData(kind) }, parentId: this.parentForNew(p) });
+      const sel = p.selection;
+      let mask: Mask | undefined;
+      if (sel) {
+        const r = new Raster(p.doc.width, p.doc.height);
+        r.ctx.drawImage(sel.surface(), sel.x, sel.y);
+        r.touch();
+        mask = { raster: r, enabled: true, linked: true, placement: null };
+      }
+      const layer = newLayer(label, p.doc, { adjustment: { kind, data: defaultAdjustmentData(kind) }, parentId: this.parentForNew(p), ...(mask ? { mask } : {}) });
       this.insertAboveActive(p, layer);
+      if (mask) { p.maskTarget = true; p.selection = null; }
       id = layer.id;
     });
     return id;
@@ -6778,19 +6957,23 @@ export class Engine {
     try { return this.resampleImage(w, h, 'high', p.doc.resolution); } finally { p.history.end(p.snapshot()); }
   }
 
-  resizeSelection(delta: number): void { PO.resizeSelection(this.paintHost, delta); }
+  resizeSelection(delta: number, atBounds = false): void { PO.resizeSelection(this.paintHost, delta, atBounds); }
 
   /** Select > Modify. Feather blurs the selection's edge with a Gaussian of half the radius (so the edge fades over
    *  about the radius each way); Border keeps a band `amount` wide centred on the edge; Smooth rounds off corners
    *  and specks by a majority vote over a square of the radius. */
-  modifySelection(kind: 'feather' | 'border' | 'smooth', amount: number): void {
+  modifySelection(kind: 'feather' | 'border' | 'smooth', amount: number, atBounds = false): void {
     const p = this.current, sel = p?.selection;
-    if (!p || !sel || !(amount > 0) || amount > 500) return;
-    const pad = Math.ceil(kind === 'feather' ? amount * 1.5 : amount) + 2;
-    const region = intersectRect({ x: sel.x - pad, y: sel.y - pad, w: sel.w + 2 * pad, h: sel.h + 2 * pad }, { x: 0, y: 0, w: p.doc.width, h: p.doc.height });
-    if (!region) return;
+    if (!p || !sel || !(amount > 0) || amount > 1024) return;
+    const pad = Math.ceil(kind === 'feather' ? amount * 1.5 : amount) + 2, W = p.doc.width, H = p.doc.height;
+    // Unless the effect applies at canvas bounds (always for Border), the canvas edge pixels carry on past the canvas.
+    const edge = atBounds || kind === 'border';
+    const region = { x: sel.x - pad, y: sel.y - pad, w: sel.w + 2 * pad, h: sel.h + 2 * pad };
     const { w, h } = region, src = new Uint8Array(w * h);
-    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) src[j * w + i] = sel.valueAt(region.x + i, region.y + j);
+    for (let j = 0; j < h; j++) {
+      const sy = edge ? region.y + j : Math.min(H - 1, Math.max(0, region.y + j));
+      for (let i = 0; i < w; i++) src[j * w + i] = sel.valueAt(edge ? region.x + i : Math.min(W - 1, Math.max(0, region.x + i)), sy);
+    }
     let out: Uint8Array;
     if (kind === 'feather') {
       const img = new ImageData(w, h);
@@ -6814,7 +6997,12 @@ export class Engine {
         }
       }
     }
-    this.applySelection(SelectionMask.cropped(region.x, region.y, w, h, out), 'replace', kind === 'feather' ? 'Feather Selection' : kind === 'border' ? 'Border Selection' : 'Smooth Selection');
+    const label = kind === 'feather' ? 'Feather Selection' : kind === 'border' ? 'Border Selection' : 'Smooth Selection';
+    const cx0 = Math.max(0, region.x), cy0 = Math.max(0, region.y), cw = Math.min(W, region.x + w) - cx0, ch = Math.min(H, region.y + h) - cy0;
+    if (cw <= 0 || ch <= 0) return;
+    const back = new Uint8Array(cw * ch);
+    for (let j = 0; j < ch; j++) for (let i = 0; i < cw; i++) back[j * cw + i] = out[(cy0 - region.y + j) * w + cx0 - region.x + i];
+    this.applySelection(SelectionMask.cropped(cx0, cy0, cw, ch, back), 'replace', label);
   }
 
   selectMaskBlack(): void { LM.selectMaskBlack(this.maskHost); }
