@@ -33,7 +33,7 @@ export const nl: Record<string, string> = {
   'Copy': 'Kopiëren', 'Copy Merged': 'Samengevoegd kopiëren', 'Paste': 'Plakken', 'Paste in Place': 'Op dezelfde plek plakken', 'Paste Into': 'Plakken in',
   'Paste Outside': 'Buiten plakken', 'Clear': 'Wissen', 'Search': 'Zoeken', 'Find and Replace Text': 'Tekst zoeken en vervangen',
   'Fill with Foreground': 'Opvullen met voorgrondkleur', 'Fill with Background': 'Opvullen met achtergrondkleur',
-  'Stroke': 'Omlijnen', 'Content-Aware Fill': 'Opvullen op basis van inhoud', 'Content-Aware Scale': 'Schalen op basis van inhoud',
+  'Stroke': 'Omlijnen', 'Content-Aware Fill': 'Opvullen op basis van inhoud',
   'Puppet Warp': 'Marionetvervorming', 'Perspective Warp': 'Perspectiefvervorming', 'Free Transform': 'Vrije transformatie',
   'Rotate': 'Roteren', 'Scale': 'Schalen', 'Skew': 'Scheeftrekken', 'Perspective': 'Perspectief', 'Warp': 'Vervormen',
   'Define Brush Preset': 'Penseelset definiëren', 'Define Pattern': 'Patroon definiëren', 'Define Custom Shape': 'Aangepaste vorm definiëren',

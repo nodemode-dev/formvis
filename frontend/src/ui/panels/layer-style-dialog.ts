@@ -1,4 +1,4 @@
-import { BLEND_MODES, CONTOURS, DEFAULT_GLOBAL_LIGHT, MAX_EXTRA, MULTI_EFFECTS, defaultEffects, effectsActive, instances, withGlobalLight, type BevelContour, type BevelTexture, type BlendMode, type ContourId, type EffectExtras, type Engine, type GlobalLight, type LayerEffects, type MultiEffect, type RGB, allPatterns } from '../../engine';
+import { BLEND_MODES, CONTOURS, DEFAULT_GLOBAL_LIGHT, MAX_EXTRA, MULTI_EFFECTS, defaultEffects, effectsActive, effectsFromData, instances, withGlobalLight, type BevelContour, type BevelTexture, type BlendMode, type ContourId, type EffectExtras, type Engine, type GlobalLight, type LayerEffects, type MultiEffect, type RGB, allPatterns } from '../../engine';
 import { BLEND_IF_IDENTITY, type BlendIf, type StrokeGradient } from '../../engine/types';
 import { Dialog } from '../dialogs';
 import { el } from '../dom';
@@ -78,6 +78,27 @@ export class LayerStyleDialog extends Dialog {
     const lightRowB = sliderRow('Global light altitude (\u00b0)', 0, 90, 1, (v) => { this.light = { ...this.light, altitude: v }; this.changed(); });
     this.body.append(lightRowA.el, lightRowB.el);
     this.syncs.push(() => { lightRowA.set(this.light.angle); lightRowB.set(this.light.altitude); });
+    // Styles saved in the Styles panel, applied to the style being edited.
+    const presetPick = el<HTMLSelectElement>('<select class="cv-input"></select>');
+    this.field('Style preset', presetPick);
+    presetPick.addEventListener('change', () => {
+      const next = effectsFromData(this.savedStyles().find((s) => s.id === presetPick.value)?.effects);
+      presetPick.value = '';
+      if (!next) return;
+      this.adopt(next);
+      for (const s of this.syncs) s();
+      this.changed();
+    });
+    this.syncs.push(() => {
+      const list = this.savedStyles();
+      while (presetPick.options.length > list.length + 1) presetPick.remove(presetPick.options.length - 1);
+      [{ id: '', name: 'Choose a saved style' }, ...list].forEach((s, i) => {
+        const o = presetPick.options[i] ?? presetPick.appendChild(document.createElement('option'));
+        if (o.value !== s.id) o.value = s.id;
+        if (o.textContent !== s.name) o.textContent = s.name;
+      });
+      presetPick.value = '';
+    });
     const bl = (): LayerStyleDialog['blending'] => this.blending;
     this.body.appendChild(el('<p class="cv-dialog-note">Blending Options (M2): Knockout punches through what lies below; Blend If shows the layer only inside each range, each end feathered between its two values.</p>'));
     choice('Layer blend mode', blends, () => bl().blend, (v) => { bl().blend = v as BlendMode; });
@@ -160,9 +181,9 @@ export class LayerStyleDialog extends Dialog {
     slider('Opacity (%)', 0, 100, () => Math.round(fx().colorOverlay.opacity * 100), (v) => { fx().colorOverlay.opacity = v / 100; });
     check('Gradient Overlay', () => fx().gradientOverlay.enabled, (v) => { fx().gradientOverlay.enabled = v; });
     multi('gradientOverlay');
-    // Changing either end makes the overlay two colours again (a many-stop gradient from PSD or .asl, 36.8, is dropped).
-    colour('From', () => fx().gradientOverlay.from, (c) => { fx().gradientOverlay.from = c; delete fx().gradientOverlay.stops; });
-    colour('To', () => fx().gradientOverlay.to, (c) => { fx().gradientOverlay.to = c; delete fx().gradientOverlay.stops; });
+    // Changing either end sets the first or last stop of a many-stop gradient (from PSD or .asl, 36.8) and keeps the rest.
+    colour('From', () => fx().gradientOverlay.from, (c) => { const g = fx().gradientOverlay; g.from = c; if (g.stops) g.stops[0] = { ...g.stops[0], color: c }; });
+    colour('To', () => fx().gradientOverlay.to, (c) => { const g = fx().gradientOverlay; g.to = c; if (g.stops) g.stops[g.stops.length - 1] = { ...g.stops[g.stops.length - 1], color: c }; });
     choice('Blend mode', blends, () => fx().gradientOverlay.blend, (v) => { fx().gradientOverlay.blend = v as BlendMode; });
     slider('Opacity (%)', 0, 100, () => Math.round(fx().gradientOverlay.opacity * 100), (v) => { fx().gradientOverlay.opacity = v / 100; });
     slider('Angle (\u00b0)', -180, 180, () => fx().gradientOverlay.angle, (v) => { fx().gradientOverlay.angle = v; });
@@ -170,6 +191,8 @@ export class LayerStyleDialog extends Dialog {
     choice('Style', [['linear', 'Linear'], ['radial', 'Radial'], ['angle', 'Angle'], ['reflected', 'Reflected'], ['diamond', 'Diamond']], () => fx().gradientOverlay.style, (v) => { fx().gradientOverlay.style = v === 'radial' || v === 'angle' || v === 'reflected' || v === 'diamond' ? v : 'linear'; });
     check('Reverse', () => fx().gradientOverlay.reverse, (v) => { fx().gradientOverlay.reverse = v; });
     check('Dither', () => !!fx().gradientOverlay.dither, (v) => { if (v) fx().gradientOverlay.dither = true; else delete fx().gradientOverlay.dither; });
+    choice('Method', [['classic', 'Classic'], ['perceptual', 'Perceptual'], ['linear', 'Linear']], () => fx().gradientOverlay.method ?? 'classic', (v) => { if (v === 'perceptual' || v === 'linear') fx().gradientOverlay.method = v; else delete fx().gradientOverlay.method; });
+    slider('Smoothness (%)', 0, 100, () => fx().gradientOverlay.smoothness ?? 0, (v) => { if (v > 0) fx().gradientOverlay.smoothness = v; else delete fx().gradientOverlay.smoothness; });
     check('Pattern Overlay', () => fx().patternOverlay.enabled, (v) => { fx().patternOverlay.enabled = v; });
     const patternPick = el<HTMLSelectElement>('<select class="cv-input"></select>');
     patternPick.addEventListener('change', () => { fx().patternOverlay.pattern = patternPick.value; this.changed(); });
@@ -289,6 +312,14 @@ export class LayerStyleDialog extends Dialog {
     for (const k of Object.keys(fx) as Array<keyof LayerEffects>) { const e = fx[k] as { enabled?: boolean } | undefined; if (e && typeof e === 'object' && 'enabled' in e) e.enabled = false; }
     delete fx.extra;
     return fx;
+  }
+
+  /** The styles the Styles panel has saved, as it keeps them. */
+  private savedStyles(): Array<{ id: string; name: string; effects: unknown }> {
+    try {
+      const r = JSON.parse(localStorage.getItem('formvis.stylePresets') ?? '[]') as unknown;
+      return Array.isArray(r) ? r.filter((p): p is { id: string; name: string; effects: unknown } => !!p && typeof p.id === 'string' && typeof p.name === 'string') : [];
+    } catch { return []; }
   }
 
   private saveDefault(): void {

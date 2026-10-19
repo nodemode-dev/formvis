@@ -534,7 +534,6 @@ export const tr: Record<string, string> = {
   'Projection': 'Projeksiyon',
   'Prompt': 'İstem',
   'Properties Sheet': 'Özellikler Sayfası',
-  'Protect skin tones': 'Ten tonlarını koru',
   'Protect the selection': 'Seçimi koru',
   'QOI, PNM, TGA and ICO': 'QOI, PNM, TGA ve ICO',
   'Quality': 'Kalite',

@@ -196,10 +196,14 @@ export class GlFilters implements GpuFilterRunner {
   private readonly maxSize: number;
   /** Why the last call gave up, for the benchmark and the log. */
   lastError = '';
+  /** GPU time of the last single-pass filter in milliseconds, from EXT_disjoint_timer_query_webgl2 where the extension exists; null otherwise or when the counter was disjoint. */
+  lastGpuMs: number | null = null;
+  private readonly timer: { TIME_ELAPSED_EXT: number; GPU_DISJOINT_EXT: number } | null;
 
   private constructor(private readonly gl: WebGL2RenderingContext, readonly floatType: 'f32' | 'f16') {
     this.fbo = gl.createFramebuffer()!;
     this.maxSize = Number(gl.getParameter(gl.MAX_TEXTURE_SIZE));
+    this.timer = gl.getExtension('EXT_disjoint_timer_query_webgl2');
   }
 
   /** A runner on a fresh offscreen canvas, or null where WebGL2 is missing. Float targets use RGBA32F where
@@ -285,10 +289,14 @@ export class GlFilters implements GpuFilterRunner {
     return this.guard(w, h, () => {
       const input = this.tex(w, h, 'u8', new Uint8Array(src.data.buffer, src.data.byteOffset, src.data.byteLength)), out = this.tex(w, h, 'u8');
       const res = new ImageData(w, h);
+      const gl = this.gl, q = this.timer ? gl.createQuery() : null;
       try {
+        if (q && this.timer) gl.beginQuery(this.timer.TIME_ELAPSED_EXT, q);
         this.pass(this.program(key, frag), out, extra ? [input, extra] : [input], set);
+        if (q && this.timer) gl.endQuery(this.timer.TIME_ELAPSED_EXT);
         this.readBack(out, new Uint8Array(res.data.buffer));
-      } finally { this.free(input, out); }
+        this.lastGpuMs = q && this.timer && gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE) && !gl.getParameter(this.timer.GPU_DISJOINT_EXT) ? Number(gl.getQueryParameter(q, gl.QUERY_RESULT)) / 1e6 : null;
+      } finally { this.free(input, out); if (q) gl.deleteQuery(q); }
       return res;
     });
   }

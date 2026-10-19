@@ -33,7 +33,7 @@ export const fi: Record<string, string> = {
   'Copy': 'Kopioi', 'Copy Merged': 'Kopioi yhdistettynä', 'Paste': 'Liitä', 'Paste in Place': 'Liitä paikalleen', 'Paste Into': 'Liitä sisään',
   'Paste Outside': 'Liitä ulkopuolelle', 'Clear': 'Tyhjennä', 'Search': 'Haku', 'Find and Replace Text': 'Etsi ja korvaa teksti',
   'Fill with Foreground': 'Täytä edustavärillä', 'Fill with Background': 'Täytä taustavärillä',
-  'Stroke': 'Piirrä reunaviiva', 'Content-Aware Fill': 'Sisältötietoinen täyttö', 'Content-Aware Scale': 'Sisältötietoinen skaalaus',
+  'Stroke': 'Piirrä reunaviiva', 'Content-Aware Fill': 'Sisältötietoinen täyttö',
   'Puppet Warp': 'Nuken vääristys', 'Perspective Warp': 'Perspektiivivääristys', 'Free Transform': 'Vapaa muunnos',
   'Rotate': 'Kierrä', 'Scale': 'Skaalaa', 'Skew': 'Vino', 'Perspective': 'Perspektiivi', 'Warp': 'Vääristä',
   'Define Brush Preset': 'Määritä siveltimen esiasetus', 'Define Pattern': 'Määritä kuvio', 'Define Custom Shape': 'Määritä mukautettu muoto',

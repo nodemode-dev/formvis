@@ -83,6 +83,8 @@ export function sampleStops(preset: GradientPreset, fg: RGB, bg: RGB): Array<{ a
   const hasOps = !!preset.opacityStops?.length;
   const ops = (hasOps ? preset.opacityStops ?? [] : preset.stops).map((s) => ({ at: c01(s.at), alpha: s.alpha, mid: s.mid })).sort((a, b) => a.at - b.at);
   const bent = (l: Array<{ mid?: number }>): boolean => l.some((s) => clampMid(s.mid) !== 0.5);
+  // A preset caught with no colour stops (an editor mid-edit) samples to nothing rather than reading past the list.
+  if (!cols.length || !ops.length) return [];
   if (!hasOps && !bent(cols)) return cols.map(({ at, rgb, alpha }) => ({ at, rgb, alpha }));
   const along = <T extends { at: number; mid?: number }>(l: T[], t: number): { a: T; b: T; f: number } => {
     let i = 0;

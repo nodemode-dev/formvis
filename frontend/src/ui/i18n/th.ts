@@ -35,7 +35,7 @@ export const th: Record<string, string> = {
   'Paste Into': 'วางลงใน', 'Paste Outside': 'วางด้านนอก', 'Clear': 'ล้าง', 'Search': 'ค้นหา',
   'Find and Replace Text': 'ค้นหาและแทนที่ข้อความ', 'Fill with Foreground': 'เติมด้วยสีพื้นหน้า',
   'Fill with Background': 'เติมด้วยสีพื้นหลัง', 'Stroke': 'เส้นขอบ', 'Content-Aware Fill': 'เติมตามเนื้อหา',
-  'Content-Aware Scale': 'ปรับขนาดตามเนื้อหา', 'Puppet Warp': 'พัปเพ็ตวาร์ป', 'Perspective Warp': 'วาร์ปเพอร์สเปคทีฟ',
+  'Puppet Warp': 'พัปเพ็ตวาร์ป', 'Perspective Warp': 'วาร์ปเพอร์สเปคทีฟ',
   'Free Transform': 'แปลงแบบอิสระ', 'Rotate': 'หมุน', 'Scale': 'ปรับขนาด', 'Skew': 'เอียง', 'Perspective': 'เพอร์สเปคทีฟ', 'Warp': 'วาร์ป',
   'Define Brush Preset': 'กำหนดค่าที่ตั้งไว้ของแปรง', 'Define Pattern': 'กำหนดแพตเทิร์น', 'Define Custom Shape': 'กำหนดรูปร่างที่กำหนดเอง',
   'Keyboard Shortcuts': 'คีย์ลัด', 'Preset Manager': 'ตัวจัดการค่าที่ตั้งไว้', 'Assign Profile': 'กำหนดโปรไฟล์',

@@ -35,7 +35,7 @@ export const hu: Record<string, string> = {
   'Paste Into': 'Beillesztés belsejébe', 'Paste Outside': 'Beillesztés külsejébe', 'Clear': 'Törlés', 'Search': 'Keresés',
   'Find and Replace Text': 'Szöveg keresése és cseréje', 'Fill with Foreground': 'Kitöltés előtérszínnel',
   'Fill with Background': 'Kitöltés háttérszínnel', 'Stroke': 'Körvonal', 'Content-Aware Fill': 'Tartalomtudatos kitöltés',
-  'Content-Aware Scale': 'Tartalomtudatos átméretezés', 'Puppet Warp': 'Bábu torzítás', 'Perspective Warp': 'Perspektíva torzítás',
+  'Puppet Warp': 'Bábu torzítás', 'Perspective Warp': 'Perspektíva torzítás',
   'Free Transform': 'Szabad átalakítás', 'Rotate': 'Forgatás', 'Scale': 'Méretezés', 'Skew': 'Ferdítés', 'Perspective': 'Perspektíva', 'Warp': 'Torzítás',
   'Define Brush Preset': 'Ecsetelőbeállítás megadása', 'Define Pattern': 'Minta megadása', 'Define Custom Shape': 'Egyéni alakzat megadása',
   'Keyboard Shortcuts': 'Billentyűparancsok', 'Preset Manager': 'Előbeállításkezelő', 'Assign Profile': 'Profil hozzárendelése',

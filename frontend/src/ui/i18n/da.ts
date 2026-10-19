@@ -33,7 +33,7 @@ export const da: Record<string, string> = {
   'Copy': 'Kopiér', 'Copy Merged': 'Kopiér sammenflettet', 'Paste': 'Sæt ind', 'Paste in Place': 'Sæt ind på stedet', 'Paste Into': 'Sæt ind i',
   'Paste Outside': 'Sæt ind udenfor', 'Clear': 'Ryd', 'Search': 'Søg', 'Find and Replace Text': 'Søg efter og erstat tekst',
   'Fill with Foreground': 'Udfyld med forgrundsfarve', 'Fill with Background': 'Udfyld med baggrundsfarve',
-  'Stroke': 'Streg', 'Content-Aware Fill': 'Indholdsfølsom udfyldning', 'Content-Aware Scale': 'Indholdsfølsom skalering',
+  'Stroke': 'Streg', 'Content-Aware Fill': 'Indholdsfølsom udfyldning',
   'Puppet Warp': 'Puppet-forvridning', 'Perspective Warp': 'Perspektivforvridning', 'Free Transform': 'Frit transformér',
   'Rotate': 'Roter', 'Scale': 'Skalér', 'Skew': 'Skævvrid', 'Perspective': 'Perspektiv', 'Warp': 'Forvrid',
   'Define Brush Preset': 'Definér penselforudindstilling', 'Define Pattern': 'Definér mønster', 'Define Custom Shape': 'Definér brugerdefineret figur',

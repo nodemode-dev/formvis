@@ -4,7 +4,7 @@ import { Reader, readDescriptor } from './atn';
 import type { Desc, Val } from './atn';
 
 /** Gradient files: .grd (version 5, an ActionDescriptor holding a list of gradients) and .ggr (text).
- *  Noise gradients have no stop form, so they are counted and skipped. Midpoints are ignored. */
+ *  Noise gradients have no stop form, so they are counted and skipped. Midpoints of colour and opacity stops are kept. */
 
 const newId = (): string => `grd-${Math.random().toString(36).slice(2, 10)}`;
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));

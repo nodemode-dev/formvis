@@ -4,6 +4,25 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.89.7 · 2026-10-19
+
+### Added
+
+- View: hold Backslash to peek at the opening state; a split view comparing a snapshot with the current state; a composite pixel reading; exact pointer mapping under interface zoom.
+- Layer effects: effect rows under each layer to hide, delete, edit, move and copy effects; Gradient Overlay method and smoothness; style presets in the Layer Style dialog.
+- Filters: on-canvas pins for the Blur Gallery and handles for Lighting Effects; Tonal Contrast; vignette colour and highlight protection; Dehaze sky protection; Flame, Picture Frame and Tree on a new layer; gloss for relighting.
+- Files: PSD smart filters open as editable filters where they map, and more type and effect settings come through; compressed and 16-bit layers in the .kra family; .svgz; FITS extensions, DPX orientation, TIFF sub-pages and XPM colour names.
+- Speed: the layers below the one being painted are kept as one picture while painting; saves lock the document; GPU timing where available.
+- Desktop packaging: manual draft releases for more platforms, an MSIX manifest, a Linux library check and a graphics memory readout.
+
+### Removed
+
+- Leftover translations for the declined scaling feature and its skin protection.
+
+### Fixed
+
+- The Gradient Editor no longer throws when applied with no colour stops.
+
 ## 1.89.6 · 2026-10-19
 
 ### Added

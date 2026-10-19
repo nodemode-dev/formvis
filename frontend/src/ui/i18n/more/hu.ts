@@ -534,7 +534,6 @@ export const hu: Record<string, string> = {
   'Projection': 'Vetítés',
   'Prompt': 'Prompt',
   'Properties Sheet': 'Tulajdonságlap',
-  'Protect skin tones': 'Bőrtónusok védelme',
   'Protect the selection': 'Kijelölés védelme',
   'QOI, PNM, TGA and ICO': 'QOI, PNM, TGA és ICO',
   'Quality': 'Minőség',

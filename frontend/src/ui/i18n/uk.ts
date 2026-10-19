@@ -35,7 +35,7 @@ export const uk: Record<string, string> = {
   'Paste Into': 'Вставити в', 'Paste Outside': 'Вставити за межі', 'Clear': 'Очистити', 'Search': 'Пошук',
   'Find and Replace Text': 'Знайти та замінити текст', 'Fill with Foreground': 'Залити основним кольором',
   'Fill with Background': 'Залити кольором тла', 'Stroke': 'Виконати обведення', 'Content-Aware Fill': 'Заливка з урахуванням вмісту',
-  'Content-Aware Scale': 'Масштаб з урахуванням вмісту', 'Puppet Warp': 'Маріонеткова деформація', 'Perspective Warp': 'Деформація перспективи',
+  'Puppet Warp': 'Маріонеткова деформація', 'Perspective Warp': 'Деформація перспективи',
   'Free Transform': 'Вільне трансформування', 'Rotate': 'Обертання', 'Scale': 'Масштаб', 'Skew': 'Нахил', 'Perspective': 'Перспектива', 'Warp': 'Деформація',
   'Define Brush Preset': 'Визначити набір параметрів пензля', 'Define Pattern': 'Визначити візерунок', 'Define Custom Shape': 'Визначити довільну фігуру',
   'Keyboard Shortcuts': 'Комбінації клавіш', 'Preset Manager': 'Керування наборами', 'Assign Profile': 'Призначити профіль',

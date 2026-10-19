@@ -101,6 +101,28 @@ export class RelightSession {
       },
       commit: () => { void this.commit(); },
       cancel: () => this.cancel(),
+      add: (at) => {
+        const n = this.content.lights.length;
+        this.addLight('point');
+        const l = this.light();
+        if (this.content.lights.length === n || !l) return;
+        l.pos = { x: at.x, y: at.y };
+        this.sync(); this.engine.emit('overlay', null);
+      },
+      remove: () => {
+        const l = this.light();
+        if (!l) return;
+        if (this.content.lights.length <= 1) { this.engine.notice(t('A relight layer keeps at least one light.')); return; }
+        this.content.lights = this.content.lights.filter((y) => y.id !== l.id);
+        this.selectedId = this.content.lights[0]?.id ?? null;
+        this.sync(); this.schedule(); this.engine.emit('overlay', null);
+      },
+      adjust: (id, key, delta) => {
+        const l = this.content.lights.find((y) => y.id === id);
+        if (!l) return;
+        l[key] = Math.max(0, Math.min(100, l[key] + delta));
+        this.sync(); this.schedule();
+      },
     });
     for (const ev of ['active', 'history', 'doc'] as const) engine.on(ev, () => this.syncPill());
     this.syncPill();
@@ -563,6 +585,7 @@ export class RelightSession {
     slider('softness', 'Softness', 0, 100, (l, v) => { l.softness = v; });
     slider('diffusion', 'Diffusion', 0, 100, (l, v) => { l.diffusion = v; });
     slider('distance', 'Close to Far', 0, 100, (l, v) => { l.distance = v; });
+    slider('gloss', 'Gloss', 0, 200, (l, v) => { l.gloss = v; });
     slider('near', 'Lights from depth', 0, 100, (l, v) => { l.near = v; });
     slider('far', 'Lights to depth', 0, 100, (l, v) => { l.far = v; });
     light.append(el(`<p class="cv-note">${t('Drag the light or its aim point on the photo. Alt-drag moves the aim; Shift-drag places the pattern.')}</p>`));
@@ -696,6 +719,7 @@ export class RelightSession {
       (this.rows.color as Row<string>).set(hex(l.color));
       (this.rows.hex as Row<string>).set(hex(l.color));
       for (const k of ['intensity', 'softness', 'diffusion', 'distance'] as const) (this.rows[k] as Row<number>).set(l[k]);
+      (this.rows.gloss as Row<number>).set(l.gloss ?? 100);
       (this.rows.near as Row<number>).set(l.near ?? 0);
       (this.rows.far as Row<number>).set(l.far ?? 100);
       (this.rows.pattern as Row<string>).set(l.pattern.kind);

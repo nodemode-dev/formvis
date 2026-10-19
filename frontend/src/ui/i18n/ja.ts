@@ -35,7 +35,7 @@ export const ja: Record<string, string> = {
   'Paste Into': '選択範囲内にペースト', 'Paste Outside': '選択範囲外にペースト', 'Clear': '消去', 'Search': '検索',
   'Find and Replace Text': 'テキストの検索と置換', 'Fill with Foreground': '描画色で塗りつぶし',
   'Fill with Background': '背景色で塗りつぶし', 'Stroke': '境界線を描く', 'Content-Aware Fill': 'コンテンツに応じた塗りつぶし',
-  'Content-Aware Scale': 'コンテンツに応じた拡大・縮小', 'Puppet Warp': 'パペットワープ', 'Perspective Warp': '遠近法ワープ',
+  'Puppet Warp': 'パペットワープ', 'Perspective Warp': '遠近法ワープ',
   'Free Transform': '自由変形', 'Rotate': '回転', 'Scale': '拡大・縮小', 'Skew': '斜体', 'Perspective': '遠近法', 'Warp': 'ワープ',
   'Define Brush Preset': 'ブラシを定義', 'Define Pattern': 'パターンを定義', 'Define Custom Shape': 'カスタムシェイプを定義',
   'Keyboard Shortcuts': 'キーボードショートカット', 'Preset Manager': 'プリセットマネージャー', 'Assign Profile': 'プロファイルを割り当て',

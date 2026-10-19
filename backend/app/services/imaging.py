@@ -9,7 +9,7 @@ import numpy as np
 from PIL import Image, ImageCms, ImageOps
 
 from app.core import config
-from app.services import camera_profiles, cin, dcp, dpx, fits, ico, png_write, pnm, qoi, raw_develop, tga, wbmp
+from app.services import camera_profiles, cin, dcp, dpx, fits, ico, png_write, pnm, qoi, raw_develop, tga, wbmp, xpm
 
 Image.MAX_IMAGE_PIXELS = config.MAX_PIXELS
 
@@ -135,7 +135,9 @@ def _sniffed(data: bytes, suffix: str, page: int) -> tuple[bytes, int, int] | No
             return _from_rgba(tga.read(data))
         if suffix == ".wbmp" and wbmp.looks_like_wbmp(data):
             return _from_rgba(wbmp.read(data))
-    except (qoi.QoiError, pnm.PnmError, tga.TgaError, ico.IcoError, wbmp.WbmpError) as exc:
+        if suffix in (".xpm", ".pm") and xpm.looks_like_xpm(data):
+            return _from_rgba(xpm.read(data))
+    except (qoi.QoiError, pnm.PnmError, tga.TgaError, ico.IcoError, wbmp.WbmpError, xpm.XpmError) as exc:
         raise DecodeError(f"Could not decode the image: {exc}") from exc
     return None
 
@@ -292,6 +294,35 @@ def raw_deep(data: bytes, filename: str, wb: str = "as_shot", temperature: float
     return out.tobytes(), width, height
 
 
+def _subifd_pages(data: bytes) -> list:
+    """The reduced-resolution copies and masks that main pages list in their SubIFDs tag, as tifffile pages in file order."""
+    try:
+        import tifffile
+        with tifffile.TiffFile(io.BytesIO(data)) as tf:
+            return [q for p in tf.pages for q in (getattr(p, "pages", None) or []) if hasattr(q, "shape") and len(q.shape) >= 2]
+    except Exception:
+        return []
+
+
+def _subifd_image(data: bytes, k: int) -> Image.Image | None:
+    try:
+        import tifffile
+        with tifffile.TiffFile(io.BytesIO(data)) as tf:
+            subs = [q for p in tf.pages for q in (getattr(p, "pages", None) or []) if hasattr(q, "shape") and len(q.shape) >= 2]
+            if not 0 <= k < len(subs):
+                return None
+            arr = subs[k].asarray()
+        if arr.dtype != np.uint8:
+            arr = (arr.astype(np.float64) / max(1.0, float(np.iinfo(arr.dtype).max) if arr.dtype.kind in "ui" else 1.0) * 255.0).clip(0, 255).astype(np.uint8)
+        if arr.ndim == 3 and arr.shape[0] in (1, 3, 4) and arr.shape[2] not in (1, 3, 4):
+            arr = np.moveaxis(arr, 0, 2)
+        if arr.ndim == 3 and arr.shape[2] == 1:
+            arr = arr[..., 0]
+        return Image.fromarray(arr)
+    except Exception:
+        return None
+
+
 def pages(data: bytes, filename: str) -> list[dict]:
     """A TIFF's pages (1.53.4), BigTIFF included: each page's number, size and mode, read without decoding pixels.
     One entry for anything else."""
@@ -308,6 +339,9 @@ def pages(data: bytes, filename: str) -> list[dict]:
             for i in range(getattr(image, "n_frames", 1)):
                 image.seek(i)
                 out.append({"index": i, "width": image.width, "height": image.height, "mode": image.mode})
+            for k, sub in enumerate(_subifd_pages(data)):
+                height, width = sub.shape[:2]
+                out.append({"index": len(out), "width": int(width), "height": int(height), "mode": "SubIFD", "sub": k})
             return out
     except Exception as exc:
         raise DecodeError(f"Could not read {filename or 'the image'}: {exc}") from exc
@@ -369,6 +403,10 @@ def decode_to_png(data: bytes, filename: str, page: int = 0, camera_profile: str
             _plausible(image, len(data))
             if page:
                 count = getattr(image, "n_frames", 1)
+                if image.format == "TIFF" and page >= count:
+                    sub = _subifd_image(data, page - count)
+                    if sub is not None:
+                        return _png(sub)
                 if not 0 <= page < count:
                     raise DecodeError(f"{filename or 'The image'} has {count} page{'s' if count != 1 else ''}; there is no page {page + 1}.")
                 image.seek(page)

@@ -33,7 +33,7 @@ export const nb: Record<string, string> = {
   'Copy': 'Kopier', 'Copy Merged': 'Kopier sammenslått', 'Paste': 'Lim inn', 'Paste in Place': 'Lim inn på plass', 'Paste Into': 'Lim inn i',
   'Paste Outside': 'Lim inn utenfor', 'Clear': 'Tøm', 'Search': 'Søk', 'Find and Replace Text': 'Finn og erstatt tekst',
   'Fill with Foreground': 'Fyll med forgrunnsfarge', 'Fill with Background': 'Fyll med bakgrunnsfarge',
-  'Stroke': 'Strek', 'Content-Aware Fill': 'Innholdsbasert fylling', 'Content-Aware Scale': 'Innholdsbasert skalering',
+  'Stroke': 'Strek', 'Content-Aware Fill': 'Innholdsbasert fylling',
   'Puppet Warp': 'Dukkeforvrengning', 'Perspective Warp': 'Perspektivforvrengning', 'Free Transform': 'Fri transformering',
   'Rotate': 'Roter', 'Scale': 'Skaler', 'Skew': 'Skjev', 'Perspective': 'Perspektiv', 'Warp': 'Forvreng',
   'Define Brush Preset': 'Definer penselforhåndsinnstilling', 'Define Pattern': 'Definer mønster', 'Define Custom Shape': 'Definer egendefinert form',

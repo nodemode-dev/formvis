@@ -50,6 +50,8 @@ export interface Tool {
   up?(ctx: ToolContext, p: ToolPointer): void;
   hover?(ctx: ToolContext, p: ToolPointer | null): void;
   keydown?(ctx: ToolContext, e: KeyboardEvent): boolean;
+  /** The wheel over the canvas; true when the tool used it, so the view does not zoom or scroll. */
+  wheel?(ctx: ToolContext, e: WheelEvent): boolean;
   /** Edit > Undo takes back what the tool holds that is not yet a history step (the Pen's last point); `probe` only asks. */
   undoPending?(ctx: ToolContext, probe: boolean): boolean;
   cancel?(ctx: ToolContext): void;

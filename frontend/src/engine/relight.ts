@@ -33,6 +33,8 @@ export interface RelightLight {
   pattern: RelightPattern;
   near?: number;
   far?: number;
+  /** This light's gloss, 0 to 200 percent of its specular highlight (100 when unset); the scene Shine scales all lights. */
+  gloss?: number;
 }
 
 export interface RelightContent {
@@ -145,6 +147,7 @@ export function relightFrom(raw: unknown): RelightContent | null {
       intensity: num(l.intensity, 0, 100, 60), softness: num(l.softness, 0, 100, 20), diffusion: num(l.diffusion, 0, 100, 20), distance: num(l.distance, 0, 100, 35),
       pos: pt(l.pos, { x: 0.2, y: 0.25 }), aim: pt(l.aim, { x: 0.5, y: 0.45 }),
       ...(l.near !== undefined ? { near: num(l.near, 0, 100, 0) } : {}), ...(l.far !== undefined ? { far: num(l.far, 0, 100, 100) } : {}),
+      ...(l.gloss !== undefined ? { gloss: num(l.gloss, 0, 200, 100) } : {}),
       pattern: {
         kind: pick(pr.kind, RELIGHT_PATTERNS, 'none'), scale: num(pr.scale, 10, 400, dp.scale), width: num(pr.width, 1, 200, dp.width), slats: Math.round(num(pr.slats, 2, 60, dp.slats)),
         opening: num(pr.opening, 1, 99, dp.opening), length: num(pr.length, 1, 200, dp.length), feather: num(pr.feather, 0, 100, dp.feather), rotation: num(pr.rotation, -180, 180, dp.rotation), invert: pr.invert === true,
@@ -284,7 +287,7 @@ export function relightGeometry(depth: Float32Array, w: number, h: number): Reli
 
 export interface PackedLight {
   type: number; color: [number, number, number]; intensity: number; softness: number; diffusion: number; distance: number;
-  pos: [number, number]; aim: [number, number]; pattern: number; pat: [number, number, number, number]; pat2: [number, number, number, number]; range: [number, number]; center: [number, number];
+  pos: [number, number]; aim: [number, number]; pattern: number; pat: [number, number, number, number]; pat2: [number, number, number, number]; range: [number, number]; center: [number, number]; gloss: number;
 }
 
 const TYPE_CODE: Record<RelightType, number> = { point: 0, spot: 1, sun: 2, area: 3, strip: 4, ring: 5 };
@@ -298,6 +301,7 @@ export function packLights(c: RelightContent, w: number, h: number): PackedLight
     pat: [l.pattern.scale / 100, l.pattern.width / 100, l.pattern.slats, l.pattern.opening / 100],
     pat2: [l.pattern.length / 100, l.pattern.feather / 100, (l.pattern.rotation * Math.PI) / 180, 0],
     range: [(l.near ?? 0) / 100, (l.far ?? 100) / 100], center: l.pattern.center ? [l.pattern.center.x * w, l.pattern.center.y * h] : [l.aim.x * w, l.aim.y * h],
+    gloss: (l.gloss ?? 100) / 100,
   }));
 }
 
@@ -527,7 +531,7 @@ function shadeLayer(S: Scene, lights: readonly PackedLight[], P: readonly number
     const sss = amount * (1 - L.diffusion) * SSS * Math.max(0, spill - lam) * warm * gw;
     E[0] += L.color[0] * (dif + sss); E[1] += L.color[1] * (dif + 0.35 * sss); E[2] += L.color[2] * dif;
     const H = norm3([toL[0] + V[0], toL[1] + V[1], toL[2] + V[2]]), gl = 8 + 120 * (1 - L.softness) ** 2;
-    const sp = Math.pow(Math.max(0, dot3(nW, H)), gl) * (gl + 8) / 25.13 * Math.max(0, ndl) * 0.04 * (0.4 + 1.6 * tex) * amount * gw;
+    const sp = Math.pow(Math.max(0, dot3(nW, H)), gl) * (gl + 8) / 25.13 * Math.max(0, ndl) * 0.04 * (0.4 + 1.6 * tex) * amount * gw * L.gloss;
     for (let c = 0; c < 3; c++) Sp[c] += L.color[c] * sp;
   }
 }

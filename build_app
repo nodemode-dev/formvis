@@ -166,6 +166,9 @@ else
   elif [ -n "$deb" ]; then
     cv_say "install it with: sudo apt install $deb   (or run ./build_app --install)"
   fi
-  if [ "$open_app" = 1 ]; then "$CARGO_TARGET_DIR/release/formvis" >/dev/null 2>&1 & fi
+  if [ "$open_app" = 1 ]; then
+    bash setup/libcheck "$CARGO_TARGET_DIR/release/formvis" || cv_say "the libraries named above are missing, so the window may not open"
+    "$CARGO_TARGET_DIR/release/formvis" >/dev/null 2>&1 &
+  fi
 fi
 cv_say "done in ${SECONDS}s"

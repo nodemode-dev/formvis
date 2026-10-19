@@ -68,11 +68,11 @@ def _ensure(path: Path) -> Path:
 
 
 def portable_dir() -> Path | None:
-    """FormvisData beside the program when --portable (FORMVIS_PORTABLE=1) was given or a file named portable.txt sits
-    beside the frozen engine; None otherwise."""
+    """FormvisData beside the program when --portable (FORMVIS_PORTABLE=1) was given or a file named portable or
+    portable.txt sits beside the frozen engine; None otherwise."""
     import sys
     beside = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else BACKEND_DIR
-    if os.environ.get("FORMVIS_PORTABLE") == "1" or (getattr(sys, "frozen", False) and (beside / "portable.txt").is_file()):
+    if os.environ.get("FORMVIS_PORTABLE") == "1" or (getattr(sys, "frozen", False) and any((beside / name).is_file() for name in ("portable", "portable.txt"))):
         return beside / "FormvisData"
     return None
 

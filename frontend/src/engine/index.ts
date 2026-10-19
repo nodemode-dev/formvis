@@ -606,6 +606,14 @@ export class Engine {
     }
   }
 
+  /** `task` that also holds edits off while it runs, so a save reads every layer from one state (the save awaits between
+   *  layers). A job already holding the document keeps its own name. */
+  async lockedTask<T>(name: string, fn: () => Promise<T>): Promise<T> {
+    const mine = this.busyWith === null;
+    if (mine) this.busyWith = name;
+    try { return await this.task(fn); } finally { if (mine) this.busyWith = null; }
+  }
+
   private refresh(): void {
     for (const k of ['doc', 'selection', 'active', 'history', 'render', 'options'] as const) this.emit(k, null);
     this.schedulePaging();   // 1.60.8
@@ -1373,6 +1381,11 @@ export class Engine {
   /** The current document's snapshots, newest last, with the memory each keeps. They live with the open document and
    *  are not saved. */
   get snapshots(): ReadonlyArray<{ id: ID; name: string; bytes: number; kind: SN.SnapshotKind }> { return SN.snapshots(this.snapshotHost); }
+  /** The document as a kept snapshot holds it, drawn at its own size; the oldest snapshot when `id` is left out. History is not touched. Null when none is kept. */
+  snapshotPicture(id?: ID): Surface | null {
+    const p = this.current, list = p ? this.snapshotHost.store.lists.get(p) ?? [] : [], e = id ? list.find((x) => x.id === id) : list[0];
+    return e ? renderDoc(this.work, e.state.doc) : null;
+  }
 
   /** History > New Snapshot: the document as it is now, kept to return to however far the steps move on. */
   takeSnapshot(name?: string, kind: SN.SnapshotKind = 'document'): void { SN.takeSnapshot(this.snapshotHost, name, kind); }
@@ -1763,7 +1776,7 @@ export class Engine {
         return;
       }
     }
-    this.display.render({ doc: p.doc, target, view, overrides: this.overrides(p), quality });
+    this.display.render({ doc: p.doc, target, view, overrides: this.overrides(p), quality, reuse: true });
   }
 
   /** The GPU display's view of the current document (Phase 18.2b): its visible layers bottom to top, each with its
@@ -3078,6 +3091,19 @@ export class Engine {
       }
       p.updateLayer(toId, { effects: dst });
       if (rest) p.updateLayer(fromId, { effects: effectsPresent(rest) ? rest : null });
+      return true;
+    });
+  }
+
+  /** One effect (all its instances) of a layer taken away, as one undo step; the style goes when it was the last. */
+  removeEffect(layerId: ID, key: keyof Omit<LayerEffects, 'extra' | 'hidden' | 'blendInterior' | 'layerMaskHides'>): boolean {
+    return this.edit('Delete Effect', (p) => {
+      const l = p.layer(layerId);
+      if (!l || !effectsPresent(l.effects)) return false;
+      const fx = structuredClone(l.effects);
+      (fx as unknown as Record<string, unknown>)[key] = defaultEffects()[key];
+      if (fx.extra) { const left: Record<string, unknown> = { ...(fx.extra as Record<string, unknown>) }; delete left[key]; if (Object.keys(left).length) fx.extra = left as LayerEffects['extra']; else delete fx.extra; }
+      p.updateLayer(layerId, { effects: effectsPresent(fx) ? fx : null });
       return true;
     });
   }
@@ -7080,6 +7106,22 @@ export class Engine {
   /** The document's colour at `pt`: the pixel itself for Point Sample, or the average of the Sample Size square around
    *  it, each pixel weighted by its opacity, so transparent pixels and anything past the canvas do not pull the colour. */
   sampleColor(pt: Pt): RGB | null {
+    const p = this.current;
+    if (!p || pt.x < 0 || pt.y < 0 || pt.x >= p.doc.width || pt.y >= p.doc.height) return null;
+    return this.sampleColorAt(pt);
+  }
+
+  /** The composited colour and opacity of the one document pixel at `pt`, as the picture shows it (null outside the canvas). */
+  compositePixel(pt: Pt): { r: number; g: number; b: number; a: number } | null {
+    const p = this.current;
+    if (!p || !(pt.x >= 0) || !(pt.y >= 0) || pt.x >= p.doc.width || pt.y >= p.doc.height) return null;
+    const s = createSurface(1, 1);
+    this.work.render({ doc: p.doc, target: s, view: translation(-Math.floor(pt.x), -Math.floor(pt.y)), quality: 'high' });
+    const d = ctxOf(s).getImageData(0, 0, 1, 1).data;
+    return { r: d[0], g: d[1], b: d[2], a: d[3] };
+  }
+
+  private sampleColorAt(pt: Pt): RGB | null {
     const p = this.current;
     if (!p || pt.x < 0 || pt.y < 0 || pt.x >= p.doc.width || pt.y >= p.doc.height) return null;
     const n = Math.max(1, Math.min(101, Math.round(this.eyedropperSize))), half = Math.floor(n / 2);

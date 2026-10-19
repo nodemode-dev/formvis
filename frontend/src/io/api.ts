@@ -12,7 +12,7 @@ export interface Capabilities { pixelBudget?: number; memory?: number;
   runtime?: { python: string; system: string; machine: string };
 }
 /** The engine process's memory in bytes as the operating system counts it; a key is missing when the system does not say. */
-export interface EngineMetrics { pid: number; uptime: number; total: number; rss?: number; peak?: number; private?: number; available?: number; threads?: number }
+export interface EngineMetrics { pid: number; uptime: number; total: number; rss?: number; peak?: number; private?: number; available?: number; threads?: number; gpu?: Array<{ name: string; used: number; total: number | null; source: string }> }
 export interface LibraryItem { name: string; modified: number; size: number }
 /** A plugin folder's plugin.json as the engine checked it. */
 export interface PluginManifest { id: string; name: string; version: string; main: string; permissions: string[]; description: string; api: number }

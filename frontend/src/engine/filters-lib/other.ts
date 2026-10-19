@@ -1,6 +1,6 @@
 import type { LibFilter, LibValues } from '../filter-library';
 import { gaussianMargin } from '../filters';
-import { boxOf, clampInt, clipBox, copyImage, exactGaussian, type Box } from './shared';
+import { boxOf, clampInt, clipBox, copyImage, exactGaussian, luma, type Box } from './shared';
 
 const num = (v: LibValues, k: string): number => v[k] as number;
 const str = (v: LibValues, k: string): string => v[k] as string;
@@ -9,6 +9,24 @@ const str = (v: LibValues, k: string): string => v[k] as string;
 export function highPassImage(img: ImageData, radius: number): ImageData {
   const soft = exactGaussian(img, Math.max(0.1, radius)).data, s = img.data, out = copyImage(img), d = out.data;
   for (let i = 0; i < s.length; i += 4) for (let c = 0; c < 3; c++) d[i + c] = 128 + s[i + c] - soft[i + c];
+  return out;
+}
+
+/** Tonal Contrast: the local detail of the luminance (its difference from a blur at `radius`) is scaled by a gain that
+ *  depends on the blurred tone, so shadows, midtones and highlights each get their own contrast (-100 to 100 percent);
+ *  the change in luminance is added to the colour channels. Alpha is kept. */
+export function tonalContrastImage(img: ImageData, radius: number, shadows: number, midtones: number, highlights: number): ImageData {
+  const { width: w, height: h } = img, s = img.data, out = copyImage(img), d = out.data;
+  const grey = new ImageData(w, h), g = grey.data;
+  for (let i = 0; i < s.length; i += 4) { const y = luma(s[i], s[i + 1], s[i + 2]); g[i] = y; g[i + 1] = y; g[i + 2] = y; g[i + 3] = 255; }
+  const base = exactGaussian(grey, Math.max(0.5, radius)).data;
+  for (let i = 0; i < s.length; i += 4) {
+    const tone = base[i] / 255, ws = Math.max(0, 1 - tone * 2), wh = Math.max(0, tone * 2 - 1), wm = 1 - ws - wh;
+    const gain = (shadows * ws + midtones * wm + highlights * wh) / 100;
+    const delta = (g[i] - base[i]) * gain;
+    if (delta === 0 || s[i + 3] === 0) continue;
+    for (let c = 0; c < 3; c++) { const v = s[i + c] + delta; d[i + c] = v < 0 ? 0 : v > 255 ? 255 : v; }
+  }
   return out;
 }
 
@@ -153,6 +171,17 @@ export const OTHER_FILTERS: LibFilter[] = [
     params: [{ key: 'radius', label: 'Radius (px)', kind: 'range', min: 0.1, max: 250, step: 0.1, def: 10, limit: 1000 }],
     reach: (v, scale) => gaussianMargin(num(v, 'radius') * scale),
     run: (src, v, ctx) => highPassImage(src, num(v, 'radius') * ctx.scale),
+  },
+  {
+    id: 'tonalContrast', label: 'Tonal Contrast', group: 'Other', grows: false,
+    params: [
+      { key: 'shadows', label: 'Shadows Contrast (%)', kind: 'range', min: -100, max: 100, step: 1, def: 40 },
+      { key: 'midtones', label: 'Midtones Contrast (%)', kind: 'range', min: -100, max: 100, step: 1, def: 40 },
+      { key: 'highlights', label: 'Highlights Contrast (%)', kind: 'range', min: -100, max: 100, step: 1, def: 40 },
+      { key: 'radius', label: 'Radius (px)', kind: 'range', min: 1, max: 250, step: 1, def: 20, limit: 1000 },
+    ],
+    reach: (v, scale) => gaussianMargin(Math.max(0.5, num(v, 'radius') * scale)),
+    run: (src, v, ctx) => tonalContrastImage(src, num(v, 'radius') * ctx.scale, num(v, 'shadows'), num(v, 'midtones'), num(v, 'highlights')),
   },
   {
     id: 'maximum', label: 'Maximum', group: 'Other', grows: true,

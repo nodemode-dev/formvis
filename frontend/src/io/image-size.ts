@@ -104,6 +104,10 @@ export async function headerResolution(file: Blob): Promise<number | null> {
       }
       return exif;
     }
+    if (b.length >= 46 && b[0] === 0x42 && b[1] === 0x4d && v.getUint32(14, true) >= 40) {
+      const perMetre = v.getInt32(38, true);
+      return perMetre > 0 ? inRange(perMetre * 0.0254) : null;
+    }
     if (b.length >= 8 && ((b[0] === 0x49 && b[1] === 0x49 && b[2] === 42) || (b[0] === 0x4d && b[1] === 0x4d && b[3] === 42))) {
       return inRange(await tiffResolution(async (o, n) => new Uint8Array(await file.slice(o, o + n).arrayBuffer())));
     }

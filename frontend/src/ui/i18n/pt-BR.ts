@@ -35,7 +35,7 @@ export const ptBR: Record<string, string> = {
   'Paste Into': 'Colar dentro', 'Paste Outside': 'Colar fora', 'Clear': 'Limpar', 'Search': 'Pesquisar',
   'Find and Replace Text': 'Localizar e substituir texto', 'Fill with Foreground': 'Preencher com a cor de primeiro plano',
   'Fill with Background': 'Preencher com a cor de plano de fundo', 'Stroke': 'Traçado', 'Content-Aware Fill': 'Preenchimento com reconhecimento de conteúdo',
-  'Content-Aware Scale': 'Escala com reconhecimento de conteúdo', 'Puppet Warp': 'Deformação de marionete', 'Perspective Warp': 'Deformação de perspectiva',
+  'Puppet Warp': 'Deformação de marionete', 'Perspective Warp': 'Deformação de perspectiva',
   'Free Transform': 'Transformação livre', 'Rotate': 'Girar', 'Scale': 'Escala', 'Skew': 'Inclinar', 'Perspective': 'Perspectiva', 'Warp': 'Deformar',
   'Define Brush Preset': 'Definir predefinição de pincel', 'Define Pattern': 'Definir padrão', 'Define Custom Shape': 'Definir forma personalizada',
   'Keyboard Shortcuts': 'Atalhos de teclado', 'Preset Manager': 'Gerenciador de predefinições', 'Assign Profile': 'Atribuir perfil',

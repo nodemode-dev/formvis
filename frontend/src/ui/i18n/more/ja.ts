@@ -79,7 +79,7 @@ export const ja: Record<string, string> = {
   'Pixel': 'ピクセル', 'Place': '配置', 'Plaster': 'プラスター', 'Plastic Wrap': 'ラップ', 'Play': '再生', 'Play Action': 'アクションを再生', 'Play Animation': 'アニメーションを再生', 'Plus': 'プラス', 'Point Radius (%)': '点の半径 (%)',
   'Pointillize': '点描', 'Polar Coordinates': '座標変換', 'Position': '位置', 'Position X (%)': '位置 X (%)', 'Poster Edges': 'ポスターエッジ','Posterize': 'ポスタリゼーション', 'Preserve': '保持',
   'Preserve Details (%)': 'ディテールを保持 (%)', 'Preserve Luminosity': '輝度を保持', 'Preserve Transparency': '透明部分を保持', 'Previous Blend Mode': '前の描画モード', 'Previous Layer Comp': '前のレイヤーカンプ',
-  'Print Selected Area': '選択範囲を印刷', 'Printer Profile': 'プリンタープロファイル', 'Profile': 'プロファイル', 'Projection': '投影', 'Prompt': 'プロンプト', 'Properties Sheet': 'プロパティシート', 'Protect skin tones': '肌色を保護',
+  'Print Selected Area': '選択範囲を印刷', 'Printer Profile': 'プリンタープロファイル', 'Profile': 'プロファイル', 'Projection': '投影', 'Prompt': 'プロンプト', 'Properties Sheet': 'プロパティシート',
   'Protect the selection': '選択範囲を保護', 'QOI, PNM, TGA and ICO': 'QOI、PNM、TGA、ICO', 'Quality': '画質', 'Quality (%)': '画質 (%)', 'Quality (0 to 12)': '画質 (0 ～ 12)', 'Radial': '円形',
   'Radiance HDR': 'Radiance HDR', 'Radius': '半径', 'Radius (px)': '半径 (px)', 'Radius X (%)': '半径 X (%)', 'Radius Y (%)': '半径 Y (%)', 'Randomize Flame Shapes': '炎のシェイプをランダム化',
   'Randomize Length': '長さをランダム化', 'Rating': '評価', 'Record': '記録', 'Red': 'レッド', 'Redact': '黒塗り', 'Redraw only what a brush stroke changed': 'ブラシストロークで変更した部分のみ再描画',

@@ -534,7 +534,6 @@ export const sv: Record<string, string> = {
   'Projection': 'Projektion',
   'Prompt': 'Prompt',
   'Properties Sheet': 'Egenskapsblad',
-  'Protect skin tones': 'Skydda hudtoner',
   'Protect the selection': 'Skydda markeringen',
   'QOI, PNM, TGA and ICO': 'QOI, PNM, TGA och ICO',
   'Quality': 'Kvalitet',

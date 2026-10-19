@@ -46,7 +46,7 @@ export const zhCN: Record<string, string> = {
   'Paste Into': '贴入', 'Paste Outside': '外部粘贴', 'Clear': '清除', 'Search': '搜索',
   'Find and Replace Text': '查找和替换文本', 'Fill with Foreground': '用前景色填充',
   'Fill with Background': '用背景色填充', 'Stroke': '描边', 'Content-Aware Fill': '内容识别填充',
-  'Content-Aware Scale': '内容识别缩放', 'Puppet Warp': '操控变形', 'Perspective Warp': '透视变形',
+  'Puppet Warp': '操控变形', 'Perspective Warp': '透视变形',
   'Free Transform': '自由变换', 'Rotate': '旋转', 'Scale': '缩放', 'Skew': '斜切', 'Perspective': '透视', 'Warp': '变形',
   'Define Brush Preset': '定义画笔预设', 'Define Pattern': '定义图案', 'Define Custom Shape': '定义自定形状',
   'Keyboard Shortcuts': '键盘快捷键', 'Preset Manager': '预设管理器', 'Assign Profile': '指定配置文件',

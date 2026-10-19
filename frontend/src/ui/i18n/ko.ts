@@ -46,7 +46,7 @@ export const ko: Record<string, string> = {
   'Paste Into': '안에 붙여넣기', 'Paste Outside': '바깥에 붙여넣기', 'Clear': '지우기', 'Search': '검색',
   'Find and Replace Text': '텍스트 찾기 및 바꾸기', 'Fill with Foreground': '전경색으로 칠하기',
   'Fill with Background': '배경색으로 칠하기', 'Stroke': '획', 'Content-Aware Fill': '내용 인식 칠',
-  'Content-Aware Scale': '내용 인식 비율', 'Puppet Warp': '퍼펫 변형', 'Perspective Warp': '원근 뒤틀기',
+  'Puppet Warp': '퍼펫 변형', 'Perspective Warp': '원근 뒤틀기',
   'Free Transform': '자유 변형', 'Rotate': '회전', 'Scale': '비율', 'Skew': '기울이기', 'Perspective': '원근', 'Warp': '뒤틀기',
   'Define Brush Preset': '브러시 사전 설정 정의', 'Define Pattern': '패턴 정의', 'Define Custom Shape': '사용자 정의 모양 정의',
   'Keyboard Shortcuts': '키보드 단축키', 'Preset Manager': '사전 설정 관리자', 'Assign Profile': '프로필 지정',

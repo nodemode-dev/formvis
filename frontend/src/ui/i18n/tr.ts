@@ -35,7 +35,7 @@ export const tr: Record<string, string> = {
   'Paste Into': 'İçine Yapıştır', 'Paste Outside': 'Dışına Yapıştır', 'Clear': 'Temizle', 'Search': 'Ara',
   'Find and Replace Text': 'Metni Bul ve Değiştir', 'Fill with Foreground': 'Ön Plan Rengiyle Doldur',
   'Fill with Background': 'Arka Plan Rengiyle Doldur', 'Stroke': 'Kontur', 'Content-Aware Fill': 'İçeriğe Duyarlı Dolgu',
-  'Content-Aware Scale': 'İçeriğe Duyarlı Ölçek', 'Puppet Warp': 'Kukla Çarpıtma', 'Perspective Warp': 'Perspektif Çarpıtma',
+  'Puppet Warp': 'Kukla Çarpıtma', 'Perspective Warp': 'Perspektif Çarpıtma',
   'Free Transform': 'Serbest Dönüştür', 'Rotate': 'Döndür', 'Scale': 'Ölçekle', 'Skew': 'Eğ', 'Perspective': 'Perspektif', 'Warp': 'Çarpıt',
   'Define Brush Preset': 'Fırça Ön Ayarı Tanımla', 'Define Pattern': 'Desen Tanımla', 'Define Custom Shape': 'Özel Şekil Tanımla',
   'Keyboard Shortcuts': 'Klavye Kısayolları', 'Preset Manager': 'Ön Ayar Yöneticisi', 'Assign Profile': 'Profil Ata',

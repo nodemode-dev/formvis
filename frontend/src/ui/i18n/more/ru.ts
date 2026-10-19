@@ -534,7 +534,6 @@ export const ru: Record<string, string> = {
   'Projection': 'Проекция',
   'Prompt': 'Запрос',
   'Properties Sheet': 'Лист свойств',
-  'Protect skin tones': 'Защитить оттенки кожи',
   'Protect the selection': 'Защитить выделение',
   'QOI, PNM, TGA and ICO': 'QOI, PNM, TGA и ICO',
   'Quality': 'Качество',

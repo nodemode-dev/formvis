@@ -35,7 +35,7 @@ export const id: Record<string, string> = {
   'Paste Into': 'Tempel ke Dalam', 'Paste Outside': 'Tempel ke Luar', 'Clear': 'Bersihkan', 'Search': 'Cari',
   'Find and Replace Text': 'Cari dan Ganti Teks', 'Fill with Foreground': 'Isi dengan Warna Depan',
   'Fill with Background': 'Isi dengan Warna Latar', 'Stroke': 'Garis Tepi', 'Content-Aware Fill': 'Isi Sadar Konten',
-  'Content-Aware Scale': 'Skala Sadar Konten', 'Puppet Warp': 'Puppet Warp', 'Perspective Warp': 'Warp Perspektif',
+  'Puppet Warp': 'Puppet Warp', 'Perspective Warp': 'Warp Perspektif',
   'Free Transform': 'Transformasi Bebas', 'Rotate': 'Putar', 'Scale': 'Skala', 'Skew': 'Miringkan', 'Perspective': 'Perspektif', 'Warp': 'Warp',
   'Define Brush Preset': 'Definisikan Preset Kuas', 'Define Pattern': 'Definisikan Pola', 'Define Custom Shape': 'Definisikan Bentuk Kustom',
   'Keyboard Shortcuts': 'Pintasan Papan Ketik', 'Preset Manager': 'Pengelola Preset', 'Assign Profile': 'Tetapkan Profil',

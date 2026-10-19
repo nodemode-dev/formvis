@@ -19,6 +19,7 @@ usage: ./formvis [command] [options]
   freeze              freeze the backend into the Tauri sidecar binary
   desktop dev|build   run or bundle the desktop app
   doctor              check the toolchain, installs and ports
+  libcheck [--dialogs] [BINARY]  Linux: name the shared libraries the desktop program cannot find, and what the file dialogs need
   test [unit|backend|e2e]  run the tests (all three suites by default)
   counts [--check]    the README's code sizes and blend-mode count (--check: exit 1 if README.md has drifted)
   counts --commands [--check]  the command catalogue's size and any command without metadata (--check: exit 1 under 620 or while any lacks it)
@@ -55,6 +56,7 @@ case "$cmd" in
       *) usage; exit 2 ;;
     esac ;;
   doctor) exec setup/doctor "$@" ;;
+  libcheck) exec bash setup/libcheck "$@" ;;
   test) exec setup/test "$@" ;;
   counts) exec setup/counts "$@" ;;
   bench) exec setup/bench "$@" ;;

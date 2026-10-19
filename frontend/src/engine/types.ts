@@ -250,7 +250,11 @@ export interface ColorOverlayEffect { enabled: boolean; color: RGB; opacity: num
 /** Gradient Overlay. `stops` (36.8), when present, is the whole gradient (positions 0 to 1, each colour with its own
  *  alpha) and wins over `from` and `to`, which stay its two ends for the two-colour editor; editing either drops it. */
 export type OverlayGradientStyle = 'linear' | 'radial' | 'angle' | 'reflected' | 'diamond';
-export interface GradientOverlayEffect { enabled: boolean; from: RGB; to: RGB; opacity: number; blend: BlendMode; angle: number; style: OverlayGradientStyle; scale: number; reverse: boolean; stops?: GradientOverlayStop[]; dither?: boolean }
+export interface GradientOverlayEffect { enabled: boolean; from: RGB; to: RGB; opacity: number; blend: BlendMode; angle: number; style: OverlayGradientStyle; scale: number; reverse: boolean; stops?: GradientOverlayStop[]; dither?: boolean; method?: OverlayGradientMethod; smoothness?: number }
+/** How a Gradient Overlay blends between stops: classic (straight in sRGB, the default), perceptual (in a gamma 1.6 space,
+ *  between the two) or linear (in linear light, so mid tones run lighter). `smoothness` (1 to 100) eases each
+ *  stretch between two stops with a smooth step by that share. */
+export type OverlayGradientMethod = 'classic' | 'perceptual' | 'linear';
 export interface GradientOverlayStop { at: number; color: RGB; alpha: number }
 /** A Gradient Overlay's stops read back safely: two to 64, positions and alphas held to 0..1, sorted. */
 export function overlayStopsFrom(raw: unknown): GradientOverlayStop[] | undefined {
@@ -365,6 +369,8 @@ export function effectsFromData(raw: unknown): LayerEffects | null {
   if (ig.source === 'center') fx.innerGlow.source = 'center';
   if (s.knockout === true) fx.dropShadow.knockout = true;
   if (go.dither === true) fx.gradientOverlay.dither = true;
+  if (go.method === 'perceptual' || go.method === 'linear') fx.gradientOverlay.method = go.method;
+  if (typeof go.smoothness === 'number' && go.smoothness > 0) fx.gradientOverlay.smoothness = num(go.smoothness, 0, 1, 100);
   if (g.technique === 'precise') fx.outerGlow.technique = 'precise';
   if (typeof g.range === 'number' && g.range < 100) fx.outerGlow.range = num(g.range, 100, 1, 100);
   for (const [dst, src] of [[fx.dropShadow, s], [fx.outerGlow, g]] as const) {

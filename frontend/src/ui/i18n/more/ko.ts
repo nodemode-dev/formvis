@@ -79,7 +79,7 @@ export const ko: Record<string, string> = {
   'Pixel': '픽셀', 'Place': '가져오기', 'Plaster': '석고 효과', 'Plastic Wrap': '플라스틱 포장', 'Play': '재생', 'Play Action': '액션 재생', 'Play Animation': '애니메이션 재생', 'Plus': '더하기', 'Point Radius (%)': '점 반경 (%)',
   'Pointillize': '점묘화', 'Polar Coordinates': '극좌표', 'Position': '위치', 'Position X (%)': '위치 X (%)', 'Poster Edges': '포스터 가장자리', 'Posterize': '포스터화', 'Preserve': '유지',
   'Preserve Details (%)': '세부 유지 (%)', 'Preserve Luminosity': '광도 유지', 'Preserve Transparency': '투명도 유지', 'Previous Blend Mode': '이전 혼합 모드', 'Previous Layer Comp': '이전 레이어 컴프',
-  'Print Selected Area': '선택 영역 인쇄', 'Printer Profile': '프린터 프로필', 'Profile': '프로필', 'Projection': '투영', 'Prompt': '프롬프트', 'Properties Sheet': '속성 시트', 'Protect skin tones': '피부색 보호',
+  'Print Selected Area': '선택 영역 인쇄', 'Printer Profile': '프린터 프로필', 'Profile': '프로필', 'Projection': '투영', 'Prompt': '프롬프트', 'Properties Sheet': '속성 시트',
   'Protect the selection': '선택 영역 보호', 'QOI, PNM, TGA and ICO': 'QOI, PNM, TGA 및 ICO', 'Quality': '품질', 'Quality (%)': '품질 (%)', 'Quality (0 to 12)': '품질 (0 ~ 12)', 'Radial': '방사형',
   'Radiance HDR': 'Radiance HDR', 'Radius': '반경', 'Radius (px)': '반경 (px)', 'Radius X (%)': '반경 X (%)', 'Radius Y (%)': '반경 Y (%)', 'Randomize Flame Shapes': '불꽃 모양 무작위화',
   'Randomize Length': '길이 무작위화', 'Rating': '등급', 'Record': '기록', 'Red': '빨강', 'Redact': '가리기', 'Redraw only what a brush stroke changed': '브러시 획으로 바뀐 부분만 다시 그리기',

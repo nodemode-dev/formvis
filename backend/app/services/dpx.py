@@ -141,7 +141,16 @@ def read(data: bytes) -> tuple[np.ndarray, dict]:
     out = np.empty((h, w, 4), np.uint16)
     out[..., :3] = np.round(np.clip(rgb, 0.0, 1.0) * 65535.0)
     out[..., 3] = np.round(np.clip(alpha, 0.0, 1.0) * 65535.0)
-    return out, {"width": w, "height": h, "bits": bits, "transfer": TRANSFER_NAMES.get(transfer, f"code {transfer}"), "transferCode": transfer,
+    orientation = _u16(data, 768, e)
+    if orientation >= 4 and orientation < 8:
+        out = out.transpose(1, 0, 2)
+        w, h = h, w
+    if orientation in (1, 3, 5, 7):
+        out = out[:, ::-1]
+    if orientation in (2, 3, 6, 7):
+        out = out[::-1]
+    out = np.ascontiguousarray(out)
+    return out, {"width": w, "height": h, "orientation": orientation, "bits": bits, "transfer": TRANSFER_NAMES.get(transfer, f"code {transfer}"), "transferCode": transfer,
                  "descriptor": descriptor, "bigEndian": e == ">", "packing": packing}
 
 

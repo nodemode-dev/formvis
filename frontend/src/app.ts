@@ -90,7 +90,7 @@ import { isOraFile, readOraFile, writeOra } from './io/ora';
 import { withAiLabel } from './io/ai-label';
 import { withGenerationText } from './io/png-text';
 import { pathsToAi } from './io/ai-paths';
-import { svgToShapes } from './io/svg-layers';
+import { svgSource, svgToShapes } from './io/svg-layers';
 import { withXmp } from './io/xmp';
 import { FileInfoDialog } from './ui/panels/file-info-dialog';
 import { PrintDialog } from './ui/panels/print-dialog';
@@ -103,7 +103,7 @@ import { TypeOnPathDialog } from './ui/panels/type-on-path-dialog';
 import { TypeOnShapeDialog } from './ui/panels/type-on-shape-dialog';
 import { ParagraphStylesDialog } from './ui/panels/paragraph-styles';
 import { CharacterStylesDialog } from './ui/panels/character-styles';
-import { LayerStyleDialog } from './ui/panels/layer-style-dialog';
+import { LayerStyleDialog, type StyleSection } from './ui/panels/layer-style-dialog';
 import { GenerativeDialog } from './ui/panels/generative-dialog';
 import { readPat, writePat } from './io/pat';
 import { cleanFeatures, cleanRuns, featureOn, runFeatureOn, withFeature, withRunFeature } from './engine/opentype';
@@ -875,7 +875,7 @@ export function startApp(): void {
             if (notes.length) toast(notes.join(' '), 'info');
           } else if (isKraFile(f)) {   // .kra (DEV_PLAN 34.5 part a)
             const { doc, notes, activeId } = await readKra(f);
-            engine.addProject(doc, f.name.replace(/\.kra$/i, ''), activeId);
+            engine.addProject(doc, f.name.replace(/\.(kra|krz)$/i, ''), activeId);
             if (notes.length) toast(notes.join(' '), 'info');
           } else if (isAfFile(f)) {   // .afphoto preview (DEV_PLAN 34.6)
             const { doc, notes, activeId } = await readAf(f);
@@ -1213,7 +1213,7 @@ export function startApp(): void {
       }
     }
     const target = name;
-    return engine.task(async () => {
+    return engine.lockedTask('Save', async () => {
       const revision = p.history.revision;
       try {
         const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p));
@@ -1245,7 +1245,7 @@ export function startApp(): void {
       if (!/\.fvd$/i.test(path)) path = `${path}.fvd`;
     }
     const target = path;
-    return engine.task(async () => {
+    return engine.lockedTask('Save', async () => {
       const revision = p.history.revision;
       try {
         const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p));
@@ -2956,7 +2956,7 @@ export function startApp(): void {
   };
   /** One .svg file through a fresh input; null when cancelled. */
   const pickSvg = (): Promise<File | null> => new Promise((resolve) => {
-    const i = el<HTMLInputElement>('<input type="file" accept=".svg,image/svg+xml" data-role="svg-layers-file" hidden>');
+    const i = el<HTMLInputElement>('<input type="file" accept=".svg,.svgz,image/svg+xml" data-role="svg-layers-file" hidden>');
     const done = (f: File | null): void => { resolve(f); i.remove(); };
     i.addEventListener('change', () => done(i.files?.[0] ?? null), { once: true });
     i.addEventListener('cancel', () => done(null), { once: true });
@@ -2969,7 +2969,7 @@ export function startApp(): void {
       if (text === null) {
         const file = await pickSvg();
         if (!file) return;
-        text = await file.text();
+        text = await svgSource(file);
         name = stripExt(file.name);
       }
       const parsed = svgToShapes(text);
@@ -4101,6 +4101,27 @@ export function startApp(): void {
     { id: 'redo', label: () => { const h = engine.current?.history; return h?.canRedo ? `Redo ${h.redoName}` : 'Redo'; }, keys: ['Shift+Mod+Z', 'Mod+Y'], enabled: () => !!engine.current?.history.canRedo, run: () => engine.redo() },
     { id: 'compare-documents', label: 'Compare with...', enabled: () => !!engine.current && engine.projects.length > 1, run: () => dialogs.compare.show() },
     { id: 'toggle-last-state', label: 'Toggle Last State', keys: ['Alt+Mod+Z'], enabled: () => !!engine.current?.history.canUndo || !!engine.current?.history.canRedo, run: () => engine.toggleLastState() },
+    { id: 'peek-original', label: 'Show Opening State', enabled: () => !!engine.current && engine.snapshots.length > 0, checked: () => stage.comparing === 'peek',
+      params: { snapshot: { type: 'string', description: 'A snapshot id from the History panel; the opening snapshot when left out.' } },
+      run: (a) => {
+        if (stage.comparing === 'peek') { stage.compare(null); return { comparing: null }; }
+        if (!stage.compare('peek', typeof a?.snapshot === 'string' ? a.snapshot : undefined)) throw new Error('No snapshot is kept to show: New Snapshot takes one.');
+        return { comparing: 'peek' };
+      } },
+    { id: 'compare-split', label: 'Compare with Snapshot (Split)', enabled: () => !!engine.current && engine.snapshots.length > 0, checked: () => stage.comparing === 'split',
+      params: { snapshot: { type: 'string', description: 'A snapshot id from the History panel; the opening snapshot when left out.' } },
+      run: (a) => {
+        if (stage.comparing === 'split') { stage.compare(null); return { comparing: null }; }
+        if (!stage.compare('split', typeof a?.snapshot === 'string' ? a.snapshot : undefined)) throw new Error('No snapshot is kept to compare with: New Snapshot takes one.');
+        return { comparing: 'split' };
+      } },
+    { id: 'composite-pixel', label: 'Read Composite Pixel', enabled: () => !!engine.current,
+      params: { x: { type: 'number', required: true, description: 'Document column of the pixel.' }, y: { type: 'number', required: true, description: 'Document row of the pixel.' } },
+      run: (a) => {
+        const x = Math.floor(Number(a?.x)), y = Math.floor(Number(a?.y)), px = engine.compositePixel({ x, y });
+        if (!px) throw new Error('x and y must lie inside the canvas.');
+        return { x, y, ...px, hex: `#${[px.r, px.g, px.b].map((n) => n.toString(16).padStart(2, '0')).join('')}` };
+      } },
     { id: 'fade', label: () => { const n = engine.fadeName; return n ? `Fade ${n}...` : 'Fade...'; }, keys: ['Shift+Mod+F'], enabled: () => !!engine.fadeName, run: () => dialogs.fade.show() },
     { id: 'fill-fg', label: 'Fill with Foreground', keys: ['Alt+Backspace', 'Alt+Delete'], enabled: pixel, run: () => engine.fill('fg') },
     { id: 'fill-bg', label: 'Fill with Background', keys: ['Mod+Backspace', 'Mod+Delete'], enabled: pixel, run: () => engine.fill('bg') },
@@ -4584,6 +4605,7 @@ export function startApp(): void {
           `Graphics: ${detectedName(gpuProbe) ?? 'not detected'}, renderer setting ${pr.renderer}, ${gpuDisplay ? 'GPU display in use' : 'CPU display'}`,
           `Monitor: ${s.width} x ${s.height} px at ${window.devicePixelRatio}x, ${s.colorDepth}-bit, ${matchMedia('(color-gamut: rec2020)').matches ? 'Rec.2020' : matchMedia('(color-gamut: p3)').matches ? 'Display P3' : 'sRGB'} gamut, ${matchMedia('(dynamic-range: high)').matches ? 'HDR' : 'standard'} range`,
           `Engine memory: working set ${mb(m?.rss)}, peak ${mb(m?.peak)}, private ${mb(m?.private)}, computer ${mb(m?.available)} free of ${mb(m?.total)}${m ? `, process ${m.pid}, up ${Math.round(m.uptime / 60)} min` : ''}`,
+          `Graphics memory: ${m?.gpu?.length ? m.gpu.map((g) => `${g.name} ${mb(g.used)}${g.total ? ` of ${mb(g.total)}` : ''}`).join('; ') : 'not reported (needs nvidia-smi, or the Windows performance counters)'}`,
           `Pixel budget: ${c?.pixelBudget ? `${(c.pixelBudget / 1e6).toFixed(0)} MP` : 'unknown'}; open documents ${engine.projects.length}`,
           `Data folder: ${c?.dataDir ?? 'unknown'}${c?.switches?.portable ? ' (portable)' : ''}`,
           `Engine log: ${c?.logFile ?? 'none'}`,
@@ -5317,7 +5339,7 @@ export function startApp(): void {
       { label: 'Export', items: ['quick-export', 'export-as', 'export-preferences', 'save-for-web', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-tiff-layers', 'export-hdr', 'export-exr', 'export-exr-half', 'export-exr-piz', 'export-exr-none', 'export-pfm', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'export-paths-ai', 'assemble-tiles', '-', 'export-layers', 'export-layer-comps', 'export-selection-mask', 'generate-image-assets', 'image-assets-on-save', 'export-luts', 'export-artboards-files', 'export-data-sets', 'export-artboards'] },
       { label: 'Automate', items: ['actions', 'action-stop', 'insert-conditional', 'insert-action-step', 'action-options', '-', 'load-actions', 'export-actions-atn', '-', 'batch', 'create-droplet', '-', 'lens-correction-batch', 'fit-image', 'conditional-mode-change', 'contact-sheet', 'crop-straighten-photos', 'photomerge', 'merge-hdr'] },
       { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'script-browse', 'image-processor', 'script-events', 'load-files-stack', 'stack-statistics', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'reopen-closed-tab', 'close-all', 'close-others', 'close-tabs-right', 'pin-tab', '-', 'exit'] },
-    { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', 'cancel-job', { label: 'Snapshot', items: ['new-snapshot', 'new-snapshot-merged', 'new-snapshot-layer'] }, '-', 'fade', 'compare-documents', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', 'pick-screen-colour', 'cycle-tool-mode', '-',
+    { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', 'peek-original', 'compare-split', 'cancel-job', { label: 'Snapshot', items: ['new-snapshot', 'new-snapshot-merged', 'new-snapshot-layer'] }, '-', 'fade', 'compare-documents', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', 'pick-screen-colour', 'cycle-tool-mode', '-',
       { label: 'Purge', items: ['purge-clipboard', 'purge-undo', 'purge-histories', 'clean-working-files', 'free-helper-models', 'purge-all'] }, { label: 'History Log', items: ['save-history-log', 'clear-history-log'] }, 'apply-edit', 'cancel-edit', 'reset-tool', 'reset-all-tools', '-',
       { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg', 'fill-fg-keep', 'fill-bg-keep', 'fill-history'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', { label: 'Clone Source', items: ['clone-source-slot', 'clone-source-set', 'clone-source-overlay', 'clone-source-reset'] }, '-', 'auto-align-layers', 'auto-blend-layers', '-',
       'fill-path-dialog', 'stroke-path-dialog', '-', 'transform', 'transform-copy', { label: 'Transform', items: ['transform-again', '-', 'transform-scale', 'transform-rotate', 'transform-skew', 'transform-distort', 'transform-perspective', 'transform-warp', 'warp-split-h', 'warp-split-v', 'warp-split-cross', 'warp-remove-split', '-', 'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw', '-', 'flip-layer-h', 'flip-layer-v'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', 'define-brush', 'define-custom-shape', { label: 'Presets', items: ['preset-manager', '-', 'presets-export', 'presets-import', 'presets-migrate', '-', 'swatches-load', 'swatches-save'] }, '-', 'assign-profile', 'convert-profile', 'profile-info', 'colour.settings', '-', 'customize-toolbar', 'shortcuts', 'edit-menus', { label: 'Preferences', items: ['settings', '-', ...PREF_PAGES.slice(0, 7).map(([id]) => `prefs-${id}`), 'export-preferences', ...PREF_PAGES.slice(7).map(([id]) => `prefs-${id}`)] }] },
@@ -5430,6 +5452,11 @@ export function startApp(): void {
   dialogs.fitImage.onApplied =(v) => actions.record({ kind: 'fitImage', label: `Fit Image ${v.w} x ${v.h}${v.enlarge ? '' : ', no enlarging'}`, ...v });
   dialogs.canvasSize.onApplied = (v) => actions.record({ kind: 'canvasSize', label: `Canvas Size ${v.w} x ${v.h}`, ...v });
   root.addEventListener('cv:edit-layer-style', () => dialogs.layerStyle.show());
+  root.addEventListener('cv:edit-layer-effect', (e) => {
+    const d = (e as CustomEvent<{ id: string; key: StyleSection }>).detail;
+    if (engine.current?.activeId !== d.id) engine.selectLayer(d.id);
+    dialogs.layerStyle.show(d.key);
+  });
   root.addEventListener('cv:smart-filters', () => dialogs.smartFilters.show());
   root.addEventListener('cv:shape-style', () => dialogs.shapeStyle.show());
   document.addEventListener('cv:create-shape', (e) => { const d = (e as CustomEvent<{ x: number; y: number }>).detail; if (d) dialogs.createShape.show({ x: d.x, y: d.y }); });
@@ -5503,6 +5530,11 @@ export function startApp(): void {
     const keyed = /^F\d+$/.test(e.key) ? actions.forKey(comboOf(e)) : undefined;
     if (keyed) { e.preventDefault(); if (!e.repeat) void playAction(keyed); return; }
     if (e.code === 'Space' && !e.shiftKey) { e.preventDefault(); if (!e.repeat) stage.setSpace(true); return; }   // with Ctrl or Cmd it is the temporary Zoom (a drag)
+    if (e.code === 'Backslash' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && engine.current) {   // held: the opening snapshot shows in place of the document
+      e.preventDefault();
+      if (!e.repeat && !stage.comparing && !stage.compare('peek')) toast('No snapshot is kept to peek at: New Snapshot takes one.');
+      return;
+    }
     // Return and Escape reach the tool through the two edit commands, so Keyboard Shortcuts can move them: a key bound to
     // one is passed on as the tool's own Return or Escape, and a plain Return or Escape that was rebound away is not.
     const cmd = commands.forEvent(e), plain = !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey;
@@ -5541,6 +5573,7 @@ export function startApp(): void {
   const SPRING_HOLD_MS = 400;
   window.addEventListener('keyup', (e) => {
     if (e.code === 'Space') stage.setSpace(false);
+    if (e.code === 'Backslash' && stage.comparing === 'peek') stage.compare(null);
     if (spring && spring.code === e.code) {
       const s = spring;
       spring = null;

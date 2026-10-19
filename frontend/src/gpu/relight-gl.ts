@@ -23,6 +23,7 @@ uniform vec4 uC[${MAX_RELIGHT_LIGHTS}];
 uniform vec4 uD[${MAX_RELIGHT_LIGHTS}];
 uniform vec4 uE[${MAX_RELIGHT_LIGHTS}];
 uniform vec4 uF[${MAX_RELIGHT_LIGHTS}];
+uniform float uGloss[${MAX_RELIGHT_LIGHTS}];
 uniform sampler2D uShade;
 uniform float uDelight;
 uniform float uShadows;
@@ -218,7 +219,7 @@ void shadeLayer(vec2 p, vec3 P, vec3 nV, float subj, float tex, float warm, floa
     E += B.rgb * vec3(1.0, 0.35, 0.0) * amount * (1.0 - diffusion) * ${SSS.toFixed(3)} * max(0.0, spill - lam) * warm * win * uGain;
     vec3 H = normalize(toL + V);
     float g = 8.0 + 120.0 * (1.0 - softness) * (1.0 - softness);
-    Sp += B.rgb * pow(max(0.0, dot(nW, H)), g) * (g + 8.0) / 25.13 * max(0.0, ndl) * 0.04 * (0.4 + 1.6 * tex) * amount * win * uGain;
+    Sp += B.rgb * pow(max(0.0, dot(nW, H)), g) * (g + 8.0) / 25.13 * max(0.0, ndl) * 0.04 * (0.4 + 1.6 * tex) * amount * win * uGain * uGloss[i];
   }
 }
 
@@ -299,7 +300,7 @@ function init(): GlState | null {
   const base = tex(), geo = tex(), shade = tex(), s0 = tex(), res = tex(), bg = tex();
   if (!base || !geo || !shade || !s0 || !res || !bg) return null;
   const loc: Record<string, WebGLUniformLocation | null> = {};
-  for (const k of ['uBase', 'uGeo', 'uSize', 'uCount', 'uOrig', 'uShine', 'uSteps', 'uA', 'uB', 'uC', 'uD', 'uE', 'uF', 'uShade', 'uDelight', 'uShadows', 'uAmbient', 'uS0', 'uRes', 'uSplit', 'uTakeOut', 'uGain', 'uBg', 'uFocal', 'uThick', 'uZRange', 'uRoomAmbient', 'uRoom']) loc[k] = gl.getUniformLocation(prog, k);
+  for (const k of ['uBase', 'uGeo', 'uSize', 'uCount', 'uOrig', 'uShine', 'uSteps', 'uA', 'uB', 'uC', 'uD', 'uE', 'uF', 'uGloss', 'uShade', 'uDelight', 'uShadows', 'uAmbient', 'uS0', 'uRes', 'uSplit', 'uTakeOut', 'uGain', 'uBg', 'uFocal', 'uThick', 'uZRange', 'uRoomAmbient', 'uRoom']) loc[k] = gl.getUniformLocation(prog, k);
   state = { gl, canvas, prog, base, geo, shade, s0, res, bg, loc };
   return state;
 }
@@ -378,6 +379,7 @@ export function renderRelight(base: Uint8ClampedArray, geo: RelightGeometry, con
   gl.uniform4fv(loc.uD, pack((i) => [lights[i].pattern, lights[i].pat[0], lights[i].pat[1], lights[i].pat[2]]));
   gl.uniform4fv(loc.uE, pack((i) => [lights[i].pat[3], lights[i].pat2[0], lights[i].pat2[1], lights[i].pat2[2]]));
   gl.uniform4fv(loc.uF, pack((i) => [lights[i].range[0], lights[i].range[1], ...lights[i].center]));
+  gl.uniform1fv(loc.uGloss, Float32Array.from({ length: MAX_RELIGHT_LIGHTS }, (_, i) => lights[i]?.gloss ?? 1));
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   const out = new Uint8ClampedArray(w * h * 4);
   gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, out);

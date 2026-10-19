@@ -216,6 +216,14 @@ interface Paint { fill: string; stroke: string; sw: number; op: number; fo: numb
 const SKIPPED = new Set(['clippath', 'mask', 'image', 'foreignobject', 'pattern', 'marker']);
 const IGNORED = new Set(['title', 'desc', 'metadata', 'style', 'lineargradient', 'radialgradient', 'filter', 'script', 'namedview', 'defs', 'symbol']);
 
+/** The text of an .svg or .svgz file; a gzip stream (1f 8b) is inflated first. */
+export async function svgSource(file: Blob): Promise<string> {
+  const head = new Uint8Array(await file.slice(0, 2).arrayBuffer());
+  if (head[0] !== 0x1f || head[1] !== 0x8b) return file.text();
+  if (typeof DecompressionStream === 'undefined') throw new Error('This browser cannot read compressed SVG files.');
+  return new Response(file.stream().pipeThrough(new DecompressionStream('gzip'))).text();
+}
+
 /** An SVG file as shapes in document order, sized by its width and height with the viewBox fitted in (else the
  *  viewBox, else 512 px square). */
 export function svgToShapes(text: string): SvgLayers {

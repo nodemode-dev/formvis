@@ -33,7 +33,7 @@ export const sv: Record<string, string> = {
   'Copy': 'Kopiera', 'Copy Merged': 'Kopiera sammanslaget', 'Paste': 'Klistra in', 'Paste in Place': 'Klistra in på plats', 'Paste Into': 'Klistra in i',
   'Paste Outside': 'Klistra in utanför', 'Clear': 'Rensa', 'Search': 'Sök', 'Find and Replace Text': 'Sök och ersätt text',
   'Fill with Foreground': 'Fyll med förgrundsfärg', 'Fill with Background': 'Fyll med bakgrundsfärg',
-  'Stroke': 'Linje', 'Content-Aware Fill': 'Innehållsmedveten fyllning', 'Content-Aware Scale': 'Innehållsmedveten skalning',
+  'Stroke': 'Linje', 'Content-Aware Fill': 'Innehållsmedveten fyllning',
   'Puppet Warp': 'Dockförvrängning', 'Perspective Warp': 'Perspektivförvrängning', 'Free Transform': 'Fri transformering',
   'Rotate': 'Rotera', 'Scale': 'Skala', 'Skew': 'Skeva', 'Perspective': 'Perspektiv', 'Warp': 'Förvräng',
   'Define Brush Preset': 'Definiera penselförinställning', 'Define Pattern': 'Definiera mönster', 'Define Custom Shape': 'Definiera anpassad form',

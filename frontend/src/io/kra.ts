@@ -2,9 +2,9 @@ import { Raster, docTransform, newLayer, uid, type BlendMode, type Doc, type ID,
 import { unzip } from './zip';
 
 /** .kra files (DEV_PLAN 34.5 part a): a ZIP holding maindoc.xml (the layer tree, topmost first), a tiled pixel file per
- *  paint layer and mergedimage.png. Read in TypeScript from the format's public layout; only 8-bit RGBA is decoded, and
- *  anything else opens as the merged image. */
-export const isKraFile = (f: File): boolean => /\.kra$/i.test(f.name) || f.type === 'application/x-krita';
+ *  paint layer and mergedimage.png. Read in TypeScript from the format's public layout; 8-bit and 16-bit RGBA are decoded (16 bit reduced to 8),
+ *  anything else opens as the merged image. .krz is the same package. */
+export const isKraFile = (f: File): boolean => /\.(kra|krz)$/i.test(f.name) || f.type === 'application/x-krita';
 
 const FROM_KRA = new Map<string, BlendMode>([
   ['normal', 'normal'], ['multiply', 'multiply'], ['screen', 'screen'], ['overlay', 'overlay'], ['darken', 'darken'], ['lighten', 'lighten'],
@@ -15,7 +15,7 @@ const FROM_KRA = new Map<string, BlendMode>([
   ['linear_light', 'linear-light'], ['pin_light', 'pin-light'], ['hard_mix', 'hard-mix'], ['darker color', 'darker-color'], ['lighter color', 'lighter-color'],
 ]);
 
-const TILE_BYTES = 64 * 64 * 4;
+const TILE_PIXELS = 64 * 64;
 
 /** The format's LZF: a control byte under 32 copies that many plus one literals; otherwise a back reference. */
 function lzfDecompress(src: Uint8Array, expected: number): Uint8Array {
@@ -42,8 +42,9 @@ function lzfDecompress(src: Uint8Array, expected: number): Uint8Array {
 
 interface Tile { x: number; y: number; px: Uint8Array }
 
-/** The tiles of one .kra paint-layer file, each as 64 by 64 planar B, G, R, A bytes. */
-function readTiles(data: Uint8Array): { tiles: Tile[]; tw: number; th: number } | null {
+/** The tiles of one .kra paint-layer file, each as 64 by 64 planar B, G, R, A channels of one byte (8 bit) or two
+ *  little-endian bytes (16 bit); `bytes` is 1 or 2 per channel. */
+function readTiles(data: Uint8Array): { tiles: Tile[]; tw: number; th: number; bytes: number } | null {
   let pos = 0;
   const line = (): string => {
     let end = pos;
@@ -60,7 +61,8 @@ function readTiles(data: Uint8Array): { tiles: Tile[]; tw: number; th: number } 
     else if (key === 'PIXELSIZE') pixelSize = Number(val);
     else if (key === 'DATA') { count = Number(val); break; }
   }
-  if (tw !== 64 || th !== 64 || pixelSize !== 4) return null;
+  if (tw !== 64 || th !== 64 || (pixelSize !== 4 && pixelSize !== 8)) return null;
+  const bytes = pixelSize / 4, tileBytes = TILE_PIXELS * pixelSize;
   const tiles: Tile[] = [];
   for (let t = 0; t < count && pos < data.length; t++) {
     const head = line().trim().split(',');
@@ -68,11 +70,11 @@ function readTiles(data: Uint8Array): { tiles: Tile[]; tw: number; th: number } 
     if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(size) || size < 1 || pos + size > data.length) throw new Error('a tile is damaged');
     const body = data.subarray(pos, pos + size);
     pos += size;
-    const px = body[0] === 1 ? lzfDecompress(body.subarray(1), TILE_BYTES) : body.slice(1, 1 + TILE_BYTES);
-    if (px.length < TILE_BYTES) throw new Error('a tile is damaged');
+    const px = body[0] === 1 ? lzfDecompress(body.subarray(1), tileBytes) : body.slice(1, 1 + tileBytes);
+    if (px.length < tileBytes) throw new Error('a tile is damaged');
     tiles.push({ x, y, px });
   }
-  return { tiles, tw, th };
+  return { tiles, tw, th, bytes };
 }
 
 export async function readKra(file: File): Promise<{ doc: Doc; notes: string[]; activeId: ID | null; paths: null }> {
@@ -92,7 +94,8 @@ export async function readKra(file: File): Promise<{ doc: Doc; notes: string[]; 
     const holder = [...e.children].find((c) => c.tagName === 'layers');
     return holder ? [...holder.children].filter((c) => c.tagName === 'layer') : [];
   };
-  let notRgba8 = (image.getAttribute('colorspacename') ?? 'RGBA') !== 'RGBA';
+  const READABLE = new Set(['RGBA', 'RGBA16']);
+  let notRgba8 = !READABLE.has(image.getAttribute('colorspacename') ?? 'RGBA');
 
   const walk = (list: Element[], parentId: ID | null): void => {
     for (const e of [...list].reverse()) {   // the file lists the top first; formvis keeps the bottom first
@@ -105,7 +108,7 @@ export async function readKra(file: File): Promise<{ doc: Doc; notes: string[]; 
         continue;
       }
       if (kind !== 'paintlayer') { const k = kind.replace(/layer$/, '') || 'unknown'; notes.add(`"${name}" is ${/^[aeiou]/.test(k) ? 'an' : 'a'} ${k} layer, which formvis does not read from .kra files; it was left out.`); continue; }
-      if ((e.getAttribute('colorspacename') ?? 'RGBA') !== 'RGBA') { notRgba8 = true; continue; }
+      if (!READABLE.has(e.getAttribute('colorspacename') ?? 'RGBA')) { notRgba8 = true; continue; }
       const data = parts.get(`${docName}/layers/${e.getAttribute('filename') ?? ''}`);
       if (!data) { notes.add('Some layers named pixel files the file does not hold, and were left out.'); continue; }
       const read = readTiles(data);
@@ -117,18 +120,19 @@ export async function readKra(file: File): Promise<{ doc: Doc; notes: string[]; 
       for (const t of read.tiles) { x0 = Math.min(x0, t.x); y0 = Math.min(y0, t.y); x1 = Math.max(x1, t.x + read.tw); y1 = Math.max(y1, t.y + read.th); }
       const w = x1 - x0, h = y1 - y0;
       if (w * h > 400_000_000) { notes.add('A layer is too large to open and was left out.'); continue; }
-      const img = new ImageData(w, h);
+      if (read.bytes === 2) notes.add('16-bit layers were reduced to 8 bits per channel.');
+      const img = new ImageData(w, h), plane = TILE_PIXELS * read.bytes, hi = read.bytes - 1;
       for (const t of read.tiles) {
         for (let ty = 0; ty < read.th; ty++) {
           for (let tx = 0; tx < read.tw; tx++) {
-            const s = ty * read.tw + tx, d = ((t.y - y0 + ty) * w + (t.x - x0 + tx)) * 4;
-            img.data[d] = t.px[2 * 4096 + s]; img.data[d + 1] = t.px[4096 + s]; img.data[d + 2] = t.px[s]; img.data[d + 3] = t.px[3 * 4096 + s];
+            const s = (ty * read.tw + tx) * read.bytes + hi, d = ((t.y - y0 + ty) * w + (t.x - x0 + tx)) * 4;
+            img.data[d] = t.px[2 * plane + s]; img.data[d + 1] = t.px[plane + s]; img.data[d + 2] = t.px[s]; img.data[d + 3] = t.px[3 * plane + s];
           }
         }
       }
       const raster = new Raster(w, h);
       raster.write(img);
-      layers.push(newLayer(name, doc, { raster, parentId, visible, opacity, blend, transform: { ...docTransform(w, h), x: num(e, 'x', 0) + x0, y: num(e, 'y', 0) + y0 } }));
+      layers.push(newLayer(name, doc, { raster, parentId, visible, opacity, blend, ...(e.getAttribute('locked') === '1' ? { locks: { all: true } } : {}), transform: { ...docTransform(w, h), x: num(e, 'x', 0) + x0, y: num(e, 'y', 0) + y0 } }));
     }
   };
   const top = [...image.children].find((c) => c.tagName === 'layers');

@@ -79,7 +79,7 @@ export const zhTW: Record<string, string> = {
   'Pixel': '像素', 'Place': '置入', 'Plaster': '塑膠效果', 'Plastic Wrap': '保鮮膜包裝', 'Play': '播放', 'Play Action': '播放動作', 'Play Animation': '播放動畫', 'Plus': '加號', 'Point Radius (%)': '點半徑 (%)',
   'Pointillize': '點狀化', 'Polar Coordinates': '極座標', 'Position': '位置', 'Position X (%)': '位置 X (%)', 'Poster Edges': '海報邊緣', 'Posterize': '色調分離', 'Preserve': '保留',
   'Preserve Details (%)': '保留細節 (%)', 'Preserve Luminosity': '保留明度', 'Preserve Transparency': '保留透明度', 'Previous Blend Mode': '上一個混合模式', 'Previous Layer Comp': '上一個圖層複合',
-  'Print Selected Area': '列印所選區域', 'Printer Profile': '印表機描述檔', 'Profile': '描述檔', 'Projection': '投影', 'Prompt': '提示詞', 'Properties Sheet': '內容表', 'Protect skin tones': '保護膚色',
+  'Print Selected Area': '列印所選區域', 'Printer Profile': '印表機描述檔', 'Profile': '描述檔', 'Projection': '投影', 'Prompt': '提示詞', 'Properties Sheet': '內容表',
   'Protect the selection': '保護選取範圍', 'QOI, PNM, TGA and ICO': 'QOI、PNM、TGA 和 ICO', 'Quality': '品質', 'Quality (%)': '品質 (%)', 'Quality (0 to 12)': '品質 (0 到 12)', 'Radial': '放射狀',
   'Radiance HDR': 'Radiance HDR', 'Radius': '半徑', 'Radius (px)': '半徑 (px)', 'Radius X (%)': '半徑 X (%)', 'Radius Y (%)': '半徑 Y (%)', 'Randomize Flame Shapes': '隨機化火焰形狀',
   'Randomize Length': '隨機化長度', 'Rating': '評等', 'Record': '記錄', 'Red': '紅色', 'Redact': '塗黑', 'Redraw only what a brush stroke changed': '僅重繪筆刷筆觸變更的部分',

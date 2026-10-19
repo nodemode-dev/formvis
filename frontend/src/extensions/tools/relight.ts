@@ -13,8 +13,13 @@ export interface RelightHost {
   cycle(back: boolean): void;
   commit(): void;
   cancel(): void;
+  add(at: { x: number; y: number }): void;
+  remove(): void;
+  adjust(id: string, key: 'intensity' | 'diffusion', delta: number): void;
 }
 
+let hidden = false;
+let over: Pt | null = null;
 let host: RelightHost | null = null;
 export const setRelightHost = (h: RelightHost | null): void => { host = h; };
 
@@ -49,12 +54,13 @@ export const relightTool: Tool = {
   group: 'relight',
   order: 69,
   icon: () => 'relight',
-  hint: () => (host?.active() ? 'Drag a light on the image, or adjust it in the Properties panel.' : 'Click the Relight tool to light the picture with virtual lights, or open Filter > Relight.'),
+  hint: () => (host?.active() ? 'Drag a light on the image, Ctrl-click to add one, wheel over a light for intensity (Shift: diffusion), Delete removes, H hides the handles.' : 'Click the Relight tool to light the picture with virtual lights, or open Filter > Relight.'),
   cursor: (ctx, p) => (p && hit(ctx, p.screen) ? 'grab' : 'crosshair'),
   down(ctx, p) {
     if (!host?.active()) return;
     drag = hit(ctx, p.screen);
     const sel = host.selected();
+    if (!drag && p.mod) { host.add(frac(p.doc, host.size())); return; }
     if (!drag && sel) drag = { id: sel, part: p.alt ? 'aim' : p.shift ? 'center' : 'pos' };
     if (!drag) return;
     host.select(drag.id);
@@ -70,8 +76,19 @@ export const relightTool: Tool = {
     host.move(drag.id, drag.part, frac(p.doc, host.size()), true);
     drag = null;
   },
-  keydown(_ctx, ev) {
+  hover(_ctx, p) { over = p ? p.screen : null; },
+  wheel(ctx, ev) {
+    if (!host?.active() || !over || hidden) return false;
+    const h = hit(ctx, over);
+    if (!h) return false;
+    host.adjust(h.id, ev.shiftKey ? 'diffusion' : 'intensity', ev.deltaY < 0 ? 3 : -3);
+    ctx.engine.emit('overlay', null);
+    return true;
+  },
+  keydown(ctx, ev) {
     if (!host?.active() || ev.metaKey || ev.ctrlKey) return false;
+    if (ev.key === 'h' || ev.key === 'H') { hidden = !hidden; ctx.engine.emit('overlay', null); return true; }
+    if (ev.key === 'Delete' || ev.key === 'Backspace') { host.remove(); return true; }
     if (ev.key === 'Enter') { host.commit(); return true; }
     if (ev.key === 'Escape') { host.cancel(); return true; }
     const step = ev.shiftKey ? 0.05 : 0.005, arrows: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
@@ -82,7 +99,7 @@ export const relightTool: Tool = {
   },
   cancel() { drag = null; },
   overlay(ctx, g) {
-    if (!host?.active()) return;
+    if (!host?.active() || hidden) return;
     const v = ctx.view(), pal = ctx.paint(), s = host.size(), sel = host.selected();
     g.save();
     for (const l of host.lights()) {

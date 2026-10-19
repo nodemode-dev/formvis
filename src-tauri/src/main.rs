@@ -311,7 +311,20 @@ async fn pick_image_path(app: tauri::AppHandle) -> Option<String> {
     picked.into_path().ok().map(|p| p.to_string_lossy().into_owned())
 }
 
+/// Portable Windows zip: a file named portable or portable.txt beside the program keeps the web view's data (settings
+/// kept by the page) in FormvisData beside it, where the engine already keeps its own.
+#[cfg(windows)]
+fn portable_web_view_data() {
+    let Ok(exe) = std::env::current_exe() else { return };
+    let Some(dir) = exe.parent() else { return };
+    if dir.join("portable").is_file() || dir.join("portable.txt").is_file() {
+        std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", dir.join("FormvisData").join("WebView2"));
+    }
+}
+
 fn main() {
+    #[cfg(windows)]
+    portable_web_view_data();
     let app = tauri::Builder::default()
         // First, as the plugin asks: a second launch (a project double-clicked while formvis runs) sends its arguments
         // here and exits; the files go to the running window.

@@ -3,6 +3,7 @@ import { LUT3_N, viewLut3 } from '../engine/lut';
 import { applyDuotoneLut, duotoneLut } from '../engine/duotone';
 import { corners, createSurface, integral, intersectRect, sizeSurface, tracePath, translation, unionRect, type AlphaChannel, type Engine, type Pt, type Rect, type Surface } from '../engine';
 import type { Project } from '../engine/project';
+import { dialogTool } from '../extensions/dialog-tool';
 import { getTool, type Tool, type ToolContext, type ToolPointer, type ViewInfo } from '../extensions/registry';
 import { isMac, q, setHidden, setText } from './dom';
 import { stickyModifiers } from './modifier-keys';
@@ -10,7 +11,7 @@ import { paint, type StagePaint } from './palette';
 import type { DisplayLayer, ScreenDisplay } from '../gpu/display';
 import { documentFallback } from '../gpu/fallback';
 import { frameTrace } from '../gpu/frame-trace';
-import { LINE_DASH, type LineStyle } from './prefs';
+import { LINE_DASH, loadPrefs, type LineStyle } from './prefs';
 
 const REDUCED = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 /** Ruler thickness in CSS pixels; the rulers lie over the stage's top and left edges, so showing them moves nothing. */
@@ -70,6 +71,10 @@ export class Stage {
   private gpuState: ((reason: string | null) => void) | null = null;
   private gpuReason: string | null | undefined = undefined;
   private rgbCache = new Map<string, [number, number, number]>();
+  /** A kept snapshot's picture drawn over the document on the overlay: whole while the Peek key is held, or as the right half of a split whose divider is dragged. */
+  private cmp: { split: boolean; docId: string; surf: Surface; x: number } | null = null;
+  private cmpCache: { key: string; surf: Surface } | null = null;
+  private cmpDrag: number | null = null;
 
   constructor(private readonly host: HTMLElement, private readonly engine: Engine) {
     this.scene = q<HTMLCanvasElement>(host, '.cv-scene');
@@ -94,7 +99,7 @@ export class Stage {
     pillBox.hidden = false;
     const pill = (): HTMLElement => { const n = document.createElement('span'); n.className = 'cv-pill'; n.hidden = true; pillBox.appendChild(n); return n; };
     this.pills = { zoom: pill(), flip: pill(), turn: pill(), view: pill() };
-    const s = this.scene.getContext('2d');
+    const s = this.scene.getContext('2d', { desynchronized: loadPrefs().lowLatency });
     const o = this.overlay.getContext('2d');
     if (!s || !o) throw new Error('2D canvas is unavailable');
     this.sctx = s;
@@ -115,6 +120,8 @@ export class Stage {
     engine.on('tool', () => { this.queue(false, true); this.updateCursor(); });
     for (const k of ['viewport', 'active', 'projects', 'doc', 'options'] as const) engine.on(k, () => this.syncChrome());
     this.bindTouch();   // 1.58.6: before the tools' handling, so a gesture's fingers never reach them
+    this.bindDivider();
+    for (const k of ['history', 'active', 'projects'] as const) engine.on(k, () => { this.cmpCache = null; if (this.cmp && this.cmp.docId !== this.engine.current?.doc.id) this.compare(null); });
     this.bindPointer();
     this.syncWelcome();
     this.resize();
@@ -225,7 +232,7 @@ export class Stage {
     this.edge = st;
   }
 
-  private tool(): Tool | undefined { return getTool(this.engine.tool); }
+  private tool(): Tool | undefined { return dialogTool() ?? getTool(this.engine.tool); }
 
   private viewInfo(): ViewInfo {
     const v = this.engine.current?.viewport;
@@ -708,6 +715,7 @@ export class Stage {
     if (!p) return;
     const pal = paint();
     const v = p.viewport;
+    if (this.cmp && this.cmp.docId === p.doc.id) this.drawCompare(g, pal, v);
     const sel = p.selection, fl = sel ? null : this.engine.floatingOutline(p);
     // Notes and counts (1.49.6), shown whatever the tool: a note as a small sticky square (the one open
     // highlighted), a count as its number by a dot, dark over light so they read on any image.
@@ -841,7 +849,8 @@ export class Stage {
     const v = this.engine.current?.viewport;
     // Rotate View turns the drawing surfaces about the stage's centre; a pointer is turned back into their space, so
     // every tool lands where it points at any angle.
-    const screen = Stage.unturn(e.clientX - r.left, e.clientY - r.top, r.width, r.height, v?.rotation ?? 0, Stage.parOf(this.engine), !!v?.flipped);
+    const kx = this.cssW && r.width ? this.cssW / r.width : 1, ky = this.cssH && r.height ? this.cssH / r.height : 1;   // the drawing surfaces are whole pixels; a fractional box (interface zoom) is mapped onto them
+    const screen = Stage.unturn((e.clientX - r.left) * kx, (e.clientY - r.top) * ky, r.width * kx, r.height * ky, v?.rotation ?? 0, Stage.parOf(this.engine), !!v?.flipped);
     const pen = 'pointerType' in e && (e as PointerEvent).pointerType === 'pen';
     return { doc: v ? v.toDoc(screen.x, screen.y) : screen, screen, button: e.button, shift: e.shiftKey || stickyModifiers.active('shift'), alt: e.altKey || stickyModifiers.active('alt'), mod: (isMac ? e.metaKey : e.ctrlKey) || stickyModifiers.active('mod'), clicks, pressure: Stage.pressureOf(e, pen),
       pose: pen && Stage.usePressure ? { tiltX: (e as PointerEvent).tiltX || 0, tiltY: (e as PointerEvent).tiltY || 0, twist: (e as PointerEvent).twist || 0 } : undefined };
@@ -889,7 +898,8 @@ export class Stage {
     const r = this.rect ?? this.host.getBoundingClientRect();
     const v = this.engine.current?.viewport;
     if (!v || clientX < r.left || clientY < r.top || clientX > r.right || clientY > r.bottom) return null;
-    const s = Stage.unturn(clientX - r.left, clientY - r.top, r.width, r.height, v.rotation ?? 0, Stage.parOf(this.engine), v.flipped);   // turned and stretched views (35.4c)
+    const kx = this.cssW && r.width ? this.cssW / r.width : 1, ky = this.cssH && r.height ? this.cssH / r.height : 1;
+    const s = Stage.unturn((clientX - r.left) * kx, (clientY - r.top) * ky, r.width * kx, r.height * ky, v.rotation ?? 0, Stage.parOf(this.engine), v.flipped);   // turned and stretched views (35.4c)
     return v.toDoc(s.x, s.y);
   }
 
@@ -910,6 +920,68 @@ export class Stage {
     if (this.space === on) return;
     this.space = on;
     this.updateCursor();
+  }
+
+  /** Which comparison is showing: the whole snapshot (peek), the split, or none. */
+  get comparing(): 'peek' | 'split' | null { return this.cmp ? (this.cmp.split ? 'split' : 'peek') : null; }
+
+  /** Shows the document as a kept snapshot holds it (the oldest when `id` is left out) without touching history: whole
+   *  (peek) or as the right half of a split with a draggable divider; null puts the current state back. False when no snapshot is kept. */
+  compare(mode: 'peek' | 'split' | null, id?: string): boolean {
+    if (!mode) { if (this.cmp) { this.cmp = null; this.queue(false, true); } return true; }
+    const p = this.engine.current;
+    if (!p) return false;
+    const key = `${p.doc.id}|${id ?? ''}`;
+    if (this.cmpCache?.key !== key) {
+      const surf = this.engine.snapshotPicture(id);
+      if (!surf) return false;
+      this.cmpCache = { key, surf };
+    }
+    this.cmp = { split: mode === 'split', docId: p.doc.id, surf: this.cmpCache.surf, x: this.cmp?.split ? this.cmp.x : Math.round(this.cssW / 2) };
+    this.queue(false, true);
+    return true;
+  }
+
+  /** The split's divider: a press within 8 px of it drags it, and never reaches the tool. */
+  private bindDivider(): void {
+    const o = this.overlay, at = (e: PointerEvent): number => e.clientX - (this.rect ?? this.host.getBoundingClientRect()).left;
+    o.addEventListener('pointerdown', (e) => {
+      if (!this.cmp?.split || Math.abs(at(e) - this.cmp.x) > 8) return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      o.setPointerCapture(e.pointerId);
+      this.cmpDrag = e.pointerId;
+    });
+    o.addEventListener('pointermove', (e) => {
+      if (this.cmpDrag === e.pointerId && this.cmp) { this.cmp.x = Math.max(0, Math.min(this.cssW, Math.round(at(e)))); this.queue(false, true); e.stopImmediatePropagation(); }
+    });
+    const end = (e: PointerEvent): void => { if (this.cmpDrag === e.pointerId) { this.cmpDrag = null; e.stopImmediatePropagation(); } };
+    o.addEventListener('pointerup', end);
+    o.addEventListener('pointercancel', end);
+  }
+
+  private drawCompare(g: CanvasRenderingContext2D, pal: StagePaint, v: { zoom: number; panX: number; panY: number }): void {
+    const c = this.cmp;
+    if (!c) return;
+    const d = this.dpr, sw = c.surf.width, sh = c.surf.height;
+    g.save();
+    g.setTransform(d, 0, 0, d, this.offX * d, this.offY * d);
+    if (c.split) { g.beginPath(); g.rect(c.x, -this.offY, this.cssW + 2 * this.offX, this.cssH + 2 * this.offY); g.clip(); }
+    const cp = this.checkerPattern(pal);
+    if (cp) { g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = cp; g.fillRect((v.panX + this.offX) * d, (v.panY + this.offY) * d, sw * v.zoom * d, sh * v.zoom * d); g.restore(); }
+    g.imageSmoothingEnabled = v.zoom < 1;
+    g.transform(v.zoom, 0, 0, v.zoom, v.panX, v.panY);
+    g.drawImage(c.surf as CanvasImageSource, 0, 0);
+    g.restore();
+    if (!c.split) return;
+    g.save();
+    g.setTransform(d, 0, 0, d, this.offX * d, this.offY * d);
+    const mid = this.cssH / 2;
+    g.fillStyle = pal.accent;
+    g.fillRect(c.x - 1, -this.offY, 2, this.cssH + 2 * this.offY);
+    g.beginPath(); g.arc(c.x, mid, 11, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = pal.antsB; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(c.x - 3, mid - 4); g.lineTo(c.x - 7, mid); g.lineTo(c.x - 3, mid + 4); g.moveTo(c.x + 3, mid - 4); g.lineTo(c.x + 7, mid); g.lineTo(c.x + 3, mid + 4); g.stroke();
+    g.restore();
   }
 
   toolKeydown(e: KeyboardEvent): boolean {
@@ -1160,6 +1232,7 @@ export class Stage {
     o.addEventListener('wheel', (e) => {
       e.preventDefault();
       this.engine.stopFlick();
+      if (this.tool()?.wheel?.(this.ctx, e)) return;
       const v = this.engine.current?.viewport;
       if (!v) return;
       if (!Stage.controls.pinch && e.ctrlKey && !Number.isInteger(e.deltaY)) return;   // a trackpad pinch arrives as Ctrl+wheel with fractional steps

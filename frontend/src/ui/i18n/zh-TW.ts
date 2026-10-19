@@ -35,7 +35,7 @@ export const zhTW: Record<string, string> = {
   'Paste Into': '貼入', 'Paste Outside': '貼到外部', 'Clear': '清除', 'Search': '搜尋',
   'Find and Replace Text': '尋找及取代文字', 'Fill with Foreground': '以前景色填滿',
   'Fill with Background': '以背景色填滿', 'Stroke': '筆畫', 'Content-Aware Fill': '內容感知填色',
-  'Content-Aware Scale': '內容感知縮放', 'Puppet Warp': '操控彎曲', 'Perspective Warp': '透視彎曲',
+  'Puppet Warp': '操控彎曲', 'Perspective Warp': '透視彎曲',
   'Free Transform': '任意變形', 'Rotate': '旋轉', 'Scale': '縮放', 'Skew': '傾斜', 'Perspective': '透視', 'Warp': '彎曲',
   'Define Brush Preset': '定義筆刷預設集', 'Define Pattern': '定義圖樣', 'Define Custom Shape': '定義自訂形狀',
   'Keyboard Shortcuts': '鍵盤快速鍵', 'Preset Manager': '預設集管理員', 'Assign Profile': '指定描述檔',

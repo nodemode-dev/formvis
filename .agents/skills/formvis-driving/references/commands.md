@@ -1,12 +1,12 @@
 # formvis commands
 
-Generated from the window's command catalogue (1531 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1535 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
-- Edit: 102
+- Edit: 105
 - File: 99
-- Filter: 92
+- Filter: 93
 - Generate: 6
 - Help: 5
 - Image: 113
@@ -38,6 +38,8 @@ Generated from the window's command catalogue (1531 commands) by `./formvis agen
 | `clone-source-slot` | Clone Source: Choose Slot |  | Chooses one of the five Clone Source slots; the slot brings back its own point, scale, angle and flips. |
 | `colour.settings` | Color Settings... | Shift+Mod+K | Opens Color Settings: working spaces, colour management policies and conversion options. |
 | `compare-documents` | Compare with... |  | Opens Compare with: picks another open document and makes a new document with both pictures and a Differences layer in Difference blend mode, selecting where they differ. |
+| `compare-split` | Compare with Snapshot (Split) |  | Shows the current state on the left and a kept snapshot (the opening snapshot unless one is named) on the right of a divider that can be dragged; run again to close it. History is not changed. |
+| `composite-pixel` | Read Composite Pixel |  | Reads the composited colour and opacity (red, green, blue, alpha 0 to 255 and the hex code) of the one document pixel at x and y, as the picture shows it with every layer, adjustment and effect. |
 | `content-fill` | Quick Content-Aware Fill | Shift+Backspace | Fills the selection from its surroundings. (changes the picture) |
 | `content-fill-workspace` | Content-Aware Fill... |  | Opens the Content-Aware Fill workspace for the selection. (changes the picture) |
 | `copy` | Copy | Mod+C | Copies the selection to the clipboard. |
@@ -73,6 +75,7 @@ Generated from the window's command catalogue (1531 commands) by `./formvis agen
 | `paste-outside` | Paste Outside |  | Pastes outside the selection with a mask. (changes the picture) |
 | `patterns-export` | Export Patterns... |  | Saves your patterns as one .pat file. |
 | `patterns-import` | Import Patterns... |  | Adds the patterns from .pat files. |
+| `peek-original` | Show Opening State |  | Shows the document as a kept snapshot holds it (the opening snapshot unless one is named) in place of the current state, without changing history; run again to put the current state back. Holding the Backslash key does the same while it is down. |
 | `perspective-warp` | Perspective Warp |  | Starts Perspective Warp. (changes the picture) |
 | `pick-screen-colour` | Pick Colour from Screen |  | Picks the colour of any pixel on the screen, outside the window too, as the foreground colour. |
 | `prefs-cursors` | Cursors... |  | Opens Preferences on Cursors: how painting tools show where they paint. |
@@ -310,6 +313,7 @@ Generated from the window's command catalogue (1531 commands) by `./formvis agen
 | `filter-surfaceBlur` | Surface Blur... |  | Opens the Surface Blur filter on the active layer. (changes the picture) |
 | `filter-tiles` | Tiles... |  | Opens the Tiles filter on the active layer. (changes the picture) |
 | `filter-tiltShift` | Tilt-Shift... |  | Opens the Tilt-Shift filter on the active layer. (changes the picture) |
+| `filter-tonalContrast` | Tonal Contrast... |  | Opens the Tonal Contrast filter on the active layer. (changes the picture) |
 | `filter-traceContour` | Trace Contour... |  | Opens the Trace Contour filter on the active layer. (changes the picture) |
 | `filter-tree` | Tree... |  | Opens the Tree filter on the active layer. (changes the picture) |
 | `filter-twirl` | Twirl... |  | Opens the Twirl filter on the active layer. (changes the picture) |

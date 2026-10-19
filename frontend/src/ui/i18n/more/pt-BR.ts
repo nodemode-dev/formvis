@@ -534,7 +534,6 @@ export const ptBR: Record<string, string> = {
   'Projection': 'Projeção',
   'Prompt': 'Prompt',
   'Properties Sheet': 'Folha de propriedades',
-  'Protect skin tones': 'Proteger tons de pele',
   'Protect the selection': 'Proteger a seleção',
   'QOI, PNM, TGA and ICO': 'QOI, PNM, TGA e ICO',
   'Quality': 'Qualidade',

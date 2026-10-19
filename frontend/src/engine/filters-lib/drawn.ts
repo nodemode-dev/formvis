@@ -354,6 +354,7 @@ export const DRAWN_FILTERS: LibFilter[] = [
       { key: 'flameShape', label: 'Flame Shape', kind: 'select', def: 'parallel', options: [['parallel', 'Parallel'], ['toCenter', 'To Center'], ['spread', 'Spread'], ['oval', 'Oval'], ['pointed', 'Pointed']] },
       { key: 'randomizeShapes', label: 'Randomize Flame Shapes', kind: 'check', def: false },
       { key: 'seed', label: 'Arrangement', kind: 'seed', def: 0 },
+      { key: 'newLayer', label: 'New Layer', kind: 'check', def: false },
     ],
     run: (src, v, ctx) => drawn(src, ctx, (area, doc) => {
       const o = flameSpec(v), lines = pathLines(v.path as LibPath | null, doc);
@@ -375,6 +376,7 @@ export const DRAWN_FILTERS: LibFilter[] = [
       { key: 'flowerColor', label: 'Flower Color', kind: 'color', def: '#e64d73' },
       { key: 'leafColor', label: 'Leaf Color', kind: 'color', def: '#4d9933' },
       { key: 'seed', label: 'Pattern', kind: 'seed', def: 0 },
+      { key: 'newLayer', label: 'New Layer', kind: 'check', def: false },
     ],
     run: (src, v, ctx) => drawn(src, ctx, (area) => frameMarks({
       style: str(v, 'frame'), margin: num(v, 'margin'), size: num(v, 'size'), arrangement: num(v, 'arrangement'), lines: num(v, 'lines'), thickness: num(v, 'thickness'), fade: num(v, 'fade'),
@@ -400,6 +402,7 @@ export const DRAWN_FILTERS: LibFilter[] = [
       { key: 'y', label: 'Base Y (%)', kind: 'range', min: 0, max: 100, step: 1, def: 95 },
       { key: 'size', label: 'Height (%)', kind: 'range', min: 5, max: 200, step: 1, def: 80 },
       { key: 'seed', label: 'Arrangement', kind: 'seed', def: 0 },
+      { key: 'newLayer', label: 'New Layer', kind: 'check', def: false },
     ],
     run: (src, v, ctx) => drawn(src, ctx, (area) => treeMarks({
       kind: str(v, 'baseTreeType'), light: num(v, 'lightDirection'), amount: num(v, 'leavesAmount'), leafSize: num(v, 'leavesSize'), branchHeight: num(v, 'branchesHeight'), thickness: num(v, 'branchesThickness'),

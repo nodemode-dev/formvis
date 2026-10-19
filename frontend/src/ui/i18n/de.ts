@@ -33,7 +33,7 @@ export const de: Record<string, string> = {
   'Copy': 'Kopieren', 'Copy Merged': 'Auf eine Ebene reduziert kopieren', 'Paste': 'Einfügen', 'Paste in Place': 'An Originalposition einfügen', 'Paste Into': 'In die Auswahl einfügen',
   'Paste Outside': 'Außerhalb der Auswahl einfügen', 'Clear': 'Löschen', 'Search': 'Suchen', 'Find and Replace Text': 'Text suchen und ersetzen',
   'Fill with Foreground': 'Mit Vordergrundfarbe füllen', 'Fill with Background': 'Mit Hintergrundfarbe füllen',
-  'Stroke': 'Kontur füllen', 'Content-Aware Fill': 'Inhaltsbasiert füllen', 'Content-Aware Scale': 'Inhaltsbasiert skalieren',
+  'Stroke': 'Kontur füllen', 'Content-Aware Fill': 'Inhaltsbasiert füllen',
   'Puppet Warp': 'Formgitter', 'Perspective Warp': 'Perspektivisch verkrümmen', 'Free Transform': 'Frei transformieren',
   'Rotate': 'Drehen', 'Scale': 'Skalieren', 'Skew': 'Neigen', 'Perspective': 'Perspektivisch', 'Warp': 'Verkrümmen',
   'Define Brush Preset': 'Pinselvorgabe festlegen', 'Define Pattern': 'Muster festlegen', 'Define Custom Shape': 'Eigene Form festlegen',

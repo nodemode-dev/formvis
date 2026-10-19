@@ -17,6 +17,9 @@ import { HSL_BANDS, autoWhiteBalance, bandFor,bandOf,buildCurveLut, clippingView
 import { curveGraph } from './curve-graph';
 import { GalleryView } from './gallery-view';
 import { FilterPreview } from './filter-preview';
+import { PIN_KINDS, createBlurPins, type PinKind } from './blur-pins';
+import { createLightPins } from './light-pins';
+import { setDialogTool } from '../../extensions/dialog-tool';
 
 export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection' | 'unsharpMask' | 'develop' | 'lensBlur' | 'smartSharpen' | 'shakeReduction'
   | 'radialBlur' | 'surfaceBlur' | 'fieldBlur' | 'irisBlur' | 'tiltShift' | 'pathBlur' | LibKind;
@@ -124,6 +127,45 @@ export class FilterPanel extends Dialog {
   rawProfile: { options(): Promise<{ list: ReadonlyArray<readonly [string, string]>; current: string } | null>; choose(id: string): Promise<boolean> } | null = null;
   private readonly profileRow = selectRow('Profile', [['none', 'Default']], (v) => void this.chooseProfile(v));
   private profileSeq = 0;
+  private readonly pinKey = (e: KeyboardEvent): void => {
+    if ((e.key !== 'Delete' && e.key !== 'Backspace') || e.target instanceof Element && e.target.closest('input, textarea, select')) return;
+    if (this.pins.removeSelected()) { e.preventDefault(); this.engine.emit('overlay', null); }
+  };
+  /** Blur Gallery pins on the canvas (Field, Iris, Spin and Path Blur): the stage lends them the pointer while the dialog shows. */
+  private readonly pins = createBlurPins({
+    kind: () => (this.isOpen && PIN_KINDS.includes(this.kind) ? (this.kind as PinKind) : null),
+    get: (key) => Number((this.kind === 'spinBlur' ? libValues('spinBlur', this.s.lib?.spinBlur) : (this.s.gallery as unknown as Record<string, unknown>))[key]),
+    put: (patch) => {
+      if (this.kind === 'spinBlur') (this.s.lib ??= {}).spinBlur = { ...libValues('spinBlur', this.s.lib?.spinBlur), ...patch };
+      else this.s.gallery = { ...this.s.gallery, ...patch };
+      this.sections.get(this.kind)?.sync();
+      this.schedule();
+    },
+    layer: () => {
+      const p = this.engine.current, l = p?.activeLayer, r = l?.raster;
+      if (!p || !l || !r || p.maskTarget) return null;
+      const w = r.width, h = r.height;
+      if (this.kind === 'spinBlur') return { t: l.transform, w, h, ref: this.engine.filterFrame(p, l.transform, w, h).area };
+      const g = !p.selection && !l.mask && !l.locks?.transparency ? Math.ceil(this.grow()) : 0;
+      return { t: l.transform, w, h, ref: { x: -g, y: -g, w: w + 2 * g, h: h + 2 * g } };
+    },
+  });
+
+  /** Lighting Effects handles on the canvas: the stage lends them the pointer while the dialog shows. */
+  private readonly lightPins = createLightPins({
+    active: () => this.isOpen && this.kind === 'lightingEffects',
+    get: (key) => libValues('lightingEffects', this.s.lib?.lightingEffects)[key],
+    put: (patch) => {
+      (this.s.lib ??= {}).lightingEffects = { ...libValues('lightingEffects', this.s.lib?.lightingEffects), ...patch };
+      this.sections.get(this.kind)?.sync();
+      this.schedule();
+    },
+    layer: () => {
+      const p = this.engine.current, l = p?.activeLayer, r = l?.raster;
+      if (!p || !l || !r || p.maskTarget) return null;
+      return { t: l.transform, w: r.width, h: r.height, ref: this.engine.filterFrame(p, l.transform, r.width, r.height).area };
+    },
+  });
 
   constructor(private readonly engine: Engine) {
     super('Filter', 440);
@@ -252,6 +294,7 @@ export class FilterPanel extends Dialog {
       ['Vignette midpoint', 0, 100, 1, () => (D().vignette ??defaultVignetteShape()).midpoint, (v) => { (D().vignette ??=defaultVignetteShape()).midpoint = v; }],
       ['Vignette feather', 1, 100, 1, () => (D().vignette ??defaultVignetteShape()).feather, (v) => { (D().vignette ??=defaultVignetteShape()).feather = v; }],
       ['Vignette roundness', 0, 100, 1, () => (D().vignette ??defaultVignetteShape()).roundness, (v) => { (D().vignette ??=defaultVignetteShape()).roundness = v; }],
+      ['Vignette highlight protection', 0, 100, 1, () => (D().vignette ??defaultVignetteShape()).protect ?? 0, (v) => { (D().vignette ??=defaultVignetteShape()).protect = v; }],
       ['Grain', 0, 100, 1, () => t.grain, (v) => { t.grain = v; }],
       'Detail',
       ['Clarity', -100, 100, 1, () => dt.clarity, (v) => { dt.clarity = v; }],
@@ -267,7 +310,7 @@ export class FilterPanel extends Dialog {
       ['Noise colour', 0, 100, 1, () => (D().noise ??defaultNoise()).color, (v) => { (D().noise ??=defaultNoise()).color = v; }],
     ];
     const devNodes: HTMLElement[] = [this.profileRow.el], devSync: Array<() => void> = [];
-    let dehazeEl: HTMLElement | null = null, tintEl: HTMLElement | null = null;
+    let dehazeEl: HTMLElement | null = null, tintEl: HTMLElement | null = null, protectEl: HTMLElement | null = null;
     let wbCustom = (): void => undefined;
     for (const row of devRows) {
       if (typeof row === 'string') { devNodes.push(el(`<p class="cv-note">${row}</p>`)); continue; }
@@ -275,6 +318,7 @@ export class FilterPanel extends Dialog {
       const r = sliderRow(label, min, max, step, (v) => { write(v); if (label === 'Temperature' || label === 'Tint') wbCustom(); this.schedule(); });
       devNodes.push(r.el);
       if (label === 'Dehaze') dehazeEl = r.el;
+      if (label === 'Vignette highlight protection') protectEl = r.el;
       if (['Exposure (EV)', 'Contrast', 'Highlights', 'Shadows', 'Whites', 'Blacks'].includes(label)) {
         r.el.addEventListener('pointerdown', (e) => {
           if (!e.altKey || e.button !== 0) return;
@@ -291,6 +335,14 @@ export class FilterPanel extends Dialog {
     const darkDehaze = checkRow('Dehaze by dark channel (positive Dehaze)', (v) => { D().dehazeDark = v; this.schedule(); });
     devNodes.splice(dehazeEl ? devNodes.indexOf(dehazeEl) + 1 : devNodes.length, 0, darkDehaze.el);
     devSync.push(() => darkDehaze.set(D().dehazeDark === true));
+    const skyRow = sliderRow('Dehaze protect sky', 0, 100, 1, (v) => { D().dehazeSky = v; this.schedule(); });
+    devNodes.splice(devNodes.indexOf(darkDehaze.el) + 1, 0, skyRow.el);
+    devSync.push(() => skyRow.set(D().dehazeSky ?? 0));
+    const vigColor = colorRow('Vignette colour', (hex) => { (D().vignette ??= defaultVignetteShape()).color = hex; this.schedule(); });
+    const vigClear = el<HTMLElement>('<div style="display:flex;gap:6px"><button class="cv-btn" type="button">Vignette colour: black or white</button></div>');
+    vigClear.querySelector('button')!.addEventListener('click', () => { (D().vignette ??= defaultVignetteShape()).color = ''; vigColor.set('#000000'); this.schedule(); });
+    devNodes.splice(protectEl ? devNodes.indexOf(protectEl) + 1 : devNodes.length, 0, vigColor.el, vigClear);
+    devSync.push(() => vigColor.set(D().vignette?.color || '#000000'));
     // Settings files (.xmp): the Develop state written to one, or read back from one into the controls.
     const settingsRow = el<HTMLElement>('<div style="display:flex;gap:6px"><button class="cv-btn" type="button">Load Settings...</button><button class="cv-btn" type="button">Save Settings...</button></div>');
     const [loadBtn, saveBtn] = Array.from(settingsRow.querySelectorAll('button'));
@@ -681,7 +733,11 @@ export class FilterPanel extends Dialog {
     this.previewRow.set(this.preview && !smart);
     setDisabled(q<HTMLInputElement>(this.previewRow.el, 'input'), smart);
     if (kind === 'develop') for (const i of this.profileRow.el.querySelectorAll('select')) i.disabled = true;
+    this.scrim.classList.toggle('cv-scrim-through', PIN_KINDS.includes(kind));
+    this.scrim.classList.toggle('cv-scrim-side', PIN_KINDS.includes(kind));
     this.open(this.okBtn);
+    if (PIN_KINDS.includes(kind)) { setDialogTool(this.pins); this.pins.select(1); this.engine.emit('overlay', null); document.addEventListener('keydown', this.pinKey); }
+    if (kind === 'lightingEffects') { this.scrim.classList.add('cv-scrim-through'); setDialogTool(this.lightPins); this.lightPins.select(1); this.engine.emit('overlay', null); }
     this.schedule(0);
     if (kind === 'develop') void this.fillProfiles();
   }
@@ -807,6 +863,10 @@ export class FilterPanel extends Dialog {
     private async applyInBackground(kind: FilterKind, settings: Record<string, unknown>): Promise<boolean> {
     if (this.deepFilter(kind, settings)) { this.engine.setPreview(null); this.close(); return Promise.resolve(true); }   // 16 bits (1.53.7)
     if (this.missingImage(kind, settings)) return false;
+    if (isLibKind(kind) && libFilter(kind).fills && (settings.lib as Record<string, Record<string, unknown> | undefined> | undefined)?.[kind]?.newLayer === true && !this.smartTarget()) {
+      this.engine.addLayer({ name: FILTER_LABELS[kind] });
+      this.engine.givePixels();
+    }
     const s = { ...defaultFilterSettings(), ...(structuredClone(settings) as Partial<FilterPanelSettings>) }, seed = typeof settings.seed === 'number' ? settings.seed : this.seed;
     const sync = (src: ImageData, scale: number, frame?: LibFrame): ImageData => runFilter(kind, s, seed, src, scale, frame);
     const apron = bandApron(kind, s);   // a large layer in bands (1.60.9)
@@ -914,6 +974,10 @@ export class FilterPanel extends Dialog {
   }
 
   private abandon(): void {
+    this.scrim.classList.remove('cv-scrim-through', 'cv-scrim-side');
+    document.removeEventListener('keydown', this.pinKey);
+    setDialogTool(null);
+    this.engine.emit('overlay', null);
     window.clearTimeout(this.timer);
     this.editing = null;
     if (this.asking) { const a = this.asking; this.asking = null; if (!this.done) this.engine.setPreview(null); a(null); }

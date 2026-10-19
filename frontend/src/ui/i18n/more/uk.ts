@@ -534,7 +534,6 @@ export const uk: Record<string, string> = {
   'Projection': 'Проекція',
   'Prompt': 'Запит',
   'Properties Sheet': 'Аркуш властивостей',
-  'Protect skin tones': 'Захистити відтінки шкіри',
   'Protect the selection': 'Захистити виділення',
   'QOI, PNM, TGA and ICO': 'QOI, PNM, TGA та ICO',
   'Quality': 'Якість',

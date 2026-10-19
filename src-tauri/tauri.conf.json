@@ -42,6 +42,16 @@
       { "ext": ["fvd", "fmv", "formvis"], "name": "formvis Project", "description": "formvis layered image project", "role": "Editor", "mimeType": "application/x-formvis" },
       { "ext": ["psd", "psb", "png", "jpg", "jpeg", "tif", "tiff", "webp", "exr", "ora"], "name": "Picture", "description": "Picture formvis can open", "role": "Editor" }
     ],
+    "linux": {
+      "deb": {
+        "recommends": ["xdg-desktop-portal-gtk | xdg-desktop-portal", "fonts-dejavu-core"],
+        "files": { "/usr/share/formvis/libcheck": "../setup/libcheck" }
+      }
+    },
+    "windows": {
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "http://timestamp.digicert.com"
+    },
     "createUpdaterArtifacts": false
   },
   "plugins": {

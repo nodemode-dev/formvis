@@ -35,7 +35,7 @@ export const cs: Record<string, string> = {
   'Paste Into': 'Vložit do', 'Paste Outside': 'Vložit vně', 'Clear': 'Vymazat', 'Search': 'Hledat',
   'Find and Replace Text': 'Najít a nahradit text', 'Fill with Foreground': 'Vyplnit barvou popředí',
   'Fill with Background': 'Vyplnit barvou pozadí', 'Stroke': 'Obrys', 'Content-Aware Fill': 'Výplň s ohledem na obsah',
-  'Content-Aware Scale': 'Měřítko s ohledem na obsah', 'Puppet Warp': 'Deformace loutky', 'Perspective Warp': 'Deformace perspektivy',
+  'Puppet Warp': 'Deformace loutky', 'Perspective Warp': 'Deformace perspektivy',
   'Free Transform': 'Volná transformace', 'Rotate': 'Otočit', 'Scale': 'Měřítko', 'Skew': 'Zkosit', 'Perspective': 'Perspektiva', 'Warp': 'Deformovat',
   'Define Brush Preset': 'Definovat předvolbu štětce', 'Define Pattern': 'Definovat vzorek', 'Define Custom Shape': 'Definovat vlastní tvar',
   'Keyboard Shortcuts': 'Klávesové zkratky', 'Preset Manager': 'Správce předvoleb', 'Assign Profile': 'Přiřadit profil',

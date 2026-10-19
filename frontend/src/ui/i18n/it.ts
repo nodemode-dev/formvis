@@ -46,7 +46,7 @@ export const it: Record<string, string> = {
   'Paste Into': 'Incolla dentro', 'Paste Outside': 'Incolla fuori', 'Clear': 'Cancella', 'Search': 'Cerca',
   'Find and Replace Text': 'Trova e sostituisci testo', 'Fill with Foreground': 'Riempi con colore primo piano',
   'Fill with Background': 'Riempi con colore sfondo', 'Stroke': 'Traccia contorno', 'Content-Aware Fill': 'Riempimento in base al contenuto',
-  'Content-Aware Scale': 'Scala in base al contenuto', 'Puppet Warp': 'Distorsione marionetta', 'Perspective Warp': 'Distorsione prospettica',
+  'Puppet Warp': 'Distorsione marionetta', 'Perspective Warp': 'Distorsione prospettica',
   'Free Transform': 'Trasformazione libera', 'Rotate': 'Ruota', 'Scale': 'Scala', 'Skew': 'Distorci', 'Perspective': 'Prospettiva', 'Warp': 'Deforma',
   'Define Brush Preset': 'Definisci pennello predefinito', 'Define Pattern': 'Definisci motivo', 'Define Custom Shape': 'Definisci forma personalizzata',
   'Keyboard Shortcuts': 'Scelte rapide da tastiera', 'Preset Manager': 'Gestione predefiniti', 'Assign Profile': 'Assegna profilo',

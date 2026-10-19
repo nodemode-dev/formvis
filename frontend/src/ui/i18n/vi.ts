@@ -35,7 +35,7 @@ export const vi: Record<string, string> = {
   'Paste Into': 'Dán vào trong', 'Paste Outside': 'Dán ra ngoài', 'Clear': 'Xóa', 'Search': 'Tìm kiếm',
   'Find and Replace Text': 'Tìm và thay thế văn bản', 'Fill with Foreground': 'Tô bằng màu nền trước',
   'Fill with Background': 'Tô bằng màu nền sau', 'Stroke': 'Nét viền', 'Content-Aware Fill': 'Tô theo nội dung',
-  'Content-Aware Scale': 'Co giãn theo nội dung', 'Puppet Warp': 'Uốn rối', 'Perspective Warp': 'Uốn phối cảnh',
+  'Puppet Warp': 'Uốn rối', 'Perspective Warp': 'Uốn phối cảnh',
   'Free Transform': 'Biến đổi tự do', 'Rotate': 'Xoay', 'Scale': 'Co giãn', 'Skew': 'Nghiêng', 'Perspective': 'Phối cảnh', 'Warp': 'Uốn',
   'Define Brush Preset': 'Định nghĩa cọ cài sẵn', 'Define Pattern': 'Định nghĩa mẫu', 'Define Custom Shape': 'Định nghĩa hình tùy chỉnh',
   'Keyboard Shortcuts': 'Phím tắt', 'Preset Manager': 'Trình quản lý cài đặt sẵn', 'Assign Profile': 'Gán hồ sơ',

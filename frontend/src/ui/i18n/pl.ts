@@ -35,7 +35,7 @@ export const pl: Record<string, string> = {
   'Paste Into': 'Wklej do', 'Paste Outside': 'Wklej na zewnątrz', 'Clear': 'Wyczyść', 'Search': 'Szukaj',
   'Find and Replace Text': 'Znajdź i zamień tekst', 'Fill with Foreground': 'Wypełnij kolorem pierwszego planu',
   'Fill with Background': 'Wypełnij kolorem tła', 'Stroke': 'Obrys', 'Content-Aware Fill': 'Wypełnienie z uwzględnieniem zawartości',
-  'Content-Aware Scale': 'Skala z uwzględnieniem zawartości', 'Puppet Warp': 'Wypaczenie marionetkowe', 'Perspective Warp': 'Wypaczenie perspektywy',
+  'Puppet Warp': 'Wypaczenie marionetkowe', 'Perspective Warp': 'Wypaczenie perspektywy',
   'Free Transform': 'Przekształcanie swobodne', 'Rotate': 'Obróć', 'Scale': 'Skala', 'Skew': 'Pochyl', 'Perspective': 'Perspektywa', 'Warp': 'Wypaczenie',
   'Define Brush Preset': 'Definiuj ustawienie wstępne pędzla', 'Define Pattern': 'Definiuj wzór', 'Define Custom Shape': 'Definiuj kształt niestandardowy',
   'Keyboard Shortcuts': 'Skróty klawiaturowe', 'Preset Manager': 'Menedżer ustawień wstępnych', 'Assign Profile': 'Przypisz profil',

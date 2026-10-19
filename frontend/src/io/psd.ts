@@ -1,8 +1,9 @@
 import type { BlendMode as PsdBlend, Layer as PsdLayer, LayerEffectsInfo, LinkedFile, PatternInfo, Psd, UnitsValue, VectorContent } from 'ag-psd';
 import {
-  Raster, boundsOf, docTransform, effectsPresent, integral, liveText, newLayer, placement, applyMat, uid, type BlendMode, type Doc, type ID, type Layer, type Surface, invert, mul, toBlob, type Pt, defaultEffects, patternById, addPattern, projectPatterns, createSurface, ctxOf, type LayerEffects, renderText, textKey, TEXT_FONTS, type TextSpec, ADJUSTMENT_LABELS, hsvFromData,
+  Raster, boundsOf, docTransform, effectsPresent, integral, liveText, newLayer, placement, applyMat, uid, type BlendMode, type Doc, type ID, type Layer, type Surface, invert, mul, toBlob, type Pt, defaultEffects, patternById, addPattern, projectPatterns, createSurface, ctxOf, type LayerEffects, renderText, textKey, TEXT_FONTS, type TextSpec, ADJUSTMENT_LABELS, hsvFromData, type WarpStyle,
 } from '../engine';
 import { fromPsdAdjustment, toPsdAdjustment } from './psd-adjust';
+import { fromPsdSmartFilters } from './psd-filters';
 import { artboardFromData, blendIfActive, type BlendIf, type DocSlice, type LayerComp } from '../engine/types';
 import { windingArea } from '../engine/custom-shapes';
 import { addIccResource, addPathResources, clippingPathName, readPathResources, resourceBlocks } from './psd-paths';
@@ -30,6 +31,8 @@ const TO_PSD: Record<BlendMode, PsdBlend> = {
   'linear-light': 'linear light', 'pin-light': 'pin light', 'hard-mix': 'hard mix', subtract: 'subtract', divide: 'divide',
 };
 const FROM_PSD = new Map<PsdBlend, BlendMode>(Object.entries(TO_PSD).map(([k, v]) => [v, k as BlendMode]));
+
+const WARP_STYLES = new Set<string>(['arc', 'arcLower', 'arcUpper', 'arch', 'bulge', 'shellLower', 'shellUpper', 'flag', 'wave', 'fish', 'rise', 'fisheye', 'inflate', 'squeeze', 'twist']);
 
 export const isPsdFile = (f: File): boolean => /\.(ps[db]|psdt)$/i.test(f.name) || f.type === 'image/vnd.adobe.photoshop';
 
@@ -80,7 +83,7 @@ function toPsdEffects(fx: LayerEffects, patterns: PatternInfo[]): LayerEffectsIn
   if (is.enabled) e.innerShadow = [{ ...on, color: is.color, opacity: is.opacity, blendMode: bm(is.blend), angle: is.angle, distance: px(is.distance), size: px(is.size), useGlobalLight: false }];
   if (g.enabled) e.outerGlow = { ...on, color: g.color, opacity: g.opacity, blendMode: bm(g.blend), size: px(g.size) };
   if (ig.enabled) e.innerGlow = { ...on, color: ig.color, opacity: ig.opacity, blendMode: bm(ig.blend), size: px(ig.size), source: 'edge' };
-  if (k.enabled) e.stroke = [{ ...on, position: 'outside', fillType: 'color', color: k.color, opacity: k.opacity, blendMode: 'normal', size: px(k.size) }];
+  if (k.enabled) e.stroke = [{ ...on, position: k.position ?? 'outside', fillType: 'color', color: k.color, opacity: k.opacity, blendMode: 'normal', size: px(k.size) }];
   if (co.enabled) e.solidFill = [{ ...on, color: co.color, opacity: co.opacity, blendMode: bm(co.blend) }];
   if (go.enabled) e.gradientOverlay = [{ ...on, opacity: go.opacity, blendMode: bm(go.blend), type: go.style, angle: go.angle, scale: go.scale, reverse: go.reverse, align: true,
     gradient: { name: 'formvis', type: 'solid',   // every stop and its alpha when the overlay has them (36.8)
@@ -189,7 +192,7 @@ function fromPsdBlending(pl: PsdLayer): { blendIf?: BlendIf; knockout?: 'shallow
   return out;
 }
 
-function fromPsdEffects(info: LayerEffectsInfo, patterns: PatternInfo[] | undefined, name: string, notes: string[]): LayerEffects | null {
+function fromPsdEffects(info: LayerEffectsInfo, patterns: PatternInfo[] | undefined, name: string, notes: string[], all = false): LayerEffects | null {
   const fx = defaultEffects(), px = (u: UnitsValue | undefined, d: number): number => (u && typeof u.value === 'number' ? u.value : d);
   const col = (c: unknown, d: { r: number; g: number; b: number }): { r: number; g: number; b: number } => {
     const o = c as Record<string, number> | null | undefined;
@@ -200,7 +203,7 @@ function fromPsdEffects(info: LayerEffectsInfo, patterns: PatternInfo[] | undefi
   const bm = (m: string | undefined, d: BlendMode): BlendMode => (m && FROM_PSD.get(m as PsdBlend)) || d, op = (v: number | undefined, d: number): number => (typeof v === 'number' ? Math.max(0, Math.min(1, v)) : d);
   const first = <T extends { enabled?: boolean }>(list: T[] | undefined, what: string): T | null => {
     if (!list?.length) return null;
-    if (list.length > 1) notes.push(`"${name}" has more than one ${what}; formvis kept the first.`);
+    if (list.length > 10) notes.push(`"${name}" has more than ten ${what} instances; formvis kept ten.`);
     return list[0];
   };
   const on = (x: { enabled?: boolean } | null | undefined): boolean => !!x && x.enabled !== false;
@@ -214,8 +217,10 @@ function fromPsdEffects(info: LayerEffectsInfo, patterns: PatternInfo[] | undefi
   if (ig) fx.innerGlow = { enabled: on(ig), color: col(ig.color, fx.innerGlow.color), opacity: op(ig.opacity, fx.innerGlow.opacity), blend: bm(ig.blendMode, 'screen'), size: px(ig.size, 5) };
   const k = first(info.stroke, 'Stroke');
   if (k) {
-    fx.stroke = { enabled: on(k), color: col(k.color, fx.stroke.color), opacity: op(k.opacity, 1), size: px(k.size, 3) };
-    if ((k.position && k.position !== 'outside') || (k.fillType && k.fillType !== 'color')) notes.push(`"${name}" has a stroke formvis draws as an outside colour stroke.`);
+    fx.stroke = { enabled: on(k), color: col(k.color, fx.stroke.color), opacity: op(k.opacity, 1), size: px(k.size, 3), ...(k.position === 'inside' || k.position === 'center' ? { position: k.position } : {}) };
+    const kg = k.fillType === 'gradient' && k.gradient && 'colorStops' in k.gradient ? k.gradient : null;
+    if (kg && kg.colorStops.length >= 2) fx.stroke.gradient = { from: col(kg.colorStops[0].color, fx.stroke.color), to: col(kg.colorStops[kg.colorStops.length - 1].color, fx.stroke.color), angle: kg.angle ?? 90, style: kg.style === 'radial' ? 'radial' : 'linear', reverse: !!kg.reverse };
+    if (k.fillType === 'pattern' || (k.fillType === 'gradient' && !kg) || (kg && kg.style && kg.style !== 'linear' && kg.style !== 'radial')) notes.push(`"${name}" has a stroke fill formvis draws as a colour or a linear or radial gradient.`);
   }
   const co = first(info.solidFill, 'Color Overlay');
   if (co) fx.colorOverlay = { enabled: on(co), color: col(co.color, fx.colorOverlay.color), opacity: op(co.opacity, 1), blend: bm(co.blendMode, 'normal') };
@@ -223,7 +228,8 @@ function fromPsdEffects(info: LayerEffectsInfo, patterns: PatternInfo[] | undefi
   if (go) {
     const stops = go.gradient && 'colorStops' in go.gradient ? go.gradient.colorStops : [];
     fx.gradientOverlay = { enabled: on(go), from: col(stops[0]?.color, fx.gradientOverlay.from), to: col(stops[stops.length - 1]?.color, fx.gradientOverlay.to), opacity: op(go.opacity, 1), blend: bm(go.blendMode, 'normal'),
-      angle: go.angle ?? 90, style: go.type === 'radial' ? 'radial' : 'linear', scale: Math.max(0.1, Math.min(1.5, go.scale ?? 1)), reverse: !!go.reverse };
+      angle: go.angle ?? 90, style: go.type === 'radial' || go.type === 'angle' || go.type === 'reflected' || go.type === 'diamond' ? go.type : 'linear', scale: Math.max(0.1, Math.min(1.5, go.scale ?? 1)), reverse: !!go.reverse, ...(go.dither ? { dither: true } : {}),
+      ...(go.interpolationMethod === 'perceptual' || go.interpolationMethod === 'linear' || go.interpolationMethod === 'classic' ? { method: go.interpolationMethod } : {}) };
     // Every colour stop, each with the alpha the opacity stops give at its place (36.8), kept when it is more than two opaque ends.
     const ops = go.gradient && 'opacityStops' in go.gradient ? [...go.gradient.opacityStops].sort((a, b) => a.location - b.location) : [];
     const alphaAt = (t: number): number => {
@@ -234,7 +240,6 @@ function fromPsdEffects(info: LayerEffectsInfo, patterns: PatternInfo[] | undefi
     };
     const full = stops.map((s) => ({ at: s.location, color: col(s.color, fx.gradientOverlay.from), alpha: alphaAt(s.location) }));
     if (full.length > 2 || full.some((s) => s.alpha < 1)) fx.gradientOverlay.stops = full;
-    if (go.type && go.type !== 'linear' && go.type !== 'radial') notes.push(`"${name}" has a gradient type formvis draws as linear or radial.`);
   }
   const sa = info.satin;
   if (sa) fx.satin = { enabled: on(sa), color: col(sa.color, fx.satin.color), opacity: op(sa.opacity, 0.5), blend: bm(sa.blendMode, 'multiply'), angle: sa.angle ?? 19, distance: px(sa.distance, 11), size: px(sa.size, 14), invert: sa.invert !== false };
@@ -259,8 +264,25 @@ function fromPsdEffects(info: LayerEffectsInfo, patterns: PatternInfo[] | undefi
     } else notes.push(`"${name}" uses a pattern the file does not include; formvis shows Checker in its place.`);
     fx.patternOverlay = { enabled: on(po), pattern: id, opacity: op(po.opacity, 1), blend: bm(po.blendMode, 'normal'), scale: Math.max(0.1, Math.min(10, po.scale ?? 1)) };
   }
+  if (!all) {
+    // The second to tenth instance of each effect the file can repeat, each read the same way and kept in the layer's extras.
+    const extra: NonNullable<LayerEffects['extra']> = {}, more = (key: 'dropShadow' | 'innerShadow' | 'stroke' | 'solidFill' | 'gradientOverlay'): LayerEffectsInfo[typeof key] => (info[key] as unknown[] | undefined)?.slice(1, 10) as LayerEffectsInfo[typeof key];
+    for (const i of [0, 1, 2, 3, 4, 5, 6, 7, 8]) {
+      const part: LayerEffectsInfo = {};
+      for (const key of ['dropShadow', 'innerShadow', 'stroke', 'solidFill', 'gradientOverlay'] as const) { const one = more(key)?.[i]; if (one) (part as Record<string, unknown>)[key] = [one]; }
+      if (!Object.keys(part).length) break;
+      const sub = fromPsdEffects(part, patterns, name, notes, true);
+      if (!sub) continue;
+      if (part.dropShadow) (extra.dropShadow ??= []).push(sub.dropShadow);
+      if (part.innerShadow) (extra.innerShadow ??= []).push(sub.innerShadow);
+      if (part.stroke) (extra.stroke ??= []).push(sub.stroke);
+      if (part.solidFill) (extra.colorOverlay ??= []).push(sub.colorOverlay);
+      if (part.gradientOverlay) (extra.gradientOverlay ??= []).push(sub.gradientOverlay);
+    }
+    if (Object.keys(extra).length) fx.extra = extra;
+  }
   if (info.disabled) fx.hidden = true;
-  return effectsPresent(fx) ? fx : null;
+  return all || effectsPresent(fx) ? fx : null;
 }
 
 /** PostScript names for formvis's type families in PSD files; bold and italic travel as the format's faux styles. */
@@ -511,7 +533,6 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
       // The reader stops one channel short of the file's restriction list, so which channels are restricted cannot be told; the layer is only reported.
       const advanced = labelOf(pl);
       if (pl.channelBlendingRestrictions) notes.push(`"${name}" restricts the channels it blends into, which formvis cannot read from the file; it opened with all channels.`);
-      if (pl.blendInteriorElements) notes.push(`"${name}" blends interior effects as a group, which formvis does not do; it opened without it.`);
       if (pl.blendClippendElements === false) notes.push(`"${name}" does not blend clipped layers as a group, which formvis does not do; it opened with the default.`);
       if (pl.transparencyShapesLayer === false) notes.push(`"${name}" has Transparency Shapes Layer off, which formvis does not do; it opened with it on.`);
       const layer = adj ? newLayer(name, doc, { adjustment: adj, parentId, visible: !pl.hidden, opacity: pl.opacity ?? 1, blend, ...fill, ...advanced })
@@ -572,7 +593,13 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
         const source = contents.get(plc.id) ?? null, t8 = plc.nonAffineTransform ?? plc.transform;
         if (source && t8?.length === 8 && t8.every((v) => Number.isFinite(v))) {
           layer.smart = { source, filters: [], warp: [0, 2, 4, 6].map((k) => ({ x: t8[k], y: t8[k + 1] })), warpAt: layer.transform };
-          if (plc.filter?.list?.length) notes.push(`"${name}" has smart filters (${plc.filter.list.map((f) => f.name || f.type).join(', ')}${plc.filter.enabled === false ? '; switched off in the file' : ''}); they stay applied in its pixels and are not editable here.`);        } else notes.push(`"${name}" is a smart object whose contents formvis cannot read; it opened as pixels.`);
+          if (plc.filter?.list?.length) {
+            // Smart filters come in as the live stack when every one of them maps; the pixels stay as saved until the next render.
+            const got = fromPsdSmartFilters(plc.filter.list, plc.filter.enabled !== false, (m) => FROM_PSD.get(m as PsdBlend));
+            if ('filters' in got) { layer.smart.filters = got.filters; kept.push(`"${name}" has ${got.filters.length} editable smart filter${got.filters.length === 1 ? '' : 's'}.`); }
+            else notes.push(`"${name}" has smart filters formvis does not have (${got.missing.join(', ')}); the stack stays applied in its pixels and is not editable here.`);
+          }
+        } else notes.push(`"${name}" is a smart object whose contents formvis cannot read; it opened as pixels.`);
       }
       const tx = pl.text;
       if (tx && typeof tx.text === 'string' && raster) {
@@ -583,12 +610,34 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
         const spec: TextSpec = { content: tx.text.replace(/\r/g, '\n'), family: face.family, size, color: col && typeof col.r === 'number' ? { r: Math.round(col.r), g: Math.round(col.g), b: Math.round(col.b) } : col && typeof col.fr === 'number' ? { r: Math.round(col.fr * 255), g: Math.round(col.fg * 255), b: Math.round(col.fb * 255) } : { r: 0, g: 0, b: 0 },
           align: just === 'center' || just === 'right' ? just : 'left', bold: !!st.fauxBold || face.bold, italic: !!st.fauxItalic || face.italic, lineHeight: st.autoLeading === false && st.leading ? Math.round((st.leading * scale / size) * 100) / 100 : 1.2,
           tracking: Math.round(Math.min(10000, Math.max(-1000, st.tracking ?? 0))), kerning: st.autoKerning === false ? 'none' : 'metrics' };
+        // Paragraph (box) type, warp, vertical type, the character flags and the indents the file states travel with the type.
+        const ps = tx.paragraphStyle ?? {}, wsc = Math.hypot(m[0] ?? 1, m[1] ?? 0) || 1, bb = tx.boxBounds, wp = tx.warp, num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+        if (tx.shapeType === 'box' && bb?.length === 4 && bb[2] - bb[0] > 0 && bb[3] - bb[1] > 0) spec.box = { w: Math.round((bb[2] - bb[0]) * wsc), h: Math.round((bb[3] - bb[1]) * scale) };
+        if (tx.orientation === 'vertical') spec.direction = 'vertical';
+        if (st.underline) spec.underline = true;
+        if (st.strikethrough) spec.strike = true;
+        if (st.fontCaps === 1) spec.caps = 'small'; else if (st.fontCaps === 2) spec.caps = 'all';
+        if (num(st.baselineShift)) spec.baselineShift = Math.round(num(st.baselineShift) * scale * 100) / 100;
+        if (num(st.horizontalScale) && st.horizontalScale !== 1) spec.scaleX = Math.round(st.horizontalScale as number * 100);
+        if (num(st.verticalScale) && st.verticalScale !== 1) spec.scaleY = Math.round(st.verticalScale as number * 100);
+        if (num(ps.firstLineIndent)) spec.indentFirst = Math.round(num(ps.firstLineIndent) * wsc);
+        if (num(ps.startIndent)) spec.indentLeft = Math.round(num(ps.startIndent) * wsc);
+        if (num(ps.endIndent)) spec.indentRight = Math.round(num(ps.endIndent) * wsc);
+        if (num(ps.spaceBefore)) spec.spaceBefore = Math.round(num(ps.spaceBefore) * scale);
+        if (num(ps.spaceAfter)) spec.spaceAfter = Math.round(num(ps.spaceAfter) * scale);
+        if (just === 'justify-left' || just === 'justify-center' || just === 'justify-right' || just === 'justify-all') spec.align = 'justify';
+        const warped = !!wp?.style && wp.style !== 'none' && WARP_STYLES.has(wp.style);
+        if (warped && wp) spec.warp = { style: wp.style as WarpStyle, orientation: wp.rotate === 'vertical' ? 'vertical' : 'horizontal', bend: Math.max(-100, Math.min(100, num(wp.value))), horizontal: Math.max(-100, Math.min(100, num(wp.perspective))), vertical: Math.max(-100, Math.min(100, num(wp.perspectiveOther))) };
+        else if (wp?.style && wp.style !== 'none') notes.push(`"${name}" has ${wp.style} warped type, which formvis does not have; it edits it as unwarped type.`);
         layer.text = { ...spec, rendered: textKey(raster) };
         if ((tx.styleRuns?.length ?? 0) > 1) notes.push(`"${name}" mixes type styles; formvis keeps the first for the whole text.`);
-        const warped = !!tx.warp?.style && tx.warp.style !== 'none';
-        if (tx.shapeType === 'box' || warped) notes.push(`"${name}" is ${warped ? 'warped' : 'paragraph'} type in the PSD; formvis edits it as plain point type.`);
       }
       if (pl.effects) { const fx = fromPsdEffects(pl.effects, psd.patterns, name, notes); if (fx) layer.effects = fx; }
+      // Blend Interior Effects as Group and Layer Mask Hides Effects belong to the layer style; they are kept when it has one.
+      if (layer.effects) {
+        if (pl.blendInteriorElements) layer.effects.blendInterior = true;
+        if (pl.layerMaskAsGlobalMask === false) layer.effects.layerMaskHides = false;
+      }
       Object.assign(layer, fromPsdBlending(pl));
       if (pl.clipping && base) layer.clipId = base.id;
       else base = layer;

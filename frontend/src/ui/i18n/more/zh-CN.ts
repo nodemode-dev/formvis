@@ -79,7 +79,7 @@ export const zhCN: Record<string, string> = {
   'Pixel': '像素', 'Place': '置入', 'Plaster': '塑料效果', 'Plastic Wrap': '塑料包装', 'Play': '播放', 'Play Action': '播放动作', 'Play Animation': '播放动画', 'Plus': '加号', 'Point Radius (%)': '点半径 (%)',
   'Pointillize': '点状化', 'Polar Coordinates': '极坐标', 'Position': '位置', 'Position X (%)': '位置 X (%)', 'Poster Edges': '海报边缘', 'Posterize': '色调分离', 'Preserve': '保留',
   'Preserve Details (%)': '保留细节 (%)', 'Preserve Luminosity': '保留明度', 'Preserve Transparency': '保留透明度', 'Previous Blend Mode': '上一个混合模式', 'Previous Layer Comp': '上一个图层复合',
-  'Print Selected Area': '打印选定区域', 'Printer Profile': '打印机配置文件', 'Profile': '配置文件', 'Projection': '投影', 'Prompt': '提示词', 'Properties Sheet': '属性表', 'Protect skin tones': '保护肤色',
+  'Print Selected Area': '打印选定区域', 'Printer Profile': '打印机配置文件', 'Profile': '配置文件', 'Projection': '投影', 'Prompt': '提示词', 'Properties Sheet': '属性表',
   'Protect the selection': '保护选区', 'QOI, PNM, TGA and ICO': 'QOI、PNM、TGA 和 ICO', 'Quality': '品质', 'Quality (%)': '品质 (%)', 'Quality (0 to 12)': '品质 (0 到 12)', 'Radial': '径向',
   'Radiance HDR': 'Radiance HDR', 'Radius': '半径', 'Radius (px)': '半径 (px)', 'Radius X (%)': '半径 X (%)', 'Radius Y (%)': '半径 Y (%)', 'Randomize Flame Shapes': '随机化火焰形状',
   'Randomize Length': '随机化长度', 'Rating': '评级', 'Record': '记录', 'Red': '红色', 'Redact': '涂黑', 'Redraw only what a brush stroke changed': '仅重绘画笔描边更改的部分',

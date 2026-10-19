@@ -534,7 +534,6 @@ export const de: Record<string, string> = {
   'Projection': 'Projektion',
   'Prompt': 'Prompt',
   'Properties Sheet': 'Eigenschaftenblatt',
-  'Protect skin tones': 'Hauttöne schützen',
   'Protect the selection': 'Auswahl schützen',
   'QOI, PNM, TGA and ICO': 'QOI, PNM, TGA und ICO',
   'Quality': 'Qualität',

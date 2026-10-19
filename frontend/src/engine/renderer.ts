@@ -38,7 +38,7 @@ function halvingsFor(factor: number): number {
 
 /** Preferences > Performance: how many halved copies a raster keeps for display (Cache Levels, 0 to 8) and the memory
  *  the layer-effect cache may hold (Layer Effect Cache, bytes). */
-export const renderCache = { levels: 6, effectBytes: 256 * 1048576 };
+export const renderCache = { levels: 6, effectBytes: 256 * 1048576, prefix: true };
 const surfaceBytes = (s: Surface): number => s.width * s.height * 4;
 
 /** The raster's canvas halved `level` times, each step drawn from the one before; `scale` says how much smaller it is. */
@@ -78,6 +78,8 @@ export interface RenderJob {
   ignoreFolderMasks?: boolean;
   /** Folders being drawn on their own surface by an enclosing render; they are not isolated again inside it. */
   handled?: ReadonlySet<ID>;
+  /** The display's frame: the layers below the lowest layer with an override are kept as one picture between frames. */
+  reuse?: boolean;
 }
 /** A scratch canvas and its drawing context. */
 interface Slot { s: Surface; c: Ctx2D }
@@ -206,6 +208,50 @@ export class Renderer {
     return this.prepare(found, w, h);
   }
 
+  /** The stack-reuse prefix (a frame while painting): the layers below the lowest layer that has a live override are
+   *  composited once into `prefixCache` and drawn from it until a layer below, the view or the background changes. Declined
+   *  for artboards, tiled layers and a live layer inside an isolated folder. `sig` names everything the picture reads. */
+  private prefixCache: { surface: Surface; sig: unknown[] } | null = null;
+  private prefixOf(job: RenderJob, entries: ReturnType<typeof hierarchy>, map: ReadonlyMap<ID, Layer>, W: number, H: number): { split: number; sig: unknown[]; hit: boolean } | null {
+    const ov = job.overrides;
+    if (!ov || !ov.size || job.only || job.handled) return null;
+    let split = -1;
+    for (let i = 0; i < entries.length; i++) {
+      const l = entries[i].layer;
+      if (l.isGroup && l.artboard) return null;
+      if (split < 0 && ov.has(l.id)) { if (l.isGroup) return null; split = i; }
+    }
+    if (split < 1 || ancestors(map, entries[split].layer).some((g) => groupIsolated(g))) return null;
+    const sig: unknown[] = [W, H, ...job.view, job.background ?? '', job.quality ?? '', this.fastEffects, job.ignoreFolderMasks === true, job.doc.width, job.doc.height, job.doc.globalLight, split];
+    for (let i = 0; i < split; i++) {
+      const l = entries[i].layer;
+      if (l.tiled) return null;
+      sig.push(l, entries[i].visible, l.raster?.id, l.raster?.version, l.mask?.raster?.id, l.mask?.raster?.version);
+    }
+    const c = this.prefixCache;
+    return { split, sig, hit: !!c && c.surface.width === W && c.surface.height === H && c.sig.length === sig.length && c.sig.every((v, i) => v === sig[i]) };
+  }
+  private prefixAt(pre: { sig: unknown[]; hit: boolean }, ctx: Ctx2D, target: Surface): void {
+    const W = target.width, H = target.height;
+    if (!this.prefixCache) this.prefixCache = { surface: createSurface(W, H), sig: [] };
+    const cache = this.prefixCache, cc = ctxOf(cache.surface);
+    sizeSurface(cache.surface, W, H);
+    cc.setTransform(1, 0, 0, 1, 0, 0);
+    cc.globalAlpha = 1;
+    if (pre.hit) {
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalCompositeOperation = 'copy';
+      ctx.drawImage(cache.surface, 0, 0);
+      ctx.restore();
+      return;
+    }
+    cc.globalCompositeOperation = 'copy';
+    cc.drawImage(target, 0, 0);
+    cc.globalCompositeOperation = 'source-over';
+    cache.sig = pre.sig;
+  }
+
   render(job: RenderJob): void {
     const ctx = ctxOf(job.target), W = job.target.width, H = job.target.height;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -231,7 +277,14 @@ export class Renderer {
       ctx.fillRect(a.artboard.x, a.artboard.y, a.artboard.w, a.artboard.h);
       ctx.restore();
     };
+    const pre = job.reuse && renderCache.prefix ? this.prefixOf(job, entries, map, W, H) : null;
+    let at = -1;
     for (const entry of entries) {
+      at++;
+      if (pre) {
+        if (at < pre.split) { if (pre.hit) continue; }
+        else if (at === pre.split) this.prefixAt(pre, ctx, job.target);
+      }
       const layer = entry.layer;
       if (layer.isGroup) { if (entry.visible && layer.artboard) backdrop(layer); continue; }
       if (!entry.visible) continue;
@@ -495,8 +548,14 @@ export class Renderer {
       const t = i / 255;
       let k = 0;
       while (k < stops.length - 2 && t > stops[k + 1].at) k++;
-      const s0 = stops[k], s1 = stops[k + 1], f = Math.min(1, Math.max(0, (t - s0.at) / Math.max(1e-6, s1.at - s0.at)));
-      lut[i * 4] = s0.color.r + (s1.color.r - s0.color.r) * f; lut[i * 4 + 1] = s0.color.g + (s1.color.g - s0.color.g) * f; lut[i * 4 + 2] = s0.color.b + (s1.color.b - s0.color.b) * f;
+      const s0 = stops[k], s1 = stops[k + 1];
+      let f = Math.min(1, Math.max(0, (t - s0.at) / Math.max(1e-6, s1.at - s0.at)));
+      if (go.smoothness) { const m = go.smoothness / 100; f += (f * f * (3 - 2 * f) - f) * m; }
+      const pw = go.method === 'linear' ? 2.2 : go.method === 'perceptual' ? 1.6 : 1;
+      for (const [o, ch] of [[0, 'r'], [1, 'g'], [2, 'b']] as const) {
+        const v0 = Math.pow(s0.color[ch] / 255, pw), v1 = Math.pow(s1.color[ch] / 255, pw);
+        lut[i * 4 + o] = 255 * Math.pow(v0 + (v1 - v0) * f, 1 / pw);
+      }
       lut[i * 4 + 3] = (s0.alpha + (s1.alpha - s0.alpha) * f) * 255;
     }
     const a = (go.angle * Math.PI) / 180, ux = Math.cos(a), uy = -Math.sin(a), half = Math.max(0.5, ((Math.abs(bounds.w * ux) + Math.abs(bounds.h * uy)) / 2) * go.scale), rad = Math.max(1, (Math.max(bounds.w, bounds.h) / 2) * go.scale);
@@ -717,7 +776,7 @@ export class Renderer {
         // Beneath Color Overlay: the gradient spans the layer's bounds, kept to its silhouette.
         const cx = bounds.x + bounds.w / 2 - bx, cy = bounds.y + bounds.h / 2 - by, a = (go.angle * Math.PI) / 180, [c0, c1] = go.reverse ? [go.to, go.from] : [go.from, go.to];
         lay(kept((c) => {
-          if (go.dither || (go.style !== 'linear' && go.style !== 'radial')) { this.pixelGradient(c, go, bw, bh, cx, cy, bounds); return; }
+          if (go.dither || go.method || go.smoothness || (go.style !== 'linear' && go.style !== 'radial')) { this.pixelGradient(c, go, bw, bh, cx, cy, bounds); return; }
           let grad: CanvasGradient;
           if (go.style === 'radial') grad = c.createRadialGradient(cx, cy, 0, cx, cy, Math.max(1, (Math.max(bounds.w, bounds.h) / 2) * go.scale));
           else {

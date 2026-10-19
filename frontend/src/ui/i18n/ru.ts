@@ -35,7 +35,7 @@ export const ru: Record<string, string> = {
   'Paste Into': 'Вставить в', 'Paste Outside': 'Вставить за пределы', 'Clear': 'Очистить', 'Search': 'Поиск',
   'Find and Replace Text': 'Найти и заменить текст', 'Fill with Foreground': 'Залить основным цветом',
   'Fill with Background': 'Залить фоновым цветом', 'Stroke': 'Выполнить обводку', 'Content-Aware Fill': 'Заливка с учетом содержимого',
-  'Content-Aware Scale': 'Масштаб с учетом содержимого', 'Puppet Warp': 'Марионеточная деформация', 'Perspective Warp': 'Деформация перспективы',
+  'Puppet Warp': 'Марионеточная деформация', 'Perspective Warp': 'Деформация перспективы',
   'Free Transform': 'Свободное трансформирование', 'Rotate': 'Поворот', 'Scale': 'Масштаб', 'Skew': 'Наклон', 'Perspective': 'Перспектива', 'Warp': 'Деформация',
   'Define Brush Preset': 'Определить набор параметров кисти', 'Define Pattern': 'Определить узор', 'Define Custom Shape': 'Определить произвольную фигуру',
   'Keyboard Shortcuts': 'Клавиатурные сокращения', 'Preset Manager': 'Управление наборами', 'Assign Profile': 'Назначить профиль',

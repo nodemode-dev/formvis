@@ -534,7 +534,6 @@ export const fi: Record<string, string> = {
   'Projection': 'Projektio',
   'Prompt': 'Kehote',
   'Properties Sheet': 'Ominaisuustaulukko',
-  'Protect skin tones': 'Suojaa ihonsävyt',
   'Protect the selection': 'Suojaa valinta',
   'QOI, PNM, TGA and ICO': 'QOI, PNM, TGA ja ICO',
   'Quality': 'Laatu',

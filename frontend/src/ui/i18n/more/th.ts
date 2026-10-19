@@ -79,7 +79,7 @@ export const th: Record<string, string> = {
   'Pixel': 'พิกเซล', 'Place': 'วาง', 'Plaster': 'ปูนปลาสเตอร์', 'Plastic Wrap': 'ห่อพลาสติก', 'Play': 'เล่น', 'Play Action': 'เล่นแอ็กชัน', 'Play Animation': 'เล่นแอนิเมชัน', 'Plus': 'บวก', 'Point Radius (%)': 'รัศมีจุด (%)',
   'Pointillize': 'จุดสี', 'Polar Coordinates': 'พิกัดเชิงขั้ว', 'Position': 'ตำแหน่ง', 'Position X (%)': 'ตำแหน่ง X (%)', 'Poster Edges': 'ขอบโปสเตอร์', 'Posterize': 'โพสเตอร์ไรซ์', 'Preserve': 'คงไว้',
   'Preserve Details (%)': 'คงรายละเอียด (%)', 'Preserve Luminosity': 'คงความสว่างจ้า', 'Preserve Transparency': 'คงความโปร่งใส', 'Previous Blend Mode': 'โหมดผสมก่อนหน้า', 'Previous Layer Comp': 'เลเยอร์คอมพ์ก่อนหน้า',
-  'Print Selected Area': 'พิมพ์พื้นที่ที่เลือก', 'Printer Profile': 'โปรไฟล์เครื่องพิมพ์', 'Profile': 'โปรไฟล์', 'Projection': 'การฉายภาพ', 'Prompt': 'พรอมต์', 'Properties Sheet': 'แผ่นคุณสมบัติ', 'Protect skin tones': 'ปกป้องโทนสีผิว',
+  'Print Selected Area': 'พิมพ์พื้นที่ที่เลือก', 'Printer Profile': 'โปรไฟล์เครื่องพิมพ์', 'Profile': 'โปรไฟล์', 'Projection': 'การฉายภาพ', 'Prompt': 'พรอมต์', 'Properties Sheet': 'แผ่นคุณสมบัติ',
   'Protect the selection': 'ปกป้องส่วนที่เลือก', 'QOI, PNM, TGA and ICO': 'QOI, PNM, TGA และ ICO', 'Quality': 'คุณภาพ', 'Quality (%)': 'คุณภาพ (%)', 'Quality (0 to 12)': 'คุณภาพ (0 ถึง 12)', 'Radial': 'แนวรัศมี',
   'Radiance HDR': 'Radiance HDR', 'Radius': 'รัศมี', 'Radius (px)': 'รัศมี (px)', 'Radius X (%)': 'รัศมี X (%)', 'Radius Y (%)': 'รัศมี Y (%)', 'Randomize Flame Shapes': 'สุ่มรูปร่างเปลวไฟ',
   'Randomize Length': 'สุ่มความยาว', 'Rating': 'การให้คะแนน', 'Record': 'บันทึก', 'Red': 'สีแดง', 'Redact': 'ปิดบังข้อความ', 'Redraw only what a brush stroke changed': 'วาดใหม่เฉพาะส่วนที่เส้นแปรงเปลี่ยน',
