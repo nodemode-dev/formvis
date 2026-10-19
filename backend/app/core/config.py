@@ -67,10 +67,24 @@ def _ensure(path: Path) -> Path:
     return path
 
 
+def portable_dir() -> Path | None:
+    """FormvisData beside the program when --portable (FORMVIS_PORTABLE=1) was given or a file named portable.txt sits
+    beside the frozen engine; None otherwise."""
+    import sys
+    beside = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else BACKEND_DIR
+    if os.environ.get("FORMVIS_PORTABLE") == "1" or (getattr(sys, "frozen", False) and (beside / "portable.txt").is_file()):
+        return beside / "FormvisData"
+    return None
+
+
 def data_dir() -> Path:
+    """Order: --user-data-dir or FORMVIS_DATA_DIR, then the portable folder, then ~/Formvis."""
     raw = os.environ.get("FORMVIS_DATA_DIR")
     if raw:
         return _ensure(Path(raw).expanduser())
+    portable = portable_dir()
+    if portable:
+        return _ensure(portable)
     path = Path.home() / "Formvis"
     legacy.carry_over_library(path)   # the library saved before the rename moves here (core/legacy.py)
     return _ensure(path)

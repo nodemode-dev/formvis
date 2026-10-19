@@ -11,10 +11,11 @@ export class ArbitraryRotationDialog extends Dialog {
   private last = { angle: 0, dir: 'cw' };
   private readonly angle = numberRow('Angle (degrees)', -359.99, 359.99, 0.01, () => undefined);
   private readonly dir = selectRow('Direction', [['cw', 'Clockwise'], ['ccw', 'Counter Clockwise']], () => undefined);
+  private readonly interp = selectRow('Interpolation', [['high', 'High quality'], ['smooth', 'Smooth'], ['nearest', 'Nearest']], () => undefined);
 
   constructor(private readonly engine: Engine) {
     super('Rotate Canvas', 320);
-    this.body.append(this.angle.el, this.dir.el);
+    this.body.append(this.angle.el, this.dir.el, this.interp.el);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     enterTo(this.angle.input, () => this.apply());
@@ -34,7 +35,8 @@ export class ArbitraryRotationDialog extends Dialog {
     if (!Number.isFinite(v) || Math.abs(v) >= 360) { this.engine.notice('Enter an angle from -359.99 to 359.99 degrees.'); return; }
     this.last = { angle: v, dir };
     this.close();
-    if (v) this.engine.rotateCanvasBy(dir === 'ccw' ? -v : v);
+    const mode = q<HTMLSelectElement>(this.interp.el, 'select').value;
+    if (v) this.engine.rotateCanvasBy(dir === 'ccw' ? -v : v, mode === 'nearest' || mode === 'smooth' ? mode : 'high');
   }
 }
 

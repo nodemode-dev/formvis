@@ -26,7 +26,11 @@ const KINDS: ReadonlyArray<{ id: Kind; label: string; accept: string }> = [
   { id: 'shapes', label: 'Custom Shapes', accept: '.json,.csh,application/json' },
 ];
 const GRADIENT_KEY = 'formvis.gradients';
-const message = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+const PRESET_KIND: ReadonlyArray<[RegExp, Kind]> = [[/\.abr$/i, 'brushes'], [/\.(aco|ase)$/i, 'swatches'], [/\.(grd|ggr)$/i, 'gradients'], [/\.pat$/i, 'patterns'], [/\.csh$/i, 'shapes']];
+/** The preset library a file belongs to by its extension, or null for any other file (File > Open and drops route by this). */
+export const presetKindOf = (name: string): Kind | null => PRESET_KIND.find(([re]) => re.test(name))?.[1] ?? null;
+export const PRESET_ACCEPT = '.abr,.aco,.ase,.grd,.ggr,.pat,.csh';
+const message =(err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 /** Edit > Presets > Preset Manager: one list per kind of preset (brushes, swatches, gradients, patterns, custom
  *  shapes) with Rename, Delete, Load and Save Set. The dialog's DOM is built once; only the list's options are
@@ -191,6 +195,21 @@ export class PresetManagerDialog extends Dialog {
       if (kind === this.kind) this.refresh();
     })());
     input.click();
+  }
+
+  /** Preset files opened or dropped like documents: each goes to its own library and one toast counts what loaded. */
+  async loadPresetFiles(files: File[]): Promise<number> {
+    const counts = new Map<Kind, number>();
+    for (const f of files) {
+      const kind = presetKindOf(f.name);
+      if (!kind) continue;
+      try { const n = await this.loadFile(kind, f); if (n) counts.set(kind, (counts.get(kind) ?? 0) + n); } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
+    }
+    let total = 0;
+    const parts: string[] = [];
+    for (const [kind, n] of counts) { total += n; parts.push(`${n} ${KINDS.find((k) => k.id === kind)?.label.toLowerCase() ?? kind}`); }
+    if (total) { toast(`Loaded ${parts.join(', ')} into the preset libraries.`); this.refresh(); }
+    return total;
   }
 
   private async loadFile(kind: Kind, f: File): Promise<number> {

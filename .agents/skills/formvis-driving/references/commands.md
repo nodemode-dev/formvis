@@ -1,24 +1,24 @@
 # formvis commands
 
-Generated from the window's command catalogue (1154 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1163 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
 - Edit: 69
-- File: 82
+- File: 83
 - Filter: 86
 - Generate: 6
 - Help: 3
 - Image: 88
-- Layer: 238
+- Layer: 240
 - Paint: 1
 - Paths: 9
 - Select: 35
-- Tool options: 295
+- Tool options: 299
 - Tools: 52
 - Type: 30
 - View: 68
-- Window: 92
+- Window: 94
 
 ## Edit
 
@@ -53,7 +53,7 @@ Generated from the window's command catalogue (1154 commands) by `./formvis agen
 | `layer-rotate-90-cw` | Rotate 90° Clockwise |  | Turns the layer 90 degrees clockwise. (changes the picture) |
 | `load-brushes` | Load Brushes... |  | Loads brushes from an .abr file. |
 | `new-snapshot` | New Snapshot |  | Stores the current state as a snapshot in History. |
-| `paste` | Paste | Mod+V | Pastes the clipboard as a new layer. (changes the picture) |
+| `paste` | Paste | Mod+V | Pastes the clipboard as a new layer, centred in view when the copied place is off screen. (changes the picture) |
 | `paste-in-place` | Paste in Place | Shift+Mod+V | Pastes at the position the pixels were copied from. (changes the picture) |
 | `paste-into` | Paste Into | Alt+Shift+Mod+V | Pastes into the selection with a mask. (changes the picture) |
 | `paste-outside` | Paste Outside |  | Pastes outside the selection with a mask. (changes the picture) |
@@ -65,7 +65,7 @@ Generated from the window's command catalogue (1154 commands) by `./formvis agen
 | `puppet-warp` | Puppet Warp |  | Starts Puppet Warp with pins on the layer. (changes the picture) |
 | `purge-all` | All |  | Clears the clipboard and the history of every open document after asking. (changes the picture) |
 | `purge-clipboard` | Clipboard |  | Clears formvis's internal clipboard. (changes the picture) |
-| `purge-histories` | Histories |  | Clears the undo and redo history of the current document after asking. (changes the picture) |
+| `purge-histories` | Histories |  | Clears the undo and redo history of every open document after asking, keeping their states and snapshots. (changes the picture) |
 | `purge-undo` | Undo |  | Forgets the undone steps that Redo would make again, in the current document. (changes the picture) |
 | `redo` | Redo | Shift+Mod+Z Mod+Y | Steps forward one history step. (changes the picture) |
 | `remove-wires` | Remove Wires and Cables |  | Finds wires and cables and removes them. (changes the picture) |
@@ -152,6 +152,7 @@ Generated from the window's command catalogue (1154 commands) by `./formvis agen
 | `merge-hdr` | Merge to HDR... |  | Opens Merge to HDR for bracketed exposures. (changes the picture) |
 | `new` | New Canvas... | Alt+Mod+N Mod+N | Opens the New Canvas dialog. |
 | `new-canvas-model-preset` | New Canvas from Model Preset... |  | Opens New Canvas from Model Preset, which makes a blank document at a size a chosen model family works well at. (changes the picture) |
+| `new-from-clipboard` | New from Clipboard |  | Makes a new document the size of the clipboard picture. (changes the picture) |
 | `open` | Open Project... | Mod+O | Opens the library dialog to open a saved project. |
 | `open-as` | Open As... |  | Opens a dialog to read one file as a format you choose (PNG, JPEG, TIFF, Targa, DPX, Cineon, WBMP, DDS, OpenEXR, PSD and others), whatever its name or extension says; the format parameter preselects it. (changes the picture) |
 | `open-image-data` | Open Image Data |  | Opens base64 picture bytes with a file name as a new document. (changes the picture) |
@@ -351,7 +352,7 @@ Generated from the window's command catalogue (1154 commands) by `./formvis agen
 | `flip-canvas-h` | Flip Canvas Horizontal |  | Flips the whole image left to right. (changes the picture) |
 | `flip-canvas-v` | Flip Canvas Vertical |  | Flips the whole image top to bottom. (changes the picture) |
 | `generative-expand` | Generative Expand... |  | Opens Generative Expand. (changes the picture) |
-| `image-crop` | Crop |  | Crops the document to the selection. (changes the picture) |
+| `image-crop` | Crop |  | Crops the document to the Crop tool frame when one is open, else to the selection. (changes the picture) |
 | `image-size` | Image Size... | Alt+Mod+I | Opens Image Size. (changes the picture) |
 | `invert` | Invert | Mod+I | Inverts the colours of the active layer. (changes the picture) |
 | `measure-data-points` | Select Data Points... |  | Chooses which measurements the Measurement Log and its CSV export show (label, scale, area, perimeter, length, angle, count, width, height, gray value and its minimum and maximum, integrated density, centroid, circularity). |
@@ -411,6 +412,7 @@ Generated from the window's command catalogue (1154 commands) by `./formvis agen
 | `apply-mask` | Apply Layer Mask |  | Bakes the layer mask into the pixels. (changes the picture) |
 | `artboard-from-group` | Artboard from Group... |  | Opens the dialog that turns a folder into an artboard. (changes the picture) |
 | `artboard-from-layers` | Artboard from Layers |  | Makes an artboard from the selected layers. (changes the picture) |
+| `artboard-from-layers-dialog` | Artboard from Layers... |  | Opens a dialog to name and colour an artboard made from the selected layers. (changes the picture) |
 | `artboard-options` | Artboard Options... |  | Opens the options of the selected artboard. (changes the picture) |
 | `background-from-layer` | Background from Layer |  | Turns the active pixel layer into the Background: it moves to the bottom, fills the canvas and has the background colour behind its transparent parts. (changes the picture) |
 | `backward` | Send Backward | Mod+[ | Moves the layer down one place. (changes the picture) |
@@ -525,6 +527,7 @@ Generated from the window's command catalogue (1154 commands) by `./formvis agen
 | `new-adj-vibrance` | New Vibrance Layer... |  | Adds a Vibrance Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-artboard` | New Artboard |  | Adds an artboard. (changes the picture) |
 | `new-artboard-dialog` | Artboard... |  | Opens the New Artboard dialog. (changes the picture) |
+| `new-dodge-burn-layer` | Dodge & Burn Layer |  | Adds a Soft Light layer filled with 50% grey for dodging and burning. (changes the picture) |
 | `new-fill-gradient` | Gradient... |  | Adds a gradient fill layer. (changes the picture) |
 | `new-fill-pattern` | Pattern... |  | Adds a pattern fill layer. (changes the picture) |
 | `new-fill-solid` | Solid Color... |  | Adds a solid colour fill layer. (changes the picture) |
@@ -844,6 +847,10 @@ Generated from the window's command catalogue (1154 commands) by `./formvis agen
 | `tool.options.crop.preset` | Crop: Preset |  | Sets Preset for the Crop tool. |
 | `tool.options.crop.ratio` | Crop: Ratio |  | Sets Ratio for the Crop tool. |
 | `tool.options.crop.resolution` | Crop: Resolution |  | Sets Resolution for the Crop tool. |
+| `tool.options.crop.shieldColor` | Crop: Shield color |  | Sets Shield color for the Crop tool. |
+| `tool.options.crop.shieldOpacity` | Crop: Shield opacity |  | Sets Shield opacity for the Crop tool. |
+| `tool.options.crop.showCroppedArea` | Crop: Show Cropped Area |  | Sets Show Cropped Area for the Crop tool. |
+| `tool.options.crop.showOverlay` | Crop: Show overlay |  | Sets Show overlay for the Crop tool. |
 | `tool.options.crop.straighten` | Crop: Straighten |  | Sets Straighten for the Crop tool. |
 | `tool.options.crop.unit` | Crop: Unit |  | Sets Unit for the Crop tool. |
 | `tool.options.crop.w` | Crop: W |  | Sets W for the Crop tool. |
@@ -1239,6 +1246,7 @@ Generated from the window's command catalogue (1154 commands) by `./formvis agen
 | `brush-size-up` | Increase Brush Size |  | Makes the paint brush one step larger, the step growing with the size. |
 | `brush-softer` | Decrease Brush Hardness |  | Makes the paint brush 25 percent softer. |
 | `check-for-updates` | Check for Updates... |  | Asks the update server whether a newer formvis is available and offers to install it and restart; says so when this build has no update key. |
+| `copy-engine-log` | Copy Engine Log |  | Copies the end of the engine's log file (Logs/formvis-engine.log in the data folder) to the clipboard. |
 | `copy-error-log` | Copy Error Log |  | Copies the error log to the clipboard. |
 | `delete-frame` | Delete Frame |  | Deletes the current animation frame. (changes the picture) |
 | `delete-workspace` | Delete Workspace |  | Deletes the saved workspace chosen in the title bar and returns to Essentials; the built-in workspaces cannot be deleted. |
@@ -1302,6 +1310,7 @@ Generated from the window's command catalogue (1154 commands) by `./formvis agen
 | `sheet-props` | Properties Sheet |  | Opens the Properties sheet on narrow screens. |
 | `sheet-tools` | Tools Sheet |  | Opens the Tools sheet on narrow screens. |
 | `shortcuts` | Keyboard Shortcuts... | Alt+Shift+Mod+K Shift+/ | Opens the Keyboard Shortcuts editor. |
+| `system-info` | System Info... |  | Shows the version, system, graphics adapter, monitor, the engine's memory use as the operating system counts it, the data folder, the engine log and the start switches, with a Copy button. |
 | `terminal.new` | New Terminal |  | Opens a new terminal tab. |
 | `terminal.toggle` | Terminal | Mod+J | Shows or hides the terminal dock. |
 | `theme-sync-system` | Sync Theme with System |  | Follows the system light or dark scheme: the theme becomes Light when the system is light and Studio Dark when it is dark, and changes live with the system. |

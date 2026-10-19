@@ -241,12 +241,16 @@ function grown(t: Transform, g: number, rw: number, rh: number): Transform {
   return { ...t, x: t.x - dx, y: t.y - dy, w: t.w + 2 * dx, h: t.h + 2 * dy };
 }
 
+/** Preferences > Performance > Full Resolution Previews: previews run on the whole layer, not a copy of about 2 MP. */
+export const previewMode = { full: false };
+
 export function previewImageEdit(
   host: EditHost,
   run: AsyncRun,
   grow = 0,
   maxPixels = 2_000_000,
 ): void {
+  if (previewMode.full) maxPixels = Number.POSITIVE_INFINITY;
   const mine = ++previewSeq;
   const p = host.current;
   const l = p ? p.activeLayer : null;

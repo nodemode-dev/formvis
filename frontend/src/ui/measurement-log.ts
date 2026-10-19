@@ -10,7 +10,8 @@ export class MeasurementLogPanel {
   private readonly empty: HTMLElement;
   private readonly count: HTMLElement;
   private readonly foot: HTMLButtonElement[];
-  private selected: number | null = null;
+  private readonly selected = new Set<number>();
+  private anchor: number | null = null;
   private cols: ReturnType<typeof visibleMeasureCols>;
   private colKey: string;
   private readonly headRow: HTMLElement;
@@ -25,7 +26,7 @@ export class MeasurementLogPanel {
       `<div class="cv-panel-head"><span class="cv-comps-title">${icon('layers', 14)}<span>Measurement Log</span></span><span></span><span class="cv-comps-count"></span></div>` +
       `<div class="cv-measure-wrap"><table class="cv-measure-table"><thead><tr>${heads}</tr></thead><tbody></tbody></table>` +
       `<div class="cv-comps-empty">No records yet. Use Record to measure the selection, the Ruler line or the counts.</div></div>` +
-      `<div class="cv-panel-foot">${btn('export', 'Export the log as CSV', 'Export')}${btn('clear', 'Clear the log', 'Clear')}${btn('delete', 'Delete the selected record', 'Delete')}${btn('record', 'Record measurements', 'Record')}</div></section>`);
+      `<div class="cv-panel-foot">${btn('all', 'Select every record', 'Select All')}${btn('none', 'Deselect every record', 'Deselect')}${btn('export', 'Export the selected records as CSV, or the whole log when none is selected', 'Export')}${btn('clear', 'Clear the log', 'Clear')}${btn('delete', 'Delete the selected records', 'Delete')}${btn('record', 'Record measurements', 'Record')}</div></section>`);
     const section = q(root, '.cv-measure-log');
     this.body = q(section, 'tbody');
     this.headRow = q(section, 'thead tr');
@@ -38,8 +39,10 @@ export class MeasurementLogPanel {
       if (!b || b.disabled) return;
       switch (b.dataset.act) {
         case 'record': this.engine.recordMeasurements(); break;
-        case 'delete': if (this.selected !== null) { this.engine.deleteMeasurement(this.selected); this.selected = null; } break;
-        case 'clear': this.engine.clearMeasurements(); this.selected = null; break;
+        case 'delete': for (const id of [...this.selected]) this.engine.deleteMeasurement(id); this.selected.clear(); break;
+        case 'clear': this.engine.clearMeasurements(); this.selected.clear(); break;
+        case 'all': for (const m of this.engine.current?.doc.measurements ?? []) this.selected.add(m.id); break;
+        case 'none': this.selected.clear(); this.anchor = null; break;
         case 'export': void this.exportCsv(); break;
       }
       this.sync();
@@ -47,7 +50,19 @@ export class MeasurementLogPanel {
     this.body.addEventListener('click', (e) => {
       const row = (e.target as HTMLElement).closest<HTMLElement>('tr[data-id]');
       if (!row) return;
-      this.selected = Number(row.dataset.id);
+      const id = Number(row.dataset.id), ids = (this.engine.current?.doc.measurements ?? []).map((m) => m.id);
+      if (e.shiftKey && this.anchor !== null && ids.includes(this.anchor)) {
+        const a = ids.indexOf(this.anchor), b = ids.indexOf(id);
+        this.selected.clear();
+        for (const x of ids.slice(Math.min(a, b), Math.max(a, b) + 1)) this.selected.add(x);
+      } else if (e.ctrlKey || e.metaKey) {
+        if (!this.selected.delete(id)) this.selected.add(id);
+        this.anchor = id;
+      } else {
+        this.selected.clear();
+        this.selected.add(id);
+        this.anchor = id;
+      }
       this.sync();
     });
     for (const ev of ['doc', 'history', 'active', 'projects'] as const) engine.on(ev, () => this.sync());
@@ -56,7 +71,7 @@ export class MeasurementLogPanel {
 
   private sync(): void {
     const d = this.engine.current?.doc, list: readonly MeasureRec[] = d?.measurements ?? [];
-    if (this.selected !== null && !list.some((m) => m.id === this.selected)) this.selected = null;
+    for (const id of [...this.selected]) if (!list.some((m) => m.id === id)) this.selected.delete(id);
     const cols = visibleMeasureCols(), key = cols.map(([n]) => n).join('|');
     if (key !== this.colKey) {   // Select Data Points changed the columns: rebuild the header and rows once
       this.cols = cols;
@@ -68,7 +83,7 @@ export class MeasurementLogPanel {
     setHidden(this.empty, list.length > 0 || !d);
     this.foot.forEach((b) => {
       const a = b.dataset.act;
-      const off = !d || (a === 'delete' ? this.selected === null : a === 'record' ? false : list.length === 0);
+      const off = !d || (a === 'delete' || a === 'none' ? this.selected.size === 0 : a === 'record' ? false : list.length === 0);
       if (b.disabled !== off) b.disabled = off;
     });
     patchList<MeasureRec>(this.body, [...list], {
@@ -86,11 +101,11 @@ export class MeasurementLogPanel {
     if (tr.dataset.id !== String(m.id)) tr.dataset.id = String(m.id);
     const cells = tr.children;
     this.cols.forEach(([, f], i) => setText(cells[i], f(m)));
-    tr.classList.toggle('is-active', m.id === this.selected);
+    tr.classList.toggle('is-active', this.selected.has(m.id));
   }
 
   private async exportCsv(): Promise<void> {
-    const list = this.engine.current?.doc.measurements ?? [];
+    const all = this.engine.current?.doc.measurements ?? [], list = this.selected.size ? all.filter((m) => this.selected.has(m.id)) : all;
     if (!list.length) return;
     const cell = (s: string): string => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
     const lines = [this.cols.map(([n]) => n).join(','), ...list.map((m) => this.cols.map(([, f]) => cell(f(m))).join(','))];

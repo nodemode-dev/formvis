@@ -63,6 +63,9 @@ export function applySelection(host: SelectHost, next: SelectionMask | null, mod
 
 export function clearPixels(host: SelectHost): void {
   const bgv = Math.round(host.luminance(host.bg) * 255);
+  const cur = host.current, active = cur?.activeLayer;
+  const onBackground = !!active && !active.parentId && !active.isGroup && active.name === 'Background' && !cur?.maskTarget;
+  const bg = host.bg;
   host.regionEdit('Clear', ({ raster, target, rect, cover }) => {
     const img = raster.read(rect.x, rect.y, rect.w, rect.h);
     const d = img.data;
@@ -75,6 +78,11 @@ export function clearPixels(host: SelectHost): void {
         d[i + 1] = 255;
         d[i + 2] = 255;
         d[i + 3] = Math.round(d[i + 3] + (bgv - d[i + 3]) * s);
+      } else if (onBackground) {
+        d[i] = Math.round(d[i] + (bg.r - d[i]) * s);
+        d[i + 1] = Math.round(d[i + 1] + (bg.g - d[i + 1]) * s);
+        d[i + 2] = Math.round(d[i + 2] + (bg.b - d[i + 2]) * s);
+        d[i + 3] = Math.round(d[i + 3] + (255 - d[i + 3]) * s);
       } else {
         d[i + 3] = Math.round(d[i + 3] * (1 - s));
       }
@@ -191,15 +199,29 @@ export function selectedPixels(host: SelectHost, merged: boolean): { surface: Su
   return { surface: out, region };
 }
 
-export function pasteClipboard(host: SelectHost): boolean {
+/** Where a paste lands: the copied place, or with `inPlace` false and that place's centre outside the visible part of
+ *  the canvas, centred on the visible part. */
+export function pastePlace(p: Project, c: { x: number; y: number; w: number; h: number }, inPlace: boolean): Pt {
+  if (inPlace) return { x: c.x, y: c.y };
+  const v = p.viewport, a = v.toDoc(0, 0), b = v.toDoc(v.width, v.height);
+  const cx = c.x + c.w / 2, cy = c.y + c.h / 2;
+  if (cx >= a.x && cx <= b.x && cy >= a.y && cy <= b.y) return { x: c.x, y: c.y };
+  const x0 = Math.max(a.x, 0), x1 = Math.min(b.x, p.doc.width), y0 = Math.max(a.y, 0), y1 = Math.min(b.y, p.doc.height);
+  const mx = x1 > x0 ? (x0 + x1) / 2 : p.doc.width / 2, my = y1 > y0 ? (y0 + y1) / 2 : p.doc.height / 2;
+  return { x: Math.round(mx - c.w / 2), y: Math.round(my - c.h / 2) };
+}
+
+export function pasteClipboard(host: SelectHost, inPlace = false): boolean {
   const c = host.clipboard;
   if (!c) return false;
   const r = Raster.from(c.surface, c.w, c.h);
-  if (!host.current) {
+  const p = host.current;
+  if (!p) {
     host.newDocumentFor(c.w, c.h, 'Pasted');
     host.insertRasterLayer(r, 'Pasted Layer', 0, 0);
   } else {
-    host.insertRasterLayer(r, 'Pasted Layer', c.x, c.y);
+    const at = pastePlace(p, c, inPlace);
+    host.insertRasterLayer(r, 'Pasted Layer', at.x, at.y);
   }
   return true;
 }

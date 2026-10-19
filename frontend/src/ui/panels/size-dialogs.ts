@@ -2,7 +2,7 @@ import { clamp, type Engine, type RGB, type Transform } from '../../engine';
 import { Dialog } from '../dialogs';
 import { el, q, setClass, setHidden, setText } from '../dom';
 import { toast } from '../toast';
-import { checkRow, numberRow, selectRow } from './controls';
+import { checkRow, colorRow, numberRow, selectRow } from './controls';
 
 /** The units a size can be typed in. */
 type Unit = 'px' | 'pct' | 'in' | 'cm';
@@ -29,7 +29,10 @@ export class CanvasSizeDialog extends Dialog {
   private readonly width = numberRow('Width', 0, 30000, 1, (v) => { this.w = this.px(v, true); });
   private readonly height = numberRow('Height', 0, 30000, 1, (v) => { this.h = this.px(v, false); });
   private readonly units = selectRow('Units', UNITS, (v) => { this.unit = v as Unit; this.fields(); });
-  private readonly fill = selectRow('Extension', [['none', 'Transparent'], ['fg', 'Foreground color'], ['bg', 'Background color'], ['white', 'White'], ['black', 'Black']], () => {});
+  private relative = false;
+  private readonly relativeRow = checkRow('Relative', (v) => { this.relative = v; this.sizeBounds(); this.fields(); });
+  private readonly fill = selectRow('Extension', [['none', 'Transparent'], ['fg', 'Foreground color'], ['bg', 'Background color'], ['white', 'White'], ['black', 'Black'], ['custom', 'Other color']], (v) => { setHidden(this.custom.el, v !== 'custom'); });
+  private readonly custom = colorRow('Other color', () => undefined);
   private readonly anchors: HTMLButtonElement[] = [];
 
   constructor(private readonly engine: Engine) {
@@ -43,7 +46,8 @@ export class CanvasSizeDialog extends Dialog {
     }
     const anchorRow = el('<div class="cv-field"><span>Anchor</span></div>');
     anchorRow.append(grid);
-    this.body.append(this.note, this.width.el, this.height.el, this.units.el, anchorRow, this.fill.el);
+    this.body.append(this.note, this.width.el, this.height.el, this.relativeRow.el, this.units.el, anchorRow, this.fill.el, this.custom.el);
+    setHidden(this.custom.el, true);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     enterTo(this.width.input, () => this.apply());
@@ -65,9 +69,13 @@ export class CanvasSizeDialog extends Dialog {
     this.h = d.height;
     this.unit = 'px';
     this.anchor = 4;
+    this.relative = false;
     setText(this.note, `Current size: ${d.width} × ${d.height} px`);
     this.units.set('px');
+    this.relativeRow.set(false);
+    this.sizeBounds();
     this.fill.set('none');
+    setHidden(this.custom.el, true);
     this.fields();
     this.syncAnchor();
     this.open(this.width.input);
@@ -78,15 +86,29 @@ export class CanvasSizeDialog extends Dialog {
   private px(v: number, horizontal: boolean): number {
     const d = this.engine.current?.doc;
     if (!d) return 1;
-    return clamp(Math.round(toPx(v, this.unit, horizontal ? d.width : d.height, d.resolution || 72)), 1, 30000);
+    const base = horizontal ? d.width : d.height, px = toPx(v, this.unit, base, d.resolution || 72);
+    return clamp(Math.round(this.relative ? base + px : px), 1, 30000);
+  }
+
+  /** Relative sizes may be negative: the typed amount is added to the current size. */
+  private sizeBounds(): void {
+    const mn = this.relative ? '-30000' : '0';
+    for (const r of [this.width, this.height]) if (r.input.min !== mn) r.input.min = mn;
   }
 
   /** Show the stored size in the current unit. */
   private fields(): void {
     const d = this.engine.current?.doc;
     const res = d?.resolution || 72;
-    this.width.set(tidy(fromPx(this.w, this.unit, d?.width ?? this.w, res), this.unit));
-    this.height.set(tidy(fromPx(this.h, this.unit, d?.height ?? this.h, res), this.unit));
+    const dw = this.relative ? (d?.width ?? 0) : 0, dh = this.relative ? (d?.height ?? 0) : 0;
+    this.width.set(tidy(fromPx(this.w - dw, this.unit, d?.width ?? this.w, res), this.unit));
+    this.height.set(tidy(fromPx(this.h - dh, this.unit, d?.height ?? this.h, res), this.unit));
+  }
+
+  private customColour(): RGB {
+    const m = /^#([0-9a-f]{6})$/i.exec(this.custom.el.querySelector('input')?.value ?? '');
+    const n = m ? parseInt(m[1], 16) : 0;
+    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
   }
 
   private syncAnchor(): void { this.anchors.forEach((b, i) => setClass(b, 'is-active', i === this.anchor)); }
@@ -98,7 +120,7 @@ export class CanvasSizeDialog extends Dialog {
     const dx = Math.floor((this.anchor % 3) * (W - doc.width) / 2);
     const dy = Math.floor(Math.floor(this.anchor / 3) * (H - doc.height) / 2);
     const choice = this.fill.el.querySelector('select')?.value ?? 'none';
-    const colors: Record<string, RGB | null> = { none: null, fg: this.engine.fg, bg: this.engine.bg, white: { r: 255, g: 255, b: 255 }, black: { r: 0, g: 0, b: 0 } };
+    const colors: Record<string, RGB | null> = { none: null, fg: this.engine.fg, bg: this.engine.bg, white: { r: 255, g: 255, b: 255 }, black: { r: 0, g: 0, b: 0 }, custom: this.customColour() };
     const fromW = this.engine.current?.doc.width ?? W, fromH = this.engine.current?.doc.height ?? H;
     if (this.engine.resizeCanvas(W, H, dx, dy, colors[choice] ?? null)) { this.onApplied?.({ w: W, h: H, dx, dy, fill: colors[choice] ?? null, fromW, fromH }); this.close(); }
   }
@@ -120,10 +142,12 @@ export class ImageSizeDialog extends Dialog {
   private readonly resolution = numberRow('Resolution (ppi)', 1, 10000, 1, (v) => { this.res = clamp(v, 1, 10000); this.fields(); });
   private readonly lock = checkRow('Constrain proportions', (v) => { this.constrain = v; });
   private readonly resample = selectRow('Resample', [['high', 'High quality'], ['smooth', 'Smooth'], ['nearest', 'Nearest']], (v) => { this.sampling = v as Transform['sampling']; });
+  private resampling = true;
+  private readonly resampleOn = checkRow('Resample image', (v) => { this.resampling = v; setHidden(this.resample.el, !v); this.keepPixels(); });
 
   constructor(private readonly engine: Engine) {
     super('Image Size', 420);
-    this.body.append(this.note, this.width.el, this.height.el, this.units.el, this.resolution.el, this.lock.el, this.resample.el);
+    this.body.append(this.note, this.width.el, this.height.el, this.units.el, this.resolution.el, this.lock.el, this.resampleOn.el, this.resample.el);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     enterTo(this.width.input, () => this.apply());
@@ -138,10 +162,13 @@ export class ImageSizeDialog extends Dialog {
     this.h = d.height;
     this.res = d.resolution || 72;
     this.unit = 'px';
+    this.resampling = true;
     setText(this.note, `Current size: ${d.width} × ${d.height} px at ${this.res} ppi`);
     this.units.set('px');
     this.resolution.set(this.res);
     this.lock.set(this.constrain);
+    this.resampleOn.set(true);
+    setHidden(this.resample.el, false);
     this.resample.set(this.sampling);
     this.fields();
     this.open(this.width.input);
@@ -152,9 +179,23 @@ export class ImageSizeDialog extends Dialog {
   private setSize(v: number, horizontal: boolean): void {
     const d = this.engine.current?.doc;
     if (!d) return;
+    if (!this.resampling) {
+      // Without resampling the pixels stay; a printed size typed in inches or centimeters sets the resolution instead.
+      const inches = this.unit === 'in' ? v : this.unit === 'cm' ? v / 2.54 : 0;
+      if (inches > 0) { this.res = clamp(Math.round((horizontal ? d.width : d.height) / inches * 100) / 100, 1, 10000); this.resolution.set(this.res); }
+      this.keepPixels();
+      return;
+    }
     const px = Math.max(1, Math.round(toPx(v, this.unit, horizontal ? d.width : d.height, this.res)));
     if (horizontal) { this.w = px; if (this.constrain) this.h = Math.max(1, Math.round(px * d.height / d.width)); }
     else { this.h = px; if (this.constrain) this.w = Math.max(1, Math.round(px * d.width / d.height)); }
+    this.fields();
+  }
+
+  /** Resample off: the size in pixels is the document's own. */
+  private keepPixels(): void {
+    const d = this.engine.current?.doc;
+    if (!this.resampling && d) { this.w = d.width; this.h = d.height; }
     this.fields();
   }
 
@@ -183,10 +224,12 @@ export class FitImageDialog extends Dialog {
   private readonly width = numberRow('Width (px)', 1, 30000, 1, () => undefined);
   private readonly height = numberRow('Height (px)', 1, 30000, 1, () => undefined);
   private readonly keep = checkRow('Don’t Enlarge', (v) => { this.noEnlarge = v; });
+  private sampling: Transform['sampling'] = 'high';
+  private readonly resample = selectRow('Resample', [['high', 'High quality'], ['smooth', 'Smooth'], ['nearest', 'Nearest']], (v) => { this.sampling = v as Transform['sampling']; });
 
   constructor(private readonly engine: Engine) {
     super('Fit Image', 360);
-    this.body.append(this.note, this.width.el, this.height.el, this.keep.el);
+    this.body.append(this.note, this.width.el, this.height.el, this.keep.el, this.resample.el);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     enterTo(this.width.input, () => this.apply());
@@ -201,6 +244,7 @@ export class FitImageDialog extends Dialog {
     this.width.set(this.box?.w ?? p.doc.width);
     this.height.set(this.box?.h ?? p.doc.height);
     this.keep.set(this.noEnlarge);
+    this.resample.set(this.sampling);
     this.open(this.width.input);
     this.width.input.select();
   }
@@ -210,7 +254,7 @@ export class FitImageDialog extends Dialog {
     if (!(w >= 1 && w <= 30000 && h >= 1 && h <= 30000)) { this.engine.notice('Enter a width and a height from 1 to 30,000 pixels.'); return; }
     this.box = { w, h };
     this.close();
-    if (this.engine.fitImage(w, h, !this.noEnlarge)) this.onApplied?.({ w, h, enlarge: !this.noEnlarge });
+    if (this.engine.fitImage(w, h, !this.noEnlarge, false, this.sampling)) this.onApplied?.({ w, h, enlarge: !this.noEnlarge });
   }
 }
 

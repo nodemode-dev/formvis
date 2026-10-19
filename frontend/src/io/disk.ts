@@ -49,7 +49,7 @@ export async function listenShell(on: { open: (paths: string[]) => void; exitReq
 /** Lets the app exit: every unsaved document was saved or discarded. */
 export const confirmExit = (): Promise<void> => invoke<void>('confirm_exit', {});
 
-export interface UpdateReport { status: 'current' | 'available' | 'unconfigured' | 'failed'; version: string | null; message: string }
+export interface UpdateReport { status: 'current' | 'available' | 'unconfigured' | 'failed'; version: string | null; message: string; notes?: string | null }
 
 /** Help > Check for Updates: what the shell's update check found. */
 export const checkForUpdate = (): Promise<UpdateReport> => invoke<UpdateReport>('check_for_update', {});

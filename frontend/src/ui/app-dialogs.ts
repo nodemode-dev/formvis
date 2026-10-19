@@ -2,7 +2,8 @@ import type { Engine } from '../engine';
 import { api, type Capabilities, type LibraryItem } from '../io/api';
 import { saveTemplates, templates } from '../io/prompt-templates';
 import { LocalModelsSection } from './panels/local-models';
-import { PROJECT_ACCEPT } from '../io/images';
+import { IMAGE_ACCEPT, PROJECT_ACCEPT } from '../io/images';
+import { PRESET_ACCEPT } from './panels/preset-manager-dialog';
 import { VERSION } from '../version';
 import { comboOf, formatKeys, type Commands } from './commands';
 import { LIMITS } from '../engine/types';
@@ -272,7 +273,7 @@ export class OpenDialog extends Dialog {
   private readonly list = el('<div class="cv-list" role="listbox" aria-label="Saved projects"></div>');
   private readonly empty = el('<div class="cv-list-empty" hidden>No saved projects yet.</div>');
   private readonly status = el('<p class="cv-note">Projects saved in the formvis library.</p>');
-  private readonly fileInput = el<HTMLInputElement>(`<input type="file" accept="${PROJECT_ACCEPT}" hidden>`);
+  private readonly fileInput = el<HTMLInputElement>(`<input type="file" multiple accept="${PROJECT_ACCEPT},${IMAGE_ACCEPT},${PRESET_ACCEPT}" data-role="open-files" hidden>`);
   private readonly folderInput = el<HTMLInputElement>('<input type="file" hidden>');
   private readonly openBtn: HTMLButtonElement;
   private readonly deleteBtn: HTMLButtonElement;
@@ -283,7 +284,7 @@ export class OpenDialog extends Dialog {
     super('Open Project', 500);
     this.folderInput.webkitdirectory = true;
     this.body.append(this.status, this.list, this.empty);
-    const row = el(`<div class="cv-welcome-actions"><button class="cv-btn" type="button" data-from="file" title="Any project (.fvd, .fmv, PSD, OpenRaster and more) or picture on this computer">${icon('upload', 14)}Browse...</button><button class="cv-btn" type="button" data-from="folder" title="An unpacked project folder, or every project and picture in a folder">${icon('folderOpen', 14)}Folder...</button></div>`);
+    const row = el(`<div class="cv-welcome-actions"><button class="cv-btn" type="button" data-from="file" title="Any projects (.fvd, .fmv, PSD, OpenRaster and more), pictures or preset files on this computer; choose several to open them all">${icon('upload', 14)}Browse...</button><button class="cv-btn" type="button" data-from="folder" title="An unpacked project folder, or every project and picture in a folder">${icon('folderOpen', 14)}Folder...</button></div>`);
     this.body.append(row, this.fileInput, this.folderInput);
     q(row, '[data-from="file"]').addEventListener('click', () => {
       const panel = actions.openFromPanel;
@@ -394,6 +395,7 @@ export class SettingsDialog extends Dialog {
   /** 1.61.3: automatic is 40% of what this computer allows formvis; moving the slider above chooses a figure instead. */
   private readonly memoryAutoRow = checkRow('History memory set automatically from this computer\'s memory', (v) => this.change({ historyAuto: v }));
   private readonly redrawRow = checkRow('Redraw only what a brush stroke changed', (v) => this.change({ regionRedraws: v }));
+  private readonly previewRow = checkRow('Full Resolution Previews (slower on large pictures)', (v) => this.change({ fullPreviews: v }));
   private readonly recoveryRow = selectRow('Keep recovery information after changes, within', RECOVERY_CHOICES, (v) => this.change({ recoverySeconds: Number(v) }));
   private readonly homeRow = checkRow('Show Home screen at launch', (v) => this.change({ autoShowHome: v }));
   private readonly homeCloseRow = checkRow('Show Home screen when the last document closes', (v) => this.change({ homeOnLastClose: v }));
@@ -473,7 +475,7 @@ export class SettingsDialog extends Dialog {
     add('General', this.homeRow.el, this.homeCloseRow.el, this.whatsNewRow.el, reset, el('<p class="cv-note">The Home screen covers the canvas area. At launch it shows while no document is open; closing the last document leaves the empty workspace with its panels unless the second choice is on. The brand mark at the top left opens it at any time; Esc leaves it. What\'s New (Help menu) lists the recent additions, each with a Show Me button; with the third choice on it opens once after an update.</p>'));
     this.intensityRow.set(Math.round((readChoice().intensity ?? 1) * 100));
     add('Interface', row, accentRow, this.intensityRow.el, this.fontSizeRow.el, el('<p class="cv-note">Theme and accent are shared with NodeMode on this device. Intensity sets how strongly the accent tints what it marks; 100% is the design\'s. Text size scales the interface\'s text.</p>'));
-    add('Performance', this.budgetNote, this.redrawRow.el,
+    add('Performance', this.budgetNote, this.redrawRow.el, this.previewRow.el,
       el('<h3 class="cv-prefs-sub">Graphics Processor Settings</h3>'), this.gpuNameRow(), this.gpuUseRow.el, this.gpuFiltersRow.el, this.rendererRow.el, this.gpuMemoryRow.el, this.gpuMode,
       el('<p class="cv-note">Automatic uses WebGPU (Metal on macOS, Direct3D 12 on Windows), then WebGL2 (as on Linux), on a hardware graphics processor, and the CPU otherwise; a software GPU is slower than the CPU renderer, so Automatic does not use one. If the graphics processor fails to start, formvis turns this off and says so. The canvas draws on the graphics processor; a document using something it does not draw yet draws on the CPU, and the status bar says why.</p>'),
       el('<h3 class="cv-prefs-sub">Engine</h3>'), this.engineRow.el, this.engineMode,
@@ -583,6 +585,7 @@ export class SettingsDialog extends Dialog {
     this.memoryRow.set(this.prefs.historyMB);
     this.memoryAutoRow.set(this.prefs.historyAuto);
     this.redrawRow.set(this.prefs.regionRedraws);
+    this.previewRow.set(this.prefs.fullPreviews);
     this.recoveryRow.set(String(this.prefs.recoverySeconds));
     this.restoreBox.checked = this.prefs.restoreSession;
     this.mismatchSel.value = this.prefs.profileMismatch;
@@ -894,6 +897,55 @@ export class AboutDialog extends Dialog {
       ? `Engine ${caps.version}${caps.desktop ? ' (desktop)' : ''} · decoders ${caps.decode.engine} · background removal ${caps.removeBackground.ml ? 'ML and lightweight' : caps.removeBackground.lite ? 'lightweight' : 'unavailable'} · data in ${caps.dataDir}`
       : 'Engine offline. Start it with ./formvis boot.');
     this.open();
+  }
+}
+
+/** Help > System Info: the facts a bug report needs, in one block that can be copied. */
+export class SystemInfoDialog extends Dialog {
+  private readonly out = el<HTMLElement>('<pre class="cv-sysinfo" tabindex="0" aria-label="System information"></pre>');
+
+  constructor() {
+    super('System Info', 560);
+    this.body.appendChild(this.out);
+    this.button('Copy', 'ghost', () => { void navigator.clipboard?.writeText(this.out.textContent ?? '').then(() => toast('Copied the system information.'), () => toast('The clipboard is not available here.', 'error')); });
+    this.button('Close', 'primary', () => this.close());
+  }
+
+  show(text: string): void {
+    setText(this.out, text);
+    this.open();
+  }
+}
+
+/** The update window (desktop app): the version found and its notes, with Restart and Update, Later and Skip this version.
+ *  Closing it any other way is Later. */
+export class UpdateDialog extends Dialog {
+  private readonly line = el('<p class="cv-note"></p>');
+  private readonly notes = el<HTMLElement>('<pre class="cv-sysinfo" tabindex="0" aria-label="Release notes" hidden></pre>');
+  private resolve: ((v: 'install' | 'later' | 'skip') => void) | null = null;
+
+  constructor() {
+    super('Update available', 480);
+    this.body.append(this.line, this.notes);
+    this.button('Skip this version', 'ghost', () => this.finish('skip')).classList.add('cv-btn-apart');
+    this.button('Later', 'ghost', () => this.finish('later'));
+    this.button('Restart and update', 'primary', () => this.finish('install'));
+    this.onClose = () => this.finish('later');
+  }
+
+  ask(message: string, notes: string | null): Promise<'install' | 'later' | 'skip'> {
+    setText(this.line, message);
+    setText(this.notes, notes ?? '');
+    setHidden(this.notes, !notes);
+    this.open();
+    return new Promise((resolve) => { this.resolve = resolve; });
+  }
+
+  private finish(v: 'install' | 'later' | 'skip'): void {
+    const done = this.resolve;
+    this.resolve = null;
+    if (this.isOpen) this.close();
+    done?.(v);
   }
 }
 

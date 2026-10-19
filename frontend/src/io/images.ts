@@ -3,15 +3,16 @@ import { FORMER_PROJECT_EXTENSIONS } from './legacy';
 import { LIMITS, type ImportedImage } from '../engine';
 import { deepFromU16, deepToLinear, rasterFromDeep } from '../engine/deep';
 import type { DeepPixels } from '../engine/types';
+import { createSurface, ctxOf } from '../engine/surface';
 import { api, serviceReady, type RawWhiteBalance } from './api';
 import { readFileMeta } from './xmp';
 
 const NATIVE = /\.(png|jpe?g|gif|webp|bmp|avif|svg)$/i;
 /** Camera RAW (decoded by the engine's LibRaw, then opened into Develop). */
 export const RAW_FILE = /\.(dng|cr2|cr3|crw|nef|nrw|arw|srf|sr2|raf|orf|rw2|pef|srw|x3f|3fr|iiq|rwl|mrw|kdc|dcr|erf|mef|mos)$/i;
-const SERVER = /\.(heic|heif|hif|tiff?|dpx|cin|dds|wbmp|qoi|tga|icb|vda|vst|ico|pbm|pgm|ppm|pnm|pam|fits|fit|fts)$/i;   // QOI, TGA, ICO, the Netpbm family and FITS (DEV_PLAN 34.7) are read by the engine (DEV_PLAN 34.1); ICO leaves the browser so the largest size opens
+const SERVER = /\.(heic|heif|hif|tiff?|dpx|cin|dds|wbmp|qoi|tga|icb|vda|vst|ico|pcx|xpm|pbm|pgm|ppm|pnm|pam|fits|fit|fts)$/i;   // QOI, TGA, ICO, the Netpbm family and FITS (DEV_PLAN 34.7) are read by the engine (DEV_PLAN 34.1); ICO leaves the browser so the largest size opens
 const RAW_ACCEPT = '.dng,.cr2,.cr3,.crw,.nef,.nrw,.arw,.srf,.sr2,.raf,.orf,.rw2,.pef,.srw,.x3f,.3fr,.iiq,.rwl,.mrw,.kdc,.dcr,.erf,.mef,.mos';
-export const IMAGE_ACCEPT = `.png,.jpg,.jpeg,.gif,.webp,.bmp,.avif,.svg,.heic,.heif,.tif,.tiff,.hdr,.exr,.dpx,.cin,.dds,.wbmp,.qoi,.tga,.ico,.pbm,.pgm,.ppm,.pnm,.pam,.fits,.fit,.fts,${RAW_ACCEPT},image/*`;   // .hdr, .exr: 32 bits (1.53.9); .dpx: film scans, 16 bits from the engine
+export const IMAGE_ACCEPT = `.png,.jpg,.jpeg,.gif,.webp,.bmp,.avif,.svg,.heic,.heif,.tif,.tiff,.hdr,.exr,.dpx,.cin,.dds,.wbmp,.qoi,.tga,.ico,.pcx,.xpm,.pbm,.pgm,.ppm,.pnm,.pam,.fits,.fit,.fts,${RAW_ACCEPT},image/*`;   // .hdr, .exr: 32 bits (1.53.9); .dpx: film scans, 16 bits from the engine
 export const PROJECT_ACCEPT = ['.fvd', '.fmv', ...FORMER_PROJECT_EXTENSIONS, '.canvasor', '.comp', '.zip', '.psd', '.psb', '.psdt', '.ora', '.kra', '.pdn', '.af', '.afphoto', '.afdesign', '.afpub'].join(',');   // OpenRaster (1.51.7)
 
 export const isImageFile = (f: File): boolean => f.type.startsWith('image/') || NATIVE.test(f.name) || SERVER.test(f.name) || RAW_FILE.test(f.name) || /\.(hdr|exr)$/i.test(f.name);
@@ -54,6 +55,44 @@ export async function decodeHdr(file: Blob, name: string): Promise<ImportedImage
   const deep: DeepPixels = d.depth === 32 ? { mode: 'rgb', n: 3, width: d.width, height: d.height, data: d.data as Float32Array } : deepToLinear(deepFromU16(d.data as Uint16Array, d.width, d.height));
   if (d.width > LIMITS.side || d.height > LIMITS.side || d.width * d.height > LIMITS.pixels) throw new Error(`${name} exceeds the 30,000 px side or ${Math.round(LIMITS.pixels / 1_000_000)}-megapixel limit.`);
   return { source: rasterFromDeep(deep, true).canvas as CanvasImageSource, width: d.width, height: d.height, name, deep };
+}
+
+/** The frame count an animated PNG declares in its acTL chunk (before the first IDAT), or 0 for a still PNG. */
+export async function apngFrames(file: Blob): Promise<number> {
+  const b = new Uint8Array(await file.slice(0, 65536).arrayBuffer()), v = new DataView(b.buffer);
+  const type = (i: number): string => String.fromCharCode(b[i], b[i + 1], b[i + 2], b[i + 3]);
+  if (b.length < 16 || type(1) !== 'PNG\r') return 0;
+  for (let i = 8; i + 12 <= b.length;) {
+    const len = v.getUint32(i), t = type(i + 4);
+    if (t === 'acTL') return i + 16 <= b.length ? v.getUint32(i + 8) : 0;
+    if (t === 'IDAT' || t === 'IEND') return 0;
+    i += len + 12;
+  }
+  return 0;
+}
+
+/** The size an SVG declares in its root tag (width and height, else the viewBox), or null when it declares none. */
+export async function svgSize(file: Blob): Promise<{ width: number; height: number } | null> {
+  const tag = /<svg\b[^>]*>/i.exec(await file.slice(0, 8192).text())?.[0] ?? '';
+  const num = (n: string): number => { const m = new RegExp(`\\s${n}\\s*=\\s*["']\\s*([0-9.]+)\\s*(?:px)?\\s*["']`, 'i').exec(tag); return m ? Number(m[1]) : 0; };
+  let width = num('width'), height = num('height');
+  const vb = /\sviewBox\s*=\s*["']\s*[-0-9.]+[\s,]+[-0-9.]+[\s,]+([0-9.]+)[\s,]+([0-9.]+)/i.exec(tag);
+  if (vb) {
+    const vw = Number(vb[1]), vh = Number(vb[2]);
+    if (!width && !height) { width = vw; height = vh; } else if (!width && vh) width = height * vw / vh; else if (!height && vw) height = width * vh / vw;
+  }
+  return width > 0 && height > 0 ? { width, height } : null;
+}
+
+/** An SVG drawn by the browser at `width` pixels across (the height follows its shape), so it is sharp at the size chosen. */
+export async function rasteriseSvg(file: Blob, name: string, width: number): Promise<ImportedImage> {
+  const size = (await svgSize(file)) ?? { width: 1024, height: 1024 };
+  const w = Math.max(1, Math.round(width)), h = Math.max(1, Math.round(width * size.height / size.width));
+  if (w > LIMITS.side || h > LIMITS.side || w * h > LIMITS.pixels) throw new Error(`${name} at ${w} by ${h} exceeds the 30,000 px side or ${Math.round(LIMITS.pixels / 1_000_000)}-megapixel limit.`);
+  const img = await viaElement(new Blob([file], { type: 'image/svg+xml' }));
+  const canvas = createSurface(w, h);
+  ctxOf(canvas).drawImage(img, 0, 0, w, h);
+  return { source: canvas as CanvasImageSource, width: w, height: h, name };
 }
 
 export interface DecodedFrames { width: number; height: number; plays: number; frames: Array<{ source: ImportedImage['source']; delay: number }> }

@@ -3026,6 +3026,24 @@ export class Engine {
 
   addLayer(opts: { name?: string; blend?: BlendMode; opacity?: number; clip?: boolean } = {}): void { LS.addLayer(this.structHost, opts); }
 
+  /** Layer > New > Dodge & Burn Layer: a Soft Light layer filled with 50% grey (which changes nothing) to paint
+   *  light and dark on; with `clip` it is clipped to the layer below. The layer and its fill are one step. */
+  addDodgeBurnLayer(clip = false): boolean {
+    const p = this.current;
+    if (!p || p.doc.layers.some((l) => l.tiled) || !this.sizeOk(p.doc.width, p.doc.height)) return false;
+    this.settle();
+    const W = p.doc.width, H = p.doc.height, before = p.doc.layers.length;
+    p.history.begin('New Dodge & Burn Layer', p.snapshot());
+    try {
+      this.addLayer({ name: 'Dodge & Burn', blend: 'soft-light', clip });
+      const made = p.activeLayer;
+      if (p.doc.layers.length === before || !made) return false;
+      return this.edit('Fill Dodge & Burn', (q) => { q.updateLayer(made.id, { raster: Raster.filled(W, H, '#808080'), transform: docTransform(W, H) }); return true; });
+    } finally {
+      p.history.end(p.snapshot());
+    }
+  }
+
   /** Layer > New > Group; the New Group dialog passes a name. One step. */
   addFolder(name?: string): void { LS.addFolder(this.structHost, name); }
 
@@ -3082,7 +3100,7 @@ export class Engine {
 
   /** Layer > New > Artboard from Layers: the selected top-level layers moved into a new artboard fitted to their
    *  visible pixels, transparent behind them. One step. */
-  artboardFromLayers(): ID | null { return AB.artboardFromLayers(this.artboardHost); }
+  artboardFromLayers(opts: { name?: string; background?: RGB | null } = {}): ID | null { return AB.artboardFromLayers(this.artboardHost, opts); }
 
   /** The document bounds of the visible pixels of layer `id` and of the layers inside it; null when they have none. */
   contentBounds(id: ID, p: Project | null = this.current): Rect | null { return AB.contentBounds(this.artboardHost, id, p); }
@@ -3090,7 +3108,7 @@ export class Engine {
   /** Layer > New > Artboard from Group (1.65.4): a folder outside any other made an artboard over its contents (or
    *  the canvas when it holds no pixels), `w` by `h` when given, renamed when `name` is given; transparent behind, as
    *  Artboard from Layers makes them. One step. */
-  artboardFromGroup(id: ID, opts: { name?: string; w?: number; h?: number } = {}): boolean { return AB.artboardFromGroup(this.artboardHost, id, opts); }
+  artboardFromGroup(id: ID, opts: { name?: string; w?: number; h?: number; background?: RGB | null } = {}): boolean { return AB.artboardFromGroup(this.artboardHost, id, opts); }
 
   /** Layer > New > Frame from Layers (1.65.4): each selected pixel layer put in a new rectangular frame fitted to its
    *  visible pixels, where it lies, as the Frame tool makes them. One step. */
@@ -3780,7 +3798,7 @@ export class Engine {
    *  negative) about the canvas's centre, the canvas grown to hold the turned canvas; the Background, when there is
    *  one, is redrawn canvas-sized over the background colour, which fills the corners the turn opens.
    *  Alpha channels and the selection turn with it. Whole quarter turns go to `rotateCanvas`. One step. */
-  rotateCanvasBy(deg: number): boolean {
+  rotateCanvasBy(deg: number, sampling: Transform['sampling'] | null = null): boolean {
     const p0 = this.current;
     if (!p0 || !Number.isFinite(deg)) return false;
     const turn = ((deg % 360) + 360) % 360;
@@ -3795,13 +3813,14 @@ export class Engine {
     const ok = this.edit('Rotate Canvas', (p) => {
       const turned = (t: Transform): Transform => {
         const lx = t.x + t.w / 2 - c.x, ly = t.y + t.h / 2 - c.y;
-        return { ...t, x: c.x + lx * cs - ly * sn - t.w / 2 + dx, y: c.y + lx * sn + ly * cs - t.h / 2 + dy, rotation: t.rotation + turn };
+        return { ...t, x: c.x + lx * cs - ly * sn - t.w / 2 + dx, y: c.y + lx * sn + ly * cs - t.h / 2 + dy, rotation: t.rotation + turn, ...(sampling ? { sampling } : {}) };
       };
       const layers = p.doc.layers.map((l) => {
         if (l.isGroup) return l;
         const t = turned(l.transform), moved = { ...l, transform: t, mask: l.mask?.placement ? { ...l.mask, placement: turned(l.mask.placement) } : l.mask };
         if (l.id !== bg?.id || !l.raster || l.mask || l.channels || l.smart || l.vector) return moved;
         const r = Raster.filled(W2, H2, rgbCss(fill));
+        if (sampling) { r.ctx.imageSmoothingEnabled = sampling !== 'nearest'; r.ctx.imageSmoothingQuality = sampling === 'high' ? 'high' : 'medium'; }
         setMat(r.ctx, placement(t, l.raster.width, l.raster.height));
         r.ctx.drawImage(l.raster.canvas, 0, 0);
         r.ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -5890,9 +5909,9 @@ export class Engine {
     return a ? { r: Math.round(r / a), g: Math.round(g / a), b: Math.round(b / a) } : null;
   }
 
-  insertImages(images: ImportedImage[], at?: Pt): void {
+  insertImages(images: ImportedImage[], at?: Pt, asNew = false): void {
     if (!images.length) return;
-    if (!this.current) {
+    if (asNew || !this.current) {
       const f = images[0];
       this.addProject({ id: uid(), width: f.width, height: f.height, resolution: f.resolution ?? 72, layers: [], ...(f.profile ? { profile: f.profile } : {}), ...(f.mode ? { mode: f.mode } : {}), ...(f.meta ? { meta: f.meta } : {}) }, stripExt(f.name));   // its embedded profile kept (1.53.5), its File Info (29.2), a grayscale file's mode
     }
@@ -6947,8 +6966,8 @@ export class Engine {
   resizeCanvas(width: number, height: number, dx: number, dy: number, fill: RGB | null = null, name = 'Canvas Size'): boolean { return DS.resizeCanvas(this.sizeHost, width, height, dx, dy, fill, name); }
 
   /** Image > Trim: crops away the border of transparent pixels, or of pixels the colour of the top-left or bottom-right
-   *  pixel, judged on the flattened image, as one undo step. */
-  trim(basis: 'transparent' | 'topLeft' | 'bottomRight'): boolean {
+   *  pixel, judged on the flattened image, as one undo step. `sides` set false keep that edge where it is. */
+  trim(basis: 'transparent' | 'topLeft' | 'bottomRight', sides: { top?: boolean; bottom?: boolean; left?: boolean; right?: boolean } = {}): boolean {
     const p = this.current;
     if (!p) return false;
     this.settle();
@@ -6968,6 +6987,10 @@ export class Engine {
       }
     }
     if (x1 < 0) { this.notice('Trimming would leave nothing.'); return false; }
+    if (sides.left === false) x0 = 0;
+    if (sides.top === false) y0 = 0;
+    if (sides.right === false) x1 = W - 1;
+    if (sides.bottom === false) y1 = H - 1;
     if (x0 === 0 && y0 === 0 && x1 === W - 1 && y1 === H - 1) { this.notice('There is nothing to trim.'); return false; }
     return this.resizeCanvas(x1 - x0 + 1, y1 - y0 + 1, -x0, -y0, null, 'Trim');
   }
@@ -7142,7 +7165,7 @@ export class Engine {
   /** File > Automate > Fit Image (1.65.8): the image resampled, its proportions kept, to
    *  fit within `width` by `height` pixels, smaller or (with `enlarge`) larger, as one Fit Image step at the same
    *  resolution. True when it fits afterwards, resized or not; `quiet` keeps one that already fits from saying so. */
-  fitImage(width: number, height: number, enlarge = true, quiet = false): boolean {
+  fitImage(width: number, height: number, enlarge = true, quiet = false, sampling: Transform['sampling'] = 'high'): boolean {
     const p = this.current;
     if (!p || !(width >= 1) || !(height >= 1)) return false;
     const W = p.doc.width, H = p.doc.height, k = Math.min(width / W, height / H), w = Math.max(1, Math.round(W * k)), h = Math.max(1, Math.round(H * k));
@@ -7152,7 +7175,7 @@ export class Engine {
     }
     this.settle();
     p.history.begin('Fit Image', p.snapshot());
-    try { return this.resampleImage(w, h, 'high', p.doc.resolution); } finally { p.history.end(p.snapshot()); }
+    try { return this.resampleImage(w, h, sampling, p.doc.resolution); } finally { p.history.end(p.snapshot()); }
   }
 
   resizeSelection(delta: number, atBounds = false): void { PO.resizeSelection(this.paintHost, delta, atBounds); }
@@ -7258,7 +7281,17 @@ export class Engine {
     if (this.copySelection(false)) this.clearPixels();
   }
 
-  pasteClipboard(): boolean { return SO.pasteClipboard(this.selectHost); }
+  pasteClipboard(inPlace = false): boolean { return SO.pasteClipboard(this.selectHost, inPlace); }
+
+  /** File > New from Clipboard: a document the size of the clipboard picture, holding it as its layer; one new tab. */
+  newFromClipboard(image: { raster: Raster; name: string } | null = null): boolean {
+    const c = this.clipboard;
+    const raster = image ? image.raster : c ? Raster.from(c.surface, c.w, c.h) : null;
+    if (!raster || !this.sizeOk(raster.width, raster.height)) return false;
+    this.addProject({ id: uid(), width: raster.width, height: raster.height, resolution: 72, layers: [] }, image?.name ?? 'Clipboard');
+    this.insertRasterLayer(raster, 'Layer 1', 0, 0);
+    return true;
+  }
 
   /** Edit > Paste Special > Paste Into and Paste Outside (1.65.7): formvis's own clipboard, or `image`
    *  from another app, pasted as a new layer centred on the selection's bounds, with a layer mask the size of the

@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.88.5 · 2026-10-19
+
+### Added
+
+- Import: File > Open takes several files at once and opens each as its own document; brush, swatch, gradient, pattern and shape preset files open from Open or a drop into their libraries; PCX and XPM open; an SVG asks for its width; a multi-frame GIF or animated PNG says only the first frame was used; Ctrl-drop opens pictures as documents.
+- Document and canvas: Clear on the Background fills with the background colour; pastes land in view, Paste in Place keeps the place; File > New from Clipboard; Layer > New > Dodge and Burn Layer; Trim by side; Canvas Size Relative and any extension colour; Image Size without resampling; Image > Crop commits the crop frame; crop ratios 5:4 and 4:5, X turns the ratio, overlay show modes, Show Cropped Area (H) and the shield colour and opacity; Fit Image and Arbitrary rotation take a resample method; artboard size presets, custom colours and Artboard from Layers... with options.
+- The rest: confirmations for destructive actions start on Cancel and arrow keys move between buttons; Purge > Histories clears every open document; an update dialog with notes, Later and Skip this version; Help > System Info and Copy Engine Log; the engine writes a rotating log file and one engine runs per data folder on the desktop; `--user-data-dir`, `--portable`, `--port` and `--no-comfy` switches; Shift+arrows step number fields by 10; Notes previous and next; Measurement Log selection; tool preset rename; Full Resolution Previews.
+
 ## 1.88.4 · 2026-10-19
 
 ### Added

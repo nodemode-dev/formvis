@@ -43,6 +43,11 @@ export class Dialog {
     this.scrim.addEventListener('keydown', (e) => {
       e.stopPropagation();
       if (e.key === 'Escape') { e.preventDefault(); this.close(); }
+      const step = e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : 0;
+      if (!step || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || !(document.activeElement instanceof HTMLButtonElement) || document.activeElement.parentElement !== this.foot) return;
+      const row = Array.from(this.foot.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')), at = row.indexOf(document.activeElement);
+      const next = row[(at + step + row.length) % row.length];
+      if (at >= 0 && next) { e.preventDefault(); next.focus(); }
     });
     document.getElementById('overlay-root')?.appendChild(this.scrim);
   }
@@ -243,22 +248,24 @@ export function askSaveChangesAll(name: string): Promise<{ choice: 'save' | 'dis
 class Confirm extends Dialog {
   private readonly note = el<HTMLElement>('<p class="cv-note"></p>');
   private readonly ok: HTMLButtonElement;
+  private readonly cancel: HTMLButtonElement;
   private resolve: ((v: boolean) => void) | null = null;
 
   constructor() {
     super('Confirm', 400);
     this.body.appendChild(this.note);
-    this.button('Cancel', 'ghost', () => this.finish(false));
+    this.cancel = this.button('Cancel', 'ghost', () => this.finish(false));
     this.ok = this.button('OK', 'primary', () => this.finish(true));
     this.onClose = () => this.finish(false);
   }
 
+  /** A destructive question opens with Cancel focused, so Return alone never confirms it; the arrow keys move between the buttons. */
   ask(title: string, text: string, okLabel: string, danger: boolean): Promise<boolean> {
     this.setTitle(title);
     setText(this.note, text);
     setText(this.ok, okLabel);
     this.ok.className = danger ? 'cv-btn cv-btn-danger' : 'cv-btn cv-btn-primary';
-    this.open(this.ok);
+    this.open(danger ? this.cancel : this.ok);
     return new Promise<boolean>((resolve) => { this.resolve = resolve; });
   }
 

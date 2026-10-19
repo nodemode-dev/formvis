@@ -72,7 +72,7 @@ export function newArtboard(host: ArtboardHost, rect: { x: number; y: number; w:
 
 /** Layer > New > Artboard from Layers: the selected top-level layers moved into a new artboard fitted to their
  *  visible pixels, transparent behind them. One step. */
-export function artboardFromLayers(host: ArtboardHost): ID | null {
+export function artboardFromLayers(host: ArtboardHost, opts: { name?: string; background?: RGB | null } = {}): ID | null {
   const p = host.current;
   if (!p) return null;
   const roots = host.selectedRoots(p).filter((id) => { const l = p.layer(id); return !!l && !l.parentId && !l.artboard; });
@@ -84,7 +84,8 @@ export function artboardFromLayers(host: ArtboardHost): ID | null {
     const names = new Set(q.doc.layers.map((l) => l.name));
     let n = 1;
     while (names.has(`Artboard ${n}`)) n += 1;
-    const board = newLayer(`Artboard ${n}`, q.doc, { isGroup: true, parentId: null, artboard: { x: b.x, y: b.y, w: Math.max(1, b.w), h: Math.max(1, b.h), background: null } });
+    const given = opts.name?.trim().slice(0, 200);
+    const board = newLayer(given || `Artboard ${n}`, q.doc, { isGroup: true, parentId: null, artboard: { x: b.x, y: b.y, w: Math.max(1, b.w), h: Math.max(1, b.h), background: opts.background ?? null } });
     const at = Math.max(...roots.map((id) => q.doc.layers.findIndex((l) => l.id === id))) + 1;
     const layers = q.doc.layers.map((l) => (roots.includes(l.id) ? { ...l, parentId: board.id } : l));
     layers.splice(at, 0, board);
@@ -115,13 +116,13 @@ export function contentBounds(host: ArtboardHost, id: ID, p: Project | null = ho
 /** Layer > New > Artboard from Group (1.65.4): a folder outside any other made an artboard over its contents (or
  *  the canvas when it holds no pixels), `w` by `h` when given, renamed when `name` is given; transparent behind, as
  *  Artboard from Layers makes them. One step. */
-export function artboardFromGroup(host: ArtboardHost, id: ID, opts: { name?: string; w?: number; h?: number } = {}): boolean {
+export function artboardFromGroup(host: ArtboardHost, id: ID, opts: { name?: string; w?: number; h?: number; background?: RGB | null } = {}): boolean {
   const p = host.current, g = p?.layer(id);
   if (!p || !g?.isGroup || g.parentId || g.artboard || g.frame) { host.notice('Select a folder outside any other folder, artboard or frame first.'); return false; }
   const b = contentBounds(host, id, p) ?? { x: 0, y: 0, w: p.doc.width, h: p.doc.height }, name = opts.name?.trim().slice(0, 200);
   const w = Math.max(1, Math.min(30000, Math.round(opts.w ?? b.w))), h = Math.max(1, Math.min(30000, Math.round(opts.h ?? b.h)));
   return host.edit('Artboard from Group', (q) => {
-    q.updateLayer(id, { artboard: { x: b.x, y: b.y, w, h, background: null }, ...(name ? { name } : {}) });
+    q.updateLayer(id, { artboard: { x: b.x, y: b.y, w, h, background: opts.background ?? null }, ...(name ? { name } : {}) });
     host.focus(q, id);
     return true;
   });

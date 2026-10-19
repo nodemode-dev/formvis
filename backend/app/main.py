@@ -5,18 +5,22 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.core import config
+from app.core import config, runtime
 from app.routers import comfyui, generative, io, large, llm, mcp, ops, plugins, projects, system, nodemode, colour
 from app.services import claude_code as _claude_service, sessions, terminal as _terminal_service
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    data = config.data_dir()
+    runtime.start_logging(data)
     sessions.prune()
     _terminal_service.bind(asyncio.get_running_loop())
     yield
     _claude_service.stop(quiet=True)
     _terminal_service.close_all()
+    runtime.stop_logging()
+    runtime.release(data)
 
 
 app = FastAPI(title=config.APP_NAME, version=config.VERSION, lifespan=lifespan)
@@ -40,7 +44,8 @@ app.include_router(bands.router)
 bands.clear()
 app.include_router(generative.router, prefix="/api/generative")
 app.include_router(nodemode.router)   # Send to NodeMode, standalone (1.50.8); its prefix is its own
-app.include_router(comfyui.router)   # Send to ComfyUI (1.50.9); its prefix is its own
+if runtime.switches()["noComfy"] is False:   # --no-comfy leaves Send to ComfyUI out
+    app.include_router(comfyui.router)   # Send to ComfyUI (1.50.9); its prefix is its own
 app.include_router(llm.router)   # prompt improvement (1.51.5); its prefix is its own
 app.include_router(mcp.router)   # the MCP server at /mcp and the window's bridge (1.52.1)
 from app.routers import commands as _commands  # noqa: E402  (the command catalogue, DEV_PLAN 28.3)

@@ -7,9 +7,11 @@ const RATIOS: ReadonlyArray<{ id: string; label: string; value: number | 'origin
   { id: 'free', label: 'Free', value: null },
   { id: 'original', label: 'Original', value: 'original' },
   { id: '1:1', label: '1:1', value: 1 },
+  { id: '5:4', label: '5:4', value: 5 / 4 },
   { id: '4:3', label: '4:3', value: 4 / 3 },
   { id: '3:2', label: '3:2', value: 3 / 2 },
   { id: '16:9', label: '16:9', value: 16 / 9 },
+  { id: '4:5', label: '4:5', value: 4 / 5 },
   { id: '3:4', label: '3:4', value: 3 / 4 },
   { id: '2:3', label: '2:3', value: 2 / 3 },
   { id: '9:16', label: '9:16', value: 9 / 16 },
@@ -63,6 +65,13 @@ let contentAware = false;
 /** The composition overlay drawn in the frame, and its orientation for Triangle and Golden Spiral. */
 let overlayKind: CropOverlay = 'thirds';
 let overlayOrient = 0;
+/** When the overlay shows: while a handle or the frame is being dragged (auto), always, or never. */
+let overlayShow: 'auto' | 'always' | 'never' = 'always';
+/** The shield outside the frame: Show Cropped Area off covers it solid; on, it is dimmed to `shieldOpacity`. */
+let showCropped = true;
+let shieldOpacity = 0.45;
+let shieldColour: 'black' | 'white' | 'grey' = 'black';
+const SHIELD_RGB = { black: '0, 0, 0', white: '255, 255, 255', grey: '128, 128, 128' };
 let leveling = false;
 let line: { a: Pt; b: Pt } | null = null;
 /** Perspective: the frame's four corners move independently (top-left, top-right, bottom-right, bottom-left). */
@@ -218,6 +227,30 @@ function commit(e: Engine): void {
   e.emit('options', null);
 }
 
+/** True while the Crop tool holds a frame (or perspective corners) not yet applied. */
+export const cropPending = (): boolean => !!frame || !!quad;
+/** Image > Crop with a frame open applies that frame, as Enter does; false when none is open. */
+export function commitPendingCrop(e: Engine): boolean {
+  if (!cropPending()) return false;
+  commit(e);
+  return true;
+}
+
+/** X: the ratio on its side (4:3 becomes 3:4, W and H trade places); a free frame swaps its width and height. */
+function turnRatio(e: Engine): boolean {
+  if (ratioId === 'size') { [size.w, size.h] = [size.h, size.w]; presetId = ''; sizeChanged(e); return true; }
+  const m = /^(\d+):(\d+)$/.exec(ratioId), twin = m ? `${m[2]}:${m[1]}` : '';
+  if (m && RATIOS.some((r) => r.id === twin)) ratioId = twin;
+  else if (ratioId !== 'free') return false;
+  if (frame) {
+    const f = norm(frame), cx = f.x + f.w / 2, cy = f.y + f.h / 2;
+    frame = whole({ x: cx - f.h / 2, y: cy - f.w / 2, w: f.h, h: f.w });
+  }
+  e.emit('options', null);
+  e.emit('overlay', null);
+  return true;
+}
+
 export const cropTool: Tool = {
   id: 'crop', label: 'Crop', key: 'C', order: 45,
   icon: () => 'tCrop',
@@ -280,6 +313,8 @@ export const cropTool: Tool = {
       ctx.engine.emit('overlay', null);
       return true;
     }
+    if ((e.key === 'x' || e.key === 'X') && frame && !e.metaKey && !e.ctrlKey && !e.altKey) return turnRatio(ctx.engine);
+    if ((e.key === 'h' || e.key === 'H') && frame && !e.metaKey && !e.ctrlKey && !e.altKey) { showCropped = !showCropped; ctx.engine.emit('options', null); ctx.engine.emit('overlay', null); return true; }
     if (e.key === 'Escape' && (frame || quad || leveling)) { frame = null; quad = null; cornerDrag = -1; drag = null; line = null; leveling = false; angle = 0; ctx.engine.emit('overlay', null); ctx.engine.emit('options', null); return true; }
     return false;
   },
@@ -309,14 +344,16 @@ export const cropTool: Tool = {
     const v = ctx.view(), pal = ctx.paint(), f = norm(frame);
     const a = v.toScreen({ x: f.x, y: f.y }), b = v.toScreen({ x: f.x + f.w, y: f.y + f.h });
     g.save();
-    g.fillStyle = 'rgba(0, 0, 0, 0.45)';
+    g.fillStyle = `rgba(${SHIELD_RGB[shieldColour]}, ${showCropped ? shieldOpacity : 1})`;
     g.beginPath(); g.rect(0, 0, v.width, v.height); g.rect(a.x, a.y, b.x - a.x, b.y - a.y); g.fill('evenodd');
     g.strokeStyle = pal.antsB;
     g.globalAlpha = 0.5;
     g.beginPath();
-    for (const pts of overlayLines(overlayKind, Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y), overlayOrient)) {
-      g.moveTo(pts[0].x, pts[0].y);
-      for (let i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
+    if (overlayShow === 'always' || (overlayShow === 'auto' && drag)) {
+      for (const pts of overlayLines(overlayKind, Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y), overlayOrient)) {
+        g.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
+      }
     }
     g.stroke();
     g.globalAlpha = 1;
@@ -364,6 +401,10 @@ export const cropTool: Tool = {
     { kind: 'range', label: 'Straighten', priority: 60, min: -45, max: 45, step: 0.1, unit: '°', get: () => Math.round(angle * 10) / 10, set: (v) => { angle = v; const d = e.current?.doc; if (angle && !frame && d) frame = { x: 0, y: 0, w: d.width, h: d.height }; e.emit('options', null); e.emit('overlay', null); } },
     { kind: 'button', label: 'Level line', priority: 35, icon: 'rotate', run: () => { leveling = true; e.emit('tool', null); e.emit('options', null); } },
     { kind: 'select', label: 'Overlay', priority: 55, choices: CROP_OVERLAYS, get: () => overlayKind, set: (v: string) => { overlayKind = (CROP_OVERLAYS.find((o) => o.id === v)?.id ?? 'thirds'); e.emit('options', null); e.emit('overlay', null); } },
+    { kind: 'select', label: 'Show overlay', priority: 54, choices: [{ id: 'auto', label: 'Auto' }, { id: 'always', label: 'Always' }, { id: 'never', label: 'Never' }], get: () => overlayShow, set: (v: string) => { overlayShow = v === 'auto' || v === 'never' ? v : 'always'; e.emit('options', null); e.emit('overlay', null); } },
+    { kind: 'toggle', label: 'Show Cropped Area', priority: 53, get: () => showCropped, set: (v) => { showCropped = v; e.emit('options', null); e.emit('overlay', null); } },
+    { kind: 'range', label: 'Shield opacity', priority: 52, min: 0, max: 100, step: 5, unit: '%', get: () => Math.round(shieldOpacity * 100), set: (v) => { shieldOpacity = Math.max(0, Math.min(1, v / 100)); e.emit('options', null); e.emit('overlay', null); }, when: () => showCropped },
+    { kind: 'select', label: 'Shield color', priority: 51, choices: [{ id: 'black', label: 'Black' }, { id: 'white', label: 'White' }, { id: 'grey', label: 'Grey' }], get: () => shieldColour, set: (v: string) => { shieldColour = v === 'white' || v === 'grey' ? v : 'black'; e.emit('options', null); e.emit('overlay', null); } },
     { kind: 'toggle', label: 'Delete Cropped Pixels', priority: 45, get: () => e.cropDeletePixels, set: (v) => { e.cropDeletePixels = v; e.emit('options', null); } },
     { kind: 'toggle', label: 'Content-Aware', priority: 40, get: () => contentAware, set: (v) => { contentAware = v; e.emit('options', null); } },
     { kind: 'toggle', label: 'Perspective', priority: 40, get: () => perspective, set: (v) => { perspective = v; quad = v && frame ? quadOf(frame) : null; e.emit('options', null); e.emit('overlay', null); } },

@@ -90,6 +90,16 @@ def sweep_stale_unpacks() -> None:
 def main() -> int:
     if "--selfcheck" in sys.argv:
         return selfcheck()
+    from app.core import runtime
+
+    runtime.apply_switches(sys.argv[1:])
+    from app.core import config
+
+    try:
+        runtime.claim(config.data_dir())
+    except runtime.AlreadyRunning as err:
+        print(err, file=sys.stderr)
+        return 2
     watch_parent()
     sweep_stale_unpacks()
     bundled = os.path.join(resource_dir(), "frontend_dist")

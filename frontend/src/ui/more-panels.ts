@@ -42,10 +42,13 @@ function notesPanel(root: HTMLElement, engine: Engine): void {
   const sec = section(root, 'cv-notes-panel', 'Notes', 'layers',
     '<div class="cv-styles-grid cv-notes-list" role="listbox" aria-label="Notes"></div>' +
     '<textarea class="cv-input cv-notes-text" rows="4" aria-label="Note text" placeholder="Select a note"></textarea>' +
-    `<div class="cv-panel-foot"><button class="cv-icon-btn" type="button" data-act="delete" title="Delete the selected note" aria-label="Delete note">${icon('delete', 16)}</button>` +
+    `<div class="cv-panel-foot"><button class="cv-icon-btn" type="button" data-act="prev" title="Previous note" aria-label="Previous note">${icon('chevronLeft', 16)}</button>` +
+    `<button class="cv-icon-btn" type="button" data-act="next" title="Next note" aria-label="Next note">${icon('chevronRight', 16)}</button>` +
+    `<button class="cv-icon-btn" type="button" data-act="delete" title="Delete the selected note" aria-label="Delete note">${icon('delete', 16)}</button>` +
     '<button class="cv-btn" type="button" data-act="clear" title="Delete all notes">Delete All</button></div>');
   const list = q(sec, '.cv-notes-list'), count = q(sec, '.cv-comps-count'), ta = q<HTMLTextAreaElement>(sec, '.cv-notes-text');
   const del = q<HTMLButtonElement>(sec, '[data-act="delete"]'), clear = q<HTMLButtonElement>(sec, '[data-act="clear"]');
+  const prev = q<HTMLButtonElement>(sec, '[data-act="prev"]'), next = q<HTMLButtonElement>(sec, '[data-act="next"]');
   const notes = (): readonly DocNote[] => engine.current?.doc.notes ?? [];
   const first = (n: DocNote): string => n.text.split('\n')[0].trim() || 'Empty note';
 
@@ -73,17 +76,26 @@ function notesPanel(root: HTMLElement, engine: Engine): void {
     if (document.activeElement !== ta && ta.value !== (active?.text ?? '')) ta.value = active?.text ?? '';
     if (del.disabled !== !active) del.disabled = !active;
     if (clear.disabled !== (all.length === 0)) clear.disabled = all.length === 0;
+    for (const b of [prev, next]) if (b.disabled !== (all.length === 0)) b.disabled = all.length === 0;
   };
-  list.addEventListener('click', (e) => {
-    const row = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-id]') : null;
-    const n = row ? notes().find((x) => x.id === row.dataset.id) : undefined;
+  const show = (n: DocNote): void => {
     const v = engine.current?.viewport;
-    if (!n) return;
     engine.activeNote = n.id;
     if (v) engine.pan(v.centerX - (v.panX + n.x * v.zoom), v.height / 2 - (v.panY + n.y * v.zoom));
     engine.emit('overlay', null);
     sync();
+  };
+  list.addEventListener('click', (e) => {
+    const row = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-id]') : null;
+    const n = row ? notes().find((x) => x.id === row.dataset.id) : undefined;
+    if (n) show(n);
   });
+  const step = (d: number): void => {
+    const all = notes(), at = all.findIndex((n) => n.id === engine.activeNote), n = all[((at < 0 ? (d > 0 ? -1 : 0) : at) + d + all.length) % all.length];
+    if (n) show(n);
+  };
+  prev.addEventListener('click', () => step(-1));
+  next.addEventListener('click', () => step(1));
   ta.addEventListener('change', () => { const id = engine.activeNote; if (id) engine.setNote(id, { text: ta.value }); });
   del.addEventListener('click', () => { const id = engine.activeNote; if (id) engine.removeNote(id); sync(); });
   clear.addEventListener('click', () => { engine.clearNotes(); sync(); });

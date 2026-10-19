@@ -36,6 +36,8 @@ struct UpdateReport {
     status: &'static str,
     version: Option<String>,
     message: String,
+    /// The release notes the update carries, when it has any.
+    notes: Option<String>,
 }
 
 const FALLBACK_SIZE: (f64, f64) = (1323.0, 860.0);
@@ -175,7 +177,7 @@ fn confirm_exit(app: tauri::AppHandle) {
 }
 
 fn update_report(status: &'static str, version: Option<String>, message: String) -> UpdateReport {
-    UpdateReport { status, version, message }
+    UpdateReport { status, version, message, notes: None }
 }
 
 /// Help > Check for Updates: asks the update endpoints and says what it found, or why it cannot ask.
@@ -191,10 +193,13 @@ async fn check_for_update(app: tauri::AppHandle) -> UpdateReport {
     match updater.check().await {
         Ok(Some(update)) => {
             let version = update.version.clone();
+            let notes = update.body.clone().filter(|text| !text.trim().is_empty());
             if let Ok(mut slot) = app.state::<FoundUpdate>().0.lock() {
                 *slot = Some(update);
             }
-            update_report("available", Some(version.clone()), format!("Version {version} is available."))
+            let mut report = update_report("available", Some(version.clone()), format!("Version {version} is available."));
+            report.notes = notes;
+            report
         }
         Ok(None) => update_report("current", None, "formvis is up to date.".into()),
         Err(err) => update_report("failed", None, format!("Could not check for updates: {err}")),

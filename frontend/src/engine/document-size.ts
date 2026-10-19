@@ -101,6 +101,7 @@ export function resampleImage(
     return false;
   }
   if (width === old.width && height === old.height && resolution === old.resolution) return false;
+  if (width === old.width && height === old.height) return host.edit('Image Size', (p) => { p.doc = { ...p.doc, resolution }; return true; });
   const sx = width / old.width;
   const sy = height / old.height;
   let total = 0;

@@ -5,8 +5,8 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
 
-from app.core import config
-from app.services import background, compute, imaging, segment, spell
+from app.core import config, runtime
+from app.services import background, compute, imaging, metrics, segment, spell
 
 router = APIRouter(tags=["system"])
 
@@ -104,7 +104,22 @@ def capabilities() -> dict:
         "pixelBudget": config.MAX_PIXELS, "memory": config.total_memory(),   # the largest document, from this computer's memory (1.53.4)
         "compute": compute.current(),
         "dataDir": str(config.data_dir()),
+        "switches": runtime.switches(),
+        "logFile": str(runtime.log_path(config.data_dir())),
     }
+
+
+@router.get("/metrics")
+def process_metrics() -> dict:
+    """The engine process's memory as the operating system counts it, and the computer's."""
+    return metrics.process_memory()
+
+
+@router.get("/log")
+def engine_log(lines: int = 200) -> dict:
+    """The end of the engine's log file (Logs/formvis-engine.log in the data folder)."""
+    data = config.data_dir()
+    return {"path": str(runtime.log_path(data)), "text": runtime.log_tail(data, lines)}
 
 
 _FONT_TYPES = {".ttf": "font/ttf", ".otf": "font/otf", ".ttc": "font/collection", ".woff": "font/woff", ".woff2": "font/woff2"}

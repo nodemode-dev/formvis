@@ -34,6 +34,8 @@
 .cv-input:focus { outline: none; border-color: var(--accent-color); }
 .cv-note { color: var(--text-muted); font-size: var(--fs-11); }
 .cv-note-head { color: var(--text-secondary); font-size: var(--fs-11); font-weight: 600; padding-top: var(--space-2); }
+.cv-sysinfo { margin: 0; padding: var(--space-2); max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-word; user-select: text; border: 1px solid var(--border-light); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-secondary); font: var(--fs-11)/1.5 ui-monospace, Menlo, Consolas, monospace; }
+.cv-sysinfo[hidden] { display: none; }
 /* Help > What's New: releases newest first, each addition a row with its Show Me button. */
 .cv-new-release { display: grid; gap: var(--space-2); }
 .cv-new-head { display: flex; align-items: baseline; gap: var(--space-2); margin: 0; font-size: var(--fs-13); font-weight: 600; color: var(--text-primary); }

@@ -58,6 +58,7 @@ export class ToolPresetsDialog extends Dialog {
     this.body.append(this.only.el, this.list, this.empty, el('<p class="cv-dialog-note">Export writes every preset to a .json file; Import merges one by name. .tpl tool preset files are not read.</p>'));
     this.button('New Preset...', 'ghost', () => void this.create());
     this.button('Apply', 'primary', () => this.applySelected());
+    this.button('Rename...', 'ghost', () => void this.rename());
     this.button('Export...', 'ghost', () => this.exportFile());
     this.button('Import...', 'ghost', () => this.importFile());
     this.button('Delete', 'danger', () => this.remove());
@@ -146,6 +147,18 @@ export class ToolPresetsDialog extends Dialog {
     const p = this.list.value === '' ? undefined : this.presets[i];
     if (!p) { toast('Choose a preset first.', 'info'); return; }
     if (!this.applyPreset(p)) toast('That preset\'s tool is not available.', 'info');
+    this.paint();
+  }
+
+  /** Gives the chosen preset another name; a same-named preset of the same tool is refused. */
+  private async rename(): Promise<void> {
+    const p = this.list.value === '' ? undefined : this.presets[Number(this.list.value)];
+    if (!p) { toast('Choose a preset first.', 'info'); return; }
+    const name = (await promptName('Rename Tool Preset', p.name, 'Rename'))?.trim();
+    if (!name || name === p.name) return;
+    if (this.presets.some((o) => o !== p && o.tool === p.tool && o.name === name)) { toast(`"${name}" is already a preset of this tool.`, 'info'); return; }
+    p.name = name;
+    savePresets(this.presets);
     this.paint();
   }
 

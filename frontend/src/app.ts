@@ -104,6 +104,7 @@ import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, LAYER_LABELS, Raster, Sele
 import { getTool, toolForKey, toolsForKey } from './extensions/registry';
 import { registerBuiltinTools } from './extensions/tools';
 import { stepBrush } from './extensions/tools/brush';
+import { commitPendingCrop, cropPending } from './extensions/tools/crop';
 import { HostLink } from './host';
 import { api, onServiceChange, serviceDown, type Capabilities, type CmykPsd, type OpenedProject } from './io/api';
 import { PROJECT_FILTER, baseName, checkForUpdate, chooseOpenPaths, chooseSavePath, confirmExit, folderOf, hasPanels, installUpdate, isDiskPath, listenShell } from './io/disk';
@@ -126,10 +127,10 @@ import { VanishingPointDialog } from './ui/panels/vanishing-dialog';
 import { VideoImportDialog } from './ui/panels/video-dialog';
 import { VideoTimelinePanel } from './ui/video-timeline';
 import { RenderVideoDialog, type RenderChoice } from './ui/panels/render-video-dialog';
-import { LargePictureError, IMAGE_ACCEPT, PROJECT_ACCEPT, RAW_FILE, decodeFrames, decodeHdr, decodeImage, isImageFile, isProjectFile } from './io/images';
+import { LargePictureError, IMAGE_ACCEPT, PROJECT_ACCEPT, RAW_FILE, decodeFrames, decodeHdr, decodeImage, isImageFile, isProjectFile, apngFrames, rasteriseSvg, svgSize } from './io/images';
 import { addFontFace, familyOfFile, fontFamilies, loadSystemFonts } from './ui/fonts';
 import { deserialize, giantTiles, serialize } from './io/project-io';
-import { AboutDialog, BenchmarkDialog, NewCanvasDialog, OpenDialog, SettingsDialog, ShortcutsDialog } from './ui/app-dialogs';
+import { AboutDialog, BenchmarkDialog, NewCanvasDialog, OpenDialog, SettingsDialog, ShortcutsDialog, SystemInfoDialog, UpdateDialog } from './ui/app-dialogs';
 import { HistoryLog } from './ui/history-log';
 import { extraOn, extrasOn, setAllExtras, setExtra, setExtras } from './ui/view-extras';
 import { CHECKER_CELL, FONT_PREVIEWS, applyPrefs, applyUiFontSize, checkerPair, loadPrefs, savePrefs, updatePrefs, type Prefs } from './ui/prefs';
@@ -145,7 +146,7 @@ import { NativeDisplay } from './gpu/native-display';
 import { PerfDialog, recordPerformance } from './ui/perf-recorder';
 import { NavigatorPanel } from './ui/navigator';
 import { SwatchesPanel } from './ui/swatches';
-import { PresetManagerDialog } from './ui/panels/preset-manager-dialog';
+import { PRESET_ACCEPT, PresetManagerDialog, presetKindOf } from './ui/panels/preset-manager-dialog';
 import { PropertiesColumn } from './ui/properties';
 import { RelightSession } from './ui/relight-session';
 import { TitleTools } from './ui/titlebar-tools';
@@ -240,6 +241,7 @@ import { toast } from './ui/toast';
 /** Each tab's own group, where Reset Panels returns it. */
 const TAB_HOMES: Record<string, string> = { info: 'info', layers: 'layers-panel', channels: 'layers-panel', paths: 'layers-panel', navigator: 'navigator', generate: 'generate', swatches: 'swatches', color: 'swatches', properties: 'properties', brushes: 'brushes', 'brush-settings': 'brushes', paragraph: 'paragraph', character: 'character' };
 const LAYERS_W_KEY = 'formvis_layers_w';
+const SKIPPED_UPDATE_KEY = 'formvis_skipped_update';
 const message = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 function stored(key: string): string | null {
@@ -648,13 +650,13 @@ export function startApp(): void {
         toast(message(err), 'error');
       }
     }
-    if (others.length) await importFiles(others);
+    if (others.length) await importFiles(others, undefined, 'documents');
   }
 
   /** File > Open in the desktop app (1.87.0): the system's open panel for any project or picture formvis reads. */
   async function openFromPanel(): Promise<boolean> {
     let paths: string[];
-    try { paths = await chooseOpenPaths('Open', [{ name: 'Projects and pictures', extensions: [...PROJECT_ACCEPT.split(','), ...IMAGE_ACCEPT.split(',')].filter((x) => x.startsWith('.')).map((x) => x.slice(1)) }]); } catch { return false; }
+    try { paths = await chooseOpenPaths('Open', [{ name: 'Projects and pictures', extensions: [...PROJECT_ACCEPT.split(','), ...IMAGE_ACCEPT.split(','), ...PRESET_ACCEPT.split(',')].filter((x) => x.startsWith('.')).map((x) => x.slice(1)) }]); } catch { return false; }
     if (paths.length) await openPaths(paths);
     return true;
   }
@@ -802,7 +804,7 @@ export function startApp(): void {
     if (!isProject) {
       const usable = files.filter((f) => isProjectFile(f) || isImageFile(f));
       if (!usable.length) { toast('That folder holds no projects or pictures formvis can open.', 'info'); return; }
-      await importFiles(usable);
+      await importFiles(usable, undefined, 'documents');
       return;
     }
     await engine.task(async () => {
@@ -832,18 +834,24 @@ export function startApp(): void {
   /** Camera Raw on open (DEV_PLAN 36.21): a camera RAW opens into this panel first (white balance at the RAW stage, 8 or 16 bits). */
   const cameraRaw = new CameraRawDialog();
 
-  async function importFiles(files: File[], at?: Pt): Promise<void> {
+  /** `how` 'layers' (the default) adds pictures to the open document; 'documents' (File > Open, Ctrl-drop) opens each as its own document. Preset files go to their libraries either way. */
+  async function importFiles(files: File[], at?: Pt, how: 'layers' | 'documents' = 'layers'): Promise<void> {
     const projects = files.filter(isProjectFile);
     const images = files.filter((f) => !isProjectFile(f) && isImageFile(f));
-    const skipped = files.length - projects.length - images.length;
+    const presets = files.filter((f) => !isProjectFile(f) && !isImageFile(f) && presetKindOf(f.name));
+    const skipped = files.length - projects.length - images.length - presets.length;
     if (projects.length) await openFiles(projects);
-    if (images.length) {
+    if (presets.length) await dialogs.presetManager.loadPresetFiles(presets);
+    const fresh = how === 'documents', noDoc = (): boolean => fresh || !engine.current;
+    if (fresh && images.length > 1) { for (const f of images) await importFiles([f], at, how); }
+    else if (images.length) {
       await engine.task(async () => {
         const decoded: ImportedImage[] = [];
         let largeAsked = false;
         let pagesAsked = false;
         let rawPick: RawChoice | null = null;
         for (const f of images) {
+          if (/\.png$/i.test(f.name)) { const n = await apngFrames(f).catch(() => 0); if (n > 1) toast(`${f.name} is an animated PNG of ${n} frames; only the first frame was opened.`, 'info'); }
           // A single camera RAW opens into Camera Raw first (DEV_PLAN 36.21): Cancel does not open it; 16 Bits/Channel opens a 16-bit document.
           if (RAW_FILE.test(f.name) && images.length === 1) {
             rawPick = await cameraRaw.ask(f);
@@ -857,9 +865,9 @@ export function startApp(): void {
             continue;
           }
           // A Lab TIFF opened as a new document is a Lab document (1.58.1), tried before the page count (which refuses it).
-          if (/\.tiff?$/i.test(f.name) && !engine.current && decoded.length === 0) { const lab = await api.decodeLab(f, f.name).catch(() => null); if (lab) { openLab(f.name.replace(/\.[^.]+$/, ''), lab); continue; } }
+          if (/\.tiff?$/i.test(f.name) && noDoc() && decoded.length === 0) { const lab = await api.decodeLab(f, f.name).catch(() => null); if (lab) { openLab(f.name.replace(/\.[^.]+$/, ''), lab); continue; } }
           // An animated GIF or WebP opens as a layer per frame with a frame animation; one frame opens as a picture.
-          if (/\.(gif|webp)$/i.test(f.name) && !engine.current && decoded.length === 0) {
+          if (/\.(gif|webp)$/i.test(f.name) && noDoc() && decoded.length === 0) {
             try {
               const anim = await decodeFrames(f, f.name);
               if (anim) {
@@ -868,24 +876,27 @@ export function startApp(): void {
                 continue;
               }
             } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); continue; }
+          } else if (/\.(gif|webp)$/i.test(f.name)) {
+            const anim = await decodeFrames(f, f.name).catch(() => null);
+            if (anim) toast(`${f.name} has ${anim.frames.length} frames; only the first was placed as a layer. Open it on its own to get every frame.`, 'info');
           }
           // A TIFF with several pages asks how to open them (1.53.4).
           if (/\.(tiff?|ico)$/i.test(f.name) && !pagesAsked) { try { const pages = await api.imagePages(f, f.name); if (pages.length > 1) { pagesAsked = true; tiffPages.show(f, pages); continue; } } catch { /* decoded as before */ } }
-          if (/\.(jpe?g|tiff?)$/i.test(f.name) && !engine.current && decoded.length === 0) {
+          if (/\.(jpe?g|tiff?)$/i.test(f.name) && noDoc() && decoded.length === 0) {
             try { const c = await api.decodeCmyk(f, f.name); if (c) { await openCmyk(f.name.replace(/\.[^.]+$/, ''), c); continue; } } catch (err) { if (serviceDown()) { /* the engine service is not running: opened as RGB below */ } else { toast(message(err), 'error'); continue; } }
           }
           // An 8-bit grayscale picture opens as a Grayscale document under the Gray policy (Color Settings).
-          if (/\.(png|jpe?g|tiff?|webp)$/i.test(f.name) && !engine.current && decoded.length === 0) {
+          if (/\.(png|jpe?g|tiff?|webp)$/i.test(f.name) && noDoc() && decoded.length === 0) {
             try { const gray = await openGray(f); if (gray) { decoded.push(gray); continue; } } catch (err) { if (!serviceDown()) { toast(`${f.name}: ${message(err)}`, 'error'); continue; } }
           }
           // An OpenEXR or Radiance HDR placed into an open document is a layer at the document's depth: the engine decodes it
           // as floats, the layer keeps them in a 16 or 32 bit document and is clipped to 8 bits otherwise.
-          if (/\.(hdr|exr)$/i.test(f.name) && (engine.current || decoded.length > 0)) {
+          if (/\.(hdr|exr)$/i.test(f.name) && !fresh && (engine.current || decoded.length > 0)) {
             try { decoded.push(await decodeHdr(f, f.name)); } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
             continue;
           }
           // A 16-bit PNG or TIFF opens as a 16-bit document (1.53.6, H1).
-          if (/\.(png|tiff?|hdr|exr|dpx|cin|pbm|pgm|ppm|pnm|pam|fits|fit|fts)$/i.test(f.name) && !engine.current && decoded.length === 0) {
+          if (/\.(png|tiff?|hdr|exr|dpx|cin|pbm|pgm|ppm|pnm|pam|fits|fit|fts)$/i.test(f.name) && noDoc() && decoded.length === 0) {
             const head = new Uint8Array(await f.slice(0, 26).arrayBuffer()), png16 = head[0] === 0x89 && head[24] === 16;
             if (png16 || /\.(tiff?|hdr|exr|dpx|cin|pbm|pgm|ppm|pnm|pam|fits|fit|fts)$/i.test(f.name)) {
               try {
@@ -905,24 +916,33 @@ export function startApp(): void {
           if (/\.(png|jpe?g|webp)$/i.test(f.name)) {
             const icc = await embeddedProfile(f).catch(() => null), pname = icc ? profileName(icc) : '';
             // A JPEG with no profile but the EXIF ColorSpace tag set to sRGB says what it is: opened as sRGB without asking.
-            if (!icc && !engine.current && decoded.length === 0 && (await exifColourSpace(f).catch(() => null)) !== 1) {
+            if (!icc && noDoc() && decoded.length === 0 && (await exifColourSpace(f).catch(() => null)) !== 1) {
               const assumed = await missingProfile(f.name);
               if (assumed) { try { const raw = await decodeImage(f, f.name, true); raw.profile = assumed; decoded.push(raw); continue; } catch { /* decoded as before */ } }
             }
             if (icc && !isSrgbName(pname)) {
               const pref = loadPrefs().profileMismatch, how = pref === 'ask' ? await colourDialogs.mismatch.ask(f.name, pname) : pref;
               // Kept only when the image opens as its own document: placed into an open document, it is converted.
-              if ((how === 'keep' || how === 'discard') && !engine.current && decoded.length === 0) {
+              if ((how === 'keep' || how === 'discard') && noDoc() && decoded.length === 0) {
                 try { const raw = await decodeImage(f, f.name, true); if (how === 'keep') raw.profile = { name: pname, icc: toBase64(icc) }; decoded.push(raw); continue; } catch { /* decoded as before */ }
               } else toast(`${f.name} was converted from its embedded profile, ${pname}, to sRGB, the working space.`);
             }
+          }
+          if (/\.svg$/i.test(f.name)) {
+            const declared = await svgSize(f).catch(() => null);
+            const asked = await promptName(`Import ${f.name}: width in pixels`, String(Math.round(declared?.width ?? 1024)), 'Import');
+            if (asked === null) continue;
+            const px = Number(asked.replace(/\s*px$/i, ''));
+            if (!(px >= 1)) { toast(`${f.name}: enter a width of 1 pixel or more.`, 'error'); continue; }
+            try { decoded.push(await rasteriseSvg(f, f.name, px)); } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
+            continue;
           }
           try { decoded.push(await decodeImage(f, f.name)); } catch (err) {
             if (err instanceof LargePictureError) { if (!largeAsked) { largeAsked = true; largePicture.show(err); } else toast(`${f.name}: open large pictures one at a time.`, 'info'); }   // 1.52.7
             else toast(`${f.name}: ${message(err)}`, 'error');
           }
         }
-        engine.insertImages(decoded, at);
+        engine.insertImages(decoded, fresh ? undefined : at, fresh);
         for (const img of decoded) {
           const file = RAW_FILE.test(img.name) ? images.find((f) => f.name === img.name) : undefined, layer = file ? [...(engine.current?.doc.layers ?? [])].reverse().find((l) => l.name === stripExt(img.name)) : undefined;
           // A white balance chosen in Camera Raw is kept with the layer (for this session); the engine applies no camera profile with it.
@@ -2383,7 +2403,16 @@ export function startApp(): void {
     let report;
     try { report = await checkForUpdate(); } catch (err) { toast(`Could not check for updates: ${message(err)}`, 'error'); return; }
     if (report.status !== 'available') { toast(report.message, report.status === 'failed' ? 'error' : 'info'); return; }
-    if (!(await confirmAction('Update available', `${report.message} Install it and restart formvis?`, 'Install and Restart'))) return;
+    if ((await api.capabilities())?.switches?.portable) {
+      toast(`Version ${report.version ?? ''} is available. This portable copy does not update itself; the releases page is opening.`, 'info');
+      window.open('https://github.com/nodemode-ai/formvis/releases', '_blank', 'noopener');
+      return;
+    }
+    const again = !!report.version && stored(SKIPPED_UPDATE_KEY) === report.version;
+    const choice = await dialogs.update.ask(`${report.message}${again ? ' You skipped this version earlier.' : ''} Restart and update formvis?`, report.notes ?? null);
+    if (choice === 'skip') { if (report.version) store(SKIPPED_UPDATE_KEY, report.version); toast(`Skipped version ${report.version ?? ''}; Help > Check for Updates offers it again.`, 'info'); return; }
+    if (choice === 'later') return;
+    if (engine.busyWith) { toast(`Wait for ${engine.busyWith} to finish, then check for updates again.`, 'info'); return; }
     if (!(await settleUnsaved())) return;
     await keepModified();
     try { await installUpdate(); } catch (err) { toast(message(err), 'error'); }
@@ -2520,10 +2549,12 @@ export function startApp(): void {
     background: new BackgroundPanel(engine),
     color: new ColorPickerDialog(engine),
     liveMask: new LiveMaskDialog(),
-    open: new OpenDialog({ openLibrary, openFiles, openFolder, openFromPanel: hasPanels() ? openFromPanel : null }),
+    open: new OpenDialog({ openLibrary, openFiles: (files) => importFiles(files, undefined, 'documents'), openFolder, openFromPanel: hasPanels() ? openFromPanel : null }),
     settings: new SettingsDialog((pr) => { applyPrefs(engine, pr); applyUiPrefs(pr); recoveryDelay = pr.recoverySeconds * 1000; home.sync(); syncGpu(); syncEngineDevice(); }),
     shortcuts: new ShortcutsDialog(commands),
     about: new AboutDialog(),
+    systemInfo: new SystemInfoDialog(),
+    update: new UpdateDialog(),
     brushSettings: new BrushSettingsDialog(engine),
     warpText: new WarpTextDialog(engine),
     typeOnPath: new TypeOnPathDialog(engine),
@@ -3081,8 +3112,8 @@ export function startApp(): void {
     { id: 'send-host', label: 'Send to NodeMode Canvas', enabled: () => has() && hostLink.embedded, run: () => void sendToHost() },
     // Standalone (1.50.8): the engine sends to the NodeMode at the address in Preferences > Plugins.
     { id: 'send-nodemode', label: 'Send to NodeMode...', enabled: has, run: () => sendNodeMode.show() },
-    { id: 'send-comfyui', label: 'Send to ComfyUI...', enabled: has, run: () => sendComfyUI.show() },   // 1.50.9
-    { id: 'comfyui-run', label: 'Run ComfyUI Workflow...', enabled: has, run: () => runWorkflow.show() },   // 1.51.1
+    { id: 'send-comfyui', label: 'Send to ComfyUI...', enabled: () => has() && !caps?.switches?.noComfy, run: () => sendComfyUI.show() },   // 1.50.9; off with the engine's --no-comfy
+    { id: 'comfyui-run', label: 'Run ComfyUI Workflow...', enabled: () => has() && !caps?.switches?.noComfy, run: () => runWorkflow.show() },   // 1.51.1
     // the File > Close is Cmd-W. A browser keeps Ctrl/Cmd-W for its own tab (the unload guard covers that),
     // so the web binds Alt+Mod+W; the desktop shell, with no browser tab, takes Mod+W, and Alt+Mod+W is Close All there.
     { id: 'close-tab', label: 'Close Tab', keys: '__TAURI_INTERNALS__' in window ? ['Mod+W'] : ['Alt+Mod+W'], enabled: has, run: () => { const p = engine.current; if (p && !engine.closeSpareView(p.id)) void requestClose(p.id); } },
@@ -3250,14 +3281,16 @@ export function startApp(): void {
         return { applied: ran };
       },
     },
-    { id: 'image-crop', label: 'Crop', enabled: selected, run: () => { engine.cropToSelection(); } },
+    { id: 'image-crop', label: 'Crop', enabled: () => selected() || cropPending(), run: () => { if (!commitPendingCrop(engine)) engine.cropToSelection(); } },
     { id: 'duplicate-image', label: 'Duplicate...', enabled: has, run: () => dialogs.duplicateImage.show() },
     { id: 'new-layer', label: 'New Layer', enabled: has, run: () => engine.addLayer() },
     { id: 'new-layer-dialog', label: 'Layer...', keys: ['Shift+Mod+N'], enabled: has, run: () => dialogs.newLayer.show() },
+    { id: 'new-dodge-burn-layer', label: 'Dodge & Burn Layer', enabled: has, run: () => engine.addDodgeBurnLayer() },
     { id: 'new-folder', label: 'New Folder', enabled: has, run: () => engine.addFolder() },
     { id: 'new-folder-dialog', label: 'Group...', enabled: has, run: () => dialogs.newGroup.show() },
     { id: 'new-artboard', label: 'New Artboard', enabled: has, run: () => { engine.newArtboard(); } },
     { id: 'artboard-from-layers', label: 'Artboard from Layers', enabled: has, run: () => { engine.artboardFromLayers(); } },
+    { id: 'artboard-from-layers-dialog', label: 'Artboard from Layers...', enabled: has, run: () => dialogs.newArtboard.show(false, true) },
     { id: 'new-artboard-dialog', label: 'Artboard...', enabled: has, run: () => dialogs.newArtboard.show(false) },
     { id: 'artboard-from-group', label: 'Artboard from Group...', enabled: () => { const l = engine.current?.activeLayer; return !!l?.isGroup && !l.parentId && !l.artboard && !l.frame; }, run: () => dialogs.newArtboard.show(true) },
     { id: 'frame-from-layers', label: 'Frame from Layers', enabled: () => { const p = engine.current; return !!p && [...p.selectedIds].some((id) => { const l = p.layer(id); return !!l?.raster && !l.isGroup && !l.adjustment; }); }, run: () => engine.frameFromLayers() },
@@ -3472,6 +3505,34 @@ export function startApp(): void {
     { id: 'shortcuts', label: 'Keyboard Shortcuts...', keys: ['Alt+Shift+Mod+K', 'Shift+/'], run: () => dialogs.shortcuts.show() },   // Edit and Help menus
     { id: 'search', label: 'Search...', keys: ['Mod+K'], run: () => dialogs.palette.show() },
     { id: 'about', label: 'About formvis', run: () => dialogs.about.show(caps) },
+    {
+      id: 'system-info', label: 'System Info...',
+      run: async () => {
+        const mb = (n?: number): string => (n === undefined ? 'not reported' : `${(n / 1048576).toFixed(0)} MB`);
+        const [c, m] = [await api.capabilities(), await api.metrics()], s = window.screen, pr = loadPrefs();
+        const lines = [
+          `formvis ${VERSION}${c ? `, engine ${c.version}${c.desktop ? ' (desktop)' : ''}` : ', engine offline'}`,
+          `System: ${navigator.platform || 'unknown'}, ${navigator.hardwareConcurrency || '?'} logical processors, ${(navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? '?'} GB reported to the page`,
+          `Browser: ${navigator.userAgent}`,
+          `Graphics: ${detectedName(gpuProbe) ?? 'not detected'}, renderer setting ${pr.renderer}, ${gpuDisplay ? 'GPU display in use' : 'CPU display'}`,
+          `Monitor: ${s.width} x ${s.height} px at ${window.devicePixelRatio}x, ${s.colorDepth}-bit, ${matchMedia('(color-gamut: rec2020)').matches ? 'Rec.2020' : matchMedia('(color-gamut: p3)').matches ? 'Display P3' : 'sRGB'} gamut, ${matchMedia('(dynamic-range: high)').matches ? 'HDR' : 'standard'} range`,
+          `Engine memory: working set ${mb(m?.rss)}, peak ${mb(m?.peak)}, private ${mb(m?.private)}, computer ${mb(m?.available)} free of ${mb(m?.total)}${m ? `, process ${m.pid}, up ${Math.round(m.uptime / 60)} min` : ''}`,
+          `Pixel budget: ${c?.pixelBudget ? `${(c.pixelBudget / 1e6).toFixed(0)} MP` : 'unknown'}; open documents ${engine.projects.length}`,
+          `Data folder: ${c?.dataDir ?? 'unknown'}${c?.switches?.portable ? ' (portable)' : ''}`,
+          `Engine log: ${c?.logFile ?? 'none'}`,
+          `Switches: ${c?.switches ? `tiles ${c.switches.tiles}, ${c.switches.noComfy ? 'no ComfyUI, ' : ''}log level ${c.switches.logLevel}` : 'unknown'}`,
+        ];
+        dialogs.systemInfo.show(lines.join('\n'));
+      },
+    },
+    {
+      id: 'copy-engine-log', label: 'Copy Engine Log',
+      run: async () => {
+        const log = await api.engineLog(400);
+        if (!log) { toast('The engine is offline, so there is no engine log to copy.', 'error'); return; }
+        void navigator.clipboard?.writeText(log.text).then(() => toast(`Copied the end of ${log.path}.`), () => toast('The clipboard is not available here.', 'error'));
+      },
+    },
     { id: 'brush-settings', label: 'Brush Settings...', keys: ['F5'], run: () => dialogs.brushSettings.show() },
     { id: 'brush-size-up', label: 'Increase Brush Size', run: () => stepBrush(engine, 'size', 1) },
     { id: 'brush-size-down', label: 'Decrease Brush Size', run: () => stepBrush(engine, 'size', -1) },
@@ -3606,8 +3667,23 @@ export function startApp(): void {
     });
   }
 
-  async function pasteFromMenu(outside: boolean | null = null): Promise<void> {
-    const own = (): boolean => (outside === null ? engine.pasteClipboard() : engine.pasteInto(outside) || true);
+  async function newFromClipboard(): Promise<void> {
+    try {
+      for (const item of await navigator.clipboard.read()) {
+        if (item.types.includes('text/plain') && engine.clipboard && await (await item.getType('text/plain')).text() === `formvis:${engine.clipboard.stamp}`) { engine.newFromClipboard(); return; }
+        const type = item.types.find((t) => t.startsWith('image/'));
+        if (type) {
+          const img = await decodeImage(new File([await item.getType(type)], 'Clipboard.png', { type }), 'Clipboard.png');
+          engine.newFromClipboard({ raster: Raster.from(img.source, img.width, img.height), name: 'Clipboard' });
+          return;
+        }
+      }
+    } catch { /* fall back to formvis's own clipboard */ }
+    if (!engine.newFromClipboard()) toast('The clipboard holds no picture.');
+  }
+
+  async function pasteFromMenu(outside: boolean | null = null, inPlace = false): Promise<void> {
+    const own = (): boolean => (outside === null ? engine.pasteClipboard(inPlace) : engine.pasteInto(outside) || true);
     try {
       for (const item of await navigator.clipboard.read()) {
         if (item.types.includes('text/plain') && engine.clipboard) {
@@ -3637,14 +3713,15 @@ export function startApp(): void {
     { id: 'copy', label: 'Copy', keys: ['Mod+C'], enabled: pixel, run: () => { if (engine.copySelection(false)) writeClipboard(); } },
     { id: 'copy-merged', label: 'Copy Merged', keys: ['Shift+Mod+C'], enabled: has, run: () => { if (engine.copySelection(true)) writeClipboard(); } },
     { id: 'paste', label: 'Paste', keys: ['Mod+V'], run: () => void pasteFromMenu() },
-    { id: 'paste-in-place', label: 'Paste in Place', keys: ['Shift+Mod+V'], run: () => void pasteFromMenu() },
+    { id: 'paste-in-place', label: 'Paste in Place', keys: ['Shift+Mod+V'], run: () => void pasteFromMenu(null, true) },
+    { id: 'new-from-clipboard', label: 'New from Clipboard', run: () => void newFromClipboard() },
     { id: 'paste-into', label: 'Paste Into', keys: ['Alt+Shift+Mod+V'], enabled: selected, run: () => void pasteFromMenu(false) },
     { id: 'paste-outside', label: 'Paste Outside', enabled: selected, run: () => void pasteFromMenu(true) },
     { id: 'purge-clipboard', label: 'Clipboard', enabled: () => !!engine.clipboard, run: () => { if (engine.purgeClipboard()) toast('Cleared the clipboard.'); } },
     { id: 'save-history-log', label: 'Save History Log...', enabled: () => historyLog.count > 0, run: () => void deliverFile(new Blob([historyLog.text()], { type: 'text/plain' }), 'formvis-history-log.txt') },
     { id: 'clear-history-log', label: 'Clear History Log', enabled: () => historyLog.count > 0, run: () => { const n = historyLog.count; historyLog.clear(); toast(`Cleared ${n} history log entries.`); } },
     { id: 'purge-undo', label: 'Undo', enabled: () => !!engine.current?.history.canRedo, run: () => { const n = engine.purgeUndo(); if (n) toast(`Purged ${n} undone ${n === 1 ? 'step' : 'steps'}.`); } },
-    { id: 'purge-histories', label: 'Histories', enabled: () => !!engine.current && engine.historySteps.names.length > 0, run: () => { void confirmAction('Purge histories?', 'This clears the undo and redo history of this document, keeping its current state and snapshots. It cannot be undone.', 'Purge', true).then((ok) => { if (ok) toast(`Purged ${engine.purgeHistories(false)} history steps.`); }); } },
+    { id: 'purge-histories', label: 'Histories', enabled: () => engine.projects.some((q) => q.history.steps.names.length > 0), run: () => { const docs = engine.projects.length; void confirmAction('Purge histories?', `This clears the undo and redo history of ${docs === 1 ? 'this document' : `every open document (${docs})`}, keeping ${docs === 1 ? 'its' : 'their'} current state and snapshots. It cannot be undone.`, 'Purge', true).then((ok) => { if (ok) toast(`Purged ${engine.purgeHistories(true)} history steps.`); }); } },
     {
       id: 'clean-working-files', label: 'Working Files', enabled: () => true,
       run: async () => {
@@ -3861,7 +3938,7 @@ export function startApp(): void {
   const filterGroup = (group: LibGroup, core: string[]): string[] => [...core, ...libInGroup(group).map((f) => `filter-${f.id}`)].sort((a, b) => filterName(a).localeCompare(filterName(b)));
   const drawnFirst = ['filter-flame', 'filter-pictureFrame', 'filter-tree'];
   const menus: MenuDef[] = [
-    { label: 'File', items: () => ['new', 'open', 'open-as', 'import', 'import-notes', 'import-video', 'create-video-timeline', 'place-embedded', 'place-linked', 'place-3d', 'open-svg-layers', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.slice(0, 10).map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'save-copy', 'revert', 'download-project', 'package', '-',
+    { label: 'File', items: () => ['new', 'new-from-clipboard', 'open', 'open-as', 'import', 'import-notes', 'import-video', 'create-video-timeline', 'place-embedded', 'place-linked', 'place-3d', 'open-svg-layers', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.slice(0, 10).map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'save-copy', 'revert', 'download-project', 'package', '-',
       { label: 'Export', items: ['quick-export', 'export-as', 'export-preferences', 'save-for-web', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-tiff-layers', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'export-paths-ai', 'assemble-tiles', '-', 'export-layers', 'export-layer-comps', 'export-selection-mask', 'generate-image-assets', 'image-assets-on-save', 'export-luts', 'export-artboards-files', 'export-data-sets', 'export-artboards'] },
       { label: 'Automate', items: ['actions', 'action-stop', 'batch', 'create-droplet', '-', 'fit-image', 'conditional-mode-change', 'contact-sheet', 'crop-straighten-photos', 'photomerge', 'merge-hdr'] },
       { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'image-processor', 'script-events', 'load-files-stack', 'stack-statistics', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'reopen-closed-tab', 'close-all', 'close-others'] },
@@ -3875,7 +3952,7 @@ export function startApp(): void {
       { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-duotone', 'mode-indexed', 'mode-multichannel', 'color-table', 'mode-rgb', 'mode-cmyk', 'mode-lab', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
       'image-size', 'canvas-size', { label: 'Pixel Aspect Ratio', items: ['par-square', 'par-d1-ntsc', 'par-d1-pal', 'par-d1-ntsc-wide', 'par-d1-pal-wide', 'par-anamorphic', 'par-hdv', '-', 'par-custom'] }, { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'trim', 'reveal-all', 'trap', '-', 'frequency-separation', 'duplicate-image', '-', { label: 'Variables', items: ['variables-define', 'data-sets-import', 'data-set-apply'] }, '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }, '-', { label: 'Analysis', items: ['measure-scale', 'measure-record', 'measure-data-points', 'measure-scale-marker', 'measure-log'] }] },
     { label: 'Layer', items: [
-      { label: 'New', items: ['new-layer-dialog', 'layer-from-background', 'background-from-layer', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard-dialog', 'artboard-from-group', 'artboard-from-layers', 'frame-from-layers', '-', 'duplicate', 'layer-via-cut', '-', 'new-relight-layer'] }, 'artboard-options', '-',
+      { label: 'New', items: ['new-layer-dialog', 'new-dodge-burn-layer', 'layer-from-background', 'background-from-layer', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard-dialog', 'artboard-from-group', 'artboard-from-layers-dialog', 'frame-from-layers', '-', 'duplicate', 'layer-via-cut', '-', 'new-relight-layer'] }, 'artboard-options', '-',
       { label: 'New Fill Layer', items: ['new-fill-solid', 'new-fill-gradient', 'new-fill-pattern'] }, { label: 'Video Layers', items: ['video-layer-from-file', 'video-layer-blank', '-', 'video-insert-blank-frame', 'video-duplicate-frame', 'video-delete-frame', '-', 'video-restore-frame', 'video-restore-all', 'video-replace-footage', 'video-interpret-footage', 'video-rasterize'] },{ label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'edit-relight', 'layer-content-options', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, '-',
       'duplicate-dialog', { label: 'Delete', items: ['delete-layer', 'delete-hidden'] }, 'rename', 'layer-quick-export-png', '-',
       { label: 'Layer Style', items: ['style-blending', 'style-bevel', 'style-stroke', 'style-inner-shadow', 'style-inner-glow', 'style-satin', 'style-color-overlay', 'style-gradient-overlay', 'style-pattern-overlay', 'style-outer-glow', 'style-drop-shadow', '-',
@@ -3916,7 +3993,7 @@ export function startApp(): void {
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'os-full-screen', 'toggle-panels', 'rail-columns', 'interface-rtl', { label: 'Pasteboard', items: ['pasteboard-default', 'pasteboard-black', 'pasteboard-dark', 'pasteboard-mid', 'pasteboard-light'] }] },
     { label: 'Plugins', items: () => { const ids = pluginHost.commandIds(); return ['manage-plugins', ...(ids.length ? ['-', ...ids] : [])]; } },
     { label: 'Window', items: [{ label: 'Arrange', items: ['new-window', 'float-window', 'float-all-windows', 'arrange-cascade', '-', 'arrange-tabs','arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-4up', 'arrange-6up', 'arrange-tile', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.connect.open', 'terminal.toggle', 'terminal.new', 'script-console', 'brush-settings', { label: 'Brush Size', items: ['brush-size-up', 'brush-size-down', 'brush-harder', 'brush-softer'] }, 'paragraph-styles', 'character-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-channels', 'panel-color', 'panel-tools', 'panel-properties-col', 'merge-columns', 'toggle-dock-panels', '-', { label: 'Workspace', items: ['workspace-pixelart', '-', 'new-workspace', 'delete-workspace'] }, 'reset-panels', '-', 'next-document', 'previous-document', '-', 'theme-sync-system', 'next-appearance', 'interface-darken', 'interface-lighten', '-', 'reload-window'] },
-    { label: 'Help', items: ['help', 'whats-new', '-', 'shortcuts', 'copy-error-log', 'benchmark', 'record-performance', 'simulate-gpu-loss', '-', 'help-github', 'report-issue', '-', 'check-for-updates', 'about'] },
+    { label: 'Help', items: ['help', 'whats-new', '-', 'shortcuts', 'copy-error-log', 'copy-engine-log', 'benchmark', 'record-performance', 'simulate-gpu-loss', '-', 'help-github', 'report-issue', '-', 'check-for-updates', 'system-info', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);
   // The desktop app on macOS puts these menus in the system menu bar, as the target's (Phase 21); the in-window bar then hides.
@@ -4028,6 +4105,21 @@ export function startApp(): void {
     window.dispatchEvent(new Event('resize'));
   });
 
+  // Number fields everywhere: Shift with the up and down arrows steps ten times as far; Return or Escape leaves the field.
+  document.addEventListener('keydown', (e) => {
+    const f = e.target instanceof HTMLInputElement && e.target.type === 'number' ? e.target : null;
+    if (!f || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || !e.shiftKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+    e.preventDefault();
+    try { if (e.key === 'ArrowUp') f.stepUp(10); else f.stepDown(10); } catch { return; }
+    f.dispatchEvent(new Event('input', { bubbles: true }));
+    f.dispatchEvent(new Event('change', { bubbles: true }));
+  }, true);
+  document.addEventListener('keydown', (e) => {
+    const f = e.target instanceof HTMLInputElement && e.target.type === 'number' ? e.target : null;
+    if (!f || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || (e.key !== 'Enter' && e.key !== 'Escape')) return;
+    f.blur();
+  });
+
   window.addEventListener('keydown', (e) => {
     if (anyDialogOpen() || e.defaultPrevented) return;
     if (menubar.isOpen || contextMenu.isOpen) {
@@ -4101,7 +4193,7 @@ export function startApp(): void {
     e.preventDefault();
     dragDepth = 0;
     setHidden(drop, true);
-    const at = stage.docPoint(e.clientX, e.clientY) ?? undefined;
+    const at = stage.docPoint(e.clientX, e.clientY) ?? undefined, ctrlDrop = e.ctrlKey || e.metaKey;
     const items = Array.from(e.dataTransfer?.items ?? []).filter((i) => i.kind === 'file');
     const folders: FileSystemEntry[] = [];
     const files: File[] = [];
@@ -4117,7 +4209,7 @@ export function startApp(): void {
         const out = { files: [] as File[], paths: [] as string[] };
         try { await readEntry(entry, '', out); await openFolder(out.files, out.paths); } catch (err) { toast(message(err), 'error'); }
       }
-      if (files.length) await importFiles(files, at);
+      if (files.length) await importFiles(files, at, ctrlDrop ? 'documents' : 'layers');
     })();
   });
 

@@ -5,7 +5,11 @@ export interface Capabilities { pixelBudget?: number; memory?: number;
   decode: { heic: boolean; tiff: boolean; engine: string; raw?: boolean; rawEngine?: string };
   removeBackground: { ml: boolean; lite: boolean; default: 'ml' | 'lite' | null; model: string };
   dataDir: string;
+  switches?: { portable: boolean; noComfy: boolean; tiles: string; logLevel: string };
+  logFile?: string;
 }
+/** The engine process's memory in bytes as the operating system counts it; a key is missing when the system does not say. */
+export interface EngineMetrics { pid: number; uptime: number; total: number; rss?: number; peak?: number; private?: number; available?: number; threads?: number }
 export interface LibraryItem { name: string; modified: number; size: number }
 export interface OpenedProject { session: string; name: string; manifest: Record<string, unknown>; images: Record<string, string>; version?: string; path?: string }
 /** The library's folder (1.58.8, L13): where it is, the default, whether it is fixed by the engine's environment, and
@@ -132,6 +136,14 @@ export const api = {
   },
   async capabilities(): Promise<Capabilities | null> {
     return await (caps ??= probe());
+  },
+  /** Help > System Info: the engine's working set, peak and private bytes; null when the engine is offline. */
+  async metrics(): Promise<EngineMetrics | null> {
+    try { return (await (await request('/metrics')).json()) as EngineMetrics; } catch { return null; }
+  },
+  /** The end of the engine's log file and where the file is; null when the engine is offline. */
+  async engineLog(lines = 300): Promise<{ path: string; text: string } | null> {
+    try { return (await (await request(`/log?lines=${lines}`)).json()) as { path: string; text: string }; } catch { return null; }
   },
   /** Tell the engine which compute device to use (Phase 18.6); its report of what it uses and why, or null offline. */
   /** Large pictures (1.52.7): kept by the engine, then opened reduced, as a region or as tiles. */
