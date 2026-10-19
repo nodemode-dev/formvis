@@ -9,6 +9,7 @@ export interface Capabilities { pixelBudget?: number; memory?: number;
   dataDir: string;
   switches?: { portable: boolean; noComfy: boolean; tiles: string; logLevel: string };
   logFile?: string;
+  runtime?: { python: string; system: string; machine: string };
 }
 /** The engine process's memory in bytes as the operating system counts it; a key is missing when the system does not say. */
 export interface EngineMetrics { pid: number; uptime: number; total: number; rss?: number; peak?: number; private?: number; available?: number; threads?: number }
@@ -20,15 +21,26 @@ export interface LibraryFolder { folder: string; default: string; custom: boolea
 export interface FilePart { name: string; blob: Blob }
 /** Sign-in for the user's own ComfyUI server; the secret is kept by the engine and only whether it is set comes back. */
 export interface ComfyAuth { mode: 'none' | 'basic' | 'bearer' | 'header'; user: string; header: string; hasSecret: boolean; store: 'system' | 'file' }
+/** What the ComfyUI Test reports: the server, its devices and queue, its node packs, and each kept recipe's missing nodes and model files. */
+export interface ComfyProbe {
+  running: boolean; detail?: string; ms?: number; version?: string; python?: string; pytorch?: string; os?: string;
+  devices?: Array<{ name: string; type: string; vram: number; free: number }>;
+  queue?: { running: number; pending: number };
+  packs?: Array<{ name: string; version?: string }>;
+  recipes?: Array<{ name: string; nodes: number; models: number; missing_nodes: string[]; missing_models: Array<{ node: string; input: string; name: string }> }>;
+}
 /** The helper model folder: in use now, saved for the next start, the environment override, and whether a restart is needed. */
 export interface ModelsFolder { active: string; saved: string; env: string; restart: boolean }
 /** A file in the exports folder (1.87.0), for Home's Outputs. */
 export interface OutputItem { name: string; path: string; modified: number; size: number; kind: string }
 /** Marks the calls that read or write files by path (1.87.0): the engine answers them only for formvis's own window. */
 const LOCAL = { 'X-Formvis': '1' };
-export interface GenerativeStatus { configured: boolean; source: 'environment' | 'settings' | null; fillModel: string; eraseModel: string; upscaleModel: string }
+export interface GenerativeStatus { configured: boolean; source: 'environment' | 'settings' | null; last4?: string; fillModel: string; eraseModel: string; upscaleModel: string }
 /** A generation provider beside fal (1.58.4, L7): OpenAI, Google, Black Forest Labs or Ideogram. */
-export interface ProviderStatus { id: string; name: string; model: string; fill: boolean; configured: boolean; source: 'environment' | 'settings' | null }
+export interface ProviderStatus { id: string; name: string; model: string; fill: boolean; configured: boolean; source: 'environment' | 'settings' | null; last4?: string }
+export interface HfToken { hasKey: boolean; last4: string; store: 'system' | 'file' }
+export interface ModelsScan { scanned: number; linked: string[]; ready: string[] }
+export interface LocalFiles { dataDir: string; folders: Array<{ id: string; label: string; path: string; files: number; bytes: number }>; unreferenced: { files: number; bytes: number } }
 
 export interface ProfileInfo { name: string; space: string; tac: number | null; blackLimit: number | null; blackAtMid: number | null; generation: string | null; deviceClass?: string | null; pcs?: string | null; version?: string | null; copyright?: string | null; size?: number }
 
@@ -213,14 +225,46 @@ export const api = {
   async saveProviderKey(id: string, key: string): Promise<ProviderStatus[]> {
     return (await (await request(`/generative/providers/${id}/key`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key }) })).json()) as ProviderStatus[];
   },
+  async forgetProviderKey(id: string): Promise<ProviderStatus[]> {
+    return (await (await request(`/generative/providers/${id}/key`, { method: 'DELETE' })).json()) as ProviderStatus[];
+  },
+  /** The Hugging Face token for gated helper models: whether one is kept and its last four characters. */
+  async hfToken(): Promise<HfToken | null> {
+    try { return (await (await request('/models/token')).json()) as HfToken; } catch { return null; }
+  },
+  async hfTokenSave(token: string | null, forget = false): Promise<HfToken> {
+    return (await (await request('/models/token', { method: 'PUT', headers: { ...LOCAL, 'Content-Type': 'application/json' }, body: JSON.stringify({ token, forget }) })).json()) as HfToken;
+  },
+  /** Scan: links the helper models found under a folder (a ComfyUI models folder) into the helper model folder. */
+  async modelsScan(path: string): Promise<ModelsScan> {
+    return (await (await request('/models/scan', { method: 'POST', headers: { ...LOCAL, 'Content-Type': 'application/json' }, body: JSON.stringify({ path }) })).json()) as ModelsScan;
+  },
+  /** Settings > Local files: each folder formvis keeps files in with its size, and what nothing refers to. */
+  async localFiles(): Promise<LocalFiles | null> {
+    try { return (await (await request('/localfiles/stats')).json()) as LocalFiles; } catch { return null; }
+  },
+  /** Preferences > Interface > Skins: the window skins in the data folder's skins folder, and the files refused with why. */
+  async skins(): Promise<{ folder: string; skins: Array<{ id: string; label: string; light: boolean; version: string; author: string; vars: Record<string, string> }>; errors: Array<{ file: string; error: string }> } | null> {
+    try { return (await (await request('/skins')).json()) as { folder: string; skins: Array<{ id: string; label: string; light: boolean; version: string; author: string; vars: Record<string, string> }>; errors: Array<{ file: string; error: string }> }; } catch { return null; }
+  },
+  async localFilesClean(): Promise<{ removed: number; bytes: number }> {
+    return (await (await request('/localfiles/clean', { method: 'POST' })).json()) as { removed: number; bytes: number };
+  },
+  async revealPath(path: string): Promise<void> {
+    await request('/reveal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path }) });
+  },
 
   /** Run ComfyUI Workflow (1.51.1): uploads the inputs, fills the workflow and queues it. */
   async comfyuiRun(target: string, workflow: string, items: unknown[], parts: FilePart[], prompt: string | null): Promise<{ job: string; references: number; image: string | null; mask: string | null; prompt: boolean }> {
     const res = await request('/comfyui/run', { method: 'POST', body: form({ target, workflow, items: JSON.stringify(items), ...(prompt !== null ? { prompt } : {}) }, parts) });
     return (await res.json()) as { job: string; references: number; image: string | null; mask: string | null; prompt: boolean };
   },
-  async comfyuiJob(job: string, target: string): Promise<{ state: 'queued' | 'running' | 'done' | 'failed'; ahead?: number; images?: Array<{ filename: string; subfolder: string }>; detail?: string }> {
-    return (await (await request(`/comfyui/job/${encodeURIComponent(job)}?target=${encodeURIComponent(target)}`)).json()) as { state: 'queued' | 'running' | 'done' | 'failed'; ahead?: number; images?: Array<{ filename: string; subfolder: string }>; detail?: string };
+  async comfyuiJob(job: string, target: string): Promise<{ state: 'queued' | 'running' | 'done' | 'failed'; ahead?: number; images?: Array<{ filename: string; subfolder: string }>; detail?: string; progress?: { value: number; max: number } }> {
+    return (await (await request(`/comfyui/job/${encodeURIComponent(job)}?target=${encodeURIComponent(target)}`)).json()) as { state: 'queued' | 'running' | 'done' | 'failed'; ahead?: number; images?: Array<{ filename: string; subfolder: string }>; detail?: string; progress?: { value: number; max: number } };
+  },
+  /** Test (SC-AI-0146): the ComfyUI at `target` in detail, and what each kept recipe needs that it lacks. */
+  async comfyuiProbe(target: string, recipes: Array<{ name: string; workflow: string }> = []): Promise<ComfyProbe | null> {
+    try { return (await (await request('/comfyui/probe', { method: 'POST', body: form({ target, recipes: JSON.stringify(recipes) }, []) })).json()) as ComfyProbe; } catch { return null; }
   },
   async comfyuiImage(target: string, filename: string, subfolder: string): Promise<Blob> {
     return (await request(`/comfyui/image?target=${encodeURIComponent(target)}&filename=${encodeURIComponent(filename)}&subfolder=${encodeURIComponent(subfolder)}`)).blob();
@@ -287,11 +331,12 @@ export const api = {
     return (await (await request('/generative/key', { method: 'DELETE' })).json()) as GenerativeStatus;
   },
   /** The filled image for `image` with white in `mask` marking what to fill; an empty prompt removes. */
-  async generativeFill(image: Blob, mask: Blob, prompt: string, provider = 'fal'): Promise<Blob> {
+  async generativeFill(image: Blob, mask: Blob, prompt: string, provider = 'fal', seed?: number): Promise<Blob> {
     const f = new FormData();
     f.append('image', image, 'image.png');
     f.append('mask', mask, 'mask.png');
     f.append('prompt', prompt);
+    if (provider === 'fal' && seed !== undefined) f.append('seed', String(seed));   // fal's fill with a prompt takes a seed
     if (provider !== 'fal') f.append('provider', provider);   // another provider's fill (36.12), the engine's /fill takes it since 1.58.4
     return (await request('/generative/fill', { method: 'POST', body: f })).blob();
   },
@@ -470,6 +515,14 @@ export const api = {
   },
   async bandsReadRows(key: string, rows: number): Promise<ArrayBuffer> {
     return (await request(`/bands/read/${key}?rows=${rows}`)).arrayBuffer();
+  },
+  /** Preferences > Scratch Disks: the folder the undo store and giant layers' tiles are kept in, its free space, and the default. */
+  async scratch(): Promise<{ folder: string; default: string; free: number; custom: boolean } | null> {
+    try { return (await (await request('/undo/scratch')).json()) as { folder: string; default: string; free: number; custom: boolean }; } catch { return null; }
+  },
+  /** New undo tiles go to `folder` (empty: the data folder); the engine says when the folder cannot be written. */
+  async setScratch(folder: string): Promise<{ folder: string; default: string; free: number; custom: boolean }> {
+    return (await (await request('/undo/scratch', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ folder }) })).json()) as { folder: string; default: string; free: number; custom: boolean };
   },
   /** The engine's undo store (1.60.8, DEV_PLAN 26.3): bytes kept on its disk under a key, given back, or forgotten. */
   async undoPut(bytes: Uint8Array<ArrayBuffer>): Promise<string> {

@@ -25,6 +25,8 @@ export class PromptImprover {
     this.field.addEventListener('input', () => this.history.onChange());
     this.el.append(this.template, this.go, this.undo, this.stepBack, this.stepOn, this.note);
     this.go.addEventListener('click', () => void this.improve());
+    (this.field as HTMLElement).addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'u') { e.preventDefault(); if (!this.go.disabled) void this.improve(); } });
+    this.go.title = 'Rewrite the prompt with the language model in Preferences (Ctrl+U in the prompt)';
     this.undo.addEventListener('click', () => { if (this.original !== null) { this.history.set(this.original); this.original = null; setHidden(this.undo, true); setText(this.note, 'Restored.'); } });
     this.field.addEventListener('input', () => { this.original = null; setHidden(this.undo, true); });
     this.refresh(preferred);

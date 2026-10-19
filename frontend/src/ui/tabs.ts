@@ -5,8 +5,23 @@ import { icon } from './icons';
 export class Tabs {
   private frame = 0;                       // a pending animation frame
   private activeId: string | null = null;
+  /** Pinned documents sit first in the strip, show a pin where the close button is, and are kept by Close All and Close Others. */
+  private readonly pinnedIds = new Set<string>();
 
-  constructor(private readonly strip: HTMLElement, private readonly engine: Engine, private readonly requestClose: (id: string) => void) {
+  isPinned(id: string): boolean { return this.pinnedIds.has(id); }
+
+  togglePin(id: string): void {
+    const list = this.engine.projects, at = list.findIndex((p) => p.id === id);
+    if (at < 0) return;
+    if (!this.pinnedIds.delete(id)) this.pinnedIds.add(id);
+    const [moved] = list.splice(at, 1);
+    let to = 0;
+    while (to < list.length && this.pinnedIds.has(list[to].id)) to++;
+    list.splice(to, 0, moved);
+    this.engine.emit('projects', null);
+  }
+
+  constructor(private readonly strip: HTMLElement, private readonly engine: Engine, private readonly requestClose: (id: string) => void, onMenu?: (id: string, x: number, y: number) => void) {
     engine.on('projects', () => this.queue());
     engine.on('history', () => this.queue());
     const tabOf = (e: Event): HTMLElement | null => (e.target as HTMLElement).closest<HTMLElement>('.cv-tab[data-key]');
@@ -22,7 +37,14 @@ export class Tabs {
       const t = tabOf(e);
       if (!t) return;
       e.preventDefault();
-      this.requestClose(t.dataset.key as string);
+      if (!this.pinnedIds.has(t.dataset.key as string)) this.requestClose(t.dataset.key as string);
+    });
+    strip.addEventListener('contextmenu', (e) => {
+      const t = tabOf(e);
+      if (!t || !onMenu) return;
+      e.preventDefault();
+      this.engine.switchTo(t.dataset.key as string);
+      onMenu(t.dataset.key as string, e.clientX, e.clientY);
     });
     strip.addEventListener('click', (e) => {
       if (!(e.target as HTMLElement).closest('.cv-tab-close')) return;
@@ -40,7 +62,7 @@ export class Tabs {
       if (!moving) { if (Math.abs(e.clientX - x0) < 6) return; moving = true; setClass(tab, 'is-dragging', true); }
       const over = Array.from(this.strip.children).find((c) => { const r = c.getBoundingClientRect(); return e.clientX >= r.left && e.clientX < r.right; }) as HTMLElement | undefined;
       const to = over?.dataset.key, list = this.engine.projects;
-      if (!to || to === id) return;
+      if (!to || to === id || this.pinnedIds.has(to) !== this.pinnedIds.has(id)) return;
       const from = list.findIndex((p) => p.id === id), at = list.findIndex((p) => p.id === to);
       if (from < 0 || at < 0) return;
       list.splice(at, 0, list.splice(from, 1)[0]);
@@ -65,6 +87,7 @@ export class Tabs {
 
   private render(): void {
     const current = this.engine.current;
+    for (const id of this.pinnedIds) if (!this.engine.projects.some((p) => p.id === id)) this.pinnedIds.delete(id);
     // The tabs after one that arrives or leaves, and the new-document button after the strip, are held where they were
     // by a transform and eased into place (FLIP, as the Layers rows since 1.38.0), so a document that opens with no
     // click just before it (a drop, an import finishing) does not make the bar jump; browsers do not count movement by
@@ -75,7 +98,7 @@ export class Tabs {
     patchList(this.strip, this.engine.projects, {
       key: (p) => p.id,
       create: (p) => {
-        const n = el(`<div class="cv-tab" role="tab"><span class="cv-tab-dot"></span><span class="cv-tab-name"></span><span class="cv-tab-mode" title="RGB, 8 bits a channel">RGB/8</span><button class="cv-tab-close" type="button" aria-label="Close tab">${icon('close', 12)}</button></div>`);
+        const n = el(`<div class="cv-tab" role="tab"><span class="cv-tab-pin">${icon('pin', 11)}</span><span class="cv-tab-dot"></span><span class="cv-tab-name"></span><span class="cv-tab-mode" title="RGB, 8 bits a channel">RGB/8</span><button class="cv-tab-close" type="button" aria-label="Close tab">${icon('close', 12)}</button></div>`);
         n.dataset.key = p.id;
         this.update(n, p, current);
         return n;
@@ -118,6 +141,7 @@ export class Tabs {
     const active = !!current && p.id === current.id;
     setClass(n, 'is-active', active);
     setClass(n, 'is-dirty', !!p.modified);
+    setClass(n, 'is-pinned', this.pinnedIds.has(p.id));
     const sel = active ? 'true' : 'false';
     if (n.getAttribute('aria-selected') !== sel) n.setAttribute('aria-selected', sel);
     setTitle(n, p.libraryName ? `${p.name} · saved in the library` : `${p.name} · not saved yet`);

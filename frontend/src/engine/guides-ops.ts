@@ -153,7 +153,7 @@ export function updateSlice(host: GuideHost, id: string, patch: Partial<Omit<Doc
     const w = Math.max(1, Math.min(d.width, Math.round(patch.w ?? s.w))), h = Math.max(1, Math.min(d.height, Math.round(patch.h ?? s.h)));
     const x = Math.max(0, Math.min(d.width - w, Math.round(patch.x ?? s.x))), y = Math.max(0, Math.min(d.height - h, Math.round(patch.y ?? s.y)));
     const next = { ...s, ...patch, x, y, w, h };
-    return next.name === s.name && next.url === s.url && next.alt === s.alt && x === s.x && y === s.y && w === s.w && h === s.h ? s : next;
+    return next.name === s.name && next.url === s.url && next.alt === s.alt && next.kind === s.kind && next.target === s.target && next.message === s.message && next.cell === s.cell && next.bg === s.bg && x === s.x && y === s.y && w === s.w && h === s.h ? s : next;
   }));
 }
 

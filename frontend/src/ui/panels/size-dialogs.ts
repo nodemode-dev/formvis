@@ -1,7 +1,8 @@
-import { clamp, type Engine, type RGB, type Transform } from '../../engine';
+import { clamp, LIMITS, type Engine, type ResampleMethod, type RGB, type Transform } from '../../engine';
 import { Dialog } from '../dialogs';
 import { el, q, setClass, setHidden, setText } from '../dom';
 import { toast } from '../toast';
+import { loadPrefs } from '../prefs';
 import { checkRow, colorRow, numberRow, selectRow } from './controls';
 
 /** The units a size can be typed in. */
@@ -26,9 +27,12 @@ export class CanvasSizeDialog extends Dialog {
   private w = 1;
   private h = 1;
   private readonly note = el('<p class="cv-note"></p>');
-  private readonly width = numberRow('Width', 0, 30000, 1, (v) => { this.w = this.px(v, true); });
-  private readonly height = numberRow('Height', 0, 30000, 1, (v) => { this.h = this.px(v, false); });
+  private readonly estimate = el('<p class="cv-note"></p>');
+  private readonly width = numberRow('Width', 0, 30000, 1, (v) => { this.w = this.px(v, true); this.follow(true); });
+  private readonly height = numberRow('Height', 0, 30000, 1, (v) => { this.h = this.px(v, false); this.follow(false); });
   private readonly units = selectRow('Units', UNITS, (v) => { this.unit = v as Unit; this.fields(); });
+  private locked = false;
+  private readonly lockRow = checkRow('Constrain proportions', (v) => { this.locked = v; });
   private relative = false;
   private readonly relativeRow = checkRow('Relative', (v) => { this.relative = v; this.sizeBounds(); this.fields(); });
   private readonly fill = selectRow('Extension', [['none', 'Transparent'], ['fg', 'Foreground color'], ['bg', 'Background color'], ['white', 'White'], ['black', 'Black'], ['custom', 'Other color']], (v) => { setHidden(this.custom.el, v !== 'custom'); });
@@ -46,7 +50,7 @@ export class CanvasSizeDialog extends Dialog {
     }
     const anchorRow = el('<div class="cv-field"><span>Anchor</span></div>');
     anchorRow.append(grid);
-    this.body.append(this.note, this.width.el, this.height.el, this.relativeRow.el, this.units.el, anchorRow, this.fill.el, this.custom.el);
+    this.body.append(this.note, this.width.el, this.height.el, this.lockRow.el, this.relativeRow.el, this.units.el, this.estimate, anchorRow, this.fill.el, this.custom.el);
     setHidden(this.custom.el, true);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
@@ -72,6 +76,7 @@ export class CanvasSizeDialog extends Dialog {
     this.relative = false;
     setText(this.note, `Current size: ${d.width} × ${d.height} px`);
     this.units.set('px');
+    this.lockRow.set(this.locked);
     this.relativeRow.set(false);
     this.sizeBounds();
     this.fill.set('none');
@@ -103,6 +108,23 @@ export class CanvasSizeDialog extends Dialog {
     const dw = this.relative ? (d?.width ?? 0) : 0, dh = this.relative ? (d?.height ?? 0) : 0;
     this.width.set(tidy(fromPx(this.w - dw, this.unit, d?.width ?? this.w, res), this.unit));
     this.height.set(tidy(fromPx(this.h - dh, this.unit, d?.height ?? this.h, res), this.unit));
+    this.showEstimate();
+  }
+
+  /** With Constrain proportions on, the other side keeps the current document's proportions. */
+  private follow(horizontal: boolean): void {
+    const d = this.engine.current?.doc;
+    if (this.locked && d) {
+      if (horizontal) this.h = clamp(Math.round(this.w * d.height / d.width), 1, 30000);
+      else this.w = clamp(Math.round(this.h * d.width / d.height), 1, 30000);
+    }
+    this.fields();
+  }
+
+  /** The new canvas in pixels and what one full-size layer of it holds in memory (4 bytes a pixel), against the limit. */
+  private showEstimate(): void {
+    const px = this.w * this.h, mb = px * 4 / 1048576, over = px > LIMITS.pixels || this.w > LIMITS.side || this.h > LIMITS.side;
+    setText(this.estimate, `New canvas: ${this.w} × ${this.h} px · about ${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB per full-size layer${over ? ` · past the ${Math.round(LIMITS.pixels / 1e6)} megapixel limit` : ''}`);
   }
 
   private customColour(): RGB {
@@ -134,14 +156,14 @@ export class ImageSizeDialog extends Dialog {
   private h = 1;
   private res = 72;
   private constrain = true;
-  private sampling: Transform['sampling'] = 'high';
+  private sampling: ResampleMethod = 'high';
   private readonly note = el('<p class="cv-note"></p>');
   private readonly width = numberRow('Width', 0, 30000, 1, (v) => this.setSize(v, true));
   private readonly height = numberRow('Height', 0, 30000, 1, (v) => this.setSize(v, false));
   private readonly units = selectRow('Units', UNITS, (v) => { this.unit = v as Unit; this.fields(); });
   private readonly resolution = numberRow('Resolution (ppi)', 1, 10000, 1, (v) => { this.res = clamp(v, 1, 10000); this.fields(); });
   private readonly lock = checkRow('Constrain proportions', (v) => { this.constrain = v; });
-  private readonly resample = selectRow('Resample', [['high', 'High quality'], ['smooth', 'Smooth'], ['nearest', 'Nearest']], (v) => { this.sampling = v as Transform['sampling']; });
+  private readonly resample = selectRow('Resample', [['high', 'High quality'], ['smooth', 'Smooth'], ['nearest', 'Nearest (hard edges)'], ['bilinear', 'Bilinear'], ['bicubic', 'Bicubic'], ['smoother', 'Bicubic Smoother (enlargement)'], ['sharper', 'Bicubic Sharper (reduction)'], ['lanczos', 'Lanczos']], (v) => { this.sampling = v as ResampleMethod; });
   private resampling = true;
   private readonly resampleOn = checkRow('Resample image', (v) => { this.resampling = v; setHidden(this.resample.el, !v); this.keepPixels(); });
   private scaleStyles = true;
@@ -165,6 +187,7 @@ export class ImageSizeDialog extends Dialog {
     this.res = d.resolution || 72;
     this.unit = 'px';
     this.resampling = true;
+    this.sampling = loadPrefs().interpolation;
     setText(this.note, `Current size: ${d.width} × ${d.height} px at ${this.res} ppi`);
     this.units.set('px');
     this.resolution.set(this.res);

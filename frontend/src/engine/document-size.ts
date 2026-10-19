@@ -4,6 +4,9 @@ import type { Layer, Doc, Transform, Pt } from './types';
 import { Raster } from './surface';
 import type { Project } from './project';
 import { carryMarks } from './guides-ops';
+import { resampleRaster, type ResampleMethod } from './resample';
+
+export type { ResampleMethod } from './resample';
 
 type RGB = { r: number; g: number; b: number };
 
@@ -38,7 +41,9 @@ const scaledDims = (r: Raster, sx: number, sy: number): { w: number; h: number }
   h: Math.max(1, Math.round(r.height * sy)),
 });
 
-const resampled = (src: Raster, w: number, h: number, sampling: 'nearest' | 'smooth' | 'high'): Raster => {
+const resampled = (src: Raster, w: number, h: number, sampling: ResampleMethod): Raster => {
+  const kernel = resampleRaster(src, w, h, sampling);
+  if (kernel) return kernel;
   const out = new Raster(w, h);
   out.ctx.imageSmoothingEnabled = sampling !== 'nearest';
   out.ctx.imageSmoothingQuality = sampling === 'high' ? 'high' : 'medium';
@@ -90,7 +95,7 @@ export function resampleImage(
   host: SizeHost,
   width: number,
   height: number,
-  sampling: 'nearest' | 'smooth' | 'high',
+  sampling: ResampleMethod,
   resolution: number,
   scaleStyles = true,
 ): boolean {
@@ -159,7 +164,7 @@ export function resampleImage(
     const grow = (x: number, y: number): Pt => ({ x: x * sx, y: y * sy });
     const layers = host.carryVectors(scaled, grow);
     p.doc = { ...doc, width, height, resolution, layers, ...host.alphasScaled(doc, width, height, sx, sy, smooth), ...carryMarks(doc, { map: grow, width, height }) };
-    p.selection = null;
+    p.selection = p.selection ? p.selection.scaled(sx, sy, width, height) : null;
     host.carryMeasure(p, doc, 'Image Size', grow);
     return true;
   });

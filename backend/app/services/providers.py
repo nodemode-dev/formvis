@@ -86,7 +86,11 @@ def _key(pid: str) -> tuple[str | None, str | None]:
 
 
 def status() -> list[dict]:
-    return [{"id": pid, "name": s["name"], "model": s["model"], "fill": s["fill"], "configured": _key(pid)[1] is not None, "source": _key(pid)[1]} for pid, s in PROVIDERS.items()]
+    rows = []
+    for pid, s in PROVIDERS.items():
+        key, source = _key(pid)
+        rows.append({"id": pid, "name": s["name"], "model": s["model"], "fill": s["fill"], "configured": source is not None, "source": source, "last4": key[-4:] if key and len(key) >= 8 else ""})
+    return rows
 
 
 def save_key(pid: str, key: str) -> list[dict]:

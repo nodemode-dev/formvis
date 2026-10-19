@@ -36,6 +36,10 @@
 .cv-input:focus { outline: none; border-color: var(--accent-color); }
 .cv-note { color: var(--text-muted); font-size: var(--fs-11); }
 .cv-note-head { color: var(--text-secondary); font-size: var(--fs-11); font-weight: 600; padding-top: var(--space-2); }
+.cv-comfy-report { white-space: pre-line; word-break: break-word; user-select: text; }
+.cv-run-bar { height: 6px; border-radius: var(--radius-sm); background: var(--bg-tertiary); overflow: hidden; }
+.cv-run-bar > i { display: block; height: 100%; width: 0; background: var(--accent-color); transform-origin: left; }
+.cv-run-bar.is-wait > i { width: 30%; opacity: .5; }
 .cv-sysinfo { margin: 0; padding: var(--space-2); max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-word; user-select: text; border: 1px solid var(--border-light); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-secondary); font: var(--fs-11)/1.5 ui-monospace, Menlo, Consolas, monospace; }
 .cv-sysinfo[hidden] { display: none; }
 /* Help > What's New: releases newest first, each addition a row with its Show Me button. */
@@ -70,7 +74,7 @@
 .cv-palette-row.is-off:hover { background: transparent; color: var(--text-secondary); }
 .cv-palette-icon { display: grid; place-items: center; color: var(--text-muted); }
 .cv-palette-empty { position: absolute; top: var(--space-4); left: 0; right: 0; text-align: center; }
-.cv-keys-row { grid-template-columns: minmax(0, 1fr) 210px auto auto; cursor: default; }
+.cv-keys-row { grid-template-columns: minmax(0, 1fr) 210px auto auto auto; cursor: default; }
 .cv-keys-row.is-tool { grid-template-columns: minmax(0, 1fr) 210px; }
 .cv-keys-row .cv-list-name, .cv-keys-row .cv-list-meta { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .cv-keys-row .cv-list-meta { text-align: right; }
@@ -169,6 +173,10 @@
 .cv-nd-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .cv-nd-thumb { height: 84px; background: transparent; }
 .cv-nd-summary { margin-top: 4px; }
+.cv-nd-presetbar { display: flex; gap: 8px; padding-top: 8px; }
+.cv-nd-presetbar > [hidden] { display: none; }
+.cv-nd-colour { width: 40px; height: 30px; padding: 0; border: 1px solid var(--line-2); border-radius: 6px; background: transparent; }
+.cv-nd-colour[hidden] { display: none; }
 /* Unsaved Changes: the question with the name in bold; Don't Save alone at the left (UI_SPEC.md section 7, s24). */
 .cv-save-q { margin: 0 0 6px; color: var(--text-primary); font-size: 17px; }
 .cv-save-q strong { font-weight: 700; }

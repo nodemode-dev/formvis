@@ -1,8 +1,10 @@
-import type { Engine } from '../engine';
+import type { Engine, ResampleMethod } from '../engine';
 import { api, type Capabilities, type LibraryItem } from '../io/api';
 import { saveTemplates, templates } from '../io/prompt-templates';
+import { recipes } from '../io/comfy';
+import { comfyuiProbeText } from './panels/send-to';
 import { LocalModelsSection } from './panels/local-models';
-import { ComfyAuthSection, ModelFolderSection, RecipesSection, TemplateFiles } from './panels/connection-settings';
+import { ApiKeysSection, ComfyAuthSection, HuggingFaceToken, LocalFilesSection, ModelFolderSection, RecipesSection, RenderingSection, SkinsSection, TemplateFiles, UpdatesSection } from './panels/connection-settings';
 import { IMAGE_ACCEPT, PROJECT_ACCEPT } from '../io/images';
 import { PRESET_ACCEPT } from './panels/preset-manager-dialog';
 import { VERSION } from '../version';
@@ -10,20 +12,32 @@ import { comboOf, formatKeys, type Commands } from './commands';
 import { LIMITS, type RGB } from '../engine/types';
 import type { BitmapMethod, DitherKind, ForcedKind, HalftoneShape, PaletteKind } from '../engine/quantize';
 import { parseAct } from './panels/color-table-dialog';
-import { Dialog, confirmAction } from './dialogs';
+import { Dialog, confirmAction, promptName } from './dialogs';
+import { cleanBindings } from './prefs';
 import { el, patchList, q, setClass, setDisabled, setHidden, setText, setValue } from './dom';
 import { languages, onLanguage, setLanguage, t, type Lang } from './i18n';
 import { icon } from './icons';
 import { brandMark } from './brand';
 import { THEMES, readChoice, setAccent, setIntensity, setTheme, themeSwatchesHtml } from './themes';
 import { toast } from './toast';
+import { INTERPOLATIONS, LINE_STYLES, type LineStyle } from './prefs';
 import { CHECKER_COLORS, CHECKER_SIZES, ENGINE_CHOICES, PAINT_CURSORS, PRESSURE_CURVES, RAW_WB_CHOICES, RECOVERY_CHOICES, RULER_UNITS, UI_FONT_SIZES, loadPrefs, recalled, remembered, savePrefs, type CheckerColors, type CheckerSize, type EngineDevice, type PaintCursor, type Prefs, type PressureCurve, type RulerUnits, type UiFontSize } from './prefs';
 import { POWER_CHOICES, RENDERER_CHOICES, type GpuPower, type GpuRenderer } from '../gpu/probe';
 import { checkRow, selectRow, sliderRow } from './panels/controls';
+import { PagePrefsRows } from './panels/page-prefs';
+import { SIZES } from './panels/generate-panel';
 
 /** New Document presets by category (Phase 21, UI_SPEC.md section 4, the target's s02 to s14): name, width, height in
  *  pixels and resolution in ppi; common sizes for each kind of work (the Web set as the target lists it). */
 interface DocPreset { name: string; w: number; h: number; ppi: number }
+/** The person's own presets (New Document > Saved): kept in this browser or window profile. */
+const SAVED_PRESETS_KEY = 'formvis.newDocumentPresets';
+function loadSavedPresets(): DocPreset[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SAVED_PRESETS_KEY) ?? '[]') as unknown;
+    return (Array.isArray(raw) ? raw : []).filter((p): p is DocPreset => !!p && typeof p.name === 'string' && Number.isInteger(p.w) && Number.isInteger(p.h) && p.w >= 1 && p.h >= 1 && Number.isFinite(p.ppi));
+  } catch { return []; }
+}
 const PRESET_GROUPS: ReadonlyArray<{ id: string; label: string; presets: DocPreset[] }> = [
   { id: 'photo', label: 'Photo', presets: [
     { name: 'Landscape 4 × 6', w: 1800, h: 1200, ppi: 300 }, { name: 'Portrait 4 × 6', w: 1200, h: 1800, ppi: 300 }, { name: 'Landscape 5 × 7', w: 2100, h: 1500, ppi: 300 }, { name: 'Portrait 5 × 7', w: 1500, h: 2100, ppi: 300 },
@@ -46,9 +60,14 @@ const PRESET_GROUPS: ReadonlyArray<{ id: string; label: string; presets: DocPres
   { id: 'social', label: 'Social', presets: [
     { name: 'Instagram Square', w: 1080, h: 1080, ppi: 72 }, { name: 'Instagram Portrait', w: 1080, h: 1350, ppi: 72 }, { name: 'Instagram Story', w: 1080, h: 1920, ppi: 72 }, { name: 'Facebook Post', w: 1200, h: 630, ppi: 72 },
     { name: 'X Post', w: 1600, h: 900, ppi: 72 }, { name: 'YouTube Thumbnail', w: 1280, h: 720, ppi: 72 }, { name: 'LinkedIn Banner', w: 1584, h: 396, ppi: 72 }, { name: 'Pinterest Pin', w: 1000, h: 1500, ppi: 72 }] },
+  { id: 'model', label: 'Model Sizes', presets: SIZES.map(([, words, w, h]) => ({ name: words.replace(/ \(.*\)$/, ''), w, h, ppi: 72 })) },
+  { id: 'mine', label: 'Saved', presets: loadSavedPresets() },
 ];
-type Unit = 'px' | 'in' | 'cm' | 'mm';
-const PER_INCH: Record<Unit, number> = { px: 0, in: 1, cm: 2.54, mm: 25.4 };
+type Unit = 'px' | 'in' | 'cm' | 'mm' | 'col';
+const PER_INCH: Record<Unit, number> = { px: 0, in: 1, cm: 2.54, mm: 25.4, col: 25.4 };
+/** Millimeters in n columns and back, from Preferences > Units & Rulers: n widths and n minus 1 gutters. */
+const columnsToMm = (n: number): number => { const p = loadPrefs(); return n * p.colWidth + (n - 1) * p.gutter; };
+const mmToColumns = (mm: number): number => { const p = loadPrefs(); return (mm + p.gutter) / (p.colWidth + p.gutter); };
 
 /** The color modes New Document offers, each with its label, its channels and the bit depths it allows: Bitmap one bit; Grayscale and RGB 8, 16 or 32; CMYK and Lab 8 or 16 (the engine keeps 32 bits for RGB and
  *  Grayscale: Image > Mode > 32 Bits/Channel brings CMYK and Lab to RGB first). */
@@ -74,9 +93,12 @@ export class NewCanvasDialog extends Dialog {
   private readonly name = el<HTMLInputElement>('<input class="cv-nd-input" type="text" value="Untitled-1" spellcheck="false" aria-label="Name">');
   private readonly wIn = el<HTMLInputElement>('<input class="cv-nd-input cv-nd-mono" type="text" inputmode="decimal" aria-label="Width">');
   private readonly hIn = el<HTMLInputElement>('<input class="cv-nd-input cv-nd-mono" type="text" inputmode="decimal" aria-label="Height">');
-  private readonly unit = el<HTMLSelectElement>('<select class="cv-nd-input cv-nd-mono" aria-label="Unit"><option value="px">px</option><option value="in">in</option><option value="cm">cm</option><option value="mm">mm</option></select>');
+  private readonly unit = el<HTMLSelectElement>('<select class="cv-nd-input cv-nd-mono" aria-label="Unit"><option value="px">px</option><option value="in">in</option><option value="cm">cm</option><option value="mm">mm</option><option value="col">columns</option></select>');
   private readonly res = el<HTMLInputElement>('<input class="cv-nd-input cv-nd-mono" type="text" inputmode="decimal" value="72" aria-label="Resolution">');
-  private readonly fill = el<HTMLSelectElement>('<select class="cv-nd-input" aria-label="Background Contents"><option value="white">White</option><option value="background">Background Color</option><option value="transparent">Transparent</option></select>');
+  private readonly fill = el<HTMLSelectElement>('<select class="cv-nd-input" aria-label="Background Contents"><option value="white">White</option><option value="background">Background Color</option><option value="black">Black</option><option value="custom">Custom...</option><option value="transparent">Transparent</option></select>');
+  private readonly fillColour = el<HTMLInputElement>('<input class="cv-nd-colour" type="color" value="#808080" aria-label="Custom background colour" hidden>');
+  private readonly savePreset = el<HTMLButtonElement>('<button class="cv-btn cv-btn-ghost" type="button" title="Keeps the current size and resolution under the name above">Save as Preset</button>');
+  private readonly deletePreset = el<HTMLButtonElement>('<button class="cv-btn cv-btn-ghost" type="button" title="Removes the chosen saved preset" hidden>Delete Preset</button>');
   private readonly artboards = el<HTMLInputElement>('<input type="checkbox" aria-label="Artboards">');
   private readonly link = el<HTMLButtonElement>(`<button class="cv-nd-link is-on" type="button" title="Keep the proportions" aria-pressed="true">${icon('link', 14)}</button>`);
   private readonly cards = el('<div class="cv-nd-cards"></div>');
@@ -129,14 +151,19 @@ export class NewCanvasDialog extends Dialog {
     const wBox = label('Width', this.wIn), hBox = label('Height', this.hIn), uBox = label('Unit', this.unit);
     const sizeRow = el('<div class="cv-nd-sizes"></div>');
     sizeRow.append(wBox, this.link, hBox, uBox);
-    side.append(label('Name', this.name), sizeRow, pair(label('Resolution', this.res, el('<span class="cv-nd-unit">ppi</span>')), label('Orientation', seg)), pair(label('Color Mode', mode), label('&nbsp;', depth)), label('Background Contents', this.fill), ab, this.summary);
+    side.append(label('Name', this.name), sizeRow, pair(label('Resolution', this.res, el('<span class="cv-nd-unit">ppi</span>')), label('Orientation', seg)), pair(label('Color Mode', mode), label('&nbsp;', depth)), label('Background Contents', this.fill, this.fillColour), ab, this.summary, el('<div class="cv-nd-presetbar"></div>'));
+    const bar = q(side, '.cv-nd-presetbar');
+    this.savePreset.addEventListener('click', () => this.saveCurrent());
+    this.deletePreset.addEventListener('click', () => this.deleteCurrent());
+    bar.append(this.savePreset, this.deletePreset);
+    this.fill.addEventListener('change', () => setHidden(this.fillColour, this.fill.value !== 'custom'));
     const grid = el('<div class="cv-nd-grid"></div>');
     grid.append(cats, mid, side);
     this.body.appendChild(grid);
     this.button('Cancel', 'ghost', () => this.close());
     this.createBtn = this.button('Create', 'primary', () => void this.create());
     this.link.addEventListener('click', () => { const on = !this.link.classList.contains('is-on'); this.link.classList.toggle('is-on', on); this.link.setAttribute('aria-pressed', String(on)); });
-    const fromUnit = (v: number): number => { const u = this.unit.value as Unit, r = this.ppi(); return Math.max(1, Math.round(u === 'px' ? v : (v / PER_INCH[u]) * r)); };
+    const fromUnit = (v: number): number => { const u = this.unit.value as Unit, r = this.ppi(); return Math.max(1, Math.round(u === 'px' ? v : u === 'col' ? (columnsToMm(v) / 25.4) * r : (v / PER_INCH[u]) * r)); };
     this.wIn.addEventListener('change', () => { const n = parseFloat(this.wIn.value); if (!Number.isFinite(n)) return this.sync(); const w = fromUnit(n); this.px = { w, h: this.linked() ? Math.max(1, Math.round((w * this.px.h) / this.px.w)) : this.px.h }; this.picked = null; this.sync(); });
     this.hIn.addEventListener('change', () => { const n = parseFloat(this.hIn.value); if (!Number.isFinite(n)) return this.sync(); const h = fromUnit(n); this.px = { h, w: this.linked() ? Math.max(1, Math.round((h * this.px.w) / this.px.h)) : this.px.w }; this.picked = null; this.sync(); });
     this.unit.addEventListener('change', () => this.sync());
@@ -151,13 +178,46 @@ export class NewCanvasDialog extends Dialog {
   private pick(p: DocPreset): void {
     this.picked = p;
     this.px = { w: p.w, h: p.h };
-    this.res.value = String(p.ppi);
+    // Preferences > Units & Rulers: the print and screen resolution a preset opens at (a saved preset keeps its own)
+    const prefs = loadPrefs(), own = this.savedGroup().presets.includes(p);
+    this.res.value = String(own ? p.ppi : p.ppi === 300 ? prefs.printRes : p.ppi === 72 ? prefs.screenRes : p.ppi);
     this.unit.value = 'px';
     this.sync();
   }
 
+  private savedGroup(): { presets: DocPreset[] } { return PRESET_GROUPS.find((g) => g.id === 'mine') as { presets: DocPreset[] }; }
+
+  /** Keeps the current size and resolution as a saved preset named as the Name field says; the same name is replaced. */
+  private saveCurrent(): void {
+    const name = this.name.value.trim();
+    if (!name) { toast('Give the document a name first; the preset is kept under it.', 'info'); return; }
+    const list = this.savedGroup().presets, preset = { name, w: this.px.w, h: this.px.h, ppi: this.ppi() };
+    const at = list.findIndex((p) => p.name === name);
+    if (at >= 0) list.splice(at, 1, preset); else list.push(preset);
+    this.persistSaved();
+    this.category = 'mine';
+    this.search.value = '';
+    this.picked = preset;
+    this.renderCards();
+    toast(`Saved the preset ${name}.`, 'info');
+  }
+
+  private deleteCurrent(): void {
+    const list = this.savedGroup().presets, at = this.picked ? list.indexOf(this.picked) : -1;
+    if (at < 0) return;
+    list.splice(at, 1);
+    this.picked = null;
+    this.persistSaved();
+    this.renderCards();
+  }
+
+  private persistSaved(): void {
+    try { localStorage.setItem(SAVED_PRESETS_KEY, JSON.stringify(this.savedGroup().presets)); } catch { /* the preset lasts until the window closes */ }
+  }
+
   private renderCards(): void {
     for (const b of this.scrim.querySelectorAll<HTMLElement>('.cv-nd-cat')) b.classList.toggle('is-on', !this.search.value.trim() && b.dataset.cat === this.category);
+    setHidden(this.deletePreset, !this.picked || !this.savedGroup().presets.includes(this.picked));
     const q0 = this.search.value.trim().toLowerCase();
     const list = q0 ? PRESET_GROUPS.flatMap((g) => g.presets).filter((p) => p.name.toLowerCase().includes(q0)) : PRESET_GROUPS.find((g) => g.id === this.category)?.presets ?? [];
     this.cards.textContent = '';
@@ -182,7 +242,7 @@ export class NewCanvasDialog extends Dialog {
 
   private sync(): void {
     const u = this.unit.value as Unit, r = this.ppi();
-    const show = (px: number): string => (u === 'px' ? String(px) : String(Math.round((px / r) * PER_INCH[u] * 100) / 100));
+    const show = (px: number): string => (u === 'px' ? String(px) : u === 'col' ? String(Math.round(mmToColumns((px / r) * 25.4) * 100) / 100) : String(Math.round((px / r) * PER_INCH[u] * 100) / 100));
     if (document.activeElement !== this.wIn) this.wIn.value = show(this.px.w);
     if (document.activeElement !== this.hIn) this.hIn.value = show(this.px.h);
     for (const b of this.orient) b.classList.toggle('is-on', b.dataset.orient === (this.px.h > this.px.w ? 'portrait' : 'landscape'));
@@ -225,6 +285,9 @@ export class NewCanvasDialog extends Dialog {
     const has = (s: HTMLSelectElement, v: unknown): v is string => typeof v === 'string' && [...s.options].some((o) => o.value === v);
     if (has(this.unit, unit)) this.unit.value = unit;
     if (has(this.fill, fill)) this.fill.value = fill;
+    const hexKept = get('fillHex');
+    if (typeof hexKept === 'string' && /^#[0-9a-f]{6}$/i.test(hexKept)) this.fillColour.value = hexKept;
+    setHidden(this.fillColour, this.fill.value !== 'custom');
     if (has(this.mode, mode)) { this.mode.value = mode; this.depthsFor(mode as NewMode); }
     if (has(this.depth, depth)) this.depth.value = depth;
     if (typeof res === 'string' && Number.isFinite(parseFloat(res))) this.res.value = res;
@@ -240,7 +303,7 @@ export class NewCanvasDialog extends Dialog {
   private keepValues(): void {
     const set = (k: string, v: string | boolean): void => remembered('New Document', k, v);
     set('w', String(this.px.w)); set('h', String(this.px.h)); set('unit', this.unit.value); set('res', String(this.ppi()));
-    set('mode', this.mode.value); set('depth', this.depth.value); set('fill', this.fill.value); set('artboards', this.artboards.checked); set('link', this.linked()); set('category', this.category);
+    set('mode', this.mode.value); set('depth', this.depth.value); set('fill', this.fill.value); set('fillHex', this.fillColour.value); set('artboards', this.artboards.checked); set('link', this.linked()); set('category', this.category);
   }
 
   /** What the mode needs is got first (CMYK's profile comes from the engine service), so a refusal leaves the dialog as it
@@ -253,11 +316,13 @@ export class NewCanvasDialog extends Dialog {
       this.keepValues();
       const apply = await this.prepare(this.mode.value as NewMode, Number(this.depth.value) as NewDepth);
       if (!apply) return;
-      const fill = this.fill.value as 'transparent' | 'white' | 'background';
+      const choice = this.fill.value, hex = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(this.fillColour.value);
+      const rgb: RGB | null = choice === 'black' ? { r: 0, g: 0, b: 0 } : choice === 'custom' && hex ? { r: parseInt(hex[1], 16), g: parseInt(hex[2], 16), b: parseInt(hex[3], 16) } : null;
+      const fill = rgb ?? (choice === 'custom' ? 'white' : choice as 'transparent' | 'white' | 'background');
       const p = this.engine.newDocument(this.px.w, this.px.h, this.name.value.trim() || 'Untitled', fill, this.ppi());
       if (!p) return;
       await apply();
-      if (this.artboards.checked) this.engine.newArtboard({ x: 0, y: 0, w: this.px.w, h: this.px.h }, fill === 'transparent' ? null : { r: 255, g: 255, b: 255 });
+      if (this.artboards.checked) this.engine.newArtboard({ x: 0, y: 0, w: this.px.w, h: this.px.h }, fill === 'transparent' ? null : rgb ?? { r: 255, g: 255, b: 255 });
       this.engine.startHistoryClean();
       this.close();
     } finally { this.making = false; setDisabled(this.createBtn, false); }
@@ -415,6 +480,8 @@ export class SettingsDialog extends Dialog {
   private readonly rawPpiRow = sliderRow('Resolution (ppi, 0 keeps the file\'s)', 0, 600, 1, (v) => this.change({ rawPpi: v }));
   private readonly curveRow = selectRow('Pen Pressure Curve', PRESSURE_CURVES, (v) => this.change({ pressureCurve: v as PressureCurve }));
   private readonly fontSizeRow = selectRow('Interface Text Size', UI_FONT_SIZES, (v) => this.change({ uiFontSize: v as UiFontSize }));
+  private readonly animationsRow = checkRow('Enable animations', (v) => this.change({ animations: v }));
+  private readonly pressureRow = checkRow('Use tablet pressure, tilt and twist', (v) => this.change({ usePressure: v }));
   private readonly firstSnapRow = checkRow('Automatically Create First Snapshot', (v) => this.change({ autoFirstSnapshot: v }));
   private readonly snapMemRow = sliderRow('Snapshot memory (MB)', 64, 8192, 64, (v) => this.change({ snapshotMB: v }));
   private readonly narrowRow = checkRow('Show the side column as icons in a narrow window', (v) => this.change({ narrowCollapse: v }));
@@ -422,16 +489,42 @@ export class SettingsDialog extends Dialog {
   private readonly cursorRow = selectRow('Painting Cursors', PAINT_CURSORS, (v) => this.change({ paintCursor: v as PaintCursor }));
   private readonly crossRow = checkRow('Show Crosshair in Brush Tip', (v) => this.change({ cursorCrosshair: v }));
   private readonly checkerSizeRow = selectRow('Grid Size', CHECKER_SIZES, (v) => this.change({ checkerSize: v as CheckerSize }));
-  private readonly checkerColorsRow = selectRow('Grid Colors', CHECKER_COLORS, (v) => this.change({ checkerColors: v as CheckerColors }));
+  private readonly checkerColorsRow = selectRow('Grid Colors', CHECKER_COLORS, (v) => { this.change({ checkerColors: v as CheckerColors }); this.pageRows.showCustom(v === 'custom'); });
+  /** Scratch Disks, Cursors, Transparency, Units & Rulers, Type, Enhanced Controls and Plug-ins rows (panels/page-prefs.ts). */
+  private readonly pageRows = new PagePrefsRows((patch) => this.change(patch));
   private readonly languageRow = selectRow('Language', languages(), (v) => { this.change({ language: v as Lang }); setLanguage(v as Lang); });
   private readonly rulerRow = selectRow('Rulers', RULER_UNITS, (v) => this.change({ rulerUnits: v as RulerUnits }));
   private readonly gridEveryRow = sliderRow('Gridline Every (px)', 2, 1000, 1, (v) => this.change({ gridSpacing: v }));
   private readonly subdivRow = sliderRow('Subdivisions', 1, 32, 1, (v) => this.change({ gridSubdivisions: v }));
   private readonly guideColor = el<HTMLInputElement>('<input class="cv-input" type="color" aria-label="Guide color">');
   private readonly gridColor = el<HTMLInputElement>('<input class="cv-input" type="color" aria-label="Grid color">');
+  private readonly animZoomRow = checkRow('Animated Zoom', (v) => this.change({ animatedZoom: v }));
+  private readonly systemPickerRow = checkRow('Use the system color picker', (v) => this.change({ systemPicker: v }));
+  /** Preferences > Interface > Canvas Color: the pasteboard around the picture, shared with View > Pasteboard; the app connects it. */
+  canvasColour: { get(): string; set(key: string): void } | null = null;
+  private readonly canvasColourRow = selectRow('Canvas Color', [['default', 'Theme Default'], ['black', 'Black'], ['dark', 'Dark Grey'], ['mid', 'Medium Grey'], ['light', 'Light Grey']], (v) => this.canvasColour?.set(v));
+  private readonly interpolationRow = selectRow('Image Interpolation', INTERPOLATIONS, (v) => this.change({ interpolation: v as ResampleMethod }));
+  private readonly beepRow = checkRow('Beep When Done', (v) => this.change({ beepWhenDone: v }));
+  private readonly zoomResizesRow = checkRow('Zoom Resizes Windows', (v) => this.change({ zoomResizes: v }));
+  private readonly floatDockingRow = checkRow('Enable Floating Document Window Docking', (v) => this.change({ floatDocking: v }));
+  private readonly tooltipsRow = checkRow('Show Tool Tips', (v) => this.change({ showTooltips: v }));
+  private readonly shiftToolRow = checkRow('Use Shift Key for Tool Switch', (v) => this.change({ shiftToolSwitch: v }));
+  private readonly zoomCentreRow = checkRow('Zoom Clicked Point to Center', (v) => this.change({ zoomClickCentre: v }));
+  private readonly lowerExtRow = checkRow('Use Lower Case Extension', (v) => this.change({ lowerExtension: v }));
+  private readonly recentCountRow = sliderRow('Recent File List Contains (files)', 0, 40, 1, (v) => this.change({ recentFileCount: v }));
+  private readonly gamutOpacityRow = sliderRow('Gamut Warning opacity (%)', 0, 100, 1, (v) => this.change({ gamutOpacity: v }));
+  private readonly gamutColor = el<HTMLInputElement>('<input class="cv-input" type="color" aria-label="Gamut Warning color">');
+  private readonly guideStyleRow = selectRow('Guide line style', LINE_STYLES, (v) => this.change({ guideStyle: v as LineStyle }));
+  private readonly gridStyleRow = selectRow('Grid line style', LINE_STYLES, (v) => this.change({ gridStyle: v as LineStyle }));
+  private readonly sliceColor = el<HTMLInputElement>('<input class="cv-input" type="color" aria-label="Slice line color">');
+  private readonly sliceNumbersRow = checkRow('Show Slice Numbers', (v) => this.change({ sliceNumbers: v }));
+  /** Preferences > Scratch Disks: where formvis keeps its working files, read by the app. */
+  scratch: { info(): Promise<string>; clean(): void } | null = null;
+  private readonly scratchInfo = el('<p class="cv-note" role="status" style="min-height: 2.8em"></p>');
+  private readonly scratchClean = el<HTMLButtonElement>('<button class="cv-btn" type="button">Clean Working Files</button>');
   /** Lock Workspace lives with the dock; the app connects it. */
   workspaceLock: { get(): boolean; set(on: boolean): void } | null = null;
-  private colorRow(label: string, input: HTMLInputElement, key: 'guideColor' | 'gridColor'): HTMLElement {
+  private colorRow(label: string, input: HTMLInputElement, key: 'guideColor' | 'gridColor' | 'sliceColor'): HTMLElement {
     const row = el(`<label class="cv-field"><span>${label}</span></label>`), theme = el<HTMLButtonElement>('<button class="cv-btn" type="button">Theme colour</button>');
     input.addEventListener('input', () => this.change({ [key]: input.value } as Partial<Prefs>));
     theme.addEventListener('click', () => this.change({ [key]: '' } as Partial<Prefs>));
@@ -481,16 +574,16 @@ export class SettingsDialog extends Dialog {
     accentRow.appendChild(this.accent);
     const reset = el<HTMLButtonElement>('<button class="cv-btn" type="button">Reset All Preferences...</button>');
     reset.addEventListener('click', () => { void confirmAction('Reset all preferences?', 'Every preference, the panel arrangement and the tools shown go back to how formvis comes; your documents and library are kept. formvis reloads.', 'Reset').then((ok) => { if (!ok) return; for (const k of Object.keys(localStorage)) if (k.startsWith('formvis.') || k === 'nodemode_ui_settings') localStorage.removeItem(k); location.reload(); }); });
-    add('General', this.homeRow.el, this.homeCloseRow.el, this.whatsNewRow.el, reset, el('<p class="cv-note">The Home screen covers the canvas area. At launch it shows while no document is open; closing the last document leaves the empty workspace with its panels unless the second choice is on. The brand mark at the top left opens it at any time; Esc leaves it. What\'s New (Help menu) lists the recent additions, each with a Show Me button; with the third choice on it opens once after an update.</p>'));
+    add('General', this.homeRow.el, this.homeCloseRow.el, this.whatsNewRow.el, this.animZoomRow.el, this.zoomResizesRow.el, this.systemPickerRow.el, this.beepRow.el, this.interpolationRow.el, reset, el('<p class="cv-note">Image Interpolation is the resampling the Image Size dialog starts with. Beep When Done sounds a short tone when a job that ran longer than two seconds ends. Zoom Resizes Windows sizes a floating document window to the picture when its zoom changes. Animated Zoom eases Zoom In, Zoom Out and the Zoom tool\'s clicks over a fraction of a second. Use the system color picker opens the computer\'s own picker for the foreground and background swatches instead of formvis\'s. The Home screen covers the canvas area. At launch it shows while no document is open; closing the last document leaves the empty workspace with its panels unless the second choice is on. The brand mark at the top left opens it at any time; Esc leaves it. What\'s New (Help menu) lists the recent additions, each with a Show Me button; with the third choice on it opens once after an update.</p>'));
     this.intensityRow.set(Math.round((readChoice().intensity ?? 1) * 100));
-    add('Interface', row, accentRow, this.intensityRow.el, this.fontSizeRow.el, el('<p class="cv-note">Theme and accent are shared with NodeMode on this device. Intensity sets how strongly the accent tints what it marks; 100% is the design\'s. Text size scales the interface\'s text.</p>'));
+    add('Interface', row, accentRow, this.intensityRow.el, this.fontSizeRow.el, this.animationsRow.el, this.canvasColourRow.el, el('<p class="cv-note">Canvas Color is the pasteboard around the picture (the same as View > Pasteboard). Theme and accent are shared with NodeMode on this device. Intensity sets how strongly the accent tints what it marks; 100% is the design\'s. Text size scales the interface\'s text.</p>'));
     add('Performance', this.budgetNote, this.memoryLimitRow.el, this.effectCacheRow.el, this.cacheLevelsRow.el, this.redrawRow.el, this.previewRow.el,
       el('<h3 class="cv-prefs-sub">Graphics Processor Settings</h3>'), this.gpuNameRow(), this.gpuUseRow.el, this.gpuFiltersRow.el, this.rendererRow.el, this.gpuMemoryRow.el, this.gpuPowerRow.el, this.lowLatencyRow.el, this.gpuMode,
       el('<p class="cv-note">Automatic uses WebGPU (Metal on macOS, Direct3D 12 on Windows), then WebGL2 (as on Linux), on a hardware graphics processor, and the CPU otherwise; a software GPU is slower than the CPU renderer, so Automatic does not use one. If the graphics processor fails to start, formvis turns this off and says so. The canvas draws on the graphics processor; a document using something it does not draw yet draws on the CPU, and the status bar says why.</p>'),
       el('<h3 class="cv-prefs-sub">Engine</h3>'), this.engineRow.el, this.engineMode,
       el('<p class="cv-note">Where the engine runs its models (Remove Background, and the local models that follow). Automatic uses CUDA on an NVIDIA graphics processor, Core ML (Metal) on a Mac, and the CPU otherwise; a choice this machine cannot run falls back to the CPU, and the line above says why.</p>'));
-    add('Workspace', this.lockRow.el, this.narrowRow.el, el('<p class="cv-note">Locked, panels are neither dragged nor resized. In a window too narrow for the canvas beside the open side column, it shows as its icons until there is room (your choice is kept).</p>'));
-    add('Tools', this.wheelRow.el, this.curveRow.el, el('<p class="cv-note">On, the wheel zooms about the pointer and Ctrl or Cmd with the wheel scrolls; off, the other way round. The pressure curve is how a pen\'s pressure maps to size, flow and opacity in every brush; a brush\'s own options can change it for the session.</p>'));
+    add('Workspace', this.lockRow.el, this.narrowRow.el, this.floatDockingRow.el, el('<p class="cv-note">With Enable Floating Document Window Docking, dragging a floating window by its title bar onto the tab bar docks it back to its tab; off, windows only return by their close button or Consolidate All to Tabs. Locked, panels are neither dragged nor resized. In a window too narrow for the canvas beside the open side column, it shows as its icons until there is room (your choice is kept).</p>'));
+    add('Tools', this.wheelRow.el, this.curveRow.el, this.pressureRow.el, this.tooltipsRow.el, this.shiftToolRow.el, this.zoomCentreRow.el, el('<p class="cv-note">Show Tool Tips off hides the hover hints on buttons and tools. With Use Shift Key for Tool Switch off, pressing a tool\'s letter again cycles its group instead of Shift with the letter. Zoom Clicked Point to Center moves the point you click with the Zoom tool to the middle of the view. On, the wheel zooms about the pointer and Ctrl or Cmd with the wheel scrolls; off, the other way round. The pressure curve is how a pen\'s pressure maps to size, flow and opacity in every brush; a brush\'s own options can change it for the session.</p>'));
     add('History & Cache', this.statesRow.el, this.memoryRow.el, this.memoryAutoRow.el, el('<p class="cv-note">History States is how many steps undo keeps (50 is a common default; up to 1000); history memory caps what those steps may hold, and the oldest steps go first when either is reached. A browser app cannot reserve system memory as a desktop app can, so this is the part formvis controls. Turning off region redraws repaints the whole canvas on each stroke, slower but useful if painting ever draws out of place.</p>'),
       this.firstSnapRow.el, this.snapMemRow.el, el('<p class="cv-note">Each document keeps itself as opened, the History Brush\'s first source; snapshots, that one included, share this memory.</p>'));
     this.restoreBox.addEventListener('change', () => this.change({ restoreSession: this.restoreBox.checked }));
@@ -506,16 +599,20 @@ export class SettingsDialog extends Dialog {
     this.libApply.addEventListener('click', () => void this.applyLibrary());
     const library = el('<div></div>');
     library.append(this.libNow, libRow, pathRow, moveRow, this.libApply, el('<p class="cv-note">The library can live in any folder, a synced one (iCloud Drive, Dropbox, OneDrive, Google Drive) included. If a project changed in that folder since you opened it, from another device or window, saving keeps that version and saves yours beside it as a conflict copy.</p>'));
-    add('File Handling', library, mismatch, restore, el('<p class="cv-note">Every open document is kept on this device, in its tab order, and opens again at the next start, saved or not. Off, only unsaved work is kept, and formvis asks after a crash.</p>'), this.recoveryRow.el, el('<p class="cv-note">Unsaved documents are kept on this device so they can be recovered after a crash; this is how soon after a change that happens.</p>'));
+    add('File Handling', library, mismatch, restore, el('<p class="cv-note">Every open document is kept on this device, in its tab order, and opens again at the next start, saved or not. Off, only unsaved work is kept, and formvis asks after a crash.</p>'), this.recoveryRow.el, el('<p class="cv-note">Unsaved documents are kept on this device so they can be recovered after a crash; this is how soon after a change that happens.</p>'), this.lowerExtRow.el, this.recentCountRow.el, el('<p class="cv-note">Use Lower Case Extension writes exported files as .jpg; off, as .JPG. The recent file list is how many files File > Open Recent shows; 0 shows none.</p>'));
     add('Placing Pictures', this.placeTransformRow.el, el('<p class="cv-note">On, a single picture dropped on an open document or put in with File > Place Embedded opens in Free Transform: Enter keeps it, Escape leaves it at its placed size and spot. A picture larger than the canvas is placed scaled to fit.</p>'));
     add('History Log', this.historyLogRow.el, el('<p class="cv-note">On, every new history step is written down with its time and document, on this device. Edit > History Log saves it as a text file or clears it.</p>'));
-    add('Cursors', this.cursorRow.el, this.crossRow.el, el('<p class="cv-note">How painting tools show where they paint: the tip\'s outline at its size, a crosshair alone, or a small ring.</p>'));
-    add('Type', this.recentFontsRow.el, el('<p class="cv-note">The fonts you used last are listed first in the font menus, newest first; 0 lists none first.</p>'));
+    add('Cursors', this.cursorRow.el, this.crossRow.el, ...this.pageRows.cursors, el('<p class="cv-note">How painting tools show where they paint: the tip\'s outline at its size, a crosshair alone, or a small ring.</p>'));
+    add('Type', this.recentFontsRow.el, ...this.pageRows.type, el('<p class="cv-note">The fonts you used last are listed first in the font menus, newest first; 0 lists none first.</p>'));
     add('Camera Raw Defaults', this.rawWbRow.el, this.rawBitsRow.el, this.rawPpiRow.el, this.rawToneRow.el, this.rawSmartRow.el, el('<p class="cv-note">What the Camera Raw dialog starts with each time a camera RAW file opens. Resolution, Auto Tone and Smart Object apply to the 8 bits/channel document it opens.</p>'));
-    add('Transparency & Gamut', this.checkerSizeRow.el, this.checkerColorsRow.el, el(`<p class="cv-note">${t('The checkerboard shown behind transparent pixels. None shows it plain; Match Theme uses the light checkerboard in light themes and the dark one in dark themes.')}</p>`));
-    add('Language', this.languageRow.el, el('<p class="cv-note">The language of the whole interface. Names you give layers and documents stay as you wrote them.</p>'));
-    add('Units & Rulers', this.rulerRow.el, el('<p class="cv-note">The rulers\' unit; inches, centimetres and millimetres follow the document\'s resolution, percent its width and height.</p>'));
-    add('Guides & Grid', this.colorRow('Guides', this.guideColor, 'guideColor'), this.colorRow('Grid', this.gridColor, 'gridColor'), this.gridEveryRow.el, this.subdivRow.el);
+    const gamutField = el('<label class="cv-field"><span>Gamut Warning</span></label>');
+    this.gamutColor.addEventListener('input', () => this.change({ gamutColor: this.gamutColor.value }));
+    gamutField.append(this.gamutColor);
+    add('Transparency & Gamut', this.checkerSizeRow.el, this.checkerColorsRow.el, ...this.pageRows.transparency, el(`<p class="cv-note">${t('The checkerboard shown behind transparent pixels. None shows it plain; Match Theme uses the light checkerboard in light themes and the dark one in dark themes.')}</p>`), gamutField, this.gamutOpacityRow.el, el('<p class="cv-note">The colour and opacity that View > Gamut Warning paints over colours the proof profile cannot print.</p>'));
+    this.scratchClean.addEventListener('click', () => { this.scratch?.clean(); setTimeout(() => void this.refreshScratch(), 400); });
+    add('Scratch Disks', this.pageRows.scratch.el, this.scratchInfo, this.scratchClean, el('<p class="cv-note">formvis keeps recovery copies of open documents and closed tabs in this device\'s storage, the way a desktop editor uses a scratch disk. Clean Working Files removes the copies of documents that are no longer open; open documents are not touched. Layer effect and display caches are set in Performance.</p>'));    add('Language', this.languageRow.el, el('<p class="cv-note">The language of the whole interface. Names you give layers and documents stay as you wrote them.</p>'));
+    add('Units & Rulers', this.rulerRow.el, ...this.pageRows.units, el('<p class="cv-note">The rulers\' unit; inches, centimetres and millimetres follow the document\'s resolution, percent its width and height.</p>'));
+    add('Guides & Grid', this.colorRow('Guides', this.guideColor, 'guideColor'), this.guideStyleRow.el, this.colorRow('Grid', this.gridColor, 'gridColor'), this.gridStyleRow.el, this.gridEveryRow.el, this.subdivRow.el, this.colorRow('Slices', this.sliceColor, 'sliceColor'), this.sliceNumbersRow.el, el('<p class="cv-note">The colour and line style of guides and the grid, and the colour of slice lines and whether their numbers show.</p>'));
     // Plugins (1.50.8): the other apps formvis sends to; NodeMode first.
     this.nodemodeCheck.addEventListener('click', () => void this.checkNodeMode());
     this.nodemodeUrl.addEventListener('change', () => { const v = this.nodemodeUrl.value.trim(); if (/^https?:\/\/./.test(v)) { this.change({ nodemodeUrl: v }); void this.checkNodeMode(); } else setText(this.nodemodeNote, 'An address starts with http:// or https://, such as http://localhost:8000.'); });
@@ -550,7 +647,8 @@ export class SettingsDialog extends Dialog {
     const ag = el('<label class="cv-dialog-row"><span>Allow outside agents (MCP)</span></label>');
     ag.append(this.agents);
     const agNote = el('<p class="cv-note">Lets Claude Code, Claude Desktop or another MCP client work in the open document; each change is an undoable step, and anything that costs money asks you first. Claude Code: <code>claude mcp add --transport http formvis http://127.0.0.1:8190/mcp</code>. Claude Desktop: a server whose command is <code>./formvis mcp</code> in the formvis folder.</p>');
-    add('Plugins', this.keysNote, nm, this.nodemodeNote, cu, this.comfyuiNote, this.comfyAuth.el, this.recipesList.el, lm, tp, ag, agNote, this.modelFolder.el, this.localModels.el);
+    add('Enhanced Controls', ...this.pageRows.enhanced);
+    add('Plugins', this.keysNote, ...this.pageRows.plugins, nm, this.nodemodeNote, cu, this.comfyuiNote, this.comfyAuth.el, this.recipesList.el, lm, tp, ag, agNote, this.apiKeys.el, this.modelFolder.el, this.hfToken.el, this.localModels.el, this.localFiles.el, this.updates.el);
     const wrap = el('<div class="cv-prefs"></div>');
     wrap.append(this.nav, pages);
     this.body.appendChild(wrap);
@@ -562,6 +660,9 @@ export class SettingsDialog extends Dialog {
       this.sync();
     });
     this.accent.addEventListener('input', () => { setAccent(this.accent.value); this.sync(); });
+    this.sections.get('Performance')?.append(this.rendering.el);
+    this.sections.get('Interface')?.append(this.skins.el);
+    void this.skins.reload();
     this.showSection('General');
   }
 
@@ -610,6 +711,7 @@ export class SettingsDialog extends Dialog {
     this.memoryLimitRow.set(this.prefs.memoryLimitMB);
     this.effectCacheRow.set(this.prefs.effectCacheMB);
     this.cacheLevelsRow.set(this.prefs.cacheLevels);
+    this.pageRows.set(this.prefs);
     this.gpuPowerRow.set(this.prefs.gpuPower);
     this.lowLatencyRow.set(this.prefs.lowLatency);
     this.engineRow.set(this.prefs.engineDevice);
@@ -622,6 +724,8 @@ export class SettingsDialog extends Dialog {
     this.placeTransformRow.set(this.prefs.placeTransform);
     this.rawToneRow.set(this.prefs.rawAutoTone); this.rawSmartRow.set(this.prefs.rawSmart); this.rawPpiRow.set(this.prefs.rawPpi);
     this.fontSizeRow.set(this.prefs.uiFontSize);
+    this.animationsRow.set(this.prefs.animations);
+    this.pressureRow.set(this.prefs.usePressure);
     this.firstSnapRow.set(this.prefs.autoFirstSnapshot);
     this.snapMemRow.set(this.prefs.snapshotMB);
     this.narrowRow.set(this.prefs.narrowCollapse);
@@ -637,9 +741,23 @@ export class SettingsDialog extends Dialog {
     const css = getComputedStyle(document.documentElement);
     this.guideColor.value = this.prefs.guideColor || (css.getPropertyValue('--accent-color').trim() || '#f97316');
     this.gridColor.value = this.prefs.gridColor || '#808080';
+    this.sliceColor.value = this.prefs.sliceColor || (css.getPropertyValue('--accent-color').trim() || '#f97316');
+    this.gamutColor.value = this.prefs.gamutColor;
+    this.gamutOpacityRow.set(this.prefs.gamutOpacity);
+    this.guideStyleRow.set(this.prefs.guideStyle); this.gridStyleRow.set(this.prefs.gridStyle); this.sliceNumbersRow.set(this.prefs.sliceNumbers);
+    this.animZoomRow.set(this.prefs.animatedZoom); this.systemPickerRow.set(this.prefs.systemPicker);
+    this.canvasColourRow.set(this.canvasColour?.get() ?? 'default');
+    this.beepRow.set(this.prefs.beepWhenDone); this.interpolationRow.set(this.prefs.interpolation); this.zoomResizesRow.set(this.prefs.zoomResizes); this.floatDockingRow.set(this.prefs.floatDocking);
+    this.tooltipsRow.set(this.prefs.showTooltips); this.shiftToolRow.set(this.prefs.shiftToolSwitch); this.zoomCentreRow.set(this.prefs.zoomClickCentre);
+    this.lowerExtRow.set(this.prefs.lowerExtension); this.recentCountRow.set(this.prefs.recentFileCount);
+    void this.refreshScratch();
     if (section && this.sections.has(section)) this.showSection(section);
     this.sync();
     this.open();
+  }
+
+  private async refreshScratch(): Promise<void> {
+    setText(this.scratchInfo, this.scratch ? await this.scratch.info() : 'Working files are shown once the app has started.');
   }
 
   private gpuNameRow(): HTMLElement {
@@ -673,7 +791,7 @@ export class SettingsDialog extends Dialog {
 
   private readonly comfyuiUrl = el<HTMLInputElement>('<input class="cv-input" type="url" aria-label="ComfyUI address" spellcheck="false">');
   private readonly comfyuiCheck = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Check</button>');
-  private readonly comfyuiNote = el('<p class="cv-note" role="status">File > Send to ComfyUI sends here, into its input folder.</p>');
+  private readonly comfyuiNote = el('<p class="cv-note cv-comfy-report" role="status">File > Send to ComfyUI sends here, into its input folder. Check reports its version, devices, queue, node packs, and what each kept recipe still needs.</p>');
 
   private readonly restoreBox = el<HTMLInputElement>('<input type="checkbox" aria-label="Reopen documents at start">');
   // The library's folder (1.58.8, L13): any folder, a synced one included; built once, filled when the dialog opens.
@@ -687,6 +805,17 @@ export class SettingsDialog extends Dialog {
   private readonly localModels = new LocalModelsSection();   // 1.52.9
   private readonly comfyAuth = new ComfyAuthSection();
   private readonly modelFolder = new ModelFolderSection();
+  private readonly hfToken = new HuggingFaceToken();
+  private readonly apiKeys = new ApiKeysSection();
+  private readonly localFiles = new LocalFilesSection();
+  /** Help > Check for Updates, connected by the app. */
+  checkUpdates: (() => void) | null = null;
+  private readonly updates = new UpdatesSection(() => this.checkUpdates?.(), VERSION);
+  /** The tile engine switch and Reload Window, connected by the app. */
+  applyTiled: ((on: boolean) => void) | null = null;
+  restartWindow: (() => void) | null = null;
+  private readonly skins = new SkinsSection(this.grid);
+  private readonly rendering = new RenderingSection((on) => this.applyTiled?.(on), () => this.restartWindow?.());
   private readonly recipesList = new RecipesSection();
   private readonly mismatchSel = el<HTMLSelectElement>('<select class="cv-input" aria-label="Embedded profiles"><option value="convert">Convert to the working space (sRGB)</option><option value="keep">Keep the embedded profile</option><option value="ask">Ask when opening</option></select>');   // 1.53.5
   private readonly budgetNote = el('<p class="cv-note cv-budget-note" role="status"></p>');   // the largest document (1.53.4)
@@ -744,8 +873,7 @@ export class SettingsDialog extends Dialog {
   private async checkComfyUI(): Promise<void> {
     const target = this.comfyuiUrl.value.trim();
     setText(this.comfyuiNote, `Checking ${target}...`);
-    const c = await api.comfyuiStatus(target);
-    setText(this.comfyuiNote, !c ? 'The formvis engine is offline: sending to ComfyUI needs it.' : c.running ? `ComfyUI${c.version ? ` ${c.version}` : ''} is running at ${target}.` : `ComfyUI is not answering at ${target}.`);
+    setText(this.comfyuiNote, comfyuiProbeText(await api.comfyuiProbe(target, recipes().map((r) => ({ name: r.name, workflow: r.json }))), target));
   }
 
   private async checkNodeMode(): Promise<void> {
@@ -775,6 +903,9 @@ export class SettingsDialog extends Dialog {
     void this.localModels.refresh();
     void this.comfyAuth.refresh();
     void this.modelFolder.refresh();
+    void this.hfToken.refresh();
+    void this.apiKeys.refresh();
+    void this.localFiles.refresh();
     this.recipesList.refresh();
     this.showBudget();
     this.agents.checked = this.prefs.agentsAllowed;
@@ -803,14 +934,22 @@ export class ShortcutsDialog extends Dialog {
   private readonly list = el('<div class="cv-list cv-keys-list" aria-label="Keyboard shortcuts"></div>');
   private readonly note = el('<div class="cv-shortcuts-note" role="status"></div>');
   private capturing: string | null = null;
+  private adding = false;
   private pending: { id: string; combo: string } | null = null;
   private focusId: string | null = null;
+  private readonly sets = el<HTMLSelectElement>('<select class="cv-select" aria-label="Shortcut set"></select>');
+  private readonly file = el<HTMLInputElement>('<input type="file" accept=".json,application/json" hidden>');
 
-  /** Edit > Keyboard Shortcuts (1.53.4): every command rebindable, a conflict named and reassigned or not, Reset All;
-   *  kept in Preferences. Tool letters are listed, fixed by their tools. */
-  constructor(private readonly commands: Commands) {
-    super('Keyboard Shortcuts', 620);
-    this.body.append(this.search, this.note, this.list);
+  /** Edit > Keyboard Shortcuts (1.53.4): every command rebindable with alternates, a conflict named and reassigned or
+   *  not, Reset All, saved shortcut sets, and a set exported to or imported from a file; kept in Preferences. Tool
+   *  letters are listed, fixed by their tools. */
+  constructor(private readonly commands: Commands, private readonly deliver: (blob: Blob, name: string) => Promise<void>) {
+    super('Keyboard Shortcuts', 660);
+    const bar = el('<div class="cv-row" style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap"></div>');
+    const mk = (label: string, run: () => void): HTMLButtonElement => { const b = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost"></button>'); setText(b, label); b.addEventListener('click', run); return b; };
+    bar.append(this.sets, mk('Use Set', () => this.useSet()), mk('Save Set...', () => void this.saveSet()), mk('Delete Set', () => this.deleteSet()), mk('Export...', () => this.exportSet()), mk('Import...', () => this.file.click()), this.file);
+    this.body.append(bar, this.search, this.note, this.list);
+    this.file.addEventListener('change', () => { const f = this.file.files?.[0]; this.file.value = ''; if (f) void this.importSet(f); });
     this.search.addEventListener('input', () => this.render());
     this.search.addEventListener('keydown', (e) => e.stopPropagation());
     this.button('Reset All', 'ghost', () => { this.commands.resetKeys(); this.save(); this.say(''); this.render(); });
@@ -818,9 +957,74 @@ export class ShortcutsDialog extends Dialog {
     window.addEventListener('keydown', (e) => this.capture(e), true);
   }
 
-  show(): void { this.capturing = null; this.pending = null; this.focusId = null; this.say(''); this.search.value = ''; this.render(); this.open(); }
+  show(): void { this.capturing = null; this.pending = null; this.focusId = null; this.say(''); this.search.value = ''; this.fillSets(); this.render(); this.open(); }
 
   private save(): void { savePrefs({ ...loadPrefs(), shortcuts: this.commands.overrides() }); }
+
+  private fillSets(choose?: string): void {
+    const names = Object.keys(loadPrefs().shortcutSets), was = choose ?? this.sets.value;
+    const want = ['', ...names];
+    if (this.sets.options.length !== want.length || want.some((n, i) => this.sets.options[i].value !== n)) {
+      this.sets.replaceChildren(...want.map((n) => new Option(n || 'Default Shortcuts', n)));
+    }
+    this.sets.value = want.includes(was) ? was : '';
+  }
+
+  /** Makes `bindings` the whole customisation: every command back to its defaults, then these keys on top. */
+  private apply(bindings: Record<string, string[]>): number {
+    this.commands.resetKeys();
+    let n = 0;
+    for (const [id, keys] of Object.entries(bindings)) if (this.commands.get(id)) { this.commands.setKeys(id, keys); n++; }
+    this.save(); this.render();
+    return n;
+  }
+
+  private useSet(): void {
+    const name = this.sets.value;
+    const n = this.apply(name ? loadPrefs().shortcutSets[name] ?? {} : {});
+    this.say(name ? `Using ${name}: ${n} changed shortcut${n === 1 ? '' : 's'}.` : 'Back to the default shortcuts.');
+  }
+
+  private async saveSet(): Promise<void> {
+    const name = (await promptName('Save Shortcut Set', this.sets.value || 'My Shortcuts', 'Save'))?.trim().slice(0, 60);
+    if (!name) return;
+    const p = loadPrefs();
+    savePrefs({ ...p, shortcutSets: { ...p.shortcutSets, [name]: this.commands.overrides() } });
+    this.fillSets(name);
+    this.say(`Saved ${name}.`);
+  }
+
+  private deleteSet(): void {
+    const name = this.sets.value, p = loadPrefs();
+    if (!name || !(name in p.shortcutSets)) { this.say('The default shortcuts cannot be deleted.'); return; }
+    const { [name]: _gone, ...rest } = p.shortcutSets;
+    savePrefs({ ...p, shortcutSets: rest });
+    this.fillSets('');
+    this.say(`Deleted ${name}.`);
+  }
+
+  private exportSet(): void {
+    const name = this.sets.value || 'Current';
+    const doc = { format: 'formvis-shortcuts', version: 1, name, shortcuts: this.commands.overrides() };
+    void this.deliver(new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' }), `formvis-shortcuts-${name.replace(/[^\w.-]+/g, '-')}.json`);
+    this.say(`Exported ${Object.keys(doc.shortcuts).length} changed shortcuts.`);
+  }
+
+  private async importSet(f: File): Promise<void> {
+    try {
+      const raw = JSON.parse(await f.text()) as { shortcuts?: unknown; name?: unknown };
+      const bindings = cleanBindings(raw && typeof raw === 'object' && 'shortcuts' in raw ? raw.shortcuts : raw);
+      const known = Object.keys(bindings).filter((id) => this.commands.get(id)).length;
+      if (!known) { this.say('That file has no shortcuts formvis knows.'); return; }
+      const name = (typeof raw.name === 'string' && raw.name.trim() ? raw.name : f.name.replace(/\.[^.]+$/, '')).slice(0, 60);
+      const p = loadPrefs();
+      savePrefs({ ...p, shortcutSets: { ...p.shortcutSets, [name]: bindings } });
+      this.fillSets(name);
+      this.apply(bindings);
+      const skipped = Object.keys(bindings).length - known;
+      this.say(`Imported ${name}: ${known} shortcut${known === 1 ? '' : 's'} applied${skipped ? `, ${skipped} for commands formvis does not have skipped` : ''}.`);
+    } catch { this.say('That file is not a shortcut set.'); }
+  }
 
   private say(text: string, actions: HTMLElement[] = []): void { this.note.replaceChildren(); if (text) { const p = el('<span></span>'); setText(p, text); this.note.append(p, ...actions); } }
 
@@ -828,19 +1032,20 @@ export class ShortcutsDialog extends Dialog {
     if (!this.capturing || !this.isOpen) return;
     e.preventDefault(); e.stopPropagation();
     if (['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) return;   // wait for the key itself
-    const id = this.capturing;
-    this.capturing = null;
+    const id = this.capturing, adding = this.adding;
+    this.capturing = null; this.adding = false;
     if (e.key === 'Escape') { this.say(''); this.render(); return; }
     const combo = comboOf(e), other = this.commands.forCombo(combo);
+    const keysWith = (cid: string, c: string): string[] => (adding ? [...(this.commands.get(cid)?.keys ?? []).filter((k) => k !== c), c] : [c]);
     if (other && other.id !== id) {
       this.pending = { id, combo };
       const re = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Reassign</button>'), no = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Cancel</button>');
-      re.addEventListener('click', () => { const p = this.pending; this.pending = null; if (p) { this.commands.setKeys(p.id, [p.combo]); this.save(); } this.say(''); this.render(); });
+      re.addEventListener('click', () => { const p = this.pending; this.pending = null; if (p) { this.commands.setKeys(p.id, keysWith(p.id, p.combo)); this.save(); } this.say(''); this.render(); });
       no.addEventListener('click', () => { this.pending = null; this.say(''); this.render(); });
       this.say(`${formatKeys(combo)} is used by ${this.commands.label(other)}. `, [re, no]);
       return;
     }
-    this.commands.setKeys(id, [combo]);
+    this.commands.setKeys(id, keysWith(id, combo));
     this.save(); this.say(''); this.render();
   }
 
@@ -853,10 +1058,11 @@ export class ShortcutsDialog extends Dialog {
       key: (r) => r.id,
       create: (r) => {
         if (r.tool) { const t = el('<div class="cv-list-row cv-keys-row is-tool"><span class="cv-list-name"></span><span class="cv-list-meta"></span></div>'); setText(q(t, '.cv-list-name'), r.label); setText(q(t, '.cv-list-meta'), r.keys); return t; }
-        const n = el('<div class="cv-list-row cv-keys-row"><span class="cv-list-name"></span><span class="cv-list-meta"></span><button type="button" class="cv-btn cv-btn-ghost">Change</button><button type="button" class="cv-btn cv-btn-ghost">Remove</button></div>');
+        const n = el('<div class="cv-list-row cv-keys-row"><span class="cv-list-name"></span><span class="cv-list-meta"></span><button type="button" class="cv-btn cv-btn-ghost">Change</button><button type="button" class="cv-btn cv-btn-ghost">Add</button><button type="button" class="cv-btn cv-btn-ghost">Remove</button></div>');
         n.dataset.command = r.id;
-        const [change, remove] = [...n.querySelectorAll('button')] as HTMLButtonElement[];
-        change.addEventListener('click', () => { this.capturing = r.id; this.focusId = r.id; this.pending = null; this.say(''); this.render(); });
+        const [change, add, remove] = [...n.querySelectorAll('button')] as HTMLButtonElement[];
+        change.addEventListener('click', () => { this.capturing = r.id; this.adding = false; this.focusId = r.id; this.pending = null; this.say(''); this.render(); });
+        add.addEventListener('click', () => { this.capturing = r.id; this.adding = true; this.focusId = r.id; this.pending = null; this.say(''); this.render(); });
         remove.addEventListener('click', () => { this.focusId = r.id; this.commands.setKeys(r.id, []); this.save(); this.render(); });
         this.fillRow(n, r);
         return n;
@@ -873,8 +1079,8 @@ export class ShortcutsDialog extends Dialog {
   private fillRow(n: HTMLElement, r: { id: string; label: string; keys: string }): void {
     setText(q(n, '.cv-list-name'), r.label);
     setText(q(n, '.cv-list-meta'), this.capturing === r.id ? 'Press the new keys (Esc cancels)' : r.keys || 'none');
-    const [change, remove] = [...n.querySelectorAll('button')] as HTMLButtonElement[];
-    if (change.getAttribute('aria-label') !== `Change ${r.label}`) { change.setAttribute('aria-label', `Change ${r.label}`); remove.setAttribute('aria-label', `Remove ${r.label}`); }
+    const [change, add, remove] = [...n.querySelectorAll('button')] as HTMLButtonElement[];
+    if (change.getAttribute('aria-label') !== `Change ${r.label}`) { change.setAttribute('aria-label', `Change ${r.label}`); add.setAttribute('aria-label', `Add another shortcut to ${r.label}`); remove.setAttribute('aria-label', `Remove ${r.label}`); }
     setDisabled(remove, !r.keys);
   }
 }
@@ -911,12 +1117,17 @@ export class BenchmarkDialog extends Dialog {
 
 export class AboutDialog extends Dialog {
   private readonly engineLine = el('<p class="cv-note"></p>');
+  private readonly runtimeLine = el('<p class="cv-note"></p>');
+  private readonly pluginLine = el('<p class="cv-note"></p>');
 
   constructor() {
     super('About formvis', 420);
     this.body.appendChild(el(`<div class="cv-welcome-title">${brandMark(28)}formvis ${VERSION}</div>`));
     this.body.appendChild(el('<p class="cv-note">A layered image editor for the web and the desktop, in the NodeMode design system.</p>'));
     this.body.appendChild(this.engineLine);
+    this.body.appendChild(this.runtimeLine);
+    this.body.appendChild(this.pluginLine);
+    this.body.appendChild(el('<p class="cv-note">Source and releases: <a href="https://github.com/nodemode-ai/formvis" target="_blank" rel="noopener">github.com/nodemode-ai/formvis</a></p>'));
     this.body.appendChild(el('<p class="cv-note">Apache License 2.0. Copyright 2026 nodemode-ai.</p>'));
     this.body.appendChild(el('<p class="cv-note">Credits: formvis is built on open-source components; each one with its licence is listed in NOTICE.md beside the app. Help > System Info has the graphics and monitor details.</p>'));
     this.button('Close', 'primary', () => this.close());
@@ -926,6 +1137,8 @@ export class AboutDialog extends Dialog {
     setText(this.engineLine, caps
       ? `Engine ${caps.version}${caps.desktop ? ' (desktop)' : ''} · decoders ${caps.decode.engine} · background removal ${caps.removeBackground.ml ? 'ML and lightweight' : caps.removeBackground.lite ? 'lightweight' : 'unavailable'} · data in ${caps.dataDir}`
       : 'Engine offline. Start it with ./formvis boot.');
+    setText(this.runtimeLine, caps?.runtime ? `Running on ${caps.runtime.system} (${caps.runtime.machine}) · engine Python ${caps.runtime.python} · window ${navigator.userAgent.match(/(Chrome|Firefox|Version)\/[\d.]+/)?.[0] ?? 'browser'}` : '');
+    setText(this.pluginLine, caps ? `Plugin folder: ${caps.dataDir.replace(/[\\/]+$/, '')}${caps.dataDir.includes('\\') ? '\\' : '/'}plugins` : '');
     this.open();
   }
 }

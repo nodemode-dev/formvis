@@ -1,5 +1,5 @@
 import { jpegQuality } from './jpeg-quality';
-import { cleanMeta, metaWritable, type CameraData, type DocMeta } from '../engine/doc-meta';
+import { cleanMeta, metaWritable, MAX_EXIF_BYTES, MAX_XMP_RAW_CHARS, type CameraData, type DocMeta } from '../engine/doc-meta';
 import { crc32 } from './embed-icc';
 import { SOURCE, type AiLabel } from './ai-label';
 import { VERSION } from '../version';
@@ -12,7 +12,7 @@ import { cameraFromTiff, exposureText, isoOfExifDate, rationalOf, roundText } fr
  *  from the same places, so a round trip keeps the fields. */
 
 const RDF = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#', DC = 'http://purl.org/dc/elements/1.1/', XMP = 'http://ns.adobe.com/xap/1.0/', RIGHTS = 'http://ns.adobe.com/xap/1.0/rights/',
-  PS = 'http://ns.adobe.com/photoshop/1.0/', TIFF = 'http://ns.adobe.com/tiff/1.0/', EXIF = 'http://ns.adobe.com/exif/1.0/', AUX = 'http://ns.adobe.com/exif/1.0/aux/', XML = 'http://www.w3.org/XML/1998/namespace';
+  PS = 'http://ns.adobe.com/photoshop/1.0/', TIFF = 'http://ns.adobe.com/tiff/1.0/', EXIF = 'http://ns.adobe.com/exif/1.0/', AUX = 'http://ns.adobe.com/exif/1.0/aux/', XML = 'http://www.w3.org/XML/1998/namespace', FV = 'https://formvis.app/ns/fileinfo/1.0/';
 const KEYWORD = 'XML:com.adobe.xmp', JPEG_HEAD = 'http://ns.adobe.com/xap/1.0/\u0000';
 const READ_LIMIT = 64 * 1024 * 1024, JPEG_READ = 8 * 1024 * 1024;
 
@@ -29,6 +29,21 @@ const join = (parts: Array<Uint8Array | number[]>): Uint8Array => {
   return out;
 };
 
+const fromB64 = (s: string): Uint8Array | null => {
+  try { const t = atob(s), a = new Uint8Array(t.length); for (let i = 0; i < t.length; i++) a[i] = t.charCodeAt(i); return a; } catch { return null; }
+};
+const toB64 = (a: Uint8Array): string => { let s = ''; for (let i = 0; i < a.length; i += 8192) s += String.fromCharCode(...a.subarray(i, i + 8192)); return btoa(s); };
+
+/** A copy of an Exif block with its Orientation tag set to 1: the pixels are turned upright when the picture opens. */
+function uprightExif(block: Uint8Array): Uint8Array {
+  const out = block.slice();
+  try {
+    const le = out[0] === 0x49, dv = new DataView(out.buffer), ifd = dv.getUint32(4, le), n = Math.min(dv.getUint16(ifd, le), 500);
+    for (let i = 0; i < n; i++) { const o = ifd + 2 + i * 12; if (dv.getUint16(o, le) === 274) dv.setUint16(o + 8, 1, le); }
+  } catch { /* left as it was */ }
+  return out;
+}
+
 const esc = (s: string): string => s.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f￾￿]/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /** The XMP packet for `m`: CreateDate is the document's created date (else now) and ModifyDate is `now`. */
@@ -37,6 +52,7 @@ export function buildXmp(m: DocMeta, now = new Date(), ai?: AiLabel): string {
   const list = (tag: string, kind: 'Seq' | 'Bag', vs: readonly string[]): string => `<${tag}><rdf:${kind}>${vs.map((v) => `<rdf:li>${esc(v)}</rdf:li>`).join('')}</rdf:${kind}></${tag}>`;
   const simple = (tag: string, v: string | undefined): string => (v ? `<${tag}>${esc(v)}</${tag}>` : '');
   const c: CameraData = m.camera ?? {};
+  const custom = Object.entries(m.custom ?? {});
   const body = [
     m.title ? alt('dc:title', m.title) : '',
     m.author ? list('dc:creator', 'Seq', [m.author]) : '',
@@ -55,8 +71,38 @@ export function buildXmp(m: DocMeta, now = new Date(), ai?: AiLabel): string {
     simple('tiff:Make', c.make), simple('tiff:Model', c.model), simple('aux:Lens', c.lens),
     simple('exif:ExposureTime', c.exposure), simple('exif:FNumber', c.aperture), c.iso ? list('exif:ISOSpeedRatings', 'Seq', [c.iso]) : '',
     simple('exif:FocalLength', c.focalLength), simple('exif:DateTimeOriginal', c.dateTaken),
+    custom.length ? `<formvis:fields><rdf:Seq>${custom.map(([k, v]) => `<rdf:li rdf:parseType="Resource"><formvis:key>${esc(k)}</formvis:key><formvis:value>${esc(v)}</formvis:value></rdf:li>`).join('')}</rdf:Seq></formvis:fields>` : '',
   ].join('');
-  return `<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>\n<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="formvis"><rdf:RDF xmlns:rdf="${RDF}"><rdf:Description rdf:about="" xmlns:dc="${DC}" xmlns:xmp="${XMP}" xmlns:xmpRights="${RIGHTS}" xmlns:photoshop="${PS}" xmlns:tiff="${TIFF}" xmlns:exif="${EXIF}" xmlns:aux="${AUX}" xmlns:Iptc4xmpExt="http://iptc.org/std/Iptc4xmpExt/2008-02-29/">${body}</rdf:Description></rdf:RDF></x:xmpmeta>\n<?xpacket end="w"?>`;
+  return `<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>\n<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="formvis"><rdf:RDF xmlns:rdf="${RDF}"><rdf:Description rdf:about="" xmlns:dc="${DC}" xmlns:xmp="${XMP}" xmlns:xmpRights="${RIGHTS}" xmlns:photoshop="${PS}" xmlns:tiff="${TIFF}" xmlns:exif="${EXIF}" xmlns:aux="${AUX}" xmlns:formvis="${FV}" xmlns:Iptc4xmpExt="http://iptc.org/std/Iptc4xmpExt/2008-02-29/">${body}</rdf:Description></rdf:RDF></x:xmpmeta>\n<?xpacket end="w"?>`;
+}
+
+/** The properties buildXmp writes: when a picture's own packet is carried on, these come out of it so File Info is the one source. */
+const MANAGED: ReadonlyArray<readonly [string, string[]]> = [
+  [DC, ['title', 'creator', 'description', 'subject', 'rights']], [XMP, ['Rating', 'CreatorTool', 'CreateDate', 'ModifyDate']], [RIGHTS, ['Marked', 'WebStatement']],
+  [PS, ['AuthorsPosition', 'CaptionWriter']], [TIFF, ['Make', 'Model']], [AUX, ['Lens']], [EXIF, ['ExposureTime', 'FNumber', 'ISOSpeedRatings', 'FocalLength', 'DateTimeOriginal']],
+  [FV, ['fields']], ['http://iptc.org/std/Iptc4xmpExt/2008-02-29/', ['DigitalSourceType']],
+];
+
+/** The packet for `m`: buildXmp, with the picture's original packet (m.xmpRaw) kept and its unmanaged properties carried on. */
+export function buildMergedXmp(m: DocMeta, now = new Date(), ai?: AiLabel): string {
+  const ours = buildXmp(m, now, ai);
+  if (!m.xmpRaw || typeof DOMParser === 'undefined') return ours;
+  try {
+    const parse = (s: string): Document => new DOMParser().parseFromString(s.replace(/^﻿/, ''), 'application/xml');
+    const orig = parse(m.xmpRaw.replace(/<\?xpacket[^>]*\?>/g, '')), mine = parse(ours.replace(/<\?xpacket[^>]*\?>/g, ''));
+    const rdf = orig.getElementsByTagNameNS(RDF, 'RDF')[0], mineDesc = mine.getElementsByTagNameNS(RDF, 'Description')[0];
+    if (orig.getElementsByTagName('parsererror').length || !rdf || !mineDesc) return ours;
+    for (const d of Array.from(orig.getElementsByTagNameNS(RDF, 'Description'))) {
+      for (const [ns, names] of MANAGED) for (const n of names) {
+        if (d.hasAttributeNS(ns, n)) d.removeAttributeNS(ns, n);
+        for (const k of Array.from(d.children)) if (k.namespaceURI === ns && k.localName === n) k.remove();
+      }
+    }
+    rdf.appendChild(orig.importNode(mineDesc, true));
+    const body = new XMLSerializer().serializeToString(orig.documentElement);
+    const out = `<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>\n${body}\n<?xpacket end="w"?>`;
+    return out.length <= 60000 ? out : ours;
+  } catch { return ours; }
 }
 
 /** File Info from an XMP packet (elements or attributes, as other programs write them), or null when it holds none of ours. */
@@ -101,7 +147,13 @@ export function metaFromXmp(xml: string): DocMeta | null {
   if (iso && Number(iso) > 0) camera.iso = String(Math.round(Number(iso)));
   const taken = simple(EXIF, 'DateTimeOriginal');
   if (taken) camera.dateTaken = isoOfExifDate(taken.replace(/-/g, ':').replace('T', ' ')) ?? taken.slice(0, 19);
+  const custom: Record<string, string> = {};
+  for (const li of Array.from(child(FV, 'fields')?.getElementsByTagNameNS(RDF, 'li') ?? [])) {
+    const k = li.getElementsByTagNameNS(FV, 'key')[0]?.textContent?.trim(), v = li.getElementsByTagNameNS(FV, 'value')[0]?.textContent?.trim();
+    if (k && v) custom[k] = v;
+  }
   return cleanMeta({
+    custom: Object.keys(custom).length ? custom : undefined,
     title: lang(DC, 'title'), author: items(DC, 'creator')[0] ?? simple(DC, 'creator'), description: lang(DC, 'description'), keywords: items(DC, 'subject'), notice: lang(DC, 'rights'),
     rating: Number.isFinite(rating) ? rating : undefined, copyright: marked === 'true' ? 'copyrighted' : marked === 'false' ? 'public' : undefined,
     url: simple(RIGHTS, 'WebStatement'), authorTitle: simple(PS, 'AuthorsPosition'), descriptionWriter: simple(PS, 'CaptionWriter'),
@@ -110,38 +162,45 @@ export function metaFromXmp(xml: string): DocMeta | null {
 }
 
 /** PNG: the packet as an iTXt chunk with the keyword XML:com.adobe.xmp right after IHDR, any earlier one dropped. */
-function pngWith(b: Uint8Array, xmp: Uint8Array): Uint8Array {
+function pngWith(b: Uint8Array, xmp: Uint8Array, exif?: Uint8Array | null): Uint8Array {
   if (b.length < 33 || b[1] !== 0x50 || b[2] !== 0x4e || b[3] !== 0x47) throw new Error('Not a PNG file.');
   const typed = join([ascii('iTXt'), ascii(KEYWORD), [0, 0, 0, 0, 0], xmp]);
   const chunk = join([be32(typed.length - 4), typed, be32(crc32(typed))]);
+  const exifTyped = exif ? join([ascii('eXIf'), exif]) : null;
+  const exifChunk = exifTyped ? join([be32(exif!.length), exifTyped, be32(crc32(exifTyped))]) : null;
   const parts: Uint8Array[] = [b.subarray(0, 8)];
   let p = 8;
   while (p + 8 <= b.length) {
     const len = u32be(b, p), end = p + 12 + len;
-    if (!(at(b, p + 4, 'iTXt') && at(b, p + 8, KEYWORD + '\u0000'))) parts.push(b.subarray(p, Math.min(end, b.length)));
-    if (at(b, p + 4, 'IHDR')) parts.push(chunk);
+    if (!(at(b, p + 4, 'iTXt') && at(b, p + 8, KEYWORD + '\u0000')) && !(exifChunk && at(b, p + 4, 'eXIf'))) parts.push(b.subarray(p, Math.min(end, b.length)));
+    if (at(b, p + 4, 'IHDR')) { if (exifChunk) parts.push(exifChunk); parts.push(chunk); }
     p = end;
   }
   return join(parts);
 }
 
 /** JPEG: the packet as an APP1 segment with the XMP namespace header after the JFIF and Exif segments, any earlier one dropped. */
-function jpegWith(b: Uint8Array, xmp: Uint8Array): Uint8Array {
+function jpegWith(b: Uint8Array, xmp: Uint8Array, exif?: Uint8Array | null): Uint8Array {
   if (b[0] !== 0xff || b[1] !== 0xd8) throw new Error('Not a JPEG file.');
   const len = 2 + JPEG_HEAD.length + xmp.length;
   if (len > 0xffff) throw new Error('The File Info is too large to write into a JPEG; shorten the description or the keywords.');
+  const exifLen = exif && 8 + exif.length <= 0xffff ? 8 + exif.length : 0;
   const kept: Array<{ marker: number; bytes: Uint8Array }> = [];
-  let p = 2, lead = 0, leading = true;
+  let p = 2, lead = 0, leading = true, jfif = 0, jfifOpen = true;
   while (p + 4 <= b.length && b[p] === 0xff && b[p + 1] !== 0xda) {
     const end = p + 2 + ((b[p + 2] << 8) | b[p + 3]), marker = b[p + 1];
-    if (!(marker === 0xe1 && at(b, p + 4, JPEG_HEAD))) {
+    if (!(marker === 0xe1 && (at(b, p + 4, JPEG_HEAD) || (exifLen && at(b, p + 4, 'Exif\u0000\u0000'))))) {
       kept.push({ marker, bytes: b.subarray(p, end) });
       if (leading && (marker === 0xe0 || marker === 0xe1)) lead = kept.length; else leading = false;
+      if (jfifOpen && marker === 0xe0) jfif = kept.length; else jfifOpen = false;
     }
     p = end;
   }
   const segment = join([[0xff, 0xe1, (len >> 8) & 255, len & 255], ascii(JPEG_HEAD), xmp]);
-  return join([b.subarray(0, 2), ...kept.slice(0, lead).map((k) => k.bytes), segment, ...kept.slice(lead).map((k) => k.bytes), b.subarray(p)]);
+  const exifSegment = exifLen ? join([[0xff, 0xe1, (exifLen >> 8) & 255, exifLen & 255], ascii('Exif\u0000\u0000'), exif!]) : new Uint8Array(0);
+  const head = kept.slice(0, lead).map((k) => k.bytes);
+  if (exifLen) head.splice(jfif, 0, exifSegment);
+  return join([b.subarray(0, 2), ...head, segment, ...kept.slice(lead).map((k) => k.bytes), b.subarray(p)]);
 }
 
 interface Riff { id: string; data: Uint8Array }
@@ -158,11 +217,12 @@ function riffChunks(b: Uint8Array): Riff[] | null {
 }
 
 /** WebP: the packet as an XMP chunk after the image, in an extended (VP8X) file; a plain file is first given its VP8X header. */
-function webpWith(b: Uint8Array, xmp: Uint8Array): Uint8Array {
+function webpWith(b: Uint8Array, xmp: Uint8Array, exif?: Uint8Array | null): Uint8Array {
   const chunks = riffChunks(b);
   if (!chunks) throw new Error('Not a WebP file.');
-  const rest = chunks.filter((c) => c.id !== 'XMP ');
-  if (rest[0]?.id === 'VP8X') { const head = rest[0].data.slice(); head[0] |= 0x04; rest[0] = { id: 'VP8X', data: head }; }
+  const rest = chunks.filter((c) => c.id !== 'XMP ' && !(exif && c.id === 'EXIF'));
+  const flags = exif ? 0x0c : 0x04;
+  if (rest[0]?.id === 'VP8X') { const head = rest[0].data.slice(); head[0] |= flags; rest[0] = { id: 'VP8X', data: head }; }
   else {
     const im = rest.find((c) => c.id === 'VP8 ' || c.id === 'VP8L');
     if (!im) throw new Error('Not a WebP picture.');
@@ -170,8 +230,9 @@ function webpWith(b: Uint8Array, xmp: Uint8Array): Uint8Array {
     if (im.id === 'VP8L') { const v = u32le(im.data, 1); w = (v & 0x3fff) + 1; h = ((v >>> 14) & 0x3fff) + 1; alpha = (v >>> 28) & 1; }
     else { w = (im.data[6] | (im.data[7] << 8)) & 0x3fff; h = (im.data[8] | (im.data[9] << 8)) & 0x3fff; }
     const dim = (n: number): number[] => [(n - 1) & 255, ((n - 1) >> 8) & 255, ((n - 1) >> 16) & 255];
-    rest.unshift({ id: 'VP8X', data: Uint8Array.from([0x04 | (alpha ? 0x10 : 0), 0, 0, 0, ...dim(w), ...dim(h)]) });
+    rest.unshift({ id: 'VP8X', data: Uint8Array.from([flags | (alpha ? 0x10 : 0), 0, 0, 0, ...dim(w), ...dim(h)]) });
   }
+  if (exif) rest.push({ id: 'EXIF', data: exif });
   rest.push({ id: 'XMP ', data: xmp });
   const body = join(rest.flatMap((c) => [ascii(c.id), le32(c.data.length), c.data, c.data.length & 1 ? [0] : []]));
   return join([ascii('RIFF'), le32(body.length + 4), ascii('WEBP'), body]);
@@ -208,8 +269,9 @@ export async function withXmp(blob: Blob, format: string, meta: DocMeta | undefi
   if (!metaWritable(meta)) return blob;
   const f = format === 'jpeg' ? 'jpg' : format === 'tif' ? 'tiff' : format;
   if (f !== 'png' && f !== 'jpg' && f !== 'webp' && f !== 'tiff') return blob;
-  const xmp = new TextEncoder().encode(buildXmp(meta, now, ai)), b = new Uint8Array(await blob.arrayBuffer());
-  const out = f === 'png' ? pngWith(b, xmp) : f === 'jpg' ? jpegWith(b, xmp) : f === 'webp' ? webpWith(b, xmp) : tiffWith(b, xmp);
+  const xmp = new TextEncoder().encode(buildMergedXmp(meta, now, ai)), b = new Uint8Array(await blob.arrayBuffer());
+  const exif = meta.exif ? fromB64(meta.exif) : null;
+  const out = f === 'png' ? pngWith(b, xmp, exif) : f === 'jpg' ? jpegWith(b, xmp, exif) : f === 'webp' ? webpWith(b, xmp, exif) : tiffWith(b, xmp);
   return new Blob([out as BlobPart], { type: blob.type });
 }
 
@@ -266,7 +328,10 @@ export async function readFileMeta(file: Blob): Promise<DocMeta | null> {
     const b = new Uint8Array(await file.slice(0, jpeg ? JPEG_READ : READ_LIMIT).arrayBuffer()), { xmp, exif } = packets(b);
     const fromXmp = xmp ? metaFromXmp(xmp) : null, camera = fromXmp?.camera ?? (exif ? cameraFromTiff(exif) : null);
     const quality = jpeg ? jpegQuality(b) : null;
-    if (!fromXmp && !camera && !quality) return null;
-    return cleanMeta({ ...(fromXmp ?? {}), ...(camera ? { camera } : {}), ...(quality ? { jpegQuality: quality } : {}) });
+    const tiff = head[0] === 0x49 || head[0] === 0x4d;   // a TIFF's whole file is its Exif; only JPEG, PNG and WebP blocks are kept
+    const keepExif = exif && !tiff && exif.length <= MAX_EXIF_BYTES ? toB64(uprightExif(exif)) : undefined;
+    const keepXmp = xmp && xmp.length <= MAX_XMP_RAW_CHARS ? xmp : undefined;
+    if (!fromXmp && !camera && !quality && !keepExif && !keepXmp) return null;
+    return cleanMeta({ ...(fromXmp ?? {}), ...(camera ? { camera } : {}), ...(quality ? { jpegQuality: quality } : {}), ...(keepExif ? { exif: keepExif } : {}), ...(keepXmp ? { xmpRaw: keepXmp } : {}) });
   } catch { return null; }
 }

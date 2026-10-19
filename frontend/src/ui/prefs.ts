@@ -1,6 +1,9 @@
-import type { Engine } from '../engine';
+import type { Engine, ResampleMethod } from '../engine';
 import { previewMode } from '../engine/image-edit';
 import { renderCache } from '../engine/renderer';
+import { api } from '../io/api';
+import { gamutWarning } from '../engine/colour-lut';
+import { slicePrefs } from '../extensions/tools/slice';
 import { isLang, type Lang } from './i18n/langs';
 import type { GpuPower, GpuRenderer } from '../gpu/probe';
 import { DEFAULT_COLOUR, cleanColour, cleanPresets, type ColourPreset, type ColourSettings, type MismatchPref } from './colour-settings';
@@ -9,7 +12,7 @@ import { DEFAULT_COLOUR, cleanColour, cleanPresets, type ColourPreset, type Colo
  *  something real: History States and history memory are the undo limits every project uses; region redraws decide
  *  whether a brush stroke repaints only what it changed; the recovery delay is how soon after a change unsaved work is
  *  kept for crash recovery. The graphics processor settings choose the renderer (Phase 18). */
-export interface Prefs { language: Lang; profileMismatch: MismatchPref; colour: ColourSettings; colourPresets: ColourPreset[]; shortcuts: Record<string, string[]>; restoreSession: boolean; agentsAllowed: boolean; comfyuiUrl: string; nodemodeUrl: string; historyStates: number; historyMB: number; historyAuto: boolean; memoryLimitMB: number; effectCacheMB: number; cacheLevels: number; regionRedraws: boolean; fullPreviews: boolean; recoverySeconds: number; autoShowHome: boolean; useGpu: boolean; gpuFilters: boolean; renderer: GpuRenderer; gpuMemoryMB: number; gpuPower: GpuPower; lowLatency: boolean; engineDevice: EngineDevice;
+export interface Prefs extends PagePrefs { language: Lang; profileMismatch: MismatchPref; colour: ColourSettings; colourPresets: ColourPreset[]; shortcuts: Record<string, string[]>; restoreSession: boolean; agentsAllowed: boolean; comfyuiUrl: string; nodemodeUrl: string; historyStates: number; historyMB: number; historyAuto: boolean; memoryLimitMB: number; effectCacheMB: number; cacheLevels: number; regionRedraws: boolean; fullPreviews: boolean; recoverySeconds: number; autoShowHome: boolean; useGpu: boolean; gpuFilters: boolean; renderer: GpuRenderer; gpuMemoryMB: number; gpuPower: GpuPower; lowLatency: boolean; engineDevice: EngineDevice;
   /* The sections (the owner's walkthrough): Tools, History & Cache, Workspace, Cursors, Transparency & Gamut,
      Units & Rulers, Guides & Grid; every one acts on something real. */
   zoomWheel: boolean; autoFirstSnapshot: boolean; snapshotMB: number; narrowCollapse: boolean;
@@ -40,8 +43,51 @@ export interface Prefs { language: Lang; profileMismatch: MismatchPref; colour: 
   /** Preferences > History Log: each new history step is written to the log (Edit > History Log saves it). */
   historyLog: boolean;
   /** Preferences > File Handling: a picture placed or dropped into an open document starts in Free Transform. */
-  placeTransform: boolean }
+  placeTransform: boolean;
+  /** Preferences > General: ease zoom steps, and the colour picker the swatches open (formvis's own or the system's). */
+  animatedZoom: boolean; systemPicker: boolean; zoomResizes: boolean; beepWhenDone: boolean; interpolation: ResampleMethod;
+  /** Preferences > Workspace: a floating document window dropped on the tab bar goes back to its tab. */
+  floatDocking: boolean;
+  /** Preferences > Tools: the tool tips, Shift with a tool's key cycles its group, and the Zoom tool centres the clicked point. */
+  showTooltips: boolean; shiftToolSwitch: boolean; zoomClickCentre: boolean;
+  /** Preferences > File Handling: the extension of exported files in lower case, and how many files File > Open Recent lists. */
+  lowerExtension: boolean; recentFileCount: number;
+  /** Preferences > Transparency & Gamut: the Gamut Warning's colour and its opacity in percent. */
+  gamutColor: string; gamutOpacity: number;
+  /** Preferences > Guides, Grid & Slices: the line styles of guides and the grid, the slice lines' colour and their numbers. */
+  guideStyle: LineStyle; gridStyle: LineStyle; sliceColor: string; sliceNumbers: boolean;
+  /** Edit > Keyboard Shortcuts: saved sets of bindings, by name, each a command id to its combinations. */
+  shortcutSets: Record<string, Record<string, string[]>>;
+  /** Edit > Menus: command ids hidden from the menu bar, and the colour name each shown item is drawn in. */
+  menuHidden: string[]; menuColors: Record<string, string>;
+  /** Preferences > Interface: transitions and the marching ants run; Preferences > Tools: pen pressure is read. */
+  animations: boolean; usePressure: boolean }
+export const MENU_COLORS: readonly string[] = ['red', 'orange', 'yellow', 'green', 'blue', 'violet', 'gray'];
 export const RAW_WB_CHOICES: ReadonlyArray<readonly ['as_shot' | 'auto' | 'daylight', string]> = [['as_shot', 'As Shot'], ['auto', 'Auto'], ['daylight', 'Daylight']];
+/** Preferences > Scratch Disks, Cursors, Transparency & Gamut, Units & Rulers, Guides Grid & Slices, Plug-ins, Type and Enhanced Controls. */
+export interface PagePrefs {
+  scratchFolder: string;
+  cursorOnlyCross: boolean; cursorOther: 'standard' | 'precise'; brushPreviewColor: string;
+  checkerA: string; checkerB: string;
+  printRes: number; screenRes: number; colWidth: number; gutter: number;
+  showExtPanels: boolean;
+  smartQuotes: boolean; escCommit: boolean; placeholderText: boolean;
+  pinchZoom: boolean; trackpadRotate: boolean; scrubAccel: number; touchGestures: boolean }
+export const PAGE_DEFAULTS: PagePrefs = { scratchFolder: '', cursorOnlyCross: false, cursorOther: 'standard', brushPreviewColor: '#ff0000', checkerA: '#ffffff', checkerB: '#cccccc',
+  printRes: 300, screenRes: 72, colWidth: 15, gutter: 4.2,
+  showExtPanels: true, smartQuotes: false, escCommit: false, placeholderText: false, pinchZoom: true, trackpadRotate: false, scrubAccel: 0, touchGestures: true };
+const hex = (v: unknown, d: string, blank = false): string => (typeof v === 'string' && (blank ? /^(#[0-9a-f]{6})?$/i : /^#[0-9a-f]{6}$/i).test(v) ? v : d);
+const flag = (v: unknown, d: boolean): boolean => (typeof v === 'boolean' ? v : d);
+const pageOf = (r: Partial<Record<keyof PagePrefs, unknown>>): PagePrefs => {
+  const d = PAGE_DEFAULTS;
+  return {
+    scratchFolder: typeof r.scratchFolder === 'string' ? r.scratchFolder.slice(0, 500) : d.scratchFolder,
+    cursorOnlyCross: flag(r.cursorOnlyCross, d.cursorOnlyCross), cursorOther: r.cursorOther === 'precise' ? 'precise' : 'standard', brushPreviewColor: hex(r.brushPreviewColor, d.brushPreviewColor),
+    checkerA: hex(r.checkerA, d.checkerA), checkerB: hex(r.checkerB, d.checkerB),
+    printRes: Math.round(num(r.printRes, 1, 10000, d.printRes)), screenRes: Math.round(num(r.screenRes, 1, 10000, d.screenRes)), colWidth: num(r.colWidth, 1, 1000, d.colWidth), gutter: num(r.gutter, 0, 500, d.gutter),    showExtPanels: flag(r.showExtPanels, d.showExtPanels), smartQuotes: flag(r.smartQuotes, d.smartQuotes), escCommit: flag(r.escCommit, d.escCommit), placeholderText: flag(r.placeholderText, d.placeholderText),
+    pinchZoom: flag(r.pinchZoom, d.pinchZoom), trackpadRotate: flag(r.trackpadRotate, d.trackpadRotate), scrubAccel: Math.round(num(r.scrubAccel, 0, 100, d.scrubAccel)), touchGestures: flag(r.touchGestures, d.touchGestures),
+  };
+};
 export type PressureCurve = 'linear' | 'soft' | 'firm' | 's';
 export const PRESSURE_CURVES: ReadonlyArray<readonly [PressureCurve, string]> = [['linear', 'Linear'], ['soft', 'Soft'], ['firm', 'Firm'], ['s', 'S curve']];
 export const PRESSURE_POINTS: Record<PressureCurve, number[] | null> = { linear: null, soft: [0, 0.35, 0.6, 0.8, 1], firm: [0, 0.1, 0.3, 0.6, 1], s: [0, 0.1, 0.5, 0.9, 1] };
@@ -70,26 +116,31 @@ export type ToolOptionValue = string | number | boolean;
 export type DialogValue = string | boolean;
 export type PaintCursor = 'tip' | 'precise' | 'standard';
 export type CheckerSize = 'none' | 'small' | 'medium' | 'large';
-export type CheckerColors = 'auto' | 'light' | 'medium' | 'dark';
-export type RulerUnits = 'px' | 'in' | 'cm' | 'mm' | '%';
+export type CheckerColors = 'auto' | 'light' | 'medium' | 'dark' | 'custom';
+export type RulerUnits = 'px' | 'in' | 'cm' | 'mm' | '%' | 'col';
+/** Preferences > General > Image Interpolation: the resampling the Image Size dialog starts with. */
+export const INTERPOLATIONS: ReadonlyArray<readonly [ResampleMethod, string]> = [['high', 'High quality'], ['smooth', 'Smooth'], ['nearest', 'Nearest (hard edges)'], ['bilinear', 'Bilinear'], ['bicubic', 'Bicubic'], ['smoother', 'Bicubic Smoother (enlargement)'], ['sharper', 'Bicubic Sharper (reduction)'], ['lanczos', 'Lanczos']];
+export type LineStyle = 'solid' | 'dashed' | 'dotted';
+export const LINE_STYLES: ReadonlyArray<readonly [LineStyle, string]> = [['solid', 'Solid'], ['dashed', 'Dashed'], ['dotted', 'Dotted']];
+export const LINE_DASH: Record<LineStyle, number[]> = { solid: [], dashed: [6, 4], dotted: [1, 3] };
 export const PAINT_CURSORS: ReadonlyArray<readonly [PaintCursor, string]> = [['tip', 'Normal Brush Tip'], ['precise', 'Precise'], ['standard', 'Standard']];
 export const CHECKER_SIZES: ReadonlyArray<readonly [CheckerSize, string]> = [['none', 'None'], ['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']];
-export const CHECKER_COLORS: ReadonlyArray<readonly [CheckerColors, string]> = [['auto', 'Match Theme'], ['light', 'Light'], ['medium', 'Medium'], ['dark', 'Dark']];
-export const RULER_UNITS: ReadonlyArray<readonly [RulerUnits, string]> = [['px', 'Pixels'], ['in', 'Inches'], ['cm', 'Centimeters'], ['mm', 'Millimeters'], ['%', 'Percent']];
+export const CHECKER_COLORS: ReadonlyArray<readonly [CheckerColors, string]> = [['auto', 'Match Theme'], ['light', 'Light'], ['medium', 'Medium'], ['dark', 'Dark'], ['custom', 'Custom']];
+export const RULER_UNITS: ReadonlyArray<readonly [RulerUnits, string]> = [['px', 'Pixels'], ['in', 'Inches'], ['cm', 'Centimeters'], ['mm', 'Millimeters'], ['%', 'Percent'], ['col', 'Columns']];
 /** The checkerboard's cell in screen pixels, and its two colours (the Transparency settings). */
 export const CHECKER_CELL: Record<CheckerSize, number> = { none: 8, small: 4, medium: 8, large: 16 };
-export const CHECKER_PAIR: Record<Exclude<CheckerColors, 'auto'>, readonly [string, string]> = { light: ['#ffffff', '#cccccc'], medium: ['#cccccc', '#999999'], dark: ['#666666', '#999999'] };
+export const CHECKER_PAIR: Record<Exclude<CheckerColors, 'auto' | 'custom'>, readonly [string, string]> = { light: ['#ffffff', '#cccccc'], medium: ['#cccccc', '#999999'], dark: ['#666666', '#999999'] };
 /** The checkerboard's two colours for a choice; Match Theme takes the light pair in a light theme and the dark pair in a dark one. */
-export const checkerPair = (choice: CheckerColors, themeLight: boolean): readonly [string, string] => CHECKER_PAIR[choice === 'auto' ? (themeLight ? 'light' : 'dark') : choice];
+export const checkerPair = (choice: CheckerColors, themeLight: boolean, custom: readonly [string, string] = ['#ffffff', '#cccccc']): readonly [string, string] => choice === 'custom' ? custom : CHECKER_PAIR[choice === 'auto' ? (themeLight ? 'light' : 'dark') : choice];
 
 /** The engine's compute device (Phase 18.6), sent to the engine, which reports what it uses. */
-export type EngineDevice = 'auto' | 'metal' | 'cuda' | 'cpu';
-export const ENGINE_CHOICES: ReadonlyArray<readonly [EngineDevice, string]> = [['auto', 'Automatic'], ['metal', 'Metal (Core ML)'], ['cuda', 'CUDA'], ['cpu', 'CPU']];
+export type EngineDevice = 'auto' | 'metal' | 'cuda' | 'dml' | 'cpu';
+export const ENGINE_CHOICES: ReadonlyArray<readonly [EngineDevice, string]> = [['auto', 'Automatic'], ['metal', 'Metal (Core ML)'], ['cuda', 'CUDA'], ['dml', 'DirectML (Windows GPU)'], ['cpu', 'CPU']];
 
 export const DEFAULT_PREFS: Prefs = { language: 'en', profileMismatch: 'convert', colour: DEFAULT_COLOUR, colourPresets: [], shortcuts: {}, restoreSession: true, agentsAllowed: false, comfyuiUrl: 'http://127.0.0.1:8188', nodemodeUrl: 'http://localhost:8000', historyStates: 100, historyMB: 256, historyAuto: true, memoryLimitMB: 0, effectCacheMB: 256, cacheLevels: 6, regionRedraws: true, fullPreviews: false, recoverySeconds: 20, autoShowHome: true, useGpu: true, gpuFilters: true, renderer: 'auto', gpuMemoryMB: 1024, gpuPower: 'high-performance', lowLatency: false, engineDevice: 'auto',
   zoomWheel: false, autoFirstSnapshot: true, snapshotMB: 768, narrowCollapse: true, paintCursor: 'tip', cursorCrosshair: false,
   checkerSize: 'medium', checkerColors: 'auto', checkerTheme: true, rulerUnits: 'px', guideColor: '', gridColor: '', gridSpacing: 100, gridSubdivisions: 4,
-  homeOnLastClose: false, whatsNewAuto: true, whatsNewSeen: '', toolOptions: {}, dialogValues: {}, spellWords: [], measureDataPoints: [...DEFAULT_MEASURE_POINTS], fontPreview: 'medium', toolbar: null, pressureCurve: 'linear', uiFontSize: 'default', recentFontCount: 5, recentFonts: [], rawWb: 'as_shot', rawBits: 8, rawAutoTone: false, rawSmart: false, rawPpi: 0, historyLog: false, placeTransform: true };
+  homeOnLastClose: false, whatsNewAuto: true, whatsNewSeen: '', toolOptions: {}, dialogValues: {}, spellWords: [], measureDataPoints: [...DEFAULT_MEASURE_POINTS], fontPreview: 'medium', toolbar: null, pressureCurve: 'linear', uiFontSize: 'default', recentFontCount: 5, recentFonts: [], rawWb: 'as_shot', rawBits: 8, rawAutoTone: false, rawSmart: false, rawPpi: 0, historyLog: false, placeTransform: true, animatedZoom: true, systemPicker: false, zoomResizes: false, beepWhenDone: false, interpolation: 'high', floatDocking: true, showTooltips: true, shiftToolSwitch: true, zoomClickCentre: false, lowerExtension: true, recentFileCount: 20, gamutColor: '#808080', gamutOpacity: 100, guideStyle: 'solid', gridStyle: 'solid', sliceColor: '', sliceNumbers: true, shortcutSets: {}, menuHidden: [], menuColors: {}, animations: true, usePressure: true, ...PAGE_DEFAULTS };
 export const RECOVERY_CHOICES: ReadonlyArray<readonly [string, string]> = [['10', '10 seconds'], ['20', '20 seconds'], ['60', '1 minute'], ['300', '5 minutes'], ['600', '10 minutes']];
 const KEY = 'formvis.prefs';
 
@@ -126,6 +177,28 @@ function cleanToolbar(v: unknown): ToolbarPref | null {
   const ids = (a: unknown): string[] => (Array.isArray(a) ? a : []).filter((x): x is string => typeof x === 'string' && x.length > 0 && x.length <= 80 && !seen.has(x) && !!seen.add(x));
   const groups = v.groups.slice(0, 200).map(ids).filter((g) => g.length > 0);
   return { groups, hidden: ids(v.hidden) };
+}
+
+/** A binding map (command id to combinations), strings only: what a saved set or an imported file may hold. */
+export function cleanBindings(v: unknown): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  if (!plain(v)) return out;
+  for (const [k, x] of Object.entries(v).slice(0, 3000)) if (Array.isArray(x)) out[k.slice(0, 120)] = x.filter((s): s is string => typeof s === 'string' && s.length > 0 && s.length <= 40).slice(0, 8);
+  return out;
+}
+
+function cleanShortcutSets(v: unknown): Record<string, Record<string, string[]>> {
+  const out: Record<string, Record<string, string[]>> = {};
+  if (!plain(v)) return out;
+  for (const [name, set] of Object.entries(v).slice(0, 50)) if (name.trim() && name.length <= 60) out[name] = cleanBindings(set);
+  return out;
+}
+
+function cleanMenuColors(v: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!plain(v)) return out;
+  for (const [k, x] of Object.entries(v).slice(0, 2000)) if (typeof x === 'string' && MENU_COLORS.includes(x)) out[k.slice(0, 120)] = x;
+  return out;
 }
 
 export function loadPrefs(): Prefs {
@@ -192,6 +265,20 @@ export function loadPrefs(): Prefs {
       rawSmart: r.rawSmart === true,
       historyLog: r.historyLog === true,
       placeTransform: r.placeTransform !== false,
+      animatedZoom: r.animatedZoom !== false, systemPicker: r.systemPicker === true, zoomResizes: r.zoomResizes === true, beepWhenDone: r.beepWhenDone === true, interpolation: INTERPOLATIONS.some(([k]) => k === r.interpolation) ? r.interpolation as ResampleMethod : 'high', floatDocking: r.floatDocking !== false, showTooltips: r.showTooltips !== false, shiftToolSwitch: r.shiftToolSwitch !== false, zoomClickCentre: r.zoomClickCentre === true, lowerExtension: r.lowerExtension !== false,
+      recentFileCount: Math.round(num(r.recentFileCount, 0, 40, DEFAULT_PREFS.recentFileCount)),
+      gamutColor: typeof r.gamutColor === 'string' && /^#[0-9a-f]{6}$/i.test(r.gamutColor) ? r.gamutColor : DEFAULT_PREFS.gamutColor,
+      gamutOpacity: Math.round(num(r.gamutOpacity, 0, 100, DEFAULT_PREFS.gamutOpacity)),
+      guideStyle: LINE_STYLES.some(([k]) => k === r.guideStyle) ? r.guideStyle as LineStyle : 'solid',
+      gridStyle: LINE_STYLES.some(([k]) => k === r.gridStyle) ? r.gridStyle as LineStyle : 'solid',
+      sliceColor: typeof r.sliceColor === 'string' && /^(#[0-9a-f]{6})?$/i.test(r.sliceColor) ? r.sliceColor : '',
+      sliceNumbers: r.sliceNumbers !== false,
+      shortcutSets: cleanShortcutSets(r.shortcutSets),
+      menuHidden: Array.isArray(r.menuHidden) ? r.menuHidden.filter((x): x is string => typeof x === 'string' && x.length > 0 && x.length <= 120).slice(0, 2000) : [],
+      menuColors: cleanMenuColors(r.menuColors),
+      animations: r.animations !== false,
+      usePressure: r.usePressure !== false,
+      ...pageOf(r),
       rawPpi: typeof r.rawPpi === 'number' && Number.isFinite(r.rawPpi) && r.rawPpi >= 1 && r.rawPpi <= 10000 ? Math.round(r.rawPpi) : 0,
     };
   } catch { return { ...DEFAULT_PREFS }; }
@@ -226,6 +313,16 @@ export function applyUiFontSize(p: Prefs): void {
   for (const n of [9, 10, 11, 12, 13, 14, 16, 18]) { if (k === 1) s.removeProperty(`--fs-${n}`); else s.setProperty(`--fs-${n}`, `${Math.round(n * k * 10) / 10}px`); }
 }
 
+let appliedScratch: string | null = null;
+/** Sends the scratch folder to the engine once per change; a refused or unreachable engine is tried again at the next call. */
+function setScratchFolder(folder: string): void {
+  if (folder === appliedScratch) return;
+  appliedScratch = folder;
+  api.setScratch(folder).then(() => window.dispatchEvent(new Event('formvis:scratch')), () => { appliedScratch = null; window.dispatchEvent(new Event('formvis:scratch')); });
+}
+/** Sends the saved scratch folder again, as the engine becomes reachable (it may have restarted). */
+export const resendScratch = (): void => { appliedScratch = null; setScratchFolder(loadPrefs().scratchFolder); };
+
 /** Puts the engine-side preferences into effect; the recovery delay is read by the app when it schedules a save. */
 export function applyPrefs(engine: Engine, p: Prefs): void {
   renderCache.levels = p.cacheLevels;
@@ -238,6 +335,14 @@ export function applyPrefs(engine: Engine, p: Prefs): void {
   engine.autoFirstSnapshot = p.autoFirstSnapshot;
   engine.snapshotByteLimit = p.snapshotMB * 1024 * 1024;
   engine.view = { ...engine.view, gridSpacing: p.gridSpacing, gridSubdivisions: p.gridSubdivisions };
-  engine.cursorPrefs = { paint: p.paintCursor, crosshair: p.cursorCrosshair };
+  engine.cursorPrefs = { paint: p.paintCursor, crosshair: p.cursorCrosshair, onlyCross: p.cursorOnlyCross, previewColor: p.brushPreviewColor };
+  setScratchFolder(p.scratchFolder);
+  engine.zoomPrefs = { animate: p.animatedZoom, centreClick: p.zoomClickCentre };
+  slicePrefs.color = p.sliceColor; slicePrefs.numbers = p.sliceNumbers;
+  const gc = parseInt(p.gamutColor.slice(1), 16), go = p.gamutOpacity / 100;
+  if (gamutWarning.r !== gc >> 16 || gamutWarning.g !== ((gc >> 8) & 255) || gamutWarning.b !== (gc & 255) || gamutWarning.opacity !== go) {
+    gamutWarning.r = gc >> 16; gamutWarning.g = (gc >> 8) & 255; gamutWarning.b = gc & 255; gamutWarning.opacity = go;
+    if (engine.viewTransform?.gamut) engine.emit('render', null);
+  }
   engine.emit('overlay', null);
 }

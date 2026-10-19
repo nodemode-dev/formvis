@@ -1,6 +1,9 @@
 import { fontCss, liveText, textMetrics, type Engine, type ID, type Pt, type TextSpec } from '../engine';
 import type { Project } from '../engine/project';
 import { el, setHidden, setStyleVar } from './dom';
+import { loadPrefs } from './prefs';
+
+const PLACEHOLDER = 'Lorem ipsum dolor sit amet';
 
 /** Typing on the canvas: one kept text box over the stage, set in the text's own font, size, colour and line spacing
  *  at the current zoom, with its first baseline on the click (or on an existing layer's first baseline, the layer
@@ -12,10 +15,10 @@ export class TextEditor {
 
   constructor(host: HTMLElement, private readonly engine: Engine) {
     host.appendChild(this.box);
-    this.box.addEventListener('input', () => this.place());
+    this.box.addEventListener('input', (e) => { this.curl(e as InputEvent); this.place(); });
     this.box.addEventListener('keydown', (e) => {
       e.stopPropagation();
-      if (e.key === 'Escape') { e.preventDefault(); this.cancel(); }
+      if (e.key === 'Escape') { e.preventDefault(); if (loadPrefs().escCommit) void this.commit(); else this.cancel(); }
       else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void this.commit(); }
       else if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.code === 'Period' || e.code === 'Comma')) { e.preventDefault(); this.nudgeSize(e.code === 'Period' ? 1 : -1, e.altKey ? 10 : 2); }
       else if (e.altKey && !e.metaKey && !e.ctrlKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { e.preventDefault(); this.nudgeSpacing('tracking', e.key === 'ArrowRight' ? 1 : -1, e.shiftKey ? 100 : 20); }
@@ -49,11 +52,21 @@ export class TextEditor {
     } else {
       // A dragged box makes paragraph text; the tool's kind makes it vertical, or a mask (a selection, not a layer).
       this.session = { project: p, at: { x: target.x, y: target.y }, layerId: null, spec: { ...e.textSettings, content: '', color: e.fg, rendered: undefined, box: target.box ?? null }, scale: 1, mask: e.typeMask };
-      this.box.value = '';
+      this.box.value = loadPrefs().placeholderText ? PLACEHOLDER : '';
     }
     setHidden(this.box, false);
     this.place();
     this.box.focus();
+    if (this.box.value === PLACEHOLDER && !('layerId' in target)) this.box.select();   // typing replaces the placeholder
+  }
+
+  /** Preferences > Type > Use Smart Quotes: a typed straight quote becomes the curly one that fits what comes before it. */
+  private curl(e: InputEvent): void {
+    if (e.inputType !== 'insertText' || (e.data !== '"' && e.data !== "'") || !loadPrefs().smartQuotes) return;
+    const b = this.box, at = b.selectionStart;
+    if (at < 1) return;
+    const before = at > 1 ? b.value[at - 2] : '', open = before === '' || /[\s(\[{—–]/.test(before) || before === '“' || before === '‘';
+    b.setRangeText(e.data === '"' ? (open ? '“' : '”') : (open ? '‘' : '’'), at - 1, at, 'end');
   }
 
   /** Renders what was typed into its layer and closes the box; empty new text is dropped, and emptied existing text

@@ -112,7 +112,7 @@ import { commitPendingCrop, cropPending } from './extensions/tools/crop';
 import { HostLink } from './host';
 import { api, onServiceChange, serviceDown, type Capabilities, type CmykPsd, type OpenedProject } from './io/api';
 import { PROJECT_FILTER, baseName, checkForUpdate, chooseOpenPaths, chooseSavePath, confirmExit, folderOf, hasPanels, installUpdate, isDiskPath, listenShell } from './io/disk';
-import { depthReady, findToRemove, installModel, localDepth, localInpaint, modelReady, skyMask, skyReady } from './io/local-gen';
+import { depthReady, findToRemove, installModel, localDepth, localInpaint, modelReady, skyMask, skyReady, warmLama } from './io/local-gen';
 import { FocusAreaDialog } from './ui/panels/focus-area-dialog';
 import { MergeDialog } from './ui/panels/merge-dialog';
 import { ScriptEventsDialog } from './ui/panels/script-events-dialog';
@@ -134,10 +134,11 @@ import { RenderVideoDialog, type RenderChoice } from './ui/panels/render-video-d
 import { LargePictureError, IMAGE_ACCEPT, PROJECT_ACCEPT, RAW_FILE, decodeDeepLayer, decodeFrames, decodeTgaSplit, decodeHdr, decodeImage, heifBits, isImageFile, isProjectFile, nameRawByContent, apngFrames, rasteriseSvg, svgSize } from './io/images';
 import { addFontFace, familyOfFile, fontFamilies, loadSystemFonts } from './ui/fonts';
 import { deserialize, giantTiles, serialize } from './io/project-io';
+import { templateContext } from './io/prompt-templates';
 import { AboutDialog, BenchmarkDialog, NewCanvasDialog, OpenDialog, ReportIssueDialog, SettingsDialog, ShortcutsDialog, SystemInfoDialog, UpdateDialog } from './ui/app-dialogs';
 import { HistoryLog } from './ui/history-log';
 import { extraOn, extrasOn, selectionTintOn, setAllExtras, setExtra, setExtras, setSelectionTint } from './ui/view-extras';
-import { CHECKER_CELL, FONT_PREVIEWS, applyPrefs, applyUiFontSize, checkerPair, DEFAULT_PREFS, loadPrefs, savePrefs, updatePrefs, type Prefs } from './ui/prefs';
+import { CHECKER_CELL, FONT_PREVIEWS, applyPrefs, applyUiFontSize, checkerPair, DEFAULT_PREFS, loadPrefs, resendScratch, savePrefs, updatePrefs, type Prefs } from './ui/prefs';
 import { THEMES, readChoice, setTheme } from './ui/themes';
 import { installOptionMemory } from './ui/option-memory';
 import { chooseRenderer, detectedName, gpuStartFailedLastTime, markGpuStarted, markGpuStarting, probeGpu, type GpuProbe } from './gpu/probe';
@@ -232,11 +233,12 @@ import { el, mountOnce, q, revealApp, setDisabled, setHidden, setStyleVar, setTe
 import { icon } from './ui/icons';
 import { brandMark } from './ui/brand';
 import { LayersPanel } from './ui/layers';
-import { MenuBar, PopupMenu, type MenuDef } from './ui/menu';
+import { MenuBar, PopupMenu, setMenuStyle, type MenuDef } from './ui/menu';
 import { OptionsBar } from './ui/options';
 import { invalidatePaint } from './ui/palette';
 import { Rail } from './ui/rail';
 import { openToolbarDialog } from './ui/panels/toolbar-dialog';
+import { MenusDialog } from './ui/panels/menus-dialog';
 import { slotTool, toolGroups } from './ui/tool-groups';
 import { Stage } from './ui/stage';
 import { StatusBar, SERVICE_NOTE } from './ui/status';
@@ -248,9 +250,12 @@ import { TaskBar } from './ui/task-bar';
 import { toast } from './ui/toast';
 
 /** Each tab's own group, where Reset Panels returns it. */
+/** Edit > Preferences: a command for each page of the Preferences dialog, as [command suffix, menu label, page]. */
+const PREF_PAGES: ReadonlyArray<readonly [string, string, string]> = [['general', 'General...', 'General'], ['interface', 'Interface...', 'Interface'], ['workspace', 'Workspace...', 'Workspace'], ['tools', 'Tools...', 'Tools'], ['history-cache', 'History & Cache...', 'History & Cache'], ['file-handling', 'File Handling...', 'File Handling'], ['performance', 'Performance...', 'Performance'], ['scratch-disks', 'Scratch Disks...', 'Scratch Disks'], ['cursors', 'Cursors...', 'Cursors'], ['transparency', 'Transparency & Gamut...', 'Transparency & Gamut'], ['units', 'Units & Rulers...', 'Units & Rulers'], ['guides', 'Guides, Grid & Slices...', 'Guides & Grid'], ['type', 'Type...', 'Type'], ['plugins', 'Plug-ins...', 'Plugins'], ['enhanced-controls', 'Enhanced Controls...', 'Enhanced Controls'], ['raw-defaults', 'Raw Defaults...', 'Camera Raw Defaults']];
 const TAB_HOMES: Record<string, string> = { info: 'info', layers: 'layers-panel', channels: 'layers-panel', paths: 'layers-panel', navigator: 'navigator', generate: 'generate', swatches: 'swatches', color: 'swatches', properties: 'properties', brushes: 'brushes', 'brush-settings': 'brushes', paragraph: 'paragraph', character: 'character' };
 const LAYERS_W_KEY = 'formvis_layers_w';
 const SKIPPED_UPDATE_KEY = 'formvis_skipped_update';
+const TILE_ENGINE_KEY = 'formvis_tile_engine';
 const message = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 function stored(key: string): string | null {
@@ -336,6 +341,8 @@ export function startApp(): void {
   if (savedWidth >= 200 && savedWidth <= 480) setStyleVar(root, '--cv-layers-w', `${savedWidth}px`);
 
   const engine = new Engine();
+  engine.tiledDocuments = stored(TILE_ENGINE_KEY) !== 'off';
+  templateContext.size = () => (engine.current ? { width: engine.current.doc.width, height: engine.current.doc.height } : null);
   engine.on('notice', (n) => toast(n.text, n.kind));
   const errorLog = new ErrorLog((t) => toast(t, 'error'), () => engine.failures);
   errorLog.install();
@@ -454,16 +461,34 @@ export function startApp(): void {
   const taskBar = new TaskBar(q(root, '.cv-stage'), engine, commands, () => stage.ctx.view());   // View > Contextual Task Bar
   // Preferences the interface draws with (the engine's are applyPrefs'): the stage's checkerboard, wheel, rulers, grid
   // and guides, and the side column's narrow-window icons.
+  // Show Tool Tips off: an element's title is held in data-tip-held as the pointer reaches it and put back when turned on.
+  let tipsOn = true;
+  document.addEventListener('mouseover', (e) => {
+    if (tipsOn || !(e.target instanceof Element)) return;
+    const t = e.target.closest('[title]');
+    if (t) { t.setAttribute('data-tip-held', t.getAttribute('title') ?? ''); t.removeAttribute('title'); }
+  }, true);
+  const applyTooltips = (on: boolean): void => {
+    tipsOn = on;
+    if (on) for (const t of Array.from(document.querySelectorAll('[data-tip-held]'))) { t.setAttribute('title', t.getAttribute('data-tip-held') ?? ''); t.removeAttribute('data-tip-held'); }
+  };
   const applyChecker = (pr: Prefs): void => {
-    const [a, b] = checkerPair(pr.checkerColors, !!THEMES[readChoice().theme]?.light);
+    const [a, b] = checkerPair(pr.checkerColors, !!THEMES[readChoice().theme]?.light, [pr.checkerA, pr.checkerB]);
     document.documentElement.style.setProperty('--cv-checker-a', a);
     document.documentElement.style.setProperty('--cv-checker-b', pr.checkerSize === 'none' ? a : b);
   };
   const historyLog = new HistoryLog(engine);
   const applyUiPrefs = (pr: Prefs): void => {
-    Stage.prefs = { cell: CHECKER_CELL[pr.checkerSize], zoomWheel: pr.zoomWheel, rulerUnits: pr.rulerUnits, gridColor: pr.gridColor, guideColor: pr.guideColor };
+    Stage.prefs = { cell: CHECKER_CELL[pr.checkerSize], zoomWheel: pr.zoomWheel, rulerUnits: pr.rulerUnits, gridColor: pr.gridColor, guideColor: pr.guideColor, gridStyle: pr.gridStyle, guideStyle: pr.guideStyle };
+    Object.assign(Stage.controls, { preciseOther: pr.cursorOther === 'precise', pinch: pr.pinchZoom, rotate: pr.trackpadRotate, touch: pr.touchGestures, colMm: pr.colWidth + pr.gutter, colWidthMm: pr.colWidth });
     applyChecker(pr);
+    applyTooltips(pr.showTooltips);
+    FloatViews.prefs = { zoomResize: pr.zoomResizes, docking: pr.floatDocking };
     applyUiFontSize(pr);
+    document.body.classList.toggle('animations-disabled', !pr.animations);
+    Stage.usePressure = pr.usePressure;
+    Stage.animate = pr.animations;
+    setMenuStyle(pr.menuHidden, pr.menuColors);
     PropertiesColumn.narrowCollapse = pr.narrowCollapse;
     historyLog.enable(pr.historyLog);
     stage.restyle();
@@ -471,6 +496,15 @@ export function startApp(): void {
   };
   applyUiPrefs(loadPrefs());
   document.addEventListener('nm:ui-settings-changed', () => applyChecker(loadPrefs()));   // Match Theme follows a theme change at once
+  // Beep When Done: a short tone when a job that ran over two seconds ends.
+  let busySince = 0;
+  engine.on('busy', (on: boolean) => {
+    if (on) { if (!busySince) busySince = performance.now(); return; }
+    const long = busySince > 0 && performance.now() - busySince >= 2000;
+    busySince = 0;
+    if (!long || !loadPrefs().beepWhenDone) return;
+    try { const a = new AudioContext(), o = a.createOscillator(), g = a.createGain(); o.frequency.value = 880; g.gain.value = 0.08; o.connect(g).connect(a.destination); o.start(); o.stop(a.currentTime + 0.18); o.onended = () => void a.close(); } catch { /* no audio here */ }
+  });
   const typing = new TextEditor(q(root, '.cv-stage'), engine);
   // The Properties column (Phase 21), shown unless hidden from Window > Properties Column (remembered).
   const props = new PropertiesColumn(q(root, '.cv-props-col'), engine, (c) => { commands.run(c); }, () => syncPropsCol());
@@ -584,6 +618,8 @@ export function startApp(): void {
   async function deliver(blob: Blob, name: string, folder = ''): Promise<void> { await deliverFile(blob, name, folder); }
 
   async function deliverFile(blob: Blob, name: string, folder = ''): Promise<boolean> {
+    const lower = loadPrefs().lowerExtension;
+    name = name.replace(/\.([A-Za-z0-9]+)$/, (_m, x: string) => `.${lower ? x.toLowerCase() : x.toUpperCase()}`);
     if (folder && caps?.desktop) {
       // Export Preferences names a folder inside the exports folder: written there without asking.
       try { const written = await api.exportFile(blob, name, folder); noteOutput(written); toast(`Saved to ${written}`); fireEvent('export'); return true; } catch (err) { toast(message(err), 'error'); return false; }
@@ -1046,7 +1082,23 @@ export function startApp(): void {
     if (skipped) toast(skipped === 1 ? 'One file is not an image or a project and was skipped.' : `${skipped} files are not images or projects and were skipped.`);
   }
 
-  async function save(saveAs: boolean): Promise<boolean> {
+  /** Saves still writing: editing goes on while one runs, and closing a tab or quitting waits for it. */
+  const saving = new Map<Promise<boolean>, string>();
+  const savesDone = async (id?: string): Promise<void> => {
+    for (;;) {
+      const runs = [...saving].filter(([, doc]) => !id || doc === id).map(([run]) => run);
+      if (!runs.length) return;
+      await Promise.allSettled(runs);
+    }
+  };
+  function save(saveAs: boolean): Promise<boolean> {
+    const run = saveWork(saveAs);
+    saving.set(run, engine.current?.id ?? '');
+    void run.then(() => saving.delete(run), () => saving.delete(run));
+    return run;
+  }
+
+  async function saveWork(saveAs: boolean): Promise<boolean> {
     const ok = await saveCore(saveAs);
     if (ok) fireEvent('save');
     if (ok && !saveAs && engine.current?.doc.assetsOnSave) await generateAssets(true).catch((err) => { toast(`The project was saved, but its image assets were not written. ${message(err)}`, 'error'); });
@@ -2438,6 +2490,12 @@ export function startApp(): void {
     });
   }
   engine.removeFinder = removeFound;
+  let lamaWarmAt = 0;
+  engine.warmRemove = () => {
+    if (Date.now() - lamaWarmAt < 5 * 60_000) return;
+    lamaWarmAt = Date.now();
+    void warmLama().then((ok) => { if (!ok) lamaWarmAt = 0; });
+  };
   engine.removeBrushFill = async (area) => {
     if (!(await modelReady('lama-inpaint'))) { toast('Remove fills with LaMa: download it in Preferences > Plugins > Local models, or turn LaMa off in the options bar.', 'error'); return; }
     await engine.task(async () => {
@@ -2453,7 +2511,8 @@ export function startApp(): void {
     if (typeof a?.softness === 'number') engine.setAutoSel({ skySoftness: Math.max(0, Math.min(250, a.softness)) });
     const p = engine.current, flat = engine.autoSelSource();
     if (!p || !flat) return;
-    if (!(await skyReady())) {
+    const quick = a?.method === 'quick' || (a?.method !== 'model' && !(await skyReady()));
+    if (!quick && !(await skyReady())) {
       if (!(await confirmAction('Download the sky model?', 'Select > Sky needs the sky model (176 MB, MIT). It downloads once and runs on this computer. It can also be removed or reinstalled in Preferences > Plugins > Local models.', 'Download'))) return;
       toast('Downloading the sky model...');
       let failure = '';
@@ -2463,13 +2522,18 @@ export function startApp(): void {
     }
     await engine.task(async () => {
       try {
-        const W = p.doc.width, H = p.doc.height, bitmap = await createImageBitmap(await skyMask(await toBlob(flat)));
+        const W = p.doc.width, H = p.doc.height, bitmap = await createImageBitmap(await skyMask(await toBlob(flat), quick));
         const s = createSurface(W, H), c = ctxOf(s); c.drawImage(bitmap, 0, 0, W, H); bitmap.close();
         const px = c.getImageData(0, 0, W, H).data, data = new Uint8Array(W * H);
-        for (let i = 0; i < data.length; i++) data[i] = px[i * 4];
+        let n = 0, x0 = W, y0 = H, x1 = -1, y1 = -1;
+        for (let i = 0; i < data.length; i++) {
+          data[i] = px[i * 4];
+          if (data[i] >= 128) { n++; const x = i % W, y = (i - x) / W; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; y1 = y; }
+        }
         if (engine.current !== p) return;
-        if (!data.some((v) => v >= 128)) { toast('No sky was found.'); return; }
+        if (!n) { toast(quick ? 'No sky was found by the quick method.' : 'No sky was found.'); return; }
         engine.applyAutoSelection(0, 0, W, H, data, 'Select Sky', { mode: selectModeOf(a), sky: true });
+        toast(`${quick ? 'Sky selected with the quick method (colour and smoothness, no model; the sky model does better with sunsets and heavy cloud). ' : 'Sky selected. '}${(100 * n / (W * H)).toFixed(1)}% of the picture, from x ${x0} y ${y0} to x ${x1} y ${y1}.`);
       } catch (err) { toast(message(err), 'error'); }
     });
   }
@@ -2551,6 +2615,7 @@ export function startApp(): void {
   /** Closes a document as Close Tab does, asking about unsaved changes unless `answer` already says (Close All's Apply
    *  to All, 1.65.8); true once it is closed. */
   async function requestClose(id: string, answer: 'save' | 'discard' | null = null): Promise<boolean> {
+    if (saving.size) await savesDone(id);
     const p = engine.projects.find((x) => x.id === id);
     if (!p) return true;
     if (p.modified) {
@@ -2614,12 +2679,13 @@ export function startApp(): void {
    *  more are waiting, and Cancel stops there. */
   async function closeMany(keep: string | null, onlyUnsaved = false): Promise<void> {
     let answer: 'save' | 'discard' | null = null;
-    for (const p of engine.projects.filter((x) => x.id !== keep && (!onlyUnsaved || x.modified))) {
+    const kept = (x: { id: string }): boolean => x.id === keep || (!onlyUnsaved && tabs.isPinned(x.id));
+    for (const p of engine.projects.filter((x) => !kept(x) && (!onlyUnsaved || x.modified))) {
       if (!engine.projects.includes(p)) continue;
       let choice = answer;
       if (p.modified && !choice) {
         if (engine.current !== p) engine.switchTo(p.id);
-        const more = engine.projects.some((x) => x !== p && x.id !== keep && x.modified);
+        const more = engine.projects.some((x) => x !== p && !kept(x) && x.modified);
         const a = more ? await askSaveChangesAll(p.name) : { choice: await askSaveChanges(p.name), all: false };
         if (a.choice === 'cancel') return;
         if (a.all) answer = a.choice;
@@ -2630,9 +2696,27 @@ export function startApp(): void {
     if (keep && engine.current?.id !== keep) engine.switchTo(keep);
   }
 
+  let quitting = false;
+  /** File > Exit and the shell's quit and window-close requests: each unsaved document is asked about in turn (Save,
+   *  Don't Save or Cancel, Apply to All when more wait), and the app exits only once none is left. A browser page
+   *  cannot close itself, so there it ends by saying the page is safe to close. */
+  async function exitApp(): Promise<void> {
+    if (quitting) return;
+    quitting = true;
+    try {
+      if (await settleUnsaved()) {
+        await finalSave();
+        if (hasPanels()) await confirmExit();
+        else { window.close(); toast('Everything is saved. This page can be closed now.', 'info'); }
+      } else if (hasPanels()) await confirmExit(true);
+    } catch (err) { toast(message(err), 'error'); if (hasPanels()) await confirmExit(true).catch(() => undefined); }
+    quitting = false;
+  }
+
   /** Asks about every document with unsaved changes, as Close All does; true once none is left (each was saved or
    *  discarded), false when the person cancelled. Documents without changes stay open, so Restore Session still has them. */
   async function settleUnsaved(): Promise<boolean> {
+    await savesDone();
     await closeMany(null, true);
     return !engine.projects.some((p) => p.modified);
   }
@@ -2802,7 +2886,8 @@ export function startApp(): void {
     liveMask: new LiveMaskDialog(),
     open: new OpenDialog({ openLibrary, openFiles: (files) => importFiles(files, undefined, 'documents'), openFolder, openFromPanel: hasPanels() ? openFromPanel : null }),
     settings: new SettingsDialog((pr) => { applyPrefs(engine, pr); applyUiPrefs(pr); recoveryDelay = pr.recoverySeconds * 1000; home.sync(); syncGpu(); syncEngineDevice(); }),
-    shortcuts: new ShortcutsDialog(commands),
+    shortcuts: new ShortcutsDialog(commands, deliver),
+    menusEditor: new MenusDialog(commands, () => menus, () => applyUiPrefs(loadPrefs())),
     about: new AboutDialog(),
     systemInfo: new SystemInfoDialog(),
     reportIssue: new ReportIssueDialog(),
@@ -2875,6 +2960,11 @@ export function startApp(): void {
     contentFill: new ContentFillDialog(engine),
     gradientEditor: new GradientEditor(engine),
   };
+  dialogs.presetManager.onSettings = ({ shortcuts }) => {
+    commands.resetKeys();
+    for (const [id, keys] of Object.entries(shortcuts)) commands.setKeys(id, keys);
+    applyUiPrefs(loadPrefs());
+  };
   loadSavedGradients();
   engine.uiHooks.gradientEditor = () => dialogs.gradientEditor.show();
   loadCustomShapes();
@@ -2882,6 +2972,21 @@ export function startApp(): void {
   const abrInput = el<HTMLInputElement>('<input type="file" accept=".abr,image/*" data-role="import-brushes" hidden>');
   document.body.appendChild(abrInput);
   dialogs.settings.workspaceLock = { get: () => dock.locked, set: (on) => { dock.locked = on; } };   // Preferences > Workspace
+  dialogs.settings.checkUpdates = () => void checkUpdates();   // Preferences > Plugins > Updates
+  dialogs.settings.applyTiled = (on) => { engine.tiledDocuments = on; };   // Preferences > Performance > Rendering
+  dialogs.settings.restartWindow = () => void commands.run('reload-window');
+  dialogs.settings.canvasColour = { get: pasteboard, set: (k) => { store('formvis.pasteboard', k); applyPasteboard(); } };   // Preferences > Interface
+  // Preferences > Scratch Disks: the recovery copies and closed tabs kept on this device, and the storage the browser allows.
+  dialogs.settings.scratch = {
+    info: async () => {
+      const all = await recovery.list(), size = (r: { files: Array<{ blob: Blob }> }): number => r.files.reduce((m, f) => m + f.blob.size, 0);
+      const open = all.filter((r) => engine.projects.some((q) => q.id === r.id)), stale = all.filter((r) => !engine.projects.some((q) => q.id === r.id));
+      const mb = (n: number): string => (n / 1048576).toFixed(1);
+      const est = await navigator.storage?.estimate?.().catch(() => null);
+      return `Working files: ${open.length} open ${open.length === 1 ? 'document' : 'documents'} kept (${mb(open.reduce((n, r) => n + size(r), 0))} MB), ${stale.length} left over (${mb(stale.reduce((n, r) => n + size(r), 0))} MB), ${closedTabs.length} closed ${closedTabs.length === 1 ? 'tab' : 'tabs'} (${mb(closedTabs.reduce((n, r) => n + size(r), 0))} MB).${est?.quota ? ` This device allows ${mb(est.quota)} MB, ${mb(est.usage ?? 0)} MB in use.` : ''}`;
+    },
+    clean: () => { void commands.run('clean-working-files'); },
+  };
   // The usual question before painting a type, shape or smart-object layer (1.50.2): rasterize it, or leave it.
   engine.askRasterize = (name, kind) => confirmAction(`Rasterize this ${kind}?`, `"${name}" must be rasterized before it can be painted on. Its ${kind === 'type layer' ? 'text' : kind === 'Smart Object' ? 'contents' : 'shape'} will no longer be editable.`, 'Rasterize');
   const noteDialog = new NoteDialog(engine);
@@ -3030,6 +3135,9 @@ export function startApp(): void {
     { id: 'swatch-add', label: 'Add Foreground Color to Swatches', run: () => swatches.addForeground() },
     { id: 'swatches-reset', label: 'Reset Swatches', run: () => swatches.reset() },
     { id: 'preset-manager', label: 'Preset Manager...', run: () => dialogs.presetManager.show() },
+    { id: 'presets-export', label: 'Export Presets...', run: () => void dialogs.presetManager.exportAll() },
+    { id: 'presets-import', label: 'Import Presets...', run: () => dialogs.presetManager.pickBundle(false) },
+    { id: 'presets-migrate', label: 'Migrate Presets...', run: () => dialogs.presetManager.pickBundle(true) },
     { id: 'swatches-load', label: 'Load Swatches...', run: () => dialogs.presetManager.load('swatches') },
     { id: 'swatches-save', label: 'Save Swatches...', run: () => void dialogs.presetManager.saveSet('swatches') },
   );
@@ -3080,7 +3188,7 @@ export function startApp(): void {
     { id: 'new', label: 'New Canvas...', keys: ['Alt+Mod+N', 'Mod+N'], run: () => dialogs.newCanvas.show() },
     { id: 'open', label: 'Open Project...', keys: ['Mod+O'], run: () => void dialogs.open.show() },
     { id: 'recent-heading', label: 'Open Recent', enabled: () => false, run: () => undefined },
-    ...Array.from({ length: 10 }, (_, i) => ({ id: `recent-${i}`, label: () => (isDiskPath(recent[i] ?? '') ? baseName(recent[i]) : recent[i] ?? ''), enabled: () => i < recent.length, run: () => { const n = recent[i]; if (n) void openLibrary(n); } })),
+    ...Array.from({ length: 40 }, (_, i) => ({ id: `recent-${i}`, label: () => (isDiskPath(recent[i] ?? '') ? baseName(recent[i]) : recent[i] ?? ''), enabled: () => i < recent.length, run: () => { const n = recent[i]; if (n) void openLibrary(n); } })),
     { id: 'clear-recent', label: 'Clear Recent', enabled: () => recent.length > 0, run: () => keepRecent([]) },
     { id: 'import', label: 'Import Images...', keys: ['Shift+Mod+O'], run: () => imageInput.click() },
     { id: 'import-folder', label: 'Import Images from Folder...', run: () => folderInput.click() },
@@ -3468,6 +3576,16 @@ export function startApp(): void {
     { id: 'close-tab', label: 'Close Tab', keys: '__TAURI_INTERNALS__' in window ? ['Mod+W'] : ['Alt+Mod+W'], enabled: has, run: () => { const p = engine.current; if (p && !engine.closeSpareView(p.id)) void requestClose(p.id); } },
     { id: 'close-all', label: 'Close All', keys: '__TAURI_INTERNALS__' in window ? ['Alt+Mod+W'] : [], enabled: has, run: () => void closeMany(null) },
     { id: 'close-others', label: 'Close Others', keys: ['Alt+Mod+P'], enabled: () => engine.projects.length > 1, run: () => { const p = engine.current; if (p) void closeMany(p.id); } },
+    { id: 'close-tabs-right', label: 'Close Tabs to the Right', enabled: () => { const at = engine.projects.findIndex((x) => x.id === engine.current?.id); return at >= 0 && engine.projects.slice(at + 1).some((x) => !tabs.isPinned(x.id)); }, run: () => void (async () => {
+      const from = engine.current;
+      for (const p of engine.projects.slice(engine.projects.findIndex((x) => x.id === from?.id) + 1)) {
+        if (tabs.isPinned(p.id) || !engine.projects.includes(p)) continue;
+        if (!(await requestClose(p.id))) return;
+      }
+      if (from && engine.projects.includes(from)) engine.switchTo(from.id);
+    })() },
+    { id: 'pin-tab', label: () => (engine.current && tabs.isPinned(engine.current.id) ? 'Unpin Tab' : 'Pin Tab'), checked: () => !!engine.current && tabs.isPinned(engine.current.id), enabled: has, run: () => { if (engine.current) tabs.togglePin(engine.current.id); } },
+    { id: 'exit', label: 'Exit', keys: hasPanels() ? ['Mod+Q'] : [], run: () => void exitApp() },
     {
       id: 'reopen-closed-tab', label: 'Reopen Closed Tab', keys: ['__TAURI_INTERNALS__' in window ? 'Shift+Mod+T' : 'Alt+Shift+Mod+T'], enabled: () => closedTabs.length > 0,
       run: async () => {
@@ -3553,6 +3671,7 @@ export function startApp(): void {
     { id: 'clear', label: 'Clear Selection Pixels', enabled: () => pixel() && selected(), run: () => engine.clearPixels() },
     { id: 'delete', label: 'Delete', keys: ['Backspace', 'Delete'], enabled: () => !!layer(), run: () => (selected() && pixel() ? engine.clearPixels() : void deleteLayersWithChoice()) },
     { id: 'settings', label: 'Preferences...', keys: ['Mod+,'], run: () => dialogs.settings.show() },
+    ...PREF_PAGES.map(([id, label, section]) => ({ id: `prefs-${id}`, label, run: () => dialogs.settings.show(section) })),
     // The compact layout's sheets (1.58.7): each opens its own and closes the others; again closes it.
     { id: 'sheet-tools', label: 'Tools Sheet', run: () => openSheet(root.classList.contains('is-sheet-tools') ? null : 'tools') },
     { id: 'sheet-panels', label: 'Panels Sheet', run: () => openSheet(root.classList.contains('is-sheet-panels') ? null : 'panels') },
@@ -3577,7 +3696,7 @@ export function startApp(): void {
     { id: 'remove-bg', label: 'Remove Background', enabled: withPixels, run: () => void removeBackground('auto') },
     { id: 'remove-bg-lite', label: 'Remove Background (Lightweight)', enabled: withPixels, run: () => void removeBackground('lite') },
     { id: 'select-subject', label: 'Subject', enabled: () => !!engine.current, params: AUTO_SELECT_PARAMS, run: (a) => void selectSubject(false, a) },
-    { id: 'select-sky', label: 'Sky', enabled: () => !!engine.current, params: { ...AUTO_SELECT_PARAMS, sensitivity: { type: 'number', min: 0, max: 100, description: 'How readily faint sky counts: 50 keeps the model as it is, higher grows the sky, lower tightens it. The saved setting when left out.' }, softness: { type: 'number', min: 0, max: 250, description: 'Edge softness in pixels (a feather); the saved setting when left out.' } }, run: (a) => void selectSky(a) },
+    { id: 'select-sky', label: 'Sky', enabled: () => !!engine.current, params: { ...AUTO_SELECT_PARAMS, sensitivity: { type: 'number', min: 0, max: 100, description: 'How readily faint sky counts: 50 keeps the model as it is, higher grows the sky, lower tightens it. The saved setting when left out.' }, softness: { type: 'number', min: 0, max: 250, description: 'Edge softness in pixels (a feather); the saved setting when left out.' }, method: { type: 'string', enum: ['quick', 'model'], description: 'quick finds the sky by colour and smoothness with no model; model uses the downloaded sky model. When left out the model is used if downloaded, else the quick method.' } }, run: (a) => void selectSky(a) },
     { id: 'auto-select-sample-all', label: 'Sample All Layers', checked: () => engine.autoSel.sampleAll, run: () => engine.setAutoSel({ sampleAll: !engine.autoSel.sampleAll }) },
     { id: 'sky-sensitivity', label: 'Sky Sensitivity...', run: () => void (async () => { const v = await promptName('Sky Sensitivity (0 to 100, 50 keeps the model as it is)', String(engine.autoSel.skySensitivity), 'Set'); if (v !== null && v.trim() !== '' && Number.isFinite(Number(v))) engine.setAutoSel({ skySensitivity: Math.max(0, Math.min(100, Number(v))) }); })() },
     { id: 'sky-softness', label: 'Sky Edge Softness...', run: () => void (async () => { const v = await promptName('Sky Edge Softness in pixels (0 to 250)', String(engine.autoSel.skySoftness), 'Set'); if (v !== null && v.trim() !== '' && Number.isFinite(Number(v))) engine.setAutoSel({ skySoftness: Math.max(0, Math.min(250, Number(v))) }); })() },
@@ -3938,6 +4057,7 @@ export function startApp(): void {
     { id: 'pattern-preview', label: 'Pattern Preview', checked: () => engine.view.patternPreview, run: () => engine.setView({ patternPreview: !engine.view.patternPreview }) },
     { id: 'pixel-art-preview', label: 'Pixel Art Preview', checked: () => engine.view.pixelArt, run: () => engine.setView({ pixelArt: !engine.view.pixelArt }) },
     { id: 'transform-controls', label: 'Transform Controls', checked: () => engine.showTransformControls, run: () => engine.update({ showTransformControls: !engine.showTransformControls }) },
+    { id: 'edit-menus', label: 'Menus...', run: () => dialogs.menusEditor.show() },
     { id: 'customize-toolbar', label: 'Toolbar...', run: () => openToolbarDialog(engine) },   // Edit > Toolbar (36.22)
     { id: 'shortcuts', label: 'Keyboard Shortcuts...', keys: ['Alt+Shift+Mod+K', 'Shift+/'], run: () => dialogs.shortcuts.show() },   // Edit and Help menus
     { id: 'search', label: 'Search...', keys: ['Mod+K'], run: () => dialogs.palette.show() },
@@ -4566,14 +4686,14 @@ export function startApp(): void {
   const filterGroup = (group: LibGroup, core: string[]): string[] => [...core, ...libInGroup(group).map((f) => `filter-${f.id}`)].sort((a, b) => filterName(a).localeCompare(filterName(b)));
   const drawnFirst = ['filter-flame', 'filter-pictureFrame', 'filter-tree'];
   const menus: MenuDef[] = [
-    { label: 'File', items: () => ['new', 'new-from-clipboard', 'open', 'open-as', 'import', 'import-folder', 'import-notes', 'import-video', 'create-video-timeline', 'place-embedded', 'place-linked', 'place-3d', 'open-svg-layers', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.slice(0, 10).map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'save-copy', 'revert', 'earlier-states', 'download-project', 'package', '-',
+    { label: 'File', items: () => ['new', 'new-from-clipboard', 'open', 'open-as', 'import', 'import-folder', 'import-notes', 'import-video', 'create-video-timeline', 'place-embedded', 'place-linked', 'place-3d', 'open-svg-layers', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.slice(0, loadPrefs().recentFileCount).map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'save-copy', 'revert', 'earlier-states', 'download-project', 'package', '-',
       { label: 'Export', items: ['quick-export', 'export-as', 'export-preferences', 'save-for-web', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-tiff-layers', 'export-hdr', 'export-exr', 'export-exr-half', 'export-exr-piz', 'export-exr-none', 'export-pfm', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'export-paths-ai', 'assemble-tiles', '-', 'export-layers', 'export-layer-comps', 'export-selection-mask', 'generate-image-assets', 'image-assets-on-save', 'export-luts', 'export-artboards-files', 'export-data-sets', 'export-artboards'] },
       { label: 'Automate', items: ['actions', 'action-stop', 'insert-conditional', 'batch', 'create-droplet', '-', 'lens-correction-batch', 'fit-image', 'conditional-mode-change', 'contact-sheet', 'crop-straighten-photos', 'photomerge', 'merge-hdr'] },
-      { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'image-processor', 'script-events', 'load-files-stack', 'stack-statistics', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'reopen-closed-tab', 'close-all', 'close-others'] },
+      { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'image-processor', 'script-events', 'load-files-stack', 'stack-statistics', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'reopen-closed-tab', 'close-all', 'close-others', 'close-tabs-right', 'pin-tab', '-', 'exit'] },
     { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', 'cancel-job', { label: 'Snapshot', items: ['new-snapshot', 'new-snapshot-merged', 'new-snapshot-layer'] }, '-', 'fade', 'compare-documents', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', 'pick-screen-colour', '-',
       { label: 'Purge', items: ['purge-clipboard', 'purge-undo', 'purge-histories', 'clean-working-files', 'free-helper-models', 'purge-all'] }, { label: 'History Log', items: ['save-history-log', 'clear-history-log'] }, 'apply-edit', 'cancel-edit', 'reset-tool', 'reset-all-tools', '-',
       { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg', 'fill-fg-keep', 'fill-bg-keep', 'fill-history'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-', 'auto-align-layers', 'auto-blend-layers', '-',
-      'fill-path-dialog', 'stroke-path-dialog', '-', 'transform', 'transform-copy', { label: 'Transform', items: ['transform-again', '-', 'transform-scale', 'transform-rotate', 'transform-skew', 'transform-distort', 'transform-perspective', 'transform-warp', 'warp-split-h', 'warp-split-v', 'warp-split-cross', 'warp-remove-split', '-', 'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw', '-', 'flip-layer-h', 'flip-layer-v'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', 'define-brush', 'define-custom-shape', { label: 'Presets', items: ['preset-manager', '-', 'swatches-load', 'swatches-save'] }, '-', 'assign-profile', 'convert-profile', 'profile-info', 'colour.settings', '-', 'customize-toolbar', 'shortcuts', 'settings'] },
+      'fill-path-dialog', 'stroke-path-dialog', '-', 'transform', 'transform-copy', { label: 'Transform', items: ['transform-again', '-', 'transform-scale', 'transform-rotate', 'transform-skew', 'transform-distort', 'transform-perspective', 'transform-warp', 'warp-split-h', 'warp-split-v', 'warp-split-cross', 'warp-remove-split', '-', 'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw', '-', 'flip-layer-h', 'flip-layer-v'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', 'define-brush', 'define-custom-shape', { label: 'Presets', items: ['preset-manager', '-', 'presets-export', 'presets-import', 'presets-migrate', '-', 'swatches-load', 'swatches-save'] }, '-', 'assign-profile', 'convert-profile', 'profile-info', 'colour.settings', '-', 'customize-toolbar', 'shortcuts', 'edit-menus', { label: 'Preferences', items: ['settings', '-', ...PREF_PAGES.slice(0, 7).map(([id]) => `prefs-${id}`), 'export-preferences', ...PREF_PAGES.slice(7).map(([id]) => `prefs-${id}`)] }] },
     { label: 'Image', items: [
       'apply-image', 'calculations', { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'desaturate', 'replace-color', 'equalize'] }, '-',
       'auto-tone', 'auto-contrast', 'auto-color', '-',
@@ -4619,7 +4739,7 @@ export function startApp(): void {
     { label: 'View', items: [{ label: 'Proof Setup', items: ['proof-setup', '-', 'proof-preset-monitor', 'proof-preset-macrgb', 'proof-preset-internet', 'proof-preset-cmyk', 'proof-preset-cyan', 'proof-preset-magenta', 'proof-preset-yellow', 'proof-preset-black', 'proof-preset-cmy', '-', 'proof-preset-protanopia', 'proof-preset-deuteranopia'] }, 'proof-colors', 'gamut-warning', 'preview-32', '-', 'zoom-in', 'zoom-out', 'fit', 'fit-layers', 'fit-artboard', 'actual', 'print-size', '-', 'toggle-extras', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'pattern-preview', 'pixel-art-preview', 'par-correction', 'transform-controls', 'toggle-task-bar', '-',
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'guide-layout', 'guides-from-shape', 'clear-guides'] }, 'snap', { label: 'Snap To', items: ['snap-all', '-', 'snap-guides', 'snap-grid', 'snap-layers', 'snap-bounds'] }, { label: 'Show', items: ['show-all-extras', 'show-no-extras', '-', 'show-selection-edges', 'selection-display-tint', 'show-layer-edges', 'show-smart-guides', 'show-comfy-dot', 'show-notes', 'show-counts', 'toggle-show-slices', 'toggle-auto-slices', 'lock-slices', 'layer-based-slice', 'slices-from-guides', 'slice-options', 'divide-slice', 'delete-slice', 'clear-slices'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'os-full-screen', 'toggle-panels', 'rail-columns', 'interface-rtl', { label: 'Pasteboard', items: ['pasteboard-default', 'pasteboard-black', 'pasteboard-dark', 'pasteboard-mid', 'pasteboard-light'] }, { label: 'Theme', items: Object.keys(THEMES).map((tid) => `theme-${tid}`) }] },
-    { label: 'Plugins', items: () => { const ids = pluginHost.commandIds(); return ['manage-plugins', 'reload-plugins', 'open-plugins-folder', ...(ids.length ? ['-', ...ids] : [])]; } },
+    { label: 'Plugins', items: () => { const ids = pluginHost.commandIds(); return ['manage-plugins', 'reload-plugins', 'open-plugins-folder', ...(ids.length && loadPrefs().showExtPanels ? ['-', ...ids] : [])]; } },
     { label: 'Window', items: [{ label: 'Arrange', items: ['new-window', 'float-window', 'float-all-windows', 'arrange-cascade', '-', 'arrange-tabs','arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-4up', 'arrange-6up', 'arrange-tile', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.connect.open', 'agent.connect.copy-claude-code', 'agent.connect.copy-claude-desktop', 'terminal.toggle', 'terminal.new', 'script-console', 'brush-settings', { label: 'Brush Size', items: ['brush-size-up', 'brush-size-down', 'brush-harder', 'brush-softer'] }, 'paragraph-styles', 'character-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-channels', 'panel-color', 'panel-tools', 'panel-properties-col', 'merge-columns', 'toggle-dock-panels', '-', { label: 'Workspace', items: ['workspace-pixelart', '-', 'new-workspace', 'delete-workspace'] }, 'reset-panels', '-', 'next-document', 'previous-document', '-', 'theme-sync-system', 'next-appearance', 'interface-darken', 'interface-lighten', '-', 'reload-window'] },
     { label: 'Help', items: ['help', 'whats-new', '-', 'shortcuts', 'console-log', 'copy-error-log', 'copy-engine-log', 'benchmark', 'record-performance', 'frame-trace', 'copy-frame-trace', 'tile-grid', 'simulate-gpu-loss', '-', 'help-github', 'report-issue', '-', 'check-for-updates', 'system-info', 'about'] },
   ];
@@ -4637,7 +4757,9 @@ export function startApp(): void {
     { label: 'Layer Style', items: ['layer-style', '-', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style'] },
     { label: 'Layer Comps', items: ['layer-comp-new', 'layer-comp-apply', 'layer-comp-update', 'layer-comp-options', 'layer-comp-duplicate', 'layer-comp-delete', '-', 'layer-comp-last-state', 'layer-comp-next', 'layer-comp-previous'] }, '-',
     { label: 'Layer Mask', items: ['mask-reveal-all', 'mask-hide-all', '-', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask'] }, 'clip', 'link-layers', 'select-linked', '-', 'hide-layers', 'show-only-layer', 'show-all-layers', { label: 'Color Label', items: ['layer-label-none', '-', ...LAYER_LABELS.map((c) => `layer-label-${c}`)] }, '-', 'group', 'ungroup', 'move-out', 'merge', 'merge-visible', 'flatten', '-', 'copy-layers', 'paste-layers', 'layer-quick-export-png', 'layer-export-as', '-', 'layer-pixels']);
-  new Tabs(q(root, '.cv-tab-strip'), engine, (id) => void (engine.closeSpareView(id) || requestClose(id)));   // a further view closes first; the document stays open while one remains (36.16)
+  const tabMenu = new PopupMenu(commands, null, true);
+  tabMenu.setItems(['close-tab', 'close-others', 'close-tabs-right', 'close-all', '-', 'pin-tab', 'reopen-closed-tab', '-', 'next-document', 'previous-document']);
+  const tabs = new Tabs(q(root, '.cv-tab-strip'), engine, (id) => void (engine.closeSpareView(id) || requestClose(id)), (_id, x, y) => tabMenu.openAt(x, y));   // a further view closes first; the document stays open while one remains (36.16)
 
   const zoomLabel = q(root, '.cv-zoom-label');
   let chromeFrame = 0;
@@ -4785,7 +4907,7 @@ export function startApp(): void {
       // A letter picks its slot's tool (the one last chosen from its group), keeping one already
       // chosen from the same group; Shift with it cycles the group.
       const group = toolsForKey(k), at = group.findIndex((t) => t.id === engine.tool);
-      if (e.shiftKey) { if (group.length > 1) engine.setTool(group[(at + 1) % group.length].id); }
+      if (loadPrefs().shiftToolSwitch ? e.shiftKey : at >= 0 && !e.shiftKey) { if (group.length > 1) engine.setTool(group[(at + 1) % group.length].id); }
       else if (at < 0) { const prev = engine.tool; const g = toolGroups().find((x) => x.key === k); engine.setTool(g ? slotTool(g, engine.tool).id : group[0].id); if (engine.tool !== prev) spring = { code: e.code, prev, at: performance.now() }; }
     }
     else return;
@@ -4890,7 +5012,7 @@ export function startApp(): void {
   syncThemeMarker();
 
   window.addEventListener('beforeunload', (e) => {
-    if (!engine.projects.some((p) => p.modified)) return;
+    if (!saving.size && !engine.projects.some((p) => p.modified)) return;
     void keepModified();   // a last recovery write begins while the browser asks
     e.preventDefault();
     e.returnValue = '';
@@ -4922,6 +5044,7 @@ export function startApp(): void {
     status.setEngine(c ? `Engine ${c.version}${c.desktop ? ' · desktop' : ''}` : 'Engine offline');
     if (!c && !noted) { noted = true; toast(SERVICE_NOTE); }   // once: the one note that the engine service is not running (36.19)
     syncEngineDevice();
+    if (c) resendScratch();
     engine.emit('options', null);   // the commands that wait for the service follow it: menus, the palette and the chrome re-read them
   };
   void api.capabilities().then(applyCaps);
@@ -5057,19 +5180,9 @@ export function startApp(): void {
   // The desktop shell hands the page the files the system opened formvis with (double-clicked, or a second launch) and
   // the window's close and quit requests; the app exits only after every unsaved document is saved or discarded.
   if (hasPanels()) {
-    let quitting = false;
     void listenShell({
       open: (paths) => { void openPaths(paths); },
-      exitRequested: () => {
-        if (quitting) return;
-        quitting = true;
-        void (async () => {
-          try {
-            if (await settleUnsaved()) { await finalSave(); await confirmExit(); } else await confirmExit(true);
-          } catch (err) { toast(message(err), 'error'); await confirmExit(true).catch(() => undefined); }
-          quitting = false;
-        })();
-      },
+      exitRequested: () => { void exitApp(); },
     }).catch(() => undefined);
   }
 

@@ -32,7 +32,11 @@ export const THEMES: Record<string, ThemeProfile> = {
   'ocean': { label: 'Deep Ocean', vars: { '--bg-primary': '#06131c', '--bg-secondary': '#0a1c29', '--bg-tertiary': '#10293c', '--border-color': '#1d425e', '--border-light': '#285578', '--text-primary': '#e2eef7', '--text-secondary': '#96b6cc', '--text-muted': '#5b7d94', '--canvas-bg': '#06131c', '--grid-color': 'rgba(150,210,255,0.06)', '--node-shadow': '0 8px 22px rgba(0,10,20,0.6)' } },
   'rose': { label: 'Rose Noir', vars: { '--bg-primary': '#170b10', '--bg-secondary': '#211117', '--bg-tertiary': '#301a22', '--border-color': '#4d2b38', '--border-light': '#653a49', '--text-primary': '#f5e7ec', '--text-secondary': '#cfa5b3', '--text-muted': '#966b7b', '--canvas-bg': '#170b10', '--grid-color': 'rgba(255,190,215,0.05)', '--node-shadow': '0 6px 18px rgba(25,0,10,0.55)' } },
   'terminal': { label: 'Terminal Green', vars: { '--bg-primary': '#050d05', '--bg-secondary': '#0a140a', '--bg-tertiary': '#102010', '--border-color': '#1f3d1f', '--border-light': '#2b522b', '--text-primary': '#d8f5d8', '--text-secondary': '#8fce8f', '--text-muted': '#568a56', '--canvas-bg': '#050d05', '--grid-color': 'rgba(120,255,120,0.06)', '--node-shadow': '0 6px 18px rgba(0,10,0,0.6)' } },
-  'contrast': { label: 'High Contrast', vars: { '--bg-primary': '#000000', '--bg-secondary': '#0a0a0a', '--bg-tertiary': '#161616', '--border-color': '#555555', '--border-light': '#777777', '--text-primary': '#ffffff', '--text-secondary': '#d8d8d8', '--text-muted': '#9a9a9a', '--canvas-bg': '#000000', '--grid-color': 'rgba(255,255,255,0.10)', '--node-shadow': '0 0 0 1px #666' } },};
+  'contrast': { label: 'High Contrast', vars: { '--bg-primary': '#000000', '--bg-secondary': '#0a0a0a', '--bg-tertiary': '#161616', '--border-color': '#555555', '--border-light': '#777777', '--text-primary': '#ffffff', '--text-secondary': '#d8d8d8', '--text-muted': '#9a9a9a', '--canvas-bg': '#000000', '--grid-color': 'rgba(255,255,255,0.10)', '--node-shadow': '0 0 0 1px #666' } },
+  // Skins of a look rather than a hue: the 90s grey with a teal pasteboard, and Duck's lavender with soft light panels.
+  'nineties': { label: '90s', light: true, vars: { '--bg-primary': '#c0c0c0', '--bg-secondary': '#d4d0c8', '--bg-tertiary': '#b4b0a8', '--bg-node': '#d4d0c8', '--border-color': '#808080', '--border-light': '#ffffff', '--text-primary': '#000000', '--text-secondary': '#202020', '--text-muted': '#585858', '--canvas-bg': '#008080', '--grid-color': 'rgba(0,0,0,0.12)', '--node-shadow': '2px 2px 0 rgba(0,0,0,0.45)' } },
+  'duck': { label: 'Duck', light: true, vars: { '--bg-primary': '#e9e4f7', '--bg-secondary': '#f4f1fc', '--bg-tertiary': '#d9d2ef', '--bg-node': '#f4f1fc', '--border-color': '#c7bde6', '--border-light': '#b3a6dc', '--text-primary': '#2b2540', '--text-secondary': '#4f4770', '--text-muted': '#7a7299', '--canvas-bg': '#e2dcf2', '--grid-color': 'rgba(90,70,150,0.10)', '--node-shadow': '0 5px 14px rgba(70,50,130,0.16)' } },
+};
 
 export const DEFAULT_THEME = 'studio';
 export const DEFAULT_ACCENT = '#f97316';
@@ -102,10 +106,36 @@ export function applyTheme(choice: ThemeChoice = readChoice()): void {
   root.style.setProperty('--accent-tint-strong', hexToRgba(choice.accentColor, 0.10));
 }
 
+export interface UserSkin { id: string; label: string; light: boolean; version: string; author: string; vars: Record<string, string> }
+export const USER_SKIN_KEY = 'formvis_user_skin';
+const NAMES = ['--bg-primary', '--bg-secondary', '--bg-tertiary', '--border-color', '--border-light', '--text-primary', '--text-secondary', '--text-muted', '--canvas-bg', '--grid-color'];
+
+/** Skins from the data folder's skins folder become themes named skin-<file>; the ones loaded before are replaced. The ids
+ *  gone and the ids new are returned so a picker can patch its swatches in place. */
+export function registerSkins(skins: UserSkin[]): { added: string[]; removed: string[] } {
+  const next = new Set(skins.map((s) => `skin-${s.id}`));
+  const removed = Object.keys(THEMES).filter((id) => id.startsWith('skin-') && !next.has(id));
+  const added = [...next].filter((id) => !(id in THEMES));
+  for (const id of removed) delete THEMES[id];
+  const base = THEMES[DEFAULT_THEME].vars, lightBase = THEMES.light.vars;
+  for (const s of skins) THEMES[`skin-${s.id}`] = { label: s.label, light: s.light, vars: { ...(s.light ? lightBase : base), ...s.vars } };
+  return { added, removed };
+}
+
+/** The chosen user skin's colours kept so index.html can paint them before the bundle loads. */
+function cacheUserSkin(theme: string): void {
+  try {
+    const t = THEMES[theme];
+    if (!theme.startsWith('skin-') || !t) { localStorage.removeItem(USER_SKIN_KEY); return; }
+    localStorage.setItem(USER_SKIN_KEY, JSON.stringify({ id: theme, light: !!t.light, p: [...NAMES.map((n) => t.vars[n]), t.vars['--bg-node'] || t.vars['--bg-secondary']] }));
+  } catch { /* the skin shows after the bundle loads */ }
+}
+
 export function setTheme(theme: string): void {
   skinEscape = false;
   const choice = { ...readChoice(), theme };
   saveChoice(choice);
+  cacheUserSkin(theme);
   applyTheme(choice);
   document.dispatchEvent(new CustomEvent('nm:ui-settings-changed', { detail: { key: 'theme' } }));
 }

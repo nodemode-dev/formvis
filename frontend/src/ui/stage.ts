@@ -10,6 +10,7 @@ import { paint, type StagePaint } from './palette';
 import type { DisplayLayer, ScreenDisplay } from '../gpu/display';
 import { documentFallback } from '../gpu/fallback';
 import { frameTrace } from '../gpu/frame-trace';
+import { LINE_DASH, type LineStyle } from './prefs';
 
 const REDUCED = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 /** Ruler thickness in CSS pixels; the rulers lie over the stage's top and left edges, so showing them moves nothing. */
@@ -142,7 +143,7 @@ export class Stage {
     this.renderOverlay();
   }
 
-  restyle(): void { this.checker = null; this.queue(true, true); }
+  restyle(): void { this.checker = null; this.queue(true, true); this.syncAnts(); }
 
   /** The stage as the person sees it (get_image view editor): the drawing surfaces, the GPU ones when shown, with the overlay on top, cut to the stage. */
   capture(): HTMLCanvasElement | null {
@@ -379,6 +380,7 @@ export class Stage {
         if (step * v.zoom < 4) continue;
         g.globalAlpha = alpha;
         g.strokeStyle = Stage.prefs.gridColor || pal.grid;
+        g.setLineDash(LINE_DASH[Stage.prefs.gridStyle]);
         g.beginPath();
         for (let x = step; x < W; x += step) { const sx = Math.round(x0 + x * v.zoom) + 0.5; g.moveTo(sx, y0); g.lineTo(sx, y1); }
         for (let y = step; y < H; y += step) { const sy = Math.round(y0 + y * v.zoom) + 0.5; g.moveTo(x0, sy); g.lineTo(x1, sy); }
@@ -411,6 +413,7 @@ export class Stage {
       const shown = [...guides, draft].filter((q): q is NonNullable<typeof q> => !!q && (vw.guides || q === draft)).map((x) => ({ axis: x.axis, at: x.at, color: 'color' in x ? x.color : undefined }));
       for (const colour of new Set(shown.map((x) => x.color ?? ''))) {
         g.strokeStyle = colour || Stage.prefs.guideColor || pal.accent;
+        g.setLineDash(LINE_DASH[Stage.prefs.guideStyle]);
         g.beginPath();
         for (const x of shown) {
           if ((x.color ?? '') !== colour) continue;
@@ -426,7 +429,9 @@ export class Stage {
   /** A major tick step in document pixels at least 60 screen pixels apart, from 1, 2, 5 and their powers of ten. */
   /** Preferences the stage draws with (set by the app from Preferences): the checkerboard's cell, what the wheel does,
    *  the rulers' units, and the grid's and guides' colours ('' is the theme's). */
-  static prefs: { cell: number; zoomWheel: boolean; rulerUnits: 'px' | 'in' | 'cm' | 'mm' | '%'; gridColor: string; guideColor: string } = { cell: 8, zoomWheel: false, rulerUnits: 'px', gridColor: '', guideColor: '' };
+  static prefs: { cell: number; zoomWheel: boolean; rulerUnits: 'px' | 'in' | 'cm' | 'mm' | '%' | 'col'; gridColor: string; guideColor: string; gridStyle: LineStyle; guideStyle: LineStyle } = { cell: 8, zoomWheel: false, rulerUnits: 'px', gridColor: '', guideColor: '', gridStyle: 'solid', guideStyle: 'solid' };
+  /** Preferences > Cursors, Enhanced Controls and Units & Rulers: Other Cursors precise, trackpad pinch and rotate, touch gestures, and a column plus its gutter in millimeters. */
+  static controls = { preciseOther: false, pinch: true, rotate: false, touch: true, colMm: 19.2, colWidthMm: 15 };
 
   /** A stage point back to the unturned, unstretched drawing surfaces: the view's rotation taken off about the centre,
    *  then the pixel aspect stretch `par` (35.4c) taken off horizontally about the centre. */
@@ -472,7 +477,7 @@ export class Stage {
     // ticks at round steps of that unit.
     const res = p.doc.resolution || 72, u = Stage.prefs.rulerUnits;
     for (const [c, horiz] of [[this.rulerH, true], [this.rulerV, false]] as const) {
-      const k = u === 'in' ? res : u === 'cm' ? res / 2.54 : u === 'mm' ? res / 25.4 : u === '%' ? (horiz ? p.doc.width : p.doc.height) / 100 : 1;
+      const k = u === 'in' ? res : u === 'cm' ? res / 2.54 : u === 'mm' ? res / 25.4 : u === 'col' ? (res / 25.4) * Stage.controls.colMm : u === '%' ? (horiz ? p.doc.width : p.doc.height) / 100 : 1;
       const zk = v.zoom * k, step = Stage.rulerStep(zk), minor = step * zk >= 150 ? step / 10 : step / 5;
       const g = c.getContext('2d');
       if (!g) continue;
@@ -650,7 +655,7 @@ export class Stage {
   }
 
   private syncAnts(): void {
-    const need = (!!this.engine.current?.selection || this.engine.floatingSelection) && !REDUCED && extraShown('selectionEdges') && !(selectionTintOn() && !this.engine.floatingSelection);
+    const need = (!!this.engine.current?.selection || this.engine.floatingSelection) && !REDUCED && Stage.animate && extraShown('selectionEdges') && !(selectionTintOn() && !this.engine.floatingSelection);
     if (need && !this.antsTimer) this.antsTimer = window.setInterval(() => { this.phase = (this.phase + 1) % 8; this.queue(false, true); }, 140);
     else if (!need && this.antsTimer) { window.clearInterval(this.antsTimer); this.antsTimer = 0; }
   }
@@ -658,6 +663,7 @@ export class Stage {
   /** Pressure from 0 to 1 (DEV_PLAN 28.1): a pen's own; a touch's when the screen reports force; a Force Touch
    *  trackpad's in WebKit (the macOS app), read from `webkitForce`, where 1 is the click and 2 the deep press; else 1. */
   static pressureOf(e: MouseEvent, pen: boolean): number {
+    if (!Stage.usePressure) return 1;
     const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
     const pe = e as PointerEvent;
     if (pen) return clamp01(pe.pressure);
@@ -671,6 +677,9 @@ export class Stage {
   }
 
   private static forceSeen = false;
+  /** Preferences: pen pressure, tilt and twist reach the tools (off: a full-pressure stroke), and the marching ants run. */
+  static usePressure = true;
+  static animate = true;
 
   private pointer(e: MouseEvent, clicks = 0): ToolPointer {
     const r = this.rect ?? this.host.getBoundingClientRect();
@@ -680,7 +689,7 @@ export class Stage {
     const screen = Stage.unturn(e.clientX - r.left, e.clientY - r.top, r.width, r.height, v?.rotation ?? 0, Stage.parOf(this.engine));
     const pen = 'pointerType' in e && (e as PointerEvent).pointerType === 'pen';
     return { doc: v ? v.toDoc(screen.x, screen.y) : screen, screen, button: e.button, shift: e.shiftKey || stickyModifiers.active('shift'), alt: e.altKey || stickyModifiers.active('alt'), mod: (isMac ? e.metaKey : e.ctrlKey) || stickyModifiers.active('mod'), clicks, pressure: Stage.pressureOf(e, pen),
-      pose: pen ? { tiltX: (e as PointerEvent).tiltX || 0, tiltY: (e as PointerEvent).tiltY || 0, twist: (e as PointerEvent).twist || 0 } : undefined };
+      pose: pen && Stage.usePressure ? { tiltX: (e as PointerEvent).tiltX || 0, tiltY: (e as PointerEvent).tiltY || 0, twist: (e as PointerEvent).twist || 0 } : undefined };
   }
 
   /** Drag out of a ruler to place a guide: the top ruler makes horizontal guides, the left one vertical guides. The
@@ -739,7 +748,7 @@ export class Stage {
     if (!this.engine.current) this.setCursor('default');
     else if (this.panLast) this.setCursor('grabbing');
     else if (this.space) this.setCursor('grab');
-    else this.setCursor(this.tool()?.cursor?.(this.ctx, p) ?? 'default');
+    else { const c = this.tool()?.cursor?.(this.ctx, p) ?? 'default'; this.setCursor(c === 'default' && Stage.controls.preciseOther ? 'crosshair' : c); }
   }
 
   setSpace(on: boolean): void {
@@ -786,7 +795,7 @@ export class Stage {
       Object.assign(g, { d0: q.d, a0: q.ang, mx: q.mx, my: q.my, z0: v?.zoom ?? 1, r0: v?.rotation ?? 0, turning: false });
     };
     o.addEventListener('pointerdown', (e) => {
-      if (e.pointerType !== 'touch') return;
+      if (e.pointerType !== 'touch' || !Stage.controls.touch) return;
       const p = local(e);
       touches.set(e.pointerId, { ...p, x0: p.x, y0: p.y, t: performance.now() });
       if (touches.size < 2 && !g) return;   // one finger: the tool, as ever
@@ -968,6 +977,7 @@ export class Stage {
       e.preventDefault();
       const v = this.engine.current?.viewport;
       if (!v) return;
+      if (!Stage.controls.pinch && e.ctrlKey && !Number.isInteger(e.deltaY)) return;   // a trackpad pinch arrives as Ctrl+wheel with fractional steps
       const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? this.cssH : 1;
       // Preferences > Tools > Zoom with Scroll Wheel swaps the two: the wheel zooms and Ctrl or Cmd with it scrolls.
       // Alt with the wheel always zooms at the pointer (some systems turn Alt+wheel into a sideways delta).
@@ -982,13 +992,15 @@ export class Stage {
     }, { passive: false });
     // WebKit (Safari and the macOS desktop WebView) reports a trackpad pinch as gesture events, not Ctrl+wheel. Like
     // the magnify, it zooms about the pointer, here by the gesture's scale since it began.
-    let pinch: { z0: number } | null = null;
-    const gesture = (e: Event): { scale: number; clientX: number; clientY: number } => e as unknown as { scale: number; clientX: number; clientY: number };
-    o.addEventListener('gesturestart', (e) => { e.preventDefault(); pinch = { z0: this.engine.current?.viewport.zoom ?? 1 }; });
+    let pinch: { z0: number; r0: number } | null = null;
+    const gesture = (e: Event): { scale: number; rotation?: number; clientX: number; clientY: number } => e as unknown as { scale: number; rotation?: number; clientX: number; clientY: number };
+    o.addEventListener('gesturestart', (e) => { e.preventDefault(); pinch = { z0: this.engine.current?.viewport.zoom ?? 1, r0: this.engine.current?.viewport.rotation ?? 0 }; });
     o.addEventListener('gesturechange', (e) => {
       e.preventDefault();
       const g = gesture(e);
       if (!pinch || !this.engine.current || !(g.scale > 0)) return;
+      if (Stage.controls.rotate && typeof g.rotation === 'number') this.engine.setViewRotation(pinch.r0 + g.rotation);   // Enhanced Controls: the trackpad turns the view
+      if (!Stage.controls.pinch) return;
       const r = o.getBoundingClientRect();
       this.engine.zoomTo(pinch.z0 * g.scale, { x: g.clientX - r.left, y: g.clientY - r.top });
     });

@@ -1,5 +1,5 @@
 import { placement, setMat, createSurface, ctxOf, type Engine, type Surface } from '../../engine';
-import { api, ApiError } from '../../io/api';
+import { api, ApiError, type ComfyProbe } from '../../io/api';
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
 import { loadPrefs } from '../prefs';
@@ -75,6 +75,24 @@ export class SendDialog extends Dialog {
 /** What the engine's ComfyUI check says, in words (null: the engine itself did not answer). Send to ComfyUI and the Generate panel's Test say it the same way. */
 export function comfyuiStatusText(c: { running: boolean; version?: string } | null, target: string): string {
   return !c ? 'The formvis engine is offline: sending to ComfyUI needs it (./formvis boot).' : c.running ? `ComfyUI${c.version ? ` ${c.version}` : ''} is running at ${target}. Images go to its input folder, under formvis.` : `ComfyUI is not answering at ${target}. Start it, or set its address in Preferences > Plugins.`;
+}
+
+/** The Test report in words, one line each: answer time and version, Python and system, devices with memory, queue, node packs, and what each kept recipe lacks. */
+export function comfyuiProbeText(p: ComfyProbe | null, target: string): string {
+  if (!p) return 'The formvis engine is offline: testing ComfyUI needs it (./formvis boot).';
+  if (!p.running) return p.detail ?? `ComfyUI is not answering at ${target}. Start it, or set its address in Preferences > Plugins.`;
+  const gb = (n: number): string => `${(n / 1024 ** 3).toFixed(1)} GB`;
+  const lines = [`ComfyUI${p.version ? ` ${p.version}` : ''} answered at ${target} in ${p.ms ?? 0} ms.`];
+  const sys = [p.python && `Python ${p.python.split(' ')[0]}`, p.pytorch && `PyTorch ${p.pytorch.split('+')[0]}`, p.os].filter(Boolean);
+  if (sys.length) lines.push(sys.join(', ') + '.');
+  lines.push(p.devices?.length ? `Devices: ${p.devices.map((d) => `${d.name}${d.vram ? ` (${gb(d.vram)}, ${gb(d.free)} free)` : ''}`).join('; ')}.` : 'Devices: none reported.');
+  if (p.queue) lines.push(`Queue: ${p.queue.running} running, ${p.queue.pending} waiting.`);
+  if (p.packs?.length) lines.push(`Node packs: ${p.packs.map((k) => (k.version ? `${k.name} ${k.version}` : k.name)).join(', ')}.`);
+  for (const r of p.recipes ?? []) {
+    const gaps = [r.missing_nodes.length ? `${r.missing_nodes.length} missing node${r.missing_nodes.length === 1 ? '' : 's'} (${r.missing_nodes.join(', ')})` : '', r.missing_models.length ? `${r.missing_models.length} model file${r.missing_models.length === 1 ? '' : 's'} not listed (${r.missing_models.map((m) => m.name).join(', ')})` : ''].filter(Boolean);
+    lines.push(`Recipe ${r.name}: ${gaps.length ? gaps.join(' and ') : `ready (${r.nodes} node${r.nodes === 1 ? '' : 's'}, ${r.models} model file${r.models === 1 ? '' : 's'} checked)`}.`);
+  }
+  return lines.join('\n');
 }
 
 /** The same for NodeMode and its receiver. */

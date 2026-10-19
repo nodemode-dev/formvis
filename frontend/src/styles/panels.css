@@ -530,3 +530,12 @@
 /* A hidden panel group takes no room (found by the Info panel, hidden by default: groups set display: flex, which
    overrode the hidden attribute, so any group hidden from the Window menu still took its space). */
 .cv-group[hidden] { display: none !important; }
+/* Edit > Menus colours: a coloured item draws its label in the colour; the hover colours still win. */
+.cv-menu-item[data-color="red"] { --cv-item: #e5484d; }
+.cv-menu-item[data-color="orange"] { --cv-item: #f76b15; }
+.cv-menu-item[data-color="yellow"] { --cv-item: #f5d90a; }
+.cv-menu-item[data-color="green"] { --cv-item: #30a46c; }
+.cv-menu-item[data-color="blue"] { --cv-item: #3e63dd; }
+.cv-menu-item[data-color="violet"] { --cv-item: #8e4ec6; }
+.cv-menu-item[data-color="gray"] { --cv-item: #8b8d98; }
+.cv-menu-item[data-color]:not(:hover):not(.is-focus) .cv-menu-label { color: var(--cv-item); }

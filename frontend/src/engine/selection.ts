@@ -231,6 +231,20 @@ export class SelectionMask {
     return new SelectionMask(nx, ny, w, h, out);
   }
 
+  /** The selection resampled with the image (Image Size): its rectangle scaled by `sx` and `sy`, kept within the
+   *  document `docW` by `docH`; null when nothing is left. */
+  scaled(sx: number, sy: number, docW: number, docH: number): SelectionMask | null {
+    const x0 = Math.max(0, Math.floor(this.x * sx)), y0 = Math.max(0, Math.floor(this.y * sy));
+    const x1 = Math.min(docW, Math.ceil((this.x + this.w) * sx)), y1 = Math.min(docH, Math.ceil((this.y + this.h) * sy));
+    const w = x1 - x0, h = y1 - y0;
+    if (w < 1 || h < 1) return null;
+    const s = createSurface(w, h), g = ctxOf(s);
+    g.imageSmoothingEnabled = true;
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(this.surface() as CanvasImageSource, this.x * sx - x0, this.y * sy - y0, this.w * sx, this.h * sy);
+    return SelectionMask.fromAlpha(x0, y0, w, h, g.getImageData(0, 0, w, h).data);
+  }
+
   /** The selection turned with the canvas (1.55.3, Image Rotation): `quarters` clockwise quarter turns of a document
    *  `docW` by `docH` (before the turn). */
   rotated(quarters: 1 | 2 | 3, docW: number, docH: number): SelectionMask {

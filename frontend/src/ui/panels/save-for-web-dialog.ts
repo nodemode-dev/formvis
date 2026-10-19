@@ -385,14 +385,15 @@ export class SaveForWebDialog extends Dialog {
       if (this.scope === 'html' && slices.length) {
         const k = this.pct / 100, sc = (v: number): number => Math.round(v * k);
         const cells: Array<HtmlCell & { sx: number; sy: number; sw: number; sh: number }> = [];
-        const place = (r: { x: number; y: number; w: number; h: number }, extra: { url?: string; alt?: string; name?: string }): void => {
+        const place = (r: { x: number; y: number; w: number; h: number }, extra: Partial<HtmlCell>): void => {
           const x = sc(r.x), y = sc(r.y), w = Math.max(1, sc(r.x + r.w) - x), h = Math.max(1, sc(r.y + r.h) - y);
           cells.push({ x, y, w, h, file: `images/${base}_${String(cells.length + 1).padStart(2, '0')}.${ext}`, ...extra, sx: r.x, sy: r.y, sw: r.w, sh: r.h });
         };
-        for (const s of readingOrder(slices)) place(s, { ...(s.url ? { url: s.url } : {}), ...(s.alt ? { alt: s.alt } : {}), ...(s.name ? { name: s.name } : {}) });
+        for (const s of readingOrder(slices)) place(s, { ...(s.url ? { url: s.url } : {}), ...(s.alt ? { alt: s.alt } : {}), ...(s.name ? { name: s.name } : {}), ...(s.target ? { target: s.target } : {}), ...(s.message ? { message: s.message } : {}), ...(s.bg ? { bg: s.bg } : {}), ...(s.kind === 'none' ? { noImage: true, cellText: s.cell ?? '' } : {}) });
         for (const a of autoSlices(p.doc)) place(a, {});
         const files: { name: string; blob: Blob }[] = [];
         for (const cell of cells) {
+          if (cell.noImage) continue;
           const c = document.createElement('canvas');
           c.width = cell.w; c.height = cell.h;
           const cx = c.getContext('2d');

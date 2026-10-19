@@ -3,6 +3,7 @@ import { inkOf, renditionOf, type Ink } from '../../engine/colour-lut';
 import { Dialog } from '../dialogs';
 import { el, setHidden } from '../dom';
 import { numberRow } from './controls';
+import { loadPrefs } from '../prefs';
 
 const FIELD = 200, STRIP = 18;
 
@@ -81,8 +82,27 @@ export class ColorPickerDialog extends Dialog {
     document.addEventListener('cv-pick-color', (e) => this.show((e as CustomEvent).detail === 'bg' ? 'bg' : 'fg'));
   }
 
+  /** Preferences > General > Color Picker: the system's own picker, one hidden input kept for it. */
+  private readonly system = Object.assign(document.createElement('input'), { type: 'color' });
+  private systemPick(which: 'fg' | 'bg'): void {
+    const s = this.system, now = which === 'fg' ? this.engine.fg : this.engine.bg;
+    if (!s.isConnected) {
+      Object.assign(s.style, { position: 'fixed', left: '50%', top: '40%', width: '1px', height: '1px', opacity: '0', pointerEvents: 'none' });
+      s.setAttribute('aria-hidden', 'true'); s.tabIndex = -1;
+      document.body.appendChild(s);
+      s.addEventListener('input', () => {
+        const n = parseInt(s.value.slice(1), 16), c = { r: n >> 16, g: (n >> 8) & 255, b: n & 255 };
+        if (s.dataset.which === 'bg') this.engine.setColors(undefined, c); else this.engine.setColors(c);
+      });
+    }
+    s.dataset.which = which;
+    s.value = hexOf(now);
+    try { s.showPicker(); } catch { s.click(); }
+  }
+
   show(which: 'fg' | 'bg'): void {
     if (this.isOpen) return;
+    if (loadPrefs().systemPicker) { this.systemPick(which); return; }
     this.which = which;
     this.current = { ...(which === 'fg' ? this.engine.fg : this.engine.bg) };
     this.hsv = toHsv(this.current, 0);

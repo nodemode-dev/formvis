@@ -4,6 +4,8 @@
 export interface ColourLut { grid: number; rgb: Uint8Array; gamut?: Uint8Array }
 
 export const GAMUT_GREY = 128;
+/** The Gamut Warning's colour and opacity (0 to 1), set from Preferences > Transparency & Gamut. */
+export const gamutWarning = { r: GAMUT_GREY, g: GAMUT_GREY, b: GAMUT_GREY, opacity: 1 };
 
 export function lutFrom(data: ArrayBuffer, grid: number, gamut: boolean): ColourLut {
   const n = grid * grid * grid, b = new Uint8Array(data);
@@ -18,14 +20,16 @@ export function applyLut(data: Uint8ClampedArray, lut: ColourLut, warn = false):
     const x = data[i] * s, y = data[i + 1] * s, z = data[i + 2] * s;
     const x0 = Math.min(G - 2, x | 0), y0 = Math.min(G - 2, y | 0), z0 = Math.min(G - 2, z | 0);
     const fx = x - x0, fy = y - y0, fz = z - z0;
-    if (flags && flags[Math.round(x) * gg + Math.round(y) * G + Math.round(z)]) { data[i] = data[i + 1] = data[i + 2] = GAMUT_GREY; continue; }
+    const hit = !!flags && !!flags[Math.round(x) * gg + Math.round(y) * G + Math.round(z)];
+    if (hit && gamutWarning.opacity >= 1) { data[i] = gamutWarning.r; data[i + 1] = gamutWarning.g; data[i + 2] = gamutWarning.b; continue; }
     const c000 = (x0 * gg + y0 * G + z0) * 3, c001 = c000 + 3, c010 = c000 + G * 3, c011 = c010 + 3;
     const c100 = c000 + gg * 3, c101 = c100 + 3, c110 = c100 + G * 3, c111 = c110 + 3;
     for (let k = 0; k < 3; k++) {
       const a = t[c000 + k] + (t[c001 + k] - t[c000 + k]) * fz, b = t[c010 + k] + (t[c011 + k] - t[c010 + k]) * fz;
       const c = t[c100 + k] + (t[c101 + k] - t[c100 + k]) * fz, d = t[c110 + k] + (t[c111 + k] - t[c110 + k]) * fz;
       const e = a + (b - a) * fy, f = c + (d - c) * fy;
-      data[i + k] = e + (f - e) * fx;
+      const out = e + (f - e) * fx;
+      data[i + k] = hit ? out + ((k === 0 ? gamutWarning.r : k === 1 ? gamutWarning.g : gamutWarning.b) - out) * gamutWarning.opacity : out;
     }
   }
 }

@@ -97,7 +97,7 @@ export class AssistantPanel {
   private history: unknown[] = [];
   private busy = false;
   private stopped = false;
-  private turn: { projectId: string; depth: number } | null = null;
+  private turn: { projectId: string; depth: number; depths: Map<string, number>; ended: Map<string, number> } | null = null;
   private settings = loadSettings();
   private chatId = newId();
   private lines: SavedLine[] = [];
@@ -151,7 +151,7 @@ export class AssistantPanel {
     window.addEventListener('focus', () => this.stopFlash());
     this.send.addEventListener('click', () => void this.ask());
     this.stop.addEventListener('click', () => { this.stopped = true; });
-    this.undoTurn.addEventListener('click', () => this.undo());
+    this.undoTurn.addEventListener('click', () => void this.undo());
     this.input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void this.ask(); } e.stopPropagation(); });
   }
 
@@ -381,7 +381,7 @@ export class AssistantPanel {
     this.line('user', text);
     this.history.push({ role: 'user', content: text });
     const p = this.engine.current;
-    this.turn = p ? { projectId: p.id, depth: p.history.steps.current } : null;
+    this.turn = p ? { projectId: p.id, depth: p.history.steps.current, depths: new Map(this.engine.projects.map((x) => [x.id, x.history.steps.current])), ended: new Map() } : null;
     await this.converse(this.planBox.checked);
   }
 
@@ -448,8 +448,8 @@ export class AssistantPanel {
     } finally {
       this.busy = false;
       this.send.disabled = false; this.stop.disabled = true;
-      const q = this.engine.current;
-      this.undoTurn.disabled = !(this.turn && q && q.id === this.turn.projectId && q.history.steps.current > this.turn.depth);
+      if (this.turn) this.turn.ended = new Map(this.engine.projects.map((x) => [x.id, x.history.steps.current]));
+      this.undoTurn.disabled = !this.turn || !this.engine.projects.some((x) => x.history.steps.current > (this.turn?.depths.get(x.id) ?? Infinity));
       void this.persist();
     }
   }
@@ -582,13 +582,23 @@ export class AssistantPanel {
     void this.refreshChats();
   }
 
-  /** Every step since the last message, undone (only in the document the turn began in). */
-  private undo(): void {
-    const t = this.turn, p = this.engine.current;
-    if (!t || !p || p.id !== t.projectId) { this.line('note', 'That turn began in another document.'); return; }
+  /** Every step since the last message, undone in each document that was open when it began; asks first when the person
+   *  changed one of them after the turn ended, since their later steps would go too. */
+  private async undo(): Promise<void> {
+    const t = this.turn;
+    if (!t) return;
+    const open = this.engine.projects.filter((x) => t.depths.has(x.id) && x.history.steps.current > (t.depths.get(x.id) as number));
+    if (!open.length) { this.line('note', 'That turn began in another document.'); return; }
+    const later = open.reduce((s, x) => s + Math.max(0, x.history.steps.current - (t.ended.get(x.id) ?? x.history.steps.current)), 0);
+    if (later > 0 && !(await confirmAction('Undo This Turn', `You changed ${later === 1 ? 'a document' : 'documents'} after this turn: ${later} later step${later === 1 ? '' : 's'} would be undone too.`, 'Undo', true))) return;
+    const back = this.engine.current;
     let n = 0;
-    while (p.history.steps.current > t.depth && n < 500) { this.engine.undo(); n++; }
+    for (const x of open) {
+      if (this.engine.current !== x) this.engine.switchTo(x.id);
+      while (x.history.steps.current > (t.depths.get(x.id) as number) && n < 500) { this.engine.undo(); n++; }
+    }
+    if (back && this.engine.current !== back && this.engine.projects.includes(back)) this.engine.switchTo(back.id);
     this.undoTurn.disabled = true;
-    this.line('note', `Undid ${n} step${n === 1 ? '' : 's'}.`);
+    this.line('note', `Undid ${n} step${n === 1 ? '' : 's'}${open.length > 1 ? ` in ${open.length} documents` : ''}.`);
   }
 }

@@ -19,7 +19,7 @@ export const zoomTool: Tool = {
     ctx.engine.zoomTo(drag.z0 * Math.pow(2, dx / 100), drag.start);
   },
   up(ctx, p) {
-    if (drag && !drag.moved) ctx.engine.zoomTo((ctx.engine.current?.viewport.zoom ?? 1) * (drag.alt ? 0.5 : 2), p.screen);
+    if (drag && !drag.moved) ctx.engine.zoomSmooth((ctx.engine.current?.viewport.zoom ?? 1) * (drag.alt ? 0.5 : 2), p.screen, ctx.engine.zoomPrefs.centreClick);
     drag = null;
   },
   cancel() { drag = null; },

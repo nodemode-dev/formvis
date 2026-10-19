@@ -62,3 +62,13 @@ async def inpaint_local(image: UploadFile = File(...), mask: UploadFile = File(.
     out = io.BytesIO()
     result.save(out, "PNG")
     return Response(out.getvalue(), media_type="image/png")
+
+
+@router.post("/warm")
+async def inpaint_warm() -> dict:
+    """Loads LaMa ahead of the first fill (the Remove tool asks when it is chosen with LaMa on), so a brush stroke does not wait for it."""
+    if not model_manager.ready(MODEL):
+        return {"warm": False}
+    from . import sessions
+    await run_in_threadpool(lambda: sessions.get("lama", lambda: onnx_session(model_manager.model_file(FILE))))
+    return {"warm": True}

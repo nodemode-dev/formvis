@@ -57,17 +57,29 @@ export function recipeFamily(json: string): { family: RecipeFamily; nodes: numbe
 
 export interface Run { job: string; mask: string | null; prompt: boolean }
 
+let runCount = 0;
+/** Counts a run sent to ComfyUI in this session; its number shows beside the API timer. */
+export function countRun(): number { return ++runCount; }
+
+/** A job's state in words with its API timer: queue place, or step value of max with the percent, the seconds since it was sent, and the run's number. */
+export function jobWords(s: { state: string; ahead?: number; progress?: { value: number; max: number } }, sentAt: number, run: number): string {
+  const secs = Math.max(0, Math.round((Date.now() - sentAt) / 1000)), tail = ` · ${secs} s · run ${run}`;
+  if (s.state === 'queued') return `Queued in ComfyUI${s.ahead ? `, ${s.ahead} ahead` : ''}${tail}`;
+  const p = s.progress;
+  return p && p.max > 0 ? `Running in ComfyUI, step ${p.value} of ${p.max} (${Math.round((100 * p.value) / p.max)}%)${tail}` : `Running in ComfyUI...${tail}`;
+}
+
 /** Queues `json` with `parts` (the image, then any mask) and follows it once a second until it ends; the result
  *  images. `status` hears each state; `cancelled` stops following (and the job is cancelled in ComfyUI). */
 export async function runToResults(target: string, json: string, items: unknown[], parts: Array<{ name: string; blob: Blob }>, prompt: string | null,
   status: (text: string, run: Run) => void = () => {}, cancelled: () => boolean = () => false): Promise<Blob[]> {
+  const sentAt = Date.now(), n = countRun();
   const r = await api.comfyuiRun(target, json, items, parts, prompt);
   for (let waited = 0; waited < 3600; waited++) {
     await new Promise((ok) => setTimeout(ok, 1000));
     if (cancelled()) { await api.comfyuiCancel(r.job, target); throw new Error('Cancelled.'); }
     const s = await api.comfyuiJob(r.job, target);
-    if (s.state === 'queued') status(`Queued in ComfyUI${s.ahead ? `, ${s.ahead} ahead` : ''}.`, r);
-    else if (s.state === 'running') status('Running in ComfyUI...', r);
+    if (s.state === 'queued' || s.state === 'running') status(`${jobWords(s, sentAt, n)}.`, r);
     else if (s.state === 'failed') throw new Error(s.detail ?? 'ComfyUI stopped the workflow with an error.');
     else {
       if (!s.images?.length) throw new Error('The workflow finished without saving an image (it needs a Save Image node).');
@@ -80,7 +92,7 @@ export async function runToResults(target: string, json: string, items: unknown[
 
 /** A generator for Generative Fill and Expand: the workflow run on the cropped image and its mask (white where it
  *  fills), its first result returned. */
-export function comfyGenerator(target: string, recipe: Recipe, prompt: string, refs: Array<{ name: string; blob: Blob }> = []): (image: Blob, mask: Blob) => Promise<Blob> {
+export function comfyGenerator(target: string, recipe: Recipe, prompt: string, refs: Array<{ name: string; blob: Blob }> = [], cancelled?: () => boolean): (image: Blob, mask: Blob) => Promise<Blob> {
   return async (image, mask) => (await runToResults(target, recipe.json, [{ name: 'formvis fill', kind: 'image' }, { name: 'formvis fill mask', kind: 'mask', maskOf: 0 }, ...refs.map((r) => ({ name: r.name, kind: 'reference' }))],
-    [{ name: 'image.png', blob: image }, { name: 'mask.png', blob: mask }, ...refs.map((r, i) => ({ name: `ref${i}.png`, blob: r.blob }))], prompt))[0];
+    [{ name: 'image.png', blob: image }, { name: 'mask.png', blob: mask }, ...refs.map((r, i) => ({ name: `ref${i}.png`, blob: r.blob }))], prompt, undefined, cancelled))[0];
 }

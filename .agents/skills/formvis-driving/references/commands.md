@@ -1,11 +1,11 @@
 # formvis commands
 
-Generated from the window's command catalogue (1369 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1401 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
-- Edit: 77
-- File: 91
+- Edit: 97
+- File: 94
 - Filter: 87
 - Generate: 6
 - Help: 5
@@ -14,10 +14,10 @@ Generated from the window's command catalogue (1369 commands) by `./formvis agen
 - Paint: 1
 - Paths: 11
 - Select: 43
-- Tool options: 387
+- Tool options: 394
 - Tools: 53
 - Type: 49
-- View: 94
+- View: 96
 - Window: 99
 
 ## Edit
@@ -44,6 +44,7 @@ Generated from the window's command catalogue (1369 commands) by `./formvis agen
 | `define-custom-shape` | Define Custom Shape... |  | Saves the current path as a custom shape for the Shape tool. (changes the picture) |
 | `define-pattern` | Define Pattern... |  | Saves the selection as a pattern. |
 | `delete` | Delete | Backspace Delete | Clears the selection, or deletes the selected layers. (changes the picture) |
+| `edit-menus` | Menus... |  | Opens the Menus dialog to hide menu items from the menu bar and to colour them; both are kept across sessions. |
 | `edit-note` | Edit Note... |  | Opens the selected note for editing. |
 | `fade` | Fade... | Shift+Mod+F | Opens Fade to soften the last filter or adjustment. (changes the picture) |
 | `fill-bg` | Fill with Background | Mod+Backspace Mod+Delete | Fills the selection or layer with the background colour. (changes the picture) |
@@ -69,7 +70,26 @@ Generated from the window's command catalogue (1369 commands) by `./formvis agen
 | `patterns-import` | Import Patterns... |  | Adds the patterns from .pat files. |
 | `perspective-warp` | Perspective Warp |  | Starts Perspective Warp. (changes the picture) |
 | `pick-screen-colour` | Pick Colour from Screen |  | Picks the colour of any pixel on the screen, outside the window too, as the foreground colour. |
+| `prefs-cursors` | Cursors... |  | Opens Preferences on Cursors: how painting tools show where they paint. |
+| `prefs-enhanced-controls` | Enhanced Controls... |  | Opens Preferences on Enhanced Controls. |
+| `prefs-file-handling` | File Handling... |  | Opens Preferences on File Handling: library folder, embedded profiles, reopening documents, recovery, lower-case extensions and the recent file list. |
+| `prefs-general` | General... |  | Opens Preferences on General: the Home screen, What's New, animated zoom and the colour picker. |
+| `prefs-guides` | Guides, Grid & Slices... |  | Opens Preferences on Guides, Grid & Slices: colours and line styles of guides and the grid, grid spacing, and slice colour and numbers. |
+| `prefs-history-cache` | History & Cache... |  | Opens Preferences on History & Cache: history states, history memory and snapshots. |
+| `prefs-interface` | Interface... |  | Opens Preferences on Interface: theme, accent, accent intensity and text size. |
+| `prefs-performance` | Performance... |  | Opens Preferences on Performance: memory limit, caches, region redraws and the graphics processor. |
+| `prefs-plugins` | Plug-ins... |  | Opens Preferences on Plug-ins: NodeMode and ComfyUI addresses, the language model, outside agents and local models. |
+| `prefs-raw-defaults` | Raw Defaults... |  | Opens Preferences on Raw Defaults: what the Camera Raw dialog starts with. |
+| `prefs-scratch-disks` | Scratch Disks... |  | Opens Preferences on Scratch Disks: the working files kept on this device, the storage allowed, and a button that cleans them. |
+| `prefs-tools` | Tools... |  | Opens Preferences on Tools: scroll-wheel zoom, pen pressure, tool tips, the Shift key for tool switch and zoom-click centring. |
+| `prefs-transparency` | Transparency & Gamut... |  | Opens Preferences on Transparency & Gamut: the checkerboard and the Gamut Warning colour and opacity. |
+| `prefs-type` | Type... |  | Opens Preferences on Type. |
+| `prefs-units` | Units & Rulers... |  | Opens Preferences on Units & Rulers. |
+| `prefs-workspace` | Workspace... |  | Opens Preferences on Workspace: lock the panels and the narrow-window side column. |
 | `preset-manager` | Preset Manager... |  | Opens the Preset Manager to rename, delete, load and save brushes, swatches, gradients, patterns and custom shapes. (changes the picture) |
+| `presets-export` | Export Presets... |  | Writes your swatches, gradients, custom shapes, patterns, keyboard shortcut sets and menu choices to one formvis-presets file. |
+| `presets-import` | Import Presets... |  | Adds the swatches, gradients, custom shapes and patterns of a formvis-presets file to the libraries, skipping what is already there. |
+| `presets-migrate` | Migrate Presets... |  | Adds the presets of a formvis-presets file and also takes its keyboard shortcuts, shortcut sets and menu choices. |
 | `puppet-warp` | Puppet Warp |  | Starts Puppet Warp with pins on the layer; mode (rigid, normal, distort), density (fewer, normal, more), expansion in pixels and showMesh set its options. (changes the picture) |
 | `purge-all` | All |  | Clears the clipboard and the history of every open document after asking. (changes the picture) |
 | `purge-clipboard` | Clipboard |  | Clears formvis's internal clipboard. (changes the picture) |
@@ -109,10 +129,11 @@ Generated from the window's command catalogue (1369 commands) by `./formvis agen
 | `assemble-tiles` | Assemble Tiles... |  | Opens the dialog that assembles tile images into one large picture. (changes the picture) |
 | `batch` | Batch... |  | Opens Batch to run an action over many files. (changes the picture) (asks first) |
 | `clear-recent` | Clear Recent |  | Empties the Open Recent list. (asks first) |
-| `close-all` | Close All |  | Closes every open document. (asks first) |
+| `close-all` | Close All |  | Closes every open document except pinned tabs. (asks first) |
 | `close-document` | Close Document |  | Closes the current document, or the one with the given id, without asking about unsaved changes. (asks first) |
-| `close-others` | Close Others | Alt+Mod+P | Closes every document but the current one. (asks first) |
+| `close-others` | Close Others | Alt+Mod+P | Closes every document but the current one and the pinned tabs. (asks first) |
 | `close-tab` | Close Tab | Alt+Mod+W | Closes the current document, asking about unsaved changes. (asks first) |
+| `close-tabs-right` | Close Tabs to the Right |  | Closes the documents whose tabs lie to the right of the current one, skipping pinned tabs; each unsaved one is asked about first. (asks first) |
 | `comfyui-run` | Run ComfyUI Workflow... |  | Opens the dialog that runs a ComfyUI workflow and brings the result back. (changes the picture) (asks first) |
 | `conditional-mode-change` | Conditional Mode Change... |  | Changes the document to a target mode only when its current mode is one of the ticked source modes. (changes the picture) |
 | `contact-sheet` | Contact Sheet II... |  | Opens Contact Sheet II to lay chosen images out as thumbnails on new documents. (changes the picture) |
@@ -121,6 +142,7 @@ Generated from the window's command catalogue (1369 commands) by `./formvis agen
 | `crop-straighten-photos` | Crop and Straighten Photos |  | Finds each photo on a scanned page, straightens it and opens it as its own document. (changes the picture) |
 | `download-project` | Download Project File |  | Downloads the project file through the browser. (asks first) |
 | `earlier-states` | Earlier States... |  | Opens a list of the last two sessions and the crash sets formvis kept, to reopen as tabs. |
+| `exit` | Exit |  | Quits formvis after asking Save, Don't Save or Cancel for each document with unsaved changes; in a browser it ends by saying the page can be closed. (asks first) |
 | `export-artboards` | Export Artboards to Files |  | Exports every artboard to its own file. (asks first) |
 | `export-artboards-files` | Artboards to Files... |  | Exports each artboard to its own file in a chosen type and quality; opens the dialog, or runs at once when given any of prefix, format, quality, icc or folder. (asks first) |
 | `export-artboards-pdf` | Artboards to PDF... |  | Exports every artboard as one page of a single PDF, in the Layers order, each page at its artboard size from the document resolution; takes name, jpeg, quality and icc. (asks first) |
@@ -175,6 +197,7 @@ Generated from the window's command catalogue (1369 commands) by `./formvis agen
 | `open-svg-layers` | Open SVG as Layers... |  | Opens an SVG file as a new document with one editable shape layer per drawable element; with the svg parameter it reads that SVG text instead of asking for a file. (changes the picture) |
 | `package` | Package... |  | Saves the document and the files of its linked smart objects together in one zip. (changes the picture) |
 | `photomerge` | Photomerge... |  | Opens Photomerge to stitch chosen files or the open documents into a panorama (Auto, Perspective, Cylindrical, Collage or Reposition) with optional vignette and lens distortion correction. (changes the picture) |
+| `pin-tab` | Pin Tab |  | Pins or unpins the current document tab: a pinned tab moves to the front, loses its close button and is kept by Close All and Close Others. |
 | `place-3d` | Place 3D Model... |  | Opens a file picker for a glTF or GLB model and places it as a layer. (changes the picture) |
 | `place-embedded` | Place Embedded... |  | Places an image file as an embedded smart object. (changes the picture) |
 | `place-linked` | Place Linked... |  | Places an image file as a linked smart object. (changes the picture) |
@@ -939,18 +962,24 @@ Generated from the window's command catalogue (1369 commands) by `./formvis agen
 | `tool.options.count.hideGroup` | Count: Hide Group |  | Sets Hide Group for the Count tool. |
 | `tool.options.count.labelSize` | Count: Label Size |  | Sets Label Size for the Count tool. |
 | `tool.options.count.markerSize` | Count: Marker Size |  | Sets Marker Size for the Count tool. |
+| `tool.options.crop.autoAdjustOpacity` | Crop: Auto Adjust Opacity |  | Sets Auto Adjust Opacity for the Crop tool. |
+| `tool.options.crop.classicMode` | Crop: Classic Mode |  | Sets Classic Mode for the Crop tool. |
 | `tool.options.crop.contentAware` | Crop: Content-Aware |  | Sets Content-Aware for the Crop tool. |
 | `tool.options.crop.deleteCroppedPixels` | Crop: Delete Cropped Pixels |  | Sets Delete Cropped Pixels for the Crop tool. |
+| `tool.options.crop.fill` | Crop: Fill |  | Sets Fill for the Crop tool. |
 | `tool.options.crop.h` | Crop: H |  | Sets H for the Crop tool. |
 | `tool.options.crop.overlay` | Crop: Overlay |  | Sets Overlay for the Crop tool. |
 | `tool.options.crop.perspective` | Crop: Perspective |  | Sets Perspective for the Crop tool. |
 | `tool.options.crop.preset` | Crop: Preset |  | Sets Preset for the Crop tool. |
 | `tool.options.crop.ratio` | Crop: Ratio |  | Sets Ratio for the Crop tool. |
+| `tool.options.crop.ratioH` | Crop: Ratio H |  | Sets Ratio H for the Crop tool. |
+| `tool.options.crop.ratioW` | Crop: Ratio W |  | Sets Ratio W for the Crop tool. |
 | `tool.options.crop.resolution` | Crop: Resolution |  | Sets Resolution for the Crop tool. |
 | `tool.options.crop.shieldColor` | Crop: Shield color |  | Sets Shield color for the Crop tool. |
 | `tool.options.crop.shieldOpacity` | Crop: Shield opacity |  | Sets Shield opacity for the Crop tool. |
 | `tool.options.crop.showCroppedArea` | Crop: Show Cropped Area |  | Sets Show Cropped Area for the Crop tool. |
 | `tool.options.crop.showOverlay` | Crop: Show overlay |  | Sets Show overlay for the Crop tool. |
+| `tool.options.crop.snapGrid` | Crop: Snap grid |  | Sets Snap grid for the Crop tool. |
 | `tool.options.crop.straighten` | Crop: Straighten |  | Sets Straighten for the Crop tool. |
 | `tool.options.crop.unit` | Crop: Unit |  | Sets Unit for the Crop tool. |
 | `tool.options.crop.w` | Crop: W |  | Sets W for the Crop tool. |
@@ -1071,6 +1100,7 @@ Generated from the window's command catalogue (1369 commands) by `./formvis agen
 | `tool.options.move.x` | Move: X |  | Sets X for the Move tool. |
 | `tool.options.move.y` | Move: Y |  | Sets Y for the Move tool. |
 | `tool.options.objectSelect.antiAlias` | Object Selection: Anti-alias |  | Sets Anti-alias for the Object Selection tool. |
+| `tool.options.objectSelect.edgeOffset` | Object Selection: Edge Offset |  | Sets Edge Offset for the Object Selection tool. |
 | `tool.options.objectSelect.mode` | Object Selection: Mode |  | Sets Mode for the Object Selection tool. |
 | `tool.options.objectSelect.objectFinder` | Object Selection: Object Finder |  | Sets Object Finder for the Object Selection tool. |
 | `tool.options.objectSelect.sampleAllLayers` | Object Selection: Sample All Layers |  | Sets Sample All Layers for the Object Selection tool. |
@@ -1394,12 +1424,14 @@ Generated from the window's command catalogue (1369 commands) by `./formvis agen
 | `task-bar-pin` | Pin Task Bar |  | Pins the Contextual Task Bar where it stands, or lets it follow the selection again. |
 | `task-bar-reset` | Reset Task Bar Position |  | Puts the Contextual Task Bar back at the bottom centre of the canvas. |
 | `theme-contrast` | Theme: High Contrast |  | Switches the window to the High Contrast theme; nothing in the window is rebuilt. |
+| `theme-duck` | Theme: Duck |  | Switches the window to the Duck theme; nothing in the window is rebuilt. |
 | `theme-ember` | Theme: Ember |  | Switches the window to the Ember theme; nothing in the window is rebuilt. |
 | `theme-forest` | Theme: Forest |  | Switches the window to the Forest theme; nothing in the window is rebuilt. |
 | `theme-github-dark` | Theme: GitHub Dark |  | Switches the window to the GitHub Dark theme; nothing in the window is rebuilt. |
 | `theme-light` | Theme: Light |  | Switches the window to the Light theme; nothing in the window is rebuilt. |
 | `theme-midnight` | Theme: Midnight Blue |  | Switches the window to the Midnight Blue theme; nothing in the window is rebuilt. |
 | `theme-mono` | Theme: Mono Ink |  | Switches the window to the Mono Ink theme; nothing in the window is rebuilt. |
+| `theme-nineties` | Theme: 90s |  | Switches the window to the 90s theme; nothing in the window is rebuilt. |
 | `theme-nodemode-dark` | Theme: NodeMode Dark |  | Switches the window to the NodeMode Dark theme; nothing in the window is rebuilt. |
 | `theme-ocean` | Theme: Deep Ocean |  | Switches the window to the Deep Ocean theme; nothing in the window is rebuilt. |
 | `theme-rose` | Theme: Rose Noir |  | Switches the window to the Rose Noir theme; nothing in the window is rebuilt. |

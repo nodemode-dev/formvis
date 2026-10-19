@@ -25,12 +25,20 @@ export interface DocMeta {
   modified?: string;
   /** The quality a JPEG was saved at, estimated when it was opened; Export As offers it again for the first re-save. */
   jpegQuality?: number;
+  /** The picture's own Exif block as base64 (orientation already applied and reset to 1), written back into JPEG, PNG and WebP. */
+  exif?: string;
+  /** The XMP packet the picture came with; its properties File Info does not manage travel on in the next export. */
+  xmpRaw?: string;
 }
 
 /** The fields a change may name; keywords may be one typed line, custom fields lines of `key: value`. */
 export type MetaPatch = Omit<Partial<DocMeta>, 'keywords' | 'custom'> & { keywords?: string | readonly string[]; custom?: string | Readonly<Record<string, string>> };
 
 const MAX_CUSTOM = 50, MAX_CUSTOM_KEY = 64, MAX_CUSTOM_VALUE = 1000;
+/** One Exif block fits one JPEG segment (65 KB); the original XMP packet is kept up to 48 K characters. */
+export const MAX_EXIF_BYTES = 64000;
+const MAX_EXIF_B64 = Math.ceil(MAX_EXIF_BYTES / 3) * 4, MAX_XMP_RAW = 48000;
+export const MAX_XMP_RAW_CHARS = MAX_XMP_RAW;
 
 /** Free-form fields from typed lines (`key: value`, one per line) or a record: keys trimmed, a repeated key (any case)
  *  keeps its first, empty keys and values dropped. */
@@ -98,13 +106,15 @@ export function cleanMeta(v: unknown): DocMeta | null {
   if (modified) out.modified = modified;
   const jq = Math.round(Number(o.jpegQuality));
   if (Number.isFinite(jq) && jq >= 1 && jq <= 100) out.jpegQuality = jq;
+  if (typeof o.exif === 'string' && o.exif.length <= MAX_EXIF_B64 && /^[A-Za-z0-9+/]+={0,2}$/.test(o.exif)) out.exif = o.exif;
+  if (typeof o.xmpRaw === 'string' && o.xmpRaw.length > 0 && o.xmpRaw.length <= MAX_XMP_RAW) out.xmpRaw = o.xmpRaw.replace(/\u0000/g, '');
   return Object.keys(out).length ? out : null;
 }
 
 /** True when `m` has anything worth writing into a file: a field the person fills in, or the camera's record. */
 export function metaWritable(m: DocMeta | null | undefined): m is DocMeta {
   if (!m) return false;
-  return !!(m.title || m.author || m.authorTitle || m.description || m.rating || m.descriptionWriter || m.keywords?.length || (m.copyright && m.copyright !== 'unknown') || m.notice || m.url || m.camera || (m.custom && Object.keys(m.custom).length));
+  return !!(m.title || m.author || m.authorTitle || m.description || m.rating || m.descriptionWriter || m.keywords?.length || (m.copyright && m.copyright !== 'unknown') || m.notice || m.url || m.camera || m.exif || m.xmpRaw || (m.custom && Object.keys(m.custom).length));
 }
 
 const sameList = (a: readonly string[] | undefined, b: readonly string[] | undefined): boolean => (a?.length ?? 0) === (b?.length ?? 0) && (a ?? []).every((x, i) => x === (b as readonly string[])[i]);

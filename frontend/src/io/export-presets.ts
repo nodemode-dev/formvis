@@ -122,7 +122,7 @@ export const SFW_METADATA: ReadonlyArray<readonly [SfwMetadata, string]> = [['no
 export function sfwMeta(mode: SfwMetadata, doc: DocMeta | undefined): DocMeta | undefined {
   if (mode === 'none' || !doc) return exportMeta({ format: 'png', quality: 100, scale: 100, metadata: 'none' }, doc);
   if (mode === 'all') return doc;
-  if (mode === 'noCamera') { const { camera: _camera, ...rest } = doc; return cleanMeta(rest) ?? undefined; }
+  if (mode === 'noCamera') { const { camera: _camera, exif: _exif, xmpRaw: _xmpRaw, ...rest } = doc; return cleanMeta(rest) ?? undefined; }
   const { copyright, notice, url, author, authorTitle } = doc;
   return cleanMeta({ copyright, notice, url, ...(mode === 'contact' ? { author, authorTitle } : {}) }) ?? undefined;
 }

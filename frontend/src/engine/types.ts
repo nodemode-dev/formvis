@@ -188,7 +188,8 @@ export interface AlphaChannel { readonly id: ID; readonly name: string; readonly
  *  timeline's when absent), `loop` how many times the clip plays, `alpha` how its transparency is read: 'ignore' makes
  *  every frame opaque, 'premultiplied' takes the colour back off `matte` (black when absent). */
 export interface FootageInterpretation { fps?: number; loop?: number; alpha?: 'straight' | 'ignore' | 'premultiplied'; matte?: RGB }
-export interface DocSlice { id: ID; name: string; x: number; y: number; w: number; h: number; layer?: ID; url?: string; alt?: string }
+export type SliceKind = 'image' | 'none';
+export interface DocSlice { id: ID; name: string; x: number; y: number; w: number; h: number; layer?: ID; url?: string; alt?: string; /** Image (exported as a picture) or No Image (cell text only). */ kind?: SliceKind; /** Link target such as _blank. */ target?: string; /** Browser status bar message. */ message?: string; /** Cell text of a No Image slice. */ cell?: string; /** Background colour as #rrggbb; absent means none. */ bg?: string }
 /** A layout box (Generate's region prompting): what the rectangle is for, in document pixels, with its words and name. */
 export type BoxKind = 'new' | 'keep' | 'move' | 'remove' | 'reference' | 'text';
 export interface DocBox { id: ID; kind: BoxKind; name: string; text: string; x: number; y: number; w: number; h: number }

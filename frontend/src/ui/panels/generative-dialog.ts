@@ -4,13 +4,14 @@ import { Dialog } from '../dialogs';
 import { el, setHidden, setText } from '../dom';
 import { addRecipe, apiWorkflow, comfyGenerator, recipes, removeRecipe } from '../../io/comfy';
 import { localFill, localInpaint, localModels, localUpscale, modelReady, upscalerReady, type LocalModel } from '../../io/local-gen';
-import { loadPrefs } from '../prefs';
+import { loadPrefs, recalled } from '../prefs';
 import { ReferencePicker } from './references';
 import { ReferenceChips } from './reference-chips';
 import { CropStitchSettings } from './crop-stitch-settings';
 import { withCropStitch } from '../../io/crop-stitch-run';
-import { resolveReferenceTokens } from './generate-image';
+import { comfyReadiness, resolveReferenceTokens, stoppable, stoppableFill } from './generate-image';
 import { PromptImprover } from './prompt-improver';
+import { GenerationOptions } from './generation-options';
 
 type Mode = 'fill' | 'expand' | 'upscale';
 
@@ -18,7 +19,7 @@ const TITLES: Record<Mode, string> = { fill: 'Generative Fill', expand: 'Generat
 const HINTS: Record<Mode, string> = {
   fill: 'The result arrives as a new layer masked to the selection. fal charges about $0.05 per megapixel of the area sent.',
   expand: 'The canvas grows by these margins and the new border is filled as a layer masked to it; leave the prompt empty to extend the scene. fal charges about $0.05 per megapixel.',
-  upscale: 'Real-ESRGAN enlarges what the document shows and opens it as a new document: on this computer once its model is downloaded, or on fal for a fraction of a cent per image.',
+  upscale: 'Real-ESRGAN enlarges what the document shows, as a new document, in this document or (the selection) as a layer: on this computer once its model is downloaded, or on fal for a fraction of a cent per image.',
 };
 
 /** Generative Fill, Generative Expand and Upscale, sent by the formvis engine to fal: FLUX.1 Fill [pro] with a
@@ -43,11 +44,15 @@ export class GenerativeDialog extends Dialog {
   private chips!: ReferenceChips;
   private readonly crop = new CropStitchSettings();
   private locals: LocalModel[] = [];
+  private problems = new Map<string, string>();   // kept workflows ComfyUI cannot run now, with the reason
   private lama = false;
   private picked = false;   // the person chose the model (1.58.5); until then the default is fal with a key, else local
   private readonly influence = el<HTMLInputElement>('<input type="range" min="0" max="100" step="1" value="40" aria-label="Influence">');
   private readonly influenceRow = el('<label class="cv-dialog-row" title="How much the area under the selection shapes the result (0: none)"><span>Influence</span></label>');
   private readonly improver: PromptImprover;
+  private readonly opts = new GenerationOptions();
+  private readonly scope = el<HTMLSelectElement>('<select class="cv-input" aria-label="Upscale scope"><option value="new">Whole picture, as a new document</option><option value="here">Whole picture, in this document</option><option value="selection">The selection, as a layer</option></select>');
+  private readonly scopeRow = el('<label class="cv-dialog-row"><span>Scope</span></label>');
   private readonly addFile = el<HTMLInputElement>('<input type="file" accept=".json,application/json" aria-label="Add ComfyUI workflow" hidden>');
 
   constructor(private readonly engine: Engine) {
@@ -60,6 +65,8 @@ export class GenerativeDialog extends Dialog {
     this.model.addEventListener('change', () => { this.picked = true; this.sync(); });
     this.modelRow.append(this.model, add, remove, this.addFile);
     this.body.appendChild(this.modelRow);
+    this.scopeRow.append(this.scope);
+    this.body.appendChild(this.scopeRow);
     this.influenceRow.append(this.influence);
     this.influence.addEventListener('input', () => { this.influence.dataset.set = '1'; });
     this.body.appendChild(this.influenceRow);
@@ -70,6 +77,8 @@ export class GenerativeDialog extends Dialog {
     this.body.appendChild(this.chips.el);
     this.improver = new PromptImprover(this.prompt, 'Fill a selection');
     this.body.appendChild(this.improver.el);
+    this.body.appendChild(this.opts.el);
+    this.prompt.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.defaultPrevented) { e.preventDefault(); void this.generate(); } });
     this.body.appendChild(this.crop.el);
     this.marginRows = el('<div class="cv-panel-section"></div>');
     this.body.appendChild(this.marginRows);
@@ -108,20 +117,30 @@ export class GenerativeDialog extends Dialog {
     this.prompt.placeholder = mode === 'expand' ? 'Describe the surroundings, or leave empty to extend the scene' : 'Describe what to add, or leave empty to remove';
     setHidden(this.prompt, mode === 'upscale');
     setHidden(this.marginRows, mode !== 'expand');
+    setHidden(this.scopeRow, mode !== 'upscale');
+    const selOpt = this.scope.options[2], hasSel = !!this.engine.current?.selection;
+    if (selOpt.disabled === hasSel) selOpt.disabled = !hasSel;
+    selOpt.title = hasSel ? '' : 'Make a selection first';
+    if (!hasSel && this.scope.value === 'selection') this.scope.value = 'new';
     setText(this.hint, HINTS[mode]);
     // Upscale: Real-ESRGAN on fal or on this computer (1.53.1); the fill models otherwise.
     for (const b of this.modelRow.querySelectorAll('button')) setHidden(b as HTMLElement, mode === 'upscale');
     this.status = await api.generativeStatus();   // first, so the default knows whether fal has a key (1.58.5)
     if (mode === 'upscale') this.upscaleModels(await upscalerReady());
-    else { this.locals = (await localModels()).filter((m) => m.fromPicture); this.lama = await modelReady('lama-inpaint'); this.providers = (await api.providers()).filter((p) => p.fill); this.fillModels(); }   // local models (1.52.9), LaMa (1.53.2)
+    else { this.locals = (await localModels()).filter((m) => m.fromPicture); this.lama = await modelReady('lama-inpaint'); this.providers = (await api.providers()).filter((p) => p.fill); this.problems = await comfyReadiness(); this.fillModels(); }   // local models (1.52.9), LaMa (1.53.2)
     this.refs.refresh(!this.model.value.startsWith('comfy:'));
     setHidden(this.refs.el, mode === 'upscale');
     setHidden(this.chips.el, mode === 'upscale');
     setHidden(this.crop.el, mode === 'upscale');
     this.crop.load();
     setHidden(this.improver.el, mode === 'upscale');
+    setHidden(this.opts.el, mode === 'upscale');
     this.improver.refresh();
     if (start && mode !== 'upscale') this.improver.history.set(start.prompt);
+    if (start && !this.picked) {   // a run that starts without the dialog showing still uses the model the person chose last time
+      const kept = recalled(TITLES[mode], 'select:Model');
+      if (typeof kept === 'string' && [...this.model.options].some((o) => o.value === kept && !o.disabled)) { this.model.value = kept; this.picked = true; }
+    }
     this.sync();
     if (start && this.runnable) { await this.generate(); return; }
     this.open();
@@ -145,7 +164,7 @@ export class GenerativeDialog extends Dialog {
     const was = this.model.value;
     this.model.replaceChildren(el('<option value="fal">FLUX.1 Fill (fal)</option>'),
       ...this.providers.map((p) => { const o = document.createElement('option'); o.value = `provider:${p.id}`; o.textContent = `${p.model} (${p.name})`; o.disabled = !p.configured; if (!p.configured) o.title = 'Add its key in Edit > Generate Image'; return o; }),
-      ...recipes().map((r) => { const o = document.createElement('option'); o.value = `comfy:${r.name}`; o.textContent = `${r.name} (ComfyUI)`; return o; }),
+      ...recipes().map((r) => { const o = document.createElement('option'); o.value = `comfy:${r.name}`; o.textContent = `${r.name} (ComfyUI)`; const why = this.problems.get(r.name); if (why) { o.disabled = true; o.title = why; } return o; }),
       ...this.locals.map((m) => { const o = document.createElement('option'); o.value = m.id; o.textContent = `${m.label.replace(/ \(local\)$/, '')} (this computer)`; o.disabled = !m.ready; if (!m.ready && m.reason) o.title = m.reason; return o; }));
     // LaMa (1.53.2): inpainting on any computer's CPU, no prompt; chosen when fal has no key.
     const lama = el<HTMLOptionElement>('<option value="local:lama">LaMa, no prompt (this computer)</option>');
@@ -185,6 +204,7 @@ export class GenerativeDialog extends Dialog {
 
   private sync(): void {
     const s = this.status, local = this.local;
+    this.opts.forModel(this.lamaHere || this.upscaleHere ? 'lama' : this.model.value);
     this.refs.forFal(!this.comfy);
     setHidden(this.influenceRow, !local);
     if (this.lamaHere) {
@@ -194,7 +214,7 @@ export class GenerativeDialog extends Dialog {
     }
     if (this.upscaleHere) {
       setHidden(this.keyRow, true); setHidden(this.forget, true);
-      setText(this.state, `Real-ESRGAN runs on this computer: no key, no cost. It enlarges what the document shows ${this.scale} times and opens it as a new document.`);
+      setText(this.state, `Real-ESRGAN runs on this computer: no key, no cost. It enlarges what the document shows ${this.scale} times, as the scope says.`);
       return;
     }
     if (local) {   // a local model: no key, no references; the picture under the selection at the influence set
@@ -226,27 +246,34 @@ export class GenerativeDialog extends Dialog {
     this.sync();
   }
 
+  /** Upscale by the scope chosen: the whole picture as a new document or in this document, or the selection as a layer. */
+  private upscaleBy(scope: string, scale: number, run: (image: Blob) => Promise<Blob>): Promise<boolean> {
+    const e = this.engine;
+    return scope === 'here' ? e.upscaleInDocument(scale, run) : scope === 'selection' ? e.upscaleSelection(scale, run) : e.upscaleToDocument(scale, run);
+  }
+
   private async generate(): Promise<void> {
     if (this.lamaHere) {
       const e = this.engine, mode = this.mode, prompt = this.prompt.value;
       const margins = { left: Number(this.margin.left.value), top: Number(this.margin.top.value), right: Number(this.margin.right.value), bottom: Number(this.margin.bottom.value) };
       this.close();
-      if (mode === 'expand') await e.task(() => e.generativeExpand(margins, prompt, localInpaint()));
-      else await e.task(() => e.generativeFill(prompt, localInpaint()));
+      const lama = stoppableFill(() => localInpaint());
+      if (mode === 'expand') await e.task(() => e.generativeExpand(margins, prompt, lama));
+      else await e.task(() => e.generativeFill(prompt, lama));
       return;
     }
     if (this.upscaleHere) {
-      const e = this.engine, scale = this.scale;
+      const e = this.engine, scale = this.scale, scope = this.scope.value;
       this.close();
-      await e.task(() => e.upscaleToDocument(scale, localUpscale(scale)));
+      await e.task(() => this.upscaleBy(scope, scale, (image) => stoppable((stopped) => localUpscale(scale, undefined, stopped)(image))));
       return;
     }
     const local = this.local;
     if (local) {
-      const prompt = this.prompt.value, mode = this.mode, e = this.engine, influence = Number(this.influence.value) / 100;
+      const prompt = this.prompt.value, mode = this.mode, e = this.engine, influence = Number(this.influence.value) / 100, { seed, negative } = this.opts.request();
       const margins = { left: Number(this.margin.left.value), top: Number(this.margin.top.value), right: Number(this.margin.right.value), bottom: Number(this.margin.bottom.value) };
       this.close();
-      const fill = localFill(local.id, prompt, influence, (r) => this.heard(r));
+      const fill = stoppableFill((stopped) => localFill(local.id, prompt, influence, (r) => this.heard(r), undefined, { seed, negative, cancelled: stopped, onSeed: (s) => this.opts.used(s) }));
       if (mode === 'expand') await e.task(() => e.generativeExpand(margins, prompt, fill));
       else await e.task(() => e.generativeFill(prompt, fill));
       return;
@@ -260,7 +287,7 @@ export class GenerativeDialog extends Dialog {
       let said: string;
       try { said = resolveReferenceTokens(prompt, refs.length); } catch (err) { setText(this.state, err instanceof Error ? err.message : 'A reference token could not be read.'); return; }
       this.close();
-      const fill = withCropStitch(comfyGenerator(target, recipe, said, refs));
+      const fill = stoppableFill((stopped) => withCropStitch(comfyGenerator(target, recipe, said, refs, stopped)));
       if (mode === 'expand') await e.task(() => e.generativeExpand(margins, prompt, fill));
       else await e.task(() => e.generativeFill(prompt, fill));
       return;
@@ -270,7 +297,7 @@ export class GenerativeDialog extends Dialog {
       const prompt = this.prompt.value, mode = this.mode, e = this.engine, id = pr.id;
       const margins = { left: Number(this.margin.left.value), top: Number(this.margin.top.value), right: Number(this.margin.right.value), bottom: Number(this.margin.bottom.value) };
       this.close();
-      const fill = withCropStitch((image: Blob, mask: Blob): Promise<Blob> => api.generativeFill(image, mask, prompt, id));
+      const fill = stoppableFill(() => withCropStitch((image: Blob, mask: Blob): Promise<Blob> => api.generativeFill(image, mask, prompt, id)));
       if (mode === 'expand') await e.task(() => e.generativeExpand(margins, prompt, fill));
       else await e.task(() => e.generativeFill(prompt, fill));
       return;
@@ -283,11 +310,12 @@ export class GenerativeDialog extends Dialog {
       this.key.value = '';
       this.sync();
     }
-    const prompt = this.prompt.value, mode = this.mode, scale = this.scale, e = this.engine;
+    const prompt = this.prompt.value, mode = this.mode, scale = this.scale, e = this.engine, scope = this.scope.value, { seed } = this.opts.request();
     const margins = { left: Number(this.margin.left.value), top: Number(this.margin.top.value), right: Number(this.margin.right.value), bottom: Number(this.margin.bottom.value) };
     this.close();
-    const fill = withCropStitch((image: Blob, mask: Blob): Promise<Blob> => api.generativeFill(image, mask, prompt));
-    if (mode === 'upscale') await e.task(() => e.upscaleToDocument(scale, (image) => api.upscale(image, scale)));
+    if (seed !== undefined && mode !== 'upscale') this.opts.used(seed);
+    const fill = stoppableFill(() => withCropStitch((image: Blob, mask: Blob): Promise<Blob> => api.generativeFill(image, mask, prompt, 'fal', seed)));
+    if (mode === 'upscale') await e.task(() => this.upscaleBy(scope, scale, (image) => stoppable(() => api.upscale(image, scale))));
     else if (mode === 'expand') await e.task(() => e.generativeExpand(margins, prompt, fill));
     else await e.task(() => e.generativeFill(prompt, fill));
   }

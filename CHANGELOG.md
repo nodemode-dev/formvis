@@ -4,6 +4,16 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.89.3 · 2026-10-19
+
+### Added
+
+- Document and canvas: more Image Size methods (Bicubic Smoother and Sharper, Lanczos) and the selection follows a resize; Canvas Size keeps proportions and estimates memory; the Crop tool gets Classic mode, drag-rotate, a fill for opened edges, a custom ratio and a snap grid; tab menu, pinned tabs and Close Tabs to the Right; File > Exit; New Document presets and colours; EXIF and XMP kept through export; File Info fields; slice options; a status bar readout.
+- Preferences: every page reachable from Edit > Preferences, and many settings now act (interpolation, beep when done, canvas colour, cursors, checker colours, guide and grid styles, slice colours, tool tips, Shift tool switch, recent file count, enhanced controls, type options, scratch disks).
+- Shortcuts and menus: alternate shortcuts, saved sets, export and import; Edit > Menus to hide and colour items; preset bundles; animation and pressure switches.
+- Settings: DirectML for helper models, a model folder scan, a download token, local file cleanup, user theme files with the 90s and Duck themes, About details.
+- Generation: stop Fill, Expand and Upscale; seeds and negative prompts in Generative Fill; Upscale in place or for the selection; ComfyUI recipe readiness, a probe report and a progress bar; a quick sky selection without a model; Object Selection edge offset.
+
 ## 1.89.2 · 2026-10-19
 
 ### Added

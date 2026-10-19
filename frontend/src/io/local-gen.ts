@@ -83,9 +83,10 @@ async function followJob(id: string, status: (text: string) => void, cancelled: 
 
 /** Generative Fill's and Expand's generator on a local model: the area the fill covers sent as the picture to start
  *  from, at `influence` (how much it shapes the result); formvis then masks the result to the selection. */
-export function localFill(model: string, prompt: string, influence: number, heard: (r: LocalResult) => void, status?: (text: string) => void): (image: Blob, mask: Blob) => Promise<Blob> {
+export function localFill(model: string, prompt: string, influence: number, heard: (r: LocalResult) => void, status?: (text: string) => void, extra: { seed?: number; negative?: string; cancelled?: () => boolean; onSeed?: (seed: number | undefined) => void } = {}): (image: Blob, mask: Blob) => Promise<Blob> {
   return withCropStitch(async (image) => {
-    const r = await runLocal({ generator: model, prompt: prompt.trim() || 'the surrounding scene, continued seamlessly', size: 'source', count: 1, options: { image: { png: await b64(image) }, imageStrength: influence } }, status);
+    const r = await runLocal({ generator: model, prompt: prompt.trim() || 'the surrounding scene, continued seamlessly', size: 'source', count: 1, ...(extra.negative ? { negative: extra.negative } : {}), options: { image: { png: await b64(image) }, imageStrength: influence, ...(extra.seed !== undefined ? { seed: extra.seed } : {}) } }, status, extra.cancelled);
+    extra.onSeed?.(r.settings[0]?.seed ?? extra.seed);
     heard(r);
     return r.pictures[0];
   });
@@ -96,6 +97,10 @@ export async function modelReady(id: string): Promise<boolean> {
   try { const m = await (await ask('/models')).json() as Array<{ id: string; ready: boolean }>; return !!m.find((x) => x.id === id)?.ready; } catch { return false; }
 }
 export const upscalerReady = (): Promise<boolean> => modelReady('ai-upscale');
+/** Loads LaMa in the engine ahead of the first Remove stroke; false when it is not downloaded or the engine is away. */
+export async function warmLama(): Promise<boolean> {
+  try { return ((await (await ask('/inpaint/warm', { method: 'POST', headers: { 'x-formvis-local': '1' } })).json()) as { warm: boolean }).warm; } catch { return false; }
+}
 export const depthReady = (): Promise<boolean> => modelReady('depth-anything-v2-small');
 export const colorizeReady = (): Promise<boolean> => modelReady('ddcolor-tiny');
 export const styleReady = (): Promise<boolean> => modelReady('fast-style');
@@ -103,9 +108,9 @@ export const faceReady = (): Promise<boolean> => modelReady('yunet-face');
 export const skyReady = (): Promise<boolean> => modelReady('skyseg');
 
 /** Select > Sky (1.57.6): the sky in `image` as a soft white-on-black mask the same size, from the engine's model. */
-export async function skyMask(image: Blob): Promise<Blob> {
+export async function skyMask(image: Blob, quick = false): Promise<Blob> {
   const form = new FormData(); form.append('image', image, 'image.png');
-  return (await ask('/sky/mask', { method: 'POST', headers: { 'x-formvis-local': '1' }, body: form })).blob();
+  return (await ask(quick ? '/sky/mask?quick=true' : '/sky/mask', { method: 'POST', headers: { 'x-formvis-local': '1' }, body: form })).blob();
 }
 
 /** Faces for Face-Aware Liquify (1.56.7): each face's box and five landmarks, largest first, from the engine's YuNet. */
@@ -222,10 +227,10 @@ export function localInpaint(): (image: Blob, mask: Blob) => Promise<Blob> {
 }
 
 /** Image > Upscale's generator on this computer (1.53.1): Real-ESRGAN, the picture enlarged `scale` times. */
-export function localUpscale(scale: number, status?: (text: string) => void): (image: Blob) => Promise<Blob> {
+export function localUpscale(scale: number, status?: (text: string) => void, cancelled: () => boolean = () => false): (image: Blob) => Promise<Blob> {
   return async (image) => {
     const form = new FormData(); form.append('file', image, 'picture.png'); form.append('factor', String(scale));
     const { job_id: id } = await (await ask('/upscale/local', { method: 'POST', headers: { 'x-formvis-local': '1' }, body: form })).json() as { job_id: string };
-    return (await followJob(id, status ?? (() => {}), () => false)).pictures[0];
+    return (await followJob(id, status ?? (() => {}), cancelled)).pictures[0];
   };
 }

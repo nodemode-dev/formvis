@@ -1,3 +1,6 @@
+import json
+import platform
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -118,7 +121,7 @@ def _select_object() -> dict:
         from app.localgen import model_manager
         from app.localgen.paths import providers
         first = providers()[0]
-        device = {"CUDAExecutionProvider": "cuda", "CoreMLExecutionProvider": "mps"}.get(first, "cpu")
+        device = {"CUDAExecutionProvider": "cuda", "CoreMLExecutionProvider": "mps", "DmlExecutionProvider": "dml"}.get(first, "cpu")
         how = f"ONNX Runtime ({first.removesuffix('ExecutionProvider')})"
         return {"available": True, "model": "SAM 2.1 tiny", "device": device, "reason": how if model_manager.ready("sam2-onnx") else f"{how}; the model (about 155 MB) downloads on first use"}
     device, reason = segment.torch_device()
@@ -157,6 +160,7 @@ def capabilities() -> dict:
         "dataDir": str(config.data_dir()),
         "switches": runtime.switches(),
         "logFile": str(runtime.log_path(config.data_dir())),
+        "runtime": {"python": platform.python_version(), "system": f"{platform.system()} {platform.release()}".strip(), "machine": platform.machine()},
     }
 
 
@@ -277,3 +281,114 @@ def set_compute_device(choice: ComputeChoice) -> dict:
         return compute.set_preference(choice.device)
     except ValueError as err:
         raise HTTPException(status_code=400, detail=str(err)) from err
+
+
+_SKIN_VARS = ("--bg-primary", "--bg-secondary", "--bg-tertiary", "--bg-node", "--border-color", "--border-light", "--text-primary", "--text-secondary", "--text-muted", "--canvas-bg", "--grid-color", "--node-shadow")
+_SKIN_VALUE = re.compile(r"^(#[0-9a-fA-F]{3,8}|(rgb|rgba|hsl|hsla)\([0-9a-fA-F.,%\s/]{3,60}\)|[0-9a-z#(),.%\s-]{1,80})$")
+
+
+def _read_skin(path: Path) -> dict:
+    """One skin file: a name, light or dark, and colour values for the window's tokens; anything else is refused with why."""
+    if path.stat().st_size > 20_000:
+        raise ValueError("larger than 20 KB")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or not isinstance(data.get("vars"), dict):
+        raise ValueError("needs a \"vars\" object of token colours")
+    values = {}
+    for key, value in data["vars"].items():
+        if key not in _SKIN_VARS:
+            raise ValueError(f"{key} is not a skin token")
+        if not isinstance(value, str) or not _SKIN_VALUE.match(value.strip()) or "url(" in value or ";" in value:
+            raise ValueError(f"{key} is not a colour")
+        values[key] = value.strip()
+    if not values:
+        raise ValueError("sets no tokens")
+    return {"id": re.sub(r"[^a-z0-9-]+", "-", path.stem.lower()).strip("-") or "skin", "label": str(data.get("name") or path.stem)[:40], "light": data.get("light") is True, "version": str(data.get("version", ""))[:20], "author": str(data.get("author", ""))[:60], "vars": values}
+
+
+@router.get("/skins")
+def skins() -> dict:
+    """The window skins in the data folder's skins folder (Reload skins): each loaded one, and each file refused with why."""
+    folder = config.data_dir() / "skins"
+    folder.mkdir(parents=True, exist_ok=True)
+    loaded, errors = [], []
+    for path in sorted(folder.glob("*.json"))[:50]:
+        try:
+            loaded.append(_read_skin(path))
+        except (OSError, ValueError) as err:
+            errors.append({"file": path.name, "error": str(err)})
+    return {"folder": str(folder), "skins": loaded, "errors": errors}
+
+
+_STALE_PICTURE_SECONDS = 24 * 3600
+_STALE_PART_SECONDS = 3600
+
+
+def _tally(folder: Path) -> tuple[int, int]:
+    files = size = 0
+    if folder.is_dir():
+        for item in folder.rglob("*"):
+            try:
+                if item.is_file() and not item.is_symlink():
+                    files += 1
+                    size += item.stat().st_size
+            except OSError:
+                continue
+    return files, size
+
+
+def _unreferenced() -> list[Path]:
+    """Files nothing points at: generated pictures left in the staging folder for a day, and half-finished model
+    downloads left for an hour."""
+    import time
+
+    from app.localgen import media, model_manager
+
+    now = time.time()
+    found: list[Path] = []
+    if media.LIBRARY.is_dir():
+        found += [p for p in media.LIBRARY.iterdir() if p.is_file() and now - p.stat().st_mtime > _STALE_PICTURE_SECONDS]
+    root = model_manager.ROOT
+    if root.is_dir():
+        for p in root.rglob("*"):
+            if p.is_file() and p.suffix in (".download", ".part") and now - p.stat().st_mtime > _STALE_PART_SECONDS:
+                found.append(p)
+    return found
+
+
+@router.get("/localfiles/stats")
+def local_files_stats() -> dict:
+    """What formvis keeps on this computer (Settings > Local files): each folder with its path, file count and size, and
+    how much of it nothing refers to."""
+    from app.localgen import model_manager
+
+    data = config.data_dir()
+    places = [
+        ("library", "Library (projects)", config.projects_dir()),
+        ("models", "Helper models", model_manager.ROOT),
+        ("exports", "Exports", config.exports_dir()),
+        ("generated", "Generated pictures", data / "generated"),
+        ("logs", "Logs", data / "Logs"),
+        ("plugins", "Plugins", data / "plugins"),
+    ]
+    folders = []
+    for key, label, path in places:
+        files, size = _tally(path)
+        folders.append({"id": key, "label": label, "path": str(path), "files": files, "bytes": size})
+    stale = _unreferenced()
+    return {"dataDir": str(data), "folders": folders, "unreferenced": {"files": len(stale), "bytes": sum(p.stat().st_size for p in stale)}}
+
+
+@router.post("/localfiles/clean")
+def local_files_clean() -> dict:
+    """Removes the unreferenced files (stale generated pictures and half-finished model downloads); what went."""
+    files = size = 0
+    for p in _unreferenced():
+        try:
+            n = p.stat().st_size
+            p.unlink()
+            files += 1
+            size += n
+        except OSError:
+            continue
+    return {"removed": files, "bytes": size}

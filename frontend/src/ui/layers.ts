@@ -7,6 +7,7 @@ import { LAYER_LABELS } from '../engine/types';
 import { enhanceSelect } from './dropdown';
 import { el, isMac, patchList, q, setClass, setDisabled, setHidden, setHtml, setStyleVar, setText, setTitle, setValue } from './dom';
 import { icon } from './icons';
+import { loadPrefs } from './prefs';
 import { t } from './i18n';
 import { paint } from './palette';
 import type { PopupMenu } from './menu';
@@ -212,7 +213,8 @@ export class LayersPanel {
         if (!from.moved && Math.abs(dx) < 2) return;
         from.moved = true;
         from.last = e.clientX;
-        from.value = Math.min(100, Math.max(0, from.value + dx * (e.shiftKey ? 10 : 1)));
+        // Enhanced Controls > Scrubby Slider Acceleration: a faster drag covers more (up to 5 times at 100%)
+        from.value = Math.min(100, Math.max(0, from.value + dx * (e.shiftKey ? 10 : 1) * (1 + (loadPrefs().scrubAccel / 100) * Math.min(4, Math.abs(dx) / 4))));
         nudge(p, from.value);
       });
       const stop = (e: PointerEvent): void => {

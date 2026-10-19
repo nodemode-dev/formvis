@@ -14,6 +14,7 @@ import { Dialog, promptName } from '../dialogs';
 import { el, setHidden, setText } from '../dom';
 import type { SwatchesPanel } from '../swatches';
 import { toast } from '../toast';
+import { MENU_COLORS, cleanBindings, loadPrefs, updatePrefs } from '../prefs';
 
 export type Kind ='brushes' | 'swatches' | 'gradients' | 'patterns' | 'shapes';
 interface Item { id: string; label: string; builtin: boolean }
@@ -31,6 +32,8 @@ const PRESET_KIND: ReadonlyArray<[RegExp, Kind]> = [[/\.abr$/i, 'brushes'], [/\.
 export const presetKindOf = (name: string): Kind | null => PRESET_KIND.find(([re]) => re.test(name))?.[1] ?? null;
 export const PRESET_ACCEPT = '.abr,.aco,.ase,.grd,.ggr,.pat,.csh';
 const message =(err: unknown): string => (err instanceof Error ? err.message : String(err));
+const toBase64 = (u: Uint8Array): string => { let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode(...u.subarray(i, i + 0x8000)); return btoa(s); };
+const fromBase64 = (s: string): Uint8ClampedArray<ArrayBuffer> => { const b = atob(s), out = new Uint8ClampedArray(b.length); for (let i = 0; i < b.length; i++) out[i] = b.charCodeAt(i); return out; };
 
 /** Edit > Presets > Preset Manager: one list per kind of preset (brushes, swatches, gradients, patterns, custom
  *  shapes) with Rename, Delete, Load and Save Set. The dialog's DOM is built once; only the list's options are
@@ -60,7 +63,12 @@ export class PresetManagerDialog extends Dialog {
     for (const k of KINDS) this.type.appendChild(new Option(k.label, k.id));
     this.list = el<HTMLSelectElement>('<select class="cv-select" size="12" multiple aria-label="Presets" style="width: 100%; height: 240px"></select>');
     this.note = el('<p class="cv-note"></p>');
-    this.body.append(row, this.list, this.note);
+    const bundle = el('<div class="cv-row" style="display: flex; gap: 6px; flex-wrap: wrap"></div>');
+    for (const [label, run] of [['Export All...', () => void this.exportAll()], ['Import All...', () => this.pickBundle(false)], ['Migrate...', () => this.pickBundle(true)]] as const) {
+      const b = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost"></button>');
+      setText(b, label); b.addEventListener('click', run); bundle.append(b);
+    }
+    this.body.append(row, this.list, this.note, bundle);
     this.type.addEventListener('change', () => this.refresh());
     this.list.addEventListener('change', () => this.sync());
     this.renameBtn = this.button('Rename', 'ghost', () => this.rename());
@@ -263,6 +271,78 @@ export class PresetManagerDialog extends Dialog {
       if (o && typeof o.label === 'string' && typeof o.d === 'string') { addCustomShape(o.label, parseShape(o.d)); n += 1; }
     }
     return n;
+  }
+
+  /** Called with the settings an imported bundle carried (keyboard shortcuts, shortcut sets, menu choices), after they are kept. */
+  onSettings: ((s: { shortcuts: Record<string, string[]> }) => void) | null = null;
+
+  /** Edit > Presets > Export Presets: the swatches, gradients, custom shapes and patterns of your own, and the keyboard
+   *  and menu choices, in one file (brush sets are imported from their own files and are not part of it). */
+  async exportAll(): Promise<void> {
+    try {
+      const builtin = new Set(CUSTOM_SHAPES.map((s) => s.id)), p = loadPrefs();
+      const bundle = {
+        format: 'formvis-presets', version: 1,
+        swatches: this.swatches.all(),
+        gradients: customGradients.filter((g) => g.id !== 'edited'),
+        shapes: allCustomShapes().filter((s) => !builtin.has(s.id)).map((s) => ({ label: s.label, d: s.d })),
+        patterns: allPatterns().filter((x) => !x.builtin).map((x) => ({ name: x.name, width: x.surface.width, height: x.surface.height, rgba: toBase64(new Uint8Array(ctxOf(x.surface).getImageData(0, 0, x.surface.width, x.surface.height).data.buffer)) })),
+        settings: { shortcuts: p.shortcuts, shortcutSets: p.shortcutSets, menuHidden: p.menuHidden, menuColors: p.menuColors },
+      };
+      await this.deliver(new Blob([JSON.stringify(bundle)], { type: 'application/json' }), 'formvis-presets.json');
+      toast(`Exported ${bundle.swatches.length} swatches, ${bundle.gradients.length} gradients, ${bundle.shapes.length} shapes and ${bundle.patterns.length} patterns.`);
+    } catch (err) { toast(message(err), 'error'); }
+  }
+
+  /** Opens a file picker for a presets bundle; Migrate also takes the settings in it, Import All only the presets. */
+  pickBundle(withSettings: boolean): void {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.addEventListener('change', () => { const f = input.files?.[0]; if (f) void this.importAll(f, withSettings); });
+    input.click();
+  }
+
+  async importAll(f: File, withSettings: boolean): Promise<void> {
+    try {
+      const raw = JSON.parse(await f.text()) as Record<string, unknown>;
+      if (!raw || raw.format !== 'formvis-presets') throw new Error('That is not a formvis presets file.');
+      const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+      const have = new Set(this.swatches.all());
+      const colours = list(raw.swatches).filter((c): c is string => typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c) && !have.has(c));
+      if (colours.length) this.swatches.setAll([...this.swatches.all(), ...colours]);
+      const known = new Set(allGradients().map((g) => g.id)), grads = gradientsFromJson(raw.gradients).filter((g) => !known.has(g.id));
+      if (grads.length) { setCustomGradients([...customGradients, ...grads]); this.keepGradients(); }
+      let shapes = 0, patterns = 0;
+      for (const s of list(raw.shapes)) {
+        const o = s && typeof s === 'object' ? (s as { label?: unknown; d?: unknown }) : null;
+        if (o && typeof o.label === 'string' && typeof o.d === 'string') { addCustomShape(o.label, parseShape(o.d)); shapes += 1; }
+      }
+      for (const x of list(raw.patterns)) {
+        const o = x as { name?: unknown; width?: unknown; height?: unknown; rgba?: unknown } | null;
+        if (!o || typeof o.name !== 'string' || typeof o.rgba !== 'string' || typeof o.width !== 'number' || typeof o.height !== 'number') continue;
+        const w = Math.round(o.width), h = Math.round(o.height), px = fromBase64(o.rgba);
+        if (w < 1 || h < 1 || w > 4096 || h > 4096 || px.length !== w * h * 4) continue;
+        const s = createSurface(w, h);
+        ctxOf(s).putImageData(new ImageData(px, w, h), 0, 0);
+        addPattern(o.name, s); patterns += 1;
+      }
+      if (patterns) await this.keepPatterns();
+      let tail = '';
+      const st = withSettings && raw.settings && typeof raw.settings === 'object' ? (raw.settings as Record<string, unknown>) : null;
+      if (st) {
+        const cur = loadPrefs(), sets: Record<string, Record<string, string[]>> = { ...cur.shortcutSets };
+        if (st.shortcutSets && typeof st.shortcutSets === 'object') for (const [k, v] of Object.entries(st.shortcutSets as Record<string, unknown>).slice(0, 50)) sets[k.slice(0, 60)] = cleanBindings(v);
+        const shortcuts = cleanBindings(st.shortcuts);
+        const hidden = list(st.menuHidden).filter((x): x is string => typeof x === 'string');
+        const colorsIn = st.menuColors && typeof st.menuColors === 'object' ? Object.entries(st.menuColors as Record<string, unknown>).filter(([, v]) => typeof v === 'string' && MENU_COLORS.includes(v)) : [];
+        updatePrefs({ shortcutSets: sets, shortcuts, menuHidden: hidden, menuColors: Object.fromEntries(colorsIn) as Record<string, string> });
+        this.onSettings?.({ shortcuts });
+        tail = ', and the keyboard and menu settings';
+      }
+      toast(`Imported ${colours.length} swatches, ${grads.length} gradients, ${shapes} shapes and ${patterns} patterns${tail}.`);
+      this.refresh();
+    } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
   }
 
   /** Writes one kind of preset to a file (the Preset Manager's Save Set, and Edit > Presets > Save Swatches). */

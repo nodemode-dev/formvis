@@ -1,6 +1,7 @@
 import { applyLut, inkOf, renditionOf, type ColourLut, type Ink, type Lut3x4, type Lut4 } from './colour-lut';
 import { composeChannels, labGreyValue, rasterFromChannels, strokeChannels, strokeLabChannel } from './channels';
 import { trapInk } from './trap';
+import { Viewport as ViewLimits } from './viewport';
 import { deriveRegion, deriveWhole, renderRegion, type DeriveTables } from './derive';
 import { sameImage, solidFillPixels, type SolidFill } from './fill-recipe';
 import { DEFAULT_MIXER, mixerSource, mixerStart, windowSampler, type MixerSettings, type MixerState } from './mixer';
@@ -82,6 +83,7 @@ export { Project } from './project';
 export { Viewport } from './viewport';
 export type { DocView, FloatRect } from './doc-views';
 export { SelectionMask } from './selection';
+export type { ResampleMethod } from './resample';
 export type { SelectionMode } from './selection';
 export { Raster, createSurface, ctxOf, sizeSurface, toBlob } from './surface';
 export type { Surface, Ctx2D } from './surface';
@@ -1104,7 +1106,7 @@ export class Engine {
   /** The Pattern Stamp's Aligned (tiled from the document origin; off: from where each stroke starts), Scale in percent and Angle in degrees. */
   patternStampLook = { aligned: true, scale: 100, angle: 0 };
   /** Preferences > Cursors: how painting tools show where they will paint (drawn by brush-common's drawBrushCursor). */
-  cursorPrefs: { paint: 'tip' | 'precise' | 'standard'; crosshair: boolean } = { paint: 'tip', crosshair: false };
+  cursorPrefs: { paint: 'tip' | 'precise' | 'standard'; crosshair: boolean; onlyCross: boolean; previewColor: string } = { paint: 'tip', crosshair: false, onlyCross: false, previewColor: '#ff0000' };
   private openingSnapshot(p: Project): void { SN.openingSnapshot(this.snapshotHost, p); }
 
   /** Frame layers (the Frame tool, K; not the Timeline's frames): a folder named Frame N whose mask is the frame's rectangle or ellipse;
@@ -1241,17 +1243,18 @@ export class Engine {
     return true;
   }
 
-  newDocument(width: number, height: number, name = 'Untitled', fill: 'transparent' | 'white' | 'background' = 'transparent', resolution = 72): Project | null {
+  newDocument(width: number, height: number, name = 'Untitled', fill: 'transparent' | 'white' | 'background' | RGB = 'transparent', resolution = 72): Project | null {
     this.newCount++;
     // Past what one canvas may hold here (a side past 30,000, or more pixels than the budget) but within 65,535 a side,
     // a tiled document (1.62.3, DEV_PLAN 26.6b): its background costs nothing until drawn into. Before 1.62.3 refused.
-    if (Number.isInteger(width) && Number.isInteger(height) && width >= 1 && height >= 1 && width <= 65535 && height <= 65535 &&
+    if (this.tiledDocuments && Number.isInteger(width) && Number.isInteger(height) && width >= 1 && height >= 1 && width <= 65535 && height <= 65535 &&
         (width > LIMITS.side || height > LIMITS.side || width * height > LIMITS.pixels)) {
       const doc: Doc = { id: uid(), width, height, resolution: Number.isFinite(resolution) && resolution >= 1 && resolution <= 10000 ? resolution : 72, layers: [] };
       const tiled = new TiledRaster(width, height);
       tiled.onMissing = (t, key) => this.bringTile(t, key);   // a tile on disk the view wants (1.62.4)
       if (fill === 'white') tiled.base = [255, 255, 255, 255];
       else if (fill === 'background') tiled.base = [this.bg.r, this.bg.g, this.bg.b, 255];
+      else if (typeof fill === 'object') tiled.base = [fill.r, fill.g, fill.b, 255];
       const layer = newLayer(fill === 'transparent' ? 'Layer 1' : 'Background', doc, { tiled });
       this.notice(`A ${Math.round(width * height / 1e6).toLocaleString('en-US')} megapixel document is kept in tiles: it opens, zooms and pans now; painting, filters, export and undo on it come in the next releases.`);
       return this.addProject({ ...doc, layers: [layer] }, name, layer.id);
@@ -1265,7 +1268,7 @@ export class Engine {
     }
     const base: Doc = { id: uid(), width, height, resolution: Number.isFinite(resolution) && resolution >= 1 && resolution <= 10000 ? resolution : 72, layers: [] };
     const layer = newLayer(fill === 'transparent' ? 'Layer 1' : 'Background', base);
-    if (fill !== 'transparent') layer.raster = Raster.filled(width, height, fill === 'white' ? '#ffffff' : rgbCss(this.bg));
+    if (fill !== 'transparent') layer.raster = Raster.filled(width, height, fill === 'white' ? '#ffffff' : rgbCss(typeof fill === 'object' ? fill : this.bg));
     return this.addProject({ ...base, layers: [layer] }, name, layer.id);
   }
 
@@ -1648,8 +1651,37 @@ export class Engine {
     this.emit('render', null);
   }
   zoomStep(inward: boolean, at?: Pt): void {
-    const z = this.current?.viewport.zoom ?? 1;
-    this.zoomTo(inward ? z * 1.25 : z / 1.25, at);
+    const z = this.zoomGoal?.z ?? this.current?.viewport.zoom ?? 1;
+    this.zoomSmooth(inward ? z * 1.25 : z / 1.25, at);
+  }
+  /** Preferences > General and Tools: whether a zoom step eases to its size, and whether a click with the Zoom tool brings the clicked point to the centre. */
+  zoomPrefs = { animate: false, centreClick: false };
+  private zoomGoal: { z: number } | null = null;
+  private zoomFrame = 0;
+  /** A zoom that eases over about 140 ms when Animated Zoom is on, and that moves the point under `at` to the view's centre when `centre` is set. */
+  zoomSmooth(z: number, at?: Pt, centre = false): void {
+    const v = this.current?.viewport;
+    if (!v) return;
+    const to = Math.min(ViewLimits.MAX, Math.max(ViewLimits.MIN, z)), from = v.zoom, a = at ?? { x: v.centerX, y: v.height / 2 };
+    const c = centre ? { x: v.centerX, y: v.height / 2 } : a, p = v.toDoc(a.x, a.y);
+    cancelAnimationFrame(this.zoomFrame);
+    const put = (k: number, e: number): void => {
+      const cur = this.current?.viewport;
+      if (!cur) return;
+      const zz = from * Math.pow(to / from, k);
+      cur.zoom = zz; cur.fitted = false;
+      cur.panX = a.x + (c.x - a.x) * e - p.x * zz; cur.panY = a.y + (c.y - a.y) * e - p.y * zz;
+      this.emit('viewport', null); this.emit('render', null);
+    };
+    if (!this.zoomPrefs.animate || from === to && !centre) { this.zoomGoal = null; if (!centre) this.zoomTo(to, at); else put(1, 1); return; }
+    this.zoomGoal = { z: to };
+    const t0 = performance.now();
+    const tick = (now: number): void => {
+      const k = Math.min(1, (now - t0) / 140), e = 1 - (1 - k) * (1 - k);
+      put(e, e);
+      if (k < 1) this.zoomFrame = requestAnimationFrame(tick); else this.zoomGoal = null;
+    };
+    this.zoomFrame = requestAnimationFrame(tick);
   }
   pan(dx: number, dy: number): void {
     const v = this.current?.viewport;
@@ -3268,6 +3300,8 @@ export class Engine {
    *  memory by the engine (0 while unknown: no limit), so an operation that would not fit is refused with a message
    *  rather than the browser's page being killed (measured: a 150 MP document's second layer and stroke at 3.45 GB). */
   memoryBudget = 0;
+  /** Preferences > Performance > Rendering: off, a size past one canvas is refused instead of kept in tiles. */
+  tiledDocuments = true;
 
   /** The pixels held for every open document: its layers and masks (each raster once), one document-size copy for
    *  the display, and what its undo history keeps beyond them. */
@@ -8049,14 +8083,14 @@ export class Engine {
 
   /** The Crop tool's W × H × Resolution: the crop as `straightenCrop` makes it, then the result
    *  resampled to exactly `width` by `height` pixels at `resolution` ppi, as one Crop step (history steps nest). */
-  cropToSize(rect: Rect, angleDeg: number, contentAware: boolean, width: number, height: number, resolution: number): boolean {
+  cropToSize(rect: Rect, angleDeg: number, contentAware: boolean, width: number, height: number, resolution: number, solid: RGB | null = null): boolean {
     const p = this.current, w = Math.round(width), h = Math.round(height);
     if (!p || !this.sizeOk(w, h)) return false;
     p.history.begin('Crop', p.snapshot());
     const prior = p.doc, was = this.marksNow(p);
     try {
-      if (!this.straightenCrop(rect, angleDeg, contentAware)) return false;
-      const done = this.resampleImage(w, h, 'high', Math.max(1, Math.min(9600, resolution)));
+      if (!this.straightenCrop(rect, angleDeg, contentAware, solid)) return false;
+      const done = this.resampleImage(w, h, 'high', Math.max(1, Math.min(10000, resolution)));
       this.marksKeep(p, prior, 'Crop', was);
       return done;
     } finally {
@@ -8068,7 +8102,7 @@ export class Engine {
    *  (masks follow as a move does), the canvas is cut to the frame, and with `contentAware` the parts of the canvas
    *  that the bottom pixel layer no longer covers (corners opened by the turn, or canvas added by a frame past the
    *  edge) are filled by content-aware fill from the rest of that layer, which becomes canvas-sized. */
-  straightenCrop(rect: Rect, angleDeg: number, contentAware: boolean): boolean {
+  straightenCrop(rect: Rect, angleDeg: number, contentAware: boolean, solid: RGB | null = null): boolean {
     const p0 = this.current, r = integral(rect);
     if (!p0 || r.w < 1 || r.h < 1 || !this.sizeOk(r.w, r.h)) return false;
     const turn = Number.isFinite(angleDeg) ? Math.max(-45, Math.min(45, angleDeg)) : 0, c = { x: r.x + r.w / 2, y: r.y + r.h / 2 };
@@ -8089,7 +8123,7 @@ export class Engine {
         this.marksMove(p, spin, false);
       }
       this.resizeCanvas(r.w, r.h, -r.x, -r.y, null, 'Crop');
-      if (contentAware) this.fillOpenedEdges(p);
+      if (contentAware || solid) this.fillOpenedEdges(p, contentAware ? null : solid);
       if (this.cropDeletePixels) this.deleteCroppedPixels(p);
       this.marksKeep(p, prior, turn ? 'Straighten and Crop' : 'Crop', was);
       return true;
@@ -8117,7 +8151,7 @@ export class Engine {
     }
   }
 
-  private fillOpenedEdges(p: Project): void {
+  private fillOpenedEdges(p: Project, solid: RGB | null = null): void {
     const l = hierarchy(p.doc).find((e) => e.visible && !e.layer.isGroup && !!e.layer.raster && !e.layer.adjustment && !e.layer.vector)?.layer;
     if (!l?.raster) return;
     const W = p.doc.width, H = p.doc.height, reach = createSurface(W, H), rc = ctxOf(reach);
@@ -8129,7 +8163,9 @@ export class Engine {
     for (let i = 0; i < mask.length; i++) if (cov[i * 4 + 3] < 128) { mask[i] = 255; open++; }
     if (!open) return;
     const img = ctxOf(this.layerSample(p, l)).getImageData(0, 0, W, H);
-    contentFill(img.data, mask, W, H);
+    if (solid) {
+      for (let i = 0; i < mask.length; i++) if (mask[i]) { const o = i * 4; img.data[o] = solid.r; img.data[o + 1] = solid.g; img.data[o + 2] = solid.b; img.data[o + 3] = 255; }
+    } else contentFill(img.data, mask, W, H);
     const out = new Raster(W, H);
     out.ctx.putImageData(img, 0, 0);
     p.updateLayer(l.id, { raster: out, transform: docTransform(W, H), mask: l.mask ? { ...l.mask, placement: l.mask.placement ?? l.transform } : null, shape: null });
@@ -8138,12 +8174,13 @@ export class Engine {
   /** Perspective Crop: the quad `quad` (top-left, top-right, bottom-right, bottom-left, in document pixels) becomes the
    *  whole canvas, a rectangle as wide and tall as the quad's opposite sides on average; every pixel layer is carried
    *  through the same perspective (linked masks with it), as one step. Shape, type and smart layers become pixels. */
-  perspectiveCrop(quad: Pt[]): boolean {
+  perspectiveCrop(quad: Pt[], size: { w: number; h: number } | null = null): boolean {
     const p0 = this.current;
     if (!p0) return false;
     if (!distortUsable(quad)) { this.notice('Keep the four corners in order, with no sides crossing, to crop in perspective.'); return false; }
     const len = (a: Pt, b: Pt): number => Math.hypot(b.x - a.x, b.y - a.y);
-    const W = Math.max(1, Math.round((len(quad[0], quad[1]) + len(quad[3], quad[2])) / 2)), H = Math.max(1, Math.round((len(quad[0], quad[3]) + len(quad[1], quad[2])) / 2));
+    const W = size ? Math.max(1, Math.round(size.w)) : Math.max(1, Math.round((len(quad[0], quad[1]) + len(quad[3], quad[2])) / 2));
+    const H = size ? Math.max(1, Math.round(size.h)) : Math.max(1, Math.round((len(quad[0], quad[3]) + len(quad[1], quad[2])) / 2));
     const back = inverse3(homography(quad));
     if (!back || !this.sizeOk(W, H)) return false;
     const toOut = (q: Pt): Pt => { const u = project(back, q.x, q.y); return { x: u.x * W, y: u.y * H }; };
@@ -8183,7 +8220,7 @@ export class Engine {
     return this.resizeCanvas(r.w, r.h, -r.x, -r.y, null, 'Crop');
   }
 
-  resampleImage(width: number, height: number, sampling: Transform['sampling'], resolution: number, scaleStyles = true): boolean { return DS.resampleImage(this.sizeHost, width, height, sampling, resolution, scaleStyles); }
+  resampleImage(width: number, height: number, sampling: DS.ResampleMethod, resolution: number, scaleStyles = true): boolean { return DS.resampleImage(this.sizeHost, width, height, sampling, resolution, scaleStyles); }
 
   /** File > Automate > Fit Image (1.65.8): the image resampled, its proportions kept, to
    *  fit within `width` by `height` pixels, smaller or (with `enlarge`) larger, as one Fit Image step at the same
@@ -9440,11 +9477,7 @@ export class Engine {
     const p = this.current, view = this.flattened();
     if (!p || !view) return false;
     const W = p.doc.width * scale, H = p.doc.height * scale;
-    if (W > LIMITS.side || H > LIMITS.side || W * H > LIMITS.pixels) {
-      const fits = Math.floor(Math.min(LIMITS.side / p.doc.width, LIMITS.side / p.doc.height, Math.sqrt(LIMITS.pixels / (p.doc.width * p.doc.height))) * 10) / 10;
-      this.notice(`Upscaled ${scale} times, this image would pass 30,000 px a side or ${Math.round(LIMITS.pixels / 1_000_000)} megapixels. The largest factor that fits is ${fits}.`, 'error');
-      return false;
-    }
+    if (!this.upscaleFits(p.doc.width, p.doc.height, scale)) return false;
     let result: Blob;
     try {
       result = await run(await toBlob(view));
@@ -9461,6 +9494,68 @@ export class Engine {
     const base: Doc = { id: uid(), width: W, height: H, resolution: p.doc.resolution, layers: [] };
     const layer = { ...newLayer('Background', base), raster };
     this.addProject({ ...base, layers: [layer] }, `${p.name} ${scale}x`, layer.id);
+    return true;
+  }
+
+  /** Whether a `w` by `h` picture enlarged `scale` times stays within the limits; if not, says so before any paid call,
+   *  naming the largest factor that fits. */
+  private upscaleFits(w: number, h: number, scale: number): boolean {
+    if (w * scale <= LIMITS.side && h * scale <= LIMITS.side && w * scale * h * scale <= LIMITS.pixels) return true;
+    const fits = Math.floor(Math.min(LIMITS.side / w, LIMITS.side / h, Math.sqrt(LIMITS.pixels / (w * h))) * 10) / 10;
+    this.notice(`Upscaled ${scale} times, this image would pass 30,000 px a side or ${Math.round(LIMITS.pixels / 1_000_000)} megapixels. The largest factor that fits is ${fits}.`, 'error');
+    return false;
+  }
+
+  /** Upscale in this document: what the document shows, enlarged `scale` times by `run`, and the document grown to match
+   *  (every layer, mask and the selection resampled) in one undo step. A document of one pixel layer has that layer's pixels
+   *  replaced by the enlarged picture; otherwise it arrives as a new top layer 'Upscaled' above the resampled layers. */
+  async upscaleInDocument(scale: number, run: (image: Blob) => Promise<Blob>): Promise<boolean> {
+    const p = this.current, view = this.flattened();
+    if (!p || !view) return false;
+    const W = p.doc.width * scale, H = p.doc.height * scale;
+    if (!this.upscaleFits(p.doc.width, p.doc.height, scale)) return false;
+    let result: Blob;
+    try { result = await run(await toBlob(view)); } catch (err) { this.notice(err instanceof Error ? err.message : 'Upscale failed.', 'error'); return false; }
+    if (this.current !== p) { this.notice(`${p.name} changed while upscaling, so the enlarged picture was not placed.`, 'error'); return false; }
+    const bitmap = await createImageBitmap(result), raster = new Raster(W, H);
+    raster.ctx.imageSmoothingQuality = 'high';
+    raster.ctx.drawImage(bitmap, 0, 0, W, H);
+    bitmap.close();
+    raster.touch();
+    const pixelLayers = p.doc.layers.filter((l) => !l.isGroup);
+    const only = pixelLayers.length === 1 && p.doc.layers.length === 1 && pixelLayers[0].raster && !pixelLayers[0].adjustment && !pixelLayers[0].text && !pixelLayers[0].shape && !pixelLayers[0].smart ? pixelLayers[0] : null;
+    return this.edit(`Upscale ${scale}x`, (pp) => {
+      if (!this.resampleImage(W, H, 'high', pp.doc.resolution)) throw new Error('The document could not be enlarged.');
+      if (only) return this.replaceLayerPixels(only.id, raster.read(), `Upscale ${scale}x`);
+      const top = pp.doc.layers[pp.doc.layers.length - 1];
+      if (top) this.focus(pp, top.id);
+      this.insertRasterLayer(raster, `Upscaled ${scale}x`, 0, 0, {}, `Upscale ${scale}x`);
+      return true;
+    });
+  }
+
+  /** Upscale the selection: the area it covers, enlarged `scale` times by `run`, as a new layer masked to the selection at
+   *  the selection's place and size, holding `scale` times the pixels, in one undo step. */
+  async upscaleSelection(scale: number, run: (image: Blob) => Promise<Blob>): Promise<boolean> {
+    const p = this.current, sel = p?.selection, view = this.flattened();
+    if (!p || !sel || !view) { this.notice('Upscale of the selection needs a selection.'); return false; }
+    const x0 = Math.max(0, sel.x), y0 = Math.max(0, sel.y), w = Math.min(p.doc.width, sel.x + sel.w) - x0, h = Math.min(p.doc.height, sel.y + sel.h) - y0;
+    if (w < 1 || h < 1) { this.notice('The selection is outside the canvas.'); return false; }
+    if (!this.upscaleFits(w, h, scale)) return false;
+    const area = new Raster(w, h);
+    area.ctx.drawImage(view, -x0, -y0);
+    let result: Blob;
+    try { result = await run(await toBlob(area.canvas)); } catch (err) { this.notice(err instanceof Error ? err.message : 'Upscale failed.', 'error'); return false; }
+    if (this.current !== p) { this.notice(`${p.name} changed while upscaling, so the enlarged area was not placed.`, 'error'); return false; }
+    const W = w * scale, H = h * scale, bitmap = await createImageBitmap(result), layer = new Raster(W, H), cover = new Raster(W, H);
+    layer.ctx.imageSmoothingQuality = 'high';
+    layer.ctx.drawImage(bitmap, 0, 0, W, H);
+    bitmap.close();
+    layer.touch();
+    cover.ctx.imageSmoothingQuality = 'high';
+    cover.ctx.drawImage(sel.surface(), (sel.x - x0) * scale, (sel.y - y0) * scale, sel.w * scale, sel.h * scale);
+    cover.touch();
+    this.insertRasterLayer(layer, `Upscale ${scale}x: selection`, x0, y0, { transform: { ...docTransform(w, h), x: x0, y: y0 }, mask: { raster: cover, enabled: true, linked: true, placement: null } }, `Upscale ${scale}x`);
     return true;
   }
 
@@ -9569,6 +9664,8 @@ export class Engine {
   /** The Remove brush's LaMa route: the app sets it; a released stroke's area goes to the local LaMa model and comes
    *  back as a new masked layer. */
   removeBrushFill: ((area: SelectionMask) => Promise<void>) | null = null;
+  /** Asked when the Remove tool shows its options with LaMa on: the window loads the model ahead of the first stroke. */
+  warmRemove: (() => void) | null = null;
   async removeArea(area: SelectionMask, undoName: string, generate: (image: Blob, mask: Blob) => Promise<Blob>): Promise<boolean> {
     const p = this.current;
     if (!p) return false;

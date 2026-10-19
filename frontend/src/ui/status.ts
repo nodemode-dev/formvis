@@ -1,4 +1,5 @@
 import type { Engine } from '../engine';
+import { docBytes } from '../engine/snapshot-ops';
 import { getTool } from '../extensions/registry';
 import { pendingClass, q, setClass, setStyleVar, setText, setTitle, type Disposer } from './dom';
 import { onLanguage, t } from './i18n';
@@ -6,6 +7,11 @@ import { icon } from './icons';
 
 /** The one note when the engine service is not running (DEV_PLAN 36.19): the status bar's title and the boot toast. */
 export const SERVICE_NOTE = 'The engine service is not running, so editing works but these wait for it: saving to the library, HEIC, RAW, DPX and other camera and film formats, colour conversion, AI tools, video, the terminal and agents. Start it with ./formvis boot.';
+
+const INFO_KEY = 'formvis_status_info';
+const INFO_KINDS = ['sizes', 'profile', 'resolution', 'efficiency', 'timing'] as const;
+type InfoKind = (typeof INFO_KINDS)[number];
+const bytesText = (n: number): string => (n >= 1073741824 ? `${(n / 1073741824).toFixed(1)} GB` : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 
 export class StatusBar {
   private readonly zoom: HTMLInputElement;
@@ -21,6 +27,7 @@ export class StatusBar {
     root.insertAdjacentHTML('beforeend',
       '<input class="cv-st-zoom" type="text" inputmode="decimal" spellcheck="false" autocomplete="off" aria-label="Zoom percent" title="Zoom: type a percent and press Enter">' +
       '<span class="cv-st-dims"></span>' +
+      '<button class="cv-st-info" type="button"></button>' +
       `<span class="cv-st-busy">${icon('loading', 12)}</span><span class="cv-st-engine"></span><span class="cv-st-gpu"></span><span class="cv-st-mem" title="Pixels formvis holds, of what this computer allows it"></span><span class="cv-st-proof"></span><span class="cv-st-hint"></span>`);
     this.proof = q(root, '.cv-st-proof');
     this.mem = q(root, '.cv-st-mem');   // 1.60.2, DEV_PLAN 26.1
@@ -43,6 +50,15 @@ export class StatusBar {
     this.par.className = 'cv-st-par';
     this.dims.after(this.par);
     for (const k of ['doc', 'overlay', 'projects'] as const) engine.on(k, () => this.syncView());
+    this.info = q(root, '.cv-st-info');
+    try { const k = localStorage.getItem(INFO_KEY) as InfoKind | null; if (k && INFO_KINDS.includes(k)) this.infoKind = k; } catch { /* default */ }
+    this.info.addEventListener('click', (e) => {
+      const n = INFO_KINDS.length;
+      this.infoKind = INFO_KINDS[(INFO_KINDS.indexOf(this.infoKind) + (e.shiftKey ? n - 1 : 1)) % n];
+      try { localStorage.setItem(INFO_KEY, this.infoKind); } catch { /* not kept */ }
+      this.syncInfo();
+    });
+    for (const k of ['doc', 'history', 'projects', 'active'] as const) engine.on(k, () => this.queueInfo());
     this.busy = q(root, '.cv-st-busy');
     this.busyText = document.createTextNode(t('Working'));
     this.busy.appendChild(this.busyText);
@@ -70,10 +86,11 @@ export class StatusBar {
     for (const k of ['viewport', 'projects'] as const) engine.on(k, () => this.syncView());
     for (const k of ['tool', 'options'] as const) engine.on(k, () => this.syncHint());
     engine.on('busy', (on: boolean) => {
-      if (on) { if (!this.dismiss) this.dismiss = pendingClass(this.busy); }
-      else { this.dismiss?.(); this.dismiss = null; }
+      if (on) { if (!this.dismiss) this.dismiss = pendingClass(this.busy); if (!this.busySince) this.busySince = performance.now(); }
+      else { this.dismiss?.(); this.dismiss = null; if (this.busySince) { this.lastMs = performance.now() - this.busySince; this.busySince = 0; this.queueInfo(); } }
     });
     this.syncView();
+    this.syncInfo();
     this.syncHint();
     // A language change re-sets every word in place (no rebuild, no flash).
     onLanguage(() => {
@@ -82,8 +99,49 @@ export class StatusBar {
       this.showGpu();
       this.syncMemory();
       this.syncView();
+      this.syncInfo();
       this.syncHint();
     });
+  }
+
+  private readonly info: HTMLElement;
+  private infoKind: InfoKind = 'sizes';
+  private infoFrame = 0;
+  private busySince = 0;
+  private lastMs = -1;
+
+  private queueInfo(): void {
+    if (this.infoFrame) return;
+    this.infoFrame = requestAnimationFrame(() => { this.infoFrame = 0; this.syncInfo(); });
+  }
+
+  /** The chosen document readout, written into the one slot that is already there; a click picks the next (Shift the previous). */
+  private syncInfo(): void {
+    const p = this.engine.current, kind = this.infoKind;
+    let text = '', tip = '';
+    if (kind === 'timing') {
+      text = `${t('Timing')}: ${this.lastMs < 0 ? '-' : this.lastMs < 1000 ? `${Math.round(this.lastMs)} ms` : `${(this.lastMs / 1000).toFixed(1)} s`}`;
+      tip = t('How long the last operation took');
+    } else if (kind === 'efficiency') {
+      const b = this.engine.memoryBudget, u = this.engine.memoryUse();
+      text = p ? `${t('Efficiency')}: ${b && u > b ? Math.round((b / u) * 100) : 100}%` : '';
+      tip = t('100% while everything fits the memory budget; lower when the document and its history exceed it');
+    } else if (p) {
+      const d = p.doc, px = d.width * d.height;
+      if (kind === 'sizes') {
+        const flat = px * 4, all = docBytes(d) || flat;
+        text = `${t('Doc')}: ${bytesText(flat)}/${bytesText(all)}`;
+        tip = t('Flattened size / size with every layer and mask');
+      } else if (kind === 'profile') {
+        text = `${d.profile?.name ?? t('Untagged')} · ${(d.mode ?? 'rgb').toUpperCase()}/${d.depth ?? 8}`;
+        tip = t('Working colour profile, mode and bit depth');
+      } else {
+        text = `${Math.round(d.resolution || 72)} ppi`;
+        tip = t('Document resolution');
+      }
+    }
+    setText(this.info, text);
+    setTitle(this.info, `${tip}${tip ? '. ' : ''}${t('Click for the next readout, Shift+click for the previous.')}`);
   }
 
   private readonly busyText: Text;

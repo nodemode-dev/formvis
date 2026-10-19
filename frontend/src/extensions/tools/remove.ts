@@ -21,10 +21,10 @@ export const removeTool: Tool = {
   keydown: (ctx, e) => brushKeys(ctx, e),
   overlay(ctx, g) { drawBrushCursor(ctx, g, hover); },
   options: (e) => [
-    { kind: 'title', text: 'Remove' },
+    { kind: 'title', text: e.retouch.removeLama ? (e.warmRemove?.(), 'Remove') : 'Remove' },
     ...brushOptions(e),
     { kind: 'select', label: 'Sample', priority: 20, choices: [{ id: 'current', label: 'Current Layer' }, { id: 'below', label: 'Current & Below' }, { id: 'all', label: 'All Layers' }], get: () => e.retouch.removeSample, set: (v: string) => { e.retouch.removeSample = v === 'below' || v === 'all' ? v : 'current'; e.emit('options', null); }, when: () => !e.retouch.removeLama },
-    { kind: 'toggle', label: 'LaMa (new layer)', priority: 25, get: () => e.retouch.removeLama, set: (v: boolean) => { e.retouch.removeLama = v; e.emit('options', null); } },
+    { kind: 'toggle', label: 'LaMa (new layer)', priority: 25, get: () => e.retouch.removeLama, set: (v: boolean) => { e.retouch.removeLama = v; if (v) e.warmRemove?.(); e.emit('options', null); } },
     { kind: 'button', label: 'Remove Wires and Cables', icon: 'tRemove', run: () => { e.removeWires(); } },
     { kind: 'button', label: 'Remove People', icon: 'tRemove', run: () => { void e.removeFinder?.('people'); } },
     { kind: 'button', label: 'Remove Distractions', icon: 'tRemove', run: () => { void e.removeFinder?.('distractions'); } },

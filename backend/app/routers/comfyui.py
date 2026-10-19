@@ -3,14 +3,22 @@ Load Image (as Mask) nodes list them. GET /system_stats says whether ComfyUI run
 takes each image, into a formvis subfolder, replacing an earlier send of the same name."""
 
 import json
+import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, Response, UploadFile
 
 from app.routers.terminal import require_local
 from app.services import comfyui_auth, outbound
+
+try:
+    from websockets.sync.client import connect as _ws_connect
+except ImportError:   # without it a run still works, its progress bar just stays unknown
+    _ws_connect = None
 
 router = APIRouter(prefix="/api/comfyui", tags=["comfyui"])
 SUBFOLDER = "formvis"
@@ -71,6 +79,110 @@ def status(target: str) -> dict:
     system = stats.get("system") if isinstance(stats, dict) else None
     version = system.get("comfyui_version") if isinstance(system, dict) else None
     return {"running": True, **({"version": str(version)[:40]} if version else {})}
+
+
+def _get_json(base: str, path: str, timeout: float):
+    with _request(base + path, timeout=timeout) as r:
+        return json.loads(r.read() or b"null")
+
+
+def _needs(flow: dict) -> tuple[set[str], list[tuple[str, str, str]]]:
+    """The node classes a workflow uses, and the model file names its nodes pick (class, input, file)."""
+    classes, files = set(), []
+    for node in flow.values():
+        if not isinstance(node, dict) or not isinstance(node.get("class_type"), str):
+            continue
+        kind = node["class_type"]
+        classes.add(kind)
+        if kind in ("LoadImage", "LoadImageMask"):
+            continue
+        for key, value in (node.get("inputs") or {}).items():
+            if isinstance(value, str) and key.endswith("_name") and key != "sampler_name" and value:
+                files.append((kind, key, value))
+    return classes, files
+
+
+def _offered(info: dict, kind: str, key: str) -> list[str] | None:
+    """The choices a node's input offers (its model files), or None when the input is not a list of choices."""
+    ins = info.get(kind, {}).get("input", {}) if isinstance(info.get(kind), dict) else {}
+    for part in ("required", "optional"):
+        spec = (ins.get(part) or {}).get(key)
+        if isinstance(spec, list) and spec and isinstance(spec[0], list):
+            return [str(x) for x in spec[0]]
+    return None
+
+
+@router.post("/probe")
+def probe(target: str = Form(...), recipes: str = Form("[]")) -> dict:
+    """Test (SC-AI-0146): how ComfyUI answers (time, version, Python, system, devices with their memory, queue counts, node
+    packs) and, for each kept recipe sent as [{name, workflow}], the nodes it needs that are missing and the model files
+    it picks that ComfyUI does not list."""
+    base = _base(target)
+    began = time.perf_counter()
+    try:
+        stats = _get_json(base, "/system_stats", 4)
+    except urllib.error.HTTPError:
+        return {"running": False, "detail": f"Something answers at {base}, but it is not ComfyUI."}
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        return {"running": False, "detail": str(outbound.unreachable("ComfyUI", base, "Preferences > Plugins", exc).detail)}
+    out: dict = {"running": True, "ms": round((time.perf_counter() - began) * 1000)}
+    system = stats.get("system") if isinstance(stats, dict) and isinstance(stats.get("system"), dict) else {}
+    for key, name in (("comfyui_version", "version"), ("python_version", "python"), ("pytorch_version", "pytorch"), ("os", "os")):
+        if system.get(key):
+            out[name] = str(system[key])[:80]
+    out["devices"] = [{"name": str(d.get("name", ""))[:80], "type": str(d.get("type", ""))[:16], "vram": int(d.get("vram_total") or 0), "free": int(d.get("vram_free") or 0)}
+                      for d in (stats.get("devices") or [] if isinstance(stats, dict) else []) if isinstance(d, dict)][:8]
+    try:
+        queue = _get_json(base, "/queue", 4)
+        out["queue"] = {"running": len(queue.get("queue_running", [])), "pending": len(queue.get("queue_pending", []))}
+    except (urllib.error.URLError, OSError, ValueError, AttributeError):
+        pass
+    try:   # the packs that add web extensions, and their versions when the node manager is installed
+        listed = _get_json(base, "/extensions", 4)
+        packs = {str(p).split("/")[2]: None for p in listed if isinstance(p, str) and p.startswith("/extensions/") and p.count("/") >= 3 and p.split("/")[2] != "core"}
+        try:
+            for name, meta in (_get_json(base, "/customnode/installed", 4) or {}).items():
+                if isinstance(meta, dict) and meta.get("ver"):
+                    same = next((p for p in packs if p.lower() == str(name).lower()), str(name))
+                    packs[same] = str(meta["ver"])[:30]
+        except (urllib.error.URLError, OSError, ValueError, AttributeError):
+            pass
+        out["packs"] = [{"name": n[:60], **({"version": v} if v else {})} for n, v in sorted(packs.items())][:60]
+    except (urllib.error.URLError, OSError, ValueError, TypeError, IndexError):
+        pass
+    try:
+        kept = json.loads(recipes)
+        assert isinstance(kept, list)
+    except (ValueError, AssertionError):
+        raise HTTPException(status_code=422, detail="The list of recipes to check was not understood.")
+    info: dict[str, dict] = {}
+    checked = []
+    for item in kept[:40]:
+        try:
+            flow = json.loads(item["workflow"]) if isinstance(item.get("workflow"), str) else item["workflow"]
+            classes, files = _needs(flow)
+        except (ValueError, KeyError, TypeError, AttributeError):
+            continue
+        missing_nodes, missing_models = [], []
+        for kind in sorted(classes):
+            if kind not in info and len(info) < 120:
+                try:
+                    got = _get_json(base, "/object_info/" + urllib.parse.quote(kind, safe=""), 10)
+                    info[kind] = got.get(kind) if isinstance(got, dict) and isinstance(got.get(kind), dict) else {}
+                except urllib.error.HTTPError:
+                    info[kind] = {}
+                except (urllib.error.URLError, OSError, ValueError):
+                    raise outbound.unreachable("ComfyUI", base, "Preferences > Plugins", OSError())
+            if not info.get(kind):
+                missing_nodes.append(kind)
+        known = {k: {"input": v.get("input", {})} for k, v in info.items() if v}
+        for kind, key, value in files:
+            choices = _offered(known, kind, key)
+            if choices is not None and value.replace("\\", "/") not in [c.replace("\\", "/") for c in choices]:
+                missing_models.append({"node": kind, "input": key, "name": value[:120]})
+        checked.append({"name": str(item.get("name", ""))[:80], "nodes": len(classes), "models": len(files), "missing_nodes": missing_nodes[:20], "missing_models": missing_models[:20]})
+    out["recipes"] = checked
+    return out
 
 
 @router.post("/convert")
@@ -162,6 +274,57 @@ def _fill(workflow: dict, image: str | None, mask: str | None, prompt: str | Non
     return workflow
 
 
+# Progress (SC-AI-0149): ComfyUI tells the client that queued a job its steps over a websocket. Each run takes its own client
+# id; a thread follows that socket (reconnecting if it drops) and keeps the latest step value and max for /job.
+_PROGRESS: dict[str, dict] = {}
+_CLIENT: dict[str, str] = {}
+_STOP: dict[str, threading.Event] = {}
+
+
+def _watch(base: str, client: str, ready: threading.Event) -> None:
+    stop = _STOP[client]
+    url = ("wss" if base.startswith("https") else "ws") + base[base.index(":"):] + "/ws?clientId=" + client
+    end, tries = time.monotonic() + 3600, 0
+    while not stop.is_set() and time.monotonic() < end and tries < 6:
+        try:
+            with _ws_connect(url, additional_headers=comfyui_auth.headers() or None, open_timeout=3, max_size=2**25) as ws:
+                ready.set()
+                while not stop.is_set() and time.monotonic() < end:
+                    try:
+                        msg = ws.recv(timeout=1)
+                    except TimeoutError:
+                        continue
+                    if not isinstance(msg, str):
+                        continue
+                    try:
+                        m = json.loads(msg)
+                        kind, data = m.get("type"), m.get("data") or {}
+                    except (ValueError, AttributeError):
+                        continue
+                    if kind == "progress":
+                        _PROGRESS[client] = {"value": int(data.get("value") or 0), "max": int(data.get("max") or 0)}
+                    elif (kind == "executing" and data.get("node") is None) or kind in ("execution_error", "execution_interrupted", "execution_success"):
+                        return
+        except Exception:
+            tries += 1
+            ready.set()
+            stop.wait(1)
+    ready.set()
+
+
+def _follow(base: str, client: str) -> None:
+    """Starts following one run's socket and waits a moment for it to connect, so no early step is missed."""
+    if _ws_connect is None:
+        return
+    for old in list(_STOP)[:-30]:
+        _STOP.pop(old).set()
+        _PROGRESS.pop(old, None)
+    _STOP[client] = threading.Event()
+    ready = threading.Event()
+    threading.Thread(target=_watch, args=(base, client, ready), daemon=True).start()
+    ready.wait(2)
+
+
 @router.post("/run")
 async def run(target: str = Form(...), workflow: str = Form(...), items: str = Form("[]"), prompt: str | None = Form(None), files: list[UploadFile] | None = File(None)) -> dict:
     """Uploads the inputs, fills the workflow and queues it. Replies with the job's id and what was filled."""
@@ -177,11 +340,15 @@ async def run(target: str = Form(...), workflow: str = Form(...), items: str = F
     references = [f["name"] for f in uploaded["files"] if f["kind"] == "reference"]
     mask = next((f["name"] for f in uploaded["files"] if f["kind"] == "mask"), None)
     flow = _fill(flow, image, mask, prompt, references)
-    body = json.dumps({"prompt": flow, "client_id": "formvis"}).encode()
+    client = "formvis-" + uuid.uuid4().hex[:12]
+    _follow(base, client)
+    body = json.dumps({"prompt": flow, "client_id": client}).encode()
     try:
         with _request(base + "/prompt", body, {"Content-Type": "application/json"}, "POST") as r:
             reply = json.loads(r.read() or b"{}")
     except urllib.error.HTTPError as exc:
+        if client in _STOP:
+            _STOP[client].set()
         detail = ""
         try:
             err = json.loads(exc.read() or b"{}")
@@ -190,10 +357,18 @@ async def run(target: str = Form(...), workflow: str = Form(...), items: str = F
             pass
         raise HTTPException(status_code=502, detail=f"ComfyUI would not run the workflow ({exc.code}){': ' + detail if detail else ''}.")
     except (urllib.error.URLError, OSError) as exc:
+        if client in _STOP:
+            _STOP[client].set()
         raise outbound.unreachable("ComfyUI", base, "Preferences > Plugins", exc)
     job = reply.get("prompt_id")
     if not job:
+        if client in _STOP:
+            _STOP[client].set()
         raise HTTPException(status_code=502, detail="ComfyUI took the workflow but gave it no id.")
+    if client in _STOP:
+        _CLIENT[str(job)] = client
+        for old in list(_CLIENT)[:-60]:
+            _CLIENT.pop(old, None)
     used = sum(1 for n in flow.values() if n.get("class_type") == "LoadImage" and _title(n).startswith(REFERENCE_TITLE))
     return {"job": job, "references": min(used, len(references)), "image": image, "mask": mask if mask and any(n["class_type"] == "LoadImageMask" for n in flow.values()) else None,
             "prompt": prompt is not None and any(str(n.get("_meta", {}).get("title", "")).strip().lower() == PROMPT_TITLE for n in flow.values())}
@@ -220,11 +395,10 @@ def job(job: str, target: str) -> dict:
         raise outbound.unreachable("ComfyUI", base, "Preferences > Plugins", exc)
     running = [q[1] for q in queue.get("queue_running", []) if len(q) > 1]
     pending = [q[1] for q in queue.get("queue_pending", []) if len(q) > 1]
-    if job in running:
-        return {"state": "running"}
+    step = _PROGRESS.get(_CLIENT.get(job, ""))
     if job in pending:
         return {"state": "queued", "ahead": pending.index(job) + len(running)}
-    return {"state": "running"}   # between the queue and the history
+    return {"state": "running", **({"progress": step} if step and step["max"] > 0 else {})}   # not in either list: between the queue and the history
 
 
 @router.get("/image")
@@ -245,6 +419,9 @@ def image(target: str, filename: str, subfolder: str = "") -> Response:
 def cancel(job: str, target: str = Form(...)) -> dict:
     """Stops the job: interrupted if it is running, taken out of the queue if it is waiting."""
     base = _base(target)
+    stop = _STOP.get(_CLIENT.get(job, ""))
+    if stop:
+        stop.set()
     try:
         with _request(base + "/queue", json.dumps({"delete": [job]}).encode(), {"Content-Type": "application/json"}, "POST", 5):
             pass

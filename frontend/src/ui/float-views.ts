@@ -11,6 +11,7 @@ interface Frame {
   readonly name: HTMLElement;
   readonly canvas: HTMLCanvasElement;
   readonly ro: ResizeObserver;
+  lastZoom: number;
   drawn: boolean;
 }
 
@@ -118,9 +119,9 @@ export class FloatViews {
       h.dataset.e = e;
       root.appendChild(h);
     }
-    const f: Frame = { view, root, name, canvas, drawn: false, ro: new ResizeObserver(() => { fitCanvas(canvas); f.drawn = false; this.queue(); }) };
+    const f: Frame = { view, root, name, canvas, drawn: false, lastZoom: view.viewport.zoom, ro: new ResizeObserver(() => { fitCanvas(canvas); f.drawn = false; this.queue(); }) };
     f.ro.observe(canvas);
-    bindDocView(canvas, view, () => { f.drawn = false; this.queue(); }, () => undefined);
+    bindDocView(canvas, view, () => { f.drawn = false; this.zoomFit(f); this.queue(); }, () => undefined);
     x.addEventListener('click', () => this.engine.closeView(view.id));
     root.addEventListener('pointerdown', (e) => {
       this.raise(f);
@@ -129,6 +130,24 @@ export class FloatViews {
       else if (e.target instanceof Node && bar.contains(e.target) && !x.contains(e.target)) this.gesture(e, f, null);
     });
     return f;
+  }
+
+  /** Preferences > General and Workspace: Zoom Resizes Windows sizes a floating window to the picture at its new zoom (held to the column); Enable Floating Document Window Docking lets a window dropped on the tab bar go back to its tab. */
+  static prefs = { zoomResize: false, docking: true };
+
+  /** A floating window whose zoom just changed takes the size of the picture at that zoom, centred in the window. */
+  private zoomFit(f: Frame): void {
+    const v = f.view.viewport, z = v.zoom;
+    if (z === f.lastZoom) return;
+    f.lastZoom = z;
+    const p = this.engine.projects.find((x) => x.id === f.view.projectId), r = f.view.floating;
+    if (!FloatViews.prefs.zoomResize || !p || !r) return;
+    const w = Math.max(MIN_W, Math.min(this.col.clientWidth, Math.round(p.doc.width * z))), h = Math.max(MIN_H, Math.min(this.col.clientHeight, Math.round(p.doc.height * z) + BAR));
+    if (w === Math.round(r.w) && h === Math.round(r.h)) return;
+    f.view.floating = this.inside({ ...r, w, h });
+    this.place(f);
+    v.width = w; v.height = h - BAR;
+    v.panX = Math.round((w - p.doc.width * z) / 2); v.panY = Math.round((h - BAR - p.doc.height * z) / 2);
   }
 
   private raise(f: Frame): void {
@@ -164,15 +183,28 @@ export class FloatViews {
       }
       f.view.floating = this.inside(next);
       this.place(f);
+      if (!edge) this.tabsOver(m.clientX, m.clientY);
     };
-    const up = (): void => {
+    const up = (u: PointerEvent): void => {
       target.removeEventListener('pointermove', move);
       target.removeEventListener('pointerup', up);
       target.removeEventListener('pointercancel', up);
+      const dock = !edge && u.type === 'pointerup' && this.tabsOver(u.clientX, u.clientY);
+      this.tabsOver(-1, -1);
+      if (dock) this.engine.closeView(f.view.id);
     };
     target.addEventListener('pointermove', move);
     target.addEventListener('pointerup', up);
     target.addEventListener('pointercancel', up);
+  }
+
+  /** Whether the point is over the document tabs while docking is on, marking the tabs as the drop target in place. */
+  private tabsOver(x: number, y: number): boolean {
+    const tabs = document.querySelector('.cv-doc-tabs');
+    if (!tabs) return false;
+    const r = tabs.getBoundingClientRect(), over = FloatViews.prefs.docking && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+    tabs.classList.toggle('is-dock-target', over);
+    return over;
   }
 
   /** Keeps a rectangle's title bar reachable inside the column. */

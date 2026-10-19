@@ -36,6 +36,23 @@ let serial = 0;
 export function stopGenerations(): number { const n = running.size; for (const r of [...running]) r.stop(); return n; }
 export const generationsRunning = (): number => running.size;
 
+/** One stoppable call of a Fill, Expand or Upscale generator: Escape and the status bar stop it (the answer is dropped
+ *  when it arrives, a job on this computer is cancelled in the engine) and it rejects with 'Stopped.'. */
+export function stoppable<T>(work: (stopped: () => boolean) => Promise<T>): Promise<T> {
+  let cancelled = false, cut: (e: Error) => void = () => {};
+  const gone = new Promise<never>((_ok, no) => { cut = no; });
+  const run = { stop: () => { cancelled = true; cut(new Error('Stopped.')); } };
+  running.add(run);
+  const w = work(() => cancelled);
+  w.catch(() => undefined);
+  return Promise.race([w, gone]).finally(() => { running.delete(run); });
+}
+
+/** A fill generator made stoppable: `make` gets the stop test of each call. */
+export function stoppableFill(make: (stopped: () => boolean) => (image: Blob, mask: Blob) => Promise<Blob>): (image: Blob, mask: Blob) => Promise<Blob> {
+  return (image, mask) => stoppable((stopped) => make(stopped)(image, mask));
+}
+
 export const generationLog = (): readonly RunLogEntry[] => runLog;
 export const keptResults = (): readonly KeptResult[] => kept;
 /** Calls `fn` whenever the log or the kept results change; returns the way to stop. */
@@ -61,16 +78,39 @@ export function resolveReferenceTokens(prompt: string, count: number): string {
 
 const hasTokens = (prompt: string): boolean => /@img\d+\b/i.test(prompt);
 
+let readiness: { key: string; at: number; found: Map<string, string> } | null = null;
+
+/** Why each kept ComfyUI workflow cannot run now (name to reason): the nodes it needs that ComfyUI lacks and the model
+ *  files it picks that ComfyUI does not list, from ComfyUI's own answer. Checked at most once a minute for the same
+ *  workflows, and never held up for more than 2.5 seconds; empty when ComfyUI does not answer. */
+export async function comfyReadiness(): Promise<Map<string, string>> {
+  const kept = recipes();
+  if (!kept.length) return new Map();
+  const target = loadPrefs().comfyuiUrl, key = `${target}|${kept.map((r) => `${r.name}:${r.json.length}`).join(',')}`;
+  if (readiness && readiness.key === key && Date.now() - readiness.at < 60_000) return readiness.found;
+  const probe = await Promise.race([api.comfyuiProbe(target, kept.map((r) => ({ name: r.name, workflow: r.json }))), new Promise<null>((ok) => setTimeout(() => ok(null), 2500))]);
+  const found = new Map<string, string>();
+  for (const c of probe?.running ? probe.recipes ?? [] : []) {
+    const bits: string[] = [];
+    if (c.missing_nodes.length) bits.push(`ComfyUI lacks the nodes ${c.missing_nodes.slice(0, 4).join(', ')}`);
+    if (c.missing_models.length) bits.push(`ComfyUI does not list the model ${c.missing_models.slice(0, 3).map((m) => m.name).join(', ')}`);
+    if (bits.length) found.set(c.name, bits.join('; '));
+  }
+  readiness = { key, at: Date.now(), found };
+  return found;
+}
+
 /** The models Generate Image offers, from the one source the Generate Image dialog and the Generate panel share: fal,
  *  the providers beside it, the kept ComfyUI workflows (left out when `comfy` is false: the panel offers them only while
  *  ComfyUI answers) and the models on this computer. `preferred` is the default: fal with a key, else a model here. */
 export async function generationModels(comfy = true): Promise<GenerationModels> {
   const locals = await localModels();   // the local models (1.52.9)
   const providers = await api.providers();
+  const problems = comfy ? await comfyReadiness() : new Map<string, string>();
   const models: GenerationModel[] = [
     { value: 'fal', label: 'FLUX1.1 [pro] (fal)', disabled: false, reason: '' },
     ...providers.map((pr) => ({ value: `provider:${pr.id}`, label: `${PROVIDER_NAMES[pr.id] ?? pr.model} (${pr.name})`, disabled: false, reason: '' })),
-    ...(comfy ? recipes().map((r) => ({ value: r.name, label: `${r.name} (ComfyUI)`, disabled: false, reason: '' })) : []),
+    ...(comfy ? recipes().map((r) => ({ value: r.name, label: `${r.name} (ComfyUI)`, disabled: problems.has(r.name), reason: problems.get(r.name) ?? '' })) : []),
     ...locals.map((m) => ({ value: m.id, label: `${m.label.replace(/ \(local\)$/, '')} (this computer)`, disabled: !m.ready, reason: !m.ready && m.reason ? m.reason : '' })),
   ];
   // fal, the cloud default, when it has a key; else a model on this computer; else fal, whose key is then asked for (1.58.5).

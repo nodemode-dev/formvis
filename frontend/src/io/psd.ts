@@ -8,7 +8,7 @@ import { windingArea } from '../engine/custom-shapes';
 import { addIccResource, addPathResources, clippingPathName, readPathResources, resourceBlocks } from './psd-paths';
 import { readExtraChannels, readIccProfile } from './psd-channels';
 import { fromBase64 } from './icc-read';
-import { buildXmp, metaFromXmp } from './xmp';
+import { buildMergedXmp, metaFromXmp } from './xmp';
 import { metaWritable } from '../engine/doc-meta';
 import type { PathSet, SubPath } from '../engine/paths';
 import { maskEdgeTone } from '../engine/distort';
@@ -823,7 +823,7 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
   }
   if (linked.length) psd.linkedFiles = linked;
   if (psdPatterns.length) psd.patterns = psdPatterns;
-  if (metaWritable(doc.meta)) psd.imageResources = { ...(psd.imageResources ?? {}), xmpMetadata: buildXmp(doc.meta) };   // kept beside the layer comps   // File Info (29.2) as the XMP image resource
+  if (metaWritable(doc.meta)) psd.imageResources = { ...(psd.imageResources ?? {}), xmpMetadata: buildMergedXmp(doc.meta) };   // kept beside the layer comps   // File Info (29.2) as the XMP image resource
   if (doc.pixelAspect && doc.pixelAspect !== 1) psd.imageResources = { ...(psd.imageResources ?? {}), pixelAspectRatio: { aspect: doc.pixelAspect } };   // Pixel Aspect Ratio (35.4 part b)
   const ppi = doc.resolution && doc.resolution >= 1 && doc.resolution <= 65535 ? doc.resolution : 72;   // image resource 1005
   psd.imageResources = { ...(psd.imageResources ?? {}), resolutionInfo: { horizontalResolution: ppi, horizontalResolutionUnit: 'PPI', widthUnit: 'Inches', verticalResolution: ppi, verticalResolutionUnit: 'PPI', heightUnit: 'Inches' } };

@@ -91,7 +91,7 @@ export class ExportDialog extends Dialog {
     (this.canvasBox.lastElementChild as HTMLElement).append(this.canvasW, el('<span>x</span>'), this.canvasH);
     const canvas = (): void => { this.s = clampSettings({ ...this.s, canvasW: Number(this.canvasW.value), canvasH: Number(this.canvasH.value) }); this.custom(); };
     this.canvasW.addEventListener('change', canvas); this.canvasH.addEventListener('change', canvas);
-    this.metaRow = selectRow('Metadata', [['doc', 'Document File Info'], ['none', 'None'], ['copyright', 'Copyright and Contact Info']], (v) => { this.s = clampSettings({ ...this.s, metadata: v === 'doc' ? undefined : v as 'none' | 'copyright' }); this.custom(); });
+    this.metaRow = selectRow('Metadata', [['doc', 'File Info, EXIF and XMP'], ['none', 'None (strip all)'], ['copyright', 'Copyright and Contact Info']], (v) => { this.s = clampSettings({ ...this.s, metadata: v === 'doc' ? undefined : v as 'none' | 'copyright' }); this.custom(); });
     this.copyrightField.append(this.copyrightInput); this.contactField.append(this.contactInput);
     this.copyrightInput.addEventListener('input', () => { this.s = clampSettings({ ...this.s, copyrightText: this.copyrightInput.value }); this.custom(); });
     this.contactInput.addEventListener('input', () => { this.s = clampSettings({ ...this.s, contactText: this.contactInput.value }); this.custom(); });
@@ -314,7 +314,8 @@ export class ExportDialog extends Dialog {
     this.copyrightInput.disabled = !cm; this.contactInput.disabled = !cm;
     if (document.activeElement !== this.copyrightInput) this.copyrightInput.value = s.copyrightText ?? '';
     if (document.activeElement !== this.contactInput) this.contactInput.value = s.contactText ?? '';
-    setText(this.metaNote, XMP_FORMATS.has(s.format) ? (cm ? 'The contact text is written as the creator. ' : '') + (s.format === 'webp' || s.format === 'tiff' ? 'Written as XMP.' : 'Written as an XMP packet in the file.') : `${s.format.toUpperCase()} cannot carry metadata here; the file is written without it.`);
+    const exifKept = !s.metadata && (s.format === 'jpg' || s.format === 'png' || s.format === 'webp');
+    setText(this.metaNote, XMP_FORMATS.has(s.format) ? s.metadata === 'none' ? 'No EXIF, XMP or File Info is written.' : (cm ? 'The contact text is written as the creator. ' : '') + (exifKept ? 'The picture’s EXIF block is kept and the XMP packet carries File Info and the original properties.' : s.format === 'webp' || s.format === 'tiff' ? 'Written as XMP.' : 'Written as an XMP packet in the file.') : `${s.format.toUpperCase()} cannot carry metadata here; the file is written without it.`);
     // Several sizes: one row of nodes per entry, kept and patched in place; a row is added or removed only when the list changes length.
     const sizes = s.sizes ?? [];
     while (this.sizesList.children.length > sizes.length) this.sizesList.lastElementChild?.remove();

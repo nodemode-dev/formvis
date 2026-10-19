@@ -93,7 +93,14 @@ export const rulerTool: Tool = {
         let turn = measures(x).angle;           // the line's angle, counter-clockwise; the layer turns back by it
         while (turn > 90) turn -= 180;
         while (turn <= -90) turn += 180;
-        e.setLayerTransform({ rotation: l.transform.rotation + turn }, 'Straighten Layer');
+        const doc = e.current?.doc;
+        if (doc && e.backgroundLayer()?.id === l.id && Math.abs(turn) >= 0.01 && Math.abs(turn) <= 45) {
+          // The Background cannot turn alone: the whole canvas turns and is cut to the largest rectangle of its own shape inside.
+          const a = (Math.abs(turn) * Math.PI) / 180, W = doc.width, H = doc.height;
+          const k = Math.min(W / (W * Math.cos(a) + H * Math.sin(a)), H / (W * Math.sin(a) + H * Math.cos(a)));
+          const w = Math.max(1, Math.floor(W * k)), h = Math.max(1, Math.floor(H * k));
+          e.straightenCrop({ x: Math.round((W - w) / 2), y: Math.round((H - h) / 2), w, h }, turn, false);
+        } else e.setLayerTransform({ rotation: l.transform.rotation + turn }, 'Straighten Layer');
         const m = e.measure; if (m) { m.ruler = null; e.setRulerArm(null); }
       } },
       { kind: 'button', label: 'Clear', run: () => { const m = e.measure; if (m) { m.ruler = null; e.setRulerArm(null); } } },

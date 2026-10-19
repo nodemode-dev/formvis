@@ -25,7 +25,11 @@ export function autoSlices(doc: { width: number; height: number; slices?: readon
 }
 
 /** Draws user slices as solid rectangles with their numbers, and the auto slices dashed and dim beneath; the screen position is pan + document position * zoom. */
-export function drawSlices(g: CanvasRenderingContext2D, list: readonly DocSlice[], panX: number, panY: number, zoom: number, color: string, active: string | null = null, docSize: { width: number; height: number } | null = null, showAuto = true): void {
+/** Preferences > Guides, Grid & Slices: the slice lines' colour ('' is the theme's accent) and whether their numbers show. */
+export const slicePrefs = { color: '', numbers: true };
+
+export function drawSlices(g: CanvasRenderingContext2D, list: readonly DocSlice[], panX: number, panY: number, zoom: number, themeColor: string, active: string | null = null, docSize: { width: number; height: number } | null = null, showAuto = true): void {
+  const color = slicePrefs.color || themeColor;
   g.save();
   if (docSize && list.length && showAuto) {
     g.globalAlpha = 0.5;
@@ -50,7 +54,7 @@ export function drawSlices(g: CanvasRenderingContext2D, list: readonly DocSlice[
     g.lineWidth = on ? 2 : 1;   // 29.5: the active slice, thicker and with corner handles
     g.strokeRect(x0, y0, x1 - x0, y1 - y0);
     if (on) for (const [cx, cy] of [[x0, y0], [x1, y0], [x0, y1], [x1, y1]]) g.fillRect(cx - 3, cy - 3, 6, 6);
-    g.fillText(String(i + 1).padStart(2, '0'), x0 + 3, y0 + 3);
+    if (slicePrefs.numbers) g.fillText(String(i + 1).padStart(2, '0'), x0 + 3, y0 + 3);
   });
   g.restore();
 }

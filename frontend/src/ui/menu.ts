@@ -8,6 +8,26 @@ export type MenuItem = string | '-' | SubMenu;
 export interface SubMenu { label: string; items: MenuItem[] }
 const isSub = (i: MenuItem): i is SubMenu => typeof i === 'object';
 
+/** Edit > Menus: command ids left out of the menu bar's menus, and the colour name each item is drawn in. */
+let hiddenIds = new Set<string>();
+let itemColors: Record<string, string> = {};
+/** Commands that stay in the menus whatever is hidden, so the way back is never lost. */
+export const MENU_KEEP: readonly string[] = ['edit-menus', 'shortcuts', 'settings'];
+export function setMenuStyle(hidden: readonly string[], colors: Record<string, string>): void { hiddenIds = new Set(hidden); itemColors = { ...colors }; }
+
+/** Items without the hidden commands; a submenu left empty goes too, and no separator is left leading, trailing or doubled. */
+export function trimMenu(items: MenuItem[]): MenuItem[] {
+  if (!hiddenIds.size) return items;
+  const out: MenuItem[] = [];
+  for (const i of items) {
+    if (i === '-') { if (out.length && out[out.length - 1] !== '-') out.push(i); continue; }
+    if (isSub(i)) { const inner = trimMenu(i.items); if (inner.some((x) => x !== '-')) out.push({ label: i.label, items: inner }); continue; }
+    if (!hiddenIds.has(i) || MENU_KEEP.includes(i)) out.push(i);
+  }
+  while (out.length && out[out.length - 1] === '-') out.pop();
+  return out;
+}
+
 export class PopupMenu {
   readonly panel: HTMLElement;
   private rows: Array<{ id: string; node: HTMLButtonElement }> = [];
@@ -35,7 +55,7 @@ export class PopupMenu {
   contains(t: Node): boolean { return this.panel.contains(t) || !!this.openSub?.contains(t); }
 
   setItems(items: MenuItem[]): void {
-    const key = JSON.stringify(items);
+    const key = JSON.stringify(items) + JSON.stringify(itemColors);
     if (key === this.key) return;
     this.key = key;
     this.closeSub();
@@ -63,6 +83,7 @@ export class PopupMenu {
       if (!cmd) continue;
       const node = el<HTMLButtonElement>(`<button class="cv-menu-item" role="menuitem" type="button"><span class="cv-menu-check">${icon('check', 14)}</span><span class="cv-menu-label"></span><span class="cv-menu-keys"></span></button>`);
       setText(q(node, '.cv-menu-keys'), this.commands.keyLabel(cmd));
+      if (itemColors[item]) node.dataset.color = itemColors[item];
       node.addEventListener('pointerenter', () => this.closeSub());
       node.addEventListener('click', () => { this.root().close(); this.commands.run(item); });
       this.rows.push({ id: item, node });
@@ -151,7 +172,7 @@ export class PopupMenu {
 /** A menubar menu: its label and its items; a function is called afresh each time the menu opens. */
 export interface MenuDef { label: string; items: MenuItem[] | (() => MenuItem[]) }
 
-const itemsOf = (def: MenuDef): MenuItem[] => (typeof def.items === 'function' ? def.items() : def.items);
+const itemsOf = (def: MenuDef): MenuItem[] => trimMenu(typeof def.items === 'function' ? def.items() : def.items);
 
 export class MenuBar {
   private readonly bars: Array<{ btn: HTMLButtonElement; menu: PopupMenu; def: MenuDef }> = [];

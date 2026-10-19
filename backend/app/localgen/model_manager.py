@@ -44,11 +44,10 @@ PROVIDERS = ("CoreMLExecutionProvider", "DmlExecutionProvider", "CUDAExecutionPr
 
 
 def providers() -> list[str]:
-    """The execution providers to hand a session, best first."""
-    import onnxruntime as ort
+    """The execution providers to hand a session: the device chosen in Preferences (Automatic takes the best one here)."""
+    from app.services import compute
 
-    available = ort.get_available_providers()
-    return [name for name in PROVIDERS if name in available] or ["CPUExecutionProvider"]
+    return compute.current()["providers"]
 
 
 
@@ -507,7 +506,8 @@ def download(model: str, report, cancelled):
             temporary = path.with_suffix(path.suffix + ".download")
             digest = hashlib.sha256()
             try:
-                with httpx.stream("GET", download_url, follow_redirects=True, timeout=120) as response:
+                headers = {"Authorization": f"Bearer {token}"} if (token := hf_token()) and httpx.URL(download_url).host in ("huggingface.co", "www.huggingface.co") else {}
+                with httpx.stream("GET", download_url, headers=headers, follow_redirects=True, timeout=120) as response:
                     response.raise_for_status()
                     length = int(response.headers.get("content-length", 0))
                     written = 0
@@ -604,6 +604,137 @@ def set_source(model: str, mode: str, url: str | None) -> dict:
     data[model] = {"mode": mode, "url": url}
     SOURCES_FILE.write_text(json.dumps(data, indent=2))
     return data[model]
+
+
+HF_TOKEN_FILE = DATA_DIR / "huggingface_token.txt"
+
+
+def _hf_file_read() -> str | None:
+    try:
+        return HF_TOKEN_FILE.read_text().strip() or None
+    except OSError:
+        return None
+
+
+def _hf_file_write(value: str) -> None:
+    HF_TOKEN_FILE.write_text(value)
+    HF_TOKEN_FILE.chmod(0o600)
+
+
+def _hf_file_clear() -> None:
+    HF_TOKEN_FILE.unlink(missing_ok=True)
+
+
+def hf_token() -> str | None:
+    """The Hugging Face access token, for models that sit behind a licence: from the system's password store."""
+    from app.services import secrets
+
+    return secrets.get("huggingface", _hf_file_read, _hf_file_clear)
+
+
+class TokenBody(BaseModel):
+    token: str | None = Field(default=None, max_length=256)
+    forget: bool = False
+
+
+def _token_state() -> dict:
+    from app.services import secrets
+
+    token = hf_token()
+    return {"hasKey": bool(token), "last4": token[-4:] if token and len(token) >= 8 else "", "store": secrets.where()["store"]}
+
+
+@router.get("/token")
+def get_token():
+    """Whether a Hugging Face token is kept, with its last four characters; never the token."""
+    return _token_state()
+
+
+@router.put("/token")
+def put_token(body: TokenBody, request: Request):
+    """Keeps (or forgets) the Hugging Face access token in the system's password store. It is sent only to huggingface.co."""
+    from app.routers.terminal import require_local
+    from app.services import secrets
+
+    require_local(request)
+    if body.forget:
+        secrets.delete("huggingface", _hf_file_clear)
+    elif body.token and body.token.strip():
+        value = body.token.strip()
+        if not value.startswith("hf_") or len(value) < 12 or any(c.isspace() for c in value):
+            raise HTTPException(400, "That does not look like a Hugging Face access token (it starts with hf_).")
+        secrets.put("huggingface", value, _hf_file_write, _hf_file_clear)
+    return _token_state()
+
+
+_SCAN_SUFFIXES = (".onnx", ".safetensors", ".bin", ".pth", ".gguf")
+_SCAN_ENTRIES = 20000
+_SCAN_HASH_BYTES = 4_000_000_000
+
+
+def scan_folder(folder: Path) -> dict:
+    """Finds the helper models' files in another folder (a ComfyUI models folder, say), under any name or layout: a file
+    is taken when its SHA-256 matches the pin of a file not yet in the model folder, and is linked in, not copied."""
+    wanted: dict[str, str] = {}
+    for spec in MODELS.values():
+        for name in spec["files"]:
+            if PINNED.get(name) and not (ROOT / name).is_file():
+                wanted[PINNED[name]] = name
+    basenames = {Path(n).name.lower() for n in wanted.values()}
+    linked: list[str] = []
+    seen = hashed = 0
+    root = ROOT.resolve()
+    for current, dirs, names in os.walk(folder):
+        here = Path(current)
+        dirs[:] = [d for d in dirs if (here / d).resolve() != root and len(here.relative_to(folder).parts) < 6]
+        for file in names:
+            seen += 1
+            if seen > _SCAN_ENTRIES:
+                break
+            path = here / file
+            if path.suffix.lower() not in _SCAN_SUFFIXES or path.is_symlink():
+                continue
+            try:
+                size = path.stat().st_size
+            except OSError:
+                continue
+            small_onnx = path.suffix.lower() == ".onnx" and size <= 400_000_000
+            if size < 1024 or not (file.lower() in basenames or small_onnx) or hashed + size > _SCAN_HASH_BYTES:
+                continue
+            digest = hashlib.sha256()
+            with path.open("rb") as f:
+                while chunk := f.read(1 << 20):
+                    digest.update(chunk)
+            hashed += size
+            name = wanted.get(digest.hexdigest())
+            if not name:
+                continue
+            dest = ROOT / name
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                os.symlink(path, dest)
+            except OSError:
+                shutil.copyfile(path, dest)
+            wanted.pop(digest.hexdigest())
+            linked.append(name)
+    return {"scanned": seen, "linked": linked, "ready": [k for k in MODELS if ready(k)]}
+
+
+class ScanBody(BaseModel):
+    path: str = Field(default="", max_length=1024)
+
+
+@router.post("/scan")
+def scan(body: ScanBody, request: Request):
+    """Scan: links the helper models found in a folder, such as a ComfyUI models folder, into the helper model folder."""
+    from app.routers.terminal import require_local
+
+    require_local(request)
+    folder = Path(body.path.strip()).expanduser()
+    if not body.path.strip() or not folder.is_absolute() or not folder.is_dir():
+        raise HTTPException(400, "Give the full path of an existing folder, such as the models folder inside ComfyUI.")
+    with _lock:
+        return scan_folder(folder)
 
 
 class FolderBody(BaseModel):

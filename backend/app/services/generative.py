@@ -77,8 +77,8 @@ def _file_clear() -> None:
 
 
 def status() -> dict:
-    _, source = _key()
-    return {"configured": source is not None, "source": source, "store": secrets.where()["store"], "fillModel": FILL_MODEL, "eraseModel": ERASE_MODEL, "upscaleModel": UPSCALE_MODEL}
+    key, source = _key()
+    return {"configured": source is not None, "source": source, "last4": key[-4:] if key and len(key) >= 8 else "", "store": secrets.where()["store"], "fillModel": FILL_MODEL, "eraseModel": ERASE_MODEL, "upscaleModel": UPSCALE_MODEL}
 
 
 def save_key(key: str) -> dict:
@@ -142,8 +142,8 @@ def _download(url: str) -> bytes:
         raise GenerativeError(f"Could not download the result from fal: {getattr(exc, 'reason', exc)}.", 502) from exc
 
 
-def fill(image_png: bytes, mask_png: bytes, prompt: str) -> bytes:
-    """The filled image as PNG, the same size as `image_png`'s result. White in the mask marks what to fill."""
+def fill(image_png: bytes, mask_png: bytes, prompt: str, seed: int | None = None) -> bytes:
+    """The filled image as PNG, the same size as `image_png`'s result. White in the mask marks what to fill. `seed` fixes a fill that has a prompt."""
     key, _ = _key()
     if not key:
         raise GenerativeError("Add a fal API key to use Generative Fill.", 428)
@@ -153,6 +153,8 @@ def fill(image_png: bytes, mask_png: bytes, prompt: str) -> bytes:
     if prompt:
         body = {"prompt": prompt[:2000], "image_url": _data_uri(image_png), "mask_url": _data_uri(mask_png),
                 "num_images": 1, "output_format": "png", "sync_mode": True, "safety_tolerance": "2"}
+        if seed is not None and seed >= 0:
+            body["seed"] = int(seed) & 0x7FFFFFFF
         result = _post(FILL_MODEL, body, key)
     else:
         result = _post(ERASE_MODEL, {"image_url": _data_uri(image_png), "mask_url": _data_uri(mask_png)}, key)

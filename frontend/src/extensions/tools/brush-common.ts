@@ -57,9 +57,12 @@ export function drawBrushCursor(ctx: ToolContext, g: CanvasRenderingContext2D, p
   const cross = (arm: number): void => { for (const [color, off] of [[pal.antsB, 1], [pal.antsA, 0]] as const) { g.strokeStyle = color; g.lineWidth = 1 + off; g.beginPath(); g.moveTo(c.x - arm, c.y); g.lineTo(c.x + arm, c.y); g.moveTo(c.x, c.y - arm); g.lineTo(c.x, c.y + arm); g.stroke(); } g.lineWidth = 1; };
   g.save();
   g.lineWidth = 1;
-  if (cursorState.caps || how.paint === 'precise') cross(8);
+  const resizing = !!ctx.engine.tipDrag || performance.now() - cursorState.hardAt < 1200;
+  if (cursorState.caps || how.paint === 'precise' || (how.onlyCross && ctx.engine.stroking)) cross(8);
   else if (how.paint === 'standard') { ring(5); g.fillStyle = pal.antsA; g.fillRect(c.x - 0.5, c.y - 0.5, 1.5, 1.5); }
   else {
+    // While the tip is resized or its hardness changes, the tip is tinted with the Brush Preview Color
+    if (resizing) { g.globalAlpha = 0.4; g.fillStyle = how.previewColor; g.beginPath(); g.ellipse(c.x, c.y, r, r * flat, turn, 0, Math.PI * 2); g.fill(); g.globalAlpha = 1; }
     ring(r, true);
     if (how.crosshair || r < 6) cross(Math.min(8, Math.max(3, r / 3)));
     // Just after a hardness change the ring where the edge starts to fade shows inside the outline

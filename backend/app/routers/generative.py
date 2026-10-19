@@ -32,13 +32,13 @@ def forget_key() -> dict:
 
 
 @router.post("/fill")
-async def fill(image: UploadFile = File(...), mask: UploadFile = File(...), prompt: str = Form(""), provider: str = Form("fal")) -> Response:
+async def fill(image: UploadFile = File(...), mask: UploadFile = File(...), prompt: str = Form(""), provider: str = Form("fal"), seed: int | None = Form(None)) -> Response:
     image_bytes, mask_bytes = await image.read(MAX_BYTES + 1), await mask.read(MAX_BYTES + 1)
     if len(image_bytes) > MAX_BYTES or len(mask_bytes) > MAX_BYTES:
         raise HTTPException(413, "The area is too large to send for Generative Fill.")
     try:
         if provider == "fal":
-            png = await run_in_threadpool(generative.fill, image_bytes, mask_bytes, prompt)
+            png = await run_in_threadpool(generative.fill, image_bytes, mask_bytes, prompt, seed)
         else:
             png = await run_in_threadpool(providers.fill, provider, image_bytes, mask_bytes, prompt)   # 1.58.4
     except generative.GenerativeError as exc:

@@ -33,9 +33,9 @@ PROVIDERS = ("CoreMLExecutionProvider", "DmlExecutionProvider", "CUDAExecutionPr
 
 
 def providers() -> list[str]:
-    import onnxruntime as ort
-    available = ort.get_available_providers()
-    return [name for name in PROVIDERS if name in available] or ["CPUExecutionProvider"]
+    """The providers a local model runs on: the device chosen in Preferences (Automatic takes the best one here)."""
+    from app.services import compute
+    return compute.current()["providers"]
 
 
 def session(path) -> "object":

@@ -1,5 +1,5 @@
 import { HANDLES, hierarchy, transformBounds, type Engine, type Pt, type Rect } from '../../engine';
-import { type Tool, type ToolContext, type ToolPointer } from '../registry';
+import { type OptionSpec, type Tool, type ToolContext, type ToolPointer } from '../registry';
 import { CROP_OVERLAYS, ORIENTED, overlayLines, type CropOverlay } from './crop-overlays';
 
 /** The aspect choices in the options bar; a value is width over height, null leaves the frame free. */
@@ -15,8 +15,20 @@ const RATIOS: ReadonlyArray<{ id: string; label: string; value: number | 'origin
   { id: '3:4', label: '3:4', value: 3 / 4 },
   { id: '2:3', label: '2:3', value: 2 / 3 },
   { id: '9:16', label: '9:16', value: 9 / 16 },
+  { id: 'custom', label: 'Custom', value: null },
   { id: 'size', label: 'W × H × Res', value: null },
 ];
+/** The Custom ratio, typed as width and height. */
+const customRatio = { w: 16, h: 10 };
+/** Classic Mode: dragging outside the frame turns the frame over a still image; otherwise the image turns under an
+ *  upright frame. Both end as the same straighten and crop. */
+let classic = false;
+/** Auto Adjust Opacity: the shield thins to half while a gesture is in progress, so the cropped content shows. */
+let autoOpacity = false;
+/** The grid (pixels) the frame edges snap to after the canvas and layer edges; 0 is off. */
+let gridSnap = 0;
+/** What fills the corners a turn or a frame past the canvas opens when Content-Aware is off. */
+let fillKind: 'none' | 'background' | 'foreground' = 'none';
 /** The id of the ratio in force. */
 let ratioId = 'free';
 /** W × H × Resolution, as the Crop menu has it: the size the crop is resampled to, in a unit, at a resolution
@@ -56,7 +68,7 @@ function sizeChanged(e: Engine): void {
 /** The crop rectangle in document coordinates, or null while none is open. */
 let frame: Rect | null = null;
 /** The gesture in progress: what it does, which handle it holds, where the pointer went down and the frame then. */
-let drag: { mode: 'create' | 'move' | 'resize'; handle: number; start: Pt; origin: Rect } | null = null;
+let drag: { mode: 'create' | 'move' | 'resize' | 'rotate'; handle: number; start: Pt; origin: Rect; base?: number } | null = null;
 /** Straighten: degrees the image turns about the frame's centre on commit; `leveling` arms a drag that measures a
  *  line meant to be level (or plumb) and sets the angle from it. Content-Aware fills what the turn or a frame past
  *  the canvas opens. */
@@ -94,6 +106,7 @@ export function levelAngle(a: Pt, b: Pt): number {
 /** The width over height the frame keeps, or null when it is free. */
 function ratioOf(e: Engine): number | null {
   if (ratioId === 'size') { const px = sizePx(); return px ? px.w / px.h : null; }
+  if (ratioId === 'custom') return customRatio.w > 0 && customRatio.h > 0 ? customRatio.w / customRatio.h : null;
   const v = RATIOS.find((r) => r.id === ratioId)?.value ?? null;
   if (v === 'original') { const d = e.current?.doc; return d ? d.width / d.height : null; }
   return v;
@@ -197,20 +210,61 @@ function snap(ctx: ToolContext, r: Rect, mode: 'create' | 'move' | 'resize', han
   return { x: l, y: t, w: rt - l, h: b - t };
 }
 
+/** The point `pt` turned clockwise by `deg` about the centre of `r`. */
+function turned(r: Rect, pt: Pt, deg: number): Pt {
+  const a = (deg * Math.PI) / 180, cs = Math.cos(a), sn = Math.sin(a), cx = r.x + r.w / 2, cy = r.y + r.h / 2, dx = pt.x - cx, dy = pt.y - cy;
+  return { x: cx + dx * cs - dy * sn, y: cy + dx * sn + dy * cs };
+}
+/** True while Classic Mode shows the frame turned (the frame shows at -angle degrees). */
+const classicTurned = (): boolean => classic && angle !== 0;
+/** A point on screen as the frame's own upright space sees it, so a turned frame is hit and resized like an upright one. */
+const unturn = (f: Rect, pt: Pt): Pt => (classicTurned() ? turned(f, pt, angle) : pt);
+
+/** The frame's edges pulled to the grid; a moved frame keeps its size, and a fixed ratio is left alone. */
+function gridded(r: Rect, step: number, mode: 'create' | 'move' | 'resize', ratio: number | null): Rect {
+  if (step < 1 || (ratio && mode !== 'move')) return r;
+  const s = (v: number): number => Math.round(v / step) * step;
+  if (mode === 'move') return { x: s(r.x), y: s(r.y), w: r.w, h: r.h };
+  const l = s(r.x), t = s(r.y), rt = s(r.x + r.w), b = s(r.y + r.h);
+  return { x: l, y: t, w: Math.max(step, rt - l), h: Math.max(step, b - t) };
+}
+
 /** The index of the frame's handle within 8 screen points of the pointer, or -1. */
 function hitHandle(ctx: ToolContext, p: ToolPointer): number {
   if (!frame) return -1;
   const v = ctx.view(), f = norm(frame);
-  return HANDLES.findIndex((h) => { const s = v.toScreen({ x: f.x + f.w * h.x, y: f.y + f.h * h.y }); return Math.hypot(s.x - p.screen.x, s.y - p.screen.y) <= 8; });
+  return HANDLES.findIndex((h) => {
+    const at = { x: f.x + f.w * h.x, y: f.y + f.h * h.y }, s = v.toScreen(classicTurned() ? turned(f, at, -angle) : at);
+    return Math.hypot(s.x - p.screen.x, s.y - p.screen.y) <= 8;
+  });
 }
 const inside = (r: Rect, p: Pt): boolean => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+/** True when the pointer is outside the frame but within 32 screen points of it: pressing there turns the crop. */
+function nearRing(ctx: ToolContext, p: ToolPointer): boolean {
+  if (!frame) return false;
+  const f = norm(frame), q = unturn(f, p.doc), z = ctx.view().zoom;
+  const dx = Math.max(f.x - q.x, 0, q.x - (f.x + f.w)), dy = Math.max(f.y - q.y, 0, q.y - (f.y + f.h));
+  const d = Math.hypot(dx, dy) * z;
+  return d > 0 && d <= 32;
+}
+
+/** Choosing the tool with a selection open starts the frame on the selection's bounds. */
+let watching: Engine | null = null;
+function startFromSelection(e: Engine): void {
+  const s = e.current?.selection;
+  if (e.tool !== 'crop' || frame || quad || !s) return;
+  frame = whole(s.rect);
+  if (perspective) quad = quadOf(frame);
+  e.emit('overlay', null);
+  e.emit('options', null);
+}
 
 /** Crops to the open frame. */
 function commit(e: Engine): void {
   if (perspective && quad) {
     const q = quad;
     quad = null; frame = null; drag = null; cornerDrag = -1;
-    e.perspectiveCrop(q);
+    e.perspectiveCrop(q, ratioId === 'size' ? sizePx() : null);
     e.emit('overlay', null);
     e.emit('options', null);
     return;
@@ -220,8 +274,9 @@ function commit(e: Engine): void {
   frame = null;
   drag = null;
   const px = ratioId === 'size' ? sizePx() : null;
-  if (px) e.cropToSize(r, angle, contentAware, px.w, px.h, size.res);
-  else e.straightenCrop(r, angle, contentAware);
+  const solid = fillKind === 'background' ? e.bg : fillKind === 'foreground' ? e.fg : null;
+  if (px) e.cropToSize(r, angle, contentAware, px.w, px.h, size.res, solid);
+  else e.straightenCrop(r, angle, contentAware, solid);
   angle = 0;
   e.emit('overlay', null);
   e.emit('options', null);
@@ -239,6 +294,13 @@ export function commitPendingCrop(e: Engine): boolean {
 /** X: the ratio on its side (4:3 becomes 3:4, W and H trade places); a free frame swaps its width and height. */
 function turnRatio(e: Engine): boolean {
   if (ratioId === 'size') { [size.w, size.h] = [size.h, size.w]; presetId = ''; sizeChanged(e); return true; }
+  if (ratioId === 'custom') {
+    [customRatio.w, customRatio.h] = [customRatio.h, customRatio.w];
+    if (frame) { const f = norm(frame), cx = f.x + f.w / 2, cy = f.y + f.h / 2; frame = whole({ x: cx - f.h / 2, y: cy - f.w / 2, w: f.h, h: f.w }); }
+    e.emit('options', null);
+    e.emit('overlay', null);
+    return true;
+  }
   const m = /^(\d+):(\d+)$/.exec(ratioId), twin = m ? `${m[2]}:${m[1]}` : '';
   if (m && RATIOS.some((r) => r.id === twin)) ratioId = twin;
   else if (ratioId !== 'free') return false;
@@ -259,15 +321,18 @@ export const cropTool: Tool = {
     if (!p || !frame) return 'crosshair';
     const h = hitHandle(ctx, p);
     if (h >= 0) return h === 1 || h === 5 ? 'ns-resize' : h === 3 || h === 7 ? 'ew-resize' : h === 0 || h === 4 ? 'nwse-resize' : 'nesw-resize';
-    return inside(norm(frame), p.doc) ? 'move' : 'crosshair';
+    if (inside(norm(frame), unturn(norm(frame), p.doc))) return 'move';
+    return nearRing(ctx, p) ? 'grab' : 'crosshair';
   },
   down(ctx, p) {
     if (p.button !== 0 || !ctx.engine.current) return;
     if (leveling) { line = { a: p.doc, b: p.doc }; ctx.engine.emit('overlay', null); return; }
     if (perspective && quad) { cornerDrag = hitCorner(ctx, p); if (cornerDrag >= 0) return; quad = null; }
     const h = hitHandle(ctx, p);
+    if (p.clicks >= 2 && frame && h < 0 && inside(norm(frame), unturn(norm(frame), p.doc))) { commit(ctx.engine); return; }
     if (frame && h >= 0) drag = { mode: 'resize', handle: h, start: p.doc, origin: norm(frame) };
-    else if (frame && inside(norm(frame), p.doc)) drag = { mode: 'move', handle: -1, start: p.doc, origin: norm(frame) };
+    else if (frame && inside(norm(frame), unturn(norm(frame), p.doc))) drag = { mode: 'move', handle: -1, start: p.doc, origin: norm(frame) };
+    else if (frame && !perspective && nearRing(ctx, p)) drag = { mode: 'rotate', handle: -1, start: p.doc, origin: norm(frame), base: angle };
     else { drag = { mode: 'create', handle: -1, start: p.doc, origin: { x: p.doc.x, y: p.doc.y, w: 0, h: 0 } }; frame = null; }
     ctx.engine.emit('overlay', null);
   },
@@ -275,12 +340,26 @@ export const cropTool: Tool = {
     if (line) { line.b = p.doc; ctx.engine.emit('overlay', null); return; }
     if (cornerDrag >= 0 && quad) { quad[cornerDrag] = { x: p.doc.x, y: p.doc.y }; ctx.engine.emit('overlay', null); return; }
     if (!drag) return;
+    if (drag.mode === 'rotate') {
+      const o = drag.origin, c = { x: o.x + o.w / 2, y: o.y + o.h / 2 };
+      let delta = (Math.atan2(p.doc.y - c.y, p.doc.x - c.x) - Math.atan2(drag.start.y - c.y, drag.start.x - c.x)) * 180 / Math.PI;
+      delta = ((delta + 540) % 360) - 180;
+      let next = (drag.base ?? 0) + (classic ? -delta : delta);
+      if (p.shift) next = Math.round(next / 15) * 15;
+      angle = Math.round(Math.max(-45, Math.min(45, next)) * 10) / 10;
+      ctx.engine.emit('overlay', null);
+      ctx.engine.emit('options', null);
+      return;
+    }
     const ratio = ratioOf(ctx.engine);
     let r: Rect;
     if (drag.mode === 'create') r = create(drag.start, p.doc, ratio, p.alt);
     else if (drag.mode === 'move') r = { x: drag.origin.x + p.doc.x - drag.start.x, y: drag.origin.y + p.doc.y - drag.start.y, w: drag.origin.w, h: drag.origin.h };
-    else r = resize(drag.origin, drag.handle, p.doc, ratio, p.alt);
-    frame = snap(ctx, norm(r), drag.mode, drag.handle, p.doc, ratio);
+    else if (classicTurned()) {
+      const o = drag.origin, local = resize(o, drag.handle, turned(o, p.doc, angle), ratio, p.alt), centre = turned(o, { x: local.x + local.w / 2, y: local.y + local.h / 2 }, -angle);
+      r = { x: centre.x - local.w / 2, y: centre.y - local.h / 2, w: local.w, h: local.h };
+    } else r = resize(drag.origin, drag.handle, p.doc, ratio, p.alt);
+    frame = classicTurned() ? norm(r) : gridded(snap(ctx, norm(r), drag.mode, drag.handle, p.doc, ratio), gridSnap, drag.mode, ratio);
     ctx.engine.emit('overlay', null);
     ctx.engine.emit('options', null);
   },
@@ -336,7 +415,7 @@ export const cropTool: Tool = {
       g.save(); g.strokeStyle = pal.accent; g.lineWidth = 1.5; g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); g.restore();
     }
     if (!frame) return;
-    if (angle) {
+    if (angle && !classic) {
       const v = ctx.view(), pal = ctx.paint(), f = norm(frame), cx = f.x + f.w / 2, cy = f.y + f.h / 2, t = (-angle * Math.PI) / 180, cs = Math.cos(t), sn = Math.sin(t);
       const q = [[f.x, f.y], [f.x + f.w, f.y], [f.x + f.w, f.y + f.h], [f.x, f.y + f.h]].map(([x, y]) => v.toScreen({ x: cx + (x - cx) * cs - (y - cy) * sn, y: cy + (x - cx) * sn + (y - cy) * cs }));
       g.save(); g.strokeStyle = pal.accent; g.setLineDash([5, 4]); g.beginPath(); q.forEach((s, i) => (i ? g.lineTo(s.x, s.y) : g.moveTo(s.x, s.y))); g.closePath(); g.stroke(); g.restore();
@@ -344,8 +423,17 @@ export const cropTool: Tool = {
     const v = ctx.view(), pal = ctx.paint(), f = norm(frame);
     const a = v.toScreen({ x: f.x, y: f.y }), b = v.toScreen({ x: f.x + f.w, y: f.y + f.h });
     g.save();
-    g.fillStyle = `rgba(${SHIELD_RGB[shieldColour]}, ${showCropped ? shieldOpacity : 1})`;
-    g.beginPath(); g.rect(0, 0, v.width, v.height); g.rect(a.x, a.y, b.x - a.x, b.y - a.y); g.fill('evenodd');
+    const shield = showCropped ? (autoOpacity && drag ? shieldOpacity / 2 : shieldOpacity) : 1;
+    g.fillStyle = `rgba(${SHIELD_RGB[shieldColour]}, ${shield})`;
+    const turn = classic ? (-angle * Math.PI) / 180 : 0, mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    g.beginPath(); g.rect(0, 0, v.width, v.height);
+    if (turn) {
+      const cs = Math.cos(turn), sn = Math.sin(turn);
+      [[a.x, a.y], [b.x, a.y], [b.x, b.y], [a.x, b.y]].forEach(([x, y], i) => { const px = mx + (x - mx) * cs - (y - my) * sn, py = my + (x - mx) * sn + (y - my) * cs; if (i) g.lineTo(px, py); else g.moveTo(px, py); });
+      g.closePath();
+    } else g.rect(a.x, a.y, b.x - a.x, b.y - a.y);
+    g.fill('evenodd');
+    if (turn) { g.translate(mx, my); g.rotate(turn); g.translate(-mx, -my); }
     g.strokeStyle = pal.antsB;
     g.globalAlpha = 0.5;
     g.beginPath();
@@ -368,8 +456,27 @@ export const cropTool: Tool = {
     }
     g.restore();
   },
-  options: (e) => [
+  options: (e) => {
+    if (watching !== e) { watching = e; e.on('tool', () => startFromSelection(e)); queueMicrotask(() => startFromSelection(e)); }
+    return cropOptions(e);
+  },
+};
+
+function cropOptions(e: Engine): OptionSpec[] {
+  const ratioChanged = (): void => {
+    const ratio = ratioOf(e);
+    if (ratio && frame) { const f = norm(frame), cx = f.x + f.w / 2, cy = f.y + f.h / 2, w = Math.min(f.w, f.h * ratio), h = w / ratio; frame = whole({ x: cx - w / 2, y: cy - h / 2, w, h }); }
+    e.emit('options', null);
+    e.emit('overlay', null);
+  };
+  return [
     { kind: 'title', text: 'Crop' },
+    { kind: 'number', label: 'Ratio W', priority: 82, min: 0.01, max: 1000, step: 0.1, get: () => customRatio.w, set: (v: number) => { customRatio.w = Math.max(0.01, v); ratioChanged(); }, when: () => ratioId === 'custom' },
+    { kind: 'number', label: 'Ratio H', priority: 81, min: 0.01, max: 1000, step: 0.1, get: () => customRatio.h, set: (v: number) => { customRatio.h = Math.max(0.01, v); ratioChanged(); }, when: () => ratioId === 'custom' },
+    { kind: 'toggle', label: 'Classic Mode', priority: 44, get: () => classic, set: (v) => { classic = v; e.emit('options', null); e.emit('overlay', null); } },
+    { kind: 'toggle', label: 'Auto Adjust Opacity', priority: 43, get: () => autoOpacity, set: (v) => { autoOpacity = v; e.emit('options', null); }, when: () => showCropped },
+    { kind: 'select', label: 'Snap grid', priority: 42, choices: [{ id: '0', label: 'Off' }, { id: '1', label: '1 px' }, { id: '8', label: '8 px' }, { id: '16', label: '16 px' }], get: () => String(gridSnap), set: (v: string) => { gridSnap = Number(v) || 0; e.emit('options', null); } },
+    { kind: 'select', label: 'Fill', priority: 41, choices: [{ id: 'none', label: 'Transparent' }, { id: 'background', label: 'Background color' }, { id: 'foreground', label: 'Foreground color' }], get: () => fillKind, set: (v: string) => { fillKind = v === 'background' || v === 'foreground' ? v : 'none'; e.emit('options', null); }, when: () => !contentAware },
     { kind: 'segment', label: 'Ratio', priority: 90, choices: RATIOS.map((r) => ({ id: r.id, label: r.label })), get: () => ratioId, set: (id: string) => {
       ratioId = id;
       if (id === 'size' && !sizePx()) frontImage(e);
@@ -381,7 +488,7 @@ export const cropTool: Tool = {
     { kind: 'number', label: 'W', priority: 80, min: 0, max: 30000, step: 0.01, get: () => size.w, set: (v: number) => { size.w = Math.max(0, v); presetId = ''; sizeChanged(e); }, when: () => ratioId === 'size' },
     { kind: 'number', label: 'H', priority: 80, min: 0, max: 30000, step: 0.01, get: () => size.h, set: (v: number) => { size.h = Math.max(0, v); presetId = ''; sizeChanged(e); }, when: () => ratioId === 'size' },
     { kind: 'segment', label: 'Unit', priority: 70, choices: [{ id: 'px', label: 'px' }, { id: 'in', label: 'in' }, { id: 'cm', label: 'cm' }], get: () => size.unit, set: (v: string) => { size.unit = v as SizeUnit; presetId = ''; sizeChanged(e); }, when: () => ratioId === 'size' },
-    { kind: 'number', label: 'Resolution', priority: 65, min: 1, max: 9600, unit: 'ppi', get: () => size.res, set: (v: number) => { size.res = Math.max(1, Math.min(9600, v)); presetId = ''; sizeChanged(e); }, when: () => ratioId === 'size' },
+    { kind: 'number', label: 'Resolution', priority: 65, min: 1, max: 10000, unit: 'ppi', get: () => size.res, set: (v: number) => { size.res = Math.max(1, Math.min(10000, v)); presetId = ''; sizeChanged(e); }, when: () => ratioId === 'size' },
     { kind: 'button', label: 'Front Image', priority: 30, run: () => { frontImage(e); sizeChanged(e); }, when: () => ratioId === 'size' },
     { kind: 'select', label: 'Preset', priority: 45, choices: [{ id: '', label: 'Custom' }], live: () => [{ id: '', label: 'Custom' }, ...loadPresets().map((p) => ({ id: p.id, label: presetLabel(p) }))], get: () => presetId,
       set: (v: string) => { const p = loadPresets().find((x) => x.id === v); presetId = p ? p.id : ''; if (p) { Object.assign(size, { w: p.w, h: p.h, unit: p.unit, res: p.res }); } sizeChanged(e); }, when: () => ratioId === 'size' },
@@ -410,5 +517,5 @@ export const cropTool: Tool = {
     { kind: 'toggle', label: 'Perspective', priority: 40, get: () => perspective, set: (v) => { perspective = v; quad = v && frame ? quadOf(frame) : null; e.emit('options', null); e.emit('overlay', null); } },
     { kind: 'button', label: 'Crop', priority: 100, icon: 'check', run: () => commit(e) },
     { kind: 'button', label: 'Cancel', priority: 92, icon: 'close', run: () => { frame = null; quad = null; cornerDrag = -1; drag = null; line = null; leveling = false; angle = 0; e.emit('overlay', null); e.emit('options', null); } },
-  ],
-};
+  ];
+}

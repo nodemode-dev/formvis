@@ -1,5 +1,6 @@
 import { SelectionMask, createSurface, ctxOf, toBlob, type Engine, type Pt, type SelectionMode } from '../../engine';
 import { antialiasMask } from '../../engine/kernels';
+import { resizeMask } from '../../engine/filters';
 import { api } from '../../io/api';
 import { toolHost } from '../registry';
 import { dashed, type Tool } from '../registry';
@@ -12,6 +13,8 @@ import { modeCursor, modeFor, modeSegment, nudgeSelectionKey } from './select-co
 
 let sampleAll = true;
 let sentKey = '';
+/** Edge Offset (-10 to 10 px): the found object's outline grown (positive) or shrunk (negative) before it joins the selection. */
+let edgeOffset = 0;
 
 /** The pixels the tool looks at, at document size: every visible layer, or the active layer alone. */
 function source(engine: Engine): HTMLCanvasElement | OffscreenCanvas | null {
@@ -50,7 +53,8 @@ async function request(engine: Engine, points: Array<[number, number, 0 | 1]>, b
   const px = c.getImageData(0, 0, W, H).data, data = new Uint8Array(W * H);
   for (let i = 0; i < data.length; i++) data[i] = px[i * 4];
   if (engine.current !== p || !data.some((v) => v >= 128)) return null;
-  return engine.selectionAntialiased ? antialiasMask(data.map((v) => (v >= 128 ? 255 : 0)), W, H) : data.map((v) => (v >= 128 ? 255 : 0));
+  const hard = data.map((v) => (v >= 128 ? 255 : 0)), grown = edgeOffset ? resizeMask(hard, W, H, edgeOffset) : hard;
+  return engine.selectionAntialiased ? antialiasMask(grown, W, H) : grown;
 }
 
 /** True when a click found the object that is already the selection (nine tenths overlap), so a new-selection click toggles it off. */
@@ -200,6 +204,7 @@ export const objectSelectTool: Tool = {
   options: (e) => [
     { kind: 'title', text: 'Object Selection' },
     { kind: 'toggle', label: 'Sample All Layers', priority: 45, get: () => sampleAll, set: (v) => { sampleAll = v; } },
+    { kind: 'number', label: 'Edge Offset', priority: 43, min: -10, max: 10, step: 1, unit: 'px', get: () => edgeOffset, set: (v) => { edgeOffset = Math.max(-10, Math.min(10, Math.round(v) || 0)); e.emit('options', null); } },
     { kind: 'toggle', label: 'Anti-alias', priority: 42, get: () => e.selectionAntialiased, set: (v) => { e.selectionAntialiased = v; e.emit('options', null); } },
     { kind: 'toggle', label: 'Object Finder', priority: 40, get: () => hoverOn, set: (v) => { hoverOn = v; hoverDownUntil = 0; if (!v) { highlight = null; hoverSeq++; clearTimeout(hoverTimer); e.emit('overlay', null); } } },
     modeSegment(e),
