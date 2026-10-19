@@ -27,6 +27,7 @@ export class HomeScreen {
   private forced = false;
   private lastCount = 0;
   private hadDocument = false;
+  private back!: HTMLElement;
 
   /** Home (1.87.3): a navigation column (Start, Recent, Projects, Outputs with counts; Create; Preferences and Help at
    *  its foot) beside a main area. Start has a greeting with Open and New document, a drop zone listing what opens, a
@@ -44,7 +45,7 @@ export class HomeScreen {
       <div class="cv-home-nav-sep"></div>
       <div class="cv-home-nav-title">Create</div>
       ${cmdItem('new', 'newFile', 'New document')}${cmdItem('open', 'folderOpen', 'Open')}${cmdItem('generate-image', 'generate', 'Generate image')}
-      <div class="cv-home-nav-foot">${cmdItem('settings', 'settings', 'Preferences')}${cmdItem('help', 'info', 'Help')}</div>
+      <div class="cv-home-nav-foot"><button class="cv-home-nav-item cv-home-back" type="button" data-back hidden>${icon('chevronLeft', 16)}<span>Back to Canvas</span></button>${cmdItem('settings', 'settings', 'Preferences')}${cmdItem('help', 'info', 'Help')}</div>
     </nav>
     <div class="cv-home-main">
       <div class="cv-home-narrow">${navItem('start', 'image', 'Start')}${navItem('recent', 'history', 'Recent')}${navItem('projects', 'folder', 'Projects')}${navItem('outputs', 'download', 'Outputs')}</div>
@@ -69,6 +70,7 @@ export class HomeScreen {
       <div class="cv-home-page" data-page="projects" hidden><div class="cv-home-head"><div><h1 class="cv-home-title">Projects</h1><p class="cv-home-sub">Everything in the project library folder.</p></div><div class="cv-home-head-actions"><button class="cv-btn" type="button" data-cmd="settings">${icon('folder', 14)}Library folder...</button></div></div><div class="cv-home-slot" data-slot="projects"></div></div>
       <div class="cv-home-page" data-page="outputs" hidden><div class="cv-home-head"><div><h1 class="cv-home-title">Outputs</h1><p class="cv-home-sub">Pictures and files you exported, newest first.</p></div></div><div class="cv-home-slot" data-slot="outputs"></div></div>
     </div>`;
+    this.back = this.root.querySelector('[data-back]') as HTMLElement;
     const deps = { recent: d.recent, openRecent: d.openRecent, openPath: d.openPath, removeRecent: d.removeRecent };
     const count = (v: Page) => (n: number): void => { for (const c of Array.from(this.root.querySelectorAll(`[data-v="${v}"] .cv-home-count`))) setText(c, String(n)); };
     const mount = (slot: Page, files: HomeFiles): void => { (this.root.querySelector(`[data-slot="${slot}"]`) as HTMLElement).appendChild(files.root); this.pages.set(slot, files); };
@@ -78,7 +80,8 @@ export class HomeScreen {
     mount('outputs', new HomeFiles(deps, { fixed: 'outputs', onCount: count('outputs') }));
     this.root.addEventListener('click', (e) => {
       const t = e.target as HTMLElement;
-      const v = (t.closest('[data-v]') as HTMLElement | null)?.dataset.v as Page | undefined;
+      if (t.closest('[data-back]')) { this.forced = false; this.sync(); return; }
+      const v =(t.closest('[data-v]') as HTMLElement | null)?.dataset.v as Page | undefined;
       if (v) { this.show(v); return; }
       if (t.closest('[data-cmd]')) return;   // the window's own button[data-cmd] handler runs the command
       const size = (t.closest('[data-size]') as HTMLElement | null)?.dataset.size;
@@ -125,6 +128,7 @@ export class HomeScreen {
     const on = this.forced || (n === 0 && (this.hadDocument ? this.d.afterClose() : this.d.autoShow()));
     if (on && this.root.hidden) { this.paint(); this.fill(); }
     setHidden(this.root, !on);
+    setHidden(this.back, n === 0);
   }
 }
 

@@ -40,6 +40,8 @@ export interface ScreenDisplay {
   onLost: (() => void) | null;
   /** Bytes of idle layer textures kept warm beyond a frame's own, the least recently drawn freed first; 0 frees them at once. */
   budgetBytes?: number;
+  /** Frees every texture the last frame did not draw (the background documents') when together they hold more than `above` bytes; returns the bytes freed. */
+  releaseIdle?(above: number): number;
   /** Texture uploads so far: calls, the tile-sized ones among them, and bytes sent. */
   readonly stats?: UploadStats;
   /** Whether Preferences lets a 32 bit document present in high dynamic range, and the call that applies it for the frame about to be drawn; returns whether the display now presents in HDR. */
@@ -178,7 +180,7 @@ export class GpuDisplay {
     this.timer.arm(!out);
     enc.beginRenderPass({ colorAttachments: [{ view: a.createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }], ...this.timer.first() }).end();
     // Each clipping base's coverage, once per frame, into its own screen-sized texture (mode 102).
-    const clipTex = new Map<DisplayClip, GPUTexture>(), folderTex = new Map<DisplayMask[], GPUTexture>();
+    const clipTex = new Map<DisplayClip, GPUTexture>(), folderTex = new Map<object, GPUTexture>();
     let slot = 0;
     const clipCover = (c: DisplayClip): GPUTexture => {
       const have = clipTex.get(c);
@@ -193,14 +195,14 @@ export class GpuDisplay {
       for (const l of list) if (l.clip) clipCover(l.clip);
       // Each folder chain's coverage (one pass per folder mask, each times the chain so far), into the same pool.
       for (const l of list) {
-        if (!l.folders || folderTex.has(l.folders)) continue;
-        let prev: GPUTexture | null = null;
+        if (!l.folders || folderTex.has(l.clip ? l : l.folders)) continue;
+        let prev: GPUTexture | null = l.clip ? clipTex.get(l.clip) ?? null : null;
         for (const mk of l.folders) {
           const t = this.clipTarget(slot++, W, H);
           this.layerPass(enc, this.blank(), t, { image: null, version: 0, width: 1, height: 1, matrix: [1, 0, 0, 1, 0, 0], opacity: 1, blend: 'normal', mask: mk }, FOLDER_MODE, prev, sampler, view, used, buffers);
           prev = t;
         }
-        if (prev) folderTex.set(l.folders, prev);
+        if (prev) folderTex.set(l.clip ? l : l.folders, prev);
       }
       const alone = (inner: readonly DisplayLayer[]): GPUTexture => {
         const [x, y] = this.subPair(depth, W, H, accFormat);
@@ -216,7 +218,7 @@ export class GpuDisplay {
           continue;
         }
         if (l.width < 1 || l.height < 1) continue;
-        const cover = l.clip ? clipTex.get(l.clip) ?? null : l.folders ? folderTex.get(l.folders) ?? null : null;
+        const cover = l.clip ? (l.folders ? folderTex.get(l) : clipTex.get(l.clip)) ?? null : l.folders ? folderTex.get(l.folders) ?? null : null;
         this.layerPass(enc, a, b, l, l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend), cover, sampler, view, used, buffers, l.ko ? { ko: alone(l.ko.back) } : undefined);
         [a, b] = [b, a];
       }
@@ -429,6 +431,14 @@ export class GpuDisplay {
       if (e.version < 0 || e.mipAt !== e.version) { this.fillMips(e.tex); e.mipAt = e.version; }
     }
     return e.tex;
+  }
+
+  releaseIdle(above: number): number {
+    let held = 0;
+    for (const e of this.cache.values()) if (e.seen !== this.frameNo) held += e.bytes;
+    if (held <= above) return 0;
+    for (const [k, e] of this.cache) if (e.seen !== this.frameNo) { e.tex.destroy(); this.cache.delete(k); }
+    return held;
   }
 
   destroy(): void {

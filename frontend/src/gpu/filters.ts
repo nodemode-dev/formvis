@@ -332,13 +332,13 @@ void main() {
   else v = a >= 128.0 ? 255.0 : floor(clamp(u_d + 0.5 - texelFetch(t1, c, 0).r, 0.0, 1.0) * 255.0 + 0.5);
   o = vec4((u_inv ? 255.0 - v : v) / 255.0, 0.0, 0.0, 1.0);
 }`;
-const FS_FX_BLUR = `${FX_HEAD}uniform ivec2 u_dir; uniform float u_sigma, u_shift; uniform bool u_final; uniform int u_mode; uniform vec3 u_color;
+const FS_FX_BLUR = `${FX_HEAD}uniform ivec2 u_dir; uniform float u_sigma, u_shift; uniform bool u_final; uniform int u_mode; uniform vec3 u_color; uniform int u_off;
 void main() {
   ivec2 c = ivec2(gl_FragCoord.xy), sz = textureSize(t1, 0); bool horiz = u_dir.x != 0;
-  float u = float(horiz ? c.x : c.y) - u_shift, k2 = 1.0 / (2.0 * u_sigma * u_sigma), acc = 0.0, z = 0.0;
+  float u = float((horiz ? c.x : c.y) + u_off) - u_shift, k2 = 1.0 / (2.0 * u_sigma * u_sigma), acc = 0.0, z = 0.0;
   int i0 = int(floor(u)), K = int(ceil(3.0 * u_sigma)), n = horiz ? sz.x : sz.y;
   for (int k = -K; k <= K + 1; k++) {
-    int i = i0 + k; float d = float(i) - u, w = exp(-d * d * k2);
+    int ib = i0 + k, i = ib - u_off; float d = float(ib) - u, w = exp(-d * d * k2);
     z += w;
     if (i < 0 || i >= n) continue;
     acc += w * texelFetch(t1, horiz ? ivec2(i, c.y) : ivec2(c.x, i), 0).r;
@@ -593,8 +593,8 @@ export class GlFilters implements GpuFilterRunner, GpuEffectRunner {
   }
 
   /** One layer-style effect over `box` of the silhouette canvas (engine/gpu-effects.ts): straight RGBA bytes, or null where the GPU cannot. */
-  effectMap(sil: Surface, box: Rect, job: GpuEffectJob): ImageData | null {
-    const { w, h } = box;
+  effectMap(sil: Surface, box: Rect, job: GpuEffectJob, frame?: { x: number; y: number }): ImageData | null {
+    const { w, h } = box, fx = frame ? box.x - frame.x : 0, fy = frame ? box.y - frame.y : 0;
     if (w < 1 || h < 1 || sil.width < 1 || sil.height < 1 || (job.kind === 'cast' && !(job.blur >= 1))) return null;
     return this.guard(Math.max(w, sil.width), Math.max(h, sil.height), () => {
       const made: Tex[] = [], keep = (t: Tex): Tex => { made.push(t); return t; };
@@ -618,7 +618,7 @@ export class GlFilters implements GpuFilterRunner, GpuEffectRunner {
           const along = (dir: readonly [number, number], shift: number, final: boolean) => (gl: WebGL2RenderingContext, loc: Loc): void => {
             paint(gl, loc);
             gl.uniform2i(loc('u_dir'), dir[0], dir[1]); gl.uniform1f(loc('u_sigma'), job.blur / (2 * k)); gl.uniform1f(loc('u_shift'), shift / k);
-            gl.uniform1i(loc('u_final'), final ? 1 : 0); gl.uniform1i(loc('u_mode'), mode);
+            gl.uniform1i(loc('u_final'), final ? 1 : 0); gl.uniform1i(loc('u_mode'), mode); gl.uniform1i(loc('u_off'), (dir[0] ? fx : fy) / k);
           };
           if (!soft) {
             this.pass(blur, half, [src, m], along([1, 0], job.dx, false));

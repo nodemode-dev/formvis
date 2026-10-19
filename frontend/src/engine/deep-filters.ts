@@ -1,6 +1,6 @@
 import { blurDeep, unsharpDeep } from './deep';
 import type { DeepPixels } from './types';
-import { boxMean } from './filters-lib/shared';
+import { boxMean, gaussKernel, separable } from './filters-lib/shared';
 import { galleryRadii, type GalleryKind, type GallerySettings, type RadiusMap } from './blur-gallery';
 
 /** Each pixel blurred by its own radius from a stack of float Gaussian blurs (the 8 bit gallery's levels), interpolated between the two nearest. */
@@ -141,7 +141,10 @@ export function boxBlurDeep(src: DeepPixels, radius: number): DeepPixels {
 
 /** High Pass on floats: each colour channel's difference from its blur plus the middle grey; alpha is kept. */
 export function highPassDeep(src: DeepPixels, radius: number, ceiling = 1): DeepPixels {
-  const soft = blurDeep(src, Math.max(0.1, radius)).data, s = src.data, o = new Float32Array(s), S = src.n + 1, A = src.n;
+  const S = src.n + 1, A = src.n, s = src.data, o = new Float32Array(s), pm = new Float32Array(s);
+  for (let i = 0; i < pm.length; i += S) for (let c = 0; c < A; c++) pm[i + c] *= s[i + A];
+  const sm = separable(pm, src.width, src.height, S, gaussKernel(Math.max(0.1, radius))), soft = new Float32Array(sm);
+  for (let i = 0; i < soft.length; i += S) for (let c = 0; c < A; c++) soft[i + c] = sm[i + A] > 0 ? sm[i + c] / sm[i + A] : 0;
   for (let i = 0; i < s.length; i += S) for (let c = 0; c < A; c++) o[i + c] = Math.min(ceiling, Math.max(0, 0.5 + s[i + c] - soft[i + c]));
   return { ...src, data: o };
 }
@@ -238,6 +241,42 @@ export function customDeep(src: DeepPixels, kernel: readonly number[], scale: nu
   return { ...src, data: out };
 }
 
+/** Offset on floats: the whole layer moved by whole pixels; the uncovered strip is cleared, repeats the edge or wraps. */
+export function offsetDeep(src: DeepPixels, dx: number, dy: number, undefinedAreas: string): DeepPixels {
+  const { width: w, height: h } = src, S = src.n + 1, mx = Math.round(dx), my = Math.round(dy), out = new Float32Array(src.data);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    let sx = x - mx, sy = y - my;
+    const o = (y * w + x) * S;
+    if (undefinedAreas === 'wrap') { sx = ((sx % w) + w) % w; sy = ((sy % h) + h) % h; }
+    else if (undefinedAreas === 'repeat') { sx = Math.min(w - 1, Math.max(0, sx)); sy = Math.min(h - 1, Math.max(0, sy)); }
+    else if (sx < 0 || sy < 0 || sx >= w || sy >= h) { for (let c = 0; c < S; c++) out[o + c] = 0; continue; }
+    const q = (sy * w + sx) * S;
+    for (let c = 0; c < S; c++) out[o + c] = src.data[q + c];
+  }
+  return { ...src, data: out };
+}
+
+/** Mosaic on floats: square cells from the layer's corner, each the alpha-weighted mean of its pixels. */
+export function mosaicDeep(src: DeepPixels, cellSize: number): DeepPixels {
+  const { width: w, height: h } = src, S = src.n + 1, A = src.n, cell = Math.max(1, Math.round(cellSize)), out = new Float32Array(src.data), sum = new Float64Array(A);
+  for (let y0 = 0; y0 < h; y0 += cell) for (let x0 = 0; x0 < w; x0 += cell) {
+    const x1 = Math.min(w, x0 + cell), y1 = Math.min(h, y0 + cell);
+    let a = 0, n = 0;
+    sum.fill(0);
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+      const q = (y * w + x) * S, al = src.data[q + A];
+      for (let c = 0; c < A; c++) sum[c] += src.data[q + c] * al;
+      a += al; n++;
+    }
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+      const o = (y * w + x) * S;
+      if (a > 0) for (let c = 0; c < A; c++) out[o + c] = sum[c] / a;
+      out[o + A] = a / n;
+    }
+  }
+  return { ...src, data: out };
+}
+
 const FIXED_SHARPEN: Record<string, [number, number, number]> = { sharpen: [50, 0.6, 0], sharpenMore: [120, 0.7, 0], sharpenEdges: [100, 1, 8] };
 
 /** The float version of library filter `kind` with its stored `values`, or null when it only runs on 8 bits. */
@@ -254,10 +293,12 @@ export function deepLibFilter(kind: string, values: Record<string, unknown>, cei
   if (kind === 'findEdges') return (d) => findEdgesDeep(d, ceiling);
   if (kind === 'solarize') return (d) => solarizeDeep(d);
   if (kind === 'custom' && Array.isArray(values.kernel)) return (d) => customDeep(d, values.kernel as number[], Math.max(1, num('scale')), num('offset'), ceiling);
+  if (kind === 'offset') return (d) => offsetDeep(d, num('horizontal'), num('vertical'), typeof values.undefinedAreas === 'string' ? values.undefinedAreas : 'transparent');
+  if (kind === 'mosaic') return (d) => mosaicDeep(d, num('cellSize'));
   const fixed = FIXED_SHARPEN[kind];
   if (fixed) return (d) => unsharpDeep(d, fixed[0], fixed[1], fixed[2], ceiling);
   return null;
 }
 
 /** The library filters that run in float at depth, for the filter dialog's note and the agent's description. */
-export const DEEP_LIB_KINDS: readonly string[] = ['blur', 'blurMore', 'boxBlur', 'sharpen', 'sharpenMore', 'sharpenEdges', 'highPass', 'maximum', 'minimum', 'median', 'dustAndScratches', 'emboss', 'findEdges', 'solarize', 'custom'];
+export const DEEP_LIB_KINDS: readonly string[] = ['blur', 'blurMore', 'boxBlur', 'sharpen', 'sharpenMore', 'sharpenEdges', 'highPass', 'maximum', 'minimum', 'median', 'dustAndScratches', 'emboss', 'findEdges', 'solarize', 'custom', 'offset', 'mosaic'];

@@ -154,7 +154,7 @@ export function shapeActive(s: BrushShape | null | undefined): boolean {
 
 /** A preset's tip shape (angle in degrees, roundness in percent) is optional: absent is a round tip (0, 100). `spacing`
  *  (percent of the diameter) is set when an imported tip carries one other than the 25 a tip paints at by default. */
-export interface BrushPreset { id: string; name: string; description: string; diameter: number; hardness: number; opacity: number; dynamics: BrushDynamics; tip?: SampledTip; angle?: number; roundness?: number; spacing?: number; shape?: Partial<BrushShape>; flow?: number; /** The folder it is listed in. */ group?: string }
+export interface BrushPreset { id: string; name: string; description: string; diameter: number; hardness: number; opacity: number; dynamics: BrushDynamics; tip?: SampledTip; angle?: number; roundness?: number; spacing?: number; shape?: Partial<BrushShape>; flow?: number; /** The folder it is listed in; a path with / puts it in a folder inside a folder. */ group?: string; /** The foreground colour it sets, when saved with Capture Colour. */ colour?: { r: number; g: number; b: number }; /** The Brush tool's Mode it sets, when saved with Capture Tool Options. */ mode?: string }
 
 /** Presets made from imported .abr files and brushes the person saved, kept by the app and listed after the built-ins. */
 export let importedBrushPresets: BrushPreset[] = [];

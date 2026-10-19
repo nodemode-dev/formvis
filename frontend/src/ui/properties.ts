@@ -12,6 +12,7 @@ import { PanelGroup } from './panel-group';
 import { allBrushPresets, brushGroupOf, importedBrushPresets, type BrushPreset } from '../engine/brush-dynamics';
 import { importAbr, moveBrushPreset, renameBrushGroup, renameImportedBrush, saveBrushPreset, updateBrushPreset } from '../io/brush-library';
 import { promptName } from './dialogs';
+import { adjustSection } from './adjust-props';
 
 /** The Properties column (Phase 21, UI_SPEC.md sections 5 and 6, the target's s20): Properties (the active layer's
  *  placement: W, X, H, Y, with a link that keeps the aspect), Brushes (the tip, Size and Hardness, a stroke preview, and
@@ -269,6 +270,8 @@ export class PropertiesColumn {
     liveHead.addEventListener('click', () => { liveHead.setAttribute('aria-expanded', String(!liveOpen())); setHidden(liveList, !liveOpen()); setHidden(liveActs, !liveOpen()); this.refreshers.forEach((r) => r()); });
     const liveCell = (k: string): HTMLElement => liveList.querySelector(`[data-live="${k}"]`) as HTMLElement;
     const liveBtns = Array.from(liveActs.querySelectorAll<HTMLButtonElement>('[data-live-for]'));
+    const adj = adjustSection(e, run);
+    liveActs.after(adj.head, adj.body);
     const quickHead = body.querySelector('.cv-props-quick-head') as HTMLButtonElement, quickActs = body.querySelector('.cv-props-quick') as HTMLElement, quickBtns = Array.from(quickActs.querySelectorAll<HTMLButtonElement>('[data-quick-for]'));
     quickHead.addEventListener('click', () => { quickHead.setAttribute('aria-expanded', String(quickHead.getAttribute('aria-expanded') !== 'true')); this.refreshers.forEach((r) => r()); });
     const roleHead = body.querySelector('.cv-props-role-head') as HTMLButtonElement, roleBody = body.querySelector('.cv-props-role') as HTMLElement, roleSel = body.querySelector('.cv-props-role-select') as HTMLSelectElement;
@@ -344,6 +347,7 @@ export class PropertiesColumn {
       if (a && (a.smart || a.vector || a.fillContent)) quick.add('raster');
       if (a && !a.mask && !a.isGroup) quick.add('maskless');
       for (const b of quickBtns) setHidden(b, !(b.dataset.quickFor ?? '').split(' ').some((k) => quick.has(k)));
+      adj.refresh();
       setHidden(quickHead, !quick.size);
       setHidden(quickActs, !quick.size || quickHead.getAttribute('aria-expanded') !== 'true');
       setHidden(roleHead, !l);
@@ -475,7 +479,13 @@ export class PropertiesColumn {
       folders.textContent = '';
       const byGroup = new Map<string, BrushPreset[]>();
       for (const p of allBrushPresets()) { const g = brushGroupOf(p); byGroup.set(g, [...(byGroup.get(g) ?? []), p]); }
-      const groups = [...byGroup].map(([g, list]) => ({ id: g, name: t(g), raw: g, list }));
+      const paths = new Set<string>();
+      for (const g of byGroup.keys()) { const parts = g.split('/'); for (let i = 1; i <= parts.length; i++) paths.add(parts.slice(0, i).join('/')); }
+      const subtree = (g: string): BrushPreset[] => [...byGroup].filter(([k]) => k === g || k.startsWith(`${g}/`)).flatMap(([, l]) => l);
+      const ordered: string[] = [];
+      const visit = (parent: string): void => { for (const g of paths) if (g.slice(0, g.lastIndexOf('/') + 1) === (parent ? `${parent}/` : '') && g.split('/').length === (parent ? parent.split('/').length + 1 : 1)) { ordered.push(g); visit(g); } };
+      visit('');
+      const groups = ordered.map((g) => ({ id: g, name: t(g.slice(g.lastIndexOf('/') + 1)), raw: g, depth: g.split('/').length - 1, list: byGroup.get(g) ?? [], all: subtree(g) }));
       const dropOn = (node: HTMLElement, group: string, before: string | null): void => {
         node.addEventListener('dragover', (ev) => { if (dragId) { ev.preventDefault(); node.classList.add('is-drop'); } });
         node.addEventListener('dragleave', () => node.classList.remove('is-drop'));
@@ -483,20 +493,23 @@ export class PropertiesColumn {
       };
       for (const grp of groups) {
         const list = grp.list.filter((p) => !q0 || p.name.toLowerCase().includes(q0));
-        if (!list.length) continue;
+        if (!grp.all.some((p) => !q0 || p.name.toLowerCase().includes(q0))) continue;
+        if (!q0 && [...shut].some((s) => grp.id.startsWith(`${s}/`))) continue;
         const open = !shut.has(grp.id) || !!q0;
         const head = el<HTMLButtonElement>(`<button class="cv-brush-folder" type="button" aria-expanded="${open}">${icon('chevronDown', 12)}${icon('folder', 15)}<span class="cv-bf-name"></span><em></em></button>`);
+        head.style.paddingLeft = `${8 + grp.depth * 14}px`;
         setText(head.querySelector('.cv-bf-name') as HTMLElement, grp.name);
         setText(head.querySelector('em') as HTMLElement, String(list.length));
         head.addEventListener('click', () => { if (shut.has(grp.id)) shut.delete(grp.id); else shut.add(grp.id); key = ''; fill(); });
         dropOn(head, grp.raw, null);
-        if (grp.list.some((p) => imported.has(p.id))) {
+        if (grp.all.some((p) => imported.has(p.id))) {
           head.title = 'Double-click to rename the folder';
           head.addEventListener('dblclick', () => { void promptName('Rename Folder', grp.raw, 'Rename').then((n) => (n ? renameBrushGroup(grp.raw, n) : false)).then(() => { key = ''; fill(); }); });
         }
         folders.appendChild(head);
-        if (!open) continue;
+        if (!open || !list.length) continue;
         const box = el(`<div class="cv-brush-${view}"></div>`);
+        box.style.marginLeft = `${grp.depth * 14}px`;
         for (const p of list) {
           const tile = el<HTMLButtonElement>(`<button class="cv-brush-tile" type="button"><span class="cv-brush-name"></span><span class="cv-brush-size"></span></button>`);
           tile.prepend(thumb(p, view === 'grid' ? 40 : 30, view === 'grid' ? 30 : 22));

@@ -1,6 +1,7 @@
 import type { Engine } from '../../engine';
 import { deblock, depthBlur, harmonize, mixColor, skinSmooth } from '../../engine/neural';
-import { colorizeReady, depthReady, localColorize, localDepth, localStyle, styleReady } from '../../io/local-gen';
+import { colorizeReady, depthReady, localColorize, localDepth, localDepthValues, localStyle, styleReady } from '../../io/local-gen';
+import { depthBytes } from '../../engine/doc-depth';
 import { toBlob } from '../../engine/surface';
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
@@ -81,6 +82,18 @@ export class NeuralFiltersDialog extends Dialog {
     this.depthPending = true;
     try {
       if (!(await depthReady())) { setText(this.note, 'Depth Blur needs Depth Anything V2 Small (99 MB, Apache-2.0): download it in Preferences > Plugins > Local models.'); return; }
+      const p = this.engine.current;
+      if (p && l.raster.width === p.doc.width && l.raster.height === p.doc.height) {
+        const shared = p.doc.depthMap?.key && this.engine.docDepth(p) ? p.doc.depthMap : null;
+        if (!shared) setText(this.note, 'Reading the depth of this document...');
+        const d = shared ?? await this.engine.ensureDocDepth(localDepthValues);
+        if (d) {
+          this.depth = { layerId: pixelsKey(l), map: new Uint8ClampedArray(depthBytes(d, d.w, d.h)) };
+          this.showRows();
+          this.schedule();
+          return;
+        }
+      }
       setText(this.note, 'Reading the depth of this layer...');
       const blob = await toBlob(l.raster.canvas);
       const png = await localDepth(blob), bmp = await createImageBitmap(png), c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;

@@ -130,7 +130,7 @@ import { commitPendingCrop, cropPending, startPerspectiveCrop } from './extensio
 import { HostLink } from './host';
 import { api, onServiceChange, serviceDown, serviceReady, type Capabilities, type CmykPsd, type OpenedProject } from './io/api';
 import { PROJECT_FILTER, baseName, checkForUpdate, chooseOpenPaths, chooseSavePath, confirmExit, folderOf, hasPanels, installUpdate, isDiskPath, listenShell } from './io/disk';
-import { depthReady, findToRemove, installModel, localDepth, localDepth16, localInpaint, modelReady, skyMask, skyReady, warmLama } from './io/local-gen';
+import { depthReady, findToRemove, installModel, localDepth, localDepth16, localDepthValues, localInpaint, modelReady, skyMask, skyReady, warmLama } from './io/local-gen';
 import { FocusAreaDialog } from './ui/panels/focus-area-dialog';
 import { MergeDialog } from './ui/panels/merge-dialog';
 import { ScriptEventsDialog } from './ui/panels/script-events-dialog';
@@ -858,7 +858,11 @@ export function startApp(): void {
     recent = next.slice(0, 40);   // Home lists 40 (1.87.1); Open Recent shows the first 10
     try { localStorage.setItem(RECENT_KEY, JSON.stringify(recent)); } catch { /* storage unavailable: the list lasts this session */ }
   }
-  const noteRecent = (name: string): void => keepRecent([name, ...recent.filter((n) => n !== name)]);
+  const noteRecent = (name: string): void => {
+    keepRecent([name, ...recent.filter((n) => n !== name)]);
+    const tauri = (window as unknown as { __TAURI_INTERNALS__?: { invoke(cmd: string, args: Record<string, unknown>): Promise<unknown> } }).__TAURI_INTERNALS__;
+    if (tauri && isDiskPath(name)) void tauri.invoke('note_recent_document', { path: name }).catch(() => undefined);
+  };
 
   async function openLibrary(name: string): Promise<boolean> {
     if (isDiskPath(name)) { await openPaths([name]); return true; }   // a recent file on disk (1.87.0)
@@ -2058,7 +2062,7 @@ export function startApp(): void {
     await flatLoss(kind, quality);
     if (p.doc.mode === 'cmyk' && (kind === 'tiff' || kind === 'jpg')) { await exportCmyk(kind, quality); return; }
     if (p.doc.mode === 'lab' && kind === 'tiff') { await exportLabTiff(); return; }
-    await engine.task(async () => {
+    await engine.lockedTask(`Export ${kind.toUpperCase()}`, async () => {
       try {
         // A 16-bit document's PNG and TIFF keep their 16 bits (1.53.6): composed in floating point, written by the engine.
         const deep = (p.doc.depth ?? 8) > 8 && (kind === 'png' || kind === 'tiff') ? composeDeep(p.doc) : null;
@@ -2828,7 +2832,7 @@ export function startApp(): void {
     // A PSD holds 30000 pixels a side and 2 GB; a larger document goes out as a PSB, which holds 300000 and 4 EB.
     const rasters = p.doc.layers.filter((l) => l.raster).length + 1;
     if (!psb && (p.doc.width > 30000 || p.doc.height > 30000 || p.doc.width * p.doc.height * 4 * rasters > 4e9)) { psb = true; toast('This document is too large for a PSD, so it is written as a PSB.', 'info'); }
-    await engine.task(async () => {
+    await engine.lockedTask(`Export ${psb ? 'PSB' : 'PSD'}`, async () => {
       try {
         if (p.doc.layers.some((l) => l.tiled) && engine.bandedExportable()) {   // a giant layered document is written in parts (SC-ED-0263)
           const job = engine.startJob(`Export ${psb ? 'PSB' : 'PSD'}`, 1);
@@ -5659,6 +5663,23 @@ export function startApp(): void {
       });
       if (deep) { engine.openDeep(`${p.name} Depth`, deep, 16, p.doc.resolution); toast('Opened the depth as a 16-bit grey document: near is bright, far is dark.'); }
     })() },
+    { id: 'select-by-depth', label: 'Select by Depth...', enabled: has,
+      params: {
+        near: { type: 'number', min: 0, max: 100, description: 'The nearest depth to select, percent of the range (100 is nearest); 100 when left out.' },
+        far: { type: 'number', min: 0, max: 100, description: 'The farthest depth to select, percent of the range (0 is farthest); 60 when left out.' },
+        feather: { type: 'number', min: 0, max: 50, description: 'Percent of the range over which the selection fades out past each end; 10 when left out.' },
+        combine: { type: 'string', enum: ['new', 'add', 'subtract', 'intersect'], description: 'How the result meets the selection; new when left out.' },
+        dialog: { type: 'boolean', description: 'Open the Color Range dialog on depth instead of selecting at once.' },
+      },
+      run: (a) => void (async () => {
+        if (!(await depthReady())) { toast('Select by Depth needs Depth Anything V2 Small (99 MB): download it in Preferences > Plugins > Local models.', 'error'); return; }
+        const d = await engine.task(() => engine.ensureDocDepth(localDepthValues));
+        if (!d) return;
+        const hasParams = typeof a?.near === 'number' || typeof a?.far === 'number' || typeof a?.feather === 'number';
+        if (!hasParams && a?.dialog !== false && !a?.combine) { dialogs.colorRange.show('depth'); return; }
+        const mode = a?.combine === 'add' ? 'add' : a?.combine === 'subtract' ? 'subtract' : a?.combine === 'intersect' ? 'intersect' : 'replace';
+        engine.selectByDepth({ near: typeof a?.near === 'number' ? a.near : 100, far: typeof a?.far === 'number' ? a.far : 60, feather: typeof a?.feather === 'number' ? a.feather : 10, mode });
+      })() },
     { id: 'depth-map-from-layer', label: 'Depth Map from Layer', enabled: () => !!layer() && !layer()?.isGroup, run: () => void (async () => {
       if (!(await depthReady())) { toast('Depth Map from Layer needs Depth Anything V2 Small (99 MB): download it in Preferences > Plugins > Local models.', 'error'); return; }
       const id = engine.current?.activeLayer?.id;
@@ -5885,7 +5906,7 @@ export function startApp(): void {
       'lock-transparency', 'lock-layers', '-', 'link-layers', 'select-linked', '-',
       'merge', 'merge-visible', 'stamp-visible', 'frequency-separation', 'stamp-down', 'flatten', '-', 'show-only-layer', 'show-all-layers', { label: 'Color Label', items: ['layer-label-none', '-', ...LAYER_LABELS.map((c) => `layer-label-${c}`)] }, { label: 'Role', items: ['layer-role-none', '-', ...LAYER_ROLES.map((r) => `layer-role-${r}`)] }, '-',
       { label: 'Matting', items: ['matting-decontaminate', 'matting-defringe', 'matting-black', 'matting-white'] }] },
-    { label: 'Select', items: ['select-all', 'deselect', 'reselect', 'inverse', 'convert-to-shape', 'convert-to-shape-tolerance', 'selection-to-work-path', '-', 'select-all-layers', 'deselect-layers', 'find-layers', 'isolate-layers', '-', 'color-range', 'focus-area', 'select-subject', 'select-sky', 'select-object', { label: 'Subject and Sky Options', items: ['auto-select-sample-all', 'sky-sensitivity', 'sky-softness'] }, 'select-and-mask', 'select-and-mask-dialog', '-', 'layer-pixels', 'mask-black', '-',
+    { label: 'Select', items: ['select-all', 'deselect', 'reselect', 'inverse', 'convert-to-shape', 'convert-to-shape-tolerance', 'selection-to-work-path', '-', 'select-all-layers', 'deselect-layers', 'find-layers', 'isolate-layers', '-', 'color-range', 'select-by-depth', 'focus-area', 'select-subject', 'select-sky', 'select-object', { label: 'Subject and Sky Options', items: ['auto-select-sample-all', 'sky-sensitivity', 'sky-softness'] }, 'select-and-mask', 'select-and-mask-dialog', '-', 'layer-pixels', 'mask-black', '-',
       { label: 'Modify', items: ['expand', 'contract', 'feather', 'border', 'smooth'] }, 'grow', 'similar', '-', 'transform-selection', 'transform-selection-numeric', 'select-float', 'select-drop', '-', 'quick-mask', '-', 'load-selection', 'load-luminosity', 'load-selection-vector-mask', 'save-selection', { label: 'Channel', items: ['new-channel', 'new-spot-channel', 'duplicate-channel', 'channel-options', '-', 'channel-up', 'channel-down'] }, 'path-selection', 'path-selection-dialog', 'delete-path'] },
     { label: 'Filter', items: ['filter-last', 'filter-convert-smart', '-', 'filter-filterGallery', 'filter-develop', 'filter-wide-angle', 'filter-lensCorrection', 'filter-liquify', 'filter-vanishing-point', 'filter-neural', '-',
       { label: 'Blur', items: filterGroup('Blur', ['filter-average', 'filter-gaussianBlur', 'filter-lensBlur', 'filter-motionBlur', 'filter-radialBlur', 'filter-surfaceBlur']) },

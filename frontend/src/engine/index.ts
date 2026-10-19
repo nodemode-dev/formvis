@@ -107,6 +107,7 @@ import { ADJUSTMENT_LABELS, autoLevels, defaultAdjustmentData, desaturatePixels,
 import { fromGray, gaussianBlur, histogram, resizeMask, toGray } from './filters';
 import { depthCorrect, isDepthName, type DepthCorrection } from './depth-map';
 import { limitOf, limitView } from './limit';
+import { depthBytes, depthFromValues, depthKey, depthRangeMask, type DocDepth } from './doc-depth';
 import { APPLY_CHANNELS, APPLY_COVERAGE_CHANNELS, APPLY_MODES, applyImagePixels, channelSource, coverageSource, maskStrength, type ApplyChannel, type ApplyMode } from './apply-image';
 import { averageImage } from './filters-lib/blur';
 import type { LibFrame, LibImage, LibPath } from './filter-library';
@@ -288,6 +289,8 @@ export class Engine {
     // A locked section of Brush Settings keeps its values (mergeShape); a preset's own shape fills the rest.
     this.brushShape = mergeShape(this.brushShape, { ...(undo as Partial<BrushShape>), angle: preset.angle ?? 0, roundness: preset.roundness ?? 100, spacing: preset.spacing ?? (hadSpacing ? null : this.brushShape.spacing), ...preset.shape });
     if (preset.flow !== undefined) this.brushFlow = preset.flow;
+    if (preset.colour) this.fg = { ...preset.colour };
+    if (preset.mode && (preset.mode === 'behind' || preset.mode === 'clear' || BLEND_MODES.some((m) => m.id === preset.mode))) this.brushBlend = preset.mode as BlendMode | 'behind' | 'clear';
     const tipHeld = (this.brushShape.locks ?? []).includes('tip');
     this.setBrush({ ...(tipHeld ? {} : { diameter: preset.diameter, hardness: preset.hardness }), opacity: preset.opacity, tip: preset.tip ?? null });
   }
@@ -382,6 +385,27 @@ export class Engine {
     this.quickMask = !this.quickMask;
     this.emit('options', null);
     this.emit('selection', null);
+  }
+  /** The Quick Mask as gray pixels the size of the document: white selected, black not, no selection all white. */
+  quickMaskPixels(): ImageData | null {
+    const p = this.current;
+    if (!p) return null;
+    const { width: W, height: H } = p.doc, sel = p.selection, img = new ImageData(W, H), d = img.data;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = (y * W + x) * 4, v = sel ? sel.valueAt(x, y) : 255; d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255; }
+    return img;
+  }
+  /** Gray pixels (the red channel) as the new selection, in one history step named `label`. */
+  setQuickMaskPixels(img: ImageData, label: string): boolean {
+    const p = this.current;
+    if (!p || img.width !== p.doc.width || img.height !== p.doc.height) return false;
+    const a = new Uint8Array(img.width * img.height);
+    for (let i = 0; i < a.length; i++) a[i] = img.data[i * 4];
+    p.history.begin(label, p.snapshot());
+    p.selection = SelectionMask.cropped(0, 0, img.width, img.height, a);
+    p.history.end(p.snapshot());
+    this.emit('selection', null);
+    this.refresh();
+    return true;
   }
   /** The Quick Mask stroke in progress (the selection as painted so far), for the tint to follow it live. */
   get quickMaskLive(): Surface | null { return this.stroke?.quick ? this.stroke.s.working : null; }
@@ -1266,8 +1290,11 @@ export class Engine {
       if (p === shown) continue;
       for (const l of p.doc.layers) { if (l.raster) freed += dropHalved(l.raster); if (l.mask?.raster) freed += dropHalved(l.mask.raster); }
     }
-    return freed + this.display.release(keep) + this.work.release(keep);
+    return freed + this.display.release(keep) + this.work.release(keep) + (this.releaseGpuIdle?.(this.backgroundCacheBytes) ?? 0);
   }
+  /** Set by the stage while a GPU display draws: frees the textures of the documents not shown when they hold more than the
+   *  given bytes (0 frees them all). */
+  releaseGpuIdle: ((above: number) => number) | null = null;
   /** What the render caches hold now, in bytes: halved copies of the documents not shown and of the shown one, layer-effect
    *  results, scratch surfaces. */
   cacheUse(): { background: number; shown: number; effects: number; scratch: number } {
@@ -2030,7 +2057,6 @@ export class Engine {
       }
       // A layer's own vector mask (1.66.1) joins its folders' masks, one array of its own.
       const own = vecFor(l, o?.transform), folders = own.length ? [...(fchains.get(l.parentId ?? null) ?? []), ...own] : fchains.get(l.parentId ?? null);
-      if (folders && l.clipId) return { reason: 'a clipped layer with a vector mask or inside a masked folder' };
       const bif = blendIfActive(l.blendIf) ? l.blendIf as BlendIf : null;
       const blendIf: GpuBlendIf | undefined = bif ? { channel: bif.channel === 'r' ? 2 : bif.channel === 'g' ? 3 : bif.channel === 'b' ? 4 : 1, thisLayer: bif.thisLayer, underlying: bif.underlying } : undefined;
       const chOff = l.blendChannels ? l.blendChannels.reduce((s, on, i) => (on ? s : s | (1 << i)), 0) : 0;
@@ -5184,6 +5210,10 @@ export class Engine {
         return;
       }
     }
+    if (st.heal === 'remove' && this.retouch.removeLama && !this.removeModelReady && st.target === 'pixels' && !this.lamaNoted) {
+      this.lamaNoted = true;
+      this.notice('LaMa is not ready (download it in Preferences > Plugins > Local models, or wait for it to load), so Remove used the patch fill.');
+    }
     // A plain stroke on pixels in an 8-bit RGB document keeps its undo as the tiles it changed (1.60.7, DEV_PLAN 26.3);
     // healing, masks and deep, CMYK or Lab documents keep the whole patch, which their steps below read.
     const plain = !st.heal && !st.healFrom && st.target === 'pixels' && (st.project.doc.depth ?? 8) <= 8 && st.project.doc.mode !== 'cmyk' && st.project.doc.mode !== 'lab';
@@ -6257,7 +6287,15 @@ export class Engine {
     const p = this.current;
     if (!p) return null;
     const { width: W, height: H } = p.doc, comp = renderDoc(this.work, p.doc);
-    const dl = o.mode === 'depth' ? this.depthLayer(p) : null, depth = dl?.raster && dl.raster.width === W && dl.raster.height === H ? dl.raster.read().data : null;
+    const dl = o.mode === 'depth' ? this.depthLayer(p) : null;
+    let depth: Uint8Array | null = null;
+    if (o.mode === 'depth') {
+      if (dl?.raster && dl.raster.width === W && dl.raster.height === H) {
+        const rgba = dl.raster.read().data;
+        depth = new Uint8Array(W * H);
+        for (let i = 0; i < depth.length; i++) depth[i] = rgba[i * 4];
+      } else if (!dl && p.doc.depthMap) depth = depthBytes(p.doc.depthMap, W, H);
+    }
     const dlo = Math.max(0, Math.min(255, o.lo ?? 0)), dhi = Math.max(dlo, Math.min(255, o.hi ?? 255));
     const w = scale < 1 ? Math.max(1, Math.round(W * scale)) : W, h = scale < 1 ? Math.max(1, Math.round(H * scale)) : H;
     let src = comp;
@@ -6285,7 +6323,7 @@ export class Engine {
         : o.mode === 'shadows' ? Math.min(1, Math.max(0, (0.45 - L) / 0.2))
         : o.mode === 'midtones' ? Math.min(1, Math.max(0, 1 - Math.abs(L - 0.5) / 0.3))
         : o.mode === 'luminosity' ? depthWeight(L * 255, dlo, dhi, o.fuzziness)
-        : o.mode === 'depth' ? (depth ? depthWeight(depth[(Math.min(H - 1, sy) * W + Math.min(W - 1, sx)) * 4], dlo, dhi, o.fuzziness) : 0)
+        : o.mode === 'depth' ? (depth ? depthWeight(depth[Math.min(H - 1, sy) * W + Math.min(W - 1, sx)], dlo, dhi, o.fuzziness) : 0)
         : o.mode === 'gamut' ? (gflags && gflags[Math.round(r * gs) * gg + Math.round(g * gs) * gn + Math.round(b * gs)] ? 1 : 0)
         : hueWeight(o.mode, r, g, b, o.fuzziness);
       if (o.mode === 'skin' && o.faces) v *= faceWeight(sx, sy, o.faces);
@@ -6310,7 +6348,7 @@ export class Engine {
   selectColorRange(o: ColorRangeOptions): void {
     const r = this.colorRangeMask(o);
     if (!r) return;
-    if (o.mode === 'depth' && !this.depthLayer()) { this.notice('This document has no Depth Map layer. Compute Depth Map first.'); return; }
+    if (o.mode === 'depth' && !this.depthLayer() && !this.current?.doc.depthMap) { this.notice('This document has no depth map. Run Select by Depth or Compute Depth Map first.'); return; }
     if (o.mode === 'gamut' && !this.viewTransform?.lut.gamut) { this.notice('Out Of Gamut needs View > Proof Colors on with a proof profile; none is on.'); return; }
     if (!r.any) { this.notice('No pixels matched; nothing was selected.'); return; }
     this.applySelection(SelectionMask.cropped(0, 0, r.w, r.h, r.mask), o.combine ?? 'replace', 'Color Range');
@@ -8942,7 +8980,9 @@ export class Engine {
     const start = { ...g.start }, end = { ...g.end };
     this.cancelGradient();
     const content = fillFromLine(base, { x: 0, y: 0, w: p.doc.width, h: p.doc.height }, start, end);
-    return content ? this.newFillLayer(content) : null;
+    const id = content ? this.newFillLayer(content) : null;
+    if (id) this.setMaskTarget(false);
+    return id;
   }
 
   /** Layer > Layer Content Options on a fill layer: its content set to `content` and drawn again, one Modify Fill Layer
@@ -10583,6 +10623,7 @@ export class Engine {
    *  whether the LaMa model is on this computer (the window asks). */
   removePending: { project: Project; layerId: ID; width: number; height: number; mask: Uint8Array; version: number } | null = null;
   removeModelReady = false;
+  private lamaNoted = false;
   private removeTintCache: { version: number; image: Surface } | null = null;
 
   private removePendingLive(): NonNullable<Engine['removePending']> | null {
@@ -10912,6 +10953,51 @@ export class Engine {
     raster.touch();
     if (old) return this.replaceLayerPixels(old.id, raster.read(), 'Recompute Depth Map');
     this.insertRasterLayer(raster, 'Depth Map', 0, 0, {}, opts.layer ? 'Depth Map from Layer' : 'Compute Depth Map');
+    return true;
+  }
+
+  /** What the shared depth map is read from: the document with its Depth Map and Relight layers hidden. */
+  private docDepthSource(p: Project): Surface | null {
+    const hide = (l: Layer): boolean => !l.isGroup && ((!!l.raster && isDepthName(l.name)) || !!l.relight);
+    if (!p.doc.layers.some(hide)) return this.flattened();
+    const s = renderDoc(this.work, { ...p.doc, layers: p.doc.layers.map((l) => (hide(l) ? { ...l, visible: false } : l)) });
+    if (!s) return null;
+    const out = createSurface(s.width, s.height);
+    ctxOf(out).drawImage(s as CanvasImageSource, 0, 0);
+    return out;
+  }
+
+  /** The shared 16-bit depth map while it still names the pixels the document shows, else null. */
+  docDepth(p: Project | null = this.current): DocDepth | null {
+    const d = p?.doc.depthMap;
+    if (!p || !d || d.w !== p.doc.width || d.h !== p.doc.height) return null;
+    const s = this.docDepthSource(p);
+    return s && depthKey(ctxOf(s).getImageData(0, 0, s.width, s.height)) === d.key ? d : null;
+  }
+
+  /** The shared depth map, read once by `run` (0 to 1 floats, near high) and kept on the document; read again only when
+   *  the pixels it came from changed, or `force`. Not a history step. */
+  async ensureDocDepth(run: (image: Blob, w: number, h: number) => Promise<Float32Array>, force = false): Promise<DocDepth | null> {
+    const p = this.current;
+    if (!p) return null;
+    const s = this.docDepthSource(p);
+    if (!s) return null;
+    const key = depthKey(ctxOf(s).getImageData(0, 0, s.width, s.height));
+    if (!force && p.doc.depthMap?.key === key) return p.doc.depthMap;
+    let values: Float32Array;
+    try { values = await run(await toBlob(s), p.doc.width, p.doc.height); } catch (err) { this.notice(err instanceof Error ? err.message : 'The depth could not be read.', 'error'); return null; }
+    const made = depthFromValues(values, p.doc.width, p.doc.height, key);
+    if (this.current === p) p.doc.depthMap = made;
+    return made;
+  }
+
+  /** Select > Select by Depth: pixels between `far` and `near` (percent of the depth range, near high), `feather` percent soft at each end. */
+  selectByDepth(o: { near: number; far: number; feather: number; mode?: SelectionMode }): boolean {
+    const p = this.current, d = p?.doc.depthMap;
+    if (!p || !d) { this.notice('This document has no depth map yet.'); return false; }
+    const mask = depthRangeMask(d, o.near, o.far, o.feather);
+    if (!mask.some((v) => v > 0)) { this.notice('No pixels lie in that depth range; nothing was selected.'); return false; }
+    this.applySelection(SelectionMask.cropped(0, 0, d.w, d.h, mask), o.mode ?? 'replace', 'Select by Depth');
     return true;
   }
 

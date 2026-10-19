@@ -1,5 +1,5 @@
 import { applyMat, boundsOf, integral, intersectRect, invert, matScale, mul, setMat, translation, unionRect, type Mat } from './geometry';
-import { createSurface, ctxOf, noteSurface, type Ctx2D, type Raster, type Surface } from './surface';
+import { CANVAS_PIXELS, CANVAS_SIDE, createSurface, ctxOf, noteSurface, type Ctx2D, type Raster, type Surface } from './surface';
 import { TiledRaster } from './tiled';
 import type { SelectionMask } from './selection';
 import type { PixelPatch } from './history';
@@ -221,6 +221,7 @@ export class PixelStroke {
     // of a stroke across a 600 MP picture asked for a window the size of the picture, several times over.
     const m = this.tiled ? 1024 : Math.max(512, Math.round(Math.max(u.w, u.h) / 2));
     const nx = Math.max(0, u.x - m), ny = Math.max(0, u.y - m), nw = Math.min(L, u.x + u.w + m) - nx, nh = Math.min(H, u.y + u.h + m) - ny;
+    if (nw > CANVAS_SIDE || nh > CANVAS_SIDE || nw * nh > CANVAS_PIXELS) { this.clipped = true; return false; }
     if (this.canGrow && !this.canGrow((nw * nh - (open ? this.ww * this.wh : 0)) * (4 * (2 + (this.masked ? 1 : 0) + (this.textured ? 1 : 0) + (this.ink ? 1 : 0)) + (this.buf.ceil ? 5 : 4)))) { this.clipped = true; return false; }
     // A tiled layer's original pixels for the whole new window, read once (1.62.5); a tile there on disk stops the
     // window here, the dab not laid and the area noted for the engine to bring back: never painted over unloaded.

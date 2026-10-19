@@ -1098,6 +1098,7 @@ async def _agent_call(client: str, name: str, args: dict) -> dict:
     except asyncio.CancelledError:
         agents.end(entry, "error", "cancelled by the agent")
         raise
+    _announce(name, bool(out.get("isError")))
     first = next((c.get("text", "") for c in out.get("content", []) if c.get("type") == "text"), "")
     agents.end(entry, "error" if out.get("isError") else "ok", first)
     return out
@@ -1133,6 +1134,59 @@ RESOURCES = [{"uri": "formvis://document", "name": "document", "title": "The ope
              {"uri": "formvis://history", "name": "history", "title": "Document history", "description": "The undo steps of the open document, as list_history gives them.", "mimeType": "application/json"}]
 RESOURCE_TEMPLATES = [{"uriTemplate": "formvis://command/{id}", "name": "command", "title": "One command", "description": "A menu or palette command by its id, as formvis://commands lists them: label, group, when it applies, and its parameters.", "mimeType": "application/json"}]
 _RESOURCE_TOOLS = {"formvis://document": "get_document", "formvis://layers": "get_layer_tree", "formvis://selection": "get_selection", "formvis://plugins": "list_plugins", "formvis://history": "list_history"}
+
+
+_subs: dict[str, dict] = {}   # session id -> {"uris": subscribed addresses, "due": addresses changed and not yet sent, "wake": event}
+_STATE_URIS = ("formvis://document", "formvis://layers", "formvis://selection", "formvis://history")
+
+
+def _announce(name: str, failed: bool) -> None:
+    """A finished tool call: the resources it can have changed are marked due for every session subscribed to them."""
+    if not _subs:
+        return
+    reading = next((t["annotations"]["readOnlyHint"] for t in TOOLS if t["name"] == name), True)
+    changed = {"formvis://jobs"}
+    if not failed and not reading:
+        changed.update(_STATE_URIS)
+        if "plugin" in name:
+            changed.add("formvis://plugins")
+    for sub in _subs.values():
+        due = changed & sub["uris"]
+        if due:
+            sub["due"] |= due
+            sub["wake"].set()
+
+
+def _subscribe(sid: str | None, uri, on: bool) -> str | None:
+    """None when done, otherwise why not."""
+    if not sid or not agents.known_session(sid):
+        return "Subscriptions belong to a session: send initialize first and keep its Mcp-Session-Id header."
+    if not isinstance(uri, str) or uri not in {r["uri"] for r in RESOURCES}:
+        return "Give the uri of a resource from resources/list."
+    sub = _subs.setdefault(sid, {"uris": set(), "due": set(), "wake": asyncio.Event()})
+    if on:
+        sub["uris"].add(uri)
+    else:
+        sub["uris"].discard(uri)
+        sub["due"].discard(uri)
+    return None
+
+
+async def _updates(sid: str, request: Request):
+    """The session's server-sent stream: notifications/resources/updated for each subscribed resource that changed."""
+    sub = _subs.get(sid)
+    if sub is None:
+        sub = _subs.setdefault(sid, {"uris": set(), "due": set(), "wake": asyncio.Event()})
+    while not await request.is_disconnected() and agents.known_session(sid):
+        try:
+            await asyncio.wait_for(sub["wake"].wait(), 10)
+        except asyncio.TimeoutError:
+            yield ": keep-alive\n\n"
+            continue
+        sub["wake"].clear()
+        due, sub["due"] = sorted(sub["due"] & sub["uris"]), set()
+        for uri in due:
+            yield f"event: message\ndata: {json.dumps({'jsonrpc': '2.0', 'method': 'notifications/resources/updated', 'params': {'uri': uri}})}\n\n"
 
 
 async def _read_resource(client: str, uri: str) -> tuple[str | None, str]:
@@ -1242,8 +1296,11 @@ async def bridge_progress(request: Request) -> dict:
 
 
 @router.get("/mcp")
-async def mcp_stream() -> Response:
-    return Response(status_code=405, headers={"Allow": "POST, DELETE"})   # no server-initiated stream: replies come with the POST
+async def mcp_stream(request: Request) -> Response:
+    sid = request.headers.get("mcp-session-id") or ""
+    if "text/event-stream" in request.headers.get("accept", "") and agents.known_session(sid) and _local_origin(request.headers.get("origin")):
+        return StreamingResponse(_updates(sid, request), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
+    return Response(status_code=405, headers={"Allow": "POST, DELETE"})   # a stream only for a session that asks for one: replies come with the POST
 
 
 @router.delete("/mcp")
@@ -1251,6 +1308,7 @@ async def mcp_end(request: Request) -> Response:
     if not _local_origin(request.headers.get("origin")):
         return Response(status_code=403)
     agents.close_session(request.headers.get("mcp-session-id") or "")
+    _subs.pop(request.headers.get("mcp-session-id") or "", None)
     return Response(status_code=204)
 
 
@@ -1288,7 +1346,7 @@ async def mcp(request: Request) -> Response:
         asked = params.get("protocolVersion")
         who = _client_of(request, params, None)
         headers["Mcp-Session-Id"] = agents.open_session(*who)
-        out = _ok(req_id, {"protocolVersion": asked if asked in VERSIONS else "2025-11-25", "capabilities": {"tools": {}, "prompts": {}, "resources": {}}, "serverInfo": server, "instructions": INSTRUCTIONS}, False)
+        out = _ok(req_id, {"protocolVersion": asked if asked in VERSIONS else "2025-11-25", "capabilities": {"tools": {}, "prompts": {}, "resources": {"subscribe": True}}, "serverInfo": server, "instructions": INSTRUCTIONS}, False)
     elif method == "ping":
         out = _ok(req_id, {}, modern)
     elif method == "prompts/list":
@@ -1297,6 +1355,9 @@ async def mcp(request: Request) -> Response:
         out = _ok(req_id, {"description": PROMPTS[0]["description"], "messages": [{"role": "user", "content": {"type": "text", "text": STRATEGY}}]}, modern) if params.get("name") == "edit_strategy" else _err(req_id, -32602, f"No prompt named {params.get('name')}")
     elif method == "resources/list":
         out = _ok(req_id, {"resources": RESOURCES}, modern, cacheable=True)
+    elif method in ("resources/subscribe", "resources/unsubscribe"):
+        why = _subscribe(sid, params.get("uri"), method == "resources/subscribe")
+        out = _ok(req_id, {}, modern) if why is None else _err(req_id, -32602, why)
     elif method == "resources/templates/list":
         out = _ok(req_id, {"resourceTemplates": RESOURCE_TEMPLATES}, modern, cacheable=True)
     elif method == "resources/read":

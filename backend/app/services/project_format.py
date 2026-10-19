@@ -20,6 +20,7 @@ QUICKLOOK = ("QuickLook/Thumbnail.png", "QuickLook/Preview.png")
 # particular label.
 COMP_LABEL = re.compile(r"^[a-z0-9]+(\.[a-z0-9-]+)+\.project$")
 COMP_VERSIONS = range(1, 8)
+GIANT_SIDE = 300_000
 
 
 def is_comp(manifest: dict) -> bool:
@@ -47,7 +48,9 @@ def validate(manifest: dict, files: set[str]) -> None:
     if type(version) is not int or version not in allowed:
         raise ProjectError(f"This project uses format version {version}, which this build cannot read.")
     size = (manifest.get("width"), manifest.get("height"))
-    if not all(type(side) is int and 1 <= side <= config.MAX_SIDE for side in size):
+    kept = manifest.get("layers")
+    tiles = isinstance(kept, list) and any(isinstance(r, dict) and isinstance(r.get("tiled"), dict) for r in kept)
+    if not all(type(side) is int and 1 <= side <= (GIANT_SIDE if tiles else config.MAX_SIDE) for side in size):
         raise ProjectError("The canvas size is invalid.")
     layers = manifest.get("layers")
     if not isinstance(layers, list) or len(layers) > config.MAX_LAYERS:

@@ -4,6 +4,36 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.91.1 · 2026-10-19
+
+### Added
+
+- Home: a Back to Canvas button (and Esc) returns to the open document when Home was opened over it.
+- Properties: an Adjustment section edits the active adjustment layer in place (one undo step per run of edits), with Edit in Dialog for the special editors; Develop gains zoom in, zoom out, Fit and 100%.
+- A document depth map kept with the project and shared by Depth Blur, Relight, Color Range and depth limits; Select > Select by Depth with near, far and feather.
+- Upscale runs a chosen ONNX upscaler from the models folder's upscalers folder, with a note when a file cannot be loaded.
+- Desktop: files opened or saved from disk join the system's recent documents (GTK on Linux, the jump list on Windows, the Dock and Apple menu on macOS).
+- Brush presets: nested folders, a Folder field and optional capture of the foreground colour and Brush Mode.
+- Actions: Save .atn writes and reads Levels, Curves and Hue/Saturation steps.
+- MCP: resources/subscribe and notifications/resources/updated over a per-session event stream.
+- Plug-ins can read and write the Quick Mask.
+- Filters: Offset and Mosaic run on float channels at 16 and 32 bits, CMYK and Lab; Develop's Noise Reduction gains Colour detail and Colour smoothness.
+- Vanishing Point: Ctrl drag from a plane's edge tears off a connected plane and swings it to the pointer.
+- GPU: the damaged-region effect-map rebuild is bit-exact and on by default; a clipped layer inside a masked folder or with a vector mask draws on the GPU.
+- Background documents' GPU textures are released with their other caches.
+
+### Fixed
+
+- Switching document tabs no longer re-parks and re-adds the options bar's controls when the tool is unchanged.
+- Opening a PSB or PSD no longer leaves blank the rows of a layer that reaches past the canvas edge.
+- A stroke on a very wide tiled layer stops with the memory notice instead of throwing; tiled documents no longer stall under the pointer while an export runs (exports hold edits, as Save does).
+- Recovery copies and saved projects of tiled documents wider than 30,000 px are accepted on reopening.
+- The Gradient tool's live Gradient Fill layer is the edit target, so its handles work right after the drag.
+- PSD: the curved Bevel edge Contour is written and read on layers that carry several instances of an effect.
+- Float High Pass uses the exact Gaussian and matches the 8-bit result.
+- The Remove tool says once when LaMa is on but not ready.
+- `build_app` prints the version and folder it builds first.
+
 ## 1.91.0 · 2026-10-19
 
 ### Added

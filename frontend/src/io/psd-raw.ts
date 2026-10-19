@@ -117,8 +117,8 @@ export function edgeContourKeys(buf: ArrayBuffer, psd: Psd, layers: ReadonlySet<
     for (let i = from; i + pat.length <= to; i++) { let k = 0; while (k < pat.length && b[i + k] === pat[k]) k++; if (k === pat.length) return i; }
     return -1;
   };
-  for (const [pl, found] of layerBlockSpans(buf, psd, new Set(['lfx2']))) {
-    const span = found.get('lfx2');
+  for (const [pl, found] of layerBlockSpans(buf, psd, new Set(['lfx2', 'lmfx']))) {
+    const span = found.get('lfx2') ?? found.get('lmfx');
     if (!span || !layers.has(pl)) continue;
     const end = span.at + span.len, bevel = find([...code('ebbl'), ...code('Objc')], span.at, end), gloss = bevel < 0 ? -1 : find([...code('TrnS'), ...code('Objc')], bevel, end);
     if (gloss >= 0) b.set(code('MpgS'), gloss);
@@ -145,8 +145,8 @@ function contourOf(v: Val | undefined): EffectContour | undefined {
 /** The Bevel & Emboss details of every layer whose effects block holds a bevel. */
 export function readBevelDetails(buf: ArrayBuffer, psd: Psd): Map<PsdLayer, BevelDetail> {
   const out = new Map<PsdLayer, BevelDetail>();
-  for (const [pl, blocks] of layerBlockSpans(buf, psd, new Set(['lfx2', 'lfxs']))) {
-    const span = blocks.get('lfx2');
+  for (const [pl, blocks] of layerBlockSpans(buf, psd, new Set(['lfx2', 'lfxs', 'lmfx']))) {
+    const span = blocks.get('lfx2') ?? blocks.get('lmfx');
     if (!span || span.len < 12) continue;
     try {
       const r = new Reader(buf.slice(span.at, span.at + span.len));

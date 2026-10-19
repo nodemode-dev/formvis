@@ -126,9 +126,13 @@ export class ColorRangeDialog extends Dialog {
     });
   }
 
-  show(): void {
+  show(mode?: string): void {
     if (!this.engine.current) return;
     this.combine.value = this.engine.selectionMode;
+    if (mode === 'depth') {
+      this.pick.value = 'depth';
+      this.farLimit.disabled = this.nearLimit.disabled = false;
+    }
     this.faces = null;
     this.detect.checked = false;
     this.open();

@@ -58,6 +58,7 @@ fi
 if [ "$os" = linux ] && ! pkg-config --exists webkit2gtk-4.1 2>/dev/null; then
   cv_die "Tauri needs system libraries; on Debian or Ubuntu: sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev librsvg2-dev patchelf"
 fi
+cv_say "building formvis $("$py" -c 'import json, sys; print(json.load(open(sys.argv[1]))["version"])' src-tauri/tauri.conf.json) from $(pwd)"
 cv_say "python $("$py" -c 'import platform; print(platform.python_version())'), node $(node -v), $(rustc -V), $(cargo -V | awk '{print $1, $2}') from $(dirname "$(command -v rustc)")"
 
 step "installing the engine and the window"

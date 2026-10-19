@@ -36,6 +36,18 @@ x11-dl = "2"
 # A web view whose renderer process died is reloaded by the shell (window_state.rs): the signal is WebKitGTK's own, and the crate
 # is the one Tauri's runtime already builds (MIT).
 webkit2gtk = { version = "2", features = ["v2_20"] }
+# The desktop's recent-documents list (note_recent_document): GTK's RecentManager, the crate Tauri's window layer already builds (MIT).
+gtk = "0.18"
+
+# Windows: SHAddToRecentDocs for the taskbar jump list (MIT or Apache-2.0; already in the tree through Tauri).
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_UI_Shell"] }
+
+# macOS: NSDocumentController's recent documents (Apple menu, Dock menu), through the bindings Tauri's window layer already builds (MIT or Apache-2.0 or zlib).
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSDocumentController"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSURL"] }
 
 [profile.release]
 codegen-units = 1

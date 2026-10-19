@@ -233,10 +233,15 @@ export function localInpaint(): (image: Blob, mask: Blob) => Promise<Blob> {
   });
 }
 
+/** The ESRGAN-family model files in the engine's upscalers folder, each with whether it can run and, if not, why. */
+export async function upscaleFiles(): Promise<Array<{ file: string; loadable: boolean; note: string }>> {
+  try { return ((await (await ask('/upscale/models')).json()) as { models: Array<{ file: string; loadable: boolean; note: string }> }).models; } catch { return []; }
+}
+
 /** Image > Upscale's generator on this computer (1.53.1): Real-ESRGAN, the picture enlarged `scale` times. */
-export function localUpscale(scale: number, status?: (text: string) => void, cancelled: () => boolean = () => false): (image: Blob) => Promise<Blob> {
+export function localUpscale(scale: number, status?: (text: string) => void, cancelled: () => boolean = () => false, file = ''): (image: Blob) => Promise<Blob> {
   return async (image) => {
-    const form = new FormData(); form.append('file', image, 'picture.png'); form.append('factor', String(scale));
+    const form = new FormData(); form.append('file', image, 'picture.png'); form.append('factor', String(scale)); if (file) form.append('model', file);
     const { job_id: id } = await (await ask('/upscale/local', { method: 'POST', headers: { 'x-formvis-local': '1' }, body: form })).json() as { job_id: string };
     return (await followJob(id, status ?? (() => {}), cancelled)).pictures[0];
   };

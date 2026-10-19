@@ -346,6 +346,8 @@ export class FilterPanel extends Dialog {
       ['Luminance detail', 0, 100, 1, () => (D().noise ??defaultNoise()).detail, (v) => { (D().noise ??=defaultNoise()).detail = v; }],
       ['Luminance contrast', 0, 100, 1, () => (D().noise ??defaultNoise()).contrast, (v) => { (D().noise ??=defaultNoise()).contrast = v; }],
       ['Noise colour', 0, 100, 1, () => (D().noise ??defaultNoise()).color, (v) => { (D().noise ??=defaultNoise()).color = v; }],
+      ['Colour detail', 0, 100, 1, () => (D().noise ??defaultNoise()).colorDetail ?? 50, (v) => { (D().noise ??=defaultNoise()).colorDetail = v; }],
+      ['Colour smoothness', 0, 100, 1, () => (D().noise ??defaultNoise()).colorSmoothness ?? 50, (v) => { (D().noise ??=defaultNoise()).colorSmoothness = v; }],
     ];
     const devNodes: HTMLElement[] = [this.profileRow.el], devSync: Array<() => void> = [];
     let dehazeEl: HTMLElement | null = null, tintEl: HTMLElement | null = null, protectEl: HTMLElement | null = null;
@@ -444,6 +446,21 @@ export class FilterPanel extends Dialog {
     compare.addEventListener('keydown', (e) => { if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) showBefore(); });
     compare.addEventListener('keyup', (e) => { if (e.key === ' ' || e.key === 'Enter') showAfter(); });
     devNodes.splice(3, 0, compare);
+    // Zoom inside Develop: the stage is the main canvas, so these drive its view (Hand and the wheel work as well); the
+    // percentage is one text node, written only when the zoom changes.
+    const zoomRow = el<HTMLElement>('<div class="cv-develop-zoom" style="display:flex;align-items:center;gap:6px"></div>');
+    const zoomPct = el<HTMLElement>('<span class="cv-note" style="margin-left:auto;min-width:4ch;text-align:right" aria-live="off"></span>');
+    for (const [label, title, go] of [['-', 'Zoom out', () => this.engine.zoomStep(false)], ['+', 'Zoom in', () => this.engine.zoomStep(true)], ['Fit', 'Fit the picture on the screen', () => this.engine.fit()], ['100%', 'Actual pixels', () => this.engine.zoomTo(1)]] as Array<[string, string, () => void]>) {
+      const b = el<HTMLButtonElement>('<button class="cv-btn" type="button"></button>');
+      b.textContent = label; b.title = title; b.setAttribute('aria-label', title);
+      b.addEventListener('click', go);
+      zoomRow.appendChild(b);
+    }
+    zoomRow.appendChild(zoomPct);
+    const showZoom = (): void => { const z = this.engine.current?.viewport.zoom; setText(zoomPct, z ? `${Math.round(z * 100)}%` : ''); };
+    this.engine.on('viewport', showZoom);
+    devSync.push(showZoom);
+    devNodes.splice(4, 0, zoomRow);
     // White balance: As Shot clears Temperature and Tint, Auto takes the picture's mean colour as the neutral, and the
     // eyedropper (where the window has one) reads a neutral off the screen; a moved slider makes the choice Custom.
     const setWb = (temperature: number, tint: number): void => { D().tone.temperature = temperature; D().tone.tint = tint; for (const f of devSync) f(); };
@@ -979,6 +996,7 @@ export class FilterPanel extends Dialog {
   private deepFilter(kind: FilterKind, settings: Record<string, unknown>): boolean {
     const p = this.engine.current;
     if (!p || ((p.doc.depth ?? 8) === 8 && p.doc.mode !== 'cmyk')) return false;
+    if (p.selection && (kind === 'offset' || kind === 'mosaic')) return false;
     const s = { ...this.s, ...(settings as Partial<typeof this.s>) }, seed = this.seed, ceiling = p.doc.depth === 32 ? Infinity : 1;
     const deep = kind === 'gaussianBlur' ? (d: DeepPixels): DeepPixels => blurDeep(d, s.radius) : kind === 'unsharpMask' ? (d: DeepPixels): DeepPixels => unsharpDeep(d, s.usmAmount, s.usmRadius, s.threshold, ceiling) : kind === 'addNoise' ? (d: DeepPixels): DeepPixels => noiseDeep(d, s.amount, s.gaussian, s.monochromatic, seed, ceiling) : kind === 'motionBlur' ? (d: DeepPixels): DeepPixels => motionBlurDeep(d, s.angle, s.distance) : kind === 'surfaceBlur' ? (d: DeepPixels): DeepPixels => surfaceBlurDeep(d, s.gallery.surfaceRadius, s.gallery.surfaceThreshold) : kind === 'radialBlur' || kind === 'fieldBlur' || kind === 'irisBlur' || kind === 'tiltShift' || kind === 'pathBlur' ? deepGalleryFilter(kind, s.gallery) : kind === 'lensBlur' && (!s.lensIris || (s.lensIris.source === 'none' && !(s.lensIris.blades >= 3) && !(s.lensIris.noise > 0))) ? (d: DeepPixels): DeepPixels => lensBlurDeep(d, s.lensRadius, s.lensBrightness, s.lensThreshold) : isLibKind(kind) ? deepLibFilter(kind, libValues(kind, (s.lib as Record<string, unknown> | undefined)?.[kind]), ceiling) : null;
     if (!deep) return false;

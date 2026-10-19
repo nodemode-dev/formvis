@@ -36,7 +36,7 @@ function gaussPlane(p: Float32Array, w: number, h: number, sigma: number): Float
   return sigma < 0.3 ? p.slice() : separable(p, w, h, 1, gaussKernel(sigma));
 }
 
-export interface DenoiseSettings { strength: number; preserve: number; color: number; sharpen: number; jpeg: boolean }
+export interface DenoiseSettings { strength: number; preserve: number; color: number; sharpen: number; jpeg: boolean; colorDetail?: number; colorSmooth?: number }
 
 /** The ring of offsets the brightness smoothing samples: the centre, then rings of eight at growing radii. */
 function rings(radius: number): Array<[number, number, number]> {
@@ -80,7 +80,12 @@ export function reduceNoiseImage(img: ImageData, o: DenoiseSettings, scale: numb
     const soft = gaussPlane(lum, w, h, Math.max(0.5, scale)), k = o.sharpen / 100;
     for (let i = 0; i < n; i++) lum[i] += (lum[i] - soft[i]) * k;
   }
-  const cs = (o.color / 100) * 4 * scale, cb = gaussPlane(Cb, w, h, cs), cr = gaussPlane(Cr, w, h, cs);
+  const cs = (o.color / 100) * 4 * scale * (0.5 + (o.colorSmooth ?? 50) / 100), cb = gaussPlane(Cb, w, h, cs), cr = gaussPlane(Cr, w, h, cs);
+  const hold = Math.max(0, ((o.colorDetail ?? 50) - 50) / 50);
+  if (hold > 0 && o.color > 0) for (let i = 0; i < n; i++) {
+    const t = hold * Math.min(1, (Math.abs(Cb[i] - cb[i]) + Math.abs(Cr[i] - cr[i])) / 24);
+    cb[i] += (Cb[i] - cb[i]) * t; cr[i] += (Cr[i] - cr[i]) * t;
+  }
   if (o.jpeg) {
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       const bx = (((x - gx) % 8) + 8) % 8, by = (((y - gy) % 8) + 8) % 8;

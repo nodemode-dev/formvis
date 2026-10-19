@@ -1,6 +1,6 @@
 # formvis commands
 
-Generated from the window's command catalogue (1608 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1609 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
@@ -13,7 +13,7 @@ Generated from the window's command catalogue (1608 commands) by `./formvis agen
 - Layer: 276
 - Paint: 1
 - Paths: 12
-- Select: 45
+- Select: 46
 - Tool options: 467
 - Tools: 53
 - Type: 66
@@ -864,6 +864,7 @@ Generated from the window's command catalogue (1608 commands) by `./formvis agen
 | `select-all` | All | Mod+A | Selects the whole canvas. (changes the picture) |
 | `select-and-mask` | Select and Mask... | Alt+Mod+R | Opens Select and Mask on the main canvas: view modes, refine tools on the picture and the properties beside it, applied as one step; a dialog where the workspace cannot open. (changes the picture) |
 | `select-and-mask-dialog` | Select and Mask Dialog... |  | Opens Select and Mask as a dialog with its own preview instead of on the main canvas. (changes the picture) |
+| `select-by-depth` | Select by Depth... |  | Selects the pixels between a far and a near depth of the document's shared depth map, with a feather, combined with the selection as asked. (changes the picture) |
 | `select-color-range` | Select Color Range |  | Selects by sampled colour, hue family, tone, skin tones or the Depth Map layer, combined with the selection as asked. (changes the picture) |
 | `select-drop` | Drop Floating Pixels |  | Drops the floating selection onto its layer as one step. (changes the picture) |
 | `select-float` | Float Selected Pixels |  | Lifts the selected pixels of the active layer into a floating selection that takes the Move tool's handles, until dropped. (changes the picture) |

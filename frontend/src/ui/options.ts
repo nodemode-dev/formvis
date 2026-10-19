@@ -272,7 +272,13 @@ export class OptionsBar {
   }
 
   /** Shows the active tool's row and hides every other. */
+  private shownTool = '';
+  private shownWidth = -1;
   private show(): void {
+    // A document switch announces the tool again; the same tool at the same width keeps its row and its parked controls as they are.
+    if (this.shownTool === this.engine.tool && this.shownWidth === this.root.clientWidth) { this.refresh(); return; }
+    this.shownTool = this.engine.tool;
+    this.shownWidth = this.root.clientWidth;
     this.togglePop(false);
     for (const [id, g] of this.groups) setHidden(g.node, id !== this.engine.tool);
     this.root.scrollLeft = 0;

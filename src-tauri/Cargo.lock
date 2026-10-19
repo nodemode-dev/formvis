@@ -1234,6 +1234,10 @@ version = "1.91.0"
 dependencies = [
  "fontdb",
  "formvis-render",
+ "gtk",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
  "regex",
  "serde",
  "serde_json",
@@ -1244,6 +1248,7 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
  "webkit2gtk",
+ "windows-sys 0.61.2",
  "x11-dl",
 ]
 

@@ -13,6 +13,7 @@ import { adjustmentKernel, type Kernel } from './kernels';
 import { grainFromData, grainKernel, hsvFromData, hsvKernel } from './adjust';
 import type { Adjustment } from './types';
 import { limitOf, limitView, limitWeights } from './limit';
+import { depthBytes } from './doc-depth';
 import { isDepthName } from './depth-map';
 import { runEffectOnGpu, type GpuEffectJob } from './gpu-effects';
 import type { EffectWorker, FxAsk, FxLanded } from './fx-wire';
@@ -202,8 +203,8 @@ export class Renderer {
   private fxFor: { id: ID; ver: number; prev: number; rect: Rect | null } | null = null;
   /** Effect maps built whole and rebuilt over a damaged part, and the pixels the GPU passes covered. */
   readonly fxStats = { full: 0, partial: 0, pixels: 0 };
-  /** Whether a GPU effect map is rebuilt only over a damaged part (off until the comparison against a whole rebuild has been run). */
-  partialMaps = false;
+  /** Whether a GPU effect map is rebuilt only over a damaged part; bit-exact against a whole rebuild (the blur is computed in the whole map's coordinates). */
+  partialMaps = true;
   /** The worker that builds a previewed layer's effect parts off the page's thread (CO-0274); null leaves the build to the page. While it builds, the parts the layer had stay on show. */
   effectWorker: EffectWorker | null = null;
   /** Called when a worker's parts have landed in the cache, so the picture is drawn again. */
@@ -642,7 +643,7 @@ export class Renderer {
       const core = intersectRect({ x: f.rect.x - reach, y: f.rect.y - reach, w: f.rect.w + 2 * reach, h: f.rect.h + 2 * reach }, box), wide = core ? intersectRect({ x: core.x - reach, y: core.y - reach, w: core.w + 2 * reach, h: core.h + 2 * reach }, box) : null;
       if (core && wide && core.w * core.h * 2 < box.w * box.h) {
         const sx = box.x + (((wide.x - box.x) >> 1) << 1), sy = box.y + (((wide.y - box.y) >> 1) << 1), sub = { x: sx, y: sy, w: wide.x + wide.w - sx, h: wide.y + wide.h - sy };
-        const part = runEffectOnGpu(sil, sub, job);
+        const part = runEffectOnGpu(sil, sub, job, box);
         if (part && part.width === sub.w && part.height === sub.h) {
           img = new ImageData(new Uint8ClampedArray(old.img.data), box.w, box.h);
           for (let y = core.y; y < core.y + core.h; y++) {
@@ -1345,6 +1346,13 @@ export class Renderer {
           for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
             const q = applyMat(inv, x + 0.5, y + 0.5), sx = Math.min(DW - 1, Math.max(0, Math.floor(q.x))), sy = Math.min(DH - 1, Math.max(0, Math.floor(q.y)));
             depth[y * W + x] = src[(sy * DW + sx) * 4];
+          }
+        } else if (job.doc.depthMap) {
+          const dm = job.doc.depthMap, grey = depthBytes(dm, dm.w, dm.h);
+          depth = new Uint8Array(W * H);
+          for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+            const q = applyMat(inv, x + 0.5, y + 0.5), sx = Math.min(dm.w - 1, Math.max(0, Math.floor(q.x))), sy = Math.min(dm.h - 1, Math.max(0, Math.floor(q.y)));
+            depth[y * W + x] = grey[sy * dm.w + sx];
           }
         }
       }

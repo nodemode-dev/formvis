@@ -333,6 +333,7 @@ export class Stage {
     this.gpu = display;
     this.gpuLimit = limitBytes;
     if (display) display.budgetBytes = limitBytes;
+    this.engine.releaseGpuIdle = display?.releaseIdle ? (above) => display.releaseIdle?.(above) ?? 0 : null;
     this.gpuState = onState;
     this.gpuReason = undefined;
     this.showGpu(false);

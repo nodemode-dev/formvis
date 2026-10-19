@@ -11,20 +11,25 @@ import { checkRow } from './controls';
  *  library and selected. Built once; the preview and the name are refreshed in place at each opening. */
 export class NewBrushPresetDialog extends Dialog {
   private readonly name: HTMLInputElement;
+  private readonly folder: HTMLInputElement;
   private readonly preview: HTMLCanvasElement;
-  private readonly take = { size: true, shape: true, dynamics: true, flow: true };
+  private readonly take = { size: true, shape: true, dynamics: true, flow: true, colour: false, options: false };
 
   constructor(private readonly engine: Engine) {
     super('New Brush Preset', 380);
     this.body.append(el('<div class="cv-field"><span>Name</span><input class="cv-input" type="text" maxlength="60" aria-label="Name"></div>'));
     this.name = q(this.body, 'input') as HTMLInputElement;
+    this.body.append(el('<div class="cv-field"><span>Folder</span><input class="cv-input" type="text" maxlength="60" placeholder="My Brushes, or Folder/Inner for a folder inside a folder" aria-label="Folder"></div>'));
+    this.folder = this.body.querySelectorAll('input')[1] as HTMLInputElement;
     this.body.append(el('<canvas class="cv-brush-preview" width="320" height="70" aria-label="Brush preview" style="display:block;width:100%;max-width:320px;height:70px;border:1px solid var(--border-color);border-radius:var(--radius-sm);background:var(--bg-primary)"></canvas>'));
     this.preview = q(this.body, 'canvas') as HTMLCanvasElement;
-    const row = (label: string, key: keyof NewBrushPresetDialog['take']): void => { const r = checkRow(label, (v) => { this.take[key] = v; }); r.set(true); this.body.append(r.el); };
+    const row = (label: string, key: keyof NewBrushPresetDialog['take']): void => { const r = checkRow(label, (v) => { this.take[key] = v; }); r.set(this.take[key]); this.body.append(r.el); };
     row('Capture Brush Size and Hardness', 'size');
     row('Capture Brush Settings (tip shape, dynamics, scattering, texture, dual brush, colour dynamics, transfer)', 'shape');
     row('Capture Pen Dynamics (pressure on size, flow and opacity)', 'dynamics');
     row('Capture Flow', 'flow');
+    row('Capture Foreground Colour', 'colour');
+    row('Capture Tool Options (the Brush Mode)', 'options');
     this.button('Cancel', 'ghost', () => this.close());
     this.button('Create', 'primary', () => void this.create());
   }
@@ -68,10 +73,12 @@ export class NewBrushPresetDialog extends Dialog {
     const e = this.engine, name = this.name.value.trim().slice(0, 60);
     if (!name) { this.name.focus(); return; }
     const { locks: _locks, protectTexture: _protect, pose: _pose, ...rest } = structuredClone(e.brushShape) as BrushShape;
-    const made = presetFromBrush(e, `user-${Date.now().toString(36)}`, name, 'My Brushes');
+    const made = presetFromBrush(e, `user-${Date.now().toString(36)}`, name, this.folder.value.trim().replace(/\/{2,}/g, '/').replace(/^\/|\/$/g, '').slice(0, 60) || 'My Brushes');
     const preset: BrushPreset = { ...made, description: `Made from the current brush${this.take.shape ? ' and its Brush Settings' : ''}.`, dynamics: this.take.dynamics ? made.dynamics : noDynamics() };
     if (!this.take.size) { preset.diameter = 28; preset.hardness = 0.95; }
     if (!this.take.flow) delete preset.flow;
+    if (this.take.colour) preset.colour = { r: e.fg.r, g: e.fg.g, b: e.fg.b };
+    if (this.take.options) preset.mode = e.brushBlend;
     if (this.take.shape) preset.shape = rest;
     else delete preset.shape;
     const r = await addMadeBrushPreset(e, preset);

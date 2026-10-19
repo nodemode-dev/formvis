@@ -47,7 +47,7 @@ export class VanishingPointDialog extends Dialog {
   private hardness = 0.5;
   private stampOpacity = 1;
   private toNewLayer = false;
-  private drag: { corner: number } | { grab: P2; at: P2 } | null = null;
+  private drag: { corner: number } | { grab: P2; at: P2 } | { tear: number } | null = null;
 
   constructor(private readonly engine: Engine) {
     super('Vanishing Point', PW + 48);
@@ -214,7 +214,7 @@ export class VanishingPointDialog extends Dialog {
     this.tool = t;
     for (const [k, b] of this.toolButtons) b.classList.toggle('is-active', k === t);
     if (t === 'paste' && !this.paste) this.startPaste();
-    setText(this.note, { create: 'Click the plane\'s four corners in turn: top left, top right, bottom right, bottom left.', edit: 'Drag a corner to fit the plane to the surface.', paste: this.paste ? 'Drag the pasted picture along the plane; Size sets how much of the plane it covers.' : 'There is no other pixel layer to paste.', stamp: this.stampSource ? 'Paint to clone in perspective; Alt-click to choose another source.' : 'Alt-click a source on the plane, then paint.' }[t]);
+    setText(this.note, { create: 'Click the plane\'s four corners in turn: top left, top right, bottom right, bottom left.', edit: 'Drag a corner to fit the plane to the surface; Ctrl-drag from an edge tears off a connected plane.', paste: this.paste ? 'Drag the pasted picture along the plane; Size sets how much of the plane it covers.' : 'There is no other pixel layer to paste.', stamp: this.stampSource ? 'Paint to clone in perspective; Alt-click to choose another source.' : 'Alt-click a source on the plane, then paint.' }[t]);
     this.render();
   }
 
@@ -232,6 +232,8 @@ export class VanishingPointDialog extends Dialog {
         else { this.syncPlanes(); this.setTool('edit'); return; }
       }
       this.render();
+    } else if (this.tool === 'edit' && (e.ctrlKey || e.metaKey) && this.tearOff(pt)) {
+      return;
     } else if (this.tool === 'edit') {
       let best = -1, bd = 12 / this.fit.k, on = this.cur;
       this.planes.forEach((q, n) => q.corners.forEach((c, i) => { const d = Math.hypot(c[0] - pt[0], c[1] - pt[1]); if (d < bd || (d === bd && n === this.cur)) { bd = d; best = i; on = n; } }));
@@ -248,10 +250,54 @@ export class VanishingPointDialog extends Dialog {
     }
   }
 
+  /** Ctrl-press on an edge of a plane tears a connected plane off it, hinged on that edge, and the drag then swings it. */
+  private tearOff(pt: P2): boolean {
+    const reach = 10 / this.fit.k;
+    let on = -1, edge = 0, bd = reach;
+    this.planes.forEach((q, n) => {
+      if (!q.plane || q.corners.length < 4) return;
+      for (let k = 0; k < 4; k++) {
+        const a = q.corners[(k + 1) % 4], b = q.corners[(k + 2) % 4], dx = b[0] - a[0], dy = b[1] - a[1], len2 = dx * dx + dy * dy;
+        const t = len2 > 0 ? Math.min(1, Math.max(0, ((pt[0] - a[0]) * dx + (pt[1] - a[1]) * dy) / len2)) : 0;
+        const d = Math.hypot(a[0] + dx * t - pt[0], a[1] + dy * t - pt[1]);
+        if (d < bd) { bd = d; on = n; edge = k; }
+      }
+    });
+    if (on < 0) return false;
+    const quad = this.childQuad({ parent: on, angle: 0, depth: 0, edge }), made = quad ? makePlane(quad) : null;
+    if (!quad || !made) { setText(this.note, 'A connected plane does not fit past this edge.'); return true; }
+    this.commitPaste();
+    this.edgeNext = edge;
+    this.addPlane({ corners: quad.map((c) => [c[0], c[1]] as P2), plane: made, parent: on, angle: 0, depth: 0, edge });
+    this.drag = { tear: this.cur };
+    this.render();
+    return true;
+  }
+
+  /** The angle out of its parent at which the torn-off plane's far edge lies nearest the pointer. */
+  private swingTo(pt: P2): void {
+    const me = this.planes[this.cur];
+    let best: { angle: number; quad: Quad } | null = null, bd = Infinity;
+    for (let a = -90; a <= 90; a++) {
+      const quad = this.childQuad({ ...me, angle: a });
+      if (!quad) continue;
+      const d = Math.hypot((quad[1][0] + quad[2][0]) / 2 - pt[0], (quad[1][1] + quad[2][1]) / 2 - pt[1]);
+      if (d < bd) { bd = d; best = { angle: a, quad }; }
+    }
+    const made = best ? makePlane(best.quad) : null;
+    if (!best || !made) return;
+    me.angle = best.angle; me.corners = best.quad.map((c) => [c[0], c[1]] as P2); me.plane = made;
+    this.angleRow.set(best.angle);
+    this.rebuildChildren();
+    this.render();
+  }
+
   private move(e: PointerEvent): void {
     if (!this.work) return;
     const pt = this.at(e);
-    if (this.drag && 'corner' in this.drag) {
+    if (this.drag && 'tear' in this.drag) {
+      this.swingTo(pt);
+    } else if (this.drag && 'corner' in this.drag) {
       this.corners[this.drag.corner] = pt;
       const next = makePlane(this.corners as Quad);
       if (next) {

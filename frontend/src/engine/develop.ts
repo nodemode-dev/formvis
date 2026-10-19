@@ -64,8 +64,8 @@ export interface DetailState {
 }
 
 /** Noise Reduction: Luminance (0 to 100) with its Detail (0 to 100, 50 when unset) and Contrast (0 to 100), and Color (0 to 100). */
-export interface NoiseState { luminance: number; detail: number; contrast: number; color: number }
-export const defaultNoise = (): NoiseState => ({ luminance: 0, detail: 50, contrast: 0, color: 0 });
+export interface NoiseState { luminance: number; detail: number; contrast: number; color: number; colorDetail?: number; colorSmoothness?: number }
+export const defaultNoise = (): NoiseState => ({ luminance: 0, detail: 50, contrast: 0, color: 0, colorDetail: 50, colorSmoothness: 50 });
 export const noiseOf = (s: DevelopState): NoiseState => ({ ...defaultNoise(), ...s.noise });
 export const noiseActive = (n: NoiseState): boolean => n.luminance > 0 || n.color > 0;
 
@@ -964,7 +964,7 @@ export function sharpenPass(img: ImageData, amount: number, radius: number, deta
 export function developImage(src: ImageData, state: DevelopState, scale = 1, seed = 7, depth: Uint8Array | null = null): ImageData {
   let img = new ImageData(src.width, src.height);
   const nr = noiseOf(state);
-  if (noiseActive(nr)) src = reduceNoiseImage(src, { strength: nr.luminance / 10, preserve: nr.detail, color: nr.color, sharpen: nr.contrast, jpeg: false }, scale);
+  if (noiseActive(nr)) src = reduceNoiseImage(src, { strength: nr.luminance / 10, preserve: nr.detail, color: nr.color, sharpen: nr.contrast, jpeg: false, colorDetail: nr.colorDetail, colorSmooth: nr.colorSmoothness }, scale);
   if (darkDehazeOn(state)) developPass(darkDehaze(src, state.tone.dehaze / 100, scale, (state.dehazeSky ?? 0) / 100, state.dehazeDepth === true && depth?.length === src.width * src.height ? depth : null, (state.dehazeDensity ?? 50) / 100).data, img.data, src.width, src.height, { ...state, tone: { ...state.tone, dehaze: 0 } }, seed);
   else developPass(src.data, img.data, src.width, src.height, state, seed);
   const grading = gradingOf(state), calibration = calibrationOf(state), optics = opticsOf(state), geometry = geometryOf(state), parametric = parametricOf(state);

@@ -4,6 +4,7 @@ import {
   type RelightContent, type RelightGeometry, type RelightLight, type RelightPatternKind, type RelightType, type SplitMaps,
 } from '../engine/relight';
 import { renderRelight } from '../gpu/relight-gl';
+import { depthFloats } from '../engine/doc-depth';
 import { depthReady, installModel, installRelightRuntime, localDepthValues, relightEngines, relightSplit, type LightSplit, type RelightEngines } from '../io/local-gen';
 import { setRelightHost } from '../extensions/tools/relight';
 import { el, q, setClass, setHidden, setText } from './dom';
@@ -295,6 +296,11 @@ export class RelightSession {
   }
 
   private async readDepth(below: ImageData): Promise<Float32Array> {
+    const doc = this.engine.current?.doc;
+    if (doc && doc.width === below.width && doc.height === below.height) {
+      const shared = await this.engine.ensureDocDepth(localDepthValues);
+      if (shared) return depthFloats(shared, below.width, below.height);
+    }
     const c = new OffscreenCanvas(below.width, below.height);
     (c.getContext('2d') as OffscreenCanvasRenderingContext2D).putImageData(below, 0, 0);
     return localDepthValues(await c.convertToBlob({ type: 'image/png' }), below.width, below.height);

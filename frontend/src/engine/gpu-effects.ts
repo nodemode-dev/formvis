@@ -16,7 +16,7 @@ export type GpuEffectJob =
 export interface GpuEffectRunner {
   readonly ok: boolean;
   /** Straight RGBA bytes, `box.w` by `box.h`, of the job over the silhouette's `box`; null where the GPU cannot. */
-  effectMap(sil: Surface, box: Rect, job: GpuEffectJob): ImageData | null;
+  effectMap(sil: Surface, box: Rect, job: GpuEffectJob, frame?: { x: number; y: number }): ImageData | null;
 }
 
 /** The largest grow or shrink (in px) the distance passes take; wider rings go to the CPU, whose distance transform costs the same at any size. */
@@ -26,9 +26,9 @@ let runner: GpuEffectRunner | null = null;
 export const setGpuEffects = (r: GpuEffectRunner | null): void => { runner = r; };
 
 /** The effect map for `job`, or null when no runner is registered, it is lost, or it declined (the caller builds it on the CPU). */
-export function runEffectOnGpu(sil: Surface, box: Rect, job: GpuEffectJob): ImageData | null {
+export function runEffectOnGpu(sil: Surface, box: Rect, job: GpuEffectJob, frame?: { x: number; y: number }): ImageData | null {
   if (!runner || !runner.ok) return null;
   const big = job.kind === 'ring' ? Math.max(job.outer, job.inner) : job.kind === 'ramp' ? job.size : Math.abs(job.grow);
   if (big > GPU_RING_MAX) return null;
-  try { return runner.effectMap(sil, box, job); } catch { return null; }
+  try { return runner.effectMap(sil, box, job, frame); } catch { return null; }
 }

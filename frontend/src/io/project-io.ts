@@ -14,6 +14,7 @@ import { glbKeptFrom } from './glb-scene';
 import { fillContentFrom } from '../engine/fill-layers';
 import { relightFrom } from '../engine/relight';
 import { alphaGrey, nextAlphaName } from '../engine/alphas';
+import { depthFromBytes, depthToBytes, type DocDepth } from '../engine/doc-depth';
 import { PARAM_ADJUSTMENTS, PARAM_KINDS } from '../engine/adjust-params';
 import { api, type FilePart } from './api';
 import { TiledRaster, type TileStore } from '../engine/tiled';
@@ -275,6 +276,10 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
     alphas.push({ id: a.id, name: a.name, file, ...(a.color ? { color: [a.color.r, a.color.g, a.color.b] } : {}), ...(a.opacity !== undefined ? { opacity: a.opacity } : {}), ...(a.indicates ? { indicates: a.indicates } : {}), ...(a.spot ? { spot: true } : {}) });
   }
   if (alphas.length) manifest.alphas = alphas;
+  if (doc.depthMap) {
+    put('depth-map.bin', Promise.resolve(new Blob([depthToBytes(doc.depthMap)])));
+    manifest.depthMap = { file: 'depth-map.bin', width: doc.depthMap.w, height: doc.depthMap.h, key: doc.depthMap.key };
+  }
   if (keep?.selection) {
     const s = createSurface(doc.width, doc.height);
     ctxOf(s).putImageData(alphaGrey(keep.selection, doc.width, doc.height), 0, 0);
@@ -567,8 +572,13 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
       bmp.close();
     } catch { /* a channel that cannot be read is left out */ }
   }
+  let depthMap: DocDepth | null = null;
+  const drec = obj(manifest.depthMap);
+  if (str(drec.file) && num(drec.width, 0) === width && num(drec.height, 0) === height) {
+    try { depthMap = depthFromBytes(new Uint8Array(await (await fetchImage(str(drec.file) as string)).arrayBuffer()), width, height, str(drec.key) ?? ''); } catch { depthMap = null; }
+  }
   const selection = await selectionFrom(str(obj(manifest.selection).file), fetchImage, width, height);
-  const fonts = (Array.isArray(manifest.fonts) ? manifest.fonts : []).filter((f): f is string => typeof f === 'string' && !!f).slice(0, 200);
+  const fonts =(Array.isArray(manifest.fonts) ? manifest.fonts : []).filter((f): f is string => typeof f === 'string' && !!f).slice(0, 200);
   const hrec = obj(manifest.history);
   let history: Opened['history'] = null;
   if (withHistory && str(hrec.file)) {
@@ -582,7 +592,7 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
       if (snaps.length && snaps.length === names.length) history = { names, snaps };
     } catch { history = null; }
   }
-  return { selection, fonts, history, timeline: timelineFrom(manifest.timeline), paths: pathSetFrom(manifest.paths, manifest.activePath, manifest.workPath), doc: { ...profileFrom(manifest.profile), ...(manifest.depth === 16 || manifest.depth === 32 ? { depth: manifest.depth as 16 | 32 } : {}), id: str(manifest.documentID) ?? uid(), width, height, resolution: num(manifest.resolution, 72), layers, ...(Array.isArray(manifest.collapsedFolders) && manifest.collapsedFolders.some((id) => layers.some((l) => l.id === id && l.isGroup)) ? { collapsed: (manifest.collapsedFolders as unknown[]).filter((id): id is string => typeof id === 'string' && layers.some((l) => l.id === id && l.isGroup)) } : {}), ...(notes.length ? { notes } : {}), ...(comps.length ? { comps, activeComp: comps.some((c) => c.id === manifest.activeComp) ? (manifest.activeComp as string) : null } : {}), ...(counts.length ? { counts } : {}), ...(countGroups.length ? { countGroups } : {}), ...(boxes.length ? { boxes } : {}), ...(mode ? { mode } : {}), ...(mode === 'indexed' && palette.length ? { palette } : {}), ...(mode === 'duotone' && readDuotone(manifest.duotone) ? { duotone: readDuotone(manifest.duotone) as Duotone } : {}), ...(mode === 'multichannel' && mcChannels.length ? { multichannel: { channels: mcChannels } } : {}), ...(guides.length ? { guides } : {}), ...(num(manifest.pixelAspect, 1) !== 1 && num(manifest.pixelAspect, 1) > 0 ? { pixelAspect: num(manifest.pixelAspect, 1) } : {}), ...(measureScale ? { measureScale } : {}), ...(measurements.length ? { measurements } : {}), ...(slices.length ? { slices } : {}),...(globalLight ? { globalLight } : {}), ...(Object.keys(glb).length ? { glb } : {}), ...(stylePresets.length ? { stylePresets } : {}), ...(styles.length ? { paragraphStyles: styles } : {}), ...(charStyles.length ? { characterStyles: charStyles } : {}),...(alphas.length ? { alphas } : {}), ...variablesFrom(manifest, records.map((r) => str(r.id))), ...(fileInfo ? { meta: fileInfo } : {}) }, activeId: str(manifest.activeLayerID) };
+  return { selection, fonts, history, timeline: timelineFrom(manifest.timeline), paths: pathSetFrom(manifest.paths, manifest.activePath, manifest.workPath), doc: { ...profileFrom(manifest.profile), ...(manifest.depth === 16 || manifest.depth === 32 ? { depth: manifest.depth as 16 | 32 } : {}), id: str(manifest.documentID) ?? uid(), width, height, resolution: num(manifest.resolution, 72), layers, ...(depthMap ? { depthMap } : {}), ...(Array.isArray(manifest.collapsedFolders) && manifest.collapsedFolders.some((id) => layers.some((l) => l.id === id && l.isGroup)) ? { collapsed: (manifest.collapsedFolders as unknown[]).filter((id): id is string => typeof id === 'string' && layers.some((l) => l.id === id && l.isGroup)) } : {}), ...(notes.length ? { notes } : {}), ...(comps.length ? { comps, activeComp: comps.some((c) => c.id === manifest.activeComp) ? (manifest.activeComp as string) : null } : {}), ...(counts.length ? { counts } : {}), ...(countGroups.length ? { countGroups } : {}), ...(boxes.length ? { boxes } : {}), ...(mode ? { mode } : {}), ...(mode === 'indexed' && palette.length ? { palette } : {}), ...(mode === 'duotone' && readDuotone(manifest.duotone) ? { duotone: readDuotone(manifest.duotone) as Duotone } : {}), ...(mode === 'multichannel' && mcChannels.length ? { multichannel: { channels: mcChannels } } : {}), ...(guides.length ? { guides } : {}), ...(num(manifest.pixelAspect, 1) !== 1 && num(manifest.pixelAspect, 1) > 0 ? { pixelAspect: num(manifest.pixelAspect, 1) } : {}), ...(measureScale ? { measureScale } : {}), ...(measurements.length ? { measurements } : {}), ...(slices.length ? { slices } : {}),...(globalLight ? { globalLight } : {}), ...(Object.keys(glb).length ? { glb } : {}), ...(stylePresets.length ? { stylePresets } : {}), ...(styles.length ? { paragraphStyles: styles } : {}), ...(charStyles.length ? { characterStyles: charStyles } : {}),...(alphas.length ? { alphas } : {}), ...variablesFrom(manifest, records.map((r) => str(r.id))), ...(fileInfo ? { meta: fileInfo } : {}) }, activeId: str(manifest.activeLayerID) };
 }
 
 /** Variables, data sets and the active data set from a manifest (29.9), checked; a variable whose layer is gone is dropped. */

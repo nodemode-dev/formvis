@@ -102,8 +102,9 @@ export async function moveBrushPreset(id: string, group: string | null, beforeId
 /** Renames a folder of saved or imported presets; built-in folders keep their names. */
 export async function renameBrushGroup(from: string, to: string): Promise<boolean> {
   const n = to.trim().slice(0, 60);
-  if (!n || n === from || !importedBrushPresets.some((p) => brushGroupOf(p) === from)) return false;
-  const list = importedBrushPresets.map((p) => (brushGroupOf(p) === from ? { ...p, group: n } : p));
+  const within = (p: BrushPreset): boolean => brushGroupOf(p) === from || brushGroupOf(p).startsWith(`${from}/`);
+  if (!n || n === from || !importedBrushPresets.some(within)) return false;
+  const list = importedBrushPresets.map((p) => (within(p) ? { ...p, group: n + brushGroupOf(p).slice(from.length) } : p));
   setImportedBrushPresets(list);
   return save(list);
 }

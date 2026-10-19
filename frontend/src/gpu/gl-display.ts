@@ -254,7 +254,7 @@ export class GlDisplay {
     gl.uniform1i(u('clipTex'), 3);
     gl.uniform1i(u('koTex'), 4);
     // Each clipping base's coverage, once per frame, into its own screen-sized target (mode 102).
-    const clipOut = new Map<DisplayClip, WebGLTexture>(), folderOut = new Map<DisplayMask[], WebGLTexture>();
+    const clipOut = new Map<DisplayClip, WebGLTexture>(), folderOut = new Map<object, WebGLTexture>();
     let slot = 0;
     const clipCover = (c: DisplayClip): WebGLTexture => {
       const have = clipOut.get(c);
@@ -268,14 +268,14 @@ export class GlDisplay {
     const run = (list: readonly DisplayLayer[], a: { tex: WebGLTexture; fb: WebGLFramebuffer }, b: { tex: WebGLTexture; fb: WebGLFramebuffer }, depth: number): { tex: WebGLTexture; fb: WebGLFramebuffer } => {
       for (const l of list) if (l.clip) clipCover(l.clip);
       for (const l of list) {
-        if (!l.folders || folderOut.has(l.folders)) continue;
-        let prev: WebGLTexture | null = null;
+        if (!l.folders || folderOut.has(l.clip ? l : l.folders)) continue;
+        let prev: WebGLTexture | null = l.clip ? clipOut.get(l.clip) ?? null : null;
         for (const mk of l.folders) {
           const t = this.clipTarget(slot++, W, H);
           this.drawLayer({ image: null, version: 0, width: 1, height: 1, matrix: [1, 0, 0, 1, 0, 0], opacity: 1, blend: 'normal', mask: mk }, FOLDER_MODE, prev, this.blank(), t.fb, view, filter, used, u);
           prev = t.tex;
         }
-        if (prev) folderOut.set(l.folders, prev);
+        if (prev) folderOut.set(l.clip ? l : l.folders, prev);
       }
       const alone = (inner: readonly DisplayLayer[]): WebGLTexture => {
         const [x, y] = this.subPair(depth, W, H, half);
@@ -293,7 +293,7 @@ export class GlDisplay {
           continue;
         }
         if (l.width < 1 || l.height < 1) continue;
-        const cover = l.clip ? clipOut.get(l.clip) ?? null : l.folders ? folderOut.get(l.folders) ?? null : null;
+        const cover = l.clip ? (l.folders ? folderOut.get(l) : clipOut.get(l.clip)) ?? null : l.folders ? folderOut.get(l.folders) ?? null : null;
         this.drawLayer(l, l.grain ? GRAIN_MODE : l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend), cover, a.tex, b.fb, view, filter, used, u, l.ko ? { ko: alone(l.ko.back) } : undefined);
         [a, b] = [b, a];
       }
@@ -480,6 +480,14 @@ export class GlDisplay {
     }
     if (mips && !l.lut && (e.version < 0 || e.mipAt !== e.version)) { gl.generateMipmap(gl.TEXTURE_2D); e.mipAt = e.version; }
     return e.tex;
+  }
+
+  releaseIdle(above: number): number {
+    let held = 0;
+    for (const e of this.cache.values()) if (e.seen !== this.frameNo) held += e.bytes;
+    if (held <= above) return 0;
+    for (const [k, e] of this.cache) if (e.seen !== this.frameNo) { this.gl.deleteTexture(e.tex); this.cache.delete(k); }
+    return held;
   }
 
   destroy(): void {

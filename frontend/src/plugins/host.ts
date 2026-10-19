@@ -35,8 +35,8 @@ const RUNTIME = `<script>
       send({ op: 'register', args: { name, commands: list.map((c) => ({ id: String(c.id), label: String(c.label || c.id), keys: Array.isArray(c.keys) ? c.keys.map(String) : [] })) } });
     },
     call: (tool, args) => rpc('call', { tool, args: args || {} }),
-    getPixels: () => rpc('getPixels', {}),
-    putPixels: (image, how) => rpc('putPixels', { image, how: how === 'replace' ? 'replace' : 'new-layer', name }),
+    getPixels: (target) => rpc('getPixels', { target: target === 'quickMask' ? 'quickMask' : 'layer' }),
+    putPixels: (image, how, target) => rpc('putPixels', { image, how: how === 'replace' ? 'replace' : 'new-layer', target: target === 'quickMask' ? 'quickMask' : 'layer', name }),
   };
 })();
 <\/script>`;
@@ -166,6 +166,10 @@ export class PluginHost {
     switch (op) {
       case 'call': return { result: await this.bridge.run(String(args.tool ?? ''), (args.args ?? {}) as Record<string, unknown>) };
       case 'getPixels': {
+        if (args.target === 'quickMask') {
+          const m = this.engine.quickMaskPixels();
+          return m ? { result: { width: m.width, height: m.height, data: m.data, layer: { id: 'quickMask', name: 'Quick Mask' } } } : { error: 'No document is open.' };
+        }
         const q = this.engine.current, l = q?.activeLayer;
         if (!q || !l) return { error: 'No document or layer is open.' };
         const s = this.engine.renderLayerAlone(l.id), c = s.getContext('2d') as CanvasRenderingContext2D, img = c.getImageData(0, 0, s.width, s.height);
@@ -177,6 +181,7 @@ export class PluginHost {
         const W = q.doc.width, H = q.doc.height;
         if (!img || img.width !== W || img.height !== H || !(img.data instanceof Uint8ClampedArray) || img.data.length !== W * H * 4) return { error: `putPixels takes { width: ${W}, height: ${H}, data: a Uint8ClampedArray of ${W * H * 4} } (the document's size).` };
         const data = new ImageData(new Uint8ClampedArray(img.data), W, H);
+        if (args.target === 'quickMask') return { result: this.engine.setQuickMaskPixels(data, label) };
         if (args.how === 'replace' && q.activeLayer) {
           const mask = q.selection;
           if (mask) {

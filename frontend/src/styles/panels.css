@@ -369,6 +369,9 @@
 .cv-props-section[aria-expanded="false"] .icon { transform: rotate(-90deg); }
 .cv-props-section[hidden], .cv-props-transform[hidden], .cv-props-none[hidden] { display: none; }
 .cv-props-transform { display: flex; align-items: center; gap: 8px; }
+.cv-props-adj { display: grid; gap: var(--space-3); }
+.cv-props-adj[hidden] { display: none; }
+.cv-props-adj .cv-field { grid-template-columns: 84px minmax(0, 1fr); }
 .cv-props-role .cv-props-field { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; }
 .cv-props-role-select { flex: 1 1 auto; min-width: 0; }
 .cv-link-btn { display: inline-grid; place-items: center; width: 28px; height: 28px; flex: none; border: 1px solid var(--line-2); border-radius: 7px; background: var(--surface-2); color: var(--text-muted); cursor: pointer; }

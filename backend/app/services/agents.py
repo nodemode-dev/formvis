@@ -157,6 +157,10 @@ def open_session(name: str, version: str) -> str:
     return sid
 
 
+def known_session(sid: str) -> bool:
+    return sid in _sessions
+
+
 def close_session(sid: str) -> None:
     _sessions.pop(sid, None)
     _idle_at.pop(sid, None)

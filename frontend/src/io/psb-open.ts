@@ -84,7 +84,7 @@ export async function readGiantPsd(file: Blob, opts: GiantOpen = {}): Promise<{ 
       if (!readable) count.zip++;
       const t = new TiledRaster(Math.max(1, l.width || h.width), Math.max(1, l.height || h.height));
       if (readable && plans.length && l.width > 0 && l.height > 0) {
-        await fill(t, l.width, l.height, (y0, y1) => (l.top + y1 <= 0 || l.top + y0 >= h.height ? Promise.resolve(null) : readBand(src, h, plans, l.width, y0, y1)), onRows, opts.stopped).catch((err) => { t.release(store); throw err; });
+        await fill(t, l.width, l.height, (y0, y1) => readBand(src, h, plans, l.width, y0, y1), onRows, opts.stopped).catch((err) => { t.release(store); throw err; });
       } else onRows(l.height);
       const base = bases[bases.length - 1];
       const layer = newLayer(l.name, doc, { raster: null, tiled: t, transform: { ...docTransform(t.width, t.height), x: l.left, y: l.top }, visible: !l.hidden, opacity: l.opacity, blend: l.blend === 'pass' ? 'normal' : l.blend, parentId: parent, ...(l.clipping && base ? { clipId: base.id } : {}) });

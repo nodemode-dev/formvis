@@ -1,4 +1,5 @@
 import { ACTION_COLOURS, type Action, type ActionStep } from '../ui/actions';
+import { hsvFromData } from '../engine/adjust';
 import { fromBase64, toBase64 } from './icc-read';
 
 /** .atn action files: a big-endian stream of actions, each a list of events with an optional descriptor.
@@ -12,6 +13,8 @@ export type Val =number | string | boolean | Val[] | Desc | Enum | Unit | null;
 
 const isEnum = (v: Val | undefined): v is Enum => !!v && typeof v === 'object' && !Array.isArray(v) && 'kind' in v && v.kind === 'enum';
 const isUnit = (v: Val | undefined): v is Unit => !!v && typeof v === 'object' && !Array.isArray(v) && 'kind' in v && v.kind === 'unit';
+const isDesc = (v: Val | undefined): v is Desc => !!v && typeof v === 'object' && !Array.isArray(v) && 'items' in v;
+const CHANNEL_SLOT = ['Cmps', 'Rd  ', 'Grn ', 'Bl  ', 'Blck'];
 const unitOrNumber = (v: Val | undefined): number | null => (isUnit(v) ? v.value : typeof v === 'number' ? v : null);
 
 interface FilterField { key: string; set: string; unit?: string; min: number; max: number; whole?: boolean; positive?: boolean }
@@ -71,17 +74,19 @@ export class Reader {
   id(): string { const n = this.u32(); return this.ascii(n === 0 ? 4 : n); }
 }
 
-function readReference(r: Reader): void {
+function readReference(r: Reader): Enum | null {
   const count = r.u32();
+  let found: Enum | null = null;
   for (let i = 0; i < count; i++) {
     const form = r.ascii(4);
     if (form === 'Clss') { r.unicode(); r.id(); }
-    else if (form === 'Enmr') { r.unicode(); r.id(); r.id(); r.id(); }
+    else if (form === 'Enmr') { r.unicode(); r.id(); const type = r.id(); found = { kind: 'enum', type, value: r.id() }; }
     else if (form === 'name') { r.unicode(); r.id(); r.unicode(); }
     else if (form === 'Idnt' || form === 'indx' || form === 'rele') { r.unicode(); r.id(); r.i32(); }
     else if (form === 'prop') { r.unicode(); r.id(); r.id(); }
     else throw new Error(`unknown reference form ${form}`);
   }
+  return found;
 }
 
 function readValue(r: Reader, type: string): Val {
@@ -99,7 +104,7 @@ function readValue(r: Reader, type: string): Val {
       return list;
     }
     case 'type': case 'GlbC': { r.unicode(); return r.id(); }
-    case 'obj ': readReference(r); return null;
+    case 'obj ': return readReference(r);
     case 'alis': case 'tdta': r.skip(r.u32()); return null;
     default: throw new Error(`unknown descriptor type ${type}`);
   }
@@ -207,6 +212,47 @@ function stepFor(it: Item): ActionStep | null {
     if (n === null || !Number.isFinite(n)) return null;
     return it.event === 'Pstr' ? adjust('posterize', { levels: Math.min(255, Math.max(2, Math.round(n))) }) : adjust('threshold', { level: Math.min(255, Math.max(1, Math.round(n))) });
   }
+  if (it.event === 'Lvls' || it.event === 'Crvs') {
+    const adjs = get('Adjs');
+    if (!Array.isArray(adjs) || !adjs.length) return null;
+    const slot = (d: Val): number => { const ch = isDesc(d) ? d.items.get('Chnl') : undefined; return isEnum(ch) ? CHANNEL_SLOT.indexOf(ch.value) : -1; };
+    if (it.event === 'Lvls') {
+      const ranges = [0, 1, 2, 3, 4].map(() => ({ black: 0, gamma: 1, white: 255, outputBlack: 0, outputWhite: 255 }));
+      for (const d of adjs) {
+        const at = isDesc(d) ? slot(d) : -1;
+        if (!isDesc(d) || at < 0 || at > 3) return null;
+        const inp = d.items.get('Inpt'), out = d.items.get('Otpt'), gm = d.items.get('Gmm ');
+        const pair = (v: Val | undefined, lo: number, hi: number): [number, number] | null => (Array.isArray(v) && v.length === 2 && typeof v[0] === 'number' && typeof v[1] === 'number' && v[0] >= lo && v[1] <= hi ? [v[0], v[1]] : null);
+        const i = pair(inp, 0, 255) ?? [0, 255], o = pair(out, 0, 255) ?? [0, 255];
+        const gamma = typeof gm === 'number' ? (Number.isInteger(gm) ? gm / 100 : gm) : 1;
+        if (!(i[0] < i[1]) || !(gamma >= 0.1 && gamma <= 9.99)) return null;
+        ranges[at] = { black: i[0], gamma, white: i[1], outputBlack: o[0], outputWhite: o[1] };
+      }
+      return adjust('levels', { levels: { channel: 'RGB', ranges } });
+    }
+    const channels = [0, 1, 2, 3, 4].map(() => [{ x: 0, y: 0 }, { x: 255, y: 255 }]);
+    for (const d of adjs) {
+      const at = isDesc(d) ? slot(d) : -1;
+      const pts = isDesc(d) ? d.items.get('Crv ') : undefined;
+      if (!isDesc(d) || at < 0 || at > 3 || !Array.isArray(pts) || pts.length < 2 || pts.length > 16) return null;
+      const knots: Array<{ x: number; y: number }> = [];
+      for (const p of pts) {
+        const x = isDesc(p) ? unitOrNumber(p.items.get('Hrzn')) : null, y = isDesc(p) ? unitOrNumber(p.items.get('Vrtc')) : null;
+        if (x === null || y === null || !(x >= 0 && x <= 255 && y >= 0 && y <= 255)) return null;
+        knots.push({ x, y });
+      }
+      channels[at] = knots;
+    }
+    return adjust('curves', { curves: { channel: 'RGB', channels } });
+  }
+  if (it.event === 'HStr') {
+    const adjs = get('Adjs'), first = Array.isArray(adjs) && adjs.length === 1 ? adjs[0] : null;
+    if (!isDesc(first)) return null;
+    const h = unitOrNumber(first.items.get('H   ')), s = unitOrNumber(first.items.get('Strt')), l = unitOrNumber(first.items.get('Lght'));
+    if (h === null || s === null || l === null) return null;
+    const colorize = get('Clrz') === true;
+    return adjust('hsv', { hue: Math.min(colorize ? 360 : 180, Math.max(colorize ? 0 : -180, Math.round(h))), saturation: Math.min(100, Math.max(colorize ? 0 : -100, Math.round(s))), lightness: Math.min(100, Math.max(-100, Math.round(l))), colorize });
+  }
   if (it.event === 'ImgS') {
     const w = get('Wdth'), h = get('Hght'), res = get('Rslt');
     const px = (v: Val | undefined): number | null => (isUnit(v) ? v.value : typeof v === 'number' ? v : null);
@@ -259,20 +305,29 @@ class Out {
   bytes(): Uint8Array { return Uint8Array.from(this.parts); }
 }
 
-type Field = ['enum', string, string] | ['TEXT', string] | ['bool', boolean] | ['UntF', string, number] | ['long', number] | ['sel'];
+type Field = ['enum', string, string] | ['TEXT', string] | ['bool', boolean] | ['UntF', string, number] | ['long', number] | ['doub', number] | ['sel'] | ['chan', string] | ['list', Field[]] | ['Objc', string, Array<[string, Field]>];
+
+function writeField(o: Out, f: Field): void {
+  if (f[0] === 'enum') o.ascii('enum').id(f[1]).id(f[2]);
+  else if (f[0] === 'TEXT') o.ascii('TEXT').unicode(f[1]);
+  else if (f[0] === 'bool') o.ascii('bool').u8(f[1] ? 1 : 0);
+  else if (f[0] === 'UntF') o.ascii('UntF').ascii(f[1]).f64(f[2]);
+  else if (f[0] === 'long') o.ascii('long').u32(f[1]);
+  else if (f[0] === 'doub') o.ascii('doub').f64(f[1]);
+  else if (f[0] === 'chan') o.ascii('obj ').u32(1).ascii('Enmr').unicode('').id('Chnl').id('Chnl').id(f[1]);
+  else if (f[0] === 'list') { o.ascii('VlLs').u32(f[1].length); for (const item of f[1]) writeField(o, item); }
+  else if (f[0] === 'Objc') { o.ascii('Objc'); descriptor(o, f[1], f[2]); }
+  else o.ascii('obj ').u32(1).ascii('Enmr').unicode('').id('Chnl').id('Chnl').id('fsel');
+}
 
 function descriptor(o: Out, classId: string, fields: Array<[string, Field]>): void {
   o.unicode('').id(classId).u32(fields.length);
-  for (const [key, f] of fields) {
-    o.id(key);
-    if (f[0] === 'enum') o.ascii('enum').id(f[1]).id(f[2]);
-    else if (f[0] === 'TEXT') o.ascii('TEXT').unicode(f[1]);
-    else if (f[0] === 'bool') o.ascii('bool').u8(f[1] ? 1 : 0);
-    else if (f[0] === 'UntF') o.ascii('UntF').ascii(f[1]).f64(f[2]);
-    else if (f[0] === 'long') o.ascii('long').u32(f[1]);
-    else o.ascii('obj ').u32(1).ascii('Enmr').unicode('').id('Chnl').id('Chnl').id('fsel');
-  }
+  for (const [key, f] of fields) { o.id(key); writeField(o, f); }
 }
+
+const isIdentityRange = (r: Record<string, unknown>): boolean => r.black === 0 && r.gamma === 1 && r.white === 255 && r.outputBlack === 0 && r.outputWhite === 255;
+const isIdentityCurve = (k: Array<{ x: number; y: number }>): boolean => k.length === 2 && k[0].x === 0 && k[0].y === 0 && k[1].x === 255 && k[1].y === 255;
+const CHANNEL_NAME = ['Cmps', 'Rd  ', 'Grn ', 'Bl  '];
 
 const SIMPLE_BACK: Record<string, string> = { invert: 'Invr', desaturate: 'Dstt', flatten: 'Fltn', 'merge-visible': 'MrgV', 'merge-down': 'Mrg2', duplicate: 'Dplc', deselect: 'Dslc', inverse: 'Invs', equalize: 'Eqlz' };
 
@@ -313,6 +368,39 @@ function itemFor(s: ActionStep): Uint8Array | null {
   }
   if (s.kind === 'adjustment' && !s.layer && s.adj === 'posterize' && typeof s.data.levels === 'number') { head('Pstr', true); descriptor(o, 'null', [['Lvls', ['long', Math.round(s.data.levels)]]]); return o.bytes(); }
   if (s.kind === 'adjustment' && !s.layer && s.adj === 'threshold' && typeof s.data.level === 'number') { head('Thrs', true); descriptor(o, 'null', [['Lvl ', ['long', Math.round(s.data.level)]]]); return o.bytes(); }
+  if (s.kind === 'adjustment' && !s.layer && s.adj === 'levels') {
+    const ranges = (s.data.levels as { ranges?: Array<Record<string, number>> } | undefined)?.ranges;
+    if (!Array.isArray(ranges) || ranges.length < 4 || (ranges[4] && !isIdentityRange(ranges[4]))) return null;
+    const adjs: Field[] = [];
+    for (let c = 0; c < 4; c++) {
+      const g = ranges[c];
+      if (!g || !['black', 'gamma', 'white', 'outputBlack', 'outputWhite'].every((k) => Number.isFinite(g[k]))) return null;
+      if (c === 0 || !isIdentityRange(g)) adjs.push(['Objc', 'LvlsA', [['Chnl', ['chan', CHANNEL_NAME[c]]], ['Inpt', ['list', [['long', g.black], ['long', g.white]]]], ['Gmm ', ['long', Math.round(g.gamma * 100)]], ['Otpt', ['list', [['long', g.outputBlack], ['long', g.outputWhite]]]]]]);
+    }
+    head('Lvls', true);
+    descriptor(o, 'null', [['Adjs', ['list', adjs]]]);
+    return o.bytes();
+  }
+  if (s.kind === 'adjustment' && !s.layer && s.adj === 'curves') {
+    const channels = (s.data.curves as { channels?: Array<Array<{ x: number; y: number }>> } | undefined)?.channels;
+    if (!Array.isArray(channels) || channels.length < 4 || (channels[4] && !isIdentityCurve(channels[4]))) return null;
+    const adjs: Field[] = [];
+    for (let c = 0; c < 4; c++) {
+      const k = channels[c];
+      if (!Array.isArray(k) || k.length < 2 || k.length > 16 || !k.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y))) return null;
+      if (c === 0 || !isIdentityCurve(k)) adjs.push(['Objc', 'CrvA', [['Chnl', ['chan', CHANNEL_NAME[c]]], ['Crv ', ['list', k.map((p): Field => ['Objc', 'CrPt', [['Hrzn', ['doub', p.x]], ['Vrtc', ['doub', p.y]]]])]]]]);
+    }
+    head('Crvs', true);
+    descriptor(o, 'null', [['Adjs', ['list', adjs]]]);
+    return o.bytes();
+  }
+  if (s.kind === 'adjustment' && !s.layer && s.adj === 'hsv') {
+    const hsv = hsvFromData(s.data), m = hsv.adjustments.Master;
+    if (!m || hsv.range !== 'Master' || hsv.invertRange || Object.entries(hsv.adjustments).some(([k, a]) => k !== 'Master' && a && (a.hue || a.saturation || a.lightness))) return null;
+    head('HStr', true);
+    descriptor(o, 'null', [['Clrz', ['bool', hsv.colorize]], ['Adjs', ['list', [['Objc', 'Hst2', [['H   ', ['long', Math.round(m.hue)]], ['Strt', ['long', Math.round(m.saturation)]], ['Lght', ['long', Math.round(m.lightness)]]]]]]]]);
+    return o.bytes();
+  }
   if (s.kind === 'imageSize') { head('ImgS', true); descriptor(o, 'null', [['Wdth', ['UntF', '#Pxl', s.w]], ['Hght', ['UntF', '#Pxl', s.h]], ['Rslt', ['UntF', '#Rsl', s.res]]]); return o.bytes(); }
   return null;
 }

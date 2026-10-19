@@ -802,6 +802,7 @@ const ROWS: Record<string, Row> = {
   'generative-expand': ['Image', 'Opens Generative Expand.', 'Use when the canvas should grow and the new area be filled in.', 'm'],
   'upscale-2x': ['Image', 'Opens the dialog that enlarges the picture two times.', 'Use when a small picture needs twice the pixels.'],
   'upscale-4x': ['Image', 'Opens the dialog that enlarges the picture four times.', 'Use when a small picture needs four times the pixels.'],
+  'select-by-depth': ['Select', 'Selects the pixels between a far and a near depth of the document\'s shared depth map, with a feather, combined with the selection as asked.', 'Use when a selection should follow distance: the foreground, the background or a slice between, read once and kept with the document.', 'm'],
   'depth-map-from-layer': ['Image', 'Reads the depth of the active layer alone with the local depth model and adds it as a grey layer named Depth Map.', 'Use when the depth should come from one layer rather than the whole picture; the model is downloaded in Preferences > Plugins > Local models.', 'm'],
   'depth-map-recompute': ['Image', 'Reads the depth again from what the document shows without the depth layer and replaces the Depth Map layer pixels.', 'Use when the picture changed after the depth map was made.', 'm'],
   'depth-map-show': ['View', 'Shows the Depth Map layer alone on the canvas, or the picture again.', 'Use when you want to look at the depth map while correcting it.'],
