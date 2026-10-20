@@ -57,12 +57,38 @@ float sep(int m, float b, float s) {
   if (m == 16) return clamp(b + 2.0 * s - 1.0, 0.0, 1.0); if (m == 17) return s <= 0.5 ? min(b, 2.0 * s) : max(b, 2.0 * s - 1.0);
   if (m == 18) return b + s >= 1.0 ? 1.0 : 0.0; if (m == 19) return abs(b - s); if (m == 20) return b + s - 2.0 * b * s;
   if (m == 21) return clamp(b - s, 0.0, 1.0); if (m == 22) { if (s <= 0.0) return b <= 0.0 ? 0.0 : 1.0; return min(1.0, b / s); }
-  return s; }
+  if (m == 27) return 1.0 - abs(1.0 - b - s); if (m == 28) return s >= 1.0 ? 1.0 : min(1.0, b * b / (1.0 - s));
+  if (m == 29) return b >= 1.0 ? 1.0 : min(1.0, s * s / (1.0 - b));  return s; }
 vec3 blend(int m, vec3 b, vec3 s) {
   if (m == 6) return lum(s) < lum(b) ? s : b; if (m == 11) return lum(s) < lum(b) ? b : s;
   if (m == 23) return setLum(setSat(s, sat(b)), lum(b)); if (m == 24) return setLum(setSat(b, sat(s)), lum(b));
   if (m == 25) return setLum(s, lum(b)); if (m == 26) return setLum(b, lum(s));
   return vec3(sep(m, b.r, s.r), sep(m, b.g, s.g), sep(m, b.b, s.b)); }
+float limRamp(float v, float lo, float hi, float soft) {
+  if (v >= lo && v <= hi) return 1.0;
+  if (soft <= 0.0) return 0.0;
+  float t = 1.0 - (v < lo ? lo - v : v - hi) / soft;
+  return t <= 0.0 ? 0.0 : t * t * (3.0 - 2.0 * t);
+}
+float limitWeight(vec3 c) {
+  if (biCh < 5) return 1.0;
+  vec3 p = floor(c * 255.0 + 0.5);
+  float w = 1.0;
+  if (biCh == 5) w = limRamp(((0.299 * p.r + 0.587 * p.g + 0.114 * p.b) / 255.0) * 100.0, min(biT.x, biT.y), max(biT.x, biT.y), biT.z);
+  else {
+    float mx = max(max(p.r, p.g), p.b), d = mx - min(min(p.r, p.g), p.b);
+    if (d == 0.0) w = 0.0; else {
+      float h = (p.r - p.g) / d + 4.0;
+      if (mx == p.r) { float q = (p.g - p.b) / d; h = q - 6.0 * trunc(q / 6.0); } else if (mx == p.g) h = (p.b - p.r) / d + 2.0;
+      h *= 60.0; if (h < 0.0) h += 360.0;
+      float dh = abs(h - biU.x); if (dh > 180.0) dh = 360.0 - dh;
+      w = limRamp(dh, 0.0, biU.y / 2.0, biT.z * 1.8) * min(1.0, d / 255.0 / 0.15);
+    }
+  }
+  if (biT.w > 0.5) w = 1.0 - w;
+  return floor(w * 255.0 + 0.5) / 255.0;
+}
+vec3 adjustBlend(vec3 b, vec3 t) { int m = chOff >> 8; return m == 0 ? t : blend(m, b, t); }
 uniform vec4 gA; uniform vec4 gB; uniform uvec4 gS;
 float lattice(int x, int y, uint seed) {
   uint z = (uint(x) * 0x27d4eb2du) ^ (uint(y) * 0x165667b1u) ^ seed; float sum = 0.0;
@@ -90,7 +116,7 @@ void main() {
     if (bd.a <= 0.0) { outColor = bd; return; }
     ivec3 i = ivec3(floor(bd.rgb * 255.0 + 0.5));
     vec3 t = vec3(texelFetch(source, ivec2(i.r, 0), 0).r, texelFetch(source, ivec2(i.g, 0), 0).g, texelFetch(source, ivec2(i.b, 0), 0).b);
-    outColor = vec4(bd.rgb + (t - bd.rgb) * opacity * cov, bd.a); return;
+    outColor = vec4(bd.rgb + (adjustBlend(bd.rgb, t) - bd.rgb) * opacity * cov * limitWeight(bd.rgb), bd.a); return;
   }
   if (mode == 104) {
     if (bd.a <= 0.0) { outColor = bd; return; }
@@ -122,7 +148,7 @@ void main() {
       acc += w * texelFetch(source, ivec2(c.x + c.y * 52, c.z), 0).rgb;
     }
     vec3 t3 = floor(acc * 255.0 + 0.5) / 255.0;
-    outColor = vec4(bd.rgb + (t3 - bd.rgb) * opacity * cov, bd.a); return;
+    outColor = vec4(bd.rgb + (adjustBlend(bd.rgb, t3) - bd.rgb) * opacity * cov * limitWeight(bd.rgb), bd.a); return;
   }
   vec2 p = vec2(gl_FragCoord.x, H - gl_FragCoord.y);
   bool screen = (chOff & 16) != 0;
@@ -130,7 +156,7 @@ void main() {
   if (!screen && (q.x < 0.0 || q.y < 0.0 || q.x >= size.x || q.y >= size.y)) { outColor = bd; return; }
   vec4 s0 = screen ? texelFetch(source, fb, 0) : textureLod(source, q.xy / size, lod);
   vec4 sc = s0.a > 0.0 && !screen ? vec4(s0.rgb / s0.a, s0.a) : s0;
-  if (mode == 1 || mode == 5 || mode == 6 || mode == 11 || (mode >= 15 && mode <= 18) || mode == 21 || mode == 22) sc = vec4(floor(sc.rgb * 255.0 + 0.5) / 255.0, sc.a);
+  if (mode == 1 || mode == 5 || mode == 6 || mode == 11 || (mode >= 15 && mode <= 18) || mode == 21 || mode == 22 || mode >= 27) sc = vec4(floor(sc.rgb * 255.0 + 0.5) / 255.0, sc.a);
   float bif = 1.0;
   if (biCh != 0) bif = biFactor(biValue(sc.rgb, biCh), biT) * (bd.a <= 0.0 ? biFactor(255.0, biU) : biFactor(biValue(bd.rgb, biCh), biU));
   if ((chOff & 8) != 0) {
@@ -377,7 +403,7 @@ export class GlDisplay {
     gl.uniform4f(u('biT'), ...(l.blendIf?.thisLayer ?? [0, 0, 255, 255]));
     gl.uniform4f(u('biU'), ...(l.blendIf?.underlying ?? [0, 0, 255, 255]));
     gl.uniform1i(u('biCh'), l.blendIf?.channel ?? 0);
-    gl.uniform1i(u('chOff'), (l.chOff ?? 0) | (extra?.ko ? KO_FLAG : 0) | (extra?.screen ? SCREEN_FLAG : 0));
+    gl.uniform1i(u('chOff'), (l.chOff ?? 0) | (l.lut ? blendIndex(l.blend) << 8 : 0) | (extra?.ko ? KO_FLAG : 0) | (extra?.screen ? SCREEN_FLAG : 0));
     gl.uniform1f(u('ko'), l.ko ? Math.min(1, Math.max(0, l.ko.opacity)) : 0);
     gl.activeTexture(gl.TEXTURE2);
     if (l.mask) {

@@ -8,7 +8,7 @@ import type { BlendMode } from '../engine';
 export const BLEND_IDS: readonly BlendMode[] = [
   'normal', 'dissolve', 'darken', 'multiply', 'color-burn', 'linear-burn', 'darker-color', 'lighten', 'screen', 'color-dodge',
   'linear-dodge', 'lighter-color', 'overlay', 'soft-light', 'hard-light', 'vivid-light', 'linear-light', 'pin-light', 'hard-mix',
-  'difference', 'exclusion', 'subtract', 'divide', 'hue', 'saturation', 'color', 'luminosity',
+  'difference', 'exclusion', 'subtract', 'divide', 'hue', 'saturation', 'color', 'luminosity', 'negation', 'reflect', 'glow',
 ];
 export const blendIndex = (m: BlendMode): number => Math.max(0, BLEND_IDS.indexOf(m));
 
@@ -79,7 +79,9 @@ fn sep(m: u32, b: f32, s: f32) -> f32 {
     case 20u: { return b + s - 2.0 * b * s; }
     case 21u: { return clamp(b - s, 0.0, 1.0); }
     case 22u: { if (s <= 0.0) { if (b <= 0.0) { return 0.0; } return 1.0; } return min(1.0, b / s); }
-    default: { return s; }
+    case 27u: { return 1.0 - abs(1.0 - b - s); }
+    case 28u: { if (s >= 1.0) { return 1.0; } return min(1.0, b * b / (1.0 - s)); }
+    case 29u: { if (b >= 1.0) { return 1.0; } return min(1.0, s * s / (1.0 - b)); }    default: { return s; }
   }
 }
 fn blend(m: u32, b: vec3<f32>, s: vec3<f32>) -> vec3<f32> {
@@ -124,6 +126,44 @@ fn keep(o: vec4<f32>, b: vec4<f32>) -> vec4<f32> {
   return vec4<f32>(c, o.a);
 }
 
+fn limRamp(v: f32, lo: f32, hi: f32, soft: f32) -> f32 {
+  if (v >= lo && v <= hi) { return 1.0; }
+  if (soft <= 0.0) { return 0.0; }
+  var d = v - hi;
+  if (v < lo) { d = lo - v; }
+  let t = 1.0 - d / soft;
+  if (t <= 0.0) { return 0.0; }
+  return t * t * (3.0 - 2.0 * t);
+}
+/** engine/limit.ts limitWeights for an adjustment's luminosity (biCh 5) or colour range (biCh 6) limit, from the 8-bit backdrop; 1 without one. */
+fn limitWeight(c: vec3<f32>) -> f32 {
+  if (layer.biCh < 5u) { return 1.0; }
+  let p = round(c * 255.0);
+  var w = 1.0;
+  if (layer.biCh == 5u) {
+    w = limRamp(((0.299 * p.r + 0.587 * p.g + 0.114 * p.b) / 255.0) * 100.0, min(layer.biT.x, layer.biT.y), max(layer.biT.x, layer.biT.y), layer.biT.z);
+  } else {
+    let mx = max(max(p.r, p.g), p.b); let d = mx - min(min(p.r, p.g), p.b);
+    if (d == 0.0) { w = 0.0; } else {
+      var h = (p.r - p.g) / d + 4.0;
+      if (mx == p.r) { let q = (p.g - p.b) / d; h = q - 6.0 * trunc(q / 6.0); } else if (mx == p.g) { h = (p.b - p.r) / d + 2.0; }
+      h = h * 60.0;
+      if (h < 0.0) { h = h + 360.0; }
+      var dh = abs(h - layer.biU.x);
+      if (dh > 180.0) { dh = 360.0 - dh; }
+      w = limRamp(dh, 0.0, layer.biU.y / 2.0, layer.biT.z * 1.8) * min(1.0, d / 255.0 / 0.15);
+    }
+  }
+  if (layer.biT.w > 0.5) { w = 1.0 - w; }
+  return round(w * 255.0) / 255.0;
+}
+/** An adjusted colour t blended onto the backdrop in the layer's blend mode (chOff above bit 8), as the renderer blends an adjustment layer's pixels. */
+fn adjustBlend(b: vec3<f32>, t: vec3<f32>) -> vec3<f32> {
+  let m = layer.chOff >> 8u;
+  if (m == 0u) { return t; }
+  return blend(m, b, t);
+}
+
 @fragment fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
   let px = vec2<i32>(floor(pos.xy));
   var bd = textureLoad(backdrop, px, 0);
@@ -145,7 +185,7 @@ fn keep(o: vec4<f32>, b: vec4<f32>) -> vec4<f32> {
     if (bd.a <= 0.0) { return bd; }
     let i = vec3<i32>(round(bd.rgb * 255.0));
     let t = vec3<f32>(textureLoad(source, vec2<i32>(i.r, 0), 0).r, textureLoad(source, vec2<i32>(i.g, 0), 0).g, textureLoad(source, vec2<i32>(i.b, 0), 0).b);
-    return vec4<f32>(bd.rgb + (t - bd.rgb) * layer.opacity * cov, bd.a);
+    return vec4<f32>(bd.rgb + (adjustBlend(bd.rgb, t) - bd.rgb) * layer.opacity * cov * limitWeight(bd.rgb), bd.a);
   }
   // A 3D table (Phase 18.5), as engine/lut.ts lut3Sample computes it: the eight nodes (every 5 levels, 52 a side, packed
   // x = r + g * 52, y = b) around the colour, weighted per axis, rounded to 8 bits, then mixed in by opacity.
@@ -162,7 +202,7 @@ fn keep(o: vec4<f32>, b: vec4<f32>) -> vec4<f32> {
       acc += w * textureLoad(source, vec2<i32>(c.x + c.y * 52, c.z), 0).rgb;
     }
     let t3 = round(acc * 255.0) / 255.0;
-    return vec4<f32>(bd.rgb + (t3 - bd.rgb) * layer.opacity * cov, bd.a);
+    return vec4<f32>(bd.rgb + (adjustBlend(bd.rgb, t3) - bd.rgb) * layer.opacity * cov * limitWeight(bd.rgb), bd.a);
   }
   let screen = (layer.chOff & 16u) != 0u;
   let q = layer.inv * vec3<f32>(pos.xy, 1.0);
@@ -178,7 +218,7 @@ fn keep(o: vec4<f32>, b: vec4<f32>) -> vec4<f32> {
   // thresholds (Hard Mix, Darker and Lighter Color, Vivid Light's halves) flip on that exact input; the canvas-native
   // modes composite the premultiplied values, so they keep the float above. Each path gets its own precision.
   let m = layer.mode;
-  if (m == 1u || m == 5u || m == 6u || m == 11u || (m >= 15u && m <= 18u) || m == 21u || m == 22u) {
+  if (m == 1u || m == 5u || m == 6u || m == 11u || (m >= 15u && m <= 18u) || m == 21u || m == 22u || m >= 27u) {
     sc = vec4<f32>(round(sc.rgb * 255.0) / 255.0, sc.a);
   }
   var bif = 1.0;

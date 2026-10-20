@@ -135,7 +135,7 @@ export { CUSTOM_SHAPES, allCustomShapes, addCustomShape, loadCustomShapes } from
 import { replaceColours } from './color-replace';
 import { fillOffThread } from './retouch-jobs';
 import { FILL_DEFAULTS, WarpStroke, contentFill, diffusionFill, featherEdge, frequencySplit, ringVariance, SMOOTH_RING_VARIANCE, fillTransparent, healFromSource, premultiply, scaleHealCorrection, spotHeal, unpremultiply, type FillOptions, type HealBlend, type HealMode, type HealSample } from './retouch';
-import { EXTRA_BLENDS, PIXEL_BLENDS, blendPixels, dissolveNoise } from './blend';
+import { PIXEL_BLENDS, blendPixels, dissolveNoise } from './blend';
 import { LUT3_N, adjustmentLut, adjustmentLut3 } from './lut';
 import { decontaminate } from './select-mask';
 import { alphaToMask, defringe, distanceSquared, removeMatte } from './matting';
@@ -156,7 +156,7 @@ export interface GpuLayerSpec { image: Surface | null; lut?: Uint8Array; lut3?: 
 /** A clipping base for the GPU: its pixels, placement and opacity, and its own mask; its coverage clips the layer. */
 export interface GpuClipSpec { image: Surface; deep?: ChannelPixels; linear?: boolean; version: number; width: number; height: number; matrix: Mat; opacity: number; mask?: GpuMaskSpec; parent?: GpuClipSpec }
 /** A layer's Blend If for the GPU: the channel tested (1 grey, 2 red, 3 green, 4 blue) and the four-point ranges of the layer and of what lies under it. */
-export interface GpuBlendIf { channel: 1 | 2 | 3 | 4; thisLayer: readonly [number, number, number, number]; underlying: readonly [number, number, number, number] }
+export interface GpuBlendIf { channel: 1 | 2 | 3 | 4 | 5 | 6; thisLayer: readonly [number, number, number, number]; underlying: readonly [number, number, number, number] }
 /** A layer's mask for the GPU: its pixels (alpha is coverage), their version, size and placement. */
 export interface GpuMaskSpec { image: Surface; version: number; width: number; height: number; matrix: Mat }
 export type { HealMode } from './retouch';
@@ -2027,7 +2027,7 @@ export class Engine {
       if (have) return have;
       const go = ov?.get(g.id), gop = go?.opacity ?? g.opacity, gb = go?.blend ?? g.blend;
       if (go?.hidden || !(gop > 0)) { dropped.add(g.id); return null; }
-      if (EXTRA_BLENDS.has(gb)) { state.fail = 'a folder or clipped group in Negation, Reflect, Glow or Xor mode'; return null; }
+      if (gb === 'xor') { state.fail = 'a folder or clipped group in Xor mode'; return null; }
       const sub: GpuLayerSpec[] = [];
       groups.set(g.id, sub);
       list.push({ image: null, sub, version: 0, width: 1, height: 1, matrix: [1, 0, 0, 1, 0, 0], opacity: gop, blend: gb });
@@ -2093,20 +2093,24 @@ export class Engine {
       if (l.adjustment) {
         // Phase 18.5: a per-channel adjustment goes to the GPU as its proven lookup table (engine/lut.ts); others, by name,
         // keep the document on the CPU, as does one with a blend mode of its own.
-        if ((o?.blend ?? l.blend) !== 'normal') return { reason: 'an adjustment layer with a blend mode' };
-        if (limitOf(l.adjustment)) return { reason: 'an adjustment layer with a limit' };
+        const ab = o?.blend ?? l.blend, lim = limitOf(l.adjustment);
+        if (ab === 'dissolve' || ab === 'linear-dodge' || ab === 'xor') return { reason: 'an adjustment layer in Dissolve, Linear Dodge or Xor mode' };
+        if (lim?.mode === 'depth' || limitView.id === l.id) return { reason: 'an adjustment layer with a depth limit' };
+        // A limit reads the pixels beneath on the GPU as limit.ts does: channel 5 luminosity, 6 colour range, the range in thisLayer, the hue and width in underlying.
+        const gl: GpuBlendIf | undefined = lim ? { channel: lim.mode === 'luminosity' ? 5 : 6, thisLayer: [lim.lo, lim.hi, lim.soft, lim.invert ? 1 : 0], underlying: [lim.hue, lim.width, 0, 0] } : undefined;
         const lut = adjustmentLut(l.adjustment);
         if (lut) {
-          layers.push({ image: null, lut, mask, clip, folders, version: 0, width: 256, height: 1, matrix: [1, 0, 0, 1, 0, 0], opacity: (o?.opacity ?? l.opacity) * (l.fill ?? 1), blend: 'normal' });
+          layers.push({ image: null, lut, mask, clip, folders, blendIf: gl, version: 0, width: 256, height: 1, matrix: [1, 0, 0, 1, 0, 0], opacity: (o?.opacity ?? l.opacity) * (l.fill ?? 1), blend: ab });
           continue;
         }
         if (l.adjustment.kind === 'grain') {
+          if (ab !== 'normal' || lim) return { reason: 'a grain adjustment layer with a blend mode or a limit' };
           layers.push({ image: null, grain: grainParams(grainSettingsOf(l.adjustment.data)), mask, clip, folders, version: 0, width: 1, height: 1, matrix: [1, 0, 0, 1, 0, 0], opacity: (o?.opacity ?? l.opacity) * (l.fill ?? 1), blend: 'normal' });
           continue;
         }
         const lut3 = adjustmentLut3(l.adjustment);
         if (!lut3) return { reason: `a ${ADJUSTMENT_LABELS[l.adjustment.kind] ?? l.adjustment.kind} adjustment layer` };
-        layers.push({ image: null, lut: lut3, lut3: true, mask, clip, folders, version: 0, width: LUT3_N * LUT3_N, height: LUT3_N, matrix: [1, 0, 0, 1, 0, 0], opacity: (o?.opacity ?? l.opacity) * (l.fill ?? 1), blend: 'normal' });
+        layers.push({ image: null, lut: lut3, lut3: true, mask, clip, folders, version: 0, width: LUT3_N * LUT3_N, height: LUT3_N, matrix: [1, 0, 0, 1, 0, 0], opacity: (o?.opacity ?? l.opacity) * (l.fill ?? 1), blend: ab, blendIf: gl });
         continue;
       }
       // Layer styles: the renderer's own cached effect parts (images at document coordinates), drawn below and above the
@@ -2125,7 +2129,7 @@ export class Engine {
         fxParts = this.display.gpuEffectParts(l, o, p.doc, maskedFx);
         if (!fxParts) return { reason: 'layer styles on a layer being edited' };
       }
-      if (EXTRA_BLENDS.has(grouped ? 'normal' : o?.blend ?? l.blend)) return { reason: 'a layer in Negation, Reflect, Glow or Xor mode' };
+      if ((grouped ? 'normal' : o?.blend ?? l.blend) === 'xor') return { reason: 'a layer in Xor mode' };
       if (grouped && l.tiled) return { reason: 'Blend Clipped Layers as Group on a layer kept in tiles' };
       if (l.tiled && view) {   // a giant layer: its tiles in view, each its own texture (1.62.9)
         if (mask || clip || fxParts.length) return { reason: 'a mask, clipping mask or style on a layer kept in tiles' };
@@ -12271,6 +12275,13 @@ export class Engine {
     return p;
   }
 
+  private labRendition(ch: ChannelPixels): Raster {
+    const r = new Raster(ch.width, ch.height);
+    r.ctx.putImageData(renderRegion(ch, 0, 0, ch.width, ch.height, null), 0, 0);
+    r.touch();
+    return r;
+  }
+
   /** A filter at 16 bits (1.53.7): `fn` on the active layer's 16-bit pixels, its 8-bit rendition from the result, one
    *  step. Within a selection it waits for a later release rather than filtering the whole layer. */
   applyDeepFilter(name: string, fn: (d: DeepPixels) => DeepPixels): boolean {
@@ -12289,7 +12300,7 @@ export class Engine {
       }
       deep = { ...ch, data: out };
     }
-    const rendition = deep.mode === 'cmyk' && p.cmykLut ? rasterFromChannels(deep, p.cmykLut) : rasterFromDeep(deep, p.doc.depth === 32);
+    const rendition = deep.mode === 'cmyk' && p.cmykLut ? rasterFromChannels(deep, p.cmykLut) : deep.mode === 'lab' ? this.labRendition(deep) : rasterFromDeep(deep, p.doc.depth === 32);
     return this.edit(name, (pp) => { pp.doc = { ...pp.doc, layers: pp.doc.layers.map((x) => (x.id === l.id ? { ...x, channels: deep, raster: rendition } : x)) }; return true; });
   }
 

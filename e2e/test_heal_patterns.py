@@ -29,6 +29,13 @@ PATCH = """(diffusion) => {
   e.retouch.patchDiffusion = 7;
   return e.historySteps.names.slice(-1)[0];
 }"""
+BAR = ":is(.cv-opt-group:not([hidden]), .cv-opt-pop-sect[style*=contents])"
+
+
+def more(page):
+    page.evaluate("document.querySelector('.cv-opt-more:not([hidden])[aria-expanded=false]')?.click()")
+
+
 RED = lambda p: p[0] > 170 and p[1] < 80
 GREY = lambda p: abs(p[0] - 128) < 25 and abs(p[1] - 128) < 25
 
@@ -54,12 +61,14 @@ def test_patch_use_pattern_heals_the_selection_from_the_pattern(page):
 def test_the_bars_offer_the_pattern_and_use_pattern_applies(page):
     page.evaluate(SETUP)
     page.evaluate("window.formvis.engine.setTool('healingBrush')")
-    bar = page.locator(".cv-opt-group:not([hidden])")
+    more(page)
+    bar = page.locator(BAR)
     bar.get_by_role("button", name="Pattern", exact=True).click()
     bar.locator(".cv-opt:not([hidden])", has_text="Pattern").locator("select").first.wait_for()   # the bar's next frame
     assert page.evaluate("window.formvis.engine.retouch.healSource") == "pattern"
     bar.get_by_role("button", name="Sampled", exact=True).click()
     page.evaluate("(() => { const e = window.formvis.engine; e.setTool('patch'); Object.assign(e.retouch, { patchMode: 'normal', patchPattern: window.__pat, patchDiffusion: 1 }); e.applySelection(window.__sel(20, 30, 40, 40), 'replace', 'Sel'); e.emit('options', null); })()")
+    more(page)
     button = bar.get_by_role("button", name="Use Pattern")
     button.wait_for()
     button.click()

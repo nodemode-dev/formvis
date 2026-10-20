@@ -21,7 +21,12 @@ HEAL = """([mode, hardness]) => {
   Object.assign(e.retouch, { healDiffusion: 7, healBlendMode: 'normal' });
   return { centre: px(40, 50), untouched: same / ring };
 }"""
+BAR = ":is(.cv-opt-group:not([hidden]), .cv-opt-pop-sect[style*=contents])"
 near = lambda p, q: all(abs(a - b) <= 6 for a, b in zip(p, q))
+
+
+def more(page):
+    page.evaluate("document.querySelector('.cv-opt-more:not([hidden])[aria-expanded=false]')?.click()")
 
 
 def test_each_mode_composes_the_heal_as_its_formula_says(page):
@@ -41,14 +46,16 @@ def test_replace_never_averages_at_a_soft_edge(page):
 
 def test_both_bars_offer_the_mode(page):
     page.evaluate("(() => { const e = window.formvis.engine; e.newDocument(100, 60, 'B', 'white'); e.setTool('healingBrush'); })()")
-    bar = page.locator(".cv-opt-group:not([hidden])")
+    more(page)
+    bar = page.locator(BAR)
     row = bar.locator(".cv-opt:not([hidden])", has_text="Mode").first
     row.wait_for()
     row.locator("select").select_option(label="Replace")
     assert page.evaluate("window.formvis.engine.retouch.healBlendMode") == "replace"
     page.evaluate("window.formvis.engine.setTool('spotHealing')")
+    more(page)
     row = bar.locator(".cv-opt:not([hidden])", has_text="Mode").first
-    page.wait_for_function("[...document.querySelectorAll('.cv-opt-group:not([hidden]) .cv-opt:not([hidden])')].some((o) => o.textContent.includes('Proximity Match'))")
+    page.wait_for_function("[...document.querySelectorAll(':is(.cv-opt-group:not([hidden]), .cv-opt-pop-sect[style*=contents]) .cv-opt:not([hidden])')].some((o) => o.textContent.includes('Proximity Match'))")
     row.locator("select").select_option(label="Lighten")
     assert page.evaluate("window.formvis.engine.retouch.spotBlendMode") == "lighten"
     page.evaluate("Object.assign(window.formvis.engine.retouch, { healBlendMode: 'normal', spotBlendMode: 'normal' })")

@@ -31,14 +31,16 @@ def test_import_paint_and_keep(page, tmp_path):
     f = tmp_path / "Crosses.abr"
     f.write_bytes(abr_v62([(40, 40, cross(40, 40)), (24, 12, cross(24, 12))]))
     page.evaluate("(() => { const e = window.formvis.engine; e.newDocument(200, 120, 'B', 'white'); e.setTool('brush'); if (e.tool !== 'brush') throw new Error('tool'); })()")
-    page.locator(".cv-opt-group:not([hidden]) button", has_text="Import Brushes").click()
+    page.evaluate("document.querySelector('.cv-opt-more:not([hidden])[aria-expanded=false]')?.click()")
+    page.locator(".cv-opt-group:not([hidden]) button, .cv-opt-pop-sect[style*=contents] button", has_text="Import Brushes").click()
     page.set_input_files("input[data-role=import-brushes]", str(f))
     page.wait_for_function("(window.formvis.engine.brushPresetId || '').startsWith('abr-')", timeout=10000)
     r = page.evaluate("(() => { const e = window.formvis.engine; return [e.brush.tip.w, e.brush.tip.h, e.brush.diameter]; })()")
     assert r == [40, 40, 40], r
     page.wait_for_timeout(200)
-    listed = page.evaluate("(() => { const s = [...document.querySelectorAll('.cv-opt-group:not([hidden]) select')].find((x) => [...x.options].some((o) => o.textContent === 'Hard round')); return s ? [[...s.options].map((o) => o.textContent).filter((t) => t.startsWith('Crosses')), s.value.startsWith('abr-')] : null; })()")
+    listed = page.evaluate("(() => { const s = [...document.querySelectorAll('.cv-opt-group:not([hidden]) select, .cv-opt-pop-sect[style*=contents] select')].find((x) => [...x.options].some((o) => o.textContent === 'Hard round')); return s ? [[...s.options].map((o) => o.textContent).filter((t) => t.startsWith('Crosses')), s.value.startsWith('abr-')] : null; })()")
     assert listed == [["Crosses 1", "Crosses 2"], True], listed
+    page.evaluate("document.querySelector('.cv-opt-more:not([hidden])[aria-expanded=true]')?.click()")
     s = page.evaluate("(() => { const e = window.formvis.engine; e.fg = { r: 0, g: 0, b: 0 }; const v = e.current.viewport, b = document.querySelector('.cv-stage').getBoundingClientRect(); return [b.left + v.panX + 100 * v.zoom, b.top + v.panY + 60 * v.zoom]; })()")
     page.mouse.click(*s)
     page.wait_for_timeout(300)

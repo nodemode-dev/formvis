@@ -57,6 +57,8 @@ export class NativeDisplay implements ScreenDisplay {
       if (l.blendIf || l.chOff) return 'a layer has Blend If or channel restrictions, which the native renderer does not draw yet';
       if (l.clip?.parent) return 'a clipping base is itself clipped, which the native renderer does not draw yet';
       if (l.blend === 'dissolve') return 'a layer is in Dissolve mode, which the native renderer does not draw yet';
+      if (l.blend === 'negation' || l.blend === 'reflect' || l.blend === 'glow') return 'a layer is in Negation, Reflect or Glow mode, which the native renderer does not draw yet';
+      if (l.lut && (l.blend !== 'normal' || l.blendIf)) return 'an adjustment layer has a blend mode or a limit, which the native renderer does not draw yet';
     }
     return null;
   }

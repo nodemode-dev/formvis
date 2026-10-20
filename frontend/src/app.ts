@@ -150,6 +150,7 @@ import { VideoImportDialog } from './ui/panels/video-dialog';
 import { VideoTimelinePanel } from './ui/video-timeline';
 import { RenderVideoDialog, type RenderChoice } from './ui/panels/render-video-dialog';
 import { TiffOptionsDialog } from './ui/panels/tiff-options-dialog';
+import { decodeExtensions } from './plugins/formats';
 import { LargePictureError, IMAGE_ACCEPT, PROJECT_ACCEPT, RAW_FILE, decodeDeepLayer, decodeFrames, decodeTgaSplit, decodeHdr, decodeImage, heifBits, isImageFile, isProjectFile, nameRawByContent, apngFrames, rasteriseSvg, svgSize } from './io/images';
 import { addFontFace, familyOfFile, fontFamilies, loadSystemFonts, loadUserFonts } from './ui/fonts';
 import { deserialize, giantTiles, serialize } from './io/project-io';
@@ -842,7 +843,7 @@ export function startApp(): void {
   /** File > Open in the desktop app (1.87.0): the system's open panel for any project or picture formvis reads. */
   async function openFromPanel(): Promise<boolean> {
     let paths: string[];
-    try { paths = await chooseOpenPaths('Open', [{ name: 'Projects and pictures', extensions: [...PROJECT_ACCEPT.split(','), ...IMAGE_ACCEPT.split(','), ...PRESET_ACCEPT.split(',')].filter((x) => x.startsWith('.')).map((x) => x.slice(1)) }]); } catch { return false; }
+    try { paths = await chooseOpenPaths('Open', [{ name: 'Projects and pictures', extensions: [...PROJECT_ACCEPT.split(','), ...IMAGE_ACCEPT.split(','), ...decodeExtensions(), ...PRESET_ACCEPT.split(',')].filter((x) => x.startsWith('.')).map((x) => x.slice(1)) }]); } catch { return false; }
     if (paths.length) await openPaths(paths);
     return true;
   }
@@ -3789,7 +3790,7 @@ export function startApp(): void {
     { id: 'recent-heading', label: 'Open Recent', enabled: () => false, run: () => undefined },
     ...Array.from({ length: 40 }, (_, i) => ({ id: `recent-${i}`, label: () => (i < recent.length ? `${i + 1}. ${isDiskPath(recent[i]) ? baseName(recent[i]) : recent[i]}` : ''), enabled: () => i < recent.length, run: () => { const n = recent[i]; if (n) void openLibrary(n); } })),
     { id: 'clear-recent', label: 'Clear Recent', enabled: () => recent.length > 0, run: () => keepRecent([]) },
-    { id: 'import', label: 'Import Images...', keys: ['Shift+Mod+O'], run: () => imageInput.click() },
+    { id: 'import', label: 'Import Images...', keys: ['Shift+Mod+O'], run: () => { imageInput.accept = [IMAGE_ACCEPT, ...decodeExtensions()].join(','); imageInput.click(); } },
     { id: 'import-folder', label: 'Import Images from Folder...', run: () => folderInput.click() },
     { id: 'import-notes', label: 'Import Notes...', enabled: has, run: () => { void importNotes(); } },
     { id: 'open-as', label: 'Open As...', params: { format: { type: 'string', description: 'The format to read the file as, by extension (png, jpg, tif, tga, dpx, cin, wbmp, dds, exr, psd); leave out to choose in the dialog.' } }, run: (a) => openAs.show(typeof a?.format === 'string' ? a.format.toLowerCase() : undefined) },

@@ -157,6 +157,14 @@ export function oilPaintImage(src: ImageData, o: OilSettings, scale: number, ox:
   const { width: w, height: h } = src, n = w * h, s = src.data, out = copyImage(src), d = out.data;
   const rgb = new Float32Array(n * 3);
   for (let i = 0; i < n; i++) for (let c = 0; c < 3; c++) rgb[i * 3 + c] = s[i * 4 + c];
+  const res3 = oilPaintPlanes(rgb, w, h, o, scale, ox, oy);
+  for (let i = 0; i < n; i++) for (let c = 0; c < 3; c++) d[i * 4 + c] = res3[i * 3 + c];
+  return out;
+}
+
+/** Oil Paint on three interleaved colour planes (0 to 255 levels, any precision): the painted colours, unclamped. */
+export function oilPaintPlanes(rgb: Float32Array, w: number, h: number, o: OilSettings, scale: number, ox: number, oy: number): Float32Array {
+  const n = w * h;
   const clean = cleanOf(o, scale), soft = clean >= 0.3 ? separable(rgb, w, h, 3, gaussKernel(clean)) : rgb;
   const L = new Float32Array(n);
   for (let i = 0; i < n; i++) L[i] = luma(soft[i * 3], soft[i * 3 + 1], soft[i * 3 + 2]);
@@ -193,12 +201,12 @@ export function oilPaintImage(src: ImageData, o: OilSettings, scale: number, ox:
   }
   const H = new Float32Array(n);
   for (let i = 0; i < n; i++) H[i] = luma(res[i * 4], res[i * 4 + 1], res[i * 4 + 2]) + (res[i * 4 + 3] - 0.5) * o.bristle * 6;
-  const t = (o.angle * Math.PI) / 180, lx = Math.cos(t), ly = -Math.sin(t), toward = offset(lx, ly), away = offset(-lx, -ly);
+  const t = (o.angle * Math.PI) / 180, lx = Math.cos(t), ly = -Math.sin(t), toward = offset(lx, ly), away = offset(-lx, -ly), out = new Float32Array(n * 3);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const i = y * w + x;
     let lift = 0;
     if (o.lighting) lift = (sample(H, w, h, x, y, toward) - sample(H, w, h, x, y, away)) * (0.6 + o.shine * 0.4);
-    for (let c = 0; c < 3; c++) d[i * 4 + c] = res[i * 4 + c] + lift;
+    for (let c = 0; c < 3; c++) out[i * 3 + c] = res[i * 4 + c] + lift;
   }
   return out;
 }
@@ -280,7 +288,7 @@ export function windImage(src: ImageData, method: string, fromRight: boolean, se
 }
 
 const areaOf = (ctx: LibContext): Box => boxOf(ctx.area);
-const oil = (v: LibValues): OilSettings => ({ stylization: num(v, 'stylization'), cleanliness: num(v, 'cleanliness'), brush: num(v, 'brush'), bristle: num(v, 'bristle'), lighting: v.lighting === true, angle: num(v, 'angle'), shine: num(v, 'shine') });
+export const oil = (v: LibValues): OilSettings => ({ stylization: num(v, 'stylization'), cleanliness: num(v, 'cleanliness'), brush: num(v, 'brush'), bristle: num(v, 'bristle'), lighting: v.lighting === true, angle: num(v, 'angle'), shine: num(v, 'shine') });
 
 export const STYLIZE_FILTERS: LibFilter[] = [
   {

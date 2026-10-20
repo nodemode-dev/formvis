@@ -99,7 +99,13 @@ const unit3 = (x: number, y: number, z: number): [number, number, number] => { c
  *  the surface colour, Exposure brightens or darkens; a texture channel raises a relief whose slopes catch the light.
  *  Positions are percentages of the frame; the light's height of its larger side. */
 export function lightingImage(src: ImageData, o: LightSettings, area: Box, more: readonly LightSettings[] = []): ImageData {
-  const { width: w, height: h } = src, s = src.data, out = copyImage(src), d = out.data;
+  const out = copyImage(src);
+  lightingInto(src.data, out.data, src.width, src.height, o, area, more);
+  return out;
+}
+
+/** The lighting pass over interleaved red, green, blue, alpha in 0 to 255 levels at any precision, written into `d` (its colour only). */
+export function lightingInto(s: ArrayLike<number>, d: { [i: number]: number }, w: number, h: number, o: LightSettings, area: Box, more: readonly LightSettings[] = []): void {
   const fw = area.x1 - area.x0, fh = area.y1 - area.y0, size = Math.max(fw, fh);
   const rigs = [o, ...more].map((p) => {
     const lx = area.x0 + (p.x / 100) * fw, ly = area.y0 + (p.y / 100) * fh, lz = (p.z / 100) * size, tx = area.x0 + (p.targetX / 100) * fw, ty = area.y0 + (p.targetY / 100) * fh;
@@ -140,12 +146,11 @@ export function lightingImage(src: ImageData, o: LightSettings, area: Box, more:
     }
     for (let c = 0; c < 3; c++) d[i + c] = (s[i + c] * lit[c] + hi[c]) * gain;
   }
-  return out;
 }
 
 const canvasOf = (ctx: LibContext): Box => boxOf(ctx.canvas);
 
-const light = (v: LibValues, n = 1): LightSettings => {
+export const light = (v: LibValues, n = 1): LightSettings => {
   const k = (key: string): string => (n === 1 ? key : `l${n}${key[0].toUpperCase()}${key.slice(1)}`), c = typeof v[k('color')] === 'string' && /^#[0-9a-f]{6}$/i.test(v[k('color')] as string) ? (v[k('color')] as string) : '#ffffff';
   return {
     type: str(v, k('type')), x: num(v, k('x')), y: num(v, k('y')), z: num(v, k('z')), targetX: num(v, k('targetX')), targetY: num(v, k('targetY')), angle: num(v, k('angle')), elevation: num(v, k('elevation')),

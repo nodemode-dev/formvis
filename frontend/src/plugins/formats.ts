@@ -25,3 +25,6 @@ export function decoderFor(name: string): FormatPlugin | undefined {
 }
 
 export function pluginFormats(): FormatPlugin[] { return [...formats.values()]; }
+
+/** The extensions plug-ins can open, each with its dot, for an Open panel's or a picker's filter. */
+export function decodeExtensions(): string[] { return [...new Set([...formats.values()].filter((f) => f.decode).flatMap((f) => f.extensions.map((x) => `.${x}`)))]; }

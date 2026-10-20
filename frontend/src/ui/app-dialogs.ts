@@ -29,7 +29,7 @@ import { FRAME_PACING } from '../gpu/frame-trace';
 import { TILE_SIZES } from '../engine/tiled';
 import { checkRow, numberRow, selectRow, sliderRow, type Row } from './panels/controls';
 import { PagePrefsRows } from './panels/page-prefs';
-import { SIZES } from './panels/generate-image';
+import { SIZES, generationModels, shapesFor } from './panels/generate-image';
 
 /** New Document presets by category (Phase 21, UI_SPEC.md section 4, the target's s02 to s14): name, width, height in
  *  pixels and resolution in ppi; common sizes for each kind of work (the Web set as the target lists it). */
@@ -265,6 +265,29 @@ export class NewCanvasDialog extends Dialog {
     this.renderCards();
     this.open(this.name);
     this.name.select();
+    void this.loadModelSizes();
+  }
+
+  /** Model Sizes gets each usable model on this computer's own working sizes from its catalogue (the common five otherwise), named after the model; the cards are rebuilt only when that category is showing. */
+  private async loadModelSizes(): Promise<void> {
+    let found: Awaited<ReturnType<typeof generationModels>>;
+    try { found = await generationModels(); } catch { return; }
+    const group = PRESET_GROUPS.find((g) => g.id === 'model');
+    if (!group) return;
+    const own: DocPreset[] = [];
+    for (const m of found.models) {
+      const shapes = shapesFor(m.value, found.sizes[m.value] ?? []);
+      if (m.disabled || shapes === SIZES || m.value.startsWith('provider:')) continue;
+      const name = m.label.replace(/ \((this computer)\)$/, '');
+      for (const s of shapes) own.push({ name: `${name}: ${s[1].replace(/ \(.*\)$/, '')}`, w: s[2], h: s[3], ppi: 72 });
+    }
+    const common = SIZES.map(([, words, w, h]): DocPreset => ({ name: words.replace(/ \(.*\)$/, ''), w, h, ppi: 72 }));
+    const next = [...common, ...own.filter((o) => !common.some((c) => c.name === o.name))];
+    if (next.length === group.presets.length && next.every((p, i) => p.name === group.presets[i].name && p.w === group.presets[i].w && p.h === group.presets[i].h)) return;
+    const picked = this.picked, was = picked ? { name: picked.name, w: picked.w, h: picked.h } : null;
+    group.presets.splice(0, group.presets.length, ...next);
+    if (was) this.picked = group.presets.find((p) => p.name === was.name && p.w === was.w && p.h === was.h) ?? picked;
+    if (this.category === 'model' || this.search.value.trim()) this.renderCards();
   }
 
   private mode!: HTMLSelectElement;

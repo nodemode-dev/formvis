@@ -48,7 +48,7 @@ function cleanEffects(v: unknown, sane: (p: LibParam, v: unknown) => LibValue): 
   return out;
 }
 
-const shown = (v: LibValues): FxRun[] => (v.effects as readonly LibEffect[]).flatMap((e) => { const fx = e.visible ? byKey.get(e.filter) : undefined; return fx ? [{ fx, values: e.values }] : []; });
+export const shown = (v: LibValues): FxRun[] => (v.effects as readonly LibEffect[]).flatMap((e) => { const fx = e.visible ? byKey.get(e.filter) : undefined; return fx ? [{ fx, values: e.values }] : []; });
 
 export const FILTER_GALLERY: readonly LibFilter[] = [
   {

@@ -1,5 +1,5 @@
-import { Raster, type Engine } from '../../engine';
-import type { GenerationInfo } from '../../engine/types';
+import { Raster, docTransform, layerRoleOf, newLayer, type Engine } from '../../engine';
+import type { GenerationInfo, Layer } from '../../engine/types';
 import { withBoxes } from '../../engine/boxes';
 import { api, ApiError, type GenerativeStatus, type ProviderStatus } from '../../io/api';
 import { checkReferenceCount, recipes, runToResults } from '../../io/comfy';
@@ -172,8 +172,8 @@ export interface GenerationRequest {
   size?: { width: number; height: number };
   /** The longest side a model on this computer works at (the dialog remembers it); 2048 when absent. The result is placed at the size asked. */
   cap?: number;
-  /** Where the picture lands: a layer of the open document (the default) or a new document of its own size. */
-  target?: 'layer' | 'document';
+  /** Where the picture lands: a layer of the open document (the default), a new document of its own size, or the tab's base picture (every layer but the Reference ones replaced, one undo step). */
+  target?: 'layer' | 'document' | 'base';
   /** The layers sent as references to a ComfyUI workflow. */
   references?: () => Promise<Array<{ name: string; blob: Blob }>>;
   /** Cut the background away from the result with the engine's background removal, so the layer has a transparent background. */
@@ -231,6 +231,22 @@ async function placeResult(engine: Engine, blob: Blob, w: number, h: number, gen
   bitmap.close();
   r.touch();
   engine.insertRasterLayer(r, 'Generated Image', Math.round((W - w) / 2), Math.round((H - h) / 2), generation ? { generation } : {}, 'Generate Image');
+}
+
+/** Replaces the tab's picture with a generated one as one history step: every layer but the Reference ones goes, the result is the new bottom layer 'Generated Image'. */
+async function replaceBase(engine: Engine, blob: Blob, w: number, h: number, generation?: GenerationInfo): Promise<void> {
+  const bitmap = await createImageBitmap(blob), r = new Raster(w, h);
+  r.ctx.drawImage(bitmap, 0, 0, w, h);
+  bitmap.close();
+  r.touch();
+  engine.edit('Replace Picture with Generated Image', (p) => {
+    const base = newLayer('Generated Image', p.doc, { raster: r });
+    const layer: Layer = { ...base, transform: { ...docTransform(w, h), x: Math.round((p.doc.width - w) / 2), y: Math.round((p.doc.height - h) / 2) }, ...(generation ? { generation } : {}) };
+    const refs = p.doc.layers.filter((l) => !l.isGroup && layerRoleOf(l) === 'reference');
+    p.doc = { ...p.doc, layers: [layer, ...refs] };
+    p.activeId = layer.id;
+    return true;
+  });
 }
 
 /** The picture with its background made transparent: the engine's subject mask becomes the picture's alpha. */
@@ -308,7 +324,8 @@ async function generateOnce(engine: Engine, req: GenerationRequest): Promise<boo
     if (req.stopped() || engine.current !== p) return false;
   }
   if (req.target === 'document' && !fresh) engine.newDocument(w, h, 'Generated', 'transparent');
-  await placeResult(engine, blob, w, h, generation);
+  if (req.target === 'base' && !fresh) await replaceBase(engine, blob, w, h, generation);
+  else await placeResult(engine, blob, w, h, generation);
   kept.unshift({ id: ++serial, time: Date.now(), prompt: req.prompt, choice, width: w, height: h, blob, generation });
   if (kept.length > KEPT_LIMIT) kept.length = KEPT_LIMIT;
   return true;
@@ -325,7 +342,7 @@ export class GenerateImageDialog extends Dialog {
   private readonly cw = el<HTMLInputElement>('<input class="cv-input" type="number" min="256" max="2048" step="16" value="1024" aria-label="Width" hidden>');
   private readonly ch = el<HTMLInputElement>('<input class="cv-input" type="number" min="256" max="2048" step="16" value="1024" aria-label="Height" hidden>');
   private readonly cap = el<HTMLSelectElement>('<select class="cv-input" aria-label="Working size" title="The longest side a model on this computer works at; a larger picture is made at this size and placed at the size asked"><option value="2048">Up to 2048 px</option><option value="1536">Up to 1536 px</option><option value="1024">Up to 1024 px</option></select>');
-  private readonly target = el<HTMLSelectElement>('<select class="cv-input" aria-label="Result"><option value="layer">Result: a layer of this picture</option><option value="document">Result: a new document</option></select>');
+  private readonly target = el<HTMLSelectElement>('<select class="cv-input" aria-label="Result"><option value="layer">Result: a layer of this picture</option><option value="document">Result: a new document</option><option value="base">Result: replace this picture</option></select>');
   private readonly clear = el<HTMLInputElement>('<input type="checkbox" aria-label="Transparent background">');
   private readonly clearRow = el('<label class="cv-dialog-row" title="Cuts the background away from the result with the background removal engine"><span>Transparent background</span></label>');
   private busy = false;
@@ -505,10 +522,10 @@ export class GenerateImageDialog extends Dialog {
     this.stopped = false;
     try {
       // The same generation the Generate panel runs; a new layer at the document's size (a new document when none is open).
-      const added = await runGeneration(this.engine, { prompt, choice: this.model.value, providers: this.providers, size: this.asked(), cap: Number(this.cap.value), target: this.target.value === 'document' ? 'document' : 'layer', transparent: this.clear.checked, references: () => this.chips.ordered(), ...this.opts.request(), onSeed: (s) => this.opts.used(s), onStop: () => { this.stopped = true; setText(this.status, 'Stopped.'); }, status: (text) => setText(this.status, text), stopped: () => this.stopped, heard: (r) => this.heard(r) });
+      const added = await runGeneration(this.engine, { prompt, choice: this.model.value, providers: this.providers, size: this.asked(), cap: Number(this.cap.value), target: this.target.value === 'document' ? 'document' : this.target.value === 'base' ? 'base' : 'layer', transparent: this.clear.checked, references: () => this.chips.ordered(), ...this.opts.request(), onSeed: (s) => this.opts.used(s), onStop: () => { this.stopped = true; setText(this.status, 'Stopped.'); }, status: (text) => setText(this.status, text), stopped: () => this.stopped, heard: (r) => this.heard(r) });
       if (!added) return;
       this.close();
-      this.toast('The generated image was added as a layer.');
+      this.toast(this.target.value === 'base' ? 'The generated image replaced the picture. Undo brings it back.' : 'The generated image was added as a layer.');
     } catch (err) {
       if (!this.stopped) setText(this.status, err instanceof ApiError || err instanceof Error ? err.message : 'Generating failed.');
     } finally { this.busy = false; }

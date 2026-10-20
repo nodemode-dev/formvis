@@ -3,11 +3,12 @@ SETUP = """async () => { const e = window.formvis.engine, E = await import('/src
   e.fg = { r: 20, g: 40, b: 220 }; e.applySelection(E.SelectionMask.cropped(100, 0, 100, 100, new Uint8Array(10000).fill(255)), 'replace', 's'); e.fill('fg'); e.deselect();
   e.setTool('crop'); }"""
 LAYER = "(() => { const p = window.formvis.engine.current, l = p.doc.layers[0]; return [p.doc.width, l.raster.width, Math.round(l.transform.x)]; })()"
-OPT = ".cv-opt-group:not([hidden]) .cv-opt"
+OPT = ":is(.cv-opt-group:not([hidden]), .cv-opt-pop-sect[style*=contents]) .cv-opt"
 
 
 def test_delete_cropped_pixels_trims_or_keeps(page):
     page.evaluate(SETUP)
+    page.evaluate("document.querySelector('.cv-opt-more:not([hidden])[aria-expanded=false]')?.click()")
     box = page.locator(OPT, has_text="Delete Cropped Pixels").locator("input")
     assert box.is_checked()                                               # on by default
     page.evaluate("window.formvis.engine.straightenCrop({ x: 50, y: 0, w: 100, h: 100 }, 0, false)")

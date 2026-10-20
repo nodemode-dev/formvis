@@ -211,7 +211,9 @@ export class PixelStroke {
   }
 
   /** The bytes the stroke's surfaces hold (the engine counts them while it lasts). */
-  get bytes(): number { return this.ww * this.wh * 4 * (2 + (this.masked ? 1 : 0) + (this.textured ? 1 : 0) + (this.ink ? 1 : 0)) + this.buf.bytes; }
+  get bytes(): number { return this.ww * this.wh * 4 * (2 + (this.masked ? 1 : 0) + (this.textured ? 1 : 0) + (this.ink ? 1 : 0) + this.shapeSurfaces) + this.buf.bytes; }
+
+  private get shapeSurfaces(): number { return (this.dualPaint ? 1 : 0) + (this.wetInner ? 1 : 0) + (this.cutLayer ? 1 : 0) + (this.depthLayer ? 1 : 0) + (this.shaped ? 1 : 0) + (this.texTemp ? 1 : 0); }
 
   /** The window grown to hold `box` (layer pixels) with room to spare, its surfaces remade with what they held; false
    *  when growing would pass what the engine allows, and the dab is then not laid (the stroke is cut there). */
@@ -233,7 +235,7 @@ export class PixelStroke {
       ({ x: nx, y: ny, w: nw, h: nh } = fit(b));   // the window cut back to the pointer, what it held there carried over
     }
     if (nw > CANVAS_SIDE || nh > CANVAS_SIDE || nw * nh > CANVAS_PIXELS) { this.clipped = true; return false; }
-    if (this.canGrow && !this.canGrow((nw * nh - (open ? this.ww * this.wh : 0)) * (4 * (2 + (this.masked ? 1 : 0) + (this.textured ? 1 : 0) + (this.ink ? 1 : 0)) + (this.buf.ceil ? 5 : 4)))) { this.clipped = true; return false; }
+    if (this.canGrow && !this.canGrow((nw * nh - (open ? this.ww * this.wh : 0)) * (4 * (2 + (this.masked ? 1 : 0) + (this.textured ? 1 : 0) + (this.ink ? 1 : 0) + this.shapeSurfaces) + (this.buf.ceil ? 5 : 4)))) { this.clipped = true; return false; }
     // A tiled layer's original pixels for the whole new window, read once (1.62.5); a tile there on disk stops the
     // window here, the dab not laid and the area noted for the engine to bring back: never painted over unloaded.
     let fresh: ImageData | null = null;
@@ -266,6 +268,12 @@ export class PixelStroke {
     this.masked = remake(this.masked, false);
     this.textured = remake(this.textured, false);
     this.ink = remake(this.ink, false);
+    this.dualPaint = remake(this.dualPaint, false);
+    this.wetInner = remake(this.wetInner, false);
+    this.cutLayer = remake(this.cutLayer, false);
+    this.depthLayer = remake(this.depthLayer, false);
+    this.shaped = remake(this.shaped, false);
+    this.texTemp = remake(this.texTemp, false);
     this.buf.resize(nw, nh, open, dx, dy);
     this.ox = nx; this.oy = ny; this.ww = nw; this.wh = nh;
     this.toWin = mul(translation(-nx, -ny), this.toLocal);
@@ -334,7 +342,7 @@ export class PixelStroke {
   /** Installs a Brush Settings shape: its spacing (a percentage of the diameter, where set), the dual brush's round tip,
    *  and the texture as a tile whose alpha is what it cuts from the paint (darker pattern, more; scaled by Depth). */
   setShape(shape: BrushShape | null, pattern: Surface | null): void {
-    if (shape && (shape.wetEdges || shapeActive(shape))) this.toFull();   // their surfaces are the layer's size (1.60.6)
+    if (shape && !this.tiled && (shape.wetEdges || shapeActive(shape))) this.toFull();   // their surfaces are the layer's size (1.60.6); a tiled layer's follow its window
     // Color Dynamics, Transfer, Noise and Wet Edges (1.50.1) apply to every brush, a plain round one too.
     if (shape) {
       this.colorDyn = shape.color?.on ? { ...shape.color } : null;
@@ -343,7 +351,7 @@ export class PixelStroke {
       this.fadeLen = Math.max(1, shape.transfer?.fadeSteps ?? 100);
       if (shape.noise) this.tip = shapedTip(this.tip, true, false);
       // Wet Edges is the stroke's, not each dab's: overlapping dabs would fill a lighter centre back in (1.50.1's fault).
-      if (shape.wetEdges) this.wetInner = takeSurface(this.raster.width, this.raster.height);
+      if (shape.wetEdges) this.wetInner = takeSurface(this.ww, this.wh);
     }
     if (!shapeActive(shape) || !shape) return;
     this.shape = structuredClone(shape);
@@ -351,13 +359,13 @@ export class PixelStroke {
     const k = matScale(this.toLocal);
     if (shape.dual.on) {
       const white = { r: 255, g: 255, b: 255 }, own = shape.dual.source === 'main' && this.style.tip;
-      this.dualPaint = takeSurface(this.raster.width, this.raster.height);
+      this.dualPaint = takeSurface(this.ww, this.wh);
       this.dualTip = own ? sampledTip(shape.dual.diameter * k, own, white) : brushTip(shape.dual.diameter * k, shape.dual.hardness ?? 1, white);
       this.dualAspect = own ? this.tipAspect : { x: 1, y: 1 };
     }
     if (shape.texture.on && pattern) {
       const tx0 = shape.texture, perDab = !!tx0.eachTip || (tx0.depthJitter ?? 0) > 0 || (tx0.depthControl ?? 'off') !== 'off';
-      if (perDab) { if (tx0.eachTip) this.cutLayer = takeSurface(this.raster.width, this.raster.height); else this.depthLayer = takeSurface(this.raster.width, this.raster.height); }
+      if (perDab) { if (tx0.eachTip) this.cutLayer = takeSurface(this.ww, this.wh); else this.depthLayer = takeSurface(this.ww, this.wh); }
       const keep = !!tx0.eachTip, w = pattern.width, h = pattern.height, t = createSurface(w, h), c = ctxOf(t), src = ctxOf(pattern).getImageData(0, 0, w, h), out = c.createImageData(w, h), depth = perDab ? 1 : shape.texture.depth / 100;
       const tx = shape.texture, gain = (tx.contrast ?? 0) >= 0 ? 1 / (1 - 0.99 * ((tx.contrast ?? 0) / 100)) : 1 + (tx.contrast ?? 0) / 100, lift = (tx.brightness ?? 0) / 100;
       for (let i = 0; i < src.data.length; i += 4) {
@@ -707,8 +715,14 @@ export class PixelStroke {
         if (sh.bothAxes) { x += (rnd() * 2 - 1) * spread; y += (rnd() * 2 - 1) * spread; }
         else { const t = (rnd() * 2 - 1) * spread; x += Math.cos(across) * t; y += Math.sin(across) * t; }
       }
-      const a = (angle * Math.PI) / 180, ca = Math.cos(a), sa = Math.sin(a), place = mul(this.toLocal, [ca, sa, -sa, ca, x, y]);
       const fx = (sh.flipX ? -1 : 1) * (sh.flipXJitter && rnd() < 0.5 ? -1 : 1), fy = (sh.flipY ? -1 : 1) * (sh.flipYJitter && rnd() < 0.5 ? -1 : 1);
+      // Its bounds first, so a windowed stroke's window can grow to hold the mark and its dual marks before they are laid.
+      const reach = r + (sh.dual.on ? (sh.dual.scatter / 100) * sh.dual.diameter + sh.dual.diameter : 0);
+      const corners = [[-reach, -reach], [reach, -reach], [reach, reach], [-reach, reach]].map(([ox, oy]) => applyMat(this.toLocal, x + ox, y + oy));
+      const box = integral(boundsOf(corners));
+      const hit = intersectRect({ x: box.x - 1, y: box.y - 1, w: box.w + 2, h: box.h + 2 }, { x: 0, y: 0, w: this.raster.width, h: this.raster.height });
+      if (this.windowed && (!hit || !this.ensure(hit))) continue;
+      const a = (angle * Math.PI) / 180, ca = Math.cos(a), sa = Math.sin(a), place = mul(this.toWin, [ca, sa, -sa, ca, x, y]);
       const at = mul(place, [fx, 0, 0, fy * round, 0, 0]), rx = r * this.tipAspect.x, ry = r * this.tipAspect.y;
       this.buf.lay(tip, mul(at, [(2 * rx) / tip.w, 0, 0, (2 * ry) / tip.h, -rx, -ry]), alpha, reached);
       if (this.varied) {
@@ -724,10 +738,6 @@ export class PixelStroke {
         if (!sh.dual.spacing) this.layDual(x, y);
         else if (k === 0) this.walkDual(p);
       }
-      const reach = r + (sh.dual.on ? (sh.dual.scatter / 100) * sh.dual.diameter + sh.dual.diameter : 0);
-      const corners = [[-reach, -reach], [reach, -reach], [reach, reach], [-reach, reach]].map(([ox, oy]) => applyMat(this.toLocal, x + ox, y + oy));
-      const box = integral(boundsOf(corners));
-      const hit = intersectRect({ x: box.x - 1, y: box.y - 1, w: box.w + 2, h: box.h + 2 }, { x: 0, y: 0, w: this.raster.width, h: this.raster.height });
       if (hit) { this.pending = unionRect(this.pending, hit); this.touched = unionRect(this.touched, hit); }
     }
   }
@@ -740,7 +750,7 @@ export class PixelStroke {
     const rw = dr * this.dualAspect.x, rh = dr * this.dualAspect.y;
     for (let j = 0; j < Math.max(1, du.count); j++) {
       const ox = (rnd() * 2 - 1) * ds, oy = (rnd() * 2 - 1) * ds;
-      setMat(dc, mul(mul(this.toLocal, [ca, sa, -sa, ca, x + ox, y + oy]), [du.flipX ? -1 : 1, 0, 0, du.flipY ? -round : round, 0, 0]));
+      setMat(dc, mul(mul(this.toWin, [ca, sa, -sa, ca, x + ox, y + oy]), [du.flipX ? -1 : 1, 0, 0, du.flipY ? -round : round, 0, 0]));
       dc.drawImage(this.dualTip as Surface, -rw, -rh, rw * 2, rh * 2);
     }
   }

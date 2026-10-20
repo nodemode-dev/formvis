@@ -14,6 +14,7 @@ def square(page, mode):
     n = page.evaluate(STEPS)
     a = scr(page, 60, 60); b = scr(page, 180, 60)
     page.mouse.move(*a); page.mouse.down(); page.mouse.move(*b, steps=10); page.mouse.up()
+    page.wait_for_function("(n) => window.formvis.engine.current.history.past.length > n", arg=n)
     return n
 
 
@@ -45,7 +46,7 @@ def test_red_eye_darkens_the_pupil_only(page):
     x, y = scr(page, 30, 30); page.mouse.click(x, y)                                              # nothing red: no step
     assert page.evaluate(STEPS) == n + 1
     idx = page.evaluate("(async () => { const { toolGroups } = await import('/src/ui/tool-groups.ts'); return toolGroups().findIndex((g) => g.tools.some((t) => t.id === 'patch')); })()")
-    page.locator(".cv-rail-tools .cv-tool").nth(idx).click(button="right")
+    page.locator(".cv-rail-tools .cv-rail-slot").nth(idx).click(button="right")
     labels = page.locator(".cv-flyout:not([hidden]) .cv-flyout-label").all_inner_texts()
     assert "Content-Aware Move" in labels and "Red Eye" in labels, labels
     page.keyboard.press("Escape")

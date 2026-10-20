@@ -13,7 +13,7 @@ export interface DisplayMask { image: HTMLCanvasElement | OffscreenCanvas; versi
 /** A clipping base: its coverage (alpha x opacity x its mask) clips every layer that carries this same object; a base that is itself clipped has the base it is clipped to as `parent`, whose coverage limits its own. */
 export interface DisplayClip { image: HTMLCanvasElement | OffscreenCanvas; deep?: ChannelPixels; linear?: boolean; version: number; width: number; height: number; matrix: Mat; opacity: number; mask?: DisplayMask; parent?: DisplayClip }
 /** A layer's Blend If: the channel tested (1 grey, 2 red, 3 green, 4 blue) and the four-point ranges of the layer and of what is under it. */
-export interface DisplayBlendIf { channel: 1 | 2 | 3 | 4; thisLayer: readonly [number, number, number, number]; underlying: readonly [number, number, number, number] }
+export interface DisplayBlendIf { channel: 1 | 2 | 3 | 4 | 5 | 6; thisLayer: readonly [number, number, number, number]; underlying: readonly [number, number, number, number] }
 export interface DisplayLayer { image: HTMLCanvasElement | OffscreenCanvas | null; lut?: Uint8Array; lut3?: boolean; grain?: GrainParams; mask?: DisplayMask; clip?: DisplayClip; folders?: DisplayMask[]; blendIf?: DisplayBlendIf; chOff?: number; deep?: ChannelPixels; linear?: boolean; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode;
   /** A folder or clipped group: these layers composite alone from clear, then draw as one layer at this entry's opacity and blend mode. */
   sub?: readonly DisplayLayer[];
@@ -311,7 +311,7 @@ export class GpuDisplay {
     f.set([va, vb, 0, 0, vc, vd, 0, 0, ve, vf, 1, 0], 32);
     u32[15] = mode;
     if (l.blendIf) { f.set(l.blendIf.thisLayer, 44); f.set(l.blendIf.underlying, 48); u32[52] = l.blendIf.channel; }
-    u32[53] = (l.chOff ?? 0) | (extra?.ko ? KO_FLAG : 0) | (extra?.screen ? SCREEN_FLAG : 0);
+    u32[53] = (l.chOff ?? 0) | (l.lut ? blendIndex(l.blend) << 8 : 0) | (extra?.ko ? KO_FLAG : 0) | (extra?.screen ? SCREEN_FLAG : 0);
     f[54] = lod;
     f[55] = l.ko ? Math.min(1, Math.max(0, l.ko.opacity)) : 0;
     let maskTex = this.blank();

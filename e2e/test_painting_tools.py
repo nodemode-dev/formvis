@@ -4,7 +4,7 @@ COL = "([x, y0, y1]) => { const d = window.formvis.engine.activeLayer.raster.ctx
 
 def stroke(page, tool, a, b, opts=""):
     page.evaluate(f"() => {{ window.formvis.engine.setTool('{tool}'); {opts} }}")
-    page.evaluate(f"""async () => {{ const R = await import('/src/extensions/registry.ts'), e = window.formvis.engine, t = R.getTool('{tool}'), ctx = {{ engine: e }};
+    page.evaluate(f"""async () => {{ const R = await import('/src/extensions/registry.ts'), e = window.formvis.engine, t = R.getTool('{tool}'), ctx = {{ engine: e, view: () => ({{ zoom: 1 }}) }};
       const P = (x, y) => ({{ doc: {{ x, y }}, button: 0, shift: false, alt: false, pressure: 1, pose: {{ tiltX: 0, tiltY: 0, twist: 0 }} }});
       t.down(ctx, P({a[0]}, {a[1]})); for (let i = 1; i <= 20; i++) t.move(ctx, P({a[0]} + ({b[0]} - {a[0]}) * i / 20, {a[1]} + ({b[1]} - {a[1]}) * i / 20)); t.up(ctx, P({b[0]}, {b[1]})); }}""")
 
@@ -37,7 +37,7 @@ def test_auto_erase_and_the_eraser_as_its_own_tool(page):
 
 
 def test_the_magic_eraser_erases_the_like_area_only(page):
-    page.evaluate("""async () => { const E = await import('/src/engine/index.ts'), e = window.formvis.engine; e.newDocument(200, 100, 'M', 'white');
+    page.evaluate("""async () => { const E = await import('/src/engine/index.ts'), e = window.formvis.engine; e.newDocument(200, 100, 'M', 'white'); e.activeLayer.name = 'Layer 1';
       e.fg = { r: 220, g: 20, b: 20 }; e.applySelection(E.SelectionMask.cropped(80, 30, 40, 40, new Uint8Array(1600).fill(255)), 'replace', 's'); e.fill('fg'); e.deselect(); e.setTool('magicEraser'); }""")
     names0 = page.evaluate("window.formvis.engine.current.history.past.length")
     page.evaluate("""async () => { const R = await import('/src/extensions/registry.ts'); R.getTool('magicEraser').down({ engine: window.formvis.engine }, { doc: { x: 10, y: 10 }, button: 0, shift: false, alt: false }); }""")
@@ -53,9 +53,9 @@ def test_the_brush_and_eraser_groups(page):
     page.evaluate("window.formvis.engine.newDocument(100, 60, 'G', 'white')")
     # The Mixer Brush joined Brush and Pencil at 1.56.2 (a3e88c4, the parity plan's L4); this list was
     # not updated then, so the test failed from that release until 1.62.5.
-    for member, want in [("brush", ["Brush", "Pencil", "Mixer Brush"]), ("eraser", ["Eraser", "Background Eraser", "Magic Eraser"]), ("cloneStamp", ["Clone Stamp", "Pattern Stamp"])]:
+    for member, want in [("brush", ["Brush", "Pencil", "Mixer Brush", "Color Replacement"]), ("eraser", ["Eraser", "Background Eraser", "Magic Eraser"]), ("cloneStamp", ["Clone Stamp", "Pattern Stamp"])]:
         idx = page.evaluate(f"(async () => {{ const {{ toolGroups }} = await import('/src/ui/tool-groups.ts'); return toolGroups().findIndex((g) => g.tools.some((t) => t.id === '{member}')); }})()")
-        page.locator(".cv-rail-tools .cv-tool").nth(idx).click(button="right")
+        page.locator(".cv-rail-tools .cv-rail-slot").nth(idx).click(button="right")
         assert page.locator(".cv-flyout:not([hidden]) .cv-flyout-label").all_inner_texts() == want
         page.keyboard.press("Escape")
 

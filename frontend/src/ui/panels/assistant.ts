@@ -38,6 +38,7 @@ interface ChatInfo { id: string; title: string; updated: number; messages: numbe
 interface ChatRow { el: HTMLElement; open: HTMLButtonElement; del: HTMLButtonElement; updated: number }
 interface Reply { content: string; tool_calls: Array<{ id: string; name: string; arguments: string }>; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number } }
 
+let sessionTokens = 0;
 const sleep = (ms: number): Promise<void> => new Promise((ok) => setTimeout(ok, ms));
 const newId = (): string => Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => (b % 36).toString(36)).join('') + Date.now().toString(36);
 const isLocalHost = (h: string): boolean => /^(localhost|127\.|\[?::1\]?$|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|0\.0\.0\.0)/.test(h) || h.endsWith('.local');
@@ -308,7 +309,8 @@ export class AssistantPanel {
 
   private setUsage(): void {
     const n = (v: number): string => v.toLocaleString('en-US');
-    setText(this.usageNote, this.usage.total > 0 ? `Tokens this chat: ${n(this.usage.in)} in, ${n(this.usage.out)} out, ${n(this.usage.total)} total.` : 'Tokens this chat: none yet.');
+    const all = sessionTokens > 0 ? ` All chats since the window opened: ${n(sessionTokens)}.` : '';
+    setText(this.usageNote, this.usage.total > 0 ? `Tokens this chat: ${n(this.usage.in)} in, ${n(this.usage.out)} out, ${n(this.usage.total)} total.${all}` : `Tokens this chat: none yet.${all}`);
   }
 
   /** Taskbar or window attention when the assistant asks something while the window is not in front: the desktop shell's request, else the page title. */
@@ -443,6 +445,7 @@ export class AssistantPanel {
   private async converse(planOnly: boolean): Promise<void> {
     if (this.busy) return;
     this.busy = true; this.stopped = false;
+    const before = { ...this.usage };
     this.send.disabled = true; this.stop.disabled = false; this.undoTurn.disabled = true;
     try {
       const extra = await assistantInstructions();
@@ -501,6 +504,8 @@ export class AssistantPanel {
       this.line('note', err instanceof ApiError ? err.message : 'The assistant could not reach the formvis engine (./formvis boot).');
     } finally {
       this.busy = false;
+      const spent = { in: this.usage.in - before.in, out: this.usage.out - before.out };
+      if (spent.in + spent.out > 0) this.line('note', `Tokens this message: ${spent.in.toLocaleString('en-US')} in, ${spent.out.toLocaleString('en-US')} out.`);
       this.send.disabled = false; this.stop.disabled = true;
       if (this.turn) this.turn.ended = new Map(this.engine.projects.map((x) => [x.id, x.history.steps.current]));
       this.undoTurn.disabled = !this.turn || !this.engine.projects.some((x) => x.history.steps.current > (this.turn?.depths.get(x.id) ?? Infinity));
@@ -519,6 +524,7 @@ export class AssistantPanel {
   private async step(messages: unknown[], tools = true): Promise<Reply> {
     const reply = await llmCall<Reply>('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages, tools, exclude: this.settings.excluded }) });
     if (reply.usage) {
+      sessionTokens += reply.usage.total_tokens;
       this.usage = { in: this.usage.in + reply.usage.prompt_tokens, out: this.usage.out + reply.usage.completion_tokens, total: this.usage.total + reply.usage.total_tokens };
       this.setUsage();
     }

@@ -83,6 +83,18 @@ fn kill_backend(handle: &tauri::AppHandle) {
     }
 }
 
+/// The plain page shown after a crash loop: its page is dead, so nothing is asked of it; the gate opens and the engine stops.
+fn renderer_choice(handle: &tauri::AppHandle, choice: window_state::Choice) {
+    open_exit_gate(handle);
+    match choice {
+        window_state::Choice::Restart => {
+            kill_backend(handle);
+            handle.restart();
+        }
+        window_state::Choice::Quit => handle.exit(0),
+    }
+}
+
 fn close_splash(handle: &tauri::AppHandle) {
     if let Some(splash) = handle.get_webview_window("splash") {
         let _ = splash.close();
@@ -417,7 +429,10 @@ fn main() {
     portable_web_view_data();
     #[cfg(target_os = "linux")]
     apply_display_server();
-    let app = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(target_os = "macos")]
+    let builder = builder.on_web_content_process_terminate(window_state::on_renderer_stopped);
+    let app = builder
         // First, as the plugin asks: a second launch (a project double-clicked while formvis runs) sends its arguments
         // here and exits; the files go to the running window.
         .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
@@ -523,7 +538,17 @@ fn main() {
                             .min_inner_size(MIN_SIZE.0, MIN_SIZE.1)
                             // Files dropped on the window reach the page as ordinary drop events (1.86.1): Tauri's own
                             // drop handler otherwise takes them, and the Home screen and the canvas never saw a drop.
-                            .disable_drag_drop_handler();
+                            .disable_drag_drop_handler()
+                            .on_navigation({
+                                let handle = handle.clone();
+                                move |url| match window_state::shell_choice(url) {
+                                    Some(choice) => {
+                                        renderer_choice(&handle, choice);
+                                        false
+                                    }
+                                    None => true,
+                                }
+                            });
                         let builder = if place.width > 0.0 {
                             builder.position(place.x, place.y)
                         } else {

@@ -1,8 +1,10 @@
 import type { Engine } from '../engine';
-import type { EngineJob } from '../engine/types';
+import type { EngineJob, Layer } from '../engine/types';
 import { api } from '../io/api';
 import type { AgentBridge } from '../automation/agent-bridge';
 import type { Commands } from '../ui/commands';
+import { addFormat } from './formats';
+import type { FormatImage } from './formats';
 
 /** Plugins (1.52.6, the capability plan). Each enabled plugin in the plugins folder runs in its own sandboxed frame
  *  (scripts only, without same-origin, so it cannot reach this page, its storage or its keys) and talks to formvis only
@@ -14,7 +16,7 @@ const FRAME_STYLE = '<style>*,*::before,*::after{scrollbar-width:none!important;
 
 const RUNTIME = `<script>
 (() => {
-  const pending = new Map(), commands = {}, stoppers = [], panelFns = {}; let n = 0, name = '', current = 0, stop = false;
+  const pending = new Map(), commands = {}, stoppers = [], panelFns = {}, fileFormats = {}; let n = 0, name = '', current = 0, stop = false;
   const send = (m) => parent.postMessage(Object.assign({ formvisPlugin: true }, m), '*');
   const rpc = (op, args) => new Promise((ok, no) => { const id = ++n; pending.set(id, { ok, no }); send({ id, op, args }); });
   addEventListener('message', async (e) => {
@@ -22,6 +24,11 @@ const RUNTIME = `<script>
     if (!m || e.source !== parent) return;
     if (m.formvisReply && pending.has(m.id)) { const p = pending.get(m.id); pending.delete(m.id); m.error ? p.no(new Error(m.error)) : p.ok(m.result); return; }
     if (m.formvisPanelMsg) { const f = panelFns[m.id]; if (f) { try { f(m.message); } catch (err) { send({ op: 'error', args: { message: String(err && err.message || err) } }); } } return; }
+    if (m.formvisFormat) {
+      const f = fileFormats[m.fid], done = (a) => send({ op: 'formatDone', args: Object.assign({ rid: m.rid }, a) });
+      try { const r = m.kind === 'read' ? await f.read(m.bytes, m.name) : await f.write(m.image); done({ result: r }); } catch (err) { done({ error: String(err && err.message || err) }); }
+      return;
+    }
     if (m.formvisCancel) { if (m.runId === current) { stop = true; for (const f of stoppers) { try { f(); } catch (err) { send({ op: 'error', args: { message: String(err && err.message || err) } }); } } } return; }
     if (m.formvisRun) {
       current = m.runId; stop = false;
@@ -47,19 +54,26 @@ const RUNTIME = `<script>
       send({ op: 'panel', args: { id, label: String(spec && spec.label || id), html: String(spec && spec.html || ''), height: Number(spec && spec.height) || 160 } });
       return { post: (message) => send({ op: 'panelPost', args: { id, message } }) };
     },
+    format(spec) {
+      const id = String(spec && spec.id || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
+      if (!id) throw new Error('A format needs an id.');
+      fileFormats[id] = { read: spec.read, write: spec.write };
+      send({ op: 'format', args: { id, label: String(spec.label || id), extensions: Array.isArray(spec.extensions) ? spec.extensions.map(String) : [], read: typeof spec.read === 'function', write: typeof spec.write === 'function' } });
+    },
     onCancel: (f) => { if (typeof f === 'function') stoppers.push(f); },
-    getPixels: (target, opts) => rpc('getPixels', { target: target === 'quickMask' || (typeof target === 'string' && target.startsWith('alpha:')) ? target : 'layer', depth: opts && opts.depth === 16 ? 16 : 8 }),
+    getPixels: (target, opts) => rpc('getPixels', { target: target === 'quickMask' || (typeof target === 'string' && target.startsWith('alpha:')) ? target : 'layer', depth: opts && opts.depth === 16 ? 16 : 8, native: !!(opts && opts.native) }),
     putPixels: (image, how, target) => rpc('putPixels', { image, how: how === 'replace' ? 'replace' : 'new-layer', target: target === 'quickMask' || (typeof target === 'string' && target.startsWith('alpha:')) ? target : 'layer', name }),
   };
 })();
 <\/script>`;
 
-interface Loaded { name: string; frame: HTMLIFrameElement; label: string; commands: Array<{ id: string; label: string; keys: string[] }>; errors: string[]; panels?: Map<string, { pid: string; frame: HTMLIFrameElement; heard: (e: MessageEvent) => void }> }
+interface Loaded { name: string; frame: HTMLIFrameElement; label: string; commands: Array<{ id: string; label: string; keys: string[] }>; errors: string[]; panels?: Map<string, { pid: string; frame: HTMLIFrameElement; heard: (e: MessageEvent) => void }>; formats?: Map<string, { off: () => void; cmd: string | null }>; asks?: Map<number, { ok: (v: unknown) => void; no: (e: Error) => void }> }
 
 /** Where a plug-in's panel sections go in the dock (the window gives it; null before then). */
 export interface PanelSlot { add(id: string, label: string): HTMLElement | null; remove(id: string): void }
 const PANEL_POLICY = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'";
 const PANEL_CHARS = 200_000;
+const FORMAT_MS = 60_000;
 
 /** A plugin accelerator is well formed when it is written as comboOf writes a press and carries Mod or Alt, so a plugin
  *  cannot take a plain letter from typing. */
@@ -74,6 +88,7 @@ export class PluginHost {
   private readonly loaded = new Map<string, Loaded>();
   private readonly runs = new Map<number, (error?: string) => void>();
   private runId = 0;
+  private askId = 0;
   private readonly jobs = new Map<number, { p: Loaded; job: EngineJob; told: boolean }>();
   onChange: () => void = () => {};
   panelSlot: () => PanelSlot | null = () => null;
@@ -128,6 +143,9 @@ export class PluginHost {
     for (const [runId, j] of this.jobs) if (j.p === p) { this.jobs.delete(runId); this.engine.endJob(j.job); this.runs.delete(runId); }
     for (const x of p.panels?.values() ?? []) { window.removeEventListener('message', x.heard); this.panelSlot()?.remove(x.pid); }
     p.panels?.clear();
+    for (const x of p.formats?.values() ?? []) { x.off(); if (x.cmd) this.commands.remove(x.cmd); }
+    for (const a of p.asks?.values() ?? []) a.no(new Error('The plug-in was unloaded.'));
+    p.formats?.clear(); p.asks?.clear();
     p.frame.remove();
     this.loaded.delete(name);
     this.onChange();
@@ -143,7 +161,7 @@ export class PluginHost {
   }
 
   /** The plugins' commands, for the Plugins menu. */
-  commandIds(): string[] { return [...this.loaded.values()].flatMap((p) => p.commands.map((c) => this.id(p.name, c.id))); }
+  commandIds(): string[] { return [...this.loaded.values()].flatMap((p) => p.commands.map((c) => this.id(p.name, c.id)).concat([...(p.formats?.values() ?? [])].flatMap((x) => (x.cmd ? [x.cmd] : [])))); }
 
   private id(plugin: string, cmd: string): string { return `plugin:${plugin}:${cmd}`; }
 
@@ -152,6 +170,56 @@ export class PluginHost {
     this.jobs.set(runId, { p, job, told: false });
     this.runs.set(runId, (error) => { this.jobs.delete(runId); this.engine.endJob(job); if (error) { this.fail(p, `${label}: ${error}`); this.note(`${label}: ${error}`, 'error'); } });
     p.frame.contentWindow?.postMessage({ formvisRun: true, runId, command }, '*');
+  }
+
+  private askFormat(p: Loaded, fid: string, kind: 'read' | 'write', payload: Record<string, unknown>): Promise<unknown> {
+    return new Promise((ok, no) => {
+      const rid = ++this.askId;
+      p.asks ??= new Map();
+      const timer = window.setTimeout(() => { p.asks?.delete(rid); no(new Error(`${p.label} did not answer in time.`)); }, FORMAT_MS);
+      p.asks.set(rid, { ok: (v) => { window.clearTimeout(timer); ok(v); }, no: (er) => { window.clearTimeout(timer); no(er); } });
+      p.frame.contentWindow?.postMessage({ formvisFormat: true, rid, fid, kind, ...payload }, '*');
+    });
+  }
+
+  private addFileFormat(p: Loaded, a: Record<string, unknown>): void {
+    const id = String(a.id ?? '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40), label = String(a.label ?? id).slice(0, 60);
+    const extensions = (Array.isArray(a.extensions) ? a.extensions : []).map((x) => String(x).toLowerCase().replace(/^\./, '')).filter((x) => /^[a-z0-9]{1,8}$/.test(x)).slice(0, 8);
+    if (!id || !extensions.length || (a.read !== true && a.write !== true)) { this.fail(p, 'A format needs an id, extensions and a read or write function.'); return; }
+    p.formats ??= new Map();
+    const old = p.formats.get(id);
+    if (old) { old.off(); if (old.cmd) this.commands.remove(old.cmd); }
+    const decode = a.read === true ? async (bytes: Uint8Array, name: string): Promise<FormatImage> => {
+      const r = await this.askFormat(p, id, 'read', { bytes, name }) as { width?: number; height?: number; data?: Uint8Array | Uint8ClampedArray } | null;
+      const w = Number(r?.width), h = Number(r?.height);
+      if (!r || !Number.isInteger(w) || !Number.isInteger(h) || w < 1 || h < 1 || !(r.data instanceof Uint8ClampedArray || r.data instanceof Uint8Array) || r.data.length !== w * h * 4) throw new Error(`${label} read must return { width, height, data } with width * height * 4 bytes.`);
+      return { width: w, height: h, data: new Uint8ClampedArray(r.data) };
+    } : null;
+    const encode = a.write === true ? async (image: FormatImage): Promise<Uint8Array> => {
+      const r = await this.askFormat(p, id, 'write', { image });
+      if (!(r instanceof Uint8Array)) throw new Error(`${label} write must return a Uint8Array of the file.`);
+      return r;
+    } : null;
+    const off = addFormat({ id: `file:${p.name}:${id}`, label, extensions, decode, encode });
+    let cmd: string | null = null;
+    if (encode) {
+      cmd = this.id(p.name, `format:${id}`);
+      this.commands.add({ id: cmd, label: `Export As: ${label}...`, keys: [], enabled: () => !!this.engine.current, run: () => { void this.exportAs(encode, label, extensions[0]); } });
+    }
+    p.formats.set(id, { off, cmd });
+    this.onChange();
+  }
+
+  private async exportAs(encode: (image: FormatImage) => Promise<Uint8Array>, label: string, ext: string): Promise<void> {
+    const pr = this.engine.current, flat = pr ? this.engine.flattenedOf(pr) : null;
+    if (!pr || !flat) { this.note('Open a document to export.', 'error'); return; }
+    try {
+      const img = (flat.getContext('2d') as CanvasRenderingContext2D).getImageData(0, 0, flat.width, flat.height);
+      const bytes = await encode({ width: img.width, height: img.height, data: img.data });
+      const url = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: 'application/octet-stream' })), link = document.createElement('a');
+      link.href = url; link.download = `${pr.name.replace(/\.[^.]*$/, '')}.${ext}`; link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    } catch (err) { this.note(`Export As ${label}: ${err instanceof Error ? err.message : String(err)}`, 'error'); }
   }
 
   private async receive(e: MessageEvent): Promise<void> {
@@ -200,6 +268,14 @@ export class PluginHost {
           if (x && text.length <= PANEL_CHARS) x.frame.contentWindow?.postMessage(m.args?.message ?? null, '*');
           return;
         }
+        case 'format': this.addFileFormat(p, m.args ?? {}); return;
+        case 'formatDone': {
+          const a = p.asks?.get(Number(m.args?.rid));
+          if (!a) return;
+          p.asks?.delete(Number(m.args?.rid));
+          if (typeof m.args?.error === 'string') a.no(new Error(m.args.error)); else a.ok(m.args?.result);
+          return;
+        }
         case 'error': this.fail(p, String(m.args?.message ?? 'Script error')); return;
         case 'done': { const f = this.runs.get(m.runId ?? -1); this.runs.delete(m.runId ?? -1); f?.(m.error); return; }
         case 'progress': {
@@ -220,6 +296,58 @@ export class PluginHost {
     } catch (err) { reply(undefined, err instanceof Error ? err.message : String(err)); }
   }
 
+  /** The layer's own pixels at the layer's own size, with its offset in the document. 16 bits, in the document's own terms:
+   *  RGB gives R, G, B, A; CMYK gives C, M, Y, K (0 paper to 65535 full ink), A; Lab gives L (0 to 65535 for 0 to 100), a,
+   *  b (32896 neutral, a* = v / 257 - 128), A. Alpha is 0 to 65535 straight. */
+  private nativeGet(l: Layer, doc: { width: number; height: number }, sel: { valueAt(x: number, y: number): number } | null, wide: boolean): { result: unknown } | { error: string } {
+    const box = this.layerBox(l);
+    if (typeof box === 'string') return { error: box };
+    const { w, h, x, y } = box, ch = l.channels;
+    let selection: Uint8Array | null = null;
+    if (sel) { selection = new Uint8Array(w * h); for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) selection[j * w + i] = sel.valueAt(i + x, j + y); }
+    const head = { width: w, height: h, x, y, docWidth: doc.width, docHeight: doc.height, native: true, selection, layer: { id: l.id, name: l.name } };
+    if (wide && ch) {
+      const data = new Uint16Array(ch.data.length);
+      for (let i = 0; i < data.length; i++) data[i] = Math.round(Math.min(1, Math.max(0, ch.data[i])) * 65535);
+      return { result: { ...head, data, depth: 16, deep: true, mode: ch.mode, channels: ch.n } };
+    }
+    const img = (l.raster?.ctx as CanvasRenderingContext2D).getImageData(0, 0, w, h);
+    return { result: { ...head, data: wide ? Uint16Array.from(img.data, (v) => v * 257) : img.data, depth: wide ? 16 : 8, deep: false, mode: 'rgb', channels: 3 } };
+  }
+
+  private layerBox(l: Layer): { w: number; h: number; x: number; y: number } | string {
+    const ch = l.channels, w = ch ? ch.width : l.raster?.width ?? 0, h = ch ? ch.height : l.raster?.height ?? 0, t = l.transform;
+    if (!w || !h || l.isGroup || l.adjustment || l.text || l.shape || l.smart) return 'The layer box form is for a plain pixel layer.';
+    if (t.rotation || t.flipX || t.flipY || t.w !== w || t.h !== h) return 'The layer is scaled or rotated: ask for the document-sized form (leave native off).';
+    return { w, h, x: Math.round(t.x), y: Math.round(t.y) };
+  }
+
+  private async nativePut(label: string, img: { width?: number; height?: number; data?: Uint8ClampedArray | Uint16Array }): Promise<{ result: unknown } | { error: string }> {
+    const q = this.engine.current, l = q?.activeLayer;
+    if (!q || !l) return { error: 'No document or layer is open.' };
+    const box = this.layerBox(l);
+    if (typeof box === 'string') return { error: box };
+    const { w, h, x, y } = box, ch = l.channels, S = ch ? ch.n + 1 : 4;
+    if (img.width !== w || img.height !== h) return { error: `The layer is ${w} x ${h}: putPixels takes that size, as getPixels gave it.` };
+    if (!(img.data instanceof Uint8ClampedArray || img.data instanceof Uint16Array) || img.data.length !== w * h * (img.data instanceof Uint16Array ? S : 4)) return { error: `putPixels takes ${w * h * S} 16-bit values (${S} a pixel) or ${w * h * 4} 8-bit ones for this layer.` };
+    if (ch) {
+      if (!(img.data instanceof Uint16Array)) return { error: 'This layer holds 16-bit data: put a Uint16Array in the order getPixels gave.' };
+      const f = Float32Array.from(img.data, (v) => v / 65535);
+      return { result: this.engine.applyDeepFilter(label, () => ({ ...ch, data: f })) };
+    }
+    const data = new ImageData(img.data instanceof Uint16Array ? Uint8ClampedArray.from(img.data, (v) => v / 257) : new Uint8ClampedArray(img.data), w, h), sel = q.selection;
+    if (sel) {
+      const base = (l.raster?.ctx as CanvasRenderingContext2D).getImageData(0, 0, w, h);
+      for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+        const a = sel.valueAt(i + x, j + y) / 255, o = (j * w + i) * 4;
+        if (a < 1) for (let c = 0; c < 4; c++) data.data[o + c] = Math.round(base.data[o + c] + (data.data[o + c] - base.data[o + c]) * a);
+      }
+    }
+    const { Raster } = await import('../engine');
+    const r = new Raster(w, h); r.ctx.putImageData(data, 0, 0); r.touch();
+    return { result: this.engine.edit(label, (pp) => { pp.updateLayer(l.id, { raster: r }); return true; }) };
+  }
+
   /** The three requests a plugin may make (call, getPixels, putPixels), shared by plugin frames and the Script Console. */
   private async serve(op: string, args: Record<string, unknown>, label: string): Promise<{ result: unknown } | { error: string }> {
     switch (op) {
@@ -238,6 +366,7 @@ export class PluginHost {
         }
         const q = this.engine.current, l = q?.activeLayer;
         if (!q || !l) return { error: 'No document or layer is open.' };
+        if (args.native === true || (args.depth === 16 && l.channels && l.channels.mode !== 'rgb')) return this.nativeGet(l, q.doc, q.selection, args.depth === 16);
         const s = this.engine.renderLayerAlone(l.id), c = s.getContext('2d') as CanvasRenderingContext2D, img = c.getImageData(0, 0, s.width, s.height);
         let selection: Uint8Array | null = null;
         if (q.selection) {
@@ -256,6 +385,7 @@ export class PluginHost {
         const q = this.engine.current, img = args.image as { width?: number; height?: number; data?: Uint8ClampedArray | Uint16Array } | undefined;
         if (!q) return { error: 'No document is open.' };
         const W = q.doc.width, H = q.doc.height;
+        if (img && ((img as { native?: boolean }).native === true || (img.data instanceof Uint16Array && q.activeLayer?.channels && q.activeLayer.channels.mode !== 'rgb')) && (args.target === undefined || args.target === 'layer')) return this.nativePut(label, img);
         if (!img || img.width !== W || img.height !== H || !(img.data instanceof Uint8ClampedArray || img.data instanceof Uint16Array) || img.data.length !== W * H * 4) return { error: `putPixels takes { width: ${W}, height: ${H}, data: a Uint8ClampedArray or Uint16Array of ${W * H * 4} } (the document's size).` };
         const wide = img.data instanceof Uint16Array ? img.data : null, lay = q.activeLayer;
         if (wide && args.how === 'replace' && lay?.channels && lay.channels.mode === 'rgb' && lay.channels.width === W && lay.channels.height === H && (args.target === undefined || args.target === 'layer')) {

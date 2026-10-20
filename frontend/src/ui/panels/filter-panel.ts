@@ -1040,7 +1040,7 @@ export class FilterPanel extends Dialog {
   private deepFilter(kind: FilterKind, settings: Record<string, unknown>): boolean {
     const p = this.engine.current;
     if (!p || ((p.doc.depth ?? 8) === 8 && p.doc.mode !== 'cmyk')) return false;
-    if (p.selection && (kind === 'offset' || kind === 'mosaic' || kind === 'crystallize' || DEEP_DISTORT.includes(kind))) return false;
+    if (p.selection && DEEP_DISTORT.includes(kind)) return false;
     if ((p.selection && DEEP_FRAMED.includes(kind)) || (DEEP_RGB_ONLY.includes(kind) && p.activeLayer?.channels?.mode !== 'rgb')) return false;
     if (isLibKind(kind) && libFilter(kind).fills && (settings.lib as Record<string, Record<string, unknown> | undefined> | undefined)?.[kind]?.newLayer === true) return false;
     const s = { ...this.s, ...(settings as Partial<typeof this.s>) }, seed = this.seed, ceiling = p.doc.depth === 32 ? Infinity : 1;

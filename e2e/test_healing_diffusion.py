@@ -29,10 +29,11 @@ def test_healing_brush_diffusion_fades_the_colour_correction(page):
 
 def test_the_healing_brush_bar_sets_diffusion(page):
     page.evaluate("(() => { const e = window.formvis.engine; e.newDocument(100, 60, 'B', 'white'); e.setTool('healingBrush'); })()")
-    bar = page.locator(".cv-opt-group:not([hidden])")
+    page.evaluate("document.querySelector('.cv-opt-more:not([hidden])[aria-expanded=false]')?.click()")
+    bar = page.locator(":is(.cv-opt-group:not([hidden]), .cv-opt-pop-sect[style*=contents])")
     row = bar.locator(".cv-opt:not([hidden])", has_text="Diffusion").first
     row.wait_for()                                  # the bar updates on its next frame
     box = row.locator("input[type=number]")
-    box.fill("2"); box.press("Tab")
+    box.fill("2"); page.keyboard.press("Tab")
     assert page.evaluate("window.formvis.engine.retouch.healDiffusion") == 2
     page.evaluate("window.formvis.engine.retouch.healDiffusion = 7")

@@ -4,9 +4,18 @@ SETUP = """() => { const e = window.formvis.engine; e.newDocument(300, 160, 'F',
 PX = "([x, y]) => window.formvis.engine.flattened().getContext('2d').getImageData(x, y, 1, 1).data[0]"
 
 
+BAR = ":is(.cv-opt-group:not([hidden]), .cv-opt-pop-sect[style*=contents])"
+
+
+def more(page, open_=True):
+    page.evaluate("document.querySelector('.cv-opt-more:not([hidden])[aria-expanded=%s]')?.click()" % ("false" if open_ else "true"))
+
+
 def set_opt(page, label, v):
-    i = page.locator(".cv-opt-group:not([hidden]) .cv-opt", has_text=label).locator("input[type=number]").first   # Flow precedes "Min flow"
-    i.fill(str(v)); i.press("Tab")
+    more(page)
+    i = page.locator(f"{BAR} .cv-opt", has_text=label).locator("input[type=number]").first   # Flow precedes "Min flow"
+    i.fill(str(v)); page.keyboard.press("Tab")
+    more(page, False)
 
 
 def scrub(page, s, y, passes):

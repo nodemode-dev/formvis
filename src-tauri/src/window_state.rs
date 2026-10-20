@@ -1,5 +1,5 @@
 //! The main window between launches: its size, position and maximised state, and the interface zoom the page asked for,
-//! kept in window.json in the app's config folder; and, on Linux, the recovery of its web view after the renderer crashed.
+//! kept in window.json in the app's config folder; and, on Linux and macOS, the recovery of its web view after the renderer crashed.
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -160,44 +160,79 @@ pub fn ui_zoom(window: tauri::WebviewWindow, memory: tauri::State<Memory>, facto
     Ok(asked)
 }
 
-#[cfg(target_os = "linux")]
-const CRASH_RELOADS: usize = 2;
-#[cfg(target_os = "linux")]
-const CRASH_WINDOW: Duration = Duration::from_secs(60);
+const CRASH_WINDOW: Duration = Duration::from_secs(120);
+const CRASH_SCHEME: &str = "formvis-shell";
+const CRASH_PAGE: &str = "<!doctype html><html><head><meta charset=\"utf-8\"><title>formvis</title><style>body{margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#0d0d0d;color:#e6e6e6;font:15px system-ui,sans-serif}main{max-width:30em;padding:24px}h1{font-size:20px;margin:0 0 12px}p{line-height:1.5;margin:0 0 20px;color:#b0b0b0}a{display:inline-block;margin-right:10px;padding:8px 18px;border-radius:6px;border:1px solid #444;color:#e6e6e6;text-decoration:none}a.go{background:#f97316;border-color:#f97316;color:#0d0d0d}</style></head><body><main><h1>The window stopped working</h1><p>Its web view stopped twice within two minutes, so formvis has not reloaded it again. Unsaved pictures are offered back when formvis starts.</p><a class=\"go\" href=\"formvis-shell://restart\">Restart formvis</a><a href=\"formvis-shell://quit\">Quit</a></main></body></html>";
 
-/// A web view whose renderer process died is reloaded (a dead page cannot reload itself), at most twice in a minute; the third
-/// stop inside that minute leaves it alone and says so. The page offers the unsaved documents back as after any crash.
+static STOPS: Mutex<Vec<Instant>> = Mutex::new(Vec::new());
+
+/// What the shell does with a dead renderer.
+pub enum Choice {
+    Restart,
+    Quit,
+}
+
+/// True when this stop is the second inside CRASH_WINDOW: the first is answered by a reload, the second by the plain page.
+fn crash_loop() -> bool {
+    let now = Instant::now();
+    let Ok(mut stops) = STOPS.lock() else { return true };
+    stops.retain(|at| now.duration_since(*at) < CRASH_WINDOW);
+    stops.push(now);
+    stops.len() > 1
+}
+
+/// The buttons of the plain page are links on a scheme of the shell's own; a navigation to one is a choice, never loaded.
+pub fn shell_choice(url: &tauri::Url) -> Option<Choice> {
+    if url.scheme() != CRASH_SCHEME {
+        return None;
+    }
+    match url.host_str() {
+        Some("restart") => Some(Choice::Restart),
+        Some("quit") => Some(Choice::Quit),
+        _ => None,
+    }
+}
+
+/// A web view whose renderer process died is reloaded (a dead page cannot reload itself); a second stop within two minutes
+/// shows a plain page offering restart or quit instead. The page offers the unsaved documents back as after any crash.
 #[cfg(target_os = "linux")]
 pub fn watch_renderer(window: &tauri::WebviewWindow) {
     use webkit2gtk::WebViewExt;
-    let handle = window.app_handle().clone();
     let _ = window.with_webview(move |platform| {
-        let stops = std::cell::RefCell::new(Vec::<Instant>::new());
         platform.inner().connect_web_process_terminated(move |view, _reason| {
-            let now = Instant::now();
-            let mut stops = stops.borrow_mut();
-            stops.retain(|at| now.duration_since(*at) < CRASH_WINDOW);
-            if stops.len() < CRASH_RELOADS {
-                stops.push(now);
-                view.reload();
+            if crash_loop() {
+                view.load_html(CRASH_PAGE, None);
             } else {
-                give_up(&handle);
+                view.reload();
             }
         });
     });
 }
 
-/// Windows (WebView2) and macOS (WKWebView) report a dead renderer through their own APIs, which are not wired yet.
-#[cfg(not(target_os = "linux"))]
+/// macOS: the same answer to WKWebView's content process termination, which Tauri reports through the app builder.
+#[cfg(target_os = "macos")]
+pub fn on_renderer_stopped(webview: &tauri::Webview) {
+    if crash_loop() {
+        let mut encoded = String::from("data:text/html;charset=utf-8,");
+        for byte in CRASH_PAGE.bytes() {
+            if byte.is_ascii_alphanumeric() {
+                encoded.push(char::from(byte));
+            } else {
+                encoded.push_str(&format!("%{byte:02X}"));
+            }
+        }
+        if let Ok(url) = encoded.parse() {
+            let _ = webview.navigate(url);
+        }
+    } else {
+        let _ = webview.reload();
+    }
+}
+
+/// Windows (WebView2) reports a dead renderer through its own API, which is not wired yet.
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 pub fn watch_renderer(_window: &tauri::WebviewWindow) {}
 
-#[cfg(target_os = "linux")]
-fn give_up(handle: &tauri::AppHandle) {
-    use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
-    handle
-        .dialog()
-        .message("The window's web view stopped twice within a minute, so formvis has left it as it is. Save what you can, close formvis and open it again; unsaved pictures are offered back when it starts.")
-        .title("formvis")
-        .kind(MessageDialogKind::Error)
-        .show(|_| {});
-}
+/// macOS has no per-window hook: the app builder's handler does the watching.
+#[cfg(target_os = "macos")]
+pub fn watch_renderer(_window: &tauri::WebviewWindow) {}

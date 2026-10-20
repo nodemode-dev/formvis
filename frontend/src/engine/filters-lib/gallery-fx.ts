@@ -1,4 +1,5 @@
 import type { LibContext, LibParam, LibValues } from '../filter-library';
+import type { Rect } from '../types';
 import { copyImage, gaussKernel, hash01 } from './shared';
 
 export type FxCategory = 'Artistic' | 'Brush Strokes' | 'Distort' | 'Sketch' | 'Stylize' | 'Texture';
@@ -417,7 +418,7 @@ export class Cells {
 
 /** The window's colour, straight in 0 to 1. Under partly or wholly transparent pixels the colour is that of what
  *  is around them (grey far from anything), so effects that read neighbours do not pull in black. Reaches 6k + 1. */
-function colourOf(src: ImageData, k: number): Float32Array {
+function colourOf(src: { width: number; height: number; data: ArrayLike<number> }, k: number): Float32Array {
   const { width: w, height: h, data: d } = src, n = w * h, rgb = new Float32Array(n * 3);
   let clear = false;
   for (let i = 3; i < d.length && !clear; i += 4) clear = d[i] < 255;
@@ -451,4 +452,12 @@ export function runEffects(src: ImageData, list: readonly FxRun[], ctx: LibConte
   const c = plate.rgb, d = out.data;
   for (let i = 0, j = 0; i < d.length; i += 4, j += 3) { d[i] = c[j] * 255; d[i + 1] = c[j + 1] * 255; d[i + 2] = c[j + 2] * 255; }
   return out;
+}
+
+/** The same effect layers over float colour: `rgba` is the layer as red, green, blue, alpha in 0 to 255 levels at any precision; returns the painted colour in the same units, three floats a pixel. */
+export function runEffectsFloat(rgba: Float32Array, w: number, h: number, list: readonly FxRun[], area: Rect, canvas: Rect, fg: readonly number[], bg: readonly number[]): Float32Array {
+  const unit = (c: readonly number[]): Rgb => [c[0] / 255, c[1] / 255, c[2] / 255];
+  const plate: Plate = { w, h, rgb: colourOf({ width: w, height: h, data: rgba }, 1), k: 1, left: -canvas.x, top: -canvas.y, cx: area.x + area.w / 2, cy: area.y + area.h / 2, half: Math.max(1, Math.hypot(area.w, area.h) / 2), fg: unit(fg), bg: unit(bg) };
+  for (const { fx, values } of list) fx.paint(plate, values);
+  return plate.rgb;
 }

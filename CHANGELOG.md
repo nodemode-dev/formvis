@@ -4,6 +4,22 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.91.5 · 2026-10-20
+
+### Added
+
+- Filters at 16 and 32 bits: Oil Paint, Lighting Effects, all 47 Filter Gallery effects, and Median and Dust and Scratches at any radius (exact quickselect) run on the float channels; Mosaic, Crystallize and Offset follow an offset layer exactly.
+- GPU: Negation, Reflect and Glow blend modes, adjustment layers with a blend mode, and adjustment layers with a luminosity or colour-range limit compose on the GPU (WebGL2 and WebGPU).
+- Plug-ins: single-file plug-ins register import and export file formats (formvis.format), shown in Open, Import and Export As; 16-bit pixels for CMYK and Lab layers and for layers sized or placed apart from the document.
+- Generate Image: Result "replace this picture" swaps the tab's picture for the generated one as one undo step, keeping Reference layers; New Document's Model Sizes lists each model on this computer's own sizes; the assistant shows tokens per message and a total since the window opened.
+- Desktop shell: a second web view crash within two minutes shows a plain page that offers Restart or Quit (Linux and macOS; macOS also reloads after the first).
+
+### Fixed
+
+- Plug-in filters on Lab layers render the layer in its own terms.
+- The shape helper surfaces of Brush Settings follow the stroke window (groundwork for Brush Settings on layers kept in tiles, which still decline until checked).
+- e2e scenes for the More panel, the rail, number fields and recent UI changes follow the current UI.
+
 ## 1.91.4 · 2026-10-20
 
 ### Added
