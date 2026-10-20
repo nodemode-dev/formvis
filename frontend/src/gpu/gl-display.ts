@@ -1,6 +1,7 @@
 import { invert, mul, type Mat } from '../engine';
 import { blendIndex } from './blend-wgsl';
-import { CLIP_MODE, FOLDER_MODE, GRAIN_MODE, KO_FLAG, LUT3_MODE, LUT_MODE, SCREEN_FLAG, THRESHOLD_MODE, anyLayer, type Checker, type DisplayClip, type DisplayLayer, type DisplayMask } from './display';
+import { CLIP_MODE, FOLDER_MODE, GRAIN_MODE, KO_FLAG, LUT3_MODE, LUT_MODE, SCREEN_FLAG, THRESHOLD_MODE, anyLayer, hoodRect, hoodSlots, type Checker, type DisplayClip, type DisplayHood, type DisplayLayer, type DisplayMask } from './display';
+import { BLUR_GLSL, HOOD_GLSL, HOOD_GLSL_MAIN, HOOD_MODE } from './hood';
 import { GlFrameTimer } from './gpu-timing';
 import type { DisplayOptions } from './probe';
 import { dirtyBox, trimResident, type UploadStats } from './residency';
@@ -89,6 +90,7 @@ float limitWeight(vec3 c) {
   return floor(w * 255.0 + 0.5) / 255.0;
 }
 vec3 adjustBlend(vec3 b, vec3 t) { int m = chOff >> 8; return m == 0 ? t : blend(m, b, t); }
+${HOOD_GLSL}
 uniform vec4 gA; uniform vec4 gB; uniform uvec4 gS;
 float lattice(int x, int y, uint seed) {
   uint z = (uint(x) * 0x27d4eb2du) ^ (uint(y) * 0x165667b1u) ^ seed; float sum = 0.0;
@@ -156,6 +158,7 @@ void main() {
     vec3 t = vec3(299.0 * v.r + 587.0 * v.g + 114.0 * v.b >= 1000.0 * size.x ? 1.0 : 0.0);
     outColor = vec4(bd.rgb + (adjustBlend(bd.rgb, t) - bd.rgb) * opacity * cov * limitWeight(bd.rgb), bd.a); return;
   }
+${HOOD_GLSL_MAIN}
   vec2 p = vec2(gl_FragCoord.x, H - gl_FragCoord.y);
   bool screen = (chOff & 16) != 0;
   vec3 q = inv * vec3(p, 1.0);
@@ -328,7 +331,9 @@ export class GlDisplay {
         }
         if (l.width < 1 || l.height < 1) continue;
         const cover = l.clip ? (l.folders ? folderOut.get(l) : clipOut.get(l.clip)) ?? null : l.folders ? folderOut.get(l.folders) ?? null : null;
-        this.drawLayer(l, l.grain ? GRAIN_MODE : l.threshold !== undefined ? THRESHOLD_MODE : l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend), cover, a.tex, b.fb, view, filter, used, u, l.ko ? { ko: alone(l.ko.back) } : undefined);
+        const blurred = l.hood ? this.blurBelow(a.tex, l.hood, hoodRect(rect, W, H), W, H) : undefined;
+        if (blurred) gl.useProgram(this.comp);
+        this.drawLayer(l, l.grain ? GRAIN_MODE : l.hood ? HOOD_MODE : l.threshold !== undefined ? THRESHOLD_MODE : l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend), cover, a.tex, b.fb, view, filter, used, u, l.ko ? { ko: alone(l.ko.back) } : blurred ? { hood: blurred } : undefined);
         [a, b] = [b, a];
       }
       return a;
@@ -380,16 +385,17 @@ export class GlDisplay {
   }
 
   /** One composite pass: `l` over `backdrop` into framebuffer `fb`, in shader `mode`, clipped by `clip` (a coverage texture). */
-  private drawLayer(l: DisplayLayer, mode: number, clip: WebGLTexture | null, backdrop: WebGLTexture, fb: WebGLFramebuffer, view: Mat, filter: number, used: Set<object>, u: (n: string) => WebGLUniformLocation | null, extra?: { screen?: WebGLTexture; ko?: WebGLTexture }): void {
+  private drawLayer(l: DisplayLayer, mode: number, clip: WebGLTexture | null, backdrop: WebGLTexture, fb: WebGLFramebuffer, view: Mat, filter: number, used: Set<object>, u: (n: string) => WebGLUniformLocation | null, extra?: { screen?: WebGLTexture; ko?: WebGLTexture; hood?: WebGLTexture }): void {
     const gl = this.gl;
-    const noImage = mode === FOLDER_MODE || mode === GRAIN_MODE || mode === THRESHOLD_MODE || !!extra?.screen;
+    const noImage = mode === FOLDER_MODE || mode === GRAIN_MODE || mode === THRESHOLD_MODE || mode === HOOD_MODE || !!extra?.screen;
     if (!noImage) used.add(l.lut ?? (l.image as object));
     const lod = !noImage && mode < LUT_MODE ? lodFor(mul(view, l.matrix), l.width, l.height) : 0;
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, extra?.screen ?? (noImage ? this.blank() : this.texture(l, lod > 0)));
     gl.activeTexture(gl.TEXTURE4);
-    gl.bindTexture(gl.TEXTURE_2D, extra?.ko ?? this.blank());
+    gl.bindTexture(gl.TEXTURE_2D, extra?.ko ?? extra?.hood ?? this.blank());
     gl.activeTexture(gl.TEXTURE1);
+    if (l.hood) gl.uniform1fv(u('hp[0]'), hoodSlots(l.hood));
     if (l.grain) {
       const g = l.grain;
       gl.uniform4f(u('gA'), g.strength, g.rough, g.colour, g.speckle);
@@ -431,6 +437,41 @@ export class GlDisplay {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, backdrop);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+
+  /** The blurred copy of `from` (the composite below a neighbourhood adjustment) over `box`, as GpuDisplay.blurBelow: the three box passes of hood.ts into a half-float pair kept between frames; the result is the second target's texture. The framebuffer's origin is its bottom left, so the box is flipped. */
+  private hoodPool: { tex: WebGLTexture; fb: WebGLFramebuffer; w: number; h: number }[] = [];
+  private blurProg: WebGLProgram | null = null;
+  private blurBelow(from: WebGLTexture, hood: DisplayHood, box: [number, number, number, number], W: number, H: number): WebGLTexture {
+    const gl = this.gl;
+    for (const i of [0, 1]) {
+      const t = this.hoodPool[i];
+      if (t && t.w === W && t.h === H) continue;
+      if (t) { gl.deleteTexture(t.tex); gl.deleteFramebuffer(t.fb); }
+      this.hoodPool[i] = { ...this.target(W, H, true), w: W, h: H };
+    }
+    this.blurProg ??= program(gl, BLUR_GLSL);
+    const prog = this.blurProg;
+    gl.useProgram(prog);
+    gl.disable(gl.BLEND);
+    gl.viewport(0, 0, W, H);
+    gl.uniform1i(gl.getUniformLocation(prog, 'src'), 0);
+    gl.uniform4i(gl.getUniformLocation(prog, 'rect'), box[0], H - box[3], box[2], H - box[1]);
+    gl.uniform1i(gl.getUniformLocation(prog, 'mode'), hood.rgb ? 1 : 0);
+    gl.activeTexture(gl.TEXTURE0);
+    let src = from, n = 0;
+    for (const r of hood.radii) for (const dir of [0, 1]) {
+      const dst = this.hoodPool[n % 2];
+      gl.uniform2i(gl.getUniformLocation(prog, 'r'), r[0], r[1]);
+      gl.uniform1i(gl.getUniformLocation(prog, 'dir'), dir);
+      gl.uniform1i(gl.getUniformLocation(prog, 'first'), n === 0 ? 1 : 0);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, dst.fb);
+      gl.bindTexture(gl.TEXTURE_2D, src);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      src = dst.tex;
+      n++;
+    }
+    return src;
   }
 
   /** The i-th clip coverage target at W x H, kept between frames and remade when the size changes. */
@@ -532,5 +573,9 @@ export class GlDisplay {
     this.acc = [];
     for (const s of this.subPool) { gl.deleteTexture(s.tex); gl.deleteFramebuffer(s.fb); }
     this.subPool = [];
+    for (const s of this.hoodPool) { gl.deleteTexture(s.tex); gl.deleteFramebuffer(s.fb); }
+    this.hoodPool = [];
   }
+
+  unsupported(layers: readonly DisplayLayer[]): string | null { return !this.floatOk && anyLayer(layers, (l) => !!l.hood) ? 'a Shadows/Highlights, HDR Toning or Clarity adjustment layer needs float render targets, which this WebGL2 lacks' : null; }
 }

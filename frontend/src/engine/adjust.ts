@@ -1,7 +1,7 @@
 import { clamp, type AdjustmentKind } from './types';
 import { PARAM_ADJUSTMENTS, PARAM_KINDS, isParamKind, paramValues, type ParamKind } from './adjust-params';
 import type { Kernel, KernelContext } from './kernels';
-import { wasmDesaturate, wasmTableAll } from './wasm-kernels';
+import { wasmDesaturate, wasmGrain, wasmHsvCube, wasmTableAll } from './wasm-kernels';
 
 /** Hue/Saturation and Grain adjustment layers, written for formvis. Hue/Saturation works in HSL: seven colour
  *  ranges (Master and six hue bands, each a trapezoid on the colour wheel with soft shoulders) shift hue, scale
@@ -224,6 +224,7 @@ export function hsvKernel(s: HsvSettings): Kernel {
   const node = (ri: number, gi: number, bi: number): number => ((bi * CUBE + gi) * CUBE + ri) * 3;
   const step = last / 255;
   return (px) => {
+    if (wasmHsvCube(px, cube)) return;
     for (let i = 0; i < px.length; i += 4) {
       if (px[i + 3] === 0) continue;
       const fr = px[i] * step, fg = px[i + 1] * step, fb = px[i + 2] * step;
@@ -284,6 +285,7 @@ export function grainKernel(g: GrainSettings): Kernel {
     if (!(amount > 0) || !width) return;
     const unit = ctx?.unitsPerPixel ?? 1, ox = ctx?.originX ?? 0, oy = ctx?.originY ?? 0;
     const rows = px.length / 4 / width;
+    if (wasmGrain(px, width, unit, ox, oy, g.seed, fineSeed, specSeed, amount, cell, strength, rough, colour, speckle)) return;
     for (let y = 0; y < rows; y++) {
       const v = oy + (y + 0.5) * unit, cy = Math.floor(v / cell), ty = smoothstep(v / cell - cy), fy = Math.floor(v);
       const rowStart = y * width * 4;

@@ -8,7 +8,8 @@
 use crate::{read_tile, Gpu, TiledLayer, FORMAT, TILE};
 
 const HEAD: &str = r#"
-struct Comp { inv0: vec4<f32>, inv1: vec4<f32>, tile_origin: vec2<f32>, opacity: f32, mode: u32, has_mask: u32, has_clip: u32, base_opacity: f32, base_has_mask: u32, stage_origin: vec2<f32>, stage_size: vec2<f32>, layer_size: vec2<f32>, transformed: u32, pad: u32 };
+struct Place { inv0: vec4<f32>, inv1: vec4<f32>, origin: vec2<f32>, stage: vec2<f32>, size: vec2<f32>, placed: u32, pad: u32 };
+struct Comp { inv0: vec4<f32>, inv1: vec4<f32>, tile_origin: vec2<f32>, opacity: f32, mode: u32, has_mask: u32, has_clip: u32, base_opacity: f32, base_has_mask: u32, stage_origin: vec2<f32>, stage_size: vec2<f32>, layer_size: vec2<f32>, transformed: u32, adj_mode: u32, mask_at: Place, base_mask_at: Place, level: f32, pad1: u32, pad2: u32, pad3: u32 };
 @group(0) @binding(0) var backdrop: texture_2d<f32>;
 @group(0) @binding(1) var source: texture_2d<f32>;
 @group(0) @binding(2) var<uniform> comp: Comp;
@@ -18,9 +19,19 @@ struct Comp { inv0: vec4<f32>, inv1: vec4<f32>, tile_origin: vec2<f32>, opacity:
 @group(0) @binding(6) var smp: sampler;
 
 /// A mask's coverage at a pixel: its alpha (a missing mask tile is bound as white, so it reveals, as an untouched mask).
-fn mask_cover(has: u32, t: texture_2d<f32>, px: vec2<i32>) -> f32 {
+fn mask_cover(has: u32, t: texture_2d<f32>, px: vec2<i32>, at: Place, pos: vec2<f32>) -> f32 {
   if (has == 0u) { return 1.0; }
-  return textureLoad(t, px, 0).a;
+  if (at.placed == 0u) { return textureLoad(t, px, 0).a; }
+  // A mask placed apart from the document: outside its rectangle it reveals, inside it is its bilinear alpha.
+  let p = vec3<f32>(comp.tile_origin + pos, 1.0);
+  let q = vec2<f32>(dot(at.inv0.xyz, p), dot(at.inv1.xyz, p));
+  if (q.x < 0.0 || q.y < 0.0 || q.x >= at.size.x || q.y >= at.size.y) { return 1.0; }
+  return textureSampleLevel(t, smp, (q - at.origin) / at.stage, 0.0).a;
+}
+
+fn adjust_blend(b: vec3<f32>, t: vec3<f32>) -> vec3<f32> {
+  if (comp.adj_mode == 0u) { return t; }
+  return blend(comp.adj_mode, b, t);
 }
 
 @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
@@ -34,9 +45,20 @@ const FS: &str = r#"
   let px = vec2<i32>(floor(pos.xy));
   let bd = textureLoad(backdrop, px, 0);
   // Coverage: the layer's mask, and for a clipped layer its base's alpha at the base's opacity through the base's mask.
-  var cov = mask_cover(comp.has_mask, mask_tile, px);
+  var cov = mask_cover(comp.has_mask, mask_tile, px, comp.mask_at, pos.xy);
   if (comp.has_clip == 1u) {
-    cov = cov * textureLoad(base_tile, px, 0).a * comp.base_opacity * mask_cover(comp.base_has_mask, base_mask_tile, px);
+    cov = cov * textureLoad(base_tile, px, 0).a * comp.base_opacity * mask_cover(comp.base_has_mask, base_mask_tile, px, comp.base_mask_at, pos.xy);
+  }
+  // A coverage pass (mode 103): the coverage so far, bound as the backdrop, times this pass's mask and clip; no colour.
+  if (comp.mode == 103u) { return vec4<f32>(0.0, 0.0, 0.0, cov * bd.a); }
+  // A Threshold adjustment (mode 105), as the web renderer's integer rule: 299 r + 587 g + 114 b >= 1000 level on the
+  // 8-bit backdrop, white or black, mixed in by opacity and coverage; alpha kept.
+  if (comp.mode == 105u) {
+    if (bd.a <= 0.0) { return bd; }
+    let v = round(bd.rgb * 255.0);
+    let on = 299.0 * v.r + 587.0 * v.g + 114.0 * v.b >= 1000.0 * comp.level;
+    let tt = vec3<f32>(select(0.0, 1.0, on));
+    return vec4<f32>(bd.rgb + (adjust_blend(bd.rgb, tt) - bd.rgb) * comp.opacity * cov, bd.a);
   }
   // An adjustment layer as a lookup table (mode 100), as the web renderer applies it: each backdrop channel looked up by
   // its 8-bit value in the 256 by 1 table bound as the source, mixed in by opacity and coverage; alpha kept.
@@ -44,7 +66,7 @@ const FS: &str = r#"
     if (bd.a <= 0.0) { return bd; }
     let i = vec3<i32>(round(bd.rgb * 255.0));
     let t = vec3<f32>(textureLoad(source, vec2<i32>(i.r, 0), 0).r, textureLoad(source, vec2<i32>(i.g, 0), 0).g, textureLoad(source, vec2<i32>(i.b, 0), 0).b);
-    return vec4<f32>(bd.rgb + (t - bd.rgb) * comp.opacity * cov, bd.a);
+    return vec4<f32>(bd.rgb + (adjust_blend(bd.rgb, t) - bd.rgb) * comp.opacity * cov, bd.a);
   }
   // A 3D table (mode 101), as engine/lut.ts lut3Sample computes it: the eight nodes around the 8-bit colour, weighted per
   // axis, rounded to 8 bits, then mixed in by opacity and coverage; alpha kept.
@@ -61,7 +83,7 @@ const FS: &str = r#"
       acc += w * textureLoad(source, vec2<i32>(c.x + c.y * 52, c.z), 0).rgb;
     }
     let t3 = round(acc * 255.0) / 255.0;
-    return vec4<f32>(bd.rgb + (t3 - bd.rgb) * comp.opacity * cov, bd.a);
+    return vec4<f32>(bd.rgb + (adjust_blend(bd.rgb, t3) - bd.rgb) * comp.opacity * cov, bd.a);
   }
   var s0 = vec4<f32>(0.0);
   if (comp.transformed == 1u) {
@@ -76,7 +98,7 @@ const FS: &str = r#"
     s0 = textureLoad(source, px, 0);
   }
   var sc = s0;
-  if (s0.a > 0.0) { sc = vec4<f32>(s0.rgb / s0.a, s0.a); }
+  if (s0.a > 0.0 && comp.pad1 == 0u) { sc = vec4<f32>(s0.rgb / s0.a, s0.a); }
   let m = comp.mode;
   if (m == 1u || m == 5u || m == 6u || m == 11u || (m >= 15u && m <= 18u) || m == 21u || m == 22u || m >= 27u) {
     sc = vec4<f32>(floor(sc.rgb * 255.0 + 0.5005) / 255.0, sc.a);
@@ -107,13 +129,19 @@ const FS: &str = r#"
 pub enum Source<'a> {
     Pixels(&'a TiledLayer),
     Table(&'a Lut),
+    /// A Threshold adjustment at this level (1 to 255).
+    Level(u32),
+    /// A folder's layers composited alone from clear, drawn as one layer.
+    Group(Vec<Stack<'a>>),
 }
 
-/// The layer a clipped layer shows through: its pixels, its opacity and its mask.
+/// The layer a clipped layer shows through: its pixels, its opacity and its mask (placed by `mask_at` when apart from
+/// the document).
 pub struct Clip<'a> {
     pub base: &'a TiledLayer,
     pub opacity: f32,
     pub mask: Option<&'a TiledLayer>,
+    pub mask_at: Option<Affine>,
 }
 
 /// A layer's placement: its own pixel (x, y) lands at (a x + b y + c, d x + e y + f) in the document.
@@ -158,17 +186,46 @@ pub struct Stack<'a> {
     pub mode: u32,
     pub opacity: f32,
     pub mask: Option<&'a TiledLayer>,
+    pub mask_at: Option<Affine>,
     pub clip: Option<Clip<'a>>,
     pub transform: Option<Affine>,
+    /// An adjustment layer's blend mode (0 Normal): its adjusted colour blends onto what is beneath in this mode.
+    pub adjust_mode: u32,
+    pub folders: Vec<(&'a TiledLayer, Option<Affine>)>,
 }
 
 impl<'a> Stack<'a> {
     pub fn new(layer: &'a TiledLayer, mode: u32, opacity: f32) -> Stack<'a> {
-        Stack { source: Source::Pixels(layer), mode, opacity, mask: None, clip: None, transform: None }
+        Stack { source: Source::Pixels(layer), mode, opacity, mask: None, mask_at: None, clip: None, transform: None, adjust_mode: 0, folders: Vec::new() }
     }
     /// An adjustment layer: its table applied to everything beneath, at `opacity`.
     pub fn adjustment(table: &'a Lut, opacity: f32) -> Stack<'a> {
-        Stack { source: Source::Table(table), mode: if table.three { 101 } else { 100 }, opacity, mask: None, clip: None, transform: None }
+        Stack { source: Source::Table(table), mode: if table.three { 101 } else { 100 }, opacity, mask: None, mask_at: None, clip: None, transform: None, adjust_mode: 0, folders: Vec::new() }
+    }
+    /// A Threshold adjustment at `level`, at `opacity`.
+    pub fn threshold(level: u32, opacity: f32) -> Stack<'a> {
+        Stack { source: Source::Level(level), mode: 105, opacity, mask: None, mask_at: None, clip: None, transform: None, adjust_mode: 0, folders: Vec::new() }
+    }
+    /// A group of layers composited alone from clear, then blended as one layer in `mode` at `opacity`.
+    pub fn group(sub: Vec<Stack<'a>>, mode: u32, opacity: f32) -> Stack<'a> {
+        Stack { source: Source::Group(sub), mode, opacity, mask: None, mask_at: None, clip: None, transform: None, adjust_mode: 0, folders: Vec::new() }
+    }
+    /// The masks of the folders around the layer, each with its placement when apart from the document: their coverages
+    /// multiply with the layer's own.
+    pub fn in_folders(mut self, masks: Vec<(&'a TiledLayer, Option<Affine>)>) -> Stack<'a> {
+        self.folders = masks;
+        self
+    }
+    /// An adjustment layer drawn in this blend mode (formvis's index).
+    pub fn adjust_in(mut self, mode: u32) -> Stack<'a> {
+        self.adjust_mode = mode;
+        self
+    }
+    /// The mask placed in the document by `t` (its tiles are in the mask's own pixels); outside it the layer reveals.
+    pub fn masked_at(mut self, mask: &'a TiledLayer, t: Affine) -> Stack<'a> {
+        self.mask = Some(mask);
+        self.mask_at = Some(t);
+        self
     }
     /// Placed in the document by `t` (its tiles are in the layer's own pixels).
     pub fn transformed(mut self, t: Affine) -> Stack<'a> {
@@ -180,7 +237,12 @@ impl<'a> Stack<'a> {
         self
     }
     pub fn clipped_to(mut self, base: &'a TiledLayer, opacity: f32, mask: Option<&'a TiledLayer>) -> Stack<'a> {
-        self.clip = Some(Clip { base, opacity, mask });
+        self.clip = Some(Clip { base, opacity, mask, mask_at: None });
+        self
+    }
+    /// As clipped_to, the base's mask placed in the document by `mask_at`.
+    pub fn clipped_to_at(mut self, base: &'a TiledLayer, opacity: f32, mask: Option<&'a TiledLayer>, mask_at: Option<Affine>) -> Stack<'a> {
+        self.clip = Some(Clip { base, opacity, mask, mask_at });
         self
     }
 }
@@ -246,9 +308,27 @@ struct Comp {
     stage_size: [f32; 2],
     layer_size: [f32; 2],
     transformed: u32,
+    adj_mode: u32,
+    mask_at: Place,
+    base_mask_at: Place,
+    level: f32,
+    pad: [u32; 3],
+}
+const _: () = assert!(std::mem::size_of::<Comp>() == 240, "the uniform must match the WGSL struct's 240 bytes");
+
+/// A mask placed apart from the document, as the shader reads it: the inverse placement, the staged footprint's origin
+/// and size in the mask's pixels, and the mask's size; `placed` 0 reads the mask's tile straight.
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable, Default)]
+struct Place {
+    inv0: [f32; 4],
+    inv1: [f32; 4],
+    origin: [f32; 2],
+    stage: [f32; 2],
+    size: [f32; 2],
+    placed: u32,
     pad: u32,
 }
-const _: () = assert!(std::mem::size_of::<Comp>() == 96, "the uniform must match the WGSL struct's 96 bytes");
 
 fn tile_texture(gpu: &Gpu) -> wgpu::Texture {
     gpu.device.create_texture(&wgpu::TextureDescriptor {
@@ -283,6 +363,12 @@ impl Blender {
             ty: wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Float { filterable: false }, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false },
             count: None,
         };
+        let filt_entry = |binding| wgpu::BindGroupLayoutEntry {
+            binding,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Float { filterable: true }, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false },
+            count: None,
+        };
         let layout = gpu.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("blend"),
             entries: &[
@@ -294,9 +380,9 @@ impl Blender {
                     count: None,
                 },
                 wgpu::BindGroupLayoutEntry { binding: 2, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None }, count: None },
-                tex_entry(3),
+                filt_entry(3),
                 tex_entry(4),
-                tex_entry(5),
+                filt_entry(5),
                 wgpu::BindGroupLayoutEntry { binding: 6, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering), count: None },
             ],
         });
@@ -393,6 +479,97 @@ impl Blender {
         Some((stage, [x0 as f32, y0 as f32], [w as f32, h as f32]))
     }
 
+    /// One blend pass: `src` blended (or, for the coverage mode 103, only the coverage computed) over `backdrop` into
+    /// `target`, with the given mask, clip base and base mask (white where absent). Returns the uniform buffer, which
+    /// must outlive the submit.
+    #[allow(clippy::too_many_arguments)]
+    fn pass(&self, gpu: &Gpu, enc: &mut wgpu::CommandEncoder, u: &Comp, backdrop: &wgpu::Texture, src: &wgpu::Texture, mask: Option<&wgpu::Texture>, base: Option<&wgpu::Texture>, base_mask: Option<&wgpu::Texture>, target: &wgpu::Texture) -> wgpu::Buffer {
+        let buf = crate::uniform_buffer(&gpu.device, bytemuck::bytes_of(u));
+        let view = |t: &wgpu::Texture| t.create_view(&Default::default());
+        let (bv, sv, fv) = (view(backdrop), view(src), view(target));
+        let mv = view(mask.unwrap_or(&self.white));
+        let basev = view(base.unwrap_or(&self.white));
+        let bmv = view(base_mask.unwrap_or(&self.white));
+        let bind = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("blend"),
+            layout: &self.layout,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&bv) },
+                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&sv) },
+                wgpu::BindGroupEntry { binding: 2, resource: buf.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(&mv) },
+                wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::TextureView(&basev) },
+                wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::TextureView(&bmv) },
+                wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::Sampler(&self.sampler) },
+            ],
+        });
+        {
+            let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("blend"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: &fv, depth_slice: None, resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT), store: wgpu::StoreOp::Store } })],
+                ..Default::default()
+            });
+            pass.set_pipeline(&self.pipeline);
+            pass.set_bind_group(0, &bind, &[]);
+            pass.draw(0..3, 0..1);
+        }
+        buf
+    }
+
+    /// The coverage a layer in folders with masks draws through, as one tile (its alpha): the clip base's coverage when
+    /// clipped, times each folder mask's. None when no mask covers this tile.
+    #[allow(clippy::too_many_arguments)]
+    fn cover(&self, gpu: &Gpu, enc: &mut wgpu::CommandEncoder, l: &Stack, base: Option<&wgpu::Texture>, base_mask: Option<&wgpu::Texture>, base_mask_at: Place, tx: u32, ty: u32) -> Option<wgpu::Texture> {
+        let origin = [(tx * TILE) as f32, (ty * TILE) as f32];
+        let start = || {
+            let mut u: Comp = bytemuck::Zeroable::zeroed();
+            u.mode = 103;
+            u.opacity = 1.0;
+            u.tile_origin = origin;
+            u.stage_size = [1.0; 2];
+            u
+        };
+        let mut acc: Option<wgpu::Texture> = None;
+        let mut keep = Vec::new();
+        if let (Some(b), Some(c)) = (base, &l.clip) {
+            let mut u = start();
+            u.has_clip = 1;
+            u.base_opacity = c.opacity.clamp(0.0, 1.0);
+            u.base_has_mask = base_mask.is_some() as u32;
+            u.base_mask_at = base_mask_at;
+            let out = tile_texture(gpu);
+            keep.push(self.pass(gpu, enc, &u, &self.white, &self.white, None, Some(b), base_mask, &out));
+            acc = Some(out);
+        }
+        for (m, at) in &l.folders {
+            let (mt, place) = self.mask_input(gpu, enc, Some(m), *at, tx, ty);
+            let Some(mt) = mt else { continue };
+            let mut u = start();
+            u.has_mask = 1;
+            u.mask_at = place;
+            let out = tile_texture(gpu);
+            keep.push(self.pass(gpu, enc, &u, acc.as_ref().unwrap_or(&self.white), &self.white, Some(&mt), None, None, &out));
+            acc = Some(out);
+        }
+        std::mem::forget(keep);
+        acc
+    }
+
+    /// What the shader reads for a mask at one output tile: its tile (white where it has none, which reveals) or, for a
+    /// mask placed apart from the document, the staged footprint with its placement; nothing when there is no mask or a
+    /// placed one lies wholly off this tile (it reveals there).
+    fn mask_input(&self, gpu: &Gpu, enc: &mut wgpu::CommandEncoder, mask: Option<&TiledLayer>, at: Option<Affine>, tx: u32, ty: u32) -> (Option<wgpu::Texture>, Place) {
+        let Some(m) = mask else { return (None, Place::default()) };
+        let Some(t) = at else { return (Some(m.tile_at(tx, ty).unwrap_or(&self.white).clone()), Place::default()) };
+        match self.stage(gpu, enc, m, &t, tx, ty) {
+            Some((tex, origin, stage)) => {
+                let inv = t.inverse();
+                (Some(tex), Place { inv0: [inv.a, inv.b, inv.c, 0.0], inv1: [inv.d, inv.e, inv.f, 0.0], origin, stage, size: [m.width as f32, m.height as f32], placed: 1, pad: 0 })
+            }
+            None => (None, Place::default()),
+        }
+    }
+
     /// One output tile, the layers blended bottom to top over transparency, left on the GPU (straight RGBA8) for the
     /// display to draw; submitted, not waited for.
     pub fn render_tile(&self, gpu: &Gpu, layers: &[Stack], tx: u32, ty: u32) -> wgpu::Texture {
@@ -421,6 +598,8 @@ impl Blender {
                 },
                 (Source::Pixels(layer), None) => match layer.tile_at(tx, ty) { Some(t) => t.clone(), None => continue },
                 (Source::Table(lut), _) => lut.texture.clone(),
+                (Source::Level(_), _) => self.white.clone(),
+                (Source::Group(sub), _) => self.render_tile(gpu, sub, tx, ty),
             };
             let src = &src;
             // A clipped layer shows nothing where its base has no pixels.
@@ -428,8 +607,12 @@ impl Blender {
                 Some(c) => match c.base.tile_at(tx, ty) { Some(t) => Some(t), None => continue },
                 None => None,
             };
-            let mask = l.mask.map(|m| m.tile_at(tx, ty).unwrap_or(&self.white));
-            let base_mask = l.clip.as_ref().and_then(|c| c.mask).map(|m| m.tile_at(tx, ty).unwrap_or(&self.white));
+            let (mask, mask_at) = self.mask_input(gpu, &mut enc, l.mask, l.mask_at, tx, ty);
+            let (base_mask, base_mask_at) = match &l.clip {
+                Some(c) => self.mask_input(gpu, &mut enc, c.mask, c.mask_at, tx, ty),
+                None => (None, Place::default()),
+            };
+            let cover = if l.folders.is_empty() { None } else { self.cover(gpu, &mut enc, l, base, base_mask.as_ref(), base_mask_at, tx, ty) };
             let (inv, stage_origin, stage_size, layer_size) = match placed {
                 Some((o, s, i, ls)) => (i, o, s, ls),
                 None => (Affine::translate(0.0, 0.0), [0.0; 2], [1.0; 2], [0.0; 2]),
@@ -441,44 +624,23 @@ impl Blender {
                 opacity: l.opacity.clamp(0.0, 1.0),
                 mode: l.mode,
                 has_mask: mask.is_some() as u32,
-                has_clip: base.is_some() as u32,
-                base_opacity: l.clip.as_ref().map_or(1.0, |c| c.opacity.clamp(0.0, 1.0)),
-                base_has_mask: base_mask.is_some() as u32,
+                has_clip: (base.is_some() || cover.is_some()) as u32,
+                base_opacity: if cover.is_some() { 1.0 } else { l.clip.as_ref().map_or(1.0, |c| c.opacity.clamp(0.0, 1.0)) },
+                base_has_mask: (cover.is_none() && base_mask.is_some()) as u32,
                 stage_origin,
                 stage_size,
                 layer_size,
                 transformed: placed.is_some() as u32,
-                pad: 0,
+                adj_mode: l.adjust_mode,
+                mask_at,
+                base_mask_at,
+                level: match l.source {
+                    Source::Level(v) => v as f32,
+                    _ => 0.0,
+                },
+                pad: [matches!(l.source, Source::Group(_)) as u32, 0, 0],
             };
-            let buf = crate::uniform_buffer(&gpu.device, bytemuck::bytes_of(&u));
-            let (bv, sv, fv) = (back.create_view(&Default::default()), src.create_view(&Default::default()), front.create_view(&Default::default()));
-            let mv = mask.unwrap_or(&self.white).create_view(&Default::default());
-            let basev = base.unwrap_or(&self.white).create_view(&Default::default());
-            let bmv = base_mask.unwrap_or(&self.white).create_view(&Default::default());
-            let bind = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("blend"),
-                layout: &self.layout,
-                entries: &[
-                    wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&bv) },
-                    wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&sv) },
-                    wgpu::BindGroupEntry { binding: 2, resource: buf.as_entire_binding() },
-                    wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(&mv) },
-                    wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::TextureView(&basev) },
-                    wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::TextureView(&bmv) },
-                    wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::Sampler(&self.sampler) },
-                ],
-            });
-            {
-                let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("blend"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: &fv, depth_slice: None, resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT), store: wgpu::StoreOp::Store } })],
-                    ..Default::default()
-                });
-                pass.set_pipeline(&self.pipeline);
-                pass.set_bind_group(0, &bind, &[]);
-                pass.draw(0..3, 0..1);
-            }
-            uniforms.push(buf);
+            uniforms.push(self.pass(gpu, &mut enc, &u, &back, src, mask.as_ref(), cover.as_ref().or(base), base_mask.as_ref(), &front));
             std::mem::swap(&mut back, &mut front);
         }
         gpu.queue.submit([enc.finish()]);

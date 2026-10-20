@@ -4,6 +4,7 @@ import { developImage } from './develop';
 import { lensBlurSettings, shakeReduce, smartSharpen } from './filters-more';
 import { isGalleryKind, runGallery } from './blur-gallery';
 import { isLibKind, runLib } from './filter-library';
+import { blurDeep, unsharpDeep } from './deep';
 import type { FilterJob } from './filter-jobs';
 
 /** Filters run here, off the main thread: formvis's kernels are JavaScript, so the
@@ -11,6 +12,14 @@ import type { FilterJob } from './filter-jobs';
  *  and pixels move as transferred buffers rather than copies. */
 onmessage = (e: MessageEvent<FilterJob>) => {
   const job = e.data;
+  if (job.deep) {
+    const floats = job.shared ? new Float32Array(job.shared.buf, job.shared.offset, job.shared.length / 4).slice() : new Float32Array(job.pixels);
+    const band = { mode: 'rgb' as const, n: job.deep.n, width: job.width, height: job.height, data: floats };
+    const done = job.kind === 'unsharpMask' ? unsharpDeep(band, job.settings.usmAmount, job.settings.usmRadius, job.settings.threshold, job.deep.ceiling) : blurDeep(band, job.settings.radius);
+    const buffer = done.data.buffer as ArrayBuffer;
+    postMessage({ id: job.id, width: job.width, height: job.height, pixels: buffer, deep: true }, [buffer]);
+    return;
+  }
   const src = new ImageData(job.shared ? new Uint8ClampedArray(job.shared.buf, job.shared.offset, job.shared.length).slice() : new Uint8ClampedArray(job.pixels), job.width, job.height);
   const s = job.settings;
   let out = src;

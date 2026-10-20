@@ -4,6 +4,17 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.92.0 · 2026-10-20
+
+- GPU displays: Shadows/Highlights, HDR Toning and Clarity adjustment layers draw on WebGPU and WebGL2 at 100% zoom through a blur pass over the layers below, within 1 level of the CPU.
+- Develop preview: Clarity, Texture, Sharpening, Noise Reduction, Dehaze (dark channel), Chromatic Aberration, Defringe, the automatic aberration fit, Geometry and the vignette options run on the GPU, within one level (two on rare pixels); Depth Dehaze stays on the CPU.
+- Native renderer: placed masks and clip masks, Threshold, adjustment layers with a blend mode, folder masks and isolated folders in seven blend modes draw natively.
+- Filters: every filter now computes in floats at 16 and 32 bits (Dither ASCII and halftone screens, Flame, Picture Frame, Tree, Lens Correction, Shake Reduction, Lens Blur iris, noise and depth, Path Blur along a drawn path, Reduce Noise with Remove JPEG Artifact); Blur, Blur More and the fixed sharpens use the exact Gaussian at depth.
+- Layer > Convert Layer to 8 Bits / 16 Bits holds selected layers at a shallower precision inside a 16 or 32-bit document, kept by edits, undo and the project file.
+- GPU brush coverage also covers sampled tips, angle and roundness, shape dynamics and scattering on ordinary layers.
+- WebAssembly kernels for Hue/Saturation, Grain and the blend-mode composite, byte-identical; Gaussian Blur and Unsharp Mask on large 16 and 32-bit layers run in bands on the worker pool.
+- Tests (the owner's go-ahead this turn): 53 legacy feature tests (canvas, layers, masks, undo store, PNM, DPX, TIFF16, merge and system routes) and a Linux desktop suite (e2e/desktop) that runs the real Tauri window on Xvfb with WebKitGTK: boot, commands, catalogue, file open by arguments, window state and crash reload.
+
 ## 1.91.9 · 2026-10-20
 
 - Preferences mirror NodeMode's settings window: a collapsible rail with its own icon for every section (labels when open, icons only when collapsed, remembered per device), a fixed-size window with a header, and labelled groups in every section.

@@ -110,28 +110,41 @@ pub struct SpecIn {
     mask: Option<String>,
     clip_to: Option<String>,
     table: Option<String>,
+    /// The mask's placement, as `transform`; None: the mask's pixels are the document's.
+    mask_transform: Option<[f32; 6]>,
+    /// A Threshold adjustment's level.
+    threshold: Option<u32>,
+    /// The masks of the folders around the layer: (mask id, placement).
+    #[serde(default)]
+    folders: Vec<(String, Option<[f32; 6]>)>,
+    /// A folder or clipped group's layers, composited alone and drawn as one layer at this entry's opacity and mode.
+    group: Option<Vec<SpecIn>>,
 }
 
 #[tauri::command]
 pub fn native_stack(stack: Vec<SpecIn>, state: tauri::State<NativeState>) -> Result<(), String> {
     let mut s = state.0.lock().map_err(|e| e.to_string())?;
     let n = s.as_mut().ok_or(NOT_STARTED)?;
-    n.doc.set_stack(
-        stack
-            .into_iter()
-            .map(|e| LayerSpec {
-                id: e.id,
-                mode: e.mode,
-                opacity: e.opacity,
-                visible: e.visible,
-                transform: e.transform.map(|[a, b, c, d, e, f]| Affine { a, b, c, d, e, f }),
-                mask: e.mask,
-                clip_to: e.clip_to,
-                table: e.table,
-            })
-            .collect(),
-    );
+    n.doc.set_stack(stack.into_iter().map(spec_of).collect());
     Ok(())
+}
+
+fn spec_of(e: SpecIn) -> LayerSpec {
+    let affine = |[a, b, c, d, e, f]: [f32; 6]| Affine { a, b, c, d, e, f };
+    LayerSpec {
+        id: e.id,
+        mode: e.mode,
+        opacity: e.opacity,
+        visible: e.visible,
+        transform: e.transform.map(affine),
+        mask: e.mask,
+        clip_to: e.clip_to,
+        table: e.table,
+        mask_at: e.mask_transform.map(affine),
+        threshold: e.threshold,
+        folders: e.folders.into_iter().map(|(id, m)| (id, m.map(affine))).collect(),
+        group: e.group.map(|g| g.into_iter().map(spec_of).collect()),
+    }
 }
 
 #[tauri::command]

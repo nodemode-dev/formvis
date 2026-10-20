@@ -1,7 +1,7 @@
 import type { Mat } from './geometry';
 import type { TipAlpha } from './dab-buffer';
 
-/** Preferences > Performance > GPU brush coverage: the plain round brush lays its dabs' coverage on the graphics processor. */
+/** Preferences > Performance > GPU brush coverage: a stroke's dabs lay their coverage on the graphics processor. */
 export const gpuDabPrefs = { on: false };
 
 const VERT = `#version 300 es
@@ -51,7 +51,44 @@ export class GpuDabCoverage {
   private readonly tips = new WeakMap<Uint8Array, WebGLTexture>();
   private dirty: Rect | null = null;
 
-  private constructor(private readonly gl: WebGL2RenderingContext, private readonly prog: WebGLProgram, private readonly target: WebGLTexture, private readonly fbo: WebGLFramebuffer, private readonly w: number, private readonly h: number) {}
+  private readonly locs = new Map<string, WebGLUniformLocation | null>();
+
+  private constructor(private readonly gl: WebGL2RenderingContext, private readonly prog: WebGLProgram, private target: WebGLTexture, private fbo: WebGLFramebuffer, private w: number, private h: number) {}
+
+  /** The texture remade `nw` by `nh` with what it held kept where it now sits (`dx`, `dy` from the new corner), as the
+   *  stroke's window grows; false (nothing changed) when the new size is more than the graphics processor allows. */
+  resize(nw: number, nh: number, keep: boolean, dx: number, dy: number): boolean {
+    const gl = this.gl;
+    try {
+      if (gl.isContextLost() || nw < 1 || nh < 1 || Math.max(nw, nh) > gl.getParameter(gl.MAX_TEXTURE_SIZE) || nw * nh > 64_000_000) return false;
+      const target = gl.createTexture() as WebGLTexture, fbo = gl.createFramebuffer() as WebGLFramebuffer;
+      gl.bindTexture(gl.TEXTURE_2D, target);
+      gl.texStorage2D(gl.TEXTURE_2D, 1, gl.R32F, nw, nh);
+      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, fbo);
+      gl.framebufferTexture2D(gl.DRAW_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, target, 0);
+      if (gl.checkFramebufferStatus(gl.DRAW_FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE || gl.getError() !== gl.NO_ERROR) { gl.deleteFramebuffer(fbo); gl.deleteTexture(target); return false; }
+      gl.disable(gl.SCISSOR_TEST);
+      gl.clearBufferfv(gl.COLOR, 0, [0, 0, 0, 0]);
+      const x0 = Math.max(0, -dx), x1 = Math.min(this.w, nw - dx), y0 = Math.max(0, -dy), y1 = Math.min(this.h, nh - dy);
+      if (keep && x1 > x0 && y1 > y0) {
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.fbo);
+        gl.blitFramebuffer(x0, y0, x1, y1, x0 + dx, y0 + dy, x1 + dx, y1 + dy, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+      }
+      gl.enable(gl.SCISSOR_TEST);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+      gl.viewport(0, 0, nw, nh);
+      gl.deleteFramebuffer(this.fbo);
+      gl.deleteTexture(this.target);
+      const d = this.dirty;
+      this.dirty = null;
+      if (keep && d) {
+        const ax = Math.max(0, d.x + dx), ay = Math.max(0, d.y + dy), bx = Math.min(nw, d.x + d.w + dx), by = Math.min(nh, d.y + d.h + dy);
+        if (bx > ax && by > ay) this.dirty = { x: ax, y: ay, w: bx - ax, h: by - ay };
+      }
+      this.target = target; this.fbo = fbo; this.w = nw; this.h = nh;
+      return true;
+    } catch { return false; }
+  }
 
   static open(w: number, h: number): GpuDabCoverage | null {
     try {
@@ -118,7 +155,10 @@ export class GpuDabCoverage {
     const ratio = Math.max(Math.hypot(ia, ib), Math.hypot(ic, id)), top = tip.levels.length - 1;
     const lv = tip.levels[ratio > 1.4142 ? Math.min(top, Math.round(Math.log2(ratio))) : 0];
     gl.bindTexture(gl.TEXTURE_2D, this.tipTexture(lv.data, lv.w, lv.h));
-    const u = (n: string): WebGLUniformLocation | null => gl.getUniformLocation(this.prog, n);
+    const u = (n: string): WebGLUniformLocation | null => {
+      if (!this.locs.has(n)) this.locs.set(n, gl.getUniformLocation(this.prog, n));
+      return this.locs.get(n) ?? null;
+    };
     gl.uniform2f(u('org'), x0, y0);
     gl.uniform4f(u('inv'), ia, ib, ic, id);
     gl.uniform2f(u('off'), ie + ia * x0 + ic * y0, iff + ib * x0 + id * y0);

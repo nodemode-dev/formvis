@@ -1,4 +1,5 @@
 import type { BlendMode } from '../engine';
+import { HOOD_WGSL, HOOD_WGSL_MAIN } from './hood';
 
 /** The 27 blend modes as a WGSL shader, matching formvis's CPU renderer exactly (Phase 18.2): the modes the canvas
  *  composites natively follow the W3C Compositing and Blending formulas, as browsers implement them; Linear Dodge is the
@@ -110,6 +111,7 @@ fn biFactor(v: f32, r: vec4<f32>) -> f32 {
   if (v > r.w) { hi = 0.0; } else if (v > r.z) { hi = (r.w - v) / max(1.0, r.w - r.z); }
   return lo * hi;
 }
+${HOOD_WGSL}
 /** The value Blend If tests: one channel, or the grey (Rec. 601) of the 8-bit colour. */
 fn biValue(c: vec3<f32>, ch: u32) -> f32 {
   let p = round(c * 255.0);
@@ -213,6 +215,7 @@ fn adjustBlend(b: vec3<f32>, t: vec3<f32>) -> vec3<f32> {
     let t = vec3<f32>(select(0.0, 1.0, on));
     return vec4<f32>(bd.rgb + (adjustBlend(bd.rgb, t) - bd.rgb) * layer.opacity * cov * limitWeight(bd.rgb), bd.a);
   }
+${HOOD_WGSL_MAIN}
   let screen = (layer.chOff & 16u) != 0u;
   let q = layer.inv * vec3<f32>(pos.xy, 1.0);
   if (!screen && (q.x < 0.0 || q.y < 0.0 || q.x >= layer.size.x || q.y >= layer.size.y)) { return bd; }

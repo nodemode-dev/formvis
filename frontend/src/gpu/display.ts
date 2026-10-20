@@ -1,5 +1,6 @@
 import { invert, mul, type BlendMode, type ChannelPixels, type GrainParams, type Mat } from '../engine';
 import { COMPOSITE_WGSL, blendIndex } from './blend-wgsl';
+import { BLUR_WGSL, HOOD_MODE } from './hood';
 import { MIP_WGSL, deepHalf, lodFor, mipLevels } from './deep-upload';
 import { WgpuFrameTimer } from './gpu-timing';
 import type { DisplayOptions } from './probe';
@@ -14,7 +15,14 @@ export interface DisplayMask { image: HTMLCanvasElement | OffscreenCanvas; versi
 export interface DisplayClip { image: HTMLCanvasElement | OffscreenCanvas; deep?: ChannelPixels; linear?: boolean; version: number; width: number; height: number; matrix: Mat; opacity: number; mask?: DisplayMask; parent?: DisplayClip }
 /** A layer's Blend If: the channel tested (1 grey, 2 red, 3 green, 4 blue) and the four-point ranges of the layer and of what is under it. */
 export interface DisplayBlendIf { channel: 1 | 2 | 3 | 4 | 5 | 6; thisLayer: readonly [number, number, number, number]; underlying: readonly [number, number, number, number] }
-export interface DisplayLayer { image: HTMLCanvasElement | OffscreenCanvas | null; lut?: Uint8Array; lut3?: boolean; grain?: GrainParams; threshold?: number; mask?: DisplayMask; clip?: DisplayClip; folders?: DisplayMask[]; blendIf?: DisplayBlendIf; chOff?: number; deep?: ChannelPixels; linear?: boolean; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode;
+/** A neighbourhood adjustment (Shadows/Highlights, HDR Toning, Clarity): the kind (1 to 3), whether it blurs colour rather than luminance, the box radii of the three blur passes (screen pixels; two blurs for luminance), and the stage's constants (hood.ts). */
+export interface DisplayHood { kind: 1 | 2 | 3; rgb: boolean; radii: readonly (readonly [number, number])[]; p: readonly number[] }
+/** The document's rectangle on the canvas as whole pixels, inside which a neighbourhood blur reads. */
+export const hoodRect = (rect: readonly [number, number, number, number], W: number, H: number): [number, number, number, number] =>
+  [Math.max(0, Math.ceil(rect[0])), Math.max(0, Math.ceil(rect[1])), Math.min(W, Math.floor(rect[2])), Math.min(H, Math.floor(rect[3]))];
+/** The 16 constants of a neighbourhood stage in the order hood.ts reads them: slot 15 is the kind. */
+export const hoodSlots = (h: DisplayHood): number[] => { const s = new Array<number>(16).fill(0); h.p.forEach((v, i) => { s[i] = v; }); s[15] = h.kind; return s; };
+export interface DisplayLayer { image: HTMLCanvasElement | OffscreenCanvas | null; lut?: Uint8Array; lut3?: boolean; hood?: DisplayHood; grain?: GrainParams; threshold?: number; mask?: DisplayMask; clip?: DisplayClip; folders?: DisplayMask[]; blendIf?: DisplayBlendIf; chOff?: number; deep?: ChannelPixels; linear?: boolean; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode;
   /** A folder or clipped group: these layers composite alone from clear, then draw as one layer at this entry's opacity and blend mode. */
   sub?: readonly DisplayLayer[];
   /** Knockout: `back` is the composite the layer shows through its coverage, `opacity` the layer's opacity without its fill. */
@@ -225,7 +233,7 @@ export class GpuDisplay {
         }
         if (l.width < 1 || l.height < 1) continue;
         const cover = l.clip ? (l.folders ? folderTex.get(l) : clipTex.get(l.clip)) ?? null : l.folders ? folderTex.get(l.folders) ?? null : null;
-        this.layerPass(enc, a, b, l, l.threshold !== undefined ? THRESHOLD_MODE : l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend), cover, sampler, view, used, buffers, l.ko ? { ko: alone(l.ko.back) } : undefined);
+        this.layerPass(enc, a, b, l, l.hood ? HOOD_MODE : l.threshold !== undefined ? THRESHOLD_MODE : l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend), cover, sampler, view, used, buffers, l.ko ? { ko: alone(l.ko.back) } : l.hood ? { hood: this.blurBelow(enc, a, l.hood, hoodRect(rect, W, H), W, H, buffers) } : undefined);
         [a, b] = [b, a];
       }
       return a;
@@ -299,11 +307,11 @@ export class GpuDisplay {
   }
 
   /** One composite pass: `l` over `backdrop` into `target`, in shader `mode`, clipped by `clip` (a coverage texture). */
-  private layerPass(enc: GPUCommandEncoder, backdrop: GPUTexture, target: GPUTexture, l: DisplayLayer, mode: number, clip: GPUTexture | null, sampler: GPUSampler, view: Mat, used: Set<object>, buffers: GPUBuffer[], extra?: { screen?: GPUTexture; ko?: GPUTexture }): void {
+  private layerPass(enc: GPUCommandEncoder, backdrop: GPUTexture, target: GPUTexture, l: DisplayLayer, mode: number, clip: GPUTexture | null, sampler: GPUSampler, view: Mat, used: Set<object>, buffers: GPUBuffer[], extra?: { screen?: GPUTexture; ko?: GPUTexture; hood?: GPUTexture }): void {
     const d = this.device;
-    if (mode !== FOLDER_MODE && mode !== THRESHOLD_MODE && !extra?.screen) used.add(l.lut ?? (l.image as object));
+    if (mode !== FOLDER_MODE && mode !== THRESHOLD_MODE && mode !== HOOD_MODE && !extra?.screen) used.add(l.lut ?? (l.image as object));
     const lod = mode < LUT_MODE && !extra?.screen ? lodFor(mul(view, l.matrix), l.width, l.height) : 0, pipe = target.format === 'rgba8unorm' ? this.composite : this.pipe('composite', target.format);
-    const tex = extra?.screen ?? (mode === FOLDER_MODE || mode === THRESHOLD_MODE ? this.blank() : this.texture(l, lod > 0));
+    const tex = extra?.screen ?? (mode === FOLDER_MODE || mode === THRESHOLD_MODE || mode === HOOD_MODE ? this.blank() : this.texture(l, lod > 0));
     const [ia, ib, ic, id, ie, iff] = invert(mul(view, l.matrix));
     // 224 bytes, WGSL's layout: inv (0), size (48), opacity (56), mode (60), the mask's inverse placement (64), its
     // size (112), whether there is one (120), whether the layer is clipped (124), the view's inverse (128), Blend If's
@@ -313,9 +321,14 @@ export class GpuDisplay {
     f.set([va, vb, 0, 0, vc, vd, 0, 0, ve, vf, 1, 0], 32);
     u32[15] = mode;
     if (l.blendIf) { f.set(l.blendIf.thisLayer, 44); f.set(l.blendIf.underlying, 48); u32[52] = l.blendIf.channel; }
-    u32[53] = (l.chOff ?? 0) | (l.lut || l.threshold !== undefined ? blendIndex(l.blend) << 8 : 0) | (extra?.ko ? KO_FLAG : 0) | (extra?.screen ? SCREEN_FLAG : 0);
+    u32[53] = (l.chOff ?? 0) | (l.lut || l.hood || l.threshold !== undefined ? blendIndex(l.blend) << 8 : 0) | (extra?.ko ? KO_FLAG : 0) | (extra?.screen ? SCREEN_FLAG : 0);
     f[54] = lod;
     f[55] = l.ko ? Math.min(1, Math.max(0, l.ko.opacity)) : 0;
+    if (l.hood) {
+      const s = hoodSlots(l.hood);
+      f.set(s.slice(0, 3), 0); f.set(s.slice(3, 6), 4); f.set(s.slice(6, 9), 8); f.set(s.slice(9, 11), 12); f.set(s.slice(13, 16), 32);
+      f[55] = s[11]; f[54] = s[12];
+    }
     let maskTex = this.blank();
     if (l.mask) {
       const mk = l.mask, [ma, mb, mc, md, me, mf] = invert(mul(view, mk.matrix));
@@ -330,13 +343,49 @@ export class GpuDisplay {
     buffers.push(ub);
     const bind = d.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries: [
       { binding: 0, resource: backdrop.createView() }, { binding: 1, resource: tex.createView() }, { binding: 2, resource: sampler }, { binding: 3, resource: { buffer: ub } },
-      { binding: 4, resource: maskTex.createView() }, { binding: 5, resource: (clip ?? this.blank()).createView() }, { binding: 6, resource: (extra?.ko ?? this.blank()).createView() },
+      { binding: 4, resource: maskTex.createView() }, { binding: 5, resource: (clip ?? this.blank()).createView() }, { binding: 6, resource: (extra?.ko ?? extra?.hood ?? this.blank()).createView() },
     ] });
     const pass = enc.beginRenderPass({ colorAttachments: [{ view: target.createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
     pass.setPipeline(pipe);
     pass.setBindGroup(0, bind);
     pass.draw(3);
     pass.end();
+  }
+
+  /** The blurred copy of `from` (the composite below a neighbourhood adjustment) over `box`, in a half-float pair kept between frames: the three box passes of hood.ts, each along x then y; the result is the second texture. */
+  private hoodPool: GPUTexture[] = [];
+  private blurPipe: GPURenderPipeline | null = null;
+  private blurBelow(enc: GPUCommandEncoder, from: GPUTexture, hood: DisplayHood, box: [number, number, number, number], W: number, H: number, buffers: GPUBuffer[]): GPUTexture {
+    const d = this.device;
+    for (const i of [0, 1]) {
+      const t = this.hoodPool[i];
+      if (t && t.width === W && t.height === H) continue;
+      t?.destroy();
+      this.hoodPool[i] = d.createTexture({ size: [W, H], format: 'rgba16float', usage: TEX.TEXTURE_BINDING | TEX.RENDER_ATTACHMENT });
+    }
+    this.blurPipe ??= (() => {
+      const module = d.createShaderModule({ code: BLUR_WGSL });
+      return d.createRenderPipeline({ layout: 'auto', vertex: { module, entryPoint: 'vs' }, fragment: { module, entryPoint: 'fs', targets: [{ format: 'rgba16float' }] }, primitive: { topology: 'triangle-list' } });
+    })();
+    const pipe = this.blurPipe;
+    let src = from, n = 0;
+    for (const r of hood.radii) for (const dir of [0, 1]) {
+      const dst = this.hoodPool[n % 2], raw = new ArrayBuffer(48), i32 = new Int32Array(raw), u32 = new Uint32Array(raw);
+      i32.set(box, 0); i32.set(r, 4);
+      u32[6] = dir; u32[7] = n === 0 ? 1 : 0; u32[8] = hood.rgb ? 1 : 0;
+      const ub = d.createBuffer({ size: 48, usage: BUF.UNIFORM | BUF.COPY_DST });
+      d.queue.writeBuffer(ub, 0, raw);
+      buffers.push(ub);
+      const bind = d.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: src.createView() }, { binding: 1, resource: { buffer: ub } }] });
+      const pass = enc.beginRenderPass({ colorAttachments: [{ view: dst.createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
+      pass.setPipeline(pipe);
+      pass.setBindGroup(0, bind);
+      pass.draw(3);
+      pass.end();
+      src = dst;
+      n++;
+    }
+    return src;
   }
 
   /** The i-th clip coverage texture at W x H, kept between frames and remade when the size changes. */
@@ -454,6 +503,8 @@ export class GpuDisplay {
     this.acc = null;
     for (const t of this.subPool) t.destroy();
     this.subPool = [];
+    for (const t of this.hoodPool) t.destroy();
+    this.hoodPool = [];
     this.device.destroy();
   }
 }

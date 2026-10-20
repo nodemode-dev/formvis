@@ -1,5 +1,6 @@
 import type { LibContext, LibFilter, LibPath, LibValues } from '../filter-library';
 import { boxOf, clipBox, copyImage, hash01, type Box } from './shared';
+import type { DeepPixels } from '../types';
 
 const num = (v: LibValues, k: string): number => v[k] as number;
 const str = (v: LibValues, k: string): string => v[k] as string;
@@ -22,8 +23,8 @@ const stroke = (ax: number, ay: number, bx: number, by: number, ra: number, rb: 
 const dot = (x: number, y: number, r: number, c: RGBA, soft = 1): Mark => ({ ax: x, ay: y, bx: x, by: y, ra: r, rb: r, soft, c });
 
 /** Paints the marks in order on a clear sheet over `clip`, then lays the sheet over the image there. */
-function paint(src: ImageData, marks: readonly Mark[], clip: Box): ImageData {
-  const out = copyImage(src), d = out.data, w = src.width, cw = clip.x1 - clip.x0, ch = clip.y1 - clip.y0, sheet = new Float32Array(cw * ch * 4);
+function sheetOf(marks: readonly Mark[], clip: Box): Float32Array {
+  const cw = clip.x1 - clip.x0, ch = clip.y1 - clip.y0, sheet = new Float32Array(cw * ch * 4);
   for (const m of marks) {
     const pad = Math.max(m.ra, m.rb) + m.soft + 1;
     const x0 = Math.max(clip.x0, Math.floor(Math.min(m.ax, m.bx) - pad)), x1 = Math.min(clip.x1, Math.ceil(Math.max(m.ax, m.bx) + pad));
@@ -37,6 +38,11 @@ function paint(src: ImageData, marks: readonly Mark[], clip: Box): ImageData {
       sheet[i] = m.c[0] * a + sheet[i] * (1 - a); sheet[i + 1] = m.c[1] * a + sheet[i + 1] * (1 - a); sheet[i + 2] = m.c[2] * a + sheet[i + 2] * (1 - a); sheet[i + 3] = a + sheet[i + 3] * (1 - a);
     }
   }
+  return sheet;
+}
+
+function paint(src: ImageData, marks: readonly Mark[], clip: Box): ImageData {
+  const out = copyImage(src), d = out.data, w = src.width, cw = clip.x1 - clip.x0, sheet = sheetOf(marks, clip);
   for (let y = clip.y0; y < clip.y1; y++) for (let x = clip.x0; x < clip.x1; x++) {
     const i = ((y - clip.y0) * cw + x - clip.x0) * 4, a = sheet[i + 3];
     if (a <= 0) continue;
@@ -47,16 +53,42 @@ function paint(src: ImageData, marks: readonly Mark[], clip: Box): ImageData {
   return out;
 }
 
+/** The drawing laid over float channels (red, green and blue layers): the marks' sheet composited in unit colour, alpha as a float, results held to 0..`ceiling`. */
+export function paintDeep(src: DeepPixels, plan: DrawnPlan | null, ceiling = 1): DeepPixels {
+  const out = new Float32Array(src.data);
+  if (!plan || src.n !== 3) return { ...src, data: out };
+  const { marks, clip } = plan, S = src.n + 1, A = src.n, w = src.width, cw = clip.x1 - clip.x0, sheet = sheetOf(marks, clip);
+  for (let y = clip.y0; y < clip.y1; y++) for (let x = clip.x0; x < clip.x1; x++) {
+    const i = ((y - clip.y0) * cw + x - clip.x0) * 4, a = sheet[i + 3];
+    if (a <= 0) continue;
+    const o = (y * w + x) * S, da = out[o + A], outA = a + da * (1 - a);
+    for (let c = 0; c < A; c++) {
+      out[o + c] = Math.min(ceiling, Math.max(0, (sheet[i + c] / 255 + out[o + c] * da * (1 - a)) / outA));
+    }
+    out[o + A] = outA;
+  }
+  return { ...src, data: out };
+}
+
 /** Builds marks in document pixels for the frame (the selection or canvas, in document pixels), maps them into this
  *  image through the canvas's place and scale in it, and paints them inside both the frame and the canvas. */
-function drawn(src: ImageData, ctx: LibContext, build: (area: Area, doc: { w: number; h: number }) => Mark[]): ImageData {
+function drawn(src: ImageData, ctx: LibContext, build: Builder): ImageData {
+  const plan = drawnPlan(src, ctx, build);
+  return plan ? paint(src, plan.marks, plan.clip) : copyImage(src);
+}
+
+type Builder = (area: Area, doc: { w: number; h: number }) => Mark[];
+export interface DrawnPlan { marks: Mark[]; clip: Box }
+
+/** The marks and the pixel box they are painted in, for the frame `ctx` describes over an image of `dims`; null when nothing is drawn. */
+export function drawnPlan(dims: { width: number; height: number }, ctx: Pick<LibContext, 'canvas' | 'area' | 'doc'>, build: Builder): DrawnPlan | null {
   const { canvas, area, doc } = ctx, kx = canvas.w / Math.max(1, doc.w), ky = canvas.h / Math.max(1, doc.h), k = (kx + ky) / 2;
-  if (!(kx > 0 && ky > 0)) return copyImage(src);
+  if (!(kx > 0 && ky > 0)) return null;
   const marks = build({ x: (area.x - canvas.x) / kx, y: (area.y - canvas.y) / ky, w: area.w / kx, h: area.h / ky }, doc).map((m) => ({
     ...m, ax: canvas.x + m.ax * kx, ay: canvas.y + m.ay * ky, bx: canvas.x + m.bx * kx, by: canvas.y + m.by * ky, ra: m.ra * k, rb: m.rb * k, soft: Math.max(0.6, m.soft * k),
   }));
-  const a = boxOf(area), c = boxOf(canvas), clip = clipBox({ x0: Math.max(a.x0, c.x0), y0: Math.max(a.y0, c.y0), x1: Math.min(a.x1, c.x1), y1: Math.min(a.y1, c.y1) }, src.width, src.height);
-  return clip ? paint(src, marks, clip) : copyImage(src);
+  const a = boxOf(area), c = boxOf(canvas), clip = clipBox({ x0: Math.max(a.x0, c.x0), y0: Math.max(a.y0, c.y0), x1: Math.min(a.x1, c.x1), y1: Math.min(a.y1, c.y1) }, dims.width, dims.height);
+  return clip ? { marks, clip } : null;
 }
 
 /** A path parameter's polylines in this document's pixels. */
@@ -334,6 +366,24 @@ const flameSpec = (v: LibValues): FlameSpec => ({
   quality: ['draft', 'low', 'medium', 'high', 'fine'].indexOf(str(v, 'quality')),
 });
 
+/** The mark builders of the drawn filters, shared by the 8 bit run and the float one. */
+export const DRAWN_BUILD: Record<'flame' | 'pictureFrame' | 'tree', (v: LibValues) => Builder> = {
+  flame: (v) => (area, doc) => {
+    const o = flameSpec(v), lines = pathLines(v.path as LibPath | null, doc);
+    const arc: Array<[number, number]> = o.type === 'candleLight' ? [[area.x + area.w * 0.5, area.y + area.h * 0.72]] : Array.from({ length: 25 }, (_, k): [number, number] => [area.x + area.w * (0.15 + (0.7 * k) / 24), area.y + area.h * (0.82 - 0.06 * Math.sin((Math.PI * k) / 24))]);
+    return flameMarks(o, lines.length ? lines : [arc]);
+  },
+  pictureFrame: (v) => (area) => frameMarks({
+    style: str(v, 'frame'), margin: num(v, 'margin'), size: num(v, 'size'), arrangement: num(v, 'arrangement'), lines: num(v, 'lines'), thickness: num(v, 'thickness'), fade: num(v, 'fade'),
+    vine: rgbOf(str(v, 'vineColor')), flower: rgbOf(str(v, 'flowerColor')), leaf: rgbOf(str(v, 'leafColor')), seed: num(v, 'seed'),
+  }, area),
+  tree: (v) => (area) => treeMarks({
+    kind: str(v, 'baseTreeType'), light: num(v, 'lightDirection'), amount: num(v, 'leavesAmount'), leafSize: num(v, 'leavesSize'), branchHeight: num(v, 'branchesHeight'), thickness: num(v, 'branchesThickness'),
+    leafColor: v.defaultLeaves === false ? rgbOf(str(v, 'leavesColor')) : null, branchColor: v.customBranchColor === true ? rgbOf(str(v, 'branchesColor')) : null, flat: v.flatShading === true,
+    seed: num(v, 'seed'), x: num(v, 'x') / 100, y: num(v, 'y') / 100, size: num(v, 'size') / 100,
+  }, area),
+};
+
 export const DRAWN_FILTERS: LibFilter[] = [
   {
     id: 'flame', label: 'Flame', group: 'Render', grows: false, reach: null, fills: true,
@@ -361,11 +411,7 @@ export const DRAWN_FILTERS: LibFilter[] = [
       { key: 'seed', label: 'Arrangement', kind: 'seed', def: 0 },
       { key: 'newLayer', label: 'New Layer', kind: 'check', def: false },
     ],
-    run: (src, v, ctx) => drawn(src, ctx, (area, doc) => {
-      const o = flameSpec(v), lines = pathLines(v.path as LibPath | null, doc);
-      const arc: Array<[number, number]> = o.type === 'candleLight' ? [[area.x + area.w * 0.5, area.y + area.h * 0.72]] : Array.from({ length: 25 }, (_, k): [number, number] => [area.x + area.w * (0.15 + (0.7 * k) / 24), area.y + area.h * (0.82 - 0.06 * Math.sin((Math.PI * k) / 24))]);
-      return flameMarks(o, lines.length ? lines : [arc]);
-    }),
+    run: (src, v, ctx) => drawn(src, ctx, DRAWN_BUILD.flame(v)),
   },
   {
     id: 'pictureFrame', label: 'Picture Frame', group: 'Render', grows: false, reach: null, fills: true,
@@ -383,10 +429,7 @@ export const DRAWN_FILTERS: LibFilter[] = [
       { key: 'seed', label: 'Pattern', kind: 'seed', def: 0 },
       { key: 'newLayer', label: 'New Layer', kind: 'check', def: false },
     ],
-    run: (src, v, ctx) => drawn(src, ctx, (area) => frameMarks({
-      style: str(v, 'frame'), margin: num(v, 'margin'), size: num(v, 'size'), arrangement: num(v, 'arrangement'), lines: num(v, 'lines'), thickness: num(v, 'thickness'), fade: num(v, 'fade'),
-      vine: rgbOf(str(v, 'vineColor')), flower: rgbOf(str(v, 'flowerColor')), leaf: rgbOf(str(v, 'leafColor')), seed: num(v, 'seed'),
-    }, area)),
+    run: (src, v, ctx) => drawn(src, ctx, DRAWN_BUILD.pictureFrame(v)),
   },
   {
     id: 'tree', label: 'Tree', group: 'Render', grows: false, reach: null, fills: true,
@@ -409,10 +452,6 @@ export const DRAWN_FILTERS: LibFilter[] = [
       { key: 'seed', label: 'Arrangement', kind: 'seed', def: 0 },
       { key: 'newLayer', label: 'New Layer', kind: 'check', def: false },
     ],
-    run: (src, v, ctx) => drawn(src, ctx, (area) => treeMarks({
-      kind: str(v, 'baseTreeType'), light: num(v, 'lightDirection'), amount: num(v, 'leavesAmount'), leafSize: num(v, 'leavesSize'), branchHeight: num(v, 'branchesHeight'), thickness: num(v, 'branchesThickness'),
-      leafColor: v.defaultLeaves === false ? rgbOf(str(v, 'leavesColor')) : null, branchColor: v.customBranchColor === true ? rgbOf(str(v, 'branchesColor')) : null, flat: v.flatShading === true,
-      seed: num(v, 'seed'), x: num(v, 'x') / 100, y: num(v, 'y') / 100, size: num(v, 'size') / 100,
-    }, area)),
+    run: (src, v, ctx) => drawn(src, ctx, DRAWN_BUILD.tree(v)),
   },
 ];

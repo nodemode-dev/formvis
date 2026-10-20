@@ -39,7 +39,7 @@ function gaussPlane(p: Float32Array, w: number, h: number, sigma: number): Float
 export interface DenoiseSettings { strength: number; preserve: number; color: number; sharpen: number; jpeg: boolean; colorDetail?: number; colorSmooth?: number }
 
 /** The ring of offsets the brightness smoothing samples: the centre, then rings of eight at growing radii. */
-function rings(radius: number): Array<[number, number, number]> {
+export function rings(radius: number): Array<[number, number, number]> {
   const out: Array<[number, number, number]> = [[0, 0, 1]];
   for (let k = 1; k <= 3; k++) {
     const rr = (radius * k) / 3;

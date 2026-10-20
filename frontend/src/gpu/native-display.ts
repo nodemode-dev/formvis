@@ -6,8 +6,8 @@ import type { Checker, DisplayLayer, ScreenDisplay } from './display';
  *  document into the window's own GPU surface (Metal, Vulkan, Direct3D 12) beneath the web view, and this display keeps
  *  its mirror of the document up to date. Each image, mask and table gets a stable id and is sent again only when its
  *  version changes, as raw bytes; then the stack and the view. Draw requests while one is in flight are coalesced to the
- *  latest, so a slow frame never queues up more. What the native renderer cannot draw yet (3D tables, folder masks, a
- *  mask placed apart from the document) is named by unsupported(), and the stage draws on the CPU with that reason. */
+ *  latest, so a slow frame never queues up more. What the native renderer cannot draw yet (folders with their own
+ *  opacity or blend, Knockout, Blend If, Grain) is named by unsupported(), and the stage draws on the CPU with that reason. */
 
 type Invoke = <T>(cmd: string, args?: unknown, options?: { headers: Record<string, string> }) => Promise<T>;
 type Img = HTMLCanvasElement | OffscreenCanvas;
@@ -17,6 +17,9 @@ interface Frame { layers: readonly DisplayLayer[]; view: Mat; checker: Checker; 
 const isIdentity = (m: Mat): boolean => m[0] === 1 && m[1] === 0 && m[2] === 0 && m[3] === 1 && m[4] === 0 && m[5] === 0;
 /** formvis's canvas matrix [a, b, c, d, e, f] (x' = a x + c y + e) as the renderer's [a, b, c, d, e, f] (x' = a x + b y + c). */
 const affine = (m: Mat): number[] | null => (isIdentity(m) ? null : [m[0], m[2], m[4], m[1], m[3], m[5]]);
+
+/** The blend modes a folder composited alone was measured in within two levels of the CPU renderer. */
+const GROUP_BLENDS: ReadonlySet<string> = new Set(['normal', 'multiply', 'screen', 'color-dodge', 'color-burn', 'lighten', 'luminosity']);
 
 export class NativeDisplay implements ScreenDisplay {
   onLost: (() => void) | null = null;
@@ -48,17 +51,18 @@ export class NativeDisplay implements ScreenDisplay {
 
   unsupported(layers: readonly DisplayLayer[]): string | null {
     for (const l of layers) {
-      if (l.sub || l.ko) return 'a folder with its own opacity or blend mode, a clipped group or a Knockout, which the native renderer does not draw yet';
+      if (l.ko) return 'a Knockout, which the native renderer does not draw yet';
+      if (l.sub) {
+        if (l.sub.some((x) => x.clip)) return 'a clipped group, which the native renderer does not draw yet';
+        if (!GROUP_BLENDS.has(l.blend)) return 'a folder in a blend mode the native renderer does not match the CPU in yet';
+        const inner = this.unsupported(l.sub);
+        if (inner) return inner;
+        continue;
+      }
       if (l.grain) return 'a Grain adjustment layer is not drawn by the native renderer yet';
-      if (l.threshold !== undefined) return 'a Threshold adjustment layer is not drawn by the native renderer yet';
-      if (!l.image && !l.lut) return 'an adjustment layer the native renderer does not draw yet';
-      if (l.folders?.length) return 'a layer is in a folder with a mask, which the native renderer does not draw yet';
-      if (l.mask && !isIdentity(l.mask.matrix)) return 'a mask is placed apart from the document, which the native renderer does not draw yet';
-      if (l.clip?.mask && !isIdentity(l.clip.mask.matrix)) return 'a clipping base has a mask placed apart from the document, which the native renderer does not draw yet';
+      if (!l.image && !l.lut && l.threshold === undefined) return 'an adjustment layer the native renderer does not draw yet';
       if (l.blendIf || l.chOff) return 'a layer has Blend If or channel restrictions, which the native renderer does not draw yet';
-      if (l.clip?.parent) return 'a clipping base is itself clipped, which the native renderer does not draw yet';
-      if (l.lut && (l.blend !== 'normal' || l.blendIf)) return 'an adjustment layer has a blend mode or a limit, which the native renderer does not draw yet';
-    }
+      if (l.clip?.parent) return 'a clipping base is itself clipped, which the native renderer does not draw yet';    }
     return null;
   }
 
@@ -123,9 +127,19 @@ export class NativeDisplay implements ScreenDisplay {
       await this.invoke('native_doc', { width: f.doc.width, height: f.doc.height });
       this.docSize = size;
     }
-    const stack = [];
-    for (const l of f.layers) {
-      const entry: Record<string, unknown> = { id: '', mode: Math.max(0, BLEND_IDS.indexOf(l.blend)), opacity: l.opacity, visible: true, transform: null, mask: null, clipTo: null, table: null };
+    await this.invoke('native_stack', { stack: await this.entries(f.layers) });
+    await this.present(f);
+  }
+
+  private async entries(layers: readonly DisplayLayer[]): Promise<Record<string, unknown>[]> {
+    const stack: Record<string, unknown>[] = [];
+    for (const l of layers) {
+      const entry: Record<string, unknown> = { id: '', mode: Math.max(0, BLEND_IDS.indexOf(l.blend)), opacity: l.opacity, visible: true, transform: null, mask: null, maskTransform: null, clipTo: null, table: null, threshold: null };
+      if (l.sub) {
+        entry.group = await this.entries(l.sub);
+        stack.push(entry);
+        continue;
+      }
       if (l.lut) {
         const table = this.id(l.lut);
         if (this.sent.get(l.lut) !== l.version) {
@@ -139,15 +153,28 @@ export class NativeDisplay implements ScreenDisplay {
         }
         entry.id = table;
         entry.table = table;
+      } else if (l.threshold !== undefined) {
+        entry.threshold = l.threshold;
       } else if (l.image) {
         entry.id = await this.put(l.image, l.version);
         entry.transform = affine(l.matrix);
       } else continue;
-      if (l.mask) entry.mask = await this.put(l.mask.image, l.mask.version);
+      if (l.mask) {
+        entry.mask = await this.put(l.mask.image, l.mask.version);
+        entry.maskTransform = affine(l.mask.matrix);
+      }
+      if (l.folders?.length) {
+        const chain: [string, number[] | null][] = [];
+        for (const f of l.folders) chain.push([await this.put(f.image, f.version), affine(f.matrix)]);
+        entry.folders = chain;
+      }
       if (l.clip) entry.clipTo = await this.put(l.clip.image, l.clip.version);
       stack.push(entry);
     }
-    await this.invoke('native_stack', { stack });
+    return stack;
+  }
+
+  private async present(f: Frame): Promise<void> {
     // The stage's view is in its canvas's device pixels; the window surface is the whole window's.
     const r = this.canvas.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
     const c = f.checker;

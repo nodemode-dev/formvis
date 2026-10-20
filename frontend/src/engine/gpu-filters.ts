@@ -17,8 +17,8 @@ export interface GpuFilterRunner {
   gaussianBlur(src: ImageData, sigma: number): ImageData | null;
   addNoise(src: ImageData, amount: number, gaussian: boolean, monochromatic: boolean, seed: number): ImageData | null;
   unsharpMask(src: ImageData, amount: number, radius: number, threshold: number): ImageData | null;
-  /** The per-pixel Develop pass; null unless the state is only per-pixel stages (see developPerPixelOnly). */
-  develop(src: ImageData, state: DevelopState, seed: number): ImageData | null;
+  /** The Develop filter on the GPU; null unless the state holds only stages the GPU runs (see developPerPixelOnly); `scale` shrinks the detail radii as developImage's does. */
+  develop(src: ImageData, state: DevelopState, seed: number, scale?: number): ImageData | null;
   /** The image resampled through a Liquify displacement field (liquifyImage), or null when the GPU cannot. */
   liquify(src: ImageData, field: { gw: number; gh: number; cell: number; d: Float32Array }, scale: number, outW: number, outH: number): ImageData | null;
   /** A Smudge stroke over premultiplied bytes held on the GPU (the dabs run there, the changed rectangle is read back); null when the GPU cannot. */
@@ -71,7 +71,7 @@ export function runFilterOnGpu(kind: FilterKind, s: FilterSettings, scale: numbe
     if (kind === 'emboss') { const v = libValues(kind, s.lib?.[kind]); return g.emboss?.(src, v.angle as number, Math.max(1, (v.height as number) * scale), v.amount as number) ?? null; }
     if (kind === 'addNoise') return g.addNoise(src, s.amount, s.gaussian, s.monochromatic, seed);
     if (kind === 'unsharpMask') return g.unsharpMask(src, s.usmAmount, s.usmRadius * scale, s.threshold);
-    if (kind === 'develop' && developPerPixelOnly(s.develop)) return g.develop(src, s.develop, 7);
+    if (kind === 'develop' && developPerPixelOnly(s.develop)) return g.develop(src, s.develop, 7, scale);
   } catch { /* a failed draw: the CPU does it */ }
   return null;
 }

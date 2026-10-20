@@ -1,5 +1,6 @@
 import { blurDeep, motionBlurDeep, noiseDeep, surfaceBlurDeep, unsharpDeep } from '../../engine/deep';
-import { DEEP_RGB_ONLY, deepGalleryFilter, deepLibFilter, lensBlurDeep, smartSharpenDeep, viaRgbDeep } from '../../engine/deep-filters';
+import { POOL_FROM } from '../../engine/band-pool';
+import { DEEP_RGB_ONLY, deepGalleryFilter, deepLibFilter, lensBlurIrisDeep, lensCorrectDeep, smartSharpenDeep, viaRgbDeep } from '../../engine/deep-filters';
 import type { DeepPixels } from '../../engine/types';
 import { addNoise, defaultLensFix, gaussianBlur, gaussianMargin, lensCorrect, motionBlur, motionMargin, randomSeed, runFilterOffThread, unsharpMask, defaultDevelopState, developImage, type Engine, type LensFix } from '../../engine';
 import { ScopesView } from './scopes-view';
@@ -11,7 +12,7 @@ import { depthLimitRows } from './depth-limit';
 import { localDepthValues } from '../../io/local-gen';
 import { recalled, remembered } from '../prefs';
 import { checkRow, colorRow, curveRow, matrixRow, selectRow, sliderRow, type Row } from './controls';
-import { defaultLensIris, lensBlurMargin, lensBlurSettings, shakeMargin, shakeReduce, smartSharpen, smartSharpenMargin, type LensIris, type SharpenRemove, type ShakeSettings } from '../../engine/filters-more';
+import { defaultLensIris, lensBlurMargin, lensBlurSettings, shakeAsSharpen, shakeMargin, shakeReduce, smartSharpen, smartSharpenMargin, type LensIris, type SharpenRemove, type ShakeSettings } from '../../engine/filters-more';
 import { estimateShake } from '../../engine/shake';
 import { runGallery, type GallerySettings } from '../../engine/blur-gallery';
 import { LIBRARY, isLibKind, libAllDefaults, libApron, libFilter, libImageParams, libMargin, libPathParams, libValues, runLib, type LibColors, type LibFrame, type LibImage, type LibKind, type LibParam, type LibPath, type LibValue, type LibValues } from '../../engine/filter-library';
@@ -1051,21 +1052,31 @@ export class FilterPanel extends Dialog {
     if (isLibKind(kind) && libFilter(kind).fills && (settings.lib as Record<string, Record<string, unknown> | undefined> | undefined)?.[kind]?.newLayer === true) return false;
     const s = { ...this.s, ...(settings as Partial<typeof this.s>) }, seed = typeof settings.seed === 'number' ? settings.seed : this.seed, ceiling = p.doc.depth === 32 ? Infinity : 1;
     const lay = p.activeLayer, frame = lay?.channels ? this.engine.filterFrame(p, lay.transform, lay.channels.width, lay.channels.height) : null;
-    const env = frame ? { area: frame.area, canvas: frame.canvas, fg: s.colors.fg, bg: s.colors.bg } : undefined;
+    const env = frame ? { area: frame.area, canvas: frame.canvas, doc: frame.doc, fg: s.colors.fg, bg: s.colors.bg } : undefined;
     if (kind === 'develop') {
       const ch = p.activeLayer?.channels, out = ch ? developDeep(ch.data, ch.n, ch.width, ch.height, s.develop) : null;
       if (!ch || !out) return false;
       this.engine.applyDeepFilter(FILTER_LABELS[kind], (d) => ({ ...d, data: out }));
       return true;
     }
-    const deep = kind === 'gaussianBlur' ? (d: DeepPixels): DeepPixels => blurDeep(d, s.radius) : kind === 'unsharpMask' ? (d: DeepPixels): DeepPixels => unsharpDeep(d, s.usmAmount, s.usmRadius, s.threshold, ceiling) : kind === 'addNoise' ? (d: DeepPixels): DeepPixels => noiseDeep(d, s.amount, s.gaussian, s.monochromatic, seed, ceiling) : kind === 'motionBlur' ? (d: DeepPixels): DeepPixels => motionBlurDeep(d, s.angle, s.distance) : kind === 'surfaceBlur' ? (d: DeepPixels): DeepPixels => surfaceBlurDeep(d, s.gallery.surfaceRadius, s.gallery.surfaceThreshold) : kind === 'smartSharpen' ? (d: DeepPixels): DeepPixels => smartSharpenDeep(d, s.smart, ceiling) : kind === 'radialBlur' || kind === 'fieldBlur' || kind === 'irisBlur' || kind === 'tiltShift' || kind === 'pathBlur' ? deepGalleryFilter(kind, s.gallery) : kind === 'lensBlur' && (!s.lensIris || (s.lensIris.source === 'none' && !(s.lensIris.blades >= 3) && !(s.lensIris.noise > 0))) ? (d: DeepPixels): DeepPixels => lensBlurDeep(d, s.lensRadius, s.lensBrightness, s.lensThreshold) : isLibKind(kind) ? deepLibFilter(kind, libValues(kind, (s.lib as Record<string, unknown> | undefined)?.[kind]), ceiling, seed, env) : null;
+    const deep = kind === 'gaussianBlur' ? (d: DeepPixels): DeepPixels => blurDeep(d, s.radius) : kind === 'unsharpMask' ? (d: DeepPixels): DeepPixels => unsharpDeep(d, s.usmAmount, s.usmRadius, s.threshold, ceiling) : kind === 'addNoise' ? (d: DeepPixels): DeepPixels => noiseDeep(d, s.amount, s.gaussian, s.monochromatic, seed, ceiling) : kind === 'motionBlur' ? (d: DeepPixels): DeepPixels => motionBlurDeep(d, s.angle, s.distance) : kind === 'surfaceBlur' ? (d: DeepPixels): DeepPixels => surfaceBlurDeep(d, s.gallery.surfaceRadius, s.gallery.surfaceThreshold) : kind === 'smartSharpen' ? (d: DeepPixels): DeepPixels => smartSharpenDeep(d, s.smart, ceiling) : kind === 'shakeReduction' ? (d: DeepPixels): DeepPixels => smartSharpenDeep(d, shakeAsSharpen(s.shake), ceiling) : kind === 'lensCorrection' ? (d: DeepPixels): DeepPixels => lensCorrectDeep(d, s.distortion, s.lensFix ?? defaultLensFix(), ceiling) : kind === 'radialBlur' || kind === 'fieldBlur' || kind === 'irisBlur' || kind === 'tiltShift' || kind === 'pathBlur' ? deepGalleryFilter(kind, s.gallery, env?.canvas) : kind === 'lensBlur' ? (d: DeepPixels): DeepPixels => { const i = s.lensIris; return lensBlurIrisDeep(d, s.lensRadius, s.lensBrightness, s.lensThreshold, i ? { blades: i.blades, curve: i.curve, rotation: i.rotation, source: i.source, depth: i.depth, canvas: env?.canvas ?? null, focal: i.focal, invert: i.invert, noise: i.noise, gaussian: i.gaussian, mono: i.mono, seed } : {}, ceiling); } : isLibKind(kind) ? deepLibFilter(kind, libValues(kind, (s.lib as Record<string, unknown> | undefined)?.[kind]), ceiling, seed, env) : null;
     const mode = lay?.channels?.mode, run = deep && mode && mode !== 'rgb' && DEEP_RGB_ONLY.includes(kind) ? viaRgbDeep(deep, mode, p.cmykLut && p.cmykIn ? { out: p.cmykLut, inn: p.cmykIn } : null) : deep;
     if (!run) return false;
     this.engine.applyDeepFilter(FILTER_LABELS[kind], run);
     return true;
   }
 
+  /** Gaussian Blur and Unsharp Mask on a large 16 or 32 bit layer in bands on the worker pool; null where the whole-layer route applies. */
+  private deepPooled(kind: FilterKind, settings: Record<string, unknown>): Promise<boolean> | null {
+    const p = this.engine.current, ch = p?.activeLayer?.channels;
+    if (!p || !ch || ch.mode !== 'rgb' || (kind !== 'gaussianBlur' && kind !== 'unsharpMask') || ch.width * ch.height <= Math.max(this.engine.bandFrom, POOL_FROM)) return null;
+    const s = { ...this.s, ...(settings as Partial<typeof this.s>) }, apron = bandApron(kind, s);
+    return apron === null ? null : this.engine.bandedDeepFilterPool(FILTER_LABELS[kind], { kind, settings: s }, apron);
+  }
+
     private async applyInBackground(kind: FilterKind, settings: Record<string, unknown>): Promise<boolean> {
+    const deepPool = this.deepPooled(kind, settings);
+    if (deepPool && await deepPool) { this.engine.setPreview(null); this.close(); return true; }
     if (this.deepFilter(kind, settings)) { this.engine.setPreview(null); this.close(); return Promise.resolve(true); }   // 16 bits (1.53.7)
     if (this.missingImage(kind, settings)) return false;
     if (isLibKind(kind) && libFilter(kind).fills && (settings.lib as Record<string, Record<string, unknown> | undefined> | undefined)?.[kind]?.newLayer === true && !this.smartTarget()) {
@@ -1117,6 +1128,8 @@ export class FilterPanel extends Dialog {
     this.kind = kind;
     Object.assign(this.s, structuredClone(settings));
     const run = (src: ImageData, scale: number, frame?: LibFrame): ImageData => this.run(src, scale, frame);
+    const deepPool = this.deepPooled(kind, settings);
+    if (deepPool) return deepPool.then((done) => done || this.deepFilter(kind, settings));
     if (this.deepFilter(kind, settings)) return true;   // 16 bits (1.53.7)
     const apron = bandApron(kind, this.s);   // a large layer in bands (1.60.9)
     if (apron !== null && this.engine.activeTiled()) { void this.engine.bandedFilterTiled(FILTER_LABELS[kind], (src, frame) => run(src, 1, frame), apron); return true; }

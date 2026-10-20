@@ -557,6 +557,8 @@ const ROWS: Record<string, Row> = {
   'inverse': ['Select', 'Inverts the selection.', 'Use when you selected what you want to keep and need the rest.', 'm'],
   'color-range': ['Select', 'Opens Color Range.', 'Use when you want to select by colour with a preview.', 'm'],
   'select-color-range': ['Select', 'Selects by sampled colour, hue family, tone, skin tones or the Depth Map layer, combined with the selection as asked.', 'Use when a selection should come from colour, tone or depth without opening the dialog, such as everything nearer than a depth.', 'm'],
+  'layer-bits-8': ['Layer', 'Holds the selected layers at 8 bits per channel inside a 16 or 32 bit document: their pixels snap to 256 steps and later edits keep them there.', 'Use when one layer of a deeper document should carry only 8-bit precision.', 'm'],
+  'layer-bits-16': ['Layer', 'Holds the selected layers at 16 bits per channel inside a 32 bit document: their pixels snap to 65536 steps and later edits keep them there.', 'Use when one layer of a 32-bit document should carry only 16-bit precision.', 'm'],
   'layer-pixels': ['Select', "Selects the layer's non-transparent pixels.", 'Use when you want the outline of what a layer contains.', 'm'],
   'zoom-in': ['View', 'Zooms in.', 'Use when you need to see detail.'],
   'zoom-out': ['View', 'Zooms out.', 'Use when you need more of the picture in view.'],

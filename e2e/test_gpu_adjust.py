@@ -82,9 +82,9 @@ def test_a_per_channel_adjustment_draws_on_the_gpu_as_the_cpu_does(page, kind):
         assert r["share"] >= 0.99, (cls, r)
 
 
-def test_a_discontinuous_adjustment_keeps_the_document_on_the_cpu_by_name(page):
+def test_a_threshold_adjustment_draws_on_the_gpu_since_its_exact_branch(page):
     page.evaluate(DOC, ["threshold"])
-    assert page.evaluate("window.formvis.engine.gpuLayers().reason") == "a Threshold adjustment layer"
+    assert page.evaluate("window.formvis.engine.gpuLayers().reason") is None
 
 
 def test_on_screen_webgl2_draws_a_levels_document(page):

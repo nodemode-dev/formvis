@@ -22,7 +22,7 @@ interface Slot { w: Worker; busy: number }
 let slots: Slot[] = [];
 let failed = false;
 let nextId = 1;
-const waiting = new Map<number, { slot: Slot; done: (img: ImageData | null) => void }>();
+const waiting = new Map<number, { slot: Slot; done: (img: ImageData | null, raw?: ArrayBuffer) => void }>();
 
 /** Preferences > Performance > Worker threads: 0 is automatic (min(cores - 1, 4)); a number is the most workers the pool
  *  may run (1 to 16). A pool already started is ended so the next large filter starts one of the new size. */
@@ -58,7 +58,7 @@ function ensure(): boolean {
         const j = waiting.get(e.data.id);
         if (!j) return;
         waiting.delete(e.data.id); j.slot.busy--;
-        j.done(new ImageData(new Uint8ClampedArray(e.data.pixels), e.data.width, e.data.height));
+        if (e.data.deep) j.done(null, e.data.pixels); else j.done(new ImageData(new Uint8ClampedArray(e.data.pixels), e.data.width, e.data.height));
         pump();
       };
       w.onerror = () => { lose(slot); for (const s of slots) s.w.terminate(); slots = []; };
@@ -71,7 +71,7 @@ function ensure(): boolean {
 /** Whether the pool can take bands now. */
 export function bandPoolReady(): boolean { return !failed && ensure(); }
 
-interface Queued { priority: number; seq: number; job: FilterJob; done: (img: ImageData | null) => void }
+interface Queued { priority: number; seq: number; job: FilterJob; done: (img: ImageData | null, raw?: ArrayBuffer) => void }
 const queue: Queued[] = [];
 const DEPTH = 2;
 let seq = 0;
@@ -110,4 +110,15 @@ export function runSharedBandOnPool(kind: FilterKind, settings: FilterSettings, 
   if (failed || !ensure()) return Promise.resolve(null);
   const job: FilterJob = { id: nextId++, kind, settings, scale: 1, seed, width, height: a1 - a0, pixels: new ArrayBuffer(0), frame, shared: { buf, offset: a0 * width * 4, length: (a1 - a0) * width * 4 } };
   return new Promise<ImageData | null>((resolve) => { queue.push({ priority, seq: seq++, job, done: resolve }); pump(); });
+}
+
+/** Rows a0 to a1 of a 16 or 32 bit layer (interleaved floats, `n` colour channels and alpha last) through Gaussian Blur or
+ *  Unsharp Mask on a pool worker: read in place from a SharedArrayBuffer when `buf` is given (nothing is copied or cloned
+ *  to send it), otherwise `rows` travels as a transferred copy. The filtered rows come back as floats, or null (the
+ *  caller then filters that band itself). */
+export function runDeepBandOnPool(kind: 'gaussianBlur' | 'unsharpMask', settings: FilterSettings, n: 3 | 4, ceiling: number, width: number, a0: number, a1: number, source: SharedArrayBuffer | Float32Array, priority = 0): Promise<Float32Array | null> {
+  if (failed || !ensure()) return Promise.resolve(null);
+  const S = n + 1, shared = source instanceof Float32Array ? null : source;
+  const job: FilterJob = { id: nextId++, kind, settings, scale: 1, seed: 0, width, height: a1 - a0, pixels: shared ? new ArrayBuffer(0) : (source as Float32Array).buffer as ArrayBuffer, deep: { n, ceiling }, ...(shared ? { shared: { buf: shared, offset: a0 * width * S * 4, length: (a1 - a0) * width * S * 4 } } : {}) };
+  return new Promise<Float32Array | null>((resolve) => { queue.push({ priority, seq: seq++, job, done: (_img, raw) => resolve(raw ? new Float32Array(raw) : null) }); pump(); });
 }

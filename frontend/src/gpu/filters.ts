@@ -2,8 +2,10 @@ import type { GpuFilterRunner, GpuSmudge, LensGatherInput } from '../engine/gpu-
 import type { GpuEffectJob, GpuEffectRunner } from '../engine/gpu-effects';
 import type { Surface } from '../engine/surface';
 import type { Rect } from '../engine/types';
-import { BAND_CENTER, BAND_WIDTH, HSL_BANDS, bandOf, buildCurveLut, buildParametricLut, calibrationActive, calibrationOf, colorActive, curvesActive, gradingActive, gradingOf, hslToRgb, opticsOf, opticsVignetteOnly, parametricActive, parametricOf, pointColorActive, pointColorOf, rgbToHsl, toneProcessOf, vignetteShapeOf, type DevelopState } from '../engine/develop';
+import { BAND_CENTER, BAND_WIDTH, HSL_BANDS, bandOf, buildCurveLut, buildParametricLut, calibrationActive, calibrationOf, colorActive, curvesActive, darkDehazeOn, defaultNoise, noiseActive, noiseOf, detailActive, estimateAberration, geometryActive, geometryOf, gradingActive, gradingOf, hexRgb, hslToRgb, opticsOf, opticsVignetteOnly, parametricActive, parametricOf, pointColorActive, pointColorOf, rgbToHsl, toneProcessOf, vignetteAfterGeometry, vignetteShapeOf, type DevelopState } from '../engine/develop';
 import { threeBoxWidths } from '../engine/filters';
+import { gaussKernel } from '../engine/filters-lib/shared';
+import { rings } from '../engine/filters-lib/noise';
 import { frameTrace } from './frame-trace';
 
 /** The GPU filter runner (DEV_PLAN 36.10): Threshold, Add Noise (grain), Gaussian Blur, Unsharp Mask and the per-pixel
@@ -170,8 +172,34 @@ const FS_SMUDGE_CANVAS = `${SM_WEIGHT}void main() {
   o = floor(under + (p - under) * w * u_lay + 0.5) / 255.0;
 }`;
 
+/** vignetteMix: one pixel through the vignette. u_vcol holds the corner colour (w 1 when set), u_vst the held-back share (x) and the style (y: 0 paint, 1 highlight priority, 2 colour priority). */
+const VIGMIX = `uniform vec4 u_vcol; uniform vec2 u_vst;
+vec3 vigMix(vec3 v, float fall, bool dark) {
+  float prot = u_vst.y == 1.0 ? max(u_vst.x, 0.7) : u_vst.x;
+  if (prot > 0.0) { float hi = clamp((dot(v, vec3(0.299, 0.587, 0.114)) - 0.45) / 0.45, 0.0, 1.0); fall *= 1.0 - prot * hi * hi * (3.0 - 2.0 * hi); }
+  if (u_vcol.w > 0.5) return v + (u_vcol.rgb - v) * fall;
+  if (dark) {
+    float mask = 1.0 - fall;
+    if (u_vst.y == 2.0) { float l = dot(v, vec3(0.299, 0.587, 0.114)), k = pow(mask, 0.9); return l * mask + (v - l) * k; }
+    return v * mask;
+  }
+  return v + (1.0 - v) * fall;
+}
+`;
+
+/** vignettePostPass: the vignette on the finished frame after Geometry, centred on the frame itself. */
+const FS_VIGPOST = `${VIGMIX}uniform float u_vig; uniform vec3 u_vigp;
+void main() {
+  ivec2 c = ivec2(gl_FragCoord.xy), sz = textureSize(t0, 0); vec4 s = texelFetch(t0, c, 0);
+  float cx = float(sz.x) / 2.0, cy = float(sz.y) / 2.0, maxR = sqrt(cx * cx + cy * cy), ro = u_vigp.z / 100.0;
+  float sx = max(1.0, cx * (1.0 - ro) + maxR * ro), sy = max(1.0, cy * (1.0 - ro) + maxR * ro), corner = length(vec2(cx / sx, cy / sy));
+  if (corner == 0.0) corner = 1.0;
+  float fall = clamp((length(vec2((float(c.x) - cx) / sx, (float(c.y) - cy) / sy)) / corner - u_vigp.x / 100.0) * (abs(u_vig) / 50.0) * (50.0 / max(1.0, u_vigp.y)), 0.0, 1.0);
+  o = vec4(clamp(vigMix(s.rgb, fall, u_vig > 0.0), 0.0, 1.0), s.a);
+}`;
+
 /** Develop's per-pixel pass (developPass), tone then colour mixer then the curve table; t1 is the 256 entry table. */
-const FS_DEVELOP = `${MIX}
+const FS_DEVELOP = `${MIX}${VIGMIX}
 uniform uint u_seed; uniform float u_offset, u_exp, u_cont, u_high, u_shad, u_white, u_black, u_temp, u_tint, u_vib, u_sat, u_dehz, u_vig, u_grain;
 uniform bool u_hasColor, u_hasCurve, u_hasPara, u_colorize; uniform vec3 u_master; uniform vec3 u_vigp; uniform vec3 u_band[8]; uniform vec2 u_bandc[8];
 uniform vec2 u_tp[4]; uniform bool u_hasPc, u_hasCal, u_hasGrade; uniform vec3 u_pc0, u_pcw, u_pcd, u_calh, u_cals, u_gts, u_gtm, u_gth, u_gtg; uniform vec4 u_gl; uniform vec2 u_gpv; uniform float u_calt;
@@ -256,7 +284,7 @@ void main() {
     float sx = max(1.0, cx * (1.0 - ro) + maxR * ro), sy = max(1.0, cy * (1.0 - ro) + maxR * ro), corner = length(vec2(cx / sx, cy / sy));
     if (corner == 0.0) corner = 1.0;
     float fall = c01((length(vec2((float(c.x) - cx) / sx, (float(c.y) - cy) / sy)) / corner - u_vigp.x / 100.0) * (abs(u_vig) / 50.0) * (50.0 / max(1.0, u_vigp.y)));
-    if (u_vig > 0.0) v *= 1.0 - fall; else v += (1.0 - v) * fall;
+    v = vigMix(v, fall, u_vig > 0.0);
   }
   if (u_grain > 0.0) {
     uint a = u_seed + uint(c.y * sz.x + c.x + 1) * 0x6d2b79f5u;
@@ -354,6 +382,155 @@ void main() {
     v = ofall > 0.0 ? v + (1.0 - v) * ofall : v * (1.0 + ofall);
   }
   o = vec4(v, a);
+}`;
+
+/** Develop's blur-difference detail on bytes (t0 the picture, t1 its blur as bytes): mode 0 clarityPass (u_amt the amount over 200), mode 1 detailPass with the midtone mask (texture), mode 2 detailPass without it (sharpening's broad pass). */
+const FS_DETAIL = `uniform int u_mode; uniform float u_amt;
+void main() {
+  ivec2 c = ivec2(gl_FragCoord.xy); vec4 s = texelFetch(t0, c, 0); vec3 b = texelFetch(t1, c, 0).rgb, v;
+  if (u_mode == 0) {
+    float luma = dot(s.rgb, vec3(0.299, 0.587, 0.114)), e = abs(luma - 0.5) * 2.0, term = abs(u_amt) * (1.0 - e * e) * 0.8, sg = u_amt > 0.0 ? -1.0 : 1.0;
+    v = s.rgb + (b - s.rgb) * term * sg;
+  } else {
+    float mask = 1.0;
+    if (u_mode == 1) { float l = dot(s.rgb, vec3(0.2126, 0.7152, 0.0722)); mask = pow(1.0 - clamp(abs(l - 0.5) * 2.0, 0.0, 1.0), 1.25); }
+    float f = u_amt < 0.0 ? min(0.8, -u_amt) * mask : u_amt * mask, sg = u_amt < 0.0 ? 1.0 : -1.0;
+    v = s.rgb + (b - s.rgb) * f * sg;
+  }
+  o = vec4(clamp(v, 0.0, 1.0), s.a);
+}`;
+
+/** sharpenPass's second half: t0 the picture, t1 its broad unsharp as bytes; the overshoot is softly limited (u_lim, 0 for none) and, with u_mask, scaled by a smoothstep of the luminance gradient. */
+const FS_SHARP = `uniform float u_lim; uniform float u_top; uniform bool u_mask;
+float lumaAt(ivec2 c, ivec2 sz) { return dot(texelFetch(t0, clamp(c, ivec2(0), sz - 1), 0).rgb, vec3(0.299, 0.587, 0.114)); }
+void main() {
+  ivec2 c = ivec2(gl_FragCoord.xy), sz = textureSize(t0, 0); vec4 s = texelFetch(t0, c, 0);
+  float m = 1.0;
+  if (u_mask) { float gx = lumaAt(c + ivec2(1, 0), sz) - lumaAt(c - ivec2(1, 0), sz), gy = lumaAt(c + ivec2(0, 1), sz) - lumaAt(c - ivec2(0, 1), sz); m = smoothstep(0.0, u_top, length(vec2(gx, gy)) / 2.0); }
+  vec3 s8 = floor(s.rgb * 255.0 + 0.5), delta = floor(texelFetch(t1, c, 0).rgb * 255.0 + 0.5) - s8, kept = u_lim > 0.0 ? u_lim * tanh(delta / u_lim) : delta;
+  o = vec4(clamp(s8 + kept * m, 0.0, 255.0) / 255.0, s.a);
+}`;
+
+/** opticsPass's chromatic aberration: the red channel sampled about the centre at scale u_f.x and the blue at u_f.y (bilinear per channel, beyond the edge left as it is), rounded to bytes, then the lens vignette as FS_DISTORT draws it. */
+const FS_CA = `uniform vec2 u_f; uniform bool u_hasOv; uniform vec4 u_ov;
+float sstep(float e0, float e1, float x) { float t = clamp((x - e0) / (e1 - e0), 0.0, 1.0); return t * t * (3.0 - 2.0 * t); }
+float chan(vec2 p, int ch, ivec2 sz, float keep) {
+  if (p.x < 0.0 || p.y < 0.0 || p.x > float(sz.x - 1) || p.y > float(sz.y - 1)) return keep;
+  vec2 b = floor(p), fr = p - b; ivec2 q0 = ivec2(b), q1 = min(sz - 1, q0 + 1);
+  float a = texelFetch(t0, q0, 0)[ch], bb = texelFetch(t0, ivec2(q1.x, q0.y), 0)[ch], cc = texelFetch(t0, ivec2(q0.x, q1.y), 0)[ch], dd = texelFetch(t0, q1, 0)[ch];
+  return (a * (1.0 - fr.x) + bb * fr.x) * (1.0 - fr.y) + (cc * (1.0 - fr.x) + dd * fr.x) * fr.y;
+}
+void main() {
+  ivec2 c = ivec2(gl_FragCoord.xy), sz = textureSize(t0, 0); vec4 s = texelFetch(t0, c, 0);
+  vec2 ctr = (vec2(sz) - 1.0) / 2.0, d = vec2(c) - ctr;
+  vec3 v = s.rgb;
+  v.r = chan(ctr + d / u_f.x, 0, sz, s.r); v.b = chan(ctr + d / u_f.y, 2, sz, s.b);
+  v = floor(v * 255.0 + 0.5) / 255.0;
+  if (u_hasOv) {
+    float orm = max(1e-6, length(ctr)), oro = u_ov.w;
+    float osx = max(1.0, ctr.x * (1.0 - oro) + orm * oro), osy = max(1.0, ctr.y * (1.0 - oro) + orm * oro), ocorner = length(vec2(ctr.x / osx, ctr.y / osy));
+    if (ocorner == 0.0) ocorner = 1.0;
+    float orr = length(vec2(d.x / osx, d.y / osy)) / ocorner, ofall = sstep(u_ov.x, u_ov.y, orr) * u_ov.z;
+    v = ofall > 0.0 ? v + (1.0 - v) * ofall : v * (1.0 + ofall);
+  }
+  o = vec4(clamp(v, 0.0, 1.0), s.a);
+}`;
+
+/** defringePass: within two pixels of a luminance edge of 0.15 or more, purple and green fringes of some saturation are pulled toward the pixel's own luminance by u_k. */
+const FS_DEFRINGE = `uniform float u_k;
+float sstep(float e0, float e1, float x) { float t = clamp((x - e0) / (e1 - e0), 0.0, 1.0); return t * t * (3.0 - 2.0 * t); }
+float lumaAt(ivec2 c) { return dot(texelFetch(t0, c, 0).rgb, vec3(0.299, 0.587, 0.114)); }
+float hueW(float h, float center, float width) {
+  float diff = abs(h - center); if (diff > 180.0) diff = 360.0 - diff;
+  float half_ = max(5.0, width / 2.0), fall = max(12.0, half_ * 0.65);
+  if (diff <= half_) return 1.0;
+  if (diff <= half_ + fall) { float t = (diff - half_) / fall; return 0.5 * (1.0 + cos(3.14159265358979 * t)); }
+  return 0.0;
+}
+void main() {
+  ivec2 c = ivec2(gl_FragCoord.xy), sz = textureSize(t0, 0); vec4 s = texelFetch(t0, c, 0);
+  float lp = lumaAt(c), edge = 0.0;
+  for (int dy = -2; dy <= 2; dy++) for (int dx = -2; dx <= 2; dx++) {
+    ivec2 q = c + ivec2(dx, dy);
+    if (q.x >= 0 && q.y >= 0 && q.x < sz.x && q.y < sz.y) edge = max(edge, abs(lumaAt(q) - lp));
+  }
+  if (edge < 0.15) { o = s; return; }
+  float mx = max(s.r, max(s.g, s.b)), mn = min(s.r, min(s.g, s.b)), l = (mx + mn) / 2.0, d = mx - mn, hue = 0.0, sat = 0.0;
+  if (d > 0.0) {
+    sat = clamp(l > 0.5 ? d / max(1e-5, 2.0 - mx - mn) : d / max(1e-5, mx + mn), 0.0, 1.0);
+    float h = mx == s.r ? (s.g - s.b) / d + (s.g < s.b ? 6.0 : 0.0) : mx == s.g ? (s.b - s.r) / d + 2.0 : (s.r - s.g) / d + 4.0;
+    hue = h * 60.0;
+  }
+  float fringe = max(hueW(hue, 290.0, 80.0), hueW(hue, 120.0, 80.0)) * sstep(0.15, 0.4, sat) * sstep(0.15, 0.4, edge);
+  if (fringe <= 0.0) { o = s; return; }
+  o = vec4(clamp(s.rgb + (lp - s.rgb) * fringe * u_k, 0.0, 1.0), s.a);
+}`;
+
+/** darkDehaze's window minimum along one axis (zero past the edge shrinks the window): t0 the picture (u_first, the least of the three channels) or a plane in its red channel. */
+const FS_WMIN = `uniform int u_r; uniform ivec2 u_dir; uniform bool u_first;
+float at(ivec2 q) { vec4 t = texelFetch(t0, q, 0); return u_first ? min(t.r, min(t.g, t.b)) : t.r; }
+void main() {
+  ivec2 c = ivec2(gl_FragCoord.xy), sz = textureSize(t0, 0); bool horiz = u_dir.x != 0;
+  int n = horiz ? sz.x : sz.y, p = horiz ? c.x : c.y, lo = max(0, p - u_r), hi = min(n - 1, p + u_r); float m = 1e9;
+  for (int k = lo; k <= hi; k++) m = min(m, at(horiz ? ivec2(k, c.y) : ivec2(c.x, k)));
+  o = vec4(m, 0.0, 0.0, 1.0);
+}`;
+const FS_DZ_NORM = `uniform vec3 u_A;
+void main() { vec3 q = floor(texelFetch(t0, ivec2(gl_FragCoord.xy), 0).rgb * 255.0 + 0.5) / u_A; o = vec4(min(q.r, min(q.g, q.b)), 0.0, 0.0, 1.0); }`;
+const FS_DZ_T = `uniform float u_a;
+void main() { o = vec4(1.0 - 0.95 * u_a * min(1.0, texelFetch(t0, ivec2(gl_FragCoord.xy), 0).r), 0.0, 0.0, 1.0); }`;
+/** The last step of darkDehaze: t0 the picture, t1 the smoothed transmission, t2 the window minimum of the normalised picture (sky protection). */
+const FS_DZ_OUT = `uniform sampler2D t2; uniform vec3 u_A; uniform float u_sky;
+void main() {
+  ivec2 c = ivec2(gl_FragCoord.xy); vec4 s = texelFetch(t0, c, 0); vec3 d = floor(s.rgb * 255.0 + 0.5);
+  float k = 1.0 / max(0.15, texelFetch(t1, c, 0).r), hold = u_sky > 0.0 ? u_sky * clamp((texelFetch(t2, c, 0).r - 0.7) / 0.2, 0.0, 1.0) : 0.0;
+  vec3 v = clamp((d - u_A) * k + u_A, 0.0, 255.0);
+  o = vec4((v + (d - v) * hold) / 255.0, s.a);
+}`;
+/** darkDehaze with a negative amount: the picture mixed toward the airlight. */
+const FS_DZ_HAZE = `uniform vec3 u_A; uniform float u_t;
+void main() { vec4 s = texelFetch(t0, ivec2(gl_FragCoord.xy), 0); vec3 d = floor(s.rgb * 255.0 + 0.5); o = vec4(clamp(d * u_t + u_A * (1.0 - u_t), 0.0, 255.0) / 255.0, s.a); }`;
+
+/** reduceNoiseImage on the GPU, step for step: the planes (Y, Cb, Cr in the red, green and blue channels, alpha kept), the sampled bilateral on Y, a Gaussian along one axis from a kernel texture (t1), the unsharp on Y, and the rebuild. */
+const FS_NR_YCC = `void main() { vec4 s = texelFetch(t0, ivec2(gl_FragCoord.xy), 0); vec3 v = floor(s.rgb * 255.0 + 0.5); float y = dot(v, vec3(0.299, 0.587, 0.114)); o = vec4(y, (v.b - y) * 0.564, (v.r - y) * 0.713, s.a); }`;
+const FS_NR_BILAT = `uniform vec3 u_tap[25]; uniform float u_inv;
+void main() {
+  ivec2 c = ivec2(gl_FragCoord.xy), sz = textureSize(t0, 0); float me = texelFetch(t0, c, 0).r, sum = 0.0, ws = 0.0;
+  for (int i = 0; i < 25; i++) {
+    float v = texelFetch(t0, clamp(c + ivec2(int(u_tap[i].x), int(u_tap[i].y)), ivec2(0), sz - 1), 0).r, diff = v - me, wt = u_tap[i].z * exp(-diff * diff * u_inv);
+    sum += v * wt; ws += wt;
+  }
+  o = vec4(sum / ws, 0.0, 0.0, 1.0);
+}`;
+const FS_NR_SEP = `uniform int u_r; uniform ivec2 u_dir;
+void main() {
+  ivec2 c = ivec2(gl_FragCoord.xy), sz = textureSize(t0, 0); bool horiz = u_dir.x != 0; int n = horiz ? sz.x : sz.y, p = horiz ? c.x : c.y; vec4 acc = vec4(0.0); float ws = 0.0;
+  for (int t = -u_r; t <= u_r; t++) {
+    int j = p + t; if (j < 0 || j >= n) continue;
+    float wt = texelFetch(t1, ivec2(t + u_r, 0), 0).r; acc += texelFetch(t0, horiz ? ivec2(j, c.y) : ivec2(c.x, j), 0) * wt; ws += wt;
+  }
+  o = acc / ws;
+}`;
+const FS_NR_SHARP = `uniform float u_k; void main() { ivec2 c = ivec2(gl_FragCoord.xy); float l = texelFetch(t0, c, 0).r; o = vec4(l + (l - texelFetch(t1, c, 0).r) * u_k, 0.0, 0.0, 1.0); }`;
+const FS_NR_OUT = `uniform sampler2D t2; uniform float u_hold;
+void main() {
+  ivec2 c = ivec2(gl_FragCoord.xy); vec4 p = texelFetch(t1, c, 0), q = texelFetch(t2, c, 0); float yy = texelFetch(t0, c, 0).r; vec2 cc = q.gb;
+  if (u_hold > 0.0) { float t = u_hold * min(1.0, (abs(p.g - cc.x) + abs(p.b - cc.y)) / 24.0); cc += (p.gb - cc) * t; }
+  float b1 = cc.x / 0.564, r1 = cc.y / 0.713;
+  o = vec4(clamp(vec3(yy + r1, (yy - 0.299 * (yy + r1) - 0.114 * (yy + b1)) / 0.587, yy + b1), 0.0, 255.0) / 255.0, p.a);
+}`;
+
+/** geometryPass: each output pixel sampled (bilinear, all four channels) from where rotate, scale, offset and the keystone take it; outside the picture transparent. */
+const FS_GEOM = `uniform vec2 u_rot; uniform float u_s; uniform vec2 u_off; uniform vec2 u_k;
+void main() {
+  ivec2 c = ivec2(gl_FragCoord.xy), sz = textureSize(t0, 0); vec2 ctr = (vec2(sz) - 1.0) / 2.0;
+  float u = (float(c.x) - ctr.x - u_off.x) * u_s, v = (float(c.y) - ctr.y - u_off.y) * u_s;
+  float ru = u * u_rot.x - v * u_rot.y, rv = u * u_rot.y + v * u_rot.x;
+  vec2 p = ctr + vec2(ru / max(0.1, 1.0 + u_k.x * (rv / ctr.y)), rv / max(0.1, 1.0 + u_k.y * (ru / ctr.x)));
+  if (p.x < 0.0 || p.y < 0.0 || p.x > float(sz.x - 1) || p.y > float(sz.y - 1)) { o = vec4(0.0); return; }
+  vec2 b = floor(p), fr = p - b; ivec2 q0 = ivec2(b), q1 = min(sz - 1, q0 + 1);
+  vec4 a = texelFetch(t0, q0, 0), bb = texelFetch(t0, ivec2(q1.x, q0.y), 0), cc = texelFetch(t0, ivec2(q0.x, q1.y), 0), dd = texelFetch(t0, q1, 0);
+  o = (a * (1.0 - fr.x) + bb * fr.x) * (1.0 - fr.y) + (cc * (1.0 - fr.x) + dd * fr.x) * fr.y;
 }`;
 
 /** Lens Blur's gather, step for step as lensBlur's loop: t0 the levels stacked by slot, t1 the radius, t2 the taps (one row per tier), t3 the source bytes. */
@@ -566,23 +743,32 @@ export class GlFilters implements GpuFilterRunner, GpuEffectRunner {
   }
 
   /** One image through a single fragment shader: upload, draw, read back. */
-  private single(key: string, frag: string, src: ImageData, set?: (gl: WebGL2RenderingContext, loc: Loc) => void, extra?: Tex, after?: { key: string; frag: string; set: (gl: WebGL2RenderingContext, loc: Loc) => void }): ImageData | null {
+  private single(key: string, frag: string, src: ImageData, set?: (gl: WebGL2RenderingContext, loc: Loc) => void, extra?: Tex, after?: { key: string; frag: string; set: (gl: WebGL2RenderingContext, loc: Loc) => void }, chain?: (first: Tex) => Tex): ImageData | null {
     const { width: w, height: h } = src;
     return this.guard(w, h, () => {
       const input = this.tex(w, h, 'u8', new Uint8Array(src.data.buffer, src.data.byteOffset, src.data.byteLength)), first = this.tex(w, h, 'u8'), out = after ? this.tex(w, h, 'u8') : first;
       const res = new ImageData(w, h);
       const gl = this.gl, q = this.timer ? gl.createQuery() : null;
+      let fin = out;
       try {
         if (q && this.timer) gl.beginQuery(this.timer.TIME_ELAPSED_EXT, q);
         this.pass(this.program(key, frag), first, extra ? [input, extra] : [input], set);
         if (after) this.pass(this.program(after.key, after.frag), out, [first], after.set);
+        if (chain) fin = chain(first);
         if (q && this.timer) gl.endQuery(this.timer.TIME_ELAPSED_EXT);
-        this.readBack(out, new Uint8Array(res.data.buffer));
+        this.readBack(fin, new Uint8Array(res.data.buffer));
         this.lastGpuMs = q && this.timer && gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE) && !gl.getParameter(this.timer.GPU_DISJOINT_EXT) ? Number(gl.getQueryParameter(q, gl.QUERY_RESULT)) / 1e6 : null;
         frameTrace.noteGpu(key, this.lastGpuMs);
-      } finally { this.free(input, first); if (out !== first) this.free(out); if (q) gl.deleteQuery(q); }
+      } finally { this.free(input, first); if (out !== first) this.free(out); if (fin !== first && fin !== out) this.free(fin); if (q) gl.deleteQuery(q); }
       return res;
     });
+  }
+
+  /** `src` blurred as gaussianBlur does and rounded to bytes (the CPU detail passes read the blur as bytes), as a texture the caller frees. */
+  private blurBytes(src: Tex, sigma: number): Tex {
+    const soft = this.blurred(src, sigma), out = this.tex(src.w, src.h, 'u8');
+    try { this.pass(this.program('unpremul', FS_UNPREMUL), out, [soft]); } finally { this.free(soft); }
+    return out;
   }
 
   // ---- filters
@@ -924,7 +1110,101 @@ export class GlFilters implements GpuFilterRunner, GpuEffectRunner {
     });
   }
 
-  develop(src: ImageData, state: DevelopState, seed: number): ImageData | null {
+  /** reduceNoiseImage (Develop's call: no JPEG seams) on float planes; null without float targets at full precision. */
+  private noiseReduced(src: ImageData, o: { strength: number; preserve: number; color: number; sharpen: number; colorDetail?: number; colorSmooth?: number }, scale: number): ImageData | null {
+    const { width: w, height: h } = src;
+    if (this.floatType !== 'f32') return null;
+    return this.guard(w, h, () => {
+      const gl = this.gl, input = this.tex(w, h, 'u8', new Uint8Array(src.data.buffer, src.data.byteOffset, src.data.byteLength)), made: Tex[] = [input], res = new ImageData(w, h);
+      const mk = (): Tex => { const t = this.tex(w, h, 'float'); made.push(t); return t; };
+      const kernelOf = (sigma: number): { k: Float32Array; tex: Tex } => {
+        const k = gaussKernel(sigma), data = new Float32Array(k.length * 4), t = gl.createTexture()!;
+        for (let i = 0; i < k.length; i++) data[i * 4] = k[i]!;
+        gl.bindTexture(gl.TEXTURE_2D, t);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, k.length, 1, 0, gl.RGBA, gl.FLOAT, data);
+        for (const [p, v] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]] as const) gl.texParameteri(gl.TEXTURE_2D, p, v);
+        const tx = { t, w: k.length, h: 1 }; made.push(tx);
+        return { k, tex: tx };
+      };
+      const blur = (from: Tex, sigma: number): Tex => {
+        const { k, tex: kt } = kernelOf(sigma), mid = mk(), to = mk(), prog = this.program('nrSep', FS_NR_SEP), r = (k.length - 1) >> 1;
+        this.pass(prog, mid, [from, kt], (g, loc) => { g.uniform1i(loc('u_r'), r); g.uniform2i(loc('u_dir'), 1, 0); });
+        this.pass(prog, to, [mid, kt], (g, loc) => { g.uniform1i(loc('u_r'), r); g.uniform2i(loc('u_dir'), 0, 1); });
+        return to;
+      };
+      try {
+        const out = this.tex(w, h, 'u8'); made.push(out);
+        const planes = mk();
+        this.pass(this.program('nrYcc', FS_NR_YCC), planes, [input]);
+        let lum = planes;
+        if (o.strength > 0) {
+          lum = mk();
+          const taps = rings(Math.max(1, (1 + o.strength * 0.6) * scale)), range = (6 + o.strength * 6) * (1.2 - o.preserve / 100);
+          this.pass(this.program('nrBilat', FS_NR_BILAT), lum, [planes], (g, loc) => { g.uniform3fv(loc('u_tap'), taps.flat()); g.uniform1f(loc('u_inv'), 1 / (2 * range * range)); });
+        }
+        if (o.sharpen > 0) {
+          const soft = blur(lum, Math.max(0.5, scale)), sharp = mk();
+          this.pass(this.program('nrSharp', FS_NR_SHARP), sharp, [lum, soft], (g, loc) => g.uniform1f(loc('u_k'), o.sharpen / 100));
+          lum = sharp;
+        }
+        const cs = (o.color / 100) * 4 * scale * (0.5 + (o.colorSmooth ?? 50) / 100), chroma = cs < 0.3 ? planes : blur(planes, cs), hold = Math.max(0, ((o.colorDetail ?? 50) - 50) / 50);
+        this.pass(this.program('nrOut', FS_NR_OUT), out, [lum, planes, chroma], (g, loc) => g.uniform1f(loc('u_hold'), hold > 0 && o.color > 0 ? hold : 0));
+        this.readBack(out, new Uint8Array(res.data.buffer));
+      } finally { this.free(...made); }
+      return res;
+    });
+  }
+
+  /** darkDehaze (without a depth map): the window minima and the transmission on the GPU, the airlight (a histogram and a mean over the brightest 0.1 percent of the dark channel) on the CPU from the dark channel read back. */
+  private darkDehazed(src: ImageData, amount: number, scale: number, sky: number, density: number): ImageData | null {
+    const { width: w, height: h } = src, n = w * h, r = Math.max(1, Math.round(7 * scale)), thick = Math.max(0, density) * 2;
+    if (this.floatType !== 'f32') return null;
+    return this.guard(w, h, () => {
+      const input = this.tex(w, h, 'u8', new Uint8Array(src.data.buffer, src.data.byteOffset, src.data.byteLength)), made: Tex[] = [input], res = new ImageData(w, h);
+      const mk = (kind: 'u8' | 'float'): Tex => { const t = this.tex(w, h, kind); made.push(t); return t; };
+      const wmin = (from: Tex, to: Tex, dir: readonly [number, number], first: boolean): void => this.pass(this.program('wmin', FS_WMIN), to, [from], (gl, loc) => { gl.uniform1i(loc('u_r'), r); gl.uniform2i(loc('u_dir'), dir[0], dir[1]); gl.uniform1i(loc('u_first'), first ? 1 : 0); });
+      try {
+        const half = mk('u8'), dark = mk('u8'), out = mk('u8');
+        wmin(input, half, [1, 0], true); wmin(half, dark, [0, 1], false);
+        const bytes = new Uint8Array(n * 4);
+        this.readBack(dark, bytes);
+        const bins = new Uint32Array(256);
+        for (let i = 0; i < n; i++) bins[bytes[i * 4]!]!++;
+        let cut = 255, seen = 0;
+        for (; cut > 0; cut--) { seen += bins[cut]!; if (seen >= Math.max(1, n * 0.001)) break; }
+        let ar = 0, ag = 0, ab = 0, cnt = 0;
+        const d = src.data;
+        for (let i = 0; i < n; i++) if (bytes[i * 4]! >= cut) { ar += d[i * 4]!; ag += d[i * 4 + 1]!; ab += d[i * 4 + 2]!; cnt++; }
+        const A = [Math.max(1, ar / cnt), Math.max(1, ag / cnt), Math.max(1, ab / cnt)];
+        if (amount < 0) {
+          const tt = 1 - 0.7 * Math.min(1, Math.max(0, -amount * thick));
+          this.pass(this.program('dzHaze', FS_DZ_HAZE), out, [input], (gl, loc) => { gl.uniform3f(loc('u_A'), A[0]!, A[1]!, A[2]!); gl.uniform1f(loc('u_t'), tt); });
+        } else {
+          const norm = mk('float'), m1 = mk('float'), mn = mk('float'), tm = mk('float'), t1 = mk('float'), t2 = mk('float');
+          this.pass(this.program('dzNorm', FS_DZ_NORM), norm, [input], (gl, loc) => gl.uniform3f(loc('u_A'), A[0]!, A[1]!, A[2]!));
+          wmin(norm, m1, [1, 0], false); wmin(m1, mn, [0, 1], false);
+          this.pass(this.program('dzT', FS_DZ_T), tm, [mn], (gl, loc) => gl.uniform1f(loc('u_a'), Math.min(1, Math.max(0, amount * thick))));
+          const box = this.program('boxMean', FS_BOXMEAN);
+          this.pass(box, t1, [tm], (gl, loc) => { gl.uniform1i(loc('u_r'), r); gl.uniform2i(loc('u_dir'), 1, 0); });
+          this.pass(box, t2, [t1], (gl, loc) => { gl.uniform1i(loc('u_r'), r); gl.uniform2i(loc('u_dir'), 0, 1); });
+          this.pass(this.program('dzOut', FS_DZ_OUT), out, [input, t2, mn], (gl, loc) => { gl.uniform3f(loc('u_A'), A[0]!, A[1]!, A[2]!); gl.uniform1f(loc('u_sky'), Math.min(1, Math.max(0, sky))); });
+        }
+        this.readBack(out, new Uint8Array(res.data.buffer));
+      } finally { this.free(...made); }
+      return res;
+    });
+  }
+
+  develop(src: ImageData, state: DevelopState, seed: number, scale = 1): ImageData | null {
+    const nr = noiseOf(state);
+    if (noiseActive(nr)) {
+      const q = this.noiseReduced(src, { strength: nr.luminance / 10, preserve: nr.detail, color: nr.color, sharpen: nr.contrast, colorDetail: nr.colorDetail, colorSmooth: nr.colorSmoothness }, scale);
+      return q && this.develop(q, { ...state, noise: defaultNoise() }, seed, scale);
+    }
+    if (darkDehazeOn(state)) {
+      const hz = this.darkDehazed(src, state.tone.dehaze / 100, scale, (state.dehazeSky ?? 0) / 100, (state.dehazeDensity ?? 50) / 100);
+      return hz && this.develop(hz, { ...state, tone: { ...state.tone, dehaze: 0 } }, seed, scale);
+    }
     const t = state.tone, hasColor = colorActive(state.color), hasCurve = curvesActive(state.curves), para = parametricOf(state), hasPara = parametricActive(para);
     let table: Tex | null = null;
     if (hasCurve || hasPara) {
@@ -941,11 +1221,70 @@ export class GlFilters implements GpuFilterRunner, GpuEffectRunner {
       table = this.guard(256, 2, () => this.tex(256, 2, 'u8', d));
       if (!table) return null;
     }
+    const op0 = opticsOf(state), dt = state.detail, geo = geometryOf(state), detailOn = detailActive(dt), chainOn = detailOn || geometryActive(geo) || op0.chromatic !== 0 || (op0.defringe ?? 0) !== 0 || op0.removeCA === true;
+    const vs0 = vignetteShapeOf(state), vlater = vignetteAfterGeometry(state), vcolor = vs0.color ? hexRgb(vs0.color) : null;
+    const vigSet = (gl: WebGL2RenderingContext, loc: Loc): void => {
+      gl.uniform4f(loc('u_vcol'), vcolor?.[0] ?? 0, vcolor?.[1] ?? 0, vcolor?.[2] ?? 0, vcolor ? 1 : 0);
+      gl.uniform2f(loc('u_vst'), Math.min(1, Math.max(0, (vs0.protect ?? 0) / 100)), vs0.style === 'highlight' ? 1 : vs0.style === 'color' ? 2 : 0);
+    };
+    const ovSet = (gl: WebGL2RenderingContext, loc: Loc, on: boolean): void => {
+      const ostart = (op0.midpoint / 100) * 0.9;
+      gl.uniform1i(loc('u_hasOv'), on ? 1 : 0);
+      gl.uniform4f(loc('u_ov'), ostart, ostart + Math.max(0.002, (1 - ostart) * ((op0.feather ?? 50) / 50)), (op0.vignetting / 100) * 0.8, (op0.roundness ?? 100) / 100);
+    };
+    const chain = chainOn ? (first: Tex): Tex => {
+      const { w, h } = first, vigLate = op0.vignetting !== 0 && !(opticsVignetteOnly(op0) && !detailOn);
+      let cur = first;
+      const next = (key: string, frag: string, inputs: Tex[], set?: (gl: WebGL2RenderingContext, loc: Loc) => void): void => {
+        const o = this.tex(w, h, 'u8');
+        try { this.pass(this.program(key, frag), o, inputs, set); } catch (e) { this.free(o); throw e; }
+        if (cur !== first) this.free(cur);
+        cur = o;
+      };
+      const detail = (sigma: number, mode: number, amt: number): void => {
+        const b = this.blurBytes(cur, sigma);
+        try { next('detail', FS_DETAIL, [cur, b], (gl, loc) => { gl.uniform1i(loc('u_mode'), mode); gl.uniform1f(loc('u_amt'), amt); }); } finally { this.free(b); }
+      };
+      try {
+        if (dt.clarity) detail(Math.max(0.1, 20 * scale), 0, dt.clarity / 200);
+        if (dt.texture) detail(Math.max(0.1, Math.max(0.5, 3 * scale)), 1, dt.texture / 100);
+        if (dt.sharpen > 0) {
+          const b = this.blurBytes(cur, Math.max(0.1, Math.max(0.9, (dt.sharpenRadius ?? 1.2) * scale))), broad = this.tex(w, h, 'u8');
+          try {
+            this.pass(this.program('detail', FS_DETAIL), broad, [cur, b], (gl, loc) => { gl.uniform1i(loc('u_mode'), 2); gl.uniform1f(loc('u_amt'), dt.sharpen / 100); });
+            const dd = (dt.sharpenDetail ?? 100) / 100, mk = (dt.sharpenMasking ?? 0) / 100;
+            next('sharp', FS_SHARP, [cur, broad], (gl, loc) => { gl.uniform1f(loc('u_lim'), dd < 1 ? 10 + 400 * dd * dd : 0); gl.uniform1f(loc('u_top'), Math.max(0.002, mk * 0.3)); gl.uniform1i(loc('u_mask'), mk > 0 ? 1 : 0); });
+          } finally { this.free(b, broad); }
+        }
+        const caOn = op0.chromatic !== 0 || op0.removeCA === true;
+        if (op0.distortion !== 0 || (vigLate && !caOn)) next('distort', FS_DISTORT, [cur], (gl, loc) => { gl.uniform1f(loc('u_k'), (op0.distortion / 100) * 0.35); ovSet(gl, loc, vigLate && !caOn); });
+        if (op0.defringe) next('defringe', FS_DEFRINGE, [cur], (gl, loc) => gl.uniform1f(loc('u_k'), Math.min(1, Math.max(0, op0.defringe! / 100))));
+        if (caOn) {
+          let red = 0, blue = 0;
+          if (op0.removeCA) {
+            const px = new ImageData(w, h);
+            this.readBack(cur, new Uint8Array(px.data.buffer));
+            ({ red, blue } = estimateAberration(px));
+          }
+          const k = (op0.chromatic / 100) * 0.006;
+          next('ca', FS_CA, [cur], (gl, loc) => { gl.uniform2f(loc('u_f'), 1 + k + red, 1 - k + blue); ovSet(gl, loc, vigLate); });
+        }
+        if (geometryActive(geo)) {
+          const a = (-geo.rotate * Math.PI) / 180;
+          next('geom', FS_GEOM, [cur], (gl, loc) => {
+            gl.uniform2f(loc('u_rot'), Math.cos(a), Math.sin(a)); gl.uniform1f(loc('u_s'), 100 / Math.max(1, geo.scale));
+            gl.uniform2f(loc('u_off'), (geo.offsetX / 100) * ((w - 1) / 2), (geo.offsetY / 100) * ((h - 1) / 2)); gl.uniform2f(loc('u_k'), (geo.vertical / 100) * 0.5, (geo.horizontal / 100) * 0.5);
+          });
+        }
+        if (t.vignette !== 0 && vlater) next('vigpost', FS_VIGPOST, [cur], (gl, loc) => { gl.uniform1f(loc('u_vig'), t.vignette); gl.uniform3f(loc('u_vigp'), vs0.midpoint, vs0.feather, vs0.roundness); vigSet(gl, loc); });
+      } catch (e) { if (cur !== first) this.free(cur); throw e; }
+      return cur;
+    } : undefined;
     try {
       return this.single('develop', FS_DEVELOP, src, (gl, loc) => {
         const f = (n: string, v: number): void => gl.uniform1f(loc(n), v);
         f('u_offset', t.offset); f('u_exp', t.exposure); f('u_cont', t.contrast); f('u_high', t.highlights); f('u_shad', t.shadows); f('u_white', t.whites); f('u_black', t.blacks);
-        f('u_temp', t.temperature); f('u_tint', t.tint); f('u_vib', t.vibrance); f('u_sat', t.saturation); f('u_dehz', t.dehaze); f('u_vig', t.vignette); f('u_grain', t.grain);
+        f('u_temp', t.temperature); f('u_tint', t.tint); f('u_vib', t.vibrance); f('u_sat', t.saturation); f('u_dehz', t.dehaze); f('u_vig', vlater ? 0 : t.vignette); vigSet(gl, loc); f('u_grain', t.grain);
         gl.uniform1ui(loc('u_seed'), seed >>> 0);
         gl.uniform1i(loc('u_hasColor'), hasColor ? 1 : 0); gl.uniform1i(loc('u_hasCurve'), hasCurve ? 1 : 0); gl.uniform1i(loc('u_hasPara'), hasPara ? 1 : 0); gl.uniform1i(loc('u_colorize'), state.color.colorize ? 1 : 0);
         const m = state.color.master;
@@ -958,7 +1297,7 @@ export class GlFilters implements GpuFilterRunner, GpuEffectRunner {
         gl.uniform2fv(loc('u_tp'), [tp.shadEdge, tp.shadGain, tp.highLo, tp.highGain, tp.whiteLo, tp.whiteGain, tp.blackEdge, tp.blackGain]);
         const pc = pointColorOf(state), hasPc = pointColorActive(pc), grade = gradingOf(state), hasGrade = gradingActive(grade), cal = calibrationOf(state), hasCal = calibrationActive(cal);
         gl.uniform1i(loc('u_hasPc'), hasPc ? 1 : 0); gl.uniform1i(loc('u_hasCal'), hasCal ? 1 : 0); gl.uniform1i(loc('u_hasGrade'), hasGrade ? 1 : 0);
-        const op = opticsOf(state), hasOv = opticsVignetteOnly(op), ostart = (op.midpoint / 100) * 0.9;
+        const op = opticsOf(state), hasOv = opticsVignetteOnly(op) && !detailActive(state.detail), ostart = (op.midpoint / 100) * 0.9;
         gl.uniform1i(loc('u_hasOv'), hasOv ? 1 : 0);
         if (hasOv) gl.uniform4f(loc('u_ov'), ostart, ostart + Math.max(0.002, (1 - ostart) * ((op.feather ?? 50) / 50)), (op.vignetting / 100) * 0.8, (op.roundness ?? 100) / 100);
         if (hasPc) {
@@ -976,12 +1315,10 @@ export class GlFilters implements GpuFilterRunner, GpuEffectRunner {
           gl.uniform4f(loc('u_gl'), grade.shadows.l ?? 0, grade.midtones.l ?? 0, grade.highlights.l ?? 0, grade.global.l ?? 0);
           gl.uniform2f(loc('u_gpv'), 0.15 + (grade.blending / 100) * 0.35, 0.5 - (grade.balance / 100) * 0.25);
         }
-      }, table ?? undefined, opticsOf(state).distortion !== 0 ? { key: 'distort', frag: FS_DISTORT, set: (gl, loc) => {
-        const op = opticsOf(state), ostart = (op.midpoint / 100) * 0.9;
-        gl.uniform1f(loc('u_k'), (op.distortion / 100) * 0.35);
-        gl.uniform1i(loc('u_hasOv'), op.vignetting !== 0 ? 1 : 0);
-        gl.uniform4f(loc('u_ov'), ostart, ostart + Math.max(0.002, (1 - ostart) * ((op.feather ?? 50) / 50)), (op.vignetting / 100) * 0.8, (op.roundness ?? 100) / 100);
-      } } : undefined);
+      }, table ?? undefined, !chainOn && op0.distortion !== 0 ? { key: 'distort', frag: FS_DISTORT, set: (gl, loc) => {
+        gl.uniform1f(loc('u_k'), (op0.distortion / 100) * 0.35);
+        ovSet(gl, loc, op0.vignetting !== 0);
+      } } : undefined, chain);
     } finally { if (table) this.free(table); }
   }
 }

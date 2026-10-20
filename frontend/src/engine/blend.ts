@@ -1,4 +1,5 @@
 import type { BlendMode } from './types';
+import { wasmBlend } from './wasm-kernels';
 
 /** Blend modes the browser canvas has no operation for, composited here per pixel with the standard formula
  *  (W3C Compositing and Blending): the result colour is the source over the backdrop, where the part of the source
@@ -37,6 +38,7 @@ export function dissolveNoise(x: number, y: number): number {
 /** Blends `src` onto `dst` in place (both RGBA, same size) with `mode` at `opacity`. `docAt(i)` gives the document
  *  pixel under index `i` for Dissolve's pattern. */
 export function blendPixels(dst: Uint8ClampedArray, src: Uint8ClampedArray, mode: BlendMode, opacity: number, docAt: (i: number) => [number, number]): void {
+  if (mode !== 'dissolve' && wasmBlend(dst, src, mode, opacity)) return;
   const sep = SEPARABLE[mode], lum = (r: number, g: number, b: number): number => 0.3 * r + 0.59 * g + 0.11 * b;
   for (let i = 0; i < dst.length; i += 4) {
     const as = (src[i + 3] / 255) * opacity;

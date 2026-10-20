@@ -23,11 +23,19 @@ pub struct LayerSpec {
     pub clip_to: Option<String>,
     /// An adjustment layer: the id of its table (put_table); it draws that table over everything beneath.
     pub table: Option<String>,
+    /// Where the mask's own pixels land in the document; None: the mask's pixels are the document's.
+    pub mask_at: Option<Affine>,
+    /// A Threshold adjustment layer's level (1 to 255); `mode` is then its blend mode, as for a table.
+    pub threshold: Option<u32>,
+    /// The masks of the folders around the layer (ids as `mask`, with their placements); their coverages multiply.
+    pub folders: Vec<(String, Option<Affine>)>,
+    /// A folder or clipped group composited alone from clear, then drawn as one layer at `opacity` in `mode`.
+    pub group: Option<Vec<LayerSpec>>,
 }
 
 impl LayerSpec {
     pub fn pixels(id: &str) -> LayerSpec {
-        LayerSpec { id: id.to_string(), mode: 0, opacity: 1.0, visible: true, transform: None, mask: None, clip_to: None, table: None }
+        LayerSpec { id: id.to_string(), mode: 0, opacity: 1.0, visible: true, transform: None, mask: None, clip_to: None, table: None, mask_at: None, threshold: None, folders: Vec::new(), group: None }
     }
 }
 
@@ -83,12 +91,20 @@ impl Document {
     /// The stack to blend: what each visible entry draws, bottom first. Entries whose pixels or table have not arrived
     /// are left out, as are clipped layers whose base is hidden or missing.
     pub fn stack(&self) -> Vec<Stack<'_>> {
-        let spec = |id: &str| self.order.iter().find(|s| s.id == id);
+        self.build(&self.order)
+    }
+
+    fn build(&self, order: &[LayerSpec]) -> Vec<Stack<'_>> {
+        let spec = |id: &str| order.iter().find(|s| s.id == id);
         let mut out = Vec::new();
-        for s in self.order.iter().filter(|s| s.visible) {
-            let mut item = if let Some(t) = &s.table {
+        for s in order.iter().filter(|s| s.visible) {
+            let mut item = if let Some(g) = &s.group {
+                Stack::group(self.build(g), s.mode, s.opacity)
+            } else if let Some(level) = s.threshold {
+                Stack::threshold(level, s.opacity).adjust_in(s.mode)
+            } else if let Some(t) = &s.table {
                 let Some(lut) = self.tables.get(t) else { continue };
-                Stack::adjustment(lut, s.opacity)
+                Stack::adjustment(lut, s.opacity).adjust_in(s.mode)
             } else {
                 let Some(pixels) = self.layers.get(&s.id) else { continue };
                 let mut p = Stack::new(pixels, s.mode, s.opacity);
@@ -98,7 +114,13 @@ impl Document {
                 p
             };
             if let Some(m) = s.mask.as_deref().and_then(|m| self.layers.get(m)) {
-                item = item.masked(m);
+                item = match s.mask_at {
+                    Some(t) => item.masked_at(m, t),
+                    None => item.masked(m),
+                };
+            }
+            if !s.folders.is_empty() {
+                item = item.in_folders(s.folders.iter().filter_map(|(id, at)| self.layers.get(id).map(|m| (m, *at))).collect());
             }
             if let Some(base_id) = &s.clip_to {
                 let (Some(base_spec), Some(base)) = (spec(base_id), self.layers.get(base_id)) else { continue };
@@ -106,7 +128,7 @@ impl Document {
                     continue;
                 }
                 let base_mask = base_spec.mask.as_deref().and_then(|m| self.layers.get(m));
-                item = item.clipped_to(base, base_spec.opacity, base_mask);
+                item = item.clipped_to_at(base, base_spec.opacity, base_mask, base_spec.mask_at);
             }
             out.push(item);
         }

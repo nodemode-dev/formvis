@@ -174,7 +174,7 @@ export function shapeBlurDeep(src: DeepPixels, kernel: { rows: Array<[number, nu
 
 const gaussPlane = (p: Float32Array, w: number, h: number, sigma: number): Float32Array => (sigma < 0.3 ? p.slice() : separable(p, w, h, 1, gaussKernel(sigma)));
 
-export interface DenoiseDeep { strength: number; preserve: number; color: number; sharpen: number }
+export interface DenoiseDeep { strength: number; preserve: number; color: number; sharpen: number; jpeg?: boolean; gx?: number; gy?: number }
 
 /** Reduce Noise on floats (without Remove JPEG Artifact, which follows the canvas's 8 by 8 grid): the 8 bit filter's sampled
  *  bilateral on brightness, chroma blur and unsharp, worked in 8 bit levels and returned to 0..1. */
@@ -206,6 +206,15 @@ export function reduceNoiseDeep(src: DeepPixels, o: DenoiseDeep, ceiling: number
     for (let i = 0; i < n; i++) lum[i] += (lum[i] - soft[i]) * k;
   }
   const cs = (o.color / 100) * 4, cb = gaussPlane(Cb, w, h, cs), cr = gaussPlane(Cr, w, h, cs);
+  if (o.jpeg) {
+    const gx = o.gx ?? 0, gy = o.gy ?? 0;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const bx = (((x - gx) % 8) + 8) % 8, by = (((y - gy) % 8) + 8) % 8;
+      if (bx !== 0 && bx !== 7 && by !== 0 && by !== 7) continue;
+      const i = y * w + x, l = lum[y * w + clamp(x - 1, 0, w - 1)], rr = lum[y * w + clamp(x + 1, 0, w - 1)], u = lum[clamp(y - 1, 0, h - 1) * w + x], dn = lum[clamp(y + 1, 0, h - 1) * w + x];
+      lum[i] = lum[i] * 0.5 + (l + rr + u + dn) * 0.125;
+    }
+  }
   for (let i = 0; i < n; i++) {
     const yy = lum[i], b1 = cb[i] / 0.564, r1 = cr[i] / 0.713, q = i * S;
     out[q] = clamp((yy + r1) / 255, 0, ceiling); out[q + 2] = clamp((yy + b1) / 255, 0, ceiling); out[q + 1] = clamp((yy - 0.299 * (yy + r1) - 0.114 * (yy + b1)) / 0.587 / 255, 0, ceiling);

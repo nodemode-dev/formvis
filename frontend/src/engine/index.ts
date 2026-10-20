@@ -8,7 +8,8 @@ import { DEFAULT_MIXER, mixerSource, mixerStart, windowSampler, type MixerSettin
 import { artHistoryTexture, type ArtStyle } from './art-history';
 import { decodeLab, labFromFloats, labFromRgba, labToSrgb, renderLab } from './lab';
 import { composeFloat, setStyleDrawer } from './compose-float';
-import { deepFromRaster, deepToLinear, deepToned, rasterFromDeep, resampleDeep, strokeDeep, type ToneMethod } from './deep';
+import { blurDeep, deepFromRaster, deepToLinear, deepToned, rasterFromDeep, resampleDeep, strokeDeep, unsharpDeep, type ToneMethod } from './deep';
+import { quantiseChannels } from './layer-precision';
 import type { ChannelPixels, DeepPixels, DocProfile, EngineJob } from './types';
 import { applyComp, captureComp, editComp, updateComp, type CompOptions, type CompPart } from './layer-comps';
 import { captureFrame, frameLayers, type Frame, type FrameLayer, type Timeline } from './timeline';
@@ -113,7 +114,7 @@ import { APPLY_CHANNELS, APPLY_COVERAGE_CHANNELS, APPLY_MODES, applyImagePixels,
 import { averageImage } from './filters-lib/blur';
 import type { LibFrame, LibImage, LibPath } from './filter-library';
 import type { FilterKind, FilterSettings } from './filter-jobs';
-import { POOL_FROM, bandPlan, bandPoolReady, bandPoolSize, bandsShared, runBandOnPool, runSharedBandOnPool } from './band-pool';
+import { POOL_FROM, bandPlan, bandPoolReady, bandPoolSize, bandsShared, runBandOnPool, runDeepBandOnPool, runSharedBandOnPool } from './band-pool';
 import { sharpenSample } from './filters-more';
 import { clampMid, colorAt, diamondFill, presetById, reflectStops, resolveStops, type GradientPreset, type GradientType } from './gradients';
 import { convexQuad, evenSpacing, meshForward, meshSurfacePoint, meshWarpImage, removeSplit, splitGrid, type P2 } from './mesh-warp';
@@ -136,7 +137,7 @@ import { replaceColours } from './color-replace';
 import { fillOffThread } from './retouch-jobs';
 import { FILL_DEFAULTS, WarpStroke, contentFill, diffusionFill, featherEdge, frequencySplit, ringVariance, SMOOTH_RING_VARIANCE, fillTransparent, healFromSource, premultiply, scaleHealCorrection, spotHeal, unpremultiply, type FillOptions, type HealBlend, type HealMode, type HealSample } from './retouch';
 import { PIXEL_BLENDS, blendPixels, dissolveNoise } from './blend';
-import { LUT3_N, adjustmentLut, adjustmentLut3 } from './lut';
+import { LUT3_N, adjustmentHood, adjustmentLut, adjustmentLut3, type GpuHood } from './lut';
 import { paramValues } from './adjust-params';
 import { decontaminate } from './select-mask';
 import { alphaToMask, defringe, distanceSquared, removeMatte } from './matting';
@@ -149,7 +150,7 @@ export interface CalcOptions { source1: CalcSource; source2: CalcSource; mode?: 
 
 /** One entry of the GPU display's layer list (gpuLayers): a pixel layer's image, or an adjustment's lookup table applied
  *  to what is below it (per channel, 256 x 1; or 3D, 52 x 52 x 52 packed into 2704 x 52, with lut3 set). */
-export interface GpuLayerSpec { image: Surface | null; lut?: Uint8Array; lut3?: boolean; grain?: GrainParams; threshold?: number; mask?: GpuMaskSpec; clip?: GpuClipSpec; folders?: GpuMaskSpec[]; blendIf?: GpuBlendIf; chOff?: number; /** The float pixels of a 16 or 32 bit layer (RGB, straight alpha), which a display uploads as half floats in place of the 8-bit rendition; `linear` says they are linear light (32 bit). */ deep?: ChannelPixels; linear?: boolean; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode;
+export interface GpuLayerSpec { image: Surface | null; lut?: Uint8Array; lut3?: boolean; /** An adjustment that reads a blurred copy of the composite below it (Shadows/Highlights, HDR Toning, Clarity). */ hood?: GpuHood; grain?: GrainParams; threshold?: number; mask?: GpuMaskSpec; clip?: GpuClipSpec; folders?: GpuMaskSpec[]; blendIf?: GpuBlendIf; chOff?: number; /** The float pixels of a 16 or 32 bit layer (RGB, straight alpha), which a display uploads as half floats in place of the 8-bit rendition; `linear` says they are linear light (32 bit). */ deep?: ChannelPixels; linear?: boolean; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode;
   /** A folder with its own opacity or blend mode, or a clipping base with Blend Clipped Layers as Group: these layers composite alone from clear, and the result draws as one layer at this entry's opacity and blend mode. */
   sub?: readonly GpuLayerSpec[];
   /** Knockout: the layers that make the composite shown through this layer's coverage, and the layer's opacity without its fill. */
@@ -1460,6 +1461,7 @@ export class Engine {
       this.notice(cmyk ? `${name} does not work in CMYK yet. Image > Mode > RGB Color to use it.` : `${name} does not work in ${p.doc.depth} bits yet. Image > Mode > 8 Bits/Channel to use it.`);
       return false;
     }
+    if (deepBefore && !nested) this.holdPrecision(p, deepBefore);
     p.history.end(p.snapshot());
     this.refresh();
     return ok !== false;
@@ -2111,6 +2113,14 @@ export class Engine {
         }
         if (l.adjustment.kind === 'threshold') {
           layers.push({ image: null, threshold: paramValues('threshold', l.adjustment.data.params).level as number, mask, clip, folders, blendIf: gl, version: 0, width: 1, height: 1, matrix: [1, 0, 0, 1, 0, 0], opacity: (o?.opacity ?? l.opacity) * (l.fill ?? 1), blend: ab });
+          continue;
+        }
+        const hood = adjustmentHood(l.adjustment);
+        if (hood) {
+          const m = view?.matrix;
+          if (!m || Math.abs(m[0] - 1) > 1e-6 || Math.abs(m[3] - 1) > 1e-6 || m[1] !== 0 || m[2] !== 0 || m[4] < 0 || m[5] < 0 || m[4] + p.doc.width > view.width || m[5] + p.doc.height > view.height) return { reason: `a ${ADJUSTMENT_LABELS[l.adjustment.kind]} adjustment layer unless the whole document shows at 100%` };
+          if ((p.doc.depth ?? 8) !== 8 || (p.doc.mode ?? 'rgb') !== 'rgb') return { reason: `a ${ADJUSTMENT_LABELS[l.adjustment.kind]} adjustment layer in a document that is not 8-bit RGB` };
+          layers.push({ image: null, hood, mask, clip, folders, blendIf: gl, version: 0, width: 1, height: 1, matrix: [1, 0, 0, 1, 0, 0], opacity: (o?.opacity ?? l.opacity) * (l.fill ?? 1), blend: ab });
           continue;
         }
         const lut3 = adjustmentLut3(l.adjustment);
@@ -5306,6 +5316,7 @@ export class Engine {
         st.project.updateLayer(st.layerId, { channels: ch });
       }
     }
+    if (dl) this.holdPrecision(st.project, new Map([[dl.id, dl]]));
     st.project.history.end(st.project.snapshot());
     const lp = st.s.lastPoint;
     if (lp) this.lastBrush = { layerId: st.layerId, target: st.target, p: lp };   // shift-click draws a line from here
@@ -12275,9 +12286,51 @@ export class Engine {
         const enc = from === 32 ? deepToned(src, tone.exposure, tone.gamma, tone.method) : src;
         return depth === 16 ? { ...l, channels: enc, raster: from === 32 ? rasterFromDeep(enc) : l.raster } : { ...l, channels: undefined, raster: from === 32 ? rasterFromDeep(enc) : l.raster };
       });
-      pp.doc = { ...pp.doc, layers, depth: depth === 8 ? undefined : depth };
+      pp.doc = { ...pp.doc, layers: layers.map((l) => (l.bits && l.bits >= depth ? { ...l, bits: undefined } : l)), depth: depth === 8 ? undefined : depth };
       return true;
     });
+  }
+
+  /** Layer > Convert Layer to 8 Bits / 16 Bits: the selected pixel layers of a 16 or 32 bit RGB document held at `bits`
+   *  (their float pixels snapped to that depth's steps and kept there by later edits); the document's own depth puts a layer
+   *  back on it, without the detail it lost. */
+  setLayerPrecision(bits: 8 | 16 | 32): boolean {
+    const p = this.current;
+    if (!p || this.precisionWhy()) return false;
+    const depth = p.doc.depth ?? 8, label = `Convert Layer to ${bits} Bits`, linear = depth === 32;
+    return this.edit(label, (pp) => {
+      let changed = false;
+      const layers = pp.doc.layers.map((l) => {
+        if (!pp.selectedIds.has(l.id) || !l.channels || l.channels.mode !== 'rgb' || l.isGroup || l.adjustment) return l;
+        const target = bits >= depth ? undefined : (bits as 8 | 16);
+        if (target === l.bits) return l;
+        changed = true;
+        return { ...l, bits: target, channels: target ? quantiseChannels(l.channels, target, linear) : l.channels };
+      });
+      if (changed) pp.doc = { ...pp.doc, layers };
+      return changed;
+    });
+  }
+
+  /** Why Convert Layer to 8 or 16 Bits cannot run now, or an empty string: it needs a 16 or 32 bit RGB document and a selected pixel layer. */
+  precisionWhy(): string {
+    const p = this.current;
+    if (!p) return '';
+    if ((p.doc.depth ?? 8) === 8) return 'Layers of an 8-bit document hold no deeper pixels: Image > Mode > 16 Bits/Channel first.';
+    if ((p.doc.mode ?? 'rgb') !== 'rgb') return 'Converting a layer to a shallower depth works on RGB documents.';
+    return [...p.selectedIds].some((id) => p.layer(id)?.channels?.mode === 'rgb') ? '' : 'Select a pixel layer.';
+  }
+
+  private holdPrecision(p: Project, before: ReadonlyMap<ID, Layer>): void {
+    if (!p.doc.layers.some((l) => l.bits)) return;
+    const linear = p.doc.depth === 32;
+    let changed = false;
+    const layers = p.doc.layers.map((l) => {
+      if (!l.bits || !l.channels || l.channels === before.get(l.id)?.channels) return l;
+      changed = true;
+      return { ...l, channels: quantiseChannels(l.channels, l.bits, linear) };
+    });
+    if (changed) p.doc = { ...p.doc, layers };
   }
 
   /** Opens 16-bit pixels as a 16-bit document (1.53.6): its layer holds them, its raster their 8-bit rendition. */
@@ -12305,6 +12358,33 @@ export class Engine {
     r.ctx.putImageData(renderRegion(ch, 0, 0, ch.width, ch.height, null), 0, 0);
     r.touch();
     return r;
+  }
+
+  /** Gaussian Blur or Unsharp Mask on the active 16 or 32 bit layer in bands on the worker pool: the same bands and aprons
+   *  as the 8 bit route, the floats read in place from a SharedArrayBuffer when the page is cross-origin isolated and sent
+   *  as copies otherwise, a band a worker could not filter filtered here, and the assembled floats put through
+   *  `applyDeepFilter` (selection, rendition and one undo step). Each band is filtered by the very function the single
+   *  thread runs, so the floats are the same bits. False where `applyDeepFilter` with the whole layer must be used. */
+  async bandedDeepFilterPool(name: string, job: { kind: 'gaussianBlur' | 'unsharpMask'; settings: FilterSettings }, apron: number): Promise<boolean> {
+    const p = this.current, l = p?.activeLayer, ch = l?.channels;
+    if (!p || !l || !ch || ch.mode !== 'rgb' || ch.width * ch.height <= Math.max(this.bandFrom, POOL_FROM) || !bandPoolReady()) return false;
+    const W = ch.width, H = ch.height, S = ch.n + 1, A = Math.max(0, Math.ceil(apron)), ceiling = p.doc.depth === 32 ? Infinity : 1, s = job.settings;
+    const plan = bandPlan(H, A, Math.max(512, A)), rows = (a0: number, a1: number): Float32Array => ch.data.slice(a0 * W * S, a1 * W * S);
+    let sab: SharedArrayBuffer | null = null;
+    if (bandsShared()) { try { sab = new SharedArrayBuffer(ch.data.byteLength); new Float32Array(sab).set(ch.data); } catch { sab = null; } }
+    const answers = plan.map((b, i) => runDeepBandOnPool(job.kind, s, ch.n, ceiling, W, b.a0, b.a1, sab ?? rows(b.a0, b.a1), i));
+    const out = new Float32Array(ch.data);
+    for (let i = 0; i < plan.length; i++) {
+      const b = plan[i];
+      let got = await answers[i];
+      if (!got) {
+        const band = { ...ch, height: b.a1 - b.a0, data: rows(b.a0, b.a1) };
+        got = (job.kind === 'unsharpMask' ? unsharpDeep(band, s.usmAmount, s.usmRadius, s.threshold, ceiling) : blurDeep(band, s.radius)).data;
+      }
+      out.set(got.subarray((b.y0 - b.a0) * W * S, (b.y1 - b.a0) * W * S), b.y0 * W * S);
+    }
+    if (this.current !== p || p.activeLayer?.channels !== ch) return false;
+    return this.applyDeepFilter(name, () => ({ ...ch, data: out }));
   }
 
   /** A filter at 16 bits (1.53.7): `fn` on the active layer's 16-bit pixels, its 8-bit rendition from the result, one

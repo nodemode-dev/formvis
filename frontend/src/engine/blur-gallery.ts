@@ -223,10 +223,10 @@ export function galleryRadii(kind: GalleryKind, g: GallerySettings, w: number, h
   return null;
 }
 
-interface PathPoint { x: number; y: number; tx: number; ty: number; u: number }
+export interface PathPoint { x: number; y: number; tx: number; ty: number; u: number }
 
 /** The drawn path's polylines (document pixels) in this image's pixels, through the canvas rectangle; null when none. */
-function drawnLines(path: LibPath | null, img: ImageData, frame: LibFrame | null): Array<Array<[number, number]>> | null {
+export function drawnLines(path: LibPath | null, img: { width: number; height: number }, frame: { canvas: { x: number; y: number; w: number; h: number } } | null): Array<Array<[number, number]>> | null {
   if (!path) return null;
   const c = frame?.canvas ?? { x: 0, y: 0, w: img.width, h: img.height };
   const out = path.lines.map((l) => Array.from({ length: l.length >> 1 }, (_, i): [number, number] => [c.x + (l[i * 2] / path.w0) * c.w, c.y + (l[i * 2 + 1] / path.h0) * c.h])).filter((l) => l.length > 1);
@@ -234,7 +234,7 @@ function drawnLines(path: LibPath | null, img: ImageData, frame: LibFrame | null
 }
 
 /** Points about every 3 px along each polyline (thinned to at most 2,000 in all), each with its unit tangent and its share of the way along its own line. */
-function drawnPoints(lines: Array<Array<[number, number]>>): PathPoint[] {
+export function drawnPoints(lines: Array<Array<[number, number]>>): PathPoint[] {
   let total = 0;
   for (const l of lines) for (let i = 1; i < l.length; i++) total += Math.hypot(l[i][0] - l[i - 1][0], l[i][1] - l[i - 1][1]);
   const step = Math.max(3, total / 2000), out: PathPoint[] = [];
@@ -254,7 +254,7 @@ function drawnPoints(lines: Array<Array<[number, number]>>): PathPoint[] {
 }
 
 /** The nearest of `pts` for any pixel, looked up from a coarse grid so a long drawn path stays cheap. */
-function nearestGrid(pts: PathPoint[], w: number, h: number): (x: number, y: number) => PathPoint {
+export function nearestGrid(pts: PathPoint[], w: number, h: number): (x: number, y: number) => PathPoint {
   const cell = Math.max(2, Math.ceil(Math.sqrt((w * h) / 30000))), cw = Math.ceil(w / cell), ch = Math.ceil(h / cell), grid = new Array<PathPoint>(cw * ch);
   for (let cy = 0; cy < ch; cy++) for (let cx = 0; cx < cw; cx++) {
     const x = (cx + 0.5) * cell, y = (cy + 0.5) * cell;

@@ -57,12 +57,12 @@ export interface LensOptions {
 }
 export const defaultLensOptions = (): LensOptions => ({ blades: 0, curve: 0, rotation: 0, source: 'none', depth: null, canvas: null, focal: 128, invert: false, noise: 0, gaussian: false, mono: true, seed: 1 });
 
-const LENS_TIERS = [12, 24, 48, 96, 160, 256];
-const LENS_LEVELS = [0, 1, 2, 4, 8];
+export const LENS_TIERS = [12, 24, 48, 96, 160, 256];
+export const LENS_LEVELS = [0, 1, 2, 4, 8];
 
 /** Unit-disc taps (x, y, weight) on a golden-angle spiral, pulled out to the polygon's edge and back toward the circle by
  *  `curve`; the weight evens the density so every part of the iris counts alike. */
-function irisTaps(n: number, blades: number, curve: number, rotDeg: number): Float32Array {
+export function irisTaps(n: number, blades: number, curve: number, rotDeg: number): Float32Array {
   const out = new Float32Array(n * 3), rot = (rotDeg * Math.PI) / 180, c = Math.max(0, Math.min(1, curve / 100)), seg = (2 * Math.PI) / Math.max(3, blades);
   for (let k = 0; k < n; k++) {
     const rr = Math.sqrt((k + 0.5) / n), th = k * 2.39996323;
@@ -74,7 +74,7 @@ function irisTaps(n: number, blades: number, curve: number, rotDeg: number): Flo
 }
 
 /** Box mean of premultiplied float RGBA with radius `R`, outside the image counted as clear. */
-function boxFloat(src: Float32Array, w: number, h: number, R: number): Float32Array {
+export function boxFloat(src: Float32Array, w: number, h: number, R: number): Float32Array {
   const tmp = new Float32Array(src.length), out = new Float32Array(src.length), k = 1 / (2 * R + 1);
   for (let y = 0; y < h; y++) for (let c = 0; c < 4; c++) {
     let sum = 0;
@@ -100,7 +100,7 @@ function boxFloat(src: Float32Array, w: number, h: number, R: number): Float32Ar
 }
 
 /** The depth, 0 to 255 per pixel of `img`, from its own alpha or from the stored plane over the canvas; null if none. */
-function lensPlane(img: ImageData, o: LensOptions): Float32Array | null {
+export function lensPlane(img: { width: number; height: number; data: ArrayLike<number> }, o: LensOptions): Float32Array | null {
   const { width: w, height: h } = img, plane = new Float32Array(w * h);
   if (o.source === 'transparency') { for (let i = 0; i < w * h; i++) plane[i] = img.data[i * 4 + 3]; return plane; }
   if (o.source === 'none' || !o.depth) return null;
@@ -227,7 +227,7 @@ export const smartSharpenMargin = (s: SmartSharpenSettings): number => Math.ceil
  *  in pixels, usually from estimateShake) removed by Smart Sharpen's motion deconvolution; `smoothing` (0 to 100)
  *  gates small differences as Reduce Noise does and `amount` (percent) scales the correction. */
 export interface ShakeSettings { angle: number; length: number; smoothing: number; amount: number }
-const shakeAsSharpen = (s: ShakeSettings): SmartSharpenSettings => ({ amount: s.amount, radius: Math.max(0.5, s.length / 2), noise: s.smoothing, remove: 'motion', angle: s.angle, shadows: 0, highlights: 0 });
+export const shakeAsSharpen = (s: ShakeSettings): SmartSharpenSettings => ({ amount: s.amount, radius: Math.max(0.5, s.length / 2), noise: s.smoothing, remove: 'motion', angle: s.angle, shadows: 0, highlights: 0 });
 export const shakeMargin = (s: ShakeSettings): number => smartSharpenMargin(shakeAsSharpen(s));
 export function shakeReduce(img: ImageData, s: ShakeSettings, scale = 1): ImageData { return smartSharpen(img, shakeAsSharpen(s), scale); }
 

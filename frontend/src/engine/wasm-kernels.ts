@@ -3,7 +3,7 @@
  *  refused) and kept, so startup never waits on it; until a chunk is ready every call answers null and the caller runs
  *  its TypeScript twin, which gives the same bytes. A chunk that fails to load is not tried again. */
 
-export type KernelChunk = 'mask' | 'tone' | 'blur' | 'resample' | 'dither' | 'heal' | 'noise' | 'patch' | 'color';
+export type KernelChunk = 'mask' | 'tone' | 'blur' | 'resample' | 'dither' | 'heal' | 'noise' | 'patch' | 'color' | 'blend';
 type Fn = (...args: number[]) => number;
 interface Chunk { memory: WebAssembly.Memory; fn: Record<string, Fn> }
 type State = 'idle' | 'loading' | 'ready' | 'failed';
@@ -19,6 +19,7 @@ const URLS: Record<KernelChunk, string> = {
   noise: new URL('./kernels-wasm/formvis-kernels-noise.wasm', import.meta.url).href,
   patch: new URL('./kernels-wasm/formvis-kernels-patch.wasm', import.meta.url).href,
   color: new URL('./kernels-wasm/formvis-kernels-color.wasm', import.meta.url).href,
+  blend: new URL('./kernels-wasm/formvis-kernels-blend.wasm', import.meta.url).href,
 };
 const LIMIT = 1 << 30;
 const RENEW = 3 << 28;
@@ -28,7 +29,7 @@ const modules = new Map<KernelChunk, WebAssembly.Module>();
 const ready = new Map<KernelChunk, Chunk>();
 const loading = new Map<KernelChunk, Promise<boolean>>();
 const failed = new Set<KernelChunk>();
-const calls: Record<KernelChunk, number> = { mask: 0, tone: 0, blur: 0, resample: 0, dither: 0, heal: 0, noise: 0, patch: 0, color: 0 };
+const calls: Record<KernelChunk, number> = { mask: 0, tone: 0, blur: 0, resample: 0, dither: 0, heal: 0, noise: 0, patch: 0, color: 0, blend: 0 };
 let enabled = true;
 
 function open(module: WebAssembly.Module): Chunk | null {
@@ -84,7 +85,7 @@ export function setKernelsEnabled(on: boolean): void { enabled = on; }
 
 export function kernelStats(): { enabled: boolean; chunks: Record<KernelChunk, { state: State; calls: number; memory: number }> } {
   const one = (name: KernelChunk) => ({ state: (ready.has(name) ? 'ready' : loading.has(name) ? 'loading' : failed.has(name) ? 'failed' : 'idle') as State, calls: calls[name], memory: ready.get(name)?.memory.buffer.byteLength ?? 0 });
-  return { enabled, chunks: { mask: one('mask'), tone: one('tone'), blur: one('blur'), resample: one('resample'), dither: one('dither'), heal: one('heal'), noise: one('noise'), patch: one('patch'), color: one('color') } };
+  return { enabled, chunks: { mask: one('mask'), tone: one('tone'), blur: one('blur'), resample: one('resample'), dither: one('dither'), heal: one('heal'), noise: one('noise'), patch: one('patch'), color: one('color'), blend: one('blend') } };
 }
 
 /** Memory never shrinks, so after a very large image the chunk is opened again from its compiled module. */
@@ -298,6 +299,47 @@ export function wasmPatchCorrect(out: Uint8ClampedArray, before: Uint8ClampedArr
     if (source) bytes(chunk, ps, n * 4).set(source);
     chunk.fn.fv_patch_correct(po, pb, pc, w, h, dx, dy, diffusion, colour, opacity, source ? ps : 0, source ? 1 : 0);
     out.set(bytes(chunk, po, n * 4));
+    return true;
+  }) === true;
+}
+
+/** Hue/Saturation's per-pixel pass over its 33-point colour cube (`cube` is 33 * 33 * 33 * 3 floats, red fastest), in place; false where the TypeScript must run. */
+export function wasmHsvCube(px: Uint8ClampedArray, cube: Float32Array): boolean {
+  if (px.length % 4 !== 0 || px.length < 4096 || cube.length !== 33 * 33 * 33 * 3) return false;
+  return run('color', [px.length, cube.byteLength], (chunk, [p, c]) => {
+    bytes(chunk, p, px.length).set(px);
+    new Float32Array(chunk.memory.buffer, c, cube.length).set(cube);
+    chunk.fn.fv_hsv_cube(p, px.length, c);
+    px.set(bytes(chunk, p, px.length));
+    return true;
+  }) === true;
+}
+
+/** The Grain adjustment's pass over `px` in place (twin of `grainKernel`, with the numbers of `grainParams`); false where the TypeScript must run. */
+export function wasmGrain(px: Uint8ClampedArray, width: number, unit: number, ox: number, oy: number, seed: number, fineSeed: number, specSeed: number, amount: number, cell: number, strength: number, rough: number, colour: number, speckle: number): boolean {
+  if (px.length % 4 !== 0 || px.length < 4096 || !Number.isInteger(width) || width < 1 || px.length / 4 % width !== 0) return false;
+  if (![unit, ox, oy, amount, cell, strength, rough, colour, speckle].every(Number.isFinite) || !(cell > 0) || !(unit > 0)) return false;
+  const reach = Math.max(Math.abs(ox), Math.abs(oy)) + (width + px.length / 4 / width + 2) * unit;
+  if (reach / Math.min(cell, 1) > 1 << 29) return false;
+  return run('noise', [px.length], (chunk, [p]) => {
+    bytes(chunk, p, px.length).set(px);
+    chunk.fn.fv_grain(p, px.length, width, unit, ox, oy, seed >>> 0, fineSeed >>> 0, specSeed >>> 0, amount, cell, strength, rough, colour, speckle);
+    px.set(bytes(chunk, p, px.length));
+    return true;
+  }) === true;
+}
+
+const BLEND_MODES: Record<string, number> = { 'linear-burn': 1, 'darker-color': 2, 'lighter-color': 3, 'vivid-light': 4, 'linear-light': 5, 'pin-light': 6, 'hard-mix': 7, subtract: 8, divide: 9, negation: 10, reflect: 11, glow: 12, xor: 13 };
+
+/** The blend-mode composite loop of `blendPixels` (every mode but Dissolve) of `src` onto `dst` in place; false where the TypeScript must run. */
+export function wasmBlend(dst: Uint8ClampedArray, src: Uint8ClampedArray, mode: string, opacity: number): boolean {
+  const id = BLEND_MODES[mode];
+  if (!id || dst.length !== src.length || dst.length % 4 !== 0 || dst.length < 4096 || !Number.isFinite(opacity)) return false;
+  return run('blend', [dst.length, src.length], (chunk, [pd, ps]) => {
+    bytes(chunk, pd, dst.length).set(dst);
+    bytes(chunk, ps, src.length).set(src);
+    chunk.fn.fv_blend(pd, ps, dst.length, id, opacity);
+    dst.set(bytes(chunk, pd, dst.length));
     return true;
   }) === true;
 }

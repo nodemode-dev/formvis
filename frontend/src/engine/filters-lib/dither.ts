@@ -123,7 +123,7 @@ export function screenImage(img: ImageData, shape: string, levels: number, cell:
   return out;
 }
 
-const GLYPHS: string[] = [
+export const GLYPHS: string[] = [
   '.....|.....|.....|.....|.....|.....|.....',
   '.....|.....|.....|.....|.....|..#..|.....',
   '.....|.....|..#..|.....|..#..|.....|.....',

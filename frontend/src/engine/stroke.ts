@@ -278,6 +278,12 @@ export class PixelStroke {
     this.depthLayer = remake(this.depthLayer, false);
     this.shaped = remake(this.shaped, false);
     this.texTemp = remake(this.texTemp, false);
+    if (this.gpuCover && !this.gpuCover.resize(nw, nh, open, dx, dy)) {
+      this.gpuCover.readInto(this.buf.cov, this.buf.w);
+      this.gpuCover.dispose();
+      this.gpuCover = null;
+      this.gpuWanted = false;
+    }
     this.buf.resize(nw, nh, open, dx, dy);
     this.ox = nx; this.oy = ny; this.ww = nw; this.wh = nh;
     this.toWin = mul(translation(-nx, -ny), this.toLocal);
@@ -483,7 +489,7 @@ export class PixelStroke {
     if (d?.opacity?.enabled) this.buf.useCeil();
     const rx = r * this.tipAspect.x, ry = r * this.tipAspect.y, tip = this.tipAlphaOf();
     const dm = mul(this.toWin, [(2 * rx) / tip.w, 0, 0, (2 * ry) / tip.h, p.x - rx, p.y - ry]), da = this.dabAlpha(flow);
-    if (!this.layOnGpu(tip, dm, da, d)) this.buf.lay(tip, dm, da, this.opacityOf(info));
+    if (!this.layOnGpu(tip, dm, da)) this.buf.lay(tip, dm, da, this.opacityOf(info));
     if (this.varied) {
       const c = this.inkCtx();
       setMat(c, this.toWin);
@@ -497,9 +503,9 @@ export class PixelStroke {
     this.touched = unionRect(this.touched, hit);
   }
 
-  /** Preferences > Performance > GPU brush coverage: the plain round brush's dab laid in a float texture on the GPU, read back at compose. */
-  private layOnGpu(tip: TipAlpha, m: Mat, k: number, dynamics: unknown): boolean {
-    if (!this.gpuWanted || this.windowed || dynamics || this.varied || this.wetInner || this.textureTile || this.style.tip || this.buf.ceil) return false;
+  /** Preferences > Performance > GPU brush coverage: a dab laid in a float texture on the GPU, read back at compose. */
+  private layOnGpu(tip: TipAlpha, m: Mat, k: number): boolean {
+    if (!this.gpuWanted || this.tiled || this.windowed || this.varied || this.wetInner || this.textureTile || this.dualPaint || this.buf.ceil) return false;
     this.gpuCover ??= GpuDabCoverage.open(this.ww, this.wh);
     if (!this.gpuCover || this.gpuCover.lost) { this.gpuWanted = false; return false; }
     this.gpuCover.lay(tip, m, k);
@@ -751,7 +757,8 @@ export class PixelStroke {
       if (this.windowed && (!hit || !this.ensure(hit))) continue;
       const a = (angle * Math.PI) / 180, ca = Math.cos(a), sa = Math.sin(a), place = mul(this.toWin, [ca, sa, -sa, ca, x, y]);
       const at = mul(place, [fx, 0, 0, fy * round, 0, 0]), rx = r * this.tipAspect.x, ry = r * this.tipAspect.y;
-      this.buf.lay(tip, mul(at, [(2 * rx) / tip.w, 0, 0, (2 * ry) / tip.h, -rx, -ry]), alpha, reached);
+      const dm = mul(at, [(2 * rx) / tip.w, 0, 0, (2 * ry) / tip.h, -rx, -ry]);
+      if (!this.layOnGpu(tip, dm, alpha)) this.buf.lay(tip, dm, alpha, reached);
       if (this.varied) {
         const c = this.inkCtx();
         setMat(c, at);
@@ -909,6 +916,7 @@ export class PixelStroke {
    *  rebuild; null when anything else shaped the paint (a shape, texture, selection, mask, varied colour, blend mode). */
   coverFor(x: number, y: number, w: number, h: number): Float32Array | null {
     if (this.shape || this.texture || this.selection || this.lerp || this.tiled || this.wetInner || this.varied || this.pixelBlend || (this.op !== 'source-over' && this.op !== 'destination-out')) return null;
+    this.gpuCover?.readInto(this.buf.cov, this.buf.w);
     const b = this.buf, out = new Float32Array(w * h), top = levelOf(this.style.opacity) / 255;
     for (let j = 0; j < h; j++) {
       for (let i = 0; i < w; i++) {

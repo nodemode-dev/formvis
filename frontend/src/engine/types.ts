@@ -124,6 +124,8 @@ export interface Layer {
   tiled?: TiledRaster | null;
   /** The layer's float pixels beyond 8-bit RGB (16 and 32 bits, CMYK, Lab); `raster` is their rendition. */
   channels?: ChannelPixels;
+  /** Layer > Convert Layer to 8 Bits / 16 Bits: the precision this layer's float pixels are held at inside a deeper document; absent means the document's depth. */
+  bits?: 8 | 16;
   transform: Transform;
   visible: boolean;
   parentId: ID | null;

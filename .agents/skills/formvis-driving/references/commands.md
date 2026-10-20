@@ -1,6 +1,6 @@
 # formvis commands
 
-Generated from the window's command catalogue (1614 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1616 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
@@ -10,7 +10,7 @@ Generated from the window's command catalogue (1614 commands) by `./formvis agen
 - Generate: 6
 - Help: 5
 - Image: 122
-- Layer: 280
+- Layer: 282
 - Paint: 1
 - Paths: 12
 - Select: 46
@@ -569,6 +569,8 @@ Generated from the window's command catalogue (1614 commands) by `./formvis agen
 | `hide-all-effects` | Hide All Effects |  | Shows or hides all layer effects. (changes the picture) |
 | `hide-layers` | Hide Layers |  | Hides or shows the selected layers. (changes the picture) |
 | `isolate-layers` | Isolate Layers |  | Shows only the selected layers. |
+| `layer-bits-16` | Convert Layer to 16 Bits |  | Holds the selected layers at 16 bits per channel inside a 32 bit document: their pixels snap to 65536 steps and later edits keep them there. (changes the picture) |
+| `layer-bits-8` | Convert Layer to 8 Bits |  | Holds the selected layers at 8 bits per channel inside a 16 or 32 bit document: their pixels snap to 256 steps and later edits keep them there. (changes the picture) |
 | `layer-comp-apply` | Apply Layer Comp |  | Applies a layer comp by id or name. (changes the picture) |
 | `layer-comp-delete` | Delete Layer Comp |  | Deletes the active layer comp. (changes the picture) |
 | `layer-comp-duplicate` | Duplicate Layer Comp |  | Copies the active layer comp, placed after it and named with copy. (changes the picture) |

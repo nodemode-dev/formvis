@@ -134,10 +134,9 @@ export const toneProcessOf = (s: DevelopState): ToneProcess => TONE_PROCESS[s.pr
  *  in document units, or null when the document has none of its size. */
 export const depthSource: { read: ((c: { width: number; height: number; originX: number; originY: number; unitsPerPixel: number }) => Uint8Array | null) | null } = { read: null };
 
-const darkDehazeOn = (s: DevelopState): boolean => (s.dehazeDark === true || s.dehazeDepth === true) && s.tone.dehaze !== 0;
-const vignetteExtras = (s: DevelopState): boolean => s.tone.vignette !== 0 && ((s.vignette?.protect ?? 0) > 0 || (s.vignette?.color ?? '') !== '' || (s.vignette?.style ?? 'paint') !== 'paint' || vignetteAfterGeometry(s));
-const vignetteAfterGeometry = (s: DevelopState): boolean => s.vignette?.postCrop === true && geometryActive(geometryOf(s));
-const hexRgb = (hex: string): [number, number, number] => {
+export const darkDehazeOn = (s: DevelopState): boolean => (s.dehazeDark === true || s.dehazeDepth === true) && s.tone.dehaze !== 0;
+export const vignetteAfterGeometry = (s: DevelopState): boolean => s.vignette?.postCrop === true && geometryActive(geometryOf(s));
+export const hexRgb = (hex: string): [number, number, number] => {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
   if (!m) return [0, 0, 0];
   const n = parseInt(m[1]!, 16);
@@ -285,19 +284,15 @@ export function detailActive(d: DetailState): boolean {
   return d.clarity !== 0 || d.texture !== 0 || d.sharpen !== 0;
 }
 
-/** True when the state holds only per-pixel stages: `developPass`, the parametric curve's table, Point Color, Calibration and
- *  Colour Grading. The stages that need neighbours or a resample (noise, dark channel dehaze, clarity, texture, sharpening,
- *  optics, geometry) and the vignette's extras are all at their defaults. The GPU runs only these. */
+/** True when the GPU can run the whole state: `developPass`, the parametric curve's table, Point Color, Calibration, Colour
+ *  Grading, then Clarity, Texture, Sharpening, Optics (Distortion, Defringe, Chromatic Aberration, its automatic fit, the
+ *  lens vignette) and Geometry. Noise Reduction, dark channel Dehaze and the vignette's extras stay at their defaults. */
 export function developPerPixelOnly(s: DevelopState): boolean {
-  const o = opticsOf(s);
-  return !darkDehazeOn(s) && !vignetteExtras(s) && !noiseActive(noiseOf(s)) && !detailActive(s.detail) && (!opticsActive(o) || opticsGpuOnly(o)) && !geometryActive(geometryOf(s));
+  return !(s.dehazeDepth === true && s.tone.dehaze !== 0);
 }
 
 /** Optics with only the lens vignette set: a per-pixel stage the GPU pass runs after Colour Grading. */
 export const opticsVignetteOnly = (o: OpticsState): boolean => o.vignetting !== 0 && o.distortion === 0 && o.chromatic === 0 && (o.defringe ?? 0) === 0 && o.removeCA !== true;
-
-/** Optics with only Distortion and the lens vignette set: the GPU remaps the developed picture (lensDistort's model), then vignettes it. */
-export const opticsGpuOnly = (o: OpticsState): boolean => (o.distortion !== 0 || o.vignetting !== 0) && o.chromatic === 0 && (o.defringe ?? 0) === 0 && o.removeCA !== true;
 
 export function stateActive(s: DevelopState): boolean {
   return toneActive(s.tone) || colorActive(s.color) || curvesActive(s.curves) || detailActive(s.detail) || noiseActive(noiseOf(s))
@@ -792,7 +787,7 @@ export function defringePass<T extends Px>(src: T, amount: number): T {
   }
   return out as T;
 }
-const geometryActive = (g: GeometryState): boolean => g.vertical !== 0 || g.horizontal !== 0 || g.rotate !== 0 || g.scale !== 100 || g.offsetX !== 0 || g.offsetY !== 0;
+export const geometryActive = (g: GeometryState): boolean => g.vertical !== 0 || g.horizontal !== 0 || g.rotate !== 0 || g.scale !== 100 || g.offsetX !== 0 || g.offsetY !== 0;
 
 /** Calibration, then colour grading, on every pixel. Calibration turns and saturates colours by how much each belongs to
  *  a primary's hue range and tints the shadows green or magenta; grading adds each range's hue at its saturation where

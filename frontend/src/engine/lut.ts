@@ -3,6 +3,7 @@ import { hsvFromData, hsvKernel } from './adjust';
 import { paramValues, type ParamKind } from './adjust-params';
 import type { Adjustment, AdjustmentKind } from './types';
 import { applyLut, type ColourLut } from './colour-lut';
+import { threeBoxWidths } from './filters';
 
 /** Adjustments the GPU applies as per-channel lookup tables (Phase 18.5): kinds whose output channel depends only on the
  *  same input channel. The table is made by the CPU kernel itself, run over the 256 greys, so the GPU applies exactly
@@ -47,10 +48,9 @@ export const LUT3_KINDS: ReadonlySet<AdjustmentKind> = new Set<AdjustmentKind>([
 /** Whether the settings keep a Dehaze or Develop layer per pixel: no dark-channel or depth dehaze, no clarity, texture or
  *  vignette (which read neighbours or the position). */
 function perPixelSettings(adj: Adjustment): boolean {
+  if (adj.kind !== 'dehaze' && adj.kind !== 'develop') return true;
   const p = paramValues(adj.kind as ParamKind, adj.data.params);
-  if (adj.kind === 'dehaze') return p.method === 'heuristic';
-  if (adj.kind === 'develop') return !p.clarity && !p.texture && !p.vignette;
-  return true;
+  return adj.kind === 'dehaze' ? p.method === 'heuristic' : !p.clarity && !p.texture && !p.vignette;
 }
 const cache3 = new WeakMap<object, Uint8Array | null>();
 
@@ -106,4 +106,31 @@ export function adjustmentLut3(adj: Adjustment): Uint8Array | null {
   }
   cache3.set(adj.data, out);
   return out;
+}
+
+/** Adjustments that read a blurred copy of what lies beneath them (1.92.0): Shadows/Highlights and HDR Toning blur its
+ *  luminance (three box passes of radius round(radius / 1.7), edge clamped, as adjust-params.ts blurredLum), Clarity blurs
+ *  its colour (the three box widths of a Gaussian of sigma 20, fading past the edge, as develop.ts clarityPass). The GPU
+ *  displays blur the composite below the layer at screen size and run the per-pixel stage on it; `radii` are the box
+ *  radii of the three passes (a second radius for the highlights' blur) and `p` the stage's constants. Radii are in
+ *  screen pixels, so the engine asks for this only where one screen pixel is one document unit. */
+export interface GpuHood { kind: 1 | 2 | 3; rgb: boolean; radii: readonly (readonly [number, number])[]; p: readonly number[] }
+export const HOOD_KINDS: ReadonlySet<AdjustmentKind> = new Set<AdjustmentKind>(['shadowsHighlights', 'hdrToning', 'clarity']);
+export const HOOD_MAX_RADIUS = 96;
+
+export function adjustmentHood(adj: Adjustment): GpuHood | null {
+  if (!HOOD_KINDS.has(adj.kind)) return null;
+  const v = paramValues(adj.kind as ParamKind, adj.data.params), n = (k: string): number => v[k] as number, box = (radius: number): number => Math.max(0, Math.round(radius / 1.7));
+  const finish = (h: GpuHood): GpuHood | null => (h.radii.every((r) => r[0] <= HOOD_MAX_RADIUS && r[1] <= HOOD_MAX_RADIUS) ? h : null);
+  if (adj.kind === 'shadowsHighlights') {
+    if (n('blackClip') > 0 || n('whiteClip') > 0) return null;
+    const rs = box(n('shadowRadius')), rh = box(n('highlightRadius'));
+    return finish({ kind: 1, rgb: false, radii: [[rs, rh], [rs, rh], [rs, rh]], p: [n('shadowAmount') / 100, Math.max(0.02, n('shadowTone') / 100), n('highlightAmount') / 100, Math.max(0.02, n('highlightTone') / 100), n('color') / 100, n('midtone') / 100] });
+  }
+  if (adj.kind === 'hdrToning') {
+    const r = box(n('radius')), ks = [n('curveShadows'), n('curveMid'), n('curveHighlights')].map((d) => d / 100);
+    return finish({ kind: 2, rgb: false, radii: [[r, r], [r, r], [r, r]], p: [n('shadow') / 100, n('highlight') / 100, ks[0], ks[1], ks[2], ks.some((d) => d !== 0) ? 1 : 0, n('strength') / 100, 1 + n('detail') / 100, 2 ** (n('exposure') / 100), n('gamma') / 100, n('vibrance') / 100, 1 + n('saturation') / 100] });
+  }
+  const widths = threeBoxWidths(20);
+  return finish({ kind: 3, rgb: true, radii: widths.map((w) => [(w - 1) / 2, 0] as const), p: [n('clarity') / 200] });
 }
