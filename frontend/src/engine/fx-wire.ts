@@ -14,6 +14,8 @@ export interface FxAsk {
   key: string;
   src: FxSource;
   mask: (FxSource & { t: Transform; covers: boolean }) | null;
+  /** For a layer clipped or under masks: the folder masks and the clipping base, already multiplied into one coverage at document size. */
+  cover: FxSource | null;
   patterns: { id: string; surface: Surface }[];
   fx: LayerEffects;
   t: Transform;
@@ -37,6 +39,7 @@ export interface FxJob {
   layerId: string;
   src: string;
   mask: { key: string; w: number; h: number; t: Transform; covers: boolean } | null;
+  cover: string | null;
   patterns: { id: string; key: string }[];
   live: string[];
   fx: LayerEffects;

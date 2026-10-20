@@ -806,6 +806,25 @@ def export(file: UploadFile = File(...), name: str = Form(...), folder: str = Fo
     return {"path": str(target)}
 
 
+@router.post("/export-beside")
+def export_beside(request: Request, file: UploadFile = File(...), name: str = Form(...), document: str = Form(...), folder: str = Form(...)) -> dict:
+    """Image Assets on save (the Generator): a file written into `folder` beside the saved document, replacing the file of that name."""
+    from app.routers.projects import _disk_path, _local, _write_atomic
+    _local(request)
+    doc = _disk_path(document, (".fvd", ".fmv", ".formvis", ".psd", ".psb", ".ora", ".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff"), False)
+    base = Path(name.replace("\\", "/")).name.strip()
+    if base.startswith(".") or not EXPORT_NAME.match(base):
+        raise HTTPException(status_code=400, detail="Invalid export file name.")
+    sub = folder.strip()
+    if not EXPORT_FOLDER.match(sub):
+        raise HTTPException(status_code=400, detail="Invalid export folder name.")
+    target_dir = doc.parent / sub
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target = target_dir / base
+    _write_atomic(target, file.file.read())
+    return {"path": str(target)}
+
+
 #: What a file chosen in the desktop app's panels may be (1.87.0): projects, and every picture formvis reads or writes.
 DISK_KINDS = (".fvd", ".fmv", ".formvis", ".canvasor", ".comp", ".zip", ".psd", ".psb", ".ora", ".kra", ".pdn", ".png", ".jpg", ".jpeg",
               ".webp", ".avif", ".gif", ".bmp", ".tif", ".tiff", ".heic", ".heif", ".qoi", ".tga", ".ico", ".pcx", ".xpm", ".pbm", ".pgm", ".ppm",

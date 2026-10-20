@@ -51,7 +51,7 @@ const star: Outline = (u, v) => {
   return Math.hypot(u, v) <= 0.4 + 0.6 * t * t;
 };
 
-const OUTLINES: Record<string, Outline> = {
+export const OUTLINES: Record<string, Outline> = {
   circle: (u, v) => u * u + v * v <= 1,
   ring: (u, v) => { const d = Math.hypot(u, v); return d <= 1 && d >= 0.65; },
   square: (u, v) => Math.max(Math.abs(u), Math.abs(v)) <= 1,

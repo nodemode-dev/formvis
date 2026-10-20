@@ -57,10 +57,13 @@ export class StrokeBuffer {
   resize(nw: number, nh: number, keep: boolean, dx: number, dy: number): void {
     const cov = new Float32Array(nw * nh), ceil = this.ceil ? new Uint8Array(nw * nh) : null;
     if (keep) {
-      for (let y = 0; y < this.h; y++) {
-        const o = (y + dy) * nw + dx, s = y * this.w;
-        cov.set(this.cov.subarray(s, s + this.w), o);
-        if (ceil && this.ceil) ceil.set(this.ceil.subarray(s, s + this.w), o);
+      const x0 = Math.max(0, -dx), x1 = Math.min(this.w, nw - dx);
+      if (x1 > x0) {
+        for (let y = Math.max(0, -dy); y < Math.min(this.h, nh - dy); y++) {
+          const o = (y + dy) * nw + dx + x0, s = y * this.w + x0;
+          cov.set(this.cov.subarray(s, s + x1 - x0), o);
+          if (ceil && this.ceil) ceil.set(this.ceil.subarray(s, s + x1 - x0), o);
+        }
       }
     }
     this.cov = cov; this.ceil = ceil; this.w = nw; this.h = nh;

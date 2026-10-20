@@ -54,7 +54,7 @@ export function fibersImage(src: ImageData, variance: number, strength: number, 
 
 /** The secondary reflections each lens adds along the line through the flare and the frame's centre: where on it (0 the
  *  flare, 1 the mirror point), radius as a share of the frame's diagonal, and colour. */
-const GHOSTS: Record<string, Array<[number, number, [number, number, number]]>> = {
+export const GHOSTS: Record<string, Array<[number, number, [number, number, number]]>> = {
   zoom: [[0.35, 0.02, [90, 140, 255]], [0.6, 0.035, [120, 255, 140]], [0.9, 0.05, [255, 120, 80]], [1.25, 0.025, [255, 200, 120]], [1.6, 0.06, [140, 120, 255]]],
   prime35: [[0.5, 0.03, [255, 170, 90]], [1.1, 0.045, [110, 170, 255]], [1.5, 0.03, [160, 255, 160]]],
   prime105: [[0.7, 0.05, [255, 220, 160]], [1.3, 0.04, [170, 200, 255]]],

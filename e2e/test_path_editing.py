@@ -52,6 +52,6 @@ def test_convert_point_makes_corners_and_smooth_points(page):
     a = page.evaluate(A, 1)
     assert abs(a[5] - 90) <= 1 and abs(a[3] - 30) <= 1, a
     idx = page.evaluate("(async () => { const { toolGroups } = await import('/src/ui/tool-groups.ts'); return toolGroups().findIndex((g) => g.tools.some((t) => t.id === 'pen')); })()")
-    page.locator(".cv-rail-tools .cv-tool").nth(idx).click(button="right")
+    page.locator(".cv-rail-tools .cv-rail-slot").nth(idx).click(button="right")
     assert "Convert Point" in page.locator(".cv-flyout:not([hidden]) .cv-flyout-label").all_inner_texts()
     page.keyboard.press("Escape")

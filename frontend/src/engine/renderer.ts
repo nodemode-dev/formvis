@@ -200,6 +200,7 @@ export class Renderer {
   /** The GPU effect maps kept from the last build of each styled layer (up to 96 MB, oldest dropped first), so a change with a known damage rectangle rebuilds only that part. */
   private readonly fxMaps = new Map<string, { ver: number; img: ImageData }>();
   private fxMapBytes = 0;
+  private readonly coverKept = new Map<ID, { key: string; surface: Surface }>();
   private fxFor: { id: ID; ver: number; prev: number; rect: Rect | null } | null = null;
   /** Effect maps built whole and rebuilt over a damaged part, and the pixels the GPU passes covered. */
   readonly fxStats = { full: 0, partial: 0, pixels: 0 };
@@ -534,7 +535,7 @@ export class Renderer {
     const ver = r?.version ?? 0, key = `${ver}|${rest}`;
     const hit = exact || this.detached ? undefined : this.fxCache.get(layer.id);
     if (hit && hit.key === key) return hit.parts;
-    if (fast && !masked && !this.detached && this.askWorker(layer, fx, src, t, own, docW, docH, key, rest, ver)) return hit?.parts ?? [];
+    if (fast && !this.detached && this.askWorker(layer, fx, src, t, own, docW, docH, key, rest, ver, masked)) return hit?.parts ?? [];
     this.fxFor = exact || this.detached ? null : { id: layer.id, ver, prev: hit && hit.rest === rest ? hit.ver : -1, rect: null };
     const d = fx.dropShadow, g = fx.outerGlow, k = fx.stroke, is = fx.innerShadow, ig = fx.innerGlow;
     const reach = fxReach(fx) + 4;
@@ -610,9 +611,37 @@ export class Renderer {
   }
 
   /** Hands a previewed layer's effect build to the worker, when there is one and the layer is a plain one (its own picture and a mask that is a raster); false leaves the build to the page. */
-  private askWorker(layer: Layer, fx: LayerEffects, src: Surface, t: Transform, own: MaskInfo | null, docW: number, docH: number, key: string, rest: string, ver: number): boolean {
+  private askWorker(layer: Layer, fx: LayerEffects, src: Surface, t: Transform, own: MaskInfo | null, docW: number, docH: number, key: string, rest: string, ver: number, masked?: { folders: MaskInfo[]; clip: (() => Surface | null) | null; sig: string }): boolean {
     const r = layer.raster, w = this.effectWorker;
     if (!w || !r || src !== r.canvas) return false;
+    let cover: FxAsk['cover'] = null;
+    if (masked) {
+      if (docW * docH > 16_000_000) return false;
+      let h = 5381;
+      for (let i = 0; i < masked.sig.length; i++) h = ((h * 33) ^ masked.sig.charCodeAt(i)) >>> 0;
+      const ck = `cover:${layer.id}:${h}:${masked.sig.length}:${docW}x${docH}`, kept = this.coverKept.get(layer.id);
+      let cv: Surface;
+      if (kept && kept.key === ck) cv = kept.surface;
+      else {
+        cv = createSurface(docW, docH);
+        const c = ctxOf(cv);
+        c.fillStyle = '#fff';
+        c.fillRect(0, 0, docW, docH);
+        for (const f of masked.folders) this.cover(c, f, [1, 0, 0, 1, 0, 0], docW, docH);
+        if (masked.clip) {
+          const cc = masked.clip();
+          c.save();
+          c.setTransform(1, 0, 0, 1, 0, 0);
+          c.globalCompositeOperation = 'destination-in';
+          if (cc) c.drawImage(cc, 0, 0); else c.clearRect(0, 0, docW, docH);
+          c.restore();
+        }
+        this.coverKept.delete(layer.id);
+        this.coverKept.set(layer.id, { key: ck, surface: cv });
+        for (const old of this.coverKept.keys()) { if (this.coverKept.size <= 4) break; this.coverKept.delete(old); }
+      }
+      cover = { key: ck, surface: cv, w: docW, h: docH };
+    }
     const mr = own ? rasterOf(own.src) : undefined;
     if (own && !mr) return false;
     const patterns: FxAsk['patterns'] = [];
@@ -623,7 +652,7 @@ export class Renderer {
     return w.ask({
       layerId: layer.id, key, src: { key: `${r.id}:${r.version}`, surface: src, w: r.width, h: r.height },
       mask: own && mr ? { key: `${mr.id}:${mr.version}`, surface: own.src, w: own.w, h: own.h, t: own.t, covers: own.covers } : null,
-      patterns, fx, t, docW, docH, fast: true, pixels: () => this.previewPixels, shapes: layer.transparencyShapes !== false,
+      cover, patterns, fx, t, docW, docH, fast: true, pixels: () => this.previewPixels, shapes: layer.transparencyShapes !== false,
       land: (parts, ms) => this.landParts(layer.id, key, rest, ver, parts, ms),
       late: () => { this.previewPixels = Math.max(250_000, Math.round(this.previewPixels * 0.5)); },
     });
@@ -637,9 +666,9 @@ export class Renderer {
   }
 
   /** The parts a worker draws for the page: the very builder the page uses, with nothing kept in this renderer's cache or maps. */
-  buildDetached(layer: Layer, fx: LayerEffects, src: Surface, t: Transform, own: { src: Surface; w: number; h: number; t: Transform; covers: boolean } | null, docW: number, docH: number): FxPart[] {
+  buildDetached(layer: Layer, fx: LayerEffects, src: Surface, t: Transform, own: { src: Surface; w: number; h: number; t: Transform; covers: boolean } | null, docW: number, docH: number, cover: Surface | null = null): FxPart[] {
     this.detached = true;
-    try { return this.effectParts(layer, fx, src, t, own, null, docW, docH); } finally { this.detached = false; }
+    try { return this.effectParts(layer, fx, src, t, own, null, docW, docH, false, cover ? { folders: [], clip: () => cover, sig: '' } : undefined); } finally { this.detached = false; }
   }
 
   /** A GPU effect map over `box`: whole, or, when the layer changed since the map was last made inside a known rectangle, only the part within the effect's reach of that rectangle, rebuilt over a box grown by the reach again (outside its box the silhouette reads as empty) and laid into the map kept. */

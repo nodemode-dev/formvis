@@ -1,5 +1,5 @@
 import { blurDeep, motionBlurDeep, noiseDeep, surfaceBlurDeep, unsharpDeep } from '../../engine/deep';
-import { DEEP_DISTORT, deepGalleryFilter, deepLibFilter, lensBlurDeep } from '../../engine/deep-filters';
+import { DEEP_DISTORT, DEEP_FRAMED, DEEP_RGB_ONLY, deepGalleryFilter, deepLibFilter, lensBlurDeep } from '../../engine/deep-filters';
 import type { DeepPixels } from '../../engine/types';
 import { addNoise, defaultLensFix, gaussianBlur, gaussianMargin, lensCorrect, motionBlur, motionMargin, randomSeed, runFilterOffThread, unsharpMask, defaultDevelopState, developImage, type Engine, type LensFix } from '../../engine';
 import { ScopesView } from './scopes-view';
@@ -1041,14 +1041,18 @@ export class FilterPanel extends Dialog {
     const p = this.engine.current;
     if (!p || ((p.doc.depth ?? 8) === 8 && p.doc.mode !== 'cmyk')) return false;
     if (p.selection && (kind === 'offset' || kind === 'mosaic' || kind === 'crystallize' || DEEP_DISTORT.includes(kind))) return false;
+    if ((p.selection && DEEP_FRAMED.includes(kind)) || (DEEP_RGB_ONLY.includes(kind) && p.activeLayer?.channels?.mode !== 'rgb')) return false;
+    if (isLibKind(kind) && libFilter(kind).fills && (settings.lib as Record<string, Record<string, unknown> | undefined> | undefined)?.[kind]?.newLayer === true) return false;
     const s = { ...this.s, ...(settings as Partial<typeof this.s>) }, seed = this.seed, ceiling = p.doc.depth === 32 ? Infinity : 1;
+    const lay = p.activeLayer, frame = lay?.channels ? this.engine.filterFrame(p, lay.transform, lay.channels.width, lay.channels.height) : null;
+    const env = frame ? { area: frame.area, canvas: frame.canvas, fg: s.colors.fg, bg: s.colors.bg } : undefined;
     if (kind === 'develop') {
       const ch = p.activeLayer?.channels, out = ch ? developDeep(ch.data, ch.n, ch.width, ch.height, s.develop) : null;
       if (!ch || !out) return false;
       this.engine.applyDeepFilter(FILTER_LABELS[kind], (d) => ({ ...d, data: out }));
       return true;
     }
-    const deep = kind === 'gaussianBlur' ? (d: DeepPixels): DeepPixels => blurDeep(d, s.radius) : kind === 'unsharpMask' ? (d: DeepPixels): DeepPixels => unsharpDeep(d, s.usmAmount, s.usmRadius, s.threshold, ceiling) : kind === 'addNoise' ? (d: DeepPixels): DeepPixels => noiseDeep(d, s.amount, s.gaussian, s.monochromatic, seed, ceiling) : kind === 'motionBlur' ? (d: DeepPixels): DeepPixels => motionBlurDeep(d, s.angle, s.distance) : kind === 'surfaceBlur' ? (d: DeepPixels): DeepPixels => surfaceBlurDeep(d, s.gallery.surfaceRadius, s.gallery.surfaceThreshold) : kind === 'radialBlur' || kind === 'fieldBlur' || kind === 'irisBlur' || kind === 'tiltShift' || kind === 'pathBlur' ? deepGalleryFilter(kind, s.gallery) : kind === 'lensBlur' && (!s.lensIris || (s.lensIris.source === 'none' && !(s.lensIris.blades >= 3) && !(s.lensIris.noise > 0))) ? (d: DeepPixels): DeepPixels => lensBlurDeep(d, s.lensRadius, s.lensBrightness, s.lensThreshold) : isLibKind(kind) ? deepLibFilter(kind, libValues(kind, (s.lib as Record<string, unknown> | undefined)?.[kind]), ceiling, seed) : null;
+    const deep = kind === 'gaussianBlur' ? (d: DeepPixels): DeepPixels => blurDeep(d, s.radius) : kind === 'unsharpMask' ? (d: DeepPixels): DeepPixels => unsharpDeep(d, s.usmAmount, s.usmRadius, s.threshold, ceiling) : kind === 'addNoise' ? (d: DeepPixels): DeepPixels => noiseDeep(d, s.amount, s.gaussian, s.monochromatic, seed, ceiling) : kind === 'motionBlur' ? (d: DeepPixels): DeepPixels => motionBlurDeep(d, s.angle, s.distance) : kind === 'surfaceBlur' ? (d: DeepPixels): DeepPixels => surfaceBlurDeep(d, s.gallery.surfaceRadius, s.gallery.surfaceThreshold) : kind === 'radialBlur' || kind === 'fieldBlur' || kind === 'irisBlur' || kind === 'tiltShift' || kind === 'pathBlur' ? deepGalleryFilter(kind, s.gallery) : kind === 'lensBlur' && (!s.lensIris || (s.lensIris.source === 'none' && !(s.lensIris.blades >= 3) && !(s.lensIris.noise > 0))) ? (d: DeepPixels): DeepPixels => lensBlurDeep(d, s.lensRadius, s.lensBrightness, s.lensThreshold) : isLibKind(kind) ? deepLibFilter(kind, libValues(kind, (s.lib as Record<string, unknown> | undefined)?.[kind]), ceiling, seed, env) : null;
     if (!deep) return false;
     this.engine.applyDeepFilter(FILTER_LABELS[kind], deep);
     return true;

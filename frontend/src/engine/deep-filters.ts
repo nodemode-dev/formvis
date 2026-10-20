@@ -2,7 +2,9 @@ import { blurDeep, surfaceBlurDeep, unsharpDeep } from './deep';
 import { site } from './filters-lib/pixelate';
 import { windReach } from './filters-lib/stylize';
 import type { DeepPixels } from './types';
-import { boxMean, gaussKernel, hash01, separable } from './filters-lib/shared';
+import { boxMean, boxOf, gaussKernel, hash01, separable, type Box } from './filters-lib/shared';
+import { OUTLINES, spans } from './filters-lib/blur';
+import { cloudsDeep, colorHalftoneDeep, extrudeDeep, fibersDeep, lensFlareDeep, mezzotintDeep, pointillizeDeep, reduceNoiseDeep, shapeBlurDeep, smartBlurDeep, tilesDeep, traceContourDeep } from './deep-fx';
 import { pinchWarp, polarWarp, rippleWarp, shearWarp, spherizeWarp, twirlWarp, waveWarp, zigZagWarp, type Warp } from './filters-lib/distort';
 import { galleryRadii, type GalleryKind, type GallerySettings, type RadiusMap } from './blur-gallery';
 
@@ -428,9 +430,34 @@ function warpOf(kind: string, v: Record<string, unknown>, w: number, h: number):
 
 const FIXED_SHARPEN: Record<string, [number, number, number]> = { sharpen: [50, 0.6, 0], sharpenMore: [120, 0.7, 0], sharpenEdges: [100, 1, 8] };
 
+/** The frame a float filter works in: the layer's place on the canvas and the foreground and background colours (0 to 255). */
+export interface DeepEnv { area: { x: number; y: number; w: number; h: number }; canvas: { x: number; y: number; w: number; h: number }; fg: readonly [number, number, number]; bg: readonly [number, number, number] }
+
+/** Float filters that read the selection's box or the canvas's place: under a selection they stay on the 8 bit path, as the distort group does. */
+export const DEEP_FRAMED: readonly string[] = ['tiles', 'extrude', 'pointillize', 'colorHalftone', 'mezzotint', 'clouds', 'differenceClouds', 'fibers', 'lensFlare'];
+
+/** Float filters whose colour logic is red, green and blue (brightness, fixed colours): RGB documents only. */
+export const DEEP_RGB_ONLY: readonly string[] = ['tiles', 'extrude', 'smartBlur', 'reduceNoise', 'pointillize', 'colorHalftone', 'clouds', 'differenceClouds', 'fibers', 'lensFlare'];
+
+const unit = (c: readonly [number, number, number]): [number, number, number] => [c[0] / 255, c[1] / 255, c[2] / 255];
+
 /** The float version of library filter `kind` with its stored `values`, or null when it only runs on 8 bits. */
-export function deepLibFilter(kind: string, values: Record<string, unknown>, ceiling: number, seed = 1): ((d: DeepPixels) => DeepPixels) | null {
+export function deepLibFilter(kind: string, values: Record<string, unknown>, ceiling: number, seed = 1, env?: DeepEnv): ((d: DeepPixels) => DeepPixels) | null {
   const num = (k: string): number => (typeof values[k] === 'number' ? (values[k] as number) : 0);
+  const boxes = (d: DeepPixels): { area: Box; canvas: Box } => { const whole = { x: 0, y: 0, w: d.width, h: d.height }; return { area: boxOf(env?.area ?? whole), canvas: boxOf(env?.canvas ?? whole) }; };
+  const fg = unit(env?.fg ?? [0, 0, 0]), bg = unit(env?.bg ?? [255, 255, 255]);
+  if (kind === 'traceContour') return (d) => traceContourDeep(d, num('level'), values.edge === 'upper');
+  if (kind === 'tiles') return (d) => tilesDeep(d, num('count'), num('maxOffset'), typeof values.fill === 'string' ? values.fill : 'background', seed, boxes(d).area, fg, bg);
+  if (kind === 'extrude') return (d) => extrudeDeep(d, { kind: typeof values.type === 'string' ? values.type : 'blocks', size: num('size'), depth: num('depth'), levelBased: values.depthMode === 'levelBased', solidFront: values.solidFront === true, maskIncomplete: values.maskIncomplete === true, seed }, boxes(d).area, ceiling);
+  if (kind === 'smartBlur') return (d) => smartBlurDeep(d, num('radius'), num('threshold'), typeof values.quality === 'string' ? values.quality : 'high', typeof values.mode === 'string' ? values.mode : 'normal');
+  if (kind === 'shapeBlur') return (d) => shapeBlurDeep(d, spans(num('radius'), OUTLINES[typeof values.shape === 'string' ? values.shape : 'circle'] ?? OUTLINES.circle));
+  if (kind === 'reduceNoise' && values.jpeg !== true) return (d) => reduceNoiseDeep(d, { strength: num('strength'), preserve: num('preserve'), color: num('color'), sharpen: num('sharpen') }, ceiling);
+  if (kind === 'pointillize') return (d) => pointillizeDeep(d, num('cellSize'), seed, boxes(d).area, bg, ceiling);
+  if (kind === 'colorHalftone') return (d) => colorHalftoneDeep(d, num('maxRadius'), [num('channel1'), num('channel2'), num('channel3'), num('channel4')], boxes(d).area);
+  if (kind === 'mezzotint') return (d) => mezzotintDeep(d, typeof values.type === 'string' ? values.type : 'fineDots', seed, boxes(d).canvas);
+  if (kind === 'clouds' || kind === 'differenceClouds') return (d) => cloudsDeep(d, kind === 'differenceClouds', seed, boxes(d).canvas, fg, bg);
+  if (kind === 'fibers') return (d) => fibersDeep(d, num('variance'), num('strength'), num('seed'), boxes(d).canvas, fg, bg);
+  if (kind === 'lensFlare') return (d) => lensFlareDeep(d, num('brightness'), num('centerX'), num('centerY'), typeof values.lens === 'string' ? values.lens : 'zoom', boxes(d).area);
   if (kind === 'despeckle') return (d) => surfaceBlurDeep(d, 3, 15);
   if (kind === 'fragment') return (d) => fragmentDeep(d, 4);
   if (kind === 'facet') return (d) => facetDeep(d, 2);
@@ -457,4 +484,4 @@ export function deepLibFilter(kind: string, values: Record<string, unknown>, cei
 }
 
 /** The library filters that run in float at depth, for the filter dialog's note and the agent's description. */
-export const DEEP_LIB_KINDS: readonly string[] = ['blur', 'blurMore', 'boxBlur', 'sharpen', 'sharpenMore', 'sharpenEdges', 'highPass', 'maximum', 'minimum', 'median', 'dustAndScratches', 'emboss', 'findEdges', 'solarize', 'custom', 'offset', 'mosaic', 'despeckle', 'fragment', 'facet', 'crystallize', 'diffuse', 'wind', ...DEEP_DISTORT];
+export const DEEP_LIB_KINDS: readonly string[] = ['blur', 'blurMore', 'boxBlur', 'sharpen', 'sharpenMore', 'sharpenEdges', 'highPass', 'maximum', 'minimum', 'median', 'dustAndScratches', 'emboss', 'findEdges', 'solarize', 'custom', 'offset', 'mosaic', 'despeckle', 'fragment', 'facet', 'crystallize', 'diffuse', 'wind', 'traceContour', 'tiles', 'extrude', 'smartBlur', 'shapeBlur', 'reduceNoise', 'pointillize', 'colorHalftone', 'mezzotint', 'clouds', 'differenceClouds', 'fibers', 'lensFlare', ...DEEP_DISTORT];

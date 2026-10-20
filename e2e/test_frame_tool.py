@@ -24,7 +24,7 @@ def test_a_frame_is_drawn_and_an_imported_image_covers_it_clipped(page):
 def test_the_elliptical_frame_from_the_flyout_and_undo(page):
     page.evaluate("window.formvis.engine.newDocument(300, 200, 'E', 'white')")
     idx = page.evaluate("(async () => { const { toolGroups } = await import('/src/ui/tool-groups.ts'); return toolGroups().findIndex((g) => g.tools.some((t) => t.id === 'frame')); })()")
-    page.locator(".cv-rail-tools .cv-tool").nth(idx).click(button="right")
+    page.locator(".cv-rail-tools .cv-rail-slot").nth(idx).click(button="right")
     page.locator(".cv-flyout:not([hidden]) .cv-flyout-item", has_text="Elliptical Frame").click()
     drag_doc(page, [60, 40], [240, 160])
     assert page.evaluate("window.formvis.engine.activeLayer.frame.shape") == "ellipse"

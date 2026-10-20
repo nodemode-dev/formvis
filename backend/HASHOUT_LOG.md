@@ -9,6 +9,12 @@ The owner's P23 decisions: fal is the one cloud provider; Replicate, WaveSpeedAI
 - `line_counts.py` `PROVIDERS_DECLINED` (replicate.com, api.replicate, wavespeed, cloud.comfy.org, comfy cloud, router or partner, toapis, byteplus, modelark, oxen.ai, magnific, freepik) checked in `declined_problems()` beside the patent pattern; the language-model chat's OpenAI-compatible services are not named by it. Checked on a scratch clone: an api.replicate.com line in a backend file gave the problem; the real tree passes (the code already holds fal alone: `localgen/providers.py` `PROVIDERS = {"fal": ...}`). Harness law 11 and `CLAUDE.md` say the same.
 - Before promising a balance check or cost display: fal's `GET https://api.fal.ai/v1/account/billing?expand=credits` returns the credit balance and currency to a key with the `billing:usage:read` permission, and `GET https://api.fal.ai/v1/models/pricing?endpoint_id=...` a model's unit price; usage line items and estimates are documented without paths in the pricing page, so check the Platform APIs reference when the integration is built.
 
+## Window jobs over MCP, assets beside the document · _v1.91.4 (app/routers/mcp.py, app/routers/io.py, native/formvis-kernels)
+
+- jobs_list asks a live, allowed window for its jobs (`__jobs`, 5 s) and lists them first; jobs_cancel with all or a `window:` id asks `__job_stop`. A window that does not answer leaves its rows out.
+- `POST /io/export-beside` writes Generator assets atomically into a folder beside the document; it requires the X-Formvis header and validates the document path, file and folder names.
+- native/formvis-kernels gains the `patch` feature (insideDistance, scaleHealCorrection).
+
 ## Window change notices · _v1.91.3 (app/routers/mcp.py, native/formvis-kernels)
 
 - `POST /api/mcp/bridge/changed` takes kinds only (selection, history, layers, document) and marks the matching resources for subscribed sessions: selection marks selection; history marks document, layers, selection and history; layers marks document and layers; document marks document, layers and history.

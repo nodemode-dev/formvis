@@ -81,6 +81,7 @@ async function start(a: FxAsk): Promise<void> {
   try {
     const items: { key: string; surface: Surface; w: number; h: number }[] = [a.src];
     if (a.mask) items.push(a.mask);
+    if (a.cover) items.push(a.cover);
     const patterns = a.patterns.map((p) => ({ id: p.id, key: `pattern:${p.id}:${p.surface.width}x${p.surface.height}` }));
     a.patterns.forEach((p, i) => items.push({ key: patterns[i].key, surface: p.surface, w: p.surface.width, h: p.surface.height }));
     for (const it of items) {
@@ -94,6 +95,7 @@ async function start(a: FxAsk): Promise<void> {
     const job: FxJob = {
       type: 'fx', id: run.id, layerId: a.layerId, src: a.src.key,
       mask: a.mask ? { key: a.mask.key, w: a.mask.w, h: a.mask.h, t: a.mask.t, covers: a.mask.covers } : null,
+      cover: a.cover ? a.cover.key : null,
       patterns, live: items.map((it) => it.key), fx: a.fx, t: a.t, docW: a.docW, docH: a.docH, fast: a.fast, pixels: a.pixels(), shapes: a.shapes,
     };
     stats.posted++;

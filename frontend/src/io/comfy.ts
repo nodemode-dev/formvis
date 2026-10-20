@@ -80,8 +80,53 @@ export function addRecipe(name: string, json: string, mirror = true): string | n
   const kept = name.replace(/\.json$/i, ''), was = keptRecipes().find((r) => r.name === kept);
   const list = keptRecipes().filter((r) => r.name !== kept).concat([{ name: kept, json, ...(was?.refs ? { refs: was.refs } : {}) }]);
   try { localStorage.setItem(KEY, JSON.stringify(list.slice(-40))); } catch { return 'There is no room left to keep it.'; }
+  if (was && was.json !== json) keepVersion(kept, was.json);
   if (mirror) void api.recipeFileSave(kept, json).catch(() => { /* the copy in the browser is kept */ });
   return null;
+}
+
+/** An earlier text of a kept recipe, set aside when a save replaced it. */
+export interface RecipeVersion { json: string; time: number }
+const VERSIONS_KEY = 'formvis.comfyui.recipeVersions', VERSIONS_PER_RECIPE = 5;
+
+function versionStore(): Record<string, RecipeVersion[]> {
+  try {
+    const r = JSON.parse(localStorage.getItem(VERSIONS_KEY) ?? '{}') as unknown;
+    return r && typeof r === 'object' && !Array.isArray(r) ? r as Record<string, RecipeVersion[]> : {};
+  } catch { return {}; }
+}
+
+function keepVersion(name: string, json: string): void {
+  const store = versionStore(), list = (store[name] ?? []).filter((v) => v.json !== json);
+  store[name] = [{ json, time: Date.now() }, ...list].slice(0, VERSIONS_PER_RECIPE);
+  try { localStorage.setItem(VERSIONS_KEY, JSON.stringify(store)); } catch { /* the earlier text is not kept */ }
+}
+
+/** The earlier texts of a kept recipe, newest first (the last five a save replaced). */
+export function recipeVersions(name: string): RecipeVersion[] {
+  const list = versionStore()[name];
+  return Array.isArray(list) ? list.filter((v) => typeof v?.json === 'string' && typeof v?.time === 'number') : [];
+}
+
+/** Brings an earlier text back as the recipe; the text it replaces becomes a version in its turn. Its problem, or null. */
+export function restoreRecipeVersion(name: string, index: number): string | null {
+  const v = recipeVersions(name)[index];
+  return v ? addRecipe(name, v.json) : `${name} has no such version.`;
+}
+
+/** A name for a recipe saved beside `base` rather than over it: base, then "base 2", "base 3" and on, none of them a recipe yet. */
+export function uniqueRecipeName(base: string): string {
+  const root = base.replace(/\.json$/i, '').trim().slice(0, 90) || 'Recipe', taken = new Set(recipes().map((r) => r.name));
+  if (!taken.has(root)) return root;
+  for (let n = 2; ; n++) if (!taken.has(`${root} ${n}`)) return `${root} ${n}`;
+}
+
+/** The pictures formvis sent to ComfyUI that the data folder still holds and `json` names; sent again to the ComfyUI at `target`. */
+export async function resendRecipeInputs(target: string, json: string): Promise<{ sent: number; missing: number; held: number }> {
+  const names = (await api.comfyuiMirror()).map((f) => f.name).filter((n) => json.includes(n));
+  if (!names.length) return { sent: 0, missing: 0, held: 0 };
+  const r = await api.comfyuiReupload(target, names);
+  return { sent: r.sent.length, missing: r.missing.length, held: names.length };
 }
 
 /** Sets how @img1, @img2 are written into the prompt for a kept workflow; false when it is not a kept one or the pattern is not offered. */

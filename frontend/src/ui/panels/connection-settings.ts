@@ -1,5 +1,5 @@
 import { api, type ComfyAuth, type LlmRow, type LlmStatus, type ModelsFolder } from '../../io/api';
-import { addRecipe, apiWorkflow, DEFAULT_REFERENCE_NAME, hiddenBuiltins, hideBuiltin, RECIPE_FAMILIES, recipeFamily, recipes, REFERENCE_NAMES, removeRecipe, setRecipeRefs, syncRecipeFolder, type Recipe, type RecipeFamily } from '../../io/comfy';
+import { addRecipe, apiWorkflow, DEFAULT_REFERENCE_NAME, hiddenBuiltins, hideBuiltin, RECIPE_FAMILIES, recipeFamily, recipeVersions, recipes, REFERENCE_NAMES, removeRecipe, resendRecipeInputs, restoreRecipeVersion, setRecipeRefs, syncRecipeFolder, uniqueRecipeName, type Recipe, type RecipeFamily } from '../../io/comfy';
 import { folderTemplateCount, saveTemplates, syncTemplates, templateFromMarkdown, templateToMarkdown, templates } from '../../io/prompt-templates';
 import { el, patchList, setHidden, setText, setValue } from '../dom';
 import { confirmAction } from '../dialogs';
@@ -194,13 +194,16 @@ export class RecipesSection {
   private readonly input = el<HTMLInputElement>('<input type="file" accept=".json,application/json" multiple hidden aria-label="Add workflows">');
   private readonly replace = el<HTMLInputElement>('<input type="file" accept=".json,application/json" hidden aria-label="Update a workflow">');
   private updating = '';
+  private readonly fork = el<HTMLInputElement>('<input type="file" accept=".json,application/json" hidden aria-label="Save a workflow as a new recipe">');
+  private forking = '';
   private readonly removed: Recipe[] = [];
   private readonly undoBtn = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost" title="Brings back the recipes removed since the window opened, the last one first" disabled>Undo remove</button>');
   private readonly restoreBtn = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost" title="Shows the built-in recipes that were hidden" disabled>Restore built-in recipes</button>');
 
   constructor() {
-    this.el.append(this.empty, this.replace);
+    this.el.append(this.empty, this.replace, this.fork);
     this.replace.addEventListener('change', () => void this.update());
+    this.fork.addEventListener('change', () => void this.saveAsNew());
     for (const [family] of RECIPE_FAMILIES) {
       const box = el<HTMLDetailsElement>(`<details class="cv-recipes-group" data-family="${family}" open hidden><summary></summary></details>`), list = el('<div class="cv-recipes-list"></div>');
       box.append(list);
@@ -237,7 +240,7 @@ export class RecipesSection {
       patch(g.list, items, {
         key: (r) => r.name,
         create: (r) => {
-          const line = el('<div class="cv-plugins-row"><span></span><select class="cv-input" data-act="refs" aria-label="Picture names in the prompt" title="How @img1, @img2 are written into the prompt for this workflow"></select><button type="button" class="cv-btn cv-btn-ghost" data-act="edit" title="Copies the workflow and opens ComfyUI; paste it on the canvas">Edit in ComfyUI</button><button type="button" class="cv-btn cv-btn-ghost" data-act="update" title="Replace this recipe with a workflow saved from ComfyUI">Update...</button><button type="button" class="cv-btn cv-btn-ghost" data-act="remove">Remove</button></div>');
+          const line = el('<div class="cv-plugins-row"><span></span><select class="cv-input" data-act="refs" aria-label="Picture names in the prompt" title="How @img1, @img2 are written into the prompt for this workflow"></select><button type="button" class="cv-btn cv-btn-ghost" data-act="edit" title="Copies the workflow and opens ComfyUI; paste it on the canvas">Edit in ComfyUI</button><button type="button" class="cv-btn cv-btn-ghost" data-act="update" title="Replace this recipe with a workflow saved from ComfyUI">Update...</button><button type="button" class="cv-btn cv-btn-ghost" data-act="fork" title="Keep a workflow saved from ComfyUI as a new recipe beside this one, which stays as it is">Save as new...</button><select class="cv-input" data-act="versions" aria-label="Earlier versions" title="Earlier texts of this recipe that a save replaced; choosing one brings it back" hidden></select><button type="button" class="cv-btn cv-btn-ghost" data-act="inputs" title="Send the pictures formvis sent to ComfyUI for this recipe again, from the copies in the data folder">Send inputs</button><button type="button" class="cv-btn cv-btn-ghost" data-act="remove">Remove</button></div>');
           const act = (name: string): HTMLButtonElement => line.querySelector(`[data-act="${name}"]`) as HTMLButtonElement;
           const names = line.querySelector('[data-act="refs"]') as unknown as HTMLSelectElement;
           names.replaceChildren(...REFERENCE_NAMES.map(([pattern, example]) => { const o = document.createElement('option'); o.value = pattern; o.textContent = `@img1 as ${example.split(',')[0]}`; o.title = example; return o; }));
@@ -245,6 +248,14 @@ export class RecipesSection {
           act('remove').addEventListener('click', () => void this.drop(r.name, line.dataset.builtin === 'true'));
           act('update').addEventListener('click', () => { this.updating = r.name; this.replace.click(); });
           act('edit').addEventListener('click', () => void this.edit(r.name));
+          act('fork').addEventListener('click', () => { this.forking = r.name; this.fork.click(); });
+          act('inputs').addEventListener('click', () => void this.resend(r.name));
+          const versions = line.querySelector('[data-act="versions"]') as unknown as HTMLSelectElement;
+          versions.addEventListener('change', () => {
+            const at = Number(versions.value);
+            versions.value = '';
+            if (Number.isInteger(at) && at >= 0) { const p = restoreRecipeVersion(r.name, at); this.refresh(); setText(this.note, p ?? `${r.name} is back to an earlier version.`); }
+          });
           return line;
         },
         update: (node, r) => {
@@ -254,6 +265,13 @@ export class RecipesSection {
           setHidden(names, !!r.builtin);
           setText(node.querySelector('span'), r.builtin ? `${r.name} · built in` : `${r.name} · ${r.nodes} nodes`);
           setText(node.querySelector('[data-act="remove"]'), r.builtin ? 'Hide' : 'Remove');
+          const versions = node.querySelector('[data-act="versions"]') as HTMLSelectElement, older = recipeVersions(r.name), sig = older.map((v) => v.time).join(',');
+          setHidden(versions, older.length === 0);
+          if (versions.dataset.sig !== sig) {
+            versions.dataset.sig = sig;
+            versions.replaceChildren(...[`Versions (${older.length})`, ...older.map((v) => `Back to ${new Date(v.time).toLocaleString()}`)].map((t, i) => { const o = document.createElement('option'); o.value = i === 0 ? '' : String(i - 1); o.textContent = t; return o; }));
+            versions.value = '';
+          }
         },
       });
     }
@@ -302,6 +320,29 @@ export class RecipesSection {
       const gaps = c ? [c.missing_nodes.length ? `${c.missing_nodes.length} missing node${c.missing_nodes.length === 1 ? '' : 's'} (${c.missing_nodes.join(', ')})` : '', c.missing_models.length ? `${c.missing_models.length} model file${c.missing_models.length === 1 ? '' : 's'} not listed (${c.missing_models.map((m) => m.name).join(', ')})` : ''].filter(Boolean) : [];
       setText(this.note, `${name} updated${c ? (gaps.length ? `. ComfyUI lacks ${gaps.join(' and ')}.` : '. ComfyUI has every node and model it needs.') : '. ComfyUI did not answer, so its nodes were not checked.'}`);
     } catch (err) { setText(this.note, err instanceof Error ? err.message : `${f.name} could not be read.`); }
+  }
+
+  /** Save as new...: the chosen workflow becomes a recipe of its own name (or "<name> 2" when that is taken), the recipe it was started from untouched. */
+  private async saveAsNew(): Promise<void> {
+    const f = this.fork.files?.[0], from = this.forking;
+    this.fork.value = '';
+    if (!f) return;
+    try {
+      const text = await apiWorkflow(await f.text(), loadPrefs().comfyuiUrl, f.name), name = uniqueRecipeName(f.name), problem = addRecipe(name, text);
+      this.refresh();
+      setText(this.note, problem ?? `${name} saved as a new recipe${from ? `; ${from} is unchanged` : ''}.`);
+    } catch (err) { setText(this.note, err instanceof Error ? err.message : `${f.name} could not be read.`); }
+  }
+
+  /** Send inputs: the pictures formvis sent to ComfyUI that this recipe names go up again from the copies in the data folder. */
+  private async resend(name: string): Promise<void> {
+    const r = recipes().find((x) => x.name === name), url = loadPrefs().comfyuiUrl.trim();
+    if (!r) return;
+    if (!/^https?:\/\/./i.test(url)) { setText(this.note, 'Set the ComfyUI address in Preferences > Plugins first.'); return; }
+    try {
+      const s = await resendRecipeInputs(url, r.json);
+      setText(this.note, s.held === 0 ? `${name} names none of the pictures formvis has copies of.` : `${s.sent} picture${s.sent === 1 ? '' : 's'} of ${name} sent to ComfyUI again${s.missing ? `; ${s.missing} no longer have a copy` : ''}.`);
+    } catch (err) { setText(this.note, failure(err, 'The pictures could not be sent again.')); }
   }
 
   private async read(): Promise<void> {

@@ -55,8 +55,8 @@ function rings(radius: number): Array<[number, number, number]> {
  *  Preserve Details rises, its reach growing with Strength), colour noise blurred in the chroma planes, details
  *  sharpened back by an unsharp mask on brightness, and with Remove JPEG Artifact the 8 by 8 block seams of the canvas's
  *  grid (offset `gx`, `gy`) softened. */
-export function reduceNoiseImage(img: ImageData, o: DenoiseSettings, scale: number, gx = 0, gy = 0): ImageData {
-  const { width: w, height: h } = img, s = img.data, out = copyImage(img), d = out.data, n = w * h;
+export function reduceNoiseImage<T extends { width: number; height: number; data: Uint8ClampedArray | Float32Array }>(img: T, o: DenoiseSettings, scale: number, gx = 0, gy = 0): T {
+  const { width: w, height: h } = img, s = img.data, out = (img.data instanceof Float32Array ? { width: w, height: h, data: new Float32Array(img.data) } : copyImage(img as unknown as ImageData)) as T, d = out.data, n = w * h, cl = img.data instanceof Float32Array ? (v: number): number => (v < 0 ? 0 : v > 255 ? 255 : v) : (v: number): number => v;
   const Y = new Float32Array(n), Cb = new Float32Array(n), Cr = new Float32Array(n);
   for (let i = 0; i < n; i++) {
     const r = s[i * 4], g = s[i * 4 + 1], b = s[i * 4 + 2];
@@ -97,7 +97,7 @@ export function reduceNoiseImage(img: ImageData, o: DenoiseSettings, scale: numb
   }
   for (let i = 0; i < n; i++) {
     const yy = lum[i], b1 = cb[i] / 0.564, r1 = cr[i] / 0.713;
-    d[i * 4] = yy + r1; d[i * 4 + 2] = yy + b1; d[i * 4 + 1] = (yy - 0.299 * (yy + r1) - 0.114 * (yy + b1)) / 0.587;
+    d[i * 4] = cl(yy + r1); d[i * 4 + 2] = cl(yy + b1); d[i * 4 + 1] = cl((yy - 0.299 * (yy + r1) - 0.114 * (yy + b1)) / 0.587);
   }
   return out;
 }

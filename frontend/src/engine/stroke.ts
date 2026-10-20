@@ -221,12 +221,17 @@ export class PixelStroke {
     if (!b) return true;
     const open = this.ww > 1 || this.wh > 1;
     if (open && b.x >= this.ox && b.y >= this.oy && b.x + b.w <= this.ox + this.ww && b.y + b.h <= this.oy + this.wh) return true;
-    const u = open ? unionRect({ x: this.ox, y: this.oy, w: this.ww, h: this.wh }, b) as Rect : b;
     // Half again around it, so a stroke regrows rarely; on a giant layer a fixed 1,024 pixels (1.63.0), since half again
     // of a stroke across a 600 MP picture asked for a window the size of the picture, several times over.
-    const m = this.tiled ? 1024 : Math.max(512, Math.round(Math.max(u.w, u.h) / 2));
-    const nx = Math.max(0, u.x - m), ny = Math.max(0, u.y - m), nw = Math.min(L, u.x + u.w + m) - nx, nh = Math.min(H, u.y + u.h + m) - ny;
-    if (this.tiled && open && (nw > FLUSH_SIDE || nh > FLUSH_SIDE || nw * nh > FLUSH_PIXELS)) { this.flush(); return this.ensure(box); }
+    const fit = (u: Rect): Rect => {
+      const m = this.tiled ? 1024 : Math.max(512, Math.round(Math.max(u.w, u.h) / 2)), x = Math.max(0, u.x - m), y = Math.max(0, u.y - m);
+      return { x, y, w: Math.min(L, u.x + u.w + m) - x, h: Math.min(H, u.y + u.h + m) - y };
+    };
+    let { x: nx, y: ny, w: nw, h: nh } = fit(open ? unionRect({ x: this.ox, y: this.oy, w: this.ww, h: this.wh }, b) as Rect : b);
+    if (this.tiled && open && (nw > FLUSH_SIDE || nh > FLUSH_SIDE || nw * nh > FLUSH_PIXELS)) {
+      this.flush();
+      ({ x: nx, y: ny, w: nw, h: nh } = fit(b));   // the window cut back to the pointer, what it held there carried over
+    }
     if (nw > CANVAS_SIDE || nh > CANVAS_SIDE || nw * nh > CANVAS_PIXELS) { this.clipped = true; return false; }
     if (this.canGrow && !this.canGrow((nw * nh - (open ? this.ww * this.wh : 0)) * (4 * (2 + (this.masked ? 1 : 0) + (this.textured ? 1 : 0) + (this.ink ? 1 : 0)) + (this.buf.ceil ? 5 : 4)))) { this.clipped = true; return false; }
     // A tiled layer's original pixels for the whole new window, read once (1.62.5); a tile there on disk stops the
@@ -235,13 +240,16 @@ export class PixelStroke {
     if (this.tiled) {
       try { fresh = this.tiled.read(nx, ny, nw, nh); } catch { this.missing = { x: nx, y: ny, w: nw, h: nh }; this.clipped = true; return false; }
     }
+    const dx = this.ox - nx, dy = this.oy - ny;
     if (fresh) {
-      const o = createSurface(nw, nh);
-      ctxOf(o).putImageData(fresh, 0, 0);
-      if (this.orig) { this.orig.width = 0; this.orig.height = 0; }
+      const o = createSurface(nw, nh), oc = ctxOf(o);
+      oc.putImageData(fresh, 0, 0);
+      if (this.orig) {   // the originals kept stay the layer's before the stroke, not the tiles the flush has since painted
+        if (open) { oc.save(); oc.beginPath(); oc.rect(dx, dy, this.ww, this.wh); oc.clip(); oc.globalCompositeOperation = 'copy'; oc.drawImage(this.orig, dx, dy); oc.restore(); }
+        this.orig.width = 0; this.orig.height = 0;
+      }
       this.orig = o;
     }
-    const dx = this.ox - nx, dy = this.oy - ny;
     const remake = (old: Surface | null, layer: boolean): Surface | null => {
       if (!old) return null;
       const s = createSurface(nw, nh), c = ctxOf(s);
@@ -265,22 +273,12 @@ export class PixelStroke {
   }
 
   /** A tiled layer's stroke that has outgrown its window (1.91.3, CO-0277): what the window holds is written into the
-   *  tiles, its undo patches kept for the stroke's one step, and the window shrunk to nothing, so the next dab opens a
-   *  new one where the pointer is and reads the tiles, the paint so far included. */
+   *  tiles and its undo patches kept for the stroke's one step. The window is then cut back to the pointer by ensure
+   *  with the stroke's coverage, paint and originals carried over where they overlap, so the stroke goes on as one. */
   private flush(): void {
     this.flushed = this.commitTiles();
     this.touched = null;
     this.pending = null;
-    for (const s of [this.working, this.paint, this.masked, this.textured, this.ink]) giveSurface(s);
-    if (this.orig) { this.orig.width = 0; this.orig.height = 0; this.orig = null; }
-    this.textured = null;
-    this.ink = null;
-    this.ww = 1; this.wh = 1; this.ox = 0; this.oy = 0;
-    this.working = takeSurface(1, 1); this.workingCtx = ctxOf(this.working);
-    this.paint = takeSurface(1, 1); this.paintCtx = ctxOf(this.paint);
-    this.masked = this.selection ? takeSurface(1, 1) : null;
-    this.buf = new StrokeBuffer(1, 1);
-    this.toWin = this.toLocal;
   }
 
   /** A cancelled stroke on a tiled layer: the windows already written into the tiles put back, newest first. */

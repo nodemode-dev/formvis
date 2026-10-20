@@ -1993,7 +1993,7 @@ export class Engine {
     // A clipping base, as the CPU renderer's clipCoverage reads it: its pixels at its opacity through its own mask (its
     // visibility and folder masks do not enter); null where it cannot clip (a folder, no pixels), which hides the
     // clipped layer; a base that is itself clipped carries the base it is clipped to as `parent`, whose coverage limits
-    // its own as the renderer's destination-in does (up to 8 deep, and none with a vector mask, which stay on the CPU).
+    // its own as the renderer's destination-in does (up to 8 deep); a base's vector mask is one more parent in front of it.
     // A 16 or 32 bit layer's floats for the display (RGB only; not while a live preview stands in for its pixels); a 32 bit document with an adjustment layer keeps 8-bit textures, as the adjustment's table indexes 0 to 255.
     const deepOf = (x: Layer, src: { width: number; height: number }, live: unknown): ChannelPixels | undefined => {
       const c = x.channels;
@@ -2005,7 +2005,7 @@ export class Engine {
       let parent: GpuClipSpec | undefined;
       const up = b.clipId ? map.get(b.clipId) : undefined;
       if (up) {
-        if (depth >= 8 || vecFor(up).length || up.blendClipped) return 'nested';
+        if (depth >= 8 || up.blendClipped) return 'nested';
         if (!clips.has(up.id)) clips.set(up.id, clipOf(up.id, depth + 1));
         const pc = clips.get(up.id);
         if (pc === 'nested') return 'nested';
@@ -2013,6 +2013,8 @@ export class Engine {
         parent = pc;
       }
       const bo = ov?.get(b.id), src = bo?.source ?? b.raster.canvas, t = bo?.transform ?? b.transform;
+      const [vm] = vecFor(b, t);
+      if (vm) parent = { image: vm.image, version: vm.version, width: vm.width, height: vm.height, matrix: vm.matrix, opacity: 1, parent };
       return { image: src, version: bo?.source ? -1 : b.raster.version, width: src.width, height: src.height, matrix: placement(t, src.width, src.height), opacity: b.blendClipped && !b.adjustment ? 1 : bo?.opacity ?? b.opacity, mask: maskFor(b, bo), parent, deep: deepOf(b, src, bo?.source), linear: p.doc.depth === 32 };
     };
     // The layer list, whole or restricted to `only` (a Knockout's backdrop); `handled` are the folders the renderer is already inside.
@@ -2084,8 +2086,7 @@ export class Engine {
       if (l.clipId) {
         if (!clips.has(l.clipId)) clips.set(l.clipId, clipOf(l.clipId));
         const c = clips.get(l.clipId), cb = map.get(l.clipId);
-        if (c === 'nested') return { reason: 'a clipping chain more than 8 deep, with a vector mask or under Blend Clipped Layers as Group' };
-        if (cb && vecFor(cb).length) return { reason: 'a clipping base with a vector mask' };
+        if (c === 'nested') return { reason: 'a clipping chain more than 8 deep or under Blend Clipped Layers as Group' };
         if (!c) continue;
         clip = c;
       }

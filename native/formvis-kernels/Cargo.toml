@@ -3,7 +3,7 @@ name = "formvis-kernels"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
-description = "formvis's dependency-free pixel kernels, built to WebAssembly with SIMD; one module per feature (mask, tone, blur, resample, dither, heal)"
+description = "formvis's dependency-free pixel kernels, built to WebAssembly with SIMD; one module per feature (mask, tone, blur, resample, dither, heal, noise, patch)"
 publish = false
 
 [lib]
@@ -18,6 +18,7 @@ resample = []
 dither = []
 heal = []
 noise = []
+patch = []
 
 [profile.release]
 opt-level = 3

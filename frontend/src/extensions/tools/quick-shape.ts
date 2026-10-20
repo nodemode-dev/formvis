@@ -7,7 +7,8 @@ import type { OptionSpec, ToolContext, ToolPointer } from '../registry';
  *  freehand stroke is cancelled (its history step aborted) and the shape is painted in a new stroke with the same brush,
  *  which the release then ends: one undo step, holding the shape only. */
 export const HOLD_MS = 600;
-const STILL = 2;   // document pixels the pointer may wander and still count as still
+const LATE_MS = 120;   // how much later than HOLD_MS the timer may fire and still count as a true wait
+const STILL = 2;  // document pixels the pointer may wander and still count as still
 
 const state = { on: true };
 let pts: Pt[] = [], anchor: Pt | null = null, timer = 0, snapped = false;
@@ -34,8 +35,19 @@ export function holdMove(ctx: ToolContext, p: ToolPointer, begin: (pt: Pt, press
   if (anchor && Math.hypot(p.doc.x - anchor.x, p.doc.y - anchor.y) <= STILL && pts.length > 1) return;   // still: keep waiting
   pts.push({ ...p.doc });
   anchor = { ...p.doc };
+  arm(ctx.engine, p.pressure, p.pose, begin);
+}
+
+/** The wait is stillness in input time: a timer that fires much later than it was set (the page stalled, as in a flush
+ *  of a giant layer's stroke window) says nothing about the pointer, whose queued moves are still to arrive, so it waits
+ *  again from now rather than snapping. */
+function arm(e: Engine, pressure: number, pose: ToolPointer['pose'], begin: (pt: Pt, pressure: number, pose: ToolPointer['pose']) => boolean): void {
   window.clearTimeout(timer);
-  timer = window.setTimeout(() => snap(ctx.engine, p.pressure, p.pose, begin), HOLD_MS);
+  const at = performance.now();
+  timer = window.setTimeout(() => {
+    if (performance.now() - at > HOLD_MS + LATE_MS) arm(e, pressure, pose, begin);
+    else snap(e, pressure, pose, begin);
+  }, HOLD_MS);
 }
 
 function snap(e: Engine, pressure: number, pose: ToolPointer['pose'], begin: (pt: Pt, pressure: number, pose: ToolPointer['pose']) => boolean): void {

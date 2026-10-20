@@ -40,13 +40,14 @@ function buildEffects(m: FxJob): void {
     const live = new Set<string>(m.live);
     for (const k of [...rasters.keys()]) if (!live.has(k)) rasters.delete(k);
     const src = rasters.get(m.src), mr = m.mask ? rasters.get(m.mask.key) ?? null : null;
-    if (!src || (m.mask && !mr)) throw new Error('a layer picture is missing');
+    const cv = m.cover ? rasters.get(m.cover) ?? null : null;
+    if (!src || (m.mask && !mr) || (m.cover && !cv)) throw new Error('a layer picture is missing');
     for (const p of m.patterns) { const r = rasters.get(p.key); if (r) addPattern('Pattern', r.canvas, p.id); }
     const layer = { id: m.layerId, name: '', raster: src, mask: null, transparencyShapes: m.shapes ? undefined : false } as unknown as Layer;
     const own = m.mask && mr ? { src: mr.canvas, w: m.mask.w, h: m.mask.h, t: m.mask.t, covers: m.mask.covers } : null;
     renderer.fastEffects = m.fast;
     renderer.previewPixels = m.pixels;
-    const out: FxPartWire[] = renderer.buildDetached(layer, m.fx, src.canvas, m.t, own, m.docW, m.docH).map((p) => ({ bitmap: (p.s as OffscreenCanvas).transferToImageBitmap(), w: p.s.width, h: p.s.height, x: p.x, y: p.y, k: p.k, alpha: p.alpha, op: p.op, above: p.above, name: p.name, kept: p.kept }));
+    const out: FxPartWire[] = renderer.buildDetached(layer, m.fx, src.canvas, m.t, own, m.docW, m.docH, cv ? cv.canvas : null).map((p) => ({ bitmap: (p.s as OffscreenCanvas).transferToImageBitmap(), w: p.s.width, h: p.s.height, x: p.x, y: p.y, k: p.k, alpha: p.alpha, op: p.op, above: p.above, name: p.name, kept: p.kept }));
     scope.postMessage({ type: 'fxdone', id: m.id, ms: performance.now() - began, parts: out } satisfies FxDone, out.map((p) => p.bitmap));
   } catch (err) {
     scope.postMessage({ type: 'fxdone', id: m.id, ms: 0, error: String(err) } satisfies FxDone);

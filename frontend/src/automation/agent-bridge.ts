@@ -254,6 +254,16 @@ export class AgentBridge {
         const d = e.current?.doc;
         return text(`Opened a ${d?.width} by ${d?.height} ${d?.mode ?? 'rgb'} document at ${d?.depth ?? 8} bits.`, { width: d?.width, height: d?.height, mode: d?.mode ?? 'rgb', depth: d?.depth ?? 8 });
       }
+      if (name === '__jobs') {
+        const jobs = e.jobs.map((j) => ({ id: `window:${j.id}`, source: 'window', kind: 'job', status: j.cancelled ? 'cancelled' : 'running', progress: j.total > 0 ? Math.round(Math.min(1, j.done / j.total) * 1000) / 1000 : null, message: j.name, created: j.startedAt / 1000 }));
+        return text(`${jobs.length} window job${jobs.length === 1 ? '' : 's'}.`, { jobs });
+      }
+      if (name === '__job_stop') {
+        const wanted = /^window:(\d+)$/.exec(str('id'));
+        const ids = e.jobs.filter((j) => !j.cancelled && (!str('id') || (wanted && j.id === Number(wanted[1])))).map((j) => j.id);
+        for (const id of ids) e.cancelJob(id);
+        return text(`Asked ${ids.length} window job${ids.length === 1 ? '' : 's'} to stop.`, { stopped: ids });
+      }
       if (name === '__open') {   // open_file: the engine read the file at its path (1.53.3)
         const bytes = Uint8Array.from(atob(str('data')), (c) => c.charCodeAt(0)), file = new File([bytes], str('name')), was = p?.id, into = str('into');
         if (into === 'layer' || into === 'replace') {

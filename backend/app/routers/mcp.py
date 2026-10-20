@@ -909,11 +909,17 @@ async def _run(name: str, args: dict) -> dict:
             return {"content": [{"type": "text", "text": f"Wrote {made['path']} ({made['bytes']:,} bytes, {made['width']} by {made['height']}, {made['format']})."}], "structuredContent": made}
         if name == "jobs_list":
             rows = _jobs_listing(args.get("status", "all"), int(args.get("limit", 50)))
+            if _live() and (_allowed or _inapp_call.get()) and args.get("status", "all") != "finished":
+                seen = (await _ask("__jobs", {}, 5) or {}).get("structuredContent") or {}
+                rows = [*(r for r in seen.get("jobs", []) if isinstance(r, dict)), *rows][:int(args.get("limit", 50))]
             return {"content": [{"type": "text", "text": f"{len(rows)} job{'' if len(rows) == 1 else 's'}. {json.dumps(rows)}"}], "structuredContent": {"jobs": rows}}
         if name == "jobs_cancel":
             if not args.get("all") and not args.get("id"):
                 return _fail("Give the job id from jobs_list, or all true to cancel every active job.")
             done = _jobs_cancel(args)
+            if (args.get("all") or str(args.get("id", "")).startswith("window:")) and _live() and (_allowed or _inapp_call.get()):
+                stopped = (await _ask("__job_stop", {"id": args.get("id") if not args.get("all") else None}, 5) or {}).get("structuredContent") or {}
+                done["cancelled"] += [f"window:{i}" for i in stopped.get("stopped", [])]
             if not done["cancelled"] and not done["approvals_stopped"]:
                 return _fail("No active job matches. Call jobs_list for the ids.")
             return {"content": [{"type": "text", "text": f"Asked {len(done['cancelled'])} job{'' if len(done['cancelled']) == 1 else 's'} to stop."}], "structuredContent": done}

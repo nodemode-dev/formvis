@@ -47,6 +47,6 @@ def test_the_selection_brush_paints_and_takes_away_the_selection(page):
     page.keyboard.press("Control+z")
     assert page.evaluate("window.formvis.engine.current.selection") is None
     idx = page.evaluate("(async () => { const { toolGroups } = await import('/src/ui/tool-groups.ts'); return toolGroups().findIndex((g) => g.tools.some((t) => t.id === 'wand')); })()")
-    page.locator(".cv-rail-tools .cv-tool").nth(idx).click(button="right")
+    page.locator(".cv-rail-tools .cv-rail-slot").nth(idx).click(button="right")
     assert "Selection Brush" in page.locator(".cv-flyout:not([hidden]) .cv-flyout-label").all_inner_texts()
     page.keyboard.press("Escape")

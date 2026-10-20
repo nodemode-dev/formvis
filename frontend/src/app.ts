@@ -1306,6 +1306,12 @@ export function startApp(): void {
     const files = await assetFiles(engine, !!caps);
     if (!files.length) { if (!quiet) toast('No layer names hold an asset name such as hero.png.', 'info'); return; }
     if (into) { await writeFolder(into, files); toast(`Wrote ${files.length} image asset${files.length === 1 ? '' : 's'} into ${into.name}.`, 'info'); return; }
+    if (caps?.desktop && !toFolder) {
+      const beside = `${stripExt(p.name).replace(/[/\\:*?"<>|]/g, '-').replace(/^[. ]+/, '') || 'Untitled'} assets`;
+      for (const f of files) { if (p.filePath) await api.exportBeside(f.blob, f.name, p.filePath, beside); else await api.exportFile(f.blob, f.name, beside); }
+      toast(`Wrote ${files.length} image asset${files.length === 1 ? '' : 's'} into the folder "${beside}"${p.filePath ? ' beside the document' : ' in the exports folder'}.`, 'info');
+      return;
+    }
     const folder = `${stripExt(p.name)}-assets`;
     if (!await deliverFile(await zipFiles(files.map((f) => ({ name: `${folder}/${f.name}`, blob: f.blob }))), `${folder}.zip`)) return;
     toast(`Generated ${files.length} image asset${files.length === 1 ? '' : 's'}.`, 'info');
@@ -3559,10 +3565,12 @@ export function startApp(): void {
   const pluginHost = new PluginHost(engine, agents, commands, (t, kind) => toast(t, kind ?? 'info'));
   // Plugin folders (plugin.json and an ES module): a side panel is a section in the dock, added and removed in place.
   const unshownPanels = new Set<string>();
+  const panelBox: { get: (() => { add(id: string, label: string): HTMLElement | null; remove(id: string): void }) | null } = { get: null };
+  pluginHost.panelSlot = () => panelBox.get?.() ?? null;
   const folderPlugins = new FolderPlugins({
     engine, commands, note: (t, kind) => toast(t, kind ?? 'info'),
     confirm: (title, text, ok) => confirmAction(title, text, ok), prompt: (title, value, ok) => promptName(title, value, ok),
-    panels: () => ({
+    panels: panelBox.get = () => ({
       add: (id, label) => {
         if (document.querySelector(`section.cv-${id}`)) return null;
         if (!loadPrefs().showExtPanels) { unshownPanels.add(id); return el('<div class="cv-plugin-panel-body"></div>'); }

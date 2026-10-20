@@ -67,10 +67,10 @@ def test_brush_settings_opens_with_its_sections_and_edits_the_brush(page):
     assert page.evaluate("window.formvis.commands.run('brush-settings')")
     dlg = page.locator(".cv-scrim:not([hidden]) .cv-dialog")
     heads = dlg.locator("h3").all_inner_texts()
-    assert heads == ["Brush Tip Shape", "Shape Dynamics", "Scattering", "Texture", "Dual Brush", "Color Dynamics", "Transfer", "Noise and Wet Edges"], heads
-    slider = dlg.locator(".cv-field").filter(has=page.get_by_text("Roundness (%)", exact=True)).locator("input[type=range]")
+    assert heads == ["Brush Tip Shape", "Shape Dynamics", "Scattering", "Texture", "Dual Brush", "Color Dynamics", "Transfer", "Brush Pose", "Smoothing", "Build-up", "Noise and Wet Edges", "Pen Pressure Curve"], heads
+    slider = dlg.locator(".cv-field").filter(has=page.get_by_text("Roundness (%)", exact=True)).locator("input[type=range]").first
     slider.evaluate("(i) => { i.value = '30'; i.dispatchEvent(new Event('input', { bubbles: true })); }")
     assert page.evaluate("window.formvis.engine.brushShape.roundness") == 30
-    dlg.locator(".cv-dialog-foot button", has_text="Reset").click()
+    dlg.locator(".cv-dialog-foot button", has_text="Reset").last.click()
     assert page.evaluate("window.formvis.engine.brushShape.roundness") == 100
     page.keyboard.press("Escape")

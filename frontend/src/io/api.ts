@@ -846,6 +846,11 @@ export const api = {
     const r = await request('/io/export', { method: 'POST', body: form(folder ? { name, folder } : { name }, [{ name, blob }], 'file') });
     return ((await r.json()) as { path: string }).path;
   },
+  /** A file written into `folder` beside the document at `document` (Image Assets on save); the path written. */
+  async exportBeside(blob: Blob, name: string, document: string, folder: string): Promise<string> {
+    const r = await request('/io/export-beside', { method: 'POST', headers: LOCAL, body: form({ name, document, folder }, [{ name, blob }], 'file') });
+    return ((await r.json()) as { path: string }).path;
+  },
   async terminals(): Promise<TerminalInfo[]> {
     return ((await (await request('/terminal')).json()) as { terminals: TerminalInfo[] }).terminals;
   },

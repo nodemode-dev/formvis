@@ -3,7 +3,7 @@
  *  refused) and kept, so startup never waits on it; until a chunk is ready every call answers null and the caller runs
  *  its TypeScript twin, which gives the same bytes. A chunk that fails to load is not tried again. */
 
-export type KernelChunk = 'mask' | 'tone' | 'blur' | 'resample' | 'dither' | 'heal' | 'noise';
+export type KernelChunk = 'mask' | 'tone' | 'blur' | 'resample' | 'dither' | 'heal' | 'noise' | 'patch';
 type Fn = (...args: number[]) => number;
 interface Chunk { memory: WebAssembly.Memory; fn: Record<string, Fn> }
 type State = 'idle' | 'loading' | 'ready' | 'failed';
@@ -17,6 +17,7 @@ const URLS: Record<KernelChunk, string> = {
   dither: new URL('./kernels-wasm/formvis-kernels-dither.wasm', import.meta.url).href,
   heal: new URL('./kernels-wasm/formvis-kernels-heal.wasm', import.meta.url).href,
   noise: new URL('./kernels-wasm/formvis-kernels-noise.wasm', import.meta.url).href,
+  patch: new URL('./kernels-wasm/formvis-kernels-patch.wasm', import.meta.url).href,
 };
 const LIMIT = 1 << 30;
 const RENEW = 3 << 28;
@@ -26,7 +27,7 @@ const modules = new Map<KernelChunk, WebAssembly.Module>();
 const ready = new Map<KernelChunk, Chunk>();
 const loading = new Map<KernelChunk, Promise<boolean>>();
 const failed = new Set<KernelChunk>();
-const calls: Record<KernelChunk, number> = { mask: 0, tone: 0, blur: 0, resample: 0, dither: 0, heal: 0, noise: 0 };
+const calls: Record<KernelChunk, number> = { mask: 0, tone: 0, blur: 0, resample: 0, dither: 0, heal: 0, noise: 0, patch: 0 };
 let enabled = true;
 
 function open(module: WebAssembly.Module): Chunk | null {
@@ -82,7 +83,7 @@ export function setKernelsEnabled(on: boolean): void { enabled = on; }
 
 export function kernelStats(): { enabled: boolean; chunks: Record<KernelChunk, { state: State; calls: number; memory: number }> } {
   const one = (name: KernelChunk) => ({ state: (ready.has(name) ? 'ready' : loading.has(name) ? 'loading' : failed.has(name) ? 'failed' : 'idle') as State, calls: calls[name], memory: ready.get(name)?.memory.buffer.byteLength ?? 0 });
-  return { enabled, chunks: { mask: one('mask'), tone: one('tone'), blur: one('blur'), resample: one('resample'), dither: one('dither'), heal: one('heal'), noise: one('noise') } };
+  return { enabled, chunks: { mask: one('mask'), tone: one('tone'), blur: one('blur'), resample: one('resample'), dither: one('dither'), heal: one('heal'), noise: one('noise'), patch: one('patch') } };
 }
 
 /** Memory never shrinks, so after a very large image the chunk is opened again from its compiled module. */
@@ -245,6 +246,22 @@ export function wasmHealFull(before: Uint8ClampedArray, out: Uint8ClampedArray, 
     chunk.fn.fv_heal_full(pb, po, pc, n, w, opacity, replace ? 1 : 0, pf);
     out.set(bytes(chunk, po, n * 4));
     full.set(bytes(chunk, pf, n * 4));
+    return true;
+  }) === true;
+}
+
+/** The Patch tool's Diffusion and Color correction over `out` in place (twin of `scaleHealCorrection`); false where the TypeScript must run. */
+export function wasmPatchCorrect(out: Uint8ClampedArray, before: Uint8ClampedArray, coverage: Uint8Array, w: number, h: number, dx: number, dy: number, diffusion: number, colour: number, opacity: number, source?: Uint8ClampedArray): boolean {
+  const n = w * h;
+  if (!Number.isInteger(w) || !Number.isInteger(h) || n < 1024 || out.length !== n * 4 || before.length !== n * 4 || coverage.length !== n || (source && source.length !== n * 4)) return false;
+  if (!Number.isInteger(dx) || !Number.isInteger(dy) || Math.abs(dx) > 1 << 30 || Math.abs(dy) > 1 << 30 || ![diffusion, colour, opacity].every(Number.isFinite)) return false;
+  return run('patch', source ? [n * 4, n * 4, n, n * 4] : [n * 4, n * 4, n], (chunk, [po, pb, pc, ps]) => {
+    bytes(chunk, po, n * 4).set(out);
+    bytes(chunk, pb, n * 4).set(before);
+    bytes(chunk, pc, n).set(coverage);
+    if (source) bytes(chunk, ps, n * 4).set(source);
+    chunk.fn.fv_patch_correct(po, pb, pc, w, h, dx, dy, diffusion, colour, opacity, source ? ps : 0, source ? 1 : 0);
+    out.set(bytes(chunk, po, n * 4));
     return true;
   }) === true;
 }

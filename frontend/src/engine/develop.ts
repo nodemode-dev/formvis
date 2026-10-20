@@ -1,4 +1,4 @@
-import { gaussianBlur, lensDistort } from './filters';
+import { boxBlur, gaussianBlur, lensDistort, threeBoxWidths } from './filters';
 import { reduceNoiseImage } from './filters-lib/noise';
 
 /** Develop: Camera Raw-style tone, colour and detail adjustments, brought over from formnodal's develop core (the
@@ -6,6 +6,12 @@ import { reduceNoiseImage } from './filters-lib/noise';
  *  formnodal's as written; clarity, texture and sharpening at the end keep its formulas but blur with formvis's own
  *  Gaussian, so the whole filter runs in the preview worker. formnodal is also nodemode-ai's own build; the owner
  *  confirmed no further notice is needed for it. */
+
+/** Pixels the passes work on: an ImageData (8 bits) or, for the float path, the same layout in a Float32Array on the 0 to 255 scale. */
+export interface Px { width: number; height: number; data: Uint8ClampedArray | Float32Array }
+const isFloat = (p: Px): boolean => p.data instanceof Float32Array;
+const copyPx = (p: Px): Px => (p.data instanceof Float32Array ? { width: p.width, height: p.height, data: new Float32Array(p.data) } : new ImageData(new Uint8ClampedArray(p.data), p.width, p.height));
+const blankPx = (p: Px): Px => (p.data instanceof Float32Array ? { width: p.width, height: p.height, data: new Float32Array(p.data.length) } : new ImageData(p.width, p.height));
 
 // ------------------------------------------------------------ state types
 
@@ -148,7 +154,7 @@ export const pointColorActive = (p: PointColorState): boolean => /^#[0-9a-f]{6}$
 
 /** Point Color on `img` in place: each pixel's closeness to the picked colour (hue distance, then saturation and lightness
  *  distance, each against the range, with a cosine falloff) scales the shifts it receives. Greys have no hue and are left alone. */
-export function pointColorPass(img: ImageData, pc: PointColorState): void {
+export function pointColorPass(img: Px, pc: PointColorState): void {
   const n = parseInt(pc.color.slice(1), 16), [h0, s0, l0] = rgbToHsl((n >> 16) & 255, (n >> 8) & 255, n & 255), d = img.data;
   const reach = Math.max(0.05, pc.range / 100), hueW = 90 * reach, satW = 0.6 * reach + 0.1, lumW = 0.6 * reach + 0.1;
   const falloff = (dist: number, width: number): number => (dist >= width ? 0 : 0.5 + 0.5 * Math.cos(Math.PI * dist / width));
@@ -174,19 +180,24 @@ export const parametricActive = (p: ParametricState): boolean => p.shadows !== 0
 /** The 256 entry table of a parametric curve: each zone is a raised-cosine bump centred between its split points, so the
  *  zones overlap smoothly and a zone at 100 moves its centre by a fifth of the range. */
 export function buildParametricLut(p: ParametricState): Uint8Array {
+  const at = parametricCurve(p), lut = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) lut[i] = Math.round(at(i / 255) * 255);
+  return lut;
+}
+
+/** The parametric curve as a function of a value in 0..1, for the float pass: the table's own formula, evaluated rather than looked up. */
+export function parametricCurve(p: ParametricState): (x: number) => number {
   const a = clamp01(p.split1 / 100), b = clamp01(Math.max(p.split2, p.split1 + 1) / 100), c = clamp01(Math.max(p.split3, p.split2 + 1, p.split1 + 2) / 100);
   const centres = [a / 2, (a + b) / 2, (b + c) / 2, (c + 1) / 2], halfW = [Math.max(a, 0.05), Math.max(b - a, 0.05) + 0.1, Math.max(c - b, 0.05) + 0.1, Math.max(1 - c, 0.05)];
-  const amounts = [p.shadows, p.darks, p.lights, p.highlights], lut = new Uint8Array(256);
-  for (let i = 0; i < 256; i++) {
-    const x = i / 255;
+  const amounts = [p.shadows, p.darks, p.lights, p.highlights];
+  return (x: number): number => {
     let shift = 0;
     for (let k = 0; k < 4; k++) {
       const d = Math.abs(x - centres[k]) / (halfW[k] * 1.5);
       if (d < 1) shift += (amounts[k] / 100) * 0.2 * (0.5 + 0.5 * Math.cos(Math.PI * d));
     }
-    lut[i] = Math.round(clamp01(x + shift) * 255);
-  }
-  return lut;
+    return clamp01(x + shift);
+  };
 }
 
 export interface GradeWheel { h: number; s: number; l?: number }
@@ -461,7 +472,7 @@ function vignetteMix(r: number, g: number, b: number, fall: number, dark: boolea
 
 /** The vignette on the finished frame (after Geometry), centred on the frame itself, so a rotated or scaled picture keeps its
  *  vignette at the frame's corners. */
-function vignettePostPass(img: ImageData, state: DevelopState): void {
+function vignettePostPass(img: Px, state: DevelopState): void {
   const w = img.width, h = img.height, d = img.data, vs = vignetteShapeOf(state), cx = w / 2, cy = h / 2, maxRadius = Math.hypot(cx, cy), vro = vs.roundness / 100;
   const vsx = Math.max(1, cx * (1 - vro) + maxRadius * vro), vsy = Math.max(1, cy * (1 - vro) + maxRadius * vro), vcorner = Math.hypot(cx / vsx, cy / vsy) || 1;
   const vslope = (Math.abs(state.tone.vignette) / 50) * (50 / Math.max(1, vs.feather)), vmid = vs.midpoint / 100, color = vs.color ? hexRgb(vs.color) : null, prot = clamp01((vs.protect ?? 0) / 100);
@@ -662,15 +673,38 @@ export function developPass(src: Uint8ClampedArray | Float32Array, dst: Uint8Cla
   }
 }
 
-/** Develop's per-pixel pass on the float channels of a 16 or 32 bit RGB layer (interleaved with alpha last), for a state whose
- *  every other stage is at its default; null when the state needs neighbours, a resample, Point Color, Calibration or Colour
- *  Grading, or the layer is not RGB, which stay on the 8 bit rendition. Values clip to 0..1 as the 8 bit pass does. */
+const scaled = (a: Float32Array, k: number): Float32Array => { const o = new Float32Array(a.length); for (let i = 0; i < a.length; i++) o[i] = a[i]! * k; return o; };
+
+/** Develop on the float channels of a 16 or 32 bit RGB layer (interleaved with alpha last): the per-pixel pass, the parametric
+ *  curve, Point Color, Calibration, Colour Grading, dark channel Dehaze, Clarity, Texture and Sharpening, all on floats.
+ *  Noise Reduction, Optics and Geometry. Null when the state needs depth Dehaze (no depth map reaches here), or the layer is not RGB, which stay on the
+ *  8 bit rendition. Values clip to 0..1 (white) at the per-pixel pass and at each stage after it, as the 8 bit passes do, in
+ *  a 32 bit layer too: nothing above white is kept. */
 export function developDeep(data: Float32Array, n: number, w: number, h: number, state: DevelopState, seed = 7): Float32Array | null {
-  const o = opticsOf(state);
-  if (n !== 3 || !developPerPixelOnly(state) || opticsActive(o) || pointColorActive(pointColorOf(state)) || gradingActive(gradingOf(state)) || calibrationActive(calibrationOf(state)) || parametricActive(parametricOf(state))) return null;
+  const optics = opticsOf(state), geometry = geometryOf(state), post = state.tone.vignette !== 0 && vignetteAfterGeometry(state);
+  if (n !== 3 || state.dehazeDepth === true) return null;
+  const nr = noiseOf(state), base = noiseActive(nr) ? scaled(reduceNoiseImage({ width: w, height: h, data: scaled(data, 255) }, { strength: nr.luminance / 10, preserve: nr.detail, color: nr.color, sharpen: nr.contrast, jpeg: false, colorDetail: nr.colorDetail, colorSmooth: nr.colorSmoothness }, 1).data as Float32Array, 1 / 255) : data;
+  const dehaze = darkDehazeOn(state), st = dehaze ? { ...state, tone: { ...state.tone, dehaze: 0 } } : state;
+  const src = dehaze ? scaled(darkDehaze({ width: w, height: h, data: scaled(base, 255) },state.tone.dehaze / 100, 1, (state.dehazeSky ?? 0) / 100, null, (state.dehazeDensity ?? 50) / 100).data as Float32Array, 1 / 255) : base;
   const out = new Float32Array(data.length);
-  developPass(data, out, w, h, state, seed, true);
-  return out;
+  developPass(src, out, w, h, st, seed, true);
+  const parametric = parametricOf(state), point = pointColorOf(state), grading = gradingOf(state), calibration = calibrationOf(state), d = state.detail;
+  const later = parametricActive(parametric) || pointColorActive(point) || gradingActive(grading) || calibrationActive(calibration) || detailActive(d) || opticsActive(optics) || geometryActive(geometry);
+  if (!later) return out;
+  let img: Px = { width: w, height: h, data: scaled(out, 255) };
+  if (parametricActive(parametric)) {
+    const at = parametricCurve(parametric), p = img.data;
+    for (let i = 0; i < p.length; i += 4) { p[i] = at(p[i]! / 255) * 255; p[i + 1] = at(p[i + 1]! / 255) * 255; p[i + 2] = at(p[i + 2]! / 255) * 255; }
+  }
+  if (pointColorActive(point)) pointColorPass(img, point);
+  if (gradingActive(grading) || calibrationActive(calibration)) gradePass(img, grading, calibration);
+  if (d.clarity) img = clarityPass(img, d.clarity);
+  if (d.texture) img = detailPass(img, 3, d.texture / 100, true);
+  if (d.sharpen > 0) img = sharpenPass(img, d.sharpen / 100, d.sharpenRadius ?? 1.2, (d.sharpenDetail ?? 100) / 100, (d.sharpenMasking ?? 0) / 100);
+  if (opticsActive(optics)) img = opticsPass(img, optics);
+  if (geometryActive(geometry)) img = geometryPass(img, geometry);
+  if (post) vignettePostPass(img, state);
+  return scaled(img.data as Float32Array, 1 / 255);
 }
 
 // ------------------------------------------------------------ detail passes
@@ -680,9 +714,9 @@ export function developDeep(data: Float32Array, n: number, w: number, h: number,
 
 /** Blur-difference detail on `img`: `amount` above zero adds detail, below zero softens (at most 80%); `midtoneOnly`
  *  keeps the effect away from deep shadows and highlights. `radius` is the blur's standard deviation in pixels. */
-export function detailPass(img: ImageData, radius: number, amount: number, midtoneOnly: boolean): ImageData {
+export function detailPass<T extends Px>(img: T, radius: number, amount: number, midtoneOnly: boolean): T {
   if (!amount) return img;
-  const blur = gaussianBlur(img, Math.max(0.1, radius)).data, s = img.data, out = new ImageData(new Uint8ClampedArray(s), img.width, img.height), d = out.data;
+  const blur = blurPx(img, Math.max(0.1, radius)).data, s = img.data, out = copyPx(img), d = out.data, rnd = roundFor(img);
   for (let i = 0; i < s.length; i += 4) {
     const r0 = s[i] / 255, g0 = s[i + 1] / 255, b0 = s[i + 2] / 255;
     let mask = 1;
@@ -692,28 +726,40 @@ export function detailPass(img: ImageData, radius: number, amount: number, midto
     }
     const br = blur[i] / 255, bg = blur[i + 1] / 255, bb = blur[i + 2] / 255;
     const f = amount < 0 ? Math.min(0.8, -amount) * mask : amount * mask, sign = amount < 0 ? 1 : -1;
-    d[i] = clamp255(Math.round((r0 + (br - r0) * f * sign) * 255));
-    d[i + 1] = clamp255(Math.round((g0 + (bg - g0) * f * sign) * 255));
-    d[i + 2] = clamp255(Math.round((b0 + (bb - b0) * f * sign) * 255));
+    d[i] = clamp255(rnd((r0 + (br - r0) * f * sign) * 255));
+    d[i + 1] = clamp255(rnd((g0 + (bg - g0) * f * sign) * 255));
+    d[i + 2] = clamp255(rnd((b0 + (bb - b0) * f * sign) * 255));
   }
-  return out;
+  return out as T;
 }
 
+/** Gaussian blur of either kind of pixels; the float kind blurs premultiplied by its alpha (on the 0 to 255 scale) with the same three box blurs. */
+function blurPx(img: Px, sigma: number): Px {
+  if (!(img.data instanceof Float32Array)) return gaussianBlur(img as ImageData, sigma);
+  const { width: w, height: h } = img, s = img.data, a = new Float32Array(s.length), b = new Float32Array(s.length), out = new Float32Array(s.length);
+  if (!(sigma >= 0.1)) return { width: w, height: h, data: new Float32Array(s) };
+  for (let i = 0; i < s.length; i += 4) { const al = s[i + 3] / 255; a[i] = s[i] * al; a[i + 1] = s[i + 1] * al; a[i + 2] = s[i + 2] * al; a[i + 3] = s[i + 3]; }
+  for (const width of threeBoxWidths(sigma)) { const r = (width - 1) / 2; boxBlur(a, b, w, h, r, true); boxBlur(b, a, w, h, r, false); }
+  for (let i = 0; i < s.length; i += 4) { const al = a[i + 3] / 255; out[i + 3] = a[i + 3]; if (al > 0) { out[i] = a[i] / al; out[i + 1] = a[i + 1] / al; out[i + 2] = a[i + 2] / al; } }
+  return { width: w, height: h, data: out };
+}
+const roundFor = (p: Px): ((v: number) => number) => (isFloat(p) ? (v) => v : Math.round);
+
 /** Clarity on `img`: wide-radius (20 px times `scale`) local contrast, weighted toward the midtones. */
-export function clarityPass(img: ImageData, amount: number, scale = 1): ImageData {
+export function clarityPass<T extends Px>(img: T, amount: number, scale = 1): T {
   if (!amount) return img;
-  const blur = gaussianBlur(img, Math.max(0.1, 20 * scale)).data, s = img.data, out = new ImageData(new Uint8ClampedArray(s), img.width, img.height), d = out.data;
+  const blur = blurPx(img, Math.max(0.1, 20 * scale)).data, s = img.data, out = copyPx(img), d = out.data, rnd = roundFor(img);
   const factor = amount / 200;
   for (let i = 0; i < s.length; i += 4) {
     const r = s[i] / 255, g = s[i + 1] / 255, b = s[i + 2] / 255;
     const br = blur[i] / 255, bg = blur[i + 1] / 255, bb = blur[i + 2] / 255;
     const luma = r * 0.299 + g * 0.587 + b * 0.114;
     const term = Math.abs(factor) * (1 - Math.pow(Math.abs(luma - 0.5) * 2, 2)) * 0.8, sign = factor > 0 ? -1 : 1;
-    d[i] = clamp255(Math.round((r + (br - r) * term * sign) * 255));
-    d[i + 1] = clamp255(Math.round((g + (bg - g) * term * sign) * 255));
-    d[i + 2] = clamp255(Math.round((b + (bb - b) * term * sign) * 255));
+    d[i] = clamp255(rnd((r + (br - r) * term * sign) * 255));
+    d[i + 1] = clamp255(rnd((g + (bg - g) * term * sign) * 255));
+    d[i + 2] = clamp255(rnd((b + (bb - b) * term * sign) * 255));
   }
-  return out;
+  return out as T;
 }
 
 export const gradingActive = (g: GradingState): boolean => [g.shadows, g.midtones, g.highlights, g.global].some((w) => w.s !== 0 || (w.l ?? 0) !== 0);
@@ -722,9 +768,9 @@ const opticsActive = (o: OpticsState): boolean => o.distortion !== 0 || o.chroma
 
 /** Defringe: on pixels within two pixels of a strong luminance edge whose colour is purple or green and fairly
  *  saturated, pulls the colour toward the pixel's own luminance by `amount` percent. */
-export function defringePass(src: ImageData, amount: number): ImageData {
-  const { width: w, height: h } = src, s = src.data, out = new ImageData(new Uint8ClampedArray(s), w, h), d = out.data, k = clamp01(amount / 100);
-  if (!k) return out;
+export function defringePass<T extends Px>(src: T, amount: number): T {
+  const { width: w, height: h } = src, s = src.data, out = copyPx(src), d = out.data, k = clamp01(amount / 100), rnd = roundFor(src);
+  if (!k) return out as T;
   const luma = new Float32Array(w * h);
   for (let i = 0; i < w * h; i++) luma[i] = (0.299 * s[i * 4] + 0.587 * s[i * 4 + 1] + 0.114 * s[i * 4 + 2]) / 255;
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
@@ -739,9 +785,9 @@ export function defringePass(src: ImageData, amount: number): ImageData {
     const fringe = Math.max(hueWeight(hue, 290, 80), hueWeight(hue, 120, 80)) * smoothstep(0.15, 0.4, sat) * smoothstep(0.15, 0.4, edge);
     if (fringe <= 0) continue;
     const y0 = luma[p] * 255, f = fringe * k;
-    for (let c = 0; c < 3; c++) d[i + c] = clamp255(Math.round(s[i + c] + (y0 - s[i + c]) * f));
+    for (let c = 0; c < 3; c++) d[i + c] = clamp255(rnd(s[i + c] + (y0 - s[i + c]) * f));
   }
-  return out;
+  return out as T;
 }
 const geometryActive = (g: GeometryState): boolean => g.vertical !== 0 || g.horizontal !== 0 || g.rotate !== 0 || g.scale !== 100 || g.offsetX !== 0 || g.offsetY !== 0;
 
@@ -749,7 +795,7 @@ const geometryActive = (g: GeometryState): boolean => g.vertical !== 0 || g.hori
  *  a primary's hue range and tints the shadows green or magenta; grading adds each range's hue at its saturation where
  *  the pixel's luminance places it (shadows, midtones, highlights, weighted by Blending and Balance) and to all of it
  *  (global), keeping the pixel's luminance. */
-function gradePass(img: ImageData, g: GradingState, c: CalibrationState): void {
+function gradePass(img: Px, g: GradingState, c: CalibrationState): void {
   const d = img.data, gOn = gradingActive(g), cOn = calibrationActive(c);
   const tint = (w: GradeWheel): [number, number, number] => {
     if (!w.s) return [0, 0, 0];
@@ -781,7 +827,7 @@ function gradePass(img: ImageData, g: GradingState, c: CalibrationState): void {
 }
 
 /** Bilinear sample of one channel at (x, y), or -1 outside the image. */
-function sampleChannel(d: Uint8ClampedArray, w: number, h: number, x: number, y: number, c: number): number {
+function sampleChannel(d: Uint8ClampedArray | Float32Array, w: number, h: number, x: number, y: number, c: number): number {
   if (x < 0 || y < 0 || x > w - 1 || y > h - 1) return -1;
   const x0 = Math.floor(x), y0 = Math.floor(y), x1 = Math.min(w - 1, x0 + 1), y1 = Math.min(h - 1, y0 + 1), fx = x - x0, fy = y - y0;
   const at = (xx: number, yy: number): number => d[(yy * w + xx) * 4 + c];
@@ -791,7 +837,7 @@ function sampleChannel(d: Uint8ClampedArray, w: number, h: number, x: number, y:
 /** Lateral chromatic aberration read off the picture: at sample points on strong green edges, the scale (within 0.6
  *  percent) about the centre that brings the red, and separately the blue, channel closest to the green. A scale is kept
  *  only if it cuts the mismatch by a tenth against none, so a picture without the fault is left as it is. */
-export function estimateAberration(img: ImageData): { red: number; blue: number } {
+export function estimateAberration(img: Px): { red: number; blue: number } {
   const { width: w, height: h, data: d } = img, cx = (w - 1) / 2, cy = (h - 1) / 2, step = Math.max(1, Math.round(Math.sqrt((w * h) / 40000))), pts: number[] = [];
   for (let y = 1; y < h - 1; y += step) for (let x = 1; x < w - 1; x += step) {
     const i = (y * w + x) * 4;
@@ -814,15 +860,33 @@ export function estimateAberration(img: ImageData): { red: number; blue: number 
   return pts.length < 20 ? { red: 0, blue: 0 } : { red: best(0), blue: best(2) };
 }
 
+/** lensDistort's radial model on float pixels (0 to 255 scale): bilinear in premultiplied alpha, samples beyond the edge transparent. */
+function distortFloat(img: Px, distortion: number): Px {
+  const { width: w, height: h } = img, s = img.data, k = (distortion / 100) * 0.35, cx = w / 2, cy = h / 2, hd2 = cx * cx + cy * cy, out = new Float32Array(s.length), acc = [0, 0, 0, 0];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const dx = x + 0.5 - cx, dy = y + 0.5 - cy, f = 1 - (k * (dx * dx + dy * dy)) / hd2, u = cx + dx * f - 0.5, v = cy + dy * f - 0.5, x0 = Math.floor(u), y0 = Math.floor(v), fx = u - x0, fy = v - y0;
+    acc[0] = acc[1] = acc[2] = acc[3] = 0;
+    for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) {
+      const xx = x0 + i, yy = y0 + j;
+      if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+      const wgt = (i ? fx : 1 - fx) * (j ? fy : 1 - fy), p = (yy * w + xx) * 4, al = s[p + 3]! / 255;
+      acc[0]! += s[p]! * al * wgt; acc[1]! += s[p + 1]! * al * wgt; acc[2]! += s[p + 2]! * al * wgt; acc[3]! += s[p + 3]! * wgt;
+    }
+    const o = (y * w + x) * 4, a = acc[3]!;
+    if (a > 0) { const inv = 255 / a; out[o] = acc[0]! * inv; out[o + 1] = acc[1]! * inv; out[o + 2] = acc[2]! * inv; out[o + 3] = a; }
+  }
+  return { width: w, height: h, data: out };
+}
+
 /** Optics after the colour work: Distortion as Lens Correction draws it, then chromatic aberration (the red channel
  *  scaled about the centre one way and the blue the other) and lens vignetting (corners brightened or darkened, the
  *  falloff starting at Midpoint). */
-function opticsPass(src: ImageData, o: OpticsState): ImageData {
-  let img = o.distortion ? lensDistort(src, o.distortion) : src;
+function opticsPass<T extends Px>(src: T, o: OpticsState): T {
+  let img: Px = o.distortion ? (isFloat(src) ? distortFloat(src, o.distortion) : lensDistort(src as unknown as ImageData, o.distortion)) : src;
   if (o.defringe) img = defringePass(img, o.defringe);
   const { width: w, height: h } = img, cx = (w - 1) / 2, cy = (h - 1) / 2, rmax = Math.hypot(cx, cy) || 1;
   if (o.chromatic || o.vignetting || o.removeCA) {
-    const out = new ImageData(new Uint8ClampedArray(img.data), w, h), d = img.data, od = out.data, k = (o.chromatic / 100) * 0.006;
+    const out = copyPx(img), d = img.data, od = out.data, k = (o.chromatic / 100) * 0.006;
     const auto = o.removeCA ? estimateAberration(img) : { red: 0, blue: 0 }, fr = 1 + k + auto.red, fb = 1 - k + auto.blue;
     const start = (o.midpoint / 100) * 0.9, end = start + Math.max(0.002, (1 - start) * ((o.feather ?? 50) / 50)), ro = (o.roundness ?? 100) / 100;
     const sx = Math.max(1, cx * (1 - ro) + rmax * ro), sy = Math.max(1, cy * (1 - ro) + rmax * ro), corner = Math.hypot(cx / sx, cy / sy) || 1;
@@ -836,7 +900,7 @@ function opticsPass(src: ImageData, o: OpticsState): ImageData {
     }
     img = out;
   }
-  return img;
+  return img as T;
 }
 
 /** A separable window of radius `r` over `a`: the minimum, or the mean. */
@@ -863,7 +927,7 @@ function windowed(a: Float32Array, w: number, h: number, r: number, min: boolean
  *  patch minimum of the least channel); the transmission is 1 - 0.95 x amount x the dark channel of the picture over A,
  *  smoothed; the scene is (I - A) / max(t, 0.15) + A. `amount` is 0 to 1; the patch radius follows the preview scale.
  *  A negative `amount` adds haze instead: the picture mixed toward the same airlight by up to 70 percent. */
-function darkDehaze(src: ImageData, amount: number, scale: number, sky = 0, depth: Uint8Array | null = null, density = 0.5): ImageData {
+function darkDehaze(src: Px, amount: number, scale: number, sky = 0, depth: Uint8Array | null = null, density = 0.5): Px {
   const { width: w, height: h, data: d } = src, n = w * h, r = Math.max(1, Math.round(7 * scale)), thick = Math.max(0, density) * 2;
   const least = new Float32Array(n);
   for (let i = 0; i < n; i++) least[i] = Math.min(d[i * 4], d[i * 4 + 1], d[i * 4 + 2]) / 255;
@@ -875,7 +939,7 @@ function darkDehaze(src: ImageData, amount: number, scale: number, sky = 0, dept
   for (let i = 0; i < n; i++) if (Math.round(dark[i] * 255) >= cut) { ar += d[i * 4]; ag += d[i * 4 + 1]; ab += d[i * 4 + 2]; cnt++; }
   const A = [Math.max(1, ar / cnt), Math.max(1, ag / cnt), Math.max(1, ab / cnt)];
   if (amount < 0) {
-    const out = new ImageData(w, h), o = out.data;
+    const out = blankPx(src), o = out.data;
     for (let i = 0; i < n; i++) {
       const t = depth ? 1 - 0.7 * clamp01(-amount * thick * (1 - depth[i] / 255)) : 1 - 0.7 * clamp01(-amount * thick);
       for (let c = 0; c < 3; c++) o[i * 4 + c] = clamp255(d[i * 4 + c] * t + A[c] * (1 - t));
@@ -888,7 +952,7 @@ function darkDehaze(src: ImageData, amount: number, scale: number, sky = 0, dept
   const t = depth
     ? Float32Array.from({ length: n }, (_, i) => Math.exp(-2.5 * thick * clamp01(amount) * (1 - depth[i] / 255)))
     : windowed(windowed(norm, w, h, r, true).map((v) => 1 - 0.95 * clamp01(amount * thick) * Math.min(1, v)), w, h, r, false);
-  const out = new ImageData(w, h), o = out.data;
+  const out = blankPx(src), o = out.data;
   const keep = sky > 0 ? windowed(norm, w, h, r, true) : null, skyK = clamp01(sky);
   for (let i = 0; i < n; i++) {
     const k = 1 / Math.max(0.15, t[i]);
@@ -901,8 +965,8 @@ function darkDehaze(src: ImageData, amount: number, scale: number, sky = 0, dept
 
 /** Geometry, last: each output pixel sampled from where the transform (rotate, scale, offset, then vertical and
  *  horizontal perspective, as keystone) takes it from; outside the image becomes transparent. */
-function geometryPass(src: ImageData, g: GeometryState): ImageData {
-  const { width: w, height: h, data: d } = src, out = new ImageData(w, h), o = out.data, cx = (w - 1) / 2, cy = (h - 1) / 2;
+function geometryPass<T extends Px>(src: T, g: GeometryState): T {
+  const { width: w, height: h, data: d } = src, out = blankPx(src), o = out.data, cx = (w - 1) / 2, cy = (h - 1) / 2;
   const a = (-g.rotate * Math.PI) / 180, ca = Math.cos(a), sa = Math.sin(a), s = 100 / Math.max(1, g.scale);
   const ox = (g.offsetX / 100) * cx, oy = (g.offsetY / 100) * cy, kv = (g.vertical / 100) * 0.5, kh = (g.horizontal / 100) * 0.5;
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
@@ -912,7 +976,7 @@ function geometryPass(src: ImageData, g: GeometryState): ImageData {
     const i = (y * w + x) * 4;
     for (let c = 0; c < 4; c++) { const val = sampleChannel(d, w, h, cx + pu, cy + pv, c); o[i + c] = val < 0 ? 0 : val; }
   }
-  return out;
+  return out as T;
 }
 
 /** The Temperature and Tint (slider units, -100 to 100) that make the colour (r, g, b; 0 to 255) neutral through the
@@ -954,10 +1018,10 @@ export function bandFor(r: number, g: number, b: number): HslBand | null {
 /** Sharpening: the unsharp pass at `radius` (px times `scale`, at least 0.9 where the blur has any reach); `detail` (0 to 1,
  *  1 the plain unsharp pass) holds back the big overshoots, the halos, by a soft limit that tightens as it falls; `masking`
  *  (0 to 1) confines it to edges, by a smoothstep on the luminance gradient that needs a steeper edge the higher it is. */
-export function sharpenPass(img: ImageData, amount: number, radius: number, detail: number, masking: number, scale = 1): ImageData {
+export function sharpenPass<T extends Px>(img: T, amount: number, radius: number, detail: number, masking: number, scale = 1): T {
   if (amount <= 0) return img;
   const r = Math.max(0.9, radius * scale), broad = detailPass(img, r, amount, false), lim = detail < 1 ? 10 + 400 * detail * detail : 0;
-  const { width: w, height: h } = img, s = img.data, b = broad.data, out = new ImageData(new Uint8ClampedArray(s), w, h), d = out.data;
+  const { width: w, height: h } = img, s = img.data, b = broad.data, out = copyPx(img), d = out.data, rnd = roundFor(img);
   const luma = new Float32Array(w * h);
   if (masking > 0) for (let i = 0; i < w * h; i++) luma[i] = (0.299 * s[i * 4] + 0.587 * s[i * 4 + 1] + 0.114 * s[i * 4 + 2]) / 255;
   const top = Math.max(0.002, masking * 0.3);
@@ -970,10 +1034,10 @@ export function sharpenPass(img: ImageData, amount: number, radius: number, deta
     }
     for (let c = 0; c < 3; c++) {
       const delta = b[i + c] - s[i + c], kept = lim ? lim * Math.tanh(delta / lim) : delta;
-      d[i + c] = clamp255(Math.round(s[i + c] + kept * m));
+      d[i + c] = clamp255(rnd(s[i + c] + kept * m));
     }
   }
-  return out;
+  return out as T;
 }
 
 /** The whole Develop filter on `src`, in the develop studio's order: the per-pixel pass, then calibration and colour

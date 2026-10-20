@@ -83,4 +83,4 @@ def test_a_clipped_layer_inside_a_masked_folder_still_draws_on_the_cpu_by_name(p
       const f = { ...p.doc.layers[0], id: 'f', name: 'F', isGroup: true, raster: null, clipId: null, adjustment: null, parentId: null,
         mask: { raster: new E.Raster(160, 90), enabled: true, linked: true, placement: null } };
       p.doc.layers.splice(1, 0, f); })()""")
-    assert page.evaluate("window.formvis.engine.gpuLayers().reason") == "a clipped layer with a vector mask or inside a masked folder"
+    assert page.evaluate("window.formvis.engine.gpuLayers().reason") is None

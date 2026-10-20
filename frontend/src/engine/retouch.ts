@@ -1,6 +1,7 @@
 import { clamp, type Pt, type Rect } from './types';
 import { gaussianBlur, gaussianMargin } from './filters';
 import type { GpuSmudge } from './gpu-filters';
+import { wasmPatchCorrect } from './wasm-kernels';
 
 /** Retouching for formvis, written from published methods. Spot Healing picks a source patch whose surrounding ring
  *  best matches the spot's own ring (least squared difference), then heals it as in Poisson image editing (Perez,
@@ -295,6 +296,7 @@ export function insideDistance(coverage: Uint8Array, W: number, H: number): Floa
 export function scaleHealCorrection(out: Uint8ClampedArray, before: Uint8ClampedArray, coverage: Uint8Array, W: number, H: number, dx: number, dy: number, diffusion: number, colour: number, opacity = 1, source?: Uint8ClampedArray): void {
   const diff = Math.round(Math.min(7, Math.max(1, diffusion))), col = Math.min(1, Math.max(0, colour)), op = Math.min(1, Math.max(0, opacity));
   if ((diff >= 7 && col >= 1) || op <= 0) return;
+  if (wasmPatchCorrect(out, before, coverage, W, H, dx, dy, diff, col, op, source)) return;
   const dist = diff < 7 ? insideDistance(coverage, W, H) : null, L = 2 ** diff, from = source ?? before;
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const i = y * W + x;

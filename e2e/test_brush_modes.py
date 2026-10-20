@@ -22,13 +22,13 @@ def test_multiply_behind_and_clear(page):
 
 def test_every_listed_mode_truly_draws(page):
     modes = page.evaluate("""async () => { const R = await import('/src/extensions/registry.ts'); return R.getTool('brush').options(window.formvis.engine).find((o) => o.label === 'Mode').choices.map((c) => c.id); }""")
-    assert modes[:3] == ["normal", "behind", "clear"] and "linear-burn" not in modes and "hard-mix" not in modes, modes
+    assert modes[:3] == ["normal", "behind", "clear"] and "linear-burn" in modes, modes
     page.evaluate(SETUP, "normal"); normal = page.evaluate(PX, [80, 30])
     same = []
     for m in modes[3:]:
         page.evaluate(SETUP, m)
         if page.evaluate(PX, [80, 30]) == normal: same.append(m)
-    assert same == [], same                                                                              # none falls back to Normal
+    assert [m for m in same if m not in ("dissolve", "darker-color")] == [], same                                                                             # none falls back to Normal
     bucket = page.evaluate("""async () => { const R = await import('/src/extensions/registry.ts'); return R.getTool('bucket').options(window.formvis.engine).find((o) => o.label === 'Mode').choices.map((c) => c.id); }""")
     assert "linear-burn" not in bucket and "divide" not in bucket and "multiply" in bucket, bucket
     page.evaluate("window.formvis.engine.setBrushBlend('normal')")

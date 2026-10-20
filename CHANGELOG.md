@@ -4,6 +4,24 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.91.4 · 2026-10-20
+
+### Added
+
+- Filters at 16 and 32 bits, CMYK and Lab: Trace Contour, Tiles, Extrude, Smart Blur, Shape Blur, Reduce Noise, Pointillize, Color Halftone, Mezzotint, Clouds, Difference Clouds, Fibers and Lens Flare run on the float channels (the area- and canvas-anchored ones stay on 8 bits under a selection).
+- Camera Raw at 16 and 32 bits: every Develop stage (tone, parametric, Point Color, Grading, Calibration, clarity, texture, sharpening, noise reduction, dehaze, optics, geometry, post-crop vignette) runs on float pixels; 32-bit highlights still clip at white.
+- GPU: a clipping base with a vector mask draws on the GPU; masked styled layers build their effects on the effect worker.
+- Generator: SVG assets from shape layers, "name.jpg80" as 80 percent, and on the desktop a "document assets" folder beside the saved document.
+- Plug-ins: getPixels and putPixels honour the selection and offer 16-bit data for deep RGB layers; single-file plug-ins can open a dock panel.
+- MCP: jobs_list and jobs_cancel include the window's own jobs (Window > Jobs).
+- ComfyUI recipes: Save as new from an exported graph file, the last five versions of each recipe with restore, and Send inputs to re-upload a recipe's pictures.
+- The Patch tool's diffusion and colour correction (also the Healing Brush's) run in a WebAssembly SIMD kernel, byte-identical to the TypeScript.
+
+### Fixed
+
+- Strokes across a flush of a giant tiled layer match the unflushed stroke exactly at any opacity, flow or softness, as one exact undo step.
+- Quick Shape no longer straightens a stroke because the page stalled; a late hold timer waits again.
+
 ## 1.91.3 · 2026-10-20
 
 ### Added

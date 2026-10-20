@@ -2,12 +2,14 @@ import { createSurface, ctxOf, toBlob, type Engine } from '../engine';
 import { api } from './api';
 import { encodeGif } from './gif';
 import { trimSurface } from './layer-export';
+import { pathBounds } from '../engine/paths';
+import type { VectorLayer } from '../engine/types';
 
 /** File > Export > Generate Image Assets (DEV_PLAN 29.5 part b): layer names in the usual asset syntax become files.
  *  A name is a comma separated list of specs, each an optional size, a file name with an extension and an optional
  *  quality, as in `200% big.png, small.jpg60%` or `64x? icon.png`. */
 
-export type AssetFormat = 'png' | 'png8' | 'png24' | 'png32' | 'jpg' | 'gif' | 'webp';
+export type AssetFormat = 'png' | 'png8' | 'png24' | 'png32' | 'jpg' | 'gif' | 'webp' | 'svg';
 export interface AssetSize { kind: 'scale'; pct: number }
 export interface AssetBox { kind: 'box'; w: number | null; h: number | null }
 export interface AssetSpec {
@@ -19,7 +21,7 @@ export interface AssetSpec {
   size: AssetSize | AssetBox | null;
 }
 
-const SPEC = /^(?:(\d+(?:\.\d+)?)%|(\d+|\?)x(\d+|\?))?\s*(.*?\.(png8|png24|png32|png|jpeg|jpg|gif|webp))(\d{1,3}%|\d{1,2})?$/i;
+const SPEC = /^(?:(\d+(?:\.\d+)?)%|(\d+|\?)x(\d+|\?))?\s*(.*?\.(png8|png24|png32|png|jpeg|jpg|gif|webp|svg))(\d{1,3}%|\d{1,2})?$/i;
 
 /** The specs a layer name holds; an empty list when no part of it carries a known extension. */
 export function parseAssetSpecs(layerName: string): AssetSpec[] {
@@ -32,7 +34,7 @@ export function parseAssetSpecs(layerName: string): AssetSpec[] {
     let quality = 0.9;
     if (m[6]) {
       if (m[6].endsWith('%')) quality = Math.min(100, parseInt(m[6], 10)) / 100;
-      else if (format === 'jpg') quality = Math.min(10, Math.max(1, parseInt(m[6], 10))) / 10;
+      else if (format === 'jpg' || format === 'webp') { const v = parseInt(m[6], 10); quality = v > 10 ? Math.min(100, v) / 100 : Math.max(1, v) / 10; }
     }
     let size: AssetSpec['size'] = null;
     if (m[1]) size = { kind: 'scale', pct: parseFloat(m[1]) };
@@ -67,6 +69,30 @@ async function encodeAsset(src: ReturnType<typeof createSurface>, spec: AssetSpe
   const png = await toBlob(c, 'image/png');
   if (spec.format === 'png8' && engineUp) { try { return await api.encode(png, 'png8'); } catch { /* the full colour PNG below */ } }
   return png;
+}
+
+const hex = (c: { r: number; g: number; b: number }): string => `#${[c.r, c.g, c.b].map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
+const num = (n: number): string => String(Math.round(n * 1000) / 1000);
+
+/** A shape layer written as an SVG file: its outline, fill and stroke, sized by the spec. Null for a layer with no outline. */
+export function vectorSvg(v: VectorLayer, spec: AssetSpec): Blob | null {
+  const b = pathBounds(v.path);
+  if (!b) return null;
+  const pad = v.stroke ? v.stroke.width / 2 : 0, x = b.x - pad, y = b.y - pad, w = b.w + pad * 2, h = b.h + pad * 2;
+  if (!(w > 0 && h > 0)) return null;
+  const [tw, th] = targetSize(spec, w, h);
+  let d = '';
+  for (const sp of v.path.subpaths) {
+    const a = sp.anchors;
+    if (!a.length) continue;
+    d += `M${num(a[0].x)} ${num(a[0].y)}`;
+    const seg = (f: typeof a[number], t: typeof a[number]): string => `C${num(f.outX)} ${num(f.outY)} ${num(t.inX)} ${num(t.inY)} ${num(t.x)} ${num(t.y)}`;
+    for (let i = 1; i < a.length; i++) d += seg(a[i - 1], a[i]);
+    if (sp.closed && a.length > 1) d += `${seg(a[a.length - 1], a[0])}Z`;
+  }
+  const stroke = v.stroke ? ` stroke="${hex(v.stroke.color)}" stroke-width="${num(v.stroke.width)}"` : '';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${tw}" height="${th}" viewBox="${num(x)} ${num(y)} ${num(w)} ${num(h)}"><path d="${d}" fill="${v.fill ? hex(v.fill) : 'none'}"${v.path.evenOdd ? ' fill-rule="evenodd"' : ''}${stroke}/></svg>`;
+  return new Blob([svg], { type: 'image/svg+xml' });
 }
 
 /** `name` made unique among `used`: a second use becomes `name 2.ext`, a third `name 3.ext`. */
@@ -115,9 +141,15 @@ export async function assetFiles(engine: Engine, engineUp: boolean, variants: re
     if (l.adjustment || (!l.isGroup && !l.raster)) continue;
     const specs = parseAssetSpecs(l.name);
     if (!specs.length) continue;
+    const vector = specs.filter((s) => s.format === 'svg' && l.vector), pixel = specs.filter((s) => s.format !== 'svg');
+    for (const base of vector) for (const spec of base.size || !variants.length ? [base] : variants.map((v) => withVariant(base, v))) {
+      const blob = vectorSvg(l.vector as VectorLayer, spec);
+      if (blob) files.push({ name: uniqueName(spec.name, used), blob });
+    }
+    if (!pixel.length) continue;
     const img = l.isGroup ? engine.renderGroupAlone(l.id) : engine.renderLayerAlone(l.id), cut = img ? trimSurface(img) : null;
     if (!cut) continue;
-    for (const base of specs) for (const spec of base.size || !variants.length ? [base] : variants.map((v) => withVariant(base, v))) files.push({ name: uniqueName(spec.name, used), blob: await encodeAsset(cut, spec, engineUp) });
+    for (const base of pixel) for (const spec of base.size || !variants.length ? [base] : variants.map((v) => withVariant(base, v))) files.push({ name: uniqueName(spec.name, used), blob: await encodeAsset(cut, spec, engineUp) });
   }
   return files;
 }
