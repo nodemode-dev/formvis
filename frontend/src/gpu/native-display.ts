@@ -52,10 +52,14 @@ export class NativeDisplay implements ScreenDisplay {
       const adapter = await invoke<string>('native_start');
       document.documentElement.classList.add('is-native-canvas');
       return new NativeDisplay(canvas, invoke as Invoke, adapter);
-    } catch {
+    } catch (e) {
+      NativeDisplay.startError = e instanceof Error ? e.message : String(e);
       return null;
     }
   }
+
+  /** Why the last start failed, for the status bar. */
+  static startError: string | null = null;
 
   unsupported(layers: readonly DisplayLayer[]): string | null {
     for (const l of layers) {

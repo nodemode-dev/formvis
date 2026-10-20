@@ -189,7 +189,7 @@ export interface EngineEvents {
 export interface BrushSettings { diameter: number; hardness: number; opacity: number; tip?: SampledTip | null }
 /** `deep`: linear-light floats of an OpenEXR or Radiance HDR, of which `source` is the 8-bit rendition; a layer placed
  *  into a 16 or 32 bit document keeps them at that depth. `resolution`: the file's own ppi. */
-export interface ImportedImage { source: CanvasImageSource; width: number; height: number; name: string; profile?: DocProfile; mode?: DocMode; meta?: DocMeta; resolution?: number; deep?: DeepPixels; /** An indexed file's colour table: it opens as an Indexed Color document with its single layer as the Background. */ palette?: readonly RGB[]; transparentIndex?: number; /** Guides the file carries (a JPEG's image resources). */ guides?: readonly Guide[]; /** A notice the open raises, such as a cut-off file. */ warning?: string }
+export interface ImportedImage { source: CanvasImageSource; width: number; height: number; name: string; profile?: DocProfile; mode?: DocMode; meta?: DocMeta; resolution?: number; deep?: DeepPixels; /** An indexed file's colour table: it opens as an Indexed Color document with its single layer as the Background. */ palette?: readonly RGB[]; transparentIndex?: number; /** Guides the file carries (a JPEG's image resources). */ guides?: readonly Guide[]; /** A notice the open raises, such as a cut-off file. */ warning?: string; /** The SVG source: the image comes in as a smart layer that is redrawn from it when scaled. */ svg?: SmartOriginal }
 type Target = 'pixels' | 'mask';
 type Settings = Pick<Engine, 'selectionMode' | 'marqueeKind' | 'lassoKind' | 'showPixelGrid' | 'showTransformControls' | 'autoSelect' | 'autoSelectTarget' | 'lockRatio'>;
 
@@ -6748,7 +6748,30 @@ export class Engine {
     this.pendingTransform = false;
     this.snapGuides = null;
     TC.commitTransform(this.commitHost, te, name ?? (was ? 'Free Transform' : undefined));
+    if (!te.mask) this.redrawSvg(te.project, te.group ? [...te.group.originals.keys()] : [te.layerId]);
     if (was) { this.emit('options', null); this.emit('overlay', null); }
+  }
+
+  /** Draws a smart layer's SVG source supplied by the app at a size, as a raster; null when it cannot be drawn. */
+  svgDraw: ((svg: SmartOriginal, w: number, h: number) => Promise<Raster | null>) | null = null;
+
+  /** A smart layer that holds an SVG source and now sits at another size than its pixels is drawn again from the source
+   *  at that size, so scaling keeps its edges sharp. The scaled pixels show at once; the sharp ones replace them as a
+   *  step of their own when drawn, unless the layer changed meanwhile. */
+  private redrawSvg(p: Project, ids: readonly ID[]): void {
+    for (const id of ids) {
+      const l = p.layer(id), s = l?.smart;
+      if (!l || !s?.original || s.original.mime !== 'image/svg+xml' || s.filters.length || s.deform || s.stack || !this.svgDraw) continue;
+      const w = Math.max(1, Math.round(l.transform.w)), h = Math.max(1, Math.round(l.transform.h));
+      if (s.source.width === w && s.source.height === h) continue;
+      const draw = this.svgDraw, at = l.transform, source = s.source;
+      void this.task(async () => {
+        const r = await draw(s.original as SmartOriginal, w, h);
+        const now = p.layer(id);
+        if (!r || !this.projects.includes(p) || !now?.smart || now.smart.source !== source || !sameTransform(now.transform, at)) return;
+        this.editOn(p, 'Redraw SVG', () => { p.updateLayer(id, { smart: { ...now.smart, source: r, filters: [] } as NonNullable<Layer['smart']>, raster: r }); });
+      });
+    }
   }
 
   /** Transform Layer (Mod+T) on a layer or layers: the box stays pending across drags and typed values, applied with
@@ -7933,7 +7956,7 @@ export class Engine {
         const raster = Raster.from(img.source, img.width, img.height), placed = !created && !fr && !channels;
         const layer = newLayer(created && img.palette && img.transparentIndex === undefined ? 'Background' : stripExt(img.name), p.doc, {
           raster, parentId, ...(channels ? { channels } : {}),
-          ...(placed && SOB.placePrefs.smart ? { smart: { source: raster, filters: [] } } : {}),
+          ...(img.svg && !fr && !channels ? { smart: { source: raster, filters: [], original: img.svg } } : placed && SOB.placePrefs.smart ? { smart: { source: raster, filters: [] } } : {}),
           transform: fr
             ? { ...docTransform(img.width, img.height), x: fr.x + (fr.w - img.width * cover) / 2, y: fr.y + (fr.h - img.height * cover) / 2, w: img.width * cover, h: img.height * cover }
             : { ...docTransform(img.width, img.height), x: Math.floor(c.x - img.width / 2), y: Math.floor(c.y - img.height / 2), ...(placed ? SOB.fitTransform({ current: p }, img).transform : {}) },
@@ -11641,6 +11664,7 @@ export class Engine {
       return;
     }
     TC.setLayerTransform(this.commitHost, patch, name);
+    if (this.current && this.current.activeLayer) this.redrawSvg(this.current, [this.current.activeLayer.id]);
   }
 
   resizeLayerTo(value: number, width: boolean): void {

@@ -15,7 +15,7 @@ export const de: Record<string, string> = {
   'Upscale': 'Hochskalieren', 'Variables': 'Variablen', 'Vector Mask': 'Vektormaske', 'Video Layers': 'Videoebenen', 'Video': 'Video',
   'New Canvas': 'Neue Zeichenfläche', 'Open Project': 'Projekt öffnen', 'Import Images': 'Bilder importieren',
   'Create Video Timeline': 'Video-Zeitleiste erstellen', 'Place Embedded': 'Platzieren und einbetten', 'Place Linked': 'Platzieren und verknüpfen',
-  'Place 3D Model': '3D-Modell platzieren', 'Open SVG as Layers': 'SVG als Ebenen öffnen', 'Clear Recent': 'Liste löschen',
+  'Place 3D Model': '3D-Modell platzieren', 'Open SVG as Layers': 'SVG als Ebenen öffnen', 'Import SVG': 'SVG importieren', 'Size by': 'Größe nach', 'Percent of its size': 'Prozent der Größe', 'Width in pixels': 'Breite in Pixeln', 'Height in pixels': 'Höhe in Pixeln', 'Pixels per inch': 'Pixel pro Zoll', 'pixels per inch': 'Pixel pro Zoll', 'Bring in as': 'Einfügen als', 'Smart layer, sharp when scaled': 'Smart-Ebene, scharf beim Skalieren', 'Editable shape layers': 'Bearbeitbare Formebenen', 'Comes in at': 'Kommt an mit', 'by': 'mal', 'declares': 'gibt an:', 'Shape layers use the size the file declares.': 'Formebenen nutzen die Größe der Datei.', 'Enter a size the document can hold.': 'Gib eine Größe ein, die das Dokument fassen kann.', 'Clear Recent': 'Liste löschen',
   'Save': 'Speichern', 'Save As': 'Speichern unter', 'Save a Copy': 'Kopie speichern', 'Revert': 'Zurück zur letzten Version',
   'Download Project File': 'Projektdatei herunterladen', 'Package': 'Verpacken', 'Close Tab': 'Tab schließen', 'Close All': 'Alles schließen',
   'Close Others': 'Andere schließen', 'Export As': 'Exportieren als', 'Export PNG': 'Als PNG exportieren', 'Export JPEG': 'Als JPEG exportieren',

@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## SVG size and smart layers, native soft masks, renderer failure label · _v1.92.11 (ui/panels/svg-import.ts, io/images.ts, engine/index.ts, app.ts, ui/i18n/de.ts fr.ts es.ts, gpu/fallback.ts, gpu/native-display.ts; native/formvis-render/src/composite.rs; src-tauri build.rs and capabilities)
+
+- SVG smart layer: SmartObject.original holds the SVG text (mime image/svg+xml), which the project writer already saves. After endTransform or setLayerTransform, redrawSvg redraws the raster at the transform size when the layer has no filters, deform or stack, and drops the result if the layer changed meanwhile. This follows the shape-layer pattern; restack was not used because it scales the transform by the old raster size. The sanitiser runs on every redraw. .svgz is kept as plain .svg. Scaling leaves two history steps (transform, redraw).
+- svgSize reads mm, cm, in, pt and pc; ppi sizing is offered only when the file declares one of them, and a file with no size assumes 1024 px.
+- Native soft masks: the byte-exact coverage path (round(p * m / 255), equal to the browser's destination-in over all 65,536 pairs) ran only inside folder canvases. It now also runs for unclipped top-level masked layers. Removed: `if (comp.pad2 == 1u && comp.pad1 == 0u && comp.transformed == 0u`, now `if (comp.pad1 == 0u && (comp.pad2 == 1u || comp.has_clip == 0u) && comp.transformed == 0u`.
+- Not bugs (found by reading): the blur "4 px shift" read the raster, which grows 4 px per side, at document coordinates; the 243 grey was 0 then 5 within 700 ms, which types 5%. Paste Into did not reproduce disabled.
+
 ## SVG sanitising, ICO and CUR, Open As, stage click count, menu paste, native clip guard · _v1.92.10 (io/images.ts, app.ts, ui/panels/tiff-pages.ts, ui/stage.ts, gpu/native-display.ts, automation/command-meta.ts)
 
 - rasteriseSvg parses the SVG, removes script, foreignObject, iframe, object, embed, audio and video, on* attributes, hrefs that are not "#" or data:image/, and url()/@import that are not "#" or data:; sets the root width and height to the target and adds a viewBox from the declared size when there is none, so the vector is drawn sharp at that size. The browser's image-mode sandbox stays as the second layer. The removed count is the image `warning`, which the open path toasts.

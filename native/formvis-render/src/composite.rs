@@ -372,7 +372,7 @@ fn body(pos: vec4<f32>) -> vec4<f32> {
     s0 = textureLoad(source, px, 0);
   }
   var ex = false;
-  if (comp.pad2 == 1u && comp.pad1 == 0u && comp.transformed == 0u && comp.bi_ch == 0u && comp.ko_on == 0u && comp.ch_off == 0u && comp.mode < 100u && comp.mask_at.placed == 0u && comp.base_mask_at.placed == 0u && (comp.has_clip == 1u || comp.has_mask == 1u)) {
+  if (comp.pad1 == 0u && (comp.pad2 == 1u || comp.has_clip == 0u) && comp.transformed == 0u && comp.bi_ch == 0u && comp.ko_on == 0u && comp.ch_off == 0u && comp.mode < 100u && comp.mask_at.placed == 0u && comp.base_mask_at.placed == 0u && (comp.has_clip == 1u || comp.has_mask == 1u)) {
     var mo = 255.0;
     if (comp.has_mask == 1u) { mo = round(textureLoad(mask_tile, px, 0).a * 255.0); }
     var mc = 255.0;

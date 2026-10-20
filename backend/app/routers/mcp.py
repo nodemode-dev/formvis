@@ -1111,7 +1111,7 @@ async def _agent_call(client: str, name: str, args: dict) -> dict:
         if refusal:
             agents.end(entry, "denied", refusal)
             return _fail(refusal)
-        if agents.policy_of(client) == "ask":
+        if agents.policy_of(client) == "ask" and not (client == "formvis-cli" and name == "convert_file"):   # the command line names both files and --overwrite itself
             why = await _risk(name, args)
             if why:
                 refusal = await agents.approval(entry, why)

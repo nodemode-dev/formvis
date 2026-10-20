@@ -151,7 +151,7 @@ import { VideoTimelinePanel } from './ui/video-timeline';
 import { RenderVideoDialog, type RenderChoice } from './ui/panels/render-video-dialog';
 import { TiffOptionsDialog } from './ui/panels/tiff-options-dialog';
 import { decodeExtensions } from './plugins/formats';
-import { LargePictureError, IMAGE_ACCEPT, PROJECT_ACCEPT, RAW_FILE, decodeDeepLayer, decodeFrames, decodeTgaSplit, decodeHdr, decodeImage, heifBits, isImageFile, isProjectFile, nameRawByContent, apngFrames, rasteriseSvg, svgSize } from './io/images';
+import { LargePictureError, IMAGE_ACCEPT, PROJECT_ACCEPT, RAW_FILE, decodeDeepLayer, decodeFrames, decodeTgaSplit, decodeHdr, decodeImage, heifBits, isImageFile, isProjectFile, nameRawByContent, apngFrames, rasteriseSvg, svgSize, svgInches } from './io/images';
 import { addFontFace, familyOfFile, fontFamilies, loadSystemFonts, loadUserFonts } from './ui/fonts';
 import { deserialize, giantTiles, serialize } from './io/project-io';
 import { templateContext } from './io/prompt-templates';
@@ -221,6 +221,7 @@ import { FolderPlugins } from './plugins/modules';
 import { PluginsDialog } from './ui/panels/plugins-dialog';
 import { LargePictureDialog } from './ui/panels/large-picture';
 import { TiffPagesDialog } from './ui/panels/tiff-pages';
+import { SvgImportDialog } from './ui/panels/svg-import';
 import { ExrPartsDialog } from './ui/panels/exr-parts';
 import { OpenAsDialog } from './ui/panels/open-as';
 import { PackageDialog, type PackageChoice } from './ui/panels/package-dialog';
@@ -945,7 +946,7 @@ export function startApp(): void {
       else if (want === 'native') void NativeDisplay.create(q<HTMLCanvasElement>(root, '.cv-scene-native')).then(started);
       else started(GlDisplay.create(q<HTMLCanvasElement>(root, '.cv-scene-gl'), opts));
     }
-    const off = rendererFallback({ mode: ch.mode, chosenReason: ch.reason, displayReady: !!gpuDisplay, displayFailed: !!want && gpuFailed.has(want) });
+    const off = rendererFallback({ mode: ch.mode, chosenReason: ch.reason, displayReady: !!gpuDisplay, displayFailed: !!want && gpuFailed.has(want), failure: ch.mode === 'native' ? NativeDisplay.startError : null });
     const live = off ? null : gpuDisplay, api = ch.mode === 'webgl2' ? 'WebGL2' : ch.mode === 'native' ? 'Native GPU' : 'WebGPU';
     const name = ch.mode === 'native' && gpuDisplay instanceof NativeDisplay ? gpuDisplay.adapter : adapterName;
     const cpuWhy = off ?? ch.reason;
@@ -1235,12 +1236,15 @@ export function startApp(): void {
             }
           }
           if (/\.svgz?$/i.test(f.name)) {
-            const declared = await svgSource(f).then((t) => svgSize(new Blob([t]))).catch(() => null);
-            const asked = await promptName(`Import ${f.name}: width in pixels`, String(Math.round(declared?.width ?? 1024)), 'Import');
-            if (asked === null) continue;
-            const px = Number(asked.replace(/\s*px$/i, ''));
-            if (!(px >= 1)) { toast(`${f.name}: enter a width of 1 pixel or more.`, 'error'); continue; }
-            try { decoded.push(await rasteriseSvg(f, f.name, px)); } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
+            const text = await svgSource(f).catch(() => null), whole = new Blob([text ?? '']);
+            const asked = await svgImport.show(f.name, text === null ? null : await svgSize(whole), text === null ? null : await svgInches(whole));
+            if (!asked) continue;
+            if (asked.how === 'shapes') { await openSvgLayers(text); continue; }
+            try {
+              const img = await rasteriseSvg(f, f.name, asked.width, asked.height);
+              if (asked.how === 'smart' && text !== null) img.svg = { name: f.name.replace(/\.svgz$/i, '.svg'), mime: 'image/svg+xml', data: new TextEncoder().encode(text) };
+              decoded.push(img);
+            } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
             continue;
           }
           try { decoded.push(await decodeImage(f, f.name)); } catch (err) {
@@ -3673,6 +3677,14 @@ export function startApp(): void {
   pluginsDialog.openFolder = () => { commands.run('open-plugins-folder'); };
   const largePicture = new LargePictureDialog(engine);
   const tiffPages = new TiffPagesDialog(engine);
+  const svgImport = new SvgImportDialog();
+  engine.svgDraw = async (svg, w, h) => {
+    try {
+      const img = await rasteriseSvg(new Blob([svg.data.slice()], { type: svg.mime }), svg.name, w, h), r = new Raster(img.width, img.height);
+      r.ctx.drawImage(img.source, 0, 0); r.touch();
+      return r;
+    } catch { return null; }
+  };
   const exrChooser = new ExrPartsDialog();
   const openAs = new OpenAsDialog((f) => importFiles([f], undefined, 'documents'));
   const packageDialog = new PackageDialog();

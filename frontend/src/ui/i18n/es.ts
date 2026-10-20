@@ -19,7 +19,7 @@ export const es: Record<string, string> = {
   // File
   'New Canvas': 'Nuevo lienzo', 'Open Project': 'Abrir proyecto', 'Import Images': 'Importar imágenes', 'Create Video Timeline': 'Crear línea de tiempo de vídeo',
   'Place Embedded': 'Colocar incrustado', 'Place Linked': 'Colocar vinculado', 'Place 3D Model': 'Colocar modelo 3D',
-  'Open SVG as Layers': 'Abrir SVG como capas', 'Clear Recent': 'Borrar recientes', 'Save': 'Guardar', 'Save As': 'Guardar como',
+  'Open SVG as Layers': 'Abrir SVG como capas', 'Import SVG': 'Importar SVG', 'Size by': 'Tamaño por', 'Percent of its size': 'Porcentaje de su tamaño', 'Width in pixels': 'Ancho en píxeles', 'Height in pixels': 'Alto en píxeles', 'Pixels per inch': 'Píxeles por pulgada', 'pixels per inch': 'píxeles por pulgada', 'Bring in as': 'Traer como', 'Smart layer, sharp when scaled': 'Capa inteligente, nítida al escalar', 'Editable shape layers': 'Capas de forma editables', 'Comes in at': 'Entra con', 'by': 'por', 'declares': 'declara', 'Shape layers use the size the file declares.': 'Las capas de forma usan el tamaño del archivo.', 'Enter a size the document can hold.': 'Introduce un tamaño que el documento admita.', 'Clear Recent': 'Borrar recientes', 'Save': 'Guardar', 'Save As': 'Guardar como',
   'Save a Copy': 'Guardar una copia', 'Revert': 'Volver a la última versión', 'Download Project File': 'Descargar archivo de proyecto',
   'Package': 'Empaquetar', 'Close Tab': 'Cerrar pestaña', 'Close All': 'Cerrar todo', 'Close Others': 'Cerrar otras',
   'Export As': 'Exportar como', 'Export PNG': 'Exportar PNG', 'Export JPEG': 'Exportar JPEG', 'Export WebP': 'Exportar WebP',

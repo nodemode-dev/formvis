@@ -9,6 +9,7 @@ const APP_COMMANDS: &[&str] = &[
     "native_doc",
     "native_put",
     "native_table",
+    "native_table3",
     "native_stack",
     "native_remove",
     "native_present",

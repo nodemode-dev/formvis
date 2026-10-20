@@ -4,13 +4,13 @@ import type { GpuMode } from './probe';
  *  show in the status bar and Preferences, or null when the GPU draws. The renderer rules come first (is there a GPU
  *  display at all), then the per-document rules (can it draw this document, this frame). */
 
-export interface RendererState { mode: GpuMode; chosenReason: string; displayReady: boolean; displayFailed: boolean }
+export interface RendererState { mode: GpuMode; chosenReason: string; displayReady: boolean; displayFailed: boolean; failure?: string | null }
 
 /** Whether a GPU display draws at all: the chosen mode (WebGPU or WebGL2), a display that started and was not lost. */
 export function rendererFallback(s: RendererState): string | null {
   if (s.mode === 'cpu') return s.chosenReason;
-  const api = s.mode === 'webgpu' ? 'WebGPU' : 'WebGL2';
-  if (s.displayFailed) return `${api} could not start or was lost, so drawing is on the CPU`;
+  const api = s.mode === 'webgpu' ? 'WebGPU' : s.mode === 'native' ? 'The native renderer' : 'WebGL2';
+  if (s.displayFailed) return `${api} could not start or was lost${s.failure ? ` (${s.failure})` : ''}, so drawing is on the CPU`;
   if (!s.displayReady) return `${api} is starting`;
   return null;
 }

@@ -136,10 +136,20 @@ export async function apngFrames(file: Blob): Promise<number> {
   return 0;
 }
 
+const SVG_UNIT_PX: Record<string, number> = { px: 1, in: 96, cm: 96 / 2.54, mm: 96 / 25.4, pt: 96 / 72, pc: 16 };
+
+/** The physical size in inches an SVG declares when its width and height carry mm, cm, in, pt or pc, else null. */
+export async function svgInches(file: Blob): Promise<{ width: number; height: number } | null> {
+  const tag = /<svg\b[^>]*>/i.exec(await file.slice(0, 8192).text())?.[0] ?? '';
+  const get = (n: string): number => { const m = new RegExp(`\\s${n}\\s*=\\s*["']\\s*([0-9.]+)\\s*(mm|cm|in|pt|pc)\\s*["']`, 'i').exec(tag); return m ? Number(m[1]) * (SVG_UNIT_PX[m[2].toLowerCase()] ?? 0) / 96 : 0; };
+  const width = get('width'), height = get('height');
+  return width > 0 && height > 0 ? { width, height } : null;
+}
+
 /** The size an SVG declares in its root tag (width and height, else the viewBox), or null when it declares none. */
 export async function svgSize(file: Blob): Promise<{ width: number; height: number } | null> {
   const tag = /<svg\b[^>]*>/i.exec(await file.slice(0, 8192).text())?.[0] ?? '';
-  const num = (n: string): number => { const m = new RegExp(`\\s${n}\\s*=\\s*["']\\s*([0-9.]+)\\s*(?:px)?\\s*["']`, 'i').exec(tag); return m ? Number(m[1]) : 0; };
+  const num = (n: string): number => { const m = new RegExp(`\\s${n}\\s*=\\s*["']\\s*([0-9.]+)\\s*(px|mm|cm|in|pt|pc)?\\s*["']`, 'i').exec(tag); return m ? Number(m[1]) * (SVG_UNIT_PX[(m[2] ?? 'px').toLowerCase()] ?? 1) : 0; };
   let width = num('width'), height = num('height');
   const vb = /\sviewBox\s*=\s*["']\s*[-0-9.]+[\s,]+[-0-9.]+[\s,]+([0-9.]+)[\s,]+([0-9.]+)/i.exec(tag);
   if (vb) {
@@ -150,12 +160,12 @@ export async function svgSize(file: Blob): Promise<{ width: number; height: numb
 }
 
 /** An SVG drawn by the browser at `width` pixels across (the height follows its shape), so it is sharp at the size chosen. */
-export async function rasteriseSvg(file: Blob, name: string, width: number): Promise<ImportedImage> {
+export async function rasteriseSvg(file: Blob, name: string, width: number, height?: number): Promise<ImportedImage> {
   const text = await svgSource(file);
   const size = (await svgSize(new Blob([text]))) ?? { width: 1024, height: 1024 };
-  const w = Math.max(1, Math.round(width)), h = Math.max(1, Math.round(width * size.height / size.width));
+  const w = Math.max(1, Math.round(width)), h = Math.max(1, Math.round(height ?? width * size.height / size.width));
   if (w > LIMITS.side || h > LIMITS.side || w * h > LIMITS.pixels) throw new Error(`${name} at ${w} by ${h} exceeds the 30,000 px side or ${Math.round(LIMITS.pixels / 1_000_000)}-megapixel limit.`);
-  const clean = sanitiseSvg(text, w, h, size);
+  const clean = sanitiseSvg(text, w, h, size, height !== undefined);
   let img: HTMLImageElement;
   try { img = await viaElement(new Blob([clean.text], { type: 'image/svg+xml' })); } catch { throw new Error(`${name} could not be drawn: its markup is damaged or uses features the browser cannot render.`); }
   const canvas = createSurface(w, h);
@@ -167,7 +177,7 @@ const SVG_BLOCKED = new Set(['script', 'foreignobject', 'iframe', 'object', 'emb
 
 /** The SVG with scripts, event handlers and every link that is not inside the file (an outside address, a file path) taken
  *  out, drawn at `w` by `h` with its viewBox (or the size it declares) kept so the shape fits as the file says. */
-function sanitiseSvg(text: string, w: number, h: number, size: { width: number; height: number }): { text: string; removed: number } {
+function sanitiseSvg(text: string, w: number, h: number, size: { width: number; height: number }, stretch = false): { text: string; removed: number } {
   const doc = new DOMParser().parseFromString(text, 'image/svg+xml'), root = doc.documentElement;
   if (!root || root.localName.toLowerCase() !== 'svg' || doc.getElementsByTagName('parsererror').length) throw new Error('That file is not a readable SVG.');
   let removed = 0;
@@ -185,6 +195,7 @@ function sanitiseSvg(text: string, w: number, h: number, size: { width: number; 
   root.setAttribute('width', String(w));
   root.setAttribute('height', String(h));
   if (!root.hasAttribute('viewBox')) root.setAttribute('viewBox', `0 0 ${size.width} ${size.height}`);
+  if (stretch) root.setAttribute('preserveAspectRatio', 'none');
   return { text: new XMLSerializer().serializeToString(doc), removed };
 }
 

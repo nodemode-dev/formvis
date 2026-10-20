@@ -4,6 +4,13 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.92.11 · 2026-10-20
+
+- SVG: Open, Import, drop and paste ask for a size (width, height, percent, or pixels per inch when the file declares a physical size) and how it comes in: pixels, a smart layer redrawn sharp from its SVG when scaled, or editable shape layers; choices are remembered.
+- Native renderer: soft (feathered) masks on layers match the canvas in Vivid Light, Reflect and Hue (were up to 20 levels off, now within 2).
+- `./formvis cli convert --overwrite` no longer waits for window approval for files named on the command line.
+- The native renderer's start failure names the native renderer and the reason; the native 3D table upload is allowed by the desktop permissions.
+
 ## 1.92.10 · 2026-10-20
 
 - SVG: imports are cleaned of scripts, event handlers and outside links (with a note of what was left out), drawn at the chosen width with the viewBox kept, and also take .svgz and pasted SVG text; a damaged SVG says so instead of failing quietly.

@@ -14,7 +14,8 @@
   ./formvis cli info <file...> [--json]   size, colour mode, depth, resolution, profile and layers of a file; no window needed
   ./formvis cli convert <in> <out> | <in...> --to FORMAT [--out DIR] [--quality 0.1-1] [--dpi N] [--page N] [--options JSON] [--overwrite]
                         a picture file to another format through the engine; no window needed. A .psd .psb .ora .fvd file in or out keeps its
-                        layers and goes through a window (add --headless)
+                        layers and goes through a window (add --headless). The files you name are yours to replace: --overwrite needs no
+                        approval in a window for a flat picture
   ./formvis cli jobs [list [--active]] | cancel <id> | cancel --all   the engine's background jobs
   ./formvis cli serve [--root DIR] [--token TEXT]   a JSON-lines session on stdin and stdout: {"id":1,"method":"command.run","params":{...}}
   ./formvis cli version   the version, build and the engine's address
@@ -46,7 +47,7 @@ HELP = {
     "hdr": "hdr <files...> [--no-align] [--times 1/60,1/15,...] [--depth 32|16|8] [--out FILE]\n  Bracketed exposures merged by the engine into a Radiance .hdr (32) or a tone-mapped PNG (16 or 8); needs no window.",
     "info": "info <file...> [--json]\n  Size, colour mode, depth, resolution, profile and layers of a picture or project (.fvd .fmv .ora .psd .psb). Needs only the engine.",
     "convert": "convert <in> <out>\n  convert <in...> --to FORMAT [--out DIR]\n  [--quality 0.1-1] [--dpi N] [--page N] [--options JSON] [--overwrite]\n"
-               "  A picture file to another format through the engine (png jpg webp avif tif bmp qoi tga ico pdf ppm pgm pbm pnm dpx fits wbmp). One flat picture; needs only the engine.\n"
+               "  A picture file to another format through the engine (png jpg webp avif tif bmp qoi tga ico pdf ppm pgm pbm pnm dpx fits wbmp). One flat picture; needs only the engine. A file you name is replaced with --overwrite and no approval is asked.\n"
                "  --options takes the writer's choices as JSON, for example tga {\"bits\":24,\"rle\":true}, dpx {\"bits\":10,\"transfer\":\"log\"}. A .psd .psb .ora or .fvd file in or out keeps its layers and needs a window (--headless).\n"
                "  A layered input to tga or dpx writes the flattened picture with those choices; a .tif out with --options '{\"layers\":true}' writes a TIFF that carries the layers.",
     "jobs": "jobs [list [--active]] | cancel <id> | cancel --all\n  The engine's background jobs (local generation, upscaling) and agent calls now running.",

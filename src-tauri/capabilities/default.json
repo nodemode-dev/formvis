@@ -28,6 +28,7 @@
     "allow-native-doc",
     "allow-native-put",
     "allow-native-table",
+    "allow-native-table3",
     "allow-native-stack",
     "allow-native-remove",
     "allow-native-present",
