@@ -19,7 +19,7 @@ const isIdentity = (m: Mat): boolean => m[0] === 1 && m[1] === 0 && m[2] === 0 &
 const affine = (m: Mat): number[] | null => (isIdentity(m) ? null : [m[0], m[2], m[4], m[1], m[3], m[5]]);
 
 /** The blend modes a folder composited alone was measured in within two levels of the CPU renderer. */
-const GROUP_BLENDS: ReadonlySet<string> = new Set(['normal', 'multiply', 'screen', 'lighten', 'luminosity', 'soft-light', 'linear-burn', 'subtract', 'color', 'negation', 'overlay', 'difference', 'darken', 'exclusion', 'hard-light', 'color-dodge', 'linear-light', 'pin-light', 'divide', 'glow']);
+const GROUP_BLENDS: ReadonlySet<string> = new Set(['normal', 'multiply', 'screen', 'lighten', 'luminosity', 'soft-light', 'linear-burn', 'subtract', 'color', 'negation', 'overlay', 'difference', 'darken', 'exclusion', 'hard-light', 'color-dodge', 'linear-light', 'pin-light', 'divide', 'glow', 'hue']);
 
 const BLEND_IF_OPEN: readonly number[] = [0, 0, 255, 255];
 
@@ -60,6 +60,7 @@ export class NativeDisplay implements ScreenDisplay {
       if (l.sub) {
         if (l.sub.some((x) => x.clip)) return 'a clipped group, which the native renderer does not draw yet';
         if (!GROUP_BLENDS.has(l.blend)) return 'a folder in a blend mode the native renderer does not match the CPU in yet';
+        if (l.blend === 'hue' && (l.mask || l.folders?.length)) return 'a masked folder in Hue, which the native renderer does not match the CPU in within two levels yet';
         const inner = this.unsupported(l.sub);
         if (inner) return inner;
         continue;

@@ -546,6 +546,41 @@ async def run(target: str = Form(...), workflow: str = Form(...), items: str = F
             "prompt": prompt is not None and any(str(n.get("_meta", {}).get("title", "")).strip().lower() == PROMPT_TITLE for n in flow.values())}
 
 
+UPSCALE_NODES = ("UpscaleModelLoader", "ImageUpscaleWithModel")
+
+
+@router.get("/upscale-models")
+def upscale_models(target: str) -> dict:
+    """The upscaler files ComfyUI lists in its upscale_models folder (.pth, .safetensors, .onnx and the rest it loads), and
+    whether it has the two nodes that run one."""
+    base = _base(target)
+    try:
+        info = {}
+        for kind in UPSCALE_NODES:
+            info.update(_get_json(base, "/object_info/" + kind, 8) or {})
+    except urllib.error.HTTPError:
+        raise HTTPException(status_code=502, detail=f"Something answers at {base}, but it is not ComfyUI.")
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        raise outbound.unreachable("ComfyUI", base, "Preferences > Plugins", exc)
+    missing = [k for k in UPSCALE_NODES if k not in info]
+    return {"models": [] if missing else (_offered(info, "UpscaleModelLoader", "model_name") or []), "missing": missing}
+
+
+@router.post("/upscale")
+async def upscale(target: str = Form(...), model: str = Form(...), image: UploadFile = File(...)) -> dict:
+    """Queues the picture through a chosen upscaler file on ComfyUI (Load Image, Load Upscale Model, Upscale Image (using
+    Model), Save Image); follow it with /job and fetch the result with /image, at the model's own size."""
+    listed = upscale_models(target)
+    if listed["missing"]:
+        raise HTTPException(status_code=422, detail="ComfyUI has no " + " or ".join(listed["missing"]) + " node, so it cannot run an upscaler file.")
+    if model not in listed["models"]:
+        raise HTTPException(status_code=422, detail=f"ComfyUI does not list {model} in its upscale_models folder.")
+    flow = {"1": {"class_type": "LoadImage", "inputs": {"image": "x"}}, "2": {"class_type": "UpscaleModelLoader", "inputs": {"model_name": model}},
+            "3": {"class_type": "ImageUpscaleWithModel", "inputs": {"upscale_model": ["2", 0], "image": ["1", 0]}},
+            "4": {"class_type": "SaveImage", "inputs": {"images": ["3", 0], "filename_prefix": "formvis-upscale"}}}
+    return await run(target=target, workflow=json.dumps(flow), items=json.dumps([{"name": "Upscale", "kind": "image"}]), prompt=None, files=[image])
+
+
 @router.get("/job/{job}")
 def job(job: str, target: str) -> dict:
     """queued (with how many are ahead), running, done (with the output images) or failed."""

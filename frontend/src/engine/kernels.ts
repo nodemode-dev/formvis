@@ -1,5 +1,6 @@
 import { clamp, type Adjustment } from './types';
 import { isParamKind, paramKernel } from './adjust-params';
+import type { Chains, Stage } from './transfer-pow';
 import { wasmAntialias, wasmEnhanceEdge, wasmGradientRamp, wasmInvert, wasmLut, wasmSensitivity, wasmWand } from './wasm-kernels';
 
 /** Pixel kernels for adjustment layers and the Magic Wand, written for formvis from standard methods: Levels as a
@@ -18,7 +19,7 @@ const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 
 /** A kernel from one lookup table per colour channel, sampled from `transfer(channel, level)` over 0 to 255.
  *  Fully transparent pixels are left alone. */
-function tableKernel(transfer: (channel: number, level: number) => number): Kernel {
+function tableKernel(transfer: (channel: number, level: number) => number, chains?: Chains): Kernel {
   const tables: Uint8Array[] = [];
   for (let c = 0; c < 3; c++) {
     const t = new Uint8Array(256);
@@ -28,7 +29,7 @@ function tableKernel(transfer: (channel: number, level: number) => number): Kern
   const [tr, tg, tb] = tables;
   const lut = new Uint8Array(768);
   lut.set(tr, 0); lut.set(tg, 256); lut.set(tb, 512);
-  const kernel: Kernel & { transfer?: (channel: number, level: number) => number } = (px) => {
+  const kernel: Kernel & { transfer?: (channel: number, level: number) => number; stages?: Chains } = (px) => {
     if (wasmLut(px, lut)) return;
     for (let i = 0; i < px.length; i += 4) {
       if (px[i + 3] === 0) continue;
@@ -38,7 +39,33 @@ function tableKernel(transfer: (channel: number, level: number) => number): Kern
     }
   };
   kernel.transfer = transfer;   // sampled at 16-bit precision by engine/deep.ts (1.53.6)
+  kernel.stages = chains;
   return kernel;
+}
+
+/** The stage chains of a Levels, Curves or Exposure adjustment that the deep composite runs (TypeScript and WebAssembly alike), or null. */
+export function stagesOf(adj: Adjustment | null): Chains | null {
+  return (adjustmentKernel(adj) as unknown as { stages?: Chains } | null)?.stages ?? null;
+}
+
+function levelsStage(raw: unknown): Stage {
+  const r = record(raw);
+  const lo = clamp(finite(r.black, 0), 0, 254);
+  const hi = clamp(finite(r.white, 255), lo + 1, 255);
+  return { k: 1, lo, hi, ig: 1 / clamp(finite(r.gamma, 1), 0.1, 9.99), ol: clamp(finite(r.outputBlack, 0), 0, 255), oh: clamp(finite(r.outputWhite, 255), 0, 255) };
+}
+
+function curveStage(input: { x: number; y: number }[]): Stage {
+  const k = (input.length >= 2 ? input : [{ x: 0, y: 0 }, { x: 255, y: 255 }]).slice().sort((a, b) => a.x - b.x);
+  const n = k.length, secant = new Float64Array(n - 1), t = new Float64Array(n);
+  for (let j = 0; j < n - 1; j++) secant[j] = (k[j + 1].y - k[j].y) / Math.max(1e-6, k[j + 1].x - k[j].x);
+  t[0] = secant[0];
+  t[n - 1] = secant[n - 2];
+  for (let j = 1; j < n - 1; j++) {
+    const a = secant[j - 1], b = secant[j];
+    t[j] = a * b > 0 ? (2 * a * b) / (a + b) : 0;
+  }
+  return { k: 2, x: Float64Array.from(k, (p) => p.x), y: Float64Array.from(k, (p) => p.y), t };
 }
 
 /** One Levels range as a transfer on 0 to 255: input black and white points, a midtone gamma, output black and white. */
@@ -56,7 +83,8 @@ export function levelsKernel(settings: unknown): Kernel {
   const ranges = list(record(settings).ranges);
   const composite = levelsTransfer(ranges[0]);
   const channel = [levelsTransfer(ranges[1]), levelsTransfer(ranges[2]), levelsTransfer(ranges[3]), levelsTransfer(ranges[4])];
-  return tableKernel((c, level) => composite((channel[c] ?? channel[0])(level)));
+  const stages = [1, 2, 3, 4].map((i) => levelsStage(ranges[i])), top = levelsStage(ranges[0]);
+  return tableKernel((c, level) => composite((channel[c] ?? channel[0])(level)), [0, 1, 2, 3].map((c) => [stages[c], top]));
 }
 
 interface Knot { x: number; y: number }
@@ -93,7 +121,8 @@ export function curvesKernel(settings: unknown): Kernel {
   const channels = list(record(settings).channels).map((c) => list(c).map((p): Knot => ({ x: finite(record(p).x, 0), y: finite(record(p).y, 0) })));
   const curveAt = (i: number) => monotoneCurve(channels[i] ?? []);
   const composite = curveAt(0), channel = [curveAt(1), curveAt(2), curveAt(3), curveAt(4)];
-  return tableKernel((c, level) => composite((channel[c] ?? channel[0])(level)));
+  const stages = [1, 2, 3, 4].map((i) => curveStage(channels[i] ?? [])), top = curveStage(channels[0] ?? []);
+  return tableKernel((c, level) => composite((channel[c] ?? channel[0])(level)), [0, 1, 2, 3].map((c) => [stages[c], top]));
 }
 
 const toLinear = (e: number): number => (e <= 0.04045 ? e / 12.92 : Math.pow((e + 0.055) / 1.055, 2.4));
@@ -105,7 +134,8 @@ export function exposureKernel(settings: unknown): Kernel {
   const gain = Math.pow(2, clamp(finite(r.exposure, 0), -20, 20));
   const offset = clamp(finite(r.offset, 0), -0.5, 0.5);
   const invGamma = 1 / clamp(finite(r.gamma, 1), 0.01, 9.99);
-  return tableKernel((_, level) => 255 * clamp(toEncoded(Math.pow(Math.max(0, toLinear(level / 255) * gain + offset), invGamma)), 0, 1));
+  const chain: Stage[] = [{ k: 3, gain, off: offset, ig: invGamma }];
+  return tableKernel((_, level) => 255 * clamp(toEncoded(Math.pow(Math.max(0, toLinear(level / 255) * gain + offset), invGamma)), 0, 1), [chain, chain, chain, chain]);
 }
 
 /** Gradient Map: each pixel's Rec. 709 luminance picks a colour between the shadow and highlight colours. */

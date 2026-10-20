@@ -1,5 +1,5 @@
 import type { Mat } from './geometry';
-import type { TipAlpha } from './dab-buffer';
+import { TIP_UNIT, type TipAlpha } from './dab-buffer';
 
 /** Preferences > Performance > GPU brush coverage: a stroke's dabs lay their coverage on the graphics processor. */
 export const gpuDabPrefs = { on: false };
@@ -13,7 +13,8 @@ void main() {
 const FRAG = `#version 300 es
 precision highp float;
 precision highp int;
-uniform highp sampler2D tip;
+uniform highp usampler2D tip;
+uniform float cs;
 uniform vec2 org;
 uniform vec4 inv;
 uniform vec2 off;
@@ -23,7 +24,7 @@ uniform float k;
 out vec4 o;
 float texel(ivec2 q, float wgt) {
   if (q.x < 0 || q.y < 0 || q.x >= dim.x || q.y >= dim.y) return 0.0;
-  return texelFetch(tip, q, 0).r * wgt;
+  return float(texelFetch(tip, q, 0).r) * wgt;
 }
 void main() {
   vec2 p = gl_FragCoord.xy - org;
@@ -37,7 +38,7 @@ void main() {
   s += texel(b + ivec2(1, 0), fu * (1.0 - fv));
   s += texel(b + ivec2(0, 1), (1.0 - fu) * fv);
   s += texel(b + ivec2(1, 1), fu * fv);
-  float a = k * s;
+  float a = k * (s * cs);
   if (!(a > 0.0)) discard;
   o = vec4(a, 0.0, 0.0, a);
 }`;
@@ -134,8 +135,8 @@ export class GpuDabCoverage {
     const gl = this.gl;
     t = gl.createTexture() as WebGLTexture;
     gl.bindTexture(gl.TEXTURE_2D, t);
-    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.R8, lw, lh);
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, lw, lh, gl.RED, gl.UNSIGNED_BYTE, data);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.R8UI, lw, lh);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, lw, lh, gl.RED_INTEGER, gl.UNSIGNED_BYTE, data);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     this.tips.set(data, t);
@@ -148,8 +149,9 @@ export class GpuDabCoverage {
     if (!(Math.abs(det) > 1e-12) || !(k > 0)) return false;
     const tw = tip.w, th = tip.h, gl = this.gl;
     const xs = [m[4], m[0] * tw + m[4], m[2] * th + m[4], m[0] * tw + m[2] * th + m[4]], ys = [m[5], m[1] * tw + m[5], m[3] * th + m[5], m[1] * tw + m[3] * th + m[5]];
-    const x0 = Math.max(0, Math.floor(Math.min(...xs))), x1 = Math.min(this.w, Math.ceil(Math.max(...xs)));
-    const y0 = Math.max(0, Math.floor(Math.min(...ys))), y1 = Math.min(this.h, Math.ceil(Math.max(...ys)));
+    const ox = Math.floor(Math.min(...xs)), oy = Math.floor(Math.min(...ys));
+    const x0 = Math.max(0, ox), x1 = Math.min(this.w, Math.ceil(Math.max(...xs)));
+    const y0 = Math.max(0, oy), y1 = Math.min(this.h, Math.ceil(Math.max(...ys)));
     if (x1 <= x0 || y1 <= y0) return false;
     const ia = m[3] / det, ib = -m[1] / det, ic = -m[2] / det, id = m[0] / det, ie = -(ia * m[4] + ic * m[5]), iff = -(ib * m[4] + id * m[5]);
     const ratio = Math.max(Math.hypot(ia, ib), Math.hypot(ic, id)), top = tip.levels.length - 1;
@@ -159,9 +161,10 @@ export class GpuDabCoverage {
       if (!this.locs.has(n)) this.locs.set(n, gl.getUniformLocation(this.prog, n));
       return this.locs.get(n) ?? null;
     };
-    gl.uniform2f(u('org'), x0, y0);
+    gl.uniform2f(u('org'), ox, oy);
     gl.uniform4f(u('inv'), ia, ib, ic, id);
-    gl.uniform2f(u('off'), ie + ia * x0 + ic * y0, iff + ib * x0 + id * y0);
+    gl.uniform2f(u('off'), ie + ia * ox + ic * oy, iff + ib * ox + id * oy);
+    gl.uniform1f(u('cs'), TIP_UNIT);
     gl.uniform2f(u('sc'), lv.w / tw, lv.h / th);
     gl.uniform2i(u('dim'), lv.w, lv.h);
     gl.uniform1f(u('k'), k);

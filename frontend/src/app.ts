@@ -97,7 +97,7 @@ import { writePsdInParts } from './io/psd-parts';
 import { isKraFile, readKra } from './io/kra';
 import { isPdnFile, readPdn } from './io/pdn';
 import { isAfFile, readAf } from './io/af-preview';
-import { readLayeredTiff, writeLayeredTiff } from './io/layered-tiff';
+import { readLayeredTiff, tiffLayerBlock, writeLayeredTiff } from './io/layered-tiff';
 import { isOraFile, readOraFile, writeOra } from './io/ora';
 import { withAiLabel } from './io/ai-label';
 import { withGenerationText } from './io/png-text';
@@ -1086,8 +1086,14 @@ export function startApp(): void {
   /** `how` 'layers' (the default) adds pictures to the open document; 'documents' (File > Open, Ctrl-drop) opens each as its own document. Preset files go to their libraries either way. */
   async function importFiles(files: File[], at?: Pt, how: 'layers' | 'documents' = 'layers'): Promise<void> {
     files = await Promise.all(files.map(nameRawByContent));
-    const projects = files.filter(isProjectFile);
-    const images = files.filter((f) => !isProjectFile(f) && isImageFile(f));
+    const layeredTiffs = new Set<File>();
+    if (how === 'documents') for (const f of files) {
+      const block = /\.tiff?$/i.test(f.name) ? tiffLayerBlock(new Uint8Array(await f.arrayBuffer())) : null;
+      const text = block ? new TextDecoder('latin1').decode(block) : '';
+      if (text.includes('8BIMLayr') || text.includes('8B64Layr')) layeredTiffs.add(f);
+    }
+    const projects = files.filter((f) => isProjectFile(f) || layeredTiffs.has(f));
+    const images = files.filter((f) => !isProjectFile(f) && !layeredTiffs.has(f) && isImageFile(f));
     const presets = files.filter((f) => !isProjectFile(f) && !isImageFile(f) && presetKindOf(f.name));
     const skipped = files.length - projects.length - images.length - presets.length;
     if (projects.length) await openFiles(projects, true);

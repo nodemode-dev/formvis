@@ -3,7 +3,7 @@
  *  refused) and kept, so startup never waits on it; until a chunk is ready every call answers null and the caller runs
  *  its TypeScript twin, which gives the same bytes. A chunk that fails to load is not tried again. */
 
-export type KernelChunk = 'mask' | 'tone' | 'blur' | 'resample' | 'dither' | 'heal' | 'noise' | 'patch' | 'color' | 'blend';
+export type KernelChunk = 'mask' | 'tone' | 'blur' | 'resample' | 'dither' | 'heal' | 'noise' | 'patch' | 'color' | 'blend' | 'transfer';
 type Fn = (...args: number[]) => number;
 interface Chunk { memory: WebAssembly.Memory; fn: Record<string, Fn> }
 type State = 'idle' | 'loading' | 'ready' | 'failed';
@@ -20,6 +20,7 @@ const URLS: Record<KernelChunk, string> = {
   patch: new URL('./kernels-wasm/formvis-kernels-patch.wasm', import.meta.url).href,
   color: new URL('./kernels-wasm/formvis-kernels-color.wasm', import.meta.url).href,
   blend: new URL('./kernels-wasm/formvis-kernels-blend.wasm', import.meta.url).href,
+  transfer: new URL('./kernels-wasm/formvis-kernels-transfer.wasm', import.meta.url).href,
 };
 const LIMIT = 1 << 30;
 const RENEW = 3 << 28;
@@ -29,7 +30,7 @@ const modules = new Map<KernelChunk, WebAssembly.Module>();
 const ready = new Map<KernelChunk, Chunk>();
 const loading = new Map<KernelChunk, Promise<boolean>>();
 const failed = new Set<KernelChunk>();
-const calls: Record<KernelChunk, number> = { mask: 0, tone: 0, blur: 0, resample: 0, dither: 0, heal: 0, noise: 0, patch: 0, color: 0, blend: 0 };
+const calls: Record<KernelChunk, number> = { mask: 0, tone: 0, blur: 0, resample: 0, dither: 0, heal: 0, noise: 0, patch: 0, color: 0, blend: 0, transfer: 0 };
 let enabled = true;
 
 function open(module: WebAssembly.Module): Chunk | null {
@@ -85,7 +86,7 @@ export function setKernelsEnabled(on: boolean): void { enabled = on; }
 
 export function kernelStats(): { enabled: boolean; chunks: Record<KernelChunk, { state: State; calls: number; memory: number }> } {
   const one = (name: KernelChunk) => ({ state: (ready.has(name) ? 'ready' : loading.has(name) ? 'loading' : failed.has(name) ? 'failed' : 'idle') as State, calls: calls[name], memory: ready.get(name)?.memory.buffer.byteLength ?? 0 });
-  return { enabled, chunks: { mask: one('mask'), tone: one('tone'), blur: one('blur'), resample: one('resample'), dither: one('dither'), heal: one('heal'), noise: one('noise'), patch: one('patch'), color: one('color'), blend: one('blend') } };
+  return { enabled, chunks: { mask: one('mask'), tone: one('tone'), blur: one('blur'), resample: one('resample'), dither: one('dither'), heal: one('heal'), noise: one('noise'), patch: one('patch'), color: one('color'), blend: one('blend'), transfer: one('transfer') } };
 }
 
 /** Memory never shrinks, so after a very large image the chunk is opened again from its compiled module. */
@@ -340,6 +341,20 @@ export function wasmBlend(dst: Uint8ClampedArray, src: Uint8ClampedArray, mode: 
     bytes(chunk, ps, src.length).set(src);
     chunk.fn.fv_blend(pd, ps, dst.length, id, opacity);
     dst.set(bytes(chunk, pd, dst.length));
+    return true;
+  }) === true;
+}
+
+/** The deep composite's Levels, Curves or Exposure transfer over `out` in place (twin of `transferDeep` and `transferLinear` in transfer-pow.ts, which encodes `prog`); false where the TypeScript must run. */
+export function wasmTransfer(out: Float32Array, S: number, A: number, op: number, cov: Float32Array | null, paper: boolean, linear: boolean, prog: Float64Array): boolean {
+  const npx = S > 0 ? out.length / S : 0;
+  if (!Number.isInteger(npx) || npx < 1024 || !Number.isFinite(op) || A < 1 || A > S || (cov && cov.length !== npx)) return false;
+  return run('transfer', [out.byteLength, cov ? cov.byteLength : 16, prog.byteLength], (chunk, [po, pc, pp]) => {
+    new Float32Array(chunk.memory.buffer, po, out.length).set(out);
+    if (cov) new Float32Array(chunk.memory.buffer, pc, cov.length).set(cov);
+    new Float64Array(chunk.memory.buffer, pp, prog.length).set(prog);
+    chunk.fn.fv_transfer(po, npx, S, A, op, cov ? pc : 0, paper ? 1 : 0, linear ? 1 : 0, pp, prog.length);
+    out.set(new Float32Array(chunk.memory.buffer, po, out.length));
     return true;
   }) === true;
 }

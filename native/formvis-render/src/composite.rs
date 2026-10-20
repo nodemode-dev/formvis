@@ -190,8 +190,46 @@ const FS: &str = r#"
 fn lowp_div(v: vec3<f32>) -> vec3<f32> { return floor((v + 255.0) / 256.0); }
 fn lowp_divs(v: f32) -> f32 { return floor((v + 255.0) / 256.0); }
 fn lowp_mode(m: u32) -> bool { return m == 2u || m == 3u || m == 7u || m == 8u || m == 12u || m == 14u || m == 19u || m == 20u; }
+fn hp_lum(c: vec3<f32>) -> f32 { return c.r * 0.30 + c.g * 0.59 + c.b * 0.11; }
+fn hp_sat(c: vec3<f32>) -> f32 { return max(c.r, max(c.g, c.b)) - min(c.r, min(c.g, c.b)); }
+fn hp_set_sat(c: vec3<f32>, s: f32) -> vec3<f32> {
+  let st = hp_sat(c);
+  if (st == 0.0) { return vec3<f32>(0.0); }
+  return (c - min(c.r, min(c.g, c.b))) * s / st;
+}
+fn hp_set_lum(c: vec3<f32>, l: f32) -> vec3<f32> { return c + (l - hp_lum(c)); }
+fn hp_clip(c: vec3<f32>, a: f32) -> vec3<f32> {
+  let mn = min(c.r, min(c.g, c.b));
+  let mx = max(c.r, max(c.g, c.b));
+  let l = hp_lum(c);
+  var o = c;
+  if (mn < 0.0 && l != mn) { o = l + (o - l) * l / (l - mn); }
+  if (mx > a && l != mx) { o = l + (o - l) * (a - l) / (mx - l); }
+  return max(o, vec3<f32>(0.0));
+}
+fn highp_mode(m: u32) -> bool { return m == 4u || m == 23u || m == 24u; }
+fn highp_blend(m: u32, s: vec3<f32>, sa: f32, d: vec3<f32>, da: f32) -> vec3<f32> {
+  if (m == 23u) {
+    var c = hp_set_sat(s * sa, hp_sat(d) * sa);
+    c = hp_clip(hp_set_lum(c, hp_lum(d) * sa), sa * da);
+    return s * (1.0 - da) + d * (1.0 - sa) + c;
+  }
+  if (m == 24u) {
+    var c = hp_set_sat(d * sa, hp_sat(s) * da);
+    c = hp_clip(hp_set_lum(c, hp_lum(d) * sa), sa * da);
+    return s * (1.0 - da) + d * (1.0 - sa) + c;
+  }
+  var o = vec3<f32>(0.0);
+  for (var i = 0; i < 3; i++) {
+    if (d[i] == da) { o[i] = d[i] + s[i] * (1.0 - da); }
+    else if (s[i] == 0.0) { o[i] = d[i] * (1.0 - sa); }
+    else { o[i] = sa * (da - min(da, (da - d[i]) * sa / s[i])) + s[i] * (1.0 - da) + d[i] * (1.0 - sa); }
+  }
+  return o;
+}
 fn lowp_blend(m: u32, s: vec3<f32>, sa: f32, d: vec3<f32>, da: f32) -> vec3<f32> {
   switch m {
+    case 0u: { return s + lowp_div(d * (255.0 - sa)); }
     case 2u: { return s + d - lowp_div(max(s * da, d * sa)); }
     case 3u: { return lowp_div(s * (255.0 - da) + d * (255.0 - sa) + s * d); }
     case 7u: { return s + d - lowp_div(min(s * da, d * sa)); }
@@ -354,7 +392,21 @@ fn body(pos: vec4<f32>) -> vec4<f32> {
   let sa = sc.a * comp.opacity * cov * bif;
   if (sa <= 0.0) { return bd; }
   let ab = bd.a;
-  if ((comp.pad1 == 1u || comp.pad2 == 1u) && comp.transformed == 0u && cov == 1.0 && comp.bi_ch == 0u && comp.ko_on == 0u && comp.ch_off == 0u && comp.has_clip == 0u && lowp_mode(m)) {
+  if ((comp.pad1 == 1u || comp.pad2 == 1u) && comp.transformed == 0u && cov == 1.0 && comp.bi_ch == 0u && comp.ko_on == 0u && comp.ch_off == 0u && comp.has_clip == 0u && highp_mode(m)) {
+    let ga = round(sc.a * 255.0);
+    let da = round(ab * 255.0);
+    var sp = round(s0.rgb * 255.0);
+    if (comp.pad1 == 1u) { sp = floor(sc.rgb * ga + 0.5); }
+    let s = sp / 255.0 * comp.opacity;
+    let sa8 = ga / 255.0 * comp.opacity;
+    let d = floor(bd.rgb * da + 0.5) / 255.0;
+    let dal = da / 255.0;
+    let ao8 = floor((sa8 + dal - sa8 * dal) * 255.0 + 0.5);
+    if (ao8 <= 0.0) { return bd; }
+    let r = floor(clamp(highp_blend(m, s, sa8, d, dal), vec3<f32>(0.0), vec3<f32>(1.0)) * 255.0 + 0.5);
+    return keep(vec4<f32>(clamp(floor(r * 255.0 / ao8 + 0.5), vec3<f32>(0.0), vec3<f32>(255.0)) / 255.0, ao8 / 255.0), bd);
+  }
+  if ((comp.pad1 == 1u || comp.pad2 == 1u) && comp.transformed == 0u && cov == 1.0 && comp.bi_ch == 0u && comp.ko_on == 0u && comp.ch_off == 0u && comp.has_clip == 0u && (lowp_mode(m) || (m == 0u && comp.pad1 == 1u && comp.opacity >= 1.0))) {
     let ga = round(sc.a * 255.0);
     let a8 = round(comp.opacity * 255.0);
     let da = round(ab * 255.0);

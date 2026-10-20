@@ -38,7 +38,8 @@ export class TipAlpha {
 /** An opacity (0 to 1) as an 8-bit level, rounded down so a stroke never passes the opacity it was given. */
 export const levelOf = (opacity: number): number => Math.floor(Math.min(1, Math.max(0, opacity)) * 255 + 1e-4);
 
-let colX = new Int32Array(0), colY = new Int32Array(0), colW = new Float32Array(0), colV = new Float32Array(0);
+/** One tip byte step as a float32, the constant both the CPU and the graphics processor multiply the tip sum by. */
+export const TIP_UNIT = Math.fround(1 / 255);
 
 /** The stroke's deep buffer: coverage per pixel as floats over the stroke's window, so a faint dab keeps its share
  *  however fine the spacing, and (when the opacity follows pressure) the highest opacity any dab has reached there.
@@ -77,61 +78,33 @@ export class StrokeBuffer {
     if (!(Math.abs(det) > 1e-12) || !(k > 0)) return null;
     const tw = tip.w, th = tip.h, w = this.w;
     const xs = [m[4], m[0] * tw + m[4], m[2] * th + m[4], m[0] * tw + m[2] * th + m[4]], ys = [m[5], m[1] * tw + m[5], m[3] * th + m[5], m[1] * tw + m[3] * th + m[5]];
-    const x0 = Math.max(0, Math.floor(Math.min(...xs))), x1 = Math.min(w, Math.ceil(Math.max(...xs)));
-    const y0 = Math.max(0, Math.floor(Math.min(...ys))), y1 = Math.min(this.h, Math.ceil(Math.max(...ys)));
+    const ox = Math.floor(Math.min(...xs)), oy = Math.floor(Math.min(...ys));
+    const x0 = Math.max(0, ox), x1 = Math.min(w, Math.ceil(Math.max(...xs)));
+    const y0 = Math.max(0, oy), y1 = Math.min(this.h, Math.ceil(Math.max(...ys)));
     if (x1 <= x0 || y1 <= y0) return null;
     const ia = m[3] / det, ib = -m[1] / det, ic = -m[2] / det, id = m[0] / det, ie = -(ia * m[4] + ic * m[5]), iff = -(ib * m[4] + id * m[5]);
     const ratio = Math.max(Math.hypot(ia, ib), Math.hypot(ic, id)), top = tip.levels.length - 1;
     const lv = tip.levels[ratio > 1.4142 ? Math.min(top, Math.round(Math.log2(ratio))) : 0], lw = lv.w, lh = lv.h, sx = lw / tw, sy = lh / th, data = lv.data;
-    const cov = this.cov, cl = this.ceil;
-    if (Math.abs(m[1]) < 1e-9 && Math.abs(m[2]) < 1e-9) {
-      const n = x1 - x0;
-      if (colX.length < n) { colX = new Int32Array(n); colY = new Int32Array(n); colW = new Float32Array(n); colV = new Float32Array(n); }
-      for (let i = 0; i < n; i++) {
-        const u = (ia * (x0 + i + 0.5) + ie) * sx - 0.5, iu = Math.floor(u), f = u - iu;
-        let a = iu, b = iu + 1, wa = 1 - f, wb = f;
-        if (a < 0) { a = 0; wa = 0; } else if (a >= lw) { a = lw - 1; wa = 0; }
-        if (b < 0) { b = 0; wb = 0; } else if (b >= lw) { b = lw - 1; wb = 0; }
-        colX[i] = a; colY[i] = b; colW[i] = wa; colV[i] = wb;
-      }
-      for (let y = y0; y < y1; y++) {
-        const v = (id * (y + 0.5) + iff) * sy - 0.5, iv = Math.floor(v), g = v - iv;
-        let r0 = iv, r1 = iv + 1, wy0 = 1 - g, wy1 = g;
-        if (r0 < 0) { r0 = 0; wy0 = 0; } else if (r0 >= lh) { r0 = lh - 1; wy0 = 0; }
-        if (r1 < 0) { r1 = 0; wy1 = 0; } else if (r1 >= lh) { r1 = lh - 1; wy1 = 0; }
-        if (wy0 <= 0 && wy1 <= 0) continue;
-        const o0 = r0 * lw, o1 = r1 * lw, row = y * w;
-        for (let i = 0; i < n; i++) {
-          const a = colX[i], b = colY[i], wa = colW[i], wb = colV[i];
-          const s = ((data[o0 + a] * wa + data[o0 + b] * wb) * wy0 + (data[o1 + a] * wa + data[o1 + b] * wb) * wy1) * (1 / 255);
-          if (s <= 0) continue;
-          const p = row + x0 + i, c = cov[p];
-          cov[p] = c + (1 - c) * k * s;
-          if (cl && cl[p] < ceil) cl[p] = ceil;
-        }
-      }
-    } else {
-      for (let y = y0; y < y1; y++) {
-        const Y = y + 0.5, row = y * w;
-        for (let x = x0; x < x1; x++) {
-          const X = x + 0.5, u = (ia * X + ic * Y + ie) * sx - 0.5, v = (ib * X + id * Y + iff) * sy - 0.5, iu = Math.floor(u), iv = Math.floor(v), fu = u - iu, fv = v - iv;
-          let s = 0;
-          for (let j = 0; j < 2; j++) {
-            const yy = iv + j;
-            if (yy < 0 || yy >= lh) continue;
-            const wy = j ? fv : 1 - fv;
-            for (let i = 0; i < 2; i++) {
-              const xx = iu + i;
-              if (xx < 0 || xx >= lw) continue;
-              s += data[yy * lw + xx] * (i ? fu : 1 - fu) * wy;
-            }
-          }
-          s *= 1 / 255;
-          if (s <= 0) continue;
-          const p = row + x, c = cov[p];
-          cov[p] = c + (1 - c) * k * s;
-          if (cl && cl[p] < ceil) cl[p] = ceil;
-        }
+    const cov = this.cov, cl = this.ceil, f = Math.fround;
+    const fa = f(ia), fb = f(ib), fc = f(ic), fd = f(id), fk = f(k), gx = f(sx), gy = f(sy);
+    const offx = f(ie + ia * ox + ic * oy), offy = f(iff + ib * ox + id * oy);
+    for (let y = y0; y < y1; y++) {
+      const py = f(y + 0.5 - oy), row = y * w;
+      for (let x = x0; x < x1; x++) {
+        const px = f(x + 0.5 - ox);
+        const u = f(f(f(f(f(fa * px) + f(fc * py)) + offx) * gx) - 0.5), v = f(f(f(f(f(fb * px) + f(fd * py)) + offy) * gy) - 0.5);
+        const iu = Math.floor(u), iv = Math.floor(v), fu = f(u - iu), fv = f(v - iv), gu = f(1 - fu), gv = f(1 - fv);
+        const in0 = iu >= 0 && iu < lw, in1 = iu + 1 >= 0 && iu + 1 < lw, jn0 = iv >= 0 && iv < lh, jn1 = iv + 1 >= 0 && iv + 1 < lh;
+        let s = 0;
+        if (in0 && jn0) s = f(s + f(data[iv * lw + iu] * f(gu * gv)));
+        if (in1 && jn0) s = f(s + f(data[iv * lw + iu + 1] * f(fu * gv)));
+        if (in0 && jn1) s = f(s + f(data[(iv + 1) * lw + iu] * f(gu * fv)));
+        if (in1 && jn1) s = f(s + f(data[(iv + 1) * lw + iu + 1] * f(fu * fv)));
+        const a = f(fk * f(s * TIP_UNIT));
+        if (!(a > 0)) continue;
+        const p = row + x, c = cov[p];
+        cov[p] = f(a + f(c * f(1 - a)));
+        if (cl && cl[p] < ceil) cl[p] = ceil;
       }
     }
     return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };

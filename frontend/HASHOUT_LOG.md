@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Layered TIFF open, exact GPU brush coverage, native Hue folders, staged deep transfer kernel · _v1.92.4 (app.ts, engine/dab-buffer.ts, engine/gpu-dab.ts, engine/stroke.ts, gpu/native-display.ts, engine/index.ts, engine/transfer-pow.ts, engine/kernels.ts, engine/wasm-kernels.ts; tests)
+
+- Layered TIFF: readLayeredTiff (1.69.6) was only reachable after the PSD branch of openFiles, which a .tif never entered; importFiles now sends a TIFF opened as a document to openFiles when its tag 37724 block holds a Layr (8-bit) record. 16 and 32-bit layer records stay on the flat path (the reader returns null for them).
+- GPU brush: StrokeBuffer.lay computes in float32 with Math.fround at every step in the shader's order, from the dab's unclipped floor corner, as a + c(1 - a) (the blend unit's form); the tip is an R8UI texture times TIP_UNIT. Removed the axis-aligned fast path (`let colX = new Int32Array(0), colY = ...` and its branch) and the float64 generic loop. The windowed decline is lifted; tiled strokes still decline. A real GPU may fuse multiply-adds (GLSL ES 3.00 has no `precise`), so re-check on hardware.
+- Native Hue folders: Skia draws canvas-native non-separable modes in its highp float pipeline; the shader ports Hue, Saturation and Color Burn that way, but only Hue reaches two levels because the native backdrop differs by one level from the canvas's premultiplied bytes in about a third of the pixels and Saturation, Vivid Light, Reflect and Color Burn amplify it. Masked Hue folders refuse.
+- transfer-pow.ts (a shared double-arithmetic pow in TypeScript and the `transfer` WebAssembly kernel) is bit-identical between the two but slower than Math.pow for Levels and Exposure, so the lead left it unwired from compose-float.ts; kernels.ts still records the stages. Wire it only with a faster shared pow.
+- Puppet Warp: beginMeshWarp's first guard now also checks this.puppetEdit.
+
 ## Live shapes combine, native folder rounding, ComfyUI re-upload only when lost · _v1.92.3 (engine/shape-paths.ts, engine/index.ts, app.ts, gpu/native-display.ts, io/api.ts, io/comfy.ts, ui/panels/connection-settings.ts; tests)
 
 - Combine Shapes: live Rectangle and Ellipse layers (createShape: a raster with a `shape` and no `vector`) are converted on the fly by liveShapeVector (from the transform box, corner radius or four radii via cornerRectPath) inside the one edit(); placedPath reads `l.vector ?? this.liveShapeVector(l)`. The combined back layer becomes a vector shape and loses its live corner parameters.

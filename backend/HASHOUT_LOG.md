@@ -2,6 +2,10 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## ComfyUI upscaler routes · _v1.92.4 (app/routers/comfyui.py)
+
+- GET /api/comfyui/upscale-models lists ComfyUI's UpscaleModelLoader files and any missing nodes; POST /api/comfyui/upscale builds LoadImage, UpscaleModelLoader, ImageUpscaleWithModel and SaveImage and reuses run(), so progress, cancel and image fetch are unchanged. The model name must be in ComfyUI's own list, so no path reaches the graph.
+
 ## ComfyUI re-upload only what was lost · _v1.92.3 (app/routers/comfyui.py; tests/comfy_mock.py)
 
 - The reupload route checks ComfyUI's /view?type=input for each mirrored picture (_held) and sends only the ones it no longer holds byte for byte; it answers `present` beside `sent` and `missing`. A failed check counts as not held, so it falls back to uploading.

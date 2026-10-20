@@ -4,6 +4,15 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.92.4 · 2026-10-20
+
+- File > Open opens a layered TIFF with its layers (the layer reader was never reached: every TIFF went to the flat decoder).
+- GPU brush coverage is byte-identical to the CPU (both compute each dab in float32 in the same order) and now also lays windowed strokes on big layers; CPU strokes change by one or two levels in about 9 pixels per 545,000.
+- Native renderer: folders in Hue match the canvas within two levels (masked Hue folders stay on the CPU); a folder in Normal at full opacity rounds as the canvas's 8-bit source-over.
+- ComfyUI: engine routes list the upscaler model files ComfyUI has (.pth included) and run a chosen one; not yet in the Generate dialog.
+- Transform > Warp no longer starts while a Puppet Warp is open.
+- Tests: Save for Web output, Save As and reopening from Home, Split, Perspective and Puppet Warp, OpenRaster and layered TIFF round trips, the ComfyUI stand-in in the browser (run, file mirror, edit, update, save as new, versions), a Generate result returning to its own tab, and the full Linux desktop suite at 27 of 27.
+
 ## 1.92.3 · 2026-10-20
 
 - Layer > Combine Shapes (Unite, Subtract, Intersect, Exclude) works on the live Rectangle and Ellipse layers made by the Shape tools, converting them to vector outlines in one undo step.

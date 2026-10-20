@@ -7108,7 +7108,7 @@ export class Engine {
 
   beginMeshWarp(grid = this.meshWarpGrid): boolean {
     const p = this.current, l = p?.activeLayer;
-    if (!p || !l || this.stroke || this.transformEdit || this.distortEdit || this.meshWarpEdit || this.perspectiveEdit) return false;
+    if (!p || !l || this.stroke || this.transformEdit || this.distortEdit || this.meshWarpEdit || this.puppetEdit || this.perspectiveEdit) return false;
     if ((l.vector && l.mask?.raster) || l.fillContent || l.isGroup || l.adjustment || !l.raster) { this.notice('Warp works on a pixel layer, a smart object or a shape layer without a pixel mask. Rasterize fill layers first.'); return false; }
     this.settle();
     const sb = l.smart ? this.smartBase(l) : null;

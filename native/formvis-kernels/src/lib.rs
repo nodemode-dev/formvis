@@ -25,6 +25,8 @@ mod patch;
 mod resample;
 #[cfg(feature = "tone")]
 mod tone;
+#[cfg(feature = "transfer")]
+mod transfer;
 
 const ALIGN: usize = 16;
 
