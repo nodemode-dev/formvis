@@ -106,7 +106,7 @@ export class LayersPanel {
   /** The active layer the list last scrolled to. */
   private revealed: ID | null = null;
   private renaming: ID | null = null;
-  private drag: { id: ID; ids: ID[]; startY: number; pointerId: number; started: boolean; wasSelected: boolean; target: { id: ID; where: Where } | null; maskFrom: ID | null; tabTarget: string | null; src: string } | null = null;
+  private drag: { id: ID; ids: ID[]; startY: number; pointerId: number; started: boolean; wasSelected: boolean; onMask: boolean; target: { id: ID; where: Where } | null; maskFrom: ID | null; tabTarget: string | null; src: string } | null = null;
   /** The document tab a layer drag has rested on, and the timer that shows that document so the drop lands in it. */
   private spring: { key: string; timer: ReturnType<typeof setTimeout> } | null = null;
   private clearSpring(): void { if (this.spring) { clearTimeout(this.spring.timer); this.spring = null; } }
@@ -747,7 +747,7 @@ export class LayersPanel {
       } else if (t.closest('.cv-layer-thumb')) this.engine.setMaskTarget(false);
       const ids = p.selectedIds.has(id) ? [...p.selectedIds] : [id];
       const maskFrom = e.altKey && t.closest('.cv-layer-mask') && p.layer(id)?.mask ? id : null;
-      this.drag = { id, ids: maskFrom ? [id] : ids, startY: e.clientY, pointerId: e.pointerId, started: false, wasSelected: wasSelected && !mod && !e.shiftKey, target: null, maskFrom, tabTarget: null, src: p.id };
+      this.drag = { id, ids: maskFrom ? [id] : ids, startY: e.clientY, pointerId: e.pointerId, started: false, wasSelected: wasSelected && !mod && !e.shiftKey, onMask: !!t.closest('.cv-layer-mask') && !e.shiftKey, target: null, maskFrom, tabTarget: null, src: p.id };
     });
     rows.addEventListener('pointermove', (e) => {
       const fd = this.fxDrag;
@@ -844,7 +844,10 @@ export class LayersPanel {
         else this.engine.moveLayers(d.ids, d.target.id, d.target.where, e.altKey);
       }
       else if (!d.started && d.maskFrom && !cancel) this.engine.setMaskView(e.shiftKey ? 'rubylith' : 'alone');
-      else if (!d.started && d.wasSelected) this.engine.selectLayer(d.id);
+      else if (!d.started && d.wasSelected) {
+        this.engine.selectLayer(d.id);
+        if (d.onMask) this.engine.setMaskTarget(true);
+      }
     };
     rows.addEventListener('pointerup', (e) => finish(e, false));
     rows.addEventListener('pointercancel', (e) => finish(e, true));

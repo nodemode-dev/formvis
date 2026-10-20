@@ -5,6 +5,8 @@ import { icon } from './icons';
 export class Tabs {
   private frame = 0;                       // a pending animation frame
   private activeId: string | null = null;
+  /** The title last given to the window: the first render always gives it, so the macOS traffic lights are placed on the Home screen as they are once a document sets the title. */
+  private windowTitle: string | null = null;
   /** The document that was current when the engine went busy: its tab shows a progress line under it. */
   private busyId: string | null = null;
   /** Pinned documents sit first in the strip, show a pin where the close button is, and are kept by Close All and Close Others. */
@@ -127,7 +129,8 @@ export class Tabs {
     const shown = current ? `${current.modified ? '• ' : ''}${tabName(current.name, current.doc.meta)}` : '';
     setText(this.docTitle ?? null, shown);
     const title = current ? `${shown} - formvis` : 'formvis';
-    if (document.title !== title) {
+    if (this.windowTitle !== title) {
+      this.windowTitle = title;
       document.title = title;
       if ('__TAURI_INTERNALS__' in window) void import('@tauri-apps/api/window').then((m) => m.getCurrentWindow().setTitle(title)).catch(() => undefined);
     }

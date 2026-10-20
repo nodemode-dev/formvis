@@ -127,8 +127,9 @@ export class ReferencePicker {
   forFal(on: boolean): void {
     setText(this.note, on ? 'fal models take no references: choose a ComfyUI workflow to send them.' : 'Chosen references go to Load Image nodes titled "formvis reference" (then 1, 2...), at most four. Layers with a Control role (scribble, depth, edges, pose) go to Load Image nodes titled "formvis control <role>".');
     if (this.fit.disabled !== on) this.fit.disabled = on;
-    if (on) for (const i of this.boxes()) i.disabled = true;
-    else this.limit();
+    for (const i of this.boxes()) i.disabled = on;
+    if (!on) this.limit();
+    this.el.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
   private boxes(): HTMLInputElement[] { return [...this.list.querySelectorAll<HTMLInputElement>('input[type=checkbox]'), ...this.fileList.querySelectorAll<HTMLInputElement>('input[type=checkbox]')]; }

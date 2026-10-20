@@ -4,26 +4,35 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
-## 1.92.13 · 2026-10-20
+## 1.93.4 · 2026-10-20
+
+- Versions: the four releases after 1.92.9 were renumbered 1.93.0 to 1.93.3 (they were tagged 1.92.10 to 1.92.13), so the last number stays a single digit; tags and commit messages follow, and the entries below use the new numbers.
+- macOS: the window buttons (close, minimise, full screen) sit centred in the title bar on the Home screen too; the window title is now set once at start, as opening a document did before.
+- Menus: every dropdown and submenu keeps one tick column, so labels line up across menus; in the macOS menu bar, items that can be ticked (View, Window, Image > Mode and the rest) are tick items again and follow the app's state.
+- Generate Image and Generative Fill: choosing a ComfyUI workflow in an already open dialog re-enables the ticked reference layers, so the @img chips appear and a run sends them.
+- Layers: a click on the mask thumbnail of the selected layer keeps the mask as the paint target (the release reset it to the pixels).
+- The repo's icon pictures in `assets/` are the app's real icon (the paint roller) instead of the old placeholders.
+
+## 1.93.3 · 2026-10-20
 
 - MCP: run_commands no longer answers "Give the command id" to a valid list of commands (the window's id check ran before the batch branch).
 - Tool Presets: Apply and Rename update the list in place and keep the selection.
 
-## 1.92.12 · 2026-10-20
+## 1.93.2 · 2026-10-20
 
 - View > Flip Horizontal mirrors about the centre of the visible canvas, so the picture no longer slides under the side panels; painting lands under the pointer.
 - One cloud provider by design: the four hosted image providers other than fal are removed; Generate Image, Generative Fill and the Generate panel offer fal, ComfyUI and models on this computer.
 - Typed arithmetic (100+20) works in the New Document width, height and resolution, the layer Opacity and Fill, the zoom boxes and the Properties position and size fields.
 - Native renderer: masked Vivid Light and Reflect folders draw on the canvas renderer again (6 and 12 levels off natively, measured in the desktop window).
 
-## 1.92.11 · 2026-10-20
+## 1.93.1 · 2026-10-20
 
 - SVG: Open, Import, drop and paste ask for a size (width, height, percent, or pixels per inch when the file declares a physical size) and how it comes in: pixels, a smart layer redrawn sharp from its SVG when scaled, or editable shape layers; choices are remembered.
 - Native renderer: soft (feathered) masks on layers match the canvas in Vivid Light, Reflect and Hue (were up to 20 levels off, now within 2).
 - `./formvis cli convert --overwrite` no longer waits for window approval for files named on the command line.
 - The native renderer's start failure names the native renderer and the reason; the native 3D table upload is allowed by the desktop permissions.
 
-## 1.92.10 · 2026-10-20
+## 1.93.0 · 2026-10-20
 
 - SVG: imports are cleaned of scripts, event handlers and outside links (with a note of what was left out), drawn at the chosen width with the viewBox kept, and also take .svgz and pasted SVG text; a damaged SVG says so instead of failing quietly.
 - ICO opens with the sizes dialog (largest, each as a document, or every size as a layer); .cur cursors open too.

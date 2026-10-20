@@ -34,12 +34,14 @@ export function accelerator(combo: string | undefined): string | null {
 type Api = typeof import('@tauri-apps/api/menu');
 
 export class NativeMenus {
-  private items: Array<{ id: string; item: { setEnabled(on: boolean): Promise<void> } }> = [];
+  private items: Array<{ id: string; item: { setEnabled(on: boolean): Promise<void>; setChecked?(on: boolean): Promise<void> } }> = [];
   private building = false;
   private again = false;
   private stateTimer = 0;
 
-  constructor(private readonly commands: Commands, private readonly menus: () => MenuDef[]) {}
+  constructor(private readonly commands: Commands, private readonly menus: () => MenuDef[]) {
+    for (const ev of ['pointerup', 'keyup'] as const) window.addEventListener(ev, () => { if (this.items.length) this.refresh(); }, { passive: true });
+  }
 
   /** Builds (or rebuilds) the menu bar; later calls while one is building are folded into one more build. */
   async build(): Promise<void> {
@@ -54,9 +56,14 @@ export class NativeMenus {
         const cmd = this.commands.get(spec);
         if (!cmd) return null;
         const text = t(this.commands.label(cmd)), acc = accelerator(cmd.keys?.[0]);
-        const opts = { text, enabled: this.commands.enabled(cmd), action: () => { this.commands.run(spec); } };
+        const opts = { text, enabled: this.commands.enabled(cmd), action: () => { this.commands.run(spec); this.refresh(); } };
         let item;
-        try { item = await api.MenuItem.new(acc ? { ...opts, accelerator: acc } : opts); } catch { item = await api.MenuItem.new(opts); }
+        if (cmd.checked) {
+          const copts = { ...opts, checked: !!cmd.checked() };
+          try { item = await api.CheckMenuItem.new(acc ? { ...copts, accelerator: acc } : copts); } catch { item = await api.CheckMenuItem.new(copts); }
+        } else {
+          try { item = await api.MenuItem.new(acc ? { ...opts, accelerator: acc } : opts); } catch { item = await api.MenuItem.new(opts); }
+        }
         items.push({ id: spec, item });
         return item;
       };
@@ -83,14 +90,16 @@ export class NativeMenus {
     }
   }
 
-  /** The enabled states, refreshed a moment after the app changes (grouped, so a burst of changes is one pass). */
+  /** The enabled and tick states, refreshed a moment after the app changes (grouped, so a burst of changes is one pass). */
   refresh(): void {
     if (this.stateTimer) return;
     this.stateTimer = window.setTimeout(() => {
       this.stateTimer = 0;
       for (const { id, item } of this.items) {
         const cmd = this.commands.get(id);
-        if (cmd) void item.setEnabled(this.commands.enabled(cmd)).catch(() => undefined);
+        if (!cmd) continue;
+        void item.setEnabled(this.commands.enabled(cmd)).catch(() => undefined);
+        if (cmd.checked && item.setChecked) void item.setChecked(!!cmd.checked()).catch(() => undefined);
       }
     }, 150);
   }
