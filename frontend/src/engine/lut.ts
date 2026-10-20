@@ -41,7 +41,7 @@ export function adjustmentLut(adj: Adjustment): Uint8Array | null {
  *  interpolated result, computed as the shader computes it, must be within 1 level of the kernel; smooth adjustments
  *  pass, and discontinuous ones (Threshold, hard gradient stops) fail and stay on the CPU. */
 export const LUT3_N = 52;
-export const LUT3_KINDS: ReadonlySet<AdjustmentKind> = new Set<AdjustmentKind>(['hsv', 'vibrance', 'colorBalance', 'channelMixer', 'photoFilter', 'blackWhite', 'selectiveColor', 'threshold', 'gradientMap', 'colorLookup']);
+export const LUT3_KINDS: ReadonlySet<AdjustmentKind> = new Set<AdjustmentKind>(['hsv', 'vibrance', 'colorBalance', 'channelMixer', 'photoFilter', 'blackWhite', 'selectiveColor', 'threshold', 'gradientMap', 'colorLookup', 'splitToning', 'light']);
 const cache3 = new WeakMap<object, Uint8Array | null>();
 
 /** Interpolation exactly as the shader does it: lattice units, the eight nodes, weights per axis, rounded to 8 bits. */

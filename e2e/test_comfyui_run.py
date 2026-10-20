@@ -76,7 +76,7 @@ def test_a_workflow_runs_and_its_result_comes_back_masked(page, comfy, tmp_path)
 def test_an_editor_workflow_is_refused_and_closing_cancels_a_running_job(page, comfy, tmp_path):
     url, seen = comfy
     setup(page, url, tmp_path, {"nodes": [], "links": []})
-    page.wait_for_function("() => document.querySelector('.cv-scrim:not([hidden]) .cv-run-status').textContent.includes('Export (API)')")
+    page.wait_for_function("() => document.querySelector('.cv-scrim:not([hidden]) .cv-run-status').textContent.includes('editor format')")
     seen["hold"] = True
     wf = tmp_path / "ok.json"; wf.write_text(json.dumps(FLOW))
     page.locator(f"{DLG} input[type=file][aria-label='Workflow']").set_input_files(str(wf))

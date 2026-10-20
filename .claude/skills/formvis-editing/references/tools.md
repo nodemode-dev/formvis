@@ -14,7 +14,7 @@ Generated from the engine's catalogue by `./formvis agents sync`; do not edit by
 - Painting and generating: `fill`, `generative_fill`, `generate_image`, `remove_background`
 - Colour, filters and looks: `add_adjustment`, `apply_filter`, `set_adjustment`, `color_match`, `add_film_layer`
 - History: `undo`, `redo`
-- Files without the window, and jobs: `file_info`, `convert_file`, `jobs_list`, `jobs_cancel`
+- Files without the window, and jobs: `file_info`, `improve_prompt`, `convert_file`, `jobs_list`, `jobs_cancel`
 - The window itself: `ui_inspect`, `ui_state`, `ui_screenshot`, `ui_menu_list`, `ui_menu_invoke`, `ui_set`, `ui_dialog`, `ui_pointer`, `ui_key`, `ui_window`, `control_call`, `file_roots`
 - Other: `close_document`, `ping`, `list_plugins`, `select_feather`, `select_grow`, `select_point`, `timeline_get`, `timeline_create`, `timeline_delete`, `timeline_set`, `timeline_go_to`, `timeline_clip`, `timeline_split`, `timeline_keyframe`, `timeline_transition`, `timeline_frame_image`, `timeline_render`, `command_job`, `select_mask`, `list_settings`, `list_fonts`, `set_settings`, `boxes_list`, `boxes_add`, `boxes_set`, `boxes_remove`, `boxes_from_selection`, `boxes_clear`, `sample_box`, `frequency_separation`, `sample_depth`, `depth_edit`, `set_crop`, `export_mask`, `list_recipes`, `set_active_layer`, `select_color`, `select_shape`, `select_range`, `sample_mean_color`, `align_layers`, `group_layers`, `set_group`, `set_mask`, `set_text`, `list_history`, `take_snapshot`, `restore_snapshot`, `delete_snapshot`, `extend_canvas`, `export_layer`, `read_log`, `list_brush_tips`, `set_brush`, `add_filter`, `set_filter`, `apply_preset`, `depth_from_layer`, `select_by_depth`, `match_edges`, `realism_pass`, `compare`, `set_status`, `ailabel_add`, `ailabel_remove`, `ailabel_info`, `film_looks`, `film_apply_look`, `film_add_point`, `film_copy_points`, `film_paste_points`, `glb_place`, `glb_edit`, `glb_info`
 
@@ -611,6 +611,15 @@ Note: read-only.
 Reads a picture or project file at an absolute path without opening it: size in pixels, colour mode, bit depth, resolution, whether it carries a colour profile, pages or frames, and for projects (.fvd, .fmv, .ora, .psd, .psb) the layer count. Works with no window open. Use when you need a file's size, mode, depth or layer count and no window needs to open it.
 
 - `path`: string; required; Absolute path to a picture or project file.
+
+Note: read-only.
+
+## improve_prompt
+
+Rewrites an image prompt through the language model set in Preferences > Plugins, under an improve template (default Richer detail; or a starter or a Markdown template in the data folder's prompt-templates folder). Returns the rewritten prompt and kept, the @img reference tokens of the prompt that the rewrite still carries (any the model dropped are put back at the end and named in restored). Changes nothing in the document; works with no window open. Fails with what to do when no language model is set. Use when a prompt for generate_image or generative_fill should be made more detailed or tidied before it is used.
+
+- `prompt`: string; required; The prompt to improve; @img1, @img2 and so on name reference pictures and are kept.
+- `template`: string; A template name such as Richer detail, Fill a selection or Short and plain.
 
 Note: read-only.
 

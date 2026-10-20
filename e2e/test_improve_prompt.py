@@ -51,7 +51,7 @@ def test_set_up_in_preferences_then_improve_and_restore(page, service):
     page.locator(f"{DLG} select[aria-label='Prompt template']").select_option("Stormy")
     page.locator(f"{DLG} .cv-improve button", has_text="Improve").click()
     page.wait_for_function("() => document.querySelector('.cv-scrim:not([hidden]) textarea[aria-label=Prompt]').value === 'A red kite over a stormy sea at dusk'")
-    assert seen["bodies"][-1]["messages"][0]["content"].startswith("Make it stormy and dramatic.") and seen["bodies"][-1]["messages"][1]["content"] == "a kite"
+    assert seen["bodies"][-1]["messages"][0]["content"].startswith("Make it stormy and dramatic.") and seen["bodies"][-1]["messages"][1]["content"][0]["text"] == "a kite"
     page.locator(f"{DLG} .cv-improve button", has_text="Restore").click()
     assert page.locator(f"{DLG} textarea[aria-label='Prompt']").input_value() == "a kite"
     page.keyboard.press("Escape")

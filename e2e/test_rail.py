@@ -1,11 +1,11 @@
-SLOT = ".cv-rail-tools .cv-tool[aria-label='{}']"
+SLOT = ".cv-rail-tools .cv-rail-slot[aria-label='{}']"
 FLY = "[...document.querySelectorAll('.cv-flyout:not([hidden]) .cv-flyout-label')].map((x) => x.textContent)"
 
 
 def test_rail_groups_tools_with_flyouts_and_keys(page):
     page.evaluate("window.formvis.engine.newDocument(200, 100, 'R', 'white')")
-    slots = page.evaluate("[...document.querySelectorAll('.cv-rail-tools .cv-tool:not(.cv-rail-more)')].map((b) => [b.getAttribute('aria-label'), b.getBoundingClientRect().bottom <= window.innerHeight])")
-    assert len(slots) == 21 and all(ok for _, ok in slots), slots   # the History Brush (Y), the Frame (K), and the Eraser (E, 1.49.5) have their own slots
+    slots = page.evaluate("[...document.querySelectorAll('.cv-rail-tools .cv-tool:not(.cv-rail-more)')].filter((b) => b.offsetParent).map((b) => [b.getAttribute('aria-label'), b.getBoundingClientRect().bottom <= window.innerHeight])")
+    assert len(slots) == 22 and all(ok for _, ok in slots), slots   # the History Brush (Y), the Frame (K), the Eraser (E, 1.49.5) and Relight have their own slots; the expanded rail's per-tool buttons are hidden
     assert page.evaluate("document.querySelector(\"" + SLOT.format("Spot Healing") + "\").classList.contains('has-group')")
     # right-click opens the group; choosing one switches to it and the slot shows it
     page.locator(SLOT.format("Pen")).click(button="right")

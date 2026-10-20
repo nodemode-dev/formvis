@@ -42,7 +42,7 @@ def test_workspaces_arrange_the_panels_and_the_lock_holds_them(page):
         heads = page.locator(".cv-dd-pop:not([hidden]) .cv-dd-head").all_inner_texts()
         items = page.locator(".cv-dd-pop:not([hidden]) .cv-dd-item").all_inner_texts()
         page.keyboard.press("Escape")
-        assert heads == ["BUILT-IN"] and items == ["Essentials", "Photography", "Painting", "Graphic and Web", "Motion"], (heads, items)
+        assert heads == ["BUILT-IN"] and items == ["Essentials", "Photography", "Painting", "Graphic and Web", "Motion", "Pixel Art"], (heads, items)
         choose("Photography")
         assert "swatches" not in page.evaluate(ORDER)
         choose("Essentials")
@@ -72,7 +72,7 @@ def test_the_blend_list_is_grouped_searchable_and_sets_the_mode(page):
     page.evaluate("window.formvis.engine.newDocument(200, 100, 'B', 'white'); window.formvis.engine.addLayer()")
     page.locator(".cv-layer-blendrow .cv-dd-btn").click()
     pop = page.locator(".cv-dd-pop:not([hidden])")
-    assert pop.locator(".cv-dd-head").all_inner_texts() == ["BASIC", "DARKEN", "LIGHTEN", "CONTRAST", "INVERSION", "COMPONENT"]   # small capitals, as shown
+    assert pop.locator(".cv-dd-head").all_inner_texts() == ["BASIC", "DARKEN", "LIGHTEN", "CONTRAST", "INVERSION", "COMPONENT", "OTHER"]   # small capitals, as shown
     assert pop.locator(".cv-dd-item.is-chosen").inner_text() == "Normal"
     page.keyboard.type("multi")
     page.keyboard.press("Enter")

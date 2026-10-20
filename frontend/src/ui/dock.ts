@@ -382,7 +382,7 @@ export class Dock {
         e.preventDefault();
         split.setPointerCapture(e.pointerId);
         const y0 = e.clientY, h0 = target.s.getBoundingClientRect().height, head = target.s.querySelector('.cv-panel-head')?.getBoundingClientRect().height ?? 40;
-        const layers = this.section('layers'), room = layers ? layers.getBoundingClientRect().height - 150 : 200;
+        const layers = this.section('layers'), room = layers ? layers.getBoundingClientRect().height - 320 : 200;
         // Only the sizes change while dragging: rebuilding the splitters would drop this one and its pointer capture.
         const move = (ev: PointerEvent): void => { this.heights[target.id] = Math.max(head + 24, Math.min(h0 + Math.max(0, room), h0 + sign * (ev.clientY - y0))); this.sizeGroups(); };
         const up = (): void => { split.removeEventListener('pointermove', move); split.removeEventListener('pointerup', up); split.removeEventListener('pointercancel', up); this.saveHeights(); };

@@ -227,6 +227,8 @@ TOOLS = [
     # Headless: the engine alone, no window.
     _tool("file_info", "Reads a picture or project file at an absolute path without opening it: size in pixels, colour mode, bit depth, resolution, whether it carries a colour profile, pages or frames, and for projects (.fvd, .fmv, .ora, .psd, .psb) the layer count. Works with no window open.",
           {"path": {"type": "string", "description": "Absolute path to a picture or project file."}}, ["path"], read=True, idempotent=True),
+    _tool("improve_prompt", "Rewrites an image prompt through the language model set in Preferences > Plugins, under an improve template (default Richer detail; or a starter or a Markdown template in the data folder's prompt-templates folder). Returns the rewritten prompt and kept, the @img reference tokens of the prompt that the rewrite still carries (any the model dropped are put back at the end and named in restored). Changes nothing in the document; works with no window open. Fails with what to do when no language model is set.",
+          {"prompt": {"type": "string", "minLength": 1, "maxLength": 4000, "description": "The prompt to improve; @img1, @img2 and so on name reference pictures and are kept."}, "template": {"type": "string", "maxLength": 80, "description": "A template name such as Richer detail, Fill a selection or Short and plain."}}, ["prompt"], read=True),
     _tool("convert_file", "Converts a picture file to another format without opening it in the window: path in, output_path out, the output's extension picks the format (png, jpg, webp, avif, tif, bmp, qoi, tga, ico, pdf, ppm, pgm, pbm, pnm, dpx, fits, wbmp). The result is one flat picture; layers are not kept (open_file then save_project does that). A file already at output_path is kept unless overwrite is true. Works with no window open.",
           {"path": {"type": "string", "description": "Absolute path to the picture to read."}, "output_path": {"type": "string", "description": "Absolute path to write, with the new extension."},
            "quality": {"type": "number", "minimum": 0.1, "maximum": 1, "default": 0.92, "description": "For jpg, webp and avif."}, "dpi": {"type": "integer", "minimum": 1, "maximum": 9600, "default": 72},
@@ -446,6 +448,7 @@ USE_WHEN = {
     "list_settings": "you need to know how the window is set up before changing it.",
     "list_fonts": "you need a font family name that exists here before adding or changing text.",
     "file_info": "you need a file's size, mode, depth or layer count and no window needs to open it.",
+    "improve_prompt": "a prompt for generate_image or generative_fill should be made more detailed or tidied before it is used.",
     "convert_file": "a picture file should become another format and nothing else about it changes.",
     "jobs_list": "you started local generation or upscaling and want to know what is running, or why a call is waiting.",
     "jobs_cancel": "a background job is no longer wanted.",
@@ -904,6 +907,13 @@ async def _run(name: str, args: dict) -> dict:
         if name == "file_info":
             info = await asyncio.to_thread(_info, args)
             return {"content": [{"type": "text", "text": json.dumps(info)}], "structuredContent": info}
+        if name == "improve_prompt":
+            from app.services import llm
+            try:
+                made = await asyncio.to_thread(llm.improve_with_template, str(args.get("prompt") or ""), str(args.get("template") or ""))
+            except llm.LlmError as exc:
+                return _fail(str(exc))
+            return {"content": [{"type": "text", "text": made["prompt"]}], "structuredContent": made}
         if name == "convert_file":
             made = await asyncio.to_thread(_convert, args)
             return {"content": [{"type": "text", "text": f"Wrote {made['path']} ({made['bytes']:,} bytes, {made['width']} by {made['height']}, {made['format']})."}], "structuredContent": made}

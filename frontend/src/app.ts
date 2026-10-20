@@ -2248,11 +2248,20 @@ export function startApp(): void {
     }
     if (s.kind === 'layerStyle') return engine.applyLayerStyle(s.effects ? effectsFromData(s.effects) : null);
     if (s.kind === 'layerProps') {
+      if (s.create && !(await commands.run('new-layer'))) return false;
       const l = engine.current?.activeLayer;
       if (!l) return false;
       if (s.name !== undefined) engine.renameLayer(l.id, s.name);
       if (s.opacity !== undefined) engine.setOpacity(s.opacity / 100);
       if (s.visible !== undefined && l.visible !== s.visible) engine.toggleVisibility(l.id);
+      if (s.blend !== undefined) engine.setBlend(s.blend);
+      if (s.fill !== undefined) engine.setFill(s.fill / 100);
+      return true;
+    }
+    if (s.kind === 'selectLayer') {
+      const hit = engine.current?.doc.layers.find((x) => x.name === s.name);
+      if (!hit) return false;
+      engine.selectLayer(hit.id);
       return true;
     }
     if (s.kind === 'adjustment') return dialogs.adjust.applySettings(s.adj as AdjustmentKind, s.data as Parameters<typeof dialogs.adjust.applySettings>[1], s.layer);

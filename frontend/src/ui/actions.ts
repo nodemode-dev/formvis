@@ -1,5 +1,5 @@
 import { ADJUSTMENT_KINDS, type RGB } from '../engine';
-import type { DocMode } from '../engine/types';
+import { LAYER_BLEND_MODES, type BlendMode, type DocMode } from '../engine/types';
 
 const DOC_MODES: readonly string[] = ['rgb', 'cmyk', 'lab', 'grayscale', 'bitmap', 'indexed', 'duotone', 'multichannel'];
 const isMode = (v: unknown): v is DocMode => typeof v === 'string' && DOC_MODES.includes(v);
@@ -15,7 +15,8 @@ type StepKind =
   | { kind: 'stop'; label: string; message: string; allowContinue: boolean }
   | { kind: 'adjustment'; adj: string; label: string; data: Record<string, unknown>; layer: boolean; ask?: boolean }
   | { kind: 'layerStyle'; label: string; effects: Record<string, unknown> | null }
-  | { kind: 'layerProps'; label: string; name?: string; opacity?: number; visible?: boolean }
+  | { kind: 'layerProps'; label: string; name?: string; opacity?: number; visible?: boolean; blend?: BlendMode; fill?: number; create?: boolean }
+  | { kind: 'selectLayer'; label: string; name: string }
   | { kind: 'imageSize'; label: string; w: number; h: number; sampling: string; res: number; fromW?: number; fromH?: number }
   | { kind: 'canvasSize'; label: string; w: number; h: number; dx: number; dy: number; fill: RGB | null; fromW?: number; fromH?: number }
   | { kind: 'fitImage'; label: string; w: number; h: number; enlarge: boolean }
@@ -90,9 +91,11 @@ function stepFrom(v: unknown): ActionStep | null {
   if (s.kind === 'layerStyle' && (s.effects === null || (s.effects && typeof s.effects === 'object'))) return { kind: 'layerStyle', label: label || 'Layer Style', effects: (s.effects as Record<string, unknown> | null) ?? null };
   if (s.kind === 'layerProps') {
     const name = typeof s.name === 'string' && s.name.trim() ? s.name.trim().slice(0, 200) : undefined, opacity = isNum(s.opacity) ? Math.min(100, Math.max(0, s.opacity)) : undefined, visible = typeof s.visible === 'boolean' ? s.visible : undefined;
-    if (name === undefined && opacity === undefined && visible === undefined) return null;
-    return { kind: 'layerProps', label: label || 'Set Layer', ...(name !== undefined ? { name } : {}), ...(opacity !== undefined ? { opacity } : {}), ...(visible !== undefined ? { visible } : {}) };
+    const blend = LAYER_BLEND_MODES.find((m) => m.id === s.blend)?.id, fill = isNum(s.fill) ? Math.min(100, Math.max(0, s.fill)) : undefined;
+    if (name === undefined && opacity === undefined && visible === undefined && blend === undefined && fill === undefined) return null;
+    return { kind: 'layerProps', label: label || 'Set Layer', ...(s.create === true ? { create: true } : {}), ...(name !== undefined ? { name } : {}), ...(opacity !== undefined ? { opacity } : {}), ...(visible !== undefined ? { visible } : {}), ...(blend !== undefined ? { blend } : {}), ...(fill !== undefined ? { fill } : {}) };
   }
+  if (s.kind === 'selectLayer' && typeof s.name === 'string' && s.name.trim()) return { kind: 'selectLayer', label: label || 'Select Layer', name: s.name.slice(0, 200) };
   if (s.kind === 'adjustment' && typeof s.adj === 'string' && (ADJUSTMENT_KINDS as readonly string[]).includes(s.adj) && s.data && typeof s.data === 'object') return { kind: 'adjustment', adj: s.adj, label: label || s.adj, data: s.data as Record<string, unknown>, layer: s.layer === true, ...(s.layer === true ? {} : ask) };
   if (s.kind === 'filter' && typeof s.filter === 'string' && s.settings && typeof s.settings === 'object') return { kind: 'filter', filter: s.filter, label: label || s.filter, settings: s.settings as Record<string, unknown>, ...ask };
   if (s.kind === 'conditional' && isTest(s.test) && typeof s.then === 'string' && typeof s.else === 'string' && (s.then || s.else)) return { kind: 'conditional', label: label || 'Conditional', test: s.test, then: s.then.slice(0, 80), else: s.else.slice(0, 80) };

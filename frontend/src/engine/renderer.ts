@@ -401,7 +401,8 @@ export class Renderer {
       // A styled layer's effects come from the per-layer cache at document resolution when they can, so any view and
       // any repainted region shows them whole; strokes and transforms in progress, clipping and folder masks are
       // drawn per render instead.
-      const parts = styled && !base && !folders.length && !ov?.source && !ov?.patch && !ov?.maskSource && !ov?.transform ? this.effectParts(layer, fx as LayerEffects, src, t, own, ov?.maskPlacement ?? null, job.doc.width, job.doc.height) : null;
+      const cc = styled && base ? this.clipCover(layer, base, job, map) : undefined;
+      const parts = styled && cc !== null && !folders.length && !ov?.source && !ov?.patch && !ov?.maskSource && !ov?.transform ? this.effectParts(layer, fx as LayerEffects, src, t, own, ov?.maskPlacement ?? null, job.doc.width, job.doc.height, false, cc) : null;
       if (parts) this.drawParts(ctx, parts, job.view, opacity, false);
       const blendIf = blendIfActive(layer.blendIf) ? layer.blendIf as BlendIf : null, knock = layer.knockout && layer.knockout !== 'none' ? layer.knockout : null;
       const chans = layer.blendChannels && layer.blendChannels.some((on) => !on) ? layer.blendChannels : null;
@@ -669,6 +670,19 @@ export class Renderer {
   buildDetached(layer: Layer, fx: LayerEffects, src: Surface, t: Transform, own: { src: Surface; w: number; h: number; t: Transform; covers: boolean } | null, docW: number, docH: number, cover: Surface | null = null): FxPart[] {
     this.detached = true;
     try { return this.effectParts(layer, fx, src, t, own, null, docW, docH, false, cover ? { folders: [], clip: () => cover, sig: '' } : undefined); } finally { this.detached = false; }
+  }
+
+  private clipCover(layer: Layer, base: Layer, job: RenderJob, map: ReadonlyMap<ID, Layer>): { folders: MaskInfo[]; clip: () => Surface | null; sig: string } | null {
+    const doc = job.doc;
+    if (layer.blendClipped || job.overrides?.has(layer.clipId as ID)) return null;
+    for (let b: Layer | undefined = base, n = 0; b && n < 257; b = b.clipId ? map.get(b.clipId) : undefined, n++) if (b.blendClipped || job.overrides?.has(b.id)) return null;
+    const sigOf = (x: Layer): unknown => {
+      const m = x.mask, v = x.vectorMask, cov = v?.enabled ? vectorCoverage(v, doc.width, doc.height) : null;
+      return [m ? [m.raster?.id ?? null, m.raster?.version ?? 0, m.enabled, m.placement ?? x.transform, m.density ?? 100, m.feather ?? 0] : null, v ? [v.enabled, v.linked, cov ? cov.version : null] : null, x.artboard ?? null];
+    };
+    const chain: unknown[] = [...ancestors(map, layer).map(sigOf), sigOf(layer)];
+    for (let b: Layer | undefined = base, n = 0; b && n < 257; b = b.clipId ? map.get(b.clipId) : undefined, n++) chain.push(['clip', b.id, b.raster?.id ?? null, b.raster?.version ?? 0, b.transform, b.opacity, b.isGroup, sigOf(b)]);
+    return { folders: [], clip: () => this.clipCoverageOf(doc, base.id), sig: JSON.stringify(chain) };
   }
 
   /** A GPU effect map over `box`: whole, or, when the layer changed since the map was last made inside a known rectangle, only the part within the effect's reach of that rectangle, rebuilt over a box grown by the reach again (outside its box the silhouette reads as empty) and laid into the map kept. */

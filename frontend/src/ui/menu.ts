@@ -237,6 +237,7 @@ export class MenuBar {
     window.addEventListener('resize', () => this.close());
     document.addEventListener('keydown', (e) => this.key(e), true);
     document.addEventListener('keyup', (e) => this.altUp(e), true);
+    document.addEventListener('pointerdown', () => { this.altLone = false; }, true);
     window.addEventListener('blur', () => { this.altLone = false; setClass(document.documentElement, 'is-menu-mnemonics', false); });
     onLanguage(() => { for (const b of this.bars) { setText(b.btn, t(b.def.label)); b.menu.relabel(); } });
   }

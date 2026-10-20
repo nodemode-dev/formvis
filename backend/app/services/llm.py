@@ -253,7 +253,10 @@ def chat(messages: list, tools: list) -> dict:
         raise LlmError("The conversation is empty or too long.", 400)
     body = {"model": _active().get("model"), "messages": _budget_pictures(messages, MAX_PICTURES if _active().get("vision") else 0), "temperature": 0.3, "max_tokens": 1200,
             **({"tools": tools, "tool_choice": "auto"} if tools else {})}
-    reply = _call("/chat/completions", body, timeout=180)
+    return _shape(_call("/chat/completions", body, timeout=180), body)
+
+
+def _shape(reply: dict, body: dict) -> dict:
     choices = reply.get("choices") or []
     message = (choices[0] if choices else {}).get("message") or {}
     calls = [c for c in (message.get("tool_calls") or []) if isinstance(c, dict) and isinstance(c.get("function"), dict)]
@@ -263,6 +266,67 @@ def chat(messages: list, tools: list) -> dict:
             "arguments": str(c["function"].get("arguments") or "{}")} for i, c in enumerate(calls)],
             "usage": {"prompt_tokens": count("prompt_tokens"), "completion_tokens": count("completion_tokens"), "total_tokens": count("total_tokens")},
             "pictures": sum(1 for m in body["messages"] for p in (m.get("content") if isinstance(m, dict) and isinstance(m.get("content"), list) else []) if isinstance(p, dict) and p.get("type") == "image_url")}
+
+
+def chat_stream(messages: list, tools: list):
+    """`chat` as server-sent events: {"delta": text} for each piece of the reply as the service sends it, then {"done": the
+    reply as `chat` gives it}; {"error", "status"} when the service fails. A service that answers without streaming (or
+    refuses stream: true with a 400) gives the whole reply as the one done event."""
+    try:
+        if not isinstance(messages, list) or not 0 < len(messages) <= 200:
+            raise LlmError("The conversation is empty or too long.", 400)
+        s = _active()
+        if not s.get("baseUrl") or not s.get("model"):
+            raise LlmError("Set a language model first, in Preferences > Plugins.", 428)
+        body = {"model": s.get("model"), "messages": _budget_pictures(messages, MAX_PICTURES if s.get("vision") else 0), "temperature": 0.3, "max_tokens": 1200,
+                **({"tools": tools, "tool_choice": "auto"} if tools else {})}
+        key = _key()
+        req = urllib.request.Request(s["baseUrl"] + "/chat/completions", data=json.dumps({**body, "stream": True, "stream_options": {"include_usage": True}}).encode(), method="POST",
+                                     headers={"Content-Type": "application/json", **({"Authorization": f"Bearer {key}"} if key else {})})
+        try:
+            r = urllib.request.urlopen(req, timeout=180)
+        except urllib.error.HTTPError as exc:
+            if exc.code in (400, 422):
+                yield {"done": _shape(_call("/chat/completions", body, timeout=180), body)}
+                return
+            raise LlmError("The model's service refused the key." if exc.code in (401, 403) else f"The service at {s['baseUrl']} has no such model or path." if exc.code == 404 else f"The model's service answered with an error ({exc.code}).", 502)
+        except (urllib.error.URLError, OSError) as exc:
+            raise LlmError(f"Nothing answers at {s['baseUrl']}. Start the service, or check its address. ({exc.__class__.__name__})", 502)
+        with r:
+            if "event-stream" not in (r.headers.get("Content-Type") or ""):
+                yield {"done": _shape(json.loads(r.read() or b"{}"), body)}
+                return
+            text, calls, usage = [], {}, {}
+            for raw in r:
+                line = raw.decode("utf-8", "replace").strip()
+                if not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if data == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data)
+                except ValueError:
+                    continue
+                if isinstance(chunk.get("usage"), dict):
+                    usage = chunk["usage"]
+                delta = ((chunk.get("choices") or [{}])[0] or {}).get("delta") or {}
+                if isinstance(delta.get("content"), str) and delta["content"]:
+                    text.append(delta["content"])
+                    yield {"delta": delta["content"]}
+                for c in delta.get("tool_calls") or []:
+                    if isinstance(c, dict):
+                        slot = calls.setdefault(int(c.get("index") or 0), {"id": "", "function": {"name": "", "arguments": ""}})
+                        slot["id"] = c.get("id") or slot["id"]
+                        fn = c.get("function") if isinstance(c.get("function"), dict) else {}
+                        slot["function"]["name"] += str(fn.get("name") or "")
+                        slot["function"]["arguments"] += str(fn.get("arguments") or "")
+            message = {"content": "".join(text), "tool_calls": [calls[i] for i in sorted(calls)]}
+            yield {"done": _shape({"choices": [{"message": message}], "usage": usage}, body)}
+    except LlmError as exc:
+        yield {"error": str(exc), "status": exc.status}
+    except (OSError, ValueError) as exc:
+        yield {"error": f"The model's service did not answer in the expected form. ({exc.__class__.__name__})", "status": 502}
 
 
 MAX_PICTURES = 4
@@ -443,3 +507,49 @@ def improve(prompt: str, instructions: str, picture: str = "", references: list 
         text = f"{text} {' '.join(lost)}"
     gone, new = _dropped(prompt, text), _added(prompt, text)
     return {"prompt": text, **({"restored": lost} if lost else {}), **({"seen": True} if seen else {}), **({"shown": [t for t, _ in sorted(shown, key=lambda kv: int(kv[0][4:]))]} if shown else {}), **({"dropped": gone} if gone else {}), **({"added": new} if new else {})}
+
+
+STARTER_TEMPLATES = {
+    "Richer detail": "You rewrite prompts for an image model. Keep the subject and the intent. Add concrete visual detail: materials, lighting, lens and framing, colour and mood. Write one or two sentences.",
+    "Fill a selection": "You rewrite prompts for filling a selected area of an existing picture. Describe only what should appear in that area, so that it blends with what surrounds it: the same light, perspective and texture. Write one sentence.",
+    "Short and plain": "You tidy prompts for an image model: correct the spelling, remove filler words, and keep it short and literal.",
+}
+
+
+def template_texts() -> dict[str, str]:
+    """The improve templates an agent may name: the starters, with the Markdown files of the data folder's prompt-templates
+    folder laid over them (a file's front matter `name`, else its file name; a file whose `use` is not improve is left out)."""
+    found = dict(STARTER_TEMPLATES)
+    folder = config.data_dir() / "prompt-templates"
+    for f in sorted(folder.glob("*.md"))[:100] if folder.is_dir() else []:
+        try:
+            if f.stat().st_size > 64_000:
+                continue
+            src = f.read_text(encoding="utf-8", errors="replace").replace("\r\n", "\n").lstrip("﻿")
+        except OSError:
+            continue
+        name, body, use = f.stem, src, "improve"
+        head = re.match(r"---\n([\s\S]*?)\n---\n?", src)
+        if head:
+            body = src[head.end():]
+            for line in head.group(1).split("\n"):
+                kv = re.match(r"^([A-Za-z_-]+)\s*:\s*(.*)$", line)
+                if kv and kv.group(1).lower() == "name" and kv.group(2).strip():
+                    name = kv.group(2).strip().strip("\"'")[:80]
+                if kv and kv.group(1).lower() == "use" and kv.group(2).strip():
+                    use = kv.group(2).strip().lower()
+        if use == "improve" and body.strip():
+            found[name] = body.strip()[:8000]
+    return found
+
+
+def improve_with_template(prompt: str, template: str = "") -> dict:
+    """`improve` for an agent: the template named (any case) or Richer detail; `kept` lists the @img tokens of the prompt
+    that the reply carries."""
+    texts = template_texts()
+    pick = next((k for k in texts if k.lower() == (template or "Richer detail").strip().lower()), None)
+    if pick is None:
+        raise LlmError(f"No improve template is named {template!r}. The templates are: {', '.join(texts)}.", 400)
+    out = improve(prompt, texts[pick])
+    kept = [t for t in dict.fromkeys(re.findall(r"@img\d+", prompt, re.I)) if t.lower() in out["prompt"].lower()]
+    return {**out, "template": pick, "kept": kept}

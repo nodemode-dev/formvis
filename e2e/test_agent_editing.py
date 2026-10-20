@@ -61,9 +61,9 @@ def test_an_agent_edits_saves_exports_and_reopens(page, tmp_path, allowed):
         refused_fill = tool("generative_fill")
         assert refused_fill["isError"] and "download LaMa" in refused_fill["content"][0]["text"], refused_fill   # says what to do
     ok("select", shape="none")
-    png, fmv = tmp_path / "poster.png", tmp_path / "poster.fmv"
+    png, fmv = tmp_path / "poster.png", tmp_path / "poster.fvd"
     assert ok("export_image", path=str(png))["structuredContent"]["bytes"] > 1000 and Image.open(png).size == (400, 300)
-    assert ok("save_project", path=str(fmv))["structuredContent"]["bytes"] > 1000 and fmv.read_bytes()[:2] == b"PK"   # a .fmv is a zip
+    assert ok("save_project", path=str(fmv))["structuredContent"]["bytes"] > 1000 and fmv.read_bytes()[:2] == b"PK"   # a .fvd is a zip
     reopened = ok("open_file", path=str(png))["structuredContent"]
     assert (reopened["width"], reopened["height"]) == (400, 300)
     docs = json.loads(ok("get_document")["content"][0]["text"])["documents"]

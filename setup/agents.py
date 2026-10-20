@@ -48,7 +48,7 @@ def tools_reference() -> str:
               ("Text and shapes", {"add_text", "draw_shape"}), ("Selecting", {"select", "select_subject", "select_color_range"}),
               ("Painting and generating", {"fill", "generative_fill", "generate_image", "remove_background"}),
               ("Colour, filters and looks", {"add_adjustment", "set_adjustment", "apply_filter", "color_match", "add_film_layer"}), ("History", {"undo", "redo"}),
-              ("Files without the window, and jobs", {"file_info", "convert_file", "jobs_list", "jobs_cancel"}),
+              ("Files without the window, and jobs", {"file_info", "convert_file", "improve_prompt", "jobs_list", "jobs_cancel"}),
               ("The window itself", {"ui_inspect", "ui_state", "ui_screenshot", "ui_menu_list", "ui_menu_invoke", "ui_set", "ui_dialog", "ui_pointer", "ui_key", "ui_window", "control_call", "file_roots"})]
     listed = set()
     for title, names in groups:

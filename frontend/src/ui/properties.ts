@@ -346,15 +346,21 @@ export class PropertiesColumn {
       if (l && l.raster && !l.smart && !l.vector && !l.fillContent && !l.text) quick.add('pixel');
       if (a && (a.smart || a.vector || a.fillContent)) quick.add('raster');
       if (a && !a.mask && !a.isGroup) quick.add('maskless');
-      for (const b of quickBtns) setHidden(b, !(b.dataset.quickFor ?? '').split(' ').some((k) => quick.has(k)));
+      if (!a) { quick.add('pixel'); quick.add('maskless'); }
+      for (const b of quickBtns) {
+        setHidden(b, !(b.dataset.quickFor ?? '').split(' ').some((k) => quick.has(k)));
+        if (b.disabled !== !a) b.disabled = !a;
+      }
       adj.refresh();
       setHidden(quickHead, !quick.size);
       setHidden(quickActs, !quick.size || quickHead.getAttribute('aria-expanded') !== 'true');
-      setHidden(roleHead, !l);
-      setHidden(roleBody, !l || roleHead.getAttribute('aria-expanded') !== 'true');
+      setHidden(roleHead, !!a && !l);
+      setHidden(roleBody, (!!a && !l) || roleHead.getAttribute('aria-expanded') !== 'true');
+      if (roleSel.disabled !== !l) roleSel.disabled = !l;
       if (roleSel.value !== (l ? layerRoleOf(l) ?? '' : '') && document.activeElement !== roleSel) roleSel.value = l ? layerRoleOf(l) ?? '' : '';
-      setHidden(alignHead, !a);
-      setHidden(alignBody, !a || alignHead.getAttribute('aria-expanded') !== 'true');
+      setHidden(alignHead, false);
+      setHidden(alignBody, alignHead.getAttribute('aria-expanded') !== 'true');
+      for (const b of alignBody.querySelectorAll<HTMLButtonElement>('button')) if (b.disabled !== !a) b.disabled = !a;
       const hex = (c: { r: number; g: number; b: number }): string => `#${[c.r, c.g, c.b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
       if (a?.smart) {
         setText(liveCell('kind'), a.smart.link ? 'Linked Smart Object' : 'Smart Object');

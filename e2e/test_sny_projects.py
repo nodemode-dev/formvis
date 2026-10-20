@@ -19,13 +19,13 @@ CAPTURE = """async () => {
 
 def test_projects_download_as_sny_and_open_again(page, tmp_path):
     r = page.evaluate(CAPTURE)
-    assert r and r["name"] == "Trip.fmv", r
+    assert r and r["name"] == "Trip.fvd", r
     data = base64.b64decode(r["b64"])
     assert data[:2] == b"PK"
-    f = tmp_path / "Trip.fmv"
+    f = tmp_path / "Trip.fvd"
     f.write_bytes(data)
     count = page.evaluate("window.formvis.engine.projects.length")
-    page.set_input_files("input[type=file][accept*='.fmv']:not([data-role])", str(f))
+    page.set_input_files("input[data-role='open-files']", str(f))
     page.wait_for_function(f"window.formvis.engine.projects.length > {count}", timeout=15000)
     opened = page.evaluate("(() => { const e = window.formvis.engine; return [e.current.doc.width, e.current.doc.layers.length, Array.from(e.flattened().getContext('2d').getImageData(20, 20, 1, 1).data).slice(0, 3)]; })()")
     assert opened == [90, 2, [200, 40, 40]], opened

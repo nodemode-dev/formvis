@@ -1,4 +1,6 @@
 import { blurDeep, surfaceBlurDeep, unsharpDeep } from './deep';
+import { inkOf, lut4Levels, type Lut3x4, type Lut4 } from './colour-lut';
+import { encodeLab, labFloatToRgb, srgbToLab } from './lab';
 import { site } from './filters-lib/pixelate';
 import { windReach } from './filters-lib/stylize';
 import type { DeepPixels, Rect } from './types';
@@ -333,20 +335,20 @@ export function filterGalleryDeep(src: DeepPixels, list: readonly FxRun[], area:
 }
 
 /** A distort filter's backward map run over float channels: the 8 bit remap's bilinear premultiplied sampling and edge handling, on the whole layer. */
-export function remapDeep(src: DeepPixels, wp: Warp | null): DeepPixels {
-  const { width: w, height: h } = src, S = src.n + 1, A = src.n, d = src.data, out = new Float32Array(d);
-  if (!wp) return { ...src, data: out };
-  const acc = new Float64Array(S);
+export function remapDeep(src: DeepPixels, wp: Warp | null, area: Box = { x0: 0, y0: 0, x1: src.width, y1: src.height }): DeepPixels {
+  const { width: w, height: h } = src, S = src.n + 1, A = src.n, d = src.data, out = new Float32Array(d), b = clipBox(area, w, h);
+  if (!wp || !b) return { ...src, data: out };
+  const fw = b.x1 - b.x0, fh = b.y1 - b.y0, acc = new Float64Array(S);
   const fetch = (ix: number, iy: number, wt: number): void => {
-    let x = ix, y = iy;
-    if (wp.edge === 'wrap') { x = ((x % w) + w) % w; y = ((y % h) + h) % h; }
-    else if (wp.edge === 'repeat') { x = Math.min(w - 1, Math.max(0, x)); y = Math.min(h - 1, Math.max(0, y)); }
-    else if (x < 0 || y < 0 || x >= w || y >= h) return;
-    const q = (y * w + x) * S, a = d[q + A] * wt;
+    let x = ix - b.x0, y = iy - b.y0;
+    if (wp.edge === 'wrap') { x = ((x % fw) + fw) % fw; y = ((y % fh) + fh) % fh; }
+    else if (wp.edge === 'repeat') { x = Math.min(fw - 1, Math.max(0, x)); y = Math.min(fh - 1, Math.max(0, y)); }
+    else if (x < 0 || y < 0 || x >= fw || y >= fh) return;
+    const q = ((y + b.y0) * w + x + b.x0) * S, a = d[q + A] * wt;
     for (let c = 0; c < A; c++) acc[c] += d[q + c] * a;
     acc[A] += a;
   };
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+  for (let y = b.y0; y < b.y1; y++) for (let x = b.x0; x < b.x1; x++) {
     const p = wp.f(x + 0.5, y + 0.5);
     if (!p) continue;
     const fx = p[0] - 0.5, fy = p[1] - 0.5, x0 = Math.floor(fx), y0 = Math.floor(fy), tx = fx - x0, ty = fy - y0;
@@ -466,8 +468,8 @@ export function facetDeep(src: DeepPixels, radius: number): DeepPixels {
 export const DEEP_DISTORT: readonly string[] = ['twirl', 'pinch', 'spherize', 'ripple', 'wave', 'zigZag', 'polarCoordinates', 'shear'];
 
 /** The backward map of distort filter `kind` over a `w` by `h` layer, or undefined for another filter. */
-function warpOf(kind: string, v: Record<string, unknown>, w: number, h: number): Warp | null | undefined {
-  const num = (k: string): number => (typeof v[k] === 'number' ? (v[k] as number) : 0), str = (k: string): string => (typeof v[k] === 'string' ? (v[k] as string) : ''), area = { x0: 0, y0: 0, x1: w, y1: h };
+function warpOf(kind: string, v: Record<string, unknown>, area: Box): Warp | null | undefined {
+  const num = (k: string): number => (typeof v[k] === 'number' ? (v[k] as number) : 0), str = (k: string): string => (typeof v[k] === 'string' ? (v[k] as string) : '');
   if (kind === 'twirl') return twirlWarp(num('angle'), area);
   if (kind === 'pinch') return pinchWarp(num('amount'), area);
   if (kind === 'spherize') return spherizeWarp(num('amount'), str('mode'), area);
@@ -484,13 +486,48 @@ const FIXED_SHARPEN: Record<string, [number, number, number]> = { sharpen: [50, 
 /** The frame a float filter works in: the layer's place on the canvas and the foreground and background colours (0 to 255). */
 export interface DeepEnv { area: { x: number; y: number; w: number; h: number }; canvas: { x: number; y: number; w: number; h: number }; fg: readonly [number, number, number]; bg: readonly [number, number, number] }
 
-/** Float filters that read the selection's box or the canvas's place: under a selection they stay on the 8 bit path, as the distort group does. */
+/** Float filters that read the selection's box or the canvas's place: under a selection they take the box as their frame (DeepEnv.area), as the 8 bit path does. */
 export const DEEP_FRAMED: readonly string[] = ['offset', 'mosaic', 'crystallize', 'oilPaint', 'lightingEffects', 'filterGallery', 'tiles', 'extrude', 'pointillize', 'colorHalftone', 'mezzotint', 'clouds', 'differenceClouds', 'fibers', 'lensFlare'];
 
-/** Float filters whose colour logic is red, green and blue (brightness, fixed colours): RGB documents only. */
+/** Float filters whose colour logic is red, green and blue (brightness, fixed colours): on CMYK and Lab layers they run through viaRgbDeep. */
 export const DEEP_RGB_ONLY: readonly string[] = ['oilPaint', 'lightingEffects', 'filterGallery', 'tiles', 'extrude', 'smartBlur', 'reduceNoise', 'pointillize', 'colorHalftone', 'clouds', 'differenceClouds', 'fibers', 'lensFlare'];
 
 const unit = (c: readonly [number, number, number]): [number, number, number] => [c[0] / 255, c[1] / 255, c[2] / 255];
+
+/** The display and separation tables of a CMYK document. */
+export interface InkTables { readonly out: Lut4; readonly inn: Lut3x4 }
+
+/** A float filter for RGB run on a CMYK or Lab layer as the 8 bit path runs it: on the layer's RGB rendition, in floats,
+ *  the result taken back by the rule that keeps a pixel's old structure in proportion to how little it changed (full at
+ *  no change, none from 48 levels). Null for a CMYK layer without its tables. */
+export function viaRgbDeep(fn: (d: DeepPixels) => DeepPixels, mode: 'cmyk' | 'lab', tables: InkTables | null): ((d: DeepPixels) => DeepPixels) | null {
+  if (mode === 'cmyk' && !tables) return null;
+  return (d) => {
+    const { width: w, height: h, n } = d, S = n + 1, N = w * h, rgb = new Float32Array(N * 4), before = new Float32Array(N * 3);
+    if (mode === 'cmyk') lut4Levels(d.data, tables!.out, before);
+    for (let p = 0; p < N; p++) {
+      if (mode === 'lab') { const c = labFloatToRgb(d.data[p * S], d.data[p * S + 1], d.data[p * S + 2]); for (let k = 0; k < 3; k++) before[p * 3 + k] = c[k] * 255; }
+      for (let k = 0; k < 3; k++) rgb[p * 4 + k] = before[p * 3 + k] / 255;
+      rgb[p * 4 + 3] = d.data[p * S + n];
+    }
+    const res = fn({ mode: 'rgb', n: 3, width: w, height: h, data: rgb }).data, out = new Float32Array(d.data), clamp = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
+    for (let p = 0; p < N; p++) {
+      const o = p * S, r = p * 4, f = [clamp(res[r]) * 255, clamp(res[r + 1]) * 255, clamp(res[r + 2]) * 255], b =[before[p * 3], before[p * 3 + 1], before[p * 3 + 2]];
+      out[o + n] = res[r + 3];
+      const dm = Math.max(Math.abs(f[0] - b[0]), Math.abs(f[1] - b[1]), Math.abs(f[2] - b[2]));
+      if (dm < 1e-4) continue;
+      const k = d.data[o + n] === 0 ? 0 : clamp(1 - dm / 48);
+      if (mode === 'lab') {
+        const a3 = encodeLab(...srgbToLab(f[0], f[1], f[2])), b3 = k ? encodeLab(...srgbToLab(b[0], b[1], b[2])) : a3;
+        for (let c = 0; c < 3; c++) out[o + c] = clamp(a3[c] + k * (d.data[o + c] - b3[c]));
+      } else {
+        const a4 = inkOf({ r: f[0], g: f[1], b: f[2] }, tables!.inn), b4 = k ? inkOf({ r: b[0], g: b[1], b: b[2] }, tables!.inn) : a4;
+        for (let c = 0; c < 4; c++) out[o + c] = clamp(a4[c] + k * (d.data[o + c] - b4[c]));
+      }
+    }
+    return { ...d, data: out };
+  };
+}
 
 /** The float version of library filter `kind` with its stored `values`, or null when it only runs on 8 bits. */
 export function deepLibFilter(kind: string, values: Record<string, unknown>, ceiling: number, seed = 1, env?: DeepEnv): ((d: DeepPixels) => DeepPixels) | null {
@@ -531,7 +568,7 @@ export function deepLibFilter(kind: string, values: Record<string, unknown>, cei
   if (kind === 'lightingEffects') { const v = values as Record<string, never>; return (d) => lightingDeep(d, light(v), [2, 3].filter((n) => v[`l${n}On`] === true).map((n) => light(v, n)), boxes(d).area, ceiling); }
   if (kind === 'filterGallery') return (d) => { const fr = { area: env?.area ?? { x: 0, y: 0, w: d.width, h: d.height }, canvas: env?.canvas ?? { x: 0, y: 0, w: d.width, h: d.height } }; return filterGalleryDeep(d, shown(values as Record<string, never>), fr.area, fr.canvas, env?.fg ?? [0, 0, 0], env?.bg ?? [255, 255, 255], ceiling); };
   if (kind === 'mosaic') return (d) => mosaicDeep(d, num('cellSize'), boxes(d).area);
-  if (DEEP_DISTORT.includes(kind)) return (d) => remapDeep(d, warpOf(kind, values, d.width, d.height) ?? null);
+  if (DEEP_DISTORT.includes(kind)) return (d) => { const a = boxes(d).area; return remapDeep(d, warpOf(kind, values, a) ?? null, a); };
   const fixed = FIXED_SHARPEN[kind];
   if (fixed) return (d) => unsharpDeep(d, fixed[0], fixed[1], fixed[2], ceiling);
   return null;

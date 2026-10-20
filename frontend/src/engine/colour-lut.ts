@@ -68,6 +68,22 @@ export function applyLut4(ink: Float32Array, lut: Lut4, out: Uint8ClampedArray):
   }
 }
 
+/** Ink (five floats a pixel, alpha last) to float RGB (three levels 0 to 255 a pixel, unrounded) through `lut`, quadrilinear. */
+export function lut4Levels(ink: Float32Array, lut: Lut4, out: Float32Array): void {
+  const G = lut.grid, t = lut.rgb, s = G - 1, g2 = G * G, g3 = g2 * G, base = [0, 0, 0, 0], f = [0, 0, 0, 0];
+  for (let i = 0, o = 0; i < ink.length; i += 5, o += 3) {
+    for (let d = 0; d < 4; d++) { const v = Math.min(1, Math.max(0, ink[i + d])) * s, v0 = Math.min(G - 2, v | 0); base[d] = v0; f[d] = v - v0; }
+    let r = 0, g = 0, b = 0;
+    for (let k = 0; k < 16; k++) {
+      const dc = k & 1, dm = (k >> 1) & 1, dy = (k >> 2) & 1, dk = (k >> 3) & 1, wk = (dc ? f[0] : 1 - f[0]) * (dm ? f[1] : 1 - f[1]) * (dy ? f[2] : 1 - f[2]) * (dk ? f[3] : 1 - f[3]);
+      if (wk === 0) continue;
+      const p = ((base[0] + dc) * g3 + (base[1] + dm) * g2 + (base[2] + dy) * G + base[3] + dk) * 3;
+      r += t[p] * wk; g += t[p + 1] * wk; b += t[p + 2] * wk;
+    }
+    out[o] = r; out[o + 1] = g; out[o + 2] = b;
+  }
+}
+
 /** Ink, C, M, Y, K as floats 0 to 1 (1.54.2). */
 export type Ink = [number, number, number, number];
 /** A GRID^3 table of ink bytes from sRGB (r slowest, b fastest), from the engine: readouts and paint colours. */

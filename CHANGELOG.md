@@ -4,6 +4,24 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.91.6 · 2026-10-20
+
+### Added
+
+- Assistant replies stream in place as they are written, and Stop keeps the text so far; a service that cannot stream still gives the whole reply.
+- MCP tool improve_prompt rewrites an image prompt under a named improve template and returns the @img tokens it kept.
+- Filters at 16 and 32 bits stay on the float path under a selection, framed by the selection box; CMYK and Lab layers run the RGB-logic float filters on a float rendition and return through the colour tables.
+- Split Toning and Light adjustment layers render on the GPU.
+- Actions and .atn: Select Layer by name, blend mode and fill opacity in Set Layer, and Make Layer with its options.
+
+### Fixed
+
+- Properties: Quick Actions, Role and Align keep their place (disabled) with no layer active, so opening the first document no longer shifts the Document section and the Brushes group (layout shift 0.0187 to 0).
+- Layer Style previews on a clipped layer are cached for the CPU compose: the cold first preview went from 559 ms to 25 ms on the page with no long tasks.
+- The Layers panel keeps a usable list in short windows (panel minimum 320 px; the dock scrolls).
+- Alt-click no longer moves focus to the menu bar when Alt is released, so Escape right after still cancels the pending edit.
+- e2e scenes for .fvd, number fields, the rail, the More panel and recent UI changes follow the current UI.
+
 ## 1.91.5 · 2026-10-20
 
 ### Added

@@ -3,6 +3,7 @@
 import json
 
 from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
 from app.core import config
@@ -81,6 +82,16 @@ async def chat(request: Request) -> dict:
     skip = {str(n) for n in body.get("exclude") or []} if isinstance(body.get("exclude"), list) else set()
     tools = [{"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["inputSchema"]}} for t in TOOLS if t["name"] not in skip] if body.get("tools", True) else []
     return await run_in_threadpool(_run, llm.chat, body.get("messages"), tools)
+
+
+@router.post("/chat/stream")
+async def chat_stream(request: Request) -> StreamingResponse:
+    """`/chat` as server-sent events: pieces of the reply as the model writes them, then the whole reply."""
+    from app.routers.mcp import TOOLS
+    body = await request.json()
+    skip = {str(n) for n in body.get("exclude") or []} if isinstance(body.get("exclude"), list) else set()
+    tools = [{"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["inputSchema"]}} for t in TOOLS if t["name"] not in skip] if body.get("tools", True) else []
+    return StreamingResponse((f"data: {json.dumps(e)}\n\n" for e in llm.chat_stream(body.get("messages"), tools)), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @router.get("/tools")

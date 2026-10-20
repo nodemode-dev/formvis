@@ -570,9 +570,9 @@
    more open than fits scrolls (its scrollbar hidden) instead of stacking panels over each other; the swatch hint on
    one line; toasts over the canvas, bottom centre, never over the panels. */
 .cv-layers { overflow-y: auto; overflow-x: hidden; }
-/* Z1 (1.59.1): it fills the space left and gives way down to its 230 pixels, but never grows with its rows (a basis of
+/* Z1 (1.59.1): it fills the space left and gives way down to its 320 pixels (about 100 of them the list, under the header, the blend row and the footer), but never grows with its rows (a basis of
    0, not its content), so the list scrolls inside it and its footer stays where it is whatever the document holds. */
-.cv-layers > .cv-layers-panel { min-height: 230px; flex: 1 1 0; }
+.cv-layers > .cv-layers-panel { min-height: 320px; flex: 1 1 0; }
 .cv-layers > section { min-width: 0; }
 .cv-layers > section:not(.cv-layers-panel):not(.is-sized) { overflow: hidden; }
 .cv-swatch-hint { white-space: nowrap; min-width: 0; }

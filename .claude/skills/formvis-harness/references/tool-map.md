@@ -1,6 +1,6 @@
 # Tool map
 
-Generated from the MCP catalogue (135 tools, `TOOLS` in `backend/app/routers/mcp.py`) and the `formvis-driving` sub-skills by `./formvis agents sync`; do not edit by hand. A tool no sub-skill names reads `none` and needs a line in the sub-skill that covers its family.
+Generated from the MCP catalogue (136 tools, `TOOLS` in `backend/app/routers/mcp.py`) and the `formvis-driving` sub-skills by `./formvis agents sync`; do not edit by hand. A tool no sub-skill names reads `none` and needs a line in the sub-skill that covers its family.
 
 ## Contents
 
@@ -77,6 +77,7 @@ Generated from the MCP catalogue (135 tools, `TOOLS` in `backend/app/routers/mcp
 | `list_settings` | reads only | none |
 | `list_fonts` | reads only | none |
 | `file_info` | reads only | none |
+| `improve_prompt` | reads only | none |
 | `convert_file` | replaces or removes | none |
 | `jobs_list` | reads only | none |
 | `jobs_cancel` | replaces or removes | none |

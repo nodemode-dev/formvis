@@ -12,11 +12,11 @@ def square(page, s):
 def test_lasso_feather_softens_the_selection(page):
     s = page.evaluate(SETUP)
     f = page.locator(".cv-opt-group:not([hidden]) .cv-opt", has_text="Feather").locator("input[type=number]")
-    f.fill("8"); f.press("Tab")
+    f.fill("8"); page.keyboard.press("Tab")
     square(page, s)
     mid, edge, out = page.evaluate(AT, [100, 80]), page.evaluate(AT, [50, 80]), page.evaluate(AT, [45, 80])
     assert mid == 255 and 60 < edge < 200 and 0 < out < 90, (mid, edge, out)
     page.evaluate("window.formvis.engine.deselect()")
-    f.fill("0"); f.press("Tab")
+    f.fill("0"); page.keyboard.press("Tab")
     square(page, s)
     assert page.evaluate(AT, [45, 80]) == 0 and page.evaluate(AT, [100, 80]) == 255

@@ -31,7 +31,7 @@ def paint_sampling_on_blue(page, d):
 def test_custom_sampling_on_the_blue_side_fills_blue_as_one_step(page):
     page.evaluate(SCENE)
     d = dlg(page)
-    d.locator(".cv-field", has_text="Sampling Area").locator("select").select_option("custom")
+    d.locator(".cv-field", has_text="Sampling Area").first.locator("select").select_option("custom")
     # clear the default area first with Alt, then paint on the blue side only
     box = d.locator(".cv-fill-canvas").bounding_box()
     page.keyboard.down("Alt")

@@ -35,7 +35,7 @@ def test_grain_presets_set_the_three_and_show_custom_after(page):
     sel.select_option("iso1600")
     got = page.evaluate("(() => { const g = window.formvis.engine.current.activeLayer.adjustment.data.grainSettings; return [g.amount, g.size, g.roughness]; })()")
     assert got == [50, 2.8, 70], got
-    slider = page.locator(".cv-panel-section:visible", has=sel).locator("input[type=number]").first
+    slider = page.locator(".cv-panel-section:visible", has=sel).locator("input[type=number]").nth(1)
     slider.fill("51"); slider.press("Tab")
     page.wait_for_function("() => [...document.querySelectorAll('select[aria-label=\"Grain preset\"]')].some((s) => s.offsetParent && s.value === 'custom')")
 

@@ -36,7 +36,7 @@ type SavedLine = { kind: 'user' | 'assistant' | 'note'; text: string } | { kind:
 interface Usage { in: number; out: number; total: number }
 interface ChatInfo { id: string; title: string; updated: number; messages: number }
 interface ChatRow { el: HTMLElement; open: HTMLButtonElement; del: HTMLButtonElement; updated: number }
-interface Reply { content: string; tool_calls: Array<{ id: string; name: string; arguments: string }>; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number } }
+interface Reply { content: string; live?: HTMLElement; tool_calls: Array<{ id: string; name: string; arguments: string }>; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number } }
 
 let sessionTokens = 0;
 const sleep = (ms: number): Promise<void> => new Promise((ok) => setTimeout(ok, ms));
@@ -102,6 +102,7 @@ export class AssistantPanel {
   private history: unknown[] = [];
   private busy = false;
   private stopped = false;
+  private abort: AbortController | null = null;
   private turn: { projectId: string; depth: number; depths: Map<string, number>; ended: Map<string, number> } | null = null;
   private settings = loadSettings();
   private chatId = newId();
@@ -156,7 +157,7 @@ export class AssistantPanel {
     }, true);
     window.addEventListener('focus', () => this.stopFlash());
     this.send.addEventListener('click', () => void this.ask());
-    this.stop.addEventListener('click', () => { this.stopped = true; });
+    this.stop.addEventListener('click', () => { this.stopped = true; this.abort?.abort(); });
     this.undoTurn.addEventListener('click', () => void this.undo());
     this.input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void this.ask(); } e.stopPropagation(); });
   }
@@ -173,12 +174,13 @@ export class AssistantPanel {
     }
   }
 
-  private line(kind: 'user' | 'assistant' | 'note', text: string, keep = true): void {
+  private line(kind: 'user' | 'assistant' | 'note', text: string, keep = true): HTMLElement {
     const p = el(`<div class="cv-assistant-msg is-${kind}"></div>`);
     setText(p, text);
     this.log.append(p);
     this.log.scrollTop = this.log.scrollHeight;
     if (keep) this.lines.push({ kind, text });
+    return p;
   }
 
   /** The tool list, pictures and idle rules in one folded section, built once. */
@@ -453,7 +455,7 @@ export class AssistantPanel {
         const plan = await this.step([{ role: 'system', content: SYSTEM + extra + PLAN }, ...this.history], false);
         if (!plan.content.trim()) { this.history.pop(); this.line('note', 'The model gave no plan. Try again.'); return; }
         this.history.push({ role: 'assistant', content: plan.content });
-        this.line('assistant', plan.content);
+        this.say(plan);
         this.showPlan();
         return;
       }
@@ -462,7 +464,7 @@ export class AssistantPanel {
       for (let step = 0; step <= maxCalls && !this.stopped; step++) {
         const reply = await this.step([{ role: 'system', content: SYSTEM + extra }, ...this.history]);
         this.history.push({ role: 'assistant', content: reply.content || null, ...(reply.tool_calls.length ? { tool_calls: reply.tool_calls.map((c) => ({ id: c.id, type: 'function', function: { name: c.name, arguments: c.arguments } })) } : {}) });
-        if (reply.content) this.line('assistant', reply.content);
+        if (reply.content) this.say(reply);
         if (!reply.tool_calls.length) { if (/\?\s*$/.test(reply.content)) this.attention(); break; }
         const pictures: Array<{ type: 'image_url'; image_url: { url: string } }> = [];
         for (const call of reply.tool_calls) {
@@ -520,9 +522,63 @@ export class AssistantPanel {
     return await this.bridge.run(name, args);
   }
 
+  /** The reply as the engine streams it: the text goes into one message node, a Text node whose data is replaced as pieces arrive, so
+   *  nothing is rebuilt. Stop aborts the request and the text so far is the reply. An engine or service that does not stream gives the whole reply at once. */
+  private async stream(messages: unknown[], tools: boolean): Promise<Reply> {
+    const ctl = new AbortController();
+    this.abort = ctl;
+    let res: Response;
+    try { res = await fetch('/api/llm/chat/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages, tools, exclude: this.settings.excluded }), signal: ctl.signal }); }
+    catch { if (this.stopped) return { content: '', tool_calls: [] }; throw new ApiError('The assistant could not reach the formvis engine (./formvis boot).', 0); }
+    if (!res.ok || !res.body) {
+      let detail = '';
+      try { const b = await res.json() as { detail?: unknown }; if (typeof b.detail === 'string') detail = b.detail; } catch { /* not JSON */ }
+      throw new ApiError(detail || res.statusText || `Request failed (${res.status})`, res.status);
+    }
+    let text = '';
+    const st: { done: Reply | null; live: HTMLElement | null; data: Text } = { done: null, live: null, data: document.createTextNode('') };
+    const show = (): void => {
+      if (!st.live) { st.live = this.line('assistant', '', false); st.live.append(st.data); }
+      if (st.data.data !== text) { st.data.data = text; this.log.scrollTop = this.log.scrollHeight; }
+    };
+    const take = (block: string): void => {
+      const line = block.split('\n').find((l) => l.startsWith('data:'));
+      if (!line) return;
+      let e: { delta?: string; done?: Reply; error?: string; status?: number };
+      try { e = JSON.parse(line.slice(5)) as typeof e; } catch { return; }
+      if (e.error) throw new ApiError(e.error, e.status ?? 502);
+      if (typeof e.delta === 'string') { text += e.delta; show(); }
+      if (e.done) st.done = e.done;
+    };
+    try {
+      const reader = res.body.getReader(), dec = new TextDecoder();
+      let buf = '';
+      for (;;) {
+        const { value, done: end } = await reader.read();
+        if (end) break;
+        buf += dec.decode(value, { stream: true });
+        let cut = buf.indexOf('\n\n');
+        while (cut >= 0) { take(buf.slice(0, cut)); buf = buf.slice(cut + 2); cut = buf.indexOf('\n\n'); }
+      }
+      if (buf.trim()) take(buf);
+    } catch (err) {
+      if (!ctl.signal.aborted) throw err;
+    }
+    if (!st.done && !ctl.signal.aborted) throw new ApiError('The model\'s service did not answer in the expected form.', 502);
+    const reply: Reply = st.done ?? { content: text, tool_calls: [] };
+    if (reply.content && reply.content !== text) { text = reply.content; show(); }
+    return { ...reply, live: st.live ?? undefined };
+  }
+
+  /** The message of a reply: the streamed node when there is one (kept for the saved log), else a new line. */
+  private say(reply: Reply): void {
+    if (reply.live) this.lines.push({ kind: 'assistant', text: reply.content });
+    else this.line('assistant', reply.content);
+  }
+
   /** One model step through the engine: the excluded tools are left out of the request, and the tokens the service reports are added up. */
   private async step(messages: unknown[], tools = true): Promise<Reply> {
-    const reply = await llmCall<Reply>('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages, tools, exclude: this.settings.excluded }) });
+    const reply = await this.stream(messages, tools);
     if (reply.usage) {
       sessionTokens += reply.usage.total_tokens;
       this.usage = { in: this.usage.in + reply.usage.prompt_tokens, out: this.usage.out + reply.usage.completion_tokens, total: this.usage.total + reply.usage.total_tokens };

@@ -31,7 +31,7 @@ def test_the_info_panel_and_color_samplers(page):
             x, y = scr(page, px + 0.5, py + 0.5); page.mouse.click(x, y)
         page.wait_for_timeout(200)
         rows = page.evaluate(INFO)
-        assert "#1 R 220 G 20 B 20" in rows and "#2 R 20 G 40 B 220" in rows, rows
+        assert any(r.startswith("#1 R 220 G 20 B 20") for r in rows) and any(r.startswith("#2 R 20 G 40 B 220") for r in rows), rows   # each sampler also reads CMYK
         x, y = scr(page, 30.5, 30.5); page.keyboard.down("Alt"); page.mouse.click(x, y); page.keyboard.up("Alt")   # Alt-click removes
         assert page.evaluate("window.formvis.engine.measure.samplers.length") == 1
         page.evaluate("window.formvis.engine.measure.samplers.push(...Array.from({ length: 9 }, (_, i) => ({ x: 10 + i * 5, y: 100 })))")
@@ -45,6 +45,7 @@ def test_the_info_panel_and_color_samplers(page):
 
 def test_the_ruler_measures_and_straightens(page):
     setup(page)
+    page.evaluate("window.formvis.engine.layerFromBackground()")
     page.evaluate("window.formvis.engine.setTool('ruler')")   # the layer with pixels (an empty one has nothing to straighten)
     a = scr(page, 20, 20); b = scr(page, 120, 120)
     page.mouse.move(*a); page.mouse.down(); page.mouse.move(*b, steps=8); page.mouse.up()

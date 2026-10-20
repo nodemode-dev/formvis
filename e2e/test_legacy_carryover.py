@@ -20,5 +20,5 @@ def test_settings_and_databases_carry_across_a_restart(page):
 
 def test_projects_with_the_former_extensions_are_recognised(page):
     ok = page.evaluate(f"""async () => {{ const L = await {LEGACY}, I = await import('/src/io/images.ts');
-      return L.FORMER_PROJECT_EXTENSIONS.map((x) => I.isProjectFile(new File([''], 'Trip' + x))).concat([I.isProjectFile(new File([''], 'Trip.fmv')), I.PROJECT_ACCEPT.startsWith('.fmv')]); }}""")
+      return L.FORMER_PROJECT_EXTENSIONS.map((x) => I.isProjectFile(new File([''], 'Trip' + x))).concat([I.isProjectFile(new File([''], 'Trip.fmv')), I.PROJECT_ACCEPT.startsWith('.fvd')]); }}""")
     assert ok == [True, True, True, True], ok

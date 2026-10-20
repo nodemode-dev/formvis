@@ -48,7 +48,7 @@ def set_address(page, url):
 def test_the_selection_goes_whole_with_its_mask(page, comfyui):
     url, seen = comfyui
     set_address(page, url)
-    page.wait_for_function("(u) => [...document.querySelectorAll('.cv-note[role=status]')].some((n) => n.textContent.includes('0.3.60 is running at ' + u))", arg=url)
+    page.wait_for_function("(u) => [...document.querySelectorAll('.cv-note[role=status]')].some((n) => n.textContent.includes('0.3.60 answered at ' + u))", arg=url)
     page.keyboard.press("Escape")
     page.evaluate("""async () => { const E = await import('/src/engine/index.ts'), e = window.formvis.engine; e.newDocument(120, 80, 'Poster', 'white');
       e.applySelection(E.SelectionMask.cropped(10, 10, 40, 30, new Uint8Array(1200).fill(255)), 'replace', 's'); }""")
