@@ -31,7 +31,7 @@ function clustered(n: number): number[] {
   return m;
 }
 
-const MATRICES: Record<string, { n: number; m: number[] }> = {
+export const MATRICES: Record<string, { n: number; m: number[] }> = {
   bayer2: { n: 2, m: bayer(2) }, bayer4: { n: 4, m: bayer(4) }, bayer8: { n: 8, m: bayer(8) }, macPatterns: { n: 8, m: clustered(8) },
 };
 
@@ -56,7 +56,7 @@ export function ditherImage(img: ImageData, pattern: string, levels: number, pix
   return out;
 }
 
-const KERNELS: Record<string, { div: number; taps: ReadonlyArray<readonly [number, number, number]> }> = {
+export const KERNELS: Record<string, { div: number; taps: ReadonlyArray<readonly [number, number, number]> }> = {
   floyd: { div: 16, taps: [[1, 0, 7], [-1, 1, 3], [0, 1, 5], [1, 1, 1]] },
   atkinson: { div: 8, taps: [[1, 0, 1], [2, 0, 1], [-1, 1, 1], [0, 1, 1], [1, 1, 1], [0, 2, 1]] },
   sierraLite: { div: 4, taps: [[1, 0, 2], [-1, 1, 1], [0, 1, 1]] },

@@ -111,7 +111,7 @@ export function customImage(img: ImageData, kernel: readonly number[], scale: nu
 }
 
 /** RGB in 0 to 1 to hue, saturation and brightness (HSB) or lightness (HSL), each 0 to 1. */
-function fromRgb(r: number, g: number, b: number, mode: string): [number, number, number] {
+export function fromRgb(r: number, g: number, b: number, mode: string): [number, number, number] {
   const hi = Math.max(r, g, b), lo = Math.min(r, g, b), span = hi - lo;
   let hue = 0;
   if (span > 0) hue = hi === r ? ((g - b) / span + 6) % 6 : hi === g ? (b - r) / span + 2 : (r - g) / span + 4;
@@ -121,7 +121,7 @@ function fromRgb(r: number, g: number, b: number, mode: string): [number, number
 }
 
 /** Hue, saturation and brightness or lightness (0 to 1) back to RGB. */
-function toRgb(hue: number, sat: number, v: number, mode: string): [number, number, number] {
+export function toRgb(hue: number, sat: number, v: number, mode: string): [number, number, number] {
   const chroma = mode === 'hsb' ? v * sat : (1 - Math.abs(2 * v - 1)) * sat, base = mode === 'hsb' ? v - chroma : v - chroma / 2;
   const h6 = (((hue % 1) + 1) % 1) * 6, x = chroma * (1 - Math.abs((h6 % 2) - 1));
   const [r, g, b] = h6 < 1 ? [chroma, x, 0] : h6 < 2 ? [x, chroma, 0] : h6 < 3 ? [0, chroma, x] : h6 < 4 ? [0, x, chroma] : h6 < 5 ? [x, 0, chroma] : [chroma, 0, x];

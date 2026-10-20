@@ -1,5 +1,6 @@
 import { adjustmentKernel } from './kernels';
 import { hsvFromData, hsvKernel } from './adjust';
+import { paramValues, type ParamKind } from './adjust-params';
 import type { Adjustment, AdjustmentKind } from './types';
 import { applyLut, type ColourLut } from './colour-lut';
 
@@ -41,7 +42,16 @@ export function adjustmentLut(adj: Adjustment): Uint8Array | null {
  *  interpolated result, computed as the shader computes it, must be within 1 level of the kernel; smooth adjustments
  *  pass, and discontinuous ones (Threshold, hard gradient stops) fail and stay on the CPU. */
 export const LUT3_N = 52;
-export const LUT3_KINDS: ReadonlySet<AdjustmentKind> = new Set<AdjustmentKind>(['hsv', 'vibrance', 'colorBalance', 'channelMixer', 'photoFilter', 'blackWhite', 'selectiveColor', 'threshold', 'gradientMap', 'colorLookup', 'splitToning', 'light']);
+export const LUT3_KINDS: ReadonlySet<AdjustmentKind> = new Set<AdjustmentKind>(['hsv', 'vibrance', 'colorBalance', 'channelMixer', 'photoFilter', 'blackWhite', 'selectiveColor', 'threshold', 'gradientMap', 'colorLookup', 'splitToning', 'light', 'dehaze', 'develop']);
+
+/** Whether the settings keep a Dehaze or Develop layer per pixel: no dark-channel or depth dehaze, no clarity, texture or
+ *  vignette (which read neighbours or the position). */
+function perPixelSettings(adj: Adjustment): boolean {
+  const p = paramValues(adj.kind as ParamKind, adj.data.params);
+  if (adj.kind === 'dehaze') return p.method === 'heuristic';
+  if (adj.kind === 'develop') return !p.clarity && !p.texture && !p.vignette;
+  return true;
+}
 const cache3 = new WeakMap<object, Uint8Array | null>();
 
 /** Interpolation exactly as the shader does it: lattice units, the eight nodes, weights per axis, rounded to 8 bits. */
@@ -75,7 +85,7 @@ export function viewLut3(lut: ColourLut): Uint8Array {
 }
 
 export function adjustmentLut3(adj: Adjustment): Uint8Array | null {
-  if (!LUT3_KINDS.has(adj.kind)) return null;
+  if (!LUT3_KINDS.has(adj.kind) || !perPixelSettings(adj)) return null;
   if ((adj.data.gradientMapSettings as { dither?: boolean } | undefined)?.dither === true || (adj.data.params as { dither?: boolean } | undefined)?.dither === true) return null;
   const hit = cache3.get(adj.data);
   if (hit !== undefined) return hit;

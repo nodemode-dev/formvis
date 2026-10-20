@@ -1,3 +1,5 @@
+import re
+
 QUAD = [[40, 30], [170, 50], [160, 170], [30, 150]]
 SCENE = """(quad) => {
   const e = window.formvis.engine;
@@ -30,14 +32,16 @@ def test_the_tool_drags_a_corner_and_crops(page):
     page.evaluate(SCENE, QUAD)
     page.evaluate("window.formvis.engine.setTool('crop')")
     assert page.evaluate("window.formvis.engine.tool") == "crop"
-    page.locator("label, button", has_text="Perspective").first.click()
+    page.locator(".cv-opt-more:not([hidden])[aria-expanded=false]").first.click()
+    page.locator(":is(.cv-opt-group:not([hidden]), .cv-opt-pop-sect[style*=contents]) label, :is(.cv-opt-group:not([hidden]), .cv-opt-pop-sect[style*=contents]) button", has_text="Perspective").first.click()
+    page.locator(".cv-opt-more:not([hidden])[aria-expanded=true]").first.click()
     s = page.evaluate("(() => { const v = window.formvis.engine.current.viewport, r = document.querySelector('.cv-stage').getBoundingClientRect(); return [r.left + v.panX, r.top + v.panY, v.zoom]; })()")
     at = lambda x, y: (s[0] + x * s[2], s[1] + y * s[2])
     page.mouse.move(*at(40, 30)); page.mouse.down(); page.mouse.move(*at(100, 90), steps=4); page.mouse.move(*at(170, 170), steps=4); page.mouse.up()
     assert page.evaluate("window.formvis.engine.current.doc.width") == 200
     for corner, (x, y) in [((170, 30), (170, 50)), ((40, 170), (30, 150)), ((170, 170), (160, 170))]:
         page.mouse.move(*at(*corner)); page.mouse.down(); page.mouse.move(*at(x, y), steps=4); page.mouse.up()
-    page.keyboard.press("Enter")
+    page.locator("button.cv-btn:visible", has_text=re.compile("^Crop$")).first.click()
     page.wait_for_timeout(300)
     assert page.evaluate("window.formvis.engine.historySteps.names.slice(-1)[0]") == "Perspective Crop"
     w, h = page.evaluate("[window.formvis.engine.current.doc.width, window.formvis.engine.current.doc.height]")

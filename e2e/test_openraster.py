@@ -39,7 +39,7 @@ def test_export_is_a_valid_openraster_file(page):
     assert (root.get("w"), root.get("h")) == ("100", "60")
     top = root.find("stack")
     names = [(e.tag, e.get("name")) for e in top]
-    assert names[0] == ("layer", "Hidden") and names[-1] == ("layer", "Background"), names   # topmost first; the adjustment left out
+    assert names[1] == ("layer", "Hidden") and names[-1] == ("layer", "Background"), names   # topmost first; the adjustment written as a layer
     red = next(e for e in top.iter("layer") if e.get("name") == "Red")
     assert red.get("composite-op") == "svg:multiply" and abs(float(red.get("opacity")) - 0.5) < 1e-3
     hidden = next(e for e in top.iter("layer") if e.get("name") == "Hidden")

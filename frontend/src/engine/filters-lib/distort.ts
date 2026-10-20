@@ -197,7 +197,7 @@ export function displaceImage(src: ImageData, o: { h: number; v: number; tile: b
 }
 
 /** A map level's displacement in pixels at 100 percent: none at mid grey (128), and 128 either way at black and white. */
-const shift = (level: number): number => (level >= 128 ? ((level - 128) * 128) / 127 : level - 128);
+export const shift = (level: number): number => (level >= 128 ? ((level - 128) * 128) / 127 : level - 128);
 
 /** The value at position t (0 to 1) of a smooth curve through flat pairs of position and value, positions rising; a
  *  cubic through the points with slopes from each point's neighbours. */

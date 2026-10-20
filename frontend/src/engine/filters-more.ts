@@ -192,7 +192,7 @@ function lensBlurDisc(img: ImageData, radius: number, brightness: number, thresh
 }
 
 /** Separable Gaussian on one float plane, edges clamped. */
-function gauss(src: Float32Array, w: number, h: number, sigma: number): Float32Array {
+export function gauss(src: Float32Array, w: number, h: number, sigma: number): Float32Array {
   if (sigma < 0.3) return src.slice();
   const R = Math.ceil(sigma * 3), k = new Float32Array(2 * R + 1);
   let sum = 0;
@@ -205,7 +205,7 @@ function gauss(src: Float32Array, w: number, h: number, sigma: number): Float32A
 }
 
 /** A line of `len` pixels at `angleDeg` on one float plane, bilinear, edges clamped. */
-function line(src: Float32Array, w: number, h: number, len: number, angleDeg: number): Float32Array {
+export function line(src: Float32Array, w: number, h: number, len: number, angleDeg: number): Float32Array {
   const t = (angleDeg * Math.PI) / 180, ux = Math.cos(t), uy = -Math.sin(t), count = Math.max(2, Math.ceil(len) + 1), out = new Float32Array(src.length);
   const at = (x: number, y: number): number => {
     const cx = Math.min(w - 1, Math.max(0, x)), cy = Math.min(h - 1, Math.max(0, y)), x0 = Math.floor(cx), y0 = Math.floor(cy), x1 = Math.min(w - 1, x0 + 1), y1 = Math.min(h - 1, y0 + 1), fx = cx - x0, fy = cy - y0;

@@ -22,7 +22,7 @@ def test_new_apply_redefine_and_delete(page):
     page.evaluate(SETUP)
     page.evaluate(SELECT, 0)
     sid = page.evaluate("window.formvis.engine.newParagraphStyle('Heading')")
-    styles = page.evaluate("window.formvis.engine.paragraphStyles.map((s) => ({ name: s.name, size: s.size }))")
+    styles = page.evaluate("window.formvis.engine.paragraphStyles.filter((s) => s.name !== 'Basic Paragraph').map((s) => ({ name: s.name, size: s.size }))")
     assert styles == [{"name": "Heading", "size": 40}], styles
     assert info(page)[0]["style"] == sid                                   # the source layer is linked
 
@@ -36,18 +36,18 @@ def test_new_apply_redefine_and_delete(page):
     before = info(page)
     page.evaluate(f"window.formvis.engine.redefineParagraphStyle('{sid}')")
     after = info(page)
-    assert page.evaluate("window.formvis.engine.paragraphStyles[0].size") == 64
+    assert page.evaluate("window.formvis.engine.paragraphStyles[1].size") == 64
     assert after[1]["size"] == 64 and after[1]["width"] > before[1]["width"], (before, after)    # linked Beta re-rendered
     assert after[2] == before[2], (before, after)                                                # unlinked Gamma untouched
     page.evaluate("window.formvis.engine.undo()")
-    assert info(page)[1]["size"] == 40 and page.evaluate("window.formvis.engine.paragraphStyles[0].size") == 40   # one step
+    assert info(page)[1]["size"] == 40 and page.evaluate("window.formvis.engine.paragraphStyles[1].size") == 40   # one step
 
     page.evaluate(f"window.formvis.engine.deleteParagraphStyle('{sid}')")
     gone = info(page)
-    assert page.evaluate("window.formvis.engine.paragraphStyles.length") == 0
+    assert page.evaluate("window.formvis.engine.paragraphStyles.length") == 1
     assert gone[1]["style"] is None and gone[1]["size"] == 40, gone          # unlinked, its look kept
     page.evaluate("window.formvis.engine.undo()")
-    assert page.evaluate("window.formvis.engine.paragraphStyles.length") == 1 and info(page)[1]["style"] == sid
+    assert page.evaluate("window.formvis.engine.paragraphStyles.length") == 2 and info(page)[1]["style"] == sid
 
 
 def test_styles_and_links_survive_saving_and_reopening(page):
@@ -70,6 +70,6 @@ def test_the_dialog_makes_and_lists_a_style(page):
     dlg = page.locator(".cv-scrim:not([hidden]) .cv-dialog")
     dlg.locator("input[type=text]").fill("Body")
     dlg.locator("button", has_text="New Style").click()
-    page.wait_for_function("document.querySelector('.cv-scrim:not([hidden]) .cv-pstyle-list').options.length === 1")   # Character Styles shares the class and sits earlier in the page
-    assert page.evaluate("document.querySelector('.cv-scrim:not([hidden]) .cv-pstyle-list').options[0].text") == "Body"
+    page.wait_for_function("document.querySelector('.cv-scrim:not([hidden]) .cv-pstyle-list').options.length === 2")   # Character Styles shares the class and sits earlier in the page
+    assert page.evaluate("document.querySelector('.cv-scrim:not([hidden]) .cv-pstyle-list').options[1].text") == "Body"
     page.keyboard.press("Escape")

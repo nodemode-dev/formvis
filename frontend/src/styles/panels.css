@@ -123,8 +123,8 @@
 .cv-menu-sep { height: 1px; margin: var(--space-1) var(--space-2); background: var(--border-color); }
 
 .cv-toast { max-width: 380px; padding: var(--space-2) var(--space-3); background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); color: var(--text-primary); font-size: var(--fs-12); pointer-events: none; transition: opacity 120ms ease; }
-.cv-toast { display: flex; align-items: center; gap: var(--space-2); }
-.cv-toast-text { min-width: 0; overflow-wrap: anywhere; }
+.cv-toast { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.cv-toast-text { flex: 1 1 220px; min-width: 0; overflow-wrap: break-word; }
 .cv-toast-actions { display: flex; gap: var(--space-1); flex: none; }
 .cv-toast-actions:empty { display: none; }
 .cv-toast-action { pointer-events: auto; flex: none; height: 22px; padding: 0 var(--space-2); border: 1px solid var(--border-light); border-radius: var(--radius-sm); background: var(--bg-tertiary); color: var(--text-primary); font: inherit; font-size: var(--fs-11); cursor: pointer; }

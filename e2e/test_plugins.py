@@ -39,5 +39,5 @@ def test_a_plugin_is_added_runs_in_its_sandbox_and_goes(page, tmp_path):
     page.locator(f"{DLG} input[aria-label='Invert Red.js on']").uncheck()
     assert page.evaluate("window.formvis.commands.get('plugin:Invert Red.js:invert')") is None             # off: its commands gone
     page.locator(f"{DLG} .cv-plugins-row button", has_text="Remove").click()
-    page.locator(f"{DLG} .cv-plugins-list", has_text="No plugins yet.").wait_for()
+    page.locator(DLG, has_text="No plugins yet.").wait_for()
     assert urllib.request.urlopen("http://127.0.0.1:8190/api/plugins", timeout=10).read() == b"[]"

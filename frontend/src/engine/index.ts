@@ -1890,7 +1890,7 @@ export class Engine {
   }
   stopFlick(): void { cancelAnimationFrame(this.flickFrame); this.flickFrame = 0; }
   /** View > Canvas Scrollbars: thin scroll indicators over the canvas that also drag the view; on unless turned off (kept in Preferences). */
-  canvasScrollbars = true;
+  canvasScrollbars = false;
   setCanvasScrollbars(on: boolean): void { this.canvasScrollbars = on; this.emit('viewport', null); this.emit('options', null); }
 
   /** Multichannel (31.3b): the channels overprinted on white, drawn once per channel set. */
@@ -5133,7 +5133,7 @@ export class Engine {
     const lt = p.activeLayer?.tiled ?? null;
     if (lt) {
       const whole = this.tool === 'mixer' || opts.mixer ? 'The Mixer Brush' : p.maskTarget ? 'Painting a mask'
-        : !opts.aliased && shapeActive({ ...this.brushShape, dual: { ...this.brushShape.dual, on: false } }) ? 'Brush Settings (shape and scattering, texture, dual brush, wet edges)' : null;
+        : !opts.aliased && shapeActive({ ...this.brushShape, dual: { ...this.brushShape.dual, on: false }, texture: { ...this.brushShape.texture, on: false } }) ? 'Brush Settings (shape and scattering)' : null;
       if (whole) { this.notice(`${whole} on a layer kept in tiles comes in a later release; the plain brush, pencil and eraser paint it now.`); return false; }
     }
     p.history.begin(opts.name ?? (this.brushMode === 'erase' ? 'Eraser' : this.tool === 'mixer' || opts.mixer ? 'Mixer Brush' : 'Brush'), p.snapshot());

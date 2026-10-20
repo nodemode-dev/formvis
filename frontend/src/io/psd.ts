@@ -14,7 +14,7 @@ import { addExtraChannels, readExtraChannels, readIccProfile } from './psd-chann
 import { readPsdChannelMode, writeMultichannelPsd } from './psd-modes';
 import { readChannelRestrictions } from './psd-blend';
 import { conformLevels, edgeContourKeys, patternFillItems, readBevelDetails, readPatternFills, type BevelDetail, type PatternFillRaw } from './psd-raw';
-import { ADJUSTMENT_KEY, SMART_STACK_KEY, addLayerBlocks, adjustmentFromBlock, readLayerBlocks, type OwnBlock } from './psd-own';
+import { ADJUSTMENT_KEY, COMP_APPEARANCE_KEY, SMART_STACK_KEY, addLayerBlocks, adjustmentFromBlock, filterEffectMask, filterMaskPlane, measureScaleBytes, measureScaleFrom, readLayerBlocks, type OwnBlock } from './psd-own';
 import { vectorCoverage } from '../engine/vector-mask';
 import { fromBase64, toBase64 } from './icc-read';
 import { cameraFromTiff, exifBlockOf } from './exif';
@@ -749,8 +749,10 @@ export async function readPsdFile(file: File, siblings: readonly File[] = []): P
   else if (colorMode === 2) notes.push('This Indexed Color file has no colour table that formvis could read; it opened as RGB.');
   const icc = readIccProfile(buffer);
   if (icc) { doc.profile = icc; kept.push(`Colour profile ${icc.name}.`); }
+  const scaleRes = blocks.get(1074), scaleRead = scaleRes ? measureScaleFrom(scaleRes) : null;
+  if (scaleRead) { doc.measureScale = scaleRead; kept.push(`Measurement scale ${scaleRead.pixels} px = ${scaleRead.length} ${scaleRead.units}.`); }
   const exifRes = blocks.get(1058);
-  if (exifRes && exifRes.length >= 8 && exifRes.length <= 64000) {
+  if (exifRes &&exifRes.length >= 8 && exifRes.length <= 64000) {
     const camera = cameraFromTiff(exifRes);
     doc.meta = { ...(doc.meta ?? {}), exif: toBase64(exifRes), ...(camera && !doc.meta?.camera ? { camera } : {}) };
     kept.push('Exif block.');
@@ -773,7 +775,7 @@ export async function readPsdFile(file: File, siblings: readonly File[] = []): P
     if (!links.has(g)) links.set(g, uid());
     return { link: links.get(g) as ID };
   };
-  const closedGroups: ID[] = [], restrictions = readChannelRestrictions(buffer, psd), bevels = readBevelDetails(buffer, psd), patternFills = readPatternFills(buffer, psd), ownStacks = readLayerBlocks(buffer, psd, SMART_STACK_KEY), ownAdjusts = readLayerBlocks(buffer, psd, ADJUSTMENT_KEY);
+  const closedGroups: ID[] = [], restrictions = readChannelRestrictions(buffer, psd), bevels = readBevelDetails(buffer, psd), patternFills = readPatternFills(buffer, psd), ownStacks = readLayerBlocks(buffer, psd, SMART_STACK_KEY), ownAdjusts = readLayerBlocks(buffer, psd, ADJUSTMENT_KEY), ownCompLooks = readLayerBlocks(buffer, psd, COMP_APPEARANCE_KEY);
   const maskOf =(mk: PsdLayer['mask']): Layer['mask'] | null => {
     if (!mk?.canvas || !mk.canvas.width || !mk.canvas.height) return null;
     // PSD masks are grey; formvis's are white with the level in alpha.
@@ -805,6 +807,15 @@ export async function readPsdFile(file: File, siblings: readonly File[] = []): P
     const vmd = pl.realMask ?? pl.mask, vd = typeof vmd?.vectorMaskDensity === 'number' && vmd.vectorMaskDensity < 1 ? Math.round(vmd.vectorMaskDensity * 100) : 0, vfe = typeof vmd?.vectorMaskFeather === 'number' && vmd.vectorMaskFeather > 0 ? vmd.vectorMaskFeather : 0;
     return { path, enabled: !vm.disable, linked: !vm.notLink, inverted: !!vm.invert, ...(vd ? { density: vd } : {}), ...(vfe ? { feather: vfe } : {}) };
   };
+  const filterPlanes = new Map<PsdLayer, { width: number; height: number; gray: Uint8Array }>();
+  const planesOf = async (list: PsdLayer[] | undefined): Promise<void> => {
+    for (const pl of list ?? []) {
+      const fe = pl.filterEffectsMasks?.[0], plane = fe ? await filterMaskPlane(fe) : null;
+      if (plane) filterPlanes.set(pl, plane);
+      await planesOf(pl.children);
+    }
+  };
+  await planesOf(psd.children);
   const walk = (children: PsdLayer[] | undefined, parentId: ID | null): void => {
     let base: Layer | null = null, basePl: PsdLayer | null = null;
     for (const pl of children ?? []) {
@@ -911,6 +922,17 @@ export async function readPsdFile(file: File, siblings: readonly File[] = []): P
           }
           const ownStack = layer.smart.filters.length ? [] : smartFiltersFrom(ownStacks.get(pl));
           if (ownStack.length) { layer.smart.filters = ownStack; kept.push(`"${name}" has ${ownStack.length} editable smart filter${ownStack.length === 1 ? '' : 's'} from formvis's own block.`); }
+          const plane = filterPlanes.get(pl);
+          if (plane) {
+            const mask = new Raster(source.width, source.height), part = canvas(plane.width, plane.height), pg = part.getContext('2d') as CanvasRenderingContext2D, img = pg.createImageData(plane.width, plane.height);
+            for (let i = 0, n = plane.width * plane.height; i < n; i++) { img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = 255; img.data[i * 4 + 3] = plane.gray[i]; }
+            pg.putImageData(img, 0, 0);
+            mask.ctx.drawImage(part as CanvasImageSource, 0, 0, source.width, source.height);
+            const off = (ownStacks.get(pl) as { maskEnabled?: unknown } | undefined)?.maskEnabled === false;
+            layer.smart.filterMask = mask;
+            layer.smart.filterMaskEnabled = plc.filter?.maskEnabled !== false && !off;
+            kept.push(`"${name}" has a smart filter mask.`);
+          }
         } else if (unresolved.has(plc.id)) notes.push(`"${name}" is linked to ${unresolved.get(plc.id)}, which was not found with the PSD (open it together with the PSD to link it); it opened as pixels.`);
         else notes.push(`"${name}" is a smart object whose contents formvis cannot read; it opened as pixels.`);
       }
@@ -989,8 +1011,23 @@ export async function readPsdFile(file: File, siblings: readonly File[] = []): P
         if (comp.usePosition && s.offset && layer && !layer.isGroup) { entry.x = layer.transform.x + s.offset.x; entry.y = layer.transform.y + s.offset.y; }
       }
     }
+    for (const [pl, lid] of psdIds) {
+      const looks = ownCompLooks.get(pl);
+      if (!looks || typeof looks !== 'object') continue;
+      for (const [cid, comp] of byComp) {
+        const e = comp.useAppearance ? (looks as Record<string, unknown>)[String(cid)] as Record<string, unknown> | undefined : undefined;
+        if (!e || typeof e !== 'object') continue;
+        const look: LayerComp['layers'][ID] = {};
+        if (typeof e.opacity === 'number' && Number.isFinite(e.opacity)) look.opacity = e.opacity;
+        if (typeof e.blend === 'string' && e.blend in TO_PSD) look.blend = e.blend as BlendMode;
+        if (typeof e.fill === 'number' && Number.isFinite(e.fill)) look.fill = e.fill;
+        if (e.effects && typeof e.effects === 'object') look.effects = e.effects;
+        if (typeof e.effectsHidden === 'boolean') look.effectsHidden = e.effectsHidden;
+        comp.layers[lid] = { ...(comp.layers[lid] ?? {}), ...look };
+      }
+    }
     doc.comps = comps;
-    doc.activeComp = lc.lastApplied !== undefined ? compIds.get(lc.lastApplied) ?? null : null;
+    doc.activeComp =lc.lastApplied !== undefined ? compIds.get(lc.lastApplied) ?? null : null;
   }
   // Slices (29.5 part d): user and layer slices come in; auto slices are skipped because formvis computes them. A layer slice maps back through the numeric id.
   const sliceGroups = psd.imageResources?.slices;
@@ -1160,9 +1197,16 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
           customEnvelopeWarp: { meshPoints: mesh.points.map(([x, y]) => ({ x: ((x - b[4]) * b[3] - (y - b[5]) * b[2]) / det - o, y: ((y - b[5]) * b[0] - (x - b[4]) * b[1]) / det - o })) } };
       } else if (live) notes.push(`"${l.name}" has a ${live.kind === 'puppet' ? 'Puppet Warp' : live.kind === 'perspective' ? 'Perspective Warp' : 'Warp with uneven grid lines'} that the PSD's smart object cannot hold live; it is written with its pixels and the smart object's corners.`);
       const sf = l.smart.filters, listed = sf.map((f) => toPsdFilter(f, (m) => TO_PSD[m] ?? 'normal')).filter((f): f is NonNullable<typeof f> => f !== null);
-      if (sf.length && listed.length < sf.length) own.set(out, { key: SMART_STACK_KEY, json: { filters: sf } });
-      if (sf.length && listed.length === sf.length && !l.smart.filterMask) out.placedLayer.filter = { enabled: true, validAtPosition: true, maskEnabled: l.smart.filterMaskEnabled !== false, maskLinked: true, maskExtendWithWhite: false, list: listed };
-      else if (sf.some((f) => f.enabled)) notes.push(`"${l.name}" keeps its smart filters applied in its pixels; in the PSD its smart object holds the original without them${l.smart.filterMask ? ' (a filter mask is not written)' : listed.length < sf.length ? ' (the PSD stack holds only filters it has a record for; formvis keeps the whole stack in a block of its own, so the filters stay editable when formvis opens the file again)' : ''}.`);
+      if (sf.length && listed.length < sf.length) own.set(out, { key: SMART_STACK_KEY, json: { filters: sf, ...(l.smart.filterMask && l.smart.filterMaskEnabled === false ? { maskEnabled: false } : {}) } });
+      const fm = l.smart.filterMask;
+      if (fm && fm.width > 0 && fm.height > 0) {
+        const px = fm.ctx.getImageData(0, 0, fm.width, fm.height).data, gray = new Uint8Array(fm.width * fm.height);
+        for (let i = 0; i < gray.length; i++) gray[i] = px[i * 4 + 3];
+        out.filterMask = { colorSpace: { k: 0 }, opacity: 1 };
+        out.filterEffectsMasks = [filterEffectMask(guid(), fm.width, fm.height, gray)];
+      }
+      if (sf.length && listed.length === sf.length) out.placedLayer.filter = { enabled: true, validAtPosition: true, maskEnabled: l.smart.filterMaskEnabled !== false, maskLinked: true, maskExtendWithWhite: false, list: listed };
+      else if (sf.some((f) => f.enabled)) notes.push(`"${l.name}" keeps its smart filters applied in its pixels; in the PSD its smart object holds the original without them${listed.length < sf.length ? ' (the PSD stack holds only filters it has a record for; formvis keeps the whole stack in a block of its own, so the filters stay editable when formvis opens the file again)' : ''}.`);
     }
     const v = l.vector, t = l.transform;
     if (v && l.raster) {
@@ -1226,7 +1270,7 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
   const psd: Psd = { width: doc.width, height: doc.height, children: build(null), ...(maximize ? { canvas: flat } : {}) };   // Maximize Compatibility: the flattened composite beside the layers, for readers that ignore layers
   const boards = doc.layers.filter((l) => l.isGroup && !l.parentId && l.artboard).length;
   if (boards) psd.artboards = { count: boards };   // 'artd', the document-wide artboard record a reader looks for beside each group's 'artb'
-  const comps = doc.comps ?? [], sliceList = doc.slices ?? [];
+  const comps = doc.comps ?? [], sliceList = doc.slices ?? [], compLooks = new Map<PsdLayer, OwnBlock>();
   { let layerNo = 0; for (const o of built.values()) o.id = ++layerNo; }   // a numeric id on every layer, which comps and layer slices need and other readers expect
   if (sliceList.length) {   // Slices (29.5 part d): one group named after the document
     const resources = psd.imageResources ?? (psd.imageResources = {});
@@ -1250,16 +1294,18 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
     };
     for (const [lid, o] of built) {
       const l = doc.layers.find((x) => x.id === lid);
-      const settings: NonNullable<PsdLayer['comps']>['settings'] = [];
+      const settings: NonNullable<PsdLayer['comps']>['settings'] = [], looks: Record<string, unknown> = {};
       comps.forEach((c, i) => {
         const e = c.layers[lid];
         if (!e) return;
+        if (c.useAppearance && (e.opacity !== undefined || e.blend !== undefined || e.fill !== undefined || e.effects !== undefined || e.effectsHidden !== undefined)) looks[String(i + 1)] = { opacity: e.opacity, blend: e.blend, fill: e.fill, effects: e.effects, effectsHidden: e.effectsHidden };
         const pos = c.usePosition && l && e.x !== undefined && e.y !== undefined ? { offset: { x: e.x - l.transform.x, y: e.y - l.transform.y } } : {};
         settings.push({ enabled: c.useVisibility ? e.visible !== false : l?.visible ?? true, compList: [i + 1], ...pos });
       });
       if (settings.length) o.comps = { settings };
+      if (Object.keys(looks).length) compLooks.set(o, { key: COMP_APPEARANCE_KEY, json: looks });
     }
-    if (comps.some((c) => c.useAppearance)) notes.push('Layer comp appearance is not written to PSD.');
+    if (compLooks.size) notes.push('Layer comp appearance (opacity, blend, fill and layer style per comp) is written in a block of formvis\'s own; other editors keep each comp\'s visibility and position only.');
   }
   if (linked.length) psd.linkedFiles = linked;
   if (psdPatterns.length) psd.patterns = psdPatterns;
@@ -1280,5 +1326,6 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
   if (alphas.length > 50) notes.push('A PSD holds at most 56 channels; the alpha channels after the first 50 are left out.');
   const exif = metaWritable(doc.meta) ? exifBlockOf(doc.meta) : null;
   const withExif = (bytes: ArrayBuffer): ArrayBuffer => (exif && exif.length <= 64000 ? addResourceBytes(bytes, resourceBlock(1058, '', exif)) : bytes);   // image resource 1058, the Exif block
-  return { bytes: withExif(addExtraChannels(addIccResource(addPathResources(addLayerBlocks(patternFillItems(edgeContourKeys(conformLevels(writePsd(psd, { generateThumbnail: maximize, psb })), psd, edgeKeys), psd, patternRaw), psd.children ?? [], own), paths, doc.width, doc.height), icc), alphas)), notes };
+  const scale = doc.measureScale, withScale = (bytes: ArrayBuffer): ArrayBuffer => (scale && scale.pixels > 0 && scale.length > 0 && Number.isFinite(scale.pixels) && Number.isFinite(scale.length) ? addResourceBytes(bytes, resourceBlock(1074, '', measureScaleBytes(scale))) : bytes);   // image resource 1074
+  return { bytes: withScale(withExif(addExtraChannels(addIccResource(addPathResources(addLayerBlocks(addLayerBlocks(patternFillItems(edgeContourKeys(conformLevels(writePsd(psd, { generateThumbnail: maximize, psb })), psd, edgeKeys), psd, patternRaw), psd.children ?? [], own), psd.children ?? [], compLooks), paths, doc.width, doc.height), icc), alphas))), notes };
 }

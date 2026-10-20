@@ -1,6 +1,6 @@
 import { clamp, type Adjustment } from './types';
 import { isParamKind, paramKernel } from './adjust-params';
-import { wasmAntialias, wasmEnhanceEdge, wasmInvert, wasmLut, wasmSensitivity, wasmWand } from './wasm-kernels';
+import { wasmAntialias, wasmEnhanceEdge, wasmGradientRamp, wasmInvert, wasmLut, wasmSensitivity, wasmWand } from './wasm-kernels';
 
 /** Pixel kernels for adjustment layers and the Magic Wand, written for formvis from standard methods: Levels as a
  *  clipped power curve between black and white points, Curves as monotone piecewise-cubic interpolation (Fritsch
@@ -139,7 +139,9 @@ export function gradientMapKernel(settings: unknown): Kernel {
       }
     };
   }
+  const rampBytes = Uint8Array.from(ramp);
   return (px) => {
+    if (wasmGradientRamp(px, rampBytes)) return;
     for (let i = 0; i < px.length; i += 4) {
       if (px[i + 3] === 0) continue;
       const y = Math.min(255, Math.round(0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2])) * 3;

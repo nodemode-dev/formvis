@@ -1,6 +1,8 @@
 import io
 
 import pytest
+
+from e2e.conftest import URL
 from PIL import Image, ImageChops
 
 BLENDS = ["normal", "dissolve", "darken", "multiply", "color-burn", "linear-burn", "darker-color", "lighten", "screen", "color-dodge",
@@ -77,23 +79,30 @@ def test_the_webgl2_frame_matches_the_cpu_path(page, zoom, ox, oy):
     assert r["area"] > 1000 and r["max"] <= 4, r
 
 
-def test_the_canvas_drawn_by_webgl2_matches_the_cpu_on_screen(page):
+def test_the_canvas_drawn_by_webgl2_matches_the_cpu_on_screen(browser):
     box = """() => { const v = window.formvis.engine.current.viewport, b = document.querySelector('.cv-stage').getBoundingClientRect();
       return { x: b.left + v.panX, y: b.top + v.panY, width: 160, height: 90 }; }"""
     def shot(renderer):
-        page.evaluate(f"localStorage.setItem('formvis.prefs', JSON.stringify({{ renderer: '{renderer}' }}))")
-        page.reload(); page.wait_for_function("window.formvis && window.formvis.engine")
-        page.evaluate(DOC, ["multiply", 160, 90])
-        page.evaluate("window.formvis.engine.zoomTo(1)")
-        page.wait_for_function(f"document.querySelector('.cv-st-gpu').textContent === '{'GPU: WebGL2' if renderer == 'webgl2' else 'GPU: CPU'}'")
-        page.wait_for_timeout(400)
-        return Image.open(io.BytesIO(page.screenshot(clip=page.evaluate(box)))).convert("RGB")
-    try:
-        gl = shot("webgl2")
-        assert page.evaluate("!document.querySelector('.cv-scene-gl').hidden")          # the WebGL2 canvas draws it
-        cpu = shot("cpu")
-        worst = max(hi for _, hi in ImageChops.difference(gl, cpu).getextrema())
-        assert worst <= 4, worst
-    finally:
-        page.evaluate("localStorage.removeItem('formvis.prefs')")
-        page.reload(); page.wait_for_function("window.formvis && window.formvis.engine")
+        for attempt in (0, 1):
+            try: return shot1(renderer)
+            except Exception as ex:
+                if attempt or 'destroyed' not in str(ex): raise
+    def shot1(renderer):
+        ctx = browser.new_context(viewport={"width": 1400, "height": 900})
+        try:
+            page = ctx.new_page()
+            page.add_init_script(f"localStorage.setItem('formvis.prefs', JSON.stringify({{ renderer: '{renderer}' }}))")
+            page.goto(URL); page.wait_for_function("window.formvis && window.formvis.engine", timeout=60000)
+            page.evaluate(DOC, ["multiply", 160, 90])
+            page.evaluate("window.formvis.engine.zoomTo(1)")
+            page.wait_for_function(f"document.querySelector('.cv-st-gpu').textContent === '{'GPU: WebGL2' if renderer == 'webgl2' else 'GPU: CPU'}'")
+            page.wait_for_timeout(400)
+            image = Image.open(io.BytesIO(page.screenshot(clip=page.evaluate(box)))).convert("RGB")
+            return image, page.evaluate("!document.querySelector('.cv-scene-gl').hidden")
+        finally:
+            ctx.close()
+    gl, drawn = shot("webgl2")
+    assert drawn                                                                     # the WebGL2 canvas draws it
+    cpu, _ = shot("cpu")
+    worst = max(hi for _, hi in ImageChops.difference(gl, cpu).getextrema())
+    assert worst <= 4, worst

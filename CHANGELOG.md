@@ -4,6 +4,21 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.91.8 · 2026-10-20
+
+- Canvas: the scrollbars are hidden by default, including for profiles that saved them on; Preferences and View > Canvas Scrollbars turn them back on.
+- Start: the keyboard shortcut notice no longer pops up when the app opens; import a .kys set from the shortcuts settings. Notices with buttons keep their text on readable lines with the buttons below.
+- GPU Brush Coverage is on by default.
+- Native renderer: Reflect and Glow match the CPU within 1 level (source and result rounded to 8 bits as the engine does) and are no longer refused.
+- GPU displays: Dehaze (colour and tone method) and Develop layers without clarity, texture or vignette draw as 3D tables where the proof passes.
+- Brushes: Texture paints on giant tiled layers, identical to an ordinary layer across tile edges.
+- Filters at 16 and 32 bits, CMYK and Lab: HSB/HSL, Haze by Depth, Grain Plate, Dither (ordered and error diffusion), Spin Blur and Displace compute in floats.
+- PSD: smart filter masks are written and read back; the measurement scale is written; layer comp appearance travels in a formvis block.
+- Layer Style: contour pickers load and save .shc contour files.
+- WebAssembly colour kernels: Desaturate (about 8x), the Gradient Map lookup and the Equalize table pass, byte-identical with the TypeScript fallback kept.
+- OpenRaster: adjustments are written as a layer (confirmed by the owner).
+- Move, Rename and Delete Brush Preset and Rename Brush Folder say what they need when run without an id instead of failing.
+
 ## 1.91.7 · 2026-10-20
 
 ### Added

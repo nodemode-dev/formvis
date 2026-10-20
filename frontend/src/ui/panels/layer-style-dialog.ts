@@ -4,6 +4,8 @@ import { Dialog } from '../dialogs';
 import { el } from '../dom';
 import { t } from '../i18n';
 import { checkRow, sliderRow } from './controls';
+import { readShc, writeShc, type ShcContour } from '../../io/shc';
+import { toast } from '../toast';
 
 const hex = (c: RGB): string => `#${[c.r, c.g, c.b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
 const fromHex = (h: string): RGB => ({ r: parseInt(h.slice(1, 3), 16), g: parseInt(h.slice(3, 5), 16), b: parseInt(h.slice(5, 7), 16) });
@@ -11,6 +13,14 @@ const fromHex = (h: string): RGB => ({ r: parseInt(h.slice(1, 3), 16), g: parseI
 const SECTIONS = { dropShadow: 'Drop Shadow', outerGlow: 'Outer Glow', stroke: 'Stroke', innerShadow: 'Inner Shadow', innerGlow: 'Inner Glow', colorOverlay: 'Color Overlay', gradientOverlay: 'Gradient Overlay', patternOverlay: 'Pattern Overlay', satin: 'Satin', bevel: 'Bevel & Emboss' } as const;
 export type StyleSection = keyof typeof SECTIONS | 'blending';
 const STYLE_DEFAULT_KEY = 'formvis.layerStyleDefault';
+const CONTOUR_KEY = 'formvis.contours';
+const contourLibrary: Array<{ name: string; id: ContourId }> = (() => {
+  try {
+    const raw: unknown = JSON.parse(localStorage.getItem(CONTOUR_KEY) ?? '[]');
+    return Array.isArray(raw) ? raw.filter((e): e is { name: string; id: ContourId } => !!e && typeof e.name === 'string' && customContourPoints(e.id) !== null) : [];
+  } catch { return []; }
+})();
+const contourViews = new Set<(index: number) => void>();
 
 /** Layer > Layer Style: the document's Global Light, then Drop Shadow, Outer Glow, Stroke (outside, inside or
  *  center), Inner Shadow, Inner Glow, Satin, Color Overlay, Gradient Overlay, Pattern Overlay and Bevel & Emboss for the
@@ -27,7 +37,7 @@ export class LayerStyleDialog extends Dialog {
   private blending: { blendIf: BlendIf; knockout: 'none' | 'shallow' | 'deep'; channels: [boolean, boolean, boolean]; clipGroup: boolean; shapes: boolean; blend: BlendMode; opacity: number; fill: number } = { blendIf: structuredClone(BLEND_IF_IDENTITY), knockout: 'none', channels: [true, true, true], clipGroup: false, shapes: true, blend: 'normal', opacity: 1, fill: 1 };
   private readonly syncs: Array<() => void> = [];
 
-  constructor(private readonly engine: Engine) {
+  constructor(private readonly engine: Engine, private readonly deliver: (blob: Blob, name: string) => Promise<void>) {
     super('Layer Style', 420);
     const fx = (): LayerEffects => this.fx;
     const check = (label: string, get: () => boolean, set: (v: boolean) => void): void => {
@@ -50,7 +60,18 @@ export class LayerStyleDialog extends Dialog {
       const select = el<HTMLSelectElement>(`<select class="cv-input">${options.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select>`);
       const curved = options === contours;
       const editor = curved ? this.contourEditor(get, (id) => { set(id); this.changed(); }) : null;
-      select.addEventListener('change', () => { set(select.value === 'custom' ? customContourId([{ x: 0, y: 0 }, { x: 0.5, y: 0.5 }, { x: 1, y: 1 }]) : select.value); editor?.sync(); this.changed(); });
+      if (curved) this.contourMenu(select);
+      select.addEventListener('change', () => {
+        const v = select.value, shown = (): string => { const c = get(); return c.startsWith('custom:') ? 'custom' : c; };
+        if (v.startsWith('act:')) { select.value = shown(); if (v === 'act:load') this.loadContours(); else void this.saveContours(get()); return; }
+        if (v.startsWith('lib:')) {
+          const entry = contourLibrary[Number(v.slice(4))];
+          if (entry) { set(entry.id); editor?.sync(); this.changed(); }
+          select.value = shown();
+          return;
+        }
+        set(v === 'custom' ? customContourId([{ x: 0, y: 0 }, { x: 0.5, y: 0.5 }, { x: 1, y: 1 }]) : v); editor?.sync(); this.changed();
+      });
       this.field(label, select);
       if (editor) this.field(`${label} curve`, editor.el);
       this.syncs.push(() => { const v = get(); select.value = v.startsWith('custom:') ? 'custom' : v; editor?.sync(); });
@@ -279,6 +300,63 @@ export class LayerStyleDialog extends Dialog {
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     this.onClose = () => { if (!this.applied) this.engine.previewLayerEffects(null); };
+  }
+
+  /** The picker's file entries: the contours loaded from .shc files (kept in this browser) after the built-in ones, then
+   *  Load Contours and Save Contours. Entries added by a load are inserted into every picker in place. */
+  private contourMenu(select: HTMLSelectElement): void {
+    const group = document.createElement('optgroup');
+    group.label = 'Contour files';
+    for (const [value, text] of [['act:load', 'Load Contours...'], ['act:save', 'Save Contours...']]) {
+      const o = document.createElement('option');
+      o.value = value; o.textContent = text;
+      group.appendChild(o);
+    }
+    select.appendChild(group);
+    const add = (index: number): void => {
+      const o = document.createElement('option');
+      o.value = `lib:${index}`; o.textContent = contourLibrary[index].name;
+      select.insertBefore(o, group);
+    };
+    contourLibrary.forEach((_, i) => add(i));
+    contourViews.add(add);
+  }
+
+  private loadContours(): void {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.shc';
+    input.addEventListener('change', () => void (async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        const res = readShc(await file.arrayBuffer());
+        let added = 0;
+        for (const c of res.contours) {
+          const id = customContourId(c.points);
+          if (contourLibrary.some((e) => e.id === id && e.name === c.name)) continue;
+          contourLibrary.push({ name: c.name, id });
+          for (const view of contourViews) view(contourLibrary.length - 1);
+          added += 1;
+        }
+        try { localStorage.setItem(CONTOUR_KEY, JSON.stringify(contourLibrary)); } catch { toast('Contours cannot be kept in this browser.', 'info'); }
+        if (!res.contours.length) throw new Error('No contours found.');
+        toast(`Loaded ${added} ${added === 1 ? 'contour' : 'contours'} from ${file.name}.`);
+        if (res.skipped) toast(`${file.name}: skipped ${res.skipped} ${res.skipped === 1 ? 'contour' : 'contours'} that could not be read.`, 'info');
+      } catch (err) { toast(`${file.name}: ${err instanceof Error ? err.message : String(err)}`, 'error'); }
+    })());
+    input.click();
+  }
+
+  /** Writes the loaded contours and the picker's current curve (a built-in one sampled at 33 points) as Contours.shc. */
+  private async saveContours(current: string): Promise<void> {
+    const list: ShcContour[] = contourLibrary.map((e) => ({ name: e.name, points: customContourPoints(e.id) ?? [] }));
+    const own = customContourPoints(current), f = contourCurve(current);
+    if (current !== 'linear' && f && !contourLibrary.some((e) => e.id === current)) {
+      list.push({ name: CONTOURS.find((c) => c.id === current)?.label ?? `Custom ${list.length + 1}`, points: own ?? Array.from({ length: 33 }, (_, i) => ({ x: i / 32, y: f(i / 32) })) });
+    }
+    if (!list.length) { toast('There are no contours to save: pick a curve first.', 'info'); return; }
+    await this.deliver(new Blob([writeShc(list) as BlobPart], { type: 'application/octet-stream' }), 'Contours.shc');
   }
 
   /** The custom contour editor shared by every contour row: points on a curve, dragged in place, a click on empty

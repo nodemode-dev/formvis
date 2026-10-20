@@ -79,7 +79,7 @@ const FS: &str = r#"
   if (s0.a > 0.0) { sc = vec4<f32>(s0.rgb / s0.a, s0.a); }
   let m = comp.mode;
   if (m == 1u || m == 5u || m == 6u || m == 11u || (m >= 15u && m <= 18u) || m == 21u || m == 22u || m >= 27u) {
-    sc = vec4<f32>(round(sc.rgb * 255.0) / 255.0, sc.a);
+    sc = vec4<f32>(floor(sc.rgb * 255.0 + 0.5005) / 255.0, sc.a);
   }
   let sa = sc.a * comp.opacity * cov;
   if (sa <= 0.0) { return bd; }
@@ -99,7 +99,7 @@ const FS: &str = r#"
   var r = sc.rgb;
   if (m != 0u) { r = blend(m, bd.rgb, sc.rgb); }
   let co = (sa * (1.0 - ab) * sc.rgb + sa * ab * r + (1.0 - sa) * ab * bd.rgb) / ao;
-  return vec4<f32>(co, ao);
+  return floor(vec4<f32>(co, ao) * 255.0 + 0.5005) / 255.0;
 }
 "#;
 

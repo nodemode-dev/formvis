@@ -3,7 +3,7 @@
  *  refused) and kept, so startup never waits on it; until a chunk is ready every call answers null and the caller runs
  *  its TypeScript twin, which gives the same bytes. A chunk that fails to load is not tried again. */
 
-export type KernelChunk = 'mask' | 'tone' | 'blur' | 'resample' | 'dither' | 'heal' | 'noise' | 'patch';
+export type KernelChunk = 'mask' | 'tone' | 'blur' | 'resample' | 'dither' | 'heal' | 'noise' | 'patch' | 'color';
 type Fn = (...args: number[]) => number;
 interface Chunk { memory: WebAssembly.Memory; fn: Record<string, Fn> }
 type State = 'idle' | 'loading' | 'ready' | 'failed';
@@ -18,6 +18,7 @@ const URLS: Record<KernelChunk, string> = {
   heal: new URL('./kernels-wasm/formvis-kernels-heal.wasm', import.meta.url).href,
   noise: new URL('./kernels-wasm/formvis-kernels-noise.wasm', import.meta.url).href,
   patch: new URL('./kernels-wasm/formvis-kernels-patch.wasm', import.meta.url).href,
+  color: new URL('./kernels-wasm/formvis-kernels-color.wasm', import.meta.url).href,
 };
 const LIMIT = 1 << 30;
 const RENEW = 3 << 28;
@@ -27,7 +28,7 @@ const modules = new Map<KernelChunk, WebAssembly.Module>();
 const ready = new Map<KernelChunk, Chunk>();
 const loading = new Map<KernelChunk, Promise<boolean>>();
 const failed = new Set<KernelChunk>();
-const calls: Record<KernelChunk, number> = { mask: 0, tone: 0, blur: 0, resample: 0, dither: 0, heal: 0, noise: 0, patch: 0 };
+const calls: Record<KernelChunk, number> = { mask: 0, tone: 0, blur: 0, resample: 0, dither: 0, heal: 0, noise: 0, patch: 0, color: 0 };
 let enabled = true;
 
 function open(module: WebAssembly.Module): Chunk | null {
@@ -83,7 +84,7 @@ export function setKernelsEnabled(on: boolean): void { enabled = on; }
 
 export function kernelStats(): { enabled: boolean; chunks: Record<KernelChunk, { state: State; calls: number; memory: number }> } {
   const one = (name: KernelChunk) => ({ state: (ready.has(name) ? 'ready' : loading.has(name) ? 'loading' : failed.has(name) ? 'failed' : 'idle') as State, calls: calls[name], memory: ready.get(name)?.memory.buffer.byteLength ?? 0 });
-  return { enabled, chunks: { mask: one('mask'), tone: one('tone'), blur: one('blur'), resample: one('resample'), dither: one('dither'), heal: one('heal'), noise: one('noise'), patch: one('patch') } };
+  return { enabled, chunks: { mask: one('mask'), tone: one('tone'), blur: one('blur'), resample: one('resample'), dither: one('dither'), heal: one('heal'), noise: one('noise'), patch: one('patch'), color: one('color') } };
 }
 
 /** Memory never shrinks, so after a very large image the chunk is opened again from its compiled module. */
@@ -133,6 +134,41 @@ export function wasmInvert(px: Uint8ClampedArray): boolean {
   return run('tone', [px.length], (chunk, [p]) => {
     bytes(chunk, p, px.length).set(px);
     chunk.fn.fv_invert(p, px.length);
+    px.set(bytes(chunk, p, px.length));
+    return true;
+  }) === true;
+}
+
+/** Desaturate: every pixel grey at its HSL lightness, in place; false where the TypeScript must run. */
+export function wasmDesaturate(px: Uint8ClampedArray): boolean {
+  if (px.length % 4 !== 0 || px.length < 4096) return false;
+  return run('color', [px.length], (chunk, [p]) => {
+    bytes(chunk, p, px.length).set(px);
+    chunk.fn.fv_desaturate(p, px.length);
+    px.set(bytes(chunk, p, px.length));
+    return true;
+  }) === true;
+}
+
+/** Gradient Map's ramp lookup (no dither): `ramp` holds the 256 rounded red, green and blue triples. */
+export function wasmGradientRamp(px: Uint8ClampedArray, ramp: Uint8Array): boolean {
+  if (px.length % 4 !== 0 || px.length < 4096 || ramp.length !== 768) return false;
+  return run('color', [px.length, 768], (chunk, [p, r]) => {
+    bytes(chunk, p, px.length).set(px);
+    bytes(chunk, r, 768).set(ramp);
+    chunk.fn.fv_gradient_ramp(p, px.length, r);
+    px.set(bytes(chunk, p, px.length));
+    return true;
+  }) === true;
+}
+
+/** One 256-entry table applied to red, green and blue of every pixel (Equalize), in place. */
+export function wasmTableAll(px: Uint8ClampedArray, table: Uint8ClampedArray): boolean {
+  if (px.length % 4 !== 0 || px.length < 4096 || table.length !== 256) return false;
+  return run('color', [px.length, 256], (chunk, [p, t]) => {
+    bytes(chunk, p, px.length).set(px);
+    bytes(chunk, t, 256).set(table);
+    chunk.fn.fv_table_all(p, px.length, t);
     px.set(bytes(chunk, p, px.length));
     return true;
   }) === true;

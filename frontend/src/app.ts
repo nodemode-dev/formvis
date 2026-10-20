@@ -3377,7 +3377,7 @@ export function startApp(): void {
     lensBatch: new LensBatchDialog((o, f) => runLensBatch(o, f)),
     imageProcessor: new ImageProcessorDialog(actions, (o) => imageProcessor(o)),
     generative: new GenerativeDialog(engine),
-    layerStyle: new LayerStyleDialog(engine),
+    layerStyle: new LayerStyleDialog(engine, deliver),
     text: new TextDialog(engine),
     newCanvas: new NewCanvasDialog(engine),
     jpeg: new JpegDialog(engine),
@@ -5062,7 +5062,7 @@ export function startApp(): void {
     { id: 'guides-from-shape-centre', label: 'New Guides From Shape Centre', enabled: () => !!engine.current?.activeLayer?.vector || !!engine.current?.selection, run: () => { if (!engine.guidesFromShape({ edges: false, centre: true })) toast('Select a shape layer, or make a selection, to place guides from.', 'info'); } },
     { id: 'actual', label: 'Actual Pixels', keys: ['Mod+1'], enabled: has, run: () => engine.zoomTo(1) },
     { id: 'flip-view-h', label: 'Flip Horizontal', checked: () => !!engine.current?.viewport.flipped, enabled: has, run: () => engine.setViewFlip(!engine.current?.viewport.flipped) },
-    { id: 'canvas-scrollbars', label: 'Canvas Scrollbars', checked: () => engine.canvasScrollbars, enabled: has, run: () => { engine.setCanvasScrollbars(!engine.canvasScrollbars); savePrefs({ ...loadPrefs(), canvasScrollbars: engine.canvasScrollbars }); } },
+    { id: 'canvas-scrollbars', label: 'Canvas Scrollbars', checked: () => engine.canvasScrollbars, enabled: has, run: () => { engine.setCanvasScrollbars(!engine.canvasScrollbars); savePrefs({ ...loadPrefs(), canvasScrollbarsShown: engine.canvasScrollbars }); } },
     { id: 'no-tool', label: 'No Tool', enabled: has, run: () => engine.setTool('idle') },
     { id: 'print-size', label: 'Print Size', enabled: has, run: () => { const ppi = engine.current?.doc.resolution || 72; engine.zoomTo(96 / ppi); } },
     { id: 'pixel-grid', label: 'Pixel Grid', checked: () => engine.showPixelGrid, run: () => engine.update({ showPixelGrid: !engine.showPixelGrid }) },
@@ -5164,10 +5164,10 @@ export function startApp(): void {
       },
     },
     { id: 'save-brush-preset', label: 'Save Brush Preset', params: { name: { type: 'string', description: 'The preset name; asked for when left out.' }, group: { type: 'string', description: 'The folder; My Brushes when left out.' } }, run: async (a) => { const name = a?.name === undefined ? await promptName('Save Brush Preset', `Brush ${importedBrushPresets.length + 1}`, 'Save') : String(a.name); if (!name?.trim()) return { saved: false }; const r = await saveBrushPreset(engine, name, a?.group === undefined ? undefined : String(a.group)); return { saved: true, id: r.preset.id, group: r.preset.group, kept: r.kept }; } },
-    { id: 'rename-brush-preset', label: 'Rename Brush Preset', params: { id: { type: 'string', required: true }, name: { type: 'string', required: true } }, run: async (a) => { if (!(await renameImportedBrush(String(a?.id ?? ''), String(a?.name ?? '')))) throw new Error('Only saved or imported brush presets can be renamed: give the id of one.'); engine.emit('options', null); return { renamed: true }; } },
-    { id: 'delete-brush-preset', label: 'Delete Brush Preset', params: { id: { type: 'string', required: true } }, run: async (a) => { if (!(await removeImportedBrush(String(a?.id ?? '')))) throw new Error('Only saved or imported brush presets can be deleted: give the id of one.'); engine.emit('options', null); return { deleted: true }; } },
-    { id: 'move-brush-preset', label: 'Move Brush Preset', params: { id: { type: 'string', required: true }, group: { type: 'string', description: 'The folder to move it to; it stays in its folder when left out.' }, before: { type: 'string', description: 'The id of the preset to place it before; last when left out.' } }, run: async (a) => { if (!(await moveBrushPreset(String(a?.id ?? ''), a?.group === undefined ? null : String(a.group), a?.before === undefined ? null : String(a.before)))) throw new Error('Only saved or imported brush presets can be moved: give the id of one.'); engine.emit('options', null); return { moved: true }; } },
-    { id: 'rename-brush-group', label: 'Rename Brush Folder', params: { from: { type: 'string', required: true }, to: { type: 'string', required: true } }, run: async (a) => { if (!(await renameBrushGroup(String(a?.from ?? ''), String(a?.to ?? '')))) throw new Error('No saved or imported brush preset is in that folder.'); engine.emit('options', null); return { renamed: true }; } },
+    { id: 'rename-brush-preset', label: 'Rename Brush Preset', params: { id: { type: 'string', required: true }, name: { type: 'string', required: true } }, run: async (a) => { if (!a?.id) { toast('Rename Brush Preset needs the id of a saved or imported brush preset (id) and the new name.', 'error'); return undefined; } if (!(await renameImportedBrush(String(a?.id ?? ''), String(a?.name ?? '')))) throw new Error('Only saved or imported brush presets can be renamed: give the id of one.'); engine.emit('options', null); return { renamed: true }; } },
+    { id: 'delete-brush-preset', label: 'Delete Brush Preset', params: { id: { type: 'string', required: true } }, run: async (a) => { if (!a?.id) { toast('Delete Brush Preset needs the id of a saved or imported brush preset (id).', 'error'); return undefined; } if (!(await removeImportedBrush(String(a?.id ?? '')))) throw new Error('Only saved or imported brush presets can be deleted: give the id of one.'); engine.emit('options', null); return { deleted: true }; } },
+    { id: 'move-brush-preset', label: 'Move Brush Preset', params: { id: { type: 'string', required: true }, group: { type: 'string', description: 'The folder to move it to; it stays in its folder when left out.' }, before: { type: 'string', description: 'The id of the preset to place it before; last when left out.' } }, run: async (a) => { if (!a?.id) { toast('Move Brush Preset needs the id of a saved or imported brush preset (id).', 'error'); return undefined; } if (!(await moveBrushPreset(String(a?.id ?? ''), a?.group === undefined ? null : String(a.group), a?.before === undefined ? null : String(a.before)))) throw new Error('Only saved or imported brush presets can be moved: give the id of one.'); engine.emit('options', null); return { moved: true }; } },
+    { id: 'rename-brush-group', label: 'Rename Brush Folder', params: { from: { type: 'string', required: true }, to: { type: 'string', required: true } }, run: async (a) => { if (!a?.from) { toast('Rename Brush Folder needs the folder to rename (from) and the new name (to).', 'error'); return undefined; } if (!(await renameBrushGroup(String(a?.from ?? ''), String(a?.to ?? '')))) throw new Error('No saved or imported brush preset is in that folder.'); engine.emit('options', null); return { renamed: true }; } },
     { id: 'paragraph-styles', label: 'Paragraph Styles...', run: () => dialogs.paragraphStyles.show() },
     { id: 'load-default-type-styles', label: 'Load Default Type Styles', enabled: has, run: () => { engine.loadDefaultTypeStyles(); } },
     { id: 'save-default-type-styles', label: 'Save Default Type Styles', enabled: has, run: () => { engine.saveDefaultTypeStyles(); } },
@@ -6473,14 +6473,5 @@ export function startApp(): void {
     updatePrefs({ whatsNewSeen: VERSION });
     whatsNew.show();
   }
-  // A first start with no saved preferences offers the keyboard shortcuts once: a .kys file, or formvis's classic set; answering either ends it.
-  function offerShortcutSet(): void {
-    const KEY = 'formvis.shortcutNotice';
-    if (!freshProfile || stored(KEY) || navigator.webdriver || anyDialogOpen()) return;
-    toast('Keyboard shortcuts: import a shortcut set from a .kys file, or keep the built-in classic set.', 'info', { ms: 0, actions: [
-      { label: 'Import a shortcut set (.kys)', run: () => { store(KEY, '1'); chooseKys(commands); } },
-      { label: 'Use the classic set', run: () => { store(KEY, '1'); } },
-    ] });
-  }
-  void Promise.race([faces, new Promise((r) => window.setTimeout(r, 2500))]).then(() => requestAnimationFrame(() => { revealApp(); void offerRecovery().then(() => { offerWhatsNew(); offerShortcutSet(); }); }));
+  void Promise.race([faces, new Promise((r) => window.setTimeout(r, 2500))]).then(() => requestAnimationFrame(() => { revealApp(); void offerRecovery().then(() => { offerWhatsNew(); }); }));
 }

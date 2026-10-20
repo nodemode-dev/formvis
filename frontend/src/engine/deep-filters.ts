@@ -14,6 +14,12 @@ import { shown } from './filters-lib/filter-gallery';
 import { cloudsDeep, colorHalftoneDeep, extrudeDeep, fibersDeep, lensFlareDeep, mezzotintDeep, pointillizeDeep, reduceNoiseDeep, shapeBlurDeep, smartBlurDeep, tilesDeep, traceContourDeep } from './deep-fx';
 import { pinchWarp, polarWarp, rippleWarp, shearWarp, spherizeWarp, twirlWarp, waveWarp, zigZagWarp, type Warp } from './filters-lib/distort';
 import { galleryRadii, type GalleryKind, type GallerySettings, type RadiusMap } from './blur-gallery';
+import { decodeMap, shift } from './filters-lib/distort';
+import { fromRgb, toRgb } from './filters-lib/other';
+import { KERNELS, MATRICES } from './filters-lib/dither';
+import type { SpinSettings } from './filters-lib/gallery';
+import type { LibImage } from './filter-library';
+import { gauss, line, type SmartSharpenSettings } from './filters-more';
 
 /** Each pixel blurred by its own radius from a stack of float Gaussian blurs (the 8 bit gallery's levels), interpolated between the two nearest. */
 export function variableBlurDeep(src: DeepPixels, m: RadiusMap): DeepPixels {
@@ -540,7 +546,182 @@ export function facetDeep(src: DeepPixels, radius: number): DeepPixels {
   return { ...src, data: out };
 }
 
-export const DEEP_DISTORT: readonly string[] = ['twirl', 'pinch', 'spherize', 'ripple', 'wave', 'zigZag', 'polarCoordinates', 'shear'];
+/** HSB/HSL on floats (red, green and blue layers): the channels read as `input` and written as `output`, alpha kept. */
+export function hsbHslDeep(src: DeepPixels, input: string, output: string, ceiling = 1): DeepPixels {
+  const out = new Float32Array(src.data);
+  if (src.n !== 3 || input === output) return { ...src, data: out };
+  for (let i = 0; i < out.length; i += 4) {
+    const rgb = input === 'rgb' ? [out[i], out[i + 1], out[i + 2]] : toRgb(out[i], out[i + 1], out[i + 2], input), res = output === 'rgb' ? rgb : fromRgb(rgb[0], rgb[1], rgb[2], output);
+    for (let c = 0; c < 3; c++) out[i + c] = Math.min(ceiling, Math.max(0, res[c]));
+  }
+  return { ...src, data: out };
+}
+
+/** Haze by Depth on floats (red, green and blue layers): each colour pulled toward the haze colour (0 to 255) by its distance, as the 8 bit filter reckons it. */
+export function hazeDeep(src: DeepPixels, depth: LibImage | null, invert: boolean, haze: readonly number[], density: number, start: number, area: Box, ceiling = 1): DeepPixels {
+  const { width: w } = src, out = new Float32Array(src.data), rg = depth ? decodeMap(depth) : null, fw = Math.max(1, area.x1 - area.x0), fh = Math.max(1, area.y1 - area.y0), s0 = Math.min(0.99, start / 100), k = density / 100;
+  if (src.n !== 3) return { ...src, data: out };
+  for (let i = 0; i < out.length; i += 4) {
+    if (out[i + 3] === 0) continue;
+    const p = i / 4, x = p % w, y = Math.floor(p / w);
+    let far: number;
+    if (depth && rg) {
+      const sx = Math.min(depth.w - 1, Math.max(0, Math.floor(((x - area.x0) / fw) * depth.w))), sy = Math.min(depth.h - 1, Math.max(0, Math.floor(((y - area.y0) / fh) * depth.h)));
+      far = rg[(sy * depth.w + sx) * 2] / 255;
+    } else far = 1 - Math.min(1, Math.max(0, (y - area.y0) / fh));
+    if (invert) far = 1 - far;
+    const t = Math.max(0, (far - s0) / (1 - s0)) * k;
+    if (t <= 0) continue;
+    for (let c = 0; c < 3; c++) out[i + c] = Math.min(ceiling, Math.max(0, out[i + c] + (haze[c] / 255 - out[i + c]) * t));
+  }
+  return { ...src, data: out };
+}
+
+/** Grain Plate on floats (red, green and blue layers): the grain picture's offset from mid grey added to each colour, strongest in the midtones. */
+export function grainPlateDeep(src: DeepPixels, plate: LibImage | null, amount: number, size: number, ox: number, oy: number, ceiling = 1): DeepPixels {
+  const out = new Float32Array(src.data), rg = plate ? decodeMap(plate) : null;
+  if (!plate || !rg || src.n !== 3) return { ...src, data: out };
+  const w = src.width, pw = Math.max(1, Math.round((plate.w * size) / 100)), ph = Math.max(1, Math.round((plate.h * size) / 100)), k = amount / 100;
+  for (let i = 0; i < out.length; i += 4) {
+    if (out[i + 3] === 0) continue;
+    const p = i / 4, x = (p % w) + ox, y = Math.floor(p / w) + oy;
+    const sx = Math.floor((((x % pw) + pw) % pw) * (plate.w / pw)), sy = Math.floor((((y % ph) + ph) % ph) * (plate.h / ph));
+    const g = (rg[(sy * plate.w + sx) * 2] - 128) / 128, l = Math.min(1, Math.max(0, lumaAt(out, i))), wgt = 1 - 0.6 * (2 * l - 1) * (2 * l - 1);
+    for (let c = 0; c < 3; c++) out[i + c] = Math.min(ceiling, Math.max(0, out[i + c] + (g * k * 128 * wgt) / 255));
+  }
+  return { ...src, data: out };
+}
+
+/** The ordered patterns of Dither on floats (red, green and blue layers): each value cut to `levels` steps against the pattern's threshold, `amount` percent hard. Error diffusion, ASCII and halftone screens stay on 8 bits. */
+export function ditherDeep(src: DeepPixels, pattern: string, levels: number, pixel: number, colour: boolean, amount: number, ink: readonly number[], paper: readonly number[], ox: number, oy: number): DeepPixels {
+  const out = new Float32Array(src.data), { n, m } = MATRICES[pattern] ?? MATRICES.bayer4;
+  if (src.n !== 3) return { ...src, data: out };
+  const q = Math.max(1, Math.round(levels) - 1), px = Math.max(1, Math.round(pixel)), a = Math.max(0, Math.min(1, amount / 100)), w = src.width;
+  const cut = (v: number, t: number): number => {
+    const s = Math.min(1, Math.max(0, v)) * q, lo = Math.floor(s), frac = s - lo, hard = (frac > t ? lo + 1 : lo) / q, soft = s / q;
+    return soft + (hard - soft) * a;
+  };
+  for (let i = 0; i < out.length; i += 4) {
+    const p = i / 4, x = (p % w) + ox, y = Math.floor(p / w) + oy, t = (m[(((Math.floor(y / px) % n) + n) % n) * n + (((Math.floor(x / px) % n) + n) % n)] + 0.5) / (n * n);
+    if (colour) { for (let c = 0; c < 3; c++) out[i + c] = cut(out[i + c], t); continue; }
+    const k = cut(lumaAt(out, i), t);
+    for (let c = 0; c < 3; c++) out[i + c] = (ink[c] + (paper[c] - ink[c]) * k) / 255;
+  }
+  return { ...src, data: out };
+}
+
+/** The error diffusion patterns of Dither on floats (red, green and blue layers): cells of `pixel` pixels rounded to `levels` steps, the rounding error spread on by the kernel, `diffusion` percent of it. */
+export function ditherDiffuseDeep(src: DeepPixels, kernel: string, levels: number, pixel: number, colour: boolean, diffusion: number, ink: readonly number[], paper: readonly number[]): DeepPixels {
+  const out = new Float32Array(src.data), { width: w, height: h } = src, k = KERNELS[kernel] ?? KERNELS.floyd;
+  if (src.n !== 3) return { ...src, data: out };
+  const px = Math.max(1, Math.round(pixel)), gw = Math.ceil(w / px), gh = Math.ceil(h / px), ch = colour ? 3 : 1, q = Math.max(1, Math.round(levels) - 1), f = Math.max(0, Math.min(1, diffusion / 100));
+  const plane = new Float32Array(gw * gh * ch), seen = new Uint32Array(gw * gh);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y * w + x) * 4;
+    if (src.data[i + 3] === 0) continue;
+    const g = Math.floor(y / px) * gw + Math.floor(x / px);
+    seen[g]++;
+    if (colour) for (let c = 0; c < 3; c++) plane[g * 3 + c] += src.data[i + c];
+    else plane[g] += lumaAt(src.data, i);
+  }
+  for (let g = 0; g < gw * gh; g++) if (seen[g]) for (let c = 0; c < ch; c++) plane[g * ch + c] /= seen[g];
+  for (let gy = 0; gy < gh; gy++) for (let gx = 0; gx < gw; gx++) {
+    const g = gy * gw + gx;
+    if (!seen[g]) continue;
+    for (let c = 0; c < ch; c++) {
+      const old = Math.max(0, Math.min(1, plane[g * ch + c])), now = Math.round(old * q) / q, err = (plane[g * ch + c] - now) * f;
+      plane[g * ch + c] = now;
+      for (const [dx, dy, wt] of k.taps) {
+        const nx = gx + dx, ny = gy + dy;
+        if (nx < 0 || nx >= gw || ny >= gh || !seen[ny * gw + nx]) continue;
+        plane[(ny * gw + nx) * ch + c] += (err * wt) / k.div;
+      }
+    }
+  }
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y * w + x) * 4;
+    if (src.data[i + 3] === 0) continue;
+    const g = Math.floor(y / px) * gw + Math.floor(x / px);
+    for (let c = 0; c < 3; c++) out[i + c] = colour ? plane[g * 3 + c] : (ink[c] + (paper[c] - ink[c]) * plane[g]) / 255;
+  }
+  return { ...src, data: out };
+}
+
+/** The backward map of Displace: each pixel moved by the map's red level across and green level up and down, as the 8 bit filter reads it. */
+export function displaceWarp(o: { h: number; v: number; tile: boolean; edge: 'wrap' | 'repeat'; map: LibImage | null }, area: Box): Warp | null {
+  const m = o.map, rg = m ? decodeMap(m) : null;
+  if (!m || !rg) return null;
+  const fw = area.x1 - area.x0, fh = area.y1 - area.y0, kx = o.h / 100, ky = o.v / 100;
+  const level = (u: number, v: number, c: number): number => rg[(Math.min(m.h - 1, Math.max(0, Math.floor(v * m.h))) * m.w + Math.min(m.w - 1, Math.max(0, Math.floor(u * m.w)))) * 2 + c];
+  return { edge: o.edge, f: (x, y) => {
+    const fx = x - area.x0, fy = y - area.y0, u = o.tile ? (((fx % m.w0) + m.w0) % m.w0) / m.w0 : fx / fw, v = o.tile ? (((fy % m.h0) + m.h0) % m.h0) / m.h0 : fy / fh;
+    return [x - shift(level(u, v, 0)) * kx, y - shift(level(u, v, 1)) * ky];
+  } };
+}
+
+/** Smart Sharpen on floats (red, green and blue layers): the 8 bit filter's Gaussian, lens or motion estimate on each colour plane, unrounded; alpha is kept. */
+export function smartSharpenDeep(src: DeepPixels, s: SmartSharpenSettings, ceiling = 1): DeepPixels {
+  const out = new Float32Array(src.data);
+  if (src.n !== 3) return { ...src, data: out };
+  const { width: w, height: h } = src, S = 4, n = w * h, r = Math.max(0.1, s.radius), amt = s.amount / 100, gate = (s.noise / 100) * 0.08, d = src.data;
+  const blur = (p: Float32Array): Float32Array => (s.remove === 'motion' ? line(p, w, h, r * 2, s.angle) : gauss(p, w, h, s.remove === 'lens' ? r / 2 : r));
+  const L = new Float32Array(n);
+  for (let i = 0; i < n; i++) L[i] = 0.299 * d[i * S] + 0.587 * d[i * S + 1] + 0.114 * d[i * S + 2];
+  for (let c = 0; c < 3; c++) {
+    const obs = new Float32Array(n);
+    let top = 1;
+    for (let i = 0; i < n; i++) { obs[i] = d[i * S + c] + 1e-3; if (obs[i] > top) top = obs[i]; }
+    let sharp: Float32Array;
+    if (s.remove === 'gaussian') {
+      const b = blur(obs);
+      sharp = new Float32Array(n);
+      for (let i = 0; i < n; i++) sharp[i] = obs[i] + (obs[i] - b[i]);
+    } else {
+      const est = obs.slice(), cap = ceiling === 1 ? 2 : 2 * top;
+      for (let it = 0; it < 8; it++) {
+        const b = blur(est), ratio = new Float32Array(n);
+        for (let i = 0; i < n; i++) ratio[i] = obs[i] / Math.max(1e-4, b[i]);
+        const back = blur(ratio);
+        for (let i = 0; i < n; i++) est[i] = Math.min(cap, est[i] * back[i]);
+      }
+      sharp = est;
+    }
+    for (let i = 0; i < n; i++) {
+      let diff = sharp[i] - obs[i];
+      if (gate > 0) { const m = Math.abs(diff); diff *= m >= gate ? 1 : m / gate; }
+      const fade = 1 - (s.shadows / 100) * Math.max(0, 1 - L[i] / 0.5) - (s.highlights / 100) * Math.max(0, (L[i] - 0.5) / 0.5);
+      out[i * S + c] = Math.min(ceiling, Math.max(0, obs[i] - 1e-3 + diff * amt * Math.max(0, fade)));
+    }
+  }
+  return { ...src, data: out };
+}
+
+/** Spin Blur on floats: inside an ellipse each pixel smeared along the ellipse's arcs, in premultiplied alpha, as the 8 bit filter does; `clip` limits where it works. */
+export function spinDeep(src: DeepPixels, o: SpinSettings, clip: Box): DeepPixels {
+  const out = new Float32Array(src.data), b = clipBox(clip, src.width, src.height);
+  if (!b || o.blur <= 0 || o.rx <= 0 || o.ry <= 0) return { ...src, data: out };
+  const { width: w, height: h } = src, S = src.n + 1, A = src.n, s = src.data, t = (o.angle * Math.PI) / 180, cs = Math.cos(t), sn = Math.sin(t), span = (o.blur * Math.PI) / 180, acc = new Float64Array(S);
+  const tap = (q: number, wt: number): void => { const al = s[q + A] * wt; for (let c = 0; c < A; c++) acc[c] += s[q + c] * al; acc[A] += al; };
+  for (let y = b.y0; y < b.y1; y++) for (let x = b.x0; x < b.x1; x++) {
+    const dx = x + 0.5 - o.cx, dy = y + 0.5 - o.cy, u = (dx * cs + dy * sn) / o.rx, v = (-dx * sn + dy * cs) / o.ry, rho = Math.hypot(u, v);
+    const weight = rho <= 1 ? 1 : rho >= 1.1 ? 0 : (1.1 - rho) / 0.1;
+    if (weight <= 0 || rho === 0) continue;
+    const arc = span * weight, n = Math.max(3, Math.min(240, Math.ceil(arc * rho * Math.max(o.rx, o.ry)) + 1)), phi = Math.atan2(v, u);
+    acc.fill(0);
+    for (let k = 0; k < n; k++) {
+      const a = phi + arc * (k / (n - 1) - 0.5), su = Math.cos(a) * rho * o.rx, sv = Math.sin(a) * rho * o.ry;
+      const fx = Math.min(w - 1, Math.max(0, o.cx + su * cs - sv * sn - 0.5)), fy = Math.min(h - 1, Math.max(0, o.cy + su * sn + sv * cs - 0.5));
+      const x0 = Math.floor(fx), y0 = Math.floor(fy), x1 = Math.min(w - 1, x0 + 1), y1 = Math.min(h - 1, y0 + 1), tx = fx - x0, ty = fy - y0;
+      tap((y0 * w + x0) * S, (1 - tx) * (1 - ty)); tap((y0 * w + x1) * S, tx * (1 - ty)); tap((y1 * w + x0) * S, (1 - tx) * ty); tap((y1 * w + x1) * S, tx * ty);
+    }
+    const i = (y * w + x) * S;
+    if (acc[A] > 0) for (let c = 0; c < A; c++) out[i + c] = acc[c] / acc[A];
+    out[i + A] = acc[A] / n;
+  }
+  return { ...src, data: out };
+}
+
+export const DEEP_DISTORT: readonly string[] =['twirl', 'pinch', 'spherize', 'ripple', 'wave', 'zigZag', 'polarCoordinates', 'shear'];
 
 /** The backward map of distort filter `kind` over a `w` by `h` layer, or undefined for another filter. */
 function warpOf(kind: string, v: Record<string, unknown>, area: Box): Warp | null | undefined {
@@ -562,10 +743,10 @@ const FIXED_SHARPEN: Record<string, [number, number, number]> = { sharpen: [50, 
 export interface DeepEnv { area: { x: number; y: number; w: number; h: number }; canvas: { x: number; y: number; w: number; h: number }; fg: readonly [number, number, number]; bg: readonly [number, number, number] }
 
 /** Float filters that read the selection's box or the canvas's place: under a selection they take the box as their frame (DeepEnv.area), as the 8 bit path does. */
-export const DEEP_FRAMED: readonly string[] = ['offset', 'mosaic', 'crystallize', 'oilPaint', 'lightingEffects', 'filterGallery', 'tiles', 'extrude', 'pointillize', 'colorHalftone', 'mezzotint', 'clouds', 'differenceClouds', 'fibers', 'lensFlare'];
+export const DEEP_FRAMED: readonly string[] = ['offset', 'mosaic', 'crystallize', 'oilPaint', 'lightingEffects', 'filterGallery', 'tiles', 'extrude', 'pointillize', 'colorHalftone', 'mezzotint', 'clouds', 'differenceClouds', 'fibers', 'lensFlare', 'haze', 'spinBlur', 'displace'];
 
 /** Float filters whose colour logic is red, green and blue (brightness, fixed colours): on CMYK and Lab layers they run through viaRgbDeep. */
-export const DEEP_RGB_ONLY: readonly string[] = ['oilPaint', 'lightingEffects', 'filterGallery', 'tiles', 'extrude', 'smartBlur', 'reduceNoise', 'pointillize', 'colorHalftone', 'clouds', 'differenceClouds', 'fibers', 'lensFlare', 'scanlines', 'ntscColors', 'colorToAlpha', 'tonalContrast'];
+export const DEEP_RGB_ONLY: readonly string[] = ['oilPaint', 'lightingEffects', 'filterGallery', 'tiles', 'extrude', 'smartBlur', 'reduceNoise', 'pointillize', 'colorHalftone', 'clouds', 'differenceClouds', 'fibers', 'lensFlare', 'scanlines', 'ntscColors', 'colorToAlpha', 'tonalContrast', 'hsbHsl', 'haze', 'grainPlate', 'dither'];
 
 const unit = (c: readonly [number, number, number]): [number, number, number] => [c[0] / 255, c[1] / 255, c[2] / 255];
 
@@ -648,6 +829,23 @@ export function deepLibFilter(kind: string, values: Record<string, unknown>, cei
   if (kind === 'lightingEffects') { const v = values as Record<string, never>; return (d) => lightingDeep(d, light(v), [2, 3].filter((n) => v[`l${n}On`] === true).map((n) => light(v, n)), boxes(d).area, ceiling); }
   if (kind === 'filterGallery') return (d) => { const fr = { area: env?.area ?? { x: 0, y: 0, w: d.width, h: d.height }, canvas: env?.canvas ?? { x: 0, y: 0, w: d.width, h: d.height } }; return filterGalleryDeep(d, shown(values as Record<string, never>), fr.area, fr.canvas, env?.fg ?? [0, 0, 0], env?.bg ?? [255, 255, 255], ceiling); };
   if (kind === 'mosaic') return (d) => mosaicDeep(d, num('cellSize'), boxes(d).area);
+  if (kind === 'hsbHsl') return (d) => hsbHslDeep(d, typeof values.input === 'string' ? values.input : 'rgb', typeof values.output === 'string' ? values.output : 'hsb', ceiling);
+  if (kind === 'haze') return (d) => hazeDeep(d, (values.depth as LibImage | null) ?? null, values.invert === true, hexRgb(typeof values.colour === 'string' ? values.colour : '#c9d6e6'), num('density'), num('start'), boxes(d).area, ceiling);
+  if (kind === 'grainPlate') return (d) => grainPlateDeep(d, (values.plate as LibImage | null) ?? null, num('amount'), num('size'), -Math.round(env?.canvas.x ?? 0), -Math.round(env?.canvas.y ?? 0), ceiling);
+  if (kind === 'displace') return (d) => { const a = boxes(d).area; return remapDeep(d, displaceWarp({ h: num('horizontal'), v: num('vertical'), tile: values.fit === 'tile', edge: values.undefinedAreas === 'wrap' ? 'wrap' : 'repeat', map: (values.map as LibImage | null) ?? null }, a), a); };
+  if (kind === 'dither' && typeof values.pattern === 'string' && KERNELS[values.pattern]) return (d) => ditherDiffuseDeep(d, values.pattern as string, num('levels'), num('pixel'), values.mode === 'colour', num('diffusion'), env?.fg ?? [0, 0, 0], env?.bg ?? [255, 255, 255]);
+  if (kind === 'dither' && typeof values.pattern === 'string' && MATRICES[values.pattern]) return (d) => ditherDeep(d, values.pattern as string, num('levels'), num('pixel'), values.mode === 'colour', num('amount'), env?.fg ?? [0, 0, 0], env?.bg ?? [255, 255, 255], -Math.round(env?.canvas.x ?? 0), -Math.round(env?.canvas.y ?? 0));
+  if (kind === 'spinBlur') {
+    return (d) => {
+      const a = env?.area ?? { x: 0, y: 0, w: d.width, h: d.height }, short = Math.max(1, Math.min(a.w, a.h)), clip = clipBox(boxes(d).canvas, d.width, d.height) ?? { x0: 0, y0: 0, x1: d.width, y1: d.height };
+      let out = d;
+      for (let n = 1; n <= Math.round(num('spins')); n++) {
+        const k = n === 1 ? '' : String(n);
+        out = spinDeep(out, { cx: a.x + (a.w * num(`x${k}`)) / 100, cy: a.y + (a.h * num(`y${k}`)) / 100, rx: (short * num(`radiusX${k}`)) / 100, ry: (short * num(`radiusY${k}`)) / 100, angle: num(`angle${k}`), blur: num(`blurAngle${k}`) }, clip);
+      }
+      return out;
+    };
+  }
   if (DEEP_DISTORT.includes(kind)) return (d) => { const a = boxes(d).area; return remapDeep(d, warpOf(kind, values, a) ?? null, a); };
   const fixed = FIXED_SHARPEN[kind];
   if (fixed) return (d) => unsharpDeep(d, fixed[0], fixed[1], fixed[2], ceiling);
@@ -655,4 +853,4 @@ export function deepLibFilter(kind: string, values: Record<string, unknown>, cei
 }
 
 /** The library filters that run in float at depth, for the filter dialog's note and the agent's description. */
-export const DEEP_LIB_KINDS: readonly string[] = ['blur', 'blurMore', 'boxBlur', 'sharpen', 'sharpenMore', 'sharpenEdges', 'highPass', 'maximum', 'minimum', 'median', 'dustAndScratches', 'emboss', 'findEdges', 'solarize', 'custom', 'offset', 'mosaic', 'despeckle', 'fragment', 'facet', 'crystallize', 'diffuse', 'wind', 'oilPaint', 'lightingEffects', 'filterGallery', 'traceContour', 'tiles', 'extrude', 'smartBlur', 'shapeBlur', 'reduceNoise', 'pointillize', 'colorHalftone', 'mezzotint', 'clouds', 'differenceClouds', 'fibers', 'lensFlare', 'scanlines', 'deInterlace', 'ntscColors', 'colorToAlpha', 'tonalContrast', ...DEEP_DISTORT];
+export const DEEP_LIB_KINDS: readonly string[] = ['blur', 'blurMore', 'boxBlur', 'sharpen', 'sharpenMore', 'sharpenEdges', 'highPass', 'maximum', 'minimum', 'median', 'dustAndScratches', 'emboss', 'findEdges', 'solarize', 'custom', 'offset', 'mosaic', 'despeckle', 'fragment', 'facet', 'crystallize', 'diffuse', 'wind', 'oilPaint', 'lightingEffects', 'filterGallery', 'traceContour', 'tiles', 'extrude', 'smartBlur', 'shapeBlur', 'reduceNoise', 'pointillize', 'colorHalftone', 'mezzotint', 'clouds', 'differenceClouds', 'fibers', 'lensFlare', 'scanlines', 'deInterlace', 'ntscColors', 'colorToAlpha', 'tonalContrast', 'hsbHsl', 'haze', 'grainPlate', 'dither', 'spinBlur', 'displace', ...DEEP_DISTORT];

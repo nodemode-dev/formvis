@@ -1,6 +1,7 @@
 import { clamp, type AdjustmentKind } from './types';
 import { PARAM_ADJUSTMENTS, PARAM_KINDS, isParamKind, paramValues, type ParamKind } from './adjust-params';
 import type { Kernel, KernelContext } from './kernels';
+import { wasmDesaturate, wasmTableAll } from './wasm-kernels';
 
 /** Hue/Saturation and Grain adjustment layers, written for formvis. Hue/Saturation works in HSL: seven colour
  *  ranges (Master and six hue bands, each a trapezoid on the colour wheel with soft shoulders) shift hue, scale
@@ -372,6 +373,7 @@ export function autoLevels(bins: Float64Array, mode: 'contrast' | 'color' | 'neu
 /** Image > Adjustments > Desaturate (1.65.5): each pixel grey at its HSL lightness, (max + min) / 2, the grey
  *  Hue/Saturation gives at -100, in place. */
 export function desaturatePixels(d: Uint8ClampedArray): void {
+  if (wasmDesaturate(d)) return;
   for (let i = 0; i < d.length; i += 4) { const v = Math.round((Math.max(d[i], d[i + 1], d[i + 2]) + Math.min(d[i], d[i + 1], d[i + 2])) / 2); d[i] = d[i + 1] = d[i + 2] = v; }
 }
 
@@ -391,6 +393,7 @@ export function equalizePixels(d: Uint8ClampedArray, cov: Uint8ClampedArray | nu
   if (!(span > 0)) return;
   const table = new Uint8ClampedArray(256);
   for (let v = 0; v < 256; v++) table[v] = Math.round(((below[v] - floor) / span) * 255);
+  if (wasmTableAll(d, table)) return;
   for (let i = 0; i < d.length; i += 4) { d[i] = table[d[i]]; d[i + 1] = table[d[i + 1]]; d[i + 2] = table[d[i + 2]]; }
 }
 
