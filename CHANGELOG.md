@@ -4,6 +4,10 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.93.6 · 2026-10-20
+
+- Linux: .psb files have their own file type (by name and by header), and the desktop entries offer formvis for them, as the desktop app's file associations already did.
+
 ## 1.93.5 · 2026-10-20
 
 - Dialogs: Mod+Z on a field that changed a linked one (Image Size width and height) restores both, and Shift+Mod+Z puts both back; it no longer does nothing when the linked field took focus after the edit.

@@ -16,6 +16,13 @@
       </match>
     </magic>
   </mime-type>
+  <mime-type type="image/x-psb">
+    <comment>PSB large layered image</comment>
+    <glob pattern="*.psb"/>
+    <magic priority="60">
+      <match type="string" offset="0" value="8BPS\000\002"/>
+    </magic>
+  </mime-type>
   <mime-type type="image/x-exr">
     <comment>OpenEXR image</comment>
     <glob pattern="*.exr"/>
