@@ -6,7 +6,7 @@ import { onLanguage, t } from '../i18n';
 import { PanelGroup } from '../panel-group';
 import { BoxesSection } from '../boxes-panel';
 import { loadPrefs, recalled, remembered, updatePrefs } from '../prefs';
-import { SIZES, fillModelPicker, generationModels, runGeneration } from './generate-image';
+import { fillModelPicker, generationModels, runGeneration, shapesFor } from './generate-image';
 import { referenceLayers, referencePicture, type ReferenceFit } from './references';
 import { comfyuiStatusText, nodemodeStatusText } from './send-to';
 import { GenerationOptions } from './generation-options';
@@ -82,6 +82,10 @@ export class GeneratePanel {
   private readonly prompt: HTMLTextAreaElement;
   private readonly model: HTMLSelectElement;
   private readonly size: HTMLSelectElement;
+  private readonly cap: HTMLSelectElement;
+  private shapes: ReturnType<typeof shapesFor> = shapesFor('fal');
+  private localSizes: Record<string, string[]> = {};
+  private sizeChoice = 'doc';
   private readonly custom: HTMLElement;
   private readonly cw: HTMLInputElement;
   private readonly ch: HTMLInputElement;
@@ -118,6 +122,7 @@ export class GeneratePanel {
           <textarea class="cv-input cv-genp-prompt" rows="3" spellcheck="true" data-t-ph="Describe the image to generate" data-t-aria="Prompt"></textarea>
           <label class="cv-genp-row"><span data-t="Model"></span><select class="cv-input cv-genp-model" data-t-aria="Model"><option value="fal" data-key="fal">FLUX1.1 [pro] (fal)</option></select></label>
           <label class="cv-genp-row"><span data-t="Size"></span><select class="cv-input cv-genp-size" data-t-aria="Size"></select></label>
+          <label class="cv-genp-row"><span data-t="Working size"></span><select class="cv-input cv-genp-cap" data-t-aria="Working size"><option value="2048" data-t="Up to 2048 px"></option><option value="1536" data-t="Up to 1536 px"></option><option value="1024" data-t="Up to 1024 px"></option></select></label>
           <div class="cv-genp-row cv-genp-custom" hidden><span></span><div class="cv-genp-wh"><input class="cv-input cv-genp-cw" type="number" min="256" max="2048" step="16" value="1024" data-t-aria="Width"><input class="cv-input cv-genp-ch" type="number" min="256" max="2048" step="16" value="1024" data-t-aria="Height"></div></div>
           <div class="cv-genp-refs" role="group" data-t-aria="Reference layers">
             <div class="cv-genp-refhead"><span data-t="Reference layers"></span><select class="cv-input cv-genp-fit" data-t-aria="Reference fit"><option value="placed" data-t="As placed"></option><option value="stretch" data-t="Stretch"></option><option value="pad" data-t="Pad"></option><option value="crop" data-t="Crop"></option></select></div>
@@ -155,6 +160,7 @@ export class GeneratePanel {
     this.prompt = q<HTMLTextAreaElement>(b, '.cv-genp-prompt');
     this.model = q<HTMLSelectElement>(b, '.cv-genp-model');
     this.size = q<HTMLSelectElement>(b, '.cv-genp-size');
+    this.cap = q<HTMLSelectElement>(b, '.cv-genp-cap');
     this.custom = q(b, '.cv-genp-custom');
     this.cw = q<HTMLInputElement>(b, '.cv-genp-cw');
     this.ch = q<HTMLInputElement>(b, '.cv-genp-ch');
@@ -181,9 +187,13 @@ export class GeneratePanel {
     // Size: the picture's own, then the shapes above.
     const customOpt = el<HTMLOptionElement>('<option value="custom"></option>');
     customOpt.dataset.t = 'Custom width and height';
-    this.size.append(el('<option value="doc"></option>'), ...SIZES.map(([id, label]) => { const o = el<HTMLOptionElement>(`<option value="${id}"></option>`); o.dataset.t = label; return o; }), customOpt);
+    this.size.append(el('<option value="doc"></option>'), customOpt);
     const savedSize = recalled(NAME, 'size');
-    if (typeof savedSize === 'string' && [...this.size.options].some((o) => o.value === savedSize)) this.size.value = savedSize;
+    if (typeof savedSize === 'string') this.sizeChoice = savedSize;
+    const savedCap = recalled(NAME, 'cap');
+    if (typeof savedCap === 'string' && [...this.cap.options].some((o) => o.value === savedCap)) this.cap.value = savedCap;
+    this.cap.addEventListener('change', () => remembered(NAME, 'cap', this.cap.value));
+    this.paintShapes();
     const savedWh = recalled(NAME, 'custom');
     const whParts = typeof savedWh === 'string' ? savedWh.split('x').map(Number) : [];
     if (whParts.length === 2) { this.cw.value = String(this.side(whParts[0])); this.ch.value = String(this.side(whParts[1])); }
@@ -216,8 +226,8 @@ export class GeneratePanel {
     this.promptHistory = new PromptHistory(this.prompt);
     this.go.addEventListener('click', () => void this.generate());
     this.prompt.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void this.generate(); } });
-    this.model.addEventListener('change', () => { this.chosen = this.model.value; remembered(NAME, 'model', this.model.value); this.opts.forModel(this.model.value); this.syncRefs(); });
-    this.size.addEventListener('change', () => { remembered(NAME, 'size', this.size.value); setHidden(this.custom, this.size.value !== 'custom'); });
+    this.model.addEventListener('change', () => { this.chosen = this.model.value; remembered(NAME, 'model', this.model.value); this.opts.forModel(this.model.value); this.paintShapes(); this.syncRefs(); });
+    this.size.addEventListener('change', () => { this.sizeChoice = this.size.value; remembered(NAME, 'size', this.size.value); setHidden(this.custom, this.size.value !== 'custom'); });
     for (const f of [this.cw, this.ch]) {
       f.addEventListener('change', () => { f.value = String(this.side(Number(f.value))); remembered(NAME, 'custom', `${this.side(Number(this.cw.value))}x${this.side(Number(this.ch.value))}`); });
       f.addEventListener('keydown', (e) => e.stopPropagation());
@@ -236,7 +246,7 @@ export class GeneratePanel {
     for (const ev of ['projects', 'doc', 'selection', 'active', 'history', 'tool'] as const) this.engine.on(ev, () => this.queue());
     // Hovering the panel refreshes what can change behind it: the commands, the addresses, the models (at most every ten seconds).
     this.group.root.addEventListener('pointerenter', () => { this.sync(); this.refreshUrls(); if (Date.now() - this.lastModels > 10_000) void this.refreshModels(); });
-    onLanguage(() => { this.retext(); this.paintGo(); for (const c of Object.values(this.conns)) this.paintConn(c); this.renderKeys(); this.sync(); });
+    onLanguage(() => { this.retext(); this.paintShapes(); this.paintGo(); for (const c of Object.values(this.conns)) this.paintConn(c); this.renderKeys(); this.sync(); });
     onServiceChange((up) => { if (up) void this.refresh(); else { this.fal = null; this.providers = []; this.renderKeys(); this.sync(); } });
     void serviceReady().then(() => this.refresh());
   }
@@ -289,8 +299,28 @@ export class GeneratePanel {
   /** The shape asked for: the picture's own (undefined), a preset, or the custom width and height. */
   private asked(): { width: number; height: number } | undefined {
     if (this.size.value === 'custom') return { width: this.side(Number(this.cw.value)), height: this.side(Number(this.ch.value)) };
-    const s = SIZES.find(([id]) => id === this.size.value);
+    const s = this.shapes.find(([id]) => id === this.size.value);
     return s ? { width: s[2], height: s[3] } : undefined;
+  }
+
+  /** The size picker keeps the picture's own size first and Custom last; between them the shapes the model chosen offers
+   *  (fal's, a model on this computer's catalogue), added, removed and moved in place. The size remembered stays chosen
+   *  whenever the model offers it, and the working size applies to models on this computer only. */
+  private paintShapes(): void {
+    this.shapes = shapesFor(this.model.value, this.localSizes[this.model.value] ?? []);
+    const have = new Map([...this.size.options].filter((o) => o.dataset.shape).map((o) => [o.value, o] as const));
+    for (const [id, o] of have) if (!this.shapes.some((s) => s[0] === id)) o.remove();
+    this.shapes.forEach((s, i) => {
+      const o = have.get(s[0]) ?? el<HTMLOptionElement>(`<option value="${s[0]}" data-shape="1"></option>`);
+      setText(o, t(s[1]));
+      const at = this.size.options[i + 1];
+      if (at !== o) this.size.insertBefore(o, at ?? null);
+    });
+    const want = this.sizeChoice === 'custom' || this.shapes.some((s) => s[0] === this.sizeChoice) ? this.sizeChoice : 'doc';
+    if (this.size.value !== want) this.size.value = want;
+    setHidden(this.custom, want !== 'custom');
+    const local = this.model.value.startsWith('local:');
+    if (this.cap.disabled === local) this.cap.disabled = !local;
   }
 
   private missingKey(choice: string): { id: string; name: string } | null {
@@ -310,7 +340,7 @@ export class GeneratePanel {
     this.paintGo();
     try {
       const added = await runGeneration(this.engine, {
-        prompt, choice, providers: this.providers, size: this.asked(),   // none: the picture's own shape (a new 1024 by 1024 picture when none is open)
+        prompt, choice, providers: this.providers, size: this.asked(), cap: Number(this.cap.value),   // none: the picture's own shape (a new 1024 by 1024 picture when none is open)
         references: () => this.referencePictures(),
         ...this.opts.request(), onSeed: (s) => this.opts.used(s), onStop: () => { this.stopped = true; setText(this.status, t('Stopped.')); },
         status: (text) => setText(this.status, text), stopped: () => this.stopped, heard: (r) => this.deps.heard(r),
@@ -333,11 +363,13 @@ export class GeneratePanel {
     if (run !== this.modelRun) return;
     this.providers = g.providers;
     this.fal = g.fal;
+    this.localSizes = g.sizes;
     fillModelPicker(this.model, g.models);
     // The person's choice while it stands; else the default (fal with a key, else a model on this computer).
     const ok = (v: string | null): v is string => !!v && g.models.some((m) => m.value === v && !m.disabled);
     setValue(this.model, ok(this.chosen) ? this.chosen : g.preferred);
     this.opts.forModel(this.model.value);
+    this.paintShapes();
     this.syncRefs();
     this.renderKeys();
   }

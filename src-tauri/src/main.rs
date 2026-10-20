@@ -493,6 +493,17 @@ fn main() {
             if let Some(path) = packaged::launcher() {
                 sidecar = sidecar.env("FORMVIS_LAUNCHER", path);
             }
+            let data_dir = launch_args.iter().enumerate().find_map(|(i, a)| {
+                a.strip_prefix("--user-data-dir=")
+                    .map(str::to_string)
+                    .or_else(|| (a == "--user-data-dir").then(|| launch_args.get(i + 1).cloned()).flatten())
+            });
+            if let Some(dir) = data_dir.filter(|d| !d.is_empty()) {
+                sidecar = sidecar.env("FORMVIS_DATA_DIR", dir);
+            }
+            if launch_args.iter().any(|a| a == "--portable") {
+                sidecar = sidecar.env("FORMVIS_PORTABLE", "1");
+            }
             let (mut rx, child) = sidecar.spawn().expect("the formvis engine failed to spawn");
             *app.state::<Backend>().0.lock().unwrap() = Some(child);
 

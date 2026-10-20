@@ -33,8 +33,22 @@ const PROVIDER_SHAPES: Record<string, ReadonlyArray<Shape>> = {
   ideogram: [['1:1', 'Square 1:1 (1024 x 1024)', 1024, 1024], ['16:9', 'Wide 16:9 (1344 x 768)', 1344, 768], ['9:16', 'Tall 9:16 (768 x 1344)', 768, 1344], ['4:3', 'Landscape 4:3 (1152 x 864)', 1152, 864], ['3:4', 'Portrait 3:4 (864 x 1152)', 864, 1152], ['3:2', 'Landscape 3:2 (1248 x 832)', 1248, 832], ['2:3', 'Portrait 2:3 (832 x 1248)', 832, 1248], ['16:10', 'Wide 16:10 (1280 x 800)', 1280, 800], ['10:16', 'Tall 10:16 (800 x 1280)', 800, 1280]],
 };
 
-/** The shapes the model chosen offers: a provider's own, a model on this computer's catalogue sizes (`local`, "WxH"), else the common five. */
+/** fal asks for a width and height up to 1440 on the longer side. */
+export const FAL_SHAPES: ReadonlyArray<Shape> = [
+  ['1:1', 'Square 1:1 (1024 x 1024)', 1024, 1024], ['4:3', 'Landscape 4:3 (1152 x 864)', 1152, 864], ['3:4', 'Portrait 3:4 (864 x 1152)', 864, 1152],
+  ['3:2', 'Landscape 3:2 (1248 x 832)', 1248, 832], ['2:3', 'Portrait 2:3 (832 x 1248)', 832, 1248], ['16:9', 'Wide 16:9 (1344 x 768)', 1344, 768],
+  ['9:16', 'Tall 9:16 (768 x 1344)', 768, 1344], ['21:9', 'Ultrawide 21:9 (1440 x 608)', 1440, 608],
+];
+
+/** A shape scaled so its longer side is `side` pixels (multiples of 16, at least 256 on the shorter), the size class of a model. */
+export function atClass(w: number, h: number, side: number): readonly [number, number] {
+  const k = side / Math.max(w, h), r = (v: number): number => Math.max(256, Math.round((v * k) / 16) * 16);
+  return [r(w), r(h)];
+}
+
+/** The shapes the model chosen offers: fal's own, a provider's own, a model on this computer's catalogue sizes (`local`, "WxH"), else the common five. */
 export function shapesFor(choice: string, local: readonly string[] = []): ReadonlyArray<Shape> {
+  if (choice === 'fal') return FAL_SHAPES;
   if (choice.startsWith('provider:')) return PROVIDER_SHAPES[choice.slice(9)] ?? SIZES;
   const own = choice.startsWith('local:') ? local.map((s): Shape => { const [w, h] = s.split('x').map(Number); return [s, `${w} x ${h}`, w, h]; }) : [];
   return own.length ? own : SIZES;

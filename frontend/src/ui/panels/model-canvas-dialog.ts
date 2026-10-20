@@ -2,7 +2,7 @@ import type { Engine } from '../../engine';
 import { localModels } from '../../io/local-gen';
 import { Dialog } from '../dialogs';
 import { el, patchList, setText } from '../dom';
-import { SIZES } from './generate-image';
+import { shapesFor } from './generate-image';
 
 interface Family { value: string; label: string; sizes: Array<{ value: string; label: string; width: number; height: number }> }
 
@@ -31,7 +31,7 @@ export class ModelCanvasDialog extends Dialog {
   async show(): Promise<void> {
     const locals = await localModels();
     this.families = [
-      { value: 'fal', label: 'FLUX1.1 [pro] (fal)', sizes: SIZES.map(([id, label, width, height]) => ({ value: `${width}x${height}`, label, width, height, id })) },
+      { value: 'fal', label: 'FLUX1.1 [pro] (fal)', sizes: shapesFor('fal').map(([, label, width, height]) => ({ value: `${width}x${height}`, label, width, height })) },
       ...locals.filter((l) => l.sizes.length).map((l) => ({ value: l.id, label: `${l.label.replace(/ \(local\)$/, '')} (this computer)`, sizes: l.sizes.map((v) => ({ value: v, label: v.replace('x', ' x '), ...parse(v) })) })),
     ];
     patchList(this.model, this.families, {

@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Bucket region on a worker, 32-bit transfer memo, per-model generate sizes · _v1.92.7 (engine/wand-jobs.ts, engine/wand-worker.ts, engine/index.ts, engine/compose-float.ts, ui/panels/generate-panel.ts, ui/panels/generate-image.ts, ui/panels/model-canvas-dialog.ts, ui/app-dialogs.ts)
+
+- Bucket: findRegion (wandMask, then softenMask, the old inline anti-alias loop moved byte for byte) runs on its own long-lived worker at WAND_FROM (4 MP) from a copy of the rendered layer; busyWith is set while it runs and a switched document drops the result; null from the worker falls back to the main thread. Removed from paintBucket: `let mask = wandMask(data, W, H, x, y, this.bucket.tolerance, this.bucket.contiguous, 0); if (this.bucket.antiAlias) { const soft = new Uint8Array(mask.length); ... mask = soft; }`.
+- Bands already use the shared arena and view-centre priority (1.91.2, 1.92.2); the ledger text saying structured clone was stale.
+- 32-bit transfer memo: with m === 1 the result depends only on (channel, float32 bits), so a direct-mapped table (65,536 slots, key 0xffffffff empty, hash Math.imul(bits, 2654435761) >>> 16) returns the exact double the old loop computed; m > 1, NaN and kernel adjustments keep the old loop, whose text is unchanged. About 2.3 MB per adjustment per compose.
+- Generate sizes: the panel's fixed SIZES became shapesFor(model); sizeChoice keeps a remembered size the current model does not offer; paintShapes patches option nodes in place (no select rebuild). fal's 1440 limit mirrors generative.py. Kept ComfyUI workflows have no size data and stay on the common five.
+- Vivid Light folders (still refused): Chromium's canvas unpremultiply is bit-exact with float32 rint(((p/255) * (1/(a/255))) * 255) over all 32,895 pairs, so ties go either way by alpha; premul8's floor(x + 0.5) always rounds up. A WGSL version broke other ties (fused arithmetic). The Multiply lowp alpha is 1 low in some overlaps.
+
 ## GPU opacity ceiling, 16-bit transfer tables, native clipped groups, exact MP4 rate · _v1.92.6 (engine/gpu-dab.ts, engine/stroke.ts, engine/transfer-pow.ts, engine/compose-float.ts, gpu/native-display.ts, io/api.ts, app.ts, ui/app-dialogs.ts, styles/dialogs.css)
 
 - Opacity ceiling: a per-pixel max of the dab opacity, kept in a second R32F texture drawn with blendEquation(MAX) (WebGL2 core has no per-attachment blend equations, so it is a second draw per dab); the shader's discard gives the CPU's `a > 0` condition. Removed: `if (!this.gpuWanted || this.buf.ceil) return false;`.

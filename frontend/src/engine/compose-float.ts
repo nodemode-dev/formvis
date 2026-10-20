@@ -110,6 +110,7 @@ export interface CmykLuts { out: Lut4; in: Lut3x4 }
  *  to how small the change is: fully for an adjustment that changes nothing, not at all for one that changes a colour
  *  by 48 levels or more. An identity adjustment leaves every value exactly as it was. */
 const KEEP_LEVELS = 48;
+const MEMO = 65536, f32 = new Float32Array(1), u32 = new Uint32Array(f32.buffer);
 function viaKernel(out: Float32Array, W: number, H: number, n: 3 | 4, kern: Kernel, op: number, cov: Float32Array | null, luts: CmykLuts | null, lab = false): void {
   const N = W * H, S = n + 1, A = n, rgba = new Uint8ClampedArray(N * 4);
   if (lab) renderLab(out, rgba);
@@ -315,9 +316,25 @@ export function composeFloat(doc: Doc, n: 3 | 4, paperWhite: boolean, luts: Cmyk
         }
         const adj = rgba ? new Uint8ClampedArray(rgba) : null;
         if (kern && adj) kern(adj, { width: W, height: H, originX: 0, originY: 0, unitsPerPixel: 1 });
+        const memoKey = t ? [new Uint32Array(MEMO), new Uint32Array(MEMO), new Uint32Array(MEMO)] : null, memoVal = t ? [new Float64Array(MEMO), new Float64Array(MEMO), new Float64Array(MEMO)] : null;
+        if (memoKey) for (let c = 0; c < 3; c++) memoKey[c].fill(0xffffffff);
         for (let j = 0, i = 0; j < N; j++, i += S) {
           const k = op * (cov ? cov[j] : 1), m = scale[j];
           if (k <= 0) continue;
+          if (t && m === 1 && memoKey && memoVal) {
+            for (let c = 0; c < 3; c++) {
+              const x = out[i + c];
+              let nu: number;
+              if (x === x) {
+                f32[0] = x > 0 ? x : 0;
+                const bits = u32[0], h = Math.imul(bits, 2654435761) >>> 16;
+                if (memoKey[c][h] === bits) nu = memoVal[c][h];
+                else { nu = srgbToLinear(Math.max(0, Math.min(1, t(c, linearToSrgb(Math.min(1, f32[0])) * 255) / 255))); memoKey[c][h] = bits; memoVal[c][h] = nu; }
+              } else nu = srgbToLinear(Math.max(0, Math.min(1, t(c, linearToSrgb(Math.min(1, Math.max(0, x))) * 255) / 255)));
+              out[i + c] += (nu - out[i + c]) * k;
+            }
+            continue;
+          }
           for (let c = 0; c < 3; c++) {
             const u = Math.max(0, out[i + c] / m);
             const nu = t ? srgbToLinear(Math.max(0, Math.min(1, t(c, linearToSrgb(Math.min(1, u)) * 255) / 255))) : Math.max(0, u + srgbToLinear((adj as Uint8ClampedArray)[j * 4 + c] / 255) - srgbToLinear((rgba as Uint8ClampedArray)[j * 4 + c] / 255));

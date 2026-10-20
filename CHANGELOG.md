@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.92.7 · 2026-10-20
+
+- Desktop (Linux and all platforms): `formvis --user-data-dir <folder>` and `--portable` now reach the engine; before, the launcher dropped them and the engine used the default folder.
+- Paint Bucket finds its region (flood and edge softening) on a worker for layers of 4 MP and up; the same bytes as before, with the main thread blocked about 90 ms instead of 0.2 to 1.1 s on a 5 MP layer.
+- 32-bit Levels and Curves remember the transfer per value for pixels at or below white: 2 to 7 times faster on photo-sourced layers, output bit-identical.
+- Generate panel: a size list per model (fal's eight shapes, a local model's own sizes) and a remembered Working size; New Document has a Size class for model presets (own size, up to 1024, 1536 or 2048 px, clamped to the model's limit).
+- Release checks: rows are verified by using each feature in the running app or the Linux desktop shell; fifteen rows closed in 1.92.5 on evidence for other rows were reopened and rechecked.
+
 ## 1.92.6 · 2026-10-20
 
 - GPU brush coverage now handles opacity dynamics byte-identically (the per-stroke opacity ceiling is kept on the GPU as a max-blended plane); a flat layer larger than the GPU's maximum texture paints on the CPU from the first dab instead of changing over mid-stroke.

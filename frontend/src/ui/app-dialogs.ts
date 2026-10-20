@@ -29,11 +29,11 @@ import { FRAME_PACING } from '../gpu/frame-trace';
 import { TILE_SIZES } from '../engine/tiled';
 import { toggleRow as checkRow, toggleOf, numberRow, selectRow, sliderRow, type Row } from './panels/controls';
 import { PagePrefsRows } from './panels/page-prefs';
-import { SIZES, generationModels, shapesFor } from './panels/generate-image';
+import { SIZES, atClass, generationModels, shapesFor } from './panels/generate-image';
 
 /** New Document presets by category (Phase 21, UI_SPEC.md section 4, the target's s02 to s14): name, width, height in
  *  pixels and resolution in ppi; common sizes for each kind of work (the Web set as the target lists it). */
-interface DocPreset { name: string; w: number; h: number; ppi: number }
+interface DocPreset { name: string; w: number; h: number; ppi: number; limit?: number }
 /** The person's own presets (New Document > Saved): kept in this browser or window profile. */
 const SAVED_PRESETS_KEY = 'formvis.newDocumentPresets';
 function loadSavedPresets(): DocPreset[] {
@@ -109,6 +109,7 @@ export class NewCanvasDialog extends Dialog {
   private readonly search = el<HTMLInputElement>('<input class="cv-nd-search" type="search" placeholder="Search all presets..." aria-label="Search all presets">');
   private readonly summary = el('<div class="cv-nd-summary"><div class="cv-nd-size"></div><div class="cv-nd-meta"></div></div>');
   private readonly orient: HTMLButtonElement[];
+  private readonly sizeClass = el<HTMLSelectElement>('<select class="cv-nd-input" aria-label="Size class" disabled><option value="0">Model\'s own size</option><option value="1024">Up to 1024 px</option><option value="1536">Up to 1536 px</option><option value="2048">Up to 2048 px</option></select>');
   private category = 'web';
   private picked: DocPreset | null = null;
   private px = { w: 1920, h: 1080 };
@@ -155,7 +156,7 @@ export class NewCanvasDialog extends Dialog {
     const wBox = label('Width', this.wIn), hBox = label('Height', this.hIn), uBox = label('Unit', this.unit);
     const sizeRow = el('<div class="cv-nd-sizes"></div>');
     sizeRow.append(wBox, this.link, hBox, uBox);
-    side.append(label('Name', this.name), sizeRow, pair(label('Resolution', this.res, el('<span class="cv-nd-unit">ppi</span>')), label('Orientation', seg)), pair(label('Color Mode', mode), label('&nbsp;', depth)), label('Background Contents', this.fill, this.fillColour), ab, this.summary, el('<div class="cv-nd-presetbar"></div>'));
+    side.append(label('Name', this.name), sizeRow, pair(label('Resolution', this.res, el('<span class="cv-nd-unit">ppi</span>')), label('Orientation', seg)), pair(label('Color Mode', mode), label('&nbsp;', depth)), label('Size class', this.sizeClass), label('Background Contents', this.fill, this.fillColour), ab, this.summary, el('<div class="cv-nd-presetbar"></div>'));
     const bar = q(side, '.cv-nd-presetbar');
     this.savePreset.addEventListener('click', () => this.saveCurrent());
     this.deletePreset.addEventListener('click', () => this.deleteCurrent());
@@ -171,6 +172,7 @@ export class NewCanvasDialog extends Dialog {
     this.wIn.addEventListener('change', () => { const n = parseFloat(this.wIn.value); if (!Number.isFinite(n)) return this.sync(); const w = fromUnit(n); this.px = { w, h: this.linked() ? Math.max(1, Math.round((w * this.px.h) / this.px.w)) : this.px.h }; this.picked = null; this.sync(); });
     this.hIn.addEventListener('change', () => { const n = parseFloat(this.hIn.value); if (!Number.isFinite(n)) return this.sync(); const h = fromUnit(n); this.px = { h, w: this.linked() ? Math.max(1, Math.round((h * this.px.w) / this.px.h)) : this.px.w }; this.picked = null; this.sync(); });
     this.unit.addEventListener('change', () => this.sync());
+    this.sizeClass.addEventListener('change', () => { if (this.picked?.limit) this.px = this.classed(this.picked); this.sync(); });
     this.res.addEventListener('change', () => this.sync());
     for (const i of [this.name, this.wIn, this.hIn, this.res]) i.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLInputElement).blur(); void this.create(); } });
     this.pick(PRESET_GROUPS[3].presets[0]);
@@ -181,12 +183,20 @@ export class NewCanvasDialog extends Dialog {
 
   private pick(p: DocPreset): void {
     this.picked = p;
-    this.px = { w: p.w, h: p.h };
+    this.px = this.classed(p);
     // Preferences > Units & Rulers: the print and screen resolution a preset opens at (a saved preset keeps its own)
     const prefs = loadPrefs(), own = this.savedGroup().presets.includes(p);
     this.res.value = String(own ? p.ppi : p.ppi === 300 ? prefs.printRes : p.ppi === 72 ? prefs.screenRes : p.ppi);
     this.unit.value = 'px';
     this.sync();
+  }
+
+  /** A model's preset at the size class chosen: the longer side the class names (never past the model's own limit), the shape kept. */
+  private classed(p: DocPreset): { w: number; h: number } {
+    const c = Number(this.sizeClass.value);
+    if (!c || !p.limit) return { w: p.w, h: p.h };
+    const [w, h] = atClass(p.w, p.h, Math.min(c, p.limit));
+    return { w, h };
   }
 
   private savedGroup(): { presets: DocPreset[] } { return PRESET_GROUPS.find((g) => g.id === 'mine') as { presets: DocPreset[] }; }
@@ -250,6 +260,8 @@ export class NewCanvasDialog extends Dialog {
     if (document.activeElement !== this.wIn) this.wIn.value = show(this.px.w);
     if (document.activeElement !== this.hIn) this.hIn.value = show(this.px.h);
     for (const b of this.orient) b.classList.toggle('is-on', b.dataset.orient === (this.px.h > this.px.w ? 'portrait' : 'landscape'));
+    const classable = !!this.picked?.limit;
+    if (this.sizeClass.disabled === classable) this.sizeClass.disabled = !classable;
     // The size by the mode's channels at its depth (1.50.3): RGB three bytes a pixel at 8 bit, Bitmap an eighth (one bit).
     const m = NEW_MODES.find((x) => x.id === this.mode?.value) ?? NEW_MODES[2], bits = Number(this.depth?.value) || m.depths[0];
     const mb = (this.px.w * this.px.h * m.channels * bits) / 8 / (1024 * 1024);
@@ -278,12 +290,12 @@ export class NewCanvasDialog extends Dialog {
     for (const m of found.models) {
       const shapes = shapesFor(m.value, found.sizes[m.value] ?? []);
       if (m.disabled || shapes === SIZES || m.value.startsWith('provider:')) continue;
-      const name = m.label.replace(/ \((this computer)\)$/, '');
-      for (const s of shapes) own.push({ name: `${name}: ${s[1].replace(/ \(.*\)$/, '')}`, w: s[2], h: s[3], ppi: 72 });
+      const name = m.label.replace(/ \((this computer)\)$/, ''), limit = m.value === 'fal' ? 1440 : 2048;
+      for (const s of shapes) own.push({ name: `${name}: ${s[1].replace(/ \(.*\)$/, '')}`, w: s[2], h: s[3], ppi: 72, limit });
     }
     const common = SIZES.map(([, words, w, h]): DocPreset => ({ name: words.replace(/ \(.*\)$/, ''), w, h, ppi: 72 }));
     const next = [...common, ...own.filter((o) => !common.some((c) => c.name === o.name))];
-    if (next.length === group.presets.length && next.every((p, i) => p.name === group.presets[i].name && p.w === group.presets[i].w && p.h === group.presets[i].h)) return;
+    if (next.length === group.presets.length && next.every((p, i) => p.name === group.presets[i].name && p.w === group.presets[i].w && p.h === group.presets[i].h && p.limit === group.presets[i].limit)) return;
     const picked = this.picked, was = picked ? { name: picked.name, w: picked.w, h: picked.h } : null;
     group.presets.splice(0, group.presets.length, ...next);
     if (was) this.picked = group.presets.find((p) => p.name === was.name && p.w === was.w && p.h === was.h) ?? picked;
@@ -312,6 +324,8 @@ export class NewCanvasDialog extends Dialog {
     const w = Number(get('w')), h = Number(get('h')), res = get('res'), unit = get('unit'), mode = get('mode'), fill = get('fill'), depth = get('depth');
     const has = (s: HTMLSelectElement, v: unknown): v is string => typeof v === 'string' && [...s.options].some((o) => o.value === v);
     if (has(this.unit, unit)) this.unit.value = unit;
+    const klass = get('sizeClass');
+    if (has(this.sizeClass, klass)) this.sizeClass.value = klass;
     if (has(this.fill, fill)) this.fill.value = fill;
     const hexKept = get('fillHex');
     if (typeof hexKept === 'string' && /^#[0-9a-f]{6}$/i.test(hexKept)) this.fillColour.value = hexKept;
@@ -331,7 +345,7 @@ export class NewCanvasDialog extends Dialog {
   private keepValues(): void {
     const set = (k: string, v: string | boolean): void => remembered('New Document', k, v);
     set('w', String(this.px.w)); set('h', String(this.px.h)); set('unit', this.unit.value); set('res', String(this.ppi()));
-    set('mode', this.mode.value); set('depth', this.depth.value); set('fill', this.fill.value); set('fillHex', this.fillColour.value); set('artboards', this.artboards.checked); set('link', this.linked()); set('category', this.category);
+    set('sizeClass', this.sizeClass.value); set('mode', this.mode.value); set('depth', this.depth.value); set('fill', this.fill.value); set('fillHex', this.fillColour.value); set('artboards', this.artboards.checked); set('link', this.linked()); set('category', this.category);
   }
 
   /** What the mode needs is got first (CMYK's profile comes from the engine service), so a refusal leaves the dialog as it

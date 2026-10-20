@@ -46,7 +46,7 @@ import { ancestors, byId, descendantIds, groupIsolated, hierarchy, isDescendant 
 import { dragged, following, rounded, type DragMode } from './transform';
 import { againQuad, carried, cornersOf, cropWarp, distortDragged, distortUsable, maskEdgeTone, visibleBounds, warpRaster, type DistortMode, type Warped, imageCorners, homography, project, inverse3 } from './distort';
 import { withResolution } from './dpi';
-import { antialiasMask, enhanceEdge, levelsKernel, sensitivityMask, wandMask } from './kernels';
+import { antialiasMask, enhanceEdge, levelsKernel, sensitivityMask } from './kernels';
 import { depthWeight, faceWeight, hueWeight, type ColorRangeOptions } from './color-range';
 import { selectionQuad, warpSelection, type SelectionWarp } from './selection-warp';
 import { DEFAULT_FOCUS, focusArea, type FocusSettings } from './focus-area';
@@ -116,6 +116,7 @@ import type { LibFrame, LibImage, LibPath } from './filter-library';
 import type { FilterKind, FilterSettings } from './filter-jobs';
 import { POOL_FROM, bandPlan, bandPoolReady, bandPoolSize, bandsShared, runBandOnPool, runDeepBandOnPool, runSharedBandOnPool } from './band-pool';
 import { deepBandRun, deepBandable } from './deep-bands';
+import { WAND_FROM, findRegion, findRegionOffThread } from './wand-jobs';
 import { sharpenSample } from './filters-more';
 import { clampMid, colorAt, diamondFill, presetById, reflectStops, resolveStops, type GradientPreset, type GradientType } from './gradients';
 import { convexQuad, evenSpacing, meshForward, meshSurfacePoint, meshWarpImage, removeSplit, splitGrid, type P2 } from './mesh-warp';
@@ -6280,19 +6281,22 @@ export class Engine {
       }
     }
     const data = ctxOf(surface).getImageData(0, 0, W, H).data;
-    let mask = wandMask(data, W, H, x, y, this.bucket.tolerance, this.bucket.contiguous, 0);
-    if (this.bucket.antiAlias) {
-      const soft = new Uint8Array(mask.length);
-      for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
-        const o = j * W + i, v = mask[o];
-        const edge = (i > 0 && mask[o - 1] !== v) || (i < W - 1 && mask[o + 1] !== v) || (j > 0 && mask[o - W] !== v) || (j < H - 1 && mask[o + W] !== v);
-        if (!edge) { soft[o] = v; continue; }
-        let s = 0, n = 0;
-        for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const ii = i + di, jj = j + dj; if (ii >= 0 && jj >= 0 && ii < W && jj < H) { s += mask[jj * W + ii]; n++; } }
-        soft[o] = Math.round(s / n);
-      }
-      mask = soft;
+    const tol = this.bucket.tolerance, contiguous = this.bucket.contiguous, soft = this.bucket.antiAlias;
+    if (W * H >= WAND_FROM && !this.waiting()) {
+      this.busyWith = 'Paint Bucket';
+      void findRegionOffThread(data, W, H, x, y, tol, contiguous, soft).then((found) => {
+        this.busyWith = null;
+        if (this.current !== p) return;
+        this.bucketFill(p, W, H, found ?? findRegion(data, W, H, x, y, tol, contiguous, soft));
+      });
+      return;
     }
+    this.bucketFill(p, W, H, findRegion(data, W, H, x, y, tol, contiguous, soft));
+  }
+
+  /** The Paint Bucket's fill of `mask`, the area found around the click: kept within any selection, in Quick Mask
+   *  added to or taken from it, otherwise filled on the active layer or mask; one undo step. */
+  private bucketFill(p: Project, W: number, H: number, mask: Uint8Array): void {
     let region: SelectionMask | null = SelectionMask.cropped(0, 0, W, H, mask);
     if (this.quickMask) {
       const white = luminance(this.fg) >= 0.5;
