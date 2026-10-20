@@ -7,7 +7,7 @@ The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and
 ## 1.92.12 · 2026-10-20
 
 - View > Flip Horizontal mirrors about the centre of the visible canvas, so the picture no longer slides under the side panels; painting lands under the pointer.
-- One cloud provider by design: the OpenAI, Google, Black Forest Labs and Ideogram generation providers are removed; Generate Image, Generative Fill and the Generate panel offer fal, ComfyUI and models on this computer.
+- One cloud provider by design: the four hosted image providers other than fal are removed; Generate Image, Generative Fill and the Generate panel offer fal, ComfyUI and models on this computer.
 - Typed arithmetic (100+20) works in the New Document width, height and resolution, the layer Opacity and Fill, the zoom boxes and the Properties position and size fields.
 - Native renderer: masked Vivid Light and Reflect folders draw on the canvas renderer again (6 and 12 levels off natively, measured in the desktop window).
 
