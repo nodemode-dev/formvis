@@ -2,6 +2,12 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Layer cards indent as a whole, no empty mask gap, filter row wraps · _v1.93.8 (styles/panels.css)
+
+- The owner's ruling: a layer in a folder moves its card, not the contents. The row grid's indent column is now a constant 0px (it was `calc(var(--depth, 0) * 14px)`), and the card's left margin is `calc(8px + var(--depth, 0) * 14px)`. Every card has the same inner offsets (label at 99 px in each, `checks/lead/layers_measure.py`).
+- `.cv-layer-mask` was `visibility: hidden` without a mask, so every row kept a 30 px gap before the name. It is now `display: none` unless `.has-mask`.
+- The filter row was a flex row of four equal items, which cut "Mode", "Attribute" and "Color" to an ellipsis at the default width. It is now a grid of `repeat(auto-fit, minmax(96px, 1fr))`. Removed, verbatim: `.cv-layer-filt > * { flex: 1 1 0; min-width: 0; }` (now `min-width: 0` only) and `.cv-filt-name { flex: 1.4 1 0; }`.
+
 ## Thumbnail clicks, Alt-drag copy as one step, pattern tile · _v1.93.7 (styles/panels.css, engine/history.ts, engine/index.ts, extensions/tools/move.ts, app.ts)
 
 - panels.css: the Kind filter row's two `.cv-layer-kind` rules (from 5c8b10e9) were unscoped and later in the file than the layer rows' `display: none`, so every row's empty kind span showed as a full-width flex box in the thumbnail's grid cell and took its clicks. Both are scoped to `.cv-layer-props` now; group and adjustment rows keep their icon (checked by screenshot, `checks/lead/layers_look.py`).

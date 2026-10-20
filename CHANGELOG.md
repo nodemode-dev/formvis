@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.93.8 · 2026-10-20
+
+- Layers panel: a layer inside a folder moves its whole card to the right; the eye, thumbnail and name keep the same places inside every card.
+- Layers panel: the name sits right after the thumbnail (a layer without a mask no longer keeps an empty mask gap); a mask's thumbnail shows between them when there is one.
+- Layers panel: the Name, Mode, Attribute and Color filters sit in two rows when the panel is narrow, so their words are no longer cut short.
+
 ## 1.93.7 · 2026-10-20
 
 - Layers: Ctrl-, Shift- and Alt-click on a layer thumbnail load, add or subtract its pixels as a selection again (an empty icon box sat over the thumbnail).
