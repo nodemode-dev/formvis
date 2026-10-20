@@ -246,6 +246,7 @@ export class ColorPickerDialog extends Dialog {
       e.preventDefault();
       e.stopPropagation();
       this.endSampleDrag();
+      if (document.activeElement instanceof HTMLElement && this.scrim.contains(document.activeElement)) document.activeElement.blur();
       const original = this.rgb();
       const sample = (ev: PointerEvent): void => {
         const cur = this.engine.current;

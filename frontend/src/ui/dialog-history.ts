@@ -10,7 +10,7 @@ const FIELD_TYPES = ['text', 'number', 'search', 'email', 'url', 'tel', 'passwor
 
 type Control = HTMLInputElement | HTMLSelectElement;
 type Value = string | boolean;
-interface Step { c: Control; from: Value; to: Value; at: number }
+interface Step { c: Control; from: Value; to: Value; at: number; linked: Array<[Control, Value, Value]> }
 
 export class DialogHistory {
   private snap: Array<[Control, Value]> = [];
@@ -18,10 +18,12 @@ export class DialogHistory {
   private undone: Step[] = [];
   private redone: Step[] = [];
   private applying = false;
+  private typed = new WeakSet<Element>();
 
   constructor(private readonly scrim: HTMLElement, private readonly body: HTMLElement, private readonly foot: HTMLElement, private readonly isOpen: () => boolean) {
     const note = (e: Event): void => { const c = e.target; if (this.is(c) && !this.last.has(c)) this.last.set(c, this.val(c)); };
     scrim.addEventListener('focusin', note);
+    scrim.addEventListener('input', (e) => { if (e.isTrusted && this.is(e.target)) this.typed.add(e.target); });
     scrim.addEventListener('pointerdown', note, true);
     scrim.addEventListener('change', (e) => this.settled(e));
     foot.addEventListener('click', (e) => {
@@ -42,6 +44,7 @@ export class DialogHistory {
     this.undone.length = 0;
     this.redone.length = 0;
     this.last = new WeakMap();
+    this.typed = new WeakSet();
     queueMicrotask(() => {
       if (!this.isOpen()) return;
       this.snap = this.controls().map((c) => [c, this.val(c)] as [Control, Value]);
@@ -55,9 +58,21 @@ export class DialogHistory {
     if (this.applying || !this.is(c)) return;
     const from = this.last.get(c), to = this.val(c), now = performance.now();
     this.last.set(c, to);
+    this.typed.delete(c);
     if (from === undefined || from === to) return;
-    const top = this.undone[this.undone.length - 1];
-    if (top && top.c === c && now - top.at < 500) { top.to = to; top.at = now; } else { this.undone.push({ c, from, to, at: now }); if (this.undone.length > 100) this.undone.shift(); }
+    let step = this.undone[this.undone.length - 1];
+    if (step && step.c === c && now - step.at < 500) { step.to = to; step.at = now; } else { step = { c, from, to, at: now, linked: [] }; this.undone.push(step); if (this.undone.length > 100) this.undone.shift(); }
+    const s = step;
+    window.setTimeout(() => {
+      for (const o of this.controls()) {
+        if (o === c || !this.last.has(o)) continue;
+        const was = this.last.get(o) as Value, cur = this.val(o);
+        if (was === cur) continue;
+        const known = s.linked.find((l) => l[0] === o);
+        if (known) known[2] = cur; else s.linked.push([o, was, cur]);
+        this.last.set(o, cur);
+      }
+    }, 0);
     this.redone.length = 0;
   }
 
@@ -77,12 +92,14 @@ export class DialogHistory {
   /** Mod+Z and Shift+Mod+Z step the fields back and forward, unless the focused field holds typing of its own still to undo. */
   undo(e: KeyboardEvent): void {
     const a = document.activeElement;
-    if (a instanceof HTMLInputElement && a.type !== 'checkbox' && a.type !== 'range' && this.last.has(a) && a.value !== this.last.get(a)) return;
+    if (a instanceof HTMLInputElement && a.type !== 'checkbox' && a.type !== 'range' && this.typed.has(a)) return;
     e.preventDefault();
     const from = e.shiftKey ? this.redone : this.undone, to = e.shiftKey ? this.undone : this.redone, step = from.pop();
     if (!step || !step.c.isConnected) return;
     to.push(step);
+    if (e.shiftKey) for (const [o, , cur] of step.linked) if (o.isConnected) this.put(o, cur);
     this.put(step.c, e.shiftKey ? step.to : step.from);
+    if (!e.shiftKey) for (const [o, was] of step.linked) if (o.isConnected) this.put(o, was);
   }
 
   /** Tab and Shift+Tab move between the text and number fields and select what they land on; past the first or last field

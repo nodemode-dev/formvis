@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.93.5 · 2026-10-20
+
+- Dialogs: Mod+Z on a field that changed a linked one (Image Size width and height) restores both, and Shift+Mod+Z puts both back; it no longer does nothing when the linked field took focus after the edit.
+- Color Picker: the first click on the picture after the dialog opens samples it (the focused Hex field wrote its old value back on blur).
+- Linux: the metainfo lists the current release.
+
 ## 1.93.4 · 2026-10-20
 
 - Versions: the four releases after 1.92.9 were renumbered 1.93.0 to 1.93.3 (they were tagged 1.92.10 to 1.92.13), so the last number stays a single digit; tags and commit messages follow, and the entries below use the new numbers.

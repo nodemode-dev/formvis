@@ -2,6 +2,11 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Linked dialog undo, picker first sample · _v1.93.5 (ui/dialog-history.ts, ui/panels/color-picker.ts)
+
+- dialog-history.ts: the "typing of its own" guard compared the focused field with its last settled value; a linked field (Image Size height) changed by its owner without events always differed, so Mod+Z returned early once Tab landed on it. The guard now uses a typed set filled by trusted input events and cleared when the field settles. A settled step also records, one task later, every other control the owner changed with it (linked), and undo puts the main control then the linked ones back; redo puts the linked ones first so the owner's link recomputes to the same values.
+- color-picker.ts onDown: the Hex field kept focus when the dialog opened; the canvas pointerdown moved focus and its blur committed the old text over the sample. The focused control inside the dialog is blurred before sampling.
+
 ## Traffic lights, tick column, native tick items, references, mask thumbnail · _v1.93.4 (ui/tabs.ts, styles/panels.css, ui/menu.ts, ui/native-menu.ts, ui/panels/references.ts, ui/layers.ts)
 
 - tabs.ts: the title sync compared against document.title, which already read "formvis" on Home, so setTitle never reached the window until a document opened. tao re-insets the traffic lights only on a title bar layout, so they sat at the system default on Home. It now compares against its own windowTitle (null at start), so the first render always sets the title. Checked with a stubbed window in Chromium; not yet seen on a Mac.
