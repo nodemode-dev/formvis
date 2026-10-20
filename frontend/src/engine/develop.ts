@@ -1,5 +1,6 @@
 import { boxBlur, gaussianBlur, lensDistort, threeBoxWidths } from './filters';
 import { reduceNoiseImage } from './filters-lib/noise';
+import { bloom } from './bloom';
 
 /** Develop: Camera Raw-style tone, colour and detail adjustments, brought over from formnodal's develop core (the
  *  studio in nodemode-ai's formvis extension for NodeMode, the owner's own code). The per-pixel pass below is
@@ -89,6 +90,7 @@ export interface DevelopState {
   parametric?: ParametricState;
   pointColor?: PointColorState;
   noise?: NoiseState;
+  glow?: GlowState;
   /** Dehaze by the dark channel prior (a patch minimum finds the haze, the airlight is taken from the haziest pixels and
    *  divided out) instead of the per-pixel heuristic; a positive Dehaze only, run on the CPU before the tone pass. */
   dehazeDark?: boolean;
@@ -288,15 +290,22 @@ export function detailActive(d: DetailState): boolean {
  *  Grading, then Clarity, Texture, Sharpening, Optics (Distortion, Defringe, Chromatic Aberration, its automatic fit, the
  *  lens vignette) and Geometry. Noise Reduction, dark channel Dehaze and the vignette's extras stay at their defaults. */
 export function developPerPixelOnly(s: DevelopState): boolean {
-  return !(s.dehazeDepth === true && s.tone.dehaze !== 0);
+  return !(s.dehazeDepth === true && s.tone.dehaze !== 0) && !glowActive(glowOf(s));
 }
+
+/** Effects > Glow: the Glow adjustment's bloom (the highlights above Threshold blurred by Radius document pixels, with
+ *  Warmth and Diffusion, screened back by Amount) as the last Effects stage of the Develop filter. */
+export interface GlowState { amount: number; radius: number; threshold: number; warmth: number; diffusion: number }
+export const defaultGlow = (): GlowState => ({ amount: 0, radius: 24, threshold: 60, warmth: 0, diffusion: 0 });
+export const glowOf = (s: DevelopState): GlowState => ({ ...defaultGlow(), ...s.glow });
+export const glowActive = (g: GlowState): boolean => g.amount > 0;
 
 /** Optics with only the lens vignette set: a per-pixel stage the GPU pass runs after Colour Grading. */
 export const opticsVignetteOnly = (o: OpticsState): boolean => o.vignetting !== 0 && o.distortion === 0 && o.chromatic === 0 && (o.defringe ?? 0) === 0 && o.removeCA !== true;
 
 export function stateActive(s: DevelopState): boolean {
   return toneActive(s.tone) || colorActive(s.color) || curvesActive(s.curves) || detailActive(s.detail) || noiseActive(noiseOf(s))
-    || parametricActive(parametricOf(s)) || pointColorActive(pointColorOf(s)) || gradingActive(gradingOf(s)) || calibrationActive(calibrationOf(s)) || opticsActive(opticsOf(s)) || geometryActive(geometryOf(s));
+    || parametricActive(parametricOf(s)) || pointColorActive(pointColorOf(s)) || gradingActive(gradingOf(s)) || calibrationActive(calibrationOf(s)) || opticsActive(opticsOf(s)) || geometryActive(geometryOf(s)) || glowActive(glowOf(s));
 }
 
 // ------------------------------------------------------------ primitives
@@ -1062,6 +1071,8 @@ export function developImage(src: ImageData, state: DevelopState, scale = 1, see
   if (opticsActive(optics)) img = opticsPass(img, optics);
   if (geometryActive(geometry)) img = geometryPass(img, geometry);
   if (state.tone.vignette !== 0 && vignetteAfterGeometry(state)) vignettePostPass(img, state);
+  const glow = glowOf(state);
+  if (glowActive(glow)) bloom(glow.amount / 100, glow.radius, glow.threshold / 100, null, glow.warmth, glow.diffusion)(img.data, { width: img.width, height: img.height, originX: 0, originY: 0, unitsPerPixel: 1 / Math.max(1e-6, scale) });
   return img;
 }
 

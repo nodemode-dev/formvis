@@ -20,7 +20,7 @@ import { LIBRARY, isLibKind, libAllDefaults, libApron, libFilter, libImageParams
 import { crsXmp, developFromXmp } from '../../io/crs-xmp';
 import { uprightFor, uprightFromGuides, type UprightMode } from '../../engine/upright';
 import { createDevelopProbe, type ProbeMode } from './develop-probe';
-import { HSL_BANDS, autoWhiteBalance, bandFor,bandOf,buildCurveLut, clippingView,defaultCalibration, defaultGeometry, defaultGrading, defaultNoise, defaultOptics, defaultParametric, defaultPointColor, defaultVignetteShape, developDeep, developPerPixelOnly, hslToRgb, whiteBalanceFor, type CalibrationState, type CurveChannel, type CurvePoint,type DevelopState, type GeometryState, type GradingState, type HslBand, type HslBandState, type OpticsState, type ParametricState, type PointColorState } from '../../engine/develop';
+import { HSL_BANDS, autoWhiteBalance, bandFor,bandOf,buildCurveLut, clippingView,defaultCalibration, defaultGeometry, defaultGlow, defaultGrading, defaultNoise, defaultOptics, defaultParametric, defaultPointColor, defaultVignetteShape, developDeep, developPerPixelOnly, glowOf, hslToRgb, whiteBalanceFor, type CalibrationState, type CurveChannel, type CurvePoint,type DevelopState, type GeometryState, type GradingState, type HslBand, type HslBandState, type OpticsState, type ParametricState, type PointColorState } from '../../engine/develop';
 import { gpuFilters } from '../../engine/gpu-filters';
 import { curveGraph } from './curve-graph';
 import { GalleryView } from './gallery-view';
@@ -353,6 +353,11 @@ export class FilterPanel extends Dialog {
       ['Vignette roundness', 0, 100, 1, () => (D().vignette ??defaultVignetteShape()).roundness, (v) => { (D().vignette ??=defaultVignetteShape()).roundness = v; }],
       ['Vignette highlight protection', 0, 100, 1, () => (D().vignette ??defaultVignetteShape()).protect ?? 0, (v) => { (D().vignette ??=defaultVignetteShape()).protect = v; }],
       ['Grain', 0, 100, 1, () => t.grain, (v) => { t.grain = v; }],
+      ['Glow', 0, 100, 1, () => glowOf(s.develop).amount, (v) => { (s.develop.glow ??= defaultGlow()).amount = v; }],
+      ['Glow radius (px)', 1, 200, 1, () => glowOf(s.develop).radius, (v) => { (s.develop.glow ??= defaultGlow()).radius = v; }],
+      ['Glow threshold', 0, 100, 1, () => glowOf(s.develop).threshold, (v) => { (s.develop.glow ??= defaultGlow()).threshold = v; }],
+      ['Glow warmth', -100, 100, 1, () => glowOf(s.develop).warmth, (v) => { (s.develop.glow ??= defaultGlow()).warmth = v; }],
+      ['Glow diffusion', 0, 100, 1, () => glowOf(s.develop).diffusion, (v) => { (s.develop.glow ??= defaultGlow()).diffusion = v; }],
       'Detail',
       ['Clarity', -100, 100, 1, () => dt.clarity, (v) => { dt.clarity = v; }],
       ['Texture', -100, 100, 1, () => dt.texture, (v) => { dt.texture = v; }],
@@ -676,7 +681,7 @@ export class FilterPanel extends Dialog {
     const toneKeys = (keys: Array<keyof DevelopState['tone']>) => (): void => { for (const k of keys) D().tone[k] = defaultDevelopState().tone[k]; };
     const resets: Record<string, () => void> = {
       Light: toneKeys(['exposure', 'contrast', 'highlights', 'shadows', 'whites', 'blacks']), Colour: toneKeys(['temperature', 'tint', 'vibrance', 'saturation']),
-      Effects: () => { toneKeys(['dehaze', 'vignette', 'grain'])(); D().vignette = defaultVignetteShape(); }, Detail: () => { D().detail = defaultDevelopState().detail; }, 'Noise Reduction': () => { D().noise = defaultNoise(); }, 'Point Curve': () => { D().curves = defaultDevelopState().curves; },
+      Effects: () => { toneKeys(['dehaze', 'vignette', 'grain'])(); D().vignette = defaultVignetteShape(); delete D().glow; }, Detail: () => { D().detail = defaultDevelopState().detail; }, 'Noise Reduction': () => { D().noise = defaultNoise(); }, 'Point Curve': () => { D().curves = defaultDevelopState().curves; },
       'Parametric Curve': () => { D().parametric = defaultParametric(); }, 'Colour Mixer': () => { D().color = defaultDevelopState().color; }, 'Colour Grading': () => { D().grading = defaultGrading(); },
       'Point Color': () => { D().pointColor = defaultPointColor(); }, Optics: () => { D().optics = defaultOptics(); }, Geometry: () => { D().geometry = defaultGeometry(); }, Calibration: () => { D().calibration = defaultCalibration(); delete D().process; },
     };

@@ -14,7 +14,7 @@
 /* Replaced content never outgrows the body: a canvas or image keeps its ratio and shrinks to the column (zero specificity, so a dialog's own sizing still wins). */
 :where(.cv-dialog-body) :is(canvas, img) { max-width: 100%; }
 .cv-dialog-foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-color); }
-.cv-field { display: grid; grid-template-columns: 110px minmax(0, 1fr); align-items: center; column-gap: var(--space-3); color: var(--text-muted); font-size: var(--fs-12); }
+.cv-field { display: grid; grid-template-columns: 124px minmax(0, 1fr); align-items: center; column-gap: var(--space-3); color: var(--text-muted); font-size: var(--fs-12); }
 .cv-field.is-off { opacity: 0.45; }
 /* Rows built as <label class="cv-dialog-row"><span>Label</span>controls</label> (about twenty dialogs) had no rule of
    their own and fell back to inline flow; they line up with .cv-field now, the controls sharing the second column. */
@@ -27,6 +27,7 @@
 .cv-size-checks { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); align-items: center; min-width: 0; }
 .cv-size-checks label { display: inline-flex; align-items: center; gap: var(--space-1); }
 .cv-size-checks input { margin: 0; accent-color: var(--accent-color); }
+.cv-dialog input[type="checkbox"], .cv-dialog input[type="radio"] { accent-color: var(--accent-color); }
 .cv-export-preview { display: block; height: 180px; overflow: hidden; border: 1px solid var(--border-light); border-radius: var(--radius-sm); background: var(--bg-input); }
 .cv-export-preview canvas { display: block; width: 100%; height: 100%; }
 .cv-liquify-tools { flex-wrap: wrap; }
@@ -101,6 +102,7 @@
 .cv-stop-row { display: grid; grid-template-columns: 1fr 2.6rem 1fr 1fr 4.5rem; gap: var(--space-2); align-items: center; }
 .cv-stop-head { font-size: var(--fs-11); color: var(--text-muted); }
 .cv-dialog [hidden] { display: none; }
+.cv-field.cv-slider { height: auto; cursor: default; }
 .cv-slider-ctl { display: grid; grid-template-columns: minmax(0, 1fr) 72px; align-items: center; gap: var(--space-2); }
 .cv-slider-ctl input[type="range"] { width: 100%; accent-color: var(--accent-color); margin: 0; }
 .cv-slider-ctl .cv-num { width: 100%; height: var(--ctl-md); }
@@ -245,8 +247,8 @@
 .cv-nd-card.is-on { border-color: transparent; background: linear-gradient(var(--accent-soft), var(--accent-soft)) padding-box, linear-gradient(135deg, var(--accent-color), var(--accent-ink)) border-box; box-shadow: 0 0 18px color-mix(in srgb, var(--accent-color) 18%, transparent); }
 .cv-nd-thumb { display: grid; place-items: center; height: 78px; border-radius: 8px; background: var(--surface-1); }
 .cv-nd-page { display: block; border-radius: 5px; background: linear-gradient(135deg, #f2f1f6, #d6d3e0); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35); }
-.cv-nd-name { overflow: hidden; font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
-.cv-nd-spec { overflow: hidden; color: var(--text-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.cv-nd-name { font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
+.cv-nd-spec { color: var(--text-muted); font-size: 12px; overflow-wrap: anywhere; }
 .cv-nd-none { color: var(--text-muted); font-size: 13px; }
 .cv-nd-side { display: flex; flex-direction: column; gap: 12px; padding: 12px 16px; border-left: 1px solid var(--surface-raised); overflow-y: auto; }
 .cv-nd-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }

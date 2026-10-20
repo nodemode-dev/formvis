@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Layer row spacing, Background vacated fill, Develop Glow, UI audit · _v1.93.9 (styles/panels.css, dialogs.css, shell.css, engine/pixel-move.ts, engine/index.ts, engine/bloom.ts, engine/adjust-params.ts, engine/develop.ts, ui/panels/filter-panel.ts, ui/properties.ts)
+
+- Layer rows (the owner: "a large gap between the eye icon and the layer thumbnail"): the grid is `24px 0px auto thumb auto 1fr` with no column gap; the disclose arrow is display none off folder rows (it was a hidden 16 px cell on every row), the thumbnail and a present mask take a 4 px left margin, the name 8 px. The fx and smart filter lists start at 24px + 4px to sit under the thumbnail.
+- Layers footer: nine 28 px buttons with 4 px gaps need 284 px; the content box is 252, and flex-end pushed the first button out of the left edge. The footer is space-between with no gap and the buttons may shrink to 22 px.
+- Background vacated fill (bgglow): MoveHost.vacatedFill(l) returns the background colour for the top-level layer named Background (the convention select-ops and layer-structure use); movePixels, the float hole and the grown-layer commit draw it after destination-out, built once per move. Alt-drag copies vacate nothing.
+- Glow in Develop: bloom and boxBlur moved verbatim from adjust-params.ts to engine/bloom.ts (develop.ts could not import adjust-params without a cycle; the `// screen` comment dropped). DevelopState.glow runs bloom last, radius in document pixels (unitsPerPixel = 1/scale); developPerPixelOnly is false while glow is active. Not yet in developDeep or the XMP settings.
+- UI audit (uiaudit): `.cv-slider { height: 16px }` (the range class) also matched the dialog rows `.cv-field.cv-slider`, so their 28 px number boxes overlapped; dialogs.css sets those rows to height auto. Properties' document list selector took the hidden live-content list first (`.cv-props-doc:not(.cv-props-live)` now). The rest are wraps, column widths and accent-color; see CHANGELOG 1.93.9.
+
 ## Layer cards indent as a whole, no empty mask gap, filter row wraps · _v1.93.8 (styles/panels.css)
 
 - The owner's ruling: a layer in a folder moves its card, not the contents. The row grid's indent column is now a constant 0px (it was `calc(var(--depth, 0) * 14px)`), and the card's left margin is `calc(8px + var(--depth, 0) * 14px)`. Every card has the same inner offsets (label at 99 px in each, `checks/lead/layers_measure.py`).

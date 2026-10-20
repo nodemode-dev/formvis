@@ -4,6 +4,15 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.93.9 · 2026-10-20
+
+- Layers panel: no gap between the eye and the thumbnail; the folder arrow takes space only on folder rows; the footer's nine buttons all fit the default width (the first one was cut off).
+- Background layer: moving or floating selected pixels fills the place they left with the background colour, as Delete and Cut already did; other layers still leave it transparent.
+- Develop: Glow (amount, radius, threshold, warmth, diffusion) in the Effects section, the same bloom as the Glow adjustment.
+- Properties: the Document section shows its values again.
+- Panels: the Swatches hint, the Adjustments, Gradients, Patterns and Shapes tiles, Layer Comps and Measurement Log messages wrap instead of being cut; Character and Paragraph fields line up; Clone Source offsets, Histogram and Notes are laid out.
+- Dialogs: slider rows no longer overlap their number boxes (Levels, Hue/Saturation, Gaussian Blur, Layer Style, Export As); the label column fits "Targeted adjustment"; checkboxes take the accent colour; the Color Picker's value boxes show; New Document preset names show in full.
+
 ## 1.93.8 · 2026-10-20
 
 - Layers panel: a layer inside a folder moves its whole card to the right; the eye, thumbnail and name keep the same places inside every card.

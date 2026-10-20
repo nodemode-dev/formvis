@@ -18,6 +18,7 @@ export interface FloatingPixels {
   local: Mat;
   mask: Surface;
   lifted: Surface;
+  vacated: Surface | null;
   preview: Surface;
   cx: number;
   cy: number;
@@ -40,6 +41,7 @@ export interface FloatingSelection {
   floatRaster: Raster;
   hole: Surface;
   mask: Surface;
+  vacated: Surface | null;
 }
 
 export interface MoveHost {
@@ -55,6 +57,7 @@ export interface MoveHost {
   insertAboveActive(p: Project, layer: Layer): void;
   focus(p: Project, id: ID | null): void;
   growLayer(p: Project, l: Layer, rect: Rect): Raster;
+  vacatedFill(l: Layer): { r: number; g: number; b: number } | null;
   flattened(): Surface | null;
   snapBox(l: Layer, t: Transform): Rect;
   view: { guides: boolean; grid: boolean; slices: boolean; artboardGuides: boolean; gridSpacing: number; gridSubdivisions: number };
@@ -89,13 +92,32 @@ function maskSurface(sel: SelectionMask, r: Rect): Surface {
   return s;
 }
 
-function eraseSelection(raster: Raster, local: Mat, mask: Surface, cx: number, cy: number): void {
+function tinted(mask: Surface, rgb: { r: number; g: number; b: number }): Surface {
+  const s = createSurface(mask.width, mask.height);
+  const c = ctxOf(s);
+  c.fillStyle = `rgb(${rgb.r},${rgb.g},${rgb.b})`;
+  c.fillRect(0, 0, s.width, s.height);
+  c.globalCompositeOperation = 'destination-in';
+  c.drawImage(mask, 0, 0);
+  return s;
+}
+
+function fillOf(host: MoveHost, l: Layer, mask: Surface): Surface | null {
+  const rgb = host.vacatedFill(l);
+  return rgb ? tinted(mask, rgb) : null;
+}
+
+function eraseSelection(raster: Raster, local: Mat, mask: Surface, cx: number, cy: number, fill: Surface | null = null): void {
   const inv = invert(local);
   const c = raster.ctx;
   c.save();
   setMat(c, mul(inv, translation(cx, cy)));
   c.globalCompositeOperation = 'destination-out';
   c.drawImage(mask, 0, 0);
+  if (fill) {
+    c.globalCompositeOperation = 'source-over';
+    c.drawImage(fill, 0, 0);
+  }
   c.restore();
   IDENT(c);
   raster.touch();
@@ -141,6 +163,7 @@ export function beginPixelMove(host: MoveHost, duplicate: boolean): FloatingPixe
     local: t.local,
     mask,
     lifted,
+    vacated: duplicate ? null : fillOf(host, t.layer, mask),
     preview: createSurface(t.raster.width, t.raster.height),
     cx: clip.x,
     cy: clip.y,
@@ -165,6 +188,10 @@ export function movePixels(host: MoveHost, f: FloatingPixels, dx: number, dy: nu
     setMat(c, mul(inv, translation(f.cx, f.cy)));
     c.globalCompositeOperation = 'destination-out';
     c.drawImage(f.mask, 0, 0);
+    if (f.vacated) {
+      c.globalCompositeOperation = 'source-over';
+      c.drawImage(f.vacated, 0, 0);
+    }
     c.restore();
   }
   c.save();
@@ -239,6 +266,11 @@ function openFloat(host: MoveHost, outline: boolean, alpha?: AlphaChannel): Floa
     setMat(hc, mul(invert(t.local), translation(region.x, region.y)));
     hc.globalCompositeOperation = 'destination-out';
     hc.drawImage(mask, 0, 0);
+    const fill = fillOf(host, t.layer, mask);
+    if (fill) {
+      hc.globalCompositeOperation = 'source-over';
+      hc.drawImage(fill, 0, 0);
+    }
     hc.restore();
     IDENT(hc);
   }
@@ -267,6 +299,7 @@ function openFloat(host: MoveHost, outline: boolean, alpha?: AlphaChannel): Floa
     floatRaster: fr,
     hole,
     mask,
+    vacated: outline ? null : fillOf(host, t.layer, mask),
   };
 }
 
@@ -371,7 +404,7 @@ export function commitSelectionTransform(host: MoveHost, fs: FloatingSelection):
     hc.drawImage(fs.hole, 0, 0);
   } else {
     const gl = p.layer(fs.sourceId) ?? srcNow;
-    eraseSelection(raster, placement(gl.transform, raster.width, raster.height), fs.mask, fs.region.x, fs.region.y);
+    eraseSelection(raster, placement(gl.transform, raster.width, raster.height), fs.mask, fs.region.x, fs.region.y, fs.vacated);
   }
   const now = p.layer(fs.sourceId) ?? srcNow;
   const local = placement(now.transform, raster.width, raster.height);

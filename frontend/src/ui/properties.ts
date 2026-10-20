@@ -218,7 +218,7 @@ export class PropertiesColumn {
       <button class="cv-props-section cv-props-doc-head" type="button" aria-expanded="true">${icon('chevronDown', 12)}<span>Document</span></button>
       <dl class="cv-props-doc"><dt>Name</dt><dd data-doc="name"></dd><dt>Size</dt><dd data-doc="size"></dd><dt>Resolution</dt><dd data-doc="res"></dd><dt>Mode</dt><dd data-doc="mode"></dd><dt>Profile</dt><dd data-doc="profile"></dd><dt>Layers</dt><dd data-doc="layers"></dd></dl>
     </div>`);
-    const docHead = body.querySelector('.cv-props-doc-head') as HTMLButtonElement, docList = body.querySelector('.cv-props-doc') as HTMLElement;
+    const docHead = body.querySelector('.cv-props-doc-head') as HTMLButtonElement, docList = body.querySelector('.cv-props-doc:not(.cv-props-live)') as HTMLElement;
     docHead.addEventListener('click', () => { const open = docHead.getAttribute('aria-expanded') !== 'true'; docHead.setAttribute('aria-expanded', String(open)); setHidden(docList, !open); });
     const docCell = (k: string): HTMLElement => docList.querySelector(`[data-doc="${k}"]`) as HTMLElement;
     const grid = body.querySelector('.cv-props-grid') as HTMLElement, link = body.querySelector('.cv-link-btn') as HTMLButtonElement;

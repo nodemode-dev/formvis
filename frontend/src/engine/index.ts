@@ -11623,6 +11623,7 @@ export class Engine {
       insertAboveActive: (p, layer) => this.insertAboveActive(p, layer),
       focus: (p, id) => this.focus(p, id),
       growLayer: (p, l, rect) => this.growLayer(p, l, rect),
+      vacatedFill: (l) => (!l.parentId && !l.isGroup && l.name === 'Background' ? this.bg : null),
       flattened: () => this.flattened(),
       snapBox: (l, t) => this.snapBox(l, t),
       view: this.view,
