@@ -471,6 +471,7 @@ fn main() {
             native::native_doc,
             native::native_put,
             native::native_table,
+            native::native_table3,
             native::native_stack,
             native::native_remove,
             native::native_present

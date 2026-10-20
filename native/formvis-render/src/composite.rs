@@ -46,6 +46,23 @@ const FS: &str = r#"
     let t = vec3<f32>(textureLoad(source, vec2<i32>(i.r, 0), 0).r, textureLoad(source, vec2<i32>(i.g, 0), 0).g, textureLoad(source, vec2<i32>(i.b, 0), 0).b);
     return vec4<f32>(bd.rgb + (t - bd.rgb) * comp.opacity * cov, bd.a);
   }
+  // A 3D table (mode 101), as engine/lut.ts lut3Sample computes it: the eight nodes around the 8-bit colour, weighted per
+  // axis, rounded to 8 bits, then mixed in by opacity and coverage; alpha kept.
+  if (comp.mode == 101u) {
+    if (bd.a <= 0.0) { return bd; }
+    let v = round(bd.rgb * 255.0) / 5.0;
+    let b0 = min(vec3<i32>(floor(v)), vec3<i32>(50));
+    let f = v - vec3<f32>(b0);
+    var acc = vec3<f32>(0.0);
+    for (var k = 0; k < 8; k++) {
+      let o = vec3<i32>(k & 1, (k >> 1) & 1, (k >> 2) & 1);
+      let w = select(1.0 - f.x, f.x, o.x == 1) * select(1.0 - f.y, f.y, o.y == 1) * select(1.0 - f.z, f.z, o.z == 1);
+      let c = b0 + o;
+      acc += w * textureLoad(source, vec2<i32>(c.x + c.y * 52, c.z), 0).rgb;
+    }
+    let t3 = round(acc * 255.0) / 255.0;
+    return vec4<f32>(bd.rgb + (t3 - bd.rgb) * comp.opacity * cov, bd.a);
+  }
   var s0 = vec4<f32>(0.0);
   if (comp.transformed == 1u) {
     // The document pixel's centre, back into the layer's own pixels; outside the layer it is transparent.
@@ -61,7 +78,7 @@ const FS: &str = r#"
   var sc = s0;
   if (s0.a > 0.0) { sc = vec4<f32>(s0.rgb / s0.a, s0.a); }
   let m = comp.mode;
-  if (m == 1u || m == 5u || m == 6u || m == 11u || (m >= 15u && m <= 18u) || m == 21u || m == 22u) {
+  if (m == 1u || m == 5u || m == 6u || m == 11u || (m >= 15u && m <= 18u) || m == 21u || m == 22u || m >= 27u) {
     sc = vec4<f32>(round(sc.rgb * 255.0) / 255.0, sc.a);
   }
   let sa = sc.a * comp.opacity * cov;
@@ -151,7 +168,7 @@ impl<'a> Stack<'a> {
     }
     /// An adjustment layer: its table applied to everything beneath, at `opacity`.
     pub fn adjustment(table: &'a Lut, opacity: f32) -> Stack<'a> {
-        Stack { source: Source::Table(table), mode: 100, opacity, mask: None, clip: None, transform: None }
+        Stack { source: Source::Table(table), mode: if table.three { 101 } else { 100 }, opacity, mask: None, clip: None, transform: None }
     }
     /// Placed in the document by `t` (its tiles are in the layer's own pixels).
     pub fn transformed(mut self, t: Affine) -> Stack<'a> {
@@ -171,9 +188,31 @@ impl<'a> Stack<'a> {
 /// An adjustment's lookup table: 256 output values for each of red, green and blue, as a 256 by 1 texture.
 pub struct Lut {
     texture: wgpu::Texture,
+    three: bool,
 }
 
+/// A 3D table's lattice: 52 nodes a side, a node every 5 levels, packed as x = r + g * 52, y = b.
+pub const LUT3_SIDE: u32 = 52;
+
 impl Lut {
+    /// A 3D table from its 52 by 52 by 52 nodes as straight RGBA8, in the order frontend/src/engine/lut.ts packs them.
+    pub fn new3(gpu: &Gpu, rgba: &[u8]) -> Lut {
+        let n = LUT3_SIDE;
+        let size = wgpu::Extent3d { width: n * n, height: n, depth_or_array_layers: 1 };
+        let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("lut3"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: FORMAT,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        gpu.queue.write_texture(texture.as_image_copy(), rgba, wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(n * n * 4), rows_per_image: Some(n) }, size);
+        Lut { texture, three: true }
+    }
+
     pub fn new(gpu: &Gpu, red: &[u8; 256], green: &[u8; 256], blue: &[u8; 256]) -> Lut {
         let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("lut"),
@@ -187,7 +226,7 @@ impl Lut {
         });
         let data: Vec<u8> = (0..256).flat_map(|i| [red[i], green[i], blue[i], 255]).collect();
         gpu.queue.write_texture(texture.as_image_copy(), &data, wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(1024), rows_per_image: Some(1) }, wgpu::Extent3d { width: 256, height: 1, depth_or_array_layers: 1 });
-        Lut { texture }
+        Lut { texture, three: false }
     }
 }
 

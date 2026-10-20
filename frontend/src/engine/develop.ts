@@ -290,11 +290,14 @@ export function detailActive(d: DetailState): boolean {
  *  optics, geometry) and the vignette's extras are all at their defaults. The GPU runs only these. */
 export function developPerPixelOnly(s: DevelopState): boolean {
   const o = opticsOf(s);
-  return !darkDehazeOn(s) && !vignetteExtras(s) && !noiseActive(noiseOf(s)) && !detailActive(s.detail) && (!opticsActive(o) || opticsVignetteOnly(o)) && !geometryActive(geometryOf(s));
+  return !darkDehazeOn(s) && !vignetteExtras(s) && !noiseActive(noiseOf(s)) && !detailActive(s.detail) && (!opticsActive(o) || opticsGpuOnly(o)) && !geometryActive(geometryOf(s));
 }
 
 /** Optics with only the lens vignette set: a per-pixel stage the GPU pass runs after Colour Grading. */
 export const opticsVignetteOnly = (o: OpticsState): boolean => o.vignetting !== 0 && o.distortion === 0 && o.chromatic === 0 && (o.defringe ?? 0) === 0 && o.removeCA !== true;
+
+/** Optics with only Distortion and the lens vignette set: the GPU remaps the developed picture (lensDistort's model), then vignettes it. */
+export const opticsGpuOnly = (o: OpticsState): boolean => (o.distortion !== 0 || o.vignetting !== 0) && o.chromatic === 0 && (o.defringe ?? 0) === 0 && o.removeCA !== true;
 
 export function stateActive(s: DevelopState): boolean {
   return toneActive(s.tone) || colorActive(s.color) || curvesActive(s.curves) || detailActive(s.detail) || noiseActive(noiseOf(s))

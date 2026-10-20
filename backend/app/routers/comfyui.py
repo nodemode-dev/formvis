@@ -402,13 +402,17 @@ def _title(n: dict) -> str:
     return str(n.get("_meta", {}).get("title", "")).strip().lower()
 
 
-def _fill(workflow: dict, image: str | None, mask: str | None, prompt: str | None, references: list[str] | None = None) -> dict:
+CONTROL_TITLE = "formvis control "
+CONTROL_ROLES = ("scribble", "depth", "edges", "pose")
+
+
+def _fill(workflow: dict, image: str | None, mask: str | None, prompt: str | None, references: list[str] | None = None, controls: dict[str, str] | None = None) -> dict:
     """The workflow with formvis's inputs; refuses one that is not in API format, or has nothing to take the image."""
     if not isinstance(workflow, dict) or "nodes" in workflow or not workflow or not all(isinstance(n, dict) and "class_type" in n for n in workflow.values()):
         raise HTTPException(status_code=422, detail="This workflow is in ComfyUI's editor format. In ComfyUI, save it with Export (API) and choose that file.")
     nodes = sorted(workflow.items(), key=lambda kv: int(kv[0]) if str(kv[0]).isdigit() else 10**9)
     refs = [n for _, n in nodes if n["class_type"] == "LoadImage" and _title(n).startswith(REFERENCE_TITLE)]
-    loads = [n for _, n in nodes if n["class_type"] == "LoadImage" and not _title(n).startswith(REFERENCE_TITLE)]   # references are never the picture
+    loads = [n for _, n in nodes if n["class_type"] == "LoadImage" and not _title(n).startswith((REFERENCE_TITLE, CONTROL_TITLE))]   # references and controls are never the picture
     masks = [n for _, n in nodes if n["class_type"] == "LoadImageMask"]
     if image and loads:   # a workflow with no Load Image (text to image) runs on the prompt alone
         loads[0].setdefault("inputs", {})["image"] = image
@@ -416,6 +420,10 @@ def _fill(workflow: dict, image: str | None, mask: str | None, prompt: str | Non
         masks[0].setdefault("inputs", {})["image"] = mask
     for node, name in zip(sorted(refs, key=_title), references or []):   # "formvis reference", "... 1", "... 2" in order
         node.setdefault("inputs", {})["image"] = name
+    for _, node in nodes:
+        role = _title(node)[len(CONTROL_TITLE):] if node["class_type"] == "LoadImage" and _title(node).startswith(CONTROL_TITLE) else ""
+        if role in CONTROL_ROLES and role in (controls or {}):
+            node.setdefault("inputs", {})["image"] = controls[role]
     if prompt is not None:
         titled = [n for _, n in nodes if str(n.get("_meta", {}).get("title", "")).strip().lower() == PROMPT_TITLE and "text" in n.get("inputs", {})]
         for n in titled:
@@ -485,10 +493,11 @@ async def run(target: str = Form(...), workflow: str = Form(...), items: str = F
     _fill(json.loads(workflow), None, None, None)   # its format checked before anything is uploaded
     takes_image = any(n.get("class_type") == "LoadImage" for n in flow.values())
     uploaded = await send(target=target, items=items, files=files) if takes_image and files else {"files": []}   # text to image sends nothing
-    image = next((f["name"] for f in uploaded["files"] if f["kind"] not in ("mask", "reference")), None)
+    image = next((f["name"] for f in uploaded["files"] if f["kind"] not in ("mask", "reference") and not str(f["kind"]).startswith("control ")), None)
     references = [f["name"] for f in uploaded["files"] if f["kind"] == "reference"]
+    controls = {str(f["kind"])[len("control "):]: f["name"] for f in uploaded["files"] if str(f["kind"]).startswith("control ")}
     mask = next((f["name"] for f in uploaded["files"] if f["kind"] == "mask"), None)
-    flow = _fill(flow, image, mask, prompt, references)
+    flow = _fill(flow, image, mask, prompt, references, controls)
     client = "formvis-" + uuid.uuid4().hex[:12]
     _follow(base, client)
     body = json.dumps({"prompt": flow, "client_id": client}).encode()

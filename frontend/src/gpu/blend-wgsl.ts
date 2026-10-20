@@ -81,7 +81,8 @@ fn sep(m: u32, b: f32, s: f32) -> f32 {
     case 22u: { if (s <= 0.0) { if (b <= 0.0) { return 0.0; } return 1.0; } return min(1.0, b / s); }
     case 27u: { return 1.0 - abs(1.0 - b - s); }
     case 28u: { if (s >= 1.0) { return 1.0; } return min(1.0, b * b / (1.0 - s)); }
-    case 29u: { if (b >= 1.0) { return 1.0; } return min(1.0, s * s / (1.0 - b)); }    default: { return s; }
+    case 29u: { if (b >= 1.0) { return 1.0; } return min(1.0, s * s / (1.0 - b)); }
+    default: { return s; }
   }
 }
 fn blend(m: u32, b: vec3<f32>, s: vec3<f32>) -> vec3<f32> {
@@ -203,6 +204,14 @@ fn adjustBlend(b: vec3<f32>, t: vec3<f32>) -> vec3<f32> {
     }
     let t3 = round(acc * 255.0) / 255.0;
     return vec4<f32>(bd.rgb + (adjustBlend(bd.rgb, t3) - bd.rgb) * layer.opacity * cov * limitWeight(bd.rgb), bd.a);
+  }
+  // Threshold (mode 105): the level in size.x; the CPU's 0.299 r + 0.587 g + 0.114 b >= level as integers (299 r + 587 g + 114 b >= 1000 level), exact in float.
+  if (layer.mode == 105u) {
+    if (bd.a <= 0.0) { return bd; }
+    let v = round(bd.rgb * 255.0);
+    let on = 299.0 * v.r + 587.0 * v.g + 114.0 * v.b >= 1000.0 * layer.size.x;
+    let t = vec3<f32>(select(0.0, 1.0, on));
+    return vec4<f32>(bd.rgb + (adjustBlend(bd.rgb, t) - bd.rgb) * layer.opacity * cov * limitWeight(bd.rgb), bd.a);
   }
   let screen = (layer.chOff & 16u) != 0u;
   let q = layer.inv * vec3<f32>(pos.xy, 1.0);

@@ -58,6 +58,7 @@ export class PagePrefsRows {
   private readonly typeUnits = selectRow('Type Size Units', [['px', 'Pixels'], ['pt', 'Points']], (v) => this.change({ typeUnits: v === 'pt' ? 'pt' : 'px' }));
   private readonly legacyTransform = checkRow('Use Legacy Free Transform', (v) => this.change({ legacyTransform: v }));
   private readonly lowRes = checkRow('Low-Resolution Previews', (v) => this.change({ lowResPreviews: v }));
+  private readonly gpuBrush = checkRow('GPU Brush Coverage', (v) => this.change({ gpuBrushCoverage: v }));
   private readonly displayServer = selectRow('Linux Display Server (desktop app, next launch)', DISPLAY_SERVERS, (v) => this.change({ displayServer: v === 'x11' || v === 'wayland' ? v : 'auto' }));
   private readonly glyphProtection = checkRow('Enable Missing Glyph Protection', (v) => this.change({ glyphProtection: v }));
   private readonly fontNamesEnglish = checkRow('Show Font Names in English (next launch)', (v) => this.change({ fontNamesEnglish: v }));
@@ -83,7 +84,7 @@ export class PagePrefsRows {
     return [this.exportClip.el, this.legacyTransform.el, note('Export Clipboard to the System puts what you copy on the system clipboard too, so other programs can paste it; off keeps it inside formvis. Use Legacy Free Transform makes a handle scale freely and Shift hold the proportions; off, Free Transform keeps the proportions (as Keep proportions says) and Shift gives them up.')];
   }
   get performance(): HTMLElement[] {
-    return [this.memoryLine, this.lowRes.el, this.displayServer.el, note('Memory in use is read when this page opens: the window\'s share where the browser reports it, and the engine\'s own as the system counts it. Low-Resolution Previews run a filter\'s live preview on a copy of about half a megapixel instead of two, so large pictures preview faster; Full Resolution Previews wins when both are on. The Linux display server is read by the desktop app as it starts: Automatic leaves the choice to the system, X11 also turns off the web view\'s DMA-BUF renderer, and a GDK_BACKEND set in the environment is never replaced.')];
+    return [this.memoryLine, this.lowRes.el, this.gpuBrush.el, this.displayServer.el, note('Memory in use is read when this page opens: the window\'s share where the browser reports it, and the engine\'s own as the system counts it. GPU Brush Coverage lays the plain round brush\'s dabs on the graphics processor and reads them back as you paint; strokes with dynamics, a shape, a texture, wet edges or sampled tips, and giant layers, stay on the CPU. On a large picture the read-back can cost more than it saves. Low-Resolution Previews run a filter\'s live preview on a copy of about half a megapixel instead of two, so large pictures preview faster; Full Resolution Previews wins when both are on. The Linux display server is read by the desktop app as it starts: Automatic leaves the choice to the system, X11 also turns off the web view\'s DMA-BUF renderer, and a GDK_BACKEND set in the environment is never replaced.')];
   }
   get fileRows(): HTMLElement[] {
     return [this.maximize.el, this.askTiff.el, this.exifTag.el, note('Maximize PSD and PSB File Compatibility writes the flattened picture and a preview beside the layers, so readers that ignore layers still show it; off makes smaller files. With Ask Before Saving Layered TIFF Files off, Export > TIFF keeps the layers without asking. Write EXIF Color Space Tag adds the ColorSpace tag to exported JPEG, PNG, WebP and TIFF files: sRGB, or uncalibrated when the file is in another space (the profile itself is embedded as before). Metadata set to None writes no tag.')];
@@ -114,7 +115,7 @@ export class PagePrefsRows {
     this.scrollbars.set(p.canvasScrollbars); this.overscroll.set(p.overscroll);
     this.channelsColour.set(p.channelsColour); this.dynamicSliders.set(p.dynamicSliders); this.exportClip.set(p.exportClipboard); this.border.set(p.canvasBorder); this.askTiff.set(p.askLayeredTiff); this.exifTag.set(p.exifColourTag); this.typeUnits.set(p.typeUnits);
     this.maximize.set(loadExportPrefs().maximizePsd);
-    this.legacyTransform.set(p.legacyTransform); this.lowRes.set(p.lowResPreviews); this.displayServer.set(p.displayServer);
+    this.legacyTransform.set(p.legacyTransform); this.lowRes.set(p.lowResPreviews); this.gpuBrush.set(p.gpuBrushCoverage); this.displayServer.set(p.displayServer);
     this.glyphProtection.set(p.glyphProtection); this.fontNamesEnglish.set(p.fontNamesEnglish);
     void this.scratch.refresh();
     void this.refreshMemory();

@@ -143,7 +143,8 @@ export class FilterPanel extends Dialog {
   private readonly livePixels = 40_000_000;
   private readonly sections = new Map<FilterKind, { node: HTMLElement; sync: () => void }>();
   private readonly previewRow: Row<boolean>;
-  private readonly depthLimit = depthLimitRows();
+  private readonly depthLimit = depthLimitRows(() => this.schedule(0));
+  private limitSeq = 0;
   private readonly shot: FilterPreview;
   private readonly okBtn: HTMLButtonElement;
   /** Develop's Profile list (DEV_PLAN 28.2): for a RAW layer the app answers with the camera profiles on this computer
@@ -1010,10 +1011,17 @@ export class FilterPanel extends Dialog {
         return this.kind === 'develop' && this.clipView ? Promise.resolve(out).then(clippingView) : out;
       };
       const live = this.kind === 'develop' && !!gpuFilters() && developPerPixelOnly(this.s.develop);
-      if (this.preview && !this.smartTarget() && !(isLibKind(this.kind) && libFilter(this.kind).ownPreview)) {
-        this.engine.previewImageEdit((src, scale, frame) => scoped(runFilterOffThread(this.kind, this.s, scale, this.seed, src, frame) ?? this.run(src, scale, frame)), this.grow(), live ? this.livePixels : undefined);
-        if (live) this.settle = window.setTimeout(() => this.repair(), 300);
-      } else this.engine.setPreview(null);
+      const draw = (): void => {
+        if (!this.isOpen) return;
+        if (this.preview && !this.smartTarget() && !(isLibKind(this.kind) && libFilter(this.kind).ownPreview)) {
+          this.engine.previewImageEdit((src, scale, frame) => scoped(runFilterOffThread(this.kind, this.s, scale, this.seed, src, frame) ?? this.run(src, scale, frame)), this.grow(), live ? this.livePixels : undefined);
+          if (live) this.settle = window.setTimeout(() => this.repair(), 300);
+        } else this.engine.setPreview(null);
+      };
+      const limit = this.preview ? this.depthLimit.value() : null;
+      const mine = ++this.limitSeq;
+      if (limit) void this.engine.setPreviewDepthLimit(limit, (i, w, h) => localDepthValues(i, w, h, limit.detail), limit.detail).then((ok) => { if (mine !== this.limitSeq) return; if (ok) draw(); else this.engine.setPreview(null); });
+      else { this.engine.clearPreviewDepthLimit(); draw(); }
       if (this.shot.visible) this.shot.render((src, scale, frame) => runFilterOffThread(this.kind, this.s, scale, this.seed, src, frame) ?? this.run(src, scale, frame), this.grow());
     }, delay);
   }
@@ -1041,7 +1049,7 @@ export class FilterPanel extends Dialog {
     const p = this.engine.current;
     if (!p || ((p.doc.depth ?? 8) === 8 && p.doc.mode !== 'cmyk')) return false;
     if (isLibKind(kind) && libFilter(kind).fills && (settings.lib as Record<string, Record<string, unknown> | undefined> | undefined)?.[kind]?.newLayer === true) return false;
-    const s = { ...this.s, ...(settings as Partial<typeof this.s>) }, seed = this.seed, ceiling = p.doc.depth === 32 ? Infinity : 1;
+    const s = { ...this.s, ...(settings as Partial<typeof this.s>) }, seed = typeof settings.seed === 'number' ? settings.seed : this.seed, ceiling = p.doc.depth === 32 ? Infinity : 1;
     const lay = p.activeLayer, frame = lay?.channels ? this.engine.filterFrame(p, lay.transform, lay.channels.width, lay.channels.height) : null;
     const env = frame ? { area: frame.area, canvas: frame.canvas, fg: s.colors.fg, bg: s.colors.bg } : undefined;
     if (kind === 'develop') {
@@ -1185,6 +1193,8 @@ export class FilterPanel extends Dialog {
     this.engine.emit('overlay', null);
     window.clearTimeout(this.timer);
     window.clearTimeout(this.settle);
+    this.limitSeq++;
+    this.engine.clearPreviewDepthLimit();
     this.editing = null;
     const liveEdit = this.liveEdit;
     this.liveEdit = null;

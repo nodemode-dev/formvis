@@ -9,6 +9,11 @@ The owner's P23 decisions: fal is the one cloud provider; Replicate, WaveSpeedAI
 - `line_counts.py` `PROVIDERS_DECLINED` (replicate.com, api.replicate, wavespeed, cloud.comfy.org, comfy cloud, router or partner, toapis, byteplus, modelark, oxen.ai, magnific, freepik) checked in `declined_problems()` beside the patent pattern; the language-model chat's OpenAI-compatible services are not named by it. Checked on a scratch clone: an api.replicate.com line in a backend file gave the problem; the real tree passes (the code already holds fal alone: `localgen/providers.py` `PROVIDERS = {"fal": ...}`). Harness law 11 and `CLAUDE.md` say the same.
 - Before promising a balance check or cost display: fal's `GET https://api.fal.ai/v1/account/billing?expand=credits` returns the credit balance and currency to a key with the `billing:usage:read` permission, and `GET https://api.fal.ai/v1/models/pricing?endpoint_id=...` a model's unit price; usage line items and estimates are documented without paths in the pricing page, so check the Platform APIs reference when the integration is built.
 
+## Control roles to ComfyUI, native tables · _v1.91.7 (app/routers/comfyui.py, native/formvis-render, src-tauri/src/native.rs, src-tauri/src/main.rs)
+
+- `_fill` fills LoadImage nodes titled "formvis control <role>" from the control uploads and leaves them out of the main-picture candidates.
+- native/formvis-render: sep() cases 27 to 29, source quantisation from mode 27 as the web shader does, mode 101 reading a 2704 x 52 RGBA8 table with textureLoad at integer nodes; `native_table3` in the shell takes 52 x 52 x 52 x 4 raw bytes with an x-id header.
+
 ## Streamed chat and improve_prompt · _v1.91.6 (app/services/llm.py, app/routers/llm.py, app/routers/mcp.py, setup/agents.py)
 
 - `POST /api/llm/chat/stream` forwards the slot's stream (stream true with include_usage), joins tool-call fragments by index and ends with a done event shaped like /chat's reply; a 400 or 422 to stream, or a reply that is not an event stream, is retried once without streaming.

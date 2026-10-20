@@ -11,10 +11,11 @@ def test_both_selection_tools_offer_the_path_actions(page):
     page.evaluate(SQUARE)                                                                        # a closed path: it has an inside
     for tool in ["pathSelect", "directSelect"]:
         page.evaluate(f"window.formvis.engine.setTool('{tool}')")
-        labels = page.locator(".cv-opt-group:not([hidden]) .cv-opt-icon").evaluate_all("(bs) => bs.map((b) => b.getAttribute('aria-label'))")
+        page.evaluate("document.querySelector('.cv-opt-more:not([hidden])[aria-expanded=false]')?.click()")
+        labels = page.locator(":is(.cv-opt-group:not([hidden]), .cv-opt-pop-sect[style*=contents]) .cv-opt-icon").evaluate_all("(bs) => bs.map((b) => b.getAttribute('aria-label'))")
         for want in ["Make Selection from Path", "Fill Path...", "Stroke Path...", "New Shape Layer from Path"]:
             assert want in labels, (tool, labels)
-    page.locator(".cv-opt-group:not([hidden]) .cv-opt-icon[aria-label='Make Selection from Path']").click()
+    page.locator(":is(.cv-opt-group:not([hidden]), .cv-opt-pop-sect[style*=contents]) .cv-opt-icon[aria-label='Make Selection from Path']").click()
     assert page.evaluate("!!window.formvis.engine.current.selection")
 
 
@@ -24,8 +25,8 @@ def test_stroke_path_from_the_panel_with_its_own_width_and_colour(page):
     page.evaluate("window.formvis.commands.run('panel-paths')")
     page.locator(".cv-paths .cv-panel-foot [data-cmd='stroke-path-dialog']").click()               # the footer opens the dialog
     d = page.locator(DLG)
-    f = d.locator(".cv-slider", has_text="Width").locator("input[type=number]")
-    f.fill("20"); f.press("Enter"); f.dispatch_event("change")
+    f = d.locator(".cv-slider", has_text="Width").locator("input:not([type=range])")
+    f.fill("20"); page.keyboard.press("Enter"); f.dispatch_event("change")
     d.locator("input[type=color]").evaluate("(i) => { i.value = '#dd1111'; }")
     d.locator(".cv-dialog-foot button", has_text="OK").click()
     px = "([x, y]) => Array.from(window.formvis.engine.activeLayer.raster.ctx.getImageData(x, y, 1, 1).data).slice(0, 3)"

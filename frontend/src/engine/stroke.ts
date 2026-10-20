@@ -8,6 +8,7 @@ import { blendPixels } from './blend';
 import { UPRIGHT, computeOption, shapeActive, symmetryPoints, type BrushSymmetry, type BrushDynamics, type BrushShape, type PenPose } from './brush-dynamics';
 import type { SampledTip } from './abr';
 import { StrokeBuffer, TipAlpha, levelOf } from './dab-buffer';
+import { GpuDabCoverage, gpuDabPrefs } from './gpu-dab';
 
 /** Painting strokes for formvis, on the standard dab model. Dabs of a round brush tip are laid along the pointer's path,
  *  evenly spaced and carried over between moves, into a deep buffer of coverage (floats, over the stroke's window);
@@ -98,6 +99,7 @@ const FLUSH_PIXELS = 33_554_432;
 export function setStrokeWindowFrom(px: number): void { windowFrom = px; }
 export const strokeWindowFrom = (): number => windowFrom;
 let scratch: Surface | null = null;
+let wetScratch: Surface | null = null;
 const bytesOf = (s: Surface): number => s.width * s.height * 4;
 const drop = (s: Surface | undefined): void => { if (s) { s.width = 0; s.height = 0; } };
 
@@ -141,6 +143,8 @@ export class PixelStroke {
   private buf: StrokeBuffer;
   private ink: Surface | null = null;
   private tipA: TipAlpha | null = null;
+  private gpuCover: GpuDabCoverage | null = null;
+  private gpuWanted = gpuDabPrefs.on;
   private steps = 0;
   private eased: number | null = null;
   private airbrushing = false;
@@ -478,7 +482,8 @@ export class PixelStroke {
     if (!this.ensure(hit)) return;
     if (d?.opacity?.enabled) this.buf.useCeil();
     const rx = r * this.tipAspect.x, ry = r * this.tipAspect.y, tip = this.tipAlphaOf();
-    this.buf.lay(tip, mul(this.toWin, [(2 * rx) / tip.w, 0, 0, (2 * ry) / tip.h, p.x - rx, p.y - ry]), this.dabAlpha(flow), this.opacityOf(info));
+    const dm = mul(this.toWin, [(2 * rx) / tip.w, 0, 0, (2 * ry) / tip.h, p.x - rx, p.y - ry]), da = this.dabAlpha(flow);
+    if (!this.layOnGpu(tip, dm, da, d)) this.buf.lay(tip, dm, da, this.opacityOf(info));
     if (this.varied) {
       const c = this.inkCtx();
       setMat(c, this.toWin);
@@ -492,15 +497,37 @@ export class PixelStroke {
     this.touched = unionRect(this.touched, hit);
   }
 
+  /** Preferences > Performance > GPU brush coverage: the plain round brush's dab laid in a float texture on the GPU, read back at compose. */
+  private layOnGpu(tip: TipAlpha, m: Mat, k: number, dynamics: unknown): boolean {
+    if (!this.gpuWanted || this.windowed || dynamics || this.varied || this.wetInner || this.textureTile || this.style.tip || this.buf.ceil) return false;
+    this.gpuCover ??= GpuDabCoverage.open(this.ww, this.wh);
+    if (!this.gpuCover || this.gpuCover.lost) { this.gpuWanted = false; return false; }
+    this.gpuCover.lay(tip, m, k);
+    return true;
+  }
+
   private colorDyn: BrushShape['color'] | null = null;
   /** Wet Edges: each dab's inside (55 percent of it, hard), gathered over the stroke; compose lightens the stroke there. */
   private wetInner: Surface | null = null;
   private wetMark(m: Mat, cx: number, cy: number, rx: number, ry: number): void {
     if (!this.wetInner) return;
+    // Drawn small and set down at a whole pixel, the centre kept to a sixteenth of a pixel of the layer, so the inside is
+    // the same wherever the window sits (float paths at 8,000 pixels out round differently from those at 1,000, 1.91.8).
+    const r1 = Math.max(0.1, rx * 0.55), r2 = Math.max(0.1, ry * 0.55);
+    const q = (v: number): number => Math.round(v * 16) / 16;
+    const gx = q(m[0] * cx + m[2] * cy + m[4] + this.ox), gy = q(m[1] * cx + m[3] * cy + m[5] + this.oy);
+    const hw = Math.hypot(m[0] * r1, m[2] * r2), hh = Math.hypot(m[1] * r1, m[3] * r2);
+    const ix = Math.floor(gx - hw) - 1, iy = Math.floor(gy - hh) - 1, sw = Math.ceil(gx + hw) + 1 - ix, sh = Math.ceil(gy + hh) + 1 - iy;
+    if (!wetScratch || wetScratch.width < sw || wetScratch.height < sh) wetScratch = createSurface(Math.max(sw, wetScratch?.width ?? 0), Math.max(sh, wetScratch?.height ?? 0));
+    const s = ctxOf(wetScratch);
+    s.setTransform(1, 0, 0, 1, 0, 0);
+    s.clearRect(0, 0, sw, sh);
+    s.setTransform(m[0], m[1], m[2], m[3], gx - ix, gy - iy);
+    s.fillStyle = '#000';
+    s.beginPath(); s.ellipse(0, 0, r1, r2, 0, 0, Math.PI * 2); s.fill();
     const c = ctxOf(this.wetInner);
-    setMat(c, m);
-    c.fillStyle = '#000';
-    c.beginPath(); c.ellipse(cx, cy, Math.max(0.1, rx * 0.55), Math.max(0.1, ry * 0.55), 0, 0, Math.PI * 2); c.fill();
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.drawImage(wetScratch, 0, 0, sw, sh, ix - this.ox, iy - this.oy, sw, sh);
   }
   /** Texture laid dab by dab (Texture Each Tip, Depth Jitter or a Depth control): each dab's disc of the pattern, at that
    *  dab's depth and place, gathered over the stroke; compose cuts the paint by it. */
@@ -750,8 +777,18 @@ export class PixelStroke {
     const rw = dr * this.dualAspect.x, rh = dr * this.dualAspect.y;
     for (let j = 0; j < Math.max(1, du.count); j++) {
       const ox = (rnd() * 2 - 1) * ds, oy = (rnd() * 2 - 1) * ds;
-      setMat(dc, mul(mul(this.toWin, [ca, sa, -sa, ca, x + ox, y + oy]), [du.flipX ? -1 : 1, 0, 0, du.flipY ? -round : round, 0, 0]));
-      dc.drawImage(this.dualTip as Surface, -rw, -rh, rw * 2, rh * 2);
+      const m = mul(mul(this.toWin, [ca, sa, -sa, ca, x + ox, y + oy]), [du.flipX ? -1 : 1, 0, 0, du.flipY ? -round : round, 0, 0]);
+      const q = (v: number): number => Math.round(v * 16) / 16, gx = q(m[4] + this.ox), gy = q(m[5] + this.oy);
+      const hw = Math.abs(m[0]) * rw + Math.abs(m[2]) * rh, hh = Math.abs(m[1]) * rw + Math.abs(m[3]) * rh;
+      const ix = Math.floor(gx - hw) - 1, iy = Math.floor(gy - hh) - 1, sw = Math.ceil(gx + hw) + 1 - ix, sh = Math.ceil(gy + hh) + 1 - iy;
+      if (!wetScratch || wetScratch.width < sw || wetScratch.height < sh) wetScratch = createSurface(Math.max(sw, wetScratch?.width ?? 0), Math.max(sh, wetScratch?.height ?? 0));
+      const s = ctxOf(wetScratch);
+      s.setTransform(1, 0, 0, 1, 0, 0);
+      s.clearRect(0, 0, sw, sh);
+      s.setTransform(m[0], m[1], m[2], m[3], gx - ix, gy - iy);
+      s.drawImage(this.dualTip as Surface, -rw, -rh, rw * 2, rh * 2);
+      dc.setTransform(1, 0, 0, 1, 0, 0);
+      dc.drawImage(wetScratch, 0, 0, sw, sh, ix - this.ox, iy - this.oy, sw, sh);
     }
   }
 
@@ -789,6 +826,7 @@ export class PixelStroke {
     if (!area) return null;
     const win: Rect = { x: area.x - this.ox, y: area.y - this.oy, w: area.w, h: area.h };   // in the window's pixels (1.60.6)
     const ink = this.ink ? ctxOf(this.ink).getImageData(win.x, win.y, win.w, win.h).data : null;
+    this.gpuCover?.readInto(this.buf.cov, this.buf.w);
     this.writePaint(win, this.buf.paintRegion(win, this.style.color, this.style.opacity, ink));
     // Coverage: the paint layer, shaped by the dual brush (kept only where its marks fell) and the texture (its tile's
     // alpha cut out, tiled at Scale in document space), then cut to the selection when there is one.
@@ -855,6 +893,7 @@ export class PixelStroke {
   /** The stroke's coverage per layer pixel, 0 to 255, cut to the selection. */
   coverageAlpha(): Uint8Array {
     const w = this.raster.width, h = this.raster.height, s = createSurface(w, h), c = ctxOf(s);
+    this.gpuCover?.readInto(this.buf.cov, this.buf.w);
     c.putImageData(this.buf.coverImage(), this.ox, this.oy);   // the window's coverage at its place (1.60.6)
     if (this.selection) {
       c.globalCompositeOperation = 'destination-in';
@@ -892,6 +931,8 @@ export class PixelStroke {
     this.ink = null;
     this.buf = new StrokeBuffer(1, 1);
     this.tipA = null;
+    this.gpuCover?.dispose();
+    this.gpuCover = null;
     drop(scratch ?? undefined);
     scratch = null;
     giveSurface(this.dualPaint);

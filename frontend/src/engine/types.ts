@@ -67,9 +67,12 @@ export interface LayerLocks { transparency?: boolean; pixels?: boolean; position
 
 /** What made a picture generated on this computer: the prompt, seed, steps, LoRAs and the full parameters text. */
 export interface GenerationInfo { prompt?: string; seed?: number; steps?: number; model?: string; sampler?: string; guidance?: number; loras?: Array<{ file: string; scale: number }>; parameters?: string }
-export const LAYER_ROLES = ['reference', 'subject', 'background', 'style'] as const;
+export const CONTROL_ROLES = ['scribble', 'depth', 'edges', 'pose'] as const;
+export type ControlRole = (typeof CONTROL_ROLES)[number];
+export const LAYER_ROLES = ['reference', 'subject', 'background', 'style', ...CONTROL_ROLES] as const;
 export type LayerRole = (typeof LAYER_ROLES)[number];
-export const LAYER_ROLE_LABELS: Record<LayerRole, string> = { reference: 'Reference', subject: 'Subject', background: 'Background', style: 'Style' };
+export const LAYER_ROLE_LABELS: Record<LayerRole, string> = { reference: 'Reference', subject: 'Subject', background: 'Background', style: 'Style', scribble: 'Control: Scribble', depth: 'Control: Depth', edges: 'Control: Edges', pose: 'Control: Pose' };
+export const isControlRole = (v: unknown): v is ControlRole => (CONTROL_ROLES as readonly unknown[]).includes(v);
 export const isLayerRole = (v: unknown): v is LayerRole => (LAYER_ROLES as readonly unknown[]).includes(v);
 /** A layer's role; the older reference flag counts as the Reference role. */
 export const layerRoleOf = (l: { role?: LayerRole; reference?: boolean }): LayerRole | null => l.role ?? (l.reference ? 'reference' : null);

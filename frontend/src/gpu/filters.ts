@@ -327,6 +327,35 @@ void main() {
   o = vec4(v, s.a);
 }`;
 
+/** Develop's Distortion (lensDistort's radial model, bilinear in premultiplied alpha, beyond the edge transparent) on the developed picture in t0, then the lens vignette as opticsPass draws it. */
+const FS_DISTORT = `uniform float u_k; uniform bool u_hasOv; uniform vec4 u_ov;
+float sstep(float e0, float e1, float x) { float t = clamp((x - e0) / (e1 - e0), 0.0, 1.0); return t * t * (3.0 - 2.0 * t); }
+void main() {
+  ivec2 c = ivec2(gl_FragCoord.xy), sz = textureSize(t0, 0);
+  vec2 hf = vec2(sz) / 2.0, d = vec2(c) + 0.5 - hf;
+  float f = 1.0 - u_k * dot(d, d) / dot(hf, hf);
+  vec2 uv = hf + d * f - 0.5, b = floor(uv), fr = uv - b;
+  ivec2 b0 = ivec2(b);
+  vec4 acc = vec4(0.0);
+  for (int j = 0; j < 2; j++) for (int i = 0; i < 2; i++) {
+    ivec2 q = b0 + ivec2(i, j);
+    if (q.x < 0 || q.y < 0 || q.x >= sz.x || q.y >= sz.y) continue;
+    float w = (i == 1 ? fr.x : 1.0 - fr.x) * (j == 1 ? fr.y : 1.0 - fr.y);
+    vec4 s = texelFetch(t0, q, 0);
+    acc += vec4(s.rgb * s.a, s.a) * w;
+  }
+  vec3 v = vec3(0.0); float a = 0.0;
+  if (acc.a * 255.0 >= 0.5) { a = acc.a; v = floor(clamp(acc.rgb / acc.a, 0.0, 1.0) * 255.0 + 0.5) / 255.0; a = floor(a * 255.0 + 0.5) / 255.0; }
+  if (u_hasOv) {
+    float ocx = (float(sz.x) - 1.0) / 2.0, ocy = (float(sz.y) - 1.0) / 2.0, orm = max(1e-6, length(vec2(ocx, ocy))), oro = u_ov.w;
+    float osx = max(1.0, ocx * (1.0 - oro) + orm * oro), osy = max(1.0, ocy * (1.0 - oro) + orm * oro), ocorner = length(vec2(ocx / osx, ocy / osy));
+    if (ocorner == 0.0) ocorner = 1.0;
+    float orr = length(vec2((float(c.x) - ocx) / osx, (float(c.y) - ocy) / osy)) / ocorner, ofall = sstep(u_ov.x, u_ov.y, orr) * u_ov.z;
+    v = ofall > 0.0 ? v + (1.0 - v) * ofall : v * (1.0 + ofall);
+  }
+  o = vec4(v, a);
+}`;
+
 /** Lens Blur's gather, step for step as lensBlur's loop: t0 the levels stacked by slot, t1 the radius, t2 the taps (one row per tier), t3 the source bytes. */
 const FS_LENS = `uniform sampler2D t2; uniform sampler2D t3;
 uniform ivec2 u_size; uniform int u_slot[5]; uniform int u_has[5]; uniform int u_sizes[5]; uniform int u_tiers[6]; uniform bool u_depth;
@@ -537,20 +566,21 @@ export class GlFilters implements GpuFilterRunner, GpuEffectRunner {
   }
 
   /** One image through a single fragment shader: upload, draw, read back. */
-  private single(key: string, frag: string, src: ImageData, set?: (gl: WebGL2RenderingContext, loc: Loc) => void, extra?: Tex): ImageData | null {
+  private single(key: string, frag: string, src: ImageData, set?: (gl: WebGL2RenderingContext, loc: Loc) => void, extra?: Tex, after?: { key: string; frag: string; set: (gl: WebGL2RenderingContext, loc: Loc) => void }): ImageData | null {
     const { width: w, height: h } = src;
     return this.guard(w, h, () => {
-      const input = this.tex(w, h, 'u8', new Uint8Array(src.data.buffer, src.data.byteOffset, src.data.byteLength)), out = this.tex(w, h, 'u8');
+      const input = this.tex(w, h, 'u8', new Uint8Array(src.data.buffer, src.data.byteOffset, src.data.byteLength)), first = this.tex(w, h, 'u8'), out = after ? this.tex(w, h, 'u8') : first;
       const res = new ImageData(w, h);
       const gl = this.gl, q = this.timer ? gl.createQuery() : null;
       try {
         if (q && this.timer) gl.beginQuery(this.timer.TIME_ELAPSED_EXT, q);
-        this.pass(this.program(key, frag), out, extra ? [input, extra] : [input], set);
+        this.pass(this.program(key, frag), first, extra ? [input, extra] : [input], set);
+        if (after) this.pass(this.program(after.key, after.frag), out, [first], after.set);
         if (q && this.timer) gl.endQuery(this.timer.TIME_ELAPSED_EXT);
         this.readBack(out, new Uint8Array(res.data.buffer));
         this.lastGpuMs = q && this.timer && gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE) && !gl.getParameter(this.timer.GPU_DISJOINT_EXT) ? Number(gl.getQueryParameter(q, gl.QUERY_RESULT)) / 1e6 : null;
         frameTrace.noteGpu(key, this.lastGpuMs);
-      } finally { this.free(input, out); if (q) gl.deleteQuery(q); }
+      } finally { this.free(input, first); if (out !== first) this.free(out); if (q) gl.deleteQuery(q); }
       return res;
     });
   }
@@ -946,7 +976,12 @@ export class GlFilters implements GpuFilterRunner, GpuEffectRunner {
           gl.uniform4f(loc('u_gl'), grade.shadows.l ?? 0, grade.midtones.l ?? 0, grade.highlights.l ?? 0, grade.global.l ?? 0);
           gl.uniform2f(loc('u_gpv'), 0.15 + (grade.blending / 100) * 0.35, 0.5 - (grade.balance / 100) * 0.25);
         }
-      }, table ?? undefined);
+      }, table ?? undefined, opticsOf(state).distortion !== 0 ? { key: 'distort', frag: FS_DISTORT, set: (gl, loc) => {
+        const op = opticsOf(state), ostart = (op.midpoint / 100) * 0.9;
+        gl.uniform1f(loc('u_k'), (op.distortion / 100) * 0.35);
+        gl.uniform1i(loc('u_hasOv'), op.vignetting !== 0 ? 1 : 0);
+        gl.uniform4f(loc('u_ov'), ostart, ostart + Math.max(0.002, (1 - ostart) * ((op.feather ?? 50) / 50)), (op.vignetting / 100) * 0.8, (op.roundness ?? 100) / 100);
+      } } : undefined);
     } finally { if (table) this.free(table); }
   }
 }

@@ -1,5 +1,5 @@
 import { Raster, createSurface, ctxOf, placement, setMat, type Engine, type Layer } from '../../engine';
-import { layerRoleOf } from '../../engine/types';
+import { CONTROL_ROLES, layerRoleOf, type ControlRole } from '../../engine/types';
 import { el, setText } from '../dom';
 import { toPng } from './send-to';
 
@@ -8,6 +8,17 @@ export type ReferenceFit = 'placed' | 'stretch' | 'pad' | 'crop';
 /** The layers marked Reference, top of the stack first: the order of @img1, @img2 and on. */
 export function referenceLayers(engine: Engine): Layer[] {
   return (engine.current?.doc.layers ?? []).filter((l) => l.raster && !l.isGroup && !l.adjustment && layerRoleOf(l) === 'reference').reverse();
+}
+
+/** The control pictures for a workflow: for each control role (scribble, depth, edges, pose) the topmost pixel layer holding it, at the document's size, for the Load Image node titled "formvis control <role>". */
+export async function controlPictures(engine: Engine, fit: ReferenceFit = 'placed'): Promise<Array<{ role: ControlRole; name: string; blob: Blob }>> {
+  const layers = (engine.current?.doc.layers ?? []).filter((l) => l.raster && !l.isGroup && !l.adjustment).reverse(), out: Array<{ role: ControlRole; name: string; blob: Blob }> = [];
+  for (const role of CONTROL_ROLES) {
+    const l = layers.find((x) => layerRoleOf(x) === role);
+    const blob = l ? await referencePicture(engine, l, fit) : null;
+    if (l && blob) out.push({ role, name: l.name, blob });
+  }
+  return out;
 }
 
 /** A layer as a picture the size of the document: where it lies on the canvas, or its own pixels stretched, padded or cropped to the document's shape. */
@@ -111,8 +122,10 @@ export class ReferencePicker {
     this.forFal(forFal);
   }
 
+  fitValue(): ReferenceFit { return this.fit.value as ReferenceFit; }
+
   forFal(on: boolean): void {
-    setText(this.note, on ? 'fal models take no references: choose a ComfyUI workflow to send them.' : 'Chosen references go to Load Image nodes titled "formvis reference" (then 1, 2...), at most four.');
+    setText(this.note, on ? 'fal models take no references: choose a ComfyUI workflow to send them.' : 'Chosen references go to Load Image nodes titled "formvis reference" (then 1, 2...), at most four. Layers with a Control role (scribble, depth, edges, pose) go to Load Image nodes titled "formvis control <role>".');
     if (this.fit.disabled !== on) this.fit.disabled = on;
     if (on) for (const i of this.boxes()) i.disabled = true;
     else this.limit();

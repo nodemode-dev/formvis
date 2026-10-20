@@ -1,5 +1,6 @@
 import type { Engine, ResampleMethod } from '../engine';
 import { previewMode } from '../engine/image-edit';
+import { gpuDabPrefs } from '../engine/gpu-dab';
 import { renderCache } from '../engine/renderer';
 import { TILE_SIZES, setTileSize } from '../engine/tiled';
 import { setBandThreads } from '../engine/band-pool';
@@ -120,6 +121,8 @@ export interface PagePrefs {
   openAsTabs: boolean;
   /** Preferences > General: Free Transform scales freely and Shift holds the proportions. Preferences > Performance: filter previews run on a small copy, and the Linux display server the desktop shell starts with. */
   legacyTransform: boolean; lowResPreviews: boolean; displayServer: DisplayServer;
+  /** Preferences > Performance: the plain round brush lays its dab coverage on the GPU. */
+  gpuBrushCoverage: boolean;
   /** Preferences > Type: a character the font lacks is drawn in a fallback face, and font menus list the English names. */
   glyphProtection: boolean; fontNamesEnglish: boolean }
 export type DisplayServer = 'auto' | 'x11' | 'wayland';
@@ -130,7 +133,7 @@ export type TypeUnits = 'px' | 'pt';
 export const PAGE_DEFAULTS: PagePrefs = { scratchFolder: '', cursorOnlyCross: false, cursorOther: 'standard', brushPreviewColor: '#ff0000', checkerA: '#ffffff', checkerB: '#cccccc',
   printRes: 300, screenRes: 72, colWidth: 15, gutter: 4.2,
   showExtPanels: true, smartQuotes: false, escCommit: false, placeholderText: false, pinchZoom: true, trackpadRotate: false, scrubAccel: 0, touchGestures: true,
-  tipHardness: true, snapVectorPx: false, transformReadout: true, rolloverHighlight: true, flickPan: true, channelsColour: false, canvasBorder: 'line', dynamicSliders: true, canvasScrollbars: true, overscroll: 50, askLayeredTiff: true, typeUnits: 'px', favouriteThemes: [], exportClipboard: true, exifColourTag: false, openAsTabs: true, legacyTransform: false, lowResPreviews: false, displayServer: 'auto', glyphProtection: true, fontNamesEnglish: false };
+  tipHardness: true, snapVectorPx: false, transformReadout: true, rolloverHighlight: true, flickPan: true, channelsColour: false, canvasBorder: 'line', dynamicSliders: true, canvasScrollbars: true, overscroll: 50, askLayeredTiff: true, typeUnits: 'px', favouriteThemes: [], exportClipboard: true, exifColourTag: false, openAsTabs: true, legacyTransform: false, lowResPreviews: false, displayServer: 'auto', gpuBrushCoverage: false, glyphProtection: true, fontNamesEnglish: false };
 const hex = (v: unknown, d: string, blank = false): string => (typeof v === 'string' && (blank ? /^(#[0-9a-f]{6})?$/i : /^#[0-9a-f]{6}$/i).test(v) ? v : d);
 const flag = (v: unknown, d: boolean): boolean => (typeof v === 'boolean' ? v : d);
 const pageOf = (r: Partial<Record<keyof PagePrefs, unknown>>): PagePrefs => {
@@ -147,6 +150,7 @@ const pageOf = (r: Partial<Record<keyof PagePrefs, unknown>>): PagePrefs => {
     askLayeredTiff: flag(r.askLayeredTiff, d.askLayeredTiff), typeUnits: r.typeUnits === 'pt' ? 'pt' : 'px',
     exportClipboard: flag(r.exportClipboard, d.exportClipboard), exifColourTag: flag(r.exifColourTag, d.exifColourTag), openAsTabs: flag(r.openAsTabs, d.openAsTabs),
     legacyTransform: flag(r.legacyTransform, d.legacyTransform), lowResPreviews: flag(r.lowResPreviews, d.lowResPreviews), displayServer: r.displayServer === 'x11' || r.displayServer === 'wayland' ? r.displayServer : 'auto',
+    gpuBrushCoverage: flag(r.gpuBrushCoverage, d.gpuBrushCoverage),
     glyphProtection: flag(r.glyphProtection, d.glyphProtection), fontNamesEnglish: flag(r.fontNamesEnglish, d.fontNamesEnglish),
     favouriteThemes: Array.isArray(r.favouriteThemes) ? Array.from(new Set(r.favouriteThemes.filter((x): x is string => typeof x === 'string' && !!THEMES[x]))).slice(0, 30) : [],
   };
@@ -519,6 +523,7 @@ export function applyPrefs(engine: Engine, p: Prefs): void {
   engine.setHistoryLimits(p.historyStates, p.historyAuto ? null : p.historyMB * 1024 * 1024);   // automatic: from the memory budget (1.61.3)
   engine.dirtyRendering = p.regionRedraws;
   previewMode.full = p.fullPreviews; previewMode.low = p.lowResPreviews;
+  gpuDabPrefs.on = p.gpuBrushCoverage;
   transformPrefs.legacy = p.legacyTransform;
   samplingDefault.value = p.interpolation === 'nearest' ? 'nearest' : p.interpolation === 'smooth' || p.interpolation === 'bilinear' ? 'smooth' : 'high';
   if (typePrefs.glyphProtection !== p.glyphProtection) { typePrefs.glyphProtection = p.glyphProtection; engine.emit('render', null); }

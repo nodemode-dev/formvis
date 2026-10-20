@@ -11,7 +11,7 @@ use std::collections::HashMap;
 #[derive(Clone, Debug, PartialEq)]
 pub struct LayerSpec {
     pub id: String,
-    /// formvis's blend mode index (0 Normal to 26 Luminosity).
+    /// formvis's blend mode index (0 Normal to 29 Glow).
     pub mode: u32,
     pub opacity: f32,
     pub visible: bool,
@@ -59,6 +59,11 @@ impl Document {
 
     pub fn put_table(&mut self, gpu: &Gpu, id: &str, red: &[u8; 256], green: &[u8; 256], blue: &[u8; 256]) {
         self.tables.insert(id.to_string(), Lut::new(gpu, red, green, blue));
+    }
+
+    /// A 3D table: 52 by 52 by 52 nodes as straight RGBA8 (562,432 bytes), packed x = r + g * 52, y = b.
+    pub fn put_table3(&mut self, gpu: &Gpu, id: &str, rgba: &[u8]) {
+        self.tables.insert(id.to_string(), Lut::new3(gpu, rgba));
     }
 
     pub fn set_stack(&mut self, order: Vec<LayerSpec>) {

@@ -14,7 +14,7 @@ export interface DisplayMask { image: HTMLCanvasElement | OffscreenCanvas; versi
 export interface DisplayClip { image: HTMLCanvasElement | OffscreenCanvas; deep?: ChannelPixels; linear?: boolean; version: number; width: number; height: number; matrix: Mat; opacity: number; mask?: DisplayMask; parent?: DisplayClip }
 /** A layer's Blend If: the channel tested (1 grey, 2 red, 3 green, 4 blue) and the four-point ranges of the layer and of what is under it. */
 export interface DisplayBlendIf { channel: 1 | 2 | 3 | 4 | 5 | 6; thisLayer: readonly [number, number, number, number]; underlying: readonly [number, number, number, number] }
-export interface DisplayLayer { image: HTMLCanvasElement | OffscreenCanvas | null; lut?: Uint8Array; lut3?: boolean; grain?: GrainParams; mask?: DisplayMask; clip?: DisplayClip; folders?: DisplayMask[]; blendIf?: DisplayBlendIf; chOff?: number; deep?: ChannelPixels; linear?: boolean; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode;
+export interface DisplayLayer { image: HTMLCanvasElement | OffscreenCanvas | null; lut?: Uint8Array; lut3?: boolean; grain?: GrainParams; threshold?: number; mask?: DisplayMask; clip?: DisplayClip; folders?: DisplayMask[]; blendIf?: DisplayBlendIf; chOff?: number; deep?: ChannelPixels; linear?: boolean; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode;
   /** A folder or clipped group: these layers composite alone from clear, then draw as one layer at this entry's opacity and blend mode. */
   sub?: readonly DisplayLayer[];
   /** Knockout: `back` is the composite the layer shows through its coverage, `opacity` the layer's opacity without its fill. */
@@ -32,6 +32,8 @@ export const LUT_MODE = 100;
 export const LUT3_MODE = 101;
 /** A Grain adjustment, computed per screen pixel from document coordinates; only the WebGL2 display draws it. */
 export const GRAIN_MODE = 104;
+/** A Threshold adjustment: the level (1 to 255) in the layer's `threshold`, a luminance step on the backdrop's 8-bit values; no source image. */
+export const THRESHOLD_MODE = 105;
 export interface Checker { a: [number, number, number]; b: [number, number, number]; cell: number; origin: [number, number] }
 /** What the stage draws through: the WebGPU display or the WebGL2 one (gl-display.ts), each on its own canvas. */
 export interface ScreenDisplay {
@@ -223,7 +225,7 @@ export class GpuDisplay {
         }
         if (l.width < 1 || l.height < 1) continue;
         const cover = l.clip ? (l.folders ? folderTex.get(l) : clipTex.get(l.clip)) ?? null : l.folders ? folderTex.get(l.folders) ?? null : null;
-        this.layerPass(enc, a, b, l, l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend), cover, sampler, view, used, buffers, l.ko ? { ko: alone(l.ko.back) } : undefined);
+        this.layerPass(enc, a, b, l, l.threshold !== undefined ? THRESHOLD_MODE : l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend), cover, sampler, view, used, buffers, l.ko ? { ko: alone(l.ko.back) } : undefined);
         [a, b] = [b, a];
       }
       return a;
@@ -299,19 +301,19 @@ export class GpuDisplay {
   /** One composite pass: `l` over `backdrop` into `target`, in shader `mode`, clipped by `clip` (a coverage texture). */
   private layerPass(enc: GPUCommandEncoder, backdrop: GPUTexture, target: GPUTexture, l: DisplayLayer, mode: number, clip: GPUTexture | null, sampler: GPUSampler, view: Mat, used: Set<object>, buffers: GPUBuffer[], extra?: { screen?: GPUTexture; ko?: GPUTexture }): void {
     const d = this.device;
-    if (mode !== FOLDER_MODE && !extra?.screen) used.add(l.lut ?? (l.image as object));
+    if (mode !== FOLDER_MODE && mode !== THRESHOLD_MODE && !extra?.screen) used.add(l.lut ?? (l.image as object));
     const lod = mode < LUT_MODE && !extra?.screen ? lodFor(mul(view, l.matrix), l.width, l.height) : 0, pipe = target.format === 'rgba8unorm' ? this.composite : this.pipe('composite', target.format);
-    const tex = extra?.screen ?? (mode === FOLDER_MODE ? this.blank() : this.texture(l, lod > 0));
+    const tex = extra?.screen ?? (mode === FOLDER_MODE || mode === THRESHOLD_MODE ? this.blank() : this.texture(l, lod > 0));
     const [ia, ib, ic, id, ie, iff] = invert(mul(view, l.matrix));
     // 224 bytes, WGSL's layout: inv (0), size (48), opacity (56), mode (60), the mask's inverse placement (64), its
     // size (112), whether there is one (120), whether the layer is clipped (124), the view's inverse (128), Blend If's
     // ranges (176, 192) and channel (208), the channels switched off (212), the mip level sampled (216).
     const raw = new ArrayBuffer(224), f = new Float32Array(raw), u32 = new Uint32Array(raw), [va, vb, vc, vd, ve, vf] = invert(view);
-    f.set([ia, ib, 0, 0, ic, id, 0, 0, ie, iff, 1, 0, l.width, l.height, Math.min(1, Math.max(0, l.opacity))]);
+    f.set([ia, ib, 0, 0, ic, id, 0, 0, ie, iff, 1, 0, l.threshold ?? l.width, l.height, Math.min(1, Math.max(0, l.opacity))]);
     f.set([va, vb, 0, 0, vc, vd, 0, 0, ve, vf, 1, 0], 32);
     u32[15] = mode;
     if (l.blendIf) { f.set(l.blendIf.thisLayer, 44); f.set(l.blendIf.underlying, 48); u32[52] = l.blendIf.channel; }
-    u32[53] = (l.chOff ?? 0) | (l.lut ? blendIndex(l.blend) << 8 : 0) | (extra?.ko ? KO_FLAG : 0) | (extra?.screen ? SCREEN_FLAG : 0);
+    u32[53] = (l.chOff ?? 0) | (l.lut || l.threshold !== undefined ? blendIndex(l.blend) << 8 : 0) | (extra?.ko ? KO_FLAG : 0) | (extra?.screen ? SCREEN_FLAG : 0);
     f[54] = lod;
     f[55] = l.ko ? Math.min(1, Math.max(0, l.ko.opacity)) : 0;
     let maskTex = this.blank();

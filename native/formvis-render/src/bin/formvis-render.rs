@@ -7,10 +7,10 @@ use formvis_render::composite::{Blender, Stack};
 use formvis_render::{bench, budget, enabled, native_force, Gpu, TiledLayer};
 use serde_json::{json, Value};
 
-const BLEND_NAMES: [&str; 27] = [
+const BLEND_NAMES: [&str; 30] = [
     "normal", "dissolve", "darken", "multiply", "color-burn", "linear-burn", "darker-color", "lighten", "screen", "color-dodge",
     "linear-dodge", "lighter-color", "overlay", "soft-light", "hard-light", "vivid-light", "linear-light", "pin-light", "hard-mix",
-    "difference", "exclusion", "subtract", "divide", "hue", "saturation", "color", "luminosity",
+    "difference", "exclusion", "subtract", "divide", "hue", "saturation", "color", "luminosity", "negation", "reflect", "glow",
 ];
 
 fn arg(args: &[String], name: &str) -> Option<String> {

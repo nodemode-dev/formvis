@@ -83,6 +83,20 @@ pub fn native_table(id: String, red: Vec<u8>, green: Vec<u8>, blue: Vec<u8>, sta
     Ok(())
 }
 
+/// An adjustment's 3D table as raw bytes: 52 by 52 by 52 nodes of straight RGBA8; the id comes as the header x-id.
+#[tauri::command]
+pub fn native_table3(request: tauri::ipc::Request, state: tauri::State<NativeState>) -> Result<(), String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else { return Err("native_table3 takes raw bytes".into()) };
+    let id = request.headers().get("x-id").and_then(|v| v.to_str().ok()).ok_or("missing header x-id")?.to_string();
+    if bytes.len() != 52 * 52 * 52 * 4 {
+        return Err("a 3D table has 52 by 52 by 52 nodes".into());
+    }
+    let mut s = state.0.lock().map_err(|e| e.to_string())?;
+    let n = s.as_mut().ok_or(NOT_STARTED)?;
+    n.doc.put_table3(&n.gpu, &id, bytes);
+    Ok(())
+}
+
 /// One stack entry from the app.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]

@@ -49,15 +49,15 @@ export class NativeDisplay implements ScreenDisplay {
   unsupported(layers: readonly DisplayLayer[]): string | null {
     for (const l of layers) {
       if (l.sub || l.ko) return 'a folder with its own opacity or blend mode, a clipped group or a Knockout, which the native renderer does not draw yet';
-      if (l.lut3) return 'an adjustment uses a 3D lookup table, which the native renderer does not draw yet';
       if (l.grain) return 'a Grain adjustment layer is not drawn by the native renderer yet';
+      if (l.threshold !== undefined) return 'a Threshold adjustment layer is not drawn by the native renderer yet';
+      if (!l.image && !l.lut) return 'an adjustment layer the native renderer does not draw yet';
       if (l.folders?.length) return 'a layer is in a folder with a mask, which the native renderer does not draw yet';
       if (l.mask && !isIdentity(l.mask.matrix)) return 'a mask is placed apart from the document, which the native renderer does not draw yet';
       if (l.clip?.mask && !isIdentity(l.clip.mask.matrix)) return 'a clipping base has a mask placed apart from the document, which the native renderer does not draw yet';
       if (l.blendIf || l.chOff) return 'a layer has Blend If or channel restrictions, which the native renderer does not draw yet';
       if (l.clip?.parent) return 'a clipping base is itself clipped, which the native renderer does not draw yet';
-      if (l.blend === 'dissolve') return 'a layer is in Dissolve mode, which the native renderer does not draw yet';
-      if (l.blend === 'negation' || l.blend === 'reflect' || l.blend === 'glow') return 'a layer is in Negation, Reflect or Glow mode, which the native renderer does not draw yet';
+      if (l.blend === 'reflect' || l.blend === 'glow') return 'a layer is in Reflect or Glow mode, which the native renderer does not draw exactly yet';
       if (l.lut && (l.blend !== 'normal' || l.blendIf)) return 'an adjustment layer has a blend mode or a limit, which the native renderer does not draw yet';
     }
     return null;
@@ -130,8 +130,12 @@ export class NativeDisplay implements ScreenDisplay {
       if (l.lut) {
         const table = this.id(l.lut);
         if (this.sent.get(l.lut) !== l.version) {
-          const pick = (c: number): number[] => Array.from({ length: 256 }, (_, i) => l.lut![i * 4 + c]);
-          await this.invoke('native_table', { id: table, red: pick(0), green: pick(1), blue: pick(2) });
+          if (l.lut3) {
+            await this.invoke('native_table3', new Uint8Array(l.lut.buffer, l.lut.byteOffset, l.lut.byteLength), { headers: { 'x-id': table } });
+          } else {
+            const pick = (c: number): number[] => Array.from({ length: 256 }, (_, i) => l.lut![i * 4 + c]);
+            await this.invoke('native_table', { id: table, red: pick(0), green: pick(1), blue: pick(2) });
+          }
           this.sent.set(l.lut, l.version);
         }
         entry.id = table;

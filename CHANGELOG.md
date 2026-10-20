@@ -4,6 +4,25 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.91.7 · 2026-10-20
+
+### Added
+
+- GPU: a Threshold adjustment layer draws on the WebGL2 and WebGPU displays (an exact integer luminance step; a few exact ties round the other way); the native display refuses adjustment layers it cannot draw instead of skipping them.
+- Native renderer: Negation, Dissolve and 3D lookup-table adjustment layers draw natively (command line checked against the engine).
+- Filters at 16 and 32 bits and in CMYK or Lab: Scanlines, De-Interlace, NTSC Colors, Color to Alpha and Tonal Contrast run on floats; CMYK and Lab float filters checked in the browser with the real profile tables.
+- Filter dialogs: the live preview honours Limit by depth.
+- Layer roles: Control roles (Scribble, Depth, Edges, Pose) send the layer to ComfyUI Load Image nodes titled "formvis control <role>".
+- Camera Raw: Distortion (with the lens vignette) runs on the GPU as a second Develop pass, within 1 level of the CPU.
+- Preferences > Performance > GPU Brush Coverage (off by default): the plain round brush's coverage on the GPU, within 1 level of the CPU.
+- Brushes: Wet Edges and the dual brush are exact on tiled layers; the dual brush no longer declines there.
+- Pen and Shapes: dashed strokes keep their gaps with round or square caps.
+
+### Fixed
+
+- A seed given in filter settings (Actions replay, filter.apply) is honoured by the float filters.
+- e2e scenes for the More panel and the number fields follow the current UI.
+
 ## 1.91.6 · 2026-10-20
 
 ### Added

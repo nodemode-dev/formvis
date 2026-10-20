@@ -5,7 +5,7 @@ import { Dialog } from '../dialogs';
 import { el, setClass, setHidden, setText } from '../dom';
 import { loadPrefs } from '../prefs';
 import { imagesFor, toPng } from './send-to';
-import { ReferencePicker } from './references';
+import { ReferencePicker, controlPictures } from './references';
 import { PromptImprover } from './prompt-improver';
 
 const KEPT = 'formvis.comfyui.workflow';
@@ -85,8 +85,9 @@ export class RunWorkflowDialog extends Dialog {
     const sentAt = Date.now(), run = countRun();
     try {
       const refs = await this.refs.chosen();
-      const parts = [...await Promise.all(imgs.map(async (x, i) => ({ name: `${i}.png`, blob: await toPng(x.surface) }))), ...refs.map((r, i) => ({ name: `ref${i}.png`, blob: r.blob }))];
-      const r = await api.comfyuiRun(target, w.json, [...imgs.map((x) => x.item), ...refs.map((x) => ({ name: x.name, kind: 'reference' }))], parts, this.prompt.value.trim() ? this.prompt.value.trim() : null);
+      const controls = await controlPictures(this.engine, this.refs.fitValue());
+      const parts = [...await Promise.all(imgs.map(async (x, i) => ({ name: `${i}.png`, blob: await toPng(x.surface) }))), ...refs.map((r, i) => ({ name: `ref${i}.png`, blob: r.blob })), ...controls.map((c) => ({ name: `control-${c.role}.png`, blob: c.blob }))];
+      const r = await api.comfyuiRun(target, w.json, [...imgs.map((x) => x.item), ...refs.map((x) => ({ name: x.name, kind: 'reference' })), ...controls.map((c) => ({ name: c.name, kind: `control ${c.role}` }))], parts, this.prompt.value.trim() ? this.prompt.value.trim() : null);
       this.job = r.job;
       setClass(this.bar, 'is-wait', true);
       this.fill.style.width = '';

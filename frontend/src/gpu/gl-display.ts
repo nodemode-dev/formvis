@@ -1,6 +1,6 @@
 import { invert, mul, type Mat } from '../engine';
 import { blendIndex } from './blend-wgsl';
-import { CLIP_MODE, FOLDER_MODE, GRAIN_MODE, KO_FLAG, LUT3_MODE, LUT_MODE, SCREEN_FLAG, anyLayer, type Checker, type DisplayClip, type DisplayLayer, type DisplayMask } from './display';
+import { CLIP_MODE, FOLDER_MODE, GRAIN_MODE, KO_FLAG, LUT3_MODE, LUT_MODE, SCREEN_FLAG, THRESHOLD_MODE, anyLayer, type Checker, type DisplayClip, type DisplayLayer, type DisplayMask } from './display';
 import { GlFrameTimer } from './gpu-timing';
 import type { DisplayOptions } from './probe';
 import { dirtyBox, trimResident, type UploadStats } from './residency';
@@ -149,6 +149,12 @@ void main() {
     }
     vec3 t3 = floor(acc * 255.0 + 0.5) / 255.0;
     outColor = vec4(bd.rgb + (adjustBlend(bd.rgb, t3) - bd.rgb) * opacity * cov * limitWeight(bd.rgb), bd.a); return;
+  }
+  if (mode == 105) {
+    if (bd.a <= 0.0) { outColor = bd; return; }
+    vec3 v = floor(bd.rgb * 255.0 + 0.5);
+    vec3 t = vec3(299.0 * v.r + 587.0 * v.g + 114.0 * v.b >= 1000.0 * size.x ? 1.0 : 0.0);
+    outColor = vec4(bd.rgb + (adjustBlend(bd.rgb, t) - bd.rgb) * opacity * cov * limitWeight(bd.rgb), bd.a); return;
   }
   vec2 p = vec2(gl_FragCoord.x, H - gl_FragCoord.y);
   bool screen = (chOff & 16) != 0;
@@ -322,7 +328,7 @@ export class GlDisplay {
         }
         if (l.width < 1 || l.height < 1) continue;
         const cover = l.clip ? (l.folders ? folderOut.get(l) : clipOut.get(l.clip)) ?? null : l.folders ? folderOut.get(l.folders) ?? null : null;
-        this.drawLayer(l, l.grain ? GRAIN_MODE : l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend), cover, a.tex, b.fb, view, filter, used, u, l.ko ? { ko: alone(l.ko.back) } : undefined);
+        this.drawLayer(l, l.grain ? GRAIN_MODE : l.threshold !== undefined ? THRESHOLD_MODE : l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend), cover, a.tex, b.fb, view, filter, used, u, l.ko ? { ko: alone(l.ko.back) } : undefined);
         [a, b] = [b, a];
       }
       return a;
@@ -376,7 +382,7 @@ export class GlDisplay {
   /** One composite pass: `l` over `backdrop` into framebuffer `fb`, in shader `mode`, clipped by `clip` (a coverage texture). */
   private drawLayer(l: DisplayLayer, mode: number, clip: WebGLTexture | null, backdrop: WebGLTexture, fb: WebGLFramebuffer, view: Mat, filter: number, used: Set<object>, u: (n: string) => WebGLUniformLocation | null, extra?: { screen?: WebGLTexture; ko?: WebGLTexture }): void {
     const gl = this.gl;
-    const noImage = mode === FOLDER_MODE || mode === GRAIN_MODE || !!extra?.screen;
+    const noImage = mode === FOLDER_MODE || mode === GRAIN_MODE || mode === THRESHOLD_MODE || !!extra?.screen;
     if (!noImage) used.add(l.lut ?? (l.image as object));
     const lod = !noImage && mode < LUT_MODE ? lodFor(mul(view, l.matrix), l.width, l.height) : 0;
     gl.activeTexture(gl.TEXTURE1);
@@ -395,7 +401,7 @@ export class GlDisplay {
     gl.uniform1f(u('lod'), lod);
     const [ia, ib, ic, id, ie, iff] = invert(mul(view, l.matrix));
     gl.uniformMatrix3fv(u('inv'), false, [ia, ib, 0, ic, id, 0, ie, iff, 1]);
-    gl.uniform2f(u('size'), l.width, l.height);
+    gl.uniform2f(u('size'), l.threshold ?? l.width, l.height);
     gl.uniform1f(u('opacity'), Math.min(1, Math.max(0, l.opacity)));
     gl.uniform1i(u('mode'), mode);
     const [va, vb, vc, vd, ve, vf] = invert(view);
@@ -403,7 +409,7 @@ export class GlDisplay {
     gl.uniform4f(u('biT'), ...(l.blendIf?.thisLayer ?? [0, 0, 255, 255]));
     gl.uniform4f(u('biU'), ...(l.blendIf?.underlying ?? [0, 0, 255, 255]));
     gl.uniform1i(u('biCh'), l.blendIf?.channel ?? 0);
-    gl.uniform1i(u('chOff'), (l.chOff ?? 0) | (l.lut ? blendIndex(l.blend) << 8 : 0) | (extra?.ko ? KO_FLAG : 0) | (extra?.screen ? SCREEN_FLAG : 0));
+    gl.uniform1i(u('chOff'), (l.chOff ?? 0) | (l.lut || l.threshold !== undefined ? blendIndex(l.blend) << 8 : 0) | (extra?.ko ? KO_FLAG : 0) | (extra?.screen ? SCREEN_FLAG : 0));
     gl.uniform1f(u('ko'), l.ko ? Math.min(1, Math.max(0, l.ko.opacity)) : 0);
     gl.activeTexture(gl.TEXTURE2);
     if (l.mask) {

@@ -1,6 +1,6 @@
 # formvis commands
 
-Generated from the window's command catalogue (1610 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1614 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
@@ -10,7 +10,7 @@ Generated from the window's command catalogue (1610 commands) by `./formvis agen
 - Generate: 6
 - Help: 5
 - Image: 122
-- Layer: 276
+- Layer: 280
 - Paint: 1
 - Paths: 12
 - Select: 46
@@ -591,8 +591,12 @@ Generated from the window's command catalogue (1610 commands) by `./formvis agen
 | `layer-label-yellow` | Yellow |  | Labels the selected layers yellow in the Layers panel. (changes the picture) |
 | `layer-quick-export-png` | Quick Export as PNG |  | Exports each selected layer (the active one when none is selected) alone, with its effects and mask, as a PNG file named after the layer. (asks first) |
 | `layer-role-background` | Background |  | Marks the selected layers as the Background of the picture, saved with the project. (changes the picture) |
+| `layer-role-depth` | Control: Depth |  | Marks the selected layers as a Depth control: the Generate panel sends them to a ComfyUI workflow as the depth guide. (changes the picture) |
+| `layer-role-edges` | Control: Edges |  | Marks the selected layers as an Edges control: the Generate panel sends them to a ComfyUI workflow as the edge guide. (changes the picture) |
 | `layer-role-none` | No Role |  | Removes the generation role from the selected layers. (changes the picture) |
+| `layer-role-pose` | Control: Pose |  | Marks the selected layers as a Pose control: the Generate panel sends them to a ComfyUI workflow as the pose guide. (changes the picture) |
 | `layer-role-reference` | Reference |  | Marks the selected layers as Reference: the Generate panel lists them as the reference pictures (@img1, @img2 and on) that a ComfyUI workflow receives. (changes the picture) |
+| `layer-role-scribble` | Control: Scribble |  | Marks the selected layers as a Scribble control: the Generate panel sends them to a ComfyUI workflow as the scribble guide. (changes the picture) |
 | `layer-role-style` | Style |  | Marks the selected layers as the Style of the picture, saved with the project. (changes the picture) |
 | `layer-role-subject` | Subject |  | Marks the selected layers as the Subject of the picture, saved with the project. (changes the picture) |
 | `layer-style` | Layer Style... |  | Opens Layer Style. (changes the picture) |

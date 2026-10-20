@@ -173,7 +173,7 @@ export function scanlinesImage(img: ImageData, spacing: number, thickness: numbe
   return out;
 }
 
-const hexRgb = (hex: string): LibColor => {
+export const hexRgb = (hex: string): LibColor => {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
   const n = m ? parseInt(m[1], 16) : 0;
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];

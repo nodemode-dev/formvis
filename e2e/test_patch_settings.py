@@ -35,13 +35,14 @@ def test_color_scales_the_blend_and_structure_the_rebuilt_edge(page):
 
 def test_the_bar_shows_each_mode_its_own_settings(page):
     page.evaluate("(() => { const e = window.formvis.engine; e.newDocument(100, 60, 'B', 'white'); e.setTool('patch'); })()")
-    bar = page.locator(".cv-opt-group:not([hidden])")
+    bar = page.locator(":is(.cv-opt-group:not([hidden]), .cv-opt-pop-sect[style*=contents])")
+    more = lambda: page.evaluate("document.querySelector('.cv-opt-more:not([hidden])[aria-expanded=false]')?.click()")
     shown = lambda label: bar.locator(".cv-opt:not([hidden])", has_text=label).count() > 0
     bar.get_by_role("button", name="Normal", exact=True).click()
     bar.locator(".cv-opt:not([hidden])", has_text="Diffusion").first.wait_for()      # the bar updates on its next frame
     assert shown("Diffusion") and not shown("Structure") and not shown("Color")
     box = bar.locator(".cv-opt", has_text="Diffusion").locator("input[type=number]")
-    box.fill("3"); box.press("Tab")
+    more(); box.fill("3"); page.keyboard.press("Tab")
     assert page.evaluate("window.formvis.engine.retouch.patchDiffusion") == 3
     bar.get_by_role("button", name="Content-Aware", exact=True).click()
     bar.locator(".cv-opt:not([hidden])", has_text="Structure").first.wait_for()

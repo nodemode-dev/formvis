@@ -6,6 +6,7 @@ import { windReach } from './filters-lib/stylize';
 import type { DeepPixels, Rect } from './types';
 import { boxMean, boxOf, clipBox, gaussKernel, hash01, separable, type Box } from './filters-lib/shared';
 import { OUTLINES, spans } from './filters-lib/blur';
+import { hexRgb } from './filters-lib/dither';
 import { oil, oilPaintPlanes, type OilSettings } from './filters-lib/stylize';
 import { light, lightingInto, type LightSettings } from './filters-lib/render';
 import { runEffectsFloat, type FxRun } from './filters-lib/gallery-fx';
@@ -251,6 +252,80 @@ export function solarizeDeep(src: DeepPixels): DeepPixels {
   return { ...src, data: out };
 }
 
+/** Scanlines on floats: the colour channels of every line darkened by `darkness` percent, lines `spacing` apart and `thickness` percent of it wide from the canvas corner (`ox`, `oy`). */
+export function scanlinesDeep(src: DeepPixels, spacing: number, thickness: number, darkness: number, vertical: boolean, ox: number, oy: number): DeepPixels {
+  const w = src.width, S = src.n + 1, out = new Float32Array(src.data), sp = Math.max(2, spacing), on = Math.max(1, Math.round((sp * thickness) / 100)), keep = 1 - Math.max(0, Math.min(100, darkness)) / 100;
+  for (let p = 0; p < w * src.height; p++) {
+    const pos = vertical ? (p % w) + ox : Math.floor(p / w) + oy;
+    if ((((pos % sp) + sp) % sp) >= on) continue;
+    for (let c = 0; c < src.n; c++) out[p * S + c] *= keep;
+  }
+  return { ...src, data: out };
+}
+
+/** De-Interlace on floats: the rows of one field replaced by the mean of the rows either side or by the row above (the row below at the top edge); `top` is the canvas's top row in this layer. */
+export function deInterlaceDeep(src: DeepPixels, eliminateEven: boolean, interpolate: boolean, top: number): DeepPixels {
+  const { width: w, height: h } = src, S = src.n + 1, rowLen = w * S, s = src.data, out = new Float32Array(s);
+  for (let y = 0; y < h; y++) {
+    if ((((y - top) % 2) + 2) % 2 === 0 === eliminateEven) continue;
+    const up = y > 0 ? y - 1 : y + 1, down = y < h - 1 ? y + 1 : y - 1;
+    if (up < 0 || up >= h) continue;
+    for (let i = 0; i < rowLen; i++) out[y * rowLen + i] = interpolate && down >= 0 && down < h ? (s[up * rowLen + i] + s[down * rowLen + i]) / 2 : s[up * rowLen + i];
+  }
+  return { ...src, data: out };
+}
+
+/** NTSC Colors on floats (red, green and blue layers): each colour's chroma in YIQ reduced until the signal stays between -0.1 and 1.0 of white. */
+export function ntscDeep(src: DeepPixels): DeepPixels {
+  const out = new Float32Array(src.data);
+  if (src.n !== 3) return { ...src, data: out };
+  for (let i = 0; i < out.length; i += 4) {
+    const r = out[i], g = out[i + 1], b = out[i + 2], y = 0.299 * r + 0.587 * g + 0.114 * b, iq = 0.596 * r - 0.274 * g - 0.322 * b, q = 0.211 * r - 0.523 * g + 0.312 * b, c = Math.hypot(iq, q);
+    if (c <= 1e-6) continue;
+    const k = Math.min(1, (1 - y) / c, (y + 0.1) / c);
+    if (k >= 1) continue;
+    const i2 = iq * Math.max(0, k), q2 = q * Math.max(0, k);
+    out[i] = y + 0.956 * i2 + 0.621 * q2;
+    out[i + 1] = y - 0.272 * i2 - 0.647 * q2;
+    out[i + 2] = y - 1.106 * i2 + 1.703 * q2;
+  }
+  return { ...src, data: out };
+}
+
+/** Tonal Contrast on floats (red, green and blue layers): the difference of each pixel's luma from its blurred surround, scaled by a gain mixed from the shadow, midtone and highlight percents by the surround's tone, added to the colours. */
+export function tonalContrastDeep(src: DeepPixels, radius: number, shadows: number, midtones: number, highlights: number, ceiling = 1): DeepPixels {
+  const out = new Float32Array(src.data);
+  if (src.n !== 3) return { ...src, data: out };
+  const { width: w, height: h } = src, N = w * h, g = new Float32Array(N), s = src.data;
+  for (let p = 0; p < N; p++) g[p] = 0.299 * s[p * 4] + 0.587 * s[p * 4 + 1] + 0.114 * s[p * 4 + 2];
+  const base = separable(g, w, h, 1, gaussKernel(Math.max(0.5, radius)));
+  for (let p = 0; p < N; p++) {
+    const i = p * 4, tone = base[p], ws = Math.max(0, 1 - tone * 2), wh = Math.max(0, tone * 2 - 1), wm = 1 - ws - wh, delta = (g[p] - base[p]) * ((shadows * ws + midtones * wm + highlights * wh) / 100);
+    if (delta === 0 || s[i + 3] === 0) continue;
+    for (let c = 0; c < 3; c++) { const v = s[i + c] + delta; out[i + c] = v < 0 ? 0 : v > ceiling ? ceiling : v; }
+  }
+  return { ...src, data: out };
+}
+
+/** Color to Alpha on floats (red, green and blue layers): `key` (0 to 255) taken out of the picture, `tolerance` percent of it going fully clear. */
+export function colorToAlphaDeep(src: DeepPixels, key: readonly [number, number, number], tolerance: number, ceiling = 1): DeepPixels {
+  const out = new Float32Array(src.data);
+  if (src.n !== 3) return { ...src, data: out };
+  const tol = Math.max(0, Math.min(99, tolerance)) / 100, kk = unit(key);
+  for (let i = 0; i < out.length; i += 4) {
+    let a = 0;
+    for (let c = 0; c < 3; c++) {
+      const v = out[i + c], k = kk[c], e = v > k ? (v - k) / (1 - k || 1) : v < k ? (k - v) / (k || 1) : 0;
+      if (e > a) a = e;
+    }
+    a = Math.max(0, (a - tol) / (1 - tol));
+    if (a <= 0) { out[i + 3] = 0; continue; }
+    for (let c = 0; c < 3; c++) out[i + c] = Math.min(ceiling, Math.max(0, kk[c] + (out[i + c] - kk[c]) / a));
+    out[i + 3] *= Math.min(1, a);
+  }
+  return { ...src, data: out };
+}
+
 /** Custom on floats: each colour channel the sum of its 5 by 5 neighbourhood times `kernel`, over `scale`, plus `offset` (in 8-bit levels); edge pixels repeat outward. */
 export function customDeep(src: DeepPixels, kernel: readonly number[], scale: number, offset: number, ceiling = 1): DeepPixels {
   const { width: w, height: h } = src, S = src.n + 1, A = src.n, out = new Float32Array(src.data), k = 1 / Math.max(1, scale), off = offset / 255;
@@ -490,7 +565,7 @@ export interface DeepEnv { area: { x: number; y: number; w: number; h: number };
 export const DEEP_FRAMED: readonly string[] = ['offset', 'mosaic', 'crystallize', 'oilPaint', 'lightingEffects', 'filterGallery', 'tiles', 'extrude', 'pointillize', 'colorHalftone', 'mezzotint', 'clouds', 'differenceClouds', 'fibers', 'lensFlare'];
 
 /** Float filters whose colour logic is red, green and blue (brightness, fixed colours): on CMYK and Lab layers they run through viaRgbDeep. */
-export const DEEP_RGB_ONLY: readonly string[] = ['oilPaint', 'lightingEffects', 'filterGallery', 'tiles', 'extrude', 'smartBlur', 'reduceNoise', 'pointillize', 'colorHalftone', 'clouds', 'differenceClouds', 'fibers', 'lensFlare'];
+export const DEEP_RGB_ONLY: readonly string[] = ['oilPaint', 'lightingEffects', 'filterGallery', 'tiles', 'extrude', 'smartBlur', 'reduceNoise', 'pointillize', 'colorHalftone', 'clouds', 'differenceClouds', 'fibers', 'lensFlare', 'scanlines', 'ntscColors', 'colorToAlpha', 'tonalContrast'];
 
 const unit = (c: readonly [number, number, number]): [number, number, number] => [c[0] / 255, c[1] / 255, c[2] / 255];
 
@@ -546,6 +621,11 @@ export function deepLibFilter(kind: string, values: Record<string, unknown>, cei
   if (kind === 'clouds' || kind === 'differenceClouds') return (d) => cloudsDeep(d, kind === 'differenceClouds', seed, boxes(d).canvas, fg, bg);
   if (kind === 'fibers') return (d) => fibersDeep(d, num('variance'), num('strength'), num('seed'), boxes(d).canvas, fg, bg);
   if (kind === 'lensFlare') return (d) => lensFlareDeep(d, num('brightness'), num('centerX'), num('centerY'), typeof values.lens === 'string' ? values.lens : 'zoom', boxes(d).area);
+  if (kind === 'scanlines') return (d) => scanlinesDeep(d, Math.max(2, Math.round(num('spacing'))), num('thickness'), num('darkness'), values.direction === 'vertical', -Math.round(env?.canvas.x ?? 0), -Math.round(env?.canvas.y ?? 0));
+  if (kind === 'deInterlace') return (d) => deInterlaceDeep(d, values.eliminate === 'evenFields', values.createBy !== 'duplication', Math.round(env?.canvas.y ?? 0));
+  if (kind === 'tonalContrast') return (d) => tonalContrastDeep(d, num('radius'), num('shadows'), num('midtones'), num('highlights'), ceiling);
+  if (kind === 'ntscColors' && ceiling === 1) return (d) => ntscDeep(d);
+  if (kind === 'colorToAlpha') return (d) => colorToAlphaDeep(d, hexRgb(typeof values.colour === 'string' ? values.colour : '#ffffff'), num('tolerance'), ceiling);
   if (kind === 'despeckle') return (d) => surfaceBlurDeep(d, 3, 15);
   if (kind === 'fragment') return (d) => fragmentDeep(d, 4);
   if (kind === 'facet') return (d) => facetDeep(d, 2);
@@ -575,4 +655,4 @@ export function deepLibFilter(kind: string, values: Record<string, unknown>, cei
 }
 
 /** The library filters that run in float at depth, for the filter dialog's note and the agent's description. */
-export const DEEP_LIB_KINDS: readonly string[] = ['blur', 'blurMore', 'boxBlur', 'sharpen', 'sharpenMore', 'sharpenEdges', 'highPass', 'maximum', 'minimum', 'median', 'dustAndScratches', 'emboss', 'findEdges', 'solarize', 'custom', 'offset', 'mosaic', 'despeckle', 'fragment', 'facet', 'crystallize', 'diffuse', 'wind', 'oilPaint', 'lightingEffects', 'filterGallery', 'traceContour', 'tiles', 'extrude', 'smartBlur', 'shapeBlur', 'reduceNoise', 'pointillize', 'colorHalftone', 'mezzotint', 'clouds', 'differenceClouds', 'fibers', 'lensFlare', ...DEEP_DISTORT];
+export const DEEP_LIB_KINDS: readonly string[] = ['blur', 'blurMore', 'boxBlur', 'sharpen', 'sharpenMore', 'sharpenEdges', 'highPass', 'maximum', 'minimum', 'median', 'dustAndScratches', 'emboss', 'findEdges', 'solarize', 'custom', 'offset', 'mosaic', 'despeckle', 'fragment', 'facet', 'crystallize', 'diffuse', 'wind', 'oilPaint', 'lightingEffects', 'filterGallery', 'traceContour', 'tiles', 'extrude', 'smartBlur', 'shapeBlur', 'reduceNoise', 'pointillize', 'colorHalftone', 'mezzotint', 'clouds', 'differenceClouds', 'fibers', 'lensFlare', 'scanlines', 'deInterlace', 'ntscColors', 'colorToAlpha', 'tonalContrast', ...DEEP_DISTORT];

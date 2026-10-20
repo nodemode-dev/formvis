@@ -44,6 +44,9 @@ fn sep(m: u32, b: f32, s: f32) -> f32 {
     case 20u: { return b + s - 2.0 * b * s; }
     case 21u: { return clamp(b - s, 0.0, 1.0); }
     case 22u: { if (s <= 0.0) { if (b <= 0.0) { return 0.0; } return 1.0; } return min(1.0, b / s); }
+    case 27u: { return 1.0 - abs(1.0 - b - s); }
+    case 28u: { if (s >= 1.0) { return 1.0; } return min(1.0, b * b / (1.0 - s)); }
+    case 29u: { if (b >= 1.0) { return 1.0; } return min(1.0, s * s / (1.0 - b)); }
     default: { return s; }
   }
 }

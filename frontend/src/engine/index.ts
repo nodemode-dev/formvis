@@ -137,6 +137,7 @@ import { fillOffThread } from './retouch-jobs';
 import { FILL_DEFAULTS, WarpStroke, contentFill, diffusionFill, featherEdge, frequencySplit, ringVariance, SMOOTH_RING_VARIANCE, fillTransparent, healFromSource, premultiply, scaleHealCorrection, spotHeal, unpremultiply, type FillOptions, type HealBlend, type HealMode, type HealSample } from './retouch';
 import { PIXEL_BLENDS, blendPixels, dissolveNoise } from './blend';
 import { LUT3_N, adjustmentLut, adjustmentLut3 } from './lut';
+import { paramValues } from './adjust-params';
 import { decontaminate } from './select-mask';
 import { alphaToMask, defringe, distanceSquared, removeMatte } from './matting';
 import { alphaGrey, alphasMoved, alphasRedrawn, nextAlphaName, nextSpotName } from './alphas';
@@ -148,7 +149,7 @@ export interface CalcOptions { source1: CalcSource; source2: CalcSource; mode?: 
 
 /** One entry of the GPU display's layer list (gpuLayers): a pixel layer's image, or an adjustment's lookup table applied
  *  to what is below it (per channel, 256 x 1; or 3D, 52 x 52 x 52 packed into 2704 x 52, with lut3 set). */
-export interface GpuLayerSpec { image: Surface | null; lut?: Uint8Array; lut3?: boolean; grain?: GrainParams; mask?: GpuMaskSpec; clip?: GpuClipSpec; folders?: GpuMaskSpec[]; blendIf?: GpuBlendIf; chOff?: number; /** The float pixels of a 16 or 32 bit layer (RGB, straight alpha), which a display uploads as half floats in place of the 8-bit rendition; `linear` says they are linear light (32 bit). */ deep?: ChannelPixels; linear?: boolean; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode;
+export interface GpuLayerSpec { image: Surface | null; lut?: Uint8Array; lut3?: boolean; grain?: GrainParams; threshold?: number; mask?: GpuMaskSpec; clip?: GpuClipSpec; folders?: GpuMaskSpec[]; blendIf?: GpuBlendIf; chOff?: number; /** The float pixels of a 16 or 32 bit layer (RGB, straight alpha), which a display uploads as half floats in place of the 8-bit rendition; `linear` says they are linear light (32 bit). */ deep?: ChannelPixels; linear?: boolean; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode;
   /** A folder with its own opacity or blend mode, or a clipping base with Blend Clipped Layers as Group: these layers composite alone from clear, and the result draws as one layer at this entry's opacity and blend mode. */
   sub?: readonly GpuLayerSpec[];
   /** Knockout: the layers that make the composite shown through this layer's coverage, and the layer's opacity without its fill. */
@@ -2106,6 +2107,10 @@ export class Engine {
         if (l.adjustment.kind === 'grain') {
           if (ab !== 'normal' || lim) return { reason: 'a grain adjustment layer with a blend mode or a limit' };
           layers.push({ image: null, grain: grainParams(grainSettingsOf(l.adjustment.data)), mask, clip, folders, version: 0, width: 1, height: 1, matrix: [1, 0, 0, 1, 0, 0], opacity: (o?.opacity ?? l.opacity) * (l.fill ?? 1), blend: 'normal' });
+          continue;
+        }
+        if (l.adjustment.kind === 'threshold') {
+          layers.push({ image: null, threshold: paramValues('threshold', l.adjustment.data.params).level as number, mask, clip, folders, blendIf: gl, version: 0, width: 1, height: 1, matrix: [1, 0, 0, 1, 0, 0], opacity: (o?.opacity ?? l.opacity) * (l.fill ?? 1), blend: ab });
           continue;
         }
         const lut3 = adjustmentLut3(l.adjustment);
@@ -5128,7 +5133,7 @@ export class Engine {
     const lt = p.activeLayer?.tiled ?? null;
     if (lt) {
       const whole = this.tool === 'mixer' || opts.mixer ? 'The Mixer Brush' : p.maskTarget ? 'Painting a mask'
-        : !opts.aliased && shapeActive(this.brushShape) ? 'Brush Settings (shape and scattering, texture, dual brush, wet edges)' : null;
+        : !opts.aliased && shapeActive({ ...this.brushShape, dual: { ...this.brushShape.dual, on: false } }) ? 'Brush Settings (shape and scattering, texture, dual brush, wet edges)' : null;
       if (whole) { this.notice(`${whole} on a layer kept in tiles comes in a later release; the plain brush, pencil and eraser paint it now.`); return false; }
     }
     p.history.begin(opts.name ?? (this.brushMode === 'erase' ? 'Eraser' : this.tool === 'mixer' || opts.mixer ? 'Mixer Brush' : 'Brush'), p.snapshot());
@@ -7906,6 +7911,7 @@ export class Engine {
   /** Counted up for every preview request and every clear, so a worker's late result
    *  for an older request is dropped. */
   private previewToken = 0;
+  private previewRange: SelectionMask | null = null;
   gradient: PO.GradientDrag | null = null;
   /** The Gradient tool's settings: Shape, Colors (style), Reverse, Opacity, and Mode and Dither from the options
    *  bar (Dither off by default). */
@@ -8183,7 +8189,27 @@ export class Engine {
     return { area: p.selection ? local(p.selection.rect) : canvas, canvas, doc: { w: p.doc.width, h: p.doc.height }, ...(shift > 0 ? { margin: shift } : {}) };
   }
 
-  previewImageEdit(run: (src: ImageData, scale: number, frame?: LibFrame) => ImageData | Promise<ImageData>, grow = 0, maxPixels = 2_000_000): void { const a = this.alphaTargeted(); if (a) { this.previewAlphaEdit(a, run); return; } ++this.previewToken; IE.previewImageEdit(this.editHost, run, grow, maxPixels); }
+  previewImageEdit(run: (src: ImageData, scale: number, frame?: LibFrame) => ImageData | Promise<ImageData>, grow = 0, maxPixels = 2_000_000): void { const a = this.alphaTargeted(); if (a) { this.previewAlphaEdit(a, run); return; } ++this.previewToken; this.withPreviewRange(this.current, () => IE.previewImageEdit(this.editHost, run, grow, maxPixels)); }
+
+  /** Limit by depth for a dialog's live preview: the depth range (narrowed to the selection at each use) the preview is drawn through; null puts the preview back to the whole selection. Nothing is recorded in history. */
+  async setPreviewDepthLimit(o: { near: number; far: number; feather: number }, run: (image: Blob, w: number, h: number) => Promise<Float32Array>, force = false): Promise<boolean> {
+    const p = this.current;
+    if (!p) return false;
+    const d = await this.task(() => this.ensureDocDepth(run, force));
+    if (!d || this.current !== p) return false;
+    this.previewRange = SelectionMask.cropped(0, 0, d.w, d.h, depthRangeMask(d, o.near, o.far, o.feather));
+    return !!this.previewRange;
+  }
+
+  clearPreviewDepthLimit(): void { this.previewRange = null; }
+
+  private withPreviewRange<T>(p: Project | null, fn: () => T): T {
+    const range = this.previewRange;
+    if (!p || !range) return fn();
+    const before = p.selection;
+    p.selection = before ? before.combine(range, 'intersect') ?? range : range;
+    try { return fn(); } finally { p.selection = before; }
+  }
 
   /** Filters on layers past this many pixels run in bands (1.60.9, DEV_PLAN 26.4); settable so a check can force either way. */
   bandFrom = 16_000_000;
@@ -9894,7 +9920,7 @@ export class Engine {
       canPaint: (p) => this.paintable(p.activeLayer) && !this.smartLocked(p),
       paintable: (l) => this.paintable(l),
       target: (p) => this.target(p),
-      coverage: (p, l, target, w, h) => this.coverageFor(p, l, target, w, h),
+      coverage: (p, l, target, w, h) => this.withPreviewRange(p, () => this.coverageFor(p, l, target, w, h)),
       frame: (p, t, w, h, shift) => this.filterFrame(p, t, w, h, shift),
       setPreview: (id, target, surface, transform) => this.setPreview(id, target, surface ?? null, transform),
       clearPreview: () => { this.preview = null; },
@@ -12412,7 +12438,7 @@ function strokeShape(c: Ctx2D, shape: Path2D, s: ShapeStroke, closed: boolean, b
   const set = (x: Ctx2D, width: number): void => {
     x.strokeStyle = s.gradient && box ? shapeGradient(x, s.gradient, box) : (s.pattern && box && shapePattern(x, s.pattern, box)) || rgbCss(s.color); x.lineWidth = width; x.lineJoin = s.join ?? 'round'; x.miterLimit = Math.max(1, Math.min(10, s.miter ?? 4));
     x.lineCap = dotted ? (s.cap === 'square' ? 'square' : 'round') : s.dash === 'dashed' ? s.cap ?? 'butt' : s.cap ?? 'round';
-    x.setLineDash(s.dashes?.length ? s.dashes.map((d) => Math.max(0.001, d) * w) : s.dash === 'dashed' ? [4 * w, 2 * w] : dotted ? [0.001, 2 * w] : []);
+    x.setLineDash(s.dashes?.length ? s.dashes.map((d) => Math.max(0.001, d) * w) : s.dash === 'dashed' ? (s.cap && s.cap !== 'butt' ? [Math.max(0.001, 4 * w - width), 2 * w + width] : [4 * w, 2 * w]) : dotted ? [0.001, 2 * w] : []);
     x.lineDashOffset = (s.dashOffset ?? 0) * w;
     x.globalAlpha = (x === c ? base : 1) * op;
   };
