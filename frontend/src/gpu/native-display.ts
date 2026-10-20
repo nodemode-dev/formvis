@@ -7,7 +7,7 @@ import type { Checker, DisplayLayer, ScreenDisplay } from './display';
  *  its mirror of the document up to date. Each image, mask and table gets a stable id and is sent again only when its
  *  version changes, as raw bytes; then the stack and the view. Draw requests while one is in flight are coalesced to the
  *  latest, so a slow frame never queues up more. What the native renderer cannot draw yet (folders with their own
- *  blend modes beyond those measured, clipped groups, Blend If on the colours beneath, HDR Toning) is named by unsupported(), and the stage draws on the CPU with that reason. */
+ *  blend modes beyond those measured, clipped groups) is named by unsupported(), and the stage draws on the CPU with that reason. */
 
 type Invoke = <T>(cmd: string, args?: unknown, options?: { headers: Record<string, string> }) => Promise<T>;
 type Img = HTMLCanvasElement | OffscreenCanvas;
@@ -19,9 +19,7 @@ const isIdentity = (m: Mat): boolean => m[0] === 1 && m[1] === 0 && m[2] === 0 &
 const affine = (m: Mat): number[] | null => (isIdentity(m) ? null : [m[0], m[2], m[4], m[1], m[3], m[5]]);
 
 /** The blend modes a folder composited alone was measured in within two levels of the CPU renderer. */
-const GROUP_BLENDS: ReadonlySet<string> = new Set(['normal', 'multiply', 'screen', 'lighten', 'luminosity', 'soft-light', 'linear-burn', 'subtract', 'color', 'negation', 'overlay', 'difference', 'darken', 'exclusion', 'hard-light', 'color-dodge', 'linear-light', 'pin-light', 'divide', 'glow', 'hue']);
-
-const BLEND_IF_OPEN: readonly number[] = [0, 0, 255, 255];
+const GROUP_BLENDS: ReadonlySet<string> = new Set(['normal', 'multiply', 'screen', 'lighten', 'luminosity', 'soft-light', 'linear-burn', 'subtract', 'color', 'negation', 'overlay', 'difference', 'darken', 'exclusion', 'hard-light', 'color-dodge', 'linear-light', 'pin-light', 'divide', 'glow', 'hue', 'saturation', 'color-burn', 'reflect']);
 
 export class NativeDisplay implements ScreenDisplay {
   onLost: (() => void) | null = null;
@@ -60,16 +58,15 @@ export class NativeDisplay implements ScreenDisplay {
       if (l.sub) {
         if (l.sub.some((x) => x.clip)) return 'a clipped group, which the native renderer does not draw yet';
         if (!GROUP_BLENDS.has(l.blend)) return 'a folder in a blend mode the native renderer does not match the CPU in yet';
-        if (l.blend === 'hue' && (l.mask || l.folders?.length)) return 'a masked folder in Hue, which the native renderer does not match the CPU in within two levels yet';
+        if ((l.blend === 'hue' || l.blend === 'reflect') && (l.mask || l.folders?.length)) return 'a masked folder in Hue or Reflect, which the native renderer does not match the CPU in within two levels yet';
         const inner = this.unsupported(l.sub);
         if (inner) return inner;
         continue;
       }
-      if (l.hood?.kind === 2) return 'an HDR Toning adjustment layer, which the native renderer does not match the CPU in within two levels yet';
-      if (l.hood && l.blend !== 'normal') return 'a Shadows/Highlights or Clarity adjustment layer in a blend mode of its own, which the native renderer does not match the CPU in yet';
+      if (l.hood && l.blend !== 'normal') return 'a Shadows/Highlights, HDR Toning or Clarity adjustment layer in a blend mode of its own, which the native renderer does not match the CPU in yet';
       if (l.hood && this.docDims && Math.max(this.docDims.width, this.docDims.height) > 8192) return 'a Shadows/Highlights or Clarity adjustment on a document over 8,192 pixels a side, which the native renderer does not blur yet';
       if (!l.image && !l.lut && !l.grain && !l.hood && l.threshold === undefined) return 'an adjustment layer the native renderer does not draw yet';
-      if (l.blendIf && (!l.image || l.blendIf.channel > 4 || l.blendIf.underlying.some((v, i) => v !== BLEND_IF_OPEN[i]))) return 'a layer has Blend If on the colours beneath it or an adjustment limit, which the native renderer does not match the CPU in yet';
+      if (l.blendIf && (!l.image || l.blendIf.channel > 4)) return 'a layer has Blend If on a channel or an adjustment limit, which the native renderer does not match the CPU in yet';
     }
     return null;
   }

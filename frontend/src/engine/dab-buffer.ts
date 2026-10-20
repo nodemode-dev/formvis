@@ -41,6 +41,8 @@ export const levelOf = (opacity: number): number => Math.floor(Math.min(1, Math.
 /** One tip byte step as a float32, the constant both the CPU and the graphics processor multiply the tip sum by. */
 export const TIP_UNIT = Math.fround(1 / 255);
 
+let colI = new Int32Array(0), colF = new Float32Array(0), colG = new Float32Array(0);
+
 /** The stroke's deep buffer: coverage per pixel as floats over the stroke's window, so a faint dab keeps its share
  *  however fine the spacing, and (when the opacity follows pressure) the highest opacity any dab has reached there.
  *  What a pixel shows is the lesser of the two. */
@@ -88,6 +90,35 @@ export class StrokeBuffer {
     const cov = this.cov, cl = this.ceil, f = Math.fround;
     const fa = f(ia), fb = f(ib), fc = f(ic), fd = f(id), fk = f(k), gx = f(sx), gy = f(sy);
     const offx = f(ie + ia * ox + ic * oy), offy = f(iff + ib * ox + id * oy);
+    if (m[1] === 0 && m[2] === 0) {
+      const n = x1 - x0;
+      if (colI.length < n) { colI = new Int32Array(n); colF = new Float32Array(n); colG = new Float32Array(n); }
+      for (let i = 0; i < n; i++) {
+        const u = f(f(f(f(fa * f(x0 + i + 0.5 - ox)) + offx) * gx) - 0.5), iu = Math.floor(u), fu = f(u - iu);
+        colI[i] = iu; colF[i] = fu; colG[i] = f(1 - fu);
+      }
+      for (let y = y0; y < y1; y++) {
+        const v = f(f(f(f(fd * f(y + 0.5 - oy)) + offy) * gy) - 0.5), iv = Math.floor(v), fv = f(v - iv), gv = f(1 - fv);
+        const jn0 = iv >= 0 && iv < lh, jn1 = iv + 1 >= 0 && iv + 1 < lh;
+        if (!jn0 && !jn1) continue;
+        const o0 = iv * lw, o1 = o0 + lw, row = y * w + x0;
+        for (let i = 0; i < n; i++) {
+          const iu = colI[i], fu = colF[i], gu = colG[i];
+          const in0 = iu >= 0 && iu < lw, in1 = iu + 1 >= 0 && iu + 1 < lw;
+          let s = 0;
+          if (in0 && jn0) s = f(s + f(data[o0 + iu] * f(gu * gv)));
+          if (in1 && jn0) s = f(s + f(data[o0 + iu + 1] * f(fu * gv)));
+          if (in0 && jn1) s = f(s + f(data[o1 + iu] * f(gu * fv)));
+          if (in1 && jn1) s = f(s + f(data[o1 + iu + 1] * f(fu * fv)));
+          const a = f(fk * f(s * TIP_UNIT));
+          if (!(a > 0)) continue;
+          const p = row + i, c = cov[p];
+          cov[p] = f(a + f(c * f(1 - a)));
+          if (cl && cl[p] < ceil) cl[p] = ceil;
+        }
+      }
+      return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+    }
     for (let y = y0; y < y1; y++) {
       const py = f(y + 0.5 - oy), row = y * w;
       for (let x = x0; x < x1; x++) {

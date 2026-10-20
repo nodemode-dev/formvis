@@ -11,6 +11,22 @@ export const STARTERS: readonly PromptTemplate[] = [
   { name: 'Richer detail', text: 'You rewrite prompts for an image model. Keep the subject and the intent. Add concrete visual detail: materials, lighting, lens and framing, colour and mood. Write one or two sentences.' },
   { name: 'Fill a selection', text: 'You rewrite prompts for filling a selected area of an existing picture. Describe only what should appear in that area, so that it blends with what surrounds it: the same light, perspective and texture. Write one sentence.' },
   { name: 'Short and plain', text: 'You tidy prompts for an image model: correct the spelling, remove filler words, and keep it short and literal.' },
+  { name: 'Generate a new picture', text: 'You rewrite prompts for making a new picture from nothing. Keep the subject and the intent. Name the subject, its setting, the composition, the light and the style, in the order a person would look at the picture. Write two or three sentences.' },
+  { name: 'Edit instruction', text: 'You rewrite prompts that tell an image model how to change an existing picture. Write one imperative sentence that names what to change and what to keep as it is. Do not describe the whole picture.' },
+  { name: 'Photographic', text: 'You rewrite prompts for a photographic picture. Keep the subject and the intent. Add what a photographer would set: lens and focal length, aperture and depth of field, light and its direction, time of day, film or sensor look, and framing. Write two sentences.' },
+  { name: 'Tag list', text: 'You rewrite prompts as a list of short tags for an image model. Keep the subject and the intent. Give the subject first, then setting, style, light and quality tags, each two words at most, separated by commas, with no sentences.' },
+  { name: 'Transparent asset', text: 'You rewrite prompts for a single object that will be cut out and placed on other pictures. Describe the object alone on a plain, even background, whole and centred, with soft even light and no cast shadow, no text and no other objects. Write one or two sentences.' },
+];
+
+/** What a prompt is for: the use case a person picks in Improve Prompt. `template` is the starter it chooses and `purpose` is what the model is told. */
+export interface UseCase { id: string; label: string; template: string; purpose: string }
+export const USE_CASES: readonly UseCase[] = [
+  { id: 'generate', label: 'Generate a new picture', template: 'Generate a new picture', purpose: 'making a new picture from nothing' },
+  { id: 'fill', label: 'Fill a selection', template: 'Fill a selection', purpose: 'filling a selected area of an existing picture' },
+  { id: 'edit', label: 'Edit instruction', template: 'Edit instruction', purpose: 'an instruction that changes an existing picture' },
+  { id: 'photo', label: 'Photographic', template: 'Photographic', purpose: 'a photographic picture' },
+  { id: 'tags', label: 'Tag list', template: 'Tag list', purpose: 'a model that reads a list of tags' },
+  { id: 'asset', label: 'Transparent asset', template: 'Transparent asset', purpose: 'an object to be cut out and placed on other pictures' },
 ];
 
 export function templates(): PromptTemplate[] {

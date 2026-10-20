@@ -392,6 +392,16 @@ fn body(pos: vec4<f32>) -> vec4<f32> {
   let sa = sc.a * comp.opacity * cov * bif;
   if (sa <= 0.0) { return bd; }
   let ab = bd.a;
+  if (comp.pad1 == 0u && m == 0u && comp.opacity >= 1.0 && comp.transformed == 0u && cov == 1.0 && comp.bi_ch == 0u && comp.ko_on == 0u && comp.ch_off == 0u && comp.has_clip == 0u) {
+    let ga = round(sc.a * 255.0);
+    let da = round(ab * 255.0);
+    let sp = round(s0.rgb * 255.0);
+    let d = floor(bd.rgb * da + 0.5);
+    let ao8 = ga + floor(da * (256.0 - ga) / 256.0);
+    if (ao8 <= 0.0) { return bd; }
+    let r = sp + floor(d * (256.0 - ga) / 256.0);
+    return keep(vec4<f32>(clamp(floor(r * 255.0 / ao8 + 0.5), vec3<f32>(0.0), vec3<f32>(255.0)) / 255.0, ao8 / 255.0), bd);
+  }
   if ((comp.pad1 == 1u || comp.pad2 == 1u) && comp.transformed == 0u && cov == 1.0 && comp.bi_ch == 0u && comp.ko_on == 0u && comp.ch_off == 0u && comp.has_clip == 0u && highp_mode(m)) {
     let ga = round(sc.a * 255.0);
     let da = round(ab * 255.0);

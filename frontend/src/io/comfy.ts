@@ -189,11 +189,22 @@ export async function runToResults(target: string, json: string, items: unknown[
   status: (text: string, run: Run) => void = () => {}, cancelled: () => boolean = () => false): Promise<Blob[]> {
   const sentAt = Date.now(), n = countRun();
   const r = await api.comfyuiRun(target, json, items, parts, prompt);
+  return followToResults(target, r, status, cancelled, sentAt, n);
+}
+
+/** A chosen upscaler file on ComfyUI run on `image`; the enlarged picture, at the file's own size. */
+export async function comfyUpscale(target: string, model: string, image: Blob, status: (text: string, run: Run, progress?: { value: number; max: number }) => void = () => {}, cancelled: () => boolean = () => false): Promise<Blob> {
+  const sentAt = Date.now(), n = countRun();
+  const r = await api.comfyuiUpscale(target, model, image);
+  return (await followToResults(target, { job: r.job, mask: null, prompt: false }, status, cancelled, sentAt, n))[0];
+}
+
+async function followToResults(target: string, r: Run, status: (text: string, run: Run, progress?: { value: number; max: number }) => void, cancelled: () => boolean, sentAt: number, n: number): Promise<Blob[]> {
   for (let waited = 0; waited < 3600; waited++) {
     await new Promise((ok) => setTimeout(ok, 1000));
     if (cancelled()) { await api.comfyuiCancel(r.job, target); throw new Error('Cancelled.'); }
     const s = await api.comfyuiJob(r.job, target);
-    if (s.state === 'queued' || s.state === 'running') status(`${jobWords(s, sentAt, n)}.`, r);
+    if (s.state === 'queued' || s.state === 'running') status(`${jobWords(s, sentAt, n)}.`, r, s.progress);
     else if (s.state === 'failed') throw new Error(s.detail ?? 'ComfyUI stopped the workflow with an error.');
     else {
       if (!s.images?.length) throw new Error('The workflow finished without saving an image (it needs a Save Image node).');

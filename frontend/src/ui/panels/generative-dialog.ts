@@ -2,7 +2,7 @@ import type { Engine } from '../../engine';
 import { api, type GenerativeStatus, type ProviderStatus } from '../../io/api';
 import { Dialog } from '../dialogs';
 import { el, setHidden, setText } from '../dom';
-import { addRecipe, apiWorkflow, checkReferenceCount, comfyGenerator, recipes, removeRecipe } from '../../io/comfy';
+import { addRecipe, apiWorkflow, checkReferenceCount, comfyGenerator, comfyUpscale, recipes, removeRecipe } from '../../io/comfy';
 import { localFill, localInpaint, localModels, localUpscale, modelReady, upscaleFiles, upscalerReady, type LocalModel } from '../../io/local-gen';
 import { loadPrefs, recalled } from '../prefs';
 import { ReferencePicker } from './references';
@@ -57,6 +57,8 @@ export class GenerativeDialog extends Dialog {
   private readonly scope = el<HTMLSelectElement>('<select class="cv-input" aria-label="Upscale scope"><option value="new">Whole picture, as a new document</option><option value="here">Whole picture, in this document</option><option value="selection">The selection, as a layer</option></select>');
   private readonly scopeRow = el('<label class="cv-dialog-row"><span>Scope</span></label>');
   private readonly addFile = el<HTMLInputElement>('<input type="file" accept=".json,application/json" aria-label="Add ComfyUI workflow" hidden>');
+  private readonly comfyGroup = el<HTMLOptGroupElement>('<optgroup label="ComfyUI upscaler"></optgroup>');
+  private comfyListed = '';
 
   constructor(private readonly engine: Engine) {
     super('Generative Fill', 440);
@@ -113,7 +115,7 @@ export class GenerativeDialog extends Dialog {
   }
 
   /** Whether the model now chosen can run without asking the person for anything (a key, a download). */
-  private get runnable(): boolean { return this.lamaHere || this.upscaleHere || !!this.local || !!this.provider || this.comfy || !!this.status?.configured; }
+  private get runnable(): boolean { return this.lamaHere || this.upscaleHere || this.comfyUpscaleHere || !!this.local || !!this.provider || this.comfy || !!this.status?.configured; }
 
   /** Opens the dialog for Generative Fill, Generative Expand or Upscale (`scale` 2 or 4). With `start` (the Contextual
    *  Task Bar's Generate) the prompt is filled in and, when the chosen model needs nothing more from the person, the
@@ -134,7 +136,7 @@ export class GenerativeDialog extends Dialog {
     // Upscale: Real-ESRGAN on fal or on this computer (1.53.1); the fill models otherwise.
     for (const b of this.modelRow.querySelectorAll('button')) setHidden(b as HTMLElement, mode === 'upscale');
     this.status = await api.generativeStatus();   // first, so the default knows whether fal has a key (1.58.5)
-    if (mode === 'upscale') this.upscaleModels(await upscalerReady(), await upscaleFiles());
+    if (mode === 'upscale') { this.upscaleModels(await upscalerReady(), await upscaleFiles()); void this.loadComfyUpscalers(); }
     else { this.locals = (await localModels()).filter((m) => m.fromPicture); this.lama = await modelReady('lama-inpaint'); this.providers = (await api.providers()).filter((p) => p.fill); this.problems = await comfyReadiness(); this.fillModels(); }   // local models (1.52.9), LaMa (1.53.2)
     this.refs.refresh(!this.model.value.startsWith('comfy:'));
     setHidden(this.refs.el, mode === 'upscale');
@@ -170,9 +172,29 @@ export class GenerativeDialog extends Dialog {
       return o;
     });
     this.model.replaceChildren(el('<option value="fal">Real-ESRGAN (fal)</option>'), here, ...chosen);
+    if (this.comfyGroup.children.length) this.model.append(this.comfyGroup);
     // The person's choice while it stands; else fal when it has a key, this computer when not (1.58.5).
-    const stands = was === 'fal' || (was === 'local:ai-upscale' && ready) || chosen.some((o) => o.value === was && !o.disabled);
+    const stands = was === 'fal' || (was === 'local:ai-upscale' && ready) || [...this.model.options].some((o) => o.value === was && !o.disabled && o.value !== 'fal');
     this.model.value = this.picked && stands ? was : this.status?.configured ? 'fal' : ready ? 'local:ai-upscale' : 'fal';
+  }
+
+  /** The upscaler files of the ComfyUI at the address in Preferences, added to the Model list in place once they arrive;
+   *  the nodes it lacks are named in a greyed entry. */
+  private async loadComfyUpscalers(): Promise<void> {
+    let listed: { models: string[]; missing: string[] } | null = null;
+    try { listed = await api.comfyuiUpscaleModels(loadPrefs().comfyuiUrl); } catch { listed = null; }
+    if (this.mode !== 'upscale') return;
+    const key = listed ? JSON.stringify(listed) : '';
+    if (key === this.comfyListed) return;
+    this.comfyListed = key;
+    const was = this.model.value;
+    const options = !listed ? [] : listed.missing.length ? [Object.assign(document.createElement('option'), { value: 'comfy-missing', textContent: `ComfyUI has no ${listed.missing.join(' or ')} node`, disabled: true })]
+      : listed.models.map((f) => Object.assign(document.createElement('option'), { value: `comfy-file:${f}`, textContent: `${f} (ComfyUI)` }));
+    this.comfyGroup.replaceChildren(...options);
+    if (options.length && !this.comfyGroup.parentElement) this.model.append(this.comfyGroup);
+    else if (!options.length && this.comfyGroup.parentElement) this.comfyGroup.remove();
+    if ([...this.model.options].some((o) => o.value === was)) this.model.value = was;
+    this.sync();
   }
 
   /** FLUX.1 Fill on fal, then the kept ComfyUI workflows and this computer's models; the person's choice kept while it
@@ -217,6 +239,7 @@ export class GenerativeDialog extends Dialog {
   private get provider(): ProviderStatus | undefined { return this.mode !== 'upscale' ? this.providers.find((p) => `provider:${p.id}` === this.model.value) : undefined; }
   private get lamaHere(): boolean { return this.mode !== 'upscale' && this.model.value === 'local:lama'; }
   private get upscaleHere(): boolean { return this.mode === 'upscale' && (this.model.value === 'local:ai-upscale' || this.model.value.startsWith('local-file:')); }
+  private get comfyUpscaleHere(): boolean { return this.mode === 'upscale' && this.model.value.startsWith('comfy-file:'); }
   private get upscaleFile(): string { return this.model.value.startsWith('local-file:') ? this.model.value.slice('local-file:'.length) : ''; }
   private get local(): LocalModel | undefined { return this.mode !== 'upscale' ? this.locals.find((m) => m.id === this.model.value) : undefined; }
 
@@ -229,6 +252,11 @@ export class GenerativeDialog extends Dialog {
     if (this.lamaHere) {
       setHidden(this.keyRow, true); setHidden(this.forget, true); setHidden(this.refs.el, true); setHidden(this.influenceRow, true);
       setText(this.state, 'LaMa runs on this computer, on any machine: no key, no cost. It fills from what surrounds the selection and takes no prompt; the result is masked to the selection.');
+      return;
+    }
+    if (this.comfyUpscaleHere) {
+      setHidden(this.keyRow, true); setHidden(this.forget, true);
+      setText(this.state, `${this.model.value.slice('comfy-file:'.length)} runs on ComfyUI at ${loadPrefs().comfyuiUrl}: no key, no cost. It enlarges what the document shows ${this.scale} times, as the scope says; Escape or the status bar's stop cancels it.`);
       return;
     }
     if (this.upscaleHere) {
@@ -285,6 +313,12 @@ export class GenerativeDialog extends Dialog {
       const e = this.engine, scale = this.scale, scope = this.scope.value, file = this.upscaleFile;
       this.close();
       await e.task(() => this.upscaleBy(scope, scale, (image) => stoppable((stopped) => localUpscale(scale, undefined, stopped, file)(image))));
+      return;
+    }
+    if (this.comfyUpscaleHere) {
+      const e = this.engine, scale = this.scale, scope = this.scope.value, file = this.model.value.slice('comfy-file:'.length), target = loadPrefs().comfyuiUrl;
+      this.close();
+      await e.task(() => this.upscaleBy(scope, scale, (image) => stoppable((stopped) => comfyUpscale(target, file, image, (_text, _run, p) => e.reportProgress(p?.value ?? 0, p?.max ?? 0), stopped))));
       return;
     }
     const local = this.local;

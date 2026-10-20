@@ -619,7 +619,7 @@ Note: read-only.
 Rewrites an image prompt through the language model set in Preferences > Plugins, under an improve template (default Richer detail; or a starter or a Markdown template in the data folder's prompt-templates folder). Returns the rewritten prompt and kept, the @img reference tokens of the prompt that the rewrite still carries (any the model dropped are put back at the end and named in restored). Changes nothing in the document; works with no window open. Fails with what to do when no language model is set. Use when a prompt for generate_image or generative_fill should be made more detailed or tidied before it is used.
 
 - `prompt`: string; required; The prompt to improve; @img1, @img2 and so on name reference pictures and are kept.
-- `template`: string; A template name such as Richer detail, Fill a selection or Short and plain.
+- `template`: string; A template name: Richer detail, Fill a selection, Short and plain, Generate a new picture, Edit instruction, Photographic, Tag list or Transparent asset (the starter for each use case).
 
 Note: read-only.
 

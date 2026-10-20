@@ -296,6 +296,13 @@ export const api = {
     const res = await request('/comfyui/run', { method: 'POST', body: form({ target, workflow, items: JSON.stringify(items), ...(prompt !== null ? { prompt } : {}) }, parts) });
     return (await res.json()) as { job: string; references: number; image: string | null; mask: string | null; prompt: boolean };
   },
+  /** The upscaler files ComfyUI lists, and the upscale nodes it lacks (then no file can run). */
+  async comfyuiUpscaleModels(target: string): Promise<{ models: string[]; missing: string[] }> {
+    return (await (await request(`/comfyui/upscale-models?target=${encodeURIComponent(target)}`)).json()) as { models: string[]; missing: string[] };
+  },
+  async comfyuiUpscale(target: string, model: string, image: Blob): Promise<{ job: string }> {
+    return (await (await request('/comfyui/upscale', { method: 'POST', body: form({ target, model }, [{ name: 'picture.png', blob: image }], 'image') })).json()) as { job: string };
+  },
   async comfyuiJob(job: string, target: string): Promise<{ state: 'queued' | 'running' | 'done' | 'failed'; ahead?: number; images?: Array<{ filename: string; subfolder: string }>; detail?: string; progress?: { value: number; max: number } }> {
     return (await (await request(`/comfyui/job/${encodeURIComponent(job)}?target=${encodeURIComponent(target)}`)).json()) as { state: 'queued' | 'running' | 'done' | 'failed'; ahead?: number; images?: Array<{ filename: string; subfolder: string }>; detail?: string; progress?: { value: number; max: number } };
   },

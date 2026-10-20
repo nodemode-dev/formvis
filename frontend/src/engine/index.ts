@@ -1677,6 +1677,7 @@ export class Engine {
       const now = this.timelineOf(p).video, v = s.video ? structuredClone(s.video) as VideoTimeline : null;
       if (v && now) v.current = Math.min(now.current, v.duration - 1);
       this.timelines.set(p, { ...this.timelineOf(p), video: v });
+      if (v) VD.videoShow(this.videoHost, p, v, v.current);
       this.emit('timeline', null);
     }
     this.focus(p, s.doc.layers.some((l) => l.id === s.activeId) ? s.activeId : null);

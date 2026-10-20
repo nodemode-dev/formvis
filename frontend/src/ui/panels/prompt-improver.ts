@@ -1,6 +1,6 @@
 import type { Engine } from '../../engine';
 import { api, ApiError } from '../../io/api';
-import { fillPlaceholders, syncTemplates, usableTemplates } from '../../io/prompt-templates';
+import { fillPlaceholders, syncTemplates, usableTemplates, USE_CASES } from '../../io/prompt-templates';
 import { el, setHidden, setText } from '../dom';
 import { PromptHistory } from './prompt-history';
 
@@ -46,6 +46,7 @@ export function referenceViews(ordered: () => Promise<Array<{ name: string; blob
 export class PromptImprover {
   readonly el = el('<div class="cv-improve"></div>');
   private readonly template = el<HTMLSelectElement>('<select class="cv-input" aria-label="Prompt template"></select>');
+  private readonly useCase = el<HTMLSelectElement>(`<select class="cv-input" aria-label="Prompt use" title="What the prompt is for: picks the starter template and tells the model">${['<option value="">Any use</option>', ...USE_CASES.map((u) => `<option value="${u.id}">${u.label}</option>`)].join('')}</select>`);
   private readonly go = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Improve</button>');
   private readonly undo = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost" hidden>Restore</button>');
   private readonly note = el('<span class="cv-note cv-improve-note" role="status"></span>');
@@ -65,7 +66,11 @@ export class PromptImprover {
     this.stepBack.addEventListener('click', () => { this.history.undo(); this.field.focus(); });
     this.stepOn.addEventListener('click', () => { this.history.redo(); this.field.focus(); });
     this.field.addEventListener('input', () => this.history.onChange());
-    this.el.append(this.template, this.go, this.undo, this.stepBack, this.stepOn, this.note);
+    this.el.append(this.useCase, this.template, this.go, this.undo, this.stepBack, this.stepOn, this.note);
+    this.useCase.addEventListener('change', () => {
+      const u = USE_CASES.find((x) => x.id === this.useCase.value);
+      if (u && [...this.template.options].some((o) => o.value === u.template)) this.template.value = u.template;
+    });
     this.go.addEventListener('click', () => void this.improve());
     (this.field as HTMLElement).addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'u') { e.preventDefault(); if (!this.go.disabled) void this.improve(); } });
     this.go.title = 'Rewrite the prompt with the language model in Preferences (Ctrl+U in the prompt)';
@@ -94,7 +99,8 @@ export class PromptImprover {
     try {
       const picture = this.view ? await this.view().catch(() => '') : '';
       const named = this.refs ? await this.refs().catch(() => []) : [];
-      const better = await api.improvePrompt(prompt, fillPlaceholders(t?.text ?? '', { prompt }), picture, named);
+      const u = USE_CASES.find((x) => x.id === this.useCase.value);
+      const better = await api.improvePrompt(prompt, `${fillPlaceholders(t?.text ?? '', { prompt })}${u ? `\n\nThe prompt is for ${u.purpose}.` : ''}`, picture, named);
       this.original = this.field.value;
       this.history.set(better.prompt);
       setHidden(this.undo, false);

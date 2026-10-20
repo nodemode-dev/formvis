@@ -2,6 +2,15 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## ComfyUI upscaler source, prompt use cases, canvas srcover backdrop, GPU brush everywhere but opacity dynamics, video undo frame · _v1.92.5 (ui/panels/generative-dialog.ts, io/api.ts, io/comfy.ts, io/prompt-templates.ts, ui/panels/prompt-improver.ts, gpu/native-display.ts, engine/stroke.ts, engine/dab-buffer.ts, engine/index.ts, engine/transfer-pow.ts; tests)
+
+- ComfyUI upscalers load into an optgroup after the dialog opens (an unreachable ComfyUI must not delay it) and only the group's options are swapped; the result is drawn at the dialog's factor like the local upscalers.
+- Prompt use: the purpose sentence is appended on the window side, so the engine's /improve request is unchanged; the five new starter texts avoid apostrophes and braces so the in-step backend test can parse the TypeScript list with one regex.
+- Native backdrop: the canvas composites premultiplied source-over as `s + ((d * (256 - sa)) >> 8)` on colour and alpha (the legacy 8-bit blitter rule; not (v + 255) >> 8), exact at opacity 1; below 1 it stays on the float path. Removed `if (l.hood?.kind === 2) return 'an HDR Toning adjustment layer, ...';`, the Blend If underlying-range condition and `const BLEND_IF_OPEN: readonly number[] = [0, 0, 255, 255];`. Masked Hue and Reflect folders, Vivid Light folders and clipped groups still refuse.
+- GPU brush: layOnGpu now declines only for opacity dynamics (buf.ceil); the lifted paths read coverage only through compose after readInto. The fast path needs exactly zero in m[1] and m[2] (the old 1e-9 tolerance would change rounding). Open: a flat stroke whose window grows past the GPU's maximum texture falls back mid-stroke in ensure() and then differs from a pure CPU stroke (seen at 12,755 px on SwiftShader's 8,192 limit).
+- Video undo: restore() sets the playhead to the current frame but the snapshot's rasters are of the frame the step was taken at; it now shows the playhead's frame from the restored layers.
+- transfer-pow: table-based log and exp (3e-14 relative error), bit-identical in TS and wasm, still unwired (Exposure slower than Math.pow in Chromium).
+
 ## Layered TIFF open, exact GPU brush coverage, native Hue folders, staged deep transfer kernel · _v1.92.4 (app.ts, engine/dab-buffer.ts, engine/gpu-dab.ts, engine/stroke.ts, gpu/native-display.ts, engine/index.ts, engine/transfer-pow.ts, engine/kernels.ts, engine/wasm-kernels.ts; tests)
 
 - Layered TIFF: readLayeredTiff (1.69.6) was only reachable after the PSD branch of openFiles, which a .tif never entered; importFiles now sends a TIFF opened as a document to openFiles when its tag 37724 block holds a Layr (8-bit) record. 16 and 32-bit layer records stay on the flat path (the reader returns null for them).

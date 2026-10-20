@@ -513,6 +513,11 @@ STARTER_TEMPLATES = {
     "Richer detail": "You rewrite prompts for an image model. Keep the subject and the intent. Add concrete visual detail: materials, lighting, lens and framing, colour and mood. Write one or two sentences.",
     "Fill a selection": "You rewrite prompts for filling a selected area of an existing picture. Describe only what should appear in that area, so that it blends with what surrounds it: the same light, perspective and texture. Write one sentence.",
     "Short and plain": "You tidy prompts for an image model: correct the spelling, remove filler words, and keep it short and literal.",
+    "Generate a new picture": "You rewrite prompts for making a new picture from nothing. Keep the subject and the intent. Name the subject, its setting, the composition, the light and the style, in the order a person would look at the picture. Write two or three sentences.",
+    "Edit instruction": "You rewrite prompts that tell an image model how to change an existing picture. Write one imperative sentence that names what to change and what to keep as it is. Do not describe the whole picture.",
+    "Photographic": "You rewrite prompts for a photographic picture. Keep the subject and the intent. Add what a photographer would set: lens and focal length, aperture and depth of field, light and its direction, time of day, film or sensor look, and framing. Write two sentences.",
+    "Tag list": "You rewrite prompts as a list of short tags for an image model. Keep the subject and the intent. Give the subject first, then setting, style, light and quality tags, each two words at most, separated by commas, with no sentences.",
+    "Transparent asset": "You rewrite prompts for a single object that will be cut out and placed on other pictures. Describe the object alone on a plain, even background, whole and centred, with soft even light and no cast shadow, no text and no other objects. Write one or two sentences.",
 }
 
 

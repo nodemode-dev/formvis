@@ -4,6 +4,15 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.92.5 · 2026-10-20
+
+- Upscale 2x/4x can run an upscaler file ComfyUI lists (.pth included) as a "ComfyUI upscaler" source in the Model list, with progress, stop and named missing nodes.
+- Improve Prompt gains a "Prompt use" choice (Generate a new picture, Fill a selection, Edit instruction, Photographic, Tag list, Transparent asset) that picks the starter template and tells the model what the prompt is for; five new starter templates, kept in step between the window and the engine.
+- Native renderer: top-level Normal layers use the canvas's own 8-bit source-over, so the backdrop matches the CPU exactly; Saturation, Color Burn and Reflect folders, HDR Toning and Blend If on the colours beneath now draw natively.
+- GPU brush coverage also runs for Wet Edges, texture, dual brush, colour dynamics, the Mixer Brush and strokes on tiled layers, byte-identical to the CPU; the CPU dab has a float32 fast path again (about 2.3x faster than 1.92.4's generic loop).
+- Video: undo and redo of a timeline step show the playhead's frame instead of the frame the step was taken at.
+- Tests: video footage from real clips (from file, replace, reload, interpret, Render Video MP4, GIF and PNG sequence), the .pdn layer reader with a hand-built file, prompt use cases, the ComfyUI upscaler in the dialog, Linux packaging files, libcheck, data-folder switches and the engine lock, desktop interface zoom, HDR display configuration and pointer prediction.
+
 ## 1.92.4 · 2026-10-20
 
 - File > Open opens a layered TIFF with its layers (the layer reader was never reached: every TIFF went to the flat decoder).

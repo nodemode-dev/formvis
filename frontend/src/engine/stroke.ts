@@ -505,7 +505,7 @@ export class PixelStroke {
 
   /** Preferences > Performance > GPU brush coverage: a dab laid in a float texture on the GPU, read back at compose. */
   private layOnGpu(tip: TipAlpha, m: Mat, k: number): boolean {
-    if (!this.gpuWanted || this.tiled || this.varied || this.wetInner || this.textureTile || this.dualPaint || this.buf.ceil) return false;
+    if (!this.gpuWanted || this.buf.ceil) return false;
     this.gpuCover ??= GpuDabCoverage.open(this.ww, this.wh);
     if (!this.gpuCover || this.gpuCover.lost) { this.gpuWanted = false; return false; }
     this.gpuCover.lay(tip, m, k);
