@@ -43,7 +43,7 @@ export class GenerationOptions {
     this.paint();
   }
 
-  /** The route the chosen model takes: 'local' (this computer), 'fal', or another provider or a workflow, which take neither. */
+  /** The route the chosen model takes: 'local' (this computer), 'fal', or a workflow, which takes neither. */
   forModel(choice: string): void {
     const kind = choice.startsWith('local:') ? 'local' : choice === 'fal' ? 'fal' : 'other';
     const moved = choice !== this.choice;

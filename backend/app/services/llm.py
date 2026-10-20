@@ -1,5 +1,5 @@
-"""Prompt improvement through a language model (1.51.5, the capability plan): any service speaking the OpenAI-compatible
-chat API (OpenAI, OpenRouter, DeepSeek; on this computer Ollama and LM Studio). Its address, model and optional key
+"""Prompt improvement through a language model (1.51.5, the capability plan): any service speaking the common chat completions
+API, on this computer or hosted. Its address, model and optional key
 are kept in the engine's data folder, readable only by the user; the key is never handed back to the page."""
 
 import json
@@ -247,7 +247,7 @@ def _call(path: str, body: dict | None = None, timeout: float = 120) -> dict:
 
 
 def chat(messages: list, tools: list) -> dict:
-    """The assistant (1.52.2): one step of a conversation with tools, as the OpenAI-compatible chat API takes it; the
+    """The assistant (1.52.2): one step of a conversation with tools, as a chat completions API takes it; the
     model's message (its text and any tool calls). The key stays here."""
     if not isinstance(messages, list) or not 0 < len(messages) <= 200:
         raise LlmError("The conversation is empty or too long.", 400)

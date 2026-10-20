@@ -41,8 +41,6 @@ export interface OutputItem { name: string; path: string; modified: number; size
 /** Marks the calls that read or write files by path (1.87.0): the engine answers them only for formvis's own window. */
 const LOCAL = { 'X-Formvis': '1' };
 export interface GenerativeStatus { configured: boolean; source: 'environment' | 'settings' | null; last4?: string; refused?: boolean; /** Seconds since 1970 when the service refused the key, 0 when it has not. */ refusedAt?: number; fillModel: string; eraseModel: string; upscaleModel: string }
-/** A generation provider beside fal (1.58.4, L7): OpenAI, Google, Black Forest Labs or Ideogram. */
-export interface ProviderStatus { id: string; name: string; model: string; fill: boolean; configured: boolean; source: 'environment' | 'settings' | null; last4?: string; refused?: boolean; refusedAt?: number }
 export interface LlmRow { id: string; name: string; baseUrl: string; model: string; vision: boolean; hasKey: boolean; last4?: string; refusedAt?: number }
 export interface LlmStatus { configured: boolean; baseUrl: string; model: string; vision: boolean; active: string; hasKey: boolean; rows: LlmRow[]; store: 'system' | 'file' }
 export interface HfToken { hasKey: boolean; last4: string; store: 'system' | 'file' }
@@ -245,25 +243,14 @@ export const api = {
     return { prompt: r.prompt, restored: r.restored ?? [], seen: r.seen === true, shown: r.shown ?? [], dropped: r.dropped ?? [], added: r.added ?? [] };
   },
 
-  /** Edit > Generate Image (1.51.2): a picture from a prompt alone through fal, or (1.58.4) through another provider,
+  /** Edit > Generate Image (1.51.2): a picture from a prompt alone through fal,
    *  near the document's shape. */
-  async generateImage(prompt: string, width: number, height: number, provider = 'fal', seed?: number): Promise<Blob> {
-    return (await request('/generative/generate', { method: 'POST', body: form({ prompt, width: String(width), height: String(height), provider, ...(seed !== undefined && seed >= 0 ? { seed: String(seed) } : {}) }) })).blob();
+  async generateImage(prompt: string, width: number, height: number, seed?: number): Promise<Blob> {
+    return (await request('/generative/generate', { method: 'POST', body: form({ prompt, width: String(width), height: String(height), ...(seed !== undefined && seed >= 0 ? { seed: String(seed) } : {}) }) })).blob();
   },
   /** Edit > Free Helper Models: the engine lets go of the ONNX sessions it holds; the names it freed. */
   async freeHelpers(): Promise<string[]> {
     return ((await (await request('/helpers/free', { method: 'POST' })).json()) as { freed: string[] }).freed;
-  },
-  /** The providers beside fal (1.58.4, L7): which have keys, never the keys themselves. */
-  async providers(): Promise<ProviderStatus[]> {
-    try { return (await (await request('/generative/providers')).json()) as ProviderStatus[]; } catch { return []; }
-  },
-  /** A provider's key, kept in the system's password store by the engine. */
-  async saveProviderKey(id: string, key: string): Promise<ProviderStatus[]> {
-    return (await (await request(`/generative/providers/${id}/key`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key }) })).json()) as ProviderStatus[];
-  },
-  async forgetProviderKey(id: string): Promise<ProviderStatus[]> {
-    return (await (await request(`/generative/providers/${id}/key`, { method: 'DELETE' })).json()) as ProviderStatus[];
   },
   /** The Hugging Face token for gated helper models: whether one is kept and its last four characters. */
   async hfToken(): Promise<HfToken | null> {
@@ -389,13 +376,12 @@ export const api = {
     return (await (await request('/generative/key', { method: 'DELETE' })).json()) as GenerativeStatus;
   },
   /** The filled image for `image` with white in `mask` marking what to fill; an empty prompt removes. */
-  async generativeFill(image: Blob, mask: Blob, prompt: string, provider = 'fal', seed?: number): Promise<Blob> {
+  async generativeFill(image: Blob, mask: Blob, prompt: string, seed?: number): Promise<Blob> {
     const f = new FormData();
     f.append('image', image, 'image.png');
     f.append('mask', mask, 'mask.png');
     f.append('prompt', prompt);
-    if (provider === 'fal' && seed !== undefined) f.append('seed', String(seed));   // fal's fill with a prompt takes a seed
-    if (provider !== 'fal') f.append('provider', provider);   // another provider's fill (36.12), the engine's /fill takes it since 1.58.4
+    if (seed !== undefined) f.append('seed', String(seed));   // fal's fill with a prompt takes a seed
     return (await request('/generative/fill', { method: 'POST', body: f })).blob();
   },
   /** `image` upscaled 2 or 4 times. */

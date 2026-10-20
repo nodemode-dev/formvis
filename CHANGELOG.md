@@ -4,6 +4,13 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.92.12 · 2026-10-20
+
+- View > Flip Horizontal mirrors about the centre of the visible canvas, so the picture no longer slides under the side panels; painting lands under the pointer.
+- One cloud provider by design: the OpenAI, Google, Black Forest Labs and Ideogram generation providers are removed; Generate Image, Generative Fill and the Generate panel offer fal, ComfyUI and models on this computer.
+- Typed arithmetic (100+20) works in the New Document width, height and resolution, the layer Opacity and Fill, the zoom boxes and the Properties position and size fields.
+- Native renderer: masked Vivid Light and Reflect folders draw on the canvas renderer again (6 and 12 levels off natively, measured in the desktop window).
+
 ## 1.92.11 · 2026-10-20
 
 - SVG: Open, Import, drop and paste ask for a size (width, height, percent, or pixels per inch when the file declares a physical size) and how it comes in: pixels, a smart layer redrawn sharp from its SVG when scaled, or editable shape layers; choices are remembered.

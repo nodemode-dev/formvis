@@ -14,6 +14,7 @@ import { isWasmKind, wasmIdOf } from '../engine/wasm-plugin';
 import { loadPrefs } from './prefs';
 import { t } from './i18n';
 import { paint } from './palette';
+import { evalExpr } from './number-fields';
 import type { PopupMenu } from './menu';
 
 const THUMB = 60;
@@ -162,7 +163,7 @@ export class LayersPanel {
       this.opacity.value = String(v);
       if (Math.round((engine.activeLayer?.opacity ?? 1) * 100) !== v) engine.setOpacity(v / 100);
     };
-    this.opacity.addEventListener('change', () => { const n = parseFloat(this.opacity.value); if (Number.isFinite(n)) commit(n); else this.syncProps(); });
+    this.opacity.addEventListener('change', () => { const n = evalExpr(this.opacity.value) ?? parseFloat(this.opacity.value); if (Number.isFinite(n)) commit(n); else this.syncProps(); });
     this.opacity.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { this.opacity.blur(); return; }
       if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
@@ -172,7 +173,7 @@ export class LayersPanel {
     // Fill, as Opacity: its own numeric field, one undo step a commit (the pixels fade, the styles do not).
     this.fill = q<HTMLInputElement>(root, '.cv-fill-field');
     const commitFill = (pct: number): void => { const v = Math.min(100, Math.max(0, Math.round(pct))); this.fill.value = String(v); if (Math.round((engine.activeLayer?.fill ?? 1) * 100) !== v) engine.setFill(v / 100); };
-    this.fill.addEventListener('change', () => { const n = parseFloat(this.fill.value); if (Number.isFinite(n)) commitFill(n); else this.syncProps(); });
+    this.fill.addEventListener('change', () => { const n = evalExpr(this.fill.value) ?? parseFloat(this.fill.value); if (Number.isFinite(n)) commitFill(n); else this.syncProps(); });
     this.fill.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { this.fill.blur(); return; }
       if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;

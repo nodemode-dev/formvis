@@ -1,5 +1,5 @@
 import type { Engine } from '../../engine';
-import { api, onServiceChange, serviceReady, type GenerativeStatus, type ProviderStatus } from '../../io/api';
+import { api, onServiceChange, serviceReady, type GenerativeStatus } from '../../io/api';
 import { el, patchList, q, setHidden, setText, setTitle, setValue } from '../dom';
 import { icon } from '../icons';
 import { onLanguage, t } from '../i18n';
@@ -15,7 +15,7 @@ import { PromptHistory } from './prompt-history';
 /** The Generate panel (Window > Generate): the generative side of formvis in one place, always in reach. Generate makes a
  *  picture from a prompt with any model Generate Image offers (the same list and the same run); Edit with AI puts the
  *  generative commands under the selection, each running its own command so it is on or off as in the menus; Connections
- *  holds the ComfyUI and NodeMode addresses with a Test for each, and the API keys of the cloud providers (kept by the
+ *  holds the ComfyUI and NodeMode addresses with a Test for each, and the fal API key (kept by the
  *  engine, never shown back). Built once; everything after changes text, state and attributes in place. */
 
 export interface GeneratePanelDeps {
@@ -104,7 +104,6 @@ export class GeneratePanel {
   private readonly secs = new Map<SecId, { head: HTMLButtonElement; body: HTMLElement }>();
   private readonly buttons = new Map<string, HTMLButtonElement>();
   private readonly conns: Record<Kind, Conn>;
-  private providers: ProviderStatus[] = [];
   private fal: GenerativeStatus | null = null;
   private chosen: string | null = null;
   private readonly opts = new GenerationOptions();
@@ -258,7 +257,7 @@ export class GeneratePanel {
     // Hovering the panel refreshes what can change behind it: the commands, the addresses, the models (at most every ten seconds).
     this.group.root.addEventListener('pointerenter', () => { this.sync(); this.refreshUrls(); if (Date.now() - this.lastModels > 10_000) void this.refreshModels(); });
     onLanguage(() => { this.retext(); this.paintShapes(); this.paintGo(); for (const c of Object.values(this.conns)) this.paintConn(c); this.renderKeys(); this.sync(); });
-    onServiceChange((up) => { if (up) void this.refresh(); else { this.fal = null; this.providers = []; this.renderKeys(); this.sync(); } });
+    onServiceChange((up) => { if (up) void this.refresh(); else { this.fal = null; this.renderKeys(); this.sync(); } });
     void serviceReady().then(() => this.refresh());
   }
 
@@ -335,9 +334,7 @@ export class GeneratePanel {
   }
 
   private missingKey(choice: string): { id: string; name: string } | null {
-    if (choice === 'fal') return this.fal && !this.fal.configured ? { id: 'fal', name: 'fal' } : null;
-    const p = choice.startsWith('provider:') ? this.providers.find((x) => `provider:${x.id}` === choice) : undefined;
-    return p && !p.configured ? { id: p.id, name: p.name } : null;
+    return choice === 'fal' && this.fal && !this.fal.configured ? { id: 'fal', name: 'fal' } : null;
   }
 
   private async generate(): Promise<void> {
@@ -351,12 +348,12 @@ export class GeneratePanel {
     this.paintGo();
     try {
       const added = await runGeneration(this.engine, {
-        prompt, choice, providers: this.providers, size: this.asked(), cap: Number(this.cap.value),   // none: the picture's own shape (a new 1024 by 1024 picture when none is open)
+        prompt, choice, size: this.asked(), cap: Number(this.cap.value),   // none: the picture's own shape (a new 1024 by 1024 picture when none is open)
         target: this.result.value === 'document' ? 'document' : this.result.value === 'base' ? 'base' : 'layer', transparent: this.clear.checked,
         references: () => this.referencePictures(),
         ...this.opts.request(), onSeed: (s) => this.opts.used(s), onStop: () => { this.stopped = true; setText(this.status, t('Stopped.')); },
         status: (text) => setText(this.status, text), stopped: () => this.stopped, heard: (r) => this.deps.heard(r),
-        keyHint: { fal: t('Add a fal API key first, in Connections below.'), provider: (name) => t(`Add a ${name} API key first, in Connections below.`) },
+        keyHint: { fal: t('Add a fal API key first, in Connections below.') },
       });
       if (added) {
         const base = this.result.value === 'base';
@@ -377,7 +374,6 @@ export class GeneratePanel {
     let g: Awaited<ReturnType<typeof generationModels>>;
     try { g = await generationModels(this.conns.comfyui.state === 'up'); } catch { return; }
     if (run !== this.modelRun) return;
-    this.providers = g.providers;
     this.fal = g.fal;
     this.localSizes = g.sizes;
     fillModelPicker(this.model, g.models);
@@ -392,7 +388,7 @@ export class GeneratePanel {
 
   /** The layers marked Reference, listed as @img1, @img2 and on (the first four, top of the stack first), patched in place. */
   private syncRefs(): void {
-    const layers = referenceLayers(this.engine).slice(0, 4), choice = this.model.value, takes = !(choice === 'fal' || choice.startsWith('local:') || choice.startsWith('provider:'));
+    const layers = referenceLayers(this.engine).slice(0, 4), choice = this.model.value, takes = !(choice === 'fal' || choice.startsWith('local:'));
     patchList(this.refList, layers.map((l, i) => ({ id: l.id, name: l.name, i })), {
       key: (r) => r.id,
       create: (r) => { const row = el('<div class="cv-genp-ref"><button class="cv-genp-reftok" type="button"></button><button class="cv-genp-refname" type="button"></button></div>'); this.fillRef(row, r); return row; },
@@ -560,7 +556,6 @@ export class GeneratePanel {
   private keyRows(): KeyRow[] {
     return [
       { id: 'fal', name: 'fal', configured: !!this.fal?.configured, source: this.fal?.source ?? null, engine: this.fal !== null },
-      ...this.providers.map((p) => ({ id: p.id, name: p.name, configured: p.configured, source: p.source, engine: true })),
     ];
   }
 
@@ -597,10 +592,9 @@ export class GeneratePanel {
     if (btn.getAttribute('aria-disabled') === 'true') return;
     setAttr(btn, 'aria-disabled', 'true');
     try {
-      if (id === 'fal') this.fal = await api.saveGenerativeKey(key);
-      else this.providers = await api.saveProviderKey(id, key);
+      this.fal = await api.saveGenerativeKey(key);
       input.value = '';
-      setText(this.keyMsg, t(id === 'fal' ? 'The fal key is kept by the formvis engine on this computer.' : `The ${name} key is kept in your system's password store.`));
+      setText(this.keyMsg, t('The fal key is kept by the formvis engine on this computer.'));
       this.renderKeys();
       void this.refreshModels();
     } catch (err) {

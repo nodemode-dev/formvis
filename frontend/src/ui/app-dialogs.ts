@@ -19,6 +19,7 @@ import { chooseKys } from './kys-import';
 import { el, patchList, q, setClass, setDisabled, setHidden, setText, setValue } from './dom';
 import { languages, onLanguage, setLanguage, t, type Lang } from './i18n';
 import { icon } from './icons';
+import { evalExpr } from './number-fields';
 import { brandMark } from './brand';
 import { THEMES, readChoice, setAccent, setIntensity, setTheme, themeSwatchesHtml } from './themes';
 import { toast } from './toast';
@@ -168,11 +169,11 @@ export class NewCanvasDialog extends Dialog {
     this.createBtn = this.button('Create', 'primary', () => void this.create());
     this.link.addEventListener('click', () => { const on = !this.link.classList.contains('is-on'); this.link.classList.toggle('is-on', on); this.link.setAttribute('aria-pressed', String(on)); });
     const fromUnit = (v: number): number => { const u = this.unit.value as Unit, r = this.ppi(); return Math.max(1, Math.round(u === 'px' ? v : u === 'col' ? (columnsToMm(v) / 25.4) * r : (v / PER_INCH[u]) * r)); };
-    this.wIn.addEventListener('change', () => { const n = parseFloat(this.wIn.value); if (!Number.isFinite(n)) return this.sync(); const w = fromUnit(n); this.px = { w, h: this.linked() ? Math.max(1, Math.round((w * this.px.h) / this.px.w)) : this.px.h }; this.picked = null; this.sync(); });
-    this.hIn.addEventListener('change', () => { const n = parseFloat(this.hIn.value); if (!Number.isFinite(n)) return this.sync(); const h = fromUnit(n); this.px = { h, w: this.linked() ? Math.max(1, Math.round((h * this.px.w) / this.px.h)) : this.px.w }; this.picked = null; this.sync(); });
+    this.wIn.addEventListener('change', () => { const n = evalExpr(this.wIn.value) ?? parseFloat(this.wIn.value); if (!Number.isFinite(n)) return this.sync(); const w = fromUnit(n); this.px = { w, h: this.linked() ? Math.max(1, Math.round((w * this.px.h) / this.px.w)) : this.px.h }; this.picked = null; this.sync(); });
+    this.hIn.addEventListener('change', () => { const n = evalExpr(this.hIn.value) ?? parseFloat(this.hIn.value); if (!Number.isFinite(n)) return this.sync(); const h = fromUnit(n); this.px = { h, w: this.linked() ? Math.max(1, Math.round((h * this.px.w) / this.px.h)) : this.px.w }; this.picked = null; this.sync(); });
     this.unit.addEventListener('change', () => this.sync());
     this.sizeClass.addEventListener('change', () => { if (this.picked?.limit) this.px = this.classed(this.picked); this.sync(); });
-    this.res.addEventListener('change', () => this.sync());
+    this.res.addEventListener('change', () => { const r = evalExpr(this.res.value); if (r !== null) this.res.value = String(Math.round(r * 100) / 100); this.sync(); });
     for (const i of [this.name, this.wIn, this.hIn, this.res]) i.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLInputElement).blur(); void this.create(); } });
     this.pick(PRESET_GROUPS[3].presets[0]);
   }
@@ -288,7 +289,7 @@ export class NewCanvasDialog extends Dialog {
     const own: DocPreset[] = [];
     for (const m of found.models) {
       const shapes = shapesFor(m.value, found.sizes[m.value] ?? []);
-      if (m.disabled || shapes === SIZES || m.value.startsWith('provider:')) continue;
+      if (m.disabled || shapes === SIZES) continue;
       const name = m.label.replace(/ \((this computer)\)$/, ''), limit = m.value === 'fal' ? 1440 : 2048;
       for (const s of shapes) own.push({ name: `${name}: ${s[1].replace(/ \(.*\)$/, '')}`, w: s[2], h: s[3], ppi: 72, limit });
     }
@@ -1149,7 +1150,7 @@ export class SettingsDialog extends Dialog {
   private readonly llmModel = el<HTMLInputElement>('<input class="cv-input" type="text" aria-label="Language model" spellcheck="false" list="cv-llm-models" placeholder="llama3.2">');
   private readonly llmModels = el('<datalist id="cv-llm-models"></datalist>');
   private readonly llmKey = el<HTMLInputElement>('<input class="cv-input" type="password" aria-label="Language model key" autocomplete="off" spellcheck="false">');
-  private readonly llmNote = el('<p class="cv-note cv-llm-note" role="status">Any service with the OpenAI-compatible chat API, at the address you type: a model on this computer or a hosted one with your key. Add as many rows as you like and pick the one in use. The engine keeps each key and never shows it.</p>');
+  private readonly llmNote = el('<p class="cv-note cv-llm-note" role="status">Any service with a chat completions API, at the address you type: a model on this computer or a hosted one with your key. Add as many rows as you like and pick the one in use. The engine keeps each key and never shows it.</p>');
   private readonly llmRows = new LlmRows({ url: this.llmUrl, model: this.llmModel, key: this.llmKey }, (t) => setText(this.llmNote, t));
   private readonly tplPick = el<HTMLSelectElement>('<select class="cv-input" aria-label="Prompt template"></select>');
   private readonly tplName = el<HTMLInputElement>('<input class="cv-input" type="text" aria-label="Template name" maxlength="80">');

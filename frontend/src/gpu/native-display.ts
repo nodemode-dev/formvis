@@ -78,6 +78,7 @@ export class NativeDisplay implements ScreenDisplay {
           if (l.mask || foldersWithin(l.sub)) return 'a masked folder with clipped layers, which the native renderer does not match the CPU in within two levels yet';
         }
         if (!GROUP_BLENDS.has(l.blend)) return 'a folder in a blend mode the native renderer does not match the CPU in yet';
+        if ((l.blend === 'vivid-light' || l.blend === 'reflect') && (l.mask || foldersWithin(l.sub))) return 'a masked Vivid Light or Reflect folder, which the native renderer does not match the CPU in within two levels yet';
         const inner = this.unsupported(l.sub);
         if (inner) return inner;
         continue;

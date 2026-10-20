@@ -35,7 +35,7 @@ replaces an outside program or a model too large for the test machine, and says 
 
 | Capability | Needs | Verified |
 |---|---|---|
-| Improve Prompt, the assistant, Help's Ask | a language model server on this computer (Ollama or LM Studio; any OpenAI-compatible address) | stand-in model: tests/test_llm.py, e2e/test_assistant.py, e2e/test_help.py |
+| Improve Prompt, the assistant, Help's Ask | a language model server on this computer (any chat completions address) | stand-in model: tests/test_llm.py, e2e/test_assistant.py, e2e/test_help.py |
 | Send to NodeMode | NodeMode running on this computer | stand-in: tests/test_nodemode.py |
 | Editing by asking, from Claude Code, Codex or Cursor | the client; formvis's side (the MCP server, its 134 tools, the window) runs here, the agent's own model wherever its provider runs it | the real engine and window, an agent's part played: e2e/test_agent_editing.py, e2e/test_agent_consent.py, tests/test_mcp.py, tests/test_agents_setup.py |
 | Send to ComfyUI, Run ComfyUI Workflow, ComfyUI workflows as models | ComfyUI (that is what they are for) | stand-in: tests/test_comfyui.py |

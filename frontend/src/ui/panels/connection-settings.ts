@@ -637,9 +637,9 @@ export class LlmRows {
   }
 }
 
-const KEY_LINKS: Readonly<Record<string, string>> = { fal: 'https://fal.ai/dashboard/keys', openai: 'https://platform.openai.com/api-keys', google: 'https://aistudio.google.com/apikey', bfl: 'https://dashboard.bfl.ai/api', ideogram: 'https://ideogram.ai/manage-api' };
+const KEY_LINKS: Readonly<Record<string, string>> = { fal: 'https://fal.ai/dashboard/keys' };
 
-/** Preferences > Plugins > API keys: fal, the providers already in formvis and the language model rows, each with whether a
+/** Preferences > Plugins > API keys: fal and the language model rows, each with whether a
  *  key is kept, where, its last four characters, whether the service refused it, a link to get one and Clear. The group
  *  collapses; rows are built once and patched. */
 export class ApiKeysSection {
@@ -654,9 +654,9 @@ export class ApiKeysSection {
   }
 
   async refresh(): Promise<void> {
-    const [fal, others, lm] = await Promise.all([api.generativeStatus(), api.providers(), api.llmStatus()]);
+    const [fal, lm] = await Promise.all([api.generativeStatus(), api.llmStatus()]);
     this.llm = new Map((lm?.rows ?? []).map((r) => [`llm:${r.id}`, r]));
-    this.rows = [...(fal ? [{ id: 'fal', name: 'fal', configured: fal.configured, source: fal.source, last4: fal.last4 ?? '', refusedAt: fal.refused ? fal.refusedAt || -1 : 0 }] : []), ...others.map((p) => ({ id: p.id, name: p.name, configured: p.configured, source: p.source, last4: p.last4 ?? '', refusedAt: p.refused ? p.refusedAt || -1 : 0 })),
+    this.rows = [...(fal ? [{ id: 'fal', name: 'fal', configured: fal.configured, source: fal.source, last4: fal.last4 ?? '', refusedAt: fal.refused ? fal.refusedAt || -1 : 0 }] : []),
       ...(lm?.rows ?? []).map((r) => ({ id: `llm:${r.id}`, name: r.name, configured: r.hasKey, source: 'settings', last4: r.last4 ?? '', refusedAt: r.refusedAt ?? 0 }))];
     patch(this.list, this.rows, {
       key: (r) => r.id,
@@ -679,7 +679,7 @@ export class ApiKeysSection {
   private async clear(id: string, name: string): Promise<void> {
     try {
       const row = this.llm.get(id);
-      if (row) await api.llmSaveRow(row.id, row, null, true); else if (id === 'fal') await api.forgetGenerativeKey(); else await api.forgetProviderKey(id);
+      if (row) await api.llmSaveRow(row.id, row, null, true); else if (id === 'fal') await api.forgetGenerativeKey();
       setText(this.note, `${name} key cleared.`);
     } catch (err) { setText(this.note, failure(err, 'Could not clear the key.')); }
     await this.refresh();

@@ -4,6 +4,7 @@ import { baseDirection, paraOf } from '../engine/text';
 import { TYPE_LANGUAGES, setType } from '../extensions/tools/type';
 import { axesOf, featuresFromText, featuresToText, variationsFromText, variationsToText } from '../engine/opentype';
 import { el, setHidden, setText } from './dom';
+import { evalExpr } from './number-fields';
 import { onLanguage, t, t as tr } from './i18n';
 import { fontGroups, previewFont } from './fonts';
 import { typedAttrs, typedParaSet, typedParas, typedStyle, type ParaPatch } from './text-editor';
@@ -26,7 +27,7 @@ function numField(unit: string, label: string, min: number, max: number, step: n
   const input = root.querySelector('input') as HTMLInputElement;
   setText(root.querySelector('.cv-unit') as HTMLElement, unit);
   const put = (v: number): void => { const c = Math.min(max, Math.max(min, v)); input.value = String(Math.round(c * 100) / 100); commit(c); };
-  input.addEventListener('change', () => { const n = parseFloat(input.value); if (Number.isFinite(n)) put(n); });
+  input.addEventListener('change', () => { const n = evalExpr(input.value) ?? parseFloat(input.value); if (Number.isFinite(n)) put(n); });
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { input.blur(); return; }
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;

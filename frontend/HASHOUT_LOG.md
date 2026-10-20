@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Flip View centre, providers removed, numeric arithmetic, native masked division folders refused · _v1.92.12 (ui/stage.ts, io/api.ts, ui/panels/generate-image.ts, generate-panel.ts, generative-dialog.ts, connection-settings.ts, generation-options.ts, ui/app-dialogs.ts, ui/layers.ts, ui/status.ts, ui/navigator.ts, ui/properties.ts, gpu/native-display.ts; backend routers/generative.py, services/providers.py removed)
+
+- Flip View: the canvases pivot about the stage centre, but the visible area is narrower by Viewport.insetRight (the side column lies over the canvas). turn() adds translateX(-insetRight) before scaleX(-1), inside the rotate and pixel-aspect steps; unturn mirrors with `w - Viewport.insetRight - p.x`; layoutChanged re-runs turn() while flipped.
+- Providers: the hosted OpenAI, Google, Black Forest Labs and Ideogram paths were removed under the owner's one-cloud-provider rule (services/providers.py, the /generative/providers routes, the provider form field, PROVIDER_SHAPES and PROVIDER_NAMES, the key rows). A user's existing providers.json is no longer read.
+- Arithmetic: the text-type boxes (New Document size and resolution, Opacity, Fill, zoom boxes, Properties numbers) used parseFloat, so "100+20" read 100; they now use evalExpr from ui/number-fields.ts with `?? parseFloat` so "382%" and "12px" still parse.
+- Native: added `if ((l.blend === 'vivid-light' || l.blend === 'reflect') && (l.mask || foldersWithin(l.sub))) return '...'`; the 1.92.11 soft-mask fix covers top-level masked layers, but folder masks reach the children as the folders chain and stay 6 to 12 levels off on feathered edges through the window route. Hue folders stay native (max 1).
+- Not bugs: D27's 60% cut shows an error toast and a 90% cut shows the PSD report sheet (waits for Import); Alt-drag copy and drag to another tab work with Alt held across the drag; smart-object warps add history steps when driven through their phases.
+
 ## SVG size and smart layers, native soft masks, renderer failure label · _v1.92.11 (ui/panels/svg-import.ts, io/images.ts, engine/index.ts, app.ts, ui/i18n/de.ts fr.ts es.ts, gpu/fallback.ts, gpu/native-display.ts; native/formvis-render/src/composite.rs; src-tauri build.rs and capabilities)
 
 - SVG smart layer: SmartObject.original holds the SVG text (mime image/svg+xml), which the project writer already saves. After endTransform or setLayerTransform, redrawSvg redraws the raster at the transform size when the layer has no filters, deform or stack, and drops the result if the layer changed meanwhile. This follows the shape-layer pattern; restack was not used because it scales the transform by the old raster size. The sanitiser runs on every redraw. .svgz is kept as plain .svg. Scaling leaves two history steps (transform, redraw).

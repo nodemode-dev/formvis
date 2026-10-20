@@ -142,7 +142,7 @@ export class Stage {
   private barTrack(axis: 'x' | 'y'): number { return Math.max(1, (axis === 'x' ? this.cssW - Viewport.insetRight : this.cssH) - Stage.BAR); }
 
   /** The docks changed what part of the stage is visible: the scrollbars follow. */
-  layoutChanged(): void { this.syncChrome(); }
+  layoutChanged(): void { this.syncChrome(); if (this.engine.current?.viewport.flipped) this.turn(); }
 
   /** Scrollbars (when turned on), and the status pills over the canvas: patched in place. */
   private syncChrome(): void {
@@ -638,7 +638,7 @@ export class Stage {
       p = { x: cx + dx * Math.cos(a) - dy * Math.sin(a), y: cy + dx * Math.sin(a) + dy * Math.cos(a) };
     }
     if (par !== 1 && par > 0) p = { x: w / 2 + (p.x - w / 2) / par, y: p.y };
-    return flip ? { x: w - p.x, y: p.y } : p;
+    return flip ? { x: w - Viewport.insetRight - p.x, y: p.y } : p;
   }
 
   /** The pixel aspect stretch the canvas shows with (View > Pixel Aspect Ratio Correction on a non-square document). */
@@ -652,7 +652,7 @@ export class Stage {
    *  renderer, overlay and tool keeps drawing in square pixels and the pointer is mapped back by `unturn`. */
   private turn(): void {
     const deg = this.engine.current?.viewport.rotation ?? 0, par = Stage.parOf(this.engine);
-    const t = [deg ? `rotate(${deg}deg)` : '', par !== 1 ? `scaleX(${par})` : '', this.engine.current?.viewport.flipped ? 'scaleX(-1)' : ''].filter(Boolean).join(' ');
+    const t = [deg ? `rotate(${deg}deg)` : '', par !== 1 ? `scaleX(${par})` : '', this.engine.current?.viewport.flipped ? `${Viewport.insetRight ? `translateX(${-Viewport.insetRight}px) ` : ''}scaleX(-1)` : ''].filter(Boolean).join(' ');
     this.resize();   // the surfaces grow to cover the stage at this angle (1.85.2); the rulers stay put
     for (const c of Array.from(this.host.querySelectorAll<HTMLElement>(':scope > canvas.cv-canvas'))) if (c.style.transform !== t) c.style.transform = t;
     this.host.classList.toggle('is-turned', !!deg);

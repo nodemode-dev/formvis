@@ -1,6 +1,7 @@
 import type { Engine } from '../engine';
 import { Viewport } from '../engine/viewport';
 import { el } from './dom';
+import { evalExpr } from './number-fields';
 import { PanelGroup } from './panel-group';
 import { applyDuotoneLut, duotoneLut } from '../engine/duotone';
 
@@ -34,7 +35,7 @@ export class NavigatorPanel {
     this.slider = body.querySelector('.cv-slider') as HTMLInputElement;
     this.pct = body.querySelector('.cv-nav-pct') as HTMLInputElement;
     this.pct.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { const n = parseFloat(this.pct.value.replace(',', '.')); if (Number.isFinite(n) && n > 0 && engine.current) engine.zoomTo(n / 100); this.pct.blur(); }
+      if (e.key === 'Enter') { const n = evalExpr(this.pct.value) ?? parseFloat(this.pct.value.replace(',', '.')); if (Number.isFinite(n) && n > 0 && engine.current) engine.zoomTo(n / 100); this.pct.blur(); }
       else if (e.key === 'Escape') this.pct.blur();
       e.stopPropagation();
     });

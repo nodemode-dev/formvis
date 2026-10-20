@@ -1,7 +1,7 @@
 import { Raster, docTransform, layerRoleOf, newLayer, type Engine } from '../../engine';
 import type { GenerationInfo, Layer } from '../../engine/types';
 import { withBoxes } from '../../engine/boxes';
-import { api, ApiError, type GenerativeStatus, type ProviderStatus } from '../../io/api';
+import { api, ApiError, type GenerativeStatus } from '../../io/api';
 import { checkReferenceCount, recipes, runToResults } from '../../io/comfy';
 import { generatePrompt } from '../../io/prompt-templates';
 import { localModels, runLocal } from '../../io/local-gen';
@@ -25,14 +25,6 @@ export const SIZES: ReadonlyArray<readonly [string, string, number, number]> = [
 
 type Shape = readonly [string, string, number, number];
 
-/** The shapes each provider asks for in its own terms (OpenAI three sizes, the others aspect ratios, all multiples of 16). */
-const PROVIDER_SHAPES: Record<string, ReadonlyArray<Shape>> = {
-  openai: [['1:1', 'Square 1:1 (1024 x 1024)', 1024, 1024], ['3:2', 'Landscape 3:2 (1536 x 1024)', 1536, 1024], ['2:3', 'Portrait 2:3 (1024 x 1536)', 1024, 1536]],
-  google: [['1:1', 'Square 1:1 (1024 x 1024)', 1024, 1024], ['3:2', 'Landscape 3:2 (1248 x 832)', 1248, 832], ['2:3', 'Portrait 2:3 (832 x 1248)', 832, 1248], ['4:3', 'Landscape 4:3 (1184 x 864)', 1184, 864], ['3:4', 'Portrait 3:4 (864 x 1184)', 864, 1184], ['16:9', 'Wide 16:9 (1344 x 768)', 1344, 768], ['9:16', 'Tall 9:16 (768 x 1344)', 768, 1344], ['21:9', 'Ultrawide 21:9 (1536 x 656)', 1536, 656]],
-  bfl: [['1:1', 'Square 1:1 (1024 x 1024)', 1024, 1024], ['4:3', 'Landscape 4:3 (1152 x 864)', 1152, 864], ['3:4', 'Portrait 3:4 (864 x 1152)', 864, 1152], ['3:2', 'Landscape 3:2 (1248 x 832)', 1248, 832], ['2:3', 'Portrait 2:3 (832 x 1248)', 832, 1248], ['16:9', 'Wide 16:9 (1344 x 768)', 1344, 768], ['9:16', 'Tall 9:16 (768 x 1344)', 768, 1344]],
-  ideogram: [['1:1', 'Square 1:1 (1024 x 1024)', 1024, 1024], ['16:9', 'Wide 16:9 (1344 x 768)', 1344, 768], ['9:16', 'Tall 9:16 (768 x 1344)', 768, 1344], ['4:3', 'Landscape 4:3 (1152 x 864)', 1152, 864], ['3:4', 'Portrait 3:4 (864 x 1152)', 864, 1152], ['3:2', 'Landscape 3:2 (1248 x 832)', 1248, 832], ['2:3', 'Portrait 2:3 (832 x 1248)', 832, 1248], ['16:10', 'Wide 16:10 (1280 x 800)', 1280, 800], ['10:16', 'Tall 10:16 (800 x 1280)', 800, 1280]],
-};
-
 /** fal asks for a width and height up to 1440 on the longer side. */
 export const FAL_SHAPES: ReadonlyArray<Shape> = [
   ['1:1', 'Square 1:1 (1024 x 1024)', 1024, 1024], ['4:3', 'Landscape 4:3 (1152 x 864)', 1152, 864], ['3:4', 'Portrait 3:4 (864 x 1152)', 864, 1152],
@@ -46,19 +38,16 @@ export function atClass(w: number, h: number, side: number): readonly [number, n
   return [r(w), r(h)];
 }
 
-/** The shapes the model chosen offers: fal's own, a provider's own, a model on this computer's catalogue sizes (`local`, "WxH"), else the common five. */
+/** The shapes the model chosen offers: fal's own, a model on this computer's catalogue sizes (`local`, "WxH"), else the common five. */
 export function shapesFor(choice: string, local: readonly string[] = []): ReadonlyArray<Shape> {
   if (choice === 'fal') return FAL_SHAPES;
-  if (choice.startsWith('provider:')) return PROVIDER_SHAPES[choice.slice(9)] ?? SIZES;
   const own = choice.startsWith('local:') ? local.map((s): Shape => { const [w, h] = s.split('x').map(Number); return [s, `${w} x ${h}`, w, h]; }) : [];
   return own.length ? own : SIZES;
 }
 
 /** One model Generate Image can use: its value in the picker, its words, and why it cannot be chosen when it cannot. */
 export interface GenerationModel { value: string; label: string; disabled: boolean; reason: string }
-export interface GenerationModels { models: GenerationModel[]; providers: ProviderStatus[]; preferred: string; fal: GenerativeStatus | null; sizes: Record<string, string[]> }
-
-const PROVIDER_NAMES: Record<string, string> = { openai: 'GPT Image', google: 'Gemini image', bfl: 'FLUX1.1 [pro]', ideogram: 'Ideogram 3.0' };
+export interface GenerationModels { models: GenerationModel[]; preferred: string; fal: GenerativeStatus | null; sizes: Record<string, string[]> }
 
 /** One line of the run log: a generation, whichever model ran it, with how long it took and how it ended. */
 export interface RunLogEntry { id: number; time: number; choice: string; prompt: string; ms: number; ok: boolean; note: string }
@@ -183,21 +172,19 @@ export async function comfyReadiness(): Promise<Map<string, string>> {
 }
 
 /** The models Generate Image offers, from the one source the Generate Image dialog and the Generate panel share: fal,
- *  the providers beside it, the kept ComfyUI workflows (left out when `comfy` is false: the panel offers them only while
+ *  the kept ComfyUI workflows (left out when `comfy` is false: the panel offers them only while
  *  ComfyUI answers) and the models on this computer. `preferred` is the default: fal with a key, else a model here. */
 export async function generationModels(comfy = true): Promise<GenerationModels> {
   const locals = await localModels();   // the local models (1.52.9)
-  const providers = await api.providers();
   const problems = comfy ? await comfyReadiness() : new Map<string, string>();
   const models: GenerationModel[] = [
     { value: 'fal', label: 'FLUX1.1 [pro] (fal)', disabled: false, reason: '' },
-    ...providers.map((pr) => ({ value: `provider:${pr.id}`, label: `${PROVIDER_NAMES[pr.id] ?? pr.model} (${pr.name})`, disabled: false, reason: '' })),
     ...(comfy ? recipes().map((r) => ({ value: r.name, label: `${r.name} (ComfyUI)`, disabled: problems.has(r.name), reason: problems.get(r.name) ?? '' })) : []),
     ...locals.map((m) => ({ value: m.id, label: `${m.label.replace(/ \(local\)$/, '')} (this computer)`, disabled: !m.ready, reason: !m.ready && m.reason ? m.reason : '' })),
   ];
   // fal, the cloud default, when it has a key; else a model on this computer; else fal, whose key is then asked for (1.58.5).
   const fal = await api.generativeStatus(), local = locals.find((m) => m.ready)?.id ?? null;
-  return { models, providers, preferred: fal?.configured ? 'fal' : local ?? 'fal', fal, sizes: Object.fromEntries(locals.map((m) => [m.id, m.sizes])) };
+  return { models, preferred: fal?.configured ? 'fal' : local ?? 'fal', fal, sizes: Object.fromEntries(locals.map((m) => [m.id, m.sizes])) };
 }
 
 const applyModel = (o: HTMLOptionElement, m: GenerationModel): void => {
@@ -218,9 +205,8 @@ export function fillModelPicker(select: HTMLSelectElement, models: readonly Gene
 
 export interface GenerationRequest {
   prompt: string;
-  /** The picker's value: 'fal', 'provider:<id>', 'local:<model>' or a kept ComfyUI workflow's name. */
+  /** The picker's value: 'fal', 'local:<model>' or a kept ComfyUI workflow's name. */
   choice: string;
-  providers: readonly ProviderStatus[];
   /** The pixel size to ask for; the document's own when absent. */
   size?: { width: number; height: number };
   /** The longest side a model on this computer works at (the dialog remembers it); 2048 when absent. The result is placed at the size asked. */
@@ -243,7 +229,7 @@ export interface GenerationRequest {
   stopped: () => boolean;
   heard?: (r: { notice?: string; warning?: string; notes: string[] }) => void;
   /** Where a missing key is added, for the messages (the dialog and the panel add keys in different places). */
-  keyHint?: { fal: string; provider: (name: string) => string };
+  keyHint?: { fal: string };
 }
 
 /** One generation, by whichever model is chosen: the picture arrives as a new layer 'Generated Image' (a new 1024 by 1024
@@ -334,11 +320,11 @@ async function generateOnce(engine: Engine, req: GenerationRequest): Promise<boo
   if (fresh) engine.newDocument(req.size?.width ?? 1024, req.size?.height ?? 1024, 'Generated', 'white');
   const p = engine.current;
   if (!p) return false;
-  const W = p.doc.width, H = p.doc.height, w = req.size?.width ?? W, h = req.size?.height ?? H, { choice } = req, prompt = await generatePrompt(withBoxes(req.prompt, p.doc), choice === 'fal' ? 'fal' : /^(local|provider):/.test(choice) ? choice.replace(/^[a-z]+:/, '') : 'comfyui');   // the layout boxes follow the words, one line each
-  const hint = req.keyHint ?? { fal: t('Add a fal API key first, in Edit > Generative Fill.'), provider: (name: string) => t(`Add a ${name} API key first, above.`) };
+  const W = p.doc.width, H = p.doc.height, w = req.size?.width ?? W, h = req.size?.height ?? H, { choice } = req, prompt = await generatePrompt(withBoxes(req.prompt, p.doc), choice === 'fal' ? 'fal' : /^local:/.test(choice) ? choice.replace(/^[a-z]+:/, '') : 'comfyui');   // the layout boxes follow the words, one line each
+  const hint = req.keyHint ?? { fal: t('Add a fal API key first, in Edit > Generative Fill.') };
   let blob: Blob;
   let generation: GenerationInfo | undefined;
-  const referenced = !(choice === 'fal' || choice.startsWith('local:') || choice.startsWith('provider:'));
+  const referenced = !(choice === 'fal' || choice.startsWith('local:'));
   if (!referenced && hasTokens(prompt)) throw new Error(t('This model takes no references: remove the @img tokens from the prompt, or choose a ComfyUI workflow.'));
   if (choice.startsWith('local:')) {
     // On this computer: the shape asked within the model's 2048 pixels, in multiples of 16.
@@ -348,18 +334,12 @@ async function generateOnce(engine: Engine, req: GenerationRequest): Promise<boo
     blob = r.pictures[0];
     generation = r.settings[0];
     req.onSeed?.(generation?.seed ?? req.seed);
-  } else if (choice.startsWith('provider:')) {
-    const pr = req.providers.find((x) => `provider:${x.id}` === choice);
-    if (!pr) throw new Error(t('That provider is not available.'));
-    if (!pr.configured) throw new Error(hint.provider(pr.name));
-    req.status(t(`Generating with ${pr.name}...`));
-    blob = await api.generateImage(prompt, w, h, pr.id);
   } else if (choice === 'fal') {
     const st = await api.generativeStatus();
     if (!st) throw new Error(t('The formvis engine is offline. Start it with ./formvis boot.'));
     if (!st.configured) throw new Error(hint.fal);
     req.status(t('Generating on fal...'));
-    blob = await api.generateImage(prompt, w, h, 'fal', req.seed);
+    blob = await api.generateImage(prompt, w, h, req.seed);
     req.onSeed?.(req.seed);
   } else {
     const recipe = recipes().find((r) => r.name === choice);
@@ -385,8 +365,8 @@ async function generateOnce(engine: Engine, req: GenerationRequest): Promise<boo
 }
 
 /** Edit > Generate Image (1.51.2): a picture from a prompt alone, as a new layer at the document's size
- *  (a new 1024 by 1024 document when none is open), with FLUX1.1 [pro] on fal, OpenAI, Google, Black Forest Labs or
- *  Ideogram with their own keys (1.58.4), a kept ComfyUI workflow, or a model on this computer. */
+ *  (a new 1024 by 1024 document when none is open), with FLUX1.1 [pro] on fal, a kept ComfyUI workflow, or a model on
+ *  this computer. */
 export class GenerateImageDialog extends Dialog {
   private readonly prompt = el<HTMLTextAreaElement>('<textarea class="cv-input" rows="3" aria-label="Prompt" placeholder="Describe the image"></textarea>');
   private readonly model = el<HTMLSelectElement>('<select class="cv-input" aria-label="Model"></select>');
@@ -406,12 +386,6 @@ export class GenerateImageDialog extends Dialog {
   private readonly improver: PromptImprover;
   private readonly opts = new GenerationOptions();
   private stopped = false;
-  // The providers beside fal (1.58.4, L7): which have keys, and a key field shown when the chosen one has none.
-  private providers: ProviderStatus[] = [];
-  private readonly keyInput = el<HTMLInputElement>('<input class="cv-input" type="password" autocomplete="off" aria-label="API key">');
-  private readonly keyRow = el('<div class="cv-dialog-row" hidden><span class="cv-gen-keylabel">API key</span></div>');
-  private readonly keyButton = el<HTMLButtonElement>('<button class="cv-btn" type="button">Save key</button>');
-  private changing = false;   // a kept key being replaced
   private picked = false;     // the person chose the model (1.58.5); until then the default is fal with a key, else local
   // Earlier results (add again, or take back their prompt) and the run log of every generation, built once and patched.
   private readonly hist = el('<div class="cv-gen-hist" role="group" aria-label="Earlier results"></div>');
@@ -424,15 +398,10 @@ export class GenerateImageDialog extends Dialog {
     row.append(this.model);
     this.refs = new ReferencePicker(engine);
     this.chips = new ReferenceChips(this.refs, this.prompt);
-    this.model.addEventListener('change', () => { this.picked = true; this.refs.forFal(this.model.value === 'fal'); this.opts.forModel(this.model.value); this.keyFor(); this.paintShapes(); });
+    this.model.addEventListener('change', () => { this.picked = true; this.refs.forFal(this.model.value === 'fal'); this.opts.forModel(this.model.value); this.paintShapes(); });
     this.improver = new PromptImprover(this.prompt, 'Richer detail');
     this.improver.view = areaView(engine, false);
     this.improver.refs = referenceViews(() => this.chips.ordered());
-    this.keyButton.addEventListener('click', () => {
-      const pr = this.chosenProvider();
-      if (pr?.configured && !this.changing) { this.changing = true; this.keyFor(); this.keyInput.focus(); } else void this.saveKey();
-    });
-    this.keyRow.append(this.keyInput, this.keyButton);
     this.paintShapes();
     this.size.addEventListener('change', () => { const c = this.size.value !== 'custom'; this.cw.hidden = c; this.ch.hidden = c; });
     for (const f of [this.cw, this.ch]) f.addEventListener('change', () => { f.value = String(this.side(Number(f.value))); });
@@ -441,7 +410,7 @@ export class GenerateImageDialog extends Dialog {
     const capRow = el('<label class="cv-dialog-row"><span>Working size</span></label>');
     capRow.append(this.cap);
     this.clearRow.prepend(this.clear);
-    this.body.append(this.prompt, this.improver.el, row, shape, capRow, this.clearRow, this.opts.el, this.keyRow, this.refs.el, this.chips.el, this.status, this.hist, this.logBox);
+    this.body.append(this.prompt, this.improver.el, row, shape, capRow, this.clearRow, this.opts.el, this.refs.el, this.chips.el, this.status, this.hist, this.logBox);
     this.hist.addEventListener('click', (ev) => {
       const b = (ev.target as HTMLElement).closest<HTMLButtonElement>('button[data-id]');
       if (!b) return;
@@ -464,17 +433,14 @@ export class GenerateImageDialog extends Dialog {
 
   async show(): Promise<void> {
     const was = this.model.value;
-    const { models, providers, preferred, sizes } = await generationModels();   // the models the Generate panel offers too
-    this.providers = providers;
+    const { models, preferred, sizes } = await generationModels();   // the models the Generate panel offers too
     this.localSizes = sizes;
     fillModelPicker(this.model, models);
-    // The person's choice while it stands; else the default (fal with a key, else a model on this computer). The other
-    // providers are chosen, never defaults (1.58.5).
+    // The person's choice while it stands; else the default (fal with a key, else a model on this computer).
     if (this.picked && [...this.model.options].some((o) => o.value === was && !o.disabled)) this.model.value = was;
     else this.model.value = preferred;
     this.refs.refresh(this.model.value === 'fal');
     this.opts.forModel(this.model.value);
-    this.keyFor();
     this.paintShapes();
     this.improver.refresh();
     setText(this.status, 'Your ComfyUI workflows are added in Edit > Generative Fill.');
@@ -507,36 +473,6 @@ export class GenerateImageDialog extends Dialog {
     setHidden(this.logBox, generationLog().length === 0);
   }
 
-  /** The chosen provider, when the model chosen is one of the providers beside fal. */
-  private chosenProvider(): ProviderStatus | null { const v = this.model.value; return v.startsWith('provider:') ? this.providers.find((pr) => `provider:${pr.id}` === v) ?? null : null; }
-
-  /** The key row shows whenever a provider is chosen, at one height (so saving a key moves nothing): a field and Save
-   *  key when it has none, or "kept in your password store" and Change when it has. The key goes to the password store. */
-  private keyFor(): void {
-    // The row keeps its space for every model and only shows for a provider, and its label stays put (the provider is
-    // named in the field), so choosing a model or saving a key moves nothing in the dialog.
-    const pr = this.chosenProvider();
-    this.keyRow.hidden = false;
-    this.keyRow.style.visibility = pr ? 'visible' : 'hidden';
-    if (!pr) { this.changing = false; return; }
-    const kept = pr.configured && !this.changing;
-    this.keyInput.disabled = kept;
-    this.keyInput.placeholder = kept ? `${pr.name}: kept in your password store` : `Paste your ${pr.name} key`;
-    setText(this.keyButton, kept ? 'Change' : 'Save key');
-  }
-
-  private async saveKey(): Promise<void> {
-    const pr = this.chosenProvider(), key = this.keyInput.value.trim();
-    if (!pr || !key) return;
-    try {
-      this.providers = await api.saveProviderKey(pr.id, key);
-      this.keyInput.value = '';
-      this.changing = false;
-      this.keyFor();
-      setText(this.status, `The ${pr.name} key is kept in your system's password store.`);
-    } catch (err) { setText(this.status, err instanceof Error ? err.message : 'The key could not be saved.'); }
-  }
-
   /** A local model's notice (Krea 2's licence) and the filter's warning, shown with its picture. */
   heard: (r: { notice?: string; warning?: string; notes: string[] }) => void = () => {};
 
@@ -550,7 +486,7 @@ export class GenerateImageDialog extends Dialog {
     return s ? { width: s[2], height: s[3] } : undefined;
   }
 
-  /** The size picker holds the picture's own size, the shapes the model chosen offers (a provider's own, a local model's
+  /** The size picker holds the picture's own size, the shapes the model chosen offers (fal's, a local model's
    *  catalogue) and a custom entry; options are patched by value so the picker never blinks, and what is chosen stays
    *  while the new model still offers it. */
   private paintShapes(): void {
@@ -575,7 +511,7 @@ export class GenerateImageDialog extends Dialog {
     this.stopped = false;
     try {
       // The same generation the Generate panel runs; a new layer at the document's size (a new document when none is open).
-      const added = await runGeneration(this.engine, { prompt, choice: this.model.value, providers: this.providers, size: this.asked(), cap: Number(this.cap.value), target: this.target.value === 'document' ? 'document' : this.target.value === 'base' ? 'base' : 'layer', transparent: this.clear.checked, references: () => this.chips.ordered(), ...this.opts.request(), onSeed: (s) => this.opts.used(s), onStop: () => { this.stopped = true; setText(this.status, 'Stopped.'); }, status: (text) => setText(this.status, text), stopped: () => this.stopped, heard: (r) => this.heard(r) });
+      const added = await runGeneration(this.engine, { prompt, choice: this.model.value, size: this.asked(), cap: Number(this.cap.value), target: this.target.value === 'document' ? 'document' : this.target.value === 'base' ? 'base' : 'layer', transparent: this.clear.checked, references: () => this.chips.ordered(), ...this.opts.request(), onSeed: (s) => this.opts.used(s), onStop: () => { this.stopped = true; setText(this.status, 'Stopped.'); }, status: (text) => setText(this.status, text), stopped: () => this.stopped, heard: (r) => this.heard(r) });
       if (!added) return;
       this.close();
       this.toast(this.target.value === 'base' ? 'The generated image replaced the picture. Undo brings it back.' : 'The generated image was added as a layer.');

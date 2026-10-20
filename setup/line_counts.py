@@ -106,7 +106,7 @@ SPARKLE_BANNED = re.compile("\\bsparkle\\s*:\\s*[`'\"]?\\s*<svg|icon\\(\\s*['\"]
 
 
 # Declined by the owner (1.88.3): one cloud provider by design, fal. Image or model providers other than fal are not
-# added. The language-model chat keeps its OpenAI-compatible services (Ollama, LM Studio and the like), which this
+# added. The language-model chat keeps its chat completions services on this computer or hosted, which this
 # pattern does not name.
 PROVIDERS_DECLINED = re.compile(r"replicate\.com|api\.replicate|wavespeed|cloud\.comfy\.org|comfy[ _-]?(cloud|router|partner)|"
                                 r"toapis|byteplus|modelark|oxen\.ai|magnific|freepik", re.I)

@@ -373,9 +373,9 @@ other modes and depths its menu items are off, with the reason as their tooltip.
   Expand grows the canvas and fills the new border; Image > Upscale enlarges two or four times. Upscale runs on fal, or
   on this computer with no key once Real-ESRGAN is downloaded (Preferences > Plugins > Local models, about 67 MB). The result is a new
   layer, masked to the selection.
-- Edit > Generate Image makes a picture from a prompt alone, as a new layer at the document's size. Besides fal it
-  works with OpenAI, Google, Black Forest Labs and Ideogram: choose one, paste its API key in the dialog once (it is
-  kept in your system's password store, or read from the provider's usual environment variable), and generate.
+- Edit > Generate Image makes a picture from a prompt alone, as a new layer at the document's size, on fal, with one
+  of your ComfyUI workflows, or with a model on this computer. The fal API key is pasted in the dialog once and is
+  kept in your system's password store (or read from the FAL_KEY environment variable).
   Generate Image, Generative Fill and Upscale open on fal when it has a key (it reaches the most models through one
   key), and on a model on this computer when it has none; a model you choose stays chosen.
 - The model: FLUX on fal (paste a fal key into the dialog once), or one of your ComfyUI workflows (see ComfyUI

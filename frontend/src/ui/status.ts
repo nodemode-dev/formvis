@@ -1,6 +1,7 @@
 import type { Engine } from '../engine';
 import { docBytes } from '../engine/snapshot-ops';
 import { getTool } from '../extensions/registry';
+import { evalExpr } from './number-fields';
 import { pendingClass, q, setClass, setStyleVar, setText, setTitle, type Disposer } from './dom';
 import { onLanguage, t } from './i18n';
 import { icon } from './icons';
@@ -45,7 +46,7 @@ export class StatusBar {
     // The zoom is a field: Enter applies the percent typed (1 to 6400), Escape gives the current one back.
     this.zoom.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
-        const n = parseFloat(this.zoom.value.replace(',', '.'));
+        const n = evalExpr(this.zoom.value) ?? parseFloat(this.zoom.value.replace(',', '.'));
         if (Number.isFinite(n) && n > 0 && this.engine.current) this.engine.zoomTo(n / 100);
         this.zoom.blur();
       } else if (e.key === 'Escape') { this.zoom.blur(); }
