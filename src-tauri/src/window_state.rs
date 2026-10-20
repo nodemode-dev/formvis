@@ -2,6 +2,7 @@
 //! kept in window.json in the app's config folder; and, on Linux and macOS, the recovery of its web view after the renderer crashed.
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -165,6 +166,13 @@ const CRASH_SCHEME: &str = "formvis-shell";
 const CRASH_PAGE: &str = "<!doctype html><html><head><meta charset=\"utf-8\"><title>formvis</title><style>body{margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#0d0d0d;color:#e6e6e6;font:15px system-ui,sans-serif}main{max-width:30em;padding:24px}h1{font-size:20px;margin:0 0 12px}p{line-height:1.5;margin:0 0 20px;color:#b0b0b0}a{display:inline-block;margin-right:10px;padding:8px 18px;border-radius:6px;border:1px solid #444;color:#e6e6e6;text-decoration:none}a.go{background:#f97316;border-color:#f97316;color:#0d0d0d}</style></head><body><main><h1>The window stopped working</h1><p>Its web view stopped twice within two minutes, so formvis has not reloaded it again. Unsaved pictures are offered back when formvis starts.</p><a class=\"go\" href=\"formvis-shell://restart\">Restart formvis</a><a href=\"formvis-shell://quit\">Quit</a></main></body></html>";
 
 static STOPS: Mutex<Vec<Instant>> = Mutex::new(Vec::new());
+static LOOP_SHOWN: AtomicBool = AtomicBool::new(false);
+
+/// True once the plain page has replaced a window that kept stopping: the page cannot answer a close request, so the
+/// window's own close button must exit at once.
+pub fn loop_page_shown() -> bool {
+    LOOP_SHOWN.load(Ordering::SeqCst)
+}
 
 /// What the shell does with a dead renderer.
 pub enum Choice {
@@ -178,7 +186,11 @@ fn crash_loop() -> bool {
     let Ok(mut stops) = STOPS.lock() else { return true };
     stops.retain(|at| now.duration_since(*at) < CRASH_WINDOW);
     stops.push(now);
-    stops.len() > 1
+    let looping = stops.len() > 1;
+    if looping {
+        LOOP_SHOWN.store(true, Ordering::SeqCst);
+    }
+    looping
 }
 
 /// The buttons of the plain page are links on a scheme of the shell's own; a navigation to one is a choice, never loaded.

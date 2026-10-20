@@ -2,6 +2,7 @@
 # (a .pth among them) in its Model list without rebuilding the dialog, runs the chosen one against backend/tests/comfy_mock.py
 # extended with the two upscale nodes, places the result as a new document, names missing nodes, and cancels.
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -54,6 +55,31 @@ def open_upscale(page):
     again(page, step)
 
 
+class HoldingMock(UpscalingMock):
+    started, release, ended = threading.Event(), threading.Event(), threading.Event()
+
+    def _eval_node(self, graph, nid, cache, client, pid):
+        if not self.started.is_set():
+            self.started.set()
+            self.release.wait(30)
+        return super()._eval_node(graph, nid, cache, client, pid)
+
+    def _say(self, client, kind, data):
+        super()._say(client, kind, data)
+        if kind == "executing" and data.get("node") is None:
+            self.ended.set()
+
+
+@pytest.fixture()
+def held():
+    mock = HoldingMock(nodes={**OBJECT_INFO, **NODES}, step_delay=0.02)
+    mock.started, mock.release, mock.ended = threading.Event(), threading.Event(), threading.Event()
+    mock.start()
+    yield mock
+    mock.release.set()
+    mock.stop()
+
+
 @pytest.fixture()
 def comfy():
     mock = UpscalingMock(nodes={**OBJECT_INFO, **NODES}, step_delay=0.02).start()
@@ -98,16 +124,19 @@ def test_missing_upscale_nodes_are_named_and_the_entry_cannot_be_chosen(page):
         mock.stop()
 
 
-def test_stopping_an_upscale_on_comfyui_adds_no_document(page, comfy):
-    set_address(page, comfy.url)
+def test_stopping_an_upscale_on_comfyui_adds_no_document(page, held):
+    set_address(page, held.url)
     make_document(page)
     open_upscale(page)
     model = page.locator(f"{DLG} select[aria-label='Model']")
     model.locator("option[value^='comfy-file:']").first.wait_for(state="attached", timeout=15000)
     model.select_option("comfy-file:RealESRGAN_x4plus.safetensors")
     page.locator(f"{DLG} .cv-dialog-foot button", has_text="Generate").click()
+    assert held.started.wait(15)
     page.keyboard.press("Escape")
     page.wait_for_function("() => !window.formvis.engine.busy", timeout=15000)
+    held.release.set()
+    assert held.ended.wait(15)
     assert page.evaluate("window.formvis.engine.projects.length") == 1
 
 

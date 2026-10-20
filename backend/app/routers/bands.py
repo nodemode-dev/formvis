@@ -254,7 +254,7 @@ def _gone(path: Path) -> BackgroundTask:
 
 
 def _rows_in(s: dict, body: bytes) -> int:
-    row = s["w"] * 4
+    row = s.get("bpr") or s["w"] * 4
     if len(body) % row:
         raise HTTPException(400, "Not a whole number of rows.")
     n = len(body) // row
@@ -264,12 +264,15 @@ def _rows_in(s: dict, body: bytes) -> int:
 
 
 @router.post("/tiff")
-async def begin_tiff(request: Request, width: int, height: int, ppi: float = 72.0) -> dict[str, str]:
-    """Opens a TIFF of `width` by `height` RGBA pixels, 8 bits, alpha kept, Deflate: every strip is deflated on its own, so
-    the strips of a band go to the thread pool together and are written in order as they finish; the directory comes last.
-    A body of ICC profile bytes, when sent, is embedded (tag 34675). Rows follow as for the PNG."""
+async def begin_tiff(request: Request, width: int, height: int, ppi: float = 72.0, depth: int = 8, alpha: bool = True) -> dict[str, str]:
+    """Opens a TIFF of `width` by `height` pixels, RGBA (RGB with `alpha` false), 8 bits or 16 (`depth`; 16-bit samples
+    arrive little-endian), Deflate: every strip is deflated on its own, so the strips of a band go to the thread pool
+    together and are written in order as they finish; the directory comes last. A body of ICC profile bytes, when sent, is
+    embedded (tag 34675). Rows follow as for the PNG."""
     if not (1 <= width <= 65535 and 1 <= height <= 65535):
         raise HTTPException(400, "Sides must be 1 to 65,535 pixels.")
+    if depth not in (8, 16):
+        raise HTTPException(400, "Depth must be 8 or 16 bits.")
     icc = await request.body()
     if len(icc) > 1_000_000:
         raise HTTPException(400, "The colour profile is too large.")
@@ -277,7 +280,9 @@ async def begin_tiff(request: Request, width: int, height: int, ppi: float = 72.
     path = _dir() / f"{key}.tif"
     f = open(path, "wb")
     f.write(b"II" + struct.pack("<HI", 42, 0))
-    _tiffs[key] = {"f": f, "w": width, "h": height, "rows": 0, "path": path, "ppi": ppi, "icc": icc, "rps": max(1, STRIP // (width * 4)), "carry": b"", "offsets": [], "counts": []}
+    spp = 4 if alpha else 3
+    bpr = width * spp * depth // 8
+    _tiffs[key] = {"f": f, "w": width, "h": height, "rows": 0, "path": path, "ppi": ppi, "icc": icc, "spp": spp, "depth": depth, "bpr": bpr, "rps": max(1, STRIP // bpr), "carry": b"", "offsets": [], "counts": []}
     return {"key": key}
 
 
@@ -295,7 +300,7 @@ def _tiff_put(s: dict, body: bytes) -> None:
     n = _rows_in(s, body)
     s["rows"] += n
     buf = s["carry"] + body
-    step = s["rps"] * s["w"] * 4
+    step = s["rps"] * s["bpr"]
     cut = len(buf) // step * step
     _strips(s, [buf[i:i + step] for i in range(0, cut, step)])
     s["carry"] = buf[cut:]
@@ -321,10 +326,12 @@ def _tiff_finish(s: dict) -> None:
     if f.tell() % 2:
         f.write(b"\0")
     dpi = struct.pack("<II", max(1, round(s["ppi"] * 1000)), 1000)
-    entries = [(256, 4, 1, struct.pack("<I", s["w"])), (257, 4, 1, struct.pack("<I", s["h"])), (258, 3, 4, struct.pack("<4H", 8, 8, 8, 8)),
+    entries = [(256, 4, 1, struct.pack("<I", s["w"])), (257, 4, 1, struct.pack("<I", s["h"])), (258, 3, s["spp"], struct.pack(f"<{s['spp']}H", *[s["depth"]] * s["spp"])),
                (259, 3, 1, struct.pack("<H", 8)), (262, 3, 1, struct.pack("<H", 2)), (273, 4, n, struct.pack(f"<{n}I", *s["offsets"])),
-               (277, 3, 1, struct.pack("<H", 4)), (278, 4, 1, struct.pack("<I", s["rps"])), (279, 4, n, struct.pack(f"<{n}I", *s["counts"])),
-               (282, 5, 1, dpi), (283, 5, 1, dpi), (284, 3, 1, struct.pack("<H", 1)), (296, 3, 1, struct.pack("<H", 2)), (338, 3, 1, struct.pack("<H", 2))]
+               (277, 3, 1, struct.pack("<H", s["spp"])), (278, 4, 1, struct.pack("<I", s["rps"])), (279, 4, n, struct.pack(f"<{n}I", *s["counts"])),
+               (282, 5, 1, dpi), (283, 5, 1, dpi), (284, 3, 1, struct.pack("<H", 1)), (296, 3, 1, struct.pack("<H", 2))]
+    if s["spp"] == 4:
+        entries.append((338, 3, 1, struct.pack("<H", 2)))
     if s["icc"]:
         entries.append((34675, 7, len(s["icc"]), s["icc"]))
     tail, at = _tiff_ifd(entries, f.tell())

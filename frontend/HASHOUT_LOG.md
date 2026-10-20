@@ -2,6 +2,15 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## GPU opacity ceiling, 16-bit transfer tables, native clipped groups, exact MP4 rate · _v1.92.6 (engine/gpu-dab.ts, engine/stroke.ts, engine/transfer-pow.ts, engine/compose-float.ts, gpu/native-display.ts, io/api.ts, app.ts, ui/app-dialogs.ts, styles/dialogs.css)
+
+- Opacity ceiling: a per-pixel max of the dab opacity, kept in a second R32F texture drawn with blendEquation(MAX) (WebGL2 core has no per-attachment blend equations, so it is a second draw per dab); the shader's discard gives the CPU's `a > 0` condition. Removed: `if (!this.gpuWanted || this.buf.ceil) return false;`.
+- open(w, h, lw, lh) refuses a non-tiled layer that could ever pass MAX_TEXTURE_SIZE or 64 M px, so the GPU decision is made before the first dab. Tiled strokes keep the window as the cap, so their ensure() fallback remains (untested; the window stayed near 4,160 px).
+- transferLut caches the adjustment's own transfer per 16-bit grid value (exactly `Math.fround(Math.round(x*65535)/65535) === x`); off-grid values run the transfer as before, so output is exact. Up to four 512 KB tables per call, not shared. Removed the per-pixel loop `for (let c = 0; c < A; c++) { const v = toValue(out[i + c]), nv = clamp01(t(c, v * 255) / 255); out[i + c] = fromValue(v + (nv - v) * k); }`. 32-bit Levels and Curves stay on the old loop (the wasm pow could flip a float32 ulp).
+- Native: a folder's mask reaches the renderer as the `folders` chain on each child, not as `mask` on the folder entry; the masked Hue/Reflect check reads that chain (foldersWithin). Removed: `if (l.sub.some((x) => x.clip)) return 'a clipped group, which the native renderer does not draw yet';`. CLIPPED_GROUP_BLENDS lists only the eight measured (2-level bar). Vivid Light folders stay refused: 3 to 7 levels on the folder's soft edge; Chromium rounds exact .5 ties down when it un-premultiplies, which did not explain it.
+- MP4: encodeVideo sends the timeline fps; the engine no longer derives the rate from 83 ms delays (12.048 fps).
+- New Document: `.cv-nd-colour[hidden]` keeps its box with visibility hidden (display none made the select jump). Removed `<option value="custom">Custom...</option>` and `.cv-nd-colour[hidden] { display: none; }`.
+
 ## ComfyUI upscaler source, prompt use cases, canvas srcover backdrop, GPU brush everywhere but opacity dynamics, video undo frame · _v1.92.5 (ui/panels/generative-dialog.ts, io/api.ts, io/comfy.ts, io/prompt-templates.ts, ui/panels/prompt-improver.ts, gpu/native-display.ts, engine/stroke.ts, engine/dab-buffer.ts, engine/index.ts, engine/transfer-pow.ts; tests)
 
 - ComfyUI upscalers load into an optgroup after the dialog opens (an unreachable ComfyUI must not delay it) and only the group's options are swapped; the result is drawn at the dialog's factor like the local upscalers.

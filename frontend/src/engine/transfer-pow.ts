@@ -111,6 +111,28 @@ export function transferDeep(out: Float32Array, S: number, A: number, op: number
   }
 }
 
+/** The 16-bit pass through the adjustment's own transfer `t`, with each channel's answer for the 65,536 whole levels
+ *  kept after its first use, so a level costs the transfer once; a value off the 16-bit grid runs `t` as it is. The
+ *  output is the same bits as running `t` on every value. */
+export function transferLut(out: Float32Array, S: number, A: number, op: number, cov: Float32Array | null, paper: boolean, t: (channel: number, level: number) => number): void {
+  const tabs: Float64Array[] = [];
+  for (let c = 0; c < A; c++) tabs.push(new Float64Array(65536).fill(NaN));
+  for (let i = 0, j = 0; i < out.length; i += S, j++) {
+    const k = op * (cov ? cov[j] : 1);
+    if (k <= 0) continue;
+    for (let c = 0; c < A; c++) {
+      const x = out[i + c], v = paper ? 1 - x : x, q = Math.round(x * 65535);
+      let nv: number;
+      if (q >= 0 && q <= 65535 && Math.fround(q / 65535) === x) {
+        nv = tabs[c][q];
+        if (nv !== nv) nv = tabs[c][q] = clamp01(t(c, v * 255) / 255);
+      } else nv = clamp01(t(c, v * 255) / 255);
+      const r = v + (nv - v) * k;
+      out[i + c] = paper ? 1 - r : r;
+    }
+  }
+}
+
 /** A 32-bit pass: each pixel's colour within the display range (divided by its brightest channel when that passes white),
  *  sRGB-encoded, through the transfer and back, the brightness above white scaled in again. */
 export function transferLinear(out: Float32Array, S: number, op: number, cov: Float32Array | null, chains: Chains): void {

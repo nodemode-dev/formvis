@@ -102,7 +102,17 @@ async def frames(file: UploadFile = File(...), start: float = Form(0.0), end: fl
     return Response(len(head).to_bytes(4, "little") + head + b"".join(blobs), media_type="application/octet-stream")
 
 
-def _encode(folder: Path, names: list[str], delays: list[int]) -> bytes:
+def _rate(fps: float) -> str:
+    # The NTSC family (23.976, 29.97, 59.94) is n*1000/1001; anything else is its closest simple fraction.
+    from fractions import Fraction
+    for n in (24, 30, 60):
+        if abs(fps - n * 1000 / 1001) < 0.005:
+            return f"{n * 1000}/1001"
+    q = Fraction(fps).limit_denominator(1000)
+    return f"{q.numerator}/{q.denominator}"
+
+
+def _encode(folder: Path, names: list[str], delays: list[int], fps_in: float = 0.0) -> bytes:
     # Each frame for its own delay, exactly: the frames are repeated on a common grid of time (the delays' greatest
     # common divisor, up to 60 a second; else 30 a second, each delay rounded to it) and written as a constant-rate
     # image sequence, which players take best. (ffmpeg's concat list added a frame, or drifted to its own time base.)
@@ -110,7 +120,9 @@ def _encode(folder: Path, names: list[str], delays: list[int]) -> bytes:
     from math import gcd
     ms = [d if d > 0 else 33 for d in delays]
     unit = reduce(gcd, ms)
-    if unit * 60 >= 1000:
+    if fps_in > 0:
+        fps, repeats = fps_in, [1] * len(ms)
+    elif unit * 60 >= 1000:
         fps, repeats = 1000 / unit, [d // unit for d in ms]
     else:
         fps, repeats = 30.0, [max(1, round(d * 30 / 1000)) for d in ms]
@@ -122,8 +134,8 @@ def _encode(folder: Path, names: list[str], delays: list[int]) -> bytes:
             n += 1
             os.link(folder / name, folder / f"s{n:06d}.png")
     out = folder / "out.mp4"
-    cmd = [_ffmpeg(), "-hide_banner", "-loglevel", "error", "-framerate", f"{fps:.6g}", "-i", str(folder / "s%06d.png"),
-           "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18", "-r", f"{fps:.6g}", "-movflags", "+faststart", str(out)]
+    cmd = [_ffmpeg(), "-hide_banner", "-loglevel", "error", "-framerate", _rate(fps), "-i", str(folder / "s%06d.png"),
+           "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18", "-r", _rate(fps), "-movflags", "+faststart", str(out)]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
     if r.returncode != 0 or not out.is_file():
         raise HTTPException(status_code=422, detail=f"ffmpeg could not write the video{': ' + r.stderr.strip()[-200:] if r.stderr.strip() else ''}.")
@@ -144,8 +156,8 @@ async def sequence(file: list[UploadFile] = File(...), name: str = Form("frame")
 
 
 @router.post("/encode")
-async def encode(file: list[UploadFile] = File(...), delays: str = Form("[]")) -> Response:
-    """An H.264 MP4 from frames (PNGs in order) and their delays in milliseconds."""
+async def encode(file: list[UploadFile] = File(...), delays: str = Form("[]"), fps: float = Form(0.0)) -> Response:
+    """An H.264 MP4 from frames (PNGs in order) and their delays in milliseconds, or at one exact frame rate (`fps`)."""
     try:
         ms = [int(d) for d in json.loads(delays)]
     except (ValueError, TypeError) as exc:
@@ -158,5 +170,5 @@ async def encode(file: list[UploadFile] = File(...), delays: str = Form("[]")) -
             name = f"f{i + 1:05d}.png"
             (folder / name).write_bytes(await f.read())
             names.append(name)
-        data = await run_in_threadpool(_encode, folder, names, ms)
+        data = await run_in_threadpool(_encode, folder, names, ms, max(0.0, min(240.0, fps)))
     return Response(data, media_type="video/mp4")

@@ -314,8 +314,7 @@ def test_render_video_mp4_has_the_frame_count_duration_size_and_frame_pixels(pag
     out = render(page, "mp4", tmp_path)
     info = probe(out)
     assert (info["frames"], info["w"], info["h"]) == (24, W, H)
-    num, den = (int(x) for x in info["rate"].split("/"))
-    assert abs(num / den - 12) < 0.1
+    assert info["rate"] == "12/1"
     assert abs(info["duration"] - 2.0) < 0.15
     for f in (0, 11, 23):
         img = extract(out, f, tmp_path / f"f{f}.png")

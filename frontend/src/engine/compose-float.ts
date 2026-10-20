@@ -1,5 +1,6 @@
 import { dissolveNoise } from './blend';
 import { deepFromRaster, linearToSrgb, place, srgbToLinear, transferOf } from './deep';
+import { transferLut } from './transfer-pow';
 import { hierarchy, byId, ancestors, descendantIds, groupIsolated } from './tree';
 import { placement, setMat } from './geometry';
 import { applyLut4, inkOf, type Lut3x4, type Lut4 } from './colour-lut';
@@ -326,6 +327,7 @@ export function composeFloat(doc: Doc, n: 3 | 4, paperWhite: boolean, luts: Cmyk
         continue;
       }
       const gain = 2 ** (e.exposure ?? 0), off = e.offset ?? 0, inv = 1 / Math.max(0.01, e.gamma ?? 1);
+      if (inv === 1) { for (let i = 0, j = 0; i < out.length; i += S, j++) { const k = op * (cov ? cov[j] : 1); if (k <= 0) continue; for (let c = 0; c < A; c++) { const v = out[i + c], nv = Math.max(0, v * gain + off); out[i + c] = v + (nv - v) * k; } } continue; }
       for (let i = 0, j = 0; i < out.length; i += S, j++) { const k = op * (cov ? cov[j] : 1); if (k <= 0) continue; for (let c = 0; c < A; c++) { const v = out[i + c], nv = Math.pow(Math.max(0, v * gain + off), inv); out[i + c] = v + (nv - v) * k; } }
       continue;
     }
@@ -352,11 +354,7 @@ export function composeFloat(doc: Doc, n: 3 | 4, paperWhite: boolean, luts: Cmyk
         viaKernel(out, W, H, n, kern, op, cov, n === 4 ? luts : null, inLab);
         continue;
       }
-      for (let i = 0, j = 0; i < out.length; i += S, j++) {
-        const k = op * (cov ? cov[j] : 1);
-        if (k <= 0) continue;
-        for (let c = 0; c < A; c++) { const v = toValue(out[i + c]), nv = clamp01(t(c, v * 255) / 255); out[i + c] = fromValue(v + (nv - v) * k); }
-      }
+      transferLut(out, S, A, op, cov, paperWhite, t);
       continue;
     }
     if (!l.raster) continue;

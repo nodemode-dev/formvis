@@ -4,6 +4,18 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.92.6 · 2026-10-20
+
+- GPU brush coverage now handles opacity dynamics byte-identically (the per-stroke opacity ceiling is kept on the GPU as a max-blended plane); a flat layer larger than the GPU's maximum texture paints on the CPU from the first dab instead of changing over mid-stroke.
+- Deep composite: 16-bit Levels, Curves and Exposure work out each of the 65,536 levels once per channel (2.5 to 4 times faster on 12 MP, identical output); 32-bit Exposure skips the power at gamma 1 (about 10 times faster, identical).
+- Native renderer: unmasked folders holding clipped layers draw natively in eight folder blend modes; masked Hue and Reflect folders are now refused as intended (the mask arrives on the children).
+- Render Video and Export MP4 write the exact frame rate (12, 24, 25, 29.97 as 30000/1001, 30) instead of one derived from rounded frame delays.
+- Streamed TIFF export accepts 16-bit depth and RGB without alpha.
+- New Document: the custom background colour field keeps its space when the choice changes, and its option uses the translated word "Custom".
+- Desktop: after the window has stopped twice and the restart-or-quit page shows, the close button closes the app.
+- Docs: docs/hosting has isolation header samples for a `_headers` file, nginx and Apache, and the postMessage protocol for framing.
+- Tests: the static web build under a sub-path, the framed app's postMessage protocol, the benchmark harness, the update dialog, background band redraws, New Document backgrounds, and in the desktop shell Developer Tools, the Linux display server and Interface Scale; the upscale stop test is deterministic.
+
 ## 1.92.5 · 2026-10-20
 
 - Upscale 2x/4x can run an upscaler file ComfyUI lists (.pth included) as a "ComfyUI upscaler" source in the Model list, with progress, stop and named missing nodes.

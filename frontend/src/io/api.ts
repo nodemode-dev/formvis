@@ -620,8 +620,8 @@ export const api = {
     return (await request('/video/sequence', { method: 'POST', body: form({ name }, frames.map((blob, i) => ({ name: `f${i}.png`, blob })), 'file') })).blob();
   },
   /** An H.264 MP4 from frames (PNG) and their delays in milliseconds, written by the engine's ffmpeg (1.58.9). */
-  async encodeVideo(frames: Blob[], delays: number[]): Promise<Blob> {
-    const body = form({ delays: JSON.stringify(delays) }, frames.map((blob, i) => ({ name: `f${i}.png`, blob })), 'file');
+  async encodeVideo(frames: Blob[], delays: number[], fps = 0): Promise<Blob> {
+    const body = form({ delays: JSON.stringify(delays), fps: String(fps) },frames.map((blob, i) => ({ name: `f${i}.png`, blob })), 'file');
     return (await request('/video/encode', { method: 'POST', body })).blob();
   },
   /** File > Automate > Photomerge (1.58.2): the photos stitched by the engine's OpenCV, transparent where none reaches

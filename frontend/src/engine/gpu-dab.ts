@@ -21,6 +21,7 @@ uniform vec2 off;
 uniform vec2 sc;
 uniform ivec2 dim;
 uniform float k;
+uniform float cv;
 out vec4 o;
 float texel(ivec2 q, float wgt) {
   if (q.x < 0 || q.y < 0 || q.x >= dim.x || q.y >= dim.y) return 0.0;
@@ -40,7 +41,8 @@ void main() {
   s += texel(b + ivec2(1, 1), fu * fv);
   float a = k * (s * cs);
   if (!(a > 0.0)) discard;
-  o = vec4(a, 0.0, 0.0, a);
+  float r = cv >= 0.0 ? cv : a;
+  o = vec4(r, 0.0, 0.0, r);
 }`;
 
 type Rect = { x: number; y: number; w: number; h: number };
@@ -54,7 +56,28 @@ export class GpuDabCoverage {
 
   private readonly locs = new Map<string, WebGLUniformLocation | null>();
 
+  private ceilTarget: WebGLTexture | null = null;
+  private ceilFbo: WebGLFramebuffer | null = null;
+
   private constructor(private readonly gl: WebGL2RenderingContext, private readonly prog: WebGLProgram, private target: WebGLTexture, private fbo: WebGLFramebuffer, private w: number, private h: number) {}
+
+  private plane(from: WebGLFramebuffer, nw: number, nh: number, keep: boolean, dx: number, dy: number): { t: WebGLTexture; f: WebGLFramebuffer } | null {
+    const gl = this.gl, t = gl.createTexture() as WebGLTexture, f = gl.createFramebuffer() as WebGLFramebuffer;
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.R32F, nw, nh);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, f);
+    gl.framebufferTexture2D(gl.DRAW_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+    if (gl.checkFramebufferStatus(gl.DRAW_FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE || gl.getError() !== gl.NO_ERROR) { gl.deleteFramebuffer(f); gl.deleteTexture(t); return null; }
+    gl.disable(gl.SCISSOR_TEST);
+    gl.clearBufferfv(gl.COLOR, 0, [0, 0, 0, 0]);
+    const x0 = Math.max(0, -dx), x1 = Math.min(this.w, nw - dx), y0 = Math.max(0, -dy), y1 = Math.min(this.h, nh - dy);
+    if (keep && x1 > x0 && y1 > y0) {
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, from);
+      gl.blitFramebuffer(x0, y0, x1, y1, x0 + dx, y0 + dy, x1 + dx, y1 + dy, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    }
+    gl.enable(gl.SCISSOR_TEST);
+    return { t, f };
+  }
 
   /** The texture remade `nw` by `nh` with what it held kept where it now sits (`dx`, `dy` from the new corner), as the
    *  stroke's window grows; false (nothing changed) when the new size is more than the graphics processor allows. */
@@ -62,24 +85,22 @@ export class GpuDabCoverage {
     const gl = this.gl;
     try {
       if (gl.isContextLost() || nw < 1 || nh < 1 || Math.max(nw, nh) > gl.getParameter(gl.MAX_TEXTURE_SIZE) || nw * nh > 64_000_000) return false;
-      const target = gl.createTexture() as WebGLTexture, fbo = gl.createFramebuffer() as WebGLFramebuffer;
-      gl.bindTexture(gl.TEXTURE_2D, target);
-      gl.texStorage2D(gl.TEXTURE_2D, 1, gl.R32F, nw, nh);
-      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, fbo);
-      gl.framebufferTexture2D(gl.DRAW_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, target, 0);
-      if (gl.checkFramebufferStatus(gl.DRAW_FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE || gl.getError() !== gl.NO_ERROR) { gl.deleteFramebuffer(fbo); gl.deleteTexture(target); return false; }
-      gl.disable(gl.SCISSOR_TEST);
-      gl.clearBufferfv(gl.COLOR, 0, [0, 0, 0, 0]);
-      const x0 = Math.max(0, -dx), x1 = Math.min(this.w, nw - dx), y0 = Math.max(0, -dy), y1 = Math.min(this.h, nh - dy);
-      if (keep && x1 > x0 && y1 > y0) {
-        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.fbo);
-        gl.blitFramebuffer(x0, y0, x1, y1, x0 + dx, y0 + dy, x1 + dx, y1 + dy, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+      const cov = this.plane(this.fbo, nw, nh, keep, dx, dy), ceil = this.ceilFbo ? this.plane(this.ceilFbo, nw, nh, keep, dx, dy) : null;
+      if (!cov || (this.ceilFbo && !ceil)) {
+        for (const p of [cov, ceil]) if (p) { gl.deleteFramebuffer(p.f); gl.deleteTexture(p.t); }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+        return false;
       }
-      gl.enable(gl.SCISSOR_TEST);
+      const target = cov.t, fbo = cov.f;
       gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
       gl.viewport(0, 0, nw, nh);
       gl.deleteFramebuffer(this.fbo);
       gl.deleteTexture(this.target);
+      if (ceil) {
+        gl.deleteFramebuffer(this.ceilFbo);
+        gl.deleteTexture(this.ceilTarget);
+        this.ceilTarget = ceil.t; this.ceilFbo = ceil.f;
+      }
       const d = this.dirty;
       this.dirty = null;
       if (keep && d) {
@@ -91,12 +112,15 @@ export class GpuDabCoverage {
     } catch { return false; }
   }
 
-  static open(w: number, h: number): GpuDabCoverage | null {
+  /** `lw` by `lh` is the most the window can ever grow to (the layer, for a stroke that is not tiled), so a window that
+   *  could pass what the graphics processor holds never starts here, and no stroke has to change over to the CPU midway. */
+  static open(w: number, h: number, lw = w, lh = h): GpuDabCoverage | null {
     try {
       if (typeof OffscreenCanvas === 'undefined') return null;
       const gl = new OffscreenCanvas(1, 1).getContext('webgl2', { antialias: false, depth: false, stencil: false, alpha: false }) as WebGL2RenderingContext | null;
       if (!gl || !gl.getExtension('EXT_color_buffer_float') || !gl.getExtension('EXT_float_blend')) return null;
-      if (w < 1 || h < 1 || Math.max(w, h) > gl.getParameter(gl.MAX_TEXTURE_SIZE) || w * h > 64_000_000) return null;
+      const side = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+      if (w < 1 || h < 1 || Math.max(w, h, lw, lh) > side || Math.max(w * h, lw * lh) > 64_000_000) return null;
       const prog = gl.createProgram() as WebGLProgram;
       for (const [type, src] of [[gl.VERTEX_SHADER, VERT], [gl.FRAGMENT_SHADER, FRAG]] as const) {
         const sh = gl.createShader(type) as WebGLShader;
@@ -144,7 +168,7 @@ export class GpuDabCoverage {
   }
 
   /** One dab, by the same box, level choice and inverse as StrokeBuffer.lay; false when it lands nowhere. */
-  lay(tip: TipAlpha, m: Mat, k: number): boolean {
+  lay(tip: TipAlpha, m: Mat, k: number, ceil: number | null = null): boolean {
     const det = m[0] * m[3] - m[1] * m[2];
     if (!(Math.abs(det) > 1e-12) || !(k > 0)) return false;
     const tw = tip.w, th = tip.h, gl = this.gl;
@@ -168,9 +192,25 @@ export class GpuDabCoverage {
     gl.uniform2f(u('sc'), lv.w / tw, lv.h / th);
     gl.uniform2i(u('dim'), lv.w, lv.h);
     gl.uniform1f(u('k'), k);
+    gl.uniform1f(u('cv'), -1);
     gl.uniform1i(u('tip'), 0);
+    if (ceil !== null && !this.ceilFbo) {
+      const c = this.plane(this.fbo, this.w, this.h, false, 0, 0);
+      if (!c) { gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo); return false; }
+      this.ceilTarget = c.t; this.ceilFbo = c.f;
+      gl.bindTexture(gl.TEXTURE_2D, this.tipTexture(lv.data, lv.w, lv.h));
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
     gl.scissor(x0, y0, x1 - x0, y1 - y0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+    if (ceil !== null) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.ceilFbo);
+      gl.blendEquation(gl.MAX);
+      gl.uniform1f(u('cv'), ceil);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      gl.blendEquation(gl.FUNC_ADD);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+    }
     const r = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
     if (!this.dirty) this.dirty = r;
     else {
@@ -181,13 +221,20 @@ export class GpuDabCoverage {
   }
 
   /** What the dabs since the last read have changed, copied into `cov` (rows `stride` apart); the box, or null. */
-  readInto(cov: Float32Array, stride: number): Rect | null {
+  readInto(cov: Float32Array, stride: number, ceil: Uint8Array | null = null): Rect | null {
     const r = this.dirty;
     if (!r || this.gl.isContextLost()) return null;
     this.dirty = null;
     const gl = this.gl, out = new Float32Array(r.w * r.h);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
     gl.readPixels(r.x, r.y, r.w, r.h, gl.RED, gl.FLOAT, out);
     for (let j = 0; j < r.h; j++) cov.set(out.subarray(j * r.w, (j + 1) * r.w), (r.y + j) * stride + r.x);
+    if (ceil && this.ceilFbo) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.ceilFbo);
+      gl.readPixels(r.x, r.y, r.w, r.h, gl.RED, gl.FLOAT, out);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+      for (let j = 0; j < r.h; j++) { const o = (r.y + j) * stride + r.x, s = j * r.w; for (let i = 0; i < r.w; i++) ceil[o + i] = out[s + i]; }
+    }
     return r;
   }
 
@@ -196,6 +243,8 @@ export class GpuDabCoverage {
     try {
       gl.deleteFramebuffer(this.fbo);
       gl.deleteTexture(this.target);
+      gl.deleteFramebuffer(this.ceilFbo);
+      gl.deleteTexture(this.ceilTarget);
       gl.deleteProgram(this.prog);
       gl.getExtension('WEBGL_lose_context')?.loseContext();
     } catch { /* the context is already gone */ }

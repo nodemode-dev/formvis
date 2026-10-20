@@ -1,0 +1,9 @@
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: credentialless
+
+/assets/plugin-worker-*.js
+  Content-Security-Policy: default-src 'none'; script-src blob:; connect-src 'none'; worker-src 'none'; frame-src 'none'; img-src 'none'; style-src 'none'
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

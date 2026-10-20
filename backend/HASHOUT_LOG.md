@@ -2,6 +2,11 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Exact MP4 rate, 16-bit and RGB streamed TIFF · _v1.92.6 (app/routers/video.py, app/routers/bands.py)
+
+- video: `_rate(fps)` gives an exact rational (n*1000/1001 for the 24/30/60 NTSC rates, otherwise Fraction(...).limit_denominator(1000)); `_encode(fps_in)` fixes the rate with one repeat per frame when the window sends `fps`, and the old delay grid still applies without it. 12 fps had become 1000/83.
+- bands: `/api/bands/tiff` takes `depth` (8 or 16) and `alpha`; row bytes are `w * spp * depth/8`, 16-bit samples little-endian to match the "II" header. ExtraSamples (338) only with alpha, since readers treat RGB with it as unexpected. Removed `(258, 3, 4, struct.pack("<4H", 8, 8, 8, 8))`, `(277, 3, 1, struct.pack("<H", 4))`, `step = s["rps"] * s["w"] * 4`, `"rps": max(1, STRIP // (width * 4))` and `row = s["w"] * 4`. Parallel band deflate showed no speedup on the shared 2-core box.
+
 ## ComfyUI upscaler routes · _v1.92.4 (app/routers/comfyui.py)
 
 - GET /api/comfyui/upscale-models lists ComfyUI's UpscaleModelLoader files and any missing nodes; POST /api/comfyui/upscale builds LoadImage, UpscaleModelLoader, ImageUpscaleWithModel and SaveImage and reuses run(), so progress, cancel and image fetch are unchanged. The model name must be in ComfyUI's own list, so no path reaches the graph.

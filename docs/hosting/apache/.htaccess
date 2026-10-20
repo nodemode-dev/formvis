@@ -1,0 +1,17 @@
+<IfModule mod_headers.c>
+    Header always set Cross-Origin-Opener-Policy "same-origin"
+    Header always set Cross-Origin-Embedder-Policy "credentialless"
+
+    <FilesMatch "^plugin-worker-.*\.js$">
+        Header always set Content-Security-Policy "default-src 'none'; script-src blob:; connect-src 'none'; worker-src 'none'; frame-src 'none'; img-src 'none'; style-src 'none'"
+    </FilesMatch>
+
+    <If "%{REQUEST_URI} =~ m#/assets/#">
+        Header set Cache-Control "public, max-age=31536000, immutable"
+    </If>
+</IfModule>
+
+<IfModule mod_mime.c>
+    AddType application/wasm .wasm
+    AddType text/javascript .js .mjs
+</IfModule>

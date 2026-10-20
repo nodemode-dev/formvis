@@ -121,7 +121,7 @@ fn open_exit_gate(handle: &tauri::AppHandle) {
 /// Hands the page a quit request so it can ask about unsaved documents; false when the page cannot answer (it has not
 /// started listening, or the window is gone), which means the app may exit at once.
 fn ask_page_to_quit(handle: &tauri::AppHandle) -> bool {
-    if handle.state::<ExitGate>().0.load(Ordering::SeqCst) {
+    if handle.state::<ExitGate>().0.load(Ordering::SeqCst) || window_state::loop_page_shown() {
         return false;
     }
     let ready = handle.state::<OpenQueue>().0.lock().map(|opens| opens.ready).unwrap_or(false);

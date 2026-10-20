@@ -279,7 +279,7 @@ export class PixelStroke {
     this.shaped = remake(this.shaped, false);
     this.texTemp = remake(this.texTemp, false);
     if (this.gpuCover && !this.gpuCover.resize(nw, nh, open, dx, dy)) {
-      this.gpuCover.readInto(this.buf.cov, this.buf.w);
+      this.gpuCover.readInto(this.buf.cov, this.buf.w, this.buf.ceil);
       this.gpuCover.dispose();
       this.gpuCover = null;
       this.gpuWanted = false;
@@ -489,7 +489,8 @@ export class PixelStroke {
     if (d?.opacity?.enabled) this.buf.useCeil();
     const rx = r * this.tipAspect.x, ry = r * this.tipAspect.y, tip = this.tipAlphaOf();
     const dm = mul(this.toWin, [(2 * rx) / tip.w, 0, 0, (2 * ry) / tip.h, p.x - rx, p.y - ry]), da = this.dabAlpha(flow);
-    if (!this.layOnGpu(tip, dm, da)) this.buf.lay(tip, dm, da, this.opacityOf(info));
+    const reach = this.opacityOf(info);
+    if (!this.layOnGpu(tip, dm, da, reach)) this.buf.lay(tip, dm, da, reach);
     if (this.varied) {
       const c = this.inkCtx();
       setMat(c, this.toWin);
@@ -504,11 +505,11 @@ export class PixelStroke {
   }
 
   /** Preferences > Performance > GPU brush coverage: a dab laid in a float texture on the GPU, read back at compose. */
-  private layOnGpu(tip: TipAlpha, m: Mat, k: number): boolean {
-    if (!this.gpuWanted || this.buf.ceil) return false;
-    this.gpuCover ??= GpuDabCoverage.open(this.ww, this.wh);
+  private layOnGpu(tip: TipAlpha, m: Mat, k: number, ceil: number): boolean {
+    if (!this.gpuWanted) return false;
+    this.gpuCover ??= GpuDabCoverage.open(this.ww, this.wh, this.tiled ? this.ww : this.raster.width, this.tiled ? this.wh : this.raster.height);
     if (!this.gpuCover || this.gpuCover.lost) { this.gpuWanted = false; return false; }
-    this.gpuCover.lay(tip, m, k);
+    this.gpuCover.lay(tip, m, k, this.buf.ceil ? ceil : null);
     return true;
   }
 
@@ -758,7 +759,7 @@ export class PixelStroke {
       const a = (angle * Math.PI) / 180, ca = Math.cos(a), sa = Math.sin(a), place = mul(this.toWin, [ca, sa, -sa, ca, x, y]);
       const at = mul(place, [fx, 0, 0, fy * round, 0, 0]), rx = r * this.tipAspect.x, ry = r * this.tipAspect.y;
       const dm = mul(at, [(2 * rx) / tip.w, 0, 0, (2 * ry) / tip.h, -rx, -ry]);
-      if (!this.layOnGpu(tip, dm, alpha)) this.buf.lay(tip, dm, alpha, reached);
+      if (!this.layOnGpu(tip, dm, alpha, reached)) this.buf.lay(tip, dm, alpha, reached);
       if (this.varied) {
         const c = this.inkCtx();
         setMat(c, at);
@@ -833,7 +834,7 @@ export class PixelStroke {
     if (!area) return null;
     const win: Rect = { x: area.x - this.ox, y: area.y - this.oy, w: area.w, h: area.h };   // in the window's pixels (1.60.6)
     const ink = this.ink ? ctxOf(this.ink).getImageData(win.x, win.y, win.w, win.h).data : null;
-    this.gpuCover?.readInto(this.buf.cov, this.buf.w);
+    this.gpuCover?.readInto(this.buf.cov, this.buf.w, this.buf.ceil);
     this.writePaint(win, this.buf.paintRegion(win, this.style.color, this.style.opacity, ink));
     // Coverage: the paint layer, shaped by the dual brush (kept only where its marks fell) and the texture (its tile's
     // alpha cut out, tiled at Scale in document space), then cut to the selection when there is one.
@@ -900,7 +901,7 @@ export class PixelStroke {
   /** The stroke's coverage per layer pixel, 0 to 255, cut to the selection. */
   coverageAlpha(): Uint8Array {
     const w = this.raster.width, h = this.raster.height, s = createSurface(w, h), c = ctxOf(s);
-    this.gpuCover?.readInto(this.buf.cov, this.buf.w);
+    this.gpuCover?.readInto(this.buf.cov, this.buf.w, this.buf.ceil);
     c.putImageData(this.buf.coverImage(), this.ox, this.oy);   // the window's coverage at its place (1.60.6)
     if (this.selection) {
       c.globalCompositeOperation = 'destination-in';
@@ -916,7 +917,7 @@ export class PixelStroke {
    *  rebuild; null when anything else shaped the paint (a shape, texture, selection, mask, varied colour, blend mode). */
   coverFor(x: number, y: number, w: number, h: number): Float32Array | null {
     if (this.shape || this.texture || this.selection || this.lerp || this.tiled || this.wetInner || this.varied || this.pixelBlend || (this.op !== 'source-over' && this.op !== 'destination-out')) return null;
-    this.gpuCover?.readInto(this.buf.cov, this.buf.w);
+    this.gpuCover?.readInto(this.buf.cov, this.buf.w, this.buf.ceil);
     const b = this.buf, out = new Float32Array(w * h), top = levelOf(this.style.opacity) / 255;
     for (let j = 0; j < h; j++) {
       for (let i = 0; i < w; i++) {

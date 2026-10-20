@@ -2463,7 +2463,7 @@ export function startApp(): void {
           delays.push(f?.delay ?? 0);
           await new Promise((r) => window.setTimeout(r, 0));
         }
-        await deliver(await api.encodeVideo(pngs, delays), `${p.name}.mp4`);
+        await deliver(await api.encodeVideo(pngs, delays, vt ? vt.fps : 0), `${p.name}.mp4`);
         toast(pngs.length > 1 ? `Exported ${pngs.length} frames as an MP4.` : 'Exported as an MP4.');
       } catch (err) { toast(message(err), 'error'); }
     });
@@ -2502,7 +2502,7 @@ export function startApp(): void {
     if (c.format === 'gif') return new Blob([encodeGif(gif, w, h, vt.loops)], { type: 'image/gif' });
     if (c.format === 'jpg' || c.format === 'webp') return zipFiles(pngs.map((blob, i) => ({ name: `${base}_${String(c.from + i).padStart(5, '0')}.${c.format}`, blob })));
     if (c.format === 'png') return api.videoSequence(pngs, base);
-    return api.encodeVideo(pngs, pngs.map(() => delay));
+    return api.encodeVideo(pngs, pngs.map(() => delay), vt.fps);
   }
 
   async function exportGif(scale = 1): Promise<void> {
