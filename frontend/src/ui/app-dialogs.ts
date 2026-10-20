@@ -483,6 +483,14 @@ export class SettingsDialog extends Dialog {
   private readonly accent = el<HTMLInputElement>('<input class="cv-input" type="color" aria-label="Accent color">');
   private readonly nav = el('<div class="cv-prefs-nav" role="tablist"></div>');
   private readonly sections = new Map<string, HTMLElement>();
+  private pagesEl: HTMLElement | null = null;
+  private shell: { frame: HTMLElement; rail: HTMLElement; port: HTMLElement; shade: SVGPathElement; line: SVGPathElement } | null = null;
+  private current = '';
+  private wireRaf = 0;
+  private spyRaf = 0;
+  private spyMuted = 0;
+  private wireD = '';
+  private portY = Number.NaN;
   private prefs: Prefs = loadPrefs();
   /** How strongly the accent tints what it marks: selections, active tools and tabs (the owner's walkthrough). */
   private readonly intensityRow = sliderRow('Accent intensity (%)', 0, 150, 5, (v) => setIntensity(v / 100));
@@ -637,7 +645,7 @@ export class SettingsDialog extends Dialog {
     const swatches = document.createElement('template');
     swatches.innerHTML = themeSwatchesHtml();
     this.grid.append(swatches.content);
-    const row = el('<div class="cv-field"><span>Theme</span></div>');
+    const row = el('<div class="cv-prefs-themes"></div>');
     row.appendChild(this.grid);
     const pages = el('<div class="cv-prefs-pages"></div>');
     const railIcons: Record<string, string> = { General: 'pfGeneral', Interface: 'pfInterface', Performance: 'pfPerformance', Workspace: 'pfWorkspace', Tools: 'pfTools', 'History & Cache': 'pfHistory', 'File Handling': 'pfFile', 'Placing Pictures': 'pfPlace', 'History Log': 'pfLog', Cursors: 'pfCursor', Type: 'pfType', 'Camera Raw Defaults': 'pfCamera', 'Transparency & Gamut': 'pfTransparency', 'Scratch Disks': 'pfScratch', Language: 'pfLanguage', 'Units & Rulers': 'pfUnits', 'Guides & Grid': 'pfGuides', 'Enhanced Controls': 'pfGestures', Plugins: 'pfPlugins' };
@@ -650,36 +658,42 @@ export class SettingsDialog extends Dialog {
       return g;
     };
     const nt = (text: string): HTMLElement => el(`<p class="cv-note">${text}</p>`);
-    const add = (name: string, ...content: HTMLElement[]): void => {
+    const cols = (...content: HTMLElement[]): HTMLElement => { const c = el('<div class="cv-prefs-cols"></div>'); c.append(...content); return c; };
+    const add =(name: string, ...content: HTMLElement[]): void => {
       const tab = el<HTMLButtonElement>(`<button class="cv-prefs-railtab" type="button" role="tab"><span class="cv-prefs-tabicon">${icon(railIcons[name] ?? 'pfGeneral', 18)}</span><span class="cv-prefs-tablabel"></span></button>`);
       tab.dataset.section = name;   // the English name is the identity; the label is the translation
       const label = q<HTMLElement>(tab, '.cv-prefs-tablabel');
       const paint = (): void => { setText(label, t(name)); tab.title = t(name); };
       paint();
       onLanguage(paint);
-      tab.addEventListener('click', () => this.showSection(name));
+      tab.addEventListener('click', () => this.showSection(name, 'smooth'));
       this.nav.appendChild(tab);
-      const page = el('<div class="cv-prefs-page" role="tabpanel"></div>');
-      page.append(...content);
+      const page = el(`<section class="cv-prefs-page cv-prefs-sec" role="tabpanel"><button class="cv-prefs-sechead" type="button" aria-expanded="true"><span class="cv-prefs-secicon">${icon(railIcons[name] ?? 'pfGeneral', 16)}</span><span class="cv-prefs-seclabel"></span><span class="cv-prefs-chev">${icon('chevronDown', 16)}</span></button><div class="cv-prefs-secbody"></div></section>`);
+      page.dataset.section = name;
+      const head = q<HTMLButtonElement>(page, '.cv-prefs-sechead'), headLabel = q<HTMLElement>(page, '.cv-prefs-seclabel');
+      const paintHead = (): void => setText(headLabel, t(name));
+      paintHead();
+      onLanguage(paintHead);
+      head.addEventListener('click', () => this.foldSection(name));
+      q<HTMLElement>(page, '.cv-prefs-secbody').append(...content);
       pages.appendChild(page);
       this.sections.set(name, page);
     };
     const accentRow = el('<label class="cv-field"><span>Accent</span></label>');
     accentRow.appendChild(this.accent);
-    const reset = el<HTMLButtonElement>('<button class="cv-btn" type="button">Reset All Preferences...</button>');
+    const reset = el<HTMLButtonElement>('<button class="cv-btn cv-btn-danger" type="button">Reset All Preferences...</button>');
     reset.addEventListener('click', () => { void confirmAction('Reset all preferences?', 'Every preference, the panel arrangement and the tools shown go back to how formvis comes; your documents and library are kept. formvis reloads.', 'Reset').then((ok) => { if (!ok) return; for (const k of Object.keys(localStorage)) if (k.startsWith('formvis.') || k === 'nodemode_ui_settings') localStorage.removeItem(k); location.reload(); }); });
     add('General',
       grp('Startup', this.homeRow.el, this.homeCloseRow.el, this.whatsNewRow.el, nt('The Home screen covers the canvas area. At launch it shows while no document is open; closing the last document leaves the empty workspace with its panels unless the second choice is on. The brand mark at the top left opens it at any time; Esc leaves it. What\'s New (Help menu) lists the recent additions, each with a Show Me button; with the third choice on it opens once after an update.')),
       grp('Behavior', this.animZoomRow.el, this.zoomResizesRow.el, this.systemPickerRow.el, this.beepRow.el, nt('Beep When Done sounds a short tone when a job that ran longer than two seconds ends. Zoom Resizes Windows sizes a floating document window to the picture when its zoom changes. Animated Zoom eases Zoom In, Zoom Out and the Zoom tool\'s clicks over a fraction of a second. Use the system color picker opens the computer\'s own picker for the foreground and background swatches instead of formvis\'s.')),
-      grp('Placing and Resampling', this.interpolationRow.el, this.placeFitRow.el, this.placeSmartRow.el, nt('Image Interpolation is the resampling the Image Size dialog starts with. Resize Image During Place scales a picture larger than the canvas down to fit it when it is placed; off, it keeps its own size. Always Create Smart Objects When Placing makes each picture dropped on an open document a smart object.')),
+      grp('Resampling', this.interpolationRow.el, nt('Image Interpolation is the resampling the Image Size dialog starts with.')),
       grp('Clipboard and Transform', ...this.pageRows.generalRows),
       grp('Settings Storage', this.location.el),
       grp('Reset', reset));
     this.intensityRow.set(Math.round((readChoice().intensity ?? 1) * 100));
     add('Interface',
-      grp('Theme', row, this.themeAutoRow.el, this.themeLightRow.el, this.themeDarkRow.el, accentRow, this.intensityRow.el, nt('Theme and accent are shared with NodeMode on this device. Match System Appearance switches between the light and dark theme chosen here when the appearance of the computer changes; a theme picked by hand stays until the next change of a preference or of the appearance. Intensity sets how strongly the accent tints what it marks; 100% is the design\'s.')),
-      grp('Skins', this.skins.el),
-      grp('Text and Scale',this.fontSizeRow.el, this.scaleRow.el, nt('Text size scales the interface\'s text.')),
+      grp('Theme', row, nt('Right-click a theme to favourite it. Theme and accent are shared with NodeMode on this device.'), this.themeAutoRow.el, cols(this.themeLightRow.el, this.themeDarkRow.el), nt('Match System Appearance switches between the light and dark theme chosen here when the appearance of the computer changes; a theme picked by hand stays until the next change of a preference or of the appearance.'), accentRow, this.intensityRow.el, nt('Intensity sets how strongly the accent tints what it marks; 100% is the design\'s.'), this.skins.el),
+      grp('Language, Text and Scale', this.languageRow.el, nt('The language of the whole interface. Names you give layers and documents stay as you wrote them.'), cols(this.fontSizeRow.el, this.scaleRow.el), nt('Text size scales the interface\'s text.')),
       grp('Motion and Notices', this.animationsRow.el, this.noticeSecondsRow.el),
       grp('Canvas Appearance', this.canvasColourRow.el, nt('Canvas Color is the pasteboard around the picture (the same as View > Pasteboard).'), ...this.pageRows.interfaceRows));
     add('Performance',
@@ -699,7 +713,8 @@ export class SettingsDialog extends Dialog {
       grp('Hints and Shortcuts', this.tooltipsRow.el, this.shiftToolRow.el, nt('Show Tool Tips off hides the hover hints on buttons and tools. With Use Shift Key for Tool Switch off, pressing a tool\'s letter again cycles its group instead of Shift with the letter.')));
     add('History & Cache',
       grp('History', this.statesRow.el, this.memoryRow.el, this.memoryAutoRow.el, nt('History States is how many steps undo keeps (50 is a common default; up to 1000); history memory caps what those steps may hold, and the oldest steps go first when either is reached. A browser app cannot reserve system memory as a desktop app can, so this is the part formvis controls. Turning off region redraws repaints the whole canvas on each stroke, slower but useful if painting ever draws out of place.')),
-      grp('Snapshots', this.firstSnapRow.el, this.snapMemRow.el, nt('Each document keeps itself as opened, the History Brush\'s first source; snapshots, that one included, share this memory.')));
+      grp('Snapshots', this.firstSnapRow.el, this.snapMemRow.el, nt('Each document keeps itself as opened, the History Brush\'s first source; snapshots, that one included, share this memory.')),
+      grp('Log', this.historyLogRow.el, nt('On, every new history step is written down with its time and document, on this device. Edit > History Log saves it as a text file or clears it.')));
     this.restoreBox.addEventListener('change', () => this.change({ restoreSession: this.restoreBox.checked }));
     this.mismatchSel.addEventListener('change', () => this.change({ profileMismatch: this.mismatchSel.value as 'convert' | 'keep' | 'ask' }));
     const restore = el('<label class="cv-dialog-row"><span>Reopen the documents that were open when formvis closed</span></label>');
@@ -714,35 +729,33 @@ export class SettingsDialog extends Dialog {
     const library = el('<div></div>');
     library.append(this.libNow, libRow, pathRow, moveRow, this.libApply, el('<p class="cv-note">The library can live in any folder, a synced one (iCloud Drive, Dropbox, OneDrive, Google Drive) included. If a project changed in that folder since you opened it, from another device or window, saving keeps that version and saves yours beside it as a conflict copy.</p>'));
     add('File Handling',
-      grp('Library', library),
       grp('Opening and Recovery', mismatch, restore, nt('Every open document is kept on this device, in its tab order, and opens again at the next start, saved or not. Off, only unsaved work is kept, and formvis asks after a crash.'), this.recoveryRow.el, nt('Unsaved documents are kept on this device so they can be recovered after a crash; this is how soon after a change that happens.'), this.recentCountRow.el, nt('The recent file list is how many files File > Open Recent shows; 0 shows none.')),
       grp('Saving', this.lowerExtRow.el, nt('Use Lower Case Extension writes exported files as .jpg; off, as .JPG.'), this.saveBgRow.el, nt('Save in Background takes a snapshot of the document when you save and writes it while you keep editing; the status line shows the progress and Escape stops it. Off, edits wait until the save has finished. A document with a giant tiled layer always waits.'), this.historyCapRow.el, nt('Save and Save As write the most recent steps of an 8-bit document into the project, newest first, until this size is reached; opening the project brings them back to the History panel and Undo. File > Save As with History keeps them for one save whatever this is set to (64 MB when it is 0).')),
-      grp('Formats', ...this.pageRows.fileRows));
-    add('Placing Pictures', grp('Free Transform on Place', this.placeTransformRow.el, nt('On, a single picture dropped on an open document or put in with File > Place Embedded opens in Free Transform: Enter keeps it, Escape leaves it at its placed size and spot. A picture larger than the canvas is placed scaled to fit.')));
-    add('History Log', grp('Log', this.historyLogRow.el, nt('On, every new history step is written down with its time and document, on this device. Edit > History Log saves it as a text file or clears it.')));
+      grp('Formats', ...this.pageRows.fileRows),
+      grp('Library', library));
+    add('Placing Pictures', grp('Placing', this.placeFitRow.el, this.placeSmartRow.el, nt('Resize Image During Place scales a picture larger than the canvas down to fit it when it is placed; off, it keeps its own size. Always Create Smart Objects When Placing makes each picture dropped on an open document a smart object.'), this.placeTransformRow.el, nt('On, a single picture dropped on an open document or put in with File > Place Embedded opens in Free Transform: Enter keeps it, Escape leaves it at its placed size and spot. A picture larger than the canvas is placed scaled to fit.')));
     add('Cursors', grp('Painting Cursors', this.cursorRow.el, this.crossRow.el, nt('How painting tools show where they paint: the tip\'s outline at its size, a crosshair alone, or a small ring.'), ...this.pageRows.cursors));
     add('Type',
       grp('Fonts', this.recentFontsRow.el, nt('The fonts you used last are listed first in the font menus, newest first; 0 lists none first.')),
       grp('Text Editing', ...this.pageRows.type));
     add('Camera Raw Defaults',
       grp('Dialog', this.rawAskRow.el, nt('What the Camera Raw dialog starts with each time a camera RAW file opens.')),
-      grp('Color', this.rawWbRow.el, this.rawBitsRow.el, this.rawSpaceRow.el, nt('The color space applies at 16 Bits/Channel (an 8-bit document is sRGB).')),
-      grp('Output and Sharpening', this.rawSharpenRow.el, this.rawSharpenAmountRow.el, this.rawPpiRow.el, this.rawToneRow.el, this.rawSmartRow.el, nt('Resolution, Auto Tone and Smart Object apply to the 8 bits/channel document it opens. Sharpen For applies an Unsharp Mask sized for the screen, glossy paper or matte paper as the file opens.')));
+      grp('Color', cols(this.rawWbRow.el, this.rawBitsRow.el, this.rawSpaceRow.el), nt('The color space applies at 16 Bits/Channel (an 8-bit document is sRGB).')),
+      grp('Output and Sharpening', cols(this.rawSharpenRow.el, this.rawSharpenAmountRow.el), this.rawPpiRow.el, this.rawToneRow.el, this.rawSmartRow.el, nt('Resolution, Auto Tone and Smart Object apply to the 8 bits/channel document it opens. Sharpen For applies an Unsharp Mask sized for the screen, glossy paper or matte paper as the file opens.')));
     const gamutField = el('<label class="cv-field"><span>Gamut Warning</span></label>');
     this.gamutColor.addEventListener('input', () => this.change({ gamutColor: this.gamutColor.value }));
     gamutField.append(this.gamutColor);
     add('Transparency & Gamut',
-      grp('Transparency', this.checkerSizeRow.el, this.checkerColorsRow.el, ...this.pageRows.transparency, el(`<p class="cv-note">${t('The checkerboard shown behind transparent pixels. None shows it plain; Match Theme uses the light checkerboard in light themes and the dark one in dark themes.')}</p>`)),
+      grp('Transparency', cols(this.checkerSizeRow.el, this.checkerColorsRow.el), ...this.pageRows.transparency, el(`<p class="cv-note">${t('The checkerboard shown behind transparent pixels. None shows it plain; Match Theme uses the light checkerboard in light themes and the dark one in dark themes.')}</p>`)),
       grp('Gamut Warning', gamutField, this.gamutOpacityRow.el, el('<p class="cv-note">The colour and opacity that View > Gamut Warning paints over colours the proof profile cannot print.</p>')));
     this.scratchClean.addEventListener('click', () => { this.scratch?.clean(); setTimeout(() => void this.refreshScratch(), 400); });
     add('Scratch Disks', grp('Working Files', this.pageRows.scratch.el, this.scratchInfo, this.scratchClean, el('<p class="cv-note">formvis keeps recovery copies of open documents and closed tabs in this device\'s storage, the way a desktop editor uses a scratch disk. Clean Working Files removes the copies of documents that are no longer open; open documents are not touched. Layer effect and display caches are set in Performance.</p>')));
-    add('Language', grp('Interface Language', this.languageRow.el, el('<p class="cv-note">The language of the whole interface. Names you give layers and documents stay as you wrote them.</p>')));
     add('Units & Rulers',
       grp('Rulers', this.rulerRow.el, nt('The rulers\' unit; inches, centimetres and millimetres follow the document\'s resolution, percent its width and height.')),
       grp('Resolution and Columns', ...this.pageRows.units));
     add('Guides & Grid',
       grp('Guides', this.colorRow('Guides', this.guideColor, 'guideColor'), this.guideStyleRow.el, nt('The colour and line style of guides.')),
-      grp('Grid', this.colorRow('Grid', this.gridColor, 'gridColor'), this.gridStyleRow.el, this.gridPresetRow.el, this.gridUnitRow.el, this.gridEveryRow.el, this.subdivRow.el, this.gridOpacityRow.el, this.gridResetRow, nt('The colour and line style of the grid.')),
+      grp('Grid', this.colorRow('Grid', this.gridColor, 'gridColor'), cols(this.gridStyleRow.el, this.gridPresetRow.el, this.gridUnitRow.el, this.gridEveryRow.el), this.subdivRow.el, this.gridOpacityRow.el, this.gridResetRow, nt('The colour and line style of the grid.')),
       grp('Slices', this.colorRow('Slices', this.sliceColor, 'sliceColor'), this.sliceNumbersRow.el, nt('The colour of slice lines and whether their numbers show.')));
     // Plugins (1.50.8): the other apps formvis sends to; NodeMode first.
     this.nodemodeCheck.addEventListener('click', () => void this.checkNodeMode());
@@ -787,9 +800,15 @@ export class SettingsDialog extends Dialog {
       grp('Outside Agents', ag, agNote),
       grp('Keys and Models', this.keysNote, this.apiKeys.el, this.modelFolder.el, this.hfToken.el, this.localModels.el, this.localFiles.el),
       grp('Updates', this.updates.el));
+    for (const name of ['General', 'Interface', 'Workspace', 'Tools', 'Cursors', 'Enhanced Controls', 'Type', 'Placing Pictures', 'File Handling', 'History & Cache', 'Performance', 'Scratch Disks', 'Transparency & Gamut', 'Units & Rulers', 'Guides & Grid', 'Camera Raw Defaults', 'Plugins']) {
+      const tab = this.nav.querySelector<HTMLElement>(`[data-section="${name}"]`), card = this.sections.get(name);
+      if (tab?.parentElement) tab.parentElement.appendChild(tab);
+      if (card) pages.appendChild(card);
+    }
     const wrap = el('<div class="cv-prefs"></div>');
     wrap.append(pages);
     this.body.appendChild(wrap);
+    this.pagesEl = pages;
     const frame = q<HTMLElement>(this.scrim, '.cv-dialog');
     frame.classList.add('cv-prefs-dlg');
     q<HTMLElement>(this.scrim, '.cv-dialog-head').prepend(el(`<span class="cv-prefs-headicon">${icon('settings', 16)}</span>`));
@@ -807,12 +826,19 @@ export class SettingsDialog extends Dialog {
       collapsed = !collapsed;
       try { localStorage.setItem(railKey, collapsed ? '1' : '0'); } catch { paintRail(); }
       paintRail();
+      this.queueWire();
     });
     paintRail();
     onLanguage(paintRail);
     const rail = el('<div class="cv-prefs-rail"></div>');
     rail.append(this.nav, fold);
-    frame.appendChild(rail);
+    const wire = el<HTMLElement>('<svg class="cv-prefs-wire" aria-hidden="true"><path class="cv-prefs-wire-shade"></path><path class="cv-prefs-wire-line"></path></svg>') as unknown as SVGSVGElement;
+    const port = el('<span class="cv-prefs-port" aria-hidden="true"></span>');
+    frame.append(rail, wire, port);
+    this.shell = { frame, rail, port, shade: q<SVGPathElement>(wire, '.cv-prefs-wire-shade'), line: q<SVGPathElement>(wire, '.cv-prefs-wire-line') };
+    pages.addEventListener('scroll', () => this.queueSpy(), { passive: true });
+    new ResizeObserver(() => this.queueWire()).observe(frame);
+    window.addEventListener('resize', () => this.queueWire());
     this.button('Done', 'primary', () => this.close());
     this.grid.addEventListener('contextmenu', (e) => {
       const id = (e.target as HTMLElement).closest<HTMLElement>('[data-theme-id]')?.dataset.themeId;
@@ -940,6 +966,8 @@ export class SettingsDialog extends Dialog {
     if (section && this.sections.has(section)) this.showSection(section);
     this.sync();
     this.open();
+    if (section && this.sections.has(section)) this.scrollToSection(section, 'auto');
+    this.queueWire();
   }
 
   private async refreshScratch(): Promise<void> {
@@ -974,9 +1002,85 @@ export class SettingsDialog extends Dialog {
     setText(this.engineMode, text);
   }
 
-  private showSection(name: string): void {
-    for (const [n, page] of this.sections) setHidden(page, n !== name);
+  private showSection(name: string, scroll: ScrollBehavior | null = null): void {
+    if (!this.sections.has(name)) return;
+    this.markSection(name);
+    if (scroll) this.scrollToSection(name, scroll);
+  }
+
+  /** The section the wire points at: its rail tab is the active one and its card the current one. */
+  private markSection(name: string): void {
+    if (this.current === name) return;
+    this.current = name;
+    for (const [n, page] of this.sections) setClass(page, 'is-current', n === name);
     for (const tab of Array.from(this.nav.children) as HTMLElement[]) { const on = tab.dataset.section === name; setClass(tab, 'is-active', on); tab.setAttribute('aria-selected', String(on)); }
+    this.queueWire();
+  }
+
+  private scrollToSection(name: string, behavior: ScrollBehavior): void {
+    const sec = this.sections.get(name), pages = this.pagesEl;
+    if (!sec || !pages) return;
+    if (sec.classList.contains('is-folded')) this.foldSection(name);
+    const top = sec.getBoundingClientRect().top - pages.getBoundingClientRect().top + pages.scrollTop - 12;
+    this.spyMuted = performance.now() + 700;
+    pages.scrollTo({ top, behavior });
+  }
+
+  private foldSection(name: string): void {
+    const sec = this.sections.get(name);
+    if (!sec) return;
+    const folded = !sec.classList.contains('is-folded');
+    setClass(sec, 'is-folded', folded);
+    setHidden(q(sec, '.cv-prefs-secbody'), folded);
+    q(sec, '.cv-prefs-sechead').setAttribute('aria-expanded', String(!folded));
+    this.queueWire();
+    this.queueSpy();
+  }
+
+  /** The scroll decides the current section: the last card whose top has passed the top edge, the last card at the end. */
+  private queueSpy(): void {
+    if (this.spyRaf) return;
+    this.spyRaf = requestAnimationFrame(() => {
+      this.spyRaf = 0;
+      const pages = this.pagesEl;
+      if (!pages || !pages.clientHeight || performance.now() < this.spyMuted) return;
+      const edge = pages.getBoundingClientRect().top + 24;
+      const names = Array.from(this.sections.keys());
+      let best = '', bestD = Infinity;
+      if (pages.scrollHeight > pages.clientHeight + 4 && pages.scrollTop + pages.clientHeight >= pages.scrollHeight - 2) best = names[names.length - 1] ?? '';
+      else for (const [n, sec] of this.sections) {
+        const top = sec.getBoundingClientRect().top, d = top <= edge ? edge - top : top - edge + 100000;
+        if (d < bestD) { bestD = d; best = n; }
+      }
+      if (best) this.markSection(best);
+    });
+  }
+
+  private queueWire(): void {
+    if (this.wireRaf) return;
+    this.wireRaf = requestAnimationFrame(() => { this.wireRaf = 0; this.drawWire(); });
+  }
+
+  /** The connector: from the active tab's right edge, along a trunk in the gap, to the port on the panel's left edge at the header divider. Only the two path data and the port's offset change. */
+  private drawWire(): void {
+    const s = this.shell;
+    if (!s || this.scrim.hidden) return;
+    const F = s.frame.getBoundingClientRect();
+    const tab = this.nav.querySelector<HTMLElement>('.cv-prefs-railtab.is-active');
+    const head = s.frame.querySelector<HTMLElement>('.cv-dialog-head');
+    if (!F.width || !tab || !head) return;
+    const N = this.nav.getBoundingClientRect();
+    let T = tab.getBoundingClientRect();
+    if (T.top < N.top || T.bottom > N.bottom) {
+      this.nav.scrollTop += T.top < N.top ? T.top - N.top - 6 : T.bottom - N.bottom + 6;
+      T = tab.getBoundingClientRect();
+    }
+    const R = s.rail.getBoundingClientRect(), H = head.getBoundingClientRect();
+    const portY = Math.round(H.bottom - F.top), sx = Math.round(T.right - F.left), ty = Math.round(T.top - F.top + T.height / 2);
+    const rr = R.right - F.left, trunk = Math.round(rr - rr * 0.45), dy = portY - ty, r = 10, dir = dy > 0 ? 1 : -1;
+    const d = Math.abs(dy) < 2 * r ? `M ${sx} ${ty} H ${trunk} V ${portY} H -7` : `M ${sx} ${ty} H ${trunk - r} a ${r} ${r} 0 0 ${dir > 0 ? 1 : 0} ${r} ${dir * r} V ${portY - dir * r} a ${r} ${r} 0 0 ${dir > 0 ? 0 : 1} ${r} ${dir * r} H -7`;
+    if (d !== this.wireD) { this.wireD = d; s.shade.setAttribute('d', d); s.line.setAttribute('d', d); }
+    if (portY !== this.portY) { this.portY = portY; s.port.style.transform = `translateY(${portY}px)`; }
   }
 
   private readonly nodemodeUrl = el<HTMLInputElement>('<input class="cv-input" type="url" aria-label="NodeMode address" spellcheck="false">');

@@ -14,7 +14,7 @@ import { runEffectsFloat, type FxRun } from './filters-lib/gallery-fx';
 import { shown } from './filters-lib/filter-gallery';
 import { cloudsDeep, colorHalftoneDeep, extrudeDeep, fibersDeep, lensFlareDeep, mezzotintDeep, pointillizeDeep, reduceNoiseDeep, shapeBlurDeep, smartBlurDeep, tilesDeep, traceContourDeep } from './deep-fx';
 import { pinchWarp, polarWarp, rippleWarp, shearWarp, spherizeWarp, twirlWarp, waveWarp, zigZagWarp, type Warp } from './filters-lib/distort';
-import { drawnLines, drawnPoints, galleryRadii, nearestGrid, type GalleryKind, type GallerySettings, type PathPoint, type RadiusMap } from './blur-gallery';
+import { drawnLines, drawnPoints, galleryRadii, nearestGrid, pinsOnLayer, type GalleryKind, type GallerySettings, type PathPoint, type RadiusMap } from './blur-gallery';
 import { decodeMap, shift } from './filters-lib/distort';
 import { fromRgb, toRgb } from './filters-lib/other';
 import { KERNELS, MATRICES } from './filters-lib/dither';
@@ -137,7 +137,22 @@ export function lensBlurDeep(src: DeepPixels, radius: number, brightness: number
 }
 
 /** The float version of gallery filter `kind` (Radial, Field, Iris, Tilt-Shift, Path with a curved path) with its settings, or null for the others. */
-export function deepGalleryFilter(kind: GalleryKind, g: GallerySettings, canvas?: { x: number; y: number; w: number; h: number }): ((d: DeepPixels) => DeepPixels) | null {
+export function deepGalleryFilter(kind: GalleryKind, g: GallerySettings, canvas?: { x: number; y: number; w: number; h: number }, margin = 0): ((d: DeepPixels) => DeepPixels) | null {
+  const run = deepGalleryRun(kind, g, canvas);
+  const m = Math.ceil(margin);
+  if (!run || m <= 0) return run;
+  return (d) => {
+    const w = d.width, h = d.height, S = d.n + 1, W = w + 2 * m, H = h + 2 * m, big = new Float32Array(W * H * S);
+    for (let y = 0; y < h; y++) big.set(d.data.subarray(y * w * S, (y + 1) * w * S), ((y + m) * W + m) * S);
+    const grown = deepGalleryRun(kind, pinsOnLayer(g, { width: W, height: H }, 1, { margin: m }), canvas ? { ...canvas, x: canvas.x + m, y: canvas.y + m } : { x: m, y: m, w, h });
+    if (!grown) return d;
+    const res = grown({ ...d, width: W, height: H, data: big }).data, out = new Float32Array(w * h * S);
+    for (let y = 0; y < h; y++) out.set(res.subarray(((y + m) * W + m) * S, ((y + m) * W + m + w) * S), y * w * S);
+    return { ...d, data: out };
+  };
+}
+
+function deepGalleryRun(kind: GalleryKind, g: GallerySettings, canvas?: { x: number; y: number; w: number; h: number }): ((d: DeepPixels) => DeepPixels) | null {
   if (kind === 'pathBlur') return (d) => pathBlurDeep(d, g.pathSpeed, [g.pathSx, g.pathSy], [g.pathBx, g.pathBy], [g.pathEx, g.pathEy], g.pathTaper, g.pathDrawn ? drawnLines(g.pathLines ?? null, d, { canvas: canvas ?? { x: 0, y: 0, w: d.width, h: d.height } }) : null);
   if (kind === 'radialBlur') return (d) => radialBlurDeep(d, g.radialAmount, g.radialMethod, g.radialX, g.radialY, g.radialQuality);
   if (kind !== 'fieldBlur' && kind !== 'irisBlur' && kind !== 'tiltShift') return null;

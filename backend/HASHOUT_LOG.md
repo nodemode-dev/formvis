@@ -2,6 +2,11 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Crop and Straighten Photos colour order and refusal · _v1.92.1 (app/routers/merge.py)
+
+- `_read` returns OpenCV's BGR array and crop_photos warped it and saved it as RGB, so red and blue swapped; the cut-out is reversed to RGB before Pillow. Removed `Image.fromarray(warped).save(buf, "PNG")`.
+- Pillow's UnidentifiedImageError is an OSError, so a file that is not an image gave a 500; the /photos route now catches (ValueError, OSError) and answers 422. Removed `except ValueError as exc:` at that route.
+
 ## One cloud provider by design: other providers declined and guarded · _v1.88.3 (setup/line_counts.py, CLAUDE.md, .claude/skills/formvis-harness/SKILL.md)
 
 The owner's P23 decisions: fal is the one cloud provider; Replicate, WaveSpeedAI, Comfy Cloud, Comfy Router, the Comfy Partner API, OpenRouter for images, ToAPIs, BytePlus ModelArk, Oxen.ai, Magnific and a WaveSpeedAI assistant provider are declined, as Content-Aware Scale was; the named hosted models are deferred until his own fal integration (he has the schemas).

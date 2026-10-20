@@ -3,7 +3,7 @@ use std::io::{BufReader, BufWriter};
 use std::process::ExitCode;
 use std::time::Instant;
 
-use formvis_render::composite::{Affine, Blender};
+use formvis_render::composite::{Affine, BlendIf, Blender, Grain};
 use formvis_render::document::{Document, LayerSpec};
 use formvis_render::{bench, budget, enabled, native_force, Gpu};
 use serde_json::{json, Value};
@@ -119,6 +119,10 @@ fn load_layers(layers: &[Value], prefix: &str, doc: &mut Document, gpu: &Gpu, cw
         s.mode = blend_mode(name).ok_or_else(|| format!("layer {i} has an unknown blend mode {name}"))?;
         if let Some(sub) = l["group"].as_array() {
             s.group = Some(load_layers(sub, &format!("{id}_"), doc, gpu, cw, ch)?);
+        } else if let Some(g) = l.get("grain") {
+            let f = |key: &str| g[key].as_f64().unwrap_or(0.0) as f32;
+            let u = |key: &str| g[key].as_u64().unwrap_or(0) as u32;
+            s.grain = Some(Grain { strength: f("strength"), rough: f("rough"), colour: f("colour"), speckle: f("speckle"), cell: f("cell"), amount: f("amount"), seed: u("seed"), fine_seed: u("fineSeed"), spec_seed: u("specSeed") });
         } else if let Some(level) = l["threshold"].as_u64() {
             s.threshold = Some(level as u32);
         } else if l.get("table").is_some() {
@@ -146,6 +150,18 @@ fn load_layers(layers: &[Value], prefix: &str, doc: &mut Document, gpu: &Gpu, cw
         }
         if let Some(b) = l["clipTo"].as_u64() {
             s.clip_to = Some(format!("{prefix}L{b}"));
+        }
+        if let Some(b) = l.get("blendIf") {
+            let four = |key: &str| -> Result<[f32; 4], String> {
+                let v: Vec<f32> = b[key].as_array().ok_or_else(|| format!("blendIf needs {key}"))?.iter().filter_map(|n| n.as_f64()).map(|n| n as f32).collect();
+                v.try_into().map_err(|_| format!("blendIf {key} has 4 values"))
+            };
+            s.blend_if = Some(BlendIf { channel: b["channel"].as_u64().unwrap_or(1) as u32, this_layer: four("thisLayer")?, underlying: four("underlying")? });
+        }
+        s.ch_off = l["chOff"].as_u64().unwrap_or(0) as u32;
+        if let Some(k) = l.get("knockout") {
+            let back = k["back"].as_array().map(|b| load_layers(b, &format!("{id}k_"), doc, gpu, cw, ch)).transpose()?.unwrap_or_default();
+            s.knockout = Some((k["opacity"].as_f64().unwrap_or(1.0).clamp(0.0, 1.0) as f32, back));
         }
         order.push(s);
     }

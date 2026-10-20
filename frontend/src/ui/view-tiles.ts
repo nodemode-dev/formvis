@@ -79,9 +79,12 @@ export class ViewTiles {
     // passing under it as in one-document view. Measured whenever either column resizes.
     const props = document.querySelector<HTMLElement>('.cv-props-col');
     const clear = (): void => {
-      const over = props && !props.hidden ? Math.max(0, Math.round(col.getBoundingClientRect().right - props.getBoundingClientRect().left)) : 0;
-      const want = this.layout === 'tabs' ? '' : `${over}px`;
-      if (col.style.paddingRight !== want) col.style.paddingRight = want;
+      const c = col.getBoundingClientRect(), p = props && !props.hidden && props.getClientRects().length ? props.getBoundingClientRect() : null;
+      const left = !!p && p.left + p.width / 2 < c.left + c.width / 2;
+      const wantR = this.layout === 'tabs' ? '' : `${p && !left ? Math.max(0, Math.round(c.right - p.left)) : 0}px`;
+      const wantL = this.layout === 'tabs' ? '' : `${p && left ? Math.max(0, Math.round(p.right - c.left)) : 0}px`;
+      if (col.style.paddingRight !== wantR) col.style.paddingRight = wantR;
+      if (col.style.paddingLeft !== wantL) col.style.paddingLeft = wantL;
       this.queuePlace();
     };
     this.clear = clear;

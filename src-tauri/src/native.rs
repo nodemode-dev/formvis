@@ -4,7 +4,7 @@
 //! beneath the web view for the interface to show over it, which only the owner's Mac can confirm.
 
 use serde::Deserialize;
-use formvis_render::composite::{Affine, Blender};
+use formvis_render::composite::{Affine, BlendIf, Blender, Grain};
 use formvis_render::display::{Checker, Display, Presented, View};
 use formvis_render::document::{Document, LayerSpec};
 use formvis_render::Gpu;
@@ -119,6 +119,43 @@ pub struct SpecIn {
     folders: Vec<(String, Option<[f32; 6]>)>,
     /// A folder or clipped group's layers, composited alone and drawn as one layer at this entry's opacity and mode.
     group: Option<Vec<SpecIn>>,
+    /// Blend If: the channel (1 grey, 2 to 4 red, green, blue) and the four-point ranges of the layer and of what is beneath.
+    blend_if: Option<BlendIfIn>,
+    /// A Grain adjustment layer's numbers.
+    grain: Option<GrainIn>,
+    /// Advanced Blending channels turned off: bit 0 red, 1 green, 2 blue.
+    #[serde(default)]
+    ch_off: u32,
+    /// Knockout: the layer's opacity and the layers that show through its coverage.
+    knockout: Option<KnockoutIn>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlendIfIn {
+    channel: u32,
+    this_layer: [f32; 4],
+    underlying: [f32; 4],
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GrainIn {
+    strength: f32,
+    rough: f32,
+    colour: f32,
+    speckle: f32,
+    cell: f32,
+    amount: f32,
+    seed: u32,
+    fine_seed: u32,
+    spec_seed: u32,
+}
+
+#[derive(Deserialize)]
+pub struct KnockoutIn {
+    opacity: f32,
+    back: Vec<SpecIn>,
 }
 
 #[tauri::command]
@@ -144,6 +181,10 @@ fn spec_of(e: SpecIn) -> LayerSpec {
         threshold: e.threshold,
         folders: e.folders.into_iter().map(|(id, m)| (id, m.map(affine))).collect(),
         group: e.group.map(|g| g.into_iter().map(spec_of).collect()),
+        blend_if: e.blend_if.map(|b| BlendIf { channel: b.channel, this_layer: b.this_layer, underlying: b.underlying }),
+        grain: e.grain.map(|g| Grain { strength: g.strength, rough: g.rough, colour: g.colour, speckle: g.speckle, cell: g.cell, amount: g.amount, seed: g.seed, fine_seed: g.fine_seed, spec_seed: g.spec_seed }),
+        ch_off: e.ch_off,
+        knockout: e.knockout.map(|k| (k.opacity, k.back.into_iter().map(spec_of).collect())),
     }
 }
 

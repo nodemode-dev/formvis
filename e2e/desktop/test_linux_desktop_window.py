@@ -106,7 +106,12 @@ def test_a_catalogue_command_runs_by_id_in_the_window(desktop):
     assert layers() == start + 1
 
 
-@pytest.mark.xfail(strict=True, reason="the shell's capability lacks core:window:allow-set-size, so ui_window resize is refused in the desktop app")
 def test_ui_window_resize_works_in_the_desktop_app(desktop):
     out = desktop.call("ui_window", {"action": "resize", "width": 1100, "height": 700})
     assert not out.get("isError"), desktop.text_of(out)
+
+    def resized():
+        size = desktop.ok("ui_window", {"action": "size"})
+        return size if abs(size["width"] - 1100) <= 40 and abs(size["height"] - 700) <= 80 else None
+
+    desktop.wait_for(resized, timeout=20, what="the window to take the new size")

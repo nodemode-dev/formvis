@@ -637,7 +637,7 @@ def crop_photos(data: bytes) -> list[dict]:
         m = cv2.getPerspectiveTransform(box, dst)
         warped = cv2.warpPerspective(rgb, m, (ow, oh), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
         buf = io.BytesIO()
-        Image.fromarray(warped).save(buf, "PNG")
+        Image.fromarray(np.ascontiguousarray(warped[..., ::-1])).save(buf, "PNG")
         out.append({"png": base64.b64encode(buf.getvalue()).decode("ascii"), "width": ow, "height": oh,
                     "rect": {"cx": cx, "cy": cy, "w": rw, "h": rh, "angle": ang}})
     return out
@@ -647,7 +647,7 @@ def crop_photos(data: bytes) -> list[dict]:
 async def photos_route(file: UploadFile = File(...)) -> dict:
     try:
         return {"photos": await run_in_threadpool(crop_photos, await file.read())}
-    except ValueError as exc:
+    except (ValueError, OSError) as exc:
         raise HTTPException(422, str(exc)) from exc
 
 

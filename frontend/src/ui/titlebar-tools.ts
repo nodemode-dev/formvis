@@ -108,7 +108,7 @@ export class TitleTools {
   private picked = 0;
 
   constructor(host: HTMLElement, private readonly d: TitleToolsDeps) {
-    const theme = el<HTMLButtonElement>('<button class="cv-tt-btn cv-tt-bare" type="button" title="Light or dark" aria-label="Light or dark"></button>');
+    const theme = el<HTMLButtonElement>('<button class="cv-tt-btn" type="button" title="Light or dark" aria-label="Light or dark"></button>');
     const search = el<HTMLButtonElement>(`<button class="cv-tt-btn" type="button" title="Search commands" aria-label="Search commands">${icon('search', 16)}</button>`);
     const claude = el<HTMLButtonElement>(`<button class="cv-tt-btn" type="button" title="${t('Claude Code')}" aria-label="${t('Claude Code')}" aria-pressed="false">${icon('agent', 16)}</button>`);
     const shell = el<HTMLButtonElement>(`<button class="cv-tt-btn" type="button" title="${t('Show Terminal')}" aria-label="${t('Show Terminal')}" aria-pressed="false">${icon('terminal', 16)}</button>`);
@@ -120,7 +120,7 @@ export class TitleTools {
     const lock = el<HTMLButtonElement>('<button class="cv-tt-btn" type="button"></button>');
     const syncTheme = (): void => {
       const light = readChoice().theme === 'light';
-      if (!theme.firstElementChild) theme.innerHTML = `<span class="cv-tt-sun">${icon('sun', 17)}</span><span class="cv-tt-moon">${icon('moon', 17)}</span>`;
+      if (!theme.firstElementChild) theme.innerHTML = `<span class="cv-tt-sun">${icon('sun', 16)}</span><span class="cv-tt-moon">${icon('moon', 16)}</span>`;
       (theme.children[0] as HTMLElement).hidden = light;
       (theme.children[1] as HTMLElement).hidden = !light;
       theme.setAttribute('aria-pressed', String(light));
@@ -140,7 +140,7 @@ export class TitleTools {
     });
     const syncLock = (): void => {
       const on = d.locked();
-      lock.innerHTML = icon(on ? 'lock' : 'unlock', 15);
+      lock.innerHTML = icon(on ? 'lock' : 'unlock', 16);
       lock.classList.toggle('is-on', on);
       lock.setAttribute('aria-pressed', String(on));
       lock.title = on ? 'Unlock the workspace' : 'Lock the workspace';

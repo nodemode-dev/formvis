@@ -69,7 +69,12 @@ class Handler(BaseHTTPRequestHandler):
         if DIST not in target.parents or not target.is_file():
             return False
         kind = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
-        self._send(200, [("Content-Type", kind), ("Cache-Control", "no-store")], target.read_bytes())
+        data = target.read_bytes()
+        seeded = os.environ.get("FORMVIS_STUB_STORAGE")
+        if seeded and target.name == "index.html":
+            script = f"<script>try{{const s={seeded};for(const k in s)if(localStorage.getItem(k)===null)localStorage.setItem(k,s[k])}}catch(e){{}}</script>"
+            data = data.replace(b"<head>", b"<head>" + script.encode(), 1)
+        self._send(200, [("Content-Type", kind), ("Cache-Control", "no-store")], data)
         return True
 
     def _proxy(self, body: bytes) -> None:

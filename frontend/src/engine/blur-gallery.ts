@@ -14,10 +14,16 @@ function copy(img: ImageData): ImageData { return new ImageData(new Uint8Clamped
 function sample(d: Uint8ClampedArray, w: number, h: number, x: number, y: number, out: number[]): void {
   const cx = Math.min(w - 1, Math.max(0, x)), cy = Math.min(h - 1, Math.max(0, y)), x0 = Math.floor(cx), y0 = Math.floor(cy);
   const x1 = Math.min(w - 1, x0 + 1), y1 = Math.min(h - 1, y0 + 1), fx = cx - x0, fy = cy - y0;
-  for (let c = 0; c < 4; c++) {
-    const a = d[(y0 * w + x0) * 4 + c], b = d[(y0 * w + x1) * 4 + c], e = d[(y1 * w + x0) * 4 + c], f = d[(y1 * w + x1) * 4 + c];
-    out[c] = (a * (1 - fx) + b * fx) * (1 - fy) + (e * (1 - fx) + f * fx) * fy;
-  }
+  const i00 = (y0 * w + x0) * 4, i10 = (y0 * w + x1) * 4, i01 = (y1 * w + x0) * 4, i11 = (y1 * w + x1) * 4;
+  const w00 = (1 - fx) * (1 - fy), w10 = fx * (1 - fy), w01 = (1 - fx) * fy, w11 = fx * fy;
+  for (let c = 0; c < 3; c++) out[c] = (d[i00 + c] * d[i00 + 3] * w00 + d[i10 + c] * d[i10 + 3] * w10 + d[i01 + c] * d[i01 + 3] * w01 + d[i11 + c] * d[i11 + 3] * w11) / 255;
+  out[3] = d[i00 + 3] * w00 + d[i10 + 3] * w10 + d[i01 + 3] * w01 + d[i11 + 3] * w11;
+}
+
+/** The average of `n` samples taken by `sample` (colour premultiplied), back to straight colour and alpha. */
+function unweight(acc: number[], n: number, o: Uint8ClampedArray, i: number): void {
+  for (let c = 0; c < 3; c++) o[i + c] = acc[3] > 0 ? Math.round((acc[c] / acc[3]) * 255) : 0;
+  o[i + 3] = Math.round(acc[3] / n);
 }
 
 /** Radial Blur: Spin blurs along circles around the centre by `amount` (1 to 100, up to about a sixth of a turn), Zoom
@@ -33,8 +39,7 @@ export function radialBlur(img: ImageData, amount: number, method: 'spin' | 'zoo
       else { const f = 1 + t * k; sample(d, w, h, cx + dx * f, cy + dy * f, px); }
       for (let c = 0; c < 4; c++) acc[c] += px[c];
     }
-    const i = (y * w + x) * 4;
-    for (let c = 0; c < 4; c++) o[i + c] = Math.round(acc[c] / n);
+    unweight(acc, n, o, (y * w + x) * 4);
   }
   return out;
 }
@@ -106,13 +111,14 @@ export interface GallerySettings {
 
 /** Pin positions and iris radii are percents of the layer itself, not of the image grown by the blur's margin: the settings
  *  are restated as percents of the grown image, so changing the blur never moves a pin. */
-function pinsOnLayer(g: GallerySettings, src: ImageData, scale: number, frame?: LibFrame | null): GallerySettings {
+export function pinsOnLayer(g: GallerySettings, src: { width: number; height: number }, scale: number, frame?: { margin?: number } | null): GallerySettings {
   const m = Math.round((frame?.margin ?? 0) * scale), W = src.width, H = src.height;
   if (m <= 0 || W <= 2 * m || H <= 2 * m) return g;
   const fx = (W - 2 * m) / W, fy = (H - 2 * m) / H, ox = (m / W) * 100, oy = (m / H) * 100, out = { ...g } as unknown as Record<string, number | undefined>;
   const at = (kx: string, ky: string): void => { const x = out[kx], y = out[ky]; if (typeof x === 'number') out[kx] = ox + x * fx; if (typeof y === 'number') out[ky] = oy + y * fy; };
   const size = (kx: string, ky: string): void => { const x = out[kx], y = out[ky]; if (typeof x === 'number') out[kx] = x * fx; if (typeof y === 'number') out[ky] = y * fy; };
   for (const n of ['pin1', 'pin2', 'pin3', 'pin4']) at(`${n}x`, `${n}y`);
+  at('radialX', 'radialY'); at('tiltX', 'tiltY'); out.tiltFocus = g.tiltFocus * fy; out.tiltTransition = g.tiltTransition * fy;
   at('irisX', 'irisY'); size('irisRx', 'irisRy');
   for (const n of ['iris2', 'iris3']) { at(`${n}x`, `${n}y`); size(`${n}rx`, `${n}ry`); }
   for (const [x, y] of [['pathSx', 'pathSy'], ['pathBx', 'pathBy'], ['pathEx', 'pathEy']]) at(x, y);
@@ -121,7 +127,7 @@ function pinsOnLayer(g: GallerySettings, src: ImageData, scale: number, frame?: 
 
 /** One gallery filter on `src`, pixel distances scaled by `scale` for a scaled preview. */
 export function runGallery(kind: GalleryKind, g0: GallerySettings, src: ImageData, scale: number, frame?: LibFrame | null): ImageData {
-  const g = kind === 'fieldBlur' || kind === 'irisBlur' || kind === 'pathBlur' ? pinsOnLayer(g0, src, scale, frame) : g0;
+  const g = kind === 'fieldBlur' || kind === 'irisBlur' || kind === 'pathBlur' || kind === 'tiltShift' || kind === 'radialBlur' ? pinsOnLayer(g0, src, scale, frame) : g0;
   switch (kind) {
     case 'radialBlur': return radialBlur(src, g.radialAmount, g.radialMethod, g.radialX, g.radialY, g.radialQuality);
     case 'surfaceBlur': return surfaceBlur(src, g.surfaceRadius * scale, g.surfaceThreshold);
@@ -290,8 +296,7 @@ export function pathBlur(img: ImageData, speed: number, start: [number, number],
       sample(d, w, h, x + best.tx * t, y + best.ty * t, px);
       for (let c = 0; c < 4; c++) acc[c] += px[c];
     }
-    const i = (y * w + x) * 4;
-    for (let c = 0; c < 4; c++) o[i + c] = Math.round(acc[c] / n);
+    unweight(acc, n, o, (y * w + x) * 4);
   }
   return out;
 }

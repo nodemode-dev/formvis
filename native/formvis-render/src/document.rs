@@ -3,7 +3,7 @@
 //! the renderer blends and presents what the mirror holds. Rules as in the app: hidden layers draw nothing; a clipped
 //! layer shows through its base at the base's opacity and through the base's mask, and nothing when the base is hidden.
 
-use crate::composite::{Affine, Lut, Stack};
+use crate::composite::{Affine, BlendIf, Clip, Grain, Lut, Stack};
 use crate::{Gpu, TiledLayer};
 use std::collections::HashMap;
 
@@ -31,11 +31,18 @@ pub struct LayerSpec {
     pub folders: Vec<(String, Option<Affine>)>,
     /// A folder or clipped group composited alone from clear, then drawn as one layer at `opacity` in `mode`.
     pub group: Option<Vec<LayerSpec>>,
+    pub blend_if: Option<BlendIf>,
+    /// A Grain adjustment layer (always Normal).
+    pub grain: Option<Grain>,
+    /// Channels turned off in Advanced Blending (bit 0 red, 1 green, 2 blue): they keep the backdrop's value.
+    pub ch_off: u32,
+    /// Knockout: the layer's opacity and the layers that show through its coverage.
+    pub knockout: Option<(f32, Vec<LayerSpec>)>,
 }
 
 impl LayerSpec {
     pub fn pixels(id: &str) -> LayerSpec {
-        LayerSpec { id: id.to_string(), mode: 0, opacity: 1.0, visible: true, transform: None, mask: None, clip_to: None, table: None, mask_at: None, threshold: None, folders: Vec::new(), group: None }
+        LayerSpec { id: id.to_string(), mode: 0, opacity: 1.0, visible: true, transform: None, mask: None, clip_to: None, table: None, mask_at: None, threshold: None, folders: Vec::new(), group: None, blend_if: None, grain: None, ch_off: 0, knockout: None }
     }
 }
 
@@ -94,12 +101,29 @@ impl Document {
         self.build(&self.order)
     }
 
+    /// The clip a layer shows through: its base's pixels, opacity and mask, and the base's own clip when it is clipped. None
+    /// when a base is hidden or missing, or the chain is over 8 deep.
+    fn clip_chain(&self, order: &[LayerSpec], base_id: &str, depth: u32) -> Option<Clip<'_>> {
+        let base_spec = order.iter().find(|s| s.id == base_id)?;
+        let base = self.layers.get(base_id)?;
+        if !base_spec.visible || depth >= 8 {
+            return None;
+        }
+        let mask = base_spec.mask.as_deref().and_then(|m| self.layers.get(m));
+        let parent = match &base_spec.clip_to {
+            Some(up) => Some(Box::new(self.clip_chain(order, up, depth + 1)?)),
+            None => None,
+        };
+        Some(Clip { base, opacity: base_spec.opacity, mask, mask_at: base_spec.mask_at, parent })
+    }
+
     fn build(&self, order: &[LayerSpec]) -> Vec<Stack<'_>> {
-        let spec = |id: &str| order.iter().find(|s| s.id == id);
         let mut out = Vec::new();
         for s in order.iter().filter(|s| s.visible) {
             let mut item = if let Some(g) = &s.group {
                 Stack::group(self.build(g), s.mode, s.opacity)
+            } else if let Some(g) = s.grain {
+                Stack::grain(g, s.opacity)
             } else if let Some(level) = s.threshold {
                 Stack::threshold(level, s.opacity).adjust_in(s.mode)
             } else if let Some(t) = &s.table {
@@ -122,13 +146,18 @@ impl Document {
             if !s.folders.is_empty() {
                 item = item.in_folders(s.folders.iter().filter_map(|(id, at)| self.layers.get(id).map(|m| (m, *at))).collect());
             }
+            if let Some(b) = s.blend_if {
+                item = item.with_blend_if(b);
+            }
+            if s.ch_off != 0 {
+                item = item.with_channels_off(s.ch_off);
+            }
+            if let Some((opacity, back)) = &s.knockout {
+                item = item.knocking(*opacity, self.build(back));
+            }
             if let Some(base_id) = &s.clip_to {
-                let (Some(base_spec), Some(base)) = (spec(base_id), self.layers.get(base_id)) else { continue };
-                if !base_spec.visible {
-                    continue;
-                }
-                let base_mask = base_spec.mask.as_deref().and_then(|m| self.layers.get(m));
-                item = item.clipped_to_at(base, base_spec.opacity, base_mask, base_spec.mask_at);
+                let Some(clip) = self.clip_chain(order, base_id, 0) else { continue };
+                item = item.clipped_by(clip);
             }
             out.push(item);
         }

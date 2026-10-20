@@ -7,7 +7,7 @@ import type { Checker, DisplayLayer, ScreenDisplay } from './display';
  *  its mirror of the document up to date. Each image, mask and table gets a stable id and is sent again only when its
  *  version changes, as raw bytes; then the stack and the view. Draw requests while one is in flight are coalesced to the
  *  latest, so a slow frame never queues up more. What the native renderer cannot draw yet (folders with their own
- *  opacity or blend, Knockout, Blend If, Grain) is named by unsupported(), and the stage draws on the CPU with that reason. */
+ *  blend modes beyond those measured, clipped groups, Blend If on the colours beneath, Grain, the neighbourhood adjustments) is named by unsupported(), and the stage draws on the CPU with that reason. */
 
 type Invoke = <T>(cmd: string, args?: unknown, options?: { headers: Record<string, string> }) => Promise<T>;
 type Img = HTMLCanvasElement | OffscreenCanvas;
@@ -19,7 +19,9 @@ const isIdentity = (m: Mat): boolean => m[0] === 1 && m[1] === 0 && m[2] === 0 &
 const affine = (m: Mat): number[] | null => (isIdentity(m) ? null : [m[0], m[2], m[4], m[1], m[3], m[5]]);
 
 /** The blend modes a folder composited alone was measured in within two levels of the CPU renderer. */
-const GROUP_BLENDS: ReadonlySet<string> = new Set(['normal', 'multiply', 'screen', 'color-dodge', 'color-burn', 'lighten', 'luminosity']);
+const GROUP_BLENDS: ReadonlySet<string> = new Set(['normal', 'multiply', 'screen', 'lighten', 'luminosity', 'soft-light', 'linear-burn', 'subtract', 'color', 'negation']);
+
+const BLEND_IF_OPEN: readonly number[] = [0, 0, 255, 255];
 
 export class NativeDisplay implements ScreenDisplay {
   onLost: (() => void) | null = null;
@@ -51,7 +53,10 @@ export class NativeDisplay implements ScreenDisplay {
 
   unsupported(layers: readonly DisplayLayer[]): string | null {
     for (const l of layers) {
-      if (l.ko) return 'a Knockout, which the native renderer does not draw yet';
+      if (l.ko) {
+        const back = this.unsupported(l.ko.back);
+        if (back) return back;
+      }
       if (l.sub) {
         if (l.sub.some((x) => x.clip)) return 'a clipped group, which the native renderer does not draw yet';
         if (!GROUP_BLENDS.has(l.blend)) return 'a folder in a blend mode the native renderer does not match the CPU in yet';
@@ -59,10 +64,9 @@ export class NativeDisplay implements ScreenDisplay {
         if (inner) return inner;
         continue;
       }
-      if (l.grain) return 'a Grain adjustment layer is not drawn by the native renderer yet';
-      if (!l.image && !l.lut && l.threshold === undefined) return 'an adjustment layer the native renderer does not draw yet';
-      if (l.blendIf || l.chOff) return 'a layer has Blend If or channel restrictions, which the native renderer does not draw yet';
-      if (l.clip?.parent) return 'a clipping base is itself clipped, which the native renderer does not draw yet';    }
+      if (!l.image && !l.lut && !l.grain && l.threshold === undefined) return 'an adjustment layer the native renderer does not draw yet';
+      if (l.blendIf && (!l.image || l.blendIf.channel > 4 || l.blendIf.underlying.some((v, i) => v !== BLEND_IF_OPEN[i]))) return 'a layer has Blend If on the colours beneath it or an adjustment limit, which the native renderer does not match the CPU in yet';
+    }
     return null;
   }
 
@@ -153,6 +157,8 @@ export class NativeDisplay implements ScreenDisplay {
         }
         entry.id = table;
         entry.table = table;
+      } else if (l.grain) {
+        entry.grain = l.grain;
       } else if (l.threshold !== undefined) {
         entry.threshold = l.threshold;
       } else if (l.image) {
@@ -169,6 +175,9 @@ export class NativeDisplay implements ScreenDisplay {
         entry.folders = chain;
       }
       if (l.clip) entry.clipTo = await this.put(l.clip.image, l.clip.version);
+      if (l.blendIf) entry.blendIf = { channel: l.blendIf.channel, thisLayer: Array.from(l.blendIf.thisLayer), underlying: Array.from(l.blendIf.underlying) };
+      if (l.chOff) entry.chOff = l.chOff;
+      if (l.ko) entry.knockout = { opacity: l.ko.opacity, back: await this.entries(l.ko.back) };
       stack.push(entry);
     }
     return stack;

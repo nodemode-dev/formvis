@@ -9,7 +9,8 @@ use crate::{read_tile, Gpu, TiledLayer, FORMAT, TILE};
 
 const HEAD: &str = r#"
 struct Place { inv0: vec4<f32>, inv1: vec4<f32>, origin: vec2<f32>, stage: vec2<f32>, size: vec2<f32>, placed: u32, pad: u32 };
-struct Comp { inv0: vec4<f32>, inv1: vec4<f32>, tile_origin: vec2<f32>, opacity: f32, mode: u32, has_mask: u32, has_clip: u32, base_opacity: f32, base_has_mask: u32, stage_origin: vec2<f32>, stage_size: vec2<f32>, layer_size: vec2<f32>, transformed: u32, adj_mode: u32, mask_at: Place, base_mask_at: Place, level: f32, pad1: u32, pad2: u32, pad3: u32 };
+struct Comp { inv0: vec4<f32>, inv1: vec4<f32>, tile_origin: vec2<f32>, opacity: f32, mode: u32, has_mask: u32, has_clip: u32, base_opacity: f32, base_has_mask: u32, stage_origin: vec2<f32>, stage_size: vec2<f32>, layer_size: vec2<f32>, transformed: u32, adj_mode: u32, mask_at: Place, base_mask_at: Place, level: f32, pad1: u32, pad2: u32, pad3: u32, bi_t: vec4<f32>, bi_u: vec4<f32>, bi_ch: u32, ch_off: u32, ko: f32, ko_on: u32, ga: vec4<f32>, gb: vec4<f32>, gs: vec4<u32> };
+@group(0) @binding(7) var ko_tile: texture_2d<f32>;
 @group(0) @binding(0) var backdrop: texture_2d<f32>;
 @group(0) @binding(1) var source: texture_2d<f32>;
 @group(0) @binding(2) var<uniform> comp: Comp;
@@ -29,6 +30,53 @@ fn mask_cover(has: u32, t: texture_2d<f32>, px: vec2<i32>, at: Place, pos: vec2<
   return textureSampleLevel(t, smp, (q - at.origin) / at.stage, 0.0).a;
 }
 
+fn bi_factor(v: f32, r: vec4<f32>) -> f32 {
+  var lo = 1.0;
+  if (v < r.x) { lo = 0.0; } else if (v < r.y) { lo = (v - r.x) / max(1.0, r.y - r.x); }
+  var hi = 1.0;
+  if (v > r.w) { hi = 0.0; } else if (v > r.z) { hi = (r.w - v) / max(1.0, r.w - r.z); }
+  return lo * hi;
+}
+
+fn bi_value(c: vec3<f32>, ch: u32) -> f32 {
+  let p = round(c * 255.0);
+  if (ch == 2u) { return p.r; }
+  if (ch == 3u) { return p.g; }
+  if (ch == 4u) { return p.b; }
+  return 0.299 * p.r + 0.587 * p.g + 0.114 * p.b;
+}
+
+fn lattice(x: i32, y: i32, seed: u32) -> f32 {
+  var z = (u32(x) * 0x27d4eb2du) ^ (u32(y) * 0x165667b1u) ^ seed;
+  var sum = 0.0;
+  for (var r = 0; r < 2; r++) {
+    z += 0x9e3779b9u;
+    z = (z ^ (z >> 16u)) * 0x85ebca6bu;
+    z = (z ^ (z >> 13u)) * 0xc2b2ae35u;
+    z ^= z >> 16u;
+    sum += f32(z) / 4294967295.0;
+  }
+  return sum - 1.0;
+}
+
+fn grain_at(c: vec2<i32>, t: vec2<f32>, f: vec2<i32>, seed: u32, fine: u32) -> f32 {
+  let a = lattice(c.x, c.y, seed);
+  let b = lattice(c.x + 1, c.y, seed);
+  let cc = lattice(c.x, c.y + 1, seed);
+  let d = lattice(c.x + 1, c.y + 1, seed);
+  let s = ((a + (b - a) * t.x) * (1.0 - t.y) + (cc + (d - cc) * t.x) * t.y) * 1.6;
+  return s + (lattice(f.x, f.y, fine) - s) * comp.ga.y;
+}
+
+/// Channels the layer's Advanced Blending turned off keep the backdrop's value.
+fn keep(o: vec4<f32>, b: vec4<f32>) -> vec4<f32> {
+  var c = o.rgb;
+  if ((comp.ch_off & 1u) != 0u) { c.r = b.r; }
+  if ((comp.ch_off & 2u) != 0u) { c.g = b.g; }
+  if ((comp.ch_off & 4u) != 0u) { c.b = b.b; }
+  return vec4<f32>(c, o.a);
+}
+
 fn adjust_blend(b: vec3<f32>, t: vec3<f32>) -> vec3<f32> {
   if (comp.adj_mode == 0u) { return t; }
   return blend(comp.adj_mode, b, t);
@@ -43,7 +91,7 @@ fn adjust_blend(b: vec3<f32>, t: vec3<f32>) -> vec3<f32> {
 const FS: &str = r#"
 @fragment fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
   let px = vec2<i32>(floor(pos.xy));
-  let bd = textureLoad(backdrop, px, 0);
+  var bd = textureLoad(backdrop, px, 0);
   // Coverage: the layer's mask, and for a clipped layer its base's alpha at the base's opacity through the base's mask.
   var cov = mask_cover(comp.has_mask, mask_tile, px, comp.mask_at, pos.xy);
   if (comp.has_clip == 1u) {
@@ -59,6 +107,36 @@ const FS: &str = r#"
     let on = 299.0 * v.r + 587.0 * v.g + 114.0 * v.b >= 1000.0 * comp.level;
     let tt = vec3<f32>(select(0.0, 1.0, on));
     return vec4<f32>(bd.rgb + (adjust_blend(bd.rgb, tt) - bd.rgb) * comp.opacity * cov, bd.a);
+  }
+  // A Grain adjustment (mode 104), as engine/adjust.ts grainKernel computes it at one document pixel per pixel: value noise
+  // on a lattice of `cell` document units mixed toward per-pixel noise by roughness, weighted to the midtones, per channel
+  // when colour is above 0, plus speckle; mixed in by opacity and coverage; alpha kept.
+  if (comp.mode == 104u) {
+    if (bd.a <= 0.0) { return bd; }
+    let uq = comp.tile_origin + pos.xy;
+    let uv = uq / comp.gb.x;
+    let fl = floor(uv);
+    var t = uv - fl;
+    t = t * t * (3.0 - 2.0 * t);
+    let c = vec2<i32>(fl);
+    let f = vec2<i32>(floor(uq));
+    let px = round(bd.rgb * 255.0);
+    let noise = grain_at(c, t, f, comp.gs.x, comp.gs.y);
+    let luma = min(1.0, (0.2126 * px.r + 0.7152 * px.g + 0.0722 * px.b) / 255.0);
+    let weight = comp.ga.x * (0.4 + 2.4 * luma * (1.0 - luma));
+    var speck = 0.0;
+    if (comp.ga.w > 0.0) {
+      let h = lattice(f.x, f.y, comp.gs.z);
+      if (abs(h) > 1.0 - comp.ga.w) { speck = sign(h) * 0.55 * 255.0 * min(1.0, comp.gb.y / 50.0); }
+    }
+    var g3 = px;
+    for (var ch = 0; ch < 3; ch++) {
+      let k = u32(ch + 1);
+      var own = noise;
+      if (comp.ga.z > 0.0) { own = grain_at(c, t, f, comp.gs.x + k * 0x9e3779b1u, comp.gs.y + k * 0x85ebca6bu); }
+      g3[ch] = floor(clamp(px[ch] + (noise + (own - noise) * comp.ga.z) * weight + speck, 0.0, 255.0) + 0.5);
+    }
+    return vec4<f32>(bd.rgb + (g3 / 255.0 - bd.rgb) * comp.opacity * cov, bd.a);
   }
   // An adjustment layer as a lookup table (mode 100), as the web renderer applies it: each backdrop channel looked up by
   // its 8-bit value in the 256 by 1 table bound as the source, mixed in by opacity and coverage; alpha kept.
@@ -103,25 +181,44 @@ const FS: &str = r#"
   if (m == 1u || m == 5u || m == 6u || m == 11u || (m >= 15u && m <= 18u) || m == 21u || m == 22u || m >= 27u) {
     sc = vec4<f32>(floor(sc.rgb * 255.0 + 0.5005) / 255.0, sc.a);
   }
-  let sa = sc.a * comp.opacity * cov;
+  var bif = 1.0;
+  if (comp.bi_ch != 0u) {
+    bif = bi_factor(bi_value(sc.rgb, comp.bi_ch), comp.bi_t);
+    if (bd.a <= 0.0) { bif = bif * bi_factor(255.0, comp.bi_u); } else { bif = bif * bi_factor(bi_value(bd.rgb, comp.bi_ch), comp.bi_u); }
+    // The CPU scales the layer's 8-bit alpha by the factor and rounds it.
+    if (bif < 1.0) { sc.a = floor(floor(sc.a * 255.0 + 0.5) * bif + 0.5) / 255.0; bif = 1.0; }
+  }
+  // Knockout, as the renderer's knockout(): through the layer's coverage at its opacity (ko) what lies below is cleared,
+  // and the backdrop composite (ko_tile) shows through that coverage.
+  if (comp.ko_on == 1u) {
+    let a0 = sc.a * cov * bif;
+    let a1 = bd.a * (1.0 - a0 * comp.ko);
+    let kb = textureLoad(ko_tile, px, 0);
+    let ba = kb.a * a0;
+    let ao1 = a1 + ba * (1.0 - a1);
+    var rgb1 = vec3<f32>(0.0);
+    if (ao1 > 0.0) { rgb1 = (bd.rgb * a1 + kb.rgb * ba * (1.0 - a1)) / ao1; }
+    bd = vec4<f32>(rgb1, ao1);
+  }
+  let sa = sc.a * comp.opacity * cov * bif;
   if (sa <= 0.0) { return bd; }
   let ab = bd.a;
   if (m == 1u) {
     let doc = vec2<i32>(comp.tile_origin) + px;
     if (dissolveNoise(doc.x, doc.y) >= sa) { return bd; }
-    return vec4<f32>(sc.rgb, 1.0);
+    return keep(vec4<f32>(sc.rgb, 1.0), bd);
   }
   if (m == 10u) {
     let lo = min(1.0, sa + ab);
     let lc = min(vec3<f32>(1.0), sc.rgb * sa + bd.rgb * ab);
-    return vec4<f32>(lc / max(lo, 1e-6), lo);
+    return keep(vec4<f32>(lc / max(lo, 1e-6), lo), bd);
   }
   let ao = sa + ab * (1.0 - sa);
   if (ao <= 0.0) { return vec4<f32>(0.0); }
   var r = sc.rgb;
   if (m != 0u) { r = blend(m, bd.rgb, sc.rgb); }
   let co = (sa * (1.0 - ab) * sc.rgb + sa * ab * r + (1.0 - sa) * ab * bd.rgb) / ao;
-  return floor(vec4<f32>(co, ao) * 255.0 + 0.5005) / 255.0;
+  return keep(floor(vec4<f32>(co, ao) * 255.0 + 0.5005) / 255.0, bd);
 }
 "#;
 
@@ -133,6 +230,22 @@ pub enum Source<'a> {
     Level(u32),
     /// A folder's layers composited alone from clear, drawn as one layer.
     Group(Vec<Stack<'a>>),
+    /// A Grain adjustment.
+    Grain(Grain),
+}
+
+/// A Grain adjustment's numbers, as frontend/src/engine/adjust.ts grainParams gives them.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Grain {
+    pub strength: f32,
+    pub rough: f32,
+    pub colour: f32,
+    pub speckle: f32,
+    pub cell: f32,
+    pub amount: f32,
+    pub seed: u32,
+    pub fine_seed: u32,
+    pub spec_seed: u32,
 }
 
 /// The layer a clipped layer shows through: its pixels, its opacity and its mask (placed by `mask_at` when apart from
@@ -142,6 +255,8 @@ pub struct Clip<'a> {
     pub opacity: f32,
     pub mask: Option<&'a TiledLayer>,
     pub mask_at: Option<Affine>,
+    /// The clip this base is itself clipped to: its coverage multiplies with this one's.
+    pub parent: Option<Box<Clip<'a>>>,
 }
 
 /// A layer's placement: its own pixel (x, y) lands at (a x + b y + c, d x + e y + f) in the document.
@@ -192,23 +307,45 @@ pub struct Stack<'a> {
     /// An adjustment layer's blend mode (0 Normal): its adjusted colour blends onto what is beneath in this mode.
     pub adjust_mode: u32,
     pub folders: Vec<(&'a TiledLayer, Option<Affine>)>,
+    pub blend_if: Option<BlendIf>,
+    /// Channels turned off in Advanced Blending: bit 0 red, 1 green, 2 blue keep the backdrop's value.
+    pub ch_off: u32,
+    /// Knockout: the layer's opacity, and the composite that shows through its coverage.
+    pub knockout: Option<(f32, Vec<Stack<'a>>)>,
 }
 
 impl<'a> Stack<'a> {
     pub fn new(layer: &'a TiledLayer, mode: u32, opacity: f32) -> Stack<'a> {
-        Stack { source: Source::Pixels(layer), mode, opacity, mask: None, mask_at: None, clip: None, transform: None, adjust_mode: 0, folders: Vec::new() }
+        Stack { source: Source::Pixels(layer), mode, opacity, mask: None, mask_at: None, clip: None, transform: None, adjust_mode: 0, folders: Vec::new(), blend_if: None, ch_off: 0, knockout: None }
+    }
+    pub fn with_blend_if(mut self, b: BlendIf) -> Stack<'a> {
+        self.blend_if = Some(b);
+        self
+    }
+    pub fn with_channels_off(mut self, bits: u32) -> Stack<'a> {
+        self.ch_off = bits & 7;
+        self
+    }
+    /// Knockout at `opacity`: `back` is what shows through the layer's coverage.
+    pub fn knocking(mut self, opacity: f32, back: Vec<Stack<'a>>) -> Stack<'a> {
+        self.knockout = Some((opacity, back));
+        self
     }
     /// An adjustment layer: its table applied to everything beneath, at `opacity`.
     pub fn adjustment(table: &'a Lut, opacity: f32) -> Stack<'a> {
-        Stack { source: Source::Table(table), mode: if table.three { 101 } else { 100 }, opacity, mask: None, mask_at: None, clip: None, transform: None, adjust_mode: 0, folders: Vec::new() }
+        Stack { source: Source::Table(table), mode: if table.three { 101 } else { 100 }, opacity, mask: None, mask_at: None, clip: None, transform: None, adjust_mode: 0, folders: Vec::new(), blend_if: None, ch_off: 0, knockout: None }
     }
     /// A Threshold adjustment at `level`, at `opacity`.
     pub fn threshold(level: u32, opacity: f32) -> Stack<'a> {
-        Stack { source: Source::Level(level), mode: 105, opacity, mask: None, mask_at: None, clip: None, transform: None, adjust_mode: 0, folders: Vec::new() }
+        Stack { source: Source::Level(level), mode: 105, opacity, mask: None, mask_at: None, clip: None, transform: None, adjust_mode: 0, folders: Vec::new(), blend_if: None, ch_off: 0, knockout: None }
+    }
+    /// A Grain adjustment at `opacity`.
+    pub fn grain(g: Grain, opacity: f32) -> Stack<'a> {
+        Stack { source: Source::Grain(g), mode: 104, opacity, mask: None, mask_at: None, clip: None, transform: None, adjust_mode: 0, folders: Vec::new(), blend_if: None, ch_off: 0, knockout: None }
     }
     /// A group of layers composited alone from clear, then blended as one layer in `mode` at `opacity`.
     pub fn group(sub: Vec<Stack<'a>>, mode: u32, opacity: f32) -> Stack<'a> {
-        Stack { source: Source::Group(sub), mode, opacity, mask: None, mask_at: None, clip: None, transform: None, adjust_mode: 0, folders: Vec::new() }
+        Stack { source: Source::Group(sub), mode, opacity, mask: None, mask_at: None, clip: None, transform: None, adjust_mode: 0, folders: Vec::new(), blend_if: None, ch_off: 0, knockout: None }
     }
     /// The masks of the folders around the layer, each with its placement when apart from the document: their coverages
     /// multiply with the layer's own.
@@ -237,12 +374,17 @@ impl<'a> Stack<'a> {
         self
     }
     pub fn clipped_to(mut self, base: &'a TiledLayer, opacity: f32, mask: Option<&'a TiledLayer>) -> Stack<'a> {
-        self.clip = Some(Clip { base, opacity, mask, mask_at: None });
+        self.clip = Some(Clip { base, opacity, mask, mask_at: None, parent: None });
         self
     }
     /// As clipped_to, the base's mask placed in the document by `mask_at`.
     pub fn clipped_to_at(mut self, base: &'a TiledLayer, opacity: f32, mask: Option<&'a TiledLayer>, mask_at: Option<Affine>) -> Stack<'a> {
-        self.clip = Some(Clip { base, opacity, mask, mask_at });
+        self.clip = Some(Clip { base, opacity, mask, mask_at, parent: None });
+        self
+    }
+    /// Clipped to a base that may itself be clipped (the clip's `parent` chain).
+    pub fn clipped_by(mut self, clip: Clip<'a>) -> Stack<'a> {
+        self.clip = Some(clip);
         self
     }
 }
@@ -313,8 +455,26 @@ struct Comp {
     base_mask_at: Place,
     level: f32,
     pad: [u32; 3],
+    bi_t: [f32; 4],
+    bi_u: [f32; 4],
+    bi_ch: u32,
+    ch_off: u32,
+    ko: f32,
+    ko_on: u32,
+    ga: [f32; 4],
+    gb: [f32; 4],
+    gs: [u32; 4],
 }
-const _: () = assert!(std::mem::size_of::<Comp>() == 240, "the uniform must match the WGSL struct's 240 bytes");
+const _: () = assert!(std::mem::size_of::<Comp>() == 336, "the uniform must match the WGSL struct's 336 bytes");
+
+/// A layer's Blend If: the channel tested (1 grey, 2 red, 3 green, 4 blue) and the four-point ranges of the layer's own
+/// value and of the composite beneath it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BlendIf {
+    pub channel: u32,
+    pub this_layer: [f32; 4],
+    pub underlying: [f32; 4],
+}
 
 /// A mask placed apart from the document, as the shader reads it: the inverse placement, the staged footprint's origin
 /// and size in the mask's pixels, and the mask's size; `placed` 0 reads the mask's tile straight.
@@ -384,6 +544,7 @@ impl Blender {
                 tex_entry(4),
                 filt_entry(5),
                 wgpu::BindGroupLayoutEntry { binding: 6, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering), count: None },
+                tex_entry(7),
             ],
         });
         let pl = gpu.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: Some("blend"), bind_group_layouts: &[Some(&layout)], ..Default::default() });
@@ -483,13 +644,14 @@ impl Blender {
     /// `target`, with the given mask, clip base and base mask (white where absent). Returns the uniform buffer, which
     /// must outlive the submit.
     #[allow(clippy::too_many_arguments)]
-    fn pass(&self, gpu: &Gpu, enc: &mut wgpu::CommandEncoder, u: &Comp, backdrop: &wgpu::Texture, src: &wgpu::Texture, mask: Option<&wgpu::Texture>, base: Option<&wgpu::Texture>, base_mask: Option<&wgpu::Texture>, target: &wgpu::Texture) -> wgpu::Buffer {
+    fn pass(&self, gpu: &Gpu, enc: &mut wgpu::CommandEncoder, u: &Comp, backdrop: &wgpu::Texture, src: &wgpu::Texture, mask: Option<&wgpu::Texture>, base: Option<&wgpu::Texture>, base_mask: Option<&wgpu::Texture>, ko: Option<&wgpu::Texture>, target: &wgpu::Texture) -> wgpu::Buffer {
         let buf = crate::uniform_buffer(&gpu.device, bytemuck::bytes_of(u));
         let view = |t: &wgpu::Texture| t.create_view(&Default::default());
         let (bv, sv, fv) = (view(backdrop), view(src), view(target));
         let mv = view(mask.unwrap_or(&self.white));
         let basev = view(base.unwrap_or(&self.white));
         let bmv = view(base_mask.unwrap_or(&self.white));
+        let kv = view(ko.unwrap_or(&self.white));
         let bind = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("blend"),
             layout: &self.layout,
@@ -501,6 +663,7 @@ impl Blender {
                 wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::TextureView(&basev) },
                 wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::TextureView(&bmv) },
                 wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::Sampler(&self.sampler) },
+                wgpu::BindGroupEntry { binding: 7, resource: wgpu::BindingResource::TextureView(&kv) },
             ],
         });
         {
@@ -538,8 +701,22 @@ impl Blender {
             u.base_has_mask = base_mask.is_some() as u32;
             u.base_mask_at = base_mask_at;
             let out = tile_texture(gpu);
-            keep.push(self.pass(gpu, enc, &u, &self.white, &self.white, None, Some(b), base_mask, &out));
+            keep.push(self.pass(gpu, enc, &u, &self.white, &self.white, None, Some(b), base_mask, None, &out));
             acc = Some(out);
+        }
+        let mut up = l.clip.as_ref().and_then(|c| c.parent.as_deref());
+        while let Some(p) = up {
+            let Some(pb) = p.base.tile_at(tx, ty) else { break };
+            let (pm, place) = self.mask_input(gpu, enc, p.mask, p.mask_at, tx, ty);
+            let mut u = start();
+            u.has_clip = 1;
+            u.base_opacity = p.opacity.clamp(0.0, 1.0);
+            u.base_has_mask = pm.is_some() as u32;
+            u.base_mask_at = place;
+            let out = tile_texture(gpu);
+            keep.push(self.pass(gpu, enc, &u, acc.as_ref().unwrap_or(&self.white), &self.white, None, Some(pb), pm.as_ref(), None, &out));
+            acc = Some(out);
+            up = p.parent.as_deref();
         }
         for (m, at) in &l.folders {
             let (mt, place) = self.mask_input(gpu, enc, Some(m), *at, tx, ty);
@@ -548,7 +725,7 @@ impl Blender {
             u.has_mask = 1;
             u.mask_at = place;
             let out = tile_texture(gpu);
-            keep.push(self.pass(gpu, enc, &u, acc.as_ref().unwrap_or(&self.white), &self.white, Some(&mt), None, None, &out));
+            keep.push(self.pass(gpu, enc, &u, acc.as_ref().unwrap_or(&self.white), &self.white, Some(&mt), None, None, None, &out));
             acc = Some(out);
         }
         std::mem::forget(keep);
@@ -598,7 +775,7 @@ impl Blender {
                 },
                 (Source::Pixels(layer), None) => match layer.tile_at(tx, ty) { Some(t) => t.clone(), None => continue },
                 (Source::Table(lut), _) => lut.texture.clone(),
-                (Source::Level(_), _) => self.white.clone(),
+                (Source::Level(_), _) | (Source::Grain(_), _) => self.white.clone(),
                 (Source::Group(sub), _) => self.render_tile(gpu, sub, tx, ty),
             };
             let src = &src;
@@ -612,7 +789,17 @@ impl Blender {
                 Some(c) => self.mask_input(gpu, &mut enc, c.mask, c.mask_at, tx, ty),
                 None => (None, Place::default()),
             };
-            let cover = if l.folders.is_empty() { None } else { self.cover(gpu, &mut enc, l, base, base_mask.as_ref(), base_mask_at, tx, ty) };
+            let mut up = l.clip.as_ref().and_then(|c| c.parent.as_deref());
+            let mut missing = false;
+            while let Some(p) = up {
+                missing |= p.base.tile_at(tx, ty).is_none();
+                up = p.parent.as_deref();
+            }
+            if missing {
+                continue;
+            }
+            let chained = l.clip.as_ref().is_some_and(|c| c.parent.is_some());
+            let cover = if l.folders.is_empty() && !chained { None } else { self.cover(gpu, &mut enc, l, base, base_mask.as_ref(), base_mask_at, tx, ty) };
             let (inv, stage_origin, stage_size, layer_size) = match placed {
                 Some((o, s, i, ls)) => (i, o, s, ls),
                 None => (Affine::translate(0.0, 0.0), [0.0; 2], [1.0; 2], [0.0; 2]),
@@ -639,8 +826,27 @@ impl Blender {
                     _ => 0.0,
                 },
                 pad: [matches!(l.source, Source::Group(_)) as u32, 0, 0],
+                bi_t: l.blend_if.map_or([0.0; 4], |b| b.this_layer),
+                bi_u: l.blend_if.map_or([0.0; 4], |b| b.underlying),
+                bi_ch: l.blend_if.map_or(0, |b| b.channel),
+                ch_off: l.ch_off,
+                ko: l.knockout.as_ref().map_or(0.0, |k| k.0.clamp(0.0, 1.0)),
+                ko_on: l.knockout.is_some() as u32,
+                ga: match l.source {
+                    Source::Grain(g) => [g.strength, g.rough, g.colour, g.speckle],
+                    _ => [0.0; 4],
+                },
+                gb: match l.source {
+                    Source::Grain(g) => [g.cell, g.amount, 0.0, 0.0],
+                    _ => [1.0, 0.0, 0.0, 0.0],
+                },
+                gs: match l.source {
+                    Source::Grain(g) => [g.seed, g.fine_seed, g.spec_seed, 0],
+                    _ => [0; 4],
+                },
             };
-            uniforms.push(self.pass(gpu, &mut enc, &u, &back, src, mask.as_ref(), cover.as_ref().or(base), base_mask.as_ref(), &front));
+            let ko_tile = l.knockout.as_ref().map(|k| self.render_tile(gpu, &k.1, tx, ty));
+            uniforms.push(self.pass(gpu, &mut enc, &u, &back, src, mask.as_ref(), cover.as_ref().or(base), base_mask.as_ref(), ko_tile.as_ref(), &front));
             std::mem::swap(&mut back, &mut front);
         }
         gpu.queue.submit([enc.finish()]);

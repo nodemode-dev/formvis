@@ -71,8 +71,7 @@ def test_a_new_layer_on_a_giant_document_gets_tiles_and_paints(page):
     page.evaluate(SETUP)
     r = page.evaluate("""async () => {
       const E = await import('/src/engine/index.ts'), e = window.formvis.engine;
-      (await import('/src/engine/types.ts')).setPixelBudget(100_000_000);   // 120 MP is giant only on the smallest budget
-      e.newDocument(20000, 6000, 'Giant', 'white'); const bg = e.current.doc.layers[0];
+      e.newDocument(20000, 13000, 'Giant', 'white'); const bg = e.current.doc.layers[0];   // 260 MP: past the largest budget (250 MP), so giant on any computer
       e.addLayer({ name: 'Paint' }); const id = e.current.activeLayer.id;
       window.__stroke();
       const l = e.current.layer(id), s = E.createSurface(400, 300), c = E.ctxOf(s);

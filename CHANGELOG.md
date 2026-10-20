@@ -4,6 +4,15 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.92.1 · 2026-10-20
+
+- Preferences follow NodeMode's settings window: a rail of rounded-square tabs in a group well joined to the panel by a wire connector, one scrolling accordion of section cards with sub-group cards (the current section follows the scroll), NodeMode's controls (filled range line with a pill knob, 30 px selects, swatches, two-column fields, hints, danger reset), one Theme group (swatches, match system, light and dark picks, accent, intensity, skins), and sections in a logical order (Language joins Interface, the history log joins History & Cache, placing options are together).
+- Title bar: Settings and the light/dark theme button sit in the same rounded square as Search and Agent, centred, with even 8 px spacing; Lock and the narrow-window sheet buttons match.
+- Native renderer: channel restrictions, Knockout, clipping chains, Grain, Blend If on the layer's own range and folders in Soft Light, Linear Burn, Subtract, Color and Negation draw natively; Color Burn and Color Dodge folders fall back to the CPU (they measured over 2 levels).
+- Blur Gallery: Tilt-Shift and Radial Blur positions follow the layer; 16 and 32-bit Field, Iris, Tilt-Shift, Path and Radial Blur match the 8-bit result within 2 levels, edges included; Path and Spin edges no longer darken in 8-bit.
+- Crop and Straighten Photos no longer swaps red and blue; a file that is not an image is refused with 422.
+- Tests: 59 more legacy tests (layer rotate and flip, channels, saved selections, layer comps, artboards, PNG text, ICC and Exif bytes, band writers, video, photo merge); the giant-document new-layer test no longer depends on a module instance.
+
 ## 1.92.0 · 2026-10-20
 
 - GPU displays: Shadows/Highlights, HDR Toning and Clarity adjustment layers draw on WebGPU and WebGL2 at 100% zoom through a blur pass over the layers below, within 1 level of the CPU.

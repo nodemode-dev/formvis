@@ -309,10 +309,10 @@ const SHELL = `<div class="cv-app">
 <div class="cv-tb-doc"></div>
 <div class="cv-tb-app">formvis 2026</div>
 <div class="cv-zoom">
-<button class="cv-icon-btn" type="button" data-cmd="settings">${icon('settings', 16)}</button>
-<button class="cv-icon-btn cv-sheet-btn" type="button" data-cmd="sheet-tools" aria-label="Tools" title="Tools">${icon('tBrush', 16)}</button>
-<button class="cv-icon-btn cv-sheet-btn" type="button" data-cmd="sheet-panels" aria-label="Panels" title="Panels">${icon('layers', 16)}</button>
-<button class="cv-icon-btn cv-sheet-btn" type="button" data-cmd="sheet-props" aria-label="Properties" title="Properties">${icon('panelProps', 16)}</button>
+<button class="cv-tt-btn" type="button" data-cmd="settings">${icon('settings', 16)}</button>
+<button class="cv-tt-btn cv-sheet-btn" type="button" data-cmd="sheet-tools" aria-label="Tools" title="Tools">${icon('tBrush', 16)}</button>
+<button class="cv-tt-btn cv-sheet-btn" type="button" data-cmd="sheet-panels" aria-label="Panels" title="Panels">${icon('layers', 16)}</button>
+<button class="cv-tt-btn cv-sheet-btn" type="button" data-cmd="sheet-props" aria-label="Properties" title="Properties">${icon('panelProps', 16)}</button>
 </div>
 </header>
 <div class="cv-main">

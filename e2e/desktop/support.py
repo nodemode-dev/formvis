@@ -5,6 +5,7 @@ answers the window's agent bridge; everything else goes to the engine already ru
 The binary is built without bundling (the command is in conftest.py); a test that finds no binary, no Xvfb or no built frontend
 is skipped with the reason."""
 import ctypes
+import http.client
 import json
 import os
 import shutil
@@ -137,7 +138,18 @@ class Desktop:
     def config_file(self) -> Path:
         return self.home / ".config" / "ai.nodemode.formvis" / "window.json"
 
-    def launch(self, *args: str, boot: bool = True, extra_env: dict | None = None) -> None:
+    def start_bus(self) -> str:
+        """A private session bus: the single-instance hand-over of a second launch goes through it."""
+        read, write = os.pipe()
+        self.bus = subprocess.Popen(["dbus-daemon", "--session", "--nofork", f"--print-address={write}"], pass_fds=(write,),
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        os.close(write)
+        with os.fdopen(read) as pipe:
+            return pipe.readline().strip()
+
+    def launch(self, *args: str, boot: bool = True, extra_env: dict | None = None, bus: bool = False) -> None:
+        if bus and getattr(self, "bus", None) is None:
+            extra_env = {**(extra_env or {}), "DBUS_SESSION_BUS_ADDRESS": self.start_bus()}
         run = self.workdir / "run"
         run.mkdir(parents=True, exist_ok=True)
         exe = run / "formvis"
@@ -166,6 +178,7 @@ class Desktop:
             "FORMVIS_STUB_ADDRESS_FILE": str(address),
             **(extra_env or {}),
         }
+        self.exe, self.run_dir, self.env = exe, run, env
         logfile = open(self.log, "ab")
         self.proc = subprocess.Popen([str(exe), *args], cwd=run, env=env, stdout=logfile, stderr=logfile, start_new_session=True)
         logfile.close()
@@ -177,6 +190,10 @@ class Desktop:
         self.stub_url = address.read_text().strip() if address.exists() else ""
         if boot:
             self.wait_booted()
+
+    def second_launch(self, *args: str, timeout: float = 40.0) -> subprocess.CompletedProcess:
+        """Starts the same program again with the same home and display, as a double-clicked project would; waits for it to end."""
+        return subprocess.run([str(self.exe), *args], cwd=self.run_dir, env=self.env, capture_output=True, timeout=timeout)
 
     def alive(self) -> bool:
         return self.proc is not None and self.proc.poll() is None
@@ -252,7 +269,10 @@ class Desktop:
         if not self.alive():
             return True
         mine = self.pids()
-        self.call("ui_window", {"action": "quit", "confirm": True}, timeout=10)
+        try:
+            self.call("ui_window", {"action": "quit", "confirm": True}, timeout=10)
+        except (OSError, ValueError, http.client.HTTPException):
+            pass
         try:
             self.proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
@@ -271,6 +291,10 @@ class Desktop:
             except subprocess.TimeoutExpired:
                 os.kill(self.proc.pid, signal.SIGKILL)
         self._sweep(mine)
+        bus = getattr(self, "bus", None)
+        if bus is not None and bus.poll() is None:
+            bus.terminate()
+            bus.wait(timeout=10)
 
     def _sweep(self, mine: list[int] | None = None) -> None:
         for pid in mine or []:
@@ -344,6 +368,20 @@ class XWindow:
 
     def move_resize(self, x: int, y: int, width: int, height: int) -> None:
         self.lib.XMoveResizeWindow(self.display, self.window, x, y, width, height)
+        self.lib.XSync(self.display, 0)
+
+    def click(self, x: int, y: int) -> None:
+        """A real left click at screen position x, y, sent through the XTEST extension."""
+        test = ctypes.CDLL("libXtst.so.6")
+        test.XTestFakeMotionEvent.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_ulong]
+        test.XTestFakeButtonEvent.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_int, ctypes.c_ulong]
+        test.XTestFakeMotionEvent(self.display, 0, x, y, 0)
+        self.lib.XSync(self.display, 0)
+        time.sleep(0.15)
+        test.XTestFakeButtonEvent(self.display, 1, 1, 0)
+        self.lib.XSync(self.display, 0)
+        time.sleep(0.08)
+        test.XTestFakeButtonEvent(self.display, 1, 0, 0)
         self.lib.XSync(self.display, 0)
 
     def close(self) -> None:

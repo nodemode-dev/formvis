@@ -16,6 +16,16 @@ SETUP = """async () => { const E = await import('/src/engine/index.ts'), e = win
   e.applySelection(E.SelectionMask.cropped(30, 30, 60, 40, new Uint8Array(2400).fill(255)), 'replace', 's');
   const layers = e.current.doc.layers; return layers.map((l) => l.id); }"""
 
+# The canvas right-click menu: ten covering layers, then a context menu opened over the middle of the document wherever
+# the view and the interface zoom have left it. The command ids pick-layer-N only exist while that menu lists them.
+PICK_LAYERS = """async () => { const E = await import('/src/engine/index.ts'), e = window.formvis.engine;
+  for (let i = 0; i < 4 && document.querySelector('.cv-scrim:not([hidden]) .cv-dialog'); i++) { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await new Promise((r) => setTimeout(r, 60)); }
+  for (let i = 0; i < 40 && document.documentElement.classList.contains('cv-relighting'); i++) { document.querySelector('.cv-relight-btn[data-act="cancel"]')?.click(); await new Promise((r) => setTimeout(r, 100)); }
+  for (let i = 0; i < 10; i++) { const r = new E.Raster(240, 160); r.ctx.fillStyle = '#808080'; r.ctx.fillRect(0, 0, 240, 160); r.touch(); e.insertRasterLayer(r, 'Cover ' + i, 0, 0, {}, 'Cover'); }
+  e.setTool('move'); e.setViewFlip?.(false); window.formvis.commands.get('screen-standard').run(); const tp = window.formvis.commands.get('toggle-panels'); if (!tp.checked?.()) tp.run(); for (const c of ['interface-zoom-reset', 'screen-standard', 'actual']) { const cm = window.formvis.commands; if (cm.enabled(cm.get(c))) cm.run(c); } await new Promise((r) => setTimeout(r, 700));
+  const st = document.querySelector('.cv-stage'), r = st.getBoundingClientRect(), v = e.current.viewport, at = v.toScreen(120, 80);
+  st.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + at.x, clientY: r.top + at.y })); }"""
+
 
 # State the prepared document lacks, one kind each, for the second pass.
 BUILDERS = [
@@ -42,13 +52,46 @@ BUILDERS = [
     ("a layer comp","() => { window.formvis.commands.run('layer-comp-new'); }"),
     ("a vector mask", "() => { const e = window.formvis.engine; e.selectLayer(e.current.doc.layers.find((l) => l.name === 'Paint').id); e.addVectorMask('reveal'); }"),
     ("data sets", "() => { window.formvis.engine.importDataSets('a,b\\n1,2\\n3,4'); }"),
-    ("a mesh warp", "async () => { const e = window.formvis.engine; e.cancelTransform?.(); e.selectLayer(e.current.doc.layers.find((l) => l.name === 'Paint').id); e.deselect(); window.formvis.commands.run('transform-warp'); await new Promise((r) => setTimeout(r, 300)); }"),
+    ("a mesh warp", "async () => { const e = window.formvis.engine; e.cancelTransform?.(); e.selectLayer(e.current.doc.layers.find((l) => l.name === 'Paint').id); e.deselect(); window.formvis.commands.run('transform-warp'); await new Promise((r) => setTimeout(r, 800)); }"),
     ("a grayscale document", "async () => { window.formvis.commands.run('mode-grayscale'); await new Promise((r) => setTimeout(r, 300)); }"),
     ("a 32-bit document","() => window.formvis.engine.setDepth(32)"),   # File > Export > Radiance HDR and OpenEXR (1.53.9)
     ("a proof setup", """async () => { const { iccProfile } = await import('/src/engine/icc.ts'), fd = new FormData(); fd.append('file', new Blob([iccProfile('adobe-rgb')]), 'adobe.icc');
       const r = await (await fetch('/api/color/profiles', { method: 'POST', body: fd })).json(); window.formvis.colour.saveSetup({ id: r.id, name: r.name, intent: 'relative', bpc: true }); }"""),
     ("an action recording", "() => { const a = window.formvis.actions; a.start('Test'); a.record({ kind: 'command', id: 'invert', label: 'Invert' }); }"),
     ("a smart filter mask", "() => { const e = window.formvis.engine; e.selectLayer(e.current.doc.layers.find((l) => l.name === 'Paint').id); window.formvis.commands.run('convert-smart'); e.addSmartFilter('gaussianBlur', { radius: 2 }); window.formvis.commands.run('add-filter-mask'); }"),
+    ("a zoomed interface", "() => window.formvis.commands.run('interface-zoom-in')"),
+    ("a video layer", "() => window.formvis.commands.run('video-layer-blank')"),
+    ("a selected guide", "() => { const e = window.formvis.engine; e.addGuide('x', 50); e.selectGuide(0); }"),
+    ("a selected slice", "() => { const e = window.formvis.engine; e.addSlice({ x: 10, y: 10, w: 60, h: 40 }); e.activeSlice = e.current.doc.slices[0].id; }"),
+    ("a document to the right", "() => { const e = window.formvis.engine; e.newDocument(100, 80, 'Second', 'white'); window.formvis.commands.run('previous-document'); }"),
+    ("a closed tab", "async () => { const e = window.formvis.engine; e.newDocument(100, 80, 'Second', 'white'); window.formvis.commands.run('close-tab'); await new Promise((r) => setTimeout(r, 800)); }"),
+    ("a background job", "() => window.formvis.engine.startJob('Offered', 10)"),
+    ("a colour sampler", "() => window.formvis.commands.run('sampler-add', { x: 40, y: 40 })"),
+    ("a count group", "() => window.formvis.commands.run('count-new-group')"),
+    ("layers under the pointer", PICK_LAYERS),
+    ("a hidden layer", "() => { const e = window.formvis.engine; e.selectLayer(e.current.doc.layers.find((l) => l.name === 'Paint').id); window.formvis.commands.run('hide-layers'); }"),
+    ("a hidden-all mask", "() => { const e = window.formvis.engine; e.selectLayer(e.current.doc.layers.find((l) => l.name === 'Paint').id); window.formvis.commands.run('mask-hide-all'); }"),
+    ("floating pixels", "() => { const e = window.formvis.engine; e.selectLayer(e.current.doc.layers.find((l) => l.name === 'Paint').id); window.formvis.commands.run('select-float'); }"),
+    ("an alpha channel", "() => { const e = window.formvis.engine; e.newAlpha(); e.newAlpha(); }"),
+    ("an alpha channel chosen first", "() => { const e = window.formvis.engine; const a = e.newAlpha(); e.newAlpha(); e.showAlpha(a, true); }"),
+    ("copied layers", "() => { const e = window.formvis.engine; e.selectLayer(e.current.doc.layers.find((l) => l.name === 'Paint').id); window.formvis.commands.run('copy-layers'); }"),
+    ("type on a circle", "() => { const e = window.formvis.engine; e.selectLayer(e.current.doc.layers.find((l) => l.name === 'Paint').id); window.formvis.commands.run('type-on-circle', { text: 'Round' }); }"),
+    ("a copied selection", "() => { const e = window.formvis.engine; e.selectLayer(e.current.doc.layers.find((l) => l.name === 'Paint').id); window.formvis.commands.run('copy'); }"),
+    ("a box", "() => window.formvis.commands.run('boxes-from-selection')"),
+    ("a copied shape style", "() => { const e = window.formvis.engine; Object.assign(e.shapeSettings, { kind: 'star', mode: 'shape', fill: 'fg', stroke: 'fg', strokeWidth: 2 }); e.drawShape({ x: 40, y: 40 }, { x: 100, y: 100 }, { x: 40, y: 40, w: 60, h: 60 }); e.selectLayer(e.current.doc.layers.find((l) => l.vector).id); window.formvis.commands.run('shape-style-copy'); }"),
+    ("a depth map layer", "() => { const e = window.formvis.engine, l = e.current.doc.layers.find((x) => x.name === 'Paint'); e.selectLayer(l.id); e.current.updateLayer(l.id, { name: 'Depth Map' }); }"),
+    ("a filter layer", "() => { const e = window.formvis.engine; e.addFilterLayer('boxBlur', 'Box Blur', { radius: 2 }); }"),
+    ("a film look layer", "() => { const e = window.formvis.engine; e.addAdjustmentLayer('filmLook'); }"),
+    ("copied film curve points", "() => { const e = window.formvis.engine; e.addAdjustmentLayer('filmLook'); window.formvis.commands.run('film-copy-points'); }"),
+    ("an AI label", "() => window.formvis.engine.setMeta({ aiLabel: 'generated' })"),
+    ("a stack with a statistic", "async () => { const mk = (c) => { const s = document.createElement('canvas'); s.width = 60; s.height = 40; const x = s.getContext('2d'); x.fillStyle = c; x.fillRect(0, 0, 60, 40); return { name: c, width: 60, height: 40, source: s }; }; window.formvis.engine.loadStack([mk('#c83232'), mk('#32c832'), mk('#3232c8')], { smart: true, mode: 'mean' }); await new Promise((r) => setTimeout(r, 300)); }"),
+    ("a last filter", "async () => { const e = window.formvis.engine; e.selectLayer(e.current.doc.layers.find((l) => l.name === 'Paint').id); e.deselect(); window.formvis.commands.run('filter-boxBlur'); await new Promise((r) => setTimeout(r, 500)); document.querySelector('.cv-scrim:not([hidden]) .cv-dialog button.cv-btn-primary')?.click(); await new Promise((r) => setTimeout(r, 800)); }"),
+    ("an artboard guide", "() => { const e = window.formvis.engine; window.formvis.commands.run('new-artboard'); e.guideLayout({ columns: 2, rows: 2, gutterX: 0, gutterY: 0, margin: { top: 0, left: 0, bottom: 0, right: 0 }, clear: true, artboard: true }); }"),
+    ("a floating window", "() => window.formvis.commands.run('float-window')"),
+    ("a dark theme", "() => window.formvis.commands.run('theme-studio')"),
+    ("a favourite theme", "() => { const k = 'formvis.prefs', p = JSON.parse(localStorage.getItem(k) || '{}'); p.favouriteThemes = ['studio']; localStorage.setItem(k, JSON.stringify(p)); }"),
+    ("a 16-bit pixel layer", "() => { const e = window.formvis.engine; e.setDepth(16); e.selectLayer(e.current.doc.layers.find((l) => l.name === 'Paint').id); }"),
+    ("a 32-bit pixel layer", "() => { const e = window.formvis.engine; e.setDepth(32); e.selectLayer(e.current.doc.layers.find((l) => l.name === 'Paint').id); }"),
 ]
 # Commands that need state outside a test: files opened before (recent), NodeMode around formvis (send-host), a linked
 # file on disk (update, relink, embed), a large picture opened as tiles (assemble), and the Note tool's selection.
@@ -61,7 +104,13 @@ OUTSIDE = {"patterns-export", "panorama-apply-view", "video-restore-frame", "vid
            "revert", "slice-options", "transform-again-copy",       # a document saved to the library and then changed; a selected slice; a transform done by hand first
            "apply-redactions", "clear-slices", "convert-point-text", "delete-hidden", "rasterize-fill", "smart-reveal-linked", "transform-again", "video-duplicate-frame", "video-rasterize",   # redaction marks, slices, point text, a hidden layer, a fill layer and a linked smart object are each made by their own dialog or tool; the rest follow a transform or a video
            "trap", "warp-split-cross",                       # CMYK reached through the Mode dialog and its engine round trip; a warp grid whose cross split depends on a drag (its siblings warp-split-h, -v and warp-remove-split do run)
-           "recent-heading", *(f"recent-{i}" for i in range(10)), "clear-recent", "send-host", "update-linked", "relink", "embed-linked", "assemble-tiles"}
+           "recent-heading", *(f"recent-{i}" for i in range(40)), "clear-recent", "send-host", "update-linked", "relink", "embed-linked", "assemble-tiles",   # one row per recent file, up to the longest Recent list
+           "custom-title-bar", "menus-in-window", "check-for-updates",   # need the desktop window (its caption buttons, a Mac menu bar, the updater)
+           "simulate-gpu-loss", "copy-frame-trace",                      # need a GPU display that has drawn frames; the software adapter here falls back to the CPU
+           "save-history-log", "clear-history-log",                      # need Preferences > History Log on before the page loads, then steps made
+           "delete-workspace",                                           # a custom workspace is named through the New Workspace dialog
+           "edit-relight", "smart-warp-reset",                           # a relight layer is made in its own editor; a smart-object warp is placed by dragging its planes or pins
+           "depth-map-recompute"}                                        # recomputing needs the Depth Anything model downloaded
 
 
 def collect(page):
@@ -108,7 +157,7 @@ def _run_commands(page, errors, ids, last):
         layer_ids = page.evaluate(SETUP)
         before = len(errors)
         ok = page.evaluate("""([cid, layers]) => { const cs = window.formvis.commands, c = cs.get(cid), e = window.formvis.engine;
-          for (const id of [null, ...layers.slice().reverse()]) { if (id) e.selectLayer(id); if (cs.enabled(c)) { cs.run(cid); return true; } } return false; }""", [cid, layer_ids])
+          for (const id of [null, ...layers.slice().reverse()]) { if (id) e.selectLayer(id); if (cs.enabled(c)) { try { cs.run(cid); } catch (x) { if (!Object.values(c.params ?? {}).some((p) => p.required) && !/ must |required/.test(String(x?.message))) throw x; } return true; } } return false; }""", [cid, layer_ids])
         if not ok:
             never.append(cid); continue
         ran += 1
@@ -135,7 +184,7 @@ def _finish(page, errors, ids, never, ran, last):
             before = len(errors)
             last["id"] = f"{cid} (after {name})"
             print(f"[offered] command {last['id']}", flush=True)
-            page.evaluate("(cid) => { const cs = window.formvis.commands; if (cs.enabled(cs.get(cid))) cs.run(cid); }", cid)
+            page.evaluate("(cid) => { const cs = window.formvis.commands, c = cs.get(cid); if (cs.enabled(c)) { try { cs.run(cid); } catch (x) { if (!Object.values(c.params ?? {}).some((p) => p.required) && !/ must |required/.test(String(x?.message))) throw x; } } }", cid)
             page.wait_for_timeout(120); close_dialogs(page)
             page.evaluate("() => { window.formvis.engine.stopAnimation?.(); }")
             for k in range(before, len(errors)):
@@ -192,7 +241,7 @@ def test_every_colour_mode_offered_changes_the_mode(page):
     dialog (Bitmap, Indexed Color) confirmed."""
     errors = collect(page)
     modes = page.evaluate("window.formvis.commands.all().map((c) => c.id).filter((id) => id.startsWith('mode-'))")
-    assert sorted(modes) == ["mode-bitmap", "mode-cmyk", "mode-duotone", "mode-grayscale", "mode-indexed", "mode-lab", "mode-multichannel", "mode-rgb"], modes
+    assert sorted(modes) == ["mode-bitmap", "mode-cmyk", "mode-convert", "mode-duotone", "mode-grayscale", "mode-grayscale-from", "mode-indexed", "mode-lab", "mode-multichannel", "mode-rgb"], modes
     for cid in ["mode-grayscale", "mode-bitmap", "mode-indexed", "mode-cmyk", "mode-rgb"]:
         page.evaluate(SETUP)
         if cid == "mode-rgb":

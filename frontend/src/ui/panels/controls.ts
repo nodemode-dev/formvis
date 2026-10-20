@@ -18,6 +18,8 @@ export function sliderRow(label: string, min: number, max: number, step: number,
   const range = q(root, 'input[type="range"]') as HTMLInputElement;
   const box = q(root, 'input.cv-num') as HTMLInputElement;
   range.setAttribute('aria-label', label); box.setAttribute('aria-label', `${label} value`);   // named for assistive technology (1.53.4)
+  const fill = (): void => { const lo2 = Number(range.min), span = Number(range.max) - lo2; range.style.setProperty('--pct', `${span > 0 ? clamp(((range.valueAsNumber - lo2) / span) * 100, 0, 100) : 0}%`); };
+  range.addEventListener('input', fill);
   range.addEventListener('input', () => {
     const v = fromPos(range.valueAsNumber);
     box.value = fmt(v);
@@ -29,12 +31,13 @@ export function sliderRow(label: string, min: number, max: number, step: number,
     const v = clamp(raw, lo, hi);
     box.value = fmt(v);
     range.value = String(toPos(v));
+    fill();
     onInput(v);
   });
   box.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); box.blur(); } });
   if (limits.def !== undefined) {
     const def = limits.def;
-    q(root, 'span').addEventListener('dblclick', () => { range.value = String(toPos(def)); box.value = fmt(def); onInput(def); });
+    q(root, 'span').addEventListener('dblclick', () => { range.value = String(toPos(def)); fill(); box.value = fmt(def); onInput(def); });
     q(root, 'span').title = 'Double-click to reset';
   }
   // Scrubbable label: a horizontal drag on the label moves the value across the slider's span in about 250 px; Shift is ten times faster, Alt ten times finer.
@@ -53,7 +56,8 @@ export function sliderRow(label: string, min: number, max: number, step: number,
   const endScrub = (e: PointerEvent): void => { if (lab.hasPointerCapture(e.pointerId)) lab.releasePointerCapture(e.pointerId); scrub = null; };
   lab.addEventListener('pointerup', endScrub);
   lab.addEventListener('pointercancel', endScrub);
-  return { el: root, set(v) { range.value = String(toPos(v)); setValue(box, fmt(v)); } };
+  fill();
+  return { el: root, set(v) { range.value = String(toPos(v)); fill(); setValue(box, fmt(v)); } };
 }
 
 /** With `onHover`, the choices show as the hover-preview menu: the value under the pointer or arrow keys, null when it closes. */
