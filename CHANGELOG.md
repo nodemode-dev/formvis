@@ -4,6 +4,11 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.92.13 · 2026-10-20
+
+- MCP: run_commands no longer answers "Give the command id" to a valid list of commands (the window's id check ran before the batch branch).
+- Tool Presets: Apply and Rename update the list in place and keep the selection.
+
 ## 1.92.12 · 2026-10-20
 
 - View > Flip Horizontal mirrors about the centre of the visible canvas, so the picture no longer slides under the side panels; painting lands under the pointer.

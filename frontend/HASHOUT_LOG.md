@@ -2,6 +2,12 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## run_commands id guard, Tool Presets in place · _v1.92.13 (automation/agent-bridge.ts, ui/panels/tool-presets-dialog.ts)
+
+- catalogueTool refused every call without `id` before reaching the run_commands branch, whose schema is `commands[{id, params}]`; the guard now skips run_commands (the batch branch has its own empty-list message). Not verified by use: the check's MCP calls landed in another open window.
+- Tool Presets: Apply called paint() (replaceChildren), losing the selection; it now repaints only when the tool changed and restores list.value; Rename updates the option's textContent. create, remove and import still rebuild because rows change.
+- Not bugs: a bare steps array is not an actions file (actionsFrom drops it); an empty new layer has no Layer Edges, as Move's boundsOf shows none.
+
 ## Flip View centre, providers removed, numeric arithmetic, native masked division folders refused · _v1.92.12 (ui/stage.ts, io/api.ts, ui/panels/generate-image.ts, generate-panel.ts, generative-dialog.ts, connection-settings.ts, generation-options.ts, ui/app-dialogs.ts, ui/layers.ts, ui/status.ts, ui/navigator.ts, ui/properties.ts, gpu/native-display.ts; backend routers/generative.py, services/providers.py removed)
 
 - Flip View: the canvases pivot about the stage centre, but the visible area is narrower by Viewport.insetRight (the side column lies over the canvas). turn() adds translateX(-insetRight) before scaleX(-1), inside the rotate and pixel-aspect steps; unturn mirrors with `w - Viewport.insetRight - p.x`; layoutChanged re-runs turn() while flipped.

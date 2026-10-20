@@ -158,8 +158,11 @@ export class ToolPresetsDialog extends Dialog {
     const i = Number(this.list.value);
     const p = this.list.value === '' ? undefined : this.presets[i];
     if (!p) { toast('Choose a preset first.', 'info'); return; }
-    if (!this.applyPreset(p)) toast('That preset\'s tool is not available.', 'info');
+    const before = this.engine.tool;
+    if (!this.applyPreset(p)) { toast('That preset\'s tool is not available.', 'info'); return; }
+    if (this.engine.tool === before) return;
     this.paint();
+    this.list.value = String(i);
   }
 
   /** Gives the chosen preset another name; a same-named preset of the same tool is refused. */
@@ -171,7 +174,8 @@ export class ToolPresetsDialog extends Dialog {
     if (this.presets.some((o) => o !== p && o.tool === p.tool && o.name === name)) { toast(`"${name}" is already a preset of this tool.`, 'info'); return; }
     p.name = name;
     savePresets(this.presets);
-    this.paint();
+    const o = this.list.selectedOptions[0];
+    if (o) o.textContent = this.currentOnly ? name : `${name} (${this.toolOf(p.tool)?.label ?? p.tool})`;
   }
 
   /** Writes every preset to formvis-tool-presets.json. */

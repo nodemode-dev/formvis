@@ -127,7 +127,7 @@ async function catalogueTool(name: string, a: Record<string, unknown>, hasDocume
     const data = { total: all.length, commands: shown };
     return text(`${all.length} command${all.length === 1 ? '' : 's'}${all.length > shown.length ? `, the first ${shown.length} shown: narrow with group or text` : ''}. ${brief(shown)}`, data);
   }
-  if (!id) return fail('Give the command id: call list_commands to find one.');
+  if (!id && name !== 'run_commands') return fail('Give the command id: call list_commands to find one.');
   if (name === 'describe_command') {
     let d = await cat.describeCommand(id);
     if (d && typeof d === 'object' && 'ok' in d && 'result' in d) d = (d as { result: unknown }).result;
