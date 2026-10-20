@@ -196,7 +196,7 @@ export class ColourView {
     const monitor = c.useDisplay && c.monitor === 'system' ? (this.display?.icc && !this.display.managed ? this.display.icc : null) : chosen, terms = proofing && s ? proofTerms(s) : null;
     const key = p ? `${prof ? `${prof.icc.length}:${prof.icc.slice(-64)}` : 'srgb'}|${proofing && s && terms ? `${s.id}:${terms.intent}:${terms.bpc}` : ''}|${kind ?? ''}:${c.cmyk}|${proofing && this.gamut ? this.gamutDelta : false}|${monitor ? `${monitor.length}:${monitor.slice(-64)}:${c.intent}:${c.bpc}` : ''}` : '';
     const squash = this.method === 'compress', lutExposure = squash ? 0 : this.exposure;
-    const pv = p?.doc.depth === 32 && (lutExposure !== 0 || this.gamma !== 1), vkey = pv ? `${key}|p${lutExposure}:${this.gamma}` : key, raw = kind === 'monitor';
+    const pv = p?.doc.depth === 32 && p.doc.mode !== 'lab' && p.doc.mode !== 'cmyk' && (lutExposure !== 0 || this.gamma !== 1), vkey = pv ? `${key}|p${lutExposure}:${this.gamma}` : key, raw = kind === 'monitor';
     if (vkey === this.key) return;
     this.key = vkey;
     if (!p || (!pv && (raw || (!prof && !proofing && !monitor)))) { this.engine.setViewTransform(null); return; }

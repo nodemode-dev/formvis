@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
 # Linux startup library check and file dialog diagnostics.
-#   bash setup/libcheck [--quiet] [--dialogs] [BINARY ...]
+#   bash setup/libcheck [--quiet] [--dialogs] [--names] [BINARY ...]
 # Names every shared library the desktop program and its engine cannot find, and says what the file dialogs need.
+# --names checks the window's libraries by name (for an AppImage, whose own libraries ldd cannot see).
 # Exit 0: nothing missing. Exit 1: a library is missing. Not Linux: prints one line and exits 0.
 set -u
-quiet=0 dialogs=0 bins=()
+PATH="$PATH:/sbin:/usr/sbin"
+quiet=0 dialogs=0 names=0 bins=()
 for arg in "$@"; do
   case "$arg" in
     --quiet) quiet=1 ;;
+    --names) names=1 ;;
     --dialogs) dialogs=1 ;;
-    -h|--help) sed -n '2,6p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,7p' "$0"; exit 0 ;;
     *) bins+=("$arg") ;;
   esac
 done
@@ -22,7 +25,7 @@ fi
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd "$here/.." 2>/dev/null && pwd)"
-if [ ${#bins[@]} -eq 0 ]; then
+if [ ${#bins[@]} -eq 0 ] && [ "$names" = 0 ]; then
   for c in /usr/bin/formvis /usr/lib/formvis/formvis-engine /usr/bin/formvis-engine \
            "$root"/src-tauri/target/release/formvis "${XDG_CACHE_HOME:-$HOME/.cache}"/formvis/tauri-target/release/formvis \
            "$root"/src-tauri/binaries/formvis-engine-*; do
@@ -33,7 +36,7 @@ fi
 missing=0
 find_lib() { ldconfig -p 2>/dev/null | grep -q -- "$1"; }
 
-if [ ${#bins[@]} -gt 0 ] && command -v ldd >/dev/null 2>&1; then
+if [ ${#bins[@]} -gt 0 ] && [ "$names" = 0 ] && command -v ldd >/dev/null 2>&1; then
   for b in "${bins[@]}"; do
     out="$(ldd "$b" 2>&1 || true)"
     lost="$(printf '%s\n' "$out" | awk '/not found/ {print $1}' | sort -u)"
@@ -82,7 +85,9 @@ if [ "$dialogs" = 1 ] || [ "$missing" = 1 ]; then
   else
     echo "  session bus: none found (dialogs inside a sandbox need it)"
   fi
-  for t in zenity kdialog; do command -v "$t" >/dev/null 2>&1 && echo "  $t: present"; done
+  tools=0
+  for t in zenity kdialog; do command -v "$t" >/dev/null 2>&1 && { echo "  $t: present"; tools=1; }; done
+  [ "$tools" = 1 ] || echo "  zenity and kdialog: neither is installed (formvis's own dialogs are GTK and do not need them; the launcher shows its start-up message with them, or prints it)"
   [ -n "${GTK_USE_PORTAL:-}" ] && echo "  GTK_USE_PORTAL=$GTK_USE_PORTAL"
 fi
 

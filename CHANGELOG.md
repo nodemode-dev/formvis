@@ -4,6 +4,18 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.92.8 · 2026-10-20
+
+- Settings: the rail icons, section icons and group labels take the accent colour again (the active tab's icon stays on the accent fill).
+- Desktop on Linux: one window per data folder; a second launch on the same folder hands its files to the running window, another folder opens its own.
+- Linux: `formvis-launch` checks the window's libraries before starting and shows what is missing; `libcheck --dialogs` says when zenity and kdialog are absent; a file dialog that closes at once reports the session, display and bus.
+- Embedding: the app opens the picture or project a parent page hands it with init, asks to save unsaved work when the parent sends close and then tells the parent, and posts save and close to the parent.
+- Generate panel: a Result target (layer, new document, replace the picture) and Transparent background, remembered; Generative Fill, Expand and Upscale regenerate at the Working size (2048 px by default) and return to the picture's size.
+- Magic Wand, Magic Eraser, Grow and Similar find their region on the wand worker for layers of 4 MP and up, with the same pixels.
+- Native renderer: unmasked Vivid Light folders draw natively and match the canvas exactly, through a measured 8-bit unpremultiply table and Multiply alpha table.
+- Lab documents work at 32 bits (New Document and Image > Mode): Lab values are kept, not linear light; painting, adjustments, display and projects work; Lab TIFF export is written at 16 bits.
+- Tests moved out of the repo into the planning sidecar's test harness (the owner's ruling).
+
 ## 1.92.7 · 2026-10-20
 
 - Desktop (Linux and all platforms): `formvis --user-data-dir <folder>` and `--portable` now reach the engine; before, the launcher dropped them and the engine used the default folder.

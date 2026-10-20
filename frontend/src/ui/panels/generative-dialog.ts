@@ -10,7 +10,7 @@ import { ReferenceChips } from './reference-chips';
 import { CropStitchSettings } from './crop-stitch-settings';
 import { withCropStitch } from '../../io/crop-stitch-run';
 import { generatePrompt } from '../../io/prompt-templates';
-import { comfyReadiness, resolveReferenceTokens, stoppable, stoppableFill } from './generate-image';
+import { cappedFill, cappedUpscale, comfyReadiness, resolveReferenceTokens, stoppable, stoppableFill } from './generate-image';
 import { PromptImprover, areaView, referenceViews } from './prompt-improver';
 import { GenerationOptions } from './generation-options';
 
@@ -296,7 +296,8 @@ export class GenerativeDialog extends Dialog {
   /** Upscale by the scope chosen: the whole picture as a new document or in this document, or the selection as a layer. */
   private upscaleBy(scope: string, scale: number, run: (image: Blob) => Promise<Blob>): Promise<boolean> {
     const e = this.engine;
-    return scope === 'here' ? e.upscaleInDocument(scale, run) : scope === 'selection' ? e.upscaleSelection(scale, run) : e.upscaleToDocument(scale, run);
+    const capped = cappedUpscale(run, scale);
+    return scope === 'here' ? e.upscaleInDocument(scale, capped) : scope === 'selection' ? e.upscaleSelection(scale, capped) : e.upscaleToDocument(scale, capped);
   }
 
   private async generate(): Promise<void> {
@@ -304,7 +305,7 @@ export class GenerativeDialog extends Dialog {
       const e = this.engine, mode = this.mode, prompt = this.prompt.value;
       const margins = { left: Number(this.margin.left.value), top: Number(this.margin.top.value), right: Number(this.margin.right.value), bottom: Number(this.margin.bottom.value) };
       this.close();
-      const lama = stoppableFill(() => localInpaint());
+      const lama = stoppableFill(() => cappedFill(localInpaint()));
       if (mode === 'expand') await e.task(() => e.generativeExpand(margins, prompt, lama));
       else await e.task(() => e.generativeFill(prompt, lama));
       return;
@@ -327,7 +328,7 @@ export class GenerativeDialog extends Dialog {
       const margins = { left: Number(this.margin.left.value), top: Number(this.margin.top.value), right: Number(this.margin.right.value), bottom: Number(this.margin.bottom.value) };
       const sent = await generatePrompt(prompt, local.id);
       this.close();
-      const fill = stoppableFill((stopped) => localFill(local.id, sent, influence, (r) => this.heard(r), undefined, { seed, negative, steps, guidance, refine, cancelled: stopped, onSeed: (s) => this.opts.used(s) }));
+      const fill = stoppableFill((stopped) => cappedFill(localFill(local.id, sent, influence, (r) => this.heard(r), undefined, { seed, negative, steps, guidance, refine, cancelled: stopped, onSeed: (s) => this.opts.used(s) })));
       if (mode === 'expand') await e.task(() => e.generativeExpand(margins, prompt, fill));
       else await e.task(() => e.generativeFill(prompt, fill));
       return;
@@ -341,7 +342,7 @@ export class GenerativeDialog extends Dialog {
       let said: string;
       try { checkReferenceCount(recipe.name, recipe.json, refs.length); said = await generatePrompt(resolveReferenceTokens(prompt, refs.length, recipe.refs), 'comfyui'); } catch (err) { setText(this.state, err instanceof Error ? err.message : 'A reference token could not be read.'); return; }
       this.close();
-      const fill = stoppableFill((stopped) => withCropStitch(comfyGenerator(target, recipe, said, refs, stopped)));
+      const fill = stoppableFill((stopped) => withCropStitch(cappedFill(comfyGenerator(target, recipe, said, refs, stopped))));
       if (mode === 'expand') await e.task(() => e.generativeExpand(margins, prompt, fill));
       else await e.task(() => e.generativeFill(prompt, fill));
       return;
@@ -352,7 +353,7 @@ export class GenerativeDialog extends Dialog {
       const margins = { left: Number(this.margin.left.value), top: Number(this.margin.top.value), right: Number(this.margin.right.value), bottom: Number(this.margin.bottom.value) };
       const sent = await generatePrompt(prompt, id);
       this.close();
-      const fill = stoppableFill(() => withCropStitch((image: Blob, mask: Blob): Promise<Blob> => api.generativeFill(image, mask, sent, id)));
+      const fill = stoppableFill(() => withCropStitch(cappedFill((image: Blob, mask: Blob): Promise<Blob> => api.generativeFill(image, mask, sent, id))));
       if (mode === 'expand') await e.task(() => e.generativeExpand(margins, prompt, fill));
       else await e.task(() => e.generativeFill(prompt, fill));
       return;
@@ -370,7 +371,7 @@ export class GenerativeDialog extends Dialog {
     const sent = await generatePrompt(prompt, 'fal');
     this.close();
     if (seed !== undefined && mode !== 'upscale') this.opts.used(seed);
-    const fill = stoppableFill(() => withCropStitch((image: Blob, mask: Blob): Promise<Blob> => api.generativeFill(image, mask, sent, 'fal', seed)));
+    const fill = stoppableFill(() => withCropStitch(cappedFill((image: Blob, mask: Blob): Promise<Blob> => api.generativeFill(image, mask, sent, 'fal', seed))));
     if (mode === 'upscale') await e.task(() => this.upscaleBy(scope, scale, (image) => stoppable(() => api.upscale(image, scale))));
     else if (mode === 'expand') await e.task(() => e.generativeExpand(margins, prompt, fill));
     else await e.task(() => e.generativeFill(prompt, fill));

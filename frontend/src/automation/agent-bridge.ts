@@ -598,7 +598,7 @@ export class AgentBridge {
           if (str('type') === 'exr' || str('type') === 'hdr') {
             e.settle();
             let deep: { width: number; height: number; data: Float32Array } | { error: string };
-            if (p.doc.depth === 32) deep = composeDeep(p.doc);
+            if (p.doc.depth === 32 && p.doc.mode !== 'lab') deep = composeDeep(p.doc);
             else {
               const flat = e.flattened();
               if (!flat) return fail('Nothing to export.');
@@ -1096,7 +1096,7 @@ export class AgentBridge {
           if (x < 0 || y < 0 || x >= p.doc.width || y >= p.doc.height) return fail(`x and y must lie inside the picture (0 to ${p.doc.width - 1}, 0 to ${p.doc.height - 1}).`);
           const was = { ...e.wand }, before = p.selection;
           e.setWand({ tolerance: Math.min(255, Math.max(0, Math.round(num('tolerance', 32)))), contiguous: a.contiguous !== false, sampleAll: str('source') === 'merged' });
-          try { e.magicWand({ x, y }, modeOf(a.mode)); } finally { e.setWand(was); }
+          try { await e.magicWand({ x, y }, modeOf(a.mode)); } finally { e.setWand(was); }
           const s = e.current?.selection;
           return s && s !== before ? text(`Selected the colour at ${x}, ${y}: ${s.w} by ${s.h} at ${s.x}, ${s.y}.`, { x: s.x, y: s.y, width: s.w, height: s.h }) : fail(`Nothing was selected at ${x}, ${y}: raise tolerance, or check that source ${str('source') || 'layer'} has pixels there.`);
         }

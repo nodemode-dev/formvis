@@ -16,6 +16,8 @@
 .cv-genp-row { display: grid; grid-template-columns: 40px minmax(0, 1fr); align-items: center; gap: var(--space-2); color: var(--text-secondary); font-size: var(--fs-12); }
 .cv-genp-row .cv-input { width: 100%; }
 .cv-genp-custom[hidden] { display: none; }
+.cv-genp-check { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.cv-genp-check input { margin: 0; accent-color: var(--accent-color); }
 .cv-genp-wh { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
 .cv-genp-refs { display: flex; flex-direction: column; gap: var(--space-1); }
 .cv-genp-refhead { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); color: var(--text-secondary); font-size: var(--fs-12); }

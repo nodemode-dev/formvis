@@ -94,6 +94,45 @@ export function stoppableFill(make: (stopped: () => boolean) => (image: Blob, ma
   return (image, mask) => stoppable((stopped) => make(stopped)(image, mask));
 }
 
+/** The working canvas Fill, Expand and Upscale regenerate at: the Generate panel's Working size, 2048 px by default. */
+export function workingSide(): number {
+  const v = Number(loadPrefs().dialogValues['Generate Panel']?.cap);
+  return v === 1024 || v === 1536 ? v : 2048;
+}
+
+async function resampled(blob: Blob, w: number, h: number): Promise<Blob> {
+  const bmp = await createImageBitmap(blob), c = new OffscreenCanvas(w, h), g = c.getContext('2d') as OffscreenCanvasRenderingContext2D;
+  g.imageSmoothingQuality = 'high';
+  g.drawImage(bmp, 0, 0, w, h);
+  bmp.close();
+  return c.convertToBlob({ type: 'image/png' });
+}
+
+async function fitted(image: Blob): Promise<{ w: number; h: number; sw: number; sh: number; small: boolean }> {
+  const bmp = await createImageBitmap(image), w = bmp.width, h = bmp.height;
+  bmp.close();
+  const k = Math.min(1, workingSide() / Math.max(w, h));
+  return { w, h, sw: Math.max(1, Math.round(w * k)), sh: Math.max(1, Math.round(h * k)), small: k < 1 };
+}
+
+/** A fill generator that never sees more than the working size: a larger picture and mask go down to it and the answer comes back up to the size given. */
+export function cappedFill(generate: (image: Blob, mask: Blob) => Promise<Blob>): (image: Blob, mask: Blob) => Promise<Blob> {
+  return async (image, mask) => {
+    const f = await fitted(image);
+    if (!f.small) return generate(image, mask);
+    return resampled(await generate(await resampled(image, f.sw, f.sh), await resampled(mask, f.sw, f.sh)), f.w, f.h);
+  };
+}
+
+/** An upscaler that is given at most the working size; its answer is brought to `scale` times the picture it was asked about. */
+export function cappedUpscale(run: (image: Blob) => Promise<Blob>, scale: number): (image: Blob) => Promise<Blob> {
+  return async (image) => {
+    const f = await fitted(image);
+    if (!f.small) return run(image);
+    return resampled(await run(await resampled(image, f.sw, f.sh)), f.w * scale, f.h * scale);
+  };
+}
+
 export const generationLog = (): readonly RunLogEntry[] => runLog;
 export const keptResults = (): readonly KeptResult[] => kept;
 /** Calls `fn` whenever the log or the kept results change; returns the way to stop. */

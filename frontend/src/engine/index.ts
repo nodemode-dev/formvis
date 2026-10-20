@@ -84,7 +84,7 @@ import { type DocMode, BLEND_MODES, LAYER_BLEND_MODES, canvasBlend, LIMITS, setP
 import { allPatterns, patternById } from './patterns';
 import { addFillStop, fillFrame, fillFromLine, fillLine, fillName, renderFill, type GradientFill } from './fill-layers';
 import type { FillContent, VectorMask, WarpStyle, SmartOriginal } from './types';
-import { TILED_SIDE } from './types';
+import { TILED_SIDE, linearLight } from './types';
 import { boxChange, followVector, hasOutline, movedVector, vectorCoverage } from './vector-mask';
 import { fitEdges } from './edge-fit';
 
@@ -116,7 +116,7 @@ import type { LibFrame, LibImage, LibPath } from './filter-library';
 import type { FilterKind, FilterSettings } from './filter-jobs';
 import { POOL_FROM, bandPlan, bandPoolReady, bandPoolSize, bandsShared, runBandOnPool, runDeepBandOnPool, runSharedBandOnPool } from './band-pool';
 import { deepBandRun, deepBandable } from './deep-bands';
-import { WAND_FROM, findRegion, findRegionOffThread } from './wand-jobs';
+import { WAND_FROM, findRegion, findRegionOffThread, growRegion, growRegionOffThread } from './wand-jobs';
 import { sharpenSample } from './filters-more';
 import { clampMid, colorAt, diamondFill, presetById, reflectStops, resolveStops, type GradientPreset, type GradientType } from './gradients';
 import { convexQuad, evenSpacing, meshForward, meshSurfacePoint, meshWarpImage, removeSplit, splitGrid, type P2 } from './mesh-warp';
@@ -3715,8 +3715,8 @@ export class Engine {
   /** Whether the canvas and exports show the composed floats rather than the layers' renditions (1.54.4, Lab 1.56.6):
    *  a CMYK or Lab document with a visible adjustment layer or a blend mode other than Normal. */
   private composesFloats(p: Project): boolean {
-    if (this.channelsHidden.size && p.doc.depth !== 32 && ((p.doc.mode === 'cmyk' && !!p.cmykLut) || p.doc.mode === 'lab')) return true;
-    if (p.doc.depth === 32) return p.doc.layers.some((l) => l.visible && (!!l.adjustment || (!!l.blend && l.blend !== 'normal') || effectsActive(l.effects) || !!l.mask || !!l.clipId));
+    if (this.channelsHidden.size && !linearLight(p.doc) && ((p.doc.mode === 'cmyk' && !!p.cmykLut) || p.doc.mode === 'lab')) return true;
+    if (linearLight(p.doc)) return p.doc.layers.some((l) => l.visible && (!!l.adjustment || (!!l.blend && l.blend !== 'normal') || effectsActive(l.effects) || !!l.mask || !!l.clipId));
     return ((p.doc.mode === 'cmyk' && !!p.cmykLut) || p.doc.mode === 'lab') && p.doc.layers.some((l) => l.visible && (l.adjustment || (l.blend && l.blend !== 'normal') || effectsActive(l.effects)));
   }
 
@@ -5307,7 +5307,7 @@ export class Engine {
     }
     if (st.target === 'pixels' && st.project.layer(st.layerId)?.shape) st.project.updateLayer(st.layerId, { shape: null });
     const dl = patch && st.target === 'pixels' && ((st.project.doc.depth ?? 8) > 8 || st.project.doc.mode === 'cmyk' || st.project.doc.mode === 'lab') ? st.project.layer(st.layerId) : null;
-    const exact = (this.tool === 'brush' || this.tool === 'pencil' || this.tool === 'eraser') && !this.colourDynamics() && st.project.doc.depth !== 32;
+    const exact = (this.tool === 'brush' || this.tool === 'pencil' || this.tool === 'eraser') && !this.colourDynamics() && (st.project.doc.depth !== 32 || st.project.doc.mode === 'lab');
     if (patch && exact && dl?.channels?.mode === 'rgb' && dl.raster === patch.raster) {
       const after = patch.raster.ctx.getImageData(patch.x, patch.y, patch.before.width, patch.before.height);
       const erasing = this.brushMode === 'erase' || this.tool === 'eraser', cover = erasing === (st.s.op === 'destination-out') ? st.s.coverFor(patch.x, patch.y, patch.before.width, patch.before.height) : null;
@@ -5326,7 +5326,7 @@ export class Engine {
       const t = dl.channels.mode === 'cmyk' ? this.deriveTables(st.project) : null;
       if (dl.channels.mode !== 'cmyk' || t) {
         const after = patch.raster.ctx.getImageData(patch.x, patch.y, patch.before.width, patch.before.height);
-        const linear = st.project.doc.depth === 32, ch = deriveRegion(dl.channels, patch.x, patch.y, patch.before, after, t, linear), img = renderRegion(ch, patch.x, patch.y, after.width, after.height, t ? t.out : null, linear);
+        const linear = linearLight(st.project.doc), ch = deriveRegion(dl.channels, patch.x, patch.y, patch.before, after, t, linear), img = renderRegion(ch, patch.x, patch.y, after.width, after.height, t ? t.out : null, linear);
         patch.raster.ctx.putImageData(img, patch.x, patch.y); patch.raster.touch({ x: patch.x, y: patch.y, w: img.width, h: img.height }); patch.after.data.set(img.data);
         st.project.updateLayer(st.layerId, { channels: ch });
       }
@@ -5699,25 +5699,30 @@ export class Engine {
   /** The Magic Eraser (E; 1.49.5, the owner's tool list): the area the Magic Wand would select at a
    *  point (with the eraser's own Tolerance, Contiguous and Sample All Layers) made transparent on the active layer, the
    *  selection left as it was; one step. */
-  magicErase(pt: Pt, settings: { tolerance: number; contiguous: boolean; sampleAll: boolean; antialias?: boolean; opacity?: number }): void {
+  magicErase(pt: Pt, settings: { tolerance: number; contiguous: boolean; sampleAll: boolean; antialias?: boolean; opacity?: number }): Promise<void> | void {
     const p = this.current;
     if (!p || !this.paintable(p.activeLayer)) { this.notice('Select a pixel layer to erase.'); return; }
     const before = p.selection, wand = this.wand;
-    p.history.begin('Magic Eraser', p.snapshot());
     const { opacity = 1, ...found } = settings;
     this.wand = { ...wand, ...found };
-    try {
-      this.magicWand(pt, 'replace');
-      const got = p.selection;
-      if (got && got !== before && opacity < 1) p.selection = new SelectionMask(got.x, got.y, got.w, got.h, got.data.map((v) => Math.round(v * Math.max(0, opacity))));
-      if (p.selection && p.selection !== before) this.clearPixels();
-    } finally {
-      this.wand = wand;
-      p.selection = before;
-      p.history.end(p.snapshot());
-      this.emit('selection', null);
-      this.refresh();
-    }
+    let src: SO.WandSource | null;
+    try { src = SO.wandSource(this.selectHost, pt); } finally { this.wand = wand; }
+    const erase = (region: Uint8Array | null): void => {
+      p.history.begin('Magic Eraser', p.snapshot());
+      try {
+        if (src && region) SO.wandApply(this.selectHost, src, region, 'replace');
+        const got = p.selection;
+        if (got && got !== before && opacity < 1) p.selection = new SelectionMask(got.x, got.y, got.w, got.h, got.data.map((v) => Math.round(v * Math.max(0, opacity))));
+        if (p.selection && p.selection !== before) this.clearPixels();
+      } finally {
+        p.selection = before;
+        p.history.end(p.snapshot());
+        this.emit('selection', null);
+        this.refresh();
+      }
+    };
+    if (!src) { erase(null); return; }
+    return this.wandRegion(src, 'Magic Eraser', erase);
   }
 
   clearPixels(): void {
@@ -6138,7 +6143,7 @@ export class Engine {
   /** Select > Grow and Similar: pixels within the Magic Wand's tolerance of the range of each channel and alpha among
    *  the selected pixels, joined to the selection (Grow, four-connected) or anywhere (Similar), sampled as the Magic
    *  Wand samples (the active layer, or all layers). One step. */
-  growSelection(contiguous: boolean): void {
+  growSelection(contiguous: boolean): Promise<void> | void {
     const p = this.current, sel = p?.selection;
     if (!p || !sel) return;
     const W = p.doc.width, H = p.doc.height;
@@ -6159,18 +6164,17 @@ export class Engine {
       for (let c = 0; c < 4; c++) { const v = d[i * 4 + c]; if (v < lo[c]) lo[c] = v; if (v > hi[c]) hi[c] = v; }
     }
     if (!any) { this.notice(`${contiguous ? 'Grow' : 'Similar'} needs pixels at least half selected.`); return; }
-    const inside = (i: number): boolean => { for (let c = 0; c < 4; c++) { const v = d[i * 4 + c]; if (v < lo[c] - tol || v > hi[c] + tol) return false; } return true; };
-    if (contiguous) {
-      const stack: number[] = [];
-      for (let i = 0; i < n; i++) if (on[i]) stack.push(i);
-      while (stack.length) {
-        const i = stack.pop() as number, x = i % W;
-        for (const j of [x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1, i - W, i + W]) if (j >= 0 && j < n && !on[j] && inside(j)) { on[j] = 1; stack.push(j); }
-      }
-    } else for (let i = 0; i < n; i++) if (!on[i] && inside(i)) on[i] = 1;
-    const hard = new Uint8Array(n);
-    for (let i = 0; i < n; i++) hard[i] = on[i] ? 255 : 0;
-    this.applySelection(SelectionMask.cropped(0, 0, W, H, this.wand.antialias ? antialiasMask(hard, W, H) : hard), 'replace', contiguous ? 'Grow' : 'Similar');
+    const anti = this.wand.antialias, name = contiguous ? 'Grow' : 'Similar';
+    const finish = (mask: Uint8Array): void => { this.applySelection(SelectionMask.cropped(0, 0, W, H, mask), 'replace', name); };
+    if (n >= WAND_FROM && !this.waiting()) {
+      this.busyWith = name;
+      return growRegionOffThread(d, W, H, on, lo, hi, tol, contiguous, anti).then((found) => {
+        this.busyWith = null;
+        if (this.current !== p) return;
+        finish(found ?? growRegion(d, W, H, on, lo, hi, tol, contiguous, anti));
+      });
+    }
+    finish(growRegion(d, W, H, on, lo, hi, tol, contiguous, anti));
   }
 
   /** Select > Convert to Shape's Tolerance (0.1 to 20 px): how far the traced outline may stray from the selection's
@@ -6555,7 +6559,26 @@ export class Engine {
   /** A vector tool's point on a whole document pixel when Snap Vector Tools to Pixel Grid is on, else the point itself. */
   gridPoint(pt: Pt): Pt { return this.toolPrefs.snapPx ? { x: Math.round(pt.x), y: Math.round(pt.y) } : pt; }
 
-  magicWand(pt: Pt, mode: SelectionMode): void { SO.magicWand(this.selectHost, pt, mode); }
+  /** Magic Wand: the region found in a worker at WAND_FROM pixels and up (the promise settles once the selection is
+   *  made), otherwise here and now. */
+  magicWand(pt: Pt, mode: SelectionMode): Promise<void> | void {
+    const src = SO.wandSource(this.selectHost, pt);
+    if (!src) return;
+    return this.wandRegion(src, 'Magic Wand', (region) => SO.wandApply(this.selectHost, src, region, mode));
+  }
+
+  private wandRegion(src: SO.WandSource, name: string, done: (region: Uint8Array) => void): Promise<void> | void {
+    const { p, w, h, x, y, rgba, o } = src;
+    if (w * h >= WAND_FROM && !this.waiting()) {
+      this.busyWith = name;
+      return findRegionOffThread(rgba, w, h, x, y, o.tolerance, o.contiguous, false, o.sampleSize, o.antialias).then((found) => {
+        this.busyWith = null;
+        if (this.current !== p) return;
+        done(found ?? SO.wandFind(src));
+      });
+    }
+    done(SO.wandFind(src));
+  }
 
   beginSelectionShift(): void { this.selectionShift = TE.beginSelectionShift(this.entryHost); }
 
@@ -9975,7 +9998,7 @@ export class Engine {
       deepResampled: (p, l, w, h) => {
         if (!l.channels) return null;
         const ch = resampleDeep(l.channels, w, h);
-        return { channels: ch, raster: ch.mode === 'cmyk' && p.cmykLut ? rasterFromChannels(ch, p.cmykLut) : rasterFromDeep(ch, p.doc.depth === 32) };
+        return { channels: ch, raster: ch.mode === 'cmyk' && p.cmykLut ? rasterFromChannels(ch, p.cmykLut) : ch.mode === 'lab' ? this.labRendition(ch) : rasterFromDeep(ch, linearLight(p.doc)) };
       },
     };
   }
@@ -12126,7 +12149,7 @@ export class Engine {
     if (!cmyk && !lab && (p.doc.depth ?? 8) <= 8) return null;
     const t = cmyk ? this.deriveTables(p) : null;
     if (cmyk && (!t || !p.cmykLut)) return null;
-    const channels = runs ? deriveRuns(raster.read(), runs.colors, runs.index, t, lab, p.doc.depth === 32) : deriveFlat(raster.read(), color, t, lab, p.doc.depth === 32);
+    const channels = runs ? deriveRuns(raster.read(), runs.colors, runs.index, t, lab, linearLight(p.doc)) : deriveFlat(raster.read(), color, t, lab, linearLight(p.doc));
     return { channels, raster: cmyk && p.cmykLut ? rasterFromChannels(channels, p.cmykLut) : raster };
   }
 
@@ -12291,8 +12314,8 @@ export class Engine {
     if (!p || from === depth) return false;
     if (p.doc.mode === 'cmyk' || p.doc.mode === 'lab') {
       // CMYK and Lab (1.57.8): their ink and Lab values are floats already, so 16 bits changes only how
-      // files keep them; 32 bits needs RGB (app.ts brings the document there first).
-      if (depth === 32) return false;
+      // files keep them; Lab keeps the same floats at 32 bits (not linear light), CMYK needs RGB first.
+      if (depth === 32 && p.doc.mode !== 'lab') return false;
       return this.edit(`${depth} Bits/Channel`, (pp) => { pp.doc = { ...pp.doc, depth }; return true; });
     }
     // 32 bits are linear light (1.53.9): up, the encoded values are linearised; down, Exposure and Gamma bring them in.
@@ -12431,7 +12454,7 @@ export class Engine {
       }
       deep = { ...ch, data: out };
     }
-    const rendition = deep.mode === 'cmyk' && p.cmykLut ? rasterFromChannels(deep, p.cmykLut) : deep.mode === 'lab' ? this.labRendition(deep) : rasterFromDeep(deep, p.doc.depth === 32);
+    const rendition = deep.mode === 'cmyk' && p.cmykLut ? rasterFromChannels(deep, p.cmykLut) : deep.mode === 'lab' ? this.labRendition(deep) : rasterFromDeep(deep, linearLight(p.doc));
     return this.edit(name, (pp) => { pp.doc = { ...pp.doc, layers: pp.doc.layers.map((x) => (x.id === l.id ? { ...x, channels: deep, raster: rendition } : x)) }; return true; });
   }
 
@@ -12440,7 +12463,7 @@ export class Engine {
   private deepPaintOk(): boolean {
     const cmyk = this.current?.doc.mode === 'cmyk';
     if ((this.current?.doc.depth ?? 8) === 8 && !cmyk) return true;
-    if (this.current?.doc.depth === 32) return true;   // 1.56.8: through derive in linear light, light above white kept where a stroke changes little
+    if (this.current?.doc.depth === 32 && this.current.doc.mode !== 'cmyk') return true;   // 1.56.8: through derive in linear light, light above white kept where a stroke changes little
     if (cmyk && (!this.current?.cmykLut || !this.current.cmykIn)) return !this.deepBlocked('Painting');
     return true;
   }

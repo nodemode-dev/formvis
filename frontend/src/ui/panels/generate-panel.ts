@@ -83,6 +83,8 @@ export class GeneratePanel {
   private readonly model: HTMLSelectElement;
   private readonly size: HTMLSelectElement;
   private readonly cap: HTMLSelectElement;
+  private readonly result: HTMLSelectElement;
+  private readonly clear: HTMLInputElement;
   private shapes: ReturnType<typeof shapesFor> = shapesFor('fal');
   private localSizes: Record<string, string[]> = {};
   private sizeChoice = 'doc';
@@ -123,6 +125,8 @@ export class GeneratePanel {
           <label class="cv-genp-row"><span data-t="Model"></span><select class="cv-input cv-genp-model" data-t-aria="Model"><option value="fal" data-key="fal">FLUX1.1 [pro] (fal)</option></select></label>
           <label class="cv-genp-row"><span data-t="Size"></span><select class="cv-input cv-genp-size" data-t-aria="Size"></select></label>
           <label class="cv-genp-row"><span data-t="Working size"></span><select class="cv-input cv-genp-cap" data-t-aria="Working size"><option value="2048" data-t="Up to 2048 px"></option><option value="1536" data-t="Up to 1536 px"></option><option value="1024" data-t="Up to 1024 px"></option></select></label>
+          <label class="cv-genp-row"><span data-t="Result"></span><select class="cv-input cv-genp-target" data-t-aria="Result"><option value="layer" data-t="A layer of this picture"></option><option value="document" data-t="A new document"></option><option value="base" data-t="Replace this picture"></option></select></label>
+          <label class="cv-genp-row cv-genp-clearrow"><span></span><span class="cv-genp-check"><input type="checkbox" class="cv-genp-clear" data-t-aria="Transparent background"><span data-t="Transparent background"></span></span></label>
           <div class="cv-genp-row cv-genp-custom" hidden><span></span><div class="cv-genp-wh"><input class="cv-input cv-genp-cw" type="number" min="256" max="2048" step="16" value="1024" data-t-aria="Width"><input class="cv-input cv-genp-ch" type="number" min="256" max="2048" step="16" value="1024" data-t-aria="Height"></div></div>
           <div class="cv-genp-refs" role="group" data-t-aria="Reference layers">
             <div class="cv-genp-refhead"><span data-t="Reference layers"></span><select class="cv-input cv-genp-fit" data-t-aria="Reference fit"><option value="placed" data-t="As placed"></option><option value="stretch" data-t="Stretch"></option><option value="pad" data-t="Pad"></option><option value="crop" data-t="Crop"></option></select></div>
@@ -161,6 +165,13 @@ export class GeneratePanel {
     this.model = q<HTMLSelectElement>(b, '.cv-genp-model');
     this.size = q<HTMLSelectElement>(b, '.cv-genp-size');
     this.cap = q<HTMLSelectElement>(b, '.cv-genp-cap');
+    this.result = q<HTMLSelectElement>(b, '.cv-genp-target');
+    this.clear = q<HTMLInputElement>(b, '.cv-genp-clear');
+    const savedTarget = recalled(NAME, 'target');
+    if (typeof savedTarget === 'string' && [...this.result.options].some((o) => o.value === savedTarget)) this.result.value = savedTarget;
+    this.clear.checked = recalled(NAME, 'clear') === '1';
+    this.result.addEventListener('change', () => remembered(NAME, 'target', this.result.value));
+    this.clear.addEventListener('change', () => remembered(NAME, 'clear', this.clear.checked ? '1' : '0'));
     this.custom = q(b, '.cv-genp-custom');
     this.cw = q<HTMLInputElement>(b, '.cv-genp-cw');
     this.ch = q<HTMLInputElement>(b, '.cv-genp-ch');
@@ -341,12 +352,17 @@ export class GeneratePanel {
     try {
       const added = await runGeneration(this.engine, {
         prompt, choice, providers: this.providers, size: this.asked(), cap: Number(this.cap.value),   // none: the picture's own shape (a new 1024 by 1024 picture when none is open)
+        target: this.result.value === 'document' ? 'document' : this.result.value === 'base' ? 'base' : 'layer', transparent: this.clear.checked,
         references: () => this.referencePictures(),
         ...this.opts.request(), onSeed: (s) => this.opts.used(s), onStop: () => { this.stopped = true; setText(this.status, t('Stopped.')); },
         status: (text) => setText(this.status, text), stopped: () => this.stopped, heard: (r) => this.deps.heard(r),
         keyHint: { fal: t('Add a fal API key first, in Connections below.'), provider: (name) => t(`Add a ${name} API key first, in Connections below.`) },
       });
-      if (added) { setText(this.status, t('Added as a new layer.')); this.deps.toast(t('The generated image was added as a layer.')); }
+      if (added) {
+        const base = this.result.value === 'base';
+        setText(this.status, t(base ? 'Replaced the picture.' : 'Added as a new layer.'));
+        this.deps.toast(t(base ? 'The generated image replaced the picture. Undo brings it back.' : 'The generated image was added as a layer.'));
+      }
       else setText(this.status, this.stopped ? t('Stopped.') : '');
     } catch (err) {
       if (!this.stopped) setText(this.status, err instanceof Error ? err.message : t('Generating failed.'));

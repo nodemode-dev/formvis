@@ -1,4 +1,4 @@
-import type { Adjustment, DeepPixels, Doc } from './types';
+import { linearLight, type Adjustment, type DeepPixels, type Doc } from './types';
 import { adjustmentKernel } from './kernels';
 import { Raster } from './surface';
 import { boxBlur, mix32, threeBoxWidths, toUnit } from './filters';
@@ -41,7 +41,7 @@ export function transferOf(adj: Adjustment): ((channel: number, level: number) =
 /** The document composed in floating point, bottom layer first: 16 bits (1.55.5) and 32 bits in linear light (1.57.1)
  *  on the one float compositor; an error naming what it cannot compose yet. */
 export function composeDeep(doc: Doc): { width: number; height: number; data: Float32Array } | { error: string } {
-  return composeFloat(doc, 3, false, null, doc.depth === 32);
+  return composeFloat(doc, 3, false, null, linearLight(doc));
 }
 
 /** A layer's pixels drawn into `out` where its placement puts them (the renderer's own matrix, inverted): whole-pixel

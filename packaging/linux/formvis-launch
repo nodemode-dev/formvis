@@ -1,0 +1,48 @@
+#!/bin/sh
+# Starts formvis after checking that the libraries its window needs are installed. When one is missing the program cannot
+# start at all, so the check has to run before it: the message names the libraries and the install command, shown with
+# zenity, kdialog or notify-send when one is installed, and always printed.
+#   formvis-launch [formvis arguments]
+# FORMVIS_PROGRAM names the program to start (an AppImage, or a binary elsewhere); otherwise the formvis beside this script,
+# /usr/bin/formvis, or the one on PATH. FORMVIS_SKIP_LIBCHECK=1 starts without the check.
+here="$(dirname "$(readlink -f "$0")")"
+prog="${FORMVIS_PROGRAM:-}"
+if [ -z "$prog" ]; then
+  for c in "$here/formvis" /usr/bin/formvis; do
+    [ -x "$c" ] && prog="$c" && break
+  done
+fi
+[ -n "$prog" ] || prog="$(command -v formvis 2>/dev/null || true)"
+if [ -z "$prog" ]; then
+  echo "formvis-launch: the formvis program was not found (set FORMVIS_PROGRAM)." >&2
+  exit 127
+fi
+
+if [ "${FORMVIS_SKIP_LIBCHECK:-}" != 1 ]; then
+  check=""
+  for c in "$here/libcheck" /usr/share/formvis/libcheck "$here/../../setup/libcheck"; do
+    [ -f "$c" ] && check="$c" && break
+  done
+  if [ -n "$check" ] && command -v bash >/dev/null 2>&1; then
+    case "$prog" in
+      *.AppImage|*.appimage) report="$(bash "$check" --quiet --names 2>&1)" ;;
+      *) report="$(bash "$check" --quiet "$prog" 2>&1)" ;;
+    esac
+    if [ $? -ne 0 ]; then
+      printf 'formvis cannot start.\n%s\n' "$report" >&2
+      text="$(printf 'formvis cannot start.\n\n%s' "$report")"
+      if [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
+        if command -v zenity >/dev/null 2>&1; then
+          zenity --error --no-markup --title=formvis --text="$text" >/dev/null 2>&1
+        elif command -v kdialog >/dev/null 2>&1; then
+          kdialog --title formvis --error "$text" >/dev/null 2>&1
+        elif command -v notify-send >/dev/null 2>&1; then
+          notify-send -u critical formvis "$text" >/dev/null 2>&1
+        fi
+      fi
+      exit 1
+    fi
+  fi
+fi
+
+exec "$prog" "$@"

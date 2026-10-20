@@ -716,7 +716,7 @@ export function startApp(): void {
   const optionMemory = installOptionMemory(engine);   // every tool option sticks (DEV_PLAN 35.1), before the bar and the catalogue read the options
   new OptionsBar(q(root, '.cv-options'), engine);
   const status = new StatusBar(q(root, '.cv-status'), engine);
-  const hostLink = new HostLink(() => undefined, () => undefined);
+  const hostLink = new HostLink((init) => { void openFromHost(init.initialState); }, () => { void exitApp(); });
   let caps: Capabilities | null = null;
 
   /** Outputs written through the save panel (1.87.0), newest first, for Home beside the exports folder's own files. */
@@ -1295,6 +1295,7 @@ export function startApp(): void {
   async function saveWork(saveAs: boolean): Promise<boolean> {
     const ok = await saveCore(saveAs);
     if (ok) fireEvent('save');
+    if (ok && hostLink.embedded) await postHostSave();
     if (ok && !saveAs && engine.current?.doc.assetsOnSave) await generateAssets(true).catch((err) => { toast(`The project was saved, but its image assets were not written. ${message(err)}`, 'error'); });
     return ok;
   }
@@ -1721,7 +1722,7 @@ export function startApp(): void {
     try {
       // 1.57.8: from any document; below 32 bits (and in CMYK and Lab) the picture the canvas shows, as linear light.
       let deep: { width: number; height: number; data: Float32Array } | { error: string };
-      if (p.doc.depth === 32) deep = (await composeFloatOnWorkers(p.doc)) ?? composeDeep(p.doc);
+      if (p.doc.depth === 32 && p.doc.mode !== 'lab') deep = (await composeFloatOnWorkers(p.doc)) ?? composeDeep(p.doc);
       else {
         const flat = engine.flattened();
         if (!flat) return;
@@ -1736,7 +1737,7 @@ export function startApp(): void {
 
   /** Image > Mode > 8 or 16 Bits/Channel; from 32 bits, HDR Toning first (1.53.9). */
   async function toDepth(depth: 8 | 16): Promise<void> {
-    if (engine.current?.doc.depth === 32) { const tone = await hdrToning.ask(depth); if (tone) engine.setDepth(depth, tone); return; }
+    if (engine.current?.doc.depth === 32 && engine.current.doc.mode !== 'lab') { const tone = await hdrToning.ask(depth); if (tone) engine.setDepth(depth, tone); return; }
     engine.setDepth(depth);
   }
 
@@ -1768,14 +1769,14 @@ export function startApp(): void {
     const m = engine.current?.doc.mode ?? 'rgb';
     if (m === 'bitmap') engine.convertMode('grayscale');
     else if (m === 'indexed') engine.convertMode('rgb');
-    else if ((m === 'cmyk' || m === 'lab') && depth === 32 && !(await toRgbFirst())) return;
+    else if (m === 'cmyk' && depth === 32 && !(await toRgbFirst())) return;
     engine.setDepth(depth);
   }
 
   /** A CMYK or Lab document to RGB first (1.57.5), for Bitmap, Indexed Color and (from Lab) CMYK; true when it is RGB. */
   async function toRgbFirst(): Promise<boolean> {
     const m = engine.current?.doc.mode ?? 'rgb';
-    if ((m === 'cmyk' || m === 'lab') && engine.current?.doc.depth === 16) await deepMode('rgb', loadPrefs().colour.rgb, await workingRgb());
+    if ((m === 'cmyk' || m === 'lab') && (engine.current?.doc.depth === 16 || (m === 'lab' && engine.current?.doc.depth === 32))) await deepMode('rgb', loadPrefs().colour.rgb, await workingRgb());
     else if (m === 'cmyk') await cmykToRgb();
     else if (m === 'lab') engine.setRgbFromLab();
     return (engine.current?.doc.mode ?? 'rgb') !== 'cmyk' && engine.current?.doc.mode !== 'lab';
@@ -1967,8 +1968,8 @@ export function startApp(): void {
       try {
         const c = composeFloat(p.doc, 3, false);
         if ('error' in c) throw new Error(c.error);
-        if (p.doc.depth === 16) {
-          // 16-bit Lab (1.57.8): L, a and b at 16 bits in the window's encoding, laid on white; the engine writes CIELab.
+        if ((p.doc.depth ?? 8) >= 16) {
+          // 16-bit Lab (1.57.8; a 32-bit Lab document is written at 16 bits, values outside the range clipped): L, a and b at 16 bits in the window's encoding, laid on white; the engine writes CIELab.
           const m = c.width * c.height, u = new Uint16Array(m * 3);
           for (let i = 0, o = 0; i < c.data.length; i += 4, o += 3) { const a = c.data[i + 3]; u[o] = Math.round(Math.max(0, Math.min(1, c.data[i] * a + (1 - a))) * 65535); u[o + 1] = Math.round(Math.max(0, Math.min(1, c.data[i + 1] * a + 0.5 * (1 - a))) * 65535); u[o + 2] = Math.round(Math.max(0, Math.min(1, c.data[i + 2] * a + 0.5 * (1 - a))) * 65535); }
           await deliver(await api.encodeTiff16(u, c.width, c.height, 'lab', null), `${p.name}.tif`);
@@ -3056,6 +3057,41 @@ export function startApp(): void {
     toast('Sent to the NodeMode canvas.');
   }
 
+  /** The parent page's init state: a project (`manifest` and `files` of name and blob, as Save posts them) or a picture
+   *  (`dataUrl` with an optional `name`) opens as a document. */
+  async function openFromHost(state: unknown): Promise<void> {
+    if (!state || typeof state !== 'object') return;
+    const s = state as { name?: unknown; dataUrl?: unknown; manifest?: unknown; files?: unknown };
+    const name = typeof s.name === 'string' && s.name ? s.name : 'Document';
+    try {
+      if (s.manifest && typeof s.manifest === 'object' && Array.isArray(s.files)) {
+        const files = (s.files as Array<{ name?: unknown; blob?: unknown }>).filter((f): f is { name: string; blob: Blob } => !!f && typeof f.name === 'string' && f.blob instanceof Blob);
+        const p = await reopen({ id: `host-${Date.now()}`, name, savedAt: Date.now(), manifest: s.manifest as Record<string, unknown>, files, modified: false }, name);
+        if (p) engine.switchTo(p.id);
+      } else if (typeof s.dataUrl === 'string' && s.dataUrl.startsWith('data:')) {
+        const blob = await (await fetch(s.dataUrl)).blob();
+        const ext = blob.type.split('/')[1]?.replace(/[^a-z0-9]/gi, '') || 'png';
+        await importFiles([new File([blob], /\.[a-z0-9]{2,5}$/i.test(name) ? name : `${name}.${ext}`, { type: blob.type })], undefined, 'documents');
+      }
+    } catch (err) { toast(message(err), 'error'); }
+  }
+
+  /** What Save posts to the parent page: the project as manifest and files, or the flat picture when a layer is tiled. */
+  async function postHostSave(): Promise<void> {
+    const p = engine.current;
+    if (!p) return;
+    try {
+      if (p.doc.layers.some((l) => l.tiled)) throw new Error('tiled');
+      const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p));
+      hostLink.save({ name: p.name, width: p.doc.width, height: p.doc.height, manifest, files });
+    } catch {
+      const blob = await engine.exportBlob('image/png');
+      if (!blob) return;
+      const dataUrl = await new Promise<string>((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = () => reject(r.error); r.readAsDataURL(blob); });
+      hostLink.save({ name: p.name, width: p.doc.width, height: p.doc.height, dataUrl });
+    }
+  }
+
   /** Closes a document as Close Tab does, asking about unsaved changes unless `answer` already says (Close All's Apply
    *  to All, 1.65.8); true once it is closed. */
   async function requestClose(id: string, answer: 'save' | 'discard' | null = null): Promise<boolean> {
@@ -3153,7 +3189,8 @@ export function startApp(): void {
     try {
       if (await settleUnsaved()) {
         await finalSave();
-        if (hasPanels()) await confirmExit();
+        if (hostLink.embedded) hostLink.close();
+        else if (hasPanels()) await confirmExit();
         else { window.close(); toast('Everything is saved. This page can be closed now.', 'info'); }
       } else if (hasPanels()) await confirmExit(true);
     } catch (err) { toast(message(err), 'error'); if (hasPanels()) await confirmExit(true).catch(() => undefined); }

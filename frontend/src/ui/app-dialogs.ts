@@ -73,8 +73,8 @@ const PER_INCH: Record<Unit, number> = { px: 0, in: 1, cm: 2.54, mm: 25.4, col: 
 const columnsToMm = (n: number): number => { const p = loadPrefs(); return n * p.colWidth + (n - 1) * p.gutter; };
 const mmToColumns = (mm: number): number => { const p = loadPrefs(); return (mm + p.gutter) / (p.colWidth + p.gutter); };
 
-/** The color modes New Document offers, each with its label, its channels and the bit depths it allows: Bitmap one bit; Grayscale and RGB 8, 16 or 32; CMYK and Lab 8 or 16 (the engine keeps 32 bits for RGB and
- *  Grayscale: Image > Mode > 32 Bits/Channel brings CMYK and Lab to RGB first). */
+/** The color modes New Document offers, each with its label, its channels and the bit depths it allows: Bitmap one bit; Grayscale and RGB 8, 16 or 32; Lab 8, 16 or 32 and CMYK 8 or 16 (the engine keeps 32 bits for RGB,
+ *  Grayscale and Lab: Image > Mode > 32 Bits/Channel brings CMYK to RGB first). */
 export type NewMode = 'bitmap' | 'grayscale' | 'rgb' | 'cmyk' | 'lab';
 export type NewDepth = 1 | 8 | 16 | 32;
 const NEW_MODES: ReadonlyArray<{ id: NewMode; label: string; channels: number; depths: readonly NewDepth[] }> = [
@@ -82,7 +82,7 @@ const NEW_MODES: ReadonlyArray<{ id: NewMode; label: string; channels: number; d
   { id: 'grayscale', label: 'Grayscale', channels: 1, depths: [8, 16, 32] },
   { id: 'rgb', label: 'RGB Color', channels: 3, depths: [8, 16, 32] },
   { id: 'cmyk', label: 'CMYK Color', channels: 4, depths: [8, 16] },
-  { id: 'lab', label: 'Lab Color', channels: 3, depths: [8, 16] },
+  { id: 'lab', label: 'Lab Color', channels: 3, depths: [8, 16, 32] },
 ];
 /** What Create runs once the blank document exists: the app's Image > Mode conversions for the chosen mode and depth. */
 export type NewDocumentPrepare = (mode: NewMode, depth: NewDepth) => Promise<(() => Promise<boolean>) | null>;

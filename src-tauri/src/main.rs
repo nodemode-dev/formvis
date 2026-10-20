@@ -349,13 +349,46 @@ fn note_recent_document(app: tauri::AppHandle, path: String) {
 /// The native open dialog for a linked smart object's file (33.2): returns the file's real disk path, which the web
 /// view never learns from a picked File. None when the dialog is cancelled.
 #[tauri::command]
-async fn pick_image_path(app: tauri::AppHandle) -> Option<String> {
+async fn pick_image_path(app: tauri::AppHandle) -> Result<Option<String>, String> {
     let exts = [
         "png", "jpg", "jpeg", "webp", "gif", "avif", "tif", "tiff", "dpx", "qoi", "tga", "ico", "pgm", "ppm", "pam", "heic",
         "psd", "dng", "cr2", "cr3", "nef", "arw", "raf", "orf", "rw2", "pef", "srw",
     ];
-    let picked = app.dialog().file().add_filter("Images", &exts).blocking_pick_file()?;
-    picked.into_path().ok().map(|p| p.to_string_lossy().into_owned())
+    let started = std::time::Instant::now();
+    match app.dialog().file().add_filter("Images", &exts).blocking_pick_file() {
+        Some(picked) => Ok(picked.into_path().ok().map(|p| p.to_string_lossy().into_owned())),
+        None if started.elapsed() < std::time::Duration::from_millis(250) => {
+            let report = dialog_report();
+            eprintln!("formvis: the file dialog did not open.\n{report}");
+            app.dialog().message(format!("The file dialog did not open.\n\n{report}")).title("formvis").blocking_show();
+            Err(report)
+        }
+        None => Ok(None),
+    }
+}
+
+/// What the file dialogs need on this computer, as setup/libcheck --dialogs says it: shown when a dialog closes at once.
+#[cfg(target_os = "linux")]
+fn dialog_report() -> String {
+    use std::os::unix::fs::MetadataExt;
+    let var = |name: &str| std::env::var(name).ok().filter(|v| !v.is_empty());
+    let on_path = |tool: &str| std::env::var_os("PATH").is_some_and(|dirs| std::env::split_paths(&dirs).any(|dir| dir.join(tool).is_file()));
+    let uid = std::fs::metadata("/proc/self").map(|m| m.uid()).unwrap_or(0);
+    let bus = var("DBUS_SESSION_BUS_ADDRESS").is_some() || std::path::Path::new(&format!("/run/user/{uid}/bus")).exists();
+    let tools: Vec<&str> = ["zenity", "kdialog"].into_iter().filter(|tool| on_path(tool)).collect();
+    format!(
+        "session: {}, DISPLAY={}, WAYLAND_DISPLAY={}\nsession bus: {}\nzenity and kdialog: {}\nThe dialogs are GTK 3 and need a display; run libcheck --dialogs (installed as /usr/share/formvis/libcheck, or setup/libcheck) for the full report.",
+        var("XDG_SESSION_TYPE").unwrap_or_else(|| "unknown".into()),
+        var("DISPLAY").unwrap_or_else(|| "unset".into()),
+        var("WAYLAND_DISPLAY").unwrap_or_else(|| "unset".into()),
+        if bus { "present" } else { "none found" },
+        if tools.is_empty() { "neither is installed (formvis does not need them)".to_string() } else { format!("{} installed", tools.join(" and ")) },
+    )
+}
+
+#[cfg(not(target_os = "linux"))]
+fn dialog_report() -> String {
+    "The system's file dialog did not open.".to_string()
 }
 
 /// Portable Windows zip: a file named portable or portable.txt beside the program keeps the web view's data (settings
@@ -421,6 +454,67 @@ fn set_display_server(server: String) -> Result<(), String> {
     Ok(())
 }
 
+/// The value of --user-data-dir in a launch's arguments, as "--user-data-dir=PATH" or "--user-data-dir PATH".
+fn user_data_dir_arg(args: &[String]) -> Option<String> {
+    args.iter()
+        .enumerate()
+        .find_map(|(i, a)| {
+            a.strip_prefix("--user-data-dir=")
+                .map(str::to_string)
+                .or_else(|| (a == "--user-data-dir").then(|| args.get(i + 1).cloned()).flatten())
+        })
+        .filter(|dir| !dir.is_empty())
+}
+
+/// Linux: the data folder this launch will use, found the way the engine finds it (--user-data-dir or FORMVIS_DATA_DIR, the
+/// portable folder beside the program, ~/Formvis where it exists, else the XDG data folder), so a second launch can tell
+/// whether a running window already owns it.
+#[cfg(target_os = "linux")]
+fn data_folder() -> std::path::PathBuf {
+    use std::path::PathBuf;
+    let args: Vec<String> = std::env::args().collect();
+    let var = |name: &str| std::env::var(name).ok().filter(|v| !v.is_empty());
+    let home = || var("HOME").map(PathBuf::from).unwrap_or_default();
+    let explicit = user_data_dir_arg(&args).or_else(|| var("FORMVIS_DATA_DIR"));
+    let beside = std::env::current_exe().ok().and_then(|exe| exe.parent().map(PathBuf::from)).unwrap_or_default();
+    let portable = args.iter().any(|a| a == "--portable")
+        || var("FORMVIS_PORTABLE").as_deref() == Some("1")
+        || ["portable", "portable.txt"].iter().any(|name| beside.join(name).is_file());
+    let folder = if let Some(dir) = explicit {
+        match dir.strip_prefix("~/") {
+            Some(rest) => home().join(rest),
+            None => PathBuf::from(dir),
+        }
+    } else if portable {
+        beside.join("FormvisData")
+    } else if home().join("Formvis").exists() {
+        home().join("Formvis")
+    } else {
+        match var("XDG_DATA_HOME").map(PathBuf::from).filter(|p| p.is_absolute()) {
+            Some(base) => base.join("formvis"),
+            None => home().join(".local").join("share").join("formvis"),
+        }
+    };
+    let absolute = if folder.is_absolute() { folder } else { std::env::current_dir().unwrap_or_default().join(folder) };
+    std::fs::canonicalize(&absolute).unwrap_or(absolute)
+}
+
+/// One running window per data folder (1.92.8). The plugin keys its hand-off on the application identifier, so on Linux a
+/// second data folder on the same login could not open a window; the key now carries a hash of the data folder, so the
+/// same folder hands its files to the running window and another folder runs on its own.
+fn single_instance() -> tauri::plugin::TauriPlugin<tauri::Wry> {
+    let plugin = tauri_plugin_single_instance::Builder::<tauri::Wry>::new().callback(|app, args, cwd| {
+        open_paths(app, paths_from_args(&args, Some(&cwd)));
+        show_main_window(app);
+    });
+    #[cfg(target_os = "linux")]
+    let plugin = {
+        let hash = data_folder().to_string_lossy().bytes().fold(0xcbf29ce484222325u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x100000001b3));
+        plugin.dbus_id(format!("ai.nodemode.formvis.d{hash:016x}"))
+    };
+    plugin.build()
+}
+
 fn main() {
     if let Some(code) = packaged::command_line() {
         std::process::exit(code);
@@ -435,10 +529,7 @@ fn main() {
     let app = builder
         // First, as the plugin asks: a second launch (a project double-clicked while formvis runs) sends its arguments
         // here and exits; the files go to the running window.
-        .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
-            open_paths(app, paths_from_args(&args, Some(&cwd)));
-            show_main_window(app);
-        }))
+        .plugin(single_instance())
         .manage(native::NativeState::default())
         .manage(OpenQueue(Mutex::new(Opens::default())))
         .manage(ExitGate(AtomicBool::new(false)))
@@ -493,12 +584,7 @@ fn main() {
             if let Some(path) = packaged::launcher() {
                 sidecar = sidecar.env("FORMVIS_LAUNCHER", path);
             }
-            let data_dir = launch_args.iter().enumerate().find_map(|(i, a)| {
-                a.strip_prefix("--user-data-dir=")
-                    .map(str::to_string)
-                    .or_else(|| (a == "--user-data-dir").then(|| launch_args.get(i + 1).cloned()).flatten())
-            });
-            if let Some(dir) = data_dir.filter(|d| !d.is_empty()) {
+            if let Some(dir) = user_data_dir_arg(&launch_args) {
                 sidecar = sidecar.env("FORMVIS_DATA_DIR", dir);
             }
             if launch_args.iter().any(|a| a == "--portable") {

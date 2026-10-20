@@ -477,7 +477,7 @@ export class Stage {
     }
     if (gpuLayers && this.gpu) {
       this.gpu.document?.(p.doc.width, p.doc.height);
-      this.gpu.hdr?.(p.doc.depth === 32);
+      this.gpu.hdr?.(p.doc.depth === 32 && p.doc.mode !== 'lab' && p.doc.mode !== 'cmyk');
       this.gpu.render(gpuLayers, [z, 0, 0, z, ox, oy], v.zoom, [vis.x, vis.y, vis.x + vis.w, vis.y + vis.h],
         { a: this.rgb(pal.checkerA), b: this.rgb(pal.checkerB), cell: Math.max(1, Math.round(Stage.prefs.cell * this.dpr)), origin: [Math.round(ox), Math.round(oy)] });
     } else if (v.zoom >= 2 || this.engine.view.pixelArt) {

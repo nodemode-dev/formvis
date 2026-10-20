@@ -4,7 +4,7 @@ import type { Mat } from './geometry';
 import { Raster, createSurface, ctxOf } from './surface';
 import type { Surface } from './surface';
 import { SelectionMask } from './selection';
-import { antialiasMask, wandMask } from './kernels';
+import { findRegion } from './wand-jobs';
 import { toGray } from './filters';
 import { alphaPlane } from './alpha-target';
 import type { Project } from './project';
@@ -145,15 +145,30 @@ function maskRgba(layer: Layer, w: number, h: number): Uint8ClampedArray {
   return g.data;
 }
 
-export function magicWand(host: SelectHost, pt: Pt, mode: SelectionMode): void {
+export interface WandSource { p: Project; w: number; h: number; x: number; y: number; rgba: Uint8ClampedArray; o: SelectHost['wand'] }
+
+export function wandFind(s: WandSource): Uint8Array {
+  return findRegion(s.rgba, s.w, s.h, s.x, s.y, s.o.tolerance, s.o.contiguous, false, s.o.sampleSize, s.o.antialias);
+}
+
+export function wandApply(host: SelectHost, s: WandSource, region: Uint8Array, mode: SelectionMode): void {
+  const { w, h, o } = s;
+  const out = new Uint8ClampedArray(w * h * 4);
+  for (let i = 0; i < w * h; i++) out[i * 4 + 3] = region[i];
+  applySelection(host, SelectionMask.fromAlpha(0, 0, w, h, out, !o.antialias), mode, 'Magic Wand');
+}
+
+/** What the Magic Wand reads for a click: the pixels it samples (the Channels panel's alpha plane, the Quick Mask, the
+ *  merged picture or the active layer or its mask) and the settings at this moment; null for a click outside the picture or no layer. */
+export function wandSource(host: SelectHost, pt: Pt): WandSource | null {
   const p = host.current;
-  if (!p) return;
+  if (!p) return null;
   const w = p.doc.width;
   const h = p.doc.height;
   const x = Math.floor(pt.x);
   const y = Math.floor(pt.y);
-  if (x < 0 || y < 0 || x >= w || y >= h) return;
-  const o = host.wand;
+  if (x < 0 || y < 0 || x >= w || y >= h) return null;
+  const o = { ...host.wand };
   let rgba: Uint8ClampedArray;
   if (host.alphaTarget) {
     rgba = alphaPlane(host.alphaTarget.mask, w, h).data;
@@ -166,15 +181,11 @@ export function magicWand(host: SelectHost, pt: Pt, mode: SelectionMode): void {
     const layer = p.activeLayer;
     if (!layer) {
       host.notice('Select a layer first.');
-      return;
+      return null;
     }
     rgba = p.maskTarget && layer.mask ? maskRgba(layer, w, h) : layerRgba(layer, w, h);
   }
-  let region = wandMask(rgba, w, h, x, y, o.tolerance, o.contiguous, o.sampleSize);
-  if (o.antialias) region = antialiasMask(region, w, h);
-  const out = new Uint8ClampedArray(w * h * 4);
-  for (let i = 0; i < w * h; i++) out[i * 4 + 3] = region[i];
-  applySelection(host, SelectionMask.fromAlpha(0, 0, w, h, out, !o.antialias), mode, 'Magic Wand');
+  return { p, w, h, x, y, rgba, o };
 }
 
 export function selectedPixels(host: SelectHost, merged: boolean): { surface: Surface; region: Rect } | null {
