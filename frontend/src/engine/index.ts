@@ -126,7 +126,7 @@ import { DEFAULT_GLOBAL_LIGHT, scaledEffects, type GlobalLight } from './style-e
 export { CONTOURS, DEFAULT_GLOBAL_LIGHT, contourCurve, customContourId, customContourPoints, withGlobalLight, type ContourId, type ContourPoint, type GlobalLight } from './style-extras';
 import { mergeMeta, type DocMeta, type MetaPatch } from './doc-meta';
 export { COPYRIGHT_STATUSES, META_TEXT, cleanMeta, customLines, metaWritable, mergeMeta, parseCustom, parseKeywords, sameMeta, tabName, type CameraData, type CopyrightStatus, type DocMeta } from './doc-meta';
-import { UPRIGHT, allBrushPresets, computeOption, defaultShape, mergeShape, noDynamics, noSymmetry, pressureOption, shapeActive, type BrushSymmetry, type BrushDynamics, type BrushPreset, type BrushShape, type PenPose } from './brush-dynamics';
+import { UPRIGHT, allBrushPresets, computeOption, defaultShape, mergeShape, noDynamics, noSymmetry, pressureOption, type BrushSymmetry, type BrushDynamics, type BrushPreset, type BrushShape, type PenPose } from './brush-dynamics';
 import { DEFAULT_PATH_SHAPE, boxedShapePath, linePath, shapeGradient, shapePattern, type PathShapeKind, type PathShapeOptions } from './shape-paths';
 import { markupPath, type MarkupKind } from './markup';
 import { allCustomShapes } from './custom-shapes';
@@ -1858,7 +1858,7 @@ export class Engine {
     this.zoomFrame = requestAnimationFrame(tick);
   }
   /** Preferences > Interface: how far the picture's edge may be scrolled past the view's centre line, as a share of the view (0 to 100). */
-  overscroll = 50;
+  overscroll = 100;
   /** The move `d` along one axis held to the overscroll margin; a view already beyond it can only move back in. */
   private overscrolled(pan: number, d: number, size: number, docPx: number): number {
     const m = (this.overscroll / 100) * size, edge = size - docPx - m, hi = Math.max(m, edge), lo = Math.min(m, edge);
@@ -5132,8 +5132,7 @@ export class Engine {
     // the whole layer declines here, before any history step opens.
     const lt = p.activeLayer?.tiled ?? null;
     if (lt) {
-      const whole = this.tool === 'mixer' || opts.mixer ? 'The Mixer Brush' : p.maskTarget ? 'Painting a mask'
-        : !opts.aliased && shapeActive({ ...this.brushShape, dual: { ...this.brushShape.dual, on: false }, texture: { ...this.brushShape.texture, on: false } }) ? 'Brush Settings (shape and scattering)' : null;
+      const whole = this.tool === 'mixer' || opts.mixer ? 'The Mixer Brush' : p.maskTarget ? 'Painting a mask' : null;
       if (whole) { this.notice(`${whole} on a layer kept in tiles comes in a later release; the plain brush, pencil and eraser paint it now.`); return false; }
     }
     p.history.begin(opts.name ?? (this.brushMode === 'erase' ? 'Eraser' : this.tool === 'mixer' || opts.mixer ? 'Mixer Brush' : 'Brush'), p.snapshot());

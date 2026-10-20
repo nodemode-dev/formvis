@@ -15,8 +15,8 @@ def tick(page, label, on=True):
 
 
 def number(page, label, value):
-    f = page.locator(f"{DLG} .cv-slider", has_text=label).locator("input[type=number]")
-    f.fill(str(value)); f.press("Enter"); f.dispatch_event("change")
+    f = page.locator(f"{DLG} :is(.cv-slider, .cv-field)", has_text=label).locator("input:not([type=range]):not([type=checkbox])").first
+    f.click(); f.fill(str(value)); f.press("Enter"); f.dispatch_event("change")
 
 
 def test_the_usual_sections_each_act_on_something_real(page):

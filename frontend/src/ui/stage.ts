@@ -1,7 +1,7 @@
 import { applyLut } from '../engine/colour-lut';
 import { LUT3_N, viewLut3 } from '../engine/lut';
 import { applyDuotoneLut, duotoneLut } from '../engine/duotone';
-import { corners, createSurface, integral, intersectRect, sizeSurface, tracePath, translation, unionRect, type AlphaChannel, type Engine, type Pt, type Rect, type Surface } from '../engine';
+import { corners, createSurface, integral, intersectRect, sizeSurface, tracePath, translation, unionRect, Viewport, type AlphaChannel, type Engine, type Pt, type Rect, type Surface } from '../engine';
 import type { Project } from '../engine/project';
 import { dialogTool } from '../extensions/dialog-tool';
 import { getTool, type Tool, type ToolContext, type ToolPointer, type ViewInfo } from '../extensions/registry';
@@ -130,12 +130,19 @@ export class Stage {
     this.resize();
   }
 
-  /** A canvas scrollbar's thumb as fractions of the track: the document plus the overscroll margin (a share of the view, half by default) each side is the scroll range. */
-  static barSpan(pan: number, size: number, docPx: number, flip: boolean, margin = 0.5): { a: number; len: number } {
+  /** A canvas scrollbar's thumb as fractions of the track: the document plus the overscroll margin (a share of the view, all of it by default) each side is the scroll range. */
+  static barSpan(pan: number, size: number, docPx: number, flip: boolean, margin = 1): { a: number; len: number } {
     const room = margin * size, content = Math.max(1, docPx + 2 * room), len = Math.min(1, size / content);
     const a = (-pan + room) / content;
     return { a: Math.min(1 - len, Math.max(0, flip ? 1 - a - len : a)), len };
   }
+
+  private static readonly BAR = 10;
+  /** A scrollbar track's length: the stage less the properties column lying over its right edge and the corner the other bar takes. */
+  private barTrack(axis: 'x' | 'y'): number { return Math.max(1, (axis === 'x' ? this.cssW - Viewport.insetRight : this.cssH) - Stage.BAR); }
+
+  /** The docks changed what part of the stage is visible: the scrollbars follow. */
+  layoutChanged(): void { this.syncChrome(); }
 
   /** Scrollbars (when turned on), and the status pills over the canvas: patched in place. */
   private syncChrome(): void {
@@ -145,7 +152,10 @@ export class Stage {
     setHidden(this.bars.v, !on);
     if (p && v && on) {
       const room = this.engine.overscroll / 100, h = Stage.barSpan(v.panX, this.cssW, p.doc.width * v.zoom, v.flipped, room), w = Stage.barSpan(v.panY, this.cssH, p.doc.height * v.zoom, false, room);
-      const hw = `${Math.round(h.len * this.cssW)}px`, hx = `translateX(${Math.round(h.a * this.cssW)}px)`, vh = `${Math.round(w.len * this.cssH)}px`, vy = `translateY(${Math.round(w.a * this.cssH)}px)`;
+      const inset = `${Viewport.insetRight}px`, insetH = `${Viewport.insetRight + Stage.BAR}px`, tw = this.barTrack('x'), th = this.barTrack('y');
+      if (this.bars.v.style.right !== inset) this.bars.v.style.right = inset;
+      if (this.bars.h.style.right !== insetH) this.bars.h.style.right = insetH;
+      const hw = `${Math.round(h.len * tw)}px`, hx = `translateX(${Math.round(h.a * tw)}px)`, vh = `${Math.round(w.len * th)}px`, vy = `translateY(${Math.round(w.a * th)}px)`;
       if (this.bars.ht.style.width !== hw) this.bars.ht.style.width = hw;
       if (this.bars.ht.style.transform !== hx) this.bars.ht.style.transform = hx;
       if (this.bars.vt.style.height !== vh) this.bars.vt.style.height = vh;
@@ -169,8 +179,8 @@ export class Stage {
     const geometry = (): { size: number; content: number; sign: number } | null => {
       const p = this.engine.current;
       if (!p) return null;
-      const size = axis === 'x' ? this.cssW : this.cssH, content = (axis === 'x' ? p.doc.width : p.doc.height) * p.viewport.zoom + size * 2 * (this.engine.overscroll / 100);
-      return { size, content, sign: axis === 'x' && p.viewport.flipped ? -1 : 1 };
+      const view = axis === 'x' ? this.cssW : this.cssH, content = (axis === 'x' ? p.doc.width : p.doc.height) * p.viewport.zoom + view * 2 * (this.engine.overscroll / 100);
+      return { size: this.barTrack(axis), content, sign: axis === 'x' && p.viewport.flipped ? -1 : 1 };
     };
     const move = (d: number): void => this.engine.pan(axis === 'x' ? d : 0, axis === 'y' ? d : 0);
     track.addEventListener('pointerdown', (e) => {

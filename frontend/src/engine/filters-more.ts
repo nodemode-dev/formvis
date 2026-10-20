@@ -231,12 +231,33 @@ const shakeAsSharpen = (s: ShakeSettings): SmartSharpenSettings => ({ amount: s.
 export const shakeMargin = (s: ShakeSettings): number => smartSharpenMargin(shakeAsSharpen(s));
 export function shakeReduce(img: ImageData, s: ShakeSettings, scale = 1): ImageData { return smartSharpen(img, shakeAsSharpen(s), scale); }
 
+/** A Gaussian (`size` as sigma) or line (`size` as length) blur of one plane weighted by `wa` (alpha, 0 to 1), with
+ *  everything past the plane's edge weighing nothing: transparent and outside samples never pull the result. */
+export function weightedBlur(w: number, h: number, wa: Float32Array, mode: 'gauss' | 'line', size: number, angle: number): (p: Float32Array) => Float32Array {
+  const m = Math.ceil(mode === 'gauss' ? size * 3 : size / 2) + 2, W = w + 2 * m, H = h + 2 * m;
+  const run = (p: Float32Array, weight: Float32Array | null): Float32Array => {
+    const q = new Float32Array(W * H);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) q[(y + m) * W + x + m] = weight ? p[y * w + x] * weight[y * w + x] : p[y * w + x];
+    const b = mode === 'gauss' ? gauss(q, W, H, size) : line(q, W, H, size, angle), o = new Float32Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) o[y * w + x] = b[(y + m) * W + x + m];
+    return o;
+  };
+  const den = run(wa, null);
+  return (p) => {
+    const b = run(p, wa);
+    for (let i = 0; i < b.length; i++) b[i] = den[i] > 1e-6 ? b[i] / den[i] : p[i];
+    return b;
+  };
+}
+
 /** Smart Sharpen: `amount` in percent (1 to 500), `radius` in pixels, `noise` (0 to 100) gates small differences,
  *  `shadows` and `highlights` (0 to 100) fade the effect in those tones. `scale` shrinks the radius for previews. */
 export function smartSharpen(img: ImageData, s: SmartSharpenSettings, scale = 1): ImageData {
   const { width: w, height: h } = img, src = img.data, n = w * h, r = Math.max(0.1, s.radius * scale), amt = s.amount / 100;
   const out = new ImageData(new Uint8ClampedArray(src), w, h), d = out.data, gate = (s.noise / 100) * 0.08;
-  const blur = (p: Float32Array): Float32Array => (s.remove === 'motion' ? line(p, w, h, r * 2, s.angle) : gauss(p, w, h, s.remove === 'lens' ? r / 2 : r));
+  const wa = new Float32Array(n);
+  for (let i = 0; i < n; i++) wa[i] = src[i * 4 + 3] / 255;
+  const blur = weightedBlur(w, h, wa, s.remove === 'motion' ? 'line' : 'gauss', s.remove === 'motion' ? r * 2 : s.remove === 'lens' ? r / 2 : r, s.angle);
   for (let c = 0; c < 3; c++) {
     const obs = new Float32Array(n);
     for (let i = 0; i < n; i++) obs[i] = src[i * 4 + c] / 255 + 1e-3;
@@ -256,6 +277,7 @@ export function smartSharpen(img: ImageData, s: SmartSharpenSettings, scale = 1)
       sharp = est;
     }
     for (let i = 0; i < n; i++) {
+      if (src[i * 4 + 3] === 0) continue;
       let diff = sharp[i] - obs[i];
       if (gate > 0) { const m = Math.abs(diff); diff *= m >= gate ? 1 : m / gate; }
       const L = (0.299 * src[i * 4] + 0.587 * src[i * 4 + 1] + 0.114 * src[i * 4 + 2]) / 255;

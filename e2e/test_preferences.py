@@ -11,11 +11,11 @@ def test_preferences_performance_settings_take_effect_and_persist(page):
         page.locator(".cv-stage").click()
         page.keyboard.press("Control+Comma")
         assert page.locator(DLG + " .cv-dialog-title").inner_text().strip() == "Preferences"
-        page.locator(DLG + " .cv-prefs-tab", has_text="History & Cache").click()   # History States moved here (1.48.1)
+        page.locator(DLG + " .cv-prefs-railtab", has_text="History & Cache").click()   # History States moved here (1.48.1)
         states = field(page, "History States").locator("input.cv-num, input[data-numtext]")
         states.fill("3"); states.press("Tab")
         assert page.evaluate("window.formvis.engine.historyLimits.states") == 3
-        page.locator(DLG + " .cv-prefs-tab", has_text="Performance").click()
+        page.locator(DLG + " .cv-prefs-railtab", has_text="Performance").click()
         field(page, "Redraw only").locator("input").uncheck()
         assert page.evaluate("window.formvis.engine.dirtyRendering") is False
         page.locator(DLG + " .cv-dialog-foot button", has_text="Done").click()

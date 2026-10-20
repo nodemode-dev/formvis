@@ -74,6 +74,22 @@ export function checkRow(label: string, onChange: (v: boolean) => void): Row<boo
   return { el: root, set(v) { setChecked(box, v); } };
 }
 
+const TOGGLE_TRACK = '<span class="cv-toggle-track"><span class="cv-toggle-knob"></span></span>';
+
+export function toggleRow(label: string, onChange: (v: boolean) => void): Row<boolean> {
+  const root = el(`<label class="cv-field cv-toggle-row"><span></span><span class="cv-toggle"><input type="checkbox">${TOGGLE_TRACK}</span></label>`);
+  setText(q(root, 'span'), label);
+  const box = q(root, 'input') as HTMLInputElement;
+  box.addEventListener('change', () => onChange(box.checked));
+  return { el: root, set(v) { setChecked(box, v); } };
+}
+
+export function toggleOf(box: HTMLInputElement): HTMLLabelElement {
+  const node = el<HTMLLabelElement>(`<label class="cv-toggle">${TOGGLE_TRACK}</label>`);
+  node.prepend(box);
+  return node;
+}
+
 export function colorRow(label: string, onChange: (hex: string) => void): Row<string> {
   const root = el('<label class="cv-field"><span></span><input class="cv-input cv-color" type="color"></label>');
   setText(q(root, 'span'), label);

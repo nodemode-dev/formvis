@@ -1,4 +1,5 @@
 import { el, setHidden, setText } from '../dom';
+import { toggleOf } from './controls';
 
 /** Preferences > Plugins > Local models (1.52.9): Krea 2 Turbo and FLUX.2 [klein] 4B installed on this computer, each
  *  licence shown and accepted before anything downloads (Krea 2's content filter installed with it, as its licence
@@ -154,7 +155,7 @@ export class LocalModelsSection {
     accept.checked = !!s.licenceAccepted; accept.disabled = !!s.licenceAccepted;
     const acceptRow = el('<label class="cv-dialog-row"><span></span></label>');
     setText(acceptRow.querySelector('span') as HTMLElement, `I accept the ${lic.name} (${lic.version})`);
-    acceptRow.append(accept);
+    acceptRow.append(toggleOf(accept));
     const links = el('<p class="cv-note"></p>'); links.append(link(lic.url, 'The licence'), document.createTextNode(' · '), link(lic.usePolicy, 'The use policy'));
     const pick = el<HTMLSelectElement>('<select class="cv-input" aria-label="Krea 2 build"></select>');
     for (const [id, b] of builds) { const o = document.createElement('option'); o.value = id; o.textContent = `${(b as Json).label}: ${gb((b as Json).size)}, ${(b as Json).memory} GB of memory`; o.title = (b as Json).note ?? ''; pick.append(o); }
@@ -187,7 +188,7 @@ export class LocalModelsSection {
       accept.checked = !!st.licenceAccepted; accept.disabled = !!st.licenceAccepted;
       const acceptRow = el('<label class="cv-dialog-row"><span></span></label>');
       setText(acceptRow.querySelector('span') as HTMLElement, `I accept the ${lic.name} for ${(v as Json).label}`);
-      acceptRow.append(accept);
+      acceptRow.append(toggleOf(accept));
       accept.addEventListener('change', () => void (async () => { if (!accept.checked) return; await api('/models/klein/consent', { method: 'POST', body: JSON.stringify({ variant, acceptLicence: true }) }); await this.showKlein(); })());
       const install = el<HTMLButtonElement>(`<button type="button" class="cv-btn cv-btn-primary">Install ${(v as Json).label}</button>`);
       install.disabled = !st.licenceAccepted || !!st.build;

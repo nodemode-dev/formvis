@@ -27,7 +27,7 @@ import { CHECKER_COLORS, CHECKER_SIZES, ENGINE_CHOICES, GRID_UNITS, PAINT_CURSOR
 import { POWER_CHOICES, RENDERER_CHOICES, type GpuPower, type GpuRenderer } from '../gpu/probe';
 import { FRAME_PACING } from '../gpu/frame-trace';
 import { TILE_SIZES } from '../engine/tiled';
-import { checkRow, numberRow, selectRow, sliderRow, type Row } from './panels/controls';
+import { toggleRow as checkRow, toggleOf, numberRow, selectRow, sliderRow, type Row } from './panels/controls';
 import { PagePrefsRows } from './panels/page-prefs';
 import { SIZES, generationModels, shapesFor } from './panels/generate-image';
 
@@ -640,11 +640,23 @@ export class SettingsDialog extends Dialog {
     const row = el('<div class="cv-field"><span>Theme</span></div>');
     row.appendChild(this.grid);
     const pages = el('<div class="cv-prefs-pages"></div>');
+    const railIcons: Record<string, string> = { General: 'pfGeneral', Interface: 'pfInterface', Performance: 'pfPerformance', Workspace: 'pfWorkspace', Tools: 'pfTools', 'History & Cache': 'pfHistory', 'File Handling': 'pfFile', 'Placing Pictures': 'pfPlace', 'History Log': 'pfLog', Cursors: 'pfCursor', Type: 'pfType', 'Camera Raw Defaults': 'pfCamera', 'Transparency & Gamut': 'pfTransparency', 'Scratch Disks': 'pfScratch', Language: 'pfLanguage', 'Units & Rulers': 'pfUnits', 'Guides & Grid': 'pfGuides', 'Enhanced Controls': 'pfGestures', Plugins: 'pfPlugins' };
+    const grp = (label: string, ...content: HTMLElement[]): HTMLElement => {
+      const g = el('<section class="cv-prefs-group"><h3 class="cv-prefs-label"></h3></section>');
+      const h = q<HTMLElement>(g, '.cv-prefs-label');
+      setText(h, t(label));
+      onLanguage(() => setText(h, t(label)));
+      g.append(...content);
+      return g;
+    };
+    const nt = (text: string): HTMLElement => el(`<p class="cv-note">${text}</p>`);
     const add = (name: string, ...content: HTMLElement[]): void => {
-      const tab = el<HTMLButtonElement>('<button class="cv-prefs-tab" type="button" role="tab"></button>');
+      const tab = el<HTMLButtonElement>(`<button class="cv-prefs-railtab" type="button" role="tab"><span class="cv-prefs-tabicon">${icon(railIcons[name] ?? 'pfGeneral', 18)}</span><span class="cv-prefs-tablabel"></span></button>`);
       tab.dataset.section = name;   // the English name is the identity; the label is the translation
-      tab.textContent = t(name);
-      onLanguage(() => { tab.textContent = t(name); });
+      const label = q<HTMLElement>(tab, '.cv-prefs-tablabel');
+      const paint = (): void => { setText(label, t(name)); tab.title = t(name); };
+      paint();
+      onLanguage(paint);
       tab.addEventListener('click', () => this.showSection(name));
       this.nav.appendChild(tab);
       const page = el('<div class="cv-prefs-page" role="tabpanel"></div>');
@@ -656,45 +668,82 @@ export class SettingsDialog extends Dialog {
     accentRow.appendChild(this.accent);
     const reset = el<HTMLButtonElement>('<button class="cv-btn" type="button">Reset All Preferences...</button>');
     reset.addEventListener('click', () => { void confirmAction('Reset all preferences?', 'Every preference, the panel arrangement and the tools shown go back to how formvis comes; your documents and library are kept. formvis reloads.', 'Reset').then((ok) => { if (!ok) return; for (const k of Object.keys(localStorage)) if (k.startsWith('formvis.') || k === 'nodemode_ui_settings') localStorage.removeItem(k); location.reload(); }); });
-    add('General', this.homeRow.el, this.homeCloseRow.el, this.whatsNewRow.el, this.animZoomRow.el, this.zoomResizesRow.el, this.systemPickerRow.el, this.beepRow.el, this.interpolationRow.el, this.placeFitRow.el, this.placeSmartRow.el, ...this.pageRows.generalRows, reset, el('<p class="cv-note">Image Interpolation is the resampling the Image Size dialog starts with. Resize Image During Place scales a picture larger than the canvas down to fit it when it is placed; off, it keeps its own size. Always Create Smart Objects When Placing makes each picture dropped on an open document a smart object. Beep When Done sounds a short tone when a job that ran longer than two seconds ends. Zoom Resizes Windows sizes a floating document window to the picture when its zoom changes. Animated Zoom eases Zoom In, Zoom Out and the Zoom tool\'s clicks over a fraction of a second. Use the system color picker opens the computer\'s own picker for the foreground and background swatches instead of formvis\'s. The Home screen covers the canvas area. At launch it shows while no document is open; closing the last document leaves the empty workspace with its panels unless the second choice is on. The brand mark at the top left opens it at any time; Esc leaves it. What\'s New (Help menu) lists the recent additions, each with a Show Me button; with the third choice on it opens once after an update.</p>'));
+    add('General',
+      grp('Startup', this.homeRow.el, this.homeCloseRow.el, this.whatsNewRow.el, nt('The Home screen covers the canvas area. At launch it shows while no document is open; closing the last document leaves the empty workspace with its panels unless the second choice is on. The brand mark at the top left opens it at any time; Esc leaves it. What\'s New (Help menu) lists the recent additions, each with a Show Me button; with the third choice on it opens once after an update.')),
+      grp('Behavior', this.animZoomRow.el, this.zoomResizesRow.el, this.systemPickerRow.el, this.beepRow.el, nt('Beep When Done sounds a short tone when a job that ran longer than two seconds ends. Zoom Resizes Windows sizes a floating document window to the picture when its zoom changes. Animated Zoom eases Zoom In, Zoom Out and the Zoom tool\'s clicks over a fraction of a second. Use the system color picker opens the computer\'s own picker for the foreground and background swatches instead of formvis\'s.')),
+      grp('Placing and Resampling', this.interpolationRow.el, this.placeFitRow.el, this.placeSmartRow.el, nt('Image Interpolation is the resampling the Image Size dialog starts with. Resize Image During Place scales a picture larger than the canvas down to fit it when it is placed; off, it keeps its own size. Always Create Smart Objects When Placing makes each picture dropped on an open document a smart object.')),
+      grp('Clipboard and Transform', ...this.pageRows.generalRows),
+      grp('Settings Storage', this.location.el),
+      grp('Reset', reset));
     this.intensityRow.set(Math.round((readChoice().intensity ?? 1) * 100));
-    add('Interface', row, this.themeAutoRow.el, this.themeLightRow.el, this.themeDarkRow.el, accentRow, this.intensityRow.el, this.fontSizeRow.el, this.scaleRow.el, this.animationsRow.el, this.noticeSecondsRow.el, this.canvasColourRow.el, ...this.pageRows.interfaceRows,el('<p class="cv-note">Canvas Color is the pasteboard around the picture (the same as View > Pasteboard). Theme and accent are shared with NodeMode on this device. Match System Appearance switches between the light and dark theme chosen here when the appearance of the computer changes; a theme picked by hand stays until the next change of a preference or of the appearance. Intensity sets how strongly the accent tints what it marks; 100% is the design\'s. Text size scales the interface\'s text.</p>'));
-    add('Performance', this.budgetNote, this.memoryLimitRow.el, this.effectCacheRow.el, this.releaseRow.el, this.releaseSizeRow.el, this.reserveRow.el, this.cacheLevelsRow.el, this.redrawRow.el, this.reuseRow.el, this.previewRow.el, ...this.pageRows.performance,
-      el('<h3 class="cv-prefs-sub">Graphics Processor Settings</h3>'), this.gpuNameRow(), this.gpuUseRow.el, this.gpuFiltersRow.el, this.rendererRow.el, this.gpuMemoryRow.el, this.gpuPowerRow.el, this.lowLatencyRow.el, this.hdrRow.el, this.pacingRow.el, this.tileRow.el, this.tileFromRow.el, this.threadsRow.el, this.compositeRow.el, this.gpuMode,
-      el('<p class="cv-note">Automatic uses WebGPU (Metal on macOS, Direct3D 12 on Windows), then WebGL2 (as on Linux), on a hardware graphics processor, and the CPU otherwise; a software GPU is slower than the CPU renderer, so Automatic does not use one. If the graphics processor fails to start, formvis turns this off and says so. The canvas draws on the graphics processor; a document using something it does not draw yet draws on the CPU, and the status bar says why.</p>'),
-      el('<h3 class="cv-prefs-sub">Engine</h3>'), this.engineRow.el, this.engineMode,
-      el('<p class="cv-note">Where the engine runs its models (Remove Background, and the local models that follow). Automatic uses CUDA on an NVIDIA graphics processor, Core ML (Metal) on a Mac, and the CPU otherwise; a choice this machine cannot run falls back to the CPU, and the line above says why.</p>'));
-    add('Workspace', this.lockRow.el, this.narrowRow.el, this.rememberLayoutRow.el, this.openTabsRow.el, this.largeTabsRow.el, this.narrowOptionsRow.el,this.floatDockingRow.el, this.autoShowPanelsRow.el, el('<p class="cv-note">With Auto-Show Hidden Panels, panels hidden with Tab show again while the pointer rests at the window\'s left edge (the tools) or right edge (the panels). With Enable Floating Document Window Docking, dragging a floating window by its title bar onto the tab bar docks it back to its tab; off, windows only return by their close button or Consolidate All to Tabs. Locked, panels are neither dragged nor resized. In a window too narrow for the canvas beside the open side column, it shows as its icons until there is room (your choice is kept).</p>'));
-    add('Tools', this.wheelRow.el, this.curveRow.el, this.pressureRow.el, this.tooltipsRow.el, this.shiftToolRow.el, this.zoomCentreRow.el, ...this.pageRows.toolRows,el('<p class="cv-note">Show Tool Tips off hides the hover hints on buttons and tools. With Use Shift Key for Tool Switch off, pressing a tool\'s letter again cycles its group instead of Shift with the letter. Zoom Clicked Point to Center moves the point you click with the Zoom tool to the middle of the view. On, the wheel zooms about the pointer and Ctrl or Cmd with the wheel scrolls; off, the other way round. The pressure curve is how a pen\'s pressure maps to size, flow and opacity in every brush; a brush\'s own options can change it for the session.</p>'));
-    add('History & Cache', this.statesRow.el, this.memoryRow.el, this.memoryAutoRow.el, el('<p class="cv-note">History States is how many steps undo keeps (50 is a common default; up to 1000); history memory caps what those steps may hold, and the oldest steps go first when either is reached. A browser app cannot reserve system memory as a desktop app can, so this is the part formvis controls. Turning off region redraws repaints the whole canvas on each stroke, slower but useful if painting ever draws out of place.</p>'),
-      this.firstSnapRow.el, this.snapMemRow.el, el('<p class="cv-note">Each document keeps itself as opened, the History Brush\'s first source; snapshots, that one included, share this memory.</p>'));
+    add('Interface',
+      grp('Theme', row, this.themeAutoRow.el, this.themeLightRow.el, this.themeDarkRow.el, accentRow, this.intensityRow.el, nt('Theme and accent are shared with NodeMode on this device. Match System Appearance switches between the light and dark theme chosen here when the appearance of the computer changes; a theme picked by hand stays until the next change of a preference or of the appearance. Intensity sets how strongly the accent tints what it marks; 100% is the design\'s.')),
+      grp('Skins', this.skins.el),
+      grp('Text and Scale',this.fontSizeRow.el, this.scaleRow.el, nt('Text size scales the interface\'s text.')),
+      grp('Motion and Notices', this.animationsRow.el, this.noticeSecondsRow.el),
+      grp('Canvas Appearance', this.canvasColourRow.el, nt('Canvas Color is the pasteboard around the picture (the same as View > Pasteboard).'), ...this.pageRows.interfaceRows));
+    add('Performance',
+      grp('Memory', this.budgetNote, this.memoryLimitRow.el, this.reserveRow.el),
+      grp('Caches and Redraw', this.effectCacheRow.el, this.releaseRow.el, this.releaseSizeRow.el, this.cacheLevelsRow.el, this.redrawRow.el, this.reuseRow.el),
+      grp('Previews and Rendering', this.previewRow.el, ...this.pageRows.performance, this.rendering.el),
+      grp('Graphics Processor Settings', this.gpuNameRow(), this.gpuUseRow.el, this.gpuFiltersRow.el, this.rendererRow.el, this.gpuMemoryRow.el, this.gpuPowerRow.el, this.lowLatencyRow.el, this.hdrRow.el, this.pacingRow.el, this.tileRow.el, this.tileFromRow.el, this.threadsRow.el, this.compositeRow.el, this.gpuMode,
+        el('<p class="cv-note">Automatic uses WebGPU (Metal on macOS, Direct3D 12 on Windows), then WebGL2 (as on Linux), on a hardware graphics processor, and the CPU otherwise; a software GPU is slower than the CPU renderer, so Automatic does not use one. If the graphics processor fails to start, formvis turns this off and says so. The canvas draws on the graphics processor; a document using something it does not draw yet draws on the CPU, and the status bar says why.</p>')),
+      grp('Engine', this.engineRow.el, this.engineMode,
+        el('<p class="cv-note">Where the engine runs its models (Remove Background, and the local models that follow). Automatic uses CUDA on an NVIDIA graphics processor, Core ML (Metal) on a Mac, and the CPU otherwise; a choice this machine cannot run falls back to the CPU, and the line above says why.</p>')));
+    add('Workspace',
+      grp('Panels', this.lockRow.el, this.narrowRow.el, this.rememberLayoutRow.el, this.narrowOptionsRow.el, this.autoShowPanelsRow.el, nt('With Auto-Show Hidden Panels, panels hidden with Tab show again while the pointer rests at the window\'s left edge (the tools) or right edge (the panels). Locked, panels are neither dragged nor resized. In a window too narrow for the canvas beside the open side column, it shows as its icons until there is room (your choice is kept).')),
+      grp('Document Windows', this.openTabsRow.el, this.largeTabsRow.el, this.floatDockingRow.el, nt('With Enable Floating Document Window Docking, dragging a floating window by its title bar onto the tab bar docks it back to its tab; off, windows only return by their close button or Consolidate All to Tabs.')));
+    add('Tools',
+      grp('Zoom and Scroll', this.wheelRow.el, this.zoomCentreRow.el, nt('Zoom Clicked Point to Center moves the point you click with the Zoom tool to the middle of the view. On, the wheel zooms about the pointer and Ctrl or Cmd with the wheel scrolls; off, the other way round.')),
+      grp('Pen and Brush', this.curveRow.el, this.pressureRow.el, nt('The pressure curve is how a pen\'s pressure maps to size, flow and opacity in every brush; a brush\'s own options can change it for the session.'), ...this.pageRows.toolRows),
+      grp('Hints and Shortcuts', this.tooltipsRow.el, this.shiftToolRow.el, nt('Show Tool Tips off hides the hover hints on buttons and tools. With Use Shift Key for Tool Switch off, pressing a tool\'s letter again cycles its group instead of Shift with the letter.')));
+    add('History & Cache',
+      grp('History', this.statesRow.el, this.memoryRow.el, this.memoryAutoRow.el, nt('History States is how many steps undo keeps (50 is a common default; up to 1000); history memory caps what those steps may hold, and the oldest steps go first when either is reached. A browser app cannot reserve system memory as a desktop app can, so this is the part formvis controls. Turning off region redraws repaints the whole canvas on each stroke, slower but useful if painting ever draws out of place.')),
+      grp('Snapshots', this.firstSnapRow.el, this.snapMemRow.el, nt('Each document keeps itself as opened, the History Brush\'s first source; snapshots, that one included, share this memory.')));
     this.restoreBox.addEventListener('change', () => this.change({ restoreSession: this.restoreBox.checked }));
     this.mismatchSel.addEventListener('change', () => this.change({ profileMismatch: this.mismatchSel.value as 'convert' | 'keep' | 'ask' }));
     const restore = el('<label class="cv-dialog-row"><span>Reopen the documents that were open when formvis closed</span></label>');
-    restore.append(this.restoreBox);
+    restore.append(toggleOf(this.restoreBox));
     const mismatch = el('<label class="cv-dialog-row"><span>Embedded profiles</span></label>'); mismatch.append(this.mismatchSel);
     // The library's folder (1.58.8): the choice fills the path, which can be any folder; applying moves the projects.
     const libRow = el('<label class="cv-dialog-row"><span>Library folder</span></label>'); libRow.append(this.libSel);
     const pathRow = el('<label class="cv-dialog-row"><span>Folder</span></label>'); pathRow.append(this.libPath);
-    const moveRow = el('<label class="cv-dialog-row"><span>Move my projects there</span></label>'); moveRow.append(this.libMove);
+    const moveRow = el('<label class="cv-dialog-row"><span>Move my projects there</span></label>'); moveRow.append(toggleOf(this.libMove));
     this.libSel.addEventListener('change', () => { if (this.libSel.value !== 'other') this.libPath.value = this.libSel.value; else this.libPath.focus(); });
     this.libApply.addEventListener('click', () => void this.applyLibrary());
     const library = el('<div></div>');
     library.append(this.libNow, libRow, pathRow, moveRow, this.libApply, el('<p class="cv-note">The library can live in any folder, a synced one (iCloud Drive, Dropbox, OneDrive, Google Drive) included. If a project changed in that folder since you opened it, from another device or window, saving keeps that version and saves yours beside it as a conflict copy.</p>'));
-    add('File Handling', library, mismatch, restore, el('<p class="cv-note">Every open document is kept on this device, in its tab order, and opens again at the next start, saved or not. Off, only unsaved work is kept, and formvis asks after a crash.</p>'), this.recoveryRow.el, el('<p class="cv-note">Unsaved documents are kept on this device so they can be recovered after a crash; this is how soon after a change that happens.</p>'), this.lowerExtRow.el, this.recentCountRow.el, ...this.pageRows.fileRows,el('<p class="cv-note">Use Lower Case Extension writes exported files as .jpg; off, as .JPG. The recent file list is how many files File > Open Recent shows; 0 shows none.</p>'), this.saveBgRow.el, el('<p class="cv-note">Save in Background takes a snapshot of the document when you save and writes it while you keep editing; the status line shows the progress and Escape stops it. Off, edits wait until the save has finished. A document with a giant tiled layer always waits.</p>'), this.historyCapRow.el, el('<p class="cv-note">Save and Save As write the most recent steps of an 8-bit document into the project, newest first, until this size is reached; opening the project brings them back to the History panel and Undo. File > Save As with History keeps them for one save whatever this is set to (64 MB when it is 0).</p>'));
-    add('Placing Pictures', this.placeTransformRow.el, el('<p class="cv-note">On, a single picture dropped on an open document or put in with File > Place Embedded opens in Free Transform: Enter keeps it, Escape leaves it at its placed size and spot. A picture larger than the canvas is placed scaled to fit.</p>'));
-    add('History Log', this.historyLogRow.el, el('<p class="cv-note">On, every new history step is written down with its time and document, on this device. Edit > History Log saves it as a text file or clears it.</p>'));
-    add('Cursors', this.cursorRow.el, this.crossRow.el, ...this.pageRows.cursors, el('<p class="cv-note">How painting tools show where they paint: the tip\'s outline at its size, a crosshair alone, or a small ring.</p>'));
-    add('Type', this.recentFontsRow.el, ...this.pageRows.type, el('<p class="cv-note">The fonts you used last are listed first in the font menus, newest first; 0 lists none first.</p>'));
-    add('Camera Raw Defaults', this.rawAskRow.el, this.rawWbRow.el, this.rawBitsRow.el, this.rawSpaceRow.el, this.rawSharpenRow.el, this.rawSharpenAmountRow.el, this.rawPpiRow.el, this.rawToneRow.el, this.rawSmartRow.el, el('<p class="cv-note">What the Camera Raw dialog starts with each time a camera RAW file opens. Resolution, Auto Tone and Smart Object apply to the 8 bits/channel document it opens. The color space applies at 16 Bits/Channel (an 8-bit document is sRGB). Sharpen For applies an Unsharp Mask sized for the screen, glossy paper or matte paper as the file opens.</p>'));
+    add('File Handling',
+      grp('Library', library),
+      grp('Opening and Recovery', mismatch, restore, nt('Every open document is kept on this device, in its tab order, and opens again at the next start, saved or not. Off, only unsaved work is kept, and formvis asks after a crash.'), this.recoveryRow.el, nt('Unsaved documents are kept on this device so they can be recovered after a crash; this is how soon after a change that happens.'), this.recentCountRow.el, nt('The recent file list is how many files File > Open Recent shows; 0 shows none.')),
+      grp('Saving', this.lowerExtRow.el, nt('Use Lower Case Extension writes exported files as .jpg; off, as .JPG.'), this.saveBgRow.el, nt('Save in Background takes a snapshot of the document when you save and writes it while you keep editing; the status line shows the progress and Escape stops it. Off, edits wait until the save has finished. A document with a giant tiled layer always waits.'), this.historyCapRow.el, nt('Save and Save As write the most recent steps of an 8-bit document into the project, newest first, until this size is reached; opening the project brings them back to the History panel and Undo. File > Save As with History keeps them for one save whatever this is set to (64 MB when it is 0).')),
+      grp('Formats', ...this.pageRows.fileRows));
+    add('Placing Pictures', grp('Free Transform on Place', this.placeTransformRow.el, nt('On, a single picture dropped on an open document or put in with File > Place Embedded opens in Free Transform: Enter keeps it, Escape leaves it at its placed size and spot. A picture larger than the canvas is placed scaled to fit.')));
+    add('History Log', grp('Log', this.historyLogRow.el, nt('On, every new history step is written down with its time and document, on this device. Edit > History Log saves it as a text file or clears it.')));
+    add('Cursors', grp('Painting Cursors', this.cursorRow.el, this.crossRow.el, nt('How painting tools show where they paint: the tip\'s outline at its size, a crosshair alone, or a small ring.'), ...this.pageRows.cursors));
+    add('Type',
+      grp('Fonts', this.recentFontsRow.el, nt('The fonts you used last are listed first in the font menus, newest first; 0 lists none first.')),
+      grp('Text Editing', ...this.pageRows.type));
+    add('Camera Raw Defaults',
+      grp('Dialog', this.rawAskRow.el, nt('What the Camera Raw dialog starts with each time a camera RAW file opens.')),
+      grp('Color', this.rawWbRow.el, this.rawBitsRow.el, this.rawSpaceRow.el, nt('The color space applies at 16 Bits/Channel (an 8-bit document is sRGB).')),
+      grp('Output and Sharpening', this.rawSharpenRow.el, this.rawSharpenAmountRow.el, this.rawPpiRow.el, this.rawToneRow.el, this.rawSmartRow.el, nt('Resolution, Auto Tone and Smart Object apply to the 8 bits/channel document it opens. Sharpen For applies an Unsharp Mask sized for the screen, glossy paper or matte paper as the file opens.')));
     const gamutField = el('<label class="cv-field"><span>Gamut Warning</span></label>');
     this.gamutColor.addEventListener('input', () => this.change({ gamutColor: this.gamutColor.value }));
     gamutField.append(this.gamutColor);
-    add('Transparency & Gamut', this.checkerSizeRow.el, this.checkerColorsRow.el, ...this.pageRows.transparency, el(`<p class="cv-note">${t('The checkerboard shown behind transparent pixels. None shows it plain; Match Theme uses the light checkerboard in light themes and the dark one in dark themes.')}</p>`), gamutField, this.gamutOpacityRow.el, el('<p class="cv-note">The colour and opacity that View > Gamut Warning paints over colours the proof profile cannot print.</p>'));
+    add('Transparency & Gamut',
+      grp('Transparency', this.checkerSizeRow.el, this.checkerColorsRow.el, ...this.pageRows.transparency, el(`<p class="cv-note">${t('The checkerboard shown behind transparent pixels. None shows it plain; Match Theme uses the light checkerboard in light themes and the dark one in dark themes.')}</p>`)),
+      grp('Gamut Warning', gamutField, this.gamutOpacityRow.el, el('<p class="cv-note">The colour and opacity that View > Gamut Warning paints over colours the proof profile cannot print.</p>')));
     this.scratchClean.addEventListener('click', () => { this.scratch?.clean(); setTimeout(() => void this.refreshScratch(), 400); });
-    add('Scratch Disks', this.pageRows.scratch.el, this.scratchInfo, this.scratchClean, el('<p class="cv-note">formvis keeps recovery copies of open documents and closed tabs in this device\'s storage, the way a desktop editor uses a scratch disk. Clean Working Files removes the copies of documents that are no longer open; open documents are not touched. Layer effect and display caches are set in Performance.</p>'));    add('Language', this.languageRow.el, el('<p class="cv-note">The language of the whole interface. Names you give layers and documents stay as you wrote them.</p>'));
-    add('Units & Rulers', this.rulerRow.el, ...this.pageRows.units, el('<p class="cv-note">The rulers\' unit; inches, centimetres and millimetres follow the document\'s resolution, percent its width and height.</p>'));
-    add('Guides & Grid', this.colorRow('Guides', this.guideColor, 'guideColor'), this.guideStyleRow.el, this.colorRow('Grid', this.gridColor, 'gridColor'), this.gridStyleRow.el, this.gridPresetRow.el, this.gridUnitRow.el, this.gridEveryRow.el, this.subdivRow.el, this.gridOpacityRow.el, this.gridResetRow, this.colorRow('Slices', this.sliceColor, 'sliceColor'), this.sliceNumbersRow.el, el('<p class="cv-note">The colour and line style of guides and the grid, and the colour of slice lines and whether their numbers show.</p>'));
+    add('Scratch Disks', grp('Working Files', this.pageRows.scratch.el, this.scratchInfo, this.scratchClean, el('<p class="cv-note">formvis keeps recovery copies of open documents and closed tabs in this device\'s storage, the way a desktop editor uses a scratch disk. Clean Working Files removes the copies of documents that are no longer open; open documents are not touched. Layer effect and display caches are set in Performance.</p>')));
+    add('Language', grp('Interface Language', this.languageRow.el, el('<p class="cv-note">The language of the whole interface. Names you give layers and documents stay as you wrote them.</p>')));
+    add('Units & Rulers',
+      grp('Rulers', this.rulerRow.el, nt('The rulers\' unit; inches, centimetres and millimetres follow the document\'s resolution, percent its width and height.')),
+      grp('Resolution and Columns', ...this.pageRows.units));
+    add('Guides & Grid',
+      grp('Guides', this.colorRow('Guides', this.guideColor, 'guideColor'), this.guideStyleRow.el, nt('The colour and line style of guides.')),
+      grp('Grid', this.colorRow('Grid', this.gridColor, 'gridColor'), this.gridStyleRow.el, this.gridPresetRow.el, this.gridUnitRow.el, this.gridEveryRow.el, this.subdivRow.el, this.gridOpacityRow.el, this.gridResetRow, nt('The colour and line style of the grid.')),
+      grp('Slices', this.colorRow('Slices', this.sliceColor, 'sliceColor'), this.sliceNumbersRow.el, nt('The colour of slice lines and whether their numbers show.')));
     // Plugins (1.50.8): the other apps formvis sends to; NodeMode first.
     this.nodemodeCheck.addEventListener('click', () => void this.checkNodeMode());
     this.nodemodeUrl.addEventListener('change', () => { const v = this.nodemodeUrl.value.trim(); if (/^https?:\/\/./.test(v)) { this.change({ nodemodeUrl: v }); void this.checkNodeMode(); } else setText(this.nodemodeNote, 'An address starts with http:// or https://, such as http://localhost:8000.'); });
@@ -727,14 +776,43 @@ export class SettingsDialog extends Dialog {
     // Outside agents over MCP (1.52.1): off unless turned on here; how to connect Claude Code and Claude Desktop.
     this.agents.addEventListener('change', () => { this.change({ agentsAllowed: this.agents.checked }); window.dispatchEvent(new CustomEvent('formvis:agents', { detail: this.agents.checked })); });
     const ag = el('<label class="cv-dialog-row"><span>Allow outside agents (MCP)</span></label>');
-    ag.append(this.agents);
+    ag.append(toggleOf(this.agents));
     const agNote = el('<p class="cv-note">Lets Claude Code, Claude Desktop or another MCP client work in the open document; each change is an undoable step, and anything that costs money asks you first. Claude Code: <code>claude mcp add --transport http formvis <span class="cv-mcp-url">http://127.0.0.1:8190/mcp</span></code>. Claude Desktop: a server whose command is <code>./formvis mcp</code> in the formvis folder. The control port is the engine\'s own port, chosen when the engine starts (FORMVIS_PORT, 8190 unless set): <span class="cv-mcp-port">8190</span>. It cannot change while formvis runs.</p>');
     this.mcpUrlNode = agNote.querySelector('.cv-mcp-url'); this.mcpPortNode = agNote.querySelector('.cv-mcp-port');
-    add('Enhanced Controls', ...this.pageRows.enhanced);
-    add('Plugins', this.keysNote, ...this.pageRows.plugins, nm, this.nodemodeNote, cu, this.comfyuiNote, this.comfyAuth.el, this.recipesList.el, lm, tp, ag, agNote, this.apiKeys.el, this.modelFolder.el, this.pluginSwitches.el, this.pluginsFolder.el, this.hfToken.el, this.localModels.el, this.localFiles.el, this.updates.el);
+    add('Enhanced Controls', grp('Gestures and Sliders', ...this.pageRows.enhanced));
+    add('Plugins',
+      grp('Panels and Extensions', ...this.pageRows.plugins, this.pluginSwitches.el, this.pluginsFolder.el),
+      grp('Connected Apps', nm, this.nodemodeNote, cu, this.comfyuiNote, this.comfyAuth.el, this.recipesList.el),
+      grp('Prompts', lm, tp),
+      grp('Outside Agents', ag, agNote),
+      grp('Keys and Models', this.keysNote, this.apiKeys.el, this.modelFolder.el, this.hfToken.el, this.localModels.el, this.localFiles.el),
+      grp('Updates', this.updates.el));
     const wrap = el('<div class="cv-prefs"></div>');
-    wrap.append(this.nav, pages);
+    wrap.append(pages);
     this.body.appendChild(wrap);
+    const frame = q<HTMLElement>(this.scrim, '.cv-dialog');
+    frame.classList.add('cv-prefs-dlg');
+    q<HTMLElement>(this.scrim, '.cv-dialog-head').prepend(el(`<span class="cv-prefs-headicon">${icon('settings', 16)}</span>`));
+    const railKey = 'formvis.prefsRailCollapsed';
+    let collapsed = false;
+    try { collapsed = localStorage.getItem(railKey) === '1'; } catch { collapsed = false; }
+    const fold = el<HTMLButtonElement>(`<button class="cv-prefs-fold" type="button">${icon('pfFold', 16)}</button>`);
+    const paintRail = (): void => {
+      setClass(frame, 'is-rail-collapsed', collapsed);
+      fold.title = t(collapsed ? 'Expand tabs' : 'Collapse tabs');
+      fold.setAttribute('aria-label', fold.title);
+      fold.setAttribute('aria-expanded', String(!collapsed));
+    };
+    fold.addEventListener('click', () => {
+      collapsed = !collapsed;
+      try { localStorage.setItem(railKey, collapsed ? '1' : '0'); } catch { paintRail(); }
+      paintRail();
+    });
+    paintRail();
+    onLanguage(paintRail);
+    const rail = el('<div class="cv-prefs-rail"></div>');
+    rail.append(this.nav, fold);
+    frame.appendChild(rail);
     this.button('Done', 'primary', () => this.close());
     this.grid.addEventListener('contextmenu', (e) => {
       const id = (e.target as HTMLElement).closest<HTMLElement>('[data-theme-id]')?.dataset.themeId;
@@ -751,9 +829,6 @@ export class SettingsDialog extends Dialog {
       this.sync();
     });
     this.accent.addEventListener('input', () => { setAccent(this.accent.value); this.sync(); });
-    this.sections.get('Performance')?.append(this.rendering.el);
-    this.sections.get('Interface')?.append(this.skins.el);
-    this.sections.get('General')?.append(this.location.el);
     void this.skins.reload();
     this.showSection('General');
   }

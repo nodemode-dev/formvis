@@ -38,7 +38,7 @@ The Pencil (`pencil.ts`), Eraser (`eraser.ts`), Background Eraser, Magic Eraser,
 
 - Spare working surfaces are pooled (`warmStrokeSurfaces`, `dropSpareSurfaces`, `spareBytes` in `stroke.ts`); a stroke that forgets `release()` leaks memory.
 - A large layer's stroke works in a window around where it paints (`setStrokeWindowFrom`); do not assume the surfaces are layer-sized.
-- On a giant tiled layer only the plain brush, pencil and eraser paint; shape, scattering, texture, dual brush and selections decline with a notice. Keep that list true when you add features.
+- On a giant tiled layer the brush, pencil and eraser paint with every Brush Settings option (shape, scattering, texture, dual brush, wet edges), byte-identical to a flat layer; the Mixer Brush, mask painting and selections decline with a notice. Keep that list true when you add features.
 - 16 bit documents allow Brush, Pencil and Eraser (`deepPaintOk`); `strokeDeep` in `deep.ts` follows the 8 bit stroke into floats.
 - Never change the document from `to()`; previews are overrides, the commit is one patch.
 - The GPU brush in `native/formvis-render` (`TiledLayer::dab`, benchmark `brush_bench`) is a separate implementation for the native display; see `native-render-builder`. It does not call `PixelStroke`; check `frontend/src/gpu/native-display.ts` to see which strokes reach it before assuming a change in `stroke.ts` affects it.

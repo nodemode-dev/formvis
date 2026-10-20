@@ -26,7 +26,15 @@ export class StatusBar {
 
   constructor(root: HTMLElement, private readonly engine: Engine) {
     root.insertAdjacentHTML('beforeend',
+      '<div class="cv-st-tools" role="group" aria-label="History and zoom">' +
+      `<button class="cv-icon-btn cv-st-btn" type="button" data-cmd="undo">${icon('undo', 14)}</button>` +
+      `<button class="cv-icon-btn cv-st-btn" type="button" data-cmd="redo">${icon('redo', 14)}</button>` +
+      '<span class="cv-sep"></span>' +
+      `<button class="cv-icon-btn cv-st-btn" type="button" data-cmd="zoom-out">${icon('zoomOut', 14)}</button>` +
       '<input class="cv-st-zoom" type="text" inputmode="decimal" spellcheck="false" autocomplete="off" aria-label="Zoom percent" title="Zoom: type a percent and press Enter">' +
+      `<button class="cv-icon-btn cv-st-btn" type="button" data-cmd="zoom-in">${icon('zoomIn', 14)}</button>` +
+      `<button class="cv-icon-btn cv-st-btn" type="button" data-cmd="fit">${icon('fitView', 14)}</button>` +
+      '</div>' +
       '<span class="cv-st-dims"></span>' +
       '<button class="cv-st-info" type="button"></button>' +
       `<span class="cv-st-busy">${icon('loading', 12)}</span><span class="cv-st-engine"></span><span class="cv-st-gpu"></span><span class="cv-st-mem" title="Pixels formvis holds, of what this computer allows it"></span><span class="cv-st-proof"></span><span class="cv-st-hint"></span>`);

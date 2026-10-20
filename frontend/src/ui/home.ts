@@ -50,8 +50,7 @@ export class HomeScreen {
     <div class="cv-home-main">
       <div class="cv-home-narrow">${navItem('start', 'image', 'Start')}${navItem('recent', 'history', 'Recent')}${navItem('projects', 'folder', 'Projects')}${navItem('outputs', 'download', 'Outputs')}</div>
       <div class="cv-home-page" data-page="start">
-        <div class="cv-home-head"><div><h1 class="cv-home-title"></h1><p class="cv-home-sub">Open a picture or a project, or start a new document.</p></div>
-          <div class="cv-home-head-actions"><button class="cv-btn" type="button" data-cmd="open">${icon('folderOpen', 14)}Open...</button><button class="cv-btn" type="button" data-cmd="new">${icon('newFile', 14)}New document</button></div></div>
+        <div class="cv-home-head"><div><h1 class="cv-home-title"></h1><p class="cv-home-sub">Open a picture or a project, or start a new document.</p></div></div>
         <div class="cv-home-hero">
           <span class="cv-home-hero-icon">${icon('image', 26)}</span>
           <div class="cv-home-hero-text"><div class="cv-home-hero-title">Start from a picture</div>

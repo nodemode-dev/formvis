@@ -3,6 +3,7 @@ import { addRecipe, apiWorkflow, DEFAULT_REFERENCE_NAME, hiddenBuiltins, hideBui
 import { folderTemplateCount, saveTemplates, syncTemplates, templateFromMarkdown, templateToMarkdown, templates } from '../../io/prompt-templates';
 import { el, patchList, setHidden, setText, setValue } from '../dom';
 import { confirmAction } from '../dialogs';
+import { toggleOf } from './controls';
 import { loadPrefs, setUpdateAtStart, updateAtStart } from '../prefs';
 import { DEFAULT_THEME, THEMES, applyTheme, readChoice, registerSkins, setTheme } from '../themes';
 
@@ -491,7 +492,7 @@ export class UpdatesSection {
     const check = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Check now</button>'), bar = el('<div class="cv-improve"></div>');
     const start = el<HTMLInputElement>('<input type="checkbox" aria-label="Check for updates when formvis starts">');
     bar.append(check);
-    this.el.append(el('<p class="cv-note"></p>'), row('Check for updates when formvis starts', start), bar, this.status);
+    this.el.append(el('<p class="cv-note"></p>'), row('Check for updates when formvis starts', toggleOf(start)), bar, this.status);
     setText(this.el.querySelector('.cv-note'), `This is formvis ${version}. The desktop app can look for a new version when it starts and asks before installing: Restart and update closes formvis once your documents are settled, and nothing is installed without your yes. Updates stay off in a build that carries no signing key (this one until the owner adds his): Check now then says so. A portable copy opens the releases page instead.`);
     start.checked = updateAtStart();
     start.addEventListener('change', () => { setUpdateAtStart(start.checked); setText(this.status, start.checked ? 'formvis will look for an update at each start of the desktop app.' : 'formvis will not look for updates by itself; Check now still works.'); });
@@ -581,7 +582,7 @@ export class LlmRows {
   constructor(private readonly fields: { url: HTMLInputElement; model: HTMLInputElement; key: HTMLInputElement }, private readonly say: (text: string) => void) {
     const add = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">New</button>'), del = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Remove</button>'), bar = el('<div class="cv-improve"></div>');
     bar.append(add, del);
-    this.el.append(row('Saved models', this.pick), bar, row('Name', this.name), row('Reads pictures', this.vision));
+    this.el.append(row('Saved models', this.pick), bar, row('Name', this.name), row('Reads pictures', toggleOf(this.vision)));
     this.name.addEventListener('keydown', (e) => e.stopPropagation());
     this.pick.addEventListener('change', () => void this.use());
     add.addEventListener('click', () => {

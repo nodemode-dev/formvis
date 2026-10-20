@@ -309,14 +309,6 @@ const SHELL = `<div class="cv-app">
 <div class="cv-tb-doc"></div>
 <div class="cv-tb-app">formvis 2026</div>
 <div class="cv-zoom">
-<button class="cv-icon-btn" type="button" data-cmd="undo">${icon('undo', 16)}</button>
-<button class="cv-icon-btn" type="button" data-cmd="redo">${icon('redo', 16)}</button>
-<span class="cv-sep"></span>
-<button class="cv-icon-btn" type="button" data-cmd="zoom-out">${icon('zoomOut', 16)}</button>
-<span class="cv-zoom-label"></span>
-<button class="cv-icon-btn" type="button" data-cmd="zoom-in">${icon('zoomIn', 16)}</button>
-<button class="cv-icon-btn" type="button" data-cmd="fit">${icon('fitView', 16)}</button>
-<span class="cv-sep"></span>
 <button class="cv-icon-btn" type="button" data-cmd="settings">${icon('settings', 16)}</button>
 <button class="cv-icon-btn cv-sheet-btn" type="button" data-cmd="sheet-tools" aria-label="Tools" title="Tools">${icon('tBrush', 16)}</button>
 <button class="cv-icon-btn cv-sheet-btn" type="button" data-cmd="sheet-panels" aria-label="Panels" title="Panels">${icon('layers', 16)}</button>
@@ -613,8 +605,9 @@ export function startApp(): void {
   let dockRef: Dock | null = null;   // the side column shows only while it holds a shown panel (panels move: the Dock)
   const propsShown = (): boolean => stored('formvis.propsCol') !== 'hidden';
   const sideOpen = (): boolean => propsShown() && (dockRef ? dockRef.sideShown() > 0 : true);
-  const syncPropsCol = (): void => { setHidden(q(root, '.cv-props-col'), !sideOpen()); setStyleVar(root, '--cv-props-w', sideOpen() ? '46px' : '0px'); Viewport.insetRight = sideOpen() && !PropertiesColumn.showingCollapsed ? PropertiesColumn.openWidth() - 46 : 0; };   // the strip's track only: expanded, the column lies over the canvas (the owner's walkthrough), and fitting leaves it out
+  const syncPropsCol = (): void => { setHidden(q(root, '.cv-props-col'), !sideOpen()); setStyleVar(root, '--cv-props-w', sideOpen() ? '46px' : '0px'); Viewport.insetRight = sideOpen() && !PropertiesColumn.showingCollapsed && !root.matches('.is-panels-hidden, .is-dock-hidden') ? PropertiesColumn.openWidth() - 46 : 0; stage.layoutChanged(); };   // the strip's track only: expanded, the column lies over the canvas (the owner's walkthrough), and fitting leaves it out
   syncPropsCol();
+  window.addEventListener('resize', () => syncPropsCol());
   new NavigatorPanel(q(root, '.cv-layers'), engine);
   // Window > Generate: generative fill, models, ComfyUI and NodeMode in the dock; every button runs its own command.
   const generatePanel = new GeneratePanel(q(root, '.cv-layers'), engine, {
@@ -5994,7 +5987,6 @@ export function startApp(): void {
   tabMenu.setItems(['close-tab', 'close-others', 'close-tabs-right', 'close-all', '-', 'pin-tab', 'reopen-closed-tab', '-', 'next-document', 'previous-document']);
   const tabs = new Tabs(q(root, '.cv-tab-strip'), engine, (id) => void (engine.closeSpareView(id) || requestClose(id)), (_id, x, y) => tabMenu.openAt(x, y), q(root, '.cv-tb-doc'));   // a further view closes first; the document stays open while one remains (36.16)
 
-  const zoomLabel = q(root, '.cv-zoom-label');
   let chromeFrame = 0;
   const syncChrome = (): void => {
     if (chromeFrame) return;
@@ -6010,8 +6002,6 @@ export function startApp(): void {
         setTitle(b, why || (keys ? `${label} (${keys})` : label));
         if (b.classList.contains('cv-icon-btn') && b.getAttribute('aria-label') !== label) b.setAttribute('aria-label', label);
       }
-      const p = engine.current;
-      setText(zoomLabel, p ? `${Math.round(p.viewport.zoom * 100)}%` : '');
     });
   };
   for (const k of ['projects', 'history', 'active', 'doc', 'selection', 'viewport', 'options', 'tool'] as const) engine.on(k, syncChrome);

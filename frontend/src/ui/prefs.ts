@@ -108,7 +108,7 @@ export interface PagePrefs {
   /** Preferences > Interface: a single channel is shown in its own colour, and the line drawn round the picture on the canvas. */
   channelsColour: boolean; canvasBorder: CanvasBorder; dynamicSliders: boolean;
   /** Preferences > Interface: the scroll indicators over the canvas, and how far past the picture's edge the view scrolls (percent of the view). */
-  canvasScrollbarsShown: boolean; overscroll: number;
+  canvasScrollbarsShown: boolean; canvasOverscroll: number;
   /** Preferences > File Handling: ask before a TIFF export keeps layers. Preferences > Type: type sizes are shown in points or pixels. */
   askLayeredTiff: boolean; typeUnits: TypeUnits;
   /** Preferences > Interface: the themes marked as favourites (right-click a swatch); they come first in the picker and View > Next Favourite Theme steps through them. */
@@ -133,7 +133,7 @@ export type TypeUnits = 'px' | 'pt';
 export const PAGE_DEFAULTS: PagePrefs = { scratchFolder: '', cursorOnlyCross: false, cursorOther: 'standard', brushPreviewColor: '#ff0000', checkerA: '#ffffff', checkerB: '#cccccc',
   printRes: 300, screenRes: 72, colWidth: 15, gutter: 4.2,
   showExtPanels: true, smartQuotes: false, escCommit: false, placeholderText: false, pinchZoom: true, trackpadRotate: false, scrubAccel: 0, touchGestures: true,
-  tipHardness: true, snapVectorPx: false, transformReadout: true, rolloverHighlight: true, flickPan: true, channelsColour: false, canvasBorder: 'line', dynamicSliders: true, canvasScrollbarsShown: false, overscroll: 50, askLayeredTiff: true, typeUnits: 'px', favouriteThemes: [], exportClipboard: true, exifColourTag: false, openAsTabs: true, legacyTransform: false, lowResPreviews: false, displayServer: 'auto', gpuBrushCoverage: true, glyphProtection: true, fontNamesEnglish: false };
+  tipHardness: true, snapVectorPx: false, transformReadout: true, rolloverHighlight: true, flickPan: true, channelsColour: false, canvasBorder: 'line', dynamicSliders: true, canvasScrollbarsShown: false, canvasOverscroll: 100, askLayeredTiff: true, typeUnits: 'px', favouriteThemes: [], exportClipboard: true, exifColourTag: false, openAsTabs: true, legacyTransform: false, lowResPreviews: false, displayServer: 'auto', gpuBrushCoverage: true, glyphProtection: true, fontNamesEnglish: false };
 const hex = (v: unknown, d: string, blank = false): string => (typeof v === 'string' && (blank ? /^(#[0-9a-f]{6})?$/i : /^#[0-9a-f]{6}$/i).test(v) ? v : d);
 const flag = (v: unknown, d: boolean): boolean => (typeof v === 'boolean' ? v : d);
 const pageOf = (r: Partial<Record<keyof PagePrefs, unknown>>): PagePrefs => {
@@ -146,7 +146,7 @@ const pageOf = (r: Partial<Record<keyof PagePrefs, unknown>>): PagePrefs => {
     pinchZoom: flag(r.pinchZoom, d.pinchZoom), trackpadRotate: flag(r.trackpadRotate, d.trackpadRotate), scrubAccel: Math.round(num(r.scrubAccel, 0, 100, d.scrubAccel)), touchGestures: flag(r.touchGestures, d.touchGestures),
     tipHardness: flag(r.tipHardness, d.tipHardness), snapVectorPx: flag(r.snapVectorPx, d.snapVectorPx), transformReadout: flag(r.transformReadout, d.transformReadout), rolloverHighlight: flag(r.rolloverHighlight, d.rolloverHighlight), flickPan: flag(r.flickPan, d.flickPan),
     channelsColour: flag(r.channelsColour, d.channelsColour), dynamicSliders: flag(r.dynamicSliders, d.dynamicSliders), canvasBorder: r.canvasBorder === 'none' || r.canvasBorder === 'shadow' ? r.canvasBorder : 'line',
-    canvasScrollbarsShown: flag(r.canvasScrollbarsShown, d.canvasScrollbarsShown), overscroll: Math.round(num(r.overscroll, 0, 100, d.overscroll)),
+    canvasScrollbarsShown: flag(r.canvasScrollbarsShown, d.canvasScrollbarsShown), canvasOverscroll: Math.round(num(r.canvasOverscroll, 0, 100, d.canvasOverscroll)),
     askLayeredTiff: flag(r.askLayeredTiff, d.askLayeredTiff), typeUnits: r.typeUnits === 'pt' ? 'pt' : 'px',
     exportClipboard: flag(r.exportClipboard, d.exportClipboard), exifColourTag: flag(r.exifColourTag, d.exifColourTag), openAsTabs: flag(r.openAsTabs, d.openAsTabs),
     legacyTransform: flag(r.legacyTransform, d.legacyTransform), lowResPreviews: flag(r.lowResPreviews, d.lowResPreviews), displayServer: r.displayServer === 'x11' || r.displayServer === 'wayland' ? r.displayServer : 'auto',
@@ -539,7 +539,7 @@ export function applyPrefs(engine: Engine, p: Prefs): void {
   engine.zoomPrefs = { animate: p.animatedZoom, centreClick: p.zoomClickCentre };
   const wasColour = engine.toolPrefs.channelsColour, wasUnits = engine.toolPrefs.typeUnits, wasDyn = engine.toolPrefs.dynamicSliders;
   engine.toolPrefs = { tipHardness: p.tipHardness, snapPx: p.snapVectorPx, readout: p.transformReadout, rollover: p.rolloverHighlight, flick: p.flickPan, channelsColour: p.channelsColour, typeUnits: p.typeUnits, dynamicSliders: p.dynamicSliders };
-  engine.overscroll = p.overscroll;
+  engine.overscroll = p.canvasOverscroll;
   if (engine.canvasScrollbars !== p.canvasScrollbarsShown) engine.setCanvasScrollbars(p.canvasScrollbarsShown);
   if (wasDyn !== p.dynamicSliders) window.dispatchEvent(new Event('formvis:dynamic-sliders'));
   if (wasColour !== p.channelsColour) window.dispatchEvent(new Event('formvis:channels-colour'));

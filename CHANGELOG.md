@@ -4,6 +4,16 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.91.9 · 2026-10-20
+
+- Preferences mirror NodeMode's settings window: a collapsible rail with its own icon for every section (labels when open, icons only when collapsed, remembered per device), a fixed-size window with a header, and labelled groups in every section.
+- Preferences: every on/off setting is a toggle switch, label left and switch right; keyboard and focus ring kept.
+- Home: the Start page has one New document, one Open and one Generate an image; the header no longer repeats them.
+- Undo, Redo, Zoom Out, Zoom In and Fit moved from the title bar to the status bar, sharing its editable zoom percent; the tool hint keeps its room.
+- Canvas: the scrollbars stay off by default and, when turned on, sit inside the visible canvas instead of under the Properties column; Canvas Overscroll defaults to 100% (stored under a new key so saved profiles take it).
+- Smart Sharpen no longer darkens or rings the layer edges (transparent padding was read as black); its 16 and 32-bit path is wired back and matches the 8-bit result within rounding.
+- Giant tiled layers paint with every Brush Settings shape and scattering option, identical to an ordinary layer.
+
 ## 1.91.8 · 2026-10-20
 
 - Canvas: the scrollbars are hidden by default, including for profiles that saved them on; Preferences and View > Canvas Scrollbars turn them back on.

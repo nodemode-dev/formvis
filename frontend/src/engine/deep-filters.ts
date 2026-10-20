@@ -19,7 +19,7 @@ import { fromRgb, toRgb } from './filters-lib/other';
 import { KERNELS, MATRICES } from './filters-lib/dither';
 import type { SpinSettings } from './filters-lib/gallery';
 import type { LibImage } from './filter-library';
-import { gauss, line, type SmartSharpenSettings } from './filters-more';
+import { weightedBlur, type SmartSharpenSettings } from './filters-more';
 
 /** Each pixel blurred by its own radius from a stack of float Gaussian blurs (the 8 bit gallery's levels), interpolated between the two nearest. */
 export function variableBlurDeep(src: DeepPixels, m: RadiusMap): DeepPixels {
@@ -664,7 +664,9 @@ export function smartSharpenDeep(src: DeepPixels, s: SmartSharpenSettings, ceili
   const out = new Float32Array(src.data);
   if (src.n !== 3) return { ...src, data: out };
   const { width: w, height: h } = src, S = 4, n = w * h, r = Math.max(0.1, s.radius), amt = s.amount / 100, gate = (s.noise / 100) * 0.08, d = src.data;
-  const blur = (p: Float32Array): Float32Array => (s.remove === 'motion' ? line(p, w, h, r * 2, s.angle) : gauss(p, w, h, s.remove === 'lens' ? r / 2 : r));
+  const wa = new Float32Array(n);
+  for (let i = 0; i < n; i++) wa[i] = d[i * S + 3];
+  const blur = weightedBlur(w, h, wa, s.remove === 'motion' ? 'line' : 'gauss', s.remove === 'motion' ? r * 2 : s.remove === 'lens' ? r / 2 : r, s.angle);
   const L = new Float32Array(n);
   for (let i = 0; i < n; i++) L[i] = 0.299 * d[i * S] + 0.587 * d[i * S + 1] + 0.114 * d[i * S + 2];
   for (let c = 0; c < 3; c++) {
@@ -687,6 +689,7 @@ export function smartSharpenDeep(src: DeepPixels, s: SmartSharpenSettings, ceili
       sharp = est;
     }
     for (let i = 0; i < n; i++) {
+      if (wa[i] === 0) continue;
       let diff = sharp[i] - obs[i];
       if (gate > 0) { const m = Math.abs(diff); diff *= m >= gate ? 1 : m / gate; }
       const fade = 1 - (s.shadows / 100) * Math.max(0, 1 - L[i] / 0.5) - (s.highlights / 100) * Math.max(0, (L[i] - 0.5) / 0.5);
@@ -746,7 +749,7 @@ export interface DeepEnv { area: { x: number; y: number; w: number; h: number };
 export const DEEP_FRAMED: readonly string[] = ['offset', 'mosaic', 'crystallize', 'oilPaint', 'lightingEffects', 'filterGallery', 'tiles', 'extrude', 'pointillize', 'colorHalftone', 'mezzotint', 'clouds', 'differenceClouds', 'fibers', 'lensFlare', 'haze', 'spinBlur', 'displace'];
 
 /** Float filters whose colour logic is red, green and blue (brightness, fixed colours): on CMYK and Lab layers they run through viaRgbDeep. */
-export const DEEP_RGB_ONLY: readonly string[] = ['oilPaint', 'lightingEffects', 'filterGallery', 'tiles', 'extrude', 'smartBlur', 'reduceNoise', 'pointillize', 'colorHalftone', 'clouds', 'differenceClouds', 'fibers', 'lensFlare', 'scanlines', 'ntscColors', 'colorToAlpha', 'tonalContrast', 'hsbHsl', 'haze', 'grainPlate', 'dither'];
+export const DEEP_RGB_ONLY: readonly string[] = ['oilPaint', 'lightingEffects', 'filterGallery', 'tiles', 'extrude', 'smartBlur', 'reduceNoise', 'pointillize', 'colorHalftone', 'clouds', 'differenceClouds', 'fibers', 'lensFlare', 'scanlines', 'ntscColors', 'colorToAlpha', 'tonalContrast', 'hsbHsl', 'haze', 'grainPlate', 'dither', 'smartSharpen'];
 
 const unit = (c: readonly [number, number, number]): [number, number, number] => [c[0] / 255, c[1] / 255, c[2] / 255];
 
@@ -853,4 +856,4 @@ export function deepLibFilter(kind: string, values: Record<string, unknown>, cei
 }
 
 /** The library filters that run in float at depth, for the filter dialog's note and the agent's description. */
-export const DEEP_LIB_KINDS: readonly string[] = ['blur', 'blurMore', 'boxBlur', 'sharpen', 'sharpenMore', 'sharpenEdges', 'highPass', 'maximum', 'minimum', 'median', 'dustAndScratches', 'emboss', 'findEdges', 'solarize', 'custom', 'offset', 'mosaic', 'despeckle', 'fragment', 'facet', 'crystallize', 'diffuse', 'wind', 'oilPaint', 'lightingEffects', 'filterGallery', 'traceContour', 'tiles', 'extrude', 'smartBlur', 'shapeBlur', 'reduceNoise', 'pointillize', 'colorHalftone', 'mezzotint', 'clouds', 'differenceClouds', 'fibers', 'lensFlare', 'scanlines', 'deInterlace', 'ntscColors', 'colorToAlpha', 'tonalContrast', 'hsbHsl', 'haze', 'grainPlate', 'dither', 'spinBlur', 'displace', ...DEEP_DISTORT];
+export const DEEP_LIB_KINDS: readonly string[] = ['blur', 'blurMore', 'boxBlur', 'sharpen', 'sharpenMore', 'sharpenEdges', 'highPass', 'maximum', 'minimum', 'median', 'dustAndScratches', 'emboss', 'findEdges', 'solarize', 'custom', 'offset', 'mosaic', 'despeckle', 'fragment', 'facet', 'crystallize', 'diffuse', 'wind', 'oilPaint', 'lightingEffects', 'filterGallery', 'traceContour', 'tiles', 'extrude', 'smartBlur', 'shapeBlur', 'reduceNoise', 'pointillize', 'colorHalftone', 'mezzotint', 'clouds', 'differenceClouds', 'fibers', 'lensFlare', 'scanlines', 'deInterlace', 'ntscColors', 'colorToAlpha', 'tonalContrast', 'hsbHsl', 'haze', 'grainPlate', 'dither', 'spinBlur', 'displace', 'smartSharpen', ...DEEP_DISTORT];

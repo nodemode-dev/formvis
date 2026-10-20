@@ -2,7 +2,7 @@ import { el, setHidden, setText } from '../dom';
 import { api } from '../../io/api';
 import { CANVAS_BORDERS, DISPLAY_SERVERS, type Prefs } from '../prefs';
 import { loadExportPrefs, saveExportPrefs } from '../../io/export-prefs';
-import { checkRow, selectRow, sliderRow, numberRow } from './controls';
+import { toggleRow as checkRow, selectRow, sliderRow, numberRow } from './controls';
 import { ScratchSection } from './scratch-section';
 
 type Patch = Partial<Prefs>;
@@ -51,7 +51,7 @@ export class PagePrefsRows {
   private readonly dynamicSliders =checkRow('Dynamic Color Sliders', (v) => this.change({ dynamicSliders: v }));
   private readonly border = selectRow('Canvas Border', CANVAS_BORDERS, (v) => this.change({ canvasBorder: v === 'none' || v === 'shadow' ? v : 'line' }));
   private readonly scrollbars = checkRow('Show Canvas Scrollbars', (v) => this.change({ canvasScrollbarsShown: v }));
-  private readonly overscroll = sliderRow('Canvas Overscroll (% of the view)', 0, 100, 5, (v) => this.change({ overscroll: v }));
+  private readonly overscroll = sliderRow('Canvas Overscroll (% of the view)', 0, 100, 5, (v) => this.change({ canvasOverscroll: v }));
   private readonly maximize = checkRow('Maximize PSD and PSB File Compatibility', (v) => saveExportPrefs({ ...loadExportPrefs(), maximizePsd: v }));
   private readonly exifTag = checkRow('Write EXIF Color Space Tag', (v) => this.change({ exifColourTag: v }));
   private readonly askTiff = checkRow('Ask Before Saving Layered TIFF Files', (v) => this.change({ askLayeredTiff: v }));
@@ -112,7 +112,7 @@ export class PagePrefsRows {
     this.pinch.set(p.pinchZoom); this.rotate.set(p.trackpadRotate); this.accel.set(p.scrubAccel); this.touch.set(p.touchGestures);
     this.extPanels.set(p.showExtPanels);
     this.tipHardness.set(p.tipHardness); this.snapPx.set(p.snapVectorPx); this.readout.set(p.transformReadout); this.rollover.set(p.rolloverHighlight); this.flick.set(p.flickPan);
-    this.scrollbars.set(p.canvasScrollbarsShown); this.overscroll.set(p.overscroll);
+    this.scrollbars.set(p.canvasScrollbarsShown); this.overscroll.set(p.canvasOverscroll);
     this.channelsColour.set(p.channelsColour); this.dynamicSliders.set(p.dynamicSliders); this.exportClip.set(p.exportClipboard); this.border.set(p.canvasBorder); this.askTiff.set(p.askLayeredTiff); this.exifTag.set(p.exifColourTag); this.typeUnits.set(p.typeUnits);
     this.maximize.set(loadExportPrefs().maximizePsd);
     this.legacyTransform.set(p.legacyTransform); this.lowRes.set(p.lowResPreviews); this.gpuBrush.set(p.gpuBrushCoverage); this.displayServer.set(p.displayServer);

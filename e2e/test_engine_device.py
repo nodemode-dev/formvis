@@ -12,7 +12,7 @@ def test_the_engine_processor_is_chosen_and_the_engine_says_what_it_uses(page):
     try:
         reset(page)
         page.keyboard.press("Control+Comma")
-        page.locator(DLG + " .cv-prefs-tab", has_text="Performance").click()
+        page.locator(DLG + " .cv-prefs-railtab", has_text="Performance").click()
         # This sandbox's ONNX Runtime has neither CUDA nor Core ML: Automatic runs on the CPU and says why.
         page.wait_for_function(f"document.querySelector('{MODE}').textContent.startsWith('Engine: CPU')")
         assert "Automatic" in page.locator(MODE).inner_text()

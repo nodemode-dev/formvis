@@ -14,7 +14,7 @@ def test_the_gpu_is_detected_and_automatic_skips_a_software_one(page):
         assert page.evaluate(GPU_STATUS) == "GPU: CPU"                                    # this sandbox has only software GPUs
         assert "software" in page.evaluate("document.querySelector('.cv-st-gpu').title")
         page.keyboard.press("Control+Comma")
-        page.locator(DLG + " .cv-prefs-tab", has_text="Performance").click()
+        page.locator(DLG + " .cv-prefs-railtab", has_text="Performance").click()
         name = page.locator(DLG + " .cv-gpu-name").inner_text()
         assert "(software)" in name, name
         sel = page.locator(DLG + " .cv-prefs-page:not([hidden]) .cv-field", has_text="Renderer").locator("select")

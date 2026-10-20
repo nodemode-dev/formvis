@@ -31,7 +31,7 @@ export class CaptionButtons {
     header.append(this.box);
     if (wantsOverlayTitleBar()) {
       document.documentElement.classList.add('has-overlay-titlebar');
-      for (const n of [header, ...header.querySelectorAll('.cv-tb-doc, .cv-tb-app, .cv-zoom, .cv-sep, .cv-zoom-label, .cv-title-tools')]) n.setAttribute('data-tauri-drag-region', '');
+      for (const n of [header, ...header.querySelectorAll('.cv-tb-doc, .cv-tb-app, .cv-zoom, .cv-title-tools')]) n.setAttribute('data-tauri-drag-region', '');
     }
     this.box.addEventListener('click', (e) => {
       const b = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-cap]') : null;
