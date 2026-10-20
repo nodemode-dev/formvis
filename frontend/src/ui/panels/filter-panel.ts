@@ -1051,7 +1051,7 @@ export class FilterPanel extends Dialog {
     const p = this.engine.current;
     if (!p || ((p.doc.depth ?? 8) === 8 && p.doc.mode !== 'cmyk')) return false;
     if (isLibKind(kind) && libFilter(kind).fills && (settings.lib as Record<string, Record<string, unknown> | undefined> | undefined)?.[kind]?.newLayer === true) return false;
-    const s = { ...this.s, ...(settings as Partial<typeof this.s>) }, seed = typeof settings.seed === 'number' ? settings.seed : this.seed, ceiling = p.doc.depth === 32 ? Infinity : 1;
+    const s = { ...this.s, ...(settings as Partial<typeof this.s>) }, seed = typeof settings.seed === 'number' ? settings.seed : this.seed, ceiling = p.doc.depth === 32 && p.doc.mode !== 'lab' && p.doc.mode !== 'cmyk' ? Infinity : 1;
     const lay = p.activeLayer, frame = lay?.channels ? this.engine.filterFrame(p, lay.transform, lay.channels.width, lay.channels.height) : null;
     const env = frame ? { area: frame.area, canvas: frame.canvas, doc: frame.doc, fg: s.colors.fg, bg: s.colors.bg } : undefined;
     if (kind === 'develop') {

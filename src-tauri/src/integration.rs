@@ -12,6 +12,8 @@ const NAME: &str = "ai.nodemode.formvis";
 const ENTRY: &str = include_str!("../../packaging/linux/ai.nodemode.formvis.desktop");
 const MIME: &str = include_str!("../../packaging/linux/ai.nodemode.formvis.xml");
 const ICON: &[u8] = include_bytes!("../icons/128x128.png");
+const LAUNCH: &str = include_str!("../../packaging/linux/formvis-launch");
+const CHECK: &str = include_str!("../../setup/libcheck");
 
 /// The AppImage that is running, from the variable its runtime sets.
 pub fn appimage() -> Option<PathBuf> {
@@ -43,13 +45,31 @@ fn exec_quote(path: &str) -> String {
     out
 }
 
-/// The packaged desktop file with its Exec line pointing at this AppImage.
-fn entry_text(image: &Path) -> String {
+/// The start-up wrapper the launcher runs: the one lying beside the AppImage when there is one, else the copy written into the
+/// person's data folder (with the library check it runs first).
+fn wrapper(image: &Path, home: &Path) -> PathBuf {
+    let beside = image.with_file_name("formvis-launch");
+    if beside.is_file() {
+        beside
+    } else {
+        home.join("formvis").join("formvis-launch")
+    }
+}
+
+/// The packaged desktop file with its Exec line starting this AppImage through the wrapper.
+fn entry_text(image: &Path, home: &Path) -> String {
     let path = image.to_string_lossy();
+    let wrap = wrapper(image, home);
+    let wrap = wrap.to_string_lossy();
     let mut out = String::new();
     for line in ENTRY.lines() {
         if line.starts_with("Exec=") {
-            out.push_str(&format!("Exec={} %F\nTryExec={}\n", exec_quote(&path), path));
+            out.push_str(&format!(
+                "Exec=env {} {} %F\nTryExec={}\n",
+                exec_quote(&format!("FORMVIS_PROGRAM={path}")),
+                exec_quote(&wrap),
+                wrap
+            ));
         } else {
             out.push_str(line);
             out.push('\n');
@@ -62,8 +82,10 @@ fn entry_path(home: &Path) -> PathBuf {
     home.join("applications").join(format!("{NAME}.desktop"))
 }
 
-fn files(home: &Path) -> [PathBuf; 3] {
+fn files(home: &Path) -> [PathBuf; 5] {
     [
+        home.join("formvis").join("formvis-launch"),
+        home.join("formvis").join("libcheck"),
         entry_path(home),
         home.join("icons")
             .join("hicolor")
@@ -90,9 +112,11 @@ fn refresh(home: &Path) {
 /// Writes the launcher, the icon and the file types for this AppImage into the person's data folder.
 pub fn add(image: &Path) -> Result<(), String> {
     let home = data_home().ok_or_else(|| "there is no home folder to put the launcher in".to_string())?;
-    let [entry, icon, mime] = files(&home);
+    let [launch, check, entry, icon, mime] = files(&home);
     for (file, bytes) in [
-        (entry, entry_text(image).into_bytes()),
+        (launch, LAUNCH.as_bytes().to_vec()),
+        (check, CHECK.as_bytes().to_vec()),
+        (entry, entry_text(image, &home).into_bytes()),
         (icon, ICON.to_vec()),
         (mime, MIME.as_bytes().to_vec()),
     ] {
@@ -100,6 +124,11 @@ pub fn add(image: &Path) -> Result<(), String> {
             std::fs::create_dir_all(dir).map_err(|err| format!("{}: {err}", dir.display()))?;
         }
         std::fs::write(&file, bytes).map_err(|err| format!("{}: {err}", file.display()))?;
+        #[cfg(unix)]
+        if file.file_name().is_some_and(|name| name == "formvis-launch") {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o755));
+        }
     }
     refresh(&home);
     Ok(())
@@ -136,7 +165,7 @@ pub fn first_run(handle: &tauri::AppHandle) {
     match std::fs::read_to_string(&marker).unwrap_or_default().trim() {
         "declined" => {}
         "added" => {
-            let moved = data_home().and_then(|home| std::fs::read_to_string(entry_path(&home)).ok()).is_some_and(|text| text != entry_text(&image));
+            let moved = data_home().and_then(|home| std::fs::read_to_string(entry_path(&home)).ok().map(|text| (text, entry_text(&image, &home)))).is_some_and(|(text, wanted)| text != wanted);
             if moved {
                 let _ = add(&image);
             }

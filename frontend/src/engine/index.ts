@@ -3675,7 +3675,7 @@ export class Engine {
       const c = composeFloat(p.doc, 3, false);
       if (!('error' in c)) for (const k of this.channelsHidden) if (k < 3) for (let i = k; i < c.data.length; i += 4) c.data[i] = 0.5;
       if (!('error' in c)) { r = new Raster(c.width, c.height); const img = r.ctx.createImageData(c.width, c.height); renderLab(c.data, img.data); r.ctx.putImageData(img, 0, 0); r.touch(); }
-    } else if (p.doc.depth === 32) {
+    } else if (linearLight(p.doc)) {
       const c = composeFloat(p.doc, 3, false, null, true);
       if (!('error' in c)) r = rasterFromDeep({ mode: 'rgb', n: 3, width: c.width, height: c.height, data: c.data }, true);
     } else {
@@ -5307,7 +5307,7 @@ export class Engine {
     }
     if (st.target === 'pixels' && st.project.layer(st.layerId)?.shape) st.project.updateLayer(st.layerId, { shape: null });
     const dl = patch && st.target === 'pixels' && ((st.project.doc.depth ?? 8) > 8 || st.project.doc.mode === 'cmyk' || st.project.doc.mode === 'lab') ? st.project.layer(st.layerId) : null;
-    const exact = (this.tool === 'brush' || this.tool === 'pencil' || this.tool === 'eraser') && !this.colourDynamics() && (st.project.doc.depth !== 32 || st.project.doc.mode === 'lab');
+    const exact = (this.tool === 'brush' || this.tool === 'pencil' || this.tool === 'eraser') && !this.colourDynamics() && !linearLight(st.project.doc);
     if (patch && exact && dl?.channels?.mode === 'rgb' && dl.raster === patch.raster) {
       const after = patch.raster.ctx.getImageData(patch.x, patch.y, patch.before.width, patch.before.height);
       const erasing = this.brushMode === 'erase' || this.tool === 'eraser', cover = erasing === (st.s.op === 'destination-out') ? st.s.coverFor(patch.x, patch.y, patch.before.width, patch.before.height) : null;
@@ -12314,8 +12314,7 @@ export class Engine {
     if (!p || from === depth) return false;
     if (p.doc.mode === 'cmyk' || p.doc.mode === 'lab') {
       // CMYK and Lab (1.57.8): their ink and Lab values are floats already, so 16 bits changes only how
-      // files keep them; Lab keeps the same floats at 32 bits (not linear light), CMYK needs RGB first.
-      if (depth === 32 && p.doc.mode !== 'lab') return false;
+      // files keep them; both keep the same floats at 32 bits (ink values and Lab values, not linear light).
       return this.edit(`${depth} Bits/Channel`, (pp) => { pp.doc = { ...pp.doc, depth }; return true; });
     }
     // 32 bits are linear light (1.53.9): up, the encoded values are linearised; down, Exposure and Gamma bring them in.

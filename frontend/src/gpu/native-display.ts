@@ -22,9 +22,12 @@ const affine = (m: Mat): number[] | null => (isIdentity(m) ? null : [m[0], m[2],
 const GROUP_BLENDS: ReadonlySet<string> = new Set(['normal', 'multiply', 'screen', 'lighten', 'luminosity', 'soft-light', 'linear-burn', 'subtract', 'color', 'negation', 'overlay', 'difference', 'darken', 'exclusion', 'hard-light', 'color-dodge', 'linear-light', 'pin-light', 'divide', 'glow', 'hue', 'saturation', 'color-burn', 'reflect', 'vivid-light']);
 
 /** The folder blend modes a folder holding clipped layers was measured in within two levels of the CPU renderer. */
-const CLIPPED_GROUP_BLENDS: ReadonlySet<string> = new Set(['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'luminosity', 'color']);
+const CLIPPED_GROUP_BLENDS: ReadonlySet<string> = new Set(['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'luminosity', 'color', 'hue', 'difference']);
 
-const foldersWithin = (list: readonly DisplayLayer[]): boolean => list.some((x) => !!x.folders?.length || (!!x.sub && foldersWithin(x.sub)));
+/** The blend modes of a clipped layer inside a Hue folder that were measured within two levels of the CPU renderer. */
+const HUE_CLIPPED_CHILD: ReadonlySet<string> = new Set(['multiply', 'overlay', 'hue', 'difference', 'darken', 'lighten']);
+
+const foldersWithin =(list: readonly DisplayLayer[]): boolean => list.some((x) => !!x.folders?.length || (!!x.sub && foldersWithin(x.sub)));
 
 export class NativeDisplay implements ScreenDisplay {
   onLost: (() => void) | null = null;
@@ -63,10 +66,10 @@ export class NativeDisplay implements ScreenDisplay {
       if (l.sub) {
         if (l.sub.some((x) => x.clip)) {
           if (!CLIPPED_GROUP_BLENDS.has(l.blend)) return 'a folder with clipped layers in a blend mode the native renderer does not match the CPU in yet';
+          if (l.blend === 'hue' && l.sub.some((x) => x.clip && !HUE_CLIPPED_CHILD.has(x.blend))) return 'a Hue folder with a clipped layer in a blend mode the native renderer does not match the CPU in yet';
           if (l.mask || foldersWithin(l.sub)) return 'a masked folder with clipped layers, which the native renderer does not match the CPU in within two levels yet';
         }
         if (!GROUP_BLENDS.has(l.blend)) return 'a folder in a blend mode the native renderer does not match the CPU in yet';
-        if ((l.blend === 'hue' || l.blend === 'reflect' || l.blend === 'vivid-light') && (l.mask || l.folders?.length || foldersWithin(l.sub))) return 'a masked folder in Hue, Reflect or Vivid Light, which the native renderer does not match the CPU in within two levels yet';
         const inner = this.unsupported(l.sub);
         if (inner) return inner;
         continue;

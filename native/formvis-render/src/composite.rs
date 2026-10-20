@@ -279,7 +279,10 @@ fn body(pos: vec4<f32>) -> vec4<f32> {
     cov = cov * textureLoad(base_tile, px, 0).a * comp.base_opacity * mask_cover(comp.base_has_mask, base_mask_tile, px, comp.base_mask_at, pos.xy);
   }
   // A coverage pass (mode 103): the coverage so far, bound as the backdrop, times this pass's mask and clip; no colour.
-  if (comp.mode == 103u) { return vec4<f32>(0.0, 0.0, 0.0, cov * bd.a); }
+  if (comp.mode == 103u) {
+    if (comp.has_clip == 0u && comp.mask_at.placed == 0u && comp.pad2 == 1u) { return vec4<f32>(0.0, 0.0, 0.0, floor(round(cov * 255.0) * round(bd.a * 255.0) / 255.0 + 0.5) / 255.0); }
+    return vec4<f32>(0.0, 0.0, 0.0, cov * bd.a);
+  }
   // A Threshold adjustment (mode 105), as the web renderer's integer rule: 299 r + 587 g + 114 b >= 1000 level on the
   // 8-bit backdrop, white or black, mixed in by opacity and coverage; alpha kept.
   if (comp.mode == 105u) {
@@ -368,6 +371,23 @@ fn body(pos: vec4<f32>) -> vec4<f32> {
   } else {
     s0 = textureLoad(source, px, 0);
   }
+  var ex = false;
+  if (comp.pad2 == 1u && comp.pad1 == 0u && comp.transformed == 0u && comp.bi_ch == 0u && comp.ko_on == 0u && comp.ch_off == 0u && comp.mode < 100u && comp.mask_at.placed == 0u && comp.base_mask_at.placed == 0u && (comp.has_clip == 1u || comp.has_mask == 1u)) {
+    var mo = 255.0;
+    if (comp.has_mask == 1u) { mo = round(textureLoad(mask_tile, px, 0).a * 255.0); }
+    var mc = 255.0;
+    if (comp.has_clip == 1u) {
+      mc = round(textureLoad(base_tile, px, 0).a * 255.0);
+      if (comp.pad3 == 0u) {
+        mc = floor(mc * round(comp.base_opacity * 255.0) / 255.0 + 0.5);
+        if (comp.base_has_mask == 1u) { mc = floor(mc * round(textureLoad(base_mask_tile, px, 0).a * 255.0) / 255.0 + 0.5); }
+      }
+    }
+    let m8 = floor(mo * mc / 255.0 + 0.5);
+    if (m8 < 255.0) { s0 = vec4<f32>(floor(round(s0.rgb * 255.0) * m8 / 255.0 + 0.5) / 255.0, floor(round(s0.a * 255.0) * m8 / 255.0 + 0.5) / 255.0); }
+    cov = 1.0;
+    ex = true;
+  }
   var sc = s0;
   if (s0.a > 0.0 && comp.pad1 == 0u) { sc = vec4<f32>(s0.rgb / s0.a, s0.a); }  let m = comp.mode;
   if (m == 1u || m == 5u || m == 6u || m == 11u || (m >= 15u && m <= 18u) || m == 21u || m == 22u || m >= 27u) {
@@ -395,7 +415,7 @@ fn body(pos: vec4<f32>) -> vec4<f32> {
   let sa = sc.a * comp.opacity * cov * bif;
   if (sa <= 0.0) { return bd; }
   let ab = bd.a;
-  if (comp.pad1 == 0u && m == 0u && comp.opacity >= 1.0 && comp.transformed == 0u && cov == 1.0 && comp.bi_ch == 0u && comp.ko_on == 0u && comp.ch_off == 0u && comp.has_clip == 0u) {
+  if (comp.pad1 == 0u && m == 0u && comp.opacity >= 1.0 && comp.transformed == 0u && cov == 1.0 && comp.bi_ch == 0u && comp.ko_on == 0u && comp.ch_off == 0u && (comp.has_clip == 0u || ex)) {
     let ga = round(sc.a * 255.0);
     let da = round(ab * 255.0);
     let sp = round(s0.rgb * 255.0);
@@ -405,7 +425,7 @@ fn body(pos: vec4<f32>) -> vec4<f32> {
     let r = sp + floor(d * (256.0 - ga) / 256.0);
     return keep(vec4<f32>(clamp(floor(r * 255.0 / ao8 + 0.5), vec3<f32>(0.0), vec3<f32>(255.0)) / 255.0, ao8 / 255.0), bd);
   }
-  if ((comp.pad1 == 1u || comp.pad2 == 1u) && comp.transformed == 0u && cov == 1.0 && comp.bi_ch == 0u && comp.ko_on == 0u && comp.ch_off == 0u && comp.has_clip == 0u && highp_mode(m)) {
+  if ((comp.pad1 == 1u || comp.pad2 == 1u) && comp.transformed == 0u && cov == 1.0 && comp.bi_ch == 0u && comp.ko_on == 0u && comp.ch_off == 0u && (comp.has_clip == 0u || ex) && highp_mode(m)) {
     let ga = round(sc.a * 255.0);
     let da = round(ab * 255.0);
     var sp = round(s0.rgb * 255.0);
@@ -419,7 +439,7 @@ fn body(pos: vec4<f32>) -> vec4<f32> {
     let r = floor(clamp(highp_blend(m, s, sa8, d, dal), vec3<f32>(0.0), vec3<f32>(1.0)) * 255.0 + 0.5);
     return keep(vec4<f32>(clamp(floor(r * 255.0 / ao8 + 0.5), vec3<f32>(0.0), vec3<f32>(255.0)) / 255.0, ao8 / 255.0), bd);
   }
-  if ((comp.pad1 == 1u || comp.pad2 == 1u) && comp.transformed == 0u && cov == 1.0 && comp.bi_ch == 0u && comp.ko_on == 0u && comp.ch_off == 0u && comp.has_clip == 0u && (lowp_mode(m) || (m == 0u && comp.pad1 == 1u && comp.opacity >= 1.0))) {
+  if ((comp.pad1 == 1u || comp.pad2 == 1u) && comp.transformed == 0u && cov == 1.0 && comp.bi_ch == 0u && comp.ko_on == 0u && comp.ch_off == 0u && (comp.has_clip == 0u || ex) && (lowp_mode(m) || (m == 0u && comp.pad1 == 1u && comp.opacity >= 1.0))) {
     let ga = round(sc.a * 255.0);
     let a8 = round(comp.opacity * 255.0);
     let da = round(ab * 255.0);
@@ -1083,10 +1103,11 @@ impl Blender {
     /// The coverage a layer in folders with masks draws through, as one tile (its alpha): the clip base's coverage when
     /// clipped, times each folder mask's. None when no mask covers this tile.
     #[allow(clippy::too_many_arguments)]
-    fn cover(&self, gpu: &Gpu, enc: &mut wgpu::CommandEncoder, l: &Stack, base: Option<&wgpu::Texture>, base_mask: Option<&wgpu::Texture>, base_mask_at: Place, tx: u32, ty: u32) -> Option<wgpu::Texture> {
+    fn cover(&self, gpu: &Gpu, enc: &mut wgpu::CommandEncoder, l: &Stack, base: Option<&wgpu::Texture>, base_mask: Option<&wgpu::Texture>, base_mask_at: Place, tx: u32, ty: u32, grouped: bool) -> Option<wgpu::Texture> {
         let origin = [(tx * TILE) as f32, (ty * TILE) as f32];
         let start = || {
             let mut u: Comp = bytemuck::Zeroable::zeroed();
+            u.pad[1] = grouped as u32;
             u.mode = 103;
             u.opacity = 1.0;
             u.tile_origin = origin;
@@ -1213,7 +1234,7 @@ impl Blender {
                 continue;
             }
             let chained = l.clip.as_ref().is_some_and(|c| c.parent.is_some());
-            let cover = if l.folders.is_empty() && !chained { None } else { self.cover(gpu, &mut enc, l, base, base_mask.as_ref(), base_mask_at, tx, ty) };
+            let cover = if l.folders.is_empty() && !chained { None } else { self.cover(gpu, &mut enc, l, base, base_mask.as_ref(), base_mask_at, tx, ty, grouped) };
             let (inv, stage_origin, stage_size, layer_size) = match placed {
                 Some((o, s, i, ls)) => (i, o, s, ls),
                 None => (Affine::translate(0.0, 0.0), [0.0; 2], [1.0; 2], [0.0; 2]),
@@ -1239,7 +1260,7 @@ impl Blender {
                     Source::Level(v) => v as f32,
                     _ => 0.0,
                 },
-                pad: [matches!(l.source, Source::Group(_)) as u32, grouped as u32, 0],
+                pad: [matches!(l.source, Source::Group(_)) as u32, grouped as u32, cover.is_some() as u32],
                 bi_t: l.blend_if.map_or([0.0; 4], |b| b.this_layer),
                 bi_u: l.blend_if.map_or([0.0; 4], |b| b.underlying),
                 bi_ch: l.blend_if.map_or(0, |b| b.channel),

@@ -16,7 +16,7 @@ import { bitmapPixels, indexedPixels, INDEXED_DEFAULTS, type BitmapMethod, type 
 import { liveText, textKey } from './text';
 import { rasterFromDeep } from './deep';
 import type { PixelPatch } from './history';
-import { BLEND_MODES, docTransform, newLayer, uid, type BlendMode, type ChannelPixels, type Doc, type DocMode, type DocProfile, type ID, type Layer, type RGB } from './types';
+import { BLEND_MODES, docTransform, linearLight, newLayer, uid, type BlendMode, type ChannelPixels, type Doc, type DocMode, type DocProfile, type ID, type Layer, type RGB } from './types';
 import type { ImportedImage } from './index';
 
 /** What the mode methods need of the Engine. `current` and the colours are read live; the colour fields are also set. */
@@ -53,7 +53,7 @@ export function deriveTables(host: ModeHost, p: Project): DeriveTables | null {
  *  the floats; a pixel layer without floats takes them whole. Replaced rasters, in-place patches and new layers. A
  *  fill layer's CMYK rendition keeps the note of what its pixels were drawn for (1.66.0), so pinFills leaves it. */
 export function deriveChannels(host: ModeHost, p: Project, before: ReadonlyMap<ID, Layer>, patches: readonly PixelPatch[]): boolean {
-  const cmyk = p.doc.mode === 'cmyk', lab = p.doc.mode === 'lab', linear = p.doc.depth === 32, t = cmyk ? deriveTables(host, p) : null, lut = cmyk ? p.cmykLut : null;
+  const cmyk = p.doc.mode === 'cmyk', lab = p.doc.mode === 'lab', linear = linearLight(p.doc), t = cmyk ? deriveTables(host, p) : null, lut = cmyk ? p.cmykLut : null;
   if (cmyk && !t) return false;
   let changed = false;
   const shown = (r: Raster, ch: ChannelPixels): Raster => {

@@ -45,6 +45,7 @@
     "linux": {
       "deb": {
         "recommends": ["xdg-desktop-portal-gtk | xdg-desktop-portal", "fonts-dejavu-core"],
+        "desktopTemplate": "../packaging/linux/formvis-deb.desktop",
         "files": { "/usr/share/formvis/libcheck": "../setup/libcheck", "/usr/bin/formvis-launch": "../packaging/linux/formvis-launch" }
       }
     },

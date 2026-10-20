@@ -53,7 +53,7 @@ const SPACE_MODE: Record<Space, DocMode> = { rgb: 'rgb', cmyk: 'cmyk', gray: 'gr
 export async function convertDocumentDeep(engine: Engine, choice: string, target: DocProfile | null, space: Space, o: { intent: string; bpc: boolean; dither: boolean }, tables: CmykTables | null): Promise<boolean> {
   const p = engine.current;
   if (!p) return false;
-  const mode = p.doc.mode ?? 'rgb', depth: 8 | 16 = p.doc.depth === 16 || (p.doc.depth === 32 && mode === 'lab') ? 16 : 8, from = mode === 'cmyk' ? 'cmyk' : mode === 'lab' ? 'lab' : 'rgb';
+  const mode = p.doc.mode ?? 'rgb', depth: 8 | 16 = p.doc.depth === 16 || (p.doc.depth === 32 && (mode === 'lab' || mode === 'cmyk')) ? 16 : 8, from = mode === 'cmyk' ? 'cmyk' : mode === 'lab' ? 'lab' : 'rgb';
   if (space === 'cmyk' && (!tables || !target)) throw new Error('No CMYK tables are available for that profile.');
   const source = from === 'lab' ? '' : p.doc.profile?.icc ?? '', dest = space === 'lab' ? 'id:builtin:lab' : choice.startsWith('id:') ? choice : target?.icc ?? '';
   const out = new Map<ID, ChannelPixels>();
@@ -149,7 +149,7 @@ export class ConvertProfileDialog extends Dialog {
     this.spaces.clear();
     const mark = (list: Array<[string, string]>, space: Space): Array<[string, string]> => { for (const [v] of list) this.spaces.set(v, space); return list; };
     const rgb = mark(await rgbChoices(), 'rgb');
-    if (depth === 32 && mode !== 'lab') return rgb;
+    if (depth === 32 && mode !== 'lab' && mode !== 'cmyk') return rgb;
     const cmyk = mark(await cmykChoices(), 'cmyk'), gray = mark(await grayChoices(), 'gray'), lab = mark([['lab', 'Lab Color (D50)']], 'lab');
     return (mode === 'cmyk' ? [cmyk, rgb, gray, lab] : [rgb, cmyk, gray, lab]).flat();
   }
@@ -159,7 +159,7 @@ export class ConvertProfileDialog extends Dialog {
       setText(this.note, 'Converting...');
       const label = this.sel.selectedOptions[0]?.textContent ?? '', target = space === 'lab' ? null : await profileOf(this.sel.value, label);
       const p = this.engine.current, mode = p?.doc.mode ?? 'rgb', depth = p?.doc.depth ?? 8, dither = this.dither.checked;
-      if (p && (depth !== 32 || mode === 'lab') && !(space === 'cmyk' && mode === 'cmyk' && depth === 8 && !dither) && !(space === 'rgb' && mode !== 'cmyk' && mode !== 'lab' && depth === 8 && !dither)) {
+      if (p && (depth !== 32 || mode === 'lab' || mode === 'cmyk') && !(space === 'cmyk' && mode === 'cmyk' && depth === 8 && !dither) && !(space === 'rgb' && mode !== 'cmyk' && mode !== 'lab' && depth === 8 && !dither)) {
         // 16 bits, a change of mode, Lab, or dither (DEV_PLAN 28.2): the pixels' own floats through LittleCMS in double precision, rounded once, in one step.
         if (!await convertDocumentDeep(this.engine, this.sel.value, target, space, { intent: this.intent.value, bpc: this.bpc.checked, dither }, this.tables)) { setText(this.note, 'Nothing was converted.'); return; }
         this.close();

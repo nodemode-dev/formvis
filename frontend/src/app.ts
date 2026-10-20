@@ -1722,7 +1722,7 @@ export function startApp(): void {
     try {
       // 1.57.8: from any document; below 32 bits (and in CMYK and Lab) the picture the canvas shows, as linear light.
       let deep: { width: number; height: number; data: Float32Array } | { error: string };
-      if (p.doc.depth === 32 && p.doc.mode !== 'lab') deep = (await composeFloatOnWorkers(p.doc)) ?? composeDeep(p.doc);
+      if (p.doc.depth === 32 && p.doc.mode !== 'lab' && p.doc.mode !== 'cmyk') deep = (await composeFloatOnWorkers(p.doc)) ?? composeDeep(p.doc);
       else {
         const flat = engine.flattened();
         if (!flat) return;
@@ -1737,7 +1737,7 @@ export function startApp(): void {
 
   /** Image > Mode > 8 or 16 Bits/Channel; from 32 bits, HDR Toning first (1.53.9). */
   async function toDepth(depth: 8 | 16): Promise<void> {
-    if (engine.current?.doc.depth === 32 && engine.current.doc.mode !== 'lab') { const tone = await hdrToning.ask(depth); if (tone) engine.setDepth(depth, tone); return; }
+    if (engine.current?.doc.depth === 32 && engine.current.doc.mode !== 'lab' && engine.current.doc.mode !== 'cmyk') { const tone = await hdrToning.ask(depth); if (tone) engine.setDepth(depth, tone); return; }
     engine.setDepth(depth);
   }
 
@@ -1763,20 +1763,25 @@ export function startApp(): void {
     return (engine.current?.doc.depth ?? 8) <= depth;
   }
 
-  /** 16 or 32 Bits/Channel from any mode (1.57.8): CMYK and Lab keep their mode at 16 bits; 32 bits needs RGB or
-   *  Grayscale, so CMYK and Lab come to RGB first; Bitmap goes to Grayscale and Indexed Color to RGB first. */
+  /** 16 or 32 Bits/Channel from any mode (1.57.8): CMYK and Lab keep their mode at both, their ink and Lab values
+   *  staying floats (not linear light); Bitmap goes to Grayscale and Indexed Color to RGB first. */
   async function toDeeper(depth: 16 | 32): Promise<void> {
     const m = engine.current?.doc.mode ?? 'rgb';
     if (m === 'bitmap') engine.convertMode('grayscale');
     else if (m === 'indexed') engine.convertMode('rgb');
-    else if (m === 'cmyk' && depth === 32 && !(await toRgbFirst())) return;
     engine.setDepth(depth);
+  }
+
+  /** Whether the document is CMYK or Lab at 16 or 32 bits, whose floats go through the 16-bit conversion route. */
+  function inkDeep(): boolean {
+    const d = engine.current?.doc;
+    return !!d && (d.depth === 16 || (d.depth === 32 && (d.mode === 'lab' || d.mode === 'cmyk')));
   }
 
   /** A CMYK or Lab document to RGB first (1.57.5), for Bitmap, Indexed Color and (from Lab) CMYK; true when it is RGB. */
   async function toRgbFirst(): Promise<boolean> {
     const m = engine.current?.doc.mode ?? 'rgb';
-    if ((m === 'cmyk' || m === 'lab') && (engine.current?.doc.depth === 16 || (m === 'lab' && engine.current?.doc.depth === 32))) await deepMode('rgb', loadPrefs().colour.rgb, await workingRgb());
+    if ((m === 'cmyk' || m === 'lab') && inkDeep()) await deepMode('rgb', loadPrefs().colour.rgb, await workingRgb());
     else if (m === 'cmyk') await cmykToRgb();
     else if (m === 'lab') engine.setRgbFromLab();
     return (engine.current?.doc.mode ?? 'rgb') !== 'cmyk' && engine.current?.doc.mode !== 'lab';
@@ -2030,8 +2035,8 @@ export function startApp(): void {
       try {
         const ink = composeChannels(p.doc, p.cmykTables);
         if ('error' in ink) throw new Error(ink.error);
-        if (kind === 'tiff' && p.doc.depth === 16) {
-          // 16-bit CMYK (1.57.8): the inks at 16 bits, transparency laid on paper, written by the engine with tifffile.
+        if (kind === 'tiff' && (p.doc.depth === 16 || p.doc.depth === 32)) {
+          // 16 and 32-bit CMYK (1.57.8): the inks at 16 bits, transparency laid on paper, written by the engine with tifffile.
           const n = ink.width * ink.height, u = new Uint16Array(n * 4);
           for (let j = 0; j < n; j++) { const a = ink.data[j * 5 + 4]; for (let c = 0; c < 4; c++) u[j * 4 + c] = Math.round(Math.max(0, Math.min(1, ink.data[j * 5 + c] * a)) * 65535); }
           await deliver(await api.encodeTiff16(u, ink.width, ink.height, 'cmyk', fromBase64(p.doc.profile!.icc)), `${p.name}.tif`);
@@ -2168,7 +2173,7 @@ export function startApp(): void {
     if (to === 'rgb') {
       if (m === 'cmyk' || m === 'lab') await toRgbFirst(); else engine.convertMode('rgb');
     } else if (to === 'grayscale') {
-      if (engine.current?.doc.depth === 16) await toGray();
+      if (inkDeep()) await toGray();
       else if (m === 'lab') engine.setGrayFromLab();
       else if (m === 'cmyk') { if (await toRgbFirst()) engine.convertMode('grayscale'); }
       else engine.convertMode('grayscale');
@@ -5841,7 +5846,7 @@ export function startApp(): void {
         if (engine.current?.doc.depth === 16) await deepMode('cmyk', `id:${pick.id}`, profile, c.intent, c.bpc); else await toCmyk(profile, c.intent, c.bpc);
       } catch (err) { toast(message(err), 'error'); }
     }); } },
-    { id: 'mode-grayscale', label: 'Grayscale', enabled: has, checked: () => engine.current?.doc.mode === 'grayscale', run: () => { if (askModeOptions('gray')) return; const m = engine.current?.doc.mode; if (engine.current?.doc.depth === 16 && m !== 'grayscale') void toGray(); else if (m === 'lab') engine.setGrayFromLab(); else if (m === 'cmyk') void toRgbFirst().then((ok) => { if (ok) engine.convertMode('grayscale'); }); else engine.convertMode('grayscale'); } },
+    { id: 'mode-grayscale', label: 'Grayscale', enabled: has, checked: () => engine.current?.doc.mode === 'grayscale', run: () => { if (askModeOptions('gray')) return; const m = engine.current?.doc.mode; if (inkDeep() && m !== 'grayscale') void toGray(); else if (m === 'lab') engine.setGrayFromLab(); else if (m === 'cmyk') void toRgbFirst().then((ok) => { if (ok) engine.convertMode('grayscale'); }); else engine.convertMode('grayscale'); } },
     { id: 'mode-duotone', label: 'Duotone...', enabled: () => has() && ['grayscale', 'duotone'].includes(engine.current?.doc.mode ?? 'rgb'), checked: () => engine.current?.doc.mode === 'duotone', run: () => dialogs.duotone.show() },   // 31.3a
     { id: 'mode-grayscale-from', label: 'Grayscale From Channels...', enabled: () => has() && ['rgb', 'indexed', 'grayscale'].includes(engine.current?.doc.mode ?? 'rgb') && (engine.current?.doc.depth ?? 8) === 8, run: () => modeDialog.show('grayscale') },
     { id: 'mode-bitmap', label: 'Bitmap...', enabled: has, checked: () => engine.current?.doc.mode === 'bitmap', run: () => void toRgbFirst().then((rgb) => (rgb ? downTo(8) : false)).then((ok) => { if (ok) modeDialog.show('bitmap'); }) },

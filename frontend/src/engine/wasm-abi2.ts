@@ -33,7 +33,7 @@ export function wasmPick(m: Pick<WasmManifest, 'formats' | 'models' | 'name'>, m
 }
 
 export function wasmLayout(m: Pick<WasmManifest, 'alpha'>, plane: WasmPlane, model: WasmModel, format: WasmFormat, depth: 8 | 16 | 32): WasmLayout {
-  return { format, model, colour: plane.n, sendAlpha: plane.alpha && m.alpha !== 'none', linear: depth === 32 };
+  return { format, model, colour: plane.n, sendAlpha: plane.alpha && m.alpha !== 'none', linear: depth === 32 && model !== 'lab' && model !== 'cmyk' };
 }
 
 export function wasmDescriptor(lay: WasmLayout, width: number): Uint32Array {

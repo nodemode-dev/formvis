@@ -613,6 +613,7 @@ body.narrow-options { --cv-options-h: 32px; }
 .cv-app.is-screen-menu .cv-status, .cv-app.is-screen-full .cv-status { display: none; }
 .cv-app.is-screen-full { --cv-titlebar-h: 0px; }
 .cv-app.is-screen-full .cv-titlebar { display: none; }
+:root .cv-app.is-screen-full { grid-template-rows: minmax(0, 1fr) var(--ft-dock-h, 0px) var(--cv-status-h); }
 .cv-app.is-screen-full .cv-stage { background: #000; }
 /* Edit Toolbar's list (the rail's •••). */
 .cv-tb-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }

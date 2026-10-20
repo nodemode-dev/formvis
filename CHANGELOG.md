@@ -4,6 +4,13 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.92.9 · 2026-10-20
+
+- Full Screen Mode shows the picture again: the hidden title bar no longer pushes the picture area into a 0 px row (found by using it while writing coverage tests).
+- CMYK Color at 32 bits per channel (New Document, Image > Mode), ink values kept as floats; Lab 32 to Grayscale now matches 16 bits.
+- Native renderer: masked Vivid Light, Hue and Reflect folders and clipped Hue and Difference folders draw natively; folder and clip coverage is applied to the premultiplied 8-bit layer with round-to-nearest, as the canvas does.
+- Linux: the deb menu entry and the AppImage launcher start formvis through formvis-launch, so a missing library is named in a dialog.
+
 ## 1.92.8 · 2026-10-20
 
 - Settings: the rail icons, section icons and group labels take the accent colour again (the active tab's icon stays on the accent fill).
